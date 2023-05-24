@@ -1,19 +1,8 @@
 TEMPLATE = subdirs
 QT_FOR_CONFIG += qml
 
-qtHaveModule(quick) {
-    SUBDIRS += \
-        qmlextensionplugins \
-        xmlhttprequest
-
-    qtConfig(qml-network): \
-        SUBDIRS += networkaccessmanagerfactory
-}
-
 SUBDIRS += \
-          referenceexamples \
-          tutorials \
-          shell
+          tutorials
 
 EXAMPLE_FILES = \
     dynamicscene \

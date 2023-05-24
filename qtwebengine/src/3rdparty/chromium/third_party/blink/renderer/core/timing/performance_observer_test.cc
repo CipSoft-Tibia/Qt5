@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/timing/performance_observer.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_performance_mark_options.h"
@@ -23,10 +24,13 @@ class MockPerformance : public Performance {
   explicit MockPerformance(ScriptState* script_state)
       : Performance(base::TimeTicks(),
                     ExecutionContext::From(script_state)
+                        ->CrossOriginIsolatedCapability(),
+                    ExecutionContext::From(script_state)
                         ->GetTaskRunner(TaskType::kPerformanceTimeline)) {}
   ~MockPerformance() override = default;
 
   ExecutionContext* GetExecutionContext() const override { return nullptr; }
+  uint64_t interactionCount() const override { return 0; }
 };
 
 class PerformanceObserverTest : public testing::Test {
@@ -42,7 +46,7 @@ class PerformanceObserverTest : public testing::Test {
 
   bool IsRegistered() { return observer_->is_registered_; }
   int NumPerformanceEntries() { return observer_->performance_entries_.size(); }
-  void Deliver() { observer_->Deliver(); }
+  void Deliver() { observer_->Deliver(absl::nullopt); }
 
   Persistent<MockPerformance> base_;
   Persistent<V8PerformanceObserverCallback> cb_;
@@ -74,8 +78,9 @@ TEST_F(PerformanceObserverTest, ObserveWithBufferedFlag) {
   EXPECT_EQ(0, NumPerformanceEntries());
 
   // add a layout-shift to performance so getEntries() returns it
-  auto* entry = LayoutShift::Create(0.0, 1234, true, 5678,
-                                    LayoutShift::AttributionList());
+  auto* entry =
+      LayoutShift::Create(0.0, 1234, true, 5678, LayoutShift::AttributionList(),
+                          LocalDOMWindow::From(scope.GetScriptState()));
   base_->AddLayoutShiftBuffer(*entry);
 
   // call observe with the buffered flag
@@ -136,4 +141,24 @@ TEST_F(PerformanceObserverTest, Disconnect) {
   EXPECT_FALSE(IsRegistered());
   EXPECT_EQ(0, NumPerformanceEntries());
 }
+
+// Tests that an observe() call with an argument that triggers a console error
+// message does not crash, when such call is made after the ExecutionContext is
+// detached.
+TEST_F(PerformanceObserverTest, ObserveAfterContextDetached) {
+  NonThrowableExceptionState exception_state;
+  {
+    V8TestingScope scope;
+    Initialize(scope.GetScriptState());
+  }
+  PerformanceObserverInit* options = PerformanceObserverInit::Create();
+  Vector<String> entry_type_vec;
+  entry_type_vec.push_back("invalid");
+  options->setEntryTypes(entry_type_vec);
+  // The V8TestingScope is out of scope so the observer's ExecutionContext
+  // should now be null.
+  EXPECT_FALSE(observer_->GetExecutionContext());
+  observer_->observe(options, exception_state);
+}
+
 }  // namespace blink

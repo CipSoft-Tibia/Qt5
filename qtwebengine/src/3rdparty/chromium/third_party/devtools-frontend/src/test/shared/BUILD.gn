@@ -6,9 +6,14 @@ import("../../third_party/typescript/typescript.gni")
 
 node_ts_library("shared") {
   sources = [
+    "async-scope.ts",
     "config.ts",
     "helper.ts",
     "mocha-extensions.ts",
+    "mocha-resultsdb-reporter.ts",
+    "resultsdb.ts",
+    "screenshots.ts",
+    "snapshots.ts",
     "text-color.ts",
   ]
   deps = [ "../conductor:implementation" ]

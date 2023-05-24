@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/lazy_instance.h"
 #include "base/no_destructor.h"
 #include "build/build_config.h"
@@ -64,14 +64,14 @@ SerialPortManager::SerialPortManager(content::BrowserContext* context)
   connections_ = manager->data_;
 }
 
-SerialPortManager::~SerialPortManager() {}
+SerialPortManager::~SerialPortManager() = default;
 
-SerialPortManager::ReceiveParams::ReceiveParams() {}
+SerialPortManager::ReceiveParams::ReceiveParams() = default;
 
 SerialPortManager::ReceiveParams::ReceiveParams(const ReceiveParams& other) =
     default;
 
-SerialPortManager::ReceiveParams::~ReceiveParams() {}
+SerialPortManager::ReceiveParams::~ReceiveParams() = default;
 
 void SerialPortManager::GetDevices(
     device::mojom::SerialPortManager::GetDevicesCallback callback) {
@@ -80,14 +80,16 @@ void SerialPortManager::GetDevices(
   port_manager_->GetDevices(std::move(callback));
 }
 
-void SerialPortManager::GetPort(
+void SerialPortManager::OpenPort(
     const std::string& path,
-    mojo::PendingReceiver<device::mojom::SerialPort> receiver) {
+    device::mojom::SerialConnectionOptionsPtr options,
+    mojo::PendingRemote<device::mojom::SerialPortClient> client,
+    OpenPortCallback callback) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   EnsureConnection();
-  port_manager_->GetDevices(
-      base::BindOnce(&SerialPortManager::OnGotDevicesToGetPort,
-                     weak_factory_.GetWeakPtr(), path, std::move(receiver)));
+  port_manager_->GetDevices(base::BindOnce(
+      &SerialPortManager::OnGotDevicesToGetPort, weak_factory_.GetWeakPtr(),
+      path, std::move(options), std::move(client), std::move(callback)));
 }
 
 void SerialPortManager::StartConnectionPolling(const std::string& extension_id,
@@ -123,8 +125,7 @@ void SerialPortManager::DispatchReceiveEvent(const ReceiveParams& params,
     serial::ReceiveInfo receive_info;
     receive_info.connection_id = params.connection_id;
     receive_info.data = std::move(data);
-    std::unique_ptr<base::ListValue> args =
-        serial::OnReceive::Create(receive_info);
+    auto args = serial::OnReceive::Create(receive_info);
     std::unique_ptr<extensions::Event> event(
         new extensions::Event(extensions::events::SERIAL_ON_RECEIVE,
                               serial::OnReceive::kEventName, std::move(args)));
@@ -141,8 +142,7 @@ void SerialPortManager::DispatchReceiveEvent(const ReceiveParams& params,
     serial::ReceiveErrorInfo error_info;
     error_info.connection_id = params.connection_id;
     error_info.error = error;
-    std::unique_ptr<base::ListValue> args =
-        serial::OnReceiveError::Create(error_info);
+    auto args = serial::OnReceiveError::Create(error_info);
     std::unique_ptr<extensions::Event> event(new extensions::Event(
         extensions::events::SERIAL_ON_RECEIVE_ERROR,
         serial::OnReceiveError::kEventName, std::move(args)));
@@ -154,8 +154,8 @@ void SerialPortManager::DispatchReceiveEvent(const ReceiveParams& params,
 void SerialPortManager::DispatchEvent(
     const ReceiveParams& params,
     std::unique_ptr<extensions::Event> event) {
-  content::BrowserContext* context =
-      reinterpret_cast<content::BrowserContext*>(params.browser_context_id);
+  content::BrowserContext* context = reinterpret_cast<content::BrowserContext*>(
+      params.browser_context_id.get());
   if (!extensions::ExtensionsBrowserClient::Get()->IsValidContext(context))
     return;
 
@@ -183,27 +183,31 @@ void SerialPortManager::EnsureConnection() {
 
 void SerialPortManager::OnGotDevicesToGetPort(
     const std::string& path,
-    mojo::PendingReceiver<device::mojom::SerialPort> receiver,
+    device::mojom::SerialConnectionOptionsPtr options,
+    mojo::PendingRemote<device::mojom::SerialPortClient> client,
+    OpenPortCallback callback,
     std::vector<device::mojom::SerialPortInfoPtr> devices) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
 
   for (auto& device : devices) {
     if (device->path.AsUTF8Unsafe() == path) {
-      port_manager_->GetPort(device->token, /*use_alternate_path=*/false,
-                             std::move(receiver),
-                             /*watcher=*/mojo::NullRemote());
+      port_manager_->OpenPort(device->token, /*use_alternate_path=*/false,
+                              std::move(options), std::move(client),
+                              /*watcher=*/mojo::NullRemote(),
+                              std::move(callback));
       return;
     }
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
     if (device->alternate_path &&
         device->alternate_path->AsUTF8Unsafe() == path) {
-      port_manager_->GetPort(device->token, /*use_alternate_path=*/true,
-                             std::move(receiver),
-                             /*watcher=*/mojo::NullRemote());
+      port_manager_->OpenPort(device->token, /*use_alternate_path=*/true,
+                              std::move(options), std::move(client),
+                              /*watcher=*/mojo::NullRemote(),
+                              std::move(callback));
       return;
     }
-#endif  // defined(OS_MAC)
+#endif  // BUILDFLAG(IS_MAC)
   }
 }
 

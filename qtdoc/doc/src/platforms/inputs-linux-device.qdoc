@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
   \page inputs-linux-device.html
@@ -92,7 +68,7 @@
       \li When set to \c 1, Qt grabs the device for exclusive use.
     \row
       \li \c abs
-      \li Some touchscreens report absolute coordinates and can't be differentiated from touchpads.
+      \li Some touchscreens report absolute coordinates and can't be differentiated from touch pads.
           In this case, pass \c abs to indicate that the device is using absolute events.
   \endtable
 
@@ -149,11 +125,8 @@
         terminals.
   \endlist
 
-  If the default built-in keymap is not sufficient, you can specify a different one either via the
-  \c keymap parameter or via the eglfs-specific \l{QEglFSFunctions::loadKeymap()}{loadKeymap()}
-  function. The latter allows for switching the keymap at runtime. However, this behavior requires
-  using eglfs' built-in keyboard handler; it is not supported when the keyboard handler is
-  loaded via the \c -plugin command-line parameter.
+  If the default built-in keymap is not sufficient, you can specify a different
+  one via the \c keymap parameter.
 
   \note Special system key combinations, such as console switching (\uicontrol{Ctrl+Alt+Fx}) or
   zap (\uicontrol{Ctrl+Alt+Backspace}) are not currently supported and are ignored.
@@ -182,9 +155,9 @@
 
   \section2 Touch
 
-  While it's not necessary for modern touch screens, some resistive, single-touch touch screens may
-  require that you fallback to using \c tslib instead of relying on the Linux multi-touch protocol
-  and the event devices.
+  While it's not necessary for modern touchscreens, some older resistance touchscreens that only
+  support single-touch may require that you fall back to using \c tslib, instead of relying on the
+  Linux multi-touch protocol and the event devices.
 
   To enable \c tslib support, set the \c QT_QPA_EGLFS_TSLIB (for \c eglfs) or \c QT_QPA_FB_TSLIB
   (for \c linuxfb) environment variable to 1. To change the device, set the \c TSLIB_TSDEVICE

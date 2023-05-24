@@ -4,6 +4,7 @@
 # found in the LICENSE file.
 find \
 	'(' -name '*.[ch]' -or -name '*.cc' ')' \
-	-not -name 'virtgpu_drm.h' \
+	-not -name 'virtgpu_drm.h' -not -name 'i915_drm.h' \
 	-not -name 'gbm.h' -not -name 'virgl_hw.h' \
+	-not -name 'virgl_protocol.h' \
 	-exec clang-format -style=file -i {} +

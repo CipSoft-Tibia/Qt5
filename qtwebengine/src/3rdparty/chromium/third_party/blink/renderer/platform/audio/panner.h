@@ -30,8 +30,6 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_PANNER_H_
 
 #include <memory>
-
-#include "base/macros.h"
 #include "third_party/blink/renderer/platform/audio/audio_bus.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -56,8 +54,11 @@ class PLATFORM_EXPORT Panner {
 
   static std::unique_ptr<Panner> Create(PanningModel,
                                         float sample_rate,
+                                        unsigned render_quantum_frames,
                                         HRTFDatabaseLoader*);
 
+  Panner(const Panner&) = delete;
+  Panner& operator=(const Panner&) = delete;
   virtual ~Panner() = default;
 
   virtual void Pan(double azimuth,
@@ -80,12 +81,7 @@ class PLATFORM_EXPORT Panner {
   virtual bool RequiresTailProcessing() const = 0;
 
  protected:
-  explicit Panner(PanningModel model) : panning_model_(model) {}
-
-  PanningModel panning_model_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(Panner);
+  Panner() = default;
 };
 
 }  // namespace blink

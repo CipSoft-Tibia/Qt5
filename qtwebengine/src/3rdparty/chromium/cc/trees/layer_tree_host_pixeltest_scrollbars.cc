@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@
 #include "components/viz/test/test_in_process_context_provider.h"
 #include "gpu/command_buffer/client/gles2_interface.h"
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 
 namespace cc {
 namespace {
@@ -56,11 +56,13 @@ class PaintedScrollbar : public FakeScrollbar {
     flags.setColor(color_);
     gfx::Rect inset_rect = rect;
     while (!inset_rect.IsEmpty()) {
-      int big = paint_scale_ + 2;
-      int small = paint_scale_;
-      inset_rect.Inset(big, big, small, small);
+      int big_rect = paint_scale_ + 2;
+      int small_rect = paint_scale_;
+      inset_rect.Inset(
+          gfx::Insets::TLBR(big_rect, big_rect, small_rect, small_rect));
       canvas->drawRect(RectToSkRect(inset_rect), flags);
-      inset_rect.Inset(big, big, small, small);
+      inset_rect.Inset(
+          gfx::Insets::TLBR(big_rect, big_rect, small_rect, small_rect));
     }
   }
 
@@ -77,6 +79,9 @@ INSTANTIATE_TEST_SUITE_P(All,
                          LayerTreeHostScrollbarsPixelTest,
                          ::testing::ValuesIn(viz::GetGpuRendererTypes()),
                          ::testing::PrintToStringParamName());
+
+// viz::GetGpuRendererTypes() can return an empty list on some platforms.
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(LayerTreeHostScrollbarsPixelTest);
 
 TEST_P(LayerTreeHostScrollbarsPixelTest, NoScale) {
   scoped_refptr<SolidColorLayer> background =
@@ -151,10 +156,8 @@ TEST_P(LayerTreeHostScrollbarsPixelTest, MAYBE_HugeTransformScale) {
   background->AddChild(layer);
 
   auto context = base::MakeRefCounted<viz::TestInProcessContextProvider>(
-      /*enable_gpu_rasterization=*/false,
-      /*enable_oop_rasterization=*/false,
-      /*support_locking=*/false);
-  gpu::ContextResult result = context->BindToCurrentThread();
+      viz::TestContextType::kGLES2, /*support_locking=*/false);
+  gpu::ContextResult result = context->BindToCurrentSequence();
   DCHECK_EQ(result, gpu::ContextResult::kSuccess);
   int max_texture_size = 0;
   context->ContextGL()->GetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
@@ -173,14 +176,13 @@ TEST_P(LayerTreeHostScrollbarsPixelTest, MAYBE_HugeTransformScale) {
   scale_transform.Scale(scale, scale);
   layer->SetTransform(scale_transform);
 
-  if (renderer_type_ == viz::RendererType::kSkiaGL ||
-      renderer_type_ == viz::RendererType::kSkiaDawn)
-    pixel_comparator_ = std::make_unique<FuzzyPixelOffByOneComparator>(true);
+  pixel_comparator_ =
+      std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
 
   RunPixelTest(background,
-               use_skia_vulkan()
-                   ? base::FilePath(FILE_PATH_LITERAL("spiral_64_scale_vk.png"))
-                   : base::FilePath(FILE_PATH_LITERAL("spiral_64_scale.png")));
+               base::FilePath(use_skia_vulkan()
+                                  ? FILE_PATH_LITERAL("spiral_64_scale_vk.png")
+                                  : FILE_PATH_LITERAL("spiral_64_scale.png")));
 }
 
 class LayerTreeHostOverlayScrollbarsPixelTest
@@ -225,11 +227,11 @@ class PaintedOverlayScrollbar : public FakeScrollbar {
     canvas->drawRect(RectToSkRect(inset_rect), flags);
 
     flags.setColor(SK_ColorRED);
-    inset_rect.Inset(1, 1);
+    inset_rect.Inset(1);
     canvas->drawRect(RectToSkRect(inset_rect), flags);
 
     flags.setColor(SK_ColorBLUE);
-    inset_rect.Inset(1, 1);
+    inset_rect.Inset(1);
     canvas->drawRect(RectToSkRect(inset_rect), flags);
   }
 
@@ -249,6 +251,10 @@ INSTANTIATE_TEST_SUITE_P(All,
                          LayerTreeHostOverlayScrollbarsPixelTest,
                          ::testing::ValuesIn(viz::GetGpuRendererTypes()),
                          ::testing::PrintToStringParamName());
+
+// viz::GetGpuRendererTypes() can return an empty list on some platforms.
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(
+    LayerTreeHostOverlayScrollbarsPixelTest);
 
 // Simulate increasing the thickness of a painted overlay scrollbar. Ensure that
 // the scrollbar border remains crisp.
@@ -301,4 +307,4 @@ TEST_P(LayerTreeHostOverlayScrollbarsPixelTest, NinePatchScrollbarScaledDown) {
 }  // namespace
 }  // namespace cc
 
-#endif  // OS_ANDROID
+#endif  // BUILDFLAG(IS_ANDROID)

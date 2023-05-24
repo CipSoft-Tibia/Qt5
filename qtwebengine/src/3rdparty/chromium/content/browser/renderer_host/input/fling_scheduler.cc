@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -68,19 +68,10 @@ void FlingScheduler::ProgressFlingOnBeginFrameIfneeded(
 }
 
 ui::Compositor* FlingScheduler::GetCompositor() {
-#if defined(TOOLKIT_QT)
-  if (host_->GetView())
-    return host_->GetView()->GetCompositor();
-#endif
-#if defined(USE_AURA)
-  if (host_->GetView() && host_->GetView()->GetNativeView() &&
-      host_->GetView()->GetNativeView()->GetHost() &&
-      host_->GetView()->GetNativeView()->GetHost()->compositor()) {
-    return host_->GetView()->GetNativeView()->GetHost()->compositor();
+  if (!host_->GetView()) {
+    return nullptr;
   }
-#endif
-
-  return nullptr;
+  return host_->GetView()->GetCompositor();
 }
 
 void FlingScheduler::OnAnimationStep(base::TimeTicks timestamp) {

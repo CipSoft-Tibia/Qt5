@@ -1,18 +1,18 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/base/ime/win/on_screen_keyboard_display_manager_input_pane.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/com_init_util.h"
 #include "base/win/core_winrt_util.h"
 #include "base/win/windows_version.h"
-#include "ui/base/ime/input_method_keyboard_controller_observer.h"
+#include "ui/base/ime/virtual_keyboard_controller_observer.h"
 
 namespace ui {
 
@@ -25,6 +25,9 @@ class OnScreenKeyboardDisplayManagerInputPane::VirtualKeyboardInputPane
   explicit VirtualKeyboardInputPane(
       const scoped_refptr<base::SingleThreadTaskRunner> task_runner)
       : main_task_runner_(task_runner) {}
+
+  VirtualKeyboardInputPane(const VirtualKeyboardInputPane&) = delete;
+  VirtualKeyboardInputPane& operator=(const VirtualKeyboardInputPane&) = delete;
 
   void InitVirtualKeyboardInputPaneInstance(
       base::WeakPtr<OnScreenKeyboardDisplayManagerInputPane>
@@ -87,8 +90,7 @@ class OnScreenKeyboardDisplayManagerInputPane::VirtualKeyboardInputPane
     DCHECK(!main_task_runner_->BelongsToCurrentThread());
     if (input_pane2_)
       return true;
-    if (!base::win::ResolveCoreWinRTDelayload() ||
-        !base::win::ScopedHString::ResolveCoreWinRTStringDelayload()) {
+    if (!base::win::ResolveCoreWinRTDelayload()) {
       return false;
     }
 
@@ -202,14 +204,12 @@ class OnScreenKeyboardDisplayManagerInputPane::VirtualKeyboardInputPane
   scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
   base::WeakPtr<OnScreenKeyboardDisplayManagerInputPane>
       keyboard_input_pane_weak_ptr_;
-
-  DISALLOW_COPY_AND_ASSIGN(VirtualKeyboardInputPane);
 };
 
 OnScreenKeyboardDisplayManagerInputPane::
     OnScreenKeyboardDisplayManagerInputPane(HWND hwnd)
     : hwnd_(hwnd),
-      main_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+      main_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       background_task_runner_(
           base::ThreadPool::CreateCOMSTATaskRunner({base::MayBlock()})),
       virtual_keyboard_input_pane_(
@@ -282,13 +282,13 @@ void OnScreenKeyboardDisplayManagerInputPane::DismissVirtualKeyboard() {
 }
 
 void OnScreenKeyboardDisplayManagerInputPane::AddObserver(
-    InputMethodKeyboardControllerObserver* observer) {
+    VirtualKeyboardControllerObserver* observer) {
   DCHECK(main_task_runner_->BelongsToCurrentThread());
   observers_.AddObserver(observer);
 }
 
 void OnScreenKeyboardDisplayManagerInputPane::RemoveObserver(
-    InputMethodKeyboardControllerObserver* observer) {
+    VirtualKeyboardControllerObserver* observer) {
   DCHECK(main_task_runner_->BelongsToCurrentThread());
   observers_.RemoveObserver(observer);
 }
@@ -314,7 +314,7 @@ void OnScreenKeyboardDisplayManagerInputPane::NotifyObserversOnKeyboardShown(
     gfx::Rect dip_rect) {
   DCHECK(main_task_runner_->BelongsToCurrentThread());
   is_keyboard_visible_ = true;
-  for (InputMethodKeyboardControllerObserver& observer : observers_)
+  for (VirtualKeyboardControllerObserver& observer : observers_)
     observer.OnKeyboardVisible(dip_rect);
 }
 
@@ -322,7 +322,7 @@ void OnScreenKeyboardDisplayManagerInputPane::
     NotifyObserversOnKeyboardHidden() {
   DCHECK(main_task_runner_->BelongsToCurrentThread());
   is_keyboard_visible_ = false;
-  for (InputMethodKeyboardControllerObserver& observer : observers_)
+  for (VirtualKeyboardControllerObserver& observer : observers_)
     observer.OnKeyboardHidden();
 }
 

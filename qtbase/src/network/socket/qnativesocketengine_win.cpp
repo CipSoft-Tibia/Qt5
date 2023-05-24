@@ -1,50 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-// Prevent windows system header files from defining min/max as macros.
-#define NOMINMAX 1
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include "qnativesocketengine_p.h"
+#include "qnativesocketengine_p_p.h"
 
 #include <qabstracteventdispatcher.h>
 #include <qsocketnotifier.h>
@@ -52,13 +13,13 @@
 #include <qdatetime.h>
 #include <qnetworkinterface.h>
 #include <qoperatingsystemversion.h>
+#include <qvarlengtharray.h>
 
 #include <algorithm>
 
 //#define QNATIVESOCKETENGINE_DEBUG
 #if defined(QNATIVESOCKETENGINE_DEBUG)
-#   include <qstring.h>
-#   include <qbytearray.h>
+#include <private/qdebug_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -127,37 +88,7 @@ void verboseWSErrorDebug(int r)
     qErrnoWarning(r, "more details");
 }
 
-/*
-    Returns a human readable representation of the first \a len
-    characters in \a data.
-*/
-static QByteArray qt_prettyDebug(const char *data, int len, int maxLength)
-{
-    if (!data) return "(null)";
-    QByteArray out;
-    for (int i = 0; i < len; ++i) {
-        char c = data[i];
-        if (isprint(int(uchar(c)))) {
-            out += c;
-        } else switch (c) {
-        case '\n': out += "\\n"; break;
-        case '\r': out += "\\r"; break;
-        case '\t': out += "\\t"; break;
-        default:
-            QString tmp;
-            tmp.sprintf("\\%o", c);
-            out += tmp.toLatin1().constData();
-        }
-    }
-
-    if (len < maxLength)
-        out += "...";
-
-    return out;
-}
-
-
-#define WS_ERROR_DEBUG(x) verboseWSErrorDebug(x);
+#define WS_ERROR_DEBUG(x) verboseWSErrorDebug(x)
 
 #else
 
@@ -325,15 +256,6 @@ static inline QAbstractSocket::SocketType qt_socket_getType(qintptr socketDescri
 
 bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType socketType, QAbstractSocket::NetworkLayerProtocol &socketProtocol)
 {
-
-    //### no ip6 support on winsocket 1.1 but we will try not to use this !!!!!!!!!!!!1
-    /*
-    if (winsockVersion < 0x20 && socketProtocol == QAbstractSocket::IPv6Protocol) {
-        //### no ip6 support
-        return -1;
-    }
-    */
-
     //### SCTP not implemented
     if (socketType == QAbstractSocket::SctpSocket) {
         setError(QAbstractSocket::UnsupportedSocketOperationError,
@@ -346,34 +268,15 @@ bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType soc
         || (socketProtocol == QAbstractSocket::AnyIPProtocol)) ? AF_INET6 : AF_INET;
     int type = (socketType == QAbstractSocket::UdpSocket) ? SOCK_DGRAM : SOCK_STREAM;
 
-    // MSDN KB179942 states that on winnt 4 WSA_FLAG_OVERLAPPED is needed if socket is to be non blocking
-    // and recomends alwasy doing it for cross windows version comapablity.
+    // MSDN KB179942 states that on winnt 4 WSA_FLAG_OVERLAPPED is needed if socket is to be non
+    // blocking and recommends always doing it for cross-windows-version compatibility.
 
-    // WSA_FLAG_NO_HANDLE_INHERIT is atomic (like linux O_CLOEXEC), but requires windows 7 SP 1 or later
-    // SetHandleInformation is supported since W2K but isn't atomic
+    // WSA_FLAG_NO_HANDLE_INHERIT is atomic (like linux O_CLOEXEC)
 #ifndef WSA_FLAG_NO_HANDLE_INHERIT
 #define WSA_FLAG_NO_HANDLE_INHERIT 0x80
 #endif
 
     SOCKET socket = ::WSASocket(protocol, type, 0, NULL, 0, WSA_FLAG_NO_HANDLE_INHERIT | WSA_FLAG_OVERLAPPED);
-    // previous call fails if the windows 7 service pack 1 or hot fix isn't installed.
-
-    // Try the old API if the new one failed on Windows 7
-    if (socket == INVALID_SOCKET && QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows8) {
-        socket = ::WSASocket(protocol, type, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-#ifdef HANDLE_FLAG_INHERIT
-        if (socket != INVALID_SOCKET) {
-            // make non inheritable the old way
-            BOOL handleFlags = SetHandleInformation(reinterpret_cast<HANDLE>(socket), HANDLE_FLAG_INHERIT, 0);
-#ifdef QNATIVESOCKETENGINE_DEBUG
-            qDebug() << "QNativeSocketEnginePrivate::createNewSocket - set inheritable" << handleFlags;
-#else
-            Q_UNUSED(handleFlags);
-#endif
-        }
-#endif
-    }
-
     if (socket == INVALID_SOCKET) {
         int err = WSAGetLastError();
         WS_ERROR_DEBUG(err);
@@ -426,10 +329,8 @@ bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType soc
         sendmsg = 0;
 
     socketDescriptor = socket;
-    if (socket != INVALID_SOCKET) {
-        this->socketProtocol = socketProtocol;
-        this->socketType = socketType;
-    }
+    this->socketProtocol = socketProtocol;
+    this->socketType = socketType;
 
     // Make the socket nonblocking.
     if (!setOption(QAbstractSocketEngine::NonBlockingSocketOption, 1)) {
@@ -510,7 +411,6 @@ bool QNativeSocketEnginePrivate::setOption(QNativeSocketEngine::SocketOption opt
             return false;
         }
         return true;
-        break;
         }
     case QNativeSocketEngine::TypeOfServiceOption:
     case QNativeSocketEngine::MaxStreamsSocketOption:
@@ -870,10 +770,10 @@ bool QNativeSocketEnginePrivate::nativeListen(int backlog)
     return true;
 }
 
-int QNativeSocketEnginePrivate::nativeAccept()
+qintptr QNativeSocketEnginePrivate::nativeAccept()
 {
-    int acceptedDescriptor = WSAAccept(socketDescriptor, 0,0,0,0);
-    if (acceptedDescriptor == -1) {
+    SOCKET acceptedDescriptor = WSAAccept(socketDescriptor, 0,0,0,0);
+    if (acceptedDescriptor == INVALID_SOCKET) {
         int err = WSAGetLastError();
         switch (err) {
         case WSAEACCES:
@@ -907,19 +807,19 @@ int QNativeSocketEnginePrivate::nativeAccept()
             setError(QAbstractSocket::UnknownSocketError, UnknownSocketErrorString);
             break;
         }
-    } else if (acceptedDescriptor != -1 && QAbstractEventDispatcher::instance()) {
+    } else if (acceptedDescriptor != INVALID_SOCKET && QAbstractEventDispatcher::instance()) {
         // Because of WSAAsyncSelect() WSAAccept returns a non blocking socket
         // with the same attributes as the listening socket including the current
         // WSAAsyncSelect(). To be able to change the socket to blocking mode the
-        // WSAAsyncSelect() call must be cancled.
+        // WSAAsyncSelect() call must be canceled.
         QSocketNotifier n(acceptedDescriptor, QSocketNotifier::Read);
         n.setEnabled(true);
         n.setEnabled(false);
     }
 #if defined (QNATIVESOCKETENGINE_DEBUG)
-    qDebug("QNativeSocketEnginePrivate::nativeAccept() == %i", acceptedDescriptor);
+    qDebug("QNativeSocketEnginePrivate::nativeAccept() == %lld", qint64(acceptedDescriptor));
 #endif
-    return acceptedDescriptor;
+    return qintptr(acceptedDescriptor);
 }
 
 static bool multicastMembershipHelper(QNativeSocketEnginePrivate *d,
@@ -1282,7 +1182,7 @@ qint64 QNativeSocketEnginePrivate::nativeReceiveDatagram(char *data, qint64 maxL
 #if defined (QNATIVESOCKETENGINE_DEBUG)
     bool printSender = (ret != -1 && (options & QNativeSocketEngine::WantDatagramSender) != 0);
     qDebug("QNativeSocketEnginePrivate::nativeReceiveDatagram(%p \"%s\", %lli, %s, %i) == %lli",
-           data, qt_prettyDebug(data, qMin<qint64>(ret, 16), ret).data(), maxLength,
+           data, QtDebugUtils::toPrintable(data, ret, 16).constData(), maxLength,
            printSender ? header->senderAddress.toString().toLatin1().constData() : "(unknown)",
            printSender ? header->senderPort : 0, ret);
 #endif
@@ -1415,8 +1315,8 @@ qint64 QNativeSocketEnginePrivate::nativeSendDatagram(const char *data, qint64 l
     }
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
-    qDebug("QNativeSocketEnginePrivate::nativeSendDatagram(%p \"%s\", %lli, \"%s\", %i) == %lli", data,
-           qt_prettyDebug(data, qMin<qint64>(len, 16), len).data(), len,
+    qDebug("QNativeSocketEnginePrivate::nativeSendDatagram(%p \"%s\", %lli, \"%s\", %i) == %lli",
+           data, QtDebugUtils::toPrintable(data, len, 16).constData(), len,
            header.destinationAddress.toString().toLatin1().constData(),
            header.destinationPort, ret);
 #endif
@@ -1475,7 +1375,7 @@ qint64 QNativeSocketEnginePrivate::nativeWrite(const char *data, qint64 len)
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
     qDebug("QNativeSocketEnginePrivate::nativeWrite(%p \"%s\", %lli) == %lli",
-           data, qt_prettyDebug(data, qMin(int(ret), 16), int(ret)).data(), len, ret);
+           data, QtDebugUtils::toPrintable(data, ret, 16).constData(), len, ret);
 #endif
 
     return ret;
@@ -1517,8 +1417,8 @@ qint64 QNativeSocketEnginePrivate::nativeRead(char *data, qint64 maxLength)
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
     if (ret != -2) {
-        qDebug("QNativeSocketEnginePrivate::nativeRead(%p \"%s\", %lli) == %lli",
-               data, qt_prettyDebug(data, qMin(int(bytesRead), 16), int(bytesRead)).data(), maxLength, ret);
+        qDebug("QNativeSocketEnginePrivate::nativeRead(%p \"%s\", %lli) == %lli", data,
+               QtDebugUtils::toPrintable(data, bytesRead, 16).constData(), maxLength, ret);
     } else {
         qDebug("QNativeSocketEnginePrivate::nativeRead(%p, %lli) == -2 (WOULD BLOCK)",
                data, maxLength);

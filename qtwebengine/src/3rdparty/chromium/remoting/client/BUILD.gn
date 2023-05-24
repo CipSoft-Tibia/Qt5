@@ -1,6 +1,8 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/chromeos/ui_mode.gni")
 
 static_library("client") {
   sources = [
@@ -29,8 +31,6 @@ static_library("client") {
     "host_experiment_sender.h",
     "in_memory_log_handler.cc",
     "in_memory_log_handler.h",
-    "queued_task_poster.cc",
-    "queued_task_poster.h",
     "software_video_renderer.cc",
     "software_video_renderer.h",
   ]
@@ -38,13 +38,12 @@ static_library("client") {
   configs += [
     "//build/config/compiler:wexit_time_destructors",
     "//remoting/build/config:version",
-    "//remoting/build/config:enable_webrtc_remoting_client",
   ]
 
   public_deps = [ "//remoting/base" ]
 
   deps = [
-    "//jingle:webrtc_glue",
+    "//components/webrtc:thread_wrapper",
     "//mojo/core/embedder",
     "//remoting/base:authorization",
     "//remoting/client/audio",
@@ -90,14 +89,10 @@ source_set("unit_tests") {
     "client_telemetry_logger_unittest.cc",
     "dual_buffer_frame_consumer_unittest.cc",
     "empty_cursor_filter_unittest.cc",
-    "queued_task_poster_unittest.cc",
     "software_video_renderer_unittest.cc",
   ]
 
-  configs += [
-    "//remoting/build/config:version",
-    "//remoting/build/config:enable_webrtc_remoting_client",
-  ]
+  configs += [ "//remoting/build/config:version" ]
 
   deps = [
     ":client",

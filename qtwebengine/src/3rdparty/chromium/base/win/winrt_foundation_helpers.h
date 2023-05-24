@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,15 @@
 #include <windows.foundation.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <vector>
 
-#include "base/optional.h"
-#include "base/win/hstring_compare.h"
+#include "base/check.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 // This file provides helpers for WinRT types.
 
-namespace base {
-namespace win {
-namespace internal {
+namespace base::win::internal {
 
 // Template tricks needed to dispatch to the correct implementation.
 //
@@ -64,13 +63,13 @@ using StorageType = std::conditional_t<
     Microsoft::WRL::ComPtr<std::remove_pointer_t<AbiType<TComplex>>>,
     AbiType<TComplex>>;
 
-// Similar to StorageType, but returns a base::Optional in case underlying Abi
+// Similar to StorageType, but returns a absl::optional in case underlying Abi
 // type is not a pointer to IUnknown.
 template <typename TComplex>
 using OptionalStorageType = std::conditional_t<
     std::is_convertible<AbiType<TComplex>, IUnknown*>::value,
     Microsoft::WRL::ComPtr<std::remove_pointer_t<AbiType<TComplex>>>,
-    base::Optional<AbiType<TComplex>>>;
+    absl::optional<AbiType<TComplex>>>;
 
 template <typename T>
 HRESULT CopyTo(const T& value, T* ptr) {
@@ -84,7 +83,7 @@ HRESULT CopyTo(const Microsoft::WRL::ComPtr<T>& value, T** ptr) {
 }
 
 template <typename T>
-HRESULT CopyTo(const base::Optional<T>& value, T* ptr) {
+HRESULT CopyTo(const absl::optional<T>& value, T* ptr) {
   *ptr = *value;
   return S_OK;
 }
@@ -102,14 +101,15 @@ HRESULT CopyN(
     typename std::vector<Microsoft::WRL::ComPtr<T>>::const_iterator first,
     unsigned count,
     T** result) {
-  for (unsigned i = 0; i < count; ++i)
+  for (unsigned i = 0; i < count; ++i) {
     CopyTo(*first++, result++);
+  }
   return S_OK;
 }
 
 inline bool IsEqual(const HSTRING& lhs, const HSTRING& rhs) {
   INT32 result;
-  HRESULT hr = HStringCompare(lhs, rhs, &result);
+  HRESULT hr = ::WindowsCompareStringOrdinal(lhs, rhs, &result);
   DCHECK(SUCCEEDED(hr));
   return result == 0;
 }
@@ -127,7 +127,7 @@ bool IsEqual(const Microsoft::WRL::ComPtr<T>& com_ptr, const T* ptr) {
 struct Less {
   bool operator()(const HSTRING& lhs, const HSTRING& rhs) const {
     INT32 result;
-    HRESULT hr = HStringCompare(lhs, rhs, &result);
+    HRESULT hr = ::WindowsCompareStringOrdinal(lhs, rhs, &result);
     DCHECK(SUCCEEDED(hr));
     return result < 0;
   }
@@ -144,8 +144,6 @@ struct Less {
   }
 };
 
-}  // namespace internal
-}  // namespace win
-}  // namespace base
+}  // namespace base::win::internal
 
 #endif  // BASE_WIN_WINRT_FOUNDATION_HELPERS_H_

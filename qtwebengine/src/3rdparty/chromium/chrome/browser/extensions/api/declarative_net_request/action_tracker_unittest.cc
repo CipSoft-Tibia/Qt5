@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,6 +17,7 @@
 #include "extensions/common/api/declarative_net_request/constants.h"
 #include "extensions/common/api/declarative_net_request/test_utils.h"
 #include "extensions/common/constants.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom-shared.h"
 #include "url/gurl.h"
@@ -37,6 +38,10 @@ class ActionTrackerTest : public DNRTestBase {
   void SetUp() override {
     DNRTestBase::SetUp();
     action_tracker_ = std::make_unique<ActionTracker>(browser_context());
+
+    // Do not check whether tab IDs correspond to valid tabs in this test as
+    // this is a unit test and no actual tabs will be created.
+    action_tracker_->SetCheckTabIdOnRuleMatchForTest(false);
   }
 
  protected:
@@ -52,7 +57,7 @@ class ActionTrackerTest : public DNRTestBase {
     ASSERT_TRUE(base::CreateDirectory(extension_dir));
     constexpr char kRulesetID[] = "id";
     constexpr char kJSONRulesFilename[] = "rules_file.json";
-    TestRulesetInfo info(kRulesetID, kJSONRulesFilename, base::ListValue());
+    TestRulesetInfo info(kRulesetID, kJSONRulesFilename, base::Value::List());
     WriteManifestAndRuleset(
         extension_dir, info,
         std::vector<std::string>({URLPattern::kAllUrlsPattern}), flags);
@@ -75,16 +80,16 @@ class ActionTrackerTest : public DNRTestBase {
   // Returns renderer-initiated request params for the given |url|.
   WebRequestInfoInitParams GetRequestParamsForURL(
       base::StringPiece url,
-      blink::mojom::ResourceType type,
+      WebRequestResourceType web_request_type,
       int tab_id) {
     const int kRendererId = 1;
     WebRequestInfoInitParams info;
     info.url = GURL(url);
-    info.type = type;
+    info.web_request_type = web_request_type;
     info.render_process_id = kRendererId;
     info.frame_data.tab_id = tab_id;
 
-    if (type == blink::mojom::ResourceType::kMainFrame) {
+    if (web_request_type == WebRequestResourceType::MAIN_FRAME) {
       info.navigation_id = kNavigationId;
       info.is_navigation_request = true;
     }
@@ -126,11 +131,11 @@ TEST_P(ActionTrackerTest, GetMatchedRulesNoPermission) {
 
   // Record a rule match for a main-frame navigation request.
   WebRequestInfo request_1(GetRequestParamsForURL(
-      "http://one.com", blink::mojom::ResourceType::kMainFrame, tab_id));
+      "http://one.com", WebRequestResourceType::MAIN_FRAME, tab_id));
 
   // Record a rule match for a non-navigation request.
   WebRequestInfo request_2(GetRequestParamsForURL(
-      "http://one.com", blink::mojom::ResourceType::kSubResource, tab_id));
+      "http://one.com", WebRequestResourceType::OTHER, tab_id));
 
   // Assume a rule is matched for |request_1| and |request_2| for all three
   // extensions.
@@ -186,14 +191,14 @@ TEST_P(ActionTrackerTest, GetMatchedRulesLifespan) {
 
   // Record a rule match for a non-navigation request.
   WebRequestInfo request_1(GetRequestParamsForURL(
-      "http://one.com", blink::mojom::ResourceType::kSubResource, tab_id));
+      "http://one.com", WebRequestResourceType::OTHER, tab_id));
   action_tracker()->OnRuleMatched(CreateRequestAction(extension_1->id()),
                                   request_1);
 
   // Half life of a matched rule associated with a non-active tab, with 50ms
   // added.
-  base::TimeDelta half_life = (ActionTracker::kNonActiveTabRuleLifespan / 2) +
-                              base::TimeDelta::FromMilliseconds(50);
+  base::TimeDelta half_life =
+      (ActionTracker::kNonActiveTabRuleLifespan / 2) + base::Milliseconds(50);
 
   // Advance the clock by half of the lifespan of a matched rule for the unknown
   // tab ID.
@@ -263,9 +268,9 @@ TEST_P(ActionTrackerTest, RulesClearedOnTimer) {
   const Extension* extension_1 = last_loaded_extension();
 
   // Record a rule match for |extension_1| for the unknown tab.
-  WebRequestInfo request_1(GetRequestParamsForURL(
-      "http://one.com", blink::mojom::ResourceType::kSubResource,
-      extension_misc::kUnknownTabId));
+  WebRequestInfo request_1(
+      GetRequestParamsForURL("http://one.com", WebRequestResourceType::OTHER,
+                             extension_misc::kUnknownTabId));
   action_tracker()->OnRuleMatched(CreateRequestAction(extension_1->id()),
                                   request_1);
 
@@ -282,8 +287,7 @@ TEST_P(ActionTrackerTest, RulesClearedOnTimer) {
   // Advance the clock by more than the lifespan of a rule through
   // |mock_time_task_runner|.
   mock_time_task_runner->FastForwardBy(
-      ActionTracker::kNonActiveTabRuleLifespan +
-      base::TimeDelta::FromSeconds(1));
+      ActionTracker::kNonActiveTabRuleLifespan + base::Seconds(1));
 
   // Verify that the rule has been cleared by the recurring task.
   EXPECT_EQ(0, action_tracker()->GetMatchedRuleCountForTest(

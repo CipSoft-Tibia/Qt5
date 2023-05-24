@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakeparser.h"
 
@@ -52,7 +27,7 @@ ProFileCache::ProFileCache()
 
 ProFileCache::~ProFileCache()
 {
-    for (const Entry &ent : qAsConst(parsed_files))
+    for (const Entry &ent : std::as_const(parsed_files))
         if (ent.pro)
             ent.pro->deref();
     QMakeVfs::deref();
@@ -217,7 +192,7 @@ ProFile *QMakeParser::parsedProFile(const QString &fileName, ParseFlags flags)
 #endif
             QString contents;
             if (readFile(id, flags, &contents)) {
-                pro = parsedProBlock(QStringRef(&contents), id, fileName, 1, FullGrammar);
+                pro = parsedProBlock(QStringView(contents), id, fileName, 1, FullGrammar);
                 pro->itemsRef()->squeeze();
                 pro->ref();
             } else {
@@ -238,7 +213,7 @@ ProFile *QMakeParser::parsedProFile(const QString &fileName, ParseFlags flags)
     } else {
         QString contents;
         if (readFile(id, flags, &contents))
-            pro = parsedProBlock(QStringRef(&contents), id, fileName, 1, FullGrammar);
+            pro = parsedProBlock(QStringView(contents), id, fileName, 1, FullGrammar);
         else
             pro = nullptr;
     }
@@ -246,7 +221,7 @@ ProFile *QMakeParser::parsedProFile(const QString &fileName, ParseFlags flags)
 }
 
 ProFile *QMakeParser::parsedProBlock(
-        const QStringRef &contents, int id, const QString &name, int line, SubGrammar grammar)
+        QStringView contents, int id, const QString &name, int line, SubGrammar grammar)
 {
     ProFile *pro = new ProFile(id, name);
     read(pro, contents, line, grammar);
@@ -291,7 +266,7 @@ void QMakeParser::putBlock(ushort *&tokPtr, const ushort *buf, uint len)
 
 void QMakeParser::putHashStr(ushort *&pTokPtr, const ushort *buf, uint len)
 {
-    uint hash = ProString::hash((const QChar *)buf, len);
+    const size_t hash = ProString::hash((const QChar *)buf, len);
     ushort *tokPtr = pTokPtr;
     *tokPtr++ = (ushort)hash;
     *tokPtr++ = (ushort)(hash >> 16);
@@ -305,12 +280,12 @@ void QMakeParser::finalizeHashStr(ushort *buf, uint len)
 {
     buf[-4] = TokHashLiteral;
     buf[-1] = len;
-    uint hash = ProString::hash((const QChar *)buf, len);
+    const size_t hash = ProString::hash((const QChar *)buf, len);
     buf[-3] = (ushort)hash;
     buf[-2] = (ushort)(hash >> 16);
 }
 
-void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar grammar)
+void QMakeParser::read(ProFile *pro, QStringView in, int line, SubGrammar grammar)
 {
     m_proFile = pro;
     m_lineNo = line;
@@ -358,8 +333,8 @@ void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar 
     QStack<ParseCtx> xprStack;
     xprStack.reserve(10);
 
-    const ushort *cur = (const ushort *)in.unicode();
-    const ushort *inend = cur + in.length();
+    const ushort *cur = (const ushort *)in.data();
+    const ushort *inend = cur + in.size();
     m_canElse = false;
   freshLine:
     m_state = StNew;
@@ -372,9 +347,9 @@ void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar 
     int wordCount = 0; // Number of words in currently accumulated expression
     int lastIndent = 0; // Previous line's indentation, to detect accidental continuation abuse
     bool lineMarked = true; // For in-expression markers
-    ushort needSep = TokNewStr; // Met unquoted whitespace
-    ushort quote = 0;
-    ushort term = 0;
+    char16_t needSep = TokNewStr; // Met unquoted whitespace
+    char16_t quote = 0;
+    char16_t term = 0;
 
     Context context;
     ushort *ptr;
@@ -450,7 +425,7 @@ void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar 
     }
 
     forever {
-        ushort c;
+        char16_t c;
 
         // First, skip leading whitespace
         for (indent = 0; ; ++cur, ++indent) {
@@ -581,7 +556,7 @@ void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar 
                                                 &buf, &xprBuff, &tokPtr, &tokBuff, cur, in)) {
                             if (rtok == TokVariable || rtok == TokProperty) {
                                 xprPtr[-4] = tok;
-                                uint hash = ProString::hash((const QChar *)xprPtr, tlen);
+                                const size_t hash = ProString::hash((const QChar *)xprPtr, tlen);
                                 xprPtr[-3] = (ushort)hash;
                                 xprPtr[-2] = (ushort)(hash >> 16);
                                 xprPtr[-1] = tlen;
@@ -636,7 +611,7 @@ void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar 
                     }
                 } else if (c == '\\') {
                     static const char symbols[] = "[]{}()$\\'\"";
-                    ushort c2;
+                    char16_t c2;
                     if (cur != end && !((c2 = *cur) & 0xff00) && strchr(symbols, c2)) {
                         c = c2;
                         cur++;
@@ -757,7 +732,7 @@ void QMakeParser::read(ProFile *pro, const QStringRef &in, int line, SubGrammar 
                         if (!m_blockstack.top().braceLevel) {
                             parseError(fL1S("Excess closing brace."));
                         } else if (!--m_blockstack.top().braceLevel
-                                   && m_blockstack.count() != 1) {
+                                   && m_blockstack.size() != 1) {
                             leaveScope(tokPtr);
                             m_state = StNew;
                             m_canElse = false;
@@ -1260,7 +1235,7 @@ void QMakeParser::finalizeCall(ushort *&tokPtr, ushort *uc, ushort *ptr, int arg
 bool QMakeParser::resolveVariable(ushort *xprPtr, int tlen, int needSep, ushort **ptr,
                                   ushort **buf, QString *xprBuff,
                                   ushort **tokPtr, QString *tokBuff,
-                                  const ushort *cur, const QStringRef &in)
+                                  const ushort *cur, QStringView in)
 {
     QString out;
     m_tmp.setRawData((const QChar *)xprPtr, tlen);
@@ -1271,7 +1246,7 @@ bool QMakeParser::resolveVariable(ushort *xprPtr, int tlen, int needSep, ushort 
         // The string is typically longer than the variable reference, so we need
         // to ensure that there is enough space in the output buffer - as unlikely
         // as an overflow is to actually happen in practice.
-        int need = (in.length() - (cur - (const ushort *)in.constData()) + 2) * 5 + out.length();
+        int need = (in.size() - (cur - (const ushort *)in.constData()) + 2) * 5 + out.size();
         int tused = *tokPtr - (ushort *)tokBuff->constData();
         int xused;
         int total;
@@ -1302,9 +1277,9 @@ bool QMakeParser::resolveVariable(ushort *xprPtr, int tlen, int needSep, ushort 
     }
     xprPtr -= 2; // Was set up for variable reference
     xprPtr[-2] = TokLiteral | needSep;
-    xprPtr[-1] = out.length();
-    memcpy(xprPtr, out.constData(), out.length() * 2);
-    *ptr = xprPtr + out.length();
+    xprPtr[-1] = out.size();
+    memcpy(xprPtr, out.constData(), out.size() * 2);
+    *ptr = xprPtr + out.size();
     return true;
 }
 
@@ -1549,7 +1524,8 @@ static bool getBlock(const ushort *tokens, int limit, int &offset, QString *outS
                 ok = getSubBlock(tokens, limit, offset, outStr, indent, "block");
                 break;
             default:
-                Q_ASSERT(!"unhandled token");
+                // unhandled token
+                Q_UNREACHABLE();
             }
         }
         if (!ok)
@@ -1563,7 +1539,7 @@ QString QMakeParser::formatProBlock(const QString &block)
     QString outStr;
     outStr += fL1S("\n            << TS(");
     int offset = 0;
-    getBlock(reinterpret_cast<const ushort *>(block.constData()), block.length(),
+    getBlock(reinterpret_cast<const ushort *>(block.constData()), block.size(),
              offset, &outStr, 0);
     outStr += QLatin1Char(')');
     return outStr;

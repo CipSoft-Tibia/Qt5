@@ -17,7 +17,9 @@ from py_vulcanize import parse_html_deps
 from py_vulcanize import project as project_module
 from py_vulcanize import resource
 from py_vulcanize import resource_loader as resource_loader
+import functools
 import six
+
 
 
 class ResourceWithFakeContents(resource.Resource):
@@ -56,7 +58,9 @@ class FakeLoader(object):
       return None
 
     # Sort by length. Longest match wins.
-    candidate_paths.sort(lambda x, y: len(x) - len(y))
+    sorted(candidate_paths,
+           key=functools.cmp_to_key(lambda x, y: len(x) - len(y)), reverse=True)
+
     longest_candidate = candidate_paths[-1]
 
     return ResourceWithFakeContents(
@@ -300,7 +304,7 @@ console.log('/raw/raw_script.js was written');
 }
 </style>
 """
-    file_contents[os.path.normpath('/tmp/a/something.jpg')] = 'jpgdata'
+    file_contents[os.path.normpath('/tmp/a/something.jpg')] = b'jpgdata'
     with fake_fs.FakeFS(file_contents):
       project = project_module.Project([
           os.path.normpath('/py_vulcanize/'), os.path.normpath('/tmp/')])

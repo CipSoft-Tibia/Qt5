@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGRENDERLOOP_P_H
 #define QSGRENDERLOOP_P_H
@@ -51,10 +15,12 @@
 // We mean it.
 //
 
-#include <QtGui/QImage>
-#include <QtGui/QSurface>
+#include <QtGui/qimage.h>
+#include <QtGui/qsurface.h>
 #include <private/qtquickglobal_p.h>
-#include <QtCore/QSet>
+#include <QtCore/qset.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qcoreevent.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -126,8 +92,34 @@ private:
 enum QSGRenderLoopType
 {
     BasicRenderLoop,
-    ThreadedRenderLoop,
-    WindowsRenderLoop
+    ThreadedRenderLoop
+};
+
+enum QSGCustomEvents {
+
+// Passed from the RL to the RT when a window is removed obscured and
+// should be removed from the render loop.
+WM_Obscure           = QEvent::User + 1,
+
+// Passed from the RL to RT when GUI has been locked, waiting for sync
+// (updatePaintNode())
+WM_RequestSync       = QEvent::User + 2,
+
+// Passed by the RL to the RT to free up maybe release SG and GL contexts
+// if no windows are rendering.
+WM_TryRelease        = QEvent::User + 4,
+
+// Passed by the RL to the RT when a QQuickWindow::grabWindow() is
+// called.
+WM_Grab              = QEvent::User + 5,
+
+// Passed by the window when there is a render job to run
+WM_PostJob           = QEvent::User + 6,
+
+// When using the QRhi this is sent upon PlatformSurfaceAboutToBeDestroyed from
+// the event filter installed on the QQuickWindow.
+WM_ReleaseSwapchain  = QEvent::User + 7,
+
 };
 
 QT_END_NAMESPACE

@@ -16,6 +16,7 @@
 
 #include "rtc_base/checks.h"
 #include "rtc_base/system/rtc_export.h"
+#include "rtc_base/system_time.h"
 
 namespace rtc {
 
@@ -29,6 +30,12 @@ static const int64_t kNumNanosecsPerMillisec =
     kNumNanosecsPerSec / kNumMillisecsPerSec;
 static const int64_t kNumNanosecsPerMicrosec =
     kNumNanosecsPerSec / kNumMicrosecsPerSec;
+
+// Elapsed milliseconds between NTP base, 1900 January 1 00:00 GMT
+// (see https://tools.ietf.org/html/rfc868), and January 1 00:00 GMT 1970
+// epoch. This is useful when converting between the NTP time base and the
+// time base used in RTCP reports.
+constexpr int64_t kNtpJan1970Millisecs = 2'208'988'800 * kNumMillisecsPerSec;
 
 // TODO(honghaiz): Define a type for the time value specifically.
 
@@ -61,11 +68,16 @@ RTC_EXPORT ClockInterface* GetClockForTesting();
 // Synchronizes the current clock based upon an NTP server's epoch in
 // milliseconds.
 void SyncWithNtp(int64_t time_from_ntp_server_ms);
+
+// Returns the current time in nanoseconds. The clock is synchonized with the
+// system wall clock time upon instatiation. It may also be synchronized using
+// the SyncWithNtp() function above. Please note that the clock will most likely
+// drift away from the system wall clock time as time goes by.
+int64_t WinUwpSystemTimeNanos();
 #endif  // defined(WINUWP)
 
 // Returns the actual system time, even if a clock is set for testing.
 // Useful for timeouts while using a test clock, or for logging.
-int64_t SystemTimeNanos();
 int64_t SystemTimeMillis();
 
 // Returns the current time in milliseconds in 32 bits.
@@ -101,17 +113,6 @@ inline int64_t TimeSince(int64_t earlier) {
 inline int64_t TimeUntil(int64_t later) {
   return later - TimeMillis();
 }
-
-class TimestampWrapAroundHandler {
- public:
-  TimestampWrapAroundHandler();
-
-  int64_t Unwrap(uint32_t ts);
-
- private:
-  uint32_t last_ts_;
-  int64_t num_wrap_;
-};
 
 // Convert from tm, which is relative to 1900-01-01 00:00 to number of
 // seconds from 1970-01-01 00:00 ("epoch"). Don't return time_t since that

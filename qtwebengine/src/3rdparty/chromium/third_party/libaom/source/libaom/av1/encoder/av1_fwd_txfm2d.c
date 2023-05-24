@@ -105,18 +105,23 @@ static INLINE void fwd_txfm2d_c(const int16_t *input, int32_t *output,
     }
   }
 
+  DECLARE_ALIGNED(16, int32_t, row_buffer[MAX_TX_SIZE]);
+
   // Rows
   for (r = 0; r < txfm_size_row; ++r) {
-    txfm_func_row(buf + r * txfm_size_col, output + r * txfm_size_col,
-                  cos_bit_row, stage_range_row);
-    av1_round_shift_array(output + r * txfm_size_col, txfm_size_col, -shift[2]);
+    txfm_func_row(buf + r * txfm_size_col, row_buffer, cos_bit_row,
+                  stage_range_row);
+    av1_round_shift_array(row_buffer, txfm_size_col, -shift[2]);
     if (abs(rect_type) == 1) {
       // Multiply everything by Sqrt2 if the transform is rectangular and the
       // size difference is a factor of 2.
       for (c = 0; c < txfm_size_col; ++c) {
-        output[r * txfm_size_col + c] = round_shift(
-            (int64_t)output[r * txfm_size_col + c] * NewSqrt2, NewSqrt2Bits);
+        row_buffer[c] =
+            round_shift((int64_t)row_buffer[c] * NewSqrt2, NewSqrt2Bits);
       }
+    }
+    for (c = 0; c < txfm_size_col; ++c) {
+      output[c * txfm_size_row + r] = row_buffer[c];
     }
   }
 }
@@ -241,14 +246,14 @@ void av1_fwd_txfm2d_64x64_c(const int16_t *input, int32_t *output, int stride,
   fwd_txfm2d_c(input, output, stride, &cfg, txfm_buf, bd);
 
   // Zero out top-right 32x32 area.
-  for (int row = 0; row < 32; ++row) {
-    memset(output + row * 64 + 32, 0, 32 * sizeof(*output));
+  for (int col = 0; col < 32; ++col) {
+    memset(output + col * 64 + 32, 0, 32 * sizeof(*output));
   }
   // Zero out the bottom 64x32 area.
   memset(output + 32 * 64, 0, 32 * 64 * sizeof(*output));
   // Re-pack non-zero coeffs in the first 32x32 indices.
-  for (int row = 1; row < 32; ++row) {
-    memcpy(output + row * 32, output + row * 64, 32 * sizeof(*output));
+  for (int col = 1; col < 32; ++col) {
+    memcpy(output + col * 32, output + col * 64, 32 * sizeof(*output));
   }
 }
 
@@ -258,9 +263,14 @@ void av1_fwd_txfm2d_32x64_c(const int16_t *input, int32_t *output, int stride,
   TXFM_2D_FLIP_CFG cfg;
   av1_get_fwd_txfm_cfg(tx_type, TX_32X64, &cfg);
   fwd_txfm2d_c(input, output, stride, &cfg, txfm_buf, bd);
-  // Zero out the bottom 32x32 area.
-  memset(output + 32 * 32, 0, 32 * 32 * sizeof(*output));
-  // Note: no repacking needed here.
+  // Zero out right 32x32 area.
+  for (int col = 0; col < 32; ++col) {
+    memset(output + col * 64 + 32, 0, 32 * sizeof(*output));
+  }
+  // Re-pack non-zero coeffs in the first 32x32 indices.
+  for (int col = 1; col < 32; ++col) {
+    memcpy(output + col * 32, output + col * 64, 32 * sizeof(*output));
+  }
 }
 
 void av1_fwd_txfm2d_64x32_c(const int16_t *input, int32_t *output, int stride,
@@ -269,15 +279,9 @@ void av1_fwd_txfm2d_64x32_c(const int16_t *input, int32_t *output, int stride,
   TXFM_2D_FLIP_CFG cfg;
   av1_get_fwd_txfm_cfg(tx_type, TX_64X32, &cfg);
   fwd_txfm2d_c(input, output, stride, &cfg, txfm_buf, bd);
-
-  // Zero out right 32x32 area.
-  for (int row = 0; row < 32; ++row) {
-    memset(output + row * 64 + 32, 0, 32 * sizeof(*output));
-  }
-  // Re-pack non-zero coeffs in the first 32x32 indices.
-  for (int row = 1; row < 32; ++row) {
-    memcpy(output + row * 32, output + row * 64, 32 * sizeof(*output));
-  }
+  // Zero out the bottom 32x32 area.
+  memset(output + 32 * 32, 0, 32 * 32 * sizeof(*output));
+  // Note: no repacking needed here.
 }
 
 void av1_fwd_txfm2d_16x64_c(const int16_t *input, int32_t *output, int stride,
@@ -285,17 +289,6 @@ void av1_fwd_txfm2d_16x64_c(const int16_t *input, int32_t *output, int stride,
   DECLARE_ALIGNED(32, int32_t, txfm_buf[64 * 16]);
   TXFM_2D_FLIP_CFG cfg;
   av1_get_fwd_txfm_cfg(tx_type, TX_16X64, &cfg);
-  fwd_txfm2d_c(input, output, stride, &cfg, txfm_buf, bd);
-  // Zero out the bottom 16x32 area.
-  memset(output + 16 * 32, 0, 16 * 32 * sizeof(*output));
-  // Note: no repacking needed here.
-}
-
-void av1_fwd_txfm2d_64x16_c(const int16_t *input, int32_t *output, int stride,
-                            TX_TYPE tx_type, int bd) {
-  int32_t txfm_buf[64 * 16];
-  TXFM_2D_FLIP_CFG cfg;
-  av1_get_fwd_txfm_cfg(tx_type, TX_64X16, &cfg);
   fwd_txfm2d_c(input, output, stride, &cfg, txfm_buf, bd);
   // Zero out right 32x16 area.
   for (int row = 0; row < 16; ++row) {
@@ -305,6 +298,17 @@ void av1_fwd_txfm2d_64x16_c(const int16_t *input, int32_t *output, int stride,
   for (int row = 1; row < 16; ++row) {
     memcpy(output + row * 32, output + row * 64, 32 * sizeof(*output));
   }
+}
+
+void av1_fwd_txfm2d_64x16_c(const int16_t *input, int32_t *output, int stride,
+                            TX_TYPE tx_type, int bd) {
+  int32_t txfm_buf[64 * 16];
+  TXFM_2D_FLIP_CFG cfg;
+  av1_get_fwd_txfm_cfg(tx_type, TX_64X16, &cfg);
+  fwd_txfm2d_c(input, output, stride, &cfg, txfm_buf, bd);
+  // Zero out the bottom 16x32 area.
+  memset(output + 16 * 32, 0, 16 * 32 * sizeof(*output));
+  // Note: no repacking needed here.
 }
 
 static const int8_t fwd_shift_4x4[3] = { 2, 0, 0 };

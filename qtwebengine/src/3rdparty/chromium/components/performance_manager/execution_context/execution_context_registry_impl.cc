@@ -1,10 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/performance_manager/execution_context/execution_context_registry_impl.h"
 
 #include "base/check.h"
+#include "base/memory/raw_ref.h"
+#include "base/observer_list.h"
 #include "components/performance_manager/execution_context/execution_context_impl.h"
 #include "components/performance_manager/public/execution_context/execution_context.h"
 #include "url/gurl.h"
@@ -34,7 +36,7 @@ class DummyExecutionContextForLookup : public ExecutionContext {
     return ExecutionContextType::kFrameNode;
   }
 
-  blink::ExecutionContextToken GetToken() const override { return token_; }
+  blink::ExecutionContextToken GetToken() const override { return *token_; }
 
   Graph* GetGraph() const override {
     NOTREACHED();
@@ -52,6 +54,12 @@ class DummyExecutionContextForLookup : public ExecutionContext {
     return nullptr;
   }
 
+  const PriorityAndReason& GetPriorityAndReason() const override {
+    NOTREACHED();
+    static const PriorityAndReason kPriorityAndReason;
+    return kPriorityAndReason;
+  }
+
   const FrameNode* GetFrameNode() const override {
     NOTREACHED();
     return nullptr;
@@ -63,7 +71,7 @@ class DummyExecutionContextForLookup : public ExecutionContext {
   }
 
  private:
-  const blink::ExecutionContextToken& token_;
+  const raw_ref<const blink::ExecutionContextToken> token_;
 };
 
 }  // namespace
@@ -80,6 +88,24 @@ ExecutionContextRegistry* ExecutionContextRegistry::GetFromGraph(Graph* graph) {
   return GraphRegisteredImpl<ExecutionContextRegistryImpl>::GetFromGraph(graph);
 }
 
+// static
+const ExecutionContext*
+ExecutionContextRegistry::GetExecutionContextForFrameNode(
+    const FrameNode* frame_node) {
+  auto* ec_registry = GetFromGraph(frame_node->GetGraph());
+  DCHECK(ec_registry);
+  return ec_registry->GetExecutionContextForFrameNodeImpl(frame_node);
+}
+
+// static
+const ExecutionContext*
+ExecutionContextRegistry::GetExecutionContextForWorkerNode(
+    const WorkerNode* worker_node) {
+  auto* ec_registry = GetFromGraph(worker_node->GetGraph());
+  DCHECK(ec_registry);
+  return ec_registry->GetExecutionContextForWorkerNodeImpl(worker_node);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ExecutionContextRegistryImpl
 
@@ -91,6 +117,12 @@ void ExecutionContextRegistryImpl::AddObserver(
     ExecutionContextObserver* observer) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   observers_.AddObserver(observer);
+}
+
+bool ExecutionContextRegistryImpl::HasObserver(
+    ExecutionContextObserver* observer) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return observers_.HasObserver(observer);
 }
 
 void ExecutionContextRegistryImpl::RemoveObserver(
@@ -132,15 +164,30 @@ const WorkerNode* ExecutionContextRegistryImpl::GetWorkerNodeByWorkerToken(
 }
 
 const ExecutionContext*
-ExecutionContextRegistryImpl::GetExecutionContextForFrameNode(
+ExecutionContextRegistryImpl::GetExecutionContextForFrameNodeImpl(
     const FrameNode* frame_node) {
   return GetOrCreateExecutionContextForFrameNode(frame_node);
 }
 
 const ExecutionContext*
-ExecutionContextRegistryImpl::GetExecutionContextForWorkerNode(
+ExecutionContextRegistryImpl::GetExecutionContextForWorkerNodeImpl(
     const WorkerNode* worker_node) {
   return GetOrCreateExecutionContextForWorkerNode(worker_node);
+}
+
+void ExecutionContextRegistryImpl::OnPassedToGraph(Graph* graph) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(graph->HasOnlySystemNode());
+  graph->RegisterObject(this);
+  graph->AddFrameNodeObserver(this);
+  graph->AddWorkerNodeObserver(this);
+}
+
+void ExecutionContextRegistryImpl::OnTakenFromGraph(Graph* graph) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  graph->RemoveWorkerNodeObserver(this);
+  graph->RemoveFrameNodeObserver(this);
+  graph->UnregisterObject(this);
 }
 
 void ExecutionContextRegistryImpl::OnFrameNodeAdded(
@@ -165,19 +212,14 @@ void ExecutionContextRegistryImpl::OnBeforeFrameNodeRemoved(
   DCHECK_EQ(1u, erased);
 }
 
-void ExecutionContextRegistryImpl::OnPassedToGraph(Graph* graph) {
+void ExecutionContextRegistryImpl::OnPriorityAndReasonChanged(
+    const FrameNode* frame_node,
+    const PriorityAndReason& previous_value) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(graph->IsEmpty());
-  graph->RegisterObject(this);
-  graph->AddFrameNodeObserver(this);
-  graph->AddWorkerNodeObserver(this);
-}
-
-void ExecutionContextRegistryImpl::OnTakenFromGraph(Graph* graph) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  graph->RemoveWorkerNodeObserver(this);
-  graph->RemoveFrameNodeObserver(this);
-  graph->UnregisterObject(this);
+  auto* ec = GetOrCreateExecutionContextForFrameNode(frame_node);
+  DCHECK(ec);
+  for (auto& observer : observers_)
+    observer.OnPriorityAndReasonChanged(ec, previous_value);
 }
 
 void ExecutionContextRegistryImpl::OnWorkerNodeAdded(
@@ -203,6 +245,16 @@ void ExecutionContextRegistryImpl::OnBeforeWorkerNodeRemoved(
 
   size_t erased = execution_contexts_.erase(ec);
   DCHECK_EQ(1u, erased);
+}
+
+void ExecutionContextRegistryImpl::OnPriorityAndReasonChanged(
+    const WorkerNode* worker_node,
+    const PriorityAndReason& previous_value) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  auto* ec = GetOrCreateExecutionContextForWorkerNode(worker_node);
+  DCHECK(ec);
+  for (auto& observer : observers_)
+    observer.OnPriorityAndReasonChanged(ec, previous_value);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

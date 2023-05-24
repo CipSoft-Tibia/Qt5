@@ -1,29 +1,31 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/delegated_frame_host.h"
 
-#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
 #include "base/command_line.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/observer_list.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "cc/base/switches.h"
 #include "components/viz/common/features.h"
 #include "components/viz/common/frame_sinks/copy_output_request.h"
 #include "components/viz/common/quads/compositor_frame.h"
-#include "components/viz/common/resources/single_release_callback.h"
+#include "components/viz/common/resources/release_callback.h"
 #include "content/browser/compositor/surface_utils.h"
 #include "content/browser/gpu/compositor_util.h"
 #include "content/public/common/content_switches.h"
-#include "third_party/blink/public/mojom/page/record_content_to_visible_time_request.mojom.h"
+#include "third_party/blink/public/mojom/widget/record_content_to_visible_time_request.mojom.h"
 #include "third_party/khronos/GLES2/gl2.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/geometry/dip_util.h"
@@ -87,10 +89,10 @@ void DelegatedFrameHost::WasShown(
 
   frame_evictor_->SetVisible(true);
   if (record_tab_switch_time_request && compositor_) {
-    compositor_->RequestPresentationTimeForNextFrame(
+    compositor_->RequestSuccessfulPresentationTimeForNextFrame(
         tab_switch_time_recorder_.TabWasShown(
             true /* has_saved_frames */,
-            std::move(record_tab_switch_time_request), base::TimeTicks::Now()));
+            std::move(record_tab_switch_time_request)));
   }
 
   // Use the default deadline to synchronize web content with browser UI.
@@ -105,13 +107,30 @@ void DelegatedFrameHost::WasShown(
   }
 }
 
+void DelegatedFrameHost::RequestSuccessfulPresentationTimeForNextFrame(
+    blink::mojom::RecordContentToVisibleTimeRequestPtr visible_time_request) {
+  DCHECK(visible_time_request);
+  if (!compositor_)
+    return;
+  // Tab was shown while widget was already painting, eg. due to being
+  // captured.
+  compositor_->RequestSuccessfulPresentationTimeForNextFrame(
+      tab_switch_time_recorder_.TabWasShown(true /* has_saved_frames */,
+                                            std::move(visible_time_request)));
+}
+
+void DelegatedFrameHost::CancelSuccessfulPresentationTimeRequest() {
+  // Tab was hidden while widget keeps painting, eg. due to being captured.
+  tab_switch_time_recorder_.TabWasHidden();
+}
+
 bool DelegatedFrameHost::HasSavedFrame() const {
   return frame_evictor_->has_surface();
 }
 
 void DelegatedFrameHost::WasHidden(HiddenCause cause) {
   tab_switch_time_recorder_.TabWasHidden();
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Ignore if the native window was occluded.
   // Windows needs the frame host to display tab previews.
   if (cause == HiddenCause::kOccluded)
@@ -125,12 +144,13 @@ void DelegatedFrameHost::CopyFromCompositingSurface(
     const gfx::Size& output_size,
     base::OnceCallback<void(const SkBitmap&)> callback) {
   CopyFromCompositingSurfaceInternal(
-      src_subrect, output_size,
-      viz::CopyOutputRequest::ResultFormat::RGBA_BITMAP,
+      src_subrect, output_size, viz::CopyOutputRequest::ResultFormat::RGBA,
+      viz::CopyOutputRequest::ResultDestination::kSystemMemory,
       base::BindOnce(
           [](base::OnceCallback<void(const SkBitmap&)> callback,
              std::unique_ptr<viz::CopyOutputResult> result) {
-            std::move(callback).Run(result->AsSkBitmap());
+            auto scoped_bitmap = result->ScopedAccessSkBitmap();
+            std::move(callback).Run(scoped_bitmap.GetOutScopedBitmap());
           },
           std::move(callback)));
 }
@@ -140,18 +160,19 @@ void DelegatedFrameHost::CopyFromCompositingSurfaceAsTexture(
     const gfx::Size& output_size,
     viz::CopyOutputRequest::CopyOutputRequestCallback callback) {
   CopyFromCompositingSurfaceInternal(
-      src_subrect, output_size,
-      viz::CopyOutputRequest::ResultFormat::RGBA_TEXTURE, std::move(callback));
+      src_subrect, output_size, viz::CopyOutputRequest::ResultFormat::RGBA,
+      viz::CopyOutputRequest::ResultDestination::kNativeTextures,
+      std::move(callback));
 }
 
 void DelegatedFrameHost::CopyFromCompositingSurfaceInternal(
     const gfx::Rect& src_subrect,
     const gfx::Size& output_size,
     viz::CopyOutputRequest::ResultFormat format,
+    viz::CopyOutputRequest::ResultDestination destination,
     viz::CopyOutputRequest::CopyOutputRequestCallback callback) {
-
-  auto request =
-      std::make_unique<viz::CopyOutputRequest>(format, std::move(callback));
+  auto request = std::make_unique<viz::CopyOutputRequest>(format, destination,
+                                                          std::move(callback));
 
   // It is possible for us to not have a valid surface to copy from. Such as
   // if a navigation fails to complete. In such a case do not attempt to request
@@ -214,10 +235,20 @@ bool DelegatedFrameHost::HasFallbackSurface() const {
   return fallback_surface_id && fallback_surface_id->is_valid();
 }
 
+viz::SurfaceId DelegatedFrameHost::GetFallbackSurfaceIdForTesting() const {
+  const viz::SurfaceId* fallback_surface_id =
+      client_->DelegatedFrameHostGetLayer()->GetOldestAcceptableFallback();
+  return fallback_surface_id ? *fallback_surface_id : viz::SurfaceId();
+}
+
 void DelegatedFrameHost::EmbedSurface(
     const viz::LocalSurfaceId& new_local_surface_id,
     const gfx::Size& new_dip_size,
     cc::DeadlinePolicy deadline_policy) {
+  TRACE_EVENT2("viz", "DelegatedFrameHost::EmbedSurface", "surface_id",
+               new_local_surface_id.ToString(), "deadline_policy",
+               deadline_policy.ToString());
+
   const viz::SurfaceId* primary_surface_id =
       client_->DelegatedFrameHostGetLayer()->GetSurfaceId();
 
@@ -241,7 +272,13 @@ void DelegatedFrameHost::EmbedSurface(
     // time user switches back to it the page is blank. This is preferred to
     // showing contents of old size. Don't call EvictDelegatedFrame to avoid
     // races when dragging tabs across displays. See https://crbug.com/813157.
-    if (surface_dip_size_ != current_frame_size_in_dip_) {
+    //
+    // An empty |current_frame_size_in_dip_| indicates this renderer has never
+    // been made visible. This is the case for pre-rendered contents. Don't use
+    // the primary id as fallback since it's guaranteed to have no content. See
+    // crbug.com/1218238.
+    if (!current_frame_size_in_dip_.IsEmpty() &&
+        surface_dip_size_ != current_frame_size_in_dip_) {
       client_->DelegatedFrameHostGetLayer()->SetOldestAcceptableFallback(
           new_primary_surface_id);
     }
@@ -258,7 +295,7 @@ void DelegatedFrameHost::EmbedSurface(
 
   if (!primary_surface_id ||
       primary_surface_id->local_surface_id() != local_surface_id_) {
-#if defined(OS_WIN) || (defined(OS_LINUX) && !defined(OS_CHROMEOS))
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
     // On Windows and Linux, we would like to produce new content as soon as
     // possible or the OS will create an additional black gutter. Until we can
     // block resize on surface synchronization on these platforms, we will not
@@ -293,8 +330,24 @@ void DelegatedFrameHost::OnFirstSurfaceActivation(
   NOTREACHED();
 }
 
-void DelegatedFrameHost::OnFrameTokenChanged(uint32_t frame_token) {
-  client_->OnFrameTokenChanged(frame_token);
+void DelegatedFrameHost::OnFrameTokenChanged(uint32_t frame_token,
+                                             base::TimeTicks activation_time) {
+  client_->OnFrameTokenChanged(frame_token, activation_time);
+}
+
+// CommitPending without a target for TakeFallbackContentFrom. Since we cannot
+// guarantee that Navigation will complete, evict our surfaces which are from
+// a previous Navigation.
+void DelegatedFrameHost::ClearFallbackSurfaceForCommitPending() {
+  const viz::SurfaceId* fallback_surface_id =
+      client_->DelegatedFrameHostGetLayer()->GetOldestAcceptableFallback();
+
+  // CommitPending failed, and Navigation never completed. Evict our surfaces.
+  if (fallback_surface_id && fallback_surface_id->is_valid()) {
+    EvictDelegatedFrame(frame_evictor_->CollectSurfaceIdsForEviction());
+    client_->DelegatedFrameHostGetLayer()->SetOldestAcceptableFallback(
+        viz::SurfaceId());
+  }
 }
 
 void DelegatedFrameHost::ResetFallbackToFirstNavigationSurface() {
@@ -313,7 +366,7 @@ void DelegatedFrameHost::ResetFallbackToFirstNavigationSurface() {
   // We never completed navigation, evict our surfaces.
   if (pre_navigation_local_surface_id_.is_valid() &&
       !first_local_surface_id_after_navigation_.is_valid()) {
-    EvictDelegatedFrame();
+    EvictDelegatedFrame(frame_evictor_->CollectSurfaceIdsForEviction());
   }
 
   client_->DelegatedFrameHostGetLayer()->SetOldestAcceptableFallback(
@@ -323,7 +376,8 @@ void DelegatedFrameHost::ResetFallbackToFirstNavigationSurface() {
           : viz::SurfaceId());
 }
 
-void DelegatedFrameHost::EvictDelegatedFrame() {
+void DelegatedFrameHost::EvictDelegatedFrame(
+    const std::vector<viz::SurfaceId>& surface_ids) {
   // There is already an eviction request pending.
   if (frame_eviction_state_ == FrameEvictionState::kPendingEvictionRequests) {
     frame_evictor_->OnSurfaceDiscarded();
@@ -331,7 +385,7 @@ void DelegatedFrameHost::EvictDelegatedFrame() {
   }
 
   if (!HasSavedFrame()) {
-    ContinueDelegatedFrameEviction();
+    ContinueDelegatedFrameEviction(surface_ids);
     return;
   }
 
@@ -354,9 +408,22 @@ void DelegatedFrameHost::EvictDelegatedFrame() {
         gfx::ScaleToRoundedSize(surface_dip_size_, kFrameContentCaptureQuality),
         std::move(callback));
   } else {
-    ContinueDelegatedFrameEviction();
+    ContinueDelegatedFrameEviction(surface_ids);
   }
   frame_evictor_->OnSurfaceDiscarded();
+}
+
+std::vector<viz::SurfaceId> DelegatedFrameHost::CollectSurfaceIdsForEviction()
+    const {
+  return client_->CollectSurfaceIdsForEviction();
+}
+
+viz::SurfaceId DelegatedFrameHost::GetCurrentSurfaceId() const {
+  return viz::SurfaceId(frame_sink_id_, local_surface_id_);
+}
+
+viz::SurfaceId DelegatedFrameHost::GetPreNavigationSurfaceId() const {
+  return viz::SurfaceId(frame_sink_id_, pre_navigation_local_surface_id_);
 }
 
 void DelegatedFrameHost::DidCopyStaleContent(
@@ -366,30 +433,42 @@ void DelegatedFrameHost::DidCopyStaleContent(
   if (frame_evictor_->visible() || result->IsEmpty())
     return;
 
-  DCHECK_EQ(result->format(), viz::CopyOutputResult::Format::RGBA_TEXTURE);
+  DCHECK_EQ(result->format(), viz::CopyOutputResult::Format::RGBA);
+  DCHECK_EQ(result->destination(),
+            viz::CopyOutputResult::Destination::kNativeTextures);
 
+// TODO(crbug.com/1227661): Revert https://crrev.com/c/3222541 to re-enable this
+// DCHECK on CrOS.
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   DCHECK_NE(frame_eviction_state_, FrameEvictionState::kNotStarted);
+#endif
   SetFrameEvictionStateAndNotifyObservers(FrameEvictionState::kNotStarted);
-  ContinueDelegatedFrameEviction();
+  ContinueDelegatedFrameEviction(
+      frame_evictor_->CollectSurfaceIdsForEviction());
 
-  auto transfer_resource = viz::TransferableResource::MakeGL(
-      result->GetTextureResult()->mailbox, GL_LINEAR, GL_TEXTURE_2D,
-      result->GetTextureResult()->sync_token, result->size(),
-      false /* is_overlay_candidate */);
-  std::unique_ptr<viz::SingleReleaseCallback> release_callback =
+  auto transfer_resource = viz::TransferableResource::MakeGpu(
+      result->GetTextureResult()->planes[0].mailbox, GL_LINEAR, GL_TEXTURE_2D,
+      result->GetTextureResult()->planes[0].sync_token, result->size(),
+      viz::RGBA_8888, false /* is_overlay_candidate */);
+  viz::CopyOutputResult::ReleaseCallbacks release_callbacks =
       result->TakeTextureOwnership();
+  DCHECK_EQ(1u, release_callbacks.size());
 
   if (stale_content_layer_->parent() != client_->DelegatedFrameHostGetLayer())
     client_->DelegatedFrameHostGetLayer()->Add(stale_content_layer_.get());
 
+// TODO(crbug.com/1281251): This DCHECK occasionally gets hit on Chrome OS.
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   DCHECK(!stale_content_layer_->has_external_content());
+#endif
   stale_content_layer_->SetVisible(true);
   stale_content_layer_->SetBounds(gfx::Rect(surface_dip_size_));
   stale_content_layer_->SetTransferableResource(
-      transfer_resource, std::move(release_callback), surface_dip_size_);
+      transfer_resource, std::move(release_callbacks[0]), surface_dip_size_);
 }
 
-void DelegatedFrameHost::ContinueDelegatedFrameEviction() {
+void DelegatedFrameHost::ContinueDelegatedFrameEviction(
+    const std::vector<viz::SurfaceId>& surface_ids) {
   // Reset primary surface.
   if (HasPrimarySurface()) {
     client_->DelegatedFrameHostGetLayer()->SetShowSurface(
@@ -400,21 +479,14 @@ void DelegatedFrameHost::ContinueDelegatedFrameEviction() {
   if (!HasSavedFrame())
     return;
 
-  std::vector<viz::SurfaceId> surface_ids = {
-      client_->CollectSurfaceIdsForEviction()};
-
-  // If we have a surface from before a navigation, evict it as well.
-  if (pre_navigation_local_surface_id_.is_valid()) {
-    viz::SurfaceId id(frame_sink_id_, pre_navigation_local_surface_id_);
-    surface_ids.push_back(id);
-  }
-
-  // This list could be empty if this frame is not in the frame tree (can happen
-  // during navigation, construction, destruction, or in unit tests).
+  // This list could incorrectly be empty. This could occur when the
+  // RenderFrameHostImpl has been disconnected from the RenderViewHostImpl,
+  // preventing the FrameTree from being traversed. This could happen during
+  // navigation involving BFCache. This should not occur with
+  // features::kEvictSubtree.
+  DCHECK(!surface_ids.empty() ||
+         !base::FeatureList::IsEnabled(features::kEvictSubtree));
   if (!surface_ids.empty()) {
-    DCHECK(!GetCurrentSurfaceId().is_valid() ||
-           std::find(surface_ids.begin(), surface_ids.end(),
-                     GetCurrentSurfaceId()) != surface_ids.end());
     DCHECK(host_frame_sink_manager_);
     host_frame_sink_manager_->EvictSurfaces(surface_ids);
   }

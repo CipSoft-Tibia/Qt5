@@ -1,55 +1,38 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the QtSerialBus module.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "sendframebox.h"
 #include "ui_sendframebox.h"
+
+using namespace Qt::StringLiterals;
+
+static const QRegularExpression &threeHexDigitsPattern()
+{
+    static const QRegularExpression result(u"[[:xdigit:]]{3}"_s);
+    Q_ASSERT(result.isValid());
+    return result;
+}
+
+static const QRegularExpression &oneDigitAndSpacePattern()
+{
+    static const QRegularExpression result(u"((\\s+)|^)([[:xdigit:]]{1})(\\s+)"_s);
+    Q_ASSERT(result.isValid());
+    return result;
+}
+
+const QRegularExpression &hexNumberPattern()
+{
+    static const QRegularExpression result(u"^[[:xdigit:]]*$"_s);
+    Q_ASSERT(result.isValid());
+    return result;
+}
+
+const QRegularExpression &twoSpacesPattern()
+{
+    static const QRegularExpression result(u"([\\s]{2})"_s);
+    Q_ASSERT(result.isValid());
+    return result;
+}
 
 enum {
     MaxStandardId = 0x7FF,
@@ -61,6 +44,33 @@ enum {
     MaxPayloadFd = 64
 };
 
+static bool isEvenHex(QString input)
+{
+    input.remove(u' ');
+    return (input.size() % 2) == 0;
+}
+
+// Formats a string of hex characters with a space between every byte
+// Example: "012345" -> "01 23 45"
+static QString formatHexData(const QString &input)
+{
+    QString out = input;
+
+    while (true) {
+        if (auto match = threeHexDigitsPattern().match(out); match.hasMatch()) {
+            out.insert(match.capturedEnd() - 1, u' ');
+        } else if (match = oneDigitAndSpacePattern().match(out); match.hasMatch()) {
+            const auto pos = match.capturedEnd() - 1;
+            if (out.at(pos) == u' ')
+                out.remove(pos, 1);
+        } else {
+            break;
+        }
+    }
+
+    return out.simplified().toUpper();
+}
+
 HexIntegerValidator::HexIntegerValidator(QObject *parent) :
     QValidator(parent),
     m_maximum(MaxStandardId)
@@ -69,16 +79,11 @@ HexIntegerValidator::HexIntegerValidator(QObject *parent) :
 
 QValidator::State HexIntegerValidator::validate(QString &input, int &) const
 {
-    bool ok;
-    uint value = input.toUInt(&ok, 16);
-
     if (input.isEmpty())
         return Intermediate;
-
-    if (!ok || value > m_maximum)
-        return Invalid;
-
-    return Acceptable;
+    bool ok;
+    uint value = input.toUInt(&ok, 16);
+    return ok && value <= m_maximum ? Acceptable : Invalid;
 }
 
 void HexIntegerValidator::setMaximum(uint maximum)
@@ -95,27 +100,46 @@ HexStringValidator::HexStringValidator(QObject *parent) :
 QValidator::State HexStringValidator::validate(QString &input, int &pos) const
 {
     const int maxSize = 2 * m_maxLength;
-    const QChar space = QLatin1Char(' ');
     QString data = input;
-    data.remove(space);
+
+    data.remove(u' ');
 
     if (data.isEmpty())
         return Intermediate;
 
-    // limit maximum size and forbid trailing spaces
-    if ((data.size() > maxSize) || (data.size() == maxSize && input.endsWith(space)))
+    // limit maximum size
+    if (data.size() > maxSize)
         return Invalid;
 
     // check if all input is valid
-    const QRegularExpression re(QStringLiteral("^[[:xdigit:]]*$"));
-    if (!re.match(data).hasMatch())
+    if (!hexNumberPattern().match(data).hasMatch())
         return Invalid;
 
+    // don't allow user to enter more than one space
+    if (const auto match = twoSpacesPattern().match(input); match.hasMatch()) {
+        input.replace(match.capturedStart(), 2, ' ');
+        pos = match.capturedEnd() - 1;
+    }
+
     // insert a space after every two hex nibbles
-    const QRegularExpression insertSpace(QStringLiteral("(?:[[:xdigit:]]{2} )*[[:xdigit:]]{3}"));
-    if (insertSpace.match(input).hasMatch()) {
-        input.insert(input.size() - 1, space);
-        pos = input.size();
+    while (true) {
+        const QRegularExpressionMatch match = threeHexDigitsPattern().match(input);
+        if (!match.hasMatch())
+            break;
+        const auto start = match.capturedStart();
+        const auto end = match.capturedEnd();
+        if (pos == start + 1) {
+            // add one hex nibble before two - Abc
+            input.insert(pos, u' ');
+        } else if (pos == start + 2) {
+            // add hex nibble in the middle - aBc
+            input.insert(end - 1, u' ');
+            pos = end;
+        } else {
+            // add one hex nibble after two - abC
+            input.insert(end - 1, u' ');
+            pos = end + 1;
+        }
     }
 
     return Acceptable;
@@ -137,49 +161,58 @@ SendFrameBox::SendFrameBox(QWidget *parent) :
     m_hexStringValidator = new HexStringValidator(this);
     m_ui->payloadEdit->setValidator(m_hexStringValidator);
 
-    connect(m_ui->dataFrame, &QRadioButton::toggled, [this](bool set) {
+    connect(m_ui->dataFrame, &QRadioButton::toggled, this, [this](bool set) {
         if (set)
             m_ui->flexibleDataRateBox->setEnabled(true);
     });
 
-    connect(m_ui->remoteFrame, &QRadioButton::toggled, [this](bool set) {
+    connect(m_ui->remoteFrame, &QRadioButton::toggled, this, [this](bool set) {
         if (set) {
             m_ui->flexibleDataRateBox->setEnabled(false);
             m_ui->flexibleDataRateBox->setChecked(false);
         }
     });
 
-    connect(m_ui->errorFrame, &QRadioButton::toggled, [this](bool set) {
+    connect(m_ui->errorFrame, &QRadioButton::toggled, this, [this](bool set) {
         if (set) {
             m_ui->flexibleDataRateBox->setEnabled(false);
             m_ui->flexibleDataRateBox->setChecked(false);
         }
     });
 
-    connect(m_ui->extendedFormatBox, &QCheckBox::toggled, [this](bool set) {
+    connect(m_ui->extendedFormatBox, &QCheckBox::toggled, this, [this](bool set) {
         m_hexIntegerValidator->setMaximum(set ? MaxExtendedId : MaxStandardId);
     });
 
-    connect(m_ui->flexibleDataRateBox, &QCheckBox::toggled, [this](bool set) {
+    connect(m_ui->flexibleDataRateBox, &QCheckBox::toggled, this, [this](bool set) {
         m_hexStringValidator->setMaxLength(set ? MaxPayloadFd : MaxPayload);
         m_ui->bitrateSwitchBox->setEnabled(set);
         if (!set)
             m_ui->bitrateSwitchBox->setChecked(false);
     });
 
-    auto frameIdTextChanged = [this]() {
+    auto frameIdOrPayloadChanged = [this]() {
         const bool hasFrameId = !m_ui->frameIdEdit->text().isEmpty();
         m_ui->sendButton->setEnabled(hasFrameId);
         m_ui->sendButton->setToolTip(hasFrameId
                                      ? QString() : tr("Cannot send because no Frame ID was given."));
+        if (hasFrameId) {
+            const bool isEven = isEvenHex(m_ui->payloadEdit->text());
+            m_ui->sendButton->setEnabled(isEven);
+            m_ui->sendButton->setToolTip(isEven
+                                         ? QString() : tr("Cannot send because Payload hex string is invalid."));
+        }
     };
-    connect(m_ui->frameIdEdit, &QLineEdit::textChanged, frameIdTextChanged);
-    frameIdTextChanged();
+    connect(m_ui->frameIdEdit, &QLineEdit::textChanged, frameIdOrPayloadChanged);
+    connect(m_ui->payloadEdit, &QLineEdit::textChanged, frameIdOrPayloadChanged);
+    frameIdOrPayloadChanged();
 
     connect(m_ui->sendButton, &QPushButton::clicked, [this]() {
+    //! [prepare_can_frame]
         const uint frameId = m_ui->frameIdEdit->text().toUInt(nullptr, 16);
         QString data = m_ui->payloadEdit->text();
-        const QByteArray payload = QByteArray::fromHex(data.remove(QLatin1Char(' ')).toLatin1());
+        m_ui->payloadEdit->setText(formatHexData(data));
+        const QByteArray payload = QByteArray::fromHex(data.remove(u' ').toLatin1());
 
         QCanBusFrame frame = QCanBusFrame(frameId, payload);
         frame.setExtendedFrameFormat(m_ui->extendedFormatBox->isChecked());
@@ -190,6 +223,7 @@ SendFrameBox::SendFrameBox(QWidget *parent) :
             frame.setFrameType(QCanBusFrame::ErrorFrame);
         else if (m_ui->remoteFrame->isChecked())
             frame.setFrameType(QCanBusFrame::RemoteRequestFrame);
+    //! [prepare_can_frame]
 
         emit sendFrame(frame);
     });

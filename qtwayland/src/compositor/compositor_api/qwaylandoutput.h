@@ -1,43 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2016 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Copyright (C) 2017 Klarälvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2016 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// Copyright (C) 2017 Klarälvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDOUTPUT_H
 #define QWAYLANDOUTPUT_H
 
+#include <QtWaylandCompositor/qtwaylandqmlinclude.h>
 #include <QtWaylandCompositor/qwaylandcompositorextension.h>
 #include <QtWaylandCompositor/QWaylandOutputMode>
 #include <QtCore/QObject>
-
-#include <QObject>
-#include <QRect>
-#include <QSize>
+#include <QtCore/QRect>
+#include <QtCore/QSize>
 
 struct wl_resource;
 
@@ -49,9 +22,8 @@ class QWindow;
 class QWaylandSurface;
 class QWaylandView;
 class QWaylandClient;
-class QWaylandOutputSpace;
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandOutput : public QWaylandObject
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandOutput : public QWaylandObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWaylandOutput)
@@ -67,8 +39,10 @@ class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandOutput : public QWaylandObject
     Q_PROPERTY(QWaylandOutput::Transform transform READ transform WRITE setTransform NOTIFY transformChanged)
     Q_PROPERTY(int scaleFactor READ scaleFactor WRITE setScaleFactor NOTIFY scaleFactorChanged)
     Q_PROPERTY(bool sizeFollowsWindow READ sizeFollowsWindow WRITE setSizeFollowsWindow NOTIFY sizeFollowsWindowChanged)
-    Q_ENUMS(Subpixel Transform)
 
+    QML_NAMED_ELEMENT(WaylandOutputBase)
+    QML_ADDED_IN_VERSION(1, 0)
+    QML_UNCREATABLE("Cannot create instance of WaylandOutputBase, use WaylandOutput instead")
 public:
     enum Subpixel {
       SubpixelUnknown = 0,

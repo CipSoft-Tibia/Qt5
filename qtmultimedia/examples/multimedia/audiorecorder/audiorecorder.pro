@@ -21,3 +21,4 @@ INSTALLS += target
 
 QT+=widgets
 include(../shared/shared.pri)
+

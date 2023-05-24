@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,6 +6,8 @@ import("//media/media_options.gni")
 
 source_set("cpp") {
   sources = [
+    "local_media_data_source_factory.cc",
+    "local_media_data_source_factory.h",
     "media_parser_provider.cc",
     "media_parser_provider.h",
     "safe_audio_video_checker.cc",
@@ -15,7 +17,9 @@ source_set("cpp") {
   ]
 
   deps = [
+    "//base",
     "//chrome/app:generated_resources",
+    "//chrome/common",
     "//content/public/browser",
     "//media:media_buildflags",
     "//net:buildflags",
@@ -33,22 +37,28 @@ source_set("cpp") {
   }
 }
 
-source_set("browser_tests") {
-  testonly = true
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
 
-  sources = [ "media_gallery_util_browsertest.cc" ]
-  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [ "media_gallery_util_browsertest.cc" ]
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
 
-  deps = [
-    "//base",
-    "//chrome/test:test_support",
-    "//testing/gtest",
-  ]
-
-  if (media_use_ffmpeg) {
-    deps += [
-      "//third_party/ffmpeg",
-      "//third_party/ffmpeg:ffmpeg_features",
+    deps = [
+      ":cpp",
+      "//base",
+      "//chrome/services/media_gallery_util/public/mojom",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//testing/gtest",
+      "//third_party/libyuv",
     ]
+
+    if (media_use_ffmpeg) {
+      deps += [
+        "//third_party/ffmpeg",
+        "//third_party/ffmpeg:ffmpeg_features",
+      ]
+    }
   }
 }

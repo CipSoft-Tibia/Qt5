@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldebugconnection_p.h"
 #include "qqmldebugclient_p.h"
@@ -46,6 +10,7 @@
 
 #include <QtCore/qeventloop.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/QHash>
 #include <QtCore/qdatastream.h>
 #include <QtNetwork/qlocalserver.h>
 #include <QtNetwork/qlocalsocket.h>
@@ -205,14 +170,14 @@ void QQmlDebugConnection::protocolReadyRead()
 
                 QHash<QString, QQmlDebugClient *>::Iterator iter = d->plugins.begin();
                 for (; iter != d->plugins.end(); ++iter) {
-                    const QString pluginName = iter.key();
-                    QQmlDebugClient::State newSate = QQmlDebugClient::Unavailable;
+                    const QString &pluginName = iter.key();
+                    QQmlDebugClient::State newState = QQmlDebugClient::Unavailable;
                     if (d->serverPlugins.contains(pluginName))
-                        newSate = QQmlDebugClient::Enabled;
+                        newState = QQmlDebugClient::Enabled;
 
                     if (oldServerPlugins.contains(pluginName)
                             != d->serverPlugins.contains(pluginName)) {
-                        iter.value()->stateChanged(newSate);
+                        iter.value()->stateChanged(newState);
                     }
                 }
             } else {
@@ -223,9 +188,10 @@ void QQmlDebugConnection::protocolReadyRead()
             if (iter == d->plugins.end()) {
                 // We can get more messages for plugins we have removed because it takes time to
                 // send the advertisement message but the removal is instant locally.
-                if (!d->removedPlugins.contains(name))
+                if (!d->removedPlugins.contains(name)) {
                     qWarning() << "QQmlDebugConnection: Message received for missing plugin"
                                << name;
+                }
             } else {
                 QQmlDebugClient *client = *iter;
                 QByteArray message;
@@ -307,7 +273,7 @@ void QQmlDebugConnection::close()
 bool QQmlDebugConnection::waitForConnected(int msecs)
 {
     Q_D(QQmlDebugConnection);
-    QAbstractSocket *socket = qobject_cast<QAbstractSocket*>(d->device);
+    auto socket = qobject_cast<QAbstractSocket*>(d->device);
     if (!socket) {
         if (!d->server || (!d->server->hasPendingConnections() &&
                            !d->server->waitForNewConnection(msecs)))
@@ -324,7 +290,7 @@ bool QQmlDebugConnection::waitForConnected(int msecs)
 QQmlDebugClient *QQmlDebugConnection::client(const QString &name) const
 {
     Q_D(const QQmlDebugConnection);
-    return d->plugins.value(name, 0);
+    return d->plugins.value(name, nullptr);
 }
 
 bool QQmlDebugConnection::addClient(const QString &name, QQmlDebugClient *client)
@@ -371,9 +337,9 @@ bool QQmlDebugConnection::sendMessage(const QString &name, const QByteArray &mes
 
 void QQmlDebugConnectionPrivate::flush()
 {
-    if (QAbstractSocket *socket = qobject_cast<QAbstractSocket *>(device))
+    if (auto socket = qobject_cast<QAbstractSocket *>(device))
         socket->flush();
-    else if (QLocalSocket *socket = qobject_cast<QLocalSocket *>(device))
+    else if (auto socket = qobject_cast<QLocalSocket *>(device))
         socket->flush();
 }
 
@@ -382,7 +348,7 @@ void QQmlDebugConnection::connectToHost(const QString &hostName, quint16 port)
     Q_D(QQmlDebugConnection);
     if (d->gotHello)
         close();
-    QTcpSocket *socket = new QTcpSocket(this);
+    auto socket = new QTcpSocket(this);
     d->device = socket;
     d->createProtocol();
     connect(socket, &QAbstractSocket::disconnected, this, &QQmlDebugConnection::socketDisconnected);
@@ -429,8 +395,8 @@ public:
     }
 
 signals:
-    void socketError(QAbstractSocket::SocketError error);
-    void socketStateChanged(QAbstractSocket::SocketState state);
+    void socketError(QAbstractSocket::SocketError);
+    void socketStateChanged(QAbstractSocket::SocketState);
 };
 
 void QQmlDebugConnection::newConnection()
@@ -442,7 +408,7 @@ void QQmlDebugConnection::newConnection()
     d->device = socket;
     d->createProtocol();
     connect(socket, &QLocalSocket::disconnected, this, &QQmlDebugConnection::socketDisconnected);
-    LocalSocketSignalTranslator *translator = new LocalSocketSignalTranslator(socket);
+    auto translator = new LocalSocketSignalTranslator(socket);
 
     connect(translator, &LocalSocketSignalTranslator::socketError,
             this, &QQmlDebugConnection::socketError);

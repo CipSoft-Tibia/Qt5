@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Exports Chromium changes to web-platform-tests."""
@@ -7,8 +7,6 @@ import argparse
 import logging
 
 from blinkpy.common.system.log_utils import configure_logging
-from blinkpy.w3c.local_wpt import LocalWPT
-from blinkpy.w3c.chromium_exportable_commits import exportable_commits_over_last_n_commits
 from blinkpy.w3c.common import (
     CHANGE_ID_FOOTER,
     WPT_GH_URL,
@@ -17,9 +15,12 @@ from blinkpy.w3c.common import (
     PROVISIONAL_PR_LABEL,
     read_credentials,
 )
-from blinkpy.w3c.gerrit import GerritAPI, GerritCL, GerritError
-from blinkpy.w3c.wpt_github import WPTGitHub, MergeError
+from blinkpy.w3c.chromium_exportable_commits import exportable_commits_over_last_n_commits
 from blinkpy.w3c.export_notifier import ExportNotifier
+from blinkpy.w3c.gerrit import GerritAPI, GerritCL, GerritError
+from blinkpy.w3c.local_wpt import LocalWPT
+from blinkpy.w3c.pr_cleanup_tool import PrCleanupTool
+from blinkpy.w3c.wpt_github import WPTGitHub, MergeError
 
 _log = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ _log = logging.getLogger(__name__)
 class TestExporter(object):
     def __init__(self, host):
         self.host = host
+        self.pr_cleaner = PrCleanupTool(self.host)
         self.wpt_github = None
         self.gerrit = None
         self.dry_run = False
@@ -34,7 +36,7 @@ class TestExporter(object):
         self.surface_failures_to_gerrit = False
 
     def main(self, argv=None):
-        """Creates PRs for in-flight CLs and merges changes that land on master.
+        """Creates PRs for in-flight CLs and merges changes that land on main.
 
         Returns:
             A boolean: True if success, False if there were any patch failures.
@@ -55,7 +57,7 @@ class TestExporter(object):
             _log.error('You must provide your GitHub credentials for this '
                        'script to work.')
             _log.error('See https://chromium.googlesource.com/chromium/src'
-                       '/+/master/docs/testing/web_platform_tests.md'
+                       '/+/main/docs/testing/web_platform_tests.md'
                        '#GitHub-credentials for instructions on how to set '
                        'your credentials up.')
             return False
@@ -66,6 +68,10 @@ class TestExporter(object):
             self.host, credentials['GERRIT_USER'], credentials['GERRIT_TOKEN'])
         self.local_wpt = self.local_wpt or LocalWPT(self.host,
                                                     credentials['GH_TOKEN'])
+
+        if not self.dry_run:
+            self.pr_cleaner.run(self.wpt_github, self.gerrit)
+
         self.local_wpt.fetch()
 
         _log.info('Searching for exportable in-flight CLs.')
@@ -120,7 +126,6 @@ class TestExporter(object):
             'any pull requests.')
         parser.add_argument(
             '--credentials-json',
-            required=True,
             help='A JSON file with an object containing zero or more of the '
             'following keys: GH_USER, GH_TOKEN, GERRIT_USER, GERRIT_TOKEN')
         parser.add_argument(
@@ -335,7 +340,7 @@ class TestExporter(object):
                 'on GitHub if the required GitHub checks pass; otherwise, '
                 'ecosystem-infra@ team will triage the failures and may contact you.\n\n'
                 'WPT Export docs:\n'
-                'https://chromium.googlesource.com/chromium/src/+/master'
+                'https://chromium.googlesource.com/chromium/src/+/main'
                 '/docs/testing/web_platform_tests.md#Automatic-export-process'
             ).format(pr_url='%spull/%d' % (WPT_GH_URL, pr_number)))
 
@@ -350,7 +355,7 @@ class TestExporter(object):
         The commit can be either landed or in-flight. The exportable portion of
         the patch is extracted and applied to a new branch in the local WPT
         repo, whose name is determined by pr_branch_name (if the branch already
-        exists, it will be recreated from master). The branch is then pushed to
+        exists, it will be recreated from main). The branch is then pushed to
         WPT on GitHub, from which a PR is created or updated.
 
         Args:

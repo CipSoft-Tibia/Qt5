@@ -1,0 +1,25 @@
+#include <QProtobufSerializer>
+#include <array>
+#include "annotation.qpb.h"
+
+namespace qtprotobufnamespace::tests {
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage1(qRegisterProtobufType<AnnotatedMessage1>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage2(qRegisterProtobufType<AnnotatedMessage2>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage3(qRegisterProtobufType<AnnotatedMessage3>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage4(qRegisterProtobufType<AnnotatedMessage4>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage5(qRegisterProtobufType<AnnotatedMessage5>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage6(qRegisterProtobufType<AnnotatedMessage6>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage7(qRegisterProtobufType<AnnotatedMessage7>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage8(qRegisterProtobufType<AnnotatedMessage8>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage9(qRegisterProtobufType<AnnotatedMessage9>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage10(qRegisterProtobufType<AnnotatedMessage10>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage11(qRegisterProtobufType<AnnotatedMessage11>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage12(qRegisterProtobufType<AnnotatedMessage12>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage13(qRegisterProtobufType<AnnotatedMessage13>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage14(qRegisterProtobufType<AnnotatedMessage14>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage15(qRegisterProtobufType<AnnotatedMessage15>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage16(qRegisterProtobufType<AnnotatedMessage16>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage17(qRegisterProtobufType<AnnotatedMessage17>);
+static QtProtobuf::ProtoTypeRegistrar ProtoTypeRegistrarAnnotatedMessage18(qRegisterProtobufType<AnnotatedMessage18>);
+} // namespace qtprotobufnamespace::tests
+

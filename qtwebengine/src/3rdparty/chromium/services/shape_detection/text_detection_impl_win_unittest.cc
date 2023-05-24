@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,13 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "base/win/scoped_com_initializer.h"
-#include "base/win/windows_version.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/shape_detection/public/mojom/textdetection.mojom.h"
 #include "services/shape_detection/text_detection_impl.h"
@@ -35,6 +33,10 @@ void DetectTextCallback(base::OnceClosure quit_closure,
 }  // namespace
 
 class TextDetectionImplWinTest : public testing::Test {
+ public:
+  TextDetectionImplWinTest(const TextDetectionImplWinTest&) = delete;
+  TextDetectionImplWinTest& operator=(const TextDetectionImplWinTest&) = delete;
+
  protected:
   TextDetectionImplWinTest() = default;
   ~TextDetectionImplWinTest() override = default;
@@ -49,15 +51,9 @@ class TextDetectionImplWinTest : public testing::Test {
   std::unique_ptr<base::win::ScopedCOMInitializer> scoped_com_initializer_;
 
   base::test::TaskEnvironment task_environment_;
-
-  DISALLOW_COPY_AND_ASSIGN(TextDetectionImplWinTest);
 };
 
 TEST_F(TextDetectionImplWinTest, ScanOnce) {
-  // OCR not supported before Windows 10
-  if (base::win::GetVersion() < base::win::Version::WIN10)
-    return;
-
   mojo::Remote<mojom::TextDetection> text_service;
   TextDetectionImpl::Create(text_service.BindNewPipeAndPassReceiver());
 

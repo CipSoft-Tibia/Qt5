@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,6 +14,8 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/scrolling/scrolling_coordinator.h"
+#include "third_party/blink/renderer/platform/heap/thread_state_scopes.h"
+#include "third_party/blink/renderer/platform/heap/visitor.h"
 
 namespace blink {
 
@@ -103,32 +105,24 @@ bool EventHandlerRegistry::HasEventHandlers(
   return targets_[handler_class].size();
 }
 
-bool EventHandlerRegistry::UpdateEventHandlerTargets(
+void EventHandlerRegistry::UpdateEventHandlerTargets(
     ChangeOperation op,
     EventHandlerClass handler_class,
     EventTarget* target) {
   EventTargetSet* targets = &targets_[handler_class];
-  if (op == kAdd) {
-    if (!targets->insert(target).is_new_entry) {
-      // Just incremented refcount, no real change.
-      return false;
-    }
-  } else {
-    DCHECK(op == kRemove || op == kRemoveAll);
-    DCHECK(op == kRemoveAll || targets->Contains(target));
-
-    if (op == kRemoveAll) {
-      if (!targets->Contains(target))
-        return false;
+  switch (op) {
+    case kAdd:
+      targets->insert(target);
+      return;
+    case kRemove:
+      DCHECK(targets->Contains(target));
+      targets->erase(target);
+      return;
+    case kRemoveAll:
       targets->RemoveAll(target);
-    } else {
-      if (!targets->erase(target)) {
-        // Just decremented refcount, no real update.
-        return false;
-      }
-    }
+      return;
   }
-  return true;
+  NOTREACHED();
 }
 
 bool EventHandlerRegistry::UpdateEventHandlerInternal(
@@ -136,21 +130,13 @@ bool EventHandlerRegistry::UpdateEventHandlerInternal(
     EventHandlerClass handler_class,
     EventTarget* target) {
   unsigned old_num_handlers = targets_[handler_class].size();
-  bool target_set_changed =
-      UpdateEventHandlerTargets(op, handler_class, target);
+  UpdateEventHandlerTargets(op, handler_class, target);
   unsigned new_num_handlers = targets_[handler_class].size();
 
   bool handlers_changed = old_num_handlers != new_num_handlers;
+  if (op != kRemoveAll && handlers_changed)
+    NotifyHandlersChanged(target, handler_class, new_num_handlers > 0);
 
-  if (op != kRemoveAll) {
-    if (handlers_changed)
-      NotifyHandlersChanged(target, handler_class, new_num_handlers > 0);
-
-    if (target_set_changed) {
-      NotifyDidAddOrRemoveEventHandlerTarget(GetLocalFrameForTarget(target),
-                                             handler_class);
-    }
-  }
   return handlers_changed;
 }
 
@@ -217,14 +203,9 @@ void EventHandlerRegistry::DidMoveOutOfPage(EventTarget& target) {
 
 void EventHandlerRegistry::DidRemoveAllEventHandlers(EventTarget& target) {
   bool handlers_changed[kEventHandlerClassCount];
-  bool target_set_changed[kEventHandlerClassCount];
 
   for (int i = 0; i < kEventHandlerClassCount; ++i) {
     EventHandlerClass handler_class = static_cast<EventHandlerClass>(i);
-
-    EventTargetSet* targets = &targets_[handler_class];
-    target_set_changed[i] = targets->Contains(&target);
-
     handlers_changed[i] =
         UpdateEventHandlerInternal(kRemoveAll, handler_class, &target);
   }
@@ -234,10 +215,6 @@ void EventHandlerRegistry::DidRemoveAllEventHandlers(EventTarget& target) {
     if (handlers_changed[i]) {
       bool has_handlers = targets_[handler_class].Contains(&target);
       NotifyHandlersChanged(&target, handler_class, has_handlers);
-    }
-    if (target_set_changed[i]) {
-      NotifyDidAddOrRemoveEventHandlerTarget(GetLocalFrameForTarget(&target),
-                                             handler_class);
     }
   }
 }
@@ -268,7 +245,7 @@ void EventHandlerRegistry::NotifyHandlersChanged(
     case kTouchStartOrMoveEventBlockingLowLatency:
       GetPage()->GetChromeClient().SetNeedsLowLatencyInput(frame,
                                                            has_active_handlers);
-      FALLTHROUGH;
+      [[fallthrough]];
     case kTouchAction:
     case kTouchStartOrMoveEventBlocking:
     case kTouchStartOrMoveEventPassive:
@@ -323,24 +300,23 @@ void EventHandlerRegistry::NotifyHandlersChanged(
       if (auto* layout_view = dom_window->GetFrame()->ContentLayoutObject())
         layout_view->MarkEffectiveAllowedTouchActionChanged();
     }
-  }
-}
-
-void EventHandlerRegistry::NotifyDidAddOrRemoveEventHandlerTarget(
-    LocalFrame* frame,
-    EventHandlerClass handler_class) {
-  // TODO(keishi): Added for crbug.com/1090687. Change to CHECK once bug is
-  // fixed.
-  if (!GetPage())
-    return;
-  ScrollingCoordinator* scrolling_coordinator =
-      GetPage()->GetScrollingCoordinator();
-  if (scrolling_coordinator &&
-      (handler_class == kTouchAction ||
-       handler_class == kTouchStartOrMoveEventBlocking ||
-       handler_class == kTouchStartOrMoveEventBlockingLowLatency)) {
-    scrolling_coordinator->TouchEventTargetRectsDidChange(
-        &frame->LocalFrameRoot());
+  } else if (handler_class == kWheelEventBlocking) {
+    if (auto* node = target->ToNode()) {
+      if (auto* layout_object = node->GetLayoutObject()) {
+        layout_object->MarkBlockingWheelEventHandlerChanged();
+        auto* continuation = layout_object->VirtualContinuation();
+        while (continuation) {
+          continuation->MarkBlockingWheelEventHandlerChanged();
+          continuation = continuation->VirtualContinuation();
+        }
+      }
+    } else if (auto* dom_window = target->ToLocalDOMWindow()) {
+      // This event handler is on a window. Ensure the layout view is
+      // invalidated because the layout view tracks the window's blocking
+      // wheel event handler rects.
+      if (auto* layout_view = dom_window->GetFrame()->ContentLayoutObject())
+        layout_view->MarkBlockingWheelEventHandlerChanged();
+    }
   }
 }
 
@@ -378,22 +354,28 @@ void EventHandlerRegistry::DocumentDetached(Document& document) {
     EventHandlerClass handler_class =
         static_cast<EventHandlerClass>(handler_class_index);
     HeapVector<Member<EventTarget>> targets_to_remove;
-    const EventTargetSet* targets = &targets_[handler_class];
-    for (const auto& event_target : *targets) {
-      if (Node* node = event_target.key->ToNode()) {
-        for (Document* doc = &node->GetDocument(); doc;
-             doc = doc->LocalOwner() ? &doc->LocalOwner()->GetDocument()
-                                     : nullptr) {
-          if (doc == &document) {
-            targets_to_remove.push_back(event_target.key);
-            break;
+    {
+      // TODO(keishi): If a GC happens while iterating a EventTargetSet, the
+      // custom weak processing may remove elements from it. Remove this scope
+      // when we get rid of the custom weak processing. crbug.com/1235316
+      ThreadState::GCForbiddenScope gc_forbidden(ThreadState::Current());
+      const EventTargetSet* targets = &targets_[handler_class];
+      for (const auto& event_target : *targets) {
+        if (Node* node = event_target.key->ToNode()) {
+          for (Document* doc = &node->GetDocument(); doc;
+               doc = doc->LocalOwner() ? &doc->LocalOwner()->GetDocument()
+                                       : nullptr) {
+            if (doc == &document) {
+              targets_to_remove.push_back(event_target.key);
+              break;
+            }
           }
+        } else if (event_target.key->ToLocalDOMWindow()) {
+          // DOMWindows may outlive their documents, so we shouldn't remove
+          // their handlers here.
+        } else {
+          NOTREACHED();
         }
-      } else if (event_target.key->ToLocalDOMWindow()) {
-        // DOMWindows may outlive their documents, so we shouldn't remove their
-        // handlers here.
-      } else {
-        NOTREACHED();
       }
     }
     for (wtf_size_t i = 0; i < targets_to_remove.size(); ++i)
@@ -405,11 +387,15 @@ void EventHandlerRegistry::DocumentDetached(Document& document) {
 void EventHandlerRegistry::CheckConsistency(
     EventHandlerClass handler_class) const {
 #if DCHECK_IS_ON()
+  // TODO(keishi): If a GC happens while iterating a EventTargetSet, the
+  // custom weak processing may remove elements from it. Remove this scope
+  // when we get rid of the custom weak processing. crbug.com/1235316
+  ThreadState::GCForbiddenScope gc_forbidden(ThreadState::Current());
   const EventTargetSet* targets = &targets_[handler_class];
   for (const auto& event_target : *targets) {
     if (Node* node = event_target.key->ToNode()) {
-      // See the comment for |documentDetached| if either of these assertions
-      // fails.
+      // See the header file comment for |documentDetached| if either of these
+      // assertions fails.
       DCHECK(node->GetDocument().GetPage());
       DCHECK_EQ(frame_, &node->GetDocument().GetFrame()->LocalFrameRoot());
     } else if (LocalDOMWindow* window = event_target.key->ToLocalDOMWindow()) {

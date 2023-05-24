@@ -1,8 +1,10 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "core/fxcodec/cfx_codec_memory.h"
+
+#include <string.h>
 
 #include <algorithm>
 
@@ -19,12 +21,12 @@ bool CFX_CodecMemory::Seek(size_t pos) {
   return true;
 }
 
-size_t CFX_CodecMemory::ReadBlock(void* buffer, size_t size) {
-  if (!buffer || !size || IsEOF())
+size_t CFX_CodecMemory::ReadBlock(pdfium::span<uint8_t> buffer) {
+  if (buffer.empty() || IsEOF())
     return 0;
 
-  size_t bytes_to_read = std::min(size, size_ - pos_);
-  memcpy(buffer, buffer_.get() + pos_, bytes_to_read);
+  size_t bytes_to_read = std::min(buffer.size(), size_ - pos_);
+  memcpy(buffer.data(), buffer_.get() + pos_, bytes_to_read);
   pos_ += bytes_to_read;
   return bytes_to_read;
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,15 +10,19 @@
 #include <algorithm>
 #include <iterator>
 #include <limits>
+#include <ostream>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "base/check.h"
 #include "base/check_op.h"
-#include "base/gtest_prod_util.h"
+#include "base/dcheck_is_on.h"
 #include "base/notreached.h"
 #include "base/observer_list_internal.h"
+#include "base/ranges/algorithm.h"
 #include "base/sequence_checker.h"
-#include "base/stl_util.h"
+#include "build/build_config.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -257,7 +261,7 @@ class ObserverList {
       live_iterators_.head()->value()->Invalidate();
     if (check_empty) {
       Compact();
-      DCHECK(observers_.empty());
+      DCHECK(observers_.empty()) << "\n" << GetObserversCreationStackString();
     }
   }
 
@@ -272,6 +276,7 @@ class ObserverList {
       NOTREACHED() << "Observers can only be added once!";
       return;
     }
+    observers_count_++;
     observers_.emplace_back(ObserverStorageType(obs));
   }
 
@@ -279,12 +284,12 @@ class ObserverList {
   // not in this list.
   void RemoveObserver(const ObserverType* obs) {
     DCHECK(obs);
-    const auto it =
-        std::find_if(observers_.begin(), observers_.end(),
-                     [obs](const auto& o) { return o.IsEqual(obs); });
+    const auto it = ranges::find_if(
+        observers_, [obs](const auto& o) { return o.IsEqual(obs); });
     if (it == observers_.end())
       return;
-
+    if (!it->IsMarkedForRemoval())
+      observers_count_--;
     if (live_iterators_.empty()) {
       observers_.erase(it);
     } else {
@@ -300,9 +305,9 @@ class ObserverList {
     // probably DCHECK, but some client code currently does pass null.
     if (obs == nullptr)
       return false;
-    return std::find_if(observers_.begin(), observers_.end(),
-                        [obs](const auto& o) { return o.IsEqual(obs); }) !=
-           observers_.end();
+    return ranges::find_if(observers_, [obs](const auto& o) {
+             return o.IsEqual(obs);
+           }) != observers_.end();
   }
 
   // Removes all the observers from this list.
@@ -314,9 +319,10 @@ class ObserverList {
       for (auto& observer : observers_)
         observer.MarkForRemoval();
     }
+    observers_count_ = 0;
   }
 
-  bool might_have_observers() const { return !observers_.empty(); }
+  bool empty() const { return !observers_count_; }
 
  private:
   friend class internal::WeakLinkNode<ObserverList>;
@@ -327,12 +333,33 @@ class ObserverList {
     // Compact() is only ever called when the last iterator is destroyed.
     DETACH_FROM_SEQUENCE(iteration_sequence_checker_);
 
-    EraseIf(observers_, [](const auto& o) { return o.IsMarkedForRemoval(); });
+    observers_.erase(
+        std::remove_if(observers_.begin(), observers_.end(),
+                       [](const auto& o) { return o.IsMarkedForRemoval(); }),
+        observers_.end());
+  }
+
+  std::string GetObserversCreationStackString() const {
+#if DCHECK_IS_ON()
+    std::string result;
+#if BUILDFLAG(IS_IOS)
+    result += "Use go/observer-list-empty to interpret.\n";
+#endif
+    for (const auto& observer : observers_) {
+      result += observer.GetCreationStackString();
+      result += "\n";
+    }
+    return result;
+#else
+    return "For observer stack traces, build with `dcheck_always_on=true`.";
+#endif  // DCHECK_IS_ON()
   }
 
   std::vector<ObserverStorageType> observers_;
 
   base::LinkedList<internal::WeakLinkNode<ObserverList>> live_iterators_;
+
+  size_t observers_count_{0};
 
   const ObserverListPolicy policy_;
 

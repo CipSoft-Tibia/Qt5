@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmimeglobpattern_p.h"
 
@@ -47,6 +11,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 /*!
     \internal
     \class QMimeGlobMatchResult
@@ -56,7 +22,8 @@ QT_BEGIN_NAMESPACE
     Handles glob weights, and preferring longer matches over shorter matches.
 */
 
-void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const QString &pattern, int knownSuffixLength)
+void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const QString &pattern,
+                                    qsizetype knownSuffixLength)
 {
     if (m_allMatchingMimeTypes.contains(mimeType))
         return;
@@ -68,9 +35,9 @@ void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const Q
     bool replace = weight > m_weight;
     if (!replace) {
         // Compare the length of the match
-        if (pattern.length() < m_matchingPatternLength)
+        if (pattern.size() < m_matchingPatternLength)
             return; // too short, ignore
-        else if (pattern.length() > m_matchingPatternLength) {
+        else if (pattern.size() > m_matchingPatternLength) {
             // longer: clear any previous match (like *.bz2, when pattern is *.tar.bz2)
             replace = true;
         }
@@ -78,7 +45,7 @@ void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const Q
     if (replace) {
         m_matchingMimeTypes.clear();
         // remember the new "longer" length
-        m_matchingPatternLength = pattern.length();
+        m_matchingPatternLength = pattern.size();
         m_weight = weight;
     }
     if (!m_matchingMimeTypes.contains(mimeType)) {
@@ -93,21 +60,21 @@ void QMimeGlobMatchResult::addMatch(const QString &mimeType, int weight, const Q
 
 QMimeGlobPattern::PatternType QMimeGlobPattern::detectPatternType(const QString &pattern) const
 {
-    const int patternLength = pattern.length();
+    const qsizetype patternLength = pattern.size();
     if (!patternLength)
         return OtherPattern;
 
-    const int starCount = pattern.count(QLatin1Char('*'));
-    const bool hasSquareBracket = pattern.indexOf(QLatin1Char('[')) != -1;
-    const bool hasQuestionMark = pattern.indexOf(QLatin1Char('?')) != -1;
+    const qsizetype starCount = pattern.count(u'*');
+    const bool hasSquareBracket = pattern.indexOf(u'[') != -1;
+    const bool hasQuestionMark = pattern.indexOf(u'?') != -1;
 
     if (!hasSquareBracket && !hasQuestionMark) {
         if (starCount == 1) {
             // Patterns like "*~", "*.extension"
-            if (pattern.at(0) == QLatin1Char('*'))
+            if (pattern.at(0) == u'*')
                 return SuffixPattern;
             // Patterns like "README*" (well this is currently the only one like that...)
-            if (pattern.at(patternLength - 1) == QLatin1Char('*'))
+            if (pattern.at(patternLength - 1) == u'*')
                 return PrefixPattern;
         } else if (starCount == 0) {
             // Names without any wildcards like "README"
@@ -115,10 +82,10 @@ QMimeGlobPattern::PatternType QMimeGlobPattern::detectPatternType(const QString 
         }
     }
 
-    if (pattern == QLatin1String("[0-9][0-9][0-9].vdr"))
+    if (pattern == "[0-9][0-9][0-9].vdr"_L1)
         return VdrPattern;
 
-    if (pattern == QLatin1String("*.anim[1-9j]"))
+    if (pattern == "*.anim[1-9j]"_L1)
         return AnimPattern;
 
     return OtherPattern;
@@ -142,10 +109,10 @@ bool QMimeGlobPattern::matchFileName(const QString &inputFileName) const
     const QString fileName = m_caseSensitivity == Qt::CaseInsensitive
             ? inputFileName.toLower() : inputFileName;
 
-    const int patternLength = m_pattern.length();
+    const qsizetype patternLength = m_pattern.size();
     if (!patternLength)
         return false;
-    const int fileNameLength = fileName.length();
+    const qsizetype fileNameLength = fileName.size();
 
     switch (m_patternType) {
     case SuffixPattern: {
@@ -175,19 +142,19 @@ bool QMimeGlobPattern::matchFileName(const QString &inputFileName) const
     case VdrPattern: // "[0-9][0-9][0-9].vdr" case
         return fileNameLength == 7
                 && fileName.at(0).isDigit() && fileName.at(1).isDigit() && fileName.at(2).isDigit()
-                && QStringView{fileName}.mid(3, 4) == QLatin1String(".vdr");
+                && QStringView{fileName}.mid(3, 4) == ".vdr"_L1;
     case AnimPattern: { // "*.anim[1-9j]" case
         if (fileNameLength < 6)
             return false;
         const QChar lastChar = fileName.at(fileNameLength - 1);
-        const bool lastCharOK = (lastChar.isDigit() && lastChar != QLatin1Char('0'))
-                              || lastChar == QLatin1Char('j');
-        return lastCharOK && QStringView{fileName}.mid(fileNameLength - 6, 5) == QLatin1String(".anim");
+        const bool lastCharOK = (lastChar.isDigit() && lastChar != u'0')
+                              || lastChar == u'j';
+        return lastCharOK && QStringView{fileName}.mid(fileNameLength - 6, 5) == ".anim"_L1;
     }
     case OtherPattern:
         // Other fallback patterns: slow but correct method
 #if QT_CONFIG(regularexpression)
-        QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(m_pattern));
+        auto rx = QRegularExpression::fromWildcard(m_pattern);
         return rx.match(fileName).hasMatch();
 #else
         return false;
@@ -199,23 +166,23 @@ bool QMimeGlobPattern::matchFileName(const QString &inputFileName) const
 static bool isSimplePattern(const QString &pattern)
 {
    // starts with "*.", has no other '*'
-   return pattern.lastIndexOf(QLatin1Char('*')) == 0
-      && pattern.length() > 1
-      && pattern.at(1) == QLatin1Char('.') // (other dots are OK, like *.tar.bz2)
+   return pattern.lastIndexOf(u'*') == 0
+      && pattern.size() > 1
+      && pattern.at(1) == u'.' // (other dots are OK, like *.tar.bz2)
       // and contains no other special character
-      && !pattern.contains(QLatin1Char('?'))
-      && !pattern.contains(QLatin1Char('['))
+      && !pattern.contains(u'?')
+      && !pattern.contains(u'[')
       ;
 }
 
 static bool isFastPattern(const QString &pattern)
 {
    // starts with "*.", has no other '*' and no other '.'
-   return pattern.lastIndexOf(QLatin1Char('*')) == 0
-      && pattern.lastIndexOf(QLatin1Char('.')) == 1
+   return pattern.lastIndexOf(u'*') == 0
+      && pattern.lastIndexOf(u'.') == 1
       // and contains no other special character
-      && !pattern.contains(QLatin1Char('?'))
-      && !pattern.contains(QLatin1Char('['))
+      && !pattern.contains(u'?')
+      && !pattern.contains(u'[')
       ;
 }
 
@@ -253,45 +220,45 @@ void QMimeAllGlobPatterns::removeMimeType(const QString &mimeType)
     m_lowWeightGlobs.removeMimeType(mimeType);
 }
 
-void QMimeGlobPatternList::match(QMimeGlobMatchResult &result,
-                                 const QString &fileName) const
+void QMimeGlobPatternList::match(QMimeGlobMatchResult &result, const QString &fileName,
+                                 const AddMatchFilterFunc &filterFunc) const
 {
-
-    QMimeGlobPatternList::const_iterator it = this->constBegin();
-    const QMimeGlobPatternList::const_iterator endIt = this->constEnd();
-    for (; it != endIt; ++it) {
-        const QMimeGlobPattern &glob = *it;
-        if (glob.matchFileName(fileName)) {
+    for (const QMimeGlobPattern &glob : *this) {
+        if (glob.matchFileName(fileName) && filterFunc(glob.mimeType())) {
             const QString pattern = glob.pattern();
-            const int suffixLen = isSimplePattern(pattern) ? pattern.length() - 2 : 0;
+            const qsizetype suffixLen = isSimplePattern(pattern) ? pattern.size() - strlen("*.") : 0;
             result.addMatch(glob.mimeType(), glob.weight(), pattern, suffixLen);
         }
     }
 }
 
-void QMimeAllGlobPatterns::matchingGlobs(const QString &fileName, QMimeGlobMatchResult &result) const
+void QMimeAllGlobPatterns::matchingGlobs(const QString &fileName, QMimeGlobMatchResult &result,
+                                         const AddMatchFilterFunc &filterFunc) const
 {
     // First try the high weight matches (>50), if any.
-    m_highWeightGlobs.match(result, fileName);
+    m_highWeightGlobs.match(result, fileName, filterFunc);
 
     // Now use the "fast patterns" dict, for simple *.foo patterns with weight 50
     // (which is most of them, so this optimization is definitely worth it)
-    const int lastDot = fileName.lastIndexOf(QLatin1Char('.'));
+    const qsizetype lastDot = fileName.lastIndexOf(u'.');
     if (lastDot != -1) { // if no '.', skip the extension lookup
-        const int ext_len = fileName.length() - lastDot - 1;
+        const qsizetype ext_len = fileName.size() - lastDot - 1;
         const QString simpleExtension = fileName.right(ext_len).toLower();
         // (toLower because fast patterns are always case-insensitive and saved as lowercase)
 
         const QStringList matchingMimeTypes = m_fastPatterns.value(simpleExtension);
-        const QString simplePattern = QLatin1String("*.") + simpleExtension;
-        for (const QString &mime : matchingMimeTypes)
-            result.addMatch(mime, 50, simplePattern, simpleExtension.size());
+        const QString simplePattern = "*."_L1 + simpleExtension;
+        for (const QString &mime : matchingMimeTypes) {
+            if (filterFunc(mime)) {
+                result.addMatch(mime, 50, simplePattern, simpleExtension.size());
+            }
+        }
         // Can't return yet; *.tar.bz2 has to win over *.bz2, so we need the low-weight mimetypes anyway,
         // at least those with weight 50.
     }
 
     // Finally, try the low weight matches (<=50)
-    m_lowWeightGlobs.match(result, fileName);
+    m_lowWeightGlobs.match(result, fileName, filterFunc);
 }
 
 void QMimeAllGlobPatterns::clear()

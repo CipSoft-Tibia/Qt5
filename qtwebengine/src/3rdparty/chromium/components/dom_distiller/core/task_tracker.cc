@@ -1,17 +1,18 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/dom_distiller/core/task_tracker.h"
 
 #include <stddef.h>
+
+#include <memory>
 #include <utility>
 
 #include "base/auto_reset.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/observer_list.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/dom_distiller/core/distilled_content_store.h"
 #include "components/dom_distiller/core/proto/distilled_article.pb.h"
 #include "components/dom_distiller/core/proto/distilled_page.pb.h"
@@ -89,7 +90,7 @@ std::unique_ptr<ViewerHandle> TaskTracker::AddViewer(
   if (content_ready_) {
     // Distillation for this task has already completed, and so the delegate can
     // be immediately told of the result.
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&TaskTracker::NotifyViewer,
                                   weak_ptr_factory_.GetWeakPtr(), delegate));
   }
@@ -139,7 +140,7 @@ void TaskTracker::CancelSaveCallbacks() {
 }
 
 void TaskTracker::ScheduleSaveCallbacks(bool distillation_succeeded) {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(&TaskTracker::DoSaveCallbacks,
                      weak_ptr_factory_.GetWeakPtr(), distillation_succeeded));
@@ -158,16 +159,16 @@ void TaskTracker::OnDistillerFinished(
 
   // 'distiller_ != null' is used as a signal that distillation is in progress,
   // so it needs to be released so that we know distillation is done.
-  base::ThreadTaskRunnerHandle::Get()->DeleteSoon(FROM_HERE,
-                                                  distiller_.release());
+  base::SingleThreadTaskRunner::GetCurrentDefault()->DeleteSoon(
+      FROM_HERE, distiller_.release());
 
   ContentSourceFinished();
 }
 
 void TaskTracker::CancelPendingSources() {
   if (distiller_) {
-    base::ThreadTaskRunnerHandle::Get()->DeleteSoon(FROM_HERE,
-                                                    distiller_.release());
+    base::SingleThreadTaskRunner::GetCurrentDefault()->DeleteSoon(
+        FROM_HERE, distiller_.release());
   }
 }
 
@@ -193,7 +194,7 @@ void TaskTracker::ContentSourceFinished() {
   if (content_ready_) {
     CancelPendingSources();
   } else if (!IsAnySourceRunning()) {
-    distilled_article_.reset(new DistilledArticleProto());
+    distilled_article_ = std::make_unique<DistilledArticleProto>();
     NotifyViewersAndCallbacks();
   }
 }

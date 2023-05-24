@@ -1,21 +1,20 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_ANIMATION_ANIMATION_DELEGATE_VIEWS_H_
 #define UI_VIEWS_ANIMATION_ANIMATION_DELEGATE_VIEWS_H_
 
-#include <memory>
-
-#include "base/scoped_observer.h"
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
 #include "ui/gfx/animation/animation_container_observer.h"
 #include "ui/gfx/animation/animation_delegate.h"
 #include "ui/views/view.h"
 #include "ui/views/view_observer.h"
 #include "ui/views/views_export.h"
 
-namespace ui {
-class AnimationMetricsReporter;
+namespace base {
+class Location;
 }
 
 namespace views {
@@ -51,25 +50,21 @@ class VIEWS_EXPORT AnimationDelegateViews
   // |set_animation_metrics_reporter()|.
   virtual base::TimeDelta GetAnimationDurationForReporting() const;
 
-  void SetAnimationMetricsReporter(
-      ui::AnimationMetricsReporter* animation_metrics_reporter);
-
   gfx::AnimationContainer* container() { return container_; }
 
  private:
   // Sets CompositorAnimationRunner to |container_| if possible. Otherwise,
   // clears AnimationRunner of |container_|.
-  void UpdateAnimationRunner();
+  void UpdateAnimationRunner(const base::Location& location);
   void ClearAnimationRunner();
 
-  View* view_;
-  gfx::AnimationContainer* container_ = nullptr;
-  ui::AnimationMetricsReporter* animation_metrics_reporter_ = nullptr;
+  raw_ptr<View> view_;
+  raw_ptr<gfx::AnimationContainer> container_ = nullptr;
 
   // The animation runner that |container_| uses.
-  CompositorAnimationRunner* compositor_animation_runner_ = nullptr;
+  raw_ptr<CompositorAnimationRunner> compositor_animation_runner_ = nullptr;
 
-  ScopedObserver<View, ViewObserver> scoped_observer_{this};
+  base::ScopedObservation<View, ViewObserver> scoped_observation_{this};
 };
 
 }  // namespace views

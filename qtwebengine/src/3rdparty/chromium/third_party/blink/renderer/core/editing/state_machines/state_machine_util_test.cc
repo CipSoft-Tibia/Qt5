@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -166,12 +166,6 @@ TEST(StateMachineUtilTest, IsGraphmeBreak_IndicSyllabicCategoryVirama) {
   // Tamil virama is an exception (crbug.com/693697).
   const UChar32 kTamilVirama = 0x0BCD;
   EXPECT_TRUE(IsGraphemeBreak(kTamilVirama, kDevangariKa));
-}
-
-TEST(StateMachineUtilTest, IsGraphmeBreak_ZWNJSequecne) {
-  // U+200C (kZeroWidthNonJoinerCharacter)
-  EXPECT_TRUE(IsGraphemeBreak('a', WTF::unicode::kZeroWidthNonJoinerCharacter));
-  EXPECT_TRUE(IsGraphemeBreak(WTF::unicode::kZeroWidthNonJoinerCharacter, 'a'));
 }
 
 }  // namespace blink

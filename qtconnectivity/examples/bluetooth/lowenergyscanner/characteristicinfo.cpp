@@ -1,57 +1,13 @@
-/***************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "characteristicinfo.h"
 #include "qbluetoothuuid.h"
-#include <QByteArray>
+
+#include <QtCore/qbytearray.h>
+
+using namespace Qt::StringLiterals;
 
 CharacteristicInfo::CharacteristicInfo(const QLowEnergyCharacteristic &characteristic):
     m_characteristic(characteristic)
@@ -74,7 +30,7 @@ QString CharacteristicInfo::getName() const
     // find descriptor with CharacteristicUserDescription
     const QList<QLowEnergyDescriptor> descriptors = m_characteristic.descriptors();
     for (const QLowEnergyDescriptor &descriptor : descriptors) {
-        if (descriptor.type() == QBluetoothUuid::CharacteristicUserDescription) {
+        if (descriptor.type() == QBluetoothUuid::DescriptorType::CharacteristicUserDescription) {
             name = descriptor.value();
             break;
         }
@@ -82,7 +38,7 @@ QString CharacteristicInfo::getName() const
     //! [les-get-descriptors]
 
     if (name.isEmpty())
-        name = "Unknown";
+        name = u"Unknown"_s;
 
     return name;
 }
@@ -93,13 +49,13 @@ QString CharacteristicInfo::getUuid() const
     bool success = false;
     quint16 result16 = uuid.toUInt16(&success);
     if (success)
-        return QStringLiteral("0x") + QString::number(result16, 16);
+        return u"0x"_s + QString::number(result16, 16);
 
     quint32 result32 = uuid.toUInt32(&success);
     if (success)
-        return QStringLiteral("0x") + QString::number(result32, 16);
+        return u"0x"_s + QString::number(result32, 16);
 
-    return uuid.toString().remove(QLatin1Char('{')).remove(QLatin1Char('}'));
+    return uuid.toString().remove('{'_L1).remove('}'_L1);
 }
 
 QString CharacteristicInfo::getValue() const
@@ -108,43 +64,38 @@ QString CharacteristicInfo::getValue() const
     QByteArray a = m_characteristic.value();
     QString result;
     if (a.isEmpty()) {
-        result = QStringLiteral("<none>");
+        result = u"<none>"_s;
         return result;
     }
 
     result = a;
-    result += QLatin1Char('\n');
+    result += '\n'_L1;
     result += a.toHex();
 
     return result;
 }
 
-QString CharacteristicInfo::getHandle() const
-{
-    return QStringLiteral("0x") + QString::number(m_characteristic.handle(), 16);
-}
-
 QString CharacteristicInfo::getPermission() const
 {
-    QString properties = "( ";
+    QString properties = u"( "_s;
     uint permission = m_characteristic.properties();
     if (permission & QLowEnergyCharacteristic::Read)
-        properties += QStringLiteral(" Read");
+        properties += u" Read"_s;
     if (permission & QLowEnergyCharacteristic::Write)
-        properties += QStringLiteral(" Write");
+        properties += u" Write"_s;
     if (permission & QLowEnergyCharacteristic::Notify)
-        properties += QStringLiteral(" Notify");
+        properties += u" Notify"_s;
     if (permission & QLowEnergyCharacteristic::Indicate)
-        properties += QStringLiteral(" Indicate");
+        properties += u" Indicate"_s;
     if (permission & QLowEnergyCharacteristic::ExtendedProperty)
-        properties += QStringLiteral(" ExtendedProperty");
+        properties += u" ExtendedProperty"_s;
     if (permission & QLowEnergyCharacteristic::Broadcasting)
-        properties += QStringLiteral(" Broadcast");
+        properties += u" Broadcast"_s;
     if (permission & QLowEnergyCharacteristic::WriteNoResponse)
-        properties += QStringLiteral(" WriteNoResp");
+        properties += u" WriteNoResp"_s;
     if (permission & QLowEnergyCharacteristic::WriteSigned)
-        properties += QStringLiteral(" WriteSigned");
-    properties += " )";
+        properties += u" WriteSigned"_s;
+    properties += u" )"_s;
     return properties;
 }
 

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QCUSTOM3DITEM_H
 #define QCUSTOM3DITEM_H
@@ -34,12 +8,13 @@
 #include <QtGui/QImage>
 #include <QtGui/QVector3D>
 #include <QtGui/QQuaternion>
+#include <QtCore/QObject>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QCustom3DItemPrivate;
 
-class QT_DATAVISUALIZATION_EXPORT QCustom3DItem : public QObject
+class Q_DATAVISUALIZATION_EXPORT QCustom3DItem : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString meshFile READ meshFile WRITE setMeshFile NOTIFY meshFileChanged)
@@ -50,7 +25,7 @@ class QT_DATAVISUALIZATION_EXPORT QCustom3DItem : public QObject
     Q_PROPERTY(QQuaternion rotation READ rotation WRITE setRotation NOTIFY rotationChanged)
     Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged)
     Q_PROPERTY(bool shadowCasting READ isShadowCasting WRITE setShadowCasting NOTIFY shadowCastingChanged)
-    Q_PROPERTY(bool scalingAbsolute READ isScalingAbsolute WRITE setScalingAbsolute NOTIFY scalingAbsoluteChanged REVISION 1)
+    Q_PROPERTY(bool scalingAbsolute READ isScalingAbsolute WRITE setScalingAbsolute NOTIFY scalingAbsoluteChanged REVISION(1, 2))
 
 public:
     explicit QCustom3DItem(QObject *parent = nullptr);
@@ -99,7 +74,7 @@ Q_SIGNALS:
     void rotationChanged(const QQuaternion &rotation);
     void visibleChanged(bool visible);
     void shadowCastingChanged(bool shadowCasting);
-    Q_REVISION(1) void scalingAbsoluteChanged(bool scalingAbsolute);
+    Q_REVISION(1, 2) void scalingAbsoluteChanged(bool scalingAbsolute);
 
 protected:
     QCustom3DItem(QCustom3DItemPrivate *d, QObject *parent = nullptr);
@@ -113,6 +88,6 @@ private:
     friend class Abstract3DController;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

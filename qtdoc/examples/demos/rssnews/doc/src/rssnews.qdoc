@@ -1,50 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \title Qt Quick Demo - RSS News
+    \examplecategory {Web Technologies}
     \ingroup qtquickdemos
     \example demos/rssnews
-    \brief A QML RSS news reader that uses XmlListModel and XmlRole to download
-    XML data, ListModel and ListElement to create a category list, and ListView
-    to display the data.
-
+    \meta {tag} {demo,quick,download,xml}
+    \brief A QML RSS news reader that uses XmlListModel and XmlListModelRole custom
+    QML types to download XML data, ListModel and ListElement to create a category list,
+    and ListView to display the data.
     \image qtquick-demo-rssnews-small.png
 
     \e{RSS News} demonstrates the following \l{Qt Quick} features:
 
     \list
-        \li Using custom types to create screens and screen controls.
+        \li Using custom QML types.
         \li Using list models and list elements to represent data.
         \li Using XML list models to download XML data.
         \li Using list views to display data.
         \li Using the \l Component type to create a footer for the news item
             list view.
-        \li Using the \l Image type to create a button for closing the app.
+        \li Using the \l [QML] {Image} type to create a button for closing the
+            app.
     \endlist
 
     \include examples-run.qdocinc
@@ -72,8 +50,8 @@
 
     \section1 Creating the Main Window
 
-    In rssnews.qml, we use a \l{Rectangle} type with custom properties to create
-    the app main window:
+    In \c rssnews.qml, we use a \l{Rectangle} type with custom properties to
+    create the app main window:
 
     \printuntil isPortrait
 
@@ -82,13 +60,13 @@
 
     \section1 Creating a Category List
 
-    In rssnews.qml, we use the RssFeeds custom type that we specify in
-    RssFeeds.qml to create a list of feed categories:
+    In \c rssnews.qml, we use the \c RssFeeds custom type that we specify in
+    \c RssFeeds.qml to create a list of feed categories:
 
     \skipto RssFeeds
     \printuntil }
 
-    In RssFeeds.qml, we use a ListModel type with a ListElement type to
+    In \c RssFeeds.qml, we use a \l ListModel type with a \l ListElement type to
     create a category list where list elements represent feed categories:
 
     \quotefromfile demos/rssnews/content/RssFeeds.qml
@@ -103,7 +81,7 @@
     the \c feed role to specify the URL to load the data from, and the \c image
     role to display an image for the category.
 
-    In rssnews.qml, we use a ListView type to display the category list:
+    In \c rssnews.qml, we use a \l ListView type to display the category list:
 
     \quotefromfile demos/rssnews/rssnews.qml
     \skipto ListView
@@ -125,8 +103,8 @@
 
     \section1 Creating List Elements
 
-    In CategoryDelegate.qml, we use the \l Rectangle type with custom properties
-    to create list elements:
+    In \c CategoryDelegate.qml, we use the \l Rectangle type with custom
+    properties to create list elements:
 
     \quotefromfile demos/rssnews/content/CategoryDelegate.qml
     \skipto Rectangle
@@ -136,9 +114,9 @@
     property to specify that \c selected is \c true if \c delegate is the
     current item.
 
-    We use the \l Image type \c source property to display the image, centered
-    in the delegate, specified for the list element by the \c image role in the
-    \c rssFeeds list model:
+    We use the \l [QML] {Image} type \c source property to display the image,
+    centered in the delegate, specified for the list element by the \c image
+    role in the \c rssFeeds list model:
 
     \skipto Image
     \printuntil }
@@ -152,13 +130,13 @@
     element, with a 20-pixel margin. We use \c font properties to adjust font
     size and text formatting.
 
-    We use the \c color property to brighten the text and to scale it slightly
-    larger when the list item is the current item. By applying a \l Behavior to
-    the property, we animate the actions of selecting and deselecting list
-    items.
+    We use the \c color and \c scale properties to brighten the text and to
+    scale it slightly larger when the list item is the current item.
+    By applying a \l Behavior to the property, we animate the actions of
+    selecting and deselecting list items.
 
-    We use a MouseArea type to download XML data when users tap a category list
-    element:
+    We use a \l MouseArea type to download XML data when users tap a category
+    list element:
 
     \skipto MouseArea
     \printuntil }
@@ -173,28 +151,28 @@
 
     \section1 Downloading XML Data
 
-    In rssnews.qml, we use an XmlListModel type as a data source for ListView
-    elements to display news items in the selected category:
+    In \c rssnews.qml, we use an \l XmlListModel type as a data source for
+    \l ListView elements to display news items in the selected category:
 
     \quotefromfile demos/rssnews/rssnews.qml
     \skipto XmlListModel {
-    \printuntil namespaceDeclarations
+    \printuntil query
 
     We use the \c source property and the \c window.currentFeed custom property
     to fetch news items for the selected category.
 
-    The \c query property specifies that the XmlListModel generates a model item
-    for each \c <item> in the XML document.
+    The \c query property specifies that the \l XmlListModel generates a model
+    item for each \c <item> in the XML document.
 
-    We use the XmlRole type to specify the model item attributes. Each model
-    item has the \c title, \c description, \c image, \c link, and \c pubDate
-    attributes that match the values of the corresponding \c <item> in the XML
-    document:
+    We use the \l XmlListModelRole type to specify the model item attributes.
+    Each model item has the \c title, \c content, \c link, and \c pubDate
+    attributes that match the values of the corresponding \c <item> in the
+    XML document:
 
     \printuntil pubDate
     \printuntil }
 
-    We use the \c feedModel model in a ListView type to display the data:
+    We use the \c feedModel model in a \l ListView type to display the data:
 
     \skipuntil ScrollBar
     \skipto ListView
@@ -219,7 +197,7 @@
     and use \c NewsDelegate as the delegate to instantiate each item in the
     list.
 
-    In NewsDelegate.qml, we use a \l Column type to lay out the XML data:
+    In \c NewsDelegate.qml, we use a \l Column type to lay out the XML data:
 
     \quotefromfile demos/rssnews/content/NewsDelegate.qml
     \skipto Column
@@ -244,8 +222,8 @@
 
     \section1 Providing Feedback to Users
 
-    In CategoryDelegate.qml, we use the \c BusyIndicator custom type to indicate
-    activity while the XML data is being loaded:
+    In \c CategoryDelegate.qml, we use the \c BusyIndicator custom type to
+    indicate activity while the XML data is being loaded:
 
     \quotefromfile demos/rssnews/content/CategoryDelegate.qml
     \skipto BusyIndicator
@@ -258,22 +236,22 @@
     data is being loaded.
 
     We define the \c BusyIndicator type in \c BusyIndicator.qml. We use an
-    \l Image type to display an image and apply a NumberAnimation to its
-    \c rotation property to rotate the image in an infinite loop:
+    \l [QML] {Image} type to display an image and apply a \l NumberAnimation to
+    its \c rotation property to rotate the image in an infinite loop:
 
     \quotefromfile demos/rssnews/content/BusyIndicator.qml
     \skipto Image
     \printuntil }
     \printuntil }
 
-    In your apps, you can also use the BusyIndicator type from the
+    In your apps, you can also use the \l BusyIndicator type from the
     \l {Qt Quick Controls} module.
 
     \section1 Creating Scroll Bars
 
-    In rssnews.qml, we use our own custom \c ScrollBar type to create scroll
+    In \c rssnews.qml, we use our own custom \c ScrollBar type to create scroll
     bars in the category and news item list views. In your apps, you can also
-    use the ScrollView type from the \l {Qt Quick Controls} module.
+    use the \l ScrollView type from the \l {Qt Quick Controls} module.
 
     First, we create a scroll bar in the category list view. We bind the
     \c orientation property to the \c isPortrait property and to the
@@ -313,7 +291,7 @@
     \skipto Item
     \printuntil opacity
 
-    We use a BorderImage type to display the scroll bar thumb at the x and y
+    We use a \l BorderImage type to display the scroll bar thumb at the x and y
     position that we calculate by using the \c position() function:
 
     \skipto BorderImage
@@ -329,14 +307,14 @@
     \printuntil }
     \printuntil }
 
-    We use \c transitions to apply a NumberAnimation to the \c "opacity"
-    property when the state changes from "visible" to the default state:
+    We use \c transitions to apply a \l NumberAnimation to the \c opacity
+    property when the state changes from \c "visible" to the default state:
 
     \printuntil /^\}/
 
     \section1 Creating Footers
 
-    In rssnews.qml, we use a \l Component type with a \l Rectangle type to
+    In \c rssnews.qml, we use a \l Component type with a \l Rectangle type to
     create a footer for the news list view:
 
     \quotefromfile demos/rssnews/rssnews.qml
@@ -346,13 +324,13 @@
     \printuntil }
 
     We bind the \c width of the footer to the width of the component and the
-    \c height to the of close button to align them when no news items are
+    \c height to the height of close button to align them when no news items are
     displayed.
 
     \section1 Creating Buttons
 
-    In rssnews.qml, we use an \l Image type to create a simple push button that
-    users can tap to close the app:
+    In \c rssnews.qml, we use an \l [QML] {Image} type to create a simple push
+    button that users can tap to close the app:
 
     \printuntil Qt.quit()
     \printuntil }
@@ -365,7 +343,7 @@
     property to make the button almost fully transparent when users are
     scrolling the category list.
 
-    We use the \c onClicked signal handler within a MouseArea to call the
+    We use the \c onClicked signal handler within a \l MouseArea to call the
     \c quit() function when users select the close button.
 
     \sa {QML Applications}

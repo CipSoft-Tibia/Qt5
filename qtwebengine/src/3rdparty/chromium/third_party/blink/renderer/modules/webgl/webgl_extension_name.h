@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,7 +24,7 @@ enum WebGLExtensionName {
   kEXTTextureFilterAnisotropicName,
   kEXTTextureNorm16Name,
   kKHRParallelShaderCompileName,
-  kOESDrawBuffersIndexed,
+  kOESDrawBuffersIndexedName,
   kOESElementIndexUintName,
   kOESFboRenderMipmapName,
   kOESStandardDerivativesName,
@@ -34,6 +34,7 @@ enum WebGLExtensionName {
   kOESTextureHalfFloatName,
   kOESVertexArrayObjectName,
   kOVRMultiview2Name,
+  kWebGLClipCullDistanceName,
   kWebGLColorBufferFloatName,
   kWebGLCompressedTextureASTCName,
   kWebGLCompressedTextureETCName,
@@ -52,7 +53,9 @@ enum WebGLExtensionName {
   kWebGLMultiDrawInstancedName,
   kWebGLMultiDrawInstancedBaseVertexBaseInstanceName,
   kWebGLMultiviewName,
+  kWebGLProvokingVertexName,
   kWebGLVideoTextureName,
+  kWebGLWebCodecsVideoFrameName,
   kWebGLExtensionNameCount,  // Must be the last entry
 };
 }  // namespace blink

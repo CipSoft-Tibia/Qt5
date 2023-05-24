@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKCONTEXT2D_P_H
 #define QQUICKCONTEXT2D_P_H
@@ -67,7 +31,6 @@ QT_REQUIRE_CONFIG(quick_canvas);
 #include <QtCore/qqueue.h>
 #include <QtCore/QWaitCondition>
 
-#include <private/qv4value_p.h>
 #include <private/qv4persistent_p.h>
 
 //#define QQUICKCONTEXT2D_DEBUG //enable this for just DEBUG purpose!
@@ -78,12 +41,15 @@ QT_REQUIRE_CONFIG(quick_canvas);
 
 QT_BEGIN_NAMESPACE
 
+namespace QV4 {
+    struct ExecutionEngine;
+}
+
 class QQuickContext2DCommandBuffer;
 class QQuickContext2DTexture;
 class QQuickPixmap;
 class QSGTexture;
 class QSurface;
-class QOpenGLContext;
 
 class QQuickContext2D : public QQuickCanvasContext
 {
@@ -241,14 +207,13 @@ public:
     void arc(qreal x, qreal y, qreal radius,
              qreal startAngle, qreal endAngle,
              bool anticlockwise);
-    void addArcTo(const QPointF& p1, const QPointF& p2, float radius);
+    void addArcTo(const QPointF& p1, const QPointF& p2, qreal radius);
 
     bool isPointInPath(qreal x, qreal y) const;
 
     QPainterPath createTextGlyphs(qreal x, qreal y, const QString& text);
     QQmlRefPointer<QQuickCanvasPixmap> createPixmap(const QUrl& url);
 
-    QOpenGLContext *glContext() const { return m_glContext; }
     QSurface *surface() const { return m_surface.data(); }
     void setGrabbedImage(const QImage& grab);
 
@@ -262,7 +227,6 @@ public:
     QV4::PersistentValue m_v4path;
     QV4::ExecutionEngine *m_v4engine;
     QScopedPointer<QOffscreenSurface> m_surface;
-    QOpenGLContext *m_glContext;
     QV4::PersistentValue m_v4value;
     QQuickContext2DTexture *m_texture;
     QQuickCanvasItem::RenderTarget m_renderTarget;

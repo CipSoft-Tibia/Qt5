@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2018 Intel Corporation
+** Copyright (C) 2021 Intel Corporation
 **
 ** Permission is hereby granted, free of charge, to any person obtaining a copy
 ** of this software and associated documentation files (the "Software"), to deal
@@ -913,7 +913,7 @@ CborError cbor_value_get_int_checked(const CborValue *value, int *result)
 /**
  * \fn bool cbor_value_is_byte_string(const CborValue *value)
  *
- * Returns true if the iterator \a value is valid and points to a CBOR text
+ * Returns true if the iterator \a value is valid and points to a CBOR byte
  * string. CBOR byte strings are binary data with no specified encoding or
  * format.
  *
@@ -1147,7 +1147,7 @@ static CborError get_string_chunk(CborValue *it, const void **bufferptr, size_t 
  */
 
 CborError _cbor_value_get_string_chunk(const CborValue *value, const void **bufferptr,
-                                       size_t *len, CborValue *next)
+                                                        size_t *len, CborValue *next)
 {
     CborValue tmp;
     if (!next)

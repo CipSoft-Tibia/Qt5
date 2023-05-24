@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,15 @@
 #include <list>
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/sys_byteorder.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "content/browser/speech/speech_recognition_engine.h"
 #include "content/browser/speech/speech_recognition_manager_impl.h"
@@ -53,6 +53,9 @@ class MockAudioSystem : public media::AudioSystem {
  public:
   MockAudioSystem() = default;
 
+  MockAudioSystem(const MockAudioSystem&) = delete;
+  MockAudioSystem& operator=(const MockAudioSystem&) = delete;
+
   // AudioSystem implementation.
   void GetInputStreamParameters(const std::string& device_id,
                                 OnAudioParamsCallback on_params_cb) override {
@@ -80,9 +83,6 @@ class MockAudioSystem : public media::AudioSystem {
   MOCK_METHOD2(GetInputDeviceInfo,
                void(const std::string& input_device_id,
                     OnInputDeviceInfoCallback on_input_device_info_cb));
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MockAudioSystem);
 };
 
 class MockCapturerSource : public media::AudioCapturerSource {
@@ -97,14 +97,17 @@ class MockCapturerSource : public media::AudioCapturerSource {
     stop_callback_ = std::move(stop_callback);
   }
 
+  MockCapturerSource(const MockCapturerSource&) = delete;
+  MockCapturerSource& operator=(const MockCapturerSource&) = delete;
+
   void Initialize(const media::AudioParameters& params,
-                  CaptureCallback* callback) {
+                  CaptureCallback* callback) override {
     audio_parameters_ = params;
     capture_callback_ = callback;
   }
 
   void Start() override {
-    std::move(start_callback_).Run(audio_parameters_, capture_callback_);
+    std::move(start_callback_).Run(audio_parameters_, capture_callback_.get());
   }
 
   void Stop() override { std::move(stop_callback_).Run(); }
@@ -120,10 +123,8 @@ class MockCapturerSource : public media::AudioCapturerSource {
  private:
   StartCallback start_callback_;
   StopCallback stop_callback_;
-  CaptureCallback* capture_callback_;
+  raw_ptr<CaptureCallback, DanglingUntriaged> capture_callback_;
   media::AudioParameters audio_parameters_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockCapturerSource);
 };
 
 std::string MakeGoodResponse() {
@@ -133,7 +134,7 @@ std::string MakeGoodResponse() {
   blink::mojom::SpeechRecognitionResultPtr result =
       blink::mojom::SpeechRecognitionResult::New();
   result->hypotheses.push_back(blink::mojom::SpeechRecognitionHypothesis::New(
-      base::UTF8ToUTF16("Pictures of the moon"), 1.0F));
+      u"Pictures of the moon", 1.0F));
   proto_result->set_final(!result->is_provisional);
   for (size_t i = 0; i < result->hypotheses.size(); ++i) {
     proto::SpeechRecognitionAlternative* proto_alternative =
@@ -274,7 +275,7 @@ class SpeechRecognitionBrowserTest : public ContentBrowserTest {
 
     const int n_buffers = duration_ms / ms_per_buffer;
     for (int i = 0; i < n_buffers; ++i) {
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE,
           base::BindOnce(&FeedSingleBufferToAudioCapturerSource, audio_params,
                          capture_callback, buffer_size, feed_with_noise));
@@ -298,7 +299,7 @@ IN_PROC_BROWSER_TEST_F(SpeechRecognitionBrowserTest, DISABLED_Precheck) {
 }
 
 // Flaky on mac, see https://crbug.com/794645.
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #define MAYBE_OneShotRecognition DISABLED_OneShotRecognition
 #else
 #define MAYBE_OneShotRecognition OneShotRecognition

@@ -85,6 +85,10 @@ void
 weston_desktop_api_set_xwayland_position(struct weston_desktop *desktop,
 					 struct weston_desktop_surface *surface,
 					 int32_t x, int32_t y);
+void
+weston_desktop_api_get_desktop_surface_root_geometry(struct weston_desktop *desktop,
+						     struct weston_desktop_surface *surface,
+						     struct weston_geometry *geometry);
 
 struct weston_desktop_seat *
 weston_desktop_seat_from_seat(struct weston_seat *wseat);

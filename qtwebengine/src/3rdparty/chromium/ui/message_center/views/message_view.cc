@@ -1,14 +1,20 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/message_center/views/message_view.h"
 
+#include "ash/constants/ash_features.h"
+#include "base/observer_list.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
+#include "ui/compositor/layer.h"
 #include "ui/compositor/scoped_layer_animation_settings.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/color_palette.h"
@@ -23,49 +29,23 @@
 #include "ui/views/background.h"
 #include "ui/views/border.h"
 #include "ui/views/controls/button/image_button.h"
+#include "ui/views/controls/focus_ring.h"
 #include "ui/views/controls/image_view.h"
 #include "ui/views/controls/scroll_view.h"
 #include "ui/views/focus/focus_manager.h"
-#include "ui/views/style/platform_style.h"
 #include "ui/views/widget/widget.h"
 
-#if defined(OS_WIN)
-#include "ui/base/win/shell.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "base/time/time.h"
 #endif
 
 namespace message_center {
 
 namespace {
 
-// Creates a text for spoken feedback from the data contained in the
-// notification.
-base::string16 CreateAccessibleName(const Notification& notification) {
-  if (!notification.accessible_name().empty())
-    return notification.accessible_name();
-
-  // Fall back to a text constructed from the notification.
-  // Add non-empty elements.
-
-  std::vector<base::string16> accessible_lines;
-  if (!notification.title().empty())
-    accessible_lines.push_back(notification.title());
-
-  if (!notification.message().empty())
-    accessible_lines.push_back(notification.message());
-
-  if (!notification.context_message().empty())
-    accessible_lines.push_back(notification.context_message());
-  std::vector<NotificationItem> items = notification.items();
-  for (size_t i = 0; i < items.size() && i < kNotificationMaximumItems; ++i) {
-    accessible_lines.push_back(items[i].title + base::ASCIIToUTF16(" ") +
-                               items[i].message);
-  }
-  return base::JoinString(accessible_lines, base::ASCIIToUTF16("\n"));
-}
-
 bool ShouldShowAeroShadowBorder() {
-#if defined(OS_WIN)
-  return ui::win::IsAeroGlassEnabled();
+#if BUILDFLAG(IS_WIN)
+  return true;
 #else
   return false;
 #endif
@@ -84,9 +64,12 @@ SkPath MessageView::HighlightPathGenerator::GetHighlightPath(
 }
 
 MessageView::MessageView(const Notification& notification)
-    : notification_id_(notification.id()), slide_out_controller_(this, this) {
+    : notification_id_(notification.id()),
+      notifier_id_(notification.notifier_id()),
+      timestamp_(notification.timestamp()),
+      slide_out_controller_(this, this) {
   SetFocusBehavior(FocusBehavior::ALWAYS);
-  focus_ring_ = views::FocusRing::Install(this);
+  views::FocusRing::Install(this);
   views::HighlightPathGenerator::Install(
       this, std::make_unique<HighlightPathGenerator>());
 
@@ -113,13 +96,41 @@ MessageView::~MessageView() {
   RemovedFromWidget();
 }
 
+views::View* MessageView::FindGroupNotificationView(
+    const std::string& notification_id) {
+  // Not implemented by default.
+  return nullptr;
+}
+
+// Creates text for spoken feedback from the data contained in the
+// notification.
+std::u16string MessageView::CreateAccessibleName(
+    const Notification& notification) {
+  if (!notification.accessible_name().empty())
+    return notification.accessible_name();
+
+  // Fall back to text constructed from the notification.
+  // Add non-empty elements.
+
+  std::vector<std::u16string> accessible_lines;
+  if (!notification.title().empty())
+    accessible_lines.push_back(notification.title());
+
+  if (!notification.message().empty())
+    accessible_lines.push_back(notification.message());
+
+  if (!notification.context_message().empty())
+    accessible_lines.push_back(notification.context_message());
+  std::vector<NotificationItem> items = notification.items();
+  for (size_t i = 0; i < items.size() && i < kNotificationMaximumItems; ++i) {
+    accessible_lines.push_back(items[i].title + u" " + items[i].message);
+  }
+  return base::JoinString(accessible_lines, u"\n");
+}
+
 void MessageView::UpdateWithNotification(const Notification& notification) {
   pinned_ = notification.pinned();
-  base::string16 new_accessible_name = CreateAccessibleName(notification);
-  if (new_accessible_name != accessible_name_) {
-    accessible_name_ = new_accessible_name;
-    NotifyAccessibilityEvent(ax::mojom::Event::kTextChanged, true);
-  }
+  SetAccessibleName(CreateAccessibleName(notification));
   slide_out_controller_.set_slide_mode(CalculateSlideMode());
 }
 
@@ -131,7 +142,8 @@ void MessageView::SetIsNested() {
   slide_out_controller_.set_slide_mode(CalculateSlideMode());
   slide_out_controller_.set_update_opacity(false);
 
-  SetNestedBorderIfNecessary();
+  UpdateNestedBorder();
+
   if (GetControlButtonsView())
     GetControlButtonsView()->ShowCloseButton(GetMode() != Mode::PINNED);
 }
@@ -167,12 +179,14 @@ bool MessageView::IsManuallyExpandedOrCollapsed() const {
   return false;
 }
 
-void MessageView::SetManuallyExpandedOrCollapsed(bool value) {
+void MessageView::SetManuallyExpandedOrCollapsed(ExpandState state) {
   // Not implemented by default.
 }
 
 void MessageView::UpdateCornerRadius(int top_radius, int bottom_radius) {
   SetCornerRadius(top_radius, bottom_radius);
+  if (!GetWidget())
+    return;
   UpdateBackgroundPainter();
   SchedulePaint();
 }
@@ -183,11 +197,11 @@ SkPath MessageView::GetHighlightPath() const {
   // them on top of the notifications. We need to do this because TrayBubbleView
   // has a layer that masks to bounds due to which the focus ring can not extend
   // outside the view.
-  int inset = -views::PlatformStyle::kFocusHaloInset;
+  int inset = -views::FocusRing::kDefaultHaloInset;
   rect.Inset(gfx::Insets(inset));
 
-  int top_radius = std::max(0, top_radius_ - inset);
-  int bottom_radius = std::max(0, bottom_radius_ - inset);
+  SkScalar top_radius = std::max(0, top_radius_ - inset);
+  SkScalar bottom_radius = std::max(0, bottom_radius_ - inset);
   SkScalar radii[8] = {top_radius,    top_radius,      // top-left
                        top_radius,    top_radius,      // top-right
                        bottom_radius, bottom_radius,   // bottom-right
@@ -210,10 +224,11 @@ void MessageView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
       ax::mojom::StringAttribute::kRoleDescription,
       l10n_util::GetStringUTF8(IDS_MESSAGE_NOTIFICATION_ACCESSIBLE_NAME));
 
-  if (accessible_name_.empty())
+  if (GetAccessibleName().empty()) {
     node_data->SetNameFrom(ax::mojom::NameFrom::kAttributeExplicitlyEmpty);
+  }
 
-  node_data->SetName(accessible_name_);
+  node_data->SetNameChecked(GetAccessibleName());
 }
 
 bool MessageView::OnMousePressed(const ui::MouseEvent& event) {
@@ -229,6 +244,10 @@ void MessageView::OnMouseReleased(const ui::MouseEvent& event) {
     return;
 
   MessageCenter::Get()->ClickOnNotification(notification_id_);
+}
+
+void MessageView::OnMouseEntered(const ui::MouseEvent& event) {
+  MessageCenter::Get()->OnMessageViewHovered(notification_id_);
 }
 
 bool MessageView::OnKeyPressed(const ui::KeyEvent& event) {
@@ -324,13 +343,22 @@ void MessageView::AddedToWidget() {
 }
 
 void MessageView::OnThemeChanged() {
-  InkDropHostView::OnThemeChanged();
+  View::OnThemeChanged();
+  UpdateNestedBorder();
   UpdateBackgroundPainter();
-  SetNestedBorderIfNecessary();
 }
 
 ui::Layer* MessageView::GetSlideOutLayer() {
-  return is_nested_ ? layer() : GetWidget()->GetLayer();
+  // If a message view is contained in a parent message view it should give up
+  // slide behavior to the parent message view when the parent view is
+  // collapsed.
+  auto* nested_layer = (ShouldParentHandleSlide() && parent_message_view_)
+                           ? parent_message_view_->layer()
+                           : layer();
+  bool is_nested = (ShouldParentHandleSlide() && parent_message_view_)
+                       ? parent_message_view_->is_nested()
+                       : is_nested_;
+  return is_nested ? nested_layer : GetWidget()->GetLayer();
 }
 
 void MessageView::OnSlideStarted() {
@@ -340,8 +368,26 @@ void MessageView::OnSlideStarted() {
 }
 
 void MessageView::OnSlideChanged(bool in_progress) {
+  // crbug/1333664: We need to make sure to disable scrolling while a
+  // notification view is sliding. This is to ensure the notification view can
+  // only move horizontally or vertically at one time.
+  if (scroller_ && !is_sliding_ && slide_out_controller_.GetGestureAmount()) {
+    is_sliding_ = true;
+    scroller_->SetVerticalScrollBarMode(
+        views::ScrollView::ScrollBarMode::kDisabled);
+  }
+
+  if (scroller_ && !in_progress) {
+    is_sliding_ = false;
+    scroller_->SetVerticalScrollBarMode(
+        views::ScrollView::ScrollBarMode::kEnabled);
+  }
+
   for (auto& observer : observers_) {
-    observer.OnSlideChanged(notification_id_);
+    if (in_progress)
+      observer.OnSlideChanged(notification_id_);
+    else
+      observer.OnSlideEnded(notification_id_);
   }
 }
 
@@ -354,15 +400,24 @@ void MessageView::RemoveObserver(MessageView::Observer* observer) {
 }
 
 void MessageView::OnSlideOut() {
+  if (ShouldParentHandleSlide() && parent_message_view_)
+    return parent_message_view_->OnSlideOut();
+
   // The notification will be deleted after slide out, so give observers a
   // chance to handle the notification before fulling sliding out.
   for (auto& observer : observers_)
     observer.OnPreSlideOut(notification_id_);
 
-  MessageCenter::Get()->RemoveNotification(notification_id_,
-                                           true /* by_user */);
+  // Copy the |notification_id| here as calling OnSlideOut() might destroy
+  // |this| but we still want to call RemoveNotification(). Note that the
+  // iteration over |observers_| is still safe and will simply stop.
+  std::string notification_id_copy = notification_id_;
+
   for (auto& observer : observers_)
     observer.OnSlideOut(notification_id_);
+
+  MessageCenter::Get()->RemoveNotification(notification_id_copy,
+                                           true /* by_user */);
 }
 
 void MessageView::OnWillChangeFocus(views::View* before, views::View* now) {}
@@ -447,8 +502,15 @@ void MessageView::OnSnoozeButtonPressed(const ui::Event& event) {
     observer.OnSnoozeButtonPressed(notification_id_);
 }
 
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+base::TimeDelta MessageView::GetBoundsAnimationDuration(
+    const Notification& notification) const {
+  return base::Milliseconds(0);
+}
+#endif
+
 bool MessageView::ShouldShowControlButtons() const {
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // Users on ChromeOS are used to the Settings and Close buttons not being
   // visible at all times, but users on other platforms expect them to be
   // visible.
@@ -462,21 +524,37 @@ bool MessageView::ShouldShowControlButtons() const {
 #endif
 }
 
-void MessageView::SetNestedBorderIfNecessary() {
-  if (is_nested_) {
-    SkColor border_color = GetNativeTheme()->GetSystemColor(
-        ui::NativeTheme::kColorId_UnfocusedBorderColor);
-    SetBorder(views::CreateRoundedRectBorder(
-        kNotificationBorderThickness, kNotificationCornerRadius, border_color));
-  }
+bool MessageView::ShouldParentHandleSlide() const {
+  if (!parent_message_view_)
+    return false;
+
+  return !parent_message_view_->IsExpanded();
 }
 
 void MessageView::UpdateBackgroundPainter() {
-  SkColor background_color = GetNativeTheme()->GetSystemColor(
-      ui::NativeTheme::kColorId_NotificationDefaultBackground);
+  const auto* color_provider = GetColorProvider();
+  SkColor background_color = color_provider->GetColor(
+      is_active_ ? ui::kColorNotificationBackgroundActive
+                 : ui::kColorNotificationBackgroundInactive);
+
   SetBackground(views::CreateBackgroundFromPainter(
       std::make_unique<NotificationBackgroundPainter>(
           top_radius_, bottom_radius_, background_color)));
+}
+
+void MessageView::UpdateNestedBorder() {
+  if (!is_nested_ || !GetWidget())
+    return;
+  SkColor border_color =
+      GetColorProvider()->GetColor(ui::kColorFocusableBorderUnfocused);
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  if (ash::features::IsNotificationsRefreshEnabled())
+    border_color = SK_ColorTRANSPARENT;
+#endif
+
+  SetBorder(views::CreateRoundedRectBorder(
+      kNotificationBorderThickness, kNotificationCornerRadius, border_color));
 }
 
 void MessageView::UpdateControlButtonsVisibility() {
@@ -486,9 +564,22 @@ void MessageView::UpdateControlButtonsVisibility() {
 }
 
 void MessageView::SetDrawBackgroundAsActive(bool active) {
-  background()->SetNativeControlColor(active ? kHoveredButtonBackgroundColor
-                                             : kNotificationBackgroundColor);
-  SchedulePaint();
+  is_active_ = active;
+  UpdateBackgroundPainter();
+}
+
+void MessageView::UpdateControlButtonsVisibilityWithNotification(
+    const Notification& notification) {
+  auto* control_buttons_view = GetControlButtonsView();
+  if (control_buttons_view) {
+    control_buttons_view->ShowButtons(ShouldShowControlButtons());
+    control_buttons_view->ShowSettingsButton(
+        notification.should_show_settings_button());
+    control_buttons_view->ShowSnoozeButton(
+        notification.should_show_snooze_button());
+    control_buttons_view->ShowCloseButton(GetMode() != Mode::PINNED);
+  }
+  UpdateControlButtonsVisibility();
 }
 
 }  // namespace message_center

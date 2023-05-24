@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,8 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/editing/testing/editing_test_base.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 
 namespace blink {
 
@@ -41,7 +42,7 @@ TEST_F(DOMNodeIdsTest, DeletedNode) {
 
   a->remove();
   ThreadState::Current()->CollectAllGarbageForTesting(
-      BlinkGC::kNoHeapPointersOnStack);
+      ThreadState::StackState::kNoHeapPointers);
   EXPECT_EQ(nullptr, DOMNodeIds::NodeForId(id_a));
 }
 
@@ -55,6 +56,22 @@ TEST_F(DOMNodeIdsTest, UnusedID) {
 TEST_F(DOMNodeIdsTest, Null) {
   EXPECT_EQ(kInvalidDOMNodeId, DOMNodeIds::IdForNode(nullptr));
   EXPECT_EQ(nullptr, DOMNodeIds::NodeForId(kInvalidDOMNodeId));
+}
+
+TEST_F(DOMNodeIdsTest, ExistingIdForNode) {
+  SetBodyContent("<div id='a'></div>");
+  Node* a = GetDocument().getElementById("a");
+
+  // Node a does not yet have an ID.
+  EXPECT_EQ(kInvalidDOMNodeId, DOMNodeIds::ExistingIdForNode(a));
+
+  // IdForNode() forces node a to have an ID.
+  DOMNodeId id_a = DOMNodeIds::IdForNode(a);
+  EXPECT_NE(kInvalidDOMNodeId, id_a);
+
+  // Both ExistingIdForNode() and IdForNode() still return the same ID.
+  EXPECT_EQ(id_a, DOMNodeIds::ExistingIdForNode(a));
+  EXPECT_EQ(id_a, DOMNodeIds::IdForNode(a));
 }
 
 }  // namespace blink

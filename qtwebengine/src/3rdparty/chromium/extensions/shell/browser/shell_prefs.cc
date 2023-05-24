@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/json_pref_store.h"
 #include "components/prefs/pref_filter.h"
@@ -18,9 +19,10 @@
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/api/audio/audio_api.h"
 #include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/permissions_manager.h"
 
-#if defined(OS_CHROMEOS)
-#include "chromeos/audio/audio_devices_pref_handler_impl.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chromeos/ash/components/audio/audio_devices_pref_handler_impl.h"
 #endif
 
 using base::FilePath;
@@ -31,8 +33,8 @@ namespace {
 
 void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
   sessions::SessionIdGenerator::RegisterPrefs(registry);
-#if defined(OS_CHROMEOS)
-  chromeos::AudioDevicesPrefHandlerImpl::RegisterPrefs(registry);
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  ash::AudioDevicesPrefHandlerImpl::RegisterPrefs(registry);
 #endif
 }
 
@@ -82,6 +84,7 @@ std::unique_ptr<PrefService> CreateUserPrefService(
   PrefRegistrySyncable* pref_registry = new PrefRegistrySyncable;
   ExtensionPrefs::RegisterProfilePrefs(pref_registry);
   AudioAPI::RegisterUserPrefs(pref_registry);
+  PermissionsManager::RegisterProfilePrefs(pref_registry);
 
   std::unique_ptr<PrefService> pref_service = factory.Create(pref_registry);
   user_prefs::UserPrefs::Set(browser_context, pref_service.get());

@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Paketa është e pavlefshme: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Drejtuar drejt mjedisit</translation>
 <translation id="1196338895211115272">Eksportimi i çelësit privat dështoi.</translation>
+<translation id="132960226125594336">Skedari "<ph name="RELATIVE_PATH" />" nuk mund të ngarkohej për skriptin e përmbajtjes pasi do të kalonte madhësinë maksimale të skriptit ose madhësinë maksimale totale të kriptit të përmbajtjes për shtesën.</translation>
 <translation id="1420684932347524586">Gabim! Krijimi i çelësin privat të rastësishëm RSA dështoi.</translation>
 <translation id="1445572445564823378">Kjo shtesë po e ngadalëson <ph name="PRODUCT_NAME" />. Duhet ta çaktivizosh për të restauruar cilësinë e funksionimit të <ph name="PRODUCT_NAME" />.</translation>
 <translation id="1468038450257740950">WebGL nuk mbështetet.</translation>
@@ -54,13 +55,14 @@
 <translation id="7612608473764576263">Vlera hyrëse për çelësin privat duhet të jetë në një format të vlefshëm (çelësi RSA me enkodim PEM me formatin PKCS#8).</translation>
 <translation id="7939686037314084444">Shtesa nuk u ngarkua siç duhet. Mund të mos jetë në gjendje të interceptojë kërkesat e rrjetit.</translation>
 <translation id="7972881773422714442">Opsionet: <ph name="EXTENSIONOPTIONS_TAG_NAME" /></translation>
-<translation id="8035920974645200807">Drejtuar drejt përdoruesit</translation>
+<translation id="8035920974645200807">Drejtuar për nga përdoruesi</translation>
 <translation id="8047248493720652249">Kjo shtesë nuk arriti ta emërtonte shkarkimin "<ph name="ATTEMPTED_FILENAME" />" sepse një shtesë tjetër (<ph name="EXTENSION_NAME" />) përcaktoi një emër tjetër të skedarit "<ph name="ACTUAL_FILENAME" />".</translation>
 <translation id="8284835137979141223"><ph name="PRODUCT_NAME" /> nga <ph name="VENDOR_NAME" /></translation>
 <translation id="8517576857589387417">Skedari i manifestit mungon ose është i palexueshëm</translation>
 <translation id="8636666366616799973">Paketa është e pavlefshme. Detajet: <ph name="ERROR_MESSAGE" />.</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" po kërkon qasje te një nga pajisjet e tua:</translation>
 <translation id="8885905466771744233">Ekziston tashmë një çelës privat për shtesën e specifikuar. Ripërdore atë çelës ose fshije në fillim.</translation>
+<translation id="9039223174332979184">Administratori i kësaj pajisjeje kërkon që <ph name="EXTENSION_NAME" /> të ketë minimumi versionin 3 të manifestit.</translation>
 <translation id="907841381057066561">Krijimi i një skedari të përkohshëm zip gjatë paketimit dështoi.</translation>
 <translation id="941543339607623937">Çelës privat i pavlefshëm.</translation>
 </translationbundle>

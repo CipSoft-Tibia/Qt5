@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QPair>
 #include <QSize>
@@ -36,18 +11,19 @@ class tst_QPair : public QObject
     Q_OBJECT
 private Q_SLOTS:
     void pairOfReferences();
+    void structuredBindings();
     void testConstexpr();
     void testConversions();
     void taskQTBUG_48780_pairContainingCArray();
-    void testDeducationRules();
+    void testDeductionRules();
 };
 
-class C { C() {} char _[4]; };
-class M { M() {} char _[4]; };
-class P { char _[4]; };
+class C { C() {} ~C() {} Q_DECL_UNUSED_MEMBER char _[4]; };
+class M { M() {} Q_DECL_UNUSED_MEMBER char _[4]; };
+class P { Q_DECL_UNUSED_MEMBER char _[4]; };
 
 QT_BEGIN_NAMESPACE
-Q_DECLARE_TYPEINFO(M, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(M, Q_RELOCATABLE_TYPE);
 Q_DECLARE_TYPEINFO(P, Q_PRIMITIVE_TYPE);
 QT_END_NAMESPACE
 
@@ -62,35 +38,34 @@ typedef QPair<P,C> QPairPC;
 typedef QPair<P,M> QPairPM;
 typedef QPair<P,P> QPairPP;
 
-Q_STATIC_ASSERT( QTypeInfo<QPairCC>::isComplex);
-Q_STATIC_ASSERT( QTypeInfo<QPairCC>::isStatic );
+static_assert( QTypeInfo<QPairCC>::isComplex);
+static_assert( !QTypeInfo<QPairCC>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairCM>::isComplex);
-Q_STATIC_ASSERT( QTypeInfo<QPairCM>::isStatic );
+static_assert( QTypeInfo<QPairCM>::isComplex);
+static_assert( !QTypeInfo<QPairCM>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairCP>::isComplex);
-Q_STATIC_ASSERT( QTypeInfo<QPairCP>::isStatic );
+static_assert( QTypeInfo<QPairCP>::isComplex);
+static_assert( !QTypeInfo<QPairCP>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairMC>::isComplex);
-Q_STATIC_ASSERT( QTypeInfo<QPairMC>::isStatic );
+static_assert( QTypeInfo<QPairMC>::isComplex);
+static_assert( !QTypeInfo<QPairMC>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairMM>::isComplex);
-Q_STATIC_ASSERT(!QTypeInfo<QPairMM>::isStatic );
+static_assert( QTypeInfo<QPairMM>::isComplex);
+static_assert( QTypeInfo<QPairMM>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairMP>::isComplex);
-Q_STATIC_ASSERT(!QTypeInfo<QPairMP>::isStatic );
+static_assert( QTypeInfo<QPairMP>::isComplex);
+static_assert( QTypeInfo<QPairMP>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairPC>::isComplex);
-Q_STATIC_ASSERT( QTypeInfo<QPairPC>::isStatic );
+static_assert( QTypeInfo<QPairPC>::isComplex);
+static_assert( !QTypeInfo<QPairPC>::isRelocatable );
 
-Q_STATIC_ASSERT( QTypeInfo<QPairPM>::isComplex);
-Q_STATIC_ASSERT(!QTypeInfo<QPairPM>::isStatic );
+static_assert( QTypeInfo<QPairPM>::isComplex);
+static_assert( QTypeInfo<QPairPM>::isRelocatable );
 
-Q_STATIC_ASSERT(!QTypeInfo<QPairPP>::isComplex);
-Q_STATIC_ASSERT(!QTypeInfo<QPairPP>::isStatic );
+static_assert(!QTypeInfo<QPairPP>::isComplex);
+static_assert( QTypeInfo<QPairPP>::isRelocatable );
 
-Q_STATIC_ASSERT(!QTypeInfo<QPairPP>::isDummy  );
-Q_STATIC_ASSERT(!QTypeInfo<QPairPP>::isPointer);
+static_assert(!std::is_pointer_v<QPairPP>);
 
 
 void tst_QPair::pairOfReferences()
@@ -122,17 +97,67 @@ void tst_QPair::pairOfReferences()
     QCOMPARE(p.second, QLatin1String("World"));
 }
 
+void tst_QPair::structuredBindings()
+{
+    using PV = QPair<int, QString>;
+    using PR = QPair<int&, const QString&>;
+
+    {
+        PV pv = {42, "Hello"};
+        PR pr = {pv.first, pv.second};
+
+        auto [fv, sv] = pv;
+
+        fv = 24;
+        sv = "World";
+        QCOMPARE(fv, 24);
+        QCOMPARE(sv, "World");
+        QCOMPARE(pv.first, 42);
+        QCOMPARE(pv.second, "Hello");
+
+        auto [fr, sr] = pr;
+
+        fr = 2424;
+        // sr = "World"; // const
+        QCOMPARE(fr, 2424);
+        QCOMPARE(pv.first, 2424);
+    }
+
+    {
+        PV pv = {42, "Hello"};
+        PR pr = {pv.first, pv.second};
+
+        auto& [fv, sv] = pv;
+
+        fv = 24;
+        sv = "World";
+        QCOMPARE(fv, 24);
+        QCOMPARE(sv, "World");
+        QCOMPARE(pv.first, 24);
+        QCOMPARE(pv.second, "World");
+
+        auto& [fr, sr] = pr;
+
+        fr = 4242;
+        //sr = "2World"; // const
+
+        QCOMPARE(fr, 4242);
+        QCOMPARE(pr.first, 4242);
+        QCOMPARE(pv.first, 4242);
+    }
+}
+
 void tst_QPair::testConstexpr()
 {
-    Q_CONSTEXPR QPair<int, double> pID = qMakePair(0, 0.0);
+    constexpr QPair<int, double> pID = qMakePair(0, 0.0);
     Q_UNUSED(pID);
 
-    Q_CONSTEXPR QPair<double, double> pDD  = qMakePair(0.0, 0.0);
-    Q_CONSTEXPR QPair<double, double> pDD2 = qMakePair(0, 0.0);   // involes (rvalue) conversion ctor
-    Q_CONSTEXPR bool equal = pDD2 == pDD;
+    constexpr QPair<double, double> pDD  = qMakePair(0.0, 0.0);
+    constexpr QPair<double, double> pDD2 = qMakePair(0, 0.0);   // involes (rvalue) conversion ctor
+    constexpr bool equal = pDD2 == pDD;
     QVERIFY(equal);
 
-    Q_CONSTEXPR QPair<QSize, int> pSI = qMakePair(QSize(4, 5), 6);
+    constexpr QPair<QSize, int> pSI = qMakePair(QSize(4, 5), 6);
     Q_UNUSED(pSI);
 }
 
@@ -203,9 +228,9 @@ void tst_QPair::taskQTBUG_48780_pairContainingCArray()
     Q_UNUSED(pair);
 }
 
-void tst_QPair::testDeducationRules()
+void tst_QPair::testDeductionRules()
 {
-#if defined(__cpp_deduction_guides) && __cpp_deduction_guides >= 201606
+#if defined(__cpp_deduction_guides) && __cpp_deduction_guides >= 201907L
     QPair p1{1, 2};
     static_assert(std::is_same<decltype(p1)::first_type, decltype(1)>::value);
     static_assert(std::is_same<decltype(p1)::second_type, decltype(2)>::value);
@@ -224,7 +249,7 @@ void tst_QPair::testDeducationRules()
     QCOMPARE(p3.first, "string");
     QCOMPARE(p3.second, 2);
 #else
-    QSKIP("Unsupported");
+    QSKIP("Unsupported (requires C++20's CTAD for aliases)");
 #endif
 }
 

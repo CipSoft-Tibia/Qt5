@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "browser.h"
 #include "browserwindow.h"
@@ -55,7 +8,6 @@
 #include "webview.h"
 #include <QApplication>
 #include <QCloseEvent>
-#include <QDesktopWidget>
 #include <QEvent>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -66,23 +18,15 @@
 #include <QStatusBar>
 #include <QToolBar>
 #include <QVBoxLayout>
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
 #include <QWebEngineFindTextResult>
-#endif
 #include <QWebEngineProfile>
+
+using namespace Qt::StringLiterals;
 
 BrowserWindow::BrowserWindow(Browser *browser, QWebEngineProfile *profile, bool forDevTools)
     : m_browser(browser)
     , m_profile(profile)
     , m_tabWidget(new TabWidget(profile, this))
-    , m_progressBar(nullptr)
-    , m_historyBackAction(nullptr)
-    , m_historyForwardAction(nullptr)
-    , m_stopAction(nullptr)
-    , m_reloadAction(nullptr)
-    , m_stopReloadAction(nullptr)
-    , m_urlLineEdit(nullptr)
-    , m_favAction(nullptr)
 {
     setAttribute(Qt::WA_DeleteOnClose, true);
     setFocusPolicy(Qt::ClickFocus);
@@ -108,7 +52,7 @@ BrowserWindow::BrowserWindow(Browser *browser, QWebEngineProfile *profile, bool 
 
         m_progressBar->setMaximumHeight(1);
         m_progressBar->setTextVisible(false);
-        m_progressBar->setStyleSheet(QStringLiteral("QProgressBar {border: 0px} QProgressBar::chunk {background-color: #da4453}"));
+        m_progressBar->setStyleSheet(u"QProgressBar {border: 0px} QProgressBar::chunk {background-color: #da4453}"_s);
 
         layout->addWidget(m_progressBar);
     }
@@ -132,9 +76,7 @@ BrowserWindow::BrowserWindow(Browser *browser, QWebEngineProfile *profile, bool 
         connect(m_urlLineEdit, &QLineEdit::returnPressed, [this]() {
             m_tabWidget->setUrl(QUrl::fromUserInput(m_urlLineEdit->text()));
         });
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
         connect(m_tabWidget, &TabWidget::findTextFinished, this, &BrowserWindow::handleFindTextFinished);
-#endif
 
         QAction *focusUrlLineEditAction = new QAction(this);
         addAction(focusUrlLineEditAction);
@@ -158,7 +100,11 @@ QSize BrowserWindow::sizeHint() const
 QMenu *BrowserWindow::createFileMenu(TabWidget *tabWidget)
 {
     QMenu *fileMenu = new QMenu(tr("&File"));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
+    fileMenu->addAction(tr("&New Window"), QKeySequence::New, this, &BrowserWindow::handleNewWindowTriggered);
+#else
     fileMenu->addAction(tr("&New Window"), this, &BrowserWindow::handleNewWindowTriggered, QKeySequence::New);
+#endif
     fileMenu->addAction(tr("New &Incognito Window"), this, &BrowserWindow::handleNewIncognitoWindowTriggered);
 
     QAction *newTabAction = new QAction(tr("New &Tab"), this);
@@ -169,7 +115,11 @@ QMenu *BrowserWindow::createFileMenu(TabWidget *tabWidget)
     });
     fileMenu->addAction(newTabAction);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
+    fileMenu->addAction(tr("&Open File..."), QKeySequence::Open, this, &BrowserWindow::handleFileOpenTriggered);
+#else
     fileMenu->addAction(tr("&Open File..."), this, &BrowserWindow::handleFileOpenTriggered, QKeySequence::Open);
+#endif
     fileMenu->addSeparator();
 
     QAction *closeTabAction = new QAction(tr("&Close Tab"), this);
@@ -310,13 +260,21 @@ QMenu *BrowserWindow::createWindowMenu(TabWidget *tabWidget)
     previousTabAction->setShortcuts(shortcuts);
     connect(previousTabAction, &QAction::triggered, tabWidget, &TabWidget::previousTab);
 
-    connect(menu, &QMenu::aboutToShow, [this, menu, nextTabAction, previousTabAction]() {
+    QAction *inspectorAction = new QAction(tr("Open inspector in new window"), this);
+    shortcuts.clear();
+    shortcuts.append(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+    inspectorAction->setShortcuts(shortcuts);
+    connect(inspectorAction, &QAction::triggered, [this]() { emit currentTab()->devToolsRequested(currentTab()->page()); });
+
+    connect(menu, &QMenu::aboutToShow, [this, menu, nextTabAction, previousTabAction, inspectorAction]() {
         menu->clear();
         menu->addAction(nextTabAction);
         menu->addAction(previousTabAction);
         menu->addSeparator();
+        menu->addAction(inspectorAction);
+        menu->addSeparator();
 
-        QVector<BrowserWindow*> windows = m_browser->windows();
+        QList<BrowserWindow*> windows = m_browser->windows();
         int index(-1);
         for (auto window : windows) {
             QAction *action = menu->addAction(window->windowTitle(), this, &BrowserWindow::handleShowWindowTriggered);
@@ -336,6 +294,20 @@ QMenu *BrowserWindow::createHelpMenu()
     return helpMenu;
 }
 
+static bool isBackspace(const QKeySequence &k)
+{
+    return (k[0].key() & Qt::Key_unknown) == Qt::Key_Backspace;
+}
+
+// Chromium already handles navigate on backspace when appropriate.
+static QList<QKeySequence> removeBackspace(QList<QKeySequence> keys)
+{
+    const auto it = std::find_if(keys.begin(), keys.end(), isBackspace);
+    if (it != keys.end())
+        keys.erase(it);
+    return keys;
+}
+
 QToolBar *BrowserWindow::createToolBar()
 {
     QToolBar *navigationBar = new QToolBar(tr("Navigation"));
@@ -343,19 +315,12 @@ QToolBar *BrowserWindow::createToolBar()
     navigationBar->toggleViewAction()->setEnabled(false);
 
     m_historyBackAction = new QAction(this);
-    QList<QKeySequence> backShortcuts = QKeySequence::keyBindings(QKeySequence::Back);
-    for (auto it = backShortcuts.begin(); it != backShortcuts.end();) {
-        // Chromium already handles navigate on backspace when appropriate.
-        if ((*it)[0] == Qt::Key_Backspace)
-            it = backShortcuts.erase(it);
-        else
-            ++it;
-    }
+    auto backShortcuts = removeBackspace(QKeySequence::keyBindings(QKeySequence::Back));
     // For some reason Qt doesn't bind the dedicated Back key to Back.
     backShortcuts.append(QKeySequence(Qt::Key_Back));
     m_historyBackAction->setShortcuts(backShortcuts);
     m_historyBackAction->setIconVisibleInMenu(false);
-    m_historyBackAction->setIcon(QIcon(QStringLiteral(":go-previous.png")));
+    m_historyBackAction->setIcon(QIcon(u":go-previous.png"_s));
     m_historyBackAction->setToolTip(tr("Go back in history"));
     connect(m_historyBackAction, &QAction::triggered, [this]() {
         m_tabWidget->triggerWebPageAction(QWebEnginePage::Back);
@@ -363,17 +328,11 @@ QToolBar *BrowserWindow::createToolBar()
     navigationBar->addAction(m_historyBackAction);
 
     m_historyForwardAction = new QAction(this);
-    QList<QKeySequence> fwdShortcuts = QKeySequence::keyBindings(QKeySequence::Forward);
-    for (auto it = fwdShortcuts.begin(); it != fwdShortcuts.end();) {
-        if (((*it)[0] & Qt::Key_unknown) == Qt::Key_Backspace)
-            it = fwdShortcuts.erase(it);
-        else
-            ++it;
-    }
+    auto fwdShortcuts = removeBackspace(QKeySequence::keyBindings(QKeySequence::Forward));
     fwdShortcuts.append(QKeySequence(Qt::Key_Forward));
     m_historyForwardAction->setShortcuts(fwdShortcuts);
     m_historyForwardAction->setIconVisibleInMenu(false);
-    m_historyForwardAction->setIcon(QIcon(QStringLiteral(":go-next.png")));
+    m_historyForwardAction->setIcon(QIcon(u":go-next.png"_s));
     m_historyForwardAction->setToolTip(tr("Go forward in history"));
     connect(m_historyForwardAction, &QAction::triggered, [this]() {
         m_tabWidget->triggerWebPageAction(QWebEnginePage::Forward);
@@ -393,12 +352,11 @@ QToolBar *BrowserWindow::createToolBar()
     navigationBar->addWidget(m_urlLineEdit);
 
     auto downloadsAction = new QAction(this);
-    downloadsAction->setIcon(QIcon(QStringLiteral(":go-bottom.png")));
+    downloadsAction->setIcon(QIcon(u":go-bottom.png"_s));
     downloadsAction->setToolTip(tr("Show downloads"));
     navigationBar->addAction(downloadsAction);
-    connect(downloadsAction, &QAction::triggered, [this]() {
-        m_browser->downloadManagerWidget().show();
-    });
+    connect(downloadsAction, &QAction::triggered,
+            &m_browser->downloadManagerWidget(), &QWidget::show);
 
     return navigationBar;
 }
@@ -466,14 +424,7 @@ void BrowserWindow::handleFindActionTriggered()
                                            m_lastSearch, &ok);
     if (ok && !search.isEmpty()) {
         m_lastSearch = search;
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
         currentTab()->findText(m_lastSearch);
-#else
-        currentTab()->findText(m_lastSearch, 0, [this](bool found) {
-            if (!found)
-                statusBar()->showMessage(tr("\"%1\" not found.").arg(m_lastSearch));
-        });
-#endif
     }
 }
 
@@ -505,8 +456,8 @@ WebView *BrowserWindow::currentTab() const
 
 void BrowserWindow::handleWebViewLoadProgress(int progress)
 {
-    static QIcon stopIcon(QStringLiteral(":process-stop.png"));
-    static QIcon reloadIcon(QStringLiteral(":view-refresh.png"));
+    static QIcon stopIcon(u":process-stop.png"_s);
+    static QIcon reloadIcon(u":view-refresh.png"_s);
 
     if (0 < progress && progress < 100) {
         m_stopReloadAction->setData(QWebEnginePage::Stop);
@@ -525,7 +476,7 @@ void BrowserWindow::handleShowWindowTriggered()
 {
     if (QAction *action = qobject_cast<QAction*>(sender())) {
         int offset = action->data().toInt();
-        QVector<BrowserWindow*> windows = m_browser->windows();
+        QList<BrowserWindow*> windows = m_browser->windows();
         windows.at(offset)->activateWindow();
         windows.at(offset)->currentTab()->setFocus();
     }
@@ -537,7 +488,6 @@ void BrowserWindow::handleDevToolsRequested(QWebEnginePage *source)
     source->triggerAction(QWebEnginePage::InspectElement);
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
 void BrowserWindow::handleFindTextFinished(const QWebEngineFindTextResult &result)
 {
     if (result.numberOfMatches() == 0) {
@@ -548,4 +498,3 @@ void BrowserWindow::handleFindTextFinished(const QWebEngineFindTextResult &resul
                                                                QString::number(result.numberOfMatches())));
     }
 }
-#endif

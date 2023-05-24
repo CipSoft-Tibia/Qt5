@@ -5,17 +5,21 @@
 #ifndef V8_OBJECTS_NAME_INL_H_
 #define V8_OBJECTS_NAME_INL_H_
 
-#include "src/objects/name.h"
-
+#include "src/base/logging.h"
 #include "src/heap/heap-write-barrier-inl.h"
 #include "src/objects/map-inl.h"
+#include "src/objects/name.h"
 #include "src/objects/primitive-heap-object-inl.h"
+#include "src/objects/string-forwarding-table.h"
+#include "src/objects/string-inl.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
 
 namespace v8 {
 namespace internal {
+
+#include "torque-generated/src/objects/name-tq-inl.inc"
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(Name)
 TQ_OBJECT_CONSTRUCTORS_IMPL(Symbol)
@@ -54,10 +58,11 @@ void Symbol::set_is_private_name() {
 }
 
 DEF_GETTER(Name, IsUniqueName, bool) {
-  uint32_t type = map(isolate).instance_type();
+  uint32_t type = map(cage_base).instance_type();
   bool result = (type & (kIsNotStringMask | kIsNotInternalizedMask)) !=
                 (kStringTag | kNotInternalizedTag);
   SLOW_DCHECK(result == HeapObject::IsUniqueName());
+  DCHECK_IMPLIES(result, HasHashCode());
   return result;
 }
 
@@ -80,44 +85,181 @@ bool Name::Equals(Isolate* isolate, Handle<Name> one, Handle<Name> two) {
                             Handle<String>::cast(two));
 }
 
-bool Name::IsHashFieldComputed(uint32_t field) {
-  return (field & kHashNotComputedMask) == 0;
+// static
+bool Name::IsHashFieldComputed(uint32_t raw_hash_field) {
+  return (raw_hash_field & kHashNotComputedMask) == 0;
 }
 
-bool Name::HasHashCode() { return IsHashFieldComputed(hash_field()); }
+// static
+bool Name::IsHash(uint32_t raw_hash_field) {
+  return HashFieldTypeBits::decode(raw_hash_field) == HashFieldType::kHash;
+}
 
-uint32_t Name::Hash() {
+// static
+bool Name::IsIntegerIndex(uint32_t raw_hash_field) {
+  return HashFieldTypeBits::decode(raw_hash_field) ==
+         HashFieldType::kIntegerIndex;
+}
+
+// static
+bool Name::IsForwardingIndex(uint32_t raw_hash_field) {
+  return HashFieldTypeBits::decode(raw_hash_field) ==
+         HashFieldType::kForwardingIndex;
+}
+
+// static
+bool Name::IsInternalizedForwardingIndex(uint32_t raw_hash_field) {
+  return HashFieldTypeBits::decode(raw_hash_field) ==
+             HashFieldType::kForwardingIndex &&
+         IsInternalizedForwardingIndexBit::decode(raw_hash_field);
+}
+
+// static
+bool Name::IsExternalForwardingIndex(uint32_t raw_hash_field) {
+  return HashFieldTypeBits::decode(raw_hash_field) ==
+             HashFieldType::kForwardingIndex &&
+         IsExternalForwardingIndexBit::decode(raw_hash_field);
+}
+
+// static
+uint32_t Name::CreateHashFieldValue(uint32_t hash, HashFieldType type) {
+  DCHECK_NE(type, HashFieldType::kForwardingIndex);
+  return HashBits::encode(hash & HashBits::kMax) |
+         HashFieldTypeBits::encode(type);
+}
+// static
+uint32_t Name::CreateInternalizedForwardingIndex(uint32_t index) {
+  return ForwardingIndexValueBits::encode(index) |
+         IsExternalForwardingIndexBit::encode(false) |
+         IsInternalizedForwardingIndexBit::encode(true) |
+         HashFieldTypeBits::encode(HashFieldType::kForwardingIndex);
+}
+
+// static
+uint32_t Name::CreateExternalForwardingIndex(uint32_t index) {
+  return ForwardingIndexValueBits::encode(index) |
+         IsExternalForwardingIndexBit::encode(true) |
+         IsInternalizedForwardingIndexBit::encode(false) |
+         HashFieldTypeBits::encode(HashFieldType::kForwardingIndex);
+}
+
+bool Name::HasHashCode() const {
+  uint32_t field = raw_hash_field();
+  return IsHashFieldComputed(field) || IsForwardingIndex(field);
+}
+bool Name::HasForwardingIndex(AcquireLoadTag) const {
+  return IsForwardingIndex(raw_hash_field(kAcquireLoad));
+}
+bool Name::HasInternalizedForwardingIndex(AcquireLoadTag) const {
+  return IsInternalizedForwardingIndex(raw_hash_field(kAcquireLoad));
+}
+bool Name::HasExternalForwardingIndex(AcquireLoadTag) const {
+  return IsExternalForwardingIndex(raw_hash_field(kAcquireLoad));
+}
+
+uint32_t Name::GetRawHashFromForwardingTable(uint32_t raw_hash) const {
+  DCHECK(IsForwardingIndex(raw_hash));
+  // TODO(pthier): Add parameter for isolate so we don't need to calculate it.
+  Isolate* isolate = GetIsolateFromWritableObject(*this);
+  const int index = ForwardingIndexValueBits::decode(raw_hash);
+  return isolate->string_forwarding_table()->GetRawHash(isolate, index);
+}
+
+uint32_t Name::EnsureRawHash() {
   // Fast case: has hash code already been computed?
-  uint32_t field = hash_field();
-  if (IsHashFieldComputed(field)) return field >> kHashShift;
+  uint32_t field = raw_hash_field(kAcquireLoad);
+  if (IsHashFieldComputed(field)) return field;
+  // The computed hash might be stored in the forwarding table.
+  if (V8_UNLIKELY(IsForwardingIndex(field))) {
+    return GetRawHashFromForwardingTable(field);
+  }
   // Slow case: compute hash code and set it. Has to be a string.
-  return String::cast(*this).ComputeAndSetHash();
+  return String::cast(*this).ComputeAndSetRawHash();
+}
+
+uint32_t Name::EnsureRawHash(
+    const SharedStringAccessGuardIfNeeded& access_guard) {
+  // Fast case: has hash code already been computed?
+  uint32_t field = raw_hash_field(kAcquireLoad);
+  if (IsHashFieldComputed(field)) return field;
+  // The computed hash might be stored in the forwarding table.
+  if (V8_UNLIKELY(IsForwardingIndex(field))) {
+    return GetRawHashFromForwardingTable(field);
+  }
+  // Slow case: compute hash code and set it. Has to be a string.
+  return String::cast(*this).ComputeAndSetRawHash(access_guard);
+}
+
+uint32_t Name::RawHash() {
+  uint32_t field = raw_hash_field(kAcquireLoad);
+  if (V8_UNLIKELY(IsForwardingIndex(field))) {
+    return GetRawHashFromForwardingTable(field);
+  }
+  return field;
+}
+
+uint32_t Name::EnsureHash() { return HashBits::decode(EnsureRawHash()); }
+
+uint32_t Name::EnsureHash(const SharedStringAccessGuardIfNeeded& access_guard) {
+  return HashBits::decode(EnsureRawHash(access_guard));
+}
+
+void Name::set_raw_hash_field_if_empty(uint32_t hash) {
+  uint32_t result = base::AsAtomic32::Release_CompareAndSwap(
+      reinterpret_cast<uint32_t*>(FIELD_ADDR(*this, kRawHashFieldOffset)),
+      kEmptyHashField, hash);
+  USE(result);
+  // CAS can only fail if the string is shared or we use the forwarding table
+  // for all strings and the hash was already set (by another thread) or it is
+  // a forwarding index (that overwrites the previous hash).
+  // In all cases we don't want overwrite the old value, so we don't handle the
+  // failure case.
+  DCHECK_IMPLIES(result != kEmptyHashField,
+                 (String::cast(*this).IsShared() ||
+                  v8_flags.always_use_string_forwarding_table) &&
+                     (result == hash || IsForwardingIndex(hash)));
 }
 
 uint32_t Name::hash() const {
-  uint32_t field = hash_field();
-  DCHECK(IsHashFieldComputed(field));
-  return field >> kHashShift;
+  uint32_t field = raw_hash_field(kAcquireLoad);
+  if (V8_UNLIKELY(!IsHashFieldComputed(field))) {
+    DCHECK(IsForwardingIndex(field));
+    return HashBits::decode(GetRawHashFromForwardingTable(field));
+  }
+  return HashBits::decode(field);
+}
+
+bool Name::TryGetHash(uint32_t* hash) const {
+  uint32_t field = raw_hash_field(kAcquireLoad);
+  if (IsHashFieldComputed(field)) {
+    *hash = HashBits::decode(field);
+    return true;
+  }
+  if (V8_UNLIKELY(IsForwardingIndex(field))) {
+    *hash = HashBits::decode(GetRawHashFromForwardingTable(field));
+    return true;
+  }
+  return false;
 }
 
 DEF_GETTER(Name, IsInterestingSymbol, bool) {
-  return IsSymbol(isolate) && Symbol::cast(*this).is_interesting_symbol();
+  return IsSymbol(cage_base) && Symbol::cast(*this).is_interesting_symbol();
 }
 
 DEF_GETTER(Name, IsPrivate, bool) {
-  return this->IsSymbol(isolate) && Symbol::cast(*this).is_private();
+  return this->IsSymbol(cage_base) && Symbol::cast(*this).is_private();
 }
 
 DEF_GETTER(Name, IsPrivateName, bool) {
   bool is_private_name =
-      this->IsSymbol(isolate) && Symbol::cast(*this).is_private_name();
+      this->IsSymbol(cage_base) && Symbol::cast(*this).is_private_name();
   DCHECK_IMPLIES(is_private_name, IsPrivate());
   return is_private_name;
 }
 
 DEF_GETTER(Name, IsPrivateBrand, bool) {
   bool is_private_brand =
-      this->IsSymbol(isolate) && Symbol::cast(*this).is_private_brand();
+      this->IsSymbol(cage_base) && Symbol::cast(*this).is_private_brand();
   DCHECK_IMPLIES(is_private_brand, IsPrivateName());
   return is_private_brand;
 }
@@ -131,8 +273,8 @@ bool Name::AsIntegerIndex(size_t* index) {
 }
 
 // static
-bool Name::ContainsCachedArrayIndex(uint32_t hash) {
-  return (hash & Name::kDoesNotContainCachedArrayIndexMask) == 0;
+bool Name::ContainsCachedArrayIndex(uint32_t raw_hash_field) {
+  return (raw_hash_field & Name::kDoesNotContainCachedArrayIndexMask) == 0;
 }
 
 }  // namespace internal

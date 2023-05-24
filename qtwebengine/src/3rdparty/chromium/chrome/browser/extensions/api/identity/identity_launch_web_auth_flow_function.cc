@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/stringprintf.h"
 #include "chrome/browser/extensions/api/identity/identity_constants.h"
 #include "chrome/browser/profiles/profile.h"
@@ -19,9 +20,51 @@ namespace {
 static const char kChromiumDomainRedirectUrlPattern[] =
     "https://%s.chromiumapp.org/";
 
+IdentityLaunchWebAuthFlowFunction::Error WebAuthFlowFailureToError(
+    WebAuthFlow::Failure failure) {
+  switch (failure) {
+    case WebAuthFlow::WINDOW_CLOSED:
+    case WebAuthFlow::USER_NAVIGATED_AWAY:
+      return IdentityLaunchWebAuthFlowFunction::Error::kUserRejected;
+    case WebAuthFlow::INTERACTION_REQUIRED:
+      return IdentityLaunchWebAuthFlowFunction::Error::kInteractionRequired;
+    case WebAuthFlow::LOAD_FAILED:
+      return IdentityLaunchWebAuthFlowFunction::Error::kPageLoadFailure;
+    default:
+      NOTREACHED() << "Unexpected error from web auth flow: " << failure;
+      return IdentityLaunchWebAuthFlowFunction::Error::kUnexpectedError;
+  }
+}
+
+std::string ErrorToString(IdentityLaunchWebAuthFlowFunction::Error error) {
+  switch (error) {
+    case IdentityLaunchWebAuthFlowFunction::Error::kNone:
+      NOTREACHED()
+          << "This function is not expected to be called with no error";
+      return std::string();
+    case IdentityLaunchWebAuthFlowFunction::Error::kOffTheRecord:
+      return identity_constants::kOffTheRecord;
+    case IdentityLaunchWebAuthFlowFunction::Error::kUserRejected:
+      return identity_constants::kUserRejected;
+    case IdentityLaunchWebAuthFlowFunction::Error::kInteractionRequired:
+      return identity_constants::kInteractionRequired;
+    case IdentityLaunchWebAuthFlowFunction::Error::kPageLoadFailure:
+      return identity_constants::kPageLoadFailure;
+    case IdentityLaunchWebAuthFlowFunction::Error::kUnexpectedError:
+      return identity_constants::kInvalidRedirect;
+  }
+}
+
+void RecordHistogramFunctionResult(
+    IdentityLaunchWebAuthFlowFunction::Error error) {
+  base::UmaHistogramEnumeration("Signin.Extensions.LaunchWebAuthFlowResult",
+                                error);
+}
+
 }  // namespace
 
-IdentityLaunchWebAuthFlowFunction::IdentityLaunchWebAuthFlowFunction() {}
+IdentityLaunchWebAuthFlowFunction::IdentityLaunchWebAuthFlowFunction() =
+    default;
 
 IdentityLaunchWebAuthFlowFunction::~IdentityLaunchWebAuthFlowFunction() {
   if (auth_flow_)
@@ -31,11 +74,14 @@ IdentityLaunchWebAuthFlowFunction::~IdentityLaunchWebAuthFlowFunction() {
 ExtensionFunction::ResponseAction IdentityLaunchWebAuthFlowFunction::Run() {
   Profile* profile = Profile::FromBrowserContext(browser_context());
   if (profile->IsOffTheRecord()) {
-    return RespondNow(Error(identity_constants::kOffTheRecord));
+    Error error = Error::kOffTheRecord;
+
+    RecordHistogramFunctionResult(error);
+    return RespondNow(ExtensionFunction::Error(ErrorToString(error)));
   }
 
   std::unique_ptr<api::identity::LaunchWebAuthFlow::Params> params(
-      api::identity::LaunchWebAuthFlow::Params::Create(*args_));
+      api::identity::LaunchWebAuthFlow::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params.get());
 
   GURL auth_url(params->details.url);
@@ -49,8 +95,12 @@ ExtensionFunction::ResponseAction IdentityLaunchWebAuthFlowFunction::Run() {
 
   AddRef();  // Balanced in OnAuthFlowSuccess/Failure.
 
-  auth_flow_.reset(new WebAuthFlow(this, profile, auth_url, mode,
-                                   WebAuthFlow::LAUNCH_WEB_AUTH_FLOW));
+  auth_flow_ = std::make_unique<WebAuthFlow>(this, profile, auth_url, mode,
+                                             WebAuthFlow::LAUNCH_WEB_AUTH_FLOW);
+  // An extension might call `launchWebAuthFlow()` with any URL. Add an infobar
+  // to attribute displayed URL to the extension.
+  auth_flow_->SetShouldShowInfoBar(extension()->name());
+
   auth_flow_->Start();
   return RespondLater();
 }
@@ -70,23 +120,10 @@ void IdentityLaunchWebAuthFlowFunction::InitFinalRedirectURLPrefix(
 
 void IdentityLaunchWebAuthFlowFunction::OnAuthFlowFailure(
     WebAuthFlow::Failure failure) {
-  std::string error;
-  switch (failure) {
-    case WebAuthFlow::WINDOW_CLOSED:
-      error = identity_constants::kUserRejected;
-      break;
-    case WebAuthFlow::INTERACTION_REQUIRED:
-      error = identity_constants::kInteractionRequired;
-      break;
-    case WebAuthFlow::LOAD_FAILED:
-      error = identity_constants::kPageLoadFailure;
-      break;
-    default:
-      NOTREACHED() << "Unexpected error from web auth flow: " << failure;
-      error = identity_constants::kInvalidRedirect;
-      break;
-  }
-  Respond(Error(std::move(error)));
+  Error error = WebAuthFlowFailureToError(failure);
+
+  RecordHistogramFunctionResult(error);
+  RespondWithError(ErrorToString(error));
   if (auth_flow_)
     auth_flow_.release()->DetachDelegateAndDelete();
   Release();  // Balanced in Run.
@@ -95,7 +132,9 @@ void IdentityLaunchWebAuthFlowFunction::OnAuthFlowFailure(
 void IdentityLaunchWebAuthFlowFunction::OnAuthFlowURLChange(
     const GURL& redirect_url) {
   if (redirect_url.GetWithEmptyPath() == final_url_prefix_) {
-    Respond(OneArgument(std::make_unique<base::Value>(redirect_url.spec())));
+    RecordHistogramFunctionResult(
+        IdentityLaunchWebAuthFlowFunction::Error::kNone);
+    Respond(WithArguments(redirect_url.spec()));
     if (auth_flow_)
       auth_flow_.release()->DetachDelegateAndDelete();
     Release();  // Balanced in RunAsync.

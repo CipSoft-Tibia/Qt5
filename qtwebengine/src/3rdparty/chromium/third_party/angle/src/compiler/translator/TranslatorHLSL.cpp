@@ -7,25 +7,26 @@
 #include "compiler/translator/TranslatorHLSL.h"
 
 #include "compiler/translator/OutputHLSL.h"
-#include "compiler/translator/tree_ops/AddDefaultReturnStatements.h"
-#include "compiler/translator/tree_ops/ArrayReturnValueToOutParameter.h"
-#include "compiler/translator/tree_ops/BreakVariableAliasingInInnerLoops.h"
-#include "compiler/translator/tree_ops/ExpandIntegerPowExpressions.h"
-#include "compiler/translator/tree_ops/PruneEmptyCases.h"
 #include "compiler/translator/tree_ops/RemoveDynamicIndexing.h"
-#include "compiler/translator/tree_ops/RewriteAtomicFunctionExpressions.h"
-#include "compiler/translator/tree_ops/RewriteElseBlocks.h"
-#include "compiler/translator/tree_ops/RewriteExpressionsWithShaderStorageBlock.h"
 #include "compiler/translator/tree_ops/RewriteTexelFetchOffset.h"
-#include "compiler/translator/tree_ops/RewriteUnaryMinusOperatorInt.h"
-#include "compiler/translator/tree_ops/SeparateArrayConstructorStatements.h"
-#include "compiler/translator/tree_ops/SeparateArrayInitialization.h"
-#include "compiler/translator/tree_ops/SeparateDeclarations.h"
-#include "compiler/translator/tree_ops/SeparateExpressionsReturningArrays.h"
 #include "compiler/translator/tree_ops/SimplifyLoopConditions.h"
 #include "compiler/translator/tree_ops/SplitSequenceOperator.h"
-#include "compiler/translator/tree_ops/UnfoldShortCircuitToIf.h"
-#include "compiler/translator/tree_ops/WrapSwitchStatementsInBlocks.h"
+#include "compiler/translator/tree_ops/d3d/AddDefaultReturnStatements.h"
+#include "compiler/translator/tree_ops/d3d/AggregateAssignArraysInSSBOs.h"
+#include "compiler/translator/tree_ops/d3d/AggregateAssignStructsInSSBOs.h"
+#include "compiler/translator/tree_ops/d3d/ArrayReturnValueToOutParameter.h"
+#include "compiler/translator/tree_ops/d3d/BreakVariableAliasingInInnerLoops.h"
+#include "compiler/translator/tree_ops/d3d/ExpandIntegerPowExpressions.h"
+#include "compiler/translator/tree_ops/d3d/RecordUniformBlocksWithLargeArrayMember.h"
+#include "compiler/translator/tree_ops/d3d/RewriteAtomicFunctionExpressions.h"
+#include "compiler/translator/tree_ops/d3d/RewriteElseBlocks.h"
+#include "compiler/translator/tree_ops/d3d/RewriteExpressionsWithShaderStorageBlock.h"
+#include "compiler/translator/tree_ops/d3d/RewriteUnaryMinusOperatorInt.h"
+#include "compiler/translator/tree_ops/d3d/SeparateArrayConstructorStatements.h"
+#include "compiler/translator/tree_ops/d3d/SeparateArrayInitialization.h"
+#include "compiler/translator/tree_ops/d3d/SeparateExpressionsReturningArrays.h"
+#include "compiler/translator/tree_ops/d3d/UnfoldShortCircuitToIf.h"
+#include "compiler/translator/tree_ops/d3d/WrapSwitchStatementsInBlocks.h"
 #include "compiler/translator/tree_util/IntermNodePatternMatcher.h"
 
 namespace sh
@@ -36,9 +37,25 @@ TranslatorHLSL::TranslatorHLSL(sh::GLenum type, ShShaderSpec spec, ShShaderOutpu
 {}
 
 bool TranslatorHLSL::translate(TIntermBlock *root,
-                               ShCompileOptions compileOptions,
+                               const ShCompileOptions &compileOptions,
                                PerformanceDiagnostics *perfDiagnostics)
 {
+    // A few transformations leave the tree in an inconsistent state.  For example, when unfolding
+    // the short-circuit in the following function:
+    //
+    //     mediump float f(float a) { return a > 0 ? 0.0 : 1.0; }
+    //
+    // a temp variable is created to hold the result of the expression.  Currently the precision of
+    // the return value of the function is not propagated to its return expressions.  Additionally,
+    // an expression such as
+    //
+    //     cond ? gl_NumWorkGroups.x : gl_NumWorkGroups.y
+    //
+    // does not have a precision as the built-in does not specify a precision.
+    //
+    // Precision is not applicable to HLSL so fixing these issues are deferred.
+    mValidateASTOptions.validatePrecision = false;
+
     const ShBuiltInResources &resources = getResources();
     int numRenderTargets                = resources.EXT_draw_buffers ? resources.MaxDrawBuffers : 1;
     int maxDualSourceDrawBuffers =
@@ -81,6 +98,24 @@ bool TranslatorHLSL::translate(TIntermBlock *root,
     if (!SeparateArrayConstructorStatements(this, root))
     {
         return false;
+    }
+
+    if (getShaderVersion() >= 310)
+    {
+        // Do element-by-element assignments of arrays in SSBOs. This allows the D3D backend to use
+        // RWByteAddressBuffer.Load() and .Store(), which only operate on values up to 16 bytes in
+        // size. Note that this must be done before SeparateExpressionsReturningArrays.
+        if (!sh::AggregateAssignArraysInSSBOs(this, root, &getSymbolTable()))
+        {
+            return false;
+        }
+        // Do field-by-field assignment of structs in SSBOs. This allows the D3D backend to use
+        // RWByteAddressBuffer.Load() and .Store(), which only operate on values up to 16 bytes in
+        // size.
+        if (!sh::AggregateAssignStructsInSSBOs(this, root, &getSymbolTable()))
+        {
+            return false;
+        }
     }
 
     if (!SeparateExpressionsReturningArrays(this, root, &getSymbolTable()))
@@ -139,11 +174,7 @@ bool TranslatorHLSL::translate(TIntermBlock *root,
         return false;
     }
 
-    bool precisionEmulation = false;
-    if (!emulatePrecisionIfNeeded(root, getInfoSink().obj, &precisionEmulation, getOutputType()))
-        return false;
-
-    if ((compileOptions & SH_EXPAND_SELECT_HLSL_INTEGER_POW_EXPRESSIONS) != 0)
+    if (compileOptions.expandSelectHLSLIntegerPowExpressions)
     {
         if (!sh::ExpandIntegerPowExpressions(this, root, &getSymbolTable()))
         {
@@ -151,7 +182,7 @@ bool TranslatorHLSL::translate(TIntermBlock *root,
         }
     }
 
-    if ((compileOptions & SH_REWRITE_TEXELFETCHOFFSET_TO_TEXELFETCH) != 0)
+    if (compileOptions.rewriteTexelFetchOffsetToTexelFetch)
     {
         if (!sh::RewriteTexelFetchOffset(this, root, getSymbolTable(), getShaderVersion()))
         {
@@ -159,8 +190,7 @@ bool TranslatorHLSL::translate(TIntermBlock *root,
         }
     }
 
-    if (((compileOptions & SH_REWRITE_INTEGER_UNARY_MINUS_OPERATOR) != 0) &&
-        getShaderType() == GL_VERTEX_SHADER)
+    if (compileOptions.rewriteIntegerUnaryMinusOperator && getShaderType() == GL_VERTEX_SHADER)
     {
         if (!sh::RewriteUnaryMinusOperatorInt(this, root))
         {
@@ -183,11 +213,26 @@ bool TranslatorHLSL::translate(TIntermBlock *root,
         }
     }
 
-    sh::OutputHLSL outputHLSL(getShaderType(), getShaderSpec(), getShaderVersion(),
-                              getExtensionBehavior(), getSourcePath(), getOutputType(),
-                              numRenderTargets, maxDualSourceDrawBuffers, getUniforms(),
-                              compileOptions, getComputeShaderLocalSize(), &getSymbolTable(),
-                              perfDiagnostics, mShaderStorageBlocks);
+    mUniformBlockOptimizedMap.clear();
+    mSlowCompilingUniformBlockSet.clear();
+    // In order to get the exact maximum of slots are available for shader resources, which would
+    // been bound with StructuredBuffer, we only translate uniform block with a large array member
+    // into StructuredBuffer when shader version is 300.
+    if (getShaderVersion() == 300 && compileOptions.allowTranslateUniformBlockToStructuredBuffer)
+    {
+        if (!sh::RecordUniformBlocksWithLargeArrayMember(root, mUniformBlockOptimizedMap,
+                                                         mSlowCompilingUniformBlockSet))
+        {
+            return false;
+        }
+    }
+
+    sh::OutputHLSL outputHLSL(
+        getShaderType(), getShaderSpec(), getShaderVersion(), getExtensionBehavior(),
+        getSourcePath(), getOutputType(), numRenderTargets, maxDualSourceDrawBuffers, getUniforms(),
+        compileOptions, getComputeShaderLocalSize(), &getSymbolTable(), perfDiagnostics,
+        mUniformBlockOptimizedMap, mShaderStorageBlocks, getClipDistanceArraySize(),
+        getCullDistanceArraySize(), isEarlyFragmentTestsSpecified());
 
     outputHLSL.output(root, getInfoSink().obj);
 
@@ -234,6 +279,11 @@ unsigned int TranslatorHLSL::getUniformBlockRegister(const std::string &uniformB
 const std::map<std::string, unsigned int> *TranslatorHLSL::getUniformRegisterMap() const
 {
     return &mUniformRegisterMap;
+}
+
+const std::set<std::string> *TranslatorHLSL::getSlowCompilingUniformBlockSet() const
+{
+    return &mSlowCompilingUniformBlockSet;
 }
 
 unsigned int TranslatorHLSL::getReadonlyImage2DRegisterIndex() const

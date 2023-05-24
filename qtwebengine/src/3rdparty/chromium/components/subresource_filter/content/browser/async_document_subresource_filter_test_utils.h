@@ -1,13 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_SUBRESOURCE_FILTER_CONTENT_BROWSER_ASYNC_DOCUMENT_SUBRESOURCE_FILTER_TEST_UTILS_H_
 #define COMPONENTS_SUBRESOURCE_FILTER_CONTENT_BROWSER_ASYNC_DOCUMENT_SUBRESOURCE_FILTER_TEST_UTILS_H_
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "components/subresource_filter/core/mojom/subresource_filter.mojom.h"
 
 namespace subresource_filter {
@@ -19,6 +18,12 @@ namespace testing {
 class TestActivationStateCallbackReceiver {
  public:
   TestActivationStateCallbackReceiver();
+
+  TestActivationStateCallbackReceiver(
+      const TestActivationStateCallbackReceiver&) = delete;
+  TestActivationStateCallbackReceiver& operator=(
+      const TestActivationStateCallbackReceiver&) = delete;
+
   ~TestActivationStateCallbackReceiver();
 
   base::OnceCallback<void(mojom::ActivationState)> GetCallback();
@@ -34,8 +39,6 @@ class TestActivationStateCallbackReceiver {
   int callback_count_ = 0;
 
   base::OnceClosure quit_closure_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestActivationStateCallbackReceiver);
 };
 
 }  // namespace testing

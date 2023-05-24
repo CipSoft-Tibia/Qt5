@@ -24,9 +24,12 @@
 #ifndef AVFILTER_QSVVPP_H
 #define AVFILTER_QSVVPP_H
 
-#include <mfx/mfxvideo.h>
+#include <mfxvideo.h>
 
 #include "avfilter.h"
+#include "libavutil/fifo.h"
+#include "libavutil/hwcontext.h"
+#include "libavutil/hwcontext_qsv.h"
 
 #define FF_INLINK_IDX(link)  ((int)((link)->dstpad - (link)->dst->input_pads))
 #define FF_OUTLINK_IDX(link) ((int)((link)->srcpad - (link)->src->output_pads))
@@ -39,7 +42,48 @@
     ((MFX_VERSION.Major > (MAJOR)) ||                           \
     (MFX_VERSION.Major == (MAJOR) && MFX_VERSION.Minor >= (MINOR)))
 
-typedef struct QSVVPPContext QSVVPPContext;
+#define QSV_ONEVPL       QSV_VERSION_ATLEAST(2, 0)
+#define QSV_HAVE_OPAQUE  !QSV_ONEVPL
+
+typedef struct QSVFrame {
+    AVFrame          *frame;
+    mfxFrameSurface1 surface;
+    struct QSVFrame  *next;
+    int queued;
+} QSVFrame;
+
+typedef struct QSVVPPContext {
+    const AVClass      *class;
+
+    mfxSession          session;
+    int (*filter_frame) (AVFilterLink *outlink, AVFrame *frame); /**< callback */
+    enum AVPixelFormat  out_sw_format;   /**< Real output format */
+    mfxVideoParam       vpp_param;
+    mfxFrameInfo       *frame_infos;     /**< frame info for each input */
+
+    /** members related to the input/output surface */
+    int                 in_mem_mode;
+    int                 out_mem_mode;
+    QSVFrame           *in_frame_list;
+    QSVFrame           *out_frame_list;
+    int                 nb_surface_ptrs_in;
+    int                 nb_surface_ptrs_out;
+    mfxFrameSurface1  **surface_ptrs_in;
+    mfxFrameSurface1  **surface_ptrs_out;
+
+#if QSV_HAVE_OPAQUE
+    /** MFXVPP extern parameters */
+    mfxExtOpaqueSurfaceAlloc opaque_alloc;
+    mfxExtBuffer      **ext_buffers;
+    int                 nb_ext_buffers;
+#endif
+
+    int got_frame;
+    int async_depth;
+    int eof;
+    /** order with frame_out, sync */
+    AVFifo *async_fifo;
+} QSVVPPContext;
 
 typedef struct QSVVPPCrop {
     int in_idx;        ///< Input index
@@ -63,12 +107,25 @@ typedef struct QSVVPPParam {
 } QSVVPPParam;
 
 /* create and initialize the QSV session */
-int ff_qsvvpp_create(AVFilterContext *avctx, QSVVPPContext **vpp, QSVVPPParam *param);
+int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param);
 
 /* release the resources (eg.surfaces) */
-int ff_qsvvpp_free(QSVVPPContext **vpp);
+int ff_qsvvpp_close(AVFilterContext *avctx);
 
 /* vpp filter frame and call the cb if needed */
 int ff_qsvvpp_filter_frame(QSVVPPContext *vpp, AVFilterLink *inlink, AVFrame *frame);
 
+int ff_qsvvpp_print_iopattern(void *log_ctx, int mfx_iopattern,
+                              const char *extra_string);
+
+int ff_qsvvpp_print_error(void *log_ctx, mfxStatus err,
+                          const char *error_string);
+
+int ff_qsvvpp_print_warning(void *log_ctx, mfxStatus err,
+                            const char *warning_string);
+
+int ff_qsvvpp_create_mfx_session(void *ctx, void *loader, mfxIMPL implementation,
+                                 mfxVersion *pver, mfxSession *psession);
+
+AVFrame *ff_qsvvpp_get_video_buffer(AVFilterLink *inlink, int w, int h);
 #endif /* AVFILTER_QSVVPP_H */

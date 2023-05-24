@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDXDGSHELL_H
 #define QWAYLANDXDGSHELL_H
@@ -34,7 +8,9 @@
 #include <QtWaylandCompositor/QWaylandResource>
 #include <QtWaylandCompositor/QWaylandShell>
 #include <QtWaylandCompositor/QWaylandShellSurface>
+#if QT_CONFIG(wayland_compositor_quick)
 #include <QtWaylandCompositor/qwaylandquickchildren.h>
+#endif
 
 #include <QtCore/QRect>
 
@@ -56,7 +32,7 @@ class QWaylandXdgPopup;
 class QWaylandXdgPopupPrivate;
 class QWaylandXdgPositioner;
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgShell : public QWaylandShellTemplate<QWaylandXdgShell>
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgShell : public QWaylandShellTemplate<QWaylandXdgShell>
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWaylandXdgShell)
@@ -83,16 +59,19 @@ private Q_SLOTS:
     void handleFocusChanged(QWaylandSurface *newSurface, QWaylandSurface *oldSurface);
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgSurface : public QWaylandShellSurfaceTemplate<QWaylandXdgSurface>
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgSurface : public QWaylandShellSurfaceTemplate<QWaylandXdgSurface>
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWaylandXdgSurface)
+#if QT_CONFIG(wayland_compositor_quick)
     Q_WAYLAND_COMPOSITOR_DECLARE_QUICK_CHILDREN(QWaylandXdgSurface)
+#endif
     Q_PROPERTY(QWaylandXdgShell *shell READ shell NOTIFY shellChanged)
     Q_PROPERTY(QWaylandSurface *surface READ surface NOTIFY surfaceChanged)
     Q_PROPERTY(QWaylandXdgToplevel *toplevel READ toplevel NOTIFY toplevelCreated)
     Q_PROPERTY(QWaylandXdgPopup *popup READ popup NOTIFY popupCreated)
     Q_PROPERTY(QRect windowGeometry READ windowGeometry NOTIFY windowGeometryChanged)
+    Q_MOC_INCLUDE("qwaylandsurface.h")
 
 public:
     explicit QWaylandXdgSurface();
@@ -131,7 +110,7 @@ private Q_SLOTS:
     void handleBufferScaleChanged();
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgToplevel : public QObject
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgToplevel : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWaylandXdgToplevel)
@@ -146,12 +125,8 @@ class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgToplevel : public QObject
     Q_PROPERTY(bool fullscreen READ fullscreen NOTIFY fullscreenChanged)
     Q_PROPERTY(bool resizing READ resizing NOTIFY resizingChanged)
     Q_PROPERTY(bool activated READ activated NOTIFY activatedChanged)
-// QDoc fails to parse the property type that includes the keyword 'enum'
-#ifndef Q_CLANG_QDOC
     Q_PROPERTY(enum DecorationMode decorationMode READ decorationMode NOTIFY decorationModeChanged)
-#else
-    Q_PROPERTY(DecorationMode decorationMode READ decorationMode NOTIFY decorationModeChanged)
-#endif
+
 public:
     enum State : uint {
         MaximizedState  = 1,
@@ -177,7 +152,7 @@ public:
     QString appId() const;
     QSize maxSize() const;
     QSize minSize() const;
-    QVector<QWaylandXdgToplevel::State> states() const;
+    QList<QWaylandXdgToplevel::State> states() const;
     bool maximized() const;
     bool fullscreen() const;
     bool resizing() const;
@@ -185,8 +160,8 @@ public:
     DecorationMode decorationMode() const;
 
     Q_INVOKABLE QSize sizeForResize(const QSizeF &size, const QPointF &delta, Qt::Edges edges) const;
-    uint sendConfigure(const QSize &size, const QVector<State> &states);
-    Q_INVOKABLE uint sendConfigure(const QSize &size, const QVector<int> &states);
+    uint sendConfigure(const QSize &size, const QList<State> &states);
+    Q_INVOKABLE uint sendConfigure(const QSize &size, const QList<int> &states);
     Q_INVOKABLE void sendClose();
     Q_INVOKABLE uint sendMaximized(const QSize &size);
     Q_INVOKABLE uint sendUnmaximized(const QSize &size = QSize(0, 0));
@@ -223,7 +198,7 @@ private:
     QList<int> statesAsInts() const;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgPopup : public QObject
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgPopup : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWaylandXdgPopup)
@@ -258,7 +233,7 @@ public:
     QPoint unconstrainedPosition() const;
 
     Q_INVOKABLE uint sendConfigure(const QRect &geometry);
-    Q_REVISION(14) Q_INVOKABLE void sendPopupDone();
+    Q_REVISION(1, 14) Q_INVOKABLE void sendPopupDone();
 
     static QWaylandSurfaceRole *role();
 

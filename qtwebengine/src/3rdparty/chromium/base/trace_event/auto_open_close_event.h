@@ -1,11 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef BASE_TRACE_EVENT_AUTO_OPEN_CLOSE_EVENT_H_
 #define BASE_TRACE_EVENT_AUTO_OPEN_CLOSE_EVENT_H_
 
-#include "base/macros.h"
+#include "base/check.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
@@ -38,6 +38,8 @@ class AutoOpenCloseEvent : public TraceLog::AsyncEnabledStateObserver {
     base::trace_event::TraceLog::GetInstance()->AddAsyncEnabledStateObserver(
         weak_factory_.GetWeakPtr());
   }
+  AutoOpenCloseEvent(const AutoOpenCloseEvent&) = delete;
+  AutoOpenCloseEvent& operator=(const AutoOpenCloseEvent&) = delete;
   ~AutoOpenCloseEvent() override {
     DCHECK(thread_checker_.CalledOnValidThread());
     base::trace_event::TraceLog::GetInstance()->RemoveAsyncEnabledStateObserver(
@@ -71,8 +73,6 @@ class AutoOpenCloseEvent : public TraceLog::AsyncEnabledStateObserver {
   base::TimeTicks start_time_;
   base::ThreadChecker thread_checker_;
   WeakPtrFactory<AutoOpenCloseEvent> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(AutoOpenCloseEvent);
 };
 
 }  // namespace trace_event

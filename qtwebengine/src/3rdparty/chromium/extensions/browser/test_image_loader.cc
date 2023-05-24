@@ -1,19 +1,19 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/test_image_loader.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "extensions/browser/image_loader.h"
 #include "extensions/common/extension.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 
 namespace extensions {
 
-TestImageLoader::TestImageLoader() : waiting_(false), image_loaded_(false) {}
+TestImageLoader::TestImageLoader() = default;
 
-TestImageLoader::~TestImageLoader() {}
+TestImageLoader::~TestImageLoader() = default;
 
 // static
 SkBitmap TestImageLoader::LoadAndGetExtensionBitmap(
@@ -28,7 +28,7 @@ void TestImageLoader::OnImageLoaded(const gfx::Image& image) {
   image_ = image;
   image_loaded_ = true;
   if (waiting_)
-    loader_message_loop_quit_.Run();
+    std::move(loader_message_loop_quit_).Run();
 }
 
 SkBitmap TestImageLoader::LoadAndGetBitmap(const Extension* extension,

@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page modelview.html
@@ -493,8 +469,7 @@
             \li  QStandardItemModel
             \li  Stores arbitrary hierarchical items
         \row
-            \li  QFileSystemModel\br
-                QDirModel
+            \li  QFileSystemModel
             \li  Encapsulate the local file system
         \row
             \li  QSqlQueryModel
@@ -536,7 +511,7 @@
      {
          Q_OBJECT
      public:
-         StarDelegate(QWidget *parent = 0);
+         StarDelegate(QWidget *parent = nullptr);
          void paint(QPainter *painter, const QStyleOptionViewItem &option,
                     const QModelIndex &index) const;
          QSize sizeHint(const QStyleOptionViewItem &option,
@@ -627,12 +602,6 @@
             \li
             \li  Book 1, Chapter 10, Figure 10.6
         \row
-            \li  Directory Viewer
-            \li  QTreeView
-            \li  QDirModel
-            \li
-            \li  Book 1, Chapter 10, Figure 10.7
-        \row
             \li  Color Names
             \li  QListView
             \li  QSortFilterProxyModel
@@ -666,14 +635,6 @@
             \li  Custom delegate providing a custom editor
             \li  Book 1, Chapter 10, Figure 10.15
 
-        \row
-            \li  Four directory views
-            \li  QListView
-                QTableView
-                QTreeView
-            \li  QDirModel
-            \li  Demonstrates the use of multiple views
-            \li  Book2, Chapter 8.2
         \row
             \li  Address Book
             \li  QListView

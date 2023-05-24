@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,9 @@
 #include <functional>
 #include <memory>
 
-#include "base/scoped_observer.h"
-#include "base/stl_util.h"
+#include "base/scoped_observation.h"
 #include "base/test/task_environment.h"
+#include "build/chromeos_buildflags.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -40,9 +40,10 @@ TEST(SigninErrorControllerTest, SingleAccount) {
   SigninErrorController error_controller(
       SigninErrorController::AccountMode::ANY_ACCOUNT,
       identity_test_env.identity_manager());
-  ScopedObserver<SigninErrorController, SigninErrorController::Observer>
-      scoped_observer(&observer);
-  scoped_observer.Add(&error_controller);
+  base::ScopedObservation<SigninErrorController,
+                          SigninErrorController::Observer>
+      scoped_observation(&observer);
+  scoped_observation.Observe(&error_controller);
   ASSERT_FALSE(error_controller.HasError());
   ::testing::Mock::VerifyAndClearExpectations(&observer);
 
@@ -117,7 +118,9 @@ TEST(SigninErrorControllerTest, UnconsentedPrimaryAccount) {
   signin::IdentityTestEnvironment identity_test_env;
 
   CoreAccountId test_account_id =
-      identity_test_env.MakeUnconsentedPrimaryAccountAvailable(kTestEmail)
+      identity_test_env
+          .MakePrimaryAccountAvailable(kTestEmail,
+                                       signin::ConsentLevel::kSignin)
           .account_id;
   SigninErrorController error_controller(
       SigninErrorController::AccountMode::ANY_ACCOUNT,
@@ -134,73 +137,6 @@ TEST(SigninErrorControllerTest, UnconsentedPrimaryAccount) {
       test_account_id, GoogleServiceAuthError::AuthErrorNone());
   EXPECT_FALSE(error_controller.HasError());
 }
-
-// This test exercises behavior on signin/signout, which is not relevant on
-// ChromeOS.
-#if !defined(OS_CHROMEOS)
-TEST(SigninErrorControllerTest, AccountTransitionPrimaryAccount) {
-  base::test::TaskEnvironment task_environment;
-  signin::IdentityTestEnvironment identity_test_env;
-  signin::PrimaryAccountMutator* primary_account_mutator =
-      identity_test_env.identity_manager()->GetPrimaryAccountMutator();
-
-  CoreAccountId test_account_id =
-      identity_test_env.MakeAccountAvailable(kTestEmail).account_id;
-  CoreAccountId other_test_account_id =
-      identity_test_env.MakeAccountAvailable(kOtherTestEmail).account_id;
-  SigninErrorController error_controller(
-      SigninErrorController::AccountMode::PRIMARY_ACCOUNT,
-      identity_test_env.identity_manager());
-  ASSERT_FALSE(error_controller.HasError());
-
-  identity_test_env.UpdatePersistentErrorOfRefreshTokenForAccount(
-      test_account_id,
-      GoogleServiceAuthError(GoogleServiceAuthError::INVALID_GAIA_CREDENTIALS));
-  identity_test_env.UpdatePersistentErrorOfRefreshTokenForAccount(
-      other_test_account_id,
-      GoogleServiceAuthError(GoogleServiceAuthError::NONE));
-  ASSERT_FALSE(error_controller.HasError());  // No primary account.
-
-  // Set the primary account.
-  identity_test_env.SetPrimaryAccount(kOtherTestEmail);
-
-  ASSERT_FALSE(error_controller.HasError());  // Error is on secondary.
-
-  // Change the primary account to the account with an error and check that the
-  // error controller updates its error status accordingly.
-  primary_account_mutator->ClearPrimaryAccount(
-      signin::PrimaryAccountMutator::ClearAccountsAction::kKeepAll,
-      signin_metrics::FORCE_SIGNOUT_ALWAYS_ALLOWED_FOR_TEST,
-      signin_metrics::SignoutDelete::IGNORE_METRIC);
-  identity_test_env.SetPrimaryAccount(kTestEmail);
-  ASSERT_TRUE(error_controller.HasError());
-  ASSERT_EQ(test_account_id, error_controller.error_account_id());
-
-  identity_test_env.UpdatePersistentErrorOfRefreshTokenForAccount(
-      other_test_account_id,
-      GoogleServiceAuthError(GoogleServiceAuthError::INVALID_GAIA_CREDENTIALS));
-  ASSERT_TRUE(error_controller.HasError());
-  ASSERT_EQ(test_account_id, error_controller.error_account_id());
-
-  // Change the primary account again and check that the error controller
-  // updates its error status accordingly.
-  primary_account_mutator->ClearPrimaryAccount(
-      signin::PrimaryAccountMutator::ClearAccountsAction::kKeepAll,
-      signin_metrics::FORCE_SIGNOUT_ALWAYS_ALLOWED_FOR_TEST,
-      signin_metrics::SignoutDelete::IGNORE_METRIC);
-  identity_test_env.SetPrimaryAccount(kOtherTestEmail);
-  ASSERT_TRUE(error_controller.HasError());
-  ASSERT_EQ(other_test_account_id, error_controller.error_account_id());
-
-  // Sign out and check that that the error controller updates its error status
-  // accordingly.
-  primary_account_mutator->ClearPrimaryAccount(
-      signin::PrimaryAccountMutator::ClearAccountsAction::kKeepAll,
-      signin_metrics::FORCE_SIGNOUT_ALWAYS_ALLOWED_FOR_TEST,
-      signin_metrics::SignoutDelete::IGNORE_METRIC);
-  ASSERT_FALSE(error_controller.HasError());
-}
-#endif
 
 // Verify that SigninErrorController handles errors properly.
 TEST(SigninErrorControllerTest, AuthStatusEnumerateAllErrors) {
@@ -221,17 +157,19 @@ TEST(SigninErrorControllerTest, AuthStatusEnumerateAllErrors) {
       GoogleServiceAuthError::SERVICE_UNAVAILABLE,
       GoogleServiceAuthError::REQUEST_CANCELED,
       GoogleServiceAuthError::UNEXPECTED_SERVICE_RESPONSE,
-      GoogleServiceAuthError::SERVICE_ERROR};
+      GoogleServiceAuthError::SERVICE_ERROR,
+      GoogleServiceAuthError::SCOPE_LIMITED_UNRECOVERABLE_ERROR,
+  };
   static_assert(
-      base::size(table) == GoogleServiceAuthError::NUM_STATES -
-                               GoogleServiceAuthError::kDeprecatedStateCount,
+      std::size(table) == GoogleServiceAuthError::NUM_STATES -
+                              GoogleServiceAuthError::kDeprecatedStateCount,
       "table array does not match the number of auth error types");
 
   for (GoogleServiceAuthError::State state : table) {
     GoogleServiceAuthError error(state);
 
-    if (error.IsTransientError())
-      continue;  // Only persistent errors or non-errors are reported.
+    if (error.IsTransientError() || error.IsScopePersistentError())
+      continue;  // Only non scope persistent errors or non-errors are reported.
 
     identity_test_env.UpdatePersistentErrorOfRefreshTokenForAccount(
         test_account_id, error);
@@ -311,7 +249,8 @@ TEST(SigninErrorControllerTest,
   signin::IdentityTestEnvironment identity_test_env;
 
   AccountInfo primary_account_info =
-      identity_test_env.MakePrimaryAccountAvailable(kPrimaryAccountEmail);
+      identity_test_env.MakePrimaryAccountAvailable(
+          kPrimaryAccountEmail, signin::ConsentLevel::kSync);
   CoreAccountId secondary_account_id =
       identity_test_env.MakeAccountAvailable(kTestEmail).account_id;
   SigninErrorController error_controller(
@@ -358,7 +297,8 @@ TEST(SigninErrorControllerTest, PrimaryAccountErrorsAreSticky) {
   signin::IdentityTestEnvironment identity_test_env;
 
   AccountInfo primary_account_info =
-      identity_test_env.MakePrimaryAccountAvailable(kPrimaryAccountEmail);
+      identity_test_env.MakePrimaryAccountAvailable(
+          kPrimaryAccountEmail, signin::ConsentLevel::kSync);
   CoreAccountId secondary_account_id =
       identity_test_env.MakeAccountAvailable(kTestEmail).account_id;
   SigninErrorController error_controller(

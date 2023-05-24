@@ -28,10 +28,13 @@
 
 #include <utility>
 
+#include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/dom/element_rare_data.h"
 #include "third_party/blink/renderer/core/dom/first_letter_pseudo_element.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/html/forms/html_input_element.h"
+#include "third_party/blink/renderer/core/input_type_names.h"
 #include "third_party/blink/renderer/core/layout/generated_children.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_quote.h"
@@ -39,16 +42,31 @@
 #include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/content_data.h"
+#include "third_party/blink/renderer/core/view_transition/view_transition_pseudo_element_base.h"
+#include "third_party/blink/renderer/core/view_transition/view_transition_utils.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 
 namespace blink {
 
-PseudoElement* PseudoElement::Create(Element* parent, PseudoId pseudo_id) {
-  if (pseudo_id == kPseudoIdFirstLetter)
+bool PseudoElementLayoutObjectIsNeeded(const DisplayStyle& pseudo_style,
+                                       const Element* originating_element);
+
+PseudoElement* PseudoElement::Create(Element* parent,
+                                     PseudoId pseudo_id,
+                                     const AtomicString& view_transition_name) {
+  if (pseudo_id == kPseudoIdFirstLetter) {
     return MakeGarbageCollected<FirstLetterPseudoElement>(parent);
+  } else if (IsTransitionPseudoElement(pseudo_id)) {
+    auto* transition =
+        ViewTransitionUtils::GetActiveTransition(parent->GetDocument());
+    DCHECK(transition);
+    return transition->CreatePseudoElement(parent, pseudo_id,
+                                           view_transition_name);
+  }
   DCHECK(pseudo_id == kPseudoIdAfter || pseudo_id == kPseudoIdBefore ||
          pseudo_id == kPseudoIdBackdrop || pseudo_id == kPseudoIdMarker);
-  return MakeGarbageCollected<PseudoElement>(parent, pseudo_id);
+  return MakeGarbageCollected<PseudoElement>(parent, pseudo_id,
+                                             view_transition_name);
 }
 
 const QualifiedName& PseudoElementTagName(PseudoId pseudo_id) {
@@ -78,6 +96,35 @@ const QualifiedName& PseudoElementTagName(PseudoId pseudo_id) {
                           (g_null_atom, "::marker", g_null_atom));
       return marker;
     }
+    case kPseudoIdViewTransition: {
+      DEFINE_STATIC_LOCAL(QualifiedName, transition,
+                          (g_null_atom, "::view-transition", g_null_atom));
+      return transition;
+    }
+    case kPseudoIdViewTransitionGroup: {
+      // TODO(khushalsagar) : Update these tag names to include the additional
+      // ID.
+      DEFINE_STATIC_LOCAL(
+          QualifiedName, transition_container,
+          (g_null_atom, "::view-transition-group", g_null_atom));
+      return transition_container;
+    }
+    case kPseudoIdViewTransitionImagePair: {
+      DEFINE_STATIC_LOCAL(
+          QualifiedName, transition_image_wrapper,
+          (g_null_atom, "::view-transition-image-pair", g_null_atom));
+      return transition_image_wrapper;
+    }
+    case kPseudoIdViewTransitionNew: {
+      DEFINE_STATIC_LOCAL(QualifiedName, transition_incoming_image,
+                          (g_null_atom, "::view-transition-new", g_null_atom));
+      return transition_incoming_image;
+    }
+    case kPseudoIdViewTransitionOld: {
+      DEFINE_STATIC_LOCAL(QualifiedName, transition_outgoing_image,
+                          (g_null_atom, "::view-transition-old", g_null_atom));
+      return transition_outgoing_image;
+    }
     default:
       NOTREACHED();
   }
@@ -86,12 +133,29 @@ const QualifiedName& PseudoElementTagName(PseudoId pseudo_id) {
   return name;
 }
 
-const AtomicString& PseudoElement::PseudoElementNameForEvents(
-    PseudoId pseudo_id) {
-  if (pseudo_id == kPseudoIdNone)
-    return g_null_atom;
-  else
-    return PseudoElementTagName(pseudo_id).LocalName();
+AtomicString PseudoElement::PseudoElementNameForEvents(Element* element) {
+  DCHECK(element);
+  auto pseudo_id = element->GetPseudoId();
+  switch (pseudo_id) {
+    case kPseudoIdNone:
+      return g_null_atom;
+    case kPseudoIdViewTransitionGroup:
+    case kPseudoIdViewTransitionImagePair:
+    case kPseudoIdViewTransitionNew:
+    case kPseudoIdViewTransitionOld: {
+      auto* pseudo = To<PseudoElement>(element);
+      DCHECK(pseudo);
+      StringBuilder builder;
+      builder.Append(PseudoElementTagName(pseudo_id).LocalName());
+      builder.Append("(");
+      builder.Append(pseudo->view_transition_name());
+      builder.Append(")");
+      return AtomicString(builder.ReleaseString());
+    }
+    default:
+      break;
+  }
+  return PseudoElementTagName(pseudo_id).LocalName();
 }
 
 bool PseudoElement::IsWebExposed(PseudoId pseudo_id, const Node* parent) {
@@ -99,44 +163,63 @@ bool PseudoElement::IsWebExposed(PseudoId pseudo_id, const Node* parent) {
     case kPseudoIdMarker:
       if (parent && parent->IsPseudoElement())
         return RuntimeEnabledFeatures::CSSMarkerNestedPseudoElementEnabled();
-      return RuntimeEnabledFeatures::CSSMarkerPseudoElementEnabled();
+      return true;
     default:
       return true;
   }
 }
 
-PseudoElement::PseudoElement(Element* parent, PseudoId pseudo_id)
+PseudoElement::PseudoElement(Element* parent,
+                             PseudoId pseudo_id,
+                             const AtomicString& view_transition_name)
     : Element(PseudoElementTagName(pseudo_id),
               &parent->GetDocument(),
               kCreateElement),
-      pseudo_id_(pseudo_id) {
+      pseudo_id_(pseudo_id),
+      view_transition_name_(view_transition_name) {
   DCHECK_NE(pseudo_id, kPseudoIdNone);
   parent->GetTreeScope().AdoptIfNeeded(*this);
   SetParentOrShadowHostNode(parent);
   SetHasCustomStyleCallbacks();
+  EnsureMutableData().SetIsPseudoElement(true);
   if ((pseudo_id == kPseudoIdBefore || pseudo_id == kPseudoIdAfter) &&
       parent->HasTagName(html_names::kInputTag)) {
     UseCounter::Count(parent->GetDocument(),
                       WebFeature::kPseudoBeforeAfterForInputElement);
+    if (HTMLInputElement* input = DynamicTo<HTMLInputElement>(parent)) {
+      if (input->type() == input_type_names::kDate ||
+          input->type() == input_type_names::kDatetimeLocal ||
+          input->type() == input_type_names::kMonth ||
+          input->type() == input_type_names::kWeek ||
+          input->type() == input_type_names::kTime) {
+        UseCounter::Count(
+            parent->GetDocument(),
+            WebFeature::kPseudoBeforeAfterForDateTimeInputElement);
+      }
+    }
   }
 }
 
-scoped_refptr<ComputedStyle> PseudoElement::CustomStyleForLayoutObject() {
-  return ParentOrShadowHostElement()->StyleForPseudoElement(
-      PseudoElementStyleRequest(pseudo_id_));
+scoped_refptr<const ComputedStyle> PseudoElement::CustomStyleForLayoutObject(
+    const StyleRecalcContext& style_recalc_context) {
+  Element* parent = ParentOrShadowHostElement();
+  return parent->StyleForPseudoElement(
+      style_recalc_context, StyleRequest(pseudo_id_, parent->GetComputedStyle(),
+                                         view_transition_name_));
 }
 
-scoped_refptr<ComputedStyle> PseudoElement::LayoutStyleForDisplayContents(
+scoped_refptr<const ComputedStyle> PseudoElement::LayoutStyleForDisplayContents(
     const ComputedStyle& style) {
   // For display:contents we should not generate a box, but we generate a non-
   // observable inline box for pseudo elements to be able to locate the
   // anonymous layout objects for generated content during DetachLayoutTree().
-  scoped_refptr<ComputedStyle> layout_style = ComputedStyle::Create();
-  layout_style->InheritFrom(style);
-  layout_style->SetContent(style.GetContentData());
-  layout_style->SetDisplay(EDisplay::kInline);
-  layout_style->SetStyleType(pseudo_id_);
-  return layout_style;
+  ComputedStyleBuilder builder =
+      GetDocument().GetStyleResolver().CreateComputedStyleBuilder();
+  builder.InheritFrom(style);
+  builder.SetContent(style.GetContentData());
+  builder.SetDisplay(EDisplay::kInline);
+  builder.SetStyleType(pseudo_id_);
+  return builder.TakeStyle();
 }
 
 void PseudoElement::Dispose() {
@@ -225,7 +308,7 @@ void PseudoElement::AttachLayoutTree(AttachContext& context) {
       if (layout_object->IsChildAllowed(child, style)) {
         layout_object->AddChild(child);
         if (child->IsQuote())
-          ToLayoutQuote(child)->AttachQuote();
+          To<LayoutQuote>(child)->AttachQuote();
       } else {
         child->Destroy();
       }
@@ -233,8 +316,8 @@ void PseudoElement::AttachLayoutTree(AttachContext& context) {
   }
 }
 
-bool PseudoElement::LayoutObjectIsNeeded(const ComputedStyle& style) const {
-  return PseudoElementLayoutObjectIsNeeded(&style, this->parentElement());
+bool PseudoElement::LayoutObjectIsNeeded(const DisplayStyle& style) const {
+  return PseudoElementLayoutObjectIsNeeded(style, parentElement());
 }
 
 bool PseudoElement::CanGeneratePseudoElement(PseudoId pseudo_id) const {
@@ -257,27 +340,48 @@ Node* PseudoElement::InnerNodeForHitTesting() const {
   return parent;
 }
 
+Element* PseudoElement::OriginatingElement() const {
+  auto* parent = parentElement();
+
+  while (parent && parent->IsPseudoElement())
+    parent = parent->parentElement();
+
+  return parent;
+}
+
 bool PseudoElementLayoutObjectIsNeeded(const ComputedStyle* pseudo_style,
                                        const Element* originating_element) {
   if (!pseudo_style)
     return false;
-  if (pseudo_style->Display() == EDisplay::kNone)
+  return PseudoElementLayoutObjectIsNeeded(pseudo_style->GetDisplayStyle(),
+                                           originating_element);
+}
+
+bool PseudoElementLayoutObjectIsNeeded(const DisplayStyle& pseudo_style,
+                                       const Element* originating_element) {
+  if (pseudo_style.Display() == EDisplay::kNone) {
     return false;
-  switch (pseudo_style->StyleType()) {
+  }
+  switch (pseudo_style.StyleType()) {
     case kPseudoIdFirstLetter:
     case kPseudoIdBackdrop:
+    case kPseudoIdViewTransition:
+    case kPseudoIdViewTransitionGroup:
+    case kPseudoIdViewTransitionImagePair:
+    case kPseudoIdViewTransitionNew:
+    case kPseudoIdViewTransitionOld:
       return true;
     case kPseudoIdBefore:
     case kPseudoIdAfter:
-      return !pseudo_style->ContentPreventsBoxGeneration();
+      return !pseudo_style.ContentPreventsBoxGeneration();
     case kPseudoIdMarker: {
-      if (!pseudo_style->ContentBehavesAsNormal())
-        return !pseudo_style->ContentPreventsBoxGeneration();
+      if (!pseudo_style.ContentBehavesAsNormal()) {
+        return !pseudo_style.ContentPreventsBoxGeneration();
+      }
       const ComputedStyle* parent_style =
           originating_element->GetComputedStyle();
-      return parent_style &&
-             (parent_style->ListStyleType() != EListStyleType::kNone ||
-              parent_style->GeneratesMarkerImage());
+      return parent_style && (parent_style->ListStyleType() ||
+                              parent_style->GeneratesMarkerImage());
     }
     default:
       NOTREACHED();

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include "base/task/sequence_manager/task_queue.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
-#include "third_party/blink/renderer/platform/scheduler/common/throttling/budget_pool_controller.h"
+#include "third_party/blink/renderer/platform/scheduler/common/task_priority.h"
 #include "third_party/blink/renderer/platform/scheduler/common/throttling/cpu_time_budget_pool.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/main_thread_task_queue.h"
 
@@ -15,43 +15,29 @@ namespace blink {
 namespace scheduler {
 
 using TaskQueue = base::sequence_manager::TaskQueue;
-using QueuePriority = base::sequence_manager::TaskQueue::QueuePriority;
 
 class CPUTimeBudgetPool;
 class MainThreadSchedulerImpl;
 
-class PLATFORM_EXPORT FindInPageBudgetPoolController
-    : public BudgetPoolController {
+class PLATFORM_EXPORT FindInPageBudgetPoolController {
  public:
   static constexpr auto kFindInPageBudgetNotExhaustedPriority =
-      QueuePriority::kVeryHighPriority;
+      TaskPriority::kVeryHighPriority;
   static constexpr auto kFindInPageBudgetExhaustedPriority =
-      QueuePriority::kNormalPriority;
+      TaskPriority::kNormalPriority;
 
   explicit FindInPageBudgetPoolController(MainThreadSchedulerImpl* scheduler);
-  ~FindInPageBudgetPoolController() override;
+  ~FindInPageBudgetPoolController();
 
   void OnTaskCompleted(MainThreadTaskQueue* queue,
-                       MainThreadTaskQueue::TaskTiming* task_timing);
+                       TaskQueue::TaskTiming* task_timing);
 
-  QueuePriority CurrentTaskPriority() { return task_priority_; }
-
-  // Unimplemented methods.
-  // TODO(crbug.com/1056512): Remove these functions once we factor out the
-  // budget calculating logic from BudgetPoolController.
-  void UpdateQueueSchedulingLifecycleState(base::TimeTicks now,
-                                           TaskQueue* queue) override {}
-  void AddQueueToBudgetPool(TaskQueue* queue,
-                            BudgetPool* budget_pool) override {}
-  void RemoveQueueFromBudgetPool(TaskQueue* queue,
-                                 BudgetPool* budget_pool) override {}
-  void UnregisterBudgetPool(BudgetPool* budget_pool) override {}
-  bool IsThrottled(TaskQueue* queue) const override { return false; }
+  TaskPriority CurrentTaskPriority() { return task_priority_; }
 
  private:
   MainThreadSchedulerImpl* scheduler_;  // Not owned.
   std::unique_ptr<CPUTimeBudgetPool> find_in_page_budget_pool_;
-  QueuePriority task_priority_;
+  TaskPriority task_priority_;
   const bool best_effort_budget_experiment_enabled_;
 };
 

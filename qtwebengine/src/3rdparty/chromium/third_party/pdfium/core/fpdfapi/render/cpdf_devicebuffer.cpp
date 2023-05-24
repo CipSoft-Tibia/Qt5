@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,17 @@
 
 #include "build/build_config.h"
 #include "core/fpdfapi/page/cpdf_pageobject.h"
+#include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/render/cpdf_rendercontext.h"
 #include "core/fpdfapi/render/cpdf_renderoptions.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "core/fxge/cfx_renderdevice.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
 
 namespace {
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 constexpr bool kScaleDeviceBuffer = false;
 #else
 constexpr bool kScaleDeviceBuffer = true;
@@ -67,7 +68,7 @@ bool CPDF_DeviceBuffer::Initialize() {
   FX_RECT bitmap_rect =
       m_Matrix.TransformRect(CFX_FloatRect(m_Rect)).GetOuterRect();
   return m_pBitmap->Create(bitmap_rect.Width(), bitmap_rect.Height(),
-                           FXDIB_Argb);
+                           FXDIB_Format::kArgb);
 }
 
 void CPDF_DeviceBuffer::OutputToDevice() {
@@ -83,7 +84,7 @@ void CPDF_DeviceBuffer::OutputToDevice() {
   auto pBuffer = pdfium::MakeRetain<CFX_DIBitmap>();
   m_pDevice->CreateCompatibleBitmap(pBuffer, m_pBitmap->GetWidth(),
                                     m_pBitmap->GetHeight());
-  m_pContext->GetBackground(pBuffer, m_pObject.Get(), nullptr, m_Matrix);
+  m_pContext->GetBackground(pBuffer, m_pObject, nullptr, m_Matrix);
   pBuffer->CompositeBitmap(0, 0, pBuffer->GetWidth(), pBuffer->GetHeight(),
                            m_pBitmap, 0, 0, BlendMode::kNormal, nullptr, false);
   m_pDevice->StretchDIBits(pBuffer, m_Rect.left, m_Rect.top, m_Rect.Width(),

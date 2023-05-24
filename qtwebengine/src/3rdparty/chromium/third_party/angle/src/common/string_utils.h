@@ -82,17 +82,44 @@ bool EndsWith(const std::string &str, const char *suffix);
 // The comparison is case sensitive.
 bool EndsWith(const char *str, const char *suffix);
 
+// Check if the given token string contains the given token.
+// The tokens are separated by the given delimiter.
+// The comparison is case sensitive.
+bool ContainsToken(const std::string &tokenStr, char delimiter, const std::string &token);
+
 // Convert to lower-case.
 void ToLower(std::string *str);
+
+// Convert to upper-case.
+void ToUpper(std::string *str);
 
 // Replaces the substring 'substring' in 'str' with 'replacement'. Returns true if successful.
 bool ReplaceSubstring(std::string *str,
                       const std::string &substring,
                       const std::string &replacement);
 
-// Split up a string parsed from an environment variable.
-std::vector<std::string> GetStringsFromEnvironmentVar(const char *varName, const char *separator);
+// Replaces all substrings 'substring' in 'str' with 'replacement'. Returns count of replacements.
+int ReplaceAllSubstrings(std::string *str,
+                         const std::string &substring,
+                         const std::string &replacement);
 
+// Takes a snake_case string and turns it into camelCase.
+std::string ToCamelCase(const std::string &str);
+
+// Split up a string parsed from an environment variable.
+std::vector<std::string> GetStringsFromEnvironmentVarOrAndroidProperty(const char *varName,
+                                                                       const char *propertyName,
+                                                                       const char *separator);
+
+// Split up a string parsed from environment variable or via Android property, use cached result if
+// available.
+std::vector<std::string> GetCachedStringsFromEnvironmentVarOrAndroidProperty(
+    const char *varName,
+    const char *propertyName,
+    const char *separator);
+
+// glob can have * as wildcard
+bool NamesMatchWithWildcard(const char *glob, const char *name);
 }  // namespace angle
 
 #endif  // LIBANGLE_STRING_UTILS_H_

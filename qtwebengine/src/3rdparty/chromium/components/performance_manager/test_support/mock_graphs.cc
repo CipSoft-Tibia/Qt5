@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,12 +18,11 @@
 namespace performance_manager {
 
 TestProcessNodeImpl::TestProcessNodeImpl()
-    : ProcessNodeImpl(content::PROCESS_TYPE_RENDERER,
-                      RenderProcessHostProxy()) {}
+    : ProcessNodeImpl(RenderProcessHostProxy()) {}
 
 void TestProcessNodeImpl::SetProcessWithPid(base::ProcessId pid,
                                             base::Process process,
-                                            base::Time launch_time) {
+                                            base::TimeTicks launch_time) {
   SetProcessImpl(std::move(process), pid, launch_time);
 }
 
@@ -33,7 +32,8 @@ MockSinglePageInSingleProcessGraph::MockSinglePageInSingleProcessGraph(
       process(TestNodeWrapper<TestProcessNodeImpl>::Create(graph)),
       page(TestNodeWrapper<PageNodeImpl>::Create(graph)),
       frame(graph->CreateFrameNodeAutoId(process.get(), page.get())) {
-  process->SetProcessWithPid(1, base::Process::Current(), base::Time::Now());
+  process->SetProcessWithPid(1, base::Process::Current(),
+                             /* launch_time=*/base::TimeTicks::Now());
 }
 
 MockSinglePageInSingleProcessGraph::~MockSinglePageInSingleProcessGraph() {
@@ -48,8 +48,7 @@ MockMultiplePagesInSingleProcessGraph::MockMultiplePagesInSingleProcessGraph(
       other_page(TestNodeWrapper<PageNodeImpl>::Create(graph)),
       other_frame(graph->CreateFrameNodeAutoId(process.get(),
                                                other_page.get(),
-                                               nullptr,
-                                               1)) {}
+                                               nullptr)) {}
 
 MockMultiplePagesInSingleProcessGraph::
     ~MockMultiplePagesInSingleProcessGraph() {
@@ -63,10 +62,9 @@ MockSinglePageWithMultipleProcessesGraph::
       other_process(TestNodeWrapper<TestProcessNodeImpl>::Create(graph)),
       child_frame(graph->CreateFrameNodeAutoId(other_process.get(),
                                                page.get(),
-                                               frame.get(),
-                                               2)) {
+                                               frame.get())) {
   other_process->SetProcessWithPid(2, base::Process::Current(),
-                                   base::Time::Now());
+                                   /* launch_time=*/base::TimeTicks::Now());
 }
 
 MockSinglePageWithMultipleProcessesGraph::
@@ -78,13 +76,55 @@ MockMultiplePagesWithMultipleProcessesGraph::
       other_process(TestNodeWrapper<TestProcessNodeImpl>::Create(graph)),
       child_frame(graph->CreateFrameNodeAutoId(other_process.get(),
                                                other_page.get(),
-                                               other_frame.get(),
-                                               3)) {
+                                               other_frame.get())) {
   other_process->SetProcessWithPid(2, base::Process::Current(),
-                                   base::Time::Now());
+                                   /* launch_time=*/base::TimeTicks::Now());
 }
 
 MockMultiplePagesWithMultipleProcessesGraph::
     ~MockMultiplePagesWithMultipleProcessesGraph() = default;
+
+MockSinglePageWithFrameAndWorkerInSingleProcessGraph::
+    MockSinglePageWithFrameAndWorkerInSingleProcessGraph(TestGraphImpl* graph)
+    : MockSinglePageInSingleProcessGraph(graph),
+      worker(TestNodeWrapper<WorkerNodeImpl>::Create(
+          graph,
+          WorkerNode::WorkerType::kDedicated,
+          process.get())) {
+  worker->AddClientFrame(frame.get());
+}
+
+MockSinglePageWithFrameAndWorkerInSingleProcessGraph::
+    ~MockSinglePageWithFrameAndWorkerInSingleProcessGraph() {
+  if (worker.get())
+    worker->RemoveClientFrame(frame.get());
+}
+
+void MockSinglePageWithFrameAndWorkerInSingleProcessGraph::DeleteWorker() {
+  DCHECK(worker.get());
+  worker->RemoveClientFrame(frame.get());
+  worker.reset();
+}
+
+MockMultiplePagesAndWorkersWithMultipleProcessesGraph::
+    MockMultiplePagesAndWorkersWithMultipleProcessesGraph(TestGraphImpl* graph)
+    : MockMultiplePagesWithMultipleProcessesGraph(graph),
+      worker(TestNodeWrapper<WorkerNodeImpl>::Create(
+          graph,
+          WorkerNode::WorkerType::kDedicated,
+          process.get())),
+      other_worker(TestNodeWrapper<WorkerNodeImpl>::Create(
+          graph,
+          WorkerNode::WorkerType::kDedicated,
+          other_process.get())) {
+  worker->AddClientFrame(frame.get());
+  other_worker->AddClientFrame(child_frame.get());
+}
+
+MockMultiplePagesAndWorkersWithMultipleProcessesGraph::
+    ~MockMultiplePagesAndWorkersWithMultipleProcessesGraph() {
+  other_worker->RemoveClientFrame(child_frame.get());
+  worker->RemoveClientFrame(frame.get());
+}
 
 }  // namespace performance_manager

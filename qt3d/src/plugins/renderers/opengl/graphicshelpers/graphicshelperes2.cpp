@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "graphicshelperes2_p.h"
 #include <private/attachmentpack_p.h>
@@ -79,7 +43,7 @@ GraphicsHelperES2::~GraphicsHelperES2()
 }
 
 void GraphicsHelperES2::initializeHelper(QOpenGLContext *context,
-                                          QAbstractOpenGLFunctions *)
+                                         QAbstractOpenGLFunctions *)
 {
     Q_ASSERT(context);
     m_funcs = context->functions();
@@ -196,9 +160,9 @@ void GraphicsHelperES2::useProgram(GLuint programId)
     m_funcs->glUseProgram(programId);
 }
 
-QVector<ShaderUniform> GraphicsHelperES2::programUniformsAndLocations(GLuint programId)
+std::vector<ShaderUniform> GraphicsHelperES2::programUniformsAndLocations(GLuint programId)
 {
-    QVector<ShaderUniform> uniforms;
+    std::vector<ShaderUniform> uniforms;
 
     GLint nbrActiveUniforms = 0;
     m_funcs->glGetProgramiv(programId, GL_ACTIVE_UNIFORMS, &nbrActiveUniforms);
@@ -218,14 +182,14 @@ QVector<ShaderUniform> GraphicsHelperES2::programUniformsAndLocations(GLuint pro
         if (uniform.m_size > 1 && !uniform.m_name.endsWith(QLatin1String("[0]")))
             uniform.m_name.append(QLatin1String("[0]"));
         uniform.m_rawByteSize = uniformByteSize(uniform);
-        uniforms.append(uniform);
+        uniforms.push_back(uniform);
     }
     return uniforms;
 }
 
-QVector<ShaderAttribute> GraphicsHelperES2::programAttributesAndLocations(GLuint programId)
+std::vector<ShaderAttribute> GraphicsHelperES2::programAttributesAndLocations(GLuint programId)
 {
-    QVector<ShaderAttribute> attributes;
+    std::vector<ShaderAttribute> attributes;
     GLint nbrActiveAttributes = 0;
     m_funcs->glGetProgramiv(programId, GL_ACTIVE_ATTRIBUTES, &nbrActiveAttributes);
     attributes.reserve(nbrActiveAttributes);
@@ -240,33 +204,31 @@ QVector<ShaderAttribute> GraphicsHelperES2::programAttributesAndLocations(GLuint
         attributeName[sizeof(attributeName) - 1] = '\0';
         attribute.m_location = m_funcs->glGetAttribLocation(programId, attributeName);
         attribute.m_name = QString::fromUtf8(attributeName, attributeNameLength);
-        attributes.append(attribute);
+        attributes.push_back(attribute);
     }
     return attributes;
 }
 
-QVector<ShaderUniformBlock> GraphicsHelperES2::programUniformBlocks(GLuint programId)
+std::vector<ShaderUniformBlock> GraphicsHelperES2::programUniformBlocks(GLuint programId)
 {
     Q_UNUSED(programId);
-    QVector<ShaderUniformBlock> blocks;
     static bool showWarning = true;
     if (!showWarning)
-        return blocks;
+        return {};
     showWarning = false;
     qWarning() << "UBO are not supported by OpenGL ES 2.0 (since OpenGL ES 3.0)";
-    return blocks;
+    return {};
 }
 
-QVector<ShaderStorageBlock> GraphicsHelperES2::programShaderStorageBlocks(GLuint programId)
+std::vector<ShaderStorageBlock> GraphicsHelperES2::programShaderStorageBlocks(GLuint programId)
 {
     Q_UNUSED(programId);
-    QVector<ShaderStorageBlock> blocks;
     static bool showWarning = true;
     if (!showWarning)
-        return blocks;
+        return {};
     showWarning = false;
     qWarning() << "SSBO are not supported by OpenGL ES 2.0 (since OpenGL ES 3.1)";
-    return blocks;
+    return {};
 }
 
 void GraphicsHelperES2::vertexAttribDivisor(GLuint index, GLuint divisor)
@@ -302,7 +264,7 @@ void GraphicsHelperES2::vertexAttributePointer(GLenum shaderDataType,
 
 void GraphicsHelperES2::readBuffer(GLenum mode)
 {
-    Q_UNUSED(mode)
+    Q_UNUSED(mode);
     static bool showWarning = true;
     if (!showWarning)
         return;
@@ -445,7 +407,7 @@ void GraphicsHelperES2::releaseFrameBufferObject(GLuint frameBufferId)
 
 void GraphicsHelperES2::bindFrameBufferObject(GLuint frameBufferId, FBOBindMode mode)
 {
-    Q_UNUSED(mode)
+    Q_UNUSED(mode);
     // For ES2 the spec states for target: The symbolic constant must be GL_FRAMEBUFFER
     // so mode is ignored and is always set to GL_FRAMEBUFFER
     m_funcs->glBindFramebuffer(GL_FRAMEBUFFER, frameBufferId);
@@ -455,13 +417,13 @@ void GraphicsHelperES2::bindImageTexture(GLuint imageUnit, GLuint texture,
                                          GLint mipLevel, GLboolean layered,
                                          GLint layer, GLenum access, GLenum format)
 {
-    Q_UNUSED(imageUnit)
-    Q_UNUSED(texture)
-    Q_UNUSED(mipLevel)
-    Q_UNUSED(layered)
-    Q_UNUSED(layer)
-    Q_UNUSED(access)
-    Q_UNUSED(format)
+    Q_UNUSED(imageUnit);
+    Q_UNUSED(texture);
+    Q_UNUSED(mipLevel);
+    Q_UNUSED(layered);
+    Q_UNUSED(layer);
+    Q_UNUSED(access);
+    Q_UNUSED(format);
     qWarning() << "Shader Images are not supported by ES 2.0 (since ES 3.1)";
 
 }
@@ -1020,8 +982,7 @@ UniformType GraphicsHelperES2::uniformTypeFromGLType(GLenum type)
     case GL_SAMPLER_CUBE:
         return UniformType::Sampler;
     default:
-        Q_UNREACHABLE();
-        return UniformType::Float;
+        Q_UNREACHABLE_RETURN(UniformType::Float);
     }
 }
 

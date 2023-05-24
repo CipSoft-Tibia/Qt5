@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,12 @@
 
 #include <stdint.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 
 namespace base {
@@ -38,13 +37,13 @@ namespace {
 // is initialized with the very first DisplayLinkMac instance, and is never
 // changed (even, e.g, in tests that re-initialize the main thread task runner).
 // https://885329
-// TODO(ccameron): crbug.com/969157 - Save this ask_runner to DisaplayLinkMac.
+// TODO(ccameron): crbug.com/969157 - Save this ask_runner to DisplayLinkMac.
 // configs += [ "//build/config/compiler:wexit_time_destructors" ] in
 // ui/display/BUILD.gn has to be removed because GetMainThreadTaskRunner()
 // causes a compiler error.
 scoped_refptr<base::SingleThreadTaskRunner> GetMainThreadTaskRunner() {
   static scoped_refptr<base::SingleThreadTaskRunner> task_runner =
-      base::ThreadTaskRunnerHandle::Get();
+      base::SingleThreadTaskRunner::GetCurrentDefault();
   return task_runner;
 }
 
@@ -82,7 +81,25 @@ scoped_refptr<DisplayLinkMac> DisplayLinkMac::GetForDisplay(
   ret = CVDisplayLinkCreateWithCGDisplay(display_id,
                                          display_link.InitializeInto());
   if (ret != kCVReturnSuccess) {
-    LOG(ERROR) << "CVDisplayLinkCreateWithActiveCGDisplays failed: " << ret;
+    LOG(ERROR) << "CVDisplayLinkCreateWithCGDisplay failed: " << ret;
+    return nullptr;
+  }
+
+  // Workaround for bug https://crbug.com/1218720. According to
+  // https://hg.mozilla.org/releases/mozilla-esr68/rev/db0628eadb86,
+  // CVDisplayLinkCreateWithCGDisplays()
+  // (called by CVDisplayLinkCreateWithCGDisplay()) sometimes
+  // creates a CVDisplayLinkRef with an uninitialized (nulled) internal
+  // pointer. If we continue to use this CVDisplayLinkRef, we will
+  // eventually crash in CVCGDisplayLink::getDisplayTimes(), where the
+  // internal pointer is dereferenced. Fortunately, when this happens
+  // another internal variable is also left uninitialized (zeroed),
+  // which is accessible via CVDisplayLinkGetCurrentCGDisplay(). In
+  // normal conditions the current display is never zero.
+  if ((ret == kCVReturnSuccess) &&
+      (CVDisplayLinkGetCurrentCGDisplay(display_link) == 0)) {
+    LOG(ERROR)
+        << "CVDisplayLinkCreateWithCGDisplay failed (no current display)";
     return nullptr;
   }
 
@@ -110,7 +127,7 @@ bool DisplayLinkMac::GetVSyncParameters(base::TimeTicks* timebase,
   // second). If too much time has elapsed since the last time the vsync
   // parameters were calculated, re-calculate them (but still return the old
   // parameters -- the update will be asynchronous).
-  if (base::TimeTicks::Now() >= recalculate_time_)
+  if (IsVSyncPotentiallyStale())
     StartOrContinueDisplayLink();
 
   *timebase = timebase_;
@@ -127,6 +144,16 @@ double DisplayLinkMac::GetRefreshRate() {
                     static_cast<double>(cv_time.timeValue));
 
   return refresh_rate;
+}
+
+void DisplayLinkMac::RegisterCallbackForNextVSyncUpdate(
+    VSyncUpdatedCallback callback) {
+  vsync_updated_callbacks_.push_back(std::move(callback));
+}
+
+bool DisplayLinkMac::IsVSyncPotentiallyStale() const {
+  return !timebase_and_interval_valid_ ||
+         base::TimeTicks::Now() >= recalculate_time_;
 }
 
 DisplayLinkMac::DisplayLinkMac(
@@ -203,12 +230,17 @@ void DisplayLinkMac::UpdateVSyncParameters(const CVTimeStamp& cv_time) {
   }
 
   timebase_ = base::TimeTicks::FromMachAbsoluteTime(cv_time.hostTime);
-  interval_ = base::TimeDelta::FromMicroseconds(interval_us.ValueOrDie());
+  interval_ = base::Microseconds(int64_t{interval_us.ValueOrDie()});
   timebase_and_interval_valid_ = true;
 
   // Don't restart the display link for 10 seconds.
-  recalculate_time_ = base::TimeTicks::Now() + base::TimeDelta::FromSeconds(10);
+  recalculate_time_ = base::TimeTicks::Now() + base::Seconds(10);
   StopDisplayLink();
+
+  std::vector<VSyncUpdatedCallback> vsync_updated_callbacks;
+  std::swap(vsync_updated_callbacks_, vsync_updated_callbacks);
+  for (auto& callback : vsync_updated_callbacks)
+    std::move(callback).Run(timebase_, interval_);
 }
 
 void DisplayLinkMac::StartOrContinueDisplayLink() {

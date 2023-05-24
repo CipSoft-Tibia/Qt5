@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,6 +32,9 @@ message Credentials {
   optional string username = 1;
   // The password for authenticating to the remote web proxy.
   optional string password = 2;
+  // Authentication schemes for which policy set credentials can be
+  // automatically applied. Valid values are 'basic', 'digest' and 'ntlm'.
+  repeated string policy_credentials_auth_schemes = 3;
 }
 
 // The protection space determines the domain over which credentials can

@@ -1,47 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtXml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDOM_H
 #define QDOM_H
 
 #include <QtXml/qtxmlglobal.h>
 #include <QtCore/qstring.h>
+
+class tst_QDom;
 
 QT_BEGIN_NAMESPACE
 
@@ -50,9 +16,6 @@ QT_BEGIN_NAMESPACE
 
 class QIODevice;
 class QTextStream;
-
-class QXmlInputSource;
-class QXmlReader;
 
 class QDomDocumentPrivate;
 class QDomDocumentTypePrivate;
@@ -227,10 +190,10 @@ public:
 
     void save(QTextStream&, int, EncodingPolicy=QDomNode::EncodingFromDocument) const;
 
-    QDomElement firstChildElement(const QString &tagName = QString()) const;
-    QDomElement lastChildElement(const QString &tagName = QString()) const;
-    QDomElement previousSiblingElement(const QString &tagName = QString()) const;
-    QDomElement nextSiblingElement(const QString &taName = QString()) const;
+    QDomElement firstChildElement(const QString &tagName = QString(), const QString &namespaceURI = QString()) const;
+    QDomElement lastChildElement(const QString &tagName = QString(), const QString &namespaceURI = QString()) const;
+    QDomElement previousSiblingElement(const QString &tagName = QString(), const QString &namespaceURI = QString()) const;
+    QDomElement nextSiblingElement(const QString &taName = QString(), const QString &namespaceURI = QString()) const;
 
     int lineNumber() const;
     int columnNumber() const;
@@ -240,6 +203,7 @@ protected:
     QDomNode(QDomNodePrivate*);
 
 private:
+    friend class ::tst_QDom;
     friend class QDomDocument;
     friend class QDomDocumentType;
     friend class QDomNodeList;
@@ -304,6 +268,22 @@ private:
 class Q_XML_EXPORT QDomDocument : public QDomNode
 {
 public:
+    enum class ParseOption {
+        Default = 0x00,
+        UseNamespaceProcessing = 0x01,
+        PreserveSpacingOnlyNodes = 0x02,
+    };
+    Q_DECLARE_FLAGS(ParseOptions, ParseOption)
+
+    struct ParseResult
+    {
+        QString errorMessage;
+        qsizetype errorLine = 0;
+        qsizetype errorColumn = 0;
+
+        explicit operator bool() const noexcept { return errorMessage.isEmpty(); }
+    };
+
     QDomDocument();
     explicit QDomDocument(const QString& name);
     explicit QDomDocument(const QDomDocumentType& doctype);
@@ -336,34 +316,38 @@ public:
     inline QDomNode::NodeType nodeType() const { return DocumentNode; }
 
     // Qt extensions
-    bool setContent(const QByteArray& text, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(const QString& text, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(QIODevice* dev, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    QT_DEPRECATED_X("Use other overloads instead")
-    bool setContent(QXmlInputSource *source, bool namespaceProcessing, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-QT_WARNING_POP
-#endif
-    bool setContent(const QByteArray& text, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(const QString& text, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-    bool setContent(QIODevice* dev, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    QT_DEPRECATED_X("Use other overloads instead")
-    bool setContent(QXmlInputSource *source, QXmlReader *reader, QString *errorMsg=nullptr, int *errorLine=nullptr, int *errorColumn=nullptr );
-QT_WARNING_POP
-#endif
+#if QT_DEPRECATED_SINCE(6, 8)
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
+    bool setContent(const QByteArray &text, bool namespaceProcessing, QString *errorMsg = nullptr, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
+    bool setContent(const QString &text, bool namespaceProcessing, QString *errorMsg = nullptr, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
+    bool setContent(QIODevice *dev, bool namespaceProcessing, QString *errorMsg = nullptr, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload returning ParseResult instead.")
+    bool setContent(const QByteArray &text, QString *errorMsg, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload returning ParseResult instead.")
+    bool setContent(const QString &text, QString *errorMsg, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload returning ParseResult instead.")
+    bool setContent(QIODevice *dev, QString *errorMsg, int *errorLine = nullptr, int *errorColumn = nullptr);
+    QT_DEPRECATED_VERSION_X_6_8("Use the overload taking ParseOptions instead.")
     bool setContent(QXmlStreamReader *reader, bool namespaceProcessing, QString *errorMsg = nullptr,
                     int *errorLine = nullptr, int *errorColumn = nullptr);
+#endif // QT_DEPRECATED_SINCE(6, 8)
+
+    Q_WEAK_OVERLOAD
+    ParseResult setContent(const QByteArray &data, ParseOptions options = ParseOption::Default)
+    { return setContentImpl(data, options); }
+    ParseResult setContent(QAnyStringView data, ParseOptions options = ParseOption::Default);
+    ParseResult setContent(QIODevice *device, ParseOptions options = ParseOption::Default);
+    ParseResult setContent(QXmlStreamReader *reader, ParseOptions options = ParseOption::Default);
 
     // Qt extensions
     QString toString(int = 1) const;
     QByteArray toByteArray(int = 1) const;
 
 private:
+    ParseResult setContentImpl(const QByteArray &data, ParseOptions options);
+
     QDomDocument(QDomDocumentPrivate*);
 
     friend class QDomNode;
@@ -508,15 +492,15 @@ public:
     QDomNodeList elementsByTagName(const QString& tagname) const;
     bool hasAttribute(const QString& name) const;
 
-    QString attributeNS(const QString nsURI, const QString& localName, const QString& defValue = QString()) const;
-    void setAttributeNS(const QString nsURI, const QString& qName, const QString& value);
-    inline void setAttributeNS(const QString nsURI, const QString& qName, int value)
+    QString attributeNS(const QString& nsURI, const QString& localName, const QString& defValue = QString()) const;
+    void setAttributeNS(const QString& nsURI, const QString& qName, const QString& value);
+    inline void setAttributeNS(const QString& nsURI, const QString& qName, int value)
         { setAttributeNS(nsURI, qName, qlonglong(value)); }
-    inline void setAttributeNS(const QString nsURI, const QString& qName, uint value)
+    inline void setAttributeNS(const QString& nsURI, const QString& qName, uint value)
         { setAttributeNS(nsURI, qName, qulonglong(value)); }
-    void setAttributeNS(const QString nsURI, const QString& qName, qlonglong value);
-    void setAttributeNS(const QString nsURI, const QString& qName, qulonglong value);
-    void setAttributeNS(const QString nsURI, const QString& qName, double value);
+    void setAttributeNS(const QString& nsURI, const QString& qName, qlonglong value);
+    void setAttributeNS(const QString& nsURI, const QString& qName, qulonglong value);
+    void setAttributeNS(const QString& nsURI, const QString& qName, double value);
     void removeAttributeNS(const QString& nsURI, const QString& localName);
     QDomAttr attributeNodeNS(const QString& nsURI, const QString& localName);
     QDomAttr setAttributeNodeNS(const QDomAttr& newAttr);

@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef PLATFORM_WINDOW_QT_H
 #define PLATFORM_WINDOW_QT_H
 
 #if defined(USE_OZONE)
 
+#include "ui/base/cursor/platform_cursor.h"
 #include "ui/events/platform/platform_event_dispatcher.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
@@ -56,26 +21,28 @@ public:
     PlatformWindowQt(PlatformWindowDelegate* delegate, const gfx::Rect& bounds);
     ~PlatformWindowQt() override;
     // PlatformWindow:
-    gfx::Rect GetBounds() override;
-    void SetBounds(const gfx::Rect& bounds) override;
+    gfx::Rect GetBoundsInPixels() const override;
+    void SetBoundsInPixels(const gfx::Rect& bounds) override;
+    gfx::Rect GetBoundsInDIP() const override;
+    void SetBoundsInDIP(const gfx::Rect& bounds) override;
     void Show(bool inactive = false) override { }
     void Hide() override { }
-    void Close() override { }
-    bool IsVisible() const { return true; }
-    void SetTitle(const base::string16&) override { }
+    void Close() override;
+    bool IsVisible() const override { return true; }
+    void SetTitle(const std::u16string&) override { }
     void SetCapture() override { }
     void ReleaseCapture() override { }
     bool HasCapture() const override { return false; }
-    void ToggleFullscreen() override { }
+    void SetFullscreen(bool, int64_t) override { }
     void Maximize() override { }
     void Minimize() override { }
     void Restore() override { }
     PlatformWindowState GetPlatformWindowState() const override { return PlatformWindowState::kUnknown; }
-    void SetCursor(PlatformCursor) override { }
+    void SetCursor(scoped_refptr<PlatformCursor>) override { }
     void MoveCursorTo(const gfx::Point&) override { }
     void ConfineCursorToBounds(const gfx::Rect&) override { }
-    void SetRestoredBoundsInPixels(const gfx::Rect& bounds) override { }
-    gfx::Rect GetRestoredBoundsInPixels() const override { return gfx::Rect(); }
+    void SetRestoredBoundsInDIP(const gfx::Rect& bounds)  override { }
+    gfx::Rect GetRestoredBoundsInDIP() const  override { return gfx::Rect(); }
     void Activate() override { }
     void Deactivate() override { }
     void SetUseNativeFrame(bool use_native_frame) override { }
@@ -92,8 +59,6 @@ public:
 private:
     PlatformWindowDelegate* delegate_;
     gfx::Rect bounds_;
-
-    DISALLOW_COPY_AND_ASSIGN(PlatformWindowQt);
 };
 
 }

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qv4proxy_p.h"
@@ -90,13 +54,14 @@ ReturnedValue ProxyObject::virtualGet(const Managed *m, PropertyKey id, const Va
     if (hasProperty)
         *hasProperty = true;
 
-    JSCallData cdata(scope, 3, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = id.toStringOrSymbol(scope.engine);
-    cdata.args[2] = *receiver;
+    Value *args = scope.alloc(3);
+    args[0] = target;
+    args[1] = id.toStringOrSymbol(scope.engine);
+    args[2] = *receiver;
+    JSCallData cdata(handler, args, 3);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return Encode::undefined();
     ScopedProperty targetDesc(scope);
     PropertyAttributes attributes = target->getOwnProperty(id, targetDesc);
@@ -131,14 +96,15 @@ bool ProxyObject::virtualPut(Managed *m, PropertyKey id, const Value &value, Val
     if (!trap->isFunctionObject())
         return scope.engine->throwTypeError();
 
-    JSCallData cdata(scope, 4, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = id.toStringOrSymbol(scope.engine);
-    cdata.args[2] = value;
-    cdata.args[3] = *receiver;
+    Value *args = scope.alloc(4);
+    args[0] = target;
+    args[1] = id.toStringOrSymbol(scope.engine);
+    args[2] = value;
+    args[3] = *receiver;
+    JSCallData cdata(handler, args, 4);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException || !trapResult->toBoolean())
+    if (scope.hasException() || !trapResult->toBoolean())
         return false;
     ScopedProperty targetDesc(scope);
     PropertyAttributes attributes = target->getOwnProperty(id, targetDesc);
@@ -172,13 +138,14 @@ bool ProxyObject::virtualDeleteProperty(Managed *m, PropertyKey id)
     if (!trap->isFunctionObject())
         return scope.engine->throwTypeError();
 
-    JSCallData cdata(scope, 3, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = id.toStringOrSymbol(scope.engine);
-    cdata.args[2] = o->d(); // ### fix receiver handling
+    Value *args = scope.alloc(3);
+    args[0] = target;
+    args[1] = id.toStringOrSymbol(scope.engine);
+    args[2] = o->d(); // ### fix receiver handling
+    JSCallData cdata(handler, args, 3);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException || !trapResult->toBoolean())
+    if (scope.hasException() || !trapResult->toBoolean())
         return false;
     ScopedProperty targetDesc(scope);
     PropertyAttributes attributes = target->getOwnProperty(id, targetDesc);
@@ -208,12 +175,13 @@ bool ProxyObject::virtualHasProperty(const Managed *m, PropertyKey id)
     if (!trap->isFunctionObject())
         return scope.engine->throwTypeError();
 
-    JSCallData cdata(scope, 2, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = id.isArrayIndex() ? Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
+    Value *args = scope.alloc(2);
+    args[0] = target;
+    args[1] = id.isArrayIndex() ? Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
+    JSCallData cdata(handler, args, 2);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return false;
     bool result = trapResult->toBoolean();
     if (!result) {
@@ -250,12 +218,13 @@ PropertyAttributes ProxyObject::virtualGetOwnProperty(const Managed *m, Property
         return Attr_Invalid;
     }
 
-    JSCallData cdata(scope, 2, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = id.isArrayIndex() ? Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
+    Value *args = scope.alloc(2);
+    args[0] = target;
+    args[1] = id.isArrayIndex() ? Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
+    JSCallData cdata(handler, args, 2);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return Attr_Invalid;
     if (!trapResult->isObject() && !trapResult->isUndefined()) {
         scope.engine->throwTypeError();
@@ -325,13 +294,14 @@ bool ProxyObject::virtualDefineOwnProperty(Managed *m, PropertyKey id, const Pro
         return false;
     }
 
-    JSCallData cdata(scope, 3, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = id.isArrayIndex() ? Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
-    cdata.args[2] = ObjectPrototype::fromPropertyDescriptor(scope.engine, p, attrs);
+    Value *args = scope.alloc(3);
+    args[0] = target;
+    args[1] = id.isArrayIndex() ? Value::fromUInt32(id.asArrayIndex()).toString(scope.engine) : id.asStringOrSymbol();
+    args[2] = ObjectPrototype::fromPropertyDescriptor(scope.engine, p, attrs);
+    JSCallData cdata(handler, args, 3);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    bool result = !scope.engine->hasException && trapResult->toBoolean();
+    bool result = !scope.hasException() && trapResult->toBoolean();
     if (!result)
         return false;
 
@@ -377,11 +347,12 @@ bool ProxyObject::virtualIsExtensible(const Managed *m)
     if (!trap->isFunctionObject())
         return scope.engine->throwTypeError();
 
-    JSCallData cdata(scope, 1, nullptr, handler);
-    cdata.args[0] = target;
+    Value *args = scope.alloc(1);
+    args[0] = target;
+    JSCallData cdata(handler, args, 1);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return false;
     bool result = trapResult->toBoolean();
     if (result != target->isExtensible()) {
@@ -410,11 +381,12 @@ bool ProxyObject::virtualPreventExtensions(Managed *m)
     if (!trap->isFunctionObject())
         return scope.engine->throwTypeError();
 
-    JSCallData cdata(scope, 1, nullptr, handler);
-    cdata.args[0] = target;
+    Value *args = scope.alloc(1);
+    args[0] = target;
+    JSCallData cdata(handler, args, 1);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return false;
     bool result = trapResult->toBoolean();
     if (result && target->isExtensible()) {
@@ -447,11 +419,12 @@ Heap::Object *ProxyObject::virtualGetPrototypeOf(const Managed *m)
         return nullptr;
     }
 
-    JSCallData cdata(scope, 1, nullptr, handler);
-    cdata.args[0] = target;
+    Value *args = scope.alloc(1);
+    args[0] = target;
+    JSCallData cdata(handler, args, 1);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return nullptr;
     if (!trapResult->isNull() && !trapResult->isObject()) {
         scope.engine->throwTypeError();
@@ -491,12 +464,13 @@ bool ProxyObject::virtualSetPrototypeOf(Managed *m, const Object *p)
         return false;
     }
 
-    JSCallData cdata(scope, 2, nullptr, handler);
-    cdata.args[0] = target;
-    cdata.args[1] = p ? p->asReturnedValue() : Encode::null();
+    Value *args = scope.alloc(2);
+    args[0] = target;
+    args[1] = p ? p->asReturnedValue() : Encode::null();
+    JSCallData cdata(handler, args, 2);
 
     ScopedValue trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    bool result = !scope.engine->hasException && trapResult->toBoolean();
+    bool result = !scope.hasException() && trapResult->toBoolean();
     if (!result)
         return false;
     if (!target->isExtensible()) {
@@ -584,10 +558,11 @@ OwnPropertyKeyIterator *ProxyObject::virtualOwnPropertyKeys(const Object *m, Val
         return nullptr;
     }
 
-    JSCallData cdata(scope, 1, nullptr, handler);
-    cdata.args[0] = target;
+    Value *args = scope.alloc(1);
+    args[0] = target;
+    JSCallData cdata(handler, args, 1);
     ScopedObject trapResult(scope, static_cast<const FunctionObject *>(trap.ptr)->call(cdata));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return nullptr;
     if (!trapResult) {
         scope.engine->throwTypeError();
@@ -599,7 +574,7 @@ OwnPropertyKeyIterator *ProxyObject::virtualOwnPropertyKeys(const Object *m, Val
     ScopedStringOrSymbol key(scope);
     for (uint i = 0; i < len; ++i) {
         key = trapResult->get(i);
-        if (scope.engine->hasException)
+        if (scope.hasException())
             return nullptr;
         if (!key) {
             scope.engine->throwTypeError();

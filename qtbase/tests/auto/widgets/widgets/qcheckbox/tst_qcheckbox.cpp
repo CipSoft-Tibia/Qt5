@@ -1,52 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-
-
-#include "qcheckbox.h"
-#include <qapplication.h>
-#include <qpixmap.h>
-#include <qdatetime.h>
-#include <qcheckbox.h>
+#include <QTest>
+#include <QSignalSpy>
+#include <QApplication>
+#include <QPixmap>
+#include <QDateTime>
+#include <QCheckBox>
 
 class tst_QCheckBox : public QObject
 {
-Q_OBJECT
-
+    Q_OBJECT
 private slots:
     void initTestCase();
-    void cleanupTestCase();
-    void init();
-    void cleanup();
 
     void setChecked();
+    void setCheckedSignal();
     void setTriState();
     void setText_data();
     void setText();
@@ -59,260 +29,231 @@ private slots:
     void stateChanged();
     void foregroundRole();
     void minimumSizeHint();
-
-protected slots:
-    void onClicked();
-    void onToggled( bool on );
-    void onPressed();
-    void onReleased();
-    void onStateChanged( int state );
-
-private:
-    uint click_count;
-    uint toggle_count;
-    uint press_count;
-    uint release_count;
-    int cur_state;
-    QCheckBox *testWidget;
 };
 
 void tst_QCheckBox::initTestCase()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
-
-    // Create the test class
-    testWidget = new QCheckBox(0);
-    testWidget->setObjectName("testObject");
-    testWidget->resize( 200, 200 );
-    testWidget->show();
-    QVERIFY(QTest::qWaitForWindowActive(testWidget));
-}
-
-void tst_QCheckBox::cleanupTestCase()
-{
-    delete testWidget;
-    testWidget = 0;
-}
-
-void tst_QCheckBox::init()
-{
-    testWidget->setTristate( false );
-    testWidget->setChecked( false );
-    testWidget->setAutoRepeat( false );
-}
-
-void tst_QCheckBox::cleanup()
-{
-    disconnect(testWidget, SIGNAL(pressed()), this, SLOT(onPressed()));
-    disconnect(testWidget, SIGNAL(released()), this, SLOT(onReleased()));
-    disconnect(testWidget, SIGNAL(clicked()), this, SLOT(onClicked()));
-    disconnect(testWidget, SIGNAL(toggled(bool)), this, SLOT(onToggled(bool)));
-}
-
-void tst_QCheckBox::onClicked()
-{
-    click_count++;
-}
-
-void tst_QCheckBox::onPressed()
-{
-    press_count++;
-}
-
-void tst_QCheckBox::onReleased()
-{
-    release_count++;
-}
-
-void tst_QCheckBox::onToggled( bool /*on*/ )
-{
-    toggle_count++;
 }
 
 // ***************************************************
 
 void tst_QCheckBox::setChecked()
 {
-    testWidget->setChecked( true );
-    QVERIFY( testWidget->isChecked() );
-    QVERIFY( testWidget->isChecked() );
-    QVERIFY( testWidget->checkState() == Qt::Checked );
+    QCheckBox testWidget;
+    testWidget.setChecked(true);
+    QVERIFY(testWidget.isChecked());
+    QVERIFY(testWidget.isChecked());
+    QVERIFY(testWidget.checkState() == Qt::Checked);
 
-    testWidget->setChecked( false );
-    QVERIFY( !testWidget->isChecked() );
-    QVERIFY( !testWidget->isChecked() );
-    QVERIFY( testWidget->checkState() == Qt::Unchecked );
+    testWidget.setChecked(false);
+    QVERIFY(!testWidget.isChecked());
+    QVERIFY(!testWidget.isChecked());
+    QVERIFY(testWidget.checkState() == Qt::Unchecked);
 
-    testWidget->setChecked( false );
-    QTest::keyClick( testWidget, ' ' );
-    QVERIFY( testWidget->isChecked() );
+    testWidget.setChecked(false);
+    QTest::keyClick(&testWidget, ' ');
+    QVERIFY(testWidget.isChecked());
 
-    QTest::keyClick( testWidget, ' ' );
-    QVERIFY( !testWidget->isChecked() );
+    QTest::keyClick(&testWidget, ' ');
+    QVERIFY(!testWidget.isChecked());
+}
+
+void tst_QCheckBox::setCheckedSignal()
+{
+    QCheckBox testWidget;
+    testWidget.setCheckState(Qt::Unchecked);
+    QSignalSpy checkStateChangedSpy(&testWidget, &QCheckBox::stateChanged);
+    testWidget.setCheckState(Qt::Checked);
+    testWidget.setCheckState(Qt::Checked);
+    QTRY_COMPARE(checkStateChangedSpy.size(), 1);   // get signal only once
+    QCOMPARE(testWidget.checkState(), Qt::Checked);
+    testWidget.setCheckState(Qt::Unchecked);
+    testWidget.setCheckState(Qt::Unchecked);
+    QTRY_COMPARE(checkStateChangedSpy.size(), 2);   // get signal only once
+    QCOMPARE(testWidget.checkState(), Qt::Unchecked);
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    QTRY_COMPARE(checkStateChangedSpy.size(), 3);   // get signal only once
+    QCOMPARE(testWidget.checkState(), Qt::PartiallyChecked);
 }
 
 void tst_QCheckBox::setTriState()
 {
-    testWidget->setTristate( true );
-    QVERIFY( testWidget->isTristate() );
-    QVERIFY( testWidget->checkState() == Qt::Unchecked );
+    QCheckBox testWidget;
+    testWidget.setTristate(true);
+    QVERIFY(testWidget.isTristate());
+    QVERIFY(testWidget.checkState() == Qt::Unchecked);
 
-    testWidget->setCheckState(Qt::PartiallyChecked);
-    QVERIFY( testWidget->checkState() == Qt::PartiallyChecked );
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    QVERIFY(testWidget.checkState() == Qt::PartiallyChecked);
 
-    testWidget->setChecked( true );
-    QVERIFY( testWidget->isChecked() );
-    QVERIFY( testWidget->checkState() == Qt::Checked );
+    testWidget.setChecked(true);
+    QVERIFY(testWidget.isChecked());
+    QVERIFY(testWidget.checkState() == Qt::Checked);
 
-    testWidget->setChecked( false );
-    QVERIFY( !testWidget->isChecked() );
-    QVERIFY( testWidget->checkState() == Qt::Unchecked );
+    testWidget.setChecked(false);
+    QVERIFY(!testWidget.isChecked());
+    QVERIFY(testWidget.checkState() == Qt::Unchecked);
 
-    testWidget->setCheckState(Qt::PartiallyChecked);
-    QVERIFY( testWidget->checkState() == Qt::PartiallyChecked );
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    QVERIFY(testWidget.checkState() == Qt::PartiallyChecked);
 
-    testWidget->setTristate( false );
-    QVERIFY( !testWidget->isTristate() );
+    testWidget.setTristate(false);
+    QVERIFY(!testWidget.isTristate());
 
-    testWidget->setCheckState(Qt::PartiallyChecked);
-    QVERIFY( testWidget->checkState() == Qt::PartiallyChecked );
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    QVERIFY(testWidget.checkState() == Qt::PartiallyChecked);
 
-    testWidget->setChecked( true );
-    QVERIFY( testWidget->checkState() == Qt::Checked );
+    testWidget.setChecked(true);
+    QVERIFY(testWidget.checkState() == Qt::Checked);
 
-    testWidget->setChecked( false );
-    QVERIFY( testWidget->checkState() == Qt::Unchecked );
+    testWidget.setChecked(false);
+    QVERIFY(testWidget.checkState() == Qt::Unchecked);
 }
 
 void tst_QCheckBox::setText_data()
 {
     QTest::addColumn<QString>("s1");
 
-    QTest::newRow( "data0" ) << QString("This is a text");
-    QTest::newRow( "data1" ) << QString("A");
-    QTest::newRow( "data2" ) << QString("ABCDEFG ");
-    QTest::newRow( "data3" ) << QString("Text\nwith a cr-lf");
-    QTest::newRow( "data4" ) << QString("");
+    QTest::newRow("data0" ) << QString("This is a text");
+    QTest::newRow("data1" ) << QString("A");
+    QTest::newRow("data2" ) << QString("ABCDEFG ");
+    QTest::newRow("data3" ) << QString("Text\nwith a cr-lf");
+    QTest::newRow("data4" ) << QString("");
 }
 
 void tst_QCheckBox::setText()
 {
-    QFETCH( QString, s1 );
-    testWidget->setText( s1 );
-    QCOMPARE( testWidget->text(), s1 );
+    QCheckBox testWidget;
+    QFETCH(QString, s1);
+    testWidget.setText(s1);
+    QCOMPARE(testWidget.text(), s1);
 }
 
 void tst_QCheckBox::setDown()
 {
-    testWidget->setDown( true );
-    QVERIFY( testWidget->isDown() );
+    QCheckBox testWidget;
+    testWidget.setDown(true);
+    QVERIFY(testWidget.isDown());
 
-    testWidget->setDown( false );
-    QVERIFY( !testWidget->isDown() );
+    testWidget.setDown(false);
+    QVERIFY(!testWidget.isDown());
 }
 
 void tst_QCheckBox::setAutoRepeat()
 {
+    QCheckBox testWidget;
     // setAutoRepeat has no effect on toggle buttons
-    QVERIFY( testWidget->isCheckable() );
+    testWidget.setAutoRepeat(true);
+    QVERIFY(testWidget.isCheckable());
 }
 
 void tst_QCheckBox::toggle()
 {
+    QCheckBox testWidget;
     bool cur_state;
-    cur_state = testWidget->isChecked();
-    testWidget->toggle();
-    QVERIFY( cur_state != testWidget->isChecked() );
+    cur_state = testWidget.isChecked();
+    testWidget.toggle();
+    QVERIFY(cur_state != testWidget.isChecked());
 
-    cur_state = testWidget->isChecked();
-    testWidget->toggle();
-    QVERIFY( cur_state != testWidget->isChecked() );
+    cur_state = testWidget.isChecked();
+    testWidget.toggle();
+    QVERIFY(cur_state != testWidget.isChecked());
 
-    cur_state = testWidget->isChecked();
-    testWidget->toggle();
-    QVERIFY( cur_state != testWidget->isChecked() );
+    cur_state = testWidget.isChecked();
+    testWidget.toggle();
+    QVERIFY(cur_state != testWidget.isChecked());
 }
 
 void tst_QCheckBox::pressed()
 {
-    connect(testWidget, SIGNAL(pressed()), this, SLOT(onPressed()));
-    connect(testWidget, SIGNAL(released()), this, SLOT(onReleased()));
-    press_count = 0;
-    release_count = 0;
-    testWidget->setDown(false);
-    QVERIFY( !testWidget->isChecked() );
+    QCheckBox testWidget;
+    int press_count = 0;
+    int release_count = 0;
+    connect(&testWidget, &QCheckBox::pressed, this, [&]() { ++press_count; });
+    connect(&testWidget, &QCheckBox::released, this, [&]() { ++release_count; });
+    testWidget.setDown(false);
+    QVERIFY(!testWidget.isChecked());
 
-    QTest::keyPress( testWidget, Qt::Key_Space );
-    QVERIFY( press_count == 1 );
-    QVERIFY( release_count == 0 );
-    QVERIFY( !testWidget->isChecked() );
+    QTest::keyPress(&testWidget, Qt::Key_Space);
+    QVERIFY(press_count == 1);
+    QVERIFY(release_count == 0);
+    QVERIFY(!testWidget.isChecked());
 
-    QTest::keyRelease( testWidget, Qt::Key_Space );
-    QVERIFY( press_count == 1 );
-    QVERIFY( release_count == 1 );
-    QVERIFY( testWidget->isChecked() );
+    QTest::keyRelease(&testWidget, Qt::Key_Space);
+    QVERIFY(press_count == 1);
+    QVERIFY(release_count == 1);
+    QVERIFY(testWidget.isChecked());
 }
 
 void tst_QCheckBox::toggled()
 {
-    connect(testWidget, SIGNAL(toggled(bool)), this, SLOT(onToggled(bool)));
-    click_count = 0;
-    toggle_count = 0;
-    testWidget->toggle();
-    QCOMPARE( toggle_count, (uint)1 );
+    QCheckBox testWidget;
+    int toggle_count = 0;
+    int click_count = 0;
+    connect(&testWidget, &QCheckBox::toggled, this, [&]() { ++toggle_count; });
+    connect(&testWidget, &QCheckBox::clicked, this, [&]() { ++click_count; });
 
-    testWidget->toggle();
-    QCOMPARE( toggle_count, (uint)2 );
+    testWidget.toggle();
+    QCOMPARE(toggle_count, 1);
 
-    testWidget->toggle();
-    QCOMPARE( toggle_count, (uint)3 );
+    testWidget.toggle();
+    QCOMPARE(toggle_count, 2);
 
-    QCOMPARE( click_count, (uint)0 );
-}
+    testWidget.toggle();
+    QCOMPARE(toggle_count, 3);
 
-void tst_QCheckBox::onStateChanged( int state )
-{
-    cur_state = state;
+    QCOMPARE(click_count, 0);
 }
 
 void tst_QCheckBox::stateChanged()
 {
-    QSignalSpy stateChangedSpy(testWidget, SIGNAL(stateChanged(int)));
-    connect(testWidget, SIGNAL(stateChanged(int)), this, SLOT(onStateChanged(int)));
-    cur_state = -1;
-    testWidget->setChecked( true );
-    qApp->processEvents();
-    QCOMPARE( cur_state, (int)2 );
+    QCheckBox testWidget;
+    QCOMPARE(testWidget.checkState(), Qt::Unchecked);
 
-    cur_state = -1;
-    testWidget->setChecked( false );
-    qApp->processEvents();
-    QCOMPARE( cur_state, (int)0 );
+    Qt::CheckState cur_state = Qt::Unchecked;
+    QSignalSpy stateChangedSpy(&testWidget, &QCheckBox::stateChanged);
+    connect(&testWidget, &QCheckBox::stateChanged, this, [&](auto state) { cur_state = Qt::CheckState(state); });
+    testWidget.setChecked(true);
+    QVERIFY(QTest::qWaitFor([&]() { return stateChangedSpy.size() == 1; }));
+    QCOMPARE(stateChangedSpy.size(), 1);
+    QCOMPARE(cur_state, Qt::Checked);
+    QCOMPARE(testWidget.checkState(), Qt::Checked);
 
-    cur_state = -1;
-    testWidget->setCheckState(Qt::PartiallyChecked);
-    qApp->processEvents();
-    QCOMPARE( cur_state, (int)1 );
+    testWidget.setChecked(false);
+    QVERIFY(QTest::qWaitFor([&]() { return stateChangedSpy.size() == 2; }));
+    QCOMPARE(stateChangedSpy.size(), 2);
+    QCOMPARE(cur_state, Qt::Unchecked);
+    QCOMPARE(testWidget.checkState(), Qt::Unchecked);
 
-    QCOMPARE(stateChangedSpy.count(), 3);
-    testWidget->setCheckState(Qt::PartiallyChecked);
-    qApp->processEvents();
-    QCOMPARE(stateChangedSpy.count(), 3);
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    QVERIFY(QTest::qWaitFor([&]() { return stateChangedSpy.size() == 3; }));
+    QCOMPARE(stateChangedSpy.size(), 3);
+    QCOMPARE(cur_state, Qt::PartiallyChecked);
+    QCOMPARE(testWidget.checkState(), Qt::PartiallyChecked);
+
+    testWidget.setCheckState(Qt::PartiallyChecked);
+    QCoreApplication::processEvents();
+    QCOMPARE(stateChangedSpy.size(), 3);
 }
 
 void tst_QCheckBox::isToggleButton()
 {
-    QVERIFY( testWidget->isCheckable() );
+    QCheckBox testWidget;
+    QVERIFY(testWidget.isCheckable());
 }
 
 void tst_QCheckBox::foregroundRole()
 {
-    QCOMPARE(testWidget->foregroundRole(), QPalette::WindowText);
+    QCheckBox testWidget;
+    QCOMPARE(testWidget.foregroundRole(), QPalette::WindowText);
 }
 
 void tst_QCheckBox::minimumSizeHint()
 {
+    QCheckBox testWidget;
     QCheckBox box(tr("CheckBox's sizeHint is the same as it's minimumSizeHint"));
     QCOMPARE(box.sizeHint(), box.minimumSizeHint());
 }

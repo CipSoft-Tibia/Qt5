@@ -1,88 +1,71 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+import QtQuick 6.5
+import QtQuick.Controls 6.5
+import "components"
+import content
 
-import QtQuick 2.0
-import "."
+import custom.StockEngine
 
 Rectangle {
     id: root
-    anchors.top: parent.top
-    anchors.bottom: parent.bottom
-    color: "white"
+    property var chosenElement: null
+    color: "#101010"
 
-    property string currentStockId: ""
-    property string currentStockName: ""
-
-    ListView {
-        id: view
-        anchors.fill: parent
-        clip: true
-        keyNavigationWraps: true
-        highlightMoveDuration: 0
-        focus: true
-        snapMode: ListView.SnapToItem
-        model: StockListModel {}
-        currentIndex: -1 // Don't pre-select any item
-
-        onCurrentIndexChanged: {
-            if (currentItem) {
-                root.currentStockId = model.get(currentIndex).stockId;
-                root.currentStockName = model.get(currentIndex).name;
-            }
+    Rectangle {
+        id: banner
+        width: parent.width
+        height: root.width < root.height? 70 : 0
+        color: parent.color
+        anchors.top: parent.top
+        anchors.topMargin: 10
+        visible: root.width < root.height
+        Image {
+            id: logoBig
+            visible: root.width < root.height
+            source: "images/qtLogo.png"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.horizontalCenter: parent.horizontalCenter
+            fillMode: Image.PreserveAspectFit
         }
 
-        delegate: StockListDelegate {}
+        Image {
+            id: logoSmall
+            visible: root.width > root.height
+            source: "images/qtLogo2.png"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.horizontalCenter: parent.horizontalCenter
+            fillMode: Image.PreserveAspectFit
+        }
+    }
 
-        highlight: Rectangle {
-            width: view.width
-            color: "#eeeeee"
+    Search {
+        id: searchBar
+        anchors.top: banner.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+    }
+
+    StockTitle {
+        id: title
+        width: parent.width
+        height: 29
+        anchors.top: searchBar.bottom
+        date: qsTr("%1").arg(new Date().toLocaleDateString())
+    }
+
+    ListView {
+        id: listView
+        width: parent.width
+        anchors.top: title.bottom
+        anchors.bottom: parent.bottom
+        clip: true
+        boundsBehavior: Flickable.DragAndOvershootBounds
+        model: StockEngine.filterModel
+
+        currentIndex: -1
+        delegate: StockDelegate {
+            selectButton.onClicked: mainWindow.stateGroup.state = "StockView"
+            width: listView.width
         }
     }
 }

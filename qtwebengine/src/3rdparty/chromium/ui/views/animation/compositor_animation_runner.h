@@ -1,13 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_ANIMATION_COMPOSITOR_ANIMATION_RUNNER_H_
 #define UI_VIEWS_ANIMATION_COMPOSITOR_ANIMATION_RUNNER_H_
 
-#include <memory>
-
-#include "base/scoped_observer.h"
+#include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "ui/compositor/compositor.h"
 #include "ui/compositor/compositor_animation_observer.h"
@@ -15,11 +14,6 @@
 #include "ui/gfx/animation/animation_container.h"
 #include "ui/views/views_export.h"
 #include "ui/views/widget/widget_observer.h"
-
-namespace ui {
-class AnimationMetricsRecorder;
-class AnimationMetricsReporter;
-}  // namespace ui
 
 namespace views {
 class Widget;
@@ -30,17 +24,12 @@ class VIEWS_EXPORT CompositorAnimationRunner
       public ui::CompositorAnimationObserver,
       public WidgetObserver {
  public:
-  explicit CompositorAnimationRunner(Widget* widget);
+  explicit CompositorAnimationRunner(
+      Widget* widget,
+      const base::Location& location = FROM_HERE);
   CompositorAnimationRunner(CompositorAnimationRunner&) = delete;
   CompositorAnimationRunner& operator=(CompositorAnimationRunner&) = delete;
   ~CompositorAnimationRunner() override;
-
-  // Set a AnimationMetricsReporter which will record metrics
-  // after an animation is complete. A non zero |expected_duration| is required
-  // for computations.
-  void SetAnimationMetricsReporter(
-      ui::AnimationMetricsReporter* animation_metrics_reporter,
-      base::TimeDelta expected_duration);
 
   // gfx::AnimationRunner:
   void Stop() override;
@@ -63,20 +52,15 @@ class VIEWS_EXPORT CompositorAnimationRunner
 
   // When |widget_| is nullptr, it means the widget has been destroyed and
   // |compositor_| must also be nullptr.
-  Widget* widget_;
+  raw_ptr<Widget> widget_;
 
   // When |compositor_| is nullptr, it means either the animation is not
   // running, or the compositor or |widget_| associated with the compositor_ has
   // been destroyed during animation.
-  ui::Compositor* compositor_ = nullptr;
+  raw_ptr<ui::Compositor> compositor_ = nullptr;
 
   base::TimeDelta min_interval_ = base::TimeDelta::Max();
   base::TimeTicks last_tick_;
-
-  // Expected duration of an animation. Used for and required to be non zero for
-  // animation metrics recording.
-  base::TimeDelta expected_duration_;
-  std::unique_ptr<ui::AnimationMetricsRecorder> animation_metrics_recorder_;
 };
 
 }  // namespace views

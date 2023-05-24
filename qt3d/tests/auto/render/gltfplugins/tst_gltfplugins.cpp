@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/qtest.h>
 #include <QtCore/qtemporarydir.h>
@@ -56,8 +20,8 @@
 #include <Qt3DRender/qspotlight.h>
 #include <Qt3DRender/qdirectionallight.h>
 #include <Qt3DRender/qpointlight.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 #include <Qt3DRender/qeffect.h>
 #include <Qt3DRender/qshaderprogram.h>
 #include <Qt3DRender/qtechnique.h>
@@ -67,6 +31,7 @@
 #include <Qt3DRender/qtexture.h>
 #include <Qt3DRender/qcolormask.h>
 #include <Qt3DRender/qblendequation.h>
+#include <Qt3DRender/qgeometryrenderer.h>
 
 #include <Qt3DExtras/qconemesh.h>
 #include <Qt3DExtras/qcuboidmesh.h>
@@ -111,12 +76,12 @@ private:
                             Qt3DCore::QComponent *comp2 = nullptr,
                             Qt3DCore::QComponent *comp3 = nullptr,
                             Qt3DCore::QEntity *parent = nullptr);
-    void addPositionAttributeToGeometry(Qt3DRender::QGeometry *geometry,
-                                        Qt3DRender::QBuffer *buffer, int count);
-    void addIndexAttributeToGeometry(Qt3DRender::QGeometry *geometry,
-                                     Qt3DRender::QBuffer *buffer, int count);
-    void addColorAttributeToGeometry(Qt3DRender::QGeometry *geometry,
-                                     Qt3DRender::QBuffer *buffer, int count);
+    void addPositionAttributeToGeometry(Qt3DCore::QGeometry *geometry,
+                                        Qt3DCore::QBuffer *buffer, int count);
+    void addIndexAttributeToGeometry(Qt3DCore::QGeometry *geometry,
+                                     Qt3DCore::QBuffer *buffer, int count);
+    void addColorAttributeToGeometry(Qt3DCore::QGeometry *geometry,
+                                     Qt3DCore::QBuffer *buffer, int count);
     Qt3DCore::QEntity *findChildEntity(Qt3DCore::QEntity *entity, const QString &name);
     Qt3DCore::QTransform *transformComponent(Qt3DCore::QEntity *entity);
     Qt3DRender::QAbstractLight *lightComponent(Qt3DCore::QEntity *entity);
@@ -124,16 +89,16 @@ private:
     Qt3DRender::QGeometryRenderer *meshComponent(Qt3DCore::QEntity *entity);
     Qt3DRender::QMaterial *materialComponent(Qt3DCore::QEntity *entity);
     void compareComponents(Qt3DCore::QComponent *c1, Qt3DCore::QComponent *c2);
-    Qt3DRender::QAttribute *findAttribute(const QString &name,
-                                          Qt3DRender::QAttribute::AttributeType type,
-                                          Qt3DRender::QGeometry *geometry);
-    void compareAttributes(Qt3DRender::QAttribute *a1, Qt3DRender::QAttribute *a2);
-    void compareParameters(const QVector<Qt3DRender::QParameter *> &params1,
-                           const QVector<Qt3DRender::QParameter *> &params2);
-    void compareRenderPasses(const QVector<Qt3DRender::QRenderPass *> &passes1,
-                             const QVector<Qt3DRender::QRenderPass *> &passes2);
-    void compareFilterKeys(const QVector<Qt3DRender::QFilterKey *> &keys1,
-                           const QVector<Qt3DRender::QFilterKey *> &keys2);
+    Qt3DCore::QAttribute *findAttribute(const QString &name,
+                                          Qt3DCore::QAttribute::AttributeType type,
+                                          Qt3DCore::QGeometry *geometry);
+    void compareAttributes(Qt3DCore::QAttribute *a1, Qt3DCore::QAttribute *a2);
+    void compareParameters(const QList<Qt3DRender::QParameter *> &params1,
+                           const QList<Qt3DRender::QParameter *> &params2);
+    void compareRenderPasses(const QList<Qt3DRender::QRenderPass *> &passes1,
+                             const QList<Qt3DRender::QRenderPass *> &passes2);
+    void compareFilterKeys(const QList<Qt3DRender::QFilterKey *> &keys1,
+                           const QList<Qt3DRender::QFilterKey *> &keys2);
     QUrl getTextureUrl(Qt3DRender::QAbstractTexture *tex);
     Qt3DRender::QGeometryRenderer *createCustomCube();
     Qt3DRender::QEffect *createOnTopEffect();
@@ -159,6 +124,7 @@ void tst_gltfPlugins::initTestCase()
 
 void tst_gltfPlugins::init()
 {
+    m_sceneRoot1 = m_sceneRoot2 = nullptr;
     m_exportDir = new QTemporaryDir;
 #ifdef VISUAL_CHECK
     m_view1 = new Qt3DExtras::Qt3DWindow;
@@ -515,8 +481,8 @@ void tst_gltfPlugins::createTestScene()
         transform->setRotation(Qt3DCore::QTransform::fromAxisAndAngle(1.0f, 1.0f, 1.0f, 270.0f));
 
         Qt3DRender::QGeometryRenderer *boxMesh = createCustomCube();
-        Qt3DRender::QBuffer *colorDataBuffer =
-                new Qt3DRender::QBuffer(boxMesh->geometry());
+        Qt3DCore::QBuffer *colorDataBuffer =
+            new Qt3DCore::QBuffer(boxMesh->geometry());
         QByteArray colorBufferData;
         colorBufferData.resize(8 * 4 * sizeof(float));
 
@@ -570,8 +536,8 @@ void tst_gltfPlugins::createTestScene()
         transform->setTranslation(QVector3D(0.0f, 2.0f, -40.0f));
         transform->setRotation(Qt3DCore::QTransform::fromAxisAndAngle(1.0f, 2.0f, 3.0f, 90.0f));
         Qt3DRender::QGeometryRenderer *boxMesh = createCustomCube();
-        Qt3DRender::QBuffer *offsetBuffer =
-                new Qt3DRender::QBuffer(boxMesh->geometry());
+        Qt3DCore::QBuffer *offsetBuffer =
+            new Qt3DCore::QBuffer(boxMesh->geometry());
         QByteArray offsetBufferData;
         offsetBufferData.resize(8 * 3 * sizeof(float));
 
@@ -584,10 +550,10 @@ void tst_gltfPlugins::createTestScene()
 
         offsetBuffer->setData(offsetBufferData);
 
-        Qt3DRender::QAttribute *customAttribute = new Qt3DRender::QAttribute();
-        customAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        Qt3DCore::QAttribute *customAttribute = new Qt3DCore::QAttribute();
+        customAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
         customAttribute->setBuffer(offsetBuffer);
-        customAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        customAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         customAttribute->setVertexSize(3);
         customAttribute->setByteOffset(0);
         customAttribute->setByteStride(0);
@@ -614,29 +580,29 @@ void tst_gltfPlugins::createTestScene()
 #endif
 }
 
-void tst_gltfPlugins::addPositionAttributeToGeometry(Qt3DRender::QGeometry *geometry,
-                                                     Qt3DRender::QBuffer *buffer, int count)
+void tst_gltfPlugins::addPositionAttributeToGeometry(Qt3DCore::QGeometry *geometry,
+                                                     Qt3DCore::QBuffer *buffer, int count)
 {
-    Qt3DRender::QAttribute *posAttribute = new Qt3DRender::QAttribute();
-    posAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    Qt3DCore::QAttribute *posAttribute = new Qt3DCore::QAttribute();
+    posAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     posAttribute->setBuffer(buffer);
-    posAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+    posAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
     posAttribute->setVertexSize(3);
     posAttribute->setByteOffset(0);
     posAttribute->setByteStride(0);
     posAttribute->setCount(count);
-    posAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
+    posAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
 
     geometry->addAttribute(posAttribute);
 }
 
-void tst_gltfPlugins::addIndexAttributeToGeometry(Qt3DRender::QGeometry *geometry,
-                                                  Qt3DRender::QBuffer *buffer, int count)
+void tst_gltfPlugins::addIndexAttributeToGeometry(Qt3DCore::QGeometry *geometry,
+                                                  Qt3DCore::QBuffer *buffer, int count)
 {
-    Qt3DRender::QAttribute *indexAttribute = new Qt3DRender::QAttribute();
-    indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+    Qt3DCore::QAttribute *indexAttribute = new Qt3DCore::QAttribute();
+    indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
     indexAttribute->setBuffer(buffer);
-    indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedShort);
+    indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedShort);
     indexAttribute->setVertexSize(1);
     indexAttribute->setByteOffset(0);
     indexAttribute->setByteStride(0);
@@ -645,18 +611,18 @@ void tst_gltfPlugins::addIndexAttributeToGeometry(Qt3DRender::QGeometry *geometr
     geometry->addAttribute(indexAttribute);
 }
 
-void tst_gltfPlugins::addColorAttributeToGeometry(Qt3DRender::QGeometry *geometry,
-                                                  Qt3DRender::QBuffer *buffer, int count)
+void tst_gltfPlugins::addColorAttributeToGeometry(Qt3DCore::QGeometry *geometry,
+                                                  Qt3DCore::QBuffer *buffer, int count)
 {
-    Qt3DRender::QAttribute *colorAttribute = new Qt3DRender::QAttribute();
-    colorAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    Qt3DCore::QAttribute *colorAttribute = new Qt3DCore::QAttribute();
+    colorAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     colorAttribute->setBuffer(buffer);
-    colorAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+    colorAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
     colorAttribute->setVertexSize(4);
     colorAttribute->setByteOffset(0);
     colorAttribute->setByteStride(0);
     colorAttribute->setCount(count);
-    colorAttribute->setName(Qt3DRender::QAttribute::defaultColorAttributeName());
+    colorAttribute->setName(Qt3DCore::QAttribute::defaultColorAttributeName());
 
     geometry->addAttribute(colorAttribute);
 }
@@ -733,49 +699,53 @@ void tst_gltfPlugins::compareComponents(Qt3DCore::QComponent *c1, Qt3DCore::QCom
             auto mesh2 = qobject_cast<Qt3DRender::QGeometryRenderer *>(c2);
             QVERIFY(mesh2 != nullptr);
             auto geometry1 = mesh1->geometry();
+            if (!geometry1 && mesh1->view())
+                geometry1 = mesh1->view()->geometry();
             auto geometry2 = mesh2->geometry();
+            if (!geometry2 && mesh2->view())
+                geometry2 = mesh2->view()->geometry();
             // Check that attributes match.
             compareAttributes(
-                        findAttribute(Qt3DRender::QAttribute::defaultPositionAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultPositionAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry1),
-                        findAttribute(Qt3DRender::QAttribute::defaultPositionAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultPositionAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry2));
             compareAttributes(
-                        findAttribute(Qt3DRender::QAttribute::defaultNormalAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultNormalAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry1),
-                        findAttribute(Qt3DRender::QAttribute::defaultNormalAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultNormalAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry2));
             compareAttributes(
-                        findAttribute(Qt3DRender::QAttribute::defaultTangentAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultTangentAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry1),
-                        findAttribute(Qt3DRender::QAttribute::defaultTangentAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultTangentAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry2));
             compareAttributes(
-                        findAttribute(Qt3DRender::QAttribute::defaultTextureCoordinateAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultTextureCoordinateAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry1),
-                        findAttribute(Qt3DRender::QAttribute::defaultTextureCoordinateAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultTextureCoordinateAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry2));
             compareAttributes(
-                        findAttribute(Qt3DRender::QAttribute::defaultColorAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultColorAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry1),
-                        findAttribute(Qt3DRender::QAttribute::defaultColorAttributeName(),
-                                      Qt3DRender::QAttribute::VertexAttribute,
+                        findAttribute(Qt3DCore::QAttribute::defaultColorAttributeName(),
+                                      Qt3DCore::QAttribute::VertexAttribute,
                                       geometry2));
             compareAttributes(
                         findAttribute(QStringLiteral(""),
-                                      Qt3DRender::QAttribute::IndexAttribute,
+                                      Qt3DCore::QAttribute::IndexAttribute,
                                       geometry1),
                         findAttribute(QStringLiteral(""),
-                                      Qt3DRender::QAttribute::IndexAttribute,
+                                      Qt3DCore::QAttribute::IndexAttribute,
                                       geometry2));
         } else {
             int count = c1->metaObject()->propertyCount();
@@ -783,15 +753,16 @@ void tst_gltfPlugins::compareComponents(Qt3DCore::QComponent *c1, Qt3DCore::QCom
                 auto property = c1->metaObject()->property(i);
                 auto v1 = c1->property(property.name());
                 auto v2 = c2->property(property.name());
-                if (v1.type() == QVariant::Bool) {
+                const auto v1TypeId = v1.metaType().id();
+                if (v1TypeId == QMetaType::Bool) {
                     QCOMPARE(v1.toBool(), v2.toBool());
-                } else if (v1.type() == QVariant::Color) {
+                } else if (v1TypeId == QMetaType::QColor) {
                     QCOMPARE(v1.value<QColor>(), v2.value<QColor>());
-                } else if (v1.type() == QVariant::Vector3D) {
+                } else if (v1TypeId == QMetaType::QVector3D) {
                     QCOMPARE(v1.value<QVector3D>(), v2.value<QVector3D>());
-                } else if (v1.type() == QVariant::Matrix4x4) {
+                } else if (v1TypeId == QMetaType::QMatrix4x4) {
                     QCOMPARE(v1.value<QMatrix4x4>(), v2.value<QMatrix4x4>());
-                } else if (v1.canConvert(QMetaType::Float)) {
+                } else if (QMetaType::canConvert(v1.metaType(), QMetaType(QMetaType::Float))) {
                     QVERIFY(qFuzzyCompare(v1.toFloat(), v2.toFloat()));
                 }
             }
@@ -840,12 +811,12 @@ void tst_gltfPlugins::compareComponents(Qt3DCore::QComponent *c1, Qt3DCore::QCom
     }
 }
 
-Qt3DRender::QAttribute *tst_gltfPlugins::findAttribute(const QString &name,
-                                                       Qt3DRender::QAttribute::AttributeType type,
-                                                       Qt3DRender::QGeometry *geometry)
+Qt3DCore::QAttribute *tst_gltfPlugins::findAttribute(const QString &name,
+                                                       Qt3DCore::QAttribute::AttributeType type,
+                                                       Qt3DCore::QGeometry *geometry)
 {
     for (auto att : geometry->attributes()) {
-        if ((type == Qt3DRender::QAttribute::IndexAttribute && type == att->attributeType())
+        if ((type == Qt3DCore::QAttribute::IndexAttribute && type == att->attributeType())
                 || name == att->name()) {
             return att;
         }
@@ -853,7 +824,7 @@ Qt3DRender::QAttribute *tst_gltfPlugins::findAttribute(const QString &name,
     return nullptr;
 }
 
-void tst_gltfPlugins::compareAttributes(Qt3DRender::QAttribute *a1, Qt3DRender::QAttribute *a2)
+void tst_gltfPlugins::compareAttributes(Qt3DCore::QAttribute *a1, Qt3DCore::QAttribute *a2)
 {
     QCOMPARE(a1 == nullptr, a2 == nullptr);
     if (a1) {
@@ -864,8 +835,8 @@ void tst_gltfPlugins::compareAttributes(Qt3DRender::QAttribute *a1, Qt3DRender::
     }
 }
 
-void tst_gltfPlugins::compareParameters(const QVector<Qt3DRender::QParameter *> &params1,
-                                        const QVector<Qt3DRender::QParameter *> &params2)
+void tst_gltfPlugins::compareParameters(const QList<Qt3DRender::QParameter *> &params1,
+                                        const QList<Qt3DRender::QParameter *> &params2)
 {
     QCOMPARE(params1.size(), params2.size());
     for (auto p1 : params1) {
@@ -873,7 +844,7 @@ void tst_gltfPlugins::compareParameters(const QVector<Qt3DRender::QParameter *> 
         for (auto p2 : params2) {
             if (p1->name() == p2->name()) {
                 pMatch = true;
-                if (p1->value().type() == QVariant::Color) {
+                if (p1->value().metaType().id() == QMetaType::QColor) {
                     // Colors are imported as QVector4Ds
                     QColor color = p1->value().value<QColor>();
                     QVector4D vec = p2->value().value<QVector4D>();
@@ -894,8 +865,8 @@ void tst_gltfPlugins::compareParameters(const QVector<Qt3DRender::QParameter *> 
     }
 }
 
-void tst_gltfPlugins::compareRenderPasses(const QVector<Qt3DRender::QRenderPass *> &passes1,
-                                          const QVector<Qt3DRender::QRenderPass *> &passes2)
+void tst_gltfPlugins::compareRenderPasses(const QList<Qt3DRender::QRenderPass *> &passes1,
+                                          const QList<Qt3DRender::QRenderPass *> &passes2)
 {
     QCOMPARE(passes1.size(), passes2.size());
     for (auto pass1 : passes1) {
@@ -906,8 +877,8 @@ void tst_gltfPlugins::compareRenderPasses(const QVector<Qt3DRender::QRenderPass 
                 compareFilterKeys(pass1->filterKeys(), pass2->filterKeys());
                 compareParameters(pass1->parameters(), pass2->parameters());
 
-                QVector<Qt3DRender::QRenderState *> states1 = pass1->renderStates();
-                QVector<Qt3DRender::QRenderState *> states2 = pass2->renderStates();
+                const QList<Qt3DRender::QRenderState *> states1 = pass1->renderStates();
+                const QList<Qt3DRender::QRenderState *> states2 = pass2->renderStates();
                 QCOMPARE(states1.size(), states2.size());
                 for (auto state1 : states1) {
                     bool stateMatch = false;
@@ -930,8 +901,8 @@ void tst_gltfPlugins::compareRenderPasses(const QVector<Qt3DRender::QRenderPass 
     }
 }
 
-void tst_gltfPlugins::compareFilterKeys(const QVector<Qt3DRender::QFilterKey *> &keys1,
-                                        const QVector<Qt3DRender::QFilterKey *> &keys2)
+void tst_gltfPlugins::compareFilterKeys(const QList<Qt3DRender::QFilterKey *> &keys1,
+                                        const QList<Qt3DRender::QFilterKey *> &keys2)
 {
     QCOMPARE(keys1.size(), keys2.size());
     for (auto k1 : keys1) {
@@ -962,11 +933,11 @@ QUrl tst_gltfPlugins::getTextureUrl(Qt3DRender::QAbstractTexture *tex)
 Qt3DRender::QGeometryRenderer *tst_gltfPlugins::createCustomCube()
 {
     Qt3DRender::QGeometryRenderer *boxMesh = new Qt3DRender::QGeometryRenderer;
-    Qt3DRender::QGeometry *boxGeometry = new Qt3DRender::QGeometry(boxMesh);
-    Qt3DRender::QBuffer *boxDataBuffer =
-            new Qt3DRender::QBuffer(boxGeometry);
-    Qt3DRender::QBuffer *indexDataBuffer =
-            new Qt3DRender::QBuffer(boxGeometry);
+    Qt3DCore::QGeometry *boxGeometry = new Qt3DCore::QGeometry(boxMesh);
+    Qt3DCore::QBuffer *boxDataBuffer =
+            new Qt3DCore::QBuffer(boxGeometry);
+    Qt3DCore::QBuffer *indexDataBuffer =
+            new Qt3DCore::QBuffer(boxGeometry);
     QByteArray vertexBufferData;
     QByteArray indexBufferData;
 
@@ -1131,20 +1102,17 @@ Qt3DCore::QEntity *tst_gltfPlugins::findCameraChild(Qt3DCore::QEntity *entity,
 
 void tst_gltfPlugins::exportAndImport_data()
 {
-    QTest::addColumn<bool>("binaryJson");
     QTest::addColumn<bool>("compactJson");
 
-    QTest::newRow("No options") << false << false;
+    QTest::newRow("No options") << false;
 #ifndef VISUAL_CHECK
-    QTest::newRow("Binary json") << true << false;
-    QTest::newRow("Compact json") << false << true;
-    QTest::newRow("Binary/Compact json") << true << true; // Compact is ignored in this case
+    QTest::newRow("Compact json") << true;
 #endif
 }
 
 void tst_gltfPlugins::exportAndImport()
 {
-    QFETCH(bool, binaryJson);
+    QSKIP("Crashes in JSON parser - see QTBUG-88588");
     QFETCH(bool, compactJson);
 
     createTestScene();
@@ -1164,7 +1132,6 @@ void tst_gltfPlugins::exportAndImport()
                 Qt3DRender::QSceneExportFactory::create(key, QStringList());
         if (exporter != nullptr && key == QStringLiteral("gltfexport")) {
             QVariantHash options;
-            options.insert(QStringLiteral("binaryJson"), QVariant(binaryJson));
             options.insert(QStringLiteral("compactJson"), QVariant(compactJson));
             exporter->exportScene(m_sceneRoot1, exportDir, sceneName, options);
             break;
@@ -1202,6 +1169,7 @@ void tst_gltfPlugins::exportAndImport()
         Qt3DCore::QEntity *importedEntity = findChildEntity(importedScene, name);
         QVERIFY(importedEntity != nullptr);
         if (importedEntity) {
+            qDebug() << importedEntity->objectName();
             compareComponents(transformComponent(exportedEntity),
                               transformComponent(importedEntity));
             compareComponents(lightComponent(exportedEntity),

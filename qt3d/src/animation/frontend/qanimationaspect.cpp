@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qanimationaspect.h"
 #include "qanimationaspect_p.h"
@@ -69,12 +33,6 @@ QAnimationAspectPrivate::QAnimationAspectPrivate()
 {
 }
 
-void QAnimationAspectPrivate::syncDirtyFrontEndNode(QNode *node, QBackendNode *backend, bool firstTime) const
-{
-    Animation::BackendNode *renderBackend = static_cast<Animation::BackendNode *>(backend);
-    renderBackend->syncFromFrontEnd(node, firstTime);
-}
-
 /*!
     \class Qt3DAnimation::QAnimationAspect
     \inherits Qt3DCore::QAbstractAspect
@@ -101,37 +59,37 @@ QAnimationAspect::QAnimationAspect(QAnimationAspectPrivate &dd, QObject *parent)
     Q_D(QAnimationAspect);
     qRegisterMetaType<Qt3DAnimation::QAnimationClipLoader*>();
     qRegisterMetaType<Qt3DAnimation::QChannelMapper*>();
-    qRegisterMetaType<QVector<Qt3DCore::Sqt>>();
+    qRegisterMetaType<QList<Qt3DCore::Sqt>>();
     qRegisterMetaType<Qt3DAnimation::QAbstractAnimationClip*>();
 
-    registerBackendType<QAbstractAnimationClip, true>(
+    registerBackendType<QAbstractAnimationClip>(
         QSharedPointer<Animation::NodeFunctor<Animation::AnimationClip, Animation::AnimationClipLoaderManager>>::create(d->m_handler.data(),
                                                                                                                         d->m_handler->animationClipLoaderManager()));
-    registerBackendType<QClock, true>(
+    registerBackendType<QClock>(
         QSharedPointer<Animation::NodeFunctor<Animation::Clock, Animation::ClockManager>>::create(d->m_handler.data(),
                                                                                                   d->m_handler->clockManager()));
-    registerBackendType<QClipAnimator, true>(
+    registerBackendType<QClipAnimator>(
         QSharedPointer<Animation::NodeFunctor<Animation::ClipAnimator, Animation::ClipAnimatorManager>>::create(d->m_handler.data(),
                                                                                                                 d->m_handler->clipAnimatorManager()));
-    registerBackendType<QBlendedClipAnimator, true>(
+    registerBackendType<QBlendedClipAnimator>(
         QSharedPointer<Animation::NodeFunctor<Animation::BlendedClipAnimator, Animation::BlendedClipAnimatorManager>>::create(d->m_handler.data(),
                                                                                                                               d->m_handler->blendedClipAnimatorManager()));
-    registerBackendType<QAbstractChannelMapping, true>(
+    registerBackendType<QAbstractChannelMapping>(
         QSharedPointer<Animation::NodeFunctor<Animation::ChannelMapping, Animation::ChannelMappingManager>>::create(d->m_handler.data(),
                                                                                                                     d->m_handler->channelMappingManager()));
-    registerBackendType<QChannelMapper, true>(
+    registerBackendType<QChannelMapper>(
         QSharedPointer<Animation::NodeFunctor<Animation::ChannelMapper, Animation::ChannelMapperManager>>::create(d->m_handler.data(),
                                                                                                                   d->m_handler->channelMapperManager()));
-    registerBackendType<QLerpClipBlend, true>(
+    registerBackendType<QLerpClipBlend>(
                 QSharedPointer<Animation::ClipBlendNodeFunctor<Animation::LerpClipBlend, Animation::ClipAnimatorManager>>::create(d->m_handler.data(),
                                                                                                                                   d->m_handler->clipBlendNodeManager()));
-    registerBackendType<QAdditiveClipBlend, true>(
+    registerBackendType<QAdditiveClipBlend>(
                 QSharedPointer<Animation::ClipBlendNodeFunctor<Animation::AdditiveClipBlend, Animation::ClipAnimatorManager>>::create(d->m_handler.data(),
                                                                                                                                       d->m_handler->clipBlendNodeManager()));
-    registerBackendType<QClipBlendValue, true>(
+    registerBackendType<QClipBlendValue>(
                 QSharedPointer<Animation::ClipBlendNodeFunctor<Animation::ClipBlendValue, Animation::ClipAnimatorManager>>::create(d->m_handler.data(),
                                                                                                                                    d->m_handler->clipBlendNodeManager()));
-    registerBackendType<Qt3DCore::QAbstractSkeleton, true>(
+    registerBackendType<Qt3DCore::QAbstractSkeleton>(
         QSharedPointer<Animation::NodeFunctor<Animation::Skeleton, Animation::SkeletonManager>>::create(d->m_handler.data(),
                                                                                                         d->m_handler->skeletonManager()));
 }
@@ -144,7 +102,7 @@ QAnimationAspect::~QAnimationAspect()
 /*!
     \internal
  */
-QVector<QAspectJobPtr> QAnimationAspect::jobsToExecute(qint64 time)
+std::vector<QAspectJobPtr> QAnimationAspect::jobsToExecute(qint64 time)
 {
     Q_D(QAnimationAspect);
     Q_ASSERT(d->m_handler);
@@ -156,3 +114,5 @@ QVector<QAspectJobPtr> QAnimationAspect::jobsToExecute(qint64 time)
 QT_END_NAMESPACE
 
 QT3D_REGISTER_NAMESPACED_ASPECT("animation", QT_PREPEND_NAMESPACE(Qt3DAnimation), QAnimationAspect)
+
+#include "moc_qanimationaspect.cpp"

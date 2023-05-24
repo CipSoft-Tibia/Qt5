@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QV4PLATFORMASSEMBLER_P_H
 #define QV4PLATFORMASSEMBLER_P_H
@@ -52,11 +16,14 @@
 //
 
 #include <private/qv4engine_p.h>
-#include <private/qv4global_p.h>
 #include <private/qv4function_p.h>
-#include <QHash>
+#include <private/qv4global_p.h>
+#include <private/qv4stackframe_p.h>
+
 #include <wtf/Vector.h>
 #include <assembler/MacroAssembler.h>
+
+#include <QtCore/qhash.h>
 
 #if QT_CONFIG(qml_jit)
 
@@ -66,14 +33,14 @@ namespace QV4 {
 namespace JIT {
 
 #if defined(Q_PROCESSOR_X86_64) || defined(ENABLE_ALL_ASSEMBLERS_FOR_REFACTORING_PURPOSES)
-#if defined(Q_OS_LINUX) || defined(Q_OS_QNX) || defined(Q_OS_FREEBSD) || defined(Q_OS_DARWIN)
+#if defined(Q_OS_LINUX) || defined(Q_OS_QNX) || defined(Q_OS_FREEBSD) || defined(Q_OS_DARWIN) || defined(Q_OS_SOLARIS)
 
 class PlatformAssembler_X86_64_SysV : public JSC::MacroAssembler<JSC::MacroAssemblerX86_64>
 {
 public:
     static constexpr int NativeStackAlignment = 16;
 
-    static const RegisterID NoRegister = RegisterID(-1);
+    static const RegisterID NoRegister = RegisterID::none;
 
     static const RegisterID ReturnValueRegister   = RegisterID::eax;
     static const RegisterID ReturnValueRegisterValue = ReturnValueRegister;
@@ -160,7 +127,7 @@ typedef PlatformAssembler_X86_64_SysV PlatformAssemblerBase;
 class PlatformAssembler_Win64 : public JSC::MacroAssembler<JSC::MacroAssemblerX86_64>
 {
 public:
-    static const RegisterID NoRegister = RegisterID(-1);
+    static const RegisterID NoRegister = RegisterID::none;
 
     static const RegisterID ReturnValueRegister   = RegisterID::eax;
     static const RegisterID ReturnValueRegisterValue = ReturnValueRegister;
@@ -250,7 +217,7 @@ typedef PlatformAssembler_Win64 PlatformAssemblerBase;
 class PlatformAssembler_X86_All : public JSC::MacroAssembler<JSC::MacroAssemblerX86>
 {
 public:
-    static const RegisterID NoRegister = RegisterID(-1);
+    static const RegisterID NoRegister = RegisterID::none;
 
     static const RegisterID ReturnValueRegisterValue = RegisterID::eax;
     static const RegisterID ReturnValueRegisterTag   = RegisterID::edx;
@@ -340,7 +307,7 @@ typedef PlatformAssembler_X86_All PlatformAssemblerBase;
 class PlatformAssembler_ARM64 : public JSC::MacroAssembler<JSC::MacroAssemblerARM64>
 {
 public:
-    static const RegisterID NoRegister = RegisterID(-1);
+    static const RegisterID NoRegister = RegisterID::none;
 
     static const RegisterID ReturnValueRegister   = JSC::ARM64Registers::x0;
     static const RegisterID ReturnValueRegisterValue = ReturnValueRegister;
@@ -439,7 +406,7 @@ typedef PlatformAssembler_ARM64 PlatformAssemblerBase;
 class PlatformAssembler_ARM32 : public JSC::MacroAssembler<JSC::MacroAssemblerARMv7>
 {
 public:
-    static const RegisterID NoRegister = RegisterID(-1);
+    static const RegisterID NoRegister = RegisterID::none;
 
     static const RegisterID ReturnValueRegisterValue = JSC::ARMRegisters::r0;
     static const RegisterID ReturnValueRegisterTag   = JSC::ARMRegisters::r1;
@@ -579,7 +546,7 @@ public:
 
     Address loadFunctionPtr(RegisterID target)
     {
-        Address addr(CppStackFrameRegister, offsetof(CppStackFrame, v4Function));
+        Address addr(CppStackFrameRegister, offsetof(JSTypesStackFrame, v4Function));
         loadPtr(addr, target);
         return Address(target);
     }
@@ -653,7 +620,8 @@ public:
     void generateFunctionEntry()
     {
         generatePlatformFunctionEntry();
-        loadPtr(Address(CppStackFrameRegister, offsetof(CppStackFrame, jsFrame)), JSStackFrameRegister);
+        loadPtr(Address(CppStackFrameRegister, offsetof(JSTypesStackFrame, jsFrame)),
+                JSStackFrameRegister);
         allocateStackSpace();
     }
 

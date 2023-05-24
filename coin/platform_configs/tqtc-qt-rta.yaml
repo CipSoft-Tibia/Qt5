@@ -1,14 +1,14 @@
+Version: 2
+Include: [cmake_platforms.yaml]
+Configurations:
+#Ubuntu 20.04
 -
-    Template: 'qtci-windows-7-x86_64-4'
-    Compiler: 'MSVC2013'
-    Features: ['DisableTests']
-    Configure arguments: '-opensource -confirm-license -verbose -prefix c:\Users\qt\work\install -release -force-debug-info -opengl dynamic -nomake examples -nomake tests'
--
-    Template: 'qtci-windows-8.1-x86_64'
-    Compiler: 'MSVC2013'
-    Features: ['DisableTests']
-    Configure arguments: '-opensource -confirm-license -verbose -prefix c:\Users\qt\work\install -release -force-debug-info -opengl dynamic -nomake examples -nomake tests'
--
-    Template: 'qtci-windows-10-x86-4'
-    Compiler: 'MSVC2019'
-    Configure arguments: '-opensource -confirm-license -verbose -prefix c:\Users\qt\work\install -release -force-debug-info -opengl dynamic -nomake examples -nomake tests'
+    Id: 'ubuntu-20.04'
+    Template: 'qtci-linux-Ubuntu-20.04-x86_64-51'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'UseConfigure', 'DoNotRunTests']
+    Configure arguments: '-nomake examples -release -force-debug-info -separate-debug-info -headersclean -qt-libjpeg -qt-libpng -qt-pcre -qt-harfbuzz -qt-doubleconversion -no-libudev -bundled-xcb-xinput'
+    Environment variables: [
+        'CMAKE_ARGS=-DOpenGL_GL_PREFERENCE=LEGACY',
+        'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}}'
+    ]

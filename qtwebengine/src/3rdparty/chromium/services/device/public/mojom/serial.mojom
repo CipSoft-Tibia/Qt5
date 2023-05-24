@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -147,14 +147,17 @@ interface SerialPortManager {
   // Returns the list of serial ports currently available on the host.
   GetDevices() => (array<SerialPortInfo> devices);
 
-  // Creates a SerialPort instance attached to the port represented by |token|.
-  // If |use_alternate_path| is specified then the |alternate_path| for the
-  // port will be used instead. When the pipe passed in |port_receiver| is
-  // closed the optional pipe passed in |watcher| will also be closed.
-  GetPort(mojo_base.mojom.UnguessableToken token,
-          bool use_alternate_path,
-          pending_receiver<SerialPort> port_receiver,
-          pending_remote<SerialPortConnectionWatcher>? watcher);
+  // Opens the port represented by |token| using |options| and returns a
+  // connection to it as |port|. If |use_alternate_path| is specified then the
+  // |alternate_path| for the port will be used instead. When the pipe returned
+  // in |port| is closed the optional pipe passed in |watcher| will also be
+  // closed and vice a versa.
+  OpenPort(mojo_base.mojom.UnguessableToken token,
+           bool use_alternate_path,
+           SerialConnectionOptions options,
+           pending_remote<SerialPortClient> client,
+           pending_remote<SerialPortConnectionWatcher>? watcher)
+      => (pending_remote<SerialPort>? port);
 };
 
 // Client interface for SerialPortManager.
@@ -168,10 +171,6 @@ interface SerialPortManagerClient {
 
 // Performs asynchronous I/O on serial devices.
 interface SerialPort {
-  // Initiates an Open of the device then returns result.
-  Open(SerialConnectionOptions options,
-       pending_remote<SerialPortClient> client) => (bool success);
-
   // Start writing data from |consumer| to the port. This should be called after
   // Open() or to restart data flow after when SerialPortClient#OnSendError is
   // called on |client| to indicate an error.
@@ -189,8 +188,8 @@ interface SerialPort {
   // all buffered data to be transmitted by the port.
   Drain() => ();
 
-  // Reads current control signals (DCD, CTS, etc.).
-  GetControlSignals() => (SerialPortControlSignals signals);
+  // Reads current control signals (DCD, CTS, etc.). Returns null on failure.
+  GetControlSignals() => (SerialPortControlSignals? signals);
 
   // Sets one or more control signals and returns result.
   SetControlSignals(SerialHostControlSignals signals) => (bool success);
@@ -201,9 +200,10 @@ interface SerialPort {
   // Performs a platform-specific port configuration query and returns got info.
   GetPortInfo() => (SerialConnectionInfo info);
 
-  // Closes the connection created by Open(). Once this returns no more data
-  // will be sent or received on |in_stream| or |out_stream|.
-  Close() => ();
+  // Closes the port and this pipe. Once this returns no more data will be sent
+  // or received from |consumer| and |producer|. If |flush| is true the port's
+  // transmit and receive buffers are flushed before closing.
+  Close(bool flush) => ();
 };
 
 interface SerialPortClient {

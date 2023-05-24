@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,11 @@
 #include "base/command_line.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "content/child/child_process.h"
 #include "content/gpu/gpu_child_thread.h"
-#include "content/gpu/gpu_process.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
+#include "content/public/gpu/content_gpu_client.h"
 #include "gpu/config/gpu_finch_features.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/ipc/service/gpu_init.h"
@@ -20,8 +21,12 @@
 #include "media/gpu/vaapi/vaapi_wrapper.h"
 #endif
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_android.h"
+#endif
+
+#if BUILDFLAG(IS_WIN)
+#include <windows.h>
 #endif
 
 namespace content {
@@ -39,19 +44,29 @@ InProcessGpuThread::~InProcessGpuThread() {
 }
 
 void InProcessGpuThread::Init() {
-  base::ThreadPriority io_thread_priority = base::ThreadPriority::NORMAL;
+  base::ThreadType io_thread_type = base::ThreadType::kDefault;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_WIN)
+  ImmDisableIME(0);
+#endif
+
+  // In single-process mode, we never enter the sandbox, so run the post-sandbox
+  // code now.
+  content::ContentGpuClient* client = GetContentClient()->gpu();
+  if (client) {
+    client->PostSandboxInitialized();
+  }
+#if BUILDFLAG(IS_ANDROID)
   // Call AttachCurrentThreadWithName, before any other AttachCurrentThread()
   // calls. The latter causes Java VM to assign Thread-??? to the thread name.
   // Please note calls to AttachCurrentThreadWithName after AttachCurrentThread
   // will not change the thread name kept in Java VM.
   base::android::AttachCurrentThreadWithName(thread_name());
   // Up the priority of the |io_thread_| on Android.
-  io_thread_priority = base::ThreadPriority::DISPLAY;
+  io_thread_type = base::ThreadType::kDisplayCritical;
 #endif
 
-  gpu_process_ = new GpuProcess(io_thread_priority);
+  gpu_process_ = std::make_unique<ChildProcess>(io_thread_type);
 
   auto gpu_init = std::make_unique<gpu::GpuInit>();
   gpu_init->InitializeInProcess(base::CommandLine::ForCurrentProcess(),
@@ -70,14 +85,14 @@ void InProcessGpuThread::Init() {
 
   // Since we are in the browser process, use the thread start time as the
   // process start time.
-  child_thread->Init(base::Time::Now());
+  child_thread->Init(base::TimeTicks::Now());
 
   gpu_process_->set_main_thread(child_thread);
 }
 
 void InProcessGpuThread::CleanUp() {
   SetThreadWasQuitProperly(true);
-  delete gpu_process_;
+  gpu_process_.reset();
 }
 
 namespace {
@@ -87,14 +102,12 @@ public:
     Controller(std::unique_ptr<base::Thread> thread) : thread_(std::move(thread))
     {
         base::Thread::Options options;
-#if (defined(OS_WIN) || defined(OS_MAC)) && !defined(TOOLKIT_QT)
+#if (BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)) && !defined(TOOLKIT_QT)
         // WGL needs to create its own window and pump messages on it.
         options.message_loop_type = base::MessagePumpType::UI;
 #endif
-
-        if (base::FeatureList::IsEnabled(features::kGpuUseDisplayThreadPriority))
-          options.priority = base::ThreadPriority::DISPLAY;
-        thread_->StartWithOptions(options);
+        options.thread_type = base::ThreadType::kCompositing;
+        thread_->StartWithOptions(std::move(options));
     }
 
     ~Controller() override {

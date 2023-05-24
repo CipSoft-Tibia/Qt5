@@ -1,38 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "grid_p.h"
 
+#include <QtCore/qlist.h>
 #include <QtCore/qstring.h>
-#include <QtCore/qvector.h>
-#include <QtGui/qpainter.h>
-#include <QtWidgets/qwidget.h>
+#include <QtCore/qvariant.h>
+#include <QtCore/qmap.h>
+
 #include <QtGui/qevent.h>
+#include <QtGui/qpainter.h>
+
+#include <QtWidgets/qwidget.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,7 +34,7 @@ template <class T>
 // Obtain a value form QVariantMap
 template <class T>
     static inline bool valueFromVariantMap(const QVariantMap &v, const QString &key, T &value) {
-        const QVariantMap::const_iterator it = v.constFind(key);
+        const auto it = v.constFind(key);
         const bool found = it != v.constEnd();
         if (found)
             value = qvariant_cast<T>(it.value());
@@ -77,11 +56,11 @@ Grid::Grid() :
 bool Grid::fromVariantMap(const QVariantMap& vm)
 {
     Grid grid;
-    bool anyData = valueFromVariantMap(vm, QLatin1String(KEY_VISIBLE), grid.m_visible);
-    anyData |= valueFromVariantMap(vm, QLatin1String(KEY_SNAPX), grid.m_snapX);
-    anyData |= valueFromVariantMap(vm, QLatin1String(KEY_SNAPY), grid.m_snapY);
-    anyData |= valueFromVariantMap(vm, QLatin1String(KEY_DELTAX), grid.m_deltaX);
-    anyData |= valueFromVariantMap(vm, QLatin1String(KEY_DELTAY), grid.m_deltaY);
+    bool anyData = valueFromVariantMap(vm, QLatin1StringView(KEY_VISIBLE), grid.m_visible);
+    anyData |= valueFromVariantMap(vm, QLatin1StringView(KEY_SNAPX), grid.m_snapX);
+    anyData |= valueFromVariantMap(vm, QLatin1StringView(KEY_SNAPY), grid.m_snapY);
+    anyData |= valueFromVariantMap(vm, QLatin1StringView(KEY_DELTAX), grid.m_deltaX);
+    anyData |= valueFromVariantMap(vm, QLatin1StringView(KEY_DELTAY), grid.m_deltaY);
     if (!anyData)
         return false;
     if (grid.m_deltaX == 0 || grid.m_deltaY == 0) {
@@ -101,11 +80,11 @@ QVariantMap Grid::toVariantMap(bool forceKeys) const
 
 void  Grid::addToVariantMap(QVariantMap& vm, bool forceKeys) const
 {
-    valueToVariantMap(m_visible, defaultVisible, QLatin1String(KEY_VISIBLE), vm, forceKeys);
-    valueToVariantMap(m_snapX, defaultSnap, QLatin1String(KEY_SNAPX), vm, forceKeys);
-    valueToVariantMap(m_snapY, defaultSnap, QLatin1String(KEY_SNAPY), vm, forceKeys);
-    valueToVariantMap(m_deltaX, DEFAULT_GRID, QLatin1String(KEY_DELTAX), vm, forceKeys);
-    valueToVariantMap(m_deltaY, DEFAULT_GRID, QLatin1String(KEY_DELTAY), vm, forceKeys);
+    valueToVariantMap(m_visible, defaultVisible, QLatin1StringView(KEY_VISIBLE), vm, forceKeys);
+    valueToVariantMap(m_snapX, defaultSnap, QLatin1StringView(KEY_SNAPX), vm, forceKeys);
+    valueToVariantMap(m_snapY, defaultSnap, QLatin1StringView(KEY_SNAPY), vm, forceKeys);
+    valueToVariantMap(m_deltaX, DEFAULT_GRID, QLatin1StringView(KEY_DELTAX), vm, forceKeys);
+    valueToVariantMap(m_deltaY, DEFAULT_GRID, QLatin1StringView(KEY_DELTAY), vm, forceKeys);
 }
 
 void Grid::paint(QWidget *widget, QPaintEvent *e) const
@@ -125,7 +104,7 @@ void Grid::paint(QPainter &p, const QWidget *widget, QPaintEvent *e) const
         const int xend = e->rect().right();
         const int yend = e->rect().bottom();
 
-        using Points = QVector<QPointF>;
+        using Points = QList<QPointF>;
         static Points points;
         points.clear();
 
@@ -133,7 +112,7 @@ void Grid::paint(QPainter &p, const QWidget *widget, QPaintEvent *e) const
             points.reserve((yend - ystart) / m_deltaY + 1);
             for (int y = ystart; y <= yend; y += m_deltaY)
                 points.push_back(QPointF(x, y));
-            p.drawPoints( &(*points.begin()), points.count());
+            p.drawPoints( &(*points.begin()), points.size());
             points.clear();
         }
     }

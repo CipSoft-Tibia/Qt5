@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "tabletcanvas.h"
 
@@ -99,21 +52,21 @@ void TabletCanvas::tabletEvent(QTabletEvent *event)
         case QEvent::TabletPress:
             if (!m_deviceDown) {
                 m_deviceDown = true;
-                lastPoint.pos = event->posF();
+                lastPoint.pos = event->position();
                 lastPoint.pressure = event->pressure();
                 lastPoint.rotation = event->rotation();
             }
             break;
         case QEvent::TabletMove:
 #ifndef Q_OS_IOS
-            if (event->deviceType() == QTabletEvent::RotationStylus)
+            if (event->pointingDevice() && event->pointingDevice()->capabilities().testFlag(QPointingDevice::Capability::Rotation))
                 updateCursor(event);
 #endif
             if (m_deviceDown) {
                 updateBrush(event);
                 QPainter painter(&m_pixmap);
                 paintPixmap(painter, event);
-                lastPoint.pos = event->posF();
+                lastPoint.pos = event->position();
                 lastPoint.pressure = event->pressure();
                 lastPoint.rotation = event->rotation();
             }
@@ -133,7 +86,7 @@ void TabletCanvas::tabletEvent(QTabletEvent *event)
 //! [4]
 void TabletCanvas::initPixmap()
 {
-    qreal dpr = devicePixelRatioF();
+    qreal dpr = devicePixelRatio();
     QPixmap newPixmap = QPixmap(qRound(width() * dpr), qRound(height() * dpr));
     newPixmap.setDevicePixelRatio(dpr);
     newPixmap.fill(Qt::white);
@@ -149,8 +102,8 @@ void TabletCanvas::paintEvent(QPaintEvent *event)
     if (m_pixmap.isNull())
         initPixmap();
     QPainter painter(this);
-    QRect pixmapPortion = QRect(event->rect().topLeft() * devicePixelRatioF(),
-                                event->rect().size() * devicePixelRatioF());
+    QRect pixmapPortion = QRect(event->rect().topLeft() * devicePixelRatio(),
+                                event->rect().size() * devicePixelRatio());
     painter.drawPixmap(event->rect().topLeft(), m_pixmap, pixmapPortion);
 }
 //! [4]
@@ -163,7 +116,7 @@ void TabletCanvas::paintPixmap(QPainter &painter, QTabletEvent *event)
 
     switch (event->deviceType()) {
 //! [6]
-        case QTabletEvent::Airbrush:
+        case QInputDevice::DeviceType::Airbrush:
             {
                 painter.setPen(Qt::NoPen);
                 QRadialGradient grad(lastPoint.pos, m_pen.widthF() * 10.0);
@@ -173,33 +126,13 @@ void TabletCanvas::paintPixmap(QPainter &painter, QTabletEvent *event)
                 grad.setColorAt(0.5, Qt::transparent);
                 painter.setBrush(grad);
                 qreal radius = grad.radius();
-                painter.drawEllipse(event->posF(), radius, radius);
-                update(QRect(event->pos() - QPoint(radius, radius), QSize(radius * 2, radius * 2)));
-            }
-            break;
-        case QTabletEvent::RotationStylus:
-            {
-                m_brush.setStyle(Qt::SolidPattern);
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(m_brush);
-                QPolygonF poly;
-                qreal halfWidth = pressureToWidth(lastPoint.pressure);
-                QPointF brushAdjust(qSin(qDegreesToRadians(-lastPoint.rotation)) * halfWidth,
-                                    qCos(qDegreesToRadians(-lastPoint.rotation)) * halfWidth);
-                poly << lastPoint.pos + brushAdjust;
-                poly << lastPoint.pos - brushAdjust;
-                halfWidth = m_pen.widthF();
-                brushAdjust = QPointF(qSin(qDegreesToRadians(-event->rotation())) * halfWidth,
-                                      qCos(qDegreesToRadians(-event->rotation())) * halfWidth);
-                poly << event->posF() - brushAdjust;
-                poly << event->posF() + brushAdjust;
-                painter.drawConvexPolygon(poly);
-                update(poly.boundingRect().toRect());
+                painter.drawEllipse(event->position(), radius, radius);
+                update(QRect(event->position().toPoint() - QPoint(radius, radius), QSize(radius * 2, radius * 2)));
             }
             break;
 //! [6]
-        case QTabletEvent::Puck:
-        case QTabletEvent::FourDMouse:
+        case QInputDevice::DeviceType::Puck:
+        case QInputDevice::DeviceType::Mouse:
             {
                 const QString error(tr("This input device is not supported by the example."));
 #if QT_CONFIG(statustip)
@@ -221,11 +154,30 @@ void TabletCanvas::paintPixmap(QPainter &painter, QTabletEvent *event)
 #endif
             }
             Q_FALLTHROUGH();
-        case QTabletEvent::Stylus:
-            painter.setPen(m_pen);
-            painter.drawLine(lastPoint.pos, event->posF());
-            update(QRect(lastPoint.pos.toPoint(), event->pos()).normalized()
-                   .adjusted(-maxPenRadius, -maxPenRadius, maxPenRadius, maxPenRadius));
+        case QInputDevice::DeviceType::Stylus:
+            if (event->pointingDevice()->capabilities().testFlag(QPointingDevice::Capability::Rotation)) {
+                m_brush.setStyle(Qt::SolidPattern);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(m_brush);
+                QPolygonF poly;
+                qreal halfWidth = pressureToWidth(lastPoint.pressure);
+                QPointF brushAdjust(qSin(qDegreesToRadians(-lastPoint.rotation)) * halfWidth,
+                                    qCos(qDegreesToRadians(-lastPoint.rotation)) * halfWidth);
+                poly << lastPoint.pos + brushAdjust;
+                poly << lastPoint.pos - brushAdjust;
+                halfWidth = m_pen.widthF();
+                brushAdjust = QPointF(qSin(qDegreesToRadians(-event->rotation())) * halfWidth,
+                                      qCos(qDegreesToRadians(-event->rotation())) * halfWidth);
+                poly << event->position() - brushAdjust;
+                poly << event->position() + brushAdjust;
+                painter.drawConvexPolygon(poly);
+                update(poly.boundingRect().toRect());
+            } else {
+                painter.setPen(m_pen);
+                painter.drawLine(lastPoint.pos, event->position());
+                update(QRect(lastPoint.pos.toPoint(), event->position().toPoint()).normalized()
+                       .adjusted(-maxPenRadius, -maxPenRadius, maxPenRadius, maxPenRadius));
+            }
             break;
     }
 }
@@ -251,7 +203,7 @@ void TabletCanvas::updateBrush(const QTabletEvent *event)
             m_color.setAlphaF(event->pressure());
             break;
         case TangentialPressureValuator:
-            if (event->deviceType() == QTabletEvent::Airbrush)
+            if (event->deviceType() == QInputDevice::DeviceType::Airbrush)
                 m_color.setAlphaF(qMax(0.01, (event->tangentialPressure() + 1.0) / 2.0));
             else
                 m_color.setAlpha(255);
@@ -293,7 +245,7 @@ void TabletCanvas::updateBrush(const QTabletEvent *event)
     }
 
 //! [10] //! [11]
-    if (event->pointerType() == QTabletEvent::Eraser) {
+    if (event->pointerType() == QPointingDevice::PointerType::Eraser) {
         m_brush.setColor(Qt::white);
         m_pen.setColor(Qt::white);
         m_pen.setWidthF(event->pressure() * 10 + 1);
@@ -309,34 +261,35 @@ void TabletCanvas::updateCursor(const QTabletEvent *event)
 {
     QCursor cursor;
     if (event->type() != QEvent::TabletLeaveProximity) {
-        if (event->pointerType() == QTabletEvent::Eraser) {
+        if (event->pointerType() == QPointingDevice::PointerType::Eraser) {
             cursor = QCursor(QPixmap(":/images/cursor-eraser.png"), 3, 28);
         } else {
             switch (event->deviceType()) {
-            case QTabletEvent::Stylus:
-                cursor = QCursor(QPixmap(":/images/cursor-pencil.png"), 0, 0);
+            case QInputDevice::DeviceType::Stylus:
+                if (event->pointingDevice()->capabilities().testFlag(QPointingDevice::Capability::Rotation)) {
+                    QImage origImg(QLatin1String(":/images/cursor-felt-marker.png"));
+                    QImage img(32, 32, QImage::Format_ARGB32);
+                    QColor solid = m_color;
+                    solid.setAlpha(255);
+                    img.fill(solid);
+                    QPainter painter(&img);
+                    QTransform transform = painter.transform();
+                    transform.translate(16, 16);
+                    transform.rotate(event->rotation());
+                    painter.setTransform(transform);
+                    painter.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+                    painter.drawImage(-24, -24, origImg);
+                    painter.setCompositionMode(QPainter::CompositionMode_HardLight);
+                    painter.drawImage(-24, -24, origImg);
+                    painter.end();
+                    cursor = QCursor(QPixmap::fromImage(img), 16, 16);
+                } else {
+                    cursor = QCursor(QPixmap(":/images/cursor-pencil.png"), 0, 0);
+                }
                 break;
-            case QTabletEvent::Airbrush:
+            case QInputDevice::DeviceType::Airbrush:
                 cursor = QCursor(QPixmap(":/images/cursor-airbrush.png"), 3, 4);
                 break;
-            case QTabletEvent::RotationStylus: {
-                QImage origImg(QLatin1String(":/images/cursor-felt-marker.png"));
-                QImage img(32, 32, QImage::Format_ARGB32);
-                QColor solid = m_color;
-                solid.setAlpha(255);
-                img.fill(solid);
-                QPainter painter(&img);
-                QTransform transform = painter.transform();
-                transform.translate(16, 16);
-                transform.rotate(event->rotation());
-                painter.setTransform(transform);
-                painter.setCompositionMode(QPainter::CompositionMode_DestinationIn);
-                painter.drawImage(-24, -24, origImg);
-                painter.setCompositionMode(QPainter::CompositionMode_HardLight);
-                painter.drawImage(-24, -24, origImg);
-                painter.end();
-                cursor = QCursor(QPixmap::fromImage(img), 16, 16);
-            } break;
             default:
                 break;
             }

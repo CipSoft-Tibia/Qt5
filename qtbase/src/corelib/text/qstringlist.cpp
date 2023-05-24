@@ -1,44 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qstringlist.h>
-#include <qregexp.h>
 #include <qset.h>
 #if QT_CONFIG(regularexpression)
 #  include <qregularexpression.h>
@@ -109,7 +72,7 @@ QT_BEGIN_NAMESPACE
     \section1 Adding Strings
 
     Strings can be added to a list using the \l
-    {QList::insert()}{insert()} \l
+    {QList::insert()}{insert()}, \l
     {QList::append()}{append()}, \l
     {QList::operator+=()}{operator+=()} and \l
     {operator<<()} functions.
@@ -121,25 +84,7 @@ QT_BEGIN_NAMESPACE
 
     \section1 Iterating Over the Strings
 
-    To iterate over a list, you can either use index positions or
-    QList's Java-style and STL-style iterator types:
-
-    Indexing:
-
-    \snippet qstringlist/main.cpp 1
-
-    Java-style iterator:
-
-    \snippet qstringlist/main.cpp 2
-
-    STL-style iterator:
-
-    \snippet qstringlist/main.cpp 3
-
-    The QStringListIterator class is simply a type definition for
-    QListIterator<QString>. QStringList also provide the
-    QMutableStringListIterator class which is a type definition for
-    QMutableListIterator<QString>.
+    See \l {Iterating over Containers}.
 
     \section1 Manipulating the Strings
 
@@ -157,8 +102,8 @@ QT_BEGIN_NAMESPACE
 
     \snippet qstringlist/main.cpp 6
 
-    The argument to split can be a single character, a string, a
-    QRegularExpression or a (deprecated) QRegExp.
+    The argument to split can be a single character, a string or a
+    QRegularExpression.
 
     In addition, the \l {QStringList::operator+()}{operator+()}
     function allows you to concatenate two string lists into one. To
@@ -183,12 +128,6 @@ QT_BEGIN_NAMESPACE
     \snippet qstringlist/main.cpp 8
 
     \sa QString
-*/
-
-/*!
-    \fn QStringList::QStringList()
-
-    Constructs an empty string list.
 */
 
 /*!
@@ -283,7 +222,6 @@ void QtPrivate::QStringList_sort(QStringList *that, Qt::CaseSensitivity cs)
 }
 
 
-#if QT_STRINGVIEW_LEVEL < 2
 /*!
     \fn QStringList QStringList::filter(const QString &str, Qt::CaseSensitivity cs) const
 
@@ -303,7 +241,6 @@ void QtPrivate::QStringList_sort(QStringList *that, Qt::CaseSensitivity cs)
 
     \sa contains()
 */
-#endif
 
 /*!
     \fn QStringList QStringList::filter(QStringView str, Qt::CaseSensitivity cs) const
@@ -315,25 +252,11 @@ QStringList QtPrivate::QStringList_filter(const QStringList *that, QStringView s
 {
     QStringMatcher matcher(str, cs);
     QStringList res;
-    for (int i = 0; i < that->size(); ++i)
+    for (qsizetype i = 0; i < that->size(); ++i)
         if (matcher.indexIn(that->at(i)) != -1)
             res << that->at(i);
     return res;
 }
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/// Not really needed anymore, but kept for binary compatibility
-QStringList QtPrivate::QStringList_filter(const QStringList *that, const QString &str,
-                                          Qt::CaseSensitivity cs)
-{
-    QStringMatcher matcher(str, cs);
-    QStringList res;
-    for (int i = 0; i < that->size(); ++i)
-        if (matcher.indexIn(that->at(i)) != -1)
-            res << that->at(i);
-    return res;
-}
-#endif
 
 template<typename T>
 static bool stringList_contains(const QStringList &stringList, const T &str, Qt::CaseSensitivity cs)
@@ -346,7 +269,6 @@ static bool stringList_contains(const QStringList &stringList, const T &str, Qt:
 }
 
 
-#if QT_STRINGVIEW_LEVEL < 2
 /*!
     \fn bool QStringList::contains(const QString &str, Qt::CaseSensitivity cs) const
 
@@ -356,16 +278,6 @@ static bool stringList_contains(const QStringList &stringList, const T &str, Qt:
 
     \sa indexOf(), lastIndexOf(), QString::contains()
  */
-#endif
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/// Not really needed anymore, but kept for binary compatibility
-bool QtPrivate::QStringList_contains(const QStringList *that, const QString &str,
-                                     Qt::CaseSensitivity cs)
-{
-    return stringList_contains(*that, str, cs);
-}
-#endif
 
 /*!
     \fn bool QStringList::contains(QStringView str, Qt::CaseSensitivity cs) const
@@ -383,90 +295,22 @@ bool QtPrivate::QStringList_contains(const QStringList *that, QStringView str,
 }
 
 /*!
-    \fn bool QStringList::contains(QLatin1String str, Qt::CaseSensitivity cs) const
+    \fn bool QStringList::contains(QLatin1StringView str, Qt::CaseSensitivity cs) const
     \overload
     \since 5.10
 
-    Returns \c true if the list contains the string \a str; otherwise
-    returns \c false. The search is case insensitive if \a cs is
-    Qt::CaseInsensitive; the search is case sensitive by default.
+    Returns \c true if the list contains the Latin-1 string viewed by \a str; otherwise
+    returns \c false. The search is case insensitive if \a cs is Qt::CaseInsensitive;
+    the search is case sensitive by default.
 
     \sa indexOf(), lastIndexOf(), QString::contains()
  */
-bool QtPrivate::QStringList_contains(const QStringList *that, QLatin1String str,
+bool QtPrivate::QStringList_contains(const QStringList *that, QLatin1StringView str,
                                      Qt::CaseSensitivity cs)
 {
     return stringList_contains(*that, str, cs);
 }
 
-/*!
-    \fn bool QStringList::indexOf(QStringView str, int from) const
-    \overload
-    \since 5.13
-
-    Returns the index position of the first occurrence of \a str in
-    the list, searching forward from index position \a from. Returns
-    -1 if no item matched.
-
-    \sa lastIndexOf(), contains()
- */
-
-/*!
-    \fn bool QStringList::indexOf(QLatin1String str, int from) const
-    \overload
-    \since 5.13
-
-    Returns the index position of the first occurrence of \a str in
-    the list, searching forward from index position \a from. Returns
-    -1 if no item matched.
-
-    \sa lastIndexOf(), contains()
- */
-
-/*!
-    \fn bool QStringList::lastIndexOf(QStringView str, int from) const
-    \overload
-    \since 5.13
-
-    Returns the index position of the last occurrence of \a str in
-    the list, searching backward from index position \a from. If \a
-    from is -1 (the default), the search starts at the last item.
-    Returns -1 if no item matched.
-
-    \sa indexOf(), contains()
- */
-
-/*!
-    \fn bool QStringList::lastIndexOf(QLatin1String str, int from) const
-    \overload
-    \since 5.13
-
-    Returns the index position of the last occurrence of \a str in
-    the list, searching backward from index position \a from. If \a
-    from is -1 (the default), the search starts at the last item.
-    Returns -1 if no item matched.
-
-    \sa indexOf(), contains()
- */
-
-#ifndef QT_NO_REGEXP
-/*!
-    \fn QStringList QStringList::filter(const QRegExp &rx) const
-
-    \overload
-
-    Returns a list of all the strings that match the regular
-    expression \a rx.
-*/
-QStringList QtPrivate::QStringList_filter(const QStringList *that, const QRegExp &rx)
-{
-    QStringList res;
-    for (int i = 0; i < that->size(); ++i)
-        if (that->at(i).contains(rx))
-            res << that->at(i);
-    return res;
-}
-#endif
 
 #if QT_CONFIG(regularexpression)
 /*!
@@ -480,7 +324,7 @@ QStringList QtPrivate::QStringList_filter(const QStringList *that, const QRegExp
 QStringList QtPrivate::QStringList_filter(const QStringList *that, const QRegularExpression &re)
 {
     QStringList res;
-    for (int i = 0; i < that->size(); ++i) {
+    for (qsizetype i = 0; i < that->size(); ++i) {
         if (that->at(i).contains(re))
             res << that->at(i);
     }
@@ -488,7 +332,6 @@ QStringList QtPrivate::QStringList_filter(const QStringList *that, const QRegula
 }
 #endif // QT_CONFIG(regularexpression)
 
-#if QT_STRINGVIEW_LEVEL < 2
 /*!
     \fn QStringList &QStringList::replaceInStrings(const QString &before, const QString &after, Qt::CaseSensitivity cs)
 
@@ -516,7 +359,6 @@ QStringList QtPrivate::QStringList_filter(const QStringList *that, const QRegula
     \overload
     \since 5.14
 */
-#endif
 
 /*!
     \fn QStringList &QStringList::replaceInStrings(QStringView before, QStringView after, Qt::CaseSensitivity cs)
@@ -526,50 +368,9 @@ QStringList QtPrivate::QStringList_filter(const QStringList *that, const QRegula
 void QtPrivate::QStringList_replaceInStrings(QStringList *that, QStringView before,
                                              QStringView after, Qt::CaseSensitivity cs)
 {
-    for (int i = 0; i < that->size(); ++i)
-        (*that)[i].replace(before.data(), before.length(), after.data(), after.length(), cs);
+    for (qsizetype i = 0; i < that->size(); ++i)
+        (*that)[i].replace(before.data(), before.size(), after.data(), after.size(), cs);
 }
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/// Not really needed anymore, but kept for binary compatibility
-void QtPrivate::QStringList_replaceInStrings(QStringList *that, const QString &before,
-                                             const QString &after, Qt::CaseSensitivity cs)
-{
-    for (int i = 0; i < that->size(); ++i)
-        (*that)[i].replace(before, after, cs);
-}
-#endif
-
-
-#ifndef QT_NO_REGEXP
-/*!
-    \fn QStringList &QStringList::replaceInStrings(const QRegExp &rx, const QString &after)
-    \overload
-
-    Replaces every occurrence of the regexp \a rx, in each of the
-    string lists's strings, with \a after. Returns a reference to the
-    string list.
-
-    For example:
-
-    \snippet qstringlist/main.cpp 5
-    \snippet qstringlist/main.cpp 14
-
-    For regular expressions that contain \l{capturing parentheses},
-    occurrences of \b{\\1}, \b{\\2}, ..., in \a after are
-    replaced with \a{rx}.cap(1), \a{rx}.cap(2), ...
-
-    For example:
-
-    \snippet qstringlist/main.cpp 5
-    \snippet qstringlist/main.cpp 15
-*/
-void QtPrivate::QStringList_replaceInStrings(QStringList *that, const QRegExp &rx, const QString &after)
-{
-    for (int i = 0; i < that->size(); ++i)
-        (*that)[i].replace(rx, after);
-}
-#endif
 
 #if QT_CONFIG(regularexpression)
 /*!
@@ -597,14 +398,14 @@ void QtPrivate::QStringList_replaceInStrings(QStringList *that, const QRegExp &r
 */
 void QtPrivate::QStringList_replaceInStrings(QStringList *that, const QRegularExpression &re, const QString &after)
 {
-    for (int i = 0; i < that->size(); ++i)
+    for (qsizetype i = 0; i < that->size(); ++i)
         (*that)[i].replace(re, after);
 }
 #endif // QT_CONFIG(regularexpression)
 
-static int accumulatedSize(const QStringList &list, int seplen)
+static qsizetype accumulatedSize(const QStringList &list, qsizetype seplen)
 {
-    int result = 0;
+    qsizetype result = 0;
     if (!list.isEmpty()) {
         for (const auto &e : list)
             result += e.size() + seplen;
@@ -613,7 +414,6 @@ static int accumulatedSize(const QStringList &list, int seplen)
     return result;
 }
 
-#if QT_STRINGVIEW_LEVEL < 2
 /*!
     \fn QString QStringList::join(const QString &separator) const
 
@@ -623,23 +423,22 @@ static int accumulatedSize(const QStringList &list, int seplen)
 
     \sa QString::split()
 */
-#endif
 
 /*!
     \fn QString QStringList::join(QChar separator) const
     \since 5.0
     \overload join()
 */
-QString QtPrivate::QStringList_join(const QStringList *that, const QChar *sep, int seplen)
+QString QtPrivate::QStringList_join(const QStringList *that, const QChar *sep, qsizetype seplen)
 {
-    const int totalLength = accumulatedSize(*that, seplen);
-    const int size = that->size();
+    const qsizetype totalLength = accumulatedSize(*that, seplen);
+    const qsizetype size = that->size();
 
     QString res;
     if (totalLength == 0)
         return res;
     res.reserve(totalLength);
-    for (int i = 0; i < size; ++i) {
+    for (qsizetype i = 0; i < size; ++i) {
         if (i)
             res.append(sep, seplen);
         res += that->at(i);
@@ -648,11 +447,11 @@ QString QtPrivate::QStringList_join(const QStringList *that, const QChar *sep, i
 }
 
 /*!
-    \fn QString QStringList::join(QLatin1String separator) const
+    \fn QString QStringList::join(QLatin1StringView separator) const
     \since 5.8
     \overload join()
 */
-QString QtPrivate::QStringList_join(const QStringList &list, QLatin1String sep)
+QString QtPrivate::QStringList_join(const QStringList &list, QLatin1StringView sep)
 {
     QString result;
     if (!list.isEmpty()) {
@@ -675,7 +474,7 @@ QString QtPrivate::QStringList_join(const QStringList &list, QLatin1String sep)
 */
 QString QtPrivate::QStringList_join(const QStringList *that, QStringView sep)
 {
-    return QStringList_join(that, sep.data(), sep.length());
+    return QStringList_join(that, sep.data(), sep.size());
 }
 
 /*!
@@ -715,105 +514,9 @@ QString QtPrivate::QStringList_join(const QStringList *that, QStringView sep)
     the latter string list.
 */
 
-#ifndef QT_NO_REGEXP
-static int indexOfMutating(const QStringList *that, QRegExp &rx, int from)
-{
-    if (from < 0)
-        from = qMax(from + that->size(), 0);
-    for (int i = from; i < that->size(); ++i) {
-        if (rx.exactMatch(that->at(i)))
-            return i;
-    }
-    return -1;
-}
-
-static int lastIndexOfMutating(const QStringList *that, QRegExp &rx, int from)
-{
-    if (from < 0)
-        from += that->size();
-    else if (from >= that->size())
-        from = that->size() - 1;
-    for (int i = from; i >= 0; --i) {
-        if (rx.exactMatch(that->at(i)))
-            return i;
-        }
-    return -1;
-}
-
-/*!
-    \fn int QStringList::indexOf(const QRegExp &rx, int from) const
-
-    Returns the index position of the first exact match of \a rx in
-    the list, searching forward from index position \a from. Returns
-    -1 if no item matched.
-
-    \sa lastIndexOf(), contains(), QRegExp::exactMatch()
-*/
-int QtPrivate::QStringList_indexOf(const QStringList *that, const QRegExp &rx, int from)
-{
-    QRegExp rx2(rx);
-    return indexOfMutating(that, rx2, from);
-}
-
-/*!
-    \fn int QStringList::indexOf(QRegExp &rx, int from) const
-    \overload indexOf()
-    \since 4.5
-
-    Returns the index position of the first exact match of \a rx in
-    the list, searching forward from index position \a from. Returns
-    -1 if no item matched.
-
-    If an item matched, the \a rx regular expression will contain the
-    matched objects (see QRegExp::matchedLength, QRegExp::cap).
-
-    \sa lastIndexOf(), contains(), QRegExp::exactMatch()
-*/
-int QtPrivate::QStringList_indexOf(const QStringList *that, QRegExp &rx, int from)
-{
-    return indexOfMutating(that, rx, from);
-}
-
-/*!
-    \fn int QStringList::lastIndexOf(const QRegExp &rx, int from) const
-
-    Returns the index position of the last exact match of \a rx in
-    the list, searching backward from index position \a from. If \a
-    from is -1 (the default), the search starts at the last item.
-    Returns -1 if no item matched.
-
-    \sa indexOf(), contains(), QRegExp::exactMatch()
-*/
-int QtPrivate::QStringList_lastIndexOf(const QStringList *that, const QRegExp &rx, int from)
-{
-    QRegExp rx2(rx);
-    return lastIndexOfMutating(that, rx2, from);
-}
-
-/*!
-    \fn int QStringList::lastIndexOf(QRegExp &rx, int from) const
-    \overload lastIndexOf()
-    \since 4.5
-
-    Returns the index position of the last exact match of \a rx in
-    the list, searching backward from index position \a from. If \a
-    from is -1 (the default), the search starts at the last item.
-    Returns -1 if no item matched.
-
-    If an item matched, the \a rx regular expression will contain the
-    matched objects (see QRegExp::matchedLength, QRegExp::cap).
-
-    \sa indexOf(), contains(), QRegExp::exactMatch()
-*/
-int QtPrivate::QStringList_lastIndexOf(const QStringList *that, QRegExp &rx, int from)
-{
-    return lastIndexOfMutating(that, rx, from);
-}
-#endif
-
 #if QT_CONFIG(regularexpression)
 /*!
-    \fn int QStringList::indexOf(const QRegularExpression &re, int from) const
+    \fn qsizetype QStringList::indexOf(const QRegularExpression &re, qsizetype from) const
     \overload
     \since 5.0
 
@@ -823,15 +526,15 @@ int QtPrivate::QStringList_lastIndexOf(const QStringList *that, QRegExp &rx, int
 
     \sa lastIndexOf()
 */
-int QtPrivate::QStringList_indexOf(const QStringList *that, const QRegularExpression &re, int from)
+qsizetype QtPrivate::QStringList_indexOf(const QStringList *that, const QRegularExpression &re, qsizetype from)
 {
     if (from < 0)
-        from = qMax(from + that->size(), 0);
+        from = qMax(from + that->size(), qsizetype(0));
 
     QString exactPattern = QRegularExpression::anchoredPattern(re.pattern());
     QRegularExpression exactRe(exactPattern, re.patternOptions());
 
-    for (int i = from; i < that->size(); ++i) {
+    for (qsizetype i = from; i < that->size(); ++i) {
         QRegularExpressionMatch m = exactRe.match(that->at(i));
         if (m.hasMatch())
             return i;
@@ -840,7 +543,7 @@ int QtPrivate::QStringList_indexOf(const QStringList *that, const QRegularExpres
 }
 
 /*!
-    \fn int QStringList::lastIndexOf(const QRegularExpression &re, int from) const
+    \fn qsizetype QStringList::lastIndexOf(const QRegularExpression &re, qsizetype from) const
     \overload
     \since 5.0
 
@@ -851,7 +554,7 @@ int QtPrivate::QStringList_indexOf(const QStringList *that, const QRegularExpres
 
     \sa indexOf()
 */
-int QtPrivate::QStringList_lastIndexOf(const QStringList *that, const QRegularExpression &re, int from)
+qsizetype QtPrivate::QStringList_lastIndexOf(const QStringList *that, const QRegularExpression &re, qsizetype from)
 {
     if (from < 0)
         from += that->size();
@@ -861,7 +564,7 @@ int QtPrivate::QStringList_lastIndexOf(const QStringList *that, const QRegularEx
     QString exactPattern = QRegularExpression::anchoredPattern(re.pattern());
     QRegularExpression exactRe(exactPattern, re.patternOptions());
 
-    for (int i = from; i >= 0; --i) {
+    for (qsizetype i = from; i >= 0; --i) {
         QRegularExpressionMatch m = exactRe.match(that->at(i));
         if (m.hasMatch())
             return i;
@@ -871,7 +574,7 @@ int QtPrivate::QStringList_lastIndexOf(const QStringList *that, const QRegularEx
 #endif // QT_CONFIG(regularexpression)
 
 /*!
-    \fn int QStringList::removeDuplicates()
+    \fn qsizetype QStringList::removeDuplicates()
 
     \since 4.5
 
@@ -881,41 +584,10 @@ int QtPrivate::QStringList_lastIndexOf(const QStringList *that, const QRegularEx
 
     Returns the number of removed entries.
 */
-int QtPrivate::QStringList_removeDuplicates(QStringList *that)
+qsizetype QtPrivate::QStringList_removeDuplicates(QStringList *that)
 {
-    int n = that->size();
-    int j = 0;
-
-    QDuplicateTracker<QString> seen;
-    seen.reserve(n);
-    for (int i = 0; i < n; ++i) {
-        const QString &s = that->at(i);
-        if (seen.hasSeen(s))
-            continue;
-        if (j != i)
-            that->swapItemsAt(i, j);
-        ++j;
-    }
-    if (n != j)
-        that->erase(that->begin() + j, that->end());
-    return n - j;
+    QDuplicateTracker<QString> seen(that->size());
+    return that->removeIf([&](const QString &s) { return seen.hasSeen(s); });
 }
-
-/*! \fn QStringList::QStringList(std::initializer_list<QString> args)
-    \since 4.8
-
-    Construct a list from a std::initializer_list given by \a args.
-
-    This constructor is only enabled if the compiler supports C++11 initializer
-    lists.
-*/
-
- /*! \fn template<typename InputIterator> QStringList::QStringList(InputIterator first, InputIterator last)
-     \since 5.14
-
-     Constructs a QStringList with the contents in the iterator range [\a first, \a last).
-
-     The value type of \c InputIterator must be convertible to \c QString.
- */
 
 QT_END_NAMESPACE

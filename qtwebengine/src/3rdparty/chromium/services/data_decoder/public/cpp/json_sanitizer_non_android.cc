@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/json/json_writer.h"
 #include "base/values.h"
 #include "services/data_decoder/public/cpp/data_decoder.h"
@@ -19,20 +19,20 @@ void JsonSanitizer::Sanitize(const std::string& json, Callback callback) {
       json,
       base::BindOnce(
           [](Callback callback, DataDecoder::ValueOrError parse_result) {
-            if (!parse_result.value) {
-              std::move(callback).Run(Result::Error(*parse_result.error));
+            if (!parse_result.has_value()) {
+              std::move(callback).Run(Result::Error(parse_result.error()));
               return;
             }
 
-            const base::Value::Type type = parse_result.value->type();
-            if (type != base::Value::Type::DICTIONARY &&
+            const base::Value::Type type = parse_result->type();
+            if (type != base::Value::Type::DICT &&
                 type != base::Value::Type::LIST) {
               std::move(callback).Run(Result::Error("Invalid top-level type"));
               return;
             }
 
             std::string safe_json;
-            if (!base::JSONWriter::Write(*parse_result.value, &safe_json)) {
+            if (!base::JSONWriter::Write(*parse_result, &safe_json)) {
               std::move(callback).Run(Result::Error("Encoding error"));
               return;
             }

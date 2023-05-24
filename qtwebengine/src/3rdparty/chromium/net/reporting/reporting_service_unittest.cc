@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,16 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/time/tick_clock.h"
 #include "base/values.h"
-#include "net/base/network_isolation_key.h"
+#include "net/base/features.h"
+#include "net/base/isolation_info.h"
+#include "net/base/network_anonymization_key.h"
+#include "net/base/schemeful_site.h"
 #include "net/reporting/mock_persistent_reporting_store.h"
 #include "net/reporting/reporting_browsing_data_remover.h"
 #include "net/reporting/reporting_cache.h"
@@ -24,6 +29,9 @@
 #include "net/test/test_with_task_environment.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "url/gurl.h"
+#include "url/origin.h"
 
 namespace net {
 namespace {
@@ -40,15 +48,36 @@ class ReportingServiceTest : public ::testing::TestWithParam<bool>,
   const url::Origin kOrigin_ = url::Origin::Create(kUrl_);
   const url::Origin kOrigin2_ = url::Origin::Create(kUrl2_);
   const GURL kEndpoint_ = GURL("https://endpoint/");
+  const GURL kEndpoint2_ = GURL("https://endpoint2/");
   const std::string kUserAgent_ = "Mozilla/1.0";
   const std::string kGroup_ = "group";
+  const std::string kGroup2_ = "group2";
   const std::string kType_ = "type";
+  const absl::optional<base::UnguessableToken> kReportingSource_ =
+      base::UnguessableToken::Create();
+  const NetworkAnonymizationKey kNik_ =
+      NetworkAnonymizationKey(SchemefulSite(kOrigin_), SchemefulSite(kOrigin_));
+  const NetworkAnonymizationKey kNik2_ =
+      NetworkAnonymizationKey(SchemefulSite(kOrigin2_),
+                              SchemefulSite(kOrigin2_));
   const ReportingEndpointGroupKey kGroupKey_ =
-      ReportingEndpointGroupKey(NetworkIsolationKey(), kOrigin_, kGroup_);
+      ReportingEndpointGroupKey(kNik_, kOrigin_, kGroup_);
   const ReportingEndpointGroupKey kGroupKey2_ =
-      ReportingEndpointGroupKey(NetworkIsolationKey(), kOrigin2_, kGroup_);
+      ReportingEndpointGroupKey(kNik2_, kOrigin2_, kGroup_);
+  const IsolationInfo kIsolationInfo_ =
+      IsolationInfo::Create(IsolationInfo::RequestType::kOther,
+                            kOrigin_,
+                            kOrigin_,
+                            SiteForCookies::FromOrigin(kOrigin_));
 
   ReportingServiceTest() {
+    feature_list_.InitAndEnableFeature(
+        features::kPartitionNelAndReportingByNetworkIsolationKey);
+    Init();
+  }
+
+  // Initializes, or re-initializes, |service_| and its dependencies.
+  void Init() {
     if (GetParam())
       store_ = std::make_unique<MockPersistentReportingStore>();
     else
@@ -73,23 +102,26 @@ class ReportingServiceTest : public ::testing::TestWithParam<bool>,
   ReportingService* service() { return service_.get(); }
 
  private:
+  base::test::ScopedFeatureList feature_list_;
+
   base::SimpleTestClock clock_;
   base::SimpleTestTickClock tick_clock_;
 
   std::unique_ptr<MockPersistentReportingStore> store_;
-  TestReportingContext* context_;
+  raw_ptr<TestReportingContext> context_;
   std::unique_ptr<ReportingService> service_;
 };
 
 TEST_P(ReportingServiceTest, QueueReport) {
-  service()->QueueReport(kUrl_, kUserAgent_, kGroup_, kType_,
-                         std::make_unique<base::DictionaryValue>(), 0);
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
   FinishLoading(true /* load_success */);
 
   std::vector<const ReportingReport*> reports;
   context()->cache()->GetReports(&reports);
   ASSERT_EQ(1u, reports.size());
   EXPECT_EQ(kUrl_, reports[0]->url);
+  EXPECT_EQ(kNik_, reports[0]->network_anonymization_key);
   EXPECT_EQ(kUserAgent_, reports[0]->user_agent);
   EXPECT_EQ(kGroup_, reports[0]->group);
   EXPECT_EQ(kType_, reports[0]->type);
@@ -98,14 +130,15 @@ TEST_P(ReportingServiceTest, QueueReport) {
 TEST_P(ReportingServiceTest, QueueReportSanitizeUrl) {
   // Same as kUrl_ but with username, password, and fragment.
   GURL url = GURL("https://username:password@origin/path#fragment");
-  service()->QueueReport(url, kUserAgent_, kGroup_, kType_,
-                         std::make_unique<base::DictionaryValue>(), 0);
+  service()->QueueReport(url, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
   FinishLoading(true /* load_success */);
 
   std::vector<const ReportingReport*> reports;
   context()->cache()->GetReports(&reports);
   ASSERT_EQ(1u, reports.size());
   EXPECT_EQ(kUrl_, reports[0]->url);
+  EXPECT_EQ(kNik_, reports[0]->network_anonymization_key);
   EXPECT_EQ(kUserAgent_, reports[0]->user_agent);
   EXPECT_EQ(kGroup_, reports[0]->group);
   EXPECT_EQ(kType_, reports[0]->type);
@@ -115,40 +148,231 @@ TEST_P(ReportingServiceTest, DontQueueReportInvalidUrl) {
   GURL url = GURL("https://");
   // This does not trigger an attempt to load from the store because the url
   // is immediately rejected as invalid.
-  service()->QueueReport(url, kUserAgent_, kGroup_, kType_,
-                         std::make_unique<base::DictionaryValue>(), 0);
+  service()->QueueReport(url, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
 
   std::vector<const ReportingReport*> reports;
   context()->cache()->GetReports(&reports);
   ASSERT_EQ(0u, reports.size());
 }
 
-TEST_P(ReportingServiceTest, ProcessHeader) {
-  service()->ProcessHeader(kUrl_, "{\"endpoints\":[{\"url\":\"" +
-                                      kEndpoint_.spec() +
-                                      "\"}],"
-                                      "\"group\":\"" +
-                                      kGroup_ +
-                                      "\","
-                                      "\"max_age\":86400}");
+TEST_P(ReportingServiceTest, QueueReportNetworkIsolationKeyDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(
+      features::kPartitionNelAndReportingByNetworkIsolationKey);
+
+  // Re-create the store, so it reads the new feature value.
+  Init();
+
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
+  FinishLoading(true /* load_success */);
+
+  std::vector<const ReportingReport*> reports;
+  context()->cache()->GetReports(&reports);
+  ASSERT_EQ(1u, reports.size());
+
+  // NetworkAnonymizationKey should be empty, instead of kNik_;
+  EXPECT_EQ(NetworkAnonymizationKey(), reports[0]->network_anonymization_key);
+  EXPECT_NE(kNik_, reports[0]->network_anonymization_key);
+
+  EXPECT_EQ(kUrl_, reports[0]->url);
+  EXPECT_EQ(kUserAgent_, reports[0]->user_agent);
+  EXPECT_EQ(kGroup_, reports[0]->group);
+  EXPECT_EQ(kType_, reports[0]->type);
+}
+
+TEST_P(ReportingServiceTest, ProcessReportToHeader) {
+  service()->ProcessReportToHeader(kOrigin_, kNik_,
+                                   "{\"endpoints\":[{\"url\":\"" +
+                                       kEndpoint_.spec() +
+                                       "\"}],"
+                                       "\"group\":\"" +
+                                       kGroup_ +
+                                       "\","
+                                       "\"max_age\":86400}");
+  FinishLoading(true /* load_success */);
+
+  EXPECT_EQ(1u, context()->cache()->GetEndpointCount());
+  EXPECT_TRUE(context()->cache()->GetEndpointForTesting(
+      ReportingEndpointGroupKey(kNik_, kOrigin_, kGroup_), kEndpoint_));
+}
+
+TEST_P(ReportingServiceTest, ProcessReportingEndpointsHeader) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(net::features::kDocumentReporting);
+  auto parsed_header =
+      ParseReportingEndpoints(kGroup_ + "=\"" + kEndpoint_.spec() + "\"");
+  ASSERT_TRUE(parsed_header.has_value());
+  service()->SetDocumentReportingEndpoints(*kReportingSource_, kOrigin_,
+                                           kIsolationInfo_, *parsed_header);
+  FinishLoading(true /* load_success */);
+
+  // Endpoint should not be part of the persistent store.
+  EXPECT_EQ(0u, context()->cache()->GetEndpointCount());
+  // Endpoint should be associated with the reporting source.
+  ReportingEndpoint cached_endpoint =
+      context()->cache()->GetV1EndpointForTesting(*kReportingSource_, kGroup_);
+  EXPECT_TRUE(cached_endpoint);
+
+  // Ensure that the NIK is stored properly with the endpoint group.
+  EXPECT_FALSE(cached_endpoint.group_key.network_anonymization_key.IsEmpty());
+}
+
+TEST_P(ReportingServiceTest,
+       ProcessReportingEndpointsHeaderNetworkIsolationKeyDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {net::features::kDocumentReporting},
+      {features::kPartitionNelAndReportingByNetworkIsolationKey});
+
+  // Re-create the store, so it reads the new feature value.
+  Init();
+
+  auto parsed_header =
+      ParseReportingEndpoints(kGroup_ + "=\"" + kEndpoint_.spec() + "\"");
+  ASSERT_TRUE(parsed_header.has_value());
+  service()->SetDocumentReportingEndpoints(*kReportingSource_, kOrigin_,
+                                           kIsolationInfo_, *parsed_header);
+  FinishLoading(true /* load_success */);
+
+  // Endpoint should not be part of the persistent store.
+  EXPECT_EQ(0u, context()->cache()->GetEndpointCount());
+  // Endpoint should be associated with the reporting source.
+  ReportingEndpoint cached_endpoint =
+      context()->cache()->GetV1EndpointForTesting(*kReportingSource_, kGroup_);
+  EXPECT_TRUE(cached_endpoint);
+
+  // When isolation is disabled, cached endpoints should have a null NIK.
+  EXPECT_TRUE(cached_endpoint.group_key.network_anonymization_key.IsEmpty());
+}
+
+TEST_P(ReportingServiceTest, SendReportsAndRemoveSource) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(net::features::kDocumentReporting);
+  auto parsed_header =
+      ParseReportingEndpoints(kGroup_ + "=\"" + kEndpoint_.spec() + "\", " +
+                              kGroup2_ + "=\"" + kEndpoint2_.spec() + "\"");
+  ASSERT_TRUE(parsed_header.has_value());
+  service()->SetDocumentReportingEndpoints(*kReportingSource_, kOrigin_,
+                                           kIsolationInfo_, *parsed_header);
+  // This report should be sent immediately, starting the delivery agent timer.
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
+
+  FinishLoading(true /* load_success */);
+
+  std::vector<const ReportingReport*> reports;
+  context()->cache()->GetReports(&reports);
+  ASSERT_EQ(1u, reports.size());
+  EXPECT_EQ(0u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::QUEUED));
+
+  // Now simulate the source being destroyed.
+  service()->SendReportsAndRemoveSource(*kReportingSource_);
+
+  // There should be no queued reports, but the previously sent report should
+  // still be pending.
+  EXPECT_EQ(0u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::QUEUED));
+  EXPECT_EQ(1u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::PENDING));
+  // Source should be marked as expired.
+  ASSERT_TRUE(
+      context()->cache()->GetExpiredSources().contains(*kReportingSource_));
+}
+
+// Flaky in ChromeOS: crbug.com/1356127
+#if BUILDFLAG(IS_CHROMEOS)
+#define MAYBE_SendReportsAndRemoveSourceWithPendingReports \
+  DISABLED_SendReportsAndRemoveSourceWithPendingReports
+#else
+#define MAYBE_SendReportsAndRemoveSourceWithPendingReports \
+  SendReportsAndRemoveSourceWithPendingReports
+#endif
+TEST_P(ReportingServiceTest,
+       MAYBE_SendReportsAndRemoveSourceWithPendingReports) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(net::features::kDocumentReporting);
+  auto parsed_header =
+      ParseReportingEndpoints(kGroup_ + "=\"" + kEndpoint_.spec() + "\", " +
+                              kGroup2_ + "=\"" + kEndpoint2_.spec() + "\"");
+  ASSERT_TRUE(parsed_header.has_value());
+  service()->SetDocumentReportingEndpoints(*kReportingSource_, kOrigin_,
+                                           kIsolationInfo_, *parsed_header);
+  // This report should be sent immediately, starting the delivery agent timer.
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
+
+  FinishLoading(true /* load_success */);
+
+  std::vector<const ReportingReport*> reports;
+  context()->cache()->GetReports(&reports);
+  ASSERT_EQ(1u, reports.size());
+  EXPECT_EQ(0u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::QUEUED));
+  EXPECT_EQ(1u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::PENDING));
+
+  // Queue another report, which should remain queued.
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
+  EXPECT_EQ(1u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::QUEUED));
+  EXPECT_EQ(1u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::PENDING));
+
+  // Now simulate the source being destroyed.
+  service()->SendReportsAndRemoveSource(*kReportingSource_);
+
+  // The report should still be queued, while the source should be marked as
+  // expired. (The original report is still pending.)
+  EXPECT_EQ(1u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::QUEUED));
+  EXPECT_EQ(1u, context()->cache()->GetReportCountWithStatusForTesting(
+                    ReportingReport::Status::PENDING));
+  ASSERT_TRUE(
+      context()->cache()->GetExpiredSources().contains(kReportingSource_));
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+#define MAYBE_ProcessReportingEndpointsHeaderPathAbsolute DISABLED_ProcessReportingEndpointsHeaderPathAbsolute
+#else
+#define MAYBE_ProcessReportingEndpointsHeaderPathAbsolute ProcessReportingEndpointsHeaderPathAbsolute
+#endif
+TEST_P(ReportingServiceTest, MAYBE_ProcessReportingEndpointsHeaderPathAbsolute) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(net::features::kDocumentReporting);
+  auto parsed_header = ParseReportingEndpoints(kGroup_ + "=\"/path-absolute\"");
+  ASSERT_TRUE(parsed_header.has_value());
+  service()->SetDocumentReportingEndpoints(*kReportingSource_, kOrigin_,
+                                           kIsolationInfo_, *parsed_header);
+  FinishLoading(true /* load_success */);
+
+  // Endpoint should not be part of the persistent store.
+  EXPECT_EQ(0u, context()->cache()->GetEndpointCount());
+  // Endpoint should be associated with the reporting source.
+  ReportingEndpoint endpoint =
+      context()->cache()->GetV1EndpointForTesting(*kReportingSource_, kGroup_);
+  EXPECT_TRUE(endpoint);
+  // Endpoint should have the correct path.
+  EXPECT_EQ(kUrl_.Resolve("/path-absolute"), endpoint.info.url);
+}
+
+TEST_P(ReportingServiceTest, ProcessReportToHeaderPathAbsolute) {
+  service()->ProcessReportToHeader(
+      kOrigin_, kNik_,
+      "{\"endpoints\":[{\"url\":\"/path-absolute\"}],"
+      "\"group\":\"" +
+          kGroup_ +
+          "\","
+          "\"max_age\":86400}");
   FinishLoading(true /* load_success */);
 
   EXPECT_EQ(1u, context()->cache()->GetEndpointCount());
 }
 
-TEST_P(ReportingServiceTest, ProcessHeaderPathAbsolute) {
-  service()->ProcessHeader(kUrl_,
-                           "{\"endpoints\":[{\"url\":\"/path-absolute\"}],"
-                           "\"group\":\"" +
-                               kGroup_ +
-                               "\","
-                               "\"max_age\":86400}");
-  FinishLoading(true /* load_success */);
-
-  EXPECT_EQ(1u, context()->cache()->GetEndpointCount());
-}
-
-TEST_P(ReportingServiceTest, ProcessHeader_TooLong) {
+TEST_P(ReportingServiceTest, ProcessReportToHeader_TooLong) {
   const std::string header_too_long =
       "{\"endpoints\":[{\"url\":\"" + kEndpoint_.spec() +
       "\"}],"
@@ -159,12 +383,12 @@ TEST_P(ReportingServiceTest, ProcessHeader_TooLong) {
       "\"junk\":\"" + std::string(32 * 1024, 'a') + "\"}";
   // This does not trigger an attempt to load from the store because the header
   // is immediately rejected as invalid.
-  service()->ProcessHeader(kUrl_, header_too_long);
+  service()->ProcessReportToHeader(kOrigin_, kNik_, header_too_long);
 
   EXPECT_EQ(0u, context()->cache()->GetEndpointCount());
 }
 
-TEST_P(ReportingServiceTest, ProcessHeader_TooDeep) {
+TEST_P(ReportingServiceTest, ProcessReportToHeader_TooDeep) {
   const std::string header_too_deep = "{\"endpoints\":[{\"url\":\"" +
                                       kEndpoint_.spec() +
                                       "\"}],"
@@ -175,9 +399,35 @@ TEST_P(ReportingServiceTest, ProcessHeader_TooDeep) {
                                       "\"junk\":[[[[[[[[[[]]]]]]]]]]}";
   // This does not trigger an attempt to load from the store because the header
   // is immediately rejected as invalid.
-  service()->ProcessHeader(kUrl_, header_too_deep);
+  service()->ProcessReportToHeader(kOrigin_, kNik_, header_too_deep);
 
   EXPECT_EQ(0u, context()->cache()->GetEndpointCount());
+}
+
+TEST_P(ReportingServiceTest, ProcessReportToHeaderNetworkIsolationKeyDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(
+      features::kPartitionNelAndReportingByNetworkIsolationKey);
+
+  // Re-create the store, so it reads the new feature value.
+  Init();
+
+  service()->ProcessReportToHeader(kOrigin_, kNik_,
+                                   "{\"endpoints\":[{\"url\":\"" +
+                                       kEndpoint_.spec() +
+                                       "\"}],"
+                                       "\"group\":\"" +
+                                       kGroup_ +
+                                       "\","
+                                       "\"max_age\":86400}");
+  FinishLoading(true /* load_success */);
+
+  EXPECT_EQ(1u, context()->cache()->GetEndpointCount());
+  EXPECT_FALSE(context()->cache()->GetEndpointForTesting(
+      ReportingEndpointGroupKey(kNik_, kOrigin_, kGroup_), kEndpoint_));
+  EXPECT_TRUE(context()->cache()->GetEndpointForTesting(
+      ReportingEndpointGroupKey(NetworkAnonymizationKey(), kOrigin_, kGroup_),
+      kEndpoint_));
 }
 
 TEST_P(ReportingServiceTest, WriteToStore) {
@@ -188,13 +438,14 @@ TEST_P(ReportingServiceTest, WriteToStore) {
 
   // This first call to any public method triggers a load. The load will block
   // until we call FinishLoading.
-  service()->ProcessHeader(kUrl_, "{\"endpoints\":[{\"url\":\"" +
-                                      kEndpoint_.spec() +
-                                      "\"}],"
-                                      "\"group\":\"" +
-                                      kGroup_ +
-                                      "\","
-                                      "\"max_age\":86400}");
+  service()->ProcessReportToHeader(kOrigin_, kNik_,
+                                   "{\"endpoints\":[{\"url\":\"" +
+                                       kEndpoint_.spec() +
+                                       "\"}],"
+                                       "\"group\":\"" +
+                                       kGroup_ +
+                                       "\","
+                                       "\"max_age\":86400}");
   expected_commands.emplace_back(CommandType::LOAD_REPORTING_CLIENTS);
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
@@ -209,7 +460,8 @@ TEST_P(ReportingServiceTest, WriteToStore) {
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 
-  service()->ProcessHeader(kUrl2_, "{\"endpoints\":[{\"url\":\"" +
+  service()->ProcessReportToHeader(kOrigin2_, kNik2_,
+                                   "{\"endpoints\":[{\"url\":\"" +
                                        kEndpoint_.spec() +
                                        "\"}],"
                                        "\"group\":\"" +
@@ -223,17 +475,17 @@ TEST_P(ReportingServiceTest, WriteToStore) {
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 
-  service()->QueueReport(kUrl_, kUserAgent_, kGroup_, kType_,
-                         std::make_unique<base::DictionaryValue>(), 0);
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
   expected_commands.emplace_back(
       CommandType::UPDATE_REPORTING_ENDPOINT_GROUP_ACCESS_TIME, kGroupKey_);
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 
-  service()->RemoveBrowsingData(ReportingBrowsingDataRemover::DATA_TYPE_CLIENTS,
-                                base::BindRepeating([](const GURL& url) {
-                                  return url.host() == "origin";
-                                }));
+  service()->RemoveBrowsingData(
+      ReportingBrowsingDataRemover::DATA_TYPE_CLIENTS,
+      base::BindRepeating(
+          [](const url::Origin& origin) { return origin.host() == "origin"; }));
   expected_commands.emplace_back(CommandType::DELETE_REPORTING_ENDPOINT,
                                  kGroupKey_, kEndpoint_);
   expected_commands.emplace_back(CommandType::DELETE_REPORTING_ENDPOINT_GROUP,
@@ -261,18 +513,20 @@ TEST_P(ReportingServiceTest, WaitUntilLoadFinishesBeforeWritingToStore) {
 
   // This first call to any public method triggers a load. The load will block
   // until we call FinishLoading.
-  service()->ProcessHeader(kUrl_, "{\"endpoints\":[{\"url\":\"" +
-                                      kEndpoint_.spec() +
-                                      "\"}],"
-                                      "\"group\":\"" +
-                                      kGroup_ +
-                                      "\","
-                                      "\"max_age\":86400}");
+  service()->ProcessReportToHeader(kOrigin_, kNik_,
+                                   "{\"endpoints\":[{\"url\":\"" +
+                                       kEndpoint_.spec() +
+                                       "\"}],"
+                                       "\"group\":\"" +
+                                       kGroup_ +
+                                       "\","
+                                       "\"max_age\":86400}");
   expected_commands.emplace_back(CommandType::LOAD_REPORTING_CLIENTS);
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 
-  service()->ProcessHeader(kUrl2_, "{\"endpoints\":[{\"url\":\"" +
+  service()->ProcessReportToHeader(kOrigin2_, kNik2_,
+                                   "{\"endpoints\":[{\"url\":\"" +
                                        kEndpoint_.spec() +
                                        "\"}],"
                                        "\"group\":\"" +
@@ -282,15 +536,15 @@ TEST_P(ReportingServiceTest, WaitUntilLoadFinishesBeforeWritingToStore) {
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 
-  service()->QueueReport(kUrl_, kUserAgent_, kGroup_, kType_,
-                         std::make_unique<base::DictionaryValue>(), 0);
+  service()->QueueReport(kUrl_, kReportingSource_, kNik_, kUserAgent_, kGroup_,
+                         kType_, base::Value::Dict(), 0);
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 
-  service()->RemoveBrowsingData(ReportingBrowsingDataRemover::DATA_TYPE_CLIENTS,
-                                base::BindRepeating([](const GURL& url) {
-                                  return url.host() == "origin";
-                                }));
+  service()->RemoveBrowsingData(
+      ReportingBrowsingDataRemover::DATA_TYPE_CLIENTS,
+      base::BindRepeating(
+          [](const url::Origin& origin) { return origin.host() == "origin"; }));
   EXPECT_THAT(store()->GetAllCommands(),
               testing::UnorderedElementsAreArray(expected_commands));
 

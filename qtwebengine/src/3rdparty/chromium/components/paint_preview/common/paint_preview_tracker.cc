@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include <utility>
 
 #include "base/check.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
 #include "components/paint_preview/common/glyph_usage.h"
 #include "components/paint_preview/common/mojom/paint_preview_recorder.mojom.h"
 #include "third_party/skia/include/core/SkCanvas.h"
@@ -40,7 +40,7 @@ bool ShouldUseDenseGlyphUsage(SkTypeface* typeface) {
 
 PaintPreviewTracker::PaintPreviewTracker(
     const base::UnguessableToken& guid,
-    const base::Optional<base::UnguessableToken>& embedding_token,
+    const absl::optional<base::UnguessableToken>& embedding_token,
     bool is_main_frame)
     : guid_(guid),
       embedding_token_(embedding_token),

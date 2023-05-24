@@ -26,13 +26,16 @@
 #include "cast/streaming/sender_report_builder.h"
 #include "cast/streaming/session_config.h"
 #include "cast/streaming/ssrc.h"
+#include "cast/streaming/testing/simple_socket_subscriber.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "platform/api/time.h"
 #include "platform/api/udp_socket.h"
 #include "platform/base/error.h"
 #include "platform/base/ip_address.h"
+#include "platform/base/span.h"
 #include "platform/base/udp_packet.h"
+#include "platform/test/byte_view_test_util.h"
 #include "platform/test/fake_clock.h"
 #include "platform/test/fake_task_runner.h"
 #include "util/chrono_helpers.h"
@@ -88,10 +91,10 @@ struct SimulatedFrame : public EncodedFrame {
   SimulatedFrame(Clock::time_point first_frame_reference_time, int which) {
     frame_id = FrameId::first() + which;
     if (which == 0) {
-      dependency = EncodedFrame::KEY_FRAME;
+      dependency = EncodedFrame::Dependency::kKeyFrame;
       referenced_frame_id = frame_id;
     } else {
-      dependency = EncodedFrame::DEPENDS_ON_ANOTHER;
+      dependency = EncodedFrame::Dependency::kDependent;
       referenced_frame_id = frame_id - 1;
     }
     rtp_timestamp =
@@ -107,7 +110,7 @@ struct SimulatedFrame : public EncodedFrame {
     for (size_t i = 0; i < buffer_.size(); ++i) {
       buffer_[i] = static_cast<uint8_t>(which + static_cast<int>(i));
     }
-    data = absl::Span<uint8_t>(buffer_);
+    data = buffer_;
   }
 
   static RtpTimeTicks GetRtpStartTime() {
@@ -249,7 +252,6 @@ class MockSender : public CompoundRtcpParser::Client {
   CompoundRtcpParser rtcp_parser_;
   FrameCrypto crypto_;
   RtpPacketizer rtp_packetizer_;
-
   FrameId max_feedback_frame_id_ = FrameId::first() + kMaxUnackedFrames;
 
   EncryptedFrame frame_being_sent_;
@@ -275,12 +277,12 @@ class ReceiverTest : public testing::Test {
                    /* .channels = */ 2,
                    /* .target_playout_delay = */ kTargetPlayoutDelay,
                    /* .aes_secret_key = */ kAesKey,
-                   /* .aes_iv_mask = */ kCastIvMask}),
+                   /* .aes_iv_mask = */ kCastIvMask,
+                   /* .is_pli_enabled = */ true}),
         sender_(&task_runner_, &env_) {
-    env_.set_socket_error_handler(
-        [](Error error) { ASSERT_TRUE(error.ok()) << error; });
+    env_.SetSocketSubscriber(&socket_subscriber_);
     ON_CALL(env_, SendPacket(_))
-        .WillByDefault(Invoke([this](absl::Span<const uint8_t> packet) {
+        .WillByDefault(Invoke([this](ByteView packet) {
           task_runner_.PostTaskWithDelay(
               [sender = &sender_, copy_of_packet = std::vector<uint8_t>(
                                       packet.begin(), packet.end())]() mutable {
@@ -325,8 +327,7 @@ class ReceiverTest : public testing::Test {
     const int payload_size = receiver()->AdvanceToNextFrame();
     ASSERT_NE(Receiver::kNoFramesReady, payload_size);
     std::vector<uint8_t> buffer(payload_size);
-    EncodedFrame received_frame =
-        receiver()->ConsumeNextFrame(absl::Span<uint8_t>(buffer));
+    EncodedFrame received_frame = receiver()->ConsumeNextFrame(buffer);
 
     EXPECT_EQ(sent_frame.dependency, received_frame.dependency);
     EXPECT_EQ(sent_frame.frame_id, received_frame.frame_id);
@@ -338,7 +339,7 @@ class ReceiverTest : public testing::Test {
                                                           FrameId::first()),
               received_frame.reference_time);
     EXPECT_EQ(sent_frame.new_playout_delay, received_frame.new_playout_delay);
-    EXPECT_EQ(sent_frame.data, received_frame.data);
+    ExpectByteViewsHaveSameBytes(sent_frame.data, received_frame.data);
   }
 
   // Consume zero or more frames from the Receiver, verifying that they are the
@@ -359,6 +360,7 @@ class ReceiverTest : public testing::Test {
   Receiver receiver_;
   testing::NiceMock<MockSender> sender_;
   testing::NiceMock<MockConsumer> consumer_;
+  SimpleSubscriber socket_subscriber_;
 };
 
 // Tests that the Receiver processes RTCP packets correctly and sends RTCP
@@ -400,10 +402,11 @@ TEST_F(ReceiverTest, ReceivesAndSendsRtcpPackets) {
   // from the wire-format NtpTimestamps. See the unit tests in
   // ntp_time_unittest.cc for further discussion.
   constexpr auto kAllowedNtpRoundingError = microseconds(2);
-  EXPECT_NEAR(
-      to_microseconds(kOneWayNetworkDelay).count(),
-      to_microseconds(receiver_reference_time - sender_reference_time).count(),
-      kAllowedNtpRoundingError.count());
+  EXPECT_NEAR(to_microseconds(kOneWayNetworkDelay).count(),
+              static_cast<double>(to_microseconds(receiver_reference_time -
+                                                  sender_reference_time)
+                                      .count()),
+              kAllowedNtpRoundingError.count());
 
   // Without the Sender doing anything, the Receiver should continue providing
   // RTCP reports at regular intervals. Simulate three intervals of time,
@@ -638,7 +641,7 @@ TEST_F(ReceiverTest, RequestsKeyFrameToRectifyPictureLoss) {
       .Times(1);
   EXPECT_CALL(*sender(), OnReceiverIndicatesPictureLoss()).Times(0);
   SimulatedFrame key_frame(start_time, 4);
-  key_frame.dependency = EncodedFrame::KEY_FRAME;
+  key_frame.dependency = EncodedFrame::Dependency::kKeyFrame;
   key_frame.referenced_frame_id = key_frame.frame_id;
   sender()->SetFrameBeingSent(key_frame);
   sender()->SendRtpPackets(sender()->GetAllPacketIds(0));
@@ -660,6 +663,20 @@ TEST_F(ReceiverTest, RequestsKeyFrameToRectifyPictureLoss) {
   receiver()->RequestKeyFrame();
   AdvanceClockAndRunTasks(kOneWayNetworkDelay);
   testing::Mock::VerifyAndClearExpectations(sender());
+}
+
+TEST_F(ReceiverTest, PLICanBeDisabled) {
+  receiver()->SetPliEnabledForTesting(false);
+
+#if OSP_DCHECK_IS_ON()
+  EXPECT_DEATH_IF_SUPPORTED(receiver()->RequestKeyFrame(),
+                            ".*PLI is not enabled.*");
+#else
+  EXPECT_CALL(*sender(), OnReceiverIndicatesPictureLoss()).Times(0);
+  receiver()->RequestKeyFrame();
+  AdvanceClockAndRunTasks(kOneWayNetworkDelay);
+  testing::Mock::VerifyAndClearExpectations(sender());
+#endif
 }
 
 // Tests that the Receiver will start dropping packets once its frame queue is
@@ -750,7 +767,7 @@ TEST_F(ReceiverTest, DropsLateFrames) {
   SimulatedFrame frames[8] = {{start_time, 0}, {start_time, 1}, {start_time, 2},
                               {start_time, 3}, {start_time, 4}, {start_time, 5},
                               {start_time, 6}, {start_time, 7}};
-  frames[6].dependency = EncodedFrame::KEY_FRAME;
+  frames[6].dependency = EncodedFrame::Dependency::kKeyFrame;
   frames[6].referenced_frame_id = frames[6].frame_id;
 
   // Send just packet 1 (NOT packet 0) of all the frames. The Receiver should

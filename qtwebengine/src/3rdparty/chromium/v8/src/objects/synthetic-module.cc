@@ -10,6 +10,7 @@
 #include "src/objects/module-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/shared-function-info.h"
+#include "src/objects/synthetic-module-inl.h"
 #include "src/utils/ostreams.h"
 
 namespace v8 {
@@ -59,7 +60,7 @@ MaybeHandle<Cell> SyntheticModule::ResolveExport(
 
   if (!must_resolve) return MaybeHandle<Cell>();
 
-  return isolate->Throw<Cell>(
+  return isolate->ThrowAt<Cell>(
       isolate->factory()->NewSyntaxError(MessageTemplate::kUnresolvableExport,
                                          module_specifier, export_name),
       &loc);
@@ -69,16 +70,14 @@ MaybeHandle<Cell> SyntheticModule::ResolveExport(
 // https://heycam.github.io/webidl/#smr-instantiate
 bool SyntheticModule::PrepareInstantiate(Isolate* isolate,
                                          Handle<SyntheticModule> module,
-                                         v8::Local<v8::Context> context,
-                                         v8::Module::ResolveCallback callback) {
+                                         v8::Local<v8::Context> context) {
   Handle<ObjectHashTable> exports(module->exports(), isolate);
   Handle<FixedArray> export_names(module->export_names(), isolate);
   // Spec step 7: For each export_name in module->export_names...
   for (int i = 0, n = export_names->length(); i < n; ++i) {
     // Spec step 7.1: Create a new mutable binding for export_name.
     // Spec step 7.2: Initialize the new mutable binding to undefined.
-    Handle<Cell> cell =
-        isolate->factory()->NewCell(isolate->factory()->undefined_value());
+    Handle<Cell> cell = isolate->factory()->NewCell();
     Handle<String> name(String::cast(export_names->get(i)), isolate);
     CHECK(exports->Lookup(name).IsTheHole(isolate));
     exports = ObjectHashTable::Put(exports, name, cell);
@@ -92,7 +91,7 @@ bool SyntheticModule::PrepareInstantiate(Isolate* isolate,
 // just update status.
 bool SyntheticModule::FinishInstantiate(Isolate* isolate,
                                         Handle<SyntheticModule> module) {
-  module->SetStatus(kInstantiated);
+  module->SetStatus(kLinked);
   return true;
 }
 
@@ -111,12 +110,30 @@ MaybeHandle<Object> SyntheticModule::Evaluate(Isolate* isolate,
            Utils::ToLocal(Handle<Module>::cast(module)))
            .ToLocal(&result)) {
     isolate->PromoteScheduledException();
-    Module::RecordErrorUsingPendingException(isolate, module);
+    module->RecordError(isolate, isolate->pending_exception());
     return MaybeHandle<Object>();
   }
 
   module->SetStatus(kEvaluated);
-  return Utils::OpenHandle(*result);
+
+  Handle<Object> result_from_callback = Utils::OpenHandle(*result);
+
+  Handle<JSPromise> capability;
+  if (result_from_callback->IsJSPromise()) {
+    capability = Handle<JSPromise>::cast(result_from_callback);
+  } else {
+    // The host's evaluation steps should have returned a resolved Promise,
+    // but as an allowance to hosts that have not yet finished the migration
+    // to top-level await, create a Promise if the callback result didn't give
+    // us one.
+    capability = isolate->factory()->NewJSPromise();
+    JSPromise::Resolve(capability, isolate->factory()->undefined_value())
+        .ToHandleChecked();
+  }
+
+  module->set_top_level_capability(*capability);
+
+  return result_from_callback;
 }
 
 }  // namespace internal

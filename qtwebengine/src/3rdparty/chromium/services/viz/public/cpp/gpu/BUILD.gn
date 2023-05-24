@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,6 +30,7 @@ source_set("gpu") {
 
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//gpu",
     "//gpu/command_buffer/client",
     "//gpu/command_buffer/client:gles2_cmd_helper",
@@ -56,6 +57,7 @@ source_set("tests") {
   deps = [
     "//base",
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//mojo/core/embedder",
     "//mojo/public/cpp/system",
     "//services/service_manager/public/cpp",
@@ -65,8 +67,4 @@ source_set("tests") {
     "//ui/gfx/geometry",
     "//ui/gfx/geometry/mojom",
   ]
-
-  if (use_x11) {
-    deps += [ "//ui/gfx/x" ]
-  }
 }

@@ -1,14 +1,16 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_XR_XR_CUBE_MAP_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_XR_XR_CUBE_MAP_H_
 
-#include "base/util/type_safety/pass_key.h"
+#include "base/types/pass_key.h"
 #include "device/vr/public/mojom/rgba_tuple_f16.h"
 #include "device/vr/public/mojom/vr_service.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
+
+typedef unsigned int GLenum;
 
 namespace blink {
 
@@ -21,7 +23,10 @@ class XRCubeMap {
   explicit XRCubeMap(const device::mojom::blink::XRCubeMap& cube_map);
 
   WebGLTexture* updateWebGLEnvironmentCube(WebGLRenderingContextBase* context,
-                                           WebGLTexture* texture) const;
+                                           WebGLTexture* texture,
+                                           GLenum internal_format,
+                                           GLenum format,
+                                           GLenum type) const;
 
  private:
   uint32_t width_and_height_ = 0;

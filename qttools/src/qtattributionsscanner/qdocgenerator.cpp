@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdocgenerator.h"
 
 #include <QtCore/qdir.h>
 
 #include <iostream>
+
+using namespace Qt::Literals::StringLiterals;
 
 namespace QDocGenerator {
 
@@ -53,32 +30,43 @@ static QString languageJoin(const QStringList &list)
 {
     QString result;
     for (int i = 0; i < list.size(); ++i) {
-        QString delimiter = QStringLiteral(", ");
+        QString delimiter = u", "_s;
         if (i == list.size() - 1) // last item
             delimiter.clear();
         else if (list.size() == 2)
-            delimiter = QStringLiteral(" and ");
+            delimiter = u" and "_s;
         else if (list.size() > 2 && i == list.size() - 2)
-            delimiter = QStringLiteral(", and "); // oxford comma
+            delimiter = u", and "_s; // oxford comma
         result += list[i] + delimiter;
     }
 
     return result;
 }
 
-static void generate(QTextStream &out, const Package &package, const QDir &baseDir,
-                     LogLevel logLevel)
+// Embed source code between \badcode ... \endbadcode
+// Also, avoid '*/' breaking qdoc by passing the star as argument
+static void sourceCode(QTextStream &out, const QString &src)
+{
+    out << "\\badcode *\n";
+    out << QString(src).replace(u"*/"_s, u"\\1/"_s);
+    out << "\n\\endcode\n\n";
+}
+
+static void generate(QTextStream &out, const Package &package, const QDir &baseDir)
 {
     out << "/*!\n\n";
-    for (const QString &part: package.qtParts)
+    for (const QString &part : package.qtParts) {
+        out << "\\ingroup attributions-" << package.qdocModule << "-" << part << "\n";
         out << "\\ingroup attributions-" << part << "\n";
+    }
 
-    if (package.qtParts.contains(QLatin1String("libs"))) {
+    if (package.qtParts.contains("libs"_L1)) {
         // show up in xxx-index.html page of module
         out << "\\ingroup attributions-" << package.qdocModule << "\n";
         // include in '\generatelist annotatedattributions'
         out << "\\page " << package.qdocModule << "-attribution-" << package.id
-            << ".html attribution\n";
+            << ".html\n";
+        out << "\\attribution\n";
     } else {
         out << "\\page " << package.qdocModule << "-attribution-" << package.id
             << ".html \n";
@@ -127,38 +115,34 @@ static void generate(QTextStream &out, const Package &package, const QDir &baseD
 
     out << "\n\n";
 
+    QString copyright;
     if (!package.copyright.isEmpty())
-        out << "\n\\badcode\n" << package.copyright << "\n\\endcode\n\n";
+        copyright = package.copyright;
+    else if (!package.copyrightFileContents.isEmpty())
+        copyright = package.copyrightFileContents;
 
-    if (isSpdxLicenseId(package.licenseId) && package.licenseId != QLatin1String("NONE")) {
+    if (!copyright.isEmpty()) {
+        out << "\n";
+        sourceCode(out, copyright);
+    }
+
+    if (isSpdxLicenseId(package.licenseId) && package.licenseId != "NONE"_L1) {
         out << "\\l{https://spdx.org/licenses/" << package.licenseId << ".html}"
             << "{" << package.license << "}.\n\n";
-    } else if (package.licenseId.startsWith(QLatin1String("urn:dje:license:"))) {
+    } else if (package.licenseId.startsWith("urn:dje:license:"_L1)) {
         out << "\\l{https://enterprise.dejacode.com/licenses/public/" << package.licenseId.mid(16)
             << "/}{" << package.license << "}.\n\n";
     } else {
         out << package.license << ".\n\n";
     }
 
-    if (!package.licenseFile.isEmpty()) {
-        QFile file(package.licenseFile);
-        if (!file.open(QIODevice::ReadOnly)) {
-            if (logLevel != SilentLog)
-                std::cerr << qPrintable(
-                    tr("Path %1 : cannot open license file %2.")
-                        .arg(QDir::toNativeSeparators(package.path))
-                        .arg(QDir::toNativeSeparators(package.licenseFile))
-                ) << "*/\n";
-            return;
-        }
-        out << "\\badcode\n";
-        out << QString::fromUtf8(file.readAll()).trimmed();
-        out << "\n\\endcode\n";
-    }
+    foreach (const QString &license, package.licenseFilesContents)
+        sourceCode(out, license);
+
     out << "*/\n";
 }
 
-void generate(QTextStream &out, const QVector<Package> &packages, const QString &baseDirectory,
+void generate(QTextStream &out, const QList<Package> &packages, const QString &baseDirectory,
               LogLevel logLevel)
 {
     if (logLevel == VerboseLog)
@@ -166,7 +150,7 @@ void generate(QTextStream &out, const QVector<Package> &packages, const QString 
 
     QDir baseDir(baseDirectory);
     for (const Package &package : packages)
-        generate(out, package, baseDir, logLevel);
+        generate(out, package, baseDir);
 }
 
 } // namespace QDocGenerator

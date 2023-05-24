@@ -1,5 +1,2 @@
 file://chrome/browser/resources/settings/OWNERS
-
-jdoerrie@chromium.org
-
-# COMPONENT: UI>Settings
+file://components/autofill/OWNERS

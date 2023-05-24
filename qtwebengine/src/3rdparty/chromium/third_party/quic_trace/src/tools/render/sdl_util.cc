@@ -14,7 +14,7 @@
 
 #include "tools/render/sdl_util.h"
 
-#include "gflags/gflags.h"
+#include "absl/flags/flag.h"
 
 #if !defined(NDEBUG)
 #define DEFAULT_OPENGL_DEBUG_FLAG_VALUE true
@@ -22,9 +22,10 @@
 #define DEFAULT_OPENGL_DEBUG_FLAG_VALUE false
 #endif  // !defined(NDEBUG)
 
-DEFINE_bool(opengl_debug,
-            DEFAULT_OPENGL_DEBUG_FLAG_VALUE,
-            "Show OpenGL debug messages");
+ABSL_FLAG(bool,
+          opengl_debug,
+          DEFAULT_OPENGL_DEBUG_FLAG_VALUE,
+          "Show OpenGL debug messages");
 
 namespace quic_trace {
 namespace render {
@@ -41,7 +42,7 @@ OpenGlContext::OpenGlContext(SDL_Window* window) {
     LOG(FATAL) << "Failed to initalize GLEW: " << glewGetErrorString(err);
   }
 
-  if (GLEW_KHR_debug && FLAGS_opengl_debug) {
+  if (GLEW_KHR_debug && absl::GetFlag(FLAGS_opengl_debug)) {
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(
         +[](GLenum source, GLenum type, GLuint id, GLenum severity,
@@ -57,7 +58,6 @@ OpenGlContext::OpenGlContext(SDL_Window* window) {
               LOG(INFO) << "[GL]: " << std::string(message, length);
               break;
             case GL_DEBUG_SEVERITY_NOTIFICATION:
-              VLOG(1) << "[GL]: " << std::string(message, length);
               break;
           }
         },
@@ -79,7 +79,7 @@ std::string GlShader::GetCompileInfoLog() {
   GLint actual_size = 0;
 
   glGetShaderiv(shader_, GL_INFO_LOG_LENGTH, &buffer_size);
-  auto buffer = absl::make_unique<char[]>(buffer_size);
+  auto buffer = std::make_unique<char[]>(buffer_size);
 
   glGetShaderInfoLog(shader_, buffer_size, &actual_size, buffer.get());
   return std::string(buffer.get(), actual_size);

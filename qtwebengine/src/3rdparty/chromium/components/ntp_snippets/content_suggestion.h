@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,22 +9,12 @@
 #include <memory>
 #include <string>
 
-#include "base/files/file_path.h"
-#include "base/macros.h"
-#include "base/optional.h"
-#include "base/strings/string16.h"
 #include "base/time/time.h"
 #include "components/ntp_snippets/category.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace ntp_snippets {
-
-// ReadingListSuggestionExtra contains additional data which is only available
-// for Reading List suggestions.
-struct ReadingListSuggestionExtra {
-  // URL of the page whose favicon should be displayed for this suggestion.
-  GURL favicon_page_url;
-};
 
 // Contains additional data for notification-worthy suggestions.
 struct NotificationExtra {
@@ -67,6 +57,8 @@ class ContentSuggestion {
                     const GURL& url);
   ContentSuggestion(ContentSuggestion&&);
   ContentSuggestion& operator=(ContentSuggestion&&);
+  ContentSuggestion(const ContentSuggestion&) = delete;
+  ContentSuggestion& operator=(const ContentSuggestion&) = delete;
 
   ~ContentSuggestion();
 
@@ -98,12 +90,12 @@ class ContentSuggestion {
   static GURL GetFaviconDomain(const GURL& favicon_url);
 
   // Title of the suggestion.
-  const base::string16& title() const { return title_; }
-  void set_title(const base::string16& title) { title_ = title; }
+  const std::u16string& title() const { return title_; }
+  void set_title(const std::u16string& title) { title_ = title; }
 
   // Summary or relevant textual extract from the content.
-  const base::string16& snippet_text() const { return snippet_text_; }
-  void set_snippet_text(const base::string16& snippet_text) {
+  const std::u16string& snippet_text() const { return snippet_text_; }
+  void set_snippet_text(const std::u16string& snippet_text) {
     snippet_text_ = snippet_text;
   }
 
@@ -114,8 +106,8 @@ class ContentSuggestion {
   }
 
   // The name of the source/publisher of this suggestion.
-  const base::string16& publisher_name() const { return publisher_name_; }
-  void set_publisher_name(const base::string16& publisher_name) {
+  const std::u16string& publisher_name() const { return publisher_name_; }
+  void set_publisher_name(const std::u16string& publisher_name) {
     publisher_name_ = publisher_name;
   }
 
@@ -132,15 +124,6 @@ class ContentSuggestion {
   float score() const { return score_; }
   void set_score(float score) { score_ = score; }
 
-  // Extra information for reading list suggestions. Only available for
-  // KnownCategories::READING_LIST suggestions.
-  ReadingListSuggestionExtra* reading_list_suggestion_extra() const {
-    return reading_list_suggestion_extra_.get();
-  }
-  void set_reading_list_suggestion_extra(
-      std::unique_ptr<ReadingListSuggestionExtra>
-          reading_list_suggestion_extra);
-
   // Extra information for notifications. When absent, no notification should be
   // sent for this suggestion. When present, a notification should be sent,
   // unless other factors disallow it (examples: the extra parameters say to;
@@ -156,11 +139,11 @@ class ContentSuggestion {
     fetch_date_ = fetch_date;
   }
 
-  const base::Optional<uint32_t>& optional_image_dominant_color() const {
+  const absl::optional<uint32_t>& optional_image_dominant_color() const {
     return image_dominant_color_;
   }
   void set_optional_image_dominant_color(
-      const base::Optional<uint32_t>& optional_color_int) {
+      const absl::optional<uint32_t>& optional_color_int) {
     image_dominant_color_ = optional_color_int;
   }
 
@@ -169,12 +152,11 @@ class ContentSuggestion {
   GURL url_;
   GURL url_with_favicon_;
   GURL salient_image_url_;
-  base::string16 title_;
-  base::string16 snippet_text_;
+  std::u16string title_;
+  std::u16string snippet_text_;
   base::Time publish_date_;
-  base::string16 publisher_name_;
+  std::u16string publisher_name_;
   float score_;
-  std::unique_ptr<ReadingListSuggestionExtra> reading_list_suggestion_extra_;
   std::unique_ptr<NotificationExtra> notification_extra_;
 
   // The time when the remote suggestion was fetched from the server. This field
@@ -185,9 +167,7 @@ class ContentSuggestion {
   bool is_video_suggestion_;
 
   // Encoded as an Android @ColorInt.
-  base::Optional<uint32_t> image_dominant_color_;
-
-  DISALLOW_COPY_AND_ASSIGN(ContentSuggestion);
+  absl::optional<uint32_t> image_dominant_color_;
 };
 
 std::ostream& operator<<(std::ostream& os, const ContentSuggestion::ID& id);

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,6 +29,9 @@ class MockRenderWidgetHost : public RenderWidgetHostImpl {
   using RenderWidgetHostImpl::RendererExited;
   using RenderWidgetHostImpl::visual_properties_ack_pending_;
 
+  MockRenderWidgetHost(const MockRenderWidgetHost&) = delete;
+  MockRenderWidgetHost& operator=(const MockRenderWidgetHost&) = delete;
+
   ~MockRenderWidgetHost() override;
 
   void OnTouchEventAck(const TouchEventWithLatencyInfo& event,
@@ -58,14 +61,16 @@ class MockRenderWidgetHost : public RenderWidgetHostImpl {
 
   InputRouter* input_router() { return input_router_.get(); }
 
-  static MockRenderWidgetHost* Create(
+  static std::unique_ptr<MockRenderWidgetHost> Create(
+      FrameTree* frame_tree,
       RenderWidgetHostDelegate* delegate,
-      AgentSchedulingGroupHost& agent_scheduling_group,
+      base::SafeRef<SiteInstanceGroup> site_instance_group,
       int32_t routing_id);
 
-  static MockRenderWidgetHost* Create(
+  static std::unique_ptr<MockRenderWidgetHost> Create(
+      FrameTree* frame_tree,
       RenderWidgetHostDelegate* delegate,
-      AgentSchedulingGroupHost& agent_scheduling_group,
+      base::SafeRef<SiteInstanceGroup> site_instance_group,
       int32_t routing_id,
       mojo::PendingAssociatedRemote<blink::mojom::Widget> pending_blink_widget);
 
@@ -81,13 +86,13 @@ class MockRenderWidgetHost : public RenderWidgetHostImpl {
 
  private:
   MockRenderWidgetHost(
+      FrameTree* frame_tree,
       RenderWidgetHostDelegate* delegate,
-      AgentSchedulingGroupHost& agent_scheduling_group,
+      base::SafeRef<SiteInstanceGroup> site_instance_group,
       int32_t routing_id,
       mojo::PendingAssociatedRemote<blink::mojom::Widget> pending_blink_widget);
 
   std::unique_ptr<FlingScheduler> fling_scheduler_;
-  DISALLOW_COPY_AND_ASSIGN(MockRenderWidgetHost);
 };
 
 }  // namespace content

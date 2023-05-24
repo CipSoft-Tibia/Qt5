@@ -22,67 +22,80 @@
 #include "third_party/blink/renderer/platform/transforms/rotation.h"
 
 #include "third_party/blink/renderer/platform/geometry/blend.h"
-#include "third_party/blink/renderer/platform/transforms/transformation_matrix.h"
+#include "ui/gfx/geometry/quaternion.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace blink {
+
+using gfx::Quaternion;
 
 namespace {
 
 const double kAngleEpsilon = 1e-4;
 
-Rotation ExtractFromMatrix(const TransformationMatrix& matrix,
-                           const Rotation& fallback_value) {
-  TransformationMatrix::DecomposedType decomp;
-  if (!matrix.Decompose(decomp))
-    return fallback_value;
-  double x = -decomp.quaternion_x;
-  double y = -decomp.quaternion_y;
-  double z = -decomp.quaternion_z;
-  double length = std::sqrt(x * x + y * y + z * z);
-  double angle = 0;
-  if (length > 0.00001) {
-    x /= length;
-    y /= length;
-    z /= length;
-    angle = rad2deg(std::acos(decomp.quaternion_w) * 2);
-  } else {
-    x = 0;
-    y = 0;
-    z = 1;
-  }
-  return Rotation(FloatPoint3D(x, y, z), angle);
+Quaternion ComputeQuaternion(const Rotation& rotation) {
+  return Quaternion::FromAxisAngle(rotation.axis.x(), rotation.axis.y(),
+                                   rotation.axis.z(), Deg2rad(rotation.angle));
+}
+
+gfx::Vector3dF NormalizeAxis(gfx::Vector3dF axis) {
+  gfx::Vector3dF normalized;
+  if (axis.GetNormalized(&normalized))
+    return normalized;
+  // Rotation angle is zero so the axis is arbitrary.
+  return gfx::Vector3dF(0, 0, 1);
+}
+
+Rotation ComputeRotation(Quaternion q) {
+  double cos_half_angle = q.w();
+  double interpolated_angle = Rad2deg(2 * std::acos(cos_half_angle));
+  gfx::Vector3dF interpolated_axis =
+      NormalizeAxis(gfx::Vector3dF(q.x(), q.y(), q.z()));
+  return Rotation(interpolated_axis, interpolated_angle);
 }
 
 }  // namespace
 
 bool Rotation::GetCommonAxis(const Rotation& a,
                              const Rotation& b,
-                             FloatPoint3D& result_axis,
+                             gfx::Vector3dF& result_axis,
                              double& result_angle_a,
                              double& result_angle_b) {
-  result_axis = FloatPoint3D(0, 0, 1);
+  result_axis = gfx::Vector3dF(0, 0, 1);
   result_angle_a = 0;
   result_angle_b = 0;
 
-  bool is_zero_a = a.axis.IsZero() || fabs(a.angle) < kAngleEpsilon;
-  bool is_zero_b = b.axis.IsZero() || fabs(b.angle) < kAngleEpsilon;
+  // We have to consider two definitions of "is zero" here, because we
+  // sometimes need to preserve (as an interpolation result) and expose
+  // to web content an axis that is associated with a zero angle.  Thus
+  // we consider having a zero axis stronger than having a zero angle.
+  bool a_has_zero_axis = a.axis.IsZero();
+  bool b_has_zero_axis = b.axis.IsZero();
+  bool is_zero_a, is_zero_b;
+  if (a_has_zero_axis || b_has_zero_axis) {
+    is_zero_a = a_has_zero_axis;
+    is_zero_b = b_has_zero_axis;
+  } else {
+    is_zero_a = fabs(a.angle) < kAngleEpsilon;
+    is_zero_b = fabs(b.angle) < kAngleEpsilon;
+  }
 
   if (is_zero_a && is_zero_b)
     return true;
 
   if (is_zero_a) {
-    result_axis = b.axis;
+    result_axis = NormalizeAxis(b.axis);
     result_angle_b = b.angle;
     return true;
   }
 
   if (is_zero_b) {
-    result_axis = a.axis;
+    result_axis = NormalizeAxis(a.axis);
     result_angle_a = a.angle;
     return true;
   }
 
-  double dot = a.axis.Dot(b.axis);
+  double dot = gfx::DotProduct(a.axis, b.axis);
   if (dot < 0)
     return false;
 
@@ -92,7 +105,7 @@ bool Rotation::GetCommonAxis(const Rotation& a,
   if (error > kAngleEpsilon)
     return false;
 
-  result_axis = a.axis;
+  result_axis = NormalizeAxis(a.axis);
   result_angle_a = a.angle;
   result_angle_b = b.angle;
   return true;
@@ -103,29 +116,33 @@ Rotation Rotation::Slerp(const Rotation& from,
                          double progress) {
   double from_angle;
   double to_angle;
-  FloatPoint3D axis;
+  gfx::Vector3dF axis;
   if (GetCommonAxis(from, to, axis, from_angle, to_angle))
     return Rotation(axis, blink::Blend(from_angle, to_angle, progress));
 
-  TransformationMatrix from_matrix;
-  TransformationMatrix to_matrix;
-  from_matrix.Rotate3d(from);
-  to_matrix.Rotate3d(to);
-  to_matrix.Blend(from_matrix, progress);
-  return ExtractFromMatrix(to_matrix, progress < 0.5 ? from : to);
+  Quaternion qa = ComputeQuaternion(from);
+  Quaternion qb = ComputeQuaternion(to);
+  Quaternion qc = qa.Slerp(qb, progress);
+
+  return ComputeRotation(qc);
 }
 
 Rotation Rotation::Add(const Rotation& a, const Rotation& b) {
   double angle_a;
   double angle_b;
-  FloatPoint3D axis;
+  gfx::Vector3dF axis;
   if (GetCommonAxis(a, b, axis, angle_a, angle_b))
     return Rotation(axis, angle_a + angle_b);
 
-  TransformationMatrix matrix;
-  matrix.Rotate3d(a);
-  matrix.Rotate3d(b);
-  return ExtractFromMatrix(matrix, b);
+  Quaternion qa = ComputeQuaternion(a);
+  Quaternion qb = ComputeQuaternion(b);
+  Quaternion qc = qa * qb;
+  if (qc.w() < 0) {
+    // Choose the equivalent rotation with the smaller angle.
+    qc = qc.flip();
+  }
+
+  return ComputeRotation(qc);
 }
 
 }  // namespace blink

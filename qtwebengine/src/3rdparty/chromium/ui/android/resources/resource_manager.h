@@ -1,13 +1,9 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_ANDROID_RESOURCES_RESOURCE_MANAGER_H_
 #define UI_ANDROID_RESOURCES_RESOURCE_MANAGER_H_
-
-#include <memory>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "base/android/jni_android.h"
 #include "cc/resources/scoped_ui_resource.h"
@@ -45,9 +41,15 @@ class UI_ANDROID_EXPORT ResourceManager {
   virtual Resource* GetResource(AndroidResourceType res_type, int res_id) = 0;
 
   // Return a handle to a static resource specified by |res_id| that has a tint
-  // of |tint_color| applied to it.
+  // of |tint_color| applied to it. Does not retain the alpha of the tint color.
   virtual Resource* GetStaticResourceWithTint(int res_id,
                                               SkColor tint_color) = 0;
+
+  // Return a handle to a static resource specified by |res_id| that has a tint
+  // of |tint_color| applied to it.
+  virtual Resource* GetStaticResourceWithTint(int res_id,
+                                              SkColor tint_color,
+                                              bool preserve_color_alpha) = 0;
 
   // Trigger asynchronous loading of the resource specified by |res_type| and
   // |res_id|, if it has not yet been loaded.
@@ -59,6 +61,8 @@ class UI_ANDROID_EXPORT ResourceManager {
     return resource && resource->ui_resource() ? resource->ui_resource()->id()
                                                : 0;
   }
+
+  virtual void MarkTintNonDiscardable(SkColor tint_color) = 0;
 
   // A notification that all updates have finished for the current frame.
   virtual void OnFrameUpdatesFinished() = 0;

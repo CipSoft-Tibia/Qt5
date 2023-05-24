@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/test/metrics/histogram_tester.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/display/test/display_test_util.h"
 #include "ui/display/util/edid_parser.h"
 
 namespace display {
@@ -117,6 +118,26 @@ const unsigned char kBrokenBluePrimaries[] =
     "\x30\x20\x25\x00\x25\xa5\x10\x00\x00\x1a\x00\x00\x00\xfe\x00\x56"
     "\x59\x54\x39\x36\x80\x31\x33\x33\x48\x4c\x0a\x20\x00\x00\x00\x00";
 
+// This EDID contains Short Audio Descriptors in the Timing Extension
+// Data which indicate LPCM, DTS, and DTS-HD audio.
+const unsigned char kDTSAudio[] =
+    "\x00\xff\xff\xff\xff\xff\xff\x00\x59\x3a\x39\x10\x01\x01\x01\x01"
+    "\x00\x1f\x01\x03\x80\x5e\x35\x78\x2a\x29\xdd\xa5\x57\x35\x9f\x26"
+    "\x0e\x47\x4a\xa5\xce\x00\xd1\xc0\x01\x01\x01\x01\x01\x01\x01\x01"
+    "\x01\x01\x01\x01\x01\x01\x08\xe8\x00\x30\xf2\x70\x5a\x80\xb0\x58"
+    "\x8a\x00\xad\x11\x32\x00\x00\x1e\x56\x5e\x00\xa0\xa0\xa0\x29\x50"
+    "\x30\x20\x35\x00\xad\x11\x32\x00\x00\x1e\x00\x00\x00\xfc\x00\x56"
+    "\x34\x33\x35\x2d\x4a\x30\x31\x0a\x20\x20\x20\x20\x00\x00\x00\xfd"
+    "\x00\x17\x4c\x0f\x8c\x3c\x00\x0a\x20\x20\x20\x20\x20\x20\x01\xb3"
+    "\x02\x03\x75\x70\x57\x61\x66\x5f\x64\x5d\x62\x60\x65\x5e\x63\x10"
+    "\x22\x20\x1f\x21\x05\x04\x13\x07\x06\x03\x02\x01\x35\x09\x07\x07"
+    "\x15\x07\x50\x57\x04\x03\x3d\x07\xc0\x5f\x7e\x07\x67\x7e\x03\x5f"
+    "\x7e\x01\x83\x01\x00\x00\x70\x03\x0c\x00\x20\x00\x38\x44\xa0\x5b"
+    "\x5b\x00\x80\x01\x02\x03\x04\x6a\xd8\x5d\xc4\x01\x78\x80\x0b\x02"
+    "\x00\x00\xeb\x01\x46\xd0\x00\x4d\x4f\x2a\x96\x38\x1f\xbf\xe5\x01"
+    "\x8b\x84\x90\x01\xe2\x00\xff\xe2\x0f\xc3\xe6\x06\x0f\x01\x53\x53"
+    "\x0a\xe3\x05\xe0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80";
+
 }  // namespace
 
 TEST(DisplayUtilTest, TestValidDisplaySize) {
@@ -147,7 +168,7 @@ TEST(DisplayUtilTest, GetColorSpaceFromEdid) {
   skcms_Matrix3x3 expected_hpz32x_toXYZ50_matrix;
   expected_hpz32x_primaries.toXYZD50(&expected_hpz32x_toXYZ50_matrix);
   const std::vector<uint8_t> hpz32x_edid(kHPz32x,
-                                         kHPz32x + base::size(kHPz32x) - 1);
+                                         kHPz32x + std::size(kHPz32x) - 1);
   const gfx::ColorSpace expected_hpz32x_color_space =
       gfx::ColorSpace::CreateCustom(
           expected_hpz32x_toXYZ50_matrix,
@@ -171,8 +192,7 @@ TEST(DisplayUtilTest, GetColorSpaceFromEdid) {
                                                               .fWY = 0.329102f};
   skcms_Matrix3x3 expected_samus_toXYZ50_matrix;
   expected_samus_primaries.toXYZD50(&expected_samus_toXYZ50_matrix);
-  const std::vector<uint8_t> samus_edid(kSamus,
-                                        kSamus + base::size(kSamus) - 1);
+  const std::vector<uint8_t> samus_edid(kSamus, kSamus + std::size(kSamus) - 1);
   const gfx::ColorSpace expected_samus_color_space =
       gfx::ColorSpace::CreateCustom(
           expected_samus_toXYZ50_matrix,
@@ -200,7 +220,7 @@ TEST(DisplayUtilTest, GetColorSpaceFromEdid) {
       gfx::ColorSpace::PrimaryID::BT709, gfx::ColorSpace::TransferID::CUSTOM,
       gfx::ColorSpace::MatrixID::RGB, gfx::ColorSpace::RangeID::FULL,
       /*custom_primary_matrix=*/nullptr, &eve_transfer);
-  const std::vector<uint8_t> eve_edid(kEve, kEve + base::size(kEve) - 1);
+  const std::vector<uint8_t> eve_edid(kEve, kEve + std::size(kEve) - 1);
   EXPECT_EQ(expected_eve_color_space.ToString(),
             GetColorSpaceFromEdid(display::EdidParser(eve_edid)).ToString());
   histogram_tester.ExpectBucketCount(
@@ -210,7 +230,7 @@ TEST(DisplayUtilTest, GetColorSpaceFromEdid) {
       3);
 
   // Test with a display that supports HDR: Chromebook Samsung Galaxy (kohaku).
-  constexpr SkColorSpacePrimaries expected_hdr_primaries = {.fRX = 0.67960f,
+  constexpr SkColorSpacePrimaries expected_hdr_primaries = {.fRX = 0.67970f,
                                                             .fRY = 0.31930f,
                                                             .fGX = 0.23240f,
                                                             .fGY = 0.71870f,
@@ -220,10 +240,10 @@ TEST(DisplayUtilTest, GetColorSpaceFromEdid) {
                                                             .fWY = 0.32910f};
   skcms_Matrix3x3 expected_hdr_toXYZ50_matrix;
   expected_hdr_primaries.toXYZD50(&expected_hdr_toXYZ50_matrix);
-  const std::vector<uint8_t> hdr_edid(kHDR, kHDR + base::size(kHDR) - 1);
+  const std::vector<uint8_t> hdr_edid(kHDR, kHDR + std::size(kHDR) - 1);
   const gfx::ColorSpace expected_hdr_color_space =
       gfx::ColorSpace::CreateCustom(expected_hdr_toXYZ50_matrix,
-                                    gfx::ColorSpace::TransferID::SMPTEST2084);
+                                    gfx::ColorSpace::TransferID::PQ);
   EXPECT_TRUE(expected_hdr_color_space.IsHDR());
   EXPECT_EQ(expected_hdr_color_space.ToString(),
             GetColorSpaceFromEdid(display::EdidParser(hdr_edid)).ToString());
@@ -235,7 +255,7 @@ TEST(DisplayUtilTest, GetColorSpaceFromEdid) {
 
   // Test with gamma marked as non-existent.
   const std::vector<uint8_t> no_gamma_edid(
-      kEdidWithNoGamma, kEdidWithNoGamma + base::size(kEdidWithNoGamma) - 1);
+      kEdidWithNoGamma, kEdidWithNoGamma + std::size(kEdidWithNoGamma) - 1);
   const gfx::ColorSpace no_gamma_color_space =
       GetColorSpaceFromEdid(display::EdidParser(no_gamma_edid));
   EXPECT_FALSE(no_gamma_color_space.IsValid());
@@ -260,7 +280,7 @@ TEST(DisplayUtilTest, GetInvalidColorSpaceFromEdid) {
       1);
 
   const std::vector<uint8_t> invalid_edid(
-      kInvalidEdid, kInvalidEdid + base::size(kInvalidEdid) - 1);
+      kInvalidEdid, kInvalidEdid + std::size(kInvalidEdid) - 1);
   const gfx::ColorSpace invalid_color_space =
       GetColorSpaceFromEdid(display::EdidParser(invalid_edid));
   EXPECT_FALSE(invalid_color_space.IsValid());
@@ -271,7 +291,7 @@ TEST(DisplayUtilTest, GetInvalidColorSpaceFromEdid) {
       2);
 
   const std::vector<uint8_t> sst210_edid(kSST210,
-                                         kSST210 + base::size(kSST210) - 1);
+                                         kSST210 + std::size(kSST210) - 1);
   const gfx::ColorSpace sst210_color_space =
       GetColorSpaceFromEdid(display::EdidParser(sst210_edid));
   EXPECT_FALSE(sst210_color_space.IsValid()) << sst210_color_space.ToString();
@@ -282,7 +302,7 @@ TEST(DisplayUtilTest, GetInvalidColorSpaceFromEdid) {
       1);
 
   const std::vector<uint8_t> sst210_edid_2(
-      kSST210Corrected, kSST210Corrected + base::size(kSST210Corrected) - 1);
+      kSST210Corrected, kSST210Corrected + std::size(kSST210Corrected) - 1);
   const gfx::ColorSpace sst210_color_space_2 =
       GetColorSpaceFromEdid(display::EdidParser(sst210_edid_2));
   EXPECT_FALSE(sst210_color_space_2.IsValid())
@@ -295,7 +315,7 @@ TEST(DisplayUtilTest, GetInvalidColorSpaceFromEdid) {
 
   const std::vector<uint8_t> broken_blue_edid(
       kBrokenBluePrimaries,
-      kBrokenBluePrimaries + base::size(kBrokenBluePrimaries) - 1);
+      kBrokenBluePrimaries + std::size(kBrokenBluePrimaries) - 1);
   const gfx::ColorSpace broken_blue_color_space =
       GetColorSpaceFromEdid(display::EdidParser(broken_blue_edid));
   EXPECT_FALSE(broken_blue_color_space.IsValid())
@@ -307,6 +327,77 @@ TEST(DisplayUtilTest, GetInvalidColorSpaceFromEdid) {
       1);
   histogram_tester.ExpectTotalCount(
       "DrmUtil.GetColorSpaceFromEdid.ChecksOutcome", 5);
+}
+
+TEST(DisplayUtilTest, GetAudioPassthroughFromEdid) {
+  const std::vector<uint8_t> audio_edid(kDTSAudio,
+                                        kDTSAudio + std::size(kDTSAudio) - 1);
+  EXPECT_EQ(display::EdidParser(audio_edid).audio_formats(),
+            display::EdidParser::kAudioBitstreamPcmLinear |
+                display::EdidParser::kAudioBitstreamDts |
+                display::EdidParser::kAudioBitstreamDtsHd);
+}
+
+TEST(DisplayUtilTest, MultipleInternalDisplayIds) {
+  // using base::flat_set as base::FixedFlatSet with different N are different
+  // types.
+  const base::flat_set<int64_t> kTestIdsList[] = {
+      base::flat_set<int64_t>({1}),
+      base::flat_set<int64_t>({2, 3}),
+      base::flat_set<int64_t>({4, 5, 6}),
+      base::flat_set<int64_t>(
+          {7, 10, 100, std::numeric_limits<int64_t>::max()}),
+  };
+
+  int64_t from_last_set = 0;
+  for (const auto& id_set : kTestIdsList) {
+    SetInternalDisplayIds(id_set);
+    for (int64_t id : id_set)
+      EXPECT_TRUE(IsInternalDisplayId(id));
+    EXPECT_FALSE(IsInternalDisplayId(from_last_set));
+    from_last_set = *id_set.rbegin();
+  }
+
+  // Reset the internal display.
+  SetInternalDisplayIds({});
+  for (auto id_set : kTestIdsList) {
+    for (int64_t id : id_set)
+      EXPECT_FALSE(IsInternalDisplayId(id));
+  }
+}
+
+TEST(DisplayUtilTest, CompareDisplayIdsWithMultipleDisplays) {
+  // Internal display is always first.
+  EXPECT_TRUE(CompareDisplayIds(10, 12));
+  {
+    ScopedSetInternalDisplayIds set_internal(10);
+    EXPECT_TRUE(CompareDisplayIds(10, 12));
+    EXPECT_TRUE(CompareDisplayIds(10, 9));
+    EXPECT_TRUE(CompareDisplayIds(10, 15));
+    EXPECT_FALSE(CompareDisplayIds(12, 10));
+    EXPECT_FALSE(CompareDisplayIds(12, 9));
+    EXPECT_TRUE(CompareDisplayIds(12, 15));
+  }
+  {
+    ScopedSetInternalDisplayIds set_internal(12);
+    EXPECT_FALSE(CompareDisplayIds(10, 12));
+    EXPECT_FALSE(CompareDisplayIds(10, 9));
+    EXPECT_TRUE(CompareDisplayIds(10, 15));
+    EXPECT_TRUE(CompareDisplayIds(12, 10));
+    EXPECT_TRUE(CompareDisplayIds(12, 9));
+    EXPECT_TRUE(CompareDisplayIds(12, 15));
+  }
+  // Internal displays are always first but compares values between internal
+  // displays.
+  {
+    ScopedSetInternalDisplayIds set_internal({12, 10});
+    EXPECT_TRUE(CompareDisplayIds(10, 12));
+    EXPECT_TRUE(CompareDisplayIds(10, 9));
+    EXPECT_TRUE(CompareDisplayIds(10, 15));
+    EXPECT_FALSE(CompareDisplayIds(12, 10));
+    EXPECT_TRUE(CompareDisplayIds(12, 9));
+    EXPECT_TRUE(CompareDisplayIds(12, 15));
+  }
 }
 
 }  // namespace display

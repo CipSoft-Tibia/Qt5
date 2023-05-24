@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,75 +8,128 @@ The module provide the `branches` struct which provides access to versions of
 a subset of luci functions with an additional `branch_selector` keyword argument
 that controls what branches the definition is actually executed for. If
 `branch_selector` doesn't match the current branch as determined by values on
-the `settings` struct in '//project.star', then the resource is not defined. The
-`branch_selector argument` can be one of the following constants:
-* MAIN_ONLY - The resource is defined only for main/master/trunk
-    [`settings.is_master`]
-* STANDARD_RELEASES - The resource is defined for main/master/trunk and beta and
-    stable branches
-    [`settings.is_master and not settings.is_lts_branch`]
-* ALL_RELEASES - The resource is defined for main/master/trunk, beta and stable
-    branches and LTC/LTS branches
-    [`True`]
-The constants are also accessible via the `branches` struct.
+the `settings` struct in '//project.star', then the resource is not defined.
+
+The valid branch selectors are in the `branches.selector` struct. The
+following selectors cause the resource to be defined on main or if a branch
+project includes the corresponding platform value in its settings:
+* ANDROID_BRANCHES: platform.ANDROID
+* CROS_BRANCHES: platform.CROS
+* CROS_LTS_BRANCHES: platform.CROS, platform.CROS_LTS
+* DESKTOP_BRANCHES: platform.LINUX, platform.MAC, platform.WINDOWS
+* FUCHSIA_BRANCHES: platform.FUCHSIA
+* IOS_BRANCHES: platform.IOS
+* LINUX_BRANCHES: platform.LINUX
+* MAC_BRANCHES: platform.MAC
+* WINDOWS_BRANCHES: platform.WINDOWS
+
+The MAIN branch selector causes a resource to be defined only on the main
+project. The ALL_BRANCHES branch selector causes the resource to be defined on
+all branches.
 
 For other uses cases where execution needs to vary by branch, the following are
 also accessible via the `branches` struct:
 * matches - Allows library code to be written that takes branch-specific
     behavior.
-* value - Allows for providing different values between main/master/trunk and
-    branches.
+* value - Allows for providing values depending on the platforms that the branch
+    is running on.
 * exec - Allows for conditionally executing starlark modules.
 """
 
-load("//project.star", "settings")
+load("./args.star", "args")
+load("//project.star", "PLATFORMS", "platform", "settings")
 
-def _branch_selector(tag):
-    return struct(__branch_selector__ = tag)
+def _branch_selector(tag, *, platforms = None):
+    return struct(
+        __branch_selector__ = tag,
+        platforms = tuple(platforms or []),
+    )
 
-MAIN_ONLY = _branch_selector("MAIN_ONLY")
-STANDARD_RELEASES = _branch_selector("STANDARD_RELEASES")
-ALL_RELEASES = _branch_selector("ALL_RELEASES")
+selector = struct(
+    # Branch selectors corresponding to the individual platform values (except
+    # CROS_LTS_BRANCHES also implies CROS_BRANCHES)
+    ANDROID_BRANCHES = _branch_selector("ANDROID_BRANCHES", platforms = [platform.ANDROID]),
+    CROS_BRANCHES = _branch_selector("CROS_BRANCHES", platforms = [platform.CROS]),
+    CROS_LTS_BRANCHES = _branch_selector("CROS_LTS_BRANCHES", platforms = [platform.CROS, platform.CROS_LTS]),
+    FUCHSIA_BRANCHES = _branch_selector("FUCHSIA_BRANCHES", platforms = [platform.FUCHSIA]),
+    IOS_BRANCHES = _branch_selector("IOS_BRANCHES", platforms = [platform.IOS]),
+    LINUX_BRANCHES = _branch_selector("LINUX_BRANCHES", platforms = [platform.LINUX]),
+    MAC_BRANCHES = _branch_selector("MAC_BRANCHES", platforms = [platform.MAC]),
+    WINDOWS_BRANCHES = _branch_selector("WINDOWS_BRANCHES", platforms = [platform.WINDOWS]),
 
-_BRANCH_SELECTORS = (MAIN_ONLY, STANDARD_RELEASES, ALL_RELEASES)
+    # Linux, Mac & Windows
+    DESKTOP_BRANCHES = _branch_selector("DESKTOP_BRANCHES", platforms = [platform.LINUX, platform.MAC, platform.WINDOWS]),
 
-def _matches(branch_selector):
-    """Returns whether `branch_selector` matches the project settings."""
-    if branch_selector == MAIN_ONLY:
-        return settings.is_master
-    if branch_selector == STANDARD_RELEASES:
-        return settings.is_master or not settings.is_lts_branch
-    if branch_selector == ALL_RELEASES:
-        return True
-    fail("branch_selector must be one of {}, got {!r}".format(_BRANCH_SELECTORS, branch_selector))
+    # Branch selector for just the main project
+    MAIN = _branch_selector("MAIN"),
 
-def _value(*, for_main = None, for_branches = None):
-    """Provide a value that varies between main/master/trunk and branches.
+    # Branch selector matching all branches
+    ALL_BRANCHES = _branch_selector("ALL_BRANCHES", platforms = PLATFORMS),
+)
 
-    If the current project settings indicate that this is main/master/trunk,
-    then `for_main` will be returned. Otherwise, `for_branches` will be
-    returned.
+def _matches(branch_selector, *, platform = None):
+    """Returns whether `branch_selector` matches the project settings.
+
+    Args:
+      * branch_selector: A single branch selector or a list of branch selectors.
+      * platform: A single platform name or a list of platform names to match
+        against. If not provided, the branch selectors will be matched against
+        the project's platforms.
+
+    Returns:
+      True if any of the specified branch selectors matches, False otherwise.
+      The main project will match any branch selector iff platform is not
+      specified.
     """
-    return for_main if settings.is_master else for_branches
+    if type(platform) == type(""):
+        platforms = [platform]
+    elif platform == None:
+        platforms = settings.platforms
+    else:
+        platforms = platform
 
-def _exec(module, *, branch_selector = MAIN_ONLY):
+    for b in args.listify(branch_selector):
+        if not hasattr(b, "__branch_selector__"):
+            fail("got {!r} for a branch selector, must be one of the branch_selector enum values: {}"
+                .format(b, ", ".join(dir(selector))))
+        for p in b.platforms:
+            if p in platforms:
+                return True
+
+    return platform == None and settings.is_main
+
+def _value(*, branch_selector, value):
+    """Provide a value that varies depending on the project settings.
+
+    Args:
+      * branch_selector: A single branch selector or a list of branch selectors.
+      * value: The value if the project's settings match the branch selector(s).
+
+    Returns:
+      `value` if `branch_selector` matches the project settings, None otherwise.
+    """
+    if _matches(branch_selector):
+        return value
+    return None
+
+def _exec(module, *, branch_selector = selector.MAIN):
     """Execute `module` if `branch_selector` matches the project settings."""
     if not _matches(branch_selector):
         return
     exec(module)
 
 def _make_branch_conditional(fn):
-    def conditional_fn(*args, branch_selector = MAIN_ONLY, **kwargs):
+    def conditional_fn(*args, branch_selector = selector.MAIN, **kwargs):
         if not _matches(branch_selector):
-            return
-        fn(*args, **kwargs)
+            return None
+        return fn(*args, **kwargs)
 
     return conditional_fn
 
 branches = struct(
-    MAIN_ONLY = MAIN_ONLY,
-    STANDARD_RELEASES = STANDARD_RELEASES,
-    ALL_RELEASES = ALL_RELEASES,
+    selector = selector,
+
+    # Branch functions
     matches = _matches,
     exec = _exec,
     value = _value,

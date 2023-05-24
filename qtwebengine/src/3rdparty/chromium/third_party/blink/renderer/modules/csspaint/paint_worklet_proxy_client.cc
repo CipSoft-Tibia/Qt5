@@ -1,25 +1,32 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/csspaint/paint_worklet_proxy_client.h"
 
 #include <memory>
+#include <utility>
 
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/core/css/cssom/cross_thread_color_value.h"
 #include "third_party/blink/renderer/core/css/cssom/cross_thread_unit_value.h"
+#include "third_party/blink/renderer/core/css/cssom/css_paint_worklet_input.h"
 #include "third_party/blink/renderer/core/css/cssom/css_style_value.h"
-#include "third_party/blink/renderer/core/css/cssom/paint_worklet_input.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
-#include "third_party/blink/renderer/core/frame/web_frame_widget_base.h"
+#include "third_party/blink/renderer/core/frame/web_frame_widget_impl.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
+#include "third_party/blink/renderer/core/workers/worker_backing_thread.h"
 #include "third_party/blink/renderer/core/workers/worker_thread.h"
 #include "third_party/blink/renderer/modules/csspaint/css_paint_definition.h"
+#include "third_party/blink/renderer/modules/csspaint/nativepaint/background_color_paint_definition.h"
+#include "third_party/blink/renderer/modules/csspaint/nativepaint/native_paint_definition.h"
 #include "third_party/blink/renderer/modules/csspaint/paint_worklet.h"
 #include "third_party/blink/renderer/platform/graphics/image.h"
 #include "third_party/blink/renderer/platform/graphics/paint_worklet_paint_dispatcher.h"
+#include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 
 namespace blink {
@@ -43,20 +50,23 @@ PaintWorkletProxyClient* PaintWorkletProxyClient::Create(LocalDOMWindow* window,
       local_frame->LocalRootFrameWidget()->EnsureCompositorPaintDispatcher(
           &compositor_host_queue);
   return MakeGarbageCollected<PaintWorkletProxyClient>(
-      worklet_id, paint_worklet, std::move(compositor_paint_dispatcher),
-      std::move(compositor_host_queue));
+      worklet_id, paint_worklet,
+      window->GetTaskRunner(TaskType::kInternalDefault),
+      std::move(compositor_paint_dispatcher), std::move(compositor_host_queue));
 }
 
 PaintWorkletProxyClient::PaintWorkletProxyClient(
     int worklet_id,
     PaintWorklet* paint_worklet,
+    scoped_refptr<base::SingleThreadTaskRunner> main_thread_runner,
     base::WeakPtr<PaintWorkletPaintDispatcher> paint_dispatcher,
     scoped_refptr<base::SingleThreadTaskRunner> compositor_host_queue)
-    : paint_dispatcher_(std::move(paint_dispatcher)),
+    : Supplement(nullptr),
+      paint_dispatcher_(std::move(paint_dispatcher)),
       compositor_host_queue_(std::move(compositor_host_queue)),
       worklet_id_(worklet_id),
       state_(RunState::kUninitialized),
-      main_thread_runner_(Thread::MainThread()->GetTaskRunner()),
+      main_thread_runner_(std::move(main_thread_runner)),
       paint_worklet_(paint_worklet) {
   DCHECK(IsMainThread());
 }
@@ -135,7 +145,7 @@ void PaintWorkletProxyClient::RegisterCSSPaintDefinition(
         CrossThreadBindOnce(
             &PaintWorklet::RegisterMainThreadDocumentPaintDefinition,
             paint_worklet_, name, definition->NativeInvalidationProperties(),
-            WTF::Passed(std::move(passed_custom_properties)),
+            std::move(passed_custom_properties),
             definition->InputArgumentTypes(),
             definition->GetPaintRenderingContext2DSettings()->alpha()));
   }
@@ -163,13 +173,21 @@ void PaintWorkletProxyClient::Trace(Visitor* visitor) const {
   PaintWorkletPainter::Trace(visitor);
 }
 
-sk_sp<PaintRecord> PaintWorkletProxyClient::Paint(
+PaintRecord PaintWorkletProxyClient::Paint(
     const CompositorPaintWorkletInput* compositor_input,
     const CompositorPaintWorkletJob::AnimatedPropertyValues&
         animated_property_values) {
+  const PaintWorkletInput* worklet_input =
+      To<PaintWorkletInput>(compositor_input);
+  PaintDefinition* definition;
+  if (worklet_input->GetType() !=
+      PaintWorkletInput::PaintWorkletInputType::kCSS) {
+    definition = native_definitions_.at(worklet_input->GetType());
+    return definition->Paint(compositor_input, animated_property_values);
+  }
   // TODO: Can this happen? We don't register till all are here.
-  if (global_scopes_.IsEmpty())
-    return sk_make_sp<PaintRecord>();
+  if (global_scopes_.empty())
+    return PaintRecord();
 
   // PaintWorklets are stateless by spec. There are two ways script might try to
   // inject state:
@@ -184,71 +202,40 @@ sk_sp<PaintRecord> PaintWorkletProxyClient::Paint(
   PaintWorkletGlobalScope* global_scope = global_scopes_[base::RandInt(
       0, (PaintWorklet::kNumGlobalScopesPerThread)-1)];
 
-  const PaintWorkletInput* input =
-      static_cast<const PaintWorkletInput*>(compositor_input);
-  CSSPaintDefinition* definition =
-      global_scope->FindDefinition(input->NameCopy());
-  PaintWorkletStylePropertyMap* style_map =
-      MakeGarbageCollected<PaintWorkletStylePropertyMap>(input->StyleMapData());
-
-  CSSStyleValueVector paint_arguments;
-  for (const auto& style_value : input->ParsedInputArguments()) {
-    paint_arguments.push_back(style_value->ToCSSStyleValue());
-  }
-
-  ApplyAnimatedPropertyOverrides(style_map, animated_property_values);
-
-  device_pixel_ratio_ = input->DeviceScaleFactor() * input->EffectiveZoom();
-
-  sk_sp<PaintRecord> result = definition->Paint(
-      FloatSize(input->GetSize()), input->EffectiveZoom(), style_map,
-      &paint_arguments, input->DeviceScaleFactor());
-
-  // CSSPaintDefinition::Paint returns nullptr if it fails, but for
-  // OffThread-PaintWorklet we prefer to insert empty PaintRecords into the
-  // cache. Do the conversion here.
-  // TODO(smcgruer): Once OffThread-PaintWorklet launches, we can make
-  // CSSPaintDefinition::Paint return empty PaintRecords.
-  if (!result)
-    result = sk_make_sp<PaintRecord>();
-  return result;
+  const CSSPaintWorkletInput* input =
+      To<CSSPaintWorkletInput>(compositor_input);
+  device_pixel_ratio_ = input->EffectiveZoom();
+  definition = global_scope->FindDefinition(input->NameCopy());
+  return definition->Paint(compositor_input, animated_property_values);
 }
 
-void PaintWorkletProxyClient::ApplyAnimatedPropertyOverrides(
-    PaintWorkletStylePropertyMap* style_map,
-    const CompositorPaintWorkletJob::AnimatedPropertyValues&
-        animated_property_values) {
-  for (const auto& property_value : animated_property_values) {
-    DCHECK(property_value.second.has_value());
-    String property_name(property_value.first.c_str());
-    DCHECK(style_map->StyleMapData().Contains(property_name));
-    CrossThreadStyleValue* old_value =
-        style_map->StyleMapData().at(property_name);
-    switch (old_value->GetType()) {
-      case CrossThreadStyleValue::StyleValueType::kUnitType: {
-        DCHECK(property_value.second.float_value);
-        std::unique_ptr<CrossThreadUnitValue> new_value =
-            std::make_unique<CrossThreadUnitValue>(
-                property_value.second.float_value.value(),
-                DynamicTo<CrossThreadUnitValue>(old_value)->GetUnitType());
-        style_map->StyleMapData().Set(property_name, std::move(new_value));
-        break;
-      }
-      case CrossThreadStyleValue::StyleValueType::kColorType: {
-        DCHECK(property_value.second.color_value);
-        SkColor sk_color = property_value.second.color_value.value();
-        Color color(MakeRGBA(SkColorGetR(sk_color), SkColorGetG(sk_color),
-                             SkColorGetB(sk_color), SkColorGetA(sk_color)));
-        std::unique_ptr<CrossThreadColorValue> new_value =
-            std::make_unique<CrossThreadColorValue>(color);
-        style_map->StyleMapData().Set(property_name, std::move(new_value));
-        break;
-      }
-      default:
-        NOTREACHED();
-        break;
-    }
-  }
+void PaintWorkletProxyClient::RegisterForNativePaintWorklet(
+    WorkerBackingThread* thread,
+    NativePaintDefinition* definition,
+    PaintWorkletInput::PaintWorkletInputType type) {
+  DCHECK(!native_definitions_.Contains(type));
+  native_definitions_.insert(type, definition);
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner =
+      thread->BackingThread().GetTaskRunner();
+  // At this moment, we are in the paint phase which is before commit, we queue
+  // a task to the compositor thread to register the |paint_dispatcher_|. When
+  // compositor schedules the actual paint job (PaintWorkletPainter::Paint),
+  // which is after commit, the |paint_dispatcher_| should have been registerted
+  // and ready to use.
+  PostCrossThreadTask(
+      *compositor_host_queue_, FROM_HERE,
+      CrossThreadBindOnce(
+          &PaintWorkletPaintDispatcher::RegisterPaintWorkletPainter,
+          paint_dispatcher_, WrapCrossThreadPersistent(this), task_runner));
+}
+
+void PaintWorkletProxyClient::UnregisterForNativePaintWorklet() {
+  PostCrossThreadTask(
+      *compositor_host_queue_, FROM_HERE,
+      CrossThreadBindOnce(
+          &PaintWorkletPaintDispatcher::UnregisterPaintWorkletPainter,
+          paint_dispatcher_, worklet_id_));
+  paint_dispatcher_ = nullptr;
 }
 
 void ProvidePaintWorkletProxyClientTo(WorkerClients* clients,

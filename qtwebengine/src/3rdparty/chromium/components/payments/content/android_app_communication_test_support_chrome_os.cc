@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,11 @@
 
 #include <utility>
 
-#include "components/arc/mojom/payment_app.mojom.h"
-#include "components/arc/pay/arc_payment_app_bridge.h"
-#include "components/arc/test/arc_payment_app_bridge_test_support.h"
+#include "ash/components/arc/mojom/payment_app.mojom.h"
+#include "ash/components/arc/pay/arc_payment_app_bridge.h"
+#include "ash/components/arc/test/arc_payment_app_bridge_test_support.h"
+#include "ash/public/cpp/external_arc/overlay/test/test_arc_overlay_manager.h"
+#include "chromeos/components/payments/mojom/payment_app_types.mojom.h"
 #include "components/payments/core/method_strings.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -87,10 +89,11 @@ class AndroidAppCommunicationTestSupportChromeOS
     EXPECT_CALL(*support_.instance(), IsReadyToPay(testing::_, testing::_))
         .WillOnce(testing::Invoke(
             [is_ready_to_pay](
-                arc::mojom::PaymentParametersPtr parameters,
+                chromeos::payments::mojom::PaymentParametersPtr parameters,
                 arc::ArcPaymentAppBridge::IsReadyToPayCallback callback) {
               std::move(callback).Run(
-                  arc::mojom::IsReadyToPayResult::NewResponse(is_ready_to_pay));
+                  chromeos::payments::mojom::IsReadyToPayResult::NewResponse(
+                      is_ready_to_pay));
             }));
   }
 
@@ -101,18 +104,46 @@ class AndroidAppCommunicationTestSupportChromeOS
     EXPECT_CALL(*support_.instance(), InvokePaymentApp(testing::_, testing::_))
         .WillOnce(testing::Invoke(
             [is_activity_result_ok, stringified_details](
-                arc::mojom::PaymentParametersPtr parameters,
+                chromeos::payments::mojom::PaymentParametersPtr parameters,
                 arc::ArcPaymentAppBridge::InvokePaymentAppCallback callback) {
               // Chrome OS supports only kGooglePlayBilling payment method
               // identifier at this time, so the |payment_method_identifier|
               // parameter is ignored here.
-              auto valid = arc::mojom::InvokePaymentAppValidResult::New();
+              auto valid =
+                  chromeos::payments::mojom::InvokePaymentAppValidResult::New();
               valid->is_activity_result_ok = is_activity_result_ok;
               valid->stringified_details = stringified_details;
               std::move(callback).Run(
-                  arc::mojom::InvokePaymentAppResult::NewValid(
+                  chromeos::payments::mojom::InvokePaymentAppResult::NewValid(
                       std::move(valid)));
             }));
+  }
+
+  void ExpectInvokeAndAbortPaymentApp() override {
+    EXPECT_CALL(*support_.instance(), InvokePaymentApp(testing::_, testing::_))
+        .WillOnce(testing::Invoke(
+            [this](
+                chromeos::payments::mojom::PaymentParametersPtr parameters,
+                arc::ArcPaymentAppBridge::InvokePaymentAppCallback callback) {
+              pending_invoke_callback_ = std::move(callback);
+            }));
+
+    EXPECT_CALL(*support_.instance(), AbortPaymentApp(testing::_, testing::_))
+        .WillOnce(testing::Invoke(
+            [this](const std::string& request_token,
+                   arc::ArcPaymentAppBridge::AbortPaymentAppCallback callback) {
+              if (!pending_invoke_callback_.is_null()) {
+                std::move(pending_invoke_callback_)
+                    .Run(chromeos::payments::mojom::InvokePaymentAppResult::
+                             NewError("Payment was aborted."));
+              }
+              std::move(callback).Run(true);
+            }));
+  }
+
+  void ExpectNoAbortPaymentApp() override {
+    EXPECT_CALL(*support_.instance(), AbortPaymentApp(testing::_, testing::_))
+        .Times(0);
   }
 
   content::BrowserContext* context() override { return support_.context(); }
@@ -121,7 +152,8 @@ class AndroidAppCommunicationTestSupportChromeOS
   void RespondToGetAppDescriptions(
       const std::string& package_name,
       arc::ArcPaymentAppBridge::IsPaymentImplementedCallback callback) {
-    auto valid = arc::mojom::IsPaymentImplementedValidResult::New();
+    auto valid =
+        chromeos::payments::mojom::IsPaymentImplementedValidResult::New();
     for (const auto& app : apps_) {
       if (app->package == package_name) {
         for (const auto& activity : app->activities) {
@@ -140,11 +172,15 @@ class AndroidAppCommunicationTestSupportChromeOS
     }
 
     std::move(callback).Run(
-        arc::mojom::IsPaymentImplementedResult::NewValid(std::move(valid)));
+        chromeos::payments::mojom::IsPaymentImplementedResult::NewValid(
+            std::move(valid)));
   }
 
   arc::ArcPaymentAppBridgeTestSupport support_;
   std::vector<std::unique_ptr<AndroidAppDescription>> apps_;
+  ash::TestArcOverlayManager overlay_manager_;
+
+  arc::ArcPaymentAppBridge::InvokePaymentAppCallback pending_invoke_callback_;
 };
 
 }  // namespace

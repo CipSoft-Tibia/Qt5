@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -54,9 +54,8 @@ class DataPipeToSourceStreamTest
         sizeof(MojoCreateDataPipeOptions), MOJO_CREATE_DATA_PIPE_FLAG_NONE, 1,
         GetParam().pipe_capacity};
     mojo::ScopedDataPipeConsumerHandle consumer_end;
-    CHECK_EQ(MOJO_RESULT_OK,
-             mojo::CreateDataPipe(&data_pipe_options, &producer_end_,
-                                  &consumer_end));
+    CHECK_EQ(MOJO_RESULT_OK, mojo::CreateDataPipe(&data_pipe_options,
+                                                  producer_end_, consumer_end));
     adapter_ =
         std::make_unique<DataPipeToSourceStream>(std::move(consumer_end));
   }

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/test_mock_time_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "components/offline_pages/core/prefetch/prefetch_importer.h"
 #include "components/offline_pages/core/prefetch/prefetch_item.h"
@@ -53,11 +52,11 @@ std::string TestGUID2() {
 ClientId TestClientID2() {
   return ClientId("Foo2", TestGUID2());
 }
-base::string16 TestTitle() {
-  return base::UTF8ToUTF16("Hello");
+std::u16string TestTitle() {
+  return u"Hello";
 }
-base::string16 TestTitle2() {
-  return base::UTF8ToUTF16("Hello2");
+std::u16string TestTitle2() {
+  return u"Hello2";
 }
 base::FilePath TestFilePath() {
   return base::FilePath(FILE_PATH_LITERAL("foo"));

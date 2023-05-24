@@ -29,7 +29,7 @@ inline void clipEdge(sw::float4 &Vo, const sw::float4 &Vi, const sw::float4 &Vj,
 	Vo.w = (dj * Vi.w - di * Vj.w) * D;
 }
 
-void clipNear(sw::Polygon &polygon)
+void clipNear(sw::Polygon &polygon, bool depthClipNegativeOneToOne)
 {
 	const sw::float4 **V = polygon.P[polygon.i];
 	const sw::float4 **T = polygon.P[polygon.i + 1];
@@ -42,6 +42,13 @@ void clipNear(sw::Polygon &polygon)
 
 		float di = V[i]->z;
 		float dj = V[j]->z;
+
+		// When depthClipNegativeOneToOne is enabled the near plane is at z=-w, otherwise it is at z=0.
+		if(depthClipNegativeOneToOne)
+		{
+			di += V[i]->w;
+			dj += V[j]->w;
+		}
 
 		if(di >= 0)
 		{
@@ -261,22 +268,11 @@ void clipBottom(sw::Polygon &polygon)
 
 namespace sw {
 
-unsigned int Clipper::ComputeClipFlags(const float4 &v)
-{
-	return ((v.x > v.w) ? CLIP_RIGHT : 0) |
-	       ((v.y > v.w) ? CLIP_TOP : 0) |
-	       ((v.z > v.w) ? CLIP_FAR : 0) |
-	       ((v.x < -v.w) ? CLIP_LEFT : 0) |
-	       ((v.y < -v.w) ? CLIP_BOTTOM : 0) |
-	       ((v.z < 0) ? CLIP_NEAR : 0) |
-	       Clipper::CLIP_FINITE;  // FIXME: xyz finite
-}
-
 bool Clipper::Clip(Polygon &polygon, int clipFlagsOr, const DrawCall &draw)
 {
 	if(clipFlagsOr & CLIP_FRUSTUM)
 	{
-		if(clipFlagsOr & CLIP_NEAR) clipNear(polygon);
+		if(clipFlagsOr & CLIP_NEAR) clipNear(polygon, draw.depthClipNegativeOneToOne);
 		if(polygon.n >= 3)
 		{
 			if(clipFlagsOr & CLIP_FAR) clipFar(polygon);

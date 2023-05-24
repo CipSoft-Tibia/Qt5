@@ -1,41 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qgeotiledmap_p.h"
 #include "qgeotiledmap_p_p.h"
-#include <QtPositioning/private/qwebmercator_p.h>
 #include "qgeotiledmappingmanagerengine_p.h"
 #include "qabstractgeotilecache_p.h"
 #include "qgeotilespec_p.h"
@@ -49,13 +15,6 @@
 
 QT_BEGIN_NAMESPACE
 #define PREFETCH_FRUSTUM_SCALE 2.0
-
-static const double invLog2 = 1.0 / std::log(2.0);
-
-static double zoomLevelFrom256(double zoomLevelFor256, double tileSize)
-{
-    return std::log( std::pow(2.0, zoomLevelFor256) * 256.0 / tileSize ) * invLog2;
-}
 
 QGeoTiledMap::QGeoTiledMap(QGeoTiledMappingManagerEngine *engine, QObject *parent)
     : QGeoMap(*new QGeoTiledMapPrivate(engine), parent)
@@ -91,7 +50,7 @@ QGeoTiledMap::~QGeoTiledMap()
 {
     Q_D(QGeoTiledMap);
     delete d->m_tileRequests;
-    d->m_tileRequests = 0;
+    d->m_tileRequests = nullptr;
 
     if (!d->m_engine.isNull()) {
         QGeoTiledMappingManagerEngine *engine = qobject_cast<QGeoTiledMappingManagerEngine*>(d->m_engine);
@@ -192,7 +151,7 @@ QGeoTiledMapPrivate::QGeoTiledMapPrivate(QGeoTiledMappingManagerEngine *engine)
       m_visibleTiles(new QGeoCameraTiles()),
       m_prefetchTiles(new QGeoCameraTiles()),
       m_mapScene(new QGeoTiledMapScene()),
-      m_tileRequests(0),
+      m_tileRequests(nullptr),
       m_maxZoomLevel(static_cast<int>(std::ceil(m_cameraCapabilities.maximumZoomLevel()))),
       m_minZoomLevel(static_cast<int>(std::ceil(m_cameraCapabilities.minimumZoomLevel()))),
       m_prefetchStyle(QGeoTiledMap::PrefetchTwoNeighbourLayers)
@@ -274,7 +233,7 @@ void QGeoTiledMapPrivate::prefetchTiles()
     }
 }
 
-QGeoMapType QGeoTiledMapPrivate::activeMapType()
+QGeoMapType QGeoTiledMapPrivate::activeMapType() const
 {
     return m_visibleTiles->activeMapType();
 }
@@ -306,7 +265,7 @@ void QGeoTiledMapPrivate::changeCameraData(const QGeoCameraData &cameraData)
     // Adapt it to the current tileSize
     double zoomLevel = cameraData.zoomLevel();
     if (m_visibleTiles->tileSize() != 256)
-        zoomLevel = zoomLevelFrom256(zoomLevel, m_visibleTiles->tileSize());
+        zoomLevel = std::log(std::pow(2.0, zoomLevel) * 256.0 / m_visibleTiles->tileSize()) * (1.0 / std::log(2.0));
     cam.setZoomLevel(zoomLevel);
 
     // For zoomlevel, "snap" 0.01 either side of a whole number.
@@ -379,7 +338,7 @@ QRectF QGeoTiledMapPrivate::visibleArea() const
     return m_visibleArea;
 }
 
-void QGeoTiledMapPrivate::changeActiveMapType(const QGeoMapType mapType)
+void QGeoTiledMapPrivate::changeActiveMapType(const QGeoMapType &mapType)
 {
     m_visibleTiles->setTileSize(m_cameraCapabilities.tileSize());
     m_prefetchTiles->setTileSize(m_cameraCapabilities.tileSize());

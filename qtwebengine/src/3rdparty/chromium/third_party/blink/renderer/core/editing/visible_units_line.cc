@@ -24,7 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -46,18 +46,13 @@ namespace {
 
 struct VisualOrdering;
 
-// See also InlineBidiResolver::NeedsTrailingSpace()
-bool NeedsTrailingSpace(const ComputedStyle& style) {
-  return style.BreakOnlyAfterWhiteSpace() && style.AutoWrap();
-}
-
 static PositionWithAffinity AdjustForSoftLineWrap(
     const NGInlineCursorPosition& line_box,
     const PositionWithAffinity& position) {
   DCHECK(line_box.IsLineBox());
   if (position.IsNull())
     return PositionWithAffinity();
-  if (!NeedsTrailingSpace(line_box.Style()) ||
+  if (!line_box.Style().NeedsTrailingSpace() ||
       !line_box.HasSoftWrapToNextLine())
     return position;
   // Returns a position after first space causing soft line wrap for editable.
@@ -76,7 +71,6 @@ static PositionWithAffinity AdjustForSoftLineWrap(
   const Position adjusted_position = mapping->GetFirstPosition(*offset + 1);
   if (adjusted_position.IsNull())
     return position;
-  DCHECK(IsA<Text>(adjusted_position.AnchorNode())) << adjusted_position;
   if (!IsA<Text>(adjusted_position.AnchorNode()))
     return position;
   if (!adjusted_position.AnchorNode()
@@ -84,6 +78,8 @@ static PositionWithAffinity AdjustForSoftLineWrap(
            ->StyleRef()
            .IsCollapsibleWhiteSpace(mapping->GetText()[*offset]))
     return position;
+  // See |TryResolveCaretPositionInTextFragment()| to locate upstream position
+  // of caret after soft line wrap space.
   return PositionWithAffinity(adjusted_position,
                               TextAffinity::kUpstreamIfPossible);
 }
@@ -143,7 +139,7 @@ static PositionWithAffinityTemplate<Strategy> EndPositionForLine(
 
   auto* end_text_node = DynamicTo<Text>(end_node);
   if (end_box->IsInlineTextBox() && end_text_node) {
-    const InlineTextBox* end_text_box = ToInlineTextBox(end_box);
+    const auto* end_text_box = To<InlineTextBox>(end_box);
     int end_offset = end_text_box->Start();
     if (!end_text_box->IsLineBreak())
       end_offset += end_text_box->Len();
@@ -208,7 +204,7 @@ PositionWithAffinityTemplate<Strategy> StartPositionForLine(
   return PositionWithAffinityTemplate<Strategy>(
       text_start_node
           ? PositionTemplate<Strategy>(text_start_node,
-                                       ToInlineTextBox(start_box)->Start())
+                                       To<InlineTextBox>(start_box)->Start())
           : PositionTemplate<Strategy>::BeforeNode(*start_node));
 }
 
@@ -291,8 +287,11 @@ struct VisualOrdering {
     const PositionWithAffinityTemplate<Strategy> candidate_position =
         PositionWithAffinityTemplate<Strategy>(
             candidate, TextAffinity::kUpstreamIfPossible);
-    if (InSameLine(current_position, candidate_position))
-      return candidate_position;
+    if (InSameLine(current_position, candidate_position)) {
+      return PositionWithAffinityTemplate<Strategy>(
+          CreateVisiblePosition(candidate).DeepEquivalent(),
+          TextAffinity::kUpstreamIfPossible);
+    }
     const PositionWithAffinityTemplate<Strategy>& adjusted_position =
         PreviousPositionOf(CreateVisiblePosition(current_position))
             .ToPositionWithAffinity();
@@ -313,6 +312,8 @@ PositionWithAffinityTemplate<Strategy> StartOfLineAlgorithm(
       vis_pos, c.GetPosition());
 }
 
+}  // namespace
+
 PositionWithAffinity StartOfLine(const PositionWithAffinity& current_position) {
   return StartOfLineAlgorithm<EditingStrategy>(current_position);
 }
@@ -321,8 +322,6 @@ PositionInFlatTreeWithAffinity StartOfLine(
     const PositionInFlatTreeWithAffinity& current_position) {
   return StartOfLineAlgorithm<EditingInFlatTreeStrategy>(current_position);
 }
-
-}  // namespace
 
 // FIXME: Rename this function to reflect the fact it ignores bidi levels.
 VisiblePosition StartOfLine(const VisiblePosition& current_position) {
@@ -394,27 +393,13 @@ static PositionWithAffinityTemplate<Strategy> EndOfLineAlgorithm(
       candidate_position, current_position.GetPosition());
 }
 
-static PositionWithAffinity EndOfLine(const PositionWithAffinity& position) {
+PositionWithAffinity EndOfLine(const PositionWithAffinity& position) {
   return EndOfLineAlgorithm<EditingStrategy>(position);
 }
 
-static PositionInFlatTreeWithAffinity EndOfLine(
+PositionInFlatTreeWithAffinity EndOfLine(
     const PositionInFlatTreeWithAffinity& position) {
   return EndOfLineAlgorithm<EditingInFlatTreeStrategy>(position);
-}
-
-// TODO(yosin) Rename this function to reflect the fact it ignores bidi levels.
-VisiblePosition EndOfLine(const VisiblePosition& current_position) {
-  DCHECK(current_position.IsValid()) << current_position;
-  return CreateVisiblePosition(
-      EndOfLine(current_position.ToPositionWithAffinity()));
-}
-
-VisiblePositionInFlatTree EndOfLine(
-    const VisiblePositionInFlatTree& current_position) {
-  DCHECK(current_position.IsValid()) << current_position;
-  return CreateVisiblePosition(
-      EndOfLine(current_position.ToPositionWithAffinity()));
 }
 
 template <typename Strategy>
@@ -479,23 +464,23 @@ static bool InSameLineAlgorithm(
   DCHECK_EQ(position1.GetDocument(), position2.GetDocument());
   DCHECK(!position1.GetDocument()->NeedsLayoutTreeUpdate());
 
-  if (RuntimeEnabledFeatures::LayoutNGEnabled()) {
-    const LayoutBlockFlow* block1 =
-        NGInlineFormattingContextOf(position1.GetPosition());
-    const LayoutBlockFlow* block2 =
-        NGInlineFormattingContextOf(position2.GetPosition());
-    if (block1 || block2) {
-      if (block1 != block2)
-        return false;
-      if (!InSameNGLineBox(position1, position2))
-        return false;
-      // See (ParameterizedVisibleUnitsLineTest.InSameLineWithMixedEditability
-      return RootEditableElementOf(position1.GetPosition()) ==
-             RootEditableElementOf(position2.GetPosition());
+  const LayoutBlockFlow* block1 =
+      NGInlineFormattingContextOf(position1.GetPosition());
+  const LayoutBlockFlow* block2 =
+      NGInlineFormattingContextOf(position2.GetPosition());
+  if (block1 || block2) {
+    if (block1 != block2) {
+      return false;
     }
-
-    // Neither positions are in LayoutNG. Fall through to legacy handling.
+    if (!InSameNGLineBox(position1, position2)) {
+      return false;
+    }
+    // See (ParameterizedVisibleUnitsLineTest.InSameLineWithMixedEditability
+    return RootEditableElementOf(position1.GetPosition()) ==
+           RootEditableElementOf(position2.GetPosition());
   }
+
+  // Neither positions are in LayoutNG. Fall through to legacy handling.
 
   PositionWithAffinityTemplate<Strategy> start_of_line1 =
       StartOfLine(position1);
@@ -550,9 +535,14 @@ bool IsStartOfLine(const VisiblePositionInFlatTree& p) {
 }
 
 template <typename Strategy>
-static bool IsEndOfLineAlgorithm(const VisiblePositionTemplate<Strategy>& p) {
-  DCHECK(p.IsValid()) << p;
-  return p.IsNotNull() && p.DeepEquivalent() == EndOfLine(p).DeepEquivalent();
+static bool IsEndOfLineAlgorithm(
+    const VisiblePositionTemplate<Strategy>& visible_position) {
+  DCHECK(visible_position.IsValid()) << visible_position;
+  if (visible_position.IsNull())
+    return false;
+  const auto& end_of_line =
+      EndOfLine(visible_position.ToPositionWithAffinity());
+  return visible_position.DeepEquivalent() == end_of_line.GetPosition();
 }
 
 bool IsEndOfLine(const VisiblePosition& p) {

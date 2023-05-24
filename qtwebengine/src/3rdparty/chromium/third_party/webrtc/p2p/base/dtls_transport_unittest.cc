@@ -15,6 +15,8 @@
 #include <set>
 #include <utility>
 
+#include "absl/strings/string_view.h"
+#include "api/dtls_transport_interface.h"
 #include "p2p/base/fake_ice_transport.h"
 #include "p2p/base/packet_transport_internal.h"
 #include "rtc_base/checks.h"
@@ -43,7 +45,7 @@ static bool IsRtpLeadByte(uint8_t b) {
   return ((b & 0xC0) == 0x80);
 }
 
-// |modify_digest| is used to set modified fingerprints that are meant to fail
+// `modify_digest` is used to set modified fingerprints that are meant to fail
 // validation.
 void SetRemoteFingerprintFromCert(
     DtlsTransport* transport,
@@ -52,18 +54,22 @@ void SetRemoteFingerprintFromCert(
   std::unique_ptr<rtc::SSLFingerprint> fingerprint =
       rtc::SSLFingerprint::CreateFromCertificate(*cert);
   if (modify_digest) {
-    ++fingerprint->digest[0];
+    ++fingerprint->digest.MutableData()[0];
   }
-  // Even if digest is verified to be incorrect, should fail asynchrnously.
-  EXPECT_TRUE(transport->SetRemoteFingerprint(
-      fingerprint->algorithm,
-      reinterpret_cast<const uint8_t*>(fingerprint->digest.data()),
-      fingerprint->digest.size()));
+
+  // Even if digest is verified to be incorrect, should fail asynchronously.
+  EXPECT_TRUE(
+      transport
+          ->SetRemoteParameters(
+              fingerprint->algorithm,
+              reinterpret_cast<const uint8_t*>(fingerprint->digest.data()),
+              fingerprint->digest.size(), absl::nullopt)
+          .ok());
 }
 
 class DtlsTestClient : public sigslot::has_slots<> {
  public:
-  explicit DtlsTestClient(const std::string& name) : name_(name) {}
+  explicit DtlsTestClient(absl::string_view name) : name_(name) {}
   void CreateCertificate(rtc::KeyType key_type) {
     certificate_ =
         rtc::RTCCertificate::Create(rtc::SSLIdentity::Create(name_, key_type));
@@ -86,10 +92,9 @@ class DtlsTestClient : public sigslot::has_slots<> {
     fake_ice_transport_->SignalReadPacket.connect(
         this, &DtlsTestClient::OnFakeIceTransportReadPacket);
 
-    dtls_transport_ = std::make_unique<DtlsTransport>(fake_ice_transport_.get(),
-                                                      webrtc::CryptoOptions(),
-                                                      /*event_log=*/nullptr);
-    dtls_transport_->SetSslMaxProtocolVersion(ssl_max_version_);
+    dtls_transport_ = std::make_unique<DtlsTransport>(
+        fake_ice_transport_.get(), webrtc::CryptoOptions(),
+        /*event_log=*/nullptr, ssl_max_version_);
     // Note: Certificate may be null here if testing passthrough.
     dtls_transport_->SetLocalCertificate(certificate_);
     dtls_transport_->SignalWritableState.connect(
@@ -298,7 +303,7 @@ class DtlsTestClient : public sigslot::has_slots<> {
 // Base class for DtlsTransportTest and DtlsEventOrderingTest, which
 // inherit from different variants of ::testing::Test.
 //
-// Note that this test always uses a FakeClock, due to the |fake_clock_| member
+// Note that this test always uses a FakeClock, due to the `fake_clock_` member
 // variable.
 class DtlsTransportTestBase {
  public:
@@ -338,14 +343,14 @@ class DtlsTransportTestBase {
 
     if (use_dtls_) {
       // Check that we negotiated the right ciphers. Since GCM ciphers are not
-      // negotiated by default, we should end up with SRTP_AES128_CM_SHA1_80.
-      client1_.CheckSrtp(rtc::SRTP_AES128_CM_SHA1_80);
-      client2_.CheckSrtp(rtc::SRTP_AES128_CM_SHA1_80);
+      // negotiated by default, we should end up with kSrtpAes128CmSha1_80.
+      client1_.CheckSrtp(rtc::kSrtpAes128CmSha1_80);
+      client2_.CheckSrtp(rtc::kSrtpAes128CmSha1_80);
     } else {
       // If DTLS isn't actually being used, GetSrtpCryptoSuite should return
       // false.
-      client1_.CheckSrtp(rtc::SRTP_INVALID_CRYPTO_SUITE);
-      client2_.CheckSrtp(rtc::SRTP_INVALID_CRYPTO_SUITE);
+      client1_.CheckSrtp(rtc::kSrtpInvalidCryptoSuite);
+      client2_.CheckSrtp(rtc::kSrtpInvalidCryptoSuite);
     }
 
     client1_.CheckSsl();
@@ -380,6 +385,7 @@ class DtlsTransportTestBase {
   }
 
  protected:
+  rtc::AutoThread main_thread_;
   rtc::ScopedFakeClock fake_clock_;
   DtlsTestClient client1_;
   DtlsTestClient client2_;
@@ -618,7 +624,7 @@ class DtlsEventOrderingTest
       public ::testing::TestWithParam<
           ::testing::tuple<std::vector<DtlsTransportEvent>, bool>> {
  protected:
-  // If |valid_fingerprint| is false, the caller will receive a fingerprint
+  // If `valid_fingerprint` is false, the caller will receive a fingerprint
   // that doesn't match the callee's certificate, so the handshake should fail.
   void TestEventOrdering(const std::vector<DtlsTransportEvent>& events,
                          bool valid_fingerprint) {
@@ -669,18 +675,19 @@ class DtlsEventOrderingTest
           // Sanity check that the handshake hasn't already finished.
           EXPECT_FALSE(client1_.dtls_transport()->IsDtlsConnected() ||
                        client1_.dtls_transport()->dtls_state() ==
-                           DTLS_TRANSPORT_FAILED);
+                           webrtc::DtlsTransportState::kFailed);
           EXPECT_TRUE_SIMULATED_WAIT(
               client1_.dtls_transport()->IsDtlsConnected() ||
                   client1_.dtls_transport()->dtls_state() ==
-                      DTLS_TRANSPORT_FAILED,
+                      webrtc::DtlsTransportState::kFailed,
               kTimeout, fake_clock_);
           break;
       }
     }
 
-    DtlsTransportState expected_final_state =
-        valid_fingerprint ? DTLS_TRANSPORT_CONNECTED : DTLS_TRANSPORT_FAILED;
+    webrtc::DtlsTransportState expected_final_state =
+        valid_fingerprint ? webrtc::DtlsTransportState::kConnected
+                          : webrtc::DtlsTransportState::kFailed;
     EXPECT_EQ_SIMULATED_WAIT(expected_final_state,
                              client1_.dtls_transport()->dtls_state(), kTimeout,
                              fake_clock_);

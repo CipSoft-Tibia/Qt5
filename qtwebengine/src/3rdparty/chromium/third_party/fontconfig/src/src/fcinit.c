@@ -41,10 +41,11 @@ FcInitFallbackConfig (const FcChar8 *sysroot)
     FcConfig	*config;
     const FcChar8 *fallback = (const FcChar8 *) ""	\
 	"<fontconfig>" \
-	"  <dir>" FC_DEFAULT_FONTS "</dir>" \
+	FC_DEFAULT_FONTS \
 	"  <dir prefix=\"xdg\">fonts</dir>" \
 	"  <cachedir>" FC_CACHEDIR "</cachedir>" \
 	"  <cachedir prefix=\"xdg\">fontconfig</cachedir>" \
+	"  <include ignore_missing=\"yes\">" CONFIGDIR "</include>" \
 	"  <include ignore_missing=\"yes\" prefix=\"xdg\">fontconfig/conf.d</include>" \
 	"  <include ignore_missing=\"yes\" prefix=\"xdg\">fontconfig/fonts.conf</include>" \
 	"</fontconfig>";
@@ -199,10 +200,10 @@ void
 FcFini (void)
 {
     FcConfigFini ();
-    FcCacheFini ();
+    FcConfigPathFini ();
     FcDefaultFini ();
     FcObjectFini ();
-    FcConfigPathFini ();
+    FcCacheFini ();
 }
 
 /*

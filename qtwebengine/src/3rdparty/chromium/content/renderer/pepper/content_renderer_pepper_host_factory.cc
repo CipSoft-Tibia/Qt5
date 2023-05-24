@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,6 @@
 #include "content/common/content_switches_internal.h"
 #include "content/public/common/content_client.h"
 #include "content/public/renderer/content_renderer_client.h"
-#include "content/renderer/pepper/pepper_audio_encoder_host.h"
 #include "content/renderer/pepper/pepper_audio_input_host.h"
 #include "content/renderer/pepper/pepper_audio_output_host.h"
 #include "content/renderer/pepper/pepper_camera_device_host.h"
@@ -40,10 +39,6 @@
 #include "third_party/blink/public/platform/web_url.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_plugin_container.h"
-
-#if defined(OS_WIN)
-#include "base/win/windows_version.h"
-#endif
 
 using ppapi::host::ResourceHost;
 using ppapi::UnpackMessage;
@@ -124,13 +119,11 @@ ContentRendererPepperHostFactory::CreateResourceHost(
       }
       ppapi::PPB_ImageData_Shared::ImageDataType image_type =
           ppapi::PPB_ImageData_Shared::PLATFORM;
-#if defined(OS_WIN)
-      // Win32K lockdown mitigations are enabled for Windows 8 and beyond.
+#if BUILDFLAG(IS_WIN)
       // We use the SIMPLE image data type as the PLATFORM image data type
       // calls GDI functions to create DIB sections etc which fail in Win32K
       // lockdown mode.
-      if (base::win::GetVersion() >= base::win::Version::WIN8)
-        image_type = ppapi::PPB_ImageData_Shared::SIMPLE;
+      image_type = ppapi::PPB_ImageData_Shared::SIMPLE;
 #endif
       scoped_refptr<PPB_ImageData_Impl> image_data(new PPB_ImageData_Impl(
           instance, image_type));
@@ -158,9 +151,6 @@ ContentRendererPepperHostFactory::CreateResourceHost(
   // Dev interfaces.
   if (GetPermissions().HasPermission(ppapi::PERMISSION_DEV)) {
     switch (message.type()) {
-      case PpapiHostMsg_AudioEncoder_Create::ID:
-        return std::make_unique<PepperAudioEncoderHost>(host_, instance,
-                                                        resource);
       case PpapiHostMsg_AudioInput_Create::ID:
         return std::make_unique<PepperAudioInputHost>(host_, instance,
                                                       resource);

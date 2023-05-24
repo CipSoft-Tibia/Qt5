@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "abstract3drenderer_p.h"
 #include "texturehelper_p.h"
@@ -42,7 +16,7 @@
 #include <QtGui/QOffscreenSurface>
 #include <QtCore/QThread>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 // Defined in shaderhelper.cpp
 extern void discardDebugMsgs(QtMsgType type, const QMessageLogContext &context, const QString &msg);
@@ -118,7 +92,7 @@ Abstract3DRenderer::Abstract3DRenderer(Abstract3DController *controller)
       m_oldCameraTarget(QVector3D(2000.0f, 2000.0f, 2000.0f)), // Just random invalid target
       m_reflectionEnabled(false),
       m_reflectivity(0.5),
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
       m_funcs_2_1(0),
 #endif
       m_context(0),
@@ -127,12 +101,12 @@ Abstract3DRenderer::Abstract3DRenderer(Abstract3DController *controller)
 {
     initializeOpenGLFunctions();
     m_isOpenGLES = Utils::isOpenGLES();
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (!m_isOpenGLES) {
         // Discard warnings about deprecated functions
         QtMessageHandler handler = qInstallMessageHandler(discardDebugMsgs);
 
-        m_funcs_2_1 = QOpenGLContext::currentContext()->versionFunctions<QOpenGLFunctions_2_1>();
+        m_funcs_2_1 = new QOpenGLFunctions_2_1;
         if (m_funcs_2_1)
             m_funcs_2_1->initializeOpenGLFunctions();
 
@@ -192,6 +166,10 @@ Abstract3DRenderer::~Abstract3DRenderer()
     m_axisCacheX.clearLabels();
     m_axisCacheY.clearLabels();
     m_axisCacheZ.clearLabels();
+
+#if !QT_CONFIG(opengles2)
+    delete m_funcs_2_1;
+#endif
 }
 
 void Abstract3DRenderer::contextCleanup()
@@ -210,7 +188,7 @@ void Abstract3DRenderer::initializeOpenGL()
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (!m_isOpenGLES) {
         glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
         glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
@@ -274,8 +252,8 @@ void Abstract3DRenderer::initGradientShaders(const QString &vertexShader,
                                              const QString &fragmentShader)
 {
     // Do nothing by default
-    Q_UNUSED(vertexShader)
-    Q_UNUSED(fragmentShader)
+    Q_UNUSED(vertexShader);
+    Q_UNUSED(fragmentShader);
 }
 
 void Abstract3DRenderer::initStaticSelectedItemShaders(const QString &vertexShader,
@@ -284,10 +262,10 @@ void Abstract3DRenderer::initStaticSelectedItemShaders(const QString &vertexShad
                                                        const QString &gradientFragmentShader)
 {
     // Do nothing by default
-    Q_UNUSED(vertexShader)
-    Q_UNUSED(fragmentShader)
-    Q_UNUSED(gradientVertexShader)
-    Q_UNUSED(gradientFragmentShader)
+    Q_UNUSED(vertexShader);
+    Q_UNUSED(fragmentShader);
+    Q_UNUSED(gradientVertexShader);
+    Q_UNUSED(gradientFragmentShader);
 }
 
 void Abstract3DRenderer::initCustomItemShaders(const QString &vertexShader,
@@ -685,7 +663,7 @@ void Abstract3DRenderer::updateAxisTitleFixed(QAbstract3DAxis::AxisOrientation o
         cache.setTitleFixed(fixed);
 }
 
-void Abstract3DRenderer::modifiedSeriesList(const QVector<QAbstract3DSeries *> &seriesList)
+void Abstract3DRenderer::modifiedSeriesList(const QList<QAbstract3DSeries *> &seriesList)
 {
     foreach (QAbstract3DSeries *series, seriesList) {
         SeriesRenderCache *cache = m_renderCacheList.value(series, 0);
@@ -697,8 +675,8 @@ void Abstract3DRenderer::modifiedSeriesList(const QVector<QAbstract3DSeries *> &
 void Abstract3DRenderer::fixMeshFileName(QString &fileName, QAbstract3DSeries::Mesh mesh)
 {
     // Default implementation does nothing.
-    Q_UNUSED(fileName)
-    Q_UNUSED(mesh)
+    Q_UNUSED(fileName);
+    Q_UNUSED(mesh);
 }
 
 void Abstract3DRenderer::updateSeries(const QList<QAbstract3DSeries *> &seriesList)
@@ -745,8 +723,10 @@ void Abstract3DRenderer::updateCustomData(const QList<QCustom3DItem *> &customIt
         CustomRenderItem *renderItem = m_customRenderCache.value(item);
         if (!renderItem)
             renderItem = addCustomItem(item);
-        renderItem->setValid(true);
-        renderItem->setIndex(i); // always update index, as it must match the custom item index
+        if (renderItem) {
+            renderItem->setValid(true);
+            renderItem->setIndex(i); // always update index, as it must match the custom item index
+        }
     }
 
     // Check render item cache and remove items that are not in customItems list anymore
@@ -937,11 +917,26 @@ void Abstract3DRenderer::drawAxisTitleX(const QVector3D &labelRotation,
                 xRotation = -90.0f - labelRotation.z();
                 extraRotation = -extraRotation;
             }
+            if (m_yFlipped) {
+                alignment = Qt::AlignBottom;
+                extraRotation = -extraRotation;
+                if (m_xFlipped)
+                    xRotation = 90.0f + labelRotation.z();
+                else
+                    xRotation = 90.0f - labelRotation.z();
+            }
         } else {
             if (m_xFlipped) {
                 offsetRotation = -offsetRotation;
                 xRotation = -90.0f - labelRotation.z();
                 extraRotation = -extraRotation;
+            }
+            if (m_yFlipped) {
+                xRotation = 90.0f + labelRotation.z();
+                alignment = Qt::AlignBottom;
+                extraRotation = -extraRotation;
+                if (m_xFlipped)
+                    xRotation = 90.0f - labelRotation.z();
             }
         }
     }
@@ -1033,6 +1028,11 @@ void Abstract3DRenderer::drawAxisTitleZ(const QVector3D &labelRotation,
             } else {
                 yRotation = -yRotation;
             }
+        }
+        if (m_yFlipped) {
+            xRotation = -xRotation;
+            alignment = Qt::AlignBottom;
+            extraRotation = -extraRotation;
         }
     }
 
@@ -1129,7 +1129,10 @@ CustomRenderItem *Abstract3DRenderer::addCustomItem(QCustom3DItem *item)
     CustomRenderItem *newItem = new CustomRenderItem();
     newItem->setRenderer(this);
     newItem->setItemPointer(item); // Store pointer for render item updates
-    newItem->setMesh(item->meshFile());
+    if (!newItem->setMesh(item->meshFile())) {
+        delete newItem;
+        return nullptr;
+    }
     newItem->setOrigPosition(item->position());
     newItem->setOrigScaling(item->scaling());
     newItem->setScalingAbsolute(item->isScalingAbsolute());
@@ -1442,7 +1445,7 @@ void Abstract3DRenderer::drawCustomItems(RenderingState state,
     bool volumeDetected = false;
     int loopCount = 0;
     while (loopCount < 2) {
-        for (QCustom3DItem *customItem : qAsConst(m_customItemDrawOrder)) {
+        for (QCustom3DItem *customItem : std::as_const(m_customItemDrawOrder)) {
             CustomRenderItem *item = m_customRenderCache.value(customItem);
             // Check that the render item is visible, and skip drawing if not
             // Also check if reflected item is on the "wrong" side, and skip drawing if it is
@@ -1832,7 +1835,7 @@ void Abstract3DRenderer::drawRadialGrid(ShaderHelper *shader, float yFloorLinePo
                                         const QMatrix4x4 &projectionViewMatrix,
                                         const QMatrix4x4 &depthMatrix)
 {
-    static QVector<QQuaternion> lineRotations;
+    static QList<QQuaternion> lineRotations;
     if (!lineRotations.size()) {
         lineRotations.resize(polarGridRoundness);
         for (int j = 0; j < polarGridRoundness; j++) {
@@ -1841,8 +1844,8 @@ void Abstract3DRenderer::drawRadialGrid(ShaderHelper *shader, float yFloorLinePo
         }
     }
     int gridLineCount = m_axisCacheZ.gridLineCount();
-    const QVector<float> &gridPositions = m_axisCacheZ.formatter()->gridPositions();
-    const QVector<float> &subGridPositions = m_axisCacheZ.formatter()->subGridPositions();
+    const QList<float> &gridPositions = m_axisCacheZ.formatter()->gridPositions();
+    const QList<float> &subGridPositions = m_axisCacheZ.formatter()->subGridPositions();
     int mainSize = gridPositions.size();
     QVector3D translateVector(0.0f, yFloorLinePos, 0.0f);
     QQuaternion finalRotation = m_xRightAngleRotationNeg;
@@ -1896,8 +1899,8 @@ void Abstract3DRenderer::drawAngularGrid(ShaderHelper *shader, float yFloorLineP
     float halfRatio((m_polarRadius + (labelMargin / 2.0f)) / 2.0f);
     QVector3D gridLineScaler(gridLineWidth, gridLineWidth, halfRatio);
     int gridLineCount = m_axisCacheX.gridLineCount();
-    const QVector<float> &gridPositions = m_axisCacheX.formatter()->gridPositions();
-    const QVector<float> &subGridPositions = m_axisCacheX.formatter()->subGridPositions();
+    const QList<float> &gridPositions = m_axisCacheX.formatter()->gridPositions();
+    const QList<float> &subGridPositions = m_axisCacheX.formatter()->subGridPositions();
     int mainSize = gridPositions.size();
     QVector3D translateVector(0.0f, yFloorLinePos, -halfRatio);
     QQuaternion finalRotation;
@@ -1946,7 +1949,7 @@ float Abstract3DRenderer::calculatePolarBackgroundMargin()
 {
     // Check each extents of each angular label
     // Calculate angular position
-    QVector<float> &labelPositions = m_axisCacheX.formatter()->labelPositions();
+    QList<float> &labelPositions = m_axisCacheX.formatter()->labelPositions();
     float actualLabelHeight = m_drawer->scaledFontSize() * 2.0f; // All labels are same height
     float maxNeededMargin = 0.0f;
 
@@ -1991,4 +1994,4 @@ void Abstract3DRenderer::updateCameraViewport()
     }
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

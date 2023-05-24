@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/qbenchmark.h>
 #include <QtTest/private/qbenchmark_p.h>
@@ -132,10 +96,13 @@ int QBenchmarkTestMethodData::adjustIterationCount(int suggestion)
     return iterationCount;
 }
 
-void QBenchmarkTestMethodData::setResult(
-    qreal value, QTest::QBenchmarkMetric metric, bool setByMacro)
+void QBenchmarkTestMethodData::setResults(const QList<QBenchmarkMeasurerBase::Measurement> &list,
+                                          bool setByMacro)
 {
     bool accepted = false;
+    QBenchmarkMeasurerBase::Measurement firstMeasurement = {};
+    if (!list.isEmpty())
+        firstMeasurement = list.constFirst();
 
     // Always accept the result if the iteration count has been
     // specified on the command line with -iterations.
@@ -150,9 +117,9 @@ void QBenchmarkTestMethodData::setResult(
     // Test the result directly without calling the measurer if the minimum time
     // has been specified on the command line with -minimumvalue.
     else if (QBenchmarkGlobalData::current->walltimeMinimum != -1)
-        accepted = (value > QBenchmarkGlobalData::current->walltimeMinimum);
+        accepted = (firstMeasurement.value > QBenchmarkGlobalData::current->walltimeMinimum);
     else
-        accepted = QBenchmarkGlobalData::current->measurer->isMeasurementAccepted(value);
+        accepted = QBenchmarkGlobalData::current->measurer->isMeasurementAccepted(firstMeasurement);
 
     // Accept the result or double the number of iterations.
     if (accepted)
@@ -160,8 +127,10 @@ void QBenchmarkTestMethodData::setResult(
     else
         iterationCount *= 2;
 
-    this->result = QBenchmarkResult(
-        QBenchmarkGlobalData::current->context, value, iterationCount, metric, setByMacro);
+    valid = true;
+    results.reserve(list.size());
+    for (auto m : list)
+        results.emplaceBack(QBenchmarkGlobalData::current->context, m, iterationCount, setByMacro);
 }
 
 /*!
@@ -169,7 +138,7 @@ void QBenchmarkTestMethodData::setResult(
     \internal
 
     The QBenchmarkIterationController class is used by the QBENCHMARK macro to
-    drive the benchmarking loop. It is repsonsible for starting and stopping
+    drive the benchmarking loop. It is responsible for starting and stopping
     the timing measurements as well as calling the result reporting functions.
 */
 
@@ -193,8 +162,7 @@ QTest::QBenchmarkIterationController::QBenchmarkIterationController()
 */
 QTest::QBenchmarkIterationController::~QBenchmarkIterationController()
 {
-    const qreal result = QTest::endBenchmarkMeasurement();
-    QBenchmarkTestMethodData::current->setResult(result, QBenchmarkGlobalData::current->measurer->metricType());
+    QBenchmarkTestMethodData::current->setResults(QTest::endBenchmarkMeasurement());
 }
 
 /*! \internal
@@ -245,7 +213,7 @@ void QTest::beginBenchmarkMeasurement()
 
 /*! \internal
 */
-quint64 QTest::endBenchmarkMeasurement()
+QList<QBenchmarkMeasurerBase::Measurement> QTest::endBenchmarkMeasurement()
 {
     // the clock is ticking before the line below, don't add code here.
     return QBenchmarkGlobalData::current->measurer->stop();
@@ -270,7 +238,7 @@ quint64 QTest::endBenchmarkMeasurement()
 */
 void QTest::setBenchmarkResult(qreal result, QTest::QBenchmarkMetric metric)
 {
-    QBenchmarkTestMethodData::current->setResult(result, metric, false);
+    QBenchmarkTestMethodData::current->setResult({ result, metric }, false);
 }
 
 template <typename T>

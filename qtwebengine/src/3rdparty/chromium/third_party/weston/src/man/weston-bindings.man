@@ -124,10 +124,9 @@ Rotate the window (if supported)
 .SS DEBUG BINDINGS
 The combination \fBmod + Shift + Space\fR begins a debug binding. Debug
 bindings are completed by pressing an additional key. For example, pressing
-T next may toggle timeline recording, and F may toggle texture mesh
-wireframes with the GL renderer. (In fact, most debug effects can be
-disabled again by repeating the command.) Debug bindings are often tied to
-specific backends.
+F may toggle texture mesh wireframes with the GL renderer.
+(In fact, most debug effects can be disabled again by repeating the command.)
+Debug bindings are often tied to specific backends.
 
 .SH "SEE ALSO"
 .BR weston (1),

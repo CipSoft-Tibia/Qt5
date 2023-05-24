@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,8 @@
 
 #include "base/message_loop/message_pump_type.h"
 #include "base/run_loop.h"
-#include "base/test/bind_test_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "base/threading/thread.h"
 #include "net/test/embedded_test_server/default_handlers.h"
@@ -75,7 +76,7 @@ TEST_F(TransitionalURLLoaderFactoryOwnerTest, CrossThread) {
   base::Thread io_thread("IO");
   base::Thread::Options options;
   options.message_pump_type = base::MessagePumpType::IO;
-  ASSERT_TRUE(io_thread.StartWithOptions(options));
+  ASSERT_TRUE(io_thread.StartWithOptions(std::move(options)));
 
   TestOnTaskRunner(io_thread.task_runner(), base::BindLambdaForTesting([&]() {
                      io_thread.FlushForTesting();

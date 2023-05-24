@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,13 @@
 #include <atomic>
 #include <memory>
 
-#include "base/macros.h"
+#include "base/base_export.h"
 #include "base/memory/ref_counted.h"
-#include "base/optional.h"
 #include "base/sequence_checker.h"
 #include "base/threading/platform_thread.h"
+#include "base/threading/platform_thread_ref.h"
 #include "base/threading/thread_checker.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 namespace sequence_manager {
@@ -50,24 +51,6 @@ class BASE_EXPORT AssociatedThreadId
   // Can only be called once.
   void BindToCurrentThread();
 
-  // Returns the id of the thread bound to this object via a previous call to
-  // BindToCurrentThread(), nullopt if no thread was bound yet.
-  //
-  // This method guarantees a happens-before ordering with
-  // BindToCurrentThread(), that is all memory writes that happened-before the
-  // call to BindToCurrentThread() will become visible side-effects in the
-  // current thread.
-  //
-  // Attention: The result might be stale by the time this method returns.
-  Optional<PlatformThreadId> GetBoundThreadId() const {
-    auto thread_id = thread_id_.load(std::memory_order_acquire);
-    if (thread_id == kInvalidThreadId) {
-      return nullopt;
-    } else {
-      return thread_id;
-    }
-  }
-
   // Checks whether this object has already been bound to a thread.
   //
   // This method guarantees a happens-before ordering with
@@ -77,7 +60,7 @@ class BASE_EXPORT AssociatedThreadId
   //
   // Attention: The result might be stale by the time this method returns.
   bool IsBound() const {
-    return thread_id_.load(std::memory_order_acquire) != kInvalidThreadId;
+    return !thread_ref_.load(std::memory_order_acquire).is_null();
   }
 
   // Checks whether this object is bound to the current thread. Returns false if
@@ -90,20 +73,15 @@ class BASE_EXPORT AssociatedThreadId
   //
   // Attention:: The result might be stale by the time this method returns.
   bool IsBoundToCurrentThread() const {
-    return thread_id_.load(std::memory_order_relaxed) ==
-           PlatformThread::CurrentId();
+    return thread_ref_.load(std::memory_order_relaxed) ==
+           PlatformThread::CurrentRef();
   }
-
-  // TODO(eseckler): Add a method that checks that we are either bound already
-  // or on the thread which created us and use it in any_thread() accessors.
 
  private:
   friend class base::RefCountedThreadSafe<AssociatedThreadId>;
   ~AssociatedThreadId();
 
-  // All access to this member can be std::memory_order_relaxed as this class
-  // provides no ordering guarantees.
-  std::atomic<PlatformThreadId> thread_id_{kInvalidThreadId};
+  std::atomic<PlatformThreadRef> thread_ref_{};
 };
 
 }  // namespace internal

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtQuick/private/qsgcontext_p.h>
 #include <private/qsgadaptationlayer_p.h>
@@ -48,21 +12,19 @@
 #include "qquickparticleemitter_p.h"
 #include <private/qquicksprite_p.h>
 #include <private/qquickspriteengine_p.h>
-#include <QOpenGLFunctions>
 #include <QSGRendererInterface>
-#include <QtQuick/private/qsgshadersourcebuilder_p.h>
 #include <QtQuick/private/qsgplaintexture_p.h>
 #include <private/qqmlglobal_p.h>
 #include <QtQml/qqmlinfo.h>
+#include <QtCore/QtMath>
+#include <rhi/qrhi.h>
+
 #include <cmath>
-#include <QtGui/private/qrhi_p.h>
 
 QT_BEGIN_NAMESPACE
 
 // Must match the shader code
 #define UNIFORM_ARRAY_SIZE 64
-
-const qreal CONV = 0.017453292519943295;
 
 class ImageMaterialData
 {
@@ -81,96 +43,13 @@ class ImageMaterialData
     float sizeTable[UNIFORM_ARRAY_SIZE];
     float opacityTable[UNIFORM_ARRAY_SIZE];
 
+    qreal dpr;
     qreal timestamp;
     qreal entry;
     QSizeF animSheetSize;
 };
 
-class TabledMaterialShader : public QSGMaterialShader
-{
-public:
-    TabledMaterialShader()
-    {
-        QSGShaderSourceBuilder builder;
-        const bool isES = QOpenGLContext::currentContext()->isOpenGLES();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.vert"));
-        builder.addDefinition(QByteArrayLiteral("TABLE"));
-        builder.addDefinition(QByteArrayLiteral("DEFORM"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_vertex_code = builder.source();
-        builder.clear();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.frag"));
-        builder.addDefinition(QByteArrayLiteral("TABLE"));
-        builder.addDefinition(QByteArrayLiteral("DEFORM"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_fragment_code = builder.source();
-
-        Q_ASSERT(!m_vertex_code.isNull());
-        Q_ASSERT(!m_fragment_code.isNull());
-    }
-
-    const char *vertexShader() const override { return m_vertex_code.constData(); }
-    const char *fragmentShader() const override { return m_fragment_code.constData(); }
-
-    char const *const *attributeNames() const override
-    {
-        static const char *const attr[] = { "vPosTex", "vData", "vVec", "vColor", "vDeformVec", "vRotation", nullptr };
-        return attr;
-    }
-
-    void initialize() override {
-        program()->bind();
-        program()->setUniformValue("_qt_texture", 0);
-        program()->setUniformValue("colortable", 1);
-        glFuncs = QOpenGLContext::currentContext()->functions();
-        m_matrix_id = program()->uniformLocation("qt_Matrix");
-        m_opacity_id = program()->uniformLocation("qt_Opacity");
-        m_timestamp_id = program()->uniformLocation("timestamp");
-        m_entry_id = program()->uniformLocation("entry");
-        m_sizetable_id = program()->uniformLocation("sizetable");
-        m_opacitytable_id = program()->uniformLocation("opacitytable");
-    }
-
-    void updateState(const RenderState &renderState, QSGMaterial *mat, QSGMaterial *) override {
-        ImageMaterialData *state = static_cast<ImageMaterial *>(mat)->state();
-
-        if (renderState.isMatrixDirty())
-            program()->setUniformValue(m_matrix_id, renderState.combinedMatrix());
-        if (renderState.isOpacityDirty() && m_opacity_id >= 0)
-            program()->setUniformValue(m_opacity_id, renderState.opacity());
-
-        glFuncs->glActiveTexture(GL_TEXTURE1);
-        state->colorTable->bind();
-
-        glFuncs->glActiveTexture(GL_TEXTURE0);
-        state->texture->bind();
-
-        program()->setUniformValue(m_timestamp_id, (float) state->timestamp);
-        program()->setUniformValue(m_entry_id, (float) state->entry);
-        program()->setUniformValueArray(m_sizetable_id, (const float*) state->sizeTable, UNIFORM_ARRAY_SIZE, 1);
-        program()->setUniformValueArray(m_opacitytable_id, (const float*) state->opacityTable, UNIFORM_ARRAY_SIZE, 1);
-    }
-
-    int m_matrix_id;
-    int m_opacity_id;
-    int m_entry_id;
-    int m_timestamp_id;
-    int m_sizetable_id;
-    int m_opacitytable_id;
-    QByteArray m_vertex_code;
-    QByteArray m_fragment_code;
-    QOpenGLFunctions* glFuncs;
-};
-
-class TabledMaterialRhiShader : public QSGMaterialRhiShader
+class TabledMaterialRhiShader : public QSGMaterialShader
 {
 public:
     TabledMaterialRhiShader()
@@ -221,10 +100,10 @@ public:
     {
         ImageMaterialData *state = static_cast<ImageMaterial *>(newMaterial)->state();
         if (binding == 2) {
-            state->colorTable->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->colorTable->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->colorTable;
         } else if (binding == 1) {
-            state->texture->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->texture->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->texture;
         }
     }
@@ -233,12 +112,9 @@ public:
 class TabledMaterial : public ImageMaterial
 {
 public:
-    TabledMaterial() { setFlag(SupportsRhiShader, true); }
-    QSGMaterialShader *createShader() const override {
-        if (flags().testFlag(RhiShaderWanted))
-            return new TabledMaterialRhiShader;
-        else
-            return new TabledMaterialShader;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override {
+        Q_UNUSED(renderMode);
+        return new TabledMaterialRhiShader;
     }
     QSGMaterialType *type() const override { return &m_type; }
 
@@ -251,78 +127,7 @@ private:
 
 QSGMaterialType TabledMaterial::m_type;
 
-class DeformableMaterialShader : public QSGMaterialShader
-{
-public:
-    DeformableMaterialShader()
-    {
-        QSGShaderSourceBuilder builder;
-        const bool isES = QOpenGLContext::currentContext()->isOpenGLES();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.vert"));
-        builder.addDefinition(QByteArrayLiteral("DEFORM"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_vertex_code = builder.source();
-        builder.clear();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.frag"));
-        builder.addDefinition(QByteArrayLiteral("DEFORM"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_fragment_code = builder.source();
-
-        Q_ASSERT(!m_vertex_code.isNull());
-        Q_ASSERT(!m_fragment_code.isNull());
-    }
-
-    const char *vertexShader() const override { return m_vertex_code.constData(); }
-    const char *fragmentShader() const override { return m_fragment_code.constData(); }
-
-    char const *const *attributeNames() const override
-    {
-        static const char *const attr[] = { "vPosTex", "vData", "vVec", "vColor", "vDeformVec", "vRotation", nullptr };
-        return attr;
-    }
-
-    void initialize() override {
-        program()->bind();
-        program()->setUniformValue("_qt_texture", 0);
-        glFuncs = QOpenGLContext::currentContext()->functions();
-        m_matrix_id = program()->uniformLocation("qt_Matrix");
-        m_opacity_id = program()->uniformLocation("qt_Opacity");
-        m_timestamp_id = program()->uniformLocation("timestamp");
-        m_entry_id = program()->uniformLocation("entry");
-    }
-
-    void updateState(const RenderState &renderState, QSGMaterial *mat, QSGMaterial *) override {
-        ImageMaterialData *state = static_cast<ImageMaterial *>(mat)->state();
-
-        if (renderState.isMatrixDirty())
-            program()->setUniformValue(m_matrix_id, renderState.combinedMatrix());
-        if (renderState.isOpacityDirty() && m_opacity_id >= 0)
-            program()->setUniformValue(m_opacity_id, renderState.opacity());
-
-        state->texture->bind();
-
-        program()->setUniformValue(m_timestamp_id, (float) state->timestamp);
-        program()->setUniformValue(m_entry_id, (float) state->entry);
-    }
-
-    int m_matrix_id;
-    int m_opacity_id;
-    int m_entry_id;
-    int m_timestamp_id;
-    QByteArray m_vertex_code;
-    QByteArray m_fragment_code;
-    QOpenGLFunctions* glFuncs;
-};
-
-class DeformableMaterialRhiShader : public QSGMaterialRhiShader
+class DeformableMaterialRhiShader : public QSGMaterialShader
 {
 public:
     DeformableMaterialRhiShader()
@@ -362,7 +167,7 @@ public:
     {
         ImageMaterialData *state = static_cast<ImageMaterial *>(newMaterial)->state();
         if (binding == 1) {
-            state->texture->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->texture->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->texture;
         }
     }
@@ -371,12 +176,9 @@ public:
 class DeformableMaterial : public ImageMaterial
 {
 public:
-    DeformableMaterial() { setFlag(SupportsRhiShader, true); }
-    QSGMaterialShader *createShader() const override {
-        if (flags().testFlag(RhiShaderWanted))
-            return new DeformableMaterialRhiShader;
-        else
-            return new DeformableMaterialShader;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override {
+        Q_UNUSED(renderMode);
+        return new DeformableMaterialRhiShader;
     }
     QSGMaterialType *type() const override { return &m_type; }
 
@@ -389,96 +191,7 @@ private:
 
 QSGMaterialType DeformableMaterial::m_type;
 
-class ParticleSpriteMaterialShader : public QSGMaterialShader
-{
-public:
-    ParticleSpriteMaterialShader()
-    {
-        QSGShaderSourceBuilder builder;
-        const bool isES = QOpenGLContext::currentContext()->isOpenGLES();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.vert"));
-        builder.addDefinition(QByteArrayLiteral("SPRITE"));
-        builder.addDefinition(QByteArrayLiteral("TABLE"));
-        builder.addDefinition(QByteArrayLiteral("DEFORM"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_vertex_code = builder.source();
-        builder.clear();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.frag"));
-        builder.addDefinition(QByteArrayLiteral("SPRITE"));
-        builder.addDefinition(QByteArrayLiteral("TABLE"));
-        builder.addDefinition(QByteArrayLiteral("DEFORM"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_fragment_code = builder.source();
-
-        Q_ASSERT(!m_vertex_code.isNull());
-        Q_ASSERT(!m_fragment_code.isNull());
-    }
-
-    const char *vertexShader() const override { return m_vertex_code.constData(); }
-    const char *fragmentShader() const override { return m_fragment_code.constData(); }
-
-    char const *const *attributeNames() const override
-    {
-        static const char *const attr[] = { "vPosTex", "vData", "vVec", "vColor", "vDeformVec", "vRotation",
-                                            "vAnimData", "vAnimPos", nullptr };
-        return attr;
-    }
-
-    void initialize() override {
-        program()->bind();
-        program()->setUniformValue("_qt_texture", 0);
-        program()->setUniformValue("colortable", 1);
-        glFuncs = QOpenGLContext::currentContext()->functions();
-        m_matrix_id = program()->uniformLocation("qt_Matrix");
-        m_opacity_id = program()->uniformLocation("qt_Opacity");
-        //Don't actually expose the animSheetSize in the shader, it's currently only used for CPU calculations.
-        m_timestamp_id = program()->uniformLocation("timestamp");
-        m_entry_id = program()->uniformLocation("entry");
-        m_sizetable_id = program()->uniformLocation("sizetable");
-        m_opacitytable_id = program()->uniformLocation("opacitytable");
-    }
-
-    void updateState(const RenderState &renderState, QSGMaterial *mat, QSGMaterial *) override {
-        ImageMaterialData *state = static_cast<ImageMaterial *>(mat)->state();
-
-        if (renderState.isMatrixDirty())
-            program()->setUniformValue(m_matrix_id, renderState.combinedMatrix());
-        if (renderState.isOpacityDirty() && m_opacity_id >= 0)
-            program()->setUniformValue(m_opacity_id, renderState.opacity());
-
-        glFuncs->glActiveTexture(GL_TEXTURE1);
-        state->colorTable->bind();
-
-        // make sure we end by setting GL_TEXTURE0 as active texture
-        glFuncs->glActiveTexture(GL_TEXTURE0);
-        state->texture->bind();
-
-        program()->setUniformValue(m_timestamp_id, (float) state->timestamp);
-        program()->setUniformValue(m_entry_id, (float) state->entry);
-        program()->setUniformValueArray(m_sizetable_id, (const float*) state->sizeTable, 64, 1);
-        program()->setUniformValueArray(m_opacitytable_id, (const float*) state->opacityTable, UNIFORM_ARRAY_SIZE, 1);
-    }
-
-    int m_matrix_id;
-    int m_opacity_id;
-    int m_timestamp_id;
-    int m_entry_id;
-    int m_sizetable_id;
-    int m_opacitytable_id;
-    QByteArray m_vertex_code;
-    QByteArray m_fragment_code;
-    QOpenGLFunctions* glFuncs;
-};
-
-class ParticleSpriteMaterialRhiShader : public QSGMaterialRhiShader
+class ParticleSpriteMaterialRhiShader : public QSGMaterialShader
 {
 public:
     ParticleSpriteMaterialRhiShader()
@@ -529,10 +242,10 @@ public:
     {
         ImageMaterialData *state = static_cast<ImageMaterial *>(newMaterial)->state();
         if (binding == 2) {
-            state->colorTable->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->colorTable->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->colorTable;
         } else if (binding == 1) {
-            state->texture->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->texture->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->texture;
         }
     }
@@ -541,12 +254,9 @@ public:
 class SpriteMaterial : public ImageMaterial
 {
 public:
-    SpriteMaterial() { setFlag(SupportsRhiShader, true); }
-    QSGMaterialShader *createShader() const override {
-        if (flags().testFlag(RhiShaderWanted))
-            return new ParticleSpriteMaterialRhiShader;
-        else
-            return new ParticleSpriteMaterialShader;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override {
+        Q_UNUSED(renderMode);
+        return new ParticleSpriteMaterialRhiShader;
     }
     QSGMaterialType *type() const override { return &m_type; }
 
@@ -559,96 +269,13 @@ private:
 
 QSGMaterialType SpriteMaterial::m_type;
 
-class ColoredMaterialShader : public QSGMaterialShader
+class ColoredPointMaterialRhiShader : public QSGMaterialShader
 {
 public:
-    ColoredMaterialShader()
+    ColoredPointMaterialRhiShader()
     {
-        QSGShaderSourceBuilder builder;
-        const bool isES = QOpenGLContext::currentContext()->isOpenGLES();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.vert"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_vertex_code = builder.source();
-        builder.clear();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.frag"));
-        builder.addDefinition(QByteArrayLiteral("COLOR"));
-        if (isES)
-            builder.removeVersion();
-
-        m_fragment_code = builder.source();
-
-        Q_ASSERT(!m_vertex_code.isNull());
-        Q_ASSERT(!m_fragment_code.isNull());
-    }
-
-    const char *vertexShader() const override { return m_vertex_code.constData(); }
-    const char *fragmentShader() const override { return m_fragment_code.constData(); }
-
-    char const *const *attributeNames() const override
-    {
-        static const char *const attr[] = { "vPos", "vData", "vVec", "vColor", nullptr };
-        return attr;
-    }
-
-    void initialize() override {
-        program()->bind();
-        program()->setUniformValue("_qt_texture", 0);
-        glFuncs = QOpenGLContext::currentContext()->functions();
-        m_matrix_id = program()->uniformLocation("qt_Matrix");
-        m_opacity_id = program()->uniformLocation("qt_Opacity");
-        m_timestamp_id = program()->uniformLocation("timestamp");
-        m_entry_id = program()->uniformLocation("entry");
-    }
-
-    void activate() override {
-#if !defined(QT_OPENGL_ES_2) && !defined(Q_OS_WIN)
-        glEnable(GL_POINT_SPRITE);
-        glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-#endif
-    }
-
-    void deactivate() override {
-#if !defined(QT_OPENGL_ES_2) && !defined(Q_OS_WIN)
-        glDisable(GL_POINT_SPRITE);
-        glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
-#endif
-    }
-
-    void updateState(const RenderState &renderState, QSGMaterial *mat, QSGMaterial *) override {
-        ImageMaterialData *state = static_cast<ImageMaterial *>(mat)->state();
-
-        if (renderState.isMatrixDirty())
-            program()->setUniformValue(m_matrix_id, renderState.combinedMatrix());
-        if (renderState.isOpacityDirty() && m_opacity_id >= 0)
-            program()->setUniformValue(m_opacity_id, renderState.opacity());
-
-        state->texture->bind();
-
-        program()->setUniformValue(m_timestamp_id, (float) state->timestamp);
-        program()->setUniformValue(m_entry_id, (float) state->entry);
-    }
-
-    int m_matrix_id;
-    int m_opacity_id;
-    int m_timestamp_id;
-    int m_entry_id;
-    QByteArray m_vertex_code;
-    QByteArray m_fragment_code;
-    QOpenGLFunctions* glFuncs;
-};
-
-class ColoredMaterialRhiShader : public QSGMaterialRhiShader
-{
-public:
-    ColoredMaterialRhiShader()
-    {
-        setShaderFileName(VertexStage, QStringLiteral(":/particles/shaders_ng/imageparticle_colored.vert.qsb"));
-        setShaderFileName(FragmentStage, QStringLiteral(":/particles/shaders_ng/imageparticle_colored.frag.qsb"));
+        setShaderFileName(VertexStage, QStringLiteral(":/particles/shaders_ng/imageparticle_coloredpoint.vert.qsb"));
+        setShaderFileName(FragmentStage, QStringLiteral(":/particles/shaders_ng/imageparticle_coloredpoint.frag.qsb"));
     }
 
     bool updateUniformData(RenderState &renderState, QSGMaterial *newMaterial, QSGMaterial *) override
@@ -674,6 +301,9 @@ public:
         float timestamp = float(state->timestamp);
         memcpy(buf->data() + 72, &timestamp, 4);
 
+        float dpr = float(state->dpr);
+        memcpy(buf->data() + 76, &dpr, 4);
+
         return true;
     }
 
@@ -682,21 +312,46 @@ public:
     {
         ImageMaterialData *state = static_cast<ImageMaterial *>(newMaterial)->state();
         if (binding == 1) {
-            state->texture->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->texture->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->texture;
         }
+    }
+};
+
+class ColoredPointMaterial : public ImageMaterial
+{
+public:
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override {
+        Q_UNUSED(renderMode);
+        return new ColoredPointMaterialRhiShader;
+    }
+    QSGMaterialType *type() const override { return &m_type; }
+
+    ImageMaterialData *state() override { return &m_state; }
+
+private:
+    static QSGMaterialType m_type;
+    ImageMaterialData m_state;
+};
+
+QSGMaterialType ColoredPointMaterial::m_type;
+
+class ColoredMaterialRhiShader : public ColoredPointMaterialRhiShader
+{
+public:
+    ColoredMaterialRhiShader()
+    {
+        setShaderFileName(VertexStage, QStringLiteral(":/particles/shaders_ng/imageparticle_colored.vert.qsb"));
+        setShaderFileName(FragmentStage, QStringLiteral(":/particles/shaders_ng/imageparticle_colored.frag.qsb"));
     }
 };
 
 class ColoredMaterial : public ImageMaterial
 {
 public:
-    ColoredMaterial() { setFlag(SupportsRhiShader, true); }
-    QSGMaterialShader *createShader() const override {
-        if (flags().testFlag(RhiShaderWanted))
-            return new ColoredMaterialRhiShader;
-        else
-            return new ColoredMaterialShader;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override {
+        Q_UNUSED(renderMode);
+        return new ColoredMaterialRhiShader;
     }
     QSGMaterialType *type() const override { return &m_type; }
 
@@ -709,94 +364,13 @@ private:
 
 QSGMaterialType ColoredMaterial::m_type;
 
-class SimpleMaterialShader : public QSGMaterialShader
+class SimplePointMaterialRhiShader : public QSGMaterialShader
 {
 public:
-    SimpleMaterialShader()
+    SimplePointMaterialRhiShader()
     {
-        QSGShaderSourceBuilder builder;
-        const bool isES = QOpenGLContext::currentContext()->isOpenGLES();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.vert"));
-        if (isES)
-            builder.removeVersion();
-
-        m_vertex_code = builder.source();
-        builder.clear();
-
-        builder.appendSourceFile(QStringLiteral(":/particles/shaders/imageparticle.frag"));
-        if (isES)
-            builder.removeVersion();
-
-        m_fragment_code = builder.source();
-
-        Q_ASSERT(!m_vertex_code.isNull());
-        Q_ASSERT(!m_fragment_code.isNull());
-    }
-
-    const char *vertexShader() const override { return m_vertex_code.constData(); }
-    const char *fragmentShader() const override { return m_fragment_code.constData(); }
-
-    char const *const *attributeNames() const override
-    {
-        static const char *const attr[] = { "vPos", "vData", "vVec", nullptr };
-        return attr;
-    }
-
-    void initialize() override {
-        program()->bind();
-        program()->setUniformValue("_qt_texture", 0);
-        glFuncs = QOpenGLContext::currentContext()->functions();
-        m_matrix_id = program()->uniformLocation("qt_Matrix");
-        m_opacity_id = program()->uniformLocation("qt_Opacity");
-        m_timestamp_id = program()->uniformLocation("timestamp");
-        m_entry_id = program()->uniformLocation("entry");
-    }
-
-    void activate() override {
-#if !defined(QT_OPENGL_ES_2) && !defined(Q_OS_WIN)
-        glEnable(GL_POINT_SPRITE);
-        glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-#endif
-    }
-
-    void deactivate() override {
-#if !defined(QT_OPENGL_ES_2) && !defined(Q_OS_WIN)
-        glDisable(GL_POINT_SPRITE);
-        glDisable(GL_VERTEX_PROGRAM_POINT_SIZE);
-#endif
-    }
-
-    void updateState(const RenderState &renderState, QSGMaterial *mat, QSGMaterial *) override {
-        ImageMaterialData *state = static_cast<ImageMaterial *>(mat)->state();
-
-        if (renderState.isMatrixDirty())
-            program()->setUniformValue(m_matrix_id, renderState.combinedMatrix());
-        if (renderState.isOpacityDirty() && m_opacity_id >= 0)
-            program()->setUniformValue(m_opacity_id, renderState.opacity());
-
-        state->texture->bind();
-
-        program()->setUniformValue(m_timestamp_id, (float) state->timestamp);
-        program()->setUniformValue(m_entry_id, (float) state->entry);
-    }
-
-    int m_matrix_id;
-    int m_opacity_id;
-    int m_timestamp_id;
-    int m_entry_id;
-    QByteArray m_vertex_code;
-    QByteArray m_fragment_code;
-    QOpenGLFunctions* glFuncs;
-};
-
-class SimpleMaterialRhiShader : public QSGMaterialRhiShader
-{
-public:
-    SimpleMaterialRhiShader()
-    {
-        setShaderFileName(VertexStage, QStringLiteral(":/particles/shaders_ng/imageparticle_simple.vert.qsb"));
-        setShaderFileName(FragmentStage, QStringLiteral(":/particles/shaders_ng/imageparticle_simple.frag.qsb"));
+        setShaderFileName(VertexStage, QStringLiteral(":/particles/shaders_ng/imageparticle_simplepoint.vert.qsb"));
+        setShaderFileName(FragmentStage, QStringLiteral(":/particles/shaders_ng/imageparticle_simplepoint.frag.qsb"));
     }
 
     bool updateUniformData(RenderState &renderState, QSGMaterial *newMaterial, QSGMaterial *) override
@@ -822,6 +396,9 @@ public:
         float timestamp = float(state->timestamp);
         memcpy(buf->data() + 72, &timestamp, 4);
 
+        float dpr = float(state->dpr);
+        memcpy(buf->data() + 76, &dpr, 4);
+
         return true;
     }
 
@@ -830,21 +407,18 @@ public:
     {
         ImageMaterialData *state = static_cast<ImageMaterial *>(newMaterial)->state();
         if (binding == 1) {
-            state->texture->updateRhiTexture(renderState.rhi(), renderState.resourceUpdateBatch());
+            state->texture->commitTextureOperations(renderState.rhi(), renderState.resourceUpdateBatch());
             *texture = state->texture;
         }
     }
 };
 
-class SimpleMaterial : public ImageMaterial
+class SimplePointMaterial : public ImageMaterial
 {
 public:
-    SimpleMaterial() { setFlag(SupportsRhiShader, true); }
-    QSGMaterialShader *createShader() const override {
-        if (flags().testFlag(RhiShaderWanted))
-            return new SimpleMaterialRhiShader;
-        else
-            return new SimpleMaterialShader;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override {
+        Q_UNUSED(renderMode);
+        return new SimplePointMaterialRhiShader;
     }
     QSGMaterialType *type() const override { return &m_type; }
 
@@ -855,7 +429,7 @@ private:
     ImageMaterialData m_state;
 };
 
-QSGMaterialType SimpleMaterial::m_type;
+QSGMaterialType SimplePointMaterial::m_type;
 
 void fillUniformArrayFromImage(float* array, const QImage& img, int size)
 {
@@ -1077,13 +651,12 @@ void fillUniformArrayFromImage(float* array, const QImage& img, int size)
     For fine-grained control, see sizeTable and opacityTable.
 
     Acceptable values are
-    \list
-    \li ImageParticle.None: Particles just appear and disappear.
-    \li ImageParticle.Fade: Particles fade in from 0 opacity at the start of their life, and fade out to 0 at the end.
-    \li ImageParticle.Scale: Particles scale in from 0 size at the start of their life, and scale back to 0 at the end.
-    \endlist
 
-    Default value is Fade.
+    \value ImageParticle.None   Particles just appear and disappear.
+    \value ImageParticle.Fade   Particles fade in from 0 opacity at the start of their life, and fade out to 0 at the end.
+    \value ImageParticle.Scale  Particles scale in from 0 size at the start of their life, and scale back to 0 at the end.
+
+    The default value is \c ImageParticle.Fade.
 */
 /*!
     \qmlproperty bool QtQuick.Particles::ImageParticle::spritesInterpolate
@@ -1126,12 +699,13 @@ QQuickImageParticle::QQuickImageParticle(QQuickItem* parent)
     , m_explicitAnimation(false)
     , m_bypassOptimizations(false)
     , perfLevel(Unknown)
-    , m_lastLevel(Unknown)
+    , m_targetPerfLevel(Unknown)
     , m_debugMode(false)
     , m_entryEffect(Fade)
     , m_startedImageLoading(0)
     , m_rhi(nullptr)
     , m_apiChecked(false)
+    , m_dpr(1.0)
     , m_previousActive(false)
 {
     setFlag(ItemHasContents);
@@ -1155,6 +729,7 @@ void QQuickImageParticle::sceneGraphInvalidated()
     m_material = nullptr;
     delete m_outgoingNode;
     m_outgoingNode = nullptr;
+    m_apiChecked = false;
 }
 
 void QQuickImageParticle::setImage(const QUrl &image)
@@ -1241,8 +816,7 @@ void QQuickImageParticle::setColor(const QColor &color)
     m_color = color;
     emit colorChanged();
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setColorVariation(qreal var)
@@ -1252,8 +826,7 @@ void QQuickImageParticle::setColorVariation(qreal var)
     m_color_variation = var;
     emit colorVariationChanged();
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setAlphaVariation(qreal arg)
@@ -1263,8 +836,7 @@ void QQuickImageParticle::setAlphaVariation(qreal arg)
         emit alphaVariationChanged(arg);
     }
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setAlpha(qreal arg)
@@ -1274,8 +846,7 @@ void QQuickImageParticle::setAlpha(qreal arg)
         emit alphaChanged(arg);
     }
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setRedVariation(qreal arg)
@@ -1285,8 +856,7 @@ void QQuickImageParticle::setRedVariation(qreal arg)
         emit redVariationChanged(arg);
     }
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setGreenVariation(qreal arg)
@@ -1296,8 +866,7 @@ void QQuickImageParticle::setGreenVariation(qreal arg)
         emit greenVariationChanged(arg);
     }
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setBlueVariation(qreal arg)
@@ -1307,8 +876,7 @@ void QQuickImageParticle::setBlueVariation(qreal arg)
         emit blueVariationChanged(arg);
     }
     m_explicitColor = true;
-    if (perfLevel < Colored)
-        reset();
+    checkPerfLevel(ColoredPoint);
 }
 
 void QQuickImageParticle::setRotation(qreal arg)
@@ -1318,8 +886,7 @@ void QQuickImageParticle::setRotation(qreal arg)
         emit rotationChanged(arg);
     }
     m_explicitRotation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setRotationVariation(qreal arg)
@@ -1329,8 +896,7 @@ void QQuickImageParticle::setRotationVariation(qreal arg)
         emit rotationVariationChanged(arg);
     }
     m_explicitRotation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setRotationVelocity(qreal arg)
@@ -1340,8 +906,7 @@ void QQuickImageParticle::setRotationVelocity(qreal arg)
         emit rotationVelocityChanged(arg);
     }
     m_explicitRotation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setRotationVelocityVariation(qreal arg)
@@ -1351,8 +916,7 @@ void QQuickImageParticle::setRotationVelocityVariation(qreal arg)
         emit rotationVelocityVariationChanged(arg);
     }
     m_explicitRotation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setAutoRotation(bool arg)
@@ -1362,8 +926,7 @@ void QQuickImageParticle::setAutoRotation(bool arg)
         emit autoRotationChanged(arg);
     }
     m_explicitRotation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setXVector(QQuickDirection* arg)
@@ -1373,8 +936,7 @@ void QQuickImageParticle::setXVector(QQuickDirection* arg)
         emit xVectorChanged(arg);
     }
     m_explicitDeformation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setYVector(QQuickDirection* arg)
@@ -1384,8 +946,7 @@ void QQuickImageParticle::setYVector(QQuickDirection* arg)
         emit yVectorChanged(arg);
     }
     m_explicitDeformation = true;
-    if (perfLevel < Deformable)
-        reset();
+    checkPerfLevel(Deformable);
 }
 
 void QQuickImageParticle::setSpritesInterpolate(bool arg)
@@ -1420,7 +981,7 @@ void QQuickImageParticle::resetColor()
 {
     m_explicitColor = false;
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* d : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* d : std::as_const(m_system->groupData[groupId]->data)) {
             if (d->colorOwner == this) {
                 d->colorOwner = nullptr;
             }
@@ -1439,7 +1000,7 @@ void QQuickImageParticle::resetRotation()
 {
     m_explicitRotation = false;
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* d : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* d : std::as_const(m_system->groupData[groupId]->data)) {
             if (d->rotationOwner == this) {
                 d->rotationOwner = nullptr;
             }
@@ -1456,7 +1017,7 @@ void QQuickImageParticle::resetDeformation()
 {
     m_explicitDeformation = false;
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* d : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* d : std::as_const(m_system->groupData[groupId]->data)) {
             if (d->deformationOwner == this) {
                 d->deformationOwner = nullptr;
             }
@@ -1477,11 +1038,17 @@ void QQuickImageParticle::reset()
     update();
 }
 
+
+void QQuickImageParticle::invalidateSceneGraph()
+{
+    reset();
+}
+
 void QQuickImageParticle::createEngine()
 {
     if (m_spriteEngine)
         delete m_spriteEngine;
-    if (m_sprites.count()) {
+    if (m_sprites.size()) {
         m_spriteEngine = new QQuickSpriteEngine(m_sprites, this);
         connect(m_spriteEngine, SIGNAL(stateChanged(int)),
                 this, SLOT(spriteAdvance(int)), Qt::DirectConnection);
@@ -1493,64 +1060,79 @@ void QQuickImageParticle::createEngine()
     reset();
 }
 
-static QSGGeometry::Attribute SimpleParticle_Attributes[] = {
-    QSGGeometry::Attribute::create(0, 2, GL_FLOAT, true),             // Position
-    QSGGeometry::Attribute::create(1, 4, GL_FLOAT),             // Data
-    QSGGeometry::Attribute::create(2, 4, GL_FLOAT)             // Vectors
+static QSGGeometry::Attribute SimplePointParticle_Attributes[] = {
+    QSGGeometry::Attribute::create(0, 2, QSGGeometry::FloatType, true),      // Position
+    QSGGeometry::Attribute::create(1, 4, QSGGeometry::FloatType),            // Data
+    QSGGeometry::Attribute::create(2, 4, QSGGeometry::FloatType)             // Vectors
 };
 
-static QSGGeometry::AttributeSet SimpleParticle_AttributeSet =
+static QSGGeometry::AttributeSet SimplePointParticle_AttributeSet =
 {
     3, // Attribute Count
     ( 2 + 4 + 4 ) * sizeof(float),
-    SimpleParticle_Attributes
+    SimplePointParticle_Attributes
+};
+
+static QSGGeometry::Attribute ColoredPointParticle_Attributes[] = {
+    QSGGeometry::Attribute::create(0, 2, QSGGeometry::FloatType, true),      // Position
+    QSGGeometry::Attribute::create(1, 4, QSGGeometry::FloatType),            // Data
+    QSGGeometry::Attribute::create(2, 4, QSGGeometry::FloatType),            // Vectors
+    QSGGeometry::Attribute::create(3, 4, QSGGeometry::UnsignedByteType),     // Colors
+};
+
+static QSGGeometry::AttributeSet ColoredPointParticle_AttributeSet =
+{
+    4, // Attribute Count
+    ( 2 + 4 + 4 ) * sizeof(float) + 4 * sizeof(uchar),
+    ColoredPointParticle_Attributes
 };
 
 static QSGGeometry::Attribute ColoredParticle_Attributes[] = {
-    QSGGeometry::Attribute::create(0, 2, GL_FLOAT, true),             // Position
-    QSGGeometry::Attribute::create(1, 4, GL_FLOAT),             // Data
-    QSGGeometry::Attribute::create(2, 4, GL_FLOAT),             // Vectors
-    QSGGeometry::Attribute::create(3, 4, GL_UNSIGNED_BYTE),     // Colors
+    QSGGeometry::Attribute::create(0, 2, QSGGeometry::FloatType, true),      // Position
+    QSGGeometry::Attribute::create(1, 4, QSGGeometry::FloatType),            // Data
+    QSGGeometry::Attribute::create(2, 4, QSGGeometry::FloatType),            // Vectors
+    QSGGeometry::Attribute::create(3, 4, QSGGeometry::UnsignedByteType),     // Colors
+    QSGGeometry::Attribute::create(4, 4, QSGGeometry::UnsignedByteType),     // TexCoord
 };
 
 static QSGGeometry::AttributeSet ColoredParticle_AttributeSet =
 {
-    4, // Attribute Count
-    ( 2 + 4 + 4 ) * sizeof(float) + 4 * sizeof(uchar),
+    5, // Attribute Count
+    ( 2 + 4 + 4 ) * sizeof(float) + (4 + 4) * sizeof(uchar),
     ColoredParticle_Attributes
 };
 
 static QSGGeometry::Attribute DeformableParticle_Attributes[] = {
-    QSGGeometry::Attribute::create(0, 4, GL_FLOAT),             // Position & TexCoord
-    QSGGeometry::Attribute::create(1, 4, GL_FLOAT),             // Data
-    QSGGeometry::Attribute::create(2, 4, GL_FLOAT),             // Vectors
-    QSGGeometry::Attribute::create(3, 4, GL_UNSIGNED_BYTE),     // Colors
-    QSGGeometry::Attribute::create(4, 4, GL_FLOAT),             // DeformationVectors
-    QSGGeometry::Attribute::create(5, 3, GL_FLOAT),             // Rotation
+    QSGGeometry::Attribute::create(0, 4, QSGGeometry::FloatType),            // Position & Rotation
+    QSGGeometry::Attribute::create(1, 4, QSGGeometry::FloatType),            // Data
+    QSGGeometry::Attribute::create(2, 4, QSGGeometry::FloatType),            // Vectors
+    QSGGeometry::Attribute::create(3, 4, QSGGeometry::UnsignedByteType),     // Colors
+    QSGGeometry::Attribute::create(4, 4, QSGGeometry::FloatType),            // DeformationVectors
+    QSGGeometry::Attribute::create(5, 4, QSGGeometry::UnsignedByteType),     // TexCoord & autoRotate
 };
 
 static QSGGeometry::AttributeSet DeformableParticle_AttributeSet =
 {
     6, // Attribute Count
-    (4 + 4 + 4 + 4 + 3) * sizeof(float) + 4 * sizeof(uchar),
+    (4 + 4 + 4 + 4) * sizeof(float) + (4 + 4) * sizeof(uchar),
     DeformableParticle_Attributes
 };
 
 static QSGGeometry::Attribute SpriteParticle_Attributes[] = {
-    QSGGeometry::Attribute::create(0, 4, GL_FLOAT),       // Position & TexCoord
-    QSGGeometry::Attribute::create(1, 4, GL_FLOAT),             // Data
-    QSGGeometry::Attribute::create(2, 4, GL_FLOAT),             // Vectors
-    QSGGeometry::Attribute::create(3, 4, GL_UNSIGNED_BYTE),     // Colors
-    QSGGeometry::Attribute::create(4, 4, GL_FLOAT),             // DeformationVectors
-    QSGGeometry::Attribute::create(5, 3, GL_FLOAT),             // Rotation
-    QSGGeometry::Attribute::create(6, 3, GL_FLOAT),             // Anim Data
-    QSGGeometry::Attribute::create(7, 4, GL_FLOAT)              // Anim Pos
+    QSGGeometry::Attribute::create(0, 4, QSGGeometry::FloatType),            // Position & Rotation
+    QSGGeometry::Attribute::create(1, 4, QSGGeometry::FloatType),            // Data
+    QSGGeometry::Attribute::create(2, 4, QSGGeometry::FloatType),            // Vectors
+    QSGGeometry::Attribute::create(3, 4, QSGGeometry::UnsignedByteType),     // Colors
+    QSGGeometry::Attribute::create(4, 4, QSGGeometry::FloatType),            // DeformationVectors
+    QSGGeometry::Attribute::create(5, 4, QSGGeometry::UnsignedByteType),     // TexCoord & autoRotate
+    QSGGeometry::Attribute::create(6, 3, QSGGeometry::FloatType),            // Anim Data
+    QSGGeometry::Attribute::create(7, 3, QSGGeometry::FloatType)             // Anim Pos
 };
 
 static QSGGeometry::AttributeSet SpriteParticle_AttributeSet =
 {
     8, // Attribute Count
-    (4 + 4 + 4 + 4 + 3 + 3 + 4) * sizeof(float) + 4 * sizeof(uchar),
+    (4 + 4 + 4 + 4 + 3 + 3) * sizeof(float) + (4 + 4) * sizeof(uchar),
     SpriteParticle_Attributes
 };
 
@@ -1567,8 +1149,8 @@ QQuickParticleData* QQuickImageParticle::getShadowDatum(QQuickParticleData* datu
     //Will return datum if the datum is a sentinel or uninitialized, to centralize that one check
     if (datum->systemIndex == -1)
         return datum;
-    QQuickParticleGroupData* gd = m_system->groupData[datum->groupId];
     if (!m_shadowData.contains(datum->groupId)) {
+        QQuickParticleGroupData* gd = m_system->groupData[datum->groupId];
         QVector<QQuickParticleData*> data;
         const int gdSize = gd->size();
         data.reserve(gdSize);
@@ -1584,6 +1166,14 @@ QQuickParticleData* QQuickImageParticle::getShadowDatum(QQuickParticleData* datu
     return m_shadowData[datum->groupId][datum->index];
 }
 
+void QQuickImageParticle::checkPerfLevel(PerformanceLevel level)
+{
+    if (m_targetPerfLevel < level) {
+        m_targetPerfLevel = level;
+        reset();
+    }
+}
+
 bool QQuickImageParticle::loadingSomething()
 {
     return (m_image && m_image->pix.isLoading())
@@ -1595,22 +1185,33 @@ bool QQuickImageParticle::loadingSomething()
 
 void QQuickImageParticle::mainThreadFetchImageData()
 {
+    const QQmlContext *context = nullptr;
+    QQmlEngine *engine = nullptr;
+    const auto loadPix = [&](ImageData *image) {
+        if (!engine) {
+            context = qmlContext(this);
+            engine = context->engine();
+        }
+        image->pix.load(engine, context->resolvedUrl(image->source));
+    };
+
+
     if (m_image) {//ImageData created on setSource
         m_image->pix.clear(this);
-        m_image->pix.load(qmlEngine(this), m_image->source);
+        loadPix(m_image.get());
     }
 
     if (m_spriteEngine)
         m_spriteEngine->startAssemblingImage();
 
     if (m_colorTable)
-        m_colorTable->pix.load(qmlEngine(this), m_colorTable->source);
+        loadPix(m_colorTable.get());
 
     if (m_sizeTable)
-        m_sizeTable->pix.load(qmlEngine(this), m_sizeTable->source);
+        loadPix(m_sizeTable.get());
 
     if (m_opacityTable)
-        m_opacityTable->pix.load(qmlEngine(this), m_opacityTable->source);
+        loadPix(m_opacityTable.get());
 
     m_startedImageLoading = 2;
 }
@@ -1635,7 +1236,7 @@ void QQuickImageParticle::buildParticleNodes(QSGNode** passThrough)
 
 void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
 {
-    if (!m_rhi && !QOpenGLContext::currentContext())
+    if (!m_rhi)
         return;
 
     if (m_count * 4 > 0xffff) {
@@ -1644,12 +1245,12 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
         return;
     }
 
-    if (count() <= 0)
+    if (m_count <= 0)
         return;
 
     m_debugMode = m_system->m_debugMode;
 
-    if (m_sprites.count() || m_bypassOptimizations) {
+    if (m_sprites.size() || m_bypassOptimizations) {
         perfLevel = Sprites;
     } else if (m_colorTable || m_sizeTable || m_opacityTable) {
         perfLevel = Tabled;
@@ -1659,14 +1260,14 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
         perfLevel = Deformable;
     } else if (m_alphaVariation || m_alpha != 1.0 || m_color.isValid() || m_color_variation
                || m_redVariation || m_blueVariation || m_greenVariation) {
-        perfLevel = Colored;
+        perfLevel = ColoredPoint;
     } else {
-        perfLevel = Simple;
+        perfLevel = SimplePoint;
     }
 
     for (auto groupId : groupIds()) {
         //For sharing higher levels, need to have highest used so it renders
-        for (QQuickParticlePainter* p : qAsConst(m_system->groupData[groupId]->painters)) {
+        for (QQuickParticlePainter* p : std::as_const(m_system->groupData[groupId]->painters)) {
             QQuickImageParticle* other = qobject_cast<QQuickImageParticle*>(p);
             if (other){
                 if (other->perfLevel > perfLevel) {
@@ -1683,39 +1284,16 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
         }
     }
 
-    if (!m_rhi) { // the RHI may be backed by GL but these checks should be obsolete in any case
-#ifdef Q_OS_WIN
-        if (perfLevel < Deformable) //QTBUG-24540 , point sprite 'extension' isn't working on windows.
-            perfLevel = Deformable;
-#endif
+    // Points with a size other than 1 are an optional feature with QRhi
+    // because some of the underlying APIs have no support for this.
+    // Therefore, avoid the point sprite path with APIs like Direct3D.
+    if (perfLevel < Colored && !m_rhi->isFeatureSupported(QRhi::VertexShaderPointSize))
+        perfLevel = Colored;
 
-#ifdef Q_OS_MAC
-        // macOS 10.8.3 introduced a bug in the AMD drivers, for at least the 2011 macbook pros,
-        // causing point sprites who read gl_PointCoord in the frag shader to come out as
-        // green-red blobs.
-        const GLubyte *glVendor = QOpenGLContext::currentContext()->functions()->glGetString(GL_VENDOR);
-        if (perfLevel < Deformable && glVendor && strstr((char *) glVendor, "ATI")) {
-            perfLevel = Deformable;
-        }
-#endif
-
-#ifdef Q_OS_LINUX
-        // Nouveau drivers can potentially freeze a machine entirely when taking the point-sprite path.
-        const GLubyte *glVendor = QOpenGLContext::currentContext()->functions()->glGetString(GL_VENDOR);
-        if (perfLevel < Deformable && glVendor && strstr((const char *) glVendor, "nouveau"))
-            perfLevel = Deformable;
-#endif
-
-    } else {
-        // Points with a size other than 1 are an optional feature with QRhi
-        // because some of the underlying APIs have no support for this.
-        // Therefore, avoid the point sprite path with APIs like Direct3D.
-        if (perfLevel < Deformable && !m_rhi->isFeatureSupported(QRhi::VertexShaderPointSize))
-            perfLevel = Deformable;
-    }
-
-    if (perfLevel >= Colored  && !m_color.isValid())
+    if (perfLevel >= ColoredPoint  && !m_color.isValid())
         m_color = QColor(Qt::white);//Hidden default, but different from unset
+
+    m_targetPerfLevel = perfLevel;
 
     clearShadows();
     if (m_material)
@@ -1744,7 +1322,7 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
         ImageMaterialData *state = getState(m_material);
         if (imageLoaded)
             state->texture = QSGPlainTexture::fromImage(image);
-        state->animSheetSize = QSizeF(image.size() / image.devicePixelRatioF());
+        state->animSheetSize = QSizeF(image.size() / image.devicePixelRatio());
         if (m_spriteEngine)
             m_spriteEngine->setCount(m_count);
     }
@@ -1797,10 +1375,16 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
             m_material = new ColoredMaterial;
     }
         Q_FALLTHROUGH();
+    case ColoredPoint:
+    {
+        if (!m_material)
+            m_material = new ColoredPointMaterial;
+    }
+        Q_FALLTHROUGH();
     default://Also Simple
     {
         if (!m_material)
-            m_material = new SimpleMaterial;
+            m_material = new SimplePointMaterial;
         ImageMaterialData *state = getState(m_material);
         if (!imageLoaded) {
             if (!m_image || !m_image->pix.isReady()) {
@@ -1815,6 +1399,8 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
         }
         state->texture->setFiltering(QSGTexture::Linear);
         state->entry = (qreal) m_entryEffect;
+        state->dpr = m_dpr;
+
         m_material->setFlag(QSGMaterial::Blending | QSGMaterial::RequiresFullMatrix);
     }
     }
@@ -1828,7 +1414,7 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
 
         m_nodes.insert(groupId, node);
         m_idxStarts.insert(groupId, m_lastIdxStart);
-        m_startsIdx.append(qMakePair<int,int>(m_lastIdxStart, groupId));
+        m_startsIdx.append(qMakePair(m_lastIdxStart, groupId));
         m_lastIdxStart += count;
 
         //Create Particle Geometry
@@ -1843,27 +1429,18 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
         else if (perfLevel == Deformable)
             g = new QSGGeometry(DeformableParticle_AttributeSet, vCount, iCount);
         else if (perfLevel == Colored)
-            g = new QSGGeometry(ColoredParticle_AttributeSet, count, 0);
+            g = new QSGGeometry(ColoredParticle_AttributeSet, vCount, iCount);
+        else if (perfLevel == ColoredPoint)
+            g = new QSGGeometry(ColoredPointParticle_AttributeSet, count, 0);
         else //Simple
-            g = new QSGGeometry(SimpleParticle_AttributeSet, count, 0);
+            g = new QSGGeometry(SimplePointParticle_AttributeSet, count, 0);
 
         node->setFlag(QSGNode::OwnsGeometry);
         node->setGeometry(g);
-        if (perfLevel <= Colored){
+        if (perfLevel <= ColoredPoint){
             g->setDrawingMode(QSGGeometry::DrawPoints);
-            if (m_debugMode) {
-                if (m_rhi) {
-                    qDebug("Using point sprites");
-                } else {
-#if QT_CONFIG(opengl)
-                    GLfloat pointSizeRange[2];
-                    QOpenGLContext::currentContext()->functions()->glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE, pointSizeRange);
-                    qDebug() << "Using point sprites, GL_ALIASED_POINT_SIZE_RANGE " <<pointSizeRange[0] << ":" << pointSizeRange[1];
-#else
-                    qDebug("Using point sprites");
-#endif
-                }
-            }
+            if (m_debugMode)
+                qDebug("Using point sprites");
         } else {
             g->setDrawingMode(QSGGeometry::DrawTriangles);
         }
@@ -1877,8 +1454,10 @@ void QQuickImageParticle::finishBuildParticleNodes(QSGNode** node)
             initTexCoords<DeformableVertex>((DeformableVertex*)g->vertexData(), vCount);
         else if (perfLevel == Deformable)
             initTexCoords<DeformableVertex>((DeformableVertex*)g->vertexData(), vCount);
+        else if (perfLevel == Colored)
+            initTexCoords<ColoredVertex>((ColoredVertex*)g->vertexData(), vCount);
 
-        if (perfLevel > Colored){
+        if (perfLevel > ColoredPoint){
             quint16 *indices = g->indexDataAsUShort();
             for (int i=0; i < count; ++i) {
                 int o = i * 4;
@@ -1919,10 +1498,9 @@ QSGNode *QQuickImageParticle::updatePaintNode(QSGNode *node, UpdatePaintNodeData
             return nullptr;
 
         QSGRendererInterface::GraphicsApi api = rif->graphicsApi();
-        const bool isDirectOpenGL = api == QSGRendererInterface::OpenGL;
         const bool isRhi = QSGRendererInterface::isApiRhiBased(api);
 
-        if (!node && !isDirectOpenGL && !isRhi)
+        if (!node && !isRhi)
             return nullptr;
 
         if (isRhi)
@@ -1934,6 +1512,8 @@ QSGNode *QQuickImageParticle::updatePaintNode(QSGNode *node, UpdatePaintNodeData
             qWarning("Failed to query QRhi, particles disabled");
             return nullptr;
         }
+        // Get the pixel ratio of the window, used for pointsize scaling
+        m_dpr = m_window ? m_window->devicePixelRatio() : 1.0;
     }
 
     if (m_pleaseReset){
@@ -1944,7 +1524,6 @@ QSGNode *QQuickImageParticle::updatePaintNode(QSGNode *node, UpdatePaintNodeData
         m_outgoingNode = node;
         node = nullptr;
 
-        m_lastLevel = perfLevel;
         m_nodes.clear();
 
         m_idxStarts.clear();
@@ -2013,7 +1592,8 @@ bool QQuickImageParticle::prepareNextFrame(QSGNode **node)
     case Tabled:
     case Deformable:
     case Colored:
-    case Simple:
+    case ColoredPoint:
+    case SimplePoint:
     default: //Also Simple
         getState(m_material)->timestamp = time;
         break;
@@ -2042,7 +1622,7 @@ void QQuickImageParticle::spritesUpdate(qreal time)
     ImageMaterialData *state = getState(m_material);
     // Sprite progression handled CPU side, so as to have per-frame control.
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* mainDatum : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* mainDatum : std::as_const(m_system->groupData[groupId]->data)) {
             QSGGeometryNode *node = m_nodes[groupId];
             if (!node)
                 continue;
@@ -2050,7 +1630,7 @@ void QQuickImageParticle::spritesUpdate(qreal time)
             //      This is particularly important for cut-up sprites.
             QQuickParticleData* datum = (mainDatum->animationOwner == this ? mainDatum : getShadowDatum(mainDatum));
             int spriteIdx = 0;
-            for (int i = 0; i<m_startsIdx.count(); i++) {
+            for (int i = 0; i<m_startsIdx.size(); i++) {
                 if (m_startsIdx[i].second == groupId){
                     spriteIdx = m_startsIdx[i].first + datum->index;
                     break;
@@ -2093,7 +1673,6 @@ void QQuickImageParticle::spritesUpdate(qreal time)
                 spriteVertices[i].animX1 = x1;
                 spriteVertices[i].animY1 = y;
                 spriteVertices[i].animX2 = x2;
-                spriteVertices[i].animY2 = y;
                 spriteVertices[i].animW = w;
                 spriteVertices[i].animH = h;
                 spriteVertices[i].animProgress = progress;
@@ -2104,12 +1683,12 @@ void QQuickImageParticle::spritesUpdate(qreal time)
 
 void QQuickImageParticle::spriteAdvance(int spriteIdx)
 {
-    if (!m_startsIdx.count())//Probably overly defensive
+    if (!m_startsIdx.size())//Probably overly defensive
         return;
 
     int gIdx = -1;
     int i;
-    for (i = 0; i<m_startsIdx.count(); i++) {
+    for (i = 0; i<m_startsIdx.size(); i++) {
         if (spriteIdx < m_startsIdx[i].first) {
             gIdx = m_startsIdx[i-1].second;
             break;
@@ -2132,12 +1711,6 @@ void QQuickImageParticle::spriteAdvance(int spriteIdx)
     datum->animHeight = m_spriteEngine->spriteHeight(spriteIdx);
 }
 
-void QQuickImageParticle::reloadColor(const Color4ub &c, QQuickParticleData* d)
-{
-    d->color = c;
-    //TODO: get index for reload - or make function take an index
-}
-
 void QQuickImageParticle::initialize(int gIdx, int pIdx)
 {
     Color4ub color;
@@ -2154,7 +1727,7 @@ void QQuickImageParticle::initialize(int gIdx, int pIdx)
 
     float rotation;
     float rotationVelocity;
-    float autoRotate;
+    uchar autoRotate;
     switch (perfLevel){//Fall-through is intended on all of them
         case Sprites:
             // Initial Sprite State
@@ -2201,8 +1774,9 @@ void QQuickImageParticle::initialize(int gIdx, int pIdx)
                         datum->xx = ret.x();
                         datum->xy = ret.y();
                     } else {
-                        getShadowDatum(datum)->xx = ret.x();
-                        getShadowDatum(datum)->xy = ret.y();
+                        QQuickParticleData* shadow = getShadowDatum(datum);
+                        shadow->xx = ret.x();
+                        shadow->xy = ret.y();
                     }
                 }
                 if (m_yVector){
@@ -2211,8 +1785,9 @@ void QQuickImageParticle::initialize(int gIdx, int pIdx)
                         datum->yx = ret.x();
                         datum->yy = ret.y();
                     } else {
-                        getShadowDatum(datum)->yx = ret.x();
-                        getShadowDatum(datum)->yy = ret.y();
+                        QQuickParticleData* shadow = getShadowDatum(datum);
+                        shadow->yx = ret.x();
+                        shadow->yy = ret.y();
                     }
                 }
             }
@@ -2220,32 +1795,39 @@ void QQuickImageParticle::initialize(int gIdx, int pIdx)
             if (m_explicitRotation){
                 if (!datum->rotationOwner)
                     datum->rotationOwner = this;
-                rotation =
-                        (m_rotation + (m_rotationVariation - 2*QRandomGenerator::global()->bounded(m_rotationVariation)) ) * CONV;
-                rotationVelocity =
-                        (m_rotationVelocity + (m_rotationVelocityVariation - 2*QRandomGenerator::global()->bounded(m_rotationVelocityVariation)) ) * CONV;
-                autoRotate = m_autoRotation?1.0:0.0;
+                rotation = qDegreesToRadians(
+                    m_rotation + (m_rotationVariation
+                                  - 2 * QRandomGenerator::global()->bounded(m_rotationVariation)));
+                rotationVelocity = qDegreesToRadians(
+                    m_rotationVelocity
+                    + (m_rotationVelocityVariation
+                       - 2 * QRandomGenerator::global()->bounded(m_rotationVelocityVariation)));
+                autoRotate = m_autoRotation ? 1 : 0;
                 if (datum->rotationOwner == this) {
                     datum->rotation = rotation;
                     datum->rotationVelocity = rotationVelocity;
                     datum->autoRotate = autoRotate;
                 } else {
-                    getShadowDatum(datum)->rotation = rotation;
-                    getShadowDatum(datum)->rotationVelocity = rotationVelocity;
-                    getShadowDatum(datum)->autoRotate = autoRotate;
+                    QQuickParticleData* shadow = getShadowDatum(datum);
+                    shadow->rotation = rotation;
+                    shadow->rotationVelocity = rotationVelocity;
+                    shadow->autoRotate = autoRotate;
                 }
             }
             Q_FALLTHROUGH();
         case Colored:
+            Q_FALLTHROUGH();
+        case ColoredPoint:
             //Color initialization
             // Particle color
             if (m_explicitColor) {
                 if (!datum->colorOwner)
                     datum->colorOwner = this;
-                color.r = m_color.red() * (1 - redVariation) + QRandomGenerator::global()->bounded(256) * redVariation;
-                color.g = m_color.green() * (1 - greenVariation) + QRandomGenerator::global()->bounded(256) * greenVariation;
-                color.b = m_color.blue() * (1 - blueVariation) + QRandomGenerator::global()->bounded(256) * blueVariation;
-                color.a = m_alpha * m_color.alpha() * (1 - m_alphaVariation) + QRandomGenerator::global()->bounded(256) * m_alphaVariation;
+                const auto rgbColor = m_color.toRgb();
+                color.r = rgbColor.red() * (1 - redVariation) + QRandomGenerator::global()->bounded(256) * redVariation;
+                color.g = rgbColor.green() * (1 - greenVariation) + QRandomGenerator::global()->bounded(256) * greenVariation;
+                color.b = rgbColor.blue() * (1 - blueVariation) + QRandomGenerator::global()->bounded(256) * blueVariation;
+                color.a = m_alpha * rgbColor.alpha() * (1 - m_alphaVariation) + QRandomGenerator::global()->bounded(256) * m_alphaVariation;
                 if (datum->colorOwner == this)
                     datum->color = color;
                 else
@@ -2267,7 +1849,8 @@ void QQuickImageParticle::commit(int gIdx, int pIdx)
     SpriteVertex *spriteVertices = (SpriteVertex *) node->geometry()->vertexData();
     DeformableVertex *deformableVertices = (DeformableVertex *) node->geometry()->vertexData();
     ColoredVertex *coloredVertices = (ColoredVertex *) node->geometry()->vertexData();
-    SimpleVertex *simpleVertices = (SimpleVertex *) node->geometry()->vertexData();
+    ColoredPointVertex *coloredPointVertices = (ColoredPointVertex *) node->geometry()->vertexData();
+    SimplePointVertex *simplePointVertices = (SimplePointVertex *) node->geometry()->vertexData();
     switch (perfLevel){//No automatic fall through intended on this one
     case Sprites:
         spriteVertices += pIdx*4;
@@ -2307,15 +1890,9 @@ void QQuickImageParticle::commit(int gIdx, int pIdx)
             //Sprite-related vertices updated per-frame in spritesUpdate(), not on demand
             if (m_explicitColor && datum->colorOwner != this) {
                 QQuickParticleData* shadow = getShadowDatum(datum);
-                spriteVertices[i].color.r = shadow->color.r;
-                spriteVertices[i].color.g = shadow->color.g;
-                spriteVertices[i].color.b = shadow->color.b;
-                spriteVertices[i].color.a = shadow->color.a;
+                spriteVertices[i].color = shadow->color;
             } else {
-                spriteVertices[i].color.r = datum->color.r;
-                spriteVertices[i].color.g = datum->color.g;
-                spriteVertices[i].color.b = datum->color.b;
-                spriteVertices[i].color.a = datum->color.a;
+                spriteVertices[i].color = datum->color;
             }
         }
         break;
@@ -2357,21 +1934,15 @@ void QQuickImageParticle::commit(int gIdx, int pIdx)
             }
             if (m_explicitColor && datum->colorOwner != this) {
                 QQuickParticleData* shadow = getShadowDatum(datum);
-                deformableVertices[i].color.r = shadow->color.r;
-                deformableVertices[i].color.g = shadow->color.g;
-                deformableVertices[i].color.b = shadow->color.b;
-                deformableVertices[i].color.a = shadow->color.a;
+                deformableVertices[i].color = shadow->color;
             } else {
-                deformableVertices[i].color.r = datum->color.r;
-                deformableVertices[i].color.g = datum->color.g;
-                deformableVertices[i].color.b = datum->color.b;
-                deformableVertices[i].color.a = datum->color.a;
+                deformableVertices[i].color = datum->color;
             }
         }
         break;
     case Colored:
-        coloredVertices += pIdx*1;
-        for (int i=0; i<1; i++){
+        coloredVertices += pIdx*4;
+        for (int i=0; i<4; i++){
             coloredVertices[i].x = datum->x  - m_systemOffset.x();
             coloredVertices[i].y = datum->y  - m_systemOffset.y();
             coloredVertices[i].t = datum->t;
@@ -2384,31 +1955,46 @@ void QQuickImageParticle::commit(int gIdx, int pIdx)
             coloredVertices[i].ay = datum->ay;
             if (m_explicitColor && datum->colorOwner != this) {
                 QQuickParticleData* shadow = getShadowDatum(datum);
-                coloredVertices[i].color.r = shadow->color.r;
-                coloredVertices[i].color.g = shadow->color.g;
-                coloredVertices[i].color.b = shadow->color.b;
-                coloredVertices[i].color.a = shadow->color.a;
+                coloredVertices[i].color = shadow->color;
             } else {
-                coloredVertices[i].color.r = datum->color.r;
-                coloredVertices[i].color.g = datum->color.g;
-                coloredVertices[i].color.b = datum->color.b;
-                coloredVertices[i].color.a = datum->color.a;
+                coloredVertices[i].color = datum->color;
             }
         }
         break;
-    case Simple:
-        simpleVertices += pIdx*1;
+    case ColoredPoint:
+        coloredPointVertices += pIdx*1;
         for (int i=0; i<1; i++){
-            simpleVertices[i].x = datum->x - m_systemOffset.x();
-            simpleVertices[i].y = datum->y - m_systemOffset.y();
-            simpleVertices[i].t = datum->t;
-            simpleVertices[i].lifeSpan = datum->lifeSpan;
-            simpleVertices[i].size = datum->size;
-            simpleVertices[i].endSize = datum->endSize;
-            simpleVertices[i].vx = datum->vx;
-            simpleVertices[i].vy = datum->vy;
-            simpleVertices[i].ax = datum->ax;
-            simpleVertices[i].ay = datum->ay;
+            coloredPointVertices[i].x = datum->x  - m_systemOffset.x();
+            coloredPointVertices[i].y = datum->y  - m_systemOffset.y();
+            coloredPointVertices[i].t = datum->t;
+            coloredPointVertices[i].lifeSpan = datum->lifeSpan;
+            coloredPointVertices[i].size = datum->size;
+            coloredPointVertices[i].endSize = datum->endSize;
+            coloredPointVertices[i].vx = datum->vx;
+            coloredPointVertices[i].vy = datum->vy;
+            coloredPointVertices[i].ax = datum->ax;
+            coloredPointVertices[i].ay = datum->ay;
+            if (m_explicitColor && datum->colorOwner != this) {
+                QQuickParticleData* shadow = getShadowDatum(datum);
+                coloredPointVertices[i].color = shadow->color;
+            } else {
+                coloredPointVertices[i].color = datum->color;
+            }
+        }
+        break;
+    case SimplePoint:
+        simplePointVertices += pIdx*1;
+        for (int i=0; i<1; i++){
+            simplePointVertices[i].x = datum->x - m_systemOffset.x();
+            simplePointVertices[i].y = datum->y - m_systemOffset.y();
+            simplePointVertices[i].t = datum->t;
+            simplePointVertices[i].lifeSpan = datum->lifeSpan;
+            simplePointVertices[i].size = datum->size;
+            simplePointVertices[i].endSize = datum->endSize;
+            simplePointVertices[i].vx = datum->vx;
+            simplePointVertices[i].vy = datum->vy;
+            simplePointVertices[i].ax = datum->ax;
+            simplePointVertices[i].ay = datum->ay;
         }
         break;
     default:

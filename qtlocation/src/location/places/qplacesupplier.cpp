@@ -1,60 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacesupplier.h"
 #include "qplacesupplier_p.h"
 
 QT_USE_NAMESPACE
 
-QPlaceSupplierPrivate::QPlaceSupplierPrivate() : QSharedData()
-{
-}
-
-QPlaceSupplierPrivate::QPlaceSupplierPrivate(const QPlaceSupplierPrivate &other)
-    : QSharedData()
-{
-    this->name = other.name;
-    this->supplierId = other.supplierId;
-    this->url = other.url;
-    this->icon = other.icon;
-}
-
-QPlaceSupplierPrivate::~QPlaceSupplierPrivate()
-{
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceSupplierPrivate)
 
 bool QPlaceSupplierPrivate::operator==(const QPlaceSupplierPrivate &other) const
 {
@@ -93,6 +45,33 @@ bool QPlaceSupplierPrivate::isEmpty() const
 */
 
 /*!
+    \qmlvaluetype supplier
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 5.5
+
+    \brief Holds data regarding the supplier of a place, a place's image, review, or editorial.
+
+    Each instance represents a set of data about a supplier, which can include
+    supplier's name, url and icon.  The supplier is typically a business or organization.
+
+    Note: The Places API only supports suppliers as 'retrieve-only' objects.  Submitting
+    suppliers to a provider is not a supported use case.
+
+    \section1 Example
+
+    The following example shows how to create and display a supplier in QML:
+
+    \snippet declarative/places.qml QtQuick import
+    \snippet declarative/maps.qml QtLocation import
+    \codeline
+    \snippet declarative/places.qml Supplier
+
+    \sa ImageModel, ReviewModel, EditorialModel
+*/
+
+/*!
     Constructs a new supplier object.
 */
 QPlaceSupplier::QPlaceSupplier()
@@ -103,23 +82,18 @@ QPlaceSupplier::QPlaceSupplier()
 /*!
     Constructs a copy of \a other.
 */
-QPlaceSupplier::QPlaceSupplier(const QPlaceSupplier &other)
-    :d(other.d)
-{
-}
+QPlaceSupplier::QPlaceSupplier(const QPlaceSupplier &other) noexcept = default;
 
 /*!
     Destroys the supplier object.
 */
-QPlaceSupplier::~QPlaceSupplier()
-{
-}
+QPlaceSupplier::~QPlaceSupplier() = default;
 
 /*!
     Assigns \a other to this supplier and returns a reference to this
     supplier.
 */
-QPlaceSupplier &QPlaceSupplier::operator=(const QPlaceSupplier &other)
+QPlaceSupplier &QPlaceSupplier::operator=(const QPlaceSupplier &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -129,23 +103,36 @@ QPlaceSupplier &QPlaceSupplier::operator=(const QPlaceSupplier &other)
 }
 
 /*!
-    Returns true if this supplier is equal to \a other,
-    otherwise returns false.
+    \fn bool QPlaceSupplier::operator==(const QPlaceSupplier &lhs, const QPlaceSupplier &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs, otherwise returns false.
 */
-bool QPlaceSupplier::operator==(const QPlaceSupplier &other) const
+
+/*!
+    \fn bool QPlaceSupplier::operator!=(const QPlaceSupplier &lhs, const QPlaceSupplier &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs, otherwise returns false.
+*/
+
+bool QPlaceSupplier::isEqual(const QPlaceSupplier &other) const noexcept
 {
     return (*(d.constData()) == *(other.d.constData()));
 }
 
 /*!
-    \fn QPlaceSupplier::operator!=(const QPlaceSupplier &other) const
+    \qmlproperty string Supplier::name
 
-    Returns true if this supplier is not equal to \a other,
-    otherwise returns false.
+    This property holds the name of the supplier which can be displayed
+    to the user.
+
+    The name can potentially be localized.  The language is dependent on the
+    entity that sets it, typically this is the \l Plugin.  The \l {Plugin::locales}
+    property defines what language is used.
 */
 
 /*!
-    Returns the name of the supplier which can be displayed to the user.
+    \property QPlaceSupplier::name
+    \brief the name of the supplier which can be displayed to the user.
 
     The name can potentially be localized. The language is dependent on the
     entity that sets it, typically this is the QPlaceManager.
@@ -165,9 +152,19 @@ void QPlaceSupplier::setName(const QString &name)
 }
 
 /*!
-    Returns the identifier of the supplier. The identifier is unique
-    to the manager backend which provided the supplier and is generally
+    \qmlproperty string Supplier::supplierId
+
+    This property holds the identifier of the supplier.  The identifier is unique
+    to the Plugin backend which provided the supplier and is generally
     not suitable for displaying to the user.
+*/
+
+/*!
+    \property QPlaceSupplier::supplierId
+    \brief the identifier of the supplier.
+
+    The identifier is unique to the manager backend which provided the supplier
+    and is generally not suitable for displaying to the user.
 */
 QString QPlaceSupplier::supplierId() const
 {
@@ -183,7 +180,14 @@ void QPlaceSupplier::setSupplierId(const QString &identifier)
 }
 
 /*!
-    Returns the URL of the supplier's website.
+    \qmlproperty url Supplier::url
+
+    This property holds the URL of the supplier's website.
+*/
+
+/*!
+    \property QPlaceSupplier::url
+    \brief the URL of the supplier's website.
 */
 QUrl QPlaceSupplier::url() const
 {
@@ -199,7 +203,14 @@ void QPlaceSupplier::setUrl(const QUrl &url)
 }
 
 /*!
-    Returns the icon of the supplier.
+    \qmlproperty PlaceIcon Supplier::icon
+
+    This property holds the icon of the supplier.
+*/
+
+/*!
+    \property QPlaceSupplier::icon
+    \brief the icon of the supplier.
 */
 QPlaceIcon QPlaceSupplier::icon() const
 {
@@ -221,3 +232,5 @@ bool QPlaceSupplier::isEmpty() const
 {
     return d->isEmpty();
 }
+
+#include "moc_qplacesupplier.cpp"

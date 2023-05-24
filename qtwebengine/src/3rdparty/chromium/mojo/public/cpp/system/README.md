@@ -71,8 +71,8 @@ mojo::AllocMessage(6, nullptr, 0, MOJO_ALLOC_MESSAGE_FLAG_NONE, &message);
 void *buffer;
 mojo::GetMessageBuffer(message.get(), &buffer);
 
-const std::string kMessage = "hello";
-std::copy(kMessage.begin(), kMessage.end(), static_cast<char*>(buffer));
+constexpr base::StringPiece kMessage = "hello";
+base::ranges::copy(kMessage, static_cast<char*>(buffer));
 
 mojo::WriteMessageNew(client.get(), std::move(message),
                       MOJO_WRITE_MESSAGE_FLAG_NONE);
@@ -101,7 +101,7 @@ mojo::ScopedDataPipeConsumerHandle consumer = std::move(pipe.consumer_handle);
 // Or alternatively:
 mojo::ScopedDataPipeProducerHandle producer;
 mojo::ScopedDataPipeConsumerHandle consumer;
-mojo::CreateDataPipe(null, &producer, &consumer);
+mojo::CreateDataPipe(nullptr, producer, consumer);
 ```
 
 C++ helpers which correspond directly to the
@@ -369,7 +369,7 @@ wait_set.AddEvent(&timeout_event);
 
 // Ensure the Wait() lasts no more than 5 seconds.
 bg_thread->task_runner()->PostDelayedTask(FROM_HERE, base::BindOnce([](base::WaitableEvent* e) { e->Signal(); }, &timeout_event);
-    base::TimeDelta::FromSeconds(5));
+    base::Seconds(5));
 
 base::WaitableEvent* ready_event = nullptr;
 size_t num_ready_handles = 1;

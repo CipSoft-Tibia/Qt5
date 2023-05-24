@@ -1,15 +1,13 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/streams/queue_with_sizes.h"
 
-#include <cmath>
+#include <math.h>
 
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/trace_wrapper_v8_reference.h"
-#include "third_party/blink/renderer/platform/heap/visitor.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 
 namespace blink {
 
@@ -17,7 +15,7 @@ namespace {
 
 // https://streams.spec.whatwg.org/#is-finite-non-negative-number
 bool IsFiniteNonNegativeNumber(double v) {
-  return std::isfinite(v) && v >= 0;
+  return isfinite(v) && v >= 0;
 }
 
 }  // namespace
@@ -29,7 +27,7 @@ class QueueWithSizes::ValueSizePair final
       : value_(isolate, value), size_(size) {}
 
   v8::Local<v8::Value> Value(v8::Isolate* isolate) {
-    return value_.NewLocal(isolate);
+    return value_.Get(isolate);
   }
 
   double Size() { return size_; }

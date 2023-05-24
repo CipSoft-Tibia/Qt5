@@ -1,21 +1,21 @@
 # Code Reviews
 
 Code reviews are a central part of developing high-quality code for Chromium.
-All changes must be reviewed.
+All change lists (CLs) must be reviewed.
 
 The general patch, upload, and land process is covered in more detail in the
-[contributing code](contributing.md) page. To learn about upcoming code review
-and OWNERS policy changes, see
-[Mandatory code review and OWNERS](code_review_owners.md).
+[contributing code](contributing.md) page. To learn about the code review changes
+and OWNERS policy changes launched on March 24, 2021, see
+[Mandatory Code Review and Native OWNERS](code_review_owners.md).
 
 # Code review policies
 
 Ideally the reviewer is someone who is familiar with the area of code you are
 touching. Any committer can review code, but an owner must provide a review
-for each directory you are touching. If you have doubts, look at the git blame
-for the file and the `OWNERS` files (see below).
+for each directory you are touching. If you have doubts, look at the `git blame`
+for the file and the `OWNERS` files ([more info](#owners-files)).
 
-To indicate a positive review, the reviewer provides a "Code-Review +1" in
+To indicate a positive review, the reviewer provides a `Code-Review +1` in
 Gerrit, also known as an LGTM ("Looks Good To Me"). A score of "-1" indicates
 the change should not be submitted as-is.
 
@@ -52,10 +52,10 @@ the reviewers in the `//chrome/browser/component_name/OWNERS` file will likely
 be more familiar with code in `//chrome/browser/component_name/sub_component`
 than reviewers in the higher-level `//chrome/OWNERS` file.
 
-More detail on the owners file format is provided in the "More information"
-section below.
+More detail on the owners file format is provided [here](#owners-file-details).
 
-*Tip:* The `git cl owners` command can help find owners.
+*Tip:* The `git cl owners` command can help find owners. Gerrit also provides
+this functionality in the Reviewers field of CLs.
 
 While owners must approve all patches, any committer can contribute to the
 review. In some directories the owners can be overloaded or there might be
@@ -75,8 +75,8 @@ The existing owners of a directory approve additions to the list. It is
 preferable to have many directories, each with a smaller number of specific
 owners rather than large directories with many owners. Owners should:
 
-  * Demonstrate excellent judgment, teamwork and ability to uphold Chrome
-    development principles.
+  * Demonstrate excellent judgment, teamwork and ability to uphold
+    [Chromium development principles](contributing.md).
 
   * Be already acting as an owner, providing high-quality reviews and design
     feedback.
@@ -95,16 +95,44 @@ owners rather than large directories with many owners. Owners should:
     discourage people from sending reviews, including writing "slow" or
     "emeritus" after your name.
 
-The above are guidelines more than they are hard rules, and exceptions are
-okay as long as there is a consensus by the existing owners for them.
-For example, seldom-updated directories may have exceptions to the
-"substantiality" and "recency" requirements. Directories in `third_party`
-should list those most familiar with the library, regardless of how often
-the code is updated.
+Seldom-updated directories may have exceptions to the "substantiality" and
+"recency" requirements.
+
+Directories in `//third_party` should list those most familiar with the
+library, regardless of how often the code is updated.
+
+#### Removal of owners
+
+If a code owner is not meeting the [expectations of
+owners](#expectations-of-owners) listed above for more than one quarter (and
+they are not on a leave during that time), then they may be removed by any
+co-owner or an owner from the parent directory after a 4-week notice, using
+the following process:
+
+  * Upload a change removing the owner and copy all owners in that directory,
+    including the owner in question.
+  * If the affected owner approves the change, it may be landed immediately.
+  * Otherwise, the change author must wait five working days for feedback from
+    the other owners.
+    * After that time has elapsed, if the change has received 3 approvals
+      with no objections from anyone else, the change may be landed.
+    * If the directory does not have 4 owners, then the decision should
+      be escalated to the owners of the parent directory (or directories)
+      as necessary to provide enough of votes.
+    * If there are objections, then the decision should be escalated to
+      the [../ATL_OWNERS](../ATL_OWNERS) for resolution.
+
+Note: For the purpose of not slowing down code review, Chromium removes
+inactive owners (e.g., those who made no contributions for multiple quarters)
+on a regular basis. The script does not take into account personal situations
+like a long leave. If you were inactive only for a certain period of time
+while you were on a long leave and have been meeting the above owner's
+expectations in other times, you can create a CL to re-add yourself and land
+after getting local owner's approval (you can refer to this policy in the CL).
 
 ### OWNERS file details
 
-Refer to the [source code](https://chromium.googlesource.com/chromium/tools/depot_tools/+/master/owners.py)
+Refer to the [owners plugin](https://github.com/GerritCodeReview/plugins_code-owners/blob/master/resources/Documentation/backend-find-owners.md)
 for all details on the file format.
 
 This example indicates that two people are owners, in addition to any owners
@@ -124,20 +152,20 @@ A `*` indicates that all committers are owners:
 
 The text `set noparent` will stop owner propagation from parent directories.
 This should be rarely used. If you want to use `set noparent` except for IPC
-related files, please first reach out to chrome-eng-review@google.com.
+related files, please first reach out to chrome-atls@google.com.
 
 You have to use `set noparent` together with a reference to a file that lists
 the owners for the given use case. Approved use cases are listed in
 `//build/OWNERS.setnoparent`. Owners listed in those files are expected to
-execute special governance functions such as eng review or ipc security review.
+execute special governance functions such as ATL reviews or ipc security review.
 Every set of owners should implement their own means of auditing membership. The
 minimum expectation is that membership in those files is reevaluated on
 project, or affiliation changes.
 
-In this example, only the eng reviewers are owners:
+In this example, only the ATLs are owners:
 ```
 set noparent
-file://ENG_REVIEW_OWNERS
+file://ATL_OWNERS
 ```
 
 The `per-file` directive allows owners to be added that apply only to files
@@ -151,13 +179,6 @@ per-file foo.*=a@chromium.org
 per-file readme.txt=*
 ```
 
-Note that `per-file` directives cannot directly specify subdirectories, e.g:
-```
-per-file foo/bar.cc=a@chromium.org
-```
-
-is not OK; instead, place a `per-file` directive in `foo/OWNERS`.
-
 Other `OWNERS` files can be included by reference by listing the path to the
 file with `file://...`. This example indicates that only the people listed in
 `//ipc/SECURITY_OWNERS` can review the messages files:
@@ -166,105 +187,85 @@ per-file *_messages*.h=set noparent
 per-file *_messages*.h=file://ipc/SECURITY_OWNERS
 ```
 
-## TBR ("To Be Reviewed")
+File globbing is supported using the
+[simple path expression](https://github.com/GerritCodeReview/plugins_code-owners/blob/master/resources/Documentation/path-expressions.md#simple-path-expressions)
+format.
 
-"TBR" is our mechanism for post-commit review. It should be used rarely and
-only in cases where a normal review is unnecessary, as described under
-"When to TBR", below.
+### Owners-Override
 
-TBR does not mean "no review." A reviewer TBR-ed on a change should still
-review the change. If there are comments after landing, the author is obligated
-to address them in a followup patch.
+Setting the `Owners-Override +1` label will bypass OWNERS enforcement. Active
+[sheriffs](sheriffs.md), Release Program Managers,
+[Large Scale Changes](#large-scale-changes),
+[Global Approvers](#global-approvals) reviewers,
+[Chrome ATLs](../ATL_OWNERS)
+have this capability. The power to use Owners-Override should be restricted
+as follows:
 
-Do not use TBR just because a change is urgent or the reviewer is being slow.
-Contact the reviewer directly or find somebody else to review your change.
+  * Active sheriffs and Release Program Managers can set Owners-Override only on
+    CLs needed for sheriffing and releasing (e.g., revert, reland, test fix,
+    cherry-pick).
+  * Large Scale Change reviewers can set Owners-Override only on sheriffing CLs
+    and CLs about the approved Large Scale Change.
+  * Global approvers can set Owners-Override only on sheriffing CLs and
+    mechanical CLs associated with their API changes. For example,
+    //base/OWNERS can set Owners-Override on mechanical CLs associated with
+    //base/ API changes.
+  * Chrome ATLs can set Owners-Override on any changes to help with cases that
+    cannot be handled by the above groups and expedite CLs when LSC is too
+    heavyweight. However, please use one of the above groups before asking
+    Chrome ATLs.
 
-### How to TBR
+When you need Owners-Override on sheriffing CLs, please reach out to the
+Active Sheriffs and Release Program Managers first. If none of them is
+available, please send an email to lsc-owners-override@chromium.org for help.
 
-To send a change TBR, annotate the description and send email like normal.
-Otherwise the reviewer won't know to review the patch.
+Note that Owners-Override by itself is not enough on your own CLs. Where this
+matters is when you are sheriffing. For example, if you want to revert or
+disable a test, your Owners-Override on the CL is not enough. You also need
+either another committer to LGTM the CL or, for clean reverts, a `Bot-Commit:
++1` from the [rubber-stamper bot](#automated-code_review).
 
-  * Add the reviewer's email address in the code review tool's reviewer field
-    like normal.
+## Mechanical changes
 
-  * Add a line "Tbr: <reviewer's email>" to the bottom of the change list
-    description. e.g. `Tbr: reviewer1@chromium.org,reviewer2@chromium.org`
+### Global Approvals
+For one-off CLs, API owners of `base`, `build`, `content`, `third_party/blink`
+and `url` can `Owners-Override +1` a change to their APIs to avoid waiting for
+rubberstamp +1s from affected directories' owners. This should only be used for
+mechanical updates to the affected directories.
 
-  * Type a message so that the owners in the TBR list can understand who is
-    responsible for reviewing what, as part of their post-commit review
-    responsibility. e.g.
-    ```
-    TBRing reviewers:
-    reviewer1: Please review changes to foo/
-    reviewer2: Please review changes to bar/
-    ```
+If you are making one-off CLs that touch many directories and cannot be
+handled by the global approvers, you can ask one of Chrome ATLs.
 
-### When to TBR
+### Large Scale Changes
+You can use the [Large Scale Changes](process/lsc/large_scale_changes.md)
+process to get approval to bypass OWNERS enforcement for large changes like
+refactoring, architectural changes, or other repetitive code changes across the
+whole codebase. This is used for work that span many dozen CLs.
 
-#### Reverts and relands
+## Documentation updates
 
-The most common use of TBR is to revert patches that broke the build. Clean
-reverts of recent patches may be submitted TBR. However, TBR should not be used
-if the revert required non-trivial conflict resolution, or if the patch being
-reverted is older than a few days.
+Documentation updates require code review. We may revisit this decision in the
+future.
 
-A developer relanding a patch can TBR the OWNERS for changes which are identical
-to the original (reverted) patch.  If the reland patch contains any new changes
-(such as bug fixes) on top of the original, those changes should go through the
-normal review process.
+## Automated code-review
 
-When creating a reland patch, you should first upload an up-to-date patchset
-with the exact content of the original (reverted) patch, and then upload the
-patchset to be relanded. This is important for the reviewers to understand what
-the fix for relanding was.
+For verifiably safe changes like translation files, clean reverts, and clean
+cherry-picks, we have automation that will vote +1 on the `Bot-Commit` label
+allowing the CL to be submitted without human code-review. Add `Rubber Stamper`
+(rubber-stamper@appspot.gserviceaccount.com) to your CL as a reviewer to
+activate this automation. It will scan the CL after about 1 minute and reply
+with its verdict. `Bot-Commit` votes are not sticky between patchsets and so
+only add the bot once the CL is finalized.
 
-#### Mechanical changes
+When combined with the [`Owners-Override`](#owners_override) power, sheriffs can
+effectively revert and reland on their own.
 
-You can use TBR with certain mechanical changes that affect many callers in
-different directories. For example, adding a parameter to a common function in
-`//base`, with callers in `//chrome/browser/foo`, `//net/bar`, and many other
-directories. If the updates to the callers is mechanical, you can:
+Rubber Stamper never provides OWNERS approval, by design. It's intended to be
+used by those who have owners in the directory modified or who are sheriffs. If
+it provided both code review and OWNERS approval, that would be an abuse vector:
+that would allow anyone who can create a revert or cherry-pick to land it
+without any other person being involved (e.g. the silent revert of security
+patches).
 
-  1. Get a normal owner of the lower-level code you're changing (in this
-     example, the function in `//base`) to do a proper review of those changes.
-
-  2. Get _somebody_ to review the downstream changes made to the callers as a
-     result of the `//base` change. This is often the same person from the
-     previous step but could be somebody else.
-
-  3. TBR the owner of the lower-level code you're changing (in this example,
-     `//base`), after they've LGTM'ed the API change, to bypass owners review of
-     the API consumers incurring trivial side-effects.
-
-This process ensures that all code is reviewed prior to checkin and that the
-concept of the change is reviewed by a qualified person, without having to ping
-many owners with little say in the trivial side-effects they incur.
-
-**Note:** The above policy is only viable for strictly mechanical changes. For
-large-scale scripted changes you should:
-
-  1. Have an owner of the core change review the script.
-
-  2. Use `git cl split` to shard the large change into many small CLs with a
-     clear description of what each reviewer is expected to verify
-     ([example](https://chromium-review.googlesource.com/1191225)).
-
-#### Documentation updates
-
-You can TBR documentation updates. Documentation means markdown files, text
-documents, and high-level comments in code. At finer levels of detail, comments
-in source files become more like code and should be reviewed normally (not
-using TBR). Non-TBR-able stuff includes things like function contracts and most
-comments inside functions.
-
-  * Use good judgement. If you're changing something very important, tricky,
-    or something you may not be very familiar with, ask for the code review
-    up-front.
-
-  * Don't TBR changes to policy documents like the style guide or this document.
-
-  * Don't mix unrelated documentation updates with code changes.
-
-  * Be sure to actually send out the email for the code review. If you get one,
-    please actually read the changes.
-
+Changes not supported by `Rubber Stamper` always need a +1 from another
+committer.

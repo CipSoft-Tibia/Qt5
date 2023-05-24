@@ -3,6 +3,7 @@ mappings/*html.ucm
 mappings/windows-936-2000.ucm
 mappings/gb18030.ucm
 brkitr/dictionaries/khmerdict.txt
+brkitr/dictionaries/laodict.txt
 brkitr/rules/word_ja.txt
 brkitr/root.txt
 brkitr/ja.txt
@@ -16,4 +17,3 @@ lang/an.txt
 lang/ku.txt
 lang/tg.txt
 lang/wa.txt
-translit/root_subset.txt

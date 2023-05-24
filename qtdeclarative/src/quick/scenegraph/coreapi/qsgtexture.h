@@ -1,48 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGTEXTURE_H
 #define QSGTEXTURE_H
 
 #include <QtQuick/qtquickglobal.h>
-#include <QtCore/QObject>
-#include <QtGui/QImage>
+#include <QtCore/qobject.h>
+#include <QtGui/qimage.h>
+#include <QtQuick/qsgtexture_platform.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -80,13 +45,8 @@ public:
         Anisotropy16x
     };
 
-    struct NativeTexture {
-        const void *object;
-        int layout;
-    };
-
-    virtual int textureId() const = 0; // ### Qt 6: remove
-    NativeTexture nativeTexture() const;
+    virtual qint64 comparisonKey() const = 0;
+    virtual QRhiTexture *rhiTexture() const;
     virtual QSize textureSize() const = 0;
     virtual bool hasAlphaChannel() const = 0;
     virtual bool hasMipmaps() const = 0;
@@ -95,10 +55,9 @@ public:
 
     virtual bool isAtlasTexture() const;
 
-    virtual QSGTexture *removedFromAtlas() const;
+    virtual QSGTexture *removedFromAtlas(QRhiResourceUpdateBatch *resourceUpdates = nullptr) const;
 
-    virtual void bind() = 0;
-    void updateBindOptions(bool force = false);
+    virtual void commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates);
 
     void setMipmapFiltering(Filtering filter);
     QSGTexture::Filtering mipmapFiltering() const;
@@ -117,12 +76,7 @@ public:
 
     inline QRectF convertToNormalizedSourceRect(const QRectF &rect) const;
 
-    // ### Qt 6: make these virtual
-    int comparisonKey() const;
-    void updateRhiTexture(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates);
-
-    // ### Qt 6: make this an argument for removedFromAtlas()
-    void setWorkResourceUpdateBatch(QRhiResourceUpdateBatch *resourceUpdates);
+    QT_DECLARE_NATIVE_INTERFACE_ACCESSOR(QSGTexture)
 
 protected:
     QSGTexture(QSGTexturePrivate &dd);
@@ -148,6 +102,8 @@ class Q_QUICK_EXPORT QSGDynamicTexture : public QSGTexture
 
 public:
     QSGDynamicTexture() = default;
+    ~QSGDynamicTexture() override;
+
     virtual bool updateTexture() = 0;
 
 protected:

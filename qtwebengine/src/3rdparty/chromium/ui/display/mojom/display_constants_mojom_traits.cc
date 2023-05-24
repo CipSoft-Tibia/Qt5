@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -203,6 +203,10 @@ display::mojom::PrivacyScreenState EnumTraits<
       return display::mojom::PrivacyScreenState::DISABLED;
     case display::PrivacyScreenState::kEnabled:
       return display::mojom::PrivacyScreenState::ENABLED;
+    case display::PrivacyScreenState::kDisabledLocked:
+      return display::mojom::PrivacyScreenState::DISABLED_LOCKED;
+    case display::PrivacyScreenState::kEnabledLocked:
+      return display::mojom::PrivacyScreenState::ENABLED_LOCKED;
     case display::PrivacyScreenState::kNotSupported:
       return display::mojom::PrivacyScreenState::NOT_SUPPORTED;
   }
@@ -222,8 +226,50 @@ bool EnumTraits<display::mojom::PrivacyScreenState,
     case display::mojom::PrivacyScreenState::ENABLED:
       *out = display::PrivacyScreenState::kEnabled;
       return true;
+    case display::mojom::PrivacyScreenState::DISABLED_LOCKED:
+      *out = display::PrivacyScreenState::kDisabledLocked;
+      return true;
+    case display::mojom::PrivacyScreenState::ENABLED_LOCKED:
+      *out = display::PrivacyScreenState::kEnabledLocked;
+      return true;
     case display::mojom::PrivacyScreenState::NOT_SUPPORTED:
       *out = display::PrivacyScreenState::kNotSupported;
+      return true;
+  }
+  return false;
+}
+
+// static
+display::mojom::VariableRefreshRateState
+EnumTraits<display::mojom::VariableRefreshRateState,
+           display::VariableRefreshRateState>::
+    ToMojom(display::VariableRefreshRateState state) {
+  switch (state) {
+    case display::VariableRefreshRateState::kVrrDisabled:
+      return display::mojom::VariableRefreshRateState::kVrrDisabled;
+    case display::VariableRefreshRateState::kVrrEnabled:
+      return display::mojom::VariableRefreshRateState::kVrrEnabled;
+    case display::VariableRefreshRateState::kVrrNotCapable:
+      return display::mojom::VariableRefreshRateState::kVrrNotCapable;
+  }
+  NOTREACHED();
+  return display::mojom::VariableRefreshRateState::kVrrNotCapable;
+}
+
+// static
+bool EnumTraits<display::mojom::VariableRefreshRateState,
+                display::VariableRefreshRateState>::
+    FromMojom(display::mojom::VariableRefreshRateState state,
+              display::VariableRefreshRateState* out) {
+  switch (state) {
+    case display::mojom::VariableRefreshRateState::kVrrDisabled:
+      *out = display::VariableRefreshRateState::kVrrDisabled;
+      return true;
+    case display::mojom::VariableRefreshRateState::kVrrEnabled:
+      *out = display::VariableRefreshRateState::kVrrEnabled;
+      return true;
+    case display::mojom::VariableRefreshRateState::kVrrNotCapable:
+      *out = display::VariableRefreshRateState::kVrrNotCapable;
       return true;
   }
   return false;

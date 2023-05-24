@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -61,8 +61,9 @@ DOMMatrix* CSSSkewY::toMatrix(ExceptionState&) const {
 
 const CSSFunctionValue* CSSSkewY::ToCSSValue() const {
   const CSSValue* ay = ay_->ToCSSValue();
-  if (!ay)
+  if (!ay) {
     return nullptr;
+  }
 
   CSSFunctionValue* result =
       MakeGarbageCollected<CSSFunctionValue>(CSSValueID::kSkewY);

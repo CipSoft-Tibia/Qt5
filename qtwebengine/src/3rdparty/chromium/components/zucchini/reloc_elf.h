@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,13 @@
 
 #include <vector>
 
+#include "base/memory/raw_ref.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/optional.h"
 #include "components/zucchini/address_translator.h"
 #include "components/zucchini/buffer_view.h"
 #include "components/zucchini/image_utils.h"
 #include "components/zucchini/type_elf.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace zucchini {
 
@@ -68,13 +69,14 @@ class RelocReaderElf : public ReferenceReader {
   rva_t GetRelocationTarget(elf::Elf64_Rel rel) const;
 
   // ReferenceReader:
-  base::Optional<Reference> GetNext() override;
+  absl::optional<Reference> GetNext() override;
 
  private:
   const ConstBufferView image_;
   const Bitness bitness_;
   const uint32_t rel_type_;
-  const std::vector<SectionDimensionsElf>& reloc_section_dimensions_;
+  const raw_ref<const std::vector<SectionDimensionsElf>>
+      reloc_section_dimensions_;
   std::vector<SectionDimensionsElf>::const_iterator cur_section_dimensions_;
   offset_t hi_;
   offset_t cursor_;

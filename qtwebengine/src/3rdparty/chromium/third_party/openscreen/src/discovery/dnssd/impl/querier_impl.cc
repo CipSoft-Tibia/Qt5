@@ -84,7 +84,6 @@ std::vector<DnsSdInstanceEndpoint> GetValues(
   std::vector<DnsSdInstanceEndpoint> results;
   results.reserve(endpoints.size());
   for (ErrorOr<DnsSdInstanceEndpoint>& endpoint : endpoints) {
-    OSP_CHECK(endpoint.is_value());
     results.push_back(std::move(endpoint.value()));
   }
   return results;
@@ -237,7 +236,7 @@ void QuerierImpl::StartQuery(const std::string& service, Callback* callback) {
   if (!graph_->IsTracked(domain)) {
     std::function<void(const DomainName&)> mdns_query(
         [this, &domain](const DomainName& changed_domain) {
-          OSP_DVLOG << "Starting mDNS query for '" << domain.ToString() << "'";
+          OSP_DVLOG << "Starting mDNS query for '" << domain << "'";
           mdns_querier_->StartQuery(changed_domain, DnsType::kANY,
                                     DnsClass::kANY, this);
         });
@@ -278,13 +277,11 @@ void QuerierImpl::StopQuery(const std::string& service, Callback* callback) {
   if (callbacks.empty()) {
     callback_map_.erase(callbacks_it);
 
-    ServiceKey key(service, kLocalDomain);
     DomainName domain = key.GetName();
 
     std::function<void(const DomainName&)> stop_mdns_query(
         [this](const DomainName& changed_domain) {
-          OSP_DVLOG << "Stopping mDNS query for '" << changed_domain.ToString()
-                    << "'";
+          OSP_DVLOG << "Stopping mDNS query for '" << changed_domain << "'";
           mdns_querier_->StopQuery(changed_domain, DnsType::kANY,
                                    DnsClass::kANY, this);
         });
@@ -307,12 +304,12 @@ void QuerierImpl::ReinitializeQueries(const std::string& service) {
   const DomainName domain = key.GetName();
 
   std::function<void(const DomainName&)> start_callback(
-      [this](const DomainName& domain) {
-        mdns_querier_->StartQuery(domain, DnsType::kANY, DnsClass::kANY, this);
+      [this](const DomainName& d) {
+        mdns_querier_->StartQuery(d, DnsType::kANY, DnsClass::kANY, this);
       });
   std::function<void(const DomainName&)> stop_callback(
-      [this](const DomainName& domain) {
-        mdns_querier_->StopQuery(domain, DnsType::kANY, DnsClass::kANY, this);
+      [this](const DomainName& d) {
+        mdns_querier_->StopQuery(d, DnsType::kANY, DnsClass::kANY, this);
       });
   graph_->StopTracking(domain, std::move(stop_callback));
 
@@ -327,8 +324,10 @@ std::vector<PendingQueryChange> QuerierImpl::OnRecordChanged(
     RecordChangedEvent event) {
   OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
 
-  OSP_DVLOG << "Record " << record.ToString()
-            << " has received change of type '" << event << "'";
+#ifdef _DEBUG
+  OSP_DVLOG << "Record " << record << " has received change of type '" << event
+            << "'";
+#endif
 
   std::function<void(Error)> log = [this](Error error) mutable {
     reporting_client_->OnRecoverableError(

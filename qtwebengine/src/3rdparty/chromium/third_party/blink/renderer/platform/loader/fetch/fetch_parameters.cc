@@ -37,26 +37,18 @@ namespace blink {
 // static
 FetchParameters FetchParameters::CreateForTest(
     ResourceRequest resource_request) {
-  return FetchParameters(std::move(resource_request), nullptr);
+  return FetchParameters(std::move(resource_request),
+                         ResourceLoaderOptions(/*world=*/nullptr));
 }
 
 FetchParameters::FetchParameters(ResourceRequest resource_request,
-                                 scoped_refptr<const DOMWrapperWorld> world)
+                                 ResourceLoaderOptions options)
     : resource_request_(std::move(resource_request)),
       decoder_options_(TextResourceDecoderOptions::kPlainTextContent),
-      options_(std::move(world)),
+      options_(std::move(options)),
       speculative_preload_type_(SpeculativePreloadType::kNotSpeculative),
       defer_(kNoDefer),
-      image_request_behavior_(kNone) {}
-
-FetchParameters::FetchParameters(ResourceRequest resource_request,
-                                 const ResourceLoaderOptions& options)
-    : resource_request_(std::move(resource_request)),
-      decoder_options_(TextResourceDecoderOptions::kPlainTextContent),
-      options_(options),
-      speculative_preload_type_(SpeculativePreloadType::kNotSpeculative),
-      defer_(kNoDefer),
-      image_request_behavior_(kNone) {}
+      image_request_behavior_(ImageRequestBehavior::kNone) {}
 
 FetchParameters::FetchParameters(FetchParameters&&) = default;
 
@@ -121,13 +113,18 @@ void FetchParameters::MakeSynchronous() {
 }
 
 void FetchParameters::SetLazyImageDeferred() {
-  DCHECK_EQ(kNone, image_request_behavior_);
-  image_request_behavior_ = kDeferImageLoad;
+  DCHECK_EQ(ImageRequestBehavior::kNone, image_request_behavior_);
+  image_request_behavior_ = ImageRequestBehavior::kDeferImageLoad;
 }
 
 void FetchParameters::SetLazyImageNonBlocking() {
   // TODO(domfarolino): [Before merging]: can we DCHECK here.
-  image_request_behavior_ = kNonBlockingImage;
+  image_request_behavior_ = ImageRequestBehavior::kNonBlockingImage;
+}
+
+void FetchParameters::SetModuleScript() {
+  DCHECK_EQ(mojom::blink::ScriptType::kClassic, script_type_);
+  script_type_ = mojom::blink::ScriptType::kModule;
 }
 
 }  // namespace blink

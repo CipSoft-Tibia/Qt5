@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -85,7 +85,7 @@ struct StructTraits<gpu::mojom::VkPhysicalDevicePropertiesDataView,
 
   static base::span<const uint8_t> pipelineCacheUUID(
       const VkPhysicalDeviceProperties& input) {
-    return base::make_span(input.pipelineCacheUUID);
+    return input.pipelineCacheUUID;
   }
 
   static const VkPhysicalDeviceLimits& limits(
@@ -399,7 +399,7 @@ struct StructTraits<gpu::mojom::VkPhysicalDeviceLimitsDataView,
 
   static base::span<const uint32_t> maxComputeWorkGroupCount(
       const VkPhysicalDeviceLimits& input) {
-    return base::make_span(input.maxComputeWorkGroupCount);
+    return input.maxComputeWorkGroupCount;
   }
 
   static uint32_t maxComputeWorkGroupInvocations(
@@ -409,7 +409,7 @@ struct StructTraits<gpu::mojom::VkPhysicalDeviceLimitsDataView,
 
   static base::span<const uint32_t> maxComputeWorkGroupSize(
       const VkPhysicalDeviceLimits& input) {
-    return base::make_span(input.maxComputeWorkGroupSize);
+    return input.maxComputeWorkGroupSize;
   }
 
   static uint32_t subPixelPrecisionBits(const VkPhysicalDeviceLimits& input) {
@@ -447,12 +447,12 @@ struct StructTraits<gpu::mojom::VkPhysicalDeviceLimitsDataView,
 
   static base::span<const uint32_t> maxViewportDimensions(
       const VkPhysicalDeviceLimits& input) {
-    return base::make_span(input.maxViewportDimensions);
+    return input.maxViewportDimensions;
   }
 
   static base::span<const float> viewportBoundsRange(
       const VkPhysicalDeviceLimits& input) {
-    return base::make_span(input.viewportBoundsRange);
+    return input.viewportBoundsRange;
   }
 
   static uint32_t viewportSubPixelBits(const VkPhysicalDeviceLimits& input) {
@@ -599,12 +599,12 @@ struct StructTraits<gpu::mojom::VkPhysicalDeviceLimitsDataView,
 
   static base::span<const float> pointSizeRange(
       const VkPhysicalDeviceLimits& input) {
-    return base::make_span(input.pointSizeRange);
+    return input.pointSizeRange;
   }
 
   static base::span<const float> lineWidthRange(
       const VkPhysicalDeviceLimits& input) {
-    return base::make_span(input.lineWidthRange);
+    return input.lineWidthRange;
   }
 
   static float pointSizeGranularity(const VkPhysicalDeviceLimits& input) {

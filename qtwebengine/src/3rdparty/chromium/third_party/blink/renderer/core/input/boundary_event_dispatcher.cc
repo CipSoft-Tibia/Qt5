@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,6 @@ void BuildAncestorChain(EventTarget* target,
     return;
   Node* target_node = target->ToNode();
   DCHECK(target_node);
-  target_node->UpdateDistributionForFlatTreeTraversal();
   // Index 0 element in the ancestors arrays will be the corresponding
   // target. So the root of their document will be their last element.
   for (Node* node = target_node; node; node = FlatTreeTraversal::Parent(*node))

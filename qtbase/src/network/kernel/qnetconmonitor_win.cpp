@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetconmonitor_p.h"
 
@@ -44,13 +8,15 @@
 #include <QtCore/quuid.h>
 #include <QtCore/qmetaobject.h>
 
+#include <QtCore/private/qfunctions_win_p.h>
+#include <QtCore/private/qsystemerror_p.h>
+
 #include <QtNetwork/qnetworkinterface.h>
 
 #include <objbase.h>
 #include <netlistmgr.h>
 #include <wrl/client.h>
 #include <wrl/wrappers/corewrappers.h>
-#include <comdef.h>
 #include <iphlpapi.h>
 
 #include <algorithm>
@@ -62,12 +28,6 @@ QT_BEGIN_NAMESPACE
 Q_LOGGING_CATEGORY(lcNetMon, "qt.network.monitor");
 
 namespace {
-QString errorStringFromHResult(HRESULT hr)
-{
-    _com_error error(hr);
-    return QString::fromWCharArray(error.ErrorMessage());
-}
-
 template<typename T>
 bool QueryInterfaceImpl(IUnknown *from, REFIID riid, void **ppvObject)
 {
@@ -92,7 +52,7 @@ QNetworkInterface getInterfaceFromHostAddress(const QHostAddress &local)
                                    });
             });
     if (it == interfaces.cend()) {
-        qCWarning(lcNetMon, "Could not find the interface for the local address.");
+        qCDebug(lcNetMon, "Could not find the interface for the local address.");
         return {};
     }
     return *it;
@@ -122,11 +82,11 @@ public:
     HRESULT STDMETHODCALLTYPE NetworkConnectionPropertyChanged(
             GUID connectionId, NLM_CONNECTION_PROPERTY_CHANGE flags) override;
 
-    Q_REQUIRED_RESULT
+    [[nodiscard]]
     bool setTarget(const QNetworkInterface &iface);
-    Q_REQUIRED_RESULT
+    [[nodiscard]]
     bool startMonitoring();
-    Q_REQUIRED_RESULT
+    [[nodiscard]]
     bool stopMonitoring();
 
 private:
@@ -151,15 +111,17 @@ public:
     QNetworkConnectionMonitorPrivate();
     ~QNetworkConnectionMonitorPrivate();
 
-    Q_REQUIRED_RESULT
+    [[nodiscard]]
     bool setTargets(const QHostAddress &local, const QHostAddress &remote);
-    Q_REQUIRED_RESULT
+    [[nodiscard]]
     bool startMonitoring();
     void stopMonitoring();
 
     void setConnectivity(NLM_CONNECTIVITY newConnectivity);
 
 private:
+    QComHelper comHelper;
+
     ComPtr<QNetworkConnectionEvents> connectionEvents;
     // We can assume we have access to internet/subnet when this class is created because
     // connection has already been established to the peer:
@@ -172,7 +134,6 @@ private:
     bool sameSubnet = false;
     bool isLinkLocal = false;
     bool monitoring = false;
-    bool comInitFailed = false;
     bool remoteIsIPv6 = false;
 };
 
@@ -182,8 +143,8 @@ QNetworkConnectionEvents::QNetworkConnectionEvents(QNetworkConnectionMonitorPriv
     auto hr = CoCreateInstance(CLSID_NetworkListManager, nullptr, CLSCTX_INPROC_SERVER,
                                IID_INetworkListManager, &networkListManager);
     if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Could not get a NetworkListManager instance:"
-                            << errorStringFromHResult(hr);
+        qCDebug(lcNetMon) << "Could not get a NetworkListManager instance:"
+                            << QSystemError::windowsComString(hr);
         return;
     }
 
@@ -194,8 +155,8 @@ QNetworkConnectionEvents::QNetworkConnectionEvents(QNetworkConnectionMonitorPriv
                                                            &connectionPoint);
     }
     if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to get connection point for network events:"
-                            << errorStringFromHResult(hr);
+        qCDebug(lcNetMon) << "Failed to get connection point for network events:"
+                            << QSystemError::windowsComString(hr);
     }
 }
 
@@ -206,27 +167,33 @@ QNetworkConnectionEvents::~QNetworkConnectionEvents()
 
 ComPtr<INetworkConnection> QNetworkConnectionEvents::getNetworkConnectionFromAdapterGuid(QUuid guid)
 {
+    if (!networkListManager) {
+        qCDebug(lcNetMon) << "Failed to enumerate network connections:"
+                          << "NetworkListManager was not instantiated";
+        return nullptr;
+    }
+
     ComPtr<IEnumNetworkConnections> connections;
     auto hr = networkListManager->GetNetworkConnections(connections.GetAddressOf());
     if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to enumerate network connections:"
-                            << errorStringFromHResult(hr);
+        qCDebug(lcNetMon) << "Failed to enumerate network connections:"
+                            << QSystemError::windowsComString(hr);
         return nullptr;
     }
     ComPtr<INetworkConnection> connection = nullptr;
     do {
         hr = connections->Next(1, connection.GetAddressOf(), nullptr);
         if (FAILED(hr)) {
-            qCWarning(lcNetMon) << "Failed to get next network connection in enumeration:"
-                                << errorStringFromHResult(hr);
+            qCDebug(lcNetMon) << "Failed to get next network connection in enumeration:"
+                                << QSystemError::windowsComString(hr);
             break;
         }
         if (connection) {
             GUID adapterId;
             hr = connection->GetAdapterId(&adapterId);
             if (FAILED(hr)) {
-                qCWarning(lcNetMon) << "Failed to get adapter ID from network connection:"
-                                    << errorStringFromHResult(hr);
+                qCDebug(lcNetMon) << "Failed to get adapter ID from network connection:"
+                                    << QSystemError::windowsComString(hr);
                 continue;
             }
             if (guid == adapterId)
@@ -276,22 +243,23 @@ bool QNetworkConnectionEvents::setTarget(const QNetworkInterface &iface)
 
     NET_LUID luid;
     if (ConvertInterfaceIndexToLuid(iface.index(), &luid) != NO_ERROR) {
-        qCWarning(lcNetMon, "Could not get the LUID for the interface.");
+        qCDebug(lcNetMon, "Could not get the LUID for the interface.");
         return false;
     }
     GUID guid;
     if (ConvertInterfaceLuidToGuid(&luid, &guid) != NO_ERROR) {
-        qCWarning(lcNetMon, "Could not get the GUID for the interface.");
+        qCDebug(lcNetMon, "Could not get the GUID for the interface.");
         return false;
     }
     ComPtr<INetworkConnection> connection = getNetworkConnectionFromAdapterGuid(guid);
     if (!connection) {
-        qCWarning(lcNetMon, "Could not get the INetworkConnection instance for the adapter GUID.");
+        qCDebug(lcNetMon, "Could not get the INetworkConnection instance for the adapter GUID.");
         return false;
     }
     auto hr = connection->GetConnectionId(&guid);
     if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to get the connection's GUID:" << errorStringFromHResult(hr);
+        qCDebug(lcNetMon) << "Failed to get the connection's GUID:"
+                          << QSystemError::windowsComString(hr);
         return false;
     }
     currentConnectionId = guid;
@@ -302,19 +270,19 @@ bool QNetworkConnectionEvents::setTarget(const QNetworkInterface &iface)
 bool QNetworkConnectionEvents::startMonitoring()
 {
     if (currentConnectionId.isNull()) {
-        qCWarning(lcNetMon, "Can not start monitoring, set targets first");
+        qCDebug(lcNetMon, "Can not start monitoring, set targets first");
         return false;
     }
     if (!connectionPoint) {
-        qCWarning(lcNetMon,
+        qCDebug(lcNetMon,
                   "We don't have the connection point, cannot start listening to events!");
         return false;
     }
 
     auto hr = connectionPoint->Advise(this, &cookie);
     if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to subscribe to network connectivity events:"
-                            << errorStringFromHResult(hr);
+        qCDebug(lcNetMon) << "Failed to subscribe to network connectivity events:"
+                            << QSystemError::windowsComString(hr);
         return false;
     }
     return true;
@@ -324,8 +292,8 @@ bool QNetworkConnectionEvents::stopMonitoring()
 {
     auto hr = connectionPoint->Unadvise(cookie);
     if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to unsubscribe from network connection events:"
-                            << errorStringFromHResult(hr);
+        qCDebug(lcNetMon) << "Failed to unsubscribe from network connection events:"
+                            << QSystemError::windowsComString(hr);
         return false;
     }
     cookie = 0;
@@ -335,30 +303,25 @@ bool QNetworkConnectionEvents::stopMonitoring()
 
 QNetworkConnectionMonitorPrivate::QNetworkConnectionMonitorPrivate()
 {
-    auto hr = CoInitialize(nullptr);
-    if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to initialize COM:" << errorStringFromHResult(hr);
-        comInitFailed = true;
+    if (!comHelper.isValid())
         return;
-    }
 
     connectionEvents = new QNetworkConnectionEvents(this);
 }
 
 QNetworkConnectionMonitorPrivate::~QNetworkConnectionMonitorPrivate()
 {
-    if (comInitFailed)
+    if (!comHelper.isValid())
         return;
     if (monitoring)
         stopMonitoring();
     connectionEvents.Reset();
-    CoUninitialize();
 }
 
 bool QNetworkConnectionMonitorPrivate::setTargets(const QHostAddress &local,
                                                   const QHostAddress &remote)
 {
-    if (comInitFailed)
+    if (!comHelper.isValid())
         return false;
 
     QNetworkInterface iface = getInterfaceFromHostAddress(local);
@@ -369,7 +332,7 @@ bool QNetworkConnectionMonitorPrivate::setTargets(const QHostAddress &local,
             addressEntries.cbegin(), addressEntries.cend(),
             [&local](const QNetworkAddressEntry &entry) { return entry.ip() == local; });
     if (Q_UNLIKELY(it == addressEntries.cend())) {
-        qCWarning(lcNetMon, "The address entry we were working with disappeared");
+        qCDebug(lcNetMon, "The address entry we were working with disappeared");
         return false;
     }
     sameSubnet = remote.isInSubnet(local, it->prefixLength());
@@ -423,11 +386,11 @@ QNetworkConnectionMonitor::~QNetworkConnectionMonitor() = default;
 bool QNetworkConnectionMonitor::setTargets(const QHostAddress &local, const QHostAddress &remote)
 {
     if (isMonitoring()) {
-        qCWarning(lcNetMon, "Monitor is already active, call stopMonitoring() first");
+        qCDebug(lcNetMon, "Monitor is already active, call stopMonitoring() first");
         return false;
     }
     if (local.isNull()) {
-        qCWarning(lcNetMon, "Invalid (null) local address, cannot create a reachability target");
+        qCDebug(lcNetMon, "Invalid (null) local address, cannot create a reachability target");
         return false;
     }
     // Silently return false for loopback addresses instead of printing warnings later
@@ -441,7 +404,7 @@ bool QNetworkConnectionMonitor::startMonitoring()
 {
     Q_D(QNetworkConnectionMonitor);
     if (isMonitoring()) {
-        qCWarning(lcNetMon, "Monitor is already active, call stopMonitoring() first");
+        qCDebug(lcNetMon, "Monitor is already active, call stopMonitoring() first");
         return false;
     }
     return d->startMonitoring();
@@ -456,7 +419,7 @@ void QNetworkConnectionMonitor::stopMonitoring()
 {
     Q_D(QNetworkConnectionMonitor);
     if (!isMonitoring()) {
-        qCWarning(lcNetMon, "stopMonitoring was called when not monitoring!");
+        qCDebug(lcNetMon, "stopMonitoring was called when not monitoring!");
         return;
     }
     d->stopMonitoring();
@@ -490,280 +453,9 @@ bool QNetworkConnectionMonitor::isReachable()
     return d_func()->connectivity & required;
 }
 
-class QNetworkListManagerEvents : public INetworkListManagerEvents
-{
-public:
-    QNetworkListManagerEvents(QNetworkStatusMonitorPrivate *monitor);
-    virtual ~QNetworkListManagerEvents();
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject) override;
-
-    ULONG STDMETHODCALLTYPE AddRef() override { return ++ref; }
-    ULONG STDMETHODCALLTYPE Release() override
-    {
-        if (--ref == 0) {
-            delete this;
-            return 0;
-        }
-        return ref;
-    }
-
-    HRESULT STDMETHODCALLTYPE ConnectivityChanged(NLM_CONNECTIVITY newConnectivity) override;
-
-    Q_REQUIRED_RESULT
-    bool start();
-    bool stop();
-
-private:
-    ComPtr<INetworkListManager> networkListManager = nullptr;
-    ComPtr<IConnectionPoint> connectionPoint = nullptr;
-
-    QNetworkStatusMonitorPrivate *monitor = nullptr;
-
-    QAtomicInteger<ULONG> ref = 0;
-    DWORD cookie = 0;
-};
-
-class QNetworkStatusMonitorPrivate : public QObjectPrivate
-{
-    Q_DECLARE_PUBLIC(QNetworkStatusMonitor);
-
-public:
-    QNetworkStatusMonitorPrivate();
-    ~QNetworkStatusMonitorPrivate();
-
-    Q_REQUIRED_RESULT
-    bool start();
-    void stop();
-
-    void setConnectivity(NLM_CONNECTIVITY newConnectivity);
-
-private:
-    friend class QNetworkListManagerEvents;
-
-    ComPtr<QNetworkListManagerEvents> managerEvents;
-    NLM_CONNECTIVITY connectivity = NLM_CONNECTIVITY_DISCONNECTED;
-
-    bool monitoring = false;
-    bool comInitFailed = false;
-};
-
-QNetworkListManagerEvents::QNetworkListManagerEvents(QNetworkStatusMonitorPrivate *monitor)
-    : monitor(monitor)
-{
-    auto hr = CoCreateInstance(CLSID_NetworkListManager, nullptr, CLSCTX_INPROC_SERVER,
-                               IID_INetworkListManager, &networkListManager);
-    if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Could not get a NetworkListManager instance:"
-                            << errorStringFromHResult(hr);
-        return;
-    }
-
-    // Set initial connectivity
-    hr = networkListManager->GetConnectivity(&monitor->connectivity);
-    if (FAILED(hr))
-        qCWarning(lcNetMon) << "Could not get connectivity:" << errorStringFromHResult(hr);
-
-    ComPtr<IConnectionPointContainer> connectionPointContainer;
-    hr = networkListManager.As(&connectionPointContainer);
-    if (SUCCEEDED(hr)) {
-        hr = connectionPointContainer->FindConnectionPoint(IID_INetworkListManagerEvents,
-                                                           &connectionPoint);
-    }
-    if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to get connection point for network list manager events:"
-                            << errorStringFromHResult(hr);
-    }
-}
-
-QNetworkListManagerEvents::~QNetworkListManagerEvents()
-{
-    Q_ASSERT(ref == 0);
-}
-
-HRESULT STDMETHODCALLTYPE QNetworkListManagerEvents::QueryInterface(REFIID riid, void **ppvObject)
-{
-    if (!ppvObject)
-        return E_INVALIDARG;
-
-    return QueryInterfaceImpl<IUnknown>(this, riid, ppvObject)
-                    || QueryInterfaceImpl<INetworkListManagerEvents>(this, riid, ppvObject)
-            ? S_OK
-            : E_NOINTERFACE;
-}
-
-HRESULT STDMETHODCALLTYPE
-QNetworkListManagerEvents::ConnectivityChanged(NLM_CONNECTIVITY newConnectivity)
-{
-    // This function is run on a different thread than 'monitor' is created on, so we need to run
-    // it on that thread
-    QMetaObject::invokeMethod(monitor->q_ptr,
-                              [newConnectivity, monitor = this->monitor]() {
-                                  monitor->setConnectivity(newConnectivity);
-                              },
-                              Qt::QueuedConnection);
-    return S_OK;
-}
-
-bool QNetworkListManagerEvents::start()
-{
-    if (!connectionPoint) {
-        qCWarning(lcNetMon, "Initialization failed, can't start!");
-        return false;
-    }
-    auto hr = connectionPoint->Advise(this, &cookie);
-    if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to subscribe to network connectivity events:"
-                            << errorStringFromHResult(hr);
-        return false;
-    }
-
-    // Update connectivity since it might have changed since this class was constructed
-    NLM_CONNECTIVITY connectivity;
-    hr = networkListManager->GetConnectivity(&connectivity);
-    if (FAILED(hr))
-        qCWarning(lcNetMon) << "Could not get connectivity:" << errorStringFromHResult(hr);
-    else
-        monitor->setConnectivity(connectivity);
-    return true;
-}
-
-bool QNetworkListManagerEvents::stop()
-{
-    Q_ASSERT(connectionPoint);
-    auto hr = connectionPoint->Unadvise(cookie);
-    if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to unsubscribe from network connectivity events:"
-                            << errorStringFromHResult(hr);
-        return false;
-    }
-    cookie = 0;
-    return true;
-}
-
-QNetworkStatusMonitorPrivate::QNetworkStatusMonitorPrivate()
-{
-    auto hr = CoInitialize(nullptr);
-    if (FAILED(hr)) {
-        qCWarning(lcNetMon) << "Failed to initialize COM:" << errorStringFromHResult(hr);
-        comInitFailed = true;
-        return;
-    }
-    managerEvents = new QNetworkListManagerEvents(this);
-}
-
-QNetworkStatusMonitorPrivate::~QNetworkStatusMonitorPrivate()
-{
-    if (comInitFailed)
-        return;
-    if (monitoring)
-        stop();
-}
-
-void QNetworkStatusMonitorPrivate::setConnectivity(NLM_CONNECTIVITY newConnectivity)
-{
-    Q_Q(QNetworkStatusMonitor);
-
-    const bool oldAccessibility = q->isNetworkAccessible();
-    connectivity = newConnectivity;
-    const bool accessibility = q->isNetworkAccessible();
-    if (oldAccessibility != accessibility)
-        emit q->onlineStateChanged(accessibility);
-}
-
-bool QNetworkStatusMonitorPrivate::start()
-{
-    Q_ASSERT(!monitoring);
-
-    if (comInitFailed) {
-        auto hr = CoInitialize(nullptr);
-        if (FAILED(hr)) {
-            qCWarning(lcNetMon) << "Failed to initialize COM:" << errorStringFromHResult(hr);
-            comInitFailed = true;
-            return false;
-        }
-        comInitFailed = false;
-    }
-    if (!managerEvents)
-        managerEvents = new QNetworkListManagerEvents(this);
-
-    if (managerEvents->start())
-        monitoring = true;
-    return monitoring;
-}
-
-void QNetworkStatusMonitorPrivate::stop()
-{
-    Q_ASSERT(managerEvents);
-    Q_ASSERT(monitoring);
-    // Can return false but realistically shouldn't since that would break everything:
-    managerEvents->stop();
-    monitoring = false;
-    managerEvents.Reset();
-
-    CoUninitialize();
-    comInitFailed = true; // we check this value in start() to see if we need to re-initialize
-}
-
-QNetworkStatusMonitor::QNetworkStatusMonitor(QObject *parent)
-    : QObject(*new QNetworkStatusMonitorPrivate, parent)
-{
-}
-
-QNetworkStatusMonitor::~QNetworkStatusMonitor() {}
-
-bool QNetworkStatusMonitor::start()
-{
-    if (isMonitoring()) {
-        qCWarning(lcNetMon, "Monitor is already active, call stopMonitoring() first");
-        return false;
-    }
-
-    return d_func()->start();
-}
-
-void QNetworkStatusMonitor::stop()
-{
-    if (!isMonitoring()) {
-        qCWarning(lcNetMon, "stopMonitoring was called when not monitoring!");
-        return;
-    }
-
-    d_func()->stop();
-}
-
-bool QNetworkStatusMonitor::isMonitoring() const
-{
-    return d_func()->monitoring;
-}
-
-bool QNetworkStatusMonitor::isNetworkAccessible()
-{
-    return d_func()->connectivity
-            & (NLM_CONNECTIVITY_IPV4_INTERNET | NLM_CONNECTIVITY_IPV6_INTERNET
-               | NLM_CONNECTIVITY_IPV4_SUBNET | NLM_CONNECTIVITY_IPV6_SUBNET
-               | NLM_CONNECTIVITY_IPV4_LOCALNETWORK | NLM_CONNECTIVITY_IPV6_LOCALNETWORK);
-}
-
-bool QNetworkStatusMonitor::event(QEvent *event)
-{
-    if (event->type() == QEvent::ThreadChange && isMonitoring()) {
-        stop();
-        QMetaObject::invokeMethod(this, &QNetworkStatusMonitor::start, Qt::QueuedConnection);
-    }
-
-    return QObject::event(event);
-}
-
-bool QNetworkStatusMonitor::isEnabled()
+bool QNetworkConnectionMonitor::isEnabled()
 {
     return true;
-}
-
-void QNetworkStatusMonitor::reachabilityChanged(bool online)
-{
-    Q_UNUSED(online);
-    Q_UNREACHABLE();
 }
 
 QT_END_NAMESPACE

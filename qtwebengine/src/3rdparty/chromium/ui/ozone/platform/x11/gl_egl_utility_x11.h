@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,6 +24,12 @@ class GLEGLUtilityX11 : public PlatformGLEGLUtility {
   void ChooseEGLAlphaAndBufferSize(EGLint* alpha_size,
                                    EGLint* buffer_size) override;
   bool IsTransparentBackgroundSupported() const override;
+  void CollectGpuExtraInfo(bool enable_native_gpu_memory_buffers,
+                           gfx::GpuExtraInfo& gpu_extra_info) const override;
+  bool X11DoesVisualHaveAlphaForTest() const override;
+  bool HasVisualManager() override;
+  absl::optional<base::ScopedEnvironmentVariableOverride>
+  MaybeGetScopedDisplayUnsetForVulkan() override;
 };
 
 }  // namespace ui

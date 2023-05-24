@@ -36,11 +36,13 @@
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
 #include "third_party/blink/public/common/input/web_touch_event.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/input/pointer_lock_result.mojom-blink-forward.h"
 #include "third_party/blink/public/web/web_plugin_container.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/core/frame/embedded_content_view.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/prefinalizer.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
@@ -54,7 +56,6 @@ class Event;
 class GestureEvent;
 class HTMLFrameOwnerElement;
 class HTMLPlugInElement;
-class IntRect;
 class KeyboardEvent;
 class LocalFrameView;
 class MouseEvent;
@@ -70,8 +71,7 @@ struct WebPrintPresetOptions;
 class CORE_EXPORT WebPluginContainerImpl final
     : public GarbageCollected<WebPluginContainerImpl>,
       public EmbeddedContentView,
-      public WebPluginContainer,
-      public ExecutionContextClient {
+      public WebPluginContainer {
   USING_PRE_FINALIZER(WebPluginContainerImpl, PreFinalize);
 
  public:
@@ -90,27 +90,24 @@ class CORE_EXPORT WebPluginContainerImpl final
   // |paint_offset| is used to to paint the contents at the correct location.
   // It should be issued as a transform operation before painting the contents.
   void Paint(GraphicsContext&,
-             const GlobalPaintFlags,
+             PaintFlags,
              const CullRect&,
-             const IntSize& paint_offset = IntSize()) const override;
+             const gfx::Vector2d& paint_offset) const override;
   void UpdateGeometry() override;
   void Show() override;
   void Hide() override;
 
   cc::Layer* CcLayer() const;
-  bool PreventContentsOpaqueChangesToCcLayer() const;
   v8::Local<v8::Object> ScriptableObject(v8::Isolate*);
   bool SupportsKeyboardFocus() const;
   bool SupportsInputMethod() const;
   bool CanProcessDrag() const;
   bool WantsWheelEvents() const;
   void UpdateAllLifecyclePhases();
-  void InvalidateRect(const IntRect&);
   void SetFocused(bool, mojom::blink::FocusType);
   void HandleEvent(Event&);
   bool IsErrorplaceholder();
   void EventListenersRemoved();
-  void InvalidatePaint() {}
 
   // WebPluginContainer methods
   WebElement GetElement() override;
@@ -122,39 +119,36 @@ class CORE_EXPORT WebPluginContainerImpl final
                              const WebString& url) override;
   void EnqueueMessageEvent(const WebDOMMessageEvent&) override;
   void Invalidate() override;
-  void InvalidateRect(const WebRect&) override;
   void ScheduleAnimation() override;
   void ReportGeometry() override;
   v8::Local<v8::Object> V8ObjectForElement() override;
-  WebString ExecuteScriptURL(const WebURL&, bool popups_allowed) override;
   void LoadFrameRequest(const WebURLRequest&, const WebString& target) override;
-  bool IsRectTopmost(const WebRect&) override;
+  bool IsRectTopmost(const gfx::Rect&) override;
   void RequestTouchEventType(TouchEventRequestType) override;
   void SetWantsWheelEvents(bool) override;
   gfx::Point RootFrameToLocalPoint(const gfx::Point&) override;
   gfx::Point LocalToRootFramePoint(const gfx::Point&) override;
   bool WasTargetForLastMouseEvent() override;
-
   // Non-Oilpan, this cannot be null. With Oilpan, it will be
   // null when in a disposed state, pending finalization during the next GC.
   WebPlugin* Plugin() override { return web_plugin_; }
   void SetPlugin(WebPlugin*) override;
-
   void UsePluginAsFindHandler() override;
   void ReportFindInPageMatchCount(int identifier,
                                   int total,
                                   bool final_update) override;
-  void ReportFindInPageSelection(int identifier, int index) override;
-
-  float DeviceScaleFactor() override;
+  void ReportFindInPageSelection(int identifier,
+                                 int index,
+                                 bool final_update) override;
   float PageScaleFactor() override;
   float PageZoomFactor() override;
-
-  void SetCcLayer(cc::Layer*, bool prevent_contents_opaque_changes) override;
-
+  void SetCcLayer(cc::Layer*) override;
   void RequestFullscreen() override;
   bool IsFullscreenElement() const override;
   void CancelFullscreen() override;
+  bool IsMouseLocked() override;
+  bool LockMouse(bool request_unadjusted_movement) override;
+  void UnlockMouse() override;
 
   // Printing interface. The plugin can support custom printing
   // (which means it controls the layout, number of pages etc).
@@ -191,8 +185,10 @@ class CORE_EXPORT WebPluginContainerImpl final
   // method. Here we call Dispose() which does the correct virtual dispatch.
   void PreFinalize() { Dispose(); }
   void Dispose() override;
-  void SetFrameRect(const IntRect&) override;
+  void SetFrameRect(const gfx::Rect&) override;
   void PropagateFrameRects() override { ReportGeometry(); }
+
+  void MaybeLostMouseLock();
 
  protected:
   void ParentVisibleChanged() override;
@@ -205,9 +201,9 @@ class CORE_EXPORT WebPluginContainerImpl final
   // without also clipping to the screen), in local space of the plugin.
   void ComputeClipRectsForPlugin(
       const HTMLFrameOwnerElement* plugin_owner_element,
-      IntRect& window_rect,
-      IntRect& clipped_local_rect,
-      IntRect& unclipped_int_local_rect) const;
+      gfx::Rect& window_rect,
+      gfx::Rect& clipped_local_rect,
+      gfx::Rect& unclipped_int_local_rect) const;
 
   WebTouchEvent TransformTouchEvent(const WebInputEvent&);
   WebCoalescedInputEvent TransformCoalescedTouchEvent(
@@ -221,22 +217,25 @@ class CORE_EXPORT WebPluginContainerImpl final
   void HandleTouchEvent(TouchEvent&);
   void HandleGestureEvent(GestureEvent&);
 
+  void HandleLockMouseResult(mojom::blink::PointerLockResult result);
+
   void SynthesizeMouseEventIfPossible(TouchEvent&);
 
   void FocusPlugin();
 
-  void CalculateGeometry(IntRect& window_rect,
-                         IntRect& clip_rect,
-                         IntRect& unobscured_rect);
+  void CalculateGeometry(gfx::Rect& window_rect,
+                         gfx::Rect& clip_rect,
+                         gfx::Rect& unobscured_rect);
 
   friend class WebPluginContainerTest;
+  class MouseLockLostListener;
 
   Member<HTMLPlugInElement> element_;
+  Member<MouseLockLostListener> mouse_lock_lost_listener_;
   WebPlugin* web_plugin_;
-  cc::Layer* layer_;
-  TouchEventRequestType touch_event_request_type_;
-  bool prevent_contents_opaque_changes_;
-  bool wants_wheel_events_;
+  cc::Layer* layer_ = nullptr;
+  TouchEventRequestType touch_event_request_type_ = kTouchEventRequestTypeNone;
+  bool wants_wheel_events_ = false;
 };
 
 template <>
@@ -252,4 +251,4 @@ struct DowncastTraits<WebPluginContainerImpl> {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_EXPORTED_WEB_PLUGIN_CONTAINER_IMPL_H_

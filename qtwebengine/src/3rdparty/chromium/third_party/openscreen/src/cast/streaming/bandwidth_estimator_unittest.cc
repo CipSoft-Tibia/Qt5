@@ -17,7 +17,7 @@ namespace openscreen {
 namespace cast {
 namespace {
 
-using openscreen::operator<<;  // For std::chrono::duration gtest pretty-print.
+using clock_operators::operator<<;
 
 // BandwidthEstimator configuration common to all tests.
 constexpr int kMaxPacketsPerTimeslice = 10;

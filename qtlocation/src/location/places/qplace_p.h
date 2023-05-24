@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLACE_P_H
 #define QPLACE_P_H
@@ -50,12 +17,17 @@
 
 #include <QSharedData>
 #include <QUrl>
+#include <QtPositioning/qgeoaddress.h>
+#include <QtPositioning/qgeocoordinate.h>
+#include <QtPositioning/qgeolocation.h>
+#include <QtPositioning/qgeorectangle.h>
 
 #include <QtLocation/private/qlocationglobal_p.h>
 #include <QtLocation/qplace.h>
-#include <QtPositioning/qgeoaddress.h>
-#include <QtPositioning/qgeorectangle.h>
-#include <QtPositioning/qgeocoordinate.h>
+#include <QtLocation/qplaceattribute.h>
+#include <QtLocation/qplacecategory.h>
+#include <QtLocation/qplacecontactdetail.h>
+#include <QtLocation/qplaceratings.h>
 #include <QtLocation/qplacesupplier.h>
 #include <QtLocation/QPlaceIcon>
 
@@ -117,33 +89,33 @@ public:
     QPlacePrivateDefault();
     QPlacePrivateDefault(const QPlacePrivateDefault &other);
     virtual ~QPlacePrivateDefault();
-    virtual QPlacePrivate *clone() override;
+    QPlacePrivate *clone() override;
 
-    virtual QList<QPlaceCategory> categories() const override;
-    virtual void setCategories(const QList<QPlaceCategory> &categories) override;
-    virtual QGeoLocation location() const override;
-    virtual void setLocation(const QGeoLocation &location) override;
-    virtual QPlaceRatings ratings() const override;
-    virtual void setRatings(const QPlaceRatings &ratings) override;
-    virtual QPlaceSupplier supplier() const override;
-    virtual void setSupplier(const QPlaceSupplier &supplier) override;
-    virtual QString name() const override;
-    virtual void setName(const QString &name) override;
-    virtual QString placeId() const override;
-    virtual void setPlaceId(const QString &placeIdentifier) override;
-    virtual QString attribution() const override;
-    virtual void setAttribution(const QString &attribution) override;
-    virtual QLocation::Visibility visibility() const override;
-    virtual void setVisibility(QLocation::Visibility visibility) override;
-    virtual QPlaceIcon icon() const override;
-    virtual void setIcon(const QPlaceIcon &icon) override;
-    virtual bool detailsFetched() const override;
-    virtual void setDetailsFetched(bool fetched) override;
+    QList<QPlaceCategory> categories() const override;
+    void setCategories(const QList<QPlaceCategory> &categories) override;
+    QGeoLocation location() const override;
+    void setLocation(const QGeoLocation &location) override;
+    QPlaceRatings ratings() const override;
+    void setRatings(const QPlaceRatings &ratings) override;
+    QPlaceSupplier supplier() const override;
+    void setSupplier(const QPlaceSupplier &supplier) override;
+    QString name() const override;
+    void setName(const QString &name) override;
+    QString placeId() const override;
+    void setPlaceId(const QString &placeIdentifier) override;
+    QString attribution() const override;
+    void setAttribution(const QString &attribution) override;
+    QLocation::Visibility visibility() const override;
+    void setVisibility(QLocation::Visibility visibility) override;
+    QPlaceIcon icon() const override;
+    void setIcon(const QPlaceIcon &icon) override;
+    bool detailsFetched() const override;
+    void setDetailsFetched(bool fetched) override;
 
-    virtual QMap<QString, QPlaceAttribute> extendedAttributes() const override;
-    virtual QMap<QString, QPlaceAttribute> &extendedAttributes() override;
-    virtual QMap<QString, QList<QPlaceContactDetail> > contacts() const override;
-    virtual QMap<QString, QList<QPlaceContactDetail> > &contacts() override;
+    QMap<QString, QPlaceAttribute> extendedAttributes() const override;
+    QMap<QString, QPlaceAttribute> &extendedAttributes() override;
+    QMap<QString, QList<QPlaceContactDetail> > contacts() const override;
+    QMap<QString, QList<QPlaceContactDetail> > &contacts() override;
 
 
     // data members

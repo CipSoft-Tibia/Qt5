@@ -26,15 +26,16 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_FORMS_COLOR_CHOOSER_UI_CONTROLLER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_FORMS_COLOR_CHOOSER_UI_CONTROLLER_H_
 
-#include <memory>
+#include "build/build_config.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/blink/public/mojom/choosers/color_chooser.mojom-blink.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/html/forms/color_chooser.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
 #include "third_party/blink/renderer/platform/text/platform_locale.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 
 namespace blink {
 
@@ -63,17 +64,19 @@ class CORE_EXPORT ColorChooserUIController
   void DidChooseColor(uint32_t color) final;
 
  protected:
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_MAC) || defined(TOOLKIT_QT)
   void OpenColorChooser();
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_MAC)
+  GC_PLUGIN_IGNORE("https://crbug.com/1381979")
   mojo::Remote<mojom::blink::ColorChooser> chooser_;
   Member<blink::ColorChooserClient> client_;
 
   Member<LocalFrame> frame_;
 
  private:
+  GC_PLUGIN_IGNORE("https://crbug.com/1381979")
   mojo::Remote<mojom::blink::ColorChooserFactory> color_chooser_factory_;
-  HeapMojoReceiver<mojom::blink::ColorChooserClient,
-                   ColorChooserUIController,
-                   HeapMojoWrapperMode::kWithoutContextObserver>
+  HeapMojoReceiver<mojom::blink::ColorChooserClient, ColorChooserUIController>
       receiver_;
 };
 

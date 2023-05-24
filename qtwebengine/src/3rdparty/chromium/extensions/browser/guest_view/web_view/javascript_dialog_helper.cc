@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "components/guest_view/common/guest_view_constants.h"
@@ -47,23 +47,22 @@ void JavaScriptDialogHelper::RunJavaScriptDialog(
     content::WebContents* web_contents,
     content::RenderFrameHost* render_frame_host,
     content::JavaScriptDialogType dialog_type,
-    const base::string16& message_text,
-    const base::string16& default_prompt_text,
+    const std::u16string& message_text,
+    const std::u16string& default_prompt_text,
     DialogClosedCallback callback,
     bool* did_suppress_message) {
-  base::DictionaryValue request_info;
-  request_info.SetString(webview::kDefaultPromptText,
-                         base::UTF16ToUTF8(default_prompt_text));
-  request_info.SetString(webview::kMessageText,
-                         base::UTF16ToUTF8(message_text));
-  request_info.SetString(webview::kMessageType,
-                         JavaScriptDialogTypeToString(dialog_type));
-  request_info.SetString(guest_view::kUrl,
-                         render_frame_host->GetLastCommittedURL().spec());
+  base::Value::Dict request_info;
+  request_info.Set(webview::kDefaultPromptText, default_prompt_text);
+  request_info.Set(webview::kMessageText, message_text);
+  request_info.Set(webview::kMessageType,
+                   JavaScriptDialogTypeToString(dialog_type));
+  request_info.Set(guest_view::kUrl,
+                   render_frame_host->GetLastCommittedURL().spec());
+
   WebViewPermissionHelper* web_view_permission_helper =
-      WebViewPermissionHelper::FromWebContents(web_contents);
+      web_view_guest_->web_view_permission_helper();
   web_view_permission_helper->RequestPermission(
-      WEB_VIEW_PERMISSION_TYPE_JAVASCRIPT_DIALOG, request_info,
+      WEB_VIEW_PERMISSION_TYPE_JAVASCRIPT_DIALOG, std::move(request_info),
       base::BindOnce(&JavaScriptDialogHelper::OnPermissionResponse,
                      weak_factory_.GetWeakPtr(), std::move(callback)),
       false /* allowed_by_default */);
@@ -76,13 +75,13 @@ void JavaScriptDialogHelper::RunBeforeUnloadDialog(
     DialogClosedCallback callback) {
   // This is called if the guest has a beforeunload event handler.
   // This callback allows navigation to proceed.
-  std::move(callback).Run(true, base::string16());
+  std::move(callback).Run(true, std::u16string());
 }
 
 bool JavaScriptDialogHelper::HandleJavaScriptDialog(
     content::WebContents* web_contents,
     bool accept,
-    const base::string16* prompt_override) {
+    const std::u16string* prompt_override) {
   return false;
 }
 

@@ -13,6 +13,23 @@
 #include "src/core/SkRecordDraw.h"
 #include "src/core/SkRecordedDrawable.h"
 
+#if SK_SUPPORT_GPU
+#include "include/private/chromium/Slug.h"
+#endif
+
+size_t SkRecordedDrawable::onApproximateBytesUsed() {
+    size_t drawablesSize = 0;
+    if (fDrawableList) {
+        for (auto&& drawable : *fDrawableList) {
+            drawablesSize += drawable->approximateBytesUsed();
+        }
+    }
+    return sizeof(*this) +
+           (fRecord ? fRecord->bytesUsed() : 0) +
+           (fBBH ? fBBH->bytesUsed() : 0) +
+           drawablesSize;
+}
+
 void SkRecordedDrawable::onDraw(SkCanvas* canvas) {
     SkDrawable* const* drawables = nullptr;
     int drawableCount = 0;
@@ -54,9 +71,10 @@ void SkRecordedDrawable::flatten(SkWriteBuffer& buffer) const {
     }
 
     // Record the draw commands.
+    SkDrawable* const* drawables = fDrawableList ? fDrawableList->begin() : nullptr;
+    int drawableCount            = fDrawableList ? fDrawableList->count() : 0;
     pictureRecord.beginRecording();
-    SkRecordDraw(*fRecord, &pictureRecord, nullptr, fDrawableList->begin(), fDrawableList->count(),
-                bbh, nullptr);
+    SkRecordDraw(*fRecord, &pictureRecord, nullptr, drawables, drawableCount, bbh, nullptr);
     pictureRecord.endRecording();
 
     // Flatten the recorded commands and drawables.

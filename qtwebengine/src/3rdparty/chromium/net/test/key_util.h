@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,6 +21,9 @@ namespace key_util {
 // Loads a PEM-encoded private key file from |filepath| into an EVP_PKEY object.
 // Returns the new EVP_PKEY or nullptr on error.
 bssl::UniquePtr<EVP_PKEY> LoadEVP_PKEYFromPEM(const base::FilePath& filepath);
+
+// Returns a PEM-encoded string representing |key|.
+std::string PEMFromPrivateKey(EVP_PKEY* key);
 
 // Loads a PEM-encoded private key file into a SSLPrivateKey object.
 // |filepath| is the private key file path.

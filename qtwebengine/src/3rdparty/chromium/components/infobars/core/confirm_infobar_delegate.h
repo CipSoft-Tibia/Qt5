@@ -1,17 +1,24 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_INFOBARS_CORE_CONFIRM_INFOBAR_DELEGATE_H_
 #define COMPONENTS_INFOBARS_CORE_CONFIRM_INFOBAR_DELEGATE_H_
 
-#include "base/strings/string16.h"
+#include <string>
+
+#include "build/build_config.h"
 #include "components/infobars/core/infobar_delegate.h"
 #include "components/infobars/core/infobar_manager.h"
+#include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/text_constants.h"
 
 namespace infobars {
 class InfoBar;
+}
+
+namespace ui {
+class ImageModel;
 }
 
 // An interface derived from InfoBarDelegate implemented by objects wishing to
@@ -19,9 +26,10 @@ class InfoBar;
 class ConfirmInfoBarDelegate : public infobars::InfoBarDelegate {
  public:
   enum InfoBarButton {
-    BUTTON_NONE   = 0,
-    BUTTON_OK     = 1 << 0,
+    BUTTON_NONE = 0,
+    BUTTON_OK = 1 << 0,
     BUTTON_CANCEL = 1 << 1,
+    BUTTON_EXTRA = 1 << 2,
   };
 
   ConfirmInfoBarDelegate(const ConfirmInfoBarDelegate&) = delete;
@@ -35,8 +43,12 @@ class ConfirmInfoBarDelegate : public infobars::InfoBarDelegate {
   // Returns the InfoBar type to be displayed for the InfoBar.
   InfoBarAutomationType GetInfoBarAutomationType() const override;
 
+  // Returns the title string to be displayed for the InfoBar.
+  // Defaults to having not title. Currently only used on iOS.
+  virtual std::u16string GetTitleText() const;
+
   // Returns the message string to be displayed for the InfoBar.
-  virtual base::string16 GetMessageText() const = 0;
+  virtual std::u16string GetMessageText() const = 0;
 
   // Returns the elide behavior for the message string.
   // Not supported on Android.
@@ -47,11 +59,25 @@ class ConfirmInfoBarDelegate : public infobars::InfoBarDelegate {
 
   // Returns the label for the specified button. The default implementation
   // returns "OK" for the OK button and "Cancel" for the Cancel button.
-  virtual base::string16 GetButtonLabel(InfoBarButton button) const;
+  virtual std::u16string GetButtonLabel(InfoBarButton button) const;
 
-  // Returns whether or not the OK button will trigger a UAC elevation prompt on
-  // Windows.
-  virtual bool OKButtonTriggersUACPrompt() const;
+  // Returns the label for the specified button. The default implementation
+  // returns an empty image.
+  virtual ui::ImageModel GetButtonImage(InfoBarButton button) const;
+
+  // Returns whether the specified button is enabled. The default implementation
+  // returns true.
+  virtual bool GetButtonEnabled(InfoBarButton button) const;
+
+  // Returns the tooltip for the specified button. The default implementation
+  // returns an empty tooltip.
+  virtual std::u16string GetButtonTooltip(InfoBarButton button) const;
+
+#if BUILDFLAG(IS_IOS)
+  // Returns whether or not a tint should be applied to the icon background.
+  // Defaults to true.
+  virtual bool UseIconBackgroundTint() const;
+#endif
 
   // Called when the OK button is pressed. If this function returns true, the
   // infobar is then immediately closed. Subclasses MUST NOT return true if in
@@ -62,6 +88,11 @@ class ConfirmInfoBarDelegate : public infobars::InfoBarDelegate {
   // the infobar is then immediately closed. Subclasses MUST NOT return true if
   // in handling this call something triggers the infobar to begin closing.
   virtual bool Cancel();
+
+  // Called when the Extra button is pressed. If this function returns true,
+  // the infobar is then immediately closed. Subclasses MUST NOT return true if
+  // in handling this call something triggers the infobar to begin closing.
+  virtual bool ExtraButtonPressed();
 
  protected:
   ConfirmInfoBarDelegate();

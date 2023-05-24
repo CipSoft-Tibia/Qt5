@@ -1,43 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DCore/qentity.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 
 #include <Qt3DRender/qframegraphnode.h>
 #include <Qt3DRender/private/qframegraphnode_p.h>
-#include <Qt3DRender/qframegraphnodecreatedchange.h>
-#include <Qt3DRender/private/qframegraphnodecreatedchange_p.h>
 
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class MyFrameGraphNode : public Qt3DRender::QFrameGraphNode
 {
@@ -63,112 +35,6 @@ private Q_SLOTS:
         QVERIFY(defaultFrameGraphNode->parentFrameGraphNode() == nullptr);
     }
 
-    void checkCloning_data()
-    {
-        QTest::addColumn<Qt3DRender::QFrameGraphNode *>("frameGraphNode");
-        QTest::addColumn<QVector<Qt3DCore::QNodeId>>("childFrameGraphNodeIds");
-        QTest::addColumn<bool>("enabled");
-        QTest::addColumn<int>("creationChangeCount");
-
-        QVector<Qt3DCore::QNodeId> noChildIds;
-
-        {
-            Qt3DRender::QFrameGraphNode *defaultConstructed = new MyFrameGraphNode();
-            QTest::newRow("defaultConstructed") << defaultConstructed << noChildIds << true << 1;
-        }
-
-        {
-            Qt3DRender::QFrameGraphNode *disabledFrameGraphNode = new MyFrameGraphNode();
-            disabledFrameGraphNode->setEnabled(false);
-            QTest::newRow("allBuffers") << disabledFrameGraphNode << noChildIds << false << 1;
-        }
-
-        {
-            Qt3DRender::QFrameGraphNode *nodeWithChildren = new MyFrameGraphNode();
-            Qt3DRender::QFrameGraphNode *child1 = new MyFrameGraphNode(nodeWithChildren);
-            Qt3DRender::QFrameGraphNode *child2 = new MyFrameGraphNode(nodeWithChildren);
-            QVector<Qt3DCore::QNodeId> childIds = {child1->id(), child2->id()};
-            QTest::newRow("nodeWithChildren") << nodeWithChildren << childIds << true << 3;
-        }
-
-        {
-            Qt3DRender::QFrameGraphNode *nodeWithNestedChildren = new MyFrameGraphNode();
-            Qt3DRender::QFrameGraphNode *child = new MyFrameGraphNode(nodeWithNestedChildren);
-            new Qt3DCore::QNode(nodeWithNestedChildren);
-            Qt3DRender::QFrameGraphNode *grandChild = new MyFrameGraphNode(nodeWithNestedChildren);
-            QVector<Qt3DCore::QNodeId> childIds = {child->id(), grandChild->id()};
-            QTest::newRow("nodeWithNestedChildren") << nodeWithNestedChildren << childIds << true << 4;
-        }
-    }
-
-    void checkCloning()
-    {
-        // GIVEN
-        QFETCH(Qt3DRender::QFrameGraphNode *, frameGraphNode);
-        QFETCH(QVector<Qt3DCore::QNodeId>, childFrameGraphNodeIds);
-        QFETCH(bool, enabled);
-        QFETCH(int, creationChangeCount);
-
-        // THEN
-        QCOMPARE(frameGraphNode->isEnabled(), enabled);
-
-        // WHEN
-        Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(frameGraphNode);
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = creationChangeGenerator.creationChanges();
-
-        // THEN
-        QCOMPARE(creationChanges.size(), creationChangeCount);
-        const Qt3DCore::QNodeCreatedChangeBasePtr creationChangeData = creationChanges.first();
-
-        // THEN
-        QCOMPARE(frameGraphNode->id(), creationChangeData->subjectId());
-        QCOMPARE(frameGraphNode->isEnabled(), creationChangeData->isNodeEnabled());
-        QCOMPARE(frameGraphNode->metaObject(), creationChangeData->metaObject());
-
-        // THEN
-        Qt3DRender::QFrameGraphNodeCreatedChangeBasePtr frameGraphNodeCreatedChange = qSharedPointerCast<Qt3DRender::QFrameGraphNodeCreatedChangeBase>(creationChangeData);
-        Qt3DRender::QFrameGraphNodeCreatedChangeBasePrivate *creationChangeDataPrivate = Qt3DRender::QFrameGraphNodeCreatedChangeBasePrivate::get(frameGraphNodeCreatedChange.get());
-        QCOMPARE(creationChangeDataPrivate->m_parentFrameGraphNodeId, frameGraphNode->parentNode() ? frameGraphNode->parentNode()->id() : Qt3DCore::QNodeId());
-        QCOMPARE(creationChangeDataPrivate->m_childFrameGraphNodeIds, childFrameGraphNodeIds);
-
-        delete frameGraphNode;
-    }
-
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DRender::QFrameGraphNode *parentFrameGraphNode = new MyFrameGraphNode();
-        Qt3DRender::QFrameGraphNode *childFrameGraphNode = new MyFrameGraphNode(parentFrameGraphNode);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(parentFrameGraphNode);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        {
-            // THEN
-            QCOMPARE(creationChanges.size(), 2);
-            {
-
-                const auto creationChangeData = qSharedPointerCast<Qt3DRender::QFrameGraphNodeCreatedChangeBase>(creationChanges.first());
-                QCOMPARE(parentFrameGraphNode->isEnabled(), creationChangeData->isNodeEnabled());
-                QCOMPARE(parentFrameGraphNode->metaObject(), creationChangeData->metaObject());
-                QCOMPARE(Qt3DCore::qIdForNode(parentFrameGraphNode->parentFrameGraphNode()), creationChangeData->parentFrameGraphNodeId());
-            }
-            // THEN
-            {
-                const auto creationChangeData = qSharedPointerCast<Qt3DRender::QFrameGraphNodeCreatedChangeBase>(creationChanges.last());
-                QCOMPARE(childFrameGraphNode->isEnabled(), creationChangeData->isNodeEnabled());
-                QCOMPARE(childFrameGraphNode->metaObject(), creationChangeData->metaObject());
-                QCOMPARE(Qt3DCore::qIdForNode(childFrameGraphNode->parentFrameGraphNode()), parentFrameGraphNode->id());
-                QCOMPARE(Qt3DCore::qIdForNode(childFrameGraphNode->parentFrameGraphNode()), creationChangeData->parentFrameGraphNodeId());
-            }
-        }
-    }
-
     void checkPropertyUpdates()
     {
         // GIVEN
@@ -181,30 +47,27 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), frameGraphNode.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), frameGraphNode.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         frameGraphNode->setEnabled(false);
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         frameGraphNode->setEnabled(true);
         QCoreApplication::processEvents();
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), frameGraphNode.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), frameGraphNode.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
     }
 
     void checkParentFrameNodeRetrieval()

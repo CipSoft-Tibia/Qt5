@@ -1,45 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmltabledata_p.h"
 #include "qscxmlcompiler_p.h"
 #include "qscxmlexecutablecontent_p.h"
+
+#include <QtCore/qmap.h>
 
 QT_USE_NAMESPACE
 
@@ -146,13 +112,13 @@ public:
         m_parents.reserve(32);
         m_allTransitions.resize(doc->allTransitions.size());
         m_docTransitionIndices.reserve(doc->allTransitions.size());
-        for (auto *t : qAsConst(doc->allTransitions)) {
+        for (auto *t : std::as_const(doc->allTransitions)) {
             m_docTransitionIndices.insert(t, m_docTransitionIndices.size());
         }
         m_docStatesIndices.reserve(doc->allStates.size());
         m_transitionsForState.resize(doc->allStates.size());
         m_allStates.resize(doc->allStates.size());
-        for (DocumentModel::AbstractState *s : qAsConst(doc->allStates)) {
+        for (DocumentModel::AbstractState *s : std::as_const(doc->allStates)) {
             m_docStatesIndices.insert(s, m_docStatesIndices.size());
         }
 
@@ -183,7 +149,7 @@ public:
                 + (m_allTransitions.size() * transitionSize)
                 + m_arrays.size()
                 + 1;
-        QVector<qint32> data(dataSize, -1);
+        QList<qint32> data(dataSize, -1);
         qint32 *ptr = data.data();
 
         memcpy(ptr, &m_stateTable, sizeof(m_stateTable));
@@ -260,8 +226,8 @@ protected: // visitor
             endSequence();
         }
 
-        QVector<DocumentModel::AbstractState *> childStates;
-        for (DocumentModel::StateOrTransition *sot : qAsConst(node->children)) {
+        QList<DocumentModel::AbstractState *> childStates;
+        for (DocumentModel::StateOrTransition *sot : std::as_const(node->children)) {
             if (DocumentModel::AbstractState *s = sot->asAbstractState()) {
                 childStates.append(s);
             }
@@ -317,14 +283,14 @@ protected: // visitor
         newState.entryInstructions = generate(state->onEntry);
         newState.exitInstructions = generate(state->onExit);
         if (!state->invokes.isEmpty()) {
-            QVector<int> factoryIds;
-            for (DocumentModel::Invoke *invoke : qAsConst(state->invokes)) {
+            QList<int> factoryIds;
+            for (DocumentModel::Invoke *invoke : std::as_const(state->invokes)) {
                 auto ctxt = createContext(QStringLiteral("invoke"));
-                QVector<QScxmlExecutableContent::StringId> namelist;
-                for (const QString &name : qAsConst(invoke->namelist))
+                QList<QScxmlExecutableContent::StringId> namelist;
+                for (const QString &name : std::as_const(invoke->namelist))
                     namelist += addString(name);
-                QVector<QScxmlExecutableContent::ParameterInfo> params;
-                for (DocumentModel::Param *param : qAsConst(invoke->params)) {
+                QList<QScxmlExecutableContent::ParameterInfo> params;
+                for (DocumentModel::Param *param : std::as_const(invoke->params)) {
                     QScxmlExecutableContent::ParameterInfo p;
                     p.name = addString(param->name);
                     p.expr = createEvaluatorVariant(QStringLiteral("param"), QStringLiteral("expr"),
@@ -361,8 +327,8 @@ protected: // visitor
 
         visit(state->children);
 
-        QVector<DocumentModel::AbstractState *> childStates;
-        for (DocumentModel::StateOrTransition *sot : qAsConst(state->children)) {
+        QList<DocumentModel::AbstractState *> childStates;
+        for (DocumentModel::StateOrTransition *sot : std::as_const(state->children)) {
             if (auto s = sot->asAbstractState()) {
                 childStates.append(s);
             }
@@ -419,8 +385,8 @@ protected: // visitor
 
         newTransition.targets = addStates(transition->targetStates);
 
-        QVector<int> eventIds;
-        for (const QString &event : qAsConst(transition->events))
+        QList<int> eventIds;
+        for (const QString &event : std::as_const(transition->events))
             eventIds.push_back(addString(event));
 
         newTransition.events = addArray(eventIds);
@@ -582,7 +548,7 @@ protected:
         return addString(createContextString(instrName));
     }
 
-    void generate(const QVector<DocumentModel::DataElement *> &dataElements)
+    void generate(const QList<DocumentModel::DataElement *> &dataElements)
     {
         for (DocumentModel::DataElement *el : dataElements) {
             auto ctxt = createContext(QStringLiteral("data"), QStringLiteral("expr"), el->expr);
@@ -605,7 +571,7 @@ protected:
         return id;
     }
 
-    void generate(Array<ParameterInfo> *out, const QVector<DocumentModel::Param *> &in)
+    void generate(Array<ParameterInfo> *out, const QList<DocumentModel::Param *> &in)
     {
         out->count = in.size();
         ParameterInfo *it = out->data();
@@ -742,7 +708,7 @@ protected:
         return NoEvaluator;
     }
 
-    GeneratedTableData *tableData(const QVector<int> &stateMachineTable);
+    GeneratedTableData *tableData(const QList<int> &stateMachineTable);
 
     StringId addString(const QString &str)
     { return str.isEmpty() ? NoString : m_stringTable.add(str); }
@@ -756,9 +722,9 @@ protected:
     bool isCppDataModel() const
     { return m_isCppDataModel; }
 
-    int addStates(const QVector<DocumentModel::AbstractState *> &states)
+    int addStates(const QList<DocumentModel::AbstractState *> &states)
     {
-        QVector<int> array;
+        QList<int> array;
         for (auto *s : states) {
             int si = m_docStatesIndices.value(s, -1);
             Q_ASSERT(si != -1);
@@ -768,7 +734,7 @@ protected:
         return addArray(array);
     }
 
-    int addArray(const QVector<int> &array)
+    int addArray(const QList<int> &array)
     {
         if (array.isEmpty())
             return -1;
@@ -894,7 +860,7 @@ private:
 
     class InstructionStorage {
     public:
-        InstructionStorage(QVector<qint32> &storage)
+        InstructionStorage(QList<qint32> &storage)
             : m_instr(storage)
             , m_info(nullptr)
         {}
@@ -932,36 +898,36 @@ private:
         }
 
     private:
-        QVector<qint32> &m_instr;
+        QList<qint32> &m_instr;
         SequenceInfo *m_info;
     };
 
-    QVector<SequenceInfo> m_activeSequences;
+    QList<SequenceInfo> m_activeSequences;
 
     GeneratedTableData::CreateFactoryId createFactoryId;
     GeneratedTableData &m_tableData;
     GeneratedTableData::DataModelInfo &m_dataModelInfo;
     Table<QStringList, QString, StringId> m_stringTable;
     InstructionStorage m_instructions;
-    Table<QVector<EvaluatorInfo>, EvaluatorInfo, EvaluatorId> m_evaluators;
-    Table<QVector<AssignmentInfo>, AssignmentInfo, EvaluatorId> m_assignments;
-    Table<QVector<ForeachInfo>, ForeachInfo, EvaluatorId> m_foreaches;
-    QVector<StringId> &m_dataIds;
+    Table<QList<EvaluatorInfo>, EvaluatorInfo, EvaluatorId> m_evaluators;
+    Table<QList<AssignmentInfo>, AssignmentInfo, EvaluatorId> m_assignments;
+    Table<QList<ForeachInfo>, ForeachInfo, EvaluatorId> m_foreaches;
+    QList<StringId> &m_dataIds;
     bool m_isCppDataModel = false;
 
     StateTable m_stateTable;
-    QVector<int> m_parents;
-    QVector<qint32> m_arrays;
+    QList<int> m_parents;
+    QList<qint32> m_arrays;
 
-    QVector<StateTable::Transition> m_allTransitions;
+    QList<StateTable::Transition> m_allTransitions;
     QHash<DocumentModel::Transition *, int> m_docTransitionIndices;
-    QVector<StateTable::State> m_allStates;
+    QList<StateTable::State> m_allStates;
     QHash<DocumentModel::AbstractState *, int> m_docStatesIndices;
-    QVector<QVector<int>> m_transitionsForState;
+    QList<QList<int>> m_transitionsForState;
 
     int m_currentTransition = StateTable::InvalidIndex;
     bool m_bindLate = false;
-    QVector<DocumentModel::DataElement *> m_dataElements;
+    QList<DocumentModel::DataElement *> m_dataElements;
     Table<QStringList, QString, int> m_stateNames;
 };
 

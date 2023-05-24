@@ -1,46 +1,97 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import {$} from 'chrome://resources/js/util_ts.js';
+
+import {BrowserBridge} from './browser_bridge.js';
+import {addNode} from './util.js';
+import {DivView} from './view.js';
+
+/** @type {?DnsView} */
+let instance = null;
+
 /**
  * This view displays information on the host resolver:
- *
+ *   - Has a button to lookup the host.
  *   - Has a button to clear the host cache.
  */
-const DnsView = (function() {
-  'use strict';
+export class DnsView extends DivView {
+  constructor() {
+    super(DnsView.MAIN_BOX_ID);
 
-  // We inherit from DivView.
-  const superClass = DivView;
+    this.browserBridge_ = BrowserBridge.getInstance();
+    this.dnsLookUpInput_ = $(DnsView.DNS_LOOKUP_INPUT_ID);
+    this.dnsLookUpOutputDiv_ = $(DnsView.DNS_LOOKUP_OUTPUT_ID);
 
-  /**
-   *  @constructor
-   */
-  function DnsView() {
-    assertFirstConstructorCall(DnsView);
-
-    // Call superclass's constructor.
-    superClass.call(this, DnsView.MAIN_BOX_ID);
-
-    $(DnsView.CLEAR_CACHE_BUTTON_ID).onclick =
-        g_browser.sendClearHostResolverCache.bind(g_browser);
+    $(DnsView.DNS_LOOKUP_FORM_ID)
+        .addEventListener(
+            'submit', this.onSubmitResolveHost_.bind(this), false);
+    $(DnsView.CLEAR_CACHE_BUTTON_ID).onclick = () => {
+      this.browserBridge_.sendClearHostResolverCache();
+    };
   }
 
-  DnsView.TAB_ID = 'tab-handle-dns';
-  DnsView.TAB_NAME = 'DNS';
-  DnsView.TAB_HASH = '#dns';
+  onSubmitResolveHost_(event) {
+    const hostname = this.dnsLookUpInput_.value;
+    if (hostname === '') {
+      return;
+    }
+    this.dnsLookUpOutputDiv_.innerHTML = trustedTypes.emptyHTML;
+    const span = addNode(this.dnsLookUpOutputDiv_, 'span');
 
-  // IDs for special HTML elements in dns_view.html
-  DnsView.MAIN_BOX_ID = 'dns-view-tab-content';
+    this.browserBridge_.sendResolveHost(this.dnsLookUpInput_.value)
+        .then(result => {
+          const resolvedAddresses = JSON.stringify(result.resolved_addresses);
+          const div = addNode(span, 'div');
+          div.textContent =
+              `Resolved IP addresses of "${hostname}": ${resolvedAddresses}.`;
+          div.style.fontWeight = 'bold';
+          if (result.endpoint_results_with_metadata.length > 0) {
+            result.endpoint_results_with_metadata.map(
+                (endpoint_result_with_metadata) => {
+                  const ipEndpoints = JSON.stringify(
+                      endpoint_result_with_metadata.ip_endpoints);
+                  const supportedProtocolAlpns =
+                      JSON.stringify(endpoint_result_with_metadata.metadata
+                                         .supported_protocol_alpns);
+                  const div = addNode(span, 'div');
+                  div.textContent = 'Supported protocol alpns of ' +
+                      `"${ipEndpoints}": ${supportedProtocolAlpns}.`;
+                  div.style.fontWeight = 'bold';
+                });
+          } else {
+            const div = addNode(span, 'div');
+            div.textContent = `No data on which protocols are supported.`;
+            div.style.fontWeight = 'bold';
+          }
+        })
+        .catch(error => {
+          const div = addNode(span, 'div');
+          div.textContent =
+              `An error occurred while resolving "${hostname}" (${error}).`;
+          div.style.color = 'red';
+          div.style.fontWeight = 'bold';
+        });
 
-  DnsView.CLEAR_CACHE_BUTTON_ID = 'dns-view-clear-cache';
+    this.dnsLookUpInput_.value = '';
+    event.preventDefault();
+  }
 
-  cr.addSingletonGetter(DnsView);
+  static getInstance() {
+    return instance || (instance = new DnsView());
+  }
+}
 
-  DnsView.prototype = {
-    // Inherit the superclass's methods.
-    __proto__: superClass.prototype,
-  };
+DnsView.TAB_ID = 'tab-handle-dns';
+DnsView.TAB_NAME = 'DNS';
+DnsView.TAB_HASH = '#dns';
 
-  return DnsView;
-})();
+// IDs for special HTML elements in dns_view.html
+DnsView.MAIN_BOX_ID = 'dns-view-tab-content';
+
+DnsView.DNS_LOOKUP_FORM_ID = 'dns-view-dns-lookup-form';
+DnsView.DNS_LOOKUP_INPUT_ID = 'dns-view-dns-lookup-input';
+DnsView.DNS_LOOKUP_OUTPUT_ID = 'dns-view-dns-lookup-output';
+DnsView.DNS_LOOKUP_SUBMIT_ID = 'dns-view-dns-lookup-submit';
+DnsView.CLEAR_CACHE_BUTTON_ID = 'dns-view-clear-cache';

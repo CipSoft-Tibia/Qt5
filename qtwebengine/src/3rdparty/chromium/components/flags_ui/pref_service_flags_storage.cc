@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include "base/logging.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/flags_ui/flags_ui_pref_names.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_registry_simple.h"
@@ -21,48 +22,42 @@ PrefServiceFlagsStorage::PrefServiceFlagsStorage(PrefService* prefs)
 PrefServiceFlagsStorage::~PrefServiceFlagsStorage() {}
 
 std::set<std::string> PrefServiceFlagsStorage::GetFlags() const {
-  const base::ListValue* enabled_experiments =
+  const base::Value::List& enabled_experiments =
       prefs_->GetList(prefs::kAboutFlagsEntries);
   std::set<std::string> flags;
-  for (auto it = enabled_experiments->begin(); it != enabled_experiments->end();
-       ++it) {
-    std::string experiment_name;
-    if (!it->GetAsString(&experiment_name)) {
+  for (const auto& entry : enabled_experiments) {
+    if (!entry.is_string()) {
       LOG(WARNING) << "Invalid entry in " << prefs::kAboutFlagsEntries;
       continue;
     }
-    flags.insert(experiment_name);
+    flags.insert(entry.GetString());
   }
   return flags;
 }
 
 bool PrefServiceFlagsStorage::SetFlags(const std::set<std::string>& flags) {
-  ListPrefUpdate update(prefs_, prefs::kAboutFlagsEntries);
-  base::ListValue* experiments_list = update.Get();
-
-  experiments_list->Clear();
-  for (auto it = flags.begin(); it != flags.end(); ++it) {
-    experiments_list->AppendString(*it);
-  }
+  base::Value::List experiments_list;
+  for (const auto& flag : flags)
+    experiments_list.Append(flag);
+  prefs_->SetList(prefs::kAboutFlagsEntries, std::move(experiments_list));
 
   return true;
 }
 
 std::string PrefServiceFlagsStorage::GetOriginListFlag(
     const std::string& internal_entry_name) const {
-  const base::DictionaryValue* origin_lists =
-      prefs_->GetDictionary(prefs::kAboutFlagsOriginLists);
-  if (!origin_lists)
-    return std::string();
-  const base::Value* value = origin_lists->FindKey(internal_entry_name);
-  return value ? value->GetString() : std::string();
+  const base::Value::Dict& origin_lists =
+      prefs_->GetDict(prefs::kAboutFlagsOriginLists);
+  if (const std::string* s = origin_lists.FindString(internal_entry_name))
+    return *s;
+  return std::string();
 }
 
 void PrefServiceFlagsStorage::SetOriginListFlag(
     const std::string& internal_entry_name,
     const std::string& origin_list_value) {
-  DictionaryPrefUpdate update(prefs_, prefs::kAboutFlagsOriginLists);
-  update->SetString(internal_entry_name, origin_list_value);
+  ScopedDictPrefUpdate update(prefs_, prefs::kAboutFlagsOriginLists);
+  update->SetByDottedPath(internal_entry_name, origin_list_value);
 }
 
 void PrefServiceFlagsStorage::CommitPendingWrites() {
@@ -75,13 +70,13 @@ void PrefServiceFlagsStorage::RegisterPrefs(PrefRegistrySimple* registry) {
   registry->RegisterDictionaryPref(prefs::kAboutFlagsOriginLists);
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 // static
 void PrefServiceFlagsStorage::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterListPref(prefs::kAboutFlagsEntries);
   registry->RegisterDictionaryPref(prefs::kAboutFlagsOriginLists);
 }
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 }  // namespace flags_ui

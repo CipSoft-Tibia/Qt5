@@ -37,7 +37,7 @@ class TParseContext : angle::NonCopyable
                   TExtensionBehavior &ext,
                   sh::GLenum type,
                   ShShaderSpec spec,
-                  ShCompileOptions options,
+                  const ShCompileOptions &options,
                   bool checksPrecErrors,
                   TDiagnostics *diagnostics,
                   const ShBuiltInResources &resources,
@@ -64,7 +64,7 @@ class TParseContext : angle::NonCopyable
                          const char *token);
 
     TIntermBlock *getTreeRoot() const { return mTreeRoot; }
-    void setTreeRoot(TIntermBlock *treeRoot) { mTreeRoot = treeRoot; }
+    void setTreeRoot(TIntermBlock *treeRoot);
 
     bool getFragmentPrecisionHigh() const
     {
@@ -76,6 +76,8 @@ class TParseContext : angle::NonCopyable
     }
 
     bool isEarlyFragmentTestsSpecified() const { return mEarlyFragmentTestsSpecified; }
+    bool hasDiscard() const { return mHasDiscard; }
+    bool isSampleQualifierSpecified() const { return mSampleQualifierSpecified; }
 
     void setLoopNestingLevel(int loopNestintLevel) { mLoopNestingLevel = loopNestintLevel; }
 
@@ -89,6 +91,11 @@ class TParseContext : angle::NonCopyable
     sh::WorkGroupSize getComputeShaderLocalSize() const;
 
     int getNumViews() const { return mNumViews; }
+
+    const std::map<int, TLayoutImageInternalFormat> &pixelLocalStorageBindings() const
+    {
+        return mPLSBindings;
+    }
 
     void enterFunctionDeclaration() { mDeclaringFunction = true; }
 
@@ -177,7 +184,8 @@ class TParseContext : angle::NonCopyable
     // Done only for empty declarations.
     void emptyDeclarationErrorCheck(const TType &type, const TSourceLoc &location);
 
-    void checkLayoutQualifierSupported(const TSourceLoc &location,
+    void checkCanUseLayoutQualifier(const TSourceLoc &location);
+    bool checkLayoutQualifierSupported(const TSourceLoc &location,
                                        const ImmutableString &layoutQualifierName,
                                        int versionRequired);
     bool checkWorkGroupSizeIsNotSpecified(const TSourceLoc &location,
@@ -190,6 +198,13 @@ class TParseContext : angle::NonCopyable
                                         const TPublicType &type,
                                         const TSourceLoc &qualifierLocation);
     void checkLocalVariableConstStorageQualifier(const TQualifierWrapperBase &qualifier);
+    void checkTCSOutVarIndexIsValid(TIntermBinary *binaryExpression, const TSourceLoc &location);
+
+    void checkAdvancedBlendEquationsNotSpecified(
+        const TSourceLoc &location,
+        const AdvancedBlendEquations &advancedBlendEquations,
+        const TQualifier &qualifier);
+
     const TPragma &pragma() const { return mDirectiveHandler.pragma(); }
     const TExtensionBehavior &extensionBehavior() const
     {
@@ -202,6 +217,12 @@ class TParseContext : angle::NonCopyable
                                const char *name,
                                const char *value,
                                bool stdgl);
+
+    // For built-ins that can be redeclared, adjusts the type qualifier so transformations can
+    // identify them correctly.
+    void adjustRedeclaredBuiltInType(const TSourceLoc &line,
+                                     const ImmutableString &identifier,
+                                     TType *type);
 
     // Returns true on success. *initNode may still be nullptr on success in case the initialization
     // is not needed in the AST.
@@ -333,10 +354,10 @@ class TParseContext : angle::NonCopyable
                                             const TSourceLoc &loc,
                                             const TVector<unsigned int> *arraySizes);
 
-    void checkDoesNotHaveDuplicateFieldName(const TFieldList::const_iterator begin,
-                                            const TFieldList::const_iterator end,
-                                            const ImmutableString &name,
-                                            const TSourceLoc &location);
+    void checkDoesNotHaveDuplicateFieldNames(const TFieldList *fields, const TSourceLoc &location);
+    void checkDoesNotHaveTooManyFields(const ImmutableString &name,
+                                       const TFieldList *fields,
+                                       const TSourceLoc &location);
     TFieldList *addStructFieldList(TFieldList *fields, const TSourceLoc &location);
     TFieldList *combineStructFieldLists(TFieldList *processedFields,
                                         const TFieldList *newlyAddedFields,
@@ -358,8 +379,8 @@ class TParseContext : angle::NonCopyable
                                           TFieldList *fieldList,
                                           const ImmutableString &instanceName,
                                           const TSourceLoc &instanceLine,
-                                          TIntermTyped *arrayIndex,
-                                          const TSourceLoc &arrayIndexLine);
+                                          const TVector<unsigned int> *arraySizes,
+                                          const TSourceLoc &arraySizesLine);
 
     void parseLocalSize(const ImmutableString &qualifierType,
                         const TSourceLoc &qualifierTypeLine,
@@ -380,6 +401,10 @@ class TParseContext : angle::NonCopyable
                           const TSourceLoc &intValueLine,
                           const std::string &intValueString,
                           int *numMaxVertices);
+    void parseVertices(int intValue,
+                       const TSourceLoc &intValueLine,
+                       const std::string &intValueString,
+                       int *numVertices);
     void parseIndexLayoutQualifier(int intValue,
                                    const TSourceLoc &intValueLine,
                                    const std::string &intValueString,
@@ -441,6 +466,7 @@ class TParseContext : angle::NonCopyable
     void checkImageMemoryAccessForUserDefinedFunctions(const TFunction *functionDefinition,
                                                        const TIntermAggregate *functionCall);
     void checkAtomicMemoryBuiltinFunctions(TIntermAggregate *functionCall);
+    void checkInterpolationFS(TIntermAggregate *functionCall);
 
     // fnCall is only storing the built-in op, and function name or constructor type. arguments
     // has the arguments.
@@ -464,6 +490,32 @@ class TParseContext : angle::NonCopyable
     {
         return mGeometryShaderOutputPrimitiveType;
     }
+    int getTessControlShaderOutputVertices() const { return mTessControlShaderOutputVertices; }
+    TLayoutTessEvaluationType getTessEvaluationShaderInputPrimitiveType() const
+    {
+        return mTessEvaluationShaderInputPrimitiveType;
+    }
+    TLayoutTessEvaluationType getTessEvaluationShaderInputVertexSpacingType() const
+    {
+        return mTessEvaluationShaderInputVertexSpacingType;
+    }
+    TLayoutTessEvaluationType getTessEvaluationShaderInputOrderingType() const
+    {
+        return mTessEvaluationShaderInputOrderingType;
+    }
+    TLayoutTessEvaluationType getTessEvaluationShaderInputPointType() const
+    {
+        return mTessEvaluationShaderInputPointType;
+    }
+
+    const TVector<TType *> &getDeferredArrayTypesToSize() const
+    {
+        return mDeferredArrayTypesToSize;
+    }
+
+    void markShaderHasPrecise() { mHasAnyPreciseType = true; }
+    bool hasAnyPreciseType() const { return mHasAnyPreciseType; }
+    AdvancedBlendEquations getAdvancedBlendEquations() const { return mAdvancedBlendEquations; }
 
     ShShaderOutput getOutputType() const { return mOutputType; }
 
@@ -541,6 +593,7 @@ class TParseContext : angle::NonCopyable
                                   int binding,
                                   int arraySize);
     void checkAtomicCounterBindingIsValid(const TSourceLoc &location, int binding);
+    void checkPixelLocalStorageBindingIsValid(const TSourceLoc &, const TType &);
 
     void checkUniformLocationInRange(const TSourceLoc &location,
                                      int objectLocationCount,
@@ -553,9 +606,14 @@ class TParseContext : angle::NonCopyable
 
     void checkEarlyFragmentTestsIsNotSpecified(const TSourceLoc &location, bool earlyFragmentTests);
 
+    void checkNoncoherentIsSpecified(const TSourceLoc &location, bool noncoherent);
+
+    void checkNoncoherentIsNotSpecified(const TSourceLoc &location, bool noncoherent);
+
     bool checkUnsizedArrayConstructorArgumentDimensionality(const TIntermSequence &arguments,
                                                             TType type,
                                                             const TSourceLoc &line);
+
     // Check texture offset is within range.
     void checkSingleTextureOffset(const TSourceLoc &line,
                                   const TConstantUnion *values,
@@ -567,6 +625,11 @@ class TParseContext : angle::NonCopyable
     void checkGeometryShaderInputAndSetArraySize(const TSourceLoc &location,
                                                  const ImmutableString &token,
                                                  TType *type);
+
+    // Similar, for tessellation shaders.
+    void checkTessellationShaderUnsizedArraysAndSetSize(const TSourceLoc &location,
+                                                        const ImmutableString &token,
+                                                        TType *type);
 
     // Will size any unsized array type so unsized arrays won't need to be taken into account
     // further along the line in parsing.
@@ -610,13 +673,50 @@ class TParseContext : angle::NonCopyable
     bool parseGeometryShaderOutputLayoutQualifier(const TTypeQualifier &typeQualifier);
     void setGeometryShaderInputArraySize(unsigned int inputArraySize, const TSourceLoc &line);
 
+    bool parseTessControlShaderOutputLayoutQualifier(const TTypeQualifier &typeQualifier);
+    bool parseTessEvaluationShaderInputLayoutQualifier(const TTypeQualifier &typeQualifier);
+
+    // Certain operations become illegal only iff the shader declares pixel local storage uniforms.
+    enum class PLSIllegalOperations
+    {
+        // When polyfilled with shader images, pixel local storage requires early_fragment_tests,
+        // which causes discard to interact differently with the depth and stencil tests.
+        //
+        // To ensure identical behavior across all backends (some of which may not have access to
+        // early_fragment_tests), we disallow discard if pixel local storage uniforms have been
+        // declared.
+        Discard,
+
+        // ARB_fragment_shader_interlock functions cannot be called within flow control, which
+        // includes any code that might execute after a return statement. To keep things simple, and
+        // since these "interlock" calls are automatically injected by the compiler inside of
+        // main(), we disallow return from main() if pixel local storage uniforms have been
+        // declared.
+        ReturnFromMain,
+
+        // When polyfilled with shader images, pixel local storage requires early_fragment_tests,
+        // which causes assignments to gl_FragDepth(EXT) and gl_SampleMask to be ignored.
+        //
+        // To ensure identical behavior across all backends, we disallow assignment to these values
+        // if pixel local storage uniforms have been declared.
+        AssignFragDepth,
+        AssignSampleMask
+    };
+
+    // Generates an error if any pixel local storage uniforms have been declared (more specifically,
+    // if mPLSBindings is not empty).
+    //
+    // If no pixel local storage uniforms have been declared, and if the PLS extension is enabled,
+    // saves the potential error to mPLSPotentialErrors in case we encounter a PLS uniform later.
+    void errorIfPLSDeclared(const TSourceLoc &, PLSIllegalOperations);
+
     // Set to true when the last/current declarator list was started with an empty declaration. The
     // non-empty declaration error check will need to be performed if the empty declaration is
     // followed by a declarator.
     bool mDeferredNonEmptyDeclarationErrorCheck;
 
-    sh::GLenum mShaderType;    // vertex or fragment language (future: pack or unpack)
-    ShShaderSpec mShaderSpec;  // The language specification compiler conforms to - GLES2 or WebGL.
+    sh::GLenum mShaderType;    // vertex/fragment/geometry/etc shader
+    ShShaderSpec mShaderSpec;  // The language specification compiler conforms to - GLES/WebGL/etc.
     ShCompileOptions mCompileOptions;  // Options passed to TCompiler
     int mShaderVersion;
     TIntermBlock *mTreeRoot;  // root of parse tree being created
@@ -631,6 +731,14 @@ class TParseContext : angle::NonCopyable
     bool mFragmentPrecisionHighOnESSL1;  // true if highp precision is supported when compiling
                                          // ESSL1.
     bool mEarlyFragmentTestsSpecified;   // true if layout(early_fragment_tests) in; is specified.
+    bool mHasDiscard;                    // true if |discard| is encountered in the shader.
+    bool mSampleQualifierSpecified;      // true if the |sample| qualifier is used
+    bool mPositionRedeclaredForSeparateShaderObject;       // true if EXT_separate_shader_objects is
+                                                           // enabled and gl_Position is redefined.
+    bool mPointSizeRedeclaredForSeparateShaderObject;      // true if EXT_separate_shader_objects is
+                                                           // enabled and gl_PointSize is redefined.
+    bool mPositionOrPointSizeUsedForSeparateShaderObject;  // true if gl_Position or gl_PointSize
+                                                           // has been referenced.
     TLayoutMatrixPacking mDefaultUniformMatrixPacking;
     TLayoutBlockStorage mDefaultUniformBlockStorage;
     TLayoutMatrixPacking mDefaultBufferMatrixPacking;
@@ -663,8 +771,17 @@ class TParseContext : angle::NonCopyable
     // keeps track whether we are declaring / defining a function
     bool mDeclaringFunction;
 
+    // keeps track whether we are declaring / defining the function main().
+    bool mDeclaringMain;
+
     // Track the state of each atomic counter binding.
     std::map<int, AtomicCounterBindingState> mAtomicCounterBindingStates;
+
+    // Track the format of each pixel local storage binding.
+    std::map<int, TLayoutImageInternalFormat> mPLSBindings;
+
+    // Potential errors to generate immediately upon encountering a pixel local storage uniform.
+    std::vector<std::tuple<const TSourceLoc, PLSIllegalOperations>> mPLSPotentialErrors;
 
     // Track the geometry shader global parameters declared in layout.
     TLayoutPrimitiveType mGeometryShaderInputPrimitiveType;
@@ -673,6 +790,21 @@ class TParseContext : angle::NonCopyable
     int mGeometryShaderMaxVertices;
     int mMaxGeometryShaderInvocations;
     int mMaxGeometryShaderMaxVertices;
+    unsigned int mGeometryInputArraySize;
+
+    int mMaxPatchVertices;
+    int mTessControlShaderOutputVertices;
+    TLayoutTessEvaluationType mTessEvaluationShaderInputPrimitiveType;
+    TLayoutTessEvaluationType mTessEvaluationShaderInputVertexSpacingType;
+    TLayoutTessEvaluationType mTessEvaluationShaderInputOrderingType;
+    TLayoutTessEvaluationType mTessEvaluationShaderInputPointType;
+    // List of array declarations without an explicit size that have come before layout(vertices=N).
+    // Once the vertex count is specified, these arrays are sized.
+    TVector<TType *> mDeferredArrayTypesToSize;
+    // Whether the |precise| keyword has been seen in the shader.
+    bool mHasAnyPreciseType;
+
+    AdvancedBlendEquations mAdvancedBlendEquations;
 
     // Track when we add new scope for func body in ESSL 1.00 spec
     bool mFunctionBodyNewScope;

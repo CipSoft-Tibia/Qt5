@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkreplyfileimpl_p.h"
 
@@ -48,6 +12,10 @@
 #include "qnetworkrequest.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkRequest::KnownHeaders, QNetworkRequest__KnownHeaders)
 
 QNetworkReplyFileImplPrivate::QNetworkReplyFileImplPrivate()
     : QNetworkReplyPrivate(), managerPrivate(nullptr), realFile(nullptr)
@@ -80,7 +48,7 @@ QNetworkReplyFileImpl::QNetworkReplyFileImpl(QNetworkAccessManager *manager, con
     d->managerPrivate = manager->d_func();
 
     QUrl url = req.url();
-    if (url.host() == QLatin1String("localhost"))
+    if (url.host() == "localhost"_L1)
         url.setHost(QString());
 
 #if !defined(Q_OS_WIN)
@@ -97,18 +65,18 @@ QNetworkReplyFileImpl::QNetworkReplyFileImpl(QNetworkAccessManager *manager, con
     }
 #endif
     if (url.path().isEmpty())
-        url.setPath(QLatin1String("/"));
+        url.setPath("/"_L1);
     setUrl(url);
 
     QString fileName = url.toLocalFile();
     if (fileName.isEmpty()) {
         const QString scheme = url.scheme();
-        if (scheme == QLatin1String("qrc")) {
-            fileName = QLatin1Char(':') + url.path();
+        if (scheme == "qrc"_L1) {
+            fileName = u':' + url.path();
         } else {
 #if defined(Q_OS_ANDROID)
-            if (scheme == QLatin1String("assets"))
-                fileName = QLatin1String("assets:") + url.path();
+            if (scheme == "assets"_L1)
+                fileName = "assets:"_L1 + url.path();
             else
 #endif
                 fileName = url.toString(QUrl::RemoveAuthority | QUrl::RemoveFragment | QUrl::RemoveQuery);
@@ -223,7 +191,7 @@ qint64 QNetworkReplyFileImpl::readData(char *data, qint64 maxlen)
         return -1;
     else {
         setAttribute(QNetworkRequest::HttpStatusCodeAttribute, 200);
-        setAttribute(QNetworkRequest::HttpReasonPhraseAttribute, QLatin1String("OK"));
+        setAttribute(QNetworkRequest::HttpReasonPhraseAttribute, "OK"_L1);
         return ret;
     }
 }

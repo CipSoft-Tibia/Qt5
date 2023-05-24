@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,17 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/gmock_callback_support.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/time/time.h"
 #include "media/base/video_frame.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom-blink.h"
 #include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
 #include "third_party/blink/public/web/modules/mediastream/media_stream_video_source.h"
@@ -23,9 +26,11 @@
 #include "third_party/blink/renderer/modules/mediastream/mock_media_stream_video_sink.h"
 #include "third_party/blink/renderer/modules/peerconnection/adapters/web_rtc_cross_thread_copier.h"
 #include "third_party/blink/renderer/modules/peerconnection/mock_peer_connection_dependency_factory.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_source.h"
 #include "third_party/blink/renderer/platform/testing/io_task_runner_testing_platform_support.h"
 #include "third_party/blink/renderer/platform/webrtc/track_observer.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/webrtc/api/rtp_packet_infos.h"
 #include "third_party/webrtc/api/video/color_space.h"
@@ -36,14 +41,6 @@
 namespace blink {
 
 namespace {
-// On Linux the clock in WebRTC and Chromium are more or less the same.
-// On Windows they are not the same and the accuracy of the measured time
-// difference is typically in the range [-1, 1] ms. However, for certain builds
-// such as ASAN it can be in the order of 10-20 ms. Since this is compensated
-// for both here and in MediaStreamRemoteVideoSource::RemoteVideoSourceDelegate
-// we need to use the worst case difference between these two measurements.
-float kChromiumWebRtcMaxTimeDiffMs = 40.0f;
-
 using base::test::RunOnceClosure;
 using ::testing::_;
 using ::testing::Gt;
@@ -54,7 +51,7 @@ using ::testing::Sequence;
 webrtc::VideoFrame::Builder CreateBlackFrameBuilder() {
   rtc::scoped_refptr<webrtc::I420Buffer> buffer =
       webrtc::I420Buffer::Create(8, 8);
-  webrtc::I420Buffer::SetBlack(buffer);
+  webrtc::I420Buffer::SetBlack(buffer.get());
   return webrtc::VideoFrame::Builder().set_video_frame_buffer(buffer);
 }
 
@@ -63,7 +60,9 @@ class MediaStreamRemoteVideoSourceUnderTest
  public:
   explicit MediaStreamRemoteVideoSourceUnderTest(
       std::unique_ptr<blink::TrackObserver> observer)
-      : MediaStreamRemoteVideoSource(std::move(observer)) {}
+      : MediaStreamRemoteVideoSource(
+            scheduler::GetSingleThreadTaskRunnerForTesting(),
+            std::move(observer)) {}
   using MediaStreamRemoteVideoSource::EncodedSinkInterfaceForTesting;
   using MediaStreamRemoteVideoSource::SinkInterfaceForTesting;
   using MediaStreamRemoteVideoSource::StartSourceImpl;
@@ -72,13 +71,13 @@ class MediaStreamRemoteVideoSourceUnderTest
 class MediaStreamRemoteVideoSourceTest : public ::testing::Test {
  public:
   MediaStreamRemoteVideoSourceTest()
-      : mock_factory_(new blink::MockPeerConnectionDependencyFactory()),
+      : mock_factory_(
+            MakeGarbageCollected<MockPeerConnectionDependencyFactory>()),
         webrtc_video_source_(blink::MockWebRtcVideoTrackSource::Create(
             /*supports_encoded_output=*/true)),
         webrtc_video_track_(
-            blink::MockWebRtcVideoTrack::Create("test", webrtc_video_source_)),
-        time_diff_(base::TimeTicks::Now() - base::TimeTicks() -
-                   base::TimeDelta::FromMicroseconds(rtc::TimeMicros())) {}
+            blink::MockWebRtcVideoTrack::Create("test", webrtc_video_source_)) {
+  }
 
   void SetUp() override {
     scoped_refptr<base::SingleThreadTaskRunner> main_thread =
@@ -96,8 +95,8 @@ class MediaStreamRemoteVideoSourceTest : public ::testing::Test {
                webrtc::MediaStreamTrackInterface* webrtc_track,
                std::unique_ptr<blink::TrackObserver>* track_observer,
                base::WaitableEvent* waitable_event) {
-              track_observer->reset(
-                  new blink::TrackObserver(main_thread, webrtc_track));
+              *track_observer = std::make_unique<blink::TrackObserver>(
+                  main_thread, webrtc_track);
               waitable_event->Signal();
             },
             main_thread, CrossThreadUnretained(webrtc_video_track_.get()),
@@ -105,12 +104,13 @@ class MediaStreamRemoteVideoSourceTest : public ::testing::Test {
             CrossThreadUnretained(&waitable_event))));
     waitable_event.Wait();
 
-    remote_source_ =
-        new MediaStreamRemoteVideoSourceUnderTest(std::move(track_observer));
+    auto remote_source =
+        std::make_unique<MediaStreamRemoteVideoSourceUnderTest>(
+            std::move(track_observer));
+    remote_source_ = remote_source.get();
     source_ = MakeGarbageCollected<MediaStreamSource>(
         "dummy_source_id", MediaStreamSource::kTypeVideo, "dummy_source_name",
-        true /* remote */);
-    source_->SetPlatformSource(base::WrapUnique(remote_source_));
+        true /* remote */, std::move(remote_source));
   }
 
   void TearDown() override {
@@ -173,7 +173,7 @@ class MediaStreamRemoteVideoSourceTest : public ::testing::Test {
   }
 
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform_;
-  std::unique_ptr<blink::MockPeerConnectionDependencyFactory> mock_factory_;
+  Persistent<blink::MockPeerConnectionDependencyFactory> mock_factory_;
   scoped_refptr<webrtc::VideoTrackSourceInterface> webrtc_video_source_;
   scoped_refptr<webrtc::VideoTrackInterface> webrtc_video_track_;
   // |remote_source_| is owned by |source_|.
@@ -190,7 +190,9 @@ TEST_F(MediaStreamRemoteVideoSourceTest, StartTrack) {
   EXPECT_EQ(1, NumberOfSuccessConstraintsCallbacks());
 
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
   base::RunLoop run_loop;
   base::RepeatingClosure quit_closure = run_loop.QuitClosure();
   EXPECT_CALL(sink, OnVideoFrame)
@@ -198,12 +200,11 @@ TEST_F(MediaStreamRemoteVideoSourceTest, StartTrack) {
   rtc::scoped_refptr<webrtc::I420Buffer> buffer(
       new rtc::RefCountedObject<webrtc::I420Buffer>(320, 240));
 
-  webrtc::I420Buffer::SetBlack(buffer);
+  webrtc::I420Buffer::SetBlack(buffer.get());
 
   source()->SinkInterfaceForTesting()->OnFrame(
       webrtc::VideoFrame::Builder()
           .set_video_frame_buffer(buffer)
-          .set_rotation(webrtc::kVideoRotation_0)
           .set_timestamp_us(1000)
           .build());
   run_loop.Run();
@@ -240,7 +241,9 @@ TEST_F(MediaStreamRemoteVideoSourceTest, SurvivesSourceTermination) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
 
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
   EXPECT_EQ(blink::WebMediaStreamSource::kReadyStateLive, sink.state());
   EXPECT_EQ(MediaStreamSource::kReadyStateLive, Source()->GetReadyState());
   StopWebRtcTrack();
@@ -254,7 +257,9 @@ TEST_F(MediaStreamRemoteVideoSourceTest, SurvivesSourceTermination) {
 TEST_F(MediaStreamRemoteVideoSourceTest, PreservesColorSpace) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
 
   base::RunLoop run_loop;
   EXPECT_CALL(sink, OnVideoFrame)
@@ -265,13 +270,10 @@ TEST_F(MediaStreamRemoteVideoSourceTest, PreservesColorSpace) {
                                  webrtc::ColorSpace::TransferID::kSMPTE240M,
                                  webrtc::ColorSpace::MatrixID::kSMPTE240M,
                                  webrtc::ColorSpace::RangeID::kLimited);
-  const webrtc::VideoFrame& input_frame =
-      webrtc::VideoFrame::Builder()
-          .set_video_frame_buffer(buffer)
-          .set_timestamp_ms(0)
-          .set_rotation(webrtc::kVideoRotation_0)
-          .set_color_space(kColorSpace)
-          .build();
+  const webrtc::VideoFrame& input_frame = webrtc::VideoFrame::Builder()
+                                              .set_video_frame_buffer(buffer)
+                                              .set_color_space(kColorSpace)
+                                              .build();
   source()->SinkInterfaceForTesting()->OnFrame(input_frame);
   run_loop.Run();
 
@@ -286,24 +288,85 @@ TEST_F(MediaStreamRemoteVideoSourceTest, PreservesColorSpace) {
   track->RemoveSink(&sink);
 }
 
-// These tests depend on measuring the difference between the internal WebRTC
-// clock and Chromium's clock. Due to this they are performance sensitive and
-// appear to be flaky for builds with ASAN enabled.
-#if defined(ADDRESS_SANITIZER)
-#define MAYBE_PopulateRequestAnimationFrameMetadata \
-  DISABLED_PopulateRequestAnimationFrameMetadata
-#define MAYBE_ReferenceTimeEqualsTimestampUs \
-  DISABLED_ReferenceTimeEqualsTimestampUs
-#else
-#define MAYBE_PopulateRequestAnimationFrameMetadata \
-  PopulateRequestAnimationFrameMetadata
-#define MAYBE_ReferenceTimeEqualsTimestampUs ReferenceTimeEqualsTimestampUs
-#endif
 TEST_F(MediaStreamRemoteVideoSourceTest,
-       MAYBE_PopulateRequestAnimationFrameMetadata) {
+       UnspecifiedColorSpaceIsTreatedAsBt709) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(sink, OnVideoFrame)
+      .WillOnce(RunOnceClosure(run_loop.QuitClosure()));
+  rtc::scoped_refptr<webrtc::I420Buffer> buffer(
+      new rtc::RefCountedObject<webrtc::I420Buffer>(320, 240));
+  webrtc::ColorSpace kColorSpace(webrtc::ColorSpace::PrimaryID::kUnspecified,
+                                 webrtc::ColorSpace::TransferID::kUnspecified,
+                                 webrtc::ColorSpace::MatrixID::kUnspecified,
+                                 webrtc::ColorSpace::RangeID::kLimited);
+  const webrtc::VideoFrame& input_frame = webrtc::VideoFrame::Builder()
+                                              .set_video_frame_buffer(buffer)
+                                              .set_color_space(kColorSpace)
+                                              .build();
+  source()->SinkInterfaceForTesting()->OnFrame(input_frame);
+  run_loop.Run();
+
+  EXPECT_EQ(1, sink.number_of_frames());
+  scoped_refptr<media::VideoFrame> output_frame = sink.last_frame();
+  EXPECT_TRUE(output_frame);
+  EXPECT_TRUE(output_frame->ColorSpace() ==
+              gfx::ColorSpace(gfx::ColorSpace::PrimaryID::BT709,
+                              gfx::ColorSpace::TransferID::BT709,
+                              gfx::ColorSpace::MatrixID::BT709,
+                              gfx::ColorSpace::RangeID::LIMITED));
+  track->RemoveSink(&sink);
+}
+
+TEST_F(MediaStreamRemoteVideoSourceTest, UnspecifiedColorSpaceIsIgnored) {
+  base::test::ScopedFeatureList scoped_feauture_list;
+  scoped_feauture_list.InitAndEnableFeature(
+      blink::features::kWebRtcIgnoreUnspecifiedColorSpace);
+  std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
+  blink::MockMediaStreamVideoSink sink;
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(sink, OnVideoFrame)
+      .WillOnce(RunOnceClosure(run_loop.QuitClosure()));
+  rtc::scoped_refptr<webrtc::I420Buffer> buffer(
+      new rtc::RefCountedObject<webrtc::I420Buffer>(320, 240));
+  webrtc::ColorSpace kColorSpace(webrtc::ColorSpace::PrimaryID::kUnspecified,
+                                 webrtc::ColorSpace::TransferID::kUnspecified,
+                                 webrtc::ColorSpace::MatrixID::kUnspecified,
+                                 webrtc::ColorSpace::RangeID::kLimited);
+  const webrtc::VideoFrame& input_frame = webrtc::VideoFrame::Builder()
+                                              .set_video_frame_buffer(buffer)
+                                              .set_color_space(kColorSpace)
+                                              .build();
+  source()->SinkInterfaceForTesting()->OnFrame(input_frame);
+  run_loop.Run();
+
+  EXPECT_EQ(1, sink.number_of_frames());
+  scoped_refptr<media::VideoFrame> output_frame = sink.last_frame();
+  EXPECT_TRUE(output_frame);
+  EXPECT_TRUE(output_frame->ColorSpace() ==
+              gfx::ColorSpace(gfx::ColorSpace::PrimaryID::INVALID,
+                              gfx::ColorSpace::TransferID::INVALID,
+                              gfx::ColorSpace::MatrixID::INVALID,
+                              gfx::ColorSpace::RangeID::INVALID));
+  track->RemoveSink(&sink);
+}
+
+TEST_F(MediaStreamRemoteVideoSourceTest,
+       PopulateRequestAnimationFrameMetadata) {
+  std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
+  blink::MockMediaStreamVideoSink sink;
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
 
   base::RunLoop run_loop;
   EXPECT_CALL(sink, OnVideoFrame)
@@ -327,22 +390,20 @@ TEST_F(MediaStreamRemoteVideoSourceTest,
       clock->CurrentNtpInMilliseconds() - clock->TimeInMilliseconds();
   const webrtc::Timestamp kCaptureTimeNtp =
       kCaptureTime + webrtc::TimeDelta::Millis(ntp_offset);
-  // Expected capture time in Chromium epoch.
+  // Expected capture time.
   base::TimeTicks kExpectedCaptureTime =
-      base::TimeTicks() + base::TimeDelta::FromMilliseconds(kCaptureTime.ms()) +
-      time_diff();
+      base::TimeTicks() + base::Milliseconds(kCaptureTime.ms());
 
   webrtc::RtpPacketInfos::vector_type packet_infos;
   for (int i = 0; i < 4; ++i) {
-    packet_infos.emplace_back(kSsrc, kCsrcs, kRtpTimestamp, absl::nullopt,
-                              absl::nullopt, kProcessingStart.ms() - 100 + i);
+    webrtc::Timestamp receive_time =
+        kProcessingStart - webrtc::TimeDelta::Micros(10000 - i * 30);
+    packet_infos.emplace_back(kSsrc, kCsrcs, kRtpTimestamp, receive_time);
   }
-  // Expected receive time should be the same as the last arrival time, in
-  // Chromium epoch.
+  // Expected receive time should be the same as the last arrival time.
   base::TimeTicks kExpectedReceiveTime =
       base::TimeTicks() +
-      base::TimeDelta::FromMilliseconds(kProcessingStart.ms() - 100 + 3) +
-      time_diff();
+      base::Microseconds(kProcessingStart.us() - (10000 - 3 * 30));
 
   webrtc::VideoFrame input_frame =
       webrtc::VideoFrame::Builder()
@@ -360,28 +421,37 @@ TEST_F(MediaStreamRemoteVideoSourceTest,
   scoped_refptr<media::VideoFrame> output_frame = sink.last_frame();
   EXPECT_TRUE(output_frame);
 
-  EXPECT_FLOAT_EQ(output_frame->metadata()->processing_time->InSecondsF(),
+  EXPECT_FLOAT_EQ(output_frame->metadata().processing_time->InSecondsF(),
                   kProcessingTime);
 
+  // The NTP offset is estimated both here and in the code that is tested.
+  // Therefore, we cannot exactly determine what capture_begin_time will be set
+  // to.
+  // TODO(kron): Find a lower tolerance without causing the test to be flaky or
+  // make the clock injectable so that a fake clock can be used in the test.
+  constexpr float kNtpOffsetToleranceMs = 40.0;
   EXPECT_NEAR(
-      (*output_frame->metadata()->capture_begin_time - kExpectedCaptureTime)
+      (*output_frame->metadata().capture_begin_time - kExpectedCaptureTime)
           .InMillisecondsF(),
-      0.0f, kChromiumWebRtcMaxTimeDiffMs);
+      0.0f, kNtpOffsetToleranceMs);
 
-  EXPECT_NEAR((*output_frame->metadata()->receive_time - kExpectedReceiveTime)
-                  .InMillisecondsF(),
-              0.0f, kChromiumWebRtcMaxTimeDiffMs);
+  EXPECT_FLOAT_EQ(
+      (*output_frame->metadata().receive_time - kExpectedReceiveTime)
+          .InMillisecondsF(),
+      0.0f);
 
-  EXPECT_EQ(static_cast<uint32_t>(*output_frame->metadata()->rtp_timestamp),
+  EXPECT_EQ(static_cast<uint32_t>(*output_frame->metadata().rtp_timestamp),
             kRtpTimestamp);
 
   track->RemoveSink(&sink);
 }
 
-TEST_F(MediaStreamRemoteVideoSourceTest, MAYBE_ReferenceTimeEqualsTimestampUs) {
+TEST_F(MediaStreamRemoteVideoSourceTest, ReferenceTimeEqualsTimestampUs) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
 
   base::RunLoop run_loop;
   EXPECT_CALL(sink, OnVideoFrame)
@@ -402,19 +472,35 @@ TEST_F(MediaStreamRemoteVideoSourceTest, MAYBE_ReferenceTimeEqualsTimestampUs) {
   scoped_refptr<media::VideoFrame> output_frame = sink.last_frame();
   EXPECT_TRUE(output_frame);
 
-  EXPECT_NEAR((*output_frame->metadata()->reference_time -
-               (base::TimeTicks() +
-                base::TimeDelta::FromMicroseconds(kTimestampUs) + time_diff()))
-                  .InMillisecondsF(),
-              0.0f, kChromiumWebRtcMaxTimeDiffMs);
+  EXPECT_FLOAT_EQ((*output_frame->metadata().reference_time -
+                   (base::TimeTicks() + base::Microseconds(kTimestampUs)))
+                      .InMillisecondsF(),
+                  0.0f);
   track->RemoveSink(&sink);
+}
+
+TEST_F(MediaStreamRemoteVideoSourceTest, BaseTimeTicksAndRtcMicrosAreTheSame) {
+  base::TimeTicks first_chromium_timestamp = base::TimeTicks::Now();
+  base::TimeTicks webrtc_timestamp =
+      base::TimeTicks() + base::Microseconds(rtc::TimeMicros());
+  base::TimeTicks second_chromium_timestamp = base::TimeTicks::Now();
+
+  // Test that the timestamps are correctly ordered, which they can only be if
+  // the clocks are the same (assuming at least one of the clocks is functioning
+  // correctly).
+  EXPECT_GE((webrtc_timestamp - first_chromium_timestamp).InMillisecondsF(),
+            0.0f);
+  EXPECT_GE((second_chromium_timestamp - webrtc_timestamp).InMillisecondsF(),
+            0.0f);
 }
 
 // This is a special case that is used to signal "render immediately".
 TEST_F(MediaStreamRemoteVideoSourceTest, NoTimestampUsMeansNoReferenceTime) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
 
   base::RunLoop run_loop;
   EXPECT_CALL(sink, OnVideoFrame)
@@ -424,6 +510,7 @@ TEST_F(MediaStreamRemoteVideoSourceTest, NoTimestampUsMeansNoReferenceTime) {
 
   webrtc::VideoFrame input_frame =
       webrtc::VideoFrame::Builder().set_video_frame_buffer(buffer).build();
+  input_frame.set_render_parameters({.use_low_latency_rendering = true});
 
   source()->SinkInterfaceForTesting()->OnFrame(input_frame);
   run_loop.Run();
@@ -432,7 +519,7 @@ TEST_F(MediaStreamRemoteVideoSourceTest, NoTimestampUsMeansNoReferenceTime) {
   scoped_refptr<media::VideoFrame> output_frame = sink.last_frame();
   EXPECT_TRUE(output_frame);
 
-  EXPECT_FALSE(output_frame->metadata()->reference_time.has_value());
+  EXPECT_FALSE(output_frame->metadata().reference_time.has_value());
 
   track->RemoveSink(&sink);
 }
@@ -480,7 +567,9 @@ TEST_F(MediaStreamRemoteVideoSourceTest,
        ForwardsFramesWithIncreasingTimestampsWithNullSourceTimestamp) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), /*is_link_secure=*/false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
   base::RunLoop run_loop;
   base::RepeatingClosure quit_closure = run_loop.QuitClosure();
 
@@ -508,7 +597,9 @@ TEST_F(MediaStreamRemoteVideoSourceTest,
        ForwardsFramesWithIncreasingTimestampsWithSourceTimestamp) {
   std::unique_ptr<blink::MediaStreamVideoTrack> track(CreateTrack());
   blink::MockMediaStreamVideoSink sink;
-  track->AddSink(&sink, sink.GetDeliverFrameCB(), /*is_link_secure=*/false);
+  track->AddSink(&sink, sink.GetDeliverFrameCB(),
+                 MediaStreamVideoSink::IsSecure::kNo,
+                 MediaStreamVideoSink::UsesAlpha::kDefault);
   base::RunLoop run_loop;
   base::RepeatingClosure quit_closure = run_loop.QuitClosure();
 

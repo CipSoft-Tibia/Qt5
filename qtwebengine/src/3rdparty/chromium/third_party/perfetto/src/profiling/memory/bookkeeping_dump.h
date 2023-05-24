@@ -17,21 +17,19 @@
 #ifndef SRC_PROFILING_MEMORY_BOOKKEEPING_DUMP_H_
 #define SRC_PROFILING_MEMORY_BOOKKEEPING_DUMP_H_
 
+#include <cinttypes>
 #include <functional>
 #include <set>
 
-#include <inttypes.h>
+#include "perfetto/ext/tracing/core/trace_writer.h"
+#include "src/profiling/common/interner.h"
+#include "src/profiling/common/interning_output.h"
+#include "src/profiling/memory/bookkeeping.h"
 
 #include "protos/perfetto/trace/interned_data/interned_data.pbzero.h"
 #include "protos/perfetto/trace/profiling/profile_common.pbzero.h"
 #include "protos/perfetto/trace/profiling/profile_packet.pbzero.h"
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
-
-#include "perfetto/ext/tracing/core/trace_writer.h"
-
-#include "src/profiling/common/interner.h"
-#include "src/profiling/common/interning_output.h"
-#include "src/profiling/memory/bookkeeping.h"
 
 namespace perfetto {
 namespace profiling {
@@ -55,8 +53,6 @@ class DumpState {
   DumpState& operator=(const DumpState&) = delete;
   DumpState(DumpState&&) = delete;
   DumpState& operator=(DumpState&&) = delete;
-
-  void AddIdleBytes(uint64_t callstack_id, uint64_t bytes);
 
   void WriteAllocation(const HeapTracker::CallstackAllocations& alloc,
                        bool dump_at_max_mode);
@@ -110,7 +106,6 @@ class DumpState {
       current_process_heap_samples_ = nullptr;
   std::function<void(protos::pbzero::ProfilePacket::ProcessHeapSamples*)>
       current_process_fill_header_;
-  std::map<uint64_t /* callstack_id */, uint64_t> current_process_idle_allocs_;
 
   uint64_t last_written_ = 0;
 };

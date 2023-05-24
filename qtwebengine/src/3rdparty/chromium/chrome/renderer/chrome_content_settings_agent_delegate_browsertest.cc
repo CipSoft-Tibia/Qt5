@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/renderer/chrome_content_settings_agent_delegate.h"
+
 #include "chrome/test/base/chrome_render_view_test.h"
 #include "content/public/renderer/render_frame.h"
-#include "content/public/renderer/render_view.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 
@@ -16,14 +16,13 @@ class ChromeContentSettingsAgentDelegateBrowserTest
     ChromeRenderViewTest::SetUp();
 
     // Set up a fake url loader factory to ensure that script loader can create
-    // a WebURLLoader.
-    CreateFakeWebURLLoaderFactory();
+    // a URLLoader.
+    CreateFakeURLLoaderFactory();
 
     // Unbind the ContentSettingsAgent interface that would be registered by
     // the ChromeContentSettingsAgent created when the render frame is created.
-    view_->GetMainRenderFrame()
-        ->GetAssociatedInterfaceRegistry()
-        ->RemoveInterface(content_settings::mojom::ContentSettingsAgent::Name_);
+    GetMainRenderFrame()->GetAssociatedInterfaceRegistry()->RemoveInterface(
+        content_settings::mojom::ContentSettingsAgent::Name_);
   }
 };
 
@@ -36,11 +35,11 @@ TEST_F(ChromeContentSettingsAgentDelegateBrowserTest,
   std::string bar_plugin = "bar";
 
   auto* delegate =
-      ChromeContentSettingsAgentDelegate::Get(view_->GetMainRenderFrame());
+      ChromeContentSettingsAgentDelegate::Get(GetMainRenderFrame());
   EXPECT_FALSE(delegate->IsPluginTemporarilyAllowed(foo_plugin));
 
   // Temporarily allow the "foo" plugin.
-  delegate->OnLoadBlockedPlugins(foo_plugin);
+  delegate->AllowPluginTemporarily(foo_plugin);
   EXPECT_TRUE(delegate->IsPluginTemporarilyAllowed(foo_plugin));
   EXPECT_FALSE(delegate->IsPluginTemporarilyAllowed(bar_plugin));
 
@@ -55,7 +54,7 @@ TEST_F(ChromeContentSettingsAgentDelegateBrowserTest,
   EXPECT_FALSE(delegate->IsPluginTemporarilyAllowed(bar_plugin));
 
   // Temporarily allow all plugins.
-  delegate->OnLoadBlockedPlugins(std::string());
+  delegate->AllowPluginTemporarily(std::string());
   EXPECT_TRUE(delegate->IsPluginTemporarilyAllowed(foo_plugin));
   EXPECT_TRUE(delegate->IsPluginTemporarilyAllowed(bar_plugin));
 }

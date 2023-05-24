@@ -18,7 +18,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "avcodec.h"
+#include "config.h"
+#include "libavutil/attributes.h"
+#include "libavutil/common.h"
 #include "diracdsp.h"
 
 #define FILTER(src, stride)                                     \
@@ -137,7 +139,7 @@ ADD_OBMC(32)
 static void put_signed_rect_clamped_8bit_c(uint8_t *dst, int dst_stride, const uint8_t *_src, int src_stride, int width, int height)
 {
     int x, y;
-    int16_t *src = (int16_t *)_src;
+    const int16_t *src = (const int16_t *)_src;
     for (y = 0; y < height; y++) {
         for (x = 0; x < width; x+=4) {
             dst[x  ] = av_clip_uint8(src[x  ] + 128);
@@ -156,7 +158,7 @@ static void put_signed_rect_clamped_ ## PX ## bit_c(uint8_t *_dst, int dst_strid
 {                                                                                                       \
     int x, y;                                                                                           \
     uint16_t *dst = (uint16_t *)_dst;                                                                   \
-    int32_t *src = (int32_t *)_src;                                                                     \
+    const int32_t *src = (const int32_t *)_src;                                                         \
     for (y = 0; y < height; y++) {                                                                      \
         for (x = 0; x < width; x+=4) {                                                                  \
             dst[x  ] = av_clip_uintp2(src[x  ] + (1U << (PX - 1)), PX);                                  \
@@ -195,12 +197,12 @@ static void dequant_subband_ ## PX ## _c(uint8_t *src, uint8_t *dst, ptrdiff_t s
 {                                                                                          \
     int i, y;                                                                              \
     for (y = 0; y < tot_v; y++) {                                                          \
-        PX c, sign, *src_r = (PX *)src, *dst_r = (PX *)dst;                                \
+        PX c, *src_r = (PX *)src, *dst_r = (PX *)dst;                                      \
         for (i = 0; i < tot_h; i++) {                                                      \
             c = *src_r++;                                                                  \
-            sign = FFSIGN(c)*(!!c);                                                        \
-            c = (FFABS(c)*(unsigned)qf + qs) >> 2;                                                   \
-            *dst_r++ = c*sign;                                                             \
+            if     (c < 0) c = -((-(unsigned)c*qf + qs) >> 2);                             \
+            else if(c > 0) c =  (( (unsigned)c*qf + qs) >> 2);                             \
+            *dst_r++ = c;                                                                  \
         }                                                                                  \
         src += tot_h << (sizeof(PX) >> 1);                                                 \
         dst += stride;                                                                     \
@@ -245,6 +247,7 @@ av_cold void ff_diracdsp_init(DiracDSPContext *c)
     PIXFUNC(avg, 16);
     PIXFUNC(avg, 32);
 
-    if (ARCH_X86)
-        ff_diracdsp_init_x86(c);
+#if ARCH_X86
+    ff_diracdsp_init_x86(c);
+#endif
 }

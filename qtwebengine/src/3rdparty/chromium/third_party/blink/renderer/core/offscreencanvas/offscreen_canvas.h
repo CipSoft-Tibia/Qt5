@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,33 +10,30 @@
 #include "third_party/blink/public/common/privacy_budget/identifiable_surface.h"
 #include "third_party/blink/public/common/privacy_budget/identifiable_token.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/dom_node_ids.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
+#include "third_party/blink/renderer/core/event_target_names.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context_host.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap_source.h"
-#include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/geometry/int_size.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/prefinalizer.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace blink {
 
 class CanvasContextCreationAttributesCore;
 class CanvasResourceProvider;
 class ImageBitmap;
-#if defined(SUPPORT_WEBGL2_COMPUTE_CONTEXT)
 class
-    OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrWebGL2ComputeRenderingContextOrImageBitmapRenderingContext;
-typedef OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrWebGL2ComputeRenderingContextOrImageBitmapRenderingContext
+    OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContextOrGPUCanvasContext;
+typedef OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContextOrGPUCanvasContext
     OffscreenRenderingContext;
-#else
-class
-    OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContext;
-typedef OffscreenCanvasRenderingContext2DOrWebGLRenderingContextOrWebGL2RenderingContextOrImageBitmapRenderingContext
-    OffscreenRenderingContext;
-#endif
+class ScriptState;
 
 class CORE_EXPORT OffscreenCanvas final
     : public EventTargetWithInlineData,
@@ -51,20 +48,21 @@ class CORE_EXPORT OffscreenCanvas final
                                  unsigned width,
                                  unsigned height);
 
-  OffscreenCanvas(ExecutionContext*, const IntSize&);
+  OffscreenCanvas(ExecutionContext*, const gfx::Size&);
   ~OffscreenCanvas() override;
   void Dispose();
 
   bool IsOffscreenCanvas() const override { return true; }
   // IDL attributes
-  unsigned width() const { return size_.Width(); }
-  unsigned height() const { return size_.Height(); }
+  unsigned width() const { return size_.width(); }
+  unsigned height() const { return size_.height(); }
   void setWidth(unsigned);
   void setHeight(unsigned);
 
   // CanvasResourceDispatcherClient
   bool BeginFrame() override;
-  void SetFilterQualityInResource(SkFilterQuality filter_quality) override;
+  void SetFilterQualityInResource(
+      cc::PaintFlags::FilterQuality filter_quality) override;
 
   // API Methods
   ImageBitmap* transferToImageBitmap(ScriptState*, ExceptionState&);
@@ -73,8 +71,8 @@ class CORE_EXPORT OffscreenCanvas final
                               const ImageEncodeOptions* options,
                               ExceptionState& exception_state);
 
-  const IntSize& Size() const override { return size_; }
-  void SetSize(const IntSize&);
+  const gfx::Size& Size() const override { return size_; }
+  void SetSize(const gfx::Size&);
   void RecordTransfer();
 
   void SetPlaceholderCanvasId(DOMNodeId canvas_id);
@@ -107,13 +105,12 @@ class CORE_EXPORT OffscreenCanvas final
   uint32_t ClientId() const { return client_id_; }
   uint32_t SinkId() const { return sink_id_; }
 
-  void SetFilterQuality(const SkFilterQuality& quality) {
-    filter_quality_ = quality;
-  }
-
   void AllowHighPerformancePowerPreference() {
     allow_high_performance_power_preference_ = true;
   }
+
+  DEFINE_ATTRIBUTE_EVENT_LISTENER(contextlost, kContextlost)
+  DEFINE_ATTRIBUTE_EVENT_LISTENER(contextrestored, kContextrestored)
 
   // CanvasRenderingContextHost implementation.
   void PreFinalizeFrame() override {}
@@ -122,21 +119,22 @@ class CORE_EXPORT OffscreenCanvas final
   CanvasRenderingContext* RenderingContext() const override { return context_; }
 
   bool PushFrameIfNeeded();
-  bool PushFrame(scoped_refptr<CanvasResource> frame,
+  bool PushFrame(scoped_refptr<CanvasResource>&& frame,
                  const SkIRect& damage_rect) override;
-  void DidDraw(const FloatRect&) override;
-  void DidDraw() override;
-  void Commit(scoped_refptr<CanvasResource> bitmap_image,
+  void DidDraw(const SkIRect&) override;
+  using CanvasRenderingContextHost::DidDraw;
+  void Commit(scoped_refptr<CanvasResource>&& bitmap_image,
               const SkIRect& damage_rect) override;
   bool ShouldAccelerate2dContext() const override;
   CanvasResourceDispatcher* GetOrCreateResourceDispatcher() override;
+  UkmParameters GetUkmParameters() override;
 
   // Partial CanvasResourceHost implementation
-  void NotifyGpuContextLost() override {}
+  void NotifyGpuContextLost() override;
   void SetNeedsCompositingUpdate() override {}
   // TODO(fserb): Merge this with HTMLCanvasElement::UpdateMemoryUsage
   void UpdateMemoryUsage() override;
-  SkFilterQuality FilterQuality() const override { return filter_quality_; }
+  size_t GetMemoryUsage() const override;
 
   // EventTarget implementation
   const AtomicString& InterfaceName() const final {
@@ -155,19 +153,21 @@ class CORE_EXPORT OffscreenCanvas final
   }
 
   // ImageBitmapSource implementation
-  IntSize BitmapSourceSize() const final;
+  gfx::Size BitmapSourceSize() const final;
   ScriptPromise CreateImageBitmap(ScriptState*,
-                                  base::Optional<IntRect>,
+                                  absl::optional<gfx::Rect>,
                                   const ImageBitmapOptions*,
                                   ExceptionState&) final;
 
   // CanvasImageSource implementation
-  scoped_refptr<Image> GetSourceImageForCanvas(SourceImageStatus*,
-                                               const FloatSize&) final;
+  scoped_refptr<Image> GetSourceImageForCanvas(
+      SourceImageStatus*,
+      const gfx::SizeF&,
+      const AlphaDisposition alpha_disposition = kPremultiplyAlpha) final;
   bool WouldTaintOrigin() const final { return !origin_clean_; }
-  FloatSize ElementSize(const FloatSize& default_object_size,
-                        const RespectImageOrientationEnum) const final {
-    return FloatSize(width(), height());
+  gfx::SizeF ElementSize(const gfx::SizeF& default_object_size,
+                         const RespectImageOrientationEnum) const final {
+    return gfx::SizeF(width(), height());
   }
   bool IsOpaque() const final;
   bool IsAccelerated() const final;
@@ -246,7 +246,8 @@ class CORE_EXPORT OffscreenCanvas final
 
   DOMNodeId placeholder_canvas_id_ = kInvalidDOMNodeId;
 
-  IntSize size_;
+  gfx::Size size_;
+  bool disposing_ = false;
   bool is_neutered_ = false;
   bool origin_clean_ = true;
   bool disable_reading_from_canvas_ = false;
@@ -258,8 +259,6 @@ class CORE_EXPORT OffscreenCanvas final
   bool needs_matrix_clip_restore_ = false;
   bool needs_push_frame_ = false;
   bool inside_worker_raf_ = false;
-
-  SkFilterQuality filter_quality_ = kLow_SkFilterQuality;
 
   // An offscreen canvas should only prefer the high-performance GPU if it is
   // initialized by transferring control from an HTML canvas that is not

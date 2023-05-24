@@ -1,10 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_SERVICES_ISOLATED_XR_DEVICE_XR_TEST_HOOK_WRAPPER_H_
 #define CONTENT_SERVICES_ISOLATED_XR_DEVICE_XR_TEST_HOOK_WRAPPER_H_
 
+#include "base/task/single_thread_task_runner.h"
 #include "device/vr/public/mojom/browser_test_interfaces.mojom.h"
 #include "device/vr/test/test_hook.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -25,7 +26,7 @@ class XRTestHookWrapper : public VRTestHook {
       mojo::PendingRemote<device_test::mojom::XRTestHook> hook_info);
   virtual ~XRTestHookWrapper();
 
-  void OnFrameSubmitted(SubmittedFrameData frame_data) override;
+  void OnFrameSubmitted(const std::vector<ViewData>& views) override;
   DeviceConfig WaitGetDeviceConfig() override;
   PoseFrameData WaitGetPresentingPose() override;
   PoseFrameData WaitGetMagicWindowPose() override;
@@ -34,6 +35,7 @@ class XRTestHookWrapper : public VRTestHook {
   TrackedDeviceClass WaitGetTrackedDeviceClass(unsigned int index) override;
   ControllerFrameData WaitGetControllerData(unsigned int index) override;
   device_test::mojom::EventData WaitGetEventData() override;
+  bool WaitGetCanCreateSession() override;
   void AttachCurrentThread() override;
   void DetachCurrentThread() override;
 

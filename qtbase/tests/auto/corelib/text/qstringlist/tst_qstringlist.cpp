@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
-#include <qregexp.h>
+#include <QTest>
+#include <qlist.h>
 #include <qregularexpression.h>
 #include <qstringlist.h>
-#include <qvector.h>
+#include <QScopeGuard>
 
 #include <locale.h>
 
@@ -51,9 +26,6 @@ private slots:
     void indexOf();
     void lastIndexOf_data();
     void lastIndexOf();
-
-    void indexOf_regExp();
-    void lastIndexOf_regExp();
 
     void streamingOperator();
     void assignmentOperator();
@@ -92,90 +64,13 @@ void tst_QStringList::constructors()
         QCOMPARE(list.at(2), "c");
     }
     {
-        const QVector<QString> reference{ "a", "b", "c" };
+        const QList<QString> reference{ "a", "b", "c" };
         QCOMPARE(reference.size(), 3);
 
         QStringList list(reference.cbegin(), reference.cend());
         QCOMPARE(list.size(), reference.size());
         QVERIFY(std::equal(list.cbegin(), list.cend(), reference.cbegin()));
     }
-}
-
-void tst_QStringList::indexOf_regExp()
-{
-    QStringList list;
-    list << "harald" << "trond" << "vohi" << "harald";
-    {
-        QRegExp re(".*o.*");
-
-        QCOMPARE(list.indexOf(re), 1);
-        QCOMPARE(list.indexOf(re, 2), 2);
-        QCOMPARE(list.indexOf(re, 3), -1);
-
-        QCOMPARE(list.indexOf(QRegExp(".*x.*")), -1);
-        QCOMPARE(list.indexOf(re, -1), -1);
-        QCOMPARE(list.indexOf(re, -3), 1);
-        QCOMPARE(list.indexOf(re, -9999), 1);
-        QCOMPARE(list.indexOf(re, 9999), -1);
-
-        QCOMPARE(list.indexOf(QRegExp("[aeiou]")), -1);
-    }
-
-    {
-        QRegularExpression re(".*o.*");
-
-        QCOMPARE(list.indexOf(re), 1);
-        QCOMPARE(list.indexOf(re, 2), 2);
-        QCOMPARE(list.indexOf(re, 3), -1);
-
-        QCOMPARE(list.indexOf(QRegularExpression(".*x.*")), -1);
-        QCOMPARE(list.indexOf(re, -1), -1);
-        QCOMPARE(list.indexOf(re, -3), 1);
-        QCOMPARE(list.indexOf(re, -9999), 1);
-        QCOMPARE(list.indexOf(re, 9999), -1);
-
-        QCOMPARE(list.indexOf(QRegularExpression("[aeiou]")), -1);
-    }
-}
-
-void tst_QStringList::lastIndexOf_regExp()
-{
-    QStringList list;
-    list << "harald" << "trond" << "vohi" << "harald";
-
-    {
-        QRegExp re(".*o.*");
-
-        QCOMPARE(list.lastIndexOf(re), 2);
-        QCOMPARE(list.lastIndexOf(re, 2), 2);
-        QCOMPARE(list.lastIndexOf(re, 1), 1);
-
-        QCOMPARE(list.lastIndexOf(QRegExp(".*x.*")), -1);
-        QCOMPARE(list.lastIndexOf(re, -1), 2);
-        QCOMPARE(list.lastIndexOf(re, -3), 1);
-        QCOMPARE(list.lastIndexOf(re, -9999), -1);
-        QCOMPARE(list.lastIndexOf(re, 9999), 2);
-
-        QCOMPARE(list.lastIndexOf(QRegExp("[aeiou]")), -1);
-    }
-
-    {
-        QRegularExpression re(".*o.*");
-
-        QCOMPARE(list.lastIndexOf(re), 2);
-        QCOMPARE(list.lastIndexOf(re, 2), 2);
-        QCOMPARE(list.lastIndexOf(re, 1), 1);
-
-        QCOMPARE(list.lastIndexOf(QRegularExpression(".*x.*")), -1);
-        QCOMPARE(list.lastIndexOf(re, -1), 2);
-        QCOMPARE(list.lastIndexOf(re, -3), 1);
-        QCOMPARE(list.lastIndexOf(re, -9999), -1);
-        QCOMPARE(list.lastIndexOf(re, 9999), 2);
-
-        QCOMPARE(list.lastIndexOf(QRegularExpression("[aeiou]")), -1);
-    }
-
-
 }
 
 void tst_QStringList::indexOf_data()
@@ -248,12 +143,6 @@ void tst_QStringList::filter()
     list2 << "Bill Gates" << "Bill Clinton";
     QCOMPARE( list1, list2 );
 
-    QStringList list3, list4;
-    list3 << "Bill Gates" << "Joe Blow" << "Bill Clinton";
-    list3 = list3.filter( QRegExp("[i]ll") );
-    list4 << "Bill Gates" << "Bill Clinton";
-    QCOMPARE( list3, list4 );
-
     QStringList list5, list6;
     list5 << "Bill Gates" << "Joe Blow" << "Bill Clinton";
     list5 = list5.filter( QRegularExpression("[i]ll") );
@@ -275,20 +164,22 @@ void tst_QStringList::sort()
     list2 << "BETA" << "Gamma" << "alpha" << "beta" << "epsilon" << "gAmma" << "gamma";
     QCOMPARE( list1, list2 );
 
-    char *current_locale = setlocale(LC_ALL, "C");
+    const char *const currentLocale = setlocale(LC_ALL, "C.UTF-8");
+    if (!currentLocale)
+        QSKIP("Failed to set C locale, needed for testing");
+    const QScopeGuard restore([currentLocale]() { setlocale(LC_ALL, currentLocale); });
     QStringList list3, list4;
     list3 << "alpha" << "beta" << "BETA" << "gamma" << "Gamma" << "gAmma" << "epsilon";
     list3.sort(Qt::CaseInsensitive);
     list4 << "alpha" << "beta" << "BETA" << "epsilon" << "Gamma" << "gAmma" << "gamma";
     // with this list, case insensitive sorting can give more than one permutation for "equivalent"
     // elements; so we check that the sort gave the formally correct result (list[i] <= list[i+1])
-    for (int i = 0; i < list4.count() - 1; ++i)
+    for (int i = 0; i < list4.size() - 1; ++i)
         QVERIFY2(QString::compare(list4.at(i), list4.at(i + 1), Qt::CaseInsensitive) <= 0, qPrintable(QString("index %1 failed").arg(i)));
     // additional checks
     QCOMPARE(list4.at(0), QString("alpha"));
     QVERIFY(list4.indexOf("epsilon") > 0);
-    QVERIFY(list4.indexOf("epsilon") < (list4.count() - 1));
-    setlocale(LC_ALL, current_locale);
+    QVERIFY(list4.indexOf("epsilon") < (list4.size() - 1));
 }
 
 void tst_QStringList::replaceInStrings()
@@ -298,18 +189,6 @@ void tst_QStringList::replaceInStrings()
     list1.replaceInStrings( "a", "o" );
     list2 << "olpho" << "beto" << "gommo" << "epsilon";
     QCOMPARE( list1, list2 );
-
-    QStringList list3, list4;
-    list3 << "alpha" << "beta" << "gamma" << "epsilon";
-    list3.replaceInStrings( QRegExp("^a"), "o" );
-    list4 << "olpha" << "beta" << "gamma" << "epsilon";
-    QCOMPARE( list3, list4 );
-
-    QStringList list5, list6;
-    list5 << "Bill Clinton" << "Gates, Bill";
-    list6 << "Bill Clinton" << "Bill Gates";
-    list5.replaceInStrings( QRegExp("^(.*), (.*)$"), "\\2 \\1" );
-    QCOMPARE( list5, list6 );
 
     QStringList list7, list8;
     list7 << "alpha" << "beta" << "gamma" << "epsilon";
@@ -523,6 +402,11 @@ void tst_QStringList::joinChar_data() const
                         << QLatin1String("c"))
                 << QChar(QLatin1Char(' '))
                 << QString("a b c");
+
+    QTest::newRow("null separator")
+            << QStringList{QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")}
+            << QChar(u'\0')
+            << QStringLiteral("a\0b\0c");
 }
 
 void tst_QStringList::joinEmptiness() const

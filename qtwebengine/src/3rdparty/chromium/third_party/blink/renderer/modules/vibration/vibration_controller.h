@@ -20,36 +20,46 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_VIBRATION_VIBRATION_CONTROLLER_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_VIBRATION_VIBRATION_CONTROLLER_H_
 
-#include "base/macros.h"
 #include "services/device/public/mojom/vibration_manager.mojom-blink.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
 #include "third_party/blink/renderer/core/page/page_visibility_observer.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
+#include "third_party/blink/renderer/platform/supplementable.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
-class LocalFrame;
-class UnsignedLongOrUnsignedLongSequence;
+class Navigator;
+class V8UnionUnsignedLongOrUnsignedLongSequence;
 
 class MODULES_EXPORT VibrationController final
     : public GarbageCollected<VibrationController>,
+      public Supplement<Navigator>,
       public ExecutionContextLifecycleObserver,
       public PageVisibilityObserver {
  public:
   using VibrationPattern = Vector<unsigned>;
 
-  explicit VibrationController(LocalFrame&);
-  virtual ~VibrationController();
+  static const char kSupplementName[];
+  static VibrationController& From(Navigator&);
+
+  static bool vibrate(Navigator&, unsigned time);
+  static bool vibrate(Navigator&, const VibrationPattern&);
+
+  explicit VibrationController(Navigator&);
+
+  VibrationController(const VibrationController&) = delete;
+  VibrationController& operator=(const VibrationController&) = delete;
+
+  ~VibrationController() override;
 
   static VibrationPattern SanitizeVibrationPattern(
-      const UnsignedLongOrUnsignedLongSequence&);
+      const V8UnionUnsignedLongOrUnsignedLongSequence* input);
 
-  bool Vibrate(const VibrationPattern&);
   void DoVibrate(TimerBase*);
   void DidVibrate();
 
@@ -72,6 +82,8 @@ class MODULES_EXPORT VibrationController final
   // Inherited from PageVisibilityObserver.
   void PageVisibilityChanged() override;
 
+  bool Vibrate(const VibrationPattern&);
+
   // Remote to VibrationManager mojo interface. This is reset in
   // |contextDestroyed| and must not be called or recreated after it is reset.
   //
@@ -86,7 +98,7 @@ class MODULES_EXPORT VibrationController final
   // Timer for calling |doVibrate| after a delay. It is safe to call
   // |startOneshot| when the timer is already running: it may affect the time
   // at which it fires, but |doVibrate| will still be called only once.
-  TaskRunnerTimer<VibrationController> timer_do_vibrate_;
+  HeapTaskRunnerTimer<VibrationController> timer_do_vibrate_;
 
   // Whether a pattern is being processed. The vibration hardware may
   // currently be active, or during a pause it may be inactive.
@@ -99,8 +111,6 @@ class MODULES_EXPORT VibrationController final
   bool is_calling_vibrate_;
 
   VibrationPattern pattern_;
-
-  DISALLOW_COPY_AND_ASSIGN(VibrationController);
 };
 
 }  // namespace blink

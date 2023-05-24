@@ -28,7 +28,6 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
-#include "internal.h"
 #include "scpr.h"
 
 static void renew_table3(uint32_t nsym, uint32_t *cntsum,
@@ -524,32 +523,16 @@ static int update_model1_to_4(PixelModel3 *m, uint32_t val)
 
 static int update_model1_to_5(PixelModel3 *m, uint32_t val)
 {
-    PixelModel3 n = {0};
     int i, size, freqs;
     uint32_t a;
 
+    update_model1_to_4(m, val);
     size = m->size;
-    n.size = size;
-    for (i = 0; i < size; i++) {
-        n.symbols[i] = m->symbols[i];
-    }
-    AV_QSORT(n.symbols, size, uint8_t, cmpbytes);
-    size = n.size;
-    for (i = 0; i < size; i++) {
-        if (val == n.symbols[i]) {
-            n.freqs[i] = 100;
-            n.maxpos = i;
-        } else {
-            n.freqs[i] = 50;
-        }
-    }
     a = 256 - size;
     for (i = 0; i < size; i++, a += freqs)
-        freqs = n.freqs[i];
-    n.type = 5;
-    n.cntsum = a;
-
-    memcpy(m, &n, sizeof(n));
+        freqs = m->freqs[i];
+    m->type = 5;
+    m->cntsum = a;
 
     return 0;
 }
@@ -1183,6 +1166,9 @@ static int decompress_p3(AVCodecContext *avctx,
             } else {
                 int run, bx = x * 16 + sx1, by = y * 16 + sy1;
                 uint32_t clr, ptype = 0, r, g, b;
+
+                if (bx >= avctx->width)
+                    return AVERROR_INVALIDDATA;
 
                 for (; by < y * 16 + sy2 && by < avctx->height;) {
                     ret = decode_value3(s, 5, &s->op_model3[ptype].cntsum,

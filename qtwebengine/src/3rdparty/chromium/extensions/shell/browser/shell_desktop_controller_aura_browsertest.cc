@@ -1,13 +1,16 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/shell/browser/shell_desktop_controller_aura.h"
 
-#include "base/bind.h"
-#include "base/macros.h"
-#include "base/task/post_task.h"
-#include "base/test/bind_test_util.h"
+#include <memory>
+
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/time/time.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
 #include "extensions/browser/app_window/app_window.h"
@@ -25,6 +28,11 @@ class ShellDesktopControllerAuraBrowserTest : public ShellApiTest {
  public:
   ShellDesktopControllerAuraBrowserTest() = default;
   ~ShellDesktopControllerAuraBrowserTest() override = default;
+
+  ShellDesktopControllerAuraBrowserTest(
+      const ShellDesktopControllerAuraBrowserTest&) = delete;
+  ShellDesktopControllerAuraBrowserTest& operator=(
+      const ShellDesktopControllerAuraBrowserTest&) = delete;
 
   // Loads and launches a platform app that opens an app window.
   void LoadAndLaunchApp() {
@@ -62,11 +70,21 @@ class ShellDesktopControllerAuraBrowserTest : public ShellApiTest {
     ShellApiTest::TearDownOnMainThread();
   }
 
-  ShellDesktopControllerAura* desktop_controller_ = nullptr;
+  void RunDesktopController() {
+    desktop_controller_->PreMainMessageLoopRun();
+
+    auto run_loop = std::make_unique<base::RunLoop>();
+    desktop_controller_->WillRunMainMessageLoop(run_loop);
+    run_loop->Run();
+
+    desktop_controller_->PostMainMessageLoopRun();
+  }
+
   scoped_refptr<const Extension> app_;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(ShellDesktopControllerAuraBrowserTest);
+  raw_ptr<ShellDesktopControllerAura, DanglingUntriaged> desktop_controller_ =
+      nullptr;
 };
 
 // Test that closing the app window stops the DesktopController.
@@ -74,7 +92,7 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, CloseAppWindow) {
   bool test_succeeded = false;
 
   // Post a task so everything runs after the DesktopController starts.
-  base::ThreadTaskRunnerHandle::Get()->PostTaskAndReply(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTaskAndReply(
       FROM_HERE,
       // Asynchronously launch the app.
       base::BindOnce(&ShellDesktopControllerAuraBrowserTest::LoadAndLaunchApp,
@@ -88,7 +106,7 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, CloseAppWindow) {
       }));
 
   // Start DesktopController. It should run until the last app window closes.
-  desktop_controller_->Run();
+  RunDesktopController();
   EXPECT_TRUE(test_succeeded)
       << "DesktopController quit before test completed.";
 }
@@ -98,7 +116,7 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, TwoAppWindows) {
   bool test_succeeded = false;
 
   // Post a task so everything runs after the DesktopController starts.
-  base::ThreadTaskRunnerHandle::Get()->PostTaskAndReply(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTaskAndReply(
       FROM_HERE,
       // Asynchronously launch the app.
       base::BindOnce(&ShellDesktopControllerAuraBrowserTest::LoadAndLaunchApp,
@@ -118,7 +136,7 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, TwoAppWindows) {
 
         // One window is still open, so the DesktopController should still be
         // running. Post a task to close the last window.
-        base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
             FROM_HERE, base::BindLambdaForTesting([this, &test_succeeded]() {
               GetAppWindow()->OnNativeClose();
               test_succeeded = true;
@@ -128,10 +146,10 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, TwoAppWindows) {
             // closing the last window. If DesktopController::Run() finishes
             // before we close the last window and update |test_succeeded|, the
             // test fails.
-            base::TimeDelta::FromMilliseconds(500));
+            base::Milliseconds(500));
       }));
 
-  desktop_controller_->Run();
+  RunDesktopController();
   EXPECT_TRUE(test_succeeded)
       << "DesktopController quit before test completed.";
 }
@@ -142,7 +160,7 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, ReloadApp) {
   bool test_succeeded = false;
 
   // Post a task so everything runs after the DesktopController starts.
-  base::ThreadTaskRunnerHandle::Get()->PostTaskAndReply(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTaskAndReply(
       FROM_HERE,
       // Asynchronously launch the app.
       base::BindOnce(&ShellDesktopControllerAuraBrowserTest::LoadAndLaunchApp,
@@ -160,7 +178,7 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, ReloadApp) {
 
         // Close the new window after a delay. DesktopController should remain
         // open until the window closes.
-        base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
             FROM_HERE, base::BindLambdaForTesting([this, &test_succeeded]() {
               AppWindow* app_window = AppWindowRegistry::Get(browser_context())
                                           ->app_windows()
@@ -168,10 +186,10 @@ IN_PROC_BROWSER_TEST_F(ShellDesktopControllerAuraBrowserTest, ReloadApp) {
               app_window->OnNativeClose();
               test_succeeded = true;
             }),
-            base::TimeDelta::FromMilliseconds(500));
+            base::Milliseconds(500));
       }));
 
-  desktop_controller_->Run();
+  RunDesktopController();
   EXPECT_TRUE(test_succeeded)
       << "DesktopController quit before test completed.";
 }

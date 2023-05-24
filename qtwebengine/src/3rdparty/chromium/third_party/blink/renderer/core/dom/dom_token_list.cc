@@ -34,7 +34,7 @@ namespace blink {
 namespace {
 
 bool CheckEmptyToken(const String& token, ExceptionState& exception_state) {
-  if (!token.IsEmpty())
+  if (!token.empty())
     return true;
   exception_state.ThrowDOMException(DOMExceptionCode::kSyntaxError,
                                     "The token provided must not be empty.");
@@ -81,6 +81,7 @@ bool CheckTokensSyntax(const Vector<String>& tokens,
 void DOMTokenList::Trace(Visitor* visitor) const {
   visitor->Trace(element_);
   ScriptWrappable::Trace(visitor);
+  ElementRareDataField::Trace(visitor);
 }
 
 // https://dom.spec.whatwg.org/#concept-domtokenlist-validation
@@ -255,14 +256,10 @@ void DOMTokenList::UpdateWithTokenSet(const SpaceSplitString& token_set) {
 }
 
 AtomicString DOMTokenList::value() const {
-  DCHECK_NE(attribute_name_, g_null_name)
-      << "The subclass of DOMTokenList should override value().";
   return element_->getAttribute(attribute_name_);
 }
 
 void DOMTokenList::setValue(const AtomicString& value) {
-  DCHECK_NE(attribute_name_, g_null_name)
-      << "The subclass of DOMTokenList should override setValue().";
   element_->setAttribute(attribute_name_, value);
   // setAttribute() will call DidUpdateAttributeValue().
 }

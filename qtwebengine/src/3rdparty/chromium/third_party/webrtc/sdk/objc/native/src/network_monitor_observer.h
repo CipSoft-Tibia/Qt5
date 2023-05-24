@@ -14,7 +14,9 @@
 #include <map>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "rtc_base/network_constants.h"
+#include "rtc_base/string_utils.h"
 #include "rtc_base/thread.h"
 
 namespace webrtc {
@@ -24,11 +26,12 @@ class NetworkMonitorObserver {
  public:
   // Called when a path update occurs, on network monitor dispatch queue.
   //
-  // |adapter_type_by_name| is a map from interface name (i.e. "pdp_ip0") to
+  // `adapter_type_by_name` is a map from interface name (i.e. "pdp_ip0") to
   // adapter type, for all available interfaces on the current path. If an
   // interface name isn't present it can be assumed to be unavailable.
   virtual void OnPathUpdate(
-      std::map<std::string, rtc::AdapterType> adapter_type_by_name) = 0;
+      std::map<std::string, rtc::AdapterType, rtc::AbslStringViewCmp>
+          adapter_type_by_name) = 0;
 
  protected:
   virtual ~NetworkMonitorObserver() {}

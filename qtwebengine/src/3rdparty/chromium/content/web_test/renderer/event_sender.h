@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,18 +13,17 @@
 #include <vector>
 
 #include "base/containers/circular_deque.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/input/web_mouse_wheel_event.h"
 #include "third_party/blink/public/common/input/web_touch_point.h"
 #include "third_party/blink/public/common/page/drag_operation.h"
 #include "third_party/blink/public/platform/web_drag_data.h"
 #include "third_party/blink/public/platform/web_input_event_result.h"
-#include "third_party/blink/public/web/web_widget_client.h"
+#include "ui/base/dragdrop/mojom/drag_drop_types.mojom-forward.h"
 #include "ui/gfx/geometry/point.h"
 
 namespace blink {
@@ -32,7 +31,7 @@ class WebFrameWidget;
 class WebLocalFrame;
 class WebView;
 class WebWidget;
-struct WebContextMenuData;
+struct ContextMenuData;
 }  // namespace blink
 
 namespace gin {
@@ -41,8 +40,7 @@ class Arguments;
 
 namespace content {
 class TestRunner;
-class WebViewTestProxy;
-class WebWidgetTestProxy;
+class WebFrameTestProxy;
 
 // Key event location code introduced in DOM Level 3.
 // See also: http://www.w3.org/TR/DOM-Level-3-Events/#events-keyboardevents
@@ -55,21 +53,19 @@ enum KeyLocationCode {
 
 class EventSender {
  public:
-  explicit EventSender(WebWidgetTestProxy*);
+  EventSender(blink::WebFrameWidget*, content::TestRunner* test_runner);
+
+  EventSender(const EventSender&) = delete;
+  EventSender& operator=(const EventSender&) = delete;
+
   virtual ~EventSender();
 
   void Reset();
-  void Install(blink::WebLocalFrame*);
+  void Install(WebFrameTestProxy*);
 
-  void SetContextMenuData(const blink::WebContextMenuData&);
+  void SetContextMenuData(const blink::ContextMenuData&);
 
   void DoDragDrop(const blink::WebDragData&, blink::DragOperationsMask);
-
-  // Methods used to implement pointer requests and override behaviour.
-  bool RequestPointerLock(blink::WebLocalFrame* requester_frame,
-                          blink::WebWidgetClient::PointerLockCallback callback);
-  void RequestPointerUnlock();
-  bool IsPointerLocked() { return pointer_locked_; }
 
  private:
   friend class EventSenderBindings;
@@ -115,14 +111,6 @@ class EventSender {
 
   enum class MouseScrollType { PIXEL, TICK };
 
-  enum class NextPointerLockAction {
-    kWillSucceedAsync,
-    kTestWillRespond,
-    kWillFail,
-  };
-
-  TestRunner* test_runner();
-  WebViewTestProxy* web_view_proxy();
   const blink::WebView* view() const;
   blink::WebView* view();
   blink::WebWidget* widget();
@@ -144,8 +132,6 @@ class EventSender {
 
   void DumpFilenameBeingDragged();
 
-  void GestureScrollFirstPoint(float x, float y);
-
   void TouchStart(gin::Arguments* args);
   void TouchMove(gin::Arguments* args);
   void TouchCancel(gin::Arguments* args);
@@ -162,9 +148,7 @@ class EventSender {
 
   void AddTouchPoint(float x, float y, gin::Arguments* args);
 
-  void GestureScrollBegin(blink::WebLocalFrame* frame, gin::Arguments* args);
-  void GestureScrollEnd(blink::WebLocalFrame* frame, gin::Arguments* args);
-  void GestureScrollUpdate(blink::WebLocalFrame* frame, gin::Arguments* args);
+  void GestureScrollPopup(blink::WebLocalFrame* frame, gin::Arguments* args);
   void GestureTap(blink::WebLocalFrame* frame, gin::Arguments* args);
   void GestureTapDown(blink::WebLocalFrame* frame, gin::Arguments* args);
   void GestureShowPress(blink::WebLocalFrame* frame, gin::Arguments* args);
@@ -173,7 +157,6 @@ class EventSender {
   void GestureLongTap(blink::WebLocalFrame* frame, gin::Arguments* args);
   void GestureTwoFingerTap(blink::WebLocalFrame* frame, gin::Arguments* args);
 
-  void MouseScrollBy(gin::Arguments* args, MouseScrollType scroll_type);
   void MouseMoveTo(blink::WebLocalFrame* frame, gin::Arguments* args);
   void MouseLeave(blink::WebPointerProperties::PointerType, int pointerId);
   void ScheduleAsynchronousClick(blink::WebLocalFrame* frame,
@@ -186,18 +169,6 @@ class EventSender {
   // Consumes the transient user activation state for follow-up tests that don't
   // expect it.
   void ConsumeUserActivation();
-
-  // Controls behaviour of the next call to RequestPointerLock().
-  void SetNextPointerLockAction(NextPointerLockAction action);
-  // One possible response to RequestPointerLock(). May be called automatically
-  // or by the test directly, depending on NextPointerLockAction.
-  void DidAcquirePointerLock();
-  // One possible response to RequestPointerLock(). May be called automatically
-  // or by the test directly, depending on NextPointerLockAction.
-  void DidNotAcquirePointerLock();
-  // Ends a pointer lock. May be called in response to RequestPointerUnlock() or
-  // by the test directly.
-  void DidLosePointerLock();
 
   base::TimeTicks GetCurrentEventTime() const;
 
@@ -220,7 +191,7 @@ class EventSender {
                              float* radius_x,
                              float* radius_y);
 
-  void FinishDragAndDrop(const blink::WebMouseEvent&, blink::DragOperation);
+  void FinishDragAndDrop(const blink::WebMouseEvent&, ui::mojom::DragOperation);
 
   int ModifiersForPointer(int pointer_id);
   void DoDragAfterMouseUp(const blink::WebMouseEvent&);
@@ -234,6 +205,11 @@ class EventSender {
 
   void UpdateLifecycleToPrePaint();
 
+  // Web tests are written to be dsf-independent. This scale should be applied
+  // to coordinates provided from js, to convert them to physical pixels when
+  // UseZoomForDSF is enabled.
+  float DeviceScaleFactorForEvents();
+
   base::TimeTicks last_event_timestamp() const { return last_event_timestamp_; }
 
   bool force_layout_on_events() const { return force_layout_on_events_; }
@@ -244,7 +220,7 @@ class EventSender {
   bool is_drag_mode() const { return is_drag_mode_; }
   void set_is_drag_mode(bool drag_mode) { is_drag_mode_ = drag_mode; }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   int wm_key_down() const { return wm_key_down_; }
   void set_wm_key_down(int key_down) { wm_key_down_ = key_down; }
 
@@ -281,7 +257,8 @@ class EventSender {
   int wm_sys_dead_char_;
 #endif
 
-  WebWidgetTestProxy* const web_widget_test_proxy_;
+  blink::WebFrameWidget* const web_frame_widget_;
+  TestRunner* const test_runner_;
 
   bool force_layout_on_events_;
 
@@ -293,9 +270,9 @@ class EventSender {
   bool touch_cancelable_;
   std::vector<blink::WebTouchPoint> touch_points_;
 
-  std::unique_ptr<blink::WebContextMenuData> last_context_menu_data_;
+  std::unique_ptr<blink::ContextMenuData> last_context_menu_data_;
 
-  base::Optional<blink::WebDragData> current_drag_data_;
+  absl::optional<blink::WebDragData> current_drag_data_;
 
   // Location of the touch point that initiated a gesture.
   gfx::PointF current_gesture_location_;
@@ -322,7 +299,7 @@ class EventSender {
   typedef std::unordered_map<int, PointerState> PointerStateMap;
   PointerStateMap current_pointer_state_;
 
-  bool replaying_saved_events_;
+  bool replaying_saved_events_ = false;
 
   base::circular_deque<SavedEvent> mouse_event_queue_;
 
@@ -336,27 +313,14 @@ class EventSender {
   // Used to determine whether the click count continues to increment or not.
   static blink::WebMouseEvent::Button last_button_type_;
 
-  blink::DragOperation current_drag_effect_;
+  ui::mojom::DragOperation current_drag_effect_;
 
   base::TimeDelta time_offset_;
   int click_count_;
   // Timestamp of the last event that was dispatched
   base::TimeTicks last_event_timestamp_;
 
-  bool pointer_lock_pending_;
-  bool pointer_unlock_pending_;
-  bool pointer_locked_;
-  // Tests can control the behaviour of RequestPointerLock() by specifying what
-  // the next action should be though this.
-  NextPointerLockAction next_pointer_lock_action_;
-  // Callback held until a pointer lock request completes/fails. It is run
-  // before calling through to DidAcquirePointerLock() or
-  // DidNotAcquirePointerLock().
-  blink::WebWidgetClient::PointerLockCallback pointer_locked_callback_;
-
   base::WeakPtrFactory<EventSender> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(EventSender);
 };
 
 }  // namespace content

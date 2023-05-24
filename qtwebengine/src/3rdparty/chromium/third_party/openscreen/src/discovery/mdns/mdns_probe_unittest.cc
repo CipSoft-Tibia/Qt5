@@ -92,7 +92,8 @@ class MdnsProbeTests : public testing::Test {
   const IPEndpoint endpoint_v4_{address_v4_, 80};
 };
 
-TEST_F(MdnsProbeTests, TestNoCancelationFlow) {
+// TODO(issuetracker.google.com/issues/243611087): Occasionally flaky in bots.
+TEST_F(MdnsProbeTests, DISABLED_TestNoCancelationFlow) {
   EXPECT_CALL(sender_, SendMulticast(_));
   clock_.Advance(kDelayBetweenProbeQueries);
   EXPECT_EQ(task_runner_.delayed_task_count(), 1);

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKANIMATEDSPRITE_P_H
 #define QQUICKANIMATEDSPRITE_P_H
@@ -65,35 +29,35 @@ class QSGContext;
 class QQuickSprite;
 class QQuickSpriteEngine;
 class QSGGeometryNode;
-class QQuickAnimatedSpriteMaterial;
 class QQuickAnimatedSpritePrivate;
 class QSGSpriteNode;
-class Q_AUTOTEST_EXPORT QQuickAnimatedSprite : public QQuickItem
+class Q_QUICK_PRIVATE_EXPORT QQuickAnimatedSprite : public QQuickItem
 {
     Q_OBJECT
-    Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged)
-    Q_PROPERTY(bool interpolate READ interpolate WRITE setInterpolate NOTIFY interpolateChanged)
+    Q_PROPERTY(bool running READ running WRITE setRunning NOTIFY runningChanged FINAL)
+    Q_PROPERTY(bool interpolate READ interpolate WRITE setInterpolate NOTIFY interpolateChanged FINAL)
     //###try to share similar spriteEngines for less overhead?
     //These properties come out of QQuickSprite, since an AnimatedSprite is a renderer for a single sprite
-    Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged)
-    Q_PROPERTY(bool reverse READ reverse WRITE setReverse NOTIFY reverseChanged)
-    Q_PROPERTY(bool frameSync READ frameSync WRITE setFrameSync NOTIFY frameSyncChanged)
-    Q_PROPERTY(int frameCount READ frameCount WRITE setFrameCount NOTIFY frameCountChanged)
+    Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged FINAL)
+    Q_PROPERTY(bool reverse READ reverse WRITE setReverse NOTIFY reverseChanged FINAL)
+    Q_PROPERTY(bool frameSync READ frameSync WRITE setFrameSync NOTIFY frameSyncChanged FINAL)
+    Q_PROPERTY(int frameCount READ frameCount WRITE setFrameCount NOTIFY frameCountChanged FINAL)
     //If frame height or width is not specified, it is assumed to be a single long row of square frames.
     //Otherwise, it can be multiple contiguous rows, when one row runs out the next will be used.
-    Q_PROPERTY(int frameHeight READ frameHeight WRITE setFrameHeight NOTIFY frameHeightChanged)
-    Q_PROPERTY(int frameWidth READ frameWidth WRITE setFrameWidth NOTIFY frameWidthChanged)
-    Q_PROPERTY(int frameX READ frameX WRITE setFrameX NOTIFY frameXChanged)
-    Q_PROPERTY(int frameY READ frameY WRITE setFrameY NOTIFY frameYChanged)
+    Q_PROPERTY(int frameHeight READ frameHeight WRITE setFrameHeight NOTIFY frameHeightChanged FINAL)
+    Q_PROPERTY(int frameWidth READ frameWidth WRITE setFrameWidth NOTIFY frameWidthChanged FINAL)
+    Q_PROPERTY(int frameX READ frameX WRITE setFrameX NOTIFY frameXChanged FINAL)
+    Q_PROPERTY(int frameY READ frameY WRITE setFrameY NOTIFY frameYChanged FINAL)
     //Precedence order: frameRate, frameDuration
-    Q_PROPERTY(qreal frameRate READ frameRate WRITE setFrameRate NOTIFY frameRateChanged RESET resetFrameRate)
-    Q_PROPERTY(int frameDuration READ frameDuration WRITE setFrameDuration NOTIFY frameDurationChanged RESET resetFrameDuration)
+    Q_PROPERTY(qreal frameRate READ frameRate WRITE setFrameRate NOTIFY frameRateChanged RESET resetFrameRate FINAL)
+    Q_PROPERTY(int frameDuration READ frameDuration WRITE setFrameDuration NOTIFY frameDurationChanged RESET resetFrameDuration FINAL)
     //Extra Simple Sprite Stuff
-    Q_PROPERTY(int loops READ loops WRITE setLoops NOTIFY loopsChanged)
-    Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
-    Q_PROPERTY(int currentFrame READ currentFrame WRITE setCurrentFrame NOTIFY currentFrameChanged)
-    Q_PROPERTY(FinishBehavior finishBehavior READ finishBehavior WRITE setFinishBehavior NOTIFY finishBehaviorChanged REVISION 15)
+    Q_PROPERTY(int loops READ loops WRITE setLoops NOTIFY loopsChanged FINAL)
+    Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged FINAL)
+    Q_PROPERTY(int currentFrame READ currentFrame WRITE setCurrentFrame NOTIFY currentFrameChanged FINAL)
+    Q_PROPERTY(FinishBehavior finishBehavior READ finishBehavior WRITE setFinishBehavior NOTIFY finishBehaviorChanged REVISION(2, 15) FINAL)
     QML_NAMED_ELEMENT(AnimatedSprite)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     explicit QQuickAnimatedSprite(QQuickItem *parent = nullptr);
@@ -144,9 +108,9 @@ Q_SIGNALS:
     void frameDurationChanged(int arg);
     void loopsChanged(int arg);
     void currentFrameChanged(int arg);
-    Q_REVISION(15) void finishBehaviorChanged(FinishBehavior arg);
+    Q_REVISION(2, 15) void finishBehaviorChanged(FinishBehavior arg);
 
-    Q_REVISION(12) void finished();
+    Q_REVISION(2, 12) void finished();
 
 public Q_SLOTS:
     void start();
@@ -193,7 +157,6 @@ private:
     QSGSpriteNode* initNode();
 
 private:
-    Q_DISABLE_COPY(QQuickAnimatedSprite)
     Q_DECLARE_PRIVATE(QQuickAnimatedSprite)
 };
 

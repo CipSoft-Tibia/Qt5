@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,10 @@
 
 #include "xfa/fde/cfde_wordbreak_data.h"
 
+#include <iterator>
+
 #include "core/fxcrt/fx_system.h"
-#include "third_party/base/stl_util.h"
+#include "third_party/base/check.h"
 
 namespace {
 
@@ -2818,14 +2820,14 @@ const uint8_t kCodePointProperties[32768] = {
 
 bool FX_CheckStateChangeForWordBreak(WordBreakProperty from,
                                      WordBreakProperty to) {
-  ASSERT(static_cast<int>(from) < 13);
+  DCHECK(static_cast<int>(from) < 13);
   return !!(kWordBreakTable[static_cast<int>(from)] &
             static_cast<uint16_t>(1 << static_cast<int>(to)));
 }
 
 WordBreakProperty FX_GetWordBreakProperty(wchar_t wcCodePoint) {
   size_t index = static_cast<size_t>(wcCodePoint) / 2;
-  if (index >= pdfium::size(kCodePointProperties))
+  if (index >= std::size(kCodePointProperties))
     return WordBreakProperty::kNone;
 
   uint8_t dwProperty = kCodePointProperties[index];

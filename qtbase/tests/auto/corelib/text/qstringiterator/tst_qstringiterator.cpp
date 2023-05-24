@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/QString>
 #include <private/qstringiterator_p.h>
 
@@ -195,15 +170,15 @@ void tst_QStringIterator::sweep()
     QString rebuiltString;
 
     while (i.hasNext()) {
-        const uint peekedCodePoint = i.peekNext(~0u);
-        const uint codePoint = i.next(~0u);
+        const char32_t peekedCodePoint = i.peekNext(~0u);
+        const char32_t codePoint = i.next(~0u);
 
         QVERIFY(peekedCodePoint == codePoint);
 
         if (codePoint == ~0u)
             rebuiltString += *(i.position() - 1);
         else
-            rebuiltString += QString::fromUcs4(&codePoint, 1);
+            rebuiltString += QChar::fromUcs4(codePoint);
 
         ++count;
     }
@@ -213,8 +188,8 @@ void tst_QStringIterator::sweep()
     rebuiltString.clear();
 
     while (i.hasPrevious()) {
-        const uint peekedCodePoint = i.peekPrevious(~0u);
-        const uint codePoint = i.previous(~0u);
+        const char32_t peekedCodePoint = i.peekPrevious(~0u);
+        const char32_t codePoint = i.previous(~0u);
 
         QVERIFY(peekedCodePoint == codePoint);
 
@@ -239,12 +214,12 @@ void tst_QStringIterator::sweep()
 
     if (valid) {
         while (i.hasNext()) {
-            const uint peekedCodePoint = i.peekNextUnchecked();
-            const uint codePoint = i.nextUnchecked();
+            const char32_t peekedCodePoint = i.peekNextUnchecked();
+            const char32_t codePoint = i.nextUnchecked();
 
             QVERIFY(peekedCodePoint == codePoint);
             QVERIFY(codePoint <= 0x10FFFFu);
-            rebuiltString += QString::fromUcs4(&codePoint, 1);
+            rebuiltString += QChar::fromUcs4(codePoint);
             ++count;
         }
 
@@ -252,8 +227,8 @@ void tst_QStringIterator::sweep()
         QTEST(rebuiltString, "string");
 
         while (i.hasPrevious()) {
-            const uint peekedCodePoint = i.peekPreviousUnchecked();
-            const uint codePoint = i.previousUnchecked();
+            const char32_t peekedCodePoint = i.peekPreviousUnchecked();
+            const char32_t codePoint = i.previousUnchecked();
 
             QVERIFY(peekedCodePoint == codePoint);
 

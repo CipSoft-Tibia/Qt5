@@ -39,9 +39,8 @@
 #include "third_party/blink/public/mojom/prerender/prerender.mojom-blink.h"
 #include "third_party/blink/public/platform/web_cache.h"
 #include "third_party/blink/public/platform/web_string.h"
-#include "third_party/blink/public/platform/web_url_loader_mock_factory.h"
 #include "third_party/blink/public/web/web_frame.h"
-#include "third_party/blink/public/web/web_prerenderer_client.h"
+#include "third_party/blink/public/web/web_no_state_prefetch_client.h"
 #include "third_party/blink/public/web/web_script_source.h"
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/blink/public/web/web_view_client.h"
@@ -51,78 +50,52 @@
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/html_element_type_helpers.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 
 namespace blink {
 
 namespace {
 
-class TestWebPrerendererClient : public WebPrerendererClient {
+class TestWebNoStatePrefetchClient : public WebNoStatePrefetchClient {
  public:
-  TestWebPrerendererClient() = default;
-  virtual ~TestWebPrerendererClient() = default;
+  TestWebNoStatePrefetchClient() = default;
+  virtual ~TestWebNoStatePrefetchClient() = default;
 
  private:
   bool IsPrefetchOnly() override { return false; }
 };
 
-class MockPrerenderProcessor : public mojom::blink::PrerenderProcessor {
+class MockNoStatePrefetchProcessor
+    : public mojom::blink::NoStatePrefetchProcessor {
  public:
-  explicit MockPrerenderProcessor(
-      mojo::PendingReceiver<mojom::blink::PrerenderProcessor>
+  explicit MockNoStatePrefetchProcessor(
+      mojo::PendingReceiver<mojom::blink::NoStatePrefetchProcessor>
           pending_receiver) {
-    receiver_.Bind(std::move(pending_receiver));
+    receiver_for_prefetch_.Bind(std::move(pending_receiver));
   }
-  ~MockPrerenderProcessor() override = default;
+  ~MockNoStatePrefetchProcessor() override = default;
 
-  // mojom::blink::PrerenderProcessor implementation
-  void Start(mojom::blink::PrerenderAttributesPtr attributes,
-             mojo::PendingRemote<mojom::blink::PrerenderProcessorClient> client)
-      override {
+  // mojom::blink::NoStatePrefetchProcessor implementation
+  void Start(mojom::blink::PrerenderAttributesPtr attributes) override {
     attributes_ = std::move(attributes);
-    client_.Bind(std::move(client));
   }
   void Cancel() override { cancel_count_++; }
-  void Abandon() override { abandon_count_++; }
 
   // Returns the number of times |Cancel| was called.
   size_t CancelCount() const { return cancel_count_; }
 
-  // Returns the number of times |Abandon| was called.
-  size_t AbandonCount() const { return abandon_count_; }
-
   const KURL& Url() const { return attributes_->url; }
-  mojom::blink::PrerenderRelType RelType() const {
-    return attributes_->rel_type;
-  }
-
-  // Used to simulate state changes of the mock prerendered web page. These
-  // calls spin the message loop so that the client's receiver side gets a
-  // chance to run.
-  void NotifyDidStartPrerender() {
-    client_->OnPrerenderStart();
-    test::RunPendingTasks();
-  }
-  void NotifyDidSendDOMContentLoadedForPrerender() {
-    client_->OnPrerenderDomContentLoaded();
-    test::RunPendingTasks();
-  }
-  void NotifyDidSendLoadForPrerender() {
-    client_->OnPrerenderStopLoading();
-    test::RunPendingTasks();
-  }
-  void NotifyDidStopPrerender() {
-    client_->OnPrerenderStop();
-    test::RunPendingTasks();
+  mojom::blink::PrerenderTriggerType PrerenderTriggerType() const {
+    return attributes_->trigger_type;
   }
 
  private:
   mojom::blink::PrerenderAttributesPtr attributes_;
-  mojo::Remote<mojom::blink::PrerenderProcessorClient> client_;
-  mojo::Receiver<mojom::blink::PrerenderProcessor> receiver_{this};
+  mojo::Receiver<mojom::blink::NoStatePrefetchProcessor> receiver_for_prefetch_{
+      this};
 
   size_t cancel_count_ = 0;
-  size_t abandon_count_ = 0;
 };
 
 class PrerenderTest : public testing::Test {
@@ -137,17 +110,15 @@ class PrerenderTest : public testing::Test {
     // TODO(crbug.com/751425): We should use the mock functionality
     // via |web_view_helper_|.
     url_test_helpers::RegisterMockedURLLoadFromBase(
-        WebString::FromUTF8(base_url), blink::test::CoreTestDataPath(),
+        WebString::FromUTF8(base_url), test::CoreTestDataPath(),
         WebString::FromUTF8(file_name));
     web_view_helper_.Initialize();
-    web_view_helper_.GetWebView()->SetPrerendererClient(&prerenderer_client_);
+    web_view_helper_.GetWebView()->SetNoStatePrefetchClient(
+        &no_state_prefetch_client_);
 
-    web_view_helper_.LocalMainFrame()
-        ->GetFrame()
-        ->GetBrowserInterfaceBroker()
-        .SetBinderForTesting(
-            mojom::blink::PrerenderProcessor::Name_,
-            WTF::BindRepeating(&PrerenderTest::Bind, WTF::Unretained(this)));
+    GetBrowserInterfaceBroker().SetBinderForTesting(
+        mojom::blink::NoStatePrefetchProcessor::Name_,
+        WTF::BindRepeating(&PrerenderTest::Bind, WTF::Unretained(this)));
 
     frame_test_helpers::LoadFrame(
         web_view_helper_.GetWebView()->MainFrameImpl(),
@@ -155,8 +126,8 @@ class PrerenderTest : public testing::Test {
   }
 
   void Bind(mojo::ScopedMessagePipeHandle message_pipe_handle) {
-    auto processor = std::make_unique<MockPrerenderProcessor>(
-        mojo::PendingReceiver<mojom::blink::PrerenderProcessor>(
+    auto processor = std::make_unique<MockNoStatePrefetchProcessor>(
+        mojo::PendingReceiver<mojom::blink::NoStatePrefetchProcessor>(
             std::move(message_pipe_handle)));
     processors_.push_back(std::move(processor));
   }
@@ -177,56 +148,38 @@ class PrerenderTest : public testing::Test {
     test::RunPendingTasks();
   }
 
-  Element& Console() {
-    Document* document =
-        web_view_helper_.LocalMainFrame()->GetFrame()->GetDocument();
-    Element* console = document->getElementById("console");
-    DCHECK(IsA<HTMLUListElement>(console));
-    return *console;
-  }
-
-  unsigned ConsoleLength() { return Console().CountChildren() - 1; }
-
-  WebString ConsoleAt(unsigned i) {
-    DCHECK_GT(ConsoleLength(), i);
-
-    Node* item = NodeTraversal::ChildAt(Console(), 1 + i);
-
-    DCHECK(item);
-    DCHECK(IsA<HTMLLIElement>(item));
-    DCHECK(item->hasChildren());
-
-    return item->textContent();
-  }
-
-  bool IsUseCounted(mojom::WebFeature web_feature) {
-    Document* document =
-        web_view_helper_.LocalMainFrame()->GetFrame()->GetDocument();
-    return document->IsUseCounted(web_feature);
-  }
-
   void ExecuteScript(const char* code) {
     web_view_helper_.LocalMainFrame()->ExecuteScript(
         WebScriptSource(WebString::FromUTF8(code)));
     test::RunPendingTasks();
   }
 
-  std::vector<std::unique_ptr<MockPrerenderProcessor>>& processors() {
+  std::vector<std::unique_ptr<MockNoStatePrefetchProcessor>>& processors() {
     return processors_;
+  }
+
+  bool IsUseCounted(WebFeature feature) {
+    return web_view_helper_.LocalMainFrame()
+        ->GetFrame()
+        ->GetDocument()
+        ->IsUseCounted(feature);
   }
 
  private:
   void UnregisterMockPrerenderProcessor() {
-    web_view_helper_.LocalMainFrame()
-        ->GetFrame()
-        ->GetBrowserInterfaceBroker()
-        .SetBinderForTesting(mojom::blink::PrerenderProcessor::Name_, {});
+    GetBrowserInterfaceBroker().SetBinderForTesting(
+        mojom::blink::NoStatePrefetchProcessor::Name_, {});
   }
 
-  std::vector<std::unique_ptr<MockPrerenderProcessor>> processors_;
-  mojo::ReceiverSet<mojom::blink::PrerenderProcessor> receiver_set_;
+  BrowserInterfaceBrokerProxy& GetBrowserInterfaceBroker() {
+    return web_view_helper_.LocalMainFrame()
+        ->GetFrame()
+        ->GetBrowserInterfaceBroker();
+  }
 
-  TestWebPrerendererClient prerenderer_client_;
+  std::vector<std::unique_ptr<MockNoStatePrefetchProcessor>> processors_;
+
+  TestWebNoStatePrefetchClient no_state_prefetch_client_;
 
   frame_test_helpers::WebViewHelper web_view_helper_;
 };
@@ -234,229 +187,169 @@ class PrerenderTest : public testing::Test {
 }  // namespace
 
 TEST_F(PrerenderTest, SinglePrerender) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
+  Initialize("http://example.com/", "prerender/single_prerender.html");
   ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
+  MockNoStatePrefetchProcessor& processor = *processors()[0];
 
-  EXPECT_EQ(KURL("http://prerender.com/"), processor.Url());
-  EXPECT_EQ(mojom::blink::PrerenderRelType::kPrerender, processor.RelType());
+  EXPECT_EQ(KURL("http://example.com/prerender"), processor.Url());
+  EXPECT_EQ(mojom::blink::PrerenderTriggerType::kLinkRelPrerender,
+            processor.PrerenderTriggerType());
 
   EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
-  EXPECT_FALSE(IsUseCounted(WebFeature::kWebkitPrerenderStartEventFired));
-  processor.NotifyDidStartPrerender();
-  EXPECT_EQ(1u, ConsoleLength());
-  EXPECT_EQ("webkitprerenderstart", ConsoleAt(0));
-  EXPECT_TRUE(IsUseCounted(WebFeature::kWebkitPrerenderStartEventFired));
-
-  EXPECT_FALSE(
-      IsUseCounted(WebFeature::kWebkitPrerenderDOMContentLoadedEventFired));
-  processor.NotifyDidSendDOMContentLoadedForPrerender();
-  EXPECT_EQ(2u, ConsoleLength());
-  EXPECT_EQ("webkitprerenderdomcontentloaded", ConsoleAt(1));
-  EXPECT_TRUE(
-      IsUseCounted(WebFeature::kWebkitPrerenderDOMContentLoadedEventFired));
-
-  EXPECT_FALSE(IsUseCounted(WebFeature::kWebkitPrerenderLoadEventFired));
-  processor.NotifyDidSendLoadForPrerender();
-  EXPECT_EQ(3u, ConsoleLength());
-  EXPECT_EQ("webkitprerenderload", ConsoleAt(2));
-  EXPECT_TRUE(IsUseCounted(WebFeature::kWebkitPrerenderLoadEventFired));
-
-  EXPECT_FALSE(IsUseCounted(WebFeature::kWebkitPrerenderStopEventFired));
-  processor.NotifyDidStopPrerender();
-  EXPECT_EQ(4u, ConsoleLength());
-  EXPECT_EQ("webkitprerenderstop", ConsoleAt(3));
-  EXPECT_TRUE(IsUseCounted(WebFeature::kWebkitPrerenderStopEventFired));
 }
 
 TEST_F(PrerenderTest, CancelPrerender) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
+  Initialize("http://example.com/", "prerender/single_prerender.html");
   ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
+  MockNoStatePrefetchProcessor& processor = *processors()[0];
 
   EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
   ExecuteScript("removePrerender()");
-
   EXPECT_EQ(1u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-}
-
-TEST_F(PrerenderTest, AbandonPrerender) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
-  ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
-
-  EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
-  NavigateAway();
-
-  EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
-  // Check that the prerender does not emit an extra cancel when
-  // garbage-collecting everything.
-  Close();
-
-  EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
 }
 
 TEST_F(PrerenderTest, TwoPrerenders) {
-  Initialize("http://www.foo.com/", "prerender/multiple_prerenders.html");
+  Initialize("http://example.com/", "prerender/multiple_prerenders.html");
 
   ASSERT_EQ(processors().size(), 2u);
-  MockPrerenderProcessor& first_processor = *processors()[0];
-  EXPECT_EQ(KURL("http://first-prerender.com/"), first_processor.Url());
-  MockPrerenderProcessor& second_processor = *processors()[1];
-  EXPECT_EQ(KURL("http://second-prerender.com/"), second_processor.Url());
+  MockNoStatePrefetchProcessor& first_processor = *processors()[0];
+  EXPECT_EQ(KURL("http://example.com/first"), first_processor.Url());
+  MockNoStatePrefetchProcessor& second_processor = *processors()[1];
+  EXPECT_EQ(KURL("http://example.com/second"), second_processor.Url());
 
   EXPECT_EQ(0u, first_processor.CancelCount());
-  EXPECT_EQ(0u, first_processor.AbandonCount());
   EXPECT_EQ(0u, second_processor.CancelCount());
-  EXPECT_EQ(0u, second_processor.AbandonCount());
-
-  first_processor.NotifyDidStartPrerender();
-  EXPECT_EQ(1u, ConsoleLength());
-  EXPECT_EQ("first_webkitprerenderstart", ConsoleAt(0));
-
-  second_processor.NotifyDidStartPrerender();
-  EXPECT_EQ(2u, ConsoleLength());
-  EXPECT_EQ("second_webkitprerenderstart", ConsoleAt(1));
 }
 
 TEST_F(PrerenderTest, TwoPrerendersRemovingFirstThenNavigating) {
-  Initialize("http://www.foo.com/", "prerender/multiple_prerenders.html");
+  Initialize("http://example.com/", "prerender/multiple_prerenders.html");
 
   ASSERT_EQ(processors().size(), 2u);
-  MockPrerenderProcessor& first_processor = *processors()[0];
-  MockPrerenderProcessor& second_processor = *processors()[1];
+  MockNoStatePrefetchProcessor& first_processor = *processors()[0];
+  MockNoStatePrefetchProcessor& second_processor = *processors()[1];
 
   EXPECT_EQ(0u, first_processor.CancelCount());
-  EXPECT_EQ(0u, first_processor.AbandonCount());
   EXPECT_EQ(0u, second_processor.CancelCount());
-  EXPECT_EQ(0u, second_processor.AbandonCount());
 
   ExecuteScript("removeFirstPrerender()");
 
   EXPECT_EQ(1u, first_processor.CancelCount());
-  EXPECT_EQ(0u, first_processor.AbandonCount());
   EXPECT_EQ(0u, second_processor.CancelCount());
-  EXPECT_EQ(0u, second_processor.AbandonCount());
 
   NavigateAway();
 
   EXPECT_EQ(1u, first_processor.CancelCount());
-  EXPECT_EQ(0u, first_processor.AbandonCount());
   EXPECT_EQ(0u, second_processor.CancelCount());
-  EXPECT_EQ(0u, second_processor.AbandonCount());
 }
 
 TEST_F(PrerenderTest, TwoPrerendersAddingThird) {
-  Initialize("http://www.foo.com/", "prerender/multiple_prerenders.html");
+  Initialize("http://example.com/", "prerender/multiple_prerenders.html");
 
   ASSERT_EQ(processors().size(), 2u);
-  MockPrerenderProcessor& first_processor = *processors()[0];
-  MockPrerenderProcessor& second_processor = *processors()[1];
+  MockNoStatePrefetchProcessor& first_processor = *processors()[0];
+  MockNoStatePrefetchProcessor& second_processor = *processors()[1];
 
   EXPECT_EQ(0u, first_processor.CancelCount());
-  EXPECT_EQ(0u, first_processor.AbandonCount());
   EXPECT_EQ(0u, second_processor.CancelCount());
-  EXPECT_EQ(0u, second_processor.AbandonCount());
 
   ExecuteScript("addThirdPrerender()");
 
   ASSERT_EQ(processors().size(), 3u);
-  MockPrerenderProcessor& third_processor = *processors()[2];
+  MockNoStatePrefetchProcessor& third_processor = *processors()[2];
 
   EXPECT_EQ(0u, first_processor.CancelCount());
-  EXPECT_EQ(0u, first_processor.AbandonCount());
   EXPECT_EQ(0u, second_processor.CancelCount());
-  EXPECT_EQ(0u, second_processor.AbandonCount());
   EXPECT_EQ(0u, third_processor.CancelCount());
-  EXPECT_EQ(0u, third_processor.AbandonCount());
-}
-
-TEST_F(PrerenderTest, ShortLivedClient) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
-  ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
-
-  EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
-  NavigateAway();
-  Close();
-
-  // This test passes if this next line doesn't crash.
-  processor.NotifyDidStartPrerender();
-}
-
-TEST_F(PrerenderTest, FastRemoveElement) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
-  ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
-
-  EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
-  // Race removing & starting the prerender against each other, as if the
-  // element was removed very quickly.
-  ExecuteScript("removePrerender()");
-  processor.NotifyDidStartPrerender();
-
-  // Removing the element should cancel prerendering.
-  EXPECT_EQ(1u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
-
-  // The page should be totally disconnected from the Prerender at this point,
-  // so the console should not have updated.
-  EXPECT_EQ(0u, ConsoleLength());
 }
 
 TEST_F(PrerenderTest, MutateTarget) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
+  Initialize("http://example.com/", "prerender/single_prerender.html");
   ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
+  MockNoStatePrefetchProcessor& processor = *processors()[0];
 
-  EXPECT_EQ(KURL("http://prerender.com/"), processor.Url());
+  EXPECT_EQ(KURL("http://example.com/prerender"), processor.Url());
 
   EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
 
   // Change the href of this prerender, make sure this is treated as a remove
   // and add.
   ExecuteScript("mutateTarget()");
 
   ASSERT_EQ(processors().size(), 2u);
-  MockPrerenderProcessor& mutated_processor = *processors()[1];
-  EXPECT_EQ(KURL("http://mutated.com/"), mutated_processor.Url());
+  MockNoStatePrefetchProcessor& mutated_processor = *processors()[1];
+  EXPECT_EQ(KURL("http://example.com/mutated"), mutated_processor.Url());
 
   EXPECT_EQ(1u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
   EXPECT_EQ(0u, mutated_processor.CancelCount());
-  EXPECT_EQ(0u, mutated_processor.AbandonCount());
 }
 
 TEST_F(PrerenderTest, MutateRel) {
-  Initialize("http://www.foo.com/", "prerender/single_prerender.html");
+  Initialize("http://example.com/", "prerender/single_prerender.html");
   ASSERT_EQ(processors().size(), 1u);
-  MockPrerenderProcessor& processor = *processors()[0];
+  MockNoStatePrefetchProcessor& processor = *processors()[0];
 
-  EXPECT_EQ(KURL("http://prerender.com/"), processor.Url());
+  EXPECT_EQ(KURL("http://example.com/prerender"), processor.Url());
 
   EXPECT_EQ(0u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
 
   // Change the rel of this prerender, make sure this is treated as a remove.
   ExecuteScript("mutateRel()");
 
   EXPECT_EQ(1u, processor.CancelCount());
-  EXPECT_EQ(0u, processor.AbandonCount());
+}
+
+TEST_F(PrerenderTest, OriginTypeUseCounter) {
+  Initialize("http://example.com/", "prerender/any_prerender.html");
+
+  ASSERT_FALSE(IsUseCounted(WebFeature::kLinkRelPrerenderSameOrigin));
+  ASSERT_FALSE(IsUseCounted(WebFeature::kLinkRelPrerenderSameSiteCrossOrigin));
+  ASSERT_FALSE(IsUseCounted(WebFeature::kLinkRelPrerenderCrossSite));
+
+  // Add <link rel="prerender"> for a same-origin URL.
+  {
+    ExecuteScript("createLinkRelPrerender('http://example.com/prerender')");
+    ASSERT_EQ(processors().size(), 1u);
+    MockNoStatePrefetchProcessor& processor = *processors()[0];
+
+    EXPECT_EQ(KURL("http://example.com/prerender"), processor.Url());
+    EXPECT_EQ(mojom::blink::PrerenderTriggerType::kLinkRelPrerender,
+              processor.PrerenderTriggerType());
+
+    EXPECT_TRUE(IsUseCounted(WebFeature::kLinkRelPrerenderSameOrigin));
+    EXPECT_FALSE(
+        IsUseCounted(WebFeature::kLinkRelPrerenderSameSiteCrossOrigin));
+    EXPECT_FALSE(IsUseCounted(WebFeature::kLinkRelPrerenderCrossSite));
+  }
+
+  // Add <link rel="prerender"> for a same-site cross-origin URL.
+  {
+    ExecuteScript("createLinkRelPrerender('http://www.example.com/prerender')");
+    ASSERT_EQ(processors().size(), 2u);
+    MockNoStatePrefetchProcessor& processor = *processors()[1];
+
+    EXPECT_EQ(KURL("http://www.example.com/prerender"), processor.Url());
+    EXPECT_EQ(mojom::blink::PrerenderTriggerType::kLinkRelPrerender,
+              processor.PrerenderTriggerType());
+
+    EXPECT_TRUE(IsUseCounted(WebFeature::kLinkRelPrerenderSameOrigin));
+    EXPECT_TRUE(IsUseCounted(WebFeature::kLinkRelPrerenderSameSiteCrossOrigin));
+    EXPECT_FALSE(IsUseCounted(WebFeature::kLinkRelPrerenderCrossSite));
+  }
+
+  // Add <link rel="prerender"> for a cross-site URL.
+  {
+    ExecuteScript("createLinkRelPrerender('https://example.com/prerender')");
+    ASSERT_EQ(processors().size(), 3u);
+    MockNoStatePrefetchProcessor& processor = *processors()[2];
+
+    EXPECT_EQ(KURL("https://example.com/prerender"), processor.Url());
+    EXPECT_EQ(mojom::blink::PrerenderTriggerType::kLinkRelPrerender,
+              processor.PrerenderTriggerType());
+
+    EXPECT_TRUE(IsUseCounted(WebFeature::kLinkRelPrerenderSameOrigin));
+    EXPECT_TRUE(IsUseCounted(WebFeature::kLinkRelPrerenderSameSiteCrossOrigin));
+    EXPECT_TRUE(IsUseCounted(WebFeature::kLinkRelPrerenderCrossSite));
+  }
 }
 
 }  // namespace blink

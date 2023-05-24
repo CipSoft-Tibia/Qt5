@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QtQml/qqmlcomponent.h>
@@ -36,7 +11,10 @@
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qguiapplication_p.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QFont>
+
+using namespace Qt::StringLiterals;
 
 class tst_qquickapplication : public QQmlDataTest
 {
@@ -60,6 +38,7 @@ private:
 };
 
 tst_qquickapplication::tst_qquickapplication()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 }
 
@@ -73,152 +52,180 @@ void tst_qquickapplication::cleanup()
 
 void tst_qquickapplication::active()
 {
-    QQmlComponent component(&engine);
-    component.setData("import QtQuick 2.0; "
-                      "Item { "
-                      "    property bool active: Qt.application.active; "
-                      "    property bool active2: false; "
-                      "    Connections { "
-                      "        target: Qt.application; "
-                      "        onActiveChanged: active2 = Qt.application.active; "
-                      "    } "
-                      "}", QUrl::fromLocalFile(""));
-    QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
-    QVERIFY(item);
-    QQuickWindow window;
-    item->setParentItem(window.contentItem());
+    for (const QString &app : { u"Qt.application"_s, u"Application"_s }) {
+        QQmlComponent component(&engine);
+        component.setData(u"import QtQuick 2.0; "
+                          "Item { "
+                          "    property bool active: %1.active; "
+                          "    property bool active2: false; "
+                          "    Connections { "
+                          "        target: %1; "
+                          "        function onActiveChanged(active) { active2 = %1.active; }"
+                          "    } "
+                          "}"_s.arg(app)
+                                  .toUtf8(),
+                          QUrl::fromLocalFile(""));
+        QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY(item);
+        QQuickWindow window;
+        item->setParentItem(window.contentItem());
 
-    // If the platform plugin has the ApplicationState capability, app activation originate from it
-    // as a result of a system event. We therefore have to simulate these events here.
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::ApplicationState)) {
+        // If the platform plugin has the ApplicationState capability, app activation originate from
+        // it as a result of a system event. We therefore have to simulate these events here.
+        if (QGuiApplicationPrivate::platformIntegration()->hasCapability(
+                    QPlatformIntegration::ApplicationState)) {
 
-        // Flush pending events, in case the platform have already queued real application state events
-        QWindowSystemInterface::flushWindowSystemEvents();
+            // Flush pending events, in case the platform have already queued real application state
+            // events
+            QWindowSystemInterface::flushWindowSystemEvents();
 
-        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationActive);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        QVERIFY(item->property("active").toBool());
-        QVERIFY(item->property("active2").toBool());
+            QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationActive);
+            QWindowSystemInterface::flushWindowSystemEvents();
+            QVERIFY(item->property("active").toBool());
+            QVERIFY(item->property("active2").toBool());
 
-        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationInactive);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        QVERIFY(!item->property("active").toBool());
-        QVERIFY(!item->property("active2").toBool());
-    } else {
-        // Otherwise, app activation is triggered by window activation.
-        window.show();
-        window.requestActivate();
-        QVERIFY(QTest::qWaitForWindowActive(&window));
-        QCOMPARE(QGuiApplication::focusWindow(), &window);
-        QVERIFY(item->property("active").toBool());
-        QVERIFY(item->property("active2").toBool());
+            QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationInactive);
+            QWindowSystemInterface::flushWindowSystemEvents();
+            QVERIFY(!item->property("active").toBool());
+            QVERIFY(!item->property("active2").toBool());
+        } else {
+            // Otherwise, app activation is triggered by window activation.
+            window.show();
+            window.requestActivate();
+            QVERIFY(QTest::qWaitForWindowActive(&window));
+            QCOMPARE(QGuiApplication::focusWindow(), &window);
+            QVERIFY(item->property("active").toBool());
+            QVERIFY(item->property("active2").toBool());
 
-        // not active again
-        QWindowSystemInterface::handleWindowActivated(nullptr);
-        QTRY_VERIFY(QGuiApplication::focusWindow() != &window);
-        QVERIFY(!item->property("active").toBool());
-        QVERIFY(!item->property("active2").toBool());
+            // not active again
+            QWindowSystemInterface::handleWindowActivated(nullptr);
+            QTRY_VERIFY(QGuiApplication::focusWindow() != &window);
+            QVERIFY(!item->property("active").toBool());
+            QVERIFY(!item->property("active2").toBool());
+        }
     }
 }
 
 void tst_qquickapplication::state()
 {
-    QQmlComponent component(&engine);
-    component.setData("import QtQuick 2.0; "
-                      "Item { "
-                      "    property int state: Qt.application.state; "
-                      "    property int state2: Qt.ApplicationInactive; "
-                      "    Connections { "
-                      "        target: Qt.application; "
-                      "        onStateChanged: state2 = Qt.application.state; "
-                      "    } "
-                      "    Component.onCompleted: state2 = Qt.application.state; "
-                      "}", QUrl::fromLocalFile(""));
-    QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
-    QVERIFY(item);
-    QQuickWindow window;
-    item->setParentItem(window.contentItem());
+    for (const QString &app : { u"Qt.application"_s, u"Application"_s }) {
+        QQmlComponent component(&engine);
+        component.setData(u"import QtQuick 2.0; "
+                          "Item { "
+                          "    property int state: %1.state; "
+                          "    property int state2: Qt.ApplicationInactive; "
+                          "    Connections { "
+                          "        target: %1; "
+                          "        function onStateChanged(state) { state2 = %1.state; }"
+                          "    } "
+                          "    Component.onCompleted: state2 = %1.state; "
+                          "}"_s.arg(app)
+                                  .toUtf8(),
+                          QUrl::fromLocalFile(""));
+        QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY(item);
+        QQuickWindow window;
+        item->setParentItem(window.contentItem());
 
-    // If the platform plugin has the ApplicationState capability, state changes originate from it
-    // as a result of a system event. We therefore have to simulate these events here.
-    if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::ApplicationState)) {
+        // If the platform plugin has the ApplicationState capability, state changes originate from
+        // it as a result of a system event. We therefore have to simulate these events here.
+        if (QGuiApplicationPrivate::platformIntegration()->hasCapability(
+                    QPlatformIntegration::ApplicationState)) {
 
-        // Flush pending events, in case the platform have already queued real application state events
-        QWindowSystemInterface::flushWindowSystemEvents();
+            // Flush pending events, in case the platform have already queued real application state
+            // events
+            QWindowSystemInterface::flushWindowSystemEvents();
 
-        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationActive);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationActive);
-        QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationActive);
+            QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationActive);
+            QWindowSystemInterface::flushWindowSystemEvents();
+            QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationActive);
+            QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationActive);
 
-        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationInactive);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationInactive);
-        QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationInactive);
+            QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationInactive);
+            QWindowSystemInterface::flushWindowSystemEvents();
+            QCOMPARE(Qt::ApplicationState(item->property("state").toInt()),
+                     Qt::ApplicationInactive);
+            QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()),
+                     Qt::ApplicationInactive);
 
-        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationSuspended);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationSuspended);
-        QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationSuspended);
+            QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationSuspended);
+            QWindowSystemInterface::flushWindowSystemEvents();
+            QCOMPARE(Qt::ApplicationState(item->property("state").toInt()),
+                     Qt::ApplicationSuspended);
+            QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()),
+                     Qt::ApplicationSuspended);
 
-        QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationHidden);
-        QWindowSystemInterface::flushWindowSystemEvents();
-        QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationHidden);
-        QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationHidden);
+            QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationHidden);
+            QWindowSystemInterface::flushWindowSystemEvents();
+            QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationHidden);
+            QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationHidden);
 
-    } else {
-        // Otherwise, the application can only be in two states, Active and Inactive. These are
-        // triggered by window activation.
-        window.show();
-        window.requestActivate();
-        QVERIFY(QTest::qWaitForWindowActive(&window));
-        QCOMPARE(QGuiApplication::focusWindow(), &window);
-        QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationActive);
-        QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationActive);
+        } else {
+            // Otherwise, the application can only be in two states, Active and Inactive. These are
+            // triggered by window activation.
+            window.show();
+            window.requestActivate();
+            QVERIFY(QTest::qWaitForWindowActive(&window));
+            QCOMPARE(QGuiApplication::focusWindow(), &window);
+            QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationActive);
+            QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationActive);
 
-        // not active again
-        QWindowSystemInterface::handleWindowActivated(nullptr);
-        QTRY_VERIFY(QGuiApplication::focusWindow() != &window);
-        QCOMPARE(Qt::ApplicationState(item->property("state").toInt()), Qt::ApplicationInactive);
-        QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()), Qt::ApplicationInactive);
+            // not active again
+            QWindowSystemInterface::handleWindowActivated(nullptr);
+            QTRY_VERIFY(QGuiApplication::focusWindow() != &window);
+            QCOMPARE(Qt::ApplicationState(item->property("state").toInt()),
+                     Qt::ApplicationInactive);
+            QCOMPARE(Qt::ApplicationState(item->property("state2").toInt()),
+                     Qt::ApplicationInactive);
+        }
     }
 }
 
 void tst_qquickapplication::layoutDirection()
 {
+    for (const QString &app : { u"Qt.application"_s, u"Application"_s }) {
+        QQmlComponent component(&engine);
+        component.setData(
+                u"import QtQuick 2.0; Item { property bool layoutDirection: %1.layoutDirection }"_s
+                        .arg(app)
+                        .toUtf8(),
+                QUrl::fromLocalFile(""));
+        QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY(item);
+        QQuickView view;
+        item->setParentItem(view.rootObject());
 
-    QQmlComponent component(&engine);
-    component.setData("import QtQuick 2.0; Item { property bool layoutDirection: Qt.application.layoutDirection }", QUrl::fromLocalFile(""));
-    QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
-    QVERIFY(item);
-    QQuickView view;
-    item->setParentItem(view.rootObject());
+        // not mirrored
+        QCOMPARE(Qt::LayoutDirection(item->property("layoutDirection").toInt()), Qt::LeftToRight);
 
-    // not mirrored
-    QCOMPARE(Qt::LayoutDirection(item->property("layoutDirection").toInt()), Qt::LeftToRight);
+        // mirrored
+        QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+        QCOMPARE(Qt::LayoutDirection(item->property("layoutDirection").toInt()), Qt::RightToLeft);
 
-    // mirrored
-    QGuiApplication::setLayoutDirection(Qt::RightToLeft);
-    QCOMPARE(Qt::LayoutDirection(item->property("layoutDirection").toInt()), Qt::RightToLeft);
-
-    // not mirrored again
-    QGuiApplication::setLayoutDirection(Qt::LeftToRight);
-    QCOMPARE(Qt::LayoutDirection(item->property("layoutDirection").toInt()), Qt::LeftToRight);
+        // not mirrored again
+        QGuiApplication::setLayoutDirection(Qt::LeftToRight);
+        QCOMPARE(Qt::LayoutDirection(item->property("layoutDirection").toInt()), Qt::LeftToRight);
+    }
 }
 
 void tst_qquickapplication::font()
 {
-    QQmlComponent component(&engine);
-    component.setData("import QtQuick 2.0; Item { property font defaultFont: Qt.application.font }", QUrl::fromLocalFile(""));
-    QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
-    QVERIFY(item);
-    QQuickView view;
-    item->setParentItem(view.rootObject());
+    for (const QString &app : { u"Qt.application"_s, u"Application"_s }) {
+        QQmlComponent component(&engine);
+        component.setData(
+                u"import QtQuick 2.0; Item { property font defaultFont: %1.font }"_s.arg(app)
+                        .toUtf8(),
+                QUrl::fromLocalFile(""));
+        QQuickItem *item = qobject_cast<QQuickItem *>(component.create());
+        QVERIFY(item);
+        QQuickView view;
+        item->setParentItem(view.rootObject());
 
-    QVariant defaultFontProperty = item->property("defaultFont");
-    QVERIFY(defaultFontProperty.isValid());
-    QCOMPARE(defaultFontProperty.type(), QVariant::Font);
-    QCOMPARE(defaultFontProperty.value<QFont>(), qApp->font());
+        QVariant defaultFontProperty = item->property("defaultFont");
+        QVERIFY(defaultFontProperty.isValid());
+        QCOMPARE(defaultFontProperty.typeId(), QMetaType::QFont);
+        QCOMPARE(defaultFontProperty.value<QFont>(), qApp->font());
+    }
 }
 
 void tst_qquickapplication::inputMethod()

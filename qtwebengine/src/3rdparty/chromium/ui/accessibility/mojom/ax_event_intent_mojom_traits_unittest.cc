@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@ TEST(AXEventIntentMojomTraitsTest, RoundTripWithEditingIntent) {
   input.input_event_type = ax::mojom::InputEventType::kInsertLineBreak;
 
   ui::AXEventIntent output;
-  EXPECT_TRUE(SerializeAndDeserialize<ax::mojom::EventIntent>(&input, &output));
+  EXPECT_TRUE(SerializeAndDeserialize<ax::mojom::EventIntent>(input, output));
   EXPECT_EQ(ax::mojom::Command::kInsert, output.command);
   EXPECT_EQ(ax::mojom::InputEventType::kInsertLineBreak,
             output.input_event_type);
@@ -33,7 +33,7 @@ TEST(AXEventIntentMojomTraitsTest, RoundTripWithSelectionIntent) {
   input.move_direction = ax::mojom::MoveDirection::kForward;
 
   ui::AXEventIntent output;
-  EXPECT_TRUE(SerializeAndDeserialize<ax::mojom::EventIntent>(&input, &output));
+  EXPECT_TRUE(SerializeAndDeserialize<ax::mojom::EventIntent>(input, output));
   EXPECT_EQ(ax::mojom::Command::kMoveSelection, output.command);
   EXPECT_EQ(ax::mojom::InputEventType::kNone, output.input_event_type);
   EXPECT_EQ(ax::mojom::TextBoundary::kWordEnd, output.text_boundary);

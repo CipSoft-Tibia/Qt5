@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,11 @@
 
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "mojo/public/cpp/system/core.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/ranges/algorithm.h"
+#include "mojo/public/cpp/system/functions.h"
+#include "mojo/public/cpp/system/message_pipe.h"
 #include "mojo/public/cpp/system/wait.h"
 #include "mojo/public/cpp/test_support/test_support.h"
 
@@ -42,7 +44,7 @@ bool ReadTextMessage(const MessagePipeHandle& handle, std::string* text) {
 
   assert(handles.empty());
   text->resize(bytes.size());
-  std::copy(bytes.begin(), bytes.end(), text->begin());
+  base::ranges::copy(bytes, text->begin());
   return true;
 }
 

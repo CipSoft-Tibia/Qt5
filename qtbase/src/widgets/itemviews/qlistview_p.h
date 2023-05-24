@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLISTVIEW_P_H
 #define QLISTVIEW_P_H
@@ -68,28 +32,28 @@ class QListViewItem
     friend class QListModeViewBase;
     friend class QIconModeViewBase;
 public:
-    Q_DECL_CONSTEXPR QListViewItem()
+    constexpr QListViewItem()
         : x(-1), y(-1), w(0), h(0), indexHint(-1), visited(0xffff) {}
-    Q_DECL_CONSTEXPR QListViewItem(QRect r, int i)
+    constexpr QListViewItem(QRect r, int i)
         : x(r.x()), y(r.y()), w(qMin(r.width(), SHRT_MAX)), h(qMin(r.height(), SHRT_MAX)),
           indexHint(i), visited(0xffff) {}
-    Q_DECL_CONSTEXPR bool operator==(const QListViewItem &other) const {
+    constexpr bool operator==(const QListViewItem &other) const {
         return (x == other.x && y == other.y && w == other.w && h == other.h &&
                 indexHint == other.indexHint); }
-    Q_DECL_CONSTEXPR bool operator!=(const QListViewItem &other) const
+    constexpr bool operator!=(const QListViewItem &other) const
         { return !(*this == other); }
-    Q_DECL_CONSTEXPR bool isValid() const
+    constexpr bool isValid() const
         { return rect().isValid() && (indexHint > -1); }
-    Q_DECL_RELAXED_CONSTEXPR void invalidate()
+    constexpr void invalidate()
         { x = -1; y = -1; w = 0; h = 0; }
-    Q_DECL_RELAXED_CONSTEXPR void resize(QSize size)
+    constexpr void resize(QSize size)
         { w = qMin(size.width(), SHRT_MAX); h = qMin(size.height(), SHRT_MAX); }
-    Q_DECL_RELAXED_CONSTEXPR void move(QPoint position)
+    constexpr void move(QPoint position)
         { x = position.x(); y = position.y(); }
-    Q_DECL_CONSTEXPR int width() const { return w; }
-    Q_DECL_CONSTEXPR int height() const { return h; }
+    constexpr int width() const { return w; }
+    constexpr int height() const { return h; }
 private:
-    Q_DECL_CONSTEXPR QRect rect() const
+    constexpr QRect rect() const
         { return QRect(x, y, w, h); }
     int x, y;
     short w, h;
@@ -126,7 +90,7 @@ public:
     virtual bool doBatchedItemLayout(const QListViewLayoutInfo &info, int max) = 0;
     virtual void clear() = 0;
     virtual void setRowCount(int) = 0;
-    virtual QVector<QModelIndex> intersectingSet(const QRect &area) const = 0;
+    virtual QList<QModelIndex> intersectingSet(const QRect &area) const = 0;
     virtual void dataChanged(const QModelIndex &, const QModelIndex &) = 0;
 
     virtual int horizontalScrollToValue(int index, QListView::ScrollHint hint,
@@ -172,7 +136,7 @@ public:
     inline QModelIndex modelIndex(int row) const;
     inline int rowCount() const;
 
-    inline QStyleOptionViewItem viewOptions() const;
+    inline void initViewItemOption(QStyleOptionViewItem *option) const;
     inline QWidget *viewport() const;
     inline QRect clipRect() const;
 
@@ -198,11 +162,11 @@ class QListModeViewBase : public QCommonListViewBase
 public:
     QListModeViewBase(QListView *q, QListViewPrivate *d);
 
-    QVector<int> flowPositions;
-    QVector<int> segmentPositions;
-    QVector<int> segmentStartRows;
-    QVector<int> segmentExtents;
-    QVector<int> scrollValueMap;
+    QList<int> flowPositions;
+    QList<int> segmentPositions;
+    QList<int> segmentStartRows;
+    QList<int> segmentExtents;
+    QList<int> scrollValueMap;
 
     // used when laying out in batches
     int batchSavedPosition;
@@ -213,7 +177,7 @@ public:
     bool doBatchedItemLayout(const QListViewLayoutInfo &info, int max) override;
     void clear() override;
     void setRowCount(int rowCount) override { flowPositions.resize(rowCount); }
-    QVector<QModelIndex> intersectingSet(const QRect &area) const override;
+    QList<QModelIndex> intersectingSet(const QRect &area) const override;
     void dataChanged(const QModelIndex &, const QModelIndex &) override;
 
     int horizontalScrollToValue(int index, QListView::ScrollHint hint,
@@ -251,14 +215,14 @@ public:
     QIconModeViewBase(QListView *q, QListViewPrivate *d) : QCommonListViewBase(q, d), interSectingVector(nullptr) {}
 
     QBspTree tree;
-    QVector<QListViewItem> items;
+    QList<QListViewItem> items;
     QBitArray moved;
 
-    QVector<QModelIndex> draggedItems; // indices to the tree.itemVector
+    QList<QModelIndex> draggedItems; // indices to the tree.itemVector
     mutable QPoint draggedItemsPos;
 
     // used when laying out in batches
-    QVector<QModelIndex> *interSectingVector; //used from within intersectingSet
+    QList<QModelIndex> *interSectingVector; // used from within intersectingSet
 
     //reimplementations
     int itemIndex(const QListViewItem &item) const override;
@@ -266,7 +230,7 @@ public:
     bool doBatchedItemLayout(const QListViewLayoutInfo &info, int max) override;
     void clear() override;
     void setRowCount(int rowCount) override;
-    QVector<QModelIndex> intersectingSet(const QRect &area) const override;
+    QList<QModelIndex> intersectingSet(const QRect &area) const override;
 
     void scrollContentsBy(int dx, int dy, bool scrollElasticBand) override;
     void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight) override;
@@ -285,14 +249,13 @@ private:
     void initBspTree(const QSize &contents);
     QPoint initDynamicLayout(const QListViewLayoutInfo &info);
     void doDynamicLayout(const QListViewLayoutInfo &info);
-    static void addLeaf(QVector<int> &leaf, const QRect &area,
-                        uint visited, QBspTree::Data data);
-    QRect itemsRect(const QVector<QModelIndex> &indexes) const;
+    static void addLeaf(QList<int> &leaf, const QRect &area, uint visited, QBspTree::Data data);
+    QRect itemsRect(const QList<QModelIndex> &indexes) const;
     QRect draggedItemsRect() const;
     QPoint snapToGrid(const QPoint &pos) const;
     void updateContentsSize();
     QPoint draggedItemsDelta() const;
-    void drawItems(QPainter *painter, const QVector<QModelIndex> &indexes) const;
+    void drawItems(QPainter *painter, const QList<QModelIndex> &indexes) const;
     void moveItem(int index, const QPoint &dest);
 
 };
@@ -309,7 +272,8 @@ public:
 
     bool doItemsLayout(int num);
 
-    inline QVector<QModelIndex> intersectingSet(const QRect &area, bool doLayout = true) const {
+    inline QList<QModelIndex> intersectingSet(const QRect &area, bool doLayout = true) const
+    {
         if (doLayout) executePostedLayout();
         QRect a = (q_func()->isRightToLeft() ? flipX(area.normalized()) : area.normalized());
         return commonListView->intersectingSet(a);
@@ -363,7 +327,7 @@ public:
 
     QRect mapToViewport(const QRect &rect, bool extend = true) const;
 
-    QModelIndex closestIndex(const QRect &target, const QVector<QModelIndex> &candidates) const;
+    QModelIndex closestIndex(const QRect &target, const QList<QModelIndex> &candidates) const;
     QSize itemSize(const QStyleOptionViewItem &option, const QModelIndex &index) const;
 
     bool selectionAllowed(const QModelIndex &index) const override
@@ -395,8 +359,9 @@ public:
         return isPersistent(idx) && hiddenRows.contains(idx);
     }
     // helper to avoid checking for isPersistent and creating persistent indexes as above in isHidden
-    QVector<int> hiddenRowIds() const {
-        QVector<int> rowIds;
+    QList<int> hiddenRowIds() const
+    {
+        QList<int> rowIds;
         rowIds.reserve(hiddenRows.size());
         for (const auto &idx : hiddenRows)
             rowIds += idx.row();
@@ -404,7 +369,7 @@ public:
     }
     inline bool isHiddenOrDisabled(int row) const { return isHidden(row) || !isIndexEnabled(modelIndex(row)); }
 
-    void removeCurrentAndDisabled(QVector<QModelIndex> *indexes, const QModelIndex &current) const;
+    void removeCurrentAndDisabled(QList<QModelIndex> *indexes, const QModelIndex &current) const;
 
     void scrollElasticBandBy(int dx, int dy);
 
@@ -482,7 +447,7 @@ inline QModelIndex QCommonListViewBase::modelIndex(int row) const
     { return dd->model->index(row, dd->column, dd->root); }
 inline int QCommonListViewBase::rowCount() const { return dd->model->rowCount(dd->root); }
 
-inline QStyleOptionViewItem QCommonListViewBase::viewOptions() const { return dd->viewOptionsV1(); }
+inline void QCommonListViewBase::initViewItemOption(QStyleOptionViewItem *option) const { qq->initViewItemOption(option); }
 inline QWidget *QCommonListViewBase::viewport() const { return dd->viewport; }
 inline QRect QCommonListViewBase::clipRect() const { return dd->clipRect(); }
 
@@ -492,10 +457,10 @@ inline QSize QCommonListViewBase::itemSize(const QStyleOptionViewItem &opt, cons
     { return dd->itemSize(opt, idx); }
 
 inline QAbstractItemDelegate *QCommonListViewBase::delegate(const QModelIndex &idx) const
-    { return dd->delegateForIndex(idx); }
+    { return qq->itemDelegateForIndex(idx); }
 
 inline bool QCommonListViewBase::isHidden(int row) const { return dd->isHidden(row); }
-inline int QCommonListViewBase::hiddenCount() const { return dd->hiddenRows.count(); }
+inline int QCommonListViewBase::hiddenCount() const { return dd->hiddenRows.size(); }
 
 inline bool QCommonListViewBase::isRightToLeft() const { return qq->isRightToLeft(); }
 

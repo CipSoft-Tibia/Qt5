@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,10 +12,10 @@
 namespace {
 
 const CXFA_Node::PropertyData kTextEditPropertyData[] = {
-    {XFA_Element::Margin, 1, 0},
-    {XFA_Element::Border, 1, 0},
-    {XFA_Element::Comb, 1, 0},
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Margin, 1, {}},
+    {XFA_Element::Border, 1, {}},
+    {XFA_Element::Comb, 1, {}},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kTextEditAttributeData[] = {
@@ -35,7 +35,7 @@ const CXFA_Node::AttributeData kTextEditAttributeData[] = {
 CXFA_TextEdit::CXFA_TextEdit(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::TextEdit,
                 kTextEditPropertyData,

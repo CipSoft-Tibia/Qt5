@@ -13,8 +13,10 @@
 // limitations under the License.
 
 import {Actions} from '../common/actions';
-import {Engine, QueryError} from '../common/engine';
-import {iter, STR} from '../common/query_iterator';
+import {Engine} from '../common/engine';
+import {QueryError} from '../common/query_result';
+import {globals as frontendGlobals} from '../frontend/globals';
+import {publishMetricResult} from '../frontend/publish';
 
 import {Controller} from './controller';
 import {globals} from './globals';
@@ -26,27 +28,7 @@ export class MetricsController extends Controller<'main'> {
   constructor(args: {engine: Engine}) {
     super('main');
     this.engine = args.engine;
-    this.setup().finally(() => {
-      this.run();
-    });
-  }
-
-  private async getMetricNames() {
-    const metrics = [];
-    const it = iter(
-        {
-          name: STR,
-        },
-        await this.engine.query('select name from trace_metrics'));
-    for (; it.valid(); it.next()) {
-      metrics.push(it.row.name);
-    }
-    return metrics;
-  }
-
-  private async setup() {
-    const metrics = await this.getMetricNames();
-    globals.dispatch(Actions.setAvailableMetrics({metrics}));
+    this.run();
   }
 
   private async computeMetric(name: string) {
@@ -54,19 +36,20 @@ export class MetricsController extends Controller<'main'> {
     this.currentlyRunningMetric = name;
     try {
       const metricResult = await this.engine.computeMetric([name]);
-      globals.publish(
-          'MetricResult',
-          {name, resultString: metricResult.metricsAsPrototext});
+      publishMetricResult({
+        name,
+        resultString: metricResult.metricsAsPrototext,
+      });
     } catch (e) {
       if (e instanceof QueryError) {
         // Reroute error to be displated differently when metric is run through
         // metric page.
-        globals.publish('MetricResult', {name, error: e.message});
+        publishMetricResult({name, error: e.message});
       } else {
         throw e;
       }
     }
-    globals.dispatch(Actions.resetMetricRequest({name}));
+    frontendGlobals.dispatch(Actions.resetMetricRequest({name}));
     this.currentlyRunningMetric = undefined;
   }
 

@@ -1,18 +1,17 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GPU_IPC_COMMON_GPU_MEMORY_BUFFER_IMPL_IO_SURFACE_H_
 #define GPU_IPC_COMMON_GPU_MEMORY_BUFFER_IMPL_IO_SURFACE_H_
 
-#include <IOSurface/IOSurface.h>
+#include <IOSurface/IOSurfaceRef.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include <memory>
 
 #include "base/mac/scoped_cftyperef.h"
-#include "base/macros.h"
 #include "gpu/gpu_export.h"
 #include "gpu/ipc/common/gpu_memory_buffer_impl.h"
 #include "ui/gfx/color_space.h"
@@ -22,6 +21,10 @@ namespace gpu {
 // Implementation of GPU memory buffer based on IO surfaces.
 class GPU_EXPORT GpuMemoryBufferImplIOSurface : public GpuMemoryBufferImpl {
  public:
+  GpuMemoryBufferImplIOSurface(const GpuMemoryBufferImplIOSurface&) = delete;
+  GpuMemoryBufferImplIOSurface& operator=(const GpuMemoryBufferImplIOSurface&) =
+      delete;
+
   ~GpuMemoryBufferImplIOSurface() override;
 
   static constexpr gfx::GpuMemoryBufferType kBufferType =
@@ -62,8 +65,6 @@ class GPU_EXPORT GpuMemoryBufferImplIOSurface : public GpuMemoryBufferImpl {
   // Cache the color space, because re-assigning the same value can be
   // expensive.
   gfx::ColorSpace color_space_;
-
-  DISALLOW_COPY_AND_ASSIGN(GpuMemoryBufferImplIOSurface);
 };
 
 }  // namespace gpu

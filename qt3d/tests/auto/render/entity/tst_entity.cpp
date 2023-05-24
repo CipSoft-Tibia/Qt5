@@ -1,36 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-// TODO Remove in Qt6
-#include <QtCore/qcompilerdetection.h>
-QT_WARNING_DISABLE_DEPRECATED
-
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <Qt3DRender/private/entity_p.h>
 #include <Qt3DRender/private/entity_p_p.h>
 #include <Qt3DRender/private/nodemanagers_p.h>
@@ -54,7 +25,7 @@ QT_WARNING_DISABLE_DEPRECATED
 #include "testrenderer.h"
 
 typedef Qt3DCore::QNodeId (*UuidMethod)(Qt3DRender::Render::Entity *);
-typedef QVector<Qt3DCore::QNodeId> (*UuidListMethod)(Qt3DRender::Render::Entity *);
+typedef QList<Qt3DCore::QNodeId> (*UuidListMethod)(Qt3DRender::Render::Entity *);
 
 using namespace Qt3DCore;
 using namespace Qt3DRender;
@@ -68,9 +39,9 @@ QNodeId objectPickerUuid(Entity *entity) { return entity->componentUuid<ObjectPi
 QNodeId computeJobUuid(Entity *entity) { return entity->componentUuid<ComputeCommand>(); }
 QNodeId armatureUuid(Entity *entity) { return entity->componentUuid<Armature>(); }
 
-QVector<QNodeId> layersUuid(Entity *entity) { return entity->componentsUuid<Layer>(); }
-QVector<QNodeId> shadersUuid(Entity *entity) { return entity->componentsUuid<ShaderData>(); }
-QVector<QNodeId> environmentLightsUuid(Entity *entity) { return entity->componentsUuid<EnvironmentLight>(); }
+QList<QNodeId> layersUuid(Entity *entity) { return entity->componentsUuid<Layer>(); }
+QList<QNodeId> shadersUuid(Entity *entity) { return entity->componentsUuid<ShaderData>(); }
+QList<QNodeId> environmentLightsUuid(Entity *entity) { return entity->componentsUuid<EnvironmentLight>(); }
 
 class CompleteVisitor : public EntityVisitor
 {
@@ -78,7 +49,7 @@ public:
     CompleteVisitor(NodeManagers *manager) : EntityVisitor(manager) { }
 
     int count = 0;
-    Operation visit(Entity *) { count++; return Continue; }
+    Operation visit(Entity *) override { count++; return Continue; }
 };
 
 class EnabledVisitor : public EntityVisitor
@@ -87,7 +58,7 @@ public:
     EnabledVisitor(NodeManagers *manager) : EntityVisitor(manager) { }
 
     int count = 0;
-    Operation visit(Entity *e) { count++; return e->isEnabled() ? Continue : Prune; }
+    Operation visit(Entity *e) override { count++; return e->isEnabled() ? Continue : Prune; }
 };
 
 class tst_RenderEntity : public QObject
@@ -241,8 +212,8 @@ private slots:
         QVERIFY(backendB->parent() == backendA);
         QVERIFY(backendC->parent() == backendB);
 
-        QCOMPARE(backendA->childrenHandles().count(), 1);
-        QCOMPARE(backendB->childrenHandles().count(), 1);
+        QCOMPARE(backendA->childrenHandles().size(), 1);
+        QCOMPARE(backendB->childrenHandles().size(), 1);
         QVERIFY(backendC->childrenHandles().isEmpty());
 
         QVERIFY(renderer.dirtyBits() & Qt3DRender::Render::AbstractRenderer::AllDirty);
@@ -273,7 +244,7 @@ private slots:
         QVERIFY(backendB->parent() == nullptr);
         QVERIFY(backendC->parent() == backendA);
 
-        QCOMPARE(backendA->childrenHandles().count(), 1);
+        QCOMPARE(backendA->childrenHandles().size(), 1);
         QVERIFY(!backendA->childrenHandles().contains(backendB->handle()));
         QVERIFY(backendB->childrenHandles().isEmpty());
         QVERIFY(backendC->childrenHandles().isEmpty());
@@ -310,7 +281,7 @@ private slots:
         QVERIFY(backendB->parent() == backendA);
         QVERIFY(backendC->parent() == backendA);
 
-        QCOMPARE(backendA->childrenHandles().count(), 2);
+        QCOMPARE(backendA->childrenHandles().size(), 2);
         QVERIFY(backendB->childrenHandles().isEmpty());
         QVERIFY(backendC->childrenHandles().isEmpty());
 
@@ -326,7 +297,7 @@ private slots:
         QVERIFY(backendB->parent() == backendA);
         QVERIFY(backendC->parent() == nullptr);
 
-        QCOMPARE(backendA->childrenHandles().count(), 1);
+        QCOMPARE(backendA->childrenHandles().size(), 1);
         QVERIFY(!backendA->childrenHandles().contains(backendC->handle()));
         QVERIFY(backendB->childrenHandles().isEmpty());
         QVERIFY(backendC->childrenHandles().isEmpty());
@@ -587,8 +558,8 @@ private slots:
         const auto r2 = v2.apply(backendA);
 
         // THEN
-        QCOMPARE(r1.count(), 3);
-        QCOMPARE(r2.count(), 0);
+        QCOMPARE(r1.size(), 3);
+        QCOMPARE(r2.size(), 0);
     }
 
 private:

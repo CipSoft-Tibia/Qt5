@@ -1,10 +1,10 @@
-// Copyright (c) 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "gpu/vulkan/vulkan_fence_helper.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "gpu/vulkan/vulkan_device_queue.h"
 #include "gpu/vulkan/vulkan_function_pointers.h"
@@ -34,9 +34,9 @@ void VulkanFenceHelper::Destroy() {
 // TODO(ericrk): Handle recycling fences.
 VkResult VulkanFenceHelper::GetFence(VkFence* fence) {
   VkFenceCreateInfo create_info{
-      VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-      nullptr,
-      0,
+      .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+      .pNext = nullptr,
+      .flags = 0,
   };
   return vkCreateFence(device_queue_->GetVulkanDevice(), &create_info,
                        nullptr /* pAllocator */, fence);
@@ -126,7 +126,7 @@ void VulkanFenceHelper::ProcessCleanupTasks(uint64_t retired_generation_id) {
   }
 
   for (auto& task : tasks_to_run)
-    std::move(task).Run(device_queue_, false /* device_lost */);
+    std::move(task).Run(device_queue_.get(), false /* device_lost */);
 }
 
 VulkanFenceHelper::FenceHandle VulkanFenceHelper::GenerateCleanupFence() {
@@ -269,7 +269,7 @@ void VulkanFenceHelper::PerformImmediateCleanup() {
                       std::make_move_iterator(tasks_pending_fence_.end()));
   tasks_pending_fence_.clear();
   for (auto& task : tasks_to_run)
-    std::move(task).Run(device_queue_, device_lost);
+    std::move(task).Run(device_queue_.get(), device_lost);
 }
 
 VulkanFenceHelper::TasksForFence::TasksForFence(FenceHandle handle,

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -49,10 +49,10 @@ class LineLayoutRubyRun : public LineLayoutBlockFlow {
   }
 
  private:
-  LayoutRubyRun* ToRubyRun() { return ToLayoutRubyRun(GetLayoutObject()); }
+  LayoutRubyRun* ToRubyRun() { return To<LayoutRubyRun>(GetLayoutObject()); }
 
   const LayoutRubyRun* ToRubyRun() const {
-    return ToLayoutRubyRun(GetLayoutObject());
+    return To<LayoutRubyRun>(GetLayoutObject());
   }
 };
 

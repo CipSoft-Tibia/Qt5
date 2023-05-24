@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,16 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/service_manager/public/cpp/connector.h"
 #include "services/viz/public/cpp/gpu/client_gpu_memory_buffer_manager.h"
@@ -29,6 +32,10 @@ namespace viz {
 class Gpu::GpuPtrIO {
  public:
   GpuPtrIO() { DETACH_FROM_THREAD(thread_checker_); }
+
+  GpuPtrIO(const GpuPtrIO&) = delete;
+  GpuPtrIO& operator=(const GpuPtrIO&) = delete;
+
   ~GpuPtrIO() { DCHECK_CALLED_ON_VALID_THREAD(thread_checker_); }
 
   void Initialize(mojo::PendingRemote<mojom::Gpu> gpu_remote,
@@ -56,14 +63,14 @@ class Gpu::GpuPtrIO {
     }
   }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   void CreateJpegDecodeAccelerator(
       mojo::PendingReceiver<chromeos_camera::mojom::MjpegDecodeAccelerator>
           receiver) {
     DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
     gpu_remote_->CreateJpegDecodeAccelerator(std::move(receiver));
   }
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
   void CreateVideoEncodeAcceleratorProvider(
       mojo::PendingReceiver<media::mojom::VideoEncodeAcceleratorProvider>
@@ -86,8 +93,6 @@ class Gpu::GpuPtrIO {
   // callback fires or if an interface connection error occurs.
   scoped_refptr<EstablishRequest> establish_request_;
   THREAD_CHECKER(thread_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(GpuPtrIO);
 };
 
 // Encapsulates a single request to establish a GPU channel.
@@ -97,6 +102,9 @@ class Gpu::EstablishRequest
   EstablishRequest(Gpu* parent,
                    scoped_refptr<base::SingleThreadTaskRunner> main_task_runner)
       : parent_(parent), main_task_runner_(main_task_runner) {}
+
+  EstablishRequest(const EstablishRequest&) = delete;
+  EstablishRequest& operator=(const EstablishRequest&) = delete;
 
   const scoped_refptr<gpu::GpuChannelHost>& gpu_channel() {
     return gpu_channel_;
@@ -119,7 +127,9 @@ class Gpu::EstablishRequest
   // request. This must be called from main thread.
   void SetWaitableEvent(base::WaitableEvent* establish_event) {
     DCHECK(main_task_runner_->BelongsToCurrentThread());
+    DCHECK(establish_event);
     base::AutoLock mutex(lock_);
+    DCHECK(!establish_event_);
 
     // If we've already received a response then don't reset |establish_event|.
     // The caller won't block and will immediately process the response.
@@ -192,17 +202,15 @@ class Gpu::EstablishRequest
 
   virtual ~EstablishRequest() = default;
 
-  Gpu* const parent_;
+  const raw_ptr<Gpu> parent_;
   scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
-  base::WaitableEvent* establish_event_ = nullptr;
+  raw_ptr<base::WaitableEvent> establish_event_ = nullptr;
 
   base::Lock lock_;
   bool received_ = false;
   bool finished_ = false;
 
   scoped_refptr<gpu::GpuChannelHost> gpu_channel_;
-
-  DISALLOW_COPY_AND_ASSIGN(EstablishRequest);
 };
 
 void Gpu::GpuPtrIO::ConnectionError() {
@@ -235,7 +243,7 @@ void Gpu::GpuPtrIO::OnEstablishedGpuChannel(
 
 Gpu::Gpu(mojo::PendingRemote<mojom::Gpu> gpu_remote,
          scoped_refptr<base::SingleThreadTaskRunner> task_runner)
-    : main_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+    : main_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       io_task_runner_(std::move(task_runner)),
       gpu_(new GpuPtrIO(), base::OnTaskRunnerDeleter(io_task_runner_)) {
   DCHECK(main_task_runner_);
@@ -286,7 +294,7 @@ std::unique_ptr<Gpu> Gpu::Create(
       new Gpu(std::move(remote), std::move(io_task_runner)));
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 void Gpu::CreateJpegDecodeAccelerator(
     mojo::PendingReceiver<chromeos_camera::mojom::MjpegDecodeAccelerator>
         jda_receiver) {
@@ -296,7 +304,7 @@ void Gpu::CreateJpegDecodeAccelerator(
       base::BindOnce(&GpuPtrIO::CreateJpegDecodeAccelerator,
                      base::Unretained(gpu_.get()), std::move(jda_receiver)));
 }
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 void Gpu::CreateVideoEncodeAcceleratorProvider(
     mojo::PendingReceiver<media::mojom::VideoEncodeAcceleratorProvider>
@@ -317,7 +325,7 @@ void Gpu::EstablishGpuChannel(gpu::GpuChannelEstablishedCallback callback) {
   }
 
   establish_callbacks_.push_back(std::move(callback));
-  SendEstablishGpuChannelRequest();
+  SendEstablishGpuChannelRequest(/*waitable_event=*/nullptr);
 }
 
 scoped_refptr<gpu::GpuChannelHost> Gpu::EstablishGpuChannelSync() {
@@ -328,10 +336,10 @@ scoped_refptr<gpu::GpuChannelHost> Gpu::EstablishGpuChannelSync() {
   if (channel)
     return channel;
 
-  SendEstablishGpuChannelRequest();
+  SCOPED_UMA_HISTOGRAM_TIMER("GPU.EstablishGpuChannelSyncTime");
   base::WaitableEvent event(base::WaitableEvent::ResetPolicy::MANUAL,
                             base::WaitableEvent::InitialState::SIGNALED);
-  pending_request_->SetWaitableEvent(&event);
+  SendEstablishGpuChannelRequest(&event);
   event.Wait();
 
   // Running FinishOnMain() will create |gpu_channel_| and run any callbacks
@@ -360,12 +368,19 @@ scoped_refptr<gpu::GpuChannelHost> Gpu::GetGpuChannel() {
   return gpu_channel_;
 }
 
-void Gpu::SendEstablishGpuChannelRequest() {
-  if (pending_request_)
+void Gpu::SendEstablishGpuChannelRequest(base::WaitableEvent* waitable_event) {
+  if (pending_request_) {
+    if (waitable_event) {
+      pending_request_->SetWaitableEvent(waitable_event);
+    }
     return;
+  }
 
   pending_request_ =
       base::MakeRefCounted<EstablishRequest>(this, main_task_runner_);
+  if (waitable_event) {
+    pending_request_->SetWaitableEvent(waitable_event);
+  }
   io_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&EstablishRequest::SendRequest, pending_request_,

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,9 @@
 #include <cmath>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/hash/hash.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "components/favicon/core/favicon_client.h"
 #include "components/favicon_base/favicon_util.h"
@@ -29,8 +28,10 @@ FaviconServiceImpl::FaviconServiceImpl(
     history::HistoryService* history_service)
     : favicon_client_(std::move(favicon_client)),
       history_service_(history_service) {
+#if !defined(TOOLKIT_QT)
   // TODO(https://crbug.com/1024959): convert to DCHECK once crash is resolved.
   CHECK(history_service_);
+#endif
 }
 
 FaviconServiceImpl::~FaviconServiceImpl() {}
@@ -205,7 +206,7 @@ void FaviconServiceImpl::SetImportedFavicons(
 
 void FaviconServiceImpl::AddPageNoVisitForBookmark(
     const GURL& url,
-    const base::string16& title) {
+    const std::u16string& title) {
   history_service_->AddPageNoVisitForBookmark(url, title);
 }
 

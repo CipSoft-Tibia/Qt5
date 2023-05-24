@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QString>
 #include <QtTest>
 #include "rep_class_merged.h"
+
+#include "../../shared/testutils.h"
 
 class SubClassReplicaTest : public QObject
 {
@@ -61,10 +38,23 @@ void SubClassReplicaTest::basicFunctions()
     QFETCH(bool, templated);
     QFETCH(bool, nullobject);
 
-    QRemoteObjectRegistryHost host(QUrl("local:test"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":test"));
     SubClassSimpleSource subclass1, subclass2;
     ParentClassSimpleSource parent;
     parent.setSub1(&subclass1);
+
+    SubClassSimpleSource subclass3;
+    subclass3.setValue(4);
+    OtherParentClassSimpleSource otherParent;
+    otherParent.setSub1(&subclass3);
+    host.enableRemoting(&otherParent, "OtherParent1");
+
+    SubClassSimpleSource subclass4;
+    subclass4.setValue(15);
+    OtherParentClassSimpleSource otherParent2;
+    otherParent2.setSub1(&subclass4);
+    host.enableRemoting(&otherParent2, "OtherParent2");
+
     if (nullobject)
         parent.setSub2(nullptr);
     else
@@ -74,7 +64,7 @@ void SubClassReplicaTest::basicFunctions()
     else
         host.enableRemoting(&parent);
 
-    QRemoteObjectNode client(QUrl("local:test"));
+    QRemoteObjectNode client(QUrl(LOCAL_SOCKET ":test"));
     const QScopedPointer<ParentClassReplica> replica(client.acquire<ParentClassReplica>());
     QVERIFY(replica->waitForSource(1000));
 
@@ -88,6 +78,19 @@ void SubClassReplicaTest::basicFunctions()
         QCOMPARE(parent.sub2(), nullptr);
     } else
         QCOMPARE(subclass2.value(), replica->sub2()->value());
+
+    const QScopedPointer<OtherParentClassReplica> otherReplica(client.acquire<OtherParentClassReplica>("OtherParent1"));
+    QVERIFY(otherReplica->waitForSource(1000));
+
+    const QScopedPointer<OtherParentClassReplica> otherReplica2(client.acquire<OtherParentClassReplica>("OtherParent2"));
+    QVERIFY(otherReplica2->waitForSource(1000));
+
+    QCOMPARE(otherReplica->sub1()->value(), 4);
+    QCOMPARE(otherReplica2->sub1()->value(), 15);
+    otherReplica->sub1()->pushValue(19);
+    otherReplica2->sub1()->pushValue(24);
+    QTRY_COMPARE(subclass4.value(), 24);
+    QTRY_COMPARE(subclass3.value(), 19);
 }
 
 QTEST_MAIN(SubClassReplicaTest)

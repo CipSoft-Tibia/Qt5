@@ -1,9 +1,9 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifdef THIRD_PARTY_BLINK_RENDERER_CORE_PRECOMPILE_CORE_H_
-#error You shouldn't include the precompiled header file more than once.
+#error "You shouldn't include the precompiled header file more than once."
 #endif
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PRECOMPILE_CORE_H_
@@ -27,7 +27,7 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #else
-#error implement
+#include "third_party/blink/renderer/build/linux/prefix.h"
 #endif
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_CORE_PRECOMPILE_CORE_H_

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 
+#include "base/base64.h"
 #include "base/strings/sys_string_conversions.h"
 
 @interface WebMenuRunner (PrivateAPI)
@@ -44,6 +45,16 @@
   }
 
   NSString* title = base::SysUTF8ToNSString(item->label.value_or(""));
+  // https://crbug.com/1140620: SysUTF8ToNSString will return nil if the bits
+  // that it is passed cannot be turned into a CFString. If this nil value is
+  // passed to -[NSMenuItem addItemWithTitle:action:keyEquivalent], Chromium
+  // will crash. Therefore, for debugging, if the result is nil, substitute in
+  // the raw bytes, encoded for safety in base64, to allow for investigation.
+  if (!title) {
+    std::string base64;
+    base::Base64Encode(*item->label, &base64);
+    title = base::SysUTF8ToNSString(base64);
+  }
   NSMenuItem* menuItem = [_menu addItemWithTitle:title
                                           action:@selector(menuItemSelected:)
                                    keyEquivalent:@""];
@@ -55,14 +66,13 @@
                         item->type != blink::mojom::MenuItem::Type::kGroup)];
   [menuItem setTarget:self];
 
-  // Set various alignment/language attributes. Note that many (if not most) of
-  // these attributes are functional only on 10.6 and above.
+  // Set various alignment/language attributes.
   base::scoped_nsobject<NSMutableDictionary> attrs(
       [[NSMutableDictionary alloc] initWithCapacity:3]);
   base::scoped_nsobject<NSMutableParagraphStyle> paragraphStyle(
       [[NSMutableParagraphStyle alloc] init]);
-  [paragraphStyle setAlignment:_rightAligned ? NSRightTextAlignment
-                                             : NSLeftTextAlignment];
+  [paragraphStyle
+      setAlignment:_rightAligned ? NSTextAlignmentRight : NSTextAlignmentLeft];
   NSWritingDirection writingDirection =
       item->text_direction == base::i18n::RIGHT_TO_LEFT
           ? NSWritingDirectionRightToLeft
@@ -71,12 +81,8 @@
   [attrs setObject:paragraphStyle forKey:NSParagraphStyleAttributeName];
 
   if (item->has_text_direction_override) {
-    base::scoped_nsobject<NSNumber> directionValue(
-        [[NSNumber alloc] initWithInteger:
-            writingDirection + NSTextWritingDirectionOverride]);
-    base::scoped_nsobject<NSArray> directionArray(
-        [[NSArray alloc] initWithObjects:directionValue.get(), nil]);
-    [attrs setObject:directionArray forKey:NSWritingDirectionAttributeName];
+    [attrs setObject:@[ @(long{writingDirection} | NSWritingDirectionOverride) ]
+              forKey:NSWritingDirectionAttributeName];
   }
 
   [attrs setObject:[NSFont menuFontOfSize:_fontSize]
@@ -125,20 +131,8 @@
   if (_rightAligned) {
     [cell setUserInterfaceLayoutDirection:
               NSUserInterfaceLayoutDirectionRightToLeft];
-    // setUserInterfaceLayoutDirection for NSMenu is supported on macOS 10.11+.
-    SEL sel = @selector(setUserInterfaceLayoutDirection:);
-    if ([_menu respondsToSelector:sel]) {
-      NSUserInterfaceLayoutDirection direction =
-          NSUserInterfaceLayoutDirectionRightToLeft;
-      NSMethodSignature* signature =
-          [NSMenu instanceMethodSignatureForSelector:sel];
-      NSInvocation* invocation =
-          [NSInvocation invocationWithMethodSignature:signature];
-      [invocation setTarget:_menu.get()];
-      [invocation setSelector:sel];
-      [invocation setArgument:&direction atIndex:2];
-      [invocation invoke];
-    }
+    [_menu setUserInterfaceLayoutDirection:
+               NSUserInterfaceLayoutDirectionRightToLeft];
   }
 
   // When popping up a menu near the Dock, Cocoa restricts the menu

@@ -42,12 +42,15 @@
 namespace perfetto {
 
 class FtraceDataSource;
+class LazyKernelSymbolizer;
 class ProtoTranslationTable;
+struct FtraceClockSnapshot;
 struct FtraceDataSourceConfig;
 
 namespace protos {
 namespace pbzero {
 class FtraceEventBundle;
+enum FtraceClock : int32_t;
 }  // namespace pbzero
 }  // namespace protos
 
@@ -65,6 +68,8 @@ class CpuReader {
 
   CpuReader(size_t cpu,
             const ProtoTranslationTable* table,
+            LazyKernelSymbolizer* symbolizer,
+            const FtraceClockSnapshot*,
             base::ScopedFile trace_fd);
   ~CpuReader();
 
@@ -117,6 +122,22 @@ class CpuReader {
     BlockDeviceID dev_id = TranslateBlockDeviceIDToUserspace<T>(t);
     out->AppendVarInt<BlockDeviceID>(field_id, dev_id);
     metadata->AddDevice(dev_id);
+  }
+
+  template <typename T>
+  static void ReadSymbolAddr(const uint8_t* start,
+                             uint32_t field_id,
+                             protozero::Message* out,
+                             FtraceMetadata* metadata) {
+    // ReadSymbolAddr is a bit special. In order to not disclose KASLR layout
+    // via traces, we put in the trace only a mangled address (which really is
+    // the insertion order into metadata.kernel_addrs). We don't care about the
+    // actual symbol addesses. We just need to match that against the symbol
+    // name in the names in the FtraceEventBundle.KernelSymbols.
+    T full_addr;
+    memcpy(&full_addr, reinterpret_cast<const void*>(start), sizeof(T));
+    uint32_t interned_index = metadata->AddSymbolAddr(full_addr);
+    out->AppendVarInt(field_id, interned_index);
   }
 
   static void ReadPid(const uint8_t* start,
@@ -184,14 +205,31 @@ class CpuReader {
                          const uint8_t* start,
                          const uint8_t* end,
                          const ProtoTranslationTable* table,
+                         const FtraceDataSourceConfig* ds_config,
                          protozero::Message* message,
                          FtraceMetadata* metadata);
 
   static bool ParseField(const Field& field,
                          const uint8_t* start,
                          const uint8_t* end,
+                         const ProtoTranslationTable* table,
                          protozero::Message* message,
                          FtraceMetadata* metadata);
+
+  // Parse a sys_enter event according to the pre-validated expected format
+  static bool ParseSysEnter(const Event& info,
+                            const uint8_t* start,
+                            const uint8_t* end,
+                            protozero::Message* message,
+                            FtraceMetadata* metadata);
+
+  // Parse a sys_exit event according to the pre-validated expected format
+  static bool ParseSysExit(const Event& info,
+                           const uint8_t* start,
+                           const uint8_t* end,
+                           const FtraceDataSourceConfig* ds_config,
+                           protozero::Message* message,
+                           FtraceMetadata* metadata);
 
   // Parse a sched_switch event according to pre-validated format, and buffer
   // the individual fields in the given compact encoding batch.
@@ -212,14 +250,26 @@ class CpuReader {
   // Parses & encodes the given range of contiguous tracing pages. Called by
   // |ReadAndProcessBatch| for each active data source.
   //
+  // Returns the number of correctly processed pages. If the return value is
+  // equal to |pages_read|, there was no error. Otherwise, the return value
+  // points to the first page that contains an error.
+  //
   // public and static for testing
-  static bool ProcessPagesForDataSource(TraceWriter* trace_writer,
-                                        FtraceMetadata* metadata,
-                                        size_t cpu,
-                                        const FtraceDataSourceConfig* ds_config,
-                                        const uint8_t* parsing_buf,
-                                        const size_t pages_read,
-                                        const ProtoTranslationTable* table);
+  static size_t ProcessPagesForDataSource(
+      TraceWriter* trace_writer,
+      FtraceMetadata* metadata,
+      size_t cpu,
+      const FtraceDataSourceConfig* ds_config,
+      const uint8_t* parsing_buf,
+      const size_t pages_read,
+      const ProtoTranslationTable* table,
+      LazyKernelSymbolizer* symbolizer,
+      const FtraceClockSnapshot*,
+      protos::pbzero::FtraceClock);
+
+  void set_ftrace_clock(protos::pbzero::FtraceClock clock) {
+    ftrace_clock_ = clock;
+  }
 
  private:
   CpuReader(const CpuReader&) = delete;
@@ -237,7 +287,10 @@ class CpuReader {
 
   const size_t cpu_;
   const ProtoTranslationTable* const table_;
+  LazyKernelSymbolizer* const symbolizer_;
+  const FtraceClockSnapshot* const ftrace_clock_snapshot_;
   base::ScopedFile trace_fd_;
+  protos::pbzero::FtraceClock ftrace_clock_{};
 };
 
 }  // namespace perfetto

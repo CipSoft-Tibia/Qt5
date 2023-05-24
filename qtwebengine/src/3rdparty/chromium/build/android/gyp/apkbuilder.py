@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# Copyright (c) 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 import argparse
 import logging
 import os
+import posixpath
 import shutil
 import sys
 import tempfile
@@ -20,9 +21,6 @@ import finalize_apk
 from util import build_utils
 from util import diff_utils
 from util import zipalign
-
-# Input dex.jar files are zipaligned.
-zipalign.ApplyZipFileZipAlignFix()
 
 
 # Taken from aapt's Package.cpp:
@@ -58,9 +56,6 @@ def _ParseArgs(args):
                       default='apk', help='Specify output format.')
   parser.add_argument('--dex-file',
                       help='Path to the classes.dex to use')
-  parser.add_argument(
-      '--jdk-libs-dex-file',
-      help='Path to classes.dex created by dex_jdk_libs.py')
   parser.add_argument('--uncompress-dex', action='store_true',
                       help='Store .dex files uncompressed in the APK')
   parser.add_argument('--native-libs',
@@ -115,10 +110,6 @@ def _ParseArgs(args):
       '--library-always-compress',
       action='append',
       help='The list of library files that we always compress.')
-  parser.add_argument(
-      '--library-renames',
-      action='append',
-      help='The list of library files that we prepend crazy. to their names.')
   parser.add_argument('--warnings-as-errors',
                       action='store_true',
                       help='Treat all warnings as errors.')
@@ -137,21 +128,6 @@ def _ParseArgs(args):
       options.secondary_native_libs)
   options.library_always_compress = build_utils.ParseGnList(
       options.library_always_compress)
-  options.library_renames = build_utils.ParseGnList(options.library_renames)
-
-  # --apksigner-jar, --zipalign-path, --key-xxx arguments are
-  # required when building an APK, but not a bundle module.
-  if options.format == 'apk':
-    required_args = [
-        'apksigner_jar', 'zipalign_path', 'key_path', 'key_passwd', 'key_name'
-    ]
-    for required in required_args:
-      if not vars(options)[required]:
-        raise Exception('Argument --%s is required for APKs.' % (
-            required.replace('_', '-')))
-
-  options.uncompress_shared_libraries = \
-      options.uncompress_shared_libraries in [ 'true', 'True' ]
 
   if not options.android_abi and (options.native_libs or
                                   options.native_lib_placeholders):
@@ -203,7 +179,8 @@ def _ExpandPaths(paths):
 def _GetAssetsToAdd(path_tuples,
                     fast_align,
                     disable_compression=False,
-                    allow_reads=True):
+                    allow_reads=True,
+                    apk_root_dir=''):
   """Returns the list of file_detail tuples for assets in the apk.
 
   Args:
@@ -232,7 +209,11 @@ def _GetAssetsToAdd(path_tuples,
         if allow_reads and compress and os.path.getsize(src_path) < 16:
           compress = False
 
-        apk_path = 'assets/' + dest_path
+        if dest_path.startswith('../'):
+          # posixpath.join('', 'foo') == 'foo'
+          apk_path = posixpath.join(apk_root_dir, dest_path[3:])
+        else:
+          apk_path = 'assets/' + dest_path
         alignment = 0 if compress and not fast_align else 4
         assets_to_add.append((apk_path, src_path, compress, alignment))
   return assets_to_add
@@ -263,8 +244,8 @@ def _AddFiles(apk, details):
           alignment=alignment)
 
 
-def _GetNativeLibrariesToAdd(native_libs, android_abi, uncompress, fast_align,
-                             lib_always_compress, lib_renames):
+def _GetNativeLibrariesToAdd(native_libs, android_abi, fast_align,
+                             lib_always_compress):
   """Returns the list of file_detail tuples for native libraries in the apk.
 
   Returns: A list of (src_path, apk_path, compress, alignment) tuple
@@ -275,12 +256,7 @@ def _GetNativeLibrariesToAdd(native_libs, android_abi, uncompress, fast_align,
 
   for path in native_libs:
     basename = os.path.basename(path)
-    compress = not uncompress or any(lib_name in basename
-                                     for lib_name in lib_always_compress)
-    rename = any(lib_name in basename for lib_name in lib_renames)
-    if rename:
-      basename = 'crazy.' + basename
-
+    compress = any(lib_name in basename for lib_name in lib_always_compress)
     lib_android_abi = android_abi
     if path.startswith('android_clang_arm64_hwasan/'):
       lib_android_abi = 'arm64-v8a-hwasan'
@@ -318,10 +294,11 @@ def main(args):
     # Compresses about twice as fast as the default.
     zlib.Z_DEFAULT_COMPRESSION = 1
 
-  # Manually align only when alignment is necessary.
   # Python's zip implementation duplicates file comments in the central
   # directory, whereas zipalign does not, so use zipalign for official builds.
-  fast_align = options.format == 'apk' and not options.best_compression
+  requires_alignment = options.format == 'apk'
+  run_zipalign = requires_alignment and options.best_compression
+  fast_align = bool(requires_alignment and not run_zipalign)
 
   native_libs = sorted(options.native_libs)
 
@@ -341,15 +318,16 @@ def main(args):
     depfile_deps += secondary_native_libs
 
   if options.java_resources:
-    # Included via .build_config, so need to write it to depfile.
+    # Included via .build_config.json, so need to write it to depfile.
     depfile_deps.extend(options.java_resources)
 
   assets = _ExpandPaths(options.assets)
   uncompressed_assets = _ExpandPaths(options.uncompressed_assets)
 
-  # Included via .build_config, so need to write it to depfile.
+  # Included via .build_config.json, so need to write it to depfile.
   depfile_deps.extend(x[0] for x in assets)
   depfile_deps.extend(x[0] for x in uncompressed_assets)
+  depfile_deps.append(options.resource_apk)
 
   # Bundle modules have a structure similar to APKs, except that resources
   # are compiled in protobuf format (instead of binary xml), and that some
@@ -375,23 +353,24 @@ def main(args):
     ret = _GetAssetsToAdd(assets,
                           fast_align,
                           disable_compression=False,
-                          allow_reads=allow_reads)
+                          allow_reads=allow_reads,
+                          apk_root_dir=apk_root_dir)
     ret.extend(
         _GetAssetsToAdd(uncompressed_assets,
                         fast_align,
                         disable_compression=True,
-                        allow_reads=allow_reads))
+                        allow_reads=allow_reads,
+                        apk_root_dir=apk_root_dir))
     return ret
 
-  libs_to_add = _GetNativeLibrariesToAdd(
-      native_libs, options.android_abi, options.uncompress_shared_libraries,
-      fast_align, options.library_always_compress, options.library_renames)
+  libs_to_add = _GetNativeLibrariesToAdd(native_libs, options.android_abi,
+                                         fast_align,
+                                         options.library_always_compress)
   if options.secondary_android_abi:
     libs_to_add.extend(
-        _GetNativeLibrariesToAdd(
-            secondary_native_libs, options.secondary_android_abi,
-            options.uncompress_shared_libraries, fast_align,
-            options.library_always_compress, options.library_renames))
+        _GetNativeLibrariesToAdd(secondary_native_libs,
+                                 options.secondary_android_abi,
+                                 fast_align, options.library_always_compress))
 
   if options.expected_file:
     # We compute expectations without reading the files. This allows us to check
@@ -454,7 +433,7 @@ def main(args):
       # 3. Dex files
       logging.debug('Adding classes.dex')
       if options.dex_file:
-        with open(options.dex_file) as dex_file_obj:
+        with open(options.dex_file, 'rb') as dex_file_obj:
           if options.dex_file.endswith('.dex'):
             max_dex_number = 1
             # This is the case for incremental_install=true.
@@ -471,13 +450,6 @@ def main(args):
                     apk_dex_dir + dex,
                     dex_zip.read(dex),
                     compress=not options.uncompress_dex)
-
-      if options.jdk_libs_dex_file:
-        with open(options.jdk_libs_dex_file) as dex_file_obj:
-          add_to_zip(
-              apk_dex_dir + 'classes{}.dex'.format(max_dex_number + 1),
-              dex_file_obj.read(),
-              compress=not options.uncompress_dex)
 
       # 4. Native libraries.
       logging.debug('Adding lib/')
@@ -537,7 +509,7 @@ def main(args):
             add_to_zip(apk_root_dir + apk_path,
                        java_resource_jar.read(apk_path))
 
-    if options.format == 'apk':
+    if options.format == 'apk' and options.key_path:
       zipalign_path = None if fast_align else options.zipalign_path
       finalize_apk.FinalizeApk(options.apksigner_jar,
                                zipalign_path,

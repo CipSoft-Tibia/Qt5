@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformsharedgraphicscache.h"
 
@@ -100,7 +64,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::requestItems(const QByteArray &cacheId, const QVector<quint32> &itemIds)
+    \fn void QPlatformSharedGraphicsCache::requestItems(const QByteArray &cacheId, const QList<quint32> &itemIds)
 
     Requests all the items in \a itemIds from the cache with the name \a cacheId.
 
@@ -116,7 +80,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::insertItems(const QByteArray &cacheId, const QVector<quint32> &itemIds, const QVector<QImage> &items)
+    \fn void QPlatformSharedGraphicsCache::insertItems(const QByteArray &cacheId, const QList<quint32> &itemIds, const QList<QImage> &items)
 
     Inserts the items in \a itemIds into the cache named \a cacheId. The appearance of
     each item is stored in \a items. The format of the QImage objects is expected to match the
@@ -132,7 +96,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::releaseItems(const QByteArray &cacheId, const QVector<quint32> &itemIds)
+    \fn void QPlatformSharedGraphicsCache::releaseItems(const QByteArray &cacheId, const QList<quint32> &itemIds)
 
     Releases the reference to the items in \a itemIds from the cache named \a cacheId. This should
     only be called when all references to the items have been released by the user, and they are no
@@ -140,20 +104,20 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::itemsMissing(const QByteArray &cacheId, const QVector<quint32> &itemIds)
+    \fn void QPlatformSharedGraphicsCache::itemsMissing(const QByteArray &cacheId, const QList<quint32> &itemIds)
 
     This signal is emitted when requestItems() has been called for one or more items in the
     cache named \a cacheId which are not yet available in the cache. The user is then expected to
     call insertItems() to update the cache with the respective items, at which point they will
     become available to all clients of the shared cache.
 
-    The vector \a itemIds contains the IDs of the items that need to be inserted into the cache.
+    The \a itemIds list contains the IDs of the items that need to be inserted into the cache.
 
     \sa itemsAvailable(), insertItems(), requestItems()
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::itemsAvailable(const QByteArray &cacheId, void *bufferId, const QVector<quint32> &itemIds, const QVector<QPoint> &positionsInBuffer)
+    \fn void QPlatformSharedGraphicsCache::itemsAvailable(const QByteArray &cacheId, void *bufferId, const QList<quint32> &itemIds, const QList<QPoint> &positionsInBuffer)
 
     This signal can be emitted at any time when either requestItems() or insertItems() has been
     called by the application for one or more items in the cache named \a cacheId, as long as
@@ -167,8 +131,8 @@ QT_BEGIN_NAMESPACE
     initialization. If it is a OpenGLTexture, its texture ID can be requested using the
     textureIdForBuffer() function. The dimensions of the buffer are given by \a bufferSize.
 
-    The items provided by the cache are identified in the \a itemIds vector. The
-    \a positionsInBuffer vector contains the locations inside the buffer of each item. Each entry in
+    The items provided by the cache are identified in the \a itemIds list. The
+    \a positionsInBuffer list contains the locations inside the buffer of each item. Each entry in
     \a positionsInBuffer corresponds to an item in \a itemIds.
 
     The buffer and the items' locations within the buffer can be considered valid until an
@@ -179,7 +143,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::itemsUpdated(const QByteArray &cacheId, void *bufferId, const QVector<quint32> &itemIds, const QVector<QPoint> &positionsInBuffer)
+    \fn void QPlatformSharedGraphicsCache::itemsUpdated(const QByteArray &cacheId, void *bufferId, const QList<quint32> &itemIds, const QList<QPoint> &positionsInBuffer)
 
     This signal is similar in usage to the itemsAvailable() signal, but will be emitted when
     the location of a previously requested or inserted item has been updated. The application
@@ -194,7 +158,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QPlatformSharedGraphicsCache::itemsInvalidated(const QByteArray &cacheId, const QVector<quint32> &itemIds)
+    \fn void QPlatformSharedGraphicsCache::itemsInvalidated(const QByteArray &cacheId, const QList<quint32> &itemIds)
 
     This signal is emitted when the items given by \a itemIds in the cache named \a cacheId have
     been removed from the cache and the previously reported information about them is considered
@@ -292,3 +256,5 @@ QT_BEGIN_NAMESPACE
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qplatformsharedgraphicscache.cpp"

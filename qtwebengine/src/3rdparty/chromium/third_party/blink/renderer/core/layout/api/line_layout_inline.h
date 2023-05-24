@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -83,10 +83,10 @@ class LineLayoutInline : public LineLayoutBoxModel {
   InlineFlowBox* LastLineBox() { return ToInline()->LastLineBox(); }
 
  protected:
-  LayoutInline* ToInline() { return ToLayoutInline(GetLayoutObject()); }
+  LayoutInline* ToInline() { return To<LayoutInline>(GetLayoutObject()); }
 
   const LayoutInline* ToInline() const {
-    return ToLayoutInline(GetLayoutObject());
+    return To<LayoutInline>(GetLayoutObject());
   }
 };
 

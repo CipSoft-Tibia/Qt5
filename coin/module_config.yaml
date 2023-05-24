@@ -1,0 +1,12 @@
+version: 2
+accept_configuration:
+  condition: property
+  property: features
+  not_contains_value: Disable
+
+instructions:
+  Build:
+    - !include "{{qt/qt5}}/coin_qt_build_template.yaml"
+
+  Test:
+    - !include "{{qt/qt5}}/coin_bic_tests.yaml"

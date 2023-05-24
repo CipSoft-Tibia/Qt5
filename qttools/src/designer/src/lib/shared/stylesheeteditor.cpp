@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "stylesheeteditor_p.h"
 #include "csshighlighter_p.h"
@@ -44,33 +19,52 @@
 
 #include <texteditfindwidget.h>
 
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qcolordialog.h>
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qfontdialog.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qpushbutton.h>
-#include <QtGui/qtextdocument.h>
 #include <QtWidgets/qtoolbar.h>
 #include <QtWidgets/qboxlayout.h>
-#include <private/qcssparser_p.h>
 
+#include <QtGui/qaction.h>
 #include <QtGui/qevent.h>
+#include <QtGui/qtextdocument.h>
+
+#include <private/qcssparser_p.h>
 
 QT_BEGIN_NAMESPACE
 
-static const char *styleSheetProperty = "styleSheet";
-static const char *StyleSheetDialogC = "StyleSheetDialog";
-static const char *Geometry = "Geometry";
+using namespace Qt::StringLiterals;
+
+static const char styleSheetProperty[] = "styleSheet";
+static const char StyleSheetDialogC[] = "StyleSheetDialog";
+static const char seGeometry[] = "Geometry";
 
 namespace qdesigner_internal {
 
 StyleSheetEditor::StyleSheetEditor(QWidget *parent)
     : QTextEdit(parent)
 {
-    setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' ')) * 4);
+    enum : int { DarkThreshold = 200 }; // Observed 239 on KDE/Dark
+
+    setTabStopDistance(fontMetrics().horizontalAdvance(u' ') * 4);
     setAcceptRichText(false);
-    new CssHighlighter(document());
+
+    const QColor textColor = palette().color(QPalette::WindowText);
+    const bool darkMode = textColor.red() > DarkThreshold
+        && textColor.green() > DarkThreshold
+        && textColor.blue() > DarkThreshold;
+
+    CssHighlightColors colors;
+    colors.selector = darkMode ? QColor(Qt::red).lighter() : QColor(Qt::darkRed);
+    const QColor blue(Qt::blue);
+    colors.property = darkMode ? blue.lighter() : blue;
+    colors.pseudo1 = colors.pseudo2 = colors.value = textColor;
+    colors.quote = darkMode ? Qt::magenta : Qt::darkMagenta;
+    colors.comment = darkMode ? Qt::green : Qt::darkGreen;
+
+    new CssHighlighter(colors, document());
 }
 
 // --- StyleSheetEditorDialog
@@ -87,7 +81,6 @@ StyleSheetEditorDialog::StyleSheetEditorDialog(QDesignerFormEditorInterface *cor
     m_addFontAction(new QAction(tr("Add Font..."), this))
 {
     setWindowTitle(tr("Edit Style Sheet"));
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     connect(m_buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -149,13 +142,13 @@ StyleSheetEditorDialog::StyleSheetEditorDialog(QDesignerFormEditorInterface *cor
     QMenu *colorActionMenu = new QMenu(this);
 
     for (int resourceProperty = 0; resourceProperties[resourceProperty]; ++resourceProperty) {
-        const QString resourcePropertyName = QLatin1String(resourceProperties[resourceProperty]);
+        const QString resourcePropertyName = QLatin1StringView(resourceProperties[resourceProperty]);
         resourceActionMenu->addAction(resourcePropertyName,
                                       this, [this, resourcePropertyName] { this->slotAddResource(resourcePropertyName); });
     }
 
     for (int colorProperty = 0; colorProperties[colorProperty]; ++colorProperty) {
-        const QString colorPropertyName = QLatin1String(colorProperties[colorProperty]);
+        const QString colorPropertyName = QLatin1StringView(colorProperties[colorProperty]);
         colorActionMenu->addAction(colorPropertyName,
                                    this, [this, colorPropertyName] { this->slotAddColor(colorPropertyName); });
         gradientActionMenu->addAction(colorPropertyName,
@@ -177,10 +170,10 @@ StyleSheetEditorDialog::StyleSheetEditorDialog(QDesignerFormEditorInterface *cor
     m_editor->setFocus();
 
     QDesignerSettingsInterface *settings = core->settingsManager();
-    settings->beginGroup(QLatin1String(StyleSheetDialogC));
+    settings->beginGroup(QLatin1StringView(StyleSheetDialogC));
 
-    if (settings->contains(QLatin1String(Geometry)))
-        restoreGeometry(settings->value(QLatin1String(Geometry)).toByteArray());
+    if (settings->contains(QLatin1StringView(seGeometry)))
+        restoreGeometry(settings->value(QLatin1StringView(seGeometry)).toByteArray());
 
     settings->endGroup();
 }
@@ -188,9 +181,9 @@ StyleSheetEditorDialog::StyleSheetEditorDialog(QDesignerFormEditorInterface *cor
 StyleSheetEditorDialog::~StyleSheetEditorDialog()
 {
     QDesignerSettingsInterface *settings = m_core->settingsManager();
-    settings->beginGroup(QLatin1String(StyleSheetDialogC));
+    settings->beginGroup(QLatin1StringView(StyleSheetDialogC));
 
-    settings->setValue(QLatin1String(Geometry), saveGeometry());
+    settings->setValue(QLatin1StringView(seGeometry), saveGeometry());
     settings->endGroup();
 }
 
@@ -217,7 +210,7 @@ void StyleSheetEditorDialog::slotAddResource(const QString &property)
 {
     const QString path = IconSelector::choosePixmapResource(m_core, m_core->resourceModel(), QString(), this);
     if (!path.isEmpty())
-        insertCssProperty(property, QString(QStringLiteral("url(%1)")).arg(path));
+        insertCssProperty(property, "url("_L1 + path + u')');
 }
 
 void StyleSheetEditorDialog::slotAddGradient(const QString &property)
@@ -237,11 +230,12 @@ void StyleSheetEditorDialog::slotAddColor(const QString &property)
     QString colorStr;
 
     if (color.alpha() == 255) {
-        colorStr = QString(QStringLiteral("rgb(%1, %2, %3)")).arg(
-                color.red()).arg(color.green()).arg(color.blue());
+        colorStr = QString::asprintf("rgb(%d, %d, %d)",
+                                     color.red(), color.green(), color.blue());
     } else {
-        colorStr = QString(QStringLiteral("rgba(%1, %2, %3, %4)")).arg(
-                color.red()).arg(color.green()).arg(color.blue()).arg(color.alpha());
+        colorStr = QString::asprintf("rgba(%d, %d, %d, %d)",
+                                     color.red(), color.green(), color.blue(),
+                                     color.alpha());
     }
 
     insertCssProperty(property, colorStr);
@@ -253,36 +247,34 @@ void StyleSheetEditorDialog::slotAddFont()
     QFont font = QFontDialog::getFont(&ok, this);
     if (ok) {
         QString fontStr;
-        if (font.weight() != QFont::Normal) {
-            fontStr += QString::number(font.weight());
-            fontStr += QLatin1Char(' ');
-        }
+        if (font.weight() != QFont::Normal)
+            fontStr += QString::number(font.weight()) + u' ';
 
         switch (font.style()) {
         case QFont::StyleItalic:
-            fontStr += QStringLiteral("italic ");
+            fontStr += "italic "_L1;
             break;
         case QFont::StyleOblique:
-            fontStr += QStringLiteral("oblique ");
+            fontStr += "oblique "_L1;
             break;
         default:
             break;
         }
         fontStr += QString::number(font.pointSize());
-        fontStr += QStringLiteral("pt \"");
+        fontStr += "pt \""_L1;
         fontStr += font.family();
-        fontStr += QLatin1Char('"');
+        fontStr += u'"';
 
-        insertCssProperty(QStringLiteral("font"), fontStr);
+        insertCssProperty(u"font"_s, fontStr);
         QString decoration;
         if (font.underline())
-            decoration += QStringLiteral("underline");
+            decoration += "underline"_L1;
         if (font.strikeOut()) {
             if (!decoration.isEmpty())
-                decoration += QLatin1Char(' ');
-            decoration += QStringLiteral("line-through");
+                decoration += u' ';
+            decoration += "line-through"_L1;
         }
-        insertCssProperty(QStringLiteral("text-decoration"), decoration);
+        insertCssProperty(u"text-decoration"_s, decoration);
     }
 }
 
@@ -297,19 +289,19 @@ void StyleSheetEditorDialog::insertCssProperty(const QString &name, const QStrin
 
             // Simple check to see if we're in a selector scope
             const QTextDocument *doc = m_editor->document();
-            const QTextCursor closing = doc->find(QStringLiteral("}"), cursor, QTextDocument::FindBackward);
-            const QTextCursor opening = doc->find(QStringLiteral("{"), cursor, QTextDocument::FindBackward);
+            const QTextCursor closing = doc->find(u"}"_s, cursor, QTextDocument::FindBackward);
+            const QTextCursor opening = doc->find(u"{"_s, cursor, QTextDocument::FindBackward);
             const bool inSelector = !opening.isNull() && (closing.isNull() ||
                                                           closing.position() < opening.position());
             QString insertion;
             if (m_editor->textCursor().block().length() != 1)
-                insertion += QLatin1Char('\n');
+                insertion += u'\n';
             if (inSelector)
-                insertion += QLatin1Char('\t');
+                insertion += u'\t';
             insertion += name;
-            insertion += QStringLiteral(": ");
+            insertion += ": "_L1;
             insertion += value;
-            insertion += QLatin1Char(';');
+            insertion += u';';
             cursor.insertText(insertion);
             cursor.endEditBlock();
         } else {
@@ -320,8 +312,8 @@ void StyleSheetEditorDialog::insertCssProperty(const QString &name, const QStrin
 
 void StyleSheetEditorDialog::slotRequestHelp()
 {
-    m_core->integration()->emitHelpRequested(QStringLiteral("qtwidgets"),
-                                             QStringLiteral("stylesheet-reference.html"));
+    m_core->integration()->emitHelpRequested(u"qtwidgets"_s,
+                                             u"stylesheet-reference.html"_s);
 }
 
 // See QDialog::keyPressEvent()
@@ -362,10 +354,7 @@ bool StyleSheetEditorDialog::isStyleSheetValid(const QString &styleSheet)
     QCss::StyleSheet sheet;
     if (parser.parse(&sheet))
         return true;
-    QString fullSheet = QStringLiteral("* { ");
-    fullSheet += styleSheet;
-    fullSheet += QLatin1Char('}');
-    QCss::Parser parser2(fullSheet);
+    QCss::Parser parser2("* { "_L1 + styleSheet + '}'_L1);
     return parser2.parse(&sheet);
 }
 
@@ -375,10 +364,10 @@ void StyleSheetEditorDialog::validateStyleSheet()
     setOkButtonEnabled(valid);
     if (valid) {
         m_validityLabel->setText(tr("Valid Style Sheet"));
-        m_validityLabel->setStyleSheet(QStringLiteral("color: green"));
+        m_validityLabel->setStyleSheet(u"color: green"_s);
     } else {
         m_validityLabel->setText(tr("Invalid Style Sheet"));
-        m_validityLabel->setStyleSheet(QStringLiteral("color: red"));
+        m_validityLabel->setStyleSheet(u"color: red"_s);
     }
 }
 
@@ -401,7 +390,7 @@ StyleSheetPropertyEditorDialog::StyleSheetPropertyEditorDialog(QWidget *parent,
     QDesignerPropertySheetExtension *sheet =
             qt_extension<QDesignerPropertySheetExtension*>(m_fw->core()->extensionManager(), m_widget);
     Q_ASSERT(sheet != nullptr);
-    const int index = sheet->indexOf(QLatin1String(styleSheetProperty));
+    const int index = sheet->indexOf(QLatin1StringView(styleSheetProperty));
     const PropertySheetStringValue value = qvariant_cast<PropertySheetStringValue>(sheet->property(index));
     setText(value.value());
 }
@@ -409,7 +398,7 @@ StyleSheetPropertyEditorDialog::StyleSheetPropertyEditorDialog(QWidget *parent,
 void StyleSheetPropertyEditorDialog::applyStyleSheet()
 {
     const PropertySheetStringValue value(text(), false);
-    m_fw->cursor()->setWidgetProperty(m_widget, QLatin1String(styleSheetProperty), QVariant::fromValue(value));
+    m_fw->cursor()->setWidgetProperty(m_widget, QLatin1StringView(styleSheetProperty), QVariant::fromValue(value));
 }
 
 } // namespace qdesigner_internal

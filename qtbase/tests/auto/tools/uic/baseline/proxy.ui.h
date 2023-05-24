@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'proxy.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -10,6 +10,7 @@
 #define PROXY_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -34,44 +35,44 @@ public:
     void setupUi(QDialog *ProxyDialog)
     {
         if (ProxyDialog->objectName().isEmpty())
-            ProxyDialog->setObjectName(QString::fromUtf8("ProxyDialog"));
+            ProxyDialog->setObjectName("ProxyDialog");
         ProxyDialog->resize(369, 144);
         gridLayout = new QGridLayout(ProxyDialog);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         iconLabel = new QLabel(ProxyDialog);
-        iconLabel->setObjectName(QString::fromUtf8("iconLabel"));
+        iconLabel->setObjectName("iconLabel");
 
         gridLayout->addWidget(iconLabel, 0, 0, 1, 1);
 
         introLabel = new QLabel(ProxyDialog);
-        introLabel->setObjectName(QString::fromUtf8("introLabel"));
+        introLabel->setObjectName("introLabel");
         introLabel->setWordWrap(true);
 
         gridLayout->addWidget(introLabel, 0, 1, 1, 2);
 
         usernameLabel = new QLabel(ProxyDialog);
-        usernameLabel->setObjectName(QString::fromUtf8("usernameLabel"));
+        usernameLabel->setObjectName("usernameLabel");
 
         gridLayout->addWidget(usernameLabel, 1, 0, 1, 2);
 
         userNameLineEdit = new QLineEdit(ProxyDialog);
-        userNameLineEdit->setObjectName(QString::fromUtf8("userNameLineEdit"));
+        userNameLineEdit->setObjectName("userNameLineEdit");
 
         gridLayout->addWidget(userNameLineEdit, 1, 2, 1, 1);
 
         passwordLabel = new QLabel(ProxyDialog);
-        passwordLabel->setObjectName(QString::fromUtf8("passwordLabel"));
+        passwordLabel->setObjectName("passwordLabel");
 
         gridLayout->addWidget(passwordLabel, 2, 0, 1, 2);
 
         passwordLineEdit = new QLineEdit(ProxyDialog);
-        passwordLineEdit->setObjectName(QString::fromUtf8("passwordLineEdit"));
+        passwordLineEdit->setObjectName("passwordLineEdit");
         passwordLineEdit->setEchoMode(QLineEdit::Password);
 
         gridLayout->addWidget(passwordLineEdit, 2, 2, 1, 1);
 
         buttonBox = new QDialogButtonBox(ProxyDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
 
@@ -79,8 +80,8 @@ public:
 
 
         retranslateUi(ProxyDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), ProxyDialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), ProxyDialog, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, ProxyDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, ProxyDialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(ProxyDialog);
     } // setupUi

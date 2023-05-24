@@ -1,51 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlincubator.h"
 #include "qqmlcomponent.h"
 #include "qqmlincubator_p.h"
 
-#include "qqmlexpression_p.h"
 #include "qqmlobjectcreator_p.h"
 #include <private/qqmlcomponent_p.h>
 
-void QQmlEnginePrivate::incubate(QQmlIncubator &i, QQmlContextData *forContext)
+void QQmlEnginePrivate::incubate(
+        QQmlIncubator &i, const QQmlRefPointer<QQmlContextData> &forContext)
 {
     QExplicitlySharedDataPointer<QQmlIncubatorPrivate> p(i.d);
 
@@ -59,13 +23,13 @@ void QQmlEnginePrivate::incubate(QQmlIncubator &i, QQmlContextData *forContext)
 
         // Need to find the first constructing context and see if it is asynchronous
         QExplicitlySharedDataPointer<QQmlIncubatorPrivate> parentIncubator;
-        QQmlContextData *cctxt = forContext;
+        QQmlRefPointer<QQmlContextData> cctxt = forContext;
         while (cctxt) {
-            if (!cctxt->hasExtraObject && cctxt->incubator) {
-                parentIncubator = cctxt->incubator;
+            if (QQmlIncubatorPrivate *incubator = cctxt->incubator()) {
+                parentIncubator = incubator;
                 break;
             }
-            cctxt = cctxt->parent;
+            cctxt = cctxt->parent();
         }
 
         if (parentIncubator && parentIncubator->isAsynchronous) {
@@ -139,7 +103,10 @@ QQmlIncubatorPrivate::~QQmlIncubatorPrivate()
 
 void QQmlIncubatorPrivate::clear()
 {
-    compilationUnit = nullptr;
+    // reset the tagged pointer
+    if (requiredPropertiesFromComponent)
+        requiredPropertiesFromComponent = decltype(requiredPropertiesFromComponent){};
+    compilationUnit.reset();
     if (next.isInList()) {
         next.remove();
         enginePriv->incubatorCount--;
@@ -149,9 +116,9 @@ void QQmlIncubatorPrivate::clear()
     }
     enginePriv = nullptr;
     if (!rootContext.isNull()) {
-        if (!rootContext->hasExtraObject)
-            rootContext->incubator = nullptr;
-        rootContext = nullptr;
+        if (rootContext->incubator())
+            rootContext->setIncubator(nullptr);
+        rootContext.setContextData({});
     }
 
     if (nextWaitingFor.isInList()) {
@@ -210,9 +177,15 @@ protected:
 };
 \endcode
 
-Although the previous example would work, it is not optimal.  Real world incubation
-controllers should try and maximize the amount of idle time they consume - rather
-than a static amount like 5 milliseconds - while not disturbing the application.
+Although the example works, it is heavily simplified. Real world incubation controllers
+try and maximize the amount of idle time they consume while not disturbing the
+application. Using a static amount of 5 milliseconds like above may both leave idle
+time on the table in some frames and disturb the application in others.
+
+\l{QQuickWindow}, \l{QQuickView}, and \l{QQuickWidget} all pre-create an incubation
+controller that spaces out incubation over multiple frames using a more intelligent
+algorithm. You rarely have to write your own.
+
 */
 
 /*!
@@ -262,11 +235,12 @@ void QQmlIncubatorPrivate::forceCompletion(QQmlInstantiationInterrupt &i)
 {
     while (QQmlIncubator::Loading == status) {
         while (QQmlIncubator::Loading == status && !waitingFor.isEmpty())
-            static_cast<QQmlIncubatorPrivate *>(waitingFor.first())->forceCompletion(i);
+            waitingFor.first()->forceCompletion(i);
         if (QQmlIncubator::Loading == status)
             incubate(i);
     }
 }
+
 
 void QQmlIncubatorPrivate::incubate(QQmlInstantiationInterrupt &i)
 {
@@ -278,6 +252,20 @@ void QQmlIncubatorPrivate::incubate(QQmlInstantiationInterrupt &i)
     QRecursionWatcher<QQmlIncubatorPrivate, &QQmlIncubatorPrivate::recursion> watcher(this);
     // get a copy of the engine pointer as it might get reset;
     QQmlEnginePrivate *enginePriv = this->enginePriv;
+
+    // Incubating objects takes quite a bit more stack space than our usual V4 function
+    enum { EstimatedSizeInV4Frames = 2 };
+    QV4::ExecutionEngineCallDepthRecorder<EstimatedSizeInV4Frames> callDepthRecorder(
+                compilationUnit->engine);
+    if (callDepthRecorder.hasOverflow()) {
+        QQmlError error;
+        error.setMessageType(QtCriticalMsg);
+        error.setUrl(compilationUnit->url());
+        error.setDescription(QQmlComponent::tr("Maximum call stack size exceeded."));
+        errors << error;
+        progress = QQmlIncubatorPrivate::Completed;
+        goto finishIncubate;
+    }
 
     if (!vmeGuard.isOK()) {
         QQmlError error;
@@ -299,11 +287,12 @@ void QQmlIncubatorPrivate::incubate(QQmlInstantiationInterrupt &i)
         if (!tresult)
             errors = creator->errors;
         else {
-           RequiredProperties& requiredProperties = creator->requiredProperties();
+           RequiredProperties* requiredProperties = creator->requiredProperties();
            for (auto it = initialProperties.cbegin(); it != initialProperties.cend(); ++it) {
                auto component = tresult;
                auto name = it.key();
-               QQmlProperty prop = QQmlComponentPrivate::removePropertyFromRequired(component, name, requiredProperties);
+               QQmlProperty prop = QQmlComponentPrivate::removePropertyFromRequired(
+                           component, name, requiredProperties, QQmlEnginePrivate::get(enginePriv));
                if (!prop.isValid() || !prop.write(it.value())) {
                    QQmlError error{};
                    error.setUrl(compilationUnit->url());
@@ -330,9 +319,9 @@ void QQmlIncubatorPrivate::incubate(QQmlInstantiationInterrupt &i)
             ddata->rootObjectInCreation = false;
             if (q) {
                 q->setInitialState(result);
-                if (creator && !creator->requiredProperties().empty()) {
-                    const auto& unsetRequiredProperties = creator->requiredProperties();
-                    for (const auto& unsetRequiredProperty: unsetRequiredProperties)
+                if (creator && !creator->requiredProperties()->empty()) {
+                    const RequiredProperties *unsetRequiredProperties = creator->requiredProperties();
+                    for (const auto& unsetRequiredProperty: *unsetRequiredProperties)
                         errors << QQmlComponentPrivate::unsetRequiredPropertyToQQmlError(unsetRequiredProperty);
                 }
             }
@@ -360,10 +349,8 @@ void QQmlIncubatorPrivate::incubate(QQmlInstantiationInterrupt &i)
             if (watcher.hasRecursed())
                 return;
 
-            QQmlContextData *ctxt = nullptr;
-            ctxt = creator->finalize(i);
-            if (ctxt) {
-                rootContext = ctxt;
+            if (creator->finalize(i)) {
+                rootContext = creator->rootContext();
                 progress = QQmlIncubatorPrivate::Completed;
                 goto finishIncubate;
             }
@@ -396,6 +383,37 @@ finishIncubate:
 }
 
 /*!
+    \internal
+    This is used to mimic the behavior of incubate when the
+    Component we want to incubate refers to a creatable
+    QQmlType (i.e., it is the result of loadFromModule).
+ */
+void QQmlIncubatorPrivate::incubateCppBasedComponent(QQmlComponent *component, QQmlContext *context)
+{
+    auto compPriv = QQmlComponentPrivate::get(component);
+    Q_ASSERT(compPriv->loadedType.isCreatable());
+    std::unique_ptr<QObject> object(component->beginCreate(context));
+    component->setInitialProperties(object.get(), initialProperties);
+    if (auto props = compPriv->state.requiredProperties()) {
+        requiredPropertiesFromComponent = props;
+        requiredPropertiesFromComponent.setTag(HadTopLevelRequired::Yes);
+    }
+    q->setInitialState(object.get());
+    if (requiredPropertiesFromComponent && !requiredPropertiesFromComponent->isEmpty()) {
+        for (const RequiredPropertyInfo &unsetRequiredProperty :
+             std::as_const(*requiredPropertiesFromComponent)) {
+            errors << QQmlComponentPrivate::unsetRequiredPropertyToQQmlError(unsetRequiredProperty);
+        }
+    } else {
+        compPriv->completeCreate();
+        result = object.release();
+        progress = QQmlIncubatorPrivate::Completed;
+    }
+    changeStatus(calculateStatus());
+
+}
+
+/*!
 Incubate objects for \a msecs, or until there are no more objects to incubate.
 */
 void QQmlIncubationController::incubateFor(int msecs)
@@ -403,32 +421,12 @@ void QQmlIncubationController::incubateFor(int msecs)
     if (!d || !d->incubatorCount)
         return;
 
-    QQmlInstantiationInterrupt i(msecs * Q_INT64_C(1000000));
-    i.reset();
+    QDeadlineTimer deadline(msecs);
+    QQmlInstantiationInterrupt i(deadline);
     do {
         static_cast<QQmlIncubatorPrivate*>(d->incubatorList.first())->incubate(i);
     } while (d && d->incubatorCount != 0 && !i.shouldInterrupt());
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-\obsolete
-
-\warning Do not use this function.
-Use the overload taking a \c{std::atomic<bool>} instead.
-*/
-void QQmlIncubationController::incubateWhile(volatile bool *flag, int msecs)
-{
-    if (!d || !d->incubatorCount)
-        return;
-
-    QQmlInstantiationInterrupt i(flag, msecs * Q_INT64_C(1000000));
-    i.reset();
-    do {
-        static_cast<QQmlIncubatorPrivate*>(d->incubatorList.first())->incubate(i);
-    } while (d && d->incubatorCount != 0 && !i.shouldInterrupt());
-}
-#endif
 
 /*!
 \since 5.15
@@ -447,8 +445,7 @@ void QQmlIncubationController::incubateWhile(std::atomic<bool> *flag, int msecs)
     if (!d || !d->incubatorCount)
         return;
 
-    QQmlInstantiationInterrupt i(flag, msecs * Q_INT64_C(1000000));
-    i.reset();
+    QQmlInstantiationInterrupt i(flag, msecs ? QDeadlineTimer(msecs) : QDeadlineTimer::Forever);
     do {
         static_cast<QQmlIncubatorPrivate*>(d->incubatorList.first())->incubate(i);
     } while (d && d->incubatorCount != 0 && !i.shouldInterrupt());
@@ -466,25 +463,37 @@ synchronously which, depending on the complexity of the object,  can cause notic
 stutters in the application.
 
 The use of QQmlIncubator gives more control over the creation of a QML object,
-including allowing it to be created asynchronously using application idle time.  The following
+including allowing it to be created asynchronously using application idle time. The following
 example shows a simple use of QQmlIncubator.
 
 \code
+// Initialize the incubator
 QQmlIncubator incubator;
 component->create(incubator);
-
-while (!incubator.isReady()) {
-    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-}
-
-QObject *object = incubator.object();
 \endcode
 
-Asynchronous incubators are controlled by a QQmlIncubationController that is
-set on the QQmlEngine, which lets the engine know when the application is idle and
+Let the incubator run for a while (normally by returning control to the event loop),
+then poll it. There are a number of ways to get back to the incubator later. You may
+want to connect to one of the signals sent by \l{QQuickWindow}, or you may want to run
+a \l{QTimer} especially for that. You may also need the object for some specific
+purpose and poll the incubator when that purpose arises.
+
+\code
+// Poll the incubator
+if (incubator.isReady()) {
+    QObject *object = incubator.object();
+    // Use created object
+}
+\endcode
+
+Asynchronous incubators are controlled by a \l{QQmlIncubationController} that is
+set on the \l{QQmlEngine}, which lets the engine know when the application is idle and
 incubating objects should be processed.  If an incubation controller is not set on the
-QQmlEngine, QQmlIncubator creates objects synchronously regardless of the
-specified IncubationMode.
+\l{QQmlEngine}, \l{QQmlIncubator} creates objects synchronously regardless of the
+specified IncubationMode. By default, no incubation controller is set. However,
+\l{QQuickView}, \l{QQuickWindow} and \l{QQuickWidget} all set incubation controllers
+on their respective \l{QQmlEngine}s. These incubation controllers space out incubations
+across multiple frames while the view is being rendered.
 
 QQmlIncubator supports three incubation modes:
 \list
@@ -704,21 +713,28 @@ QObject *QQmlIncubator::object() const
 }
 
 /*!
-Return a list of properties which are required but haven't been set yet.
+Return a pointer to a list of properties which are required but haven't
+been set yet.
 This list can be modified, so that subclasses which implement special logic
 setInitialProperties can mark properties set there as no longer required.
 
 \sa QQmlIncubator::setInitialProperties
 \since 5.15
 */
-RequiredProperties &QQmlIncubatorPrivate::requiredProperties()
+RequiredProperties *QQmlIncubatorPrivate::requiredProperties()
 {
-    return creator->requiredProperties();
+    if (creator)
+        return creator->requiredProperties();
+    else
+        return requiredPropertiesFromComponent.data();
 }
 
-bool QQmlIncubatorPrivate::hadRequiredProperties() const
+bool QQmlIncubatorPrivate::hadTopLevelRequiredProperties() const
 {
-    return creator->componentHadRequiredProperties();
+    if (creator)
+        return creator->componentHadTopLevelRequiredProperties();
+    else
+        return requiredPropertiesFromComponent.tag() == HadTopLevelRequired::Yes;
 }
 
 /*!
@@ -744,13 +760,23 @@ void QQmlIncubator::statusChanged(Status status)
 }
 
 /*!
-Called after the \a object is first created, but before property bindings are
-evaluated and, if applicable, QQmlParserStatus::componentComplete() is
-called.  This is equivalent to the point between QQmlComponent::beginCreate()
+Called after the \a object is first created, but before complex property
+bindings are evaluated and, if applicable, QQmlParserStatus::componentComplete()
+is called. This is equivalent to the point between QQmlComponent::beginCreate()
 and QQmlComponent::completeCreate(), and can be used to assign initial values
 to the object's properties.
 
 The default implementation does nothing.
+
+\note Simple bindings such as numeric literals are evaluated before
+setInitialState() is called. The categorization of bindings into simple and
+complex ones is intentionally unspecified and may change between versions of
+Qt and depending on whether and how you are using \l{qmlcachegen}. You should
+not rely on any particular binding to be evaluated either before or after
+setInitialState() is called. For example, a constant expression like
+\e{MyType.EnumValue} may be recognized as such at compile time or deferred
+to be executed as binding. The same holds for constant expressions like
+\e{-(5)} or \e{"a" + " constant string"}.
 */
 void QQmlIncubator::setInitialState(QObject *object)
 {

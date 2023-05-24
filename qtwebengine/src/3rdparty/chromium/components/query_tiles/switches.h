@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,32 +11,33 @@ namespace query_tiles {
 
 namespace features {
 
-// Main feature flag for the query tiles feature that allows or blocks the
-// feature in the user's country. Must be checked in addition to any other flag.
-extern const base::Feature kQueryTilesGeoFilter;
-
 // Main feature flag for the query tiles feature. All other flags are
 // effective only when this flag is enabled.
-extern const base::Feature kQueryTiles;
+BASE_DECLARE_FEATURE(kQueryTiles);
 
 // Feature flag to determine whether query tiles should be shown on NTP.
-extern const base::Feature kQueryTilesInNTP;
-
-// Feature flag to determine whether query tiles should be shown on omnibox.
-extern const base::Feature kQueryTilesInOmnibox;
+BASE_DECLARE_FEATURE(kQueryTilesInNTP);
 
 // Feature flag to determine whether the user will have a chance to edit the
 // query before in the omnibox sumbitting the search. In this mode only one
 // level of tiles will be displayed.
-extern const base::Feature kQueryTilesEnableQueryEditing;
+BASE_DECLARE_FEATURE(kQueryTilesEnableQueryEditing);
 
-// Feature flag to determine whether query tiles should be displayed in an order
-// based on local user interactions.
-extern const base::Feature kQueryTilesLocalOrdering;
+// Feature flag to determine whether trending tiles should disapear after
+// some time of inactivity.
+BASE_DECLARE_FEATURE(kQueryTilesRemoveTrendingTilesAfterInactivity);
 
-// Helper function to determine whether query tiles should be shown on omnibox.
-bool IsEnabledQueryTilesInOmnibox();
+// Whether segmentation rules are applied to query tiles.
+BASE_DECLARE_FEATURE(kQueryTilesSegmentation);
 
+// Whether to disable the override rules introduced for countries.
+BASE_DECLARE_FEATURE(kQueryTilesDisableCountryOverride);
+
+// Feature flag to determine whether query tiles should be shown on start surface.
+BASE_DECLARE_FEATURE(kQueryTilesOnStart);
+
+// Returns whether query tiles are enabled for the country.
+bool IsQueryTilesEnabledForCountry(const std::string& country_code);
 }  // namespace features
 
 namespace switches {
@@ -54,6 +55,9 @@ extern const char kQueryTilesInstantBackgroundTask[];
 // If set, server will return trending tiles along with curated tiles.
 extern const char kQueryTilesEnableTrending[];
 
+// If set, the server will rank all the tiles and send a subset of them
+// to the client based on user interest.
+extern const char kQueryTilesRankTiles[];
 }  // namespace switches
 }  // namespace query_tiles
 

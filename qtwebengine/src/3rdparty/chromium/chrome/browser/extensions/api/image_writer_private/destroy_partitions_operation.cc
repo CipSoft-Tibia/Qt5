@@ -1,13 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <string.h>
 
-#include "base/bind.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "chrome/browser/extensions/api/image_writer_private/destroy_partitions_operation.h"
-#include "chrome/browser/extensions/api/image_writer_private/error_messages.h"
+#include "chrome/browser/extensions/api/image_writer_private/error_constants.h"
 #include "content/public/browser/browser_thread.h"
 
 namespace extensions {
@@ -28,7 +28,7 @@ DestroyPartitionsOperation::DestroyPartitionsOperation(
                 storage_unit_id,
                 download_folder) {}
 
-DestroyPartitionsOperation::~DestroyPartitionsOperation() {}
+DestroyPartitionsOperation::~DestroyPartitionsOperation() = default;
 
 void DestroyPartitionsOperation::StartImpl() {
   DCHECK(IsRunningInCorrectSequence());
@@ -46,9 +46,9 @@ void DestroyPartitionsOperation::StartImpl() {
     return;
   }
 
-  PostTask(
-      base::BindOnce(&DestroyPartitionsOperation::Write, this,
-                     base::Bind(&DestroyPartitionsOperation::Finish, this)));
+  PostTask(base::BindOnce(
+      &DestroyPartitionsOperation::Write, this,
+      base::BindOnce(&DestroyPartitionsOperation::Finish, this)));
 }
 
 }  // namespace image_writer

@@ -25,6 +25,8 @@
 
 #include "agg_vcgen_stroke.h"
 
+namespace pdfium
+{
 namespace agg
 {
 
@@ -200,10 +202,10 @@ unsigned vcgen_stroke::vertex(float* x, float* y)
                 break;
             case end_poly1:
                 m_status = m_prev_status;
-                return path_cmd_end_poly | path_flags_close | path_flags_ccw;
+                return unsigned{path_cmd_end_poly} | path_flags_close | path_flags_ccw;
             case end_poly2:
                 m_status = m_prev_status;
-                return path_cmd_end_poly | path_flags_close | path_flags_cw;
+                return unsigned{path_cmd_end_poly} | path_flags_close | path_flags_cw;
             case stop:
                 cmd = path_cmd_stop;
                 break;
@@ -212,3 +214,4 @@ unsigned vcgen_stroke::vertex(float* x, float* y)
     return cmd;
 }
 }
+}  // namespace pdfium

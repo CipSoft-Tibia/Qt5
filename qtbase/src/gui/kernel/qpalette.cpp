@@ -1,66 +1,87 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qpalette.h"
-#include "qguiapplication.h"
+#include "qpalette_p.h"
 #include "qguiapplication_p.h"
 #include "qdatastream.h"
 #include "qvariant.h"
 #include "qdebug.h"
 
+#include <QtCore/qmetaobject.h>
+
 QT_BEGIN_NAMESPACE
 
-static int qt_palette_count = 1;
+constexpr QPalette::ResolveMask QPalettePrivate::colorRoleOffset(QPalette::ColorGroup colorGroup)
+{
+    // Exclude NoRole; that bit is used for Accent
+    return (qToUnderlying(QPalette::NColorRoles) - 1) * qToUnderlying(colorGroup);
+}
 
-class QPalettePrivate {
-public:
-    QPalettePrivate() : ref(1), ser_no(qt_palette_count++), detach_no(0) { }
-    QAtomicInt ref;
-    QBrush br[QPalette::NColorGroups][QPalette::NColorRoles];
-    int ser_no;
-    int detach_no;
-};
+constexpr QPalette::ResolveMask QPalettePrivate::bitPosition(QPalette::ColorGroup colorGroup,
+                                                             QPalette::ColorRole colorRole)
+{
+    // Map Accent into NoRole for resolving purposes
+    if (colorRole == QPalette::Accent)
+        colorRole = QPalette::NoRole;
+
+    return colorRole + colorRoleOffset(colorGroup);
+}
+
+static_assert(QPalettePrivate::bitPosition(QPalette::ColorGroup(QPalette::NColorGroups - 1),
+                              QPalette::ColorRole(QPalette::NColorRoles - 1))
+                  < sizeof(QPalette::ResolveMask) * CHAR_BIT,
+                  "The resolve mask type is not wide enough to fit the entire bit mask.");
 
 static QColor qt_mix_colors(QColor a, QColor b)
 {
     return QColor((a.red() + b.red()) / 2, (a.green() + b.green()) / 2,
                   (a.blue() + b.blue()) / 2, (a.alpha() + b.alpha()) / 2);
+}
+
+/*!
+    \internal
+
+    Derive undefined \l PlaceholderText colors from \l Text colors.
+    Unless already set, PlaceholderText colors will be derived from their Text pendents.
+    Colors of existing PlaceHolderText brushes will not be replaced.
+
+    \a alpha represents the dim factor as a percentage. By default, a PlaceHolderText color
+    becomes a 50% more transparent version of the corresponding Text color.
+*/
+static void qt_placeholder_from_text(QPalette &pal, int alpha = 50)
+{
+    if (alpha < 0 or alpha > 100)
+        return;
+
+    for (int cg = 0; cg < int(QPalette::NColorGroups); ++cg) {
+        const QPalette::ColorGroup group = QPalette::ColorGroup(cg);
+
+        // skip if the brush has been set already
+        if (!pal.isBrushSet(group, QPalette::PlaceholderText)) {
+            QColor c = pal.color(group, QPalette::Text);
+            const int a = (c.alpha() * alpha) / 100;
+            c.setAlpha(a);
+            pal.setColor(group, QPalette::PlaceholderText, c);
+        }
+    }
+}
+
+static void qt_ensure_default_accent_color(QPalette &pal)
+{
+    // have a lighter/darker factor handy, depending on dark/light heuristics
+    const int lighter = pal.base().color().lightness() > pal.text().color().lightness() ? 130 : 70;
+
+    // Act only for color groups where no accent color is set
+    for (int i = 0; i < QPalette::NColorGroups; ++i) {
+        const QPalette::ColorGroup group = static_cast<QPalette::ColorGroup>(i);
+        if (!pal.isBrushSet(group, QPalette::Accent)) {
+            // Default to highlight if available, otherwise use a shade of base
+            const QBrush accentBrush = pal.isBrushSet(group, QPalette::Highlight)
+                                     ? pal.brush(group, QPalette::Highlight)
+                                     : pal.brush(group, QPalette::Base).color().lighter(lighter);
+            pal.setBrush(group, QPalette::Accent, accentBrush);
+        }
+    }
 }
 
 static void qt_palette_from_color(QPalette &pal, const QColor &button)
@@ -85,6 +106,9 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
     pal.setColorGroup(QPalette::Disabled, buttonBrushDark, buttonBrush, buttonBrushLight150,
                       buttonBrushDark, buttonBrushDark150, buttonBrushDark,
                       whiteBrush, buttonBrush, buttonBrush);
+
+    qt_placeholder_from_text(pal);
+    qt_ensure_default_accent_color(pal);
 }
 
 /*!
@@ -135,13 +159,6 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
     brush for all groups in the palette.
 
     \sa brush(), setColor(), ColorRole
-*/
-
-/*!
-    \fn const QBrush & QPalette::foreground() const
-    \obsolete
-
-    Use windowText() instead.
 */
 
 /*!
@@ -260,13 +277,6 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
 */
 
 /*!
-    \fn const QBrush & QPalette::background() const
-    \obsolete
-
-    Use window() instead.
-*/
-
-/*!
     \fn const QBrush & QPalette::window() const
 
     Returns the window (general background) brush of the current
@@ -300,6 +310,15 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
 */
 
 /*!
+    \fn const QBrush & QPalette::accent() const
+    \since 6.6
+
+    Returns the accent brush of the current color group.
+
+    \sa ColorRole, brush()
+*/
+
+/*!
     \fn const QBrush & QPalette::link() const
 
     Returns the unvisited link text brush of the current color group.
@@ -321,11 +340,8 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
 
     Returns the placeholder text brush of the current color group.
 
-    \note Before Qt 5.12, the placeholder text color was hard-coded in the code as
-    QPalette::text().color() where an alpha of 128 was applied.
-    We continue to support this behavior by default, unless you set your own brush.
-    One can get back the original placeholder color setting the special QBrush default
-    constructor as placeholder brush.
+    \note Before Qt 5.12, the placeholder text color was hard-coded as QPalette::text().color()
+    with an alpha of 128 applied. In Qt 6, it is an independent color.
 
     \sa ColorRole, brush()
 */
@@ -434,11 +450,7 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
 
     \value Window  A general background color.
 
-    \value Background  This value is obsolete. Use Window instead.
-
     \value WindowText  A general foreground color.
-
-    \value Foreground  This value is obsolete. Use WindowText instead.
 
     \value Base  Used mostly as the background color for text entry widgets,
                  but can also be used for other painting - such as the
@@ -506,6 +518,13 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
                        item. By default, the highlight color is
                        Qt::darkBlue.
 
+    \value [since 6.6] Accent
+                       A color that typically contrasts or complements
+                       Base, Window and Button colors. It usually represents
+                       the users' choice of desktop personalisation.
+                       Styling of interactive components is a typical use case.
+                       Unless explicitly set, it defaults to Highlight.
+
     \value HighlightedText  A text color that contrasts with \c Highlight.
                             By default, the highlighted text color is Qt::white.
 
@@ -541,18 +560,17 @@ static void qt_palette_from_color(QPalette &pal, const QColor &button)
 QPalette::QPalette()
     : d(nullptr)
 {
-    data.current_group = Active;
-    data.resolve_mask = 0;
     // Initialize to application palette if present, else default to black.
     // This makes it possible to instantiate QPalette outside QGuiApplication,
     // for example in the platform plugins.
     if (QGuiApplicationPrivate::app_pal) {
         d = QGuiApplicationPrivate::app_pal->d;
         d->ref.ref();
+        setResolveMask(0);
     } else {
         init();
         qt_palette_from_color(*this, Qt::black);
-        data.resolve_mask = 0;
+        d->resolveMask = 0;
     }
 }
 
@@ -594,10 +612,14 @@ QPalette::QPalette(const QBrush &windowText, const QBrush &button,
     init();
     setColorGroup(All, windowText, button, light, dark, mid, text, bright_text,
                   base, window);
+
+    qt_placeholder_from_text(*this);
+    qt_ensure_default_accent_color(*this);
 }
 
 
-/*!\obsolete
+/*!
+  \deprecated
 
   Constructs a palette with the specified \a windowText, \a
   window, \a light, \a dark, \a mid, \a text, and \a base colors.
@@ -648,6 +670,9 @@ QPalette::QPalette(const QColor &button, const QColor &window)
     setColorGroup(Disabled, disabledForeground, buttonBrush, buttonBrushLight150,
                   buttonBrushDark, buttonBrushDark150, disabledForeground,
                   whiteBrush, baseBrush, windowBrush);
+
+    qt_placeholder_from_text(*this);
+    qt_ensure_default_accent_color(*this);
 }
 
 /*!
@@ -656,7 +681,7 @@ QPalette::QPalette(const QColor &button, const QColor &window)
     This constructor is fast thanks to \l{implicit sharing}.
 */
 QPalette::QPalette(const QPalette &p)
-    : d(p.d), data(p.data)
+    : d(p.d), currentGroup(p.currentGroup)
 {
     d->ref.ref();
 }
@@ -682,10 +707,9 @@ QPalette::~QPalette()
 }
 
 /*!\internal*/
-void QPalette::init() {
+void QPalette::init()
+{
     d = new QPalettePrivate;
-    data.resolve_mask = 0;
-    data.current_group = Active; //as a default..
 }
 
 /*!
@@ -697,7 +721,7 @@ void QPalette::init() {
 QPalette &QPalette::operator=(const QPalette &p)
 {
     p.d->ref.ref();
-    data = p.data;
+    currentGroup = p.currentGroup;
     if (d && !d->ref.deref())
         delete d;
     d = p.d;
@@ -717,7 +741,7 @@ QPalette &QPalette::operator=(const QPalette &p)
 */
 QPalette::operator QVariant() const
 {
-    return QVariant(QMetaType::QPalette, this);
+    return QVariant::fromValue(*this);
 }
 
 /*!
@@ -740,15 +764,15 @@ QPalette::operator QVariant() const
 const QBrush &QPalette::brush(ColorGroup gr, ColorRole cr) const
 {
     Q_ASSERT(cr < NColorRoles);
-    if(gr >= (int)NColorGroups) {
-        if(gr == Current) {
-            gr = (ColorGroup)data.current_group;
+    if (gr >= (int)NColorGroups) {
+        if (gr == Current) {
+            gr = currentGroup;
         } else {
             qWarning("QPalette::brush: Unknown ColorGroup: %d", (int)gr);
             gr = Active;
         }
     }
-    return d->br[gr][cr];
+    return d->data->br[gr][cr];
 }
 
 /*!
@@ -780,38 +804,24 @@ void QPalette::setBrush(ColorGroup cg, ColorRole cr, const QBrush &b)
     }
 
     if (cg == Current) {
-        cg = ColorGroup(data.current_group);
+        cg = currentGroup;
     } else if (cg >= NColorGroups) {
         qWarning("QPalette::setBrush: Unknown ColorGroup: %d", cg);
         cg = Active;
     }
 
-    // For placeholder we want to continue to respect the original behavior, which is
-    // derivating the text color, but only if user has not yet set his own brush.
-    // We then use Qt::NoBrush as an inernal way to know if the brush is customized or not.
+    const auto newResolveMask = d->resolveMask | ResolveMask(1) << QPalettePrivate::bitPosition(cg, cr);
+    const auto valueChanged = d->data->br[cg][cr] != b;
 
-    // ### Qt 6 - remove this special case
-    // Part 1 - Restore initial color to the given color group
-    if (cr == PlaceholderText && b == QBrush()) {
-        QColor col = brush(Text).color();
-        col.setAlpha(128);
-        setBrush(cg, PlaceholderText, QBrush(col, Qt::NoBrush));
-        return;
-    }
-
-    if (d->br[cg][cr] != b) {
+    if (valueChanged) {
         detach();
-        d->br[cg][cr] = b;
+        d->data.detach();
+        d->data->br[cg][cr] = b;
+    } else if (d->resolveMask != newResolveMask) {
+        detach();
     }
-    data.resolve_mask |= (1<<cr);
 
-    // ### Qt 6 - remove this special case
-    // Part 2 - Update initial color to the given color group
-    if (cr == Text && d->br[cg][PlaceholderText].style() == Qt::NoBrush) {
-        QColor col = brush(Text).color();
-        col.setAlpha(128);
-        setBrush(cg, PlaceholderText, QBrush(col, Qt::NoBrush));
-    }
+    d->resolveMask = newResolveMask;
 }
 
 /*!
@@ -820,12 +830,34 @@ void QPalette::setBrush(ColorGroup cg, ColorRole cr, const QBrush &b)
     Returns \c true if the ColorGroup \a cg and ColorRole \a cr has been
     set previously on this palette; otherwise returns \c false.
 
-    \sa setBrush()
+    The ColorGroup \a cg should be less than QPalette::NColorGroups,
+    but you can use QPalette::Current. In this case, the previously
+    set current color group will be used.
+
+    The ColorRole \a cr should be less than QPalette::NColorRoles.
+
+    \sa setBrush(), currentColorGroup()
 */
 bool QPalette::isBrushSet(ColorGroup cg, ColorRole cr) const
 {
-    Q_UNUSED(cg);
-    return (data.resolve_mask & (1<<cr));
+    // NoRole has no resolve mask and should never be set anyway
+    if (cr == NoRole)
+        return false;
+
+    if (cg == Current)
+        cg = currentGroup;
+
+    if (cg >= NColorGroups) {
+        qWarning() << "Wrong color group:" << cg;
+        return false;
+    }
+
+    if (cr >= NColorRoles) {
+        qWarning() << "Wrong color role:" << cr;
+        return false;
+    }
+
+    return d->resolveMask & (ResolveMask(1) << QPalettePrivate::bitPosition(cg, cr));
 }
 
 /*!
@@ -834,16 +866,14 @@ bool QPalette::isBrushSet(ColorGroup cg, ColorRole cr) const
 void QPalette::detach()
 {
     if (d->ref.loadRelaxed() != 1) {
-        QPalettePrivate *x = new QPalettePrivate;
-        for(int grp = 0; grp < (int)NColorGroups; grp++) {
-            for(int role = 0; role < (int)NColorRoles; role++)
-                x->br[grp][role] = d->br[grp][role];
-        }
-        if(!d->ref.deref())
+        QPalettePrivate *x = new QPalettePrivate(d->data);
+        x->resolveMask = d->resolveMask;
+        if (!d->ref.deref())
             delete d;
         d = x;
+    } else {
+        d->detach_no = ++QPalettePrivate::qt_palette_private_count;
     }
-    ++d->detach_no;
 }
 
 /*!
@@ -862,18 +892,24 @@ void QPalette::detach()
     Returns \c true (usually quickly) if this palette is equal to \a p;
     otherwise returns \c false (slowly).
 
-    \note The current ColorGroup is not taken into account when
-    comparing palettes
+    \note The following is not taken into account when comparing palettes:
+    \list
+    \li the \c current ColorGroup
+    \li ColorRole NoRole \since 6.6
+    \endlist
 
     \sa operator!=()
 */
 bool QPalette::operator==(const QPalette &p) const
 {
-    if (isCopyOf(p))
+    if (isCopyOf(p) || d->data == p.d->data)
         return true;
     for(int grp = 0; grp < (int)NColorGroups; grp++) {
         for(int role = 0; role < (int)NColorRoles; role++) {
-            if(d->br[grp][role] != p.d->br[grp][role])
+            // Dont't verify NoRole, because it has no resolve bit
+            if (role == NoRole)
+                continue;
+            if (d->data->br[grp][role] != p.d->data->br[grp][role])
                 return false;
         }
     }
@@ -888,48 +924,30 @@ bool QPalette::operator==(const QPalette &p) const
 */
 bool QPalette::isEqual(QPalette::ColorGroup group1, QPalette::ColorGroup group2) const
 {
-    if(group1 >= (int)NColorGroups) {
-        if(group1 == Current) {
-            group1 = (ColorGroup)data.current_group;
+    if (group1 >= (int)NColorGroups) {
+        if (group1 == Current) {
+            group1 = currentGroup;
         } else {
             qWarning("QPalette::brush: Unknown ColorGroup(1): %d", (int)group1);
             group1 = Active;
         }
     }
-    if(group2 >= (int)NColorGroups) {
-        if(group2 == Current) {
-            group2 = (ColorGroup)data.current_group;
+    if (group2 >= (int)NColorGroups) {
+        if (group2 == Current) {
+            group2 = currentGroup;
         } else {
             qWarning("QPalette::brush: Unknown ColorGroup(2): %d", (int)group2);
             group2 = Active;
         }
     }
-    if(group1 == group2)
+    if (group1 == group2)
         return true;
     for(int role = 0; role < (int)NColorRoles; role++) {
-        if(d->br[group1][role] != d->br[group2][role])
+        if (d->data->br[group1][role] != d->data->br[group2][role])
                 return false;
     }
     return true;
 }
-
-/*! \fn int QPalette::serialNumber() const
-    \obsolete
-
-    Returns a number that identifies the contents of this QPalette
-    object. Distinct QPalette objects can only have the same serial
-    number if they refer to the same contents (but they don't have
-    to). Also, the serial number of a QPalette may change during the
-    lifetime of the object.
-
-    Use cacheKey() instead.
-
-    \warning The serial number doesn't necessarily change when the
-    palette is altered. This means that it may be dangerous to use it
-    as a cache key.
-
-    \sa operator==()
-*/
 
 /*!
     Returns a number that identifies the contents of this QPalette
@@ -940,7 +958,18 @@ bool QPalette::isEqual(QPalette::ColorGroup group1, QPalette::ColorGroup group2)
 */
 qint64 QPalette::cacheKey() const
 {
-    return (((qint64) d->ser_no) << 32) | ((qint64) (d->detach_no));
+    return (((qint64) d->data->ser_no) << 32) | ((qint64) (d->detach_no));
+}
+
+static constexpr QPalette::ResolveMask allResolveMask()
+{
+    QPalette::ResolveMask mask = {0};
+    for (int role = 0; role < int(QPalette::NColorRoles); ++role) {
+        for (int grp = 0; grp < int(QPalette::NColorGroups); ++grp) {
+            mask |= (QPalette::ResolveMask(1) << QPalettePrivate::bitPosition(QPalette::ColorGroup(grp), QPalette::ColorRole(role)));
+        }
+    }
+    return mask;
 }
 
 /*!
@@ -949,35 +978,64 @@ qint64 QPalette::cacheKey() const
 */
 QPalette QPalette::resolve(const QPalette &other) const
 {
-    if ((*this == other && data.resolve_mask == other.data.resolve_mask)
-        || data.resolve_mask == 0) {
+    if ((*this == other && d->resolveMask == other.d->resolveMask)
+        || d->resolveMask == 0) {
         QPalette o = other;
-        o.data.resolve_mask = data.resolve_mask;
+        o.setResolveMask(d->resolveMask);
         return o;
     }
+
+    if (d->resolveMask == allResolveMask())
+        return *this;
 
     QPalette palette(*this);
     palette.detach();
 
-    for(int role = 0; role < (int)NColorRoles; role++)
-        if (!(data.resolve_mask & (1<<role)))
-            for(int grp = 0; grp < (int)NColorGroups; grp++)
-                palette.d->br[grp][role] = other.d->br[grp][role];
-    palette.data.resolve_mask |= other.data.resolve_mask;
+    for (int role = 0; role < int(NColorRoles); ++role) {
+        // Don't resolve NoRole, its bits are needed for Accent (see bitPosition)
+        if (role == NoRole)
+            continue;
+
+        for (int grp = 0; grp < int(NColorGroups); ++grp) {
+            if (!(d->resolveMask & (ResolveMask(1) << QPalettePrivate::bitPosition(ColorGroup(grp), ColorRole(role))))) {
+                palette.d->data.detach();
+                palette.d->data->br[grp][role] = other.d->data->br[grp][role];
+            }
+        }
+    }
+
+    palette.d->resolveMask |= other.d->resolveMask;
 
     return palette;
 }
 
 /*!
-    \fn uint QPalette::resolve() const
     \internal
 */
+QPalette::ResolveMask QPalette::resolveMask() const
+{
+    return d->resolveMask;
+}
 
 /*!
-    \fn void QPalette::resolve(uint mask)
     \internal
 */
+void QPalette::setResolveMask(QPalette::ResolveMask mask)
+{
+    if (mask == d->resolveMask)
+        return;
 
+    detach();
+    d->resolveMask = mask;
+}
+
+/*!
+    \typedef ResolveMask
+    \internal
+
+    A bit mask that stores which colors the palette instance explicitly defines,
+    and which ones are inherited from a parent.
+*/
 
 /*****************************************************************************
   QPalette stream functions
@@ -1004,7 +1062,7 @@ QDataStream &operator<<(QDataStream &s, const QPalette &p)
         if (s.version() == 1) {
             // Qt 1.x
             for (int i = 0; i < NumOldRoles; ++i)
-                s << p.d->br[grp][oldRoles[i]].color();
+                s << p.d->data->br[grp][oldRoles[i]].color();
         } else {
             int max = (int)QPalette::NColorRoles;
             if (s.version() <= QDataStream::Qt_2_1)
@@ -1013,8 +1071,11 @@ QDataStream &operator<<(QDataStream &s, const QPalette &p)
                 max = QPalette::AlternateBase + 1;
             else if (s.version() <= QDataStream::Qt_5_11)
                 max = QPalette::ToolTipText + 1;
+            else if (s.version() <= QDataStream::Qt_6_5)
+                max = QPalette::PlaceholderText + 1;
+
             for (int r = 0; r < max; r++)
-                s << p.d->br[grp][r];
+                s << p.d->data->br[grp][r];
         }
     }
     return s;
@@ -1040,7 +1101,7 @@ static void readV1ColorGroup(QDataStream &s, QPalette &pal, QPalette::ColorGroup
 
 QDataStream &operator>>(QDataStream &s, QPalette &p)
 {
-    if(s.version() == 1) {
+    if (s.version() == 1) {
         p = QPalette();
         readV1ColorGroup(s, p, QPalette::Active);
         readV1ColorGroup(s, p, QPalette::Disabled);
@@ -1056,15 +1117,25 @@ QDataStream &operator>>(QDataStream &s, QPalette &p)
         } else if (s.version() <= QDataStream::Qt_5_11) {
             p = QPalette();
             max = QPalette::ToolTipText + 1;
+        } else if (s.version() <= QDataStream::Qt_6_5) {
+            p = QPalette();
+            max = QPalette::PlaceholderText + 1;
         }
+
 
         QBrush tmp;
         for(int grp = 0; grp < (int)QPalette::NColorGroups; ++grp) {
+            const QPalette::ColorGroup group = static_cast<QPalette::ColorGroup>(grp);
             for(int role = 0; role < max; ++role) {
                 s >> tmp;
-                p.setBrush((QPalette::ColorGroup)grp, (QPalette::ColorRole)role, tmp);
+                p.setBrush(group, (QPalette::ColorRole)role, tmp);
             }
+
+            // Accent defaults to Highlight for stream versions that don't have it.
+            if (s.version() < QDataStream::Qt_6_6)
+                p.setBrush(group, QPalette::Accent, p.brush(group, QPalette::Highlight));
         }
+
     }
     return s;
 }
@@ -1108,10 +1179,15 @@ void QPalette::setColorGroup(ColorGroup cg, const QBrush &windowText, const QBru
                   QBrush(Qt::blue), QBrush(Qt::magenta), QBrush(toolTipBase),
                   QBrush(toolTipText));
 
-    data.resolve_mask &= ~(1 << Highlight);
-    data.resolve_mask &= ~(1 << HighlightedText);
-    data.resolve_mask &= ~(1 << LinkVisited);
-    data.resolve_mask &= ~(1 << Link);
+    for (int cr = Highlight; cr <= LinkVisited; ++cr) {
+        if (cg == All) {
+            for (int group = Active; group < NColorGroups; ++group) {
+                d->resolveMask &= ~(ResolveMask(1) << QPalettePrivate::bitPosition(ColorGroup(group), ColorRole(cr)));
+            }
+        } else {
+            d->resolveMask &= ~(ResolveMask(1) << QPalettePrivate::bitPosition(ColorGroup(cg), ColorRole(cr)));
+        }
+    }
 }
 
 
@@ -1164,73 +1240,61 @@ void QPalette::setColorGroup(ColorGroup cg, const QBrush &foreground, const QBru
     setBrush(cg, ToolTipText, toolTipText);
 }
 
-Q_GUI_EXPORT QPalette qt_fusionPalette()
-{
-    QColor backGround(239, 239, 239);
-    QColor light = backGround.lighter(150);
-    QColor mid(backGround.darker(130));
-    QColor midLight = mid.lighter(110);
-    QColor base = Qt::white;
-    QColor disabledBase(backGround);
-    QColor dark = backGround.darker(150);
-    QColor darkDisabled = QColor(209, 209, 209).darker(110);
-    QColor text = Qt::black;
-    QColor hightlightedText = Qt::white;
-    QColor disabledText = QColor(190, 190, 190);
-    QColor button = backGround;
-    QColor shadow = dark.darker(135);
-    QColor disabledShadow = shadow.lighter(150);
-
-    QPalette fusionPalette(Qt::black,backGround,light,dark,mid,text,base);
-    fusionPalette.setBrush(QPalette::Midlight, midLight);
-    fusionPalette.setBrush(QPalette::Button, button);
-    fusionPalette.setBrush(QPalette::Shadow, shadow);
-    fusionPalette.setBrush(QPalette::HighlightedText, hightlightedText);
-
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::Text, disabledText);
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::WindowText, disabledText);
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::ButtonText, disabledText);
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::Base, disabledBase);
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::Dark, darkDisabled);
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::Shadow, disabledShadow);
-
-    fusionPalette.setBrush(QPalette::Active, QPalette::Highlight, QColor(48, 140, 198));
-    fusionPalette.setBrush(QPalette::Inactive, QPalette::Highlight, QColor(48, 140, 198));
-    fusionPalette.setBrush(QPalette::Disabled, QPalette::Highlight, QColor(145, 145, 145));
-    return fusionPalette;
-}
-
 #ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug dbg, const QPalette &p)
+static QString groupsToString(const QPalette &p, QPalette::ColorRole cr)
 {
-    const char *colorGroupNames[] = {"Active", "Disabled", "Inactive"};
-    const char *colorRoleNames[] =
-        {"WindowText", "Button", "Light", "Midlight", "Dark", "Mid", "Text",
-         "BrightText", "ButtonText", "Base", "Window", "Shadow", "Highlight",
-         "HighlightedText", "Link", "LinkVisited", "AlternateBase", "NoRole",
-         "ToolTipBase","ToolTipText", "PlaceholderText" };
-    QDebugStateSaver saver(dbg);
-    QDebug nospace = dbg.nospace();
-    const uint mask = p.resolve();
-    nospace << "QPalette(resolve=" << Qt::hex << Qt::showbase << mask << ',';
-    for (int role = 0; role < (int)QPalette::NColorRoles; ++role) {
-        if (mask & (1<<role)) {
-            if (role)
-                nospace << ',';
-            nospace << colorRoleNames[role] << ":[";
-            for (int group = 0; group < (int)QPalette::NColorGroups; ++group) {
-                if (group)
-                    nospace << ',';
-                const QRgb color = p.color(static_cast<QPalette::ColorGroup>(group),
-                                           static_cast<QPalette::ColorRole>(role)).rgba();
-                nospace << colorGroupNames[group] << ':' << color;
-            }
-            nospace << ']';
+    const auto groupEnum = QMetaEnum::fromType<QPalette::ColorGroup>();
+
+    QString groupString;
+    for (int group = 0; group < QPalette::NColorGroups; ++group) {
+        const auto cg = QPalette::ColorGroup(group);
+
+        if (p.isBrushSet(cg, cr)) {
+            const auto &color = p.color(cg, cr);
+            groupString += QString::fromUtf8(groupEnum.valueToKey(cg)) + u':' +
+                           color.name(QColor::HexArgb) + u',';
         }
     }
-    nospace << ')' << Qt::noshowbase << Qt::dec;
-    return dbg;
+    groupString.chop(1);
+
+    return groupString;
 }
+
+static QString rolesToString(const QPalette &p)
+{
+    const auto roleEnum = QMetaEnum::fromType<QPalette::ColorRole>();
+
+    QString roleString;
+    for (int role = 0; role < QPalette::NColorRoles; ++role) {
+        const auto cr = QPalette::ColorRole(role);
+
+        auto groupString = groupsToString(p, cr);
+        if (!groupString.isEmpty())
+            roleString += QString::fromUtf8(roleEnum.valueToKey(cr)) + QStringLiteral(":[") +
+                          groupString + QStringLiteral("],");
+    }
+    roleString.chop(1);
+
+    return roleString;
+}
+
+QDebug operator<<(QDebug dbg, const QPalette &p)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace();
+
+    dbg << "QPalette(resolve=" << Qt::hex << Qt::showbase << p.resolveMask();
+
+    auto roleString = rolesToString(p);
+    if (!roleString.isEmpty())
+        dbg << ',' << roleString;
+
+    dbg << ')';
+
+    return dbg;
+ }
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qpalette.cpp"

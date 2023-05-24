@@ -12,26 +12,26 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkTileMode.h"
 
+class SkPixelRef;
+
 enum SkCopyPixelsMode {
     kIfMutable_SkCopyPixelsMode,  //!< only copy src pixels if they are marked mutable
     kAlways_SkCopyPixelsMode,     //!< always copy src pixels (even if they are marked immutable)
     kNever_SkCopyPixelsMode,      //!< never copy src pixels (even if they are marked mutable)
 };
 
-// A good size for creating shader contexts on the stack.
-enum {kSkBlitterContextSize = 3332};
-
 // If alloc is non-nullptr, it will be used to allocate the returned SkShader, and MUST outlive
 // the SkShader.
 sk_sp<SkShader> SkMakeBitmapShader(const SkBitmap& src, SkTileMode, SkTileMode,
-                                   const SkMatrix* localMatrix, SkCopyPixelsMode);
+                                   const SkSamplingOptions&, const SkMatrix* localMatrix,
+                                   SkCopyPixelsMode);
 
 // Convenience function to return a shader that implements the shader+image behavior defined for
 // drawImage/Bitmap where the paint's shader is ignored when the bitmap is a color image, but
 // properly compose them together when it is an alpha image. This allows the returned paint to
 // be assigned to a paint clone without discarding the original behavior.
 sk_sp<SkShader> SkMakeBitmapShaderForPaint(const SkPaint& paint, const SkBitmap& src,
-                                           SkTileMode, SkTileMode,
+                                           SkTileMode, SkTileMode, const SkSamplingOptions&,
                                            const SkMatrix* localMatrix, SkCopyPixelsMode);
 
 /**

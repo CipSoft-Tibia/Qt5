@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -20,8 +19,7 @@
 #include "ui/display/manager/test/test_display_layout_manager.h"
 #include "ui/display/manager/test/test_native_display_delegate.h"
 
-namespace display {
-namespace test {
+namespace display::test {
 
 namespace {
 
@@ -45,6 +43,12 @@ class ApplyContentProtectionTaskTest : public testing::Test {
   using Response = ApplyContentProtectionTask::Status;
 
   ApplyContentProtectionTaskTest() = default;
+
+  ApplyContentProtectionTaskTest(const ApplyContentProtectionTaskTest&) =
+      delete;
+  ApplyContentProtectionTaskTest& operator=(
+      const ApplyContentProtectionTaskTest&) = delete;
+
   ~ApplyContentProtectionTaskTest() override = default;
 
   void ResponseCallback(Response response) { response_ = response; }
@@ -55,9 +59,6 @@ class ApplyContentProtectionTaskTest : public testing::Test {
   Response response_ = Response::KILLED;
   ActionLogger log_;
   TestNativeDisplayDelegate display_delegate_{&log_};
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ApplyContentProtectionTaskTest);
 };
 
 TEST_F(ApplyContentProtectionTaskTest, ApplyHdcpToInternalDisplay) {
@@ -265,5 +266,4 @@ TEST_F(ApplyContentProtectionTaskTest, ApplyHdcpToMirroredMonitors) {
       log_.GetActionsAndClear());
 }
 
-}  // namespace test
-}  // namespace display
+}  // namespace display::test

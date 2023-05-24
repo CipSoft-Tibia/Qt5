@@ -27,14 +27,14 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_SELECTION_CONTROLLER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_SELECTION_CONTROLLER_H_
 
-#include "base/macros.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/editing/position_with_affinity.h"
 #include "third_party/blink/renderer/core/editing/text_granularity.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/core/page/event_with_hit_test_results.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -46,13 +46,14 @@ class CORE_EXPORT SelectionController final
       public ExecutionContextLifecycleObserver {
  public:
   explicit SelectionController(LocalFrame&);
-  virtual ~SelectionController();
+  SelectionController(const SelectionController&) = delete;
+  SelectionController& operator=(const SelectionController&) = delete;
+  ~SelectionController() override;
   void Trace(Visitor*) const override;
 
   bool HandleMousePressEvent(const MouseEventWithHitTestResults&);
   void HandleMouseDraggedEvent(const MouseEventWithHitTestResults&,
-                               const IntPoint&,
-                               const PhysicalOffset&,
+                               const gfx::Point&,
                                const PhysicalOffset&);
   bool HandleMouseReleaseEvent(const MouseEventWithHitTestResults&,
                                const PhysicalOffset&);
@@ -62,9 +63,7 @@ class CORE_EXPORT SelectionController final
 
   void UpdateSelectionForMouseDrag(const PhysicalOffset&,
                                    const PhysicalOffset&);
-  void UpdateSelectionForMouseDrag(const HitTestResult&,
-                                   const PhysicalOffset&,
-                                   const PhysicalOffset&);
+  void UpdateSelectionForMouseDrag(const HitTestResult&, const PhysicalOffset&);
   template <typename MouseEventObject>
   void UpdateSelectionForContextMenuEvent(const MouseEventObject* mouse_event,
                                           const HitTestResult& hit_test_result,
@@ -145,8 +144,6 @@ class CORE_EXPORT SelectionController final
     kExtendedSelection
   };
   SelectionState selection_state_;
-
-  DISALLOW_COPY_AND_ASSIGN(SelectionController);
 };
 
 bool IsSelectionOverLink(const MouseEventWithHitTestResults&);

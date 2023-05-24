@@ -1,47 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Samuel Gaist <samuel.gaist@edeltech.ch>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcoreapplication.h"
 #include "qcoreapplication_p.h"
 #include "qstringlist.h"
-#include "qvector.h"
 #include "qfileinfo.h"
 #include "qcorecmdlineargs_p.h"
 #ifndef QT_NO_QOBJECT
@@ -50,22 +13,15 @@
 #include <private/qlocking_p.h>
 #endif
 #include "qtextstream.h"
+#include "qvarlengtharray.h"
 #include <ctype.h>
 #include <qt_windows.h>
 
-#ifdef Q_OS_WINRT
-#include <qfunctions_winrt.h>
-#include <wrl.h>
-#include <Windows.ApplicationModel.core.h>
-#include <windows.foundation.h>
-using namespace ABI::Windows::ApplicationModel;
-using namespace Microsoft::WRL;
-using namespace Microsoft::WRL::Wrappers;
-#endif
-
 QT_BEGIN_NAMESPACE
 
-Q_CORE_EXPORT QString qAppFileName()                // get application file name
+using namespace Qt::StringLiterals;
+
+QString qAppFileName()                // get application file name
 {
     /*
       GetModuleFileName() returns the length of the module name, when it has
@@ -105,33 +61,6 @@ QString QCoreApplicationPrivate::appVersion() const
 {
     QString applicationVersion;
 #ifndef QT_BOOTSTRAPPED
-#  ifdef Q_OS_WINRT
-    HRESULT hr;
-
-    ComPtr<IPackageStatics> packageFactory;
-    hr = RoGetActivationFactory(
-        HString::MakeReference(RuntimeClass_Windows_ApplicationModel_Package).Get(),
-        IID_PPV_ARGS(&packageFactory));
-    RETURN_IF_FAILED("Failed to create package instance", return QString());
-
-    ComPtr<IPackage> package;
-    packageFactory->get_Current(&package);
-    RETURN_IF_FAILED("Failed to get current application package", return QString());
-
-    ComPtr<IPackageId> packageId;
-    package->get_Id(&packageId);
-    RETURN_IF_FAILED("Failed to get current application package ID", return QString());
-
-    PackageVersion version;
-    packageId->get_Version(&version);
-    RETURN_IF_FAILED("Failed to get current application package version", return QString());
-
-    applicationVersion = QStringLiteral("%1.%2.%3.%4")
-            .arg(version.Major)
-            .arg(version.Minor)
-            .arg(version.Build)
-            .arg(version.Revision);
-#  else
     const QString appFileName = qAppFileName();
     QVarLengthArray<wchar_t> buffer(appFileName.size() + 1);
     buffer[appFileName.toWCharArray(buffer.data())] = 0;
@@ -154,34 +83,9 @@ QString QCoreApplicationPrivate::appVersion() const
             }
         }
     }
-#  endif
 #endif
     return applicationVersion;
 }
-
-#ifndef Q_OS_WINRT
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-Q_CORE_EXPORT HINSTANCE qWinAppInst()                // get Windows app handle
-{
-    return GetModuleHandle(0);
-}
-
-Q_CORE_EXPORT HINSTANCE qWinAppPrevInst()                // get Windows prev app handle
-{
-    return 0;
-}
-
-Q_CORE_EXPORT int qWinAppCmdShow()                        // get main window show command
-{
-    STARTUPINFO startupInfo;
-    GetStartupInfo(&startupInfo);
-
-    return (startupInfo.dwFlags & STARTF_USESHOWWINDOW)
-        ? startupInfo.wShowWindow
-        : SW_SHOWDEFAULT;
-}
-#endif
 
 #ifndef QT_NO_QOBJECT
 
@@ -234,8 +138,8 @@ static QString flagsValue(const QWinMessageMapping<IntType> *haystack,
     for (auto p = haystack, end = haystack + haystackSize; p < end; ++p) {
         if ((p->value & value) == p->value) {
             if (!result.isEmpty())
-                result += QLatin1String(" | ");
-            result += QLatin1String(p->name);
+                result += " | "_L1;
+            result += QLatin1StringView(p->name);
         }
     }
     return result;
@@ -726,8 +630,8 @@ QString decodeMSG(const MSG& msg)
     // decoded message, since some of the common messages are quite long, and
     // we don't want the decoded information to vary in output position
     if (message.size() < 20)
-        message.prepend(QString(20 - message.size(), QLatin1Char(' ')));
-    message += QLatin1String(": ");
+        message.prepend(QString(20 - message.size(), u' '));
+    message += ": "_L1;
 
     const QString hwndS = QString::asprintf("(%p)", reinterpret_cast<void *>(msg.hwnd));
     const QString wParamS = QString::asprintf("(%p)", reinterpret_cast<void *>(wParam));
@@ -737,11 +641,11 @@ QString decodeMSG(const MSG& msg)
     switch (msg.message) {
         case WM_ACTIVATE:
             if (const char *a = activateParameter(uint(wParam)))
-                parameters += QLatin1String(a);
-            parameters += QLatin1String(" Hwnd ") + hwndS;
+                parameters += QLatin1StringView(a);
+            parameters += " Hwnd "_L1 + hwndS;
             break;
         case WM_CAPTURECHANGED:
-            parameters = QLatin1String("Hwnd gaining capture ") + hwndS;
+            parameters = "Hwnd gaining capture "_L1 + hwndS;
             break;
         case WM_CREATE:
             {
@@ -766,7 +670,7 @@ QString decodeMSG(const MSG& msg)
             }
             break;
         case WM_DESTROY:
-            parameters = QLatin1String("Destroy hwnd ") + hwndS;
+            parameters = "Destroy hwnd "_L1 + hwndS;
             break;
         case 0x02E0u: { // WM_DPICHANGED
             auto rect = reinterpret_cast<const RECT *>(lParam);
@@ -777,20 +681,20 @@ QString decodeMSG(const MSG& msg)
             break;
         case WM_IME_NOTIFY:
             {
-                parameters = QLatin1String("Command(");
+                parameters = "Command("_L1;
                 if (const char *c = imeCommand(uint(wParam)))
-                    parameters += QLatin1String(c);
-                parameters += QLatin1String(" : ") + lParamS;
+                    parameters += QLatin1StringView(c);
+                parameters += " : "_L1 + lParamS;
             }
             break;
         case WM_IME_SETCONTEXT:
-            parameters = QLatin1String("Input context(")
-                         + QLatin1String(wParam == TRUE ? "Active" : "Inactive")
-                         + QLatin1String(") Show flags(")
-                         + imeShowFlags(DWORD(lParam)) + QLatin1Char(')');
+            parameters = "Input context("_L1
+                         + (wParam ? "Active"_L1 : "Inactive"_L1)
+                         + ") Show flags("_L1
+                         + imeShowFlags(DWORD(lParam)) + u')';
             break;
         case WM_KILLFOCUS:
-            parameters = QLatin1String("Hwnd gaining keyboard focus ") + wParamS;
+            parameters = "Hwnd gaining keyboard focus "_L1 + wParamS;
             break;
         case WM_CHAR:
         case WM_IME_CHAR:
@@ -813,7 +717,7 @@ QString decodeMSG(const MSG& msg)
             parameters = QStringLiteral("Keyboard layout changed");
             break;
         case WM_NCACTIVATE:
-            parameters = (msg.wParam? QLatin1String("Active Titlebar") : QLatin1String("Inactive Titlebar"));
+            parameters = (msg.wParam? "Active Titlebar"_L1 : "Inactive Titlebar"_L1);
             break;
         case WM_MOUSEACTIVATE:
             {
@@ -840,37 +744,37 @@ QString decodeMSG(const MSG& msg)
         case WM_MOUSEMOVE:
             parameters = QString::asprintf("x,y(%4d,%4d) Virtual Keys(",
                                            GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam))
-                         + virtualKeys(uint(wParam)) + QLatin1Char(')');
+                         + virtualKeys(uint(wParam)) + u')';
             break;
         case WM_MOVE:
             parameters = QString::asprintf("x,y(%4d,%4d)", LOWORD(lParam), HIWORD(lParam));
             break;
         case WM_ERASEBKGND:
         case WM_PAINT:
-            parameters = QLatin1String("hdc") + wParamS;
+            parameters = "hdc"_L1 + wParamS;
             break;
         case WM_QUERYNEWPALETTE:
             break; // lParam & wParam are unused
         case WM_SETCURSOR:
             parameters = QString::asprintf("HitTestCode(0x%x) MouseMsg(", LOWORD(lParam));
             if (const char *mouseMsg = findWMstr(HIWORD(lParam)))
-                parameters += QLatin1String(mouseMsg);
-            parameters += QLatin1Char(')');
+                parameters += QLatin1StringView(mouseMsg);
+            parameters += u')';
             break;
         case WM_SETFOCUS:
-            parameters = QLatin1String("Lost Focus ") + wParamS;
+            parameters = "Lost Focus "_L1 + wParamS;
             break;
         case WM_SETTEXT:
-            parameters = QLatin1String("Set Text (")
+            parameters = "Set Text ("_L1
                          + QString::fromWCharArray(reinterpret_cast<const wchar_t *>(lParam))
-                         + QLatin1Char(')');
+                         + u')';
             break;
         case WM_SIZE:
             parameters = QString::asprintf("w,h(%4d,%4d) showmode(",
                                            LOWORD(lParam), HIWORD(lParam));
             if (const char *showMode = wmSizeParam(uint(wParam)))
-                parameters += QLatin1String(showMode);
-            parameters += QLatin1Char(')');
+                parameters += QLatin1StringView(showMode);
+            parameters += u')';
             break;
         case WM_WINDOWPOSCHANGED:
             {
@@ -882,23 +786,23 @@ QString decodeMSG(const MSG& msg)
                                                winPos->x, winPos->y, winPos->cx, winPos->cy,
                                                winPosFlags(winPos->flags).toLatin1().constData());
                 if (const char *h = winPosInsertAfter(insertAfter))
-                    parameters += QLatin1String(h);
+                    parameters += QLatin1StringView(h);
                 else
                     parameters += QString::number(insertAfter, 16);
-                parameters += QLatin1Char(')');
+                parameters += u')';
             }
             break;
         case WM_QUERYENDSESSION:
-            parameters = QLatin1String("End session: ");
+            parameters = "End session: "_L1;
             if (const char *logoffOption = sessionMgrLogOffOption(uint(wParam)))
-                parameters += QLatin1String(logoffOption);
+                parameters += QLatin1StringView(logoffOption);
             break;
         default:
-            parameters = QLatin1String("wParam") + wParamS + QLatin1String(" lParam") + lParamS;
+            parameters = "wParam"_L1 + wParamS + " lParam"_L1 + lParamS;
             break;
     }
 
-    return message + QLatin1String("hwnd") + hwndS + QLatin1Char(' ') + parameters;
+    return message + "hwnd"_L1 + hwndS + u' ' + parameters;
 }
 
 QDebug operator<<(QDebug dbg, const MSG &msg)
@@ -912,8 +816,6 @@ QDebug operator<<(QDebug dbg, const MSG &msg)
 #endif
 
 #endif // QT_NO_QOBJECT
-
-#endif // !defined(Q_OS_WINRT)
 
 #ifndef QT_NO_QOBJECT
 void QCoreApplicationPrivate::removePostedTimerEvent(QObject *object, int timerId)
@@ -930,7 +832,7 @@ void QCoreApplicationPrivate::removePostedTimerEvent(QObject *object, int timerI
                 && (pe.event->type() == QEvent::Timer || pe.event->type() == QEvent::ZeroTimerEvent)
                 && static_cast<QTimerEvent *>(pe.event)->timerId() == timerId) {
             --pe.receiver->d_func()->postedEvents;
-            pe.event->posted = false;
+            pe.event->m_posted = false;
             delete pe.event;
             const_cast<QPostEvent &>(pe).event = 0;
             return;

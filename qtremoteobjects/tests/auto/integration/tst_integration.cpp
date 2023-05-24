@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "../../shared/testutils.h"
 
 #include <QtTest/QtTest>
 #include <QMetaType>
+#if QT_CONFIG(process)
 #include <QProcess>
+#endif
 #include <QFileInfo>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -49,10 +26,12 @@
 #include "rep_localdatacenter_replica.h"
 #include "rep_tcpdatacenter_replica.h"
 
+#include "../../shared/testutils.h"
+
 #define SET_NODE_NAME(obj) (obj).setName(QLatin1String(#obj))
 
 //DUMMY impl for variant comparison
-bool operator<(const QVector<int> &lhs, const QVector<int> &rhs)
+bool operator<(const QList<int> &lhs, const QList<int> &rhs)
 {
     return lhs.size() < rhs.size();
 }
@@ -214,12 +193,16 @@ private slots:
 #ifdef __QNXNTO__
         QTest::newRow("qnx") << QUrl(QLatin1String("qnx:replica")) << QUrl(QLatin1String("qnx:registry"));
 #endif
-        QTest::newRow("local") << QUrl(QLatin1String("local:replicaLocalIntegration")) << QUrl(QLatin1String("local:registryLocalIntegration"));
+        QTest::newRow("local") << QUrl(QLatin1String(LOCAL_SOCKET ":replicaLocalIntegration")) << QUrl(QLatin1String(LOCAL_SOCKET ":registryLocalIntegration"));
+#ifdef Q_OS_LINUX
+        QTest::newRow("localabstract") << QUrl(QLatin1String("localabstract:replicaAbstractIntegration")) << QUrl(QLatin1String("localabstract:registryAbstractIntegration"));
+#endif
         QTest::newRow("external") << QUrl() << QUrl();
     }
 
     void initTestCase()
     {
+        QVERIFY(TestUtils::init("integration"));
         QLoggingCategory::setFilterRules("qt.remoteobjects.warning=false");
 
         // use different paths in QRemoteObjectSettingsStore
@@ -338,16 +321,16 @@ private slots:
         const QScopedPointer<TestClassReplica> tc_rep(client->acquire<TestClassReplica>());
         tc_rep->waitForSource();
         QCOMPARE(tc.testEnum(), tc_rep->testEnum());
-        QCOMPARE((qint32)tc.classEnum(), (qint32)TestClassSimpleSource::One);
+        QCOMPARE(qint32(tc.classEnum()), qint32(TestClassSimpleSource::One));
 
         // set property on the replica (test property change packet)
         {
             QSignalSpy spy(tc_rep.data(), &TestClassReplica::classEnumChanged);
             QVERIFY(spy.isValid());
             tc_rep->pushClassEnum(TestClassReplica::Two);
-            QVERIFY(spy.count() || spy.wait());
+            QVERIFY(spy.size() || spy.wait());
 
-            QCOMPARE((qint32)tc.classEnum(), (qint32)tc_rep->classEnum());
+            QCOMPARE(qint32(tc.classEnum()), qint32(tc_rep->classEnum()));
         }
 
         // set property on the source (test property change packet)
@@ -356,7 +339,7 @@ private slots:
             tc.setClassEnum(TestClassSimpleSource::One);
             QVERIFY(spy.wait());
 
-            QCOMPARE((qint32)tc.classEnum(), (qint32)tc_rep->classEnum());
+            QCOMPARE(qint32(tc.classEnum()), qint32(tc_rep->classEnum()));
         }
 
         QScopedPointer<QRemoteObjectDynamicReplica> tc_repDynamic(client->acquireDynamic(QStringLiteral("TestClass")));
@@ -371,7 +354,7 @@ private slots:
 
         QMetaProperty property = metaObject->property(propertyIndex);
         QVERIFY(property.isValid());
-        QCOMPARE(property.typeName(), "ClassEnum");
+        QCOMPARE(property.typeName(), "TestClassReplica::ClassEnum");
 
         // read enum on the dynamic replica
         {
@@ -392,7 +375,7 @@ private slots:
 
         property = metaObject->property(propertyIndex);
         QVERIFY(property.isValid());
-        QCOMPARE(property.typeName(), "ClassEnum");
+        QCOMPARE(property.typeName(), "TestClassReplica::ClassEnum");
 
         // read enum on the dynamic replica
         {
@@ -473,10 +456,94 @@ private slots:
         QSignalSpy spy(engine_r.data(), &QRemoteObjectReplica::stateChanged);
         host->disableRemoting(&e);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         instances = client->instances<EngineReplica>();
         QCOMPARE(instances, QStringList({"Engine2"}));
+    }
+
+    void registrySourceLocationBindings()
+    {
+        QFETCH_GLOBAL(QUrl, registryUrl);
+        QFETCH_GLOBAL(QUrl, hostUrl);
+        if (registryUrl.isEmpty())
+            QSKIP("Skipping registry tests for external QIODevice types.");
+
+        setupRegistry();
+        setupHost(true);
+        setupClient(true);
+
+        QVERIFY(host->registry()->sourceLocations().empty());
+        QVERIFY(client->registry()->sourceLocations().empty());
+
+        QVERIFY(host->registry()->bindableSourceLocations().isReadOnly());
+        QVERIFY(client->registry()->bindableSourceLocations().isReadOnly());
+
+        Engine e1;
+        const auto engine1 = QStringLiteral("Engine1");
+        Engine e2;
+        const auto engine2 = QStringLiteral("Engine2");
+
+        QRemoteObjectSourceLocations expectedSourceLocations;
+        expectedSourceLocations[engine1] = { QStringLiteral("Engine"), hostUrl };
+
+        int hostSrcLocationsChanged = 0;
+        auto hostHandler = host->registry()->bindableSourceLocations().onValueChanged([&] {
+            QCOMPARE(host->registry()->sourceLocations(), expectedSourceLocations);
+            ++hostSrcLocationsChanged;
+        });
+
+        int clientSrcLocationsChanged = 0;
+        auto clientHandler = client->registry()->bindableSourceLocations().onValueChanged([&] {
+            QCOMPARE(client->registry()->sourceLocations(), expectedSourceLocations);
+            ++clientSrcLocationsChanged;
+        });
+
+        QProperty<QRemoteObjectSourceLocations> hostObserver;
+        hostObserver.setBinding([&] { return host->registry()->sourceLocations(); });
+
+        QProperty<QRemoteObjectSourceLocations> clientObserver;
+        clientObserver.setBinding([&] { return client->registry()->sourceLocations(); });
+
+        QSignalSpy hostSpy(host->registry(), &QRemoteObjectRegistry::remoteObjectAdded);
+        QSignalSpy clientSpy(client->registry(), &QRemoteObjectRegistry::remoteObjectAdded);
+
+        host->enableRemoting(&e1, engine1);
+        QTRY_COMPARE(hostSpy.size(), 1);
+        QTRY_COMPARE(clientSpy.size(), 1);
+        QCOMPARE(hostObserver.value(), host->registry()->sourceLocations());
+        QCOMPARE(clientObserver.value(), client->registry()->sourceLocations());
+        QCOMPARE(hostObserver.value(), clientObserver.value());
+        QCOMPARE(hostObserver.value(), expectedSourceLocations);
+        QCOMPARE(hostSrcLocationsChanged, 1);
+        QCOMPARE(clientSrcLocationsChanged, 1);
+
+        expectedSourceLocations[engine2] = { QStringLiteral("Engine"), hostUrl };
+        host->enableRemoting(&e2, engine2);
+        QTRY_COMPARE(hostSpy.size(), 2);
+        QTRY_COMPARE(clientSpy.size(), 2);
+        QCOMPARE(hostObserver.value(), host->registry()->sourceLocations());
+        QCOMPARE(clientObserver.value(), client->registry()->sourceLocations());
+        QCOMPARE(hostObserver.value(), clientObserver.value());
+        QCOMPARE(hostObserver.value(), expectedSourceLocations);
+        QCOMPARE(hostSrcLocationsChanged, 2);
+        QCOMPARE(clientSrcLocationsChanged, 2);
+
+        // Test source removal
+        host->disableRemoting(&e1);
+        expectedSourceLocations.remove(engine1);
+        QSignalSpy srcRemovedHostSpy(host->registry(), &QRemoteObjectRegistry::remoteObjectRemoved);
+        QSignalSpy srcRemovedClientSpy(client->registry(),
+                                       &QRemoteObjectRegistry::remoteObjectRemoved);
+
+        QTRY_COMPARE(srcRemovedHostSpy.size(), 1);
+        QTRY_COMPARE(srcRemovedClientSpy.size(), 1);
+        QCOMPARE(hostObserver.value(), host->registry()->sourceLocations());
+        QCOMPARE(clientObserver.value(), client->registry()->sourceLocations());
+        QCOMPARE(hostObserver.value(), clientObserver.value());
+        QCOMPARE(hostObserver.value(), expectedSourceLocations);
+        QCOMPARE(hostSrcLocationsChanged, 3);
+        QCOMPARE(clientSrcLocationsChanged, 3);
     }
 
     void registryAddedTest()
@@ -557,7 +624,7 @@ private slots:
         source1.setData1(5);
         source1.setData2(5.0);
         source1.setData3(QStringLiteral("tcp"));
-        source1.setData4(QVector<int>() << 1 << 2 << 3 << 4 << 5);
+        source1.setData4(QList<int> { 1, 2, 3, 4, 5 });
         registry->enableRemoting(&source1);
 
         setupHost(true);
@@ -565,7 +632,7 @@ private slots:
         source2.setData1(5);
         source2.setData2(5.0);
         source2.setData3(QStringLiteral("local"));
-        source2.setData4(QVector<int>() << 1 << 2 << 3 << 4 << 5);
+        source2.setData4(QList<int> { 1, 2, 3, 4, 5 });
         host->enableRemoting(&source2);
         QVERIFY(host->waitForRegistry(1000));
 
@@ -581,15 +648,16 @@ private slots:
         QTRY_VERIFY(localCentre->isInitialized());
         QTRY_VERIFY(tcpCentre->isInitialized());
 
+        const QList<int> expected = { 1, 2, 3, 4, 5 };
         QCOMPARE(tcpCentre->data1(), 5 );
         QCOMPARE(tcpCentre->data2(), 5.0);
         QCOMPARE(tcpCentre->data3(), QStringLiteral("tcp"));
-        QCOMPARE(tcpCentre->data4(), QVector<int>() << 1 << 2 << 3 << 4 << 5);
+        QCOMPARE(tcpCentre->data4(), expected);
 
         QCOMPARE(localCentre->data1(), 5);
         QCOMPARE(localCentre->data2(), 5.0);
         QCOMPARE(localCentre->data3(), QStringLiteral("local"));
-        QCOMPARE(localCentre->data4(), QVector<int>() << 1 << 2 << 3 << 4 << 5);
+        QCOMPARE(localCentre->data4(), expected);
     }
 
     void invalidUrlsTest()
@@ -623,7 +691,8 @@ private slots:
     {
         QFETCH_GLOBAL(QUrl, registryUrl);
         if (registryUrl.isEmpty())
-            QSKIP("Skipping registry tests for external QIODevice types.");        setupHost(true);
+            QSKIP("Skipping registry tests for external QIODevice types.");
+        setupHost(true);
         const bool res = host->waitForRegistry(3000);
         QVERIFY(!res);
         QCOMPARE(host->registry()->isInitialized(), false);
@@ -659,7 +728,7 @@ private slots:
         QSignalSpy addedSpy(host->registry(), &QRemoteObjectRegistry::remoteObjectAdded);
         setupRegistry();
         bool added = addedSpy.wait();
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         QCOMPARE(added, true);
         QCOMPARE(host->registry()->sourceLocations().keys().isEmpty(), false);
         QCOMPARE(host->registry()->sourceLocations().keys().at(0), QStringLiteral("Engine"));
@@ -700,8 +769,8 @@ private slots:
         e.setRpm(2345);
 
         spy.wait();
-        QCOMPARE(spy.count(), 1);
-        const QList<QVariant> &arguments = spy.first();
+        QCOMPARE(spy.size(), 1);
+        const QVariantList &arguments = spy.first();
         bool ok;
         int res = arguments.at(0).toInt(&ok);
         QVERIFY(ok);
@@ -729,8 +798,8 @@ private slots:
              });
         e.setRpm(3456);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
-        const QList<QVariant> &arguments = spy.first();
+        QCOMPARE(spy.size(), 1);
+        const QVariantList &arguments = spy.first();
         bool ok;
         int res = arguments.at(0).toInt(&ok);
         QVERIFY(ok);
@@ -787,7 +856,7 @@ private slots:
         QRemoteObjectPendingCallWatcher watcher(reply);
         QSignalSpy spy(&watcher, &QRemoteObjectPendingCallWatcher::finished);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         QVERIFY(reply.isFinished());
         QCOMPARE(reply.returnValue(), true);
@@ -826,7 +895,7 @@ private slots:
         QCOMPARE(call.error(), QRemoteObjectPendingCall::InvalidMessage);
         QVERIFY(call.waitForFinished());
         QVERIFY(call.isFinished());
-        QCOMPARE(call.returnValue().type(), QVariant::Bool);
+        QCOMPARE(call.returnValue().metaType(), QMetaType::fromType<bool>());
         QCOMPARE(call.returnValue().toBool(), true);
         started = property.read(engine_r.data()).value<bool>();
         QCOMPARE(started, true);
@@ -872,7 +941,7 @@ private slots:
         QVERIFY(getCall.waitForFinished());
         QVERIFY(getCall.isFinished());
         QCOMPARE(getCall.error(), QRemoteObjectPendingCall::NoError);
-        QCOMPARE(getCall.returnValue().type(), QVariant::String);
+        QCOMPARE(getCall.returnValue().metaType(), QMetaType::fromType<QString>());
         QCOMPARE(getCall.returnValue().toString(), s);
     }
 
@@ -942,7 +1011,7 @@ private slots:
         QSignalSpy spy(engine_r.data(), &EngineReplica::rpmChanged);
         engine_r->setRpm(42);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QCOMPARE(engine_r->rpm(), 42);
     }
 
@@ -960,7 +1029,7 @@ private slots:
         QSignalSpy spy(engine_r.data(), &EngineReplica::startedChanged);
         engine_r->pushStarted(true);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QCOMPARE(engine_r->started(), true);
     }
 
@@ -983,7 +1052,7 @@ private slots:
         QSignalSpy spy(engine_dr.data(), QByteArray(QByteArrayLiteral("2")+mp.notifySignal().methodSignature().constData()));
         mp.write(engine_dr.data(), 44);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QCOMPARE(mp.read(engine_dr.data()).toInt(), 44);
     }
 
@@ -1003,7 +1072,7 @@ private slots:
         QSignalSpy spy(engine_r.data(), &EngineReplica::rpmChanged);
         engine_r->increaseRpm(1000);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QCOMPARE(engine_r->rpm(), 1000);
     }
 
@@ -1076,7 +1145,7 @@ private slots:
         QSignalSpy spy_r1(engine_r1.data(), &EngineReplica::rpmChanged);
         engine_r1->waitForSource();
         QCOMPARE(engine_r1->rpm(), e.rpm());
-        QCOMPARE(spy_r1.count(), 1);
+        QCOMPARE(spy_r1.size(), 1);
 
         // NOTE: A second replica will have initialized and notify signals emitted as part of acquire,
         // which leads to different semantics for first and second replicas. Specifically, there is no
@@ -1131,7 +1200,7 @@ private slots:
 
         // replica gets source change
         source.setValue(1);
-        QTRY_COMPARE(spy.count(), 1);
+        QTRY_COMPARE(spy.size(), 1);
         QCOMPARE(replica->property("value"), QVariant(1));
 
         // source gets replica change
@@ -1147,7 +1216,7 @@ private slots:
 
         // replica gets source change
         source.setOtherValue(1);
-        QTRY_COMPARE(otherSpy.count(), 1);
+        QTRY_COMPARE(otherSpy.size(), 1);
         QCOMPARE(replica->property("otherValue"), QVariant(1));
 
         // source gets replica change
@@ -1245,7 +1314,7 @@ private slots:
         Q_SET_OBJECT_NAME(_client);
         QSignalSpy errorSpy(&_client, &QRemoteObjectNode::error);
         QVERIFY(!_client.connectToNode(QUrl(QLatin1String("invalid:invalid"))));
-        QCOMPARE(errorSpy.count(), 1);
+        QCOMPARE(errorSpy.size(), 1);
         auto emittedErrorCode = errorSpy.first().at(0).value<QRemoteObjectNode::ErrorCode>();
         QCOMPARE(emittedErrorCode, QRemoteObjectNode::RegistryNotAcquired);
         QCOMPARE(_client.lastError(), QRemoteObjectNode::RegistryNotAcquired);
@@ -1262,7 +1331,7 @@ private slots:
         e.setRpm(50);
 
         spy.wait();
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
 
         QCOMPARE(engine_d->rpm(), e.rpm());
     }
@@ -1285,8 +1354,8 @@ private slots:
         const QByteArray data(16384,'y');
         emit t.send(data);
         spy.wait();
-        QCOMPARE(spy.count(), 1);
-        const QList<QVariant> &arguments = spy.first();
+        QCOMPARE(spy.size(), 1);
+        const QVariantList &arguments = spy.first();
         QVERIFY(arguments.at(0).toByteArray() == data);
         QVERIFY(host->disableRemoting(&t));
     }
@@ -1323,15 +1392,13 @@ private slots:
         QVERIFY(invalidRegistry.lastError() == QRemoteObjectNode::RegistryNotAcquired);
     }
 
-#if defined(Q_OS_LINUX) || defined(Q_OS_DARWIN)
+#if QT_CONFIG(process) && (defined(Q_OS_LINUX) || defined(Q_OS_DARWIN))
     void localServerConnectionTest()
     {
         QFETCH_GLOBAL(QUrl, hostUrl);
         if (hostUrl.scheme() != QRemoteObjectStringLiterals::local())
             QSKIP("Skipping 'local' specific backend for non-local test.");
-        const auto progName = TestUtils::findExecutable("localsockettestserver", {
-            QCoreApplication::applicationDirPath() + "/../localsockettestserver"
-        });
+        const auto progName = TestUtils::findExecutable("localsockettestserver", "/localsockettestserver");
 
         //create a fake socket as killing doesn't produce a necessarily unusable socket
         QFile fake(QDir::temp().absoluteFilePath(QStringLiteral("crashMe")));
@@ -1341,7 +1408,7 @@ private slots:
         QVERIFY(info.exists());
 
         QRemoteObjectNode localSocketTestClient;
-        const QUrl connection = QUrl(QStringLiteral("local:crashMe"));
+        const QUrl connection = QUrl(QStringLiteral(LOCAL_SOCKET ":crashMe"));
         const QString objectname = QStringLiteral("connectme");
         localSocketTestClient.connectToNode(connection);
         QVERIFY(localSocketTestClient.lastError() == QRemoteObjectNode::NoError);
@@ -1363,9 +1430,7 @@ private slots:
         QFETCH_GLOBAL(QUrl, hostUrl);
         if (hostUrl.scheme() != QRemoteObjectStringLiterals::local())
             QSKIP("Skipping 'local' specific backend for non-local test.");
-        const auto progName = TestUtils::findExecutable("localsockettestserver", {
-            QCoreApplication::applicationDirPath() + "/../localsockettestserver"
-        });
+        const auto progName = TestUtils::findExecutable("localsockettestserver", "/localsockettestserver");
 
         QProcess testServer;
         testServer.start(progName, QStringList());
@@ -1377,7 +1442,7 @@ private slots:
         QVERIFY(info.exists());
 
         QRemoteObjectNode localSocketTestClient;
-        const QUrl connection = QUrl(QStringLiteral("local:crashMe"));
+        const QUrl connection = QUrl(QStringLiteral(LOCAL_SOCKET ":crashMe"));
         const QString objectname = QStringLiteral("connectme");
         localSocketTestClient.connectToNode(connection);
         QVERIFY(localSocketTestClient.lastError() == QRemoteObjectNode::NoError);
@@ -1423,6 +1488,23 @@ private slots:
         QVERIFY(res == false);
     }
 
+    void startClientWithoutHost()
+    {
+        setupClient();
+        QScopedPointer<EngineReplica> replica(client->acquire<EngineReplica>());
+        client->setHeartbeatInterval(10);
+        // Wait, to make sure there's no crash (QTBUG-94513)
+        QTest::qWait(200);
+
+        // Make sure creating the host afterwards works
+        setupHost();
+        Engine e;
+        e.setRpm(42);
+        host->enableRemoting(&e);
+
+        QVERIFY(replica->waitForSource());
+        QCOMPARE(replica->rpm(), e.rpm());
+    }
 };
 
 QTEST_MAIN(tst_Integration)

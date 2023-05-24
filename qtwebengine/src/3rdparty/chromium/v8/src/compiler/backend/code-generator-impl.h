@@ -51,7 +51,7 @@ class InstructionOperandConverter {
   }
 
   uint32_t InputUint32(size_t index) {
-    return bit_cast<uint32_t>(InputInt32(index));
+    return base::bit_cast<uint32_t>(InputInt32(index));
   }
 
   int64_t InputInt64(size_t index) {
@@ -63,7 +63,7 @@ class InstructionOperandConverter {
   }
 
   uint8_t InputUint8(size_t index) {
-    return bit_cast<uint8_t>(InputInt8(index));
+    return base::bit_cast<uint8_t>(InputInt8(index));
   }
 
   int16_t InputInt16(size_t index) {
@@ -114,6 +114,10 @@ class InstructionOperandConverter {
 
   DoubleRegister OutputDoubleRegister() {
     return ToDoubleRegister(instr_->Output());
+  }
+
+  DoubleRegister TempDoubleRegister(size_t index) {
+    return ToDoubleRegister(instr_->TempAt(index));
   }
 
   Simd128Register OutputSimd128Register() {
@@ -187,9 +191,10 @@ class InstructionOperandConverter {
 // Deoptimization exit.
 class DeoptimizationExit : public ZoneObject {
  public:
-  explicit DeoptimizationExit(SourcePosition pos, BailoutId bailout_id,
+  explicit DeoptimizationExit(SourcePosition pos, BytecodeOffset bailout_id,
                               int translation_id, int pc_offset,
-                              DeoptimizeKind kind, DeoptimizeReason reason)
+                              DeoptimizeKind kind, DeoptimizeReason reason,
+                              NodeId node_id)
       : deoptimization_id_(kNoDeoptIndex),
         pos_(pos),
         bailout_id_(bailout_id),
@@ -197,6 +202,8 @@ class DeoptimizationExit : public ZoneObject {
         pc_offset_(pc_offset),
         kind_(kind),
         reason_(reason),
+        node_id_(node_id),
+        immediate_args_(nullptr),
         emitted_(false) {}
 
   bool has_deoptimization_id() const {
@@ -210,12 +217,22 @@ class DeoptimizationExit : public ZoneObject {
     deoptimization_id_ = deoptimization_id;
   }
   SourcePosition pos() const { return pos_; }
+  // The label for the deoptimization call.
   Label* label() { return &label_; }
-  BailoutId bailout_id() const { return bailout_id_; }
+  // The label after the deoptimization check, which will resume execution.
+  Label* continue_label() { return &continue_label_; }
+  BytecodeOffset bailout_id() const { return bailout_id_; }
   int translation_id() const { return translation_id_; }
   int pc_offset() const { return pc_offset_; }
   DeoptimizeKind kind() const { return kind_; }
   DeoptimizeReason reason() const { return reason_; }
+  NodeId node_id() const { return node_id_; }
+  const ZoneVector<ImmediateOperand*>* immediate_args() const {
+    return immediate_args_;
+  }
+  void set_immediate_args(ZoneVector<ImmediateOperand*>* immediate_args) {
+    immediate_args_ = immediate_args;
+  }
   // Returns whether the deopt exit has already been emitted. Most deopt exits
   // are emitted contiguously at the end of the code, but unconditional deopt
   // exits (kArchDeoptimize) may be inlined where they are encountered.
@@ -227,11 +244,14 @@ class DeoptimizationExit : public ZoneObject {
   int deoptimization_id_;
   const SourcePosition pos_;
   Label label_;
-  const BailoutId bailout_id_;
+  Label continue_label_;
+  const BytecodeOffset bailout_id_;
   const int translation_id_;
   const int pc_offset_;
   const DeoptimizeKind kind_;
   const DeoptimizeReason reason_;
+  const NodeId node_id_;
+  ZoneVector<ImmediateOperand*>* immediate_args_;
   bool emitted_;
 };
 
@@ -246,27 +266,16 @@ class OutOfLineCode : public ZoneObject {
   Label* entry() { return &entry_; }
   Label* exit() { return &exit_; }
   const Frame* frame() const { return frame_; }
-  TurboAssembler* tasm() { return tasm_; }
+  MacroAssembler* masm() { return masm_; }
   OutOfLineCode* next() const { return next_; }
 
  private:
   Label entry_;
   Label exit_;
   const Frame* const frame_;
-  TurboAssembler* const tasm_;
+  MacroAssembler* const masm_;
   OutOfLineCode* const next_;
 };
-
-inline bool HasCallDescriptorFlag(Instruction* instr,
-                                  CallDescriptor::Flag flag) {
-  STATIC_ASSERT(CallDescriptor::kFlagsBitsEncodedInInstructionCode == 10);
-#ifdef DEBUG
-  static constexpr int kInstructionCodeFlagsMask =
-      ((1 << CallDescriptor::kFlagsBitsEncodedInInstructionCode) - 1);
-  DCHECK_EQ(static_cast<int>(flag) & kInstructionCodeFlagsMask, flag);
-#endif
-  return MiscField::decode(instr->opcode()) & flag;
-}
 
 }  // namespace compiler
 }  // namespace internal

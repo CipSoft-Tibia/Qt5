@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
+#include <QFontDatabase>
+
 #include <qfontcombobox.h>
 
 class tst_QFontComboBox : public QObject
@@ -47,6 +25,7 @@ private slots:
     void writingSystem_data();
     void writingSystem();
     void currentFontChanged();
+    void emptyFont();
 };
 
 // Subclass that exposes the protected functions.
@@ -88,20 +67,19 @@ void tst_QFontComboBox::qfontcombobox()
 void tst_QFontComboBox::currentFont_data()
 {
     QTest::addColumn<QFont>("currentFont");
-    QFontDatabase db;
     // Normalize the names
     QFont defaultFont;
     QFontInfo fi(defaultFont);
-    defaultFont = QFont(fi.family()); // make sure we have a real font name and not something like 'Sans Serif'.
-    if (!db.isPrivateFamily(defaultFont.family()))
+    defaultFont = QFont(QStringList{fi.family()}); // make sure we have a real font name and not something like 'Sans Serif'.
+    if (!QFontDatabase::isPrivateFamily(defaultFont.family()))
         QTest::newRow("default") << defaultFont;
     defaultFont.setPointSize(defaultFont.pointSize() + 10);
-    if (!db.isPrivateFamily(defaultFont.family()))
+    if (!QFontDatabase::isPrivateFamily(defaultFont.family()))
         QTest::newRow("default2") << defaultFont;
-    QStringList list = db.families();
-    for (int i = 0; i < list.count(); ++i) {
-        QFont f = QFont(QFontInfo(QFont(list.at(i))).family());
-        if (!db.isPrivateFamily(f.family()))
+    QStringList list = QFontDatabase::families();
+    for (int i = 0; i < list.size(); ++i) {
+        QFont f = QFont(QStringList{QFontInfo(QFont(list.at(i))).family()});
+        if (!QFontDatabase::isPrivateFamily(f.families().first()))
             QTest::newRow(qPrintable(list.at(i))) << f;
     }
 }
@@ -127,7 +105,7 @@ void tst_QFontComboBox::currentFont()
 
     if (oldCurrentFont != box.currentFont()) {
         //the signal may be emit twice if there is a foundry into brackets
-        QCOMPARE(spy0.count(),1);
+        QCOMPARE(spy0.size(),1);
     }
 }
 
@@ -168,8 +146,7 @@ void tst_QFontComboBox::fontFilters()
     box.setFontFilters(fontFilters);
     QCOMPARE(box.fontFilters(), fontFilters);
 
-    QFontDatabase db;
-    QStringList list = db.families();
+    QStringList list = QFontDatabase::families();
     int c = 0;
     const int scalableMask = (QFontComboBox::ScalableFonts | QFontComboBox::NonScalableFonts);
     const int spacingMask = (QFontComboBox::ProportionalFonts | QFontComboBox::MonospacedFonts);
@@ -178,21 +155,21 @@ void tst_QFontComboBox::fontFilters()
     if((fontFilters & spacingMask) == spacingMask)
         fontFilters &= ~spacingMask;
 
-    for (int i = 0; i < list.count(); ++i) {
-        if (db.isPrivateFamily(list[i]))
+    for (int i = 0; i < list.size(); ++i) {
+        if (QFontDatabase::isPrivateFamily(list[i]))
             continue;
         if (fontFilters & QFontComboBox::ScalableFonts) {
-            if (!db.isSmoothlyScalable(list[i]))
+            if (!QFontDatabase::isSmoothlyScalable(list[i]))
                 continue;
         } else if (fontFilters & QFontComboBox::NonScalableFonts) {
-            if (db.isSmoothlyScalable(list[i]))
+            if (QFontDatabase::isSmoothlyScalable(list[i]))
                 continue;
         }
         if (fontFilters & QFontComboBox::MonospacedFonts) {
-            if (!db.isFixedPitch(list[i]))
+            if (!QFontDatabase::isFixedPitch(list[i]))
                 continue;
         } else if (fontFilters & QFontComboBox::ProportionalFonts) {
-            if (db.isFixedPitch(list[i]))
+            if (QFontDatabase::isFixedPitch(list[i]))
                 continue;
         }
         c++;
@@ -203,7 +180,7 @@ void tst_QFontComboBox::fontFilters()
     if (c == 0)
         QCOMPARE(box.currentFont(), QFont());
 
-    QCOMPARE(spy0.count(), (currentFont != box.currentFont()) ? 1 : 0);
+    QCOMPARE(spy0.size(), (currentFont != box.currentFont()) ? 1 : 0);
 }
 
 // public QSize sizeHint() const
@@ -243,19 +220,18 @@ void tst_QFontComboBox::writingSystem()
     box.setWritingSystem(writingSystem);
     QCOMPARE(box.writingSystem(), writingSystem);
 
-    QFontDatabase db;
-    QStringList list = db.families(writingSystem);
-    int c = list.count();
-    for (int i = 0; i < list.count(); ++i) {
-        if (db.isPrivateFamily(list[i]))
+    QStringList list = QFontDatabase::families(writingSystem);
+    int c = list.size();
+    for (int i = 0; i < list.size(); ++i) {
+        if (QFontDatabase::isPrivateFamily(list[i]))
             c--;
     }
     QCOMPARE(box.model()->rowCount(), c);
 
-    if (list.count() == 0)
+    if (list.size() == 0)
         QCOMPARE(box.currentFont(), QFont());
 
-    QCOMPARE(spy0.count(), (currentFont != box.currentFont()) ? 1 : 0);
+    QCOMPARE(spy0.size(), (currentFont != box.currentFont()) ? 1 : 0);
 }
 
 // protected void currentFontChanged(QFont const& f)
@@ -269,13 +245,43 @@ void tst_QFontComboBox::currentFontChanged()
 
     if (box->model()->rowCount() > 2) {
         QTest::keyPress(box, Qt::Key_Down);
-        QCOMPARE(spy0.count(), 1);
+        QCOMPARE(spy0.size(), 1);
 
         QFont f( "Sans Serif" );
         box->setCurrentFont(f);
-        QCOMPARE(spy0.count(), 2);
+        QCOMPARE(spy0.size(), 2);
     } else
         qWarning("Not enough fonts installed on test system. Consider adding some");
+}
+
+void tst_QFontComboBox::emptyFont()
+{
+    QFontComboBox fontCB;
+    if (fontCB.count() < 2)
+        QSKIP("Not enough fonts on system to run test.");
+
+    QFont font;
+    font.setFamilies(QStringList());
+
+    // Due to QTBUG-98341, we need to find an index in the family list
+    // which does not match the default index for the empty font, otherwise
+    // the font selection will not be properly updated.
+    {
+        QFontInfo fi(font);
+        QStringList families = QFontDatabase::families();
+        int index = families.indexOf(fi.family());
+        if (index < 0)
+            index = 0;
+        if (index > 0)
+            index--;
+        else
+            index++;
+
+        fontCB.setCurrentIndex(index);
+    }
+
+    fontCB.setCurrentFont(font);
+    QVERIFY(!fontCB.currentFont().families().isEmpty());
 }
 
 QTEST_MAIN(tst_QFontComboBox)

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -38,9 +38,10 @@ class CollapsedBorderValueTest : public testing::Test {
       EBorderStyle border_style,
       const Color& color = Color::kBlack,
       EBorderPrecedence precedence = kBorderPrecedenceCell) {
-    auto style = ComputedStyle::Create();
-    style->SetBorderLeftWidth(width);
-    style->SetBorderLeftStyle(border_style);
+    ComputedStyleBuilder builder(*initial_style_);
+    builder.SetBorderLeftWidth(LayoutUnit(width));
+    builder.SetBorderLeftStyle(border_style);
+    scoped_refptr<const ComputedStyle> style = builder.TakeStyle();
     CollapsedBorderValue v(style->BorderLeft(), color, precedence);
     EXPECT_EQ(border_style, v.Style());
     EXPECT_EQ(color, v.GetColor());
@@ -49,6 +50,13 @@ class CollapsedBorderValueTest : public testing::Test {
     EXPECT_TRUE(v.VisuallyEquals(v));
     return v;
   }
+
+  void SetUp() override {
+    initial_style_ = ComputedStyle::CreateInitialStyleSingleton();
+  }
+
+ private:
+  scoped_refptr<const ComputedStyle> initial_style_;
 };
 
 TEST_F(CollapsedBorderValueTest, Default) {
@@ -121,7 +129,7 @@ TEST_F(CollapsedBorderValueTest, Compare) {
       9,         // Thick cell border.
       10,        // The hidden border ranks the highest.
   };
-  bool expected_covers_joint[kCount][kCount] = {
+  static constexpr int kExpectedCoversJoint[kCount][kCount] = {
       // An invisible border doesn't cover joint.
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -152,7 +160,8 @@ TEST_F(CollapsedBorderValueTest, Compare) {
       // SCOPED_TRACE prints j first.
       EXPECT_EQ(rank[j] < rank[i], values[j].LessThan(values[i]));
       EXPECT_EQ(rank[j] == rank[i], values[j].IsSameIgnoringColor(values[i]));
-      EXPECT_EQ(expected_covers_joint[j][i], values[j].CoversJoint(values[i]));
+      EXPECT_EQ(static_cast<bool>(kExpectedCoversJoint[j][i]),
+                values[j].CoversJoint(values[i]));
     }
   }
 }

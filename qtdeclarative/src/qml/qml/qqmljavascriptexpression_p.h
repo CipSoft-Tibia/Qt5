@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLJAVASCRIPTEXPRESSION_P_H
 #define QQMLJAVASCRIPTEXPRESSION_P_H
@@ -52,8 +16,10 @@
 //
 
 #include <QtCore/qglobal.h>
+#include <QtCore/qtaggedpointer.h>
 #include <QtQml/qqmlerror.h>
 #include <private/qqmlengine_p.h>
+#include <QtQml/private/qbipointer_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -98,15 +64,17 @@ private:
 
 class Q_QML_PRIVATE_EXPORT QQmlJavaScriptExpression
 {
+    Q_DISABLE_COPY_MOVE(QQmlJavaScriptExpression)
 public:
     QQmlJavaScriptExpression();
     virtual ~QQmlJavaScriptExpression();
 
-    virtual QString expressionIdentifier() const = 0;
+    virtual QString expressionIdentifier() const;
     virtual void expressionChanged() = 0;
 
     QV4::ReturnedValue evaluate(bool *isUndefined);
     QV4::ReturnedValue evaluate(QV4::CallData *callData, bool *isUndefined);
+    bool evaluate(void **a, const QMetaType *types, int argc);
 
     inline bool notifyOnValueChanged() const;
 
@@ -118,12 +86,23 @@ public:
 
     virtual QQmlSourceLocation sourceLocation() const;
 
-    bool isValid() const { return context() != nullptr; }
+    bool hasContext() const { return m_context != nullptr; }
+    bool hasValidContext() const { return m_context && m_context->isValid(); }
+    QQmlContext *publicContext() const { return m_context ? m_context->asQQmlContext() : nullptr; }
 
-    QQmlContextData *context() const { return m_context; }
-    void setContext(QQmlContextData *context);
+    QQmlRefPointer<QQmlContextData> context() const { return m_context; }
+    void setContext(const QQmlRefPointer<QQmlContextData> &context);
 
-    QV4::Function *function() const;
+    void insertIntoList(QQmlJavaScriptExpression **listHead)
+    {
+        m_nextExpression = *listHead;
+        if (m_nextExpression)
+            m_nextExpression->m_prevExpression = &m_nextExpression;
+        m_prevExpression = listHead;
+        *listHead = this;
+    }
+
+    QV4::Function *function() const { return m_v4Function; }
 
     virtual void refresh();
 
@@ -145,12 +124,21 @@ public:
     void clearError();
     void clearActiveGuards();
     QQmlDelayedError *delayedError();
+    virtual bool mustCaptureBindableProperty() const {return true;}
 
-    static QV4::ReturnedValue evalFunction(QQmlContextData *ctxt, QObject *scope,
-                                                     const QString &code, const QString &filename,
-                                                     quint16 line);
+    static QV4::ReturnedValue evalFunction(
+            const QQmlRefPointer<QQmlContextData> &ctxt, QObject *scope, const QString &code,
+            const QString &filename, quint16 line);
+
+    QQmlEngine *engine() const { return m_context ? m_context->engine() : nullptr; }
+    bool hasUnresolvedNames() const { return m_context && m_context->hasUnresolvedNames(); }
+
+    bool needsPropertyChangeTrigger(QObject *target, int propertyIndex);
+    QPropertyChangeTrigger *allocatePropertyChangeTrigger(QObject *target, int propertyIndex);
+
 protected:
-    void createQmlBinding(QQmlContextData *ctxt, QObject *scope, const QString &code, const QString &filename, quint16 line);
+    void createQmlBinding(const QQmlRefPointer<QQmlContextData> &ctxt, QObject *scope,
+                          const QString &code, const QString &filename, quint16 line);
 
     void setupFunction(QV4::ExecutionContext *qmlContext, QV4::Function *f);
     void setCompilationUnit(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit);
@@ -159,27 +147,42 @@ protected:
     //    activeGuards:flag1  - notifyOnValueChanged
     //    activeGuards:flag2  - useSharedContext
     QBiPointer<QObject, DeleteWatcher> m_scopeObject;
-    QForwardFieldList<QQmlJavaScriptExpressionGuard, &QQmlJavaScriptExpressionGuard::next> activeGuards;
 
-    void setTranslationsCaptured(bool captured) { m_error.setFlagValue(captured); }
-    bool translationsCaptured() const { return m_error.flag(); }
+    enum GuardTag {
+        NoGuardTag,
+        NotifyOnValueChanged
+    };
+
+    QForwardFieldList<QQmlJavaScriptExpressionGuard, &QQmlJavaScriptExpressionGuard::next, GuardTag> activeGuards;
+
+    enum Tag {
+        NoTag,
+        InEvaluationLoop
+    };
+
+    QTaggedPointer<QQmlDelayedError, Tag> m_error;
 
 private:
     friend class QQmlContextData;
     friend class QQmlPropertyCapture;
     friend void QQmlJavaScriptExpressionGuard_callback(QQmlNotifierEndpoint *, void **);
-    friend class QQmlTranslationBinding;
+    friend class QQmlTranslationBindingFromBinding;
+    friend class QQmlTranslationBindingFromTranslationInfo;
+    friend class QQmlJavaScriptExpressionCapture;
 
-    // m_error:flag1 translationsCapturedDuringEvaluation
-    QFlagPointer<QQmlDelayedError> m_error;
-
+    // Not refcounted as the context will clear the expressions when destructed.
     QQmlContextData *m_context;
+
     QQmlJavaScriptExpression **m_prevExpression;
     QQmlJavaScriptExpression  *m_nextExpression;
 
     QV4::PersistentValue m_qmlScope;
     QQmlRefPointer<QV4::ExecutableCompilationUnit> m_compilationUnit;
+
     QV4::Function *m_v4Function;
+
+protected:
+    TriggerList *qpropertyChangeTriggers = nullptr;
 };
 
 class Q_QML_PRIVATE_EXPORT QQmlPropertyCapture
@@ -195,14 +198,18 @@ public:
 
     void captureProperty(QQmlNotifier *);
     void captureProperty(QObject *, int, int, bool doNotify = true);
-    void captureTranslation() { translationCaptured = true; }
+    void captureProperty(QObject *, const QQmlPropertyCache *, const QQmlPropertyData *, bool doNotify = true);
+    void captureTranslation();
 
     QQmlEngine *engine;
     QQmlJavaScriptExpression *expression;
     QQmlJavaScriptExpression::DeleteWatcher *watcher;
-    QFieldList<QQmlJavaScriptExpressionGuard, &QQmlJavaScriptExpressionGuard::next> guards;
+    QForwardFieldList<QQmlJavaScriptExpressionGuard, &QQmlJavaScriptExpressionGuard::next> guards;
     QStringList *errorString;
-    bool translationCaptured = false;
+
+private:
+    void captureBindableProperty(QObject *o, const QMetaObject *metaObjectForBindable, int c);
+    void captureNonBindableProperty(QObject *o, int n, int c, bool doNotify);
 };
 
 QQmlJavaScriptExpression::DeleteWatcher::DeleteWatcher(QQmlJavaScriptExpression *e)
@@ -232,7 +239,7 @@ bool QQmlJavaScriptExpression::DeleteWatcher::wasDeleted() const
 
 bool QQmlJavaScriptExpression::notifyOnValueChanged() const
 {
-    return activeGuards.flag();
+    return activeGuards.tag() == NotifyOnValueChanged;
 }
 
 QObject *QQmlJavaScriptExpression::scopeObject() const

@@ -1,32 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-#include "util.h"
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QLibraryInfo>
@@ -34,6 +7,7 @@
 #include <QProcess>
 #include <QDebug>
 #include <cstdlib>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_qmlplugindump : public QQmlDataTest
 {
@@ -42,7 +16,7 @@ public:
     tst_qmlplugindump();
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
     void builtins();
     void singleton();
     void compositeWithinSingleton();
@@ -56,13 +30,14 @@ private:
 };
 
 tst_qmlplugindump::tst_qmlplugindump()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 }
 
 void tst_qmlplugindump::initTestCase()
 {
     QQmlDataTest::initTestCase();
-    qmlplugindumpPath = QLibraryInfo::location(QLibraryInfo::BinariesPath);
+    qmlplugindumpPath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
 
 #if defined(Q_OS_WIN)
     qmlplugindumpPath += QLatin1String("/qmlplugindump.exe");

@@ -23,7 +23,7 @@
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_point_list.h"
 #include "third_party/blink/renderer/platform/graphics/path.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -70,13 +70,14 @@ Path SVGPolyElement::AsPathFromPoints() const {
   return path;
 }
 
-void SVGPolyElement::SvgAttributeChanged(const QualifiedName& attr_name) {
-  if (attr_name == svg_names::kPointsAttr) {
+void SVGPolyElement::SvgAttributeChanged(
+    const SvgAttributeChangedParams& params) {
+  if (params.name == svg_names::kPointsAttr) {
     GeometryAttributeChanged();
     return;
   }
 
-  SVGGeometryElement::SvgAttributeChanged(attr_name);
+  SVGGeometryElement::SvgAttributeChanged(params);
 }
 
 }  // namespace blink

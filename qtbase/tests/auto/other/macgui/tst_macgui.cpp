@@ -1,39 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QApplication>
 #include <QMessageBox>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QSplashScreen>
 #include <QScrollBar>
 #include <QProgressDialog>
 #include <QSpinBox>
+#include <QScreen>
+#include <QTestEventLoop>
+#include <QTimer>
 
 #include <guitest.h>
 
@@ -53,7 +31,12 @@ private slots:
 
 QPixmap grabWindowContents(QWidget * widget)
 {
-    return QPixmap::grabWindow(widget->winId());
+    QScreen *screen = widget->window()->windowHandle()->screen();
+    if (!screen) {
+        qWarning() << "Grabbing pixmap failed, no QScreen for" << widget;
+        return QPixmap();
+    }
+    return screen->grabWindow(widget->winId());
 }
 
 /*
@@ -86,7 +69,6 @@ void tst_MacGui::scrollbarPainting()
 
     QPixmap pixmap = grabWindowContents(&colorWidget);
 
-    QEXPECT_FAIL("", "QTBUG-26371", Abort);
     QVERIFY(isContent(pixmap.toImage(), verticalScrollbar.geometry(), GuiTester::Horizontal));
     QVERIFY(isContent(pixmap.toImage(), horizontalScrollbar.geometry(), GuiTester::Vertical));
 }
@@ -144,40 +126,6 @@ void tst_MacGui::splashScreenModality()
     QVERIFY(!QTestEventLoop::instance().timeout());
 }
 
-class PrimaryWindowDialog : public QDialog
-{
-Q_OBJECT
-public:
-    PrimaryWindowDialog();
-    QWidget *secondaryWindow;
-    QWidget *frontWidget;
-public slots:
-    void showSecondaryWindow();
-    void test();
-};
-
-PrimaryWindowDialog::PrimaryWindowDialog() : QDialog(0)
-{
-    frontWidget = 0;
-    secondaryWindow = new ColorWidget(this);
-    secondaryWindow->setWindowFlags(Qt::Window);
-    secondaryWindow->resize(400, 400);
-    secondaryWindow->move(100, 100);
-    QTimer::singleShot(1000, this, SLOT(showSecondaryWindow()));
-    QTimer::singleShot(2000, this, SLOT(test()));
-    QTimer::singleShot(3000, this, SLOT(close()));
-}
-
-void PrimaryWindowDialog::showSecondaryWindow()
-{
-    secondaryWindow->show();
-}
-
-void PrimaryWindowDialog::test()
-{
-    frontWidget = QApplication::widgetAt(secondaryWindow->mapToGlobal(QPoint(100, 100)));
-}
-
 /*
     Test that a non-modal child window of a modal dialog is shown in front
     of the dialog even if the dialog becomes modal after the child window
@@ -186,11 +134,28 @@ void PrimaryWindowDialog::test()
 void tst_MacGui::nonModalOrder()
 {
     clearSequence();
-    PrimaryWindowDialog primary;
-    primary.resize(400, 400);
-    primary.move(100, 100);
-    primary.exec();
-    QCOMPARE(primary.frontWidget, primary.secondaryWindow);
+
+    QDialog dialog;
+    dialog.resize(400, 400);
+    dialog.move(100, 100);
+
+    ColorWidget child(&dialog);
+    // The child window needs to be a dialog, as only subclasses of NSPanel
+    // are allowed to override worksWhenModal, which is needed to mark the
+    // transient child as working within the modal session of the parent.
+    child.setWindowFlags(Qt::Window | Qt::Dialog);
+    child.resize(400, 400);
+    child.move(100, 100);
+
+    QTimer::singleShot(0, [&]{
+        QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+        child.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&child));
+        QCOMPARE(QApplication::widgetAt(child.mapToGlobal(QPoint(100, 100))), &child);
+        dialog.close();
+    });
+
+    dialog.exec();
 }
 
 /*

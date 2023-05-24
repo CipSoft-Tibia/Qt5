@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmlglobals_p.h"
 #include "qscxmlexecutablecontent_p.h"
@@ -234,7 +198,7 @@ using namespace QScxmlExecutableContent;
 
 
 #ifndef BUILD_QSCXMLC
-static int parseTime(const QString &t, bool *ok = nullptr)
+static int parseTime(QStringView t, bool *ok = nullptr)
 {
     if (t.isEmpty()) {
         if (ok)
@@ -250,7 +214,7 @@ static int parseTime(const QString &t, bool *ok = nullptr)
         ++startPos;
     }
     int pos = startPos;
-    for (int endPos = t.length(); pos < endPos; ++pos) {
+    for (int endPos = t.size(); pos < endPos; ++pos) {
         auto c = t[pos];
         if (c < QLatin1Char('0') || c > QLatin1Char('9'))
             break;
@@ -259,11 +223,11 @@ static int parseTime(const QString &t, bool *ok = nullptr)
         if (ok) *ok = false;
         return -1;
     }
-    int value = t.midRef(startPos, pos - startPos).toInt(ok);
+    int value = t.mid(startPos, pos - startPos).toInt(ok);
     if (ok && !*ok) return -1;
-    if (t.length() == pos + 1 && t[pos] == QLatin1Char('s')) {
+    if (t.size() == pos + 1 && t[pos] == QLatin1Char('s')) {
         value *= 1000;
-    } else if (t.length() != pos + 2 || t[pos] != QLatin1Char('m') || t[pos + 1] != QLatin1Char('s')) {
+    } else if (t.size() != pos + 2 || t[pos] != QLatin1Char('m') || t[pos + 1] != QLatin1Char('s')) {
         if (ok) *ok = false;
         return -1;
     }

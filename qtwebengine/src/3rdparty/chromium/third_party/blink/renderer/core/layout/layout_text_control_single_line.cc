@@ -30,7 +30,6 @@
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
-#include "third_party/blink/renderer/core/layout/layout_analyzer.h"
 #include "third_party/blink/renderer/core/paint/text_control_single_line_painter.h"
 #include "third_party/blink/renderer/platform/fonts/simple_font_data.h"
 
@@ -69,7 +68,6 @@ void LayoutTextControlSingleLine::Paint(const PaintInfo& paint_info) const {
 
 void LayoutTextControlSingleLine::UpdateLayout() {
   NOT_DESTROYED();
-  LayoutAnalyzer::Scope analyzer(*this);
 
   LayoutBlockFlow::UpdateBlockLayout(true);
 
@@ -142,10 +140,10 @@ bool LayoutTextControlSingleLine::NodeAtPoint(
     HitTestResult& result,
     const HitTestLocation& hit_test_location,
     const PhysicalOffset& accumulated_offset,
-    HitTestAction hit_test_action) {
+    HitTestPhase phase) {
   NOT_DESTROYED();
   if (!LayoutTextControl::NodeAtPoint(result, hit_test_location,
-                                      accumulated_offset, hit_test_action))
+                                      accumulated_offset, phase))
     return false;
 
   const LayoutObject* stop_node = result.GetHitTestRequest().GetStopNode();
@@ -160,99 +158,10 @@ bool LayoutTextControlSingleLine::NodeAtPoint(
   if (result.InnerNode()->IsDescendantOf(InnerEditorElement()) ||
       result.InnerNode() == GetNode() ||
       (container && container == result.InnerNode())) {
-    PhysicalOffset inner_editor_accumulated_offset = accumulated_offset;
-    if (container && EditingViewPortElement()) {
-      if (EditingViewPortElement()->GetLayoutBox()) {
-        inner_editor_accumulated_offset +=
-            EditingViewPortElement()->GetLayoutBox()->PhysicalLocation();
-      }
-      if (container->GetLayoutBox()) {
-        inner_editor_accumulated_offset +=
-            container->GetLayoutBox()->PhysicalLocation();
-      }
-    }
-    HitInnerEditorElement(result, hit_test_location, accumulated_offset);
+    HitInnerEditorElement(*this, *InnerEditorElement(), result,
+                          hit_test_location, accumulated_offset);
   }
   return true;
-}
-
-LayoutUnit LayoutTextControlSingleLine::PreferredContentLogicalWidth(
-    float char_width) const {
-  NOT_DESTROYED();
-  int factor;
-  bool includes_decoration =
-      InputElement()->SizeShouldIncludeDecoration(factor);
-  if (factor <= 0)
-    factor = 20;
-
-  LayoutUnit result = LayoutUnit::FromFloatCeil(char_width * factor);
-
-  float max_char_width = 0.f;
-  const Font& font = StyleRef().GetFont();
-  AtomicString family = font.GetFontDescription().Family().Family();
-  if (HasValidAvgCharWidth(font.PrimaryFont(), family))
-    max_char_width = roundf(font.PrimaryFont()->MaxCharWidth());
-
-  // For text inputs, IE adds some extra width.
-  if (max_char_width > 0.f)
-    result += max_char_width - char_width;
-
-  if (includes_decoration) {
-    HTMLElement* spin_button = InnerSpinButtonElement();
-    if (LayoutBox* spin_layout_object =
-            spin_button ? spin_button->GetLayoutBox() : nullptr) {
-      result += spin_layout_object->BorderAndPaddingLogicalWidth();
-      // Since the width of spin_layout_object is not calculated yet,
-      // spin_layout_object->LogicalWidth() returns 0. Use the computed logical
-      // width instead.
-      result += spin_layout_object->StyleRef().LogicalWidth().Value();
-    }
-  }
-
-  return result;
-}
-
-LayoutUnit LayoutTextControlSingleLine::ComputeControlLogicalHeight(
-    LayoutUnit line_height,
-    LayoutUnit non_content_height) const {
-  NOT_DESTROYED();
-  return line_height + non_content_height;
-}
-
-LayoutUnit LayoutTextControlSingleLine::ScrollWidth() const {
-  NOT_DESTROYED();
-  // If in preview state, fake the scroll width to prevent that any information
-  // about the suggested content can be derived from the size.
-  if (!GetTextControlElement()->SuggestedValue().IsEmpty())
-    return ClientWidth();
-
-  if (LayoutBox* inner = InnerEditorElement()
-                             ? InnerEditorElement()->GetLayoutBox()
-                             : nullptr) {
-    // Adjust scrollWidth to inculde input element horizontal paddings and
-    // decoration width
-    LayoutUnit adjustment = ClientWidth() - inner->ClientWidth();
-    return inner->ScrollWidth() + adjustment;
-  }
-  return LayoutBlockFlow::ScrollWidth();
-}
-
-LayoutUnit LayoutTextControlSingleLine::ScrollHeight() const {
-  NOT_DESTROYED();
-  // If in preview state, fake the scroll height to prevent that any information
-  // about the suggested content can be derived from the size.
-  if (!GetTextControlElement()->SuggestedValue().IsEmpty())
-    return ClientHeight();
-
-  if (LayoutBox* inner = InnerEditorElement()
-                             ? InnerEditorElement()->GetLayoutBox()
-                             : nullptr) {
-    // Adjust scrollHeight to include input element vertical paddings and
-    // decoration height
-    LayoutUnit adjustment = ClientHeight() - inner->ClientHeight();
-    return inner->ScrollHeight() + adjustment;
-  }
-  return LayoutBlockFlow::ScrollHeight();
 }
 
 HTMLInputElement* LayoutTextControlSingleLine::InputElement() const {

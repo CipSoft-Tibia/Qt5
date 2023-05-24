@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -93,14 +93,14 @@ RelocRvaReaderWin32::RelocRvaReaderWin32(RelocRvaReaderWin32&&) = default;
 RelocRvaReaderWin32::~RelocRvaReaderWin32() = default;
 
 // Unrolls a nested loop: outer = reloc blocks and inner = reloc entries.
-base::Optional<RelocUnitWin32> RelocRvaReaderWin32::GetNext() {
+absl::optional<RelocUnitWin32> RelocRvaReaderWin32::GetNext() {
   // "Outer loop" to find non-empty reloc block.
   while (cur_reloc_units_.Remaining() < kRelocUnitSize) {
     if (!LoadRelocBlock(cur_reloc_units_.end()))
-      return base::nullopt;
+      return absl::nullopt;
   }
   if (end_it_ - cur_reloc_units_.begin() < kRelocUnitSize)
-    return base::nullopt;
+    return absl::nullopt;
   // "Inner loop" to extract single reloc unit.
   offset_t location =
       base::checked_cast<offset_t>(cur_reloc_units_.begin() - image_.begin());
@@ -144,8 +144,8 @@ RelocReaderWin32::RelocReaderWin32(RelocRvaReaderWin32&& reloc_rva_reader,
 RelocReaderWin32::~RelocReaderWin32() = default;
 
 // ReferenceReader:
-base::Optional<Reference> RelocReaderWin32::GetNext() {
-  for (base::Optional<RelocUnitWin32> unit = reloc_rva_reader_.GetNext();
+absl::optional<Reference> RelocReaderWin32::GetNext() {
+  for (absl::optional<RelocUnitWin32> unit = reloc_rva_reader_.GetNext();
        unit.has_value(); unit = reloc_rva_reader_.GetNext()) {
     if (unit->type != reloc_type_)
       continue;
@@ -158,7 +158,7 @@ base::Optional<Reference> RelocReaderWin32::GetNext() {
     offset_t location = unit->location;
     return Reference{location, target};
   }
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 /******** RelocWriterWin32 ********/
@@ -180,8 +180,8 @@ RelocWriterWin32::~RelocWriterWin32() = default;
 void RelocWriterWin32::PutNext(Reference ref) {
   DCHECK_GE(ref.location, reloc_region_.lo());
   DCHECK_LT(ref.location, reloc_region_.hi());
-  auto block_it = std::upper_bound(reloc_block_offsets_.begin(),
-                                   reloc_block_offsets_.end(), ref.location);
+  auto block_it = std::upper_bound(reloc_block_offsets_->begin(),
+                                   reloc_block_offsets_->end(), ref.location);
   --block_it;
   rva_t rva_hi_bits = image_.read<pe::RelocHeader>(*block_it).rva_hi;
   rva_t target_rva = target_offset_to_rva_.Convert(ref.target);

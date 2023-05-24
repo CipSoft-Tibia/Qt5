@@ -1,66 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "web_contents_view_qt.h"
 
-#include "profile_adapter.h"
-#include "content_browser_client_qt.h"
 #include "render_widget_host_view_qt.h"
 #include "render_widget_host_view_qt_delegate.h"
-#include "render_widget_host_view_qt.h"
 #include "touch_selection_controller_client_qt.h"
 #include "type_conversion.h"
 #include "web_contents_adapter.h"
-#include "web_engine_context.h"
-#include "web_contents_delegate_qt.h"
+#include "web_contents_adapter_client.h"
 
-#include "components/spellcheck/spellcheck_buildflags.h"
-#include "content/browser/renderer_host/render_view_host_impl.h"
-#include "content/browser/renderer_host/render_widget_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/web_contents_delegate.h"
+#include "third_party/blink/public/common/context_menu_data/context_menu_data.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
-#include "third_party/blink/public/common/context_menu_data/media_type.h"
+#include "third_party/blink/public/mojom/context_menu/context_menu.mojom.h"
+
 #include "ui/gfx/image/image_skia.h"
 
-#include <QtGui/qpixmap.h>
+#include <QtGui/QPixmap>
+#include <QtWebEngineCore/private/qwebenginecontextmenurequest_p.h>
 
 namespace QtWebEngineCore {
 
@@ -68,6 +28,8 @@ WebContentsViewQt::WebContentsViewQt(content::WebContents *webContents)
     : m_webContents(webContents)
     , m_client(nullptr)
     , m_factoryClient(nullptr)
+    , m_contextMenuRequest(
+        new QWebEngineContextMenuRequest(new QWebEngineContextMenuRequestPrivate()))
 {
 }
 
@@ -79,7 +41,7 @@ void WebContentsViewQt::setFactoryClient(WebContentsAdapterClient* client)
 
     // Check if a RWHV was created before the pre-initialization.
     if (auto view = static_cast<RenderWidgetHostViewQt *>(m_webContents->GetRenderWidgetHostView())) {
-        view->setDelegate(m_factoryClient->CreateRenderWidgetHostViewQtDelegate(view));
+        view->setDelegate(m_factoryClient->CreateRenderWidgetHostViewQtDelegate(view->delegateClient()));
     }
 }
 
@@ -100,7 +62,7 @@ content::RenderWidgetHostViewBase* WebContentsViewQt::CreateViewForWidget(conten
     RenderWidgetHostViewQt *view = new RenderWidgetHostViewQt(render_widget_host);
 
     if (m_factoryClient) {
-        view->setDelegate(m_factoryClient->CreateRenderWidgetHostViewQtDelegate(view));
+        view->setDelegate(m_factoryClient->CreateRenderWidgetHostViewQtDelegate(view->delegateClient()));
         if (m_client)
             view->setAdapterClient(m_client);
     }
@@ -113,7 +75,7 @@ content::RenderWidgetHostViewBase* WebContentsViewQt::CreateViewForChildWidget(c
     RenderWidgetHostViewQt *view = new RenderWidgetHostViewQt(render_widget_host);
 
     Q_ASSERT(m_client);
-    view->setDelegate(m_client->CreateRenderWidgetHostViewQtDelegateForPopup(view));
+    view->setDelegate(m_client->CreateRenderWidgetHostViewQtDelegateForPopup(view->delegateClient()));
     view->setAdapterClient(m_client);
 
     return view;
@@ -154,81 +116,79 @@ void WebContentsViewQt::SetInitialFocus()
 void WebContentsViewQt::FocusThroughTabTraversal(bool reverse)
 {
     content::WebContentsImpl *web_contents = static_cast<content::WebContentsImpl*>(m_webContents);
-    content::RenderWidgetHostView *fullscreen_view = web_contents->GetFullscreenRenderWidgetHostView();
-    if (fullscreen_view) {
-        fullscreen_view->Focus();
-        return;
-    }
     web_contents->GetRenderViewHost()->SetInitialFocus(reverse);
 }
 
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypeNone,
+                   blink::mojom::ContextMenuDataMediaType::kNone)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypeImage,
+                   blink::mojom::ContextMenuDataMediaType::kImage)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypeVideo,
+                   blink::mojom::ContextMenuDataMediaType::kVideo)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypeAudio,
+                   blink::mojom::ContextMenuDataMediaType::kAudio)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypeCanvas,
+                   blink::mojom::ContextMenuDataMediaType::kCanvas)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypeFile,
+                   blink::mojom::ContextMenuDataMediaType::kFile)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaTypePlugin,
+                   blink::mojom::ContextMenuDataMediaType::kPlugin)
 
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypeNone, blink::ContextMenuDataMediaType::kNone)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypeImage, blink::ContextMenuDataMediaType::kImage)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypeVideo, blink::ContextMenuDataMediaType::kVideo)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypeAudio, blink::ContextMenuDataMediaType::kAudio)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypeCanvas, blink::ContextMenuDataMediaType::kCanvas)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypeFile, blink::ContextMenuDataMediaType::kFile)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaTypePlugin, blink::ContextMenuDataMediaType::kPlugin)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaInError,
+                   blink::ContextMenuData::kMediaInError)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaPaused,
+                   blink::ContextMenuData::kMediaPaused)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaMuted, blink::ContextMenuData::kMediaMuted)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaLoop, blink::ContextMenuData::kMediaLoop)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaCanSave,
+                   blink::ContextMenuData::kMediaCanSave)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaHasAudio,
+                   blink::ContextMenuData::kMediaHasAudio)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaCanToggleControls,
+                   blink::ContextMenuData::kMediaCanToggleControls)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaControls,
+                   blink::ContextMenuData::kMediaControls)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaCanPrint,
+                   blink::ContextMenuData::kMediaCanPrint)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::MediaCanRotate,
+                   blink::ContextMenuData::kMediaCanRotate)
 
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaNone, blink::WebContextMenuData::kMediaNone)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaInError, blink::WebContextMenuData::kMediaInError)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaPaused, blink::WebContextMenuData::kMediaPaused)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaMuted, blink::WebContextMenuData::kMediaMuted)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaLoop, blink::WebContextMenuData::kMediaLoop)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaCanSave, blink::WebContextMenuData::kMediaCanSave)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaHasAudio, blink::WebContextMenuData::kMediaHasAudio)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaCanToggleControls, blink::WebContextMenuData::kMediaCanToggleControls)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaControls, blink::WebContextMenuData::kMediaControls)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaCanPrint, blink::WebContextMenuData::kMediaCanPrint)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::MediaCanRotate, blink::WebContextMenuData::kMediaCanRotate)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanUndo, blink::kCanUndo)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanRedo, blink::kCanRedo)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanCut, blink::kCanCut)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanCopy, blink::kCanCopy)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanPaste, blink::kCanPaste)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanDelete, blink::kCanDelete)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanSelectAll, blink::kCanSelectAll)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanTranslate, blink::kCanTranslate)
+ASSERT_ENUMS_MATCH(QWebEngineContextMenuRequest::CanEditRichly, blink::kCanEditRichly)
 
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanDoNone, blink::kCanDoNone)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanUndo, blink::kCanUndo)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanRedo, blink::kCanRedo)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanCut, blink::kCanCut)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanCopy, blink::kCanCopy)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanPaste, blink::kCanPaste)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanDelete, blink::kCanDelete)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanSelectAll, blink::kCanSelectAll)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanTranslate, blink::kCanTranslate)
-ASSERT_ENUMS_MATCH(WebEngineContextMenuData::CanEditRichly, blink::kCanEditRichly)
-
-WebEngineContextMenuData WebContentsViewQt::buildContextMenuData(const content::ContextMenuParams &params)
+// static
+void WebContentsViewQt::update(QWebEngineContextMenuRequest *request,
+                               const content::ContextMenuParams &params, bool spellcheckEnabled)
 {
-    WebEngineContextMenuData ret;
-    ret.setPosition(QPoint(params.x, params.y));
-    ret.setLinkUrl(toQt(params.link_url));
-    ret.setLinkText(toQt(params.link_text));
-    ret.setAltText(toQt(params.alt_text));
-    ret.setTitleText(toQt(params.title_text));
-    ret.setUnfilteredLinkUrl(toQt(params.unfiltered_link_url));
-    ret.setSelectedText(toQt(params.selection_text));
-    ret.setMediaUrl(toQt(params.src_url));
-    ret.setMediaType((WebEngineContextMenuData::MediaType)params.media_type);
-    ret.setHasImageContent(params.has_image_contents);
-    ret.setMediaFlags((WebEngineContextMenuData::MediaFlags)params.media_flags);
-    ret.setEditFlags((WebEngineContextMenuData::EditFlags)params.edit_flags);
-    ret.setSuggestedFileName(toQt(params.suggested_filename));
-    ret.setIsEditable(params.is_editable);
+    auto *re = request->d.data();
+    re->m_position = QPoint(params.x, params.y);
+    re->m_filteredLinkUrl = toQt(params.link_url);
+    re->m_linkText = toQt(params.link_text);
+    re->m_altText = toQt(params.alt_text);
+    re->m_titleText = toQt(params.title_text);
+    re->m_unfilteredLinkUrl = toQt(params.unfiltered_link_url);
+    re->m_selectedText = toQt(params.selection_text);
+    re->m_mediaUrl = toQt(params.src_url);
+    re->m_mediaType = (QWebEngineContextMenuRequest::MediaType)params.media_type;
+    re->m_hasImageContent = params.has_image_contents;
+    re->m_mediaFlags = (QWebEngineContextMenuRequest::MediaFlags)params.media_flags;
+    re->m_editFlags = (QWebEngineContextMenuRequest::EditFlags)params.edit_flags;
+    re->m_suggestedFileName = toQt(params.suggested_filename);
+    re->m_isEditable = params.is_editable;
 #if QT_CONFIG(webengine_spellchecker)
-    ret.setMisspelledWord(toQt(params.misspelled_word));
-    ret.setSpellCheckerSuggestions(fromVector(params.dictionary_suggestions));
+    re->m_misspelledWord = toQt(params.misspelled_word);
+    re->m_spellCheckerSuggestions = fromVector(params.dictionary_suggestions);
 #endif
-    ret.setFrameUrl(toQt(params.frame_url));
-    ret.setPageUrl(toQt(params.page_url));
-    ret.setReferrerPolicy((ReferrerPolicy)params.referrer_policy);
-    return ret;
-}
-
-void WebContentsViewQt::ShowContextMenu(content::RenderFrameHost *, const content::ContextMenuParams &params)
-{
-    if (auto rwhv = static_cast<RenderWidgetHostViewQt *>(m_webContents->GetRenderWidgetHostView())) {
-        if (rwhv && rwhv->getTouchSelectionControllerClient()->handleContextMenu(params))
-            return;
-    }
-
-    WebEngineContextMenuData contextMenuData(buildContextMenuData(params));
+    re->m_frameUrl = toQt(params.frame_url);
+    re->m_pageUrl = toQt(params.page_url);
+    re->m_referrerPolicy = (ReferrerPolicy)params.referrer_policy;
 #if QT_CONFIG(webengine_spellchecker)
     // Do not use params.spellcheck_enabled, since it is never
     // correctly initialized for chrome asynchronous spellchecking.
@@ -237,9 +197,21 @@ void WebContentsViewQt::ShowContextMenu(content::RenderFrameHost *, const conten
     // must be initialized to true due to the way how the initialization sequence
     // in SpellCheck works ie. typing the first word triggers the creation
     // of the SpellcheckService. Use user preference store instead.
-    contextMenuData.setIsSpellCheckerEnabled(m_client->profileAdapter()->isSpellCheckEnabled());
+    re->m_isSpellCheckerEnabled = spellcheckEnabled;
 #endif
-    m_client->contextMenuRequested(contextMenuData);
+}
+
+void WebContentsViewQt::ShowContextMenu(content::RenderFrameHost &,
+                                        const content::ContextMenuParams &params)
+{
+    if (auto rwhv =
+                static_cast<RenderWidgetHostViewQt *>(m_webContents->GetRenderWidgetHostView())) {
+        if (rwhv && rwhv->getTouchSelectionControllerClient()->handleContextMenu(params))
+            return;
+    }
+    const bool spellcheckEnabled = m_client->profileAdapter()->isSpellCheckEnabled();
+    update(m_contextMenuRequest.get(), params, spellcheckEnabled);
+    m_client->contextMenuRequested(m_contextMenuRequest.get());
 }
 
 static Qt::DropActions toQtDropActions(blink::DragOperationsMask ops)
@@ -249,7 +221,7 @@ static Qt::DropActions toQtDropActions(blink::DragOperationsMask ops)
         result |= Qt::CopyAction;
     if (ops & blink::kDragOperationLink)
         result |= Qt::LinkAction;
-    if (ops & blink::kDragOperationMove || ops & blink::kDragOperationDelete)
+    if (ops & blink::kDragOperationMove)
         result |= Qt::MoveAction;
     return result;
 }
@@ -258,13 +230,15 @@ void WebContentsViewQt::StartDragging(const content::DropData &drop_data,
                                       blink::DragOperationsMask allowed_ops,
                                       const gfx::ImageSkia &image,
                                       const gfx::Vector2d &image_offset,
+                                      const gfx::Rect &drag_obj_rect,
                                       const blink::mojom::DragEventSourceInfo &event_info,
-                                      content::RenderWidgetHostImpl* source_rwh)
+                                      content::RenderWidgetHostImpl *source_rwh)
 {
 #if QT_CONFIG(draganddrop)
     Q_UNUSED(event_info);
 
-    if (!m_client->supportsDragging()) {
+    QObject *dragSource = m_client->dragSource();
+    if (!dragSource) {
         if (source_rwh)
             source_rwh->DragSourceSystemDragEnded();
         return;
@@ -278,14 +252,14 @@ void WebContentsViewQt::StartDragging(const content::DropData &drop_data,
         hotspot.setY(image_offset.y());
     }
 
-    m_client->startDragging(drop_data, toQtDropActions(allowed_ops), pixmap, hotspot);
+    m_client->webContentsAdapter()->startDragging(dragSource, drop_data, toQtDropActions(allowed_ops), pixmap, hotspot);
 #endif // QT_CONFIG(draganddrop)
 }
 
-void WebContentsViewQt::UpdateDragCursor(blink::DragOperation dragOperation)
+void WebContentsViewQt::UpdateDragCursor(ui::mojom::DragOperation dragOperation)
 {
 #if QT_CONFIG(draganddrop)
-    m_client->webContentsAdapter()->updateDragAction(dragOperation);
+    m_client->webContentsAdapter()->updateDragAction(int(dragOperation));
 #endif // QT_CONFIG(draganddrop)
 }
 

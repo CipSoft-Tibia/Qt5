@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include "perfetto/ext/base/file_utils.h"
 #include "src/traced/probes/ftrace/compact_sched.h"
 #include "src/traced/probes/ftrace/cpu_reader.h"
 #include "src/traced/probes/ftrace/ftrace_config_muxer.h"
@@ -87,13 +88,13 @@ std::unique_ptr<Table> FakeTable(FtraceProcfs* ftrace) {
   return std::unique_ptr<Table>(
       new Table(ftrace, events, std::move(common_fields),
                 ProtoTranslationTable::DefaultPageHeaderSpecForTesting(),
-                InvalidCompactSchedEventFormatForTesting()));
+                InvalidCompactSchedEventFormatForTesting(), PrintkMap()));
 }
 
 std::unique_ptr<FtraceConfigMuxer> FakeModel(FtraceProcfs* ftrace,
                                              ProtoTranslationTable* table) {
   return std::unique_ptr<FtraceConfigMuxer>(
-      new FtraceConfigMuxer(ftrace, table, {}));
+      new FtraceConfigMuxer(ftrace, table, SyscallTable(kUnknown), {}));
 }
 
 class MockFtraceProcfs : public FtraceProcfs {
@@ -131,6 +132,13 @@ class MockFtraceProcfs : public FtraceProcfs {
         .WillByDefault(Invoke(this, &MockFtraceProcfs::ReadTracingOn));
     EXPECT_CALL(*this, ReadOneCharFromFile("/root/tracing_on"))
         .Times(AnyNumber());
+
+    ON_CALL(*this, WriteToFile("/root/current_tracer", _))
+        .WillByDefault(Invoke(this, &MockFtraceProcfs::WriteCurrentTracer));
+    ON_CALL(*this, ReadFileIntoString("/root/current_tracer"))
+        .WillByDefault(Invoke(this, &MockFtraceProcfs::ReadCurrentTracer));
+    EXPECT_CALL(*this, ReadFileIntoString("/root/current_tracer"))
+        .Times(AnyNumber());
   }
 
   bool WriteTracingOn(const std::string& /*path*/, const std::string& value) {
@@ -143,6 +151,16 @@ class MockFtraceProcfs : public FtraceProcfs {
     return tracing_on_ ? '1' : '0';
   }
 
+  bool WriteCurrentTracer(const std::string& /*path*/,
+                          const std::string& value) {
+    current_tracer_ = value;
+    return true;
+  }
+
+  std::string ReadCurrentTracer(const std::string& /*path*/) {
+    return current_tracer_;
+  }
+
   base::ScopedFile OpenPipeForCpu(size_t /*cpu*/) override {
     return base::ScopedFile(base::OpenFile("/dev/null", O_RDONLY));
   }
@@ -152,12 +170,14 @@ class MockFtraceProcfs : public FtraceProcfs {
   MOCK_CONST_METHOD0(NumberOfCpus, size_t());
   MOCK_METHOD1(ReadOneCharFromFile, char(const std::string& path));
   MOCK_METHOD1(ClearFile, bool(const std::string& path));
+  MOCK_METHOD1(IsFileWriteable, bool(const std::string& path));
   MOCK_CONST_METHOD1(ReadFileIntoString, std::string(const std::string& path));
 
   bool is_tracing_on() { return tracing_on_; }
 
  private:
-  bool tracing_on_ = false;
+  bool tracing_on_ = true;
+  std::string current_tracer_ = "nop";
 };
 
 }  // namespace
@@ -258,8 +278,16 @@ TEST(FtraceControllerTest, OneSink) {
 
   FtraceConfig config = CreateFtraceConfig({"group/foo"});
 
-  EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "1"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
+  EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"))
+      .WillOnce(Return(true));
+  EXPECT_CALL(*controller->procfs(),
+              ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")))
+      .WillRepeatedly(Return(true));
   EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", _));
+  EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "1"));
+
   auto data_source = controller->AddFakeDataSource(config);
   ASSERT_TRUE(data_source);
 
@@ -276,19 +304,19 @@ TEST(FtraceControllerTest, OneSink) {
   Mock::VerifyAndClearExpectations(controller->runner());
 
   // State clearing on tracing teardown.
+  EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
   EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", "4"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
   EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"))
       .WillOnce(Return(true));
   EXPECT_CALL(*controller->procfs(),
               ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")))
       .WillRepeatedly(Return(true));
-  EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "0"));
-  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
-  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
-  EXPECT_TRUE(controller->procfs()->is_tracing_on());
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "1"));
 
   data_source.reset();
-  EXPECT_FALSE(controller->procfs()->is_tracing_on());
+  EXPECT_TRUE(controller->procfs()->is_tracing_on());
 }
 
 TEST(FtraceControllerTest, MultipleSinks) {
@@ -300,6 +328,13 @@ TEST(FtraceControllerTest, MultipleSinks) {
   // No read tasks posted as part of adding the data sources.
   EXPECT_CALL(*controller->runner(), PostDelayedTask(_, _)).Times(0);
 
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
+  EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"))
+      .WillOnce(Return(true));
+  EXPECT_CALL(*controller->procfs(),
+              ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")))
+      .WillRepeatedly(Return(true));
   EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", _));
   EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "1"));
   auto data_sourceA = controller->AddFakeDataSource(configA);
@@ -320,17 +355,22 @@ TEST(FtraceControllerTest, MultipleSinks) {
   Mock::VerifyAndClearExpectations(controller->runner());
 
   data_sourceA.reset();
+  EXPECT_TRUE(controller->procfs()->is_tracing_on());
 
   // State clearing on tracing teardown.
   EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "0"));
   EXPECT_CALL(*controller->procfs(), WriteToFile(kBarEnablePath, "0"));
-  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", "4"));
   EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", "4"));
   EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
-  EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"));
+  EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"))
+      .WillOnce(Return(true));
   EXPECT_CALL(*controller->procfs(),
-              ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")));
+              ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")))
+      .WillRepeatedly(Return(true));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "1"));
   data_sourceB.reset();
+  EXPECT_TRUE(controller->procfs()->is_tracing_on());
 }
 
 TEST(FtraceControllerTest, ControllerMayDieFirst) {
@@ -338,6 +378,13 @@ TEST(FtraceControllerTest, ControllerMayDieFirst) {
 
   FtraceConfig config = CreateFtraceConfig({"group/foo"});
 
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
+  EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"))
+      .WillOnce(Return(true));
+  EXPECT_CALL(*controller->procfs(),
+              ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")))
+      .WillRepeatedly(Return(true));
   EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", _));
   EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "1"));
   auto data_source = controller->AddFakeDataSource(config);
@@ -347,14 +394,15 @@ TEST(FtraceControllerTest, ControllerMayDieFirst) {
 
   // State clearing on tracing teardown.
   EXPECT_CALL(*controller->procfs(), WriteToFile(kFooEnablePath, "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", "4"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
   EXPECT_CALL(*controller->procfs(), ClearFile("/root/trace"))
       .WillOnce(Return(true));
   EXPECT_CALL(*controller->procfs(),
               ClearFile(MatchesRegex("/root/per_cpu/cpu[0-9]/trace")))
       .WillRepeatedly(Return(true));
-  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "0"));
-  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/buffer_size_kb", "4"));
-  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/events/enable", "0"));
+  EXPECT_CALL(*controller->procfs(), WriteToFile("/root/tracing_on", "1"));
   controller.reset();
   data_source.reset();
 }

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,13 @@
 
 #include "base/base_paths.h"
 #include "base/base_switches.h"
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/metrics/field_trial.h"
 #include "base/path_service.h"
 #include "base/process/kill.h"
 #include "base/process/launch.h"
@@ -22,26 +23,27 @@
 #include "base/sequence_checker.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/synchronization/lock.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "base/threading/thread.h"
 #include "build/build_config.h"
-#include "mojo/public/cpp/bindings/interface_ptr_info.h"
+#include "build/chromeos_buildflags.h"
 #include "mojo/public/cpp/platform/platform_channel.h"
-#include "mojo/public/cpp/system/core.h"
 #include "mojo/public/cpp/system/invitation.h"
+#include "sandbox/policy/mojom/sandbox.mojom.h"
+#include "sandbox/policy/sandbox_type.h"
 #include "sandbox/policy/switches.h"
 #include "services/service_manager/public/cpp/service_executable/switches.h"
 #include "services/service_manager/public/mojom/service.mojom.h"
 #include "services/service_manager/switches.h"
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "sandbox/linux/services/namespace_sandbox.h"
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "base/win/windows_version.h"
+
+#include <windows.h>
 #endif
 
 namespace service_manager {
@@ -54,9 +56,12 @@ class ServiceProcessLauncher::ProcessState
  public:
   ProcessState() { DETACH_FROM_SEQUENCE(sequence_checker_); }
 
+  ProcessState(const ProcessState&) = delete;
+  ProcessState& operator=(const ProcessState&) = delete;
+
   base::ProcessId LaunchInBackground(
       const Identity& target,
-      sandbox::policy::SandboxType sandbox_type,
+      sandbox::mojom::Sandbox sandbox_type,
       std::unique_ptr<base::CommandLine> child_command_line,
       mojo::PlatformChannel::HandlePassingInfo handle_passing_info,
       mojo::PlatformChannel channel,
@@ -71,8 +76,6 @@ class ServiceProcessLauncher::ProcessState
 
   base::Process child_process_;
   SEQUENCE_CHECKER(sequence_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(ProcessState);
 };
 
 ServiceProcessLauncher::ServiceProcessLauncher(
@@ -95,7 +98,7 @@ ServiceProcessLauncher::~ServiceProcessLauncher() {
 
 mojo::PendingRemote<mojom::Service> ServiceProcessLauncher::Start(
     const Identity& target,
-    sandbox::policy::SandboxType sandbox_type,
+    sandbox::mojom::Sandbox sandbox_type,
     ProcessReadyCallback callback) {
   DCHECK(!state_);
 
@@ -123,16 +126,25 @@ mojo::PendingRemote<mojom::Service> ServiceProcessLauncher::Start(
                                           disabled_features);
   }
 
+  // Use --force-field-trials to make the child process to create field trials.
+  std::string field_trial_states;
+  base::FieldTrialList::AllStatesToString(&field_trial_states);
+  if (!field_trial_states.empty()) {
+    DCHECK(!child_command_line->HasSwitch(::switches::kForceFieldTrials));
+    child_command_line->AppendSwitchASCII(::switches::kForceFieldTrials,
+                                          field_trial_states);
+  }
+
   child_command_line->AppendSwitchASCII(switches::kServiceName, target.name());
 #ifndef NDEBUG
   child_command_line->AppendSwitchASCII("g",
                                         target.instance_group().ToString());
 #endif
 
-  if (!IsUnsandboxedSandboxType(sandbox_type)) {
+  if (!sandbox::policy::IsUnsandboxedSandboxType(sandbox_type)) {
     child_command_line->AppendSwitchASCII(
         sandbox::policy::switches::kServiceSandboxType,
-        StringFromUtilitySandboxType(sandbox_type));
+        sandbox::policy::StringFromUtilitySandboxType(sandbox_type));
   }
 
   mojo::PlatformChannel::HandlePassingInfo handle_passing_info;
@@ -149,8 +161,8 @@ mojo::PendingRemote<mojom::Service> ServiceProcessLauncher::Start(
   }
 
   state_ = base::WrapRefCounted(new ProcessState);
-  base::PostTaskAndReplyWithResult(
-      background_task_runner_.get(), FROM_HERE,
+  background_task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(&ProcessState::LaunchInBackground, state_, target,
                      sandbox_type, std::move(child_command_line),
                      std::move(handle_passing_info), std::move(channel),
@@ -174,14 +186,14 @@ ServiceProcessLauncher::PassServiceRequestOnCommandLine(
 
 base::ProcessId ServiceProcessLauncher::ProcessState::LaunchInBackground(
     const Identity& target,
-    sandbox::policy::SandboxType sandbox_type,
+    sandbox::mojom::Sandbox sandbox_type,
     std::unique_ptr<base::CommandLine> child_command_line,
     mojo::PlatformChannel::HandlePassingInfo handle_passing_info,
     mojo::PlatformChannel channel,
     mojo::OutgoingInvitation invitation) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   base::LaunchOptions options;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   options.handles_to_inherit = handle_passing_info;
   options.stdin_handle = INVALID_HANDLE_VALUE;
   options.stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -206,30 +218,30 @@ base::ProcessId ServiceProcessLauncher::ProcessState::LaunchInBackground(
       options.stdout_handle != options.stderr_handle) {
     options.handles_to_inherit.push_back(options.stderr_handle);
   }
-#elif defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_FUCHSIA)
   // LaunchProcess will share stdin/out/err with the child process by default.
-  if (!IsUnsandboxedSandboxType(sandbox_type))
+  if (!sandbox::policy::IsUnsandboxedSandboxType(sandbox_type))
     NOTIMPLEMENTED();
   options.handles_to_transfer = std::move(handle_passing_info);
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
   const base::FileHandleMappingVector fd_mapping{
       {STDIN_FILENO, STDIN_FILENO},
       {STDOUT_FILENO, STDOUT_FILENO},
       {STDERR_FILENO, STDERR_FILENO},
   };
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   options.fds_to_remap = fd_mapping;
   options.mach_ports_for_rendezvous = handle_passing_info;
 #else
   handle_passing_info.insert(handle_passing_info.end(), fd_mapping.begin(),
                              fd_mapping.end());
   options.fds_to_remap = handle_passing_info;
-#endif  // defined(OS_MAC)
+#endif  // BUILDFLAG(IS_MAC)
 #endif
   DVLOG(2) << "Launching child with command line: "
            << child_command_line->GetCommandLineString();
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
-  if (!IsUnsandboxedSandboxType(sandbox_type)) {
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  if (!sandbox::policy::IsUnsandboxedSandboxType(sandbox_type)) {
     child_process_ =
         sandbox::NamespaceSandbox::LaunchProcess(*child_command_line, options);
     if (!child_process_.IsValid())
@@ -247,7 +259,7 @@ base::ProcessId ServiceProcessLauncher::ProcessState::LaunchInBackground(
     return base::kNullProcessId;
   }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // Always log instead of DVLOG because knowing which pid maps to which
   // service is vital for interpreting crashes after-the-fact and Chrome OS
   // devices generally run release builds, even in development.

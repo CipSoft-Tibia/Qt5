@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2014 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2014 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /****************************************************************************
 **
@@ -66,17 +30,11 @@
 
 QT_BEGIN_NAMESPACE
 
-template<typename T> class QList;
 class QSslCertificate;
 class QSslCipher;
 class QSslKey;
 class QSslEllipticCurve;
 class QSslDiffieHellmanParameters;
-
-namespace dtlsopenssl
-{
-class DtlsState;
-}
 
 class QSslConfigurationPrivate;
 class Q_NETWORK_EXPORT QSslConfiguration
@@ -89,7 +47,7 @@ public:
     QSslConfiguration &operator=(const QSslConfiguration &other);
 
     void swap(QSslConfiguration &other) noexcept
-    { qSwap(d, other.d); }
+    { d.swap(other.d); }
 
     bool operator==(const QSslConfiguration &other) const;
     inline bool operator!=(const QSslConfiguration &other) const
@@ -126,6 +84,7 @@ public:
     // Cipher settings
     QList<QSslCipher> ciphers() const;
     void setCiphers(const QList<QSslCipher> &ciphers);
+    void setCiphers(const QString &ciphers);
     static QList<QSslCipher> supportedCiphers();
 
     // Certificate Authority (CA) settings
@@ -149,9 +108,9 @@ public:
     QSslKey ephemeralServerKey() const;
 
     // EC settings
-    QVector<QSslEllipticCurve> ellipticCurves() const;
-    void setEllipticCurves(const QVector<QSslEllipticCurve> &curves);
-    static QVector<QSslEllipticCurve> supportedEllipticCurves();
+    QList<QSslEllipticCurve> ellipticCurves() const;
+    void setEllipticCurves(const QList<QSslEllipticCurve> &curves);
+    static QList<QSslEllipticCurve> supportedEllipticCurves();
 
     QByteArray preSharedKeyIdentityHint() const;
     void setPreSharedKeyIdentityHint(const QByteArray &hint);
@@ -166,13 +125,19 @@ public:
     static QSslConfiguration defaultConfiguration();
     static void setDefaultConfiguration(const QSslConfiguration &configuration);
 
-#if QT_CONFIG(dtls) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(dtls) || defined(Q_QDOC)
     bool dtlsCookieVerificationEnabled() const;
     void setDtlsCookieVerificationEnabled(bool enable);
 
     static QSslConfiguration defaultDtlsConfiguration();
     static void setDefaultDtlsConfiguration(const QSslConfiguration &configuration);
 #endif // dtls
+
+    bool handshakeMustInterruptOnError() const;
+    void setHandshakeMustInterruptOnError(bool interrupt);
+
+    bool missingCertificateIsFatal() const;
+    void setMissingCertificateIsFatal(bool cannotRecover);
 
     void setOcspStaplingEnabled(bool enable);
     bool ocspStaplingEnabled() const;
@@ -183,27 +148,20 @@ public:
         NextProtocolNegotiationUnsupported
     };
 
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     void setAllowedNextProtocols(const QList<QByteArray> &protocols);
-#else
-    void setAllowedNextProtocols(QList<QByteArray> protocols);
-#endif
     QList<QByteArray> allowedNextProtocols() const;
 
     QByteArray nextNegotiatedProtocol() const;
     NextProtocolNegotiationStatus nextProtocolNegotiationStatus() const;
 
     static const char ALPNProtocolHTTP2[];
-    static const char NextProtocolSpdy3_0[];
     static const char NextProtocolHttp1_1[];
 
 private:
     friend class QSslSocket;
     friend class QSslConfigurationPrivate;
-    friend class QSslSocketBackendPrivate;
     friend class QSslContext;
-    friend class QDtlsBasePrivate;
-    friend class dtlsopenssl::DtlsState;
+    friend class QTlsBackend;
     QSslConfiguration(QSslConfigurationPrivate *dd);
     QSharedDataPointer<QSslConfigurationPrivate> d;
 };
@@ -212,7 +170,7 @@ Q_DECLARE_SHARED(QSslConfiguration)
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QSslConfiguration)
+QT_DECL_METATYPE_EXTERN(QSslConfiguration, Q_NETWORK_EXPORT)
 
 #endif  // QT_NO_SSL
 

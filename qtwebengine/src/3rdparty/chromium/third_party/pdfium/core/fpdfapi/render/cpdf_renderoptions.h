@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,14 @@
 #ifndef CORE_FPDFAPI_RENDER_CPDF_RENDEROPTIONS_H_
 #define CORE_FPDFAPI_RENDER_CPDF_RENDEROPTIONS_H_
 
+#include <stdint.h>
+
 #include "core/fpdfapi/page/cpdf_occontext.h"
 #include "core/fpdfapi/page/cpdf_pageobject.h"
-#include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/retain_ptr.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
+
+class CPDF_Dictionary;
 
 class CPDF_RenderOptions {
  public:
@@ -22,6 +25,7 @@ class CPDF_RenderOptions {
   struct Options {
     Options();
     Options(const Options& rhs);
+    Options& operator=(const Options& rhs);
 
     bool bClearType = false;
     bool bNoNativeText = false;
@@ -62,6 +66,8 @@ class CPDF_RenderOptions {
   Options& GetOptions() { return m_Options; }
 
   uint32_t GetCacheSizeLimit() const;
+  bool CheckOCGDictVisible(const CPDF_Dictionary* pOC) const;
+  bool CheckPageObjectVisible(const CPDF_PageObject* pPageObj) const;
 
   void SetDrawAnnots(bool draw) { m_bDrawAnnots = draw; }
   bool GetDrawAnnots() const { return m_bDrawAnnots; }
@@ -69,13 +75,12 @@ class CPDF_RenderOptions {
   void SetOCContext(RetainPtr<CPDF_OCContext> context) {
     m_pOCContext = context;
   }
-  const CPDF_OCContext* GetOCContext() const { return m_pOCContext.Get(); }
 
  private:
   Type m_ColorMode = kNormal;
   bool m_bDrawAnnots = false;
   Options m_Options;
-  ColorScheme m_ColorScheme;
+  ColorScheme m_ColorScheme = {};
   RetainPtr<CPDF_OCContext> m_pOCContext;
 };
 

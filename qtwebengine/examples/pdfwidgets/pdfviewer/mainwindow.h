@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtPDF module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -47,11 +14,15 @@ namespace Ui {
 class MainWindow;
 }
 
+class QFileDialog;
+class QLineEdit;
 class QPdfDocument;
+class QPdfPageSelector;
+class QPdfSearchModel;
 class QPdfView;
+class QSpinBox;
 QT_END_NAMESPACE
 
-class PageSelector;
 class ZoomSelector;
 
 class MainWindow : public QMainWindow
@@ -67,6 +38,8 @@ public slots:
 
 private slots:
     void bookmarkSelected(const QModelIndex &index);
+    void pageSelected(int page);
+    void searchResultSelected(const QModelIndex &current, const QModelIndex &previous);
 
     // action handlers
     void on_actionOpen_triggered();
@@ -77,12 +50,20 @@ private slots:
     void on_actionZoom_Out_triggered();
     void on_actionPrevious_Page_triggered();
     void on_actionNext_Page_triggered();
+    void on_thumbnailsView_activated(const QModelIndex &index);
     void on_actionContinuous_triggered();
+    void on_actionBack_triggered();
+    void on_actionForward_triggered();
+    void on_actionFindNext_triggered();
+    void on_actionFindPrevious_triggered();
 
 private:
     Ui::MainWindow *ui;
     ZoomSelector *m_zoomSelector;
-    PageSelector *m_pageSelector;
+    QPdfPageSelector *m_pageSelector;
+    QPdfSearchModel *m_searchModel;
+    QLineEdit *m_searchField;
+    QFileDialog *m_fileDialog = nullptr;
 
     QPdfDocument *m_document;
 };

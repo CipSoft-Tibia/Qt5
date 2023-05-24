@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,12 @@
 
 class GURL;
 
+namespace net {
+class HttpResponseHeaders;
+}
+
 namespace weblayer {
+class Page;
 
 // These types are sent over IPC and across different versions. Never remove
 // or change the order.
@@ -50,6 +55,10 @@ class Navigation {
   // hasn't completed yet or if a response wasn't received.
   virtual int GetHttpStatusCode() = 0;
 
+  // Returns the HTTP response headers. Returns nullptr if the navigation
+  // hasn't completed yet or if a response wasn't received.
+  virtual const net::HttpResponseHeaders* GetResponseHeaders() = 0;
+
   // Whether the navigation happened without changing document. Examples of
   // same document navigations are:
   // * reference fragment navigations
@@ -70,6 +79,14 @@ class Navigation {
   // NavigationObserver::NavigationFailed.
   virtual bool IsDownload() = 0;
 
+  // Whether the target URL can be handled by the browser's internal protocol
+  // handlers, i.e., has a scheme that the browser knows how to process
+  // internally. Examples of such URLs are http(s) URLs, data URLs, and file
+  // URLs. A typical example of a URL for which there is no internal protocol
+  // handler (and for which this method would return false) is an intent:// URL.
+  // Added in 89.
+  virtual bool IsKnownProtocol() = 0;
+
   // Returns true if the navigation was stopped before it could complete because
   // NavigationController::Stop() was called.
   virtual bool WasStopCalled() = 0;
@@ -82,7 +99,8 @@ class Navigation {
     kHttpServerError = 2,    // Server responded with 5xx status code.
     kSSLError = 3,           // Certificate error.
     kConnectivityError = 4,  // Problem connecting to server.
-    kOtherError = 5,         // An error not listed above occurred.
+    kOtherError = 5,         // An error not listed above or below occurred.
+    kSafeBrowsingError = 6,  // Safe browsing error.
   };
 
   // Return information about the error, if any, that was encountered while
@@ -107,8 +125,16 @@ class Navigation {
   // function may only be called from NavigationObserver::NavigationStarted().
   // Any value specified during start carries through to a redirect. |value|
   // must not contain any illegal characters as documented in
-  // SetRequestHeader().
+  // SetRequestHeader().  Setting this to a non empty string will cause the
+  // User-Agent Client Hint header values and the values returned by
+  // `navigator.userAgentData` to be empty for requests this override is applied
+  // to.
   virtual void SetUserAgentString(const std::string& value) = 0;
+
+  // Disables auto-reload for this navigation if the network is down and comes
+  // back later. Auto-reload is enabled by default. This function may only be
+  // called from NavigationObserver::NavigationStarted().
+  virtual void DisableNetworkErrorAutoReload() = 0;
 
   // Whether the navigation was initiated by the page. Examples of
   // page-initiated navigations include:
@@ -116,9 +142,9 @@ class Navigation {
   //  * changing window.location.href
   //  * redirect via the <meta http-equiv="refresh"> tag
   //  * using window.history.pushState
+  //  * window.history.forward() or window.history.back()
   //
-  // This method returns false for navigations initiated by the WebLayer
-  // API, including using window.history.forward() or window.history.back().
+  // This method returns false for navigations initiated by the WebLayer API.
   virtual bool IsPageInitiated() = 0;
 
   // Whether the navigation is a reload. Examples of reloads include:
@@ -126,6 +152,35 @@ class Navigation {
   // * page-initiated reloads, e.g. location.reload()
   // * reloads when the network interface is reconnected
   virtual bool IsReload() = 0;
+
+  // Whether the navigation is restoring a page from back-forward cache (see
+  // https://web.dev/bfcache/). Since a previously loaded page is being reused,
+  // there are some things embedders have to keep in mind such as:
+  //   * there will be no NavigationObserver::OnFirstContentfulPaint callbacks
+  //   * if an embedder injects code using Tab::ExecuteScript there is no need
+  //     to reinject scripts
+  virtual bool IsServedFromBackForwardCache() = 0;
+
+  // Returns true if this navigation was initiated by a form submission.
+  virtual bool IsFormSubmission() = 0;
+
+  // Returns the referrer for this request.
+  virtual GURL GetReferrer() = 0;
+
+  // Returns the Page object this navigation is occurring for. This method may
+  // only be called in or after NavigationObserver::NavigationCompleted() or
+  // NavigationObserve::NavigationFailed(). It can return null if the navigation
+  // didn't commit (e.g. 204/205 or download).
+  virtual Page* GetPage() = 0;
+
+  // Returns the offset between the indices of the previous last committed and
+  // the newly committed navigation entries (e.g. -1 for back navigations, 0
+  // for reloads, 1 for forward navigations). This may not cover all corner
+  // cases, and can be incorrect in cases like main frame client redirects.
+  virtual int GetNavigationEntryOffset() = 0;
+
+  // Returns true if the navigation response was fetched from the cache.
+  virtual bool WasFetchedFromCache() = 0;
 };
 
 }  // namespace weblayer

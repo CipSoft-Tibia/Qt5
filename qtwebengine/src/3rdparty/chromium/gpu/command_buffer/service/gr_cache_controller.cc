@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,18 @@
 
 #include <chrono>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_context.h"
 
 namespace gpu {
 namespace raster {
+
+GrCacheController::GrCacheController(SharedContextState* context_state)
+    : context_state_(context_state),
+      task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()) {}
 
 GrCacheController::GrCacheController(
     SharedContextState* context_state,
@@ -45,9 +50,8 @@ void GrCacheController::ScheduleGrContextCleanup() {
   purge_gr_cache_cb_.Reset(base::BindOnce(&GrCacheController::PurgeGrCache,
                                           base::Unretained(this),
                                           current_idle_id_));
-  task_runner_->PostDelayedTask(
-      FROM_HERE, purge_gr_cache_cb_.callback(),
-      base::TimeDelta::FromSeconds(kIdleCleanupDelaySeconds));
+  task_runner_->PostDelayedTask(FROM_HERE, purge_gr_cache_cb_.callback(),
+                                base::Seconds(kIdleCleanupDelaySeconds));
 }
 
 void GrCacheController::PurgeGrCache(uint64_t idle_id) {
@@ -77,6 +81,10 @@ void GrCacheController::PurgeGrCache(uint64_t idle_id) {
     auto* api = gl::g_current_gl_context;
     api->glFlushFn();
   }
+
+  // Skia store VkPipeline cache only on demand. We do it when we're idle idle
+  // as it might take time.
+  context_state_->StoreVkPipelineCacheIfNeeded();
 }
 
 }  // namespace raster

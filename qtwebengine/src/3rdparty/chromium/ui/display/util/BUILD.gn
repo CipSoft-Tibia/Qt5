@@ -1,7 +1,8 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
@@ -26,13 +27,23 @@ jumbo_component("util") {
     "//ui/display/types",
     "//ui/gfx:color_space",
     "//ui/gfx/geometry",
+    "//ui/gfx/range",
   ]
 
-  if (is_chromeos) {
+  if (is_chromeos_ash) {
     deps += [ "//ui/display/types" ]
   } else if (is_mac) {
     frameworks = [ "IOSurface.framework" ]
   }
+}
+
+source_set("gpu_info_util") {
+  sources = [
+    "gpu_info_util.cc",
+    "gpu_info_util.h",
+  ]
+
+  deps = [ "//base" ]
 }
 
 fuzzer_test("edid_parser_fuzzer") {

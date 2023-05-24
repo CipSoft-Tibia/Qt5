@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtCore>
 #include <QtWidgets>
@@ -110,7 +63,7 @@ private:
 
 public:
 
-    FlightInfo(QMainWindow *parent = 0): QMainWindow(parent) {
+    FlightInfo(QMainWindow *parent = nullptr): QMainWindow(parent) {
 
         QWidget *w = new QWidget(this);
         ui.setupUi(w);
@@ -118,8 +71,8 @@ public:
 
         ui.searchBar->hide();
         ui.infoBox->hide();
-        connect(ui.searchButton, SIGNAL(clicked()), SLOT(startSearch()));
-        connect(ui.flightEdit, SIGNAL(returnPressed()), SLOT(startSearch()));
+        connect(ui.searchButton, &QPushButton::clicked, this, &FlightInfo::startSearch);
+        connect(ui.flightEdit, &QLineEdit::returnPressed, this, &FlightInfo::startSearch);
 
         setWindowTitle("Flight Info");
 
@@ -130,11 +83,11 @@ public:
         QAction *searchTodayAction = new QAction("Today's Flight", this);
         QAction *searchYesterdayAction = new QAction("Yesterday's Flight", this);
         QAction *randomAction = new QAction("Random Flight", this);
-        connect(searchTodayAction, SIGNAL(triggered()), SLOT(today()));
-        connect(searchYesterdayAction, SIGNAL(triggered()), SLOT(yesterday()));
-        connect(randomAction, SIGNAL(triggered()), SLOT(randomFlight()));
-        connect(&m_manager, SIGNAL(finished(QNetworkReply*)),
-                this, SLOT(handleNetworkData(QNetworkReply*)));
+        connect(searchTodayAction, &QAction::triggered, this, &FlightInfo::today);
+        connect(searchYesterdayAction, &QAction::triggered, this, &FlightInfo::yesterday);
+        connect(randomAction, &QAction::triggered, this, &FlightInfo::randomFlight);
+        connect(&m_manager, &QNetworkAccessManager::finished,
+                this, &FlightInfo::handleNetworkData);
         addAction(searchTodayAction);
         addAction(searchYesterdayAction);
         addAction(randomAction);
@@ -265,20 +218,20 @@ private:
             xml.readNext();
 
             if (xml.tokenType() == QXmlStreamReader::StartElement) {
-                QStringRef className = xml.attributes().value("class");
-                inFlightName |= xml.name() == "h1";
-                inFlightStatus |= className == "FlightDetailHeaderStatus";
-                inFlightMap |= className == "flightMap";
-                if (xml.name() == "td" && !className.isEmpty()) {
-                    if (className.contains("fieldTitle")) {
+                auto className = xml.attributes().value("class");
+                inFlightName |= xml.name() == u"h1";
+                inFlightStatus |= className == u"FlightDetailHeaderStatus";
+                inFlightMap |= className == u"flightMap";
+                if (xml.name() == u"td" && !className.isEmpty()) {
+                    if (className.contains(u"fieldTitle")) {
                         inFieldName = true;
                         fieldNames += QString();
                         fieldValues += QString();
                     }
-                    if (className.contains("fieldValue"))
+                    if (className.contains(u"fieldValue"))
                         inFieldValue = true;
                 }
-                if (xml.name() == "img" && inFlightMap) {
+                if (xml.name() == u"img" && inFlightMap) {
                     const QByteArray encoded
                         = ("http://mobile.flightview.com/" % xml.attributes().value("src")).toLatin1();
                     QUrl url = QUrl::fromPercentEncoding(encoded);
@@ -287,11 +240,11 @@ private:
             }
 
             if (xml.tokenType() == QXmlStreamReader::EndElement) {
-                inFlightName &= xml.name() != "h1";
-                inFlightStatus &= xml.name() != "div";
-                inFlightMap &= xml.name() != "div";
-                inFieldName &= xml.name() != "td";
-                inFieldValue &= xml.name() != "td";
+                inFlightName &= xml.name() != u"h1";
+                inFlightStatus &= xml.name() != u"div";
+                inFlightMap &= xml.name() != u"div";
+                inFieldName &= xml.name() != u"td";
+                inFieldValue &= xml.name() != u"td";
             }
 
             if (xml.tokenType() == QXmlStreamReader::Characters) {
@@ -389,8 +342,6 @@ private:
 
 int main(int argc, char **argv)
 {
-    Q_INIT_RESOURCE(flightinfo);
-
     QApplication app(argc, argv);
 
     FlightInfo w;

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,20 +10,20 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
 #include "base/environment.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/strings/string_util.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "net/base/url_util.h"
 #include "ui/events/platform/platform_event_dispatcher.h"
 #include "ui/events/platform/platform_event_source.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/switches.h"
 #include "ui/gfx/x/extension_manager.h"
-#include "ui/gfx/x/x11_switches.h"
 
 namespace ui {
 
@@ -56,7 +56,7 @@ std::size_t MaxShmSegmentSize() {
   return max_size;
 }
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
 bool IsRemoteHost(const std::string& name) {
   if (name.empty())
     return false;
@@ -70,16 +70,9 @@ bool ShouldUseMitShm(x11::Connection* connection) {
   // codepath.  It may be possible in contrived cases for there to be a
   // false-positive, but in that case we'll just fallback to the non-SHM
   // codepath.
-  const std::string& display_string = connection->DisplayString();
-  char* host = nullptr;
-  int display_id = 0;
-  int screen = 0;
-  if (xcb_parse_display(display_string.c_str(), &host, &display_id, &screen)) {
-    std::string name = host;
-    free(host);
-    if (IsRemoteHost(name))
-      return false;
-  }
+  auto host = connection->GetConnectionHostname();
+  if (!host.empty() && IsRemoteHost(host))
+    return false;
 
   std::unique_ptr<base::Environment> env = base::Environment::Create();
 
@@ -91,7 +84,7 @@ bool ShouldUseMitShm(x11::Connection* connection) {
   std::string j2d_use_mitshm;
   if (env->GetVar("J2D_USE_MITSHM", &j2d_use_mitshm) &&
       (j2d_use_mitshm == "0" ||
-       base::LowerCaseEqualsASCII(j2d_use_mitshm, "false"))) {
+       base::EqualsCaseInsensitiveASCII(j2d_use_mitshm, "false"))) {
     return false;
   }
 
@@ -126,13 +119,13 @@ XShmImagePool::XShmImagePool(x11::Connection* connection,
       enable_multibuffering_(enable_multibuffering),
       frame_states_(frames_pending) {
   if (enable_multibuffering_)
-    X11EventSource::GetInstance()->AddXEventDispatcher(this);
+    connection_->AddEventObserver(this);
 }
 
 XShmImagePool::~XShmImagePool() {
   Cleanup();
   if (enable_multibuffering_)
-    X11EventSource::GetInstance()->RemoveXEventDispatcher(this);
+    connection_->RemoveEventObserver(this);
 }
 
 bool XShmImagePool::Resize(const gfx::Size& pixel_size) {
@@ -145,7 +138,7 @@ bool XShmImagePool::Resize(const gfx::Size& pixel_size) {
   std::unique_ptr<XShmImagePool, decltype(cleanup_fn)> cleanup{this,
                                                                cleanup_fn};
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   if (!ShouldUseMitShm(connection_))
     return false;
 #endif
@@ -190,7 +183,7 @@ bool XShmImagePool::Resize(const gfx::Size& pixel_size) {
         shmctl(state.shmid, IPC_RMID, nullptr);
         return false;
       }
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
       // On Linux, a shmid can still be attached after IPC_RMID if otherwise
       // kept alive.  Detach before XShmAttach to prevent a memory leak in case
       // the process dies.
@@ -200,7 +193,7 @@ bool XShmImagePool::Resize(const gfx::Size& pixel_size) {
       auto shmseg = connection_->GenerateId<x11::Shm::Seg>();
       auto req = connection_->shm().Attach({
           .shmseg = shmseg,
-          .shmid = state.shmid,
+          .shmid = static_cast<uint32_t>(state.shmid),
           // If this class ever needs to use XShmGetImage(), this needs to be
           // changed to read-write.
           .read_only = true,
@@ -209,7 +202,7 @@ bool XShmImagePool::Resize(const gfx::Size& pixel_size) {
         return false;
       state.shmseg = shmseg;
       state.shmem_attached_to_server = true;
-#if !defined(OS_LINUX) && !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMEOS)
       // The Linux-specific shmctl behavior above may not be portable, so we're
       // forced to do IPC_RMID after the server has attached to the segment.
       shmctl(state.shmid, IPC_RMID, nullptr);
@@ -217,12 +210,15 @@ bool XShmImagePool::Resize(const gfx::Size& pixel_size) {
     }
   }
 
+  const auto* visual_info = connection_->GetVisualInfoFromId(visual_);
+  if (!visual_info)
+    return false;
+  size_t row_bytes = RowBytesForVisualWidth(*visual_info, pixel_size.width());
+
   for (FrameState& state : frame_states_) {
     state.bitmap = SkBitmap();
-    if (!state.bitmap.installPixels(image_info, state.shmaddr,
-                                    image_info.minRowBytes())) {
+    if (!state.bitmap.installPixels(image_info, state.shmaddr, row_bytes))
       return false;
-    }
     state.canvas = std::make_unique<SkCanvas>(state.bitmap);
   }
 
@@ -283,22 +279,19 @@ void XShmImagePool::DispatchShmCompletionEvent(
   }
 }
 
-bool XShmImagePool::DispatchXEvent(x11::Event* xev) {
+void XShmImagePool::OnEvent(const x11::Event& xev) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(enable_multibuffering_);
 
-  auto* completion = xev->As<x11::Shm::CompletionEvent>();
-  if (!completion || completion->drawable.value != drawable_.value)
-    return false;
-
-  DispatchShmCompletionEvent(*completion);
-  return true;
+  auto* completion = xev.As<x11::Shm::CompletionEvent>();
+  if (completion && completion->drawable.value == drawable_.value)
+    DispatchShmCompletionEvent(*completion);
 }
 
 void XShmImagePool::Cleanup() {
   for (FrameState& state : frame_states_) {
     if (state.shmaddr)
-      shmdt(state.shmaddr);
+      shmdt(state.shmaddr.ExtractAsDangling());
     if (state.shmem_attached_to_server)
       connection_->shm().Detach({state.shmseg});
     state.shmem_attached_to_server = false;

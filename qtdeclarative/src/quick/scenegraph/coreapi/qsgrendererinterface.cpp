@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrendererinterface.h"
 
@@ -75,14 +39,18 @@ QT_BEGIN_NAMESPACE
     \enum QSGRendererInterface::GraphicsApi
     \value Unknown An unknown graphics API is in use
     \value Software The Qt Quick 2D Renderer is in use
-    \value OpenGL OpenGL ES 2.0 or higher
-    \value Direct3D12 Direct3D 12
     \value OpenVG OpenVG via EGL
-    \value OpenGLRhi OpenGL ES 2.0 or higher via a graphics abstraction layer. This value was introduced in Qt 5.14.
-    \value Direct3D11Rhi Direct3D 11 via a graphics abstraction layer. This value was introduced in Qt 5.14.
-    \value VulkanRhi Vulkan 1.0 via a graphics abstraction layer. This value was introduced in Qt 5.14.
-    \value MetalRhi Metal via a graphics abstraction layer. This value was introduced in Qt 5.14.
-    \value NullRhi Null (no output) via a graphics abstraction layer. This value was introduced in Qt 5.14.
+    \value [since 5.14] OpenGL OpenGL ES 2.0 or higher via a graphics abstraction layer.
+    \value [since 5.14] Direct3D11 Direct3D 11 via a graphics abstraction layer.
+    \value [since 6.6] Direct3D12 Direct3D 12 via a graphics abstraction layer.
+    \value [since 5.14] Vulkan Vulkan 1.0 via a graphics abstraction layer.
+    \value [since 5.14] Metal Metal via a graphics abstraction layer.
+    \value [since 5.14] Null Null (no output) via a graphics abstraction layer.
+    \omitvalue OpenGLRhi
+    \omitvalue Direct3D11Rhi
+    \omitvalue VulkanRhi
+    \omitvalue MetalRhi
+    \omitvalue NullRhi
   */
 
 /*!
@@ -110,37 +78,69 @@ QT_BEGIN_NAMESPACE
     \value PainterResource The resource is a pointer to the active QPainter
     used by the scenegraph, when running with the software backend.
 
-    \value RhiResource The resource is a pointer to the QRhi instance used by
-    the scenegraph, when applicable. This value was introduced in Qt 5.14.
+    \value [since 5.14] RhiResource The resource is a pointer to the QRhi instance used by
+    the scenegraph, when applicable.
 
-    \value PhysicalDeviceResource The resource is a pointer to the pysical
+    \value [since 6.0] RhiSwapchainResource The resource is a pointer to a QRhiSwapchain
+    instance that is associated with the window. The value is null when the
+    window is used in combination with QQuickRenderControl.
+
+    \value [since 6.0] RhiRedirectCommandBuffer The resource is a pointer to a
+    QRhiCommandBuffer instance that is associated with the window and its
+    QQuickRenderControl. The value is null when the window is not associated
+    with a QQuickRenderControl.
+
+    \value [since 6.0] RhiRedirectRenderTarget The resource is a pointer to a
+    QRhiTextureRenderTarget instance that is associated with the window and its
+    QQuickRenderControl. The value is null when the window is not associated
+    with a QQuickRenderControl. Note that the value always reflects the main
+    texture render target and it does not depend on the Qt Quick scene, meaning
+    it does not take any additional texture-targeting render passes generated
+    by ShaderEffect or QQuickItem layers into account.
+
+    \value [since 5.14] PhysicalDeviceResource The resource is a pointer to the pysical
     device object used by the scenegraph, when applicable. For example, a
     \c{VkPhysicalDevice *}. Note that with Vulkan the returned value is a
-    pointer to the VkPhysicalDevice, not the handle itself. This value was
-    introduced in Qt 5.14.
+    pointer to the VkPhysicalDevice, not the handle itself.
 
-    \value OpenGLContextResource The resource is a pointer to the
+    \value [since 5.14] OpenGLContextResource The resource is a pointer to the
     QOpenGLContext used by the scenegraph (on the render thread), when
-    applicable. This value was introduced in Qt 5.14.
+    applicable.
 
-    \value DeviceContextResource The resource is a pointer to the device
+    \value [since 5.14] DeviceContextResource The resource is a pointer to the device
     context used by the scenegraph, when applicable. For example, a
-    \c{ID3D11DeviceContext *}. This value was introduced in Qt 5.14.
+    \c{ID3D11DeviceContext *}.
 
-    \value CommandEncoderResource The resource is a pointer to the currently
+    \value [since 5.14] CommandEncoderResource The resource is a pointer to the currently
     active render command encoder object used by the scenegraph, when
     applicable. For example, a \c{MTLRenderCommandEncoder *}. This object has
     limited validity, and is only valid while the scene graph is recording a
-    render pass for the next frame. This value was introduced in Qt 5.14.
+    render pass for the next frame.
 
-    \value VulkanInstanceResource The resource is a pointer to the
-    QVulkanInstance used by the scenegraph, when applicable. This value was
-    introduced in Qt 5.14.
+    \value [since 5.14] VulkanInstanceResource The resource is a pointer to the
+    QVulkanInstance used by the scenegraph, when applicable.
 
-    \value RenderPassResource The resource is a pointer to the render pass used
-    by the scenegraph, describing the color and depth/stecil attachments and
-    how they are used. For example, a \c{VkRenderPass *}. This value was
-    introduced in Qt 5.14.
+    \value [since 5.14] RenderPassResource The resource is a pointer to the main render pass
+    used by the scenegraph, describing the color and depth/stecil attachments
+    and how they are used. For example, a \c{VkRenderPass *}. Note that the
+    value always reflects the main render target (either the on-screen window
+    or the texture QQuickRenderControl redirects to) and it does not depend on
+    the Qt Quick scene, meaning it does not take any additional
+    texture-targeting render passes generated by ShaderEffect or QQuickItem
+    layers into account.
+
+    \value [since 6.4] RedirectPaintDevice The resource is a pointer to QPaintDevice instance
+    that is associated with the window and its QQuickRenderControl. The value is
+    null when the window is not associated with a QQuickRenderControl.
+
+    \value [since 6.6] GraphicsQueueFamilyIndexResource The resource is a pointer to the
+    graphics queue family index used by the scenegraph, when applicable. With
+    Vulkan, this is a pointer to a \c uint32_t index value.
+
+    \value [since 6.6] GraphicsQueueIndexResource The resource is a pointer to the graphics
+    queue index (uint32_t) used by the scenegraph, when applicable. With
+    Vulkan, this is a pointer to a \c uint32_t index value, which in practice
+    is the index of the VkQueue reported for \c CommandQueueResource.
  */
 
 /*!
@@ -148,9 +148,8 @@ QT_BEGIN_NAMESPACE
     \value UnknownShadingLanguage Not yet known due to no window and scenegraph associated
     \value GLSL GLSL or GLSL ES
     \value HLSL HLSL
-    \value RhiShader Consumes QShader instances containing shader variants for
-    multiple target languages and intermediate formats. This value was introduced in
-    Qt 5.14.
+    \value [since 5.14] RhiShader Consumes QShader instances containing shader variants for
+    multiple target languages and intermediate formats.
  */
 
 /*!
@@ -172,6 +171,13 @@ QT_BEGIN_NAMESPACE
     supported
  */
 
+/*!
+    \enum QSGRendererInterface::RenderMode
+
+    \value RenderMode2D Normal 2D rendering
+    \value RenderMode2DNoDepthBuffer Normal 2D rendering with depth buffer disabled
+    \value RenderMode3D Scene is rendered as part of a 3D graph
+ */
 QSGRendererInterface::~QSGRendererInterface()
 {
 }
@@ -189,10 +195,10 @@ QSGRendererInterface::~QSGRendererInterface()
     not supported or not available.
 
     When successful, the returned pointer is either a direct pointer to an
-    interface (and can be cast, for example, to \c{ID3D12Device *}) or a
-    pointer to an opaque handle that needs to be dereferenced first (for
-    example, \c{VkDevice dev = *static_cast<VkDevice *>(result)}). The latter
-    is necessary since such handles may have sizes different from a pointer.
+    interface, or a pointer to an opaque handle that needs to be dereferenced
+    first (for example, \c{VkDevice dev = *static_cast<VkDevice
+    *>(result)}). The latter is necessary since such handles may have sizes
+    different from a pointer.
 
     \note The ownership of the returned pointer is never transferred to the caller.
 
@@ -232,15 +238,12 @@ void *QSGRendererInterface::getResource(QQuickWindow *window, const char *resour
 bool QSGRendererInterface::isApiRhiBased(GraphicsApi api)
 {
     switch (api) {
-    case OpenGLRhi:
-        Q_FALLTHROUGH();
-    case Direct3D11Rhi:
-        Q_FALLTHROUGH();
-    case VulkanRhi:
-        Q_FALLTHROUGH();
-    case MetalRhi:
-        Q_FALLTHROUGH();
-    case NullRhi:
+    case OpenGL:
+    case Direct3D11:
+    case Direct3D12:
+    case Vulkan:
+    case Metal:
+    case Null:
         return true;
     default:
         return false;

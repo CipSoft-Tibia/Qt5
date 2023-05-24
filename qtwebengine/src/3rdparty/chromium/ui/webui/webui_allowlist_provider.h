@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,15 +31,13 @@ class WebUIAllowlistProvider : public content_settings::ObservableProvider {
   // The following methods are thread-safe.
   std::unique_ptr<content_settings::RuleIterator> GetRuleIterator(
       ContentSettingsType content_type,
-      const content_settings::ResourceIdentifier& /*resource_identifier*/,
       bool incognito) const override;
   void ShutdownOnUIThread() override;
   bool SetWebsiteSetting(
       const ContentSettingsPattern& primary_pattern,
       const ContentSettingsPattern& secondary_pattern,
       ContentSettingsType content_type,
-      const content_settings::ResourceIdentifier& /*resource_identifier*/,
-      std::unique_ptr<base::Value>&& value,
+      base::Value&& value,
       const content_settings::ContentSettingConstraints& constraints) override;
   void ClearAllContentSettingsRules(ContentSettingsType content_type) override;
 

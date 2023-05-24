@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgadaptationlayer_p.h"
 
@@ -54,12 +18,20 @@
 
 QT_BEGIN_NAMESPACE
 
+Q_TRACE_POINT(qtquick, QSGDistanceFieldGlyphCache_update_entry, int count)
+Q_TRACE_POINT(qtquick, QSGDistanceFieldGlyphCache_update_exit)
+Q_TRACE_POINT(qtquick, QSGDistanceFieldGlyphCache_glyphRender_entry)
+Q_TRACE_POINT(qtquick, QSGDistanceFieldGlyphCache_glyphRender_exit)
+Q_TRACE_POINT(qtquick, QSGDistanceFieldGlyphCache_glyphStore_entry)
+Q_TRACE_POINT(qtquick, QSGDistanceFieldGlyphCache_glyphStore_exit)
+
 static QElapsedTimer qsg_render_timer;
 
 QSGDistanceFieldGlyphCache::Texture QSGDistanceFieldGlyphCache::s_emptyTexture;
 
-QSGDistanceFieldGlyphCache::QSGDistanceFieldGlyphCache(const QRawFont &font)
-    : m_pendingGlyphs(64)
+QSGDistanceFieldGlyphCache::QSGDistanceFieldGlyphCache(const QRawFont &font, int renderTypeQuality)
+    : m_renderTypeQuality(renderTypeQuality)
+    , m_pendingGlyphs(64)
 {
     Q_ASSERT(font.isValid());
 
@@ -71,12 +43,17 @@ QSGDistanceFieldGlyphCache::QSGDistanceFieldGlyphCache(const QRawFont &font)
     m_referenceFont = font;
     // we set the same pixel size as used by the distance field internally.
     // this allows us to call pathForGlyph once and reuse the result.
-    m_referenceFont.setPixelSize(QT_DISTANCEFIELD_BASEFONTSIZE(m_doubleGlyphResolution) * QT_DISTANCEFIELD_SCALE(m_doubleGlyphResolution));
+    m_referenceFont.setPixelSize(baseFontSize() * QT_DISTANCEFIELD_SCALE(m_doubleGlyphResolution));
     Q_ASSERT(m_referenceFont.isValid());
 }
 
 QSGDistanceFieldGlyphCache::~QSGDistanceFieldGlyphCache()
 {
+}
+
+int QSGDistanceFieldGlyphCache::baseFontSize() const
+{
+    return m_renderTypeQuality > 0 ? m_renderTypeQuality : QT_DISTANCEFIELD_BASEFONTSIZE(m_doubleGlyphResolution);
 }
 
 QSGDistanceFieldGlyphCache::GlyphData &QSGDistanceFieldGlyphCache::emptyData(glyph_t glyph)
@@ -121,7 +98,7 @@ void QSGDistanceFieldGlyphCache::populate(const QVector<glyph_t> &glyphs)
 {
     QSet<glyph_t> referencedGlyphs;
     QSet<glyph_t> newGlyphs;
-    int count = glyphs.count();
+    int count = glyphs.size();
     for (int i = 0; i < count; ++i) {
         glyph_t glyphIndex = glyphs.at(i);
         if ((int) glyphIndex >= glyphCount() && glyphCount() > 0) {
@@ -154,7 +131,7 @@ void QSGDistanceFieldGlyphCache::populate(const QVector<glyph_t> &glyphs)
 void QSGDistanceFieldGlyphCache::release(const QVector<glyph_t> &glyphs)
 {
     QSet<glyph_t> unusedGlyphs;
-    int count = glyphs.count();
+    int count = glyphs.size();
     for (int i = 0; i < count; ++i) {
         glyph_t glyphIndex = glyphs.at(i);
         GlyphData &gd = glyphData(glyphIndex);
@@ -162,6 +139,11 @@ void QSGDistanceFieldGlyphCache::release(const QVector<glyph_t> &glyphs)
             unusedGlyphs.insert(glyphIndex);
     }
     releaseGlyphs(unusedGlyphs);
+}
+
+bool QSGDistanceFieldGlyphCache::isActive() const
+{
+    return true;
 }
 
 void QSGDistanceFieldGlyphCache::update()
@@ -205,8 +187,8 @@ void QSGDistanceFieldGlyphCache::update()
     storeGlyphs(distanceFields);
 
 #if defined(QSG_DISTANCEFIELD_CACHE_DEBUG)
-    for (Texture texture : qAsConst(m_textures))
-        saveTexture(texture.textureId, texture.size.width(), texture.size.height());
+    for (Texture texture : std::as_const(m_textures))
+        saveTexture(texture.texture, m_referenceFont.familyName());
 #endif
 
     if (QSG_LOG_TIME_GLYPH().isDebugEnabled()) {
@@ -228,7 +210,7 @@ void QSGDistanceFieldGlyphCache::setGlyphsPosition(const QList<GlyphPosition> &g
 {
     QVector<quint32> invalidatedGlyphs;
 
-    int count = glyphs.count();
+    int count = glyphs.size();
     for (int i = 0; i < count; ++i) {
         GlyphPosition glyph = glyphs.at(i);
         GlyphData &gd = glyphData(glyph.glyph);
@@ -279,7 +261,7 @@ void QSGDistanceFieldGlyphCache::setGlyphsTexture(const QVector<glyph_t> &glyphs
 
     QVector<quint32> invalidatedGlyphs;
 
-    int count = glyphs.count();
+    int count = glyphs.size();
     for (int j = 0; j < count; ++j) {
         glyph_t glyphIndex = glyphs.at(j);
         GlyphData &gd = glyphData(glyphIndex);
@@ -297,27 +279,14 @@ void QSGDistanceFieldGlyphCache::setGlyphsTexture(const QVector<glyph_t> &glyphs
 
 void QSGDistanceFieldGlyphCache::markGlyphsToRender(const QVector<glyph_t> &glyphs)
 {
-    int count = glyphs.count();
+    int count = glyphs.size();
     for (int i = 0; i < count; ++i)
         m_pendingGlyphs.add(glyphs.at(i));
 }
 
-void QSGDistanceFieldGlyphCache::updateTexture(uint oldTex, uint newTex, const QSize &newTexSize)
-{
-    int count = m_textures.count();
-    for (int i = 0; i < count; ++i) {
-        Texture &tex = m_textures[i];
-        if (tex.textureId == oldTex) {
-            tex.textureId = newTex;
-            tex.size = newTexSize;
-            return;
-        }
-    }
-}
-
 void QSGDistanceFieldGlyphCache::updateRhiTexture(QRhiTexture *oldTex, QRhiTexture *newTex, const QSize &newTexSize)
 {
-    int count = m_textures.count();
+    int count = m_textures.size();
     for (int i = 0; i < count; ++i) {
         Texture &tex = m_textures[i];
         if (tex.texture == oldTex) {
@@ -328,162 +297,8 @@ void QSGDistanceFieldGlyphCache::updateRhiTexture(QRhiTexture *oldTex, QRhiTextu
     }
 }
 
-#if defined(QSG_DISTANCEFIELD_CACHE_DEBUG)
-#include <QtGui/qopenglfunctions.h>
-
-void QSGDistanceFieldGlyphCache::saveTexture(GLuint textureId, int width, int height) const
-{
-    QOpenGLFunctions *functions = QOpenGLContext::currentContext()->functions();
-
-    GLuint fboId;
-    functions->glGenFramebuffers(1, &fboId);
-
-    GLuint tmpTexture = 0;
-    functions->glGenTextures(1, &tmpTexture);
-    functions->glBindTexture(GL_TEXTURE_2D, tmpTexture);
-    functions->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    functions->glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    functions->glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    functions->glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    functions->glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    functions->glBindTexture(GL_TEXTURE_2D, 0);
-
-    functions->glBindFramebuffer(GL_FRAMEBUFFER_EXT, fboId);
-    functions->glFramebufferTexture2D(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D,
-                                      tmpTexture, 0);
-
-    functions->glActiveTexture(GL_TEXTURE0);
-    functions->glBindTexture(GL_TEXTURE_2D, textureId);
-
-    functions->glDisable(GL_STENCIL_TEST);
-    functions->glDisable(GL_DEPTH_TEST);
-    functions->glDisable(GL_SCISSOR_TEST);
-    functions->glDisable(GL_BLEND);
-
-    GLfloat textureCoordinateArray[8];
-    textureCoordinateArray[0] = 0.0f;
-    textureCoordinateArray[1] = 0.0f;
-    textureCoordinateArray[2] = 1.0f;
-    textureCoordinateArray[3] = 0.0f;
-    textureCoordinateArray[4] = 1.0f;
-    textureCoordinateArray[5] = 1.0f;
-    textureCoordinateArray[6] = 0.0f;
-    textureCoordinateArray[7] = 1.0f;
-
-    GLfloat vertexCoordinateArray[8];
-    vertexCoordinateArray[0] = -1.0f;
-    vertexCoordinateArray[1] = -1.0f;
-    vertexCoordinateArray[2] =  1.0f;
-    vertexCoordinateArray[3] = -1.0f;
-    vertexCoordinateArray[4] =  1.0f;
-    vertexCoordinateArray[5] =  1.0f;
-    vertexCoordinateArray[6] = -1.0f;
-    vertexCoordinateArray[7] =  1.0f;
-
-    functions->glViewport(0, 0, width, height);
-    functions->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, vertexCoordinateArray);
-    functions->glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, textureCoordinateArray);
-
-    {
-        static const char *vertexShaderSource =
-                "attribute vec4      vertexCoordsArray; \n"
-                "attribute vec2      textureCoordArray; \n"
-                "varying   vec2      textureCoords;     \n"
-                "void main(void) \n"
-                "{ \n"
-                "    gl_Position = vertexCoordsArray;   \n"
-                "    textureCoords = textureCoordArray; \n"
-                "} \n";
-
-        static const char *fragmentShaderSource =
-                "varying   vec2      textureCoords; \n"
-                "uniform   sampler2D         texture;       \n"
-                "void main() \n"
-                "{ \n"
-                "    gl_FragColor = texture2D(texture, textureCoords); \n"
-                "} \n";
-
-        GLuint vertexShader = functions->glCreateShader(GL_VERTEX_SHADER);
-        GLuint fragmentShader = functions->glCreateShader(GL_FRAGMENT_SHADER);
-
-        if (vertexShader == 0 || fragmentShader == 0) {
-            GLenum error = functions->glGetError();
-            qWarning("QSGDistanceFieldGlyphCache::saveTexture: Failed to create shaders. (GL error: %x)",
-                     error);
-            return;
-        }
-
-        functions->glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-        functions->glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-        functions->glCompileShader(vertexShader);
-
-        GLint len = 1;
-        functions->glGetShaderiv(vertexShader, GL_INFO_LOG_LENGTH, &len);
-
-        char infoLog[2048];
-        functions->glGetShaderInfoLog(vertexShader, 2048, NULL, infoLog);
-        if (qstrlen(infoLog) > 0)
-            qWarning("Problems compiling vertex shader:\n %s", infoLog);
-
-        functions->glCompileShader(fragmentShader);
-        functions->glGetShaderInfoLog(fragmentShader, 2048, NULL, infoLog);
-        if (qstrlen(infoLog) > 0)
-            qWarning("Problems compiling fragment shader:\n %s", infoLog);
-
-        GLuint shaderProgram = functions->glCreateProgram();
-        functions->glAttachShader(shaderProgram, vertexShader);
-        functions->glAttachShader(shaderProgram, fragmentShader);
-
-        functions->glBindAttribLocation(shaderProgram, 0, "vertexCoordsArray");
-        functions->glBindAttribLocation(shaderProgram, 1, "textureCoordArray");
-
-        functions->glLinkProgram(shaderProgram);
-        functions->glGetProgramInfoLog(shaderProgram, 2048, NULL, infoLog);
-        if (qstrlen(infoLog) > 0)
-            qWarning("Problems linking shaders:\n %s", infoLog);
-
-        functions->glUseProgram(shaderProgram);
-        functions->glEnableVertexAttribArray(0);
-        functions->glEnableVertexAttribArray(1);
-
-        int textureUniformLocation = functions->glGetUniformLocation(shaderProgram, "texture");
-        functions->glUniform1i(textureUniformLocation, 0);
-    }
-
-    functions->glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    {
-        GLenum error = functions->glGetError();
-        if (error != GL_NO_ERROR)
-            qWarning("glDrawArrays reported error 0x%x", error);
-    }
-
-    uchar *data = new uchar[width * height * 4];
-
-    functions->glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
-    QImage image(data, width, height, QImage::Format_ARGB32);
-
-    QByteArray fileName = m_referenceFont.familyName().toLatin1() + '_' + QByteArray::number(textureId);
-    fileName = fileName.replace('/', '_').replace(' ', '_') + ".png";
-
-    image.save(QString::fromLocal8Bit(fileName));
-
-    {
-        GLenum error = functions->glGetError();
-        if (error != GL_NO_ERROR)
-            qWarning("glReadPixels reported error 0x%x", error);
-    }
-
-    functions->glDisableVertexAttribArray(0);
-    functions->glDisableVertexAttribArray(1);
-
-    functions->glDeleteFramebuffers(1, &fboId);
-    functions->glDeleteTextures(1, &tmpTexture);
-
-    delete[] data;
-}
-#endif
+QSGNodeVisitorEx::~QSGNodeVisitorEx()
+    = default;
 
 void QSGNodeVisitorEx::visitChildren(QSGNode *node)
 {
@@ -547,6 +362,18 @@ void QSGNodeVisitorEx::visitChildren(QSGNode *node)
     }
 }
 
+QSGVisitableNode::~QSGVisitableNode()
+    = default;
+
+QSGInternalRectangleNode::~QSGInternalRectangleNode()
+    = default;
+
+QSGInternalImageNode::~QSGInternalImageNode()
+    = default;
+
+QSGPainterNode::~QSGPainterNode()
+    = default;
+
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug debug, const QSGGuiThreadShaderEffectManager::ShaderInfo::Variable &v)
 {
@@ -585,6 +412,28 @@ QSGLayer::QSGLayer(QSGTexturePrivate &dd)
     : QSGDynamicTexture(dd)
 {
 }
+
+QSGLayer::~QSGLayer()
+    = default;
+
+#if QT_CONFIG(quick_sprite)
+
+QSGSpriteNode::~QSGSpriteNode()
+    = default;
+
+#endif
+
+QSGGuiThreadShaderEffectManager::~QSGGuiThreadShaderEffectManager()
+    = default;
+
+QSGShaderEffectNode::~QSGShaderEffectNode()
+    = default;
+
+QSGGlyphNode::~QSGGlyphNode()
+    = default;
+
+QSGDistanceFieldGlyphConsumer::~QSGDistanceFieldGlyphConsumer()
+    = default;
 
 QT_END_NAMESPACE
 

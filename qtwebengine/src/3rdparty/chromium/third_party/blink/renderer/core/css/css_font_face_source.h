@@ -30,7 +30,7 @@
 #include "third_party/blink/renderer/core/css/font_display.h"
 #include "third_party/blink/renderer/platform/fonts/font_cache_key.h"
 #include "third_party/blink/renderer/platform/fonts/font_selection_types.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/linked_hash_set.h"
@@ -61,6 +61,8 @@ class CORE_EXPORT CSSFontFaceSource
 
   // Returns nullptr unless the source is a loaded RemoteFontFaceSource.
   virtual String GetURL() const { return g_null_atom; }
+
+  virtual bool IsPendingDataUrl() const { return false; }
 
   // Returns nullptr unless the source is a loaded RemoteFontFaceSource.
   virtual const FontCustomPlatformData* GetCustomPlaftormData() const {
@@ -115,4 +117,4 @@ class CORE_EXPORT CSSFontFaceSource
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_FONT_FACE_SOURCE_H_

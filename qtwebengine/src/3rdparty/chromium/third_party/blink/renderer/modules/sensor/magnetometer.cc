@@ -1,10 +1,10 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/sensor/magnetometer.h"
 
-#include "third_party/blink/public/mojom/feature_policy/feature_policy_feature.mojom-blink.h"
+#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
 
 using device::mojom::blink::SensorType;
 
@@ -32,24 +32,24 @@ Magnetometer::Magnetometer(ExecutionContext* execution_context,
              options,
              exception_state,
              SensorType::MAGNETOMETER,
-             {mojom::blink::FeaturePolicyFeature::kMagnetometer}) {}
+             {mojom::blink::PermissionsPolicyFeature::kMagnetometer}) {}
 
-base::Optional<double> Magnetometer::x() const {
+absl::optional<double> Magnetometer::x() const {
   if (hasReading())
     return GetReading().magn.x;
-  return base::nullopt;
+  return absl::nullopt;
 }
 
-base::Optional<double> Magnetometer::y() const {
+absl::optional<double> Magnetometer::y() const {
   if (hasReading())
     return GetReading().magn.y;
-  return base::nullopt;
+  return absl::nullopt;
 }
 
-base::Optional<double> Magnetometer::z() const {
+absl::optional<double> Magnetometer::z() const {
   if (hasReading())
     return GetReading().magn.z;
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 void Magnetometer::Trace(Visitor* visitor) const {

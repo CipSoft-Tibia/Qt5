@@ -1,81 +1,24 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/loader/cors/cors.h"
 
-#include <memory>
 #include <string>
-#include <utility>
 
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "net/http/http_util.h"
 #include "services/network/public/cpp/cors/cors.h"
-#include "services/network/public/cpp/cors/preflight_cache.h"
-#include "services/network/public/cpp/request_mode.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/web_string.h"
-#include "third_party/blink/renderer/platform/loader/cors/cors_error_string.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
-#include "third_party/blink/renderer/platform/network/http_header_map.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
-#include "third_party/blink/renderer/platform/weborigin/kurl.h"
-#include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
-#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
-#include "third_party/blink/renderer/platform/wtf/thread_specific.h"
-#include "url/gurl.h"
-#include "url/origin.h"
 
 namespace blink {
 
 namespace {
-
-base::Optional<std::string> GetHeaderValue(const HTTPHeaderMap& header_map,
-                                           const AtomicString& header_name) {
-  if (header_map.Contains(header_name)) {
-    return header_map.Get(header_name).Latin1();
-  }
-  return base::nullopt;
-}
-
-network::cors::PreflightCache& GetPerThreadPreflightCache() {
-  DEFINE_THREAD_SAFE_STATIC_LOCAL(ThreadSpecific<network::cors::PreflightCache>,
-                                  cache, ());
-  return *cache;
-}
-
-base::Optional<std::string> GetOptionalHeaderValue(
-    const HTTPHeaderMap& header_map,
-    const AtomicString& header_name) {
-  const AtomicString& result = header_map.Get(header_name);
-  if (result.IsNull())
-    return base::nullopt;
-
-  return result.Ascii();
-}
-
-std::unique_ptr<net::HttpRequestHeaders> CreateNetHttpRequestHeaders(
-    const HTTPHeaderMap& header_map) {
-  std::unique_ptr<net::HttpRequestHeaders> request_headers =
-      std::make_unique<net::HttpRequestHeaders>();
-  for (HTTPHeaderMap::const_iterator i = header_map.begin(),
-                                     end = header_map.end();
-       i != end; ++i) {
-    DCHECK(!i->key.IsNull());
-    DCHECK(!i->value.IsNull());
-    request_headers->SetHeader(i->key.Ascii(), i->value.Ascii());
-  }
-  return request_headers;
-}
-
-url::Origin AsUrlOrigin(const SecurityOrigin& origin) {
-  // "file:" origin is treated like an opaque unique origin when
-  // allow-file-access-from-files is not specified. Such origin is not
-  // opaque (i.e., IsOpaque() returns false) but still serializes to
-  // "null".
-  return origin.ToString() == "null" ? url::Origin() : origin.ToUrlOrigin();
-}
 
 // A parser for the value of the Access-Control-Expose-Headers header.
 class HTTPHeaderNameListParser {
@@ -95,15 +38,21 @@ class HTTPHeaderNameListParser {
 
     while (true) {
       ConsumeSpaces();
+      // In RFC 7230, the parser must ignore a reasonable number of empty list
+      // elements for compatibility with legacy list rules.
+      // See: https://datatracker.ietf.org/doc/html/rfc7230#section-7
+      if (value_[pos_] == ',') {
+        ConsumeComma();
+        continue;
+      }
 
-      if (pos_ == value_.length() && !output.empty()) {
-        output.insert(std::string());
+      if (pos_ == value_.length()) {
         return;
       }
 
-      size_t token_start = pos_;
+      wtf_size_t token_start = pos_;
       ConsumeTokenChars();
-      size_t token_size = pos_ - token_start;
+      wtf_size_t token_size = pos_ - token_start;
       if (token_size == 0) {
         output.clear();
         return;
@@ -116,7 +65,8 @@ class HTTPHeaderNameListParser {
         return;
 
       if (value_[pos_] == ',') {
-        ++pos_;
+        if (pos_ < value_.length())
+          ++pos_;
       } else {
         output.clear();
         return;
@@ -125,197 +75,45 @@ class HTTPHeaderNameListParser {
   }
 
  private:
-  // Consumes zero or more spaces (SP and HTAB) from value_.
-  void ConsumeSpaces() {
+  void ConsumePermittedCharacters(
+      base::RepeatingCallback<bool(UChar)> is_permitted) {
     while (true) {
       if (pos_ == value_.length())
         return;
 
-      UChar c = value_[pos_];
-      if (c != ' ' && c != '\t')
+      if (!is_permitted.Run(value_[pos_]))
         return;
       ++pos_;
     }
+  }
+  // Consumes zero or more spaces (SP and HTAB) from value_.
+  void ConsumeSpaces() {
+    ConsumePermittedCharacters(
+        base::BindRepeating([](UChar c) { return c == ' ' || c == '\t'; }));
+  }
+
+  // Consumes zero or more comma from value_.
+  void ConsumeComma() {
+    ConsumePermittedCharacters(
+        base::BindRepeating([](UChar c) { return c == ','; }));
   }
 
   // Consumes zero or more tchars from value_.
   void ConsumeTokenChars() {
-    while (true) {
-      if (pos_ == value_.length())
-        return;
-
-      UChar c = value_[pos_];
-      if (c > 0x7F || !net::HttpUtil::IsTokenChar(c))
-        return;
-      ++pos_;
-    }
+    ConsumePermittedCharacters(base::BindRepeating(
+        [](UChar c) { return c <= 0x7F && net::HttpUtil::IsTokenChar(c); }));
   }
 
   const String value_;
-  size_t pos_;
+  wtf_size_t pos_;
 };
 
 }  // namespace
 
 namespace cors {
 
-base::Optional<network::CorsErrorStatus> CheckAccess(
-    const KURL& response_url,
-    const HTTPHeaderMap& response_header,
-    network::mojom::CredentialsMode credentials_mode,
-    const SecurityOrigin& origin) {
-  return network::cors::CheckAccess(
-      response_url,
-      GetHeaderValue(response_header, http_names::kAccessControlAllowOrigin),
-      GetHeaderValue(response_header,
-                     http_names::kAccessControlAllowCredentials),
-      credentials_mode, AsUrlOrigin(origin));
-}
-
-base::Optional<network::CorsErrorStatus> CheckPreflightAccess(
-    const KURL& response_url,
-    const int response_status_code,
-    const HTTPHeaderMap& response_header,
-    network::mojom::CredentialsMode actual_credentials_mode,
-    const SecurityOrigin& origin) {
-  return network::cors::CheckPreflightAccess(
-      response_url, response_status_code,
-      GetHeaderValue(response_header, http_names::kAccessControlAllowOrigin),
-      GetHeaderValue(response_header,
-                     http_names::kAccessControlAllowCredentials),
-      actual_credentials_mode, AsUrlOrigin(origin));
-}
-
-base::Optional<network::CorsErrorStatus> CheckRedirectLocation(
-    const KURL& url,
-    network::mojom::RequestMode request_mode,
-    const SecurityOrigin* origin,
-    CorsFlag cors_flag) {
-  base::Optional<url::Origin> origin_to_pass;
-  if (origin)
-    origin_to_pass = AsUrlOrigin(*origin);
-
-  // Blink-side implementations rewrite the origin instead of setting the
-  // tainted flag.
-  return network::cors::CheckRedirectLocation(
-      url, request_mode, origin_to_pass, cors_flag == CorsFlag::Set, false);
-}
-
-base::Optional<network::CorsErrorStatus> CheckExternalPreflight(
-    const HTTPHeaderMap& response_header) {
-  return network::cors::CheckExternalPreflight(
-      GetHeaderValue(response_header, http_names::kAccessControlAllowExternal));
-}
-
 bool IsCorsEnabledRequestMode(network::mojom::RequestMode request_mode) {
   return network::cors::IsCorsEnabledRequestMode(request_mode);
-}
-
-base::Optional<network::CorsErrorStatus> EnsurePreflightResultAndCacheOnSuccess(
-    const HTTPHeaderMap& response_header_map,
-    const String& origin,
-    const KURL& request_url,
-    const String& request_method,
-    const HTTPHeaderMap& request_header_map,
-    network::mojom::CredentialsMode request_credentials_mode) {
-  DCHECK(!origin.IsNull());
-  DCHECK(!request_method.IsNull());
-
-  base::Optional<network::mojom::CorsError> error;
-
-  std::unique_ptr<network::cors::PreflightResult> result =
-      network::cors::PreflightResult::Create(
-          request_credentials_mode,
-          GetOptionalHeaderValue(response_header_map,
-                                 http_names::kAccessControlAllowMethods),
-          GetOptionalHeaderValue(response_header_map,
-                                 http_names::kAccessControlAllowHeaders),
-          GetOptionalHeaderValue(response_header_map,
-                                 http_names::kAccessControlMaxAge),
-          &error);
-  if (error)
-    return network::CorsErrorStatus(*error);
-
-  base::Optional<network::CorsErrorStatus> status;
-  status = result->EnsureAllowedCrossOriginMethod(request_method.Ascii());
-  if (status)
-    return status;
-
-  // |is_revalidating| is not needed for blink-side CORS.
-  constexpr bool is_revalidating = false;
-  status = result->EnsureAllowedCrossOriginHeaders(
-      *CreateNetHttpRequestHeaders(request_header_map), is_revalidating);
-  if (status)
-    return status;
-
-  GetPerThreadPreflightCache().AppendEntry(
-      url::Origin::Create(GURL(origin.Ascii())), request_url,
-      net::NetworkIsolationKey(), std::move(result));
-  return base::nullopt;
-}
-
-bool CheckIfRequestCanSkipPreflight(
-    const String& origin,
-    const KURL& url,
-    network::mojom::CredentialsMode credentials_mode,
-    const String& method,
-    const HTTPHeaderMap& request_header_map) {
-  DCHECK(!origin.IsNull());
-  DCHECK(!method.IsNull());
-
-  // |is_revalidating| is not needed for blink-side CORS.
-  constexpr bool is_revalidating = false;
-  return GetPerThreadPreflightCache().CheckIfRequestCanSkipPreflight(
-      url::Origin::Create(GURL(origin.Ascii())), url,
-      net::NetworkIsolationKey(), credentials_mode, method.Ascii(),
-      *CreateNetHttpRequestHeaders(request_header_map), is_revalidating);
-}
-
-// Keep this in sync with the identical function
-// network::cors::CorsURLLoader::CalculateResponseTainting.
-//
-// This is the same as that function except using KURL and SecurityOrigin
-// instead of GURL and url::Origin. We can't combine them because converting
-// SecurityOrigin to url::Origin loses information about origins that are
-// allowed by SecurityPolicy.
-//
-// This function also doesn't use a |tainted_origin| flag because Blink loaders
-// mutate the origin instead of using such a flag.
-network::mojom::FetchResponseType CalculateResponseTainting(
-    const KURL& url,
-    network::mojom::RequestMode request_mode,
-    const SecurityOrigin* origin,
-    const SecurityOrigin* isolated_world_origin,
-    CorsFlag cors_flag) {
-  if (url.ProtocolIsData())
-    return network::mojom::FetchResponseType::kBasic;
-
-  if (cors_flag == CorsFlag::Set) {
-    DCHECK(IsCorsEnabledRequestMode(request_mode));
-    return network::mojom::FetchResponseType::kCors;
-  }
-
-  if (!origin) {
-    // This is actually not defined in the fetch spec, but in this case CORS
-    // is disabled so no one should care this value.
-    return network::mojom::FetchResponseType::kBasic;
-  }
-
-  if (request_mode == network::mojom::RequestMode::kNoCors) {
-    bool can_request = origin->CanRequest(url);
-    if (!can_request && isolated_world_origin)
-      can_request = isolated_world_origin->CanRequest(url);
-    if (!can_request)
-      return network::mojom::FetchResponseType::kOpaque;
-  }
-  return network::mojom::FetchResponseType::kBasic;
-}
-
-bool CalculateCredentialsFlag(
-    network::mojom::CredentialsMode credentials_mode,
-    network::mojom::FetchResponseType response_tainting) {
-  return network::cors::CalculateCredentialsFlag(credentials_mode,
-                                                 response_tainting);
 }
 
 bool IsCorsSafelistedMethod(const String& method) {
@@ -327,9 +125,10 @@ bool IsCorsSafelistedContentType(const String& media_type) {
   return network::cors::IsCorsSafelistedContentType(media_type.Latin1());
 }
 
-bool IsNoCorsSafelistedHeaderName(const String& name) {
+bool IsNoCorsSafelistedHeader(const String& name, const String& value) {
   DCHECK(!name.IsNull());
-  return network::cors::IsNoCorsSafelistedHeaderName(name.Latin1());
+  DCHECK(!value.IsNull());
+  return network::cors::IsNoCorsSafelistedHeader(name.Latin1(), value.Latin1());
 }
 
 bool IsPrivilegedNoCorsHeaderName(const String& name) {
@@ -337,23 +136,9 @@ bool IsPrivilegedNoCorsHeaderName(const String& name) {
   return network::cors::IsPrivilegedNoCorsHeaderName(name.Latin1());
 }
 
-bool IsNoCorsSafelistedHeader(const String& name, const String& value) {
+bool IsNoCorsSafelistedHeaderName(const String& name) {
   DCHECK(!name.IsNull());
-  DCHECK(!value.IsNull());
-  return network::cors::IsNoCorsSafelistedHeader(name.Latin1(), value.Latin1());
-}
-
-Vector<String> CorsUnsafeRequestHeaderNames(const HTTPHeaderMap& headers) {
-  net::HttpRequestHeaders::HeaderVector in;
-  for (const auto& entry : headers) {
-    in.push_back(net::HttpRequestHeaders::HeaderKeyValuePair(
-        entry.key.Latin1(), entry.value.Latin1()));
-  }
-
-  Vector<String> header_names;
-  for (const auto& name : network::cors::CorsUnsafeRequestHeaderNames(in))
-    header_names.push_back(WebString::FromLatin1(name));
-  return header_names;
+  return network::cors::IsNoCorsSafelistedHeaderName(name.Latin1());
 }
 
 PLATFORM_EXPORT Vector<String> PrivilegedNoCorsHeaderNames() {
@@ -363,33 +148,18 @@ PLATFORM_EXPORT Vector<String> PrivilegedNoCorsHeaderNames() {
   return header_names;
 }
 
-bool IsForbiddenHeaderName(const String& name) {
-  return !net::HttpUtil::IsSafeHeader(name.Latin1());
+bool IsForbiddenRequestHeader(const String& name, const String& value) {
+  return !net::HttpUtil::IsSafeHeader(name.Latin1(), value.Latin1());
 }
 
 bool ContainsOnlyCorsSafelistedHeaders(const HTTPHeaderMap& header_map) {
-  Vector<String> header_names = CorsUnsafeRequestHeaderNames(header_map);
-  return header_names.IsEmpty();
-}
-
-bool ContainsOnlyCorsSafelistedOrForbiddenHeaders(
-    const HTTPHeaderMap& headers) {
-  Vector<String> header_names;
-
   net::HttpRequestHeaders::HeaderVector in;
-  for (const auto& entry : headers) {
+  for (const auto& entry : header_map) {
     in.push_back(net::HttpRequestHeaders::HeaderKeyValuePair(
         entry.key.Latin1(), entry.value.Latin1()));
   }
-  // |is_revalidating| is not needed for blink-side CORS.
-  constexpr bool is_revalidating = false;
-  return network::cors::CorsUnsafeNotForbiddenRequestHeaderNames(
-             in, is_revalidating)
-      .empty();
-}
 
-bool IsOkStatus(int status) {
-  return network::cors::IsOkStatus(status);
+  return network::cors::CorsUnsafeRequestHeaderNames(in).empty();
 }
 
 bool CalculateCorsFlag(const KURL& url,
@@ -464,18 +234,19 @@ bool IsCorsSafelistedResponseHeader(const String& name) {
 // No-CORS mode is highly discouraged from using it for new features. Only
 // legacy usages for backward compatibility are allowed except for well-designed
 // usages over the fetch API.
-bool IsNoCorsAllowedContext(mojom::RequestContextType context) {
+bool IsNoCorsAllowedContext(mojom::blink::RequestContextType context) {
   switch (context) {
-    case mojom::RequestContextType::AUDIO:
-    case mojom::RequestContextType::FAVICON:
-    case mojom::RequestContextType::FETCH:
-    case mojom::RequestContextType::IMAGE:
-    case mojom::RequestContextType::OBJECT:
-    case mojom::RequestContextType::PLUGIN:
-    case mojom::RequestContextType::SCRIPT:
-    case mojom::RequestContextType::SHARED_WORKER:
-    case mojom::RequestContextType::VIDEO:
-    case mojom::RequestContextType::WORKER:
+    case mojom::blink::RequestContextType::AUDIO:
+    case mojom::blink::RequestContextType::FAVICON:
+    case mojom::blink::RequestContextType::FETCH:
+    case mojom::blink::RequestContextType::IMAGE:
+    case mojom::blink::RequestContextType::OBJECT:
+    case mojom::blink::RequestContextType::PLUGIN:
+    case mojom::blink::RequestContextType::SCRIPT:
+    case mojom::blink::RequestContextType::SHARED_WORKER:
+    case mojom::blink::RequestContextType::VIDEO:
+    case mojom::blink::RequestContextType::WORKER:
+    case mojom::blink::RequestContextType::SUBRESOURCE_WEBBUNDLE:
       return true;
     default:
       return false;

@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qlayout.h>
 #include "qstyle.h"
 #include <qevent.h>
@@ -75,7 +50,7 @@ private slots:
     void testFusionStyle();
 #endif
     void testWindowsStyle();
-#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA)
     void testWindowsVistaStyle();
 #endif
 #ifdef Q_OS_MAC
@@ -83,7 +58,6 @@ private slots:
 #endif
     void testStyleFactory();
     void testProxyStyle();
-    void pixelMetric();
 #if !defined(QT_NO_STYLE_WINDOWS) && !defined(QT_NO_STYLE_FUSION)
     void progressBarChangeStyle();
 #endif
@@ -93,6 +67,11 @@ private slots:
 
     void testProxyCalled();
     void testStyleOptionInit();
+
+    void sliderPositionFromValue_data();
+    void sliderPositionFromValue();
+    void sliderValueFromPosition_data();
+    void sliderValueFromPosition();
 private:
     bool testAllFunctions(QStyle *);
     bool testScrollBarSubControls(const QStyle *style);
@@ -184,9 +163,6 @@ void tst_QStyle::drawItemPixmap()
     QVERIFY(image.reinterpretAsFormat(QImage::Format_RGB32));
     const QRgb *bits = reinterpret_cast<const QRgb *>(image.constBits());
     const QRgb *end = bits + image.sizeInBytes() / sizeof(QRgb);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "QWidget::resize does not work on WinRT", Continue);
-#endif
     QVERIFY(std::all_of(bits, end, [green] (QRgb r) { return r == green; }));
 }
 
@@ -194,7 +170,7 @@ bool tst_QStyle::testAllFunctions(QStyle *style)
 {
     QStyleOption opt;
     QWidget testWidget;
-    opt.init(&testWidget);
+    opt.initFrom(&testWidget);
 
     testWidget.setStyle(style);
 
@@ -222,24 +198,24 @@ bool tst_QStyle::testAllFunctions(QStyle *style)
         QPixmap surface(QSize(200, 200));
         QPainter painter(&surface);
         QStyleOptionComboBox copt1;
-        copt1.init(&testWidget);
+        copt1.initFrom(&testWidget);
 
         QStyleOptionGroupBox copt2;
-        copt2.init(&testWidget);
+        copt2.initFrom(&testWidget);
         QStyleOptionSizeGrip copt3;
-        copt3.init(&testWidget);
+        copt3.initFrom(&testWidget);
         QStyleOptionSlider copt4;
-        copt4.init(&testWidget);
+        copt4.initFrom(&testWidget);
         copt4.minimum = 0;
         copt4.maximum = 100;
         copt4.tickInterval = 25;
         copt4.sliderValue = 50;
         QStyleOptionSpinBox copt5;
-        copt5.init(&testWidget);
+        copt5.initFrom(&testWidget);
         QStyleOptionTitleBar copt6;
-        copt6.init(&testWidget);
+        copt6.initFrom(&testWidget);
         QStyleOptionToolButton copt7;
-        copt7.init(&testWidget);
+        copt7.initFrom(&testWidget);
         QStyleOptionComplex copt9;
         copt9.initFrom(&testWidget);
 
@@ -274,7 +250,7 @@ bool tst_QStyle::testAllFunctions(QStyle *style)
 
 bool tst_QStyle::testScrollBarSubControls(const QStyle *style)
 {
-    const bool isMacStyle = style->objectName().compare(QLatin1String("macintosh"),
+    const bool isMacStyle = style->objectName().compare(QLatin1String("macos"),
                                                         Qt::CaseInsensitive) == 0;
     QScrollBar scrollBar;
     setFrameless(&scrollBar);
@@ -320,7 +296,7 @@ void tst_QStyle::testWindowsStyle()
     wstyle->drawControl(QStyle::CE_ProgressBar, &pb, &painter, nullptr);
 }
 
-#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN) && !defined(QT_NO_STYLE_WINDOWSVISTA)
 void tst_QStyle::testWindowsVistaStyle()
 {
     QScopedPointer<QStyle> vistastyle(QStyleFactory::create("WindowsVista"));
@@ -332,7 +308,7 @@ void tst_QStyle::testWindowsVistaStyle()
 #ifdef Q_OS_MAC
 void tst_QStyle::testMacStyle()
 {
-    QStyle *mstyle = QStyleFactory::create("Macintosh");
+    QStyle *mstyle = QStyleFactory::create("macos");
     QVERIFY(testAllFunctions(mstyle));
     delete mstyle;
 }
@@ -347,57 +323,6 @@ void MyWidget::paintEvent(QPaintEvent *)
     style()->drawItemPixmap(&p, rect(), Qt::AlignCenter, big);
 }
 
-
-class Qt42Style : public QCommonStyle
-{
-    Q_OBJECT
-public:
-    int pixelMetric(PixelMetric metric, const QStyleOption *option = nullptr,
-                    const QWidget *widget = nullptr) const override;
-
-    int margin_toplevel = 10;
-    int margin = 5;
-    int spacing = 0;
-};
-
-int Qt42Style::pixelMetric(PixelMetric metric, const QStyleOption * /* option = 0*/,
-                                   const QWidget * /* widget = 0*/ ) const
-{
-    switch (metric) {
-        case QStyle::PM_DefaultTopLevelMargin:
-            return margin_toplevel;
-        case QStyle::PM_DefaultChildMargin:
-            return margin;
-        case QStyle::PM_DefaultLayoutSpacing:
-            return spacing;
-        default:
-            break;
-    }
-    return -1;
-}
-
-
-void tst_QStyle::pixelMetric()
-{
-    QScopedPointer<Qt42Style> style(new Qt42Style);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultTopLevelMargin), 10);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultChildMargin), 5);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultLayoutSpacing), 0);
-
-    style->margin_toplevel = 0;
-    style->margin = 0;
-    style->spacing = 0;
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultTopLevelMargin), 0);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultChildMargin), 0);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultLayoutSpacing), 0);
-
-    style->margin_toplevel = -1;
-    style->margin = -1;
-    style->spacing = -1;
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultTopLevelMargin), -1);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultChildMargin), -1);
-    QCOMPARE(style->pixelMetric(QStyle::PM_DefaultLayoutSpacing), -1);
-}
 
 #if !defined(QT_NO_STYLE_WINDOWS) && !defined(QT_NO_STYLE_FUSION)
 void tst_QStyle::progressBarChangeStyle()
@@ -567,9 +492,6 @@ void tst_QStyle::testFrameOnlyAroundContents()
     area.verticalScrollBar()->setStyle(&frameStyle);
     area.setStyle(&frameStyle);
     // Test that we reserve space for scrollbar spacing
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "QWidget::setGeometry does not work on WinRT", Continue);
-#endif
     QCOMPARE(viewPortWidth, area.viewport()->width() + SCROLLBAR_SPACING);
 }
 
@@ -596,13 +518,13 @@ void tst_QStyle::testProxyCalled()
     QToolButton b;
     b.setArrowType(Qt::DownArrow);
     QStyleOptionToolButton opt;
-    opt.init(&b);
+    opt.initFrom(&b);
     opt.features |= QStyleOptionToolButton::Arrow;
     QPixmap surface(QSize(200, 200));
     QPainter painter(&surface);
 
     const QStringList keys = QStyleFactory::keys();
-    QVector<QStyle*> styles;
+    QList<QStyle *> styles;
     styles.reserve(keys.size() + 1);
 
     styles << new QCommonStyle();
@@ -711,13 +633,116 @@ void tst_QStyle::testStyleOptionInit()
     QStringList keys = QStyleFactory::keys();
     keys.prepend(QString()); // QCommonStyle marker
 
-    for (const QString &key : qAsConst(keys)) {
+    for (const QString &key : std::as_const(keys)) {
         QStyle* style = key.isEmpty() ? new QCommonStyle : QStyleFactory::create(key);
         TestStyleOptionInitProxy testStyle;
         testStyle.setBaseStyle(style);
         testAllFunctions(style);
         QVERIFY(!testStyle.invalidOptionsDetected);
     }
+}
+
+void tst_QStyle::sliderPositionFromValue_data()
+{
+    QTest::addColumn<int>("min");
+    QTest::addColumn<int>("max");
+    QTest::addColumn<int>("value");
+    QTest::addColumn<int>("span");
+    QTest::addColumn<bool>("upsideDown");
+    QTest::addColumn<int>("position");
+
+    QTest::addRow("no span") << 12 << 56 << 34 << 0 << false << 0;
+    QTest::addRow("no span inverse") << 12 << 56 << 34 << 0 << true << 0;
+
+    QTest::addRow("value too small") << 34 << 56 << 12 << 2000 << false << 0;
+    QTest::addRow("value too small inverse") << 34 << 56 << 12 << 2000 << true << 2000;
+
+    QTest::addRow("no-range") << 12 << 12 << 12 << 2000 << false << 0;
+    QTest::addRow("no-range-inverse") << 12 << 12 << 12 << 2000 << true << 0;
+
+    QTest::addRow("close-to-max") << 12 << 34 << 33 << 2000 << false << 1909;
+    QTest::addRow("at-max") << 12 << 34 << 34 << 2000 << false << 2000;
+    QTest::addRow("value too large") << 12 << 34 << 35 << 2000 << false << 2000;
+    QTest::addRow("close-to-max-inverse") << 12 << 34 << 33 << 2000 << true << 91;
+    QTest::addRow("at-max-inverse") << 12 << 34 << 34 << 2000 << true << 0;
+    QTest::addRow("value too large-inverse") << 12 << 34 << 35 << 2000 << true << 0;
+
+    QTest::addRow("big-range") << 100000 << 700000 << 250000 << 2000 << false << 500;
+    QTest::addRow("big-range-inverse") << 100000 << 700000 << 250000 << 2000 << true << 1500;
+
+    QTest::addRow("across-zero") << -1000 << 1000 << -500 << 100 << false << 25;
+    QTest::addRow("across-zero-inverse") << -1000 << 1000 << -500 << 100 << true << 75;
+
+    QTest::addRow("span>range") << 0 << 100 << 60 << 2000 << false << 1200;
+    QTest::addRow("span>range-inverse") << 0 << 100 << 60 << 2000 << true << 800;
+
+    QTest::addRow("overflow1 (QTBUG-101581)") << -1 << INT_MAX << 235 << 891 << false << 0;
+    QTest::addRow("overflow2") << INT_MIN << INT_MAX << 10 << 100 << false << 50;
+    QTest::addRow("overflow2-inverse") << INT_MIN << INT_MAX << 10 << 100 << true << 49;
+    QTest::addRow("overflow3") << INT_MIN << INT_MAX << -10 << 100 << false << 49;
+    QTest::addRow("overflow3-inverse") << INT_MIN << INT_MAX << -10 << 100 << true << 50;
+}
+
+void tst_QStyle::sliderPositionFromValue()
+{
+    QFETCH(int, min);
+    QFETCH(int, max);
+    QFETCH(int, value);
+    QFETCH(int, span);
+    QFETCH(bool, upsideDown);
+    QFETCH(int, position);
+
+    QCOMPARE(QStyle::sliderPositionFromValue(min, max, value, span, upsideDown), position);
+}
+
+void tst_QStyle::sliderValueFromPosition_data()
+{
+    QTest::addColumn<int>("min");
+    QTest::addColumn<int>("max");
+    QTest::addColumn<int>("position");
+    QTest::addColumn<int>("span");
+    QTest::addColumn<bool>("upsideDown");
+    QTest::addColumn<int>("value");
+
+    QTest::addRow("position zero") << 0 << 100 << 0 << 2000 << false << 0;
+    QTest::addRow("position zero inverse") << 0 << 100 << 0 << 2000 << true << 100;
+
+    QTest::addRow("span zero") << 0 << 100 << 1200 << 0 << false << 0;
+    QTest::addRow("span zero inverse") << 0 << 100 << 1200 << 0 << true << 100;
+
+    QTest::addRow("position > span") << -300 << -200 << 2 << 1 << false << -200;
+    QTest::addRow("position > span inverse") << -300 << -200 << 2 << 1 << true << -300;
+
+    QTest::addRow("large") << 0 << 100 << 1200 << 2000 << false << 60;
+    QTest::addRow("large-inverse") << 0 << 100 << 1200 << 2000 << true << 40;
+
+    QTest::addRow("normal") << 0 << 100 << 12 << 20 << false << 60;
+    QTest::addRow("inverse") << 0 << 100 << 12 << 20 << true << 40;
+
+    QTest::addRow("overflow1") << -1 << INT_MAX << 10 << 10 << false << INT_MAX;
+    QTest::addRow("overflow1-inverse") << -1 << INT_MAX << 10 << 10 << true << -1;
+    QTest::addRow("overflow2") << INT_MIN << INT_MAX << 5 << 10 << false << 0;
+    QTest::addRow("overflow2-inverse") << INT_MIN << INT_MAX << 5 << 10 << true << -1;
+    QTest::addRow("overflow3") << INT_MIN << 0 << 0 << 10 << false << INT_MIN;
+    QTest::addRow("overflow3-inverse") << INT_MIN << 0 << 0 << 10 << true << 0;
+
+    QTest::addRow("overflow4") << 0 << INT_MAX << INT_MAX/2-6 << INT_MAX/2-5 << false << INT_MAX-2;
+    QTest::addRow("overflow4-inverse") << 0 << INT_MAX << INT_MAX/2-6 << INT_MAX/2-5 << true << 2;
+
+    QTest::addRow("overflow5") << 0 << 4 << INT_MAX/4 << INT_MAX << false << 1;
+    QTest::addRow("overflow5-inverse") << 0 << 4 << INT_MAX/4 << INT_MAX << true << 3;
+}
+
+void tst_QStyle::sliderValueFromPosition()
+{
+    QFETCH(int, min);
+    QFETCH(int, max);
+    QFETCH(int, position);
+    QFETCH(int, span);
+    QFETCH(bool, upsideDown);
+    QFETCH(int, value);
+
+    QCOMPARE(QStyle::sliderValueFromPosition(min, max, position, span, upsideDown), value);
 }
 
 QTEST_MAIN(tst_QStyle)

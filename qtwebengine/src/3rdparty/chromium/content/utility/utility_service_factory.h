@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,9 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/sequenced_task_runner.h"
-#include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "services/service_manager/public/cpp/binder_registry.h"
-#include "services/service_manager/public/cpp/service.h"
-#include "services/service_manager/public/mojom/service.mojom.h"
+#include "base/task/sequenced_task_runner.h"
+#include "mojo/public/cpp/system/message_pipe.h"
 
 namespace content {
 
@@ -22,14 +18,14 @@ namespace content {
 class UtilityServiceFactory {
  public:
   UtilityServiceFactory();
+
+  UtilityServiceFactory(const UtilityServiceFactory&) = delete;
+  UtilityServiceFactory& operator=(const UtilityServiceFactory&) = delete;
+
   ~UtilityServiceFactory();
 
-  void RunService(
-      const std::string& service_name,
-      mojo::PendingReceiver<service_manager::mojom::Service> receiver);
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(UtilityServiceFactory);
+  void RunService(const std::string& service_name,
+                  mojo::ScopedMessagePipeHandle service_pipe);
 };
 
 }  // namespace content

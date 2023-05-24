@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,13 +12,14 @@
 #include "third_party/blink/renderer/core/animation/size_interpolation_functions.h"
 #include "third_party/blink/renderer/core/animation/size_list_property_functions.h"
 #include "third_party/blink/renderer/core/css/css_value_list.h"
+#include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver_state.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 
 namespace blink {
 
-class UnderlyingSizeListChecker
+class UnderlyingSizeListChecker final
     : public CSSInterpolationType::CSSConversionChecker {
  public:
   explicit UnderlyingSizeListChecker(const NonInterpolableList& underlying_list)
@@ -47,7 +48,7 @@ class UnderlyingSizeListChecker
   scoped_refptr<const NonInterpolableList> underlying_list_;
 };
 
-class InheritedSizeListChecker
+class InheritedSizeListChecker final
     : public CSSInterpolationType::CSSConversionChecker {
  public:
   InheritedSizeListChecker(const CSSProperty& property,
@@ -116,10 +117,12 @@ InterpolationValue CSSSizeListInterpolationType::MaybeConvertNeutral(
 }
 
 InterpolationValue CSSSizeListInterpolationType::MaybeConvertInitial(
-    const StyleResolverState&,
+    const StyleResolverState& state,
     ConversionCheckers&) const {
   return ConvertSizeList(
-      SizeListPropertyFunctions::GetInitialSizeList(CssProperty()), 1);
+      SizeListPropertyFunctions::GetInitialSizeList(
+          CssProperty(), state.GetDocument().GetStyleResolver().InitialStyle()),
+      1);
 }
 
 InterpolationValue CSSSizeListInterpolationType::MaybeConvertInherit(
@@ -129,7 +132,8 @@ InterpolationValue CSSSizeListInterpolationType::MaybeConvertInherit(
       CssProperty(), *state.ParentStyle());
   conversion_checkers.push_back(std::make_unique<InheritedSizeListChecker>(
       CssProperty(), inherited_size_list));
-  return ConvertSizeList(inherited_size_list, state.Style()->EffectiveZoom());
+  return ConvertSizeList(inherited_size_list,
+                         state.StyleBuilder().EffectiveZoom());
 }
 
 InterpolationValue CSSSizeListInterpolationType::MaybeConvertValue(
@@ -189,7 +193,7 @@ void CSSSizeListInterpolationType::ApplyStandardPropertyValue(
         *interpolable_list.Get(i * 2 + 1), non_interpolable_list.Get(i * 2 + 1),
         state.CssToLengthConversionData());
   }
-  SizeListPropertyFunctions::SetSizeList(CssProperty(), *state.Style(),
+  SizeListPropertyFunctions::SetSizeList(CssProperty(), state.StyleBuilder(),
                                          size_list);
 }
 

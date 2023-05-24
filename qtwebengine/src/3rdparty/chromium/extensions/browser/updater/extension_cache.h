@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,12 @@
 
 #include <string>
 
-#include "base/callback_forward.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 
 namespace extensions {
+
+class CrxInstallError;
 
 // ExtensionCache interface that caches extensions .crx files to share them
 // between multiple users and profiles on the machine.
@@ -23,6 +24,10 @@ class ExtensionCache {
                               bool file_ownership_passed)>;
 
   ExtensionCache() = default;
+
+  ExtensionCache(const ExtensionCache&) = delete;
+  ExtensionCache& operator=(const ExtensionCache&) = delete;
+
   virtual ~ExtensionCache() = default;
 
   // Initialize cache in background. The |callback| is called when cache ready.
@@ -58,8 +63,14 @@ class ExtensionCache {
                             const std::string& version,
                             PutExtensionCallback callback) = 0;
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(ExtensionCache);
+  // Should be called when CrxInstaller fails to install an extension with the
+  // given id and hash. Allows the cache to respond by removing the
+  // corresponding cached entry when applicable.
+  //
+  // Returns whether the extension was removed in response to the given error.
+  virtual bool OnInstallFailed(const std::string& id,
+                               const std::string& hash,
+                               const CrxInstallError& error) = 0;
 };
 
 }  // namespace extensions

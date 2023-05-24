@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #ifndef TESTTYPES_H
 #define TESTTYPES_H
 
+#include <QtCore/qiterable.h>
 #include <QtCore/qobject.h>
 #include <QtQml/qqml.h>
 #include <QtQml/qqmlexpression.h>
@@ -44,6 +20,8 @@
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qjsonvalue.h>
+#include <QtCore/qproperty.h>
+#include <QtCore/qtimezone.h>
 #include <QtQml/qjsvalue.h>
 #include <QtQml/qqmlscriptstring.h>
 #include <QtQml/qqmlcomponent.h>
@@ -53,6 +31,7 @@
 
 #include <private/qqmlengine_p.h>
 #include <private/qv4qobjectwrapper_p.h>
+#include <private/qqmlcomponentattached_p.h>
 
 class MyQmlAttachedObject : public QObject
 {
@@ -102,7 +81,7 @@ class MyQmlObject : public QObject
     Q_PROPERTY(QObject *objectProperty READ objectProperty WRITE setObjectProperty NOTIFY objectChanged)
     Q_PROPERTY(QQmlListProperty<QObject> objectListProperty READ objectListProperty CONSTANT)
     Q_PROPERTY(int resettableProperty READ resettableProperty WRITE setResettableProperty RESET resetProperty)
-    Q_PROPERTY(QRegExp regExp READ regExp WRITE setRegExp)
+    Q_PROPERTY(int resettableProperty2 READ resettableProperty2 WRITE setResettableProperty2 RESET resetProperty2 BINDABLE bindableResetProperty2)
     Q_PROPERTY(QRegularExpression regularExpression READ regularExpression WRITE setRegularExpression)
     Q_PROPERTY(int nonscriptable READ nonscriptable WRITE setNonscriptable SCRIPTABLE false)
     Q_PROPERTY(int intProperty READ intProperty WRITE setIntProperty NOTIFY intChanged)
@@ -149,7 +128,7 @@ public:
         emit objectChanged();
     }
 
-    QQmlListProperty<QObject> objectListProperty() { return QQmlListProperty<QObject>(this, m_objectQList); }
+    QQmlListProperty<QObject> objectListProperty() { return QQmlListProperty<QObject>(this, &m_objectQList); }
 
     bool methodCalled() const { return m_methodCalled; }
     bool methodIntCalled() const { return m_methodIntCalled; }
@@ -168,10 +147,12 @@ public:
 
     int resettableProperty() const { return m_resetProperty; }
     void setResettableProperty(int v) { m_resetProperty = v; }
-    void resetProperty() { m_resetProperty = 13; }
+    void resetProperty() { m_resetProperty = 13; ++m_resetCount; }
 
-    QRegExp regExp() { return m_regExp; }
-    void setRegExp(const QRegExp &regExp) { m_regExp = regExp; }
+    int resettableProperty2() const { return m_resetProperty2; }
+    void setResettableProperty2(int i) { m_resetProperty2 = i; }
+    void resetProperty2(){ m_resetProperty2 = 13; ++ m_resetCount; }
+    QBindable<int> bindableResetProperty2() { return &m_resetProperty2; }
 
     QRegularExpression regularExpression() { return m_regularExpression; }
     void setRegularExpression(const QRegularExpression &regularExpression)
@@ -266,6 +247,7 @@ public slots:
     void v8function(QQmlV4Function*);
     void registeredFlagMethod(Qt::MouseButtons v) { m_buttons = v; }
     QString slotWithReturnValue(const QString &arg) { return arg; }
+    int resetCount() { return m_resetCount; }
 
 private:
     friend class tst_qqmlecmascript;
@@ -277,8 +259,9 @@ private:
     QUrl m_url;
     QList<QObject *> m_objectQList;
     int m_value;
+    Q_OBJECT_BINDABLE_PROPERTY(MyQmlObject, int, m_resetProperty2)
     int m_resetProperty;
-    QRegExp m_regExp;
+    int m_resetCount = 0;
     QRegularExpression m_regularExpression;
     QVariant m_variant;
     QJSValue m_qjsvalue;
@@ -324,7 +307,7 @@ class MyQmlContainer : public QObject
 public:
     MyQmlContainer() {}
 
-    QQmlListProperty<MyQmlObject> children() { return QQmlListProperty<MyQmlObject>(this, m_children); }
+    QQmlListProperty<MyQmlObject> children() { return QQmlListProperty<MyQmlObject>(this, &m_children); }
 
 private:
     QList<MyQmlObject*> m_children;
@@ -401,6 +384,116 @@ private:
     int m_value;
     QObject *m_object;
     QObject *m_object2;
+};
+
+class MyImmediateObject : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int value READ value WRITE setValue NOTIFY valueChanged)
+    Q_PROPERTY(QObject *objectProperty READ objectProperty WRITE setObjectProperty)
+    Q_PROPERTY(QObject *objectProperty2 READ objectProperty2 WRITE setObjectProperty2)
+    Q_CLASSINFO("ImmediatePropertyNames", "objectName")
+
+public:
+    int value() const { return m_value; }
+    void setValue(int v) { m_value = v; emit valueChanged(); }
+
+    QObject *objectProperty() const { return m_object; }
+    void setObjectProperty(QObject *obj) { m_object = obj; }
+
+    QObject *objectProperty2() const { return m_object2; }
+    void setObjectProperty2(QObject *obj) { m_object2 = obj; }
+
+signals:
+    void valueChanged();
+
+private:
+    int m_value = 0;
+    QObject *m_object = nullptr;
+    QObject *m_object2 = nullptr;
+};
+
+class BrokenImmediateDeferred : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int value MEMBER m_value)
+    Q_CLASSINFO("ImmediatePropertyNames", "objectName");
+    Q_CLASSINFO("DeferredPropertyNames", "value");
+public:
+    int m_value = 5;
+};
+
+class DerivedFromImmediate : public MyImmediateObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int value2 READ value2 WRITE setValue2 NOTIFY value2Changed)
+public:
+    int value2() const { return m_value2; }
+    void setValue2(int v) { m_value2 = v; emit value2Changed(); }
+
+signals:
+    void value2Changed();
+
+private:
+    int m_value2 = 0;
+};
+
+class NonDeferredBased : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int baseValue READ baseValue WRITE setBaseValue NOTIFY baseValueChanged)
+signals:
+    void baseValueChanged();
+public:
+    int baseValue() const { return m_baseValue; }
+
+    void setBaseValue(int i) {
+        if (i == m_baseValue)
+            return;
+        m_baseValue = i;
+        emit baseValueChanged();
+    }
+
+private:
+    int m_baseValue = 0;
+};
+
+class DeferredChild : public NonDeferredBased
+{
+    Q_OBJECT
+    Q_CLASSINFO("DeferredPropertyNames", "baseValue")
+};
+
+class DeferredChildOverwrite : public DeferredChild
+{
+    Q_OBJECT
+    Q_CLASSINFO("DeferredPropertyNames", "")
+};
+
+class ChildDeferringParent : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("DeferredPropertyNames", "childValue")
+};
+
+class DeferredByParentChild : public ChildDeferringParent
+{
+    Q_OBJECT
+    Q_PROPERTY(int childValue READ childValue WRITE setchildValue NOTIFY childValueChanged)
+signals:
+    void childValueChanged();
+public:
+    int childValue() const { return m_childValue; }
+
+    void setchildValue(int i) {
+        if (i == m_childValue)
+            return;
+        m_childValue = i;
+        emit childValueChanged();
+    }
+
+private:
+    int m_childValue = 0;
 };
 
 class MyVeryDeferredObject : public QObject
@@ -612,7 +705,7 @@ public:
     QDate dateProperty() const {
        return datePropertyValue;
     }
-    void setDateProperty(const QDate &v) {
+    void setDateProperty(QDate v) {
         datePropertyValue = v;
     }
 
@@ -620,7 +713,7 @@ public:
     QTime timeProperty() const {
        return timePropertyValue;
     }
-    void setTimeProperty(const QTime &v) {
+    void setTimeProperty(QTime v) {
         timePropertyValue = v;
     }
 
@@ -768,6 +861,19 @@ struct NonRegisteredType
 
 };
 
+struct CompletelyUnknown;
+
+class SingletonWithEnum : public QObject
+{
+    Q_OBJECT
+    Q_ENUMS(TestEnum)
+public:
+    enum TestEnum {
+        TestValue = 42,
+        TestValue_MinusOne = -1
+    };
+};
+
 class MyInvokableObject : public MyInvokableBaseObject
 {
     Q_OBJECT
@@ -789,7 +895,7 @@ public:
     Q_INVOKABLE qreal method_NoArgs_real() { invoke(2); return 19.75; }
     Q_INVOKABLE QPointF method_NoArgs_QPointF() { invoke(3); return QPointF(123, 4.5); }
     Q_INVOKABLE QObject *method_NoArgs_QObject() { invoke(4); return this; }
-    Q_INVOKABLE MyInvokableObject *method_NoArgs_unknown() { invoke(5); return this; }
+    Q_INVOKABLE CompletelyUnknown *method_NoArgs_unknown() { invoke(5); return nullptr; }
     Q_INVOKABLE QJSValue method_NoArgs_QScriptValue() { invoke(6); return QJSValue("Hello world"); }
     Q_INVOKABLE QVariant method_NoArgs_QVariant() { invoke(7); return QVariant("QML rocks"); }
 
@@ -825,12 +931,93 @@ public:
 
     Q_INVOKABLE void method_unknown(NonRegisteredType) { invoke(28); }
 
+    Q_INVOKABLE void method_overload2(QQmlV4Function *v)
+    {
+        invoke(31);
+        QV4::Scope scope(v->v4engine());
+        for (int i = 0, end = v->length(); i != end; ++i) {
+            QV4::ScopedValue v4Value(scope, (*v)[i]);
+            m_actuals.append(QV4::ExecutionEngine::toVariant(v4Value, QMetaType()));
+        }
+    }
+    Q_INVOKABLE void method_overload2(const QVariantList &list)
+    {
+        invoke(32);
+        m_actuals << QVariant(list);
+    }
+    Q_INVOKABLE void method_overload2(const QVariantMap &map) { invoke(33); m_actuals << map; }
+    Q_INVOKABLE void method_overload2(int a) { invoke(34); m_actuals << a; }
+    Q_INVOKABLE void method_overload2(int a, int b) { invoke(35); m_actuals << a << b; }
+    Q_INVOKABLE void method_overload2(QString a) { invoke(36); m_actuals << a; }
+    Q_INVOKABLE void method_overload2() { invoke(37); }
+
+    Q_INVOKABLE void method_overload3(char c, QUrl a, QDateTime b) { invoke(38); m_actuals << c << a << b; }
+    Q_INVOKABLE void method_overload3(char c, QJsonValue a, QTime b) { invoke(39); m_actuals << c << a << b; }
+    Q_PROPERTY(QFont someFont READ someFont WRITE setSomeFont NOTIFY someFontChanged);
+    QFont someFont() { return m_someFont; }
+    void setSomeFont(const QFont &f)
+    {
+        if (f == m_someFont)
+            return;
+        m_someFont = f;
+        emit someFontChanged();
+    }
+    Q_INVOKABLE void method_gadget(QFont f)
+    {
+        invoke(40);
+        m_actuals << f;
+    }
+
+    Q_INVOKABLE void method_qobject(QObject *o)
+    {
+        invoke(41);
+        m_actuals << QVariant::fromValue(o);
+    }
+
+    Q_INVOKABLE QQmlComponent *someComponent() { return &m_someComponent; }
+    Q_INVOKABLE void method_component(QQmlComponent *c)
+    {
+        invoke(42);
+        m_actuals << QVariant::fromValue(c);
+    }
+
+    Q_INVOKABLE MyTypeObject *someTypeObject() { return &m_someTypeObject; }
+    Q_INVOKABLE void method_component(MyTypeObject *c)
+    {
+        invoke(43);
+        m_actuals << QVariant::fromValue(c);
+    }
+
+    Q_INVOKABLE void method_component(const QUrl &c)
+    {
+        invoke(44);
+        m_actuals << QVariant::fromValue(c);
+    }
+
+    Q_INVOKABLE void method_typeWrapper(QQmlComponentAttached *attached)
+    {
+        m_actuals << QVariant::fromValue(attached);
+    }
+
+    Q_INVOKABLE void method_typeWrapper(SingletonWithEnum *singleton)
+    {
+        m_actuals << QVariant::fromValue(singleton);
+    }
+
 private:
     friend class MyInvokableBaseObject;
     void invoke(int idx) { if (m_invoked != -1) m_invokedError = true; m_invoked = idx;}
     int m_invoked;
     bool m_invokedError;
     QVariantList m_actuals;
+
+    QFont m_someFont;
+    QQmlComponent m_someComponent;
+    MyTypeObject m_someTypeObject;
+
+public:
+Q_SIGNALS:
+    void someFontChanged();
 };
 
 MyInvokableBaseObject::~MyInvokableBaseObject() {}
@@ -918,7 +1105,7 @@ class DefaultPropertyExtendedObject : public QObject
     Q_PROPERTY(QObject *firstProperty READ firstProperty WRITE setFirstProperty)
     Q_PROPERTY(QObject *secondProperty READ secondProperty WRITE setSecondProperty)
 public:
-    DefaultPropertyExtendedObject(QObject *parent = 0) : QObject(parent), m_firstProperty(0), m_secondProperty(0) {}
+    DefaultPropertyExtendedObject(QObject *parent = nullptr) : QObject(parent), m_firstProperty(0), m_secondProperty(0) {}
 
     QObject *firstProperty() const { return m_firstProperty; }
     QObject *secondProperty() const { return m_secondProperty; }
@@ -1120,7 +1307,7 @@ class ScarceResourceObject : public QObject
     Q_OBJECT
     Q_PROPERTY(QPixmap scarceResource READ scarceResource WRITE setScarceResource NOTIFY scarceResourceChanged)
 public:
-    ScarceResourceObject(QObject *parent = 0) : QObject(parent), m_value(100, 100) { m_value.fill(Qt::blue); }
+    ScarceResourceObject(QObject *parent = nullptr) : QObject(parent), m_value(100, 100) { m_value.fill(Qt::blue); }
     ~ScarceResourceObject() {}
 
     QPixmap scarceResource() const { return m_value; }
@@ -1156,7 +1343,7 @@ class testQObjectApi : public QObject
     Q_PROPERTY (int qobjectTestWritableFinalProperty READ qobjectTestWritableFinalProperty WRITE setQObjectTestWritableFinalProperty NOTIFY qobjectTestWritableFinalPropertyChanged FINAL)
 
 public:
-    testQObjectApi(QObject* parent = 0)
+    testQObjectApi(QObject *parent = nullptr)
         : QObject(parent), m_testProperty(0), m_testWritableProperty(0), m_testWritableFinalProperty(0), m_methodCallCount(0), m_trackedObject(0)
     {
     }
@@ -1218,7 +1405,7 @@ class testQObjectApiTwo : public QObject
     Q_PROPERTY(int twoTestProperty READ twoTestProperty WRITE setTwoTestProperty NOTIFY twoTestPropertyChanged)
 
 public:
-    testQObjectApiTwo(QObject *parent = 0) : QObject(parent), m_ttp(42) {}
+    testQObjectApiTwo(QObject *parent = nullptr) : QObject(parent), m_ttp(42) {}
     ~testQObjectApiTwo() {}
 
     void setTwoTestProperty(int v) { m_ttp = v; emit twoTestPropertyChanged(); }
@@ -1236,7 +1423,7 @@ class testImportOrderApi : public QObject
     Q_OBJECT
 
 public:
-    testImportOrderApi(int value, QObject *parent = 0) : QObject(parent), m_value(value) {}
+    testImportOrderApi(int value, QObject *parent = nullptr) : QObject(parent), m_value(value) {}
 
     Q_PROPERTY(int value READ value)
 
@@ -1251,7 +1438,7 @@ class CircularReferenceObject : public QObject
     Q_OBJECT
 
 public:
-    CircularReferenceObject(QObject *parent = 0)
+    CircularReferenceObject(QObject *parent = nullptr)
         : QObject(parent), m_dtorCount(0)
     {
     }
@@ -1266,7 +1453,7 @@ public:
         m_dtorCount = dtorCount;
     }
 
-    Q_INVOKABLE CircularReferenceObject *generate(QObject *parent = 0)
+    Q_INVOKABLE CircularReferenceObject *generate(QObject *parent = nullptr)
     {
         CircularReferenceObject *retn = new CircularReferenceObject(parent);
         retn->m_dtorCount = m_dtorCount;
@@ -1301,7 +1488,7 @@ class MyDynamicCreationDestructionObject : public QObject
     Q_PROPERTY (int intProperty READ intProperty WRITE setIntProperty NOTIFY intPropertyChanged)
 
 public:
-    MyDynamicCreationDestructionObject(QObject *parent = 0) : QObject(parent), m_intProperty(0), m_dtorCount(0)
+    MyDynamicCreationDestructionObject(QObject *parent = nullptr) : QObject(parent), m_intProperty(0), m_dtorCount(0)
     {
     }
 
@@ -1473,14 +1660,14 @@ class MyDeleteObject : public QObject
     Q_PROPERTY(QObject *object2 READ object2 NOTIFY object2Changed)
 
 public:
-    MyDeleteObject() : m_nestedObject(new MyQmlObject), m_object1(0), m_object2(0) {}
+    MyDeleteObject() : m_nestedObject(new MyQmlObject), m_object1(nullptr), m_object2(nullptr) {}
 
     Q_INVOKABLE QObject *object1() const { return m_object1; }
     Q_INVOKABLE QObject *object2() const { return m_object2; }
     void setObject1(QObject *object) { m_object1 = object; }
     void setObject2(QObject *object) { m_object2 = object; emit object2Changed(); }
     QObject *nestedObject() const { return m_nestedObject; }
-    int deleteNestedObject() { delete m_nestedObject; m_nestedObject = 0; return 1; }
+    int deleteNestedObject() { delete m_nestedObject; m_nestedObject = nullptr; return 1; }
 
 signals:
     void nestedObjectChanged();
@@ -1504,7 +1691,7 @@ public:
         case Qt::LocalTime:
             {
             QDateTime utc(m_datetime.toUTC());
-            utc.setTimeSpec(Qt::LocalTime);
+            utc.setTimeZone(QTimeZone::LocalTime);
             m_offset = m_datetime.secsTo(utc) / 60;
             m_timespec = "LocalTime";
             }
@@ -1543,7 +1730,7 @@ Q_SIGNALS:
     void done(const QString &result);
 
 private:
-    QThread *m_thread = 0;
+    QThread *m_thread = nullptr;
 };
 
 class MyUnregisteredEnumTypeObject : public QObject
@@ -1572,7 +1759,7 @@ class FallbackBindingsObject : public QObject
     Q_OBJECT
     Q_PROPERTY (int test READ test NOTIFY testChanged)
 public:
-    FallbackBindingsObject(QObject* parent = 0)
+    FallbackBindingsObject(QObject *parent = nullptr)
         : QObject(parent), m_test(100)
     {
     }
@@ -1591,7 +1778,7 @@ class FallbackBindingsDerived : public FallbackBindingsObject
     Q_OBJECT
     Q_PROPERTY (QString test READ test NOTIFY testChanged)
 public:
-    FallbackBindingsDerived(QObject* parent = 0)
+    FallbackBindingsDerived(QObject *parent = nullptr)
         : FallbackBindingsObject(parent), m_test("hello")
     {
     }
@@ -1626,7 +1813,7 @@ class FallbackBindingsAttachedDerived : public FallbackBindingsAttachedObject
     Q_OBJECT
     Q_PROPERTY (QString test READ test NOTIFY testChanged)
 public:
-    FallbackBindingsAttachedDerived(QObject* parent = 0)
+    FallbackBindingsAttachedDerived(QObject *parent = nullptr)
         : FallbackBindingsAttachedObject(parent), m_test("hello")
     {
     }
@@ -1665,17 +1852,6 @@ public:
 QML_DECLARE_TYPEINFO(FallbackBindingsTypeObject, QML_HAS_ATTACHED_PROPERTIES)
 QML_DECLARE_TYPEINFO(FallbackBindingsTypeDerived, QML_HAS_ATTACHED_PROPERTIES)
 
-class SingletonWithEnum : public QObject
-{
-    Q_OBJECT
-    Q_ENUMS(TestEnum)
-public:
-    enum TestEnum {
-        TestValue = 42,
-        TestValue_MinusOne = -1
-    };
-};
-
 // Like QtObject, but with default property
 class QObjectContainer : public QObject
 {
@@ -1688,8 +1864,8 @@ public:
     QQmlListProperty<QObject> data();
 
     static void children_append(QQmlListProperty<QObject> *prop, QObject *o);
-    static int children_count(QQmlListProperty<QObject> *prop);
-    static QObject *children_at(QQmlListProperty<QObject> *prop, int index);
+    static qsizetype children_count(QQmlListProperty<QObject> *prop);
+    static QObject *children_at(QQmlListProperty<QObject> *prop, qsizetype index);
     static void children_clear(QQmlListProperty<QObject> *prop);
 
     QList<QObject*> dataChildren;
@@ -1717,8 +1893,8 @@ class FloatingQObject : public QObject, public QQmlParserStatus
 public:
     FloatingQObject() {}
 
-    virtual void classBegin();
-    virtual void componentComplete();
+    void classBegin() override;
+    void componentComplete() override;
 };
 
 class ClashingNames : public QObject
@@ -1729,6 +1905,37 @@ public:
     Q_INVOKABLE bool clashes() const { return true; }
 };
 
+struct ClassWithQProperty : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(float value MEMBER value BINDABLE bindableValue RESET resetValue)
+    Q_PROPERTY(float value2 MEMBER value2 BINDABLE bindableValue2)
+public:
+    void resetValue() { value = 2; }
+    QProperty<float> value;
+    QProperty<float> value2;
+    QBindable<float> bindableValue() { return QBindable<float>(&value); }
+    QBindable<float> bindableValue2() { return QBindable<float>(&value2); }
+};
+
+struct ClassWithQObjectProperty : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int value READ value WRITE setValue BINDABLE bindableValue RESET resetValue)
+    Q_PROPERTY(int value2 READ value2 WRITE setValue2 BINDABLE bindableValue2)
+public:
+    Q_OBJECT_BINDABLE_PROPERTY(ClassWithQObjectProperty, int, m_value);
+    QBindable<int> bindableValue() {return &m_value;}
+    void resetValue() { m_value = 2; }
+    int value() { return m_value; }
+    void setValue(int i) { m_value = i; }
+
+    Q_OBJECT_BINDABLE_PROPERTY(ClassWithQObjectProperty, int, m_value2);
+    QBindable<int> bindableValue2() {return &m_value2;}
+    int value2() { return m_value2; }
+    void setValue2(int i) { m_value2 = i; }
+};
+
 class VariantConvertObject : public QObject
 {
     Q_OBJECT
@@ -1736,9 +1943,168 @@ public:
     QString funcCalled;
 public slots:
     QPersistentModelIndex getIndex() const { return QPersistentModelIndex(QModelIndex()); }
-    void selection(const QModelIndex &mi, int n = 0) { funcCalled = QLatin1String("QModelIndex"); }
-    void selection(const QItemSelection &is, int n = 0) { funcCalled = QLatin1String("QItemSelection"); }
+    void selection(const QModelIndex &, int = 0) { funcCalled = QLatin1String("QModelIndex"); }
+    void selection(const QItemSelection &, int = 0) { funcCalled = QLatin1String("QItemSelection"); }
 };
+
+class SequenceConvertObject : public QObject
+{
+    Q_OBJECT
+
+public:
+    QString funcCalled;
+public slots:
+
+    Q_INVOKABLE QStringList getValues() const {
+        return QStringList() << QStringLiteral("one") << QStringLiteral("two");
+    }
+
+    Q_INVOKABLE void call(const QStringList &) {
+        funcCalled = QLatin1String("stringlist");
+    }
+
+    Q_INVOKABLE void call(const QList<int> &) {
+        funcCalled = QLatin1String("intlist");
+    }
+};
+
+struct ClassWithQProperty2 : public QObject
+{
+    Q_OBJECT
+    // Q_PROPERTY(float value)
+public:
+    void callback();
+    // QNotifiedProperty<float, &ClassWithQProperty2::callback> value;
+};
+
+struct QPropertyQtBindingTester : public QObject
+{
+    Q_OBJECT
+public:
+    Q_PROPERTY(int nonBound READ nonBound WRITE setNonBound BINDABLE bindableNonBound)
+    Q_PROPERTY(int simple MEMBER simple BINDABLE bindableSimple)
+    Q_PROPERTY(int complex MEMBER complex BINDABLE bindableComplex)
+    Q_PROPERTY(int readOnlyBindable MEMBER readOnlyBindable BINDABLE bindableReadOnlyBindable)
+
+    int nonBound() { return m_nonBound; }
+
+    void setNonBound(int i) {m_nonBound = i;}
+
+    QBindable<int> bindableNonBound() { return &m_nonBound; }
+    QBindable<int> bindableSimple() { return &simple; }
+    QBindable<int> bindableComplex() {return &complex; }
+    QBindable<int> bindableReadOnlyBindable() const {return &readOnlyBindable; }
+
+    QProperty<int> readOnlyBindable;
+    QProperty<int> m_nonBound;
+    QProperty<int> simple;
+    QProperty<int> complex;
+};
+
+struct Sender : QObject
+{
+    Q_OBJECT
+signals:
+    void sig1();
+};
+
+struct Receiver : QObject
+{
+    Q_OBJECT
+public slots:
+    int slot1(int i, int j, int k) {return i+j+k;}
+};
+
+class ReadOnlyBindable : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_PROPERTY(int x READ x WRITE setX BINDABLE bindableX)
+    Q_OBJECT_BINDABLE_PROPERTY(ReadOnlyBindable, int, _xProp)
+
+public:
+    ReadOnlyBindable(QObject *parent = nullptr)
+        : QObject(parent)
+    {
+        setX(7);
+    }
+
+    int x() const { return _xProp.value(); }
+    void setX(int x) { _xProp.setValue(x); }
+    QBindable<int> bindableX() const { return &_xProp; }
+};
+
+class ResettableGadget
+{
+    Q_GADGET
+    Q_PROPERTY(qreal value READ value WRITE setValue RESET resetValue)
+
+    qreal m_value = 0;
+
+public:
+    qreal value() const { return m_value; }
+    void setValue(qreal val) { m_value = val; }
+    void resetValue() { m_value = 42; }
+};
+
+class ResettableGadgetHolder : public QObject {
+    Q_OBJECT
+    QML_ELEMENT
+
+    Q_PROPERTY(ResettableGadget g READ g WRITE setG NOTIFY gChanged)
+    ResettableGadget m_g;
+
+signals:
+    void gChanged();
+
+public:
+    ResettableGadget g() const { return m_g; }
+    void setG(ResettableGadget newG)
+    {
+        if (m_g.value() == newG.value())
+            return;
+        m_g = newG;
+        Q_EMIT gChanged();
+    }
+};
+
+
+class SingletonBase : public QObject {
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE virtual void trackPage(const QString&) {}
+    Q_INVOKABLE virtual void trackPage(const QString&, const QVariantMap&) {}
+
+    bool m_okay = false;
+};
+
+class SingletonImpl : public SingletonBase {
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE virtual void trackPage(const QString&) override {}
+    Q_INVOKABLE virtual void trackPage(const QString&, const QVariantMap&) override
+    {
+        m_okay = true;
+    }
+};
+
+class SingletonRegistrationWrapper {
+    Q_GADGET
+    QML_FOREIGN(SingletonBase)
+    QML_NAMED_ELEMENT(SingletonInheritanceTest)
+    QML_SINGLETON
+
+public:
+    static SingletonBase* create(QQmlEngine*, QJSEngine*) {
+        return new SingletonImpl();
+    }
+
+private:
+    SingletonRegistrationWrapper() = default;
+};
+
 
 void registerTypes();
 

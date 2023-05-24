@@ -30,6 +30,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -63,6 +64,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -88,15 +90,6 @@ tr.b.unittest.testSuite(function() {
     const hist = histograms.getHistogramNamed('timeToFirstContentfulPaint');
     assert.strictEqual(1, hist.running.count);
     assert.strictEqual(800, hist.running.mean);
-    const fcpResourceLoading = histograms.getHistogramNamed(
-        'timeToFirstContentfulPaint:resource_loading');
-    assert.strictEqual(
-        hist.diagnostics.get('breakdown').get(
-            'resource_loading'),
-        'timeToFirstContentfulPaint:resource_loading');
-    assert.strictEqual(fcpResourceLoading.sum, 100);
-    assert.strictEqual(tr.b.getOnlyElement(hist.getBinForValue(
-        800).diagnosticMaps).get('breakdown').get('resource_loading'), 100);
   });
 
   test('timeToLargestImagePaint', function() {
@@ -112,6 +105,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -147,6 +141,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -190,6 +185,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -232,6 +228,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -268,6 +265,45 @@ tr.b.unittest.testSuite(function() {
         }
       }));
     });
+    const histograms = new tr.v.HistogramSet();
+    tr.metrics.sh.loadingMetric(histograms, model);
+    const hist = histograms.getHistogramNamed('largestContentfulPaint');
+    assert.strictEqual(1, hist.running.count);
+    assert.strictEqual(100, hist.running.mean);
+  });
+
+  test('timeToLargestContentfulPaint_NoMultipleReporting', function() {
+    // Test that we do not report the same sample value multiple times if there
+    // is more than one renderer.
+    const model = tr.e.chrome.ChromeTestUtils.newChromeModel(function(model) {
+      const browerMain = model.browserMain;
+      browerMain.sliceGroup.pushSlice(tr.c.TestUtils.newSliceEx({
+        cat: 'loading',
+        title: tr.e.chrome.LCP_CANDIDATE_EVENT_TITLE,
+        start: 400,
+        duration: 0.0,
+        args: {
+          data: { durationInMilliseconds: 100, type: 'text', size: 1000,
+                  inMainFrame: true },
+          main_frame_tree_node_id: 12345,
+        }
+      }));
+
+      const rendererProcess1 = model.rendererProcess;
+      const mainThread1 = model.rendererMain;
+      addNavigationStart_(mainThread1, 50,
+          { isOutermostMainFrame: true, isLoadingMainFrame: true,
+            documentLoaderURL: 'http://example.com'});
+
+      const rendererProcess2 = model.getOrCreateProcess(10);
+      const mainThread2 = rendererProcess2.getOrCreateThread(10);
+      mainThread2.name = 'CrRendererMain';
+
+      addNavigationStart_(mainThread2, 100,
+          { isOutermostMainFrame: true, isLoadingMainFrame: true,
+            documentLoaderURL: 'http://example.com'});
+    });
+
     const histograms = new tr.v.HistogramSet();
     tr.metrics.sh.loadingMetric(histograms, model);
     const hist = histograms.getHistogramNamed('largestContentfulPaint');
@@ -452,6 +488,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -504,6 +541,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: 'firstframeid'},
             documentLoaderURL: 'http://example.com'
@@ -526,6 +564,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 2300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: 'secondframeid'},
             documentLoaderURL: 'http://example.com'
@@ -636,6 +675,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -664,6 +704,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 2100,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -696,6 +737,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -745,6 +787,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -770,15 +813,6 @@ tr.b.unittest.testSuite(function() {
     const hist = histograms.getHistogramNamed('timeToFirstContentfulPaint');
     assert.strictEqual(1, hist.running.count);
     assert.strictEqual(800, hist.running.mean);
-    const fcpResourceLoading = histograms.getHistogramNamed(
-        'timeToFirstContentfulPaint:resource_loading');
-    assert.strictEqual(
-        hist.diagnostics.get('breakdown').get(
-            'resource_loading'),
-        'timeToFirstContentfulPaint:resource_loading');
-    assert.strictEqual(fcpResourceLoading.sum, 100);
-    assert.strictEqual(tr.b.getOnlyElement(hist.getBinForValue(
-        800).diagnosticMaps).get('breakdown').get('resource_loading'), 100);
   });
 
   test('timeToFirstMeaningfulPaint', function() {
@@ -794,6 +828,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -842,6 +877,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -904,6 +940,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -973,6 +1010,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess1.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -1009,6 +1047,7 @@ tr.b.unittest.testSuite(function() {
       }));
       rendererProcess2.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -1046,6 +1085,7 @@ tr.b.unittest.testSuite(function() {
   function addFrameLoaderObject_(rendererProcess, timestamp) {
     rendererProcess.objects.addSnapshot(
         'ptr', 'loading', 'FrameLoader', timestamp, {
+          isOutermostMainFrame: true,
           isLoadingMainFrame: true, frame: {id_ref: '0xdeadbeef'},
           documentLoaderURL: 'http://example.com',
         });
@@ -1119,13 +1159,15 @@ tr.b.unittest.testSuite(function() {
       const mainThread = model.rendererMain;
 
       addNavigationStart_(mainThread, 200,
-          {isLoadingMainFrame: true, documentLoaderURL: 'http://example.com'});
+          { isOutermostMainFrame: true, isLoadingMainFrame: true,
+            documentLoaderURL: 'http://example.com'});
       addNetworkRequest_(mainThread, 200, 250);
       // FrameLoader creation time after navigation start.
       rendererProcess.objects.idWasCreated(
           'ptr', 'loading', 'FrameLoader', 250);
       rendererProcess.objects.addSnapshot(
           'ptr', 'loading', 'FrameLoader', 300, {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true, frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com',
           });
@@ -1136,7 +1178,8 @@ tr.b.unittest.testSuite(function() {
 
       // New navigation to close the search window.
       addNavigationStart_(mainThread, 7000,
-          {isLoadingMainFrame: true, documentLoaderURL: 'http://example.com'});
+          { isOutermostMainFrame: true, isLoadingMainFrame: true,
+            documentLoaderURL: 'http://example.com'});
     });
 
     const histograms = new tr.v.HistogramSet();
@@ -1401,6 +1444,7 @@ tr.b.unittest.testSuite(function() {
       // DomContentLoadedEnd and NavigationStart for a different frame.
       rendererProcess.objects.addSnapshot(
           'ptr', 'loading', 'FrameLoader', 4000, {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true, frame: {id_ref: '0xffffffff'},
             documentLoaderURL: 'http://example.com'
           });
@@ -1474,6 +1518,7 @@ tr.b.unittest.testSuite(function() {
       }));
       process.objects.addSnapshot('ptr', 'loading', 'FrameLoader', 300,
           {
+            isOutermostMainFrame: true,
             isLoadingMainFrame: true,
             frame: {id_ref: '0xdeadbeef'},
             documentLoaderURL: 'http://example.com'
@@ -1600,6 +1645,32 @@ tr.b.unittest.testSuite(function() {
         partialNetworkEvents);
   });
 
+  test('noLayoutShiftEventMeansZeroCLS', function() {
+    const model = tr.e.chrome.ChromeTestUtils.newChromeModel(function(model) {
+      const rendererProcess = model.rendererProcess;
+      const mainThread = model.rendererMain;
+      mainThread.sliceGroup.pushSlice(tr.c.TestUtils.newSliceEx({
+        cat: 'blink.user_timing',
+        title: 'navigationStart',
+        start: 10,
+        duration: 510,
+        args: {frame: '0xdeadbeef'}
+      }));
+    });
+    const histograms = new tr.v.HistogramSet();
+    tr.metrics.sh.loadingMetric(histograms, model);
+    const mainHist =
+        histograms.getHistogramNamed('mainFrameCumulativeLayoutShift');
+    assert.strictEqual(1, mainHist.sampleValues.length);
+    assert.strictEqual(1, mainHist.running.count);
+    assert.strictEqual(0, mainHist.running.mean);
+    const overallHist =
+        histograms.getHistogramNamed('overallCumulativeLayoutShift');
+    assert.strictEqual(1, overallHist.sampleValues.length);
+    assert.strictEqual(1, overallHist.running.count);
+    assert.strictEqual(0, overallHist.running.mean);
+  });
+
   test('mainFrameCumulativeLayoutShift', function() {
     const model = tr.e.chrome.ChromeTestUtils.newChromeModel(function(model) {
       const rendererProcess = model.rendererProcess;
@@ -1630,6 +1701,44 @@ tr.b.unittest.testSuite(function() {
     assert.strictEqual(1, hist.sampleValues.length);
     assert.strictEqual(1, hist.running.count);
     assert.strictEqual(3.5, hist.running.mean);
+  });
+
+  test('overallCumulativeLayoutShift', function() {
+    const model = tr.e.chrome.ChromeTestUtils.newChromeModel(function(model) {
+      const rendererProcess = model.rendererProcess;
+      const mainThread = model.rendererMain;
+      const mainFrame = {id: '0xdeadbeef', is_main: true};
+      const subframe = {id: '0xdeadb33f', is_main: false};
+      const emitEvent = (thread, time, score, weightedScore, frame) => {
+        const data = {
+          is_main_frame: frame.is_main,
+          score,
+          weighted_score_delta: weightedScore
+        };
+        thread.sliceGroup.pushSlice(tr.c.TestUtils.newSliceEx({
+          cat: 'loading',
+          title: 'LayoutShift',
+          start: time,
+          duration: 0.0,
+          args: {frame: frame.id, data}
+        }));
+      };
+      emitEvent(mainThread, 1000, 1.5, 1000, mainFrame);
+      emitEvent(mainThread, 3000, 3.5, 1000, mainFrame);
+      emitEvent(mainThread, 2000, 3.0, 1000, mainFrame);
+      emitEvent(mainThread, 4000, 4000, 4.0, subframe);
+      const rendererProcess2 = model.getOrCreateProcess(10);
+      const mainThread2 = rendererProcess2.getOrCreateThread(20);
+      mainThread2.name = 'CrRendererMain';
+      const subframe2 = { id: '0xdeadb33f', is_main: false };
+      emitEvent(mainThread2, 2500, 1000, 2.0, subframe2);
+    });
+    const histograms = new tr.v.HistogramSet();
+    tr.metrics.sh.loadingMetric(histograms, model);
+    const hist = histograms.getHistogramNamed('overallCumulativeLayoutShift');
+    assert.strictEqual(1, hist.sampleValues.length);
+    assert.strictEqual(1, hist.running.count);
+    assert.strictEqual(14, hist.running.mean);
   });
 
   test('speedIndexIsAddedToHistograms', function() {

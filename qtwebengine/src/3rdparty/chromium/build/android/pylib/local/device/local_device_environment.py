@@ -1,6 +1,7 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
 
 import datetime
 import functools
@@ -20,6 +21,7 @@ from devil.android.sdk import adb_wrapper
 from devil.utils import file_utils
 from devil.utils import parallelizer
 from pylib import constants
+from pylib.constants import host_paths
 from pylib.base import environment
 from pylib.utils import instrumentation_tracing
 from py_trace_event import trace_event
@@ -31,6 +33,8 @@ LOGCAT_FILTERS = [
   'DEBUG:I',
   'StrictMode:D',
 ]
+
+SYSTEM_USER_ID = 0
 
 
 def _DeviceCachePath(device):
@@ -82,7 +86,7 @@ def handle_shard_failures_with(on_failure):
   return decorator
 
 
-def place_nomedia_on_device(dev, device_root):
+def place_nomedia_on_device(dev, device_root, run_as=None, as_root=False):
   """Places .nomedia file in test data root.
 
   This helps to prevent system from scanning media files inside test data.
@@ -92,14 +96,24 @@ def place_nomedia_on_device(dev, device_root):
     device_root: Base path on device to place .nomedia file.
   """
 
-  dev.RunShellCommand(['mkdir', '-p', device_root], check_return=True)
-  dev.WriteFile('%s/.nomedia' % device_root, 'https://crbug.com/796640')
+  dev.RunShellCommand(['mkdir', '-p', device_root],
+                      run_as=run_as,
+                      as_root=as_root,
+                      check_return=True)
+  dev.WriteFile('%s/.nomedia' % device_root,
+                'https://crbug.com/796640',
+                run_as=run_as,
+                as_root=as_root)
 
 
+# TODO(1262303): After Telemetry is supported by python3 we can re-add
+# super without arguments in this script.
+# pylint: disable=super-with-arguments
 class LocalDeviceEnvironment(environment.Environment):
 
   def __init__(self, args, output_manager, _error_func):
     super(LocalDeviceEnvironment, self).__init__(output_manager)
+    self._current_try = 0
     self._denylist = (device_denylist.Denylist(args.denylist_file)
                       if args.denylist_file else None)
     self._device_serials = args.test_devices
@@ -121,15 +135,18 @@ class LocalDeviceEnvironment(environment.Environment):
     self._trace_all = None
     if hasattr(args, 'trace_all'):
       self._trace_all = args.trace_all
+    self._use_persistent_shell = args.use_persistent_shell
 
     devil_chromium.Initialize(
         output_directory=constants.GetOutDirectory(),
         adb_path=args.adb_path)
 
-    # Some things such as Forwarder require ADB to be in the environment path.
+    # Some things such as Forwarder require ADB to be in the environment path,
+    # while others like Devil's bundletool.py require Java on the path.
     adb_dir = os.path.dirname(adb_wrapper.AdbWrapper.GetAdbPath())
     if adb_dir and adb_dir not in os.environ['PATH'].split(os.pathsep):
-      os.environ['PATH'] = adb_dir + os.pathsep + os.environ['PATH']
+      os.environ['PATH'] = os.pathsep.join(
+          [adb_dir, host_paths.JAVA_PATH, os.environ['PATH']])
 
   #override
   def SetUp(self):
@@ -158,7 +175,8 @@ class LocalDeviceEnvironment(environment.Environment):
         enable_device_files_cache=self._enable_device_cache,
         default_retries=self._max_tries - 1,
         device_arg=device_arg,
-        abis=self._preferred_abis)
+        abis=self._preferred_abis,
+        persistent_shell=self._use_persistent_shell)
 
     if self._logcat_output_file:
       self._logcat_output_dir = tempfile.mkdtemp()
@@ -166,6 +184,12 @@ class LocalDeviceEnvironment(environment.Environment):
     @handle_shard_failures_with(on_failure=self.DenylistDevice)
     def prepare_device(d):
       d.WaitUntilFullyBooted()
+      if d.GetCurrentUser() != SYSTEM_USER_ID:
+        # Use system user to run tasks to avoid "/sdcard "accessing issue
+        # due to multiple-users. For details, see
+        # https://source.android.com/docs/devices/admin/multi-user-testing
+        logging.info('Switching to user with id %s', SYSTEM_USER_ID)
+        d.SwitchUser(SYSTEM_USER_ID)
 
       if self._enable_device_cache:
         cache_path = _DeviceCachePath(d)
@@ -181,12 +205,24 @@ class LocalDeviceEnvironment(environment.Environment):
             self._logcat_output_dir,
             '%s_%s' % (d.adb.GetDeviceSerial(),
                        datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%S')))
-        monitor = logcat_monitor.LogcatMonitor(
-            d.adb, clear=True, output_file=logcat_file)
+        monitor = logcat_monitor.LogcatMonitor(d.adb,
+                                               clear=True,
+                                               output_file=logcat_file,
+                                               check_error=False)
         self._logcat_monitors.append(monitor)
         monitor.Start()
 
     self.parallel_devices.pMap(prepare_device)
+
+  @property
+  def current_try(self):
+    return self._current_try
+
+  def IncrementCurrentTry(self):
+    self._current_try += 1
+
+  def ResetCurrentTry(self):
+    self._current_try = 0
 
   @property
   def denylist(self):

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -38,7 +38,8 @@ using content::RenderViewHost;
   BOOL _resigningFirstResponder;
 }
 
-- (id)initWithRenderWidgetHost:(content::RenderWidgetHost*)renderWidgetHost {
+- (instancetype)initWithRenderWidgetHost:
+    (content::RenderWidgetHost*)renderWidgetHost {
   self = [super init];
   if (self) {
     _renderWidgetHost = renderWidgetHost;
@@ -109,6 +110,44 @@ using content::RenderViewHost;
   return _renderWidgetHost->GetView()->GetNativeView().GetNativeNSView();
 }
 
+- (BOOL)canNavigateInDirection:(history_swiper::NavigationDirection)direction
+                      onWindow:(NSWindow*)window {
+  if (!_renderWidgetHost) {
+    return NO;
+  }
+
+  content::WebContents* webContents = content::WebContents::FromRenderViewHost(
+      RenderViewHost::From(_renderWidgetHost));
+  if (!webContents) {
+    return NO;
+  }
+
+  if (direction == history_swiper::kForwards) {
+    return chrome::CanGoForward(webContents);
+  } else {
+    return chrome::CanGoBack(webContents);
+  }
+}
+
+- (void)navigateInDirection:(history_swiper::NavigationDirection)direction
+                   onWindow:(NSWindow*)window {
+  if (!_renderWidgetHost) {
+    return;
+  }
+
+  content::WebContents* webContents = content::WebContents::FromRenderViewHost(
+      RenderViewHost::From(_renderWidgetHost));
+  if (!webContents) {
+    return;
+  }
+
+  if (direction == history_swiper::kForwards) {
+    chrome::GoForward(webContents);
+  } else {
+    chrome::GoBack(webContents);
+  }
+}
+
 - (BOOL)validateUserInterfaceItem:(id<NSValidatedUserInterfaceItem>)item
                       isValidItem:(BOOL*)valid {
   SEL action = [item action];
@@ -136,9 +175,10 @@ using content::RenderViewHost;
   // is still necessary.
   if (action == @selector(toggleContinuousSpellChecking:)) {
     if ([(id)item respondsToSelector:@selector(setState:)]) {
-      NSCellStateValue checkedState =
-          pref->GetBoolean(spellcheck::prefs::kSpellCheckEnable) ? NSOnState
-                                                                 : NSOffState;
+      NSControlStateValue checkedState =
+          pref->GetBoolean(spellcheck::prefs::kSpellCheckEnable)
+              ? NSControlStateValueOn
+              : NSControlStateValueOff;
       [(id)item setState:checkedState];
     }
     *valid = spellCheckUserModifiable;

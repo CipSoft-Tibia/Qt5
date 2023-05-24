@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,17 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/optional.h"
+#include "base/ranges/algorithm.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/timer/timer.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
 #include "components/subresource_filter/content/browser/content_activation_list_utils.h"
+#include "components/subresource_filter/content/browser/content_subresource_filter_web_contents_helper.h"
+#include "components/subresource_filter/content/browser/devtools_interaction_tracker.h"
 #include "components/subresource_filter/content/browser/navigation_console_logger.h"
-#include "components/subresource_filter/content/browser/subresource_filter_client.h"
 #include "components/subresource_filter/content/browser/subresource_filter_observer_manager.h"
 #include "components/subresource_filter/content/browser/subresource_filter_safe_browsing_client.h"
 #include "components/subresource_filter/core/browser/subresource_filter_constants.h"
@@ -26,6 +28,7 @@
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
@@ -37,7 +40,7 @@ namespace {
 using CheckResults =
     std::vector<SubresourceFilterSafeBrowsingClient::CheckResult>;
 
-base::Optional<RedirectPosition> GetEnforcementRedirectPosition(
+absl::optional<RedirectPosition> GetEnforcementRedirectPosition(
     const CheckResults& results) {
   // Safe cast since we have strict limits on HTTP redirects.
   int num_results = static_cast<int>(results.size());
@@ -55,7 +58,7 @@ base::Optional<RedirectPosition> GetEnforcementRedirectPosition(
       return RedirectPosition::kMiddle;
     }
   }
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 }  // namespace
@@ -63,7 +66,7 @@ base::Optional<RedirectPosition> GetEnforcementRedirectPosition(
 SubresourceFilterSafeBrowsingActivationThrottle::
     SubresourceFilterSafeBrowsingActivationThrottle(
         content::NavigationHandle* handle,
-        SubresourceFilterClient* client,
+        Delegate* delegate,
         scoped_refptr<base::SingleThreadTaskRunner> io_task_runner,
         scoped_refptr<safe_browsing::SafeBrowsingDatabaseManager>
             database_manager)
@@ -73,11 +76,10 @@ SubresourceFilterSafeBrowsingActivationThrottle::
                            std::move(database_manager),
                            AsWeakPtr(),
                            io_task_runner_,
-                           base::ThreadTaskRunnerHandle::Get()),
+                           base::SingleThreadTaskRunner::GetCurrentDefault()),
                        base::OnTaskRunnerDeleter(io_task_runner_)),
-      client_(client) {
-  DCHECK(handle->IsInMainFrame());
-
+      delegate_(delegate) {
+  DCHECK(IsInSubresourceFilterRoot(handle));
   CheckCurrentUrl();
   DCHECK(!check_results_.empty());
 }
@@ -194,10 +196,21 @@ void SubresourceFilterSafeBrowsingActivationThrottle::NotifyResult() {
     activation_level = mojom::ActivationLevel::kDisabled;
   }
 
-  // Let the embedder get the last word when it comes to activation level.
-  // TODO(csharrison): Move all ActivationDecision code to the embedder.
-  activation_level = client_->OnPageActivationComputed(
-      navigation_handle(), activation_level, &activation_decision);
+  auto* devtools_interaction_tracker =
+      DevtoolsInteractionTracker::FromWebContents(
+          navigation_handle()->GetWebContents());
+
+  if (devtools_interaction_tracker &&
+      devtools_interaction_tracker->activated_via_devtools()) {
+    activation_level = mojom::ActivationLevel::kEnabled;
+    activation_decision = ActivationDecision::FORCED_ACTIVATION;
+  }
+
+  // Let the delegate adjust the activation decision if present.
+  if (delegate_) {
+    activation_level = delegate_->OnPageActivationComputed(
+        navigation_handle(), activation_level, &activation_decision);
+  }
 
   LogMetricsOnChecksComplete(selection.matched_list, activation_decision,
                              activation_level);
@@ -216,7 +229,7 @@ void SubresourceFilterSafeBrowsingActivationThrottle::
   DCHECK(HasFinishedAllSafeBrowsingChecks());
 
   base::TimeDelta delay = defer_time_.is_null()
-                              ? base::TimeDelta::FromMilliseconds(0)
+                              ? base::Milliseconds(0)
                               : base::TimeTicks::Now() - defer_time_;
   UMA_HISTOGRAM_TIMES("SubresourceFilter.PageLoad.SafeBrowsingDelay", delay);
 
@@ -229,12 +242,8 @@ void SubresourceFilterSafeBrowsingActivationThrottle::
     builder.SetDryRun(true);
   }
 
-  if (auto optional_position = GetEnforcementRedirectPosition(check_results_)) {
-    RedirectPosition position = *optional_position;
-    UMA_HISTOGRAM_ENUMERATION(
-        "SubresourceFilter.PageLoad.Activation.RedirectPosition2.Enforcement",
-        position);
-    builder.SetEnforcementRedirectPosition(static_cast<int64_t>(position));
+  if (auto position = GetEnforcementRedirectPosition(check_results_)) {
+    builder.SetEnforcementRedirectPosition(static_cast<int64_t>(*position));
   }
 
   builder.Record(ukm::UkmRecorder::Get());
@@ -271,12 +280,11 @@ SubresourceFilterSafeBrowsingActivationThrottle::
   if (navigation_handle()->GetURL().SchemeIsHTTPOrHTTPS()) {
     const auto& decreasing_configs =
         GetEnabledConfigurations()->configs_by_decreasing_priority();
-    const auto selected_config_itr =
-        std::find_if(decreasing_configs.begin(), decreasing_configs.end(),
-                     [matched_list, this](const Configuration& config) {
-                       return DoesMainFrameURLSatisfyActivationConditions(
-                           config.activation_conditions, matched_list);
-                     });
+    const auto selected_config_itr = base::ranges::find_if(
+        decreasing_configs, [matched_list, this](const Configuration& config) {
+          return DoesRootFrameURLSatisfyActivationConditions(
+              config.activation_conditions, matched_list);
+        });
     if (selected_config_itr != decreasing_configs.end()) {
       selected_config = *selected_config_itr;
       matched = true;
@@ -304,7 +312,7 @@ SubresourceFilterSafeBrowsingActivationThrottle::GetActivationDecision(
 }
 
 bool SubresourceFilterSafeBrowsingActivationThrottle::
-    DoesMainFrameURLSatisfyActivationConditions(
+    DoesRootFrameURLSatisfyActivationConditions(
         const Configuration::ActivationConditions& conditions,
         ActivationList matched_list) const {
   // Avoid copies when tracing disabled.
@@ -315,7 +323,7 @@ bool SubresourceFilterSafeBrowsingActivationThrottle::
   };
   TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("loading"),
                "SubresourceFilterSafeBrowsingActivationThrottle::"
-               "DoesMainFrameURLSatisfyActivationConditions",
+               "DoesRootFrameURLSatisfyActivationConditions",
                "matched_list", list_to_string(matched_list), "conditions",
                conditions.ToTracedValue());
   switch (conditions.activation_scope) {

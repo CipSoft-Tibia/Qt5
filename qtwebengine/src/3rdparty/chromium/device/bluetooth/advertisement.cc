@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/bluetooth/advertisement.h"
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 
 namespace bluetooth {
 
@@ -21,12 +21,14 @@ void Advertisement::Unregister(UnregisterCallback callback) {
   if (!bluetooth_advertisement_)
     return;
 
-  auto copyable_callback = base::AdaptCallbackForRepeating(std::move(callback));
+  auto split_callback = base::SplitOnceCallback(std::move(callback));
   bluetooth_advertisement_->Unregister(
       base::BindOnce(&Advertisement::OnUnregister,
-                     weak_ptr_factory_.GetWeakPtr(), copyable_callback),
+                     weak_ptr_factory_.GetWeakPtr(),
+                     std::move(split_callback.first)),
       base::BindOnce(&Advertisement::OnUnregisterError,
-                     weak_ptr_factory_.GetWeakPtr(), copyable_callback));
+                     weak_ptr_factory_.GetWeakPtr(),
+                     std::move(split_callback.second)));
 }
 
 void Advertisement::OnUnregister(UnregisterCallback callback) {

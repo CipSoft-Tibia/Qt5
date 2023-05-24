@@ -1,40 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "zoomwidget_p.h"
 
 #include <QtWidgets/qgraphicsscene.h>
 #include <QtWidgets/qgraphicsproxywidget.h>
 #include <QtWidgets/qmenu.h>
-#include <QtWidgets/qaction.h>
-#include <QtWidgets/qactiongroup.h>
-#include <QtGui/qevent.h>
 #include <QtWidgets/qscrollbar.h>
+
+#include <QtGui/qaction.h>
+#include <QtGui/qactiongroup.h>
+#include <QtGui/qevent.h>
 
 #include <QtCore/qtextstream.h>
 #include <QtCore/qmath.h>
@@ -103,9 +79,9 @@ void ZoomMenu::slotZoomMenu(QAction *a)
     emit zoomChanged(zoomOf(a));
 }
 
-QVector<int> ZoomMenu::zoomValues()
+QList<int> ZoomMenu::zoomValues()
 {
-    QVector<int> rc;
+    QList<int> rc;
     const int nz = sizeof(menuZoomList)/sizeof(int);
     rc.reserve(nz);
     for (int i = 0; i < nz; i++)
@@ -248,7 +224,7 @@ QVariant ZoomProxyWidget::itemChange(GraphicsItemChange change, const QVariant &
  * It redirects the events to another handler of ZoomWidget as its
  * base class QScrollArea also implements eventFilter() for its viewport. */
 
-static const char *zoomedEventFilterRedirectorNameC = "__qt_ZoomedEventFilterRedirector";
+static const char zoomedEventFilterRedirectorNameC[] = "__qt_ZoomedEventFilterRedirector";
 
 class ZoomedEventFilterRedirector : public QObject {
     Q_DISABLE_COPY_MOVE(ZoomedEventFilterRedirector)
@@ -265,7 +241,7 @@ ZoomedEventFilterRedirector::ZoomedEventFilterRedirector(ZoomWidget *zw, QObject
     QObject(parent),
     m_zw(zw)
 {
-    setObjectName(QLatin1String(zoomedEventFilterRedirectorNameC));
+    setObjectName(QLatin1StringView(zoomedEventFilterRedirectorNameC));
 }
 
 bool ZoomedEventFilterRedirector::eventFilter(QObject *watched, QEvent *event)
@@ -292,7 +268,7 @@ void ZoomWidget::setWidget(QWidget *w, Qt::WindowFlags wFlags)
         scene().removeItem(m_proxy);
         if (QWidget *w = m_proxy->widget()) {
             // remove the event filter
-            if (QObject *evf =  w->findChild<QObject*>(QLatin1String(zoomedEventFilterRedirectorNameC)))
+            if (QObject *evf =  w->findChild<QObject*>(QLatin1StringView(zoomedEventFilterRedirectorNameC)))
                 w->removeEventFilter(evf);
         }
         m_proxy->deleteLater();

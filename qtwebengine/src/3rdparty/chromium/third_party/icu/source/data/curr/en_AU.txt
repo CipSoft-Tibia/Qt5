@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 en_AU{
     %%Parent{"en_001"}
     Currencies{
@@ -69,7 +70,7 @@ en_AU{
         }
         BOB{
             "BOB",
-            "Boliviano",
+            "Bolivian boliviano",
         }
         BRL{
             "BRL",
@@ -99,10 +100,6 @@ en_AU{
             "CLP",
             "Chilean Peso",
         }
-        CNH{
-            "CNH",
-            "CNH",
-        }
         CNY{
             "CNY",
             "Chinese Yuan",
@@ -110,6 +107,10 @@ en_AU{
         COP{
             "COP",
             "Colombian Peso",
+        }
+        CUP{
+            "CUP",
+            "Cuban Peso",
         }
         CVE{
             "CVE",
@@ -369,7 +370,7 @@ en_AU{
         }
         PHP{
             "PHP",
-            "Philippine Piso",
+            "Philippine Peso",
         }
         PLN{
             "PLN",
@@ -426,10 +427,6 @@ en_AU{
         SHP{
             "SHP",
             "St Helena Pound",
-        }
-        SLL{
-            "SLL",
-            "Sierra Leonean Leone",
         }
         SOS{
             "SOS",
@@ -505,7 +502,7 @@ en_AU{
         }
         VES{
             "VES",
-            "VES",
+            "Venezuelan bolívar",
         }
         VND{
             "VND",
@@ -553,7 +550,6 @@ en_AU{
         AUD{"$"}
         BDT{"Tk"}
         BND{"$"}
-        BOB{"$b"}
         BRL{"R$"}
         CLP{"$"}
         CNY{"¥"}
@@ -588,6 +584,10 @@ en_AU{
         VND{"₫"}
     }
     CurrencyPlurals{
+        AFN{
+            one{"Afghan Afghani"}
+            other{"Afghan Afghanis"}
+        }
         BAM{
             one{"Bosnia-Herzegovina convertible marka"}
             other{"Bosnia-Herzegovina convertible marka"}
@@ -600,13 +600,9 @@ en_AU{
             one{"Bermuda dollar"}
             other{"Bermuda dollars"}
         }
-        BOB{
-            one{"boliviano"}
-            other{"bolivianos"}
-        }
-        CNH{
-            one{"CNH"}
-            other{"CNH"}
+        ETB{
+            one{"Ethiopian birr"}
+            other{"Ethiopian birrs"}
         }
         EUR{
             one{"euro"}
@@ -628,9 +624,17 @@ en_AU{
             one{"Laotian kip"}
             other{"Laotian kip"}
         }
+        LSL{
+            one{"Lesotho loti"}
+            other{"Lesotho lotis"}
+        }
         MKD{
             one{"Macedonian denar"}
             other{"Macedonian denar"}
+        }
+        MVR{
+            one{"Maldivian rufiyaa"}
+            other{"Maldivian rufiyaas"}
         }
         PGK{
             one{"Papua New Guinean kina"}
@@ -652,22 +656,17 @@ en_AU{
             one{"Uzbekistani som"}
             other{"Uzbekistani soms"}
         }
-        VEF{
-            one{"Venezuelan bolívar"}
-            other{"Venezuelan bolívars"}
-        }
-        VES{
-            one{"VES"}
-            other{"VES"}
-        }
         VND{
             one{"Vietnamese dong"}
             other{"Vietnamese dongs"}
+        }
+        VUV{
+            one{"Vanuatu vatu"}
+            other{"Vanuatu vatus"}
         }
         WST{
             one{"Samoan tala"}
             other{"Samoan talas"}
         }
     }
-    Version{"37"}
 }

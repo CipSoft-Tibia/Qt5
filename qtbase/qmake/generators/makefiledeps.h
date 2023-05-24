@@ -1,39 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MAKEFILEDEPS_H
 #define MAKEFILEDEPS_H
 
 #include <proitems.h>
 
-#include <qstringlist.h>
 #include <qfileinfo.h>
-#include <qvector.h>
+#include <qlist.h>
+#include <qstringlist.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -41,14 +16,14 @@ struct SourceFile;
 struct SourceDependChildren;
 class SourceFiles;
 
-class QMakeLocalFileName {
-    bool is_null;
+class QMakeLocalFileName
+{
     QString real_name;
     mutable QString local_name;
 public:
-    QMakeLocalFileName() : is_null(true) {}
+    QMakeLocalFileName() = default;
     QMakeLocalFileName(const QString &);
-    bool isNull() const { return is_null; }
+    bool isNull() const { return real_name.isNull(); }
     inline const QString &real() const { return real_name; }
     const QString &local() const;
 
@@ -66,7 +41,7 @@ private:
     //quick project lookups
     SourceFiles *files, *includes;
     bool files_changed;
-    QVector<QMakeLocalFileName> depdirs;
+    QList<QMakeLocalFileName> depdirs;
     QStringList systemIncludes;
 
     //sleezy buffer code
@@ -86,11 +61,11 @@ protected:
 
 public:
 
-    QMakeSourceFileInfo(const QString &cachefile="");
+    QMakeSourceFileInfo();
     virtual ~QMakeSourceFileInfo();
 
-    QVector<QMakeLocalFileName> dependencyPaths() const { return depdirs; }
-    void setDependencyPaths(const QVector<QMakeLocalFileName> &);
+    QList<QMakeLocalFileName> dependencyPaths() const { return depdirs; }
+    void setDependencyPaths(const QList<QMakeLocalFileName> &);
 
     enum DependencyMode { Recursive, NonRecursive };
     inline void setDependencyMode(DependencyMode mode) { dep_mode = mode; }

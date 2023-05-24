@@ -1,10 +1,12 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/tracing/public/cpp/background_tracing/background_tracing_agent_impl.h"
 
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
+#include "base/task/thread_pool.h"
 
 #include "base/metrics/histogram_macros.h"
 #include "base/test/task_environment.h"
@@ -67,6 +69,8 @@ class BackgroundTracingAgentImplTest : public testing::Test {
 
   BackgroundTracingAgentClientRecorder* recorder() const { return recorder_; }
 
+  void RunUntilIdle() { task_environment_.RunUntilIdle(); }
+
  private:
   base::test::TaskEnvironment task_environment_;
   mojo::Remote<tracing::mojom::BackgroundTracingAgentProvider> provider_;
@@ -75,32 +79,35 @@ class BackgroundTracingAgentImplTest : public testing::Test {
       provider_set_;
   mojo::UniqueReceiverSet<tracing::mojom::BackgroundTracingAgentClient>
       client_set_;
-  BackgroundTracingAgentClientRecorder* recorder_ = nullptr;
+  raw_ptr<BackgroundTracingAgentClientRecorder> recorder_ = nullptr;
 };
 
 TEST_F(BackgroundTracingAgentImplTest, TestInitialize) {
-  base::RunLoop().RunUntilIdle();
+  RunUntilIdle();
   EXPECT_EQ(1, recorder()->on_initialized_count());
 }
 
 TEST_F(BackgroundTracingAgentImplTest, TestHistogramDoesNotTrigger) {
   LOCAL_HISTOGRAM_COUNTS("foo1", 10);
 
-  agent()->SetUMACallback("foo1", 20000, 25000, true);
+  agent()->SetUMACallback("foo1", 20000, 25000);
 
-  base::RunLoop().RunUntilIdle();
+  RunUntilIdle();
 
   EXPECT_EQ(1, recorder()->on_initialized_count());
   EXPECT_EQ(0, recorder()->on_trigger_background_trace_count());
   EXPECT_EQ(0, recorder()->on_abort_background_trace_count());
 }
 
-TEST_F(BackgroundTracingAgentImplTest, TestHistogramTriggers) {
+TEST_F(BackgroundTracingAgentImplTest, TestHistogramTriggers_ExistingSample) {
+  // Ensure that a sample exists by the time SetUMACallback is processed.
   LOCAL_HISTOGRAM_COUNTS("foo2", 2);
 
-  agent()->SetUMACallback("foo2", 1, 3, true);
+  agent()->SetUMACallback("foo2", 1, 3);
 
-  base::RunLoop().RunUntilIdle();
+  // RunLoop ensures that SetUMACallback and OnTriggerBackgroundTrace mojo
+  // messages are processed.
+  RunUntilIdle();
 
   EXPECT_EQ(1, recorder()->on_initialized_count());
   EXPECT_EQ(1, recorder()->on_trigger_background_trace_count());
@@ -108,16 +115,38 @@ TEST_F(BackgroundTracingAgentImplTest, TestHistogramTriggers) {
   EXPECT_EQ("foo2", recorder()->on_trigger_background_trace_histogram_name());
 }
 
-TEST_F(BackgroundTracingAgentImplTest, TestHistogramAborts) {
-  LOCAL_HISTOGRAM_COUNTS("foo3", 10);
+TEST_F(BackgroundTracingAgentImplTest, TestHistogramTriggers_SameThread) {
+  agent()->SetUMACallback("foo2", 1, 3);
+  // RunLoop ensures that SetUMACallback mojo message is processed.
+  RunUntilIdle();
 
-  agent()->SetUMACallback("foo3", 1, 3, false);
+  LOCAL_HISTOGRAM_COUNTS("foo2", 2);
 
-  base::RunLoop().RunUntilIdle();
+  // RunLoop ensures that OnTriggerBackgroundTrace mojo message is processed.
+  RunUntilIdle();
 
   EXPECT_EQ(1, recorder()->on_initialized_count());
-  EXPECT_EQ(0, recorder()->on_trigger_background_trace_count());
-  EXPECT_EQ(1, recorder()->on_abort_background_trace_count());
+  EXPECT_EQ(1, recorder()->on_trigger_background_trace_count());
+  EXPECT_EQ(0, recorder()->on_abort_background_trace_count());
+  EXPECT_EQ("foo2", recorder()->on_trigger_background_trace_histogram_name());
+}
+
+TEST_F(BackgroundTracingAgentImplTest, TestHistogramTriggers_CrossThread) {
+  agent()->SetUMACallback("foo2", 1, 3);
+  // RunLoop ensures that SetUMACallback mojo message is processed.
+  RunUntilIdle();
+
+  base::ThreadPool::PostTask(
+      FROM_HERE, base::BindOnce([]() { LOCAL_HISTOGRAM_COUNTS("foo2", 2); }));
+
+  // RunLoop ensures that ThreadPool::PostTask and OnTriggerBackgroundTrace mojo
+  // message are processed.
+  RunUntilIdle();
+
+  EXPECT_EQ(1, recorder()->on_initialized_count());
+  EXPECT_EQ(1, recorder()->on_trigger_background_trace_count());
+  EXPECT_EQ(0, recorder()->on_abort_background_trace_count());
+  EXPECT_EQ("foo2", recorder()->on_trigger_background_trace_histogram_name());
 }
 
 }  // namespace tracing

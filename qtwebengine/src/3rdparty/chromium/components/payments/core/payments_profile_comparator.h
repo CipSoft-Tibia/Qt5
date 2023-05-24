@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ref.h"
 #include "components/autofill/core/browser/data_model/autofill_profile_comparator.h"
 
 // Utility functions used for processing and filtering address profiles
@@ -33,9 +34,7 @@ class PaymentsProfileComparator : public autofill::AutofillProfileComparator {
  public:
   // Bitmask of potentially-required fields used in evaluating completeness. Bit
   // field values are identical to CompletionStatus in AutofillAddress.java and
-  // ContactEditor.java. Please also modify java files after changing these bits
-  // since missing fields on both Android and Desktop are recorded in the same
-  // UMA metric: PaymentRequest.Missing[Shipping|Contact]Fields.
+  // ContactEditor.java.
   using ProfileFields = uint32_t;
   const static ProfileFields kNone = 0;
   const static ProfileFields kName = 1 << 0;
@@ -91,31 +90,26 @@ class PaymentsProfileComparator : public autofill::AutofillProfileComparator {
 
   // Returns a localized string to be displayed in UI indicating what action,
   // if any, must be taken for the given profile to be used as contact info.
-  base::string16 GetStringForMissingContactFields(
+  std::u16string GetStringForMissingContactFields(
       const autofill::AutofillProfile& profile) const;
 
   // Returns a localized string to be displayed as the title of a piece of UI,
   // indicating what action must be taken for the given profile to be used as
   // contact info.
-  base::string16 GetTitleForMissingContactFields(
+  std::u16string GetTitleForMissingContactFields(
       const autofill::AutofillProfile& profile) const;
 
   // Returns a localized string to be displayed in UI indicating what action,
   // if any, must be taken for the given profile to be used as a shipping
   // address.
-  base::string16 GetStringForMissingShippingFields(
+  std::u16string GetStringForMissingShippingFields(
       const autofill::AutofillProfile& profile) const;
 
   // Returns a localized string to be displayed as the title of a piece of UI,
   // indicating what action must be taken for the given profile to be used as
   // shipping address.
-  base::string16 GetTitleForMissingShippingFields(
+  std::u16string GetTitleForMissingShippingFields(
       const autofill::AutofillProfile& profile) const;
-
-  void RecordMissingFieldsOfShippingProfile(
-      const autofill::AutofillProfile* profile) const;
-  void RecordMissingFieldsOfContactProfile(
-      const autofill::AutofillProfile* profile) const;
 
   // Clears the cached evaluation result for |profile|. Must be called when a
   // profile is modified and saved during the course of a PaymentRequest.
@@ -126,13 +120,13 @@ class PaymentsProfileComparator : public autofill::AutofillProfileComparator {
       const autofill::AutofillProfile& profile) const;
   ProfileFields GetRequiredProfileFieldsForContact() const;
   ProfileFields GetRequiredProfileFieldsForShipping() const;
-  base::string16 GetStringForMissingFields(ProfileFields fields) const;
-  base::string16 GetTitleForMissingFields(ProfileFields fields) const;
+  std::u16string GetStringForMissingFields(ProfileFields fields) const;
+  std::u16string GetTitleForMissingFields(ProfileFields fields) const;
   bool AreRequiredAddressFieldsPresent(
       const autofill::AutofillProfile& profile) const;
 
   mutable std::map<std::string, ProfileFields> cache_;
-  const PaymentOptionsProvider& options_;
+  const raw_ref<const PaymentOptionsProvider> options_;
 };
 
 }  // namespace payments

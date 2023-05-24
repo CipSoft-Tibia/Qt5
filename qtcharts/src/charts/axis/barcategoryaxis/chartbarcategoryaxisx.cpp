@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/chartbarcategoryaxisx_p.h>
 #include <private/chartpresenter_p.h>
@@ -34,7 +8,7 @@
 #include <QtCore/QDebug>
 #include <QtCore/QtMath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 ChartBarCategoryAxisX::ChartBarCategoryAxisX(QBarCategoryAxis *axis, QGraphicsItem* item)
     : HorizontalAxis(axis, item, true),
@@ -48,9 +22,9 @@ ChartBarCategoryAxisX::~ChartBarCategoryAxisX()
 {
 }
 
-QVector<qreal> ChartBarCategoryAxisX::calculateLayout() const
+QList<qreal> ChartBarCategoryAxisX::calculateLayout() const
 {
-    QVector<qreal> points;
+    QList<qreal> points;
     const QRectF& gridRect = gridGeometry();
     qreal range = max() - min();
     const qreal delta = gridRect.width() / range;
@@ -73,15 +47,15 @@ QVector<qreal> ChartBarCategoryAxisX::calculateLayout() const
     return points;
 }
 
-QStringList ChartBarCategoryAxisX::createCategoryLabels(const QVector<qreal>& layout) const
+QStringList ChartBarCategoryAxisX::createCategoryLabels(const QList<qreal> &layout) const
 {
     QStringList result ;
     const QRectF &gridRect = gridGeometry();
-    qreal d = (max() - min()) / gridRect.width();
+    const qreal d = (max() - min()) / gridRect.width();
 
-    for (int i = 0; i < layout.count() - 1; ++i) {
+    for (int i = 0; i < layout.size() - 1; ++i) {
         int x = qFloor((((layout[i] + layout[i + 1]) / 2 - gridRect.left()) * d + min() + 0.5));
-        if (x < max() && (x >= 0) && x < m_categoriesAxis->categories().count()) {
+        if (x < max() && (x >= 0) && x < m_categoriesAxis->categories().size()) {
             result << m_categoriesAxis->categories().at(x);
         } else {
             // No label for x coordinate
@@ -95,7 +69,7 @@ QStringList ChartBarCategoryAxisX::createCategoryLabels(const QVector<qreal>& la
 
 void ChartBarCategoryAxisX::updateGeometry()
 {
-    const QVector<qreal>& layout = ChartAxisElement::layout();
+    const QList<qreal> &layout = ChartAxisElement::layout();
     if (layout.isEmpty())
         return;
     setLabels(createCategoryLabels(layout));
@@ -110,7 +84,7 @@ void ChartBarCategoryAxisX::handleCategoriesChanged()
 
 QSizeF ChartBarCategoryAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constraint) const
 {
-    Q_UNUSED(constraint)
+    Q_UNUSED(constraint);
 
     QSizeF sh;
     QSizeF base = HorizontalAxis::sizeHint(which, constraint);
@@ -120,30 +94,38 @@ QSizeF ChartBarCategoryAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constra
     qreal height = 0;
 
     switch (which) {
-        case Qt::MinimumSize: {
+    case Qt::MinimumSize: {
+        if (labelsVisible()) {
             QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
                                                                    QStringLiteral("..."),
                                                                    axis()->labelsAngle());
             height = boundingRect.height() + labelPadding() + base.height() + 1.0;
-            sh = QSizeF(width, height);
-            break;
+        } else {
+            height = base.height() + 1.0;
         }
-        case Qt::PreferredSize:{
+        sh = QSizeF(width, height);
+        break;
+    }
+    case Qt::PreferredSize:{
+        if (labelsVisible()) {
             qreal labelHeight = 0.0;
             foreach (const QString& s, ticksList) {
                 QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
                 labelHeight = qMax(rect.height(), labelHeight);
             }
             height = labelHeight + labelPadding() + base.height() + 1.0;
-            sh = QSizeF(width, height);
-            break;
+        } else {
+            height = base.height() + 1.0;
         }
-        default:
-          break;
+        sh = QSizeF(width, height);
+        break;
+    }
+    default:
+        break;
     }
     return sh;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_chartbarcategoryaxisx_p.cpp"

@@ -1,15 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/service_worker/service_worker_installed_scripts_sender.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/optional.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
-#include "base/stl_util.h"
-#include "base/task/post_task.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "content/browser/service_worker/embedded_worker_test_helper.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
@@ -20,8 +18,12 @@
 #include "net/base/io_buffer.h"
 #include "net/base/test_completion_callback.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_registration.mojom.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_registration_options.mojom.h"
+#include "url/origin.h"
 
 namespace content {
 
@@ -90,6 +92,11 @@ class MockServiceWorkerInstalledScriptsManager
           receiver)
       : receiver_(this, std::move(receiver)) {}
 
+  MockServiceWorkerInstalledScriptsManager(
+      const MockServiceWorkerInstalledScriptsManager&) = delete;
+  MockServiceWorkerInstalledScriptsManager& operator=(
+      const MockServiceWorkerInstalledScriptsManager&) = delete;
+
   blink::mojom::ServiceWorkerScriptInfoPtr WaitUntilTransferInstalledScript() {
     EXPECT_TRUE(incoming_script_info_.is_null());
     EXPECT_FALSE(transfer_installed_script_waiter_);
@@ -113,8 +120,6 @@ class MockServiceWorkerInstalledScriptsManager
   mojo::Receiver<blink::mojom::ServiceWorkerInstalledScriptsManager> receiver_;
   base::OnceClosure transfer_installed_script_waiter_;
   blink::mojom::ServiceWorkerScriptInfoPtr incoming_script_info_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockServiceWorkerInstalledScriptsManager);
 };
 
 class ServiceWorkerInstalledScriptsSenderTest : public testing::Test {
@@ -130,13 +135,15 @@ class ServiceWorkerInstalledScriptsSenderTest : public testing::Test {
     blink::mojom::ServiceWorkerRegistrationOptions options;
     options.scope = scope_;
     registration_ = base::MakeRefCounted<ServiceWorkerRegistration>(
-        options, 1L, context()->AsWeakPtr());
+        options,
+        blink::StorageKey::CreateFirstParty(url::Origin::Create(scope_)), 1L,
+        context()->AsWeakPtr(), blink::mojom::AncestorFrameType::kNormalFrame);
     version_ = CreateNewServiceWorkerVersion(
         context()->registry(), registration_.get(),
         GURL("http://www.example.com/test/service_worker.js"),
         blink::mojom::ScriptType::kClassic);
-    version_->set_fetch_handler_existence(
-        ServiceWorkerVersion::FetchHandlerExistence::EXISTS);
+    version_->set_fetch_handler_type(
+        ServiceWorkerVersion::FetchHandlerType::kNotSkippable);
     version_->SetStatus(ServiceWorkerVersion::INSTALLED);
   }
 
@@ -148,6 +155,7 @@ class ServiceWorkerInstalledScriptsSenderTest : public testing::Test {
 
   EmbeddedWorkerTestHelper* helper() { return helper_.get(); }
   ServiceWorkerContextCore* context() { return helper_->context(); }
+  ServiceWorkerRegistry* registry() { return context()->registry(); }
   ServiceWorkerVersion* version() { return version_.get(); }
 
  private:
@@ -648,6 +656,67 @@ TEST_F(ServiceWorkerInstalledScriptsSenderTest, NoContext) {
 
   sender->Start();
   EXPECT_EQ(sender->last_finished_reason(), FinishedReason::kNoContextError);
+}
+
+// Test that the scripts sender aborts gracefully when a remote connection to
+// the Storage Service is disconnected.
+TEST_F(ServiceWorkerInstalledScriptsSenderTest, RemoteStorageDisconnection) {
+  const GURL kMainScriptURL = version()->script_url();
+  std::map<GURL, ExpectedScriptInfo> kExpectedScriptInfoMap = {
+      {kMainScriptURL,
+       {1,
+        kMainScriptURL,
+        {{"Content-Length", "35"},
+         {"Content-Type", "text/javascript; charset=utf-8"},
+         {"TestHeader", "BlahBlah"}},
+        "utf-8",
+        "I'm script body for the main script",
+        "I'm meta data for the main script"}}};
+  std::vector<storage::mojom::ServiceWorkerResourceRecordPtr> records;
+  for (const auto& info : kExpectedScriptInfoMap)
+    records.push_back(
+        info.second.WriteToDiskCache(context()->GetStorageControl()));
+  version()->script_cache_map()->SetResources(records);
+  auto sender =
+      std::make_unique<ServiceWorkerInstalledScriptsSender>(version());
+
+  sender->Start();
+
+  helper()->SimulateStorageRestartForTesting();
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_EQ(sender->last_finished_reason(), FinishedReason::kConnectionError);
+}
+
+// Test that the scripts sender aborts gracefully when the storage is disabled.
+TEST_F(ServiceWorkerInstalledScriptsSenderTest, StorageDisabled) {
+  const GURL kMainScriptURL = version()->script_url();
+  std::map<GURL, ExpectedScriptInfo> kExpectedScriptInfoMap = {
+      {kMainScriptURL,
+       {1,
+        kMainScriptURL,
+        {{"Content-Length", "35"},
+         {"Content-Type", "text/javascript; charset=utf-8"},
+         {"TestHeader", "BlahBlah"}},
+        "utf-8",
+        "I'm script body for the main script",
+        "I'm meta data for the main script"}}};
+  std::vector<storage::mojom::ServiceWorkerResourceRecordPtr> records;
+  for (const auto& info : kExpectedScriptInfoMap)
+    records.push_back(
+        info.second.WriteToDiskCache(context()->GetStorageControl()));
+  version()->script_cache_map()->SetResources(records);
+
+  base::RunLoop loop;
+  registry()->DisableStorageForTesting(loop.QuitClosure());
+  loop.Run();
+
+  auto sender =
+      std::make_unique<ServiceWorkerInstalledScriptsSender>(version());
+  sender->Start();
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_EQ(sender->last_finished_reason(), FinishedReason::kConnectionError);
 }
 
 }  // namespace content

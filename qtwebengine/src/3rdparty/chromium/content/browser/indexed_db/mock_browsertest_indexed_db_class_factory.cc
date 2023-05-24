@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scope.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scopes.h"
 #include "components/services/storage/indexed_db/transactional_leveldb/transactional_leveldb_database.h"
@@ -56,14 +57,14 @@ namespace content {
 class IndexedDBTestDatabase : public IndexedDBDatabase {
  public:
   IndexedDBTestDatabase(
-      const base::string16& name,
+      const std::u16string& name,
       IndexedDBBackingStore* backing_store,
       IndexedDBFactory* factory,
       IndexedDBClassFactory* class_factory,
       TasksAvailableCallback tasks_available_callback,
       std::unique_ptr<IndexedDBMetadataCoding> metadata_coding,
       const Identifier& unique_identifier,
-      ScopesLockManager* transaction_lock_manager)
+      PartitionedLockManager* transaction_lock_manager)
       : IndexedDBDatabase(name,
                           backing_store,
                           factory,
@@ -103,7 +104,7 @@ class IndexedDBTestTransaction : public IndexedDBTransaction {
   // Browser tests run under memory/address sanitizers (etc) may trip the
   // default 60s timeout, so relax it during tests.
   base::TimeDelta GetInactivityTimeout() const override {
-    return base::TimeDelta::FromSeconds(60 * 60);
+    return base::Seconds(60 * 60);
   }
 };
 
@@ -209,19 +210,25 @@ class LevelDBTestTransaction : public TransactionalLevelDBTransaction {
   }
 
   leveldb::Status Commit(bool sync_on_commit) override {
-    if ((fail_method_ != FailMethod::COMMIT &&
-         fail_method_ != FailMethod::COMMIT_DISK_FULL) ||
-        ++current_call_num_ != fail_on_call_num_)
+    if (++current_call_num_ != fail_on_call_num_)
       return TransactionalLevelDBTransaction::Commit(sync_on_commit);
 
-    // TODO(jsbell): Consider parameterizing the failure mode.
+    if (fail_method_ == FailMethod::COMMIT)
+      return leveldb::Status::Corruption("Corrupted for the test");
+
     if (fail_method_ == FailMethod::COMMIT_DISK_FULL) {
       return leveldb_env::MakeIOError("dummy filename", "Disk Full",
                                       leveldb_env::kWritableFileAppend,
                                       base::File::FILE_ERROR_NO_SPACE);
     }
 
-    return leveldb::Status::Corruption("Corrupted for the test");
+    if (fail_method_ == FailMethod::COMMIT_SYNC && sync_on_commit) {
+      return leveldb_env::MakeIOError("dummy filename", "Sync on commit",
+                                      leveldb_env::kWritableFileAppend,
+                                      base::File::FILE_ERROR_FAILED);
+    }
+
+    return TransactionalLevelDBTransaction::Commit(sync_on_commit);
   }
 
  private:
@@ -370,13 +377,13 @@ MockBrowserTestIndexedDBClassFactory::transactional_leveldb_factory() {
 
 std::pair<std::unique_ptr<IndexedDBDatabase>, leveldb::Status>
 MockBrowserTestIndexedDBClassFactory::CreateIndexedDBDatabase(
-    const base::string16& name,
+    const std::u16string& name,
     IndexedDBBackingStore* backing_store,
     IndexedDBFactory* factory,
     TasksAvailableCallback tasks_available_callback,
     std::unique_ptr<IndexedDBMetadataCoding> metadata_coding,
     const IndexedDBDatabase::Identifier& unique_identifier,
-    ScopesLockManager* transaction_lock_manager) {
+    PartitionedLockManager* transaction_lock_manager) {
   std::unique_ptr<IndexedDBTestDatabase> database =
       std::make_unique<IndexedDBTestDatabase>(
           name, backing_store, factory, this,

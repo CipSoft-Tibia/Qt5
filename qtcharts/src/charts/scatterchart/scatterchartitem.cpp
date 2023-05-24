@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/scatterchartitem_p.h>
 #include <QtCharts/QScatterSeries>
@@ -38,37 +12,56 @@
 #include <QtCore/QDebug>
 #include <QtWidgets/QGraphicsSceneMouseEvent>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
+
+namespace {
+constexpr short STAR_SPIKES = 5;
+}
 
 ScatterChartItem::ScatterChartItem(QScatterSeries *series, QGraphicsItem *item)
     : XYChart(series,item),
       m_series(series),
       m_items(this),
       m_visible(true),
-      m_shape(QScatterSeries::MarkerShapeRectangle),
-      m_size(15),
+      m_markerShape(QScatterSeries::MarkerShapeRectangle),
+      m_pointsVisible(true),
       m_pointLabelsVisible(false),
+      m_markerSize(series->markerSize()),
       m_pointLabelsFormat(series->pointLabelsFormat()),
       m_pointLabelsFont(series->pointLabelsFont()),
       m_pointLabelsColor(series->pointLabelsColor()),
       m_pointLabelsClipping(true),
+      m_lastHoveredPoint(QPointF(qQNaN(), qQNaN())),
       m_mousePressed(false)
 {
-    QObject::connect(m_series->d_func(), SIGNAL(updated()), this, SLOT(handleUpdated()));
-    QObject::connect(m_series, SIGNAL(visibleChanged()), this, SLOT(handleUpdated()));
-    QObject::connect(m_series, SIGNAL(opacityChanged()), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsFormatChanged(QString)),
-                     this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsVisibilityChanged(bool)),
-                     this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsFontChanged(QFont)), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsColorChanged(QColor)), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsClippingChanged(bool)), this, SLOT(handleUpdated()));
+    connect(series->d_func(), &QXYSeriesPrivate::seriesUpdated,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::lightMarkerChanged, this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::selectedLightMarkerChanged, this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::markerSizeChanged, this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::visibleChanged, this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::opacityChanged, this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsFormatChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsVisibilityChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsFontChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsColorChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsClippingChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::selectedColorChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::selectedPointsChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
+    connect(series, &QScatterSeries::pointsConfigurationChanged,
+            this, &ScatterChartItem::handleSeriesUpdated);
 
     setZValue(ChartPresenter::ScatterSeriesZValue);
-    setFlags(QGraphicsItem::ItemClipsChildrenToShape);
+    setFlags(QGraphicsItem::ItemClipsChildrenToShape | QGraphicsItem::ItemIsSelectable);
 
-    handleUpdated();
+    handleSeriesUpdated();
 
     m_items.setHandlesChildEvents(false);
 }
@@ -84,21 +77,36 @@ void ScatterChartItem::createPoints(int count)
 
         QGraphicsItem *item = 0;
 
-        switch (m_shape) {
+        switch (m_markerShape) {
         case QScatterSeries::MarkerShapeCircle: {
-            item = new CircleMarker(0, 0, m_size, m_size, this);
-            const QRectF &rect = item->boundingRect();
-            item->setPos(-rect.width() / 2, -rect.height() / 2);
+            item = new ChartMarker<QGraphicsEllipseItem>(0, 0, m_markerSize, m_markerSize, this);
             break;
         }
-        case QScatterSeries::MarkerShapeRectangle:
-            item = new RectangleMarker(0, 0, m_size, m_size, this);
-            item->setPos(-m_size / 2, -m_size / 2);
+        case QScatterSeries::MarkerShapeRectangle: {
+            item = new ChartMarker<QGraphicsRectItem>(0, 0, m_markerSize, m_markerSize, this);
             break;
+        }
+        case QScatterSeries::MarkerShapeRotatedRectangle: {
+            item = new RotatedRectangleMarker(0, 0, m_markerSize, m_markerSize, this);
+            break;
+        }
+        case QScatterSeries::MarkerShapeTriangle: {
+            item = new TriangleMarker(0, 0, m_markerSize, m_markerSize, this);
+            break;
+        }
+        case QScatterSeries::MarkerShapeStar: {
+            item = new StarMarker(0, 0, m_markerSize, m_markerSize, this);
+            break;
+        }
+        case QScatterSeries::MarkerShapePentagon: {
+            item = new PentagonMarker(0, 0, m_markerSize, m_markerSize, this);
+            break;
+        }
         default:
             qWarning() << "Unsupported marker type";
             break;
         }
+
         m_items.addToGroup(item);
     }
 }
@@ -111,6 +119,45 @@ void ScatterChartItem::deletePoints(int count)
         QGraphicsItem *item = items.takeLast();
         m_markerMap.remove(item);
         delete(item);
+    }
+}
+
+void ScatterChartItem::resizeMarker(QGraphicsItem *marker, const int size)
+{
+    switch (m_markerShape) {
+    case QScatterSeries::MarkerShapeCircle: {
+        QGraphicsEllipseItem *item = static_cast<QGraphicsEllipseItem *>(marker);
+        item->setRect(0, 0, size, size);
+        break;
+    }
+    case QScatterSeries::MarkerShapeRectangle: {
+        QGraphicsRectItem *item = static_cast<QGraphicsRectItem *>(marker);
+        item->setRect(0, 0, size, size);
+        break;
+    }
+    case QScatterSeries::MarkerShapeRotatedRectangle: {
+        QGraphicsPolygonItem *item = static_cast<QGraphicsPolygonItem *>(marker);
+        item->setPolygon(RotatedRectangleMarker::polygon(0, 0, size, size));
+        break;
+    }
+    case QScatterSeries::MarkerShapeTriangle: {
+        QGraphicsPolygonItem *item = static_cast<QGraphicsPolygonItem *>(marker);
+        item->setPolygon(TriangleMarker::polygon(0, 0, size, size));
+        break;
+    }
+    case QScatterSeries::MarkerShapeStar: {
+        QGraphicsPolygonItem *item = static_cast<QGraphicsPolygonItem *>(marker);
+        item->setPolygon(StarMarker::polygon(0, 0, size, size));
+        break;
+    }
+    case QScatterSeries::MarkerShapePentagon: {
+        QGraphicsPolygonItem *item = static_cast<QGraphicsPolygonItem *>(marker);
+        item->setPolygon(PentagonMarker::polygon(0, 0, size, size));
+        break;
+    }
+    default:
+        qWarning() << "Unsupported marker type";
+        break;
     }
 }
 
@@ -142,8 +189,8 @@ void ScatterChartItem::markerDoubleClicked(QGraphicsItem *marker)
 void ScatterChartItem::updateGeometry()
 {
     if (m_series->useOpenGL()) {
-        if (m_items.childItems().count())
-            deletePoints(m_items.childItems().count());
+        if (m_items.childItems().size())
+            deletePoints(m_items.childItems().size());
         if (!m_rect.isEmpty()) {
             prepareGeometryChange();
             // Changed signal seems to trigger even with empty region
@@ -153,10 +200,10 @@ void ScatterChartItem::updateGeometry()
         return;
     }
 
-    const QVector<QPointF>& points = geometryPoints();
+    const QList<QPointF> &points = geometryPoints();
 
     if (points.size() == 0) {
-        deletePoints(m_items.childItems().count());
+        deletePoints(m_items.childItems().size());
         return;
     }
 
@@ -168,7 +215,7 @@ void ScatterChartItem::updateGeometry()
         createPoints(-diff);
 
     if (diff != 0)
-        handleUpdated();
+        handleSeriesUpdated();
 
     QList<QGraphicsItem *> items = m_items.childItems();
 
@@ -178,12 +225,22 @@ void ScatterChartItem::updateGeometry()
     // a region that has to be compatible with QRect.
     if (clipRect.height() <= INT_MAX
             && clipRect.width() <= INT_MAX) {
-        QVector<bool> offGridStatus = offGridStatusVector();
+        const QList<bool> offGridStatus = offGridStatusVector();
         const int seriesLastIndex = m_series->count() - 1;
 
         for (int i = 0; i < points.size(); i++) {
-            QGraphicsItem *item = items.at(i);
+            QAbstractGraphicsShapeItem *item =
+                    static_cast<QAbstractGraphicsShapeItem *>(items.at(i));
             const QPointF &point = points.at(i);
+
+            if (m_pointsConfiguration.contains(i)) {
+                const auto &conf = m_pointsConfiguration[i];
+                if (conf.contains(QXYSeries::PointConfiguration::Size))
+                    resizeMarker(
+                            item,
+                            m_pointsConfiguration[i][QXYSeries::PointConfiguration::Size].toReal());
+            }
+
             const QRectF &rect = item->boundingRect();
             // During remove animation series may have different number of points,
             // so ensure we don't go over the index. Animation handling itself ensures that
@@ -198,10 +255,34 @@ void ScatterChartItem::updateGeometry()
             position.setY(point.y() - rect.height() / 2);
             item->setPos(position);
 
-            if (!m_visible || offGridStatus.at(i))
+            if (!m_visible || offGridStatus.at(i)) {
                 item->setVisible(false);
-            else
-                item->setVisible(true);
+            } else {
+                bool drawPoint = m_pointsVisible;
+                if (m_pointsConfiguration.contains(i)) {
+                    const auto &conf = m_pointsConfiguration[i];
+
+                    if (conf.contains(QXYSeries::PointConfiguration::Visibility)) {
+                        drawPoint
+                                = m_pointsConfiguration[i][QXYSeries::PointConfiguration::Visibility]
+                                .toBool();
+                    }
+
+                    if (drawPoint && conf.contains(QXYSeries::PointConfiguration::Color)) {
+                        item->setBrush(
+                                m_pointsConfiguration[i][QXYSeries::PointConfiguration::Color]
+                                        .value<QColor>());
+                    }
+                }
+
+                if (m_series->isPointSelected(i)) {
+                    drawPoint = m_series->selectedLightMarker().isNull();
+                    if (drawPoint && m_selectedColor.isValid())
+                        item->setBrush(m_selectedColor);
+                }
+
+                item->setVisible(drawPoint);
+            }
         }
 
         prepareGeometryChange();
@@ -209,10 +290,68 @@ void ScatterChartItem::updateGeometry()
     }
 }
 
+void ScatterChartItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
+{
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x())) {
+        emit XYChart::pressed(matchedP);
+        m_lastMousePos = event->pos();
+        m_mousePressed = true;
+    } else {
+        event->ignore();
+    }
+
+    QGraphicsItem::mousePressEvent(event);
+}
+
+void ScatterChartItem::hoverMoveEvent(QGraphicsSceneHoverEvent *event)
+{
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x())) {
+        if (matchedP != m_lastHoveredPoint) {
+            if (!qIsNaN(m_lastHoveredPoint.x()))
+                emit XYChart::hovered(m_lastHoveredPoint, false);
+
+            m_lastHoveredPoint = matchedP;
+            emit XYChart::hovered(matchedP, true);
+        }
+    } else if (!qIsNaN(m_lastHoveredPoint.x())) {
+        emit XYChart::hovered(m_lastHoveredPoint, false);
+        m_lastHoveredPoint = QPointF(qQNaN(), qQNaN());
+    }
+
+    QGraphicsItem::hoverMoveEvent(event);
+}
+
+void ScatterChartItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
+{
+    QPointF result;
+    QPointF matchedP = matchForLightMarker(m_lastMousePos);
+    if (!qIsNaN(matchedP.x()) && m_mousePressed) {
+        result = matchedP;
+        emit XYChart::released(result);
+        emit XYChart::clicked(result);
+    }
+
+    m_mousePressed = false;
+    QGraphicsItem::mouseReleaseEvent(event);
+}
+
+void ScatterChartItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
+{
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x()))
+        emit XYChart::doubleClicked(matchedP);
+    else
+        emit XYChart::doubleClicked(domain()->calculateDomainPoint(m_lastMousePos));
+
+    QGraphicsItem::mouseDoubleClickEvent(event);
+}
+
 void ScatterChartItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
+    Q_UNUSED(option);
+    Q_UNUSED(widget);
 
     if (m_series->useOpenGL())
         return;
@@ -222,32 +361,93 @@ void ScatterChartItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *
     painter->save();
     painter->setClipRect(clipRect);
 
-    if (m_pointLabelsVisible) {
-        if (m_pointLabelsClipping)
-            painter->setClipping(true);
-        else
-            painter->setClipping(false);
-        m_series->d_func()->drawSeriesPointLabels(painter, m_points,
-                                                  m_series->markerSize() / 2
-                                                  + m_series->pen().width());
+    // Draw markers if a marker or marker for selected points only has been
+    // set (set to QImage() to disable)
+    if (!m_series->lightMarker().isNull() || !m_series->selectedLightMarker().isNull()) {
+        const QImage &marker = m_series->lightMarker();
+        const QImage &selectedMarker = m_series->selectedLightMarker();
+        qreal markerHalfSize = m_markerSize / 2.0;
+
+        for (int i = 0; i < m_points.size(); ++i) {
+            // Documentation of light markers says that points visibility and
+            // light markers are independent features. Therefore m_pointsVisible
+            // is not used here as light markers are drawn if lightMarker is not null.
+            // However points visibility configuration can be still used here.
+            bool drawPoint = !m_series->lightMarker().isNull();
+            if (m_pointsConfiguration.contains(i)) {
+                const auto &conf = m_pointsConfiguration[i];
+
+                if (conf.contains(QXYSeries::PointConfiguration::Visibility)) {
+                    drawPoint = m_pointsConfiguration[i][QXYSeries::PointConfiguration::Visibility]
+                                        .toBool();
+                }
+            }
+
+            bool drawSelectedPoint = false;
+            if (m_series->isPointSelected(i)) {
+                drawPoint = true;
+                drawSelectedPoint = !selectedMarker.isNull();
+            }
+            if (drawPoint) {
+                const QRectF rect(m_points[i].x() - markerHalfSize,
+                                  m_points[i].y() - markerHalfSize,
+                                  m_markerSize, m_markerSize);
+                painter->drawImage(rect, drawSelectedPoint ? selectedMarker : marker);
+            }
+        }
     }
+
+    if (m_series->bestFitLineVisible())
+        m_series->d_func()->drawBestFitLine(painter, clipRect);
+
+    m_series->d_func()->drawPointLabels(painter, m_points, m_series->markerSize() / 2 + m_series->pen().width());
 
     painter->restore();
 }
 
 void ScatterChartItem::setPen(const QPen &pen)
 {
-    foreach (QGraphicsItem *item , m_items.childItems())
-        static_cast<QAbstractGraphicsShapeItem*>(item)->setPen(pen);
+    QPen penToUse(pen);
+    if (!m_series->lightMarker().isNull())
+        penToUse.setColor(Qt::transparent);
+
+    const auto &items = m_items.childItems();
+    for (auto item : items)
+        static_cast<QAbstractGraphicsShapeItem*>(item)->setPen(penToUse);
 }
 
 void ScatterChartItem::setBrush(const QBrush &brush)
 {
-    foreach (QGraphicsItem *item , m_items.childItems())
-        static_cast<QAbstractGraphicsShapeItem*>(item)->setBrush(brush);
+    const auto &items = m_items.childItems();
+    for (auto item : items) {
+        if (m_series->lightMarker().isNull()) {
+            if (m_markerMap.contains(item)) {
+                auto index = m_series->points().indexOf(m_markerMap[item]);
+                if (m_selectedPoints.contains(index) && m_selectedColor.isValid()) {
+                    static_cast<QAbstractGraphicsShapeItem *>(item)->setBrush(m_selectedColor);
+                } else {
+                    bool useBrush = true;
+                    if (m_pointsConfiguration.contains(index)) {
+                        const auto &conf = m_pointsConfiguration[index];
+                        if (conf.contains(QXYSeries::PointConfiguration::Color))
+                            useBrush = false;
+                    }
+
+                    if (useBrush)
+                        static_cast<QAbstractGraphicsShapeItem *>(item)->setBrush(brush);
+                }
+            } else {
+                static_cast<QAbstractGraphicsShapeItem *>(item)->setBrush(brush);
+            }
+        } else {
+            QBrush brushToUse;
+            brushToUse.setColor(Qt::transparent);
+            static_cast<QAbstractGraphicsShapeItem *>(item)->setBrush(brushToUse);
+        }
+    }
 }
 
-void ScatterChartItem::handleUpdated()
+void ScatterChartItem::handleSeriesUpdated()
 {
     if (m_series->useOpenGL()) {
         if ((m_series->isVisible() != m_visible)) {
@@ -257,22 +457,33 @@ void ScatterChartItem::handleUpdated()
         return;
     }
 
-    int count = m_items.childItems().count();
+    int count = m_items.childItems().size();
     if (count == 0)
         return;
 
+    const bool pointsConfigurationDirty =
+            m_series->pointsConfiguration() != m_pointsConfiguration;
+
     bool recreate = m_visible != m_series->isVisible()
-                    || m_size != m_series->markerSize()
-                    || m_shape != m_series->markerShape();
+                    || m_pointsVisible != m_series->pointsVisible()
+                    || m_markerSize != m_series->markerSize()
+                    || m_markerShape != m_series->markerShape()
+                    || m_selectedColor != m_series->selectedColor()
+                    || m_selectedPoints != m_series->selectedPoints()
+                    || pointsConfigurationDirty;
     m_visible = m_series->isVisible();
-    m_size = m_series->markerSize();
-    m_shape = m_series->markerShape();
+    m_markerSize = m_series->markerSize();
+    m_markerShape = m_series->markerShape();
     setVisible(m_visible);
     setOpacity(m_series->opacity());
+    m_pointsVisible = m_series->pointsVisible();
     m_pointLabelsFormat = m_series->pointLabelsFormat();
     m_pointLabelsVisible = m_series->pointLabelsVisible();
     m_pointLabelsFont = m_series->pointLabelsFont();
     m_pointLabelsColor = m_series->pointLabelsColor();
+    m_selectedColor = m_series->selectedColor();
+    m_selectedPoints = m_series->selectedPoints();
+    m_pointsConfiguration = m_series->pointsConfiguration();
     bool labelClippingChanged = m_pointLabelsClipping != m_series->pointLabelsClipping();
     m_pointLabelsClipping = m_series->pointLabelsClipping();
 
@@ -280,9 +491,16 @@ void ScatterChartItem::handleUpdated()
         deletePoints(count);
         createPoints(count);
 
-        // Updating geometry is now safe, because it won't call handleUpdated unless it creates/deletes points
+        // Updating geometry is now safe, because it won't call handleSeriesUpdated unless it
+        // creates/deletes points
         updateGeometry();
     }
+
+    // Only accept hover events when light/selection markers are in use so we don't unnecessarily
+    // eat the events in the regular case
+    setAcceptHoverEvents(!(m_series->lightMarker().isNull()
+                           && (m_series->selectedLightMarker().isNull()
+                               || m_series->selectedPoints().isEmpty())));
 
     setPen(m_series->pen());
     setBrush(m_series->brush());
@@ -293,6 +511,155 @@ void ScatterChartItem::handleUpdated()
         update();
 }
 
-QT_CHARTS_END_NAMESPACE
+void ScatterChartItem::handleMarkerMouseReleaseEvent(QGraphicsItem *item)
+{
+    markerReleased(item);
+    if (mousePressed())
+        markerSelected(item);
+    setMousePressed(false);
+}
+
+template<class T>
+ChartMarker<T>::ChartMarker(qreal x, qreal y, qreal w, qreal h, ScatterChartItem *parent)
+    : T(x, y, w, h, parent)
+    , m_parent(parent)
+{
+    T::setAcceptHoverEvents(true);
+    T::setFlag(QGraphicsItem::ItemIsSelectable);
+}
+
+template<class T>
+ChartMarker<T>::ChartMarker(ScatterChartItem *parent)
+    : T(parent)
+    , m_parent(parent)
+{
+    T::setAcceptHoverEvents(true);
+    T::setFlag(QGraphicsItem::ItemIsSelectable);
+}
+
+template<class T>
+void ChartMarker<T>::mousePressEvent(QGraphicsSceneMouseEvent *event)
+{
+    T::mousePressEvent(event);
+    m_parent->markerPressed(this);
+    m_parent->setMousePressed();
+}
+
+template<class T>
+void ChartMarker<T>::hoverEnterEvent(QGraphicsSceneHoverEvent *event)
+{
+    T::hoverEnterEvent(event);
+    m_parent->markerHovered(this, true);
+}
+
+template<class T>
+void ChartMarker<T>::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
+{
+    T::hoverLeaveEvent(event);
+    m_parent->markerHovered(this, false);
+}
+
+template<class T>
+void ChartMarker<T>::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
+{
+    T::mouseReleaseEvent(event);
+    m_parent->handleMarkerMouseReleaseEvent(this);
+}
+
+template<class T>
+void ChartMarker<T>::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
+{
+    T::mouseDoubleClickEvent(event);
+    m_parent->markerDoubleClicked(this);
+}
+
+RotatedRectangleMarker::RotatedRectangleMarker(qreal x, qreal y, qreal w, qreal h,
+                                               ScatterChartItem *parent)
+    : ChartMarker<QGraphicsPolygonItem>(parent)
+{
+    setPolygon(RotatedRectangleMarker::polygon(x, y, w, h));
+}
+
+QPolygonF RotatedRectangleMarker::polygon(qreal x, qreal y, qreal w, qreal h)
+{
+    QPolygonF rotatedRectPoly;
+    rotatedRectPoly << QPointF(x, y + h / 2.0);
+    rotatedRectPoly << QPointF(x + w / 2.0, y + h);
+    rotatedRectPoly << QPointF(x + w, y + h / 2.0);
+    rotatedRectPoly << QPointF(x + w / 2.0, y);
+
+    return rotatedRectPoly;
+}
+
+TriangleMarker::TriangleMarker(qreal x, qreal y, qreal w, qreal h, ScatterChartItem *parent)
+    : ChartMarker<QGraphicsPolygonItem>(parent)
+{
+    setPolygon(TriangleMarker::polygon(x, y, w, h));
+}
+
+QPolygonF TriangleMarker::polygon(qreal x, qreal y, qreal w, qreal h)
+{
+    QPolygonF trianglePoly;
+    trianglePoly << QPointF(x, y + h);
+    trianglePoly << QPointF(x + w, y + h);
+    trianglePoly << QPointF(x + w / 2.0, y);
+
+    return trianglePoly;
+}
+
+StarMarker::StarMarker(qreal x, qreal y, qreal w, qreal h, ScatterChartItem *parent)
+    : ChartMarker<QGraphicsPolygonItem>(parent)
+{
+    setPolygon(StarMarker::polygon(x, y, w, h));
+}
+
+QPolygonF StarMarker::polygon(qreal x, qreal y, qreal w, qreal h)
+{
+    QPolygonF starPoly;
+
+    constexpr qreal step = M_PI / STAR_SPIKES;
+    const qreal radius = w / 2.0;
+    const qreal innerRadius = radius * 0.5;
+    const QPointF &center = QPointF(x + w / 2.0, y + h / 2.0);
+    qreal rot = M_PI / 2 * 3;
+
+    for (int i = 0; i < STAR_SPIKES; ++i) {
+        starPoly << QPointF(center.x() + std::cos(rot) * radius,
+                            center.y() + std::sin(rot) * radius);
+        rot += step;
+
+        starPoly << QPointF(center.x() + std::cos(rot) * innerRadius,
+                            center.y() + std::sin(rot) * innerRadius);
+        rot += step;
+    }
+
+    return starPoly;
+}
+
+PentagonMarker::PentagonMarker(qreal x, qreal y, qreal w, qreal h, ScatterChartItem *parent)
+    : ChartMarker<QGraphicsPolygonItem>(parent)
+{
+    setPolygon(PentagonMarker::polygon(x, y, w, h));
+}
+
+QPolygonF PentagonMarker::polygon(qreal x, qreal y, qreal w, qreal h)
+{
+    QPolygonF pentagonPoly;
+
+    constexpr qreal step = 2 * M_PI / 5;
+    const qreal radius = w / 2.0;
+    const QPointF &center = QPointF(x + w / 2.0, y + h / 2.0);
+    qreal rot = M_PI / 2 * 3;
+
+    for (int i = 0; i < 5; ++i) {
+        pentagonPoly << QPointF(center.x() + std::cos(rot) * radius,
+                                center.y() + std::sin(rot) * radius);
+        rot += step;
+    }
+
+    return pentagonPoly;
+}
+
+QT_END_NAMESPACE
 
 #include "moc_scatterchartitem_p.cpp"

@@ -1,112 +1,110 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "noisynode.h"
 
 #include <QtCore/QRandomGenerator>
-#include <QtQuick/QSGSimpleMaterialShader>
+
 #include <QtQuick/QSGTexture>
 #include <QtQuick/QQuickWindow>
+#include <QtQuick/QSGMaterial>
 
 #define NOISE_SIZE 64
 
-struct NoisyMaterial
+class NoisyShader : public QSGMaterialShader
 {
-    ~NoisyMaterial() {
-        delete texture;
-    }
-
-    QColor color;
-    QSGTexture *texture;
-};
-
-class NoisyShader : public QSGSimpleMaterialShader<NoisyMaterial>
-{
-    QSG_DECLARE_SIMPLE_SHADER(NoisyShader, NoisyMaterial)
-
 public:
     NoisyShader() {
-        setShaderSourceFile(QOpenGLShader::Vertex, ":/scenegraph/graph/shaders/noisy.vsh");
-        setShaderSourceFile(QOpenGLShader::Fragment, ":/scenegraph/graph/shaders/noisy.fsh");
+        setShaderFileName(VertexStage, QLatin1String(":/scenegraph/graph/shaders/noisy.vert.qsb"));
+        setShaderFileName(FragmentStage, QLatin1String(":/scenegraph/graph/shaders/noisy.frag.qsb"));
     }
 
-    QList<QByteArray> attributes() const override {  return QList<QByteArray>() << "aVertex" << "aTexCoord"; }
-
-    void updateState(const NoisyMaterial *m, const NoisyMaterial *) override {
-
-        // Set the color
-        program()->setUniformValue(id_color, m->color);
-
-        // Bind the texture and set program to use texture unit 0 (the default)
-        m->texture->bind();
-
-        // Then set the texture size so we can adjust the texture coordinates accordingly in the
-        // vertex shader..
-        QSize s = m->texture->textureSize();
-        program()->setUniformValue(id_textureSize, QSizeF(1.0 / s.width(), 1.0 / s.height()));
-    }
-
-    void resolveUniforms() override {
-        id_texture = program()->uniformLocation("texture");
-        id_textureSize = program()->uniformLocation("textureSize");
-        id_color = program()->uniformLocation("color");
-
-        // We will only use texture unit 0, so set it only once.
-        program()->setUniformValue(id_texture, 0);
-    }
-
-private:
-    int id_color = -1;
-    int id_texture = -1;
-    int id_textureSize = -1;
+    bool updateUniformData(RenderState &state, QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
+    void updateSampledImage(RenderState &state, int binding, QSGTexture **texture,
+                            QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
 };
+
+class NoisyMaterial : public QSGMaterial
+{
+public:
+    NoisyMaterial()
+    {
+        setFlag(Blending);
+    }
+
+    ~NoisyMaterial()
+    {
+        delete state.texture;
+    }
+
+    QSGMaterialType *type() const override
+    {
+        static QSGMaterialType type;
+        return &type;
+    }
+
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override
+    {
+        return new NoisyShader;
+    }
+
+    int compare(const QSGMaterial *m) const override
+    {
+        const NoisyMaterial *other = static_cast<const NoisyMaterial *>(m);
+
+        if (int diff = int(state.color.rgb()) - int(other->state.color.rgb()))
+            return diff;
+
+        if (!state.texture || !other->state.texture)
+            return state.texture ? 1 : -1;
+
+        const qint64 diff = state.texture->comparisonKey() - other->state.texture->comparisonKey();
+        return diff < 0 ? -1 : (diff > 0 ? 1 : 0);
+    }
+
+    struct {
+        QColor color;
+        QSGTexture *texture;
+    } state;
+};
+
+bool NoisyShader::updateUniformData(RenderState &state, QSGMaterial *newMaterial, QSGMaterial *)
+{
+    QByteArray *buf = state.uniformData();
+    Q_ASSERT(buf->size() >= 92);
+
+    if (state.isMatrixDirty()) {
+        const QMatrix4x4 m = state.combinedMatrix();
+        memcpy(buf->data(), m.constData(), 64);
+    }
+
+    if (state.isOpacityDirty()) {
+        const float opacity = state.opacity();
+        memcpy(buf->data() + 88, &opacity, 4);
+    }
+
+    NoisyMaterial *mat = static_cast<NoisyMaterial *>(newMaterial);
+    float c[4];
+    mat->state.color.getRgbF(&c[0], &c[1], &c[2], &c[3]);
+    memcpy(buf->data() + 64, c, 16);
+
+    const QSize s = mat->state.texture->textureSize();
+    float textureSize[2] = { 1.0f / s.width(), 1.0f / s.height() };
+    memcpy(buf->data() + 80, textureSize, 8);
+
+    return true;
+}
+
+void NoisyShader::updateSampledImage(RenderState &state, int binding, QSGTexture **texture,
+                                     QSGMaterial *newMaterial, QSGMaterial *)
+{
+    Q_UNUSED(state);
+    Q_UNUSED(binding);
+
+    NoisyMaterial *mat = static_cast<NoisyMaterial *>(newMaterial);
+    mat->state.texture->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
+    *texture = mat->state.texture;
+}
 
 NoisyNode::NoisyNode(QQuickWindow *window)
 {
@@ -123,10 +121,9 @@ NoisyNode::NoisyNode(QQuickWindow *window)
     t->setHorizontalWrapMode(QSGTexture::Repeat);
     t->setVerticalWrapMode(QSGTexture::Repeat);
 
-    QSGSimpleMaterial<NoisyMaterial> *m = NoisyShader::createMaterial();
-    m->state()->texture = t;
-    m->state()->color = QColor::fromRgbF(0.95, 0.95, 0.97);
-    m->setFlag(QSGMaterial::Blending);
+    NoisyMaterial *m = new NoisyMaterial;
+    m->state.texture = t;
+    m->state.color = QColor::fromRgbF(0.95, 0.95, 0.97);
 
     setMaterial(m);
     setFlag(OwnsMaterial, true);

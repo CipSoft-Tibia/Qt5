@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtQuick/private/qsgcontext_p.h>
 #include <QtQuick/private/qsgtexture_p.h>
+#include <QtQuick/private/qsgrenderer_p.h>
 #include <QtQuick/private/qquickpixmapcache_p.h>
 #include <QtQuick/private/qsgadaptationlayer_p.h>
 
@@ -98,6 +63,10 @@ Q_LOGGING_CATEGORY(QSG_LOG_TIME_GLYPH,          "qt.scenegraph.time.glyph")
 // Timing inside the renderer base class
 Q_LOGGING_CATEGORY(QSG_LOG_TIME_RENDERER,       "qt.scenegraph.time.renderer")
 
+// Applicable for render loops that install their own animation driver, such as
+// the 'threaded' loop. This env.var. is documented in the scenegraph docs.
+DEFINE_BOOL_CONFIG_OPTION(useElapsedTimerBasedAnimationDriver, QSG_USE_SIMPLE_ANIMATION_DRIVER);
+
 bool qsg_useConsistentTiming()
 {
     int use = -1;
@@ -111,6 +80,34 @@ bool qsg_useConsistentTiming()
 
 class QSGAnimationDriver : public QAnimationDriver
 {
+public:
+    QSGAnimationDriver(QObject *parent)
+        : QAnimationDriver(parent)
+    {
+        QScreen *screen = QGuiApplication::primaryScreen();
+        if (screen) {
+            qreal refreshRate = screen->refreshRate();
+            // To work around that some platforms wrongfully return 0 or something
+            // bogus for the refresh rate.
+            if (refreshRate < 1)
+                refreshRate = 60;
+            m_vsync = 1000.0f / float(refreshRate);
+        } else {
+            m_vsync = 16.67f;
+        }
+    }
+
+    float vsyncInterval() const { return m_vsync; }
+
+    virtual bool isVSyncDependent() const = 0;
+
+protected:
+    float m_vsync = 0;
+};
+
+// default as in default for the threaded render loop
+class QSGDefaultAnimationDriver : public QSGAnimationDriver
+{
     Q_OBJECT
 public:
     enum Mode {
@@ -118,10 +115,9 @@ public:
         TimerMode
     };
 
-    QSGAnimationDriver(QObject *parent)
-        : QAnimationDriver(parent)
+    QSGDefaultAnimationDriver(QObject *parent)
+        : QSGAnimationDriver(parent)
         , m_time(0)
-        , m_vsync(0)
         , m_mode(VSyncMode)
         , m_lag(0)
         , m_bad(0)
@@ -129,7 +125,6 @@ public:
     {
         QScreen *screen = QGuiApplication::primaryScreen();
         if (screen && !qsg_useConsistentTiming()) {
-            m_vsync = 1000.0 / screen->refreshRate();
             if (m_vsync <= 0)
                 m_mode = TimerMode;
         } else {
@@ -180,7 +175,7 @@ public:
 
             m_time += m_vsync;
 
-            if (delta > m_vsync * 1.25) {
+            if (delta > m_vsync * 1.25f) {
                 m_lag += (delta / m_vsync);
                 m_bad++;
                // We tolerate one bad frame without resorting to timer based. This is
@@ -197,7 +192,7 @@ public:
             }
 
         } else {
-            if (delta < 1.25 * m_vsync) {
+            if (delta < 1.25f * m_vsync) {
                 ++m_good;
             } else {
                 m_good = 0;
@@ -218,14 +213,79 @@ public:
         advanceAnimation();
     }
 
+    bool isVSyncDependent() const override
+    {
+        return true;
+    }
+
     double m_time;
-    double m_vsync;
     Mode m_mode;
     QElapsedTimer m_timer;
     QElapsedTimer m_wallTime;
-    double m_lag;
+    float m_lag;
     int m_bad;
     int m_good;
+};
+
+// Advance based on QElapsedTimer. (so like the TimerMode of QSGDefaultAnimationDriver)
+// Does not depend on vsync-based throttling.
+//
+// NB this is not the same as not installing a QAnimationDriver: the built-in
+// approach in QtCore is to rely on 16 ms timer events which are potentially a
+// lot less accurate.
+//
+// This has the benefits of:
+// - not needing any of the infrastructure for falling back to a
+//   QTimer when there are multiple windows,
+// - needing no heuristics trying determine if vsync-based throttling
+//   is missing or broken,
+// - being compatible with any kind of temporal drifts in vsync throttling
+//   which is reportedly happening in various environments and platforms
+//   still,
+// - not being tied to the primary screen's refresh rate, i.e. this is
+//   correct even if the window is on some secondary screen with a
+//   different refresh rate,
+// - not having to worry about the potential effects of variable refresh
+//   rate solutions,
+// - render thread animators work correctly regardless of vsync.
+//
+// On the downside, some animations might appear less smooth (compared to the
+// ideal single window case of QSGDefaultAnimationDriver).
+//
+class QSGElapsedTimerAnimationDriver : public QSGAnimationDriver
+{
+public:
+    QSGElapsedTimerAnimationDriver(QObject *parent)
+        : QSGAnimationDriver(parent)
+    {
+        qCDebug(QSG_LOG_INFO, "Animation Driver: using QElapsedTimer, thread %p %s",
+                QThread::currentThread(),
+                QThread::currentThread() == qGuiApp->thread() ? "(gui/main thread)" : "(render thread)");
+    }
+
+    void start() override
+    {
+        m_wallTime.restart();
+        QAnimationDriver::start();
+    }
+
+    qint64 elapsed() const override
+    {
+        return m_wallTime.elapsed();
+    }
+
+    void advance() override
+    {
+        advanceAnimation();
+    }
+
+    bool isVSyncDependent() const override
+    {
+        return false;
+    }
+
+private:
+    QElapsedTimer m_wallTime;
 };
 
 /*!
@@ -233,7 +293,7 @@ public:
 
     \brief The QSGContext holds the scene graph entry points for one QML engine.
 
-    The context is not ready for use until it has a QOpenGLContext. Once that happens,
+    The context is not ready for use until it has a QRhi. Once that happens,
     the scene graph population can start.
 
     \internal
@@ -284,7 +344,7 @@ QSGGuiThreadShaderEffectManager *QSGContext::createGuiThreadShaderEffectManager(
     valid as long as the backend does not claim SupportsShaderEffectNode or
     ignoring ShaderEffect elements is acceptable.
  */
-QSGShaderEffectNode *QSGContext::createShaderEffectNode(QSGRenderContext *, QSGGuiThreadShaderEffectManager *)
+QSGShaderEffectNode *QSGContext::createShaderEffectNode(QSGRenderContext *)
 {
     return nullptr;
 }
@@ -294,7 +354,27 @@ QSGShaderEffectNode *QSGContext::createShaderEffectNode(QSGRenderContext *, QSGG
  */
 QAnimationDriver *QSGContext::createAnimationDriver(QObject *parent)
 {
-    return new QSGAnimationDriver(parent);
+    if (useElapsedTimerBasedAnimationDriver())
+        return new QSGElapsedTimerAnimationDriver(parent);
+
+    return new QSGDefaultAnimationDriver(parent);
+}
+
+/*!
+    \return the vsync rate (such as, 16.68 ms or similar), if applicable, for
+    the \a driver that was created by createAnimationDriver().
+ */
+float QSGContext::vsyncIntervalForAnimationDriver(QAnimationDriver *driver)
+{
+    return static_cast<QSGAnimationDriver *>(driver)->vsyncInterval();
+}
+
+/*!
+    \return true if \a driver relies on vsync-based throttling in some form.
+ */
+bool QSGContext::isVSyncDependent(QAnimationDriver *driver)
+{
+    return static_cast<QSGAnimationDriver *>(driver)->isVSyncDependent();
 }
 
 QSize QSGContext::minimumFBOSize() const
@@ -341,49 +421,27 @@ void QSGRenderContext::invalidate()
 {
 }
 
-void QSGRenderContext::prepareSync(qreal devicePixelRatio, QRhiCommandBuffer *cb)
+void QSGRenderContext::prepareSync(qreal devicePixelRatio,
+                                   QRhiCommandBuffer *cb,
+                                   const QQuickGraphicsConfiguration &config)
 {
     Q_UNUSED(devicePixelRatio);
     Q_UNUSED(cb);
+    Q_UNUSED(config);
 }
 
-void QSGRenderContext::beginNextFrame(QSGRenderer *renderer,
+void QSGRenderContext::beginNextFrame(QSGRenderer *renderer, const QSGRenderTarget &renderTarget,
                                       RenderPassCallback mainPassRecordingStart,
                                       RenderPassCallback mainPassRecordingEnd,
                                       void *callbackUserData)
 {
-    Q_UNUSED(renderer);
+    renderer->setRenderTarget(renderTarget);
     Q_UNUSED(mainPassRecordingStart);
     Q_UNUSED(mainPassRecordingEnd);
     Q_UNUSED(callbackUserData);
 }
 
 void QSGRenderContext::endNextFrame(QSGRenderer *renderer)
-{
-    Q_UNUSED(renderer);
-}
-
-void QSGRenderContext::beginNextRhiFrame(QSGRenderer *renderer,
-                                         QRhiRenderTarget *rt, QRhiRenderPassDescriptor *rp, QRhiCommandBuffer *cb,
-                                         RenderPassCallback mainPassRecordingStart,
-                                         RenderPassCallback mainPassRecordingEnd,
-                                         void *callbackUserData)
-{
-    Q_UNUSED(renderer);
-    Q_UNUSED(rt);
-    Q_UNUSED(rp);
-    Q_UNUSED(cb);
-    Q_UNUSED(mainPassRecordingStart);
-    Q_UNUSED(mainPassRecordingEnd);
-    Q_UNUSED(callbackUserData);
-}
-
-void QSGRenderContext::renderNextRhiFrame(QSGRenderer *renderer)
-{
-    Q_UNUSED(renderer);
-}
-
-void QSGRenderContext::endNextRhiFrame(QSGRenderer *renderer)
 {
     Q_UNUSED(renderer);
 }
@@ -404,16 +462,26 @@ void QSGRenderContext::preprocess()
 /*!
     Factory function for scene graph backends of the distance-field glyph cache.
  */
-QSGDistanceFieldGlyphCache *QSGRenderContext::distanceFieldGlyphCache(const QRawFont &)
+QSGDistanceFieldGlyphCache *QSGRenderContext::distanceFieldGlyphCache(const QRawFont &, int)
 {
     return nullptr;
 }
 
+void QSGRenderContext::invalidateGlyphCaches()
+{
+
+}
 
 void QSGRenderContext::registerFontengineForCleanup(QFontEngine *engine)
 {
     engine->ref.ref();
-    m_fontEnginesToClean << engine;
+    m_fontEnginesToClean[engine]++;
+}
+
+void QSGRenderContext::unregisterFontengineForCleanup(QFontEngine *engine)
+{
+    m_fontEnginesToClean[engine]--;
+    Q_ASSERT(m_fontEnginesToClean.value(engine) >= 0);
 }
 
 QRhi *QSGRenderContext::rhi() const
@@ -470,7 +538,7 @@ QSGTexture *QSGRenderContext::compressedTextureForFactory(const QSGCompressedTex
     return nullptr;
 }
 
+QT_END_NAMESPACE
+
 #include "qsgcontext.moc"
 #include "moc_qsgcontext_p.cpp"
-
-QT_END_NAMESPACE

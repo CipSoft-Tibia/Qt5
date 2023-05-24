@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include "base/check.h"
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "third_party/boringssl/src/include/openssl/mem.h"
 
 namespace network {
@@ -33,6 +34,7 @@ class ScopedBoringsslBytes {
   ScopedBoringsslBytes() = default;
   ~ScopedBoringsslBytes() { OPENSSL_free(ptr_); }
 
+  bool is_valid() { return ptr_; }
   uint8_t** mutable_ptr() { return &ptr_; }
   size_t* mutable_len() { return &len_; }
 
@@ -43,7 +45,9 @@ class ScopedBoringsslBytes {
 
  private:
   size_t len_ = 0;
-  uint8_t* ptr_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer, #addr-of
+  RAW_PTR_EXCLUSION uint8_t* ptr_ = nullptr;
 };
 
 }  // namespace network

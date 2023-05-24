@@ -13,24 +13,49 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { Product } from '../common/Product.js';
 /**
  * Supported platforms.
+ *
  * @public
  */
-export declare type Platform = 'linux' | 'mac' | 'win32' | 'win64';
-/**
- * Supported products.
- * @public
- */
-export declare type Product = 'chrome' | 'firefox';
+export declare type Platform = 'linux' | 'mac' | 'mac_arm' | 'win32' | 'win64';
 /**
  * @public
  */
 export interface BrowserFetcherOptions {
+    /**
+     * Determines the path to download browsers to.
+     */
+    path: string;
+    /**
+     * Determines which platform the browser will be suited for.
+     *
+     * @defaultValue Auto-detected.
+     */
     platform?: Platform;
-    product?: string;
-    path?: string;
+    /**
+     * Determines which product the {@link BrowserFetcher} is for.
+     *
+     * @defaultValue `"chrome"`.
+     */
+    product?: 'chrome' | 'firefox';
+    /**
+     * Determines the host that will be used for downloading.
+     *
+     * @defaultValue Either
+     *
+     * - https://storage.googleapis.com or
+     * - https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central
+     *
+     */
     host?: string;
+    /**
+     * Enables the use of the Chromium binary for macOS ARM.
+     *
+     * @experimental
+     */
+    useMacOSARMBinary?: boolean;
 }
 /**
  * @public
@@ -44,44 +69,52 @@ export interface BrowserFetcherRevisionInfo {
     product: string;
 }
 /**
- * BrowserFetcher can download and manage different versions of Chromium and Firefox.
+ * BrowserFetcher can download and manage different versions of Chromium and
+ * Firefox.
  *
  * @remarks
- * BrowserFetcher operates on revision strings that specify a precise version of Chromium, e.g. `"533271"`. Revision strings can be obtained from {@link http://omahaproxy.appspot.com/ | omahaproxy.appspot.com}.
- * In the Firefox case, BrowserFetcher downloads Firefox Nightly and
- * operates on version numbers such as `"75"`.
+ * BrowserFetcher operates on revision strings that specify a precise version of
+ * Chromium, e.g. `"533271"`. Revision strings can be obtained from
+ * {@link http://omahaproxy.appspot.com/ | omahaproxy.appspot.com}. For Firefox,
+ * BrowserFetcher downloads Firefox Nightly and operates on version numbers such
+ * as `"75"`.
+ *
+ * @remarks
+ * The default constructed fetcher will always be for Chromium unless otherwise
+ * specified.
+ *
+ * @remarks
+ * BrowserFetcher is not designed to work concurrently with other instances of
+ * BrowserFetcher that share the same downloads directory.
  *
  * @example
  * An example of using BrowserFetcher to download a specific version of Chromium
  * and running Puppeteer against it:
  *
- * ```js
- * const browserFetcher = puppeteer.createBrowserFetcher();
+ * ```ts
+ * const browserFetcher = new BrowserFetcher({path: 'path/to/download/folder'});
  * const revisionInfo = await browserFetcher.download('533271');
- * const browser = await puppeteer.launch({executablePath: revisionInfo.executablePath})
+ * const browser = await puppeteer.launch({
+ *   executablePath: revisionInfo.executablePath,
+ * });
  * ```
- *
- * **NOTE** BrowserFetcher is not designed to work concurrently with other
- * instances of BrowserFetcher that share the same downloads directory.
  *
  * @public
  */
 export declare class BrowserFetcher {
-    private _product;
-    private _downloadsFolder;
-    private _downloadHost;
-    private _platform;
+    #private;
     /**
-     * @internal
+     * Constructs a browser fetcher for the given options.
      */
-    constructor(projectRoot: string, options?: BrowserFetcherOptions);
-    private setPlatform;
+    constructor(options: BrowserFetcherOptions);
     /**
-     * @returns Returns the current `Platform`.
+     * @returns Returns the current `Platform`, which is one of `mac`, `linux`,
+     * `win32` or `win64`.
      */
     platform(): Platform;
     /**
-     * @returns Returns the current `Product`.
+     * @returns Returns the current `Product`, which is one of `chrome` or
+     * `firefox`.
      */
     product(): Product;
     /**
@@ -107,14 +140,14 @@ export declare class BrowserFetcher {
      * @returns A promise with revision information when the revision is downloaded
      * and extracted.
      */
-    download(revision: string, progressCallback?: (x: number, y: number) => void): Promise<BrowserFetcherRevisionInfo>;
+    download(revision: string, progressCallback?: (x: number, y: number) => void): Promise<BrowserFetcherRevisionInfo | undefined>;
     /**
      * @remarks
      * This method is affected by the current `product`.
-     * @returns A promise with a list of all revision strings (for the current `product`)
+     * @returns A list of all revision strings (for the current `product`)
      * available locally on disk.
      */
-    localRevisions(): Promise<string[]>;
+    localRevisions(): string[];
     /**
      * @remarks
      * This method is affected by the current `product`.
@@ -128,9 +161,5 @@ export declare class BrowserFetcher {
      * @returns The revision info for the given revision.
      */
     revisionInfo(revision: string): BrowserFetcherRevisionInfo;
-    /**
-     * @internal
-     */
-    _getFolderPath(revision: string): string;
 }
 //# sourceMappingURL=BrowserFetcher.d.ts.map

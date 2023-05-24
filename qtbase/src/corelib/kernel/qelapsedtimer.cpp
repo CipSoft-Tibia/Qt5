@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qelapsedtimer.h"
 
@@ -111,18 +75,6 @@ QT_BEGIN_NAMESPACE
     that the clock used is the same as QElapsedTimer (see
     QElapsedTimer::clockType()).
 
-    \section2 32-bit overflows
-
-    Some of the clocks used by QElapsedTimer have a limited range and may
-    overflow after hitting the upper limit (usually 32-bit). QElapsedTimer
-    deals with this overflow issue and presents a consistent timing. However,
-    when extracting the time since reference from QElapsedTimer, two
-    different processes in the same machine may have different understanding
-    of how much time has actually elapsed.
-
-    The information on which clocks types may overflow and how to remedy that
-    issue is documented along with the clock types.
-
     \sa QTime, QTimer, QDeadlineTimer
 */
 
@@ -138,10 +90,13 @@ QT_BEGIN_NAMESPACE
     used.
 
     \value SystemTime         The human-readable system time. This clock is not monotonic.
-    \value MonotonicClock     The system's monotonic clock, usually found in Unix systems. This clock is monotonic and does not overflow.
-    \value TickCounter        The system's tick counter, used on Windows systems. This clock may overflow.
-    \value MachAbsoluteTime   The Mach kernel's absolute time (\macos and iOS). This clock is monotonic and does not overflow.
-    \value PerformanceCounter The high-resolution performance counter provided by Windows. This clock is monotonic and does not overflow.
+    \value MonotonicClock     The system's monotonic clock, usually found in Unix systems.
+                              This clock is monotonic.
+    \value TickCounter        Not used anymore.
+    \value MachAbsoluteTime   The Mach kernel's absolute time (\macos and iOS).
+                              This clock is monotonic.
+    \value PerformanceCounter The performance counter provided by Windows.
+                              This clock is monotonic.
 
     \section2 SystemTime
 
@@ -159,26 +114,6 @@ QT_BEGIN_NAMESPACE
     arbitrary point in the past. This clock type is used on Unix systems
     which support POSIX monotonic clocks (\tt{_POSIX_MONOTONIC_CLOCK}).
 
-    This clock does not overflow.
-
-    \section2 TickCounter
-
-    The tick counter clock type is based on the system's or the processor's
-    tick counter, multiplied by the duration of a tick. This clock type is
-    used on Windows platforms. If the high-precision performance
-    counter is available on Windows, the \tt{PerformanceCounter} clock type
-    is used instead.
-
-    The TickCounter clock type is the only clock type that may overflow.
-    Windows Vista and Windows Server 2008 support the extended 64-bit tick
-    counter, which allows avoiding the overflow.
-
-    On Windows systems, the clock overflows after 2^32 milliseconds, which
-    corresponds to roughly 49.7 days. This means two processes' reckoning of
-    the time since the reference may be different by multiples of 2^32
-    milliseconds. When comparing such values, it's recommended that the high
-    32 bits of the millisecond count be masked off.
-
     \section2 MachAbsoluteTime
 
     This clock type is based on the absolute time presented by Mach kernels,
@@ -187,17 +122,14 @@ QT_BEGIN_NAMESPACE
     a POSIX monotonic clock with values differing from the Mach absolute
     time.
 
-    This clock is monotonic and does not overflow.
+    This clock is monotonic.
 
     \section2 PerformanceCounter
 
     This clock uses the Windows functions \tt{QueryPerformanceCounter} and
-    \tt{QueryPerformanceFrequency} to access the system's high-precision
-    performance counter. Since this counter may not be available on all
-    systems, QElapsedTimer will fall back to the \tt{TickCounter} clock
-    automatically, if this clock cannot be used.
+    \tt{QueryPerformanceFrequency} to access the system's performance counter.
 
-    This clock is monotonic and does not overflow.
+    This clock is monotonic.
 
     \sa clockType(), isMonotonic()
 */
@@ -212,22 +144,250 @@ QT_BEGIN_NAMESPACE
     \sa isValid(), start()
 */
 
-
 /*!
-    \fn bool QElapsedTimer::operator ==(const QElapsedTimer &other) const
+    \fn bool QElapsedTimer::operator==(const QElapsedTimer &lhs, const QElapsedTimer &rhs) noexcept
 
-    Returns \c true if this object and \a other contain the same time.
+    Returns \c true if \a lhs and \a rhs contain the same time, false otherwise.
+*/
+/*!
+    \fn bool QElapsedTimer::operator!=(const QElapsedTimer &lhs, const QElapsedTimer &rhs) noexcept
+
+    Returns \c true if \a lhs and \a rhs contain different times, false otherwise.
+*/
+/*!
+    \fn bool operator<(const QElapsedTimer &lhs, const QElapsedTimer &rhs) noexcept
+    \relates QElapsedTimer
+
+    Returns \c true if \a lhs was started before \a rhs, false otherwise.
+
+    The returned value is undefined if one of the two parameters is invalid
+    and the other isn't. However, two invalid timers are equal and thus this
+    function will return false.
 */
 
 /*!
-    \fn bool QElapsedTimer::operator !=(const QElapsedTimer &other) const
+    \fn QElapsedTimer::clockType() noexcept
 
-    Returns \c true if this object and \a other contain different times.
+    Returns the clock type that this QElapsedTimer implementation uses.
+
+    Since Qt 6.6, QElapsedTimer uses \c{std::chrono::steady_clock}, so the
+    clock type is always \l MonotonicClock.
+
+    \sa isMonotonic()
 */
+
+QElapsedTimer::ClockType QElapsedTimer::clockType() noexcept
+{
+    // we use std::chrono::steady_clock
+    return MonotonicClock;
+}
+
+/*!
+    \fn QElapsedTimer::isMonotonic() noexcept
+
+    Returns \c true if this is a monotonic clock, false otherwise. See the
+    information on the different clock types to understand which ones are
+    monotonic.
+
+    Since Qt 6.6, QElapsedTimer uses \c{std::chrono::steady_clock}, so this
+    function now always returns true.
+
+    \sa clockType(), QElapsedTimer::ClockType
+*/
+bool QElapsedTimer::isMonotonic() noexcept
+{
+    // We trust std::chrono::steady_clock to be steady (monotonic); if the
+    // Standard Library is lying to us, users must complain to their vendor.
+    return true;
+}
+
+/*!
+    \typealias QElapsedTimer::Duration
+    Synonym for \c std::chrono::nanoseconds.
+*/
+
+/*!
+    \typealias QElapsedTimer::TimePoint
+    Synonym for \c {std::chrono::time_point<std::chrono::steady_clock, Duration>}.
+*/
+
+/*!
+    Starts this timer. Once started, a timer value can be checked with elapsed() or msecsSinceReference().
+
+    Normally, a timer is started just before a lengthy operation, such as:
+    \snippet qelapsedtimer/main.cpp 0
+
+    Also, starting a timer makes it valid again.
+
+    \sa restart(), invalidate(), elapsed()
+*/
+void QElapsedTimer::start() noexcept
+{
+    static_assert(sizeof(t1) == sizeof(Duration::rep));
+
+    // This assignment will work so long as TimePoint uses the same time
+    // duration or one of finer granularity than steady_clock::time_point. That
+    // means it will work until the first steady_clock using picoseconds.
+    TimePoint now = std::chrono::steady_clock::now();
+    t1 = now.time_since_epoch().count();
+    QT6_ONLY(t2 = 0);
+}
+
+/*!
+    Restarts the timer and returns the number of milliseconds elapsed since
+    the previous start.
+    This function is equivalent to obtaining the elapsed time with elapsed()
+    and then starting the timer again with start(), but it does so in one
+    single operation, avoiding the need to obtain the clock value twice.
+
+    Calling this function on a QElapsedTimer that is invalid
+    results in undefined behavior.
+
+    The following example illustrates how to use this function to calibrate a
+    parameter to a slow operation (for example, an iteration count) so that
+    this operation takes at least 250 milliseconds:
+
+    \snippet qelapsedtimer/main.cpp 3
+
+    \sa start(), invalidate(), elapsed(), isValid()
+*/
+qint64 QElapsedTimer::restart() noexcept
+{
+    QElapsedTimer old = *this;
+    start();
+    return old.msecsTo(*this);
+}
+
+/*!
+    \since 6.6
+
+    Returns a \c{std::chrono::nanoseconds} with the time since this QElapsedTimer was last
+    started.
+
+    Calling this function on a QElapsedTimer that is invalid
+    results in undefined behavior.
+
+    On platforms that do not provide nanosecond resolution, the value returned
+    will be the best estimate available.
+
+    \sa start(), restart(), hasExpired(), invalidate()
+*/
+auto QElapsedTimer::durationElapsed() const noexcept -> Duration
+{
+    TimePoint then{Duration(t1)};
+    return std::chrono::steady_clock::now() - then;
+}
+
+/*!
+    \since 4.8
+
+    Returns the number of nanoseconds since this QElapsedTimer was last
+    started.
+
+    Calling this function on a QElapsedTimer that is invalid
+    results in undefined behavior.
+
+    On platforms that do not provide nanosecond resolution, the value returned
+    will be the best estimate available.
+
+    \sa start(), restart(), hasExpired(), invalidate()
+*/
+qint64 QElapsedTimer::nsecsElapsed() const noexcept
+{
+    return durationElapsed().count();
+}
+
+/*!
+    Returns the number of milliseconds since this QElapsedTimer was last
+    started.
+
+    Calling this function on a QElapsedTimer that is invalid
+    results in undefined behavior.
+
+    \sa start(), restart(), hasExpired(), isValid(), invalidate()
+*/
+qint64 QElapsedTimer::elapsed() const noexcept
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(durationElapsed()).count();
+}
+
+/*!
+    Returns the number of milliseconds between last time this QElapsedTimer
+    object was started and its reference clock's start.
+
+    This number is usually arbitrary for all clocks except the
+    QElapsedTimer::SystemTime clock. For that clock type, this number is the
+    number of milliseconds since January 1st, 1970 at 0:00 UTC (that is, it
+    is the Unix time expressed in milliseconds).
+
+    On Linux, Windows and Apple platforms, this value is usually the time
+    since the system boot, though it usually does not include the time the
+    system has spent in sleep states.
+
+    \sa clockType(), elapsed()
+*/
+qint64 QElapsedTimer::msecsSinceReference() const noexcept
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(Duration(t1)).count();
+}
+
+/*!
+    \since 6.6
+
+    Returns the time difference between this QElapsedTimer and \a other as a
+    \c{std::chrono::nanoseconds}. If \a other was started before this object,
+    the returned value will be negative. If it was started later, the returned
+    value will be positive.
+
+    The return value is undefined if this object or \a other were invalidated.
+
+    \sa secsTo(), elapsed()
+*/
+auto QElapsedTimer::durationTo(const QElapsedTimer &other) const noexcept -> Duration
+{
+    Duration d1(t1);
+    Duration d2(other.t1);
+    return d2 - d1;
+}
+
+/*!
+    Returns the number of milliseconds between this QElapsedTimer and \a
+    other. If \a other was started before this object, the returned value
+    will be negative. If it was started later, the returned value will be
+    positive.
+
+    The return value is undefined if this object or \a other were invalidated.
+
+    \sa secsTo(), elapsed()
+*/
+qint64 QElapsedTimer::msecsTo(const QElapsedTimer &other) const noexcept
+{
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(durationTo(other)).count();
+}
+
+/*!
+    Returns the number of seconds between this QElapsedTimer and \a other. If
+    \a other was started before this object, the returned value will be
+    negative. If it was started later, the returned value will be positive.
+
+    Calling this function on or with a QElapsedTimer that is invalid
+    results in undefined behavior.
+
+    \sa msecsTo(), elapsed()
+*/
+qint64 QElapsedTimer::secsTo(const QElapsedTimer &other) const noexcept
+{
+    using namespace std::chrono;
+    return duration_cast<seconds>(durationTo(other)).count();
+}
 
 static const qint64 invalidData = Q_INT64_C(0x8000000000000000);
 
 /*!
+    \fn QElapsedTimer::invalidate() noexcept
     Marks this QElapsedTimer object as invalid.
 
     An invalid object can be checked with isValid(). Calculations of timer
@@ -238,7 +398,7 @@ static const qint64 invalidData = Q_INT64_C(0x8000000000000000);
 */
 void QElapsedTimer::invalidate() noexcept
 {
-     t1 = t2 = invalidData;
+    t1 = t2 = invalidData;
 }
 
 /*!
@@ -253,10 +413,12 @@ bool QElapsedTimer::isValid() const noexcept
 }
 
 /*!
-    Returns \c true if this QElapsedTimer has already expired by \a timeout
-    milliseconds (that is, more than \a timeout milliseconds have elapsed).
-    The value of \a timeout can be -1 to indicate that this timer does not
-    expire, in which case this function will always return false.
+    Returns \c true if elapsed() exceeds the given \a timeout, otherwise \c false.
+
+    A negative \a timeout is interpreted as infinite, so \c false is returned in
+    this case. Otherwise, this is equivalent to \c {elapsed() > timeout}. You
+    can do the same for a duration by comparing durationElapsed() to a duration
+    timeout.
 
     \sa elapsed(), QDeadlineTimer
 */
@@ -265,6 +427,11 @@ bool QElapsedTimer::hasExpired(qint64 timeout) const noexcept
     // if timeout is -1, quint64(timeout) is LLINT_MAX, so this will be
     // considered as never expired
     return quint64(elapsed()) > quint64(timeout);
+}
+
+bool operator<(const QElapsedTimer &lhs, const QElapsedTimer &rhs) noexcept
+{
+    return lhs.t1 < rhs.t1;
 }
 
 QT_END_NAMESPACE

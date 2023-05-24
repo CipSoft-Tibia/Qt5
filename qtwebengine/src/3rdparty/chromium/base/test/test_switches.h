@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,9 +24,12 @@ extern const char kTestLauncherInteractive[];
 extern const char kTestLauncherJobs[];
 extern const char kTestLauncherListTests[];
 extern const char kTestLauncherOutput[];
+extern const char kTestLauncherOutputBytesLimit[];
 extern const char kTestLauncherPrintTempLeaks[];
 extern const char kTestLauncherPrintTestStdio[];
+extern const char kTestLauncherPrintTimestamps[];
 extern const char kTestLauncherPrintWritablePath[];
+extern const char kTestLauncherRetriesLeft[];
 extern const char kTestLauncherRetryLimit[];
 extern const char kTestLauncherShardIndex[];
 extern const char kTestLauncherSummaryOutput[];
@@ -38,7 +41,7 @@ extern const char kTestTinyTimeout[];
 extern const char kUiTestActionMaxTimeout[];
 extern const char kUiTestActionTimeout[];
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 extern const char kEnableRunIOSUnittestsWithXCTest[];
 extern const char kWriteCompiledTestsJsonToWritablePath[];
 #endif

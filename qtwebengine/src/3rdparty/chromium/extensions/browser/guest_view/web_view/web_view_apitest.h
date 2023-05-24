@@ -1,10 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_BROWSER_GUEST_VIEW_WEB_VIEW_WEB_VIEW_APITEST_H_
 #define EXTENSIONS_BROWSER_GUEST_VIEW_WEB_VIEW_WEB_VIEW_APITEST_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/values.h"
 #include "components/guest_view/browser/test_guest_view_manager.h"
 #include "extensions/shell/test/shell_test.h"
@@ -13,10 +14,6 @@
 namespace content {
 class WebContents;
 }  // namespace content
-
-namespace guestview {
-class TestGuestViewManager;
-}  // namesapce guestview
 
 namespace extensions {
 
@@ -46,9 +43,6 @@ class WebViewAPITest : public AppShellTest {
   // Returns the GuestViewManager singleton.
   guest_view::TestGuestViewManager* GetGuestViewManager();
 
-  content::WebContents* GetGuestWebContents();
-  void SendMessageToGuestAndWait(const std::string& message,
-                                 const std::string& wait_message);
   void SendMessageToEmbedder(const std::string& message);
 
   // content::BrowserTestBase implementation.
@@ -56,9 +50,9 @@ class WebViewAPITest : public AppShellTest {
   void SetUpOnMainThread() override;
   void TearDownOnMainThread() override;
 
-  content::WebContents* embedder_web_contents_;
+  raw_ptr<content::WebContents, DanglingUntriaged> embedder_web_contents_;
   guest_view::TestGuestViewManagerFactory factory_;
-  base::DictionaryValue test_config_;
+  base::Value::Dict test_config_;
 
  private:
   content::WebContents* GetFirstAppWindowWebContents();

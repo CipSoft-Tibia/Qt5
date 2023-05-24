@@ -6,15 +6,15 @@
  */
 
 #include "include/core/SkExecutor.h"
-#include "include/private/SkMutex.h"
-#include "include/private/SkSemaphore.h"
 #include "include/private/SkSpinlock.h"
-#include "include/private/SkTArray.h"
+#include "include/private/base/SkMutex.h"
+#include "include/private/base/SkSemaphore.h"
+#include "include/private/base/SkTArray.h"
 #include <deque>
 #include <thread>
 
 #if defined(SK_BUILD_FOR_WIN)
-    #include "src/core/SkLeanWindows.h"
+    #include "src/base/SkLeanWindows.h"
     static int num_cores() {
         SYSTEM_INFO sysinfo;
         GetNativeSystemInfo(&sysinfo);
@@ -36,24 +36,22 @@ class SkTrivialExecutor final : public SkExecutor {
     }
 };
 
+static SkExecutor& trivial_executor() {
+    static auto* executor = new SkTrivialExecutor();
+    return *executor;
+}
+
 static SkExecutor* gDefaultExecutor = nullptr;
 
-void SetDefaultTrivialExecutor() {
-    static SkTrivialExecutor *gTrivial = new SkTrivialExecutor();
-    gDefaultExecutor = gTrivial;
-}
 SkExecutor& SkExecutor::GetDefault() {
-    if (!gDefaultExecutor) {
-        SetDefaultTrivialExecutor();
+    if (gDefaultExecutor) {
+        return *gDefaultExecutor;
     }
-    return *gDefaultExecutor;
+    return trivial_executor();
 }
+
 void SkExecutor::SetDefault(SkExecutor* executor) {
-    if (executor) {
-        gDefaultExecutor = executor;
-    } else {
-        SetDefaultTrivialExecutor();
-    }
+    gDefaultExecutor = executor;
 }
 
 // We'll always push_back() new work, but pop from the front of deques or the back of SkTArray.
@@ -80,11 +78,11 @@ public:
 
     ~SkThreadPool() override {
         // Signal each thread that it's time to shut down.
-        for (int i = 0; i < fThreads.count(); i++) {
+        for (int i = 0; i < fThreads.size(); i++) {
             this->add(nullptr);
         }
         // Wait for each thread to shut down.
-        for (int i = 0; i < fThreads.count(); i++) {
+        for (int i = 0; i < fThreads.size(); i++) {
             fThreads[i].join();
         }
     }

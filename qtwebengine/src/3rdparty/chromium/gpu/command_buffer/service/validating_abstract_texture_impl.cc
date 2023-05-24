@@ -1,13 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "gpu/command_buffer/service/validating_abstract_texture_impl.h"
 
+#include "build/build_config.h"
 #include "gpu/command_buffer/service/context_group.h"
 #include "gpu/command_buffer/service/error_state.h"
 #include "gpu/command_buffer/service/texture_manager.h"
 #include "ui/gl/gl_context.h"
+#include "ui/gl/gl_image.h"
 #include "ui/gl/scoped_binders.h"
 #include "ui/gl/scoped_make_current.h"
 
@@ -50,59 +52,54 @@ void ValidatingAbstractTextureImpl::SetParameteri(GLenum pname, GLint param) {
                                      texture_ref_.get(), pname, param);
 }
 
-void ValidatingAbstractTextureImpl::BindImage(gl::GLImage* image,
-                                              bool client_managed) {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
+void ValidatingAbstractTextureImpl::SetUnboundImage(gl::GLImage* image) {
   if (!texture_ref_)
     return;
 
   const GLuint target = texture_ref_->texture()->target();
   const GLint level = 0;
 
-  // If there is a decoder-managed image bound, release it.
-  if (decoder_managed_image_) {
-    Texture::ImageState image_state;
-    gl::GLImage* current_image =
-        texture_ref_->texture()->GetLevelImage(target, 0, &image_state);
-    if (current_image && image_state == Texture::BOUND)
-      current_image->ReleaseTexImage(target);
+  // Configure the new image.
+  if (image) {
+    GetTextureManager()->SetUnboundLevelImage(texture_ref_.get(), target, level,
+                                              image);
+  } else {
+    GetTextureManager()->UnsetLevelImage(texture_ref_.get(), target, level);
   }
 
-  // Configure the new image.
-  decoder_managed_image_ = image && !client_managed;
-  Texture::ImageState state = image && client_managed
-                                  ? Texture::ImageState::BOUND
-                                  : Texture::ImageState::UNBOUND;
-  GetTextureManager()->SetLevelImage(texture_ref_.get(), target, level, image,
-                                     state);
   GetTextureManager()->SetLevelCleared(texture_ref_.get(), target, level,
                                        image);
 }
-
-void ValidatingAbstractTextureImpl::BindStreamTextureImage(gl::GLImage* image,
-                                                           GLuint service_id) {
-  DCHECK(image);
-  DCHECK(!decoder_managed_image_);
-
-  if (!texture_ref_)
+#else
+void ValidatingAbstractTextureImpl::SetBoundImage(gl::GLImage* image) {
+  if (!texture_ref_) {
     return;
+  }
 
-  const GLint level = 0;
   const GLuint target = texture_ref_->texture()->target();
+  const GLint level = 0;
 
-  // We set the state to UNBOUND, so that CopyTexImage is called.
-  GetTextureManager()->SetLevelStreamTextureImage(
-      texture_ref_.get(), target, level, image, Texture::ImageState::UNBOUND,
-      service_id);
-  SetCleared();
+  // Configure the new image.
+  if (image) {
+    GetTextureManager()->SetBoundLevelImage(texture_ref_.get(), target, level,
+                                            image);
+  } else {
+    GetTextureManager()->UnsetLevelImage(texture_ref_.get(), target, level);
+  }
+
+  GetTextureManager()->SetLevelCleared(texture_ref_.get(), target, level,
+                                       image);
 }
+#endif
 
-gl::GLImage* ValidatingAbstractTextureImpl::GetImage() const {
+gl::GLImage* ValidatingAbstractTextureImpl::GetImageForTesting() const {
   if (!texture_ref_)
     return nullptr;
 
   const GLuint target = texture_ref_->texture()->target();
   const GLint level = 0;
-  return texture_ref_->texture()->GetLevelImage(target, level, nullptr);
+  return texture_ref_->texture()->GetLevelImage(target, level);
 }
 
 void ValidatingAbstractTextureImpl::SetCleared() {
@@ -131,6 +128,10 @@ ContextGroup* ValidatingAbstractTextureImpl::GetContextGroup() const {
 ErrorState* ValidatingAbstractTextureImpl::GetErrorState() const {
   DCHECK(decoder_context_);
   return decoder_context_->GetErrorState();
+}
+
+void ValidatingAbstractTextureImpl::NotifyOnContextLost() {
+  NOTIMPLEMENTED();
 }
 
 void ValidatingAbstractTextureImpl::OnDecoderWillDestroy(bool have_context) {

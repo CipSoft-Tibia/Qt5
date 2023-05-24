@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qitemdelegate.h"
 
@@ -58,6 +22,7 @@
 #include <qmetaobject.h>
 #include <qtextlayout.h>
 #include <private/qabstractitemdelegate_p.h>
+#include <private/qabstractitemmodel_p.h>
 #include <private/qtextengine_p.h>
 #include <qdebug.h>
 #include <qlocale.h>
@@ -94,7 +59,7 @@ public:
 
     inline static QString replaceNewLine(QString text)
         {
-            text.replace(QLatin1Char('\n'), QChar::LineSeparator);
+            text.replace(u'\n', QChar::LineSeparator);
             return text;
         }
 
@@ -267,7 +232,6 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     \row    \li \l Qt::AccessibleTextRole \li QString
     \endomit
     \row    \li \l Qt::BackgroundRole \li QBrush (\since 4.2)
-    \row    \li \l Qt::BackgroundColorRole \li QColor (obsolete; use Qt::BackgroundRole instead)
     \row    \li \l Qt::CheckStateRole \li Qt::CheckState
     \row    \li \l Qt::DecorationRole \li QIcon, QPixmap and QColor
     \row    \li \l Qt::DisplayRole \li QString and types with a string representation
@@ -279,7 +243,6 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     \endomit
     \row    \li \l Qt::TextAlignmentRole \li Qt::Alignment
     \row    \li \l Qt::ForegroundRole \li QBrush (\since 4.2)
-    \row    \li \l Qt::TextColorRole \li QColor (obsolete; use Qt::ForegroundRole instead)
     \omit
     \row    \li \l Qt::ToolTipRole
     \row    \li \l Qt::WhatsThisRole
@@ -319,8 +282,7 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     the style for drawing.
 
     \sa {Delegate Classes}, QStyledItemDelegate, QAbstractItemDelegate,
-        {Spin Box Delegate Example}, {Settings Editor Example},
-        {Icons Example}
+        {Spin Box Delegate Example}, {Settings Editor Example}
 */
 
 /*!
@@ -380,8 +342,10 @@ QString QItemDelegatePrivate::valueToText(const QVariant &value, const QStyleOpt
     For example, a selected item may need to be displayed differently to
     unselected items, as shown in the following code:
 
-    \snippet itemviews/pixelator/pixeldelegate.cpp 2
-    \dots
+    \code
+    if (option.state & QStyle::State_Selected)
+        painter->fillRect(option.rect, option.palette.highlight());
+    \endcode
 
     After painting, you should ensure that the painter is returned to its
     the state it was supplied in when this function was called. For example,
@@ -434,7 +398,7 @@ void QItemDelegate::paint(QPainter *painter,
     Qt::CheckState checkState = Qt::Unchecked;
     value = index.data(Qt::CheckStateRole);
     if (value.isValid()) {
-        checkState = static_cast<Qt::CheckState>(value.toInt());
+        checkState = QtPrivate::legacyEnumValueFromModelData<Qt::CheckState>(value);
         checkRect = doCheck(opt, opt.rect, value);
     }
 
@@ -524,19 +488,14 @@ QWidget *QItemDelegate::createEditor(QWidget *parent,
 
 void QItemDelegate::setEditorData(QWidget *editor, const QModelIndex &index) const
 {
-#ifdef QT_NO_PROPERTIES
-    Q_UNUSED(editor);
-    Q_UNUSED(index);
-#else
     QVariant v = index.data(Qt::EditRole);
     QByteArray n = editor->metaObject()->userProperty().name();
 
     if (!n.isEmpty()) {
         if (!v.isValid())
-            v = QVariant(editor->property(n).userType(), (const void *)nullptr);
+            v = QVariant(editor->property(n).metaType());
         editor->setProperty(n, v);
     }
-#endif
 }
 
 /*!
@@ -554,11 +513,6 @@ void QItemDelegate::setModelData(QWidget *editor,
                                  QAbstractItemModel *model,
                                  const QModelIndex &index) const
 {
-#ifdef QT_NO_PROPERTIES
-    Q_UNUSED(model);
-    Q_UNUSED(editor);
-    Q_UNUSED(index);
-#else
     Q_D(const QItemDelegate);
     Q_ASSERT(model);
     Q_ASSERT(editor);
@@ -568,7 +522,6 @@ void QItemDelegate::setModelData(QWidget *editor,
             model->data(index, Qt::EditRole).userType());
     if (!n.isEmpty())
         model->setData(index, editor->property(n), Qt::EditRole);
-#endif
 }
 
 /*!
@@ -697,10 +650,12 @@ void QItemDelegate::drawDisplay(QPainter *painter, const QStyleOptionViewItem &o
                            || textRect.height() < textLayoutSize.height())) {
         painter->save();
         painter->setClipRect(layoutRect);
-        d->textLayout.draw(painter, layoutRect.topLeft(), QVector<QTextLayout::FormatRange>(), layoutRect);
+        d->textLayout.draw(painter, layoutRect.topLeft(), QList<QTextLayout::FormatRange>(),
+                           layoutRect);
         painter->restore();
     } else {
-        d->textLayout.draw(painter, layoutRect.topLeft(), QVector<QTextLayout::FormatRange>(), layoutRect);
+        d->textLayout.draw(painter, layoutRect.topLeft(), QList<QTextLayout::FormatRange>(),
+                           layoutRect);
     }
 }
 
@@ -1001,20 +956,6 @@ static QString qPixmapSerial(quint64 i, bool enabled)
     return QString((const QChar *)ptr, int(&arr[sizeof(arr) / sizeof(ushort)] - ptr));
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-QPixmap *QItemDelegate::selected(const QPixmap &pixmap, const QPalette &palette, bool enabled) const
-{
-    const QString key = qPixmapSerial(pixmap.cacheKey(), enabled);
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-    QPixmap *pm = QPixmapCache::find(key);
-    if (pm)
-        return pm;
-    selectedPixmap(pixmap, palette, enabled);
-    return QPixmapCache::find(key);
-QT_WARNING_POP
-}
-#endif
 
 /*!
   \internal
@@ -1031,7 +972,7 @@ QPixmap QItemDelegate::selectedPixmap(const QPixmap &pixmap, const QPalette &pal
 
         QColor color = palette.color(enabled ? QPalette::Normal : QPalette::Disabled,
                                      QPalette::Highlight);
-        color.setAlphaF((qreal)0.3);
+        color.setAlphaF(0.3f);
 
         QPainter painter(&img);
         painter.setCompositionMode(QPainter::CompositionMode_SourceAtop);
@@ -1065,10 +1006,10 @@ QRect QItemDelegate::rect(const QStyleOptionViewItem &option,
             break;
         case QMetaType::QPixmap: {
             const QPixmap &pixmap = qvariant_cast<QPixmap>(value);
-            return QRect(QPoint(0, 0), pixmap.size() / pixmap.devicePixelRatio() ); }
+            return QRect(QPoint(0, 0), pixmap.deviceIndependentSize().toSize()); }
         case QMetaType::QImage: {
             const QImage &image = qvariant_cast<QImage>(value);
-            return QRect(QPoint(0, 0), image.size() /  image.devicePixelRatio() ); }
+            return QRect(QPoint(0, 0), image.deviceIndependentSize().toSize()); }
         case QMetaType::QIcon: {
             QIcon::Mode mode = d->iconMode(option.state);
             QIcon::State state = d->iconState(option.state);
@@ -1191,7 +1132,7 @@ bool QItemDelegate::editorEvent(QEvent *event,
         QRect emptyRect;
         doLayout(option, &checkRect, &emptyRect, &emptyRect, false);
         QMouseEvent *me = static_cast<QMouseEvent*>(event);
-        if (me->button() != Qt::LeftButton || !checkRect.contains(me->pos()))
+        if (me->button() != Qt::LeftButton || !checkRect.contains(me->position().toPoint()))
             return false;
 
         // eat the double click events inside the check rect
@@ -1207,7 +1148,7 @@ bool QItemDelegate::editorEvent(QEvent *event,
         return false;
     }
 
-    Qt::CheckState state = static_cast<Qt::CheckState>(value.toInt());
+    Qt::CheckState state = QtPrivate::legacyEnumValueFromModelData<Qt::CheckState>(value);
     if (flags & Qt::ItemIsUserTristate)
         state = ((Qt::CheckState)((state + 1) % 3));
     else
@@ -1234,7 +1175,7 @@ QStyleOptionViewItem QItemDelegate::setOptions(const QModelIndex &index,
     // set text alignment
     value = index.data(Qt::TextAlignmentRole);
     if (value.isValid())
-        opt.displayAlignment = Qt::Alignment(value.toInt());
+        opt.displayAlignment = QtPrivate::legacyFlagValueFromModelData<Qt::Alignment>(value);
 
     // set foreground brush
     value = index.data(Qt::ForegroundRole);

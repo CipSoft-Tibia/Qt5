@@ -160,7 +160,6 @@ setup_tty(struct launcher_direct *launcher, int tty)
 	if (kd_mode != KD_TEXT) {
 		weston_log("%s is already in graphics mode, "
 			   "is another display server running?\n", tty_device);
-		goto err_close;
 	}
 
 	ioctl(launcher->tty, VT_ACTIVATE, minor(buf.st_rdev));
@@ -301,9 +300,13 @@ launcher_direct_connect(struct weston_launcher **out, struct weston_compositor *
 	launcher->base.iface = &launcher_direct_iface;
 	launcher->compositor = compositor;
 
-	if (setup_tty(launcher, tty) == -1) {
-		free(launcher);
-		return -1;
+	if (strcmp("seat0", seat_id) == 0) {
+		if (setup_tty(launcher, tty) == -1) {
+			free(launcher);
+			return -1;
+		}
+	} else {
+		launcher->tty = -1;
 	}
 
 	* (struct launcher_direct **) out = launcher;
@@ -315,11 +318,11 @@ launcher_direct_destroy(struct weston_launcher *launcher_base)
 {
 	struct launcher_direct *launcher = wl_container_of(launcher_base, launcher, base);
 
-	launcher_direct_restore(&launcher->base);
-	wl_event_source_remove(launcher->vt_source);
-
-	if (launcher->tty >= 0)
+	if (launcher->tty >= 0) {
+		launcher_direct_restore(&launcher->base);
+		wl_event_source_remove(launcher->vt_source);
 		close(launcher->tty);
+	}
 
 	free(launcher);
 }

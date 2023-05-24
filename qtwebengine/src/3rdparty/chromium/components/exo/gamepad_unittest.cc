@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/exo/gamepad.h"
 
+#include "ash/constants/ash_features.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
-#include "chromeos/constants/chromeos_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -16,9 +16,9 @@ namespace {
 
 constexpr int64_t kDurationMillis = 0x8000;
 constexpr base::TimeDelta kPendingTaskDuration =
-    base::TimeDelta::FromMillisecondsD(kDurationMillis);
+    base::Milliseconds(kDurationMillis);
 constexpr base::TimeDelta kPendingMaxTaskDuration =
-    base::TimeDelta::FromMillisecondsD(kMaxDurationMillis);
+    base::Milliseconds(kMaxDurationMillis);
 constexpr uint8_t kAmplitude = 128;
 
 class TestGamepad : public Gamepad {
@@ -78,11 +78,13 @@ class GamepadTest : public testing::Test {
     gamepad_ = std::make_unique<TestGamepad>(device);
   }
 
+  GamepadTest(const GamepadTest&) = delete;
+  GamepadTest& operator=(const GamepadTest&) = delete;
+
   void SetUp() override {
     testing::Test::SetUp();
     // Allow test to signal to gamepad that it can vibrate.
-    scoped_feature_list_.InitAndEnableFeature(
-        chromeos::features::kGamepadVibration);
+    scoped_feature_list_.InitAndEnableFeature(ash::features::kGamepadVibration);
     gamepad_->OnGamepadFocused();
   }
 
@@ -90,8 +92,6 @@ class GamepadTest : public testing::Test {
   base::test::TaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   base::test::ScopedFeatureList scoped_feature_list_;
-
-  DISALLOW_COPY_AND_ASSIGN(GamepadTest);
 };
 
 TEST_F(GamepadTest, OneShotVibrationTest) {
@@ -99,8 +99,7 @@ TEST_F(GamepadTest, OneShotVibrationTest) {
   EXPECT_EQ(0, gamepad_->send_cancel_vibration_count_);
 
   gamepad_->Vibrate({kDurationMillis}, {kAmplitude}, -1);
-  task_environment_.FastForwardBy(
-      base::TimeDelta::FromMillisecondsD(kDurationMillis / 2));
+  task_environment_.FastForwardBy(base::Milliseconds(kDurationMillis / 2));
   EXPECT_EQ(1, gamepad_->send_vibrate_count_);
   EXPECT_EQ(kAmplitude, gamepad_->last_vibrate_amplitude_);
   EXPECT_EQ(kDurationMillis, gamepad_->last_vibrate_duration_);

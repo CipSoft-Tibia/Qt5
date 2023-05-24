@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef DEBUGUTIL_P_H
 #define DEBUGUTIL_P_H
@@ -40,13 +15,17 @@
 // We mean it.
 //
 
-#include <../../../shared/util.h>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <private/qqmldebugclient_p.h>
 
 class QQmlDebugProcess;
 class QQmlDebugTest : public QQmlDataTest
 {
     Q_OBJECT
+public:
+    QQmlDebugTest(const char *qmlTestDataDir,
+        FailOnWarningsPolicy failOnWarningsPolicy = FailOnWarningsPolicy::DoNotFailOnWarnings);
+
 public:
     static bool waitForSignal(QObject *receiver, const char *member, int timeout = 5000);
     static QList<QQmlDebugClient *> createOtherClients(QQmlDebugConnection *connection);
@@ -59,6 +38,7 @@ public:
         SessionFailed,
         ConnectionFailed,
         ClientsFailed,
+        ConnectionTimeout,
         EnableFailed,
         RestrictFailed
     };
@@ -92,7 +72,7 @@ signals:
     void serverMessage(const QByteArray &);
 
 protected:
-    virtual void messageReceived(const QByteArray &ba);
+    void messageReceived(const QByteArray &ba) override;
 
 private:
     QByteArray lastMsg;
@@ -102,7 +82,7 @@ class QQmlInspectorResultRecipient : public QObject
 {
     Q_OBJECT
 public:
-    QQmlInspectorResultRecipient(QObject *parent = 0) :
+    QQmlInspectorResultRecipient(QObject *parent = nullptr) :
         QObject(parent), lastResponseId(-1), lastResult(false) {}
 
     int lastResponseId;

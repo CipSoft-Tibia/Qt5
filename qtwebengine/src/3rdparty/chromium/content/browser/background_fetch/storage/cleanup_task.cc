@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,14 @@
 
 #include <memory>
 
-#include "base/bind.h"
 #include "base/containers/flat_set.h"
+#include "base/functional/bind.h"
 #include "content/browser/background_fetch/background_fetch.pb.h"
 #include "content/browser/background_fetch/background_fetch_data_manager.h"
 #include "content/browser/background_fetch/storage/database_helpers.h"
 #include "content/browser/background_fetch/storage/delete_registration_task.h"
 #include "content/browser/service_worker/service_worker_context_wrapper.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "url/origin.h"
 
 namespace content {
@@ -61,12 +62,8 @@ void CleanupTask::DidGetActiveUniqueIds(
       return;
   }
 
-  std::vector<std::string> active_unique_id_vector;
-  active_unique_id_vector.reserve(active_unique_id_data.size());
-  for (const auto& entry : active_unique_id_data)
-    active_unique_id_vector.push_back(entry.second);
-  base::flat_set<std::string> active_unique_ids(
-      std::move(active_unique_id_vector));
+  auto active_unique_ids = base::MakeFlatSet<std::string>(
+      active_unique_id_data, {}, &std::pair<int64_t, std::string>::second);
 
   for (const auto& entry : registration_data) {
     int64_t service_worker_registration_id = entry.first;
@@ -81,7 +78,7 @@ void CleanupTask::DidGetActiveUniqueIds(
           // DeleteRegistrationTask for the actual deletion logic.
           AddDatabaseTask(std::make_unique<DeleteRegistrationTask>(
               data_manager(), service_worker_registration_id,
-              url::Origin::Create(GURL(metadata_proto.origin())), unique_id,
+              GetMetadataStorageKey(metadata_proto), unique_id,
               base::BindOnce(&EmptyErrorHandler)));
         }
       }

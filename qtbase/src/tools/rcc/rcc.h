@@ -1,31 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // Note: A copy of this file is used in Qt Designer (qttools/src/designer/src/lib/shared/rcc_p.h)
 
@@ -58,7 +33,7 @@ public:
 
     bool readFiles(bool listMode, QIODevice &errorDevice);
 
-    enum Format { Binary, C_Code, Pass1, Pass2, Python3_Code, Python2_Code };
+    enum Format { Binary, C_Code, Pass1, Pass2, Python_Code };
     void setFormat(Format f) { m_format = f; }
     Format format() const { return m_format; }
 
@@ -109,6 +84,9 @@ public:
 
     int formatVersion() const { return m_formatVersion; }
 
+    void setNoZstd(bool v) { m_noZstd = v; }
+    bool noZstd() const { return m_noZstd; }
+
 private:
     struct Strings {
         Strings();
@@ -118,13 +96,14 @@ private:
         const QString ATTRIBUTE_LANG;
         const QString ATTRIBUTE_PREFIX;
         const QString ATTRIBUTE_ALIAS;
+        const QString ATTRIBUTE_EMPTY;
         const QString ATTRIBUTE_THRESHOLD;
         const QString ATTRIBUTE_COMPRESS;
         const QString ATTRIBUTE_COMPRESSALGO;
     };
     friend class RCCFileInfo;
     void reset();
-    bool addFile(const QString &alias, const RCCFileInfo &file);
+    bool addFile(const QString &alias, RCCFileInfo file);
     bool interpretResourceFile(QIODevice *inputDevice, const QString &file,
         QString currentPath = QString(), bool listMode = false);
     bool writeHeader();
@@ -170,6 +149,7 @@ private:
     QIODevice *m_outDevice;
     QByteArray m_out;
     quint8 m_formatVersion;
+    bool m_noZstd;
 };
 
 QT_END_NAMESPACE

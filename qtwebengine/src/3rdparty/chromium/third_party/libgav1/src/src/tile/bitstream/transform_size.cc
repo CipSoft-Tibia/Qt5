@@ -95,7 +95,8 @@ int Tile::GetLeftTransformHeight(const Block& block, int row4x4, int column4x4,
 
 TransformSize Tile::ReadFixedTransformSize(const Block& block) {
   BlockParameters& bp = *block.bp;
-  if (frame_header_.segmentation.lossless[bp.segment_id]) {
+  if (frame_header_.segmentation
+          .lossless[bp.prediction_parameters->segment_id]) {
     return kTransformSize4x4;
   }
   const TransformSize max_rect_tx_size = kMaxTransformSizeRectangle[block.size];
@@ -117,9 +118,11 @@ TransformSize Tile::ReadFixedTransformSize(const Block& block) {
   const auto context = static_cast<int>(top_width >= max_tx_width) +
                        static_cast<int>(left_height >= max_tx_height);
   const int cdf_index = kTxDepthCdfIndex[block.size];
-  const int symbol_count = 3 - static_cast<int>(cdf_index == 0);
-  const int tx_depth = reader_.ReadSymbol(
-      symbol_decoder_context_.tx_depth_cdf[cdf_index][context], symbol_count);
+  uint16_t* const cdf =
+      symbol_decoder_context_.tx_depth_cdf[cdf_index][context];
+  const int tx_depth = (cdf_index == 0)
+                           ? static_cast<int>(reader_.ReadSymbol(cdf))
+                           : reader_.ReadSymbol<3>(cdf);
   assert(tx_depth < 3);
   TransformSize tx_size = max_rect_tx_size;
   if (tx_depth == 0) return tx_size;
@@ -187,8 +190,6 @@ void Tile::ReadVariableTransformTree(const Block& block, int row4x4,
       memset(&inter_transform_sizes_[node.y + i][node.x], node.tx_size,
              tx_width4x4);
     }
-    block_parameters_holder_.Find(node.y, node.x)->transform_size =
-        node.tx_size;
   } while (!stack.Empty());
 }
 
@@ -196,7 +197,8 @@ void Tile::DecodeTransformSize(const Block& block) {
   BlockParameters& bp = *block.bp;
   if (frame_header_.tx_mode == kTxModeSelect && block.size > kBlock4x4 &&
       bp.is_inter && !bp.skip &&
-      !frame_header_.segmentation.lossless[bp.segment_id]) {
+      !frame_header_.segmentation
+           .lossless[bp.prediction_parameters->segment_id]) {
     const TransformSize max_tx_size = kMaxTransformSizeRectangle[block.size];
     const int tx_width4x4 = kTransformWidth4x4[max_tx_size];
     const int tx_height4x4 = kTransformHeight4x4[max_tx_size];
@@ -208,10 +210,10 @@ void Tile::DecodeTransformSize(const Block& block) {
       }
     }
   } else {
-    bp.transform_size = ReadFixedTransformSize(block);
+    const TransformSize transform_size = ReadFixedTransformSize(block);
     for (int row = block.row4x4; row < block.row4x4 + block.height4x4; ++row) {
       static_assert(sizeof(TransformSize) == 1, "");
-      memset(&inter_transform_sizes_[row][block.column4x4], bp.transform_size,
+      memset(&inter_transform_sizes_[row][block.column4x4], transform_size,
              block.width4x4);
     }
   }

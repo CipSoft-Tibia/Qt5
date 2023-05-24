@@ -27,12 +27,12 @@
 namespace blink {
 
 class LayoutSVGInlineText;
-class SVGTextElement;
 
 class LayoutSVGText final : public LayoutSVGBlock {
  public:
-  explicit LayoutSVGText(SVGTextElement*);
+  explicit LayoutSVGText(Element*);
   ~LayoutSVGText() override;
+  void Trace(Visitor*) const override;
 
   bool IsChildAllowed(LayoutObject*, const ComputedStyle&) const override;
 
@@ -44,17 +44,19 @@ class LayoutSVGText final : public LayoutSVGBlock {
     NOT_DESTROYED();
     needs_text_metrics_update_ = true;
   }
-  FloatRect VisualRectInLocalSVGCoordinates() const override;
-  FloatRect ObjectBoundingBox() const override;
-  FloatRect StrokeBoundingBox() const override;
+  gfx::RectF VisualRectInLocalSVGCoordinates() const override;
+  gfx::RectF ObjectBoundingBox() const override;
+  gfx::RectF StrokeBoundingBox() const override;
   bool IsObjectBoundingBoxValid() const;
 
   void AddOutlineRects(Vector<PhysicalRect>&,
+                       OutlineInfo*,
                        const PhysicalOffset& additional_offset,
                        NGOutlineType) const override;
 
-  static LayoutSVGText* LocateLayoutSVGTextAncestor(LayoutObject*);
-  static const LayoutSVGText* LocateLayoutSVGTextAncestor(const LayoutObject*);
+  // These two functions return a LayoutSVGText, a LayoutNGSVGText, or nullptr.
+  static LayoutSVGBlock* LocateLayoutSVGTextAncestor(LayoutObject*);
+  static const LayoutSVGBlock* LocateLayoutSVGTextAncestor(const LayoutObject*);
 
   static void NotifySubtreeStructureChanged(LayoutObject*,
                                             LayoutInvalidationReasonForTracing);
@@ -63,7 +65,7 @@ class LayoutSVGText final : public LayoutSVGBlock {
     NOT_DESTROYED();
     return needs_reordering_;
   }
-  const Vector<LayoutSVGInlineText*>& DescendantTextNodes() const {
+  const HeapVector<Member<LayoutSVGInlineText>>& DescendantTextNodes() const {
     NOT_DESTROYED();
     return descendant_text_nodes_;
   }
@@ -76,7 +78,7 @@ class LayoutSVGText final : public LayoutSVGBlock {
   }
 
  private:
-  bool AllowsNonVisibleOverflow() const override {
+  bool RespectsCSSOverflow() const override {
     NOT_DESTROYED();
     return false;
   }
@@ -90,12 +92,12 @@ class LayoutSVGText final : public LayoutSVGBlock {
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset& accumulated_offset,
-                   HitTestAction) override;
+                   HitTestPhase) override;
   PositionWithAffinity PositionForPoint(const PhysicalOffset&) const override;
 
   void UpdateLayout() override;
 
-  void AbsoluteQuads(Vector<FloatQuad>&,
+  void AbsoluteQuads(Vector<gfx::QuadF>&,
                      MapCoordinatesFlags mode = 0) const override;
 
   void AddChild(LayoutObject* child,
@@ -108,15 +110,21 @@ class LayoutSVGText final : public LayoutSVGBlock {
   RootInlineBox* CreateRootInlineBox() override;
 
   void SubtreeStructureChanged(LayoutInvalidationReasonForTracing);
+  void UpdateTransformAffectsVectorEffect();
 
   bool needs_reordering_ : 1;
   bool needs_positioning_values_update_ : 1;
   bool needs_text_metrics_update_ : 1;
-  Vector<LayoutSVGInlineText*> descendant_text_nodes_;
+  HeapVector<Member<LayoutSVGInlineText>> descendant_text_nodes_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutSVGText, IsSVGText());
+template <>
+struct DowncastTraits<LayoutSVGText> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsSVGText();
+  }
+};
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_SVG_LAYOUT_SVG_TEXT_H_

@@ -1,84 +1,14 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+load("//console-header.star", "HEADER")
+
 luci.console_view(
     name = "goma.latest",
-    header = "//chromium-header.textpb",
     repo = "https://chromium.googlesource.com/chromium/src",
+    header = HEADER,
     entries = [
-        luci.console_view_entry(
-            builder = "goma/Win Builder Goma Latest Client",
-            category = "win|rel",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Win Builder (dbg) Goma Latest Client",
-            category = "win|dbg",
-        ),
-        luci.console_view_entry(
-            builder = "goma/win32-archive-rel-goma-latest-localoutputcache",
-            category = "win|rel",
-            short_name = "loc",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Win7 Builder Goma Latest Client",
-            category = "win7|rel",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Win7 Builder (dbg) Goma Latest Client",
-            category = "win7|dbg",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Mac Builder Goma Latest Client",
-            category = "mac|rel",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Mac Builder (dbg) Goma Latest Client",
-            category = "mac|dbg",
-        ),
-        luci.console_view_entry(
-            builder = "goma/mac-archive-rel-goma-latest",
-            category = "mac|rel",
-            short_name = "clb",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Mac Builder (dbg) Goma Latest Client (clobber)",
-            category = "mac|dbg",
-            short_name = "clb",
-        ),
-        luci.console_view_entry(
-            builder = "goma/mac-archive-rel-goma-latest-localoutputcache",
-            category = "mac|rel",
-            short_name = "loc",
-        ),
-        luci.console_view_entry(
-            builder = "goma/chromeos-amd64-generic-rel-goma-latest",
-            category = "cros|rel",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Linux Builder Goma Latest Client",
-            category = "linux|rel",
-        ),
-        luci.console_view_entry(
-            builder = "goma/linux-archive-rel-goma-latest",
-            category = "linux|rel",
-            short_name = "clb",
-        ),
-        luci.console_view_entry(
-            builder = "goma/linux-archive-rel-goma-latest-localoutputcache",
-            category = "linux|rel",
-            short_name = "loc",
-        ),
-        luci.console_view_entry(
-            builder = "goma/android-archive-dbg-goma-latest",
-            category = "android|dbg",
-        ),
-        luci.console_view_entry(
-            builder = "goma/ios-device-goma-latest-clobber",
-            category = "ios",
-            short_name = "clb",
-        ),
-        # RBE
         luci.console_view_entry(
             builder = "goma/linux-archive-rel-goma-rbe-latest",
             category = "rbe|linux|rel",
@@ -128,6 +58,16 @@ luci.console_view(
         luci.console_view_entry(
             builder = "goma/Win Builder (dbg) Goma RBE Latest Client",
             category = "rbe|win|dbg",
+        ),
+        luci.console_view_entry(
+            builder = "goma/Win Builder Goma RBE ATS Latest Client",
+            category = "rbe|win|rel",
+            short_name = "ats",
+        ),
+        luci.console_view_entry(
+            builder = "goma/Win Builder (dbg) Goma RBE ATS Latest Client",
+            category = "rbe|win|dbg",
+            short_name = "ats",
         ),
     ],
 )

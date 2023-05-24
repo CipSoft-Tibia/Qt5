@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/feed/core/v2/protocol_translator.h"
 
+#include <initializer_list>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -14,19 +15,27 @@
 #include "base/path_service.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
 #include "components/feed/core/proto/v2/wire/feed_response.pb.h"
 #include "components/feed/core/proto/v2/wire/response.pb.h"
+#include "components/feed/core/v2/ios_shared_experiments_translator.h"
 #include "components/feed/core/v2/proto_util.h"
 #include "components/feed/core/v2/test/proto_printer.h"
+#include "components/feed/feed_feature_list.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace feed {
 namespace {
 
 const char kResponsePbPath[] = "components/test/data/feed/response.binarypb";
-const base::Time kCurrentTime =
-    base::Time::UnixEpoch() + base::TimeDelta::FromDays(123);
+const base::Time kCurrentTime = base::Time::UnixEpoch() + base::Days(123);
+AccountInfo TestAccountInfo() {
+  AccountInfo account_info;
+  account_info.gaia = "gaia";
+  account_info.email = "user@foo.com";
+  return account_info;
+}
 
 feedwire::Response TestWireResponse() {
   // Read and parse response.binarypb.
@@ -64,14 +73,12 @@ feedwire::DataOperation MakeDataOperationWithContent(
   feedwire::DataOperation result = MakeDataOperation(operation);
   result.mutable_feature()->set_renderable_unit(feedwire::Feature::CONTENT);
   result.mutable_feature()
-      ->mutable_content_extension()
+      ->mutable_content()
       ->mutable_xsurface_content()
       ->set_xsurface_output(xsurface_content);
 
-  result.mutable_feature()
-      ->mutable_content_extension()
-      ->add_prefetch_metadata()
-      ->set_uri("http://uri-for-" + xsurface_content);
+  result.mutable_feature()->mutable_content()->add_prefetch_metadata()->set_uri(
+      "http://uri-for-" + xsurface_content);
   return result;
 }
 
@@ -88,23 +95,38 @@ feedwire::DataOperation MakeDataOperationWithRenderData(
 
 // Helpers to add some common params.
 RefreshResponseData TranslateWireResponse(feedwire::Response response,
-                                          bool was_signed_in_request) {
+                                          const AccountInfo& account_info) {
   return TranslateWireResponse(response,
                                StreamModelUpdateRequest::Source::kNetworkUpdate,
-                               was_signed_in_request, kCurrentTime);
+                               account_info, kCurrentTime);
 }
 
 RefreshResponseData TranslateWireResponse(feedwire::Response response) {
-  return TranslateWireResponse(response, true);
+  return TranslateWireResponse(response, TestAccountInfo());
 }
-base::Optional<feedstore::DataOperation> TranslateDataOperation(
+absl::optional<feedstore::DataOperation> TranslateDataOperation(
     feedwire::DataOperation operation) {
   return ::feed::TranslateDataOperation(base::Time(), std::move(operation));
 }
 
 }  // namespace
 
-TEST(ProtocolTranslatorTest, NextPageToken) {
+class ProtocolTranslatorTest : public testing::Test {
+ public:
+  ProtocolTranslatorTest() = default;
+  ProtocolTranslatorTest(ProtocolTranslatorTest&) = delete;
+  ProtocolTranslatorTest& operator=(const ProtocolTranslatorTest&) = delete;
+  ~ProtocolTranslatorTest() override = default;
+
+  void SetUp() override {
+    feature_list_.InitAndEnableFeature(kFeedExperimentIDTagging);
+  }
+
+ protected:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+TEST_F(ProtocolTranslatorTest, NextPageToken) {
   feedwire::Response response = EmptyWireResponse();
   feedwire::DataOperation* operation =
       response.mutable_feed_response()->add_data_operation();
@@ -121,23 +143,45 @@ TEST(ProtocolTranslatorTest, NextPageToken) {
             translated.model_update_request->stream_data.next_page_token());
 }
 
-TEST(ProtocolTranslatorTest, EmptyResponse) {
+TEST_F(ProtocolTranslatorTest, EmptyResponse) {
   feedwire::Response response = EmptyWireResponse();
   EXPECT_TRUE(TranslateWireResponse(response).model_update_request);
 }
 
-TEST(ProtocolTranslatorTest, WasSignedInRequest) {
+TEST_F(ProtocolTranslatorTest, RootEventIdPresent) {
   feedwire::Response response = EmptyWireResponse();
-  for (bool was_signed_in_request_state : {true, false}) {
-    RefreshResponseData refresh =
-        TranslateWireResponse(response, was_signed_in_request_state);
+  response.mutable_feed_response()
+      ->mutable_feed_response_metadata()
+      ->mutable_event_id()
+      ->set_time_usec(123);
+  EXPECT_EQ(TranslateWireResponse(response)
+                .model_update_request->stream_data.root_event_id(),
+            response.mutable_feed_response()
+                ->mutable_feed_response_metadata()
+                ->event_id()
+                .SerializeAsString());
+}
+
+TEST_F(ProtocolTranslatorTest, RootEventIdNotPresent) {
+  feedwire::Response response = EmptyWireResponse();
+  EXPECT_EQ(TranslateWireResponse(response)
+                .model_update_request->stream_data.root_event_id(),
+            "");
+}
+
+TEST_F(ProtocolTranslatorTest, WasSignedInRequest) {
+  feedwire::Response response = EmptyWireResponse();
+
+  for (AccountInfo account_info :
+       std::initializer_list<AccountInfo>{{"gaia", "user@foo.com"}, {}}) {
+    RefreshResponseData refresh = TranslateWireResponse(response, account_info);
     ASSERT_TRUE(refresh.model_update_request);
     EXPECT_EQ(refresh.model_update_request->stream_data.signed_in(),
-              was_signed_in_request_state);
+              !account_info.IsEmpty());
   }
 }
 
-TEST(ProtocolTranslatorTest, ActivityLoggingEnabled) {
+TEST_F(ProtocolTranslatorTest, ActivityLoggingEnabled) {
   feedwire::Response response = EmptyWireResponse();
   for (bool logging_enabled_state : {true, false}) {
     response.mutable_feed_response()
@@ -157,7 +201,7 @@ TEST(ProtocolTranslatorTest, ActivityLoggingEnabled) {
   }
 }
 
-TEST(ProtocolTranslatorTest, PrivacyNoticeFulfilled) {
+TEST_F(ProtocolTranslatorTest, PrivacyNoticeFulfilled) {
   feedwire::Response response = EmptyWireResponse();
   for (bool privacy_notice_fulfilled_state : {true, false}) {
     response.mutable_feed_response()
@@ -177,16 +221,106 @@ TEST(ProtocolTranslatorTest, PrivacyNoticeFulfilled) {
   }
 }
 
-TEST(ProtocolTranslatorTest, MissingResponseVersion) {
+TEST_F(ProtocolTranslatorTest, ExperimentsAreTranslated) {
+  Experiments expected;
+  std::vector<std::string> group_list{"Group1"};
+  expected["Trial1"] = group_list;
+
+  feedwire::Response response = EmptyWireResponse();
+  auto* exp = response.mutable_feed_response()
+                  ->mutable_feed_response_metadata()
+                  ->mutable_chrome_feed_response_metadata()
+                  ->add_experiments();
+  exp->set_trial_name("Trial1");
+  exp->set_group_name("Group1");
+
+  RefreshResponseData refresh = TranslateWireResponse(response);
+  ASSERT_TRUE(refresh.experiments.has_value());
+
+  EXPECT_EQ(refresh.experiments.value(), expected);
+}
+
+TEST_F(ProtocolTranslatorTest, ExperimentsAreTranslatedIDTaggingEnabled) {
+  Experiments expected;
+  std::vector<std::string> group_list1{"ID1"};
+  std::vector<std::string> group_list2{"ID2"};
+  expected[kDiscoverFeedExperiments] = group_list1;
+  expected["Trial1"] = group_list2;
+
+  feedwire::Response response = EmptyWireResponse();
+  auto* exp1 = response.mutable_feed_response()
+                   ->mutable_feed_response_metadata()
+                   ->mutable_chrome_feed_response_metadata()
+                   ->add_experiments();
+  exp1->set_experiment_id("ID1");
+  auto* exp2 = response.mutable_feed_response()
+                   ->mutable_feed_response_metadata()
+                   ->mutable_chrome_feed_response_metadata()
+                   ->add_experiments();
+  exp2->set_trial_name("Trial1");
+  exp2->set_experiment_id("ID2");
+
+  RefreshResponseData refresh = TranslateWireResponse(response);
+  ASSERT_TRUE(refresh.experiments.has_value());
+
+  EXPECT_EQ(refresh.experiments.value(), expected);
+}
+
+TEST_F(ProtocolTranslatorTest, ExperimentsAreTranslatedIDTaggingDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(kFeedExperimentIDTagging);
+  Experiments expected;
+  std::vector<std::string> group_list{"Group1"};
+  expected["Trial1"] = group_list;
+
+  feedwire::Response response = EmptyWireResponse();
+  auto* exp1 = response.mutable_feed_response()
+                   ->mutable_feed_response_metadata()
+                   ->mutable_chrome_feed_response_metadata()
+                   ->add_experiments();
+  exp1->set_trial_name("Trial1");
+  exp1->set_group_name("Group1");
+
+  auto* exp2 = response.mutable_feed_response()
+                   ->mutable_feed_response_metadata()
+                   ->mutable_chrome_feed_response_metadata()
+                   ->add_experiments();
+  exp2->set_experiment_id("EXP_ID_NOT_TRANSLATED");
+  auto* exp3 = response.mutable_feed_response()
+                   ->mutable_feed_response_metadata()
+                   ->mutable_chrome_feed_response_metadata()
+                   ->add_experiments();
+  exp3->set_trial_name("Trial_NOT_TRANSLATED");
+  exp3->set_experiment_id("EXP_ID_NOT_TRANSLATED");
+
+  RefreshResponseData refresh = TranslateWireResponse(response);
+  ASSERT_TRUE(refresh.experiments.has_value());
+
+  EXPECT_EQ(refresh.experiments.value(), expected);
+}
+
+TEST_F(ProtocolTranslatorTest, ExperimentsAreNotTranslatedGroupAndIDMissing) {
+  feedwire::Response response = EmptyWireResponse();
+  auto* exp1 = response.mutable_feed_response()
+                   ->mutable_feed_response_metadata()
+                   ->mutable_chrome_feed_response_metadata()
+                   ->add_experiments();
+  exp1->set_trial_name("Trial1");
+
+  RefreshResponseData refresh = TranslateWireResponse(response);
+  ASSERT_FALSE(refresh.experiments.has_value());
+}
+
+TEST_F(ProtocolTranslatorTest, MissingResponseVersion) {
   feedwire::Response response = EmptyWireResponse();
   response.set_response_version(feedwire::Response::UNKNOWN_RESPONSE_VERSION);
   EXPECT_FALSE(TranslateWireResponse(response).model_update_request);
 }
 
-TEST(ProtocolTranslatorTest, TranslateContent) {
+TEST_F(ProtocolTranslatorTest, TranslateContent) {
   feedwire::DataOperation wire_operation =
       MakeDataOperationWithContent(feedwire::DataOperation::UPDATE_OR_APPEND);
-  base::Optional<feedstore::DataOperation> translated =
+  absl::optional<feedstore::DataOperation> translated =
       TranslateDataOperation(wire_operation);
   EXPECT_TRUE(translated);
   EXPECT_EQ("content", translated->content().frame());
@@ -195,14 +329,14 @@ TEST(ProtocolTranslatorTest, TranslateContent) {
             translated->content().prefetch_metadata(0).uri());
 }
 
-TEST(ProtocolTranslatorTest, TranslateContentFailsWhenMissingContent) {
+TEST_F(ProtocolTranslatorTest, TranslateContentFailsWhenMissingContent) {
   feedwire::DataOperation wire_operation =
       MakeDataOperationWithContent(feedwire::DataOperation::UPDATE_OR_APPEND);
-  wire_operation.mutable_feature()->clear_content_extension();
+  wire_operation.mutable_feature()->clear_content();
   EXPECT_FALSE(TranslateDataOperation(wire_operation));
 }
 
-TEST(ProtocolTranslatorTest, TranslateRenderData) {
+TEST_F(ProtocolTranslatorTest, TranslateRenderData) {
   feedwire::Response wire_response = EmptyWireResponse();
   *wire_response.mutable_feed_response()->add_data_operation() =
       MakeDataOperationWithRenderData(
@@ -215,7 +349,29 @@ TEST(ProtocolTranslatorTest, TranslateRenderData) {
       translated.model_update_request->shared_states[0].shared_state_data());
 }
 
-TEST(ProtocolTranslatorTest, TranslateRenderDataFailsWithUnknownType) {
+TEST_F(ProtocolTranslatorTest, TranslateContentLifetime) {
+  feedwire::Response wire_response = EmptyWireResponse();
+  feedwire::ContentLifetime* content_lifetime =
+      wire_response.mutable_feed_response()
+          ->mutable_feed_response_metadata()
+          ->mutable_content_lifetime();
+  content_lifetime->set_stale_age_ms(123);
+  content_lifetime->set_invalid_age_ms(456);
+  RefreshResponseData translated = TranslateWireResponse(wire_response);
+  ASSERT_TRUE(translated.content_lifetime.has_value());
+  EXPECT_EQ(translated.content_lifetime->stale_age_ms(),
+            content_lifetime->stale_age_ms());
+  EXPECT_EQ(translated.content_lifetime->invalid_age_ms(),
+            content_lifetime->invalid_age_ms());
+}
+
+TEST_F(ProtocolTranslatorTest, TranslateMissingContentLifetime) {
+  feedwire::Response wire_response = EmptyWireResponse();
+  RefreshResponseData translated = TranslateWireResponse(wire_response);
+  EXPECT_FALSE(translated.content_lifetime.has_value());
+}
+
+TEST_F(ProtocolTranslatorTest, TranslateRenderDataFailsWithUnknownType) {
   feedwire::Response wire_response = EmptyWireResponse();
   feedwire::DataOperation wire_operation = MakeDataOperationWithRenderData(
       feedwire::DataOperation::UPDATE_OR_APPEND);
@@ -228,19 +384,19 @@ TEST(ProtocolTranslatorTest, TranslateRenderDataFailsWithUnknownType) {
   ASSERT_EQ(0ul, translated.model_update_request->shared_states.size());
 }
 
-TEST(ProtocolTranslatorTest, RenderDataOperationCanOnlyComeFromFullResponse) {
+TEST_F(ProtocolTranslatorTest, RenderDataOperationCanOnlyComeFromFullResponse) {
   EXPECT_FALSE(TranslateDataOperation(MakeDataOperationWithRenderData(
       feedwire::DataOperation::UPDATE_OR_APPEND)));
 }
 
-TEST(ProtocolTranslatorTest, TranslateOperationFailsWithNoPayload) {
+TEST_F(ProtocolTranslatorTest, TranslateOperationFailsWithNoPayload) {
   feedwire::DataOperation wire_operation =
       MakeDataOperationWithContent(feedwire::DataOperation::UPDATE_OR_APPEND);
   wire_operation.clear_feature();
   EXPECT_FALSE(TranslateDataOperation(wire_operation));
 }
 
-TEST(ProtocolTranslatorTest, TranslateOperationWithoutContentId) {
+TEST_F(ProtocolTranslatorTest, TranslateOperationWithoutContentId) {
   feedwire::DataOperation update_operation =
       MakeDataOperationWithContent(feedwire::DataOperation::UPDATE_OR_APPEND);
   update_operation.clear_metadata();
@@ -257,13 +413,13 @@ TEST(ProtocolTranslatorTest, TranslateOperationWithoutContentId) {
   EXPECT_TRUE(TranslateDataOperation(clear_operation));
 }
 
-TEST(ProtocolTranslatorTest, TranslateOperationFailsWithUnknownOperation) {
+TEST_F(ProtocolTranslatorTest, TranslateOperationFailsWithUnknownOperation) {
   feedwire::DataOperation wire_operation =
       MakeDataOperation(feedwire::DataOperation::UNKNOWN_OPERATION);
   EXPECT_FALSE(TranslateDataOperation(wire_operation));
 }
 
-TEST(ProtocolTranslatorTest, TranslateRealResponse) {
+TEST_F(ProtocolTranslatorTest, TranslateRealResponse) {
   // Tests how proto translation works on a real response from the server.
   //
   // The response will periodically need to be updated as changes are made to
@@ -278,9 +434,8 @@ TEST(ProtocolTranslatorTest, TranslateRealResponse) {
   ASSERT_TRUE(translated.request_schedule);
   EXPECT_EQ(kCurrentTime, translated.request_schedule->anchor_time);
   EXPECT_EQ(std::vector<base::TimeDelta>(
-                {base::TimeDelta::FromSeconds(86308) +
-                     base::TimeDelta::FromNanoseconds(822963644),
-                 base::TimeDelta::FromSeconds(120000)}),
+                {base::Seconds(86308) + base::Nanoseconds(822963644),
+                 base::Seconds(120000)}),
             translated.request_schedule->refresh_offsets);
 
   std::stringstream ss;
@@ -288,9 +443,42 @@ TEST(ProtocolTranslatorTest, TranslateRealResponse) {
 
   const std::string want = R"(source: 0
 stream_data: {
+  root_event_id: )"
+                           "\"\\b\xEF\xBF\xBD\xEF\xBF\xBD\\u0007\""
+                           R"(
   last_added_time_millis: 10627200000
-  shared_state_id {
+  shared_state_ids {
     content_domain: "render_data"
+  }
+  content_hashes {
+    hashes: 934967784
+  }
+  content_hashes {
+    hashes: 1272916258
+  }
+  content_hashes {
+    hashes: 3242987079
+  }
+  content_hashes {
+    hashes: 1955343871
+  }
+  content_hashes {
+    hashes: 3258315382
+  }
+  content_hashes {
+    hashes: 3546053313
+  }
+  content_hashes {
+    hashes: 1640265464
+  }
+  content_hashes {
+    hashes: 2920920940
+  }
+  content_hashes {
+    hashes: 3805198647
+  }
+  content_hashes {
+    hashes: 3846950793
   }
 }
 content: {
@@ -667,7 +855,7 @@ max_structure_sequence_number: 0
   EXPECT_EQ(want, ss.str());
 }
 
-TEST(TranslateDismissData, Success) {
+TEST_F(ProtocolTranslatorTest, TranslateDismissData) {
   feedpacking::DismissData input;
   *input.add_data_operations() =
       MakeDataOperation(feedwire::DataOperation::CLEAR_ALL);

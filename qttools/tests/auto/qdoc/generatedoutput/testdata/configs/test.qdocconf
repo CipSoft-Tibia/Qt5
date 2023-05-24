@@ -1,12 +1,17 @@
+include(config.qdocconf)
 project = OutputFromQDocFiles
 description = "A test project for QDoc build artifacts"
+buildversion = "$project - $description"
 moduleheader =
 
-sources = ../outputfromqdocfiles/qdoctests-outputfromqdocfiles.qdoc
+sources = ../outputfromqdocfiles/qdoctests-outputfromqdocfiles.qdoc \
+          ../outputfromqdocfiles/qdoctests-outputfromqdocmanuallikefiles.qdoc
 
 macro.beginqdoc = "\\c {/*!}"
 macro.endqdoc = "\\c */"
+macro.PROD = QDoc
 
-# zero warning tolerance
-warninglimit = 0
-warninglimit.enabled = true
+defines = test_navigation
+
+# allow (qdoc) warning: Can't link to ''
+warninglimit += 1

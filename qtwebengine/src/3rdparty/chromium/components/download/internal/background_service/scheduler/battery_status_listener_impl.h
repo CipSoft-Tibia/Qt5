@@ -1,12 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_DOWNLOAD_INTERNAL_BACKGROUND_SERVICE_SCHEDULER_BATTERY_STATUS_LISTENER_IMPL_H_
 #define COMPONENTS_DOWNLOAD_INTERNAL_BACKGROUND_SERVICE_SCHEDULER_BATTERY_STATUS_LISTENER_IMPL_H_
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/power_monitor/power_monitor.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "components/download/internal/background_service/scheduler/battery_status_listener.h"
 
@@ -14,10 +15,15 @@ namespace download {
 
 // Default implementation of BatteryStatusListener.
 class BatteryStatusListenerImpl : public BatteryStatusListener,
-                                  public base::PowerObserver {
+                                  public base::PowerStateObserver {
  public:
   explicit BatteryStatusListenerImpl(
       const base::TimeDelta& battery_query_interval);
+
+  BatteryStatusListenerImpl(const BatteryStatusListenerImpl&) = delete;
+  BatteryStatusListenerImpl& operator=(const BatteryStatusListenerImpl&) =
+      delete;
+
   ~BatteryStatusListenerImpl() override;
 
  protected:
@@ -35,7 +41,7 @@ class BatteryStatusListenerImpl : public BatteryStatusListener,
   // |battery_query_interval_| when |force| is false.
   void UpdateBatteryPercentage(bool force);
 
-  // base::PowerObserver implementation.
+  // base::PowerStateObserver implementation.
   void OnPowerStateChange(bool on_battery_power) override;
 
   // Cached battery percentage.
@@ -48,9 +54,7 @@ class BatteryStatusListenerImpl : public BatteryStatusListener,
   // Time stamp to record last battery query.
   base::Time last_battery_query_;
 
-  Observer* observer_;
-
-  DISALLOW_COPY_AND_ASSIGN(BatteryStatusListenerImpl);
+  raw_ptr<Observer> observer_;
 };
 
 }  // namespace download

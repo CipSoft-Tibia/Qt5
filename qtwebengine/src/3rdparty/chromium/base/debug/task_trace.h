@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include "base/base_export.h"
 #include "base/containers/span.h"
 #include "base/debug/stack_trace.h"
-#include "base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 namespace debug {
@@ -49,11 +49,13 @@ class BASE_EXPORT TaskTrace {
   // Resolves trace to symbols and returns as string.
   std::string ToString() const;
 
-  // Returns the list of addresses in the task trace for testing.
-  base::span<const void* const> AddressesForTesting() const;
+  // Reads the list of addresses currently in the task trace into `addresses`,
+  // and returns the maximum length of addresses that could have been read,
+  // which may differ from `addresses.size()`.
+  size_t GetAddresses(span<const void*> addresses) const;
 
  private:
-  base::Optional<StackTrace> stack_trace_;
+  absl::optional<StackTrace> stack_trace_;
   bool trace_overflow_ = false;
 };
 

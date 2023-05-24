@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,7 @@
 
 #include "base/command_line.h"
 #include "components/viz/host/hit_test/hit_test_query.h"
+#include "ui/gfx/geometry/test/fuzzer_util.h"
 
 namespace {
 
@@ -40,14 +41,8 @@ void AddHitTestRegion(FuzzedDataProvider* fuzz,
       fuzz->ConsumeIntegral<int>(), fuzz->ConsumeIntegral<int>());
   int32_t child_count =
       depth < kMaxDepthAllowed ? fuzz->ConsumeIntegralInRange(0, 10) : 0;
-  gfx::Transform transform;
-  if (fuzz->ConsumeBool() && fuzz->remaining_bytes() >= sizeof(transform)) {
-    std::vector<uint8_t> matrix_bytes =
-        fuzz->ConsumeBytes<uint8_t>(sizeof(gfx::Transform));
-    memcpy(&transform, matrix_bytes.data(), matrix_bytes.size());
-  }
-  regions->emplace_back(frame_sink_id, flags, rect, transform, child_count,
-                        reasons);
+  regions->emplace_back(frame_sink_id, flags, rect,
+                        gfx::ConsumeTransform(*fuzz), child_count, reasons);
   // Always add the first frame sink id, because the root needs to be in the
   // list of FrameSinkId.
   if (regions->size() == 1 || fuzz->ConsumeBool())

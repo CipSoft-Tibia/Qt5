@@ -224,6 +224,7 @@
     || defined(__ARM_ARCH_6K__) \
     || defined(__ARM_ARCH_6Z__) \
     || defined(__ARM_ARCH_6ZK__) \
+    || defined(__ARM_ARCH_6KZ__) \
     || defined(__ARM_ARCH_6T2__) \
     || defined(__ARMV6__)
 #define WTF_ARM_ARCH_VERSION 6
@@ -1043,9 +1044,6 @@
 
 #if PLATFORM(QT)
 #include <qglobal.h>
-#if defined(QT_OPENGL_ES_2) && !defined(WTF_USE_OPENGL_ES_2)
-#define WTF_USE_OPENGL_ES_2 1
-#endif
 #endif
 
 #if !PLATFORM(IOS) && PLATFORM(MAC) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 1080

@@ -41,7 +41,7 @@ class SharedMemory;
 // This interface is subclassed by:
 //  1. The actual producer code in the clients e.g., the ftrace reader process.
 //  2. The transport layer when interposing RPC between service and producers.
-class PERFETTO_EXPORT Producer {
+class PERFETTO_EXPORT_COMPONENT Producer {
  public:
   virtual ~Producer();
 
@@ -62,6 +62,10 @@ class PERFETTO_EXPORT Producer {
   // Called by the Service after OnConnect but before the first DataSource is
   // created. Can be used for any setup required before tracing begins.
   virtual void OnTracingSetup() = 0;
+
+  // Called by muxer once StartupTracing is started. It will be called before
+  // SetupStartupTracingBlocking is returned.
+  virtual void OnStartupTracingSetup() {}
 
   // The lifecycle methods below are always called in the following sequence:
   // SetupDataSource  -> StartDataSource -> StopDataSource.

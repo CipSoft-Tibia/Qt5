@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qendian.h"
 
@@ -47,6 +11,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \headerfile <QtEndian>
+    \inmodule QtCore
     \title Endian Conversion Functions
     \ingroup funclists
     \brief The <QtEndian> header provides functions to convert between
@@ -434,28 +399,28 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn template <typename T> QLEInteger &QLEInteger<T>::operator++()
 
-    Performs a prefix ++ (increment) on this QLEInteger and returns a reference to
+    Performs a prefix \c{++} (increment) on this QLEInteger and returns a reference to
     this object.
 */
 
 /*!
     \fn template <typename T> QLEInteger QLEInteger<T>::operator++(int)
 
-    Performs a postfix ++ (increment) on this QLEInteger and returns a reference to
+    Performs a postfix \c{++} (increment) on this QLEInteger and returns a reference to
     this object.
 */
 
 /*!
     \fn template <typename T> QLEInteger &QLEInteger<T>::operator--()
 
-    Performs a prefix -- (decrement) on this QLEInteger and returns a reference to
+    Performs a prefix \c{--} (decrement) on this QLEInteger and returns a reference to
     this object.
 */
 
 /*!
     \fn template <typename T> QLEInteger QLEInteger<T>::operator--(int)
 
-    Performs a postfix -- (decrement) on this QLEInteger and returns a reference to
+    Performs a postfix \c{--} (decrement) on this QLEInteger and returns a reference to
     this object.
 */
 
@@ -480,8 +445,8 @@ QT_BEGIN_NAMESPACE
     The template parameter \c T must be a C++ integer type:
     \list
        \li 8-bit: char, signed char, unsigned char, qint8, quint8
-       \li 16-bit: short, unsigned short, qint16, quint16, char16_t (C++11)
-       \li 32-bit: int, unsigned int, qint32, quint32, char32_t (C++11)
+       \li 16-bit: short, unsigned short, qint16, quint16, char16_t
+       \li 32-bit: int, unsigned int, qint32, quint32, char32_t
        \li 64-bit: long long, unsigned long long, qint64, quint64
        \li platform-specific size: long, unsigned long
        \li pointer size: qintptr, quintptr, qptrdiff
@@ -593,28 +558,28 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn template <typename T> QBEInteger &QBEInteger<T>::operator++()
 
-    Performs a prefix ++ (increment) on this QBEInteger and returns a reference to
+    Performs a prefix \c{++} (increment) on this QBEInteger and returns a reference to
     this object.
 */
 
 /*!
     \fn template <typename T> QBEInteger QBEInteger<T>::operator++(int)
 
-    Performs a postfix ++ (increment) on this QBEInteger and returns a reference to
+    Performs a postfix \c{++} (increment) on this QBEInteger and returns a reference to
     this object.
 */
 
 /*!
     \fn template <typename T> QBEInteger &QBEInteger<T>::operator--()
 
-    Performs a prefix -- (decrement) on this QBEInteger and returns a reference to
+    Performs a prefix \c{--} (decrement) on this QBEInteger and returns a reference to
     this object.
 */
 
 /*!
     \fn template <typename T> QBEInteger QBEInteger<T>::operator--(int)
 
-    Performs a postfix -- (decrement) on this QBEInteger and returns a reference to
+    Performs a postfix \c{--} (decrement) on this QBEInteger and returns a reference to
     this object.
 */
 
@@ -764,7 +729,7 @@ QT_BEGIN_NAMESPACE
 
 #if defined(__SSSE3__)
 using ShuffleMask = uchar[16];
-Q_DECL_ALIGN(16) static const ShuffleMask shuffleMasks[3] = {
+alignas(16) static const ShuffleMask shuffleMasks[3] = {
     // 16-bit
     {1, 0, 3, 2,  5, 4, 7, 6,  9, 8, 11, 10,  13, 12, 15, 14},
     // 32-bit
@@ -815,7 +780,7 @@ size_t simdSwapLoop(const uchar *src, size_t bytes, uchar *dst) noexcept
     size_t i = sseSwapLoop(src, bytes, dst, shuffleMaskPtr);
 
     // epilogue
-    for (size_t _i = 0 ; i < bytes && _i < sizeof(__m128i); i += sizeof(T), _i += sizeof(T))
+    for (size_t _i = 0; i < bytes && _i < sizeof(__m128i); i += sizeof(T), _i += sizeof(T))
         qbswap(qFromUnaligned<T>(src + i), dst + i);
 
     // return the total, so the bswapLoop below does nothing
@@ -886,12 +851,13 @@ void *bswapLoop(const uchar *src, size_t n, uchar *dst) noexcept
 
     size_t i = simdSwapLoop<T>(src, n, dst);
 
-    for ( ; i < n; i += sizeof(T))
+    for (; i < n; i += sizeof(T))
         qbswap(qFromUnaligned<T>(src + i), dst + i);
     return dst + i;
 }
 
-template <> void *qbswap<2>(const void *source, qsizetype n, void *dest) noexcept
+template<>
+void *qbswap<2>(const void *source, qsizetype n, void *dest) noexcept
 {
     const uchar *src = reinterpret_cast<const uchar *>(source);
     uchar *dst = reinterpret_cast<uchar *>(dest);
@@ -899,7 +865,8 @@ template <> void *qbswap<2>(const void *source, qsizetype n, void *dest) noexcep
     return bswapLoop<quint16>(src, n << 1, dst);
 }
 
-template <> void *qbswap<4>(const void *source, qsizetype n, void *dest) noexcept
+template<>
+void *qbswap<4>(const void *source, qsizetype n, void *dest) noexcept
 {
     const uchar *src = reinterpret_cast<const uchar *>(source);
     uchar *dst = reinterpret_cast<uchar *>(dest);
@@ -907,7 +874,8 @@ template <> void *qbswap<4>(const void *source, qsizetype n, void *dest) noexcep
     return bswapLoop<quint32>(src, n << 2, dst);
 }
 
-template <> void *qbswap<8>(const void *source, qsizetype n, void *dest) noexcept
+template<>
+void *qbswap<8>(const void *source, qsizetype n, void *dest) noexcept
 {
     const uchar *src = reinterpret_cast<const uchar *>(source);
     uchar *dst = reinterpret_cast<uchar *>(dest);

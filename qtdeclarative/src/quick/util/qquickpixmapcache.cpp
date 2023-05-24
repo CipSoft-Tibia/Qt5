@@ -1,99 +1,107 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qquickpixmapcache_p.h"
-#include <qquickimageprovider.h>
-#include "qquickimageprovider_p.h"
-
-#include <qqmlengine.h>
-#include <private/qqmlglobal_p.h>
-#include <private/qqmlengine_p.h>
+#include <QtQuick/private/qquickpixmapcache_p.h>
+#include <QtQuick/private/qquickimageprovider_p.h>
+#include <QtQuick/private/qquickprofiler_p.h>
+#include <QtQuick/private/qsgcontext_p.h>
+#include <QtQuick/private/qsgrenderer_p.h>
+#include <QtQuick/private/qsgtexturereader_p.h>
+#include <QtQuick/qquickwindow.h>
 
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qimage_p.h>
-#include <qpa/qplatformintegration.h>
+#include <QtGui/qpa/qplatformintegration.h>
+#include <QtGui/qimagereader.h>
+#include <QtGui/qpixmapcache.h>
 
-#include <QtQuick/private/qsgcontext_p.h>
-#include <QtQuick/private/qsgtexturereader_p.h>
+#include <QtQml/private/qqmlglobal_p.h>
+#include <QtQml/private/qqmlengine_p.h>
+#include <QtQml/qqmlfile.h>
 
-#include <QQuickWindow>
-#include <QCoreApplication>
-#include <QImageReader>
-#include <QHash>
-#include <QPixmapCache>
-#include <QFile>
-#include <QThread>
-#include <QMutex>
-#include <QMutexLocker>
-#include <QBuffer>
+#include <QtCore/private/qobject_p.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qfile.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qbuffer.h>
 #include <QtCore/qdebug.h>
-#include <private/qobject_p.h>
-#include <QQmlFile>
-#include <QMetaMethod>
+#include <QtCore/qmetaobject.h>
+#include <QtCore/qscopeguard.h>
 
 #if QT_CONFIG(qml_network)
-#include <qqmlnetworkaccessmanagerfactory.h>
-#include <QNetworkReply>
-#include <QSslError>
+#include <QtQml/qqmlnetworkaccessmanagerfactory.h>
+#include <QtNetwork/qnetworkreply.h>
+#include <QtNetwork/qsslerror.h>
 #endif
 
-#include <private/qquickprofiler_p.h>
+#include <private/qdebug_p.h>
 
 #define IMAGEREQUEST_MAX_NETWORK_REQUEST_COUNT 8
 #define IMAGEREQUEST_MAX_REDIRECT_RECURSION 16
+
+// After QQuickPixmapStore::unreferencePixmap() it may get deleted via a timer in 30 seconds
 #define CACHE_EXPIRE_TIME 30
+
+// How many (1/4) of the unreferenced pixmaps to delete in QQuickPixmapStore::timerEvent()
 #define CACHE_REMOVAL_FRACTION 4
 
 #define PIXMAP_PROFILE(Code) Q_QUICK_PROFILE(QQuickProfiler::ProfilePixmapCache, Code)
 
+#if QT_CONFIG(thread) && !defined(Q_OS_WASM)
+#  define USE_THREADED_DOWNLOAD 1
+#else
+#  define USE_THREADED_DOWNLOAD 0
+#endif
+
 QT_BEGIN_NAMESPACE
+
+#if defined(QT_DEBUG) && QT_CONFIG(thread)
+class ThreadAffinityMarker
+{
+public:
+    ThreadAffinityMarker() { attachToCurrentThread(); }
+
+    void assertOnAssignedThread()
+    {
+        QMutexLocker locker(&m_mutex);
+        if (!m_assignedThread)
+            attachToCurrentThread();
+        Q_ASSERT_X(m_assignedThread == QThread::currentThreadId(), Q_FUNC_INFO,
+                   "Running on a wrong thread!");
+    }
+
+    void detachFromCurrentThread()
+    {
+        QMutexLocker locker(&m_mutex);
+        m_assignedThread = nullptr;
+    }
+
+    void attachToCurrentThread() { m_assignedThread = QThread::currentThreadId(); }
+
+private:
+    Qt::HANDLE m_assignedThread;
+    QMutex m_mutex;
+};
+#  define Q_THREAD_AFFINITY_MARKER(x) ThreadAffinityMarker x
+#  define Q_ASSERT_CALLED_ON_VALID_THREAD(x) x.assertOnAssignedThread()
+#  define Q_DETACH_THREAD_AFFINITY_MARKER(x) x.detachFromCurrentThread()
+#else
+#  define Q_THREAD_AFFINITY_MARKER(x)
+#  define Q_ASSERT_CALLED_ON_VALID_THREAD(x)
+#  define Q_DETACH_THREAD_AFFINITY_MARKER(x)
+#endif
 
 const QLatin1String QQuickPixmap::itemGrabberScheme = QLatin1String("itemgrabber");
 
 Q_LOGGING_CATEGORY(lcImg, "qt.quick.image")
 
-#ifndef QT_NO_DEBUG
-static const bool qsg_leak_check = !qEnvironmentVariableIsEmpty("QML_LEAK_CHECK");
-#endif
-
-// The cache limit describes the maximum "junk" in the cache.
-static int cache_limit = 2048 * 1024; // 2048 KB cache limit for embedded in qpixmapcache.cpp
+/*! \internal
+    The maximum currently-unused image data that can be stored for potential
+    later reuse, in bytes. See QQuickPixmapStore::shrinkCache()
+*/
+static int cache_limit = 2048 * 1024;
 
 static inline QString imageProviderId(const QUrl &url)
 {
@@ -171,22 +179,36 @@ private:
     Q_DISABLE_COPY(QQuickPixmapReply)
 
 public:
-    static int finishedIndex;
-    static int downloadProgressIndex;
+    static int finishedMethodIndex;
+    static int downloadProgressMethodIndex;
 };
 
-class QQuickPixmapReaderThreadObject : public QObject {
+/*! \internal
+    Serves as an endpoint for notifications on the connected reader's thread, thus enforcing
+    execution of their continuation on the thread. */
+class ReaderThreadExecutionEnforcer : public QObject
+{
     Q_OBJECT
 public:
-    QQuickPixmapReaderThreadObject(QQuickPixmapReader *);
-    void processJobs();
-    bool event(QEvent *e) override;
+    enum Event {
+        ProcessJobs = QEvent::User,
+    };
+
+    ReaderThreadExecutionEnforcer(QQuickPixmapReader *reader);
+
+    /*! \internal
+        Forces the execution of processJobs() on the original reader on the thread it's running on.
+    */
+    void processJobsOnReaderThreadLater();
+
 public slots:
     void asyncResponseFinished(QQuickImageResponse *response);
+    void asyncResponseFinished();
 private slots:
     void networkRequestDone();
-    void asyncResponseFinished();
 private:
+    bool event(QEvent *e) override;
+
     QQuickPixmapReader *reader;
 };
 
@@ -203,12 +225,13 @@ public:
 
     static QQuickPixmapReader *instance(QQmlEngine *engine);
     static QQuickPixmapReader *existingInstance(QQmlEngine *engine);
+    void startJob(QQuickPixmapReply *job);
 
 protected:
     void run() override;
 
 private:
-    friend class QQuickPixmapReaderThreadObject;
+    friend class ReaderThreadExecutionEnforcer;
     void processJobs();
     void processJob(QQuickPixmapReply *, const QUrl &, const QString &, QQuickImageProvider::ImageType, const QSharedPointer<QQuickImageProvider> &);
 #if QT_CONFIG(qml_network)
@@ -217,12 +240,30 @@ private:
     void asyncResponseFinished(QQuickImageResponse *);
 
     QList<QQuickPixmapReply*> jobs;
-    QList<QQuickPixmapReply*> cancelled;
+    QList<QQuickPixmapReply *> cancelledJobs;
     QQmlEngine *engine;
-    QObject *eventLoopQuitHack;
 
+#if QT_CONFIG(quick_pixmap_cache_threaded_download)
+    /*! \internal
+        Returns a pointer to the thread object owned by the run loop in QQuickPixmapReader::run.
+     */
+    ReaderThreadExecutionEnforcer *readerThreadExecutionEnforcer()
+    {
+        return runLoopReaderThreadExecutionEnforcer;
+    }
+    QObject *eventLoopQuitHack;
     QMutex mutex;
-    QQuickPixmapReaderThreadObject *threadObject;
+    ReaderThreadExecutionEnforcer *runLoopReaderThreadExecutionEnforcer = nullptr;
+#else
+    /*! \internal
+        Returns a pointer to the thread object owned by this instance.
+     */
+    ReaderThreadExecutionEnforcer *readerThreadExecutionEnforcer()
+    {
+        return ownedReaderThreadExecutionEnforcer.get();
+    }
+    std::unique_ptr<ReaderThreadExecutionEnforcer> ownedReaderThreadExecutionEnforcer;
+#endif
 
 #if QT_CONFIG(qml_network)
     QNetworkAccessManager *networkAccessManager();
@@ -231,15 +272,29 @@ private:
 #endif
     QHash<QQuickImageResponse*,QQuickPixmapReply*> asyncResponses;
 
-    static int replyDownloadProgress;
-    static int replyFinished;
-    static int downloadProgress;
-    static int threadNetworkRequestDone;
+    Q_THREAD_AFFINITY_MARKER(m_creatorThreadAffinityMarker);
+    Q_THREAD_AFFINITY_MARKER(m_readerThreadAffinityMarker);
+
+    static int replyDownloadProgressMethodIndex;
+    static int replyFinishedMethodIndex;
+    static int downloadProgressMethodIndex;
+    static int threadNetworkRequestDoneMethodIndex;
     static QHash<QQmlEngine *,QQuickPixmapReader*> readers;
 public:
     static QMutex readerMutex;
 };
 
+#if QT_CONFIG(quick_pixmap_cache_threaded_download)
+#  define PIXMAP_READER_LOCK() QMutexLocker locker(&mutex)
+#else
+#  define PIXMAP_READER_LOCK()
+#endif
+
+class QQuickPixmapStore;
+
+/*! \internal
+    The private storage for QQuickPixmap.
+*/
 class QQuickPixmapData
 {
 public:
@@ -312,9 +367,9 @@ public:
 
     int cost() const;
     void addref();
-    void release();
+    void release(QQuickPixmapStore *store = nullptr);
     void addToCache();
-    void removeFromCache();
+    void removeFromCache(QQuickPixmapStore *store = nullptr);
 
     uint refCount;
     int frameCount;
@@ -332,11 +387,18 @@ public:
     QQuickImageProviderOptions::AutoTransform appliedTransform;
     QColorSpace targetColorSpace;
 
+    QIODevice *specialDevice = nullptr;
+
+    // actual image data, after loading
     QQuickTextureFactory *textureFactory;
 
+    // linked list of referencers, just to prevent memory leaks: see QQuickPixmapData dtor
     QIntrusiveList<QQuickPixmap, &QQuickPixmap::dataListNode> declarativePixmaps;
+
     QQuickPixmapReply *reply;
 
+    // prev/next pointers to form a linked list for dereferencing pixmaps that are currently unused
+    // (those get lazily deleted in QQuickPixmapStore::shrinkCache())
     QQuickPixmapData *prevUnreferenced;
     QQuickPixmapData**prevUnreferencedPtr;
     QQuickPixmapData *nextUnreferenced;
@@ -346,18 +408,17 @@ public:
 #endif
 };
 
-int QQuickPixmapReply::finishedIndex = -1;
-int QQuickPixmapReply::downloadProgressIndex = -1;
+int QQuickPixmapReply::finishedMethodIndex = -1;
+int QQuickPixmapReply::downloadProgressMethodIndex = -1;
 
 // XXX
 QHash<QQmlEngine *,QQuickPixmapReader*> QQuickPixmapReader::readers;
 QMutex QQuickPixmapReader::readerMutex;
 
-int QQuickPixmapReader::replyDownloadProgress = -1;
-int QQuickPixmapReader::replyFinished = -1;
-int QQuickPixmapReader::downloadProgress = -1;
-int QQuickPixmapReader::threadNetworkRequestDone = -1;
-
+int QQuickPixmapReader::replyDownloadProgressMethodIndex = -1;
+int QQuickPixmapReader::replyFinishedMethodIndex = -1;
+int QQuickPixmapReader::downloadProgressMethodIndex = -1;
+int QQuickPixmapReader::threadNetworkRequestDoneMethodIndex = -1;
 
 void QQuickPixmapReply::postReply(ReadError error, const QString &errorString,
                                         const QSize &implicitSize, QQuickTextureFactory *factory)
@@ -380,8 +441,9 @@ QQuickPixmapReply::Event::~Event()
 QNetworkAccessManager *QQuickPixmapReader::networkAccessManager()
 {
     if (!accessManager) {
-        Q_ASSERT(threadObject);
-        accessManager = QQmlEnginePrivate::get(engine)->createNetworkAccessManager(threadObject);
+        Q_ASSERT(readerThreadExecutionEnforcer());
+        accessManager = QQmlEnginePrivate::get(engine)->createNetworkAccessManager(
+                readerThreadExecutionEnforcer());
     }
     return accessManager;
 }
@@ -424,7 +486,8 @@ static void maybeRemoveAlpha(QImage *image)
 
 static bool readImage(const QUrl& url, QIODevice *dev, QImage *image, QString *errorString, QSize *impsize, int *frameCount,
                       const QRect &requestRegion, const QSize &requestSize, const QQuickImageProviderOptions &providerOptions,
-                      QQuickImageProviderOptions::AutoTransform *appliedTransform = nullptr, int frame = 0)
+                      QQuickImageProviderOptions::AutoTransform *appliedTransform = nullptr, int frame = 0,
+                      qreal devicePixelRatio = 1.0)
 {
     QImageReader imgio(dev);
     if (providerOptions.autoTransform() != QQuickImageProviderOptions::UsePluginDefaultTransform)
@@ -438,7 +501,7 @@ static bool readImage(const QUrl& url, QIODevice *dev, QImage *image, QString *e
     if (frameCount)
         *frameCount = imgio.imageCount();
 
-    QSize scSize = QQuickImageProviderWithOptions::loadSize(imgio.size(), requestSize, imgio.format(), providerOptions);
+    QSize scSize = QQuickImageProviderWithOptions::loadSize(imgio.size(), requestSize, imgio.format(), providerOptions, devicePixelRatio);
     if (scSize.isValid())
         imgio.setScaledSize(scSize);
     if (!requestRegion.isNull())
@@ -504,7 +567,7 @@ static QString existingImageFileForPath(const QString &localFile)
         return localFile;
 
     QString tryFile = localFile + QStringLiteral(".xxxx");
-    const int suffixIdx = localFile.length() + 1;
+    const int suffixIdx = localFile.size() + 1;
     for (const QString &suffix : backendSupport()->fileSuffixes) {
         tryFile.replace(suffixIdx, 10, suffix);
         if (QFileInfo::exists(tryFile))
@@ -514,60 +577,99 @@ static QString existingImageFileForPath(const QString &localFile)
 }
 
 QQuickPixmapReader::QQuickPixmapReader(QQmlEngine *eng)
-: QThread(eng), engine(eng), threadObject(nullptr)
+: QThread(eng), engine(eng)
 #if QT_CONFIG(qml_network)
 , accessManager(nullptr)
 #endif
 {
+    Q_DETACH_THREAD_AFFINITY_MARKER(m_readerThreadAffinityMarker);
+#if QT_CONFIG(quick_pixmap_cache_threaded_download)
     eventLoopQuitHack = new QObject;
     eventLoopQuitHack->moveToThread(this);
-    connect(eventLoopQuitHack, SIGNAL(destroyed(QObject*)), SLOT(quit()), Qt::DirectConnection);
+    QObject::connect(eventLoopQuitHack, &QObject::destroyed, this, &QThread::quit, Qt::DirectConnection);
     start(QThread::LowestPriority);
-#if !QT_CONFIG(thread)
-    // call nonblocking run ourself, as nothread qthread does not
-    run();
+#else
+    run(); // Call nonblocking run for ourselves.
 #endif
 }
 
 QQuickPixmapReader::~QQuickPixmapReader()
 {
+    Q_ASSERT_CALLED_ON_VALID_THREAD(m_creatorThreadAffinityMarker);
+
     readerMutex.lock();
     readers.remove(engine);
     readerMutex.unlock();
 
-    mutex.lock();
-    // manually cancel all outstanding jobs.
-    for (QQuickPixmapReply *reply : qAsConst(jobs)) {
+    {
+        PIXMAP_READER_LOCK();
+        // manually cancel all outstanding jobs.
+        for (QQuickPixmapReply *reply : std::as_const(jobs)) {
+            if (reply->data && reply->data->reply == reply)
+                reply->data->reply = nullptr;
+            delete reply;
+        }
+        jobs.clear();
+#if QT_CONFIG(qml_network)
+        const auto cancelJob = [this](QQuickPixmapReply *reply) {
+            if (reply->loading) {
+                cancelledJobs.append(reply);
+                reply->data = nullptr;
+            }
+        };
+
+        for (auto *reply : std::as_const(networkJobs))
+            cancelJob(reply);
+
+        for (auto *reply : std::as_const(asyncResponses))
+            cancelJob(reply);
+#endif
+#if !QT_CONFIG(quick_pixmap_cache_threaded_download)
+    // In this case we won't be waiting, but we are on the correct thread already, so we can
+    // perform housekeeping synchronously now.
+    processJobs();
+#else  // QT_CONFIG(quick_pixmap_cache_threaded_download) is true
+    // Perform housekeeping on all the jobs cancelled above soon...
+    if (readerThreadExecutionEnforcer())
+        readerThreadExecutionEnforcer()->processJobsOnReaderThreadLater();
+#endif
+    }
+
+#if QT_CONFIG(quick_pixmap_cache_threaded_download)
+    // ... schedule stopping of this thread via the eventLoopQuitHack (processJobs scheduled above
+    // will run first) ...
+    eventLoopQuitHack->deleteLater();
+    // ... and wait() for it all to finish, as the thread will only quit after eventLoopQuitHack
+    // has been deleted.
+    wait();
+#endif
+
+#if QT_CONFIG(qml_network)
+    // While we've been waiting, the other thread may have added
+    // more replies. No one will care about them anymore.
+
+    auto deleteReply = [](QQuickPixmapReply *reply) {
         if (reply->data && reply->data->reply == reply)
             reply->data->reply = nullptr;
         delete reply;
-    }
-    jobs.clear();
-#if QT_CONFIG(qml_network)
-
-    const auto cancelJob = [this](QQuickPixmapReply *reply) {
-        if (reply->loading) {
-            cancelled.append(reply);
-            reply->data = nullptr;
-        }
     };
 
-    for (auto *reply : qAsConst(networkJobs))
-        cancelJob(reply);
+    for (QQuickPixmapReply *reply : std::as_const(networkJobs))
+        deleteReply(reply);
 
-    for (auto *reply : qAsConst(asyncResponses))
-        cancelJob(reply);
+    for (QQuickPixmapReply *reply : std::as_const(asyncResponses))
+        deleteReply(reply);
+
+    networkJobs.clear();
+    asyncResponses.clear();
 #endif
-    if (threadObject) threadObject->processJobs();
-    mutex.unlock();
-
-    eventLoopQuitHack->deleteLater();
-    wait();
 }
 
 #if QT_CONFIG(qml_network)
 void QQuickPixmapReader::networkRequestDone(QNetworkReply *reply)
 {
+    Q_ASSERT_CALLED_ON_VALID_THREAD(m_readerThreadAffinityMarker);
+
     QQuickPixmapReply *job = networkJobs.take(reply);
 
     if (job) {
@@ -582,8 +684,11 @@ void QQuickPixmapReader::networkRequestDone(QNetworkReply *reply)
                 reply->deleteLater();
                 reply = networkAccessManager()->get(req);
 
-                QMetaObject::connect(reply, replyDownloadProgress, job, downloadProgress);
-                QMetaObject::connect(reply, replyFinished, threadObject, threadNetworkRequestDone);
+                QMetaObject::connect(reply, replyDownloadProgressMethodIndex, job,
+                                     downloadProgressMethodIndex);
+                QMetaObject::connect(reply, replyFinishedMethodIndex,
+                                     readerThreadExecutionEnforcer(),
+                                     threadNetworkRequestDoneMethodIndex);
 
                 networkJobs.insert(reply, job);
                 return;
@@ -594,6 +699,7 @@ void QQuickPixmapReader::networkRequestDone(QNetworkReply *reply)
         QQuickPixmapReply::ReadError error = QQuickPixmapReply::NoError;
         QString errorString;
         QSize readSize;
+        QQuickTextureFactory *factory = nullptr;
         if (reply->error()) {
             error = QQuickPixmapReply::Loading;
             errorString = reply->errorString();
@@ -601,29 +707,44 @@ void QQuickPixmapReader::networkRequestDone(QNetworkReply *reply)
             QByteArray all = reply->readAll();
             QBuffer buff(&all);
             buff.open(QIODevice::ReadOnly);
-            int frameCount;
-            int const frame = job->data ? job->data->frame : 0;
-            if (!readImage(reply->url(), &buff, &image, &errorString, &readSize, &frameCount,
-                           job->requestRegion, job->requestSize, job->providerOptions, nullptr, frame))
-                error = QQuickPixmapReply::Decoding;
-            else if (job->data)
-                job->data->frameCount = frameCount;
+            QSGTextureReader texReader(&buff, reply->url().fileName());
+            if (backendSupport()->hasOpenGL && texReader.isTexture()) {
+                factory = texReader.read();
+                if (factory) {
+                    readSize = factory->textureSize();
+                } else {
+                    error = QQuickPixmapReply::Decoding;
+                    errorString = QQuickPixmap::tr("Error decoding: %1").arg(reply->url().toString());
+                }
+            } else {
+                int frameCount;
+                int const frame = job->data ? job->data->frame : 0;
+                if (!readImage(reply->url(), &buff, &image, &errorString, &readSize, &frameCount,
+                               job->requestRegion, job->requestSize, job->providerOptions, nullptr, frame))
+                    error = QQuickPixmapReply::Decoding;
+                else if (job->data)
+                    job->data->frameCount = frameCount;
+            }
         }
         // send completion event to the QQuickPixmapReply
-        mutex.lock();
-        if (!cancelled.contains(job))
-            job->postReply(error, errorString, readSize, QQuickTextureFactory::textureFactoryForImage(image));
-        mutex.unlock();
+        if (!factory)
+            factory = QQuickTextureFactory::textureFactoryForImage(image);
+
+        PIXMAP_READER_LOCK();
+        if (!cancelledJobs.contains(job))
+            job->postReply(error, errorString, readSize, factory);
     }
     reply->deleteLater();
 
-    // kick off event loop again incase we have dropped below max request count
-    threadObject->processJobs();
+    // kick off event loop again in case we have dropped below max request count
+    readerThreadExecutionEnforcer()->processJobsOnReaderThreadLater();
 }
 #endif // qml_network
 
 void QQuickPixmapReader::asyncResponseFinished(QQuickImageResponse *response)
 {
+    Q_ASSERT_CALLED_ON_VALID_THREAD(m_readerThreadAffinityMarker);
+
     QQuickPixmapReply *job = asyncResponses.take(response);
 
     if (job) {
@@ -635,41 +756,40 @@ void QQuickPixmapReader::asyncResponseFinished(QQuickImageResponse *response)
             errorString = response->errorString();
         } else {
             t = response->textureFactory();
-       }
-        mutex.lock();
-        if (!cancelled.contains(job))
+        }
+
+        PIXMAP_READER_LOCK();
+        if (!cancelledJobs.contains(job))
             job->postReply(error, errorString, t ? t->textureSize() : QSize(), t);
         else
             delete t;
-        mutex.unlock();
     }
     response->deleteLater();
 
-    // kick off event loop again incase we have dropped below max request count
-    threadObject->processJobs();
+    // kick off event loop again in case we have dropped below max request count
+    readerThreadExecutionEnforcer()->processJobsOnReaderThreadLater();
 }
 
-QQuickPixmapReaderThreadObject::QQuickPixmapReaderThreadObject(QQuickPixmapReader *i)
-: reader(i)
+ReaderThreadExecutionEnforcer::ReaderThreadExecutionEnforcer(QQuickPixmapReader *i) : reader(i) { }
+
+void ReaderThreadExecutionEnforcer::processJobsOnReaderThreadLater()
 {
+    QCoreApplication::postEvent(
+            this, new QEvent(QEvent::Type(ReaderThreadExecutionEnforcer::ProcessJobs)));
 }
 
-void QQuickPixmapReaderThreadObject::processJobs()
+bool ReaderThreadExecutionEnforcer::event(QEvent *e)
 {
-    QCoreApplication::postEvent(this, new QEvent(QEvent::User));
-}
-
-bool QQuickPixmapReaderThreadObject::event(QEvent *e)
-{
-    if (e->type() == QEvent::User) {
+    switch (e->type()) {
+    case QEvent::Type(ReaderThreadExecutionEnforcer::ProcessJobs):
         reader->processJobs();
         return true;
-    } else {
+    default:
         return QObject::event(e);
     }
 }
 
-void QQuickPixmapReaderThreadObject::networkRequestDone()
+void ReaderThreadExecutionEnforcer::networkRequestDone()
 {
 #if QT_CONFIG(qml_network)
     QNetworkReply *reply = static_cast<QNetworkReply *>(sender());
@@ -677,12 +797,12 @@ void QQuickPixmapReaderThreadObject::networkRequestDone()
 #endif
 }
 
-void QQuickPixmapReaderThreadObject::asyncResponseFinished(QQuickImageResponse *response)
+void ReaderThreadExecutionEnforcer::asyncResponseFinished(QQuickImageResponse *response)
 {
     reader->asyncResponseFinished(response);
 }
 
-void QQuickPixmapReaderThreadObject::asyncResponseFinished()
+void ReaderThreadExecutionEnforcer::asyncResponseFinished()
 {
     QQuickImageResponse *response = static_cast<QQuickImageResponse *>(sender());
     asyncResponseFinished(response);
@@ -690,17 +810,18 @@ void QQuickPixmapReaderThreadObject::asyncResponseFinished()
 
 void QQuickPixmapReader::processJobs()
 {
-    QMutexLocker locker(&mutex);
+    Q_ASSERT_CALLED_ON_VALID_THREAD(m_readerThreadAffinityMarker);
 
+    PIXMAP_READER_LOCK();
     while (true) {
-        if (cancelled.isEmpty() && jobs.isEmpty())
+        if (cancelledJobs.isEmpty() && jobs.isEmpty())
             return; // Nothing else to do
 
         // Clean cancelled jobs
-        if (!cancelled.isEmpty()) {
+        if (!cancelledJobs.isEmpty()) {
+            for (int i = 0; i < cancelledJobs.size(); ++i) {
+                QQuickPixmapReply *job = cancelledJobs.at(i);
 #if QT_CONFIG(qml_network)
-            for (int i = 0; i < cancelled.count(); ++i) {
-                QQuickPixmapReply *job = cancelled.at(i);
                 QNetworkReply *reply = networkJobs.key(job, 0);
                 if (reply) {
                     networkJobs.remove(reply);
@@ -716,17 +837,17 @@ void QQuickPixmapReader::processJobs()
                     }
                 }
                 PIXMAP_PROFILE(pixmapStateChanged<QQuickProfiler::PixmapLoadingError>(job->url));
+#endif
                 // deleteLater, since not owned by this thread
                 job->deleteLater();
             }
-            cancelled.clear();
-#endif
+            cancelledJobs.clear();
         }
 
         if (!jobs.isEmpty()) {
             // Find a job we can use
             bool usableJob = false;
-            for (int i = jobs.count() - 1; !usableJob && i >= 0; i--) {
+            for (int i = jobs.size() - 1; !usableJob && i >= 0; i--) {
                 QQuickPixmapReply *job = jobs.at(i);
                 const QUrl url = job->url;
                 QString localFile;
@@ -744,11 +865,10 @@ void QQuickPixmapReader::processJobs()
                     localFile = QQmlFile::urlToLocalFileOrQrc(url);
                     usableJob = !localFile.isEmpty()
 #if QT_CONFIG(qml_network)
-                            || networkJobs.count() < IMAGEREQUEST_MAX_NETWORK_REQUEST_COUNT
+                            || networkJobs.size() < IMAGEREQUEST_MAX_NETWORK_REQUEST_COUNT
 #endif
                             ;
                 }
-
 
                 if (usableJob) {
                     jobs.removeAt(i);
@@ -757,9 +877,13 @@ void QQuickPixmapReader::processJobs()
 
                     PIXMAP_PROFILE(pixmapStateChanged<QQuickProfiler::PixmapLoadingStarted>(url));
 
+#if QT_CONFIG(quick_pixmap_cache_threaded_download)
                     locker.unlock();
+                    auto relockMutexGuard = qScopeGuard(([&locker]() {
+                        locker.relock();
+                    }));
+#endif
                     processJob(job, url, localFile, imageType, provider);
-                    locker.relock();
                 }
             }
 
@@ -772,6 +896,8 @@ void QQuickPixmapReader::processJobs()
 void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &url, const QString &localFile,
                                     QQuickImageProvider::ImageType imageType, const QSharedPointer<QQuickImageProvider> &provider)
 {
+    Q_ASSERT_CALLED_ON_VALID_THREAD(m_readerThreadAffinityMarker);
+
     // fetch
     if (url.scheme() == QLatin1String("image")) {
         // Use QQuickImageProvider
@@ -779,10 +905,9 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
 
         if (imageType == QQuickImageProvider::Invalid) {
             QString errorStr = QQuickPixmap::tr("Invalid image provider: %1").arg(url.toString());
-            mutex.lock();
-            if (!cancelled.contains(runningJob))
+            PIXMAP_READER_LOCK();
+            if (!cancelledJobs.contains(runningJob))
                 runningJob->postReply(QQuickPixmapReply::Loading, errorStr, readSize, nullptr);
-            mutex.unlock();
             return;
         }
 
@@ -810,10 +935,11 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
                     errorCode = QQuickPixmapReply::Loading;
                     errorStr = QQuickPixmap::tr("Failed to get image from provider: %1").arg(url.toString());
                 }
-                mutex.lock();
-                if (!cancelled.contains(runningJob))
-                    runningJob->postReply(errorCode, errorStr, readSize, QQuickTextureFactory::textureFactoryForImage(image));
-                mutex.unlock();
+                PIXMAP_READER_LOCK();
+                if (!cancelledJobs.contains(runningJob)) {
+                    runningJob->postReply(errorCode, errorStr, readSize,
+                                          QQuickTextureFactory::textureFactoryForImage(image));
+                }
                 break;
             }
 
@@ -831,10 +957,13 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
                     errorCode = QQuickPixmapReply::Loading;
                     errorStr = QQuickPixmap::tr("Failed to get image from provider: %1").arg(url.toString());
                 }
-                mutex.lock();
-                if (!cancelled.contains(runningJob))
-                    runningJob->postReply(errorCode, errorStr, readSize, QQuickTextureFactory::textureFactoryForImage(pixmap.toImage()));
-                mutex.unlock();
+
+                PIXMAP_READER_LOCK();
+                if (!cancelledJobs.contains(runningJob)) {
+                    runningJob->postReply(
+                            errorCode, errorStr, readSize,
+                            QQuickTextureFactory::textureFactoryForImage(pixmap.toImage()));
+                }
                 break;
             }
 
@@ -852,12 +981,11 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
                     errorCode = QQuickPixmapReply::Loading;
                     errorStr = QQuickPixmap::tr("Failed to get texture from provider: %1").arg(url.toString());
                 }
-                mutex.lock();
-                if (!cancelled.contains(runningJob))
+                PIXMAP_READER_LOCK();
+                if (!cancelledJobs.contains(runningJob))
                     runningJob->postReply(errorCode, errorStr, readSize, t);
                 else
                     delete t;
-                mutex.unlock();
                 break;
             }
 
@@ -872,7 +1000,8 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
                 }
 
                 {
-                    QObject::connect(response, SIGNAL(finished()), threadObject, SLOT(asyncResponseFinished()));
+                    QObject::connect(response, &QQuickImageResponse::finished, readerThreadExecutionEnforcer(),
+                                     qOverload<>(&ReaderThreadExecutionEnforcer::asyncResponseFinished));
                     // as the response object can outlive the provider QSharedPointer, we have to extend the pointee's lifetime by that of the response
                     // we do this by capturing a copy of the QSharedPointer in a lambda, and dropping it once the lambda has been called
                     auto provider_copy = provider; // capturing provider would capture it as a const reference, and copy capture with initializer is only available in C++14
@@ -882,9 +1011,12 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
                 }
                 // Might be that the async provider was so quick it emitted the signal before we
                 // could connect to it.
+                //
+                // loadAcquire() synchronizes-with storeRelease() in QQuickImageResponsePrivate::_q_finished():
                 if (static_cast<QQuickImageResponsePrivate*>(QObjectPrivate::get(response))->finished.loadAcquire()) {
-                    QMetaObject::invokeMethod(threadObject, "asyncResponseFinished",
-                                              Qt::QueuedConnection, Q_ARG(QQuickImageResponse*, response));
+                    QMetaObject::invokeMethod(readerThreadExecutionEnforcer(), "asyncResponseFinished",
+                                              Qt::QueuedConnection,
+                                              Q_ARG(QQuickImageResponse *, response));
                 }
 
                 asyncResponses.insert(response, runningJob);
@@ -898,45 +1030,58 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
             QImage image;
             QQuickPixmapReply::ReadError errorCode = QQuickPixmapReply::NoError;
             QString errorStr;
-            QFile f(existingImageFileForPath(localFile));
             QSize readSize;
-            if (f.open(QIODevice::ReadOnly)) {
-                QSGTextureReader texReader(&f, localFile);
-                if (backendSupport()->hasOpenGL && texReader.isTexture()) {
-                    QQuickTextureFactory *factory = texReader.read();
-                    if (factory) {
-                        readSize = factory->textureSize();
-                    } else {
-                        errorStr = QQuickPixmap::tr("Error decoding: %1").arg(url.toString());
-                        if (f.fileName() != localFile)
-                            errorStr += QString::fromLatin1(" (%1)").arg(f.fileName());
-                        errorCode = QQuickPixmapReply::Decoding;
-                    }
-                    mutex.lock();
-                    if (!cancelled.contains(runningJob))
-                        runningJob->postReply(errorCode, errorStr, readSize, factory);
-                    mutex.unlock();
-                    return;
-                } else {
-                    int frameCount;
-                    int const frame = runningJob->data ? runningJob->data->frame : 0;
-                    if (!readImage(url, &f, &image, &errorStr, &readSize, &frameCount, runningJob->requestRegion, runningJob->requestSize,
-                                   runningJob->providerOptions, nullptr, frame)) {
-                        errorCode = QQuickPixmapReply::Loading;
-                        if (f.fileName() != localFile)
-                            errorStr += QString::fromLatin1(" (%1)").arg(f.fileName());
-                    } else if (runningJob->data) {
-                        runningJob->data->frameCount = frameCount;
-                    }
+
+            if (runningJob->data && runningJob->data->specialDevice) {
+                int frameCount;
+                if (!readImage(url, runningJob->data->specialDevice, &image, &errorStr, &readSize, &frameCount,
+                               runningJob->requestRegion, runningJob->requestSize,
+                               runningJob->providerOptions, nullptr, runningJob->data->frame)) {
+                    errorCode = QQuickPixmapReply::Loading;
+                } else if (runningJob->data) {
+                    runningJob->data->frameCount = frameCount;
                 }
             } else {
-                errorStr = QQuickPixmap::tr("Cannot open: %1").arg(url.toString());
-                errorCode = QQuickPixmapReply::Loading;
+                QFile f(existingImageFileForPath(localFile));
+                if (f.open(QIODevice::ReadOnly)) {
+                    QSGTextureReader texReader(&f, localFile);
+                    if (backendSupport()->hasOpenGL && texReader.isTexture()) {
+                        QQuickTextureFactory *factory = texReader.read();
+                        if (factory) {
+                            readSize = factory->textureSize();
+                        } else {
+                            errorStr = QQuickPixmap::tr("Error decoding: %1").arg(url.toString());
+                            if (f.fileName() != localFile)
+                                errorStr += QString::fromLatin1(" (%1)").arg(f.fileName());
+                            errorCode = QQuickPixmapReply::Decoding;
+                        }
+                        PIXMAP_READER_LOCK();
+                        if (!cancelledJobs.contains(runningJob))
+                            runningJob->postReply(errorCode, errorStr, readSize, factory);
+                        return;
+                    } else {
+                        int frameCount;
+                        int const frame = runningJob->data ? runningJob->data->frame : 0;
+                        if (!readImage(url, &f, &image, &errorStr, &readSize, &frameCount,
+                                       runningJob->requestRegion, runningJob->requestSize,
+                                       runningJob->providerOptions, nullptr, frame)) {
+                            errorCode = QQuickPixmapReply::Loading;
+                            if (f.fileName() != localFile)
+                                errorStr += QString::fromLatin1(" (%1)").arg(f.fileName());
+                        } else if (runningJob->data) {
+                            runningJob->data->frameCount = frameCount;
+                        }
+                    }
+                } else {
+                    errorStr = QQuickPixmap::tr("Cannot open: %1").arg(url.toString());
+                    errorCode = QQuickPixmapReply::Loading;
+                }
             }
-            mutex.lock();
-            if (!cancelled.contains(runningJob))
-                runningJob->postReply(errorCode, errorStr, readSize, QQuickTextureFactory::textureFactoryForImage(image));
-            mutex.unlock();
+            PIXMAP_READER_LOCK();
+            if (!cancelledJobs.contains(runningJob)) {
+                runningJob->postReply(errorCode, errorStr, readSize,
+                                      QQuickTextureFactory::textureFactoryForImage(image));
+            }
         } else {
 #if QT_CONFIG(qml_network)
             // Network resource
@@ -944,8 +1089,10 @@ void QQuickPixmapReader::processJob(QQuickPixmapReply *runningJob, const QUrl &u
             req.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
             QNetworkReply *reply = networkAccessManager()->get(req);
 
-            QMetaObject::connect(reply, replyDownloadProgress, runningJob, downloadProgress);
-            QMetaObject::connect(reply, replyFinished, threadObject, threadNetworkRequestDone);
+            QMetaObject::connect(reply, replyDownloadProgressMethodIndex, runningJob,
+                                 downloadProgressMethodIndex);
+            QMetaObject::connect(reply, replyFinishedMethodIndex, readerThreadExecutionEnforcer(),
+                                 threadNetworkRequestDoneMethodIndex);
 
             networkJobs.insert(reply, runningJob);
 #else
@@ -975,24 +1122,28 @@ QQuickPixmapReader *QQuickPixmapReader::existingInstance(QQmlEngine *engine)
 
 QQuickPixmapReply *QQuickPixmapReader::getImage(QQuickPixmapData *data)
 {
-    mutex.lock();
     QQuickPixmapReply *reply = new QQuickPixmapReply(data);
     reply->engineForReader = engine;
-    jobs.append(reply);
-    // XXX
-    if (threadObject) threadObject->processJobs();
-    mutex.unlock();
     return reply;
+}
+
+void QQuickPixmapReader::startJob(QQuickPixmapReply *job)
+{
+    PIXMAP_READER_LOCK();
+    jobs.append(job);
+    if (readerThreadExecutionEnforcer())
+        readerThreadExecutionEnforcer()->processJobsOnReaderThreadLater();
 }
 
 void QQuickPixmapReader::cancel(QQuickPixmapReply *reply)
 {
-    mutex.lock();
+    PIXMAP_READER_LOCK();
     if (reply->loading) {
-        cancelled.append(reply);
+        cancelledJobs.append(reply);
         reply->data = nullptr;
         // XXX
-        if (threadObject) threadObject->processJobs();
+        if (readerThreadExecutionEnforcer())
+            readerThreadExecutionEnforcer()->processJobsOnReaderThreadLater();
     } else {
         // If loading was started (reply removed from jobs) but the reply was never processed
         // (otherwise it would have deleted itself) we need to profile an error.
@@ -1001,32 +1152,43 @@ void QQuickPixmapReader::cancel(QQuickPixmapReply *reply)
         }
         delete reply;
     }
-    mutex.unlock();
 }
 
 void QQuickPixmapReader::run()
 {
-    if (replyDownloadProgress == -1) {
+    Q_ASSERT_CALLED_ON_VALID_THREAD(m_readerThreadAffinityMarker);
+
+    if (replyDownloadProgressMethodIndex == -1) {
 #if QT_CONFIG(qml_network)
-        replyDownloadProgress = QMetaMethod::fromSignal(&QNetworkReply::downloadProgress).methodIndex();
-        replyFinished = QMetaMethod::fromSignal(&QNetworkReply::finished).methodIndex();
-        const QMetaObject *ir = &QQuickPixmapReaderThreadObject::staticMetaObject;
-        threadNetworkRequestDone = ir->indexOfSlot("networkRequestDone()");
+        replyDownloadProgressMethodIndex =
+                QMetaMethod::fromSignal(&QNetworkReply::downloadProgress).methodIndex();
+        replyFinishedMethodIndex = QMetaMethod::fromSignal(&QNetworkReply::finished).methodIndex();
+        const QMetaObject *ir = &ReaderThreadExecutionEnforcer::staticMetaObject;
+        threadNetworkRequestDoneMethodIndex = ir->indexOfSlot("networkRequestDone()");
 #endif
-        downloadProgress = QMetaMethod::fromSignal(&QQuickPixmapReply::downloadProgress).methodIndex();
+        downloadProgressMethodIndex =
+                QMetaMethod::fromSignal(&QQuickPixmapReply::downloadProgress).methodIndex();
     }
 
-    mutex.lock();
-    threadObject = new QQuickPixmapReaderThreadObject(this);
-    mutex.unlock();
+#if QT_CONFIG(quick_pixmap_cache_threaded_download)
+    const auto guard = qScopeGuard([this]() {
+        // We need to delete the runLoopReaderThreadExecutionEnforcer from the same thread.
+        PIXMAP_READER_LOCK();
+        delete runLoopReaderThreadExecutionEnforcer;
+        runLoopReaderThreadExecutionEnforcer = nullptr;
+    });
+
+    {
+        PIXMAP_READER_LOCK();
+        Q_ASSERT(!runLoopReaderThreadExecutionEnforcer);
+        runLoopReaderThreadExecutionEnforcer = new ReaderThreadExecutionEnforcer(this);
+    }
 
     processJobs();
     exec();
-
-#if QT_CONFIG(thread)
-    // nothread exec is empty and returns
-    delete threadObject;
-    threadObject = nullptr;
+#else
+    ownedReaderThreadExecutionEnforcer = std::make_unique<ReaderThreadExecutionEnforcer>(this);
+    processJobs();
 #endif
 }
 
@@ -1049,14 +1211,34 @@ inline bool operator==(const QQuickPixmapKey &lhs, const QQuickPixmapKey &rhs)
             lhs.options == rhs.options;
 }
 
-inline uint qHash(const QQuickPixmapKey &key)
+inline size_t qHash(const QQuickPixmapKey &key, size_t seed) noexcept
 {
-    return qHash(*key.url) ^ (key.size->width()*7) ^ (key.size->height()*17) ^ (key.frame*23) ^
-            (key.region->x()*29) ^ (key.region->y()*31) ^ (key.options.autoTransform() * 0x5c5c5c5c);
-    // key.region.width() and height() are not included, because the hash function should be simple,
-    // and they are more likely to be held constant for some batches of images
-    // (e.g. tiles, or repeatedly cropping to the same viewport at different positions).
+    return qHashMulti(seed, *key.url, *key.region, *key.size, key.frame, key.options.autoTransform());
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+inline QDebug operator<<(QDebug debug, const QQuickPixmapKey &key)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace();
+    if (!key.url) {
+        debug << "QQuickPixmapKey(0)";
+        return debug;
+    }
+
+    debug << "QQuickPixmapKey(" << key.url->toString() << " frame=" << key.frame;
+    if (!key.region->isEmpty()) {
+        debug << " region=";
+        QtDebugUtils::formatQRect(debug, *key.region);
+    }
+    if (!key.size->isEmpty()) {
+        debug << " size=";
+        QtDebugUtils::formatQSize(debug, *key.size);
+    }
+    debug << ')';
+    return debug;
+}
+#endif
 
 class QQuickPixmapStore : public QObject
 {
@@ -1075,6 +1257,7 @@ protected:
 
 public:
     QHash<QQuickPixmapKey, QQuickPixmapData *> m_cache;
+    QMutex m_cacheMutex; // avoid simultaneous iteration and modification
 
 private:
     void shrinkCache(int remove);
@@ -1109,13 +1292,13 @@ QQuickPixmapStore::~QQuickPixmapStore()
     // unreference all (leaked) pixmaps
     const auto cache = m_cache; // NOTE: intentional copy (QTBUG-65077); releasing items from the cache modifies m_cache.
     for (auto *pixmap : cache) {
-        int currRefCount = pixmap->refCount;
+        auto currRefCount = pixmap->refCount;
         if (currRefCount) {
 #ifndef QT_NO_DEBUG
             leakedPixmaps++;
 #endif
             while (currRefCount > 0) {
-                pixmap->release();
+                pixmap->release(this);
                 currRefCount--;
             }
         }
@@ -1127,11 +1310,15 @@ QQuickPixmapStore::~QQuickPixmapStore()
     }
 
 #ifndef QT_NO_DEBUG
-    if (leakedPixmaps && qsg_leak_check)
+    if (leakedPixmaps && _q_sg_leak_check)
         qDebug("Number of leaked pixmaps: %i", leakedPixmaps);
 #endif
 }
 
+/*! \internal
+    Declare that \a data is currently unused so that shrinkCache() can lazily
+    delete it later.
+*/
 void QQuickPixmapStore::unreferencePixmap(QQuickPixmapData *data)
 {
     Q_ASSERT(data->prevUnreferenced == nullptr);
@@ -1140,8 +1327,10 @@ void QQuickPixmapStore::unreferencePixmap(QQuickPixmapData *data)
 
     data->nextUnreferenced = m_unreferencedPixmaps;
     data->prevUnreferencedPtr = &m_unreferencedPixmaps;
-    if (!m_destroying) // the texture factories may have been cleaned up already.
+    if (!m_destroying) { // the texture factories may have been cleaned up already.
         m_unreferencedCost += data->cost();
+        qCDebug(lcImg) << data->url << "had cost" << data->cost() << "of total unreferenced" << m_unreferencedCost;
+    }
 
     m_unreferencedPixmaps = data;
     if (m_unreferencedPixmaps->nextUnreferenced) {
@@ -1160,6 +1349,10 @@ void QQuickPixmapStore::unreferencePixmap(QQuickPixmapData *data)
     }
 }
 
+/*! \internal
+    Declare that \a data is being used (by a QQuickPixmap) so that
+    shrinkCache() won't delete it. (This is not reference counting though.)
+*/
 void QQuickPixmapStore::referencePixmap(QQuickPixmapData *data)
 {
     Q_ASSERT(data->prevUnreferencedPtr);
@@ -1177,10 +1370,16 @@ void QQuickPixmapStore::referencePixmap(QQuickPixmapData *data)
     data->prevUnreferenced = nullptr;
 
     m_unreferencedCost -= data->cost();
+    qCDebug(lcImg) << data->url << "subtracts cost" << data->cost() << "of total" << m_unreferencedCost;
 }
 
+/*! \internal
+    Delete the least-recently-released QQuickPixmapData instances
+    until the remaining bytes are less than cache_limit.
+*/
 void QQuickPixmapStore::shrinkCache(int remove)
 {
+    qCDebug(lcImg) << "reduce unreferenced cost" << m_unreferencedCost << "to less than limit" << cache_limit;
     while ((remove > 0 || m_unreferencedCost > cache_limit) && m_lastUnreferencedPixmap) {
         QQuickPixmapData *data = m_lastUnreferencedPixmap;
         Q_ASSERT(data->nextUnreferenced == nullptr);
@@ -1194,7 +1393,7 @@ void QQuickPixmapStore::shrinkCache(int remove)
             remove -= data->cost();
             m_unreferencedCost -= data->cost();
         }
-        data->removeFromCache();
+        data->removeFromCache(this);
         delete data;
     }
 }
@@ -1225,9 +1424,10 @@ QQuickPixmapReply::QQuickPixmapReply(QQuickPixmapData *d)
   : data(d), engineForReader(nullptr), requestRegion(d->requestRegion), requestSize(d->requestSize),
     url(d->url), loading(false), providerOptions(d->providerOptions), redirectCount(0)
 {
-    if (finishedIndex == -1) {
-        finishedIndex = QMetaMethod::fromSignal(&QQuickPixmapReply::finished).methodIndex();
-        downloadProgressIndex = QMetaMethod::fromSignal(&QQuickPixmapReply::downloadProgress).methodIndex();
+    if (finishedMethodIndex == -1) {
+        finishedMethodIndex = QMetaMethod::fromSignal(&QQuickPixmapReply::finished).methodIndex();
+        downloadProgressMethodIndex =
+                QMetaMethod::fromSignal(&QQuickPixmapReply::downloadProgress).methodIndex();
     }
 }
 
@@ -1286,7 +1486,7 @@ void QQuickPixmapData::addref()
         pixmapStore()->referencePixmap(this);
 }
 
-void QQuickPixmapData::release()
+void QQuickPixmapData::release(QQuickPixmapStore *store)
 {
     Q_ASSERT(refCount > 0);
     --refCount;
@@ -1303,54 +1503,79 @@ void QQuickPixmapData::release()
             QQuickPixmapReader::readerMutex.unlock();
         }
 
+        store = store ? store : pixmapStore();
         if (pixmapStatus == QQuickPixmap::Ready
 #ifdef Q_OS_WEBOS
                 && storeToCache
 #endif
                 ) {
             if (inCache)
-                pixmapStore()->unreferencePixmap(this);
+                store->unreferencePixmap(this);
             else
                 delete this;
         } else {
-            removeFromCache();
+            removeFromCache(store);
             delete this;
         }
     }
 }
 
+/*! \internal
+    Add this to the global static QQuickPixmapStore.
+
+    \note The actual image will end up in QQuickPixmapData::textureFactory.
+    At the time addToCache() is called, it's generally not yet loaded; so the
+    qCDebug() below cannot say how much data we're committing to storing.
+    (On the other hand, removeFromCache() can tell.) QQuickTextureFactory is an
+    abstraction for image data. See QQuickDefaultTextureFactory for example:
+    it stores a QImage directly. Other QQuickTextureFactory subclasses store data
+    in other ways.
+*/
 void QQuickPixmapData::addToCache()
 {
     if (!inCache) {
         QQuickPixmapKey key = { &url, &requestRegion, &requestSize, frame, providerOptions };
+        QMutexLocker locker(&pixmapStore()->m_cacheMutex);
+        if (lcImg().isDebugEnabled()) {
+            qCDebug(lcImg) << "adding" << key << "to total" << pixmapStore()->m_cache.size();
+            for (auto it = pixmapStore()->m_cache.keyBegin(); it != pixmapStore()->m_cache.keyEnd(); ++it) {
+                if (*(it->url) == url && it->frame == frame)
+                    qDebug(lcImg) << "    similar pre-existing:" << *it;
+            }
+        }
         pixmapStore()->m_cache.insert(key, this);
         inCache = true;
         PIXMAP_PROFILE(pixmapCountChanged<QQuickProfiler::PixmapCacheCountChanged>(
-                url, pixmapStore()->m_cache.count()));
+                url, pixmapStore()->m_cache.size()));
     }
 }
 
-void QQuickPixmapData::removeFromCache()
+void QQuickPixmapData::removeFromCache(QQuickPixmapStore *store)
 {
     if (inCache) {
+        if (!store)
+            store = pixmapStore();
         QQuickPixmapKey key = { &url, &requestRegion, &requestSize, frame, providerOptions };
-        pixmapStore()->m_cache.remove(key);
+        QMutexLocker locker(&pixmapStore()->m_cacheMutex);
+        store->m_cache.remove(key);
+        qCDebug(lcImg) << "removed" << key << implicitSize << "; total remaining" << pixmapStore()->m_cache.size();
         inCache = false;
         PIXMAP_PROFILE(pixmapCountChanged<QQuickProfiler::PixmapCacheCountChanged>(
-                url, pixmapStore()->m_cache.count()));
+                url, store->m_cache.size()));
     }
 }
 
 static QQuickPixmapData* createPixmapDataSync(QQuickPixmap *declarativePixmap, QQmlEngine *engine, const QUrl &url,
                                               const QRect &requestRegion, const QSize &requestSize,
-                                              const QQuickImageProviderOptions &providerOptions, int frame, bool *ok)
+                                              const QQuickImageProviderOptions &providerOptions, int frame, bool *ok,
+                                              qreal devicePixelRatio)
 {
     if (url.scheme() == QLatin1String("image")) {
         QSize readSize;
 
         QQuickImageProvider::ImageType imageType = QQuickImageProvider::Invalid;
         QQmlEnginePrivate *enginePrivate = QQmlEnginePrivate::get(engine);
-        QSharedPointer<QQuickImageProvider> provider = enginePrivate->imageProvider(imageProviderId(url)).dynamicCast<QQuickImageProvider>();
+        QSharedPointer<QQuickImageProvider> provider = enginePrivate->imageProvider(imageProviderId(url)).objectCast<QQuickImageProvider>();
         // it is safe to use get() as providerV2 does not escape and is outlived by provider
         QQuickImageProviderWithOptions *providerV2 = QQuickImageProviderWithOptions::checkedCast(provider.get());
         if (provider)
@@ -1433,7 +1658,8 @@ static QQuickPixmapData* createPixmapDataSync(QQuickPixmap *declarativePixmap, Q
             QImage image;
             QQuickImageProviderOptions::AutoTransform appliedTransform = providerOptions.autoTransform();
             int frameCount;
-            if (readImage(url, &f, &image, &errorString, &readSize, &frameCount, requestRegion, requestSize, providerOptions, &appliedTransform, frame)) {
+            if (readImage(url, &f, &image, &errorString, &readSize, &frameCount, requestRegion, requestSize,
+                          providerOptions, &appliedTransform, frame, devicePixelRatio)) {
                 *ok = true;
                 return new QQuickPixmapData(declarativePixmap, url, QQuickTextureFactory::textureFactoryForImage(image), readSize, requestRegion, requestSize,
                                             providerOptions, appliedTransform, frame, frameCount);
@@ -1590,15 +1816,22 @@ void QQuickPixmap::setImage(const QImage &p)
 {
     clear();
 
-    if (!p.isNull())
+    if (!p.isNull()) {
+        if (d)
+            d->release();
         d = new QQuickPixmapData(this, QQuickTextureFactory::textureFactoryForImage(p));
+    }
 }
 
 void QQuickPixmap::setPixmap(const QQuickPixmap &other)
 {
+    if (d == other.d)
+        return;
     clear();
 
     if (other.d) {
+        if (d)
+            d->release();
         d = other.d;
         d->addref();
         d->declarativePixmaps.insert(this);
@@ -1650,7 +1883,8 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
 }
 
 void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &requestRegion, const QSize &requestSize,
-                        QQuickPixmap::Options options, const QQuickImageProviderOptions &providerOptions, int frame, int frameCount)
+                        QQuickPixmap::Options options, const QQuickImageProviderOptions &providerOptions, int frame, int frameCount,
+                        qreal devicePixelRatio)
 {
     if (d) {
         d->declarativePixmaps.remove(this);
@@ -1661,6 +1895,7 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
     QQuickPixmapKey key = { &url, &requestRegion, &requestSize, frame, providerOptions };
     QQuickPixmapStore *store = pixmapStore();
 
+    QMutexLocker locker(&pixmapStore()->m_cacheMutex);
     QHash<QQuickPixmapKey, QQuickPixmapData *>::Iterator iter = store->m_cache.end();
 
 #ifdef Q_OS_WEBOS
@@ -1684,6 +1919,7 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
         iter = store->m_cache.find(key);
 
     if (iter == store->m_cache.end()) {
+        locker.unlock();
         if (url.scheme() == QLatin1String("image")) {
             QQmlEnginePrivate *enginePrivate = QQmlEnginePrivate::get(engine);
             if (auto provider = enginePrivate->imageProvider(imageProviderId(url)).staticCast<QQuickImageProvider>()) {
@@ -1700,7 +1936,7 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
         if (!(options & QQuickPixmap::Asynchronous)) {
             bool ok = false;
             PIXMAP_PROFILE(pixmapStateChanged<QQuickProfiler::PixmapLoadingStarted>(url));
-            d = createPixmapDataSync(this, engine, url, requestRegion, requestSize, providerOptions, frame, &ok);
+            d = createPixmapDataSync(this, engine, url, requestRegion, requestSize, providerOptions, frame, &ok, devicePixelRatio);
             if (ok) {
                 PIXMAP_PROFILE(pixmapLoadingFinished(url, QSize(width(), height())));
                 if (options & QQuickPixmap::Cache)
@@ -1729,12 +1965,63 @@ void QQuickPixmap::load(QQmlEngine *engine, const QUrl &url, const QRect &reques
 #endif
 
         QQuickPixmapReader::readerMutex.lock();
-        d->reply = QQuickPixmapReader::instance(engine)->getImage(d);
+        QQuickPixmapReader *reader = QQuickPixmapReader::instance(engine);
+        d->reply = reader->getImage(d);
+        reader->startJob(d->reply);
         QQuickPixmapReader::readerMutex.unlock();
     } else {
         d = *iter;
         d->addref();
         d->declarativePixmaps.insert(this);
+        qCDebug(lcImg) << "loaded from cache" << url << "frame" << frame;
+    }
+}
+
+/*! \internal
+    Attempts to load an image from the given \a url via the given \a device.
+    This is for special cases when the QImageIOHandler can benefit from reusing
+    the I/O device, or from something extra that a subclass of QIODevice
+    carries with it. So far, this code doesn't support loading anything other
+    than a QImage, for example compressed textures. It can be added if needed.
+*/
+void QQuickPixmap::loadImageFromDevice(QQmlEngine *engine, QIODevice *device, const QUrl &url,
+                                       const QRect &requestRegion, const QSize &requestSize,
+                                       const QQuickImageProviderOptions &providerOptions, int frame, int frameCount)
+{
+    auto oldD = d;
+    QQuickPixmapKey key = { &url, &requestRegion, &requestSize, frame, providerOptions };
+    QQuickPixmapStore *store = pixmapStore();
+    QHash<QQuickPixmapKey, QQuickPixmapData *>::Iterator iter = store->m_cache.end();
+    QMutexLocker locker(&store->m_cacheMutex);
+    iter = store->m_cache.find(key);
+    if (iter == store->m_cache.end()) {
+        if (!engine)
+            return;
+
+        locker.unlock();
+        d = new QQuickPixmapData(this, url, requestRegion, requestSize, providerOptions,
+                                 QQuickImageProviderOptions::UsePluginDefaultTransform, frame, frameCount);
+        d->specialDevice = device;
+        d->addToCache();
+
+        QQuickPixmapReader::readerMutex.lock();
+        QQuickPixmapReader *reader = QQuickPixmapReader::instance(engine);
+        d->reply = reader->getImage(d);
+        if (oldD) {
+            QObject::connect(d->reply, &QQuickPixmapReply::destroyed, store, [oldD]() {
+                oldD->release();
+            }, Qt::QueuedConnection);
+        }
+        reader->startJob(d->reply);
+        QQuickPixmapReader::readerMutex.unlock();
+    } else {
+        d = *iter;
+        d->addref();
+        d->declarativePixmaps.insert(this);
+        qCDebug(lcImg) << "loaded from cache" << url << "frame" << frame << "refCount" << d->refCount;
+        locker.unlock();
+        if (oldD)
+            oldD->release();
     }
 }
 
@@ -1784,7 +2071,7 @@ bool QQuickPixmap::connectFinished(QObject *object, int method)
         return false;
     }
 
-    return QMetaObject::connect(d->reply, QQuickPixmapReply::finishedIndex, object, method);
+    return QMetaObject::connect(d->reply, QQuickPixmapReply::finishedMethodIndex, object, method);
 }
 
 bool QQuickPixmap::connectDownloadProgress(QObject *object, const char *method)
@@ -1794,7 +2081,8 @@ bool QQuickPixmap::connectDownloadProgress(QObject *object, const char *method)
         return false;
     }
 
-    return QObject::connect(d->reply, SIGNAL(downloadProgress(qint64,qint64)), object, method);
+    return QObject::connect(d->reply, SIGNAL(downloadProgress(qint64,qint64)), object,
+                            method);
 }
 
 bool QQuickPixmap::connectDownloadProgress(QObject *object, int method)
@@ -1804,7 +2092,8 @@ bool QQuickPixmap::connectDownloadProgress(QObject *object, int method)
         return false;
     }
 
-    return QMetaObject::connect(d->reply, QQuickPixmapReply::downloadProgressIndex, object, method);
+    return QMetaObject::connect(d->reply, QQuickPixmapReply::downloadProgressMethodIndex, object,
+                                method);
 }
 
 QColorSpace QQuickPixmap::colorSpace() const

@@ -1,10 +1,9 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
-#include "third_party/blink/public/platform/web_url_loader_mock_factory.h"
 #include "third_party/blink/public/web/web_frame.h"
 #include "third_party/blink/public/web/web_history_item.h"
 #include "third_party/blink/public/web/web_local_frame_client.h"
@@ -21,6 +20,7 @@
 #include "third_party/blink/renderer/core/testing/sim/sim_request.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_test.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 
 namespace blink {
@@ -50,7 +50,7 @@ TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithScale) {
   frame_test_helpers::WebViewHelper web_view_helper;
   WebViewImpl* web_view =
       web_view_helper.InitializeAndLoad(base_url_.Utf8() + "long_scroll.html");
-  web_view->MainFrameWidget()->Resize(WebSize(1000, 1000));
+  web_view->MainFrameViewWidget()->Resize(gfx::Size(1000, 1000));
   web_view->MainFrameWidget()->UpdateAllLifecyclePhases(
       DocumentUpdateReason::kTest);
 
@@ -58,7 +58,7 @@ TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithScale) {
   loader.GetDocumentLoader()->SetLoadType(WebFrameLoadType::kBackForward);
 
   web_view->SetPageScaleFactor(3.0f);
-  web_view->MainFrameImpl()->SetScrollOffset(WebSize(0, 500));
+  web_view->MainFrameImpl()->SetScrollOffset(gfx::PointF(0, 500));
   loader.GetDocumentLoader()->GetInitialScrollState().was_scrolled_by_user =
       false;
   loader.GetDocumentLoader()->GetHistoryItem()->SetPageScaleFactor(2);
@@ -76,7 +76,7 @@ TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithScale) {
 
   // Expect that both scroll and scale were restored.
   EXPECT_EQ(2.0f, web_view->PageScaleFactor());
-  EXPECT_EQ(200, web_view->MainFrameImpl()->GetScrollOffset().height);
+  EXPECT_EQ(200, web_view->MainFrameImpl()->GetScrollOffset().y());
 }
 
 TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithoutScale) {
@@ -85,7 +85,7 @@ TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithoutScale) {
   frame_test_helpers::WebViewHelper web_view_helper;
   WebViewImpl* web_view =
       web_view_helper.InitializeAndLoad(base_url_.Utf8() + "long_scroll.html");
-  web_view->MainFrameWidget()->Resize(WebSize(1000, 1000));
+  web_view->MainFrameViewWidget()->Resize(gfx::Size(1000, 1000));
   web_view->MainFrameWidget()->UpdateAllLifecyclePhases(
       DocumentUpdateReason::kTest);
 
@@ -93,7 +93,7 @@ TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithoutScale) {
   loader.GetDocumentLoader()->SetLoadType(WebFrameLoadType::kBackForward);
 
   web_view->SetPageScaleFactor(3.0f);
-  web_view->MainFrameImpl()->SetScrollOffset(WebSize(0, 500));
+  web_view->MainFrameImpl()->SetScrollOffset(gfx::PointF(0, 500));
   loader.GetDocumentLoader()->GetInitialScrollState().was_scrolled_by_user =
       false;
   loader.GetDocumentLoader()->GetHistoryItem()->SetPageScaleFactor(0);
@@ -108,7 +108,7 @@ TEST_F(ProgrammaticScrollTest, RestoreScrollPositionAndViewStateWithoutScale) {
 
   // Expect that only the scroll position was restored.
   EXPECT_EQ(3.0f, web_view->PageScaleFactor());
-  EXPECT_EQ(400, web_view->MainFrameImpl()->GetScrollOffset().height);
+  EXPECT_EQ(400, web_view->MainFrameImpl()->GetScrollOffset().y());
 }
 
 TEST_F(ProgrammaticScrollTest, SaveScrollStateClearsAnchor) {
@@ -117,33 +117,33 @@ TEST_F(ProgrammaticScrollTest, SaveScrollStateClearsAnchor) {
   frame_test_helpers::WebViewHelper web_view_helper;
   WebViewImpl* web_view =
       web_view_helper.InitializeAndLoad(base_url_.Utf8() + "long_scroll.html");
-  web_view->MainFrameWidget()->Resize(WebSize(1000, 1000));
+  web_view->MainFrameViewWidget()->Resize(gfx::Size(1000, 1000));
   web_view->MainFrameWidget()->UpdateAllLifecyclePhases(
       DocumentUpdateReason::kTest);
 
   FrameLoader& loader = web_view->MainFrameImpl()->GetFrame()->Loader();
   loader.GetDocumentLoader()->SetLoadType(WebFrameLoadType::kBackForward);
 
-  web_view->MainFrameImpl()->SetScrollOffset(WebSize(0, 500));
+  web_view->MainFrameImpl()->SetScrollOffset(gfx::PointF(0, 500));
   loader.GetDocumentLoader()->GetInitialScrollState().was_scrolled_by_user =
       true;
   loader.SaveScrollState();
   loader.SaveScrollAnchor();
 
-  web_view->MainFrameImpl()->SetScrollOffset(WebSize(0, 0));
+  web_view->MainFrameImpl()->SetScrollOffset(gfx::PointF(0, 0));
   loader.SaveScrollState();
   loader.GetDocumentLoader()->GetInitialScrollState().was_scrolled_by_user =
       false;
 
   loader.RestoreScrollPositionAndViewState();
 
-  EXPECT_EQ(0, web_view->MainFrameImpl()->GetScrollOffset().height);
+  EXPECT_EQ(0, web_view->MainFrameImpl()->GetScrollOffset().y());
 }
 
 class ProgrammaticScrollSimTest : public SimTest {};
 
 TEST_F(ProgrammaticScrollSimTest, NavigateToHash) {
-  WebView().MainFrameWidget()->Resize(WebSize(800, 600));
+  WebView().MainFrameViewWidget()->Resize(gfx::Size(800, 600));
   SimRequest main_resource("https://example.com/test.html#target", "text/html");
   SimSubresourceRequest css_resource("https://example.com/test.css",
                                      "text/css");
@@ -177,7 +177,7 @@ TEST_F(ProgrammaticScrollSimTest, NavigateToHash) {
   Compositor().BeginFrame();
 
   ScrollableArea* layout_viewport = GetDocument().View()->LayoutViewport();
-  EXPECT_EQ(3000, layout_viewport->GetScrollOffset().Height());
+  EXPECT_EQ(3000, layout_viewport->GetScrollOffset().y());
 }
 
 }  // namespace blink

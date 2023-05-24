@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWASMSCREEN_H
 #define QWASMSCREEN_H
@@ -36,6 +10,7 @@
 
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qtextstream.h>
+#include <QtCore/private/qstdweb_p.h>
 
 #include <emscripten/val.h>
 
@@ -45,24 +20,27 @@ class QPlatformOpenGLContext;
 class QWasmWindow;
 class QWasmBackingStore;
 class QWasmCompositor;
-class QWasmEventTranslator;
+class QWasmDeadKeySupport;
 class QOpenGLContext;
 
 class QWasmScreen : public QObject, public QPlatformScreen
 {
     Q_OBJECT
 public:
-    QWasmScreen(const emscripten::val &canvas);
+    QWasmScreen(const emscripten::val &containerOrCanvas);
     ~QWasmScreen();
-    void destroy();
+    void deleteScreen();
 
     static QWasmScreen *get(QPlatformScreen *screen);
     static QWasmScreen *get(QScreen *screen);
-    emscripten::val canvas() const;
-    QString canvasId() const;
+    emscripten::val element() const;
+    QString eventTargetId() const;
+    QString outerScreenId() const;
+    QPointingDevice *touchDevice() { return m_touchDevice.get(); }
+    QPointingDevice *tabletDevice() { return m_tabletDevice.get(); }
 
     QWasmCompositor *compositor();
-    QWasmEventTranslator *eventTranslator();
+    QWasmDeadKeySupport *deadKeySupport() { return m_deadKeySupport.get(); }
 
     QRect geometry() const override;
     int depth() const override;
@@ -76,6 +54,9 @@ public:
     QWindow *topWindow() const;
     QWindow *topLevelAt(const QPoint &p) const override;
 
+    QPointF mapFromLocal(const QPointF &p) const;
+    QPointF clipPoint(const QPointF &p) const;
+
     void invalidateSize();
     void updateQScreenAndCanvasRenderSize();
     void installCanvasResizeObserver();
@@ -85,14 +66,19 @@ public slots:
     void setGeometry(const QRect &rect);
 
 private:
-    emscripten::val m_canvas;
-    QWasmCompositor *m_compositor = nullptr;
-    QWasmEventTranslator *m_eventTranslator = nullptr;
+    emscripten::val m_container;
+    emscripten::val m_intermediateContainer;
+    emscripten::val m_shadowContainer;
+    std::unique_ptr<QWasmCompositor> m_compositor;
+    std::unique_ptr<QPointingDevice> m_touchDevice;
+    std::unique_ptr<QPointingDevice> m_tabletDevice;
+    std::unique_ptr<QWasmDeadKeySupport> m_deadKeySupport;
     QRect m_geometry = QRect(0, 0, 100, 100);
     int m_depth = 32;
     QImage::Format m_format = QImage::Format_RGB32;
     QWasmCursor m_cursor;
-    static const char * m_canvasResizeObserverCallbackContextPropertyName;
+    static const char *m_canvasResizeObserverCallbackContextPropertyName;
+    std::unique_ptr<qstdweb::EventCallback> m_onContextMenu;
 };
 
 QT_END_NAMESPACE

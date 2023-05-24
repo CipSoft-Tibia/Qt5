@@ -9,17 +9,17 @@
 #include "include/core/SkSurface.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/mtl/GrMtlTypes.h"
-#include "src/gpu/GrProxyProvider.h"
-#include "src/gpu/GrRecordingContextPriv.h"
-#include "src/gpu/GrRenderTargetContext.h"
-#include "src/gpu/GrResourceProvider.h"
-#include "src/gpu/GrResourceProviderPriv.h"
+#include "src/gpu/ganesh/GrProxyProvider.h"
+#include "src/gpu/ganesh/GrRecordingContextPriv.h"
+#include "src/gpu/ganesh/GrResourceProvider.h"
+#include "src/gpu/ganesh/GrResourceProviderPriv.h"
+#include "src/gpu/ganesh/SurfaceDrawContext.h"
 #include "src/image/SkSurface_Gpu.h"
 
 #if SK_SUPPORT_GPU
 
-#include "src/gpu/GrSurface.h"
-#include "src/gpu/mtl/GrMtlTextureRenderTarget.h"
+#include "src/gpu/ganesh/GrSurface.h"
+#include "src/gpu/ganesh/mtl/GrMtlTextureRenderTarget.h"
 
 #ifdef SK_METAL
 #import <Metal/Metal.h>
@@ -35,7 +35,6 @@ sk_sp<SkSurface> SkSurface::MakeFromCAMetalLayer(GrRecordingContext* rContext,
                                                  const SkSurfaceProps* surfaceProps,
                                                  GrMTLHandle* drawable) {
     GrProxyProvider* proxyProvider = rContext->priv().proxyProvider();
-    const GrCaps* caps = rContext->priv().caps();
 
     CAMetalLayer* metalLayer = (__bridge CAMetalLayer*)layer;
     GrBackendFormat backendFormat = GrBackendFormat::MakeMtl(metalLayer.pixelFormat);
@@ -79,23 +78,22 @@ sk_sp<SkSurface> SkSurface::MakeFromCAMetalLayer(GrRecordingContext* rContext,
             metalLayer.framebufferOnly ? nullptr : &texInfo,
             GrMipmapStatus::kNotAllocated,
             SkBackingFit::kExact,
-            SkBudgeted::kYes,
+            skgpu::Budgeted::kYes,
             GrProtected::kNo,
             false,
             GrSurfaceProxy::UseAllocator::kYes);
 
-    GrSwizzle readSwizzle = caps->getReadSwizzle(backendFormat, grColorType);
-    GrSwizzle writeSwizzle = caps->getWriteSwizzle(backendFormat, grColorType);
+    auto device = rContext->priv().createDevice(grColorType,
+                                                std::move(proxy),
+                                                std::move(colorSpace),
+                                                origin,
+                                                SkSurfacePropsCopyOrDefault(surfaceProps),
+                                                skgpu::v1::Device::InitContents::kUninit);
+    if (!device) {
+        return nullptr;
+    }
 
-    GrSurfaceProxyView readView(proxy, origin, readSwizzle);
-    GrSurfaceProxyView writeView(std::move(proxy), origin, writeSwizzle);
-
-    auto rtc = std::make_unique<GrRenderTargetContext>(rContext, std::move(readView),
-                                                       std::move(writeView), grColorType,
-                                                       colorSpace, surfaceProps);
-
-    sk_sp<SkSurface> surface = SkSurface_Gpu::MakeWrappedRenderTarget(rContext, std::move(rtc));
-    return surface;
+    return sk_make_sp<SkSurface_Gpu>(std::move(device));
 }
 
 sk_sp<SkSurface> SkSurface::MakeFromMTKView(GrRecordingContext* rContext,
@@ -106,7 +104,6 @@ sk_sp<SkSurface> SkSurface::MakeFromMTKView(GrRecordingContext* rContext,
                                             sk_sp<SkColorSpace> colorSpace,
                                             const SkSurfaceProps* surfaceProps) {
     GrProxyProvider* proxyProvider = rContext->priv().proxyProvider();
-    const GrCaps* caps = rContext->priv().caps();
 
     MTKView* mtkView = (__bridge MTKView*)view;
     GrBackendFormat backendFormat = GrBackendFormat::MakeMtl(mtkView.colorPixelFormat);
@@ -149,23 +146,23 @@ sk_sp<SkSurface> SkSurface::MakeFromMTKView(GrRecordingContext* rContext,
             mtkView.framebufferOnly ? nullptr : &texInfo,
             GrMipmapStatus::kNotAllocated,
             SkBackingFit::kExact,
-            SkBudgeted::kYes,
+            skgpu::Budgeted::kYes,
             GrProtected::kNo,
             false,
             GrSurfaceProxy::UseAllocator::kYes);
 
-    GrSwizzle readSwizzle = caps->getReadSwizzle(backendFormat, grColorType);
-    GrSwizzle writeSwizzle = caps->getWriteSwizzle(backendFormat, grColorType);
 
-    GrSurfaceProxyView readView(proxy, origin, readSwizzle);
-    GrSurfaceProxyView writeView(std::move(proxy), origin, writeSwizzle);
+    auto device = rContext->priv().createDevice(grColorType,
+                                                std::move(proxy),
+                                                std::move(colorSpace),
+                                                origin,
+                                                SkSurfacePropsCopyOrDefault(surfaceProps),
+                                                skgpu::v1::Device::InitContents::kUninit);
+    if (!device) {
+        return nullptr;
+    }
 
-    auto rtc = std::make_unique<GrRenderTargetContext>(rContext, std::move(readView),
-                                                       std::move(writeView), grColorType,
-                                                       colorSpace, surfaceProps);
-
-    sk_sp<SkSurface> surface = SkSurface_Gpu::MakeWrappedRenderTarget(rContext, std::move(rtc));
-    return surface;
+    return sk_make_sp<SkSurface_Gpu>(std::move(device));
 }
 
 #endif

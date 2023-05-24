@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ namespace autofill {
 // Ensure that all entries in KnownUsernamePlaceholders() are lowercase because
 // the lowercase string of the website is tested against this set.
 TEST(PossiblePrefilledUsernameValue, AllLowerCase) {
-  for (const auto& entry : KnownUsernamePlaceholders())
+  for (auto entry : KnownUsernamePlaceholders())
     EXPECT_EQ(entry, base::ToLowerASCII(entry));
 }
 

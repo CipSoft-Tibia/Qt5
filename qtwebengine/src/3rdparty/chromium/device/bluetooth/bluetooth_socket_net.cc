@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,13 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
 #include "base/check.h"
 #include "base/containers/queue.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/ref_counted.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "device/bluetooth/bluetooth_socket.h"
 #include "device/bluetooth/bluetooth_socket_thread.h"
@@ -55,12 +55,6 @@ BluetoothSocketNet::~BluetoothSocketNet() {
   DCHECK(!tcp_socket_);
   ui_task_runner_->PostTask(FROM_HERE,
                             base::BindOnce(&DeactivateSocket, socket_thread_));
-}
-
-void BluetoothSocketNet::Close() {
-  DCHECK(ui_task_runner_->RunsTasksInCurrentSequence());
-  socket_thread_->task_runner()->PostTask(
-      FROM_HERE, base::BindOnce(&BluetoothSocketNet::DoClose, this));
 }
 
 void BluetoothSocketNet::Disconnect(base::OnceClosure success_callback) {
@@ -123,7 +117,7 @@ void BluetoothSocketNet::PostErrorCompletion(ErrorCompletionCallback callback,
                             base::BindOnce(std::move(callback), error));
 }
 
-void BluetoothSocketNet::DoClose() {
+void BluetoothSocketNet::DoDisconnect(base::OnceClosure callback) {
   DCHECK(socket_thread_->task_runner()->RunsTasksInCurrentSequence());
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::MAY_BLOCK);
@@ -141,12 +135,6 @@ void BluetoothSocketNet::DoClose() {
   std::swap(write_queue_, empty);
 
   ResetData();
-}
-
-void BluetoothSocketNet::DoDisconnect(base::OnceClosure callback) {
-  DCHECK(socket_thread_->task_runner()->RunsTasksInCurrentSequence());
-
-  DoClose();
   std::move(callback).Run();
 }
 
@@ -172,18 +160,19 @@ void BluetoothSocketNet::DoReceive(
     return;
   }
 
-  auto copyable_callback = base::AdaptCallbackForRepeating(
+  auto split_callback = base::SplitOnceCallback(
       base::BindOnce(&BluetoothSocketNet::OnSocketReadComplete, this,
                      std::move(success_callback), std::move(error_callback)));
   auto buffer = base::MakeRefCounted<net::IOBufferWithSize>(buffer_size);
-  int read_result =
-      tcp_socket_->Read(buffer.get(), buffer->size(), copyable_callback);
+  int read_result = tcp_socket_->Read(buffer.get(), buffer->size(),
+                                      std::move(split_callback.first));
 
   read_buffer_ = buffer;
 
-  // Read() will not have run |copyable_callback| if there is no pending I/O.
-  if (read_result != net::ERR_IO_PENDING)
-    copyable_callback.Run(read_result);
+  // Read() will not have run |split_callback.first| if there is no pending I/O.
+  if (read_result != net::ERR_IO_PENDING) {
+    std::move(split_callback.second).Run(read_result);
+  }
 }
 
 void BluetoothSocketNet::OnSocketReadComplete(
@@ -271,7 +260,7 @@ void BluetoothSocketNet::SendFrontWriteRequest() {
   pending_write_request_ = std::move(write_queue_.front());
   write_queue_.pop();
 
-  auto copyable_callback = base::AdaptCallbackForRepeating(
+  auto split_callback = base::SplitOnceCallback(
       base::BindOnce(&BluetoothSocketNet::OnSocketWriteComplete, this,
                      std::move(pending_write_request_->success_callback),
                      std::move(pending_write_request_->error_callback)));
@@ -299,12 +288,15 @@ void BluetoothSocketNet::SendFrontWriteRequest() {
             "DeviceAllowBluetooth policy can disable Bluetooth for ChromeOS, "
             "not implemented for other platforms."
         })");
-  int send_result = tcp_socket_->Write(pending_write_request_->buffer.get(),
-                                       pending_write_request_->buffer_size,
-                                       copyable_callback, traffic_annotation);
-  // Write() will not have run |copyable_callback| if there is no pending I/O.
-  if (send_result != net::ERR_IO_PENDING)
-    copyable_callback.Run(send_result);
+  int send_result = tcp_socket_->Write(
+      pending_write_request_->buffer.get(), pending_write_request_->buffer_size,
+      std::move(split_callback.first), traffic_annotation);
+
+  // Write() will not have run |split_callback.first| if there is no pending
+  // I/O.
+  if (send_result != net::ERR_IO_PENDING) {
+    std::move(split_callback.second).Run(send_result);
+  }
 }
 
 void BluetoothSocketNet::OnSocketWriteComplete(

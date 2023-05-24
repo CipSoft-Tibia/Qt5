@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@
 #include "xfa/fxfa/cxfa_fwladapterwidgetmgr.h"
 #include "xfa/fxfa/cxfa_fwltheme.h"
 
-CXFA_FFApp::CXFA_FFApp(IXFA_AppProvider* pProvider) : m_pProvider(pProvider) {
+CXFA_FFApp::CXFA_FFApp(CallbackIface* pProvider) : m_pProvider(pProvider) {
   // Ensure fully initialized before making objects based on |this|.
   m_pXFAFontMgr = cppgc::MakeGarbageCollected<CXFA_FontMgr>(
       GetHeap()->GetAllocationHandle());
@@ -33,7 +33,7 @@ void CXFA_FFApp::Trace(cppgc::Visitor* visitor) const {
 
 bool CXFA_FFApp::LoadFWLTheme(CXFA_FFDoc* doc) {
   auto* fwl_theme = cppgc::MakeGarbageCollected<CXFA_FWLTheme>(
-      GetHeap()->GetAllocationHandle(), this);
+      GetHeap()->GetAllocationHandle(), GetHeap(), this);
   if (!fwl_theme->LoadCalendarFont(doc))
     return false;
 
@@ -49,7 +49,7 @@ CFWL_WidgetMgr::AdapterIface* CXFA_FFApp::GetWidgetMgrAdapter() {
   return m_pAdapterWidgetMgr;
 }
 
-TimerHandlerIface* CXFA_FFApp::GetTimerHandler() {
+CFX_Timer::HandlerIface* CXFA_FFApp::GetTimerHandler() {
   return m_pProvider->GetTimerHandler();
 }
 

@@ -90,22 +90,22 @@ static void draw_scene(SkCanvas* canvas, const SkHighContrastConfig& config) {
     SkScalar    pos[] = { 0.2f, 0.8f };
     paint.setShader(SkGradientShader::MakeLinear(
         pts, colors, pos,
-        SK_ARRAY_COUNT(colors), SkTileMode::kClamp));
+        std::size(colors), SkTileMode::kClamp));
     canvas->drawRect(bounds, paint);
 
     bounds = SkRect::MakeLTRB(0.1f, 0.6f, 0.9f, 0.8f);
     SkColor colors2[] = { SK_ColorGREEN, SK_ColorWHITE };
     paint.setShader(SkGradientShader::MakeLinear(
         pts, colors2, pos,
-        SK_ARRAY_COUNT(colors2), SkTileMode::kClamp));
+        std::size(colors2), SkTileMode::kClamp));
     canvas->drawRect(bounds, paint);
 
     canvas->restore();
 }
 
 class HighContrastFilterGM : public skiagm::GM {
-public:
-    HighContrastFilterGM() {
+protected:
+    void onOnceBeforeDraw() override {
         SkColor  g1Colors[] = { kColor1, SkColorSetA(kColor1, 0x20) };
         SkColor  g2Colors[] = { kColor2, SkColorSetA(kColor2, 0x20) };
         SkPoint  g1Points[] = { { 0, 0 }, { 0,     100 } };
@@ -115,14 +115,12 @@ public:
         SkHighContrastConfig fConfig;
         fFilter = SkHighContrastFilter::Make(fConfig);
         fGr1 = SkGradientShader::MakeLinear(
-            g1Points, g1Colors, pos, SK_ARRAY_COUNT(g1Colors),
+            g1Points, g1Colors, pos, std::size(g1Colors),
             SkTileMode::kClamp);
         fGr2 = SkGradientShader::MakeLinear(
-            g2Points, g2Colors, pos, SK_ARRAY_COUNT(g2Colors),
+            g2Points, g2Colors, pos, std::size(g2Colors),
             SkTileMode::kClamp);
     }
-
-protected:
 
     SkString onShortName() override {
         return SkString("highcontrastfilter");
@@ -144,7 +142,7 @@ protected:
             { true, InvertStyle::kInvertLightness, 0.2f },
         };
 
-        for (size_t i = 0; i < SK_ARRAY_COUNT(configs); ++i) {
+        for (size_t i = 0; i < std::size(configs); ++i) {
             SkScalar x = kSize * (i % 4);
             SkScalar y = kSize * (i / 4);
             canvas->save();

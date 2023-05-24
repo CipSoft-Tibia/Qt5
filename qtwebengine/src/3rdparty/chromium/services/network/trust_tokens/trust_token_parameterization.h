@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "base/component_export.h"
 #include "base/task/task_traits.h"
 #include "base/time/time.h"
+#include "services/network/public/mojom/trust_tokens.mojom-shared.h"
 
 namespace network {
 
@@ -25,8 +26,7 @@ constexpr base::TaskPriority kTrustTokenDatabaseTaskPriority =
 // The maximum time Trust Tokens backing database writes will be buffered before
 // being committed to disk. Two seconds was chosen fairly arbitrarily as a value
 // close to what the cookie store uses.
-constexpr base::TimeDelta kTrustTokenWriteBufferingWindow =
-    base::TimeDelta::FromSeconds(2);
+constexpr base::TimeDelta kTrustTokenWriteBufferingWindow = base::Seconds(2);
 
 // This is the path relative to the issuer origin where this
 // implementation of the Trust Tokens protocol expects key
@@ -57,16 +57,31 @@ constexpr int kTrustTokenPerIssuerTokenCapacity = 500;
 // an issuer).
 constexpr int kMaximumTrustTokenIssuanceBatchSize = 100;
 
-// When executing Trust Tokens issuance and redemption,
-// use at most |kMaximumConcurrentlyValidTrustTokenVerificationKeys| many
-// soonest-to-expire-but-unexpired keys from the available key commitments.
-constexpr int kMaximumConcurrentlyValidTrustTokenVerificationKeys = 3;
-
 // When to expire a signed redemption record, assuming that the issuer declined
 // to specify the optional expiry timestamp. This value was chosen in absence of
 // a specific reason to pick anything shorter; it could be revisited.
 constexpr base::Time kTrustTokenDefaultRedemptionRecordExpiry =
     base::Time::Max();
+
+// Returns the maximum number of keys supported by a protocol version.
+size_t TrustTokenMaxKeysForVersion(mojom::TrustTokenProtocolVersion version);
+
+// This is a representation of the current "major" version, a notion which is
+// not totally well-defined but roughly corresponds to each substantial
+// collection of backwards-incompatible functional changes. We send it along
+// with signed requests in the Sec-Trust-Token-Version header, because the
+// "minor" version (the specifics of the underlying issue and redemption crypto)
+// does not affect signed request processing. As of writing in June 2021, it's
+// not for sure that the "major" version will stay around as a concept for the
+// long haul.
+constexpr char kTrustTokensMajorVersion[] = "TrustTokenV3";
+
+// Time limit in redemption frequency in seconds. This is to prevent a
+// malicious site exhausting user tokens. The third consecutive token consuming
+// redemption operation will fail if triggered in less than this amount of
+// seconds.
+constexpr int kTrustTokenPerIssuerToplevelRedemptionFrequencyLimitInSeconds =
+    48 * 60 * 60;
 
 }  // namespace network
 

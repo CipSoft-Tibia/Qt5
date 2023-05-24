@@ -1,0 +1,21 @@
+Version: 2
+Include: [
+    cmake_platforms.yaml: [
+        windows-10_22h2-msvc2019-developer-build
+    ]
+]
+Configurations:
+-
+    Id: 'qnx-710-arm64-on-windows'
+    Template: 'qtci-windows-10_22H2-x86_64-51'
+    Target os: 'QNX_710'
+    Target arch: 'arm64'
+    Compiler: 'MSVC2019'
+    Target compiler: 'QCC'
+    Platform dependency: 'windows-10_22h2-msvc2019-developer-build'
+    Features: ['DisableTests', 'UseConfigure']
+    Environment variables: [
+        'TARGET_CONFIGURE_ARGS=-release -force-debug-info -no-dbus -nomake examples -no-pch',
+        'TARGET_CMAKE_ARGS=-DCMAKE_TOOLCHAIN_FILE={{.Env.QNX_710}}\qnx-toolchain-aarch64le.cmake -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -G "Ninja"',
+        'NON_QTBASE_TARGET_CMAKE_ARGS=-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON'
+    ]

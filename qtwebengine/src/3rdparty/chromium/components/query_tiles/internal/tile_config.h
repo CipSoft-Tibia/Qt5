@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -54,20 +54,35 @@ extern const char kTileScoreDecayLambdaKey[];
 // front of others.
 extern const char kMinimumScoreForNewFrontTilesKey[];
 
+// Finch parameter key for number of trending tiles to display.
+extern const char kNumTrendingTilesKey[];
+
+// Finch parameter key for max number of trending tile impressions.
+extern const char kMaxTrendingTileImpressionsKey[];
+
+// Finch parameter key for the starting position to shuffle unclicked tiles.
+extern const char kTileShufflePositionKey[];
+
+// Finch parameter key for number of non-interacted days to reset tile score.
+extern const char kNumDaysToResetTileScore[];
+
 class TileConfig {
  public:
-  // Gets the URL for the Query Tiles server.
-  static GURL GetQueryTilesServerUrl();
-
-  // Gets the URL for the Query Tiles server, given the server address.
-  static GURL GetQueryTilesServerUrl(const std::string& base_url);
+  // Gets the URL for the Query Tiles service. If
+  // |override_field_trial_param_value_if_empty| is false, server URL provided
+  // by field trial param is preferred over |base_url|. Otherwise, |base_url| is
+  // used. This method could return an empty URL if no valid URL is provided
+  // though |base_url| or field trial param.
+  static GURL GetQueryTilesServerUrl(
+      const std::string& base_url,
+      bool override_field_trial_param_value_if_empty);
 
   // Gets whether running the background task requires unmeter network
   // condition.
   static bool GetIsUnMeteredNetworkRequired();
 
-  // Gets the experiment tag to be passed to server.
-  static std::string GetExperimentTag();
+  // Gets the experiment tag to be passed to server, given the country code.
+  static std::string GetExperimentTag(const std::string& country_code);
 
   // Gets the maximum duration for holding current group's info and images.
   static base::TimeDelta GetExpireDuration();
@@ -97,6 +112,19 @@ class TileConfig {
 
   // Get the minimum scrore for newly showing tiles that are in front of others.
   static double GetMinimumScoreForNewFrontTiles();
+
+  // Get the number of trending tiles to be displayed at the same time.
+  static int GetNumTrendingTilesToDisplay();
+
+  // Get the maximum number of impressions for a trending tile to be displayed.
+  static int GetMaxTrendingTileImpressions();
+
+  // Get the starting position tp shuffle unclicked tiles. Tiles before this
+  // position are not shuffled.
+  static int GetTileShufflePosition();
+
+  // Get the number of non-interacted days to reset tile score.
+  static int GetNumDaysToResetTileScore();
 };
 
 }  // namespace query_tiles

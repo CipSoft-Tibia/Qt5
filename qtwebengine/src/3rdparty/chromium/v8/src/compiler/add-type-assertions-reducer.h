@@ -5,7 +5,6 @@
 #ifndef V8_COMPILER_ADD_TYPE_ASSERTIONS_REDUCER_H_
 #define V8_COMPILER_ADD_TYPE_ASSERTIONS_REDUCER_H_
 
-#include "src/common/globals.h"
 #include "src/compiler/graph-reducer.h"
 #include "src/compiler/js-graph.h"
 #include "src/compiler/node-aux-data.h"
@@ -22,6 +21,9 @@ class V8_EXPORT_PRIVATE AddTypeAssertionsReducer final
   AddTypeAssertionsReducer(Editor* editor, JSGraph* jsgraph, Zone* zone);
   ~AddTypeAssertionsReducer() final;
 
+  AddTypeAssertionsReducer(const AddTypeAssertionsReducer&) = delete;
+  AddTypeAssertionsReducer& operator=(const AddTypeAssertionsReducer&) = delete;
+
   const char* reducer_name() const override {
     return "AddTypeAssertionsReducer";
   }
@@ -34,8 +36,6 @@ class V8_EXPORT_PRIVATE AddTypeAssertionsReducer final
 
   Graph* graph() { return jsgraph_->graph(); }
   SimplifiedOperatorBuilder* simplified() { return jsgraph_->simplified(); }
-
-  DISALLOW_COPY_AND_ASSIGN(AddTypeAssertionsReducer);
 };
 
 }  // namespace compiler

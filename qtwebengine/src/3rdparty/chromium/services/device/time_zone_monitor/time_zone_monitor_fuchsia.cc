@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,13 @@
 
 #include <memory>
 
-#include "base/bind.h"
 #include "base/fuchsia/fuchsia_logging.h"
 #include "base/fuchsia/intl_profile_watcher.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/string_piece.h"
+#include "base/task/sequenced_task_runner.h"
 #include "third_party/icu/source/common/unicode/unistr.h"
 #include "third_party/icu/source/i18n/unicode/timezone.h"
 
@@ -48,7 +49,7 @@ class TimeZoneMonitorFuchsia : public TimeZoneMonitor {
     UpdateIcuAndNotifyClients(std::move(new_zone));
   }
 
-  base::fuchsia::IntlProfileWatcher watcher_;
+  base::FuchsiaIntlProfileWatcher watcher_;
 };
 
 }  // namespace

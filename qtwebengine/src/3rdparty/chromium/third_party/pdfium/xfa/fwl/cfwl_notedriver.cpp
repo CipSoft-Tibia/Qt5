@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 
 #include "build/build_config.h"
 #include "core/fxcrt/fx_extension.h"
-#include "third_party/base/stl_util.h"
 #include "xfa/fwl/cfwl_app.h"
 #include "xfa/fwl/cfwl_event.h"
 #include "xfa/fwl/cfwl_messagekey.h"
@@ -68,7 +67,7 @@ void CFWL_NoteDriver::UnregisterEventTarget(CFWL_Widget* pListener) {
 
   auto it = m_eventTargets.find(key);
   if (it != m_eventTargets.end())
-    it->second->FlagInvalid();
+    it->second->Invalidate();
 }
 
 void CFWL_NoteDriver::NotifyTargetHide(CFWL_Widget* pNoteTarget) {
@@ -156,9 +155,9 @@ bool CFWL_NoteDriver::DoKillFocus(CFWL_Message* pMessage,
 
 bool CFWL_NoteDriver::DoKey(CFWL_Message* pMessage, CFWL_Widget* pMessageForm) {
   CFWL_MessageKey* pMsg = static_cast<CFWL_MessageKey*>(pMessage);
-#if !defined(OS_APPLE)
-  if (pMsg->m_dwCmd == CFWL_MessageKey::Type::kKeyDown &&
-      pMsg->m_dwKeyCode == XFA_FWL_VKEY_Tab) {
+#if !BUILDFLAG(IS_APPLE)
+  if (pMsg->m_dwCmd == CFWL_MessageKey::KeyCommand::kKeyDown &&
+      pMsg->m_dwKeyCodeOrChar == XFA_FWL_VKEY_Tab) {
     return true;
   }
 #endif
@@ -168,8 +167,8 @@ bool CFWL_NoteDriver::DoKey(CFWL_Message* pMessage, CFWL_Widget* pMessageForm) {
     return true;
   }
 
-  if (pMsg->m_dwCmd == CFWL_MessageKey::Type::kKeyDown &&
-      pMsg->m_dwKeyCode == XFA_FWL_VKEY_Return) {
+  if (pMsg->m_dwCmd == CFWL_MessageKey::KeyCommand::kKeyDown &&
+      pMsg->m_dwKeyCodeOrChar == XFA_FWL_VKEY_Return) {
     CFWL_WidgetMgr* pWidgetMgr = pMessageForm->GetFWLApp()->GetWidgetMgr();
     CFWL_Widget* pDefButton = pWidgetMgr->GetDefaultButton(pMessageForm);
     if (pDefButton) {
@@ -183,9 +182,9 @@ bool CFWL_NoteDriver::DoKey(CFWL_Message* pMessage, CFWL_Widget* pMessageForm) {
 bool CFWL_NoteDriver::DoMouse(CFWL_Message* pMessage,
                               CFWL_Widget* pMessageForm) {
   CFWL_MessageMouse* pMsg = static_cast<CFWL_MessageMouse*>(pMessage);
-  if (pMsg->m_dwCmd == FWL_MouseCommand::Leave ||
-      pMsg->m_dwCmd == FWL_MouseCommand::Hover ||
-      pMsg->m_dwCmd == FWL_MouseCommand::Enter) {
+  if (pMsg->m_dwCmd == CFWL_MessageMouse::MouseCommand::kLeave ||
+      pMsg->m_dwCmd == CFWL_MessageMouse::MouseCommand::kHover ||
+      pMsg->m_dwCmd == CFWL_MessageMouse::MouseCommand::kEnter) {
     return !!pMsg->GetDstTarget();
   }
   if (pMsg->GetDstTarget() != pMessageForm)
@@ -235,7 +234,8 @@ void CFWL_NoteDriver::MouseSecondary(CFWL_Message* pMessage) {
   CFWL_MessageMouse* pMsg = static_cast<CFWL_MessageMouse*>(pMessage);
   if (m_pHover) {
     CFWL_MessageMouse msLeave(
-        m_pHover.Get(), FWL_MouseCommand::Leave, 0,
+        m_pHover.Get(), CFWL_MessageMouse::MouseCommand::kLeave,
+        Mask<XFA_FWL_KeyFlag>(),
         pTarget->TransformTo(m_pHover.Get(), pMsg->m_pos));
     DispatchMessage(&msLeave, nullptr);
   }
@@ -245,7 +245,8 @@ void CFWL_NoteDriver::MouseSecondary(CFWL_Message* pMessage) {
   }
   m_pHover = pTarget;
 
-  CFWL_MessageMouse msHover(pTarget, FWL_MouseCommand::Hover, 0, pMsg->m_pos);
+  CFWL_MessageMouse msHover(pTarget, CFWL_MessageMouse::MouseCommand::kHover,
+                            Mask<XFA_FWL_KeyFlag>(), pMsg->m_pos);
   DispatchMessage(&msHover, nullptr);
 }
 

@@ -1,56 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcuboidgeometry.h"
 #include "qcuboidgeometry_p.h"
 
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
-#include <Qt3DRender/private/renderlogging_p.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/private/corelogging_p.h>
 
 #include <limits>
 
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt3DRender;
+using namespace Qt3DCore;
 
 namespace  Qt3DExtras {
 
@@ -362,7 +325,7 @@ QByteArray createCuboidIndexData(const QSize &yzResolution,
     const int yzIndices = 2 * 3 * (yzResolution.width() - 1) * (yzResolution.height() - 1);
     const int xzIndices = 2 * 3 * (xzResolution.width() - 1) * (xzResolution.height() - 1);
     const int xyIndices = 2 * 3 * (xyResolution.width() - 1) * (xyResolution.height() - 1);
-    const int indexCount = 2 * (yzIndices + xzIndices + xyIndices);
+    const qsizetype indexCount = 2 * (yzIndices + xzIndices + xyIndices);
 
     QByteArray indexData;
     indexData.resize(indexCount * sizeof(quint16));
@@ -386,91 +349,6 @@ QByteArray createCuboidIndexData(const QSize &yzResolution,
 
 } // anonymous
 
-class CuboidVertexBufferFunctor : public QBufferDataGenerator
-{
-public:
-    explicit CuboidVertexBufferFunctor(float xExtent,
-                                       float yExtent,
-                                       float zExtent,
-                                       const QSize &yzResolution,
-                                       const QSize &xzResolution,
-                                       const QSize &xyResolution)
-        : m_xExtent(xExtent)
-        , m_yExtent(yExtent)
-        , m_zExtent(zExtent)
-        , m_yzFaceResolution(yzResolution)
-        , m_xzFaceResolution(xzResolution)
-        , m_xyFaceResolution(xyResolution)
-    {}
-
-    ~CuboidVertexBufferFunctor() {}
-
-    QByteArray operator()() final
-    {
-        return createCuboidVertexData(m_xExtent, m_yExtent, m_zExtent,
-                                      m_yzFaceResolution, m_xzFaceResolution, m_xyFaceResolution);
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const final
-    {
-        const CuboidVertexBufferFunctor *otherFunctor = functor_cast<CuboidVertexBufferFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_xExtent == m_xExtent &&
-                    otherFunctor->m_yExtent == m_yExtent &&
-                    otherFunctor->m_zExtent == m_zExtent &&
-                    otherFunctor->m_yzFaceResolution == m_yzFaceResolution &&
-                    otherFunctor->m_xzFaceResolution == m_xzFaceResolution &&
-                    otherFunctor->m_xyFaceResolution == m_xyFaceResolution);
-        return false;
-    }
-
-    QT3D_FUNCTOR(CuboidVertexBufferFunctor)
-
-private:
-    float m_xExtent;
-    float m_yExtent;
-    float m_zExtent;
-    QSize m_yzFaceResolution;
-    QSize m_xzFaceResolution;
-    QSize m_xyFaceResolution;
-};
-
-class CuboidIndexBufferFunctor : public QBufferDataGenerator
-{
-public:
-    explicit CuboidIndexBufferFunctor(const QSize &yzResolution,
-                                      const QSize &xzResolution,
-                                      const QSize &xyResolution)
-        : m_yzFaceResolution(yzResolution)
-        , m_xzFaceResolution(xzResolution)
-        , m_xyFaceResolution(xyResolution)
-    {}
-
-    ~CuboidIndexBufferFunctor() {}
-
-    QByteArray operator()() final
-    {
-        return createCuboidIndexData(m_yzFaceResolution, m_xzFaceResolution, m_xyFaceResolution);
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const final
-    {
-        const CuboidIndexBufferFunctor *otherFunctor = functor_cast<CuboidIndexBufferFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_yzFaceResolution == m_yzFaceResolution &&
-                    otherFunctor->m_xzFaceResolution == m_xzFaceResolution &&
-                    otherFunctor->m_xyFaceResolution == m_xyFaceResolution);
-        return false;
-    }
-
-    QT3D_FUNCTOR(CuboidIndexBufferFunctor)
-
-private:
-    QSize m_yzFaceResolution;
-    QSize m_xzFaceResolution;
-    QSize m_xyFaceResolution;
-};
-
 QCuboidGeometryPrivate::QCuboidGeometryPrivate()
     : QGeometryPrivate()
     , m_xExtent(1.0f)
@@ -492,13 +370,13 @@ QCuboidGeometryPrivate::QCuboidGeometryPrivate()
 void QCuboidGeometryPrivate::init()
 {
     Q_Q(QCuboidGeometry);
-    m_positionAttribute = new Qt3DRender::QAttribute(q);
-    m_normalAttribute = new Qt3DRender::QAttribute(q);
-    m_texCoordAttribute = new Qt3DRender::QAttribute(q);
-    m_tangentAttribute = new Qt3DRender::QAttribute(q);
-    m_indexAttribute = new Qt3DRender::QAttribute(q);
-    m_vertexBuffer = new Qt3DRender::QBuffer(q);
-    m_indexBuffer = new Qt3DRender::QBuffer(q);
+    m_positionAttribute = new Qt3DCore::QAttribute(q);
+    m_normalAttribute = new Qt3DCore::QAttribute(q);
+    m_texCoordAttribute = new Qt3DCore::QAttribute(q);
+    m_tangentAttribute = new Qt3DCore::QAttribute(q);
+    m_indexAttribute = new Qt3DCore::QAttribute(q);
+    m_vertexBuffer = new Qt3DCore::QBuffer(q);
+    m_indexBuffer = new Qt3DCore::QBuffer(q);
 
     // vec3 pos vec2 tex vec3 normal vec4 tangent
     const quint32 stride = (3 + 2 + 3 + 4) * sizeof(float);
@@ -553,15 +431,25 @@ void QCuboidGeometryPrivate::init()
 
     m_indexAttribute->setCount(indexCount);
 
-    m_vertexBuffer->setDataGenerator(QSharedPointer<CuboidVertexBufferFunctor>::create(m_xExtent, m_yExtent, m_zExtent,
-                                                                                       m_yzFaceResolution, m_xzFaceResolution, m_xyFaceResolution));
-    m_indexBuffer->setDataGenerator(QSharedPointer<CuboidIndexBufferFunctor>::create(m_yzFaceResolution, m_xzFaceResolution, m_xyFaceResolution));
+    m_vertexBuffer->setData(generateVertexData());
+    m_indexBuffer->setData(generateIndexData());
 
     q->addAttribute(m_positionAttribute);
     q->addAttribute(m_texCoordAttribute);
     q->addAttribute(m_normalAttribute);
     q->addAttribute(m_tangentAttribute);
     q->addAttribute(m_indexAttribute);
+}
+
+QByteArray QCuboidGeometryPrivate::generateVertexData() const
+{
+    return createCuboidVertexData(m_xExtent, m_yExtent, m_zExtent,
+                                  m_yzFaceResolution, m_xzFaceResolution, m_xyFaceResolution);
+}
+
+QByteArray QCuboidGeometryPrivate::generateIndexData() const
+{
+    return createCuboidIndexData(m_yzFaceResolution, m_xzFaceResolution, m_xyFaceResolution);
 }
 
 /*!
@@ -648,13 +536,13 @@ void QCuboidGeometryPrivate::init()
 
 /*!
  * \class Qt3DExtras::QCuboidGeometry
-   \ingroup qt3d-extras-geometries
+ * \ingroup qt3d-extras-geometries
  * \inheaderfile Qt3DExtras/QCuboidGeometry
  * \inmodule Qt3DExtras
  * \brief The QCuboidGeometry class allows creation of a cuboid in 3D space.
  * \since 5.7
  * \ingroup geometries
- * \inherits Qt3DRender::QGeometry
+ * \inherits Qt3DCore::QGeometry
  *
  * The QCuboidGeometry class is most commonly used internally by the QCuboidMesh
  * but can also be used in custom Qt3DRender::QGeometryRenderer subclasses.
@@ -699,8 +587,7 @@ void QCuboidGeometry::updateIndices()
     const int indexCount = 2 * (yzIndices + xzIndices + xyIndices);
 
     d->m_indexAttribute->setCount(indexCount);
-    d->m_indexBuffer->setDataGenerator(QSharedPointer<CuboidIndexBufferFunctor>::create(d->m_yzFaceResolution, d->m_xzFaceResolution, d->m_xyFaceResolution));
-
+    d->m_indexBuffer->setData(d->generateIndexData());
 }
 
 /*!
@@ -719,8 +606,7 @@ void QCuboidGeometry::updateVertices()
     d->m_texCoordAttribute->setCount(nVerts);
     d->m_tangentAttribute->setCount(nVerts);
 
-    d->m_vertexBuffer->setDataGenerator(QSharedPointer<CuboidVertexBufferFunctor>::create(d->m_xExtent, d->m_yExtent, d->m_zExtent,
-                                                                                          d->m_yzFaceResolution, d->m_xzFaceResolution, d->m_xyFaceResolution));
+    d->m_vertexBuffer->setData(d->generateVertexData());
 }
 
 void QCuboidGeometry::setXExtent(float xExtent)
@@ -916,3 +802,5 @@ QAttribute *QCuboidGeometry::indexAttribute() const
 } //  Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qcuboidgeometry.cpp"

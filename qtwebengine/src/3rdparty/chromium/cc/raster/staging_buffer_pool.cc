@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,12 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "cc/base/container_util.h"
 #include "components/viz/common/gpu/raster_context_provider.h"
@@ -59,8 +62,8 @@ void WaitForQueryResult(gpu::raster::RasterInterface* ri, GLuint query_id) {
     // be available in a finite amount of time.
     ri->ShallowFlushCHROMIUM();
 
-    base::PlatformThread::Sleep(base::TimeDelta::FromMilliseconds(
-        kCheckForQueryResultAvailableTickRateMs));
+    base::PlatformThread::Sleep(
+        base::Milliseconds(kCheckForQueryResultAvailableTickRateMs));
   }
 
   GLuint result = 0;
@@ -129,11 +132,12 @@ StagingBufferPool::StagingBufferPool(
       staging_buffer_usage_in_bytes_(0),
       free_staging_buffer_usage_in_bytes_(0),
       staging_buffer_expiration_delay_(
-          base::TimeDelta::FromMilliseconds(kStagingBufferExpirationDelayMs)),
+          base::Milliseconds(kStagingBufferExpirationDelayMs)),
       reduce_memory_usage_pending_(false) {
   DCHECK(worker_context_provider_);
   base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
-      this, "cc::StagingBufferPool", base::ThreadTaskRunnerHandle::Get());
+      this, "cc::StagingBufferPool",
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 
   memory_pressure_listener_ = std::make_unique<base::MemoryPressureListener>(
       FROM_HERE, base::BindRepeating(&StagingBufferPool::OnMemoryPressure,
@@ -182,13 +186,10 @@ bool StagingBufferPool::OnMemoryDump(
                     staging_buffer_usage_in_bytes_);
   } else {
     for (const auto* buffer : buffers_) {
-      auto in_free_buffers =
-          std::find_if(free_buffers_.begin(), free_buffers_.end(),
-                       [buffer](const std::unique_ptr<StagingBuffer>& b) {
-                         return b.get() == buffer;
-                       });
-      buffer->OnMemoryDump(pmd, buffer->format,
-                           in_free_buffers != free_buffers_.end());
+      buffer->OnMemoryDump(
+          pmd, buffer->format,
+          base::Contains(free_buffers_, buffer,
+                         &std::unique_ptr<StagingBuffer>::get));
     }
   }
   return true;
@@ -281,11 +282,8 @@ std::unique_ptr<StagingBuffer> StagingBufferPool::AcquireStagingBuffer(
   // Find a staging buffer that allows us to perform partial raster when
   // using persistent GpuMemoryBuffers.
   if (use_partial_raster_ && previous_content_id) {
-    StagingBufferDeque::iterator it = std::find_if(
-        free_buffers_.begin(), free_buffers_.end(),
-        [previous_content_id](const std::unique_ptr<StagingBuffer>& buffer) {
-          return buffer->content_id == previous_content_id;
-        });
+    StagingBufferDeque::iterator it = base::ranges::find(
+        free_buffers_, previous_content_id, &StagingBuffer::content_id);
     if (it != free_buffers_.end()) {
       staging_buffer = std::move(*it);
       free_buffers_.erase(it);
@@ -295,8 +293,8 @@ std::unique_ptr<StagingBuffer> StagingBufferPool::AcquireStagingBuffer(
 
   // Find staging buffer of correct size and format.
   if (!staging_buffer) {
-    StagingBufferDeque::iterator it = std::find_if(
-        free_buffers_.begin(), free_buffers_.end(),
+    StagingBufferDeque::iterator it = base::ranges::find_if(
+        free_buffers_,
         [&size, format](const std::unique_ptr<StagingBuffer>& buffer) {
           return buffer->size == size && buffer->format == format;
         });

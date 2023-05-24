@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Dmitrii Kosarev aka Kakadu <kakadu.hafanana@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Dmitrii Kosarev aka Kakadu <kakadu.hafanana@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef STRINGMODEL_H
 #define STRINGMODEL_H
@@ -36,7 +11,7 @@
 class StringModel : public QAbstractItemModel
 {
     Q_OBJECT
-    QVector<QString> items;
+    QList<QString> items;
     QHash<int, QByteArray> roles;
     QString name;
 
@@ -63,7 +38,7 @@ public:
 
     int rowCount(const QModelIndex &) const override
     {
-        return items.count();
+        return items.size();
     }
 
     QHash<int, QByteArray> roleNames() const override
@@ -84,7 +59,7 @@ public:
     QModelIndex index(int row, int column, const QModelIndex &parent) const override
     {
         Q_UNUSED(column);
-        if (row>=0 && row<rowCount(parent))
+        if (row >= 0 && row < rowCount(parent))
             return createIndex(row,0);
         else
             return QModelIndex();
@@ -98,8 +73,8 @@ public:
     QVariant data (const QModelIndex & index, int role) const override
     {
         int row = index.row();
-        if ((row<0) || (row>=items.count()))
-            return QVariant::Invalid;
+        if ((row<0) || (row>=items.size()))
+            return int(QMetaType::UnknownType);
 
         switch (role) {
         case Qt::DisplayRole:

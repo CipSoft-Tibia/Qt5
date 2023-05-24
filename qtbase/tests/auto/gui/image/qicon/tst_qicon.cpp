@@ -1,40 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QImageReader>
+#include <QBuffer>
+#include <QStandardPaths>
+#include <QPainter>
+#if QT_CONFIG(process)
+#include <QProcess>
+#endif
 #include <qicon.h>
 #include <qiconengine.h>
-#include <QtCore/QStandardPaths>
 
 #include <algorithm>
-
 
 class tst_QIcon : public QObject
 {
@@ -55,6 +33,8 @@ private slots:
     void cacheKey();
     void detach();
     void addFile();
+    void pixmap();
+    void paint();
     void availableSizes();
     void name();
     void streamAvailableSizes_data();
@@ -134,17 +114,32 @@ void tst_QIcon::actualSize()
     QFETCH(QSize, argument);
     QFETCH(QSize, result);
 
+    // Skip two corner cases
+    if (qApp->devicePixelRatio() > 1 && (qstrcmp(QTest::currentDataTag(), "resource9") == 0
+                                      || qstrcmp(QTest::currentDataTag(), "external9") == 0))
+        QSKIP("Behavior is unspecified for devicePixelRatio > 1", QTest::QSkipAll);
+
+    auto expectedDeviceSize = [](QSize deviceIndependentExpectedSize, QSize maxSourceImageSize) -> QSize {
+        qreal dpr = qApp->devicePixelRatio();
+        return QSize(qMin(qRound(deviceIndependentExpectedSize.width() * dpr), maxSourceImageSize.width()),
+                     qMin(qRound(deviceIndependentExpectedSize.height() * dpr), maxSourceImageSize.height()));
+    };
+
+    QSize sourceSize = QImage(source).size();
+    QSize deviceIndependentSize = result;
+    QSize deviceSize = expectedDeviceSize(result, sourceSize);
+
     {
         QPixmap pixmap(source);
         QIcon icon(pixmap);
-        QCOMPARE(icon.actualSize(argument), result);
-        QCOMPARE(icon.pixmap(argument).size(), result);
+        QCOMPARE(icon.actualSize(argument), deviceIndependentSize);
+        QCOMPARE(icon.pixmap(argument).size(), deviceSize);
     }
 
     {
         QIcon icon(source);
-        QCOMPARE(icon.actualSize(argument), result);
-        QCOMPARE(icon.pixmap(argument).size(), result);
+        QCOMPARE(icon.actualSize(argument), deviceIndependentSize);
+        QCOMPARE(icon.pixmap(argument).size(), deviceSize);
     }
 }
 
@@ -167,6 +162,9 @@ void tst_QIcon::actualSize2_data()
 
 void tst_QIcon::actualSize2()
 {
+    if (qApp->devicePixelRatio() > 1)
+        QSKIP("Behavior is unspecified for devicePixelRatio > 1", QTest::SkipAll);
+
     QIcon icon;
     icon.addPixmap(m_pngImageFileName);
     icon.addPixmap(m_pngRectFileName);
@@ -197,17 +195,17 @@ void tst_QIcon::isNull() {
 
     // test string constructor with non-existing file
     QIcon iconNoFile = QIcon("imagedoesnotexist");
-    QVERIFY(!iconNoFile.isNull());
+    QVERIFY(iconNoFile.isNull());
     QVERIFY(!iconNoFile.actualSize(QSize(32, 32)).isValid());
 
     // test string constructor with non-existing file with suffix
     QIcon iconNoFileSuffix = QIcon("imagedoesnotexist.png");
-    QVERIFY(!iconNoFileSuffix.isNull());
+    QVERIFY(iconNoFileSuffix.isNull());
     QVERIFY(!iconNoFileSuffix.actualSize(QSize(32, 32)).isValid());
 
     // test string constructor with existing file but unsupported format
     QIcon iconUnsupportedFormat = QIcon(m_sourceFileName);
-    QVERIFY(!iconUnsupportedFormat.isNull());
+    QVERIFY(iconUnsupportedFormat.isNull());
     QVERIFY(!iconUnsupportedFormat.actualSize(QSize(32, 32)).isValid());
 
     // test string constructor with existing file and supported format
@@ -380,31 +378,115 @@ void tst_QIcon::detach()
 
     img1 = icon1.pixmap(32, 32).toImage();
     img2 = icon2.pixmap(32, 32).toImage();
-    QCOMPARE(img1, img2);
+
+    if (qApp->devicePixelRatio() > 1)
+        QVERIFY(img1 != img2); // we get an e.g. 64x64 image in dpr=2 displays
+    else
+        QCOMPARE(img1, img2);
 }
 
 void tst_QIcon::addFile()
 {
+    if (qApp->devicePixelRatio() != int(qApp->devicePixelRatio()))
+        QSKIP("Test is not ready for non integer devicePixelRatio", QTest::SkipAll);
+
     QIcon icon;
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-open-16.png"));
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-open-32.png"));
+    icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-open-64.png"));
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-open-128.png"));
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-save-16.png"), QSize(), QIcon::Selected);
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-save-32.png"), QSize(), QIcon::Selected);
+    icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-save-64.png"), QSize(), QIcon::Selected);
     icon.addFile(QLatin1String(":/styles/commonstyle/images/standardbutton-save-128.png"), QSize(), QIcon::Selected);
 
-    QVERIFY(icon.pixmap(16, QIcon::Normal).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-open-16.png")).toImage());
-    QVERIFY(icon.pixmap(32, QIcon::Normal).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-open-32.png")).toImage());
-    QVERIFY(icon.pixmap(128, QIcon::Normal).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-open-128.png")).toImage());
-    QVERIFY(icon.pixmap(16, QIcon::Selected).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-save-16.png")).toImage());
-    QVERIFY(icon.pixmap(32, QIcon::Selected).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-save-32.png")).toImage());
-    QVERIFY(icon.pixmap(128, QIcon::Selected).toImage() ==
-            QPixmap(QLatin1String(":/styles/commonstyle/images/standardbutton-save-128.png")).toImage());
+    const int maxImageSize = 128;
+
+    auto expectedHighDpiImage = [=](int deviceIndependentSize, const QString &imagePathTemplate) -> QImage {
+        const int expectedImageSize = qMin(maxImageSize, deviceIndependentSize * qCeil(qApp->devicePixelRatio()));
+        const int expectedImageDpr = expectedImageSize / deviceIndependentSize;
+        const QString path = imagePathTemplate.arg(expectedImageSize);
+        QPixmap image(path);
+        image.setDevicePixelRatio(expectedImageDpr);
+        return image.toImage();
+    };
+
+    QCOMPARE(icon.pixmap(16, QIcon::Normal).toImage(),
+        expectedHighDpiImage(16, ":/styles/commonstyle/images/standardbutton-open-%1.png"));
+    QCOMPARE(icon.pixmap(32, QIcon::Normal).toImage(),
+        expectedHighDpiImage(32, ":/styles/commonstyle/images/standardbutton-open-%1.png"));
+    QCOMPARE(icon.pixmap(64, QIcon::Normal).toImage(),
+        expectedHighDpiImage(64, ":/styles/commonstyle/images/standardbutton-open-%1.png"));
+    QCOMPARE(icon.pixmap(128, QIcon::Normal).toImage(),
+        expectedHighDpiImage(128, ":/styles/commonstyle/images/standardbutton-open-%1.png"));
+
+    QCOMPARE(icon.pixmap(16, QIcon::Selected).toImage(),
+        expectedHighDpiImage(16, ":/styles/commonstyle/images/standardbutton-save-%1.png"));
+    QCOMPARE(icon.pixmap(32, QIcon::Selected).toImage(),
+        expectedHighDpiImage(32, ":/styles/commonstyle/images/standardbutton-save-%1.png"));
+    QCOMPARE(icon.pixmap(64, QIcon::Selected).toImage(),
+        expectedHighDpiImage(64, ":/styles/commonstyle/images/standardbutton-save-%1.png"));
+    QCOMPARE(icon.pixmap(128, QIcon::Selected).toImage(),
+        expectedHighDpiImage(128, ":/styles/commonstyle/images/standardbutton-save-%1.png"));
+}
+
+void tst_QIcon::pixmap()
+{
+    QIcon icon;
+    icon.addFile(m_pngImageFileName, QSize(64, 64));
+
+    // Exercise all pixmap() API overloads
+    QVERIFY(icon.pixmap(16).size().width() >= 16);
+    QVERIFY(icon.pixmap(16, 16).size().width() >= 16);
+    QVERIFY(icon.pixmap(QSize(16, 16)).size().width() >= 16);
+    QVERIFY(icon.pixmap(QSize(16, 16), 1).size().width() == 16);
+    QVERIFY(icon.pixmap(QSize(16, 16), -1).size().width() >= 16);
+}
+
+void tst_QIcon::paint()
+{
+    QImage img16_1x(16, 16, QImage::Format_ARGB32);
+    img16_1x.fill(qRgb(0, 0, 0xff));
+    img16_1x.setDevicePixelRatio(1.);
+
+    QImage img16_2x(32, 32, QImage::Format_ARGB32);
+    img16_2x.fill(qRgb(0, 0xff, 0xff));
+    img16_2x.setDevicePixelRatio(2.);
+
+    QImage img32_1x(32, 32, QImage::Format_ARGB32);
+    img32_1x.fill(qRgb(0xff, 0, 0));
+    img32_1x.setDevicePixelRatio(1.);
+
+    QImage img32_2x(64, 64, QImage::Format_ARGB32);
+    img32_2x.fill(qRgb(0x0, 0xff, 0));
+    img32_2x.setDevicePixelRatio(2.);
+
+    QIcon icon;
+    icon.addPixmap(QPixmap::fromImage(img16_1x));
+    icon.addPixmap(QPixmap::fromImage(img16_2x));
+    icon.addPixmap(QPixmap::fromImage(img32_1x));
+    icon.addPixmap(QPixmap::fromImage(img32_2x));
+
+    // Test painting the icon version with a device independent size of 32x32
+    QRect iconRect(0, 0, 32, 32);
+
+    auto imageWithPaintedIconAtDpr = [&](qreal dpr) {
+        QImage paintDevice(64 * dpr, 64 * dpr, QImage::Format_ARGB32);
+        paintDevice.setDevicePixelRatio(dpr);
+
+        QPainter painter(&paintDevice);
+        icon.paint(&painter, iconRect);
+        return paintDevice;
+    };
+
+    QImage imageWithIcon1x = imageWithPaintedIconAtDpr(1.0);
+    QCOMPARE(imageWithIcon1x.pixel(iconRect.center()), qRgb(0xff, 0, 0));
+
+    QImage imageWithIcon2x = imageWithPaintedIconAtDpr(2.0);
+    QCOMPARE(imageWithIcon2x.pixel(iconRect.center()), qRgb(0, 0xff, 0));
+
+    QImage imageWithIcon3x = imageWithPaintedIconAtDpr(3.0);
+    QCOMPARE(imageWithIcon3x.pixel(iconRect.center()), qRgb(0, 0xff, 0));
 }
 
 static bool sizeLess(const QSize &a, const QSize &b)
@@ -470,6 +552,10 @@ void tst_QIcon::availableSizes()
 
 void tst_QIcon::name()
 {
+    const auto reset = qScopeGuard([]{
+        QIcon::setThemeName({});
+        QIcon::setThemeSearchPaths({});
+    });
     {
         // No name if icon does not come from a theme
         QIcon icon(":/image.png");
@@ -547,6 +633,7 @@ void tst_QIcon::task184901_badCache()
 
 void tst_QIcon::fromTheme()
 {
+    const bool abIconFromPlatform = !QIcon::fromTheme("address-book-new").isNull();
     QString firstSearchPath = QLatin1String(":/icons");
     QString secondSearchPath = QLatin1String(":/second_icons");
     QIcon::setThemeSearchPaths(QStringList() << firstSearchPath << secondSearchPath);
@@ -605,13 +692,15 @@ void tst_QIcon::fromTheme()
     noIcon = QIcon::fromTheme("svg-icon", abIcon);
     QVERIFY(!noIcon.availableSizes().isEmpty());
 
-    // Pixmaps should be no larger than the requested size (QTBUG-17953)
-    QCOMPARE(appointmentIcon.pixmap(22).size(), QSize(22, 22)); // exact
-    QCOMPARE(appointmentIcon.pixmap(32).size(), QSize(32, 32)); // exact
-    QCOMPARE(appointmentIcon.pixmap(48).size(), QSize(32, 32)); // smaller
-    QCOMPARE(appointmentIcon.pixmap(16).size(), QSize(16, 16)); // scaled down
-    QCOMPARE(appointmentIcon.pixmap(8).size(), QSize(8, 8)); // scaled down
-    QCOMPARE(appointmentIcon.pixmap(16).size(), QSize(16, 16)); // scaled down
+    // Pixmaps should be no larger than the requested size (for devicePixelRatio 1) (QTBUG-17953)
+    if (qApp->devicePixelRatio() == 1) {
+        QCOMPARE(appointmentIcon.pixmap(22).size(), QSize(22, 22)); // exact
+        QCOMPARE(appointmentIcon.pixmap(32).size(), QSize(32, 32)); // exact
+        QCOMPARE(appointmentIcon.pixmap(48).size(), QSize(32, 32)); // smaller
+        QCOMPARE(appointmentIcon.pixmap(16).size(), QSize(16, 16)); // scaled down
+        QCOMPARE(appointmentIcon.pixmap(8).size(), QSize(8, 8)); // scaled down
+        QCOMPARE(appointmentIcon.pixmap(16).size(), QSize(16, 16)); // scaled down
+    }
 
     QByteArray ba;
     // write to QByteArray
@@ -633,14 +722,38 @@ void tst_QIcon::fromTheme()
         QCOMPARE(i.availableSizes(), abIcon.availableSizes());
     }
 
+    // Check that setting a fallback theme invalidates earlier lookups
+    QVERIFY(QIcon::fromTheme("edit-cut").isNull());
+    QIcon::setFallbackThemeName("fallbacktheme");
+    QVERIFY(!QIcon::fromTheme("edit-cut").isNull());
+
     // Make sure setting the theme name clears the state
     QIcon::setThemeName("");
     abIcon = QIcon::fromTheme("address-book-new");
-    QVERIFY(abIcon.isNull());
+    QCOMPARE_NE(abIcon.isNull(), abIconFromPlatform);
+
+    // Test fallback icon behavior for empty theme names.
+    // Can only reliably test this on systems that don't have a
+    // named system icon theme.
+    QIcon::setThemeName(""); // Reset user-theme
+    if (QIcon::themeName().isEmpty()) {
+        // Test icon from fallback theme even when theme name is empty
+        QIcon::setFallbackThemeName("fallbacktheme");
+        QVERIFY(!QIcon::fromTheme("edit-cut").isNull());
+
+        // Test icon from fallback path even when theme name is empty
+        fallbackIcon = QIcon::fromTheme("red");
+        QVERIFY(!fallbackIcon.isNull());
+        QVERIFY(QIcon::hasThemeIcon("red"));
+        QCOMPARE(fallbackIcon.availableSizes().size(), 1);
+    }
 
     // Passing a full path to fromTheme is not very useful, but should work anyway
     QIcon fullPathIcon = QIcon::fromTheme(m_pngImageFileName);
     QVERIFY(!fullPathIcon.isNull());
+
+    // Restore to system fallback theme
+    QIcon::setFallbackThemeName("");
 }
 
 static inline QString findGtkUpdateIconCache()
@@ -701,7 +814,7 @@ void tst_QIcon::fromThemeCache()
     QTest::qWait(1000); // wait enough to have a different modification time in seconds
     QVERIFY(QFile(QStringLiteral(":/styles/commonstyle/images/standardbutton-save-16.png"))
         .copy(dir.path() + QLatin1String("/testcache/16x16/actions/button-save.png")));
-    QVERIFY(QFileInfo(cacheName).lastModified() < QFileInfo(dir.path() + QLatin1String("/testcache/16x16/actions")).lastModified());
+    QVERIFY(QFileInfo(cacheName).lastModified(QTimeZone::UTC) < QFileInfo(dir.path() + QLatin1String("/testcache/16x16/actions")).lastModified(QTimeZone::UTC));
     QIcon::setThemeSearchPaths(QStringList() << dir.path()); // reload themes
     QVERIFY(!QIcon::fromTheme("button-open").isNull());
 
@@ -722,7 +835,7 @@ void tst_QIcon::fromThemeCache()
     QCOMPARE(process.exitStatus(), QProcess::NormalExit);
     QCOMPARE(process.exitCode(), 0);
 #endif // QT_CONFIG(process)
-    QVERIFY(QFileInfo(cacheName).lastModified() >= QFileInfo(dir.path() + QLatin1String("/testcache/16x16/actions")).lastModified());
+    QVERIFY(QFileInfo(cacheName).lastModified(QTimeZone::UTC) >= QFileInfo(dir.path() + QLatin1String("/testcache/16x16/actions")).lastModified(QTimeZone::UTC));
     QIcon::setThemeSearchPaths(QStringList() << dir.path()); // reload themes
     QVERIFY(!QIcon::fromTheme("button-open").isNull());
     QVERIFY(!QIcon::fromTheme("button-open-fallback").isNull());

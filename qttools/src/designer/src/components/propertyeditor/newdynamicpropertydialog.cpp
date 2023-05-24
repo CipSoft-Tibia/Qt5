@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "newdynamicpropertydialog.h"
 #include "ui_newdynamicpropertydialog.h"
@@ -34,6 +9,8 @@
 #include <QtWidgets/qpushbutton.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -45,37 +22,65 @@ NewDynamicPropertyDialog::NewDynamicPropertyDialog(QDesignerDialogGuiInterface *
 {
     m_ui->setupUi(this);
     connect(m_ui->m_lineEdit, &QLineEdit::textChanged, this, &NewDynamicPropertyDialog::nameChanged);
+    connect(m_ui->m_buttonBox, &QDialogButtonBox::clicked,
+            this, &NewDynamicPropertyDialog::buttonBoxClicked);
 
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-
-    m_ui->m_comboBox->addItem(QStringLiteral("String"),      QVariant(QVariant::String));
-    m_ui->m_comboBox->addItem(QStringLiteral("StringList"),  QVariant(QVariant::StringList));
-    m_ui->m_comboBox->addItem(QStringLiteral("Char"),        QVariant(QVariant::Char));
-    m_ui->m_comboBox->addItem(QStringLiteral("ByteArray"),   QVariant(QVariant::ByteArray));
-    m_ui->m_comboBox->addItem(QStringLiteral("Url"),         QVariant(QVariant::Url));
-    m_ui->m_comboBox->addItem(QStringLiteral("Bool"),        QVariant(QVariant::Bool));
-    m_ui->m_comboBox->addItem(QStringLiteral("Int"),         QVariant(QVariant::Int));
-    m_ui->m_comboBox->addItem(QStringLiteral("UInt"),        QVariant(QVariant::UInt));
-    m_ui->m_comboBox->addItem(QStringLiteral("LongLong"),    QVariant(QVariant::LongLong));
-    m_ui->m_comboBox->addItem(QStringLiteral("ULongLong"),   QVariant(QVariant::ULongLong));
-    m_ui->m_comboBox->addItem(QStringLiteral("Double"),      QVariant(QVariant::Double));
-    m_ui->m_comboBox->addItem(QStringLiteral("Size"),        QVariant(QVariant::Size));
-    m_ui->m_comboBox->addItem(QStringLiteral("SizeF"),       QVariant(QVariant::SizeF));
-    m_ui->m_comboBox->addItem(QStringLiteral("Point"),       QVariant(QVariant::Point));
-    m_ui->m_comboBox->addItem(QStringLiteral("PointF"),      QVariant(QVariant::PointF));
-    m_ui->m_comboBox->addItem(QStringLiteral("Rect"),        QVariant(QVariant::Rect));
-    m_ui->m_comboBox->addItem(QStringLiteral("RectF"),       QVariant(QVariant::RectF));
-    m_ui->m_comboBox->addItem(QStringLiteral("Date"),        QVariant(QVariant::Date));
-    m_ui->m_comboBox->addItem(QStringLiteral("Time"),        QVariant(QVariant::Time));
-    m_ui->m_comboBox->addItem(QStringLiteral("DateTime"),    QVariant(QVariant::DateTime));
-    m_ui->m_comboBox->addItem(QStringLiteral("Font"),        QVariant(QVariant::Font));
-    m_ui->m_comboBox->addItem(QStringLiteral("Palette"),     QVariant(QVariant::Palette));
-    m_ui->m_comboBox->addItem(QStringLiteral("Color"),       QVariant(QVariant::Color));
-    m_ui->m_comboBox->addItem(QStringLiteral("Pixmap"),      QVariant(QVariant::Pixmap));
-    m_ui->m_comboBox->addItem(QStringLiteral("Icon"),        QVariant(QVariant::Icon));
-    m_ui->m_comboBox->addItem(QStringLiteral("Cursor"),      QVariant(QVariant::Cursor));
-    m_ui->m_comboBox->addItem(QStringLiteral("SizePolicy"),  QVariant(QVariant::SizePolicy));
-    m_ui->m_comboBox->addItem(QStringLiteral("KeySequence"), QVariant(QVariant::KeySequence));
+    m_ui->m_comboBox->addItem(u"String"_s,
+                              QVariant(QMetaType(QMetaType::QString)));
+    m_ui->m_comboBox->addItem(u"StringList"_s,
+                              QVariant(QMetaType(QMetaType::QStringList)));
+    m_ui->m_comboBox->addItem(u"Char"_s,
+                              QVariant(QMetaType(QMetaType::QChar)));
+    m_ui->m_comboBox->addItem(u"ByteArray"_s,
+                              QVariant(QMetaType(QMetaType::QByteArray)));
+    m_ui->m_comboBox->addItem(u"Url"_s,
+                              QVariant(QMetaType(QMetaType::QUrl)));
+    m_ui->m_comboBox->addItem(u"Bool"_s,
+                              QVariant(QMetaType(QMetaType::Bool)));
+    m_ui->m_comboBox->addItem(u"Int"_s,
+                              QVariant(QMetaType(QMetaType::Int)));
+    m_ui->m_comboBox->addItem(u"UInt"_s,
+                              QVariant(QMetaType(QMetaType::UInt)));
+    m_ui->m_comboBox->addItem(u"LongLong"_s,
+                              QVariant(QMetaType(QMetaType::LongLong)));
+    m_ui->m_comboBox->addItem(u"ULongLong"_s,
+                              QVariant(QMetaType(QMetaType::ULongLong)));
+    m_ui->m_comboBox->addItem(u"Double"_s,
+                              QVariant(QMetaType(QMetaType::Double)));
+    m_ui->m_comboBox->addItem(u"Size"_s,
+                              QVariant(QMetaType(QMetaType::QSize)));
+    m_ui->m_comboBox->addItem(u"SizeF"_s,
+                              QVariant(QMetaType(QMetaType::QSizeF)));
+    m_ui->m_comboBox->addItem(u"Point"_s,
+                              QVariant(QMetaType(QMetaType::QPoint)));
+    m_ui->m_comboBox->addItem(u"PointF"_s,
+                              QVariant(QMetaType(QMetaType::QPointF)));
+    m_ui->m_comboBox->addItem(u"Rect"_s,
+                              QVariant(QMetaType(QMetaType::QRect)));
+    m_ui->m_comboBox->addItem(u"RectF"_s,
+                              QVariant(QMetaType(QMetaType::QRectF)));
+    m_ui->m_comboBox->addItem(u"Date"_s,
+                              QVariant(QMetaType(QMetaType::QDate)));
+    m_ui->m_comboBox->addItem(u"Time"_s,
+                              QVariant(QMetaType(QMetaType::QTime)));
+    m_ui->m_comboBox->addItem(u"DateTime"_s,
+                              QVariant(QMetaType(QMetaType::QDateTime)));
+    m_ui->m_comboBox->addItem(u"Font"_s,
+                              QVariant(QMetaType(QMetaType::QFont)));
+    m_ui->m_comboBox->addItem(u"Palette"_s,
+                              QVariant(QMetaType(QMetaType::QPalette)));
+    m_ui->m_comboBox->addItem(u"Color"_s,
+                              QVariant(QMetaType(QMetaType::QColor)));
+    m_ui->m_comboBox->addItem(u"Pixmap"_s,
+                              QVariant(QMetaType(QMetaType::QPixmap)));
+    m_ui->m_comboBox->addItem(u"Icon"_s,
+                              QVariant(QMetaType(QMetaType::QIcon)));
+    m_ui->m_comboBox->addItem(u"Cursor"_s,
+                              QVariant(QMetaType(QMetaType::QCursor)));
+    m_ui->m_comboBox->addItem(u"SizePolicy"_s,
+                              QVariant(QMetaType(QMetaType::QSizePolicy)));
+    m_ui->m_comboBox->addItem(u"KeySequence"_s,
+                              QVariant(QMetaType(QMetaType::QKeySequence)));
 
     m_ui->m_comboBox->setCurrentIndex(0); // String
     setOkButtonEnabled(false);
@@ -96,9 +101,9 @@ void NewDynamicPropertyDialog::setReservedNames(const QStringList &names)
     m_reservedNames = names;
 }
 
-void NewDynamicPropertyDialog::setPropertyType(QVariant::Type t)
+void NewDynamicPropertyDialog::setPropertyType(int t)
 {
-    const int index = m_ui->m_comboBox->findData(QVariant(t));
+    const int index = m_ui->m_comboBox->findData(QVariant(QMetaType(t)));
     if (index != -1)
         m_ui->m_comboBox->setCurrentIndex(index);
 }
@@ -132,14 +137,14 @@ bool NewDynamicPropertyDialog::validatePropertyName(const QString& name)
         information(tr("The current object already has a property named '%1'.\nPlease select another, unique one.").arg(name));
         return false;
     }
-    if (!QDesignerPropertySheet::internalDynamicPropertiesEnabled() && name.startsWith(QStringLiteral("_q_"))) {
+    if (!QDesignerPropertySheet::internalDynamicPropertiesEnabled() && name.startsWith("_q_"_L1)) {
         information(tr("The '_q_' prefix is reserved for the Qt library.\nPlease select another name."));
         return false;
     }
     return true;
 }
 
-void NewDynamicPropertyDialog::on_m_buttonBox_clicked(QAbstractButton *btn)
+void NewDynamicPropertyDialog::buttonBoxClicked(QAbstractButton *btn)
 {
     const int role = m_ui->m_buttonBox->buttonRole(btn);
     switch (role) {

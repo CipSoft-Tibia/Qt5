@@ -1,42 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
 #include "qv4stackframe_p.h"
+#include <private/qv4qobjectwrapper_p.h>
 #include <QtCore/qstring.h>
 
 using namespace  QV4;
@@ -51,24 +17,54 @@ QString CppStackFrame::function() const
     return v4Function ? v4Function->name()->toQString() : QString();
 }
 
-int CppStackFrame::lineNumber() const
+static const CompiledData::CodeOffsetToLineAndStatement *lineAndStatement(const CppStackFrame *frame)
 {
-    if (!v4Function)
-        return -1;
+    if (!frame->v4Function || frame->instructionPointer <= 0)
+        return nullptr;
 
-    auto findLine = [](const CompiledData::CodeOffsetToLine &entry, uint offset) {
+    auto findLine = [](const CompiledData::CodeOffsetToLineAndStatement &entry, uint offset) {
         return entry.codeOffset < offset;
     };
 
-    const QV4::CompiledData::Function *cf = v4Function->compiledFunction;
-    uint offset = instructionPointer;
-    const CompiledData::CodeOffsetToLine *lineNumbers = cf->lineNumberTable();
-    uint nLineNumbers = cf->nLineNumbers;
-    const CompiledData::CodeOffsetToLine *line = std::lower_bound(lineNumbers, lineNumbers + nLineNumbers, offset, findLine) - 1;
-    return line->line;
+    const QV4::CompiledData::Function *cf = frame->v4Function->compiledFunction;
+    const uint offset = frame->instructionPointer;
+    const CompiledData::CodeOffsetToLineAndStatement *lineAndStatementNumbers
+            = cf->lineAndStatementNumberTable();
+    const uint nLineAndStatementNumbers = cf->nLineAndStatementNumbers;
+    return std::lower_bound(
+                lineAndStatementNumbers, lineAndStatementNumbers + nLineAndStatementNumbers,
+                offset, findLine) - 1;
 }
 
-ReturnedValue CppStackFrame::thisObject() const {
-    return jsFrame->thisObject.asReturnedValue();
+int CppStackFrame::lineNumber() const
+{
+    if (auto *line = lineAndStatement(this))
+        return line->line;
+    return missingLineNumber();
 }
 
+int CppStackFrame::statementNumber() const
+{
+    if (auto *statement = lineAndStatement(this))
+        return statement->statement;
+    return -1;
+}
+
+int CppStackFrame::missingLineNumber() const
+{
+    // Remove the first bit so that we can cast to positive int and negate.
+    // Remove the last bit so that it can't be -1.
+    const int result = -int(quintptr(this) & 0x7ffffffe);
+    Q_ASSERT(result < -1);
+    return result;
+}
+
+ReturnedValue QV4::CppStackFrame::thisObject() const
+{
+    if (isJSTypesFrame())
+        return static_cast<const JSTypesStackFrame *>(this)->thisObject();
+
+    Q_ASSERT(isMetaTypesFrame());
+    const auto metaTypesFrame = static_cast<const MetaTypesStackFrame *>(this);
+    return QObjectWrapper::wrap(metaTypesFrame->context()->engine(), metaTypesFrame->thisObject());
+}

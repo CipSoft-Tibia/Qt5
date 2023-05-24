@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'qtgradientview.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -35,16 +35,16 @@ public:
     void setupUi(QWidget *QtGradientView)
     {
         if (QtGradientView->objectName().isEmpty())
-            QtGradientView->setObjectName(QString::fromUtf8("QtGradientView"));
+            QtGradientView->setObjectName("QtGradientView");
         QtGradientView->resize(484, 228);
         vboxLayout = new QVBoxLayout(QtGradientView);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         vboxLayout->setContentsMargins(0, 0, 0, 0);
         hboxLayout = new QHBoxLayout();
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
+        hboxLayout->setObjectName("hboxLayout");
         newButton = new QToolButton(QtGradientView);
-        newButton->setObjectName(QString::fromUtf8("newButton"));
-        QSizePolicy sizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+        newButton->setObjectName("newButton");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Minimum);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(newButton->sizePolicy().hasHeightForWidth());
@@ -55,7 +55,7 @@ public:
         hboxLayout->addWidget(newButton);
 
         editButton = new QToolButton(QtGradientView);
-        editButton->setObjectName(QString::fromUtf8("editButton"));
+        editButton->setObjectName("editButton");
         sizePolicy.setHeightForWidth(editButton->sizePolicy().hasHeightForWidth());
         editButton->setSizePolicy(sizePolicy);
         editButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -64,7 +64,7 @@ public:
         hboxLayout->addWidget(editButton);
 
         renameButton = new QToolButton(QtGradientView);
-        renameButton->setObjectName(QString::fromUtf8("renameButton"));
+        renameButton->setObjectName("renameButton");
         sizePolicy.setHeightForWidth(renameButton->sizePolicy().hasHeightForWidth());
         renameButton->setSizePolicy(sizePolicy);
         renameButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -73,7 +73,7 @@ public:
         hboxLayout->addWidget(renameButton);
 
         removeButton = new QToolButton(QtGradientView);
-        removeButton->setObjectName(QString::fromUtf8("removeButton"));
+        removeButton->setObjectName("removeButton");
         sizePolicy.setHeightForWidth(removeButton->sizePolicy().hasHeightForWidth());
         removeButton->setSizePolicy(sizePolicy);
         removeButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -81,7 +81,7 @@ public:
 
         hboxLayout->addWidget(removeButton);
 
-        spacerItem = new QSpacerItem(71, 26, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(71, 26, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
@@ -89,7 +89,7 @@ public:
         vboxLayout->addLayout(hboxLayout);
 
         listWidget = new QListWidget(QtGradientView);
-        listWidget->setObjectName(QString::fromUtf8("listWidget"));
+        listWidget->setObjectName("listWidget");
 
         vboxLayout->addWidget(listWidget);
 

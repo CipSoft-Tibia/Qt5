@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickanimator_p_p.h"
 #include "qquickanimatorjob_p.h"
@@ -57,7 +21,7 @@ QT_BEGIN_NAMESPACE
     directly on Qt Quick's scene graph, rather than the QML objects and their
     properties like regular Animation types do. This has the benefit that
     Animator based animations can animate on the \l
-    {Threaded Render Loop ("threaded")}{scene graph's rendering thread} even when the
+    {Threaded Render Loop ('threaded')}{scene graph's rendering thread} even when the
     UI thread is blocked.
 
     The value of the QML property will be updated after the animation has
@@ -202,9 +166,9 @@ qreal QQuickAnimator::to() const
 void QQuickAnimator::setFrom(qreal from)
 {
     Q_D(QQuickAnimator);
+    d->fromIsDefined = true;
     if (from == d->from)
         return;
-    d->fromIsDefined = true;
     d->from = from;
     Q_EMIT fromChanged(d->from);
 }
@@ -255,7 +219,8 @@ void QQuickAnimatorPrivate::apply(QQuickAnimatorJob *job,
 
     if (modified.isEmpty()) {
         job->setTarget(target);
-        job->setFrom(from);
+        if (fromIsDefined)
+            job->setFrom(from);
         job->setTo(to);
     }
 
@@ -265,6 +230,9 @@ void QQuickAnimatorPrivate::apply(QQuickAnimatorJob *job,
         else
             job->setTarget(qobject_cast<QQuickItem *>(defaultTarget));
     }
+
+    if (modified.isEmpty() && !fromIsDefined && job->target())
+        job->setFrom(job->target()->property(propertyName.toLatin1()).toReal());
 
     job->setDuration(duration);
     job->setLoopCount(loopCount);
@@ -279,7 +247,8 @@ QAbstractAnimationJob *QQuickAnimator::transition(QQuickStateActions &actions,
     Q_D(QQuickAnimator);
 
     if (d->defaultProperty.isValid() && propertyName() != d->defaultProperty.name()) {
-        qDebug() << Q_FUNC_INFO << "property name conflict...";
+        qmlWarning(this) << "property name conflict: \""
+            << propertyName() << "\" != \"" << d->defaultProperty.name() << "\"";
         return nullptr;
     }
 
@@ -480,14 +449,16 @@ QQuickAnimatorJob *QQuickRotationAnimator::createJob() const {
 
     Possible values are:
 
-    \list
-    \li RotationAnimator.Numerical (default) - Rotate by linearly interpolating between the two numbers.
-           A rotation from 10 to 350 will rotate 340 degrees clockwise.
-    \li RotationAnimator.Clockwise - Rotate clockwise between the two values
-    \li RotationAnimator.Counterclockwise - Rotate counterclockwise between the two values
-    \li RotationAnimator.Shortest - Rotate in the direction that produces the shortest animation path.
-           A rotation from 10 to 350 will rotate 20 degrees counterclockwise.
-    \endlist
+    \value RotationAnimator.Numerical
+        (default) Rotate by linearly interpolating between the two numbers.
+        A rotation from 10 to 350 will rotate 340 degrees clockwise.
+    \value RotationAnimator.Clockwise
+        Rotate clockwise between the two values
+    \value RotationAnimator.Counterclockwise
+        Rotate counterclockwise between the two values
+    \value RotationAnimator.Shortest
+        Rotate in the direction that produces the shortest animation path.
+        A rotation from 10 to 350 will rotate 20 degrees counterclockwise.
 */
 void QQuickRotationAnimator::setDirection(RotationDirection dir)
 {
@@ -504,7 +475,7 @@ QQuickRotationAnimator::RotationDirection QQuickRotationAnimator::direction() co
     return d->direction;
 }
 
-#if QT_CONFIG(quick_shadereffect) && QT_CONFIG(opengl)
+#if QT_CONFIG(quick_shadereffect)
 /*!
     \qmltype UniformAnimator
     \instantiates QQuickUniformAnimator

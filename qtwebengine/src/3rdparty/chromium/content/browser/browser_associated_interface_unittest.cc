@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,13 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/pickle.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
 #include "content/public/browser/browser_associated_interface.h"
 #include "content/public/browser/browser_message_filter.h"
@@ -51,15 +51,15 @@ class ProxyRunner : public IPC::Listener {
     if (for_server) {
       factory = IPC::ChannelMojo::CreateServerFactory(
           std::move(pipe), ipc_task_runner,
-          base::ThreadTaskRunnerHandle::Get());
+          base::SingleThreadTaskRunner::GetCurrentDefault());
     } else {
       factory = IPC::ChannelMojo::CreateClientFactory(
           std::move(pipe), ipc_task_runner,
-          base::ThreadTaskRunnerHandle::Get());
+          base::SingleThreadTaskRunner::GetCurrentDefault());
     }
-    channel_ =
-        IPC::ChannelProxy::Create(std::move(factory), this, ipc_task_runner,
-                                  base::ThreadTaskRunnerHandle::Get());
+    channel_ = IPC::ChannelProxy::Create(
+        std::move(factory), this, ipc_task_runner,
+        base::SingleThreadTaskRunner::GetCurrentDefault());
   }
 
   void ShutDown() { channel_.reset(); }
@@ -76,14 +76,12 @@ class ProxyRunner : public IPC::Listener {
 class TestDriverMessageFilter
     : public BrowserMessageFilter,
       public BrowserAssociatedInterface<
-          mojom::BrowserAssociatedInterfaceTestDriver>,
-      public mojom::BrowserAssociatedInterfaceTestDriver {
+          mojom::BrowserAssociatedInterfaceTestDriver> {
  public:
   TestDriverMessageFilter()
       : BrowserMessageFilter(0),
         BrowserAssociatedInterface<mojom::BrowserAssociatedInterfaceTestDriver>(
-            this, this) {
-  }
+            this) {}
 
  private:
   ~TestDriverMessageFilter() override {}

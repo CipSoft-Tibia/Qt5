@@ -1,11 +1,12 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "fxbarcode/oned/BC_OnedCode128Writer.h"
 
+#include <iterator>
+
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/base/stl_util.h"
 
 namespace {
 
@@ -32,7 +33,7 @@ TEST(OnedCode128WriterTest, Encode128B) {
       {"321ABC", 722, {104, 19, 18, 17, 33, 34, 35}, 7},
       {"XYZ", 448, {104, 56, 57, 58}, 4},
   };
-  for (size_t i = 0; i < pdfium::size(kTestCases); ++i) {
+  for (size_t i = 0; i < std::size(kTestCases); ++i) {
     FXSYS_snprintf(buf, sizeof(buf) - 1, "Test case %zu", i);
     SCOPED_TRACE(buf);
     const TestCase& test_case = kTestCases[i];
@@ -65,7 +66,7 @@ TEST(OnedCode128WriterTest, Encode128C) {
       {"321ABC", 933, {105, 32, 1, 65, 66, 67}, 6},
       {"XYZ", 641, {105, 88, 89, 90}, 4},
   };
-  for (size_t i = 0; i < pdfium::size(kTestCases); ++i) {
+  for (size_t i = 0; i < std::size(kTestCases); ++i) {
     FXSYS_snprintf(buf, sizeof(buf) - 1, "Test case %zu", i);
     SCOPED_TRACE(buf);
     const TestCase& test_case = kTestCases[i];
@@ -84,7 +85,7 @@ TEST(OnedCode128WriterTest, Encode128C) {
 
 TEST(OnedCode128WriterTest, CheckContentValidity) {
   {
-    CBC_OnedCode128Writer writer(BC_CODE128_B);
+    CBC_OnedCode128Writer writer(BC_TYPE::kCode128B);
     EXPECT_TRUE(writer.CheckContentValidity(L"foo"));
     EXPECT_TRUE(writer.CheckContentValidity(L"xyz"));
     EXPECT_FALSE(writer.CheckContentValidity(L""));
@@ -94,7 +95,7 @@ TEST(OnedCode128WriterTest, CheckContentValidity) {
     EXPECT_FALSE(writer.CheckContentValidity(L"qux\x88"));
   }
   {
-    CBC_OnedCode128Writer writer(BC_CODE128_C);
+    CBC_OnedCode128Writer writer(BC_TYPE::kCode128C);
     EXPECT_TRUE(writer.CheckContentValidity(L"foo"));
     EXPECT_TRUE(writer.CheckContentValidity(L"xyz"));
     EXPECT_FALSE(writer.CheckContentValidity(L""));
@@ -107,7 +108,7 @@ TEST(OnedCode128WriterTest, CheckContentValidity) {
 
 TEST(OnedCode128WriterTest, FilterContents) {
   {
-    CBC_OnedCode128Writer writer(BC_CODE128_B);
+    CBC_OnedCode128Writer writer(BC_TYPE::kCode128B);
     EXPECT_STREQ(L"", writer.FilterContents(L"").c_str());
     EXPECT_STREQ(L"foo", writer.FilterContents(L"foo\x10").c_str());
     EXPECT_STREQ(L"fool", writer.FilterContents(L"foo\x10l").c_str());
@@ -116,7 +117,7 @@ TEST(OnedCode128WriterTest, FilterContents) {
     EXPECT_STREQ(L"bar", writer.FilterContents(L"bar\x10\x7F\x88").c_str());
   }
   {
-    CBC_OnedCode128Writer writer(BC_CODE128_C);
+    CBC_OnedCode128Writer writer(BC_TYPE::kCode128C);
     EXPECT_STREQ(L"", writer.FilterContents(L"").c_str());
     EXPECT_STREQ(L"f", writer.FilterContents(L"foo\x10").c_str());
     EXPECT_STREQ(L"f", writer.FilterContents(L"foo\x10l").c_str());

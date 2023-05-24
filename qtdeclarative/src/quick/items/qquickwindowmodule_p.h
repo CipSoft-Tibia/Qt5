@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKWINDOWMODULE_H
 #define QQUICKWINDOWMODULE_H
@@ -60,21 +24,32 @@ QT_BEGIN_NAMESPACE
 
 class QQuickWindowQmlImplPrivate;
 
+struct QWindowForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QWindow)
+    QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 1)
+};
+
 class Q_QUICK_PRIVATE_EXPORT QQuickWindowQmlImpl : public QQuickWindow, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
 
     Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged)
-    Q_PROPERTY(Visibility visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
-    Q_PROPERTY(QObject *screen READ screen WRITE setScreen NOTIFY screenChanged REVISION 3)
+    Q_PROPERTY(QWindow::Visibility visibility READ visibility WRITE setVisibility NOTIFY
+                       visibilityChanged)
+    Q_PROPERTY(QObject *screen READ screen WRITE setScreen NOTIFY screenChanged REVISION(2, 3))
     QML_ATTACHED(QQuickWindowAttached)
+    QML_NAMED_ELEMENT(Window)
+    QML_ADDED_IN_VERSION(2, 1)
 
 public:
     QQuickWindowQmlImpl(QWindow *parent = nullptr);
 
     void setVisible(bool visible);
-    void setVisibility(Visibility visibility);
+    void setVisibility(QWindow::Visibility visibility);
 
     QObject *screen() const;
     void setScreen(QObject *screen);
@@ -84,11 +59,13 @@ public:
 Q_SIGNALS:
     void visibleChanged(bool arg);
     void visibilityChanged(QWindow::Visibility visibility);
-    Q_REVISION(3) void screenChanged();
+    Q_REVISION(2, 3) void screenChanged();
 
 protected:
     void classBegin() override;
     void componentComplete() override;
+
+    QQuickWindowQmlImpl(QQuickWindowQmlImplPrivate &dd, QWindow *parent);
 
 private Q_SLOTS:
     void setWindowVisibility();

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the utils of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "lalr.h"
 #include "dotgraph.h"
@@ -42,6 +17,8 @@
 #define QLALR_NO_DEBUG_TABLE
 #define QLALR_NO_DEBUG_DOT
 
+using namespace Qt::StringLiterals;
+
 static void help_me ()
 {
   qerr() << "Usage: qlalr [options] [input file name]" << Qt::endl
@@ -51,7 +28,8 @@ static void help_me ()
        << "  --no-debug\t\tno debug information" << Qt::endl
        << "  --no-lines\t\tno #line directives" << Qt::endl
        << "  --dot\t\t\tgenerate a graph" << Qt::endl
-       << "  --qt\t\tadd the Qt copyright header and Qt-specific types and macros" << Qt::endl
+       << "  --qt\t\t\tadd the Qt copyright header and Qt-specific types and macros" << Qt::endl
+       << "  --exit-on-warn\texit with status code 2 on warning" << Qt::endl
        << Qt::endl;
   exit (0);
 }
@@ -65,27 +43,31 @@ int main (int argc, char *argv[])
   bool no_lines = false;
   bool debug_info = true;
   bool qt_copyright = false;
+  bool warnings_are_errors = false;
   QString file_name;
 
   const QStringList args = app.arguments().mid(1);
   for (const QString &arg : args) {
-      if (arg == QLatin1String ("-h") || arg == QLatin1String ("--help"))
+      if (arg == "-h"_L1 || arg == "--help"_L1)
         help_me ();
 
-      else if (arg == QLatin1String ("-v") || arg == QLatin1String ("--verbose"))
+      else if (arg == "-v"_L1 || arg == "--verbose"_L1)
         generate_report = true;
 
-      else if (arg == QLatin1String ("--dot"))
+      else if (arg == "--dot"_L1)
         generate_dot = true;
 
-      else if (arg == QLatin1String ("--no-lines"))
+      else if (arg == "--no-lines"_L1)
         no_lines = true;
 
-      else if (arg == QLatin1String ("--no-debug"))
+      else if (arg == "--no-debug"_L1)
         debug_info = false;
 
-      else if (arg == QLatin1String ("--qt"))
+      else if (arg == "--qt"_L1)
         qt_copyright = true;
+
+      else if (arg == "--exit-on-warn"_L1)
+        warnings_are_errors = true;
 
       else if (file_name.isEmpty ())
         file_name = arg;
@@ -127,6 +109,7 @@ int main (int argc, char *argv[])
   CppGenerator gen (p, grammar, aut, generate_report);
   gen.setDebugInfo (debug_info);
   gen.setCopyright (qt_copyright);
+  gen.setWarningsAreErrors (warnings_are_errors);
   gen ();
 
   if (generate_dot)
@@ -150,19 +133,19 @@ QString Recognizer::expand (const QString &text) const
 
   if (_M_grammar->start != _M_grammar->names.end ())
     {
-      code = code.replace (QLatin1String("$start_id"), QString::number (std::distance (_M_grammar->names.begin (), _M_grammar->start)));
-      code = code.replace (QLatin1String("$start"), *_M_grammar->start);
+      code = code.replace ("$start_id"_L1, QString::number (std::distance (_M_grammar->names.begin (), _M_grammar->start)));
+      code = code.replace ("$start"_L1, *_M_grammar->start);
     }
 
-  code = code.replace (QLatin1String("$header"), _M_grammar->table_name.toLower () + QLatin1String("_p.h"));
+  code = code.replace ("$header"_L1, _M_grammar->table_name.toLower () + "_p.h"_L1);
 
-  code = code.replace (QLatin1String("$table"), _M_grammar->table_name);
-  code = code.replace (QLatin1String("$parser"), _M_grammar->table_name);
+  code = code.replace ("$table"_L1, _M_grammar->table_name);
+  code = code.replace ("$parser"_L1, _M_grammar->table_name);
 
   if (_M_current_rule != _M_grammar->rules.end ())
     {
-      code = code.replace (QLatin1String("$rule_number"), QString::number (std::distance (_M_grammar->rules.begin (), _M_current_rule)));
-      code = code.replace (QLatin1String("$rule"), *_M_current_rule->lhs);
+      code = code.replace ("$rule_number"_L1, QString::number (std::distance (_M_grammar->rules.begin (), _M_current_rule)));
+      code = code.replace ("$rule"_L1, *_M_current_rule->lhs);
     }
 
   return code;

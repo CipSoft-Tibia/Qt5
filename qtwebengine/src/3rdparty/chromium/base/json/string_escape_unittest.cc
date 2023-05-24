@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <stddef.h>
 
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -161,7 +160,7 @@ TEST(JSONStringEscapeTest, EscapeUTF16) {
   };
 
   for (const auto& i : cases) {
-    string16 in = WideToUTF16(i.to_escape);
+    std::u16string in = WideToUTF16(i.to_escape);
 
     std::string out;
     EscapeJSONString(in, false, &out);
@@ -173,7 +172,7 @@ TEST(JSONStringEscapeTest, EscapeUTF16) {
     EXPECT_TRUE(IsStringUTF8AllowingNoncharacters(out));
   }
 
-  string16 in = WideToUTF16(cases[0].to_escape);
+  std::u16string in = WideToUTF16(cases[0].to_escape);
   std::string out;
   EscapeJSONString(in, false, &out);
   EXPECT_TRUE(IsStringUTF8AllowingNoncharacters(out));
@@ -186,7 +185,7 @@ TEST(JSONStringEscapeTest, EscapeUTF16) {
   EXPECT_TRUE(IsStringUTF8AllowingNoncharacters(out));
 
   // now try with a NULL in the string
-  string16 null_prepend = WideToUTF16(L"test");
+  std::u16string null_prepend = u"test";
   null_prepend.push_back(0);
   in = null_prepend + in;
   std::string expected = "test\\u0000";
@@ -200,7 +199,7 @@ TEST(JSONStringEscapeTest, EscapeUTF16) {
 TEST(JSONStringEscapeTest, EscapeUTF16OutsideBMP) {
   {
     // {a, U+10300, !}, SMP.
-    string16 test;
+    std::u16string test;
     test.push_back('a');
     test.push_back(0xD800);
     test.push_back(0xDF00);
@@ -211,7 +210,7 @@ TEST(JSONStringEscapeTest, EscapeUTF16OutsideBMP) {
   }
   {
     // {U+20021, U+2002B}, SIP.
-    string16 test;
+    std::u16string test;
     test.push_back(0xD840);
     test.push_back(0xDC21);
     test.push_back(0xD840);
@@ -222,7 +221,7 @@ TEST(JSONStringEscapeTest, EscapeUTF16OutsideBMP) {
   }
   {
     // {?, U+D800, @}, lone surrogate.
-    string16 test;
+    std::u16string test;
     test.push_back('?');
     test.push_back(0xD800);
     test.push_back('@');
@@ -252,7 +251,7 @@ TEST(JSONStringEscapeTest, EscapeBytes) {
   }
 
   const char kEmbedNull[] = { '\xab', '\x39', '\0', '\x9f', '\xab' };
-  std::string in(kEmbedNull, base::size(kEmbedNull));
+  std::string in(kEmbedNull, std::size(kEmbedNull));
   EXPECT_FALSE(IsStringUTF8AllowingNoncharacters(in));
   EXPECT_EQ(std::string("\\u00AB9\\u0000\\u009F\\u00AB"),
             EscapeBytesAsInvalidJSONString(in, false));

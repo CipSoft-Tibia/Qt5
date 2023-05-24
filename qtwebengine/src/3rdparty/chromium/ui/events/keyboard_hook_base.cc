@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,15 +6,14 @@
 
 #include <utility>
 
-#include "base/macros.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
 #include "ui/events/event.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 
 namespace ui {
 
 KeyboardHookBase::KeyboardHookBase(
-    base::Optional<base::flat_set<DomCode>> dom_codes,
+    absl::optional<base::flat_set<DomCode>> dom_codes,
     KeyEventCallback callback)
     : key_event_callback_(std::move(callback)),
       dom_codes_(std::move(dom_codes)) {

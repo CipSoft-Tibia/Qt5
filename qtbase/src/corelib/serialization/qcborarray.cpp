@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcborarray.h"
 #include "qcborvalue_p.h"
@@ -49,6 +13,7 @@ using namespace QtCbor;
     \class QCborArray
     \inmodule QtCore
     \ingroup cbor
+    \ingroup qtserialization
     \reentrant
     \since 5.12
 
@@ -59,14 +24,15 @@ using namespace QtCbor;
     binary data encoding that is a superset of JSON. It was created by the IETF
     Constrained RESTful Environments (CoRE) WG, which has used it in many new
     RFCs. It is meant to be used alongside the
-    \l{https://tools.ietf.org/html/rfc7252}{CoAP protocol}.
+    \l{RFC 7252}{CoAP protocol}.
 
     QCborArray is very similar to \l QVariantList and \l QJsonArray and its API
     is almost identical to those two classes. It can also be converted to and
     from those two, though there may be loss of information in some
     conversions.
 
-    \sa QCborValue, QCborMap, QJsonArray, QList, QVector
+    \sa QCborValue, QCborMap, QJsonArray, QList, {Parsing and displaying CBOR data},
+        {Serialization Converter}, {Saving and Loading a Game}
  */
 
 /*!
@@ -809,7 +775,7 @@ void QCborArray::detach(qsizetype reserved)
 */
 
 /*!
-    \fn QCborValueRef QCborArray::Iterator::operator[](qsizetype j)
+    \fn QCborValueRef QCborArray::Iterator::operator[](qsizetype j) const
 
     Returns a modifiable reference to the item at a position \a j steps forward
     from the item pointed to by this iterator.
@@ -883,7 +849,7 @@ void QCborArray::detach(qsizetype reserved)
 /*!
     \fn QCborArray::Iterator &QCborArray::Iterator::operator++()
 
-    The prefix ++ operator, \c{++it}, advances the iterator to the next item in
+    The prefix \c{++} operator, \c{++it}, advances the iterator to the next item in
     the array and returns this iterator.
 
     Calling this function on QCborArray::end() leads to undefined results.
@@ -895,14 +861,14 @@ void QCborArray::detach(qsizetype reserved)
     \fn QCborArray::Iterator QCborArray::Iterator::operator++(int)
     \overload
 
-    The postfix ++ operator, \c{it++}, advances the iterator to the next item
+    The postfix \c{++} operator, \c{it++}, advances the iterator to the next item
     in the array and returns an iterator to the previously current item.
 */
 
 /*!
     \fn QCborArray::Iterator &QCborArray::Iterator::operator--()
 
-    The prefix -- operator, \c{--it}, makes the preceding item current and
+    The prefix \c{--} operator, \c{--it}, makes the preceding item current and
     returns this iterator.
 
     Calling this function on QCborArray::begin() leads to undefined results.
@@ -914,7 +880,7 @@ void QCborArray::detach(qsizetype reserved)
     \fn QCborArray::Iterator QCborArray::Iterator::operator--(int)
     \overload
 
-    The postfix -- operator, \c{it--}, makes the preceding item current and
+    The postfix \c{--} operator, \c{it--}, makes the preceding item current and
     returns an iterator to the previously current item.
 */
 
@@ -1055,7 +1021,7 @@ void QCborArray::detach(qsizetype reserved)
 */
 
 /*!
-    \fn const QCborValueRef QCborArray::ConstIterator::operator[](qsizetype j)
+    \fn QCborValueRef QCborArray::ConstIterator::operator[](qsizetype j) const
 
     Returns the item at a position \a j steps forward from the item pointed to
     by this iterator.
@@ -1123,7 +1089,7 @@ void QCborArray::detach(qsizetype reserved)
 /*!
     \fn QCborArray::ConstIterator &QCborArray::ConstIterator::operator++()
 
-    The prefix ++ operator, \c{++it}, advances the iterator to the next item in
+    The prefix \c{++} operator, \c{++it}, advances the iterator to the next item in
     the array and returns this iterator.
 
     Calling this function on QCborArray::end() leads to undefined results.
@@ -1135,14 +1101,14 @@ void QCborArray::detach(qsizetype reserved)
     \fn QCborArray::ConstIterator QCborArray::ConstIterator::operator++(int)
     \overload
 
-    The postfix ++ operator, \c{it++}, advances the iterator to the next item
+    The postfix \c{++} operator, \c{it++}, advances the iterator to the next item
     in the array and returns an iterator to the previously current item.
 */
 
 /*!
     \fn QCborArray::ConstIterator &QCborArray::ConstIterator::operator--()
 
-    The prefix -- operator, \c{--it}, makes the preceding item current and
+    The prefix \c{--} operator, \c{--it}, makes the preceding item current and
     returns this iterator.
 
     Calling this function on QCborArray::begin() leads to undefined results.
@@ -1154,7 +1120,7 @@ void QCborArray::detach(qsizetype reserved)
     \fn QCborArray::ConstIterator QCborArray::ConstIterator::operator--(int)
     \overload
 
-    The postfix -- operator, \c{it--}, makes the preceding item current and
+    The postfix \c{--} operator, \c{it--}, makes the preceding item current and
     returns an iterator to the previously current item.
 */
 
@@ -1200,7 +1166,7 @@ void QCborArray::detach(qsizetype reserved)
     Returns the offset of this iterator relative to \a other.
 */
 
-uint qHash(const QCborArray &array, uint seed)
+size_t qHash(const QCborArray &array, size_t seed)
 {
     return qHashRange(array.begin(), array.end(), seed);
 }
@@ -1220,11 +1186,13 @@ QDebug operator<<(QDebug dbg, const QCborArray &a)
 #endif
 
 #ifndef QT_NO_DATASTREAM
+#if QT_CONFIG(cborstreamwriter)
 QDataStream &operator<<(QDataStream &stream, const QCborArray &value)
 {
     stream << value.toCborValue().toCbor();
     return stream;
 }
+#endif
 
 QDataStream &operator>>(QDataStream &stream, QCborArray &value)
 {

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 
 #include <vector>
 
-#include "base/macros.h"
+#include "base/base_export.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/profiler/frame.h"
 #include "base/profiler/module_cache.h"
 #include "base/profiler/register_context.h"
@@ -17,28 +18,31 @@ namespace base {
 // The result of attempting to unwind stack frames.
 enum class UnwindResult {
   // The end of the stack was reached successfully.
-  COMPLETED,
+  kCompleted,
 
   // The walk reached a frame that it doesn't know how to unwind, but might be
   // unwindable by the other native/aux unwinder.
-  UNRECOGNIZED_FRAME,
+  kUnrecognizedFrame,
 
   // The walk was aborted and is not resumable.
-  ABORTED,
+  kAborted,
 };
 
 // Unwinder provides an interface for stack frame unwinder implementations for
-// use with the StackSamplingProfiler. The profiler is expected to call
-// CanUnwind() to determine if the Unwinder thinks it can unwind from the frame
-// represented by the context values, then TryUnwind() to attempt the
+// use with the StackSamplingProfiler. Initialize() must be invoked prior to the
+// invocation of any other function on the interface. The profiler is expected
+// to call CanUnwind() to determine if the Unwinder thinks it can unwind from
+// the frame represented by the context values, then TryUnwind() to attempt the
 // unwind.
-class Unwinder {
+class BASE_EXPORT Unwinder {
  public:
   virtual ~Unwinder() = default;
 
-  // Invoked to allow the unwinder to add any modules it recognizes to the
-  // ModuleCache.
-  virtual void AddInitialModules(ModuleCache* module_cache) {}
+  // Initializes this unwinder to use |module_cache| in subsequent methods
+  // UpdateModules() and TryUnwinder(). This unwinder may add any modules it
+  // recognizes or register a module factory to the ModuleCache. |module_cache|
+  // must outlive this Unwinder.
+  void Initialize(ModuleCache* module_cache);
 
   // Invoked at the time the stack is captured. IMPORTANT NOTE: this function is
   // invoked while the target thread is suspended. To avoid deadlock it must not
@@ -50,7 +54,7 @@ class Unwinder {
   // Allows the unwinder to update ModuleCache with any modules it's responsible
   // for. Invoked for each sample between OnStackCapture() and the initial
   // invocations of CanUnwindFrom()/TryUnwind().
-  virtual void UpdateModules(ModuleCache* module_cache) {}
+  virtual void UpdateModules() {}
 
   // Returns true if the unwinder recognizes the code referenced by
   // |current_frame| as code from which it should be able to unwind. When
@@ -72,14 +76,24 @@ class Unwinder {
   // is greater than the previous value and less than |stack_top|.
   virtual UnwindResult TryUnwind(RegisterContext* thread_context,
                                  uintptr_t stack_top,
-                                 ModuleCache* module_cache,
-                                 std::vector<Frame>* stack) const = 0;
+                                 std::vector<Frame>* stack) = 0;
 
   Unwinder(const Unwinder&) = delete;
   Unwinder& operator=(const Unwinder&) = delete;
 
  protected:
   Unwinder() = default;
+
+  // Invoked to allow the unwinder to add any modules it recognizes or register
+  // a module factory to the ModuleCache.
+  virtual void InitializeModules() {}
+
+  ModuleCache* module_cache() const { return module_cache_; }
+
+ private:
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION ModuleCache* module_cache_ = nullptr;
 };
 
 }  // namespace base

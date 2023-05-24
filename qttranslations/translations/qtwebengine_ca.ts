@@ -45,15 +45,15 @@
     </message>
     <message>
         <source>Copy Media URL</source>
-        <translation>Copia l&apos;URL del suport</translation>
+        <translation>Copia l&apos;URL del fitxer multimèdia</translation>
     </message>
     <message>
         <source>Save Media</source>
-        <translation>Desa el suport</translation>
+        <translation>Desa el fitxer multimèdia</translation>
     </message>
     <message>
         <source>Toggle Play/Pause</source>
-        <translation>Alterna el reprodueix/pausa</translation>
+        <translation>Alterna la reproducció/pausa</translation>
     </message>
     <message>
         <source>Toggle Looping</source>
@@ -65,7 +65,7 @@
     </message>
     <message>
         <source>Toggle Media Controls</source>
-        <translation>Alterna els controls del suport</translation>
+        <translation>Alterna els controls multimèdia</translation>
     </message>
     <message>
         <source>Inspect Element</source>
@@ -96,7 +96,7 @@
     </message>
     <message>
         <source>Reload and Bypass Cache</source>
-        <translation>Torna a carregar i omet el cau</translation>
+        <translation>Torna a carregar i omet la memòria cau</translation>
     </message>
     <message>
         <source>Cut</source>
@@ -160,11 +160,11 @@
     </message>
     <message>
         <source>Copy Media URL</source>
-        <translation>Copia l&apos;URL del suport</translation>
+        <translation>Copia l&apos;URL del fitxer multimèdia</translation>
     </message>
     <message>
         <source>Toggle Media Controls</source>
-        <translation>Alterna els controls del suport</translation>
+        <translation>Alterna els controls multimèdia</translation>
     </message>
     <message>
         <source>Toggle Looping</source>
@@ -180,7 +180,7 @@
     </message>
     <message>
         <source>Save Media</source>
-        <translation>Desa el suport</translation>
+        <translation>Desa el fitxer multimèdia</translation>
     </message>
     <message>
         <source>Inspect Element</source>

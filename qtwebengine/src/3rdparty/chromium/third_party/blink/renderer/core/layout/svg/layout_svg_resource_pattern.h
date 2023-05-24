@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2006 Nikolas Zimmermann <zimmermann@kde.org>
  * Copyright (C) Research In Motion Limited 2010. All rights reserved.
- * Copyright 2014 The Chromium Authors. All rights reserved.
+ * Copyright 2014 The Chromium Authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -23,11 +23,10 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_SVG_LAYOUT_SVG_RESOURCE_PATTERN_H_
 
 #include <memory>
+
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_resource_paint_server.h"
 #include "third_party/blink/renderer/core/svg/pattern_attributes.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/wtf/hash_map.h"
-#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 
 namespace blink {
 
@@ -38,6 +37,7 @@ struct PatternData;
 class LayoutSVGResourcePattern final : public LayoutSVGResourcePaintServer {
  public:
   explicit LayoutSVGResourcePattern(SVGPatternElement*);
+  void Trace(Visitor*) const override;
 
   const char* GetName() const override {
     NOT_DESTROYED();
@@ -47,9 +47,11 @@ class LayoutSVGResourcePattern final : public LayoutSVGResourcePaintServer {
   void RemoveAllClientsFromCache() override;
   bool RemoveClientFromCache(SVGResourceClient&) override;
 
-  SVGPaintServer PreparePaintServer(
-      const SVGResourceClient&,
-      const FloatRect& object_bounding_box) override;
+  bool ApplyShader(const SVGResourceClient&,
+                   const gfx::RectF& reference_box,
+                   const AffineTransform* additional_transform,
+                   const AutoDarkMode&,
+                   cc::PaintFlags&) override;
 
   static const LayoutSVGResourceType kResourceType = kPatternResourceType;
   LayoutSVGResourceType ResourceType() const override {
@@ -58,24 +60,18 @@ class LayoutSVGResourcePattern final : public LayoutSVGResourcePaintServer {
   }
 
  private:
+  void WillBeDestroyed() override;
+  void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
+
+  bool FindCycleFromSelf() const override;
   std::unique_ptr<PatternData> BuildPatternData(
-      const FloatRect& object_bounding_box);
-  sk_sp<PaintRecord> AsPaintRecord(const FloatSize&,
-                                   const AffineTransform&) const;
+      const gfx::RectF& object_bounding_box);
+  PaintRecord AsPaintRecord(const AffineTransform&) const;
 
-  const LayoutSVGResourceContainer* ResolveContentElement() const;
+  mutable bool should_collect_pattern_attributes_ : 1;
+  mutable PatternAttributes attributes_;
 
-  bool should_collect_pattern_attributes_ : 1;
-  Persistent<PatternAttributesWrapper> attributes_wrapper_;
-
-  PatternAttributes& MutableAttributes() {
-    NOT_DESTROYED();
-    return attributes_wrapper_->Attributes();
-  }
-  const PatternAttributes& Attributes() const {
-    NOT_DESTROYED();
-    return attributes_wrapper_->Attributes();
-  }
+  const PatternAttributes& EnsureAttributes() const;
 
   // FIXME: we can almost do away with this per-object map, but not quite: the
   // tile size can be relative to the client bounding box, and it gets captured
@@ -86,9 +82,9 @@ class LayoutSVGResourcePattern final : public LayoutSVGResourcePaintServer {
   // would avoid re-recording when multiple clients share the same pattern.
   using PatternMap = HeapHashMap<Member<const SVGResourceClient>,
                                  std::unique_ptr<PatternData>>;
-  Persistent<PatternMap> pattern_map_;
+  PatternMap pattern_map_;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_SVG_LAYOUT_SVG_RESOURCE_PATTERN_H_

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,9 @@
 #include <deque>
 
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "net/base/proxy_delegate.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 
@@ -27,10 +28,17 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceProxyDelegate
     : public net::ProxyDelegate,
       public mojom::CustomProxyConfigClient {
  public:
-  explicit NetworkServiceProxyDelegate(
+  NetworkServiceProxyDelegate(
       mojom::CustomProxyConfigPtr initial_config,
       mojo::PendingReceiver<mojom::CustomProxyConfigClient>
-          config_client_receiver);
+          config_client_receiver,
+      mojo::PendingRemote<mojom::CustomProxyConnectionObserver>
+          observer_remote);
+
+  NetworkServiceProxyDelegate(const NetworkServiceProxyDelegate&) = delete;
+  NetworkServiceProxyDelegate& operator=(const NetworkServiceProxyDelegate&) =
+      delete;
+
   ~NetworkServiceProxyDelegate() override;
 
   void SetProxyResolutionService(
@@ -62,9 +70,18 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceProxyDelegate
   bool EligibleForProxy(const net::ProxyInfo& proxy_info,
                         const std::string& method) const;
 
+  // Replaces all DIRECT options in `proxy_info`'s proxy_list with the HTTPS
+  // proxy set in `proxy_config_`. No op when the HTTPS proxy list in
+  // `proxy_config_` is empty.
+  void MergeProxyRules(const net::ProxyList& existing_proxy_list,
+                       net::ProxyInfo& proxy_info) const;
+
+  void OnObserverDisconnect();
+
   // mojom::CustomProxyConfigClient implementation:
   void OnCustomProxyConfigUpdated(
-      mojom::CustomProxyConfigPtr proxy_config) override;
+      mojom::CustomProxyConfigPtr proxy_config,
+      OnCustomProxyConfigUpdatedCallback callback) override;
   void MarkProxiesAsBad(base::TimeDelta bypass_duration,
                         const net::ProxyList& bad_proxies,
                         MarkProxiesAsBadCallback callback) override;
@@ -72,10 +89,10 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceProxyDelegate
 
   mojom::CustomProxyConfigPtr proxy_config_;
   mojo::Receiver<mojom::CustomProxyConfigClient> receiver_;
+  mojo::Remote<mojom::CustomProxyConnectionObserver> observer_;
 
-  net::ProxyResolutionService* proxy_resolution_service_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(NetworkServiceProxyDelegate);
+  raw_ptr<net::ProxyResolutionService, DanglingUntriaged>
+      proxy_resolution_service_ = nullptr;
 };
 
 }  // namespace network

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "gltfimporter.h"
 
@@ -50,6 +14,7 @@
 
 #include <Qt3DCore/qentity.h>
 #include <Qt3DCore/qtransform.h>
+#include <Qt3DCore/qgeometry.h>
 
 #include <Qt3DRender/qcameralens.h>
 #include <Qt3DRender/qcamera.h>
@@ -74,7 +39,6 @@
 #include <Qt3DRender/qstenciltestarguments.h>
 #include <Qt3DRender/qeffect.h>
 #include <Qt3DRender/qfrontface.h>
-#include <Qt3DRender/qgeometry.h>
 #include <Qt3DRender/qgeometryrenderer.h>
 #include <Qt3DRender/qmaterial.h>
 #include <Qt3DRender/qgraphicsapifilter.h>
@@ -475,14 +439,14 @@ Qt3DCore::QEntity* GLTFImporter::node(const QString &id)
     // So if the node has only 1 mesh, we only create 1 QEntity
     // Otherwise if there are n meshes, there is 1 QEntity, with n children for each mesh/material combo
     {
-        QVector<QEntity *> entities;
+        QList<QEntity *> entities;
         const QJsonValue meshesValue = jsonObj.value(KEY_MESHES);
 
         if (meshesValue.isUndefined()) {
             const QJsonValue mesh = jsonObj.value(KEY_MESH);
             if (!mesh.isUndefined()) {
                 const QString meshName = QString::number(mesh.toInt());
-                const auto geometryRenderers = qAsConst(m_meshDict).equal_range(meshName);
+                const auto geometryRenderers = std::as_const(m_meshDict).equal_range(meshName);
                 for (auto it = geometryRenderers.first; it != geometryRenderers.second; ++it) {
                     QGeometryRenderer *geometryRenderer = it.value();
                     QEntity *entity = new QEntity;
@@ -495,9 +459,9 @@ Qt3DCore::QEntity* GLTFImporter::node(const QString &id)
             }
         } else {
             const auto meshes = meshesValue.toArray();
-            for (const QJsonValue &mesh : meshes) {
+            for (const QJsonValue mesh : meshes) {
                 const QString meshName = mesh.toString();
-                const auto geometryRenderers = qAsConst(m_meshDict).equal_range(meshName);
+                const auto geometryRenderers = std::as_const(m_meshDict).equal_range(meshName);
                 if (Q_UNLIKELY(geometryRenderers.first == geometryRenderers.second)) {
                     qCWarning(GLTFImporterLog, "node %ls references unknown mesh %ls",
                               qUtf16PrintableImpl(id), qUtf16PrintableImpl(meshName));
@@ -520,11 +484,11 @@ Qt3DCore::QEntity* GLTFImporter::node(const QString &id)
         case 0:
             break;
         case 1:
-            result = qAsConst(entities).first();
+            result = std::as_const(entities).first();
             break;
         default:
             result = new QEntity;
-            for (QEntity *entity : qAsConst(entities))
+            for (QEntity *entity : std::as_const(entities))
                 entity->setParent(result);
         }
     }
@@ -556,7 +520,7 @@ Qt3DCore::QEntity* GLTFImporter::node(const QString &id)
 
     // recursively retrieve children
     const auto children = jsonObj.value(KEY_CHILDREN).toArray();
-    for (const QJsonValue &c : children) {
+    for (const QJsonValue c : children) {
         QEntity* child = node((m_majorVersion > 1) ? QString::number(c.toInt()) : c.toString());
         if (!child)
             continue;
@@ -660,7 +624,7 @@ Qt3DCore::QEntity* GLTFImporter::scene(const QString &id)
         const QJsonObject sceneObj = sceneVal.toObject();
         sceneEntity = new QEntity;
         const auto nodes = sceneObj.value(KEY_NODES).toArray();
-        for (const QJsonValue &n : nodes) {
+        for (const QJsonValue n : nodes) {
             QEntity* child = node(QString::number(n.toInt()));
             if (!child)
                 continue;
@@ -679,7 +643,7 @@ Qt3DCore::QEntity* GLTFImporter::scene(const QString &id)
         const QJsonObject sceneObj = sceneVal.toObject();
         sceneEntity = new QEntity;
         const auto nodes = sceneObj.value(KEY_NODES).toArray();
-        for (const QJsonValue &nnv : nodes) {
+        for (const QJsonValue nnv : nodes) {
             QString nodeName = nnv.toString();
             QEntity* child = node(nodeName);
             if (!child)
@@ -735,7 +699,7 @@ GLTFImporter::AccessorData::AccessorData(const QJsonObject &json, int major, int
       offset(0),
       stride(0)
 {
-    Q_UNUSED(minor)
+    Q_UNUSED(minor);
 
     if (major > 1) {
         bufferViewName = QString::number(json.value(KEY_BUFFER_VIEW).toInt());
@@ -753,7 +717,7 @@ GLTFImporter::AccessorData::AccessorData(const QJsonObject &json, int major, int
 
 bool GLTFImporter::isGLTFSupported(const QStringList &extensions)
 {
-    for (auto suffix: qAsConst(extensions)) {
+    for (auto suffix: std::as_const(extensions)) {
         suffix = suffix.toLower();
         if (suffix == QLatin1String("json") || suffix == QLatin1String("gltf") || suffix == QLatin1String("qgltf"))
             return true;
@@ -852,7 +816,7 @@ QMaterial *GLTFImporter::materialWithCustomShader(const QString &id, const QJson
 
         // Default ES2 Technique
         QString techniqueName = jsonObj.value(KEY_TECHNIQUE).toString();
-        const auto it = qAsConst(m_techniques).find(techniqueName);
+        const auto it = std::as_const(m_techniques).find(techniqueName);
         if (Q_UNLIKELY(it == m_techniques.cend())) {
             qCWarning(GLTFImporterLog, "unknown technique %ls for material %ls in GLTF file %ls",
                       qUtf16PrintableImpl(techniqueName), qUtf16PrintableImpl(id), qUtf16PrintableImpl(m_basePath));
@@ -869,7 +833,7 @@ QMaterial *GLTFImporter::materialWithCustomShader(const QString &id, const QJson
         QTechnique *gl2Technique = nullptr;
         QString coreTechniqueName = jsonObj.value(KEY_TECHNIQUE_CORE).toString();
         if (!coreTechniqueName.isNull()) {
-            const auto it = qAsConst(m_techniques).find(coreTechniqueName);
+            const auto it = std::as_const(m_techniques).find(coreTechniqueName);
             if (Q_UNLIKELY(it == m_techniques.cend())) {
                 qCWarning(GLTFImporterLog, "unknown technique %ls for material %ls in GLTF file %ls",
                           qUtf16PrintableImpl(coreTechniqueName), qUtf16PrintableImpl(id), qUtf16PrintableImpl(m_basePath));
@@ -884,7 +848,7 @@ QMaterial *GLTFImporter::materialWithCustomShader(const QString &id, const QJson
         //Optional GL2 technique
         QString gl2TechniqueName = jsonObj.value(KEY_TECHNIQUE_GL2).toString();
         if (!gl2TechniqueName.isNull()) {
-            const auto it = qAsConst(m_techniques).find(gl2TechniqueName);
+            const auto it = std::as_const(m_techniques).find(gl2TechniqueName);
             if (Q_UNLIKELY(it == m_techniques.cend())) {
                 qCWarning(GLTFImporterLog, "unknown technique %ls for material %ls in GLTF file %ls",
                           qUtf16PrintableImpl(gl2TechniqueName), qUtf16PrintableImpl(id), qUtf16PrintableImpl(m_basePath));
@@ -1086,9 +1050,9 @@ QMaterial *GLTFImporter::commonMaterial(const QJsonObject &jsonObj)
     } else {
         for (QVariantHash::const_iterator it = params.constBegin(), itEnd = params.constEnd(); it != itEnd; ++it)
             mat->setProperty(it.key().toUtf8(), it.value());
-    }
 
-    renameFromJson(jsonObj, mat);
+        renameFromJson(jsonObj, mat);
+    }
 
     return mat;
 }
@@ -1215,7 +1179,7 @@ QMaterial *GLTFImporter::pbrMaterial(const QJsonObject &jsonObj)
 
 QMaterial* GLTFImporter::material(const QString &id)
 {
-    const auto it = qAsConst(m_materialCache).find(id);
+    const auto it = std::as_const(m_materialCache).find(id);
     if (it != m_materialCache.cend())
         return it.value();
 
@@ -1448,7 +1412,7 @@ void GLTFImporter::cleanup()
     m_shaderPaths.clear();
     delete_if_without_parent(m_programs);
     m_programs.clear();
-    for (const auto &params : qAsConst(m_techniqueParameters))
+    for (const auto &params : std::as_const(m_techniqueParameters))
         delete_if_without_parent(params);
     m_techniqueParameters.clear();
     delete_if_without_parent(m_techniques);
@@ -1470,7 +1434,7 @@ void GLTFImporter::processJSONAsset(const QJsonObject &json)
     const QString version = json.value(KEY_VERSION).toString();
     if (!version.isEmpty()) {
         const QStringList verTokens = version.split('.');
-        if (verTokens.length() >= 2) {
+        if (verTokens.size() >= 2) {
             m_majorVersion = verTokens[0].toInt();
             m_minorVersion = verTokens[1].toInt();
         }
@@ -1491,21 +1455,13 @@ void GLTFImporter::processJSONBufferView(const QString &id, const QJsonObject& j
     } else {
         bufName = json.value(KEY_BUFFER).toString();
     }
-    const auto it = qAsConst(m_bufferDatas).find(bufName);
+    const auto it = std::as_const(m_bufferDatas).find(bufName);
     if (Q_UNLIKELY(it == m_bufferDatas.cend())) {
         qCWarning(GLTFImporterLog, "unknown buffer: %ls processing view: %ls",
                   qUtf16PrintableImpl(bufName), qUtf16PrintableImpl(id));
         return;
     }
     const auto &bufferData = *it;
-
-    const QJsonValue targetValue = json.value(KEY_TARGET);
-    int target;
-    if (targetValue.isUndefined()) {
-        target = GL_ARRAY_BUFFER;
-    } else {
-        target = targetValue.toInt();
-    }
 
     quint64 offset = 0;
     const auto byteOffset = json.value(KEY_BYTE_OFFSET);
@@ -1517,12 +1473,12 @@ void GLTFImporter::processJSONBufferView(const QString &id, const QJsonObject& j
     quint64 len = json.value(KEY_BYTE_LENGTH).toInt();
 
     QByteArray bytes = bufferData.data->mid(offset, len);
-    if (Q_UNLIKELY(bytes.count() != int(len))) {
+    if (Q_UNLIKELY(bytes.size() != qsizetype(len))) {
         qCWarning(GLTFImporterLog, "failed to read sufficient bytes from: %ls for view %ls",
                   qUtf16PrintableImpl(bufferData.path), qUtf16PrintableImpl(id));
     }
 
-    Qt3DRender::QBuffer *b = new Qt3DRender::QBuffer();
+    Qt3DCore::QBuffer *b = new Qt3DCore::QBuffer();
     b->setData(bytes);
     m_buffers[id] = b;
 }
@@ -1555,8 +1511,8 @@ void GLTFImporter::processJSONProgram(const QString &id, const QJsonObject &json
     const QString fragName = jsonObject.value(KEY_FRAGMENT_SHADER).toString();
     const QString vertName = jsonObject.value(KEY_VERTEX_SHADER).toString();
 
-    const auto fragIt = qAsConst(m_shaderPaths).find(fragName);
-    const auto vertIt = qAsConst(m_shaderPaths).find(vertName);
+    const auto fragIt = std::as_const(m_shaderPaths).find(fragName);
+    const auto vertIt = std::as_const(m_shaderPaths).find(vertName);
 
     if (Q_UNLIKELY(fragIt == m_shaderPaths.cend() || vertIt == m_shaderPaths.cend())) {
         qCWarning(GLTFImporterLog, "program: %ls missing shader: %ls %ls",
@@ -1571,27 +1527,27 @@ void GLTFImporter::processJSONProgram(const QString &id, const QJsonObject &json
 
     const QString tessCtrlName = jsonObject.value(KEY_TESS_CTRL_SHADER).toString();
     if (!tessCtrlName.isEmpty()) {
-        const auto it = qAsConst(m_shaderPaths).find(tessCtrlName);
+        const auto it = std::as_const(m_shaderPaths).find(tessCtrlName);
         prog->setTessellationControlShaderCode(
                     QShaderProgram::loadSource(QUrl::fromLocalFile(it.value())));
     }
 
     const QString tessEvalName = jsonObject.value(KEY_TESS_EVAL_SHADER).toString();
     if (!tessEvalName.isEmpty()) {
-        const auto it = qAsConst(m_shaderPaths).find(tessEvalName);
+        const auto it = std::as_const(m_shaderPaths).find(tessEvalName);
         prog->setTessellationEvaluationShaderCode(
                     QShaderProgram::loadSource(QUrl::fromLocalFile(it.value())));
     }
 
     const QString geomName = jsonObject.value(KEY_GEOMETRY_SHADER).toString();
     if (!geomName.isEmpty()) {
-        const auto it = qAsConst(m_shaderPaths).find(geomName);
+        const auto it = std::as_const(m_shaderPaths).find(geomName);
         prog->setGeometryShaderCode(QShaderProgram::loadSource(QUrl::fromLocalFile(it.value())));
     }
 
     const QString computeName = jsonObject.value(KEY_COMPUTE_SHADER).toString();
     if (!computeName.isEmpty()) {
-        const auto it = qAsConst(m_shaderPaths).find(computeName);
+        const auto it = std::as_const(m_shaderPaths).find(computeName);
         prog->setComputeShaderCode(QShaderProgram::loadSource(QUrl::fromLocalFile(it.value())));
     }
 
@@ -1688,7 +1644,7 @@ void GLTFImporter::processJSONTechnique(const QString &id, const QJsonObject &js
         t->graphicsApiFilter()->setVendor(gabifilter.value(KEY_VENDOR).toString());
         QStringList extensionList;
         QJsonArray extArray = gabifilter.value(KEY_EXTENSIONS).toArray();
-        for (const QJsonValue &extValue : extArray)
+        for (const QJsonValue extValue : extArray)
             extensionList << extValue.toString();
         t->graphicsApiFilter()->setExtensions(extensionList);
 
@@ -1706,7 +1662,7 @@ void GLTFImporter::processJSONTechnique(const QString &id, const QJsonObject &js
 
         // Render passes
         const QJsonArray passArray = jsonObject.value(KEY_RENDERPASSES).toArray();
-        for (const QJsonValue &passValue : passArray) {
+        for (const QJsonValue passValue : passArray) {
             const QString passName = passValue.toString();
             QRenderPass *pass = m_renderPasses.value(passName);
             if (pass) {
@@ -1733,13 +1689,14 @@ void GLTFImporter::processJSONMesh(const QString &id, const QJsonObject &json)
     if (meshType.isEmpty()) {
         // Custom mesh
         const QJsonArray primitivesArray = json.value(KEY_PRIMITIVES).toArray();
-        for (const QJsonValue &primitiveValue : primitivesArray) {
+        for (const QJsonValue primitiveValue : primitivesArray) {
             const QJsonObject primitiveObject = primitiveValue.toObject();
             const QJsonValue type = primitiveObject.value(KEY_MODE);
             const QJsonValue matValue = primitiveObject.value(KEY_MATERIAL);
             const QString material = (m_majorVersion > 1) ? QString::number(matValue.toInt()) : matValue.toString();
 
             QGeometryRenderer *geometryRenderer = new QGeometryRenderer;
+            QGeometryView *geometryView = new QGeometryView;
             QGeometry *meshGeometry = new QGeometry(geometryRenderer);
 
             //Set Primitive Type
@@ -1755,7 +1712,7 @@ void GLTFImporter::processJSONMesh(const QString &id, const QJsonObject &json)
             const QJsonObject attrs = primitiveObject.value(KEY_ATTRIBUTES).toObject();
             for (auto it = attrs.begin(), end = attrs.end(); it != end; ++it) {
                 const QString k = (m_majorVersion > 1) ? QString::number(it.value().toInt()) : it.value().toString();
-                const auto accessorIt = qAsConst(m_accessorDict).find(k);
+                const auto accessorIt = std::as_const(m_accessorDict).find(k);
                 if (Q_UNLIKELY(accessorIt == m_accessorDict.cend())) {
                     qCWarning(GLTFImporterLog, "unknown attribute accessor: %ls on mesh %ls",
                               qUtf16PrintableImpl(k), qUtf16PrintableImpl(id));
@@ -1768,7 +1725,7 @@ void GLTFImporter::processJSONMesh(const QString &id, const QJsonObject &json)
                     attributeName = attrName;
 
                 //Get buffer handle for accessor
-                Qt3DRender::QBuffer *buffer = m_buffers.value(accessorIt->bufferViewName, nullptr);
+                Qt3DCore::QBuffer *buffer = m_buffers.value(accessorIt->bufferViewName, nullptr);
                 if (Q_UNLIKELY(!buffer)) {
                     qCWarning(GLTFImporterLog, "unknown buffer-view: %ls processing accessor: %ls",
                               qUtf16PrintableImpl(accessorIt->bufferViewName),
@@ -1790,13 +1747,13 @@ void GLTFImporter::processJSONMesh(const QString &id, const QJsonObject &json)
             const auto indices = primitiveObject.value(KEY_INDICES);
             if (!indices.isUndefined()) {
                 const QString accIndex = (m_majorVersion > 1) ? QString::number(indices.toInt()) : indices.toString();
-                const auto accessorIt = qAsConst(m_accessorDict).find(accIndex);
+                const auto accessorIt = std::as_const(m_accessorDict).find(accIndex);
                 if (Q_UNLIKELY(accessorIt == m_accessorDict.cend())) {
                     qCWarning(GLTFImporterLog, "unknown index accessor: %ls on mesh %ls",
                               qUtf16PrintableImpl(accIndex), qUtf16PrintableImpl(id));
                 } else {
                     //Get buffer handle for accessor
-                    Qt3DRender::QBuffer *buffer = m_buffers.value(accessorIt->bufferViewName, nullptr);
+                    Qt3DCore::QBuffer *buffer = m_buffers.value(accessorIt->bufferViewName, nullptr);
                     if (Q_UNLIKELY(!buffer)) {
                         qCWarning(GLTFImporterLog, "unknown buffer-view: %ls processing accessor: %ls",
                                   qUtf16PrintableImpl(accessorIt->bufferViewName),
@@ -1815,7 +1772,8 @@ void GLTFImporter::processJSONMesh(const QString &id, const QJsonObject &json)
                 }
             } // of has indices
 
-            geometryRenderer->setGeometry(meshGeometry);
+            geometryView->setGeometry(meshGeometry);
+            geometryRenderer->setView(geometryView);
             geometryRenderer->setObjectName(meshName);
 
             m_meshDict.insert(id, geometryRenderer);
@@ -1844,30 +1802,34 @@ void GLTFImporter::processJSONMesh(const QString &id, const QJsonObject &json)
         if (mesh) {
             // Read and set properties
             const QJsonObject propObj = json.value(KEY_PROPERTIES).toObject();
+            QObject *target = mesh;
+            if (mesh->view())
+                target = mesh->view();
             for (auto it = propObj.begin(), end = propObj.end(); it != end; ++it) {
                 const QByteArray propName = it.key().toLatin1();
                 // Basic mesh types only have bool, int, float, and QSize type properties
                 if (it.value().isBool()) {
-                    mesh->setProperty(propName.constData(), QVariant(it.value().toBool()));
+                    target->setProperty(propName.constData(), QVariant(it.value().toBool()));
                 } else if (it.value().isArray()) {
                     const QJsonArray valueArray = it.value().toArray();
                     if (valueArray.size() == 2) {
                         QSize size;
                         size.setWidth(valueArray.at(0).toInt());
                         size.setHeight(valueArray.at(1).toInt());
-                        mesh->setProperty(propName.constData(), QVariant(size));
+                        target->setProperty(propName.constData(), QVariant(size));
                     }
                 } else {
-                    const QVariant::Type propType = mesh->property(propName.constData()).type();
-                    if (propType == QVariant::Int) {
-                        mesh->setProperty(propName.constData(), QVariant(it.value().toInt()));
+                    const QMetaType propType = target->property(propName.constData()).metaType();
+                    if (propType.id() == QMetaType::Int) {
+                        target->setProperty(propName.constData(), QVariant(it.value().toInt()));
                     } else {
-                        mesh->setProperty(propName.constData(),
-                                          QVariant(float(it.value().toDouble())));
+                        target->setProperty(propName.constData(),
+                                            QVariant(float(it.value().toDouble())));
                     }
                 }
             }
             mesh->setObjectName(meshName);
+            mesh->view()->setObjectName(meshName);
             m_meshMaterialDict[mesh] = (m_majorVersion > 1) ?
                         QString::number(json.value(KEY_MATERIAL).toInt()) :
                         json.value(KEY_MATERIAL).toString();
@@ -1923,11 +1885,11 @@ void GLTFImporter::processJSONTexture(const QString &id, const QJsonObject &json
     QJsonValue srcValue = jsonObject.value(KEY_SOURCE);
     QString source = (m_majorVersion > 1) ? QString::number(srcValue.toInt()) : srcValue.toString();
 
-    const auto imagIt = qAsConst(m_imagePaths).find(source);
+    const auto imagIt = std::as_const(m_imagePaths).find(source);
     if (Q_UNLIKELY(imagIt == m_imagePaths.cend())) {
         // if an image is not found in paths, it probably means
         // it was an embedded resource, referenced in m_imageData
-        const auto embImgIt = qAsConst(m_imageData).find(source);
+        const auto embImgIt = std::as_const(m_imageData).find(source);
         if (Q_UNLIKELY(embImgIt == m_imageData.cend())) {
             qCWarning(GLTFImporterLog, "texture %ls references missing image %ls",
                       qUtf16PrintableImpl(id), qUtf16PrintableImpl(source));
@@ -2019,7 +1981,7 @@ void GLTFImporter::processJSONEffect(const QString &id, const QJsonObject &jsonO
         effect->addParameter(buildParameter(it.key(), it.value().toObject()));
 
     const QJsonArray techArray = jsonObject.value(KEY_TECHNIQUES).toArray();
-    for (const QJsonValue &techValue : techArray) {
+    for (const QJsonValue techValue : techArray) {
         const QString techName = techValue.toString();
         QTechnique *tech = m_techniques.value(techName);
         if (tech) {
@@ -2069,7 +2031,7 @@ void GLTFImporter::loadBufferData()
 */
 void GLTFImporter::unloadBufferData()
 {
-    for (const auto &bufferData : qAsConst(m_bufferDatas)) {
+    for (const auto &bufferData : std::as_const(m_bufferDatas)) {
         QByteArray *data = bufferData.data;
         delete data;
     }
@@ -2136,8 +2098,8 @@ QVariant GLTFImporter::parameterValueFromJSON(int type, const QJsonValue &value)
         QVector2D vector2D;
         QVector3D vector3D;
         QVector4D vector4D;
-        QVector<float> dataMat2(4, 0.0f);
-        QVector<float> dataMat3(9, 0.0f);
+        std::vector<float> dataMat2(4, 0.0f);
+        std::vector<float> dataMat3(9, 0.0f);
 
         switch (type) {
         case GL_BYTE:
@@ -2207,7 +2169,7 @@ QVariant GLTFImporter::parameterValueFromJSON(int type, const QJsonValue &value)
             dataMat2[1] = static_cast<GLfloat>(valueArray.at(2).toDouble());
             dataMat2[2] = static_cast<GLfloat>(valueArray.at(1).toDouble());
             dataMat2[3] = static_cast<GLfloat>(valueArray.at(3).toDouble());
-            return QVariant::fromValue(QMatrix2x2(dataMat2.constData()));
+            return QVariant::fromValue(QMatrix2x2(dataMat2.data()));
         case GL_FLOAT_MAT3:
             //Matrix3x3 is in Row Major ordering (so we need to convert)
             dataMat3[0] = static_cast<GLfloat>(valueArray.at(0).toDouble());
@@ -2219,7 +2181,7 @@ QVariant GLTFImporter::parameterValueFromJSON(int type, const QJsonValue &value)
             dataMat3[6] = static_cast<GLfloat>(valueArray.at(2).toDouble());
             dataMat3[7] = static_cast<GLfloat>(valueArray.at(5).toDouble());
             dataMat3[8] = static_cast<GLfloat>(valueArray.at(8).toDouble());
-            return QVariant::fromValue(QMatrix3x3(dataMat3.constData()));
+            return QVariant::fromValue(QMatrix3x3(dataMat3.data()));
         case GL_FLOAT_MAT4:
             //Matrix4x4 is Column Major ordering
             return QVariant(QMatrix4x4(static_cast<GLfloat>(valueArray.at(0).toDouble()),
@@ -2514,8 +2476,8 @@ void GLTFImporter::populateRenderStates(QRenderPass *pass, const QJsonObject &st
 {
     // Process states to enable
     const QJsonArray enableStatesArray = states.value(KEY_ENABLE).toArray();
-    QVector<int> enableStates;
-    for (const QJsonValue &enableValue : enableStatesArray)
+    QList<int> enableStates;
+    for (const QJsonValue enableValue : enableStatesArray)
         enableStates.append(enableValue.toInt());
 
     // Process the list of state functions
@@ -2531,7 +2493,7 @@ void GLTFImporter::populateRenderStates(QRenderPass *pass, const QJsonObject &st
     }
 
     // Create render states with default values for any remaining enable states
-    for (int enableState : qAsConst(enableStates)) {
+    for (int enableState : std::as_const(enableStates)) {
         QRenderState *renderState = buildStateEnable(enableState);
         if (renderState != nullptr)
             pass->addRenderState(renderState);
@@ -2540,7 +2502,7 @@ void GLTFImporter::populateRenderStates(QRenderPass *pass, const QJsonObject &st
 
 void GLTFImporter::addProgramToPass(QRenderPass *pass, const QString &progName)
 {
-    const auto progIt = qAsConst(m_programs).find(progName);
+    const auto progIt = std::as_const(m_programs).find(progName);
     if (Q_UNLIKELY(progIt == m_programs.cend()))
         qCWarning(GLTFImporterLog, "missing program %ls", qUtf16PrintableImpl(progName));
     else
@@ -2628,4 +2590,5 @@ bool GLTFRawTextureImage::GLTFRawTextureImageFunctor::operator ==(const QTexture
 
 QT_END_NAMESPACE
 
+#include "moc_gltfimporter.cpp"
 #include "gltfimporter.moc"

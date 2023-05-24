@@ -1,11 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module blink.mojom;
 
 import "services/network/public/mojom/content_security_policy.mojom";
-import "services/network/public/mojom/ip_address_space.mojom";
 import "third_party/blink/public/mojom/loader/fetch_client_settings_object.mojom";
 import "third_party/blink/public/mojom/worker/worker_options.mojom";
 import "url/mojom/url.mojom";
@@ -17,8 +16,6 @@ import "url/mojom/url.mojom";
 struct SharedWorkerInfo {
   url.mojom.Url url;
   WorkerOptions options;
-  string content_security_policy;
-  network.mojom.ContentSecurityPolicyType content_security_policy_type;
-  network.mojom.IPAddressSpace creation_address_space;
+  array<network.mojom.ContentSecurityPolicy> content_security_policies;
   FetchClientSettingsObject outside_fetch_client_settings_object;
 };

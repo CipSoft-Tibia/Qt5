@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qcoreapplication.h>
 #include <qdebug.h>
@@ -38,6 +13,7 @@
 #include <qwidget.h>
 #include <qdialog.h>
 #include <qscroller.h>
+#include <qstyle.h>
 
 class tst_QAbstractScrollArea : public QObject
 {
@@ -59,6 +35,7 @@ private slots:
 
     void margins();
     void resizeWithOvershoot();
+    void sizeHint();
 };
 
 tst_QAbstractScrollArea::tst_QAbstractScrollArea()
@@ -293,7 +270,7 @@ public:
         startTimer(2000);
     }
 
-    void timerEvent(QTimerEvent * /* event */)
+    void timerEvent(QTimerEvent * /* event */) override
     {
         // should not crash.
         (void)new QScrollArea(this);
@@ -342,10 +319,6 @@ void tst_QAbstractScrollArea::task214488_layoutDirection()
 
     int refValue = hbar->value();
     qApp->sendEvent(&scrollArea, new QKeyEvent(QEvent::KeyPress, key, Qt::NoModifier));
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "WinRT: Scrollbar is not guaranteed to be visible, as QWidget::resize does not"
-                 "work", Abort);
-#endif
     QVERIFY(lessThan ? (hbar->value() < refValue) : (hbar->value() > refValue));
 }
 
@@ -435,6 +408,57 @@ void tst_QAbstractScrollArea::resizeWithOvershoot()
     // doesn't overcompensate for the overshoot.
     QApplication::processEvents();
     QTRY_COMPARE(scrollArea.viewport()->pos(), originAtRest);
+}
+
+void tst_QAbstractScrollArea::sizeHint()
+{
+    class ScrollArea : public QAbstractScrollArea
+    {
+    public:
+        QSize viewportSizeHint() const override { return {200, 200}; }
+    } scrollArea;
+    // We cannot reliable test the impact of the scrollbars on the size hint
+    // if the style uses transient scrollbars, so use the class Windows style.
+    const QString defaultStyle = QApplication::style()->name();
+    QApplication::setStyle("Windows");
+    auto resetStyle = qScopeGuard([defaultStyle]{
+        QApplication::setStyle(defaultStyle);
+    });
+    scrollArea.setFrameShape(QFrame::NoFrame);
+    scrollArea.setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+    scrollArea.show();
+
+    QSize sizeHint = scrollArea.sizeHint();
+    QCOMPARE(sizeHint, scrollArea.viewportSizeHint());
+
+    scrollArea.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    scrollArea.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    const QSize sizeHintWithScrollBars = scrollArea.sizeHint();
+    QTRY_COMPARE_GT(sizeHintWithScrollBars.width(), sizeHint.width());
+    QTRY_COMPARE_GT(sizeHintWithScrollBars.height(), sizeHint.height());
+
+    sizeHint = scrollArea.sizeHint();
+
+    // whether the scroll area itself is visible or not should not influence
+    // the size hint
+    scrollArea.hide();
+    QCOMPARE(scrollArea.sizeHint(), sizeHint);
+    scrollArea.show();
+    QCOMPARE(scrollArea.sizeHint(), sizeHint);
+
+    scrollArea.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    QCOMPARE(scrollArea.sizeHint(), scrollArea.viewportSizeHint());
+
+    scrollArea.setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea.setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    scrollArea.verticalScrollBar()->setRange(0, 1);
+    scrollArea.horizontalScrollBar()->setRange(0, 1);
+    scrollArea.resize(sizeHint / 2);
+    QApplication::processEvents(); // trigger lazy layout process
+    QCOMPARE(scrollArea.sizeHint(), sizeHintWithScrollBars);
 }
 
 QTEST_MAIN(tst_QAbstractScrollArea)

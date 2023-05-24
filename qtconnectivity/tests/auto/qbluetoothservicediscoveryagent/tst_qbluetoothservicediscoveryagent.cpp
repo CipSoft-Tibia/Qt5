@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
@@ -32,6 +7,7 @@
 #include <QLoggingCategory>
 #include <QVariant>
 #include <QList>
+#include "../../shared/bttestutil_p.h"
 
 #include <qbluetoothaddress.h>
 #include <qbluetoothdevicediscoveryagent.h>
@@ -64,6 +40,7 @@ private slots:
     void tst_invalidBtAddress();
     void tst_serviceDiscovery_data();
     void tst_serviceDiscovery();
+    void tst_serviceDiscoveryStop();
     void tst_serviceDiscoveryAdapters();
 
 private:
@@ -74,9 +51,10 @@ private:
 tst_QBluetoothServiceDiscoveryAgent::tst_QBluetoothServiceDiscoveryAgent()
 {
     QLoggingCategory::setFilterRules(QStringLiteral("qt.bluetooth* = true"));
-
+    if (androidBluetoothEmulator())
+        return;
     // start Bluetooth if not started
-#ifndef Q_OS_OSX
+#ifndef Q_OS_MACOS
     QBluetoothLocalDevice *device = new QBluetoothLocalDevice();
     localDeviceAvailable = device->isValid();
     if (localDeviceAvailable) {
@@ -114,36 +92,59 @@ void tst_QBluetoothServiceDiscoveryAgent::serviceError(const QBluetoothServiceDi
 
 void tst_QBluetoothServiceDiscoveryAgent::initTestCase()
 {
+    if (androidBluetoothEmulator())
+        QSKIP("Skipping test on Android 12+ emulator, CI can timeout waiting for user input");
+
     if (localDeviceAvailable) {
         QBluetoothDeviceDiscoveryAgent discoveryAgent;
 
         QSignalSpy finishedSpy(&discoveryAgent, SIGNAL(finished()));
-        QSignalSpy errorSpy(&discoveryAgent, SIGNAL(error(QBluetoothDeviceDiscoveryAgent::Error)));
+        QSignalSpy errorSpy(&discoveryAgent,
+                            SIGNAL(errorOccurred(QBluetoothDeviceDiscoveryAgent::Error)));
         QSignalSpy discoveredSpy(&discoveryAgent, SIGNAL(deviceDiscovered(QBluetoothDeviceInfo)));
-    //    connect(&discoveryAgent, SIGNAL(deviceDiscovered(QBluetoothDeviceInfo)),
-    //            this, SLOT(deviceDiscoveryDebug(QBluetoothDeviceInfo)));
 
-        discoveryAgent.start();
+        discoveryAgent.start(QBluetoothDeviceDiscoveryAgent::ClassicMethod);
 
         // Wait for up to MaxScanTime for the scan to finish
         int scanTime = MaxScanTime;
-        while (finishedSpy.count() == 0 && scanTime > 0) {
+        while (finishedSpy.isEmpty() && scanTime > 0) {
             QTest::qWait(1000);
             scanTime -= 1000;
         }
-    //    qDebug() << "Scan time left:" << scanTime;
 
         // Expect finished signal with no error
-        QVERIFY(finishedSpy.count() == 1);
+        QVERIFY(finishedSpy.size() == 1);
         QVERIFY(errorSpy.isEmpty());
 
         devices = discoveryAgent.discoveredDevices();
     }
 }
 
+void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscoveryStop()
+{
+    if (!localDeviceAvailable)
+        QSKIP("This test requires Bluetooth adapter in powered ON state");
+
+    QBluetoothServiceDiscoveryAgent discoveryAgent;
+    QSignalSpy finishedSpy(&discoveryAgent, SIGNAL(finished()));
+    QSignalSpy canceledSpy(&discoveryAgent, SIGNAL(canceled()));
+
+    // Verify we get the correct signals on start-stop
+    discoveryAgent.start(QBluetoothServiceDiscoveryAgent::FullDiscovery);
+    QVERIFY(discoveryAgent.isActive());
+    discoveryAgent.stop();
+    QTRY_COMPARE(canceledSpy.size(), 1);
+    QVERIFY(!discoveryAgent.isActive());
+    // Wait a bit to see that there are no latent signals
+    QTest::qWait(200);
+    QCOMPARE(canceledSpy.size(), 1);
+    QCOMPARE(finishedSpy.size(), 0);
+}
+
+
 void tst_QBluetoothServiceDiscoveryAgent::tst_invalidBtAddress()
 {
-#ifdef Q_OS_OSX
+#ifdef Q_OS_MACOS
     if (!localDeviceAvailable)
         QSKIP("On OS X this test requires Bluetooth adapter in powered ON state");
 #endif
@@ -156,7 +157,7 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_invalidBtAddress()
 
     discoveryAgent = new QBluetoothServiceDiscoveryAgent(QBluetoothAddress());
     QCOMPARE(discoveryAgent->error(), QBluetoothServiceDiscoveryAgent::NoError);
-    if (QBluetoothLocalDevice::allDevices().count() > 0) {
+    if (!QBluetoothLocalDevice::allDevices().isEmpty()) {
         discoveryAgent->start();
         QCOMPARE(discoveryAgent->isActive(), true);
     }
@@ -175,6 +176,7 @@ void tst_QBluetoothServiceDiscoveryAgent::serviceDiscoveryDebug(const QBluetooth
     qDebug() << "\tRFCOMM server channel:" << info.serverChannel();
 }
 
+#if 0
 static void dumpAttributeVariant(const QVariant &var, const QString indent)
 {
     if (!var.isValid()) {
@@ -182,17 +184,17 @@ static void dumpAttributeVariant(const QVariant &var, const QString indent)
         return;
     }
 
-    if (var.userType() == qMetaTypeId<QBluetoothServiceInfo::Sequence>()) {
+    if (var.typeId() == qMetaTypeId<QBluetoothServiceInfo::Sequence>()) {
         qDebug("%sSequence", indent.toLocal8Bit().constData());
         const QBluetoothServiceInfo::Sequence *sequence = static_cast<const QBluetoothServiceInfo::Sequence *>(var.data());
         for (const QVariant &v : *sequence)
             dumpAttributeVariant(v, indent + '\t');
-    } else if (var.userType() == qMetaTypeId<QBluetoothServiceInfo::Alternative>()) {
+    } else if (var.typeId() == qMetaTypeId<QBluetoothServiceInfo::Alternative>()) {
         qDebug("%sAlternative", indent.toLocal8Bit().constData());
         const QBluetoothServiceInfo::Alternative *alternative = static_cast<const QBluetoothServiceInfo::Alternative *>(var.data());
         for (const QVariant &v : *alternative)
             dumpAttributeVariant(v, indent + '\t');
-    } else if (var.userType() == qMetaTypeId<QBluetoothUuid>()) {
+    } else if (var.typeId() == qMetaTypeId<QBluetoothUuid>()) {
         QBluetoothUuid uuid = var.value<QBluetoothUuid>();
         switch (uuid.minimumSize()) {
         case 0:
@@ -205,27 +207,27 @@ static void dumpAttributeVariant(const QVariant &var, const QString indent)
             qDebug("%suuid %08x", indent.toLocal8Bit().constData(), uuid.toUInt32());
             break;
         case 16: {
-            qDebug("%suuid %s", indent.toLocal8Bit().constData(), QByteArray(reinterpret_cast<const char *>(uuid.toUInt128().data), 16).toHex().constData());
+            qDebug("%suuid %s", indent.toLocal8Bit().constData(), uuid.toByteArray(QUuid::Id128).constData());
             break;
         }
         default:
             qDebug("%suuid ???", indent.toLocal8Bit().constData());
         }
     } else {
-        switch (var.userType()) {
-        case QVariant::UInt:
+        switch (var.typeId()) {
+        case QMetaType::UInt:
             qDebug("%suint %u", indent.toLocal8Bit().constData(), var.toUInt());
             break;
-        case QVariant::Int:
+        case QMetaType::Int:
             qDebug("%sint %d", indent.toLocal8Bit().constData(), var.toInt());
             break;
-        case QVariant::String:
+        case QMetaType::QString:
             qDebug("%sstring %s", indent.toLocal8Bit().constData(), var.toString().toLocal8Bit().constData());
             break;
-        case QVariant::Bool:
+        case QMetaType::Bool:
             qDebug("%sbool %d", indent.toLocal8Bit().constData(), var.toBool());
             break;
-        case QVariant::Url:
+        case QMetaType::QUrl:
             qDebug("%surl %s", indent.toLocal8Bit().constData(), var.toUrl().toString().toLocal8Bit().constData());
             break;
         default:
@@ -241,6 +243,7 @@ static inline void dumpServiceInfoAttributes(const QBluetoothServiceInfo &info)
         dumpAttributeVariant(info.attribute(id), QString("\t"));
     }
 }
+#endif
 
 
 void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery_data()
@@ -254,15 +257,15 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery_data()
 
     // Only need to test the first 5 live devices
     int max = 5;
-    for (const QBluetoothDeviceInfo &info : qAsConst(devices)) {
+    for (const QBluetoothDeviceInfo &info : std::as_const(devices)) {
         if (info.isCached())
             continue;
         QTest::newRow("default filter") << info << QList<QBluetoothUuid>()
             << QBluetoothServiceDiscoveryAgent::NoError;
         if (!--max)
             break;
-        //QTest::newRow("public browse group") << info << (QList<QBluetoothUuid>() << QBluetoothUuid::PublicBrowseGroup);
-        //QTest::newRow("l2cap") << info << (QList<QBluetoothUuid>() << QBluetoothUuid::L2cap);
+        //QTest::newRow("public browse group") << info << (QList<QBluetoothUuid>() << QBluetoothUuid::ServiceClassUuid::PublicBrowseGroup);
+        //QTest::newRow("l2cap") << info << (QList<QBluetoothUuid>() << QBluetoothUuid::ProtocolUuid::L2cap);
     }
     QTest::newRow("all devices") << QBluetoothDeviceInfo() << QList<QBluetoothUuid>()
         << QBluetoothServiceDiscoveryAgent::NoError;
@@ -271,28 +274,28 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery_data()
 void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscoveryAdapters()
 {
     QBluetoothLocalDevice localDevice;
-    int numberOfAdapters = (localDevice.allDevices()).size();
-    if (numberOfAdapters>1) {
+    const QList<QBluetoothHostInfo> adapters = localDevice.allDevices();
+    if (adapters.size() > 1) {
         if (devices.isEmpty())
             QSKIP("This test requires an in-range bluetooth device");
 
-        QList<QBluetoothAddress> addresses;
+        QVarLengthArray<QBluetoothAddress> addresses;
 
-        for (int i=0; i<numberOfAdapters; i++) {
-            addresses.append(((QBluetoothHostInfo)localDevice.allDevices().at(i)).address());
+        for (const auto &adapter : adapters) {
+            addresses.append(adapter.address());
         }
         QBluetoothServer server(QBluetoothServiceInfo::RfcommProtocol);
-        QBluetoothUuid uuid(QBluetoothUuid::Ftp);
+        QBluetoothUuid uuid(QBluetoothUuid::ProtocolUuid::Ftp);
         server.listen(addresses[0]);
         QBluetoothServiceInfo serviceInfo;
         serviceInfo.setAttribute(QBluetoothServiceInfo::ServiceName, "serviceName");
         QBluetoothServiceInfo::Sequence publicBrowse;
-        publicBrowse << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::PublicBrowseGroup));
+        publicBrowse << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::PublicBrowseGroup));
         serviceInfo.setAttribute(QBluetoothServiceInfo::BrowseGroupList, publicBrowse);
 
         QBluetoothServiceInfo::Sequence profileSequence;
         QBluetoothServiceInfo::Sequence classId;
-        classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::SerialPort));
+        classId << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
         classId << QVariant::fromValue(quint16(0x100));
         profileSequence.append(QVariant::fromValue(classId));
         serviceInfo.setAttribute(QBluetoothServiceInfo::BluetoothProfileDescriptorList,
@@ -302,11 +305,11 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscoveryAdapters()
 
         QBluetoothServiceInfo::Sequence protocolDescriptorList;
         QBluetoothServiceInfo::Sequence protocol;
-        protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::L2cap));
+        protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::L2cap));
         protocolDescriptorList.append(QVariant::fromValue(protocol));
         protocol.clear();
 
-        protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::Rfcomm))
+        protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::Rfcomm))
                  << QVariant::fromValue(quint8(server.serverPort()));
 
         protocolDescriptorList.append(QVariant::fromValue(protocol));
@@ -329,22 +332,20 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscoveryAdapters()
 
         discoveryAgent.start();
         int scanTime = MaxScanTime;
-        while (finishedSpy.count() == 0 && scanTime > 0) {
+        while (finishedSpy.isEmpty() && scanTime > 0) {
             QTest::qWait(1000);
             scanTime -= 1000;
         }
 
-        QList<QBluetoothServiceInfo> discServices = discoveryAgent.discoveredServices();
+        const QList<QBluetoothServiceInfo> discServices = discoveryAgent.discoveredServices();
         QVERIFY(!discServices.empty());
 
-        int counter = 0;
-        for (int i = 0; i<discServices.size(); i++)
-        {
-            QBluetoothServiceInfo service((QBluetoothServiceInfo)discServices.at(i));
+        qsizetype counter = 0;
+        for (const QBluetoothServiceInfo &service : discServices) {
             if (uuid == service.serviceUuid())
                 counter++;
         }
-        QVERIFY(counter == 1);
+        QCOMPARE(counter, 1);
     }
 
 }
@@ -352,9 +353,6 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscoveryAdapters()
 
 void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery()
 {
-    // Not all devices respond to SDP, so allow for a failure
-    static int expected_failures = 0;
-
     if (devices.isEmpty())
         QSKIP("This test requires an in-range bluetooth device");
 
@@ -363,7 +361,7 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery()
     QFETCH(QBluetoothServiceDiscoveryAgent::Error, serviceDiscoveryError);
 
     QBluetoothLocalDevice localDevice;
-    qDebug() << "Scanning address" << deviceInfo.address().toString();
+    qDebug() << "Scanning address" << deviceInfo.address().toString() << deviceInfo.name();
     QBluetoothServiceDiscoveryAgent discoveryAgent(localDevice.address());
     bool setAddress = discoveryAgent.setRemoteAddress(deviceInfo.address());
 
@@ -380,12 +378,11 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery()
     QVERIFY(discoveryAgent.uuidFilter() == uuidFilter);
 
     QSignalSpy finishedSpy(&discoveryAgent, SIGNAL(finished()));
-    QSignalSpy errorSpy(&discoveryAgent, SIGNAL(error(QBluetoothServiceDiscoveryAgent::Error)));
+    QSignalSpy errorSpy(&discoveryAgent,
+                        SIGNAL(errorOccurred(QBluetoothServiceDiscoveryAgent::Error)));
     QSignalSpy discoveredSpy(&discoveryAgent, SIGNAL(serviceDiscovered(QBluetoothServiceInfo)));
-//    connect(&discoveryAgent, SIGNAL(serviceDiscovered(QBluetoothServiceInfo)),
-//            this, SLOT(serviceDiscoveryDebug(QBluetoothServiceInfo)));
-    connect(&discoveryAgent, SIGNAL(error(QBluetoothServiceDiscoveryAgent::Error)),
-            this, SLOT(serviceError(QBluetoothServiceDiscoveryAgent::Error)));
+    connect(&discoveryAgent, SIGNAL(errorOccurred(QBluetoothServiceDiscoveryAgent::Error)), this,
+            SLOT(serviceError(QBluetoothServiceDiscoveryAgent::Error)));
 
     discoveryAgent.start(QBluetoothServiceDiscoveryAgent::FullDiscovery);
 
@@ -396,13 +393,13 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery()
     QVERIFY(discoveryAgent.isActive() || !finishedSpy.isEmpty());
 
     // Wait for up to MaxScanTime for the scan to finish
-    int scanTime = MaxScanTime;
-    while (finishedSpy.count() == 0 && scanTime > 0) {
+    int scanTime = 20000;
+    while (finishedSpy.isEmpty() && scanTime > 0) {
         QTest::qWait(1000);
         scanTime -= 1000;
     }
 
-    if (discoveryAgent.error() && expected_failures++ < 2){
+    if (discoveryAgent.error()) {
         qDebug() << "Device failed to respond to SDP, skipping device" << discoveryAgent.error() << discoveryAgent.errorString();
         return;
     }
@@ -411,12 +408,14 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery()
     QVERIFY(discoveryAgent.errorString() == QString());
 
     // Expect finished signal with no error
-    QVERIFY(finishedSpy.count() == 1);
+    if (scanTime)
+        QVERIFY(finishedSpy.size() == 1);
+
     QVERIFY(errorSpy.isEmpty());
 
-    //if (discoveryAgent.discoveredServices().count() && expected_failures++ <2){
-    if (discoveredSpy.isEmpty() && expected_failures++ < 2){
-        qDebug() << "Device failed to return any results, skipping device" << discoveryAgent.discoveredServices().count();
+    //if (!discoveryAgent.discoveredServices().isEmpty() && expected_failures++ <2){
+    if (discoveredSpy.isEmpty()) {
+        qDebug() << "Device failed to return any results, skipping device" << discoveryAgent.discoveredServices().size();
         return;
     }
 
@@ -451,9 +450,9 @@ void tst_QBluetoothServiceDiscoveryAgent::tst_serviceDiscovery()
     }
 
     if (servicesFound)
-        QVERIFY(discoveryAgent.discoveredServices().count() != 0);
+        QVERIFY(!discoveryAgent.discoveredServices().isEmpty());
     discoveryAgent.clear();
-    QVERIFY(discoveryAgent.discoveredServices().count() == 0);
+    QVERIFY(discoveryAgent.discoveredServices().isEmpty());
 
     discoveryAgent.stop();
     QVERIFY(!discoveryAgent.isActive());

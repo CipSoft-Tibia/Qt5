@@ -1,12 +1,12 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <tuple>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -72,6 +72,11 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
         blink::features::kResamplingScrollEvents);
   }
 
+  CompositedScrollingBrowserTest(const CompositedScrollingBrowserTest&) =
+      delete;
+  CompositedScrollingBrowserTest& operator=(
+      const CompositedScrollingBrowserTest&) = delete;
+
   ~CompositedScrollingBrowserTest() override = default;
 
   void SetUpCommandLine(base::CommandLine* cmd) override {
@@ -79,8 +84,11 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
   }
 
   RenderWidgetHostImpl* GetWidgetHost() {
-    return RenderWidgetHostImpl::From(
-        shell()->web_contents()->GetRenderViewHost()->GetWidget());
+    return RenderWidgetHostImpl::From(shell()
+                                          ->web_contents()
+                                          ->GetPrimaryMainFrame()
+                                          ->GetRenderViewHost()
+                                          ->GetWidget());
   }
 
   void OnSyntheticGestureCompleted(SyntheticGesture::Result result) {
@@ -97,9 +105,9 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
     HitTestRegionObserver observer(GetWidgetHost()->GetFrameSinkId());
     host->GetView()->SetSize(gfx::Size(400, 400));
 
-    base::string16 ready_title(base::ASCIIToUTF16("ready"));
+    std::u16string ready_title(u"ready");
     TitleWatcher watcher(shell()->web_contents(), ready_title);
-    ignore_result(watcher.WaitAndGetTitle());
+    std::ignore = watcher.WaitAndGetTitle();
 
     // Wait for the hit test data to be ready after initiating URL loading
     // before returning
@@ -108,17 +116,11 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
 
   // ContentBrowserTest:
   int ExecuteScriptAndExtractInt(const std::string& script) {
-    int value = 0;
-    EXPECT_TRUE(content::ExecuteScriptAndExtractInt(
-        shell(), "domAutomationController.send(" + script + ")", &value));
-    return value;
+    return EvalJs(shell(), script).ExtractInt();
   }
 
   double ExecuteScriptAndExtractDouble(const std::string& script) {
-    double value = 0;
-    EXPECT_TRUE(content::ExecuteScriptAndExtractDouble(
-        shell(), "domAutomationController.send(" + script + ")", &value));
-    return value;
+    return EvalJs(shell(), script).ExtractDouble();
   }
 
   double GetScrollTop() {
@@ -128,7 +130,7 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
 
   // Generate touch events for a synthetic scroll from |point| for |distance|.
   // Returns the distance scrolled.
-  double DoScroll(SyntheticGestureParams::GestureSourceType type,
+  double DoScroll(content::mojom::GestureSourceType type,
                   const gfx::Point& point,
                   const gfx::Vector2d& distance) {
     SyntheticSmoothScrollGestureParams params;
@@ -154,18 +156,18 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
   }
 
   double DoTouchScroll(const gfx::Point& point, const gfx::Vector2d& distance) {
-    return DoScroll(SyntheticGestureParams::TOUCH_INPUT, point, distance);
+    return DoScroll(content::mojom::GestureSourceType::kTouchInput, point,
+                    distance);
   }
 
   double DoWheelScroll(const gfx::Point& point, const gfx::Vector2d& distance) {
-    return DoScroll(SyntheticGestureParams::MOUSE_INPUT, point, distance);
+    return DoScroll(content::mojom::GestureSourceType::kMouseInput, point,
+                    distance);
   }
 
  private:
   base::test::ScopedFeatureList scoped_feature_list_;
   scoped_refptr<MessageLoopRunner> runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(CompositedScrollingBrowserTest);
 };
 
 // Verify transforming a scroller doesn't prevent it from scrolling. See
@@ -173,7 +175,7 @@ class CompositedScrollingBrowserTest : public ContentBrowserTest {
 // Disabled on MacOS because it doesn't support touch input.
 // Disabled on Android due to flakiness, see https://crbug.com/376668.
 // Flaky on Windows: crbug.com/804009
-#if defined(OS_MAC) || defined(OS_ANDROID) || defined(OS_WIN)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN)
 #define MAYBE_Scroll3DTransformedScroller DISABLED_Scroll3DTransformedScroller
 #else
 #define MAYBE_Scroll3DTransformedScroller Scroll3DTransformedScroller
@@ -259,12 +261,6 @@ IN_PROC_BROWSER_TEST_P(CompositedScrollingMetricTest,
 
   base::HistogramBase::Sample expected_bucket =
       CompositingEnabled() ? kScrollingOnCompositor : kScrollingOnMain;
-  if (base::FeatureList::IsEnabled(::features::kScrollUnification)) {
-    // TODO: crbug.com/1082590
-    // After ScrollUnification all scrolls happen on the compositor thread
-    // but some will still force blocking on main thread
-    expected_bucket = kScrollingOnCompositor;
-  }
 
   histograms.ExpectUniqueSample(kTouchHistogramName, expected_bucket, 2);
   histograms.ExpectUniqueSample(kWheelHistogramName, expected_bucket, 1);
@@ -312,12 +308,6 @@ IN_PROC_BROWSER_TEST_P(CompositedScrollingMetricTest, BlockingEventHandlers) {
   base::HistogramBase::Sample expected_bucket =
       CompositingEnabled() ? kScrollingOnCompositorBlockedOnMain
                            : kScrollingOnMain;
-  if (base::FeatureList::IsEnabled(::features::kScrollUnification)) {
-    // TODO: crbug.com/1082590
-    // After ScrollUnification all scrolls happen on the compositor thread
-    // but some will still force blocking on main thread
-    expected_bucket = kScrollingOnCompositorBlockedOnMain;
-  }
 
   histograms.ExpectUniqueSample(kTouchHistogramName, expected_bucket, 2);
   histograms.ExpectUniqueSample(kWheelHistogramName, expected_bucket, 1);
@@ -365,12 +355,6 @@ IN_PROC_BROWSER_TEST_P(CompositedScrollingMetricTest, PassiveEventHandlers) {
 
   base::HistogramBase::Sample expected_bucket =
       CompositingEnabled() ? kScrollingOnCompositor : kScrollingOnMain;
-  if (base::FeatureList::IsEnabled(::features::kScrollUnification)) {
-    // TODO: crbug.com/1082590
-    // After ScrollUnification all scrolls happen on the compositor thread
-    // but some will still force blocking on main thread
-    expected_bucket = kScrollingOnCompositor;
-  }
 
   histograms.ExpectUniqueSample(kTouchHistogramName, expected_bucket, 2);
   histograms.ExpectUniqueSample(kWheelHistogramName, expected_bucket, 1);

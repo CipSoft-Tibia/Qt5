@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Jolla Ltd
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Jolla Ltd
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDSHELLINTEGRATION_H
 #define QWAYLANDSHELLINTEGRATION_H
@@ -52,9 +16,19 @@
 //
 
 #include <QtWaylandClient/qtwaylandclientglobal.h>
-#include <QtWaylandClient/private/qwaylanddisplay_p.h>
+#include <QtWaylandClient/qwaylandclientextension.h>
+
+
+
+#include <QDebug>
+#include <private/qglobal_p.h>
+
+struct wl_surface;
+struct wl_registry;
 
 QT_BEGIN_NAMESPACE
+
+class QWindow;
 
 namespace QtWaylandClient {
 
@@ -62,31 +36,59 @@ class QWaylandWindow;
 class QWaylandDisplay;
 class QWaylandShellSurface;
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandShellIntegration
+class Q_WAYLANDCLIENT_EXPORT QWaylandShellIntegration
 {
 public:
     QWaylandShellIntegration() {}
     virtual ~QWaylandShellIntegration() {}
 
-    virtual bool initialize(QWaylandDisplay *display) {
-        m_display = display;
-        return true;
-    }
+    virtual bool initialize(QWaylandDisplay *display) = 0;
     virtual QWaylandShellSurface *createShellSurface(QWaylandWindow *window) = 0;
-    // kept for binary compat with layer-shell-qt
-    virtual void handleKeyboardFocusChanged(QWaylandWindow *newFocus, QWaylandWindow *oldFocus) {
-        Q_UNUSED(newFocus);
-        Q_UNUSED(oldFocus);
-    }
     virtual void *nativeResourceForWindow(const QByteArray &resource, QWindow *window) {
         Q_UNUSED(resource);
         Q_UNUSED(window);
         return nullptr;
     }
 
-protected:
-    QWaylandDisplay *m_display = nullptr;
+    static wl_surface *wlSurfaceForWindow(QWaylandWindow *window);
+
 };
+
+template <typename T>
+class Q_WAYLANDCLIENT_EXPORT QWaylandShellIntegrationTemplate : public QWaylandShellIntegration, public QWaylandClientExtension
+{
+public:
+    QWaylandShellIntegrationTemplate(const int ver) :
+        QWaylandClientExtension(ver)
+    {
+    }
+
+    bool initialize(QWaylandDisplay *) override
+    {
+        QWaylandClientExtension::initialize();
+        return isActive();
+    }
+
+    const struct wl_interface *extensionInterface() const override
+    {
+        return T::interface();
+    }
+
+    void bind(struct ::wl_registry *registry, int id, int ver) override
+    {
+        T* instance = static_cast<T *>(this);
+        // Make sure lowest version is used of the supplied version from the
+        // developer and the version specified in the protocol and also the
+        // compositor version.
+        if (this->version() > T::interface()->version) {
+            qWarning("Supplied protocol version to QWaylandClientExtensionTemplate is higher than the version of the protocol, using protocol version instead.");
+        }
+        int minVersion = qMin(ver, qMin(T::interface()->version, this->version()));
+        setVersion(minVersion);
+        instance->init(registry, id, minVersion);
+    }
+};
+
 
 }
 

@@ -11,6 +11,9 @@
 #ifndef PC_TEST_RTC_STATS_OBTAINER_H_
 #define PC_TEST_RTC_STATS_OBTAINER_H_
 
+#include "api/make_ref_counted.h"
+#include "api/sequence_checker.h"
+#include "api/stats/rtc_stats_collector_callback.h"
 #include "api/stats/rtc_stats_report.h"
 #include "rtc_base/gunit.h"
 
@@ -20,8 +23,7 @@ class RTCStatsObtainer : public RTCStatsCollectorCallback {
  public:
   static rtc::scoped_refptr<RTCStatsObtainer> Create(
       rtc::scoped_refptr<const RTCStatsReport>* report_ptr = nullptr) {
-    return rtc::scoped_refptr<RTCStatsObtainer>(
-        new rtc::RefCountedObject<RTCStatsObtainer>(report_ptr));
+    return rtc::make_ref_counted<RTCStatsObtainer>(report_ptr);
   }
 
   void OnStatsDelivered(
@@ -43,7 +45,7 @@ class RTCStatsObtainer : public RTCStatsCollectorCallback {
       : report_ptr_(report_ptr) {}
 
  private:
-  rtc::ThreadChecker thread_checker_;
+  SequenceChecker thread_checker_;
   rtc::scoped_refptr<const RTCStatsReport> report_;
   rtc::scoped_refptr<const RTCStatsReport>* report_ptr_;
 };

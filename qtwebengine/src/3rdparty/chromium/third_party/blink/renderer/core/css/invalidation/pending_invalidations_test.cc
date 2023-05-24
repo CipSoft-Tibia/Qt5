@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,13 +27,13 @@ class PendingInvalidationsTest : public testing::Test {
 };
 
 void PendingInvalidationsTest::SetUp() {
-  dummy_page_holder_ = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  dummy_page_holder_ = std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
 }
 
 TEST_F(PendingInvalidationsTest, ScheduleOnDocumentNode) {
   GetDocument().body()->setInnerHTML(
       "<div id='d'></div><i id='i'></i><span></span>");
-  GetDocument().View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
 
   unsigned before_count = GetStyleEngine().StyleForElementCount();
 
@@ -57,7 +57,7 @@ TEST_F(PendingInvalidationsTest, ScheduleOnDocumentNode) {
   EXPECT_FALSE(GetDocument().NeedsStyleRecalc());
   EXPECT_TRUE(GetStyleEngine().NeedsStyleRecalc());
 
-  GetDocument().View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
   unsigned after_count = GetStyleEngine().StyleForElementCount();
   EXPECT_EQ(2u, after_count - before_count);
 }
@@ -74,7 +74,7 @@ TEST_F(PendingInvalidationsTest, DescendantInvalidationOnDisplayNone) {
     </div>
   )HTML");
 
-  GetDocument().View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
 
   // We skip scheduling descendant invalidations on display:none elements.
   GetDocument().getElementById("a")->setAttribute(html_names::kClassAttr, "a");

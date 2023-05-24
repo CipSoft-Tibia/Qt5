@@ -13,7 +13,6 @@
 #include <utility>
 
 #include "rtc_base/buffer.h"
-#include "rtc_base/task_utils/to_queued_task.h"
 
 namespace webrtc {
 namespace {
@@ -34,9 +33,13 @@ class TransformableIncomingAudioFrame
     payload_.SetData(data.data(), data.size());
   }
 
-  uint32_t GetTimestamp() const override { return header_.timestamp; }
+  uint8_t GetPayloadType() const override { return header_.payloadType; }
   uint32_t GetSsrc() const override { return ssrc_; }
+  uint32_t GetTimestamp() const override { return header_.timestamp; }
   const RTPHeader& GetHeader() const override { return header_; }
+  rtc::ArrayView<const uint32_t> GetContributingSources() const override {
+    return rtc::ArrayView<const uint32_t>(header_.arrOfCSRCs, header_.numCSRCs);
+  }
   Direction GetDirection() const override { return Direction::kReceiver; }
 
  private:
@@ -49,7 +52,7 @@ class TransformableIncomingAudioFrame
 ChannelReceiveFrameTransformerDelegate::ChannelReceiveFrameTransformerDelegate(
     ReceiveFrameCallback receive_frame_callback,
     rtc::scoped_refptr<FrameTransformerInterface> frame_transformer,
-    rtc::Thread* channel_receive_thread)
+    TaskQueueBase* channel_receive_thread)
     : receive_frame_callback_(receive_frame_callback),
       frame_transformer_(std::move(frame_transformer)),
       channel_receive_thread_(channel_receive_thread) {}
@@ -78,11 +81,11 @@ void ChannelReceiveFrameTransformerDelegate::Transform(
 
 void ChannelReceiveFrameTransformerDelegate::OnTransformedFrame(
     std::unique_ptr<TransformableFrameInterface> frame) {
-  rtc::scoped_refptr<ChannelReceiveFrameTransformerDelegate> delegate = this;
-  channel_receive_thread_->PostTask(ToQueuedTask(
+  rtc::scoped_refptr<ChannelReceiveFrameTransformerDelegate> delegate(this);
+  channel_receive_thread_->PostTask(
       [delegate = std::move(delegate), frame = std::move(frame)]() mutable {
         delegate->ReceiveFrame(std::move(frame));
-      }));
+      });
 }
 
 void ChannelReceiveFrameTransformerDelegate::ReceiveFrame(

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "deviceprofile_p.h"
 
@@ -34,10 +9,11 @@
 
 #include <QtWidgets/qapplication.h>
 #include <QtGui/qfont.h>
-#include <QtWidgets/qdesktopwidget.h>
 #include <QtWidgets/qstyle.h>
 #include <QtWidgets/qstylefactory.h>
 #include <QtWidgets/qapplication.h>
+
+#include <QtGui/qscreen.h>
 
 #include <QtCore/qshareddata.h>
 #include <QtCore/qtextstream.h>
@@ -45,18 +21,18 @@
 #include <QtCore/qxmlstream.h>
 
 
-static const char *dpiXPropertyC = "_q_customDpiX";
-static const char *dpiYPropertyC = "_q_customDpiY";
+static const char dpiXPropertyC[] = "_q_customDpiX";
+static const char dpiYPropertyC[] = "_q_customDpiY";
 
 // XML serialization
 static const char *xmlVersionC="1.0";
 static const char *rootElementC="deviceprofile";
-static const char *nameElementC = "name";
-static const char *fontFamilyElementC = "fontfamily";
-static const char *fontPointSizeElementC = "fontpointsize";
-static const char *dPIXElementC = "dpix";
-static const char *dPIYElementC = "dpiy";
-static const char *styleElementC = "style";
+static const char nameElementC[] = "name";
+static const char fontFamilyElementC[] = "fontfamily";
+static const char fontPointSizeElementC[] = "fontpointsize";
+static const char dPIXElementC[] = "dpix";
+static const char dPIYElementC[] = "dpiy";
+static const char styleElementC[] = "style";
 
 /* DeviceProfile:
  * For preview purposes (preview, widget box, new form dialog), the
@@ -202,9 +178,9 @@ void DeviceProfile::setName(const QString &n)
 
 void DeviceProfile::systemResolution(int *dpiX, int *dpiY)
 {
-    const QDesktopWidget *dw = qApp->desktop();
-    *dpiX = dw->logicalDpiX();
-    *dpiY = dw->logicalDpiY();
+    auto s = qApp->primaryScreen();
+    *dpiX = s->logicalDotsPerInchX();
+    *dpiY = s->logicalDotsPerInchY();
 }
 
 class FriendlyWidget : public QWidget {
@@ -241,7 +217,7 @@ static void applyFont(const QString &family, int size, DeviceProfile::ApplyMode 
     case DeviceProfile::ApplyPreview: {
         // Preview: Apply only subproperties that have not been changed by designer properties
         bool apply = false;
-        const uint resolve = currentFont.resolve();
+        const uint resolve = currentFont.resolveMask();
         if (!(resolve & QFont::FamilyResolved)) {
             currentFont.setFamily(family);
             apply = true;
@@ -306,20 +282,20 @@ QString DeviceProfile::toXml() const
     const DeviceProfileData &d = *m_d;
     QString rc;
     QXmlStreamWriter writer(&rc);
-    writer.writeStartDocument(QLatin1String(xmlVersionC));
-    writer.writeStartElement(QLatin1String(rootElementC));
-    writeElement(writer, QLatin1String(nameElementC), d.m_name);
+    writer.writeStartDocument(QLatin1StringView(xmlVersionC));
+    writer.writeStartElement(QLatin1StringView(rootElementC));
+    writeElement(writer, QLatin1StringView(nameElementC), d.m_name);
 
     if (!d.m_fontFamily.isEmpty())
-        writeElement(writer, QLatin1String(fontFamilyElementC), d.m_fontFamily);
+        writeElement(writer, QLatin1StringView(fontFamilyElementC), d.m_fontFamily);
     if (d.m_fontPointSize >= 0)
-        writeElement(writer, QLatin1String(fontPointSizeElementC), QString::number(d.m_fontPointSize));
+        writeElement(writer, QLatin1StringView(fontPointSizeElementC), QString::number(d.m_fontPointSize));
     if (d.m_dpiX > 0)
-        writeElement(writer, QLatin1String(dPIXElementC), QString::number(d.m_dpiX));
+        writeElement(writer, QLatin1StringView(dPIXElementC), QString::number(d.m_dpiX));
     if (d.m_dpiY > 0)
-        writeElement(writer, QLatin1String(dPIYElementC), QString::number(d.m_dpiY));
+        writeElement(writer, QLatin1StringView(dPIYElementC), QString::number(d.m_dpiY));
     if (!d.m_style.isEmpty())
-        writeElement(writer, QLatin1String(styleElementC), d.m_style);
+        writeElement(writer, QLatin1StringView(styleElementC), d.m_style);
 
     writer.writeEndElement();
     writer.writeEndDocument();
@@ -331,11 +307,11 @@ enum ParseStage { ParseBeginning, ParseWithinRoot,
                   ParseName, ParseFontFamily, ParseFontPointSize, ParseDPIX,  ParseDPIY,  ParseStyle,
                   ParseError };
 
-static ParseStage nextStage(ParseStage currentStage, const QStringRef &startElement)
+static ParseStage nextStage(ParseStage currentStage, QStringView startElement)
 {
     switch (currentStage) {
     case ParseBeginning:
-        if (startElement == QLatin1String(rootElementC))
+        if (startElement == QLatin1StringView(rootElementC))
             return ParseWithinRoot;
         break;
     case ParseWithinRoot:
@@ -345,17 +321,17 @@ static ParseStage nextStage(ParseStage currentStage, const QStringRef &startElem
     case ParseDPIX:
     case ParseDPIY:
     case ParseStyle:
-        if (startElement == QLatin1String(nameElementC))
+        if (startElement == QLatin1StringView(nameElementC))
             return ParseName;
-        if (startElement == QLatin1String(fontFamilyElementC))
+        if (startElement == QLatin1StringView(fontFamilyElementC))
             return ParseFontFamily;
-        if (startElement == QLatin1String(fontPointSizeElementC))
+        if (startElement == QLatin1StringView(fontPointSizeElementC))
             return ParseFontPointSize;
-        if (startElement == QLatin1String(dPIXElementC))
+        if (startElement == QLatin1StringView(dPIXElementC))
             return ParseDPIX;
-        if (startElement == QLatin1String(dPIYElementC))
+        if (startElement == QLatin1StringView(dPIYElementC))
             return ParseDPIY;
-        if (startElement == QLatin1String(styleElementC))
+        if (startElement == QLatin1StringView(styleElementC))
             return ParseStyle;
         break;
     case ParseError:

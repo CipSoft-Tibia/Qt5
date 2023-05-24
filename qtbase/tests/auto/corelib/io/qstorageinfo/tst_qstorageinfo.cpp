@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QStandardPaths>
 #include <QStorageInfo>
+#include <QTemporaryFile>
 
 #include <stdarg.h>
 
@@ -40,14 +17,12 @@ private slots:
     void defaultValues();
     void dump();
     void operatorEqual();
-#ifndef Q_OS_WINRT
     void operatorNotEqual();
     void root();
     void currentStorage();
     void storageList();
     void tempFile();
     void caching();
-#endif
 };
 
 void tst_QStorageInfo::defaultValues()
@@ -111,14 +86,20 @@ void tst_QStorageInfo::operatorEqual()
         QStorageInfo storage2;
         QCOMPARE(storage1, storage2);
     }
+
+    // Test copy ctor
+    {
+        QStorageInfo storage1 = QStorageInfo::root();
+        QStorageInfo storage2(storage1);
+        QCOMPARE(storage1, storage2);
+    }
 }
 
-#ifndef Q_OS_WINRT
 void tst_QStorageInfo::operatorNotEqual()
 {
     QStorageInfo storage1 = QStorageInfo::root();
     QStorageInfo storage2;
-    QVERIFY(storage1 != storage2);
+    QCOMPARE_NE(storage1, storage2);
 }
 
 void tst_QStorageInfo::root()
@@ -132,9 +113,9 @@ void tst_QStorageInfo::root()
     QVERIFY(!storage.device().isEmpty());
     QVERIFY(!storage.fileSystemType().isEmpty());
 #ifndef Q_OS_HAIKU
-    QVERIFY(storage.bytesTotal() >= 0);
-    QVERIFY(storage.bytesFree() >= 0);
-    QVERIFY(storage.bytesAvailable() >= 0);
+    QCOMPARE_GE(storage.bytesTotal(), 0);
+    QCOMPARE_GE(storage.bytesFree(), 0);
+    QCOMPARE_GE(storage.bytesAvailable(), 0);
 #endif
 }
 
@@ -147,9 +128,9 @@ void tst_QStorageInfo::currentStorage()
     QVERIFY(appPath.startsWith(storage.rootPath(), Qt::CaseInsensitive));
     QVERIFY(!storage.device().isEmpty());
     QVERIFY(!storage.fileSystemType().isEmpty());
-    QVERIFY(storage.bytesTotal() >= 0);
-    QVERIFY(storage.bytesFree() >= 0);
-    QVERIFY(storage.bytesAvailable() >= 0);
+    QCOMPARE_GE(storage.bytesTotal(), 0);
+    QCOMPARE_GE(storage.bytesFree(), 0);
+    QCOMPARE_GE(storage.bytesAvailable(), 0);
 }
 
 void tst_QStorageInfo::storageList()
@@ -176,19 +157,47 @@ void tst_QStorageInfo::storageList()
     }
 }
 
+static bool checkFilesystemGoodForWriting(QTemporaryFile &file, QStorageInfo &storage)
+{
+#ifdef Q_OS_LINUX
+    auto reconstructAt = [](auto *where, auto &&... how) {
+        // it's very difficult to convince QTemporaryFile to change the path...
+        std::destroy_at(where);
+        q20::construct_at(where, std::forward<decltype(how)>(how)...);
+    };
+    if (storage.fileSystemType() == "btrfs") {
+        // let's see if we can find another, writable FS
+        QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+        if (!runtimeDir.isEmpty()) {
+            reconstructAt(&file, runtimeDir + "/XXXXXX");
+            if (file.open()) {
+                storage.setPath(file.fileName());
+                if (storage.fileSystemType() != "btrfs")
+                    return true;
+            }
+        }
+        QTest::qSkip("btrfs does not synchronously update free space; this test would fail",
+                     __FILE__, __LINE__);
+        return false;
+    }
+#else
+    Q_UNUSED(file);
+    Q_UNUSED(storage);
+#endif
+    return true;
+}
+
 void tst_QStorageInfo::tempFile()
 {
     QTemporaryFile file;
     QVERIFY2(file.open(), qPrintable(file.errorString()));
 
     QStorageInfo storage1(file.fileName());
-#ifdef Q_OS_LINUX
-    if (storage1.fileSystemType() == "btrfs")
-        QSKIP("This test doesn't work on btrfs, probably due to a btrfs bug");
-#endif
+    if (!checkFilesystemGoodForWriting(file, storage1))
+        return;
 
     qint64 free = storage1.bytesFree();
-    QVERIFY(free != -1);
+    QCOMPARE_NE(free, -1);
 
     file.write(QByteArray(1024*1024, '1'));
     file.flush();
@@ -199,7 +208,7 @@ void tst_QStorageInfo::tempFile()
         QEXPECT_FAIL("", "This test is likely to fail on APFS", Continue);
     }
 
-    QVERIFY(free != storage2.bytesFree());
+    QCOMPARE_NE(free, storage2.bytesFree());
 }
 
 void tst_QStorageInfo::caching()
@@ -208,15 +217,13 @@ void tst_QStorageInfo::caching()
     QVERIFY2(file.open(), qPrintable(file.errorString()));
 
     QStorageInfo storage1(file.fileName());
-#ifdef Q_OS_LINUX
-    if (storage1.fileSystemType() == "btrfs")
-        QSKIP("This test doesn't work on btrfs, probably due to a btrfs bug");
-#endif
+    if (!checkFilesystemGoodForWriting(file, storage1))
+        return;
 
     qint64 free = storage1.bytesFree();
     QStorageInfo storage2(storage1);
     QCOMPARE(free, storage2.bytesFree());
-    QVERIFY(free != -1);
+    QCOMPARE_NE(free, -1);
 
     file.write(QByteArray(1024*1024, '\0'));
     file.flush();
@@ -228,9 +235,8 @@ void tst_QStorageInfo::caching()
     if (free == storage2.bytesFree() && storage2.fileSystemType() == "apfs") {
         QEXPECT_FAIL("", "This test is likely to fail on APFS", Continue);
     }
-    QVERIFY(free != storage2.bytesFree());
+    QCOMPARE_NE(free, storage2.bytesFree());
 }
-#endif
 
 QTEST_MAIN(tst_QStorageInfo)
 

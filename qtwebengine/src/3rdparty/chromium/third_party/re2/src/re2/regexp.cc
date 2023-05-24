@@ -74,16 +74,27 @@ bool Regexp::QuickDestroy() {
   return false;
 }
 
-// Lazily allocated.
-static Mutex* ref_mutex;
-static std::map<Regexp*, int>* ref_map;
+// Similar to EmptyStorage in re2.cc.
+struct RefStorage {
+  Mutex ref_mutex;
+  std::map<Regexp*, int> ref_map;
+};
+alignas(RefStorage) static char ref_storage[sizeof(RefStorage)];
+
+static inline Mutex* ref_mutex() {
+  return &reinterpret_cast<RefStorage*>(ref_storage)->ref_mutex;
+}
+
+static inline std::map<Regexp*, int>* ref_map() {
+  return &reinterpret_cast<RefStorage*>(ref_storage)->ref_map;
+}
 
 int Regexp::Ref() {
   if (ref_ < kMaxRef)
     return ref_;
 
-  MutexLock l(ref_mutex);
-  return (*ref_map)[this];
+  MutexLock l(ref_mutex());
+  return (*ref_map())[this];
 }
 
 // Increments reference count, returns object as convenience.
@@ -91,18 +102,17 @@ Regexp* Regexp::Incref() {
   if (ref_ >= kMaxRef-1) {
     static std::once_flag ref_once;
     std::call_once(ref_once, []() {
-      ref_mutex = new Mutex;
-      ref_map = new std::map<Regexp*, int>;
+      (void) new (ref_storage) RefStorage;
     });
 
     // Store ref count in overflow map.
-    MutexLock l(ref_mutex);
+    MutexLock l(ref_mutex());
     if (ref_ == kMaxRef) {
       // already overflowed
-      (*ref_map)[this]++;
+      (*ref_map())[this]++;
     } else {
       // overflowing now
-      (*ref_map)[this] = kMaxRef;
+      (*ref_map())[this] = kMaxRef;
       ref_ = kMaxRef;
     }
     return this;
@@ -116,13 +126,13 @@ Regexp* Regexp::Incref() {
 void Regexp::Decref() {
   if (ref_ == kMaxRef) {
     // Ref count is stored in overflow map.
-    MutexLock l(ref_mutex);
-    int r = (*ref_map)[this] - 1;
+    MutexLock l(ref_mutex());
+    int r = (*ref_map())[this] - 1;
     if (r < kMaxRef) {
       ref_ = static_cast<uint16_t>(r);
-      ref_map->erase(this);
+      ref_map()->erase(this);
     } else {
-      (*ref_map)[this] = r;
+      (*ref_map())[this] = r;
     }
     return;
   }
@@ -585,8 +595,7 @@ class NamedCapturesWalker : public Regexp::Walker<Ignored> {
       // Record first occurrence of each name.
       // (The rule is that if you have the same name
       // multiple times, only the leftmost one counts.)
-      if (map_->find(*re->name()) == map_->end())
-        (*map_)[*re->name()] = re->cap();
+      map_->insert({*re->name(), re->cap()});
     }
     return ignored;
   }
@@ -722,8 +731,14 @@ bool Regexp::RequiredPrefixForAccel(std::string* prefix, bool* foldcase) {
   *foldcase = false;
 
   // No need for a walker: the regexp must either begin with or be
-  // a literal char or string.
+  // a literal char or string. We "see through" capturing groups,
+  // but make no effort to glue multiple prefix fragments together.
   Regexp* re = op_ == kRegexpConcat && nsub_ > 0 ? sub()[0] : this;
+  while (re->op_ == kRegexpCapture) {
+    re = re->sub()[0];
+    if (re->op_ == kRegexpConcat && re->nsub_ > 0)
+      re = re->sub()[0];
+  }
   if (re->op_ != kRegexpLiteral &&
       re->op_ != kRegexpLiteralString)
     return false;
@@ -913,7 +928,7 @@ void CharClassBuilder::Negate() {
 // The ranges are allocated in the same block as the header,
 // necessitating a special allocator and Delete method.
 
-CharClass* CharClass::New(int maxranges) {
+CharClass* CharClass::New(size_t maxranges) {
   CharClass* cc;
   uint8_t* data = new uint8_t[sizeof *cc + maxranges*sizeof cc->ranges_[0]];
   cc = reinterpret_cast<CharClass*>(data);
@@ -930,7 +945,7 @@ void CharClass::Delete() {
 }
 
 CharClass* CharClass::Negate() {
-  CharClass* cc = CharClass::New(nranges_+1);
+  CharClass* cc = CharClass::New(static_cast<size_t>(nranges_+1));
   cc->folds_ascii_ = folds_ascii_;
   cc->nrunes_ = Runemax + 1 - nrunes_;
   int n = 0;
@@ -949,7 +964,7 @@ CharClass* CharClass::Negate() {
   return cc;
 }
 
-bool CharClass::Contains(Rune r) {
+bool CharClass::Contains(Rune r) const {
   RuneRange* rr = ranges_;
   int n = nranges_;
   while (n > 0) {
@@ -967,7 +982,7 @@ bool CharClass::Contains(Rune r) {
 }
 
 CharClass* CharClassBuilder::GetCharClass() {
-  CharClass* cc = CharClass::New(static_cast<int>(ranges_.size()));
+  CharClass* cc = CharClass::New(ranges_.size());
   int n = 0;
   for (iterator it = begin(); it != end(); ++it)
     cc->ranges_[n++] = *it;

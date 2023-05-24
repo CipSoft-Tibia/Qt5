@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,14 @@
 #include <memory>
 #include <utility>
 
-#include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/strings/string_util.h"
+#include "base/test/values_test_util.h"
 #include "base/values.h"
+#include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gfx/geometry/rect.h"
 
 namespace cloud_devices {
 
@@ -21,7 +24,7 @@ namespace printer {
 // comparison.
 std::string NormalizeJson(const std::string& json) {
   std::string result;
-  base::JSONWriter::Write(*base::JSONReader::Read(json), &result);
+  base::JSONWriter::Write(base::test::ParseJson(json), &result);
   return result;
 }
 
@@ -40,7 +43,6 @@ const char kCdd[] = R"(
         },
         "color": {
           "option": [ {
-            "is_default": true,
             "type": "STANDARD_COLOR"
           }, {
             "type": "STANDARD_MONOCHROME"
@@ -124,15 +126,27 @@ const char kCdd[] = R"(
         },
         "media_size": {
           "option": [ {
+            "imageable_area_left_microns": 0,
+            "imageable_area_right_microns": 2222,
+            "imageable_area_bottom_microns": 0,
+            "imageable_area_top_microns": 3333,
             "is_default": true,
             "name": "NA_LETTER",
             "width_microns": 2222,
             "height_microns": 3333
           }, {
+            "imageable_area_bottom_microns": 0,
+            "imageable_area_left_microns": 0,
+            "imageable_area_right_microns": 4444,
+            "imageable_area_top_microns": 5555,
             "name": "ISO_A6",
             "width_microns": 4444,
             "height_microns": 5555
           }, {
+            "imageable_area_bottom_microns": 0,
+            "imageable_area_left_microns": 0,
+            "imageable_area_right_microns": 6666,
+            "imageable_area_top_microns": 7777,
             "name": "JPN_YOU4",
             "width_microns": 6666,
             "height_microns": 7777
@@ -161,20 +175,6 @@ const char kBadVersionCdd[] = R"(
     {
       "version": "1.1",
       "printer": {
-      }
-    })";
-
-const char kNoDefaultCdd[] = R"(
-    {
-      "version": "1.0",
-      "printer": {
-        "color": {
-          "option": [ {
-            "type": "STANDARD_COLOR"
-          }, {
-            "type": "STANDARD_MONOCHROME"
-          } ]
-        }
       }
     })";
 
@@ -350,8 +350,11 @@ const char kMissingDisplayNameSelectVendorCapabilityJson[] = R"(
 const char kNoDefaultSelectVendorCapabilityJson[] = R"(
     {
       "option": [ {
-        "value": "value",
-        "display_name": "name"
+        "value": "value_1",
+        "display_name": "name_1"
+      }, {
+        "value": "value_2",
+        "display_name": "name_2"
       } ]
     })";
 
@@ -518,7 +521,7 @@ const char kSeveralInnerCapabilitiesVendorCapabilityCdd[] = R"(
       }
     })";
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 const char kPinOnlyCdd[] = R"(
     {
       "version": "1.0",
@@ -528,7 +531,7 @@ const char kPinOnlyCdd[] = R"(
         }
       }
     })";
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 const char kCjt[] = R"(
     {
@@ -573,6 +576,10 @@ const char kCjt[] = R"(
            } ]
         },
         "media_size": {
+          "imageable_area_bottom_microns": 100,
+          "imageable_area_left_microns": 300,
+          "imageable_area_right_microns": 3961,
+          "imageable_area_top_microns": 234,
           "name": "ISO_C7C6",
           "width_microns": 4261,
           "height_microns": 334
@@ -632,7 +639,8 @@ const struct TestTypedValueCapabilities {
 
 TEST(PrinterDescriptionTest, CddInit) {
   CloudDeviceDescription description;
-  EXPECT_EQ(NormalizeJson(kDefaultCdd), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kDefaultCdd),
+            NormalizeJson(description.ToStringForTesting()));
 
   ContentTypesCapability content_types;
   PwgRasterConfigCapability pwg_raster;
@@ -670,9 +678,6 @@ TEST(PrinterDescriptionTest, CddInvalid) {
 
   EXPECT_FALSE(description.InitFromString(kBadVersionCdd));
 
-  EXPECT_TRUE(description.InitFromString(kNoDefaultCdd));
-  EXPECT_FALSE(color.LoadFrom(description));
-
   EXPECT_TRUE(description.InitFromString(kMultyDefaultCdd));
   EXPECT_FALSE(color.LoadFrom(description));
 }
@@ -703,7 +708,7 @@ TEST(PrinterDescriptionTest, CddSetAll) {
   custom_raster.rotate_all_pages = false;
   pwg_raster_config.set_value(custom_raster);
 
-  color.AddDefaultOption(Color(ColorType::STANDARD_COLOR), true);
+  color.AddOption(Color(ColorType::STANDARD_COLOR));
   color.AddOption(Color(ColorType::STANDARD_MONOCHROME));
   Color custom(ColorType::CUSTOM_MONOCHROME);
   custom.vendor_id = "123";
@@ -731,10 +736,11 @@ TEST(PrinterDescriptionTest, CddSetAll) {
   fit_to_page.AddOption(FitToPageType::SHRINK_TO_PAGE);
   fit_to_page.AddOption(FitToPageType::FILL_PAGE);
 
-  media.AddDefaultOption(Media(MediaType::NA_LETTER, 2222, 3333), true);
-  media.AddOption(Media(MediaType::ISO_A6, 4444, 5555));
-  media.AddOption(Media(MediaType::JPN_YOU4, 6666, 7777));
-  media.AddOption(Media("Feed", "FEED", 1111, 0));
+  media.AddDefaultOption(Media(MediaType::NA_LETTER, gfx::Size(2222, 3333)),
+                         true);
+  media.AddOption(Media(MediaType::ISO_A6, gfx::Size(4444, 5555)));
+  media.AddOption(Media(MediaType::JPN_YOU4, gfx::Size(6666, 7777)));
+  media.AddOption(Media("Feed", "FEED", gfx::Size(1111, 0)));
 
   collate.set_default_value(false);
   reverse.set_default_value(true);
@@ -753,7 +759,8 @@ TEST(PrinterDescriptionTest, CddSetAll) {
   reverse.SaveTo(&description);
   pwg_raster_config.SaveTo(&description);
 
-  EXPECT_EQ(NormalizeJson(kCdd), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kCdd),
+            NormalizeJson(description.ToStringForTesting()));
 }
 
 TEST(PrinterDescriptionTest, CddGetDocumentTypeSupported) {
@@ -853,7 +860,7 @@ TEST(PrinterDescriptionTest, CddSetDocumentTypeSupported) {
     pwg_raster.SaveTo(&description);
 
     EXPECT_EQ(NormalizeJson(kDocumentTypeColorOnlyCdd),
-              NormalizeJson(description.ToString()));
+              NormalizeJson(description.ToStringForTesting()));
   }
   {
     CloudDeviceDescription description;
@@ -868,7 +875,7 @@ TEST(PrinterDescriptionTest, CddSetDocumentTypeSupported) {
     pwg_raster.SaveTo(&description);
 
     EXPECT_EQ(NormalizeJson(kDocumentTypeGrayOnlyCdd),
-              NormalizeJson(description.ToString()));
+              NormalizeJson(description.ToStringForTesting()));
   }
   {
     CloudDeviceDescription description;
@@ -885,7 +892,7 @@ TEST(PrinterDescriptionTest, CddSetDocumentTypeSupported) {
     pwg_raster.SaveTo(&description);
 
     EXPECT_EQ(NormalizeJson(kDocumentTypeColorAndGrayCdd),
-              NormalizeJson(description.ToString()));
+              NormalizeJson(description.ToStringForTesting()));
   }
   {
     CloudDeviceDescription description;
@@ -898,18 +905,16 @@ TEST(PrinterDescriptionTest, CddSetDocumentTypeSupported) {
     pwg_raster.SaveTo(&description);
 
     EXPECT_EQ(NormalizeJson(kDocumentTypeNoneCdd),
-              NormalizeJson(description.ToString()));
+              NormalizeJson(description.ToStringForTesting()));
   }
 }
 
 TEST(PrinterDescriptionTest, CddGetRangeVendorCapability) {
   for (const auto& capacity : kTestRangeCapabilities) {
-    base::Optional<base::Value> value =
-        base::JSONReader::Read(capacity.json_name);
-    ASSERT_TRUE(value);
-    base::Value description = std::move(*value);
+    base::Value description = base::test::ParseJson(capacity.json_name);
+    ASSERT_TRUE(description.is_dict());
     RangeVendorCapability range_capability;
-    EXPECT_TRUE(range_capability.LoadFrom(description));
+    EXPECT_TRUE(range_capability.LoadFrom(description.GetDict()));
     EXPECT_EQ(capacity.range_capability, range_capability);
   }
 
@@ -919,18 +924,16 @@ TEST(PrinterDescriptionTest, CddGetRangeVendorCapability) {
       kInvalidBoundariesRangeVendorCapabilityJson,
       kInvalidDefaultValueRangeVendorCapabilityJson};
   for (const char* invalid_json_name : kInvalidJsonNames) {
-    base::Optional<base::Value> value =
-        base::JSONReader::Read(invalid_json_name);
-    ASSERT_TRUE(value);
-    base::Value description = std::move(*value);
+    base::Value description = base::test::ParseJson(invalid_json_name);
+    ASSERT_TRUE(description.is_dict());
     RangeVendorCapability range_capability;
-    EXPECT_FALSE(range_capability.LoadFrom(description));
+    EXPECT_FALSE(range_capability.LoadFrom(description.GetDict()));
   }
 }
 
 TEST(PrinterDescriptionTest, CddSetRangeVendorCapability) {
   for (const auto& capacity : kTestRangeCapabilities) {
-    base::Value range_capability_value(base::Value::Type::DICTIONARY);
+    base::Value::Dict range_capability_value;
     capacity.range_capability.SaveTo(&range_capability_value);
     std::string range_capability_str;
     EXPECT_TRUE(base::JSONWriter::WriteWithOptions(
@@ -943,12 +946,11 @@ TEST(PrinterDescriptionTest, CddSetRangeVendorCapability) {
 
 TEST(PrinterDescriptionTest, CddGetSelectVendorCapability) {
   {
-    base::Optional<base::Value> value =
-        base::JSONReader::Read(kSelectVendorCapabilityJson);
-    ASSERT_TRUE(value);
-    base::Value description = std::move(*value);
+    base::Value description =
+        base::test::ParseJson(kSelectVendorCapabilityJson);
+    ASSERT_TRUE(description.is_dict());
     SelectVendorCapability select_capability;
-    EXPECT_TRUE(select_capability.LoadFrom(description));
+    EXPECT_TRUE(select_capability.LoadFrom(description.GetDict()));
     EXPECT_EQ(2u, select_capability.size());
     EXPECT_TRUE(select_capability.Contains(
         SelectVendorCapabilityOption("value_1", "name_1")));
@@ -957,47 +959,72 @@ TEST(PrinterDescriptionTest, CddGetSelectVendorCapability) {
     EXPECT_EQ(SelectVendorCapabilityOption("value_2", "name_2"),
               select_capability.GetDefault());
   }
-
+  {
+    base::Value description =
+        base::test::ParseJson(kNoDefaultSelectVendorCapabilityJson);
+    ASSERT_TRUE(description.is_dict());
+    SelectVendorCapability select_capability;
+    EXPECT_TRUE(select_capability.LoadFrom(description.GetDict()));
+    EXPECT_EQ(2u, select_capability.size());
+    EXPECT_TRUE(select_capability.Contains(
+        SelectVendorCapabilityOption("value_1", "name_1")));
+    EXPECT_TRUE(select_capability.Contains(
+        SelectVendorCapabilityOption("value_2", "name_2")));
+    EXPECT_EQ(SelectVendorCapabilityOption("value_1", "name_1"),
+              select_capability.GetDefault());
+  }
   const char* const kInvalidJsonNames[] = {
       kNotListSelectVendorCapabilityJson,
       kMissingValueSelectVendorCapabilityJson,
       kMissingDisplayNameSelectVendorCapabilityJson,
-      kNoDefaultSelectVendorCapabilityJson,
       kSeveralDefaultsSelectVendorCapabilityJson};
   for (const char* invalid_json_name : kInvalidJsonNames) {
-    base::Optional<base::Value> value =
-        base::JSONReader::Read(invalid_json_name);
-    ASSERT_TRUE(value);
-    base::Value description = std::move(*value);
+    base::Value description = base::test::ParseJson(invalid_json_name);
+    ASSERT_TRUE(description.is_dict());
     SelectVendorCapability select_capability;
-    EXPECT_FALSE(select_capability.LoadFrom(description));
+    EXPECT_FALSE(select_capability.LoadFrom(description.GetDict()));
   }
 }
 
 TEST(PrinterDescriptionTest, CddSetSelectVendorCapability) {
-  SelectVendorCapability select_capability;
-  select_capability.AddOption(
-      SelectVendorCapabilityOption("value_1", "name_1"));
-  select_capability.AddDefaultOption(
-      SelectVendorCapabilityOption("value_2", "name_2"), true);
-  base::Value select_capability_value(base::Value::Type::DICTIONARY);
-  select_capability.SaveTo(&select_capability_value);
-  std::string select_capability_str;
-  EXPECT_TRUE(base::JSONWriter::WriteWithOptions(
-      select_capability_value, base::JSONWriter::OPTIONS_PRETTY_PRINT,
-      &select_capability_str));
-  EXPECT_EQ(NormalizeJson(kSelectVendorCapabilityJson),
-            NormalizeJson(select_capability_str));
+  {
+    SelectVendorCapability select_capability;
+    select_capability.AddOption(
+        SelectVendorCapabilityOption("value_1", "name_1"));
+    select_capability.AddDefaultOption(
+        SelectVendorCapabilityOption("value_2", "name_2"), true);
+    base::Value::Dict select_capability_value;
+    select_capability.SaveTo(&select_capability_value);
+    std::string select_capability_str;
+    EXPECT_TRUE(base::JSONWriter::WriteWithOptions(
+        select_capability_value, base::JSONWriter::OPTIONS_PRETTY_PRINT,
+        &select_capability_str));
+    EXPECT_EQ(NormalizeJson(kSelectVendorCapabilityJson),
+              NormalizeJson(select_capability_str));
+  }
+  {
+    SelectVendorCapability select_capability;
+    select_capability.AddOption(
+        SelectVendorCapabilityOption("value_1", "name_1"));
+    select_capability.AddOption(
+        SelectVendorCapabilityOption("value_2", "name_2"));
+    base::Value::Dict select_capability_value;
+    select_capability.SaveTo(&select_capability_value);
+    std::string select_capability_str;
+    EXPECT_TRUE(base::JSONWriter::WriteWithOptions(
+        select_capability_value, base::JSONWriter::OPTIONS_PRETTY_PRINT,
+        &select_capability_str));
+    EXPECT_EQ(NormalizeJson(kNoDefaultSelectVendorCapabilityJson),
+              NormalizeJson(select_capability_str));
+  }
 }
 
 TEST(PrinterDescriptionTest, CddGetTypedValueVendorCapability) {
   for (const auto& capacity : kTestTypedValueCapabilities) {
-    base::Optional<base::Value> value =
-        base::JSONReader::Read(capacity.json_name);
-    ASSERT_TRUE(value);
-    base::Value description = std::move(*value);
+    base::Value description = base::test::ParseJson(capacity.json_name);
+    ASSERT_TRUE(description.is_dict());
     TypedValueVendorCapability typed_value_capability;
-    EXPECT_TRUE(typed_value_capability.LoadFrom(description));
+    EXPECT_TRUE(typed_value_capability.LoadFrom(description.GetDict()));
     EXPECT_EQ(capacity.typed_value_capability, typed_value_capability);
   }
 
@@ -1007,18 +1034,16 @@ TEST(PrinterDescriptionTest, CddGetTypedValueVendorCapability) {
       kInvalidFloatTypedValueVendorCapabilityJson,
       kInvalidIntegerTypedValueVendorCapabilityJson};
   for (const char* invalid_json_name : kInvalidJsonNames) {
-    base::Optional<base::Value> value =
-        base::JSONReader::Read(invalid_json_name);
-    ASSERT_TRUE(value);
-    base::Value description = std::move(*value);
+    base::Value description = base::test::ParseJson(invalid_json_name);
+    ASSERT_TRUE(description.is_dict());
     TypedValueVendorCapability typed_value_capability;
-    EXPECT_FALSE(typed_value_capability.LoadFrom(description));
+    EXPECT_FALSE(typed_value_capability.LoadFrom(description.GetDict()));
   }
 }
 
 TEST(PrinterDescriptionTest, CddSetTypedValueVendorCapability) {
   for (const auto& capacity : kTestTypedValueCapabilities) {
-    base::Value typed_value_capability_value(base::Value::Type::DICTIONARY);
+    base::Value::Dict typed_value_capability_value;
     capacity.typed_value_capability.SaveTo(&typed_value_capability_value);
     std::string typed_value_capability_str;
     EXPECT_TRUE(base::JSONWriter::WriteWithOptions(
@@ -1084,10 +1109,10 @@ TEST(PrinterDescriptionTest, CddSetVendorCapability) {
 
   vendor_capabilities.SaveTo(&description);
   EXPECT_EQ(NormalizeJson(kVendorCapabilityOnlyCdd),
-            NormalizeJson(description.ToString()));
+            NormalizeJson(description.ToStringForTesting()));
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 TEST(PrinterDescriptionTest, CddGetPin) {
   {
     CloudDeviceDescription description;
@@ -1111,9 +1136,10 @@ TEST(PrinterDescriptionTest, CddSetPin) {
   PinCapability pin_capability;
   pin_capability.set_value(true);
   pin_capability.SaveTo(&description);
-  EXPECT_EQ(NormalizeJson(kPinOnlyCdd), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kPinOnlyCdd),
+            NormalizeJson(description.ToStringForTesting()));
 }
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 TEST(PrinterDescriptionTest, CddGetAll) {
   CloudDeviceDescription description;
@@ -1193,21 +1219,26 @@ TEST(PrinterDescriptionTest, CddGetAll) {
   EXPECT_TRUE(fit_to_page.Contains(FitToPageType::FILL_PAGE));
   EXPECT_EQ(FitToPageType::NO_FITTING, fit_to_page.GetDefault());
 
-  EXPECT_TRUE(media.Contains(Media(MediaType::NA_LETTER, 2222, 3333)));
-  EXPECT_TRUE(media.Contains(Media(MediaType::ISO_A6, 4444, 5555)));
-  EXPECT_TRUE(media.Contains(Media(MediaType::JPN_YOU4, 6666, 7777)));
-  EXPECT_TRUE(media.Contains(Media("Feed", "FEED", 1111, 0)));
-  EXPECT_EQ(Media(MediaType::NA_LETTER, 2222, 3333), media.GetDefault());
+  EXPECT_TRUE(
+      media.Contains(Media(MediaType::NA_LETTER, gfx::Size(2222, 3333))));
+  EXPECT_TRUE(media.Contains(Media(MediaType::ISO_A6, gfx::Size(4444, 5555))));
+  EXPECT_TRUE(
+      media.Contains(Media(MediaType::JPN_YOU4, gfx::Size(6666, 7777))));
+  EXPECT_TRUE(media.Contains(Media("Feed", "FEED", gfx::Size(1111, 0))));
+  EXPECT_EQ(Media(MediaType::NA_LETTER, gfx::Size(2222, 3333)),
+            media.GetDefault());
 
   EXPECT_FALSE(collate.default_value());
   EXPECT_TRUE(reverse.default_value());
 
-  EXPECT_EQ(NormalizeJson(kCdd), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kCdd),
+            NormalizeJson(description.ToStringForTesting()));
 }
 
 TEST(PrinterDescriptionTest, CjtInit) {
   CloudDeviceDescription description;
-  EXPECT_EQ(NormalizeJson(kDefaultCjt), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kDefaultCjt),
+            NormalizeJson(description.ToStringForTesting()));
 
   PwgRasterConfigTicketItem pwg_raster_config;
   ColorTicketItem color;
@@ -1274,7 +1305,8 @@ TEST(PrinterDescriptionTest, CjtSetAll) {
   page_ranges.push_back(Interval(1, 99));
   page_ranges.push_back(Interval(150));
   page_range.set_value(page_ranges);
-  media.set_value(Media(MediaType::ISO_C7C6, 4261, 334));
+  media.set_value(Media(MediaType::ISO_C7C6, gfx::Size(4261, 334),
+                        gfx::Rect(300, 100, 3661, 134)));
   collate.set_value(false);
   reverse.set_value(true);
 
@@ -1291,7 +1323,8 @@ TEST(PrinterDescriptionTest, CjtSetAll) {
   collate.SaveTo(&description);
   reverse.SaveTo(&description);
 
-  EXPECT_EQ(NormalizeJson(kCjt), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kCjt),
+            NormalizeJson(description.ToStringForTesting()));
 }
 
 TEST(PrinterDescriptionTest, CjtGetAll) {
@@ -1340,11 +1373,13 @@ TEST(PrinterDescriptionTest, CjtGetAll) {
   page_ranges.push_back(Interval(1, 99));
   page_ranges.push_back(Interval(150));
   EXPECT_EQ(page_range.value(), page_ranges);
-  EXPECT_EQ(media.value(), Media(MediaType::ISO_C7C6, 4261, 334));
+  EXPECT_EQ(media.value(), Media(MediaType::ISO_C7C6, gfx::Size(4261, 334),
+                                 gfx::Rect(300, 100, 3661, 134)));
   EXPECT_FALSE(collate.value());
   EXPECT_TRUE(reverse.value());
 
-  EXPECT_EQ(NormalizeJson(kCjt), NormalizeJson(description.ToString()));
+  EXPECT_EQ(NormalizeJson(kCjt),
+            NormalizeJson(description.ToStringForTesting()));
 }
 
 }  // namespace printer

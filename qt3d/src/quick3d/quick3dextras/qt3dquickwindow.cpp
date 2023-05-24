@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <Qt3DQuickExtras/qt3dquickwindow.h>
 #include <Qt3DExtras/Qt3DWindow>
@@ -59,6 +12,7 @@
 #include <Qt3DRender/qcamera.h>
 #include <Qt3DRender/qrenderaspect.h>
 #include <Qt3DRender/qrendersurfaceselector.h>
+#include <Qt3DCore/qcoreaspect.h>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
 #include <qopenglcontext.h>
@@ -117,8 +71,9 @@ Qt3DQuickWindow::Qt3DQuickWindow(QWindow *parent)
 
     resize(1024, 768);
 
-    Qt3DExtras::setupWindowSurface(this, Qt3DRender::API::OpenGL);
+    Qt3DExtras::setupWindowSurface(this, Qt3DRender::API::RHI);
 
+    auto coreAspect = new Qt3DCore::QCoreAspect;
     d->m_renderAspect = new Qt3DRender::QRenderAspect;
     if (parent && parent->screen())
         static_cast<Qt3DRender::QRenderAspectPrivate*>(Qt3DRender::QRenderAspectPrivate::get(d->m_renderAspect))->m_screen = parent->screen();
@@ -126,6 +81,7 @@ Qt3DQuickWindow::Qt3DQuickWindow(QWindow *parent)
     d->m_logicAspect = new Qt3DLogic::QLogicAspect;
     d->m_engine = new Qt3DCore::Quick::QQmlAspectEngine;
 
+    d->m_engine->aspectEngine()->registerAspect(coreAspect);
     d->m_engine->aspectEngine()->registerAspect(d->m_renderAspect);
     d->m_engine->aspectEngine()->registerAspect(d->m_inputAspect);
     d->m_engine->aspectEngine()->registerAspect(d->m_logicAspect);
@@ -273,4 +229,5 @@ void Qt3DQuickWindow::updateCameraAspectRatio()
 
 QT_END_NAMESPACE
 
+#include "moc_qt3dquickwindow.cpp"
 #include "qt3dquickwindow.moc"

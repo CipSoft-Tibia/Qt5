@@ -1,4 +1,4 @@
-// Copyright (c) 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,6 @@ enum GpuDataManagerTestingEntryEnum {
   kGpuDataManagerImplPrivateTest_GpuSideBlocklistingWebGL_1 = 3,
   kGpuDataManagerImplPrivateTest_GpuSideException = 4,
   kGpuDataManagerImplPrivateTest_BlocklistAllFeatures = 5,
-  kGpuDataManagerImplPrivateTest_UpdateActiveGpu = 6,
 };
 }  // namespace gpu
 

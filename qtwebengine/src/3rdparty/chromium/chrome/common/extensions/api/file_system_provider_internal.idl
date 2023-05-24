@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,12 @@
  nodoc]
 namespace fileSystemProviderInternal {
   interface Functions {
+    // Internal. Callback for mount requests.
+    static void respondToMountRequest(
+        long requestId,
+        fileSystemProvider.ProviderError error,
+        long executionTime);
+
     // Internal. Success callback of the <code>onUnmountRequested</code>
     // event. Must be called when unmounting is completed.
     static void unmountRequestedSuccess(

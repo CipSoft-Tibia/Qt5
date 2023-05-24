@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,13 +12,17 @@
 
 #include "base/files/file_path.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/threading/scoped_thread_priority.h"
 #include "base/win/pe_image_reader.h"
-#include "components/safe_browsing/core/proto/csd.pb.h"
+#include "components/safe_browsing/core/common/proto/csd.pb.h"
 
 namespace safe_browsing {
 
 namespace {
+
+// Conservatively set at 1 MB.
+constexpr size_t kMaxDebugDataBytes = 1 * 1024 * 1024;
 
 // An EnumCertificatesCallback that collects each SignedData blob.
 bool OnCertificateEntry(uint16_t revision,
@@ -49,10 +53,13 @@ void BinaryFeatureExtractor::CheckSignature(
 
   DVLOG(2) << "Checking signature for " << file_path.value();
 
+  base::File file(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ |
+                                 base::File::FLAG_WIN_SHARE_DELETE);
+
   WINTRUST_FILE_INFO file_info = {0};
   file_info.cbStruct = sizeof(file_info);
   file_info.pcwszFilePath = file_path.value().c_str();
-  file_info.hFile = NULL;
+  file_info.hFile = file.GetPlatformFile();
   file_info.pgKnownSubject = NULL;
 
   WINTRUST_DATA wintrust_data = {0};
@@ -159,8 +166,12 @@ bool BinaryFeatureExtractor::ExtractImageFeaturesFromData(
           pe_headers->add_debug_data();
       debug_data->set_directory_entry(directory_entry,
                                       sizeof(*directory_entry));
-      if (raw_data)
+      if (raw_data) {
+        base::UmaHistogramMemoryKB("SBClientDownload.ImageDebugEntrySize",
+                                   raw_data_size / 1024);
+        raw_data_size = std::min(raw_data_size, kMaxDebugDataBytes);
         debug_data->set_raw_data(raw_data, raw_data_size);
+      }
     }
   }
 

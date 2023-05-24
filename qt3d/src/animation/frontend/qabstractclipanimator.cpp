@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractclipanimator.h"
 #include "qabstractclipanimator_p.h"
@@ -122,16 +86,11 @@ QAbstractClipAnimator::QAbstractClipAnimator(QAbstractClipAnimatorPrivate &dd, Q
 {
 }
 
-// TODO Unused remove in Qt6
-void QAbstractClipAnimator::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &)
-{
-}
-
 QAbstractClipAnimator::~QAbstractClipAnimator()
 {
 }
 /*!
-    \qmlproperty bool Qt3DAnimation::AbstractClipAnimator::running
+    \qmlproperty bool Qt3D.Animation::AbstractClipAnimator::running
 
     This property holds a boolean indicating whether the animation is currently running.
 */
@@ -152,7 +111,7 @@ bool QAbstractClipAnimator::isRunning() const
 }
 
 /*!
-    \qmlproperty ChannelMapper Qt3DAnimation::AbstractClipAnimator::channelMapper
+    \qmlproperty ChannelMapper Qt3D.Animation::AbstractClipAnimator::channelMapper
 
     This property holds the ChannelMapper that controls how the channels in
     the animation clip map onto the properties of the target objects.
@@ -172,7 +131,7 @@ QChannelMapper *QAbstractClipAnimator::channelMapper() const
 }
 
 /*!
-    \qmlproperty int Qt3DAnimation::AbstractClipAnimator::loops
+    \qmlproperty int Qt3D.Animation::AbstractClipAnimator::loops
 
     This property holds the number of times the animation should play.
 
@@ -216,7 +175,7 @@ int QAbstractClipAnimator::loopCount() const
     return d->m_loops;
 }
 /*!
-    \qmlproperty Clock Qt3DAnimation::AbstractClipAnimator::clock
+    \qmlproperty Clock Qt3D.Animation::AbstractClipAnimator::clock
 
     The clock controls the speed with which an animation is played.
 */
@@ -232,7 +191,7 @@ QClock *QAbstractClipAnimator::clock() const
     return d->m_clock;
 }
 /*!
-    \qmlproperty real Qt3DAnimation::AbstractClipAnimator::normalizedTime
+    \qmlproperty real Qt3D.Animation::AbstractClipAnimator::normalizedTime
 
     This property holds the clips normalized time.
 */
@@ -342,3 +301,5 @@ void QAbstractClipAnimator::stop()
 } // namespace Qt3DAnimation
 
 QT_END_NAMESPACE
+
+#include "moc_qabstractclipanimator.cpp"

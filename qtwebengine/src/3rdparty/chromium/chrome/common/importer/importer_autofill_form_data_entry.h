@@ -1,11 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CHROME_COMMON_IMPORTER_IMPORTER_AUTOFILL_FORM_DATA_ENTRY_H_
 #define CHROME_COMMON_IMPORTER_IMPORTER_AUTOFILL_FORM_DATA_ENTRY_H_
 
-#include "base/strings/string16.h"
+#include <string>
+
 #include "base/time/time.h"
 
 // Used as the target for importing form history from other browsers' profiles
@@ -15,10 +16,10 @@ struct ImporterAutofillFormDataEntry {
   ~ImporterAutofillFormDataEntry();
 
   // Name of input element.
-  base::string16 name;
+  std::u16string name;
 
   // Value of input element.
-  base::string16 value;
+  std::u16string value;
 
   // Number of times this name-value pair has been used.
   int times_used;

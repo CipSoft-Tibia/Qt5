@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,16 +36,16 @@ class PaymentsCurrencyFormatterTest
 
 TEST_P(PaymentsCurrencyFormatterTest, IsValidCurrencyFormat) {
   CurrencyFormatter formatter(GetParam().currency_code, GetParam().locale_name);
-  base::string16 actual_output = formatter.Format(GetParam().amount);
+  std::u16string actual_output = formatter.Format(GetParam().amount);
 
   // Convenience so the test cases can use regular spaces.
-  const base::string16 kSpace(base::ASCIIToUTF16(" "));
-  const base::string16 kNonBreakingSpace(base::UTF8ToUTF16(u8"\u00a0"));
-  const base::string16 kNarrowNonBreakingSpace(base::UTF8ToUTF16(u8"\u202f"));
+  const std::u16string kSpace(u" ");
+  const std::u16string kNonBreakingSpace(u"\u00a0");
+  const std::u16string kNarrowNonBreakingSpace(u"\u202f");
   base::ReplaceChars(actual_output, kNonBreakingSpace, kSpace, &actual_output);
   base::ReplaceChars(actual_output, kNarrowNonBreakingSpace, kSpace,
                      &actual_output);
-  base::string16 expected_output =
+  std::u16string expected_output =
       base::UTF8ToUTF16(GetParam().expected_amount);
 
   EXPECT_EQ(expected_output, actual_output)

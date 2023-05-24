@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/syslog_logging.h"
-#include "components/autofill/core/common/password_form.h"
+#include "components/password_manager/core/browser/password_form.h"
 #include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -45,7 +45,8 @@ bool CheckChildProcessSecurityPolicyForURL(content::RenderFrameHost* frame,
 
   content::ChildProcessSecurityPolicy* policy =
       content::ChildProcessSecurityPolicy::GetInstance();
-  if (!policy->CanAccessDataForOrigin(frame->GetProcess()->GetID(), form_url)) {
+  if (!policy->CanAccessDataForOrigin(frame->GetProcess()->GetID(),
+                                      url::Origin::Create(form_url))) {
     SYSLOG(WARNING) << "Killing renderer: illegal password access. Reason: "
                     << static_cast<int>(reason);
     bad_message::ReceivedBadMessage(frame->GetProcess(), reason);
@@ -55,10 +56,9 @@ bool CheckChildProcessSecurityPolicyForURL(content::RenderFrameHost* frame,
   return true;
 }
 
-bool CheckChildProcessSecurityPolicy(
-    content::RenderFrameHost* frame,
-    const autofill::PasswordForm& password_form,
-    BadMessageReason reason) {
+bool CheckChildProcessSecurityPolicy(content::RenderFrameHost* frame,
+                                     const PasswordForm& password_form,
+                                     BadMessageReason reason) {
   return CheckChildProcessSecurityPolicyForURL(frame, password_form.url,
                                                reason) &&
          CheckChildProcessSecurityPolicyForURL(
@@ -67,10 +67,9 @@ bool CheckChildProcessSecurityPolicy(
              frame, password_form.form_data.url, reason);
 }
 
-bool CheckChildProcessSecurityPolicy(
-    content::RenderFrameHost* frame,
-    const std::vector<autofill::PasswordForm>& forms,
-    BadMessageReason reason) {
+bool CheckChildProcessSecurityPolicy(content::RenderFrameHost* frame,
+                                     const std::vector<PasswordForm>& forms,
+                                     BadMessageReason reason) {
   for (const auto& form : forms) {
     if (!bad_message::CheckChildProcessSecurityPolicy(frame, form, reason))
       return false;
@@ -87,6 +86,16 @@ bool CheckChildProcessSecurityPolicy(
             frame, form_data.url, reason)) {
       return false;
     }
+  }
+  return true;
+}
+
+bool CheckFrameNotPrerendering(content::RenderFrameHost* frame) {
+  if (frame->GetLifecycleState() ==
+      content::RenderFrameHost::LifecycleState::kPrerendering) {
+    bad_message::ReceivedBadMessage(
+        frame->GetProcess(), BadMessageReason::CPMD_BAD_ORIGIN_PRERENDERING);
+    return false;
   }
   return true;
 }

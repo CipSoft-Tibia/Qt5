@@ -1,45 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlistwidget.h"
 
-#include <qitemdelegate.h>
 #include <private/qlistview_p.h>
 #include <private/qwidgetitemdata_p.h>
 #include <private/qlistwidget_p.h>
@@ -72,7 +35,7 @@ QListModel::~QListModel()
 void QListModel::clear()
 {
     beginResetModel();
-    for (int i = 0; i < items.count(); ++i) {
+    for (int i = 0; i < items.size(); ++i) {
         if (items.at(i)) {
             items.at(i)->d->theid = -1;
             items.at(i)->view = nullptr;
@@ -112,12 +75,12 @@ void QListModel::insert(int row, QListWidgetItem *item)
         QList<QListWidgetItem*>::iterator it;
         it = sortedInsertionIterator(items.begin(), items.end(),
                                      item->view->sortOrder(), item);
-        row = qMax(it - items.begin(), 0);
+        row = qMax<qsizetype>(it - items.begin(), 0);
     } else {
         if (row < 0)
             row = 0;
-        else if (row > items.count())
-            row = items.count();
+        else if (row > items.size())
+            row = items.size();
     }
     beginInsertRows(QModelIndex(), row, row);
     items.insert(row, item);
@@ -127,7 +90,7 @@ void QListModel::insert(int row, QListWidgetItem *item)
 
 void QListModel::insert(int row, const QStringList &labels)
 {
-    const int count = labels.count();
+    const int count = labels.size();
     if (count <= 0)
         return;
     QListWidget *view = qobject_cast<QListWidget*>(QObject::parent());
@@ -140,8 +103,8 @@ void QListModel::insert(int row, const QStringList &labels)
     } else {
         if (row < 0)
             row = 0;
-        else if (row > items.count())
-            row = items.count();
+        else if (row > items.size())
+            row = items.size();
         beginInsertRows(QModelIndex(), row, row + count - 1);
         for (int i = 0; i < count; ++i) {
             QListWidgetItem *item = new QListWidgetItem(labels.at(i));
@@ -155,7 +118,7 @@ void QListModel::insert(int row, const QStringList &labels)
 
 QListWidgetItem *QListModel::take(int row)
 {
-    if (row < 0 || row >= items.count())
+    if (row < 0 || row >= items.size())
         return nullptr;
 
     beginRemoveRows(QModelIndex(), row, row);
@@ -169,8 +132,8 @@ QListWidgetItem *QListModel::take(int row)
 void QListModel::move(int srcRow, int dstRow)
 {
     if (srcRow == dstRow
-        || srcRow < 0 || srcRow >= items.count()
-        || dstRow < 0 || dstRow > items.count())
+        || srcRow < 0 || srcRow >= items.size()
+        || dstRow < 0 || dstRow > items.size())
         return;
 
     if (!beginMoveRows(QModelIndex(), srcRow, srcRow, QModelIndex(), dstRow))
@@ -183,7 +146,7 @@ void QListModel::move(int srcRow, int dstRow)
 
 int QListModel::rowCount(const QModelIndex &parent) const
 {
-    return parent.isValid() ? 0 : items.count();
+    return parent.isValid() ? 0 : items.size();
 }
 
 QModelIndex QListModel::index(const QListWidgetItem *item_) const
@@ -194,7 +157,7 @@ QModelIndex QListModel::index(const QListWidgetItem *item_) const
         return QModelIndex();
     int row;
     const int theid = item->d->theid;
-    if (theid >= 0 && theid < items.count() && items.at(theid) == item) {
+    if (theid >= 0 && theid < items.size() && items.at(theid) == item) {
         row = theid;
     } else { // we need to search for the item
         row = items.lastIndexOf(item);  // lastIndexOf is an optimization in favor of indexOf
@@ -214,20 +177,19 @@ QModelIndex QListModel::index(int row, int column, const QModelIndex &parent) co
 
 QVariant QListModel::data(const QModelIndex &index, int role) const
 {
-    if (!index.isValid() || index.row() >= items.count())
+    if (!index.isValid() || index.row() >= items.size())
         return QVariant();
     return items.at(index.row())->data(role);
 }
 
 bool QListModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
-    if (!index.isValid() || index.row() >= items.count())
+    if (!index.isValid() || index.row() >= items.size())
         return false;
     items.at(index.row())->setData(role, value);
     return true;
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QListModel::clearItemData(const QModelIndex &index)
 {
     if (!checkIndex(index, CheckIndexOption::IndexIsValid))
@@ -238,18 +200,17 @@ bool QListModel::clearItemData(const QModelIndex &index)
     if (std::all_of(beginIter, endIter, [](const QWidgetItemData& data) -> bool { return !data.value.isValid(); }))
         return true; //it's already cleared
     item->d->values.clear();
-    emit dataChanged(index, index, QVector<int>{});
+    emit dataChanged(index, index, QList<int> {});
     return true;
 }
-#endif
 
 QMap<int, QVariant> QListModel::itemData(const QModelIndex &index) const
 {
     QMap<int, QVariant> roles;
-    if (!index.isValid() || index.row() >= items.count())
+    if (!index.isValid() || index.row() >= items.size())
         return roles;
     QListWidgetItem *itm = items.at(index.row());
-    for (int i = 0; i < itm->d->values.count(); ++i) {
+    for (int i = 0; i < itm->d->values.size(); ++i) {
         roles.insert(itm->d->values.at(i).role,
                      itm->d->values.at(i).value);
     }
@@ -326,7 +287,7 @@ bool QListModel::moveRows(const QModelIndex &sourceParent, int sourceRow, int co
 
 Qt::ItemFlags QListModel::flags(const QModelIndex &index) const
 {
-    if (!index.isValid() || index.row() >= items.count() || index.model() != this)
+    if (!index.isValid() || index.row() >= items.size() || index.model() != this)
         return Qt::ItemIsDropEnabled; // we allow drops outside the items
     return items.at(index.row())->flags();
 }
@@ -338,18 +299,18 @@ void QListModel::sort(int column, Qt::SortOrder order)
 
     emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
 
-    QVector < QPair<QListWidgetItem*,int> > sorting(items.count());
-    for (int i = 0; i < items.count(); ++i) {
+    QList<QPair<QListWidgetItem *, int>> sorting(items.size());
+    for (int i = 0; i < items.size(); ++i) {
         QListWidgetItem *item = items.at(i);
         sorting[i].first = item;
         sorting[i].second = i;
     }
 
     const auto compare = (order == Qt::AscendingOrder ? &itemLessThan : &itemGreaterThan);
-    std::sort(sorting.begin(), sorting.end(), compare);
+    std::stable_sort(sorting.begin(), sorting.end(), compare);
     QModelIndexList fromIndexes;
     QModelIndexList toIndexes;
-    const int sortingCount = sorting.count();
+    const int sortingCount = sorting.size();
     fromIndexes.reserve(sortingCount);
     toIndexes.reserve(sortingCount);
     for (int r = 0; r < sortingCount; ++r) {
@@ -366,72 +327,34 @@ void QListModel::sort(int column, Qt::SortOrder order)
 /**
  * This function assumes that all items in the model except the items that are between
  * (inclusive) start and end are sorted.
- * With these assumptions, this function can ensure that the model is sorted in a
- * much more efficient way than doing a naive 'sort everything'.
- * (provided that the range is relatively small compared to the total number of items)
  */
 void QListModel::ensureSorted(int column, Qt::SortOrder order, int start, int end)
 {
     if (column != 0)
         return;
 
-    int count = end - start + 1;
-    QVector < QPair<QListWidgetItem*,int> > sorting(count);
-    for (int i = 0; i < count; ++i) {
-        sorting[i].first = items.at(start + i);
-        sorting[i].second = start + i;
-    }
+    const auto compareLt = [](const QListWidgetItem *left, const QListWidgetItem *right) -> bool {
+        return *left < *right;
+    };
 
-    const auto compare = (order == Qt::AscendingOrder ? &itemLessThan : &itemGreaterThan);
-    std::sort(sorting.begin(), sorting.end(), compare);
+    const auto compareGt = [](const QListWidgetItem *left, const QListWidgetItem *right) -> bool {
+        return *right < *left;
+    };
 
-    QModelIndexList oldPersistentIndexes = persistentIndexList();
-    QModelIndexList newPersistentIndexes = oldPersistentIndexes;
-    QList<QListWidgetItem*> tmp = items;
-    QList<QListWidgetItem*>::iterator lit = tmp.begin();
-    bool changed = false;
-    for (int i = 0; i < count; ++i) {
-        int oldRow = sorting.at(i).second;
-        int tmpitepos = lit - tmp.begin();
-        QListWidgetItem *item = tmp.takeAt(oldRow);
-        if (tmpitepos > tmp.size())
-            --tmpitepos;
-        lit = tmp.begin() + tmpitepos;
-        lit = sortedInsertionIterator(lit, tmp.end(), order, item);
-        int newRow = qMax(lit - tmp.begin(), 0);
-        lit = tmp.insert(lit, item);
-        if (newRow != oldRow) {
-            changed = true;
-            for (int j = i + 1; j < count; ++j) {
-                int otherRow = sorting.at(j).second;
-                if (oldRow < otherRow && newRow >= otherRow)
-                    --sorting[j].second;
-                else if (oldRow > otherRow && newRow <= otherRow)
-                    ++sorting[j].second;
-            }
-            for (int k = 0; k < newPersistentIndexes.count(); ++k) {
-                QModelIndex pi = newPersistentIndexes.at(k);
-                int oldPersistentRow = pi.row();
-                int newPersistentRow = oldPersistentRow;
-                if (oldPersistentRow == oldRow)
-                    newPersistentRow = newRow;
-                else if (oldRow < oldPersistentRow && newRow >= oldPersistentRow)
-                    newPersistentRow = oldPersistentRow - 1;
-                else if (oldRow > oldPersistentRow && newRow <= oldPersistentRow)
-                    newPersistentRow = oldPersistentRow + 1;
-                if (newPersistentRow != oldPersistentRow)
-                    newPersistentIndexes[k] = createIndex(newPersistentRow,
-                                                          pi.column(), pi.internalPointer());
-            }
-        }
-    }
+    /** Check if range [start,end] is already in sorted position in list.
+     *  Take for this the assumption, that outside [start,end] the list
+     *  is already sorted. Therefore the sorted check has to be extended
+     *  to the first element that is known to be sorted before the range
+     *  [start, end], which is (start-1) and the first element after the
+     *  range [start, end], which is (end+2) due to end being included.
+    */
+    const auto beginChangedIterator = items.constBegin() + qMax(start - 1, 0);
+    const auto endChangedIterator = items.constBegin() + qMin(end + 2, items.size());
+    const bool needsSorting = !std::is_sorted(beginChangedIterator, endChangedIterator,
+                                              order == Qt::AscendingOrder ? compareLt : compareGt);
 
-    if (changed) {
-        emit layoutAboutToBeChanged();
-        items = tmp;
-        changePersistentIndexList(oldPersistentIndexes, newPersistentIndexes);
-        emit layoutChanged();
-    }
+    if (needsSorting)
+        sort(column, order);
 }
 
 bool QListModel::itemLessThan(const QPair<QListWidgetItem*,int> &left,
@@ -456,7 +379,7 @@ QList<QListWidgetItem*>::iterator QListModel::sortedInsertionIterator(
     return std::lower_bound(begin, end, item, QListModelGreaterThan());
 }
 
-void QListModel::itemChanged(QListWidgetItem *item, const QVector<int> &roles)
+void QListModel::itemChanged(QListWidgetItem *item, const QList<int> &roles)
 {
     const QModelIndex idx = index(item);
     emit dataChanged(idx, idx, roles);
@@ -478,7 +401,7 @@ QMimeData *QListModel::internalMimeData()  const
 QMimeData *QListModel::mimeData(const QModelIndexList &indexes) const
 {
     QList<QListWidgetItem*> itemlist;
-    const int indexesCount = indexes.count();
+    const int indexesCount = indexes.size();
     itemlist.reserve(indexesCount);
     for (int i = 0; i < indexesCount; ++i)
         itemlist << at(indexes.at(i).row());
@@ -499,7 +422,7 @@ bool QListModel::dropMimeData(const QMimeData *data, Qt::DropAction action,
     if (index.isValid())
         row = index.row();
     else if (row == -1)
-        row = items.count();
+        row = items.size();
 
     return view->dropMimeData(row, data, action);
 }
@@ -736,7 +659,7 @@ void QListWidgetItem::setData(int role, const QVariant &value)
 {
     bool found = false;
     role = (role == Qt::EditRole ? Qt::DisplayRole : role);
-    for (int i = 0; i < d->values.count(); ++i) {
+    for (int i = 0; i < d->values.size(); ++i) {
         if (d->values.at(i).role == role) {
             if (d->values.at(i).value == value)
                 return;
@@ -748,9 +671,9 @@ void QListWidgetItem::setData(int role, const QVariant &value)
     if (!found)
         d->values.append(QWidgetItemData(role, value));
     if (QListModel *model = listModel()) {
-        const QVector<int> roles((role == Qt::DisplayRole) ?
-                                    QVector<int>({Qt::DisplayRole, Qt::EditRole}) :
-                                    QVector<int>({role}));
+        const QList<int> roles((role == Qt::DisplayRole)
+                                       ? QList<int>({ Qt::DisplayRole, Qt::EditRole })
+                                       : QList<int>({ role }));
         model->itemChanged(this, roles);
     }
 }
@@ -764,7 +687,7 @@ void QListWidgetItem::setData(int role, const QVariant &value)
 QVariant QListWidgetItem::data(int role) const
 {
     role = (role == Qt::EditRole ? Qt::DisplayRole : role);
-    for (int i = 0; i < d->values.count(); ++i)
+    for (int i = 0; i < d->values.size(); ++i)
         if (d->values.at(i).role == role)
             return d->values.at(i).value;
     return QVariant();
@@ -932,21 +855,25 @@ QDataStream &operator>>(QDataStream &in, QListWidgetItem &item)
 */
 
 /*!
+    \if defined(qt7)
+
+    \fn Qt::Alignment QListWidgetItem::textAlignment() const
+
+    Returns the text alignment for the list item.
+
+    \else
+
     \fn int QListWidgetItem::textAlignment() const
 
     Returns the text alignment for the list item.
 
-    \sa Qt::AlignmentFlag
-*/
+    \note This function returns an int for historical reasons. It will
+    be corrected to return Qt::Alignment in Qt 7.
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \fn QColor QListWidgetItem::backgroundColor() const
-    \obsolete
+    \sa Qt::Alignment
 
-    This function is deprecated. Use background() instead.
+    \endif
 */
-#endif
 
 /*!
     \fn QBrush QListWidgetItem::background() const
@@ -956,17 +883,6 @@ QDataStream &operator>>(QDataStream &in, QListWidgetItem &item)
 
     \sa setBackground(), foreground()
 */
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \fn QColor QListWidgetItem::textColor() const
-    \obsolete
-
-    Returns the color used to display the list item's text.
-
-    This function is deprecated. Use foreground() instead.
-*/
-#endif
 
 /*!
     \fn QBrush QListWidgetItem::foreground() const
@@ -1110,18 +1026,26 @@ void QListWidgetItem::setFlags(Qt::ItemFlags aflags)
 */
 
 /*!
+    \obsolete [6.4] Use the overload that takes a Qt::Alignment argument.
+
     \fn void QListWidgetItem::setTextAlignment(int alignment)
 
     Sets the list item's text alignment to \a alignment.
 
-    \sa Qt::AlignmentFlag
+    \sa Qt::Alignment
 */
 
 /*!
-    \fn void QListWidgetItem::setBackgroundColor(const QColor &color)
-    \obsolete
+    \since 6.4
 
-    This function is deprecated. Use setBackground() instead.
+    \fn void QListWidgetItem::setTextAlignment(Qt::Alignment alignment)
+
+    Sets the list item's text alignment to \a alignment.
+*/
+
+/*!
+    \fn void QListWidgetItem::setTextAlignment(Qt::AlignmentFlag alignment)
+    \internal
 */
 
 /*!
@@ -1134,15 +1058,6 @@ void QListWidgetItem::setFlags(Qt::ItemFlags aflags)
 
     \sa background(), setForeground()
 */
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \fn void QListWidgetItem::setTextColor(const QColor &color)
-    \obsolete
-
-    This function is deprecated. Use setForeground() instead.
-*/
-#endif
 
 /*!
     \fn void QListWidgetItem::setForeground(const QBrush &brush)
@@ -1793,34 +1708,6 @@ void QListWidget::setItemWidget(QListWidgetItem *item, QWidget *widget)
     QAbstractItemView::setIndexWidget(index, widget);
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    Returns \c true if \a item is selected; otherwise returns \c false.
-
-    \obsolete
-
-    This function is deprecated. Use QListWidgetItem::isSelected() instead.
-*/
-bool QListWidget::isItemSelected(const QListWidgetItem *item) const
-{
-    return ((item && item->listWidget() == this) ? item->isSelected() : false);
-}
-
-/*!
-    Selects or deselects the given \a item depending on whether \a select is
-    true of false.
-
-    \obsolete
-
-    This function is deprecated. Use QListWidgetItem::setSelected() instead.
-*/
-void QListWidget::setItemSelected(const QListWidgetItem *item, bool select)
-{
-    if (item && item->listWidget() == this)
-        const_cast<QListWidgetItem*>(item)->setSelected(select);
-}
-#endif
-
 /*!
     Returns a list of all selected items in the list widget.
 */
@@ -1830,7 +1717,7 @@ QList<QListWidgetItem*> QListWidget::selectedItems() const
     Q_D(const QListWidget);
     QModelIndexList indexes = selectionModel()->selectedIndexes();
     QList<QListWidgetItem*> items;
-    const int numIndexes = indexes.count();
+    const int numIndexes = indexes.size();
     items.reserve(numIndexes);
     for (int i = 0; i < numIndexes; ++i)
         items.append(d->listModel()->at(indexes.at(i).row()));
@@ -1854,32 +1741,6 @@ QList<QListWidgetItem*> QListWidget::findItems(const QString &text, Qt::MatchFla
         items.append(d->listModel()->at(indexes.at(i).row()));
     return items;
 }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    Returns \c true if the \a item is explicitly hidden; otherwise returns \c false.
-
-    \obsolete
-
-    This function is deprecated. Use QListWidgetItem::isHidden() instead.
-*/
-bool QListWidget::isItemHidden(const QListWidgetItem *item) const
-{
-    return isRowHidden(row(item));
-}
-
-/*!
-    If \a hide is true, the \a item will be hidden; otherwise it will be shown.
-
-    \obsolete
-
-    This function is deprecated. Use QListWidgetItem::setHidden() instead.
-*/
-void QListWidget::setItemHidden(const QListWidgetItem *item, bool hide)
-{
-    setRowHidden(row(item), hide);
-}
-#endif
 
 /*!
     Scrolls the view if necessary to ensure that the \a item is visible.
@@ -1925,11 +1786,7 @@ QStringList QListWidget::mimeTypes() const
     If the list of items is empty, \nullptr is returned instead of a
     serialized empty list.
 */
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 QMimeData *QListWidget::mimeData(const QList<QListWidgetItem *> &items) const
-#else
-QMimeData *QListWidget::mimeData(const QList<QListWidgetItem*> items) const
-#endif
 {
     Q_D(const QListWidget);
 
@@ -1937,7 +1794,7 @@ QMimeData *QListWidget::mimeData(const QList<QListWidgetItem*> items) const
 
     // if non empty, it's called from the model's own mimeData
     if (cachedIndexes.isEmpty()) {
-        cachedIndexes.reserve(items.count());
+        cachedIndexes.reserve(items.size());
         for (QListWidgetItem *item : items)
             cachedIndexes << indexFromItem(item);
 
@@ -2014,18 +1871,6 @@ QModelIndex QListWidget::indexFromItem(const QListWidgetItem *item) const
     Q_D(const QListWidget);
     return d->listModel()->index(item);
 }
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-/*!
-    \internal
-    \obsolete
-    \overload
-*/
-QModelIndex QListWidget::indexFromItem(QListWidgetItem *item) const
-{
-    return indexFromItem(const_cast<const QListWidgetItem *>(item));
-}
-#endif
 
 /*!
     Returns a pointer to the QListWidgetItem associated with the given \a index.

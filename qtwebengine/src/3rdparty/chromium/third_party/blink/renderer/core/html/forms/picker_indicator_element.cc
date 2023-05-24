@@ -35,7 +35,7 @@
 #include "third_party/blink/renderer/core/events/keyboard_event.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
-#include "third_party/blink/renderer/core/layout/layout_details_marker.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/platform/text/platform_locale.h"
@@ -49,22 +49,12 @@ PickerIndicatorElement::PickerIndicatorElement(
     PickerIndicatorOwner& picker_indicator_owner)
     : HTMLDivElement(document),
       picker_indicator_owner_(&picker_indicator_owner) {
-  SetShadowPseudoId(AtomicString("-webkit-calendar-picker-indicator"));
+  SetShadowPseudoId(shadow_element_names::kPseudoCalendarPickerIndicator);
   setAttribute(html_names::kIdAttr, shadow_element_names::kIdPickerIndicator);
 }
 
 PickerIndicatorElement::~PickerIndicatorElement() {
   DCHECK(!chooser_);
-}
-
-LayoutObject* PickerIndicatorElement::CreateLayoutObject(
-    const ComputedStyle& style,
-    LegacyLayout legacy) {
-  if (features::IsFormControlsRefreshEnabled())
-    return HTMLDivElement::CreateLayoutObject(style, legacy);
-
-  UseCounter::Count(GetDocument(), WebFeature::kLegacyLayoutByDetailsMarker);
-  return new LayoutDetailsMarker(this);
 }
 
 void PickerIndicatorElement::DefaultEventHandler(Event& event) {
@@ -112,8 +102,7 @@ void PickerIndicatorElement::DidChooseValue(double value) {
 void PickerIndicatorElement::DidEndChooser() {
   chooser_.Clear();
   picker_indicator_owner_->DidEndChooser();
-  if (::features::IsFormControlsRefreshEnabled() &&
-      OwnerElement().GetLayoutObject()) {
+  if (OwnerElement().GetLayoutObject()) {
     // Invalidate paint to ensure that the focus ring is shown.
     OwnerElement().GetLayoutObject()->SetShouldDoFullPaintInvalidation();
   }
@@ -131,8 +120,7 @@ void PickerIndicatorElement::OpenPopup() {
     return;
   chooser_ = GetDocument().GetPage()->GetChromeClient().OpenDateTimeChooser(
       GetDocument().GetFrame(), this, parameters);
-  if (::features::IsFormControlsRefreshEnabled() &&
-      OwnerElement().GetLayoutObject()) {
+  if (OwnerElement().GetLayoutObject()) {
     // Invalidate paint to ensure that the focus ring is removed.
     OwnerElement().GetLayoutObject()->SetShouldDoFullPaintInvalidation();
   }
@@ -187,7 +175,7 @@ void PickerIndicatorElement::DidNotifySubtreeInsertionsToDocument() {
   setAttribute(
       html_names::kAriaLabelAttr,
       AtomicString(
-          this->picker_indicator_owner_->AriaRoleForPickerIndicator()));
+          this->picker_indicator_owner_->AriaLabelForPickerIndicator()));
 }
 
 void PickerIndicatorElement::Trace(Visitor* visitor) const {

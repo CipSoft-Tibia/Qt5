@@ -1,11 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_ELASTIC_OVERSCROLL_CONTROLLER_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_ELASTIC_OVERSCROLL_CONTROLLER_H_
 
-#include "base/macros.h"
+#include "base/gtest_prod_util.h"
+#include "base/time/time.h"
 #include "cc/input/overscroll_behavior.h"
 #include "cc/input/scroll_elasticity_helper.h"
 #include "third_party/blink/public/common/input/web_gesture_event.h"
@@ -112,6 +113,10 @@ class PLATFORM_EXPORT ElasticOverscrollController {
                            VerifyForwardAnimationTick);
   FRIEND_TEST_ALL_PREFIXES(ElasticOverscrollControllerBezierTest,
                            VerifyForwardAnimationIsNotPlayed);
+  FRIEND_TEST_ALL_PREFIXES(ElasticOverscrollControllerBezierTest,
+                           VerifyInitialStretchDelta);
+  FRIEND_TEST_ALL_PREFIXES(ElasticOverscrollControllerBezierTest,
+                           NoSyntheticEventsOverscroll);
 
   enum State {
     // The initial state, during which the overscroll amount is zero and
@@ -155,11 +160,6 @@ class PLATFORM_EXPORT ElasticOverscrollController {
   bool CanScrollHorizontally() const;
   bool CanScrollVertically() const;
 
-  // This is set in response to a scroll (most likely programmatic) occuring
-  // while animating the momentum phase. In this case, re-set the initial
-  // velocity, stretch, and start time at the next frame (this is the same
-  // behavior as would happen if the scroll were caused by an active scroll).
-  bool momentum_animation_reset_at_next_frame_;
   base::TimeTicks momentum_animation_start_time_;
   cc::ScrollElasticityHelper* helper_;
   State state_;

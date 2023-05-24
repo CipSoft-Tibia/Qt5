@@ -5,14 +5,15 @@
 #ifndef CAST_STANDALONE_RECEIVER_AVCODEC_GLUE_H_
 #define CAST_STANDALONE_RECEIVER_AVCODEC_GLUE_H_
 
-#include <memory>
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/common.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/samplefmt.h>
 }
+
+#include <memory>
+#include <utility>
 
 namespace openscreen {
 namespace cast {
@@ -49,6 +50,15 @@ DEFINE_AV_UNIQUE_PTR(AVPacket, av_packet_alloc, av_packet_free(&obj));
 DEFINE_AV_UNIQUE_PTR(AVFrame, av_frame_alloc, av_frame_free(&obj));
 
 #undef DEFINE_AV_UNIQUE_PTR
+
+// Macros to enable backwards compability codepaths for older versions of
+// ffmpeg, where newer versions have deprecated APIs.  Note that ffmpeg defines
+// its own FF_API* macros that are related to removing APIs (not deprecating
+// them).
+//
+// TODO(https://issuetracker.google.com/224642520): dedup with standalone
+// sender.
+#define _LIBAVUTIL_OLD_CHANNEL_LAYOUT (LIBAVUTIL_VERSION_MAJOR < 57)
 
 }  // namespace cast
 }  // namespace openscreen

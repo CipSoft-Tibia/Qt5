@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include <libweston/libweston.h>
 #include "xwayland.h"
 #include "shared/helpers.h"
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,17 +9,18 @@
 
 #include "services/device/geolocation/fake_location_provider.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/compiler_specific.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/weak_ptr.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 
 namespace device {
 
 FakeLocationProvider::FakeLocationProvider()
-    : provider_task_runner_(base::ThreadTaskRunnerHandle::Get()) {}
+    : provider_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()) {
+}
 
 FakeLocationProvider::~FakeLocationProvider() = default;
 

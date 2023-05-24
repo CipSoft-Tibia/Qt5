@@ -1,38 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-import QtQuick 2.0
+import QtQuick
 
 /*!
     \qmltype KeyPanel
     \inqmlmodule QtQuick.VirtualKeyboard.Styles
     \brief A base type of the styled keys.
+    \ingroup qmlclass
     \ingroup qtvirtualkeyboard-styles-qml
 
     All the key delegates provided by the style should be based on this type.
@@ -82,7 +57,8 @@ Item {
             implicitHeight: keyPanelInfoText.height + 4
             Text {
                 id: keyPanelInfoText
-                text: root.parent.width + "x" + root.parent.height
+                property point pos: keyboard.keyboardLayoutLoader.item.mapFromItem(root.parent, 0, 0)
+                text: "(%1,%2)\n%3x%4\nweight: %5".arg(pos.x).arg(pos.y).arg(root.parent.width).arg(root.parent.height).arg(root.parent.control.weight)
                 font.pixelSize: 12
                 color: "white"
                 anchors.centerIn: parent

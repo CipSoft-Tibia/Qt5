@@ -31,14 +31,17 @@
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/platform/geometry/layout_rect.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
-#include "third_party/blink/renderer/platform/wtf/text/unicode.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_uchar.h"
+
+namespace gfx {
+class Point;
+class Rect;
+}  // namespace gfx
 
 namespace blink {
 
 class LayoutObject;
 class Node;
-class IntPoint;
-class IntRect;
 class LocalFrame;
 
 // |WordSide| is used as a parameter of |StartOfWordPosition()| and
@@ -50,10 +53,16 @@ enum WordSide {
 };
 
 enum class PlatformWordBehavior { kWordSkipSpaces, kWordDontSkipSpaces };
+enum class SentenceTrailingSpaceBehavior { kIncludeSpace, kOmitSpace };
 
 // offset functions on Node
 CORE_EXPORT int CaretMinOffset(const Node*);
 CORE_EXPORT int CaretMaxOffset(const Node*);
+
+enum class SnapToClient {
+  kOthers,
+  kLocalCaretRect,
+};
 
 // Position
 // mostForward/BackwardCaretPosition are used for moving back and forth between
@@ -73,16 +82,20 @@ CORE_EXPORT int CaretMaxOffset(const Node*);
 // endsOfNodeAreVisuallyDistinctPositions(boundary).
 CORE_EXPORT Position MostBackwardCaretPosition(
     const Position&,
-    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary);
+    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary,
+    SnapToClient client = SnapToClient::kOthers);
 CORE_EXPORT PositionInFlatTree MostBackwardCaretPosition(
     const PositionInFlatTree&,
-    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary);
+    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary,
+    SnapToClient client = SnapToClient::kOthers);
 CORE_EXPORT Position MostForwardCaretPosition(
     const Position&,
-    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary);
+    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary,
+    SnapToClient client = SnapToClient::kOthers);
 CORE_EXPORT PositionInFlatTree MostForwardCaretPosition(
     const PositionInFlatTree&,
-    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary);
+    EditingBoundaryCrossingRule = kCannotCrossEditingBoundary,
+    SnapToClient client = SnapToClient::kOthers);
 
 CORE_EXPORT bool IsVisuallyEquivalentCandidate(const Position&);
 CORE_EXPORT bool IsVisuallyEquivalentCandidate(const PositionInFlatTree&);
@@ -100,6 +113,9 @@ CORE_EXPORT UChar32 CharacterAfter(const VisiblePositionInFlatTree&);
 CORE_EXPORT UChar32 CharacterBefore(const VisiblePosition&);
 CORE_EXPORT UChar32 CharacterBefore(const VisiblePositionInFlatTree&);
 
+CORE_EXPORT VisiblePosition
+NextPositionOf(const Position&,
+               EditingBoundaryCrossingRule = kCanCrossEditingBoundary);
 CORE_EXPORT VisiblePosition
 NextPositionOf(const VisiblePosition&,
                EditingBoundaryCrossingRule = kCanCrossEditingBoundary);
@@ -119,34 +135,46 @@ CORE_EXPORT Position StartOfWordPosition(const Position&,
 CORE_EXPORT PositionInFlatTree
 StartOfWordPosition(const PositionInFlatTree&,
                     WordSide = kNextWordIfOnBoundary);
-CORE_EXPORT VisiblePosition EndOfWord(const VisiblePosition&,
-                                      WordSide = kNextWordIfOnBoundary);
+CORE_EXPORT Position MiddleOfWordPosition(const Position&, const Position&);
+CORE_EXPORT PositionInFlatTree MiddleOfWordPosition(const PositionInFlatTree&,
+                                                    const PositionInFlatTree&);
 CORE_EXPORT Position EndOfWordPosition(const Position&,
                                        WordSide = kNextWordIfOnBoundary);
 CORE_EXPORT PositionInFlatTree
 EndOfWordPosition(const PositionInFlatTree&, WordSide = kNextWordIfOnBoundary);
-CORE_EXPORT VisiblePositionInFlatTree
-EndOfWord(const VisiblePositionInFlatTree&, WordSide = kNextWordIfOnBoundary);
 CORE_EXPORT PositionWithAffinity PreviousWordPosition(const Position&);
+CORE_EXPORT PositionInFlatTreeWithAffinity
+PreviousWordPosition(const PositionInFlatTree&);
 CORE_EXPORT PositionWithAffinity NextWordPosition(
     const Position&,
     PlatformWordBehavior = PlatformWordBehavior::kWordDontSkipSpaces);
+CORE_EXPORT PositionInFlatTreeWithAffinity NextWordPosition(
+    const PositionInFlatTree&,
+    PlatformWordBehavior = PlatformWordBehavior::kWordDontSkipSpaces);
+bool IsWordBreak(UChar);
 
 // sentences
 CORE_EXPORT Position StartOfSentencePosition(const Position&);
 CORE_EXPORT PositionInFlatTree
 StartOfSentencePosition(const PositionInFlatTree&);
-CORE_EXPORT VisiblePosition StartOfSentence(const VisiblePosition&);
-CORE_EXPORT VisiblePositionInFlatTree
-StartOfSentence(const VisiblePositionInFlatTree&);
-CORE_EXPORT PositionWithAffinity EndOfSentence(const Position&);
+CORE_EXPORT PositionWithAffinity
+EndOfSentence(const Position&,
+              SentenceTrailingSpaceBehavior =
+                  SentenceTrailingSpaceBehavior::kIncludeSpace);
 CORE_EXPORT PositionInFlatTreeWithAffinity
-EndOfSentence(const PositionInFlatTree&);
-CORE_EXPORT VisiblePosition EndOfSentence(const VisiblePosition&);
+EndOfSentence(const PositionInFlatTree&,
+              SentenceTrailingSpaceBehavior =
+                  SentenceTrailingSpaceBehavior::kIncludeSpace);
+CORE_EXPORT VisiblePosition
+EndOfSentence(const VisiblePosition&,
+              SentenceTrailingSpaceBehavior =
+                  SentenceTrailingSpaceBehavior::kIncludeSpace);
 CORE_EXPORT VisiblePositionInFlatTree
-EndOfSentence(const VisiblePositionInFlatTree&);
-VisiblePosition PreviousSentencePosition(const VisiblePosition&);
-VisiblePosition NextSentencePosition(const VisiblePosition&);
+EndOfSentence(const VisiblePositionInFlatTree&,
+              SentenceTrailingSpaceBehavior =
+                  SentenceTrailingSpaceBehavior::kIncludeSpace);
+PositionInFlatTree PreviousSentencePosition(const PositionInFlatTree&);
+PositionInFlatTree NextSentencePosition(const PositionInFlatTree&);
 EphemeralRange ExpandEndToSentenceBoundary(const EphemeralRange&);
 EphemeralRange ExpandRangeToSentenceBoundary(const EphemeralRange&);
 
@@ -156,11 +184,12 @@ EphemeralRange ExpandRangeToSentenceBoundary(const EphemeralRange&);
 CORE_EXPORT VisiblePosition StartOfLine(const VisiblePosition&);
 CORE_EXPORT VisiblePositionInFlatTree
 StartOfLine(const VisiblePositionInFlatTree&);
-// TODO(yosin) Return values of |VisiblePosition| version of |endOfLine()| with
-// shadow tree isn't defined well. We should not use it for shadow tree.
-CORE_EXPORT VisiblePosition EndOfLine(const VisiblePosition&);
-CORE_EXPORT VisiblePositionInFlatTree
-EndOfLine(const VisiblePositionInFlatTree&);
+CORE_EXPORT PositionWithAffinity StartOfLine(const PositionWithAffinity&);
+CORE_EXPORT PositionInFlatTreeWithAffinity
+StartOfLine(const PositionInFlatTreeWithAffinity&);
+CORE_EXPORT PositionWithAffinity EndOfLine(const PositionWithAffinity&);
+CORE_EXPORT PositionInFlatTreeWithAffinity
+EndOfLine(const PositionInFlatTreeWithAffinity&);
 CORE_EXPORT bool InSameLine(const VisiblePosition&, const VisiblePosition&);
 CORE_EXPORT bool InSameLine(const VisiblePositionInFlatTree&,
                             const VisiblePositionInFlatTree&);
@@ -203,7 +232,7 @@ EndOfParagraph(const VisiblePosition&,
 CORE_EXPORT VisiblePositionInFlatTree
 EndOfParagraph(const VisiblePositionInFlatTree&,
                EditingBoundaryCrossingRule = kCannotCrossEditingBoundary);
-VisiblePosition StartOfNextParagraph(const VisiblePosition&);
+CORE_EXPORT VisiblePosition StartOfNextParagraph(const VisiblePosition&);
 CORE_EXPORT bool IsStartOfParagraph(
     const VisiblePosition&,
     EditingBoundaryCrossingRule = kCannotCrossEditingBoundary);
@@ -218,9 +247,8 @@ bool InSameParagraph(const VisiblePosition&,
 EphemeralRange ExpandToParagraphBoundary(const EphemeralRange&);
 
 // document
-CORE_EXPORT VisiblePosition StartOfDocument(const VisiblePosition&);
-CORE_EXPORT VisiblePositionInFlatTree
-StartOfDocument(const VisiblePositionInFlatTree&);
+CORE_EXPORT Position StartOfDocument(const Position&);
+CORE_EXPORT PositionInFlatTree StartOfDocument(const PositionInFlatTree&);
 CORE_EXPORT VisiblePosition EndOfDocument(const VisiblePosition&);
 CORE_EXPORT VisiblePositionInFlatTree
 EndOfDocument(const VisiblePositionInFlatTree&);
@@ -228,8 +256,8 @@ bool IsStartOfDocument(const VisiblePosition&);
 bool IsEndOfDocument(const VisiblePosition&);
 
 // editable content
-VisiblePosition StartOfEditableContent(const VisiblePosition&);
-VisiblePosition EndOfEditableContent(const VisiblePosition&);
+PositionInFlatTree StartOfEditableContent(const PositionInFlatTree&);
+PositionInFlatTree EndOfEditableContent(const PositionInFlatTree&);
 CORE_EXPORT bool IsEndOfEditableOrNonEditableContent(const VisiblePosition&);
 CORE_EXPORT bool IsEndOfEditableOrNonEditableContent(
     const VisiblePositionInFlatTree&);
@@ -240,19 +268,20 @@ bool HasRenderedNonAnonymousDescendantsWithHeight(const LayoutObject*);
 // Returns a hit-tested PositionWithAffinity for the given point in
 // contents-space coordinates.
 CORE_EXPORT PositionWithAffinity
-PositionForContentsPointRespectingEditingBoundary(const IntPoint&, LocalFrame*);
+PositionForContentsPointRespectingEditingBoundary(const gfx::Point&,
+                                                  LocalFrame*);
 
 CORE_EXPORT bool RendersInDifferentPosition(const Position&, const Position&);
 
 CORE_EXPORT Position SkipWhitespace(const Position&);
 CORE_EXPORT PositionInFlatTree SkipWhitespace(const PositionInFlatTree&);
 
-CORE_EXPORT IntRect ComputeTextRect(const EphemeralRange&);
-IntRect ComputeTextRect(const EphemeralRangeInFlatTree&);
-FloatRect ComputeTextFloatRect(const EphemeralRange&);
+CORE_EXPORT gfx::Rect ComputeTextRect(const EphemeralRange&);
+gfx::Rect ComputeTextRect(const EphemeralRangeInFlatTree&);
+gfx::RectF ComputeTextRectF(const EphemeralRange&);
 
 // |FirstRectForRange| requires up-to-date layout.
-IntRect FirstRectForRange(const EphemeralRange&);
+CORE_EXPORT gfx::Rect FirstRectForRange(const EphemeralRange&);
 
 CORE_EXPORT PositionWithAffinity
 AdjustForwardPositionToAvoidCrossingEditingBoundaries(
@@ -271,24 +300,6 @@ PositionWithAffinity AdjustBackwardPositionToAvoidCrossingEditingBoundaries(
 PositionInFlatTreeWithAffinity
 AdjustBackwardPositionToAvoidCrossingEditingBoundaries(
     const PositionInFlatTreeWithAffinity&,
-    const PositionInFlatTree&);
-
-VisiblePosition AdjustForwardPositionToAvoidCrossingEditingBoundaries(
-    const VisiblePosition&,
-    const Position&);
-
-VisiblePositionInFlatTree AdjustForwardPositionToAvoidCrossingEditingBoundaries(
-    const VisiblePositionInFlatTree&,
-    const PositionInFlatTree&);
-
-// Export below functions only for |SelectionModifier|.
-VisiblePosition AdjustBackwardPositionToAvoidCrossingEditingBoundaries(
-    const VisiblePosition&,
-    const Position&);
-
-VisiblePositionInFlatTree
-AdjustBackwardPositionToAvoidCrossingEditingBoundaries(
-    const VisiblePositionInFlatTree&,
     const PositionInFlatTree&);
 
 }  // namespace blink

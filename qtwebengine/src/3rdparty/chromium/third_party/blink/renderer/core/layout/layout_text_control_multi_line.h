@@ -35,18 +35,15 @@ class LayoutTextControlMultiLine final : public LayoutTextControl {
  private:
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
-    return type == kLayoutObjectTextArea || LayoutTextControl::IsOfType(type);
+    return type == kLayoutObjectTextControlMultiLine ||
+           LayoutTextControl::IsOfType(type);
   }
 
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset& accumulated_offset,
-                   HitTestAction) override;
+                   HitTestPhase) override;
 
-  LayoutUnit PreferredContentLogicalWidth(float char_width) const override;
-  LayoutUnit ComputeControlLogicalHeight(
-      LayoutUnit line_height,
-      LayoutUnit non_content_height) const override;
   // We override the two baseline functions because we want our baseline to be
   // the bottom of our margin box.
   LayoutUnit BaselinePosition(
@@ -61,11 +58,8 @@ class LayoutTextControlMultiLine final : public LayoutTextControl {
 
   LayoutObject* LayoutSpecialExcludedChild(bool relayout_children,
                                            SubtreeLayoutScope&) override;
-
-  LayoutUnit ScrollWidth() const override;
-  LayoutUnit ScrollHeight() const override;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_TEXT_CONTROL_MULTI_LINE_H_

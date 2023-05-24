@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -100,7 +99,7 @@ void DwarfLineToModule::DefineFile(const string& name, int32_t file_num,
 
   // Find a Module::File object of the given name, and add it to the
   // file table.
-  files_[file_num] = module_->FindFile(full_name);
+  (*files_)[file_num] = module_->FindFile(full_name);
 }
 
 void DwarfLineToModule::AddLine(uint64_t address, uint64_t length,
@@ -122,7 +121,7 @@ void DwarfLineToModule::AddLine(uint64_t address, uint64_t length,
   }
 
   // Find the source file being referred to.
-  Module::File *file = files_[file_num];
+  Module::File *file = (*files_)[file_num];
   if (!file) {
     if (!warned_bad_file_number_) {
       fprintf(stderr, "warning: DWARF line number data refers to "

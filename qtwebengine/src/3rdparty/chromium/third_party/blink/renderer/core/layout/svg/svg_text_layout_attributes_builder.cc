@@ -65,7 +65,7 @@ SVGTextLayoutAttributesBuilder::SVGTextLayoutAttributesBuilder(
 void SVGTextLayoutAttributesBuilder::BuildLayoutAttributes() {
   character_data_map_.clear();
 
-  if (text_positions_.IsEmpty()) {
+  if (text_positions_.empty()) {
     character_count_ = 0;
     CollectTextPositioningElements(text_root_);
   }
@@ -79,11 +79,12 @@ void SVGTextLayoutAttributesBuilder::BuildLayoutAttributes() {
   LayoutObject* child = text_root_.FirstChild();
   while (child) {
     if (child->IsSVGInlineText()) {
-      UpdateLayoutAttributes(ToLayoutSVGInlineText(*child), value_list_position,
-                             character_data_map_);
+      UpdateLayoutAttributes(To<LayoutSVGInlineText>(*child),
+                             value_list_position, character_data_map_);
     } else if (child->IsSVGInline()) {
       // Visit children of text content elements.
-      if (LayoutObject* inline_child = ToLayoutSVGInline(child)->FirstChild()) {
+      if (LayoutObject* inline_child =
+              To<LayoutSVGInline>(child)->FirstChild()) {
         child = inline_child;
         continue;
       }
@@ -116,7 +117,7 @@ static SVGTextPositioningElement* PositioningElementFromLayoutObject(
 
 void SVGTextLayoutAttributesBuilder::CollectTextPositioningElements(
     LayoutBoxModelObject& start) {
-  DCHECK(!start.IsSVGText() || text_positions_.IsEmpty());
+  DCHECK(!start.IsSVGText() || text_positions_.empty());
   SVGTextPositioningElement* element =
       PositioningElementFromLayoutObject(start);
   unsigned at_position = text_positions_.size();
@@ -127,12 +128,12 @@ void SVGTextLayoutAttributesBuilder::CollectTextPositioningElements(
        child = child->NextSibling()) {
     if (child->IsSVGInlineText()) {
       character_count_ +=
-          CountCharactersInTextNode(ToLayoutSVGInlineText(*child));
+          CountCharactersInTextNode(To<LayoutSVGInlineText>(*child));
       continue;
     }
 
     if (child->IsSVGInline()) {
-      CollectTextPositioningElements(ToLayoutSVGInline(*child));
+      CollectTextPositioningElements(To<LayoutSVGInline>(*child));
       continue;
     }
   }
@@ -177,15 +178,15 @@ class AttributeListsIterator {
 
  private:
   SVGLengthContext length_context_;
-  SVGLengthList* x_list_;
+  const SVGLengthList* x_list_;
   unsigned x_list_remaining_;
-  SVGLengthList* y_list_;
+  const SVGLengthList* y_list_;
   unsigned y_list_remaining_;
-  SVGLengthList* dx_list_;
+  const SVGLengthList* dx_list_;
   unsigned dx_list_remaining_;
-  SVGLengthList* dy_list_;
+  const SVGLengthList* dy_list_;
   unsigned dy_list_remaining_;
-  SVGNumberList* rotate_list_;
+  const SVGNumberList* rotate_list_;
   unsigned rotate_list_remaining_;
 };
 

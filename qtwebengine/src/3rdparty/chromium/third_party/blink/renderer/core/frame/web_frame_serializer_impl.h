@@ -35,9 +35,9 @@
 #include "third_party/blink/public/platform/web_url.h"
 #include "third_party/blink/public/web/web_frame_serializer.h"
 #include "third_party/blink/public/web/web_frame_serializer_client.h"
+#include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/platform/text/web_entities.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
-#include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_hash.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -155,6 +155,9 @@ class WebFrameSerializerImpl {
                             SerializeDomParam*,
                             FlushOption);
 
+  // Serialize the open tag of a ShadowRoot as a <template>
+  void ShadowRootTagToString(ShadowRoot*, SerializeDomParam*);
+
   // Serialize open tag of an specified element.
   void OpenTagToString(Element*, SerializeDomParam*);
 
@@ -173,4 +176,4 @@ class WebFrameSerializerImpl {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_WEB_FRAME_SERIALIZER_IMPL_H_

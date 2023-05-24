@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page properties.html
     \title The Property System
     \brief An overview of Qt's property system.
-
+    \ingroup explanations-basics
     \ingroup qt-basic-concepts
     \keyword Qt's Property System
 
@@ -68,14 +44,21 @@
     specified. It is for reading the property value. Ideally, a const function
     is used for this purpose, and it must return either the property's type or a
     const reference to that type. e.g., QWidget::focus is a read-only
-    property with \c READ function, QWidget::hasFocus().
+    property with \c READ function, QWidget::hasFocus(). If a \c BINDABLE is
+    specified, you can write \c{READ default} to have the \c READ accessor
+    generated from the \c BINDABLE.
 
     \li A \c WRITE accessor function is optional. It is for setting the
     property value. It must return void and must take exactly one
     argument, either of the property's type or a pointer or reference
     to that type. e.g., QWidget::enabled has the \c WRITE function
     QWidget::setEnabled().  Read-only properties do not need \c WRITE
-    functions. e.g., QWidget::focus has no \c WRITE function.
+    functions. e.g., QWidget::focus has no \c WRITE function. If you specify
+    both a \c BINDABLE and \c{WRITE default}, a \c WRITE accessor will be
+    generated from the \c BINDABLE. The generated \c WRITE accessor will \e not
+    explicitly emit any signal declared with \c NOTIFY. You should register
+    the signal as change handler to the \c BINDABLE, for example using
+    \l{Q_OBJECT_BINDABLE_PROPERTY}.
 
     \li A \c MEMBER variable association is required if no \c READ accessor
     function is specified. This makes the given member variable
@@ -99,24 +82,23 @@
     which must be of the same type as the property. The parameter will take the
     new value of the property. The \c NOTIFY signal should only be emitted when
     the property has really been changed, to avoid bindings being unnecessarily
-    re-evaluated in QML, for example. Qt emits automatically that signal when
-    needed for MEMBER properties that do not have an explicit setter.
+    re-evaluated in QML, for example. The signal is emitted automatically when
+    the property is changed via the Qt API (QObject::setProperty,
+    QMetaProperty, etc.), but not when the MEMBER is changed directly.
 
-    \li A \c REVISION number is optional. If included, it defines
-    the property and its notifier signal to be used in a particular
+    \li A \c REVISION number or \c REVISION() macro is optional. If included,
+    it defines the property and its notifier signal to be used in a particular
     revision of the API (usually for exposure to QML). If not included, it
     defaults to 0.
 
     \li The \c DESIGNABLE attribute indicates whether the property
     should be visible in the property editor of GUI design tool (e.g.,
     \l {Qt Designer Manual}{Qt Designer}). Most properties are \c DESIGNABLE
-    (default true). Instead of true or false, you can specify a boolean
-    member function.
+    (default true). Valid values are true and false.
 
     \li The \c SCRIPTABLE attribute indicates whether this property
     should be accessible by a scripting engine (default true).
-    Instead of true or false, you can specify a boolean member
-    function.
+    Valid values are true and false.
 
     \li The \c STORED attribute indicates whether the property should
     be thought of as existing on its own or as depending on other
@@ -132,6 +114,13 @@
     (default false). e.g., QAbstractButton::checked is the user
     editable property for (checkable) buttons. Note that QItemDelegate
     gets and sets a widget's \c USER property.
+
+    \li The \c {BINDABLE bindableProperty} attribute indicates that the
+    property supports \l {Qt Bindable Properties}{bindings},
+    and that it is possible to set and inspect
+    bindings to this property via the meta object system (QMetaProperty).
+    \c bindableProperty names a class member of type QBindable<T>, where T
+    is the property type. This attribute was introduced in Qt 6.0.
 
     \li The presence of the \c CONSTANT attribute indicates that the property
     value is constant.  For a given object instance, the READ method of a
@@ -291,4 +280,21 @@
 
     Like other meta-data, class information is accessible at run-time
     through the meta-object; see QMetaObject::classInfo() for details.
+
+    \section1 Using Bindable Properties
+
+    Three different types can be used to implement bindable properties:
+    \list
+        \li \l QProperty
+        \li \l QObjectBindableProperty
+        \li \l QObjectComputedProperty.
+    \endlist
+    The first one is a general class for bindable properties. The latter
+    two can only be used inside a \l QObject.
+
+    For more information, including examples, see the classes mentioned above
+    and the general tips on implementing and using
+    \l {Qt Bindable Properties}{bindable properties}.
+
+    \sa {Qt Bindable Properties}
 */

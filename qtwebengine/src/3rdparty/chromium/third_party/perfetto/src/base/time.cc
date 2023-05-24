@@ -15,7 +15,9 @@
  */
 
 #include "perfetto/base/time.h"
+
 #include "perfetto/base/build_config.h"
+#include "perfetto/base/logging.h"
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
 #include <Windows.h>
@@ -33,7 +35,8 @@ TimeNanos GetWallTimeNs() {
   ::QueryPerformanceFrequency(&freq);
   LARGE_INTEGER counter;
   ::QueryPerformanceCounter(&counter);
-  double elapsed_nanoseconds = (1e9 * counter.QuadPart) / freq.QuadPart;
+  double elapsed_nanoseconds = (1e9 * static_cast<double>(counter.QuadPart)) /
+                               static_cast<double>(freq.QuadPart);
   return TimeNanos(static_cast<uint64_t>(elapsed_nanoseconds));
 }
 
@@ -41,10 +44,10 @@ TimeNanos GetThreadCPUTimeNs() {
   FILETIME dummy, kernel_ftime, user_ftime;
   ::GetThreadTimes(GetCurrentThread(), &dummy, &dummy, &kernel_ftime,
                    &user_ftime);
-  uint64_t kernel_time = kernel_ftime.dwHighDateTime * 0x100000000 +
-                         kernel_ftime.dwLowDateTime;
-  uint64_t user_time = user_ftime.dwHighDateTime * 0x100000000 +
-                       user_ftime.dwLowDateTime;
+  uint64_t kernel_time =
+      kernel_ftime.dwHighDateTime * 0x100000000 + kernel_ftime.dwLowDateTime;
+  uint64_t user_time =
+      user_ftime.dwHighDateTime * 0x100000000 + user_ftime.dwLowDateTime;
 
   return TimeNanos((kernel_time + user_time) * 100);
 }
@@ -64,6 +67,16 @@ void SleepMicroseconds(unsigned interval_us) {
 }
 
 #endif  // PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+
+std::string GetTimeFmt(const std::string& fmt) {
+  time_t raw_time;
+  time(&raw_time);
+  struct tm* local_tm;
+  local_tm = localtime(&raw_time);
+  char buf[128];
+  PERFETTO_CHECK(strftime(buf, 80, fmt.c_str(), local_tm) > 0);
+  return buf;
+}
 
 }  // namespace base
 }  // namespace perfetto

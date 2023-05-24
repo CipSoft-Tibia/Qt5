@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,16 +11,15 @@
 #include <string>
 #include <utility>
 
-#include "base/bind_helpers.h"
 #include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/macros.h"
+#include "base/functional/callback_helpers.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
-#include "storage/browser/file_system/file_stream_reader.h"
 #include "storage/browser/file_system/file_stream_reader_test.h"
 #include "storage/browser/file_system/file_stream_test_utils.h"
 #include "storage/browser/file_system/obfuscated_file_util_memory_delegate.h"
@@ -47,10 +46,10 @@ class MemoryFileStreamReaderTest : public FileStreamReaderTest {
       const std::string& file_name,
       int64_t initial_offset,
       const base::Time& expected_modification_time) override {
-    return FileStreamReader::CreateForMemoryFile(
-        base::ThreadTaskRunnerHandle::Get(), file_util_->GetWeakPtr(),
-        test_dir().AppendASCII(file_name), initial_offset,
-        expected_modification_time);
+    return std::make_unique<MemoryFileStreamReader>(
+        base::SingleThreadTaskRunner::GetCurrentDefault(),
+        file_util_->GetWeakPtr(), test_dir().AppendASCII(file_name),
+        initial_offset, expected_modification_time);
   }
 
   void WriteFile(const std::string& file_name,

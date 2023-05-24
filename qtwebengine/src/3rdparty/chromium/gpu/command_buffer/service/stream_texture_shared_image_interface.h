@@ -1,12 +1,20 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GPU_COMMAND_BUFFER_SERVICE_STREAM_TEXTURE_SHARED_IMAGE_INTERFACE_H_
 #define GPU_COMMAND_BUFFER_SERVICE_STREAM_TEXTURE_SHARED_IMAGE_INTERFACE_H_
 
+#include <memory>
+
+#include "base/android/scoped_hardware_buffer_fence_sync.h"
 #include "gpu/gpu_gles2_export.h"
-#include "ui/gl/gl_image.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gl/gl_bindings.h"
+
+namespace base::android {
+class ScopedHardwareBufferFenceSync;
+}  // namespace base::android
 
 namespace gpu {
 class TextureOwner;
@@ -14,20 +22,16 @@ class TextureBase;
 
 // This class is a specialized GLImage that lets SharedImageVideo draw video
 // frames.
-class GPU_GLES2_EXPORT StreamTextureSharedImageInterface : public gl::GLImage {
+class GPU_GLES2_EXPORT StreamTextureSharedImageInterface
+    : public base::RefCounted<StreamTextureSharedImageInterface> {
  public:
   enum class BindingsMode {
-    // Ensures that the TextureOwner's texture is bound to the latest image, if
-    // it requires explicit binding.
-    kEnsureTexImageBound,
+    // Binds image to the texture with service id. Doesn't alter current gl
+    // bindings.
+    kBindImage,
 
-    // Updates the current image but does not bind it. If updating the image
-    // implicitly binds the texture, the current bindings will be restored.
-    kRestoreIfBound,
-
-    // Updates the current image but does not bind it. If updating the image
-    // implicitly binds the texture, the current bindings will not be restored.
-    kDontRestoreIfBound
+    // Updates the current image but does not bind it.
+    kDontBindImage
   };
 
   // Release the underlying resources. This should be called when the image is
@@ -38,9 +42,14 @@ class GPU_GLES2_EXPORT StreamTextureSharedImageInterface : public gl::GLImage {
   // or not.
   virtual bool IsUsingGpuMemory() const = 0;
 
-  // Update the texture image to the most recent frame and bind it to the
-  // texture.
-  virtual void UpdateAndBindTexImage() = 0;
+  // Update texture image to the most recent frame and bind it to the provided
+  // texture |service_id| if TextureOwner does not implicitly binds texture
+  // during the update.
+  // If TextureOwner() always binds texture implicitly during the update, then
+  // it will always bind it to TextureOwner's texture id and not to the
+  // |service_id|.
+  virtual void UpdateAndBindTexImage(GLuint service_id) = 0;
+
   virtual bool HasTextureOwner() const = 0;
   virtual TextureBase* GetTextureBase() const = 0;
 
@@ -52,8 +61,24 @@ class GPU_GLES2_EXPORT StreamTextureSharedImageInterface : public gl::GLImage {
   // the overlay promotion. Return true if it could render to overlay correctly.
   virtual bool RenderToOverlay() = 0;
 
+  // Whether TextureOwner's implementation binds texture to TextureOwner owned
+  // texture_id during the texture update.
+  virtual bool TextureOwnerBindsTextureOnUpdate() = 0;
+
+  // Provides the buffer backing this image, if it is backed by an
+  // AHardwareBuffer. The ScopedHardwareBuffer returned may include a fence
+  // which will be signaled when all pending work for the buffer has been
+  // finished and it can be safely read from.
+  // The buffer is guaranteed to be valid until the lifetime of the object
+  // returned.
+  virtual std::unique_ptr<base::android::ScopedHardwareBufferFenceSync>
+  GetAHardwareBuffer() = 0;
+
  protected:
-  ~StreamTextureSharedImageInterface() override = default;
+  virtual ~StreamTextureSharedImageInterface() = default;
+
+ private:
+  friend class base::RefCounted<StreamTextureSharedImageInterface>;
 };
 
 }  // namespace gpu

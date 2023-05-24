@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QGraphicsEffect
@@ -86,7 +50,7 @@
     any other existing effects) and reimplement the virtual function draw().
     This function is called whenever the effect needs to redraw. The draw()
     function takes the painter with which to draw as an argument. For more
-    information, refer to the documenation for draw(). In the draw() function
+    information, refer to the documentation for draw(). In the draw() function
     you can call sourcePixmap() to get a pixmap of the graphics effect source
     which you can then process.
 
@@ -750,7 +714,7 @@ void QGraphicsColorizeEffect::draw(QPainter *painter)
     at the potential cost of lower performance.
 
     \value AnimationHint Indicates that the blur radius is going to be animated, hinting
-    that the implementation can keep a cache of blurred verisons of the source.
+    that the implementation can keep a cache of blurred versions of the source.
     Do not use this hint if the source is going to be dynamically changing.
 
     \sa blurHints(), setBlurHints()

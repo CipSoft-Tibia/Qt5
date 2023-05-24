@@ -45,7 +45,6 @@
 #ifndef QTWEBENGINE_BROWSER_EXTENSIONS_API_RESOURCES_PRIVATE_RESOURCES_PRIVATE_API_H_
 #define QTWEBENGINE_BROWSER_EXTENSIONS_API_RESOURCES_PRIVATE_RESOURCES_PRIVATE_API_H_
 
-#include "base/macros.h"
 #include "extensions/browser/extension_function.h"
 
 namespace extensions {
@@ -61,9 +60,6 @@ class ResourcesPrivateGetStringsFunction : public ExtensionFunction {
 
   // Override from ExtensionFunction:
   ExtensionFunction::ResponseAction Run() override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ResourcesPrivateGetStringsFunction);
 };
 
 }  // namespace extensions

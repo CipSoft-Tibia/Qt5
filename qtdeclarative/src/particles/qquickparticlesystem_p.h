@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef PARTICLESYSTEM_H
 #define PARTICLESYSTEM_H
@@ -54,7 +18,9 @@
 #include <QtQuick/QQuickItem>
 #include <QElapsedTimer>
 #include <QVector>
+#include <QVarLengthArray>
 #include <QHash>
+#include <QSet>
 #include <QPointer>
 #include <private/qquicksprite_p.h>
 #include <QAbstractAnimation>
@@ -63,7 +29,6 @@
 #include <private/qv4global_p.h>
 #include <private/qv4staticvalue_p.h>
 #include "qtquickparticlesglobal_p.h"
-#include "qquickparticleflatset_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -200,12 +165,14 @@ public:
     QQuickParticleGroupData(const QString &name, QQuickParticleSystem* sys);
     ~QQuickParticleGroupData();
 
-    int size()
-    { return m_size; }
-
-    QString name();
+    int size() const
+    {
+        return m_size;
+    }
 
     bool isActive() { return freeList.count() > 0; }
+
+    QString name() const;
 
     void setSize(int newSize);
 
@@ -301,7 +268,7 @@ public:
     float yy;
     float rotation;
     float rotationVelocity;
-    float autoRotate;//Assume that GPUs prefer floats to bools
+    uchar autoRotate; // Basically a bool
     //Used by ImageParticle Sprite mode
     float animIdx;
     float frameDuration;
@@ -323,14 +290,8 @@ public:
 
     //Used by ItemParticle
     QQuickItem* delegate;
-    int modelIndex;
     //Used by custom affectors
     float update;
-    //Used by CustomParticle
-    float r;
-
-    // 4 bytes wasted
-
 
     void debugDump(QQuickParticleSystem *particleSystem) const;
     bool stillAlive(QQuickParticleSystem *particleSystem) const; //Only checks end, because usually that's all you need and it's a little faster.
@@ -342,10 +303,10 @@ public:
     QV4::ReturnedValue v4Value(QQuickParticleSystem *particleSystem);
     void extendLife(float time, QQuickParticleSystem *particleSystem);
 
-    static inline Q_DECL_CONSTEXPR float EPSILON() Q_DECL_NOTHROW { return 0.001f; }
+    static inline constexpr float EPSILON() noexcept { return 0.001f; }
 
 private:
-    QQuickV4ParticleData* v8Datum;
+    QQuickV4ParticleData* v4Datum;
 };
 
 class Q_QUICKPARTICLES_PRIVATE_EXPORT QQuickParticleSystem : public QQuickItem
@@ -355,6 +316,7 @@ class Q_QUICKPARTICLES_PRIVATE_EXPORT QQuickParticleSystem : public QQuickItem
     Q_PROPERTY(bool paused READ isPaused WRITE setPaused NOTIFY pausedChanged)
     Q_PROPERTY(bool empty READ isEmpty NOTIFY emptyChanged)
     QML_NAMED_ELEMENT(ParticleSystem)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     explicit QQuickParticleSystem(QQuickItem *parent = nullptr);
@@ -365,7 +327,10 @@ public:
         return m_running;
     }
 
-    int count(){ return particleCount; }
+    int count() const
+    {
+        return particleCount;
+    }
 
     static const int maxLife = 600000;
 
@@ -412,7 +377,7 @@ public:
     int systemSync(QQuickParticlePainter* p);
 
     //Data members here for ease of related class and auto-test usage. Not "public" API. TODO: d_ptrize
-    QtQuickParticlesPrivate::QFlatSet<QQuickParticleData*> needsReset;
+    QSet<QQuickParticleData*> needsReset;
     QVector<QQuickParticleData*> bySysIdx; //Another reference to the data (data owned by group), but by sysIdx
     QQuickStochasticEngine* stateEngine;
 

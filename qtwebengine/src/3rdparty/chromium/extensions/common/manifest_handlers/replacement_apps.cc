@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/values.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/manifest_constants.h"
 #include "url/gurl.h"
@@ -29,9 +30,9 @@ const ReplacementAppsInfo* GetReplacementAppsInfo(const Extension* extension) {
 
 }  // namespace
 
-ReplacementAppsInfo::ReplacementAppsInfo() {}
+ReplacementAppsInfo::ReplacementAppsInfo() = default;
 
-ReplacementAppsInfo::~ReplacementAppsInfo() {}
+ReplacementAppsInfo::~ReplacementAppsInfo() = default;
 
 // static
 bool ReplacementAppsInfo::HasReplacementWebApp(const Extension* extension) {
@@ -69,21 +70,22 @@ const std::string& ReplacementAppsInfo::GetReplacementAndroidApp(
 }
 
 bool ReplacementAppsInfo::LoadWebApp(const Extension* extension,
-                                     base::string16* error) {
-  const base::Value* app_value = nullptr;
-  if (!extension->manifest()->Get(keys::kReplacementWebApp, &app_value)) {
+                                     std::u16string* error) {
+  const base::Value* app_value =
+      extension->manifest()->FindPath(keys::kReplacementWebApp);
+  if (app_value == nullptr) {
     return true;
   }
 
   DCHECK(app_value);
   if (!app_value->is_string()) {
-    *error = base::ASCIIToUTF16(errors::kInvalidReplacementWebApp);
+    *error = errors::kInvalidReplacementWebApp;
     return false;
   }
 
   const GURL web_app_url(app_value->GetString());
   if (!web_app_url.is_valid() || !web_app_url.SchemeIs(url::kHttpsScheme)) {
-    *error = base::ASCIIToUTF16(errors::kInvalidReplacementWebApp);
+    *error = errors::kInvalidReplacementWebApp;
     return false;
   }
 
@@ -92,36 +94,37 @@ bool ReplacementAppsInfo::LoadWebApp(const Extension* extension,
 }
 
 bool ReplacementAppsInfo::LoadAndroidApp(const Extension* extension,
-                                         base::string16* error) {
-  const base::Value* app_value = nullptr;
-  if (!extension->manifest()->Get(keys::kReplacementAndroidApp, &app_value)) {
+                                         std::u16string* error) {
+  const base::Value* app_value =
+      extension->manifest()->FindPath(keys::kReplacementAndroidApp);
+  if (app_value == nullptr) {
     return true;
   }
 
   DCHECK(app_value);
   if (!app_value->is_string()) {
-    *error = base::ASCIIToUTF16(errors::kInvalidReplacementAndroidApp);
+    *error = errors::kInvalidReplacementAndroidApp;
     return false;
   }
 
-  replacement_android_app = std::move(app_value->GetString());
+  replacement_android_app = app_value->GetString();
   return true;
 }
 
 bool ReplacementAppsInfo::Parse(const Extension* extension,
-                                base::string16* error) {
+                                std::u16string* error) {
   if (!LoadWebApp(extension, error) || !LoadAndroidApp(extension, error)) {
     return false;
   }
   return true;
 }
 
-ReplacementAppsHandler::ReplacementAppsHandler() {}
+ReplacementAppsHandler::ReplacementAppsHandler() = default;
 
-ReplacementAppsHandler::~ReplacementAppsHandler() {}
+ReplacementAppsHandler::~ReplacementAppsHandler() = default;
 
 bool ReplacementAppsHandler::Parse(Extension* extension,
-                                   base::string16* error) {
+                                   std::u16string* error) {
   std::unique_ptr<ReplacementAppsInfo> info(new ReplacementAppsInfo);
 
   if (!info->Parse(extension, error)) {
@@ -135,11 +138,7 @@ bool ReplacementAppsHandler::Parse(Extension* extension,
 base::span<const char* const> ReplacementAppsHandler::Keys() const {
   static constexpr const char* kKeys[] = {keys::kReplacementWebApp,
                                           keys::kReplacementAndroidApp};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 2);
-#endif
 }
 
 }  // namespace extensions

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,7 +28,7 @@ enum BackgroundService {
 // A proto for storing the background service event with common metadata for
 // all events.
 //
-// Next Tag: 8
+// Next Tag: 9
 message BackgroundServiceEvent {
   // Microseconds since windows epoch.
   optional int64 timestamp = 1;
@@ -50,4 +50,7 @@ message BackgroundServiceEvent {
 
   // Additional custom information related to this event.
   map<string, string> event_metadata = 7;
+
+  // Storage key the background service belongs to.
+  optional string storage_key = 8;
 }

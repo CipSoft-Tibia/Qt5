@@ -17,6 +17,7 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_ARGS_TRACKER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_ARGS_TRACKER_H_
 
+#include "perfetto/ext/base/small_vector.h"
 #include "src/trace_processor/importers/common/global_args_tracker.h"
 #include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/types/trace_processor_context.h"
@@ -30,6 +31,8 @@ namespace trace_processor {
 class ArgsTracker {
  public:
   using UpdatePolicy = GlobalArgsTracker::UpdatePolicy;
+  using CompactArg = GlobalArgsTracker::CompactArg;
+  using CompactArgSet = base::SmallVector<CompactArg, 16>;
 
   // Stores the table and row at creation time which args are associated with.
   // This allows callers to directly add args without repeating the row the
@@ -38,8 +41,8 @@ class ArgsTracker {
    public:
     virtual ~BoundInserter();
 
-    BoundInserter(BoundInserter&&);
-    BoundInserter& operator=(BoundInserter&&);
+    BoundInserter(BoundInserter&&) noexcept = default;
+    BoundInserter& operator=(BoundInserter&&) noexcept = default;
 
     BoundInserter(const BoundInserter&) = delete;
     BoundInserter& operator=(const BoundInserter&) = delete;
@@ -64,16 +67,17 @@ class ArgsTracker {
 
     // IncrementArrayEntryIndex() and GetNextArrayEntryIndex() provide a way to
     // track the next array index for an array under a specific key.
-    void IncrementArrayEntryIndex(StringId key) {
-      // Zero-initializes |key| in the map if it doesn't exist yet.
-      args_tracker_
-          ->array_indexes_[std::make_tuple(arg_set_id_column_, row_, key)]++;
-    }
-
     size_t GetNextArrayEntryIndex(StringId key) {
       // Zero-initializes |key| in the map if it doesn't exist yet.
       return args_tracker_
           ->array_indexes_[std::make_tuple(arg_set_id_column_, row_, key)];
+    }
+
+    // Returns the next available array index after increment.
+    size_t IncrementArrayEntryIndex(StringId key) {
+      // Zero-initializes |key| in the map if it doesn't exist yet.
+      return ++args_tracker_->array_indexes_[std::make_tuple(arg_set_id_column_,
+                                                             row_, key)];
     }
 
    protected:
@@ -90,6 +94,13 @@ class ArgsTracker {
   };
 
   explicit ArgsTracker(TraceProcessorContext*);
+
+  ArgsTracker(const ArgsTracker&) = delete;
+  ArgsTracker& operator=(const ArgsTracker&) = delete;
+
+  ArgsTracker(ArgsTracker&&) = default;
+  ArgsTracker& operator=(ArgsTracker&&) = default;
+
   virtual ~ArgsTracker();
 
   BoundInserter AddArgsTo(RawId id) {
@@ -100,16 +111,17 @@ class ArgsTracker {
     return AddArgsTo(context_->storage->mutable_counter_table(), id);
   }
 
-  BoundInserter AddArgsTo(InstantId id) {
-    return AddArgsTo(context_->storage->mutable_instant_table(), id);
-  }
-
   BoundInserter AddArgsTo(SliceId id) {
     return AddArgsTo(context_->storage->mutable_slice_table(), id);
   }
 
   BoundInserter AddArgsTo(tables::FlowTable::Id id) {
     return AddArgsTo(context_->storage->mutable_flow_table(), id);
+  }
+
+  BoundInserter AddArgsTo(tables::MemorySnapshotNodeTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_memory_snapshot_node_table(),
+                     id);
   }
 
   BoundInserter AddArgsTo(MetadataId id) {
@@ -135,6 +147,24 @@ class ArgsTracker {
         id);
   }
 
+  BoundInserter AddArgsTo(tables::ExperimentalProtoPathTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_experimental_proto_path_table(),
+                     id);
+  }
+
+  // Returns a CompactArgSet which contains the args inserted into this
+  // ArgsTracker. Requires that every arg in this tracker was inserted for the
+  // "arg_set_id" column given by |column| at the given |row_number|.
+  //
+  // Note that this means the args stored in this tracker will *not* be flushed
+  // into the tables: it is the callers responsibility to ensure this happens if
+  // necessary.
+  CompactArgSet ToCompactArgSet(const Column& column, uint32_t row_number) &&;
+
+  // Returns whether this ArgsTracker contains any arg which require translation
+  // according to the provided |table|.
+  bool NeedsTranslation(const ArgsTranslationTable& table) const;
+
   // Commits the added args to storage.
   // Virtual for testing.
   virtual void Flush();
@@ -153,8 +183,8 @@ class ArgsTracker {
               Variadic,
               UpdatePolicy);
 
-  std::vector<GlobalArgsTracker::Arg> args_;
-  TraceProcessorContext* const context_;
+  base::SmallVector<GlobalArgsTracker::Arg, 16> args_;
+  TraceProcessorContext* context_ = nullptr;
 
   using ArrayKeyTuple =
       std::tuple<Column* /*arg_set_id*/, uint32_t /*row*/, StringId /*key*/>;

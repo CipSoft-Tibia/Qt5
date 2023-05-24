@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qglobal.h"
 
@@ -222,12 +186,12 @@ void QGlyphRun::setRawFont(const QRawFont &rawFont)
 
     \sa setGlyphIndexes(), setPositions()
 */
-QVector<quint32> QGlyphRun::glyphIndexes() const
+QList<quint32> QGlyphRun::glyphIndexes() const
 {
     if (d->glyphIndexes.constData() == d->glyphIndexData) {
         return d->glyphIndexes;
     } else {
-        QVector<quint32> indexes(d->glyphIndexDataSize);
+        QList<quint32> indexes(d->glyphIndexDataSize);
         memcpy(indexes.data(), d->glyphIndexData, d->glyphIndexDataSize * sizeof(quint32));
         return indexes;
     }
@@ -237,10 +201,10 @@ QVector<quint32> QGlyphRun::glyphIndexes() const
     Set the glyph indexes for this QGlyphRun object to \a glyphIndexes. The glyph indexes must
     be valid for the selected font.
 */
-void QGlyphRun::setGlyphIndexes(const QVector<quint32> &glyphIndexes)
+void QGlyphRun::setGlyphIndexes(const QList<quint32> &glyphIndexes)
 {
     detach();
-    d->glyphIndexes = glyphIndexes; // Keep a reference to the QVector to avoid copying
+    d->glyphIndexes = glyphIndexes; // Keep a reference to the QList to avoid copying
     d->glyphIndexData = glyphIndexes.constData();
     d->glyphIndexDataSize = glyphIndexes.size();
 }
@@ -248,12 +212,12 @@ void QGlyphRun::setGlyphIndexes(const QVector<quint32> &glyphIndexes)
 /*!
     Returns the position of the edge of the baseline for each glyph in this set of glyph indexes.
 */
-QVector<QPointF> QGlyphRun::positions() const
+QList<QPointF> QGlyphRun::positions() const
 {
     if (d->glyphPositions.constData() == d->glyphPositionData) {
         return d->glyphPositions;
     } else {
-        QVector<QPointF> glyphPositions(d->glyphPositionDataSize);
+        QList<QPointF> glyphPositions(d->glyphPositionDataSize);
         memcpy(glyphPositions.data(), d->glyphPositionData,
                  d->glyphPositionDataSize * sizeof(QPointF));
         return glyphPositions;
@@ -264,10 +228,10 @@ QVector<QPointF> QGlyphRun::positions() const
     Sets the positions of the edge of the baseline for each glyph in this set of glyph indexes to
     \a positions.
 */
-void QGlyphRun::setPositions(const QVector<QPointF> &positions)
+void QGlyphRun::setPositions(const QList<QPointF> &positions)
 {
     detach();
-    d->glyphPositions = positions; // Keep a reference to the vector to avoid copying
+    d->glyphPositions = positions; // Keep a reference to the list to avoid copying
     d->glyphPositionData = positions.constData();
     d->glyphPositionDataSize = positions.size();
 }
@@ -281,8 +245,8 @@ void QGlyphRun::clear()
     d->rawFont = QRawFont();
     d->flags = { };
 
-    setPositions(QVector<QPointF>());
-    setGlyphIndexes(QVector<quint32>());
+    setPositions(QList<QPointF>());
+    setGlyphIndexes(QList<quint32>());
 }
 
 /*!
@@ -434,7 +398,7 @@ void QGlyphRun::setFlags(GlyphRunFlags flags)
 
 /*!
   Sets the bounding rect of the glyphs in this QGlyphRun to be \a boundingRect. This rectangle
-  will be returned by boundingRect() unless it is empty, in which case the bounding rectangle of the
+  will be returned by boundingRect() unless it is null, in which case the bounding rectangle of the
   glyphs in the glyph run will be returned instead.
 
   \note Unless you are implementing text shaping, you should not have to use this function.
@@ -468,7 +432,7 @@ void QGlyphRun::setBoundingRect(const QRectF &boundingRect)
 */
 QRectF QGlyphRun::boundingRect() const
 {
-    if (!d->boundingRect.isEmpty() || !d->rawFont.isValid())
+    if (!d->boundingRect.isNull() || !d->rawFont.isValid())
         return d->boundingRect;
 
     qreal minX, minY, maxX, maxY;
@@ -501,7 +465,80 @@ QRectF QGlyphRun::boundingRect() const
 */
 bool QGlyphRun::isEmpty() const
 {
-    return d->glyphIndexDataSize == 0;
+    return d->glyphIndexDataSize == 0
+            && d->glyphPositionDataSize == 0
+            && d->stringIndexes.isEmpty()
+            && d->sourceString.isEmpty();
+}
+
+/*!
+    \since 6.5
+
+    Returns the string indexes corresponding to each glyph index, if the glyph run has been
+    constructed from a string and string indexes have been requested from the layout. In this case,
+    the length of the returned vector will correspond to the length of glyphIndexes(). In other
+    cases, it will be empty.
+
+    Since a single glyph may correspond to multiple characters in the source string, there may be
+    gaps in the list of string indexes. For instance, if the string "first" is processed by a font
+    which contains a ligature for the character pair "fi", then the five character string will
+    generate a glyph run consisting of only four glyphs. Then the glyph indexes may in this case be
+    (1, 2, 3, 4) (four arbitrary glyph indexes) whereas the string indexes would be (0, 2, 3, 4).
+    The glyphs are in the logical order of the string, thus it is implied that the first glyphs
+    spans characters 0 and 1 in this case.
+
+    Inversely, a single character may also generate multiple glyphs, in which case there will be
+    duplicate entries in the list of string indexes.
+
+    The string indexes correspond to the string, optionally available through sourceString().
+
+    \sa setStringIndexes(), sourceString(), QTextLayout::glyphRuns()
+*/
+QList<qsizetype> QGlyphRun::stringIndexes() const
+{
+    return d->stringIndexes;
+}
+
+/*!
+   \since 6.5
+
+   Sets the list of string indexes corresponding to the glyph indexes to \a stringIndexes
+
+   See stringIndexes() for more details on the conventions of this list.
+
+   \sa sourceString()
+ */
+void QGlyphRun::setStringIndexes(const QList<qsizetype> &stringIndexes)
+{
+    detach();
+    d->stringIndexes = stringIndexes;
+}
+
+/*!
+    \since 6.5
+
+    Returns the string corresponding to the glyph run, if the glyph run has been created from
+    a string and the string has been requested from the layout.
+
+    \sa setSourceString(), stringIndexes(), QTextLayout::glyphRuns()
+ */
+QString QGlyphRun::sourceString() const
+{
+    return d->sourceString;
+}
+
+/*!
+    \since 6.5
+
+    Set the string corresponding to the glyph run to \a sourceString. If set, the indexes returned
+    by stringIndexes() should be indexes into this string.
+
+    \sa sourceString(), stringIndexes()
+ */
+void QGlyphRun::setSourceString(const QString &sourceString)
+{
+    detach();
+    d->sourceString = sourceString;
 }
 
 QT_END_NAMESPACE

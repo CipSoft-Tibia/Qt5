@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,8 +34,8 @@ std::vector<std::string> GetSomeRules() {
 }
 
 base::CommandLine::StringType AsciiToNativeString(std::string ascii) {
-#if defined(OS_WIN)
-  return base::ASCIIToUTF16(ascii);
+#if BUILDFLAG(IS_WIN)
+  return base::ASCIIToWide(ascii);
 #else
   return ascii;
 #endif

@@ -10,23 +10,24 @@
 
 #import "ARDAppClient+Internal.h"
 
-#import <WebRTC/RTCAudioTrack.h>
-#import <WebRTC/RTCCameraVideoCapturer.h>
-#import <WebRTC/RTCConfiguration.h>
-#import <WebRTC/RTCDefaultVideoDecoderFactory.h>
-#import <WebRTC/RTCDefaultVideoEncoderFactory.h>
-#import <WebRTC/RTCFileLogger.h>
-#import <WebRTC/RTCFileVideoCapturer.h>
-#import <WebRTC/RTCIceServer.h>
-#import <WebRTC/RTCLogging.h>
-#import <WebRTC/RTCMediaConstraints.h>
-#import <WebRTC/RTCMediaStream.h>
-#import <WebRTC/RTCPeerConnectionFactory.h>
-#import <WebRTC/RTCRtpSender.h>
-#import <WebRTC/RTCRtpTransceiver.h>
-#import <WebRTC/RTCTracing.h>
-#import <WebRTC/RTCVideoSource.h>
-#import <WebRTC/RTCVideoTrack.h>
+#import "sdk/objc/api/peerconnection/RTCAudioTrack.h"
+#import "sdk/objc/api/peerconnection/RTCConfiguration.h"
+#import "sdk/objc/api/peerconnection/RTCFileLogger.h"
+#import "sdk/objc/api/peerconnection/RTCIceCandidateErrorEvent.h"
+#import "sdk/objc/api/peerconnection/RTCIceServer.h"
+#import "sdk/objc/api/peerconnection/RTCMediaConstraints.h"
+#import "sdk/objc/api/peerconnection/RTCMediaStream.h"
+#import "sdk/objc/api/peerconnection/RTCPeerConnectionFactory.h"
+#import "sdk/objc/api/peerconnection/RTCRtpSender.h"
+#import "sdk/objc/api/peerconnection/RTCRtpTransceiver.h"
+#import "sdk/objc/api/peerconnection/RTCTracing.h"
+#import "sdk/objc/api/peerconnection/RTCVideoSource.h"
+#import "sdk/objc/api/peerconnection/RTCVideoTrack.h"
+#import "sdk/objc/base/RTCLogging.h"
+#import "sdk/objc/components/capturer/RTCCameraVideoCapturer.h"
+#import "sdk/objc/components/capturer/RTCFileVideoCapturer.h"
+#import "sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.h"
+#import "sdk/objc/components/video_codec/RTCDefaultVideoEncoderFactory.h"
 
 #import "ARDAppEngineClient.h"
 #import "ARDExternalSampleCapturer.h"
@@ -64,7 +65,7 @@ static int64_t const kARDAppClientRtcEventLogMaxSizeInBytes = 5e6;  // 5 MB.
 static int const kKbpsMultiplier = 1000;
 
 // We need a proxy to NSTimer because it causes a strong retain cycle. When
-// using the proxy, |invalidate| must be called before it properly deallocs.
+// using the proxy, `invalidate` must be called before it properly deallocs.
 @interface ARDTimerProxy : NSObject
 
 - (instancetype)initWithInterval:(NSTimeInterval)interval
@@ -191,9 +192,8 @@ static int const kKbpsMultiplier = 1000;
                                                   repeats:YES
                                              timerHandler:^{
       ARDAppClient *strongSelf = weakSelf;
-      [strongSelf.peerConnection statsForTrack:nil
-                              statsOutputLevel:RTCStatsOutputLevelDebug
-                             completionHandler:^(NSArray *stats) {
+      [strongSelf.peerConnection statisticsWithCompletionHandler:^(
+                                     RTC_OBJC_TYPE(RTCStatisticsReport) * stats) {
         dispatch_async(dispatch_get_main_queue(), ^{
           ARDAppClient *strongSelf = weakSelf;
           [strongSelf.delegate appClient:strongSelf didGetStats:stats];
@@ -427,6 +427,17 @@ static int const kKbpsMultiplier = 1000;
 }
 
 - (void)peerConnection:(RTC_OBJC_TYPE(RTCPeerConnection) *)peerConnection
+    didFailToGatherIceCandidate:(RTC_OBJC_TYPE(RTCIceCandidateErrorEvent) *)event {
+  RTCLog(@"Failed to gather ICE candidate. address: %@, port: %d, url: %@, errorCode: %d, "
+         @"errorText: %@",
+         event.address,
+         event.port,
+         event.url,
+         event.errorCode,
+         event.errorText);
+}
+
+- (void)peerConnection:(RTC_OBJC_TYPE(RTCPeerConnection) *)peerConnection
     didRemoveIceCandidates:(NSArray<RTC_OBJC_TYPE(RTCIceCandidate) *> *)candidates {
   dispatch_async(dispatch_get_main_queue(), ^{
     ARDICECandidateRemovalMessage *message =
@@ -634,7 +645,14 @@ static int const kKbpsMultiplier = 1000;
     case kARDSignalingMessageTypeCandidate: {
       ARDICECandidateMessage *candidateMessage =
           (ARDICECandidateMessage *)message;
-      [_peerConnection addIceCandidate:candidateMessage.candidate];
+      __weak ARDAppClient *weakSelf = self;
+      [_peerConnection addIceCandidate:candidateMessage.candidate
+                     completionHandler:^(NSError *error) {
+                       ARDAppClient *strongSelf = weakSelf;
+                       if (error) {
+                         [strongSelf.delegate appClient:strongSelf didError:error];
+                       }
+                     }];
       break;
     }
     case kARDSignalingMessageTypeCandidateRemoval: {

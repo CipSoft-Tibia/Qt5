@@ -1,18 +1,21 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/xr/xr_input_source.h"
 
 #include "base/time/time.h"
+#include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-blink.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/events/event_dispatcher.h"
 #include "third_party/blink/renderer/core/dom/events/event_path.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html/html_frame_element_base.h"
 #include "third_party/blink/renderer/core/input/event_handling_util.h"
 #include "third_party/blink/renderer/core/layout/hit_test_location.h"
 #include "third_party/blink/renderer/modules/xr/xr_grip_space.h"
+#include "third_party/blink/renderer/modules/xr/xr_hand.h"
 #include "third_party/blink/renderer/modules/xr/xr_input_source_event.h"
 #include "third_party/blink/renderer/modules/xr/xr_session.h"
 #include "third_party/blink/renderer/modules/xr/xr_session_event.h"
@@ -24,19 +27,18 @@
 namespace blink {
 
 namespace {
-std::unique_ptr<TransformationMatrix> TryGetTransformationMatrix(
-    const base::Optional<gfx::Transform>& transform) {
+std::unique_ptr<gfx::Transform> TryGetTransform(
+    const absl::optional<gfx::Transform>& transform) {
   if (transform) {
-    return std::make_unique<TransformationMatrix>(transform->matrix());
+    return std::make_unique<gfx::Transform>(*transform);
   }
 
   return nullptr;
 }
 
-std::unique_ptr<TransformationMatrix> TryGetTransformationMatrix(
-    const TransformationMatrix* other) {
+std::unique_ptr<gfx::Transform> TryGetTransform(const gfx::Transform* other) {
   if (other) {
-    return std::make_unique<TransformationMatrix>(*other);
+    return std::make_unique<gfx::Transform>(*other);
   }
 
   return nullptr;
@@ -90,7 +92,7 @@ XRInputSource* XRInputSource::CreateOrUpdateFrom(
 
     if (updated_source->state_.is_visible) {
       updated_source->input_from_pointer_ =
-          TryGetTransformationMatrix(desc->input_from_pointer);
+          TryGetTransform(desc->input_from_pointer);
     }
 
     updated_source->state_.profiles.clear();
@@ -100,8 +102,11 @@ XRInputSource* XRInputSource::CreateOrUpdateFrom(
   }
 
   if (updated_source->state_.is_visible) {
-    updated_source->mojo_from_input_ =
-        TryGetTransformationMatrix(state->mojo_from_input);
+    updated_source->mojo_from_input_ = TryGetTransform(state->mojo_from_input);
+  }
+
+  if (updated_source->state_.is_visible) {
+    updated_source->UpdateHand(state->hand_tracking_data.get());
   }
 
   updated_source->state_.emulated_position = state->emulated_position;
@@ -128,10 +133,9 @@ XRInputSource::XRInputSource(const XRInputSource& other)
           MakeGarbageCollected<XRTargetRaySpace>(other.session_, this)),
       grip_space_(MakeGarbageCollected<XRGripSpace>(other.session_, this)),
       gamepad_(other.gamepad_),
-      mojo_from_input_(
-          TryGetTransformationMatrix(other.mojo_from_input_.get())),
-      input_from_pointer_(
-          TryGetTransformationMatrix(other.input_from_pointer_.get())) {}
+      hand_(other.hand_),
+      mojo_from_input_(TryGetTransform(other.mojo_from_input_.get())),
+      input_from_pointer_(TryGetTransform(other.input_from_pointer_.get())) {}
 
 const String XRInputSource::handedness() const {
   switch (state_.handedness) {
@@ -200,13 +204,18 @@ bool XRInputSource::InvalidatesSameObject(
     }
   }
 
+  if ((state->hand_tracking_data.get() && !hand_) ||
+      (!state->hand_tracking_data.get() && hand_)) {
+    return true;
+  }
+
   return false;
 }
 
 void XRInputSource::SetInputFromPointer(
-    const TransformationMatrix* input_from_pointer) {
+    const gfx::Transform* input_from_pointer) {
   if (state_.is_visible) {
-    input_from_pointer_ = TryGetTransformationMatrix(input_from_pointer);
+    input_from_pointer_ = TryGetTransform(input_from_pointer);
   }
 }
 
@@ -216,36 +225,47 @@ void XRInputSource::SetGamepadConnected(bool state) {
 }
 
 void XRInputSource::UpdateGamepad(
-    const base::Optional<device::Gamepad>& gamepad) {
+    const absl::optional<device::Gamepad>& gamepad) {
   if (gamepad) {
     if (!gamepad_) {
       gamepad_ = MakeGarbageCollected<Gamepad>(this, -1, state_.base_timestamp,
                                                base::TimeTicks::Now());
     }
 
-    gamepad_->UpdateFromDeviceState(*gamepad);
+    LocalDOMWindow* window = session_->xr()->DomWindow();
+    bool cross_origin_isolated_capability =
+        window ? window->CrossOriginIsolatedCapability() : false;
+    gamepad_->UpdateFromDeviceState(*gamepad, cross_origin_isolated_capability);
   } else {
     gamepad_ = nullptr;
   }
 }
 
-base::Optional<TransformationMatrix> XRInputSource::MojoFromInput() const {
+void XRInputSource::UpdateHand(
+    const device::mojom::blink::XRHandTrackingData* hand_tracking_data) {
+  if (hand_tracking_data) {
+    if (!hand_) {
+      hand_ = MakeGarbageCollected<XRHand>(hand_tracking_data, this);
+    } else {
+      hand_->updateFromHandTrackingData(hand_tracking_data, this);
+    }
+  } else {
+    hand_ = nullptr;
+  }
+}
+
+absl::optional<gfx::Transform> XRInputSource::MojoFromInput() const {
   if (!mojo_from_input_.get()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
   return *(mojo_from_input_.get());
 }
 
-base::Optional<TransformationMatrix> XRInputSource::InputFromPointer() const {
+absl::optional<gfx::Transform> XRInputSource::InputFromPointer() const {
   if (!input_from_pointer_.get()) {
-    return base::nullopt;
+    return absl::nullopt;
   }
   return *(input_from_pointer_.get());
-}
-
-base::Optional<device::mojom::blink::XRNativeOriginInformation>
-XRInputSource::nativeOrigin() const {
-  return XRNativeOriginInformation::Create(this);
 }
 
 void XRInputSource::OnSelectStart() {
@@ -277,8 +297,7 @@ void XRInputSource::OnSelectEnd() {
 
   state_.primary_input_pressed = false;
 
-  LocalFrame* frame = session_->xr()->GetFrame();
-  if (!frame)
+  if (!session_->xr()->DomWindow())
     return;
 
   DVLOG(3) << __func__ << ": dispatch selectend event";
@@ -302,15 +321,16 @@ void XRInputSource::OnSelect() {
     OnSelectStart();
   }
 
-  LocalFrame* frame = session_->xr()->GetFrame();
-  LocalFrame::NotifyUserActivation(
-      frame, mojom::blink::UserActivationNotificationType::kInteraction);
-
   // If SelectStart caused the session to end, we shouldn't try to fire the
   // select event.
+  LocalDOMWindow* window = session_->xr()->DomWindow();
+  if (!window)
+    return;
+  LocalFrame::NotifyUserActivation(
+      window->GetFrame(),
+      mojom::blink::UserActivationNotificationType::kInteraction);
+
   if (!state_.selection_cancelled && !session_->ended()) {
-    if (!frame)
-      return;
     DVLOG(3) << __func__ << ": dispatch select event";
     XRInputSourceEvent* event =
         CreateInputSourceEvent(event_type_names::kSelect);
@@ -351,8 +371,7 @@ void XRInputSource::OnSqueezeEnd() {
 
   state_.primary_squeeze_pressed = false;
 
-  LocalFrame* frame = session_->xr()->GetFrame();
-  if (!frame)
+  if (!session_->xr()->DomWindow())
     return;
 
   DVLOG(3) << __func__ << ": dispatch squeezeend event";
@@ -376,15 +395,18 @@ void XRInputSource::OnSqueeze() {
     OnSqueezeStart();
   }
 
-  LocalFrame* frame = session_->xr()->GetFrame();
+  // If SelectStart caused the session to end, we shouldn't try to fire the
+  // select event.
+  LocalDOMWindow* window = session_->xr()->DomWindow();
+  if (!window)
+    return;
   LocalFrame::NotifyUserActivation(
-      frame, mojom::blink::UserActivationNotificationType::kInteraction);
+      window->GetFrame(),
+      mojom::blink::UserActivationNotificationType::kInteraction);
 
   // If SelectStart caused the session to end, we shouldn't try to fire the
   // select event.
   if (!state_.squeezing_cancelled && !session_->ended()) {
-    if (!frame)
-      return;
     DVLOG(3) << __func__ << ": dispatch squeeze event";
     XRInputSourceEvent* event =
         CreateInputSourceEvent(event_type_names::kSqueeze);
@@ -470,9 +492,9 @@ void XRInputSource::ProcessOverlayHitTest(
   // Do a hit test at the overlay pointer position to see if the pointer
   // intersects a cross origin iframe. If yes, set the visibility to false which
   // causes targetRaySpace and gripSpace to return null poses.
-  FloatPoint point(new_state->overlay_pointer_position->x(),
-                   new_state->overlay_pointer_position->y());
-  DVLOG(3) << __func__ << ": hit test point=" << point;
+  gfx::PointF point(new_state->overlay_pointer_position->x(),
+                    new_state->overlay_pointer_position->y());
+  DVLOG(3) << __func__ << ": hit test point=" << point.ToString();
 
   HitTestRequest::HitTestRequestType hit_type = HitTestRequest::kTouchEvent |
                                                 HitTestRequest::kReadOnly |
@@ -499,7 +521,7 @@ void XRInputSource::ProcessOverlayHitTest(
     if (hit_document) {
       Frame* hit_frame = hit_document->GetFrame();
       DCHECK(hit_frame);
-      if (hit_frame->IsCrossOriginToMainFrame()) {
+      if (hit_frame->IsCrossOriginToOutermostMainFrame()) {
         // Mark the input source as invisible until the primary button is
         // released.
         state_.is_visible = false;
@@ -611,6 +633,7 @@ void XRInputSource::Trace(Visitor* visitor) const {
   visitor->Trace(target_ray_space_);
   visitor->Trace(grip_space_);
   visitor->Trace(gamepad_);
+  visitor->Trace(hand_);
   ScriptWrappable::Trace(visitor);
 }
 

@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="2" failures="1" tests="2" name="tst_FailDataType">
+<testsuite name="tst_FailDataType" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="2" failures="0" errors="1" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="fail" name="value">
-    <!-- message="expected data of type &apos;QString&apos;, got &apos;bool&apos; for element 0 of data with tag &apos;bool&#x002D;as&#x002D;string&apos;" type="qdebug" -->
-    <!-- message="ASSERT: &quot;false&quot; in file qtbase/src/testlib/qtestdata.cpp, line 92" type="qfatal" -->
-    <failure message="Received a fatal error." result="fail"/>
+  <testcase name="initTestCase" classname="tst_FailDataType" time="@TEST_DURATION@"/>
+  <testcase name="value" classname="tst_FailDataType" time="@TEST_DURATION@">
+    <error type="qfatal" message="ASSERT: &quot;false&quot; in file qtbase/src/testlib/qtestdata.cpp, line 0"/>
+    <system-out>
+      <![CDATA[expected data of type 'QString', got 'bool' for element 0 of data with tag 'bool-as-string']]>
+    </system-out>
   </testcase>
-  <system-err>
-<![CDATA[expected data of type 'QString', got 'bool' for element 0 of data with tag 'bool-as-string']]>
-<![CDATA[ASSERT: "false" in file qtbase/src/testlib/qtestdata.cpp, line 0]]>
-  </system-err>
 </testsuite>

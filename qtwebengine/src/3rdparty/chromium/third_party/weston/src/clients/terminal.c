@@ -23,6 +23,7 @@
 
 #include "config.h"
 
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -49,8 +50,8 @@
 #include "shared/xalloc.h"
 #include "window.h"
 
-static int option_fullscreen;
-static int option_maximize;
+static bool option_fullscreen;
+static bool option_maximize;
 static char *option_font;
 static int option_font_size;
 static char *option_term;
@@ -3127,6 +3128,7 @@ int main(int argc, char *argv[])
 	struct display *d;
 	struct terminal *terminal;
 	const char *config_file;
+	struct sigaction sigpipe;
 	struct weston_config *config;
 	struct weston_config_section *s;
 
@@ -3156,6 +3158,14 @@ int main(int argc, char *argv[])
 		       "  --shell=NAME\n", argv[0]);
 		return 1;
 	}
+
+	/* Disable SIGPIPE so that paste operations do not crash the program
+	 * when the file descriptor provided to receive data is a pipe or
+	 * socket whose reading end has been closed */
+	sigpipe.sa_handler = SIG_IGN;
+	sigemptyset(&sigpipe.sa_mask);
+	sigpipe.sa_flags = 0;
+	sigaction(SIGPIPE, &sigpipe, NULL);
 
 	d = display_create(&argc, argv);
 	if (d == NULL) {

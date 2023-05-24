@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qxcbconnection.h"
 #include "qxcbscreen.h"
 #include "qxcbintegration.h"
@@ -45,8 +9,6 @@
 #include <QtCore/QList>
 
 #include <qpa/qwindowsysteminterface.h>
-
-#include <xcb/xinerama.h>
 
 void QXcbConnection::xrandrSelectEvents()
 {
@@ -65,8 +27,15 @@ void QXcbConnection::xrandrSelectEvents()
 QXcbScreen* QXcbConnection::findScreenForCrtc(xcb_window_t rootWindow, xcb_randr_crtc_t crtc) const
 {
     for (QXcbScreen *screen : m_screens) {
-        if (screen->root() == rootWindow && screen->crtc() == crtc)
-            return screen;
+        if (screen->root() == rootWindow) {
+            if (screen->m_monitor) {
+                if (screen->crtcs().contains(crtc))
+                    return screen;
+            } else {
+                if (screen->crtc() == crtc)
+                    return screen;
+            }
+        }
     }
 
     return nullptr;
@@ -75,8 +44,15 @@ QXcbScreen* QXcbConnection::findScreenForCrtc(xcb_window_t rootWindow, xcb_randr
 QXcbScreen* QXcbConnection::findScreenForOutput(xcb_window_t rootWindow, xcb_randr_output_t output) const
 {
     for (QXcbScreen *screen : m_screens) {
-        if (screen->root() == rootWindow && screen->output() == output)
-            return screen;
+        if (screen->root() == rootWindow) {
+            if (screen->m_monitor) {
+                if (screen->outputs().contains(output))
+                    return screen;
+            } else {
+                if (screen->output() == output)
+                    return screen;
+            }
+        }
     }
 
     return nullptr;
@@ -158,7 +134,6 @@ void QXcbConnection::updateScreens(const xcb_randr_notify_event_t *event)
                     screen = createScreen(virtualDesktop, output, outputInfo.get());
                     qCDebug(lcQpaScreen) << "output" << screen->name() << "is connected and enabled";
                 }
-                QHighDpiScaling::updateHighDpiScaling();
             }
         } else if (screen) {
             if (output.crtc == XCB_NONE && output.mode == XCB_NONE) {
@@ -180,7 +155,7 @@ void QXcbConnection::updateScreens(const xcb_randr_notify_event_t *event)
             }
         }
 
-        qCDebug(lcQpaScreen) << "primary output is" << qAsConst(m_screens).first()->name();
+        qCDebug(lcQpaScreen) << "updateScreens: primary output is" << std::as_const(m_screens).first()->name();
     }
 }
 
@@ -209,7 +184,7 @@ void QXcbConnection::updateScreen(QXcbScreen *screen, const xcb_randr_output_cha
             // If the screen became primary, reshuffle the order in QGuiApplicationPrivate
             const int idx = m_screens.indexOf(screen);
             if (idx > 0) {
-                qAsConst(m_screens).first()->setPrimary(false);
+                std::as_const(m_screens).first()->setPrimary(false);
                 m_screens.swapItemsAt(0, idx);
             }
             screen->virtualDesktop()->setPrimaryScreen(screen);
@@ -229,7 +204,7 @@ QXcbScreen *QXcbConnection::createScreen(QXcbVirtualDesktop *virtualDesktop,
 
     if (screen->isPrimary()) {
         if (!m_screens.isEmpty())
-            qAsConst(m_screens).first()->setPrimary(false);
+            std::as_const(m_screens).first()->setPrimary(false);
 
         m_screens.prepend(screen);
     } else {
@@ -244,7 +219,7 @@ QXcbScreen *QXcbConnection::createScreen(QXcbVirtualDesktop *virtualDesktop,
 void QXcbConnection::destroyScreen(QXcbScreen *screen)
 {
     QXcbVirtualDesktop *virtualDesktop = screen->virtualDesktop();
-    if (virtualDesktop->screens().count() == 1) {
+    if (virtualDesktop->screens().size() == 1) {
         // If there are no other screens on the same virtual desktop,
         // then transform the physical screen into a fake screen.
         const QString nameWas = screen->name();
@@ -266,134 +241,92 @@ void QXcbConnection::destroyScreen(QXcbScreen *screen)
             QWindowSystemInterface::handlePrimaryScreenChanged(newPrimary);
         }
 
+        qCDebug(lcQpaScreen) << "destroyScreen: destroy" << screen;
         QWindowSystemInterface::handleScreenRemoved(screen);
     }
 }
 
-void QXcbConnection::initializeScreens()
+void QXcbConnection::updateScreen_monitor(QXcbScreen *screen, xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp_t timestamp)
+{
+    screen->setMonitor(monitorInfo, timestamp);
+
+    if (screen->isPrimary()) {
+        const int idx = m_screens.indexOf(screen);
+        if (idx > 0) {
+            std::as_const(m_screens).first()->setPrimary(false);
+            m_screens.swapItemsAt(0, idx);
+        }
+        screen->virtualDesktop()->setPrimaryScreen(screen);
+        QWindowSystemInterface::handlePrimaryScreenChanged(screen);
+    }
+    qCDebug(lcQpaScreen) << "updateScreen_monitor: update" << screen << "(Primary:" << screen->isPrimary() << ")";
+}
+
+QXcbScreen *QXcbConnection::createScreen_monitor(QXcbVirtualDesktop *virtualDesktop, xcb_randr_monitor_info_t *monitorInfo, xcb_timestamp_t timestamp)
+{
+    QXcbScreen *screen = new QXcbScreen(this, virtualDesktop, monitorInfo, timestamp);
+
+    if (screen->isPrimary()) {
+        if (!m_screens.isEmpty())
+            std::as_const(m_screens).first()->setPrimary(false);
+
+        m_screens.prepend(screen);
+    } else {
+        m_screens.append(screen);
+    }
+    qCDebug(lcQpaScreen) << "createScreen_monitor: adding" << screen << "(Primary:" << screen->isPrimary() << ")";
+    virtualDesktop->addScreen(screen);
+    QWindowSystemInterface::handleScreenAdded(screen, screen->isPrimary());
+    return screen;
+}
+
+QXcbVirtualDesktop *QXcbConnection::virtualDesktopForNumber(int n) const
+{
+    for (QXcbVirtualDesktop *virtualDesktop : m_virtualDesktops) {
+        if (virtualDesktop->number() == n)
+            return virtualDesktop;
+    }
+
+    return nullptr;
+}
+
+QXcbScreen *QXcbConnection::findScreenForMonitorInfo(const QList<QPlatformScreen *> &screens, xcb_randr_monitor_info_t *monitorInfo)
+{
+    for (int i = 0; i < screens.size(); ++i) {
+        auto s = static_cast<QXcbScreen*>(screens[i]);
+        if (monitorInfo) {
+            QByteArray ba2 = atomName(monitorInfo->name);
+            if (s->name().toLocal8Bit() == ba2)
+                return s;
+        }
+    }
+
+    return nullptr;
+}
+
+void QXcbConnection::initializeScreens(bool initialized)
 {
     xcb_screen_iterator_t it = xcb_setup_roots_iterator(setup());
     int xcbScreenNumber = 0;    // screen number in the xcb sense
     QXcbScreen *primaryScreen = nullptr;
+    if (isAtLeastXRandR15() && initialized)
+        m_screens.clear();
+
     while (it.rem) {
-        // Each "screen" in xcb terminology is a virtual desktop,
-        // potentially a collection of separate juxtaposed monitors.
-        // But we want a separate QScreen for each output (e.g. DVI-I-1, VGA-1, etc.)
-        // which will become virtual siblings.
-        xcb_screen_t *xcbScreen = it.data;
-        QXcbVirtualDesktop *virtualDesktop = new QXcbVirtualDesktop(this, xcbScreen, xcbScreenNumber);
-        m_virtualDesktops.append(virtualDesktop);
-        QList<QPlatformScreen *> siblings;
-        if (hasXRandr()) {
-            // RRGetScreenResourcesCurrent is fast but it may return nothing if the
-            // configuration is not initialized wrt to the hardware. We should call
-            // RRGetScreenResources in this case.
-            auto resources_current = Q_XCB_REPLY(xcb_randr_get_screen_resources_current,
-                                                 xcb_connection(), xcbScreen->root);
-            decltype(Q_XCB_REPLY(xcb_randr_get_screen_resources,
-                                 xcb_connection(), xcbScreen->root)) resources;
-            if (!resources_current) {
-                qWarning("failed to get the current screen resources");
-            } else {
-                xcb_timestamp_t timestamp = 0;
-                xcb_randr_output_t *outputs = nullptr;
-                int outputCount = xcb_randr_get_screen_resources_current_outputs_length(resources_current.get());
-                if (outputCount) {
-                    timestamp = resources_current->config_timestamp;
-                    outputs = xcb_randr_get_screen_resources_current_outputs(resources_current.get());
-                } else {
-                    resources = Q_XCB_REPLY(xcb_randr_get_screen_resources,
-                                            xcb_connection(), xcbScreen->root);
-                    if (!resources) {
-                        qWarning("failed to get the screen resources");
-                    } else {
-                        timestamp = resources->config_timestamp;
-                        outputCount = xcb_randr_get_screen_resources_outputs_length(resources.get());
-                        outputs = xcb_randr_get_screen_resources_outputs(resources.get());
-                    }
-                }
-
-                if (outputCount) {
-                    auto primary = Q_XCB_REPLY(xcb_randr_get_output_primary, xcb_connection(), xcbScreen->root);
-                    if (!primary) {
-                        qWarning("failed to get the primary output of the screen");
-                    } else {
-                        for (int i = 0; i < outputCount; i++) {
-                            auto output = Q_XCB_REPLY_UNCHECKED(xcb_randr_get_output_info,
-                                                                xcb_connection(), outputs[i], timestamp);
-                            // Invalid, disconnected or disabled output
-                            if (!output)
-                                continue;
-
-                            if (output->connection != XCB_RANDR_CONNECTION_CONNECTED) {
-                                qCDebug(lcQpaScreen, "Output %s is not connected", qPrintable(
-                                            QString::fromUtf8((const char*)xcb_randr_get_output_info_name(output.get()),
-                                                              xcb_randr_get_output_info_name_length(output.get()))));
-                                continue;
-                            }
-
-                            if (output->crtc == XCB_NONE) {
-                                qCDebug(lcQpaScreen, "Output %s is not enabled", qPrintable(
-                                            QString::fromUtf8((const char*)xcb_randr_get_output_info_name(output.get()),
-                                                              xcb_randr_get_output_info_name_length(output.get()))));
-                                continue;
-                            }
-
-                            QXcbScreen *screen = new QXcbScreen(this, virtualDesktop, outputs[i], output.get());
-                            siblings << screen;
-                            m_screens << screen;
-
-                            // There can be multiple outputs per screen, use either
-                            // the first or an exact match.  An exact match isn't
-                            // always available if primary->output is XCB_NONE
-                            // or currently disconnected output.
-                            if (primaryScreenNumber() == xcbScreenNumber) {
-                                if (!primaryScreen || (primary && outputs[i] == primary->output)) {
-                                    if (primaryScreen)
-                                        primaryScreen->setPrimary(false);
-                                    primaryScreen = screen;
-                                    primaryScreen->setPrimary(true);
-                                    siblings.prepend(siblings.takeLast());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } else if (hasXinerama()) {
-            // Xinerama is available
-            auto screens = Q_XCB_REPLY(xcb_xinerama_query_screens, xcb_connection());
-            if (screens) {
-                xcb_xinerama_screen_info_iterator_t it = xcb_xinerama_query_screens_screen_info_iterator(screens.get());
-                while (it.rem) {
-                    xcb_xinerama_screen_info_t *screen_info = it.data;
-                    QXcbScreen *screen = new QXcbScreen(this, virtualDesktop,
-                                                        XCB_NONE, nullptr,
-                                                        screen_info, it.index);
-                    siblings << screen;
-                    m_screens << screen;
-                    xcb_xinerama_screen_info_next(&it);
-                }
-            }
+        if (isAtLeastXRandR15())
+            initializeScreensFromMonitor(&it, xcbScreenNumber, &primaryScreen, initialized);
+        else if (isAtLeastXRandR12())
+            initializeScreensFromOutput(&it, xcbScreenNumber, &primaryScreen);
+        else {
+            qWarning("There is no XRandR 1.2 and later version available. There will be only fake screen(s) to use.");
+            initializeScreensWithoutXRandR(&it, xcbScreenNumber, &primaryScreen);
         }
-        if (siblings.isEmpty()) {
-            // If there are no XRandR outputs or XRandR extension is missing,
-            // then create a fake/legacy screen.
-            QXcbScreen *screen = new QXcbScreen(this, virtualDesktop, XCB_NONE, nullptr);
-            qCDebug(lcQpaScreen) << "created fake screen" << screen;
-            m_screens << screen;
-            if (primaryScreenNumber() == xcbScreenNumber) {
-                primaryScreen = screen;
-                primaryScreen->setPrimary(true);
-            }
-            siblings << screen;
-        }
-        virtualDesktop->setScreens(std::move(siblings));
+
         xcb_screen_next(&it);
         ++xcbScreenNumber;
-    } // for each xcb screen
+    }
 
-    for (QXcbVirtualDesktop *virtualDesktop : qAsConst(m_virtualDesktops))
+    for (QXcbVirtualDesktop *virtualDesktop : std::as_const(m_virtualDesktops))
         virtualDesktop->subscribeToXFixesSelectionNotify();
 
     if (m_virtualDesktops.isEmpty()) {
@@ -401,18 +334,239 @@ void QXcbConnection::initializeScreens()
     } else {
         // Ensure the primary screen is first on the list
         if (primaryScreen) {
-            if (qAsConst(m_screens).first() != primaryScreen) {
+            if (std::as_const(m_screens).first() != primaryScreen) {
                 m_screens.removeOne(primaryScreen);
                 m_screens.prepend(primaryScreen);
             }
         }
 
         // Push the screens to QGuiApplication
-        for (QXcbScreen *screen : qAsConst(m_screens)) {
-            qCDebug(lcQpaScreen) << "adding" << screen << "(Primary:" << screen->isPrimary() << ")";
-            QWindowSystemInterface::handleScreenAdded(screen, screen->isPrimary());
+        if (!initialized) {
+            for (QXcbScreen *screen : std::as_const(m_screens)) {
+                qCDebug(lcQpaScreen) << "adding" << screen << "(Primary:" << screen->isPrimary() << ")";
+                QWindowSystemInterface::handleScreenAdded(screen, screen->isPrimary());
+            }
         }
 
-        qCDebug(lcQpaScreen) << "primary output is" << qAsConst(m_screens).first()->name();
+        if (!m_screens.isEmpty())
+            qCDebug(lcQpaScreen) << "initializeScreens: primary output is" << std::as_const(m_screens).first()->name();
     }
+}
+
+void QXcbConnection::initializeScreensWithoutXRandR(xcb_screen_iterator_t *it, int xcbScreenNumber, QXcbScreen **primaryScreen)
+{
+    // XRandR extension is missing, then create a fake/legacy screen.
+    xcb_screen_t *xcbScreen = it->data;
+    QXcbVirtualDesktop *virtualDesktop = new QXcbVirtualDesktop(this, xcbScreen, xcbScreenNumber);
+    m_virtualDesktops.append(virtualDesktop);
+    QList<QPlatformScreen *> siblings;
+
+    QXcbScreen *screen = new QXcbScreen(this, virtualDesktop, XCB_NONE, nullptr);
+    qCDebug(lcQpaScreen) << "created fake screen" << screen;
+    m_screens << screen;
+
+    if (primaryScreenNumber() == xcbScreenNumber) {
+        *primaryScreen = screen;
+        (*primaryScreen)->setPrimary(true);
+    }
+    siblings << screen;
+    virtualDesktop->setScreens(std::move(siblings));
+}
+
+void QXcbConnection::initializeScreensFromOutput(xcb_screen_iterator_t *it, int xcbScreenNumber, QXcbScreen **primaryScreen)
+{
+    // Each "screen" in xcb terminology is a virtual desktop,
+    // potentially a collection of separate juxtaposed monitors.
+    // But we want a separate QScreen for each output (e.g. DVI-I-1, VGA-1, etc.)
+    // which will become virtual siblings.
+    xcb_screen_t *xcbScreen = it->data;
+    QXcbVirtualDesktop *virtualDesktop = new QXcbVirtualDesktop(this, xcbScreen, xcbScreenNumber);
+    m_virtualDesktops.append(virtualDesktop);
+    QList<QPlatformScreen *> siblings;
+    if (isAtLeastXRandR12()) {
+        // RRGetScreenResourcesCurrent is fast but it may return nothing if the
+        // configuration is not initialized wrt to the hardware. We should call
+        // RRGetScreenResources in this case.
+        auto resources_current = Q_XCB_REPLY(xcb_randr_get_screen_resources_current,
+                                                xcb_connection(), xcbScreen->root);
+        decltype(Q_XCB_REPLY(xcb_randr_get_screen_resources,
+                                xcb_connection(), xcbScreen->root)) resources;
+        if (!resources_current) {
+            qWarning("failed to get the current screen resources");
+        } else {
+            xcb_timestamp_t timestamp = 0;
+            xcb_randr_output_t *outputs = nullptr;
+            int outputCount = xcb_randr_get_screen_resources_current_outputs_length(resources_current.get());
+            if (outputCount) {
+                timestamp = resources_current->config_timestamp;
+                outputs = xcb_randr_get_screen_resources_current_outputs(resources_current.get());
+            } else {
+                resources = Q_XCB_REPLY(xcb_randr_get_screen_resources,
+                                        xcb_connection(), xcbScreen->root);
+                if (!resources) {
+                    qWarning("failed to get the screen resources");
+                } else {
+                    timestamp = resources->config_timestamp;
+                    outputCount = xcb_randr_get_screen_resources_outputs_length(resources.get());
+                    outputs = xcb_randr_get_screen_resources_outputs(resources.get());
+                }
+            }
+
+            if (outputCount) {
+                auto primary = Q_XCB_REPLY(xcb_randr_get_output_primary, xcb_connection(), xcbScreen->root);
+                if (!primary) {
+                    qWarning("failed to get the primary output of the screen");
+                } else {
+                    for (int i = 0; i < outputCount; i++) {
+                        auto output = Q_XCB_REPLY_UNCHECKED(xcb_randr_get_output_info,
+                                                            xcb_connection(), outputs[i], timestamp);
+                        // Invalid, disconnected or disabled output
+                        if (!output)
+                            continue;
+
+                        if (output->connection != XCB_RANDR_CONNECTION_CONNECTED) {
+                            qCDebug(lcQpaScreen, "Output %s is not connected", qPrintable(
+                                        QString::fromUtf8((const char*)xcb_randr_get_output_info_name(output.get()),
+                                                            xcb_randr_get_output_info_name_length(output.get()))));
+                            continue;
+                        }
+
+                        if (output->crtc == XCB_NONE) {
+                            qCDebug(lcQpaScreen, "Output %s is not enabled", qPrintable(
+                                        QString::fromUtf8((const char*)xcb_randr_get_output_info_name(output.get()),
+                                                            xcb_randr_get_output_info_name_length(output.get()))));
+                            continue;
+                        }
+
+                        QXcbScreen *screen = new QXcbScreen(this, virtualDesktop, outputs[i], output.get());
+                        siblings << screen;
+                        m_screens << screen;
+
+                        // There can be multiple outputs per screen, use either
+                        // the first or an exact match.  An exact match isn't
+                        // always available if primary->output is XCB_NONE
+                        // or currently disconnected output.
+                        if (primaryScreenNumber() == xcbScreenNumber) {
+                            if (!(*primaryScreen) || (primary && outputs[i] == primary->output)) {
+                                if (*primaryScreen)
+                                    (*primaryScreen)->setPrimary(false);
+                                *primaryScreen = screen;
+                                (*primaryScreen)->setPrimary(true);
+                                siblings.prepend(siblings.takeLast());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (siblings.isEmpty()) {
+        // If there are no XRandR outputs or XRandR extension is missing,
+        // then create a fake/legacy screen.
+        QXcbScreen *screen = new QXcbScreen(this, virtualDesktop, XCB_NONE, nullptr);
+        qCDebug(lcQpaScreen) << "created fake screen" << screen;
+        m_screens << screen;
+        if (primaryScreenNumber() == xcbScreenNumber) {
+            *primaryScreen = screen;
+            (*primaryScreen)->setPrimary(true);
+        }
+        siblings << screen;
+    }
+    virtualDesktop->setScreens(std::move(siblings));
+}
+
+void QXcbConnection::initializeScreensFromMonitor(xcb_screen_iterator_t *it, int xcbScreenNumber, QXcbScreen **primaryScreen, bool initialized)
+{
+    // Each "screen" in xcb terminology is a virtual desktop,
+    // potentially a collection of separate juxtaposed monitors.
+    // But we want a separate QScreen for each output (e.g. DVI-I-1, VGA-1, etc.)
+    // which will become virtual siblings.
+    xcb_screen_t *xcbScreen = it->data;
+    QXcbVirtualDesktop *virtualDesktop = nullptr;
+    if (initialized)
+        virtualDesktop = virtualDesktopForNumber(xcbScreenNumber);
+    if (!virtualDesktop) {
+        virtualDesktop = new QXcbVirtualDesktop(this, xcbScreen, xcbScreenNumber);
+        m_virtualDesktops.append(virtualDesktop);
+    }
+
+    if (xcbScreenNumber != primaryScreenNumber())
+        return;
+
+    QList<QPlatformScreen*> old = virtualDesktop->m_screens;
+
+    QList<QPlatformScreen *> siblings;
+
+    xcb_randr_get_monitors_cookie_t monitors_c = xcb_randr_get_monitors(xcb_connection(), xcbScreen->root, 1);
+    xcb_randr_get_monitors_reply_t *monitors_r = xcb_randr_get_monitors_reply(xcb_connection(), monitors_c, nullptr);
+
+    if (!monitors_r) {
+        qWarning("RANDR GetMonitors failed; this should not be possible");
+        return;
+    }
+
+    xcb_randr_monitor_info_iterator_t monitor_iter = xcb_randr_get_monitors_monitors_iterator(monitors_r);
+    while (monitor_iter.rem) {
+        xcb_randr_monitor_info_t *monitor_info = monitor_iter.data;
+        QXcbScreen *screen = nullptr;
+        if (!initialized) {
+            screen = new QXcbScreen(this, virtualDesktop, monitor_info, monitors_r->timestamp);
+        } else {
+            screen = findScreenForMonitorInfo(old, monitor_info);
+            if (!screen) {
+                screen = createScreen_monitor(virtualDesktop, monitor_info, monitors_r->timestamp);
+            } else {
+                updateScreen_monitor(screen, monitor_info, monitors_r->timestamp);
+                old.removeAll(screen);
+            }
+        }
+        if (!m_screens.contains(screen))
+            m_screens << screen;
+        siblings << screen;
+
+        // similar logic with QXcbConnection::initializeScreensFromOutput()
+        if (!(*primaryScreen) || monitor_info->primary) {
+            if (*primaryScreen)
+                (*primaryScreen)->setPrimary(false);
+            *primaryScreen = screen;
+            (*primaryScreen)->setPrimary(true);
+            siblings.prepend(siblings.takeLast());
+        }
+
+        xcb_randr_monitor_info_next(&monitor_iter);
+    }
+    free(monitors_r);
+
+    if (siblings.isEmpty()) {
+        QXcbScreen *screen = nullptr;
+        if (initialized && !old.isEmpty()) {
+            // If there are no other screens on the same virtual desktop,
+            // then transform the physical screen into a fake screen.
+            screen = static_cast<QXcbScreen *>(old.takeFirst());
+            const QString nameWas = screen->name();
+            screen->setMonitor(nullptr, XCB_NONE);
+            qCDebug(lcQpaScreen) << "transformed" << nameWas << "to fake" << screen;
+        } else {
+            // If there are no XRandR outputs or XRandR extension is missing,
+            // then create a fake/legacy screen.
+            screen = new QXcbScreen(this, virtualDesktop, nullptr);
+            qCDebug(lcQpaScreen) << "create a fake screen: " << screen;
+        }
+
+        *primaryScreen = screen;
+        (*primaryScreen)->setPrimary(true);
+
+        siblings << screen;
+        m_screens << screen;
+    }
+
+    if (initialized) {
+        for (QPlatformScreen *ps : old) {
+            virtualDesktop->removeScreen(ps);
+            qCDebug(lcQpaScreen) << "destroy screen: " << ps;
+            QWindowSystemInterface::handleScreenRemoved(ps);
+        }
+    }
+
+    virtualDesktop->setScreens(std::move(siblings));
 }

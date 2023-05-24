@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qvulkanfunctions_p.h>
 
@@ -49,7 +13,7 @@ QT_BEGIN_NAMESPACE
     \wrapper
 
     \brief The QVulkanFunctions class provides cross-platform access to the
-    instance level core Vulkan 1.0 API.
+    instance level core Vulkan 1.2 API.
 
     Qt and Qt applications do not link to any Vulkan libraries by default.
     Instead, all functions are resolved dynamically at run time. Each
@@ -81,6 +45,18 @@ QT_BEGIN_NAMESPACE
     \l{https://www.khronos.org/registry/vulkan/specs/1.0/man/html/vkGetInstanceProcAddr.html}{the
     man page for vkGetInstanceProcAddr} for more information.
 
+    \note The member function prototypes for Vulkan 1.1 and 1.2 commands are
+    ifdefed with the appropriate \c{VK_VERSION_1_x} that is defined by the
+    Vulkan headers. Therefore these functions will only be callable by an
+    application when the system's (on which the application is built) Vulkan
+    header is new enough and it contains 1.1 and 1.2 Vulkan API definitions.
+    When building Qt from source, this has an additional consequence: the
+    Vulkan headers on the build environment must also be 1.1 and 1.2 capable in
+    order to get a Qt build that supports resolving the 1.1 and 1.2 API
+    commands. If either of these conditions is not met, applications will only
+    be able to call the Vulkan 1.0 commands through QVulkanFunctions and
+    QVulkanDeviceFunctions.
+
     \sa QVulkanInstance, QVulkanDeviceFunctions, QWindow::setVulkanInstance(), QWindow::setSurfaceType()
 */
 
@@ -92,7 +68,7 @@ QT_BEGIN_NAMESPACE
     \wrapper
 
     \brief The QVulkanDeviceFunctions class provides cross-platform access to
-    the device level core Vulkan 1.0 API.
+    the device level core Vulkan 1.2 API.
 
     Qt and Qt applications do not link to any Vulkan libraries by default.
     Instead, all functions are resolved dynamically at run time. Each

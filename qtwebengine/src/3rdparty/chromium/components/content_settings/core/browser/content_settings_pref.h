@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,9 @@
 
 #include <string>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
@@ -32,8 +33,7 @@ class ContentSettingsPref {
  public:
   typedef base::RepeatingCallback<void(const ContentSettingsPattern&,
                                        const ContentSettingsPattern&,
-                                       ContentSettingsType,
-                                       const std::string&)>
+                                       ContentSettingsType)>
       NotifyObserversCallback;
 
   ContentSettingsPref(ContentSettingsType content_type,
@@ -43,25 +43,19 @@ class ContentSettingsPref {
                       bool off_the_record,
                       bool restore_session,
                       NotifyObserversCallback notify_callback);
+
+  ContentSettingsPref(const ContentSettingsPref&) = delete;
+  ContentSettingsPref& operator=(const ContentSettingsPref&) = delete;
+
   ~ContentSettingsPref();
 
   // Returns nullptr to indicate the RuleIterator is empty.
-  std::unique_ptr<RuleIterator> GetRuleIterator(
-      const ResourceIdentifier& resource_identifier,
-      bool off_the_record) const;
+  std::unique_ptr<RuleIterator> GetRuleIterator(bool off_the_record) const;
 
-  bool SetWebsiteSetting(const ContentSettingsPattern& primary_pattern,
+  void SetWebsiteSetting(const ContentSettingsPattern& primary_pattern,
                          const ContentSettingsPattern& secondary_pattern,
-                         const ResourceIdentifier& resource_identifier,
-                         base::Time modified_time,
-                         std::unique_ptr<base::Value>&& value,
-                         const ContentSettingConstraints& constraints);
-
-  // Returns the |last_modified| date of a setting.
-  base::Time GetWebsiteSettingLastModified(
-      const ContentSettingsPattern& primary_pattern,
-      const ContentSettingsPattern& secondary_pattern,
-      const ResourceIdentifier& resource_identifier);
+                         base::Value value,
+                         const RuleMetaData& metadata);
 
   void ClearPref();
 
@@ -71,12 +65,6 @@ class ContentSettingsPref {
 
   // Tries to lock |lock_|. If successful, returns true and releases the lock.
   bool TryLockForTesting() const;
-  void set_allow_resource_identifiers_for_testing() {
-    allow_resource_identifiers_ = true;
-  }
-  void reset_allow_resource_identifiers_for_testing() {
-    allow_resource_identifiers_ = false;
-  }
 
  private:
   // Reads all content settings exceptions from the preference and loads them
@@ -92,10 +80,8 @@ class ContentSettingsPref {
   // preference changes.
   void UpdatePref(const ContentSettingsPattern& primary_pattern,
                   const ContentSettingsPattern& secondary_pattern,
-                  const ResourceIdentifier& resource_identifier,
-                  const base::Time last_modified,
-                  const base::Value* value,
-                  const ContentSettingConstraints& constraints);
+                  base::Value value,
+                  const RuleMetaData& metadata);
 
   // In the debug mode, asserts that |lock_| is not held by this thread. It's
   // ok if some other thread holds |lock_|, as long as it will eventually
@@ -106,13 +92,13 @@ class ContentSettingsPref {
   ContentSettingsType content_type_;
 
   // Weak; owned by the Profile and reset in ShutdownOnUIThread.
-  PrefService* prefs_;
+  raw_ptr<PrefService, DanglingUntriaged> prefs_;
 
   // Owned by the PrefProvider.
-  PrefChangeRegistrar* registrar_;
+  raw_ptr<PrefChangeRegistrar, DanglingUntriaged> registrar_;
 
   // Name of the dictionary preference managed by this class.
-  const std::string& pref_name_;
+  const raw_ref<const std::string> pref_name_;
 
   bool off_the_record_;
 
@@ -132,12 +118,6 @@ class ContentSettingsPref {
   mutable base::Lock lock_;
 
   base::ThreadChecker thread_checker_;
-
-  // Used for setting preferences with resource identifiers to simmulate legacy
-  // prefs that did have resource identifiers set.
-  bool allow_resource_identifiers_;
-
-  DISALLOW_COPY_AND_ASSIGN(ContentSettingsPref);
 };
 
 }  // namespace content_settings

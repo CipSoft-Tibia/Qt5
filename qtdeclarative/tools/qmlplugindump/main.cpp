@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtQml/qqmlengine.h>
 #include <QtQml/private/qqmlengine_p.h>
@@ -54,13 +29,13 @@
 #include <QtCore/QProcess>
 #include <QtCore/private/qobject_p.h>
 #include <QtCore/private/qmetaobject_p.h>
+#include <QtQmlTypeRegistrar/private/qqmljsstreamwriter_p.h>
 
 #include <QRegularExpression>
 #include <iostream>
 #include <algorithm>
 
 #include "qmltypereader.h"
-#include "qmlstreamwriter.h"
 
 #ifdef QT_SIMULATOR
 #include <QtGui/private/qsimulatorconnection_p.h>
@@ -103,8 +78,7 @@ static QString enquote(const QString &string)
 struct QmlVersionInfo
 {
     QString pluginImportUri;
-    int majorVersion;
-    int minorVersion;
+    QTypeRevision version;
     bool strict;
 };
 
@@ -112,8 +86,8 @@ static bool matchingImportUri(const QQmlType &ty, const QmlVersionInfo& versionI
     const QString &module = ty.module();
     if (versionInfo.strict) {
         return (versionInfo.pluginImportUri == module
-                && (ty.majorVersion() == versionInfo.majorVersion
-                    || ty.majorVersion() == -1))
+                && (ty.version().majorVersion() == versionInfo.version.majorVersion()
+                    || !ty.version().hasMajorVersion()))
                 || module.isEmpty();
     }
     return module.isEmpty()
@@ -158,7 +132,7 @@ void collectReachableMetaObjects(QObject *object, QSet<const QMetaObject *> *met
 
     for (int index = 0; index < meta->propertyCount(); ++index) {
         QMetaProperty prop = meta->property(index);
-        if (QQmlMetaType::isQObject(prop.userType())) {
+        if (prop.metaType().flags().testFlag(QMetaType::PointerToQObject)) {
             if (verbose)
                 std::cerr << "  Processing property " << qPrintable( prop.name() ) << std::endl;
             currentProperty = QString("%1::%2").arg(meta->className(), prop.name());
@@ -180,15 +154,6 @@ void collectReachableMetaObjects(QQmlEnginePrivate *engine, const QQmlType &ty, 
         collectReachableMetaObjects(ty.attachedPropertiesType(engine), metas, info);
     }
 }
-
-/* We want to add the MetaObject for 'Qt' to the list, this is a
-   simple way to access it.
-*/
-class FriendlyQObject: public QObject
-{
-public:
-    static const QMetaObject *qtMeta() { return &staticQtMetaObject; }
-};
 
 /* When we dump a QMetaObject, we want to list all the types it is exported as.
    To do this, we need to find the QQmlTypes associated with this
@@ -260,7 +225,7 @@ QSet<const QMetaObject *> collectReachableMetaObjects(QQmlEngine *engine,
                                                       )
 {
     QSet<const QMetaObject *> metas;
-    metas.insert(FriendlyQObject::qtMeta());
+    metas.insert(&Qt::staticMetaObject);
 
     const auto qmlTypes = QQmlMetaType::qmlTypes();
     for (const QQmlType &ty : qmlTypes) {
@@ -271,7 +236,8 @@ QSet<const QMetaObject *> collectReachableMetaObjects(QQmlEngine *engine,
         if (ty.isSingleton())
             singletons.insert(ty.baseMetaObject());
         if (!ty.isComposite()) {
-            qmlTypesByCppName[ty.baseMetaObject()->className()].insert(ty);
+            if (const QMetaObject *mo = ty.baseMetaObject())
+                qmlTypesByCppName[mo->className()].insert(ty);
             collectReachableMetaObjects(QQmlEnginePrivate::get(engine), ty, &metas, info);
         } else {
             compositeTypes[ty.elementName()].append(ty);
@@ -346,23 +312,23 @@ QSet<const QMetaObject *> collectReachableMetaObjects(QQmlEngine *engine,
 }
 
 class KnownAttributes {
-    QHash<QByteArray, int> m_properties;
-    QHash<QByteArray, QHash<int, int> > m_methods;
+    QHash<QByteArray, QTypeRevision> m_properties;
+    QHash<QByteArray, QHash<int, QTypeRevision> > m_methods;
 public:
-    bool knownMethod(const QByteArray &name, int nArgs, int revision)
+    bool knownMethod(const QByteArray &name, int nArgs, QTypeRevision revision)
     {
         if (m_methods.contains(name)) {
-            QHash<int, int> overloads = m_methods.value(name);
-            if (overloads.contains(nArgs) && overloads.value(nArgs) <= revision)
+            QHash<int, QTypeRevision> overloads = m_methods.value(name);
+            if (overloads.contains(nArgs) && overloads.value(nArgs).toEncodedVersion<quint16>() <= revision.toEncodedVersion<quint16>())
                 return true;
         }
         m_methods[name][nArgs] = revision;
         return false;
     }
 
-    bool knownProperty(const QByteArray &name, int revision)
+    bool knownProperty(const QByteArray &name, QTypeRevision revision)
     {
-        if (m_properties.contains(name) && m_properties.value(name) <= revision)
+        if (m_properties.contains(name) && m_properties.value(name).toEncodedVersion<quint16>() <= revision.toEncodedVersion<quint16>())
             return true;
         m_properties[name] = revision;
         return false;
@@ -371,11 +337,11 @@ public:
 
 class Dumper
 {
-    QmlStreamWriter *qml;
+    QQmlJSStreamWriter *qml;
     QString relocatableModuleUri;
 
 public:
-    Dumper(QmlStreamWriter *qml) : qml(qml) {}
+    Dumper(QQmlJSStreamWriter *qml) : qml(qml) {}
 
     void setRelocatableModuleUri(const QString &uri)
     {
@@ -386,13 +352,14 @@ public:
     {
         const QString module = type.module().isEmpty() ? versionInfo.pluginImportUri
                                                        : type.module();
-        const int majorVersion = type.majorVersion() >= 0 ? type.majorVersion()
-                                                          : versionInfo.majorVersion;
-        const int minorVersion = type.minorVersion() >= 0 ? type.minorVersion()
-                                                          : versionInfo.minorVersion;
+        QTypeRevision version = QTypeRevision::fromVersion(
+                    type.version().hasMajorVersion() ? type.version().majorVersion()
+                                                     : versionInfo.version.majorVersion(),
+                    type.version().hasMinorVersion() ? type.version().minorVersion()
+                                                     : versionInfo.version.minorVersion());
 
         const QString versionedElement = type.elementName()
-                + QString::fromLatin1(" %1.%2").arg(majorVersion).arg(minorVersion);
+                + QString::fromLatin1(" %1.%2").arg(version.majorVersion()).arg(version.minorVersion());
 
         return enquote((module == relocatableModuleUri)
                        ? versionedElement
@@ -401,7 +368,7 @@ public:
 
     void writeMetaContent(const QMetaObject *meta, KnownAttributes *knownAttributes = nullptr)
     {
-        QSet<QString> implicitSignals = dumpMetaProperties(meta, 0, knownAttributes);
+        QSet<QString> implicitSignals = dumpMetaProperties(meta, QTypeRevision::zero(), knownAttributes);
 
         if (meta == &QObject::staticMetaObject) {
             // for QObject, hide deleteLater() and onDestroyed
@@ -416,17 +383,17 @@ public:
             }
 
             // and add toString(), destroy() and destroy(int)
-            if (!knownAttributes || !knownAttributes->knownMethod(QByteArray("toString"), 0, 0)) {
+            if (!knownAttributes || !knownAttributes->knownMethod(QByteArray("toString"), 0, QTypeRevision::zero())) {
                 qml->writeStartObject(QLatin1String("Method"));
                 qml->writeScriptBinding(QLatin1String("name"), enquote(QLatin1String("toString")));
                 qml->writeEndObject();
             }
-            if (!knownAttributes || !knownAttributes->knownMethod(QByteArray("destroy"), 0, 0)) {
+            if (!knownAttributes || !knownAttributes->knownMethod(QByteArray("destroy"), 0, QTypeRevision::zero())) {
                 qml->writeStartObject(QLatin1String("Method"));
                 qml->writeScriptBinding(QLatin1String("name"), enquote(QLatin1String("destroy")));
                 qml->writeEndObject();
             }
-            if (!knownAttributes || !knownAttributes->knownMethod(QByteArray("destroy"), 1, 0)) {
+            if (!knownAttributes || !knownAttributes->knownMethod(QByteArray("destroy"), 1, QTypeRevision::zero())) {
                 qml->writeStartObject(QLatin1String("Method"));
                 qml->writeScriptBinding(QLatin1String("name"), enquote(QLatin1String("destroy")));
                 qml->writeStartObject(QLatin1String("Parameter"));
@@ -509,7 +476,12 @@ public:
         qml->writeScriptBinding(QLatin1String("name"), exportString);
 
         qml->writeArrayBinding(QLatin1String("exports"), QStringList() << exportString);
-        qml->writeArrayBinding(QLatin1String("exportMetaObjectRevisions"), QStringList() << QString::number(compositeType.minorVersion()));
+
+        // TODO: shouldn't this be metaObjectRevision().value<quint16>()
+        //       rather than version().minorVersion()
+        qml->writeArrayBinding(QLatin1String("exportMetaObjectRevisions"), QStringList()
+                               << QString::number(compositeType.version().minorVersion()));
+
         qml->writeBooleanBinding(QLatin1String("isComposite"), true);
 
         if (compositeType.isSingleton()) {
@@ -525,7 +497,7 @@ public:
             }
         }
 
-        for (const QMetaObject *meta : qAsConst(objectsToMerge)) {
+        for (const QMetaObject *meta : std::as_const(objectsToMerge)) {
             for (int index = meta->enumeratorOffset(); index < meta->enumeratorCount(); ++index)
                 dump(meta->enumerator(index));
 
@@ -548,10 +520,10 @@ public:
 
     struct QmlTypeInfo {
         QmlTypeInfo() {}
-        QmlTypeInfo(const QString &exportString, int revision, const QMetaObject *extendedObject, QByteArray attachedTypeId)
+        QmlTypeInfo(const QString &exportString, QTypeRevision revision, const QMetaObject *extendedObject, QByteArray attachedTypeId)
             : exportString(exportString), revision(revision), extendedObject(extendedObject), attachedTypeId(attachedTypeId) {}
         QString exportString;
-        int revision = 0;
+        QTypeRevision revision = QTypeRevision::zero();
         const QMetaObject *extendedObject = nullptr;
         QByteArray attachedTypeId;
     };
@@ -574,11 +546,11 @@ public:
                 if (attachedType != meta)
                     attachedTypeId = convertToId(attachedType);
             }
-            const QString exportString = getExportString(type, { QString(), -1, -1, false });
-            int metaObjectRevision = type.metaObjectRevision();
+            const QString exportString = getExportString(type, { QString(), QTypeRevision(), false });
+            QTypeRevision metaObjectRevision = type.metaObjectRevision();
             if (extendedObject) {
                 // emulate custom metaobjectrevision out of import
-                metaObjectRevision = type.majorVersion() * 100 + type.minorVersion();
+                metaObjectRevision = type.version();
             }
 
             QmlTypeInfo info = { exportString, metaObjectRevision, extendedObject, attachedTypeId };
@@ -587,7 +559,7 @@ public:
 
         // sort to ensure stable output
         std::sort(typeInfo.begin(), typeInfo.end(), [](const QmlTypeInfo &i1, const QmlTypeInfo &i2) {
-            return i1.revision < i2.revision;
+            return i1.revision.toEncodedVersion<quint16>() < i2.revision.toEncodedVersion<quint16>();
         });
 
         // determine default property
@@ -611,7 +583,7 @@ public:
         if (!typeInfo.isEmpty()) {
             QMap<QString, QString> exports; // sort exports
             for (const QmlTypeInfo &iter : typeInfo)
-                exports.insert(iter.exportString, QString::number(iter.revision));
+                exports.insert(iter.exportString, QString::number(iter.revision.toEncodedVersion<quint16>()));
 
             QStringList exportStrings = exports.keys();
             QStringList metaObjectRevisions = exports.values();
@@ -647,14 +619,6 @@ public:
         qml->writeEndObject();
     }
 
-    void writeEasingCurve()
-    {
-        qml->writeStartObject(QLatin1String("Component"));
-        qml->writeScriptBinding(QLatin1String("name"), enquote(QLatin1String("QEasingCurve")));
-        qml->writeScriptBinding(QLatin1String("prototype"), enquote(QLatin1String("QQmlEasingValueType")));
-        qml->writeEndObject();
-    }
-
 private:
 
     /* Removes pointer and list annotations from a type name, returning
@@ -666,11 +630,11 @@ private:
 
         if (typeName->endsWith('*')) {
             *isPointer = true;
-            typeName->truncate(typeName->length() - 1);
+            typeName->truncate(typeName->size() - 1);
             removePointerAndList(typeName, isList, isPointer);
         } else if (typeName->startsWith(declListPrefix)) {
             *isList = true;
-            typeName->truncate(typeName->length() - 1); // get rid of the suffix '>'
+            typeName->truncate(typeName->size() - 1); // get rid of the suffix '>'
             *typeName = typeName->mid(declListPrefix.size());
             removePointerAndList(typeName, isList, isPointer);
         }
@@ -692,22 +656,27 @@ private:
             qml->writeScriptBinding(QLatin1String("isPointer"), QLatin1String("true"));
     }
 
-    void dump(const QMetaProperty &prop, int metaRevision = -1, KnownAttributes *knownAttributes = nullptr)
+    void dump(const QMetaProperty &prop, QTypeRevision metaRevision = QTypeRevision(),
+              KnownAttributes *knownAttributes = nullptr)
     {
-        int revision = metaRevision ? metaRevision : prop.revision();
+        // TODO: should that not be metaRevision.isValid() rather than comparing to zero()?
+        QTypeRevision revision = (metaRevision == QTypeRevision::zero())
+                ? QTypeRevision::fromEncodedVersion(prop.revision())
+                : metaRevision;
         QByteArray propName = prop.name();
         if (knownAttributes && knownAttributes->knownProperty(propName, revision))
             return;
         qml->writeStartObject("Property");
         qml->writeScriptBinding(QLatin1String("name"), enquote(QString::fromUtf8(prop.name())));
-        if (revision)
-            qml->writeScriptBinding(QLatin1String("revision"), QString::number(revision));
+        if (revision != QTypeRevision::zero())
+            qml->writeScriptBinding(QLatin1String("revision"), QString::number(revision.toEncodedVersion<quint16>()));
         writeTypeProperties(prop.typeName(), prop.isWritable());
 
         qml->writeEndObject();
     }
 
-    QSet<QString> dumpMetaProperties(const QMetaObject *meta, int metaRevision = -1, KnownAttributes *knownAttributes = nullptr)
+    QSet<QString> dumpMetaProperties(const QMetaObject *meta, QTypeRevision metaRevision = QTypeRevision(),
+                                     KnownAttributes *knownAttributes = nullptr)
     {
         QSet<QString> implicitSignals;
         for (int index = meta->propertyOffset(); index < meta->propertyCount(); ++index) {
@@ -715,7 +684,7 @@ private:
             dump(property, metaRevision, knownAttributes);
             if (knownAttributes)
                 knownAttributes->knownMethod(QByteArray(property.name()).append("Changed"),
-                                             0, property.revision());
+                                             0, QTypeRevision::fromEncodedVersion(property.revision()));
             implicitSignals.insert(QString("%1Changed").arg(QString::fromUtf8(property.name())));
         }
         return implicitSignals;
@@ -743,7 +712,7 @@ private:
             return;
         }
 
-        int revision = meth.revision();
+        QTypeRevision revision = QTypeRevision::fromEncodedVersion(meth.revision());
         if (knownAttributes && knownAttributes->knownMethod(name, meth.parameterNames().size(), revision))
             return;
         if (meth.methodType() == QMetaMethod::Signal)
@@ -753,8 +722,8 @@ private:
 
         qml->writeScriptBinding(QLatin1String("name"), enquote(name));
 
-        if (revision)
-            qml->writeScriptBinding(QLatin1String("revision"), QString::number(revision));
+        if (revision != QTypeRevision::zero())
+            qml->writeScriptBinding(QLatin1String("revision"), QString::number(revision.toEncodedVersion<quint16>()));
 
         if (typeName != QLatin1String("void"))
             qml->writeScriptBinding(QLatin1String("type"), enquote(typeName));
@@ -826,10 +795,9 @@ static bool readDependenciesData(QString dependenciesFile, const QByteArray &fil
     }
     if (doc.isArray()) {
         const QStringList requiredKeys = QStringList() << QStringLiteral("name")
-                                                       << QStringLiteral("type")
-                                                       << QStringLiteral("version");
+                                                       << QStringLiteral("type");
         const auto deps = doc.array();
-        for (const QJsonValue &dep : deps) {
+        for (const QJsonValue dep : deps) {
             if (dep.isObject()) {
                 QJsonObject obj = dep.toObject();
                 for (const QString &requiredKey : requiredKeys)
@@ -839,18 +807,19 @@ static bool readDependenciesData(QString dependenciesFile, const QByteArray &fil
                     continue;
                 QString name = obj.value((QStringLiteral("name"))).toString();
                 QString version = obj.value(QStringLiteral("version")).toString();
-                if (name.isEmpty() || urisToSkip.contains(name) || version.isEmpty())
+                if (name.isEmpty() || urisToSkip.contains(name))
                     continue;
                 if (name.contains(QLatin1String("Private"), Qt::CaseInsensitive)) {
                     if (verbose)
-                        std::cerr << "skipping private dependecy "
+                        std::cerr << "skipping private dependency "
                                   << qPrintable( name ) << " "  << qPrintable(version) << std::endl;
                     continue;
                 }
                 if (verbose)
                     std::cerr << "appending dependency "
                               << qPrintable( name ) << " "  << qPrintable(version) << std::endl;
-                dependencies->append(name + QLatin1Char(' ')+version);
+                dependencies->append(version.isEmpty() ? name
+                                                       : (name + QLatin1Char(' ') + version));
             }
         }
     } else {
@@ -917,7 +886,7 @@ static bool getDependencies(const QQmlEngine &engine, const QString &pluginImpor
 
     if (!importScanner.waitForFinished()) {
         std::cerr << "failure to start " << qPrintable(command);
-        for (const QString &arg : qAsConst(commandArgs))
+        for (const QString &arg : std::as_const(commandArgs))
             std::cerr << ' ' << qPrintable(arg);
         std::cerr << std::endl;
         return false;
@@ -931,79 +900,76 @@ static bool getDependencies(const QQmlEngine &engine, const QString &pluginImpor
         return false;
     }
 
-    QStringList aux;
-    for (const QString &str : qAsConst(*dependencies)) {
-        if (!str.startsWith("Qt.test.qtestroot"))
-            aux += str;
-    }
-    *dependencies = aux;
-
     return true;
 }
 
-bool compactDependencies(QStringList *dependencies)
+bool dependencyBetter(const QString &lhs, const QString &rhs)
 {
-    if (dependencies->isEmpty())
+    QStringList leftSegments = lhs.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    QStringList rightSegments = rhs.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+
+    if (leftSegments.isEmpty())
         return false;
-    dependencies->sort();
-    QStringList oldDep = dependencies->constFirst().split(QLatin1Char(' '));
-    Q_ASSERT(oldDep.size() == 2);
-    int oldPos = 0;
-    for (int idep = 1; idep < dependencies->size(); ++idep) {
-        QString depStr = dependencies->at(idep);
-        const QStringList newDep = depStr.split(QLatin1Char(' '));
-        Q_ASSERT(newDep.size() == 2);
-        if (newDep.constFirst() != oldDep.constFirst()) {
-            if (++oldPos != idep)
-                dependencies->replace(oldPos, depStr);
-            oldDep = newDep;
-        } else {
-            const QStringList v1 = oldDep.constLast().split(QLatin1Char('.'));
-            const QStringList v2 = newDep.constLast().split(QLatin1Char('.'));
-            Q_ASSERT(v1.size() == 2);
-            Q_ASSERT(v2.size() == 2);
-            bool ok;
-            int major1 = v1.first().toInt(&ok);
-            Q_ASSERT(ok);
-            int major2 = v2.first().toInt(&ok);
-            Q_ASSERT(ok);
-            if (major1 != major2) {
-                std::cerr << "Found a dependency on " << qPrintable(oldDep.constFirst())
-                          << " with two major versions:" << qPrintable(oldDep.constLast())
-                          << " and " << qPrintable(newDep.constLast())
-                          << " which is unsupported, discarding smaller version" << std::endl;
-                if (major1 < major2)
-                    dependencies->replace(oldPos, depStr);
-            } else {
-                int minor1 = v1.last().toInt(&ok);
-                Q_ASSERT(ok);
-                int minor2 = v2.last().toInt(&ok);
-                Q_ASSERT(ok);
-                if (minor1 < minor2)
-                    dependencies->replace(oldPos, depStr);
-            }
-        }
-    }
-    if (++oldPos < dependencies->size()) {
-        *dependencies = dependencies->mid(0, oldPos);
+    if (rightSegments.isEmpty())
         return true;
-    }
-    return false;
+
+    const QString leftModule = leftSegments.first();
+    const QString rightModule = rightSegments.first();
+
+    if (leftModule < rightModule)
+        return true;
+    if (leftModule > rightModule)
+        return false;
+
+    if (leftSegments.size() == 1)
+        return false;
+    if (rightSegments.size() == 1)
+        return true;
+
+    const QStringList leftVersion = leftSegments.at(1).split(QLatin1Char('.'));
+    const QStringList rightVersion = rightSegments.at(1).split(QLatin1Char('.'));
+
+    auto compareSegment = [&](int segmentIndex) {
+        if (leftVersion.size() <= segmentIndex)
+            return rightVersion.size() > segmentIndex ? 1 : 0;
+        if (rightVersion.size() <= segmentIndex)
+            return -1;
+
+        bool leftOk = false;
+        bool rightOk = false;
+        const int leftSegment = leftSegments[segmentIndex].toUShort(&leftOk);
+        const int rightSegment = rightSegments[segmentIndex].toUShort(&rightOk);
+
+        if (!leftOk)
+            return rightOk ? 1 : 0;
+        if (!rightOk)
+            return -1;
+
+        return rightSegment - leftSegment;
+    };
+
+    const int major = compareSegment(0);
+    return (major == 0) ? compareSegment(1) < 0 : major < 0;
 }
 
-inline std::wostream &operator<<(std::wostream &str, const QString &s)
+void compactDependencies(QStringList *dependencies)
 {
-#ifdef Q_OS_WIN
-    str << reinterpret_cast<const wchar_t *>(s.utf16());
-#else
-    str << s.toStdWString();
-#endif
-    return str;
+    std::sort(dependencies->begin(), dependencies->end(), dependencyBetter);
+    QString currentModule;
+    for (auto it = dependencies->begin(); it != dependencies->end();) {
+        QStringList segments = it->split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (segments.isEmpty() || segments.first() == currentModule) {
+            it = dependencies->erase(it);
+        } else {
+            currentModule = segments.first();
+            ++it;
+        }
+    }
 }
 
 void printDebugMessage(QtMsgType, const QMessageLogContext &, const QString &msg)
 {
-    std::wcerr << msg << std::endl;
+    std::cerr << msg.toStdString() << std::endl;
     // In case of QtFatalMsg the calling code will abort() when appropriate.
 }
 
@@ -1012,9 +978,9 @@ static bool operator<(const QQmlType &a, const QQmlType &b)
 {
     return a.qmlTypeName() < b.qmlTypeName()
             || (a.qmlTypeName() == b.qmlTypeName()
-                && ((a.majorVersion() < b.majorVersion())
-                    || (a.majorVersion() == b.majorVersion()
-                        && a.minorVersion() < b.minorVersion())));
+                && ((a.version().majorVersion() < b.version().majorVersion())
+                    || (a.version().majorVersion() == b.version().majorVersion()
+                        && a.version().minorVersion() < b.version().minorVersion())));
 }
 QT_END_NAMESPACE
 
@@ -1157,6 +1123,11 @@ int main(int argc, char *argv[])
             }
         }
 
+        std::cerr << "qmlplugindump is deprecated.\n"
+                  << "Please declare your types using QML_ELEMENT and related macros.\n"
+                  << "Then utilize the build system to invoke qmltyperegistrar in order to\n"
+                  << "generate qmltypes files.\n";
+
         if (action == Uri) {
             if (positionalArgs.size() != 3 && positionalArgs.size() != 4) {
                 std::cerr << "Incorrect number of positional arguments" << std::endl;
@@ -1187,7 +1158,10 @@ int main(int argc, char *argv[])
         QDir cur = QDir::current();
         cur.cd(pluginImportPath);
         pluginImportPath = cur.canonicalPath();
-        QDir::setCurrent(pluginImportPath);
+        if (!QDir::setCurrent(pluginImportPath)) {
+            std::cerr << "Cannot set current directory to import path "
+                      << qPrintable(pluginImportPath) << std::endl;
+        }
         engine.addImportPath(pluginImportPath);
     }
 
@@ -1228,7 +1202,7 @@ int main(int argc, char *argv[])
     // load the QtQml builtins and the dependencies
     {
         QByteArray code(qtQmlImportString.toUtf8());
-        for (const QString &moduleToImport : qAsConst(dependencies)) {
+        for (const QString &moduleToImport : std::as_const(dependencies)) {
             code.append("\nimport ");
             code.append(moduleToImport.toUtf8());
         }
@@ -1254,11 +1228,13 @@ int main(int argc, char *argv[])
     // composite types we want to dump information of
     QMap<QString, QList<QQmlType>> compositeTypes;
 
-    int majorVersion = qtQmlMajorVersion, minorVersion = qtQmlMinorVersion;
+    QTypeRevision version = QTypeRevision::fromVersion(qtQmlMajorVersion, qtQmlMinorVersion);
     QmlVersionInfo info;
     if (action == Builtins) {
         QMap<QString, QList<QQmlType>> defaultCompositeTypes;
-        QSet<const QMetaObject *> builtins = collectReachableMetaObjects(&engine, uncreatableMetas, singletonMetas, defaultCompositeTypes, {QLatin1String("Qt"), majorVersion, minorVersion, strict});
+        QSet<const QMetaObject *> builtins = collectReachableMetaObjects(
+                    &engine, uncreatableMetas, singletonMetas, defaultCompositeTypes,
+                    {QLatin1String("Qt"), version, strict});
         Q_ASSERT(builtins.size() == 1);
         metas.insert(*builtins.begin());
     } else {
@@ -1267,12 +1243,13 @@ int main(int argc, char *argv[])
         if (!ok)
             qCritical("Invalid version number");
         else {
-            majorVersion = versionSplitted.at(0).toInt(&ok);
+            const int majorVersion = versionSplitted.at(0).toInt(&ok);
             if (!ok)
                 qCritical("Invalid major version");
-            minorVersion = versionSplitted.at(1).toInt(&ok);
+            const int minorVersion = versionSplitted.at(1).toInt(&ok);
             if (!ok)
                 qCritical("Invalid minor version");
+            version = QTypeRevision::fromVersion(majorVersion, minorVersion);
         }
         QList<QQmlType> defaultTypes = QQmlMetaType::qmlTypes();
         // find a valid QtQuick import
@@ -1284,12 +1261,12 @@ int main(int argc, char *argv[])
         } else {
             QString module = qtObjectType.qmlTypeName();
             module = module.mid(0, module.lastIndexOf(QLatin1Char('/')));
-            importCode = QString("import %1 %2.%3").arg(module,
-                                                        QString::number(qtObjectType.majorVersion()),
-                                                        QString::number(qtObjectType.minorVersion())).toUtf8();
+            importCode = QString("import %1 %2.%3").arg(
+                        module, QString::number(qtObjectType.version().majorVersion()),
+                        QString::number(qtObjectType.version().minorVersion())).toUtf8();
         }
         // avoid importing dependencies?
-        for (const QString &moduleToImport : qAsConst(dependencies)) {
+        for (const QString &moduleToImport : std::as_const(dependencies)) {
             importCode.append("\nimport ");
             importCode.append(moduleToImport.toUtf8());
         }
@@ -1318,7 +1295,7 @@ int main(int argc, char *argv[])
                 return EXIT_IMPORTERROR;
             }
         }
-        info = {pluginImportUri, majorVersion, minorVersion, strict};
+        info = {pluginImportUri, version, strict};
         QSet<const QMetaObject *> candidates = collectReachableMetaObjects(&engine, uncreatableMetas, singletonMetas, compositeTypes, info, defaultTypes);
 
         for (auto it = compositeTypes.begin(), end = compositeTypes.end(); it != end; ++it) {
@@ -1326,7 +1303,7 @@ int main(int argc, char *argv[])
             it->erase(std::unique(it->begin(), it->end()), it->end());
         }
 
-        for (const QMetaObject *mo : qAsConst(candidates)) {
+        for (const QMetaObject *mo : std::as_const(candidates)) {
             if (mo->className() != QLatin1String("Qt"))
                 metas.insert(mo);
         }
@@ -1334,11 +1311,10 @@ int main(int argc, char *argv[])
 
     // setup static rewrites of type names
     cppToId.insert("QString", "string");
-    cppToId.insert("QQmlEasingValueType::Type", "Type");
 
     // start dumping data
     QByteArray bytes;
-    QmlStreamWriter qml(&bytes);
+    QQmlJSStreamWriter qml(&bytes);
 
     qml.writeStartDocument();
     qml.writeLibraryImport(QLatin1String("QtQuick.tooling"), 1, 2);
@@ -1348,40 +1324,26 @@ int main(int argc, char *argv[])
               "//\n"
               "// This file was auto-generated by:\n"
               "// '%1 %2'\n"
+              "//\n"
+              "// qmlplugindump is deprecated! You should use qmltyperegistrar instead.\n"
               "\n").arg(QFileInfo(args.at(0)).baseName(), args.mid(1).join(QLatin1Char(' '))));
     qml.writeStartObject("Module");
 
-    // Insert merge dependencies.
-    if (!mergeDependencies.isEmpty()) {
-        dependencies << mergeDependencies;
-    }
-    compactDependencies(&dependencies);
-
-    QStringList quotedDependencies;
-    for (const QString &dep : qAsConst(dependencies))
-        quotedDependencies << enquote(dep);
-    qml.writeArrayBinding("dependencies", quotedDependencies);
-
     // put the metaobjects into a map so they are always dumped in the same order
     QMap<QString, const QMetaObject *> nameToMeta;
-    for (const QMetaObject *meta : qAsConst(metas))
+    for (const QMetaObject *meta : std::as_const(metas))
         nameToMeta.insert(convertToId(meta), meta);
 
     Dumper dumper(&qml);
     if (relocatable)
         dumper.setRelocatableModuleUri(pluginImportUri);
-    for (const QMetaObject *meta : qAsConst(nameToMeta)) {
+    for (const QMetaObject *meta : std::as_const(nameToMeta)) {
         dumper.dump(QQmlEnginePrivate::get(&engine), meta, uncreatableMetas.contains(meta), singletonMetas.contains(meta));
     }
 
     QMap<QString, QList<QQmlType>>::const_iterator iter = compositeTypes.constBegin();
     for (; iter != compositeTypes.constEnd(); ++iter)
         dumper.dumpComposite(&engine, iter.value(), info);
-
-    // define QEasingCurve as an extension of QQmlEasingValueType, this way
-    // properties using the QEasingCurve type get useful type information.
-    if (pluginImportUri.isEmpty())
-        dumper.writeEasingCurve();
 
     // Insert merge file.
     qml.write(mergeComponents);

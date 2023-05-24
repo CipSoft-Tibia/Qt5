@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,26 +6,25 @@
 
 #include <stddef.h>
 #include <sys/system_properties.h>
-#include <algorithm>
+
 #include <memory>
 #include <utility>
 
 #include "base/android/build_info.h"
 #include "base/android/jni_array.h"
 #include "base/android/jni_string.h"
-#include "base/bind.h"
-#include "base/callback_helpers.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/sys_byteorder.h"
 #include "base/system/sys_info.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "media/base/android/android_util.h"
 #include "media/base/android/media_codec_util.h"
 #include "media/base/android/media_drm_bridge_client.h"
@@ -165,6 +164,10 @@ CdmKeyInformation::KeyStatus ConvertKeyStatus(KeyStatus key_status,
 class KeySystemManager {
  public:
   KeySystemManager();
+
+  KeySystemManager(const KeySystemManager&) = delete;
+  KeySystemManager& operator=(const KeySystemManager&) = delete;
+
   UUID GetUUID(const std::string& key_system);
   std::vector<std::string> GetPlatformKeySystemNames();
 
@@ -172,14 +175,12 @@ class KeySystemManager {
   using KeySystemUuidMap = MediaDrmBridgeClient::KeySystemUuidMap;
 
   KeySystemUuidMap key_system_uuid_map_;
-
-  DISALLOW_COPY_AND_ASSIGN(KeySystemManager);
 };
 
 KeySystemManager::KeySystemManager() {
   // Widevine is always supported in Android.
   key_system_uuid_map_[kWidevineKeySystem] =
-      UUID(kWidevineUuid, kWidevineUuid + base::size(kWidevineUuid));
+      UUID(kWidevineUuid, kWidevineUuid + std::size(kWidevineUuid));
   MediaDrmBridgeClient* client = GetMediaDrmBridgeClient();
   if (client)
     client->AddKeySystemUUIDMappings(&key_system_uuid_map_);
@@ -215,8 +216,6 @@ KeySystemManager* GetKeySystemManager() {
 // resolved.
 bool IsKeySystemSupportedWithTypeImpl(const std::string& key_system,
                                       const std::string& container_mime_type) {
-  DCHECK(MediaDrmBridge::IsAvailable());
-
   if (key_system.empty()) {
     NOTREACHED();
     return false;
@@ -265,22 +264,6 @@ std::string GetSecurityLevelString(
   return "";
 }
 
-bool AreMediaDrmApisAvailable() {
-  if (base::android::BuildInfo::GetInstance()->sdk_int() <
-      base::android::SDK_VERSION_KITKAT)
-    return false;
-
-  int32_t os_major_version = 0;
-  int32_t os_minor_version = 0;
-  int32_t os_bugfix_version = 0;
-  base::SysInfo::OperatingSystemVersionNumbers(
-      &os_major_version, &os_minor_version, &os_bugfix_version);
-  if (os_major_version == 4 && os_minor_version == 4 && os_bugfix_version == 0)
-    return false;
-
-  return true;
-}
-
 int GetFirstApiLevel() {
   JNIEnv* env = AttachCurrentThread();
   int first_api_level = Java_MediaDrmBridge_getFirstApiLevel(env);
@@ -289,31 +272,17 @@ int GetFirstApiLevel() {
 
 }  // namespace
 
-// MediaDrm is not generally usable without MediaCodec. Thus, both the MediaDrm
-// APIs and MediaCodec APIs must be enabled and not blocked.
-// static
-bool MediaDrmBridge::IsAvailable() {
-  return AreMediaDrmApisAvailable() && MediaCodecUtil::IsMediaCodecAvailable();
-}
-
 // static
 bool MediaDrmBridge::IsKeySystemSupported(const std::string& key_system) {
-  if (!MediaDrmBridge::IsAvailable())
-    return false;
-
   return IsKeySystemSupportedWithTypeImpl(key_system, "");
-}
-
-// static
-bool MediaDrmBridge::IsPerOriginProvisioningSupported() {
-  return base::android::BuildInfo::GetInstance()->sdk_int() >=
-         base::android::SDK_VERSION_MARSHMALLOW;
 }
 
 // static
 bool MediaDrmBridge::IsPerApplicationProvisioningSupported() {
   // Start by checking "ro.product.first_api_level", which may not exist.
   // If it is non-zero, then it is the API level.
+  // Checking FirstApiLevel is known to be expensive (see crbug.com/1366106),
+  // and thus is cached.
   static int first_api_level = GetFirstApiLevel();
   DVLOG(1) << "first_api_level = " << first_api_level;
   if (first_api_level >= base::android::SDK_VERSION_OREO)
@@ -331,10 +300,7 @@ bool MediaDrmBridge::IsPersistentLicenseTypeSupported(
     const std::string& /* key_system */) {
   // TODO(yucliu): Check |key_system| if persistent license is supported by
   // MediaDrm.
-  return MediaDrmBridge::IsAvailable() &&
-         // In development. See http://crbug.com/493521
-         base::FeatureList::IsEnabled(kMediaDrmPersistentLicense) &&
-         IsPerOriginProvisioningSupported();
+  return base::FeatureList::IsEnabled(kMediaDrmPersistentLicense);
 }
 
 // static
@@ -343,17 +309,11 @@ bool MediaDrmBridge::IsKeySystemSupportedWithType(
     const std::string& container_mime_type) {
   DCHECK(!container_mime_type.empty()) << "Call IsKeySystemSupported instead";
 
-  if (!MediaDrmBridge::IsAvailable())
-    return false;
-
   return IsKeySystemSupportedWithTypeImpl(key_system, container_mime_type);
 }
 
 // static
 std::vector<std::string> MediaDrmBridge::GetPlatformKeySystemNames() {
-  if (!MediaDrmBridge::IsAvailable())
-    return std::vector<std::string>();
-
   return GetKeySystemManager()->GetPlatformKeySystemNames();
 }
 
@@ -375,7 +335,6 @@ scoped_refptr<MediaDrmBridge> MediaDrmBridge::CreateInternal(
     const SessionKeysChangeCB& session_keys_change_cb,
     const SessionExpirationUpdateCB& session_expiration_update_cb) {
   // All paths requires the MediaDrmApis.
-  DCHECK(AreMediaDrmApisAvailable());
   DCHECK(!scheme_uuid.empty());
 
   // TODO(crbug.com/917527): Check that |origin_id| is specified on devices
@@ -399,10 +358,6 @@ scoped_refptr<MediaDrmBridge> MediaDrmBridge::CreateWithoutSessionSupport(
     SecurityLevel security_level,
     CreateFetcherCB create_fetcher_cb) {
   DVLOG(1) << __func__;
-
-  // Sessions won't be used so decoding capability is not required.
-  if (!AreMediaDrmApisAvailable())
-    return nullptr;
 
   UUID scheme_uuid = GetKeySystemManager()->GetUUID(key_system);
   if (scheme_uuid.empty())
@@ -586,13 +541,11 @@ MediaCryptoContext* MediaDrmBridge::GetMediaCryptoContext() {
 }
 
 bool MediaDrmBridge::IsSecureCodecRequired() {
-  DCHECK(IsAvailable());
-
   // For Widevine, this depends on the security level.
   // TODO(xhwang): This is specific to Widevine. See http://crbug.com/459400.
   // To fix it, we could call MediaCrypto.requiresSecureDecoderComponent().
   // See http://crbug.com/727918.
-  if (std::equal(scheme_uuid_.begin(), scheme_uuid_.end(), kWidevineUuid))
+  if (base::ranges::equal(scheme_uuid_, kWidevineUuid))
     return SECURITY_LEVEL_1 == GetSecurityLevel();
 
   // For other key systems, assume true.
@@ -689,10 +642,11 @@ void MediaDrmBridge::OnProvisionRequest(
 
   std::string request_data;
   JavaByteArrayToString(env, j_request_data, &request_data);
+  std::string default_url;
+  ConvertJavaStringToUTF8(env, j_default_url, &default_url);
   task_runner_->PostTask(
       FROM_HERE, base::BindOnce(&MediaDrmBridge::SendProvisioningRequest,
-                                weak_factory_.GetWeakPtr(),
-                                ConvertJavaStringToUTF8(env, j_default_url),
+                                weak_factory_.GetWeakPtr(), GURL(default_url),
                                 std::move(request_data)));
 }
 
@@ -767,8 +721,10 @@ void MediaDrmBridge::OnSessionClosed(
   DVLOG(2) << __func__;
   std::string session_id;
   JavaByteArrayToString(env, j_session_id, &session_id);
+  // TODO(crbug.com/1208618): Support other closed reasons.
   task_runner_->PostTask(
-      FROM_HERE, base::BindOnce(session_closed_cb_, std::move(session_id)));
+      FROM_HERE, base::BindOnce(session_closed_cb_, std::move(session_id),
+                                CdmSessionClosedReason::kClose));
 }
 
 void MediaDrmBridge::OnSessionKeysChange(
@@ -864,7 +820,7 @@ MediaDrmBridge::MediaDrmBridge(
       session_closed_cb_(session_closed_cb),
       session_keys_change_cb_(session_keys_change_cb),
       session_expiration_update_cb_(session_expiration_update_cb),
-      task_runner_(base::ThreadTaskRunnerHandle::Get()),
+      task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
       media_crypto_context_(this) {
   DVLOG(1) << __func__;
 
@@ -881,8 +837,6 @@ MediaDrmBridge::MediaDrmBridge(
       ConvertUTF8ToJavaString(env, security_level_str);
 
   bool use_origin_isolated_storage =
-      // Per-origin provisioning must be supported for origin isolated storage.
-      IsPerOriginProvisioningSupported() &&
       // origin id can be empty when MediaDrmBridge is created by
       // CreateWithoutSessionSupport, which is used for unprovisioning.
       !origin_id.empty();
@@ -913,7 +867,7 @@ MediaDrmBridge::~MediaDrmBridge() {
   }
 
   // Rejects all pending promises.
-  cdm_promise_adapter_.Clear();
+  cdm_promise_adapter_.Clear(CdmPromiseAdapter::ClearReason::kDestruction);
 }
 
 MediaDrmBridge::SecurityLevel MediaDrmBridge::GetSecurityLevel() {
@@ -944,7 +898,7 @@ void MediaDrmBridge::NotifyMediaCryptoReady(JavaObjectPtr j_media_crypto) {
            IsSecureCodecRequired());
 }
 
-void MediaDrmBridge::SendProvisioningRequest(const std::string& default_url,
+void MediaDrmBridge::SendProvisioningRequest(const GURL& default_url,
                                              const std::string& request_data) {
   DCHECK(task_runner_->BelongsToCurrentThread());
   DVLOG(1) << __func__;

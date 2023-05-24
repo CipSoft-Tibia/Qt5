@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "build/build_config.h"
 #include "components/feed/core/shared_prefs/pref_names.h"
 #include "components/ntp_snippets/features.h"
@@ -43,7 +43,8 @@ class RemoteSuggestionsStatusServiceImplTest : public ::testing::Test {
       bool empty_additional_pref) {
     auto service = std::make_unique<RemoteSuggestionsStatusServiceImpl>(
         false, utils_.pref_service(),
-        empty_additional_pref ? std::string() : kTestPrefName);
+        empty_additional_pref ? std::vector<std::string>()
+                              : std::vector<std::string>{kTestPrefName});
     service->Init(base::BindRepeating(
         &RemoteSuggestionsStatusServiceImplTest::OnStatusChange,
         base::Unretained(this)));

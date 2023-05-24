@@ -13,17 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Protocol } from 'devtools-protocol';
-
 import { CDPSession } from './Connection.js';
-
+import { Protocol } from 'devtools-protocol';
 /**
  * Dialog instances are dispatched by the {@link Page} via the `dialog` event.
  *
  * @remarks
  *
  * @example
- * ```js
+ *
+ * ```ts
  * const puppeteer = require('puppeteer');
  *
  * (async () => {
@@ -37,13 +36,11 @@ import { CDPSession } from './Connection.js';
  *   page.evaluate(() => alert('1'));
  * })();
  * ```
+ *
+ * @public
  */
 export declare class Dialog {
-    private _client;
-    private _type;
-    private _message;
-    private _defaultValue;
-    private _handled;
+    #private;
     /**
      * @internal
      */

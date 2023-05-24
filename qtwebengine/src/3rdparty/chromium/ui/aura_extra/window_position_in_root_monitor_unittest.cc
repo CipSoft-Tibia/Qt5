@@ -1,12 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/aura_extra/window_position_in_root_monitor.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/test/bind_test_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/test/bind.h"
 #include "ui/aura/test/aura_test_base.h"
 #include "ui/aura/test/test_windows.h"
 #include "ui/aura/window.h"

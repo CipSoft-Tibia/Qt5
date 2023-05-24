@@ -1,14 +1,15 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/devtools/devtools_toggle_action.h"
 
-DevToolsToggleAction::RevealParams::RevealParams(const base::string16& url,
+#include <memory>
+
+DevToolsToggleAction::RevealParams::RevealParams(const std::u16string& url,
                                                  size_t line_number,
                                                  size_t column_number)
-    : url(url), line_number(line_number), column_number(column_number) {
-}
+    : url(url), line_number(line_number), column_number(column_number) {}
 
 DevToolsToggleAction::RevealParams::~RevealParams() {
 }
@@ -22,13 +23,12 @@ DevToolsToggleAction::DevToolsToggleAction(RevealParams* params)
 
 DevToolsToggleAction::DevToolsToggleAction(const DevToolsToggleAction& rhs)
     : type_(rhs.type_),
-      params_(rhs.params_.get() ? new RevealParams(*rhs.params_) : NULL) {
-}
+      params_(rhs.params_.get() ? new RevealParams(*rhs.params_) : nullptr) {}
 
 void DevToolsToggleAction::operator=(const DevToolsToggleAction& rhs) {
   type_ = rhs.type_;
   if (rhs.params_.get())
-    params_.reset(new RevealParams(*rhs.params_));
+    params_ = std::make_unique<RevealParams>(*rhs.params_);
 }
 
 DevToolsToggleAction::~DevToolsToggleAction() {
@@ -65,10 +65,9 @@ DevToolsToggleAction DevToolsToggleAction::Toggle() {
 }
 
 // static
-DevToolsToggleAction DevToolsToggleAction::Reveal(
-    const base::string16& url,
-    size_t line_number,
-    size_t column_number) {
+DevToolsToggleAction DevToolsToggleAction::Reveal(const std::u16string& url,
+                                                  size_t line_number,
+                                                  size_t column_number) {
   return DevToolsToggleAction(
       new RevealParams(url, line_number, column_number));
 }

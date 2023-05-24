@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,16 @@
 #ifndef FXJS_XFA_CFXJSE_ISOLATETRACKER_H_
 #define FXJS_XFA_CFXJSE_ISOLATETRACKER_H_
 
-#include "v8/include/v8.h"
+#include "core/fxcrt/fx_memory.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-isolate.h"
+
+class CFXJSE_Context;
 
 class CFXJSE_ScopeUtil_IsolateHandle {
  public:
+  FX_STACK_ALLOCATED();
+
   explicit CFXJSE_ScopeUtil_IsolateHandle(v8::Isolate* pIsolate);
   CFXJSE_ScopeUtil_IsolateHandle(const CFXJSE_ScopeUtil_IsolateHandle&) =
       delete;
@@ -19,16 +25,57 @@ class CFXJSE_ScopeUtil_IsolateHandle {
   ~CFXJSE_ScopeUtil_IsolateHandle();
 
  private:
-  void* operator new(size_t size) = delete;
-  void operator delete(void*, size_t) = delete;
-
-  v8::Isolate::Scope m_iscope;
-  v8::HandleScope m_hscope;
+  v8::Isolate::Scope isolate_scope_;
+  v8::HandleScope handle_scope_;
 };
 
-class CFXJSE_ScopeUtil_IsolateHandleRootContext final
-    : public CFXJSE_ScopeUtil_IsolateHandle {
+class CFXJSE_ScopeUtil_Context {
  public:
+  FX_STACK_ALLOCATED();
+
+  explicit CFXJSE_ScopeUtil_Context(CFXJSE_Context* pContext);
+  CFXJSE_ScopeUtil_Context(const CFXJSE_ScopeUtil_Context&) = delete;
+  CFXJSE_ScopeUtil_Context& operator=(const CFXJSE_ScopeUtil_Context&) = delete;
+  ~CFXJSE_ScopeUtil_Context();
+
+ private:
+  v8::Context::Scope context_scope_;
+};
+
+class CFXJSE_ScopeUtil_IsolateHandleContext {
+ public:
+  FX_STACK_ALLOCATED();
+
+  explicit CFXJSE_ScopeUtil_IsolateHandleContext(CFXJSE_Context* pContext);
+  CFXJSE_ScopeUtil_IsolateHandleContext(
+      const CFXJSE_ScopeUtil_IsolateHandleContext&) = delete;
+  CFXJSE_ScopeUtil_IsolateHandleContext& operator=(
+      const CFXJSE_ScopeUtil_IsolateHandleContext&) = delete;
+  ~CFXJSE_ScopeUtil_IsolateHandleContext();
+
+ private:
+  CFXJSE_ScopeUtil_IsolateHandle isolate_handle_;
+  CFXJSE_ScopeUtil_Context context_;
+};
+
+class CFXJSE_ScopeUtil_RootContext {
+ public:
+  FX_STACK_ALLOCATED();
+
+  explicit CFXJSE_ScopeUtil_RootContext(v8::Isolate* pIsolate);
+  CFXJSE_ScopeUtil_RootContext(const CFXJSE_ScopeUtil_RootContext&) = delete;
+  CFXJSE_ScopeUtil_RootContext& operator=(const CFXJSE_ScopeUtil_RootContext&) =
+      delete;
+  ~CFXJSE_ScopeUtil_RootContext();
+
+ private:
+  v8::Context::Scope context_scope_;
+};
+
+class CFXJSE_ScopeUtil_IsolateHandleRootContext {
+ public:
+  FX_STACK_ALLOCATED();
+
   explicit CFXJSE_ScopeUtil_IsolateHandleRootContext(v8::Isolate* pIsolate);
   CFXJSE_ScopeUtil_IsolateHandleRootContext(
       const CFXJSE_ScopeUtil_IsolateHandleRootContext&) = delete;
@@ -37,10 +84,8 @@ class CFXJSE_ScopeUtil_IsolateHandleRootContext final
   ~CFXJSE_ScopeUtil_IsolateHandleRootContext();
 
  private:
-  void* operator new(size_t size) = delete;
-  void operator delete(void*, size_t) = delete;
-
-  v8::Context::Scope m_cscope;
+  CFXJSE_ScopeUtil_IsolateHandle isolate_handle_;
+  CFXJSE_ScopeUtil_RootContext root_context_;
 };
 
 #endif  // FXJS_XFA_CFXJSE_ISOLATETRACKER_H_

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
@@ -45,23 +9,26 @@
 #include "gl_ozone_glx_qt.h"
 #include "gl_surface_glx_qt.h"
 #include "gl_context_qt.h"
+
+#include "media/gpu/buildflags.h"
 #include "ui/gl/gl_context_glx.h"
 #include "ui/gl/gl_gl_api_implementation.h"
 #include "ui/gl/gl_glx_api_implementation.h"
+#include "ui/gl/presenter.h"
+#include "ui/ozone/platform/x11/native_pixmap_glx_binding.h"
+
 #include <dlfcn.h>
 
 namespace ui {
 
-bool GLOzoneGLXQt::InitializeGLOneOffPlatform() {
-    if (!gl::GLSurfaceGLXQt::InitializeOneOff()) {
-        LOG(ERROR) << "GLSurfaceGLXQt::InitializeOneOff failed.";
-        return false;
-    }
-    return true;
+gl::GLDisplay *GLOzoneGLXQt::InitializeGLOneOffPlatform(bool, std::vector<gl::DisplayType>, gl::GpuPreference preference)
+{
+    return gl::GLSurfaceGLXQt::InitializeOneOff(preference);
 }
 
 bool GLOzoneGLXQt::InitializeStaticGLBindings(
-        gl::GLImplementation implementation) {
+        const gl::GLImplementationParts &implementation) {
+    Q_UNUSED(implementation);
 
     base::NativeLibrary library = dlopen(NULL, RTLD_LAZY);
     if (!library) {
@@ -100,7 +67,7 @@ void GLOzoneGLXQt::SetDisabledExtensionsPlatform(
     gl::SetDisabledExtensionsGLX(disabled_extensions);
 }
 
-void GLOzoneGLXQt::ShutdownGL() {
+void GLOzoneGLXQt::ShutdownGL(gl::GLDisplay *) {
     gl::ClearBindingsGL();
     gl::ClearBindingsGLX();
 }
@@ -121,16 +88,19 @@ scoped_refptr<gl::GLContext> GLOzoneGLXQt::CreateGLContext(
 }
 
 scoped_refptr<gl::GLSurface> GLOzoneGLXQt::CreateViewGLSurface(
+        gl::GLDisplay* display,
         gfx::AcceleratedWidget window) {
     return nullptr;
 }
 
-scoped_refptr<gl::GLSurface> GLOzoneGLXQt::CreateSurfacelessViewGLSurface(
+scoped_refptr<gl::Presenter> GLOzoneGLXQt::CreateSurfacelessViewGLSurface(
+        gl::GLDisplay* display,
         gfx::AcceleratedWidget window) {
     return nullptr;
 }
 
 scoped_refptr<gl::GLSurface> GLOzoneGLXQt::CreateOffscreenGLSurface(
+        gl::GLDisplay* display,
         const gfx::Size& size) {
     scoped_refptr<gl::GLSurface> surface = new gl::GLSurfaceGLXQt(size);
     if (surface->Initialize(gl::GLSurfaceFormat()))
@@ -139,7 +109,24 @@ scoped_refptr<gl::GLSurface> GLOzoneGLXQt::CreateOffscreenGLSurface(
     return nullptr;
 }
 
-bool GLOzoneGLXQt::InitializeExtensionSettingsOneOffPlatform()
+bool GLOzoneGLXQt::CanImportNativePixmap()
+{
+    return false;
+}
+
+std::unique_ptr<ui::NativePixmapGLBinding> GLOzoneGLXQt::ImportNativePixmap(
+        scoped_refptr<gfx::NativePixmap> pixmap, gfx::BufferFormat plane_format, gfx::BufferPlane plane,
+        gfx::Size plane_size, const gfx::ColorSpace &, GLenum target, GLuint texture_id)
+{
+#if BUILDFLAG(USE_VAAPI_X11)
+    return NativePixmapGLXBinding::Create(pixmap, plane_format, plane, plane_size,
+                                          target, texture_id);
+#else
+    return nullptr;
+#endif
+}
+
+bool GLOzoneGLXQt::InitializeExtensionSettingsOneOffPlatform(gl::GLDisplay *)
 {
     return gl::GLSurfaceGLXQt::InitializeExtensionSettingsOneOff();
 }

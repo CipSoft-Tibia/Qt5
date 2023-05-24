@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //#define QHTTPTHREADDELEGATE_DEBUG
 #include "qhttpthreaddelegate_p.h"
@@ -51,6 +15,8 @@
 #include "private/qnoncontiguousbytedevice_p.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static QNetworkReply::NetworkError statusCodeFromHttp(int httpStatusCode, const QUrl &url)
 {
@@ -128,14 +94,12 @@ static QByteArray makeCacheKey(QUrl &url, QNetworkProxy *proxy, const QString &p
     QString result;
     QUrl copy = url;
     QString scheme = copy.scheme();
-    bool isEncrypted = scheme == QLatin1String("https")
-                       || scheme == QLatin1String("preconnect-https");
+    bool isEncrypted = scheme == "https"_L1 || scheme == "preconnect-https"_L1;
     copy.setPort(copy.port(isEncrypted ? 443 : 80));
-    if (scheme == QLatin1String("preconnect-http")) {
-        copy.setScheme(QLatin1String("http"));
-    } else if (scheme == QLatin1String("preconnect-https")) {
-        copy.setScheme(QLatin1String("https"));
-    }
+    if (scheme == "preconnect-http"_L1)
+        copy.setScheme("http"_L1);
+    else if (scheme == "preconnect-https"_L1)
+        copy.setScheme("https"_L1);
     result = copy.toString(QUrl::RemoveUserInfo | QUrl::RemovePath |
                            QUrl::RemoveQuery | QUrl::RemoveFragment | QUrl::FullyEncoded);
 
@@ -145,12 +109,12 @@ static QByteArray makeCacheKey(QUrl &url, QNetworkProxy *proxy, const QString &p
 
         switch (proxy->type()) {
         case QNetworkProxy::Socks5Proxy:
-            key.setScheme(QLatin1String("proxy-socks5"));
+            key.setScheme("proxy-socks5"_L1);
             break;
 
         case QNetworkProxy::HttpProxy:
         case QNetworkProxy::HttpCachingProxy:
-            key.setScheme(QLatin1String("proxy-http"));
+            key.setScheme("proxy-http"_L1);
             break;
 
         default:
@@ -169,10 +133,10 @@ static QByteArray makeCacheKey(QUrl &url, QNetworkProxy *proxy, const QString &p
         }
     }
 #else
-    Q_UNUSED(proxy)
+    Q_UNUSED(proxy);
 #endif
     if (!peerVerifyName.isEmpty())
-        result += QLatin1Char(':') + peerVerifyName;
+        result += u':' + peerVerifyName;
     return "http-connection:" + std::move(result).toLatin1();
 }
 
@@ -181,17 +145,9 @@ class QNetworkAccessCachedHttpConnection: public QHttpNetworkConnection,
 {
     // Q_OBJECT
 public:
-#ifdef QT_NO_BEARERMANAGEMENT
-    QNetworkAccessCachedHttpConnection(const QString &hostName, quint16 port, bool encrypt,
+    QNetworkAccessCachedHttpConnection(quint16 connectionCount, const QString &hostName, quint16 port, bool encrypt,
                                        QHttpNetworkConnection::ConnectionType connectionType)
-        : QHttpNetworkConnection(hostName, port, encrypt, connectionType)
-#else // ### Qt6: Remove section
-    QNetworkAccessCachedHttpConnection(const QString &hostName, quint16 port, bool encrypt,
-                                       QHttpNetworkConnection::ConnectionType connectionType,
-                                       QSharedPointer<QNetworkSession> networkSession)
-        : QHttpNetworkConnection(hostName, port, encrypt, connectionType, /*parent=*/nullptr,
-                                 std::move(networkSession))
-#endif
+        : QHttpNetworkConnection(connectionCount, hostName, port, encrypt, /*parent=*/nullptr, connectionType)
     {
         setExpires(true);
         setShareable(true);
@@ -234,9 +190,10 @@ QHttpThreadDelegate::QHttpThreadDelegate(QObject *parent) :
     , pendingDownloadData()
     , pendingDownloadProgress()
     , synchronous(false)
+    , connectionCacheExpiryTimeoutSeconds(-1)
     , incomingStatusCode(0)
     , isPipeliningUsed(false)
-    , isSpdyUsed(false)
+    , isHttp2Used(false)
     , incomingContentLength(-1)
     , removedContentLength(-1)
     , incomingErrorCode(QNetworkReply::NoError)
@@ -265,7 +222,7 @@ void QHttpThreadDelegate::startRequestSynchronously()
     synchronousRequestLoop.exec();
 
     connections.localData()->releaseEntry(cacheKey);
-    connections.setLocalData(0);
+    connections.setLocalData(nullptr);
 
 #ifdef QHTTPTHREADDELEGATE_DEBUG
     qDebug() << "QHttpThreadDelegate::startRequestSynchronously() thread=" << QThread::currentThreadId() << "finished";
@@ -297,6 +254,12 @@ void QHttpThreadDelegate::startRequest()
         connectionType = QHttpNetworkConnection::ConnectionTypeHTTP2Direct;
     }
 
+    // Use HTTP/1.1 if h2c is not allowed and we would otherwise choose to use it
+    if (!ssl && connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2
+        && !httpRequest.isH2cAllowed()) {
+        connectionType = QHttpNetworkConnection::ConnectionTypeHTTP;
+    }
+
 #if QT_CONFIG(ssl)
     // See qnetworkreplyhttpimpl, delegate's initialization code.
     Q_ASSERT(!ssl || incomingSslConfiguration.data());
@@ -320,17 +283,6 @@ void QHttpThreadDelegate::startRequest()
         }
     }
 
-#ifndef QT_NO_SSL
-    if (!isH2 && httpRequest.isSPDYAllowed() && ssl) {
-        connectionType = QHttpNetworkConnection::ConnectionTypeSPDY;
-        urlCopy.setScheme(QStringLiteral("spdy")); // to differentiate SPDY requests from HTTPS requests
-        QList<QByteArray> nextProtocols;
-        nextProtocols << QSslConfiguration::NextProtocolSpdy3_0
-                      << QSslConfiguration::NextProtocolHttp1_1;
-        incomingSslConfiguration->setAllowedNextProtocols(nextProtocols);
-    }
-#endif // QT_NO_SSL
-
 #ifndef QT_NO_NETWORKPROXY
     if (transparentProxy.type() != QNetworkProxy::NoProxy)
         cacheKey = makeCacheKey(urlCopy, &transparentProxy, httpRequest.peerVerifyName());
@@ -345,14 +297,8 @@ void QHttpThreadDelegate::startRequest()
     if (!httpConnection) {
         // no entry in cache; create an object
         // the http object is actually a QHttpNetworkConnection
-#ifdef QT_NO_BEARERMANAGEMENT
-        httpConnection = new QNetworkAccessCachedHttpConnection(urlCopy.host(), urlCopy.port(), ssl,
+        httpConnection = new QNetworkAccessCachedHttpConnection(http1Parameters.numberOfConnectionsPerHost(), urlCopy.host(), urlCopy.port(), ssl,
                                                                 connectionType);
-#else // ### Qt6: Remove section
-        httpConnection = new QNetworkAccessCachedHttpConnection(urlCopy.host(), urlCopy.port(), ssl,
-                                                                connectionType,
-                                                                networkSession);
-#endif // QT_NO_BEARERMANAGEMENT
         if (connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2
             || connectionType == QHttpNetworkConnection::ConnectionTypeHTTP2Direct) {
             httpConnection->setHttp2Parameters(http2Parameters);
@@ -369,7 +315,7 @@ void QHttpThreadDelegate::startRequest()
 #endif
         httpConnection->setPeerVerifyName(httpRequest.peerVerifyName());
         // cache the QHttpNetworkConnection corresponding to this cache key
-        connections.localData()->addEntry(cacheKey, httpConnection);
+        connections.localData()->addEntry(cacheKey, httpConnection, connectionCacheExpiryTimeoutSeconds);
     } else {
         if (httpRequest.withCredentials()) {
             QNetworkAuthenticationCredential credential = authenticationManager->fetchCachedCredentials(httpRequest.url(), nullptr);
@@ -402,6 +348,8 @@ void QHttpThreadDelegate::startRequest()
 
         // Don't care about ignored SSL errors for now in the synchronous HTTP case.
     } else if (!synchronous) {
+        connect(httpReply,SIGNAL(socketStartedConnecting()), this, SIGNAL(socketStartedConnecting()));
+        connect(httpReply,SIGNAL(requestSent()), this, SIGNAL(requestSent()));
         connect(httpReply,SIGNAL(headerChanged()), this, SLOT(headerChangedSlot()));
         connect(httpReply,SIGNAL(finished()), this, SLOT(finishedSlot()));
         connect(httpReply,SIGNAL(finishedWithError(QNetworkReply::NetworkError,QString)),
@@ -538,8 +486,8 @@ void QHttpThreadDelegate::finishedSlot()
 
     if (httpReply->statusCode() >= 400) {
             // it's an error reply
-            QString msg = QLatin1String(QT_TRANSLATE_NOOP("QNetworkReply",
-                                                          "Error transferring %1 - server replied: %2"));
+            QString msg = QLatin1StringView(QT_TRANSLATE_NOOP("QNetworkReply",
+                                                              "Error transferring %1 - server replied: %2"));
             msg = msg.arg(httpRequest.url().toString(), httpReply->reasonPhrase());
             emit error(statusCodeFromHttp(httpReply->statusCode(), httpRequest.url()), msg);
         }
@@ -564,12 +512,13 @@ void QHttpThreadDelegate::synchronousFinishedSlot()
 #endif
     if (httpReply->statusCode() >= 400) {
             // it's an error reply
-            QString msg = QLatin1String(QT_TRANSLATE_NOOP("QNetworkReply",
-                                                          "Error transferring %1 - server replied: %2"));
+            QString msg = QLatin1StringView(QT_TRANSLATE_NOOP("QNetworkReply",
+                                                              "Error transferring %1 - server replied: %2"));
             incomingErrorDetail = msg.arg(httpRequest.url().toString(), httpReply->reasonPhrase());
             incomingErrorCode = statusCodeFromHttp(httpReply->statusCode(), httpRequest.url());
     }
 
+    isCompressed = httpReply->isCompressed();
     synchronousDownloadData = httpReply->readAll();
 
     QMetaObject::invokeMethod(httpReply, "deleteLater", Qt::QueuedConnection);
@@ -618,11 +567,6 @@ void QHttpThreadDelegate::synchronousFinishedWithErrorSlot(QNetworkReply::Networ
     httpReply = nullptr;
 }
 
-static void downloadBufferDeleter(char *ptr)
-{
-    delete[] ptr;
-}
-
 void QHttpThreadDelegate::headerChangedSlot()
 {
     if (!httpReply)
@@ -640,14 +584,11 @@ void QHttpThreadDelegate::headerChangedSlot()
     // Is using a zerocopy buffer allowed by user and possible with this reply?
     if (httpReply->supportsUserProvidedDownloadBuffer()
         && (downloadBufferMaximumSize > 0) && (httpReply->contentLength() <= downloadBufferMaximumSize)) {
-        QT_TRY {
-            char *buf = new char[httpReply->contentLength()]; // throws if allocation fails
-            if (buf) {
-                downloadBuffer = QSharedPointer<char>(buf, downloadBufferDeleter);
-                httpReply->setUserProvidedDownloadBuffer(buf);
-            }
-        } QT_CATCH(const std::bad_alloc &) {
-            // in out of memory situations, don't use downloadbuffer.
+        char *buf = new (std::nothrow) char[httpReply->contentLength()];
+        // in out of memory situations, don't use downloadBuffer.
+        if (buf) {
+            downloadBuffer = QSharedPointer<char>(buf, [](auto p) { delete[] p; });
+            httpReply->setUserProvidedDownloadBuffer(buf);
         }
     }
 
@@ -658,7 +599,8 @@ void QHttpThreadDelegate::headerChangedSlot()
     isPipeliningUsed = httpReply->isPipeliningUsed();
     incomingContentLength = httpReply->contentLength();
     removedContentLength = httpReply->removedContentLength();
-    isSpdyUsed = httpReply->isSpdyUsed();
+    isHttp2Used = httpReply->isHttp2Used();
+    isCompressed = httpReply->isCompressed();
 
     emit downloadMetaData(incomingHeaders,
                           incomingStatusCode,
@@ -667,7 +609,8 @@ void QHttpThreadDelegate::headerChangedSlot()
                           downloadBuffer,
                           incomingContentLength,
                           removedContentLength,
-                          isSpdyUsed);
+                          isHttp2Used,
+                          isCompressed);
 }
 
 void QHttpThreadDelegate::synchronousHeaderChangedSlot()
@@ -683,7 +626,7 @@ void QHttpThreadDelegate::synchronousHeaderChangedSlot()
     incomingStatusCode = httpReply->statusCode();
     incomingReasonPhrase = httpReply->reasonPhrase();
     isPipeliningUsed = httpReply->isPipeliningUsed();
-    isSpdyUsed = httpReply->isSpdyUsed();
+    isHttp2Used = httpReply->isHttp2Used();
     incomingContentLength = httpReply->contentLength();
 }
 
@@ -788,3 +731,5 @@ void  QHttpThreadDelegate::synchronousProxyAuthenticationRequiredSlot(const QNet
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qhttpthreaddelegate_p.cpp"

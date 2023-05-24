@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,19 +10,19 @@
 #include "core/fxge/dib/cfx_dibitmap.h"
 
 CFX_DIBExtractor::CFX_DIBExtractor(const RetainPtr<CFX_DIBBase>& pSrc) {
-  if (!pSrc->GetBuffer()) {
-    m_pBitmap = pSrc->Clone(nullptr);
+  if (pSrc->GetBuffer().empty()) {
+    m_pBitmap = pSrc->Realize();
     return;
   }
   RetainPtr<CFX_DIBBase> pOldSrc(pSrc);
   m_pBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
   if (!m_pBitmap->Create(pOldSrc->GetWidth(), pOldSrc->GetHeight(),
-                         pOldSrc->GetFormat(), pOldSrc->GetBuffer(), 0)) {
+                         pOldSrc->GetFormat(), pOldSrc->GetBuffer().data(),
+                         0)) {
     m_pBitmap.Reset();
     return;
   }
-  m_pBitmap->SetPalette(pOldSrc->GetPalette());
-  m_pBitmap->SetAlphaMask(pOldSrc->m_pAlphaMask, nullptr);
+  m_pBitmap->SetPalette(pOldSrc->GetPaletteSpan());
 }
 
 CFX_DIBExtractor::~CFX_DIBExtractor() = default;

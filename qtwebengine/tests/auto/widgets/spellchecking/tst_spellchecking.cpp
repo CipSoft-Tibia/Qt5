@@ -1,38 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "util.h"
+#include <util.h>
 #include <QtTest/QtTest>
-#include <QtWebEngineWidgets/qwebenginecontextmenudata.h>
-#include <QtWebEngineWidgets/qwebengineprofile.h>
-#include <QtWebEngineWidgets/qwebenginepage.h>
+#include <QtWebEngineCore/qwebenginecontextmenurequest.h>
+#include <QtWebEngineCore/qwebenginepage.h>
+#include <QtWebEngineCore/qwebengineprofile.h>
+#include <QtWebEngineCore/qwebenginesettings.h>
 #include <QtWebEngineWidgets/qwebengineview.h>
-#include <qwebenginesettings.h>
 
 class WebView : public QWebEngineView
 {
@@ -47,22 +22,19 @@ public:
         QTest::mouseRelease(widget, Qt::RightButton, {}, position);
     }
 
-    const QWebEngineContextMenuData& data()
-    {
-        return m_data;
-    }
+    QWebEngineContextMenuRequest *data() { return m_data; }
 
 signals:
     void menuReady();
 
 protected:
-    void contextMenuEvent(QContextMenuEvent *)
+    void contextMenuEvent(QContextMenuEvent *) override
     {
-        m_data = page()->contextMenuData();
+        m_data = lastContextMenuRequest();
         emit menuReady();
     }
 private:
-    QWebEngineContextMenuData m_data;
+    QWebEngineContextMenuRequest *m_data;
 };
 
 class tst_Spellchecking : public QObject
@@ -173,19 +145,20 @@ void tst_Spellchecking::spellcheck()
     QVariantList list = evaluateJavaScriptSync(m_view->page(), "findWordPosition('I lowe Qt ....','lowe');").toList();
     QRect rect(list[0].value<int>(),list[1].value<int>(),list[2].value<int>(),list[3].value<int>());
 
+    QTRY_VERIFY(m_view->focusWidget());
     //type text, spellchecker needs time
     QTest::mouseMove(m_view->focusWidget(), QPoint(20,20));
     QTest::mousePress(m_view->focusWidget(), Qt::LeftButton, {}, QPoint(20,20));
     QTest::mouseRelease(m_view->focusWidget(), Qt::LeftButton, {}, QPoint(20,20));
     QString text("I lowe Qt ....");
-    for (int i = 0; i < text.length(); i++) {
+    for (int i = 0; i < text.size(); i++) {
         QTest::keyClicks(m_view->focusWidget(), text.at(i));
         QTest::qWait(60);
     }
 
     // make sure text is there
     QString result = evaluateJavaScriptSync(m_view->page(), "text();").toString();
-    QVERIFY(result == text);
+    QCOMPARE(result, text);
 
     bool gotMisspelledWord = false; // clumsy QTRY_VERIFY still execs expr after first success
     QString detail;
@@ -204,17 +177,17 @@ void tst_Spellchecking::spellcheck()
             return false;
         }
 
-        if (!m_view->data().isValid()) {
+        if (!m_view->data()) {
             detail = "invalid data";
             return false;
         }
 
-        if (!m_view->data().isContentEditable()) {
+        if (!m_view->data()->isContentEditable()) {
             detail = "content is not editable";
             return false;
         }
 
-        if (m_view->data().misspelledWord().isEmpty()) {
+        if (m_view->data()->misspelledWord().isEmpty()) {
             detail = "no misspelled word";
             return false;
         };
@@ -224,10 +197,10 @@ void tst_Spellchecking::spellcheck()
     } (), qPrintable(QString("Context menu: %1").arg(detail)));
 
     // check misspelled word
-    QCOMPARE(m_view->data().misspelledWord(), QStringLiteral("lowe"));
+    QCOMPARE(m_view->data()->misspelledWord(), QStringLiteral("lowe"));
 
     // check suggestions
-    QCOMPARE(m_view->data().spellCheckerSuggestions(), suggestions);
+    QCOMPARE(m_view->data()->spellCheckerSuggestions(), suggestions);
 
     // check replace word
     m_view->page()->replaceMisspelledWord("love");

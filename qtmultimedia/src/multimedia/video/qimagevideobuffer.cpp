@@ -1,110 +1,90 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qimagevideobuffer_p.h"
-
-#include "qabstractvideobuffer_p.h"
-
-#include <qimage.h>
-#include <qvariant.h>
+#include "qvideoframeformat.h"
 
 QT_BEGIN_NAMESPACE
 
-/*!
- * \class QImageVideoBuffer
- * \internal
- *
- * A video buffer class for a QImage.
- */
-class QImageVideoBufferPrivate : public QAbstractVideoBufferPrivate
+namespace {
+
+QImage::Format fixImageFormat(QImage::Format format)
 {
-public:
-    QImageVideoBufferPrivate()
-        : mapMode(QAbstractVideoBuffer::NotMapped)
-    {
+    switch (format) {
+    case QImage::Format_ARGB32_Premultiplied:
+    case QImage::Format_ARGB8565_Premultiplied:
+    case QImage::Format_ARGB6666_Premultiplied:
+    case QImage::Format_ARGB8555_Premultiplied:
+    case QImage::Format_ARGB4444_Premultiplied:
+    case QImage::Format_RGBA8888_Premultiplied:
+    case QImage::Format_A2BGR30_Premultiplied:
+    case QImage::Format_A2RGB30_Premultiplied:
+    case QImage::Format_RGBA64_Premultiplied:
+    case QImage::Format_RGBA16FPx4_Premultiplied:
+    case QImage::Format_RGBA32FPx4_Premultiplied:
+        return QImage::Format_ARGB32_Premultiplied;
+    case QImage::Format_ARGB32:
+    case QImage::Format_RGBA8888:
+    case QImage::Format_Alpha8:
+    case QImage::Format_RGBA64:
+    case QImage::Format_RGBA16FPx4:
+    case QImage::Format_RGBA32FPx4:
+        return QImage::Format_ARGB32;
+    case QImage::Format_Invalid:
+        return QImage::Format_Invalid;
+    default:
+        return QImage::Format_RGB32;
+    }
+}
+
+QImage fixImage(QImage image)
+{
+    if (image.format() == QImage::Format_Invalid)
+        return image;
+
+    const auto frameFormat = QVideoFrameFormat::pixelFormatFromImageFormat(image.format());
+    if (frameFormat != QVideoFrameFormat::Format_Invalid)
+        return image;
+
+    return image.convertToFormat(fixImageFormat(image.format()));
+}
+
+} // namespace
+
+QImageVideoBuffer::QImageVideoBuffer(QImage image)
+    : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_image(fixImage(std::move(image)))
+{
+}
+
+QVideoFrame::MapMode QImageVideoBuffer::mapMode() const
+{
+    return m_mapMode;
+}
+
+QAbstractVideoBuffer::MapData QImageVideoBuffer::map(QVideoFrame::MapMode mode)
+{
+    MapData mapData;
+    if (m_mapMode == QVideoFrame::NotMapped && !m_image.isNull()
+        && mode != QVideoFrame::NotMapped) {
+        m_mapMode = mode;
+
+        mapData.nPlanes = 1;
+        mapData.bytesPerLine[0] = m_image.bytesPerLine();
+        mapData.data[0] = m_image.bits();
+        mapData.size[0] = m_image.sizeInBytes();
     }
 
-    QAbstractVideoBuffer::MapMode mapMode;
-    QImage image;
-};
-
-QImageVideoBuffer::QImageVideoBuffer(const QImage &image)
-    : QAbstractVideoBuffer(*new QImageVideoBufferPrivate, NoHandle)
-{
-    Q_D(QImageVideoBuffer);
-
-    d->image = image;
-}
-
-QImageVideoBuffer::~QImageVideoBuffer()
-{
-}
-
-QAbstractVideoBuffer::MapMode QImageVideoBuffer::mapMode() const
-{
-    return d_func()->mapMode;
-}
-
-uchar *QImageVideoBuffer::map(MapMode mode, int *numBytes, int *bytesPerLine)
-{
-    Q_D(QImageVideoBuffer);
-
-    if (d->mapMode == NotMapped && d->image.bits() && mode != NotMapped) {
-        d->mapMode = mode;
-
-        if (numBytes)
-            *numBytes = int(d->image.sizeInBytes());
-
-        if (bytesPerLine)
-            *bytesPerLine = d->image.bytesPerLine();
-
-        return d->image.bits();
-    } else {
-        return nullptr;
-    }
+    return mapData;
 }
 
 void QImageVideoBuffer::unmap()
 {
-    Q_D(QImageVideoBuffer);
+    m_mapMode = QVideoFrame::NotMapped;
+}
 
-    d->mapMode = NotMapped;
+QImage QImageVideoBuffer::underlyingImage() const
+{
+    return m_image;
 }
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -60,6 +60,8 @@ jumbo_component("domain_reliability") {
     "dispatcher.cc",
     "dispatcher.h",
     "domain_reliability_export.h",
+    "features.cc",
+    "features.h",
     "google_configs.cc",
     "google_configs.h",
     "monitor.cc",
@@ -79,6 +81,7 @@ jumbo_component("domain_reliability") {
 
   deps = [
     ":bake_in_configs",
+    ":prefs",
     "//base",
     "//net",
     "//url",
@@ -100,13 +103,24 @@ jumbo_source_set("unit_tests") {
     "util_unittest.cc",
   ]
 
-  configs += [ "//build/config/compiler:no_size_t_to_int_warning" ]
-
   deps = [
     ":domain_reliability",
     "//base",
     "//base/test:test_support",
     "//net:test_support",
     "//testing/gtest",
+  ]
+}
+
+source_set("prefs") {
+  sources = [
+    "domain_reliability_prefs.cc",
+    "domain_reliability_prefs.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/pref_registry:pref_registry",
+    "//components/prefs:prefs",
   ]
 }

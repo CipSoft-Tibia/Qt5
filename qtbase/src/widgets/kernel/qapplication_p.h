@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QAPPLICATION_P_H
 #define QAPPLICATION_P_H
@@ -81,12 +45,12 @@ class QGraphicsScene;
 class QObject;
 class QWidget;
 class QSocketNotifier;
-class QTouchDevice;
+class QPointingDevice;
 #ifndef QT_NO_GESTURES
 class QGestureManager;
 #endif
 
-extern Q_GUI_EXPORT bool qt_is_gui_used;
+extern Q_GUI_EXPORT bool qt_is_tty_app;
 #ifndef QT_NO_CLIPBOARD
 extern QClipboard *qt_clipboard;
 #endif
@@ -94,31 +58,34 @@ extern QClipboard *qt_clipboard;
 typedef QHash<QByteArray, QFont> FontHash;
 Q_WIDGETS_EXPORT FontHash *qt_app_fonts_hash();
 
-#define QApplicationPrivateBase QGuiApplicationPrivate
-
-class Q_WIDGETS_EXPORT QApplicationPrivate : public QApplicationPrivateBase
+class Q_WIDGETS_EXPORT QApplicationPrivate : public QGuiApplicationPrivate
 {
     Q_DECLARE_PUBLIC(QApplication)
 public:
-    QApplicationPrivate(int &argc, char **argv, int flags);
+    QApplicationPrivate(int &argc, char **argv);
     ~QApplicationPrivate();
 
     virtual void notifyLayoutDirectionChange() override;
     virtual void notifyActiveWindowChange(QWindow *) override;
-
-    virtual bool shouldQuit() override;
-    bool tryCloseAllWindows() override;
 
     static bool autoSipEnabled;
     static QString desktopStyleKey();
 
     void createEventDispatcher() override;
     static void dispatchEnterLeave(QWidget *enter, QWidget *leave, const QPointF &globalPosF);
-
+    static QWidget *desktop();
     void notifyWindowIconChanged() override;
 
+#ifndef QT_NO_ACTION
+    QActionPrivate *createActionPrivate() const override;
+#endif
+#ifndef QT_NO_SHORTCUT
+    QShortcutPrivate *createShortcutPrivate() const override;
+#endif
+
     //modality
-    bool isWindowBlocked(QWindow *window, QWindow **blockingWindow = nullptr) const override;
+    Qt::WindowModality defaultModality() const override;
+    bool windowNeverBlocked(QWindow *window) const override;
     static bool isBlockedByModal(QWidget *widget);
     static bool modalState();
     static bool tryModalHelper(QWidget *widget, QWidget **rettop = nullptr);
@@ -137,8 +104,11 @@ public:
     void initialize();
     void process_cmdline();
 
+    static void setActiveWindow(QWidget* act);
+
     static bool inPopupMode();
     bool popupActive() override { return inPopupMode(); }
+    bool closeAllPopups() override;
     void closePopup(QWidget *popup);
     void openPopup(QWidget *popup);
     static void setFocusWidget(QWidget *focus, Qt::FocusReason reason);
@@ -160,7 +130,7 @@ public:
     static QStyle *app_style;
 
 protected:
-    void notifyThemeChanged() override;
+    void handleThemeChanged() override;
 
     QPalette basePalette() const override;
     void handlePaletteChanged(const char *className = nullptr) override;
@@ -177,7 +147,6 @@ public:
     static QWidget *hidden_focus_widget;
     static QWidget *active_window;
 #if QT_CONFIG(wheelevent)
-    static int  wheel_scroll_lines;
     static QPointer<QWidget> wheel_widget;
 #endif
 
@@ -240,17 +209,17 @@ public:
     void initializeMultitouch_sys();
     void cleanupMultitouch();
     void cleanupMultitouch_sys();
-    QWidget *findClosestTouchPointTarget(QTouchDevice *device, const QTouchEvent::TouchPoint &touchPoint);
-    void appendTouchPoint(const QTouchEvent::TouchPoint &touchPoint);
+    QWidget *findClosestTouchPointTarget(const QPointingDevice *device, const QEventPoint &touchPoint);
+    void appendTouchPoint(const QEventPoint &touchPoint);
     void removeTouchPoint(int touchPointId);
-    void activateImplicitTouchGrab(QWidget *widget, QTouchEvent *touchBeginEvent);
-    static bool translateRawTouchEvent(QWidget *widget,
-                                       QTouchDevice *device,
-                                       const QList<QTouchEvent::TouchPoint> &touchPoints,
-                                       ulong timestamp);
-    static void translateTouchCancel(QTouchDevice *device, ulong timestamp);
+    enum ImplicitTouchGrabMode { GrabAcceptedPoints, GrabAllPoints };
+    void activateImplicitTouchGrab(QWidget *widget, QTouchEvent *touchBeginEvent,
+                                   ImplicitTouchGrabMode grabMode = GrabAcceptedPoints);
+    static bool translateRawTouchEvent(QWidget *widget, const QTouchEvent *touchEvent);
+    static void translateTouchCancel(const QPointingDevice *device, ulong timestamp);
 
     QPixmap applyQIconStyleHelper(QIcon::Mode mode, const QPixmap& base) const override;
+
 private:
     static QApplicationPrivate *self;
     static bool tryCloseAllWidgetWindows(QWindowList *processedWindows);

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbintegration.h"
 #include "qxcbconnection.h"
@@ -56,11 +20,12 @@
 #ifndef QT_NO_SESSIONMANAGER
 #include "qxcbsessionmanager.h"
 #endif
+#include "qxcbxsettings.h"
 
 #include <xcb/xcb.h>
 
-#include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
-#include <QtServiceSupport/private/qgenericunixservices_p.h>
+#include <QtGui/private/qgenericunixfontdatabase_p.h>
+#include <QtGui/private/qgenericunixservices_p.h>
 
 #include <stdio.h>
 
@@ -84,10 +49,10 @@
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QScreen>
 #include <QtGui/QOffscreenSurface>
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include <qpa/qplatformaccessibility.h>
-#ifndef QT_NO_ACCESSIBILITY_ATSPI_BRIDGE
-#include <QtLinuxAccessibilitySupport/private/bridge_p.h>
+#if QT_CONFIG(accessibility_atspi_bridge)
+#include <QtGui/private/qspiaccessiblebridge_p.h>
 #endif
 #endif
 
@@ -100,16 +65,18 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 // Find out if our parent process is gdb by looking at the 'exe' symlink under /proc,.
 // or, for older Linuxes, read out 'cmdline'.
 static bool runningUnderDebugger()
 {
 #if defined(QT_DEBUG) && defined(Q_OS_LINUX)
-    const QString parentProc = QLatin1String("/proc/") + QString::number(getppid());
-    const QFileInfo parentProcExe(parentProc + QLatin1String("/exe"));
+    const QString parentProc = "/proc/"_L1 + QString::number(getppid());
+    const QFileInfo parentProcExe(parentProc + "/exe"_L1);
     if (parentProcExe.isSymLink())
-        return parentProcExe.symLinkTarget().endsWith(QLatin1String("/gdb"));
-    QFile f(parentProc + QLatin1String("/cmdline"));
+        return parentProcExe.symLinkTarget().endsWith("/gdb"_L1);
+    QFile f(parentProc + "/cmdline"_L1);
     if (!f.open(QIODevice::ReadOnly))
         return false;
     QByteArray s;
@@ -134,6 +101,8 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
     , m_canGrab(true)
     , m_defaultVisualId(UINT_MAX)
 {
+    Q_UNUSED(parameters);
+
     m_instance = this;
     qApp->setAttribute(Qt::AA_CompressHighFrequencyEvents, true);
 
@@ -175,7 +144,7 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
 
     bool underDebugger = runningUnderDebugger();
     if (noGrabArg && doGrabArg && underDebugger) {
-        qWarning("Both -nograb and -dograb command line arguments specified. Please pick one. -nograb takes prcedence");
+        qWarning("Both -nograb and -dograb command line arguments specified. Please pick one. -nograb takes precedence");
         doGrabArg = false;
     }
 
@@ -191,25 +160,11 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
     if (canNotGrabEnv)
         m_canGrab = false;
 
-    const int numParameters = parameters.size();
-    m_connections.reserve(1 + numParameters / 2);
-
-    auto conn = new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, displayName);
-    if (!conn->isConnected()) {
-        delete conn;
+    m_connection = new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, displayName);
+    if (!m_connection->isConnected()) {
+        delete m_connection;
+        m_connection = nullptr;
         return;
-    }
-    m_connections << conn;
-
-    // ### Qt 6 (QTBUG-52408) remove this multi-connection code path
-    for (int i = 0; i < numParameters - 1; i += 2) {
-        qCDebug(lcQpaXcb) << "connecting to additional display: " << parameters.at(i) << parameters.at(i+1);
-        QString display = parameters.at(i) + QLatin1Char(':') + parameters.at(i+1);
-        conn = new QXcbConnection(m_nativeInterface.data(), m_canGrab, m_defaultVisualId, display.toLatin1().constData());
-        if (conn->isConnected())
-            m_connections << conn;
-        else
-            delete conn;
     }
 
     m_fontDatabase.reset(new QGenericUnixFontDatabase());
@@ -217,14 +172,15 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
 #if QT_CONFIG(xcb_native_painting)
     if (nativePaintingEnabled()) {
         qCDebug(lcQpaXcb, "QXCB USING NATIVE PAINTING");
-        qt_xcb_native_x11_info_init(defaultConnection());
+        qt_xcb_native_x11_info_init(connection());
     }
 #endif
 }
 
 QXcbIntegration::~QXcbIntegration()
 {
-    qDeleteAll(m_connections);
+    delete m_connection;
+    m_connection = nullptr;
     m_instance = nullptr;
 }
 
@@ -244,7 +200,7 @@ QPlatformWindow *QXcbIntegration::createPlatformWindow(QWindow *window) const
     const bool isTrayIconWindow = QXcbWindow::isTrayIconWindow(window);;
     if (window->type() != Qt::Desktop && !isTrayIconWindow) {
         if (window->supportsOpenGL()) {
-            glIntegration = defaultConnection()->glIntegration();
+            glIntegration = connection()->glIntegration();
             if (glIntegration) {
                 QXcbWindow *xcbWindow = glIntegration->createWindow(window);
                 xcbWindow->create();
@@ -274,27 +230,54 @@ QPlatformWindow *QXcbIntegration::createForeignWindow(QWindow *window, WId nativ
 #ifndef QT_NO_OPENGL
 QPlatformOpenGLContext *QXcbIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
-    QXcbGlIntegration *glIntegration = defaultConnection()->glIntegration();
+    QXcbGlIntegration *glIntegration = m_connection->glIntegration();
     if (!glIntegration) {
         qWarning("QXcbIntegration: Cannot create platform OpenGL context, neither GLX nor EGL are enabled");
         return nullptr;
     }
     return glIntegration->createPlatformOpenGLContext(context);
 }
+
+# if QT_CONFIG(xcb_glx_plugin)
+QOpenGLContext *QXcbIntegration::createOpenGLContext(GLXContext context, void *visualInfo, QOpenGLContext *shareContext) const
+{
+    using namespace QNativeInterface::Private;
+    if (auto *glxIntegration = dynamic_cast<QGLXIntegration*>(m_connection->glIntegration()))
+        return glxIntegration->createOpenGLContext(context, visualInfo, shareContext);
+    else
+        return nullptr;
+}
+# endif
+
+#if QT_CONFIG(egl)
+QOpenGLContext *QXcbIntegration::createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const
+{
+    using namespace QNativeInterface::Private;
+    if (auto *eglIntegration = dynamic_cast<QEGLIntegration*>(m_connection->glIntegration()))
+        return eglIntegration->createOpenGLContext(context, display, shareContext);
+    else
+        return nullptr;
+}
 #endif
+
+#endif // QT_NO_OPENGL
 
 QPlatformBackingStore *QXcbIntegration::createPlatformBackingStore(QWindow *window) const
 {
+    QPlatformBackingStore *backingStore = nullptr;
+
     const bool isTrayIconWindow = QXcbWindow::isTrayIconWindow(window);
-    if (isTrayIconWindow)
-        return new QXcbSystemTrayBackingStore(window);
-
+    if (isTrayIconWindow) {
+        backingStore = new QXcbSystemTrayBackingStore(window);
 #if QT_CONFIG(xcb_native_painting)
-    if (nativePaintingEnabled())
-        return new QXcbNativeBackingStore(window);
+    } else if (nativePaintingEnabled()) {
+        backingStore = new QXcbNativeBackingStore(window);
 #endif
-
-    return new QXcbBackingStore(window);
+    } else {
+        backingStore = new QXcbBackingStore(window);
+    }
+    Q_ASSERT(backingStore);
+    return backingStore;
 }
 
 QPlatformOffscreenSurface *QXcbIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
@@ -314,7 +297,7 @@ bool QXcbIntegration::hasCapability(QPlatformIntegration::Capability cap) const
     case OpenGL:
     case ThreadedOpenGL:
     {
-        if (const auto *integration = defaultConnection()->glIntegration())
+        if (const auto *integration = connection()->glIntegration())
             return cap != ThreadedOpenGL || integration->supportsThreadedOpenGL();
         return false;
     }
@@ -329,8 +312,8 @@ bool QXcbIntegration::hasCapability(QPlatformIntegration::Capability cap) const
 
     case SwitchableWidgetComposition:
     {
-        return m_connections.at(0)->glIntegration()
-            && m_connections.at(0)->glIntegration()->supportsSwitchableWidgetComposition();
+        return m_connection->glIntegration()
+            && m_connection->glIntegration()->supportsSwitchableWidgetComposition();
     }
 
     default: return QPlatformIntegration::hasCapability(cap);
@@ -339,22 +322,40 @@ bool QXcbIntegration::hasCapability(QPlatformIntegration::Capability cap) const
 
 QAbstractEventDispatcher *QXcbIntegration::createEventDispatcher() const
 {
-    return QXcbEventDispatcher::createEventDispatcher(defaultConnection());
+    return QXcbEventDispatcher::createEventDispatcher(connection());
 }
+
+using namespace Qt::Literals::StringLiterals;
+static const auto xsNetCursorBlink = "Net/CursorBlink"_ba;
+static const auto xsNetCursorBlinkTime = "Net/CursorBlinkTime"_ba;
+static const auto xsNetDoubleClickTime = "Net/DoubleClickTime"_ba;
+static const auto xsNetDoubleClickDistance = "Net/DoubleClickDistance"_ba;
+static const auto xsNetDndDragThreshold = "Net/DndDragThreshold"_ba;
 
 void QXcbIntegration::initialize()
 {
-    const QLatin1String defaultInputContext("compose");
+    const auto defaultInputContext = "compose"_L1;
     // Perform everything that may potentially need the event dispatcher (timers, socket
     // notifiers) here instead of the constructor.
     QString icStr = QPlatformInputContextFactory::requested();
     if (icStr.isNull())
         icStr = defaultInputContext;
     m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
-    if (!m_inputContext && icStr != defaultInputContext && icStr != QLatin1String("none"))
+    if (!m_inputContext && icStr != defaultInputContext && icStr != "none"_L1)
         m_inputContext.reset(QPlatformInputContextFactory::create(defaultInputContext));
 
-    defaultConnection()->keyboard()->initialize();
+    connection()->keyboard()->initialize();
+
+    auto notifyThemeChanged = [](QXcbVirtualDesktop *, const QByteArray &, const QVariant &, void *) {
+        QWindowSystemInterface::handleThemeChange();
+    };
+
+    auto *xsettings = connection()->primaryScreen()->xSettings();
+    xsettings->registerCallbackForProperty(xsNetCursorBlink, notifyThemeChanged, this);
+    xsettings->registerCallbackForProperty(xsNetCursorBlinkTime, notifyThemeChanged, this);
+    xsettings->registerCallbackForProperty(xsNetDoubleClickTime, notifyThemeChanged, this);
+    xsettings->registerCallbackForProperty(xsNetDoubleClickDistance, notifyThemeChanged, this);
+    xsettings->registerCallbackForProperty(xsNetDndDragThreshold, notifyThemeChanged, this);
 }
 
 void QXcbIntegration::moveToScreen(QWindow *window, int screen)
@@ -376,7 +377,7 @@ QPlatformNativeInterface * QXcbIntegration::nativeInterface() const
 #ifndef QT_NO_CLIPBOARD
 QPlatformClipboard *QXcbIntegration::clipboard() const
 {
-    return m_connections.at(0)->clipboard();
+    return m_connection->clipboard();
 }
 #endif
 
@@ -392,7 +393,7 @@ QPlatformDrag *QXcbIntegration::drag() const
         return simpleDrag;
     }
 
-    return m_connections.at(0)->drag();
+    return m_connection->drag();
 }
 #endif
 
@@ -401,7 +402,7 @@ QPlatformInputContext *QXcbIntegration::inputContext() const
     return m_inputContext.data();
 }
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 QPlatformAccessibility *QXcbIntegration::accessibility() const
 {
 #if !defined(QT_NO_ACCESSIBILITY_ATSPI_BRIDGE)
@@ -423,12 +424,12 @@ QPlatformServices *QXcbIntegration::services() const
 
 Qt::KeyboardModifiers QXcbIntegration::queryKeyboardModifiers() const
 {
-    return m_connections.at(0)->queryKeyboardModifiers();
+    return m_connection->queryKeyboardModifiers();
 }
 
 QList<int> QXcbIntegration::possibleKeys(const QKeyEvent *e) const
 {
-    return m_connections.at(0)->keyboard()->possibleKeys(e);
+    return m_connection->keyboard()->possibleKeys(e);
 }
 
 QStringList QXcbIntegration::themeNames() const
@@ -441,31 +442,53 @@ QPlatformTheme *QXcbIntegration::createPlatformTheme(const QString &name) const
     return QGenericUnixTheme::createUnixTheme(name);
 }
 
+#define RETURN_VALID_XSETTINGS(key) { \
+    auto value = connection()->primaryScreen()->xSettings()->setting(key); \
+    if (value.isValid()) return value; \
+}
+
 QVariant QXcbIntegration::styleHint(QPlatformIntegration::StyleHint hint) const
 {
     switch (hint) {
-    case QPlatformIntegration::CursorFlashTime:
-    case QPlatformIntegration::KeyboardInputInterval:
+    case QPlatformIntegration::CursorFlashTime: {
+        bool ok = false;
+        // If cursor blinking is off, returns 0 to keep the cursor awlays display.
+        if (connection()->primaryScreen()->xSettings()->setting(xsNetCursorBlink).toInt(&ok) == 0 && ok)
+            return 0;
+
+        RETURN_VALID_XSETTINGS(xsNetCursorBlinkTime);
+        break;
+    }
     case QPlatformIntegration::MouseDoubleClickInterval:
+        RETURN_VALID_XSETTINGS(xsNetDoubleClickTime);
+        break;
+    case QPlatformIntegration::MouseDoubleClickDistance:
+        RETURN_VALID_XSETTINGS(xsNetDoubleClickDistance);
+        break;
+    case QPlatformIntegration::KeyboardInputInterval:
     case QPlatformIntegration::StartDragTime:
     case QPlatformIntegration::KeyboardAutoRepeatRate:
     case QPlatformIntegration::PasswordMaskDelay:
     case QPlatformIntegration::StartDragVelocity:
     case QPlatformIntegration::UseRtlExtensions:
     case QPlatformIntegration::PasswordMaskCharacter:
+    case QPlatformIntegration::FlickMaximumVelocity:
+    case QPlatformIntegration::FlickDeceleration:
         // TODO using various xcb, gnome or KDE settings
         break; // Not implemented, use defaults
+    case QPlatformIntegration::FlickStartDistance:
     case QPlatformIntegration::StartDragDistance: {
+        RETURN_VALID_XSETTINGS(xsNetDndDragThreshold);
         // The default (in QPlatformTheme::defaultThemeHint) is 10 pixels, but
         // on a high-resolution screen it makes sense to increase it.
-        qreal dpi = 100.0;
-        if (const QXcbScreen *screen = defaultConnection()->primaryScreen()) {
+        qreal dpi = 100;
+        if (const QXcbScreen *screen = connection()->primaryScreen()) {
             if (screen->logicalDpi().first > dpi)
                 dpi = screen->logicalDpi().first;
             if (screen->logicalDpi().second > dpi)
                 dpi = screen->logicalDpi().second;
         }
-        return 10.0 * dpi / 100.0;
+        return (hint == QPlatformIntegration::FlickStartDistance ? qreal(15) : qreal(10)) * dpi / qreal(100);
     }
     case QPlatformIntegration::ShowIsFullScreen:
         // X11 always has support for windows, but the
@@ -485,7 +508,7 @@ static QString argv0BaseName()
     const QStringList arguments = QCoreApplication::arguments();
     if (!arguments.isEmpty() && !arguments.front().isEmpty()) {
         result = arguments.front();
-        const int lastSlashPos = result.lastIndexOf(QLatin1Char('/'));
+        const int lastSlashPos = result.lastIndexOf(u'/');
         if (lastSlashPos != -1)
             result.remove(0, lastSlashPos + 1);
     }
@@ -530,9 +553,7 @@ QPlatformSessionManager *QXcbIntegration::createPlatformSessionManager(const QSt
 
 void QXcbIntegration::sync()
 {
-    for (int i = 0; i < m_connections.size(); i++) {
-        m_connections.at(i)->sync();
-    }
+    m_connection->sync();
 }
 
 // For QApplication::beep()
@@ -565,5 +586,11 @@ QPlatformVulkanInstance *QXcbIntegration::createPlatformVulkanInstance(QVulkanIn
     return new QXcbVulkanInstance(instance);
 }
 #endif
+
+void QXcbIntegration::setApplicationBadge(qint64 number)
+{
+    auto unixServices = dynamic_cast<QGenericUnixServices *>(services());
+    unixServices->setApplicationBadge(number);
+}
 
 QT_END_NAMESPACE

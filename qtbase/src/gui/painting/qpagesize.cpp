@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpagesize.h"
 
@@ -47,6 +11,12 @@
 #include <QtCore/qstring.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN(QPageSize)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QPageSize::PageSizeId, QPageSize__PageSizeId)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QPageSize::Unit, QPageSize__Unit)
 
 // Define the Windows DMPAPER sizes for use in the look-up table
 // See http://msdn.microsoft.com/en-us/library/windows/desktop/dd319099.aspx
@@ -224,16 +194,16 @@ static const int qt_windowsConversion[][2] = {
 
 // Standard sizes data
 struct StandardPageSize {
-    QPageSize::PageSizeId id;
-    int windowsId;                  // Windows DMPAPER value
-    QPageSize::Unit definitionUnits;    // Standard definition size, e.g. ISO uses mm, ANSI uses inches
-    int widthPoints;
-    int heightPoints;
+    QPageSize::PageSizeId id : 8;
+    int windowsId : 16;                  // Windows DMPAPER value
+    QPageSize::Unit definitionUnits : 8;    // Standard definition size, e.g. ISO uses mm, ANSI uses inches
+    int widthPoints : 16;
+    int heightPoints : 16;
     qreal widthMillimeters;
     qreal heightMillimeters;
     qreal widthInches;
     qreal heightInches;
-    const char *mediaOption;  // PPD standard mediaOption ID
+    const char mediaOption[20];  // PPD standard mediaOption ID
 };
 
 // Standard page sizes taken from the Postscript PPD Standard v4.3
@@ -242,9 +212,7 @@ struct StandardPageSize {
 // NB! This table needs to be in sync with QPageSize::PageSizeId
 static const StandardPageSize qt_pageSizes[] = {
 
-    // Existing Qt sizes including ISO, US, ANSI and other standards
-    {QPageSize::A4                ,   DMPAPER_A4                   ,   QPageSize::Millimeter,    595,  842,      210  ,  297  ,       8.27,  11.69,    "A4"},
-    {QPageSize::B5                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    499,  709,      176  ,  250  ,       6.9 ,   9.8 ,    "ISOB5"},
+    // Old Qt sizes including ISO, US, ANSI and other standards
     {QPageSize::Letter            ,   DMPAPER_LETTER               ,   QPageSize::Inch      ,    612,  792,      215.9,  279.4,       8.5 ,  11   ,    "Letter"},
     {QPageSize::Legal             ,   DMPAPER_LEGAL                ,   QPageSize::Inch      ,    612, 1008,      215.9,  355.6,       8.5 ,  14   ,    "Legal"},
     {QPageSize::Executive         ,   DMPAPER_NONE                 ,   QPageSize::Inch      ,    540,  720,      190.5,  254  ,       7.5 ,  10   ,    "Executive.7.5x10in"}, // Qt size differs from Postscript / Windows
@@ -252,21 +220,24 @@ static const StandardPageSize qt_pageSizes[] = {
     {QPageSize::A1                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,   1684, 2384,      594  ,  841  ,      23.39,  33.11,    "A1"},
     {QPageSize::A2                ,   DMPAPER_A2                   ,   QPageSize::Millimeter,   1191, 1684,      420  ,  594  ,      16.54,  23.39,    "A2"},
     {QPageSize::A3                ,   DMPAPER_A3                   ,   QPageSize::Millimeter,    842, 1191,      297  ,  420  ,      11.69,  16.54,    "A3"},
+    {QPageSize::A4                ,   DMPAPER_A4                   ,   QPageSize::Millimeter,    595,  842,      210  ,  297  ,       8.27,  11.69,    "A4"},
     {QPageSize::A5                ,   DMPAPER_A5                   ,   QPageSize::Millimeter,    420,  595,      148  ,  210  ,       5.83,   8.27,    "A5"},
     {QPageSize::A6                ,   DMPAPER_A6                   ,   QPageSize::Millimeter,    297,  420,      105  ,  148  ,       4.13,   5.83,    "A6"},
     {QPageSize::A7                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    210,  297,       74  ,  105  ,       2.91,   4.13,    "A7"},
     {QPageSize::A8                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    148,  210,       52  ,   74  ,       2.05,   2.91,    "A8"},
     {QPageSize::A9                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    105,  148,       37  ,   52  ,       1.46,   2.05,    "A9"},
+    {QPageSize::A10               ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,     73,  105,       26  ,  37   ,       1.02,   1.46,    "A10"},
     {QPageSize::B0                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,   2835, 4008,     1000  , 1414  ,      39.37,  55.67,    "ISOB0"},
     {QPageSize::B1                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,   2004, 2835,      707  , 1000  ,      27.83,  39.37,    "ISOB1"},
-    {QPageSize::B10               ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,     88,  125,       31  ,   44  ,       1.22,   1.73,    "ISOB10"},
     {QPageSize::B2                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,   1417, 2004,      500  ,  707  ,      19.68,  27.83,    "ISOB2"},
     {QPageSize::B3                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,   1001, 1417,      353  ,  500  ,      13.9 ,  19.68,    "ISOB3"},
     {QPageSize::B4                ,   DMPAPER_ISO_B4               ,   QPageSize::Millimeter,    709, 1001,      250  ,  353  ,       9.84,  13.9 ,    "ISOB4"},
+    {QPageSize::B5                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    499,  709,      176  ,  250  ,       6.9 ,   9.8 ,    "ISOB5"},
     {QPageSize::B6                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    354,  499,      125  ,  176  ,       4.92,   6.93,    "ISOB6"},
     {QPageSize::B7                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    249,  354,       88  ,  125  ,       3.46,   4.92,    "ISOB7"},
     {QPageSize::B8                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    176,  249,       62  ,   88  ,       2.44,   3.46,    "ISOB8"},
     {QPageSize::B9                ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,    125,  176,       44  ,   62  ,       1.73,   2.44,    "ISOB9"},
+    {QPageSize::B10               ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,     88,  125,       31  ,   44  ,       1.22,   1.73,    "ISOB10"},
     {QPageSize::C5E               ,   DMPAPER_ENV_C5               ,   QPageSize::Millimeter,    459,  649,      162  ,  229  ,       6.38,   9.02,    "EnvC5"},
     {QPageSize::Comm10E           ,   DMPAPER_ENV_10               ,   QPageSize::Inch      ,    297,  684,      104.8,  241.3,       4.12,   9.5 ,    "Env10"},
     {QPageSize::DLE               ,   DMPAPER_ENV_DL               ,   QPageSize::Millimeter,    312,  624,      110  ,  220  ,       4.33,   8.66,    "EnvDL"},
@@ -276,7 +247,6 @@ static const StandardPageSize qt_pageSizes[] = {
     {QPageSize::Custom            ,   DMPAPER_USER                 ,   QPageSize::Millimeter,     -1,   -1,       -1. ,   -1  ,      -1   ,  -1   ,    "Custom"}, // Special case to keep in sync with QPageSize::PageSizeId
 
     // ISO Standard Sizes
-    {QPageSize::A10               ,   DMPAPER_NONE                 ,   QPageSize::Millimeter,     73,  105,       26  ,  37   ,       1.02,   1.46,    "A10"},
     {QPageSize::A3Extra           ,   DMPAPER_A3_EXTRA             ,   QPageSize::Millimeter,    913, 1262,      322  ,  445  ,      12.67,  17.52,    "A3Extra"},
     {QPageSize::A4Extra           ,   DMPAPER_A4_EXTRA             ,   QPageSize::Millimeter,    667,  914,      235.5,  322.3,       9.27,  12.69,    "A4Extra"},
     {QPageSize::A4Plus            ,   DMPAPER_A4_PLUS              ,   QPageSize::Millimeter,    595,  936,      210  ,  330  ,       8.27,  13   ,    "A4Plus"},
@@ -385,7 +355,8 @@ static const StandardPageSize qt_pageSizes[] = {
 };
 
 static const int pageSizesCount = int(sizeof(qt_pageSizes) / sizeof(qt_pageSizes[0]));
-Q_STATIC_ASSERT(pageSizesCount == QPageSize::LastPageSize + 1);
+static_assert(pageSizesCount == QPageSize::LastPageSize + 1);
+static_assert(QPageSize::LastPageSize < 256);
 
 // Return key name for PageSize
 static QString qt_keyForPageSizeId(QPageSize::PageSizeId id)
@@ -398,14 +369,14 @@ static QPageSize::PageSizeId qt_idForPpdKey(const QString &ppdKey, QSize *match 
 {
     if (ppdKey.isEmpty())
         return QPageSize::Custom;
-    QStringRef key(&ppdKey);
+    QStringView key(ppdKey);
     // Remove any Rotated or Tranverse modifiers
-    if (key.endsWith(QLatin1String("Rotated")))
+    if (key.endsWith("Rotated"_L1))
         key.chop(7);
-    else if (key.endsWith(QLatin1String(".Transverse")))
+    else if (key.endsWith(".Transverse"_L1))
         key.chop(11);
     for (int i = 0; i <= int(QPageSize::LastPageSize); ++i) {
-        if (QLatin1String(qt_pageSizes[i].mediaOption) == key) {
+        if (QLatin1StringView(qt_pageSizes[i].mediaOption) == key) {
             if (match)
                 *match = QSize(qt_pageSizes[i].widthPoints, qt_pageSizes[i].heightPoints);
             return qt_pageSizes[i].id;
@@ -572,7 +543,7 @@ static QSize qt_convertPointsToPixels(const QSize &size, int resolution)
     if (!size.isValid() || resolution <= 0)
         return QSize();
     const qreal multiplier = qt_pixelMultiplier(resolution);
-    return QSize(qRound(size.width() / multiplier), qRound(size.height() / multiplier));
+    return QSize(qFloor(size.width() / multiplier), qFloor(size.height() / multiplier));
 }
 
 static QSizeF qt_convertPointsToUnits(const QSize &size, QPageSize::Unit units)
@@ -1079,8 +1050,6 @@ QSize QPageSizePrivate::sizePixels(int resolution) const
     \value EnvelopePrc10
     \value EnvelopeYou4
     \value LastPageSize = EnvelopeYou4
-    \omitvalue NPageSize
-    \omitvalue NPaperSize
 
     Due to historic reasons QPageSize::Executive is not the same as the standard
     Postscript and Windows Executive size, use QPageSize::ExecutiveStandard instead.
@@ -1251,25 +1220,29 @@ QPageSize &QPageSize::operator=(const QPageSize &other)
 */
 
 /*!
-    \relates QPageSize
+    \fn bool QPageSize::operator==(const QPageSize &lhs, const QPageSize &rhs)
 
     Returns \c true if page size \a lhs is equal to page size \a rhs,
     i.e. if the page sizes have the same attributes. Current
     attributes are size and name.
 */
 
-bool operator==(const QPageSize &lhs, const QPageSize &rhs)
-{
-    return lhs.d == rhs.d || *lhs.d == *rhs.d;
-}
 /*!
-    \fn bool operator!=(const QPageSize &lhs, const QPageSize &rhs)
-    \relates QPageSize
+    \fn bool QPageSize::operator!=(const QPageSize &lhs, const QPageSize &rhs)
 
     Returns \c true if page size \a lhs is unequal to page size \a
     rhs, i.e. if the page size has different attributes. Current
     attributes are size and name.
 */
+
+/*!
+    \internal
+*/
+bool QPageSize::equals(const QPageSize &other) const
+{
+    return d == other.d || *d == *other.d;
+}
+
 
 /*!
     Returns \c true if this page is equivalent to the \a other page, i.e. if the

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 #include "base/check.h"
 #include "base/lazy_instance.h"
 #include "content/browser/renderer_host/render_process_host_impl.h"
-#include "content/common/view_messages.h"
 #include "content/public/android/content_jni_headers/ContentViewStaticsImpl_jni.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_process_host_observer.h"

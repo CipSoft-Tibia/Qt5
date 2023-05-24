@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Sérgio Martins <sergio.martins@kdab.com>
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Sérgio Martins <sergio.martins@kdab.com>
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/QScopeGuard>
+
+#include <optional>
 
 /*!
  \class tst_QScopeGuard
@@ -45,6 +22,7 @@ private Q_SLOTS:
     void construction();
     void constructionFromLvalue();
     void constructionFromRvalue();
+    void optionalGuard();
     void leavingScope();
     void exceptions();
 };
@@ -58,7 +36,7 @@ int intFunc()
     return 0;
 }
 
-Q_REQUIRED_RESULT int noDiscardFunc()
+[[nodiscard]] int noDiscardFunc()
 {
     return 0;
 }
@@ -94,23 +72,20 @@ static int s_globalState = 0;
 
 void tst_QScopeGuard::construction()
 {
-#ifdef __cpp_deduction_guides
     QScopeGuard fromLambda([] { });
     QScopeGuard fromFunction(func);
     QScopeGuard fromFunctionPointer(&func);
     QScopeGuard fromNonVoidFunction(intFunc);
     QScopeGuard fromNoDiscardFunction(noDiscardFunc);
+#ifndef __apple_build_version__
     QScopeGuard fromStdFunction{std::function<void()>(func)};
     std::function<void()> stdFunction(func);
     QScopeGuard fromNamedStdFunction(stdFunction);
-#else
-    QSKIP("This test requires C++17 Class Template Argument Deduction support enabled in the compiler.");
 #endif
 }
 
 void tst_QScopeGuard::constructionFromLvalue()
 {
-#ifdef __cpp_deduction_guides
     Callable::resetCounts();
     {
         Callable callable;
@@ -125,14 +100,10 @@ void tst_QScopeGuard::constructionFromLvalue()
     }
     QCOMPARE(Callable::copied, 1);
     QCOMPARE(Callable::moved, 0);
-#else
-    QSKIP("This test requires C++17 Class Template Argument Deduction support enabled in the compiler.");
-#endif
 }
 
 void tst_QScopeGuard::constructionFromRvalue()
 {
-#ifdef __cpp_deduction_guides
     Callable::resetCounts();
     {
         Callable callable;
@@ -147,9 +118,24 @@ void tst_QScopeGuard::constructionFromRvalue()
     }
     QCOMPARE(Callable::copied, 0);
     QCOMPARE(Callable::moved, 1);
-#else
-    QSKIP("This test requires C++17 Class Template Argument Deduction support enabled in the compiler.");
-#endif
+}
+
+void tst_QScopeGuard::optionalGuard()
+{
+    int i = 0;
+    auto lambda = [&] { ++i; };
+    std::optional sg = false ? std::optional{qScopeGuard(lambda)} : std::nullopt;
+    QVERIFY(!sg);
+    QCOMPARE(i, 0);
+    sg.emplace(qScopeGuard(lambda));
+    QVERIFY(sg);
+    sg->dismiss();
+    sg.reset();
+    QCOMPARE(i, 0);
+    sg.emplace(qScopeGuard(lambda));
+    QCOMPARE(i, 0);
+    sg.reset();
+    QCOMPARE(i, 1);
 }
 
 void tst_QScopeGuard::leavingScope()

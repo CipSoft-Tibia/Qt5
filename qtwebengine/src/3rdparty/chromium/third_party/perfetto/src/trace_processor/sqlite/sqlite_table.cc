@@ -16,25 +16,25 @@
 
 #include "src/trace_processor/sqlite/sqlite_table.h"
 
-#include <ctype.h>
-#include <inttypes.h>
 #include <string.h>
 #include <algorithm>
+#include <cinttypes>
 #include <map>
 
 #include "perfetto/base/logging.h"
+#include "src/trace_processor/tp_metatrace.h"
 
 namespace perfetto {
 namespace trace_processor {
 
 namespace {
 
-std::string TypeToString(SqlValue::Type type) {
+std::string TypeToSqlString(SqlValue::Type type) {
   switch (type) {
     case SqlValue::Type::kString:
-      return "STRING";
+      return "TEXT";
     case SqlValue::Type::kLong:
-      return "BIG INT";
+      return "BIGINT";
     case SqlValue::Type::kDouble:
       return "DOUBLE";
     case SqlValue::Type::kBytes:
@@ -43,6 +43,106 @@ std::string TypeToString(SqlValue::Type type) {
       PERFETTO_FATAL("Cannot map unknown column type");
   }
   PERFETTO_FATAL("Not reached");  // For gcc
+}
+
+std::string OpToDebugString(int op) {
+  switch (op) {
+    case SQLITE_INDEX_CONSTRAINT_EQ:
+      return "=";
+    case SQLITE_INDEX_CONSTRAINT_NE:
+      return "!=";
+    case SQLITE_INDEX_CONSTRAINT_GE:
+      return ">=";
+    case SQLITE_INDEX_CONSTRAINT_GT:
+      return ">";
+    case SQLITE_INDEX_CONSTRAINT_LE:
+      return "<=";
+    case SQLITE_INDEX_CONSTRAINT_LT:
+      return "<";
+    case SQLITE_INDEX_CONSTRAINT_LIKE:
+      return "like";
+    case SQLITE_INDEX_CONSTRAINT_ISNULL:
+      return "is null";
+    case SQLITE_INDEX_CONSTRAINT_ISNOTNULL:
+      return "is not null";
+    case SQLITE_INDEX_CONSTRAINT_GLOB:
+      return "glob";
+    case SQLITE_INDEX_CONSTRAINT_LIMIT:
+      return "limit";
+    case SQLITE_INDEX_CONSTRAINT_OFFSET:
+      return "offset";
+    case SqliteTable::CustomFilterOpcode::kSourceGeqOpCode:
+      return "source_geq";
+    default:
+      PERFETTO_FATAL("Operator to string conversion not impemented for %d", op);
+  }
+}
+
+void ConstraintsToString(const QueryConstraints& qc,
+                         const SqliteTable::Schema& schema,
+                         std::string& out) {
+  bool is_first = true;
+  for (const auto& cs : qc.constraints()) {
+    if (!is_first) {
+      out.append(",");
+    }
+    out.append(schema.columns()[static_cast<size_t>(cs.column)].name());
+    out.append(" ");
+    out.append(OpToDebugString(cs.op));
+    is_first = false;
+  }
+}
+
+void OrderByToString(const QueryConstraints& qc,
+                     const SqliteTable::Schema& schema,
+                     std::string& out) {
+  bool is_first = true;
+  for (const auto& ob : qc.order_by()) {
+    if (!is_first) {
+      out.append(",");
+    }
+    out.append(schema.columns()[static_cast<size_t>(ob.iColumn)].name());
+    out.append(" ");
+    out.append(std::to_string(ob.desc));
+    is_first = false;
+  }
+}
+
+std::string QcDebugStr(const QueryConstraints& qc,
+                       const SqliteTable::Schema& schema) {
+  std::string str_result;
+  str_result.reserve(512);
+
+  str_result.append("C");
+  str_result.append(std::to_string(qc.constraints().size()));
+  str_result.append(",");
+  ConstraintsToString(qc, schema, str_result);
+  str_result.append(";");
+
+  str_result.append("O");
+  str_result.append(std::to_string(qc.order_by().size()));
+  str_result.append(",");
+  OrderByToString(qc, schema, str_result);
+  str_result.append(";");
+
+  str_result.append("U");
+  str_result.append(std::to_string(qc.cols_used()));
+
+  return str_result;
+}
+
+void WriteQueryConstraintsToMetatrace(metatrace::Record* r,
+                                      const QueryConstraints& qc,
+                                      const SqliteTable::Schema& schema) {
+  r->AddArg("constraint_count", std::to_string(qc.constraints().size()));
+  std::string constraints;
+  ConstraintsToString(qc, schema, constraints);
+  r->AddArg("constraints", constraints);
+  r->AddArg("order_by_count", std::to_string(qc.order_by().size()));
+  std::string order_by;
+  OrderByToString(qc, schema, order_by);
+  r->AddArg("order_by", order_by);
+  r->AddArg("columns_used", std::to_string(qc.cols_used()));
 }
 
 }  // namespace
@@ -60,7 +160,7 @@ int SqliteTable::OpenInternal(sqlite3_vtab_cursor** ppCursor) {
 }
 
 int SqliteTable::BestIndexInternal(sqlite3_index_info* idx) {
-  QueryConstraints qc;
+  QueryConstraints qc(idx->colUsed);
 
   for (int i = 0; i < idx->nConstraint; i++) {
     const auto& cs = idx->aConstraint[i];
@@ -86,18 +186,6 @@ int SqliteTable::BestIndexInternal(sqlite3_index_info* idx) {
 
   ret = BestIndex(qc, &info);
 
-  // Although the SQLite documentation promises that if we return
-  // SQLITE_CONSTRAINT, it won't chose this query plan, in practice, this causes
-  // the entire query to be abandonned even if there is another query plan which
-  // would definitely work. For this reason, we reserve idxNum == INT_MAX for
-  // invalid constraints and just keep the default estimated cost (which should
-  // lead to the plan not being chosen). In xFilter, we can then return
-  // SQLITE_CONSTRAINT if this query plan is still chosen.
-  if (ret == SQLITE_CONSTRAINT) {
-    idx->idxNum = kInvalidConstraintsInBestIndexNum;
-    return SQLITE_OK;
-  }
-
   if (ret != SQLITE_OK)
     return ret;
 
@@ -120,12 +208,23 @@ int SqliteTable::BestIndexInternal(sqlite3_index_info* idx) {
     u.argvIndex = static_cast<int>(i) + 1;
   }
 
+  PERFETTO_TP_TRACE(
+      metatrace::Category::QUERY, "SQLITE_TABLE_BEST_INDEX",
+      [&](metatrace::Record* r) {
+        r->AddArg("name", name_);
+        WriteQueryConstraintsToMetatrace(r, qc, schema());
+        r->AddArg("order_by_consumed", std::to_string(idx->orderByConsumed));
+        r->AddArg("estimated_cost", std::to_string(idx->estimatedCost));
+        r->AddArg("estimated_rows",
+                  std::to_string(static_cast<int64_t>(idx->estimatedRows)));
+      });
+
   auto out_qc_str = qc.ToNewSqlite3String();
   if (SqliteTable::debug) {
     PERFETTO_LOG(
         "[%s::BestIndex] constraints=%s orderByConsumed=%d estimatedCost=%f "
         "estimatedRows=%" PRId64,
-        name_.c_str(), out_qc_str.get(), idx->orderByConsumed,
+        name_.c_str(), QcDebugStr(qc, schema()).c_str(), idx->orderByConsumed,
         idx->estimatedCost, static_cast<int64_t>(idx->estimatedRows));
   }
 
@@ -156,12 +255,21 @@ bool SqliteTable::ReadConstraints(int idxNum, const char* idxStr, int argc) {
     cache_hit = false;
   }
 
+  PERFETTO_TP_TRACE(metatrace::Category::QUERY, "SQLITE_TABLE_READ_CONSTRAINTS",
+                    [&](metatrace::Record* r) {
+                      r->AddArg("cache_hit", std::to_string(cache_hit));
+                      r->AddArg("name", name_);
+                      WriteQueryConstraintsToMetatrace(r, qc_cache_, schema_);
+                      r->AddArg("raw_constraints", idxStr);
+                      r->AddArg("argc", std::to_string(argc));
+                    });
+
   // Logging this every ReadConstraints just leads to log spam on joins making
   // it unusable. Instead, only print this out when we miss the cache (which
   // happens precisely when the constraint set from SQLite changes.)
   if (SqliteTable::debug && !cache_hit) {
     PERFETTO_LOG("[%s::ParseConstraints] constraints=%s argc=%d", name_.c_str(),
-                 idxStr, argc);
+                 QcDebugStr(qc_cache_, schema_).c_str(), argc);
   }
   return cache_hit;
 }
@@ -205,7 +313,7 @@ std::string SqliteTable::Schema::ToCreateTableStmt() const {
     stmt += " " + col.name();
 
     if (col.type() != SqlValue::Type::kNull) {
-      stmt += " " + TypeToString(col.type());
+      stmt += " " + TypeToSqlString(col.type());
     } else if (std::find(primary_keys_.begin(), primary_keys_.end(), i) !=
                primary_keys_.end()) {
       PERFETTO_FATAL("Unknown type for primary key column %s",

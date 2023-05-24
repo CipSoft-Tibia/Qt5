@@ -1,4 +1,4 @@
-# Copyright 2019 The PDFium Authors. All rights reserved.
+# Copyright 2019 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -23,21 +23,23 @@ source_set("layout") {
     "cxfa_viewlayoutprocessor.cpp",
     "cxfa_viewlayoutprocessor.h",
   ]
+  allow_circular_includes_from = [ "../../../fxjs" ]
+  configs += [
+    "../../../:pdfium_strict_config",
+    "../../../:pdfium_noshorten_config",
+    "../../:xfa_warnings",
+  ]
   deps = [
     "../../../core/fxcrt",
     "../../../fxjs",
     "../../../fxjs:gc",
     "../parser",
   ]
-  allow_circular_includes_from = [ "../../../fxjs" ]
-  configs += [
-    "../../../:pdfium_core_config",
-    "../../:xfa_warnings",
-  ]
   visibility = [ "../../../*" ]
 }
 
 pdfium_embeddertest_source_set("embeddertests") {
   sources = [ "cxfa_layoutitem_embeddertest.cpp" ]
+  deps = [ "../../../fxjs:gc" ]
   pdfium_root_dir = "../../../"
 }

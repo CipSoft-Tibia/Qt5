@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qabstractbutton_p.h"
 
@@ -44,16 +8,15 @@
 #endif
 #if QT_CONFIG(buttongroup)
 #include "qbuttongroup.h"
-#include "private/qapplication_p.h"
 #include "private/qbuttongroup_p.h"
 #endif
+#include "private/qapplication_p.h"
 #include "qabstractbutton_p.h"
 #include "qevent.h"
 #include "qpainter.h"
 #include "qapplication.h"
 #include "qstyle.h"
-#include "qaction.h"
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qaccessible.h"
 #endif
 #include <qpa/qplatformtheme.h>
@@ -192,7 +155,9 @@ QList<QAbstractButton *>QAbstractButtonPrivate::queryButtonList() const
         return group->d_func()->buttonList;
 #endif
 
-    QList<QAbstractButton*>candidates = parent->findChildren<QAbstractButton *>();
+    if (!parent)
+        return {};
+    QList<QAbstractButton *> candidates = parent->findChildren<QAbstractButton *>();
     if (autoExclusive) {
         auto isNoMemberOfMyAutoExclusiveGroup = [](QAbstractButton *candidate) {
             return !candidate->autoExclusive()
@@ -201,9 +166,7 @@ QList<QAbstractButton *>QAbstractButtonPrivate::queryButtonList() const
 #endif
                 ;
         };
-        candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
-                                        isNoMemberOfMyAutoExclusiveGroup),
-                         candidates.end());
+        candidates.removeIf(isNoMemberOfMyAutoExclusiveGroup);
     }
     return candidates;
 }
@@ -217,10 +180,10 @@ QAbstractButton *QAbstractButtonPrivate::queryCheckedButton() const
 
     Q_Q(const QAbstractButton);
     QList<QAbstractButton *> buttonList = queryButtonList();
-    if (!autoExclusive || buttonList.count() == 1) // no group
+    if (!autoExclusive || buttonList.size() == 1) // no group
         return nullptr;
 
-    for (int i = 0; i < buttonList.count(); ++i) {
+    for (int i = 0; i < buttonList.size(); ++i) {
         QAbstractButton *b = buttonList.at(i);
         if (b->d_func()->checked && b != q)
             return b;
@@ -264,7 +227,7 @@ void QAbstractButtonPrivate::moveFocus(int key)
     QPoint goal = target.center();
     uint focus_flag = qt_tab_all_widgets() ? Qt::TabFocus : Qt::StrongFocus;
 
-    for (int i = 0; i < buttonList.count(); ++i) {
+    for (int i = 0; i < buttonList.size(); ++i) {
         QAbstractButton *button = buttonList.at(i);
         if (button != f && button->window() == f->window() && button->isEnabled() && !button->isHidden() &&
             (exclusive || (button->focusPolicy() & focus_flag) == focus_flag)) {
@@ -347,7 +310,7 @@ void QAbstractButtonPrivate::fixFocusPolicy()
         return;
 
     QList<QAbstractButton *> buttonList = queryButtonList();
-    for (int i = 0; i < buttonList.count(); ++i) {
+    for (int i = 0; i < buttonList.size(); ++i) {
         QAbstractButton *b = buttonList.at(i);
         if (!b->isCheckable())
             continue;
@@ -416,15 +379,7 @@ void QAbstractButtonPrivate::emitClicked()
     emit q->clicked(checked);
 #if QT_CONFIG(buttongroup)
     if (guard && group) {
-        const int id = group->id(q);
-        emit group->idClicked(id);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        if (guard && group)
-            emit group->buttonClicked(id);
-QT_WARNING_POP
-#endif
+        emit group->idClicked(group->id(q));
         if (guard && group)
             emit group->buttonClicked(q);
     }
@@ -438,15 +393,7 @@ void QAbstractButtonPrivate::emitPressed()
     emit q->pressed();
 #if QT_CONFIG(buttongroup)
     if (guard && group) {
-        const int id = group->id(q);
-        emit group->idPressed(id);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        if (guard && group)
-            emit group->buttonPressed(id);
-QT_WARNING_POP
-#endif
+        emit group->idPressed(group->id(q));
         if (guard && group)
             emit group->buttonPressed(q);
     }
@@ -460,15 +407,7 @@ void QAbstractButtonPrivate::emitReleased()
     emit q->released();
 #if QT_CONFIG(buttongroup)
     if (guard && group) {
-        const int id = group->id(q);
-        emit group->idReleased(id);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        if (guard && group)
-            emit group->buttonReleased(id);
-QT_WARNING_POP
-#endif
+        emit group->idReleased(group->id(q));
         if (guard && group)
             emit group->buttonReleased(q);
     }
@@ -482,15 +421,7 @@ void QAbstractButtonPrivate::emitToggled(bool checked)
     emit q->toggled(checked);
 #if QT_CONFIG(buttongroup)
     if (guard && group) {
-        const int id = group->id(q);
-        emit group->idToggled(id, checked);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        if (guard && group)
-            emit group->buttonToggled(id, checked);
-QT_WARNING_POP
-#endif
+        emit group->idToggled(group->id(q), checked);
         if (guard && group)
             emit group->buttonToggled(q, checked);
     }
@@ -559,7 +490,7 @@ void QAbstractButton::setText(const QString &text)
     d->sizeHint = QSize();
     update();
     updateGeometry();
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessibleEvent event(this, QAccessible::NameChanged);
     QAccessible::updateAccessibility(&event);
 #endif
@@ -682,12 +613,13 @@ void QAbstractButton::setChecked(bool checked)
     if (guard)
         d->emitToggled(checked);
 
-
-#ifndef QT_NO_ACCESSIBILITY
-    QAccessible::State s;
-    s.checked = true;
-    QAccessibleStateChangeEvent event(this, s);
-    QAccessible::updateAccessibility(&event);
+#if QT_CONFIG(accessibility)
+    if (guard) {
+        QAccessible::State s;
+        s.checked = true;
+        QAccessibleStateChangeEvent event(this, s);
+        QAccessible::updateAccessibility(&event);
+    }
 #endif
 }
 
@@ -852,7 +784,7 @@ QButtonGroup *QAbstractButton::group() const
 
 /*!
 Performs an animated click: the button is pressed immediately, and
-released \a msec milliseconds later (the default is 100 ms).
+released 100ms later.
 
 Calling this function again before the button is released resets
 the release timer.
@@ -863,7 +795,7 @@ This function does nothing if the button is \l{setEnabled()}{disabled.}
 
 \sa click()
 */
-void QAbstractButton::animateClick(int msec)
+void QAbstractButton::animateClick()
 {
     if (!isEnabled())
         return;
@@ -874,7 +806,7 @@ void QAbstractButton::animateClick(int msec)
     repaint();
     if (!d->animateTimer.isActive())
         d->emitPressed();
-    d->animateTimer.start(msec, this);
+    d->animateTimer.start(100, this);
 }
 
 /*!
@@ -973,9 +905,6 @@ bool QAbstractButton::event(QEvent *e)
         case QEvent::HoverEnter:
         case QEvent::HoverLeave:
         case QEvent::ContextMenu:
-#if QT_CONFIG(wheelevent)
-        case QEvent::Wheel:
-#endif
             return true;
         default:
             break;
@@ -1010,7 +939,7 @@ void QAbstractButton::mousePressEvent(QMouseEvent *e)
         e->ignore();
         return;
     }
-    if (hitButton(e->pos())) {
+    if (hitButton(e->position().toPoint())) {
         setDown(true);
         d->pressed = true;
         repaint();
@@ -1040,7 +969,7 @@ void QAbstractButton::mouseReleaseEvent(QMouseEvent *e)
         return;
     }
 
-    if (hitButton(e->pos())) {
+    if (hitButton(e->position().toPoint())) {
         d->repeatTimer.stop();
         d->click();
         e->accept();
@@ -1059,7 +988,7 @@ void QAbstractButton::mouseMoveEvent(QMouseEvent *e)
         return;
     }
 
-    if (hitButton(e->pos()) != d->down) {
+    if (hitButton(e->position().toPoint()) != d->down) {
         setDown(!d->down);
         repaint();
         if (d->down)
@@ -1067,7 +996,7 @@ void QAbstractButton::mouseMoveEvent(QMouseEvent *e)
         else
             d->emitReleased();
         e->accept();
-    } else if (!hitButton(e->pos())) {
+    } else if (!hitButton(e->position().toPoint())) {
         e->ignore();
     }
 }
@@ -1078,7 +1007,7 @@ void QAbstractButton::keyPressEvent(QKeyEvent *e)
     Q_D(QAbstractButton);
     bool next = true;
 
-    const auto key = static_cast<Qt::Key>(e->key());
+    const auto key = e->key();
     const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
                                          ->themeHint(QPlatformTheme::ButtonPressKeys)
                                          .value<QList<Qt::Key>>();
@@ -1119,7 +1048,7 @@ void QAbstractButton::keyPressEvent(QKeyEvent *e)
             // cleaned up when fixing task 194373. It's here to ensure that we
             // keep compatibility outside QAbstractItemView.
             d->moveFocus(e->key());
-            if (hasFocus()) // nothing happend, propagate
+            if (hasFocus()) // nothing happened, propagate
                 e->ignore();
         } else {
             // Prefer parent widget, use this if parent is absent
@@ -1157,7 +1086,7 @@ void QAbstractButton::keyReleaseEvent(QKeyEvent *e)
     const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
                                          ->themeHint(QPlatformTheme::ButtonPressKeys)
                                          .value<QList<Qt::Key>>();
-    if (buttonPressKeys.contains(static_cast<Qt::Key>(e->key())) && !e->isAutoRepeat() && d->down) {
+    if (buttonPressKeys.contains(e->key()) && !e->isAutoRepeat() && d->down) {
         d->click();
         return;
     }

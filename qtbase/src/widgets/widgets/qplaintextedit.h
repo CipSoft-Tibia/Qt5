@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLAINTEXTEDIT_H
 #define QPLAINTEXTEDIT_H
@@ -74,12 +38,10 @@ class Q_WIDGETS_EXPORT QPlainTextEdit : public QAbstractScrollArea
     Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly)
     Q_PROPERTY(QString plainText READ toPlainText WRITE setPlainText NOTIFY textChanged USER true)
     Q_PROPERTY(bool overwriteMode READ overwriteMode WRITE setOverwriteMode)
-#if QT_DEPRECATED_SINCE(5, 10)
-    Q_PROPERTY(int tabStopWidth READ tabStopWidth WRITE setTabStopWidth)
-#endif
     Q_PROPERTY(qreal tabStopDistance READ tabStopDistance WRITE setTabStopDistance)
     Q_PROPERTY(int cursorWidth READ cursorWidth WRITE setCursorWidth)
-    Q_PROPERTY(Qt::TextInteractionFlags textInteractionFlags READ textInteractionFlags WRITE setTextInteractionFlags)
+    Q_PROPERTY(Qt::TextInteractionFlags textInteractionFlags READ textInteractionFlags
+               WRITE setTextInteractionFlags)
     Q_PROPERTY(int blockCount READ blockCount)
     Q_PROPERTY(int maximumBlockCount READ maximumBlockCount WRITE setMaximumBlockCount)
     Q_PROPERTY(bool backgroundVisible READ backgroundVisible WRITE setBackgroundVisible)
@@ -147,9 +109,6 @@ public:
     bool centerOnScroll() const;
 
     bool find(const QString &exp, QTextDocument::FindFlags options = QTextDocument::FindFlags());
-#ifndef QT_NO_REGEXP
-    bool find(const QRegExp &exp, QTextDocument::FindFlags options = QTextDocument::FindFlags());
-#endif
 #if QT_CONFIG(regularexpression)
     bool find(const QRegularExpression &exp, QTextDocument::FindFlags options = QTextDocument::FindFlags());
 #endif
@@ -173,11 +132,6 @@ public:
 
     bool overwriteMode() const;
     void setOverwriteMode(bool overwrite);
-
-#if QT_DEPRECATED_SINCE(5, 10)
-    QT_DEPRECATED int tabStopWidth() const;
-    QT_DEPRECATED void setTabStopWidth(int width);
-#endif
 
     qreal tabStopDistance() const;
     void setTabStopDistance(qreal distance);
@@ -286,11 +240,6 @@ protected:
 
 private:
     Q_DISABLE_COPY(QPlainTextEdit)
-    Q_PRIVATE_SLOT(d_func(), void _q_repaintContents(const QRectF &r))
-    Q_PRIVATE_SLOT(d_func(), void _q_textChanged())
-    Q_PRIVATE_SLOT(d_func(), void _q_adjustScrollbars())
-    Q_PRIVATE_SLOT(d_func(), void _q_verticalScrollbarActionTriggered(int))
-    Q_PRIVATE_SLOT(d_func(), void _q_cursorPositionChanged())
 
     friend class QPlainTextEditControl;
 };

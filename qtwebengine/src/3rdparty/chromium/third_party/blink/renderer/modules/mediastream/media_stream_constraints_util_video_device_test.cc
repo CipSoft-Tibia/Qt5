@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 #include <algorithm>
 #include <utility>
 
-#include "base/optional.h"
 #include "media/base/limits.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/web/modules/mediastream/media_stream_video_source.h"
+#include "third_party/blink/renderer/modules/mediastream/media_constraints.h"
 #include "third_party/blink/renderer/modules/mediastream/mock_constraint_factory.h"
-#include "third_party/blink/renderer/platform/mediastream/media_constraints.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
@@ -31,12 +32,6 @@ const char kGroupID3[] = "fake_group_3";
 const char kGroupID4[] = "fake_group_4";
 const char kGroupID5[] = "fake_group_5";
 
-const std::vector<DoubleConstraint MediaTrackConstraintSetPlatform::*>
-    kPanTiltZoomConstraints = {
-        &MediaTrackConstraintSetPlatform::pan,
-        &MediaTrackConstraintSetPlatform::tilt,
-        &MediaTrackConstraintSetPlatform::zoom,
-};
 
 void CheckTrackAdapterSettingsEqualsResolution(
     const VideoCaptureSettings& settings) {
@@ -49,7 +44,7 @@ void CheckTrackAdapterSettingsEqualsResolution(
 
 void CheckTrackAdapterSettingsEqualsFrameRate(
     const VideoCaptureSettings& settings,
-    double value = 0.0) {
+    absl::optional<double> value = absl::nullopt) {
   EXPECT_EQ(value, settings.track_adapter_settings().max_frame_rate());
 }
 
@@ -82,7 +77,7 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
     VideoInputDeviceCapabilities device;
     device.device_id = kDeviceID1;
     device.group_id = kGroupID1;
-    device.facing_mode = media::MEDIA_VIDEO_FACING_NONE;
+    device.facing_mode = mojom::blink::FacingMode::NONE;
     device.formats = {
         media::VideoCaptureFormat(gfx::Size(200, 200), 40.0f,
                                   media::PIXEL_FORMAT_I420),
@@ -100,7 +95,7 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
     // A low-resolution device.
     device.device_id = kDeviceID2;
     device.group_id = kGroupID2;
-    device.facing_mode = media::MEDIA_VIDEO_FACING_ENVIRONMENT;
+    device.facing_mode = mojom::blink::FacingMode::ENVIRONMENT;
     device.formats = {
         media::VideoCaptureFormat(gfx::Size(40, 30), 20.0f,
                                   media::PIXEL_FORMAT_I420),
@@ -123,7 +118,7 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
     // A high-resolution device.
     device.device_id = kDeviceID3;
     device.group_id = kGroupID3;
-    device.facing_mode = media::MEDIA_VIDEO_FACING_USER;
+    device.facing_mode = mojom::blink::FacingMode::USER;
     device.formats = {
         media::VideoCaptureFormat(gfx::Size(600, 400), 10.0f,
                                   media::PIXEL_FORMAT_I420),
@@ -157,7 +152,7 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
     // A depth capture device.
     device.device_id = kDeviceID4;
     device.group_id = kGroupID4;
-    device.facing_mode = media::MEDIA_VIDEO_FACING_ENVIRONMENT;
+    device.facing_mode = mojom::blink::FacingMode::ENVIRONMENT;
     device.formats = {media::VideoCaptureFormat(gfx::Size(640, 480), 30.0f,
                                                 media::PIXEL_FORMAT_Y16)};
     device.control_support.pan = true;
@@ -169,7 +164,7 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
     // be supported if no constraints are placed on the frame rate.
     device.device_id = kDeviceID5;
     device.group_id = kGroupID5;
-    device.facing_mode = media::MEDIA_VIDEO_FACING_NONE;
+    device.facing_mode = mojom::blink::FacingMode::NONE;
     device.formats = {
         media::VideoCaptureFormat(
             gfx::Size(MediaStreamVideoSource::kDefaultWidth,
@@ -184,9 +179,9 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
     capabilities_.device_capabilities.push_back(std::move(device));
 
     capabilities_.noise_reduction_capabilities = {
-        base::Optional<bool>(),
-        base::Optional<bool>(true),
-        base::Optional<bool>(false),
+        absl::optional<bool>(),
+        absl::optional<bool>(true),
+        absl::optional<bool>(false),
     };
 
     default_device_ = &capabilities_.device_capabilities[0];
@@ -203,6 +198,15 @@ class MediaStreamConstraintsUtilVideoDeviceTest : public testing::Test {
   VideoCaptureSettings SelectSettings() {
     MediaConstraints constraints = constraint_factory_.CreateMediaConstraints();
     return SelectSettingsVideoDeviceCapture(capabilities_, constraints);
+  }
+
+  static WTF::Vector<DoubleConstraint MediaTrackConstraintSetPlatform::*>
+  PanTiltZoomConstraints() {
+    return {
+        &MediaTrackConstraintSetPlatform::pan,
+        &MediaTrackConstraintSetPlatform::tilt,
+        &MediaTrackConstraintSetPlatform::zoom,
+    };
   }
 
   VideoDeviceCaptureCapabilities capabilities_;
@@ -228,7 +232,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, Unconstrained) {
   EXPECT_EQ(default_device_->device_id.Utf8(), result.device_id());
   EXPECT_EQ(*default_closest_format_, result.Format());
   // Should select default settings for other constraints.
-  EXPECT_EQ(base::Optional<bool>(), result.noise_reduction());
+  EXPECT_EQ(absl::optional<bool>(), result.noise_reduction());
 }
 
 // The "Overconstrained" tests verify that failure of any single required
@@ -289,16 +293,6 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
   auto result = SelectSettings();
   EXPECT_FALSE(result.HasValue());
   EXPECT_EQ(constraint_factory_.basic().resize_mode.GetName(),
-            result.failed_constraint_name());
-}
-
-TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, OverconstrainedOnVideoKind) {
-  constraint_factory_.Reset();
-  // No device in |capabilities_| has video kind infrared.
-  constraint_factory_.basic().video_kind.SetExact("infrared");
-  auto result = SelectSettings();
-  EXPECT_FALSE(result.HasValue());
-  EXPECT_EQ(constraint_factory_.basic().video_kind.GetName(),
             result.failed_constraint_name());
 }
 
@@ -405,13 +399,13 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
   VideoDeviceCaptureCapabilities capabilities;
   VideoInputDeviceCapabilities device;
   device.device_id = kDeviceID1;
-  device.facing_mode = media::MEDIA_VIDEO_FACING_NONE;
+  device.facing_mode = mojom::blink::FacingMode::NONE;
   device.formats = {
       media::VideoCaptureFormat(gfx::Size(200, 200), 40.0f,
                                 media::PIXEL_FORMAT_I420),
   };
   capabilities.device_capabilities.push_back(std::move(device));
-  capabilities.noise_reduction_capabilities = {base::Optional<bool>(false)};
+  capabilities.noise_reduction_capabilities = {absl::optional<bool>(false)};
 
   constraint_factory_.Reset();
   constraint_factory_.basic().goog_noise_reduction.SetExact(true);
@@ -424,7 +418,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
        OverconstrainedOnMandatoryPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     constraint_factory_.basic().device_id.SetExact(default_device_->device_id);
     (constraint_factory_.basic().*constraint).SetMin(1);
@@ -505,7 +499,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryFacingMode) {
   // Only the low-res device supports environment facing mode. Should select
   // default settings for everything else.
   EXPECT_EQ(low_res_device_->device_id.Utf8(), result.device_id());
-  EXPECT_EQ(media::MEDIA_VIDEO_FACING_ENVIRONMENT,
+  EXPECT_EQ(mojom::blink::FacingMode::ENVIRONMENT,
             low_res_device_->facing_mode);
   EXPECT_EQ(*low_res_closest_format_, result.Format());
   CheckTrackAdapterSettingsEqualsFormat(result);
@@ -516,24 +510,8 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryFacingMode) {
   // Only the high-res device supports user facing mode. Should select default
   // settings for everything else.
   EXPECT_EQ(high_res_device_->device_id.Utf8(), result.device_id());
-  EXPECT_EQ(media::MEDIA_VIDEO_FACING_USER, high_res_device_->facing_mode);
+  EXPECT_EQ(mojom::blink::FacingMode::USER, high_res_device_->facing_mode);
   EXPECT_EQ(*high_res_closest_format_, result.Format());
-  CheckTrackAdapterSettingsEqualsFormat(result);
-}
-
-TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryVideoKind) {
-  constraint_factory_.Reset();
-  constraint_factory_.basic().video_kind.SetExact("depth");
-  auto result = SelectSettings();
-  EXPECT_TRUE(result.HasValue());
-  EXPECT_EQ(kDeviceID4, result.device_id());
-  EXPECT_EQ(media::PIXEL_FORMAT_Y16, result.Format().pixel_format);
-  CheckTrackAdapterSettingsEqualsFormat(result);
-
-  constraint_factory_.basic().video_kind.SetExact("color");
-  result = SelectSettings();
-  EXPECT_TRUE(result.HasValue());
-  EXPECT_EQ(default_device_->device_id.Utf8(), result.device_id());
   CheckTrackAdapterSettingsEqualsFormat(result);
 }
 
@@ -1140,7 +1118,8 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryMaxFrameRate) {
   // MaxFrameRate greater than the maximum allowed.
   {
     constraint_factory_.Reset();
-    const double kMaxFrameRate = media::limits::kMaxFramesPerSecond + 0.1;
+    const double kMaxFrameRate =
+        static_cast<double>(media::limits::kMaxFramesPerSecond) + 0.1;
     constraint_factory_.basic().frame_rate.SetMax(kMaxFrameRate);
     auto result = SelectSettings();
     EXPECT_TRUE(result.HasValue());
@@ -1882,7 +1861,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, TwoIdealResizeValues) {
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryExactPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetExact(3);
     auto result = SelectSettings();
@@ -1900,7 +1879,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryExactPanTiltZoom) {
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryMinPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetMin(2);
     auto result = SelectSettings();
@@ -1918,7 +1897,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryMinPanTiltZoom) {
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryMaxPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetMax(4);
     auto result = SelectSettings();
@@ -1936,7 +1915,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryMaxPanTiltZoom) {
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryPanTiltZoomRange) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetMin(2);
     (constraint_factory_.basic().*constraint).SetMax(4);
@@ -1955,7 +1934,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, MandatoryPanTiltZoomRange) {
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, IdealPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetIdeal(3);
     auto result = SelectSettings();
@@ -1973,7 +1952,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, IdealPanTiltZoom) {
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, PresentPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetIsPresent(true);
     auto result = SelectSettings();
@@ -1992,7 +1971,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
   VideoDeviceCaptureCapabilities capabilities;
   VideoInputDeviceCapabilities device;
   device.device_id = kDeviceID1;
-  device.facing_mode = media::MEDIA_VIDEO_FACING_NONE;
+  device.facing_mode = mojom::blink::FacingMode::NONE;
   device.formats = {
       media::VideoCaptureFormat(gfx::Size(200, 200), 40.0f,
                                 media::PIXEL_FORMAT_I420),
@@ -2002,12 +1981,12 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
   device.control_support.zoom = false;
   capabilities.device_capabilities.push_back(std::move(device));
   capabilities.noise_reduction_capabilities = {
-      base::Optional<bool>(),
-      base::Optional<bool>(true),
-      base::Optional<bool>(false),
+      absl::optional<bool>(),
+      absl::optional<bool>(true),
+      absl::optional<bool>(false),
   };
 
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetIsPresent(true);
     auto constraints = constraint_factory_.CreateMediaConstraints();
@@ -2588,7 +2567,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
        AdvancedContradictoryPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
 
     MediaTrackConstraintSetPlatform& advanced1 =
@@ -2661,7 +2640,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
   // Height gets adjusted as well to maintain the aspect ratio.
   EXPECT_EQ(result.track_adapter_settings().target_height(), 479);
   // Using native frame rate because the advanced set is ignored.
-  EXPECT_EQ(result.track_adapter_settings().max_frame_rate(), 0.0);
+  EXPECT_EQ(result.track_adapter_settings().max_frame_rate(), absl::nullopt);
 
   // The low-res device at 640x480@30Hz is the
   EXPECT_EQ(result.device_id(), low_res_device_->device_id.Utf8());
@@ -2671,7 +2650,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
 }
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest, AdvancedPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     constraint_factory_.basic().device_id.SetExact(default_device_->device_id);
     MediaTrackConstraintSetPlatform& advanced =
@@ -2713,7 +2692,7 @@ TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
 
 TEST_F(MediaStreamConstraintsUtilVideoDeviceTest,
        BasicContradictoryPanTiltZoom) {
-  for (auto& constraint : kPanTiltZoomConstraints) {
+  for (auto& constraint : PanTiltZoomConstraints()) {
     constraint_factory_.Reset();
     (constraint_factory_.basic().*constraint).SetMin(4);
     (constraint_factory_.basic().*constraint).SetMax(2);

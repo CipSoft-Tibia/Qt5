@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/macros.h"
 #include "mojo/public/cpp/base/file_path_mojom_traits.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/display/display.h"
@@ -33,6 +32,9 @@ constexpr int64_t kDisplayId1 = 123;
 constexpr int64_t kDisplayId2 = 456;
 constexpr int64_t kDisplayId3 = 789;
 
+#define DRM_FORMAT_ARGB8888 0x34325241
+#define DRM_FORMAT_MOD_INVALID ((1ULL << 56) - 1)
+
 void CheckDisplaysEqual(const Display& input, const Display& output) {
   EXPECT_NE(&input, &output);  // Make sure they aren't the same object.
   EXPECT_EQ(input.id(), output.id());
@@ -48,6 +50,14 @@ void CheckDisplaysEqual(const Display& input, const Display& output) {
   EXPECT_EQ(input.depth_per_component(), output.depth_per_component());
   EXPECT_EQ(input.is_monochrome(), output.is_monochrome());
   EXPECT_EQ(input.display_frequency(), output.display_frequency());
+  EXPECT_EQ(input.label(), output.label());
+
+#if BUILDFLAG(IS_CHROMEOS)
+  EXPECT_EQ(input.GetDRMFormatsAndModifiers(),
+            output.GetDRMFormatsAndModifiers());
+#else
+  EXPECT_EQ(output.GetDRMFormatsAndModifiers(), DrmFormatsAndModifiers());
+#endif
 }
 
 void CheckDisplayLayoutsEqual(const DisplayLayout& input,
@@ -77,9 +87,13 @@ void CheckDisplaySnapShotMojoEqual(const DisplaySnapshot& input,
   // was correctly serialized and deserialized.
   EXPECT_NE(&input, &output);  // Make sure they aren't the same object.
   EXPECT_EQ(input.display_id(), output.display_id());
+  EXPECT_EQ(input.port_display_id(), output.port_display_id());
+  EXPECT_EQ(input.edid_display_id(), output.edid_display_id());
   EXPECT_EQ(input.origin(), output.origin());
   EXPECT_EQ(input.physical_size(), output.physical_size());
   EXPECT_EQ(input.type(), output.type());
+  EXPECT_EQ(input.base_connector_id(), output.base_connector_id());
+  EXPECT_EQ(input.path_topology(), output.path_topology());
   EXPECT_EQ(input.is_aspect_preserving_scaling(),
             output.is_aspect_preserving_scaling());
   EXPECT_EQ(input.has_overscan(), output.has_overscan());
@@ -103,6 +117,16 @@ void CheckDisplaySnapShotMojoEqual(const DisplaySnapshot& input,
   CheckDisplayModesEqual(input.native_mode(), output.native_mode());
 
   EXPECT_EQ(input.maximum_cursor_size(), output.maximum_cursor_size());
+  EXPECT_EQ(input.color_space(), output.color_space());
+  EXPECT_EQ(input.bits_per_channel(), output.bits_per_channel());
+  EXPECT_EQ(input.hdr_static_metadata(), output.hdr_static_metadata());
+
+#if BUILDFLAG(IS_CHROMEOS)
+  EXPECT_EQ(input.GetDRMFormatsAndModifiers(),
+            output.GetDRMFormatsAndModifiers());
+#else
+  EXPECT_EQ(output.GetDRMFormatsAndModifiers(), DrmFormatsAndModifiers());
+#endif
 }
 
 // Test StructTrait serialization and deserialization for copyable type. |input|
@@ -145,6 +169,12 @@ TEST(DisplayStructTraitsTest, SetAllDisplayValues) {
   input.set_depth_per_component(input.depth_per_component() + 1);
   input.set_is_monochrome(!input.is_monochrome());
   input.set_display_frequency(input.display_frequency() + 1);
+  input.set_label("Internal Display");
+
+  DrmFormatsAndModifiers drm_formats_and_modifiers;
+  drm_formats_and_modifiers.emplace(
+      DRM_FORMAT_ARGB8888, std::vector<uint64_t>({DRM_FORMAT_MOD_INVALID}));
+  input.SetDRMFormatsAndModifiers(drm_formats_and_modifiers);
 
   Display output;
   SerializeAndDeserialize<mojom::Display>(input, &output);
@@ -250,22 +280,30 @@ TEST(DisplayStructTraitsTest, BasicGammaRampRGBEntry) {
 // One display mode, current and native mode nullptr.
 TEST(DisplayStructTraitsTest, DisplaySnapshotCurrentAndNativeModesNull) {
   // Prepare sample input with random values.
-  const int64_t display_id = 7;
+  const int64_t port_display_id = 7;
+  const int64_t edid_display_id = 19;
+  const uint16_t connector_index = 0x0001;
   const gfx::Point origin(1, 2);
   const gfx::Size physical_size(5, 9);
   const gfx::Size maximum_cursor_size(3, 5);
   const DisplayConnectionType type = DISPLAY_CONNECTION_TYPE_DISPLAYPORT;
+  const uint64_t base_connector_id = 1u;
+  const std::vector<uint64_t> path_topology{};
   const bool is_aspect_preserving_scaling = true;
   const bool has_overscan = true;
   const PrivacyScreenState privacy_screen_state = kEnabled;
+  const bool has_content_protection_key = false;
   const bool has_color_correction_matrix = true;
   const bool color_correction_in_linear_space = true;
   const gfx::ColorSpace display_color_space = gfx::ColorSpace::CreateREC709();
   const int32_t bits_per_channel = 8;
+  const gfx::HDRStaticMetadata hdr_static_metadata(100.0, 80.0, 0.0);
   const std::string display_name("whatever display_name");
   const base::FilePath sys_path = base::FilePath::FromUTF8Unsafe("a/cb");
   const int64_t product_code = 19;
   const int32_t year_of_manufacture = 1776;
+  const VariableRefreshRateState variable_refresh_rate_state = kVrrEnabled;
+  const gfx::Range vertical_display_range_limits({48, 120});
 
   const DisplayMode display_mode(gfx::Size(13, 11), true, 40.0f);
 
@@ -276,13 +314,20 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotCurrentAndNativeModesNull) {
   const DisplayMode* native_mode = nullptr;
   const std::vector<uint8_t> edid = {1};
 
+  DrmFormatsAndModifiers drm_formats_and_modifiers;
+  drm_formats_and_modifiers.emplace(
+      DRM_FORMAT_ARGB8888, std::vector<uint64_t>({DRM_FORMAT_MOD_INVALID}));
+
   std::unique_ptr<DisplaySnapshot> input = std::make_unique<DisplaySnapshot>(
-      display_id, origin, physical_size, type, is_aspect_preserving_scaling,
-      has_overscan, privacy_screen_state, has_color_correction_matrix,
+      port_display_id, port_display_id, edid_display_id, connector_index,
+      origin, physical_size, type, base_connector_id, path_topology,
+      is_aspect_preserving_scaling, has_overscan, privacy_screen_state,
+      has_content_protection_key, has_color_correction_matrix,
       color_correction_in_linear_space, display_color_space, bits_per_channel,
-      display_name, sys_path, std::move(modes), PanelOrientation::kNormal, edid,
-      current_mode, native_mode, product_code, year_of_manufacture,
-      maximum_cursor_size);
+      hdr_static_metadata, display_name, sys_path, std::move(modes),
+      PanelOrientation::kNormal, edid, current_mode, native_mode, product_code,
+      year_of_manufacture, maximum_cursor_size, variable_refresh_rate_state,
+      vertical_display_range_limits, std::move(drm_formats_and_modifiers));
 
   std::unique_ptr<DisplaySnapshot> output;
   SerializeAndDeserialize<mojom::DisplaySnapshot>(input->Clone(), &output);
@@ -293,22 +338,30 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotCurrentAndNativeModesNull) {
 // One display mode that is the native mode and no current mode.
 TEST(DisplayStructTraitsTest, DisplaySnapshotCurrentModeNull) {
   // Prepare sample input with random values.
-  const int64_t display_id = 6;
+  const int64_t port_display_id = 6;
+  const int64_t edid_display_id = 17;
+  const uint16_t connector_index = 0x0101;
   const gfx::Point origin(11, 32);
   const gfx::Size physical_size(55, 49);
   const gfx::Size maximum_cursor_size(13, 95);
   const DisplayConnectionType type = DISPLAY_CONNECTION_TYPE_VGA;
+  const uint64_t base_connector_id = 1u;
+  const std::vector<uint64_t> path_topology{};
   const bool is_aspect_preserving_scaling = true;
   const bool has_overscan = true;
   const PrivacyScreenState privacy_screen_state = kEnabled;
+  const bool has_content_protection_key = false;
   const bool has_color_correction_matrix = true;
   const bool color_correction_in_linear_space = true;
   const gfx::ColorSpace display_color_space = gfx::ColorSpace::CreateREC709();
   const uint32_t bits_per_channel = 8u;
+  const gfx::HDRStaticMetadata hdr_static_metadata(100.0, 80.0, 0.0);
   const std::string display_name("whatever display_name");
   const base::FilePath sys_path = base::FilePath::FromUTF8Unsafe("z/b");
   const int64_t product_code = 9;
   const int32_t year_of_manufacture = 1776;
+  const VariableRefreshRateState variable_refresh_rate_state = kVrrEnabled;
+  const gfx::Range vertical_display_range_limits({48, 120});
 
   const DisplayMode display_mode(gfx::Size(13, 11), true, 50.0f);
 
@@ -319,13 +372,20 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotCurrentModeNull) {
   const DisplayMode* native_mode = modes[0].get();
   const std::vector<uint8_t> edid = {1};
 
+  DrmFormatsAndModifiers drm_formats_and_modifiers;
+  drm_formats_and_modifiers.emplace(
+      DRM_FORMAT_ARGB8888, std::vector<uint64_t>({DRM_FORMAT_MOD_INVALID}));
+
   std::unique_ptr<DisplaySnapshot> input = std::make_unique<DisplaySnapshot>(
-      display_id, origin, physical_size, type, is_aspect_preserving_scaling,
-      has_overscan, privacy_screen_state, has_color_correction_matrix,
+      port_display_id, port_display_id, edid_display_id, connector_index,
+      origin, physical_size, type, base_connector_id, path_topology,
+      is_aspect_preserving_scaling, has_overscan, privacy_screen_state,
+      has_content_protection_key, has_color_correction_matrix,
       color_correction_in_linear_space, display_color_space, bits_per_channel,
-      display_name, sys_path, std::move(modes), PanelOrientation::kNormal, edid,
-      current_mode, native_mode, product_code, year_of_manufacture,
-      maximum_cursor_size);
+      hdr_static_metadata, display_name, sys_path, std::move(modes),
+      PanelOrientation::kNormal, edid, current_mode, native_mode, product_code,
+      year_of_manufacture, maximum_cursor_size, variable_refresh_rate_state,
+      vertical_display_range_limits, std::move(drm_formats_and_modifiers));
 
   std::unique_ptr<DisplaySnapshot> output;
   SerializeAndDeserialize<mojom::DisplaySnapshot>(input->Clone(), &output);
@@ -336,22 +396,30 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotCurrentModeNull) {
 // Multiple display modes, both native and current mode set.
 TEST(DisplayStructTraitsTest, DisplaySnapshotExternal) {
   // Prepare sample input from external display.
-  const int64_t display_id = 9834293210466051;
+  const int64_t port_display_id = 9834293210466051;
+  const int64_t edid_display_id = 1428;
+  const uint16_t connector_index = 0x0002;
   const gfx::Point origin(0, 1760);
   const gfx::Size physical_size(520, 320);
   const gfx::Size maximum_cursor_size(4, 5);
   const DisplayConnectionType type = DISPLAY_CONNECTION_TYPE_HDMI;
+  const uint64_t base_connector_id = 1u;
+  const std::vector<uint64_t> path_topology{};
   const bool is_aspect_preserving_scaling = false;
   const bool has_overscan = false;
   const PrivacyScreenState privacy_screen_state = kDisabled;
+  const bool has_content_protection_key = true;
   const bool has_color_correction_matrix = false;
   const bool color_correction_in_linear_space = false;
   const std::string display_name("HP Z24i");
   const gfx::ColorSpace display_color_space = gfx::ColorSpace::CreateSRGB();
   const uint32_t bits_per_channel = 8u;
+  const gfx::HDRStaticMetadata hdr_static_metadata(100.0, 80.0, 0.0);
   const base::FilePath sys_path = base::FilePath::FromUTF8Unsafe("a/cb");
   const int64_t product_code = 139;
   const int32_t year_of_manufacture = 2018;
+  const VariableRefreshRateState variable_refresh_rate_state = kVrrDisabled;
+  const gfx::Range vertical_display_range_limits({40, 144});
 
   const DisplayMode display_mode(gfx::Size(1024, 768), false, 60.0f);
   const DisplayMode display_current_mode(gfx::Size(1440, 900), false, 59.89f);
@@ -366,13 +434,20 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotExternal) {
   const DisplayMode* native_mode = modes[2].get();
   const std::vector<uint8_t> edid = {2, 3, 4, 5};
 
+  DrmFormatsAndModifiers drm_formats_and_modifiers;
+  drm_formats_and_modifiers.emplace(
+      DRM_FORMAT_ARGB8888, std::vector<uint64_t>({DRM_FORMAT_MOD_INVALID}));
+
   std::unique_ptr<DisplaySnapshot> input = std::make_unique<DisplaySnapshot>(
-      display_id, origin, physical_size, type, is_aspect_preserving_scaling,
-      has_overscan, privacy_screen_state, has_color_correction_matrix,
+      port_display_id, port_display_id, edid_display_id, connector_index,
+      origin, physical_size, type, base_connector_id, path_topology,
+      is_aspect_preserving_scaling, has_overscan, privacy_screen_state,
+      has_content_protection_key, has_color_correction_matrix,
       color_correction_in_linear_space, display_color_space, bits_per_channel,
-      display_name, sys_path, std::move(modes), PanelOrientation::kLeftUp, edid,
-      current_mode, native_mode, product_code, year_of_manufacture,
-      maximum_cursor_size);
+      hdr_static_metadata, display_name, sys_path, std::move(modes),
+      PanelOrientation::kLeftUp, edid, current_mode, native_mode, product_code,
+      year_of_manufacture, maximum_cursor_size, variable_refresh_rate_state,
+      vertical_display_range_limits, std::move(drm_formats_and_modifiers));
 
   std::unique_ptr<DisplaySnapshot> output;
   SerializeAndDeserialize<mojom::DisplaySnapshot>(input->Clone(), &output);
@@ -382,23 +457,30 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotExternal) {
 
 TEST(DisplayStructTraitsTest, DisplaySnapshotInternal) {
   // Prepare sample input from Pixel's internal display.
-  const int64_t display_id = 13761487533244416;
+  const int64_t port_display_id = 13761487533244416;
+  const int64_t edid_display_id = 39927;
+  const uint16_t connector_index = 0x0103;
   const gfx::Point origin(0, 0);
   const gfx::Size physical_size(270, 180);
   const gfx::Size maximum_cursor_size(64, 64);
   const DisplayConnectionType type = DISPLAY_CONNECTION_TYPE_INTERNAL;
+  const uint64_t base_connector_id = 1u;
+  const std::vector<uint64_t> path_topology{};
   const bool is_aspect_preserving_scaling = true;
   const bool has_overscan = false;
   const PrivacyScreenState privacy_screen_state = kNotSupported;
+  const bool has_content_protection_key = false;
   const bool has_color_correction_matrix = false;
   const bool color_correction_in_linear_space = false;
   const gfx::ColorSpace display_color_space =
       gfx::ColorSpace::CreateDisplayP3D65();
   const uint32_t bits_per_channel = 9u;
+  const gfx::HDRStaticMetadata hdr_static_metadata(200.0, 100.0, 0.0);
   const std::string display_name("");
   const base::FilePath sys_path;
   const int64_t product_code = 139;
   const int32_t year_of_manufacture = 2018;
+  const VariableRefreshRateState variable_refresh_rate_state = kVrrNotCapable;
 
   const DisplayMode display_mode(gfx::Size(2560, 1700), false, 95.96f);
 
@@ -409,13 +491,18 @@ TEST(DisplayStructTraitsTest, DisplaySnapshotInternal) {
   const DisplayMode* native_mode = modes[0].get();
   const std::vector<uint8_t> edid = {2, 3};
 
+  const DrmFormatsAndModifiers drm_formats_and_modifiers;
+
   std::unique_ptr<DisplaySnapshot> input = std::make_unique<DisplaySnapshot>(
-      display_id, origin, physical_size, type, is_aspect_preserving_scaling,
-      has_overscan, privacy_screen_state, has_color_correction_matrix,
+      port_display_id, port_display_id, edid_display_id, connector_index,
+      origin, physical_size, type, base_connector_id, path_topology,
+      is_aspect_preserving_scaling, has_overscan, privacy_screen_state,
+      has_content_protection_key, has_color_correction_matrix,
       color_correction_in_linear_space, display_color_space, bits_per_channel,
-      display_name, sys_path, std::move(modes), PanelOrientation::kRightUp,
-      edid, current_mode, native_mode, product_code, year_of_manufacture,
-      maximum_cursor_size);
+      hdr_static_metadata, display_name, sys_path, std::move(modes),
+      PanelOrientation::kRightUp, edid, current_mode, native_mode, product_code,
+      year_of_manufacture, maximum_cursor_size, variable_refresh_rate_state,
+      absl::nullopt, drm_formats_and_modifiers);
 
   std::unique_ptr<DisplaySnapshot> output;
   SerializeAndDeserialize<mojom::DisplaySnapshot>(input->Clone(), &output);

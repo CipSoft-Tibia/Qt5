@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,11 @@
 
 #include <utility>
 
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "media/gpu/windows/d3d11_copying_texture_wrapper.h"
+#include "media/gpu/windows/d3d11_picture_buffer.h"
 #include "media/gpu/windows/d3d11_texture_wrapper.h"
 #include "media/gpu/windows/d3d11_video_processor_proxy.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -27,7 +29,7 @@ class MockVideoProcessorProxy : public VideoProcessorProxy {
  public:
   MockVideoProcessorProxy() : VideoProcessorProxy(nullptr, nullptr) {}
 
-  Status Init(uint32_t width, uint32_t height) override {
+  D3D11Status Init(uint32_t width, uint32_t height) override {
     return MockInit(width, height);
   }
 
@@ -70,43 +72,54 @@ class MockVideoProcessorProxy : public VideoProcessorProxy {
     return MockVideoProcessorBlt();
   }
 
-  MOCK_METHOD2(MockInit, Status(uint32_t, uint32_t));
+  MOCK_METHOD2(MockInit, D3D11Status(uint32_t, uint32_t));
   MOCK_METHOD0(MockCreateVideoProcessorOutputView, HRESULT());
   MOCK_METHOD0(MockCreateVideoProcessorInputView, HRESULT());
   MOCK_METHOD0(MockVideoProcessorBlt, HRESULT());
 
   // Most recent arguments to SetStream/OutputColorSpace()/etc.
-  base::Optional<gfx::ColorSpace> last_stream_color_space_;
-  base::Optional<gfx::ColorSpace> last_output_color_space_;
-  base::Optional<DXGI_HDR_METADATA_HDR10> last_stream_metadata_;
-  base::Optional<DXGI_HDR_METADATA_HDR10> last_display_metadata_;
+  absl::optional<gfx::ColorSpace> last_stream_color_space_;
+  absl::optional<gfx::ColorSpace> last_output_color_space_;
+  absl::optional<DXGI_HDR_METADATA_HDR10> last_stream_metadata_;
+  absl::optional<DXGI_HDR_METADATA_HDR10> last_display_metadata_;
+
+ private:
+  ~MockVideoProcessorProxy() override = default;
 };
 
 class MockTexture2DWrapper : public Texture2DWrapper {
  public:
   MockTexture2DWrapper() {}
 
-  Status ProcessTexture(const gfx::ColorSpace& input_color_space,
-                        MailboxHolderArray* mailbox_dest,
-                        gfx::ColorSpace* output_color_space) override {
+  D3D11Status ProcessTexture(const gfx::ColorSpace& input_color_space,
+                             MailboxHolderArray* mailbox_dest,
+                             gfx::ColorSpace* output_color_space) override {
     // Pretend we created an arbitrary color space, so that we're sure that it
     // is returned from the copying wrapper.
     *output_color_space = gfx::ColorSpace::CreateHDR10();
     return MockProcessTexture();
   }
 
-  Status Init(scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner,
-              GetCommandBufferHelperCB get_helper_cb,
-              ComD3D11Texture2D in_texture,
-              size_t array_slice) override {
+  D3D11Status Init(scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner,
+                   GetCommandBufferHelperCB get_helper_cb,
+                   ComD3D11Texture2D in_texture,
+                   size_t array_slice,
+                   scoped_refptr<media::D3D11PictureBuffer> picture_buffer,
+                   PictureBufferGPUResourceInitDoneCB
+                       picture_buffer_gpu_resource_init_done_cb) override {
     gpu_task_runner_ = std::move(gpu_task_runner);
     return MockInit();
   }
 
-  MOCK_METHOD0(MockInit, Status());
-  MOCK_METHOD0(MockProcessTexture, Status());
+  D3D11Status BeginSharedImageAccess() override {
+    return MockBeginSharedImageAccess();
+  }
+
+  MOCK_METHOD0(MockInit, D3D11Status());
+  MOCK_METHOD0(MockProcessTexture, D3D11Status());
+  MOCK_METHOD0(MockBeginSharedImageAccess, D3D11Status());
   MOCK_METHOD1(SetStreamHDRMetadata,
-               void(const gl::HDRMetadata& stream_metadata));
+               void(const gfx::HDRMetadata& stream_metadata));
   MOCK_METHOD1(SetDisplayHDRMetadata,
                void(const DXGI_HDR_METADATA_HDR10& dxgi_display_metadata));
 
@@ -136,12 +149,13 @@ class D3D11CopyingTexture2DWrapperTest
     gpu_task_runner_ = task_environment_.GetMainThreadTaskRunner();
   }
 
-  std::unique_ptr<MockVideoProcessorProxy> ExpectProcessorProxy() {
-    auto result = std::make_unique<MockVideoProcessorProxy>();
+  scoped_refptr<MockVideoProcessorProxy> ExpectProcessorProxy() {
+    auto result = base::MakeRefCounted<MockVideoProcessorProxy>();
     ON_CALL(*result.get(), MockInit(_, _))
-        .WillByDefault(Return(GetProcessorProxyInit()
-                                  ? StatusCode::kOk
-                                  : StatusCode::kCodeOnlyForTesting));
+        .WillByDefault(
+            Return(GetProcessorProxyInit()
+                       ? D3D11Status::Codes::kOk
+                       : D3D11Status::Codes::kCreateVideoProcessorFailed));
 
     ON_CALL(*result.get(), MockCreateVideoProcessorOutputView())
         .WillByDefault(Return(GetCreateVideoProcessorOutputView()));
@@ -159,14 +173,16 @@ class D3D11CopyingTexture2DWrapperTest
     auto result = std::make_unique<MockTexture2DWrapper>();
 
     ON_CALL(*result.get(), MockInit())
-        .WillByDefault(Return(GetTextureWrapperInit()
-                                  ? StatusCode::kOk
-                                  : StatusCode::kCodeOnlyForTesting));
+        .WillByDefault(
+            Return(GetTextureWrapperInit()
+                       ? D3D11Status::Codes::kOk
+                       : D3D11Status::Codes::kCreateVideoProcessorFailed));
 
     ON_CALL(*result.get(), MockProcessTexture())
-        .WillByDefault(Return(GetProcessTexture()
-                                  ? StatusCode::kOk
-                                  : StatusCode::kCodeOnlyForTesting));
+        .WillByDefault(Return(
+            GetProcessTexture()
+                ? D3D11Status::Codes::kOk
+                : D3D11Status::Codes::kCreateVideoProcessorOutputViewFailed));
 
     return result;
   }
@@ -190,15 +206,15 @@ class D3D11CopyingTexture2DWrapperTest
   scoped_refptr<base::SingleThreadTaskRunner> gpu_task_runner_;
 };
 
-INSTANTIATE_TEST_CASE_P(CopyingTexture2DWrapperTest,
-                        D3D11CopyingTexture2DWrapperTest,
-                        Combine(Values(S_OK, E_FAIL),
-                                Values(S_OK, E_FAIL),
-                                Values(S_OK, E_FAIL),
-                                Bool(),
-                                Bool(),
-                                Bool(),
-                                Bool()));
+INSTANTIATE_TEST_SUITE_P(CopyingTexture2DWrapperTest,
+                         D3D11CopyingTexture2DWrapperTest,
+                         Combine(Values(S_OK, E_FAIL),
+                                 Values(S_OK, E_FAIL),
+                                 Values(S_OK, E_FAIL),
+                                 Bool(),
+                                 Bool(),
+                                 Bool(),
+                                 Bool()));
 
 // For ever potential return value combination for the D3D11VideoProcessor,
 // make sure that any failures result in a total failure.
@@ -209,23 +225,24 @@ TEST_P(D3D11CopyingTexture2DWrapperTest,
   MockVideoProcessorProxy* processor_raw = processor.get();
   // Provide an unlikely color space, to see if it gets to the video processor,
   // if we're not just doing a pass-through of the input.
-  base::Optional<gfx::ColorSpace> copy_color_space;
+  absl::optional<gfx::ColorSpace> copy_color_space;
   if (!GetPassthroughColorSpace())
     copy_color_space = gfx::ColorSpace::CreateDisplayP3D65();
   auto texture_wrapper = ExpectTextureWrapper();
   MockTexture2DWrapper* texture_wrapper_raw = texture_wrapper.get();
   auto wrapper = std::make_unique<CopyingTexture2DWrapper>(
-      size, std::move(texture_wrapper), std::move(processor), nullptr,
-      copy_color_space);
+      size, std::move(texture_wrapper), processor, nullptr, copy_color_space);
 
   // TODO: check |gpu_task_runner_|.
 
   MailboxHolderArray mailboxes;
-  gfx::ColorSpace input_color_space = gfx::ColorSpace::CreateSCRGBLinear();
+  gfx::ColorSpace input_color_space = gfx::ColorSpace::CreateSRGBLinear();
   gfx::ColorSpace output_color_space;
   EXPECT_EQ(wrapper
                 ->Init(gpu_task_runner_, CreateMockHelperCB(),
-                       /*texture_d3d=*/nullptr, /*array_slice=*/0)
+                       /*texture_d3d=*/nullptr, /*array_slice=*/0,
+                       /*picture_buffer=*/nullptr,
+                       /*gpu_resource_init_cb=*/base::DoNothing())
                 .is_ok(),
             InitSucceeds());
   task_environment_.RunUntilIdle();
@@ -256,17 +273,11 @@ TEST_P(D3D11CopyingTexture2DWrapperTest,
 }
 
 TEST_P(D3D11CopyingTexture2DWrapperTest, HDRMetadataIsSentToVideoProcessor) {
-  gl::HDRMetadata metadata;
-  metadata.mastering_metadata.primary_r =
-      gl::MasteringMetadata::Chromaticity(0.1, 0.2);
-  metadata.mastering_metadata.primary_g =
-      gl::MasteringMetadata::Chromaticity(0.3, 0.4);
-  metadata.mastering_metadata.primary_b =
-      gl::MasteringMetadata::Chromaticity(0.5, 0.6);
-  metadata.mastering_metadata.white_point =
-      gl::MasteringMetadata::Chromaticity(0.7, 0.8);
-  metadata.mastering_metadata.luminance_max = 0.9;
-  metadata.mastering_metadata.luminance_min = 0.05;
+  gfx::HDRMetadata metadata;
+  metadata.color_volume_metadata.primaries = {0.1f, 0.2f, 0.3f, 0.4f,
+                                              0.5f, 0.6f, 0.7f, 0.8f};
+  metadata.color_volume_metadata.luminance_max = 0.9;
+  metadata.color_volume_metadata.luminance_min = 0.05;
   metadata.max_content_light_level = 1000;
   metadata.max_frame_average_light_level = 10000;
 
@@ -274,7 +285,7 @@ TEST_P(D3D11CopyingTexture2DWrapperTest, HDRMetadataIsSentToVideoProcessor) {
   MockVideoProcessorProxy* processor_raw = processor.get();
   auto wrapper = std::make_unique<CopyingTexture2DWrapper>(
       gfx::Size(100, 200), ExpectTextureWrapper(), std::move(processor),
-      nullptr, gfx::ColorSpace::CreateSCRGBLinear());
+      nullptr, gfx::ColorSpace::CreateSRGBLinear());
 
   const DXGI_HDR_METADATA_HDR10 dxgi_metadata =
       gl::HDRMetadataHelperWin::HDRMetadataToDXGI(metadata);

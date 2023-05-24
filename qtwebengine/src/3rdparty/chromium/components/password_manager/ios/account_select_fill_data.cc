@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/ios/account_select_fill_data.h"
 
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "components/autofill/core/common/password_form_fill_data.h"
 
@@ -19,8 +20,8 @@ FormInfo::FormInfo() = default;
 FormInfo::~FormInfo() = default;
 FormInfo::FormInfo(const FormInfo&) = default;
 
-Credential::Credential(const base::string16& username,
-                       const base::string16& password,
+Credential::Credential(const std::u16string& username,
+                       const std::u16string& password,
                        const std::string& realm)
     : username(username), password(password), realm(realm) {}
 Credential::~Credential() = default;
@@ -28,29 +29,36 @@ Credential::~Credential() = default;
 AccountSelectFillData::AccountSelectFillData() = default;
 AccountSelectFillData::~AccountSelectFillData() = default;
 
-void AccountSelectFillData::Add(
-    const autofill::PasswordFormFillData& form_data) {
+void AccountSelectFillData::Add(const autofill::PasswordFormFillData& form_data,
+                                bool is_cross_origin_iframe) {
   auto iter_ok = forms_.insert(
       std::make_pair(form_data.form_renderer_id.value(), FormInfo()));
   FormInfo& form_info = iter_ok.first->second;
   form_info.origin = form_data.url;
   form_info.form_id = form_data.form_renderer_id;
-  form_info.username_element_id = form_data.username_field.unique_renderer_id;
-  form_info.password_element_id = form_data.password_field.unique_renderer_id;
+  form_info.username_element_id = form_data.username_element_renderer_id;
+  form_info.password_element_id = form_data.password_element_renderer_id;
 
   // Suggested credentials don't depend on a clicked form. It's better to use
   // the latest known credentials, since credentials can be updated between
   // loading of different forms.
   credentials_.clear();
-  credentials_.push_back({form_data.username_field.value,
-                          form_data.password_field.value,
-                          form_data.preferred_realm});
+
+  credentials_.push_back(
+      {form_data.preferred_login.username, form_data.preferred_login.password,
+       is_cross_origin_iframe && form_data.preferred_login.realm.empty()
+           ? form_data.url.spec()
+           : form_data.preferred_login.realm});
 
   for (const auto& username_password_and_realm : form_data.additional_logins) {
-    const base::string16& username = username_password_and_realm.username;
-    const base::string16& password = username_password_and_realm.password;
+    const std::u16string& username = username_password_and_realm.username;
+    const std::u16string& password = username_password_and_realm.password;
     const std::string& realm = username_password_and_realm.realm;
-    credentials_.push_back({username, password, realm});
+    if (is_cross_origin_iframe && realm.empty()) {
+      credentials_.push_back({username, password, form_data.url.spec()});
+    } else {
+      credentials_.push_back({username, password, realm});
+    }
   }
 }
 
@@ -89,16 +97,13 @@ std::vector<UsernameAndRealm> AccountSelectFillData::RetrieveSuggestions(
 }
 
 std::unique_ptr<FillData> AccountSelectFillData::GetFillData(
-    const base::string16& username) const {
+    const std::u16string& username) const {
   if (!last_requested_form_) {
     NOTREACHED();
     return nullptr;
   }
 
-  auto it = std::find_if(credentials_.begin(), credentials_.end(),
-                         [&username](const auto& credential) {
-                           return credential.username == username;
-                         });
+  auto it = base::ranges::find(credentials_, username, &Credential::username);
   if (it == credentials_.end())
     return nullptr;
   const Credential& credential = *it;

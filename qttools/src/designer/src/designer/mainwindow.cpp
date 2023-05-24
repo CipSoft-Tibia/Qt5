@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 #include "qdesigner.h"
@@ -37,8 +12,6 @@
 
 #include <QtDesigner/abstractformwindow.h>
 
-#include <QtWidgets/qaction.h>
-#include <QtGui/qevent.h>
 #include <QtWidgets/qtoolbar.h>
 #include <QtWidgets/qmdisubwindow.h>
 #include <QtWidgets/qstatusbar.h>
@@ -46,15 +19,21 @@
 #include <QtWidgets/qlayout.h>
 #include <QtWidgets/qdockwidget.h>
 
+#include <QtGui/qaction.h>
+#include <QtGui/qactiongroup.h>
+#include <QtGui/qevent.h>
+
 #include <QtCore/qurl.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qmimedata.h>
 
 #include <algorithm>
 
-static const char *uriListMimeFormatC = "text/uri-list";
+static const char uriListMimeFormatC[] = "text/uri-list";
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 using ActionList = QList<QAction *>;
 
@@ -67,7 +46,9 @@ static void addActionsToToolBar(const ActionList &actions, QToolBar *t)
             t->addAction(action);
     }
 }
-static QToolBar *createToolBar(const QString &title, const QString &objectName, const ActionList &actions)
+
+static QToolBar *createToolBar(const QString &title, const QString &objectName,
+                               const ActionList &actions)
 {
     QToolBar *rc =  new QToolBar;
     rc->setObjectName(objectName);
@@ -98,23 +79,28 @@ void MainWindowBase::closeEvent(QCloseEvent *e)
     }
 }
 
-QVector<QToolBar *> MainWindowBase::createToolBars(const QDesignerActions *actions, bool singleToolBar)
+QList<QToolBar *> MainWindowBase::createToolBars(const QDesignerActions *actions, bool singleToolBar)
 {
     // Note that whenever you want to add a new tool bar here, you also have to update the default
     // action groups added to the toolbar manager in the mainwindow constructor
-    QVector<QToolBar *> rc;
+    QList<QToolBar *> rc;
     if (singleToolBar) {
         //: Not currently used (main tool bar)
-        QToolBar *main = createToolBar(tr("Main"), QStringLiteral("mainToolBar"), actions->fileActions()->actions());
+        QToolBar *main = createToolBar(tr("Main"), u"mainToolBar"_s,
+                                       actions->fileActions()->actions());
         addActionsToToolBar(actions->editActions()->actions(), main);
         addActionsToToolBar(actions->toolActions()->actions(), main);
         addActionsToToolBar(actions->formActions()->actions(), main);
         rc.push_back(main);
     } else {
-        rc.push_back(createToolBar(tr("File"), QStringLiteral("fileToolBar"), actions->fileActions()->actions()));
-        rc.push_back(createToolBar(tr("Edit"), QStringLiteral("editToolBar"),  actions->editActions()->actions()));
-        rc.push_back(createToolBar(tr("Tools"), QStringLiteral("toolsToolBar"), actions->toolActions()->actions()));
-        rc.push_back(createToolBar(tr("Form"), QStringLiteral("formToolBar"), actions->formActions()->actions()));
+        rc.append(createToolBar(tr("File"), u"fileToolBar"_s,
+                                actions->fileActions()->actions()));
+        rc.append(createToolBar(tr("Edit"), u"editToolBar"_s,
+                                actions->editActions()->actions()));
+        rc.append(createToolBar(tr("Tools"), u"toolsToolBar"_s,
+                                actions->toolActions()->actions()));
+        rc.append(createToolBar(tr("Form"), u"formToolBar"_s,
+                                actions->formActions()->actions()));
     }
     return rc;
 }
@@ -148,7 +134,7 @@ QStringList DockedMdiArea::uiFiles(const QMimeData *d) const
 {
     // Extract dropped UI files from Mime data.
     QStringList rc;
-    if (!d->hasFormat(QLatin1String(uriListMimeFormatC)))
+    if (!d->hasFormat(QLatin1StringView(uriListMimeFormatC)))
         return rc;
     const auto urls = d->urls();
     if (urls.isEmpty())
@@ -177,10 +163,8 @@ bool DockedMdiArea::event(QEvent *event)
     case QEvent::Drop: {
         QDropEvent *e = static_cast<QDropEvent*>(event);
         const QStringList files = uiFiles(e->mimeData());
-        const QStringList::const_iterator cend = files.constEnd();
-        for (QStringList::const_iterator it = files.constBegin(); it != cend; ++it) {
-            emit fileDropped(*it);
-        }
+        for (const auto &f : files)
+            emit fileDropped(f);
         e->acceptProposedAction();
         return true;
     }
@@ -203,8 +187,8 @@ ToolBarManager::ToolBarManager(QMainWindow *configureableMainWindow,
                                          QWidget *parent,
                                          QMenu *toolBarMenu,
                                          const QDesignerActions *actions,
-                                         const QVector<QToolBar *> &toolbars,
-                                         const QVector<QDesignerToolWindow *> &toolWindows) :
+                                         const QList<QToolBar *> &toolbars,
+                                         const QList<QDesignerToolWindow *> &toolWindows) :
     QObject(parent),
     m_configureableMainWindow(configureableMainWindow),
     m_parent(parent),
@@ -214,12 +198,12 @@ ToolBarManager::ToolBarManager(QMainWindow *configureableMainWindow,
     m_toolbars(toolbars)
 {
     m_configureAction->setMenuRole(QAction::NoRole);
-    m_configureAction->setObjectName(QStringLiteral("__qt_configure_tool_bars_action"));
+    m_configureAction->setObjectName(u"__qt_configure_tool_bars_action"_s);
     connect(m_configureAction, &QAction::triggered, this, &ToolBarManager::configureToolBars);
 
     m_manager->setMainWindow(configureableMainWindow);
 
-    for (QToolBar *tb : qAsConst(m_toolbars)) {
+    for (QToolBar *tb : std::as_const(m_toolbars)) {
         const QString title = tb->windowTitle();
         m_manager->addToolBar(tb, title);
         addActionsToToolBarManager(tb->actions(), title, m_manager);
@@ -230,8 +214,8 @@ ToolBarManager::ToolBarManager(QMainWindow *configureableMainWindow,
 
     // Filter out the device profile preview actions which have int data().
     ActionList previewActions = actions->styleActions()->actions();
-    ActionList::iterator it = previewActions.begin();
-    for ( ; (*it)->isSeparator() || (*it)->data().type() == QVariant::Int; ++it) ;
+    auto it = previewActions.begin();
+    for ( ; (*it)->isSeparator() || (*it)->data().metaType().id() == QMetaType::Int; ++it) ;
     previewActions.erase(previewActions.begin(), it);
     addActionsToToolBarManager(previewActions, tr("Style"), m_manager);
 
@@ -263,7 +247,7 @@ void ToolBarManager::updateToolBarMenu()
     std::stable_sort(m_toolbars.begin(), m_toolbars.end(), toolBarTitleLessThan);
     // add to menu
     m_toolBarMenu->clear();
-    for (QToolBar *tb : qAsConst(m_toolbars))
+    for (QToolBar *tb : std::as_const(m_toolbars))
         m_toolBarMenu->addAction(tb->toggleViewAction());
     m_toolBarMenu->addAction(m_configureAction);
 }
@@ -271,7 +255,6 @@ void ToolBarManager::updateToolBarMenu()
 void ToolBarManager::configureToolBars()
 {
     QtToolBarDialog dlg(m_parent);
-    dlg.setWindowFlags(dlg.windowFlags() & ~Qt::WindowContextHelpButtonHint);
     dlg.setToolBarManager(m_manager);
     dlg.exec();
     updateToolBarMenu();
@@ -291,13 +274,12 @@ bool ToolBarManager::restoreState(const QByteArray &state, int version)
 
 DockedMainWindow::DockedMainWindow(QDesignerWorkbench *wb,
                                    QMenu *toolBarMenu,
-                                   const QVector<QDesignerToolWindow *> &toolWindows) :
-    m_toolBarManager(nullptr)
+                                   const QList<QDesignerToolWindow *> &toolWindows)
 {
-    setObjectName(QStringLiteral("MDIWindow"));
+    setObjectName(u"MDIWindow"_s);
     setWindowTitle(mainWindowTitle());
 
-    const QVector<QToolBar *> toolbars = createToolBars(wb->actionManager(), false);
+    const QList<QToolBar *> toolbars = createToolBars(wb->actionManager(), false);
     for (QToolBar *tb : toolbars)
         addToolBar(tb);
     DockedMdiArea *dma = new DockedMdiArea(wb->actionManager()->uiExtension());
@@ -337,13 +319,10 @@ QMdiSubWindow *DockedMainWindow::createMdiSubWindow(QWidget *fw, Qt::WindowFlags
     // designer menu actions
     if (designerCloseActionShortCut == QKeySequence(QKeySequence::Close)) {
         const ActionList systemMenuActions = rc->systemMenu()->actions();
-        if (!systemMenuActions.isEmpty()) {
-            const ActionList::const_iterator cend = systemMenuActions.constEnd();
-            for (ActionList::const_iterator it = systemMenuActions.constBegin(); it != cend; ++it) {
-                if ( (*it)->shortcut() == designerCloseActionShortCut) {
-                    (*it)->setShortcutContext(Qt::WidgetShortcut);
-                    break;
-                }
+        for (auto *a : systemMenuActions) {
+            if (a->shortcut() == designerCloseActionShortCut) {
+                a->setShortcutContext(Qt::WidgetShortcut);
+                break;
             }
         }
     }
@@ -355,7 +334,7 @@ DockedMainWindow::DockWidgetList DockedMainWindow::addToolWindows(const Designer
     DockWidgetList rc;
     for (QDesignerToolWindow *tw : tls) {
         QDockWidget *dockWidget = new QDockWidget;
-        dockWidget->setObjectName(tw->objectName() + QStringLiteral("_dock"));
+        dockWidget->setObjectName(tw->objectName() + "_dock"_L1);
         dockWidget->setWindowTitle(tw->windowTitle());
         addDockWidget(tw->dockWidgetAreaHint(), dockWidget);
         dockWidget->setWidget(tw);

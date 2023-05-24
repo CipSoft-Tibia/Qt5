@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QCUSTOM3DVOLUME_H
 #define QCUSTOM3DVOLUME_H
@@ -35,11 +9,11 @@
 #include <QtGui/QColor>
 #include <QtGui/QImage>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QCustom3DVolumePrivate;
 
-class QT_DATAVISUALIZATION_EXPORT QCustom3DVolume : public QCustom3DItem
+class Q_DATAVISUALIZATION_EXPORT QCustom3DVolume : public QCustom3DItem
 {
     Q_OBJECT
     Q_PROPERTY(int textureWidth READ textureWidth WRITE setTextureWidth NOTIFY textureWidthChanged)
@@ -48,8 +22,9 @@ class QT_DATAVISUALIZATION_EXPORT QCustom3DVolume : public QCustom3DItem
     Q_PROPERTY(int sliceIndexX READ sliceIndexX WRITE setSliceIndexX NOTIFY sliceIndexXChanged)
     Q_PROPERTY(int sliceIndexY READ sliceIndexY WRITE setSliceIndexY NOTIFY sliceIndexYChanged)
     Q_PROPERTY(int sliceIndexZ READ sliceIndexZ WRITE setSliceIndexZ NOTIFY sliceIndexZChanged)
-    Q_PROPERTY(QVector<QRgb> colorTable READ colorTable WRITE setColorTable NOTIFY colorTableChanged)
-    Q_PROPERTY(QVector<uchar> *textureData READ textureData WRITE setTextureData NOTIFY textureDataChanged)
+    Q_PROPERTY(QList<QRgb> colorTable READ colorTable WRITE setColorTable NOTIFY colorTableChanged)
+    Q_PROPERTY(QList<uchar> *textureData READ textureData WRITE setTextureData NOTIFY
+                       textureDataChanged)
     Q_PROPERTY(float alphaMultiplier READ alphaMultiplier WRITE setAlphaMultiplier NOTIFY alphaMultiplierChanged)
     Q_PROPERTY(bool preserveOpacity READ preserveOpacity WRITE setPreserveOpacity NOTIFY preserveOpacityChanged)
     Q_PROPERTY(bool useHighDefShader READ useHighDefShader WRITE setUseHighDefShader NOTIFY useHighDefShaderChanged)
@@ -64,10 +39,10 @@ public:
 
     explicit QCustom3DVolume(QObject *parent = nullptr);
     explicit QCustom3DVolume(const QVector3D &position, const QVector3D &scaling,
-                             const QQuaternion &rotation, int textureWidth,
-                             int textureHeight, int textureDepth,
-                             QVector<uchar> *textureData, QImage::Format textureFormat,
-                             const QVector<QRgb> &colorTable, QObject *parent = nullptr);
+                             const QQuaternion &rotation, int textureWidth, int textureHeight,
+                             int textureDepth, QList<uchar> *textureData,
+                             QImage::Format textureFormat, const QList<QRgb> &colorTable,
+                             QObject *parent = nullptr);
     virtual ~QCustom3DVolume();
 
     void setTextureWidth(int value);
@@ -87,12 +62,12 @@ public:
     int sliceIndexZ() const;
     void setSliceIndices(int x, int y, int z);
 
-    void setColorTable(const QVector<QRgb> &colors);
-    QVector<QRgb> colorTable() const;
+    void setColorTable(const QList<QRgb> &colors);
+    QList<QRgb> colorTable() const;
 
-    void setTextureData(QVector<uchar> *data);
-    QVector<uchar> *createTextureData(const QVector<QImage *> &images);
-    QVector<uchar> *textureData() const;
+    void setTextureData(QList<uchar> *data);
+    QList<uchar> *createTextureData(const QList<QImage *> &images);
+    QList<uchar> *textureData() const;
     void setSubTextureData(Qt::Axis axis, int index, const uchar *data);
     void setSubTextureData(Qt::Axis axis, int index, const QImage &image);
 
@@ -131,7 +106,7 @@ Q_SIGNALS:
     void sliceIndexYChanged(int value);
     void sliceIndexZChanged(int value);
     void colorTableChanged();
-    void textureDataChanged(QVector<uchar> *data);
+    void textureDataChanged(QList<uchar> *data);
     void textureFormatChanged(QImage::Format format);
     void alphaMultiplierChanged(float mult);
     void preserveOpacityChanged(bool enabled);
@@ -153,6 +128,6 @@ private:
     friend class Abstract3DRenderer;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

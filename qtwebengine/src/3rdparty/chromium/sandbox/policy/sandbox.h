@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,15 @@
 
 #include "build/build_config.h"
 #include "sandbox/policy/export.h"
-#include "sandbox/policy/sandbox_type.h"
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "sandbox/policy/linux/sandbox_linux.h"
 #endif
 
-#if defined(OS_MAC)
-#include "base/callback.h"
-#endif  // defined(OS_MAC)
-
 namespace sandbox {
+namespace mojom {
+enum class Sandbox;
+}  // namespace mojom
 struct SandboxInterfaceInfo;
 }  // namespace sandbox
 
@@ -34,24 +32,16 @@ namespace policy {
 
 class SANDBOX_POLICY_EXPORT Sandbox {
  public:
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
-  static bool Initialize(SandboxType sandbox_type,
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  static bool Initialize(sandbox::mojom::Sandbox sandbox_type,
                          SandboxLinux::PreSandboxHook hook,
                          const SandboxLinux::Options& options);
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
-#if defined(OS_MAC)
-  // Initialize the sandbox of |sandbox_type|. Runs |post_warmup_hook| if
-  // non-empty after performing any sandbox warmup but immediately before
-  // engaging the sandbox. Return true on success, false otherwise.
-  static bool Initialize(SandboxType sandbox_type,
-                         base::OnceClosure post_warmup_hook);
-#endif  // defined(OS_MAC)
-
-#if defined(OS_WIN)
-  static bool Initialize(SandboxType sandbox_type,
+#if BUILDFLAG(IS_WIN)
+  static bool Initialize(sandbox::mojom::Sandbox sandbox_type,
                          SandboxInterfaceInfo* sandbox_info);
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
   // Returns true if the current process is running with a sandbox, and false
   // if the process is not sandboxed. This should be used to assert that code is

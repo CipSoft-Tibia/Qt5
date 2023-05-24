@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/internal/identity_manager/device_accounts_synchronizer_impl.h"
 
 #include "base/check.h"
+#include "build/build_config.h"
 #include "components/signin/internal/identity_manager/profile_oauth2_token_service_delegate.h"
 
 namespace signin {
@@ -17,20 +18,14 @@ DeviceAccountsSynchronizerImpl::DeviceAccountsSynchronizerImpl(
 
 DeviceAccountsSynchronizerImpl::~DeviceAccountsSynchronizerImpl() = default;
 
-#if defined(OS_ANDROID)
 void DeviceAccountsSynchronizerImpl::
     ReloadAllAccountsFromSystemWithPrimaryAccount(
-        const base::Optional<CoreAccountId>& primary_account_id) {
+        const absl::optional<CoreAccountId>& primary_account_id) {
   token_service_delegate_->ReloadAllAccountsFromSystemWithPrimaryAccount(
       primary_account_id);
 }
-#endif
 
-#if defined(OS_IOS)
-void DeviceAccountsSynchronizerImpl::ReloadAllAccountsFromSystem() {
-  token_service_delegate_->ReloadAllAccountsFromSystem();
-}
-
+#if BUILDFLAG(IS_IOS)
 void DeviceAccountsSynchronizerImpl::ReloadAccountFromSystem(
     const CoreAccountId& account_id) {
   token_service_delegate_->ReloadAccountFromSystem(account_id);

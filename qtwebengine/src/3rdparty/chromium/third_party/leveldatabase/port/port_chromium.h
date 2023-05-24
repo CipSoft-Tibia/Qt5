@@ -7,15 +7,15 @@
 #ifndef STORAGE_LEVELDB_PORT_PORT_CHROMIUM_H_
 #define STORAGE_LEVELDB_PORT_PORT_CHROMIUM_H_
 
-#include <cassert>
-#include <condition_variable>  // NOLINT
-#include <cstring>
-#include <mutex>  // NOLINT
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
-#include "base/macros.h"
+#include "base/check.h"
+#include "base/synchronization/condition_variable.h"
+#include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
-#include "build/build_config.h"
+#include "base/threading/thread_restrictions.h"
 
 namespace leveldb {
 namespace port {
@@ -28,35 +28,40 @@ class LOCKABLE Mutex {
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
 
-  void Lock() EXCLUSIVE_LOCK_FUNCTION() { mu_.lock(); }
-  void Unlock() UNLOCK_FUNCTION() { mu_.unlock(); }
-  void AssertHeld() ASSERT_EXCLUSIVE_LOCK() {}
+  void Lock() EXCLUSIVE_LOCK_FUNCTION() { lock_.Acquire(); }
+  void Unlock() UNLOCK_FUNCTION() { lock_.Release(); }
+  void AssertHeld() ASSERT_EXCLUSIVE_LOCK() { lock_.AssertAcquired(); }
 
  private:
   friend class CondVar;
-  std::mutex mu_;
+  base::Lock lock_;
 };
 
-// Thinly wraps std::condition_variable.
+// Thinly wraps base::ConditionVariable.
 class CondVar {
  public:
-  explicit CondVar(Mutex* mu) : mu_(mu) { assert(mu != nullptr); }
+  explicit CondVar(Mutex* mu) : cv_(&mu->lock_) { DCHECK(mu); }
   ~CondVar() = default;
 
   CondVar(const CondVar&) = delete;
   CondVar& operator=(const CondVar&) = delete;
 
   void Wait() {
-    std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);
-    cv_.wait(lock);
-    lock.release();
+    // This is an allowed use of base-sync-primitives.
+    // LevelDB has a different I/O model than Chromium - it uses condition
+    // variables to coordinate batch writes for efficiency, among other things.
+    // Since use of base::ConditionVariable is an implementation detail of
+    // Chromium's port, this is a better option than annotating all upstream
+    // call sites with a ScopedAllow, which would leave us vulnerable to
+    // upstream changes adding a Wait(). See https://crbug.com/1330845.
+    base::ScopedAllowBaseSyncPrimitives allow_base_sync_primitives;
+    cv_.Wait();
   }
-  void Signal() { cv_.notify_one(); }
-  void SignalAll() { cv_.notify_all(); }
+  void Signal() { cv_.Signal(); }
+  void SignalAll() { cv_.Broadcast(); }
 
  private:
-  std::condition_variable cv_;
-  Mutex* const mu_;
+  base::ConditionVariable cv_;
 };
 
 bool Snappy_Compress(const char* input, size_t input_length,

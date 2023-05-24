@@ -1,12 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/ntp_snippets/remote/remote_suggestions_fetcher_impl.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/default_clock.h"
@@ -132,16 +133,13 @@ int GetMinuteOfTheDay(bool local_time,
 // categories. If only a single category was requested, this function filters
 // all other categories out.
 void FilterCategories(FetchedCategoriesVector* categories,
-                      base::Optional<Category> exclusive_category) {
+                      absl::optional<Category> exclusive_category) {
   if (!exclusive_category.has_value()) {
     return;
   }
   Category exclusive = exclusive_category.value();
   auto category_it =
-      std::find_if(categories->begin(), categories->end(),
-                   [&exclusive](const FetchedCategory& c) -> bool {
-                     return c.category == exclusive;
-                   });
+      base::ranges::find(*categories, exclusive, &FetchedCategory::category);
   if (category_it == categories->end()) {
     categories->clear();
     return;
@@ -219,7 +217,7 @@ void RemoteSuggestionsFetcherImpl::FetchSnippets(
       .SetUserClassifier(*user_classifier_)
       .SetOptionalImagesCapability(true);
 
-  if (identity_manager_->HasPrimaryAccount()) {
+  if (identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSync)) {
     // Signed-in: get OAuth token --> fetch suggestions.
     pending_requests_.emplace(std::move(builder), std::move(wrapped_callback));
     StartTokenRequest();
@@ -392,7 +390,8 @@ void RemoteSuggestionsFetcherImpl::FetchFinished(
 
   if (fetch_result == FetchResult::HTTP_ERROR_UNAUTHORIZED) {
     signin::ScopeSet scopes{kContentSuggestionsApiScope};
-    CoreAccountId account_id = identity_manager_->GetPrimaryAccountId();
+    CoreAccountId account_id =
+        identity_manager_->GetPrimaryAccountId(signin::ConsentLevel::kSync);
     identity_manager_->RemoveAccessTokenFromCache(account_id, scopes,
                                                   access_token);
   }

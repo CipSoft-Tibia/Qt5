@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,26 +17,26 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+
+#include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
 #include "base/check.h"
 #include "base/compiler_specific.h"
 #include "base/containers/queue.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/notreached.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
-#include "crypto/nss_util.h"
 #include "crypto/rsa_private_key.h"
-#include "crypto/signature_creator.h"
 #include "net/base/address_list.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/host_port_pair.h"
@@ -47,7 +47,6 @@
 #include "net/cert/cert_status_flags.h"
 #include "net/cert/ct_policy_enforcer.h"
 #include "net/cert/ct_policy_status.h"
-#include "net/cert/do_nothing_ct_verifier.h"
 #include "net/cert/mock_cert_verifier.h"
 #include "net/cert/mock_client_cert_verifier.h"
 #include "net/cert/signed_certificate_timestamp_and_status.h"
@@ -85,10 +84,28 @@ namespace net {
 
 namespace {
 
+// Client certificates are disabled on iOS.
+#if !BUILDFLAG(IS_IOS)
 const char kClientCertFileName[] = "client_1.pem";
 const char kClientPrivateKeyFileName[] = "client_1.pk8";
 const char kWrongClientCertFileName[] = "client_2.pem";
 const char kWrongClientPrivateKeyFileName[] = "client_2.pk8";
+#endif  // !IS_IOS
+
+const uint16_t kEcdheCiphers[] = {
+    0xc007,  // ECDHE_ECDSA_WITH_RC4_128_SHA
+    0xc009,  // ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+    0xc00a,  // ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+    0xc011,  // ECDHE_RSA_WITH_RC4_128_SHA
+    0xc013,  // ECDHE_RSA_WITH_AES_128_CBC_SHA
+    0xc014,  // ECDHE_RSA_WITH_AES_256_CBC_SHA
+    0xc02b,  // ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    0xc02c,  // ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    0xc02f,  // ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    0xc030,  // ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    0xcca8,  // ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+    0xcca9,  // ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+};
 
 class MockCTPolicyEnforcer : public CTPolicyEnforcer {
  public:
@@ -104,8 +121,10 @@ class MockCTPolicyEnforcer : public CTPolicyEnforcer {
 
 class FakeDataChannel {
  public:
-  FakeDataChannel()
-      : read_buf_len_(0), closed_(false), write_called_after_close_(false) {}
+  FakeDataChannel() = default;
+
+  FakeDataChannel(const FakeDataChannel&) = delete;
+  FakeDataChannel& operator=(const FakeDataChannel&) = delete;
 
   int Read(IOBuffer* buf, int buf_len, CompletionOnceCallback callback) {
     DCHECK(read_callback_.is_null());
@@ -131,7 +150,7 @@ class FakeDataChannel {
         return ERR_CONNECTION_RESET;
       write_called_after_close_ = true;
       write_callback_ = std::move(callback);
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE, base::BindOnce(&FakeDataChannel::DoWriteCallback,
                                     weak_factory_.GetWeakPtr()));
       return ERR_IO_PENDING;
@@ -140,7 +159,7 @@ class FakeDataChannel {
     data_.push(base::MakeRefCounted<DrainableIOBuffer>(
         base::MakeRefCounted<StringIOBuffer>(std::string(buf->data(), buf_len)),
         buf_len));
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&FakeDataChannel::DoReadCallback,
                                   weak_factory_.GetWeakPtr()));
     return buf_len;
@@ -153,7 +172,7 @@ class FakeDataChannel {
   void Close() {
     closed_ = true;
     if (!read_callback_.is_null()) {
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE, base::BindOnce(&FakeDataChannel::DoReadCallback,
                                     weak_factory_.GetWeakPtr()));
     }
@@ -198,23 +217,21 @@ class FakeDataChannel {
 
   CompletionOnceCallback read_callback_;
   scoped_refptr<IOBuffer> read_buf_;
-  int read_buf_len_;
+  int read_buf_len_ = 0;
 
   CompletionOnceCallback write_callback_;
 
   base::queue<scoped_refptr<DrainableIOBuffer>> data_;
 
   // True if Close() has been called.
-  bool closed_;
+  bool closed_ = false;
 
   // Controls the completion of Write() after the FakeDataChannel is closed.
   // After the FakeDataChannel is closed, the first Write() call completes
   // asynchronously.
-  bool write_called_after_close_;
+  bool write_called_after_close_ = false;
 
   base::WeakPtrFactory<FakeDataChannel> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(FakeDataChannel);
 };
 
 class FakeSocket : public StreamSocket {
@@ -222,6 +239,9 @@ class FakeSocket : public StreamSocket {
   FakeSocket(FakeDataChannel* incoming_channel,
              FakeDataChannel* outgoing_channel)
       : incoming_(incoming_channel), outgoing_(outgoing_channel) {}
+
+  FakeSocket(const FakeSocket&) = delete;
+  FakeSocket& operator=(const FakeSocket&) = delete;
 
   ~FakeSocket() override = default;
 
@@ -278,14 +298,6 @@ class FakeSocket : public StreamSocket {
 
   bool GetSSLInfo(SSLInfo* ssl_info) override { return false; }
 
-  void GetConnectionAttempts(ConnectionAttempts* out) const override {
-    out->clear();
-  }
-
-  void ClearConnectionAttempts() override {}
-
-  void AddConnectionAttempts(const ConnectionAttempts& attempts) override {}
-
   int64_t GetTotalReceivedBytes() const override {
     NOTIMPLEMENTED();
     return 0;
@@ -295,10 +307,8 @@ class FakeSocket : public StreamSocket {
 
  private:
   NetLogWithSource net_log_;
-  FakeDataChannel* incoming_;
-  FakeDataChannel* outgoing_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeSocket);
+  raw_ptr<FakeDataChannel> incoming_;
+  raw_ptr<FakeDataChannel> outgoing_;
 };
 
 }  // namespace
@@ -354,14 +364,14 @@ TEST(FakeSocketTest, DataTransfer) {
 class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
  public:
   SSLServerSocketTest()
-      : ssl_config_service_(new TestSSLConfigService(SSLContextConfig())),
-        cert_verifier_(new MockCertVerifier()),
-        client_cert_verifier_(new MockClientCertVerifier()),
-        transport_security_state_(new TransportSecurityState),
-        ct_verifier_(new DoNothingCTVerifier),
-        ct_policy_enforcer_(new MockCTPolicyEnforcer),
-        ssl_client_session_cache_(
-            new SSLClientSessionCache(SSLClientSessionCache::Config())) {}
+      : ssl_config_service_(
+            std::make_unique<TestSSLConfigService>(SSLContextConfig())),
+        cert_verifier_(std::make_unique<MockCertVerifier>()),
+        client_cert_verifier_(std::make_unique<MockClientCertVerifier>()),
+        transport_security_state_(std::make_unique<TransportSecurityState>()),
+        ct_policy_enforcer_(std::make_unique<MockCTPolicyEnforcer>()),
+        ssl_client_session_cache_(std::make_unique<SSLClientSessionCache>(
+            SSLClientSessionCache::Config())) {}
 
   void SetUp() override {
     PlatformTest::SetUp();
@@ -386,8 +396,8 @@ class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
 
     client_context_ = std::make_unique<SSLClientContext>(
         ssl_config_service_.get(), cert_verifier_.get(),
-        transport_security_state_.get(), ct_verifier_.get(),
-        ct_policy_enforcer_.get(), ssl_client_session_cache_.get(), nullptr);
+        transport_security_state_.get(), ct_policy_enforcer_.get(),
+        ssl_client_session_cache_.get(), nullptr);
   }
 
  protected:
@@ -415,8 +425,8 @@ class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
   void CreateSockets() {
     client_socket_.reset();
     server_socket_.reset();
-    channel_1_.reset(new FakeDataChannel());
-    channel_2_.reset(new FakeDataChannel());
+    channel_1_ = std::make_unique<FakeDataChannel>();
+    channel_2_ = std::make_unique<FakeDataChannel>();
     std::unique_ptr<StreamSocket> client_connection =
         std::make_unique<FakeSocket>(channel_1_.get(), channel_2_.get());
     std::unique_ptr<StreamSocket> server_socket =
@@ -431,6 +441,8 @@ class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
     ASSERT_TRUE(server_socket_);
   }
 
+// Client certificates are disabled on iOS.
+#if !BUILDFLAG(IS_IOS)
   void ConfigureClientCertsForClient(const char* cert_file_name,
                                      const char* private_key_file_name) {
     scoped_refptr<X509Certificate> client_cert =
@@ -454,8 +466,8 @@ class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
     static const uint8_t kClientCertCAName[] = {
         0x30, 0x0f, 0x31, 0x0d, 0x30, 0x0b, 0x06, 0x03, 0x55,
         0x04, 0x03, 0x0c, 0x04, 0x42, 0x20, 0x43, 0x41};
-    server_ssl_config_.cert_authorities.push_back(std::string(
-        std::begin(kClientCertCAName), std::end(kClientCertCAName)));
+    server_ssl_config_.cert_authorities.emplace_back(
+        std::begin(kClientCertCAName), std::end(kClientCertCAName));
 
     scoped_refptr<X509Certificate> expected_client_cert(
         ImportCertFromFile(GetTestCertsDirectory(), kClientCertFileName));
@@ -465,9 +477,9 @@ class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
 
     server_ssl_config_.client_cert_verifier = client_cert_verifier_.get();
   }
+#endif  // !IS_IOS
 
-  std::unique_ptr<crypto::RSAPrivateKey> ReadTestKey(
-      const base::StringPiece& name) {
+  std::unique_ptr<crypto::RSAPrivateKey> ReadTestKey(base::StringPiece name) {
     base::FilePath certs_dir(GetTestCertsDirectory());
     base::FilePath key_path = certs_dir.AppendASCII(name);
     std::string key_string;
@@ -513,7 +525,6 @@ class SSLServerSocketTest : public PlatformTest, public WithTaskEnvironment {
   std::unique_ptr<MockCertVerifier> cert_verifier_;
   std::unique_ptr<MockClientCertVerifier> client_cert_verifier_;
   std::unique_ptr<TransportSecurityState> transport_security_state_;
-  std::unique_ptr<DoNothingCTVerifier> ct_verifier_;
   std::unique_ptr<MockCTPolicyEnforcer> ct_policy_enforcer_;
   std::unique_ptr<SSLClientSessionCache> ssl_client_session_cache_;
   std::unique_ptr<SSLClientContext> client_context_;
@@ -696,6 +707,8 @@ TEST_F(SSLServerSocketTest, HandshakeCachedContextSwitch) {
   EXPECT_EQ(ssl_server_info2.handshake_type, SSLInfo::HANDSHAKE_FULL);
 }
 
+// Client certificates are disabled on iOS.
+#if !BUILDFLAG(IS_IOS)
 // This test executes Connect() on SSLClientSocket and Handshake() on
 // SSLServerSocket to make sure handshaking between the two sockets is
 // completed successfully, using client certificate.
@@ -997,6 +1010,7 @@ TEST_F(SSLServerSocketTest, HandshakeWithWrongClientCertSuppliedCached) {
   client_ret = read_callback.GetResult(client_ret);
   EXPECT_EQ(ERR_BAD_SSL_CLIENT_AUTH_CERT, client_ret);
 }
+#endif  // !IS_IOS
 
 TEST_P(SSLServerSocketReadTest, DataTransfer) {
   ASSERT_NO_FATAL_FAILURE(CreateContext());
@@ -1137,8 +1151,8 @@ TEST_F(SSLServerSocketTest, ClientWriteAfterServerClose) {
   EXPECT_GT(client_ret, 0);
 
   base::RunLoop run_loop;
-  base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
-      FROM_HERE, run_loop.QuitClosure(), base::TimeDelta::FromMilliseconds(10));
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, run_loop.QuitClosure(), base::Milliseconds(10));
   run_loop.Run();
 }
 
@@ -1189,21 +1203,9 @@ TEST_F(SSLServerSocketTest, ExportKeyingMaterial) {
 // Verifies that SSLConfig::require_ecdhe flags works properly.
 TEST_F(SSLServerSocketTest, RequireEcdheFlag) {
   // Disable all ECDHE suites on the client side.
-  uint16_t kEcdheCiphers[] = {
-      0xc007,  // ECDHE_ECDSA_WITH_RC4_128_SHA
-      0xc009,  // ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-      0xc00a,  // ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-      0xc011,  // ECDHE_RSA_WITH_RC4_128_SHA
-      0xc013,  // ECDHE_RSA_WITH_AES_128_CBC_SHA
-      0xc014,  // ECDHE_RSA_WITH_AES_256_CBC_SHA
-      0xc02b,  // ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-      0xc02f,  // ECDHE_RSA_WITH_AES_128_GCM_SHA256
-      0xcca8,  // ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-      0xcca9,  // ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  };
   SSLContextConfig config;
   config.disabled_cipher_suites.assign(
-      kEcdheCiphers, kEcdheCiphers + base::size(kEcdheCiphers));
+      kEcdheCiphers, kEcdheCiphers + std::size(kEcdheCiphers));
 
   // Legacy RSA key exchange ciphers only exist in TLS 1.2 and below.
   config.version_max = SSL_PROTOCOL_VERSION_TLS1_2;
@@ -1269,21 +1271,9 @@ TEST_F(SSLServerSocketTest, HandshakeServerSSLPrivateKey) {
 // server key.
 TEST_F(SSLServerSocketTest, HandshakeServerSSLPrivateKeyRequireEcdhe) {
   // Disable all ECDHE suites on the client side.
-  uint16_t kEcdheCiphers[] = {
-      0xc007,  // ECDHE_ECDSA_WITH_RC4_128_SHA
-      0xc009,  // ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-      0xc00a,  // ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-      0xc011,  // ECDHE_RSA_WITH_RC4_128_SHA
-      0xc013,  // ECDHE_RSA_WITH_AES_128_CBC_SHA
-      0xc014,  // ECDHE_RSA_WITH_AES_256_CBC_SHA
-      0xc02b,  // ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-      0xc02f,  // ECDHE_RSA_WITH_AES_128_GCM_SHA256
-      0xcca8,  // ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-      0xcca9,  // ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-  };
   SSLContextConfig config;
   config.disabled_cipher_suites.assign(
-      kEcdheCiphers, kEcdheCiphers + base::size(kEcdheCiphers));
+      kEcdheCiphers, kEcdheCiphers + std::size(kEcdheCiphers));
   // TLS 1.3 always works with SSLPrivateKey.
   config.version_max = SSL_PROTOCOL_VERSION_TLS1_2;
   ssl_config_service_->UpdateSSLConfigAndNotify(config);
@@ -1302,6 +1292,116 @@ TEST_F(SSLServerSocketTest, HandshakeServerSSLPrivateKeyRequireEcdhe) {
 
   ASSERT_THAT(client_ret, IsError(ERR_SSL_VERSION_OR_CIPHER_MISMATCH));
   ASSERT_THAT(server_ret, IsError(ERR_SSL_VERSION_OR_CIPHER_MISMATCH));
+}
+
+class SSLServerSocketAlpsTest
+    : public SSLServerSocketTest,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ public:
+  SSLServerSocketAlpsTest()
+      : client_alps_enabled_(std::get<0>(GetParam())),
+        server_alps_enabled_(std::get<1>(GetParam())) {}
+  ~SSLServerSocketAlpsTest() override = default;
+  const bool client_alps_enabled_;
+  const bool server_alps_enabled_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         SSLServerSocketAlpsTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()));
+
+TEST_P(SSLServerSocketAlpsTest, Alps) {
+  const std::string server_data = "server sends some test data";
+  const std::string client_data = "client also sends some data";
+
+  server_ssl_config_.alpn_protos = {kProtoHTTP2};
+  if (server_alps_enabled_) {
+    server_ssl_config_.application_settings[kProtoHTTP2] =
+        std::vector<uint8_t>(server_data.begin(), server_data.end());
+  }
+
+  client_ssl_config_.alpn_protos = {kProtoHTTP2};
+  if (client_alps_enabled_) {
+    client_ssl_config_.application_settings[kProtoHTTP2] =
+        std::vector<uint8_t>(client_data.begin(), client_data.end());
+  }
+
+  ASSERT_NO_FATAL_FAILURE(CreateContext());
+  ASSERT_NO_FATAL_FAILURE(CreateSockets());
+
+  TestCompletionCallback handshake_callback;
+  int server_ret = server_socket_->Handshake(handshake_callback.callback());
+
+  TestCompletionCallback connect_callback;
+  int client_ret = client_socket_->Connect(connect_callback.callback());
+
+  client_ret = connect_callback.GetResult(client_ret);
+  server_ret = handshake_callback.GetResult(server_ret);
+
+  ASSERT_THAT(client_ret, IsOk());
+  ASSERT_THAT(server_ret, IsOk());
+
+  // ALPS is negotiated only if ALPS is enabled both on client and server.
+  const auto alps_data_received_by_client =
+      client_socket_->GetPeerApplicationSettings();
+  const auto alps_data_received_by_server =
+      server_socket_->GetPeerApplicationSettings();
+
+  if (client_alps_enabled_ && server_alps_enabled_) {
+    ASSERT_TRUE(alps_data_received_by_client.has_value());
+    EXPECT_EQ(server_data, alps_data_received_by_client.value());
+    ASSERT_TRUE(alps_data_received_by_server.has_value());
+    EXPECT_EQ(client_data, alps_data_received_by_server.value());
+  } else {
+    EXPECT_FALSE(alps_data_received_by_client.has_value());
+    EXPECT_FALSE(alps_data_received_by_server.has_value());
+  }
+}
+
+// Test that CancelReadIfReady works.
+TEST_F(SSLServerSocketTest, CancelReadIfReady) {
+  ASSERT_NO_FATAL_FAILURE(CreateContext());
+  ASSERT_NO_FATAL_FAILURE(CreateSockets());
+
+  TestCompletionCallback connect_callback;
+  int client_ret = client_socket_->Connect(connect_callback.callback());
+  TestCompletionCallback handshake_callback;
+  int server_ret = server_socket_->Handshake(handshake_callback.callback());
+  ASSERT_THAT(connect_callback.GetResult(client_ret), IsOk());
+  ASSERT_THAT(handshake_callback.GetResult(server_ret), IsOk());
+
+  // Attempt to read from the server socket. There will not be anything to read.
+  // Cancel the read immediately afterwards.
+  TestCompletionCallback read_callback;
+  auto read_buf = base::MakeRefCounted<IOBuffer>(1);
+  int read_ret =
+      server_socket_->ReadIfReady(read_buf.get(), 1, read_callback.callback());
+  ASSERT_THAT(read_ret, IsError(ERR_IO_PENDING));
+  ASSERT_THAT(server_socket_->CancelReadIfReady(), IsOk());
+
+  // After the client writes data, the server should still not pick up a result.
+  auto write_buf = base::MakeRefCounted<StringIOBuffer>("a");
+  TestCompletionCallback write_callback;
+  ASSERT_EQ(write_callback.GetResult(client_socket_->Write(
+                write_buf.get(), write_buf->size(), write_callback.callback(),
+                TRAFFIC_ANNOTATION_FOR_TESTS)),
+            write_buf->size());
+  base::RunLoop().RunUntilIdle();
+  EXPECT_FALSE(read_callback.have_result());
+
+  // After a canceled read, future reads are still possible.
+  while (true) {
+    TestCompletionCallback read_callback2;
+    read_ret = server_socket_->ReadIfReady(read_buf.get(), 1,
+                                           read_callback2.callback());
+    if (read_ret != ERR_IO_PENDING) {
+      break;
+    }
+    ASSERT_THAT(read_callback2.GetResult(read_ret), IsOk());
+  }
+  ASSERT_EQ(1, read_ret);
+  EXPECT_EQ(read_buf->data()[0], 'a');
 }
 
 }  // namespace net

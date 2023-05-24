@@ -268,9 +268,8 @@ void PublisherImpl::OnDomainFound(const DomainName& requested_name,
   TRACE_DEFAULT_SCOPED(TraceCategory::kDiscovery);
   OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
 
-  OSP_DVLOG << "Domain successfully claimed: '" << confirmed_name.ToString()
-            << "' based on requested name: '" << requested_name.ToString()
-            << "'";
+  OSP_DVLOG << "Domain successfully claimed: '" << confirmed_name
+            << "' based on requested name: '" << requested_name << "'";
 
   auto it = FindKey(&pending_instances_, InstanceKey(requested_name));
 

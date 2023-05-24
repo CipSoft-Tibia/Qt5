@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/synchronization/lock.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -21,11 +23,13 @@
 
 namespace net {
 class CookieStore;
-}
+class URLRequestContext;
+}  // namespace net
 
 class GURL;
 
 namespace network {
+class FirstPartySetsAccessDelegate;
 class SessionCleanupCookieStore;
 
 // Wrap a cookie store in an implementation of the mojo cookie interface.
@@ -33,11 +37,17 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
     : public mojom::CookieManager {
  public:
   // Construct a CookieService that can serve mojo requests for the underlying
-  // cookie store.  |*cookie_store| must outlive this object.
+  // cookie store.  |url_request_context->cookie_store()| must outlive this
+  // object. `*first_party_sets_access_delegate` must outlive
+  // `url_request_context->cookie_store()`.
   CookieManager(
-      net::CookieStore* cookie_store,
+      net::URLRequestContext* url_request_context,
+      FirstPartySetsAccessDelegate* const first_party_sets_access_delegate,
       scoped_refptr<SessionCleanupCookieStore> session_cleanup_cookie_store,
       mojom::CookieManagerParamsPtr params);
+
+  CookieManager(const CookieManager&) = delete;
+  CookieManager& operator=(const CookieManager&) = delete;
 
   ~CookieManager() override;
 
@@ -54,9 +64,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
   void GetAllCookies(GetAllCookiesCallback callback) override;
   void GetAllCookiesWithAccessSemantics(
       GetAllCookiesWithAccessSemanticsCallback callback) override;
-  void GetCookieList(const GURL& url,
-                     const net::CookieOptions& cookie_options,
-                     GetCookieListCallback callback) override;
+  void GetCookieList(
+      const GURL& url,
+      const net::CookieOptions& cookie_options,
+      const net::CookiePartitionKeyCollection& cookie_partition_key_collection,
+      GetCookieListCallback callback) override;
   void SetCanonicalCookie(const net::CanonicalCookie& cookie,
                           const GURL& source_url,
                           const net::CookieOptions& cookie_options,
@@ -66,9 +78,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
   void SetContentSettings(const ContentSettingsForOneType& settings) override;
   void DeleteCookies(mojom::CookieDeletionFilterPtr filter,
                      DeleteCookiesCallback callback) override;
+  void DeleteSessionOnlyCookies(
+      DeleteSessionOnlyCookiesCallback callback) override;
   void AddCookieChangeListener(
       const GURL& url,
-      const base::Optional<std::string>& name,
+      const absl::optional<std::string>& name,
       mojo::PendingRemote<mojom::CookieChangeListener> listener) override;
   void AddGlobalChangeListener(
       mojo::PendingRemote<mojom::CookieChangeListener> listener) override;
@@ -94,6 +108,9 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
   void SetStorageAccessGrantSettings(
       const ContentSettingsForOneType& settings,
       SetStorageAccessGrantSettingsCallback callback) override;
+  void SetTopLevelStorageAccessSettings(
+      const ContentSettingsForOneType& settings,
+      SetTopLevelStorageAccessSettingsCallback callback) override;
 
   // Configures |out| based on |params|. (This doesn't honor
   // allow_file_scheme_cookies, which affects the cookie store rather than the
@@ -109,6 +126,10 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
   // State associated with a CookieChangeListener.
   struct ListenerRegistration {
     ListenerRegistration();
+
+    ListenerRegistration(const ListenerRegistration&) = delete;
+    ListenerRegistration& operator=(const ListenerRegistration&) = delete;
+
     ~ListenerRegistration();
 
     // Translates a CookieStore change callback to a CookieChangeListener call.
@@ -119,14 +140,12 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
 
     // The observer receiving change notifications.
     mojo::Remote<mojom::CookieChangeListener> listener;
-
-    DISALLOW_COPY_AND_ASSIGN(ListenerRegistration);
   };
 
   // Handles connection errors on change listener pipes.
   void RemoveChangeListener(ListenerRegistration* registration);
 
-  net::CookieStore* const cookie_store_;
+  const raw_ptr<net::CookieStore> cookie_store_;
   scoped_refptr<SessionCleanupCookieStore> session_cleanup_cookie_store_;
   mojo::ReceiverSet<mojom::CookieManager> receivers_;
   std::vector<std::unique_ptr<ListenerRegistration>> listener_registrations_;
@@ -135,7 +154,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) CookieManager
   // |cookie_settings_|.
   CookieSettings cookie_settings_;
 
-  DISALLOW_COPY_AND_ASSIGN(CookieManager);
+  base::WeakPtrFactory<CookieManager> weak_factory_{this};
 };
 
 COMPONENT_EXPORT(NETWORK_SERVICE)

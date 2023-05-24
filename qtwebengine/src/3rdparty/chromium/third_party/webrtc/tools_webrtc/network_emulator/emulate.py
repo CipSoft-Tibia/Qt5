@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
+
 #  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 #  Use of this source code is governed by a BSD-style license
@@ -6,9 +7,7 @@
 #  tree. An additional intellectual property rights grant can be found
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
-
 """Script for constraining traffic on the local machine."""
-
 
 import logging
 import optparse
@@ -17,7 +16,6 @@ import sys
 
 import config
 import network_emulator
-
 
 _DEFAULT_LOG_LEVEL = logging.INFO
 
@@ -41,7 +39,7 @@ _PRESETS = [
     config.ConnectionConfig(12, 'Wifi, Average Case', 40000, 33000, 1, 0, 100),
     config.ConnectionConfig(13, 'Wifi, Good', 45000, 40000, 1, 0, 100),
     config.ConnectionConfig(14, 'Wifi, Lossy', 40000, 33000, 1, 0, 100),
-    ]
+]
 _PRESETS_DICT = dict((p.num, p) for p in _PRESETS)
 
 _DEFAULT_PRESET_ID = 2
@@ -71,38 +69,56 @@ def _ParseArgs():
       'ID Name                       Receive     Send    Queue  Delay   loss \n'
       '-- ----                      ---------   -------- ----- ------- ------\n'
       '%s\n' % presets_string))
-  parser.add_option('-p', '--preset', type='int', default=_DEFAULT_PRESET_ID,
+  parser.add_option('-p',
+                    '--preset',
+                    type='int',
+                    default=_DEFAULT_PRESET_ID,
                     help=('ConnectionConfig configuration, specified by ID. '
                           'Default: %default'))
-  parser.add_option('-r', '--receive-bw', type='int',
+  parser.add_option('-r',
+                    '--receive-bw',
+                    type='int',
                     default=_DEFAULT_PRESET.receive_bw_kbps,
                     help=('Receive bandwidth in kilobit/s. Default: %default'))
-  parser.add_option('-s', '--send-bw', type='int',
+  parser.add_option('-s',
+                    '--send-bw',
+                    type='int',
                     default=_DEFAULT_PRESET.send_bw_kbps,
                     help=('Send bandwidth in kilobit/s. Default: %default'))
-  parser.add_option('-d', '--delay', type='int',
+  parser.add_option('-d',
+                    '--delay',
+                    type='int',
                     default=_DEFAULT_PRESET.delay_ms,
                     help=('Delay in ms. Default: %default'))
-  parser.add_option('-l', '--packet-loss', type='float',
+  parser.add_option('-l',
+                    '--packet-loss',
+                    type='float',
                     default=_DEFAULT_PRESET.packet_loss_percent,
                     help=('Packet loss in %. Default: %default'))
-  parser.add_option('-q', '--queue', type='int',
+  parser.add_option('-q',
+                    '--queue',
+                    type='int',
                     default=_DEFAULT_PRESET.queue_slots,
                     help=('Queue size as number of slots. Default: %default'))
-  parser.add_option('--port-range', default='%s,%s' % _DEFAULT_PORT_RANGE,
+  parser.add_option('--port-range',
+                    default='%s,%s' % _DEFAULT_PORT_RANGE,
                     help=('Range of ports for constrained network. Specify as '
                           'two comma separated integers. Default: %default'))
-  parser.add_option('--target-ip', default=None,
+  parser.add_option('--target-ip',
+                    default=None,
                     help=('The interface IP address to apply the rules for. '
                           'Default: the external facing interface IP address.'))
-  parser.add_option('-v', '--verbose', action='store_true', default=False,
+  parser.add_option('-v',
+                    '--verbose',
+                    action='store_true',
+                    default=False,
                     help=('Turn on verbose output. Will print all \'ipfw\' '
                           'commands that are executed.'))
 
   options = parser.parse_args()[0]
 
   # Find preset by ID, if specified.
-  if options.preset and not _PRESETS_DICT.has_key(options.preset):
+  if options.preset and options.preset not in _PRESETS_DICT:
     parser.error('Invalid preset: %s' % options.preset)
 
   # Simple validation of the IP address, if supplied.
@@ -115,8 +131,8 @@ def _ParseArgs():
   # Convert port range into the desired tuple format.
   try:
     if isinstance(options.port_range, str):
-      options.port_range = tuple(int(port) for port in
-                                 options.port_range.split(','))
+      options.port_range = tuple(
+          int(port) for port in options.port_range.split(','))
       if len(options.port_range) != 2:
         parser.error('Invalid port range specified, please specify two '
                      'integers separated by a comma.')
@@ -167,22 +183,19 @@ def main():
   logging.info('Constraining traffic to/from IP: %s', external_ip)
   try:
     emulator.Emulate(external_ip)
-    logging.info('Started network emulation with the following configuration:\n'
-                 '  Receive bandwidth: %s kbps (%s kB/s)\n'
-                 '  Send bandwidth   : %s kbps (%s kB/s)\n'
-                 '  Delay            : %s ms\n'
-                 '  Packet loss      : %s %%\n'
-                 '  Queue slots      : %s',
-                 connection_config.receive_bw_kbps,
-                 connection_config.receive_bw_kbps/8,
-                 connection_config.send_bw_kbps,
-                 connection_config.send_bw_kbps/8,
-                 connection_config.delay_ms,
-                 connection_config.packet_loss_percent,
-                 connection_config.queue_slots)
+    logging.info(
+        'Started network emulation with the following configuration:\n'
+        '  Receive bandwidth: %s kbps (%s kB/s)\n'
+        '  Send bandwidth   : %s kbps (%s kB/s)\n'
+        '  Delay            : %s ms\n'
+        '  Packet loss      : %s %%\n'
+        '  Queue slots      : %s', connection_config.receive_bw_kbps,
+        connection_config.receive_bw_kbps / 8, connection_config.send_bw_kbps,
+        connection_config.send_bw_kbps / 8, connection_config.delay_ms,
+        connection_config.packet_loss_percent, connection_config.queue_slots)
     logging.info('Affected traffic: IP traffic on ports %s-%s',
                  options.port_range[0], options.port_range[1])
-    raw_input('Press Enter to abort Network Emulation...')
+    input('Press Enter to abort Network Emulation...')
     logging.info('Flushing all Dummynet rules...')
     network_emulator.Cleanup()
     logging.info('Completed Network Emulation.')
@@ -190,6 +203,7 @@ def main():
   except network_emulator.NetworkEmulatorError as e:
     logging.error('Error: %s\n\nCause: %s', e.fail_msg, e.error)
     return -2
+
 
 if __name__ == '__main__':
   sys.exit(main())

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,6 +29,7 @@ enum PrinterErrorCode {
   kStopped,
   kFilterFailed,
   kUnknownError,
+  kClientUnauthorized,
 };
 
 // Contains information about a completed print job. Completed print jobs are
@@ -76,6 +77,9 @@ struct PrintJobInfo {
 
   // Number of pages requested to print.
   uint32 number_of_pages;
+
+  // Printer GUID.
+  string printer_id;
 
   // The printer destination the print job was sent to.
   mojo_base.mojom.String16 printer_name;

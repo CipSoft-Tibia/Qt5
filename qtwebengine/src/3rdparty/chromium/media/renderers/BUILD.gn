@@ -1,8 +1,6 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
-import("//third_party/libaom/options.gni")
 
 source_set("renderers") {
   # Do not expand the visibility here without double-checking with OWNERS, this
@@ -19,15 +17,19 @@ source_set("renderers") {
     "decrypting_renderer_factory.h",
     "default_decoder_factory.cc",
     "default_decoder_factory.h",
-    "default_renderer_factory.cc",
-    "default_renderer_factory.h",
     "paint_canvas_video_renderer.cc",
     "paint_canvas_video_renderer.h",
     "remote_playback_client_wrapper.h",
     "renderer_impl.cc",
     "renderer_impl.h",
+    "renderer_impl_factory.cc",
+    "renderer_impl_factory.h",
+    "video_frame_rgba_to_yuva_converter.cc",
+    "video_frame_rgba_to_yuva_converter.h",
     "video_frame_yuv_converter.cc",
     "video_frame_yuv_converter.h",
+    "video_frame_yuv_mailboxes_holder.cc",
+    "video_frame_yuv_mailboxes_holder.h",
     "video_overlay_factory.cc",
     "video_overlay_factory.h",
     "video_renderer_impl.cc",
@@ -50,17 +52,12 @@ source_set("renderers") {
     "//media/base",
     "//media/filters",
     "//media/video",
-    "//third_party/libaom:libaom_buildflags",
     "//third_party/libyuv",
-    "//ui/gfx:geometry_skia",
     "//ui/gfx:memory_buffer",
     "//ui/gfx/geometry",
+    "//ui/gfx/geometry:geometry_skia",
     "//ui/gl",
   ]
-
-  if (is_fuchsia) {
-    deps += [ "//fuchsia/engine:switches" ]
-  }
 
   if (is_win) {
     sources += [
@@ -75,12 +72,14 @@ source_set("renderers") {
       "win/media_foundation_renderer.cc",
       "win/media_foundation_renderer.h",
       "win/media_foundation_renderer_extension.h",
-      "win/media_foundation_renderer_factory.cc",
-      "win/media_foundation_renderer_factory.h",
+      "win/media_foundation_rendering_mode.cc",
+      "win/media_foundation_rendering_mode.h",
       "win/media_foundation_source_wrapper.cc",
       "win/media_foundation_source_wrapper.h",
       "win/media_foundation_stream_wrapper.cc",
       "win/media_foundation_stream_wrapper.h",
+      "win/media_foundation_texture_pool.cc",
+      "win/media_foundation_texture_pool.h",
       "win/media_foundation_video_stream.cc",
       "win/media_foundation_video_stream.h",
     ]
@@ -91,14 +90,31 @@ source_set("renderers") {
     libs = [
       "d3d11.lib",
       "mfplat.lib",
+      "dxgi.lib",
     ]
   }
 
-  configs += [
-    "//media:subcomponent_config",
+  configs += [ "//media:subcomponent_config" ]
+}
 
-    # TODO(crbug.com/167187): Fix size_t to int trunctaions.
-    "//build/config/compiler:no_size_t_to_int_warning",
+# Note: This is a roll-up only target; do not expand the visibility. DEPS should
+# depend on the //media:test_support target instead.
+static_library("test_support") {
+  visibility = [ "//media:test_support" ]
+  testonly = true
+  sources = [
+    "shared_image_video_frame_test_utils.cc",
+    "shared_image_video_frame_test_utils.h",
+  ]
+  configs += [ "//media:media_config" ]
+  deps = [
+    "//base",
+    "//components/viz/common",
+    "//gpu:test_support",
+    "//gpu/command_buffer/client:gles2_interface",
+    "//gpu/command_buffer/common",
+    "//media/base:test_support",
+    "//ui/gfx",
   ]
 }
 
@@ -107,11 +123,17 @@ source_set("unit_tests") {
   sources = [
     "audio_renderer_impl_unittest.cc",
     "decrypting_renderer_unittest.cc",
-    "paint_canvas_video_renderer_unittest.cc",
     "renderer_impl_unittest.cc",
     "video_renderer_impl_unittest.cc",
     "video_resource_updater_unittest.cc",
   ]
+
+  # TODO: Disabled this test for iOS platform as porting of viz_unittests is in progress.
+  # Refer bug https://crbug.com/1413718
+  if (!is_ios) {
+    sources += [ "paint_canvas_video_renderer_unittest.cc" ]
+  }
+
   configs += [ "//media:media_config" ]
   deps = [
     "//base",
@@ -135,6 +157,7 @@ source_set("unit_tests") {
     sources += [
       "win/media_foundation_renderer_integration_test.cc",
       "win/media_foundation_renderer_unittest.cc",
+      "win/media_foundation_texture_pool_unittest.cc",
     ]
     deps += [ "//media/test:pipeline_integration_test_base" ]
     libs = [

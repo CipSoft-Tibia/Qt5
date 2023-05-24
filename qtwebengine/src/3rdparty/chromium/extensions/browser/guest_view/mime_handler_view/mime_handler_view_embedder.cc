@@ -1,9 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_embedder.h"
 
+#include "base/containers/contains.h"
 #include "base/containers/flat_map.h"
 #include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
@@ -18,9 +19,10 @@
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_constants.h"
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest.h"
 #include "extensions/common/mojom/guest_view.mojom.h"
+#include "services/network/public/cpp/web_sandbox_flags.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-shared.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
-#include "third_party/blink/public/mojom/frame/frame_owner_element_type.mojom.h"
+#include "third_party/blink/public/common/frame/frame_owner_element_type.h"
 
 namespace extensions {
 
@@ -47,31 +49,32 @@ MimeHandlerViewEmbedder* MimeHandlerViewEmbedder::Get(
 // static
 void MimeHandlerViewEmbedder::Create(int32_t frame_tree_node_id,
                                      const GURL& resource_url,
-                                     const std::string& mime_type,
                                      const std::string& stream_id,
                                      const std::string& internal_id) {
   DCHECK(
       !base::Contains(*GetMimeHandlerViewEmbeddersMap(), frame_tree_node_id));
   GetMimeHandlerViewEmbeddersMap()->insert_or_assign(
-      frame_tree_node_id, base::WrapUnique(new MimeHandlerViewEmbedder(
-                              frame_tree_node_id, resource_url, mime_type,
-                              stream_id, internal_id)));
+      frame_tree_node_id,
+      base::WrapUnique(new MimeHandlerViewEmbedder(
+          frame_tree_node_id, resource_url, stream_id, internal_id)));
 }
 
 MimeHandlerViewEmbedder::MimeHandlerViewEmbedder(int32_t frame_tree_node_id,
                                                  const GURL& resource_url,
-                                                 const std::string& mime_type,
                                                  const std::string& stream_id,
                                                  const std::string& internal_id)
     : content::WebContentsObserver(
           content::WebContents::FromFrameTreeNodeId(frame_tree_node_id)),
       frame_tree_node_id_(frame_tree_node_id),
       resource_url_(resource_url),
-      mime_type_(mime_type),
       stream_id_(stream_id),
       internal_id_(internal_id) {}
 
-MimeHandlerViewEmbedder::~MimeHandlerViewEmbedder() {}
+MimeHandlerViewEmbedder::~MimeHandlerViewEmbedder() = default;
+
+void MimeHandlerViewEmbedder::DestroySelf() {
+  GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+}
 
 void MimeHandlerViewEmbedder::DidStartNavigation(
     content::NavigationHandle* handle) {
@@ -83,7 +86,7 @@ void MimeHandlerViewEmbedder::DidStartNavigation(
   // PDFExtensionLinkClickTest.OpenPDFWithReplaceState reaches here).
   if (handle->GetFrameTreeNodeId() == frame_tree_node_id_ &&
       !handle->IsSameDocument()) {
-    GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+    DestroySelf();
   }
 }
 
@@ -91,17 +94,37 @@ void MimeHandlerViewEmbedder::ReadyToCommitNavigation(
     content::NavigationHandle* handle) {
   if (handle->GetFrameTreeNodeId() != frame_tree_node_id_)
     return;
-  if (!render_frame_host_) {
-    render_frame_host_ = handle->GetRenderFrameHost();
-    GetContainerManager()->SetInternalId(internal_id_);
+  if (render_frame_host_)
+    return;
+
+  // It's possible for the navigation to the template HTML document to fail
+  // (e.g. attempting to load a PDF in a fenced frame).
+  if (handle->GetNetErrorCode() != net::OK) {
+    DestroySelf();
+    return;
   }
+
+  // We should've deleted the MimeHandlerViewEmbedder at this point if the frame
+  // is sandboxed.
+  DCHECK_EQ(network::mojom::WebSandboxFlags::kNone,
+            handle->SandboxFlagsToCommit() &
+                network::mojom::WebSandboxFlags::kPlugins);
+
+  render_frame_host_ = handle->GetRenderFrameHost();
+  GetContainerManager()->SetInternalId(internal_id_);
 }
 
 void MimeHandlerViewEmbedder::DidFinishNavigation(
     content::NavigationHandle* handle) {
-  if (frame_tree_node_id_ != handle->GetFrameTreeNodeId())
+  if (!handle->HasCommitted() ||
+      render_frame_host_ != handle->GetRenderFrameHost()) {
     return;
-  CheckSandboxFlags();
+  }
+  // We should've deleted the MimeHandlerViewEmbedder at this point if the frame
+  // is sandboxed.
+  DCHECK(render_frame_host_);
+  DCHECK(!render_frame_host_->IsSandboxed(
+      network::mojom::WebSandboxFlags::kPlugins));
 }
 
 void MimeHandlerViewEmbedder::RenderFrameCreated(
@@ -114,7 +137,7 @@ void MimeHandlerViewEmbedder::RenderFrameCreated(
       render_frame_host_ != render_frame_host->GetParent() ||
       render_frame_host_->GetLastCommittedURL() != resource_url_ ||
       render_frame_host->GetFrameOwnerElementType() !=
-          blink::mojom::FrameOwnerElementType::kEmbed ||
+          blink::FrameOwnerElementType::kEmbed ||
       render_frame_host->GetFrameName() != internal_id_) {
     return;
   }
@@ -122,11 +145,12 @@ void MimeHandlerViewEmbedder::RenderFrameCreated(
     // Renderer notifies the browser about creating MimeHandlerView right after
     // HTMLPlugInElement::RequestObject, which is before the plugin element is
     // navigated.
-    GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+    DestroySelf();
     return;
   }
-  outer_contents_frame_tree_node_id_ = render_frame_host->GetFrameTreeNodeId();
-  element_instance_id_ = render_frame_host->GetRoutingID();
+
+  placeholder_rfh_for_inner_contents_ = render_frame_host;
+
   // This suggests that a same-origin child frame is created under the
   // RFH associated with |frame_tree_node_id_|. This suggests that the HTML
   // string is loaded in the observed frame's document and now the renderer
@@ -140,18 +164,21 @@ void MimeHandlerViewEmbedder::RenderFrameCreated(
                      weak_factory_.GetWeakPtr()));
 }
 
-void MimeHandlerViewEmbedder::FrameDeleted(
-    content::RenderFrameHost* render_frame_host) {
-  if (render_frame_host->GetFrameTreeNodeId() == frame_tree_node_id_ ||
-      render_frame_host->GetFrameTreeNodeId() ==
-          outer_contents_frame_tree_node_id_) {
-    GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+void MimeHandlerViewEmbedder::FrameDeleted(int frame_tree_node_id) {
+  // TODO(mcnee): RenderFrameDeleted seems like a better fit for the child frame
+  // case (i.e. |placeholder_rfh_for_inner_contents_|), though we'd still need
+  // FrameDeleted for |frame_tree_node_id_|.
+  if (frame_tree_node_id == frame_tree_node_id_ ||
+      (placeholder_rfh_for_inner_contents_ &&
+       placeholder_rfh_for_inner_contents_->GetFrameTreeNodeId() ==
+           frame_tree_node_id)) {
+    DestroySelf();
   }
 }
 
 void MimeHandlerViewEmbedder::CreateMimeHandlerViewGuest(
     mojo::PendingRemote<mime_handler::BeforeUnloadControl>
-        before_unload_control) {
+        before_unload_control_remote) {
   auto* browser_context = web_contents()->GetBrowserContext();
   auto* manager =
       guest_view::GuestViewManager::FromBrowserContext(browser_context);
@@ -161,51 +188,62 @@ void MimeHandlerViewEmbedder::CreateMimeHandlerViewGuest(
         ExtensionsAPIClient::Get()->CreateGuestViewManagerDelegate(
             browser_context));
   }
-  pending_before_unload_control_ = std::move(before_unload_control);
-  base::DictionaryValue create_params;
-  create_params.SetString(mime_handler_view::kViewId, stream_id_);
-  manager->CreateGuest(
+  base::Value::Dict create_params;
+  create_params.Set(mime_handler_view::kStreamId, stream_id_);
+  manager->CreateGuestAndTransferOwnership(
       MimeHandlerViewGuest::Type, web_contents(), create_params,
       base::BindOnce(&MimeHandlerViewEmbedder::DidCreateMimeHandlerViewGuest,
-                     weak_factory_.GetWeakPtr()));
+                     weak_factory_.GetWeakPtr(),
+                     std::move(before_unload_control_remote)));
 }
 
 void MimeHandlerViewEmbedder::DidCreateMimeHandlerViewGuest(
-    content::WebContents* guest_web_contents) {
-  auto* guest_view = MimeHandlerViewGuest::FromWebContents(guest_web_contents);
+    mojo::PendingRemote<mime_handler::BeforeUnloadControl>
+        before_unload_control_remote,
+    std::unique_ptr<guest_view::GuestViewBase> guest) {
+  auto* raw_guest_view = static_cast<MimeHandlerViewGuest*>(guest.release());
+  std::unique_ptr<MimeHandlerViewGuest> guest_view =
+      base::WrapUnique(raw_guest_view);
+
   if (!guest_view)
     return;
-  // Manager was created earlier in the stack in CreateMimeHandlerViewGuest (if
-  // it had not existed before that).
   guest_view->SetBeforeUnloadController(
-      std::move(pending_before_unload_control_));
-  int guest_instance_id = guest_view->guest_instance_id();
-  auto* outer_contents_rfh = web_contents()->UnsafeFindFrameByFrameTreeNodeId(
-      outer_contents_frame_tree_node_id_);
-  int32_t embedder_frame_process_id =
-      outer_contents_rfh->GetParent()->GetProcess()->GetID();
-  guest_view->SetEmbedderFrame(embedder_frame_process_id,
-                               outer_contents_rfh->GetParent()->GetRoutingID());
+      std::move(before_unload_control_remote));
+
+  DCHECK(placeholder_rfh_for_inner_contents_);
+  DCHECK(render_frame_host_);
+  DCHECK_EQ(placeholder_rfh_for_inner_contents_->GetParent(),
+            render_frame_host_);
+  guest_view->SetEmbedderFrame(render_frame_host_->GetGlobalId());
+
+  const int embedder_frame_process_id =
+      render_frame_host_->GetProcess()->GetID();
+  const int element_instance_id =
+      placeholder_rfh_for_inner_contents_->GetRoutingID();
+  const int guest_instance_id = guest_view->guest_instance_id();
+
   // TODO(ekaramad): This URL is used to communicate with
   // MimeHandlerViewFrameContainer which is only the case if the embedder frame
   // is the content frame of a plugin element (https://crbug.com/957373).
   guest_view->set_original_resource_url(resource_url_);
   guest_view::GuestViewManager::FromBrowserContext(
       web_contents()->GetBrowserContext())
-      ->AttachGuest(embedder_frame_process_id, element_instance_id_,
+      ->AttachGuest(embedder_frame_process_id, element_instance_id,
                     guest_instance_id,
-                    base::DictionaryValue() /* unused attach_params */);
+                    base::Value::Dict() /* unused attach_params */);
   // Full page plugin refers to <iframe> or main frame navigations to a
   // MimeHandlerView resource. In such cases MHVG does not have a frame
   // container.
-  bool is_full_page = !guest_view->maybe_has_frame_container() &&
-                      !guest_view->GetEmbedderFrame()->GetParent();
+  bool is_full_page =
+      !guest_view->maybe_has_frame_container() &&
+      !guest_view->GetEmbedderFrame()->GetParentOrOuterDocument();
   MimeHandlerViewAttachHelper::Get(embedder_frame_process_id)
-      ->AttachToOuterWebContents(guest_view, embedder_frame_process_id,
-                                 outer_contents_rfh, element_instance_id_,
-                                 is_full_page /* is_full_page_plugin */);
+      ->AttachToOuterWebContents(
+          std::move(guest_view), embedder_frame_process_id,
+          placeholder_rfh_for_inner_contents_, element_instance_id,
+          is_full_page /* is_full_page_plugin */);
   // MHVE is no longer required.
-  GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+  DestroySelf();
 }
 
 mojom::MimeHandlerViewContainerManager*
@@ -221,22 +259,13 @@ void MimeHandlerViewEmbedder::ReadyToCreateMimeHandlerView(
     bool ready_to_create_mime_handler_view) {
   ready_to_create_mime_handler_view_ = ready_to_create_mime_handler_view;
   if (!ready_to_create_mime_handler_view_)
-    GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+    DestroySelf();
 }
 
-void MimeHandlerViewEmbedder::CheckSandboxFlags() {
-  // If the FrameTreeNode is deleted while it has ownership of the ongoing
-  // NavigationRequest, DidFinishNavigation is called before FrameDeleted (see
-  // https://crbug.com/969840).
-  if (render_frame_host_ && !render_frame_host_->IsSandboxed(
-                                network::mojom::WebSandboxFlags::kPlugins)) {
-    return;
-  }
-  if (render_frame_host_) {
-    // Notify the renderer to load an empty page instead.
-    GetContainerManager()->LoadEmptyPage(resource_url_);
-  }
-  GetMimeHandlerViewEmbeddersMap()->erase(frame_tree_node_id_);
+void MimeHandlerViewEmbedder::OnFrameSandboxed() {
+  DCHECK(!render_frame_host_);
+  DCHECK(!container_manager_);
+  DestroySelf();
 }
 
 }  // namespace extensions

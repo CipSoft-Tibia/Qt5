@@ -16,17 +16,45 @@
 
 #include "perfetto/ext/base/string_utils.h"
 
+#include <locale.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include <algorithm>
 
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
+#include <xlocale.h>
+#endif
+
+#include <cinttypes>
+
+#include "perfetto/base/compiler.h"
 #include "perfetto/base/logging.h"
 
 namespace perfetto {
 namespace base {
 
+// Locale-independant as possible version of strtod.
+double StrToD(const char* nptr, char** endptr) {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) ||   \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
+  static auto c_locale = newlocale(LC_ALL, "C", nullptr);
+  return strtod_l(nptr, endptr, c_locale);
+#else
+  return strtod(nptr, endptr);
+#endif
+}
+
 bool StartsWith(const std::string& str, const std::string& prefix) {
   return str.compare(0, prefix.length(), prefix) == 0;
+}
+
+bool StartsWithAny(const std::string& str,
+                   const std::vector<std::string>& prefixes) {
+  return std::any_of(
+      prefixes.begin(), prefixes.end(),
+      [&str](const std::string& prefix) { return StartsWith(str, prefix); });
 }
 
 bool EndsWith(const std::string& str, const std::string& suffix) {
@@ -36,6 +64,10 @@ bool EndsWith(const std::string& str, const std::string& suffix) {
 }
 
 bool Contains(const std::string& haystack, const std::string& needle) {
+  return haystack.find(needle) != std::string::npos;
+}
+
+bool Contains(const std::string& haystack, const char needle) {
   return haystack.find(needle) != std::string::npos;
 }
 
@@ -88,6 +120,18 @@ std::vector<std::string> SplitString(const std::string& text,
   return output;
 }
 
+std::string TrimWhitespace(const std::string& str) {
+  std::string whitespaces = "\t\n ";
+
+  size_t front_idx = str.find_first_not_of(whitespaces);
+  std::string front_trimmed =
+      front_idx == std::string::npos ? "" : str.substr(front_idx);
+
+  size_t end_idx = front_trimmed.find_last_not_of(whitespaces);
+  return end_idx == std::string::npos ? ""
+                                      : front_trimmed.substr(0, end_idx + 1);
+}
+
 std::string StripPrefix(const std::string& str, const std::string& prefix) {
   return StartsWith(str, prefix) ? str.substr(prefix.size()) : str;
 }
@@ -132,9 +176,21 @@ std::string IntToHexString(uint32_t number) {
   size_t max_size = 11;  // Max uint32 is 0xFFFFFFFF + 1 for null byte.
   std::string buf;
   buf.resize(max_size);
-  auto final_size = snprintf(&buf[0], max_size, "0x%02x", number);
-  PERFETTO_DCHECK(final_size >= 0);
-  buf.resize(static_cast<size_t>(final_size));  // Cuts off the final null byte.
+  size_t final_len = SprintfTrunc(&buf[0], max_size, "0x%02x", number);
+  buf.resize(static_cast<size_t>(final_len));  // Cuts off the final null byte.
+  return buf;
+}
+
+std::string Uint64ToHexString(uint64_t number) {
+  return "0x" + Uint64ToHexStringNoPrefix(number);
+}
+
+std::string Uint64ToHexStringNoPrefix(uint64_t number) {
+  size_t max_size = 17;  // Max uint64 is FFFFFFFFFFFFFFFF + 1 for null byte.
+  std::string buf;
+  buf.resize(max_size);
+  size_t final_len = SprintfTrunc(&buf[0], max_size, "%" PRIx64 "", number);
+  buf.resize(static_cast<size_t>(final_len));  // Cuts off the final null byte.
   return buf;
 }
 
@@ -161,9 +217,55 @@ std::string ReplaceAll(std::string str,
   return str;
 }
 
-std::string TrimLeading(const std::string& str) {
-  size_t idx = str.find_first_not_of(' ');
-  return idx == std::string::npos ? str : str.substr(idx);
+size_t SprintfTrunc(char* dst, size_t dst_size, const char* fmt, ...) {
+  if (PERFETTO_UNLIKELY(dst_size) == 0)
+    return 0;
+
+  va_list args;
+  va_start(args, fmt);
+  int src_size = vsnprintf(dst, dst_size, fmt, args);
+  va_end(args);
+
+  if (PERFETTO_UNLIKELY(src_size) <= 0) {
+    dst[0] = '\0';
+    return 0;
+  }
+
+  size_t res;
+  if (PERFETTO_LIKELY(src_size < static_cast<int>(dst_size))) {
+    // Most common case.
+    res = static_cast<size_t>(src_size);
+  } else {
+    // Truncation case.
+    res = dst_size - 1;
+  }
+
+  PERFETTO_DCHECK(res < dst_size);
+  PERFETTO_DCHECK(dst[res] == '\0');
+  return res;
+}
+
+base::Optional<LineWithOffset> FindLineWithOffset(base::StringView str,
+                                                  uint32_t offset) {
+  static constexpr char kNewLine = '\n';
+  uint32_t line_offset = 0;
+  uint32_t line_count = 1;
+  for (uint32_t i = 0; i < str.size(); ++i) {
+    if (str.at(i) == kNewLine) {
+      line_offset = i + 1;
+      line_count++;
+      continue;
+    }
+    if (i == offset) {
+      size_t end_offset = str.find(kNewLine, i);
+      if (end_offset == std::string::npos) {
+        end_offset = str.size();
+      }
+      base::StringView line = str.substr(line_offset, end_offset - line_offset);
+      return LineWithOffset{line, offset - line_offset, line_count};
+    }
+  }
+  return base::nullopt;
 }
 
 }  // namespace base

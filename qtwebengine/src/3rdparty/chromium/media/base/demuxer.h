@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,6 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/optional.h"
 #include "base/time/time.h"
 #include "media/base/container_names.h"
 #include "media/base/data_source.h"
@@ -22,10 +20,21 @@
 #include "media/base/media_track.h"
 #include "media/base/pipeline_status.h"
 #include "media/base/ranges.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
 class MediaTracks;
+
+enum class DemuxerType {
+  kMockDemuxer,
+  kFFmpegDemuxer,
+  kChunkDemuxer,
+  kMediaUrlDemuxer,
+  kFrameInjectingDemuxer,
+  kStreamProviderDemuxer,
+  kHlsDemuxer,
+};
 
 class MEDIA_EXPORT DemuxerHost {
  public:
@@ -73,11 +82,24 @@ class MEDIA_EXPORT Demuxer : public MediaResource {
       base::OnceCallback<void(DemuxerStream::Type type,
                               const std::vector<DemuxerStream*>&)>;
 
+  enum DemuxerTypes {
+    kChunkDemuxer,
+    kFFmpegDemuxer,
+    kMediaUrlDemuxer,
+  };
+
   Demuxer();
+
+  Demuxer(const Demuxer&) = delete;
+  Demuxer& operator=(const Demuxer&) = delete;
+
   ~Demuxer() override;
 
   // Returns the name of the demuxer for logging purpose.
   virtual std::string GetDisplayName() const = 0;
+
+  // Get the demuxer type for identification purposes.
+  virtual DemuxerType GetDemuxerType() const = 0;
 
   // Completes initialization of the demuxer.
   //
@@ -122,6 +144,11 @@ class MEDIA_EXPORT Demuxer : public MediaResource {
   // callback upon completion.
   virtual void Seek(base::TimeDelta time, PipelineStatusCallback status_cb) = 0;
 
+  // Returns whether this demuxer supports seeking and has a timeline. If false,
+  // Seek(), CancelPendingSeek(), StartWaitingForSeek(), and GetTimelineOffset()
+  // should be noops.
+  virtual bool IsSeekable() const = 0;
+
   // Stops this demuxer.
   //
   // After this call the demuxer may be destroyed. It is illegal to call any
@@ -143,7 +170,7 @@ class MEDIA_EXPORT Demuxer : public MediaResource {
   // Implementations where this is not meaningful will return an empty value.
   // Implementations that do provide values should always provide a value,
   // returning CONTAINER_UNKNOWN in cases where the container is not known.
-  virtual base::Optional<container_names::MediaContainerName>
+  virtual absl::optional<container_names::MediaContainerName>
   GetContainerForMetrics() const = 0;
 
   // The |track_ids| vector has either 1 track, or is empty, indicating that
@@ -159,9 +186,6 @@ class MEDIA_EXPORT Demuxer : public MediaResource {
       const std::vector<MediaTrack::Id>& track_ids,
       base::TimeDelta curr_time,
       TrackChangeCB change_completed_cb) = 0;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(Demuxer);
 };
 
 }  // namespace media

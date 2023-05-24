@@ -1,13 +1,14 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/chrome_build.gni")
 
 declare_args() {
-  # Enable Kaleidoscope if we are not Android and we have access to the internal
-  # code.
-  enable_kaleidoscope = !is_android && is_chrome_branded
+  # By default, only branded builds integrate with automatic updates.
+  enable_updater = is_chrome_branded
 
-  tpm_fallback = false
+  # Detect updates and notify the user for Google Chrome across all platforms.
+  # Chromium does not use an auto-updater.
+  enable_update_notifications = is_chrome_branded
 }

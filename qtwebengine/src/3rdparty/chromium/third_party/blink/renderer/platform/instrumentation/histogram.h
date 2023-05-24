@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/time/default_tick_clock.h"
 #include "base/time/tick_clock.h"
+#include "base/time/time.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
@@ -31,44 +32,11 @@ class PLATFORM_EXPORT CustomCountHistogram {
   void Count(base::HistogramBase::Sample);
   void CountMany(base::HistogramBase::Sample, int count);
   void CountMicroseconds(base::TimeDelta);
-  void CountMilliseconds(base::TimeDelta);
 
  protected:
   explicit CustomCountHistogram(base::HistogramBase*);
 
   base::HistogramBase* histogram_;
-};
-
-class PLATFORM_EXPORT BooleanHistogram : public CustomCountHistogram {
- public:
-  BooleanHistogram(const char* name);
-};
-
-class PLATFORM_EXPORT EnumerationHistogram : public CustomCountHistogram {
- public:
-  // |boundaryValue| must be strictly greater than samples passed to |count|.
-  EnumerationHistogram(const char* name,
-                       base::HistogramBase::Sample boundary_value);
-};
-
-class PLATFORM_EXPORT SparseHistogram {
-  USING_FAST_MALLOC(SparseHistogram);
-
- public:
-  explicit SparseHistogram(const char* name);
-
-  void Sample(base::HistogramBase::Sample);
-
- private:
-  base::HistogramBase* histogram_;
-};
-
-class PLATFORM_EXPORT LinearHistogram : public CustomCountHistogram {
- public:
-  explicit LinearHistogram(const char* name,
-                           base::HistogramBase::Sample min,
-                           base::HistogramBase::Sample max,
-                           int32_t bucket_count);
 };
 
 template <typename Derived>
@@ -109,9 +77,17 @@ class ScopedHighResUsHistogramTimer
   static bool ShouldRecord() { return base::TimeTicks::IsHighResolution(); }
 };
 
+static constexpr base::HistogramBase::Sample kTimeBasedHistogramMinSample = 1;
+static constexpr base::HistogramBase::Sample kTimeBasedHistogramMaxSample =
+    static_cast<base::Histogram::Sample>(base::Seconds(10).InMicroseconds());
+static constexpr int32_t kTimeBasedHistogramBucketCount = 50;
+
 #define SCOPED_BLINK_UMA_HISTOGRAM_TIMER_IMPL(name, allow_cross_thread)  \
-  DEFINE_STATIC_LOCAL_IMPL(CustomCountHistogram, scoped_us_counter,      \
-                           (name, 0, 10000000, 50), allow_cross_thread); \
+  DEFINE_STATIC_LOCAL_IMPL(                                              \
+      CustomCountHistogram, scoped_us_counter,                           \
+      (name, kTimeBasedHistogramMinSample, kTimeBasedHistogramMaxSample, \
+       kTimeBasedHistogramBucketCount),                                  \
+      allow_cross_thread);                                               \
   ScopedUsHistogramTimer timer(scoped_us_counter);
 
 #define SCOPED_BLINK_UMA_HISTOGRAM_TIMER_HIGHRES_IMPL(name,               \

@@ -28,7 +28,7 @@
 #include "third_party/blink/renderer/core/layout/layout_object_factory.h"
 #include "third_party/blink/renderer/core/layout/layout_progress.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 
 namespace blink {
@@ -58,9 +58,7 @@ LayoutObject* HTMLProgressElement::CreateLayoutObject(
 }
 
 LayoutProgress* HTMLProgressElement::GetLayoutProgress() const {
-  if (GetLayoutObject() && GetLayoutObject()->IsProgress())
-    return ToLayoutProgress(GetLayoutObject());
-  return nullptr;
+  return DynamicTo<LayoutProgress>(GetLayoutObject());
 }
 
 void HTMLProgressElement::ParseAttribute(
@@ -121,7 +119,7 @@ bool HTMLProgressElement::IsDeterminate() const {
 }
 
 void HTMLProgressElement::DidElementStateChange() {
-  SetValueWidthPercentage(position() * 100);
+  SetInlineSizePercentage(position() * 100);
   if (LayoutProgress* layout_progress = GetLayoutProgress())
     layout_progress->UpdateFromElement();
 }
@@ -137,7 +135,7 @@ void HTMLProgressElement::DidAddUserAgentShadowRoot(ShadowRoot& root) {
   bar->SetShadowPseudoId(AtomicString("-webkit-progress-bar"));
   value_ = MakeGarbageCollected<ProgressShadowElement>(GetDocument());
   value_->SetShadowPseudoId(AtomicString("-webkit-progress-value"));
-  SetValueWidthPercentage(HTMLProgressElement::kIndeterminatePosition * 100);
+  SetInlineSizePercentage(HTMLProgressElement::kIndeterminatePosition * 100);
   bar->AppendChild(value_);
 
   inner->AppendChild(bar);
@@ -152,8 +150,10 @@ void HTMLProgressElement::Trace(Visitor* visitor) const {
   HTMLElement::Trace(visitor);
 }
 
-void HTMLProgressElement::SetValueWidthPercentage(double width) const {
-  value_->SetInlineStyleProperty(CSSPropertyID::kWidth, width,
+void HTMLProgressElement::SetInlineSizePercentage(double position) const {
+  value_->SetInlineStyleProperty(CSSPropertyID::kInlineSize, position,
+                                 CSSPrimitiveValue::UnitType::kPercentage);
+  value_->SetInlineStyleProperty(CSSPropertyID::kBlockSize, 100,
                                  CSSPrimitiveValue::UnitType::kPercentage);
 }
 

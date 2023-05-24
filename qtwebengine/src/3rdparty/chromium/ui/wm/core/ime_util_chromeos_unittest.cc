@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -91,7 +91,8 @@ TEST_F(ImeUtilChromeosTest, EnsureWindowNotInRect_MoveToTop) {
   constexpr int kOccupiedTopHeight = 5;
   ASSERT_GE(original_bounds.y(), kOccupiedTopHeight);
 
-  test_screen()->SetWorkAreaInsets(gfx::Insets(kOccupiedTopHeight, 0, 0, 0));
+  test_screen()->SetWorkAreaInsets(
+      gfx::Insets::TLBR(kOccupiedTopHeight, 0, 0, 0));
   EnsureWindowNotInRect(window, rect);
   EXPECT_EQ(gfx::Rect(10, kOccupiedTopHeight, 100, 100), window->bounds());
 }
@@ -126,25 +127,6 @@ TEST_F(ImeUtilChromeosTest, MoveUpThenRestore) {
   EnsureWindowNotInRect(window, rect);
   EXPECT_EQ(original_bounds, window->bounds());
   EXPECT_EQ(original_bounds, window->GetBoundsInScreen());
-}
-
-// Tests that setting/clearing kEmbeddedWindowEnsureNotInRect window property
-// triggers the relevant top level to be moved/restored.
-TEST_F(ImeUtilChromeosTest, EnsureWindowNotInRectHelper) {
-  const gfx::Rect original_bounds(10, 10, 100, 100);
-  aura::Window* top_level = aura::test::CreateTestWindow(
-      SK_ColorWHITE, 1, original_bounds, root_window());
-  aura::Window* embedding_root = aura::test::CreateTestWindowWithBounds(
-      gfx::Rect(original_bounds.size()), top_level);
-  EnsureWindowNotInRectHelper helper(embedding_root);
-
-  gfx::Rect occluded_rect(50, 50, 200, 200);
-  embedding_root->SetProperty(aura::client::kEmbeddedWindowEnsureNotInRect,
-                              new gfx::Rect(occluded_rect));
-  EXPECT_EQ(gfx::Rect(10, 0, 100, 100), top_level->bounds());
-
-  embedding_root->ClearProperty(aura::client::kEmbeddedWindowEnsureNotInRect);
-  EXPECT_EQ(original_bounds, top_level->bounds());
 }
 
 }  // namespace wm

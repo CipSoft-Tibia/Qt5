@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QRegularExpression>
-#include <QtTest/QtTest>
+#include <QTest>
 
 class tst_Warnings: public QObject
 {
@@ -37,9 +12,22 @@ class tst_Warnings: public QObject
 private slots:
     void testWarnings();
     void testMissingWarnings();
+#if QT_CONFIG(regularexpression)
     void testMissingWarningsRegularExpression();
+#endif
     void testMissingWarningsWithData_data();
     void testMissingWarningsWithData();
+
+    void testFailOnWarnings();
+    void testFailOnWarningsCleared();
+#if QT_CONFIG(regularexpression)
+    void testFailOnWarningsWithData_data();
+    void testFailOnWarningsWithData();
+    void testFailOnWarningsFailInHelper();
+    void testFailOnWarningsThenSkip();
+#endif
+    void testFailOnWarningsAndIgnoreWarnings();
+    void testFailOnTemporaryObjectDestruction();
 };
 
 void tst_Warnings::testWarnings()
@@ -99,6 +87,7 @@ void tst_Warnings::testMissingWarnings()
     qWarning("Warning2");
 }
 
+#if QT_CONFIG(regularexpression)
 void tst_Warnings::testMissingWarningsRegularExpression()
 {
     QTest::ignoreMessage(QtWarningMsg, QRegularExpression("Warning\\d\\d"));
@@ -106,6 +95,7 @@ void tst_Warnings::testMissingWarningsRegularExpression()
 
     qWarning("Warning11");
 }
+#endif
 
 void tst_Warnings::testMissingWarningsWithData_data()
 {
@@ -122,6 +112,122 @@ void tst_Warnings::testMissingWarningsWithData()
     QTest::ignoreMessage(QtWarningMsg, "Warning2");
 
     qWarning("Warning2");
+}
+
+void tst_Warnings::testFailOnWarnings()
+{
+    // failOnWarning() wasn't called yet; shouldn't fail;
+    qWarning("Ran out of space!");
+
+#if QT_CONFIG(regularexpression)
+    const auto warnRegex = QRegularExpression("Ran out of .*!");
+    QTest::failOnWarning(warnRegex);
+    // Should now fail.
+    qWarning("Ran out of cabbage!");
+
+    // Should not fail; none of these are warnings.
+    qDebug("Ran out of tortillas!");
+    qInfo("Ran out of oil!");
+
+    // Should not fail; regex doesn't match.
+    qWarning("nope");
+
+    // Should fail; matches regex.
+    qWarning("Ran out of biscuits!");
+#endif // QT_CONFIG(regularexpression)
+
+    QTest::failOnWarning("Running low on toothpaste!");
+
+    // Should fail; strings match.
+    qWarning("Running low on toothpaste!");
+
+    // Shouldn't fail; strings don't match.
+    qWarning("Running low on flour!");
+
+    // Should not fail; none of these are warnings.
+    qDebug("Running low on toothpaste!");
+    qInfo("Running low on toothpaste!");
+}
+
+void tst_Warnings::testFailOnWarningsCleared()
+{
+    // The patterns passed to failOnWarnings() should be cleared at the end of
+    // each test function, so this shouldn't fail because of the failOnWarning()
+    // call in the previous function. Note that this test always needs to come
+    // after testFailOnWarnings for it to test anything meaningfully.
+    qWarning("Ran out of muffins!");
+}
+
+#if QT_CONFIG(regularexpression)
+void tst_Warnings::testFailOnWarningsWithData_data()
+{
+    // The warning message that should cause a failure.
+    QTest::addColumn<QString>("warningMessage");
+
+    QTest::newRow("warning1") << "warning1";
+    QTest::newRow("warning2") << "warning2";
+    QTest::newRow("warning3") << "warning3";
+}
+
+void tst_Warnings::testFailOnWarningsWithData()
+{
+    QFETCH(QString, warningMessage);
+
+    QTest::failOnWarning(QRegularExpression(warningMessage));
+
+    // Only one of these should fail, depending on warningMessage.
+    qWarning("warning1");
+    qWarning("warning2");
+    qWarning("warning3");
+}
+
+void tst_Warnings::testFailOnWarningsFailInHelper()
+{
+    [](){ QFAIL("This failure message should be printed but not cause the test to abort"); }();
+    // So we've already failed, but we get more messages - that don't increment counters.
+    const auto warnRegex = QRegularExpression("Ran out of .*!");
+    QTest::failOnWarning(warnRegex);
+    qWarning("Ran out of cabbage!");
+    QFAIL("My cabbage! :(");
+}
+
+void tst_Warnings::testFailOnWarningsThenSkip()
+{
+    const auto warnRegex = QRegularExpression("Ran out of .*!");
+    QTest::failOnWarning(warnRegex);
+    qWarning("Ran out of cabbage!");
+    QSKIP("My cabbage! :("); // Reports, but doesn't count.
+}
+#endif // QT_CONFIG(regularexpression)
+
+void tst_Warnings::testFailOnWarningsAndIgnoreWarnings()
+{
+    const auto warningStr = "Running low on toothpaste!";
+    QTest::failOnWarning(warningStr);
+    QTest::ignoreMessage(QtWarningMsg, warningStr);
+    // Shouldn't fail; we ignored it.
+    qWarning(warningStr);
+}
+
+void tst_Warnings::testFailOnTemporaryObjectDestruction()
+{
+    QTest::failOnWarning("Running low on toothpaste!");
+    QTest::ignoreMessage(QtWarningMsg, "Ran out of cabbage!");
+
+    class TestObject : public QObject
+    {
+    public:
+        ~TestObject()
+        {
+            // Shouldn't fail - ignored
+            qWarning("Ran out of cabbage!");
+            // Should fail
+            qWarning("Running low on toothpaste!");
+        }
+    };
+
+    QScopedPointer<TestObject, QScopedPointerDeleteLater> testObject(new TestObject);
+    QVERIFY(testObject);
 }
 
 QTEST_MAIN(tst_Warnings)

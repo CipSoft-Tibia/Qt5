@@ -1,19 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/api/declarative_net_request/ruleset_manager.h"
 
-#include <algorithm>
 #include <iterator>
 #include <tuple>
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/containers/contains.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
-#include "base/optional.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "components/web_cache/browser/web_cache_manager.h"
@@ -29,8 +29,8 @@
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_util.h"
 #include "extensions/common/api/declarative_net_request.h"
-#include "extensions/common/api/declarative_net_request/utils.h"
 #include "extensions/common/constants.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/origin.h"
 
 namespace extensions {
@@ -45,7 +45,7 @@ void NotifyRequestWithheld(const ExtensionId& extension_id,
                            const WebRequestInfo& request) {
   DCHECK(ExtensionsAPIClient::Get());
   ExtensionsAPIClient::Get()->NotifyWebRequestWithheld(
-      request.render_process_id, request.frame_id, extension_id);
+      request.render_process_id, request.frame_routing_id, extension_id);
 }
 
 // Helper to log the time taken in RulesetManager::EvaluateRequestInternal.
@@ -55,8 +55,7 @@ class ScopedEvaluateRequestTimer {
   ~ScopedEvaluateRequestTimer() {
     UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
         "Extensions.DeclarativeNetRequest.EvaluateRequestTime.AllExtensions3",
-        timer_.Elapsed(), base::TimeDelta::FromMicroseconds(1),
-        base::TimeDelta::FromMilliseconds(50), 50);
+        timer_.Elapsed(), base::Microseconds(1), base::Milliseconds(50), 50);
   }
 
  private:
@@ -82,11 +81,10 @@ RulesetManager::~RulesetManager() {
 void RulesetManager::AddRuleset(const ExtensionId& extension_id,
                                 std::unique_ptr<CompositeMatcher> matcher) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(IsAPIAvailable());
 
   bool inserted =
       rulesets_
-          .emplace(extension_id, prefs_->GetInstallTime(extension_id),
+          .emplace(extension_id, prefs_->GetLastUpdateTime(extension_id),
                    std::move(matcher))
           .second;
   DCHECK(inserted) << "AddRuleset called twice in succession for "
@@ -101,7 +99,6 @@ void RulesetManager::AddRuleset(const ExtensionId& extension_id,
 
 void RulesetManager::RemoveRuleset(const ExtensionId& extension_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(IsAPIAvailable());
 
   auto compare_by_id =
       [&extension_id](const ExtensionRulesetData& ruleset_data) {
@@ -130,17 +127,20 @@ std::set<ExtensionId> RulesetManager::GetExtensionsWithRulesets() const {
 
 CompositeMatcher* RulesetManager::GetMatcherForExtension(
     const ExtensionId& extension_id) {
+  return const_cast<CompositeMatcher*>(
+      static_cast<const RulesetManager*>(this)->GetMatcherForExtension(
+          extension_id));
+}
+
+const CompositeMatcher* RulesetManager::GetMatcherForExtension(
+    const ExtensionId& extension_id) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(IsAPIAvailable());
 
   // This is O(n) but it's ok since the number of extensions will be small and
   // we have to maintain the rulesets sorted in decreasing order of installation
   // time.
-  auto iter =
-      std::find_if(rulesets_.begin(), rulesets_.end(),
-                   [&extension_id](const ExtensionRulesetData& ruleset) {
-                     return ruleset.extension_id == extension_id;
-                   });
+  auto iter = base::ranges::find(rulesets_, extension_id,
+                                 &ExtensionRulesetData::extension_id);
 
   // There must be ExtensionRulesetData corresponding to this |extension_id|.
   if (iter == rulesets_.end())
@@ -190,10 +190,8 @@ bool RulesetManager::HasExtraHeadersMatcherForRequest(
                 "Modify this method to ensure HasExtraHeadersMatcherForRequest "
                 "is updated as new actions are added.");
 
-  return std::any_of(
-      actions.begin(), actions.end(), [](const RequestAction& action) {
-        return action.type == RequestAction::Type::MODIFY_HEADERS;
-      });
+  return base::Contains(actions, RequestAction::Type::MODIFY_HEADERS,
+                        &RequestAction::type);
 }
 
 void RulesetManager::OnRenderFrameCreated(content::RenderFrameHost* host) {
@@ -206,9 +204,10 @@ void RulesetManager::OnRenderFrameDeleted(content::RenderFrameHost* host) {
     ruleset.matcher->OnRenderFrameDeleted(host);
 }
 
-void RulesetManager::OnDidFinishNavigation(content::RenderFrameHost* host) {
+void RulesetManager::OnDidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
   for (ExtensionRulesetData& ruleset : rulesets_)
-    ruleset.matcher->OnDidFinishNavigation(host);
+    ruleset.matcher->OnDidFinishNavigation(navigation_handle);
 }
 
 void RulesetManager::SetObserverForTest(TestObserver* observer) {
@@ -239,7 +238,7 @@ bool RulesetManager::ExtensionRulesetData::operator<(
          std::tie(other.extension_install_time, other.extension_id);
 }
 
-base::Optional<RequestAction> RulesetManager::GetBeforeRequestAction(
+absl::optional<RequestAction> RulesetManager::GetBeforeRequestAction(
     const std::vector<RulesetAndPageAccess>& rulesets,
     const WebRequestInfo& request,
     const RequestParams& params) const {
@@ -250,7 +249,7 @@ base::Optional<RequestAction> RulesetManager::GetBeforeRequestAction(
 
   // The priorities of actions between different extensions is different from
   // the priorities of actions within an extension.
-  const auto action_priority = [](const base::Optional<RequestAction>& action) {
+  const auto action_priority = [](const absl::optional<RequestAction>& action) {
     if (!action.has_value())
       return 0;
     switch (action->type) {
@@ -269,7 +268,7 @@ base::Optional<RequestAction> RulesetManager::GetBeforeRequestAction(
     }
   };
 
-  base::Optional<RequestAction> action;
+  absl::optional<RequestAction> action;
 
   // This iterates in decreasing order of extension installation time. Hence
   // more recently installed extensions get higher priority in choosing the
@@ -338,7 +337,7 @@ std::vector<RequestAction> RulesetManager::GetModifyHeadersActions(
   //  priority.
   //  - Between extensions: |rulesets| is sorder in descending order of
   //  extension priority.
-  return std::move(modify_headers_actions);
+  return modify_headers_actions;
 }
 
 std::vector<RequestAction> RulesetManager::EvaluateRequestInternal(
@@ -360,62 +359,38 @@ std::vector<RequestAction> RulesetManager::EvaluateRequestInternal(
 
   ScopedEvaluateRequestTimer timer;
 
-  const RequestParams params(request);
-  const int tab_id = request.frame_data.tab_id;
-
-  // |crosses_incognito| is used to ensure that a split mode extension process
-  // can't intercept requests from a cross browser context. Since declarative
-  // net request API doesn't use event listeners in a background process, it is
-  // irrelevant here.
-  const bool crosses_incognito = false;
-
   // Filter the rulesets to evaluate along with their host permissions based
   // page access for the current request being evaluated.
   std::vector<RulesetAndPageAccess> rulesets_to_evaluate;
   for (const ExtensionRulesetData& ruleset : rulesets_) {
-    if (!ShouldEvaluateRulesetForRequest(ruleset, request,
-                                         is_incognito_context)) {
+    PageAccess host_permission_access = PageAccess::kDenied;
+    if (!ShouldEvaluateRulesetForRequest(ruleset, request, is_incognito_context,
+                                         host_permission_access)) {
       continue;
     }
 
-    // If the extension doesn't have permission to the request, then skip this
-    // ruleset. Note: we are not checking for host permissions here.
-    // DO_NOT_CHECK_HOST is strictly less restrictive than
-    // REQUIRE_HOST_PERMISSION_FOR_URL_AND_INITIATOR.
-    PageAccess page_access = WebRequestPermissions::CanExtensionAccessURL(
-        permission_helper_, ruleset.extension_id, request.url, tab_id,
-        crosses_incognito, WebRequestPermissions::DO_NOT_CHECK_HOST,
-        request.initiator, request.type);
-    DCHECK_NE(PageAccess::kWithheld, page_access);
-    if (page_access != PageAccess::kAllowed)
-      continue;
-
-    // Precompute the host permissions access the extension has for this
-    // request.
-    PageAccess host_permissions_access =
-        WebRequestPermissions::CanExtensionAccessURL(
-            permission_helper_, ruleset.extension_id, request.url, tab_id,
-            crosses_incognito,
-            WebRequestPermissions::
-                REQUIRE_HOST_PERMISSION_FOR_URL_AND_INITIATOR,
-            request.initiator, request.type);
-
-    rulesets_to_evaluate.push_back(
-        std::make_pair(&ruleset, host_permissions_access));
+    rulesets_to_evaluate.emplace_back(&ruleset, host_permission_access);
   }
 
-  // If the request is blocked/allowed/redirected, no further modifications can
-  // happen. A new request will be created and subsequently evaluated.
-  base::Optional<RequestAction> action =
+  const RequestParams params(request);
+  absl::optional<RequestAction> before_request_action =
       GetBeforeRequestAction(rulesets_to_evaluate, request, params);
-  if (action) {
-    actions.push_back(std::move(std::move(*action)));
-    return actions;
+
+  if (before_request_action) {
+    bool is_request_modifying_action =
+        !before_request_action->IsAllowOrAllowAllRequests();
+    actions.push_back(std::move(*before_request_action));
+
+    // If the request is blocked/redirected, no further modifications can
+    // happen.
+    if (is_request_modifying_action)
+      return actions;
   }
 
+  // This returns any matching modifyHeaders rules with priority greater than
+  // matching allow/allowAllRequests rules.
   std::vector<RequestAction> modify_headers_actions =
       GetModifyHeadersActions(rulesets_to_evaluate, request, params);
-
   if (!modify_headers_actions.empty())
     return modify_headers_actions;
 
@@ -428,11 +403,6 @@ bool RulesetManager::ShouldEvaluateRequest(
 
   // Ensure clients filter out sensitive requests.
   DCHECK(!WebRequestPermissions::HideRequest(permission_helper_, request));
-
-  if (!IsAPIAvailable()) {
-    DCHECK(rulesets_.empty());
-    return false;
-  }
 
   // Prevent extensions from modifying any resources on the chrome-extension
   // scheme. Practically, this has the effect of not allowing an extension to
@@ -447,12 +417,59 @@ bool RulesetManager::ShouldEvaluateRequest(
 bool RulesetManager::ShouldEvaluateRulesetForRequest(
     const ExtensionRulesetData& ruleset,
     const WebRequestInfo& request,
-    bool is_incognito_context) const {
+    bool is_incognito_context,
+    PageAccess& host_permission_access) const {
   // Only extensions enabled in incognito should have access to requests in an
   // incognito context.
   if (is_incognito_context &&
       !util::IsIncognitoEnabled(ruleset.extension_id, browser_context_)) {
     return false;
+  }
+
+  const int tab_id = request.frame_data.tab_id;
+
+  // `crosses_incognito` is used to ensure that a split mode extension process
+  // can't intercept requests from a cross browser context. Since declarative
+  // net request API doesn't use event listeners in a background process, it
+  // is irrelevant here.
+  const bool crosses_incognito = false;
+
+  switch (ruleset.matcher->host_permissions_always_required()) {
+    case HostPermissionsAlwaysRequired::kTrue: {
+      PageAccess access = WebRequestPermissions::CanExtensionAccessURL(
+          permission_helper_, ruleset.extension_id, request.url, tab_id,
+          crosses_incognito,
+          WebRequestPermissions::REQUIRE_HOST_PERMISSION_FOR_URL_AND_INITIATOR,
+          request.initiator, request.web_request_type);
+      if (access == PageAccess::kDenied)
+        return false;
+
+      host_permission_access = access;
+      break;
+    }
+
+    case HostPermissionsAlwaysRequired::kFalse: {
+      // Some requests should not be visible to extensions even if the extension
+      // doesn't require host permissions for them. Note: we are not checking
+      // for host permissions here.
+      // DO_NOT_CHECK_HOST is strictly less restrictive than
+      // REQUIRE_HOST_PERMISSION_FOR_URL_AND_INITIATOR.
+      PageAccess do_not_check_host_access =
+          WebRequestPermissions::CanExtensionAccessURL(
+              permission_helper_, ruleset.extension_id, request.url, tab_id,
+              crosses_incognito, WebRequestPermissions::DO_NOT_CHECK_HOST,
+              request.initiator, request.web_request_type);
+      DCHECK_NE(PageAccess::kWithheld, do_not_check_host_access);
+      if (do_not_check_host_access == PageAccess::kDenied)
+        return false;
+
+      host_permission_access = WebRequestPermissions::CanExtensionAccessURL(
+          permission_helper_, ruleset.extension_id, request.url, tab_id,
+          crosses_incognito,
+          WebRequestPermissions::REQUIRE_HOST_PERMISSION_FOR_URL_AND_INITIATOR,
+          request.initiator, request.web_request_type);
+      break;
+    }
   }
 
   return true;

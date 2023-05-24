@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'addlinkdialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -10,6 +10,7 @@
 #define ADDLINKDIALOG_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -38,50 +39,50 @@ public:
     void setupUi(QDialog *AddLinkDialog)
     {
         if (AddLinkDialog->objectName().isEmpty())
-            AddLinkDialog->setObjectName(QString::fromUtf8("AddLinkDialog"));
+            AddLinkDialog->setObjectName("AddLinkDialog");
         AddLinkDialog->setSizeGripEnabled(false);
         AddLinkDialog->setModal(true);
         verticalLayout = new QVBoxLayout(AddLinkDialog);
-        verticalLayout->setObjectName(QString::fromUtf8("verticalLayout"));
+        verticalLayout->setObjectName("verticalLayout");
         formLayout = new QFormLayout();
-        formLayout->setObjectName(QString::fromUtf8("formLayout"));
+        formLayout->setObjectName("formLayout");
         label = new QLabel(AddLinkDialog);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
 
         formLayout->setWidget(0, QFormLayout::LabelRole, label);
 
         titleInput = new QLineEdit(AddLinkDialog);
-        titleInput->setObjectName(QString::fromUtf8("titleInput"));
+        titleInput->setObjectName("titleInput");
         titleInput->setMinimumSize(QSize(337, 0));
 
         formLayout->setWidget(0, QFormLayout::FieldRole, titleInput);
 
         label_2 = new QLabel(AddLinkDialog);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
 
         formLayout->setWidget(1, QFormLayout::LabelRole, label_2);
 
         urlInput = new QLineEdit(AddLinkDialog);
-        urlInput->setObjectName(QString::fromUtf8("urlInput"));
+        urlInput->setObjectName("urlInput");
 
         formLayout->setWidget(1, QFormLayout::FieldRole, urlInput);
 
 
         verticalLayout->addLayout(formLayout);
 
-        verticalSpacer = new QSpacerItem(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        verticalSpacer = new QSpacerItem(0, 0, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         verticalLayout->addItem(verticalSpacer);
 
         line = new QFrame(AddLinkDialog);
-        line->setObjectName(QString::fromUtf8("line"));
+        line->setObjectName("line");
         line->setFrameShape(QFrame::HLine);
         line->setFrameShadow(QFrame::Sunken);
 
         verticalLayout->addWidget(line);
 
         buttonBox = new QDialogButtonBox(AddLinkDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
 
@@ -89,8 +90,8 @@ public:
 
 
         retranslateUi(AddLinkDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), AddLinkDialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), AddLinkDialog, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, AddLinkDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, AddLinkDialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(AddLinkDialog);
     } // setupUi

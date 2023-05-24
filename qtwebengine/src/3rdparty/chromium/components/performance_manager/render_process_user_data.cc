@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "build/build_config.h"
 #include "components/performance_manager/graph/process_node_impl.h"
@@ -32,7 +32,6 @@ RenderProcessUserData::RenderProcessUserData(
     : host_(render_process_host) {
   host_->AddObserver(this);
   process_node_ = PerformanceManagerImpl::CreateProcessNode(
-      content::PROCESS_TYPE_RENDERER,
       RenderProcessHostProxy(RenderProcessHostId(host_->GetID())));
 }
 
@@ -63,6 +62,15 @@ void RenderProcessUserData::SetDestructionObserver(
   destruction_observer_ = destruction_observer;
 }
 
+void RenderProcessUserData::OnProcessLaunched() {
+  DCHECK(host_->GetProcess().IsValid());
+  PerformanceManagerImpl::CallOnGraphImpl(
+      FROM_HERE, base::BindOnce(&ProcessNodeImpl::SetProcess,
+                                base::Unretained(process_node_.get()),
+                                host_->GetProcess().Duplicate(),
+                                /* launch_time=*/base::TimeTicks::Now()));
+}
+
 // static
 RenderProcessUserData* RenderProcessUserData::CreateForRenderProcessHost(
     content::RenderProcessHost* host) {
@@ -72,24 +80,6 @@ RenderProcessUserData* RenderProcessUserData::CreateForRenderProcessHost(
   RenderProcessUserData* raw_user_data = user_data.get();
   host->SetUserData(kRenderProcessUserDataKey, std::move(user_data));
   return raw_user_data;
-}
-
-void RenderProcessUserData::RenderProcessReady(
-    content::RenderProcessHost* host) {
-  const base::Time launch_time =
-#if defined(OS_ANDROID)
-      // Process::CreationTime() is not available on Android. Since this
-      // method is called immediately after the process is launched, the
-      // process launch time can be approximated with the current time.
-      base::Time::Now();
-#else
-      host->GetProcess().CreationTime();
-#endif
-
-  PerformanceManagerImpl::CallOnGraphImpl(
-      FROM_HERE, base::BindOnce(&ProcessNodeImpl::SetProcess,
-                                base::Unretained(process_node_.get()),
-                                host->GetProcess().Duplicate(), launch_time));
 }
 
 void RenderProcessUserData::RenderProcessExited(

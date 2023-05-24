@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,9 @@
 
 #include "base/compiler_specific.h"
 #include "base/component_export.h"
-#include "base/memory/ref_counted.h"
-#include "base/sequenced_task_runner_helpers.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/task/sequenced_task_runner_helpers.h"
 
 namespace base {
 class SingleThreadTaskRunner;
@@ -30,6 +31,9 @@ class QuotaTaskObserver;
 // TODO(kinuko): Revise this using base::OnceCallback.
 class QuotaTask {
  public:
+  QuotaTask(const QuotaTask&) = delete;
+  QuotaTask& operator=(const QuotaTask&) = delete;
+
   void Start();
 
  protected:
@@ -58,7 +62,7 @@ class QuotaTask {
 
   void Abort();
 
-  QuotaTaskObserver* observer_;
+  raw_ptr<QuotaTaskObserver> observer_;
   const scoped_refptr<base::SingleThreadTaskRunner> original_task_runner_;
   bool delete_scheduled_;
 };

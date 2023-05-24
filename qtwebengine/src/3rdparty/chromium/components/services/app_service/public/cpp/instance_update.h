@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -44,7 +44,7 @@ class InstanceUpdate {
   static bool Equals(const Instance* state, const Instance* delta);
 
   // At most one of |state| or |delta| may be nullptr.
-  InstanceUpdate(Instance* state, Instance* delta);
+  InstanceUpdate(const Instance* state, const Instance* delta);
 
   InstanceUpdate(const InstanceUpdate&) = delete;
   InstanceUpdate& operator=(const InstanceUpdate&) = delete;
@@ -53,9 +53,19 @@ class InstanceUpdate {
   // Equivalently, there are no previous deltas for the window.
   bool StateIsNull() const;
 
+  // Returns true if this update represents the creation of an instance, which
+  // will now be visible to the user.
+  bool IsCreation() const;
+
+  // Returns true if this update represents the destruction of an instance.
+  bool IsDestruction() const;
+
   const std::string& AppId() const;
 
+  const base::UnguessableToken& InstanceId() const;
+
   aura::Window* Window() const;
+  bool WindowChanged() const;
 
   const std::string& LaunchId() const;
   bool LaunchIdChanged() const;
@@ -70,8 +80,8 @@ class InstanceUpdate {
   bool BrowserContextChanged() const;
 
  private:
-  Instance* state_;
-  Instance* delta_;
+  const Instance* state_;
+  const Instance* delta_;
 };
 
 }  // namespace apps

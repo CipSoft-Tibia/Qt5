@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ const JSConstSpec CJS_ScaleWhen::ConstSpecs[] = {
     {"tooBig", JSConstSpec::Number, 2, 0},
     {"tooSmall", JSConstSpec::Number, 3, 0}};
 
-int CJS_ScaleWhen::ObjDefnID = -1;
+uint32_t CJS_ScaleWhen::ObjDefnID = 0;
 
 // static
 void CJS_ScaleWhen::DefineJSObjects(CFXJS_Engine* pEngine) {

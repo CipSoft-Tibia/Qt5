@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_promotiondialog_p.h"
 #include "promotionmodel_p.h"
@@ -39,24 +14,28 @@
 #include <QtDesigner/abstractintegration.h>
 #include <abstractdialoggui_p.h>
 
-#include <QtCore/qtimer.h>
 #include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qformlayout.h>
 #include <QtWidgets/qdialogbuttonbox.h>
 #include <QtWidgets/qtreeview.h>
 #include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qpushbutton.h>
-#include <QtCore/qitemselectionmodel.h>
 #include <QtWidgets/qcombobox.h>
 #include <QtWidgets/qlineedit.h>
 #include <QtWidgets/qcheckbox.h>
-#include <QtGui/qvalidator.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qlayoutitem.h>
 #include <QtWidgets/qmenu.h>
-#include <QtWidgets/qaction.h>
+
+#include <QtGui/qaction.h>
+#include <QtGui/qvalidator.h>
+
+#include <QtCore/qitemselectionmodel.h>
+#include <QtCore/qtimer.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
     // PromotionParameters
@@ -81,7 +60,7 @@ namespace qdesigner_internal {
         setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Maximum);
         QHBoxLayout *hboxLayout = new QHBoxLayout(this);
 
-        m_classNameEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("^[_a-zA-Z:][:_a-zA-Z0-9]*$")), m_classNameEdit));
+        m_classNameEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(u"^[_a-zA-Z:][:_a-zA-Z0-9]*$"_s), m_classNameEdit));
         connect(m_classNameEdit,   &QLineEdit::textChanged,
                 this, &NewPromotedClassPanel::slotNameChanged);
         connect(m_includeFileEdit, &QLineEdit::textChanged,
@@ -97,8 +76,19 @@ namespace qdesigner_internal {
         formLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow); // Mac
         formLayout->addRow(tr("Base class name:"),     m_baseClassCombo);
         formLayout->addRow(tr("Promoted class name:"), m_classNameEdit);
-        formLayout->addRow(tr("Header file:"),         m_includeFileEdit);
-        formLayout->addRow(tr("Global include"),       m_globalIncludeCheckBox);
+
+        QString toolTip = tr("Header file for C++ classes or module name for Qt for Python.");
+        auto *label = new QLabel(tr("Header file:"));
+        label->setToolTip(toolTip);
+        formLayout->addRow(label, m_includeFileEdit);
+        m_includeFileEdit->setToolTip(toolTip);
+
+        toolTip = tr("Indicates that the header file is a global header file. Does not have any effect on Qt for Python.");
+        label = new QLabel(tr("Global include"));
+        label->setToolTip(toolTip);
+        formLayout->addRow(label, m_globalIncludeCheckBox);
+        m_globalIncludeCheckBox->setToolTip(toolTip);
+
         hboxLayout->addLayout(formLayout);
         hboxLayout->addItem(new QSpacerItem(15, 0, QSizePolicy::Fixed, QSizePolicy::Ignored));
         // Button box
@@ -141,12 +131,11 @@ namespace qdesigner_internal {
     void NewPromotedClassPanel::slotNameChanged(const QString &className) {
         // Suggest a name
         if (!className.isEmpty()) {
-            const QChar dot(QLatin1Char('.'));
             QString suggestedHeader = m_promotedHeaderLowerCase ?
                                       className.toLower() : className;
-            suggestedHeader.replace(QStringLiteral("::"), QString(QLatin1Char('_')));
-            if (!m_promotedHeaderSuffix.startsWith(dot))
-                suggestedHeader += dot;
+            suggestedHeader.replace("::"_L1, "_"_L1);
+            if (!m_promotedHeaderSuffix.startsWith(u'.'))
+                suggestedHeader += u'.';
             suggestedHeader += m_promotedHeaderSuffix;
 
             const bool blocked = m_includeFileEdit->blockSignals(true);
@@ -195,12 +184,11 @@ namespace qdesigner_internal {
         m_model(new PromotionModel(core)),
         m_treeView(new QTreeView),
         m_buttonBox(nullptr),
-        m_removeButton(new QPushButton(createIconSet(QString::fromUtf8("minus.png")), QString()))
+        m_removeButton(new QPushButton(createIconSet(u"minus.png"_s), QString()))
     {
         m_buttonBox = createButtonBox();
         setModal(true);
         setWindowTitle(tr("Promoted Widgets"));
-        setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
         QVBoxLayout *vboxLayout = new QVBoxLayout(this);
 
@@ -239,7 +227,7 @@ namespace qdesigner_internal {
             preselectedBaseClass = baseClassNameList.indexOf(m_promotableWidgetClassName);
         }
         if (preselectedBaseClass == -1)
-            preselectedBaseClass = baseClassNameList.indexOf(QStringLiteral("QFrame"));
+            preselectedBaseClass = baseClassNameList.indexOf("QFrame"_L1);
 
         NewPromotedClassPanel *newPromotedClassPanel = new NewPromotedClassPanel(baseClassNameList, preselectedBaseClass);
         newPromotedClassPanel->setPromotedHeaderSuffix(core->integration()->headerSuffix());
@@ -293,10 +281,8 @@ namespace qdesigner_internal {
         if (rc.isEmpty()) {
             // Convert the item list into a string list.
             const WidgetDataBaseItemList dbItems =  promotion->promotionBaseClasses();
-            const WidgetDataBaseItemList::const_iterator cend =  dbItems.constEnd();
-            for (WidgetDataBaseItemList::const_iterator it = dbItems.constBegin() ; it != cend; ++it) {
-                rc.push_back( (*it)->name());
-            }
+            for (auto *item : dbItems)
+                rc.append(item->name());
         }
         return rc;
     }

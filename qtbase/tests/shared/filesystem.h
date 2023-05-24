@@ -1,43 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QT_TESTS_SHARED_FILESYSTEM_H_INCLUDED
 #define QT_TESTS_SHARED_FILESYSTEM_H_INCLUDED
 
+#include <QDir>
+#include <QFile>
+#include <QOperatingSystemVersion>
+#include <QScopedPointer>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
-#include <QScopedPointer>
-#include <QDir>
-#include <QFile>
 
 #if defined(Q_OS_WIN)
-#include <windows.h>
+#include <qt_windows.h>
 #include <winioctl.h>
 #ifndef IO_REPARSE_TAG_MOUNT_POINT
 #define IO_REPARSE_TAG_MOUNT_POINT       (0xA0000003L)
@@ -46,6 +22,14 @@
 #ifndef FSCTL_SET_REPARSE_POINT
 #define FSCTL_SET_REPARSE_POINT CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 41, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
 #endif
+#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE // MinGW
+#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE (0x2)
+#endif
+QT_BEGIN_NAMESPACE
+namespace QTest {
+    static QString uncServerName() { return qgetenv("COMPUTERNAME"); }
+}
+QT_END_NAMESPACE
 #endif
 
 // QTemporaryDir-based helper class for creating file-system hierarchies and cleaning up.
@@ -79,8 +63,38 @@ public:
         return file.isNull() ? qint64(-1) : file->write(relativeFileName.toUtf8());
     }
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-    static DWORD createNtfsJunction(QString target, QString linkName, QString *errorMessage)
+#if defined(Q_OS_WIN)
+    struct Result {
+        DWORD dwErr = ERROR_SUCCESS;
+        QString link;
+        QString target;
+        QString errorMessage;
+    };
+
+    static Result createSymbolicLink(const QString &symLinkName, const QString &target)
+    {
+        Result result;
+        const QString nativeSymLinkName = QDir::toNativeSeparators(symLinkName);
+        const QString nativeTarget = QDir::toNativeSeparators(target);
+        DWORD flags = 0;
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion(QOperatingSystemVersion::Windows, 10, 0, 14972))
+            flags |= SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+        if (QFileInfo(target).isDir())
+            flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+        if (CreateSymbolicLink(reinterpret_cast<const wchar_t*>(nativeSymLinkName.utf16()),
+                               reinterpret_cast<const wchar_t*>(nativeTarget.utf16()), flags) == FALSE) {
+            result.dwErr = GetLastError();
+            QTextStream(&result.errorMessage) << "CreateSymbolicLink(" <<  nativeSymLinkName << ", "
+                << nativeTarget << ", 0x" << Qt::hex << flags << Qt::dec << ") failed with error "
+                << result.dwErr << ": " << qt_error_string(int(result.dwErr));
+        } else {
+            result.link = nativeSymLinkName;
+            result.target = nativeTarget;
+        }
+        return result;
+    }
+
+    static Result createNtfsJunction(QString target, QString linkName)
     {
         typedef struct {
             DWORD   ReparseTag;
@@ -97,7 +111,7 @@ public:
         DWORD   returnedLength;
         wchar_t fileSystem[MAX_PATH] = L"";
         PREPARSE_MOUNTPOINT_DATA_BUFFER reparseInfo = (PREPARSE_MOUNTPOINT_DATA_BUFFER) reparseBuffer;
-        DWORD result = ERROR_SUCCESS;
+        Result result;
 
         QFileInfo junctionInfo(linkName);
         linkName = QDir::toNativeSeparators(junctionInfo.absoluteFilePath());
@@ -105,13 +119,14 @@ public:
         if (GetVolumeInformationW(reinterpret_cast<const wchar_t *>(drive.utf16()),
                                   NULL, 0, NULL, NULL, NULL,
                                   fileSystem, sizeof(fileSystem)/sizeof(WCHAR)) == FALSE) {
-            result = GetLastError();
-            *errorMessage = "GetVolumeInformationW() failed: " + qt_error_string(int(result));
+            result.dwErr = GetLastError();
+            result.errorMessage = "GetVolumeInformationW() failed: " + qt_error_string(int(result.dwErr));
             return result;
         }
         if (QString::fromWCharArray(fileSystem) != "NTFS") {
-            *errorMessage = "This seems not to be an NTFS volume. Junctions are not allowed.";
-            return ERROR_NOT_SUPPORTED;
+            result.errorMessage = "This seems not to be an NTFS volume. Junctions are not allowed.";
+            result.dwErr = ERROR_NOT_SUPPORTED;
+            return result;
         }
 
         if (!target.startsWith("\\??\\") && !target.startsWith("\\\\?\\")) {
@@ -125,8 +140,8 @@ public:
         hFile = CreateFileW( (wchar_t*)linkName.utf16(), GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
                              FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS, NULL );
         if (hFile == INVALID_HANDLE_VALUE) {
-            result = GetLastError();
-            *errorMessage = "CreateFileW(" + linkName + ") failed: " + qt_error_string(int(result));
+            result.dwErr = GetLastError();
+            result.errorMessage = "CreateFileW(" + linkName + ") failed: " + qt_error_string(int(result.dwErr));
             return result;
         }
 
@@ -141,8 +156,11 @@ public:
                                  reparseInfo->ReparseDataLength + REPARSE_MOUNTPOINT_HEADER_SIZE,
                                  NULL, 0, &returnedLength, NULL);
         if (!ioc) {
-            result = GetLastError();
-            *errorMessage = "DeviceIoControl() failed: " + qt_error_string(int(result));
+            result.dwErr = GetLastError();
+            result.errorMessage = "DeviceIoControl() failed: " + qt_error_string(int(result.dwErr));
+        } else {
+            result.link = linkName;
+            result.target = target;
         }
         CloseHandle( hFile );
         return result;
@@ -165,9 +183,9 @@ private:
     {
         if (m_temporaryDir.isValid()) {
             const QString absName = absoluteFilePath(fileName);
-            QScopedPointer<QFile> file(new QFile(absName));
+            std::unique_ptr<QFile> file(new QFile(absName));
             if (file->open(QIODevice::WriteOnly))
-                return file.take();
+                return file.release();
             qWarning("Cannot open '%s' for writing: %s", qPrintable(absName), qPrintable(file->errorString()));
         }
         return 0;

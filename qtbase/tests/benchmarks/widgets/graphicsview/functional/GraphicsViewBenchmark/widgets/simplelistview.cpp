@@ -1,32 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-#include <QtGui>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "simplelistview.h"
 #include "scrollbar.h"
@@ -35,6 +8,10 @@
 #include "listitem.h"
 #include "listitemcache.h"
 #include "theme.h"
+
+#include <QtGui>
+#include <QGraphicsGridLayout>
+#include <QGraphicsSceneResizeEvent>
 
 class SimpleListViewPrivate
 {
@@ -407,7 +384,7 @@ void SimpleListView::setListItemCaching(bool enabled)
 void SimpleListView::scrollContentsBy(qreal dx, qreal dy)
 {
     Q_D(SimpleListView);
-    Q_UNUSED(dx)
+    Q_UNUSED(dx);
     QRectF contentRect = d->m_content->boundingRect();
     QRectF viewportRect = viewport()->boundingRect();
     QPointF contentPos = d->m_content->pos();

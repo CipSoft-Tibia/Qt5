@@ -1,22 +1,26 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/path_service.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/lock.h"
 #include "base/system/sys_info.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_timeouts.h"
 #include "base/thread_annotations.h"
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
+#include "content/browser/child_process_security_policy_impl.h"
+#include "content/browser/process_lock.h"
 #include "content/browser/web_contents/web_contents_impl.h"
+#include "content/browser/worker_host/shared_worker_service_impl.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -35,12 +39,14 @@
 #include "content/shell/browser/shell.h"
 #include "content/shell/browser/shell_content_browser_client.h"
 #include "content/test/content_browser_test_utils_internal.h"
-#include "net/base/escape.h"
+#include "net/base/features.h"
 #include "net/base/filename_util.h"
 #include "net/cookies/canonical_cookie.h"
 #include "net/cookies/cookie_access_result.h"
 #include "net/dns/mock_host_resolver.h"
+#include "net/ssl/client_cert_identity.h"
 #include "net/ssl/ssl_server_config.h"
+#include "net/test/embedded_test_server/connection_tracker.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
@@ -49,6 +55,7 @@
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "url/gurl.h"
 
 namespace content {
@@ -63,7 +70,7 @@ const char kSameSiteCookie[] = "same-site-cookie=same-site-cookie-value";
 const char kNoCookie[] = "None";
 
 bool SupportsSharedWorker() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // SharedWorkers are not enabled on Android. https://crbug.com/154571
   //
   // TODO(davidben): Move other SharedWorker exclusions from
@@ -76,15 +83,41 @@ bool SupportsSharedWorker() {
 
 }  // namespace
 
-// These tests are parameterized on whether kPlzDedicatedWorker is enabled.
+// These tests are parameterized on following options:
+// 0 => Base
+// 1 => kPlzDedicatedWorker enabled
+// 2 => kPrivateNetworkAccessForWorkers enabled
 class WorkerTest : public ContentBrowserTest,
-                   public testing::WithParamInterface<bool> {
+                   public testing::WithParamInterface<int> {
  public:
   WorkerTest() : select_certificate_count_(0) {
-    if (GetParam()) {
-      feature_list_.InitAndEnableFeature(blink::features::kPlzDedicatedWorker);
-    } else {
-      feature_list_.InitAndDisableFeature(blink::features::kPlzDedicatedWorker);
+    switch (GetParam()) {
+      case 0:  // Base case.
+        feature_list_.InitWithFeatures({},
+                                       {
+                                           blink::features::kPlzDedicatedWorker,
+                                       });
+        break;
+      case 1:  // PlzDedicatedWorker
+        feature_list_.InitWithFeatures(
+            {
+                blink::features::kPlzDedicatedWorker,
+            },
+            {
+                features::kPrivateNetworkAccessForWorkers,
+            });
+        break;
+      case 2:  // PrivateNetworkAccessForWorkers
+        feature_list_.InitWithFeatures(
+            {
+                blink::features::kPlzDedicatedWorker,
+                features::kPrivateNetworkAccessForWorkers,
+            },
+            {});
+        break;
+      default:
+        NOTREACHED();
+        break;
     }
   }
 
@@ -121,12 +154,12 @@ class WorkerTest : public ContentBrowserTest,
   }
 
   void RunTest(Shell* window, const GURL& url, bool expect_failure = false) {
-    const base::string16 ok_title = base::ASCIIToUTF16("OK");
-    const base::string16 fail_title = base::ASCIIToUTF16("FAIL");
+    const std::u16string ok_title = u"OK";
+    const std::u16string fail_title = u"FAIL";
     TitleWatcher title_watcher(window->web_contents(), ok_title);
     title_watcher.AlsoWaitForTitle(fail_title);
     EXPECT_TRUE(NavigateToURL(window, url));
-    base::string16 final_title = title_watcher.WaitAndGetTitle();
+    std::u16string final_title = title_watcher.WaitAndGetTitle();
     EXPECT_EQ(expect_failure ? fail_title : ok_title, final_title);
   }
 
@@ -135,7 +168,7 @@ class WorkerTest : public ContentBrowserTest,
   }
 
   static void QuitUIMessageLoop(base::OnceClosure callback,
-                                bool is_main_frame /* unused */) {
+                                bool is_primary_main_frame /* unused */) {
     GetUIThreadTaskRunner({})->PostTask(FROM_HERE, std::move(callback));
   }
 
@@ -150,8 +183,10 @@ class WorkerTest : public ContentBrowserTest,
   }
 
   void SetSameSiteCookie(const std::string& host) {
-    StoragePartition* partition = BrowserContext::GetDefaultStoragePartition(
-        shell()->web_contents()->GetBrowserContext());
+    StoragePartition* partition = shell()
+                                      ->web_contents()
+                                      ->GetBrowserContext()
+                                      ->GetDefaultStoragePartition();
     mojo::Remote<network::mojom::CookieManager> cookie_manager;
     partition->GetNetworkContext()->GetCookieManager(
         cookie_manager.BindNewPipeAndPassReceiver());
@@ -163,7 +198,8 @@ class WorkerTest : public ContentBrowserTest,
     GURL cookie_url = ssl_server_.GetURL(host, "/");
     std::unique_ptr<net::CanonicalCookie> cookie = net::CanonicalCookie::Create(
         cookie_url, std::string(kSameSiteCookie) + "; SameSite=Lax; Secure",
-        base::Time::Now(), base::nullopt /* server_time */);
+        base::Time::Now(), absl::nullopt /* server_time */,
+        absl::nullopt /* cookie_partition_key */);
     base::RunLoop run_loop;
     cookie_manager->SetCanonicalCookie(
         *cookie, cookie_url, options,
@@ -202,10 +238,29 @@ class WorkerTest : public ContentBrowserTest,
     path_cookie_map_.clear();
   }
 
+  SharedWorkerHost* GetSharedWorkerHost(const GURL& url) {
+    StoragePartition* partition = shell()
+                                      ->web_contents()
+                                      ->GetBrowserContext()
+                                      ->GetDefaultStoragePartition();
+    DCHECK(partition);
+    auto* service = static_cast<SharedWorkerServiceImpl*>(
+        partition->GetSharedWorkerService());
+    return service->FindMatchingSharedWorkerHost(
+        url, "", blink::StorageKey::CreateFirstParty(url::Origin::Create(url)));
+  }
+
   net::test_server::EmbeddedTestServer* ssl_server() { return &ssl_server_; }
 
  private:
-  void OnSelectClientCertificate() { select_certificate_count_++; }
+  base::OnceClosure OnSelectClientCertificate(
+      content::WebContents* web_contents,
+      net::SSLCertRequestInfo* cert_request_info,
+      net::ClientCertIdentityList client_certs,
+      std::unique_ptr<content::ClientCertificateDelegate> delegate) {
+    select_certificate_count_++;
+    return base::OnceClosure();
+  }
 
   std::unique_ptr<net::test_server::HttpResponse> MonitorRequestCookies(
       const net::test_server::HttpRequest& request) {
@@ -264,7 +319,7 @@ class WorkerTest : public ContentBrowserTest,
   base::test::ScopedFeatureList feature_list_;
 };
 
-INSTANTIATE_TEST_SUITE_P(All, WorkerTest, testing::ValuesIn({false, true}));
+INSTANTIATE_TEST_SUITE_P(All, WorkerTest, testing::Range(0, 3));
 
 IN_PROC_BROWSER_TEST_P(WorkerTest, SingleWorker) {
   RunTest(GetTestURL("single_worker.html", std::string()));
@@ -284,7 +339,7 @@ class WorkerTestWithAllowFileAccessFromFiles : public WorkerTest {
 
 INSTANTIATE_TEST_SUITE_P(All,
                          WorkerTestWithAllowFileAccessFromFiles,
-                         testing::ValuesIn({false, true}));
+                         testing::Range(0, 3));
 
 IN_PROC_BROWSER_TEST_P(WorkerTestWithAllowFileAccessFromFiles,
                        SingleWorkerFromFile) {
@@ -294,7 +349,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTestWithAllowFileAccessFromFiles,
 IN_PROC_BROWSER_TEST_P(WorkerTest, HttpPageCantCreateFileWorker) {
   GURL url = GetTestURL(
       "single_worker.html",
-      "workerUrl=" + net::EscapeQueryParamValue(
+      "workerUrl=" + base::EscapeQueryParamValue(
                          GetTestFileURL("worker_common.js").spec(), true));
   RunTest(url, /*expect_failure=*/true);
 }
@@ -308,6 +363,177 @@ IN_PROC_BROWSER_TEST_P(WorkerTest, SingleSharedWorker) {
     return;
 
   RunTest(GetTestURL("single_worker.html", "shared=true"));
+}
+
+// Create a SharedWorker from a COEP:required-corp document.
+IN_PROC_BROWSER_TEST_P(WorkerTest, SharedWorkerInCOEPRequireCorpDocument) {
+  if (!SupportsSharedWorker())
+    return;
+
+  // Navigate to a page living in an isolated process.
+  EXPECT_TRUE(NavigateToURL(
+      shell(), ssl_server()->GetURL("a.test", "/cross-origin-isolated.html")));
+  RenderFrameHostImpl* page_rfh = static_cast<RenderFrameHostImpl*>(
+      shell()->web_contents()->GetPrimaryMainFrame());
+  auto page_lock =
+      ProcessLock::FromSiteInfo(page_rfh->GetSiteInstance()->GetSiteInfo());
+  EXPECT_TRUE(page_lock.GetWebExposedIsolationInfo().is_isolated());
+  EXPECT_GT(page_rfh->GetWebExposedIsolationLevel(),
+            RenderFrameHost::WebExposedIsolationLevel::kNotIsolated);
+
+  // Create a shared worker from the cross-origin-isolated page:
+
+  // COEP:unsafe-none
+  //
+  // With CoepForSharedWorker: the worker's COEP policy is laxer than its
+  // creator, it is blocked as a result. It can't communicate with the document,
+  // outside of the worker.onerror message.
+  // Without CoepForSharedWorker: the worker isn't blocked, but it should at
+  // least not be loaded in the cross-origin isolated process.
+  EXPECT_EQ("Worker connected.", EvalJs(shell(), R"(
+    new Promise(resolve => {
+      const worker =
+        new SharedWorker("/workers/messageport_worker.js");
+      worker.onerror = (e) => resolve("Worker blocked.");
+      worker.port.onmessage = (e) => resolve(e.data);
+    })
+  )"));
+  auto* host = GetSharedWorkerHost(
+      ssl_server()->GetURL("a.test", "/workers/messageport_worker.js"));
+  EXPECT_TRUE(host);
+  RenderProcessHost* worker_rph = host->GetProcessHost();
+  EXPECT_NE(worker_rph, page_rfh->GetProcess());
+  auto worker_lock =
+      ProcessLock::FromSiteInfo(host->site_instance()->GetSiteInfo());
+  EXPECT_FALSE(worker_lock.GetWebExposedIsolationInfo().is_isolated());
+
+  // COEP:credentialless
+  EXPECT_EQ("Worker connected.", EvalJs(shell(), R"(
+    new Promise(resolve => {
+      const worker =
+        new SharedWorker("/workers/messageport_worker_coep_credentialless.js");
+      worker.onerror = (e) => resolve("Worker blocked.");
+      worker.port.onmessage = (e) => resolve(e.data);
+    })
+  )"));
+  auto* host_credentialless = GetSharedWorkerHost(ssl_server()->GetURL(
+      "a.test", "/workers/messageport_worker_coep_credentialless.js"));
+  EXPECT_TRUE(host_credentialless);
+  RenderProcessHost* worker_rph_credentialless =
+      host_credentialless->GetProcessHost();
+  EXPECT_NE(worker_rph_credentialless, page_rfh->GetProcess());
+  auto worker_lock_credentialless = ProcessLock::FromSiteInfo(
+      host_credentialless->site_instance()->GetSiteInfo());
+  // Cross-origin isolation is not yet supported in COEP:credentialless
+  // SharedWorker.
+  EXPECT_FALSE(
+      worker_lock_credentialless.GetWebExposedIsolationInfo().is_isolated());
+
+  // COEP:require-corp
+  EXPECT_EQ("Worker connected.", EvalJs(shell(), R"(
+    new Promise(resolve => {
+      const worker =
+        new SharedWorker("/workers/messageport_worker_coep_require_corp.js");
+      worker.onerror = (e) => resolve("Worker blocked.");
+      worker.port.onmessage = (e) => resolve(e.data);
+    })
+  )"));
+  auto* host_require_corp = GetSharedWorkerHost(ssl_server()->GetURL(
+      "a.test", "/workers/messageport_worker_coep_require_corp.js"));
+  RenderProcessHost* worker_rph_require_corp =
+      host_require_corp->GetProcessHost();
+  EXPECT_NE(worker_rph_require_corp, page_rfh->GetProcess());
+  auto worker_lock_require_corp = ProcessLock::FromSiteInfo(
+      host_require_corp->site_instance()->GetSiteInfo());
+  // Cross-origin isolation is not yet supported in COEP:require-corp
+  // SharedWorker.
+  EXPECT_FALSE(
+      worker_lock_require_corp.GetWebExposedIsolationInfo().is_isolated());
+}
+
+// Create a SharedWorker from a COEP:credentialless document.
+IN_PROC_BROWSER_TEST_P(WorkerTest, SharedWorkerInCOEPCredentiallessDocument) {
+  if (!SupportsSharedWorker())
+    return;
+
+  // Navigate to a page living in an isolated process.
+  EXPECT_TRUE(NavigateToURL(
+      shell(), ssl_server()->GetURL(
+                   "a.test", "/cross-origin-isolated-credentialless.html")));
+  RenderFrameHostImpl* page_rfh = static_cast<RenderFrameHostImpl*>(
+      shell()->web_contents()->GetPrimaryMainFrame());
+  auto page_lock =
+      ProcessLock::FromSiteInfo(page_rfh->GetSiteInstance()->GetSiteInfo());
+  EXPECT_TRUE(page_lock.GetWebExposedIsolationInfo().is_isolated());
+
+  // Create a SharedWorker from the cross-origin-isolated page.
+
+  // COEP:unsafe-none
+  //
+  // With CoepForSharedWorker: the worker's COEP policy is laxer than its
+  // creator, it is blocked as a result. It can't communicate with the document,
+  // outside of the worker.onerror message.
+  // Without CoepForSharedWorker: the worker isn't blocked, but it should at
+  // least not be loaded in the cross-origin isolated process.
+  EXPECT_EQ("Worker connected.", EvalJs(shell(), R"(
+    new Promise(resolve => {
+      const worker =
+        new SharedWorker("/workers/messageport_worker.js");
+      worker.onerror = (e) => resolve("Worker blocked.");
+      worker.port.onmessage = (e) => resolve(e.data);
+    })
+  )"));
+  auto* host = GetSharedWorkerHost(
+      ssl_server()->GetURL("a.test", "/workers/messageport_worker.js"));
+  EXPECT_TRUE(host);
+  RenderProcessHost* worker_rph = host->GetProcessHost();
+  EXPECT_NE(worker_rph, page_rfh->GetProcess());
+  auto worker_lock =
+      ProcessLock::FromSiteInfo(host->site_instance()->GetSiteInfo());
+  EXPECT_FALSE(worker_lock.GetWebExposedIsolationInfo().is_isolated());
+
+  // COEP:credentialless
+  EXPECT_EQ("Worker connected.", EvalJs(shell(), R"(
+    new Promise(resolve => {
+      const worker =
+        new SharedWorker("/workers/messageport_worker_coep_credentialless.js");
+      worker.onerror = (e) => resolve("Worker blocked.");
+      worker.port.onmessage = (e) => resolve(e.data);
+    })
+  )"));
+  auto* host_credentialless = GetSharedWorkerHost(ssl_server()->GetURL(
+      "a.test", "/workers/messageport_worker_coep_credentialless.js"));
+  EXPECT_TRUE(host_credentialless);
+  RenderProcessHost* worker_rph_credentialless =
+      host_credentialless->GetProcessHost();
+  EXPECT_NE(worker_rph_credentialless, page_rfh->GetProcess());
+  auto worker_lock_credentialless = ProcessLock::FromSiteInfo(
+      host_credentialless->site_instance()->GetSiteInfo());
+  // Cross-origin isolation is not yet supported in COEP:credentialless
+  // SharedWorker.
+  EXPECT_FALSE(
+      worker_lock_credentialless.GetWebExposedIsolationInfo().is_isolated());
+
+  // COEP:require-corp
+  EXPECT_EQ("Worker connected.", EvalJs(shell(), R"(
+    new Promise(resolve => {
+      const worker =
+        new SharedWorker("/workers/messageport_worker_coep_require_corp.js");
+      worker.onerror = (e) => resolve("Worker blocked.");
+      worker.port.onmessage = (e) => resolve(e.data);
+    })
+  )"));
+  auto* host_require_corp = GetSharedWorkerHost(ssl_server()->GetURL(
+      "a.test", "/workers/messageport_worker_coep_require_corp.js"));
+  RenderProcessHost* worker_rph_require_corp =
+      host_require_corp->GetProcessHost();
+  EXPECT_NE(worker_rph_require_corp, page_rfh->GetProcess());
+  auto worker_lock_require_corp = ProcessLock::FromSiteInfo(
+      host_require_corp->site_instance()->GetSiteInfo());
+  // Cross-origin isolation is not yet supported in COEP:require-corp
+  // SharedWorker.
+  EXPECT_FALSE(
+      worker_lock_require_corp.GetWebExposedIsolationInfo().is_isolated());
 }
 
 // http://crbug.com/96435
@@ -354,7 +580,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest, WorkerTlsClientAuthImportScripts) {
   RunTest(GetTestURL(
       "worker_tls_client_auth.html",
       "test=import&url=" +
-          net::EscapeQueryParamValue(https_server.GetURL("/").spec(), true)));
+          base::EscapeQueryParamValue(https_server.GetURL("/").spec(), true)));
   EXPECT_EQ(1, select_certificate_count());
 }
 
@@ -372,7 +598,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest, WorkerTlsClientAuthFetch) {
   RunTest(GetTestURL(
       "worker_tls_client_auth.html",
       "test=fetch&url=" +
-          net::EscapeQueryParamValue(https_server.GetURL("/").spec(), true)));
+          base::EscapeQueryParamValue(https_server.GetURL("/").spec(), true)));
   EXPECT_EQ(1, select_certificate_count());
 }
 
@@ -394,7 +620,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest, SharedWorkerTlsClientAuthImportScripts) {
   RunTest(GetTestURL(
       "worker_tls_client_auth.html",
       "test=import&shared=true&url=" +
-          net::EscapeQueryParamValue(https_server.GetURL("/").spec(), true)));
+          base::EscapeQueryParamValue(https_server.GetURL("/").spec(), true)));
   EXPECT_EQ(0, select_certificate_count());
 }
 
@@ -415,10 +641,10 @@ IN_PROC_BROWSER_TEST_P(WorkerTest, WebSocketSharedWorker) {
 
   // Run test.
   Shell* window = shell();
-  const base::string16 expected_title = base::ASCIIToUTF16("OK");
+  const std::u16string expected_title = u"OK";
   TitleWatcher title_watcher(window->web_contents(), expected_title);
   EXPECT_TRUE(NavigateToURL(window, url));
-  base::string16 final_title = title_watcher.WaitAndGetTitle();
+  std::u16string final_title = title_watcher.WaitAndGetTitle();
   EXPECT_EQ(expected_title, final_title);
 }
 
@@ -470,7 +696,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
 
   std::set<GURL> expected_request_urls = {worker_url, script_url, resource_url};
   const url::Origin expected_origin =
-      url::Origin::Create(worker_url.GetOrigin());
+      url::Origin::Create(worker_url.DeprecatedGetOriginAsURL());
 
   base::RunLoop waiter;
   URLLoaderInterceptor interceptor(base::BindLambdaForTesting(
@@ -488,9 +714,9 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
       }));
 
   FrameTreeNode* root = static_cast<WebContentsImpl*>(shell()->web_contents())
-                            ->GetFrameTree()
-                            ->root();
-  NavigateFrameToURL(root->child_at(0), test_url);
+                            ->GetPrimaryFrameTree()
+                            .root();
+  EXPECT_TRUE(NavigateToURLFromRenderer(root->child_at(0), test_url));
   waiter.Run();
 
   // Check cookies sent with each request to "a.test". Frame request should not
@@ -582,7 +808,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
 
   const char kSubframeName[] = "foo";
   EvalJsResult result = EvalJs(
-      shell()->web_contents()->GetMainFrame(),
+      shell()->web_contents()->GetPrimaryMainFrame(),
       JsReplace(
           "createFrame($1, $2)",
           ssl_server()
@@ -596,7 +822,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
   navigation_observer.Wait();
 
   RenderFrameHost* subframe_rfh = FrameMatchingPredicate(
-      shell()->web_contents(),
+      shell()->web_contents()->GetPrimaryPage(),
       base::BindRepeating(&FrameMatchesName, kSubframeName));
   ASSERT_TRUE(subframe_rfh);
   EXPECT_EQ(kNoCookie,
@@ -624,7 +850,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
 
   const char kSubframeName[] = "foo";
   EvalJsResult result = EvalJs(
-      shell()->web_contents()->GetMainFrame(),
+      shell()->web_contents()->GetPrimaryMainFrame(),
       JsReplace(
           "createFrame($1, $2)",
           ssl_server()
@@ -638,7 +864,7 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
   navigation_observer.Wait();
 
   RenderFrameHost* subframe_rfh = FrameMatchingPredicate(
-      shell()->web_contents(),
+      shell()->web_contents()->GetPrimaryPage(),
       base::BindRepeating(&FrameMatchesName, kSubframeName));
   ASSERT_TRUE(subframe_rfh);
   EXPECT_EQ(kNoCookie,
@@ -649,6 +875,111 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
                                  .spec()
                                  .c_str())));
   EXPECT_EQ(kNoCookie, GetReceivedCookie("/echoheader?Cookie"));
+}
+
+class WorkerFromCredentiallessIframeNikBrowserTest : public WorkerTest {
+ public:
+  WorkerFromCredentiallessIframeNikBrowserTest() {
+    scoped_feature_list_.InitAndEnableFeature(
+        net::features::kPartitionConnectionsByNetworkIsolationKey);
+  }
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    // Enable parsing the iframe 'credentialless' attribute.
+    command_line->AppendSwitch(switches::kEnableBlinkTestFeatures);
+    WorkerTest::SetUpCommandLine(command_line);
+  }
+
+  void SetUpOnMainThread() override {
+    connection_tracker_ = std::make_unique<net::test_server::ConnectionTracker>(
+        embedded_test_server());
+    ASSERT_TRUE(embedded_test_server()->Start());
+    WorkerTest::SetUpOnMainThread();
+  }
+
+  void ResetNetworkState() {
+    auto* network_context = shell()
+                                ->web_contents()
+                                ->GetBrowserContext()
+                                ->GetDefaultStoragePartition()
+                                ->GetNetworkContext();
+    base::RunLoop close_all_connections_loop;
+    network_context->CloseAllConnections(
+        close_all_connections_loop.QuitClosure());
+    close_all_connections_loop.Run();
+
+    connection_tracker_->ResetCounts();
+  }
+
+ protected:
+  std::unique_ptr<net::test_server::ConnectionTracker> connection_tracker_;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         WorkerFromCredentiallessIframeNikBrowserTest,
+                         testing::Range(0, 3));
+
+IN_PROC_BROWSER_TEST_P(WorkerFromCredentiallessIframeNikBrowserTest,
+                       SharedWorkerRequestIsDoneWithPartitionedNetworkState) {
+  if (!SupportsSharedWorker())
+    return;
+
+  GURL main_url = embedded_test_server()->GetURL("/title1.html");
+
+  for (bool credentialless : {false, true}) {
+    SCOPED_TRACE(credentialless ? "credentialless iframe" : "normal iframe");
+    EXPECT_TRUE(NavigateToURL(shell(), main_url));
+
+    RenderFrameHostImpl* main_rfh = static_cast<RenderFrameHostImpl*>(
+        shell()->web_contents()->GetPrimaryMainFrame());
+
+    // Create an iframe.
+    EXPECT_TRUE(ExecJs(main_rfh,
+                       JsReplace("let child = document.createElement('iframe');"
+                                 "child.src = $1;"
+                                 "child.credentialless = $2;"
+                                 "document.body.appendChild(child);",
+                                 main_url, credentialless)));
+    WaitForLoadStop(shell()->web_contents());
+    EXPECT_EQ(1U, main_rfh->child_count());
+    RenderFrameHostImpl* iframe = main_rfh->child_at(0)->current_frame_host();
+    EXPECT_EQ(credentialless, iframe->IsCredentialless());
+    EXPECT_EQ(credentialless, EvalJs(iframe, "window.credentialless"));
+    ResetNetworkState();
+
+    GURL worker_url = embedded_test_server()->GetURL("/workers/worker.js");
+
+    // Preconnect a socket with the NetworkAnonymizationKey of the main frame.
+    shell()
+        ->web_contents()
+        ->GetBrowserContext()
+        ->GetDefaultStoragePartition()
+        ->GetNetworkContext()
+        ->PreconnectSockets(1, worker_url.DeprecatedGetOriginAsURL(), true,
+                            main_rfh->GetIsolationInfoForSubresources()
+                                .network_anonymization_key());
+
+    connection_tracker_->WaitForAcceptedConnections(1);
+    EXPECT_EQ(1u, connection_tracker_->GetAcceptedSocketCount());
+    EXPECT_EQ(0u, connection_tracker_->GetReadSocketCount());
+
+    std::string start_worker = JsReplace("new SharedWorker($1);", worker_url);
+
+    ExecuteScriptAsync(iframe, start_worker);
+    connection_tracker_->WaitUntilConnectionRead();
+
+    // The normal iframe should reuse the preconnected socket, the
+    // credentialless iframe should open a new one.
+    if (credentialless) {
+      EXPECT_EQ(2u, connection_tracker_->GetAcceptedSocketCount());
+    } else {
+      EXPECT_EQ(1u, connection_tracker_->GetAcceptedSocketCount());
+    }
+    EXPECT_EQ(1u, connection_tracker_->GetReadSocketCount());
+  }
 }
 
 }  // namespace content

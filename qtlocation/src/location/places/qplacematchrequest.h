@@ -1,48 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLACEMATCHREQUEST_H
 #define QPLACEMATCHREQUEST_H
 
+#include <QtLocation/qlocationglobal.h>
 #include <QtCore/QSharedDataPointer>
-#include <QtLocation/QPlaceSearchResult>
 
 QT_BEGIN_NAMESPACE
 
+class QPlace;
+class QPlaceSearchResult;
 class QPlaceMatchRequestPrivate;
+QT_DECLARE_QSDP_SPECIALIZATION_DTOR_WITH_EXPORT(QPlaceMatchRequestPrivate, Q_LOCATION_EXPORT)
 
 class Q_LOCATION_EXPORT QPlaceMatchRequest
 {
@@ -50,18 +20,22 @@ public:
     static const QString AlternativeId;
 
     QPlaceMatchRequest();
-    QPlaceMatchRequest(const QPlaceMatchRequest &other);
-
-
-    QPlaceMatchRequest &operator=(const QPlaceMatchRequest &other);
-
-    bool operator==(const QPlaceMatchRequest &other) const;
-    bool operator!=(const QPlaceMatchRequest &other) const;
-
+    QPlaceMatchRequest(const QPlaceMatchRequest &other) noexcept;
+    QPlaceMatchRequest(QPlaceMatchRequest &&other) noexcept = default;
     ~QPlaceMatchRequest();
 
+    QPlaceMatchRequest &operator=(const QPlaceMatchRequest &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QPlaceMatchRequest)
+
+    void swap(QPlaceMatchRequest &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    friend inline bool operator==(const QPlaceMatchRequest &lhs, const QPlaceMatchRequest &rhs) noexcept
+    { return lhs.isEqual(rhs); }
+    friend inline bool operator!=(const QPlaceMatchRequest &lhs, const QPlaceMatchRequest &rhs) noexcept
+    { return !lhs.isEqual(rhs); }
+
     QList<QPlace> places() const;
-    void setPlaces(const QList<QPlace> places);
+    void setPlaces(const QList<QPlace> &places);
 
     void setResults(const QList<QPlaceSearchResult> &results);
 
@@ -72,6 +46,8 @@ public:
 
 private:
     QSharedDataPointer<QPlaceMatchRequestPrivate> d_ptr;
+
+    bool isEqual(const QPlaceMatchRequest &other) const noexcept;
     inline QPlaceMatchRequestPrivate *d_func();
     inline const QPlaceMatchRequestPrivate *d_func() const;
 };

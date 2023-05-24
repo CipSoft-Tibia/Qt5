@@ -20,7 +20,9 @@ SUBDIRS += \
     shadowmap \
     computebuffer \
     computeimage \
-    instancing
+    instancing \
+    noninstanced \
+    tex3d
 
 qtConfig(widgets) {
     SUBDIRS += \

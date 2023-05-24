@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,15 @@
 #include "base/files/file_path.h"
 #include "base/native_library.h"
 #include "build/build_config.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/extension_set.h"
+#include "ui/gl/buildflags.h"
 #include "ui/gl/gl_export.h"
 #include "ui/gl/gl_switches.h"
+
+namespace base {
+class CommandLine;
+}
 
 namespace gl {
 
@@ -28,8 +34,9 @@ enum GLImplementation {
   kGLImplementationNone = 0,
   kGLImplementationDesktopGL = 1,
   kGLImplementationDesktopGLCoreProfile = 2,
-  kGLImplementationSwiftShaderGL = 3,
-  kGLImplementationAppleGL = 4,
+  // Note: 3 and 4 are skipped and should not be reused.
+  // 3 used to be legacy SwiftShader.
+  // 4 used to be Apple's software GL.
   kGLImplementationEGLGLES2 = 5,  // Native EGL/GLES2
   kGLImplementationMockGL = 6,
   kGLImplementationStubGL = 7,
@@ -48,7 +55,55 @@ enum class ANGLEImplementation {
   kVulkan = 6,
   kSwiftShader = 7,
   kMetal = 8,
-  kMaxValue = kMetal,
+  kDefault = 9,
+  kMaxValue = kDefault,
+};
+
+struct GL_EXPORT GLImplementationParts {
+  constexpr explicit GLImplementationParts(const ANGLEImplementation angle_impl)
+      : gl(kGLImplementationEGLANGLE),
+        angle(MakeANGLEImplementation(kGLImplementationEGLANGLE, angle_impl)) {}
+
+  constexpr explicit GLImplementationParts(const GLImplementation gl_impl)
+      : gl(gl_impl),
+        angle(MakeANGLEImplementation(gl_impl, ANGLEImplementation::kDefault)) {
+  }
+
+  GLImplementation gl = kGLImplementationNone;
+  ANGLEImplementation angle = ANGLEImplementation::kNone;
+
+  constexpr bool operator==(const GLImplementationParts& other) const {
+    return (gl == other.gl && angle == other.angle);
+  }
+
+  constexpr bool operator==(const ANGLEImplementation angle_impl) const {
+    return operator==(GLImplementationParts(angle_impl));
+  }
+
+  constexpr bool operator==(const GLImplementation gl_impl) const {
+    return operator==(GLImplementationParts(gl_impl));
+  }
+
+  bool IsValid() const;
+  bool IsAllowed(const std::vector<GLImplementationParts>& allowed_impls) const;
+  std::string ToString() const;
+  std::string GLString() const;
+  std::string ANGLEString() const;
+
+ private:
+  static constexpr ANGLEImplementation MakeANGLEImplementation(
+      const GLImplementation gl_impl,
+      const ANGLEImplementation angle_impl) {
+    if (gl_impl == kGLImplementationEGLANGLE) {
+      if (angle_impl == ANGLEImplementation::kNone) {
+        return ANGLEImplementation::kDefault;
+      } else {
+        return angle_impl;
+      }
+    } else {
+      return ANGLEImplementation::kNone;
+    }
+  }
 };
 
 struct GL_EXPORT GLWindowSystemBindingInfo {
@@ -61,15 +116,15 @@ struct GL_EXPORT GLWindowSystemBindingInfo {
 };
 
 using GLFunctionPointerType = void (*)();
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 typedef GLFunctionPointerType(WINAPI* GLGetProcAddressProc)(const char* name);
 #else
 typedef GLFunctionPointerType (*GLGetProcAddressProc)(const char* name);
 #endif
 
-// Initialize stub methods for drawing operations in the GL bindings. The
+// Sets stub methods for drawing operations in the GL bindings. The
 // null draw bindings default to enabled, so that draw operations do nothing.
-GL_EXPORT void InitializeNullDrawGLBindings();
+GL_EXPORT void SetNullDrawGLBindings(bool enabled);
 
 // TODO(danakj): Remove this when all test suites are using null-draw.
 GL_EXPORT bool HasInitializedNullDrawGLBindings();
@@ -92,6 +147,13 @@ class GL_EXPORT DisableNullDrawGLBindings {
   bool initial_enabled_;
 };
 
+// Set the current GL and ANGLE implementation.
+GL_EXPORT void SetGLImplementationParts(
+    const GLImplementationParts& implementation);
+
+// Get the current GL and ANGLE implementation.
+GL_EXPORT const GLImplementationParts& GetGLImplementationParts();
+
 // Set the current GL implementation.
 GL_EXPORT void SetGLImplementation(GLImplementation implementation);
 
@@ -104,18 +166,41 @@ GL_EXPORT void SetANGLEImplementation(ANGLEImplementation implementation);
 // Get the current ANGLE implementation.
 GL_EXPORT ANGLEImplementation GetANGLEImplementation();
 
-// Get the software GL implementation for the current platform.
-GL_EXPORT GLImplementation GetSoftwareGLImplementation();
+// Get the software GL implementation
+GL_EXPORT GLImplementationParts GetSoftwareGLImplementation();
+
+// Set the software GL implementation on the provided command line
+GL_EXPORT void SetSoftwareGLCommandLineSwitches(
+    base::CommandLine* command_line);
+
+// Set the software WebGL implementation on the provided command line
+GL_EXPORT void SetSoftwareWebGLCommandLineSwitches(
+    base::CommandLine* command_line);
+
+// Return requested GL implementation by checking commandline. If there isn't
+// gl related argument, nullopt is returned.
+GL_EXPORT absl::optional<GLImplementationParts>
+GetRequestedGLImplementationFromCommandLine(
+    const base::CommandLine* command_line,
+    bool* fallback_to_software_gl);
+
+// Whether the implementation is one of the software GL implementations
+GL_EXPORT bool IsSoftwareGLImplementation(GLImplementationParts implementation);
 
 // Does the underlying GL support all features from Desktop GL 2.0 that were
 // removed from the ES 2.0 spec without requiring specific extension strings.
 GL_EXPORT bool HasDesktopGLFeatures();
 
 // Get the GL implementation with a given name.
-GL_EXPORT GLImplementation GetNamedGLImplementation(const std::string& name);
+GL_EXPORT GLImplementationParts
+GetNamedGLImplementation(const std::string& gl_name,
+                         const std::string& angle_name);
 
 // Get the name of a GL implementation.
-GL_EXPORT const char* GetGLImplementationName(GLImplementation implementation);
+GL_EXPORT const char* GetGLImplementationGLName(
+    GLImplementationParts implementation);
+GL_EXPORT const char* GetGLImplementationANGLEName(
+    GLImplementationParts implementation);
 
 // Add a native library to those searched for GL entry points.
 GL_EXPORT void AddGLNativeLibrary(base::NativeLibrary library);
@@ -160,6 +245,11 @@ GL_EXPORT base::NativeLibrary LoadLibraryAndPrintError(
     const base::FilePath::CharType* filename);
 GL_EXPORT base::NativeLibrary LoadLibraryAndPrintError(
     const base::FilePath& filename);
+
+#if BUILDFLAG(USE_OPENGL_APITRACE)
+// Notify end of frame at buffer swap request.
+GL_EXPORT void TerminateFrame();
+#endif
 
 }  // namespace gl
 

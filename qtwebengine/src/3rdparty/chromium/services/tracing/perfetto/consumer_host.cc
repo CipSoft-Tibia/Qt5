@@ -1,23 +1,23 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/tracing/perfetto/consumer_host.h"
 
-#include <algorithm>
 #include <cstring>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
+#include "base/containers/contains.h"
+#include "base/containers/cxx20_erase.h"
 #include "base/logging.h"
-#include "base/numerics/ranges.h"
-#include "base/stl_util.h"
+#include "base/notreached.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/trace_event/trace_log.h"
 #include "base/values.h"
@@ -25,6 +25,7 @@
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "mojo/public/cpp/system/wait.h"
 #include "services/tracing/perfetto/perfetto_service.h"
+#include "services/tracing/perfetto/privacy_filtering_check.h"
 #include "services/tracing/public/cpp/perfetto/perfetto_session.h"
 #include "services/tracing/public/cpp/trace_event_args_allowlist.h"
 #include "third_party/perfetto/include/perfetto/ext/trace_processor/export_json.h"
@@ -136,13 +137,14 @@ class ConsumerHost::StreamWriter {
     }
   }
 
+  StreamWriter(const StreamWriter&) = delete;
+  StreamWriter& operator=(const StreamWriter&) = delete;
+
  private:
   mojo::ScopedDataPipeProducerHandle stream_;
   TracingSession::ReadBuffersCallback read_buffers_callback_;
   base::OnceClosure disconnect_callback_;
   scoped_refptr<base::SequencedTaskRunner> callback_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(StreamWriter);
 };
 
 ConsumerHost::TracingSession::TracingSession(
@@ -150,6 +152,7 @@ ConsumerHost::TracingSession::TracingSession(
     mojo::PendingReceiver<mojom::TracingSessionHost> tracing_session_host,
     mojo::PendingRemote<mojom::TracingSessionClient> tracing_session_client,
     const perfetto::TraceConfig& trace_config,
+    perfetto::base::ScopedFile output_file,
     mojom::TracingClientPriority priority)
     : host_(host),
       tracing_session_client_(std::move(tracing_session_client)),
@@ -167,6 +170,9 @@ ConsumerHost::TracingSession::TracingSession(
     if (data_source.config().chrome_config().privacy_filtering_enabled()) {
       privacy_filtering_enabled_ = true;
     }
+    if (data_source.config().chrome_config().convert_to_legacy_json()) {
+      convert_to_legacy_json_ = true;
+    }
   }
 #if DCHECK_IS_ON()
   if (privacy_filtering_enabled_) {
@@ -177,9 +183,15 @@ ConsumerHost::TracingSession::TracingSession(
   }
 #endif
 
+#if BUILDFLAG(USE_PERFETTO_CLIENT_LIBRARY)
+  const std::string kDataSourceName = "track_event";
+#else
+  const std::string kDataSourceName = mojom::kTraceEventDataSourceName;
+#endif
+
   filtered_pids_.clear();
   for (const auto& ds_config : trace_config.data_sources()) {
-    if (ds_config.config().name() == mojom::kTraceEventDataSourceName) {
+    if (ds_config.config().name() == kDataSourceName) {
       for (const auto& filter : ds_config.producer_name_filter()) {
         base::ProcessId pid;
         if (PerfettoService::ParsePidFromProducerName(filter, &pid)) {
@@ -194,7 +206,26 @@ ConsumerHost::TracingSession::TracingSession(
   base::EraseIf(*pending_enable_tracing_ack_pids_,
                 [this](base::ProcessId pid) { return !IsExpectedPid(pid); });
 
-  host_->consumer_endpoint()->EnableTracing(trace_config);
+  perfetto::TraceConfig effective_config(trace_config);
+  // If we're going to convert the data to JSON, don't enable privacy filtering
+  // at the data source level since it will be performed at conversion time
+  // (otherwise there's nothing to pass through the allowlist).
+  if (convert_to_legacy_json_ && privacy_filtering_enabled_) {
+    for (auto& data_source : *effective_config.mutable_data_sources()) {
+      auto* chrome_config =
+          data_source.mutable_config()->mutable_chrome_config();
+      chrome_config->set_privacy_filtering_enabled(false);
+      // Argument filtering should still be enabled together with privacy
+      // filtering to ensure, for example, that only the expected metadata gets
+      // written.
+      base::trace_event::TraceConfig base_config(chrome_config->trace_config());
+      base_config.EnableArgumentFilter();
+      chrome_config->set_trace_config(base_config.ToString());
+    }
+  }
+
+  host_->consumer_endpoint()->EnableTracing(effective_config,
+                                            std::move(output_file));
   MaybeSendEnableTracingAck();
 
   if (pending_enable_tracing_ack_pids_) {
@@ -203,8 +234,8 @@ ConsumerHost::TracingSession::TracingSession(
     // ACK our EnableTracing request eventually, so we'll add a timeout for that
     // case.
     enable_tracing_ack_timer_.Start(
-        FROM_HERE, base::TimeDelta::FromSeconds(kEnableTracingTimeoutSeconds),
-        this, &ConsumerHost::TracingSession::OnEnableTracingTimeout);
+        FROM_HERE, base::Seconds(kEnableTracingTimeoutSeconds), this,
+        &ConsumerHost::TracingSession::OnEnableTracingTimeout);
   }
 }
 
@@ -233,8 +264,8 @@ void ConsumerHost::TracingSession::OnPerfettoEvents(
   // Data sources are first reported as being stopped before starting, so once
   // all the data sources we know about have started we can declare tracing
   // begun.
-  bool all_data_sources_started = std::all_of(
-      data_source_states_.cbegin(), data_source_states_.cend(),
+  bool all_data_sources_started = base::ranges::all_of(
+      data_source_states_,
       [](std::pair<DataSourceHandle, bool> state) { return state.second; });
   if (!all_data_sources_started)
     return;
@@ -327,7 +358,7 @@ void ConsumerHost::TracingSession::DisableTracing() {
   host_->consumer_endpoint()->DisableTracing();
 }
 
-void ConsumerHost::TracingSession::OnTracingDisabled() {
+void ConsumerHost::TracingSession::OnTracingDisabled(const std::string& error) {
   DCHECK(tracing_session_client_);
 
   if (enable_tracing_ack_timer_.IsRunning()) {
@@ -335,7 +366,8 @@ void ConsumerHost::TracingSession::OnTracingDisabled() {
   }
   DCHECK(!pending_enable_tracing_ack_pids_);
 
-  tracing_session_client_->OnTracingDisabled();
+  tracing_session_client_->OnTracingDisabled(
+      /*tracing_succeeded=*/error.empty());
 
   if (trace_processor_) {
     host_->consumer_endpoint()->ReadBuffers();
@@ -356,11 +388,12 @@ void ConsumerHost::TracingSession::OnConsumerClientDisconnected() {
 void ConsumerHost::TracingSession::ReadBuffers(
     mojo::ScopedDataPipeProducerHandle stream,
     ReadBuffersCallback callback) {
+  DCHECK(!convert_to_legacy_json_);
   read_buffers_stream_writer_ = base::SequenceBound<StreamWriter>(
       StreamWriter::CreateTaskRunner(), std::move(stream), std::move(callback),
       base::BindOnce(&TracingSession::OnConsumerClientDisconnected,
                      weak_factory_.GetWeakPtr()),
-      base::SequencedTaskRunnerHandle::Get());
+      base::SequencedTaskRunner::GetCurrentDefault());
 
   host_->consumer_endpoint()->ReadBuffers();
 }
@@ -387,13 +420,13 @@ void ConsumerHost::TracingSession::DisableTracingAndEmitJson(
       StreamWriter::CreateTaskRunner(), std::move(stream), std::move(callback),
       base::BindOnce(&TracingSession::OnConsumerClientDisconnected,
                      weak_factory_.GetWeakPtr()),
-      base::SequencedTaskRunnerHandle::Get());
+      base::SequencedTaskRunner::GetCurrentDefault());
 
   if (privacy_filtering_enabled) {
     // For filtering/allowlisting to be possible at JSON export time,
     // filtering must not have been enabled during proto emission time
     // (or there's nothing to pass through the allowlist).
-    DCHECK(!privacy_filtering_enabled_);
+    DCHECK(!privacy_filtering_enabled_ || convert_to_legacy_json_);
     privacy_filtering_enabled_ = true;
   }
 
@@ -473,8 +506,8 @@ void ConsumerHost::TracingSession::OnJSONTraceData(std::string json,
                                                    bool has_more) {
   auto slice = std::make_unique<StreamWriter::Slice>();
   slice->swap(json);
-  read_buffers_stream_writer_.Post(FROM_HERE, &StreamWriter::WriteToStream,
-                                   std::move(slice), has_more);
+  read_buffers_stream_writer_.AsyncCall(&StreamWriter::WriteToStream)
+      .WithArgs(std::move(slice), has_more);
 
   if (!has_more) {
     read_buffers_stream_writer_.Reset();
@@ -493,14 +526,13 @@ void ConsumerHost::TracingSession::OnTraceData(
     max_size += packet.size();
   }
 
+  // If |trace_processor_| was initialized, then export trace as JSON.
   if (trace_processor_) {
     // Copy packets into a trace file chunk.
     size_t position = 0;
     std::unique_ptr<uint8_t[]> data(new uint8_t[max_size]);
     for (perfetto::TracePacket& packet : packets) {
-      char* preamble;
-      size_t preamble_size;
-      std::tie(preamble, preamble_size) = packet.GetProtoPreamble();
+      auto [preamble, preamble_size] = packet.GetProtoPreamble();
       DCHECK_LT(position + preamble_size, max_size);
       memcpy(&data[position], preamble, preamble_size);
       position += preamble_size;
@@ -528,17 +560,20 @@ void ConsumerHost::TracingSession::OnTraceData(
   auto chunk = std::make_unique<StreamWriter::Slice>();
   chunk->reserve(max_size);
   for (auto& packet : packets) {
-    char* data;
-    size_t size;
-    std::tie(data, size) = packet.GetProtoPreamble();
+    auto [data, size] = packet.GetProtoPreamble();
     chunk->append(data, size);
     auto& slices = packet.slices();
     for (auto& slice : slices) {
       chunk->append(static_cast<const char*>(slice.start), slice.size);
     }
   }
-  read_buffers_stream_writer_.Post(FROM_HERE, &StreamWriter::WriteToStream,
-                                   std::move(chunk), has_more);
+
+  if (privacy_filtering_enabled_) {
+    tracing::PrivacyFilteringCheck::RemoveBlockedFields(*chunk);
+  }
+
+  read_buffers_stream_writer_.AsyncCall(&StreamWriter::WriteToStream)
+      .WithArgs(std::move(chunk), has_more);
   if (!has_more) {
     read_buffers_stream_writer_.Reset();
   }
@@ -551,7 +586,7 @@ void ConsumerHost::TracingSession::OnTraceStats(
     return;
   }
 
-  if (!success || stats.buffer_stats_size() != 1) {
+  if (!(success && stats.buffer_stats_size())) {
     std::move(request_buffer_usage_callback_).Run(false, 0.0f, false);
     return;
   }
@@ -604,9 +639,39 @@ void ConsumerHost::EnableTracing(
     mojo::PendingReceiver<mojom::TracingSessionHost> tracing_session_host,
     mojo::PendingRemote<mojom::TracingSessionClient> tracing_session_client,
     const perfetto::TraceConfig& trace_config,
-    mojom::TracingClientPriority priority) {
+    base::File output_file) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!tracing_session_);
+
+  auto priority = mojom::TracingClientPriority::kUnknown;
+  for (const auto& data_source : trace_config.data_sources()) {
+    if (!data_source.has_config() ||
+        !data_source.config().has_chrome_config()) {
+      continue;
+    }
+    switch (data_source.config().chrome_config().client_priority()) {
+      case perfetto::protos::gen::ChromeConfig::BACKGROUND:
+        priority =
+            std::max(priority, mojom::TracingClientPriority::kBackground);
+        break;
+      case perfetto::protos::gen::ChromeConfig::USER_INITIATED:
+        priority =
+            std::max(priority, mojom::TracingClientPriority::kUserInitiated);
+        break;
+      default:
+      case perfetto::protos::gen::ChromeConfig::UNKNOWN:
+        break;
+    }
+  }
+
+#if BUILDFLAG(IS_WIN)
+  // TODO(crbug.com/1158482): Support writing to a file directly on Windows.
+  DCHECK(!output_file.IsValid())
+      << "Tracing directly to a file isn't supported yet on Windows";
+  perfetto::base::ScopedFile file;
+#else
+  perfetto::base::ScopedFile file(output_file.TakePlatformFile());
+#endif
 
   // We create our new TracingSession async, if the PerfettoService allows
   // us to, after it's stopped any currently running lower or equal priority
@@ -619,6 +684,7 @@ void ConsumerHost::EnableTracing(
                        mojo::PendingRemote<mojom::TracingSessionClient>
                            tracing_session_client,
                        const perfetto::TraceConfig& trace_config,
+                       perfetto::base::ScopedFile output_file,
                        mojom::TracingClientPriority priority) {
                       if (!weak_this) {
                         return;
@@ -628,20 +694,21 @@ void ConsumerHost::EnableTracing(
                           std::make_unique<TracingSession>(
                               weak_this.get(), std::move(tracing_session_host),
                               std::move(tracing_session_client), trace_config,
-                              priority);
+                              std::move(output_file), priority);
                     },
                     weak_factory_.GetWeakPtr(), std::move(tracing_session_host),
-                    std::move(tracing_session_client), trace_config, priority));
+                    std::move(tracing_session_client), trace_config,
+                    std::move(file), priority));
 }
 
 void ConsumerHost::OnConnect() {}
 
 void ConsumerHost::OnDisconnect() {}
 
-void ConsumerHost::OnTracingDisabled() {
+void ConsumerHost::OnTracingDisabled(const std::string& error) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (tracing_session_) {
-    tracing_session_->OnTracingDisabled();
+    tracing_session_->OnTracingDisabled(error);
   }
 }
 
@@ -667,6 +734,10 @@ void ConsumerHost::OnTraceStats(bool success,
   if (tracing_session_) {
     tracing_session_->OnTraceStats(success, stats);
   }
+}
+
+void ConsumerHost::OnSessionCloned(bool, const std::string&) {
+  NOTREACHED();
 }
 
 void ConsumerHost::DestructTracingSession() {

@@ -71,17 +71,6 @@ Bitte besuchen Sie https://developers.arcgis.com/authentication/accessing-arcgis
     </message>
 </context>
 <context>
-    <name>QDeclarativeNavigator</name>
-    <message>
-        <source>Plugin does not support navigation.</source>
-        <translation>Das Plugin unterstützt keine Navigation.</translation>
-    </message>
-    <message>
-        <source>Failed to create a navigator object.</source>
-        <translation>Es konnte kein Navigator-Objekt erstellt werden.</translation>
-    </message>
-</context>
-<context>
     <name>QGeoCodeReplyMapbox</name>
     <message>
         <source>Response parse error</source>

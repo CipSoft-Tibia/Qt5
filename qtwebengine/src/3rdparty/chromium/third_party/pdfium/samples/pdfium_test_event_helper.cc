@@ -1,4 +1,4 @@
-// Copyright 2018 The PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,8 +35,8 @@ void SendCharCodeEvent(FPDF_FORMHANDLE form,
     return;
   }
 
-  int keycode = atoi(tokens[1].c_str());
-  FORM_OnChar(form, page, keycode, 0);
+  int charcode = atoi(tokens[1].c_str());
+  FORM_OnChar(form, page, charcode, 0);
 }
 
 void SendKeyCodeEvent(FPDF_FORMHANDLE form,
@@ -156,7 +156,8 @@ void SendFocusEvent(FPDF_FORMHANDLE form,
 
 void SendPageEvents(FPDF_FORMHANDLE form,
                     FPDF_PAGE page,
-                    const std::string& events) {
+                    const std::string& events,
+                    const std::function<void()>& idler) {
   auto lines = StringSplit(events, '\n');
   for (const auto& line : lines) {
     auto command = StringSplit(line, '#');
@@ -182,5 +183,6 @@ void SendPageEvents(FPDF_FORMHANDLE form,
     } else {
       fprintf(stderr, "Unrecognized event: %s\n", tokens[0].c_str());
     }
+    idler();
   }
 }

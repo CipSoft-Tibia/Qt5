@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,15 +12,15 @@
 namespace performance_manager {
 
 TabHelperFrameNodeSource::TabHelperFrameNodeSource()
-    : performance_manager_tab_helper_observers_(this) {}
+    : performance_manager_tab_helper_observations_(this) {}
 
 TabHelperFrameNodeSource::~TabHelperFrameNodeSource() {
   DCHECK(observed_frame_nodes_.empty());
-  DCHECK(!performance_manager_tab_helper_observers_.IsObservingSources());
+  DCHECK(!performance_manager_tab_helper_observations_.IsObservingAnySource());
 }
 
 FrameNodeImpl* TabHelperFrameNodeSource::GetFrameNode(
-    content::GlobalFrameRoutingId render_process_host_id) {
+    content::GlobalRenderFrameHostId render_process_host_id) {
   // Retrieve the client's RenderFrameHost and its associated
   // PerformanceManagerTabHelper.
   auto* render_frame_host =
@@ -38,7 +38,7 @@ FrameNodeImpl* TabHelperFrameNodeSource::GetFrameNode(
 }
 
 void TabHelperFrameNodeSource::SubscribeToFrameNode(
-    content::GlobalFrameRoutingId render_process_host_id,
+    content::GlobalRenderFrameHostId render_process_host_id,
     OnbeforeFrameNodeRemovedCallback on_before_frame_node_removed_callback) {
   auto* render_frame_host =
       content::RenderFrameHost::FromID(render_process_host_id);
@@ -57,7 +57,7 @@ void TabHelperFrameNodeSource::SubscribeToFrameNode(
   if (AddObservedFrameNode(performance_manager_tab_helper, frame_node)) {
     // Start observing the tab helper only if this is the first observed frame
     // that is associated with it.
-    performance_manager_tab_helper_observers_.Add(
+    performance_manager_tab_helper_observations_.AddObservation(
         performance_manager_tab_helper);
   }
 
@@ -71,7 +71,7 @@ void TabHelperFrameNodeSource::SubscribeToFrameNode(
 }
 
 void TabHelperFrameNodeSource::UnsubscribeFromFrameNode(
-    content::GlobalFrameRoutingId render_process_host_id) {
+    content::GlobalRenderFrameHostId render_process_host_id) {
   auto* render_frame_host =
       content::RenderFrameHost::FromID(render_process_host_id);
   DCHECK(render_frame_host);
@@ -93,7 +93,7 @@ void TabHelperFrameNodeSource::UnsubscribeFromFrameNode(
   if (RemoveObservedFrameNode(performance_manager_tab_helper, frame_node)) {
     // Stop observing that tab helper if there no longer are any observed
     // frames that are associated with it.
-    performance_manager_tab_helper_observers_.Remove(
+    performance_manager_tab_helper_observations_.RemoveObservation(
         performance_manager_tab_helper);
   }
 }
@@ -116,7 +116,7 @@ void TabHelperFrameNodeSource::OnBeforeFrameNodeRemoved(
   if (RemoveObservedFrameNode(performance_manager_tab_helper, frame_node)) {
     // Stop observing that tab helper if there no longer are any observed
     // frames that are associated with it.
-    performance_manager_tab_helper_observers_.Remove(
+    performance_manager_tab_helper_observations_.RemoveObservation(
         performance_manager_tab_helper);
   }
 }

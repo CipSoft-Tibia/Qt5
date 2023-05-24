@@ -41,16 +41,16 @@
 #define V8_CODEGEN_PPC_ASSEMBLER_PPC_H_
 
 #include <stdio.h>
-#include <memory>
-#include <vector>
 
+#include <memory>
+
+#include "src/base/numbers/double.h"
 #include "src/codegen/assembler.h"
 #include "src/codegen/constant-pool.h"
 #include "src/codegen/external-reference.h"
 #include "src/codegen/label.h"
 #include "src/codegen/ppc/constants-ppc.h"
 #include "src/codegen/ppc/register-ppc.h"
-#include "src/numbers/double.h"
 #include "src/objects/smi.h"
 
 namespace v8 {
@@ -66,7 +66,7 @@ class V8_EXPORT_PRIVATE Operand {
  public:
   // immediate
   V8_INLINE explicit Operand(intptr_t immediate,
-                             RelocInfo::Mode rmode = RelocInfo::NONE)
+                             RelocInfo::Mode rmode = RelocInfo::NO_INFO)
       : rmode_(rmode) {
     value_.immediate = immediate;
   }
@@ -76,14 +76,13 @@ class V8_EXPORT_PRIVATE Operand {
     value_.immediate = static_cast<intptr_t>(f.address());
   }
   explicit Operand(Handle<HeapObject> handle);
-  V8_INLINE explicit Operand(Smi value) : rmode_(RelocInfo::NONE) {
+  V8_INLINE explicit Operand(Smi value) : rmode_(RelocInfo::NO_INFO) {
     value_.immediate = static_cast<intptr_t>(value.ptr());
   }
   // rm
   V8_INLINE explicit Operand(Register rm);
 
   static Operand EmbeddedNumber(double number);  // Smi or HeapNumber.
-  static Operand EmbeddedStringConstant(const StringConstantBase* str);
 
   // Return true if this is a register operand.
   V8_INLINE bool is_reg() const { return rm_.is_valid(); }
@@ -92,34 +91,34 @@ class V8_EXPORT_PRIVATE Operand {
 
   inline intptr_t immediate() const {
     DCHECK(IsImmediate());
-    DCHECK(!IsHeapObjectRequest());
+    DCHECK(!IsHeapNumberRequest());
     return value_.immediate;
   }
   bool IsImmediate() const { return !rm_.is_valid(); }
 
-  HeapObjectRequest heap_object_request() const {
-    DCHECK(IsHeapObjectRequest());
-    return value_.heap_object_request;
+  HeapNumberRequest heap_number_request() const {
+    DCHECK(IsHeapNumberRequest());
+    return value_.heap_number_request;
   }
 
   Register rm() const { return rm_; }
 
-  bool IsHeapObjectRequest() const {
-    DCHECK_IMPLIES(is_heap_object_request_, IsImmediate());
-    DCHECK_IMPLIES(is_heap_object_request_,
+  bool IsHeapNumberRequest() const {
+    DCHECK_IMPLIES(is_heap_number_request_, IsImmediate());
+    DCHECK_IMPLIES(is_heap_number_request_,
                    rmode_ == RelocInfo::FULL_EMBEDDED_OBJECT ||
                        rmode_ == RelocInfo::CODE_TARGET);
-    return is_heap_object_request_;
+    return is_heap_number_request_;
   }
 
  private:
   Register rm_ = no_reg;
   union Value {
     Value() {}
-    HeapObjectRequest heap_object_request;  // if is_heap_object_request_
+    HeapNumberRequest heap_number_request;  // if is_heap_number_request_
     intptr_t immediate;                     // otherwise
   } value_;                                 // valid if rm_ == no_reg
-  bool is_heap_object_request_ = false;
+  bool is_heap_number_request_ = false;
 
   RelocInfo::Mode rmode_;
 
@@ -132,11 +131,13 @@ class V8_EXPORT_PRIVATE Operand {
 // Alternatively we can have a 16bit signed value immediate
 class V8_EXPORT_PRIVATE MemOperand {
  public:
-  explicit MemOperand(Register rn, int32_t offset = 0);
+  explicit MemOperand(Register rn, int64_t offset = 0);
 
   explicit MemOperand(Register ra, Register rb);
 
-  int32_t offset() const { return offset_; }
+  explicit MemOperand(Register ra, Register rb, int64_t offset);
+
+  int64_t offset() const { return offset_; }
 
   // PowerPC - base register
   Register ra() const { return ra_; }
@@ -145,7 +146,7 @@ class V8_EXPORT_PRIVATE MemOperand {
 
  private:
   Register ra_;     // base
-  int32_t offset_;  // offset
+  int64_t offset_;  // offset
   Register rb_;     // index
 
   friend class Assembler;
@@ -194,6 +195,12 @@ class Assembler : public AssemblerBase {
   }
 
   void MaybeEmitOutOfLineConstantPool() { EmitConstantPool(); }
+
+  inline void CheckTrampolinePoolQuick(int extra_space = 0) {
+    if (pc_offset() >= next_trampoline_check_ - extra_space) {
+      CheckTrampolinePool();
+    }
+  }
 
   // Label operations & relative jumps (PPUM Appendix D)
   //
@@ -269,7 +276,7 @@ class Assembler : public AssemblerBase {
   // This sets the branch destination.
   // This is for calls and branches within generated code.
   inline static void deserialization_set_special_target_at(
-      Address instruction_payload, Code code, Address target);
+      Address instruction_payload, InstructionStream code, Address target);
 
   // Get the size of the special target encoded at 'instruction_payload'.
   inline static int deserialization_special_target_size(
@@ -302,7 +309,7 @@ class Assembler : public AssemblerBase {
   static constexpr int kMovInstructionsNoConstantPool = 2;
   static constexpr int kTaggedLoadInstructions = 1;
 #endif
-  static constexpr int kMovInstructions = FLAG_enable_embedded_constant_pool
+  static constexpr int kMovInstructions = V8_EMBEDDED_CONSTANT_POOL_BOOL
                                               ? kMovInstructionsConstantPool
                                               : kMovInstructionsNoConstantPool;
 
@@ -355,6 +362,11 @@ class Assembler : public AssemblerBase {
     x_form(instr_name, cr.code() * B2, src1.code(), src2.code(), LeaveRC);  \
   }
 
+#define DECLARE_PPC_X_INSTRUCTIONS_G_FORM(name, instr_name, instr_value) \
+  inline void name(const Register dst, const Register src) {             \
+    x_form(instr_name, src, dst, r0, LeaveRC);                           \
+  }
+
 #define DECLARE_PPC_X_INSTRUCTIONS_EH_S_FORM(name, instr_name, instr_value) \
   inline void name(const Register dst, const MemOperand& src) {             \
     x_form(instr_name, src.ra(), dst, src.rb(), SetEH);                     \
@@ -393,6 +405,7 @@ class Assembler : public AssemblerBase {
   PPC_X_OPCODE_D_FORM_LIST(DECLARE_PPC_X_INSTRUCTIONS_D_FORM)
   PPC_X_OPCODE_E_FORM_LIST(DECLARE_PPC_X_INSTRUCTIONS_E_FORM)
   PPC_X_OPCODE_F_FORM_LIST(DECLARE_PPC_X_INSTRUCTIONS_F_FORM)
+  PPC_X_OPCODE_G_FORM_LIST(DECLARE_PPC_X_INSTRUCTIONS_G_FORM)
   PPC_X_OPCODE_EH_S_FORM_LIST(DECLARE_PPC_X_INSTRUCTIONS_EH_S_FORM)
   PPC_X_OPCODE_EH_L_FORM_LIST(DECLARE_PPC_X_INSTRUCTIONS_EH_L_FORM)
 
@@ -424,45 +437,72 @@ class Assembler : public AssemblerBase {
 #undef DECLARE_PPC_X_INSTRUCTIONS_D_FORM
 #undef DECLARE_PPC_X_INSTRUCTIONS_E_FORM
 #undef DECLARE_PPC_X_INSTRUCTIONS_F_FORM
+#undef DECLARE_PPC_X_INSTRUCTIONS_G_FORM
 #undef DECLARE_PPC_X_INSTRUCTIONS_EH_S_FORM
 #undef DECLARE_PPC_X_INSTRUCTIONS_EH_L_FORM
 
-#define DECLARE_PPC_XX2_INSTRUCTIONS(name, instr_name, instr_value)      \
-  inline void name(const Simd128Register rt, const Simd128Register rb) { \
-    xx2_form(instr_name, rt, rb);                                        \
+#define DECLARE_PPC_XX2_VECTOR_INSTRUCTIONS(name, instr_name, instr_value) \
+  inline void name(const Simd128Register rt, const Simd128Register rb) {   \
+    xx2_form(instr_name, rt, rb);                                          \
+  }
+#define DECLARE_PPC_XX2_SCALAR_INSTRUCTIONS(name, instr_name, instr_value) \
+  inline void name(const DoubleRegister rt, const DoubleRegister rb) {     \
+    xx2_form(instr_name, rt, rb);                                          \
   }
 
-  inline void xx2_form(Instr instr, Simd128Register t, Simd128Register b) {
-    // Using VR (high VSR) registers.
-    int BX = 1;
-    int TX = 1;
+  template <typename T>
+  inline void xx2_form(Instr instr, T t, T b) {
+    static_assert(std::is_same<T, Simd128Register>::value ||
+                      std::is_same<T, DoubleRegister>::value,
+                  "VSX only uses FP or Vector registers.");
+    // Using FP (low VSR) registers.
+    int BX = 0, TX = 0;
+    // Using VR (high VSR) registers when Simd registers are used.
+    if (std::is_same<T, Simd128Register>::value) {
+      BX = TX = 1;
+    }
 
     emit(instr | (t.code() & 0x1F) * B21 | (b.code() & 0x1F) * B11 | BX * B1 |
          TX);
   }
 
-  PPC_XX2_OPCODE_A_FORM_LIST(DECLARE_PPC_XX2_INSTRUCTIONS)
-#undef DECLARE_PPC_XX2_INSTRUCTIONS
+  PPC_XX2_OPCODE_VECTOR_A_FORM_LIST(DECLARE_PPC_XX2_VECTOR_INSTRUCTIONS)
+  PPC_XX2_OPCODE_SCALAR_A_FORM_LIST(DECLARE_PPC_XX2_SCALAR_INSTRUCTIONS)
+  PPC_XX2_OPCODE_B_FORM_LIST(DECLARE_PPC_XX2_VECTOR_INSTRUCTIONS)
+#undef DECLARE_PPC_XX2_VECTOR_INSTRUCTIONS
+#undef DECLARE_PPC_XX2_SCALAR_INSTRUCTIONS
 
-#define DECLARE_PPC_XX3_INSTRUCTIONS(name, instr_name, instr_value)  \
-  inline void name(const DoubleRegister rt, const DoubleRegister ra, \
-                   const DoubleRegister rb) {                        \
-    xx3_form(instr_name, rt, ra, rb);                                \
+#define DECLARE_PPC_XX3_VECTOR_INSTRUCTIONS(name, instr_name, instr_value) \
+  inline void name(const Simd128Register rt, const Simd128Register ra,     \
+                   const Simd128Register rb) {                             \
+    xx3_form(instr_name, rt, ra, rb);                                      \
+  }
+#define DECLARE_PPC_XX3_SCALAR_INSTRUCTIONS(name, instr_name, instr_value) \
+  inline void name(const DoubleRegister rt, const DoubleRegister ra,       \
+                   const DoubleRegister rb) {                              \
+    xx3_form(instr_name, rt, ra, rb);                                      \
   }
 
-  inline void xx3_form(Instr instr, DoubleRegister t, DoubleRegister a,
-                       DoubleRegister b) {
-    // Using VR (high VSR) registers.
-    int AX = 1;
-    int BX = 1;
-    int TX = 1;
+  template <typename T>
+  inline void xx3_form(Instr instr, T t, T a, T b) {
+    static_assert(std::is_same<T, Simd128Register>::value ||
+                      std::is_same<T, DoubleRegister>::value,
+                  "VSX only uses FP or Vector registers.");
+    // Using FP (low VSR) registers.
+    int AX = 0, BX = 0, TX = 0;
+    // Using VR (high VSR) registers when Simd registers are used.
+    if (std::is_same<T, Simd128Register>::value) {
+      AX = BX = TX = 1;
+    }
 
     emit(instr | (t.code() & 0x1F) * B21 | (a.code() & 0x1F) * B16 |
          (b.code() & 0x1F) * B11 | AX * B2 | BX * B1 | TX);
   }
 
-  PPC_XX3_OPCODE_LIST(DECLARE_PPC_XX3_INSTRUCTIONS)
-#undef DECLARE_PPC_XX3_INSTRUCTIONS
+  PPC_XX3_OPCODE_VECTOR_LIST(DECLARE_PPC_XX3_VECTOR_INSTRUCTIONS)
+  PPC_XX3_OPCODE_SCALAR_LIST(DECLARE_PPC_XX3_SCALAR_INSTRUCTIONS)
+#undef DECLARE_PPC_XX3_VECTOR_INSTRUCTIONS
+#undef DECLARE_PPC_XX3_SCALAR_INSTRUCTIONS
 
 #define DECLARE_PPC_VX_INSTRUCTIONS_A_FORM(name, instr_name, instr_value) \
   inline void name(const Simd128Register rt, const Simd128Register rb,    \
@@ -478,25 +518,60 @@ class Assembler : public AssemblerBase {
   inline void name(const Simd128Register rt, const Simd128Register rb) {  \
     vx_form(instr_name, rt, rb);                                          \
   }
+#define DECLARE_PPC_VX_INSTRUCTIONS_E_FORM(name, instr_name, instr_value) \
+  inline void name(const Simd128Register rt, const Operand& imm) {        \
+    vx_form(instr_name, rt, imm);                                         \
+  }
+#define DECLARE_PPC_VX_INSTRUCTIONS_F_FORM(name, instr_name, instr_value) \
+  inline void name(const Register rt, const Simd128Register rb) {         \
+    vx_form(instr_name, rt, rb);                                          \
+  }
+#define DECLARE_PPC_VX_INSTRUCTIONS_G_FORM(name, instr_name, instr_value) \
+  inline void name(const Simd128Register rt, const Register rb,           \
+                   const Operand& imm) {                                  \
+    vx_form(instr_name, rt, rb, imm);                                     \
+  }
 
   inline void vx_form(Instr instr, Simd128Register rt, Simd128Register rb,
                       const Operand& imm) {
-    emit(instr | rt.code() * B21 | imm.immediate() * B16 | rb.code() * B11);
+    emit(instr | (rt.code() & 0x1F) * B21 | (imm.immediate() & 0x1F) * B16 |
+         (rb.code() & 0x1F) * B11);
   }
   inline void vx_form(Instr instr, Simd128Register rt, Simd128Register ra,
                       Simd128Register rb) {
-    emit(instr | rt.code() * B21 | ra.code() * B16 | rb.code() * B11);
+    emit(instr | (rt.code() & 0x1F) * B21 | ra.code() * B16 |
+         (rb.code() & 0x1F) * B11);
   }
   inline void vx_form(Instr instr, Simd128Register rt, Simd128Register rb) {
-    emit(instr | rt.code() * B21 | rb.code() * B11);
+    emit(instr | (rt.code() & 0x1F) * B21 | (rb.code() & 0x1F) * B11);
+  }
+  inline void vx_form(Instr instr, Simd128Register rt, const Operand& imm) {
+    emit(instr | (rt.code() & 0x1F) * B21 | (imm.immediate() & 0x1F) * B16);
+  }
+  inline void vx_form(Instr instr, Register rt, Simd128Register rb) {
+    emit(instr | (rt.code() & 0x1F) * B21 | (rb.code() & 0x1F) * B11);
+  }
+  inline void vx_form(Instr instr, Simd128Register rt, Register rb,
+                      const Operand& imm) {
+    emit(instr | (rt.code() & 0x1F) * B21 | (imm.immediate() & 0x1F) * B16 |
+         (rb.code() & 0x1F) * B11);
   }
 
   PPC_VX_OPCODE_A_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_A_FORM)
   PPC_VX_OPCODE_B_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_B_FORM)
   PPC_VX_OPCODE_C_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_C_FORM)
+  PPC_VX_OPCODE_D_FORM_LIST(
+      DECLARE_PPC_VX_INSTRUCTIONS_C_FORM) /* OPCODE_D_FORM can use
+                                             INSTRUCTIONS_C_FORM */
+  PPC_VX_OPCODE_E_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_E_FORM)
+  PPC_VX_OPCODE_F_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_F_FORM)
+  PPC_VX_OPCODE_G_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_G_FORM)
 #undef DECLARE_PPC_VX_INSTRUCTIONS_A_FORM
 #undef DECLARE_PPC_VX_INSTRUCTIONS_B_FORM
 #undef DECLARE_PPC_VX_INSTRUCTIONS_C_FORM
+#undef DECLARE_PPC_VX_INSTRUCTIONS_E_FORM
+#undef DECLARE_PPC_VX_INSTRUCTIONS_F_FORM
+#undef DECLARE_PPC_VX_INSTRUCTIONS_G_FORM
 
 #define DECLARE_PPC_VA_INSTRUCTIONS_A_FORM(name, instr_name, instr_value) \
   inline void name(const Simd128Register rt, const Simd128Register ra,    \
@@ -506,8 +581,8 @@ class Assembler : public AssemblerBase {
 
   inline void va_form(Instr instr, Simd128Register rt, Simd128Register ra,
                       Simd128Register rb, Simd128Register rc) {
-    emit(instr | rt.code() * B21 | ra.code() * B16 | rb.code() * B11 |
-         rc.code() * B6);
+    emit(instr | (rt.code() & 0x1F) * B21 | (ra.code() & 0x1F) * B16 |
+         (rb.code() & 0x1F) * B11 | (rc.code() & 0x1F) * B6);
   }
 
   PPC_VA_OPCODE_A_FORM_LIST(DECLARE_PPC_VA_INSTRUCTIONS_A_FORM)
@@ -521,16 +596,32 @@ class Assembler : public AssemblerBase {
 
   inline void vc_form(Instr instr, Simd128Register rt, Simd128Register ra,
                       Simd128Register rb, int rc) {
-    emit(instr | rt.code() * B21 | ra.code() * B16 | rb.code() * B11 |
-         rc * B10);
+    emit(instr | (rt.code() & 0x1F) * B21 | (ra.code() & 0x1F) * B16 |
+         (rb.code() & 0x1F) * B11 | rc * B10);
   }
 
   PPC_VC_OPCODE_LIST(DECLARE_PPC_VC_INSTRUCTIONS)
 #undef DECLARE_PPC_VC_INSTRUCTIONS
 
+#define DECLARE_PPC_PREFIX_INSTRUCTIONS_TYPE_00(name, instr_name, instr_value) \
+  inline void name(const Operand& imm, const PRBit pr = LeavePR) {             \
+    prefix_form(instr_name, imm, pr);                                          \
+  }
+#define DECLARE_PPC_PREFIX_INSTRUCTIONS_TYPE_10(name, instr_name, instr_value) \
+  inline void name(const Operand& imm, const PRBit pr = LeavePR) {             \
+    prefix_form(instr_name, imm, pr);                                          \
+  }
+  inline void prefix_form(Instr instr, const Operand& imm, int pr) {
+    emit_prefix(instr | pr * B20 | (imm.immediate() & kImm18Mask));
+  }
+  PPC_PREFIX_OPCODE_TYPE_00_LIST(DECLARE_PPC_PREFIX_INSTRUCTIONS_TYPE_00)
+  PPC_PREFIX_OPCODE_TYPE_10_LIST(DECLARE_PPC_PREFIX_INSTRUCTIONS_TYPE_10)
+#undef DECLARE_PPC_PREFIX_INSTRUCTIONS_TYPE_00
+#undef DECLARE_PPC_PREFIX_INSTRUCTIONS_TYPE_10
+
   RegList* GetScratchRegisterList() { return &scratch_register_list_; }
   // ---------------------------------------------------------------------------
-  // Code generation
+  // InstructionStream generation
 
   // Insert the smallest number of nop instructions
   // possible to align the pc offset to a multiple
@@ -541,6 +632,7 @@ class Assembler : public AssemblerBase {
   void DataAlign(int m);
   // Aligns code to something that's optimal for a jump target for the platform.
   void CodeTargetAlign();
+  void LoopHeaderAlign() { CodeTargetAlign(); }
 
   // Branch instructions
   void bclr(BOfield bo, int condition_bit, LKBit lk);
@@ -728,7 +820,7 @@ class Assembler : public AssemblerBase {
       return;
     }
 
-    if ((L->is_bound() && is_near(L, cond)) || !is_trampoline_emitted()) {
+    if ((L->is_bound() && is_near(L, cond))) {
       bc_short(cond, L, cr, lk);
       return;
     }
@@ -802,6 +894,9 @@ class Assembler : public AssemblerBase {
 
   void mulhw(Register dst, Register src1, Register src2, RCBit r = LeaveRC);
   void mulhwu(Register dst, Register src1, Register src2, RCBit r = LeaveRC);
+  void mulhd(Register dst, Register src1, Register src2, RCBit r = LeaveRC);
+  void mulhdu(Register dst, Register src1, Register src2, RCBit r = LeaveRC);
+  void mulli(Register dst, Register src, const Operand& imm);
 
   void divw(Register dst, Register src1, Register src2, OEBit o = LeaveOE,
             RCBit r = LeaveRC);
@@ -889,6 +984,10 @@ class Assembler : public AssemblerBase {
   void bitwise_mov32(Register dst, int32_t value);
   void bitwise_add32(Register dst, Register src, int32_t value);
 
+  // Patch the offset to the return address after CallCFunction.
+  void patch_wasm_cpi_return_address(Register dst, int pc_offset,
+                                     int return_address_offset);
+
   // Load the position of the label relative to the generated code object
   // pointer in a register.
   void mov_label_offset(Register dst, Label* label);
@@ -922,6 +1021,7 @@ class Assembler : public AssemblerBase {
   void mtxer(Register src);
   void mcrfs(CRegister cr, FPSCRBit bit);
   void mfcr(Register dst);
+  void mtcrf(Register src, uint8_t FXM);
 #if V8_TARGET_ARCH_PPC64
   void mffprd(Register dst, DoubleRegister src);
   void mffprwz(Register dst, DoubleRegister src);
@@ -1014,13 +1114,46 @@ class Assembler : public AssemblerBase {
   void fmsub(const DoubleRegister frt, const DoubleRegister fra,
              const DoubleRegister frc, const DoubleRegister frb,
              RCBit rc = LeaveRC);
+  void fcpsgn(const DoubleRegister frt, const DoubleRegister fra,
+              const DoubleRegister frc, RCBit rc = LeaveRC);
 
   // Vector instructions
   void mfvsrd(const Register ra, const Simd128Register r);
   void mfvsrwz(const Register ra, const Simd128Register r);
   void mtvsrd(const Simd128Register rt, const Register ra);
+  void mtvsrdd(const Simd128Register rt, const Register ra, const Register rb);
   void lxvd(const Simd128Register rt, const MemOperand& src);
-  void stxvd(const Simd128Register rt, const MemOperand& src);
+  void lxvx(const Simd128Register rt, const MemOperand& src);
+  void lxsdx(const Simd128Register rt, const MemOperand& src);
+  void lxsibzx(const Simd128Register rt, const MemOperand& src);
+  void lxsihzx(const Simd128Register rt, const MemOperand& src);
+  void lxsiwzx(const Simd128Register rt, const MemOperand& src);
+  void stxsdx(const Simd128Register rs, const MemOperand& dst);
+  void stxsibx(const Simd128Register rs, const MemOperand& dst);
+  void stxsihx(const Simd128Register rs, const MemOperand& dst);
+  void stxsiwx(const Simd128Register rs, const MemOperand& dst);
+  void stxvd(const Simd128Register rt, const MemOperand& dst);
+  void stxvx(const Simd128Register rt, const MemOperand& dst);
+  void xxspltib(const Simd128Register rt, const Operand& imm);
+
+  // Prefixed instructioons.
+  void paddi(Register dst, Register src, const Operand& imm);
+  void pli(Register dst, const Operand& imm);
+  void psubi(Register dst, Register src, const Operand& imm);
+  void plbz(Register dst, const MemOperand& src);
+  void plhz(Register dst, const MemOperand& src);
+  void plha(Register dst, const MemOperand& src);
+  void plwz(Register dst, const MemOperand& src);
+  void plwa(Register dst, const MemOperand& src);
+  void pld(Register dst, const MemOperand& src);
+  void plfs(DoubleRegister dst, const MemOperand& src);
+  void plfd(DoubleRegister dst, const MemOperand& src);
+  void pstb(Register src, const MemOperand& dst);
+  void psth(Register src, const MemOperand& dst);
+  void pstw(Register src, const MemOperand& dst);
+  void pstd(Register src, const MemOperand& dst);
+  void pstfs(const DoubleRegister src, const MemOperand& dst);
+  void pstfd(const DoubleRegister src, const MemOperand& dst);
 
   // Pseudo instructions
 
@@ -1074,7 +1207,7 @@ class Assembler : public AssemblerBase {
   }
 
   // Class for scoping postponing the trampoline pool generation.
-  class BlockTrampolinePoolScope {
+  class V8_NODISCARD BlockTrampolinePoolScope {
    public:
     explicit BlockTrampolinePoolScope(Assembler* assem) : assem_(assem) {
       assem_->StartBlockTrampolinePool();
@@ -1088,7 +1221,7 @@ class Assembler : public AssemblerBase {
   };
 
   // Class for scoping disabling constant pool entry merging
-  class BlockConstantPoolEntrySharingScope {
+  class V8_NODISCARD BlockConstantPoolEntrySharingScope {
    public:
     explicit BlockConstantPoolEntrySharingScope(Assembler* assem)
         : assem_(assem) {
@@ -1106,15 +1239,15 @@ class Assembler : public AssemblerBase {
 
   // Record a deoptimization reason that can be used by a log or cpu profiler.
   // Use --trace-deopt to enable.
-  void RecordDeoptReason(DeoptimizeReason reason, SourcePosition position,
-                         int id);
+  void RecordDeoptReason(DeoptimizeReason reason, uint32_t node_id,
+                         SourcePosition position, int id);
 
   // Writes a single byte or word of data in the code stream.  Used
   // for inline tables, e.g., jump-tables.
   void db(uint8_t data);
-  void dd(uint32_t data);
-  void dq(uint64_t data);
-  void dp(uintptr_t data);
+  void dd(uint32_t data, RelocInfo::Mode rmode = RelocInfo::NO_INFO);
+  void dq(uint64_t data, RelocInfo::Mode rmode = RelocInfo::NO_INFO);
+  void dp(uintptr_t data, RelocInfo::Mode rmode = RelocInfo::NO_INFO);
 
   // Read/patch instructions
   Instr instr_at(int pos) {
@@ -1209,7 +1342,7 @@ class Assembler : public AssemblerBase {
   ConstantPoolEntry::Access ConstantPoolAddEntry(RelocInfo::Mode rmode,
                                                  intptr_t value) {
     bool sharing_ok =
-        RelocInfo::IsNone(rmode) ||
+        RelocInfo::IsNoInfo(rmode) ||
         (!options().record_reloc_info_for_serialization &&
          RelocInfo::IsShareableRelocMode(rmode) &&
          !is_constant_pool_entry_sharing_blocked() &&
@@ -1217,7 +1350,7 @@ class Assembler : public AssemblerBase {
          !RelocInfo::IsWasmCall(rmode) && !RelocInfo::IsWasmStubCall(rmode));
     return constant_pool_builder_.AddEntry(pc_offset(), value, sharing_ok);
   }
-  ConstantPoolEntry::Access ConstantPoolAddEntry(Double value) {
+  ConstantPoolEntry::Access ConstantPoolAddEntry(base::Double value) {
     return constant_pool_builder_.AddEntry(pc_offset(), value);
   }
 
@@ -1250,13 +1383,13 @@ class Assembler : public AssemblerBase {
 
   bool is_trampoline_emitted() const { return trampoline_emitted_; }
 
-  // Code generation
+  // InstructionStream generation
   // The relocation writer's position is at least kGap bytes below the end of
   // the generated instructions. This is so that multi-instruction sequences do
   // not have to check for overflow. The same is true for writes of large
   // relocation info entries.
   static constexpr int kGap = 32;
-  STATIC_ASSERT(AssemblerBase::kMinimalBufferSize >= 2 * kGap);
+  static_assert(AssemblerBase::kMinimalBufferSize >= 2 * kGap);
 
   RelocInfoWriter reloc_info_writer;
 
@@ -1306,6 +1439,21 @@ class Assembler : public AssemblerBase {
     pc_ += kInstrSize;
     CheckTrampolinePoolQuick();
   }
+
+  void emit_prefix(Instr x) {
+    // Prefixed instructions cannot cross 64-byte boundaries. Add a nop if the
+    // boundary will be crossed mid way.
+    // Code is set to be 64-byte aligned on PPC64 after relocation (look for
+    // kCodeAlignment). We use pc_offset() instead of pc_ as current pc_
+    // alignment could be different after relocation.
+    if (((pc_offset() + sizeof(Instr)) & 63) == 0) {
+      nop();
+    }
+    // Do not emit trampoline pool in between prefix and suffix.
+    CHECK(is_trampoline_pool_blocked());
+    emit(x);
+  }
+
   void TrackBranch() {
     DCHECK(!trampoline_emitted_);
     int count = tracked_branch_count_++;
@@ -1320,12 +1468,6 @@ class Assembler : public AssemblerBase {
   }
 
   inline void UntrackBranch();
-  void CheckTrampolinePoolQuick() {
-    if (pc_offset() >= next_trampoline_check_) {
-      CheckTrampolinePool();
-    }
-  }
-
   // Instruction generation
   void a_form(Instr instr, DoubleRegister frt, DoubleRegister fra,
               DoubleRegister frb, RCBit r);
@@ -1391,7 +1533,7 @@ class Assembler : public AssemblerBase {
   Trampoline trampoline_;
   bool internal_trampoline_exception_;
 
-  void AllocateAndInstallRequestedHeapObjects(Isolate* isolate);
+  void AllocateAndInstallRequestedHeapNumbers(Isolate* isolate);
 
   int WriteCodeComments();
 
@@ -1414,7 +1556,7 @@ class PatchingAssembler : public Assembler {
   ~PatchingAssembler();
 };
 
-class V8_EXPORT_PRIVATE UseScratchRegisterScope {
+class V8_EXPORT_PRIVATE V8_NODISCARD UseScratchRegisterScope {
  public:
   explicit UseScratchRegisterScope(Assembler* assembler);
   ~UseScratchRegisterScope();
@@ -1422,11 +1564,13 @@ class V8_EXPORT_PRIVATE UseScratchRegisterScope {
   Register Acquire();
 
   // Check if we have registers available to acquire.
-  bool CanAcquire() const { return *assembler_->GetScratchRegisterList() != 0; }
+  bool CanAcquire() const {
+    return !assembler_->GetScratchRegisterList()->is_empty();
+  }
 
  private:
   friend class Assembler;
-  friend class TurboAssembler;
+  friend class MacroAssembler;
 
   Assembler* assembler_;
   RegList old_available_;

@@ -26,6 +26,7 @@
 
 #include "avformat.h"
 #include "internal.h"
+#include "mux.h"
 #include "smjpeg.h"
 
 typedef struct SMJPEGMuxContext {
@@ -34,7 +35,7 @@ typedef struct SMJPEGMuxContext {
 
 static int smjpeg_write_header(AVFormatContext *s)
 {
-    AVDictionaryEntry *t = NULL;
+    const AVDictionaryEntry *t = NULL;
     AVIOContext *pb = s->pb;
     int n, tag;
 
@@ -47,7 +48,7 @@ static int smjpeg_write_header(AVFormatContext *s)
     avio_wb32(pb, 0);
 
     ff_standardize_creation_time(s);
-    while ((t = av_dict_get(s->metadata, "", t, AV_DICT_IGNORE_SUFFIX))) {
+    while ((t = av_dict_iterate(s->metadata, t))) {
         avio_wl32(pb, SMJPEG_TXT);
         avio_wb32(pb, strlen(t->key) + strlen(t->value) + 3);
         avio_write(pb, t->key, strlen(t->key));
@@ -68,7 +69,7 @@ static int smjpeg_write_header(AVFormatContext *s)
             avio_wb32(pb, 8);
             avio_wb16(pb, par->sample_rate);
             avio_w8(pb, par->bits_per_coded_sample);
-            avio_w8(pb, par->channels);
+            avio_w8(pb, par->ch_layout.nb_channels);
             avio_wl32(pb, tag);
             avpriv_set_pts_info(st, 32, 1, 1000);
         } else if (par->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -132,7 +133,7 @@ static int smjpeg_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-AVOutputFormat ff_smjpeg_muxer = {
+const AVOutputFormat ff_smjpeg_muxer = {
     .name           = "smjpeg",
     .long_name      = NULL_IF_CONFIG_SMALL("Loki SDL MJPEG"),
     .priv_data_size = sizeof(SMJPEGMuxContext),

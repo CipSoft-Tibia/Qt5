@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,17 +27,6 @@ struct PodType {
 #endif
 
 }  // namespace
-
-// remove_cvref_t
-static_assert(std::is_same<int, remove_cvref_t<const int>>::value, "");
-static_assert(std::is_same<int, remove_cvref_t<const volatile int>>::value, "");
-static_assert(std::is_same<int, remove_cvref_t<int&>>::value, "");
-static_assert(std::is_same<int, remove_cvref_t<const int&>>::value, "");
-static_assert(std::is_same<int, remove_cvref_t<const volatile int&>>::value,
-              "");
-static_assert(std::is_same<int, remove_cvref_t<int&&>>::value, "");
-static_assert(std::is_same<PodType, remove_cvref_t<const PodType&>>::value, "");
-static_assert(std::is_same<int*, remove_cvref_t<int*>>::value, "");
 
 // has_unique_object_representations
 static_assert(has_unique_object_representations<int>::value, "");

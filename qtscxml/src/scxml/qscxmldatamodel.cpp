@@ -1,50 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmldatamodel_p.h"
 #include "qscxmlnulldatamodel.h"
-#if QT_CONFIG(scxml_ecmascriptdatamodel)
-#include "qscxmlecmascriptdatamodel.h"
-#endif
 #include "qscxmlstatemachine_p.h"
 
+#include <QtCore/private/qfactoryloader_p.h>
+#include "qscxmldatamodelplugin_p.h"
+
 QT_BEGIN_NAMESPACE
+
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
+        ("org.qt-project.qt.scxml.datamodel.plugin",
+         QStringLiteral("/scxmldatamodel")))
 
 /*!
   \class QScxmlDataModel::ForeachLoopBody
@@ -85,7 +53,7 @@ QScxmlDataModel::ForeachLoopBody::~ForeachLoopBody()
  *
  * One data model can only belong to one state machine.
  *
- * \sa QScxmlStateMachine QScxmlCppDataModel QScxmlEcmaScriptDataModel QScxmlNullDataModel
+ * \sa QScxmlStateMachine QScxmlCppDataModel QScxmlNullDataModel
  */
 
 /*!
@@ -127,11 +95,13 @@ void QScxmlDataModel::setStateMachine(QScxmlStateMachine *stateMachine)
 {
     Q_D(QScxmlDataModel);
 
-    if (d->m_stateMachine == nullptr && stateMachine != nullptr) {
-        d->m_stateMachine = stateMachine;
-        if (stateMachine)
-            stateMachine->setDataModel(this);
-        emit stateMachineChanged(stateMachine);
+    if (d->m_stateMachine.valueBypassingBindings() == nullptr && stateMachine != nullptr) {
+        // the binding is removed only on the first valid set
+        // as the later attempts are ignored
+        d->m_stateMachine.removeBindingUnlessInWrapper();
+        d->m_stateMachine.setValueBypassingBindings(stateMachine);
+        stateMachine->setDataModel(this);
+        d->m_stateMachine.notify();
     }
 }
 
@@ -144,6 +114,37 @@ QScxmlStateMachine *QScxmlDataModel::stateMachine() const
     return d->m_stateMachine;
 }
 
+QBindable<QScxmlStateMachine*> QScxmlDataModel::bindableStateMachine()
+{
+    Q_D(QScxmlDataModel);
+    return &d->m_stateMachine;
+}
+
+/*!
+ * Creates a data model from a plugin specified by a \a pluginKey.
+ */
+QScxmlDataModel *QScxmlDataModel::createScxmlDataModel(const QString& pluginKey)
+{
+    QScxmlDataModel *model = nullptr;
+
+    int pluginIndex = loader()->indexOf(pluginKey);
+
+    if (QObject *object = loader()->instance(pluginIndex)) {
+        if (auto *plugin = qobject_cast<QScxmlDataModelPlugin *>(object)) {
+            model = plugin->createScxmlDataModel();
+            if (!model)
+                qWarning() << pluginKey << " data model was not instantiated, createScxmlDataModel() returned null.";
+
+        } else {
+            qWarning() << "plugin object for" << pluginKey << "is not a QScxmlDatModelPlugin.";
+        }
+        delete object;
+    } else {
+        qWarning() << pluginKey << " plugin not found." ;
+    }
+    return model;
+}
+
 QScxmlDataModel *QScxmlDataModelPrivate::instantiateDataModel(DocumentModel::Scxml::DataModelType type)
 {
     QScxmlDataModel *dataModel = nullptr;
@@ -152,16 +153,13 @@ QScxmlDataModel *QScxmlDataModelPrivate::instantiateDataModel(DocumentModel::Scx
         dataModel = new QScxmlNullDataModel;
         break;
     case DocumentModel::Scxml::JSDataModel:
-#if QT_CONFIG(scxml_ecmascriptdatamodel)
-        dataModel = new QScxmlEcmaScriptDataModel;
-#endif
+        dataModel = QScxmlDataModel::createScxmlDataModel(QStringLiteral("ecmascriptdatamodel"));
         break;
     case DocumentModel::Scxml::CppDataModel:
         break;
     default:
         Q_UNREACHABLE();
     }
-
     return dataModel;
 }
 

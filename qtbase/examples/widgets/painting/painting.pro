@@ -1,6 +1,5 @@
 TEMPLATE      = subdirs
 SUBDIRS       = basicdrawing \
-                concentriccircles \
                 affine \
                 composition \
                 deform \
@@ -8,8 +7,7 @@ SUBDIRS       = basicdrawing \
                 pathstroke \
                 imagecomposition \
                 painterpaths \
-                transformations \
-                fontsampler
+                transformations
 
 EXAMPLE_FILES = \
     shared

@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 //! [displayName]
 
@@ -36,7 +12,7 @@
 //! [findExecutable]
 
     Finds the executable named \a executableName in the specified
-    \a paths, or the system paths if paths is empty.
+    \a paths, or the system paths if \a paths is empty.
 
     On most operating systems the system path is determined by the
     \c PATH environment variable. The directories where to search for
@@ -45,8 +21,8 @@
     twice, once with paths set and once with paths empty.
     Symlinks are not resolved in order to preserve behavior for the
     case of executables whose behavior depends on the name they are
-    invoked with
-    .
+    invoked with.
+
     \note On Windows, the usual executable extensions (from the PATHEXT
     environment variable) are automatically appended. For example, the
     findExecutable("foo") call finds \c foo.exe or \c foo.bat if
@@ -54,6 +30,9 @@
 
     Returns the absolute file path to the executable, or an empty
     string if not found.
+
+    If the given \a executableName is an absolute path pointing to
+    an executable, its clean path is returned.
 
 //! [findExecutable]
 
@@ -90,7 +69,7 @@
     or writing to the current user's configuration.
 
     It affects the locations into which test programs might write
-    files: \c GenericDataLocation, \c DataLocation, \c ConfigLocation,
+    files: \c GenericDataLocation, \c AppDataLocation, \c ConfigLocation,
     \c GenericConfigLocation, \c AppConfigLocation,
     \c GenericCacheLocation, and \c CacheLocation. Other locations
     are not affected.

@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,7 +59,7 @@ CXFA_Node* XFA_NodeMerge_CloneOrMergeContainer(
       pFormParent->RemoveChildAndNotify(pExistingNode, true);
       pFormParent->InsertChildAndNotify(pExistingNode, nullptr);
     }
-    pExistingNode->ClearFlag(XFA_NodeFlag_UnusedNode);
+    pExistingNode->ClearFlag(XFA_NodeFlag::kUnusedNode);
     pExistingNode->SetTemplateNode(pTemplateNode);
     if (bRecursive && pExistingNode->GetElementType() != XFA_Element::Items) {
       for (CXFA_Node* pTemplateChild = pTemplateNode->GetFirstChild();
@@ -70,7 +70,7 @@ CXFA_Node* XFA_NodeMerge_CloneOrMergeContainer(
         }
       }
     }
-    pExistingNode->SetFlagAndNotify(XFA_NodeFlag_Initialized);
+    pExistingNode->SetInitializedFlagAndNotify();
     return pExistingNode;
   }
 

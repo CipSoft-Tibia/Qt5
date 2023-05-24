@@ -1,55 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qaxscript.h"
-#include "../shared/qaxutils_p.h"
+#include <QtAxBase/private/qaxutils_p.h>
+#include <QtAxBase/private/qaxtypefunctions_p.h>
 
 #if defined(Q_CC_GNU) && (__MINGW64_VERSION_MAJOR == 3 && __MINGW64_VERSION_MINOR > 0 || __MINGW64_VERSION_MAJOR >= 4)
 // Workaround for mingw-w64 bug #464
@@ -63,7 +17,7 @@
 #include <qmetaobject.h>
 #include <quuid.h>
 #include <qwidget.h>
-#include <qvector.h>
+#include <qlist.h>
 
 #include <qt_windows.h>
 #ifndef QT_NO_QAXSCRIPT
@@ -71,12 +25,12 @@
 #include <activscp.h>
 #endif
 
-#include "../shared/qaxtypes.h"
+#include "../shared/qaxtypes_p.h"
 
 QT_BEGIN_NAMESPACE
 
 struct QAxEngineDescriptor { QString name, extension, code; };
-static QVector<QAxEngineDescriptor> engines;
+static QList<QAxEngineDescriptor> engines;
 
 class QAxScriptManagerPrivate
 {
@@ -740,7 +694,7 @@ bool QAxScript::load(const QString &code, const QString &language)
         if (code.contains(QLatin1String("End Sub"), Qt::CaseInsensitive))
             lang = QLatin1String("VBScript");
 
-        for (const QAxEngineDescriptor &engine : qAsConst(engines)) {
+        for (const QAxEngineDescriptor &engine : std::as_const(engines)) {
             if (!engine.code.isEmpty() && code.contains(engine.code)) {
                 lang = engine.name;
                 break;
@@ -1102,7 +1056,7 @@ QAxScript *QAxScriptManager::load(const QString &file, const QString &name)
     if (file.endsWith(QLatin1String(".js"))) {
         language = QLatin1String("JScript");
     } else {
-        for (const QAxEngineDescriptor &engine : qAsConst(engines)) {
+        for (const QAxEngineDescriptor &engine : std::as_const(engines)) {
             if (!engine.extension.isEmpty() && file.endsWith(engine.extension)) {
                 language = engine.name;
                 break;
@@ -1158,16 +1112,8 @@ QVariant QAxScriptManager::call(const QString &function, const QVariant &var1,
                                 const QVariant &var7,
                                 const QVariant &var8)
 {
-    QAxScript *s = script(function);
-    if (!s) {
-#ifdef QT_CHECK_STATE
-        qWarning("QAxScriptManager::call: No script provides function %s, or this function\n"
-            "\tis provided through an engine that does not support introspection", function.latin1());
-#endif
-        return QVariant();
-    }
-
-    return s->call(function, var1, var2, var3, var4, var5, var6, var7, var8);
+    QList<QVariant> list{var1, var2, var3, var4, var5, var6, var7, var8};
+    return call(function, list);
 }
 
 /*!
@@ -1179,17 +1125,19 @@ QVariant QAxScriptManager::call(const QString &function, const QVariant &var1,
 */
 QVariant QAxScriptManager::call(const QString &function, QList<QVariant> &arguments)
 {
-    QAxScript *s = script(function);
+    QString signature = function;
+    QAxScript *s = scriptForFunction(signature);
     if (!s) {
 #ifdef QT_CHECK_STATE
         qWarning("QAxScriptManager::call: No script provides function %s, or this function\n"
-            "\tis provided through an engine that does not support introspection", function.latin1());
+            "\tis provided through an engine that does not support introspection",
+            qPrintable(function));
 #endif
         return QVariant();
     }
 
     QVariantList args(arguments);
-    return s->call(function, args);
+    return s->call(signature, args);
 }
 
 /*!
@@ -1232,7 +1180,7 @@ QString QAxScriptManager::scriptFileFilter()
     QString specialFiles = QLatin1String(";;VBScript Files (*.vbs *.dsm)"
         ";;JavaScript Files (*.js)");
 
-    for (const QAxEngineDescriptor &engine : qAsConst(engines)) {
+    for (const QAxEngineDescriptor &engine : std::as_const(engines)) {
         if (!engine.extension.isEmpty()) {
             allFiles += QLatin1String(" *") + engine.extension;
             specialFiles += QLatin1String(";;") + engine.name
@@ -1259,28 +1207,38 @@ QString QAxScriptManager::scriptFileFilter()
 */
 
 /*!
-    \fn QAxScript *QAxScriptManager::scriptForFunction(const QString &function) const
+    \fn QAxScript *QAxScriptManager::scriptForFunction(QString &function) const
     \internal
 
     Returns a pointer to the first QAxScript that knows
-    about \a function, or 0 if this function is unknown.
+    about \a function, or nullptr if this function is unknown. \a function
+    is changed to the callable signature.
 */
-QAxScript *QAxScriptManager::scriptForFunction(const QString &function) const
+QAxScript *QAxScriptManager::scriptForFunction(QString &function) const
 {
-    // check full prototypes if included
-    if (function.contains(QLatin1Char('('))) {
-        for (auto it = d->scriptDict.cbegin(), end = d->scriptDict.cend(); it != end; ++it) {
-            if (it.value()->functions(QAxScript::FunctionSignatures).contains(function))
-                return it.value();
-        }
-    }
+    const auto startPrototype = function.indexOf(u'(');
 
-    QString funcName = function;
-    funcName.truncate(funcName.indexOf(QLatin1Char('(')));
-    // second try, checking only names, not prototypes
-    for (auto it = d->scriptDict.cbegin(), end = d->scriptDict.cend(); it != end; ++it) {
-        if (it.value()->functions(QAxScript::FunctionNames).contains(funcName))
-            return it.value();
+    for (const auto &script : d->scriptDict) {
+        const QMetaObject *mo = script->scriptEngine()->metaObject();
+        for (int i = mo->methodOffset(); i < mo->methodCount(); ++i) {
+            const QMetaMethod slot(mo->method(i));
+            if (slot.methodType() != QMetaMethod::Slot || slot.access() != QMetaMethod::Public)
+                continue;
+            const QString slotname = QString::fromLatin1(slot.methodSignature());
+            if (slotname.contains(u'_'))
+                continue;
+
+            // finding script for prototype
+            if (startPrototype != -1) {
+                if (slotname == function)
+                    return script;
+            } else if (slotname.length() > function.length()
+                    && slotname.at(function.length()) == u'('
+                    && slotname.startsWith(function)) {
+                function = slotname;
+                return script;
+            }
+        }
     }
 
     return nullptr;

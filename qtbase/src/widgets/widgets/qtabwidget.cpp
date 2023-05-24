@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtabwidget.h"
 
@@ -44,8 +8,6 @@
 #include "private/qtabbar_p.h"
 #include "qapplication.h"
 #include "qbitmap.h"
-#include "qdesktopwidget.h"
-#include <private/qdesktopwidget_p.h>
 #include "qevent.h"
 #include "qlayout.h"
 #include "qstackedwidget.h"
@@ -56,6 +18,8 @@
 #include "qtoolbutton.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QTabWidget
@@ -228,14 +192,14 @@ void QTabWidgetPrivate::init()
     Q_Q(QTabWidget);
 
     stack = new QStackedWidget(q);
-    stack->setObjectName(QLatin1String("qt_tabwidget_stackedwidget"));
+    stack->setObjectName("qt_tabwidget_stackedwidget"_L1);
     stack->setLineWidth(0);
     // hack so that QMacStyle::layoutSpacing() can detect tab widget pages
     stack->setSizePolicy(QSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred, QSizePolicy::TabWidget));
 
     QObject::connect(stack, SIGNAL(widgetRemoved(int)), q, SLOT(_q_removeTab(int)));
     QTabBar *tabBar = new QTabBar(q);
-    tabBar->setObjectName(QLatin1String("qt_tabwidget_tabbar"));
+    tabBar->setObjectName("qt_tabwidget_tabbar"_L1);
     tabBar->setDrawBase(false);
     q->setTabBar(tabBar);
 
@@ -471,7 +435,7 @@ int QTabWidget::insertTab(int index, QWidget *w, const QString &label)
 int QTabWidget::insertTab(int index, QWidget *w, const QIcon& icon, const QString &label)
 {
     Q_D(QTabWidget);
-    if(!w)
+    if (!w)
         return -1;
     index = d->stack->insertWidget(index, w);
     d->tabs->insertTab(index, icon, label);
@@ -721,7 +685,7 @@ void QTabWidget::setCurrentIndex(int index)
     Returns the index position of the page occupied by the widget \a
     w, or -1 if the widget cannot be found.
 */
-int QTabWidget::indexOf(QWidget* w) const
+int QTabWidget::indexOf(const QWidget *w) const
 {
     Q_D(const QTabWidget);
     return d->stack->indexOf(w);
@@ -880,7 +844,7 @@ QSize QTabWidget::sizeHint() const
 
     if (d->leftCornerWidget)
         lc = d->leftCornerWidget->sizeHint();
-    if(d->rightCornerWidget)
+    if (d->rightCornerWidget)
         rc = d->rightCornerWidget->sizeHint();
     if (!d->dirty) {
         QTabWidget *that = const_cast<QTabWidget*>(this);
@@ -899,13 +863,12 @@ QSize QTabWidget::sizeHint() const
         if (usesScrollButtons())
             t = t.boundedTo(QSize(200,200));
         else
-            t = t.boundedTo(QDesktopWidgetPrivate::size());
+            t = t.boundedTo(QGuiApplication::primaryScreen()->virtualGeometry().size());
     }
 
     QSize sz = basicSize(d->pos == North || d->pos == South, lc, rc, s, t);
 
-    return style()->sizeFromContents(QStyle::CT_TabWidget, &opt, sz, this)
-                    .expandedTo(QApplication::globalStrut());
+    return style()->sizeFromContents(QStyle::CT_TabWidget, &opt, sz, this);
 }
 
 
@@ -919,9 +882,9 @@ QSize QTabWidget::minimumSizeHint() const
     Q_D(const QTabWidget);
     QSize lc(0, 0), rc(0, 0);
 
-    if(d->leftCornerWidget)
+    if (d->leftCornerWidget)
         lc = d->leftCornerWidget->minimumSizeHint();
-    if(d->rightCornerWidget)
+    if (d->rightCornerWidget)
         rc = d->rightCornerWidget->minimumSizeHint();
     if (!d->dirty) {
         QTabWidget *that = const_cast<QTabWidget*>(this);
@@ -938,8 +901,7 @@ QSize QTabWidget::minimumSizeHint() const
     initStyleOption(&opt);
     opt.palette = palette();
     opt.state = QStyle::State_None;
-    return style()->sizeFromContents(QStyle::CT_TabWidget, &opt, sz, this)
-                    .expandedTo(QApplication::globalStrut());
+    return style()->sizeFromContents(QStyle::CT_TabWidget, &opt, sz, this);
 }
 
 /*!
@@ -953,13 +915,12 @@ int QTabWidget::heightForWidth(int width) const
     opt.state = QStyle::State_None;
 
     QSize zero(0,0);
-    const QSize padding = style()->sizeFromContents(QStyle::CT_TabWidget, &opt, zero, this)
-                                  .expandedTo(QApplication::globalStrut());
+    const QSize padding = style()->sizeFromContents(QStyle::CT_TabWidget, &opt, zero, this);
 
     QSize lc(0, 0), rc(0, 0);
     if (d->leftCornerWidget)
         lc = d->leftCornerWidget->sizeHint();
-    if(d->rightCornerWidget)
+    if (d->rightCornerWidget)
         rc = d->rightCornerWidget->sizeHint();
     if (!d->dirty) {
         QTabWidget *that = const_cast<QTabWidget*>(this);
@@ -971,7 +932,7 @@ int QTabWidget::heightForWidth(int width) const
         if (usesScrollButtons())
             t = t.boundedTo(QSize(200,200));
         else
-            t = t.boundedTo(QDesktopWidgetPrivate::size());
+            t = t.boundedTo(QGuiApplication::primaryScreen()->virtualSize());
     }
 
     const bool tabIsHorizontal = (d->pos == North || d->pos == South);
@@ -984,7 +945,7 @@ int QTabWidget::heightForWidth(int width) const
     QSize s(stackWidth, stackHeight);
 
     QSize contentSize = basicSize(tabIsHorizontal, lc, rc, s, t);
-    return (contentSize + padding).expandedTo(QApplication::globalStrut()).height();
+    return (contentSize + padding).height();
 }
 
 
@@ -1178,7 +1139,7 @@ void QTabWidget::keyPressEvent(QKeyEvent *e)
                       ) {
                 page = 0;
             }
-            if (d->tabs->isTabEnabled(page)) {
+            if (d->tabs->isTabEnabled(page) && d->tabs->isTabVisible(page)) {
                 setCurrentIndex(page);
                 break;
             }
@@ -1212,7 +1173,7 @@ int QTabWidget::count() const
     return d->tabs->count();
 }
 
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
 /*!
     Sets the tab tool tip for the page at position \a index to \a tip.
 
@@ -1235,7 +1196,7 @@ QString QTabWidget::tabToolTip(int index) const
     Q_D(const QTabWidget);
     return d->tabs->tabToolTip(index);
 }
-#endif // QT_NO_TOOLTIP
+#endif // QT_CONFIG(tooltip)
 
 #if QT_CONFIG(whatsthis)
 /*!
@@ -1271,7 +1232,7 @@ QString QTabWidget::tabWhatsThis(int index) const
  */
 void QTabWidget::tabInserted(int index)
 {
-    Q_UNUSED(index)
+    Q_UNUSED(index);
 }
 
 /*!
@@ -1282,7 +1243,7 @@ void QTabWidget::tabInserted(int index)
  */
 void QTabWidget::tabRemoved(int index)
 {
-    Q_UNUSED(index)
+    Q_UNUSED(index);
 }
 
 /*!
@@ -1348,7 +1309,7 @@ void QTabWidget::setIconSize(const QSize &size)
     This property controls how items are elided when there is not
     enough space to show them for a given tab bar size.
 
-    By default the value is style dependant.
+    By default the value is style dependent.
 
     \sa QTabBar::elideMode, usesScrollButtons, QStyle::SH_TabBar_ElideMode
 */
@@ -1371,7 +1332,7 @@ void QTabWidget::setElideMode(Qt::TextElideMode mode)
     When there are too many tabs in a tab bar for its size, the tab bar can either choose
     to expand its size or to add buttons that allow you to scroll through the tabs.
 
-    By default the value is style dependant.
+    By default the value is style dependent.
 
     \sa elideMode, QTabBar::usesScrollButtons, QStyle::SH_TabBar_PreferNoArrows
 */
@@ -1444,6 +1405,20 @@ void QTabWidget::clear()
     // ### optimize by introduce QStackedLayout::clear()
     while (count())
         removeTab(0);
+}
+
+QTabBar::Shape _q_tb_tabBarShapeFrom(QTabWidget::TabShape shape, QTabWidget::TabPosition position)
+{
+    const bool rounded = (shape == QTabWidget::Rounded);
+    if (position == QTabWidget::North)
+        return rounded ? QTabBar::RoundedNorth : QTabBar::TriangularNorth;
+    if (position == QTabWidget::South)
+        return rounded ? QTabBar::RoundedSouth : QTabBar::TriangularSouth;
+    if (position == QTabWidget::East)
+        return rounded ? QTabBar::RoundedEast : QTabBar::TriangularEast;
+    if (position == QTabWidget::West)
+        return rounded ? QTabBar::RoundedWest : QTabBar::TriangularWest;
+    return QTabBar::RoundedNorth;
 }
 
 QT_END_NAMESPACE

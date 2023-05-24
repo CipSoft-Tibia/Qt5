@@ -29,6 +29,9 @@
 #include "third_party/blink/renderer/core/css/css_markup.h"
 
 #include "third_party/blink/renderer/core/css/parser/css_parser_idioms.h"
+#include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
+#include "third_party/blink/renderer/platform/font_family_names.h"
+#include "third_party/blink/renderer/platform/fonts/font_family.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_visitor.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -36,28 +39,32 @@
 namespace blink {
 
 // "ident" from the CSS tokenizer, minus backslash-escape sequences
-static bool IsCSSTokenizerIdentifier(const String& string) {
+static bool IsCSSTokenizerIdentifier(const StringView& string) {
   unsigned length = string.length();
 
-  if (!length)
+  if (!length) {
     return false;
+  }
 
   return WTF::VisitCharacters(string, [](const auto* chars, unsigned length) {
     const auto* end = chars + length;
 
     // -?
-    if (chars != end && chars[0] == '-')
+    if (chars != end && chars[0] == '-') {
       ++chars;
+    }
 
     // {nmstart}
-    if (chars == end || !IsNameStartCodePoint(chars[0]))
+    if (chars == end || !IsNameStartCodePoint(chars[0])) {
       return false;
+    }
     ++chars;
 
     // {nmchar}*
     for (; chars != end; ++chars) {
-      if (!IsNameCodePoint(chars[0]))
+      if (!IsNameCodePoint(chars[0])) {
         return false;
+      }
     }
 
     return true;
@@ -89,19 +96,21 @@ void SerializeIdentifier(const String& identifier,
 
     index += U16_LENGTH(c);
 
-    if (c == 0)
+    if (c == 0) {
       append_to.Append(0xfffd);
-    else if (c <= 0x1f || c == 0x7f ||
-             (0x30 <= c && c <= 0x39 &&
-              (is_first || (is_second && is_first_char_hyphen))))
+    } else if (c <= 0x1f || c == 0x7f ||
+               (0x30 <= c && c <= 0x39 &&
+                (is_first || (is_second && is_first_char_hyphen)))) {
       SerializeCharacterAsCodePoint(c, append_to);
-    else if (c == 0x2d && is_first && index == identifier.length())
+    } else if (c == 0x2d && is_first && index == identifier.length()) {
       SerializeCharacter(c, append_to);
-    else if (0x80 <= c || c == 0x2d || c == 0x5f || (0x30 <= c && c <= 0x39) ||
-             (0x41 <= c && c <= 0x5a) || (0x61 <= c && c <= 0x7a))
+    } else if (0x80 <= c || c == 0x2d || c == 0x5f ||
+               (0x30 <= c && c <= 0x39) || (0x41 <= c && c <= 0x5a) ||
+               (0x61 <= c && c <= 0x7a)) {
       append_to.Append(c);
-    else
+    } else {
       SerializeCharacter(c, append_to);
+    }
 
     if (is_first) {
       is_first = false;
@@ -121,12 +130,13 @@ void SerializeString(const String& string, StringBuilder& append_to) {
     UChar32 c = string.CharacterStartingAt(index);
     index += U16_LENGTH(c);
 
-    if (c <= 0x1f || c == 0x7f)
+    if (c <= 0x1f || c == 0x7f) {
       SerializeCharacterAsCodePoint(c, append_to);
-    else if (c == 0x22 || c == 0x5c)
+    } else if (c == 0x22 || c == 0x5c) {
       SerializeCharacter(c, append_to);
-    else
+    } else {
       append_to.Append(c);
+    }
   }
 
   append_to.Append('\"');
@@ -135,15 +145,23 @@ void SerializeString(const String& string, StringBuilder& append_to) {
 String SerializeString(const String& string) {
   StringBuilder builder;
   SerializeString(string, builder);
-  return builder.ToString();
+  return builder.ReleaseString();
 }
 
 String SerializeURI(const String& string) {
   return "url(" + SerializeString(string) + ")";
 }
 
-String SerializeFontFamily(const String& string) {
-  return IsCSSTokenizerIdentifier(string) ? string : SerializeString(string);
+String SerializeFontFamily(const AtomicString& string) {
+  // Some <font-family> values are serialized without quotes.
+  // See https://github.com/w3c/csswg-drafts/issues/5846
+  return (css_parsing_utils::IsCSSWideKeyword(string) ||
+          css_parsing_utils::IsDefaultKeyword(string) ||
+          FontFamily::InferredTypeFor(string) ==
+              FontFamily::Type::kGenericFamily ||
+          !IsCSSTokenizerIdentifier(string))
+             ? SerializeString(string)
+             : string;
 }
 
 }  // namespace blink

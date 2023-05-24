@@ -12,6 +12,7 @@
 #include "compiler/translator/StaticType.h"
 #include "compiler/translator/SymbolTable.h"
 #include "compiler/translator/tree_util/FindMain.h"
+#include "compiler/translator/tree_util/FindSymbolNode.h"
 #include "compiler/translator/tree_util/IntermNode_util.h"
 #include "compiler/translator/tree_util/IntermTraverse.h"
 #include "compiler/translator/util.h"
@@ -56,6 +57,24 @@ void AddZeroInitSequence(const TIntermTyped *initializedNode,
     {
         AddStructZeroInitSequence(initializedNode, canUseLoopsToInitialize, highPrecisionSupported,
                                   initSequenceOut, symbolTable);
+    }
+    else if (initializedNode->getType().isInterfaceBlock())
+    {
+        const TType &type                     = initializedNode->getType();
+        const TInterfaceBlock &interfaceBlock = *type.getInterfaceBlock();
+        const TFieldList &fieldList           = interfaceBlock.fields();
+        for (size_t fieldIndex = 0; fieldIndex < fieldList.size(); ++fieldIndex)
+        {
+            const TField &field         = *fieldList[fieldIndex];
+            TIntermTyped *fieldIndexRef = CreateIndexNode(static_cast<int>(fieldIndex));
+            TIntermTyped *fieldReference =
+                new TIntermBinary(TOperator::EOpIndexDirectInterfaceBlock,
+                                  initializedNode->deepCopy(), fieldIndexRef);
+            TIntermTyped *fieldZero = CreateZeroNode(*field.type());
+            TIntermTyped *assignment =
+                new TIntermBinary(TOperator::EOpAssign, fieldReference, fieldZero);
+            initSequenceOut->push_back(assignment);
+        }
     }
     else
     {
@@ -161,7 +180,7 @@ void AddArrayZeroInitSequence(const TIntermTyped *initializedNode,
 }
 
 void InsertInitCode(TCompiler *compiler,
-                    TIntermSequence *mainBody,
+                    TIntermBlock *root,
                     const InitVariableList &variables,
                     TSymbolTable *symbolTable,
                     int shaderVersion,
@@ -169,14 +188,15 @@ void InsertInitCode(TCompiler *compiler,
                     bool canUseLoopsToInitialize,
                     bool highPrecisionSupported)
 {
-    for (const auto &var : variables)
+    TIntermSequence *mainBody = FindMainBody(root)->getSequence();
+    for (const ShaderVariable &var : variables)
     {
         // Note that tempVariableName will reference a short-lived char array here - that's fine
         // since we're only using it to find symbols.
         ImmutableString tempVariableName(var.name.c_str(), var.name.length());
 
         TIntermTyped *initializedSymbol = nullptr;
-        if (var.isBuiltIn())
+        if (var.isBuiltIn() && !symbolTable->findUserDefined(tempVariableName))
         {
             initializedSymbol =
                 ReferenceBuiltInVariable(tempVariableName, *symbolTable, shaderVersion);
@@ -192,16 +212,47 @@ void InsertInitCode(TCompiler *compiler,
                 initializedSymbol =
                     new TIntermBinary(EOpIndexDirect, initializedSymbol, CreateIndexNode(0));
             }
+            else if (initializedSymbol->getQualifier() == EvqClipDistance ||
+                     initializedSymbol->getQualifier() == EvqCullDistance)
+            {
+                // The built-in may have been implicitly resized.
+                initializedSymbol =
+                    new TIntermSymbol(&FindSymbolNode(root, tempVariableName)->variable());
+            }
         }
         else
         {
-            initializedSymbol = ReferenceGlobalVariable(tempVariableName, *symbolTable);
+            if (tempVariableName != "")
+            {
+                initializedSymbol = ReferenceGlobalVariable(tempVariableName, *symbolTable);
+            }
+            else
+            {
+                // Must be a nameless interface block.
+                ASSERT(var.structOrBlockName != "");
+                const TSymbol *symbol = symbolTable->findGlobal(var.structOrBlockName);
+                ASSERT(symbol && symbol->isInterfaceBlock());
+                const TInterfaceBlock *block = static_cast<const TInterfaceBlock *>(symbol);
+
+                for (const TField *field : block->fields())
+                {
+                    initializedSymbol = ReferenceGlobalVariable(field->name(), *symbolTable);
+
+                    TIntermSequence initCode;
+                    CreateInitCode(initializedSymbol, canUseLoopsToInitialize,
+                                   highPrecisionSupported, &initCode, symbolTable);
+                    mainBody->insert(mainBody->begin(), initCode.begin(), initCode.end());
+                }
+                // Already inserted init code in this case
+                continue;
+            }
         }
         ASSERT(initializedSymbol != nullptr);
 
-        TIntermSequence *initCode = CreateInitCode(initializedSymbol, canUseLoopsToInitialize,
-                                                   highPrecisionSupported, symbolTable);
-        mainBody->insert(mainBody->begin(), initCode->begin(), initCode->end());
+        TIntermSequence initCode;
+        CreateInitCode(initializedSymbol, canUseLoopsToInitialize, highPrecisionSupported,
+                       &initCode, symbolTable);
+        mainBody->insert(mainBody->begin(), initCode.begin(), initCode.end());
     }
 }
 
@@ -251,9 +302,10 @@ class InitializeLocalsTraverser : public TIntermTraverser
                     // about further declarators in this declaration depending on the effects of
                     // this declarator.
                     ASSERT(node->getSequence()->size() == 1);
-                    insertStatementsInParentBlock(
-                        TIntermSequence(), *CreateInitCode(symbol, mCanUseLoopsToInitialize,
-                                                           mHighPrecisionSupported, mSymbolTable));
+                    TIntermSequence initCode;
+                    CreateInitCode(symbol, mCanUseLoopsToInitialize, mHighPrecisionSupported,
+                                   &initCode, mSymbolTable);
+                    insertStatementsInParentBlock(TIntermSequence(), initCode);
                 }
                 else
                 {
@@ -274,15 +326,14 @@ class InitializeLocalsTraverser : public TIntermTraverser
 
 }  // namespace
 
-TIntermSequence *CreateInitCode(const TIntermTyped *initializedSymbol,
-                                bool canUseLoopsToInitialize,
-                                bool highPrecisionSupported,
-                                TSymbolTable *symbolTable)
+void CreateInitCode(const TIntermTyped *initializedSymbol,
+                    bool canUseLoopsToInitialize,
+                    bool highPrecisionSupported,
+                    TIntermSequence *initCode,
+                    TSymbolTable *symbolTable)
 {
-    TIntermSequence *initCode = new TIntermSequence();
     AddZeroInitSequence(initializedSymbol, canUseLoopsToInitialize, highPrecisionSupported,
                         initCode, symbolTable);
-    return initCode;
 }
 
 bool InitializeUninitializedLocals(TCompiler *compiler,
@@ -307,9 +358,8 @@ bool InitializeVariables(TCompiler *compiler,
                          bool canUseLoopsToInitialize,
                          bool highPrecisionSupported)
 {
-    TIntermBlock *body = FindMainBody(root);
-    InsertInitCode(compiler, body->getSequence(), vars, symbolTable, shaderVersion,
-                   extensionBehavior, canUseLoopsToInitialize, highPrecisionSupported);
+    InsertInitCode(compiler, root, vars, symbolTable, shaderVersion, extensionBehavior,
+                   canUseLoopsToInitialize, highPrecisionSupported);
 
     return compiler->validateAST(root);
 }

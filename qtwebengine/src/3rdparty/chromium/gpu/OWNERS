@@ -1,6 +1,6 @@
-backer@chromium.org
+set noparent
 kbr@chromium.org
-khushalsagar@chromium.org
+vasilyt@chromium.org
 vmiura@chromium.org
 zmo@chromium.org
 sunnyps@chromium.org
@@ -15,4 +15,8 @@ per-file *passthrough*=geofflang@chromium.org
 # For SharedImages
 vikassoni@chromium.org
 
-# COMPONENT: Internals>GPU>Internals
+# D3D, dcomp, Windows platform integration, etc.
+rafael.cintron@microsoft.com
+
+# The extended Chrome Graphics team should be able to self-administer.
+per-file GRAPHICS_TEAM_OWNERS=file://gpu/GRAPHICS_TEAM_OWNERS

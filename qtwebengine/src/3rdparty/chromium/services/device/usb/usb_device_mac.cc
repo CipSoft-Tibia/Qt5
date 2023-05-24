@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -58,7 +58,7 @@ void UsbDeviceMac::Open(OpenCallback callback) {
     return;
   }
 
-  base::mac::ScopedIOPluginInterface<IOUSBDeviceInterface182> device_interface;
+  base::mac::ScopedIOPluginInterface<IOUSBDeviceInterface187> device_interface;
   kr = (*plugin_interface)
            ->QueryInterface(
                plugin_interface.get(),

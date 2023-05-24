@@ -1,6 +1,5 @@
 <RCC>
-    <qresource prefix="/painteditem">
-        <file>textballoon.h</file>
+    <qresource prefix="/qt/qml/painteditem">
         <file>textballoons.qml</file>
     </qresource>
 </RCC>

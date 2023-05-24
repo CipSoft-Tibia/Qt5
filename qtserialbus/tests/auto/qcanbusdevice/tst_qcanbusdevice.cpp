@@ -1,48 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtSerialBus/qcanbusdevice.h>
 #include <QtSerialBus/qcanbusframe.h>
 
-#include <QtCore/qscopedpointer.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/QtPlugin>
 #include <QtTest/qsignalspy.h>
 #include <QtTest/qtest.h>
 
 #include <memory>
+
+using namespace Qt::StringLiterals;
 
 Q_DECLARE_METATYPE(QCanBusDevice::Filter)
 
@@ -69,7 +38,7 @@ public:
         return true;
     }
 
-    bool open()
+    bool open() override
     {
         if (firstOpen) {
             firstOpen = false;
@@ -79,12 +48,12 @@ public:
         return true;
     }
 
-    void close()
+    void close() override
     {
         setState(QCanBusDevice::UnconnectedState);
     }
 
-    bool writeFrame(const QCanBusFrame &data)
+    bool writeFrame(const QCanBusFrame &data) override
     {
         if (state() != QCanBusDevice::ConnectedState) {
             setError(QStringLiteral("Cannot write frame as device is not connected"),
@@ -106,7 +75,7 @@ public:
         setError(text, e);
     }
 
-    QString interpretErrorFrame(const QCanBusFrame &/*errorFrame*/)
+    QString interpretErrorFrame(const QCanBusFrame &/*errorFrame*/) override
     {
         return QString();
     }
@@ -116,6 +85,20 @@ public:
     {
         // allows switching between buffered and unbuffered write mode
         writeBufferUsed = isBuffered;
+    }
+
+    QCanBusDeviceInfo deviceInfo() const override
+    {
+        return createDeviceInfo(
+            u"plugin"_s,
+            u"name"_s,
+            u"serial number"_s,
+            u"description"_s,
+            u"alias"_s,
+            100,    //channel
+            true,   // virtual
+            true    // flexible data rate
+        );
     }
 
 public slots:
@@ -160,8 +143,10 @@ private slots:
 
     void tst_waitForFramesReceived();
     void tst_waitForFramesWritten();
+
+    void tst_deviceInfo();
 private:
-    QScopedPointer<tst_Backend> device;
+    std::unique_ptr<tst_Backend> device;
 };
 
 tst_QCanBusDevice::tst_QCanBusDevice()
@@ -176,14 +161,14 @@ void tst_QCanBusDevice::initTestCase()
     device.reset(new tst_Backend());
     QVERIFY(device);
 
-    QSignalSpy stateSpy(device.data(), &QCanBusDevice::stateChanged);
+    QSignalSpy stateSpy(device.get(), &QCanBusDevice::stateChanged);
 
     QVERIFY(!device->connectDevice()); // first connect triggered to fail
     QCOMPARE(device->error(), QCanBusDevice::NoError);
     QVERIFY(device->connectDevice());
     QCOMPARE(device->error(), QCanBusDevice::NoError);
     QTRY_VERIFY_WITH_TIMEOUT(device->state() == QCanBusDevice::ConnectedState, 5000);
-    QCOMPARE(stateSpy.count(), 4);
+    QCOMPARE(stateSpy.size(), 4);
     QCOMPARE(stateSpy.at(0).at(0).value<QCanBusDevice::CanBusDeviceState>(),
              QCanBusDevice::ConnectingState);
     QCOMPARE(stateSpy.at(1).at(0).value<QCanBusDevice::CanBusDeviceState>(),
@@ -210,7 +195,7 @@ void tst_QCanBusDevice::conf()
     QVariant value = device->configurationParameter(QCanBusDevice::ErrorFilterKey);
     QVERIFY(value.isValid());
 
-    QVector<int> keys = device->configurationKeys();
+    QList<QCanBusDevice::ConfigurationKey> keys = device->configurationKeys();
     QCOMPARE(keys.size(), 1);
     QVERIFY(keys.at(0) == QCanBusDevice::ErrorFilterKey);
 
@@ -227,15 +212,15 @@ void tst_QCanBusDevice::write()
     device->setWriteBuffered(false);
     QVERIFY(!device->isWriteBuffered());
 
-    QSignalSpy spy(device.data(), &QCanBusDevice::framesWritten);
-    QSignalSpy stateSpy(device.data(), &QCanBusDevice::stateChanged);
+    QSignalSpy spy(device.get(), &QCanBusDevice::framesWritten);
+    QSignalSpy stateSpy(device.get(), &QCanBusDevice::stateChanged);
 
     QCanBusFrame frame;
     frame.setPayload(QByteArray("testData"));
 
     device->disconnectDevice();
     QTRY_VERIFY_WITH_TIMEOUT(device->state() == QCanBusDevice::UnconnectedState, 5000);
-    QCOMPARE(stateSpy.count(), 2);
+    QCOMPARE(stateSpy.size(), 2);
     QCOMPARE(stateSpy.at(0).at(0).value<QCanBusDevice::CanBusDeviceState>(),
              QCanBusDevice::ClosingState);
     QCOMPARE(stateSpy.at(1).at(0).value<QCanBusDevice::CanBusDeviceState>(),
@@ -245,11 +230,11 @@ void tst_QCanBusDevice::write()
 
     QVERIFY(!device->writeFrame(frame));
     QCOMPARE(device->error(), QCanBusDevice::OperationError);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     device->connectDevice();
     QTRY_VERIFY_WITH_TIMEOUT(device->state() == QCanBusDevice::ConnectedState, 5000);
-    QCOMPARE(stateSpy.count(), 2);
+    QCOMPARE(stateSpy.size(), 2);
     QCOMPARE(stateSpy.at(0).at(0).value<QCanBusDevice::CanBusDeviceState>(),
              QCanBusDevice::ConnectingState);
     QCOMPARE(stateSpy.at(1).at(0).value<QCanBusDevice::CanBusDeviceState>(),
@@ -257,12 +242,12 @@ void tst_QCanBusDevice::write()
 
     QVERIFY(device->writeFrame(frame));
     QCOMPARE(device->error(), QCanBusDevice::NoError);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_QCanBusDevice::read()
 {
-    QSignalSpy stateSpy(device.data(), &QCanBusDevice::stateChanged);
+    QSignalSpy stateSpy(device.get(), &QCanBusDevice::stateChanged);
 
     device->disconnectDevice();
     QCOMPARE(device->state(), QCanBusDevice::UnconnectedState);
@@ -273,7 +258,7 @@ void tst_QCanBusDevice::read()
 
     QVERIFY(device->connectDevice());
     QTRY_VERIFY_WITH_TIMEOUT(device->state() == QCanBusDevice::ConnectedState, 5000);
-    QCOMPARE(stateSpy.count(), 2);
+    QCOMPARE(stateSpy.size(), 2);
     QCOMPARE(stateSpy.at(0).at(0).value<QCanBusDevice::CanBusDeviceState>(),
              QCanBusDevice::ConnectingState);
     QCOMPARE(stateSpy.at(1).at(0).value<QCanBusDevice::CanBusDeviceState>(),
@@ -294,7 +279,7 @@ void tst_QCanBusDevice::readAll()
     device->disconnectDevice();
     QTRY_VERIFY_WITH_TIMEOUT(device->state() == QCanBusDevice::UnconnectedState, 5000);
 
-    const QVector<QCanBusFrame> empty = device->readAllFrames();
+    const QList<QCanBusFrame> empty = device->readAllFrames();
     QCOMPARE(device->error(), QCanBusDevice::OperationError);
     QVERIFY(empty.isEmpty());
 
@@ -304,7 +289,7 @@ void tst_QCanBusDevice::readAll()
     for (int i = 0; i < FrameNumber; ++i)
         device->triggerNewFrame();
 
-    const QVector<QCanBusFrame> frames = device->readAllFrames();
+    const QList<QCanBusFrame> frames = device->readAllFrames();
     QCOMPARE(device->error(), QCanBusDevice::NoError);
     QCOMPARE(FrameNumber, frames.size());
     QVERIFY(!device->framesAvailable());
@@ -350,10 +335,10 @@ void tst_QCanBusDevice::clearOutputBuffer()
     QCOMPARE(device->error(), QCanBusDevice::NoError);
 
     // first test buffered writing, frames will be written after some delay
-    QSignalSpy spy(device.data(), &QCanBusDevice::framesWritten);
+    QSignalSpy spy(device.get(), &QCanBusDevice::framesWritten);
     for (int i = 0; i < 10; ++i)
         device->writeFrame(QCanBusFrame(0x123, "output"));
-    QTRY_VERIFY_WITH_TIMEOUT(spy.count() == 10, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(spy.size() == 10, 5000);
 
     // now test clearing the buffer before the frames are actually written
     spy.clear();
@@ -362,15 +347,15 @@ void tst_QCanBusDevice::clearOutputBuffer()
 
     device->clear(QCanBusDevice::Output);
     QCOMPARE(device->error(), QCanBusDevice::NoError);
-    QTRY_VERIFY_WITH_TIMEOUT(spy.count() == 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(spy.size() == 0, 5000);
 }
 
 void tst_QCanBusDevice::error()
 {
-    QSignalSpy spy(device.data(), &QCanBusDevice::errorOccurred);
+    QSignalSpy spy(device.get(), &QCanBusDevice::errorOccurred);
     QString testString(QStringLiteral("testString"));
 
-    auto backend = qobject_cast<tst_Backend *>(device.data());
+    auto backend = qobject_cast<tst_Backend *>(device.get());
     QVERIFY(backend);
 
     // NoError
@@ -380,31 +365,31 @@ void tst_QCanBusDevice::error()
     backend->emulateError(testString + QStringLiteral("a"), QCanBusDevice::ReadError);
     QCOMPARE(testString + QStringLiteral("a"), device->errorString());
     QCOMPARE(device->error(), 1);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     // WriteError
     backend->emulateError(testString + QStringLiteral("b"), QCanBusDevice::WriteError);
     QCOMPARE(testString + QStringLiteral("b"), device->errorString());
     QCOMPARE(device->error(), 2);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     // ConnectionError
     backend->emulateError(testString + QStringLiteral("c"), QCanBusDevice::ConnectionError);
     QCOMPARE(testString + QStringLiteral("c"), device->errorString());
     QCOMPARE(device->error(), 3);
-    QCOMPARE(spy.count(), 3);
+    QCOMPARE(spy.size(), 3);
 
     // ConfigurationError
     backend->emulateError(testString + QStringLiteral("d"), QCanBusDevice::ConfigurationError);
     QCOMPARE(testString + QStringLiteral("d"), device->errorString());
     QCOMPARE(device->error(), 4);
-    QCOMPARE(spy.count(), 4);
+    QCOMPARE(spy.size(), 4);
 
     // UnknownError
     backend->emulateError(testString + QStringLiteral("e"), QCanBusDevice::UnknownError);
     QCOMPARE(testString + QStringLiteral("e"), device->errorString());
     QCOMPARE(device->error(), 5);
-    QCOMPARE(spy.count(), 5);
+    QCOMPARE(spy.size(), 5);
 }
 
 void tst_QCanBusDevice::cleanupTestCase()
@@ -439,7 +424,7 @@ void tst_QCanBusDevice::tst_filtering()
 
     const QVariant wrapper = QVariant::fromValue(filters);
     const auto newFilter = wrapper.value<QList<QCanBusDevice::Filter> >();
-    QCOMPARE(newFilter.count(), 2);
+    QCOMPARE(newFilter.size(), 2);
 
     QCOMPARE(newFilter.at(0).type, QCanBusFrame::DataFrame);
     QCOMPARE(newFilter.at(0).frameId, 0x1u);
@@ -614,7 +599,7 @@ void tst_QCanBusDevice::tst_waitForFramesReceived()
         device->triggerNewFrame();
     });
     QTimer::singleShot(2000, [&]() { device->triggerNewFrame(); });
-    QObject::connect(device.data(), &QCanBusDevice::framesReceived, [this, &handleCounter]() {
+    QObject::connect(device.get(), &QCanBusDevice::framesReceived, [this, &handleCounter]() {
         handleCounter++;
         // this should trigger a recursion which we want to catch
         QVERIFY(!device->waitForFramesReceived(5000));
@@ -701,7 +686,7 @@ void tst_QCanBusDevice::tst_waitForFramesWritten()
     device->writeFrame(frame);
     QTimer::singleShot(1000, [&]() { device->writeFrame(frame); });
     QTimer::singleShot(2000, [&]() { device->writeFrame(frame); });
-    QObject::connect(device.data(), &QCanBusDevice::framesWritten, [this, &handleCounter]() {
+    QObject::connect(device.get(), &QCanBusDevice::framesWritten, [this, &handleCounter]() {
         handleCounter++;
         // this should trigger a recursion which we want to catch
         QVERIFY(!device->waitForFramesWritten(5000));
@@ -714,6 +699,23 @@ void tst_QCanBusDevice::tst_waitForFramesWritten()
     device->setWriteBuffered(false);
 }
 
+void tst_QCanBusDevice::tst_deviceInfo()
+{
+    std::unique_ptr<tst_Backend> canDevice(new tst_Backend);
+    QVERIFY(canDevice != nullptr);
+
+    auto info = canDevice->deviceInfo();
+    QCOMPARE(info.plugin(), u"plugin"_s);
+    QCOMPARE(info.name(), u"name"_s);
+    QCOMPARE(info.serialNumber(), u"serial number"_s);
+    QCOMPARE(info.description(), u"description"_s);
+    QCOMPARE(info.alias(), u"alias"_s);
+    QCOMPARE(info.channel(), 100);
+    QCOMPARE(info.hasFlexibleDataRate(), true);
+    QCOMPARE(info.isVirtual(), true);
+}
+
 QTEST_MAIN(tst_QCanBusDevice)
+Q_IMPORT_PLUGIN(TestCanBusPlugin)
 
 #include "tst_qcanbusdevice.moc"

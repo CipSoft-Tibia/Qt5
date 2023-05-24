@@ -1,4 +1,4 @@
-# Copyright 2018 The PDFium Authors. All rights reserved.
+# Copyright 2018 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -85,6 +85,7 @@ source_set("fxfa") {
     "fxfa_basic.h",
   ]
   deps = [
+    "../../constants",
     "../../core/fpdfapi/parser",
     "../../core/fpdfdoc",
     "../../core/fxcodec",
@@ -95,10 +96,10 @@ source_set("fxfa") {
     "../../fxjs",
     "../../fxjs:gc",
     "../fde",
-    "../fgas",
+    "../fgas/font",
+    "../fgas/graphics",
     "../fgas/layout",
     "../fwl",
-    "../fxgraphics",
     "layout",
     "parser",
   ]
@@ -108,7 +109,8 @@ source_set("fxfa") {
     "parser",
   ]
   configs += [
-    "../../:pdfium_core_config",
+    "../../:pdfium_strict_config",
+    "../../:pdfium_noshorten_config",
     "../:xfa_warnings",
   ]
   visibility = [ "../../*" ]

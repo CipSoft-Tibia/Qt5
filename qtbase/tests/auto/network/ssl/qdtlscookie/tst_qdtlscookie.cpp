@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTestEventLoop>
+
+#include "../shared/tlshelpers.h"
 
 #include <QtNetwork/qhostaddress.h>
 #include <QtNetwork/qsslsocket.h>
@@ -43,6 +21,8 @@
 
 #include <utility>
 #include <vector>
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
@@ -98,7 +78,7 @@ private:
     quint16 serverPort = 0;
 
     QTestEventLoop testLoop;
-    int handshakeTimeoutMS = 500;
+    static constexpr auto HandshakeTimeout = 500ms;
 
     QDtlsClientVerifier listener;
     using HandshakePtr = QSharedPointer<QDtls>;
@@ -138,6 +118,12 @@ QHostAddress tst_QDtlsCookie::toNonAny(const QHostAddress &addr)
 
 void tst_QDtlsCookie::initTestCase()
 {
+    using TlsCl = QSsl::ImplementedClass;
+    using TlsAux::classImplemented;
+
+    if (!classImplemented(TlsCl::DtlsCookie) || !classImplemented(TlsCl::Dtls))
+        QSKIP("The active TLS backend does not support DTLS");
+
     QVERIFY(noiseMaker.bind());
     spammerAddress = toNonAny(noiseMaker.localAddress());
     spammerPort = noiseMaker.localPort();
@@ -343,7 +329,7 @@ void tst_QDtlsCookie::verifyMultipleClients()
 
     clientsToAdd = clientsToWait = 100;
 
-    testLoop.enterLoopMSecs(handshakeTimeoutMS * clientsToWait);
+    testLoop.enterLoop(HandshakeTimeout * clientsToWait);
     QVERIFY(!testLoop.timeout());
     QVERIFY(clientsToWait == 0);
 }
@@ -367,7 +353,7 @@ void tst_QDtlsCookie::receiveMessage(QUdpSocket *socket, QByteArray *message,
     Q_ASSERT(socket && message);
 
     if (socket->pendingDatagramSize() <= 0)
-        testLoop.enterLoopMSecs(handshakeTimeoutMS);
+        testLoop.enterLoop(HandshakeTimeout);
 
     QVERIFY(!testLoop.timeout());
     QVERIFY(socket->pendingDatagramSize());

@@ -104,10 +104,10 @@ BasicBlock* BasicBlock::GetCommonDominator(BasicBlock* b1, BasicBlock* b2) {
   return b1;
 }
 
-void BasicBlock::Print() { StdoutStream{} << this; }
+void BasicBlock::Print() { StdoutStream{} << *this << "\n"; }
 
 std::ostream& operator<<(std::ostream& os, const BasicBlock& block) {
-  os << "B" << block.id();
+  os << "id:" << block.id();
 #if DEBUG
   AssemblerDebugInfo info = block.debug_info();
   if (info.name) os << info;
@@ -117,7 +117,7 @@ std::ostream& operator<<(std::ostream& os, const BasicBlock& block) {
   const BasicBlock* current_block = &block;
   while (current_block->PredecessorCount() > 0 && i++ < kMaxDisplayedBlocks) {
     current_block = current_block->predecessors().front();
-    os << " <= B" << current_block->id();
+    os << " <= id:" << current_block->id();
     info = current_block->debug_info();
     if (info.name) os << info;
   }
@@ -198,19 +198,19 @@ BasicBlock* Schedule::NewBasicBlock() {
 }
 
 void Schedule::PlanNode(BasicBlock* block, Node* node) {
-  if (FLAG_trace_turbo_scheduler) {
+  if (v8_flags.trace_turbo_scheduler) {
     StdoutStream{} << "Planning #" << node->id() << ":"
-                   << node->op()->mnemonic() << " for future add to B"
-                   << block->id() << "\n";
+                   << node->op()->mnemonic()
+                   << " for future add to id:" << block->id() << "\n";
   }
   DCHECK_NULL(this->block(node));
   SetBlockForNode(block, node);
 }
 
 void Schedule::AddNode(BasicBlock* block, Node* node) {
-  if (FLAG_trace_turbo_scheduler) {
+  if (v8_flags.trace_turbo_scheduler) {
     StdoutStream{} << "Adding #" << node->id() << ":" << node->op()->mnemonic()
-                   << " to B" << block->id() << "\n";
+                   << " to id:" << block->id() << "\n";
   }
   DCHECK(this->block(node) == nullptr || this->block(node) == block);
   block->AddNode(node);
@@ -332,12 +332,8 @@ void Schedule::InsertSwitch(BasicBlock* block, BasicBlock* end, Node* sw,
 }
 
 void Schedule::EnsureCFGWellFormedness() {
-  // Make a copy of all the blocks for the iteration, since adding the split
-  // edges will allocate new blocks.
-  BasicBlockVector all_blocks_copy(all_blocks_);
-
-  // Insert missing split edge blocks.
-  for (BasicBlock* block : all_blocks_copy) {
+  // Ensure there are no critical edges.
+  for (BasicBlock* block : all_blocks_) {
     if (block->PredecessorCount() > 1) {
       if (block != end_) {
         EnsureSplitEdgeForm(block);
@@ -464,22 +460,14 @@ std::ostream& operator<<(std::ostream& os, const Schedule& s) {
   for (BasicBlock* block :
        ((s.RpoBlockCount() == 0) ? *s.all_blocks() : *s.rpo_order())) {
     if (block == nullptr) continue;
-    if (block->rpo_number() == -1) {
-      os << "--- BLOCK id:" << block->id().ToInt();
-    } else {
-      os << "--- BLOCK B" << block->rpo_number();
-    }
+    os << "--- BLOCK B" << block->rpo_number() << " id" << block->id();
     if (block->deferred()) os << " (deferred)";
     if (block->PredecessorCount() != 0) os << " <- ";
     bool comma = false;
     for (BasicBlock const* predecessor : block->predecessors()) {
       if (comma) os << ", ";
       comma = true;
-      if (predecessor->rpo_number() == -1) {
-        os << "id:" << predecessor->id().ToInt();
-      } else {
-        os << "B" << predecessor->rpo_number();
-      }
+      os << "B" << predecessor->rpo_number();
     }
     os << " ---\n";
     for (Node* node : *block) {
@@ -502,11 +490,7 @@ std::ostream& operator<<(std::ostream& os, const Schedule& s) {
       for (BasicBlock const* successor : block->successors()) {
         if (comma) os << ", ";
         comma = true;
-        if (successor->rpo_number() == -1) {
-          os << "id:" << successor->id().ToInt();
-        } else {
-          os << "B" << successor->rpo_number();
-        }
+        os << "B" << successor->rpo_number();
       }
       os << "\n";
     }

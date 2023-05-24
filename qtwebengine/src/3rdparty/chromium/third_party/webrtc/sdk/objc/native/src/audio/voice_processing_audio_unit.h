@@ -46,7 +46,8 @@ class VoiceProcessingAudioUnitObserver {
 // VoIP applications.
 class VoiceProcessingAudioUnit {
  public:
-  explicit VoiceProcessingAudioUnit(VoiceProcessingAudioUnitObserver* observer);
+  VoiceProcessingAudioUnit(bool bypass_voice_processing,
+                           VoiceProcessingAudioUnitObserver* observer);
   ~VoiceProcessingAudioUnit();
 
   // TODO(tkchin): enum for state and state checking.
@@ -77,7 +78,7 @@ class VoiceProcessingAudioUnit {
   bool Initialize(Float64 sample_rate);
 
   // Starts the underlying audio unit.
-  bool Start();
+  OSStatus Start();
 
   // Stops the underlying audio unit.
   bool Stop();
@@ -129,6 +130,7 @@ class VoiceProcessingAudioUnit {
   // Deletes the underlying audio unit.
   void DisposeAudioUnit();
 
+  const bool bypass_voice_processing_;
   VoiceProcessingAudioUnitObserver* observer_;
   AudioUnit vpio_unit_;
   VoiceProcessingAudioUnit::State state_;

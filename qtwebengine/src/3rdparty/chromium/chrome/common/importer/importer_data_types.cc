@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,5 +28,21 @@ ImporterIE7PasswordInfo::~ImporterIE7PasswordInfo() {
 
 ImporterIE7PasswordInfo& ImporterIE7PasswordInfo::operator=(
     const ImporterIE7PasswordInfo& other) = default;
+
+ImportedPasswordForm::ImportedPasswordForm() = default;
+
+ImportedPasswordForm::ImportedPasswordForm(const ImportedPasswordForm& form) =
+    default;
+
+ImportedPasswordForm::ImportedPasswordForm(
+    ImportedPasswordForm&& form) noexcept = default;
+
+ImportedPasswordForm& ImportedPasswordForm::operator=(
+    const ImportedPasswordForm& form) = default;
+
+ImportedPasswordForm& ImportedPasswordForm::operator=(
+    ImportedPasswordForm&& form) = default;
+
+ImportedPasswordForm::~ImportedPasswordForm() = default;
 
 }  // namespace importer

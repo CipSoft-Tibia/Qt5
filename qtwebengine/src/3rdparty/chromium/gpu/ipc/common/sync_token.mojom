@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,7 @@ enum CommandBufferNamespace {
   GPU_IO,
   IN_PROCESS,
   MOJO,
-  MOJO_LOCAL,
-
-  NUM_COMMAND_BUFFER_NAMESPACES
+  MOJO_LOCAL
 };
 
 // See gpu/command_buffer/common/sync_token.h

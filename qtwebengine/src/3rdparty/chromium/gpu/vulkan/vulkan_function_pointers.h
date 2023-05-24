@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -13,17 +13,21 @@
 
 #include <vulkan/vulkan.h>
 
+#include <memory>
+
 #include "base/compiler_specific.h"
 #include "base/component_export.h"
+#include "base/containers/flat_map.h"
 #include "base/native_library.h"
+#include "base/synchronization/lock.h"
 #include "build/build_config.h"
 #include "ui/gfx/extension_set.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include <vulkan/vulkan_android.h>
 #endif
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
 #include <zircon/types.h>
 // <vulkan/vulkan_fuchsia.h> must be included after <zircon/types.h>
 #include <vulkan/vulkan_fuchsia.h>
@@ -31,14 +35,13 @@
 #include "gpu/vulkan/fuchsia/vulkan_fuchsia_ext.h"
 #endif
 
-#if defined(USE_VULKAN_XLIB)
-typedef struct _XDisplay Display;
-typedef unsigned long Window;
-typedef unsigned long VisualID;
-#include <vulkan/vulkan_xlib.h>
+#if defined(USE_VULKAN_XCB)
+#include <xcb/xcb.h>
+// <vulkan/vulkan_xcb.h> must be included after <xcb/xcb.h>
+#include <vulkan/vulkan_xcb.h>
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <vulkan/vulkan_win32.h>
 #endif
 
@@ -54,7 +57,9 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunctionPointers();
   ~VulkanFunctionPointers();
 
-  bool BindUnassociatedFunctionPointers();
+  bool BindUnassociatedFunctionPointersFromLoaderLib(base::NativeLibrary lib);
+  bool BindUnassociatedFunctionPointersFromGetProcAddr(
+      PFN_vkGetInstanceProcAddr proc);
 
   // These functions assume that vkGetInstanceProcAddr has been populated.
   bool BindInstanceFunctionPointers(
@@ -67,7 +72,11 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
                                   uint32_t api_version,
                                   const gfx::ExtensionSet& enabled_extensions);
 
-  base::NativeLibrary vulkan_loader_library = nullptr;
+  // This is used to allow thread safe access to a given vulkan queue when
+  // multiple gpu threads are accessing it. Note that this map will be only
+  // accessed by multiple gpu threads concurrently to read the data, so it
+  // should be thread safe to use this map by multiple threads.
+  base::flat_map<VkQueue, std::unique_ptr<base::Lock>> per_queue_lock_map;
 
   template <typename T>
   class VulkanFunction;
@@ -116,6 +125,8 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunction<PFN_vkGetPhysicalDeviceFeatures2> vkGetPhysicalDeviceFeatures2;
   VulkanFunction<PFN_vkGetPhysicalDeviceFormatProperties>
       vkGetPhysicalDeviceFormatProperties;
+  VulkanFunction<PFN_vkGetPhysicalDeviceFormatProperties2>
+      vkGetPhysicalDeviceFormatProperties2;
   VulkanFunction<PFN_vkGetPhysicalDeviceImageFormatProperties2>
       vkGetPhysicalDeviceImageFormatProperties2;
   VulkanFunction<PFN_vkGetPhysicalDeviceMemoryProperties>
@@ -124,6 +135,8 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
       vkGetPhysicalDeviceMemoryProperties2;
   VulkanFunction<PFN_vkGetPhysicalDeviceProperties>
       vkGetPhysicalDeviceProperties;
+  VulkanFunction<PFN_vkGetPhysicalDeviceProperties2>
+      vkGetPhysicalDeviceProperties2;
   VulkanFunction<PFN_vkGetPhysicalDeviceQueueFamilyProperties>
       vkGetPhysicalDeviceQueueFamilyProperties;
 
@@ -142,26 +155,28 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunction<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>
       vkGetPhysicalDeviceSurfaceSupportKHR;
 
-#if defined(USE_VULKAN_XLIB)
-  VulkanFunction<PFN_vkCreateXlibSurfaceKHR> vkCreateXlibSurfaceKHR;
-  VulkanFunction<PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR>
-      vkGetPhysicalDeviceXlibPresentationSupportKHR;
-#endif  // defined(USE_VULKAN_XLIB)
+  VulkanFunction<PFN_vkCreateHeadlessSurfaceEXT> vkCreateHeadlessSurfaceEXT;
 
-#if defined(OS_WIN)
+#if defined(USE_VULKAN_XCB)
+  VulkanFunction<PFN_vkCreateXcbSurfaceKHR> vkCreateXcbSurfaceKHR;
+  VulkanFunction<PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR>
+      vkGetPhysicalDeviceXcbPresentationSupportKHR;
+#endif  // defined(USE_VULKAN_XCB)
+
+#if BUILDFLAG(IS_WIN)
   VulkanFunction<PFN_vkCreateWin32SurfaceKHR> vkCreateWin32SurfaceKHR;
   VulkanFunction<PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR>
       vkGetPhysicalDeviceWin32PresentationSupportKHR;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   VulkanFunction<PFN_vkCreateAndroidSurfaceKHR> vkCreateAndroidSurfaceKHR;
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   VulkanFunction<PFN_vkCreateImagePipeSurfaceFUCHSIA>
       vkCreateImagePipeSurfaceFUCHSIA;
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
   // Device functions
   VulkanFunction<PFN_vkAllocateCommandBuffers> vkAllocateCommandBuffers;
@@ -175,6 +190,7 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunction<PFN_vkCmdBeginRenderPass> vkCmdBeginRenderPass;
   VulkanFunction<PFN_vkCmdCopyBuffer> vkCmdCopyBuffer;
   VulkanFunction<PFN_vkCmdCopyBufferToImage> vkCmdCopyBufferToImage;
+  VulkanFunction<PFN_vkCmdCopyImageToBuffer> vkCmdCopyImageToBuffer;
   VulkanFunction<PFN_vkCmdEndRenderPass> vkCmdEndRenderPass;
   VulkanFunction<PFN_vkCmdExecuteCommands> vkCmdExecuteCommands;
   VulkanFunction<PFN_vkCmdNextSubpass> vkCmdNextSubpass;
@@ -185,6 +201,7 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunction<PFN_vkCreateDescriptorSetLayout> vkCreateDescriptorSetLayout;
   VulkanFunction<PFN_vkCreateFence> vkCreateFence;
   VulkanFunction<PFN_vkCreateFramebuffer> vkCreateFramebuffer;
+  VulkanFunction<PFN_vkCreateGraphicsPipelines> vkCreateGraphicsPipelines;
   VulkanFunction<PFN_vkCreateImage> vkCreateImage;
   VulkanFunction<PFN_vkCreateImageView> vkCreateImageView;
   VulkanFunction<PFN_vkCreateRenderPass> vkCreateRenderPass;
@@ -222,6 +239,7 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunction<PFN_vkGetImageMemoryRequirements> vkGetImageMemoryRequirements;
   VulkanFunction<PFN_vkGetImageMemoryRequirements2>
       vkGetImageMemoryRequirements2;
+  VulkanFunction<PFN_vkGetImageSubresourceLayout> vkGetImageSubresourceLayout;
   VulkanFunction<PFN_vkMapMemory> vkMapMemory;
   VulkanFunction<PFN_vkQueueSubmit> vkQueueSubmit;
   VulkanFunction<PFN_vkQueueWaitIdle> vkQueueWaitIdle;
@@ -231,61 +249,75 @@ struct COMPONENT_EXPORT(VULKAN) VulkanFunctionPointers {
   VulkanFunction<PFN_vkUpdateDescriptorSets> vkUpdateDescriptorSets;
   VulkanFunction<PFN_vkWaitForFences> vkWaitForFences;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   VulkanFunction<PFN_vkGetAndroidHardwareBufferPropertiesANDROID>
       vkGetAndroidHardwareBufferPropertiesANDROID;
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_POSIX)
   VulkanFunction<PFN_vkGetSemaphoreFdKHR> vkGetSemaphoreFdKHR;
   VulkanFunction<PFN_vkImportSemaphoreFdKHR> vkImportSemaphoreFdKHR;
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_POSIX)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   VulkanFunction<PFN_vkGetSemaphoreWin32HandleKHR> vkGetSemaphoreWin32HandleKHR;
   VulkanFunction<PFN_vkImportSemaphoreWin32HandleKHR>
       vkImportSemaphoreWin32HandleKHR;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_POSIX)
   VulkanFunction<PFN_vkGetMemoryFdKHR> vkGetMemoryFdKHR;
   VulkanFunction<PFN_vkGetMemoryFdPropertiesKHR> vkGetMemoryFdPropertiesKHR;
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_POSIX)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   VulkanFunction<PFN_vkGetMemoryWin32HandleKHR> vkGetMemoryWin32HandleKHR;
   VulkanFunction<PFN_vkGetMemoryWin32HandlePropertiesKHR>
       vkGetMemoryWin32HandlePropertiesKHR;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   VulkanFunction<PFN_vkImportSemaphoreZirconHandleFUCHSIA>
       vkImportSemaphoreZirconHandleFUCHSIA;
   VulkanFunction<PFN_vkGetSemaphoreZirconHandleFUCHSIA>
       vkGetSemaphoreZirconHandleFUCHSIA;
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   VulkanFunction<PFN_vkGetMemoryZirconHandleFUCHSIA>
       vkGetMemoryZirconHandleFUCHSIA;
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   VulkanFunction<PFN_vkCreateBufferCollectionFUCHSIA>
       vkCreateBufferCollectionFUCHSIA;
-  VulkanFunction<PFN_vkSetBufferCollectionConstraintsFUCHSIA>
-      vkSetBufferCollectionConstraintsFUCHSIA;
+  VulkanFunction<PFN_vkSetBufferCollectionImageConstraintsFUCHSIA>
+      vkSetBufferCollectionImageConstraintsFUCHSIA;
   VulkanFunction<PFN_vkGetBufferCollectionPropertiesFUCHSIA>
       vkGetBufferCollectionPropertiesFUCHSIA;
   VulkanFunction<PFN_vkDestroyBufferCollectionFUCHSIA>
       vkDestroyBufferCollectionFUCHSIA;
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
   VulkanFunction<PFN_vkAcquireNextImageKHR> vkAcquireNextImageKHR;
   VulkanFunction<PFN_vkCreateSwapchainKHR> vkCreateSwapchainKHR;
   VulkanFunction<PFN_vkDestroySwapchainKHR> vkDestroySwapchainKHR;
   VulkanFunction<PFN_vkGetSwapchainImagesKHR> vkGetSwapchainImagesKHR;
   VulkanFunction<PFN_vkQueuePresentKHR> vkQueuePresentKHR;
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  VulkanFunction<PFN_vkGetImageDrmFormatModifierPropertiesEXT>
+      vkGetImageDrmFormatModifierPropertiesEXT;
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
+ private:
+  bool BindUnassociatedFunctionPointersCommon();
+  // The `Bind*` functions will acquires lock, so should not be called with
+  // with this lock held. Code that writes to members directly should take this
+  // lock as well.
+  base::Lock write_lock_;
+
+  base::NativeLibrary loader_library_ = nullptr;
 };
 
 }  // namespace gpu
@@ -374,6 +406,13 @@ ALWAYS_INLINE void vkGetPhysicalDeviceFormatProperties(
   return gpu::GetVulkanFunctionPointers()->vkGetPhysicalDeviceFormatProperties(
       physicalDevice, format, pFormatProperties);
 }
+ALWAYS_INLINE void vkGetPhysicalDeviceFormatProperties2(
+    VkPhysicalDevice physicalDevice,
+    VkFormat format,
+    VkFormatProperties2* pFormatProperties) {
+  return gpu::GetVulkanFunctionPointers()->vkGetPhysicalDeviceFormatProperties2(
+      physicalDevice, format, pFormatProperties);
+}
 ALWAYS_INLINE VkResult vkGetPhysicalDeviceImageFormatProperties2(
     VkPhysicalDevice physicalDevice,
     const VkPhysicalDeviceImageFormatInfo2* pImageFormatInfo,
@@ -398,6 +437,12 @@ ALWAYS_INLINE void vkGetPhysicalDeviceProperties(
     VkPhysicalDevice physicalDevice,
     VkPhysicalDeviceProperties* pProperties) {
   return gpu::GetVulkanFunctionPointers()->vkGetPhysicalDeviceProperties(
+      physicalDevice, pProperties);
+}
+ALWAYS_INLINE void vkGetPhysicalDeviceProperties2(
+    VkPhysicalDevice physicalDevice,
+    VkPhysicalDeviceProperties2* pProperties) {
+  return gpu::GetVulkanFunctionPointers()->vkGetPhysicalDeviceProperties2(
       physicalDevice, pProperties);
 }
 ALWAYS_INLINE void vkGetPhysicalDeviceQueueFamilyProperties(
@@ -459,27 +504,36 @@ vkGetPhysicalDeviceSurfaceSupportKHR(VkPhysicalDevice physicalDevice,
       physicalDevice, queueFamilyIndex, surface, pSupported);
 }
 
-#if defined(USE_VULKAN_XLIB)
 ALWAYS_INLINE VkResult
-vkCreateXlibSurfaceKHR(VkInstance instance,
-                       const VkXlibSurfaceCreateInfoKHR* pCreateInfo,
-                       const VkAllocationCallbacks* pAllocator,
-                       VkSurfaceKHR* pSurface) {
-  return gpu::GetVulkanFunctionPointers()->vkCreateXlibSurfaceKHR(
+vkCreateHeadlessSurfaceEXT(VkInstance instance,
+                           const VkHeadlessSurfaceCreateInfoEXT* pCreateInfo,
+                           const VkAllocationCallbacks* pAllocator,
+                           VkSurfaceKHR* pSurface) {
+  return gpu::GetVulkanFunctionPointers()->vkCreateHeadlessSurfaceEXT(
+      instance, pCreateInfo, pAllocator, pSurface);
+}
+
+#if defined(USE_VULKAN_XCB)
+ALWAYS_INLINE VkResult
+vkCreateXcbSurfaceKHR(VkInstance instance,
+                      const VkXcbSurfaceCreateInfoKHR* pCreateInfo,
+                      const VkAllocationCallbacks* pAllocator,
+                      VkSurfaceKHR* pSurface) {
+  return gpu::GetVulkanFunctionPointers()->vkCreateXcbSurfaceKHR(
       instance, pCreateInfo, pAllocator, pSurface);
 }
 ALWAYS_INLINE VkBool32
-vkGetPhysicalDeviceXlibPresentationSupportKHR(VkPhysicalDevice physicalDevice,
-                                              uint32_t queueFamilyIndex,
-                                              Display* dpy,
-                                              VisualID visualID) {
+vkGetPhysicalDeviceXcbPresentationSupportKHR(VkPhysicalDevice physicalDevice,
+                                             uint32_t queueFamilyIndex,
+                                             xcb_connection_t* connection,
+                                             xcb_visualid_t visual_id) {
   return gpu::GetVulkanFunctionPointers()
-      ->vkGetPhysicalDeviceXlibPresentationSupportKHR(
-          physicalDevice, queueFamilyIndex, dpy, visualID);
+      ->vkGetPhysicalDeviceXcbPresentationSupportKHR(
+          physicalDevice, queueFamilyIndex, connection, visual_id);
 }
-#endif  // defined(USE_VULKAN_XLIB)
+#endif  // defined(USE_VULKAN_XCB)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 ALWAYS_INLINE VkResult
 vkCreateWin32SurfaceKHR(VkInstance instance,
                         const VkWin32SurfaceCreateInfoKHR* pCreateInfo,
@@ -495,9 +549,9 @@ vkGetPhysicalDeviceWin32PresentationSupportKHR(VkPhysicalDevice physicalDevice,
       ->vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevice,
                                                        queueFamilyIndex);
 }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 ALWAYS_INLINE VkResult
 vkCreateAndroidSurfaceKHR(VkInstance instance,
                           const VkAndroidSurfaceCreateInfoKHR* pCreateInfo,
@@ -506,9 +560,9 @@ vkCreateAndroidSurfaceKHR(VkInstance instance,
   return gpu::GetVulkanFunctionPointers()->vkCreateAndroidSurfaceKHR(
       instance, pCreateInfo, pAllocator, pSurface);
 }
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
 ALWAYS_INLINE VkResult vkCreateImagePipeSurfaceFUCHSIA(
     VkInstance instance,
     const VkImagePipeSurfaceCreateInfoFUCHSIA* pCreateInfo,
@@ -517,7 +571,7 @@ ALWAYS_INLINE VkResult vkCreateImagePipeSurfaceFUCHSIA(
   return gpu::GetVulkanFunctionPointers()->vkCreateImagePipeSurfaceFUCHSIA(
       instance, pCreateInfo, pAllocator, pSurface);
 }
-#endif  // defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
 // Device functions
 ALWAYS_INLINE VkResult
@@ -601,6 +655,16 @@ ALWAYS_INLINE void vkCmdCopyBufferToImage(VkCommandBuffer commandBuffer,
       commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount,
       pRegions);
 }
+ALWAYS_INLINE void vkCmdCopyImageToBuffer(VkCommandBuffer commandBuffer,
+                                          VkImage srcImage,
+                                          VkImageLayout srcImageLayout,
+                                          VkBuffer dstBuffer,
+                                          uint32_t regionCount,
+                                          const VkBufferImageCopy* pRegions) {
+  return gpu::GetVulkanFunctionPointers()->vkCmdCopyImageToBuffer(
+      commandBuffer, srcImage, srcImageLayout, dstBuffer, regionCount,
+      pRegions);
+}
 ALWAYS_INLINE void vkCmdEndRenderPass(VkCommandBuffer commandBuffer) {
   return gpu::GetVulkanFunctionPointers()->vkCmdEndRenderPass(commandBuffer);
 }
@@ -677,6 +741,17 @@ vkCreateFramebuffer(VkDevice device,
                     VkFramebuffer* pFramebuffer) {
   return gpu::GetVulkanFunctionPointers()->vkCreateFramebuffer(
       device, pCreateInfo, pAllocator, pFramebuffer);
+}
+ALWAYS_INLINE VkResult
+vkCreateGraphicsPipelines(VkDevice device,
+                          VkPipelineCache pipelineCache,
+                          uint32_t createInfoCount,
+                          const VkGraphicsPipelineCreateInfo* pCreateInfos,
+                          const VkAllocationCallbacks* pAllocator,
+                          VkPipeline* pPipelines) {
+  return gpu::GetVulkanFunctionPointers()->vkCreateGraphicsPipelines(
+      device, pipelineCache, createInfoCount, pCreateInfos, pAllocator,
+      pPipelines);
 }
 ALWAYS_INLINE VkResult vkCreateImage(VkDevice device,
                                      const VkImageCreateInfo* pCreateInfo,
@@ -892,6 +967,14 @@ ALWAYS_INLINE void vkGetImageMemoryRequirements2(
   return gpu::GetVulkanFunctionPointers()->vkGetImageMemoryRequirements2(
       device, pInfo, pMemoryRequirements);
 }
+ALWAYS_INLINE void vkGetImageSubresourceLayout(
+    VkDevice device,
+    VkImage image,
+    const VkImageSubresource* pSubresource,
+    VkSubresourceLayout* pLayout) {
+  return gpu::GetVulkanFunctionPointers()->vkGetImageSubresourceLayout(
+      device, image, pSubresource, pLayout);
+}
 ALWAYS_INLINE VkResult vkMapMemory(VkDevice device,
                                    VkDeviceMemory memory,
                                    VkDeviceSize offset,
@@ -905,10 +988,16 @@ ALWAYS_INLINE VkResult vkQueueSubmit(VkQueue queue,
                                      uint32_t submitCount,
                                      const VkSubmitInfo* pSubmits,
                                      VkFence fence) {
+  base::AutoLockMaybe auto_lock(
+      gpu::GetVulkanFunctionPointers()->per_queue_lock_map[queue].get());
+
   return gpu::GetVulkanFunctionPointers()->vkQueueSubmit(queue, submitCount,
                                                          pSubmits, fence);
 }
 ALWAYS_INLINE VkResult vkQueueWaitIdle(VkQueue queue) {
+  base::AutoLockMaybe auto_lock(
+      gpu::GetVulkanFunctionPointers()->per_queue_lock_map[queue].get());
+
   return gpu::GetVulkanFunctionPointers()->vkQueueWaitIdle(queue);
 }
 ALWAYS_INLINE VkResult vkResetCommandBuffer(VkCommandBuffer commandBuffer,
@@ -944,7 +1033,7 @@ ALWAYS_INLINE VkResult vkWaitForFences(VkDevice device,
       device, fenceCount, pFences, waitAll, timeout);
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 ALWAYS_INLINE VkResult vkGetAndroidHardwareBufferPropertiesANDROID(
     VkDevice device,
     const struct AHardwareBuffer* buffer,
@@ -953,9 +1042,9 @@ ALWAYS_INLINE VkResult vkGetAndroidHardwareBufferPropertiesANDROID(
       ->vkGetAndroidHardwareBufferPropertiesANDROID(device, buffer,
                                                     pProperties);
 }
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_POSIX)
 ALWAYS_INLINE VkResult
 vkGetSemaphoreFdKHR(VkDevice device,
                     const VkSemaphoreGetFdInfoKHR* pGetFdInfo,
@@ -969,9 +1058,9 @@ ALWAYS_INLINE VkResult vkImportSemaphoreFdKHR(
   return gpu::GetVulkanFunctionPointers()->vkImportSemaphoreFdKHR(
       device, pImportSemaphoreFdInfo);
 }
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_POSIX)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 ALWAYS_INLINE VkResult vkGetSemaphoreWin32HandleKHR(
     VkDevice device,
     const VkSemaphoreGetWin32HandleInfoKHR* pGetWin32HandleInfo,
@@ -986,9 +1075,9 @@ vkImportSemaphoreWin32HandleKHR(VkDevice device,
   return gpu::GetVulkanFunctionPointers()->vkImportSemaphoreWin32HandleKHR(
       device, pImportSemaphoreWin32HandleInfo);
 }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#if BUILDFLAG(IS_POSIX)
 ALWAYS_INLINE VkResult vkGetMemoryFdKHR(VkDevice device,
                                         const VkMemoryGetFdInfoKHR* pGetFdInfo,
                                         int* pFd) {
@@ -1003,9 +1092,9 @@ vkGetMemoryFdPropertiesKHR(VkDevice device,
   return gpu::GetVulkanFunctionPointers()->vkGetMemoryFdPropertiesKHR(
       device, handleType, fd, pMemoryFdProperties);
 }
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_POSIX)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 ALWAYS_INLINE VkResult vkGetMemoryWin32HandleKHR(
     VkDevice device,
     const VkMemoryGetWin32HandleInfoKHR* pGetWin32HandleInfo,
@@ -1021,30 +1110,67 @@ ALWAYS_INLINE VkResult vkGetMemoryWin32HandlePropertiesKHR(
   return gpu::GetVulkanFunctionPointers()->vkGetMemoryWin32HandlePropertiesKHR(
       device, handleType, handle, pMemoryWin32HandleProperties);
 }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_FUCHSIA)
-#define vkImportSemaphoreZirconHandleFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkImportSemaphoreZirconHandleFUCHSIA
-#define vkGetSemaphoreZirconHandleFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkGetSemaphoreZirconHandleFUCHSIA
-#endif  // defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
+ALWAYS_INLINE VkResult vkImportSemaphoreZirconHandleFUCHSIA(
+    VkDevice device,
+    const VkImportSemaphoreZirconHandleInfoFUCHSIA*
+        pImportSemaphoreZirconHandleInfo) {
+  return gpu::GetVulkanFunctionPointers()->vkImportSemaphoreZirconHandleFUCHSIA(
+      device, pImportSemaphoreZirconHandleInfo);
+}
+ALWAYS_INLINE VkResult vkGetSemaphoreZirconHandleFUCHSIA(
+    VkDevice device,
+    const VkSemaphoreGetZirconHandleInfoFUCHSIA* pGetZirconHandleInfo,
+    zx_handle_t* pZirconHandle) {
+  return gpu::GetVulkanFunctionPointers()->vkGetSemaphoreZirconHandleFUCHSIA(
+      device, pGetZirconHandleInfo, pZirconHandle);
+}
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_FUCHSIA)
-#define vkGetMemoryZirconHandleFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkGetMemoryZirconHandleFUCHSIA
-#endif  // defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
+ALWAYS_INLINE VkResult vkGetMemoryZirconHandleFUCHSIA(
+    VkDevice device,
+    const VkMemoryGetZirconHandleInfoFUCHSIA* pGetZirconHandleInfo,
+    zx_handle_t* pZirconHandle) {
+  return gpu::GetVulkanFunctionPointers()->vkGetMemoryZirconHandleFUCHSIA(
+      device, pGetZirconHandleInfo, pZirconHandle);
+}
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_FUCHSIA)
-#define vkCreateBufferCollectionFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkCreateBufferCollectionFUCHSIA
-#define vkSetBufferCollectionConstraintsFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkSetBufferCollectionConstraintsFUCHSIA
-#define vkGetBufferCollectionPropertiesFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkGetBufferCollectionPropertiesFUCHSIA
-#define vkDestroyBufferCollectionFUCHSIA \
-  gpu::GetVulkanFunctionPointers()->vkDestroyBufferCollectionFUCHSIA
-#endif  // defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
+ALWAYS_INLINE VkResult vkCreateBufferCollectionFUCHSIA(
+    VkDevice device,
+    const VkBufferCollectionCreateInfoFUCHSIA* pCreateInfo,
+    const VkAllocationCallbacks* pAllocator,
+    VkBufferCollectionFUCHSIA* pCollection) {
+  return gpu::GetVulkanFunctionPointers()->vkCreateBufferCollectionFUCHSIA(
+      device, pCreateInfo, pAllocator, pCollection);
+}
+ALWAYS_INLINE VkResult vkSetBufferCollectionImageConstraintsFUCHSIA(
+    VkDevice device,
+    VkBufferCollectionFUCHSIA collection,
+    const VkImageConstraintsInfoFUCHSIA* pImageConstraintsInfo) {
+  return gpu::GetVulkanFunctionPointers()
+      ->vkSetBufferCollectionImageConstraintsFUCHSIA(device, collection,
+                                                     pImageConstraintsInfo);
+}
+ALWAYS_INLINE VkResult vkGetBufferCollectionPropertiesFUCHSIA(
+    VkDevice device,
+    VkBufferCollectionFUCHSIA collection,
+    VkBufferCollectionPropertiesFUCHSIA* pProperties) {
+  return gpu::GetVulkanFunctionPointers()
+      ->vkGetBufferCollectionPropertiesFUCHSIA(device, collection, pProperties);
+}
+ALWAYS_INLINE void vkDestroyBufferCollectionFUCHSIA(
+    VkDevice device,
+    VkBufferCollectionFUCHSIA collection,
+    const VkAllocationCallbacks* pAllocator) {
+  return gpu::GetVulkanFunctionPointers()->vkDestroyBufferCollectionFUCHSIA(
+      device, collection, pAllocator);
+}
+#endif  // BUILDFLAG(IS_FUCHSIA)
 
 ALWAYS_INLINE VkResult vkAcquireNextImageKHR(VkDevice device,
                                              VkSwapchainKHR swapchain,
@@ -1079,8 +1205,21 @@ ALWAYS_INLINE VkResult vkGetSwapchainImagesKHR(VkDevice device,
 }
 ALWAYS_INLINE VkResult vkQueuePresentKHR(VkQueue queue,
                                          const VkPresentInfoKHR* pPresentInfo) {
+  base::AutoLockMaybe auto_lock(
+      gpu::GetVulkanFunctionPointers()->per_queue_lock_map[queue].get());
+
   return gpu::GetVulkanFunctionPointers()->vkQueuePresentKHR(queue,
                                                              pPresentInfo);
 }
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+ALWAYS_INLINE VkResult vkGetImageDrmFormatModifierPropertiesEXT(
+    VkDevice device,
+    VkImage image,
+    VkImageDrmFormatModifierPropertiesEXT* pProperties) {
+  return gpu::GetVulkanFunctionPointers()
+      ->vkGetImageDrmFormatModifierPropertiesEXT(device, image, pProperties);
+}
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 #endif  // GPU_VULKAN_VULKAN_FUNCTION_POINTERS_H_

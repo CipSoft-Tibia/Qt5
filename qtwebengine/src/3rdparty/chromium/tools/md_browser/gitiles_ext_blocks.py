@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -12,8 +12,8 @@ https://gerrit.googlesource.com/gitiles/+/master/Documentation/markdown.md#Notif
 
 from markdown.blockprocessors import BlockProcessor
 from markdown.extensions import Extension
-from markdown.util import etree
 import re
+import xml.etree.ElementTree as etree
 
 
 class _GitilesExtBlockProcessor(BlockProcessor):
@@ -73,11 +73,12 @@ class _GitilesExtBlockProcessor(BlockProcessor):
 
 
 class _GitilesExtBlockExtension(Extension):
-  """Add Gitiles' extended blocks to Markdown."""
-  def extendMarkdown(self, md, md_globals):
-    md.parser.blockprocessors.add('gitilesextblocks',
-                                  _GitilesExtBlockProcessor(md.parser),
-                                  '_begin')
+  """Add Gitiles' extended blocks to Markdown, with a priority higher than the
+  highest builtin."""
+
+  def extendMarkdown(self, md):
+    md.parser.blockprocessors.register(_GitilesExtBlockProcessor(md.parser),
+                                       'gitilesextblocks', 101)
 
 
 def makeExtension(*args, **kwargs):

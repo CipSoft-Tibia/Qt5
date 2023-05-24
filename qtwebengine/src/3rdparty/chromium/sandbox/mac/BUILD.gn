@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -9,6 +9,14 @@ import("//third_party/protobuf/proto_library.gni")
 proto_library("seatbelt_proto") {
   visibility = [ ":*" ]
   sources = [ "seatbelt.proto" ]
+  cc_generator_options = "dllexport_decl=SEATBELT_EXPORT:"
+  cc_include = "sandbox/mac/seatbelt_export.h"
+  deps = [ ":seatbelt_export" ]
+  defines = [ "SEATBELT_IMPLEMENTATION" ]
+}
+
+source_set("seatbelt_export") {
+  sources = [ "seatbelt_export.h" ]
 }
 
 component("seatbelt") {
@@ -21,10 +29,12 @@ component("seatbelt") {
     "seatbelt.h",
     "seatbelt_exec.cc",
     "seatbelt_exec.h",
-    "seatbelt_export.h",
   ]
   libs = [ "sandbox" ]
-  deps = [ ":seatbelt_proto" ]
+  deps = [
+    ":seatbelt_export",
+    ":seatbelt_proto",
+  ]
   public_deps = [ "//third_party/protobuf:protobuf_lite" ]
   defines = [ "SEATBELT_IMPLEMENTATION" ]
 }
@@ -36,6 +46,7 @@ component("seatbelt_extension") {
     "seatbelt_extension_token.cc",
     "seatbelt_extension_token.h",
   ]
+  deps = [ ":seatbelt_export" ]
   libs = [ "sandbox" ]
   public_deps = [ "//base" ]
   defines = [ "SEATBELT_IMPLEMENTATION" ]
@@ -43,7 +54,6 @@ component("seatbelt_extension") {
 
 component("system_services") {
   sources = [
-    "seatbelt_export.h",
     "system_services.cc",
     "system_services.h",
   ]
@@ -51,21 +61,20 @@ component("system_services") {
     "Carbon.framework",
     "CoreFoundation.framework",
   ]
+  deps = [ ":seatbelt_export" ]
   public_deps = [ "//base" ]
   defines = [ "SEATBELT_IMPLEMENTATION" ]
 }
 
-test("sandbox_mac_unittests") {
+source_set("sandbox_unittests") {
+  testonly = true
+
   sources = [
     "mojom/mojom_traits_unittest.cc",
-    "sandbox_mac_compiler_unittest.mm",
-    "sandbox_mac_seatbelt_exec_unittest.cc",
+    "sandbox_compiler_unittest.cc",
+    "seatbelt_exec_unittest.cc",
     "seatbelt_extension_unittest.cc",
-  ]
-
-  frameworks = [
-    "CoreFoundation.framework",
-    "Foundation.framework",
+    "seatbelt_unittest.cc",
   ]
 
   deps = [
@@ -74,8 +83,9 @@ test("sandbox_mac_unittests") {
     ":seatbelt_proto",
     "mojom:test_interfaces",
     "//base",
+    "//base/test:test_config",
+    "//base/test:test_support",
     "//mojo/core/test:run_all_unittests",
-    "//sandbox/policy:tests",
     "//testing/gtest",
   ]
 }

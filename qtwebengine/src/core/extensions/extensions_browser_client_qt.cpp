@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // Portions copyright 2015 The Chromium Embedded Framework Authors.
 // Portions copyright 2014 The Chromium Authors. All rights reserved.
@@ -49,15 +13,15 @@
 #include "base/files/file_path.h"
 #include "base/memory/weak_ptr.h"
 #include "base/path_service.h"
-#include "base/task/post_task.h"
+#include "base/task/thread_pool.h"
 #include "base/memory/ref_counted_memory.h"
 #include "chrome/browser/extensions/api/generated_api_registration.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_frame_host.h"
+#include "extensions/browser/api/core_extensions_browser_api_provider.h"
 #include "extensions/browser/api/extensions_api_client.h"
 #include "extensions/browser/api/runtime/runtime_api_delegate.h"
-#include "extensions/browser/core_extensions_browser_api_provider.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_host_delegate.h"
 #include "extensions/browser/extension_protocols.h"
@@ -67,6 +31,7 @@
 #include "extensions/common/file_util.h"
 #include "net/base/mime_util.h"
 #include "qtwebengine/browser/extensions/api/generated_api_registration.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/zlib/google/compression_utils.h"
@@ -114,7 +79,7 @@ scoped_refptr<base::RefCountedMemory> GetResource(int resource_id, const std::st
         base::StringPiece input(reinterpret_cast<const char *>(bytes->front()), bytes->size());
         std::string temp_str = ui::ReplaceTemplateExpressions(input, *replacements);
         DCHECK(!temp_str.empty());
-        return base::RefCountedString::TakeString(&temp_str);
+        return base::MakeRefCounted<base::RefCountedString>(std::move(temp_str));
     }
     return bytes;
 }
@@ -128,12 +93,12 @@ public:
                                mojo::PendingReceiver<network::mojom::URLLoader> loader,
                                mojo::PendingRemote<network::mojom::URLLoaderClient> client_info,
                                const base::FilePath &filename, int resource_id,
-                               const std::string &content_security_policy, bool send_cors_header)
+                               scoped_refptr<net::HttpResponseHeaders> headers)
     {
         // Owns itself. Will live as long as its URLLoader and URLLoaderClientPtr
         // bindings are alive - essentially until either the client gives up or all
         // file data has been sent to it.
-        auto *bundle_loader = new ResourceBundleFileLoader(content_security_policy, send_cors_header);
+        auto *bundle_loader = new ResourceBundleFileLoader(std::move(headers));
         bundle_loader->Start(request, std::move(loader), std::move(client_info), filename, resource_id);
     }
 
@@ -141,7 +106,7 @@ public:
     void FollowRedirect(const std::vector<std::string> &removed_headers,
                         const net::HttpRequestHeaders &modified_headers,
                         const net::HttpRequestHeaders &modified_cors_exempt_headers,
-                        const base::Optional<GURL> &new_url) override
+                        const absl::optional<GURL> &new_url) override
     {
         NOTREACHED() << "No redirects for local file loads.";
     }
@@ -152,9 +117,9 @@ public:
     void ResumeReadingBodyFromNet() override {}
 
 private:
-    ResourceBundleFileLoader(const std::string &content_security_policy, bool send_cors_header)
+    ResourceBundleFileLoader(scoped_refptr<net::HttpResponseHeaders> headers)
+        : response_headers_(std::move(headers))
     {
-        response_headers_ = extensions::BuildHttpHeaders(content_security_policy, send_cors_header, base::Time());
     }
     ~ResourceBundleFileLoader() override = default;
 
@@ -172,8 +137,8 @@ private:
         auto data = GetResource(resource_id, request.url.host());
 
         std::string *read_mime_type = new std::string;
-        base::PostTaskAndReplyWithResult(
-                FROM_HERE, { base::ThreadPool(), base::MayBlock() },
+        base::ThreadPool::PostTaskAndReplyWithResult(
+                FROM_HERE, { base::MayBlock() },
                 base::BindOnce(&net::GetMimeTypeFromFile, filename, base::Unretained(read_mime_type)),
                 base::BindOnce(&ResourceBundleFileLoader::OnMimeTypeRead, weak_factory_.GetWeakPtr(), std::move(data),
                                base::Owned(read_mime_type)));
@@ -187,8 +152,9 @@ private:
         head->content_length = data->size();
         head->mime_type = *read_mime_type;
         DetermineCharset(head->mime_type, data.get(), &head->charset);
-        mojo::DataPipe pipe(data->size());
-        if (!pipe.consumer_handle.is_valid()) {
+        mojo::ScopedDataPipeProducerHandle producer_handle;
+        mojo::ScopedDataPipeConsumerHandle consumer_handle;
+        if (mojo::CreateDataPipe(data->size(), producer_handle, consumer_handle) != MOJO_RESULT_OK) {
             client_->OnComplete(network::URLLoaderCompletionStatus(net::ERR_FAILED));
             client_.reset();
             MaybeDeleteSelf();
@@ -200,11 +166,10 @@ private:
         if (!head->mime_type.empty()) {
             head->headers->AddHeader(net::HttpRequestHeaders::kContentType, head->mime_type.c_str());
         }
-        client_->OnReceiveResponse(std::move(head));
-        client_->OnStartLoadingResponseBody(std::move(pipe.consumer_handle));
+        client_->OnReceiveResponse(std::move(head), std::move(consumer_handle), absl::nullopt);
 
         uint32_t write_size = data->size();
-        MojoResult result = pipe.producer_handle->WriteData(data->front(), &write_size, MOJO_WRITE_DATA_FLAG_NONE);
+        MojoResult result = producer_handle->WriteData(data->front(), &write_size, MOJO_WRITE_DATA_FLAG_NONE);
         OnFileWritten(result);
     }
 
@@ -242,8 +207,6 @@ private:
     mojo::Remote<network::mojom::URLLoaderClient> client_;
     scoped_refptr<net::HttpResponseHeaders> response_headers_;
     base::WeakPtrFactory<ResourceBundleFileLoader> weak_factory_{this};
-
-    DISALLOW_COPY_AND_ASSIGN(ResourceBundleFileLoader);
 };
 
 } // namespace
@@ -263,8 +226,6 @@ public:
         api::ChromeGeneratedFunctionRegistry::RegisterAll(registry);
     }
 
-private:
-    DISALLOW_COPY_AND_ASSIGN(ChromeExtensionsBrowserAPIProvider);
 };
 
 class QtWebEngineExtensionsBrowserAPIProvider : public ExtensionsBrowserAPIProvider
@@ -278,9 +239,6 @@ public:
         // Generated APIs from QtWebEngine.
         api::QtWebEngineGeneratedFunctionRegistry::RegisterAll(registry);
     }
-
-private:
-    DISALLOW_COPY_AND_ASSIGN(QtWebEngineExtensionsBrowserAPIProvider);
 };
 
 ExtensionsBrowserClientQt::ExtensionsBrowserClientQt()
@@ -330,6 +288,24 @@ BrowserContext *ExtensionsBrowserClientQt::GetOffTheRecordContext(BrowserContext
 
 BrowserContext *ExtensionsBrowserClientQt::GetOriginalContext(BrowserContext *context)
 {
+    return context;
+}
+
+BrowserContext *ExtensionsBrowserClientQt::GetRedirectedContextInIncognito(BrowserContext *context, bool, bool)
+{
+    // like in ShellExtensionsBrowserClient:
+    return context;
+}
+
+BrowserContext *ExtensionsBrowserClientQt::GetContextForRegularAndIncognito(BrowserContext *context, bool, bool)
+{
+    // like in ShellExtensionsBrowserClient:
+    return context;
+}
+
+BrowserContext *ExtensionsBrowserClientQt::GetRegularProfile(BrowserContext *context, bool, bool)
+{
+    // like in ShellExtensionsBrowserClient:
     return context;
 }
 
@@ -386,17 +362,16 @@ void ExtensionsBrowserClientQt::LoadResourceFromResourceBundle(const network::Re
                                                                mojo::PendingReceiver<network::mojom::URLLoader> loader,
                                                                const base::FilePath &resource_relative_path,
                                                                int resource_id,
-                                                               const std::string &content_security_policy,
-                                                               mojo::PendingRemote<network::mojom::URLLoaderClient> client,
-                                                               bool send_cors_header)
+                                                               scoped_refptr<net::HttpResponseHeaders> headers,
+                                                               mojo::PendingRemote<network::mojom::URLLoaderClient> client)
 {
     ResourceBundleFileLoader::CreateAndStart(request, std::move(loader), std::move(client), resource_relative_path,
-                                             resource_id, content_security_policy, send_cors_header);
+                                             resource_id, headers);
 }
 
 
-bool ExtensionsBrowserClientQt::AllowCrossRendererResourceLoad(const GURL &url,
-                                                               blink::mojom::ResourceType resource_type,
+bool ExtensionsBrowserClientQt::AllowCrossRendererResourceLoad(const network::ResourceRequest &request,
+                                                               network::mojom::RequestDestination destination,
                                                                ui::PageTransition page_transition,
                                                                int child_id,
                                                                bool is_incognito,
@@ -412,7 +387,7 @@ bool ExtensionsBrowserClientQt::AllowCrossRendererResourceLoad(const GURL &url,
         return true;
 
     bool allowed = false;
-    if (url_request_util::AllowCrossRendererResourceLoad(url, resource_type,
+    if (url_request_util::AllowCrossRendererResourceLoad(request, destination,
                                                          page_transition, child_id,
                                                          is_incognito, extension, extensions,
                                                          process_map, &allowed)) {
@@ -489,7 +464,8 @@ const ComponentExtensionResourceManager *ExtensionsBrowserClientQt::GetComponent
 
 void ExtensionsBrowserClientQt::BroadcastEventToRenderers(events::HistogramValue histogram_value,
                                                           const std::string &event_name,
-                                                          std::unique_ptr<base::ListValue> args, bool dispatch_to_off_the_record_profiles)
+                                                          base::Value::List args,
+                                                          bool dispatch_to_off_the_record_profiles)
 {
     NOTIMPLEMENTED();
     // TODO : do the event routing
@@ -542,7 +518,6 @@ ExtensionWebContentsObserver *ExtensionsBrowserClientQt::GetExtensionWebContents
 
 KioskDelegate *ExtensionsBrowserClientQt::GetKioskDelegate()
 {
-    NOTREACHED();
     return nullptr;
 }
 

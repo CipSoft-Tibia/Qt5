@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -39,7 +39,7 @@ class IconsHandler : public ManifestHandler {
   IconsHandler();
   ~IconsHandler() override;
 
-  bool Parse(Extension* extension, base::string16* error) override;
+  bool Parse(Extension* extension, std::u16string* error) override;
   bool Validate(const Extension* extension,
                 std::string* error,
                 std::vector<InstallWarning>* warnings) const override;

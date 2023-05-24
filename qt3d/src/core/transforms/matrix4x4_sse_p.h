@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DCORE_MATRIX4X4_SSE_P_H
 #define QT3DCORE_MATRIX4X4_SSE_P_H
@@ -56,7 +20,9 @@
 #include <private/qsimd_p.h>
 #include <QMatrix4x4>
 
-#ifdef QT_COMPILER_SUPPORTS_SSE2
+#if defined(__AVX2__)
+#include "matrix4x4_avx2_p.h"
+#elif defined(__SSE2__)
 
 QT_BEGIN_NAMESPACE
 
@@ -311,8 +277,7 @@ public:
         case 3:
             return Vector4D(m41(), m42(), m43(), m44());
         default:
-            Q_UNREACHABLE();
-            return Vector4D();
+            Q_UNREACHABLE_RETURN(Vector4D());
         }
     }
 
@@ -333,10 +298,13 @@ public:
             c.m_xyzw = m_col4;
             break;
         default:
-            Q_UNREACHABLE();
-            return Vector4D();
+            Q_UNREACHABLE_RETURN(Vector4D());
         }
         return c;
+    }
+
+    Q_ALWAYS_INLINE float operator()(int row, int column) const {
+        return this->row(row)[column];
     }
 
     Q_ALWAYS_INLINE QMatrix4x4 toQMatrix4x4() const { return QMatrix4x4(m11(), m12(), m13(), m14(),
@@ -498,6 +466,6 @@ QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(Qt3DCore::Matrix4x4_SSE)
 
-#endif // QT_COMPILER_SUPPORTS_SSE2
+#endif // __SSE2__
 
 #endif // QT3DCORE_MATRIX4X4_SSE_P_H

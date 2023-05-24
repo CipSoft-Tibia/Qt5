@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebengineurlscheme.h"
 
@@ -171,12 +135,12 @@ public:
   Indicates that the URL scheme provides access to local resources. The purpose
   of this flag is to prevent network content from accessing local resources.
   Only schemes with the \c LocalAccessAllowed flag may load resources from a
-  scheme with the \c Local flag. The only builtin schemes with this flag are \c
-  file and \c qrc.
+  scheme with the \c LocalScheme flag. The only builtin scheme with this flag is \c
+  file.
 
   \value LocalAccessAllowed
   Indicates that content from this scheme should be allowed to load resources
-  from schemes with the \c Local flag.
+  from schemes with the \c LocalScheme flag.
 
   \value NoAccessAllowed
   Indicates that all content from this scheme should be forced to have unique
@@ -194,10 +158,15 @@ public:
 
   \value CorsEnabled
   Enables cross-origin resource sharing (CORS) for this scheme. This flag is
-  required in order to, for example, use the scheme with the \l
-  {https://fetch.spec.whatwg.org/}{Fetch API}, or to deliver CSS fonts to a
-  different origin. The appropriate CORS headers are generated automatically by
-  the QWebEngineUrlRequestJob class. (Added in Qt 5.14)
+  required in order for content to be loaded by documents of a different origin,
+  this includes access from other schemes. The appropriate CORS headers are
+  generated automatically by the QWebEngineUrlRequestJob class. By default only
+  \c http and \c https are CORS enabled. (Added in Qt 5.14)
+
+  \value [since 6.6] FetchApiAllowed
+  Enables a URL scheme to be used by the HTML5 fetch API and \c XMLHttpRequest.send with
+  a body. By default only \c http and \c https can be send to using the Fetch API or with
+  an XMLHttpRequest with a body.
 */
 
 QWebEngineUrlScheme::QWebEngineUrlScheme(QWebEngineUrlSchemePrivate *d) : d(d) {}
@@ -415,3 +384,5 @@ void QWebEngineUrlScheme::lockSchemes()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwebengineurlscheme.cpp"

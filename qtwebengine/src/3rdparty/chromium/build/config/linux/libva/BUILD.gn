@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,6 +8,10 @@ assert(is_linux || is_chromeos, "This file should only be referenced on Linux")
 
 pkg_config("libva") {
   packages = [ "libva" ]
+
   # Do not use exec_script to check the version here. It is done with a
   # static_assert instead.
+
+  # vaapi decoders use dlopen pre-sandbox anyway to improve startup times.
+  ignore_libs = true
 }

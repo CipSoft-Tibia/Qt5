@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qgeonetworkaccessmanager.h>
 #include <qgeoroutereply_nokia.h>
@@ -47,8 +22,8 @@ QT_USE_NAMESPACE
 class MockGeoNetworkReply : public QNetworkReply
 {
 public:
-    MockGeoNetworkReply( QObject* parent = 0);
-    virtual void abort();
+    MockGeoNetworkReply( QObject* parent = nullptr);
+    void abort() override;
 
     void setFile(QFile* file);
     void complete();
@@ -57,8 +32,8 @@ public:
     using QNetworkReply::setError;
 
 protected:
-    virtual qint64 readData(char *data, qint64 maxlen);
-    virtual qint64 writeData(const char *data, qint64 len);
+    qint64 readData(char *data, qint64 maxlen) override;
+    qint64 writeData(const char *data, qint64 len) override;
 
 private:
     QFile* m_file;
@@ -111,9 +86,9 @@ void MockGeoNetworkReply::complete()
 class MockGeoNetworkAccessManager : public QGeoNetworkAccessManager
 {
 public:
-    MockGeoNetworkAccessManager(QObject* parent = 0);
-    QNetworkReply* get(const QNetworkRequest& request);
-    QNetworkReply *post(const QNetworkRequest &request, const QByteArray &data);
+    MockGeoNetworkAccessManager(QObject* parent = nullptr);
+    QNetworkReply *get(const QNetworkRequest& request) override;
+    QNetworkReply *post(const QNetworkRequest &request, const QByteArray &data) override;
 
     void setReply(MockGeoNetworkReply* reply);
 
@@ -129,7 +104,7 @@ MockGeoNetworkAccessManager::MockGeoNetworkAccessManager(QObject* parent)
 QNetworkReply* MockGeoNetworkAccessManager::get(const QNetworkRequest& request)
 {
     MockGeoNetworkReply* r = m_reply;
-    m_reply = 0;
+    m_reply = nullptr;
     if (r) {
         r->setRequest(request);
         r->setOperation(QNetworkAccessManager::GetOperation);
@@ -217,7 +192,7 @@ void tst_nokia_routing::loadReply(const QString& filename)
     QFile* file = new QFile(QFINDTESTDATA(filename));
     if (!file->open(QIODevice::ReadOnly)) {
         delete file;
-        file = 0;
+        file = nullptr;
         qDebug() << filename;
         QTest::qFail("Failed to open file", __FILE__, __LINE__);
     }
@@ -233,7 +208,7 @@ void tst_nokia_routing::calculateRoute()
     m_calculationDone = false;
     m_routingManager->calculateRoute(m_dummyRequest);
     m_replyUnowned->complete();
-    m_replyUnowned = 0;
+    m_replyUnowned = nullptr;
     // Timeout of 200ms is required for slow targets (e.g. Qemu)
     QTRY_VERIFY_WITH_TIMEOUT(m_calculationDone, 200);
 }
@@ -261,7 +236,7 @@ void tst_nokia_routing::verifySaneRoute(const QGeoRoute& route)
     const QList<QGeoCoordinate> path = route.path();
     QVERIFY(path.size() >= 2);
 
-    foreach (const QGeoCoordinate& coord, path) {
+    for (const QGeoCoordinate& coord : path) {
         QVERIFY(coord.isValid());
         QVERIFY(bounds.contains(coord));
     }
@@ -278,7 +253,7 @@ void tst_nokia_routing::verifySaneRoute(const QGeoRoute& route)
         QVERIFY(segment.travelTime() >= 0); // times are rounded and thus may end up being zero
 
         const QList<QGeoCoordinate> path = segment.path();
-        foreach (const QGeoCoordinate& coord, path) {
+        for (const QGeoCoordinate& coord : path) {
             QVERIFY(coord.isValid());
             if (!first && !last) {
                 QVERIFY(bounds.contains(coord)); // on pt and pedestrian
@@ -336,7 +311,7 @@ void tst_nokia_routing::initTestCase()
 
     connect(m_routingManager, SIGNAL(finished(QGeoRouteReply*)),
             this, SLOT(routingFinished(QGeoRouteReply*)));
-    connect(m_routingManager, SIGNAL(error(QGeoRouteReply*,QGeoRouteReply::Error,QString)),
+    connect(m_routingManager, SIGNAL(errorOccurred(QGeoRouteReply*,QGeoRouteReply::Error,QString)),
             this, SLOT(routingError(QGeoRouteReply*,QGeoRouteReply::Error,QString)));
 
     QList<QGeoCoordinate> waypoints;
@@ -351,16 +326,16 @@ void tst_nokia_routing::cleanupTestCase()
 
     // network access manager will be deleted by plugin
 
-    m_geoServiceProvider = 0;
-    m_networkManager = 0;
-    m_routingManager = 0;
+    m_geoServiceProvider = nullptr;
+    m_networkManager = nullptr;
+    m_routingManager = nullptr;
 }
 
 void tst_nokia_routing::cleanup()
 {
     delete m_reply;
-    m_reply = 0;
-    m_replyUnowned = 0;
+    m_reply = nullptr;
+    m_replyUnowned = nullptr;
     m_expectError = false;
 }
 

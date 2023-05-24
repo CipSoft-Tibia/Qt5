@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -40,9 +40,9 @@ class PrefHashStore {
   // store. PrefHashStoreTransaction typically uses this internally but it's
   // also exposed for users that want to compute MACs ahead of time for
   // asynchronous operations.
-  virtual std::unique_ptr<base::DictionaryValue> ComputeSplitMacs(
+  virtual base::Value::Dict ComputeSplitMacs(
       const std::string& path,
-      const base::DictionaryValue* split_values) = 0;
+      const base::Value::Dict* split_values) = 0;
 };
 
 #endif  // SERVICES_PREFERENCES_TRACKED_PREF_HASH_STORE_H_

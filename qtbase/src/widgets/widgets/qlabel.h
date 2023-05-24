@@ -1,47 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLABEL_H
 #define QLABEL_H
 
 #include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qframe.h>
+#include <QtGui/qpicture.h>
+#include <QtGui/qtextdocument.h>
 
 QT_REQUIRE_CONFIG(label);
 
@@ -62,7 +28,8 @@ class Q_WIDGETS_EXPORT QLabel : public QFrame
     Q_PROPERTY(int margin READ margin WRITE setMargin)
     Q_PROPERTY(int indent READ indent WRITE setIndent)
     Q_PROPERTY(bool openExternalLinks READ openExternalLinks WRITE setOpenExternalLinks)
-    Q_PROPERTY(Qt::TextInteractionFlags textInteractionFlags READ textInteractionFlags WRITE setTextInteractionFlags)
+    Q_PROPERTY(Qt::TextInteractionFlags textInteractionFlags READ textInteractionFlags
+               WRITE setTextInteractionFlags)
     Q_PROPERTY(bool hasSelectedText READ hasSelectedText)
     Q_PROPERTY(QString selectedText READ selectedText)
 
@@ -73,24 +40,16 @@ public:
 
     QString text() const;
 
-#if QT_DEPRECATED_SINCE(5,15)
-    QT_DEPRECATED_VERSION_X(5, 15, "Use the other overload which returns QPixmap by-value")
-    const QPixmap *pixmap() const; // ### Qt 7: Remove function
-
-    QPixmap pixmap(Qt::ReturnByValueConstant) const;
-#else
-    QPixmap pixmap(Qt::ReturnByValueConstant = Qt::ReturnByValue) const; // ### Qt 7: Remove arg
-#endif // QT_DEPRECATED_SINCE(5,15)
+#if QT_DEPRECATED_SINCE(6,6)
+    QPixmap pixmap(Qt::ReturnByValueConstant) const { return pixmap(); }
+#endif
+    QPixmap pixmap() const;
 
 #ifndef QT_NO_PICTURE
-#  if QT_DEPRECATED_SINCE(5,15)
-    QT_DEPRECATED_VERSION_X(5, 15, "Use the other overload which returns QPicture by-value")
-    const QPicture *picture() const; // ### Qt 7: Remove function
-
-    QPicture picture(Qt::ReturnByValueConstant) const;
-#  else
-    QPicture picture(Qt::ReturnByValueConstant = Qt::ReturnByValue) const; // ### Qt 7: Remove arg
-#  endif // QT_DEPRECATED_SINCE(5,15)
+#if QT_DEPRECATED_SINCE(6,6)
+    QPicture picture(Qt::ReturnByValueConstant) const { return picture(); }
+#endif
+    QPicture picture() const;
 #endif
 #if QT_CONFIG(movie)
     QMovie *movie() const;
@@ -98,6 +57,9 @@ public:
 
     Qt::TextFormat textFormat() const;
     void setTextFormat(Qt::TextFormat);
+
+    QTextDocument::ResourceProvider resourceProvider() const;
+    void setResourceProvider(const QTextDocument::ResourceProvider &provider);
 
     Qt::Alignment alignment() const;
     void setAlignment(Qt::Alignment);

@@ -11,14 +11,18 @@
 #ifndef PC_DTMF_SENDER_H_
 #define PC_DTMF_SENDER_H_
 
+#include <stdint.h>
+
 #include <string>
 
 #include "api/dtmf_sender_interface.h"
-#include "api/proxy.h"
-#include "rtc_base/async_invoker.h"
-#include "rtc_base/constructor_magic.h"
+#include "api/scoped_refptr.h"
+#include "api/sequence_checker.h"
+#include "api/task_queue/pending_task_safety_flag.h"
+#include "api/task_queue/task_queue_base.h"
+#include "pc/proxy.h"
 #include "rtc_base/ref_count.h"
-#include "rtc_base/thread.h"
+#include "rtc_base/thread_annotations.h"
 
 // DtmfSender is the native implementation of the RTCDTMFSender defined by
 // the WebRTC W3C Editor's Draft.
@@ -33,22 +37,21 @@ class DtmfProviderInterface {
   // Returns true if the audio sender is capable of sending DTMF. Otherwise
   // returns false.
   virtual bool CanInsertDtmf() = 0;
-  // Sends DTMF |code|.
-  // The |duration| indicates the length of the DTMF tone in ms.
+  // Sends DTMF `code`.
+  // The `duration` indicates the length of the DTMF tone in ms.
   // Returns true on success and false on failure.
   virtual bool InsertDtmf(int code, int duration) = 0;
-  // Returns a |sigslot::signal0<>| signal. The signal should fire before
-  // the provider is destroyed.
-  virtual sigslot::signal0<>* GetOnDestroyedSignal() = 0;
 
  protected:
   virtual ~DtmfProviderInterface() {}
 };
 
-class DtmfSender : public DtmfSenderInterface, public sigslot::has_slots<> {
+class DtmfSender : public DtmfSenderInterface {
  public:
-  static rtc::scoped_refptr<DtmfSender> Create(rtc::Thread* signaling_thread,
+  static rtc::scoped_refptr<DtmfSender> Create(TaskQueueBase* signaling_thread,
                                                DtmfProviderInterface* provider);
+
+  void OnDtmfProviderDestroyed();
 
   // Implements DtmfSenderInterface.
   void RegisterObserver(DtmfSenderObserverInterface* observer) override;
@@ -64,38 +67,39 @@ class DtmfSender : public DtmfSenderInterface, public sigslot::has_slots<> {
   int comma_delay() const override;
 
  protected:
-  DtmfSender(rtc::Thread* signaling_thread, DtmfProviderInterface* provider);
+  DtmfSender(TaskQueueBase* signaling_thread, DtmfProviderInterface* provider);
   virtual ~DtmfSender();
+
+  DtmfSender(const DtmfSender&) = delete;
+  DtmfSender& operator=(const DtmfSender&) = delete;
 
  private:
   DtmfSender();
 
-  void QueueInsertDtmf(const rtc::Location& posted_from, uint32_t delay_ms);
+  void QueueInsertDtmf(uint32_t delay_ms) RTC_RUN_ON(signaling_thread_);
 
   // The DTMF sending task.
-  void DoInsertDtmf();
+  void DoInsertDtmf() RTC_RUN_ON(signaling_thread_);
 
-  void OnProviderDestroyed();
+  void StopSending() RTC_RUN_ON(signaling_thread_);
 
-  void StopSending();
+  DtmfSenderObserverInterface* observer_ RTC_GUARDED_BY(signaling_thread_);
+  TaskQueueBase* const signaling_thread_;
+  DtmfProviderInterface* provider_ RTC_GUARDED_BY(signaling_thread_);
+  std::string tones_ RTC_GUARDED_BY(signaling_thread_);
+  int duration_ RTC_GUARDED_BY(signaling_thread_);
+  int inter_tone_gap_ RTC_GUARDED_BY(signaling_thread_);
+  int comma_delay_ RTC_GUARDED_BY(signaling_thread_);
 
-  DtmfSenderObserverInterface* observer_;
-  rtc::Thread* signaling_thread_;
-  DtmfProviderInterface* provider_;
-  std::string tones_;
-  int duration_;
-  int inter_tone_gap_;
-  int comma_delay_;
-  // Invoker for running delayed tasks which feed the DTMF provider one tone at
-  // a time.
-  rtc::AsyncInvoker dtmf_driver_;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(DtmfSender);
+  // For cancelling the tasks which feed the DTMF provider one tone at a time.
+  rtc::scoped_refptr<PendingTaskSafetyFlag> safety_flag_ RTC_GUARDED_BY(
+      signaling_thread_) RTC_PT_GUARDED_BY(signaling_thread_) = nullptr;
 };
 
 // Define proxy for DtmfSenderInterface.
-BEGIN_SIGNALING_PROXY_MAP(DtmfSender)
-PROXY_SIGNALING_THREAD_DESTRUCTOR()
+BEGIN_PRIMARY_PROXY_MAP(DtmfSender)
+
+PROXY_PRIMARY_THREAD_DESTRUCTOR()
 PROXY_METHOD1(void, RegisterObserver, DtmfSenderObserverInterface*)
 PROXY_METHOD0(void, UnregisterObserver)
 PROXY_METHOD0(bool, CanInsertDtmf)
@@ -104,7 +108,7 @@ PROXY_CONSTMETHOD0(std::string, tones)
 PROXY_CONSTMETHOD0(int, duration)
 PROXY_CONSTMETHOD0(int, inter_tone_gap)
 PROXY_CONSTMETHOD0(int, comma_delay)
-END_PROXY_MAP()
+END_PROXY_MAP(DtmfSender)
 
 // Get DTMF code from the DTMF event character.
 bool GetDtmfCode(char tone, int* code);

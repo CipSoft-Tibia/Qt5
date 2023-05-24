@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_macros.h"
 #include "build/build_config.h"
-#include "components/security_state/core/features.h"
 #include "net/ssl/ssl_cipher_suite_names.h"
 #include "net/ssl/ssl_connection_status_flags.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
@@ -20,25 +19,6 @@
 namespace security_state {
 
 namespace {
-
-// For nonsecure pages, returns a SecurityLevel based on the
-// provided information and the kMarkHttpAsFeature field trial.
-SecurityLevel GetSecurityLevelForNonSecureFieldTrial(
-    const InsecureInputEventData& input_events) {
-  if (base::FeatureList::IsEnabled(features::kMarkHttpAsFeature)) {
-    std::string parameter = base::GetFieldTrialParamValueByFeature(
-        features::kMarkHttpAsFeature,
-        features::kMarkHttpAsFeatureParameterName);
-    if (parameter == features::kMarkHttpAsParameterDangerous) {
-      return DANGEROUS;
-    }
-    if (parameter ==
-        features::kMarkHttpAsParameterWarningAndDangerousOnFormEdits) {
-      return input_events.insecure_field_edited ? DANGEROUS : WARNING;
-    }
-  }
-  return WARNING;
-}
 
 std::string GetHistogramSuffixForSecurityLevel(
     security_state::SecurityLevel level) {
@@ -65,45 +45,13 @@ std::string GetHistogramSuffixForSafetyTipStatus(
       return "SafetyTip_Unknown";
     case security_state::SafetyTipStatus::kNone:
       return "SafetyTip_None";
-    case security_state::SafetyTipStatus::kBadReputation:
-      return "SafetyTip_BadReputation";
     case security_state::SafetyTipStatus::kLookalike:
       return "SafetyTip_Lookalike";
-    case security_state::SafetyTipStatus::kBadReputationIgnored:
-      return "SafetyTip_BadReputationIgnored";
     case security_state::SafetyTipStatus::kLookalikeIgnored:
       return "SafetyTip_LookalikeIgnored";
-    case security_state::SafetyTipStatus::kBadKeyword:
-      return "SafetyTip_BadKeyword";
   }
   NOTREACHED();
   return std::string();
-}
-
-// Returns whether to set the security level based on the safety tip status.
-// Sets |level| to the right value if status should be set.
-bool ShouldSetSecurityLevelFromSafetyTip(security_state::SafetyTipStatus status,
-                                         SecurityLevel* level) {
-  if (!base::FeatureList::IsEnabled(security_state::features::kSafetyTipUI)) {
-    return false;
-  }
-
-  switch (status) {
-    case security_state::SafetyTipStatus::kBadReputation:
-      *level = security_state::NONE;
-      return true;
-    case security_state::SafetyTipStatus::kBadReputationIgnored:
-    case security_state::SafetyTipStatus::kLookalike:
-    case security_state::SafetyTipStatus::kLookalikeIgnored:
-    case security_state::SafetyTipStatus::kBadKeyword:
-      // TODO(crbug/1012982): Decide whether to degrade the indicator once the
-      // UI lands.
-    case security_state::SafetyTipStatus::kUnknown:
-    case security_state::SafetyTipStatus::kNone:
-      return false;
-  }
-  NOTREACHED();
-  return false;
 }
 
 }  // namespace
@@ -116,6 +64,21 @@ SecurityLevel GetSecurityLevel(
   if (visible_security_state.malicious_content_status !=
       MALICIOUS_CONTENT_STATUS_NONE) {
     return DANGEROUS;
+  }
+
+  // If the navigation was upgraded to HTTPS because of HTTPS-First Mode, but
+  // did not succeed and is showing the HTTPS-First Mode interstitial, set the
+  // security level to WARNING. The HTTPS-First Mode interstitial warning is
+  // considered "less serious" than the general certificate error interstitials.
+  //
+  // This check must come before the checks for `connection_info_initialized`
+  // (because the HTTPS-First Mode intersitital can trigger if the HTTPS version
+  // of the page does not commit) and certificate errors (because the
+  // HTTPS-First Mode interstitial takes precedent if the certificate error
+  // occurred due to an upgraded main-frame navigation).
+  if (visible_security_state.is_https_only_mode_upgraded &&
+      visible_security_state.is_error_page) {
+    return WARNING;
   }
 
   if (!visible_security_state.connection_info_initialized) {
@@ -131,11 +94,8 @@ SecurityLevel GetSecurityLevel(
   const GURL& url = visible_security_state.url;
 
   // data: URLs don't define a secure context, and are a vector for spoofing.
-  // Likewise, ftp: URLs are always non-secure, and are uncommon enough that
-  // we can treat them as such without significant user impact.
-  //
   // Display a "Not secure" badge for all these URLs.
-  if (url.SchemeIs(url::kDataScheme) || url.SchemeIs(url::kFtpScheme)) {
+  if (url.SchemeIs(url::kDataScheme)) {
     return WARNING;
   }
 
@@ -164,7 +124,7 @@ SecurityLevel GetSecurityLevel(
     if (!visible_security_state.is_error_page &&
         !network::IsUrlPotentiallyTrustworthy(url) &&
         (url.IsStandard() || url.SchemeIs(url::kBlobScheme))) {
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
       // On Desktop, Reader Mode pages have their own visible security state in
       // the omnibox. Display ReaderMode pages as neutral even if the original
       // URL was secure, because Chrome has modified the content so we don't
@@ -176,26 +136,10 @@ SecurityLevel GetSecurityLevel(
       if (visible_security_state.is_reader_mode) {
         return NONE;
       }
-#endif  // !defined(OS_ANDROID)
-      return GetSecurityLevelForNonSecureFieldTrial(
-          visible_security_state.insecure_input_events);
+#endif  // !BUILDFLAG(IS_ANDROID)
+      return WARNING;
     }
     return NONE;
-  }
-
-  // Downgrade the security level for pages loaded over legacy TLS versions.
-  if (base::FeatureList::IsEnabled(
-          security_state::features::kLegacyTLSWarnings) &&
-      visible_security_state.connection_used_legacy_tls &&
-      !visible_security_state.should_suppress_legacy_tls_warning) {
-    return WARNING;
-  }
-
-  // Downgrade the security level for pages that trigger a Safety Tip.
-  SecurityLevel safety_tip_level;
-  if (ShouldSetSecurityLevelFromSafetyTip(
-          visible_security_state.safety_tip_info.status, &safety_tip_level)) {
-    return safety_tip_level;
   }
 
   // In most cases, SHA1 use is treated as a certificate error, in which case
@@ -265,9 +209,8 @@ VisibleSecurityState::VisibleSecurityState()
       is_view_source(false),
       is_devtools(false),
       is_reader_mode(false),
-      connection_used_legacy_tls(false),
-      should_suppress_legacy_tls_warning(false),
-      should_treat_displayed_mixed_forms_as_secure(false) {}
+      should_treat_displayed_mixed_forms_as_secure(false),
+      is_https_only_mode_upgraded(false) {}
 
 VisibleSecurityState::VisibleSecurityState(const VisibleSecurityState& other) =
     default;
@@ -300,32 +243,10 @@ std::string GetSafetyTipHistogramName(const std::string& prefix,
   return prefix + "." + GetHistogramSuffixForSafetyTipStatus(safety_tip_status);
 }
 
-bool GetLegacyTLSWarningStatus(
-    const VisibleSecurityState& visible_security_state) {
-  return visible_security_state.connection_used_legacy_tls &&
-         !visible_security_state.should_suppress_legacy_tls_warning;
-}
-
-std::string GetLegacyTLSHistogramName(
-    const std::string& prefix,
-    const VisibleSecurityState& visible_security_state) {
-  if (GetLegacyTLSWarningStatus(visible_security_state)) {
-    return prefix + "." + "LegacyTLS_Triggered";
-  } else {
-    return prefix + "." + "LegacyTLS_NotTriggered";
-  }
-}
-
 bool IsSHA1InChain(const VisibleSecurityState& visible_security_state) {
   return visible_security_state.certificate &&
          (visible_security_state.cert_status &
           net::CERT_STATUS_SHA1_SIGNATURE_PRESENT);
-}
-
-// TODO(crbug.com/1015626): Clean this up once the experiment is fully
-// launched.
-bool ShouldShowDangerTriangleForWarningLevel() {
-  return true;
 }
 
 }  // namespace security_state

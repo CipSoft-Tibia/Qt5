@@ -8,10 +8,10 @@ SwiftShader.
 
 Regres provides:
 
-* [Presubmit testing](#presubmit-testing) - An automatic OpenGL|ES and Vulkan
+* [Presubmit testing](#presubmit-testing) - An automatic Vulkan
   dEQP test run for each Gerrit patchset put up for review.
 * [Continuous integration testing](#daily-run-continuous-integration-testing) -
-  A OpenGL|ES and Vulkan dEQP test run performed against the `master` branch each night. \
+  A Vulkan dEQP test run performed against the `master` branch each night. \
   This nightly run also produces code coverage information which can be viewed at
   [swiftshader-regres.github.io/swiftshader-coverage](https://swiftshader-regres.github.io/swiftshader-coverage/).
 * [Local dEQP test runner](#local-dEQP-test-runner) Provides a local tool for
@@ -194,6 +194,21 @@ The cache needs to consider more than just the change identifier as the
 cache-key for storing and retrieving data. Both the test lists and version of
 dEQP used are dictated by the change being tested, and so both used as part of
 the cache key.
+
+### Vulkan Loader usage
+
+Applications make use of the Vulkan API by loading the [Vulkan Loader](https://github.com/KhronosGroup/Vulkan-Loader)
+library (`libvulkan.so.1` on Linux), which enumerates available Vulkan
+implementations (typically GPUs and their drivers) before an actual 'instance'
+is created to communicate with a specific Installable Client Driver (ICD).
+
+However, SwiftShader can build into libvulkan.so.1 itself, which implements the
+same API entry functions as the Vulkan Loader. Regres by default will make dEQP
+load this SwiftShader library instead of the system's Vulkan Loader. It ensures
+test results are independent of the system's Vulkan setup.
+
+To override this, one can set LD_LIBRARY_PATH to point to the location of a
+Loader's libvulkan.so.1.
 
 ### Code coverage
 

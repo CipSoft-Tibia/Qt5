@@ -14,9 +14,11 @@
 #import "RTCVideoDecoderH264.h"
 #import "api/video_codec/RTCVideoCodecConstants.h"
 #import "api/video_codec/RTCVideoDecoderVP8.h"
-#import "base/RTCVideoCodecInfo.h"
-#if defined(RTC_ENABLE_VP9)
 #import "api/video_codec/RTCVideoDecoderVP9.h"
+#import "base/RTCVideoCodecInfo.h"
+
+#if defined(RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY)
+#import "api/video_codec/RTCVideoDecoderAV1.h"  // nogncheck
 #endif
 
 @implementation RTC_OBJC_TYPE (RTCDefaultVideoDecoderFactory)
@@ -43,19 +45,22 @@
   RTC_OBJC_TYPE(RTCVideoCodecInfo) *vp8Info =
       [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithName:kRTCVideoCodecVp8Name];
 
-#if defined(RTC_ENABLE_VP9)
-  RTC_OBJC_TYPE(RTCVideoCodecInfo) *vp9Info =
-      [[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithName:kRTCVideoCodecVp9Name];
-#endif
-
-  return @[
+  NSMutableArray<RTC_OBJC_TYPE(RTCVideoCodecInfo) *> *result = [@[
     constrainedHighInfo,
     constrainedBaselineInfo,
     vp8Info,
-#if defined(RTC_ENABLE_VP9)
-    vp9Info,
+  ] mutableCopy];
+
+  if ([RTC_OBJC_TYPE(RTCVideoDecoderVP9) isSupported]) {
+    [result
+        addObject:[[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithName:kRTCVideoCodecVp9Name]];
+  }
+
+#if defined(RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY)
+  [result addObject:[[RTC_OBJC_TYPE(RTCVideoCodecInfo) alloc] initWithName:kRTCVideoCodecAv1Name]];
 #endif
-  ];
+
+  return result;
 }
 
 - (id<RTC_OBJC_TYPE(RTCVideoDecoder)>)createDecoder:(RTC_OBJC_TYPE(RTCVideoCodecInfo) *)info {
@@ -63,11 +68,16 @@
     return [[RTC_OBJC_TYPE(RTCVideoDecoderH264) alloc] init];
   } else if ([info.name isEqualToString:kRTCVideoCodecVp8Name]) {
     return [RTC_OBJC_TYPE(RTCVideoDecoderVP8) vp8Decoder];
-#if defined(RTC_ENABLE_VP9)
-  } else if ([info.name isEqualToString:kRTCVideoCodecVp9Name]) {
+  } else if ([info.name isEqualToString:kRTCVideoCodecVp9Name] &&
+             [RTC_OBJC_TYPE(RTCVideoDecoderVP9) isSupported]) {
     return [RTC_OBJC_TYPE(RTCVideoDecoderVP9) vp9Decoder];
-#endif
   }
+
+#if defined(RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY)
+  if ([info.name isEqualToString:kRTCVideoCodecAv1Name]) {
+    return [RTC_OBJC_TYPE(RTCVideoDecoderAV1) av1Decoder];
+  }
+#endif
 
   return nil;
 }

@@ -18,8 +18,8 @@
 #include <xf86drm.h>
 
 #include "dri.h"
+#include "drv_helpers.h"
 #include "drv_priv.h"
-#include "helpers.h"
 #include "util.h"
 
 static const struct {
@@ -34,7 +34,10 @@ static const struct {
 	{ DRM_FORMAT_XBGR8888, __DRI_IMAGE_FORMAT_XBGR8888 },
 	{ DRM_FORMAT_ABGR8888, __DRI_IMAGE_FORMAT_ABGR8888 },
 	{ DRM_FORMAT_XRGB2101010, __DRI_IMAGE_FORMAT_XRGB2101010 },
+	{ DRM_FORMAT_XBGR2101010, __DRI_IMAGE_FORMAT_XBGR2101010 },
 	{ DRM_FORMAT_ARGB2101010, __DRI_IMAGE_FORMAT_ARGB2101010 },
+	{ DRM_FORMAT_ABGR2101010, __DRI_IMAGE_FORMAT_ABGR2101010 },
+	{ DRM_FORMAT_ABGR16161616F, __DRI_IMAGE_FORMAT_ABGR16161616F },
 };
 
 static int drm_format_to_dri_format(uint32_t drm_format)
@@ -69,14 +72,13 @@ static bool lookup_extension(const __DRIextension *const *extensions, const char
  */
 static void close_gem_handle(uint32_t handle, int fd)
 {
-	struct drm_gem_close gem_close;
+	struct drm_gem_close gem_close = { 0 };
 	int ret = 0;
 
-	memset(&gem_close, 0, sizeof(gem_close));
 	gem_close.handle = handle;
 	ret = drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &gem_close);
 	if (ret)
-		drv_log("DRM_IOCTL_GEM_CLOSE failed (handle=%x) error %d\n", handle, ret);
+		drv_loge("DRM_IOCTL_GEM_CLOSE failed (handle=%x) error %d\n", handle, ret);
 }
 
 /*
@@ -93,27 +95,20 @@ static int import_into_minigbm(struct dri_driver *dri, struct bo *bo)
 	if (dri->image_extension->queryImage(bo->priv, __DRI_IMAGE_ATTRIB_MODIFIER_UPPER,
 					     &modifier_upper) &&
 	    dri->image_extension->queryImage(bo->priv, __DRI_IMAGE_ATTRIB_MODIFIER_LOWER,
-					     &modifier_lower)) {
-		bo->meta.format_modifiers[0] =
+					     &modifier_lower))
+		bo->meta.format_modifier =
 		    ((uint64_t)modifier_upper << 32) | (uint32_t)modifier_lower;
-	} else {
-		bo->meta.format_modifiers[0] = DRM_FORMAT_MOD_INVALID;
-	}
+	else
+		bo->meta.format_modifier = DRM_FORMAT_MOD_INVALID;
 
-	if (!dri->image_extension->queryImage(bo->priv, __DRI_IMAGE_ATTRIB_NUM_PLANES,
-					      &num_planes)) {
+	if (!dri->image_extension->queryImage(bo->priv, __DRI_IMAGE_ATTRIB_NUM_PLANES, &num_planes))
 		return -errno;
-	}
 
 	bo->meta.num_planes = num_planes;
-
 	for (i = 0; i < num_planes; ++i) {
 		int prime_fd, stride, offset;
 		plane_image = dri->image_extension->fromPlanar(bo->priv, i, NULL);
 		__DRIimage *image = plane_image ? plane_image : bo->priv;
-
-		if (i)
-			bo->meta.format_modifiers[i] = bo->meta.format_modifiers[0];
 
 		if (!dri->image_extension->queryImage(image, __DRI_IMAGE_ATTRIB_STRIDE, &stride) ||
 		    !dri->image_extension->queryImage(image, __DRI_IMAGE_ATTRIB_OFFSET, &offset)) {
@@ -140,7 +135,7 @@ static int import_into_minigbm(struct dri_driver *dri, struct bo *bo)
 		close(prime_fd);
 
 		if (ret) {
-			drv_log("drmPrimeFDToHandle failed with %s\n", strerror(errno));
+			drv_loge("drmPrimeFDToHandle failed with %s\n", strerror(errno));
 			goto cleanup;
 		}
 
@@ -191,6 +186,10 @@ cleanup:
 	return ret;
 }
 
+const __DRIuseInvalidateExtension use_invalidate = {
+   .base = { __DRI_USE_INVALIDATE, 1 }
+};
+
 /*
  * The caller is responsible for setting drv->priv to a structure that derives from dri_driver.
  */
@@ -198,11 +197,16 @@ int dri_init(struct driver *drv, const char *dri_so_path, const char *driver_suf
 {
 	char fname[128];
 	const __DRIextension **(*get_extensions)();
-	const __DRIextension *loader_extensions[] = { NULL };
+	const __DRIextension *loader_extensions[] = { &use_invalidate.base, 
+		                                      NULL };
 
 	struct dri_driver *dri = drv->priv;
+	char *node_name = drmGetRenderDeviceNameFromFd(drv_get_fd(drv));
+	if (!node_name)
+		return -ENODEV;
 
-	dri->fd = open(drmGetRenderDeviceNameFromFd(drv_get_fd(drv)), O_RDWR);
+	dri->fd = open(node_name, O_RDWR);
+	free(node_name);
 	if (dri->fd < 0)
 		return -ENODEV;
 
@@ -317,9 +321,8 @@ int dri_bo_create_with_modifiers(struct bo *bo, uint32_t width, uint32_t height,
 	int ret, dri_format;
 	struct dri_driver *dri = bo->drv->priv;
 
-	if (!dri->image_extension->createImageWithModifiers) {
+	if (!dri->image_extension->createImageWithModifiers)
 		return -ENOENT;
-	}
 
 	dri_format = drm_format_to_dri_format(format);
 
@@ -346,7 +349,7 @@ int dri_bo_import(struct bo *bo, struct drv_import_fd_data *data)
 	int ret;
 	struct dri_driver *dri = bo->drv->priv;
 
-	if (data->format_modifiers[0] != DRM_FORMAT_MOD_INVALID) {
+	if (data->format_modifier != DRM_FORMAT_MOD_INVALID) {
 		unsigned error;
 
 		if (!dri->image_extension->createImageFromDmaBufs2)
@@ -354,8 +357,8 @@ int dri_bo_import(struct bo *bo, struct drv_import_fd_data *data)
 
 		// clang-format off
 		bo->priv = dri->image_extension->createImageFromDmaBufs2(dri->device, data->width, data->height,
-									 data->format,
-									 data->format_modifiers[0],
+									 drv_get_standard_fourcc(data->format),
+									 data->format_modifier,
 									 data->fds,
 									 bo->meta.num_planes,
 									 (int *)data->strides,
@@ -373,7 +376,7 @@ int dri_bo_import(struct bo *bo, struct drv_import_fd_data *data)
 	} else {
 		// clang-format off
 		bo->priv = dri->image_extension->createImageFromFds(dri->device, data->width, data->height,
-								    data->format, data->fds,
+								    drv_get_standard_fourcc(data->format), data->fds,
 								    bo->meta.num_planes,
 								    (int *)data->strides,
 								    (int *)data->offsets, NULL);
@@ -391,13 +394,20 @@ int dri_bo_import(struct bo *bo, struct drv_import_fd_data *data)
 	return 0;
 }
 
-int dri_bo_destroy(struct bo *bo)
+int dri_bo_release(struct bo *bo)
 {
 	struct dri_driver *dri = bo->drv->priv;
 
 	assert(bo->priv);
-	close_gem_handle(bo->handles[0].u32, bo->drv->fd);
 	dri->image_extension->destroyImage(bo->priv);
+	/* Not clearing bo->priv as we still use it to determine which destroy to call. */
+	return 0;
+}
+
+int dri_bo_destroy(struct bo *bo)
+{
+	assert(bo->priv);
+	close_gem_handle(bo->handles[0].u32, bo->drv->fd);
 	bo->priv = NULL;
 	return 0;
 }
@@ -447,19 +457,29 @@ int dri_bo_unmap(struct bo *bo, struct vma *vma)
 size_t dri_num_planes_from_modifier(struct driver *drv, uint32_t format, uint64_t modifier)
 {
 	struct dri_driver *dri = drv->priv;
-	if (!dri->image_extension->queryDmaBufFormatModifierAttribs) {
-		/* We do not do any modifier checks here. The create will fail
-		 * later if the modifier is not supported. */
-		return drv_num_planes_from_format(format);
-	}
+	uint64_t planes = 0;
 
-	uint64_t planes;
-	GLboolean ret = dri->image_extension->queryDmaBufFormatModifierAttribs(
-	    dri->device, format, modifier, __DRI_IMAGE_ATTRIB_NUM_PLANES, &planes);
-	if (!ret)
-		return 0;
+	/* We do not do any modifier checks here. The create will fail later if the modifier is not
+	 * supported.
+	 */
+	if (dri->image_extension->queryDmaBufFormatModifierAttribs &&
+	    dri->image_extension->queryDmaBufFormatModifierAttribs(
+		dri->device, format, modifier, __DRI_IMAGE_FORMAT_MODIFIER_ATTRIB_PLANE_COUNT,
+		&planes))
+		return planes;
 
-	return planes;
+	return drv_num_planes_from_format(format);
+}
+
+bool dri_query_modifiers(struct driver *drv, uint32_t format, int max, uint64_t *modifiers,
+			 int *count)
+{
+	struct dri_driver *dri = drv->priv;
+	if (!dri->image_extension->queryDmaBufModifiers)
+		return false;
+
+	return dri->image_extension->queryDmaBufModifiers(dri->device, format, max, modifiers, NULL,
+							  count);
 }
 
 #endif

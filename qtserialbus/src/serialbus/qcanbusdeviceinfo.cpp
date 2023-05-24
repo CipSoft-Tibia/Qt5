@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcanbusdeviceinfo.h"
 #include "qcanbusdeviceinfo_p.h"
@@ -87,8 +54,21 @@ QCanBusDeviceInfo::~QCanBusDeviceInfo() = default;
 */
 QCanBusDeviceInfo &QCanBusDeviceInfo::operator=(const QCanBusDeviceInfo &) = default;
 
+ /*!
+    \since 6.2
+     Returns the plugin name of this CAN bus interface, e.g. "peakcan".
+
+     This corresponds to the \c plugin parameter of QCanBus::createDevice().
+ */
+QString QCanBusDeviceInfo::plugin() const
+{
+    return d_ptr->plugin;
+}
+
 /*!
-    Returns the interface name of this CAN bus interface, e.g. can0.
+    Returns the interface name of this CAN bus interface, e.g. "can0".
+
+    This corresponds to the \c interfaceName parameter of QCanBus::createDevice().
 */
 QString QCanBusDeviceInfo::name() const
 {
@@ -110,10 +90,30 @@ QString QCanBusDeviceInfo::description() const
     \since 5.11
     Returns the serial number of the CAN bus interface as string, if available.
     Otherwise, an empty string is returned.
+
+    \sa alias()
 */
 QString QCanBusDeviceInfo::serialNumber() const
 {
     return d_ptr->serialNumber;
+}
+
+/*!
+    \since 6.0
+    Returns a user defineable alias associated with this CAN bus interface.
+
+    Some CAN bus interfaces can have a user defined alias associated. This is mostly
+    done with the CAN hardware vendors tools. The alias allows to identify this
+    hardware later, especially when multiple interfaces are connected.
+
+    \note In contrast to serialNumber(), the alias is not guaranteed to be unique.
+
+    If this function is not supported by the CAN plugin, an empty string is returned.
+    \sa serialNumber()
+*/
+QString QCanBusDeviceInfo::alias() const
+{
+    return d_ptr->alias;
 }
 
 /*!

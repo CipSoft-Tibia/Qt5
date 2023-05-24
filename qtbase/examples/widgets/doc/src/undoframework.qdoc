@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example tools/undoframework
     \title Undo Framework Example
+    \examplecategory {Data Processing & I/O}
     \ingroup examples-widgets-tools
 
     \brief This example shows how to implement undo/redo functionality
@@ -93,6 +70,9 @@
     \snippet tools/undoframework/mainwindow.cpp 0
 
     In the constructor, we set up the DiagramScene and QGraphicsView.
+    We only want \c deleteAction to be enabled when we have selected an
+    item, so we connect to the \c selectionChanged() signal of the scene
+    to \c updateActions() slot.
 
     Here is the \c createUndoView() function:
 
@@ -100,64 +80,54 @@
 
     The QUndoView is a widget that display the text, which is set with
     the \l{QUndoCommand::}{setText()} function, for each QUndoCommand
-    in the undo stack in a list.
+    in the undo stack in a list. We put it into a docking widget.
 
     Here is the \c createActions() function:
 
     \snippet tools/undoframework/mainwindow.cpp 2
-    \codeline
-    \snippet tools/undoframework/mainwindow.cpp 3
     \dots
     \snippet tools/undoframework/mainwindow.cpp 5
 
     The \c createActions() function sets up all the examples actions
     in the manner shown above. The
     \l{QUndoStack::}{createUndoAction()} and
-    \l{QUndoStack::}{createRedoAction()} helps us crate actions that
+    \l{QUndoStack::}{createRedoAction()} methods help us create actions that
     are disabled and enabled based on the state of the stack.  Also,
     the text of the action will be updated automatically based on the
     \l{QUndoCommand::}{text()} of the undo commands. For the other
     actions we have implemented slots in the \c MainWindow class.
 
-    Here is the \c createMenus() function:
-
+    \dots
     \snippet tools/undoframework/mainwindow.cpp 6
 
-    \dots
+    Once all actions are created we update their state by calling the
+    same function that is connected to the \c selectionChanged signal of
+    the scene.
+
+    The \c createMenus() and \c createToolBars() functions add the
+    actions to menus and toolbars:
+
     \snippet tools/undoframework/mainwindow.cpp 7
     \dots
     \snippet tools/undoframework/mainwindow.cpp 8
-
-    We have to use the QMenu \c aboutToShow() and \c aboutToHide()
-    signals since we only want \c deleteAction to be enabled when we
-    have selected an item.
+    \dots
+    \snippet tools/undoframework/mainwindow.cpp 9
 
     Here is the \c itemMoved() slot:
 
-    \snippet tools/undoframework/mainwindow.cpp 9
+    \snippet tools/undoframework/mainwindow.cpp 11
 
     We simply push a MoveCommand on the stack, which calls \c redo()
     on it.
 
     Here is the \c deleteItem() slot:
 
-    \snippet tools/undoframework/mainwindow.cpp 10
+    \snippet tools/undoframework/mainwindow.cpp 12
 
-    An item must be selected to be deleted.  We need to check if it is
+    An item must be selected to be deleted. We need to check if it is
     selected as the \c deleteAction may be enabled even if an item is
     not selected. This can happen as we do not catch a signal or event
     when an item is selected.
-
-    Here is the \c itemMenuAboutToShow() and itemMenuAboutToHide() slots:
-
-    \snippet tools/undoframework/mainwindow.cpp 11
-    \codeline
-    \snippet tools/undoframework/mainwindow.cpp 12
-
-    We implement \c itemMenuAboutToShow() and \c itemMenuAboutToHide()
-    to get a dynamic item menu. These slots are connected to the
-    \l{QMenu::}{aboutToShow()} and \l{QMenu::}{aboutToHide()} signals.
-    We need this to disable or enable the \c deleteAction.
 
     Here is the \c addBox() slot:
 

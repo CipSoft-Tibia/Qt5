@@ -24,19 +24,22 @@
 
 #include "third_party/blink/renderer/core/html/html_body_element.h"
 
-#include "third_party/blink/renderer/bindings/core/v8/script_event_listener.h"
+#include "third_party/blink/renderer/bindings/core/v8/js_event_handler_for_content_attribute.h"
 #include "third_party/blink/renderer/core/css/css_image_value.h"
 #include "third_party/blink/renderer/core/css/css_property_value_set.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
+#include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/css_value_keywords.h"
 #include "third_party/blink/renderer/core/dom/attribute.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/html_frame_element_base.h"
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
 #include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 
 namespace blink {
@@ -63,14 +66,14 @@ void HTMLBodyElement::CollectStyleForPresentationAttribute(
     MutableCSSPropertyValueSet* style) {
   if (name == html_names::kBackgroundAttr) {
     AtomicString url(StripLeadingAndTrailingHTMLSpaces(value));
-    if (!url.IsEmpty()) {
+    if (!url.empty()) {
       CSSImageValue* image_value = MakeGarbageCollected<CSSImageValue>(
           url, GetDocument().CompleteURL(url),
           Referrer(GetExecutionContext()->OutgoingReferrer(),
                    GetExecutionContext()->GetReferrerPolicy()),
           OriginClean::kTrue, false /* is_ad_related */);
       image_value->SetInitiator(localName());
-      style->SetProperty(CSSPropertyValue(
+      style->SetLonghandProperty(CSSPropertyValue(
           CSSPropertyName(CSSPropertyID::kBackgroundImage), *image_value));
     }
   } else if (name == html_names::kMarginwidthAttr ||
@@ -123,108 +126,117 @@ void HTMLBodyElement::ParseAttribute(
   } else if (name == html_names::kOnafterprintAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kAfterprint,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (name == html_names::kOnbeforeprintAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kBeforeprint,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (name == html_names::kOnloadAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kLoad,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kLoad, JSEventHandlerForContentAttribute::Create(
+                                     GetExecutionContext(), name, value));
   } else if (name == html_names::kOnbeforeunloadAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kBeforeunload,
-        CreateAttributeEventListener(
-            GetDocument().GetFrame(), name, value,
+        JSEventHandlerForContentAttribute::Create(
+            GetExecutionContext(), name, value,
             JSEventHandler::HandlerType::kOnBeforeUnloadEventHandler));
   } else if (name == html_names::kOnunloadAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kUnload,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kUnload, JSEventHandlerForContentAttribute::Create(
+                                       GetExecutionContext(), name, value));
   } else if (name == html_names::kOnpagehideAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kPagehide,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kPagehide, JSEventHandlerForContentAttribute::Create(
+                                         GetExecutionContext(), name, value));
   } else if (name == html_names::kOnpageshowAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kPageshow,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kPageshow, JSEventHandlerForContentAttribute::Create(
+                                         GetExecutionContext(), name, value));
   } else if (name == html_names::kOnpopstateAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kPopstate,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kPopstate, JSEventHandlerForContentAttribute::Create(
+                                         GetExecutionContext(), name, value));
   } else if (name == html_names::kOnblurAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kBlur,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kBlur, JSEventHandlerForContentAttribute::Create(
+                                     GetExecutionContext(), name, value));
   } else if (name == html_names::kOnerrorAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kError,
-        CreateAttributeEventListener(
-            GetDocument().GetFrame(), name, value,
+        JSEventHandlerForContentAttribute::Create(
+            GetExecutionContext(), name, value,
             JSEventHandler::HandlerType::kOnErrorEventHandler));
   } else if (name == html_names::kOnfocusAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kFocus,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kFocus, JSEventHandlerForContentAttribute::Create(
+                                      GetExecutionContext(), name, value));
   } else if (RuntimeEnabledFeatures::OrientationEventEnabled() &&
              name == html_names::kOnorientationchangeAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kOrientationchange,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (name == html_names::kOnhashchangeAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kHashchange,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (name == html_names::kOnmessageAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kMessage,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kMessage, JSEventHandlerForContentAttribute::Create(
+                                        GetExecutionContext(), name, value));
   } else if (name == html_names::kOnmessageerrorAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kMessageerror,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (name == html_names::kOnresizeAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kResize,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kResize, JSEventHandlerForContentAttribute::Create(
+                                       GetExecutionContext(), name, value));
   } else if (name == html_names::kOnscrollAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kScroll,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kScroll, JSEventHandlerForContentAttribute::Create(
+                                       GetExecutionContext(), name, value));
   } else if (name == html_names::kOnselectionchangeAttr) {
     UseCounter::Count(GetDocument(),
                       WebFeature::kHTMLBodyElementOnSelectionChangeAttribute);
     GetDocument().SetAttributeEventListener(
         event_type_names::kSelectionchange,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (name == html_names::kOnstorageAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kStorage,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kStorage, JSEventHandlerForContentAttribute::Create(
+                                        GetExecutionContext(), name, value));
   } else if (name == html_names::kOnonlineAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kOnline,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kOnline, JSEventHandlerForContentAttribute::Create(
+                                       GetExecutionContext(), name, value));
   } else if (name == html_names::kOnofflineAttr) {
     GetDocument().SetWindowAttributeEventListener(
-        event_type_names::kOffline,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        event_type_names::kOffline, JSEventHandlerForContentAttribute::Create(
+                                        GetExecutionContext(), name, value));
   } else if (name == html_names::kOnlanguagechangeAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kLanguagechange,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (RuntimeEnabledFeatures::PortalsEnabled(GetExecutionContext()) &&
              name == html_names::kOnportalactivateAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kPortalactivate,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else if (RuntimeEnabledFeatures::TimeZoneChangeEventEnabled() &&
              name == html_names::kOntimezonechangeAttr) {
     GetDocument().SetWindowAttributeEventListener(
         event_type_names::kTimezonechange,
-        CreateAttributeEventListener(GetDocument().GetFrame(), name, value));
+        JSEventHandlerForContentAttribute::Create(GetExecutionContext(), name,
+                                                  value));
   } else {
     HTMLElement::ParseAttribute(params);
   }
@@ -233,7 +245,29 @@ void HTMLBodyElement::ParseAttribute(
 Node::InsertionNotificationRequest HTMLBodyElement::InsertedInto(
     ContainerNode& insertion_point) {
   HTMLElement::InsertedInto(insertion_point);
+  HTMLBodyElement* body = GetDocument().FirstBodyElement();
+  // If the inserted body becomes the first body which may be the viewport
+  // defining element, an existing body may no longer propagate overflow to the
+  // viewport and establish its own scroll container. Mark that body for style
+  // update in case it stops being a viewport defining element.
+  if (body == this) {
+    if ((body = Traversal<HTMLBodyElement>::NextSibling(*body)))
+      GetDocument().GetStyleEngine().FirstBodyElementChanged(body);
+  }
   return kInsertionShouldCallDidNotifySubtreeInsertions;
+}
+
+void HTMLBodyElement::RemovedFrom(ContainerNode& insertion_point) {
+  HTMLElement::RemovedFrom(insertion_point);
+
+  if (insertion_point != GetDocument().documentElement())
+    return;
+
+  // Mark remaining body for overflow update since it may change its used values
+  // for scrolling due to viewport propagation if the removed body used to be
+  // the viewport defining element.
+  GetDocument().GetStyleEngine().FirstBodyElementChanged(
+      GetDocument().FirstBodyElement());
 }
 
 void HTMLBodyElement::DidNotifySubtreeInsertionsToDocument() {
@@ -267,7 +301,7 @@ const QualifiedName& HTMLBodyElement::SubResourceAttributeName() const {
 bool HTMLBodyElement::SupportsFocus() const {
   // This override is needed because the inherited method bails if the parent is
   // editable.  The <body> should be focusable even if <html> is editable.
-  return HasEditableStyle(*this) || HTMLElement::SupportsFocus();
+  return IsEditable(*this) || HTMLElement::SupportsFocus();
 }
 
 }  // namespace blink

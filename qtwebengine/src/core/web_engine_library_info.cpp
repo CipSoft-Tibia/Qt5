@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 BlackBerry Limited. All rights reserved.
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qtwebenginecoreglobal_p.h"
 #include "web_engine_library_info.h"
 
 #include "base/base_paths.h"
@@ -58,17 +23,20 @@
 #include <QFileInfo>
 #include <QLibraryInfo>
 #include <QLocale>
+#include <QLoggingCategory>
 #include <QStandardPaths>
 
-#if defined(OS_WIN)
+#if defined(Q_OS_WIN)
 #include <windows.h>
-#endif // OS_WIN
+#endif
 
 #ifndef QTWEBENGINEPROCESS_NAME
 #error "No name defined for QtWebEngine's process"
 #endif
 
 using namespace QtWebEngineCore;
+
+Q_LOGGING_CATEGORY(webEngineLibraryInfoLog, "qt.webengine.libraryinfo")
 
 namespace {
 
@@ -77,19 +45,19 @@ QString fallbackDir() {
     return directory;
 }
 
-#if defined(OS_MAC) && defined(QT_MAC_FRAMEWORK_BUILD)
+#if defined(Q_OS_DARWIN) && defined(QT_MAC_FRAMEWORK_BUILD)
 static inline CFBundleRef frameworkBundle()
 {
-    return CFBundleGetBundleWithIdentifier(CFSTR("org.qt-project.Qt.QtWebEngineCore"));
+    return CFBundleGetBundleWithIdentifier(CFSTR("org.qt-project.QtWebEngineCore"));
 }
 
-static QString getPath(CFBundleRef frameworkBundle)
+static QString getBundlePath(CFBundleRef frameworkBundle)
 {
     QString path;
     // The following is a fix for QtWebEngineProcess crashes on OS X 10.7 and before.
     // We use it for the other OS X versions as well to make sure it works and because
     // the directory structure should be the same.
-    if (qApp->applicationName() == QLatin1String(QTWEBENGINEPROCESS_NAME)) {
+    if (qApp->applicationName() == QLatin1String(qWebEngineProcessName())) {
         path = QDir::cleanPath(qApp->applicationDirPath() % QLatin1String("/../../../.."));
     } else if (frameworkBundle) {
         CFURLRef bundleUrl = CFBundleCopyBundleURL(frameworkBundle);
@@ -107,12 +75,12 @@ static QString getResourcesPath(CFBundleRef frameworkBundle)
     // The following is a fix for QtWebEngineProcess crashes on OS X 10.7 and before.
     // We use it for the other OS X versions as well to make sure it works and because
     // the directory structure should be the same.
-    if (qApp->applicationName() == QLatin1String(QTWEBENGINEPROCESS_NAME)) {
-        path = getPath(frameworkBundle) % QLatin1String("/Resources");
+    if (qApp->applicationName() == QLatin1String(qWebEngineProcessName())) {
+        path = getBundlePath(frameworkBundle) % QLatin1String("/Resources");
     } else if (frameworkBundle) {
         CFURLRef resourcesRelativeUrl = CFBundleCopyResourcesDirectoryURL(frameworkBundle);
         CFStringRef resourcesRelativePath = CFURLCopyFileSystemPath(resourcesRelativeUrl, kCFURLPOSIXPathStyle);
-        path = getPath(frameworkBundle) % QLatin1Char('/') % QString::fromCFString(resourcesRelativePath);
+        path = getBundlePath(frameworkBundle) % QLatin1Char('/') % QString::fromCFString(resourcesRelativePath);
         CFRelease(resourcesRelativePath);
         CFRelease(resourcesRelativeUrl);
     }
@@ -120,7 +88,7 @@ static QString getResourcesPath(CFBundleRef frameworkBundle)
 }
 #endif
 
-#if defined(OS_MAC)
+#if defined(Q_OS_DARWIN)
 static QString getMainApplicationResourcesPath()
 {
     QString resourcesPath;
@@ -152,10 +120,10 @@ QString subProcessPath()
 {
     static QString processPath;
     if (processPath.isEmpty()) {
-#if defined(OS_WIN)
-        const QString processBinary = QLatin1String(QTWEBENGINEPROCESS_NAME) % QLatin1String(".exe");
+#if defined(Q_OS_WIN)
+        const QString processBinary = QLatin1String(qWebEngineProcessName()) % QLatin1String(".exe");
 #else
-        const QString processBinary = QLatin1String(QTWEBENGINEPROCESS_NAME);
+        const QString processBinary = QLatin1String(qWebEngineProcessName());
 #endif
 
         QStringList candidatePaths;
@@ -164,27 +132,44 @@ QString subProcessPath()
             // Only search in QTWEBENGINEPROCESS_PATH if set
             candidatePaths << fromEnv;
         } else {
-#if defined(OS_MAC) && defined(QT_MAC_FRAMEWORK_BUILD)
-            candidatePaths << getPath(frameworkBundle())
-                              % QStringLiteral("/Helpers/" QTWEBENGINEPROCESS_NAME ".app/Contents/MacOS/" QTWEBENGINEPROCESS_NAME);
+#if defined(Q_OS_DARWIN) && defined(QT_MAC_FRAMEWORK_BUILD)
+            candidatePaths << getBundlePath(frameworkBundle()) % QStringLiteral("/Helpers/")
+                            % qWebEngineProcessName() % QStringLiteral(".app/Contents/MacOS/")
+                            % qWebEngineProcessName();
 #else
-            candidatePaths << QLibraryInfo::location(QLibraryInfo::LibraryExecutablesPath)
+            candidatePaths << QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath)
+                              % QLatin1Char('/') % processBinary;
+            candidatePaths << QLibraryInfo::path(QLibraryInfo::BinariesPath)
                               % QLatin1Char('/') % processBinary;
 #endif
             candidatePaths << QCoreApplication::applicationDirPath()
                               % QLatin1Char('/') % processBinary;
         }
 
-        for (const QString &candidate : qAsConst(candidatePaths)) {
+        for (const QString &candidate : std::as_const(candidatePaths)) {
             if (QFileInfo::exists(candidate)) {
                 processPath = candidate;
+                qCDebug(webEngineLibraryInfoLog, "Qt WebEngine process path: %s",
+                        qPrintable(candidate));
                 break;
             }
         }
-        if (processPath.isEmpty())
-            qFatal("Could not find %s", processBinary.toUtf8().constData());
+        if (processPath.isEmpty()) {
+            QStringList errorMessage;
+            errorMessage.append(
+                    QStringLiteral("The following paths were searched for Qt WebEngine Process:"));
+            for (const QString &candidate : std::as_const(candidatePaths))
+                errorMessage.append(QStringLiteral("  ") % candidate);
+            errorMessage.append(QStringLiteral("but could not find it."));
+            if (fromEnv.isEmpty()) {
+                errorMessage.append(
+                        QStringLiteral("You may override the default search path by using "
+                                       "QTWEBENGINEPROCESS_PATH environment variable."));
+            }
+            qFatal("%s", qPrintable(errorMessage.join('\n')));
+        }
 
-#if defined(OS_WIN)
+#if defined(Q_OS_WIN)
         base::CommandLine *parsedCommandLine = base::CommandLine::ForCurrentProcess();
         if (!parsedCommandLine->HasSwitch(sandbox::policy::switches::kNoSandbox)) {
             if (WebEngineLibraryInfo::isUNCPath(processPath) || WebEngineLibraryInfo::isRemoteDrivePath(processPath))
@@ -200,23 +185,55 @@ QString subProcessPath()
 
 QString localesPath()
 {
-    static bool initialized = false;
-    static QString potentialLocalesPath =
-#if defined(OS_MAC) && defined(QT_MAC_FRAMEWORK_BUILD)
-            getResourcesPath(frameworkBundle()) % QLatin1String("/qtwebengine_locales");
+    static QString potentialLocalesPath;
+    if (potentialLocalesPath.isEmpty()) {
+        QStringList candidatePaths;
+        const QString translationPakFilename =
+#if QT_VERSION >= QT_VERSION_CHECK(6, 3, 0)
+                QLatin1String(WebEngineLibraryInfo::getResolvedLocale() + ".pak");
 #else
-            QLibraryInfo::location(QLibraryInfo::TranslationsPath) % QDir::separator() % QLatin1String("qtwebengine_locales");
+                QLatin1String((WebEngineLibraryInfo::getResolvedLocale() + ".pak").c_str());
 #endif
-
-    if (!initialized) {
-        initialized = true;
-        if (!QFileInfo::exists(potentialLocalesPath)) {
-            qWarning("Installed Qt WebEngine locales directory not found at location %s. Trying application directory...", qPrintable(potentialLocalesPath));
-            potentialLocalesPath = QCoreApplication::applicationDirPath() % QDir::separator() % QLatin1String("qtwebengine_locales");
+        const QString fromEnv = qEnvironmentVariable("QTWEBENGINE_LOCALES_PATH");
+        if (!fromEnv.isEmpty()) {
+            // Only search in QTWEBENGINE_LOCALES_PATH if set
+            candidatePaths << fromEnv;
+        } else {
+#if defined(Q_OS_DARWIN) && defined(QT_MAC_FRAMEWORK_BUILD)
+            candidatePaths << getResourcesPath(frameworkBundle()) % QDir::separator()
+                            % QLatin1String("qtwebengine_locales");
+#endif
+            candidatePaths << QLibraryInfo::path(QLibraryInfo::TranslationsPath) % QDir::separator()
+                            % QLatin1String("qtwebengine_locales");
+            candidatePaths << fallbackDir();
         }
-        if (!QFileInfo::exists(potentialLocalesPath)) {
-            qWarning("Qt WebEngine locales directory not found at location %s. Trying fallback directory... Translations MAY NOT not be correct.", qPrintable(potentialLocalesPath));
-            potentialLocalesPath = fallbackDir();
+
+        for (const QString &candidate : std::as_const(candidatePaths)) {
+            if (QFileInfo::exists(candidate % QDir::separator() % translationPakFilename)) {
+                potentialLocalesPath = candidate;
+                qCDebug(webEngineLibraryInfoLog, "Qt WebEngine locales path: %s",
+                        qPrintable(candidate));
+                break;
+            }
+        }
+
+        if (potentialLocalesPath.isEmpty()) {
+            QStringList warningMessage;
+            warningMessage.append(
+                    QStringLiteral("The following paths were searched for Qt WebEngine locales:"));
+            for (const QString &candidate : std::as_const(candidatePaths))
+                warningMessage.append(QStringLiteral("  ") % candidate);
+            warningMessage.append(
+                    QStringLiteral(
+                            "but could not find the translation file for the current locale: ")
+                    % translationPakFilename);
+            if (fromEnv.isEmpty()) {
+                warningMessage.append(
+                        QStringLiteral("You may override the default search paths by using "
+                                       "QTWEBENGINE_LOCALES_PATH environment variable."));
+            }
+            warningMessage.append(QStringLiteral("Translations WILL NOT be correct."));
+            qWarning("%s", qPrintable(warningMessage.join('\n')));
         }
     }
 
@@ -238,7 +255,7 @@ QString dictionariesPath()
             candidatePaths << fromEnv;
         } else {
             // First try to find dictionaries near the application.
-#ifdef OS_MAC
+#ifdef Q_OS_DARWIN
             QString resourcesDictionariesPath = getMainApplicationResourcesPath()
                     % QDir::separator() % QLatin1String("qtwebengine_dictionaries");
             candidatePaths << resourcesDictionariesPath;
@@ -248,22 +265,30 @@ QString dictionariesPath()
             candidatePaths << applicationDictionariesPath;
 
             // Then try to find dictionaries near the installed library.
-#if defined(OS_MAC) && defined(QT_MAC_FRAMEWORK_BUILD)
+#if defined(Q_OS_DARWIN) && defined(QT_MAC_FRAMEWORK_BUILD)
             QString frameworkDictionariesPath = getResourcesPath(frameworkBundle())
                     % QLatin1String("/qtwebengine_dictionaries");
             candidatePaths << frameworkDictionariesPath;
 #endif
 
-            QString libraryDictionariesPath = QLibraryInfo::location(QLibraryInfo::DataPath)
+            QString libraryDictionariesPath = QLibraryInfo::path(QLibraryInfo::DataPath)
                     % QDir::separator() % QLatin1String("qtwebengine_dictionaries");
             candidatePaths << libraryDictionariesPath;
         }
 
-        for (const QString &candidate : qAsConst(candidatePaths)) {
+        for (const QString &candidate : std::as_const(candidatePaths)) {
             if (QFileInfo::exists(candidate)) {
                 potentialDictionariesPath = candidate;
+                qCDebug(webEngineLibraryInfoLog, "Qt WebEngine dictionaries path: %s",
+                        qPrintable(candidate));
                 break;
             }
+        }
+
+        if (potentialDictionariesPath.isEmpty()) {
+            // return path for error message
+            potentialDictionariesPath = QCoreApplication::applicationDirPath() % QDir::separator()
+                    % QLatin1String("qtwebengine_dictionaries");
         }
     }
 
@@ -271,30 +296,49 @@ QString dictionariesPath()
 }
 #endif // QT_CONFIG(webengine_spellchecker)
 
-QString resourcesDataPath()
+QString resourcesPath()
 {
-    static bool initialized = false;
-    static QString potentialResourcesPath =
-#if defined(OS_MAC) && defined(QT_MAC_FRAMEWORK_BUILD)
-            getResourcesPath(frameworkBundle());
-#elif defined(OS_MAC)
-            QLibraryInfo::location(QLibraryInfo::DataPath) % QLatin1String("/Resources");
-#else
-            QLibraryInfo::location(QLibraryInfo::DataPath) % QLatin1String("/resources");
+    static QString potentialResourcesPath;
+    if (potentialResourcesPath.isEmpty()) {
+        QStringList candidatePaths;
+        const QString resourcesPakFilename = QLatin1String("qtwebengine_resources.pak");
+        const QString fromEnv = qEnvironmentVariable("QTWEBENGINE_RESOURCES_PATH");
+        if (!fromEnv.isEmpty()) {
+            // Only search in QTWEBENGINE_RESOURCES_PATH if set
+            candidatePaths << fromEnv;
+        } else {
+#if defined(Q_OS_DARWIN) && defined(QT_MAC_FRAMEWORK_BUILD)
+            candidatePaths << getResourcesPath(frameworkBundle());
 #endif
-    if (!initialized) {
-        initialized = true;
-        if (!QFileInfo::exists(potentialResourcesPath % QLatin1String("/qtwebengine_resources.pak"))) {
-            qWarning("Qt WebEngine resources not found at %s. Trying parent directory...", qPrintable(potentialResourcesPath));
-            potentialResourcesPath = QLibraryInfo::location(QLibraryInfo::DataPath);
+            candidatePaths << QLibraryInfo::path(QLibraryInfo::DataPath) % QDir::separator()
+                            % QLatin1String("resources");
+            candidatePaths << QLibraryInfo::path(QLibraryInfo::DataPath);
+            candidatePaths << QCoreApplication::applicationDirPath();
+            candidatePaths << fallbackDir();
         }
-        if (!QFileInfo::exists(potentialResourcesPath % QLatin1String("/qtwebengine_resources.pak"))) {
-            qWarning("Qt WebEngine resources not found at %s. Trying application directory...", qPrintable(potentialResourcesPath));
-            potentialResourcesPath = QCoreApplication::applicationDirPath();
+
+        for (const QString &candidate : std::as_const(candidatePaths)) {
+            if (QFileInfo::exists(candidate % QDir::separator() % resourcesPakFilename)) {
+                potentialResourcesPath = candidate;
+                qCDebug(webEngineLibraryInfoLog, "Qt WebEngine resources path: %s",
+                        qPrintable(candidate));
+                break;
+            }
         }
-        if (!QFileInfo::exists(potentialResourcesPath % QLatin1String("/qtwebengine_resources.pak"))) {
-            qWarning("Qt WebEngine resources not found at %s. Trying fallback directory... The application MAY NOT work.", qPrintable(potentialResourcesPath));
-            potentialResourcesPath = fallbackDir();
+
+        if (potentialResourcesPath.isEmpty()) {
+            QStringList errorMessage;
+            errorMessage.append(QStringLiteral(
+                    "The following paths were searched for Qt WebEngine resources:"));
+            for (const QString &candidate : std::as_const(candidatePaths))
+                errorMessage.append(QStringLiteral("  ") % candidate);
+            errorMessage.append(QStringLiteral("but could not find any."));
+            if (fromEnv.isEmpty()) {
+                errorMessage.append(
+                        QStringLiteral("You may override the default search paths by using "
+                                       "QTWEBENGINE_RESOURCES_PATH environment variable."));
+            }
+            qFatal("%s", qPrintable(errorMessage.join('\n')));
         }
     }
 
@@ -307,17 +351,21 @@ base::FilePath WebEngineLibraryInfo::getPath(int key)
     QString directory;
     switch (key) {
     case QT_RESOURCES_PAK:
-        return toFilePath(resourcesDataPath() % QLatin1String("/qtwebengine_resources.pak"));
+        return toFilePath(resourcesPath() % QLatin1String("/qtwebengine_resources.pak"));
     case QT_RESOURCES_100P_PAK:
-        return toFilePath(resourcesDataPath() % QLatin1String("/qtwebengine_resources_100p.pak"));
+        return toFilePath(resourcesPath() % QLatin1String("/qtwebengine_resources_100p.pak"));
     case QT_RESOURCES_200P_PAK:
-        return toFilePath(resourcesDataPath() % QLatin1String("/qtwebengine_resources_200p.pak"));
+        return toFilePath(resourcesPath() % QLatin1String("/qtwebengine_resources_200p.pak"));
     case QT_RESOURCES_DEVTOOLS_PAK:
-        return toFilePath(resourcesDataPath() % QLatin1String("/qtwebengine_devtools_resources.pak"));
+        return toFilePath(resourcesPath() % QLatin1String("/qtwebengine_devtools_resources.pak"));
+#if defined(Q_OS_DARWIN) && defined(QT_MAC_FRAMEWORK_BUILD)
+    case QT_FRAMEWORK_BUNDLE:
+        return toFilePath(getBundlePath(frameworkBundle()));
+#endif
     case base::FILE_EXE:
     case content::CHILD_PROCESS_EXE:
         return toFilePath(subProcessPath());
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
     case base::DIR_CACHE:
         directory = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
         break;
@@ -329,13 +377,15 @@ base::FilePath WebEngineLibraryInfo::getPath(int key)
         directory = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
         break;
     case base::DIR_QT_LIBRARY_DATA:
-        return toFilePath(resourcesDataPath());
+        return toFilePath(resourcesPath());
     case ui::DIR_LOCALES:
         return toFilePath(localesPath());
 #if QT_CONFIG(webengine_spellchecker)
     case base::DIR_APP_DICTIONARIES:
         return toFilePath(dictionariesPath());
 #endif
+    case base::DIR_ASSETS:
+        return toFilePath(resourcesPath());
     default:
         // Note: the path system expects this function to override the default
         // behavior. So no need to log an error if we don't support a given
@@ -346,7 +396,7 @@ base::FilePath WebEngineLibraryInfo::getPath(int key)
     return toFilePath(directory.isEmpty() ? fallbackDir() : directory);
 }
 
-base::string16 WebEngineLibraryInfo::getApplicationName()
+std::u16string WebEngineLibraryInfo::getApplicationName()
 {
     return toString16(qApp->applicationName());
 }
@@ -354,14 +404,16 @@ base::string16 WebEngineLibraryInfo::getApplicationName()
 std::string WebEngineLibraryInfo::getResolvedLocale()
 {
     base::CommandLine *parsedCommandLine = base::CommandLine::ForCurrentProcess();
-    if (parsedCommandLine->HasSwitch(switches::kLang)) {
-        return parsedCommandLine->GetSwitchValueASCII(switches::kLang);
-    } else {
-        const QString &locale = QLocale().bcp47Name();
-        std::string resolvedLocale;
-        if (l10n_util::CheckAndResolveLocale(locale.toStdString(), &resolvedLocale))
-            return resolvedLocale;
-    }
+    std::string locale;
+    if (parsedCommandLine->HasSwitch(switches::kLang))
+        locale = parsedCommandLine->GetSwitchValueASCII(switches::kLang);
+    else
+        locale = QLocale().bcp47Name().toStdString();
+
+    std::string resolvedLocale;
+    if (l10n_util::CheckAndResolveLocale(locale, &resolvedLocale))
+        return resolvedLocale;
+
     return "en-US";
 }
 
@@ -373,7 +425,7 @@ std::string WebEngineLibraryInfo::getApplicationLocale()
         : QLocale().bcp47Name().toStdString();
 }
 
-#if defined(OS_WIN)
+#if defined(Q_OS_WIN)
 bool WebEngineLibraryInfo::isRemoteDrivePath(const QString &path)
 {
     WCHAR wDriveLetter[4] = { 0 };
@@ -385,8 +437,8 @@ bool WebEngineLibraryInfo::isUNCPath(const QString &path)
 {
     return (base::FilePath::IsSeparator(path.at(0).toLatin1())
             && base::FilePath::IsSeparator(path.at(1).toLatin1())
-            && path.at(2) != "." && path.at(2) != "?"
-            && path.at(2).isLetter() && path.at(3) != ":");
+            && path.at(2) != QLatin1Char('.') && path.at(2) != QLatin1Char('?')
+            && path.at(2).isLetter() && path.at(3) != QLatin1Char(':'));
 }
 
 #endif

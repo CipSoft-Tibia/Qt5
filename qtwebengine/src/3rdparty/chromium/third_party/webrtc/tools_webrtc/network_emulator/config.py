@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
+
 #  Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 #  Use of this source code is governed by a BSD-style license
@@ -6,11 +7,10 @@
 #  tree. An additional intellectual property rights grant can be found
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
-
 """Configuration class for network emulation."""
 
 
-class ConnectionConfig(object):
+class ConnectionConfig:
   """Configuration containing the characteristics of a network connection."""
 
   def __init__(self, num, name, receive_bw_kbps, send_bw_kbps, delay_ms,

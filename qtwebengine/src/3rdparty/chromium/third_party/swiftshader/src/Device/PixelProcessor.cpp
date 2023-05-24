@@ -55,26 +55,15 @@ PixelProcessor::PixelProcessor()
 
 void PixelProcessor::setBlendConstant(const float4 &blendConstant)
 {
-	// TODO(b/140935644): Check if clamp is required
-	factor.blendConstant4W[0] = word4(static_cast<uint16_t>(iround(0xFFFFu * blendConstant.x)));
-	factor.blendConstant4W[1] = word4(static_cast<uint16_t>(iround(0xFFFFu * blendConstant.y)));
-	factor.blendConstant4W[2] = word4(static_cast<uint16_t>(iround(0xFFFFu * blendConstant.z)));
-	factor.blendConstant4W[3] = word4(static_cast<uint16_t>(iround(0xFFFFu * blendConstant.w)));
-
-	factor.invBlendConstant4W[0] = word4(0xFFFFu - factor.blendConstant4W[0][0]);
-	factor.invBlendConstant4W[1] = word4(0xFFFFu - factor.blendConstant4W[1][0]);
-	factor.invBlendConstant4W[2] = word4(0xFFFFu - factor.blendConstant4W[2][0]);
-	factor.invBlendConstant4W[3] = word4(0xFFFFu - factor.blendConstant4W[3][0]);
-
-	factor.blendConstant4F[0] = float4(blendConstant.x);
-	factor.blendConstant4F[1] = float4(blendConstant.y);
-	factor.blendConstant4F[2] = float4(blendConstant.z);
-	factor.blendConstant4F[3] = float4(blendConstant.w);
-
-	factor.invBlendConstant4F[0] = float4(1 - blendConstant.x);
-	factor.invBlendConstant4F[1] = float4(1 - blendConstant.y);
-	factor.invBlendConstant4F[2] = float4(1 - blendConstant.z);
-	factor.invBlendConstant4F[3] = float4(1 - blendConstant.w);
+	for(int i = 0; i < 4; i++)
+	{
+		factor.blendConstantF[i] = blendConstant[i];
+		factor.invBlendConstantF[i] = 1.0f - blendConstant[i];
+		factor.blendConstantU[i] = clamp(blendConstant[i], 0.0f, 1.0f);
+		factor.invBlendConstantU[i] = 1.0f - clamp(blendConstant[i], 0.0f, 1.0f);
+		factor.blendConstantS[i] = clamp(blendConstant[i], -1.0f, 1.0f);
+		factor.invBlendConstantS[i] = 1.0f - clamp(blendConstant[i], -1.0f, 1.0f);
+	}
 }
 
 void PixelProcessor::setRoutineCacheSize(int cacheSize)
@@ -82,65 +71,114 @@ void PixelProcessor::setRoutineCacheSize(int cacheSize)
 	routineCache = std::make_unique<RoutineCacheType>(clamp(cacheSize, 1, 65536));
 }
 
-const PixelProcessor::State PixelProcessor::update(const Context *context) const
+const PixelProcessor::State PixelProcessor::update(const vk::GraphicsState &pipelineState, const sw::SpirvShader *fragmentShader, const sw::SpirvShader *vertexShader, const vk::Attachments &attachments, bool occlusionEnabled) const
 {
+	const vk::VertexInputInterfaceState &vertexInputInterfaceState = pipelineState.getVertexInputInterfaceState();
+	const vk::PreRasterizationState &preRasterizationState = pipelineState.getPreRasterizationState();
+	const vk::FragmentState &fragmentState = pipelineState.getFragmentState();
+	const vk::FragmentOutputInterfaceState &fragmentOutputInterfaceState = pipelineState.getFragmentOutputInterfaceState();
+
 	State state;
 
-	state.numClipDistances = context->vertexShader->getNumOutputClipDistances();
-	state.numCullDistances = context->vertexShader->getNumOutputCullDistances();
+	state.numClipDistances = vertexShader->getNumOutputClipDistances();
+	state.numCullDistances = vertexShader->getNumOutputCullDistances();
 
-	if(context->pixelShader)
+	if(fragmentShader)
 	{
-		state.shaderID = context->pixelShader->getSerialID();
-		state.pipelineLayoutIdentifier = context->pipelineLayout->identifier;
+		state.shaderID = fragmentShader->getIdentifier();
+		state.pipelineLayoutIdentifier = fragmentState.getPipelineLayout()->identifier;
+		state.robustBufferAccess = fragmentShader->getRobustBufferAccess();
 	}
 	else
 	{
 		state.shaderID = 0;
 		state.pipelineLayoutIdentifier = 0;
+		state.robustBufferAccess = false;
 	}
 
-	state.alphaToCoverage = context->alphaToCoverage;
-	state.depthWriteEnable = context->depthWriteActive();
+	state.alphaToCoverage = fragmentOutputInterfaceState.hasAlphaToCoverage();
+	state.depthWriteEnable = fragmentState.depthWriteActive(attachments);
 
-	if(context->stencilActive())
+	if(fragmentState.stencilActive(attachments))
 	{
 		state.stencilActive = true;
-		state.frontStencil = context->frontStencil;
-		state.backStencil = context->backStencil;
+		state.frontStencil = fragmentState.getFrontStencil();
+		state.backStencil = fragmentState.getBackStencil();
 	}
 
-	if(context->depthBufferActive())
+	state.depthFormat = attachments.depthFormat();
+	state.depthBoundsTestActive = fragmentState.depthBoundsTestActive(attachments);
+	state.minDepthBounds = fragmentState.getMinDepthBounds();
+	state.maxDepthBounds = fragmentState.getMaxDepthBounds();
+
+	if(fragmentState.depthTestActive(attachments))
 	{
 		state.depthTestActive = true;
-		state.depthCompareMode = context->depthCompareMode;
-		state.depthFormat = context->depthBuffer->getFormat();
+		state.depthCompareMode = fragmentState.getDepthCompareMode();
 
+		state.depthBias = preRasterizationState.getConstantDepthBias() != 0.0f || preRasterizationState.getSlopeDepthBias() != 0.0f;
+
+		bool pipelineDepthClamp = preRasterizationState.getDepthClampEnable();
 		// "For fixed-point depth buffers, fragment depth values are always limited to the range [0,1] by clamping after depth bias addition is performed.
 		//  Unless the VK_EXT_depth_range_unrestricted extension is enabled, fragment depth values are clamped even when the depth buffer uses a floating-point representation."
-		state.depthClamp = !state.depthFormat.isFloatFormat() || !context->depthRangeUnrestricted;
+		state.depthClamp = pipelineDepthClamp || !state.depthFormat.isFloatFormat() || !preRasterizationState.hasDepthRangeUnrestricted();
+
+		if(pipelineDepthClamp)
+		{
+			const VkViewport viewport = preRasterizationState.getViewport();
+			state.minDepthClamp = min(viewport.minDepth, viewport.maxDepth);
+			state.maxDepthClamp = max(viewport.minDepth, viewport.maxDepth);
+		}
+		else if(state.depthClamp)
+		{
+			state.minDepthClamp = 0.0f;
+			state.maxDepthClamp = 1.0f;
+		}
 	}
 
-	state.occlusionEnabled = context->occlusionEnabled;
+	state.occlusionEnabled = occlusionEnabled;
 
-	for(int i = 0; i < RENDERTARGETS; i++)
+	bool fragmentContainsDiscard = (fragmentShader && fragmentShader->getAnalysis().ContainsDiscard);
+	for(int i = 0; i < MAX_COLOR_BUFFERS; i++)
 	{
-		state.colorWriteMask |= context->colorWriteActive(i) << (4 * i);
-		state.targetFormat[i] = context->renderTargetInternalFormat(i);
-		state.blendState[i] = context->getBlendState(i);
+		state.colorWriteMask |= fragmentOutputInterfaceState.colorWriteActive(i, attachments) << (4 * i);
+		state.colorFormat[i] = attachments.colorFormat(i);
+		state.blendState[i] = fragmentOutputInterfaceState.getBlendState(i, attachments, fragmentContainsDiscard);
 	}
 
-	state.multiSampleCount = static_cast<unsigned int>(context->sampleCount);
-	state.multiSampleMask = context->multiSampleMask;
-	state.enableMultiSampling = (state.multiSampleCount > 1) &&
-	                            !(context->isDrawLine(true) && (context->lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT));
+	const bool isBresenhamLine = vertexInputInterfaceState.isDrawLine(true, preRasterizationState.getPolygonMode()) &&
+	                             preRasterizationState.getLineRasterizationMode() == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
 
-	if(state.enableMultiSampling && context->pixelShader)
+	state.multiSampleCount = static_cast<unsigned int>(fragmentOutputInterfaceState.getSampleCount());
+	state.multiSampleMask = fragmentOutputInterfaceState.getMultiSampleMask();
+	state.enableMultiSampling = state.multiSampleCount > 1 && !isBresenhamLine;
+
+	// SampleId and SamplePosition require per-sample fragment shader invocations, so the Vulkan spec
+	// requires turning on sample shading if either of them is present in the shader:
+	// "If a fragment shader entry point's interface includes an input variable decorated with SampleId,
+	//  Sample Shading is considered enabled with a minSampleShading value of 1.0."
+	// "If a fragment shader entry point's interface includes an input variable decorated with SamplePosition,
+	//  Sample Shading is considered enabled with a minSampleShading value of 1.0."
+	bool shaderContainsSampleDecoration = fragmentShader && (fragmentShader->hasBuiltinInput(spv::BuiltInSampleId) ||
+	                                                         fragmentShader->hasBuiltinInput(spv::BuiltInSamplePosition));
+
+	if(shaderContainsSampleDecoration)
 	{
-		state.centroid = context->pixelShader->getModes().NeedsCentroid;
+		state.sampleShadingEnabled = true;
+		state.minSampleShading = 1.0f;
+	}
+	else
+	{
+		state.sampleShadingEnabled = fragmentOutputInterfaceState.hasSampleShadingEnabled();
+		state.minSampleShading = fragmentOutputInterfaceState.getMinSampleShading();
 	}
 
-	state.frontFace = context->frontFace;
+	if(state.enableMultiSampling && fragmentShader)
+	{
+		state.centroid = fragmentShader->getAnalysis().NeedsCentroid;
+	}
+
+	state.frontFace = preRasterizationState.getFrontFace();
 
 	state.hash = state.computeHash();
 
@@ -148,8 +186,8 @@ const PixelProcessor::State PixelProcessor::update(const Context *context) const
 }
 
 PixelProcessor::RoutineType PixelProcessor::routine(const State &state,
-                                                    vk::PipelineLayout const *pipelineLayout,
-                                                    SpirvShader const *pixelShader,
+                                                    const vk::PipelineLayout *pipelineLayout,
+                                                    const SpirvShader *pixelShader,
                                                     const vk::DescriptorSet::Bindings &descriptorSets)
 {
 	auto routine = routineCache->lookup(state);

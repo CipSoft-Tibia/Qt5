@@ -1,12 +1,7 @@
 TEMPLATE = subdirs
 qtHaveModule(widgets) {
-    SUBDIRS += \
-        annotatedurl \
-        ndefeditor
+    SUBDIRS += annotatedurl
 }
-qtHaveModule(quick) {
-    SUBDIRS += \
-        poster
+qtHaveModule(quickcontrols2) {
+     SUBDIRS += ndefeditor
 }
-
-qtHaveModule(quick): SUBDIRS += corkboard

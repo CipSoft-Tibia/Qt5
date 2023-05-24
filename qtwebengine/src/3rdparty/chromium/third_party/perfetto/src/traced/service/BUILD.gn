@@ -38,13 +38,11 @@ source_set("service") {
   deps = [
     "../../../gn:default_deps",
     "../../base",
+    "../../base:version",
     "../../tracing/core",
     "../../tracing/core:service",
     "../../tracing/ipc/service",
   ]
-  if (enable_perfetto_version_gen) {
-    deps += [ "//gn/standalone:gen_git_revision" ]
-  }
   sources = [
     "builtin_producer.cc",
     "builtin_producer.h",

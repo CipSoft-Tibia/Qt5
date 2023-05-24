@@ -1,4 +1,4 @@
-# Copyright 2018 The PDFium Authors. All rights reserved.
+# Copyright 2018 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -17,25 +17,30 @@ source_set("fde") {
     "cfde_wordbreak_data.cpp",
     "cfde_wordbreak_data.h",
   ]
+  configs += [
+    "../../:pdfium_strict_config",
+    "../../:pdfium_noshorten_config",
+    "../:xfa_warnings",
+  ]
   deps = [
     "../../core/fxcrt",
     "../../core/fxge",
-    "../fgas",
+    "../fgas/font",
     "../fgas/layout",
-  ]
-  configs += [
-    "../../:pdfium_core_config",
-    "../:xfa_warnings",
   ]
   visibility = [ "../../*" ]
 }
 
 pdfium_unittest_source_set("unittests") {
-  sources = [ "cfde_texteditengine_unittest.cpp" ]
+  sources = [
+    "cfde_texteditengine_unittest.cpp",
+    "cfde_textout_unittest.cpp",
+  ]
   deps = [
     ":fde",
+    "../../core/fdrm",
     "../../core/fxge",
-    "../fgas",
+    "../fgas/font",
   ]
   pdfium_root_dir = "../../"
 }

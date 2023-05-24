@@ -1,13 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <tuple>
+
 #include "base/command_line.h"
 #include "base/json/json_reader.h"
-#include "base/macros.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/test/bind_test_util.h"
-#include "base/test/scoped_feature_list.h"
+#include "base/test/bind.h"
 #include "build/build_config.h"
 #include "content/browser/renderer_host/input/synthetic_gesture_controller.h"
 #include "content/browser/renderer_host/input/synthetic_gesture_target.h"
@@ -65,11 +65,18 @@ namespace content {
 class InputEventBrowserTest : public ContentBrowserTest {
  public:
   InputEventBrowserTest() = default;
+
+  InputEventBrowserTest(const InputEventBrowserTest&) = delete;
+  InputEventBrowserTest& operator=(const InputEventBrowserTest&) = delete;
+
   ~InputEventBrowserTest() override = default;
 
   RenderWidgetHostImpl* GetWidgetHost() {
-    return RenderWidgetHostImpl::From(
-        shell()->web_contents()->GetRenderViewHost()->GetWidget());
+    return RenderWidgetHostImpl::From(shell()
+                                          ->web_contents()
+                                          ->GetPrimaryMainFrame()
+                                          ->GetRenderViewHost()
+                                          ->GetWidget());
   }
 
  protected:
@@ -87,9 +94,9 @@ class InputEventBrowserTest : public ContentBrowserTest {
         host->render_frame_metadata_provider());
     host->GetView()->SetSize(gfx::Size(400, 400));
 
-    base::string16 ready_title(base::ASCIIToUTF16("ready"));
+    std::u16string ready_title(u"ready");
     TitleWatcher watcher(shell()->web_contents(), ready_title);
-    ignore_result(watcher.WaitAndGetTitle());
+    std::ignore = watcher.WaitAndGetTitle();
 
     // We need to wait until hit test data is available. We use our own
     // HitTestRegionObserver here because we have the RenderWidgetHostImpl
@@ -106,31 +113,26 @@ class InputEventBrowserTest : public ContentBrowserTest {
   }
 
   bool URLLoaded() {
-    base::string16 ready_title(base::ASCIIToUTF16("ready"));
+    std::u16string ready_title(u"ready");
     TitleWatcher watcher(shell()->web_contents(), ready_title);
-    const base::string16 title = watcher.WaitAndGetTitle();
+    const std::u16string title = watcher.WaitAndGetTitle();
     return title == ready_title;
   }
 
   int ExecuteScriptAndExtractInt(const std::string& script) {
-    int value = 0;
-    EXPECT_TRUE(content::ExecuteScriptAndExtractInt(
-        shell(), "domAutomationController.send(" + script + ")", &value));
-    return value;
+    return EvalJs(shell(), script).ExtractInt();
   }
 
   double ExecuteScriptAndExtractDouble(const std::string& script) {
-    double value = 0;
-    EXPECT_TRUE(content::ExecuteScriptAndExtractDouble(
-        shell(), "domAutomationController.send(" + script + ")", &value));
-    return value;
+    return EvalJs(shell(), script).ExtractDouble();
   }
 
   void SimulateSyntheticMousePressAt(base::TimeTicks event_time) {
     DCHECK(URLLoaded());
 
     std::unique_ptr<SyntheticPointerDriver> synthetic_pointer_driver =
-        SyntheticPointerDriver::Create(SyntheticGestureParams::MOUSE_INPUT);
+        SyntheticPointerDriver::Create(
+            content::mojom::GestureSourceType::kMouseInput);
     RenderWidgetHostImpl* render_widget_host = GetWidgetHost();
     auto* root_view = render_widget_host->GetView()->GetRootView();
     std::unique_ptr<SyntheticGestureTarget> synthetic_gesture_target;
@@ -169,7 +171,8 @@ class InputEventBrowserTest : public ContentBrowserTest {
     DCHECK(URLLoaded());
 
     std::unique_ptr<SyntheticPointerDriver> synthetic_pointer_driver =
-        SyntheticPointerDriver::Create(SyntheticGestureParams::TOUCH_INPUT);
+        SyntheticPointerDriver::Create(
+            content::mojom::GestureSourceType::kTouchInput);
     RenderWidgetHostImpl* render_widget_host = GetWidgetHost();
     auto* root_view = render_widget_host->GetView()->GetRootView();
     std::unique_ptr<SyntheticGestureTarget> synthetic_gesture_target;
@@ -206,11 +209,9 @@ class InputEventBrowserTest : public ContentBrowserTest {
 
  private:
   std::unique_ptr<RenderFrameSubmissionObserver> frame_observer_;
-
-  DISALLOW_COPY_AND_ASSIGN(InputEventBrowserTest);
 };
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 // Android does not support synthetic mouse events.
 // TODO(lanwei): support dispatching WebMouseEvent in
 // SyntheticGestureTargetAndroid.
@@ -221,8 +222,7 @@ class InputEventBrowserTest : public ContentBrowserTest {
 IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, MAYBE_MouseDownEventTimeStamp) {
   LoadURL(kEventListenerDataURL);
 
-  MainThreadFrameObserver frame_observer(
-      shell()->web_contents()->GetRenderViewHost()->GetWidget());
+  MainThreadFrameObserver frame_observer(GetWidgetHost());
   base::TimeTicks event_time = base::TimeTicks::Now();
   int64_t event_time_ms = event_time.since_origin().InMilliseconds();
   SimulateSyntheticMousePressAt(event_time);
@@ -239,8 +239,7 @@ IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, MAYBE_MouseDownEventTimeStamp) {
 IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, KeyDownEventTimeStamp) {
   LoadURL(kEventListenerDataURL);
 
-  MainThreadFrameObserver frame_observer(
-      shell()->web_contents()->GetRenderViewHost()->GetWidget());
+  MainThreadFrameObserver frame_observer(GetWidgetHost());
 
   base::TimeTicks event_time = base::TimeTicks::Now();
   int64_t event_time_ms = event_time.since_origin().InMilliseconds();
@@ -259,8 +258,7 @@ IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, KeyDownEventTimeStamp) {
 IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, TouchStartEventTimeStamp) {
   LoadURL(kEventListenerDataURL);
 
-  MainThreadFrameObserver frame_observer(
-      shell()->web_contents()->GetRenderViewHost()->GetWidget());
+  MainThreadFrameObserver frame_observer(GetWidgetHost());
 
   base::TimeTicks event_time = base::TimeTicks::Now();
   int64_t event_time_ms = event_time.since_origin().InMilliseconds();
@@ -279,8 +277,7 @@ IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, TouchStartEventTimeStamp) {
 IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, ClickEventTimeStamp) {
   LoadURL(kEventListenerDataURL);
 
-  MainThreadFrameObserver frame_observer(
-      shell()->web_contents()->GetRenderViewHost()->GetWidget());
+  MainThreadFrameObserver frame_observer(GetWidgetHost());
 
   base::TimeTicks event_time = base::TimeTicks::Now();
   int64_t event_time_ms = event_time.since_origin().InMilliseconds();
@@ -299,8 +296,7 @@ IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, ClickEventTimeStamp) {
 IN_PROC_BROWSER_TEST_F(InputEventBrowserTest, WheelEventTimeStamp) {
   LoadURL(kEventListenerDataURL);
 
-  MainThreadFrameObserver frame_observer(
-      shell()->web_contents()->GetRenderViewHost()->GetWidget());
+  MainThreadFrameObserver frame_observer(GetWidgetHost());
 
   base::TimeTicks event_time = base::TimeTicks::Now();
   int64_t event_time_ms = event_time.since_origin().InMilliseconds();

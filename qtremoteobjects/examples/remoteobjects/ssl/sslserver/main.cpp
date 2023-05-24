@@ -1,59 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "timemodel.h"
 
 #include <QCoreApplication>
 #include <QSslConfiguration>
-
-#include "sslserver.h"
+#include <QSslKey>
+#include <QSslServer>
 
 #include <QRemoteObjectHost>
 /*
@@ -84,58 +37,73 @@ BOOL WINAPI WinHandler(DWORD CEvent)
     {
     case CTRL_C_EVENT:
         SigIntHandler();
-        break;
+        return TRUE;
     }
-    return TRUE;
+    return FALSE;
 }
 #endif
-
-/*
- To generate certificates you can use the following commands:
-
-openssl genrsa -out rootCA.key 2048
-openssl req -x509 -new -nodes -key rootCA.key -sha256 -days 1825 -out rootCA.pem -subj "/C=US/ST=Oregon/L=Portland"
-
-openssl genrsa -out client.key 2048
-openssl req -new -key client.key -out client.csr -subj "/C=US/ST=Oregon/L=Portland/CN=127.0.0.1"
-openssl x509 -req -in client.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial -out client.crt -days 1825 -sha256
-
-openssl genrsa -out server.key 2048
-openssl req -new -key server.key -out server.csr -subj "/C=US/ST=Oregon/L=Salem/CN=127.0.0.1"
-openssl x509 -req -in server.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial -out server.crt -days 1825 -sha256
-*/
 
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
+    //! [0]
     auto config = QSslConfiguration::defaultConfiguration();
     config.setCaCertificates(QSslCertificate::fromPath(QStringLiteral(":/sslcert/rootCA.pem")));
+    QFile certificateFile(QStringLiteral(":/sslcert/server.crt"));
+    if (certificateFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        config.setLocalCertificate(QSslCertificate(certificateFile.readAll(), QSsl::Pem));
+    else
+        qFatal("Could not open certificate file");
+    QFile keyFile(QStringLiteral(":/sslcert/server.key"));
+    if (keyFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QSslKey key(keyFile.readAll(), QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey);
+        if (key.isNull())
+            qFatal("Key is not valid");
+        config.setPrivateKey(key);
+    } else {
+        qFatal("Could not open key file");
+    }
+    config.setPeerVerifyMode(QSslSocket::VerifyPeer);
     QSslConfiguration::setDefaultConfiguration(config);
+    //! [0]
 
 #if defined(Q_OS_UNIX) || defined(Q_OS_LINUX) || defined(Q_OS_QNX)
     signal(SIGINT, &unix_handler);
 #elif defined(Q_OS_WIN32)
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)WinHandler, TRUE);
 #endif
+    //! [1]
     QRemoteObjectHost host;
-    SslServer server;
+    QSslServer server;
     server.listen(QHostAddress::Any, 65511);
-
     host.setHostUrl(server.serverAddress().toString(), QRemoteObjectHost::AllowExternalRegistration);
+    //! [1]
 
-    QObject::connect(&server, &SslServer::encryptedSocketReady, &server, [&host](QSslSocket *socket) {
+    //! [2]
+    QObject::connect(&server, &QSslServer::errorOccurred,
+                     [](QSslSocket *socket, QAbstractSocket::SocketError error) {
+                         Q_UNUSED(socket);
+                         qDebug() << "QSslServer::errorOccurred" << error;
+                     });
+    QObject::connect(&server, &QSslServer::pendingConnectionAvailable, [&server, &host]() {
+        qDebug() << "New connection available";
+        QSslSocket *socket = qobject_cast<QSslSocket *>(server.nextPendingConnection());
+        Q_ASSERT(socket);
         QObject::connect(socket, &QSslSocket::errorOccurred,
-                socket, [](QAbstractSocket::SocketError error){
-            qDebug() << "QSslSocket::error" << error;
-        }) ;
+                         [](QAbstractSocket::SocketError error) {
+                             qDebug() << "QSslSocket::error" << error;
+                         });
         host.addHostSideConnection(socket);
     });
+    //! [2]
 
+    //! [3]
     MinuteTimer timer;
     host.enableRemoting(&timer);
+    //! [3]
 
-    Q_UNUSED(timer);
+    Q_UNUSED(timer)
     return app.exec();
 }
 

@@ -1,10 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_MODULESCRIPT_WORKER_MODULE_SCRIPT_FETCHER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_MODULESCRIPT_WORKER_MODULE_SCRIPT_FETCHER_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/loader/modulescript/module_script_fetcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/worker_main_script_loader.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/worker_main_script_loader_client.h"
@@ -25,10 +26,11 @@ class CORE_EXPORT WorkerModuleScriptFetcher final
       public WorkerMainScriptLoaderClient {
  public:
   WorkerModuleScriptFetcher(WorkerGlobalScope*,
-                            util::PassKey<ModuleScriptLoader>);
+                            base::PassKey<ModuleScriptLoader>);
 
   // Implements ModuleScriptFetcher.
   void Fetch(FetchParameters&,
+             ModuleType,
              ResourceFetcher*,
              ModuleGraphLevel,
              ModuleScriptFetcher::Client*) override;
@@ -48,11 +50,10 @@ class CORE_EXPORT WorkerModuleScriptFetcher final
   String DebugName() const override { return "WorkerModuleScriptFetcher"; }
 
   void NotifyClient(const KURL& request_url,
-                    ModuleScriptCreationParams::ModuleType module_type,
-                    const network::mojom::CredentialsMode credentials_mode,
+                    ModuleType module_type,
                     const ParkableString& source_text,
                     const ResourceResponse& response,
-                    SingleCachedMetadataHandler* cache_handler);
+                    CachedMetadataHandler* cache_handler);
 
   const Member<WorkerGlobalScope> global_scope_;
 
@@ -65,6 +66,7 @@ class CORE_EXPORT WorkerModuleScriptFetcher final
   Member<ResourceFetcher> fetch_client_settings_object_fetcher_;
   Member<Client> client_;
   ModuleGraphLevel level_;
+  ModuleType expected_module_type_;
 };
 
 }  // namespace blink

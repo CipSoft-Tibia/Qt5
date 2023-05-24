@@ -1,15 +1,15 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module blink.mojom;
 
 import "mojo/public/mojom/base/shared_memory.mojom";
-import "mojo/public/mojom/base/time.mojom";
 import "services/viz/public/mojom/compositing/begin_frame_args.mojom";
 import "services/viz/public/mojom/compositing/compositor_frame.mojom";
 import "services/viz/public/mojom/compositing/compositor_frame_metadata.mojom";
 import "services/viz/public/mojom/compositing/frame_timing_details.mojom";
+import "services/viz/public/mojom/compositing/local_surface_id.mojom";
 import "services/viz/public/mojom/compositing/returned_resource.mojom";
 import "services/viz/public/mojom/hit_test/hit_test_region_list.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
@@ -19,6 +19,7 @@ struct SyncCompositorDemandDrawHwParams {
   gfx.mojom.Size viewport_size;
   gfx.mojom.Rect viewport_rect_for_tile_priority;
   gfx.mojom.Transform transform_for_tile_priority;
+  bool need_new_local_surface_id;
 };
 
 struct SyncCompositorDemandDrawSwParams {
@@ -29,8 +30,8 @@ struct SyncCompositorDemandDrawSwParams {
 
 struct SyncCompositorCommonRendererParams {
   uint32 version = 0;
-  gfx.mojom.ScrollOffset total_scroll_offset;
-  gfx.mojom.ScrollOffset max_scroll_offset;
+  gfx.mojom.PointF total_scroll_offset;
+  gfx.mojom.PointF max_scroll_offset;
   gfx.mojom.SizeF scrollable_size;
   float page_scale_factor = 0;
   float min_page_scale_factor = 0;
@@ -50,12 +51,14 @@ interface SynchronousCompositor {
   // the associated SynchronousCompositorControlHost.
   DemandDrawHwAsync(SyncCompositorDemandDrawHwParams draw_params);
 
-  // Synchronously hardware draws.
+  // Same as |DemandDrawHwAsync| except it's synchronous and blocks the caller
+  // thread.
   [Sync]
   DemandDrawHw(SyncCompositorDemandDrawHwParams draw_params) =>
       (SyncCompositorCommonRendererParams result,
        uint32 layer_tree_frame_sink_id,
        uint32 metadata_version,
+       viz.mojom.LocalSurfaceId? local_surface_id,
        viz.mojom.CompositorFrame? frame,
        viz.mojom.HitTestRegionList? hit_test_region_list);
 
@@ -97,8 +100,13 @@ interface SynchronousCompositor {
   ReclaimResources(uint32 layer_tree_frame_sink_id,
                    array<viz.mojom.ReturnedResource> resources);
 
+  // Notifies the client when a directive for ViewTransition, submitted in
+  // a previous CompositorFrame, has finished executing.
+  OnCompositorFrameTransitionDirectiveProcessed(uint32 layer_tree_frame_sink_id,
+                                                uint32 sequence_id);
+
   // Adjust the scroll to the given offset.
-  SetScroll(gfx.mojom.ScrollOffset offset);
+  SetScroll(gfx.mojom.PointF offset);
 
   // BeginFrame, update will be pushed via SynchronousCompositorControlHost
   // BeginFrameResponse.
@@ -140,9 +148,10 @@ interface SynchronousCompositorHost {
 // execution flow (from java) returns the responses from BeginFrames must be
 // received.
 interface SynchronousCompositorControlHost {
-  // Response from DrawHwAsync.
+  // Response from DemandDrawHwAsync.
   ReturnFrame(uint32 layer_tree_frame_sink_id,
               uint32 metadata_version,
+              viz.mojom.LocalSurfaceId? local_surface_id,
               viz.mojom.CompositorFrame? frame,
               viz.mojom.HitTestRegionList? hit_test_region_list);
 

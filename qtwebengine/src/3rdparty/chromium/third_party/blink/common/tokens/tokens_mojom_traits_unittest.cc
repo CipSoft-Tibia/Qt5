@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,8 +23,8 @@ void ExpectSerializationWorks() {
   MultiTokenType multi_token(typed_token);
 
   MultiTokenType deserialized;
-  EXPECT_TRUE(::mojo::test::SerializeAndDeserialize<MojomType>(&multi_token,
-                                                               &deserialized));
+  EXPECT_TRUE(::mojo::test::SerializeAndDeserialize<MojomType>(multi_token,
+                                                               deserialized));
   EXPECT_TRUE(deserialized.template Is<TokenType>());
   EXPECT_EQ(multi_token, deserialized);
   EXPECT_EQ(multi_token.template GetAs<TokenType>(),

@@ -1,54 +1,29 @@
 'use strict';
 
-/** @typedef {import('postcss').Rule} Rule */
-/** @typedef {import('postcss').AtRule} AtRule */
+const { isAtRule, isRule } = require('./typeGuards');
 
 /**
- * @param {Rule | AtRule} statement
- * @param {{
- * 	noRawBefore?: boolean
- * }} options
- *
+ * @param {import('postcss').Container} statement
  * @returns {string}
  */
-module.exports = function (statement, options = {}) {
+module.exports = function beforeBlockString(statement, { noRawBefore } = { noRawBefore: false }) {
 	let result = '';
-	/** @type {Rule | undefined} */
-	let rule; /*?: postcss$rule*/
-	/** @type {AtRule | undefined} */
-	let atRule; /*?: postcss$atRule*/
-
-	if (statement.type === 'rule') {
-		rule = statement;
-	}
-
-	if (statement.type === 'atrule') {
-		atRule = statement;
-	}
-
-	if (!rule && !atRule) {
-		return result;
-	}
 
 	const before = statement.raws.before || '';
 
-	if (!options.noRawBefore) {
+	if (!noRawBefore) {
 		result += before;
 	}
 
-	if (rule) {
-		result += rule.selector;
+	if (isRule(statement)) {
+		result += statement.selector;
+	} else if (isAtRule(statement)) {
+		result += `@${statement.name}${statement.raws.afterName || ''}${statement.params}`;
+	} else {
+		return '';
 	}
 
-	if (atRule) {
-		result += `@${atRule.name}${atRule.raws.afterName || ''}${atRule.params}`;
-	}
-
-	const between = statement.raws.between;
-
-	if (between !== undefined) {
-		result += between;
-	}
+	result += statement.raws.between || '';
 
 	return result;
 };

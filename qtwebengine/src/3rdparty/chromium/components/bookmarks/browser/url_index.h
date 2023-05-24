@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,9 @@
 
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/strings/string16.h"
 #include "base/synchronization/lock.h"
 #include "components/bookmarks/browser/bookmark_node.h"
 #include "components/bookmarks/browser/history_bookmark_model.h"
@@ -20,6 +19,7 @@ namespace bookmarks {
 
 class BookmarkNode;
 
+struct UrlLoadStats;
 struct UrlAndTitle;
 
 // UrlIndex maintains the bookmark nodes of type url. The nodes are ordered by
@@ -38,6 +38,9 @@ class UrlIndex : public HistoryBookmarkModel {
  public:
   explicit UrlIndex(std::unique_ptr<BookmarkNode> root);
 
+  UrlIndex(const UrlIndex&) = delete;
+  UrlIndex& operator=(const UrlIndex&) = delete;
+
   BookmarkNode* root() { return root_.get(); }
 
   // Adds |node| to |parent| at |index|.
@@ -54,7 +57,7 @@ class UrlIndex : public HistoryBookmarkModel {
   // Mutation of bookmark node fields that are exposed to HistoryBookmarkModel,
   // which means must acquire a lock. Must be called from the UI thread.
   void SetUrl(BookmarkNode* node, const GURL& url);
-  void SetTitle(BookmarkNode* node, const base::string16& title);
+  void SetTitle(BookmarkNode* node, const std::u16string& title);
 
   // Returns the nodes whose icon_url is |icon_url|.
   void GetNodesWithIconUrl(const GURL& icon_url,
@@ -65,8 +68,8 @@ class UrlIndex : public HistoryBookmarkModel {
   // Returns true if there is at least one bookmark.
   bool HasBookmarks() const;
 
-  // Returns the number of URL bookmarks stored.
-  size_t UrlCount() const;
+  // Compute stats from the load.
+  UrlLoadStats ComputeStats() const;
 
   // HistoryBookmarkModel:
   bool IsBookmarked(const GURL& url) override;
@@ -99,8 +102,6 @@ class UrlIndex : public HistoryBookmarkModel {
   using NodesOrderedByUrlSet = std::multiset<BookmarkNode*, NodeUrlComparator>;
   NodesOrderedByUrlSet nodes_ordered_by_url_set_;
   mutable base::Lock url_lock_;
-
-  DISALLOW_COPY_AND_ASSIGN(UrlIndex);
 };
 
 }  // namespace bookmarks

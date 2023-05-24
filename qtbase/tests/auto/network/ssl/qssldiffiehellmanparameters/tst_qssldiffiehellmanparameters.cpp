@@ -1,32 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Mikkel Krautz <mikkel@krautz.dk>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Mikkel Krautz <mikkel@krautz.dk>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+
+#include <QtNetwork/qtnetworkglobal.h>
+
 #include <QSslDiffieHellmanParameters>
 #include <QSslSocket>
 #include <QByteArray>
@@ -42,8 +20,9 @@ class tst_QSslDiffieHellmanParameters : public QObject
 {
     Q_OBJECT
 
-#ifndef QT_NO_SSL
+#if QT_CONFIG(ssl)
 private Q_SLOTS:
+    void initTestCase();
     void constructionEmpty();
     void constructionDefault();
     void constructionDER();
@@ -51,10 +30,16 @@ private Q_SLOTS:
     void unsafe512Bits();
     void unsafeNonPrime();
     void defaultIsValid();
-#endif
+#endif // Feature 'ssl'.
 };
 
-#ifndef QT_NO_SSL
+#if QT_CONFIG(ssl)
+
+void tst_QSslDiffieHellmanParameters::initTestCase()
+{
+    if (QSslSocket::activeBackend() != QStringLiteral("openssl"))
+        QSKIP("The active TLS backend does not support QSslDiffieHellmanParameters");
+}
 
 void tst_QSslDiffieHellmanParameters::constructionEmpty()
 {
@@ -69,10 +54,8 @@ void tst_QSslDiffieHellmanParameters::constructionDefault()
 {
     QSslDiffieHellmanParameters dh = QSslDiffieHellmanParameters::defaultParameters();
 
-#ifndef QT_NO_OPENSSL
     QCOMPARE(dh.isValid(), true);
     QCOMPARE(dh.error(), QSslDiffieHellmanParameters::NoError);
-#endif
 }
 
 void tst_QSslDiffieHellmanParameters::constructionDER()
@@ -91,10 +74,8 @@ void tst_QSslDiffieHellmanParameters::constructionDER()
         "52DcHKlsqDuafQ1XVGmzVIrKtBi2gfLtPqY4v6g6v26l8gbzK67PpWstllHiPb4VMCAQI="
     )), QSsl::Der);
 
-#ifndef QT_NO_OPENSSL
     QCOMPARE(dh.isValid(), true);
     QCOMPARE(dh.error(), QSslDiffieHellmanParameters::NoError);
-#endif
 }
 
 void tst_QSslDiffieHellmanParameters::constructionPEM()
@@ -116,10 +97,8 @@ void tst_QSslDiffieHellmanParameters::constructionPEM()
         "-----END DH PARAMETERS-----\n"
     ), QSsl::Pem);
 
-#ifndef QT_NO_OPENSSL
     QCOMPARE(dh.isValid(), true);
     QCOMPARE(dh.error(), QSslDiffieHellmanParameters::NoError);
-#endif
 }
 
 void tst_QSslDiffieHellmanParameters::unsafe512Bits()
@@ -132,10 +111,8 @@ void tst_QSslDiffieHellmanParameters::unsafe512Bits()
         "-----END DH PARAMETERS-----\n"
     ), QSsl::Pem);
 
-#ifndef QT_NO_OPENSSL
     QCOMPARE(dh.isValid(), false);
     QCOMPARE(dh.error(), QSslDiffieHellmanParameters::UnsafeParametersError);
-#endif
 }
 
 void tst_QSslDiffieHellmanParameters::unsafeNonPrime()
@@ -148,10 +125,8 @@ void tst_QSslDiffieHellmanParameters::unsafeNonPrime()
         "vholAW9zilkoYkB6sqwxY1Z2dbpTWajCsUAWZQ0AIP4Y5nesAgEC"
     )), QSsl::Der);
 
-#ifndef QT_NO_OPENSSL
     QCOMPARE(dh.isValid(), false);
     QCOMPARE(dh.error(), QSslDiffieHellmanParameters::UnsafeParametersError);
-#endif
 }
 
 void tst_QSslDiffieHellmanParameters::defaultIsValid()
@@ -173,15 +148,13 @@ void tst_QSslDiffieHellmanParameters::defaultIsValid()
 
     const auto defaultdh = QSslDiffieHellmanParameters::defaultParameters();
 
-#ifndef QT_NO_OPENSSL
     QCOMPARE(dh.isEmpty(), false);
     QCOMPARE(dh.isValid(), true);
     QCOMPARE(dh.error(), QSslDiffieHellmanParameters::NoError);
     QCOMPARE(dh, defaultdh);
-#endif
 }
 
-#endif // QT_NO_SSL
+#endif // Feature 'ssl'.
 
 QTEST_MAIN(tst_QSslDiffieHellmanParameters)
 #include "tst_qssldiffiehellmanparameters.moc"

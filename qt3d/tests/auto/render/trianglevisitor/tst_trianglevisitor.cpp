@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <qbackendnodetester.h>
 #include <Qt3DRender/qgeometryrenderer.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qbuffer.h>
 #include <private/trianglesvisitor_p.h>
 #include <private/nodemanagers_p.h>
 #include <private/managers_p.h>
@@ -49,7 +24,7 @@ public:
 
     }
 
-    virtual void visit(uint andx, const Vector3D &a, uint bndx, const Vector3D &b, uint cndx, const Vector3D &c)
+    void visit(uint andx, const Vector3D &a, uint bndx, const Vector3D &b, uint cndx, const Vector3D &c) override
     {
         m_triangles.push_back(TestTriangle(andx, a, bndx, b, cndx, c));
     }
@@ -105,7 +80,7 @@ private:
             abc[2] = c;
         }
     };
-    QVector<TestTriangle> m_triangles;
+    QList<TestTriangle> m_triangles;
 };
 
 class tst_TriangleVisitor : public Qt3DCore::QBackendNodeTester
@@ -154,10 +129,10 @@ private Q_SLOTS:
     void testVisitTriangles()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -190,13 +165,13 @@ private Q_SLOTS:
         simulateInitializationSync(dataBuffer.data(), backendBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(0);
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
         geometry->addAttribute(positionAttribute.data());
 
         geometryRenderer->setGeometry(geometry);
@@ -227,12 +202,12 @@ private Q_SLOTS:
     void testVisitTrianglesIndexed()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QAttribute> indexAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
-        QScopedPointer<Qt3DRender::QBuffer> indexDataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QAttribute> indexAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
+        QScopedPointer<Qt3DCore::QBuffer> indexDataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -290,18 +265,18 @@ private Q_SLOTS:
         simulateInitializationSync(indexDataBuffer.data(), backendIndexBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*sizeof(float));
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
 
         indexAttribute->setBuffer(indexDataBuffer.data());
-        indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedInt);
+        indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedInt);
         indexAttribute->setCount(3*5);
-        indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+        indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
 
         geometry->addAttribute(positionAttribute.data());
         geometry->addAttribute(indexAttribute.data());
@@ -341,10 +316,10 @@ private Q_SLOTS:
     void testVisitTriangleStrip()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -377,13 +352,13 @@ private Q_SLOTS:
         simulateInitializationSync(dataBuffer.data(), backendBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*4);
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
         geometry->addAttribute(positionAttribute.data());
 
         geometryRenderer->setGeometry(geometry);
@@ -416,12 +391,12 @@ private Q_SLOTS:
     void testVisitTriangleStripIndexed()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QAttribute> indexAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
-        QScopedPointer<Qt3DRender::QBuffer> indexDataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QAttribute> indexAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
+        QScopedPointer<Qt3DCore::QBuffer> indexDataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -480,18 +455,18 @@ private Q_SLOTS:
         simulateInitializationSync(indexDataBuffer.data(), backendIndexBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*sizeof(float));
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
 
         indexAttribute->setBuffer(indexDataBuffer.data());
-        indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedInt);
+        indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedInt);
         indexAttribute->setCount(4*4);
-        indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+        indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
 
         geometry->addAttribute(positionAttribute.data());
         geometry->addAttribute(indexAttribute.data());
@@ -537,10 +512,10 @@ private Q_SLOTS:
     void testVisitTriangleFan()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -573,13 +548,13 @@ private Q_SLOTS:
         simulateInitializationSync(dataBuffer.data(), backendBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*4);
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
         geometry->addAttribute(positionAttribute.data());
 
         geometryRenderer->setGeometry(geometry);
@@ -612,12 +587,12 @@ private Q_SLOTS:
     void testVisitTriangleFanIndexed()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QAttribute> indexAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
-        QScopedPointer<Qt3DRender::QBuffer> indexDataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QAttribute> indexAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
+        QScopedPointer<Qt3DCore::QBuffer> indexDataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -670,18 +645,18 @@ private Q_SLOTS:
         simulateInitializationSync(indexDataBuffer.data(), backendIndexBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*sizeof(float));
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
 
         indexAttribute->setBuffer(indexDataBuffer.data());
-        indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedInt);
+        indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedInt);
         indexAttribute->setCount(10);
-        indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+        indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
 
         geometry->addAttribute(positionAttribute.data());
         geometry->addAttribute(indexAttribute.data());
@@ -723,10 +698,10 @@ private Q_SLOTS:
     void testVisitTrianglesAdjacency()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -759,13 +734,13 @@ private Q_SLOTS:
         simulateInitializationSync(dataBuffer.data(), backendBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*4);
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
         geometry->addAttribute(positionAttribute.data());
 
         geometryRenderer->setGeometry(geometry);
@@ -795,12 +770,12 @@ private Q_SLOTS:
     void testVisitTrianglesAdjacencyIndexed()
     {
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QAttribute> indexAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
-        QScopedPointer<Qt3DRender::QBuffer> indexDataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QAttribute> indexAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
+        QScopedPointer<Qt3DCore::QBuffer> indexDataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -856,18 +831,18 @@ private Q_SLOTS:
         simulateInitializationSync(indexDataBuffer.data(), backendIndexBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*sizeof(float));
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
 
         indexAttribute->setBuffer(indexDataBuffer.data());
-        indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedInt);
+        indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedInt);
         indexAttribute->setCount(3*4);
-        indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+        indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
 
         geometry->addAttribute(positionAttribute.data());
         geometry->addAttribute(indexAttribute.data());
@@ -905,10 +880,10 @@ private Q_SLOTS:
     {
         QSKIP("TriangleStripAdjacency not implemented");
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -953,13 +928,13 @@ private Q_SLOTS:
         simulateInitializationSync(dataBuffer.data(), backendBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(8);
         positionAttribute->setByteStride(3*4);
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
         geometry->addAttribute(positionAttribute.data());
 
         geometryRenderer->setGeometry(geometry);
@@ -991,12 +966,12 @@ private Q_SLOTS:
     {
         QSKIP("TriangleStripAdjacency not implemented");
         QScopedPointer<NodeManagers> nodeManagers(new NodeManagers());
-        Qt3DRender::QGeometry *geometry = new Qt3DRender::QGeometry();
+        Qt3DCore::QGeometry *geometry = new Qt3DCore::QGeometry();
         QScopedPointer<Qt3DRender::QGeometryRenderer> geometryRenderer(new Qt3DRender::QGeometryRenderer());
-        QScopedPointer<Qt3DRender::QAttribute> positionAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QAttribute> indexAttribute(new Qt3DRender::QAttribute());
-        QScopedPointer<Qt3DRender::QBuffer> dataBuffer(new Qt3DRender::QBuffer());
-        QScopedPointer<Qt3DRender::QBuffer> indexDataBuffer(new Qt3DRender::QBuffer());
+        QScopedPointer<Qt3DCore::QAttribute> positionAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QAttribute> indexAttribute(new Qt3DCore::QAttribute());
+        QScopedPointer<Qt3DCore::QBuffer> dataBuffer(new Qt3DCore::QBuffer());
+        QScopedPointer<Qt3DCore::QBuffer> indexDataBuffer(new Qt3DCore::QBuffer());
         TestVisitor visitor(nodeManagers.data());
         TestRenderer renderer;
 
@@ -1047,18 +1022,18 @@ private Q_SLOTS:
         simulateInitializationSync(indexDataBuffer.data(), backendIndexBuffer);
 
         positionAttribute->setBuffer(dataBuffer.data());
-        positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-        positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+        positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+        positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
         positionAttribute->setVertexSize(3);
         positionAttribute->setCount(6);
         positionAttribute->setByteStride(3*sizeof(float));
         positionAttribute->setByteOffset(0);
-        positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+        positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
 
         indexAttribute->setBuffer(indexDataBuffer.data());
-        indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedInt);
+        indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedInt);
         indexAttribute->setCount(8);
-        indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+        indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
 
         geometry->addAttribute(positionAttribute.data());
         geometry->addAttribute(indexAttribute.data());

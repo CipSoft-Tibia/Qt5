@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,7 +29,6 @@ void MockConstraintFactory::DisableDefaultAudioConstraints() {
   basic_.goog_echo_cancellation.SetExact(false);
   basic_.goog_experimental_echo_cancellation.SetExact(false);
   basic_.goog_auto_gain_control.SetExact(false);
-  basic_.goog_experimental_auto_gain_control.SetExact(false);
   basic_.goog_noise_suppression.SetExact(false);
   basic_.goog_noise_suppression.SetExact(false);
   basic_.goog_highpass_filter.SetExact(false);

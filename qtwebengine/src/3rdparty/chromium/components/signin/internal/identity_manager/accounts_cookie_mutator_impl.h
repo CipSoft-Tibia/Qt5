@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,9 @@
 #define COMPONENTS_SIGNIN_INTERNAL_IDENTITY_MANAGER_ACCOUNTS_COOKIE_MUTATOR_IMPL_H_
 
 #include <string>
-#include <vector>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "components/signin/internal/identity_manager/oauth_multilogin_helper.h"
 #include "components/signin/public/identity_manager/accounts_cookie_mutator.h"
@@ -33,6 +32,11 @@ class AccountsCookieMutatorImpl : public AccountsCookieMutator {
       ProfileOAuth2TokenService* token_service,
       GaiaCookieManagerService* gaia_cookie_manager_service,
       AccountTrackerService* account_tracker_service);
+
+  AccountsCookieMutatorImpl(const AccountsCookieMutatorImpl&) = delete;
+  AccountsCookieMutatorImpl& operator=(const AccountsCookieMutatorImpl&) =
+      delete;
+
   ~AccountsCookieMutatorImpl() override;
 
   void AddAccountToCookie(
@@ -55,18 +59,21 @@ class AccountsCookieMutatorImpl : public AccountsCookieMutator {
   std::unique_ptr<SetAccountsInCookieTask> SetAccountsInCookieForPartition(
       PartitionDelegate* partition_delegate,
       const MultiloginParameters& parameters,
+      gaia::GaiaSource source,
       base::OnceCallback<void(SetAccountsInCookieResult)>
           set_accounts_in_cookies_completed_callback) override;
 
   void TriggerCookieJarUpdate() override;
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   void ForceTriggerOnCookieChange() override;
 #endif
 
   void LogOutAllAccounts(
       gaia::GaiaSource source,
       LogOutFromCookieCompletedCallback completion_callback) override;
+
+  void RemoveLoggedOutAccountByGaiaId(const std::string& gaia_id) override;
 
  private:
   class MultiloginHelperWrapper : public SetAccountsInCookieTask {
@@ -78,12 +85,11 @@ class AccountsCookieMutatorImpl : public AccountsCookieMutator {
     std::unique_ptr<OAuthMultiloginHelper> helper_;
   };
 
-  SigninClient* signin_client_;
-  ProfileOAuth2TokenService* token_service_;
-  GaiaCookieManagerService* gaia_cookie_manager_service_;
-  AccountTrackerService* account_tracker_service_;
-
-  DISALLOW_COPY_AND_ASSIGN(AccountsCookieMutatorImpl);
+  raw_ptr<SigninClient> signin_client_;
+  raw_ptr<ProfileOAuth2TokenService, DanglingUntriaged> token_service_;
+  raw_ptr<GaiaCookieManagerService, DanglingUntriaged>
+      gaia_cookie_manager_service_;
+  raw_ptr<AccountTrackerService, DanglingUntriaged> account_tracker_service_;
 };
 
 }  // namespace signin

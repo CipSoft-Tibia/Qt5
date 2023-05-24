@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include "base/trace_event/trace_event.h"
 #include "device/vr/android/gvr/gvr_utils.h"
 #include "third_party/gvr-android-sdk/src/libraries/headers/vr/gvr/capi/include/gvr.h"
+#include "ui/gfx/geometry/transform.h"
+#include "ui/gfx/geometry/transform_util.h"
 #include "ui/gfx/geometry/vector3d_f.h"
-#include "ui/gfx/transform.h"
-#include "ui/gfx/transform_util.h"
 
 namespace device {
 
@@ -31,14 +31,15 @@ mojom::VRPosePtr GvrDelegate::VRPosePtrFromGvrPose(
 
   gfx::Transform transform;
   if (inv_transform.GetInverse(&transform)) {
-    gfx::DecomposedTransform decomposed_transform;
-    gfx::DecomposeTransform(&decomposed_transform, transform);
+    absl::optional<gfx::DecomposedTransform> decomposed_transform =
+        transform.Decompose();
+    DCHECK(decomposed_transform);
 
-    pose->orientation = decomposed_transform.quaternion;
+    pose->orientation = decomposed_transform->quaternion;
 
-    pose->position = gfx::Point3F(decomposed_transform.translate[0],
-                                  decomposed_transform.translate[1],
-                                  decomposed_transform.translate[2]);
+    pose->position = gfx::Point3F(decomposed_transform->translate[0],
+                                  decomposed_transform->translate[1],
+                                  decomposed_transform->translate[2]);
   }
 
   return pose;

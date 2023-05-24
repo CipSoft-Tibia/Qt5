@@ -1,4 +1,4 @@
-// Copyright 2018 The PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <limits.h>
 
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,7 +17,12 @@
 #include "public/fpdf_thumbnail.h"
 #include "testing/fx_string_testhelpers.h"
 #include "testing/image_diff/image_diff_png.h"
-#include "third_party/base/logging.h"
+#include "third_party/base/notreached.h"
+
+#ifdef PDF_ENABLE_SKIA
+#include "third_party/skia/include/core/SkPicture.h"  // nogncheck
+#include "third_party/skia/include/core/SkStream.h"   // nogncheck
+#endif
 
 namespace {
 
@@ -514,9 +518,7 @@ void WritePS(FPDF_PAGE page, const char* pdf_name, int num) {
 #endif  // _WIN32
 
 #ifdef PDF_ENABLE_SKIA
-std::string WriteSkp(const char* pdf_name,
-                     int num,
-                     SkPictureRecorder* recorder) {
+std::string WriteSkp(const char* pdf_name, int num, const SkPicture& picture) {
   char filename[256];
   int chars_formatted =
       snprintf(filename, sizeof(filename), "%s.%d.skp", pdf_name, num);
@@ -527,9 +529,8 @@ std::string WriteSkp(const char* pdf_name,
     return "";
   }
 
-  sk_sp<SkPicture> picture(recorder->finishRecordingAsPicture());
   SkFILEWStream wStream(filename);
-  picture->serialize(&wStream);
+  picture.serialize(&wStream);
   return std::string(filename);
 }
 #endif

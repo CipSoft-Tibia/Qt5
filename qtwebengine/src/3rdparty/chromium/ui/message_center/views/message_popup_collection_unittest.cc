@@ -1,10 +1,11 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/message_center/views/message_popup_collection.h"
 
-#include "base/stl_util.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/memory/raw_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -30,6 +31,10 @@ class MockMessagePopupCollection : public DesktopMessagePopupCollection {
  public:
   explicit MockMessagePopupCollection(gfx::NativeWindow context)
       : DesktopMessagePopupCollection(), context_(context) {}
+
+  MockMessagePopupCollection(const MockMessagePopupCollection&) = delete;
+  MockMessagePopupCollection& operator=(const MockMessagePopupCollection&) =
+      delete;
 
   ~MockMessagePopupCollection() override = default;
 
@@ -99,8 +104,6 @@ class MockMessagePopupCollection : public DesktopMessagePopupCollection {
   bool is_primary_display_ = true;
   bool is_fullscreen_ = false;
   int new_popup_height_ = 84;
-
-  DISALLOW_COPY_AND_ASSIGN(MockMessagePopupCollection);
 };
 
 class MockMessagePopupView : public MessagePopupView {
@@ -154,6 +157,8 @@ class MockMessagePopupView : public MessagePopupView {
     }
   }
 
+  void SimulateFocused() { OnDidChangeFocus(nullptr, children().front()); }
+
   void Activate() {
     SetCanActivate(true);
     GetWidget()->Activate();
@@ -166,19 +171,19 @@ class MockMessagePopupView : public MessagePopupView {
 
   void set_expandable(bool expandable) { expandable_ = expandable; }
 
-  void set_height_after_update(base::Optional<int> height_after_update) {
+  void set_height_after_update(absl::optional<int> height_after_update) {
     height_after_update_ = height_after_update;
   }
 
  private:
-  MockMessagePopupCollection* const popup_collection_;
+  const raw_ptr<MockMessagePopupCollection> popup_collection_;
 
   std::string id_;
   bool updated_ = false;
   bool expandable_ = false;
   std::string title_;
 
-  base::Optional<int> height_after_update_;
+  absl::optional<int> height_after_update_;
 };
 
 MessagePopupView* MockMessagePopupCollection::CreatePopup(
@@ -195,6 +200,11 @@ class MessagePopupCollectionTest : public views::ViewsTestBase,
                                    public MessageCenterObserver {
  public:
   MessagePopupCollectionTest() = default;
+
+  MessagePopupCollectionTest(const MessagePopupCollectionTest&) = delete;
+  MessagePopupCollectionTest& operator=(const MessagePopupCollectionTest&) =
+      delete;
+
   ~MessagePopupCollectionTest() override = default;
 
   // views::ViewTestBase:
@@ -239,10 +249,9 @@ class MessagePopupCollectionTest : public views::ViewsTestBase,
   std::unique_ptr<Notification> CreateNotification(const std::string& id,
                                                    const std::string& title) {
     return std::make_unique<Notification>(
-        NOTIFICATION_TYPE_BASE_FORMAT, id, base::UTF8ToUTF16(title),
-        base::UTF8ToUTF16("test message"), gfx::Image(),
-        base::string16() /* display_source */, GURL(), NotifierId(),
-        RichNotificationData(), new NotificationDelegate());
+        NOTIFICATION_TYPE_SIMPLE, id, base::UTF8ToUTF16(title), u"test message",
+        ui::ImageModel(), std::u16string() /* display_source */, GURL(),
+        NotifierId(), RichNotificationData(), new NotificationDelegate());
   }
 
   std::string AddNotification() {
@@ -316,8 +325,6 @@ class MessagePopupCollectionTest : public views::ViewsTestBase,
 
   gfx::Rect work_area_;
   std::string last_displayed_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(MessagePopupCollectionTest);
 };
 
 TEST_F(MessagePopupCollectionTest, Nothing) {
@@ -431,20 +438,14 @@ TEST_F(MessagePopupCollectionTest, UpdateContents) {
   EXPECT_FALSE(GetPopup(id)->updated());
 
   auto updated_notification = CreateNotification(id);
-  updated_notification->set_message(base::ASCIIToUTF16("updated"));
+  updated_notification->set_message(u"updated");
   MessageCenter::Get()->UpdateNotification(id, std::move(updated_notification));
   EXPECT_EQ(1u, GetPopupCounts());
   EXPECT_TRUE(GetPopup(id)->updated());
 }
 
-// Failiing on MacOS 10.10. https://crbug.com/1047503
-#if defined(OS_APPLE)
-#define MAYBE_UpdateContentsCausesPopupClose \
-  DISABLED_UpdateContentsCausesPopupClose
-#else
-#define MAYBE_UpdateContentsCausesPopupClose UpdateContentsCausesPopupClose
-#endif
-TEST_F(MessagePopupCollectionTest, MAYBE_UpdateContentsCausesPopupClose) {
+// TODO(crbug.com/1403996): Flaky on all platforms.
+TEST_F(MessagePopupCollectionTest, DISABLED_UpdateContentsCausesPopupClose) {
   std::string id = AddNotification();
   AnimateToEnd();
   RunPendingMessages();
@@ -455,7 +456,7 @@ TEST_F(MessagePopupCollectionTest, MAYBE_UpdateContentsCausesPopupClose) {
   GetPopup(id)->set_height_after_update(2048);
 
   auto updated_notification = CreateNotification(id);
-  updated_notification->set_message(base::ASCIIToUTF16("updated"));
+  updated_notification->set_message(u"updated");
   MessageCenter::Get()->UpdateNotification(id, std::move(updated_notification));
   RunPendingMessages();
   EXPECT_EQ(0u, GetPopupCounts());
@@ -755,7 +756,7 @@ TEST_F(MessagePopupCollectionTest, HoverClose) {
   GetPopup(id0)->SetHovered(true);
   EXPECT_FALSE(IsPopupTimerStarted());
 
-  const int first_popup_top = GetPopup(id0)->GetBoundsInScreen().y();
+  const int first_popup_bottom = GetPopup(id0)->GetBoundsInScreen().bottom();
 
   MessageCenter::Get()->RemoveNotification(id0, true);
   EXPECT_TRUE(IsAnimating());
@@ -765,18 +766,18 @@ TEST_F(MessagePopupCollectionTest, HoverClose) {
   GetPopup(id1)->SetHovered(true);
   AnimateToEnd();
   EXPECT_FALSE(IsAnimating());
-  EXPECT_EQ(first_popup_top, GetPopup(id1)->GetBoundsInScreen().y());
+  EXPECT_EQ(first_popup_bottom, GetPopup(id1)->GetBoundsInScreen().bottom());
 
   EXPECT_FALSE(IsPopupTimerStarted());
   GetPopup(id1)->SetHovered(false);
-  EXPECT_TRUE(IsAnimating());
-  AnimateToEnd();
-  EXPECT_FALSE(IsAnimating());
   EXPECT_TRUE(IsPopupTimerStarted());
-  EXPECT_GT(first_popup_top, GetPopup(id1)->GetBoundsInScreen().y());
+  EXPECT_EQ(first_popup_bottom, GetPopup(id1)->GetBoundsInScreen().bottom());
 }
 
-TEST_F(MessagePopupCollectionTest, ActivatedClose) {
+// Popup timers should be paused if a notification has focus.
+// Once the focus is lost or the notification is resumed, popup timers
+// should restart.
+TEST_F(MessagePopupCollectionTest, FocusedClose) {
   std::string id0 = AddNotification();
   AnimateToEnd();
   popup_collection()->set_new_popup_height(256);
@@ -789,6 +790,10 @@ TEST_F(MessagePopupCollectionTest, ActivatedClose) {
 
   EXPECT_TRUE(IsPopupTimerStarted());
   GetPopup(id0)->Activate();
+  // Activating a popup should not pause timers.
+  EXPECT_TRUE(IsPopupTimerStarted());
+  // If the popup gets keyboard focus the timers should pause.
+  GetPopup(id0)->SimulateFocused();
   EXPECT_FALSE(IsPopupTimerStarted());
 
   const int first_popup_top = GetPopup(id0)->GetBoundsInScreen().y();

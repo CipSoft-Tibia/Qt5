@@ -1,57 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qaxwidget.h"
-#include "../shared/qaxutils_p.h"
+#include "qaxwidget_p.h"
+#include "qaxbase_p.h"
+#include <QtAxBase/private/qaxutils_p.h>
+#include <QtAxBase/private/qaxtypefunctions_p.h>
 
-#include <ActiveQt/qaxaggregated.h>
+#include <QtAxServer/qaxaggregated.h>
 
 #include <qabstracteventdispatcher.h>
 #include <qapplication.h>
@@ -69,6 +25,7 @@
 #include <quuid.h>
 #include <qwhatsthis.h>
 #include <qabstractnativeeventfilter.h>
+#include <private/qpixmap_win_p.h>
 
 #include <windowsx.h>
 #include <ocidl.h>
@@ -104,9 +61,28 @@
     };
 #endif
 
-#include "../shared/qaxtypes.h"
+#include "../shared/qaxtypes_p.h"
 
 QT_BEGIN_NAMESPACE
+
+void QAxWidgetPrivate::emitException(int code, const QString &source, const QString &desc,
+                                     const QString &help)
+{
+    Q_Q(QAxWidget);
+    emit q->exception(code, source, desc, help);
+}
+
+void  QAxWidgetPrivate::emitPropertyChanged(const QString &name)
+{
+    Q_Q(QAxWidget);
+    emit q->propertyChanged(name);
+}
+
+void  QAxWidgetPrivate::emitSignal(const QString &name, int argc, void *argv)
+{
+    Q_Q(QAxWidget);
+    emit q->signal(name, argc, argv);
+}
 
 /*  \class QAxHostWidget
     \brief The QAxHostWidget class is the actual container widget.
@@ -118,7 +94,6 @@ class QAxHostWidget : public QWidget
     Q_DISABLE_COPY_MOVE(QAxHostWidget)
     friend class QAxClientSite;
 public:
-    Q_OBJECT_CHECK
     QAxHostWidget(QWidget *parent, QAxClientSite *ax);
     ~QAxHostWidget() override;
 
@@ -217,7 +192,7 @@ public:
     // IUnknown
     unsigned long WINAPI AddRef() override;
     unsigned long WINAPI Release() override;
-    STDMETHOD(QueryInterface)(REFIID iid, void **iface);
+    STDMETHOD(QueryInterface)(REFIID iid, void **iface) override;
 
     // IDispatch
     HRESULT __stdcall GetTypeInfoCount(unsigned int *) override
@@ -234,149 +209,149 @@ public:
     void emitAmbientPropertyChange(DISPID dispid);
 
     // IOleClientSite
-    STDMETHOD(SaveObject)();
-    STDMETHOD(GetMoniker)(DWORD dwAssign, DWORD dwWhichMoniker, IMoniker **ppmk);
-    STDMETHOD(GetContainer)(LPOLECONTAINER FAR* ppContainer);
-    STDMETHOD(ShowObject)();
-    STDMETHOD(OnShowWindow)(BOOL fShow);
-    STDMETHOD(RequestNewObjectLayout)();
+    STDMETHOD(SaveObject)() override;
+    STDMETHOD(GetMoniker)(DWORD dwAssign, DWORD dwWhichMoniker, IMoniker **ppmk) override;
+    STDMETHOD(GetContainer)(LPOLECONTAINER FAR* ppContainer) override;
+    STDMETHOD(ShowObject)() override;
+    STDMETHOD(OnShowWindow)(BOOL fShow) override;
+    STDMETHOD(RequestNewObjectLayout)() override;
 
     // IOleControlSite
-    STDMETHOD(OnControlInfoChanged)();
-    STDMETHOD(LockInPlaceActive)(BOOL fLock);
-    STDMETHOD(GetExtendedControl)(IDispatch** ppDisp);
-    STDMETHOD(TransformCoords)(POINTL* pPtlHimetric, POINTF* pPtfContainer, DWORD dwFlags);
-    STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, DWORD grfModifiers);
-    STDMETHOD(OnFocus)(BOOL fGotFocus);
-    STDMETHOD(ShowPropertyFrame)();
+    STDMETHOD(OnControlInfoChanged)() override;
+    STDMETHOD(LockInPlaceActive)(BOOL fLock) override;
+    STDMETHOD(GetExtendedControl)(IDispatch** ppDisp) override;
+    STDMETHOD(TransformCoords)(POINTL* pPtlHimetric, POINTF* pPtfContainer, DWORD dwFlags) override;
+    STDMETHOD(TranslateAccelerator)(LPMSG lpMsg, DWORD grfModifiers) override;
+    STDMETHOD(OnFocus)(BOOL fGotFocus) override;
+    STDMETHOD(ShowPropertyFrame)() override;
 
     // IOleWindow
-    STDMETHOD(GetWindow)(HWND *phwnd);
-    STDMETHOD(ContextSensitiveHelp)(BOOL fEnterMode);
+    STDMETHOD(GetWindow)(HWND *phwnd) override;
+    STDMETHOD(ContextSensitiveHelp)(BOOL fEnterMode) override;
 
     // IOleInPlaceSite
-    STDMETHOD(CanInPlaceActivate)();
-    STDMETHOD(OnInPlaceActivate)();
-    STDMETHOD(OnUIActivate)();
-    STDMETHOD(GetWindowContext)(IOleInPlaceFrame **ppFrame, IOleInPlaceUIWindow **ppDoc, LPRECT lprcPosRect, LPRECT lprcClipRect, LPOLEINPLACEFRAMEINFO lpFrameInfo);
-    STDMETHOD(Scroll)(SIZE scrollExtant);
-    STDMETHOD(OnUIDeactivate)(BOOL fUndoable);
-    STDMETHOD(OnInPlaceDeactivate)();
-    STDMETHOD(DiscardUndoState)();
-    STDMETHOD(DeactivateAndUndo)();
-    STDMETHOD(OnPosRectChange)(LPCRECT lprcPosRect);
+    STDMETHOD(CanInPlaceActivate)() override;
+    STDMETHOD(OnInPlaceActivate)() override;
+    STDMETHOD(OnUIActivate)() override;
+    STDMETHOD(GetWindowContext)(IOleInPlaceFrame **ppFrame, IOleInPlaceUIWindow **ppDoc, LPRECT lprcPosRect, LPRECT lprcClipRect, LPOLEINPLACEFRAMEINFO lpFrameInfo) override;
+    STDMETHOD(Scroll)(SIZE scrollExtant) override;
+    STDMETHOD(OnUIDeactivate)(BOOL fUndoable) override;
+    STDMETHOD(OnInPlaceDeactivate)() override;
+    STDMETHOD(DiscardUndoState)() override;
+    STDMETHOD(DeactivateAndUndo)() override;
+    STDMETHOD(OnPosRectChange)(LPCRECT lprcPosRect) override;
 
 #ifdef QAX_SUPPORT_WINDOWLESS
 // IOleInPlaceSiteEx ###
-    STDMETHOD(OnInPlaceActivateEx)(BOOL* /*pfNoRedraw*/, DWORD /*dwFlags*/)
+    STDMETHOD(OnInPlaceActivateEx)(BOOL* /*pfNoRedraw*/, DWORD /*dwFlags*/) override
     {
         return S_OK;
     }
-    STDMETHOD(OnInPlaceDeactivateEx)(BOOL /*fNoRedraw*/)
+    STDMETHOD(OnInPlaceDeactivateEx)(BOOL /*fNoRedraw*/) override
     {
         return S_OK;
     }
-    STDMETHOD(RequestUIActivate)()
+    STDMETHOD(RequestUIActivate)() override
     {
         return S_OK;
     }
 
 // IOleInPlaceSiteWindowless ###
-    STDMETHOD(CanWindowlessActivate)()
+    STDMETHOD(CanWindowlessActivate)() override
     {
         return S_OK;
     }
-    STDMETHOD(GetCapture)()
+    STDMETHOD(GetCapture)() override
     {
         return S_FALSE;
     }
-    STDMETHOD(SetCapture)(BOOL /*fCapture*/)
+    STDMETHOD(SetCapture)(BOOL /*fCapture*/) override
     {
         return S_FALSE;
     }
-    STDMETHOD(GetFocus)()
+    STDMETHOD(GetFocus)() override
     {
         return S_FALSE;
     }
-    STDMETHOD(SetFocus)(BOOL /*fCapture*/)
+    STDMETHOD(SetFocus)(BOOL /*fCapture*/) override
     {
         return S_FALSE;
     }
-    STDMETHOD(GetDC)(LPCRECT /*pRect*/, DWORD /*grfFlags*/, HDC *phDC)
+    STDMETHOD(GetDC)(LPCRECT /*pRect*/, DWORD /*grfFlags*/, HDC *phDC) override
     {
         *phDC = 0;
         return S_OK;
     }
-    STDMETHOD(ReleaseDC)(HDC hDC)
+    STDMETHOD(ReleaseDC)(HDC hDC) override
     {
         ::ReleaseDC((HWND)widget->winId(), hDC);
         return S_OK;
     }
-    STDMETHOD(InvalidateRect)(LPCRECT pRect, BOOL fErase)
+    STDMETHOD(InvalidateRect)(LPCRECT pRect, BOOL fErase) override
     {
         ::InvalidateRect((HWND)host->winId(), pRect, fErase);
         return S_OK;
     }
-    STDMETHOD(InvalidateRgn)(HRGN hRGN, BOOL fErase)
+    STDMETHOD(InvalidateRgn)(HRGN hRGN, BOOL fErase) override
     {
         ::InvalidateRgn((HWND)host->winId(), hRGN, fErase);
         return S_OK;
     }
-    STDMETHOD(ScrollRect)(int /*dx*/, int /*dy*/, LPCRECT /*pRectScroll*/, LPCRECT /*pRectClip*/)
+    STDMETHOD(ScrollRect)(int /*dx*/, int /*dy*/, LPCRECT /*pRectScroll*/, LPCRECT /*pRectClip*/) override
     {
         return S_OK;
     }
-    STDMETHOD(AdjustRect)(LPRECT /*prc*/)
+    STDMETHOD(AdjustRect)(LPRECT /*prc*/) override
     {
         return S_OK;
     }
 #ifdef Q_CC_GNU // signature incorrect in win32api
-    STDMETHOD(AdjustRect)(LPCRECT /*prc*/)
+    STDMETHOD(AdjustRect)(LPCRECT /*prc*/) override
     {
         RECT rect;
         return AdjustRect(&rect);
     }
 #endif
 
-    STDMETHOD(OnDefWindowMessage)(UINT /*msg*/, WPARAM /*wPara*/, LPARAM /*lParam*/, LRESULT* /*plResult*/)
+    STDMETHOD(OnDefWindowMessage)(UINT /*msg*/, WPARAM /*wPara*/, LPARAM /*lParam*/, LRESULT* /*plResult*/) override
     {
         return S_FALSE;
     }
 #endif
 
     // IOleInPlaceFrame
-    STDMETHOD(InsertMenus(HMENU hmenuShared, LPOLEMENUGROUPWIDTHS lpMenuWidths));
-    STDMETHOD(SetMenu(HMENU hmenuShared, HOLEMENU holemenu, HWND hwndActiveObject));
-    STDMETHOD(RemoveMenus(HMENU hmenuShared));
-    STDMETHOD(SetStatusText(LPCOLESTR pszStatusText));
-    STDMETHOD(EnableModeless(BOOL fEnable));
-    STDMETHOD(TranslateAccelerator(LPMSG lpMsg, WORD grfModifiers));
+    STDMETHOD(InsertMenus(HMENU hmenuShared, LPOLEMENUGROUPWIDTHS lpMenuWidths)) override;
+    STDMETHOD(SetMenu(HMENU hmenuShared, HOLEMENU holemenu, HWND hwndActiveObject)) override;
+    STDMETHOD(RemoveMenus(HMENU hmenuShared)) override;
+    STDMETHOD(SetStatusText(LPCOLESTR pszStatusText)) override;
+    STDMETHOD(EnableModeless(BOOL fEnable)) override;
+    STDMETHOD(TranslateAccelerator(LPMSG lpMsg, WORD grfModifiers)) override;
 
     // IOleInPlaceUIWindow
-    STDMETHOD(GetBorder(LPRECT lprectBorder));
-    STDMETHOD(RequestBorderSpace(LPCBORDERWIDTHS pborderwidths));
-    STDMETHOD(SetBorderSpace(LPCBORDERWIDTHS pborderwidths));
-    STDMETHOD(SetActiveObject(IOleInPlaceActiveObject *pActiveObject, LPCOLESTR pszObjName));
+    STDMETHOD(GetBorder(LPRECT lprectBorder)) override;
+    STDMETHOD(RequestBorderSpace(LPCBORDERWIDTHS pborderwidths)) override;
+    STDMETHOD(SetBorderSpace(LPCBORDERWIDTHS pborderwidths)) override;
+    STDMETHOD(SetActiveObject(IOleInPlaceActiveObject *pActiveObject, LPCOLESTR pszObjName)) override;
 
     // IOleDocumentSite
-    STDMETHOD(ActivateMe(IOleDocumentView *pViewToActivate));
+    STDMETHOD(ActivateMe(IOleDocumentView *pViewToActivate)) override;
 
     // IAdviseSink
-    STDMETHOD_(void, OnDataChange)(FORMATETC* /*pFormatetc*/, STGMEDIUM* /*pStgmed*/)
+    STDMETHOD_(void, OnDataChange)(FORMATETC* /*pFormatetc*/, STGMEDIUM* /*pStgmed*/) override
     {
         AX_DEBUG(QAxClientSite::OnDataChange);
     }
-    STDMETHOD_(void, OnViewChange)(DWORD /*dwAspect*/, LONG /*lindex*/)
+    STDMETHOD_(void, OnViewChange)(DWORD /*dwAspect*/, LONG /*lindex*/) override
     {
         AX_DEBUG(QAxClientSite::OnViewChange);
     }
-    STDMETHOD_(void, OnRename)(IMoniker* /*pmk*/)
+    STDMETHOD_(void, OnRename)(IMoniker* /*pmk*/) override
     {
     }
-    STDMETHOD_(void, OnSave)()
+    STDMETHOD_(void, OnSave)() override
     {
     }
-    STDMETHOD_(void, OnClose)()
+    STDMETHOD_(void, OnClose)() override
     {
     }
 
@@ -1217,11 +1192,11 @@ HRESULT WINAPI QAxClientSite::InsertMenus(HMENU /*hmenuShared*/, LPOLEMENUGROUPW
         }
     }
     if (fileMenu)
-        lpMenuWidths->width[0] = fileMenu->actions().count();
+        lpMenuWidths->width[0] = fileMenu->actions().size();
     if (viewMenu)
-        lpMenuWidths->width[2] = viewMenu->actions().count();
+        lpMenuWidths->width[2] = viewMenu->actions().size();
     if (windowMenu)
-        lpMenuWidths->width[4] = windowMenu->actions().count();
+        lpMenuWidths->width[4] = windowMenu->actions().size();
 
     return S_OK;
 }
@@ -1826,9 +1801,6 @@ void QAxHostWidget::focusOutEvent(QFocusEvent *e)
     axhost->m_spInPlaceObject->UIDeactivate();
 }
 
-Q_GUI_EXPORT HBITMAP qt_pixmapToWinHBITMAP(const QPixmap &p, int hbitmapFormat = 0);
-Q_GUI_EXPORT QPixmap qt_pixmapFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat = 0);
-
 void QAxHostWidget::paintEvent(QPaintEvent*)
 {
     // QWidget having redirected paint device indicates non-regular paint, which implies
@@ -1862,13 +1834,132 @@ void QAxHostWidget::paintEvent(QPaintEvent*)
 
     QPainter painter(this);
     QPixmap pixmap = qt_pixmapFromWinHBITMAP(hBmp);
-    pixmap.setDevicePixelRatio(devicePixelRatioF());
+    pixmap.setDevicePixelRatio(devicePixelRatio());
     painter.drawPixmap(0, 0, pixmap);
 
     SelectObject(hBmp_hdc, old_hBmp);
     DeleteObject(hBmp);
     DeleteDC(hBmp_hdc);
     ReleaseDC(nullptr, displayDc);
+}
+
+/*!
+   \class QAxBaseWidget
+   \brief QAxBaseWidget provides static properties and signals for QAxWidget.
+   \inmodule QAxContainer
+   \since 6.0
+*/
+
+/*!
+    \property QAxBaseWidget::classContext
+    \brief the context the ActiveX control will run in (default CLSCTX_SERVER).
+
+    The property affects the "dwClsContext" argument when calling
+    CoCreateInstance. This can be used to control in-proc vs. out-of-proc
+    startup for controls supporting both alternatives. Also, it can be used to
+    modify/reduce control permissions when used with CLSCTX_ENABLE_CLOAKING
+    and an impersonation token.
+
+    Note that it must be set before setControl() to have any effect.
+    \sa control
+*/
+
+/*!
+    \property QAxBaseWidget::control
+    \brief the name of the COM object wrapped by this QAxBaseWidget object.
+
+    Setting this property initializes the COM object. Any COM object
+    previously set is shut down.
+
+    The most efficient way to set this property is by using the
+    registered component's UUID, e.g.
+
+    \snippet src_activeqt_container_qaxbase.cpp 7
+
+    The second fastest way is to use the registered control's class
+    name (with or without version number), e.g.
+
+    \snippet src_activeqt_container_qaxbase.cpp 8
+
+    The slowest, but easiest way to use is to use the control's full
+    name, e.g.
+
+    \snippet src_activeqt_container_qaxbase.cpp 9
+
+    It is also possible to initialize the object from a file, e.g.
+
+    \snippet src_activeqt_container_qaxbase.cpp 10
+
+    If the component's UUID is used the following patterns can be used
+    to initialize the control on a remote machine, to initialize a
+    licensed control or to connect to a running object:
+    \list
+    \li To initialize the control on a different machine use the following
+    pattern:
+
+    \snippet src_activeqt_container_qaxbase.cpp 11
+
+    \li To initialize a licensed control use the following pattern:
+
+    \snippet src_activeqt_container_qaxbase.cpp 12
+
+    \li To connect to an already running object use the following pattern:
+
+    \snippet src_activeqt_container_qaxbase.cpp 13
+
+    \endlist
+    The first two patterns can be combined, e.g. to initialize a licensed
+    control on a remote machine:
+
+    \snippet src_activeqt_container_qaxbase.cpp 14
+
+    The control's read function always returns the control's UUID, if provided including the license
+    key, and the name of the server, but not including the username, the domain or the password.
+
+    \sa classContext
+*/
+
+/*!
+    \fn void QAxBaseWidget::signal(const QString &name, int argc, void *argv)
+
+    This generic signal gets emitted when the COM object issues the
+    event \a name. \a argc is the number of parameters provided by the
+    event (DISPPARAMS.cArgs), and \a argv is the pointer to the
+    parameter values (DISPPARAMS.rgvarg). Note that the order of parameter
+    values is turned around, ie. the last element of the array is the first
+    parameter in the function.
+
+    \snippet src_activeqt_container_qaxbase.cpp 20
+
+    Use this signal if the event has parameters of unsupported data
+    types. Otherwise, connect directly to the signal \a name.
+
+    \sa QAxBaseObject::signal()
+*/
+
+/*!
+    \fn void QAxBaseWidget::propertyChanged(const QString &name)
+
+    If the COM object supports property notification, this signal gets
+    emitted when the property called \a name is changed.
+
+    \sa QAxBaseObject::propertyChanged()
+*/
+
+/*!
+    \fn void QAxBaseWidget::exception(int code, const QString &source, const QString &desc, const QString &help)
+
+    This signal is emitted when the COM object throws an exception while called using the OLE automation
+    interface IDispatch. \a code, \a source, \a desc and \a help provide information about the exception as
+    provided by the COM server and can be used to provide useful feedback to the end user. \a help includes
+    the help file, and the help context ID in brackets, e.g. "filename [id]".
+
+    \sa QAxBaseObject::exception()
+*/
+
+QAxBaseWidget::QAxBaseWidget(QWidgetPrivate &d, QWidget *parent, Qt::WindowFlags f)
+    : QWidget(d, parent, f)
+{
 }
 
 /*!
@@ -1913,19 +2004,16 @@ void QAxHostWidget::paintEvent(QPaintEvent*)
     \sa QAxBase, QAxObject, QAxScript, {ActiveQt Framework}
 */
 
-const QMetaObject QAxWidget::staticMetaObject = {
-    { &QWidget::staticMetaObject, qt_meta_stringdata_QAxBase.data,
-      qt_meta_data_QAxBase, qt_static_metacall, nullptr, nullptr }
-};
-
 /*!
     Creates an empty QAxWidget widget and propagates \a parent
     and \a f to the QWidget constructor. To initialize a control,
     call setControl().
 */
 QAxWidget::QAxWidget(QWidget *parent, Qt::WindowFlags f)
-: QWidget(parent, f)
+: QAxBaseWidget(*new QAxWidgetPrivate, parent, f)
 {
+    Q_D(QAxWidget);
+    axBaseInit(d);
 }
 
 /*!
@@ -1935,8 +2023,10 @@ QAxWidget::QAxWidget(QWidget *parent, Qt::WindowFlags f)
     \sa setControl()
 */
 QAxWidget::QAxWidget(const QString &c, QWidget *parent, Qt::WindowFlags f)
-: QWidget(parent, f)
+: QAxBaseWidget(*new QAxWidgetPrivate, parent, f)
 {
+    Q_D(QAxWidget);
+    axBaseInit(d);
     setControl(c);
 }
 
@@ -1945,8 +2035,10 @@ QAxWidget::QAxWidget(const QString &c, QWidget *parent, Qt::WindowFlags f)
     \a parent and \a f are propagated to the QWidget contructor.
 */
 QAxWidget::QAxWidget(IUnknown *iface, QWidget *parent, Qt::WindowFlags f)
-: QWidget(parent, f), QAxBase(iface)
+: QAxBaseWidget(*new QAxWidgetPrivate, parent, f)
 {
+    Q_D(QAxWidget);
+    axBaseInit(d, iface);
 }
 
 /*!
@@ -1957,9 +2049,10 @@ QAxWidget::QAxWidget(IUnknown *iface, QWidget *parent, Qt::WindowFlags f)
 */
 QAxWidget::~QAxWidget()
 {
-    if (container)
-        container->reset(this);
-    clear();
+    Q_D(QAxWidget);
+    if (d->container)
+        d->container->reset(this);
+    d->clear();
 }
 
 /*!
@@ -2013,10 +2106,11 @@ bool QAxWidget::createHostWindow(bool initialized)
 */
 bool QAxWidget::createHostWindow(bool initialized, const QByteArray &data)
 {
-    if (!container) // Potentially called repeatedly from QAxBase::metaObject(), QAxWidget::initialize()
-        container = new QAxClientSite(this);
+    Q_D(QAxWidget);
+    if (!d->container) // Potentially called repeatedly from QAxBase::metaObject(), QAxWidget::initialize()
+        d->container = new QAxClientSite(this);
 
-    container->activateObject(initialized, data);
+    d->container->activateObject(initialized, data);
 
     ATOM filter_ref = FindAtom(qaxatom);
     if (!filter_ref)
@@ -2042,16 +2136,52 @@ QAxAggregated *QAxWidget::createAggregate()
     return nullptr;
 }
 
+ulong QAxWidget::classContext() const
+{
+    return QAxBase::classContext();
+}
+
+void QAxWidget::setClassContext(ulong classContext)
+{
+    QAxBase::setClassContext(classContext);
+}
+
+QString QAxWidget::control() const
+{
+    return QAxBase::control();
+}
+
+bool QAxWidget::setControl(const QString &c)
+{
+    return QAxBase::setControl(c);
+}
+
+/*!
+    Shuts down the ActiveX control.
+    \sa resetControl()
+*/
+void QAxWidget::clear()
+{
+    resetControl();
+}
+
 /*!
     \reimp
 
     Shuts down the ActiveX control.
 */
-void QAxWidget::clear()
+void QAxWidget::resetControl()
 {
-    if (isNull())
+    Q_D(QAxWidget);
+    d->clear();
+}
+
+void QAxWidgetPrivate::clear()
+{
+    Q_Q(QAxWidget);
+    if (q->isNull())
         return;
-    if (!control().isEmpty()) {
+    if (!q->QAxBase::control().isEmpty()) {
         ATOM filter_ref = FindAtom(qaxatom);
         if (filter_ref)
             DeleteAtom(filter_ref);
@@ -2063,8 +2193,8 @@ void QAxWidget::clear()
     if (container)
         container->deactivate();
 
-    QAxBase::clear();
-    setFocusPolicy(Qt::NoFocus);
+    q->QAxBase::clear();
+    q->setFocusPolicy(Qt::NoFocus);
 
     if (container) {
         container->releaseAll();
@@ -2083,12 +2213,11 @@ void QAxWidget::clear()
 */
 bool QAxWidget::doVerb(const QString &verb)
 {
+    Q_D(QAxWidget);
     if (!verbs().contains(verb))
         return false;
 
-    HRESULT hres = container->doVerb(indexOfVerb(verb));
-
-    return hres == S_OK;
+    return d->container->doVerb(indexOfVerb(verb)) == S_OK;
 }
 
  /*!
@@ -2101,15 +2230,12 @@ bool QAxWidget::doVerb(const QString &verb)
 */
 void QAxWidget::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
-    QAxBase::qt_static_metacall(qobject_cast<QAxWidget*>(_o), _c, _id, _a);
+    QAxBasePrivate::qtStaticMetaCall(static_cast<QAxWidget *>(_o), _c, _id, _a);
 }
 
-/*!
-    \internal
-*/
-const QMetaObject *QAxWidget::fallbackMetaObject() const
+const QMetaObject *QAxWidgetPrivate::fallbackMetaObject() const
 {
-    return &staticMetaObject;
+    return &QAxWidget::staticMetaObject;
 }
 
 /*!
@@ -2117,15 +2243,12 @@ const QMetaObject *QAxWidget::fallbackMetaObject() const
 */
 const QMetaObject *QAxWidget::metaObject() const
 {
-    return QAxBase::metaObject();
+    return QAxBase::axBaseMetaObject();
 }
 
-/*!
-    \internal
-*/
-const QMetaObject *QAxWidget::parentMetaObject() const
+const QMetaObject *QAxWidgetPrivate::parentMetaObject() const
 {
-    return &QWidget::staticMetaObject;
+    return &QAxBaseWidget::staticMetaObject;
 }
 
 /*!
@@ -2135,13 +2258,16 @@ void *QAxWidget::qt_metacast(const char *cname)
 {
     if (!qstrcmp(cname, "QAxWidget")) return static_cast<void *>(this);
     if (!qstrcmp(cname, "QAxBase")) return static_cast<QAxBase *>(this);
-    return QWidget::qt_metacast(cname);
+    return QAxBaseWidget::qt_metacast(cname);
 }
 
-/*!
-    \internal
-*/
-const char *QAxWidget::className() const
+QObject* QAxWidgetPrivate::qObject() const
+{
+    Q_Q(const QAxWidget);
+    return static_cast<QObject *>(const_cast<QAxWidget *>(q));
+}
+
+const char *QAxWidgetPrivate::className() const
 {
     return "QAxWidget";
 }
@@ -2151,10 +2277,11 @@ const char *QAxWidget::className() const
 */
 int QAxWidget::qt_metacall(QMetaObject::Call call, int id, void **v)
 {
-    id = QWidget::qt_metacall(call, id, v);
+    Q_D(QAxWidget);
+    id = QAxBaseWidget::qt_metacall(call, id, v);
     if (id < 0)
         return id;
-    return QAxBase::qt_metacall(call, id, v);
+    return d->qtMetaCall(call, id, v);
 }
 
 /*!
@@ -2162,8 +2289,9 @@ int QAxWidget::qt_metacall(QMetaObject::Call call, int id, void **v)
 */
 QSize QAxWidget::sizeHint() const
 {
-    if (container) {
-        QSize sh = container->sizeHint();
+    Q_D(const QAxWidget);
+    if (d->container) {
+        QSize sh = d->container->sizeHint();
         if (sh.isValid())
             return sh;
     }
@@ -2176,8 +2304,9 @@ QSize QAxWidget::sizeHint() const
 */
 QSize QAxWidget::minimumSizeHint() const
 {
-    if (container) {
-        QSize sh = container->minimumSizeHint();
+    Q_D(const QAxWidget);
+    if (d->container) {
+        QSize sh = d->container->minimumSizeHint();
         if (sh.isValid())
             return sh;
     }
@@ -2190,22 +2319,23 @@ QSize QAxWidget::minimumSizeHint() const
 */
 void QAxWidget::changeEvent(QEvent *e)
 {
-    if (isNull() || !container)
+    Q_D(QAxWidget);
+    if (isNull() || !d->container)
         return;
 
     switch (e->type()) {
     case QEvent::EnabledChange:
-        container->emitAmbientPropertyChange(DISPID_AMBIENT_UIDEAD);
+        d->container->emitAmbientPropertyChange(DISPID_AMBIENT_UIDEAD);
         break;
     case QEvent::FontChange:
-        container->emitAmbientPropertyChange(DISPID_AMBIENT_FONT);
+        d->container->emitAmbientPropertyChange(DISPID_AMBIENT_FONT);
         break;
     case QEvent::PaletteChange:
-        container->emitAmbientPropertyChange(DISPID_AMBIENT_BACKCOLOR);
-        container->emitAmbientPropertyChange(DISPID_AMBIENT_FORECOLOR);
+        d->container->emitAmbientPropertyChange(DISPID_AMBIENT_BACKCOLOR);
+        d->container->emitAmbientPropertyChange(DISPID_AMBIENT_FORECOLOR);
         break;
     case QEvent::ActivationChange:
-        container->windowActivationChange();
+        d->container->windowActivationChange();
         break;
     default:
         break;
@@ -2217,8 +2347,9 @@ void QAxWidget::changeEvent(QEvent *e)
 */
 void QAxWidget::resizeEvent(QResizeEvent *)
 {
-    if (container)
-        container->resize(size());
+    Q_D(QAxWidget);
+    if (d->container)
+        d->container->resize(size());
 }
 
 /*!

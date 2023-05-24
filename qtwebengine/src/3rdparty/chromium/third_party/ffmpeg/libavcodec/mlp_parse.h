@@ -21,6 +21,10 @@
 #ifndef AVCODEC_MLP_PARSE_H
 #define AVCODEC_MLP_PARSE_H
 
+#include <stdint.h>
+
+#include "libavutil/channel_layout.h"
+
 #include "get_bits.h"
 
 typedef struct MLPHeaderInfo
@@ -54,6 +58,9 @@ typedef struct MLPHeaderInfo
     int peak_bitrate;                       ///< Peak bitrate for VBR, actual bitrate (==peak) for CBR
 
     int num_substreams;                     ///< Number of substreams within stream
+
+    int extended_substream_info;            ///< Which substream of substreams carry 16-channel presentation
+    int substream_info;                     ///< Which substream of substreams carry 2/6/8-channel presentation
 } MLPHeaderInfo;
 
 static const uint8_t thd_chancount[13] = {

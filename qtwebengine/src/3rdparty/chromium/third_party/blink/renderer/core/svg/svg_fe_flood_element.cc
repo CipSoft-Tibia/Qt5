@@ -20,12 +20,12 @@
 
 #include "third_party/blink/renderer/core/svg/svg_fe_flood_element.h"
 
+#include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
-#include "third_party/blink/renderer/core/style/svg_computed_style.h"
 #include "third_party/blink/renderer/core/svg_names.h"
 #include "third_party/blink/renderer/platform/graphics/filters/fe_flood.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -39,11 +39,13 @@ bool SVGFEFloodElement::SetFilterEffectAttribute(
 
   FEFlood* flood = static_cast<FEFlood*>(effect);
   if (attr_name == svg_names::kFloodColorAttr) {
+    // TODO(crbug.com/1308932): ComputedStyle::VisitedDependentColor to
+    // SkColor4f
     return flood->SetFloodColor(
-        style.VisitedDependentColor(GetCSSPropertyFloodColor()));
+        style.VisitedDependentColor(GetCSSPropertyFloodColor()).toSkColor4f());
   }
   if (attr_name == svg_names::kFloodOpacityAttr)
-    return flood->SetFloodOpacity(style.SvgStyle().FloodOpacity());
+    return flood->SetFloodOpacity(style.FloodOpacity());
 
   return SVGFilterPrimitiveStandardAttributes::SetFilterEffectAttribute(
       effect, attr_name);
@@ -54,8 +56,10 @@ FilterEffect* SVGFEFloodElement::Build(SVGFilterBuilder*, Filter* filter) {
   if (!style)
     return nullptr;
 
-  Color color = style->VisitedDependentColor(GetCSSPropertyFloodColor());
-  float opacity = style->SvgStyle().FloodOpacity();
+  // TODO(crbug.com/1308932): ComputedStyle::VisitedDependentColor to SkColor4f
+  SkColor4f color =
+      style->VisitedDependentColor(GetCSSPropertyFloodColor()).toSkColor4f();
+  float opacity = style->FloodOpacity();
 
   return MakeGarbageCollected<FEFlood>(filter, color, opacity);
 }
@@ -65,7 +69,7 @@ bool SVGFEFloodElement::TaintsOrigin() const {
   // TaintsOrigin() is only called after a successful call to Build()
   // (see above), so we should have a ComputedStyle here.
   DCHECK(style);
-  return style->SvgStyle().FloodColor().IsCurrentColor();
+  return style->FloodColor().IsCurrentColor();
 }
 
 }  // namespace blink

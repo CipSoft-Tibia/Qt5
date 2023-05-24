@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtSerialBus/QModbusReply>
@@ -80,8 +47,8 @@ void tst_QModbusReply::tst_setFinished()
 {
     QModbusReply replyTest(QModbusReply::Common, 1);
     QCOMPARE(replyTest.serverAddress(), 1);
-    QSignalSpy finishedSpy(&replyTest, SIGNAL(finished()));
-    QSignalSpy errorSpy(&replyTest, SIGNAL(errorOccurred(QModbusDevice::Error)));
+    QSignalSpy finishedSpy(&replyTest, &QModbusReply::finished);
+    QSignalSpy errorSpy(&replyTest, &QModbusReply::errorOccurred);
 
     QCOMPARE(replyTest.serverAddress(), 1);
     QCOMPARE(replyTest.isFinished(), false);
@@ -94,7 +61,7 @@ void tst_QModbusReply::tst_setFinished()
     QVERIFY(errorSpy.isEmpty());
 
     replyTest.setFinished(true);
-    QVERIFY(finishedSpy.count() == 1);
+    QVERIFY(finishedSpy.size() == 1);
     QVERIFY(errorSpy.isEmpty());
     QCOMPARE(replyTest.serverAddress(), 1);
     QCOMPARE(replyTest.isFinished(), true);
@@ -104,7 +71,7 @@ void tst_QModbusReply::tst_setFinished()
     QCOMPARE(replyTest.error(), QModbusDevice::NoError);
 
     replyTest.setFinished(false);
-    QVERIFY(finishedSpy.count() == 1); // no further signal
+    QVERIFY(finishedSpy.size() == 1); // no further signal
     QVERIFY(errorSpy.isEmpty());
     QCOMPARE(replyTest.serverAddress(), 1);
     QCOMPARE(replyTest.isFinished(), false);
@@ -133,15 +100,15 @@ void tst_QModbusReply::tst_setError()
 
     QModbusReply replyTest(QModbusReply::Common, 1);
     QCOMPARE(replyTest.serverAddress(), 1);
-    QSignalSpy finishedSpy(&replyTest, SIGNAL(finished()));
-    QSignalSpy errorSpy(&replyTest, SIGNAL(errorOccurred(QModbusDevice::Error)));
+    QSignalSpy finishedSpy(&replyTest, &QModbusReply::finished);
+    QSignalSpy errorSpy(&replyTest, &QModbusReply::errorOccurred);
 
     QVERIFY(finishedSpy.isEmpty());
     QVERIFY(errorSpy.isEmpty());
 
     replyTest.setError(error, errorString);
-    QCOMPARE(finishedSpy.count(), 1);
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(finishedSpy.size(), 1);
+    QCOMPARE(errorSpy.size(), 1);
     QCOMPARE(replyTest.rawResult().isValid(), false);
     QCOMPARE(replyTest.error(), error);
     QCOMPARE(replyTest.errorString(), errorString);
@@ -149,42 +116,42 @@ void tst_QModbusReply::tst_setError()
 
     replyTest.setError(error, errorString);
     replyTest.setFinished(true);
-    QCOMPARE(finishedSpy.count(), 3); //setError() implies call to setFinished()
-    QCOMPARE(errorSpy.count(), 2);
+    QCOMPARE(finishedSpy.size(), 3); //setError() implies call to setFinished()
+    QCOMPARE(errorSpy.size(), 2);
 }
 
 void tst_QModbusReply::tst_setResult()
 {
     QModbusDataUnit unit(QModbusDataUnit::Coils, 5, {4,5,6});
     QCOMPARE(unit.startAddress(), 5);
-    QCOMPARE(unit.valueCount(), 3u);
+    QCOMPARE(unit.valueCount(), 3);
     QCOMPARE(unit.registerType(), QModbusDataUnit::Coils);
     QCOMPARE(unit.isValid(), true);
-    QVector<quint16>  reference = { 4,5,6 };
+    QList<quint16> reference = { 4, 5, 6 };
     QCOMPARE(unit.values(), reference);
 
     QModbusReply replyTest(QModbusReply::Common, 1);
     QCOMPARE(replyTest.serverAddress(), 1);
-    QSignalSpy finishedSpy(&replyTest, SIGNAL(finished()));
-    QSignalSpy errorSpy(&replyTest, SIGNAL(errorOccurred(QModbusDevice::Error)));
+    QSignalSpy finishedSpy(&replyTest, &QModbusReply::finished);
+    QSignalSpy errorSpy(&replyTest, &QModbusReply::errorOccurred);
 
     QVERIFY(finishedSpy.isEmpty());
     QVERIFY(errorSpy.isEmpty());
 
     QCOMPARE(replyTest.result().startAddress(), -1);
-    QCOMPARE(replyTest.result().valueCount(), 0u);
+    QCOMPARE(replyTest.result().valueCount(), 0);
     QCOMPARE(replyTest.result().registerType(), QModbusDataUnit::Invalid);
     QCOMPARE(replyTest.result().isValid(), false);
     QCOMPARE(replyTest.rawResult().isValid(), false);
-    QCOMPARE(replyTest.result().values(), QVector<quint16>());
+    QCOMPARE(replyTest.result().values(), QList<quint16>());
 
     QModbusResponse response(QModbusResponse::ReadExceptionStatus, quint16(0x0000));
     replyTest.setResult(unit);
     replyTest.setRawResult(response);
-    QCOMPARE(finishedSpy.count(), 0);
-    QCOMPARE(errorSpy.count(), 0);
+    QCOMPARE(finishedSpy.size(), 0);
+    QCOMPARE(errorSpy.size(), 0);
     QCOMPARE(replyTest.result().startAddress(), 5);
-    QCOMPARE(replyTest.result().valueCount(), 3u);
+    QCOMPARE(replyTest.result().valueCount(), 3);
     QCOMPARE(replyTest.result().registerType(), QModbusDataUnit::Coils);
     QCOMPARE(replyTest.result().isValid(), true);
     QCOMPARE(replyTest.result().values(), reference);
@@ -196,23 +163,23 @@ void tst_QModbusReply::tst_setResult()
 
     QModbusReply replyRawTest(QModbusReply::Raw, 1);
     QCOMPARE(replyRawTest.serverAddress(), 1);
-    QSignalSpy finishedSpyRaw(&replyRawTest, SIGNAL(finished()));
-    QSignalSpy errorSpyRaw(&replyRawTest, SIGNAL(errorOccurred(QModbusDevice::Error)));
+    QSignalSpy finishedSpyRaw(&replyRawTest, &QModbusReply::finished);
+    QSignalSpy errorSpyRaw(&replyRawTest, &QModbusReply::errorOccurred);
 
     QVERIFY(finishedSpyRaw.isEmpty());
     QVERIFY(errorSpyRaw.isEmpty());
 
     QCOMPARE(replyRawTest.result().startAddress(), -1);
-    QCOMPARE(replyRawTest.result().valueCount(), 0u);
+    QCOMPARE(replyRawTest.result().valueCount(), 0);
     QCOMPARE(replyRawTest.result().registerType(), QModbusDataUnit::Invalid);
     QCOMPARE(replyRawTest.result().isValid(), false);
     QCOMPARE(replyRawTest.rawResult().isValid(), false);
-    QCOMPARE(replyRawTest.result().values(), QVector<quint16>());
+    QCOMPARE(replyRawTest.result().values(), QList<quint16>());
 
     replyRawTest.setResult(unit);
     replyRawTest.setRawResult(response);
-    QCOMPARE(finishedSpy.count(), 0);
-    QCOMPARE(errorSpyRaw.count(), 0);
+    QCOMPARE(finishedSpy.size(), 0);
+    QCOMPARE(errorSpyRaw.size(), 0);
     QCOMPARE(replyRawTest.result().isValid(), true);
     QCOMPARE(replyRawTest.rawResult().isValid(), true);
 

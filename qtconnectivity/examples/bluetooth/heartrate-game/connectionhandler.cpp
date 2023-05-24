@@ -1,71 +1,40 @@
-/***************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include "heartrate-global.h"
 #include "connectionhandler.h"
+#include "heartrate-global.h"
+
 #include <QtBluetooth/qtbluetooth-config.h>
+
 #include <QtCore/qsystemdetection.h>
+
+#if QT_CONFIG(permissions)
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qpermissions.h>
+#endif
 
 ConnectionHandler::ConnectionHandler(QObject *parent) : QObject(parent)
 {
-    connect(&m_localDevice, &QBluetoothLocalDevice::hostModeStateChanged,
-            this, &ConnectionHandler::hostModeChanged);
+    initLocalDevice();
 }
 
 bool ConnectionHandler::alive() const
 {
-#if defined(SIMULATOR) || defined(QT_PLATFORM_UIKIT)
+
+#ifdef QT_PLATFORM_UIKIT
     return true;
+
 #else
-    return m_localDevice.isValid() && m_localDevice.hostMode() != QBluetoothLocalDevice::HostPoweredOff;
+    if (simulator)
+        return true;
+    return m_localDevice && m_localDevice->isValid()
+            && m_localDevice->hostMode() != QBluetoothLocalDevice::HostPoweredOff;
 #endif
+}
+
+bool ConnectionHandler::hasPermission() const
+{
+    return m_hasPermission;
 }
 
 bool ConnectionHandler::requiresAddressType() const
@@ -79,15 +48,37 @@ bool ConnectionHandler::requiresAddressType() const
 
 QString ConnectionHandler::name() const
 {
-    return m_localDevice.name();
+    return m_localDevice ? m_localDevice->name() : QString();
 }
 
 QString ConnectionHandler::address() const
 {
-    return m_localDevice.address().toString();
+    return m_localDevice ? m_localDevice->address().toString() : QString();
 }
 
 void ConnectionHandler::hostModeChanged(QBluetoothLocalDevice::HostMode /*mode*/)
 {
+    emit deviceChanged();
+}
+
+void ConnectionHandler::initLocalDevice()
+{
+#if QT_CONFIG(permissions)
+    QBluetoothPermission permission{};
+    permission.setCommunicationModes(QBluetoothPermission::Access);
+    switch (qApp->checkPermission(permission)) {
+    case Qt::PermissionStatus::Undetermined:
+        qApp->requestPermission(permission, this, &ConnectionHandler::initLocalDevice);
+        return;
+    case Qt::PermissionStatus::Denied:
+        return;
+    case Qt::PermissionStatus::Granted:
+        break; // proceed to initialization
+    }
+#endif
+    m_localDevice = new QBluetoothLocalDevice(this);
+    connect(m_localDevice, &QBluetoothLocalDevice::hostModeStateChanged,
+            this, &ConnectionHandler::hostModeChanged);
+    m_hasPermission = true;
     emit deviceChanged();
 }

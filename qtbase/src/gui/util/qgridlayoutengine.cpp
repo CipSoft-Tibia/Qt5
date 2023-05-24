@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qglobal.h"
 
@@ -47,10 +11,14 @@
 
 QT_BEGIN_NAMESPACE
 
-template <typename T>
-static void insertOrRemoveItems(QVector<T> &items, int index, int delta)
+using namespace Qt::StringLiterals;
+
+#define LAYOUTITEMSIZE_MAX (1 << 24)
+
+template<typename T>
+static void insertOrRemoveItems(QList<T> &items, int index, int delta)
 {
-    int count = items.count();
+    int count = items.size();
     if (index < count) {
         if (delta > 0) {
             items.insert(index, delta, T());
@@ -228,7 +196,8 @@ void QGridLayoutRowData::calculateGeometries(int start, int end, qreal targetSiz
 
         sumAvailable = targetSize - totalBox.q_minimumSize;
         if (sumAvailable > 0.0) {
-            qreal sumDesired = totalBox.q_preferredSize - totalBox.q_minimumSize;
+            const qreal totalBox_preferredSize = qMin(totalBox.q_preferredSize, qreal(LAYOUTITEMSIZE_MAX));
+            qreal sumDesired = totalBox_preferredSize - totalBox.q_minimumSize;
 
             for (int i = 0; i < n; ++i) {
                 if (ignore.testBit(start + i)) {
@@ -237,7 +206,8 @@ void QGridLayoutRowData::calculateGeometries(int start, int end, qreal targetSiz
                 }
 
                 const QGridLayoutBox &box = boxes.at(start + i);
-                qreal desired = box.q_preferredSize - box.q_minimumSize;
+                const qreal box_preferredSize = qMin(box.q_preferredSize, qreal(LAYOUTITEMSIZE_MAX));
+                qreal desired = box_preferredSize - box.q_minimumSize;
                 factors[i] = growthFactorBelowPreferredSize(desired, sumAvailable, sumDesired);
                 sumFactors += factors[i];
             }
@@ -355,7 +325,7 @@ void QGridLayoutRowData::calculateGeometries(int start, int end, qreal targetSiz
                     if (newSizes[i] >= 0.0)
                         continue;
 
-                    const QVector<QGridLayoutBox> &rBoxes = isLargerThanMaximum ? rowInfo.boxes : boxes;
+                    const QList<QGridLayoutBox> &rBoxes = isLargerThanMaximum ? rowInfo.boxes : boxes;
                     const QGridLayoutBox &box = rBoxes.value(start + i);
                     qreal maxBoxSize = box.q_maximumSize;
 
@@ -507,24 +477,21 @@ void QGridLayoutRowData::dump(int indent) const
 
 QGridLayoutItem::QGridLayoutItem(int row, int column, int rowSpan, int columnSpan,
                                  Qt::Alignment alignment)
-    : q_alignment(alignment)
+    : q_firstRows{column, row},
+      q_rowSpans{columnSpan, rowSpan},
+      q_stretches{-1, -1},
+      q_alignment(alignment)
 {
-    q_firstRows[Hor] = column;
-    q_firstRows[Ver] = row;
-    q_rowSpans[Hor] = columnSpan;
-    q_rowSpans[Ver] = rowSpan;
-    q_stretches[Hor] = -1;
-    q_stretches[Ver] = -1;
 }
 
 int QGridLayoutItem::firstRow(Qt::Orientation orientation) const
 {
-    return q_firstRows[orientation == Qt::Vertical];
+    return q_firstRows[orientation];
 }
 
 int QGridLayoutItem::firstColumn(Qt::Orientation orientation) const
 {
-    return q_firstRows[orientation == Qt::Horizontal];
+    return q_firstRows.transposed()[orientation];
 }
 
 int QGridLayoutItem::lastRow(Qt::Orientation orientation) const
@@ -539,27 +506,27 @@ int QGridLayoutItem::lastColumn(Qt::Orientation orientation) const
 
 int QGridLayoutItem::rowSpan(Qt::Orientation orientation) const
 {
-    return q_rowSpans[orientation == Qt::Vertical];
+    return q_rowSpans[orientation];
 }
 
 int QGridLayoutItem::columnSpan(Qt::Orientation orientation) const
 {
-    return q_rowSpans[orientation == Qt::Horizontal];
+    return q_rowSpans.transposed()[orientation];
 }
 
 void QGridLayoutItem::setFirstRow(int row, Qt::Orientation orientation)
 {
-    q_firstRows[orientation == Qt::Vertical] = row;
+    q_firstRows[orientation] = row;
 }
 
 void QGridLayoutItem::setRowSpan(int rowSpan, Qt::Orientation orientation)
 {
-    q_rowSpans[orientation == Qt::Vertical] = rowSpan;
+    q_rowSpans[orientation] = rowSpan;
 }
 
 int QGridLayoutItem::stretchFactor(Qt::Orientation orientation) const
 {
-    int stretch = q_stretches[orientation == Qt::Vertical];
+    int stretch = q_stretches[orientation];
     if (stretch >= 0)
         return stretch;
 
@@ -577,7 +544,7 @@ int QGridLayoutItem::stretchFactor(Qt::Orientation orientation) const
 void QGridLayoutItem::setStretchFactor(int stretch, Qt::Orientation orientation)
 {
     Q_ASSERT(stretch >= 0); // ### deal with too big stretches
-    q_stretches[orientation == Qt::Vertical] = stretch;
+    q_stretches[orientation] = stretch;
 }
 
 QLayoutPolicy::ControlTypes QGridLayoutItem::controlTypes(LayoutSide /*side*/) const
@@ -695,9 +662,9 @@ QRectF QGridLayoutItem::geometryWithin(qreal x, qreal y, qreal width, qreal heig
 
 void QGridLayoutItem::transpose()
 {
-    qSwap(q_firstRows[Hor], q_firstRows[Ver]);
-    qSwap(q_rowSpans[Hor], q_rowSpans[Ver]);
-    qSwap(q_stretches[Hor], q_stretches[Ver]);
+    q_firstRows.transpose();
+    q_rowSpans.transpose();
+    q_stretches.transpose();
 }
 
 void QGridLayoutItem::insertOrRemoveRows(int row, int delta, Qt::Orientation orientation)
@@ -746,10 +713,10 @@ void QGridLayoutItem::dump(int indent) const
     qDebug("%*s (%d, %d) %d x %d", indent, "", firstRow(), firstColumn(),   //###
            rowSpan(), columnSpan());
 
-    if (q_stretches[Hor] >= 0)
-        qDebug("%*s Horizontal stretch: %d", indent, "", q_stretches[Hor]);
-    if (q_stretches[Ver] >= 0)
-        qDebug("%*s Vertical stretch: %d", indent, "", q_stretches[Ver]);
+    if (q_stretches[Qt::Horizontal] >= 0)
+        qDebug("%*s Horizontal stretch: %d", indent, "", q_stretches[Qt::Horizontal]);
+    if (q_stretches[Qt::Vertical] >= 0)
+        qDebug("%*s Vertical stretch: %d", indent, "", q_stretches[Qt::Vertical]);
     if (q_alignment != 0)
         qDebug("%*s Alignment: %x", indent, "", uint(q_alignment));
     qDebug("%*s Horizontal size policy: %x Vertical size policy: %x",
@@ -795,22 +762,24 @@ QGridLayoutEngine::QGridLayoutEngine(Qt::Alignment defaultAlignment, bool snapTo
     m_visualDirection = Qt::LeftToRight;
     m_defaultAlignment = defaultAlignment;
     m_snapToPixelGrid = snapToPixelGrid;
+    m_uniformCellWidths = false;
+    m_uniformCellHeights = false;
     invalidate();
 }
 
 int QGridLayoutEngine::rowCount(Qt::Orientation orientation) const
 {
-    return q_infos[orientation == Qt::Vertical].count;
+    return q_infos[orientation].count;
 }
 
 int QGridLayoutEngine::columnCount(Qt::Orientation orientation) const
 {
-    return q_infos[orientation == Qt::Horizontal].count;
+    return q_infos.transposed()[orientation].count;
 }
 
 int QGridLayoutEngine::itemCount() const
 {
-    return q_items.count();
+    return q_items.size();
 }
 
 QGridLayoutItem *QGridLayoutEngine::itemAt(int index) const
@@ -822,40 +791,40 @@ QGridLayoutItem *QGridLayoutEngine::itemAt(int index) const
 int QGridLayoutEngine::effectiveFirstRow(Qt::Orientation orientation) const
 {
     ensureEffectiveFirstAndLastRows();
-    return q_cachedEffectiveFirstRows[orientation == Qt::Vertical];
+    return q_cachedEffectiveFirstRows[orientation];
 }
 
 int QGridLayoutEngine::effectiveLastRow(Qt::Orientation orientation) const
 {
     ensureEffectiveFirstAndLastRows();
-    return q_cachedEffectiveLastRows[orientation == Qt::Vertical];
+    return q_cachedEffectiveLastRows[orientation];
 }
 
 void QGridLayoutEngine::setSpacing(qreal spacing, Qt::Orientations orientations)
 {
     if (orientations & Qt::Horizontal)
-        q_defaultSpacings[Hor].setUserValue(spacing);
+        q_defaultSpacings[Qt::Horizontal].setUserValue(spacing);
     if (orientations & Qt::Vertical)
-        q_defaultSpacings[Ver].setUserValue(spacing);
+        q_defaultSpacings[Qt::Vertical].setUserValue(spacing);
 
     invalidate();
 }
 
 qreal QGridLayoutEngine::spacing(Qt::Orientation orientation, const QAbstractLayoutStyleInfo *styleInfo) const
 {
-    if (!q_defaultSpacings[orientation == Qt::Vertical].isUser()) {
+    if (!q_defaultSpacings[orientation].isUser()) {
         qreal defaultSpacing = styleInfo->spacing(orientation);
-        q_defaultSpacings[orientation == Qt::Vertical].setCachedValue(defaultSpacing);
+        q_defaultSpacings[orientation].setCachedValue(defaultSpacing);
     }
-    return q_defaultSpacings[orientation == Qt::Vertical].value();
+    return q_defaultSpacings[orientation].value();
 }
 
 void QGridLayoutEngine::setRowSpacing(int row, qreal spacing, Qt::Orientation orientation)
 {
     Q_ASSERT(row >= 0);
 
-    QGridLayoutRowInfo &rowInfo = q_infos[orientation == Qt::Vertical];
-    if (row >= rowInfo.spacings.count())
+    QGridLayoutRowInfo &rowInfo = q_infos[orientation];
+    if (row >= rowInfo.spacings.size())
         rowInfo.spacings.resize(row + 1);
     if (spacing >= 0)
         rowInfo.spacings[row].setUserValue(spacing);
@@ -866,10 +835,10 @@ void QGridLayoutEngine::setRowSpacing(int row, qreal spacing, Qt::Orientation or
 
 qreal QGridLayoutEngine::rowSpacing(int row, Qt::Orientation orientation) const
 {
-    QLayoutParameter<qreal> spacing = q_infos[orientation == Qt::Vertical].spacings.value(row);
+    QLayoutParameter<qreal> spacing = q_infos[orientation].spacings.value(row);
     if (!spacing.isDefault())
         return spacing.value();
-    return q_defaultSpacings[orientation == Qt::Vertical].value();
+    return q_defaultSpacings[orientation].value();
 }
 
 void QGridLayoutEngine::setRowStretchFactor(int row, int stretch, Qt::Orientation orientation)
@@ -879,15 +848,15 @@ void QGridLayoutEngine::setRowStretchFactor(int row, int stretch, Qt::Orientatio
 
     maybeExpandGrid(row, -1, orientation);
 
-    QGridLayoutRowInfo &rowInfo = q_infos[orientation == Qt::Vertical];
-    if (row >= rowInfo.stretches.count())
+    QGridLayoutRowInfo &rowInfo = q_infos[orientation];
+    if (row >= rowInfo.stretches.size())
         rowInfo.stretches.resize(row + 1);
     rowInfo.stretches[row].setUserValue(stretch);
 }
 
 int QGridLayoutEngine::rowStretchFactor(int row, Qt::Orientation orientation) const
 {
-    QStretchParameter stretch = q_infos[orientation == Qt::Vertical].stretches.value(row);
+    QStretchParameter stretch = q_infos[orientation].stretches.value(row);
     if (!stretch.isDefault())
         return stretch.value();
     return 0;
@@ -901,15 +870,43 @@ void QGridLayoutEngine::setRowSizeHint(Qt::SizeHint which, int row, qreal size,
 
     maybeExpandGrid(row, -1, orientation);
 
-    QGridLayoutRowInfo &rowInfo = q_infos[orientation == Qt::Vertical];
-    if (row >= rowInfo.boxes.count())
+    QGridLayoutRowInfo &rowInfo = q_infos[orientation];
+    if (row >= rowInfo.boxes.size())
         rowInfo.boxes.resize(row + 1);
     rowInfo.boxes[row].q_sizes(which) = size;
 }
 
 qreal QGridLayoutEngine::rowSizeHint(Qt::SizeHint which, int row, Qt::Orientation orientation) const
 {
-    return q_infos[orientation == Qt::Vertical].boxes.value(row).q_sizes(which);
+    return q_infos[orientation].boxes.value(row).q_sizes(which);
+}
+
+bool QGridLayoutEngine::uniformCellWidths() const
+{
+    return m_uniformCellWidths;
+}
+
+void QGridLayoutEngine::setUniformCellWidths(bool uniformCellWidths)
+{
+    if (m_uniformCellWidths == uniformCellWidths)
+        return;
+
+    m_uniformCellWidths = uniformCellWidths;
+    invalidate();
+}
+
+bool QGridLayoutEngine::uniformCellHeights() const
+{
+    return m_uniformCellHeights;
+}
+
+void QGridLayoutEngine::setUniformCellHeights(bool uniformCellHeights)
+{
+    if (m_uniformCellHeights == uniformCellHeights)
+        return;
+
+    m_uniformCellHeights = uniformCellHeights;
+    invalidate();
 }
 
 void QGridLayoutEngine::setRowAlignment(int row, Qt::Alignment alignment,
@@ -919,8 +916,8 @@ void QGridLayoutEngine::setRowAlignment(int row, Qt::Alignment alignment,
 
     maybeExpandGrid(row, -1, orientation);
 
-    QGridLayoutRowInfo &rowInfo = q_infos[orientation == Qt::Vertical];
-    if (row >= rowInfo.alignments.count())
+    QGridLayoutRowInfo &rowInfo = q_infos[orientation];
+    if (row >= rowInfo.alignments.size())
         rowInfo.alignments.resize(row + 1);
     rowInfo.alignments[row] = alignment;
 }
@@ -928,7 +925,7 @@ void QGridLayoutEngine::setRowAlignment(int row, Qt::Alignment alignment,
 Qt::Alignment QGridLayoutEngine::rowAlignment(int row, Qt::Orientation orientation) const
 {
     Q_ASSERT(row >= 0);
-    return q_infos[orientation == Qt::Vertical].alignments.value(row);
+    return q_infos[orientation].alignments.value(row);
 }
 
 Qt::Alignment QGridLayoutEngine::effectiveAlignment(const QGridLayoutItem *layoutItem) const
@@ -960,7 +957,7 @@ void QGridLayoutEngine::insertItem(QGridLayoutItem *item, int index)
 {
     maybeExpandGrid(item->lastRow(), item->lastColumn());
 
-    if (index == -1)
+    if (index < 0 || index >= q_items.size())
         q_items.append(item);
     else
         q_items.insert(index, item);
@@ -1007,13 +1004,10 @@ QGridLayoutItem *QGridLayoutEngine::itemAt(int row, int column, Qt::Orientation 
 
 void QGridLayoutEngine::invalidate()
 {
-    q_cachedEffectiveFirstRows[Hor] = -1;
-    q_cachedEffectiveFirstRows[Ver] = -1;
-    q_cachedEffectiveLastRows[Hor] = -1;
-    q_cachedEffectiveLastRows[Ver] = -1;
+    q_cachedEffectiveFirstRows = {-1, -1};
+    q_cachedEffectiveLastRows = {-1, -1};
 
-    q_totalBoxCachedConstraints[Hor] = NotCached;
-    q_totalBoxCachedConstraints[Ver] = NotCached;
+    q_totalBoxCachedConstraints = {NotCached, NotCached};
 
     q_cachedSize = QSizeF();
     q_cachedConstraintOrientation = UnknownConstraint;
@@ -1032,7 +1026,7 @@ void QGridLayoutEngine::setGeometries(const QRectF &contentsGeometry, const QAbs
 
     ensureGeometries(contentsGeometry.size(), styleInfo);
 
-    for (int i = q_items.count() - 1; i >= 0; --i) {
+    for (int i = q_items.size() - 1; i >= 0; --i) {
         QGridLayoutItem *item = q_items.at(i);
 
         qreal x = q_xx.at(item->firstColumn());
@@ -1095,14 +1089,14 @@ QSizeF QGridLayoutEngine::sizeHint(Qt::SizeHint which, const QSizeF &constraint,
 
 
     if (hasDynamicConstraint() && rowCount() > 0 && columnCount() > 0) {
-        QGridLayoutBox sizehint_totalBoxes[NOrientations];
+        QHVContainer<QGridLayoutBox> sizehint_totalBoxes;
         bool sizeHintCalculated = false;
         if (constraintOrientation() == Qt::Vertical) {
             //We have items whose height depends on their width
             if (constraint.width() >= 0) {
-                ensureColumnAndRowData(&q_columnData, &sizehint_totalBoxes[Hor], nullptr, nullptr, Qt::Horizontal, styleInfo);
-                QVector<qreal> sizehint_xx;
-                QVector<qreal> sizehint_widths;
+                ensureColumnAndRowData(&q_columnData, &sizehint_totalBoxes[Qt::Horizontal], nullptr, nullptr, Qt::Horizontal, styleInfo);
+                QList<qreal> sizehint_xx;
+                QList<qreal> sizehint_widths;
 
                 sizehint_xx.resize(columnCount());
                 sizehint_widths.resize(columnCount());
@@ -1110,16 +1104,16 @@ QSizeF QGridLayoutEngine::sizeHint(Qt::SizeHint which, const QSizeF &constraint,
                 //Calculate column widths and positions, and put results in q_xx.data() and q_widths.data() so that we can use this information as
                 //constraints to find the row heights
                 q_columnData.calculateGeometries(0, columnCount(), width, sizehint_xx.data(), sizehint_widths.data(),
-                        nullptr, sizehint_totalBoxes[Hor], q_infos[Hor], m_snapToPixelGrid);
-                ensureColumnAndRowData(&q_rowData, &sizehint_totalBoxes[Ver], sizehint_xx.data(), sizehint_widths.data(), Qt::Vertical, styleInfo);
+                        nullptr, sizehint_totalBoxes[Qt::Horizontal], q_infos[Qt::Horizontal], m_snapToPixelGrid);
+                ensureColumnAndRowData(&q_rowData, &sizehint_totalBoxes[Qt::Vertical], sizehint_xx.data(), sizehint_widths.data(), Qt::Vertical, styleInfo);
                 sizeHintCalculated = true;
             }
         } else {
             if (constraint.height() >= 0) {
                 //We have items whose width depends on their height
-                ensureColumnAndRowData(&q_rowData, &sizehint_totalBoxes[Ver], nullptr, nullptr, Qt::Vertical, styleInfo);
-                QVector<qreal> sizehint_yy;
-                QVector<qreal> sizehint_heights;
+                ensureColumnAndRowData(&q_rowData, &sizehint_totalBoxes[Qt::Vertical], nullptr, nullptr, Qt::Vertical, styleInfo);
+                QList<qreal> sizehint_yy;
+                QList<qreal> sizehint_heights;
 
                 sizehint_yy.resize(rowCount());
                 sizehint_heights.resize(rowCount());
@@ -1127,19 +1121,20 @@ QSizeF QGridLayoutEngine::sizeHint(Qt::SizeHint which, const QSizeF &constraint,
                 //Calculate row heights and positions, and put results in q_yy.data() and q_heights.data() so that we can use this information as
                 //constraints to find the column widths
                 q_rowData.calculateGeometries(0, rowCount(), height, sizehint_yy.data(), sizehint_heights.data(),
-                        nullptr, sizehint_totalBoxes[Ver], q_infos[Ver], m_snapToPixelGrid);
-                ensureColumnAndRowData(&q_columnData, &sizehint_totalBoxes[Hor], sizehint_yy.data(), sizehint_heights.data(), Qt::Horizontal, styleInfo);
+                        nullptr, sizehint_totalBoxes[Qt::Vertical], q_infos[Qt::Vertical], m_snapToPixelGrid);
+                ensureColumnAndRowData(&q_columnData, &sizehint_totalBoxes[Qt::Horizontal], sizehint_yy.data(), sizehint_heights.data(), Qt::Horizontal, styleInfo);
                 sizeHintCalculated = true;
             }
         }
         if (sizeHintCalculated)
-            return QSizeF(sizehint_totalBoxes[Hor].q_sizes(which), sizehint_totalBoxes[Ver].q_sizes(which));
+            return QSizeF{sizehint_totalBoxes[Qt::Horizontal].q_sizes(which),
+                          sizehint_totalBoxes[Qt::Vertical].q_sizes(which)};
     }
 
     //No items with height for width, so it doesn't matter which order we do these in
-    ensureColumnAndRowData(&q_columnData, &q_totalBoxes[Hor], nullptr, nullptr, Qt::Horizontal, styleInfo);
-    ensureColumnAndRowData(&q_rowData, &q_totalBoxes[Ver], nullptr, nullptr, Qt::Vertical, styleInfo);
-    return QSizeF(q_totalBoxes[Hor].q_sizes(which), q_totalBoxes[Ver].q_sizes(which));
+    ensureColumnAndRowData(&q_columnData, &q_totalBoxes[Qt::Horizontal], nullptr, nullptr, Qt::Horizontal, styleInfo);
+    ensureColumnAndRowData(&q_rowData, &q_totalBoxes[Qt::Vertical], nullptr, nullptr, Qt::Vertical, styleInfo);
+    return QSizeF(q_totalBoxes[Qt::Horizontal].q_sizes(which), q_totalBoxes[Qt::Vertical].q_sizes(which));
 }
 
 QLayoutPolicy::ControlTypes QGridLayoutEngine::controlTypes(LayoutSide side) const
@@ -1160,11 +1155,11 @@ void QGridLayoutEngine::transpose()
 {
     invalidate();
 
-    for (int i = q_items.count() - 1; i >= 0; --i)
+    for (int i = q_items.size() - 1; i >= 0; --i)
         q_items.at(i)->transpose();
 
-    qSwap(q_defaultSpacings[Hor], q_defaultSpacings[Ver]);
-    qSwap(q_infos[Hor], q_infos[Ver]);
+    q_defaultSpacings.transpose();
+    q_infos.transpose();
 
     regenerateGrid();
 }
@@ -1192,36 +1187,37 @@ void QGridLayoutEngine::dump(int indent) const
     qDebug("%*s Grid (%d x %d)", indent, "", internalGridRowCount(),
            internalGridColumnCount());
     for (int row = 0; row < internalGridRowCount(); ++row) {
-        QString message = QLatin1String("[ ");
+        QString message = "[ "_L1;
         for (int column = 0; column < internalGridColumnCount(); ++column) {
             message += QString::number(q_items.indexOf(itemAt(row, column))).rightJustified(3);
-            message += QLatin1Char(' ');
+            message += u' ';
         }
-        message += QLatin1Char(']');
+        message += u']';
         qDebug("%*s  %s", indent, "", qPrintable(message));
     }
 
-    if (q_defaultSpacings[Hor].value() >= 0.0 || q_defaultSpacings[Ver].value() >= 0.0)
-        qDebug("%*s Default spacings: %g %g", indent, "", q_defaultSpacings[Hor].value(),
-               q_defaultSpacings[Ver].value());
+    if (q_defaultSpacings[Qt::Horizontal].value() >= 0.0 || q_defaultSpacings[Qt::Vertical].value() >= 0.0)
+        qDebug("%*s Default spacings: %g %g", indent, "",
+               q_defaultSpacings[Qt::Horizontal].value(),
+               q_defaultSpacings[Qt::Vertical].value());
 
     qDebug("%*s Column and row info", indent, "");
-    q_infos[Hor].dump(indent + 2);
-    q_infos[Ver].dump(indent + 2);
+    q_infos[Qt::Horizontal].dump(indent + 2);
+    q_infos[Qt::Vertical].dump(indent + 2);
 
     qDebug("%*s Column and row data", indent, "");
     q_columnData.dump(indent + 2);
     q_rowData.dump(indent + 2);
 
     qDebug("%*s Geometries output", indent, "");
-    QVector<qreal> *cellPos = &q_yy;
+    QList<qreal> *cellPos = &q_yy;
     for (int pass = 0; pass < 2; ++pass) {
         QString message;
         for (i = 0; i < cellPos->count(); ++i) {
-            message += QLatin1String((message.isEmpty() ? "[" : ", "));
+            message += (message.isEmpty() ? "["_L1 : ", "_L1);
             message += QString::number(cellPos->at(i));
         }
-        message += QLatin1Char(']');
+        message += u']';
         qDebug("%*s %s %s", indent, "", (pass == 0 ? "rows:" : "columns:"), qPrintable(message));
         cellPos = &q_xx;
     }
@@ -1241,14 +1237,14 @@ void QGridLayoutEngine::maybeExpandGrid(int row, int column, Qt::Orientation ori
     int oldGridRowCount = internalGridRowCount();
     int oldGridColumnCount = internalGridColumnCount();
 
-    q_infos[Ver].count = qMax(row + 1, rowCount());
-    q_infos[Hor].count = qMax(column + 1, columnCount());
+    q_infos[Qt::Vertical].count = qMax(row + 1, rowCount());
+    q_infos[Qt::Horizontal].count = qMax(column + 1, columnCount());
 
     int newGridRowCount = internalGridRowCount();
     int newGridColumnCount = internalGridColumnCount();
 
     int newGridSize = newGridRowCount * newGridColumnCount;
-    if (newGridSize != q_grid.count()) {
+    if (newGridSize != q_grid.size()) {
         q_grid.resize(newGridSize);
 
         if (newGridColumnCount != oldGridColumnCount) {
@@ -1259,7 +1255,7 @@ void QGridLayoutEngine::maybeExpandGrid(int row, int column, Qt::Orientation ori
 
                     Q_ASSERT(newIndex > oldIndex);
                     q_grid[newIndex] = q_grid[oldIndex];
-                    q_grid[oldIndex] = 0;
+                    q_grid[oldIndex] = nullptr;
                 }
             }
         }
@@ -1268,9 +1264,9 @@ void QGridLayoutEngine::maybeExpandGrid(int row, int column, Qt::Orientation ori
 
 void QGridLayoutEngine::regenerateGrid()
 {
-    q_grid.fill(0);
+    q_grid.fill(nullptr);
 
-    for (int i = q_items.count() - 1; i >= 0; --i) {
+    for (int i = q_items.size() - 1; i >= 0; --i) {
         QGridLayoutItem *item = q_items.at(i);
 
         for (int j = item->firstRow(); j <= item->lastRow(); ++j) {
@@ -1301,9 +1297,9 @@ void QGridLayoutEngine::insertOrRemoveRows(int row, int delta, Qt::Orientation o
         return;
     }
 
-    q_infos[orientation == Qt::Vertical].insertOrRemoveRows(row, delta);
+    q_infos[orientation].insertOrRemoveRows(row, delta);
 
-    for (int i = q_items.count() - 1; i >= 0; --i)
+    for (int i = q_items.size() - 1; i >= 0; --i)
         q_items.at(i)->insertOrRemoveRows(row, delta, orientation);
 
     q_grid.resize(internalGridRowCount() * internalGridColumnCount());
@@ -1316,12 +1312,12 @@ void QGridLayoutEngine::fillRowData(QGridLayoutRowData *rowData,
                                     const QAbstractLayoutStyleInfo *styleInfo) const
 {
     const int ButtonMask = QLayoutPolicy::ButtonBox | QLayoutPolicy::PushButton;
-    const QGridLayoutRowInfo &rowInfo = q_infos[orientation == Qt::Vertical];
-    const QGridLayoutRowInfo &columnInfo = q_infos[orientation == Qt::Horizontal];
+    const QGridLayoutRowInfo &rowInfo = q_infos[orientation];
+    const QGridLayoutRowInfo &columnInfo = q_infos.other(orientation);
     LayoutSide top = (orientation == Qt::Vertical) ? Top : Left;
     LayoutSide bottom = (orientation == Qt::Vertical) ? Bottom : Right;
 
-    const QLayoutParameter<qreal> &defaultSpacing = q_defaultSpacings[orientation == Qt::Vertical];
+    const QLayoutParameter<qreal> &defaultSpacing = q_defaultSpacings[orientation];
     qreal innerSpacing = styleInfo->spacing(orientation);
     if (innerSpacing >= 0.0)
         defaultSpacing.setCachedValue(innerSpacing);
@@ -1336,7 +1332,7 @@ void QGridLayoutEngine::fillRowData(QGridLayoutRowData *rowData,
             if (rowIsIdenticalToPrevious && item != itemAt(row - 1, column, orientation))
                 rowIsIdenticalToPrevious = false;
 
-            if (item && !item->isIgnored())
+            if (item && !item->isEmpty())
                 rowIsEmpty = false;
         }
 
@@ -1444,7 +1440,7 @@ void QGridLayoutEngine::fillRowData(QGridLayoutRowData *rowData,
                 }
             }
         }
-        if (row < rowInfo.boxes.count()) {
+        if (row < rowInfo.boxes.size()) {
             QGridLayoutBox rowBoxInfo = rowInfo.boxes.at(row);
             rowBoxInfo.normalize();
             rowBox.q_minimumSize = qMax(rowBox.q_minimumSize, rowBoxInfo.q_minimumSize);
@@ -1537,28 +1533,46 @@ void QGridLayoutEngine::fillRowData(QGridLayoutRowData *rowData,
             rowSpacing = qMax(windowMargin, rowSpacing);
         }
     }
+
+    if (rowData->boxes.size() > 1 &&
+        ((orientation == Qt::Horizontal && m_uniformCellWidths) ||
+        (orientation == Qt::Vertical && m_uniformCellHeights))) {
+        qreal averagePreferredSize = 0.;
+        qreal minimumMaximumSize = std::numeric_limits<qreal>::max();
+        qreal maximumMinimumSize = 0.;
+        for (const auto &box : rowData->boxes) {
+            averagePreferredSize += box.q_preferredSize;
+            minimumMaximumSize = qMin(minimumMaximumSize, box.q_maximumSize);
+            maximumMinimumSize = qMax(maximumMinimumSize, box.q_minimumSize);
+        }
+        averagePreferredSize /= rowData->boxes.size();
+        minimumMaximumSize = qMax(minimumMaximumSize, maximumMinimumSize);
+        averagePreferredSize = qBound(maximumMinimumSize, averagePreferredSize, minimumMaximumSize);
+        for (auto &box : rowData->boxes) {
+            box.q_preferredSize = averagePreferredSize;
+            box.q_minimumSize = maximumMinimumSize;
+            box.q_maximumSize = minimumMaximumSize;
+        }
+    }
 }
 
 void QGridLayoutEngine::ensureEffectiveFirstAndLastRows() const
 {
-    if (q_cachedEffectiveFirstRows[Hor] == -1 && !q_items.isEmpty()) {
+    if (q_cachedEffectiveFirstRows[Qt::Horizontal] == -1 && !q_items.isEmpty()) {
         int rowCount = this->rowCount();
         int columnCount = this->columnCount();
 
-        q_cachedEffectiveFirstRows[Ver] = rowCount;
-        q_cachedEffectiveFirstRows[Hor] = columnCount;
-        q_cachedEffectiveLastRows[Ver] = -1;
-        q_cachedEffectiveLastRows[Hor] = -1;
+        q_cachedEffectiveFirstRows = {columnCount, rowCount};
+        q_cachedEffectiveLastRows = {-1, -1};
 
-        for (int i = q_items.count() - 1; i >= 0; --i) {
+        for (int i = q_items.size() - 1; i >= 0; --i) {
             const QGridLayoutItem *item = q_items.at(i);
 
-            for (int j = 0; j < NOrientations; ++j) {
-                Qt::Orientation orientation = (j == Hor) ? Qt::Horizontal : Qt::Vertical;
-                if (item->firstRow(orientation) < q_cachedEffectiveFirstRows[j])
-                    q_cachedEffectiveFirstRows[j] = item->firstRow(orientation);
-                if (item->lastRow(orientation) > q_cachedEffectiveLastRows[j])
-                    q_cachedEffectiveLastRows[j] = item->lastRow(orientation);
+            for (Qt::Orientation o : {Qt::Horizontal, Qt::Vertical}) {
+                if (item->firstRow(o) < q_cachedEffectiveFirstRows[o])
+                    q_cachedEffectiveFirstRows[o] = item->firstRow(o);
+                if (item->lastRow(o) > q_cachedEffectiveLastRows[o])
+                    q_cachedEffectiveLastRows[o] = item->lastRow(o);
             }
         }
     }
@@ -1569,24 +1583,23 @@ void QGridLayoutEngine::ensureColumnAndRowData(QGridLayoutRowData *rowData, QGri
                                                Qt::Orientation orientation,
                                                const QAbstractLayoutStyleInfo *styleInfo) const
 {
-    const int o = (orientation == Qt::Vertical ? Ver : Hor);
     const int cc = columnCount(orientation);
 
     const qreal constraint = (colPositions && colSizes && hasDynamicConstraint()) ? (colPositions[cc - 1] + colSizes[cc - 1]) : qreal(CachedWithNoConstraint);
-    qreal &cachedConstraint = q_totalBoxCachedConstraints[o];
+    qreal &cachedConstraint = q_totalBoxCachedConstraints[orientation];
     if (cachedConstraint == constraint) {
-        if (totalBox != &q_totalBoxes[o])
-            *totalBox = q_totalBoxes[o];
+        if (totalBox != &q_totalBoxes[orientation])
+            *totalBox = q_totalBoxes[orientation];
          return;
     }
     rowData->reset(rowCount(orientation));
     fillRowData(rowData, colPositions, colSizes, orientation, styleInfo);
-    const QGridLayoutRowInfo &rowInfo = q_infos[orientation == Qt::Vertical];
+    const QGridLayoutRowInfo &rowInfo = q_infos[orientation];
     rowData->distributeMultiCells(rowInfo, m_snapToPixelGrid);
     *totalBox = rowData->totalBox(0, rowCount(orientation));
 
-    if (totalBox != &q_totalBoxes[o])
-        q_totalBoxes[o] = *totalBox;
+    if (totalBox != &q_totalBoxes[orientation])
+        q_totalBoxes[orientation] = *totalBox;
 
     cachedConstraint = constraint;
 }
@@ -1598,7 +1611,7 @@ void QGridLayoutEngine::ensureColumnAndRowData(QGridLayoutRowData *rowData, QGri
 bool QGridLayoutEngine::ensureDynamicConstraint() const
 {
     if (q_cachedConstraintOrientation == UnknownConstraint) {
-        for (int i = q_items.count() - 1; i >= 0; --i) {
+        for (int i = q_items.size() - 1; i >= 0; --i) {
             QGridLayoutItem *item = q_items.at(i);
             if (item->hasDynamicConstraint()) {
                 Qt::Orientation itemConstraintOrientation = item->dynamicConstraintOrientation();
@@ -1650,26 +1663,26 @@ void QGridLayoutEngine::ensureGeometries(const QSizeF &size,
 
     if (constraintOrientation() != Qt::Horizontal) {
         //We might have items whose height depends on their width (HFW)
-        ensureColumnAndRowData(&q_columnData, &q_totalBoxes[Hor], nullptr, nullptr, Qt::Horizontal, styleInfo);
+        ensureColumnAndRowData(&q_columnData, &q_totalBoxes[Qt::Horizontal], nullptr, nullptr, Qt::Horizontal, styleInfo);
         //Calculate column widths and positions, and put results in q_xx.data() and q_widths.data() so that we can use this information as
         //constraints to find the row heights
         q_columnData.calculateGeometries(0, columnCount(), size.width(), q_xx.data(), q_widths.data(),
-                nullptr, q_totalBoxes[Hor], q_infos[Hor], m_snapToPixelGrid);
-        ensureColumnAndRowData(&q_rowData, &q_totalBoxes[Ver], q_xx.data(), q_widths.data(), Qt::Vertical, styleInfo);
+                nullptr, q_totalBoxes[Qt::Horizontal], q_infos[Qt::Horizontal], m_snapToPixelGrid);
+        ensureColumnAndRowData(&q_rowData, &q_totalBoxes[Qt::Vertical], q_xx.data(), q_widths.data(), Qt::Vertical, styleInfo);
         //Calculate row heights and positions, and put results in q_yy.data() and q_heights.data()
         q_rowData.calculateGeometries(0, rowCount(), size.height(), q_yy.data(), q_heights.data(),
-                q_descents.data(), q_totalBoxes[Ver], q_infos[Ver], m_snapToPixelGrid);
+                q_descents.data(), q_totalBoxes[Qt::Vertical], q_infos[Qt::Vertical], m_snapToPixelGrid);
     } else {
         //We have items whose width depends on their height (WFH)
-        ensureColumnAndRowData(&q_rowData, &q_totalBoxes[Ver], nullptr, nullptr, Qt::Vertical, styleInfo);
+        ensureColumnAndRowData(&q_rowData, &q_totalBoxes[Qt::Vertical], nullptr, nullptr, Qt::Vertical, styleInfo);
         //Calculate row heights and positions, and put results in q_yy.data() and q_heights.data() so that we can use this information as
         //constraints to find the column widths
         q_rowData.calculateGeometries(0, rowCount(), size.height(), q_yy.data(), q_heights.data(),
-                q_descents.data(), q_totalBoxes[Ver], q_infos[Ver], m_snapToPixelGrid);
-        ensureColumnAndRowData(&q_columnData, &q_totalBoxes[Hor], q_yy.data(), q_heights.data(), Qt::Horizontal, styleInfo);
+                q_descents.data(), q_totalBoxes[Qt::Vertical], q_infos[Qt::Vertical], m_snapToPixelGrid);
+        ensureColumnAndRowData(&q_columnData, &q_totalBoxes[Qt::Horizontal], q_yy.data(), q_heights.data(), Qt::Horizontal, styleInfo);
         //Calculate row heights and positions, and put results in q_yy.data() and q_heights.data()
         q_columnData.calculateGeometries(0, columnCount(), size.width(), q_xx.data(), q_widths.data(),
-                nullptr, q_totalBoxes[Hor], q_infos[Hor], m_snapToPixelGrid);
+                nullptr, q_totalBoxes[Qt::Horizontal], q_infos[Qt::Horizontal], m_snapToPixelGrid);
     }
 }
 

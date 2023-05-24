@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QTest>
@@ -32,9 +7,7 @@
 #include <Qt3DRender/private/qcameralens_p.h>
 #include <QObject>
 #include <QSignalSpy>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
-#include <Qt3DCore/qnodecreatedchange.h>
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class tst_QCameraLens : public QObject
 {
@@ -79,7 +52,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.projectionType(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -87,7 +60,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.projectionType(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -98,7 +71,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.nearPlane(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -106,7 +79,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.nearPlane(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -117,7 +90,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.farPlane(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -125,7 +98,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.farPlane(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -136,7 +109,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.fieldOfView(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -144,7 +117,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.fieldOfView(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -155,7 +128,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.aspectRatio(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -163,7 +136,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.aspectRatio(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -174,7 +147,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.left(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -182,7 +155,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.left(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -193,7 +166,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.right(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -201,7 +174,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.right(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -212,7 +185,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.bottom(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -220,7 +193,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.bottom(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -231,7 +204,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.top(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -239,7 +212,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.top(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -250,7 +223,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.exposure(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
             QCOMPARE(spy.takeFirst().first().toFloat(), -2.0f);
 
             // WHEN
@@ -259,7 +232,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.exposure(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -272,7 +245,7 @@ private Q_SLOTS:
             QVERIFY(spy.isValid());
             QCOMPARE(cameraLens.projectionMatrix(), newValue);
             QCOMPARE(cameraLens.projectionType(), Qt3DRender::QCameraLens::CustomProjection);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -280,7 +253,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(cameraLens.projectionMatrix(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
     }
 
@@ -296,7 +269,7 @@ private Q_SLOTS:
 
             // THEN
             QVERIFY(spy.isValid());
-            QCOMPARE(spy.count(), 8); // Triggered for each property being set + 1
+            QCOMPARE(spy.size(), 8); // Triggered for each property being set + 1
             QCOMPARE(cameraLens.projectionType(), Qt3DRender::QCameraLens::OrthographicProjection);
             QCOMPARE(cameraLens.nearPlane(), 0.5f);
             QCOMPARE(cameraLens.farPlane(), 50.0f);
@@ -319,7 +292,7 @@ private Q_SLOTS:
 
             // THEN
             QVERIFY(spy.isValid());
-            QCOMPARE(spy.count(), 5); // Triggered for each property being set (- projectionTye which is the default value) + 1
+            QCOMPARE(spy.size(), 5); // Triggered for each property being set (- projectionTye which is the default value) + 1
             QCOMPARE(cameraLens.projectionType(), Qt3DRender::QCameraLens::PerspectiveProjection);
             QCOMPARE(cameraLens.nearPlane(), 0.5f);
             QCOMPARE(cameraLens.farPlane(), 50.0f);
@@ -340,7 +313,7 @@ private Q_SLOTS:
 
             // THEN
             QVERIFY(spy.isValid());
-            QCOMPARE(spy.count(), 8); // Triggered for each property being set + 1
+            QCOMPARE(spy.size(), 8); // Triggered for each property being set + 1
             QCOMPARE(cameraLens.projectionType(), Qt3DRender::QCameraLens::FrustumProjection);
             QCOMPARE(cameraLens.nearPlane(), 0.5f);
             QCOMPARE(cameraLens.farPlane(), 50.0f);
@@ -348,64 +321,6 @@ private Q_SLOTS:
             QCOMPARE(cameraLens.right(), 1.0f);
             QCOMPARE(cameraLens.bottom(), -1.0f);
             QCOMPARE(cameraLens.top(), 1.0f);
-        }
-    }
-
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DRender::QCameraLens cameraLens;
-
-        cameraLens.setNearPlane(0.5);
-        cameraLens.setFarPlane(1005.0f);
-        cameraLens.setFieldOfView(35.0f);
-        cameraLens.setAspectRatio(16.0f/9.0f);
-        cameraLens.setExposure(1.0f);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&cameraLens);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 1);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QCameraLensData>>(creationChanges.first());
-            const Qt3DRender::QCameraLensData cloneData = creationChangeData->data;
-
-            QCOMPARE(cameraLens.projectionMatrix(), cloneData.projectionMatrix);
-            QCOMPARE(cameraLens.exposure(), cloneData.exposure);
-            QCOMPARE(cameraLens.id(), creationChangeData->subjectId());
-            QCOMPARE(cameraLens.isEnabled(), true);
-            QCOMPARE(cameraLens.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(cameraLens.metaObject(), creationChangeData->metaObject());
-        }
-
-        // WHEN
-        cameraLens.setEnabled(false);
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&cameraLens);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 1);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QCameraLensData>>(creationChanges.first());
-            const Qt3DRender::QCameraLensData cloneData = creationChangeData->data;
-
-            QCOMPARE(cameraLens.projectionMatrix(), cloneData.projectionMatrix);
-            QCOMPARE(cameraLens.exposure(), cloneData.exposure);
-            QCOMPARE(cameraLens.id(), creationChangeData->subjectId());
-            QCOMPARE(cameraLens.isEnabled(), false);
-            QCOMPARE(cameraLens.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(cameraLens.metaObject(), creationChangeData->metaObject());
         }
     }
 
@@ -422,11 +337,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -435,8 +349,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -453,11 +366,10 @@ private Q_SLOTS:
             cameraLens.setNearPlane(5.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -465,8 +377,7 @@ private Q_SLOTS:
             cameraLens.setNearPlane(5.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -483,11 +394,10 @@ private Q_SLOTS:
             cameraLens.setFarPlane(5.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -495,8 +405,7 @@ private Q_SLOTS:
             cameraLens.setFarPlane(5.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -513,11 +422,10 @@ private Q_SLOTS:
             cameraLens.setFieldOfView(5.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -525,8 +433,7 @@ private Q_SLOTS:
             cameraLens.setFieldOfView(5.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -543,11 +450,10 @@ private Q_SLOTS:
             cameraLens.setAspectRatio(9.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -555,8 +461,7 @@ private Q_SLOTS:
             cameraLens.setAspectRatio(9.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -573,11 +478,10 @@ private Q_SLOTS:
             cameraLens.setLeft(0.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -585,8 +489,7 @@ private Q_SLOTS:
             cameraLens.setLeft(0.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -603,11 +506,10 @@ private Q_SLOTS:
             cameraLens.setRight(24.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -615,8 +517,7 @@ private Q_SLOTS:
             cameraLens.setRight(24.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -633,11 +534,10 @@ private Q_SLOTS:
             cameraLens.setBottom(-12.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -645,8 +545,7 @@ private Q_SLOTS:
             cameraLens.setBottom(-12.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -663,11 +562,10 @@ private Q_SLOTS:
             cameraLens.setTop(12.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -675,8 +573,7 @@ private Q_SLOTS:
             cameraLens.setTop(12.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -693,11 +590,10 @@ private Q_SLOTS:
             cameraLens.setExposure(2.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -705,8 +601,7 @@ private Q_SLOTS:
             cameraLens.setExposure(2.0f);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -726,11 +621,10 @@ private Q_SLOTS:
             cameraLens.setProjectionMatrix(m);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &cameraLens);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &cameraLens);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -738,8 +632,7 @@ private Q_SLOTS:
             cameraLens.setProjectionMatrix(m);
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.events.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }

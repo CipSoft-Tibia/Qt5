@@ -9,6 +9,7 @@
 
 #include "libANGLE/renderer/ContextImpl.h"
 
+#include "common/base/anglebase/no_destructor.h"
 #include "libANGLE/Context.h"
 
 namespace rx
@@ -25,6 +26,11 @@ void ContextImpl::invalidateTexture(gl::TextureType target)
 }
 
 angle::Result ContextImpl::onUnMakeCurrent(const gl::Context *context)
+{
+    return angle::Result::Continue;
+}
+
+angle::Result ContextImpl::handleNoopDrawEvent()
 {
     return angle::Result::Continue;
 }
@@ -60,4 +66,44 @@ egl::Error ContextImpl::reacquireHighPowerGPU(gl::Context *)
     return egl::NoError();
 }
 
+angle::Result ContextImpl::acquireTextures(const gl::Context *context,
+                                           const gl::TextureBarrierVector &textureBarriers)
+{
+    UNREACHABLE();
+    return angle::Result::Stop;
+}
+
+angle::Result ContextImpl::releaseTextures(const gl::Context *context,
+                                           gl::TextureBarrierVector *textureBarriers)
+{
+    UNREACHABLE();
+    return angle::Result::Stop;
+}
+
+const angle::PerfMonitorCounterGroups &ContextImpl::getPerfMonitorCounters()
+{
+    static angle::base::NoDestructor<angle::PerfMonitorCounterGroups> sCounters;
+    return *sCounters;
+}
+
+angle::Result ContextImpl::drawPixelLocalStorageEXTEnable(gl::Context *,
+                                                          GLsizei n,
+                                                          const gl::PixelLocalStoragePlane[],
+                                                          const GLenum loadops[])
+{
+    ASSERT(getNativePixelLocalStorageOptions().type ==
+           ShPixelLocalStorageType::PixelLocalStorageEXT);
+    UNREACHABLE();
+    return angle::Result::Stop;
+}
+
+angle::Result ContextImpl::drawPixelLocalStorageEXTDisable(gl::Context *,
+                                                           const gl::PixelLocalStoragePlane[],
+                                                           const GLenum storeops[])
+{
+    ASSERT(getNativePixelLocalStorageOptions().type ==
+           ShPixelLocalStorageType::PixelLocalStorageEXT);
+    UNREACHABLE();
+    return angle::Result::Stop;
+}
 }  // namespace rx

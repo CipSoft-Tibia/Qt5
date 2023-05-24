@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "abstractdeclarativeinterface_p.h"
 #include "abstract3dcontroller_p.h"
 #include "qabstract3daxis_p.h"
 #include "qvalue3daxis_p.h"
@@ -38,10 +13,10 @@
 #include "qcustom3ditem_p.h"
 #include "utils_p.h"
 #include <QtCore/QThread>
-#include <QtGui/QOpenGLFramebufferObject>
+#include <QtOpenGL/QOpenGLFramebufferObject>
 #include <QtCore/QMutexLocker>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 Abstract3DController::Abstract3DController(QRect initialViewport, Q3DScene *scene,
                                            QObject *parent) :
@@ -176,6 +151,11 @@ void Abstract3DController::removeSeries(QAbstract3DSeries *series)
         m_isSeriesVisualsDirty = true;
         emitNeedRender();
     }
+}
+
+bool Abstract3DController::hasSeries(QAbstract3DSeries *series)
+{
+    return m_seriesList.contains(series);
 }
 
 QList<QAbstract3DSeries *> Abstract3DController::seriesList()
@@ -690,14 +670,18 @@ void Abstract3DController::handleThemeMultiHighlightGradientChanged(const QLinea
 
 void Abstract3DController::handleThemeTypeChanged(Q3DTheme::Theme theme)
 {
-    Q_UNUSED(theme)
+    Q_UNUSED(theme);
+
+    if (!m_qml)
+        return;
 
     // Changing theme type is logically equivalent of changing the entire theme
     // object, so reset all attached series to the new theme.
-
+    bool force = m_qml->isReady();
     Q3DTheme *activeTheme = m_themeManager->activeTheme();
     for (int i = 0; i < m_seriesList.size(); i++)
-        m_seriesList.at(i)->d_ptr->resetToTheme(*activeTheme, i, true);
+        m_seriesList.at(i)->d_ptr->resetToTheme(*activeTheme, i, force);
+
     markSeriesVisualsDirty();
 }
 
@@ -1012,7 +996,7 @@ int Abstract3DController::addCustomItem(QCustom3DItem *item)
     item->d_ptr->resetDirtyBits();
     m_isCustomDataDirty = true;
     emitNeedRender();
-    return m_customItems.count() - 1;
+    return m_customItems.size() - 1;
 }
 
 void Abstract3DController::deleteCustomItems()
@@ -1070,7 +1054,7 @@ void Abstract3DController::updateCustomItem()
 
 void Abstract3DController::handleAxisTitleChanged(const QString &title)
 {
-    Q_UNUSED(title)
+    Q_UNUSED(title);
     handleAxisTitleChangedBySender(sender());
 }
 
@@ -1111,8 +1095,8 @@ void Abstract3DController::handleAxisLabelsChangedBySender(QObject *sender)
 
 void Abstract3DController::handleAxisRangeChanged(float min, float max)
 {
-    Q_UNUSED(min)
-    Q_UNUSED(max)
+    Q_UNUSED(min);
+    Q_UNUSED(max);
     handleAxisRangeChangedBySender(sender());
 }
 
@@ -1135,7 +1119,7 @@ void Abstract3DController::handleAxisRangeChangedBySender(QObject *sender)
 
 void Abstract3DController::handleAxisSegmentCountChanged(int count)
 {
-    Q_UNUSED(count)
+    Q_UNUSED(count);
     handleAxisSegmentCountChangedBySender(sender());
 }
 
@@ -1154,7 +1138,7 @@ void Abstract3DController::handleAxisSegmentCountChangedBySender(QObject *sender
 
 void Abstract3DController::handleAxisSubSegmentCountChanged(int count)
 {
-    Q_UNUSED(count)
+    Q_UNUSED(count);
     handleAxisSubSegmentCountChangedBySender(sender());
 }
 
@@ -1183,13 +1167,13 @@ void Abstract3DController::handleAxisAutoAdjustRangeChanged(bool autoAdjust)
 
 void Abstract3DController::handleAxisLabelFormatChanged(const QString &format)
 {
-    Q_UNUSED(format)
+    Q_UNUSED(format);
     handleAxisLabelFormatChangedBySender(sender());
 }
 
 void Abstract3DController::handleAxisReversedChanged(bool enable)
 {
-    Q_UNUSED(enable)
+    Q_UNUSED(enable);
     handleAxisReversedChangedBySender(sender());
 }
 
@@ -1200,19 +1184,19 @@ void Abstract3DController::handleAxisFormatterDirty()
 
 void Abstract3DController::handleAxisLabelAutoRotationChanged(float angle)
 {
-    Q_UNUSED(angle)
+    Q_UNUSED(angle);
     handleAxisLabelAutoRotationChangedBySender(sender());
 }
 
 void Abstract3DController::handleAxisTitleVisibilityChanged(bool visible)
 {
-    Q_UNUSED(visible)
+    Q_UNUSED(visible);
     handleAxisTitleVisibilityChangedBySender(sender());
 }
 
 void Abstract3DController::handleAxisTitleFixedChanged(bool fixed)
 {
-    Q_UNUSED(fixed)
+    Q_UNUSED(fixed);
     handleAxisTitleFixedChangedBySender(sender());
 }
 
@@ -1229,13 +1213,13 @@ void Abstract3DController::handleInputViewChanged(QAbstract3DInputHandler::Input
 
 void Abstract3DController::handleInputPositionChanged(const QPoint &position)
 {
-    Q_UNUSED(position)
+    Q_UNUSED(position);
     emitNeedRender();
 }
 
 void Abstract3DController::handleSeriesVisibilityChanged(bool visible)
 {
-    Q_UNUSED(visible)
+    Q_UNUSED(visible);
 
     handleSeriesVisibilityChangedBySender(sender());
 }
@@ -1467,7 +1451,7 @@ void Abstract3DController::setAxisHelper(QAbstract3DAxis::AxisOrientation orient
 QAbstract3DAxis *Abstract3DController::createDefaultAxis(
         QAbstract3DAxis::AxisOrientation orientation)
 {
-    Q_UNUSED(orientation)
+    Q_UNUSED(orientation);
 
     // The default default axis is a value axis. If the graph type has a different default axis
     // for some orientation, this function needs to be overridden.
@@ -1539,7 +1523,7 @@ int Abstract3DController::selectedLabelIndex() const
 {
     int index = m_selectedLabelIndex;
     QAbstract3DAxis *axis = selectedAxis();
-    if (axis && axis->labels().count() <= index)
+    if (axis && axis->labels().size() <= index)
         index = -1;
     return index;
 }
@@ -1569,7 +1553,7 @@ QAbstract3DAxis *Abstract3DController::selectedAxis() const
 int Abstract3DController::selectedCustomItemIndex() const
 {
     int index = m_selectedCustomItemIndex;
-    if (m_customItems.count() <= index)
+    if (m_customItems.size() <= index)
         index = -1;
     return index;
 }
@@ -1608,7 +1592,7 @@ bool Abstract3DController::isOrthoProjection() const
 
 void Abstract3DController::setAspectRatio(qreal ratio)
 {
-    if (m_aspectRatio != ratio) {
+    if (m_aspectRatio != ratio && ratio > 0) {
         m_aspectRatio = ratio;
         m_changeTracker.aspectRatioChanged = true;
         emit aspectRatioChanged(m_aspectRatio);
@@ -1624,7 +1608,7 @@ qreal Abstract3DController::aspectRatio()
 
 void Abstract3DController::setHorizontalAspectRatio(qreal ratio)
 {
-    if (m_horizontalAspectRatio != ratio) {
+    if (m_horizontalAspectRatio != ratio && ratio > 0) {
         m_horizontalAspectRatio = ratio;
         m_changeTracker.horizontalAspectRatioChanged = true;
         emit horizontalAspectRatioChanged(m_horizontalAspectRatio);
@@ -1655,7 +1639,7 @@ bool Abstract3DController::reflection() const
 
 void Abstract3DController::setReflectivity(qreal reflectivity)
 {
-    if (m_reflectivity != reflectivity) {
+    if (m_reflectivity != reflectivity && reflectivity > 0) {
         m_reflectivity = reflectivity;
         m_changeTracker.reflectivityChanged = true;
         emit reflectivityChanged(m_reflectivity);
@@ -1744,4 +1728,4 @@ qreal Abstract3DController::margin() const
 }
 
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

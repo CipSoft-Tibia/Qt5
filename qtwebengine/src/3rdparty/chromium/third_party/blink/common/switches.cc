@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@ namespace blink {
 namespace switches {
 
 // Allows processing of input before a frame has been committed.
-// TODO(schenney): crbug.com/987626. Used by headless. Look for a way not
+// TODO(crbug.com/987626): Used by headless. Look for a way not
 // involving a command line switch.
 const char kAllowPreCommitInput[] = "allow-pre-commit-input";
 
@@ -23,13 +23,10 @@ const char kBlinkSettings[] = "blink-settings";
 // the default dark mode settings is used. Valid params are given below.
 // "InversionAlgorithm" takes int value of DarkModeInversionAlgorithm enum.
 // "ImagePolicy" takes int value of DarkModeImagePolicy enum.
-// "IsGrayScale" takes 1 or 0, 1 means grayscale is true, false otherwise.
-// "TextBrightnessThreshold" takes 0 to 255 int value.
+// "ForegroundBrightnessThreshold" takes 0 to 255 int value.
 // "BackgroundBrightnessThreshold" takes 0 to 255 int value.
 // "ContrastPercent" takes -1.0 to 1.0 float value. Higher the value, more
 // the contrast.
-// "ImageGrayScalePercent" takes 0.0 to 1.0 float value. Higher the value,
-// image would be more grayish.
 const char kDarkModeSettings[] = "dark-mode-settings";
 
 // Sets the tile size used by composited layers.
@@ -44,6 +41,10 @@ const char kDisableImageAnimationResync[] = "disable-image-animation-resync";
 // less power, particularly during animations, but more white may be seen
 // during fast scrolling especially on slower devices.
 const char kDisableLowResTiling[] = "disable-low-res-tiling";
+
+// Disallow use of the feature NewBaseUrlInheritanceBehavior.
+const char kDisableNewBaseUrlInheritanceBehavior[] =
+    "disable-new-base-url-inheritance-behavior";
 
 // Disable partial raster in the renderer. Disabling this switch also disables
 // the use of persistent gpu memory buffers.
@@ -62,6 +63,10 @@ const char kDisableThreadedScrolling[] = "disable-threaded-scrolling";
 // Disable rasterizer that writes directly to GPU memory associated with tiles.
 const char kDisableZeroCopy[] = "disable-zero-copy";
 
+// Logs Runtime Call Stats. --single-process also needs to be used along with
+// this for the stats to be logged.
+const char kDumpRuntimeCallStats[] = "dump-blink-runtime-call-stats";
+
 // Specify that all compositor resources should be backed by GPU memory buffers.
 const char kEnableGpuMemoryBufferCompositorResources[] =
     "enable-gpu-memory-buffer-compositor-resources";
@@ -77,15 +82,12 @@ const char kEnablePreferCompositingToLCDText[] =
 // Enables RGBA_4444 textures.
 const char kEnableRGBA4444Textures[] = "enable-rgba-4444-textures";
 
+// Enables raster side dark mode for images.
+const char kEnableRasterSideDarkModeForImages[] =
+    "enable-raster-side-dark-mode-for-images";
+
 // Enable rasterizer that writes directly to GPU memory associated with tiles.
 const char kEnableZeroCopy[] = "enable-zero-copy";
-
-// Pins the default referrer policy to the pre-M80 value of
-// no-referrer-when-downgrade.
-// TODO(crbug.com/1016541): After M88, remove when the corresponding
-// enterprise policy has been deleted.
-const char kForceLegacyDefaultReferrerPolicy[] =
-    "force-legacy-default-referrer-policy";
 
 // The number of multisample antialiasing samples for GPU rasterization.
 // Requires MSAA support on GPU to have an effect. 0 disables MSAA.
@@ -116,12 +118,8 @@ const char kMinHeightForGpuRasterTile[] = "min-height-for-gpu-raster-tile";
 // signal to dismiss a splash screen.
 const char kNetworkQuietTimeout[] = "network-quiet-timeout";
 
-// Override the default value for the 'passive' field in javascript
-// addEventListener calls. Values are defined as:
-//  'documentonlytrue' to set the default be true only for document level nodes.
-//  'true' to set the default to be true on all nodes (when not specified).
-//  'forcealltrue' to force the value on all nodes.
-const char kPassiveListenersDefault[] = "passive-listeners-default";
+// Number of worker threads used to rasterize content.
+const char kNumRasterThreads[] = "num-raster-threads";
 
 // Visibly render a border around layout shift rects in the web page to help
 // debug and study layout shifts.
@@ -131,18 +129,80 @@ const char kShowLayoutShiftRegions[] = "show-layout-shift-regions";
 // and study painting behavior.
 const char kShowPaintRects[] = "show-paint-rects";
 
+// Used to override the ThrottleDisplayNoneAndVisibilityHiddenCrossOrigin
+// feature from an enterprise policy.
+const char kDisableThrottleNonVisibleCrossOriginIframes[] =
+    "disable-throttle-non-visible-cross-origin-iframes";
+
 // Controls how text selection granularity changes when touch text selection
 // handles are dragged. Should be "character" or "direction". If not specified,
 // the platform default is used.
 const char kTouchTextSelectionStrategy[] = "touch-selection-strategy";
+const char kTouchTextSelectionStrategy_Character[] = "character";
+const char kTouchTextSelectionStrategy_Direction[] = "direction";
 
-// Used to communicate managed policy for the UserAgentClientHint feature.
-// This feature is typically controlled by base::Feature (see
-// renderer/platform/scheduler/common/features.*) but requires an enterprise
-// policy override.
+// Used to communicate managed policy for the MaxUnthrottledTimeoutNestingLevel
+// feature. This feature is typically controlled by base::Feature (see
+// blink/common/features.*) but requires an enterprise policy override. This is
+// implicitly a tri-state, and can be either unset, or set to "1" for force
+// enable, or "0" for force disable.
+extern const char kUnthrottledNestedTimeoutPolicy[] =
+    "unthrottled-nested-timeout-level-policy";
+extern const char kUnthrottledNestedTimeoutPolicy_ForceDisable[] = "0";
+extern const char kUnthrottledNestedTimeoutPolicy_ForceEnable[] = "1";
 
-extern const char kUserAgentClientHintDisable[] =
-    "user-agent-client-hint-disable";
+// Comma-separated list of origins that can use SharedArrayBuffer without
+// enabling cross-origin isolation.
+const char kSharedArrayBufferAllowedOrigins[] =
+    "shared-array-buffer-allowed-origins";
+
+// Allows overriding the conditional focus window's length.
+const char kConditionalFocusWindowMs[] = "conditional-focus-window-ms";
+
+// Specifies the flags passed to JS engine.
+const char kJavaScriptFlags[] = "js-flags";
+
+// Controls whether WebSQL is force enabled.
+const char kWebSQLAccess[] = "web-sql-access";
+
+// Used to communicate managed policy for the EventPath feature. This feature is
+// typically controlled by base::Feature (see blink/common/features.*) but
+// requires an enterprise policy override. This is implicitly a tri-state, and
+// can be either unset, or set to "1" for force enable, or "0" for force
+// disable.
+extern const char kEventPathPolicy[] = "event-path-policy";
+extern const char kEventPathPolicy_ForceDisable[] = "0";
+extern const char kEventPathPolicy_ForceEnable[] = "1";
+
+// The EventPath feature is disabled by default on almost all platforms and
+// channels, with a few exceptions that require a more gradual removal. Those
+// platforms/channels should pass this flag to renderer to enable the feature.
+// The flag has higher precedence than Blink runtime enabled feature, but lower
+// precedence than base::Feature overrides and enterprise policy.
+extern const char kEventPathEnabledByDefault[] =
+    "event-path-enabled-by-default";
+
+// Used to communicate managed policy for the OffsetParentNewSpecBehavior
+// feature. This feature is typically controlled by base::Feature (see
+// blink/common/features.*) but requires an enterprise policy override. This is
+// implicitly a tri-state, and can be either unset, or set to "1" for force
+// enable, or "0" for force disable.
+extern const char kOffsetParentNewSpecBehaviorPolicy[] =
+    "offset-parent-new-spec-behavior-policy";
+extern const char kOffsetParentNewSpecBehaviorPolicy_ForceDisable[] = "0";
+extern const char kOffsetParentNewSpecBehaviorPolicy_ForceEnable[] = "1";
+
+// Used to communicate managed policy for the
+// SendMouseEventsDisabledFormControls feature. This feature is typically
+// controlled by base::Feature (see blink/common/features.*) but requires an
+// enterprise policy override. This is implicitly a tri-state, and can be either
+// unset, or set to "1" for force enable, or "0" for force disable.
+extern const char kSendMouseEventsDisabledFormControlsPolicy[] =
+    "send-mouse-events-disabled-form-controls-policy";
+extern const char kSendMouseEventsDisabledFormControlsPolicy_ForceDisable[] =
+    "0";
+extern const char kSendMouseEventsDisabledFormControlsPolicy_ForceEnable[] =
+    "1";
 
 }  // namespace switches
 }  // namespace blink

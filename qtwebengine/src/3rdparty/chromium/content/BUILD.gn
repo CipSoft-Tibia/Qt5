@@ -1,28 +1,19 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//build/config/nacl/config.gni")
 import("//ppapi/buildflags/buildflags.gni")
 import("//tools/grit/grit_rule.gni")
 
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
-
 # Applied by targets internal to content.
 config("content_implementation") {
   defines = [ "CONTENT_IMPLEMENTATION" ]
-  configs = [
-    "//build/config/compiler:noshadowing",
-    "//build/config/compiler:wexit_time_destructors",
-  ]
+  configs = [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
-assert(!is_ios, "Chromium/iOS shouldn't use anything in //content")
+assert(use_blink, "Chromium without blink shouldn't use anything in //content")
 
 # When targets depend on, e.g. //content/public/browser, what happens? To
 # facilitate the complexity here, the "public" targets are groups that forward
@@ -69,46 +60,24 @@ assert(!is_ios, "Chromium/iOS shouldn't use anything in //content")
 # //content/browser target only in non-component builds (when there are no
 # linking problems) for when check is enabled.
 
-if (!is_nacl_nonsfi) {
-  content_shared_components = [
-    "//content/gpu:gpu_sources",
-    "//content/public/browser:browser_sources",
-    "//content/public/child:child_sources",
-    "//content/public/common:common_sources",
-    "//content/public/gpu:gpu_sources",
-    "//content/public/renderer:renderer_sources",
-    "//content/public/utility:utility_sources",
-  ]
+content_shared_components = [
+  "//content/gpu:gpu_sources",
+  "//content/public/browser:browser_sources",
+  "//content/public/child:child_sources",
+  "//content/public/common:common_sources",
+  "//content/public/gpu:gpu_sources",
+  "//content/public/renderer:renderer_sources",
+  "//content/public/utility:utility_sources",
+]
 
-  if (enable_plugins) {
-    content_shared_components +=
-        [ "//content/ppapi_plugin:ppapi_plugin_sources" ]
-  }
+if (enable_ppapi) {
+  content_shared_components += [ "//content/ppapi_plugin:ppapi_plugin_sources" ]
 }
 
 if (is_component_build) {
   component("content") {
     public_deps =
         content_shared_components + [ "//content/public/app:app_sources" ]
-  }
-} else if (is_nacl_nonsfi) {
-  source_set("content") {
-    set_sources_assignment_filter([])
-    sources = [
-      "//sandbox/policy/linux/sandbox_seccomp_bpf_linux.cc",
-      "common/sandbox_init_linux.cc",
-      "common/zygote/send_zygote_child_ping_linux.cc",
-      "public/common/content_switches.cc",
-      "public/common/content_switches.h",
-    ]
-    set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
-    deps = [
-      "//base",
-      "//media:media_buildflags",
-      "//sandbox:sandbox_buildflags",
-      "//sandbox/linux:sandbox",
-      "//sandbox/policy",
-    ]
   }
 } else {
   group("content") {
@@ -125,13 +94,19 @@ grit("content_resources") {
     "grit/content_resources_map.h",
     "content_resources.pak",
   ]
-  grit_flags = [
-    "-E",
-    "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
-  ]
   deps = [
-    "//gpu/ipc/common:vulkan_interface_js",
-    "//url/mojom:url_mojom_origin_js",
+    "//components/ukm/debug:build_ts",
+    "//content/browser/resources/histograms:build_ts",
+    "//gpu/ipc/common:vulkan_interface_js__generator",
+    "//ui/base/accelerators/mojom:mojom_js__generator",
+    "//ui/base/mojom:mojom_js",
+    "//ui/events/mojom:mojom_js__generator",
+    "//ui/gfx/geometry/mojom:mojom_js",
+    "//ui/gfx/image/mojom:mojom_js",
+    "//ui/gfx/range/mojom:mojom_js",
+    "//ui/latency/mojom:mojom_js__generator",
+    "//url/mojom:url_mojom_gurl_js__generator",
+    "//url/mojom:url_mojom_origin_js__generator",
   ]
 }
 
@@ -142,13 +117,9 @@ grit("dev_ui_content_resources") {
     "grit/dev_ui_content_resources.h",
     "dev_ui_content_resources.pak",
   ]
-  grit_flags = [
-    "-E",
-    "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
-  ]
   deps = [
-    "//content/browser/conversions:mojo_bindings_js",
-    "//content/browser/process_internals:mojo_bindings_js",
+    "//content/browser/resources/gpu:html_wrapper_files",
+    "//content/browser/resources/process:build_ts",
   ]
 }
 

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qquickwidget_plugin.h"
 
@@ -35,7 +10,12 @@
 #include <QtCore/qdebug.h>
 #include <QtQuickWidgets/qquickwidget.h>
 
+#include <QtQuick/QQuickWindow>
+
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 QQuickWidgetPlugin::QQuickWidgetPlugin(QObject *parent)
     : QObject(parent)
@@ -44,17 +24,17 @@ QQuickWidgetPlugin::QQuickWidgetPlugin(QObject *parent)
 
 QString QQuickWidgetPlugin::name() const
 {
-    return QStringLiteral("QQuickWidget");
+    return u"QQuickWidget"_s;
 }
 
 QString QQuickWidgetPlugin::group() const
 {
-    return QStringLiteral("Display Widgets");
+    return u"Display Widgets"_s;
 }
 
 QString QQuickWidgetPlugin::toolTip() const
 {
-    return QStringLiteral("A widget for displaying a Qt Quick 2 user interface.");
+    return u"A widget for displaying a Qt Quick 2 user interface."_s;
 }
 
 QString QQuickWidgetPlugin::whatsThis() const
@@ -64,12 +44,12 @@ QString QQuickWidgetPlugin::whatsThis() const
 
 QString QQuickWidgetPlugin::includeFile() const
 {
-    return QStringLiteral("<QtQuickWidgets/QQuickWidget>");
+    return u"<QtQuickWidgets/QQuickWidget>"_s;
 }
 
 QIcon QQuickWidgetPlugin::icon() const
 {
-    return QIcon(QStringLiteral(":/qt-project.org/qquickwidget/images/qquickwidget.png"));
+    return QIcon(u":/qt-project.org/qquickwidget/images/qquickwidget.png"_s);
 }
 
 bool QQuickWidgetPlugin::isContainer() const
@@ -100,22 +80,23 @@ void QQuickWidgetPlugin::initialize(QDesignerFormEditorInterface * /*core*/)
 
 QString QQuickWidgetPlugin::domXml() const
 {
-    return QStringLiteral("\
-    <ui language=\"c++\">\
-        <widget class=\"QQuickWidget\" name=\"quickWidget\">\
-            <property name=\"resizeMode\">\
-                <enum>QQuickWidget::SizeRootObjectToView</enum>\
-            </property>\
-            <property name=\"geometry\">\
-                <rect>\
-                    <x>0</x>\
-                    <y>0</y>\
-                    <width>300</width>\
-                    <height>200</height>\
-                </rect>\
-            </property>\
-        </widget>\
-    </ui>");
+    return QStringLiteral(R"(
+<ui language="c++">
+    <widget class="QQuickWidget" name="quickWidget">
+        <property name="resizeMode">
+            <enum>QQuickWidget::SizeRootObjectToView</enum>
+        </property>
+        <property name="geometry">
+            <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>300</width>
+                <height>200</height>
+            </rect>
+        </property>
+    </widget>
+</ui>
+)");
 }
 
 void QQuickWidgetPlugin::sceneGraphError(QQuickWindow::SceneGraphError, const QString &message)

@@ -13,8 +13,10 @@
 // limitations under the License.
 
 import {Engine} from '../common/engine';
+import {NUM, STR} from '../common/query_result';
 import {CallsiteInfo, CpuProfileSampleSelection} from '../common/state';
 import {CpuProfileDetails} from '../frontend/globals';
+import {publishCpuProfileDetails} from '../frontend/publish';
 
 import {Controller} from './controller';
 import {globals} from './globals';
@@ -49,11 +51,11 @@ export class CpuProfileController extends Controller<'main'> {
     }
 
     this.requestingData = true;
-    globals.publish('CpuProfileDetails', {});
+    publishCpuProfileDetails({});
     this.lastSelectedSample = this.copyCpuProfileSample(selection);
 
     this.getSampleData(selectedSample.id)
-        .then(sampleData => {
+        .then((sampleData) => {
           if (sampleData !== undefined && selectedSample &&
               this.lastSelectedSample &&
               this.lastSelectedSample.id === selectedSample.id) {
@@ -64,7 +66,7 @@ export class CpuProfileController extends Controller<'main'> {
               stack: sampleData,
             };
 
-            globals.publish('CpuProfileDetails', cpuProfileDetails);
+            publishCpuProfileDetails(cpuProfileDetails);
           }
         })
         .finally(() => {
@@ -93,82 +95,77 @@ export class CpuProfileController extends Controller<'main'> {
   }
 
   async getSampleData(id: number) {
-    const sampleQuery = `SELECT samples.id, frame_name, mapping_name
+    // The goal of the query is to get all the frames of
+    // the callstack at the callsite given by |id|. To do this, it does
+    // the following:
+    // 1. Gets the leaf callsite id for the sample given by |id|.
+    // 2. For this callsite, get all the frame ids and depths
+    //    for the frame and all ancestors in the callstack.
+    // 3. For each frame, get the mapping name (i.e. library which
+    //    contains the frame).
+    // 4. Symbolize each frame using the symbol table if possible.
+    // 5. Sort the query by the depth of the callstack frames.
+    const sampleQuery = `
+      SELECT
+        samples.id as id,
+        IFNULL(
+          (
+            SELECT name
+            FROM stack_profile_symbol symbol
+            WHERE symbol.symbol_set_id = spf.symbol_set_id
+            LIMIT 1
+          ),
+          COALESCE(spf.deobfuscated_name, spf.name)
+        ) AS name,
+        spm.name AS mapping
       FROM cpu_profile_stack_sample AS samples
-      LEFT JOIN
-        (
-          SELECT
-            callsite_id,
-            position,
-            spf.name AS frame_name,
-            stack_profile_mapping.name AS mapping_name
-          FROM
-            (
-              WITH
-                RECURSIVE
-                  callsite_parser(callsite_id, current_id, position)
-                  AS (
-                    SELECT id, id, 0 FROM stack_profile_callsite
-                    UNION
-                      SELECT callsite_id, parent_id, position + 1
-                      FROM callsite_parser
-                      JOIN
-                        stack_profile_callsite
-                        ON stack_profile_callsite.id = current_id
-                      WHERE stack_profile_callsite.depth > 0
-                  )
-              SELECT *
-              FROM callsite_parser
-            ) AS flattened_callsite
-          LEFT JOIN stack_profile_callsite AS spc
-          LEFT JOIN
-            (
-              SELECT
-                spf.id AS id,
-                spf.mapping AS mapping,
-                IFNULL(
-                  (
-                    SELECT name
-                    FROM stack_profile_symbol symbol
-                    WHERE symbol.symbol_set_id = spf.symbol_set_id
-                    LIMIT 1
-                  ),
-                  spf.name
-                ) AS name
-              FROM stack_profile_frame spf
-            ) AS spf
-          LEFT JOIN stack_profile_mapping
-          WHERE
-            flattened_callsite.current_id = spc.id
-            AND spc.frame_id = spf.id
-            AND spf.mapping = stack_profile_mapping.id
-          ORDER BY callsite_id, position
-        ) AS frames
-        ON samples.callsite_id = frames.callsite_id
+      LEFT JOIN (
+        SELECT
+          id,
+          frame_id,
+          depth
+        FROM stack_profile_callsite
+        UNION ALL
+        SELECT
+          leaf.id AS id,
+          callsite.frame_id AS frame_id,
+          callsite.depth AS depth
+        FROM stack_profile_callsite leaf
+        JOIN experimental_ancestor_stack_profile_callsite(leaf.id) AS callsite
+      ) AS callsites
+        ON samples.callsite_id = callsites.id
+      LEFT JOIN stack_profile_frame AS spf
+        ON callsites.frame_id = spf.id
+      LEFT JOIN stack_profile_mapping AS spm
+        ON spf.mapping = spm.id
       WHERE samples.id = ${id}
-      ORDER BY samples.id, frames.position DESC;`;
+      ORDER BY callsites.depth;
+    `;
 
     const callsites = await this.args.engine.query(sampleQuery);
 
-    if (callsites.numRecords < 1) {
+    if (callsites.numRows() === 0) {
       return undefined;
     }
 
-    const sampleData: CallsiteInfo[] = new Array();
-    for (let i = 0; i < callsites.numRecords; i++) {
-      const id = +callsites.columns[0].longValues![i];
-      const name = callsites.columns[1].stringValues![i];
-      const mapping = callsites.columns[2].stringValues![i];
+    const it = callsites.iter({
+      id: NUM,
+      name: STR,
+      mapping: STR,
+    });
 
+    const sampleData: CallsiteInfo[] = [];
+    for (; it.valid(); it.next()) {
       sampleData.push({
-        id,
+        id: it.id,
         totalSize: 0,
         depth: 0,
         parentId: 0,
-        name,
+        name: it.name,
         selfSize: 0,
-        mapping,
-        merged: false
+        mapping: it.mapping,
+        merged: false,
+        highlighted: false,
       });
     }
 

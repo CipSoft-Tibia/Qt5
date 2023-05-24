@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,10 +14,12 @@
 #include "base/check_op.h"
 #include "base/mac/scoped_mach_port.h"
 #include "base/notreached.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/process/process_metrics.h"
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
+#include "build/build_config.h"
 
 namespace base {
 
@@ -27,7 +29,7 @@ namespace {
 // system or the empty string on failure.
 std::string GetSysctlValue(const char* key_name) {
   char value[256];
-  size_t len = base::size(value);
+  size_t len = std::size(value);
   if (sysctlbyname(key_name, &value, &len, nullptr, 0) == 0) {
     DCHECK_GE(len, 1u);
     DCHECK_EQ('\0', value[len - 1]);
@@ -70,20 +72,26 @@ std::string SysInfo::OperatingSystemVersion() {
 void SysInfo::OperatingSystemVersionNumbers(int32_t* major_version,
                                             int32_t* minor_version,
                                             int32_t* bugfix_version) {
-  @autoreleasepool {
-    std::string system_version = OperatingSystemVersion();
-    if (!system_version.empty()) {
-      // Try to parse out the version numbers from the string.
-      int num_read = sscanf(system_version.c_str(), "%d.%d.%d", major_version,
-                            minor_version, bugfix_version);
-      if (num_read < 1)
-        *major_version = 0;
-      if (num_read < 2)
-        *minor_version = 0;
-      if (num_read < 3)
-        *bugfix_version = 0;
-    }
-  }
+  NSOperatingSystemVersion version =
+      [[NSProcessInfo processInfo] operatingSystemVersion];
+  *major_version = saturated_cast<int32_t>(version.majorVersion);
+  *minor_version = saturated_cast<int32_t>(version.minorVersion);
+  *bugfix_version = saturated_cast<int32_t>(version.patchVersion);
+}
+
+// static
+std::string SysInfo::OperatingSystemArchitecture() {
+#if defined(ARCH_CPU_X86)
+  return "x86";
+#elif defined(ARCH_CPU_X86_64)
+  return "x86_64";
+#elif defined(ARCH_CPU_ARMEL)
+  return "arm";
+#elif defined(ARCH_CPU_ARM64)
+  return "arm64";
+#else
+#error Unsupported CPU architecture
+#endif
 }
 
 // static
@@ -99,7 +107,7 @@ std::string SysInfo::GetIOSBuildNumber() {
 }
 
 // static
-int64_t SysInfo::AmountOfPhysicalMemoryImpl() {
+uint64_t SysInfo::AmountOfPhysicalMemoryImpl() {
   struct host_basic_info hostinfo;
   mach_msg_type_number_t count = HOST_BASIC_INFO_COUNT;
   base::mac::ScopedMachSendRight host(mach_host_self());
@@ -110,17 +118,17 @@ int64_t SysInfo::AmountOfPhysicalMemoryImpl() {
     return 0;
   }
   DCHECK_EQ(HOST_BASIC_INFO_COUNT, count);
-  return static_cast<int64_t>(hostinfo.max_mem);
+  return hostinfo.max_mem;
 }
 
 // static
-int64_t SysInfo::AmountOfAvailablePhysicalMemoryImpl() {
+uint64_t SysInfo::AmountOfAvailablePhysicalMemoryImpl() {
   SystemMemoryInfoKB info;
   if (!GetSystemMemoryInfo(&info))
     return 0;
   // We should add inactive file-backed memory also but there is no such
   // information from iOS unfortunately.
-  return static_cast<int64_t>(info.free + info.speculative) * 1024;
+  return checked_cast<uint64_t>(info.free + info.speculative) * 1024;
 }
 
 // static
@@ -133,7 +141,21 @@ std::string SysInfo::HardwareModelName() {
 #if TARGET_OS_SIMULATOR
   // On the simulator, "hw.machine" returns "i386" or "x86_64" which doesn't
   // match the expected format, so supply a fake string here.
-  return "Simulator1,1";
+  const char* model = getenv("SIMULATOR_MODEL_IDENTIFIER");
+  if (model == nullptr) {
+    switch ([[UIDevice currentDevice] userInterfaceIdiom]) {
+      case UIUserInterfaceIdiomPhone:
+        model = "iPhone";
+        break;
+      case UIUserInterfaceIdiomPad:
+        model = "iPad";
+        break;
+      default:
+        model = "Unknown";
+        break;
+    }
+  }
+  return base::StringPrintf("iOS Simulator (%s)", model);
 #else
   // Note: This uses "hw.machine" instead of "hw.model" like the Mac code,
   // because "hw.model" doesn't always return the right string on some devices.

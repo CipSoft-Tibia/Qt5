@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "loadscenejob_p.h"
 #include <private/nodemanagers_p.h>
@@ -43,9 +7,9 @@
 #include <QCoreApplication>
 #include <Qt3DCore/qentity.h>
 #include <Qt3DCore/private/qaspectmanager_p.h>
+#include <Qt3DCore/private/qurlhelper_p.h>
 #include <Qt3DRender/private/job_common_p.h>
 #include <Qt3DRender/private/qsceneimporter_p.h>
-#include <Qt3DRender/private/qurlhelper_p.h>
 #include <Qt3DRender/qsceneloader.h>
 #include <Qt3DRender/private/qsceneloader_p.h>
 #include <Qt3DRender/private/renderlogging_p.h>
@@ -106,7 +70,7 @@ void LoadSceneJob::run()
         finalStatus = QSceneLoader::Error;
 
         if (m_data.isEmpty()) {
-            const QString path = QUrlHelper::urlToLocalFileOrQrc(m_source);
+            const QString path = Qt3DCore::QUrlHelper::urlToLocalFileOrQrc(m_source);
             const QFileInfo finfo(path);
             qCDebug(SceneLoaders) << Q_FUNC_INFO << "Attempting to load" << finfo.filePath();
             if (finfo.exists()) {
@@ -140,7 +104,7 @@ void LoadSceneJob::run()
     }
 
     Q_D(LoadSceneJob);
-    d->m_sceneSubtree = sceneSubTree;
+    d->m_sceneSubtree = std::unique_ptr<Qt3DCore::QEntity>(sceneSubTree);
     d->m_status = finalStatus;
 
     if (d->m_sceneSubtree) {
@@ -157,7 +121,7 @@ Qt3DCore::QEntity *LoadSceneJob::tryLoadScene(QSceneLoader::Status &finalStatus,
     Qt3DCore::QEntity *sceneSubTree = nullptr;
     bool foundSuitableLoggerPlugin = false;
 
-    for (QSceneImporter *sceneImporter : qAsConst(m_sceneImporters)) {
+    for (QSceneImporter *sceneImporter : std::as_const(m_sceneImporters)) {
         if (!sceneImporter->areFileTypesSupported(extensions))
             continue;
 
@@ -197,7 +161,7 @@ void LoadSceneJobPrivate::postFrame(Qt3DCore::QAspectManager *manager)
     // any subtree it may hold
     // Set clone of sceneTree in sceneComponent. This will move the sceneSubTree
     // to the QCoreApplication thread which is where the frontend object tree lives.
-    dNode->setSceneRoot(m_sceneSubtree);
+    dNode->setSceneRoot(m_sceneSubtree.release());
 
     // Note: the status is set after the subtree so that bindinds depending on the status
     // in the frontend will be consistent

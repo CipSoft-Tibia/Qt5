@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,11 @@
 
 #include "core/fxcrt/fx_system.h"
 #include "testing/v8_initializer.h"
+#include "third_party/base/check.h"
 #include "v8/include/libplatform/libplatform.h"
+#include "v8/include/v8-isolate.h"
 #include "v8/include/v8-platform.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-snapshot.h"
 
 namespace {
 
@@ -22,12 +24,12 @@ V8TestEnvironment* g_environment = nullptr;
 V8TestEnvironment::V8TestEnvironment(const char* exe_name)
     : exe_path_(exe_name),
       array_buffer_allocator_(std::make_unique<CFX_V8ArrayBufferAllocator>()) {
-  ASSERT(!g_environment);
+  DCHECK(!g_environment);
   g_environment = this;
 }
 
 V8TestEnvironment::~V8TestEnvironment() {
-  ASSERT(g_environment);
+  DCHECK(g_environment);
 
 #ifdef V8_USE_EXTERNAL_STARTUP_DATA
   if (startup_data_)
@@ -60,7 +62,7 @@ void V8TestEnvironment::SetUp() {
         exe_path_, std::string(), std::string(), startup_data_.get());
   }
 #else
-  platform_ = InitializeV8ForPDFium(exe_path_);
+  platform_ = InitializeV8ForPDFium(std::string(), exe_path_);
 #endif  // V8_USE_EXTERNAL_STARTUP_DATA
 
   v8::Isolate::CreateParams params;
@@ -70,5 +72,5 @@ void V8TestEnvironment::SetUp() {
 
 void V8TestEnvironment::TearDown() {
   isolate_.reset();
-  v8::V8::ShutdownPlatform();
+  ShutdownV8ForPDFium();
 }

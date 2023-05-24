@@ -65,21 +65,26 @@ void VertexProcessor::setRoutineCacheSize(int cacheSize)
 	routineCache = std::make_unique<RoutineCacheType>(clamp(cacheSize, 1, 65536));
 }
 
-const VertexProcessor::State VertexProcessor::update(const sw::Context *context)
+const VertexProcessor::State VertexProcessor::update(const vk::GraphicsState &pipelineState, const sw::SpirvShader *vertexShader, const vk::Inputs &inputs)
 {
+	const vk::VertexInputInterfaceState &vertexInputInterfaceState = pipelineState.getVertexInputInterfaceState();
+	const vk::PreRasterizationState &preRasterizationState = pipelineState.getPreRasterizationState();
+
 	State state;
 
-	state.shaderID = context->vertexShader->getSerialID();
-	state.pipelineLayoutIdentifier = context->pipelineLayout->identifier;
-	state.robustBufferAccess = context->robustBufferAccess;
-	state.isPoint = context->topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+	state.shaderID = vertexShader->getIdentifier();
+	state.pipelineLayoutIdentifier = preRasterizationState.getPipelineLayout()->identifier;
+	state.robustBufferAccess = vertexShader->getRobustBufferAccess();
+	state.isPoint = vertexInputInterfaceState.getTopology() == VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+	state.depthClipEnable = preRasterizationState.getDepthClipEnable();
+	state.depthClipNegativeOneToOne = preRasterizationState.getDepthClipNegativeOneToOne();
 
-	for(int i = 0; i < MAX_INTERFACE_COMPONENTS / 4; i++)
+	for(size_t i = 0; i < MAX_INTERFACE_COMPONENTS / 4; i++)
 	{
-		state.input[i].format = context->input[i].format;
+		state.input[i].format = inputs.getStream(i).format;
 		// TODO: get rid of attribType -- just keep the VK format all the way through, this fully determines
 		// how to handle the attribute.
-		state.input[i].attribType = context->vertexShader->inputs[i * 4].Type;
+		state.input[i].attribType = vertexShader->inputs[i * 4].Type;
 	}
 
 	state.hash = state.computeHash();
@@ -88,8 +93,8 @@ const VertexProcessor::State VertexProcessor::update(const sw::Context *context)
 }
 
 VertexProcessor::RoutineType VertexProcessor::routine(const State &state,
-                                                      vk::PipelineLayout const *pipelineLayout,
-                                                      SpirvShader const *vertexShader,
+                                                      const vk::PipelineLayout *pipelineLayout,
+                                                      const SpirvShader *vertexShader,
                                                       const vk::DescriptorSet::Bindings &descriptorSets)
 {
 	auto routine = routineCache->lookup(state);

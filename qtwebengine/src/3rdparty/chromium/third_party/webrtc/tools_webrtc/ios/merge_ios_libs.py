@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env vpython3
 
 #  Copyright 2016 The WebRTC project authors. All Rights Reserved.
 #
@@ -7,15 +7,15 @@
 #  tree. An additional intellectual property rights grant can be found
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
-
 """Script for merging generated iOS libraries."""
 
 import sys
-
 import argparse
 import os
 import re
 import subprocess
+from six.moves import range
+
 
 # Valid arch subdir names.
 VALID_ARCHS = ['arm_libs', 'arm64_libs', 'ia32_libs', 'x64_libs']
@@ -34,8 +34,7 @@ def MergeLibs(lib_base_dir):
     Exit code of libtool.
   """
   output_dir_name = 'fat_libs'
-  archs = [arch for arch in os.listdir(lib_base_dir)
-           if arch in VALID_ARCHS]
+  archs = [arch for arch in os.listdir(lib_base_dir) if arch in VALID_ARCHS]
   # For each arch, find (library name, libary path) for arch. We will merge
   # all libraries with the same name.
   libs = {}
@@ -51,12 +50,12 @@ def MergeLibs(lib_base_dir):
         libs[filename] = entry
   orphaned_libs = {}
   valid_libs = {}
-  for library, paths in libs.items():
+  for library, paths in list(libs.items()):
     if len(paths) < len(archs):
       orphaned_libs[library] = paths
     else:
       valid_libs[library] = paths
-  for library, paths in orphaned_libs.items():
+  for library, paths in list(orphaned_libs.items()):
     components = library[:-2].split('_')[:-1]
     found = False
     # Find directly matching parent libs by stripping suffix.
@@ -70,7 +69,7 @@ def MergeLibs(lib_base_dir):
     # Find next best match by finding parent libs with the same prefix.
     if not found:
       base_prefix = library[:-2].split('_')[0]
-      for valid_lib, valid_paths in valid_libs.items():
+      for valid_lib, valid_paths in list(valid_libs.items()):
         if valid_lib[:len(base_prefix)] == base_prefix:
           valid_paths.extend(paths)
           found = True
@@ -91,26 +90,28 @@ def MergeLibs(lib_base_dir):
 
   # Merge libraries using libtool.
   libtool_returncode = 0
-  for library, paths in valid_libs.items():
-    cmd_list = ['libtool', '-static', '-v', '-o',
-                os.path.join(output_dir_path, library)] + paths
+  for library, paths in list(valid_libs.items()):
+    cmd_list = [
+        'libtool', '-static', '-v', '-o',
+        os.path.join(output_dir_path, library)
+    ] + paths
     libtoolout = subprocess.Popen(cmd_list, stderr=subprocess.PIPE, env=env)
     _, err = libtoolout.communicate()
     for line in err.splitlines():
       if not libtool_re.match(line):
-        print >>sys.stderr, line
+        print(line, file=sys.stderr)
     # Unconditionally touch the output .a file on the command line if present
     # and the command succeeded. A bit hacky.
     libtool_returncode = libtoolout.returncode
     if not libtool_returncode:
       for i in range(len(cmd_list) - 1):
-        if cmd_list[i] == '-o' and cmd_list[i+1].endswith('.a'):
-          os.utime(cmd_list[i+1], None)
+        if cmd_list[i] == '-o' and cmd_list[i + 1].endswith('.a'):
+          os.utime(cmd_list[i + 1], None)
           break
   return libtool_returncode
 
 
-def Main():
+def main():
   parser_description = 'Merge WebRTC libraries.'
   parser = argparse.ArgumentParser(description=parser_description)
   parser.add_argument('lib_base_dir',
@@ -120,5 +121,6 @@ def Main():
   lib_base_dir = args.lib_base_dir
   MergeLibs(lib_base_dir)
 
+
 if __name__ == '__main__':
-  sys.exit(Main())
+  sys.exit(main())

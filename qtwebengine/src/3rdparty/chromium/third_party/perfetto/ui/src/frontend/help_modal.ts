@@ -16,17 +16,11 @@
 import * as m from 'mithril';
 
 import {globals} from './globals';
-import {hideModel, showModal} from './modal';
-
-let helpModelOpen = false;
+import {showModal} from './modal';
 
 export function toggleHelp() {
-  if (helpModelOpen) {
-    hideHelp();
-  } else {
-    globals.logging.logEvent('User Actions', 'Show help');
-    showHelp();
-  }
+  globals.logging.logEvent('User Actions', 'Show help');
+  showHelp();
 }
 
 function keycap(key: string) {
@@ -34,7 +28,8 @@ function keycap(key: string) {
 }
 
 function showHelp() {
-  helpModelOpen = true;
+  const ctrlOrCmd =
+      window.navigator.platform.indexOf('Mac') !== -1 ? 'Cmd' : 'Ctrl';
   showModal({
     title: 'Perfetto Help',
     content: m(
@@ -53,18 +48,71 @@ function showHelp() {
                 m('td', 'Pan left/right'),
                 ),
             ),
+        m('h2', 'Navigation (Dvorak)'),
+        m(
+            'table',
+            m(
+                'tr',
+                m('td', keycap(','), '/', keycap('o')),
+                m('td', 'Zoom in/out'),
+                ),
+            m(
+                'tr',
+                m('td', keycap('a'), '/', keycap('e')),
+                m('td', 'Pan left/right'),
+                ),
+            ),
         m('h2', 'Mouse Controls'),
         m('table',
           m('tr', m('td', 'Click'), m('td', 'Select event')),
           m('tr', m('td', 'Ctrl + Scroll wheel'), m('td', 'Zoom in/out')),
           m('tr', m('td', 'Click + Drag'), m('td', 'Select area')),
           m('tr', m('td', 'Shift + Click + Drag'), m('td', 'Pan left/right'))),
+        m('h2', 'Making SQL queries from the viewer page'),
+        m('table',
+          m('tr',
+            m('td', keycap(':'), ' in the (empty) search box'),
+            m('td', 'Switch to query input')),
+          m('tr', m('td', keycap('Enter')), m('td', 'Execute query')),
+          m('tr',
+            m('td', keycap('Ctrl'), ' + ', keycap('Enter')),
+            m('td',
+              'Execute query and pin output ' +
+                  '(output will not be replaced by regular query input)'))),
+        m('h2', 'Making SQL queries from the query page'),
+        m('table',
+          m('tr',
+            m('td', keycap('Ctrl'), ' + ', keycap('Enter')),
+            m('td', 'Execute query')),
+          m('tr',
+            m('td',
+              keycap('Ctrl'),
+              ' + ',
+              keycap('Enter'),
+              ' (with selection)'),
+            m('td', 'Execute selection'))),
         m('h2', 'Other'),
         m(
             'table',
             m('tr',
               m('td', keycap('f'), ' (with event selected)'),
               m('td', 'Scroll + zoom to current selection')),
+            m('tr',
+              m('td', keycap('['), '/', keycap(']'), ' (with event selected)'),
+              m('td',
+                'Select next/previous slice that is connected by a flow.',
+                m('br'),
+                'If there are multiple flows,' +
+                    'the one that is in focus (bold) is selected')),
+            m('tr',
+              m('td',
+                keycap(ctrlOrCmd),
+                ' + ',
+                keycap('['),
+                '/',
+                keycap(']'),
+                ' (with event selected)'),
+              m('td', 'Switch focus to another flow')),
             m('tr',
               m('td', keycap('m'), ' (with event or area selected)'),
               m('td', 'Mark the area (temporarily)')),
@@ -75,16 +123,14 @@ function showHelp() {
                 keycap('m'),
                 ' (with event or area selected)'),
               m('td', 'Mark the area (persistently)')),
+            m('tr',
+              m('td', keycap(ctrlOrCmd), ' + ', keycap('a')),
+              m('td', 'Select all')),
+            m('tr',
+              m('td', keycap(ctrlOrCmd), ' + ', keycap('b')),
+              m('td', 'Toggle display of sidebar')),
             m('tr', m('td', keycap('?')), m('td', 'Show help')),
             )),
     buttons: [],
-  }).finally(() => {
-    helpModelOpen = false;
   });
-}
-
-function hideHelp() {
-  if (helpModelOpen) {
-    hideModel();
-  }
 }

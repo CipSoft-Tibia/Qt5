@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,11 +22,10 @@
 #include <vector>
 
 #include "base/containers/flat_set.h"
-#include "base/strings/string16.h"
+#include "base/strings/escape.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/utf_offset_string_conversions.h"
 #include "components/url_formatter/spoof_checks/idn_spoof_checker.h"
-#include "net/base/escape.h"
 
 class GURL;
 
@@ -48,7 +47,7 @@ struct IDNConversionResult {
   // The result of the conversion. If the input is a safe-to-display IDN encoded
   // as punycode, this will be its unicode representation. Otherwise, it'll be
   // the same as input.
-  base::string16 result;
+  std::u16string result;
   // True if the hostname of the input has an IDN component, even if the result
   // wasn't converted.
   bool has_idn_component = false;
@@ -81,7 +80,7 @@ extern const FormatUrlType kFormatUrlOmitTrailingSlashOnBareHostname;
 // If the scheme is 'https://', it's removed. Not in kFormatUrlOmitDefaults.
 extern const FormatUrlType kFormatUrlOmitHTTPS;
 
-// Omits some trivially informative subdomains such as "www" or "m". Not in
+// Omits some trivially informative subdomains such as "www". Not in
 // kFormatUrlOmitDefaults.
 extern const FormatUrlType kFormatUrlOmitTrivialSubdomains;
 
@@ -94,6 +93,9 @@ extern const FormatUrlType kFormatUrlOmitFileScheme;
 
 // If the scheme is 'mailto:', it's removed. Not in kFormatUrlOmitDefaults.
 extern const FormatUrlType kFormatUrlOmitMailToScheme;
+
+// Omits the mobile prefix "m". Not in kFormatUrlOmitDefaults.
+extern const FormatUrlType kFormatUrlOmitMobilePrefix;
 
 // Convenience for omitting all unnecessary types. Does not include HTTPS scheme
 // removal, or experimental flags.
@@ -124,23 +126,23 @@ extern const FormatUrlType kFormatUrlOmitDefaults;
 // and '.'), then on return the output string will be "http://c.com/" and the
 // offset will be 8.  If an offset cannot be successfully adjusted (e.g. because
 // it points into the middle of a component that was entirely removed or into
-// the middle of an encoding sequence), it will be set to base::string16::npos.
+// the middle of an encoding sequence), it will be set to std::u16string::npos.
 // For consistency, if an input offset points between the scheme and the
 // username/password, and both are removed, on output this offset will be 0
 // rather than npos; this means that offsets at the starts and ends of removed
 // components are always transformed the same way regardless of what other
 // components are adjacent.
-base::string16 FormatUrl(const GURL& url,
+std::u16string FormatUrl(const GURL& url,
                          FormatUrlTypes format_types,
-                         net::UnescapeRule::Type unescape_rules,
+                         base::UnescapeRule::Type unescape_rules,
                          url::Parsed* new_parsed,
                          size_t* prefix_end,
                          size_t* offset_for_adjustment);
 
-base::string16 FormatUrlWithOffsets(
+std::u16string FormatUrlWithOffsets(
     const GURL& url,
     FormatUrlTypes format_types,
-    net::UnescapeRule::Type unescape_rules,
+    base::UnescapeRule::Type unescape_rules,
     url::Parsed* new_parsed,
     size_t* prefix_end,
     std::vector<size_t>* offsets_for_adjustment);
@@ -149,10 +151,10 @@ base::string16 FormatUrlWithOffsets(
 // than |offset[s]_for_adjustment|.  |adjustments| will be set to reflect all
 // the transformations that happened to |url| to convert it into the returned
 // value.
-base::string16 FormatUrlWithAdjustments(
+std::u16string FormatUrlWithAdjustments(
     const GURL& url,
     FormatUrlTypes format_types,
-    net::UnescapeRule::Type unescape_rules,
+    base::UnescapeRule::Type unescape_rules,
     url::Parsed* new_parsed,
     size_t* prefix_end,
     base::OffsetAdjuster::Adjustments* adjustments);
@@ -162,8 +164,8 @@ base::string16 FormatUrlWithAdjustments(
 // typical set of flags for "URLs to display to the user".  You should be
 // cautious about using this for URLs which will be parsed or sent to other
 // applications.
-inline base::string16 FormatUrl(const GURL& url) {
-  return FormatUrl(url, kFormatUrlOmitDefaults, net::UnescapeRule::SPACES,
+inline std::u16string FormatUrl(const GURL& url) {
+  return FormatUrl(url, kFormatUrlOmitDefaults, base::UnescapeRule::SPACES,
                    nullptr, nullptr, nullptr);
 }
 
@@ -172,7 +174,7 @@ inline base::string16 FormatUrl(const GURL& url) {
 bool CanStripTrailingSlash(const GURL& url);
 
 // Formats the host in |url| and appends it to |output|.
-void AppendFormattedHost(const GURL& url, base::string16* output);
+void AppendFormattedHost(const GURL& url, std::u16string* output);
 
 // Converts the given host name to unicode characters. This can be called for
 // any host name, if the input is not IDN or is invalid in some way, we'll just
@@ -180,7 +182,7 @@ void AppendFormattedHost(const GURL& url, base::string16* output);
 //
 // The input should be the canonicalized ASCII host name from GURL. This
 // function does NOT accept UTF-8!
-base::string16 IDNToUnicode(base::StringPiece host);
+std::u16string IDNToUnicode(base::StringPiece host);
 
 // Same as IDNToUnicode, but disables spoof checks and returns more details.
 // In particular, it doesn't fall back to punycode if |host| fails spoof checks
@@ -193,13 +195,16 @@ IDNConversionResult UnsafeIDNToUnicodeWithDetails(base::StringPiece host);
 // hostname, and if "www." is part of the subdomain (not the eTLD+1).
 std::string StripWWW(const std::string& host);
 
+// Strips a "m." prefix from |host| if present.
+std::string StripMobilePrefix(const std::string& text);
+
 // If the |host| component of |url| begins with a "www." prefix (and meets the
 // conditions described for StripWWW), then updates |host| to strip the "www."
 // prefix.
 void StripWWWFromHostComponent(const std::string& url, url::Component* host);
 
 // Returns skeleton strings computed from |host| for spoof checking.
-Skeletons GetSkeletons(const base::string16& host);
+Skeletons GetSkeletons(const std::u16string& host);
 
 // Returns a domain from the top 10K list matching the given skeleton. Used for
 // spoof checking. Different types of skeletons are saved in the skeleton trie.
@@ -210,6 +215,15 @@ Skeletons GetSkeletons(const base::string16& host);
 TopDomainEntry LookupSkeletonInTopDomains(
     const std::string& skeleton,
     const SkeletonType type = SkeletonType::kFull);
+
+// Removes diacritics from `host` and returns the new string if the input
+// only contains Latin-Greek-Cyrillic characters. Otherwise, returns the
+// input string.
+std::u16string MaybeRemoveDiacritics(const std::u16string& host);
+
+// Returns the first IDNA 2008 deviation character in the `hostname`, if any.
+// See idn_spoof_checker.h for details about deviation characters.
+IDNA2008DeviationCharacter GetDeviationCharacter(base::StringPiece16 hostname);
 
 }  // namespace url_formatter
 

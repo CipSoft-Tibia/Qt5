@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlnativedebugservice.h"
 
@@ -46,7 +10,7 @@
 #include <private/qv4script_p.h>
 #include <private/qv4string_p.h>
 #include <private/qv4objectiterator_p.h>
-#include <private/qv4identifier_p.h>
+#include <private/qv4identifierhash_p.h>
 #include <private/qv4runtime_p.h>
 #include <private/qversionedpacket_p.h>
 #include <private/qqmldebugserviceinterfaces_p.h>
@@ -83,7 +47,7 @@ public:
     int hitCount;
 };
 
-inline uint qHash(const BreakPoint &b, uint seed = 0) Q_DECL_NOTHROW
+inline size_t qHash(const BreakPoint &b, size_t seed = 0) noexcept
 {
     return qHash(b.fileName, seed) ^ b.lineNumber;
 }
@@ -296,7 +260,7 @@ void NativeDebugger::signalEmitted(const QString &signal)
     //Normalize to Lower case.
     QString signalName = signal.left(signal.indexOf(QLatin1Char('('))).toLower();
 
-    for (const QString &signal : qAsConst(breakOnSignals)) {
+    for (const QString &signal : std::as_const(breakOnSignals)) {
         if (signal == signalName) {
             // TODO: pause debugger
             break;
@@ -360,7 +324,7 @@ void NativeDebugger::handleBacktrace(QJsonObject *response, const QJsonObject &a
 
         frameArray.push_back(frame);
 
-        f = f->parent;
+        f = f->parentFrame();
     }
 
     response->insert(QStringLiteral("frames"), frameArray);
@@ -479,7 +443,7 @@ void NativeDebugger::handleVariables(QJsonObject *response, const QJsonObject &a
 
     Collector collector(engine);
     const QJsonArray expanded = arguments.value(QLatin1String("expanded")).toArray();
-    for (const QJsonValue &ex : expanded)
+    for (const QJsonValue ex : expanded)
         collector.m_expanded.append(ex.toString());
     TRACE_PROTOCOL("Expanded: " << collector.m_expanded);
 
@@ -493,9 +457,10 @@ void NativeDebugger::handleVariables(QJsonObject *response, const QJsonObject &a
         QV4::Heap::InternalClass *ic = callContext->internalClass();
         QV4::ScopedValue v(scope);
         for (uint i = 0; i < ic->size; ++i) {
-            QString name = ic->keyAt(i);
-            v = callContext->d()->locals[i];
-            collector.collect(&output, QString(), name, v);
+            QV4::ScopedValue stringOrSymbol(scope, ic->keyAt(i));
+            QV4::ScopedString propName(scope, stringOrSymbol->toString(scope.engine));
+            v = callContext->getProperty(propName);
+            collector.collect(&output, QString(), propName->toQString(), v);
         }
     }
 
@@ -522,7 +487,7 @@ void NativeDebugger::handleExpressions(QJsonObject *response, const QJsonObject 
 
     Collector collector(engine);
     const QJsonArray expanded = arguments.value(QLatin1String("expanded")).toArray();
-    for (const QJsonValue &ex : expanded)
+    for (const QJsonValue ex : expanded)
         collector.m_expanded.append(ex.toString());
     TRACE_PROTOCOL("Expanded: " << collector.m_expanded);
 
@@ -530,7 +495,7 @@ void NativeDebugger::handleExpressions(QJsonObject *response, const QJsonObject 
     QV4::Scope scope(engine);
 
     const QJsonArray expressions = arguments.value(QLatin1String("expressions")).toArray();
-    for (const QJsonValue &expr : expressions) {
+    for (const QJsonValue expr : expressions) {
         QString expression = expr.toObject().value(QLatin1String("expression")).toString();
         QString name = expr.toObject().value(QLatin1String("name")).toString();
         TRACE_PROTOCOL("Evaluate expression: " << expression);
@@ -639,7 +604,7 @@ void NativeDebugger::leavingFunction(const QV4::ReturnedValue &retVal)
         return;
 
     if (m_stepping != NotStepping && m_currentFrame == m_engine->currentStackFrame) {
-        m_currentFrame = m_currentFrame->parent;
+        m_currentFrame = m_currentFrame->parentFrame();
         m_stepping = StepOver;
         m_returnedValue.set(m_engine, retVal);
     }
@@ -746,7 +711,7 @@ void QQmlNativeDebugServiceImpl::engineAboutToBeRemoved(QJSEngine *engine)
 void QQmlNativeDebugServiceImpl::stateAboutToBeChanged(QQmlDebugService::State state)
 {
     if (state == Enabled) {
-        for (NativeDebugger *debugger : qAsConst(m_debuggers)) {
+        for (NativeDebugger *debugger : std::as_const(m_debuggers)) {
             QV4::ExecutionEngine *engine = debugger->engine();
             if (!engine->debugger())
                 engine->setDebugger(debugger);
@@ -770,7 +735,7 @@ void QQmlNativeDebugServiceImpl::messageReceived(const QByteArray &message)
     } else if (cmd == QLatin1String("echo")) {
         response.insert(QStringLiteral("result"), arguments);
     } else {
-        for (NativeDebugger *debugger : qAsConst(m_debuggers))
+        for (NativeDebugger *debugger : std::as_const(m_debuggers))
             if (debugger)
                 debugger->handleCommand(&response, cmd, arguments);
     }

@@ -5,12 +5,12 @@
 #ifndef UI_GL_GL_SURFACE_WGL_H_
 #define UI_GL_GL_SURFACE_WGL_H_
 
-#include "base/macros.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/gl/gl_export.h"
 #include "ui/gl/gl_surface.h"
 
 namespace gl {
+class GLDisplayWGL;
 
 // Base interface for WGL surfaces.
 class GL_EXPORT GLSurfaceWGL : public GLSurface {
@@ -18,7 +18,7 @@ class GL_EXPORT GLSurfaceWGL : public GLSurface {
   GLSurfaceWGL();
 
   // Implement GLSurface.
-  void* GetDisplay() override;
+  GLDisplay* GetGLDisplay() override;
 
   static bool InitializeOneOff();
   static bool InitializeExtensionSettingsOneOff();
@@ -28,9 +28,9 @@ class GL_EXPORT GLSurfaceWGL : public GLSurface {
  protected:
   ~GLSurfaceWGL() override;
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(GLSurfaceWGL);
+ protected:
   static bool initialized_;
+  GLDisplayWGL* display_;
 };
 
 // A surface used to render to a view.
@@ -47,7 +47,8 @@ class GL_EXPORT NativeViewGLSurfaceWGL : public GLSurfaceWGL {
               bool has_alpha) override;
   bool Recreate() override;
   bool IsOffscreen() override;
-  gfx::SwapResult SwapBuffers(PresentationCallback callback) override;
+  gfx::SwapResult SwapBuffers(PresentationCallback callback,
+                              gfx::FrameData data) override;
   gfx::Size GetSize() override;
   void* GetHandle() override;
   GLSurfaceFormat GetFormat() override;
@@ -61,8 +62,6 @@ class GL_EXPORT NativeViewGLSurfaceWGL : public GLSurfaceWGL {
   gfx::AcceleratedWidget window_;
   gfx::AcceleratedWidget child_window_;
   HDC device_context_;
-
-  DISALLOW_COPY_AND_ASSIGN(NativeViewGLSurfaceWGL);
 };
 
 
@@ -75,7 +74,8 @@ class GL_EXPORT PbufferGLSurfaceWGL : public GLSurfaceWGL {
   bool Initialize(GLSurfaceFormat format) override;
   void Destroy() override;
   bool IsOffscreen() override;
-  gfx::SwapResult SwapBuffers(PresentationCallback callback) override;
+  gfx::SwapResult SwapBuffers(PresentationCallback callback,
+                              gfx::FrameData data) override;
   gfx::Size GetSize() override;
   void* GetHandle() override;
   GLSurfaceFormat GetFormat() override;
@@ -86,8 +86,6 @@ class GL_EXPORT PbufferGLSurfaceWGL : public GLSurfaceWGL {
   gfx::Size size_;
   HDC device_context_;
   void* pbuffer_;
-
-  DISALLOW_COPY_AND_ASSIGN(PbufferGLSurfaceWGL);
 };
 
 }  // namespace gl

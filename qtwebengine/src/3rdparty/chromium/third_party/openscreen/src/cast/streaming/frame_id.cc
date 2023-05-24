@@ -8,10 +8,14 @@ namespace openscreen {
 namespace cast {
 
 std::ostream& operator<<(std::ostream& out, const FrameId rhs) {
-  out << "F";
-  if (rhs.is_null())
-    return out << "<null>";
-  return out << rhs.value();
+  return out << rhs.ToString();
+}
+
+std::string FrameId::ToString() const {
+  if (is_null())
+    return "F<null>";
+
+  return "F" + std::to_string(value());
 }
 
 }  // namespace cast

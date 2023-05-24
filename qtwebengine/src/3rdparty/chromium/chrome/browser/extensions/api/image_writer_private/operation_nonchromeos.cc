@@ -1,12 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdint.h>
+#include <utility>
 
-#include "base/bind.h"
 #include "base/files/file_util.h"
-#include "chrome/browser/extensions/api/image_writer_private/error_messages.h"
+#include "base/functional/bind.h"
+#include "chrome/browser/extensions/api/image_writer_private/error_constants.h"
 #include "chrome/browser/extensions/api/image_writer_private/operation.h"
 #include "chrome/browser/extensions/api/image_writer_private/operation_manager.h"
 #include "content/public/browser/browser_thread.h"
@@ -16,7 +17,7 @@ namespace image_writer {
 
 using content::BrowserThread;
 
-void Operation::Write(const base::Closure& continuation) {
+void Operation::Write(base::OnceClosure continuation) {
   DCHECK(IsRunningInCorrectSequence());
   if (IsCancelled()) {
     return;
@@ -32,12 +33,13 @@ void Operation::Write(const base::Closure& continuation) {
   }
 
   image_writer_client_->Write(
-      base::Bind(&Operation::WriteImageProgress, this, file_size),
-      base::Bind(&Operation::CompleteAndContinue, this, continuation),
-      base::Bind(&Operation::Error, this), image_path_, device_path_);
+      base::BindRepeating(&Operation::WriteImageProgress, this, file_size),
+      base::BindOnce(&Operation::CompleteAndContinue, this,
+                     std::move(continuation)),
+      base::BindOnce(&Operation::Error, this), image_path_, device_path_);
 }
 
-void Operation::VerifyWrite(const base::Closure& continuation) {
+void Operation::VerifyWrite(base::OnceClosure continuation) {
   DCHECK(IsRunningInCorrectSequence());
 
   if (IsCancelled()) {
@@ -54,9 +56,10 @@ void Operation::VerifyWrite(const base::Closure& continuation) {
   }
 
   image_writer_client_->Verify(
-      base::Bind(&Operation::WriteImageProgress, this, file_size),
-      base::Bind(&Operation::CompleteAndContinue, this, continuation),
-      base::Bind(&Operation::Error, this), image_path_, device_path_);
+      base::BindRepeating(&Operation::WriteImageProgress, this, file_size),
+      base::BindOnce(&Operation::CompleteAndContinue, this,
+                     std::move(continuation)),
+      base::BindOnce(&Operation::Error, this), image_path_, device_path_);
 }
 
 }  // namespace image_writer

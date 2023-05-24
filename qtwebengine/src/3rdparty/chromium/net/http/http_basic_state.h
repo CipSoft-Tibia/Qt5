@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -9,10 +9,10 @@
 #define NET_HTTP_HTTP_BASIC_STATE_H_
 
 #include <memory>
+#include <set>
 #include <string>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "net/base/net_export.h"
 #include "net/base/request_priority.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
@@ -30,6 +30,10 @@ class NET_EXPORT_PRIVATE HttpBasicState {
  public:
   HttpBasicState(std::unique_ptr<ClientSocketHandle> connection,
                  bool using_proxy);
+
+  HttpBasicState(const HttpBasicState&) = delete;
+  HttpBasicState& operator=(const HttpBasicState&) = delete;
+
   ~HttpBasicState();
 
   // Initialize() must be called before using any of the other methods.
@@ -66,6 +70,11 @@ class NET_EXPORT_PRIVATE HttpBasicState {
   // ClientSocketHandle::is_reused().
   bool IsConnectionReused() const;
 
+  // Retrieves any DNS aliases for the remote endpoint. Includes all known
+  // aliases, e.g. from A, AAAA, or HTTPS, not just from the address used for
+  // the connection, in no particular order.
+  const std::set<std::string>& GetDnsAliases() const;
+
  private:
   scoped_refptr<GrowableIOBuffer> read_buf_;
 
@@ -79,8 +88,6 @@ class NET_EXPORT_PRIVATE HttpBasicState {
   std::string request_method_;
 
   MutableNetworkTrafficAnnotationTag traffic_annotation_;
-
-  DISALLOW_COPY_AND_ASSIGN(HttpBasicState);
 };
 
 }  // namespace net

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,43 +6,86 @@
 
 #include <memory>
 
-#include "base/bind.h"
 #include "base/check_op.h"
-#include "base/stl_util.h"
+#include "base/functional/bind.h"
 #include "base/time/default_tick_clock.h"
 #include "components/performance_manager/graph/frame_node_impl.h"
 #include "components/performance_manager/graph/graph_impl.h"
 #include "components/performance_manager/graph/graph_impl_operations.h"
 #include "components/performance_manager/graph/process_node_impl.h"
+#include "components/performance_manager/public/graph/graph_operations.h"
 
 namespace performance_manager {
+
+namespace {
+
+using PageState = PageNode::PageState;
+
+bool IsValidInitialPageState(PageState page_state) {
+  switch (page_state) {
+    case PageState::kActive:
+    case PageState::kPrerendering:
+      return true;
+
+    case PageState::kBackForwardCache:
+      return false;
+  }
+  NOTREACHED();
+  return false;
+}
+
+bool IsValidPageStateTransition(PageState old_state, PageState new_state) {
+  switch (old_state) {
+    case PageState::kActive:
+      return new_state == PageState::kBackForwardCache;
+
+    case PageState::kPrerendering:
+    case PageState::kBackForwardCache:
+      return new_state == PageState::kActive;
+  }
+  NOTREACHED();
+  return false;
+}
+
+}  // namespace
 
 PageNodeImpl::PageNodeImpl(const WebContentsProxy& contents_proxy,
                            const std::string& browser_context_id,
                            const GURL& visible_url,
                            bool is_visible,
                            bool is_audible,
-                           base::TimeTicks visibility_change_time)
+                           base::TimeTicks visibility_change_time,
+                           PageState page_state)
     : contents_proxy_(contents_proxy),
       visibility_change_time_(visibility_change_time),
       main_frame_url_(visible_url),
       browser_context_id_(browser_context_id),
       is_visible_(is_visible),
-      is_audible_(is_audible) {
+      is_audible_(is_audible),
+      page_state_(page_state) {
+  DCHECK(IsValidInitialPageState(page_state));
+  weak_this_ = weak_factory_.GetWeakPtr();
+
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
 
 PageNodeImpl::~PageNodeImpl() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(nullptr, opener_frame_node_);
-  DCHECK_EQ(OpenedType::kInvalid, opened_type_);
+  DCHECK_EQ(nullptr, embedder_frame_node_);
+  DCHECK_EQ(EmbeddingType::kInvalid, embedding_type_);
+  DCHECK(!page_load_tracker_data_);
+  DCHECK(!site_data_);
+  DCHECK(!frozen_frame_data_);
+  DCHECK(!page_aggregator_data_);
 }
 
 const WebContentsProxy& PageNodeImpl::contents_proxy() const {
   return contents_proxy_;
 }
 
-void PageNodeImpl::AddFrame(FrameNodeImpl* frame_node) {
+void PageNodeImpl::AddFrame(base::PassKey<FrameNodeImpl>,
+                            FrameNodeImpl* frame_node) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(frame_node);
   DCHECK_EQ(this, frame_node->page_node());
@@ -53,7 +96,8 @@ void PageNodeImpl::AddFrame(FrameNodeImpl* frame_node) {
     main_frame_nodes_.insert(frame_node);
 }
 
-void PageNodeImpl::RemoveFrame(FrameNodeImpl* frame_node) {
+void PageNodeImpl::RemoveFrame(base::PassKey<FrameNodeImpl>,
+                               FrameNodeImpl* frame_node) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(frame_node);
   DCHECK_EQ(this, frame_node->page_node());
@@ -66,11 +110,18 @@ void PageNodeImpl::RemoveFrame(FrameNodeImpl* frame_node) {
   }
 }
 
-void PageNodeImpl::SetIsLoading(bool is_loading) {
-  is_loading_.SetAndMaybeNotify(this, is_loading);
+void PageNodeImpl::SetLoadingState(LoadingState loading_state) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  loading_state_.SetAndMaybeNotify(this, loading_state);
+}
+
+void PageNodeImpl::SetType(PageType type) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  type_.SetAndMaybeNotify(this, type);
 }
 
 void PageNodeImpl::SetIsVisible(bool is_visible) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (is_visible_.SetAndMaybeNotify(this, is_visible)) {
     // The change time needs to be updated after observers are notified, as they
     // use this to determine time passed since the *previous* visibility state
@@ -81,10 +132,12 @@ void PageNodeImpl::SetIsVisible(bool is_visible) {
 }
 
 void PageNodeImpl::SetIsAudible(bool is_audible) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   is_audible_.SetAndMaybeNotify(this, is_audible);
 }
 
 void PageNodeImpl::SetUkmSourceId(ukm::SourceId ukm_source_id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   ukm_source_id_.SetAndMaybeNotify(this, ukm_source_id);
 }
 
@@ -98,6 +151,18 @@ void PageNodeImpl::OnTitleUpdated() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   for (auto* observer : GetObservers())
     observer->OnTitleUpdated(this);
+}
+
+void PageNodeImpl::OnAboutToBeDiscarded(base::WeakPtr<PageNode> new_page_node) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!new_page_node) {
+    return;
+  }
+
+  for (auto* observer : GetObservers()) {
+    observer->OnAboutToBeDiscarded(this, new_page_node.get());
+  }
 }
 
 void PageNodeImpl::OnMainFrameNavigationCommitted(
@@ -154,14 +219,24 @@ FrameNodeImpl* PageNodeImpl::GetMainFrameNodeImpl() const {
 
 FrameNodeImpl* PageNodeImpl::opener_frame_node() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(opener_frame_node_ || opened_type_ == OpenedType::kInvalid);
   return opener_frame_node_;
 }
 
-PageNodeImpl::OpenedType PageNodeImpl::opened_type() const {
+FrameNodeImpl* PageNodeImpl::embedder_frame_node() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(opener_frame_node_ || opened_type_ == OpenedType::kInvalid);
-  return opened_type_;
+  DCHECK(embedder_frame_node_ || embedding_type_ == EmbeddingType::kInvalid);
+  return embedder_frame_node_;
+}
+
+PageNodeImpl::EmbeddingType PageNodeImpl::embedding_type() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(embedder_frame_node_ || embedding_type_ == EmbeddingType::kInvalid);
+  return embedding_type_;
+}
+
+PageType PageNodeImpl::type() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return type_.value();
 }
 
 bool PageNodeImpl::is_visible() const {
@@ -174,9 +249,9 @@ bool PageNodeImpl::is_audible() const {
   return is_audible_.value();
 }
 
-bool PageNodeImpl::is_loading() const {
+PageNode::LoadingState PageNodeImpl::loading_state() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return is_loading_.value();
+  return loading_state_.value();
 }
 
 ukm::SourceId PageNodeImpl::ukm_source_id() const {
@@ -187,12 +262,6 @@ ukm::SourceId PageNodeImpl::ukm_source_id() const {
 PageNodeImpl::LifecycleState PageNodeImpl::lifecycle_state() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return lifecycle_state_.value();
-}
-
-PageNodeImpl::InterventionPolicy PageNodeImpl::origin_trial_freeze_policy()
-    const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return origin_trial_freeze_policy_.value();
 }
 
 bool PageNodeImpl::is_holding_weblock() const {
@@ -245,41 +314,89 @@ bool PageNodeImpl::had_form_interaction() const {
   return had_form_interaction_.value();
 }
 
-void PageNodeImpl::SetOpenerFrameNodeAndOpenedType(FrameNodeImpl* opener,
-                                                   OpenedType opened_type) {
+bool PageNodeImpl::had_user_edits() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return had_user_edits_.value();
+}
+
+const absl::optional<freezing::FreezingVote>& PageNodeImpl::freezing_vote()
+    const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return freezing_vote_.value();
+}
+
+PageNode::PageState PageNodeImpl::page_state() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return page_state_.value();
+}
+
+void PageNodeImpl::SetOpenerFrameNode(FrameNodeImpl* opener) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(opener);
   DCHECK(graph()->NodeInGraph(opener));
   DCHECK_NE(this, opener->page_node());
-  DCHECK_NE(OpenedType::kInvalid, opened_type);
 
-  auto* previous_opener = opener_frame_node_;
-  auto previous_type = opened_type_;
-
+  auto* previous_opener = opener_frame_node_.get();
   if (previous_opener)
     previous_opener->RemoveOpenedPage(PassKey(), this);
   opener_frame_node_ = opener;
-  opened_type_ = opened_type;
   opener->AddOpenedPage(PassKey(), this);
 
   for (auto* observer : GetObservers())
-    observer->OnOpenerFrameNodeChanged(this, previous_opener, previous_type);
+    observer->OnOpenerFrameNodeChanged(this, previous_opener);
 }
 
-void PageNodeImpl::ClearOpenerFrameNodeAndOpenedType() {
+void PageNodeImpl::ClearOpenerFrameNode() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_NE(nullptr, opener_frame_node_);
-  DCHECK_NE(OpenedType::kInvalid, opened_type_);
 
-  auto* previous_opener = opener_frame_node_;
-  auto previous_type = opened_type_;
+  auto* previous_opener = opener_frame_node_.get();
 
   opener_frame_node_->RemoveOpenedPage(PassKey(), this);
   opener_frame_node_ = nullptr;
-  opened_type_ = OpenedType::kInvalid;
 
   for (auto* observer : GetObservers())
-    observer->OnOpenerFrameNodeChanged(this, previous_opener, previous_type);
+    observer->OnOpenerFrameNodeChanged(this, previous_opener);
+}
+
+void PageNodeImpl::SetEmbedderFrameNodeAndEmbeddingType(
+    FrameNodeImpl* embedder,
+    EmbeddingType embedding_type) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(embedder);
+  DCHECK(graph()->NodeInGraph(embedder));
+  DCHECK_NE(this, embedder->page_node());
+  DCHECK_NE(EmbeddingType::kInvalid, embedding_type);
+
+  auto* previous_embedder = embedder_frame_node_.get();
+  auto previous_type = embedding_type_;
+
+  if (previous_embedder)
+    previous_embedder->RemoveEmbeddedPage(PassKey(), this);
+  embedder_frame_node_ = embedder;
+  embedding_type_ = embedding_type;
+  embedder->AddEmbeddedPage(PassKey(), this);
+
+  for (auto* observer : GetObservers())
+    observer->OnEmbedderFrameNodeChanged(this, previous_embedder,
+                                         previous_type);
+}
+
+void PageNodeImpl::ClearEmbedderFrameNodeAndEmbeddingType() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK_NE(nullptr, embedder_frame_node_);
+  DCHECK_NE(EmbeddingType::kInvalid, embedding_type_);
+
+  auto* previous_embedder = embedder_frame_node_.get();
+  auto previous_type = embedding_type_;
+
+  embedder_frame_node_->RemoveEmbeddedPage(PassKey(), this);
+  embedder_frame_node_ = nullptr;
+  embedding_type_ = EmbeddingType::kInvalid;
+
+  for (auto* observer : GetObservers())
+    observer->OnEmbedderFrameNodeChanged(this, previous_embedder,
+                                         previous_type);
 }
 
 void PageNodeImpl::set_usage_estimate_time(
@@ -300,6 +417,18 @@ void PageNodeImpl::set_has_nonempty_beforeunload(
   has_nonempty_beforeunload_ = has_nonempty_beforeunload;
 }
 
+void PageNodeImpl::set_freezing_vote(
+    absl::optional<freezing::FreezingVote> freezing_vote) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  freezing_vote_.SetAndMaybeNotify(this, freezing_vote);
+}
+
+void PageNodeImpl::set_page_state(PageState page_state) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(IsValidPageStateTransition(page_state_.value(), page_state));
+  page_state_.SetAndMaybeNotify(this, page_state);
+}
+
 void PageNodeImpl::OnJoiningGraph() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if DCHECK_IS_ON()
@@ -315,9 +444,21 @@ void PageNodeImpl::OnBeforeLeavingGraph() {
 
   // Sever opener relationships.
   if (opener_frame_node_)
-    ClearOpenerFrameNodeAndOpenedType();
+    ClearOpenerFrameNode();
+
+  // Sever embedder relationships.
+  if (embedder_frame_node_)
+    ClearEmbedderFrameNodeAndEmbeddingType();
 
   DCHECK_EQ(0u, frame_node_count_);
+}
+
+void PageNodeImpl::RemoveNodeAttachedData() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  page_load_tracker_data_.reset();
+  site_data_.reset();
+  frozen_frame_data_.Reset();
+  page_aggregator_data_.Reset();
 }
 
 const std::string& PageNodeImpl::GetBrowserContextID() const {
@@ -330,9 +471,19 @@ const FrameNode* PageNodeImpl::GetOpenerFrameNode() const {
   return opener_frame_node();
 }
 
-PageNodeImpl::OpenedType PageNodeImpl::GetOpenedType() const {
+const FrameNode* PageNodeImpl::GetEmbedderFrameNode() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return opened_type();
+  return embedder_frame_node();
+}
+
+PageNodeImpl::EmbeddingType PageNodeImpl::GetEmbeddingType() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return embedding_type();
+}
+
+PageType PageNodeImpl::GetType() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return type();
 }
 
 bool PageNodeImpl::IsVisible() const {
@@ -350,9 +501,9 @@ bool PageNodeImpl::IsAudible() const {
   return is_audible();
 }
 
-bool PageNodeImpl::IsLoading() const {
+PageNode::LoadingState PageNodeImpl::GetLoadingState() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return is_loading();
+  return loading_state();
 }
 
 ukm::SourceId PageNodeImpl::GetUkmSourceID() const {
@@ -363,12 +514,6 @@ ukm::SourceId PageNodeImpl::GetUkmSourceID() const {
 PageNodeImpl::LifecycleState PageNodeImpl::GetLifecycleState() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return lifecycle_state();
-}
-
-PageNodeImpl::InterventionPolicy PageNodeImpl::GetOriginTrialFreezePolicy()
-    const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return origin_trial_freeze_policy();
 }
 
 bool PageNodeImpl::IsHoldingWebLock() const {
@@ -404,8 +549,9 @@ bool PageNodeImpl::VisitMainFrameNodes(const FrameNodeVisitor& visitor) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   for (auto* frame_impl : main_frame_nodes_) {
     const FrameNode* frame = frame_impl;
-    if (!visitor.Run(frame))
+    if (!visitor(frame)) {
       return false;
+    }
   }
   return true;
 }
@@ -427,18 +573,49 @@ bool PageNodeImpl::HadFormInteraction() const {
   return had_form_interaction();
 }
 
+bool PageNodeImpl::HadUserEdits() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return had_user_edits();
+}
+
 const WebContentsProxy& PageNodeImpl::GetContentsProxy() const {
   return contents_proxy();
+}
+
+const absl::optional<freezing::FreezingVote>& PageNodeImpl::GetFreezingVote()
+    const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return freezing_vote();
+}
+
+PageState PageNodeImpl::GetPageState() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return page_state();
+}
+
+uint64_t PageNodeImpl::EstimateResidentSetSize() const {
+  uint64_t total = 0;
+  performance_manager::GraphOperations::VisitFrameTreePreOrder(
+      this, [&total](const FrameNode* frame_node) {
+        total += frame_node->GetResidentSetKbEstimate();
+        return true;
+      });
+  return total;
+}
+
+uint64_t PageNodeImpl::EstimatePrivateFootprintSize() const {
+  uint64_t total = 0;
+  performance_manager::GraphOperations::VisitFrameTreePreOrder(
+      this, [&total](const FrameNode* frame_node) {
+        total += frame_node->GetPrivateFootprintKbEstimate();
+        return true;
+      });
+  return total;
 }
 
 void PageNodeImpl::SetLifecycleState(LifecycleState lifecycle_state) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   lifecycle_state_.SetAndMaybeNotify(this, lifecycle_state);
-}
-
-void PageNodeImpl::SetOriginTrialFreezePolicy(InterventionPolicy policy) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  origin_trial_freeze_policy_.SetAndMaybeNotify(this, policy);
 }
 
 void PageNodeImpl::SetIsHoldingWebLock(bool is_holding_weblock) {
@@ -454,6 +631,11 @@ void PageNodeImpl::SetIsHoldingIndexedDBLock(bool is_holding_indexeddb_lock) {
 void PageNodeImpl::SetHadFormInteraction(bool had_form_interaction) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   had_form_interaction_.SetAndMaybeNotify(this, had_form_interaction);
+}
+
+void PageNodeImpl::SetHadUserEdits(bool had_user_edits) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  had_user_edits_.SetAndMaybeNotify(this, had_user_edits);
 }
 
 }  // namespace performance_manager

@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -65,7 +65,7 @@ const CBC_QRCoderVersion* CBC_QRCoderVersion::GetVersionForNumber(
   if (g_VERSION->empty()) {
     for (int i = 0; i < kMaxVersion; ++i) {
       g_VERSION->push_back(
-          std::make_unique<CBC_QRCoderVersion>(i + 1, g_ECBData[i]));
+          std::make_unique<CBC_QRCoderVersion>(i + 1, fxbarcode::kECBData[i]));
     }
   }
   if (versionNumber < 1 || versionNumber > kMaxVersion)

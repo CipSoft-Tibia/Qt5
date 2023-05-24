@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,15 @@
 #include <utility>
 
 #include "base/atomicops.h"
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/no_destructor.h"
+#include "base/notreached.h"
 #include "base/sequence_checker.h"
 #include "base/task/current_thread.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/task_executor.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
@@ -115,7 +115,7 @@ BrowserThreadImpl::BrowserThreadImpl(
   globals.task_runners[identifier_] = std::move(task_runner);
 
   if (identifier_ == BrowserThread::ID::UI) {
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
     // Allow usage of the FileDescriptorWatcher API on the UI thread, using the
     // IO thread to watch the file descriptors.
     //
@@ -234,7 +234,15 @@ scoped_refptr<base::SingleThreadTaskRunner>
 BrowserThread::GetTaskRunnerForThread(ID identifier) {
   DCHECK_GE(identifier, 0);
   DCHECK_LT(identifier, ID_COUNT);
-  return base::CreateSingleThreadTaskRunner({identifier});
+  switch (identifier) {
+    case UI:
+      return GetUIThreadTaskRunner({});
+    case IO:
+      return GetIOThreadTaskRunner({});
+    case ID_COUNT:
+      NOTREACHED();
+      return nullptr;
+  }
 }
 
 // static

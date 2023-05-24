@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QChartView>
 #include <private/qchartview_p.h>
 #include <private/qchart_p.h>
 #include <QtWidgets/QGraphicsScene>
 #include <QtWidgets/QRubberBand>
+#include <QtWidgets/QGraphicsItem>
 
 /*!
     \enum QChartView::RubberBand
@@ -50,6 +25,11 @@
     \value RectangleRubberBand
            The rubber band is fixed to the point that was clicked and can be
            pulled both vertically and horizontally.
+    \value ClickThroughRubberBand
+           An option on the above rubber band choices that allows left clicks
+           to be passed on to chart items if those chart items accept clicks.
+           To select this, OR it with one of the rubber band selection modes.
+           \since 6.2
 */
 
 /*!
@@ -64,7 +44,7 @@
     \sa QChart, QPolarChart
 */
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     Constructs a chart view object with the parent \a parent.
@@ -128,7 +108,7 @@ void QChartView::setRubberBand(const RubberBands &rubberBand)
 #ifndef QT_NO_RUBBERBAND
     d_ptr->m_rubberBandFlags = rubberBand;
 
-    if (!d_ptr->m_rubberBandFlags) {
+    if (!(d_ptr->m_rubberBandFlags & ~RubberBands(ClickThroughRubberBand))) {
         delete d_ptr->m_rubberBand;
         d_ptr->m_rubberBand = nullptr;
         return;
@@ -163,9 +143,14 @@ QChartView::RubberBands QChartView::rubberBand() const
 void QChartView::mousePressEvent(QMouseEvent *event)
 {
 #ifndef QT_NO_RUBBERBAND
+    QGraphicsItem *itemUnderCursor = itemAt(event->pos());
+    bool itemUnderCursorAcceptsLMB = itemUnderCursor && (itemUnderCursor->acceptedMouseButtons() & Qt::LeftButton);
+    bool clickThrough = d_ptr->m_rubberBandFlags.testFlag(ClickThroughRubberBand);
     QRectF plotArea = d_ptr->m_chart->plotArea();
     if (d_ptr->m_rubberBand && d_ptr->m_rubberBand->isEnabled()
-            && event->button() == Qt::LeftButton && plotArea.contains(event->pos())) {
+            && event->button() == Qt::LeftButton
+            && plotArea.contains(event->pos())
+            && !(clickThrough && itemUnderCursorAcceptsLMB)) {
         d_ptr->m_rubberBandOrigin = event->pos();
         d_ptr->m_rubberBand->setGeometry(QRect(d_ptr->m_rubberBandOrigin, QSize()));
         d_ptr->m_rubberBand->show();
@@ -223,34 +208,34 @@ void QChartView::mouseReleaseEvent(QMouseEvent *event)
             // Since plotArea uses QRectF and rubberband uses QRect, we can't just blindly use
             // rubberband's dimensions for vertical and horizontal rubberbands, where one
             // dimension must match the corresponding plotArea dimension exactly.
-            if (d_ptr->m_rubberBandFlags == VerticalRubberBand) {
-                rect.setX(d_ptr->m_chart->plotArea().x());
-                rect.setWidth(d_ptr->m_chart->plotArea().width());
-            } else if (d_ptr->m_rubberBandFlags == HorizontalRubberBand) {
-                rect.setY(d_ptr->m_chart->plotArea().y());
-                rect.setHeight(d_ptr->m_chart->plotArea().height());
+            if (!d_ptr->m_rubberBandFlags.testFlag(RectangleRubberBand)) {
+                if (d_ptr->m_rubberBandFlags.testFlag(VerticalRubberBand)) {
+                    rect.setX(d_ptr->m_chart->plotArea().x());
+                    rect.setWidth(d_ptr->m_chart->plotArea().width());
+                } else if (d_ptr->m_rubberBandFlags.testFlag(HorizontalRubberBand)) {
+                    rect.setY(d_ptr->m_chart->plotArea().y());
+                    rect.setHeight(d_ptr->m_chart->plotArea().height());
+                }
             }
             d_ptr->m_chart->zoomIn(rect);
             event->accept();
         }
-
     } else if (d_ptr->m_rubberBand && event->button() == Qt::RightButton) {
             // If vertical or horizontal rubberband mode, restrict zoom out to specified axis.
             // Since there is no suitable API for that, use zoomIn with rect bigger than the
             // plot area.
-            if (d_ptr->m_rubberBandFlags == VerticalRubberBand
-                || d_ptr->m_rubberBandFlags == HorizontalRubberBand) {
+            if (d_ptr->m_rubberBandFlags.testFlag(VerticalRubberBand)
+                || d_ptr->m_rubberBandFlags.testFlag(HorizontalRubberBand)) {
                 QRectF rect = d_ptr->m_chart->plotArea();
-                if (d_ptr->m_rubberBandFlags == VerticalRubberBand) {
+                if (d_ptr->m_rubberBandFlags.testFlag(VerticalRubberBand)) {
                     qreal adjustment = rect.height() / 2;
                     rect.adjust(0, -adjustment, 0, adjustment);
-                } else if (d_ptr->m_rubberBandFlags == HorizontalRubberBand) {
+                }
+                if (d_ptr->m_rubberBandFlags.testFlag(HorizontalRubberBand)) {
                     qreal adjustment = rect.width() / 2;
                     rect.adjust(-adjustment, 0, adjustment, 0);
                 }
                 d_ptr->m_chart->zoomIn(rect);
-            } else {
-                d_ptr->m_chart->zoomOut();
             }
             event->accept();
     } else {
@@ -265,9 +250,7 @@ void QChartView::mouseReleaseEvent(QMouseEvent *event)
 #if QT_CONFIG(wheelevent)
 void QChartView::wheelEvent(QWheelEvent *event)
 {
-    Q_UNUSED(event)
-    // We just need to override wheelEvent, or scrolling won't work correctly on macOS trackpad
-    // (QTBUG-77403)
+    QGraphicsView::wheelEvent(event);
 }
 #endif
 #endif
@@ -347,6 +330,6 @@ void QChartViewPrivate::resize()
     q_ptr->setSceneRect(m_chart->geometry());
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qchartview.cpp"

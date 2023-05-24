@@ -47,7 +47,9 @@
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
 
+#ifdef BUILD_DRM_GBM
 #include <gbm.h>
+#endif
 #include <libudev.h>
 
 #include <libweston/libweston.h>
@@ -68,6 +70,10 @@
 
 #ifndef GBM_BO_USE_LINEAR
 #define GBM_BO_USE_LINEAR (1 << 4)
+#endif
+
+#ifndef DRM_PLANE_ZPOS_INVALID_PLANE
+#define DRM_PLANE_ZPOS_INVALID_PLANE	0xffffffffffffffffULL
 #endif
 
 /**
@@ -108,14 +114,17 @@
 
 #define MAX_CLONED_CONNECTORS 4
 
-/**
- * aspect ratio info taken from the drmModeModeInfo flag bits 19-22,
- * which should be used to fill the aspect ratio field in weston_mode.
- */
-#define DRM_MODE_FLAG_PIC_AR_BITS_POS	19
-#ifndef DRM_MODE_FLAG_PIC_AR_MASK
-#define DRM_MODE_FLAG_PIC_AR_MASK (0xF << DRM_MODE_FLAG_PIC_AR_BITS_POS)
+#ifndef DRM_MODE_PICTURE_ASPECT_64_27
+#define DRM_MODE_PICTURE_ASPECT_64_27		3
+#define  DRM_MODE_FLAG_PIC_AR_64_27 \
+			(DRM_MODE_PICTURE_ASPECT_64_27<<19)
 #endif
+#ifndef DRM_MODE_PICTURE_ASPECT_256_135
+#define DRM_MODE_PICTURE_ASPECT_256_135		4
+#define  DRM_MODE_FLAG_PIC_AR_256_135 \
+			(DRM_MODE_PICTURE_ASPECT_256_135<<19)
+#endif
+
 
 /**
  * Represents the values of an enum-type KMS property
@@ -142,8 +151,11 @@ struct drm_property_enum_info {
 struct drm_property_info {
 	const char *name; /**< name as string (static, not freed) */
 	uint32_t prop_id; /**< KMS property object ID */
+	uint32_t flags;
 	unsigned int num_enum_values; /**< number of enum values */
 	struct drm_property_enum_info *enum_values; /**< array of enum values */
+	unsigned int num_range_values;
+	uint64_t range_values[2];
 };
 
 /**
@@ -164,6 +176,7 @@ enum wdrm_plane_property {
 	WDRM_PLANE_IN_FORMATS,
 	WDRM_PLANE_IN_FENCE_FD,
 	WDRM_PLANE_FB_DAMAGE_CLIPS,
+	WDRM_PLANE_ZPOS,
 	WDRM_PLANE__COUNT
 };
 
@@ -185,7 +198,23 @@ enum wdrm_connector_property {
 	WDRM_CONNECTOR_DPMS,
 	WDRM_CONNECTOR_CRTC_ID,
 	WDRM_CONNECTOR_NON_DESKTOP,
+	WDRM_CONNECTOR_CONTENT_PROTECTION,
+	WDRM_CONNECTOR_HDCP_CONTENT_TYPE,
+	WDRM_CONNECTOR_PANEL_ORIENTATION,
 	WDRM_CONNECTOR__COUNT
+};
+
+enum wdrm_content_protection_state {
+	WDRM_CONTENT_PROTECTION_UNDESIRED = 0,
+	WDRM_CONTENT_PROTECTION_DESIRED,
+	WDRM_CONTENT_PROTECTION_ENABLED,
+	WDRM_CONTENT_PROTECTION__COUNT
+};
+
+enum wdrm_hdcp_content_type {
+	WDRM_HDCP_CONTENT_TYPE0 = 0,
+	WDRM_HDCP_CONTENT_TYPE1,
+	WDRM_HDCP_CONTENT_TYPE__COUNT
 };
 
 enum wdrm_dpms_state {
@@ -194,6 +223,14 @@ enum wdrm_dpms_state {
 	WDRM_DPMS_STATE_STANDBY, /* unused */
 	WDRM_DPMS_STATE_SUSPEND, /* unused */
 	WDRM_DPMS_STATE__COUNT
+};
+
+enum wdrm_panel_orientation {
+	WDRM_PANEL_ORIENTATION_NORMAL = 0,
+	WDRM_PANEL_ORIENTATION_UPSIDE_DOWN,
+	WDRM_PANEL_ORIENTATION_LEFT_SIDE_UP,
+	WDRM_PANEL_ORIENTATION_RIGHT_SIDE_UP,
+	WDRM_PANEL_ORIENTATION__COUNT
 };
 
 /**
@@ -233,8 +270,6 @@ struct drm_backend {
 	int min_height, max_height;
 
 	struct wl_list plane_list;
-	int sprites_are_broken;
-	int sprites_hidden;
 
 	void *repaint_data;
 
@@ -243,7 +278,8 @@ struct drm_backend {
 	/* CRTC IDs not used by any enabled output. */
 	struct wl_array unused_crtcs;
 
-	int cursors_are_broken;
+	bool sprites_are_broken;
+	bool cursors_are_broken;
 
 	bool universal_planes;
 	bool atomic_modeset;
@@ -340,7 +376,18 @@ struct drm_output_state {
 	struct drm_output *output;
 	struct wl_list link;
 	enum dpms_enum dpms;
+	enum weston_hdcp_protection protection;
 	struct wl_list plane_list;
+};
+
+/**
+ * An instance of this class is created each time we believe we have a plane
+ * suitable to be used by a view as a direct scan-out. The list is initalized
+ * and populated locally.
+ */
+struct drm_plane_zpos {
+	struct drm_plane *plane;
+	struct wl_list link;	/**< :candidate_plane_zpos_list */
 };
 
 /**
@@ -364,12 +411,14 @@ struct drm_plane_state {
 	int32_t dest_x, dest_y;
 	uint32_t dest_w, dest_h;
 
+	uint64_t zpos;
+
 	bool complete;
 
 	/* We don't own the fd, so we shouldn't close it */
 	int in_fence_fd;
 
-	pixman_region32_t damage; /* damage to kernel */
+	uint32_t damage_blob_id; /* damage to kernel */
 
 	struct wl_list link; /* drm_output_state::plane_list */
 };
@@ -404,6 +453,9 @@ struct drm_plane {
 
 	/* The last state submitted to the kernel for this plane. */
 	struct drm_plane_state *state_cur;
+
+	uint64_t zpos_min;
+	uint64_t zpos_max;
 
 	struct wl_list link;
 
@@ -441,11 +493,11 @@ struct drm_output {
 	/* Holds the properties for the CRTC */
 	struct drm_property_info props_crtc[WDRM_CRTC__COUNT];
 
-	int page_flip_pending;
-	int atomic_complete_pending;
-	int destroy_pending;
-	int disable_pending;
-	int dpms_off_pending;
+	bool page_flip_pending;
+	bool atomic_complete_pending;
+	bool destroy_pending;
+	bool disable_pending;
+	bool dpms_off_pending;
 
 	uint32_t gbm_cursor_handle[2];
 	struct drm_fb *gbm_cursor_fb[2];
@@ -505,6 +557,22 @@ to_drm_mode(struct weston_mode *base)
 	return container_of(base, struct drm_mode, base);
 }
 
+static inline const char *
+drm_output_get_plane_type_name(struct drm_plane *p)
+{
+	switch (p->type) {
+	case WDRM_PLANE_TYPE_PRIMARY:
+		return "primary";
+	case WDRM_PLANE_TYPE_CURSOR:
+		return "cursor";
+	case WDRM_PLANE_TYPE_OVERLAY:
+		return "overlay";
+	default:
+		assert(0);
+		break;
+	}
+}
+
 struct drm_output *
 drm_output_find_by_crtc(struct drm_backend *b, uint32_t crtc_id);
 
@@ -561,15 +629,21 @@ uint64_t
 drm_property_get_value(struct drm_property_info *info,
 		       const drmModeObjectProperties *props,
 		       uint64_t def);
+uint64_t *
+drm_property_get_range_values(struct drm_property_info *info,
+			      const drmModeObjectProperties *props);
 int
 drm_plane_populate_formats(struct drm_plane *plane, const drmModePlane *kplane,
-			   const drmModeObjectProperties *props);
+			   const drmModeObjectProperties *props,
+			   const bool use_modifiers);
 void
 drm_property_info_free(struct drm_property_info *info, int num_props);
 
 extern struct drm_property_enum_info plane_type_enums[];
 extern const struct drm_property_info plane_props[];
 extern struct drm_property_enum_info dpms_state_enums[];
+extern struct drm_property_enum_info content_protection_enums[];
+extern struct drm_property_enum_info hdcp_content_type_enums[];
 extern const struct drm_property_info connector_props[];
 extern const struct drm_property_info crtc_props[];
 
@@ -595,16 +669,6 @@ drm_output_update_complete(struct drm_output *output, uint32_t flags,
 int
 on_drm_input(int fd, uint32_t mask, void *data);
 
-struct drm_plane_state *
-drm_output_state_get_existing_plane(struct drm_output_state *state_output,
-				    struct drm_plane *plane);
-void
-drm_plane_state_free(struct drm_plane_state *state, bool force);
-void
-drm_output_state_free(struct drm_output_state *state);
-void
-drm_pending_state_free(struct drm_pending_state *pending_state);
-
 struct drm_fb *
 drm_fb_ref(struct drm_fb *fb);
 void
@@ -616,9 +680,26 @@ drm_fb_create_dumb(struct drm_backend *b, int width, int height,
 struct drm_fb *
 drm_fb_get_from_bo(struct gbm_bo *bo, struct drm_backend *backend,
 		   bool is_opaque, enum drm_fb_type type);
-struct drm_fb *
-drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev);
 
+#ifdef BUILD_DRM_GBM
+extern struct drm_fb *
+drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev);
+extern bool
+drm_can_scanout_dmabuf(struct weston_compositor *ec,
+		       struct linux_dmabuf_buffer *dmabuf);
+#else
+static inline struct drm_fb *
+drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev)
+{
+	return NULL;
+}
+static inline bool
+drm_can_scanout_dmabuf(struct weston_compositor *ec,
+		       struct linux_dmabuf_buffer *dmabuf)
+{
+	return false;
+}
+#endif
 
 struct drm_pending_state *
 drm_pending_state_alloc(struct drm_backend *backend);
@@ -667,10 +748,80 @@ void
 drm_plane_state_put_back(struct drm_plane_state *state);
 bool
 drm_plane_state_coords_for_view(struct drm_plane_state *state,
-				struct weston_view *ev);
+				struct weston_view *ev, uint64_t zpos);
+void
+drm_plane_reset_state(struct drm_plane *plane);
 
 void
 drm_assign_planes(struct weston_output *output_base, void *repaint_data);
 
 bool
 drm_plane_is_available(struct drm_plane *plane, struct drm_output *output);
+
+void
+drm_output_render(struct drm_output_state *state, pixman_region32_t *damage);
+
+int
+parse_gbm_format(const char *s, uint32_t default_value, uint32_t *gbm_format);
+
+extern struct gl_renderer_interface *gl_renderer;
+
+#ifdef BUILD_DRM_VIRTUAL
+extern int
+drm_backend_init_virtual_output_api(struct weston_compositor *compositor);
+#else
+inline static int
+drm_backend_init_virtual_output_api(struct weston_compositor *compositor)
+{
+	return 0;
+}
+#endif
+
+#ifdef BUILD_DRM_GBM
+int
+init_egl(struct drm_backend *b);
+
+int
+drm_output_init_egl(struct drm_output *output, struct drm_backend *b);
+
+void
+drm_output_fini_egl(struct drm_output *output);
+
+struct drm_fb *
+drm_output_render_gl(struct drm_output_state *state, pixman_region32_t *damage);
+
+void
+renderer_switch_binding(struct weston_keyboard *keyboard,
+			const struct timespec *time, uint32_t key, void *data);
+#else
+inline static int
+init_egl(struct drm_backend *b)
+{
+	weston_log("Compiled without GBM/EGL support\n");
+	return -1;
+}
+
+inline static int
+drm_output_init_egl(struct drm_output *output, struct drm_backend *b)
+{
+	return -1;
+}
+
+inline static void
+drm_output_fini_egl(struct drm_output *output)
+{
+}
+
+inline static struct drm_fb *
+drm_output_render_gl(struct drm_output_state *state, pixman_region32_t *damage)
+{
+	return NULL;
+}
+
+inline static void
+renderer_switch_binding(struct weston_keyboard *keyboard,
+			const struct timespec *time, uint32_t key, void *data)
+{
+	weston_log("Compiled without GBM/EGL support\n");
+}
+#endif

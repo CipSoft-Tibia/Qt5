@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,11 @@ void EditableConfiguration::SetConfiguration(
     const base::Feature* feature,
     const FeatureConfig& feature_config) {
   configs_[feature->name] = feature_config;
+}
+
+void EditableConfiguration::SetConfiguration(const base::Feature* group,
+                                             const GroupConfig& group_config) {
+  group_configs_[group->name] = group_config;
 }
 
 const FeatureConfig& EditableConfiguration::GetFeatureConfig(
@@ -47,6 +52,33 @@ const std::vector<std::string> EditableConfiguration::GetRegisteredFeatures()
   for (const auto& element : configs_)
     features.push_back(element.first);
   return features;
+}
+
+const GroupConfig& EditableConfiguration::GetGroupConfig(
+    const base::Feature& group) const {
+  auto it = group_configs_.find(group.name);
+  DCHECK(it != group_configs_.end());
+  return it->second;
+}
+
+const GroupConfig& EditableConfiguration::GetGroupConfigByName(
+    const std::string& group_name) const {
+  auto it = group_configs_.find(group_name);
+  DCHECK(it != group_configs_.end());
+  return it->second;
+}
+
+const Configuration::GroupConfigMap&
+EditableConfiguration::GetRegisteredGroupConfigs() const {
+  return group_configs_;
+}
+
+const std::vector<std::string> EditableConfiguration::GetRegisteredGroups()
+    const {
+  std::vector<std::string> groups;
+  for (const auto& element : group_configs_)
+    groups.push_back(element.first);
+  return groups;
 }
 
 }  // namespace feature_engagement

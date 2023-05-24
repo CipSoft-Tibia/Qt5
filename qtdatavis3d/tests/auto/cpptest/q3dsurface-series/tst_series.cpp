@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
 #include <QtDataVisualization/QSurface3DSeries>
-
-using namespace QtDataVisualization;
 
 class tst_series: public QObject
 {
@@ -94,7 +66,7 @@ void tst_series::initialProperties()
     QCOMPARE(m_series->isFlatShadingEnabled(), true);
     QCOMPARE(m_series->isFlatShadingSupported(), true);
     QCOMPARE(m_series->selectedPoint(), m_series->invalidSelectionPosition());
-
+    QCOMPARE(m_series->wireframeColor(), QColor(Qt::black));
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
     QCOMPARE(m_series->itemLabelFormat(), QString("@xLabel, @yLabel, @zLabel"));
     QCOMPARE(m_series->mesh(), QAbstract3DSeries::MeshSphere);
@@ -109,10 +81,12 @@ void tst_series::initializeProperties()
     m_series->setDrawMode(QSurface3DSeries::DrawWireframe);
     m_series->setFlatShadingEnabled(false);
     m_series->setSelectedPoint(QPoint(0, 0));
+    m_series->setWireframeColor(QColor(Qt::red));
 
     QCOMPARE(m_series->drawMode(), QSurface3DSeries::DrawWireframe);
     QCOMPARE(m_series->isFlatShadingEnabled(), false);
     QCOMPARE(m_series->selectedPoint(), QPoint(0, 0));
+    QCOMPARE(m_series->wireframeColor(), QColor(Qt::red));
 
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
     m_series->setMesh(QAbstract3DSeries::MeshPyramid);

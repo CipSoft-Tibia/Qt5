@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -43,12 +17,12 @@
 #include "datavisualizationglobal_p.h"
 #include <QtGui/QRgb>
 #include <QtGui/QLinearGradient>
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
 // 3D Textures are not supported by ES set
-#  include <QtGui/QOpenGLFunctions_2_1>
+#  include <QtOpenGL/QOpenGLFunctions_2_1>
 #endif
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class TextureHelper : protected QOpenGLFunctions
 {
@@ -59,7 +33,7 @@ class TextureHelper : protected QOpenGLFunctions
     // Ownership of created texture is transferred to caller
     GLuint create2DTexture(const QImage &image, bool useTrilinearFiltering = false,
                            bool convert = true, bool smoothScale = true, bool clampY = false);
-    GLuint create3DTexture(const QVector<uchar> *data, int width, int height, int depth,
+    GLuint create3DTexture(const QList<uchar> *data, int width, int height, int depth,
                            QImage::Format dataFormat);
     GLuint createCubeMapTexture(const QImage &image, bool useTrilinearFiltering = false);
     // Returns selection texture and inserts generated framebuffers to framebuffer parameters
@@ -77,8 +51,8 @@ class TextureHelper : protected QOpenGLFunctions
     void convertToGLFormatHelper(QImage &dstImage, const QImage &srcImage, GLenum texture_format);
     QRgb qt_gl_convertToGLFormatHelper(QRgb src_pixel, GLenum texture_format);
 
-#if !defined(QT_OPENGL_ES_2)
-    QOpenGLFunctions_2_1 *m_openGlFunctions_2_1; // Not owned
+#if !QT_CONFIG(opengles2)
+    QOpenGLFunctions_2_1 *m_openGlFunctions_2_1 = nullptr;
 #endif
     friend class Bars3DRenderer;
     friend class Surface3DRenderer;
@@ -86,6 +60,6 @@ class TextureHelper : protected QOpenGLFunctions
     friend class Abstract3DRenderer;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

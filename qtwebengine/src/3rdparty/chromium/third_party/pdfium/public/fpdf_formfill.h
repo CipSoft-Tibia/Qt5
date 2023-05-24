@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -307,7 +307,9 @@ typedef struct _IPDF_JsPlatform {
                       int length);
 
   /*
-   * Pointer to FPDF_FORMFILLINFO interface.
+   * Pointer for embedder-specific data. Unused by PDFium, and despite
+   * its name, can be any data the embedder desires, though traditionally
+   * a FPDF_FORMFILLINFO interface.
    */
   void* m_pFormfillinfo;
 
@@ -637,8 +639,9 @@ typedef struct _FPDF_FORMFILLINFO {
    * Return value:
    *       None.
    * Comments:
-   *       See the named actions description of <<PDF Reference, version 1.7>>
-   *       for more details.
+   *       See ISO 32000-1:2008, section 12.6.4.11 for descriptions of the
+   *       standard named actions, but note that a document may supply any
+   *       name of its choosing.
    */
   void (*FFI_ExecuteNamedAction)(struct _FPDF_FORMFILLINFO* pThis,
                                  FPDF_BYTESTRING namedAction);
@@ -1140,11 +1143,13 @@ typedef struct _FPDF_FORMFILLINFO {
  *       Initialize form fill environment.
  * Parameters:
  *       document        -   Handle to document from FPDF_LoadDocument().
- *       pFormFillInfo   -   Pointer to a FPDF_FORMFILLINFO structure.
+ *       formInfo        -   Pointer to a FPDF_FORMFILLINFO structure.
  * Return Value:
  *       Handle to the form fill module, or NULL on failure.
  * Comments:
  *       This function should be called before any form fill operation.
+ *       The FPDF_FORMFILLINFO passed in via |formInfo| must remain valid until
+ *       the returned FPDF_FORMHANDLE is closed.
  */
 FPDF_EXPORT FPDF_FORMHANDLE FPDF_CALLCONV
 FPDFDOC_InitFormFillEnvironment(FPDF_DOCUMENT document,
@@ -1455,9 +1460,10 @@ FORM_OnLButtonDoubleClick(FPDF_FORMHANDLE hHandle,
  *       hHandle     -   Handle to the form fill module, aseturned by
  *                       FPDFDOC_InitFormFillEnvironment().
  *       page        -   Handle to the page, as returned by FPDF_LoadPage().
- *       nKeyCode    -   Indicates whether various virtual keys are down.
- *       modifier    -   Contains the scan code, key-transition code,
- *                       previous key state, and context code.
+ *       nKeyCode    -   The virtual-key code of the given key (see
+ *                       fpdf_fwlevent.h for virtual key codes).
+ *       modifier    -   Mask of key flags (see fpdf_fwlevent.h for key
+ *                       flag values).
  * Return Value:
  *       True indicates success; otherwise false.
  */
@@ -1473,11 +1479,15 @@ FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FORM_OnKeyDown(FPDF_FORMHANDLE hHandle,
  *       hHandle     -   Handle to the form fill module, as returned by
  *                       FPDFDOC_InitFormFillEnvironment().
  *       page        -   Handle to the page, as returned by FPDF_LoadPage().
- *       nKeyCode    -   The virtual-key code of the given key.
- *       modifier    -   Contains the scan code, key-transition code,
- *                       previous key state, and context code.
+ *       nKeyCode    -   The virtual-key code of the given key (see
+ *                       fpdf_fwlevent.h for virtual key codes).
+ *       modifier    -   Mask of key flags (see fpdf_fwlevent.h for key
+ *                       flag values).
  * Return Value:
  *       True indicates success; otherwise false.
+ * Comments:
+ *       Currently unimplemented and always returns false. PDFium reserves this
+ *       API and may implement it in the future on an as-needed basis.
  */
 FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FORM_OnKeyUp(FPDF_FORMHANDLE hHandle,
                                                  FPDF_PAGE page,
@@ -1489,12 +1499,12 @@ FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FORM_OnKeyUp(FPDF_FORMHANDLE hHandle,
  *       Call this member function when a keystroke translates to a
  *       nonsystem character.
  * Parameters:
- *        hHandle    -   Handle to the form fill module, as returned by
+ *       hHandle     -   Handle to the form fill module, as returned by
  *                       FPDFDOC_InitFormFillEnvironment().
- *        page       -   Handle to the page, as returned by FPDF_LoadPage().
- *        nChar      -   The character code value of the key.
- *        modifier   -   Contains the scan code, key-transition code,
- *                       previous key state, and context code.
+ *       page        -   Handle to the page, as returned by FPDF_LoadPage().
+ *       nChar       -   The character code value itself.
+ *       modifier    -   Mask of key flags (see fpdf_fwlevent.h for key
+ *                       flag values).
  * Return Value:
  *       True indicates success; otherwise false.
  */
@@ -1550,12 +1560,35 @@ FORM_GetSelectedText(FPDF_FORMHANDLE hHandle,
                      unsigned long buflen);
 
 /*
+ * Experimental API
+ * Function: FORM_ReplaceAndKeepSelection
+ *       Call this function to replace the selected text in a form
+ *       text field or user-editable form combobox text field with another
+ *       text string (which can be empty or non-empty). If there is no
+ *       selected text, this function will append the replacement text after
+ *       the current caret position. After the insertion, the inserted text
+ *       will be selected.
+ * Parameters:
+ *       hHandle     -   Handle to the form fill module, as returned by
+ *                       FPDFDOC_InitFormFillEnvironment().
+ *       page        -   Handle to the page, as Returned by FPDF_LoadPage().
+ *       wsText      -   The text to be inserted, in UTF-16LE format.
+ * Return Value:
+ *       None.
+ */
+FPDF_EXPORT void FPDF_CALLCONV
+FORM_ReplaceAndKeepSelection(FPDF_FORMHANDLE hHandle,
+                             FPDF_PAGE page,
+                             FPDF_WIDESTRING wsText);
+
+/*
  * Function: FORM_ReplaceSelection
  *       Call this function to replace the selected text in a form
  *       text field or user-editable form combobox text field with another
  *       text string (which can be empty or non-empty). If there is no
  *       selected text, this function will append the replacement text after
- *       the current caret position.
+ *       the current caret position. After the insertion, the selection range
+ *       will be set to empty.
  * Parameters:
  *       hHandle     -   Handle to the form fill module, as returned by
  *                       FPDFDOC_InitFormFillEnvironment().

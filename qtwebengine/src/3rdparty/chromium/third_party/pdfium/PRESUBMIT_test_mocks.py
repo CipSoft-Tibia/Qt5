@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -44,6 +44,12 @@ class MockOutputApi(object):
       MockOutputApi.PresubmitResult.__init__(self, message, items, long_text)
       self.type = 'error'
 
+  class PresubmitPromptWarning(PresubmitResult):
+
+    def __init__(self, message, items=None, long_text=''):
+      MockOutputApi.PresubmitResult.__init__(self, message, items, long_text)
+      self.type = 'warning'
+
 
 class MockFile(object):
   """Mock class for the File class.
@@ -64,6 +70,9 @@ class MockFile(object):
     self._changed_contents = [(i + 1, l) for i, l in enumerate(new_contents)]
     self._action = action
     self._old_contents = old_contents
+
+  def ChangedContents(self):
+    return self._changed_contents
 
   def LocalPath(self):
     return self._local_path

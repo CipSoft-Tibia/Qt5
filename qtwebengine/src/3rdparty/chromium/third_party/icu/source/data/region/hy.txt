@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 hy{
     Countries{
         001{"Աշխարհ"}
@@ -307,8 +308,9 @@ hy{
         CG{"Կոնգո (Կոնգոյի Հանրապետություն)"}
         CI{"Փղոսկրի Ափ"}
         CZ{"Չեխիայի Հանրապետություն"}
+        NZ{"Աոտեարոա Նոր Զելանդիա"}
         SZ{"Սվազիլենդ"}
         TL{"Արևելյան Թիմոր"}
+        TR{"Թյուրքիե"}
     }
-    Version{"37"}
 }

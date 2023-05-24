@@ -1,41 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2021 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QOFFSETSTRINGARRAY_P_H
 #define QOFFSETSTRINGARRAY_P_H
@@ -53,147 +18,143 @@
 
 #include "private/qglobal_p.h"
 
-#include <tuple>
+#include <QByteArrayView>
+
+#include <QtCore/q20algorithm.h>
 #include <array>
 #include <limits>
+#include <string_view>
+#include <tuple>
+
+class tst_QOffsetStringArray;
 
 QT_BEGIN_NAMESPACE
 
-namespace QtPrivate {
-template<int N, int O, int I, int ... Idx>
-struct OffsetSequenceHelper : OffsetSequenceHelper<N - 1, O + I, Idx..., O> { };
-
-template<int Last, int I, int S, int ... Idx>
-struct OffsetSequenceHelper<1, Last, I, S, Idx...> : IndexesList<Last + I, Idx..., Last>
-{
-    static const constexpr auto Length = Last + I;
-    using Type = typename std::conditional<
-        Last <= std::numeric_limits<quint8>::max(),
-        quint8,
-        typename std::conditional<
-            Last <= std::numeric_limits<quint16>::max(),
-            quint16,
-            int>::type
-        >::type;
-};
-
-template<int ... Idx>
-struct OffsetSequence : OffsetSequenceHelper<sizeof ... (Idx), 0, Idx..., 0> { };
-
-template<int N>
-struct StaticString
-{
-    const char data[N];
-};
-
-
-template<>
-struct StaticString<0>
-{
-    static constexpr int size() noexcept
-    {
-        return 0;
-    }
-};
-
-template<typename, typename>
-struct StaticStringBuilder;
-
-template<int ... I1, int ... I2>
-struct StaticStringBuilder<IndexesList<I1...>, IndexesList<I2...>>
-{
-
 QT_WARNING_PUSH
-QT_WARNING_DISABLE_MSVC(4100) // The formal parameter is not referenced in the body of the function.
-                              // The unreferenced parameter is ignored.
-                              // It happens when 'rs' is StaticString<0>
-    template<int N1, int N2>
-    static constexpr StaticString<N1 + N2> concatenate(
-        const char (&ls)[N1], const StaticString<N2> &rs) noexcept
-    {
-        return StaticString<N1 + N2>{{ls[I1]..., rs.data[I2]...}};
-    }
-QT_WARNING_POP
-};
+#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 1100
+// we usually don't overread, but GCC has a false positive
+QT_WARNING_DISABLE_GCC("-Wstringop-overread")
+#endif
 
-template<int Sum>
-constexpr StaticString<0> staticString() noexcept
-{
-    return StaticString<0>{};
-}
 
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_MSVC(4503)
-template<int Sum, int I, int ... Ix>
-constexpr StaticString<Sum> staticString(const char (&s)[I], const char (&...sx)[Ix]) noexcept
-{
-    return StaticStringBuilder<
-        makeIndexSequence<I>,
-        makeIndexSequence<Sum - I>>::concatenate(s, staticString<Sum - I>(sx...));
-}
-QT_WARNING_POP
-} // namespace QtPrivate
-
-template<typename T, int SizeString, int SizeOffsets>
+template <typename StaticString, typename OffsetList>
 class QOffsetStringArray
 {
 public:
-    using Type = T;
+    constexpr QOffsetStringArray(const StaticString &string, const OffsetList &offsets)
+        : m_string(string), m_offsets(offsets)
+    {}
 
-    template<int ... Ox>
-    constexpr QOffsetStringArray(const QtPrivate::StaticString<SizeString> &str,
-                                 QtPrivate::IndexesList<SizeString, Ox...>) noexcept
-        : m_string(str),
-          m_offsets{Ox...}
-    { }
-
-    constexpr inline const char *operator[](const int index) const noexcept
+    constexpr const char *operator[](const int index) const noexcept
     {
-        return m_string.data + m_offsets[qBound(int(0), index, SizeOffsets - 1)];
+        return m_string.data() + m_offsets[qBound(int(0), index, count())];
     }
 
-    constexpr inline const char *at(const int index) const noexcept
+    constexpr const char *at(const int index) const noexcept
     {
-        return m_string.data + m_offsets[index];
+        return m_string.data() + m_offsets[index];
     }
 
-    constexpr inline const char *str() const { return m_string.data; }
-    constexpr inline const T *offsets() const { return m_offsets; }
-    constexpr inline int count() const { return SizeOffsets; };
+    constexpr QByteArrayView viewAt(qsizetype index) const noexcept
+    {
+        return { m_string.data() + m_offsets[index],
+                    qsizetype(m_offsets[index + 1]) - qsizetype(m_offsets[index]) - 1 };
+    }
 
-    static constexpr const auto sizeString = SizeString;
-    static constexpr const auto sizeOffsets = SizeOffsets;
+    constexpr int count() const { return int(m_offsets.size()) - 1; }
+
+    bool contains(QByteArrayView needle, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
+    {
+        for (qsizetype i = 0; i < count(); ++i) {
+            if (viewAt(i).compare(needle, cs) == 0)
+                return true;
+        }
+        return false;
+    }
 
 private:
-    QtPrivate::StaticString<SizeString> m_string;
-    const T m_offsets[SizeOffsets];
+    StaticString m_string;
+    OffsetList m_offsets;
+    friend tst_QOffsetStringArray;
 };
 
-template<typename T, int N, int ... Ox>
-constexpr QOffsetStringArray<T, N, sizeof ... (Ox)> qOffsetStringArray(
-    const QtPrivate::StaticString<N> &string,
-    QtPrivate::IndexesList<N, Ox...> offsets) noexcept
+namespace QtPrivate {
+template <size_t Highest> constexpr auto minifyValue()
 {
-    return QOffsetStringArray<T, N, sizeof ... (Ox)>(
-               string,
-               offsets);
+    constexpr size_t max8 = (std::numeric_limits<quint8>::max)();
+    constexpr size_t max16 = (std::numeric_limits<quint16>::max)();
+    if constexpr (Highest <= max8) {
+        return quint8(Highest);
+    } else if constexpr (Highest <= max16) {
+        return quint16(Highest);
+    } else {
+        // int is probably enough for everyone
+        return int(Highest);
+    }
 }
 
-template<int ... Nx>
-struct QOffsetStringArrayRet
+template <size_t StringLength, typename Extractor, typename... T>
+constexpr auto makeStaticString(Extractor extract, const T &... entries)
 {
-    using Offsets = QtPrivate::OffsetSequence<Nx...>;
-    using Type = QOffsetStringArray<typename Offsets::Type, Offsets::Length, sizeof ... (Nx)>;
+    std::array<char, StringLength> result = {};
+    qptrdiff offset = 0;
+
+    const char *strings[] = { extract(entries).operator const char *()... };
+    size_t lengths[] = { sizeof(extract(T{}))... };
+    for (size_t i = 0; i < std::size(strings); ++i) {
+        q20::copy_n(strings[i], lengths[i], result.begin() + offset);
+        offset += lengths[i];
+    }
+    return result;
+}
+
+template <size_t N> struct StaticString
+{
+    char value[N] = {};
+    constexpr StaticString() = default;
+    constexpr StaticString(const char (&s)[N])  { q20::copy_n(s, N, value); }
+    constexpr operator const char *() const     { return value; }
 };
 
-template<int ... Nx>
-constexpr auto qOffsetStringArray(const char (&...strings)[Nx]) noexcept -> typename QOffsetStringArrayRet<Nx...>::Type
+template <size_t KL, size_t VL> struct StaticMapEntry
 {
-    using Offsets = QtPrivate::OffsetSequence<Nx...>;
-    return qOffsetStringArray<typename Offsets::Type>(
-            QtPrivate::staticString<Offsets::Length>(strings...), Offsets{});
+    StaticString<KL> key = {};
+    StaticString<VL> value = {};
+    constexpr StaticMapEntry() = default;
+    constexpr StaticMapEntry(const char (&k)[KL], const char (&v)[VL])
+        : key(k), value(v)
+    {}
+};
+
+template <typename StringExtractor, typename... T>
+constexpr auto makeOffsetStringArray(StringExtractor extractString, const T &... entries)
+{
+    constexpr size_t Count = sizeof...(T);
+    constexpr size_t StringLength = (sizeof(extractString(T{})) + ...);
+    using MinifiedOffsetType = decltype(QtPrivate::minifyValue<StringLength>());
+
+    size_t offset = 0;
+    std::array fullOffsetList = { offset += sizeof(extractString(T{}))... };
+
+    // prepend zero
+    std::array<MinifiedOffsetType, Count + 1> minifiedOffsetList = {};
+    q20::transform(fullOffsetList.begin(), fullOffsetList.end(),
+                   minifiedOffsetList.begin() + 1,
+                   [] (auto e) { return MinifiedOffsetType(e); });
+
+    std::array staticString = QtPrivate::makeStaticString<StringLength>(extractString, entries...);
+    return QOffsetStringArray(staticString, minifiedOffsetList);
+}
+} // namespace QtPrivate
+
+template<int ... Nx>
+constexpr auto qOffsetStringArray(const char (&...strings)[Nx]) noexcept
+{
+    auto extractString = [](const auto &s) -> decltype(auto) { return s; };
+    return QtPrivate::makeOffsetStringArray(extractString, QtPrivate::StaticString(strings)...);
 }
 
+QT_WARNING_POP
 QT_END_NAMESPACE
 
 #endif // QOFFSETSTRINGARRAY_P_H

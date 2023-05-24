@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsvgstructure_p.h"
 
@@ -254,12 +218,12 @@ inline static bool isSupportedSvgFeature(const QString &str)
         "http://www.w3.org/Graphics/SVG/feature/1.2/#ExternalResourcesRequiredAttribute"
     };
 
-    if (str.length() <= MAX_WORD_LENGTH && str.length() >= MIN_WORD_LENGTH) {
+    if (str.size() <= MAX_WORD_LENGTH && str.size() >= MIN_WORD_LENGTH) {
         const char16_t unicode44 = str.at(44).unicode();
         const char16_t unicode45 = str.at(45).unicode();
         if (unicode44 >= sizeof(asso_values) || unicode45 >= sizeof(asso_values))
             return false;
-        const int key = str.length()
+        const int key = str.size()
                         + asso_values[unicode45]
                         + asso_values[unicode44];
         if (key <= MAX_HASH_VALUE && key >= 0)
@@ -364,7 +328,7 @@ QRectF QSvgStructureNode::bounds(QPainter *p, QSvgExtraStates &states) const
     QRectF bounds;
     if (!m_recursing) {
         QScopedValueRollback<bool> guard(m_recursing, true);
-        for (QSvgNode *node : qAsConst(m_renderers))
+        for (QSvgNode *node : std::as_const(m_renderers))
             bounds |= node->transformedBounds(p, states);
     }
     return bounds;
@@ -372,7 +336,7 @@ QRectF QSvgStructureNode::bounds(QPainter *p, QSvgExtraStates &states) const
 
 QSvgNode * QSvgStructureNode::previousSiblingNode(QSvgNode *n) const
 {
-    QSvgNode *prev = 0;
+    QSvgNode *prev = nullptr;
     QList<QSvgNode*>::const_iterator itr = m_renderers.constBegin();
     for (; itr != m_renderers.constEnd(); ++itr) {
         QSvgNode *node = *itr;

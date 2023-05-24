@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,14 +12,6 @@ namespace base {
 TEST(TaskTraitsExtensionTest, NoExtension) {
   constexpr TaskTraits traits = {};
 
-  EXPECT_EQ(traits.extension_id(),
-            TaskTraitsExtensionStorage::kInvalidExtensionId);
-}
-
-TEST(TaskTraitsExtensionTest, ThreadPoolIsntAnExtension) {
-  constexpr TaskTraits traits = {base::ThreadPool()};
-
-  EXPECT_TRUE(traits.use_thread_pool());
   EXPECT_EQ(traits.extension_id(),
             TaskTraitsExtensionStorage::kInvalidExtensionId);
 }

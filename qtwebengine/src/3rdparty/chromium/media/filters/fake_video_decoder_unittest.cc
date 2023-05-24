@@ -1,12 +1,14 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/filters/fake_video_decoder.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/macros.h"
+#include <memory>
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "media/base/decoder_buffer.h"
@@ -34,18 +36,21 @@ class FakeVideoDecoderTest
  public:
   FakeVideoDecoderTest()
       : decoder_(new FakeVideoDecoder(
-            "FakeVideoDecoder",
+            0xFACCE,
             GetParam().decoding_delay,
             GetParam().max_decode_requests,
-            base::Bind(&FakeVideoDecoderTest::OnBytesDecoded,
-                       base::Unretained(this)))),
+            base::BindRepeating(&FakeVideoDecoderTest::OnBytesDecoded,
+                                base::Unretained(this)))),
         num_input_buffers_(0),
         num_decoded_frames_(0),
         num_bytes_decoded_(0),
         total_bytes_in_buffers_(0),
-        last_decode_status_(DecodeStatus::OK),
+        last_decode_status_(DecoderStatus::Codes::kOk),
         pending_decode_requests_(0),
         is_reset_pending_(false) {}
+
+  FakeVideoDecoderTest(const FakeVideoDecoderTest&) = delete;
+  FakeVideoDecoderTest& operator=(const FakeVideoDecoderTest&) = delete;
 
   virtual ~FakeVideoDecoderTest() {
     Destroy();
@@ -53,15 +58,15 @@ class FakeVideoDecoderTest
 
   void InitializeWithConfigAndExpectResult(const VideoDecoderConfig& config,
                                            bool success) {
-    decoder_->Initialize(
-        config, false, nullptr,
-        base::BindOnce(
-            [](bool success, Status status) {
-              EXPECT_EQ(status.is_ok(), success);
-            },
-            success),
-        base::Bind(&FakeVideoDecoderTest::FrameReady, base::Unretained(this)),
-        base::NullCallback());
+    decoder_->Initialize(config, false, nullptr,
+                         base::BindOnce(
+                             [](bool success, DecoderStatus status) {
+                               EXPECT_EQ(status.is_ok(), success);
+                             },
+                             success),
+                         base::BindRepeating(&FakeVideoDecoderTest::FrameReady,
+                                             base::Unretained(this)),
+                         base::NullCallback());
     base::RunLoop().RunUntilIdle();
     current_config_ = config;
   }
@@ -81,14 +86,14 @@ class FakeVideoDecoderTest
   }
 
   // Callback for VideoDecoder::Decode().
-  void DecodeDone(Status status) {
+  void DecodeDone(DecoderStatus status) {
     DCHECK_GT(pending_decode_requests_, 0);
     --pending_decode_requests_;
     last_decode_status_ = std::move(status);
   }
 
   void FrameReady(scoped_refptr<VideoFrame> frame) {
-    DCHECK(!frame->metadata()->end_of_stream);
+    DCHECK(!frame->metadata().end_of_stream);
     last_decoded_frame_ = std::move(frame);
     num_decoded_frames_++;
   }
@@ -121,7 +126,7 @@ class FakeVideoDecoderTest
         break;
       case ABORTED:
         EXPECT_EQ(0, pending_decode_requests_);
-        ASSERT_EQ(StatusCode::kAborted, last_decode_status_.code());
+        ASSERT_EQ(DecoderStatus::Codes::kAborted, last_decode_status_.code());
         EXPECT_FALSE(last_decoded_frame_.get());
         break;
     }
@@ -132,9 +137,8 @@ class FakeVideoDecoderTest
 
     if (num_input_buffers_ < kTotalBuffers) {
       buffer = CreateFakeVideoBufferForTest(
-          current_config_,
-          base::TimeDelta::FromMilliseconds(kDurationMs * num_input_buffers_),
-          base::TimeDelta::FromMilliseconds(kDurationMs));
+          current_config_, base::Milliseconds(kDurationMs * num_input_buffers_),
+          base::Milliseconds(kDurationMs));
       total_bytes_in_buffers_ += buffer->data_size();
     } else {
       buffer = DecoderBuffer::CreateEOSBuffer();
@@ -158,7 +162,7 @@ class FakeVideoDecoderTest
   void ReadAllFrames() {
     do {
       Decode();
-    } while (num_input_buffers_ <= kTotalBuffers); // All input buffers + EOS.
+    } while (num_input_buffers_ <= kTotalBuffers);  // All input buffers + EOS.
   }
 
   void EnterPendingReadState() {
@@ -237,13 +241,10 @@ class FakeVideoDecoderTest
   int total_bytes_in_buffers_;
 
   // Callback result/status.
-  Status last_decode_status_;
+  DecoderStatus last_decode_status_;
   scoped_refptr<VideoFrame> last_decoded_frame_;
   int pending_decode_requests_;
   bool is_reset_pending_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(FakeVideoDecoderTest);
 };
 
 INSTANTIATE_TEST_SUITE_P(NoParallelDecode,
@@ -284,10 +285,10 @@ TEST_P(FakeVideoDecoderTest, Read_DecodingDelay) {
 }
 
 TEST_P(FakeVideoDecoderTest, Read_ZeroDelay) {
-  decoder_.reset(
-      new FakeVideoDecoder("FakeVideoDecoder", 0, 1,
-                           base::Bind(&FakeVideoDecoderTest::OnBytesDecoded,
-                                      base::Unretained(this))));
+  decoder_ = std::make_unique<FakeVideoDecoder>(
+      999, 0, 1,
+      base::BindRepeating(&FakeVideoDecoderTest::OnBytesDecoded,
+                          base::Unretained(this)));
   Initialize();
 
   while (num_input_buffers_ < kTotalBuffers) {

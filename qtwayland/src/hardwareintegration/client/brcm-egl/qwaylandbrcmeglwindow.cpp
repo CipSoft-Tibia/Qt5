@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandbrcmeglwindow.h"
 
@@ -43,7 +7,7 @@
 #include <QtWaylandClient/private/qwaylandscreen_p.h>
 #include "qwaylandbrcmglcontext.h"
 
-#include <QtEglSupport/private/qeglconvenience_p.h>
+#include <QtGui/private/qeglconvenience_p.h>
 
 #include <QtGui/QWindow>
 #include <qpa/qwindowsysteminterface.h>
@@ -185,14 +149,14 @@ void QWaylandBrcmEglWindow::createEglSurfaces()
 
     m_count = window()->format().swapBehavior() == QSurfaceFormat::TripleBuffer ? 3 : 2;
 
-    m_eglConfig = q_configFromGLFormat(m_eglIntegration->eglDisplay(), brcmFixFormat(window()->format()), true, EGL_PIXMAP_BIT);
+    EGLConfig eglConfig = q_configFromGLFormat(m_eglIntegration->eglDisplay(), brcmFixFormat(window()->format()), true, EGL_PIXMAP_BIT);
 
-    m_format = q_glFormatFromConfig(m_eglIntegration->eglDisplay(), m_eglConfig);
+    m_format = q_glFormatFromConfig(m_eglIntegration->eglDisplay(), eglConfig);
 
     EGLint pixel_format = EGL_PIXEL_FORMAT_ARGB_8888_BRCM;
 
     EGLint rt;
-    eglGetConfigAttrib(m_eglIntegration->eglDisplay(), m_eglConfig, EGL_RENDERABLE_TYPE, &rt);
+    eglGetConfigAttrib(m_eglIntegration->eglDisplay(), eglConfig, EGL_RENDERABLE_TYPE, &rt);
 
     if (rt & EGL_OPENGL_ES_BIT) {
         pixel_format |= EGL_PIXEL_FORMAT_RENDER_GLES_BRCM;
@@ -228,7 +192,7 @@ void QWaylandBrcmEglWindow::createEglSurfaces()
             EGL_NONE
         };
 
-        m_eglSurfaces[i] = eglCreatePixmapSurface(m_eglIntegration->eglDisplay(), m_eglConfig, (EGLNativePixmapType)&m_globalImages[5*i], attrs);
+        m_eglSurfaces[i] = eglCreatePixmapSurface(m_eglIntegration->eglDisplay(), eglConfig, (EGLNativePixmapType)&m_globalImages[5*i], attrs);
         if (m_eglSurfaces[i] == EGL_NO_SURFACE)
             qFatal("eglCreatePixmapSurface failed: %x, global image id: %d %d\n", eglGetError(), m_globalImages[5*i], m_globalImages[5*i+1]);
         m_buffers[i] = new QWaylandBrcmBuffer(mDisplay, m_eglIntegration->waylandBrcm(), size, &m_globalImages[5*i], 5, m_eventQueue);

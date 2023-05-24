@@ -15,6 +15,8 @@
 #import "base/RTCLogging.h"
 #import "helpers/RTCDispatcher+Private.h"
 
+#include "rtc_base/string_utils.h"
+
 namespace {
 
 rtc::AdapterType AdapterTypeFromInterfaceType(nw_interface_type_t interfaceType) {
@@ -78,8 +80,8 @@ rtc::AdapterType AdapterTypeFromInterfaceType(nw_interface_type_t interfaceType)
         } else if (status == nw_path_status_satisfiable) {
           RTCLog(@"NW path monitor status: satisfiable.");
         }
-        std::map<std::string, rtc::AdapterType> *map =
-            new std::map<std::string, rtc::AdapterType>();
+        std::map<std::string, rtc::AdapterType, rtc::AbslStringViewCmp> *map =
+            new std::map<std::string, rtc::AdapterType, rtc::AbslStringViewCmp>();
         nw_path_enumerate_interfaces(
             path, (nw_path_enumerate_interfaces_block_t) ^ (nw_interface_t interface) {
               const char *name = nw_interface_get_name(interface);
@@ -88,7 +90,12 @@ rtc::AdapterType AdapterTypeFromInterfaceType(nw_interface_type_t interfaceType)
               rtc::AdapterType adapterType = AdapterTypeFromInterfaceType(interfaceType);
               map->insert(std::pair<std::string, rtc::AdapterType>(name, adapterType));
             });
-        strongSelf->_observer->OnPathUpdate(std::move(*map));
+        @synchronized(strongSelf) {
+          webrtc::NetworkMonitorObserver *observer = strongSelf->_observer;
+          if (observer) {
+            observer->OnPathUpdate(std::move(*map));
+          }
+        }
         delete map;
       });
       nw_path_monitor_set_queue(
@@ -100,10 +107,20 @@ rtc::AdapterType AdapterTypeFromInterfaceType(nw_interface_type_t interfaceType)
   return self;
 }
 
-- (void)dealloc {
+- (void)cancel {
   if (@available(iOS 12, *)) {
     nw_path_monitor_cancel(_pathMonitor);
   }
+}
+- (void)stop {
+  [self cancel];
+  @synchronized(self) {
+    _observer = nil;
+  }
+}
+
+- (void)dealloc {
+  [self cancel];
 }
 
 @end

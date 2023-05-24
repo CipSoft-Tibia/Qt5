@@ -20,7 +20,6 @@
 #include "api/array_view.h"
 #include "modules/audio_processing/aec3/aec3_common.h"
 #include "modules/audio_processing/logging/apm_data_dumper.h"
-#include "rtc_base/atomic_ops.h"
 #include "rtc_base/checks.h"
 #include "system_wrappers/include/field_trial.h"
 
@@ -97,7 +96,7 @@ void ComputeAvgRenderReverb(
 
 }  // namespace
 
-int AecState::instance_count_ = 0;
+std::atomic<int> AecState::instance_count_(0);
 
 void AecState::GetResidualEchoScaling(
     rtc::ArrayView<float> residual_scaling) const {
@@ -113,18 +112,9 @@ void AecState::GetResidualEchoScaling(
                                           residual_scaling);
 }
 
-absl::optional<float> AecState::ErleUncertainty() const {
-  if (SaturatedEcho()) {
-    return 1.f;
-  }
-
-  return absl::nullopt;
-}
-
 AecState::AecState(const EchoCanceller3Config& config,
                    size_t num_capture_channels)
-    : data_dumper_(
-          new ApmDataDumper(rtc::AtomicOps::Increment(&instance_count_))),
+    : data_dumper_(new ApmDataDumper(instance_count_.fetch_add(1) + 1)),
       config_(config),
       num_capture_channels_(num_capture_channels),
       deactivate_initial_state_reset_at_echo_path_change_(
@@ -214,15 +204,16 @@ void AecState::Update(
                         strong_not_saturated_render_blocks_);
   }
 
-  const std::vector<std::vector<float>>& aligned_render_block =
-      render_buffer.Block(-delay_state_.MinDirectPathFilterDelay())[0];
+  const Block& aligned_render_block =
+      render_buffer.GetBlock(-delay_state_.MinDirectPathFilterDelay());
 
   // Update render counters.
   bool active_render = false;
-  for (size_t ch = 0; ch < aligned_render_block.size(); ++ch) {
-    const float render_energy = std::inner_product(
-        aligned_render_block[ch].begin(), aligned_render_block[ch].end(),
-        aligned_render_block[ch].begin(), 0.f);
+  for (int ch = 0; ch < aligned_render_block.NumChannels(); ++ch) {
+    const float render_energy =
+        std::inner_product(aligned_render_block.begin(/*block=*/0, ch),
+                           aligned_render_block.end(/*block=*/0, ch),
+                           aligned_render_block.begin(/*block=*/0, ch), 0.f);
     if (render_energy > (config_.render_levels.active_render_limit *
                          config_.render_levels.active_render_limit) *
                             kFftLengthBy2) {
@@ -237,8 +228,9 @@ void AecState::Update(
   std::array<float, kFftLengthBy2Plus1> avg_render_spectrum_with_reverb;
 
   ComputeAvgRenderReverb(render_buffer.GetSpectrumBuffer(),
-                         delay_state_.MinDirectPathFilterDelay(), ReverbDecay(),
-                         &avg_render_reverb_, avg_render_spectrum_with_reverb);
+                         delay_state_.MinDirectPathFilterDelay(),
+                         ReverbDecay(/*mild=*/false), &avg_render_reverb_,
+                         avg_render_spectrum_with_reverb);
 
   if (config_.echo_audibility.use_stationarity_properties) {
     // Update the echo audibility evaluator.
@@ -302,7 +294,9 @@ void AecState::Update(
   data_dumper_->DumpRaw("aec3_active_render", active_render);
   data_dumper_->DumpRaw("aec3_erl", Erl());
   data_dumper_->DumpRaw("aec3_erl_time_domain", ErlTimeDomain());
-  data_dumper_->DumpRaw("aec3_erle", Erle()[0]);
+  data_dumper_->DumpRaw("aec3_erle", Erle(/*onset_compensated=*/false)[0]);
+  data_dumper_->DumpRaw("aec3_erle_onset_compensated",
+                        Erle(/*onset_compensated=*/true)[0]);
   data_dumper_->DumpRaw("aec3_usable_linear_estimate", UsableLinearEstimate());
   data_dumper_->DumpRaw("aec3_transparent_mode", TransparentModeActive());
   data_dumper_->DumpRaw("aec3_filter_delay",
@@ -322,6 +316,11 @@ void AecState::Update(
                         external_delay ? 1 : 0);
   data_dumper_->DumpRaw("aec3_filter_tail_freq_resp_est",
                         GetReverbFrequencyResponse());
+  data_dumper_->DumpRaw("aec3_subtractor_y2", subtractor_output[0].y2);
+  data_dumper_->DumpRaw("aec3_subtractor_e2_coarse",
+                        subtractor_output[0].e2_coarse);
+  data_dumper_->DumpRaw("aec3_subtractor_e2_refined",
+                        subtractor_output[0].e2_refined);
 }
 
 AecState::InitialState::InitialState(const EchoCanceller3Config& config)
@@ -354,8 +353,9 @@ void AecState::InitialState::InitialState::Update(bool active_render,
 
 AecState::FilterDelay::FilterDelay(const EchoCanceller3Config& config,
                                    size_t num_capture_channels)
-    : delay_headroom_samples_(config.delay.delay_headroom_samples),
-      filter_delays_blocks_(num_capture_channels, 0) {}
+    : delay_headroom_blocks_(config.delay.delay_headroom_samples / kBlockSize),
+      filter_delays_blocks_(num_capture_channels, delay_headroom_blocks_),
+      min_filter_delay_(delay_headroom_blocks_) {}
 
 void AecState::FilterDelay::Update(
     rtc::ArrayView<const int> analyzer_filter_delay_estimates_blocks,
@@ -373,7 +373,7 @@ void AecState::FilterDelay::Update(
   const bool delay_estimator_may_not_have_converged =
       blocks_with_proper_filter_adaptation < 2 * kNumBlocksPerSecond;
   if (delay_estimator_may_not_have_converged && external_delay_) {
-    int delay_guess = delay_headroom_samples_ / kBlockSize;
+    const int delay_guess = delay_headroom_blocks_;
     std::fill(filter_delays_blocks_.begin(), filter_delays_blocks_.end(),
               delay_guess);
   } else {
@@ -445,7 +445,7 @@ void AecState::FilteringQualityAnalyzer::Update(
 }
 
 void AecState::SaturationDetector::Update(
-    rtc::ArrayView<const std::vector<float>> x,
+    const Block& x,
     bool saturated_capture,
     bool usable_linear_estimate,
     rtc::ArrayView<const SubtractorOutput> subtractor_output,
@@ -465,8 +465,9 @@ void AecState::SaturationDetector::Update(
     }
   } else {
     float max_sample = 0.f;
-    for (auto& channel : x) {
-      for (float sample : channel) {
+    for (int ch = 0; ch < x.NumChannels(); ++ch) {
+      rtc::ArrayView<const float, kBlockSize> x_ch = x.View(/*band=*/0, ch);
+      for (float sample : x_ch) {
         max_sample = std::max(max_sample, fabsf(sample));
       }
     }

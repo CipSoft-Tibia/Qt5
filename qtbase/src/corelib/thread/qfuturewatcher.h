@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFUTUREWATCHER_H
 #define QFUTUREWATCHER_H
@@ -69,7 +33,12 @@ public:
     bool isFinished() const;
     bool isRunning() const;
     bool isCanceled() const;
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED_VERSION_X_6_0("Use isSuspending() or isSuspended() instead.")
     bool isPaused() const;
+#endif
+    bool isSuspending() const;
+    bool isSuspended() const;
 
     void waitForFinished();
 
@@ -81,7 +50,12 @@ Q_SIGNALS:
     void started();
     void finished();
     void canceled();
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED_VERSION_X_6_0("Use suspending() instead.")
     void paused();
+#endif
+    void suspending();
+    void suspended();
     void resumed();
     void resultReadyAt(int resultIndex);
     void resultsReadyAt(int beginIndex, int endIndex);
@@ -91,10 +65,21 @@ Q_SIGNALS:
 
 public Q_SLOTS:
     void cancel();
-    void setPaused(bool paused);
-    void pause();
+    void setSuspended(bool suspend);
+    void suspend();
     void resume();
+    void toggleSuspended();
+
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED_VERSION_X_6_0("Use setSuspended() instead.")
+    void setPaused(bool paused);
+
+    QT_DEPRECATED_VERSION_X_6_0("Use suspended() instead.")
+    void pause();
+
+    QT_DEPRECATED_VERSION_X_6_0("Use toggleSuspended() instead.")
     void togglePaused();
+#endif
 
 protected:
     void connectNotify (const QMetaMethod &signal) override;
@@ -124,7 +109,10 @@ public:
     QFuture<T> future() const
     { return m_future; }
 
+    template<typename U = T, typename = QtPrivate::EnableForNonVoid<U>>
     T result() const { return m_future.result(); }
+
+    template<typename U = T, typename = QtPrivate::EnableForNonVoid<U>>
     T resultAt(int index) const { return m_future.resultAt(index); }
 
 #ifdef Q_QDOC
@@ -137,7 +125,11 @@ public:
     bool isFinished() const;
     bool isRunning() const;
     bool isCanceled() const;
+#if QT_DEPRECATED_SINCE(6, 0)
     bool isPaused() const;
+#endif
+    bool isSuspending() const;
+    bool isSuspended() const;
 
     void waitForFinished();
 
@@ -147,7 +139,11 @@ Q_SIGNALS:
     void started();
     void finished();
     void canceled();
+#if QT_DEPRECATED_SINCE(6, 0)
     void paused();
+#endif
+    void suspending();
+    void suspended();
     void resumed();
     void resultReadyAt(int resultIndex);
     void resultsReadyAt(int beginIndex, int endIndex);
@@ -157,11 +153,17 @@ Q_SIGNALS:
 
 public Q_SLOTS:
     void cancel();
+    void setSuspended(bool suspend);
+    void suspend();
+    void resume();
+    void toggleSuspended();
+#if QT_DEPRECATED_SINCE(6, 0)
     void setPaused(bool paused);
     void pause();
-    void resume();
     void togglePaused();
-#endif
+#endif // QT_DEPRECATED_SINCE(6, 0)
+
+#endif // Q_QDOC
 
 private:
     QFuture<T> m_future;
@@ -172,37 +174,7 @@ private:
 template <typename T>
 Q_INLINE_TEMPLATE void QFutureWatcher<T>::setFuture(const QFuture<T> &_future)
 {
-    if (_future == m_future)
-        return;
-
-    disconnectOutputInterface(true);
-    m_future = _future;
-    connectOutputInterface();
-}
-
-template <>
-class QFutureWatcher<void> : public QFutureWatcherBase
-{
-public:
-    explicit QFutureWatcher(QObject *_parent = nullptr)
-        : QFutureWatcherBase(_parent)
-    { }
-    ~QFutureWatcher()
-    { disconnectOutputInterface(); }
-
-    void setFuture(const QFuture<void> &future);
-    QFuture<void> future() const
-    { return m_future; }
-
-private:
-    QFuture<void> m_future;
-    const QFutureInterfaceBase &futureInterface() const override { return m_future.d; }
-    QFutureInterfaceBase &futureInterface() override { return m_future.d; }
-};
-
-Q_INLINE_TEMPLATE void QFutureWatcher<void>::setFuture(const QFuture<void> &_future)
-{
-    if (_future == m_future)
+    if (_future.d == m_future.d)
         return;
 
     disconnectOutputInterface(true);

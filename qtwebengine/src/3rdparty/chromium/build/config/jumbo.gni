@@ -78,7 +78,7 @@ template("internal_jumbo_target") {
   if (defined(invoker.never_build_jumbo) && invoker.never_build_jumbo) {
     use_jumbo_build_for_target = false
   }
-  if (is_nacl_irt || is_nacl_nonsfi) {
+  if (is_nacl_irt) {
     # The code is barely compatible with the nacl toolchain anymore and we
     # don't want to stress it further with jumbo compilation units.
     use_jumbo_build_for_target = false
@@ -228,7 +228,6 @@ template("internal_jumbo_target") {
       deps += [ ":" + merge_action_name ]
       variables_to_not_forward += [ "sources" ]
       assert(jumbo_files != [])
-      set_sources_assignment_filter([])  # Prefiltered.
       sources = invoker_sources - sources_in_jumbo_files + jumbo_files
 
       # Change include_dirs to make sure that the jumbo file can find its

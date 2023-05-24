@@ -1,12 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <string>
 
-#include "base/macros.h"
-#include "base/scoped_observer.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/pointer/touch_ui_controller.h"
 
@@ -25,7 +23,7 @@ class TestObserver {
 
  private:
   int touch_ui_changes_ = 0;
-  std::unique_ptr<ui::TouchUiController::Subscription> subscription_;
+  base::CallbackListSubscription subscription_;
 };
 
 }  // namespace

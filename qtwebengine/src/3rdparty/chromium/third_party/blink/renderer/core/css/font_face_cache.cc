@@ -26,6 +26,7 @@
 
 #include "third_party/blink/renderer/core/css/font_face_cache.h"
 
+#include <numeric>
 #include "base/atomic_sequence_num.h"
 #include "third_party/blink/renderer/core/css/css_segmented_font_face.h"
 #include "third_party/blink/renderer/core/css/css_value_list.h"
@@ -42,40 +43,53 @@ FontFaceCache::FontFaceCache() : version_(0) {}
 
 void FontFaceCache::Add(const StyleRuleFontFace* font_face_rule,
                         FontFace* font_face) {
-  if (!style_rule_to_font_face_.insert(font_face_rule, font_face).is_new_entry)
+  if (!style_rule_to_font_face_.insert(font_face_rule, font_face)
+           .is_new_entry) {
     return;
+  }
   AddFontFace(font_face, true);
 }
 
-void FontFaceCache::AddFontFace(FontFace* font_face, bool css_connected) {
-  SegmentedFacesByFamily::AddResult capabilities_result =
-      segmented_faces_.insert(font_face->family(), nullptr);
-
-  if (capabilities_result.is_new_entry) {
-    capabilities_result.stored_value->value =
-        MakeGarbageCollected<CapabilitiesSet>();
+void FontFaceCache::SegmentedFacesByFamily::AddFontFace(FontFace* font_face,
+                                                        bool css_connected) {
+  const auto result = map_.insert(font_face->family(), nullptr);
+  if (result.is_new_entry) {
+    result.stored_value->value = MakeGarbageCollected<CapabilitiesSet>();
   }
 
+  CapabilitiesSet* family_faces = result.stored_value->value;
+  family_faces->AddFontFace(font_face, css_connected);
+}
+
+void FontFaceCache::AddFontFace(FontFace* font_face, bool css_connected) {
   DCHECK(font_face->GetFontSelectionCapabilities().IsValid() &&
          !font_face->GetFontSelectionCapabilities().IsHashTableDeletedValue());
 
-  CapabilitiesSet::AddResult segmented_font_face_result =
-      capabilities_result.stored_value->value->insert(
-          font_face->GetFontSelectionCapabilities(), nullptr);
-  if (segmented_font_face_result.is_new_entry) {
-    segmented_font_face_result.stored_value->value =
-        MakeGarbageCollected<CSSSegmentedFontFace>(
-            font_face->GetFontSelectionCapabilities());
+  segmented_faces_.AddFontFace(font_face, css_connected);
+
+  if (css_connected) {
+    css_connected_font_faces_.insert(font_face);
   }
 
-  segmented_font_face_result.stored_value->value->AddFontFace(font_face,
-                                                              css_connected);
-
-  if (css_connected)
-    css_connected_font_faces_.insert(font_face);
-
-  font_selection_query_cache_.erase(font_face->family());
+  font_selection_query_cache_.Remove(font_face->family());
   IncrementVersion();
+}
+
+void FontFaceCache::FontSelectionQueryCache::Remove(
+    const AtomicString& family) {
+  map_.erase(family);
+}
+
+void FontFaceCache::CapabilitiesSet::AddFontFace(FontFace* font_face,
+                                                 bool css_connected) {
+  const auto result =
+      map_.insert(font_face->GetFontSelectionCapabilities(), nullptr);
+  if (result.is_new_entry) {
+    result.stored_value->value =
+        CSSSegmentedFontFace::Create(font_face->GetFontSelectionCapabilities());
+  }
+
+  result.stored_value->value->AddFontFace(font_face, css_connected);
 }
 
 void FontFaceCache::Remove(const StyleRuleFontFace* font_face_rule) {
@@ -87,55 +101,74 @@ void FontFaceCache::Remove(const StyleRuleFontFace* font_face_rule) {
   }
 }
 
-void FontFaceCache::RemoveFontFace(FontFace* font_face, bool css_connected) {
-  SegmentedFacesByFamily::iterator segmented_faces_iter =
-      segmented_faces_.find(font_face->family());
-  if (segmented_faces_iter == segmented_faces_.end())
-    return;
-
-  CapabilitiesSet* family_segmented_faces = segmented_faces_iter->value.Get();
-
-  CapabilitiesSet::iterator family_segmented_faces_iter =
-      family_segmented_faces->find(font_face->GetFontSelectionCapabilities());
-  if (family_segmented_faces_iter == family_segmented_faces->end())
-    return;
-
-  CSSSegmentedFontFace* segmented_font_face =
-      family_segmented_faces_iter->value;
-  segmented_font_face->RemoveFontFace(font_face);
-  if (segmented_font_face->IsEmpty()) {
-    family_segmented_faces->erase(family_segmented_faces_iter);
-    if (family_segmented_faces->IsEmpty()) {
-      segmented_faces_.erase(segmented_faces_iter);
-    }
+bool FontFaceCache::SegmentedFacesByFamily::RemoveFontFace(
+    FontFace* font_face) {
+  const auto it = map_.find(font_face->family());
+  if (it == map_.end()) {
+    return false;
   }
 
-  font_selection_query_cache_.erase(font_face->family());
+  CapabilitiesSet* family_segmented_faces = it->value;
+  if (family_segmented_faces->RemoveFontFace(font_face)) {
+    map_.erase(it);
+  }
+  return true;
+}
 
-  if (css_connected)
+void FontFaceCache::RemoveFontFace(FontFace* font_face, bool css_connected) {
+  if (!segmented_faces_.RemoveFontFace(font_face)) {
+    return;
+  }
+
+  font_selection_query_cache_.Remove(font_face->family());
+
+  if (css_connected) {
     css_connected_font_faces_.erase(font_face);
+  }
 
   IncrementVersion();
 }
 
-bool FontFaceCache::ClearCSSConnected() {
-  if (style_rule_to_font_face_.IsEmpty())
+bool FontFaceCache::CapabilitiesSet::RemoveFontFace(FontFace* font_face) {
+  Map::iterator it = map_.find(font_face->GetFontSelectionCapabilities());
+  if (it == map_.end()) {
     return false;
-  for (const auto& item : style_rule_to_font_face_)
+  }
+
+  CSSSegmentedFontFace* segmented_font_face = it->value;
+  segmented_font_face->RemoveFontFace(font_face);
+  if (!segmented_font_face->IsEmpty()) {
+    return false;
+  }
+  map_.erase(it);
+  return map_.empty();
+}
+
+bool FontFaceCache::ClearCSSConnected() {
+  if (style_rule_to_font_face_.empty()) {
+    return false;
+  }
+  for (const auto& item : style_rule_to_font_face_) {
     RemoveFontFace(item.value.Get(), true);
+  }
   style_rule_to_font_face_.clear();
   return true;
 }
 
 void FontFaceCache::ClearAll() {
-  if (segmented_faces_.IsEmpty())
+  if (segmented_faces_.IsEmpty()) {
     return;
+  }
 
-  segmented_faces_.clear();
-  font_selection_query_cache_.clear();
+  segmented_faces_.Clear();
+  font_selection_query_cache_.Clear();
   style_rule_to_font_face_.clear();
   css_connected_font_faces_.clear();
   IncrementVersion();
+}
+
+void FontFaceCache::FontSelectionQueryCache::Clear() {
+  map_.clear();
 }
 
 void FontFaceCache::IncrementVersion() {
@@ -145,39 +178,50 @@ void FontFaceCache::IncrementVersion() {
   version_ = g_version.GetNext();
 }
 
+FontFaceCache::CapabilitiesSet* FontFaceCache::SegmentedFacesByFamily::Find(
+    const AtomicString& family) const {
+  const auto it = map_.find(family);
+  if (it == map_.end() || it->value->IsEmpty()) {
+    return nullptr;
+  }
+  return it->value;
+}
+
 CSSSegmentedFontFace* FontFaceCache::Get(
     const FontDescription& font_description,
     const AtomicString& family) {
-  if (family.IsEmpty())
+  if (family.empty()) {
     return nullptr;
+  }
 
-  SegmentedFacesByFamily::iterator segmented_faces_for_family =
-      segmented_faces_.find(family);
-  if (segmented_faces_for_family == segmented_faces_.end() ||
-      segmented_faces_for_family->value->IsEmpty())
+  CapabilitiesSet* family_faces = segmented_faces_.Find(family);
+  if (!family_faces) {
     return nullptr;
+  }
 
-  // TODO(crbug.com/1021568): Prevent `system-ui` from matching. Per spec,
-  // generic family names should not match web fonts unless they are quoted.
-  if (family == font_family_names::kSystemUi)
-    return nullptr;
+  return font_selection_query_cache_.GetOrCreate(
+      font_description.GetFontSelectionRequest(), family, family_faces);
+}
 
-  auto family_faces = segmented_faces_for_family->value;
+CSSSegmentedFontFace* FontFaceCache::FontSelectionQueryCache::GetOrCreate(
+    const FontSelectionRequest& request,
+    const AtomicString& family,
+    CapabilitiesSet* family_faces) {
+  const auto result = map_.insert(family, nullptr);
+  if (result.is_new_entry) {
+    result.stored_value->value =
+        MakeGarbageCollected<FontSelectionQueryResult>();
+  }
+  return result.stored_value->value->GetOrCreate(request, *family_faces);
+}
 
-  // Either add or retrieve a cache entry in the selection query cache for the
-  // specified family.
-  FontSelectionQueryCache::AddResult cache_entry_for_family_add =
-      font_selection_query_cache_.insert(
-          family, MakeGarbageCollected<FontSelectionQueryResult>());
-  auto cache_entry_for_family = cache_entry_for_family_add.stored_value->value;
-
-  const FontSelectionRequest& request =
-      font_description.GetFontSelectionRequest();
-
-  FontSelectionQueryResult::AddResult face_entry =
-      cache_entry_for_family->insert(request, nullptr);
-  if (!face_entry.is_new_entry)
+CSSSegmentedFontFace* FontFaceCache::FontSelectionQueryResult::GetOrCreate(
+    const FontSelectionRequest& request,
+    const CapabilitiesSet& family_faces) {
+  const auto face_entry = map_.insert(request, nullptr);
+  if (!face_entry.is_new_entry) {
     return face_entry.stored_value->value;
+  }
 
   // If we don't have a previously cached result for this request, we now need
   // to iterate over all entries in the CapabilitiesSet for one family and
@@ -187,13 +231,13 @@ CSSSegmentedFontFace* FontFaceCache::Get(
   // range for all the available faces in order to calculate distances
   // correctly.
   FontSelectionCapabilities all_faces_boundaries;
-  for (const auto& item : *family_faces) {
+  for (const auto& item : family_faces) {
     all_faces_boundaries.Expand(item.value->GetFontSelectionCapabilities());
   }
 
   FontSelectionAlgorithm font_selection_algorithm(request,
                                                   all_faces_boundaries);
-  for (const auto& item : *family_faces) {
+  for (const auto& item : family_faces) {
     const FontSelectionCapabilities& candidate_key = item.key;
     CSSSegmentedFontFace* candidate_value = item.value;
     if (!face_entry.stored_value->value ||
@@ -207,11 +251,14 @@ CSSSegmentedFontFace* FontFaceCache::Get(
 }
 
 size_t FontFaceCache::GetNumSegmentedFacesForTesting() {
-  size_t count = 0;
-  for (auto& family_faces : segmented_faces_) {
-    count += family_faces.value->size();
-  }
-  return count;
+  return segmented_faces_.GetNumSegmentedFacesForTesting();
+}
+
+size_t FontFaceCache::SegmentedFacesByFamily::GetNumSegmentedFacesForTesting()
+    const {
+  return std::accumulate(
+      map_.begin(), map_.end(), 0,
+      [](size_t sum, const auto& entry) { return sum + entry.value->size(); });
 }
 
 void FontFaceCache::Trace(Visitor* visitor) const {
@@ -219,6 +266,22 @@ void FontFaceCache::Trace(Visitor* visitor) const {
   visitor->Trace(font_selection_query_cache_);
   visitor->Trace(style_rule_to_font_face_);
   visitor->Trace(css_connected_font_faces_);
+}
+
+void FontFaceCache::CapabilitiesSet::Trace(Visitor* visitor) const {
+  visitor->Trace(map_);
+}
+
+void FontFaceCache::FontSelectionQueryCache::Trace(Visitor* visitor) const {
+  visitor->Trace(map_);
+}
+
+void FontFaceCache::FontSelectionQueryResult::Trace(Visitor* visitor) const {
+  visitor->Trace(map_);
+}
+
+void FontFaceCache::SegmentedFacesByFamily::Trace(Visitor* visitor) const {
+  visitor->Trace(map_);
 }
 
 }  // namespace blink

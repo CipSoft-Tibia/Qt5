@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QBLUETOOTHSOCKETBASEPRIVATE_P_H
 #define QBLUETOOTHSOCKETBASEPRIVATE_P_H
@@ -56,7 +20,7 @@
 #include <QtBluetooth/qbluetoothsocket.h>
 
 #if defined(QT_ANDROID_BLUETOOTH)
-#include <QtAndroidExtras/QAndroidJniObject>
+#include <QtCore/QJniObject>
 #endif
 
 #if defined(QT_WINRT_BLUETOOTH)
@@ -118,7 +82,7 @@ public:
     virtual qint64 bytesToWrite() const = 0;
 
     virtual bool setSocketDescriptor(int socketDescriptor, QBluetoothServiceInfo::Protocol socketType,
-                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::ConnectedState,
+                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::SocketState::ConnectedState,
                              QBluetoothSocket::OpenMode openMode = QBluetoothSocket::ReadWrite) = 0;
 
 
@@ -137,23 +101,23 @@ public:
                                   QIODevice::OpenMode openMode) = 0;
 
 #ifdef QT_ANDROID_BLUETOOTH
-    virtual bool setSocketDescriptor(const QAndroidJniObject &socket, QBluetoothServiceInfo::Protocol socketType,
-                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::ConnectedState,
+    virtual bool setSocketDescriptor(const QJniObject &socket, QBluetoothServiceInfo::Protocol socketType,
+                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::SocketState::ConnectedState,
                              QBluetoothSocket::OpenMode openMode = QBluetoothSocket::ReadWrite) = 0;
 #elif defined(QT_WINRT_BLUETOOTH)
     virtual bool setSocketDescriptor(Microsoft::WRL::ComPtr<ABI::Windows::Networking::Sockets::IStreamSocket> socket,
                              QBluetoothServiceInfo::Protocol socketType,
-                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::ConnectedState,
+                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::SocketState::ConnectedState,
                              QBluetoothSocket::OpenMode openMode = QBluetoothSocket::ReadWrite) = 0;
 #endif
 
 public:
-    QPrivateLinearBuffer buffer;
+    QPrivateLinearBuffer rxBuffer;
     QPrivateLinearBuffer txBuffer;
     int socket = -1;
     QBluetoothServiceInfo::Protocol socketType = QBluetoothServiceInfo::UnknownProtocol;
-    QBluetoothSocket::SocketState state = QBluetoothSocket::UnconnectedState;
-    QBluetoothSocket::SocketError socketError = QBluetoothSocket::NoSocketError;
+    QBluetoothSocket::SocketState state = QBluetoothSocket::SocketState::UnconnectedState;
+    QBluetoothSocket::SocketError socketError = QBluetoothSocket::SocketError::NoSocketError;
     QSocketNotifier *readNotifier = nullptr;
     QSocketNotifier *connectWriteNotifier = nullptr;
     bool connecting = false;

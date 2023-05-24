@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2017 The PDFium Authors. All rights reserved.
+#!/usr/bin/env vpython3
+# Copyright 2017 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Generates a coverage report for given tests.
@@ -16,14 +16,11 @@ import pprint
 import subprocess
 import sys
 
-# Add src dir to path to avoid having to set PYTHONPATH.
+# Add parent dir to avoid having to set PYTHONPATH.
 sys.path.append(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), os.path.pardir, os.path.pardir,
-            os.path.pardir)))
+    os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
-from testing.tools.common import GetBooleanGnArg
+import common
 
 # 'binary' is the file that is to be run for the test.
 # 'use_test_runner' indicates if 'binary' depends on test_runner.py and thus
@@ -43,6 +40,10 @@ COVERAGE_TESTS = {
         TestSpec('run_corpus_tests.py', True, ['--disable-javascript']),
     'corpus_tests_xfa_disabled':
         TestSpec('run_corpus_tests.py', True, ['--disable-xfa']),
+    'corpus_tests_render_oneshot':
+        TestSpec('run_corpus_tests.py', True, ['--render-oneshot']),
+    'corpus_tests_reverse_byte_order':
+        TestSpec('run_corpus_tests.py', True, ['--reverse-byte-order']),
     'javascript_tests':
         TestSpec('run_javascript_tests.py', True, []),
     'javascript_tests_javascript_disabled':
@@ -55,10 +56,14 @@ COVERAGE_TESTS = {
         TestSpec('run_pixel_tests.py', True, ['--disable-javascript']),
     'pixel_tests_xfa_disabled':
         TestSpec('run_pixel_tests.py', True, ['--disable-xfa']),
+    'pixel_tests_render_oneshot':
+        TestSpec('run_pixel_tests.py', True, ['--render-oneshot']),
+    'pixel_tests_reverse_byte_order':
+        TestSpec('run_pixel_tests.py', True, ['--reverse-byte-order']),
 }
 
 
-class CoverageExecutor(object):
+class CoverageExecutor:
 
   def __init__(self, parser, args):
     """Initialize executor based on the current script environment
@@ -91,14 +96,14 @@ class CoverageExecutor(object):
           'No valid tests in set to be run. This is likely due to bad command '
           'line arguments')
 
-    if not GetBooleanGnArg('use_clang_coverage', self.build_directory,
-                           self.verbose):
+    if not common.GetBooleanGnArg('use_clang_coverage', self.build_directory,
+                                  self.verbose):
       parser.error(
           'use_clang_coverage does not appear to be set to true for build, but '
           'is needed')
 
-    self.use_goma = GetBooleanGnArg('use_goma', self.build_directory,
-                                    self.verbose)
+    self.use_goma = common.GetBooleanGnArg('use_goma', self.build_directory,
+                                           self.verbose)
 
     self.output_directory = args['output_directory']
     if not os.path.exists(self.output_directory):
@@ -115,38 +120,38 @@ class CoverageExecutor(object):
   def check_output(self, args, dry_run=False, env=None):
     """Dry run aware wrapper of subprocess.check_output()"""
     if dry_run:
-      print "Would have run '%s'" % ' '.join(args)
+      print("Would have run '%s'" % ' '.join(args))
       return ''
 
     output = subprocess.check_output(args, env=env)
 
     if self.verbose:
-      print "check_output(%s) returned '%s'" % (args, output)
+      print("check_output(%s) returned '%s'" % (args, output))
     return output
 
   def call(self, args, dry_run=False, env=None):
     """Dry run aware wrapper of subprocess.call()"""
     if dry_run:
-      print "Would have run '%s'" % ' '.join(args)
+      print("Would have run '%s'" % ' '.join(args))
       return 0
 
     output = subprocess.call(args, env=env)
 
     if self.verbose:
-      print 'call(%s) returned %s' % (args, output)
+      print('call(%s) returned %s' % (args, output))
     return output
 
   def call_silent(self, args, dry_run=False, env=None):
     """Dry run aware wrapper of subprocess.call() that eats output from call"""
     if dry_run:
-      print "Would have run '%s'" % ' '.join(args)
+      print("Would have run '%s'" % ' '.join(args))
       return 0
 
     with open(os.devnull, 'w') as f:
       output = subprocess.call(args, env=env, stdout=f)
 
     if self.verbose:
-      print 'call_silent(%s) returned %s' % (args, output)
+      print('call_silent(%s) returned %s' % (args, output))
     return output
 
   def calculate_coverage_tests(self, args):
@@ -192,10 +197,10 @@ class CoverageExecutor(object):
         spec: Tuple containing the TestSpec.
     """
     if self.verbose:
-      print "Generating coverage for test '%s', using data '%s'" % (name, spec)
+      print("Generating coverage for test '%s', using data '%s'" % (name, spec))
     if not os.path.exists(spec.binary):
       print('Unable to generate coverage for %s, since it appears to not exist'
-            ' @ %s') % (name, spec.binary)
+            ' @ %s' % (name, spec.binary))
       return False
 
     binary_args = [spec.binary]
@@ -218,7 +223,7 @@ class CoverageExecutor(object):
       binary_args.extend(['-j', '8', '--build-dir', self.build_directory])
     if self.call(binary_args, dry_run=self.dry_run, env=env) and self.verbose:
       print('Running %s appears to have failed, which might affect '
-            'results') % spec.binary
+            'results' % spec.binary)
 
     return True
 
@@ -267,24 +272,24 @@ class CoverageExecutor(object):
   def run(self):
     """Setup environment, execute the tests and generate coverage report"""
     if not self.fetch_profiling_tools():
-      print 'Unable to fetch profiling tools'
+      print('Unable to fetch profiling tools')
       return False
 
     if not self.build_binaries():
-      print 'Failed to successfully build binaries'
+      print('Failed to successfully build binaries')
       return False
 
-    for name in self.coverage_tests.keys():
+    for name in self.coverage_tests:
       if not self.generate_coverage(name, self.coverage_tests[name]):
-        print 'Failed to successfully generate coverage data'
+        print('Failed to successfully generate coverage data')
         return False
 
     if not self.merge_raw_coverage_results():
-      print 'Failed to successfully merge raw coverage results'
+      print('Failed to successfully merge raw coverage results')
       return False
 
     if not self.generate_html_report():
-      print 'Failed to successfully generate HTML report'
+      print('Failed to successfully generate HTML report')
       return False
 
     return True

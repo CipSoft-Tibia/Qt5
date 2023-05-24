@@ -52,6 +52,7 @@ enum CalcMode {
 };
 
 struct SMILAnimationEffectParameters;
+struct SMILAnimationValue;
 
 class CORE_EXPORT SVGAnimationElement : public SVGSMILElement {
   DEFINE_WRAPPERTYPEINFO();
@@ -71,13 +72,16 @@ class CORE_EXPORT SVGAnimationElement : public SVGSMILElement {
   DEFINE_ATTRIBUTE_EVENT_LISTENER(end, kEndEvent)
   DEFINE_ATTRIBUTE_EVENT_LISTENER(repeat, kRepeatEvent)
 
-  virtual void ResetAnimatedType(bool needs_underlying_value) = 0;
-  virtual void ClearAnimatedType() = 0;
-  virtual void ApplyResultsToTarget() = 0;
+  virtual SMILAnimationValue CreateAnimationValue() const = 0;
+  void ApplyAnimation(SMILAnimationValue&);
+  virtual void ApplyResultsToTarget(const SMILAnimationValue&) = 0;
+
+  virtual void ClearAnimationValue() = 0;
   // Returns true if this animation "sets" the value of the animation. Thus all
   // previous animations are rendered useless.
   bool OverwritesUnderlyingAnimationValue() const;
-  void ApplyAnimation(SVGAnimationElement* result_element);
+
+  void Trace(Visitor* visitor) const override;
 
  protected:
   SVGAnimationElement(const QualifiedName&, Document&);
@@ -128,9 +132,9 @@ class CORE_EXPORT SVGAnimationElement : public SVGSMILElement {
                                         const String& to_string) = 0;
   virtual bool CalculateFromAndByValues(const String& from_string,
                                         const String& by_string) = 0;
-  virtual void CalculateAnimatedValue(float percent,
-                                      unsigned repeat_count,
-                                      SVGSMILElement* result_element) const = 0;
+  virtual void CalculateAnimationValue(SMILAnimationValue&,
+                                       float percent,
+                                       unsigned repeat_count) const = 0;
   virtual float CalculateDistance(const String& /*fromString*/,
                                   const String& /*toString*/) {
     return -1.f;
@@ -144,7 +148,7 @@ class CORE_EXPORT SVGAnimationElement : public SVGSMILElement {
   // or key_times_for_paced_ by toggling the flag use_paced_key_times_.
   void CalculateKeyTimesForCalcModePaced();
 
-  Vector<float> const& KeyTimes() const {
+  HeapVector<float> const& KeyTimes() const {
     return use_paced_key_times_ ? key_times_for_paced_
                                 : key_times_from_attribute_;
   }
@@ -177,10 +181,10 @@ class CORE_EXPORT SVGAnimationElement : public SVGSMILElement {
   // Storing two sets of values to avoid overwriting (or reparsing) when
   // calc-mode changes. Fix for Issue 231525. What list to use is
   // decided in CalculateKeyTimesForCalcModePaced.
-  Vector<float> key_times_from_attribute_;
-  Vector<float> key_times_for_paced_;
+  HeapVector<float> key_times_from_attribute_;
+  HeapVector<float> key_times_for_paced_;
 
-  Vector<float> key_points_;
+  HeapVector<float> key_points_;
   Vector<gfx::CubicBezier> key_splines_;
   String last_values_animation_from_;
   String last_values_animation_to_;

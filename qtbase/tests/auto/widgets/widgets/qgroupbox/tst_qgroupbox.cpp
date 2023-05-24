@@ -1,42 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QLineEdit>
 #include <QStyle>
 #include <QStyleOptionGroupBox>
 #include <QVBoxLayout>
 #include <QRadioButton>
 #include <QDialog>
+#include <QSignalSpy>
 
 #include <private/qguiapplication_p.h>
 #include <qpa/qplatformtheme.h>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 #include "qgroupbox.h"
 
@@ -395,8 +373,8 @@ void tst_QGroupBox::clicked()
     else
         QTest::mouseClick(&testWidget, Qt::LeftButton);
 
-    QTEST(spy.count(), "clickedCount");
-    if (spy.count() > 0)
+    QTEST(int(spy.size()), "clickedCount");
+    if (spy.size() > 0)
         QTEST(spy.at(0).at(0).toBool(), "finalCheck");
     QTEST(testWidget.isChecked(), "finalCheck");
 }
@@ -410,9 +388,9 @@ void tst_QGroupBox::toggledVsClicked()
     QSignalSpy clickSpy(&groupBox, SIGNAL(clicked(bool)));
 
     groupBox.setChecked(!groupBox.isChecked());
-    QCOMPARE(clickSpy.count(), 0);
-    QCOMPARE(toggleSpy.count(), 1);
-    if (toggleSpy.count() > 0)
+    QCOMPARE(clickSpy.size(), 0);
+    QCOMPARE(toggleSpy.size(), 1);
+    if (toggleSpy.size() > 0)
         QCOMPARE(toggleSpy.at(0).at(0).toBool(), groupBox.isChecked());
 
     connect(&groupBox, SIGNAL(clicked(bool)), this, SLOT(clickTimestampSlot()));
@@ -425,8 +403,8 @@ void tst_QGroupBox::toggledVsClicked()
                                                   QStyle::SC_GroupBoxCheckBox, &groupBox);
 
     QTest::mouseClick(&groupBox, Qt::LeftButton, {}, rect.center());
-    QCOMPARE(clickSpy.count(), 1);
-    QCOMPARE(toggleSpy.count(), 2);
+    QCOMPARE(clickSpy.size(), 1);
+    QCOMPARE(toggleSpy.size(), 2);
     QVERIFY(toggleTimeStamp < clickTimeStamp);
 }
 
@@ -452,7 +430,7 @@ void tst_QGroupBox::childrenAreDisabled()
     layout->addWidget(new QRadioButton);
     box.setLayout(layout);
 
-    foreach (QObject *object, box.children()) {
+    for (QObject *object : box.children()) {
         if (QWidget *widget = qobject_cast<QWidget *>(object)) {
             QVERIFY(!widget->isEnabled());
             QVERIFY(!widget->testAttribute(Qt::WA_ForceDisabled));
@@ -460,7 +438,7 @@ void tst_QGroupBox::childrenAreDisabled()
     }
 
     box.setChecked(true);
-    foreach (QObject *object, box.children()) {
+    for (QObject *object : box.children()) {
         if (QWidget *widget = qobject_cast<QWidget *>(object)) {
             QVERIFY(widget->isEnabled());
             QVERIFY(!widget->testAttribute(Qt::WA_ForceDisabled));
@@ -468,7 +446,7 @@ void tst_QGroupBox::childrenAreDisabled()
     }
 
     box.setChecked(false);
-    foreach (QObject *object, box.children()) {
+    for (QObject *object : box.children()) {
         if (QWidget *widget = qobject_cast<QWidget *>(object)) {
             QVERIFY(!widget->isEnabled());
             QVERIFY(!widget->testAttribute(Qt::WA_ForceDisabled));
@@ -484,7 +462,7 @@ void tst_QGroupBox::propagateFocus()
     QGroupBox box;
     QLineEdit lineEdit(&box);
     box.show();
-    QApplication::setActiveWindow(&box);
+    QApplicationPrivate::setActiveWindow(&box);
     QVERIFY(QTest::qWaitForWindowActive(&box));
     box.setFocus();
     QTRY_COMPARE(qApp->focusWidget(), static_cast<QWidget*>(&lineEdit));
@@ -527,17 +505,17 @@ public:
     }
 
 protected:
-    void mousePressEvent(QMouseEvent*)
+    void mousePressEvent(QMouseEvent*) override
     {
         mousePressed = true;
     }
 
-    void mouseReleaseEvent(QMouseEvent*)
+    void mouseReleaseEvent(QMouseEvent*) override
     {
         mouseReleased = true;
     }
 
-    void mouseMoveEvent(QMouseEvent*)
+    void mouseMoveEvent(QMouseEvent*) override
     {
         mouseMoved = true;
     }
@@ -622,16 +600,17 @@ void tst_QGroupBox::buttonPressKeys()
     const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
                                          ->themeHint(QPlatformTheme::ButtonPressKeys)
                                          .value<QList<Qt::Key>>();
-    for (int i = 0; i < buttonPressKeys.length(); ++i) {
+    for (int i = 0; i < buttonPressKeys.size(); ++i) {
         QTest::keyClick(&groupBox, buttonPressKeys[i]);
-        QCOMPARE(clickedSpy.length(), i + 1);
+        QCOMPARE(clickedSpy.size(), i + 1);
     }
 }
 
 void tst_QGroupBox::sendMouseMoveEvent(QWidget *widget, const QPoint &localPos)
 {
     // Send a MouseMove event without actually moving the pointer
-    QMouseEvent event(QEvent::MouseMove, localPos, Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent event(QEvent::MouseMove, localPos, widget->mapToGlobal(localPos),
+                      Qt::NoButton, Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(widget, &event);
 }
 

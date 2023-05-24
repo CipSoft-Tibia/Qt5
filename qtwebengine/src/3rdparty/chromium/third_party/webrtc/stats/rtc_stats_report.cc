@@ -57,16 +57,20 @@ bool RTCStatsReport::ConstIterator::operator!=(
 rtc::scoped_refptr<RTCStatsReport> RTCStatsReport::Create(
     int64_t timestamp_us) {
   return rtc::scoped_refptr<RTCStatsReport>(
-      new rtc::RefCountedObject<RTCStatsReport>(timestamp_us));
+      new RTCStatsReport(Timestamp::Micros(timestamp_us)));
+}
+
+rtc::scoped_refptr<RTCStatsReport> RTCStatsReport::Create(Timestamp timestamp) {
+  return rtc::scoped_refptr<RTCStatsReport>(new RTCStatsReport(timestamp));
 }
 
 RTCStatsReport::RTCStatsReport(int64_t timestamp_us)
-    : timestamp_us_(timestamp_us) {}
+    : RTCStatsReport(Timestamp::Micros(timestamp_us)) {}
 
-RTCStatsReport::~RTCStatsReport() {}
+RTCStatsReport::RTCStatsReport(Timestamp timestamp) : timestamp_(timestamp) {}
 
 rtc::scoped_refptr<RTCStatsReport> RTCStatsReport::Copy() const {
-  rtc::scoped_refptr<RTCStatsReport> copy = Create(timestamp_us_);
+  rtc::scoped_refptr<RTCStatsReport> copy = Create(timestamp_);
   for (auto it = stats_.begin(); it != stats_.end(); ++it) {
     copy->AddStats(it->second->copy());
   }
@@ -74,12 +78,15 @@ rtc::scoped_refptr<RTCStatsReport> RTCStatsReport::Copy() const {
 }
 
 void RTCStatsReport::AddStats(std::unique_ptr<const RTCStats> stats) {
+#if RTC_DCHECK_IS_ON
   auto result =
+#endif
       stats_.insert(std::make_pair(std::string(stats->id()), std::move(stats)));
+#if RTC_DCHECK_IS_ON
   RTC_DCHECK(result.second)
-      << "A stats object with ID " << result.first->second->id()
-      << " is already "
-         "present in this stats report.";
+      << "A stats object with ID \"" << result.first->second->id() << "\" is "
+      << "already present in this stats report.";
+#endif
 }
 
 const RTCStats* RTCStatsReport::Get(const std::string& id) const {
@@ -98,13 +105,12 @@ std::unique_ptr<const RTCStats> RTCStatsReport::Take(const std::string& id) {
   return stats;
 }
 
-void RTCStatsReport::TakeMembersFrom(
-    rtc::scoped_refptr<RTCStatsReport> victim) {
-  for (StatsMap::iterator it = victim->stats_.begin();
-       it != victim->stats_.end(); ++it) {
+void RTCStatsReport::TakeMembersFrom(rtc::scoped_refptr<RTCStatsReport> other) {
+  for (StatsMap::iterator it = other->stats_.begin(); it != other->stats_.end();
+       ++it) {
     AddStats(std::unique_ptr<const RTCStats>(it->second.release()));
   }
-  victim->stats_.clear();
+  other->stats_.clear();
 }
 
 RTCStatsReport::ConstIterator RTCStatsReport::begin() const {

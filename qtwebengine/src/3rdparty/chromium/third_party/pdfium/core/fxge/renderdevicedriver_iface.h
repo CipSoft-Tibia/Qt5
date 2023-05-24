@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,14 @@
 #ifndef CORE_FXGE_RENDERDEVICEDRIVER_IFACE_H_
 #define CORE_FXGE_RENDERDEVICEDRIVER_IFACE_H_
 
+#include <stdint.h>
+
 #include <memory>
 
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/retain_ptr.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "third_party/base/span.h"
 
 class CFX_DIBBase;
 class CFX_DIBitmap;
@@ -20,7 +22,7 @@ class CFX_Font;
 class CFX_GraphStateData;
 class CFX_ImageRenderer;
 class CFX_Matrix;
-class CFX_PathData;
+class CFX_Path;
 class CPDF_ShadingPattern;
 class PauseIndicatorIface;
 class TextCharPos;
@@ -44,13 +46,13 @@ class RenderDeviceDriverIface {
   virtual void RestoreState(bool bKeepSaved) = 0;
 
   virtual void SetBaseClip(const FX_RECT& rect);
-  virtual bool SetClip_PathFill(const CFX_PathData* pPathData,
+  virtual bool SetClip_PathFill(const CFX_Path& path,
                                 const CFX_Matrix* pObject2Device,
                                 const CFX_FillRenderOptions& fill_options) = 0;
-  virtual bool SetClip_PathStroke(const CFX_PathData* pPathData,
+  virtual bool SetClip_PathStroke(const CFX_Path& path,
                                   const CFX_Matrix* pObject2Device,
                                   const CFX_GraphStateData* pGraphState);
-  virtual bool DrawPath(const CFX_PathData* pPathData,
+  virtual bool DrawPath(const CFX_Path& path,
                         const CFX_Matrix* pObject2Device,
                         const CFX_GraphStateData* pGraphState,
                         uint32_t fill_color,
@@ -94,8 +96,7 @@ class RenderDeviceDriverIface {
                            BlendMode blend_type) = 0;
   virtual bool ContinueDIBits(CFX_ImageRenderer* handle,
                               PauseIndicatorIface* pPause);
-  virtual bool DrawDeviceText(int nChars,
-                              const TextCharPos* pCharPos,
+  virtual bool DrawDeviceText(pdfium::span<const TextCharPos> pCharPos,
                               CFX_Font* pFont,
                               const CFX_Matrix& mtObject2Device,
                               float font_size,
@@ -114,8 +115,9 @@ class RenderDeviceDriverIface {
                                int top,
                                int bitmap_alpha,
                                BlendMode blend_type);
+  virtual void SetGroupKnockout(bool group_knockout);
 #endif
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#ifdef _SKIA_SUPPORT_
   virtual void Flush();
 #endif
 };

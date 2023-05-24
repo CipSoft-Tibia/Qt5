@@ -1,40 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "project.h"
 #include "property.h"
 #include "option.h"
 #include "cachekeys.h"
 #include "metamakefile.h"
+#include <qcoreapplication.h>
 #include <qnamespace.h>
 #include <qdebug.h>
-#include <qregexp.h>
+#include <qregularexpression.h>
 #include <qdir.h>
 #include <qdiriterator.h>
 #include <stdio.h>
@@ -60,14 +36,14 @@ QT_BEGIN_NAMESPACE
 #ifdef Q_OS_WIN
 
 struct SedSubst {
-    QRegExp from;
+    QRegularExpression from;
     QString to;
 };
-Q_DECLARE_TYPEINFO(SedSubst, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(SedSubst, Q_RELOCATABLE_TYPE);
 
 static int doSed(int argc, char **argv)
 {
-    QVector<SedSubst> substs;
+    QList<SedSubst> substs;
     QList<const char *> inFiles;
     for (int i = 0; i < argc; i++) {
         if (!strcmp(argv[i], "-e")) {
@@ -85,7 +61,7 @@ static int doSed(int argc, char **argv)
                     return 3;
                 }
                 QChar sep = ++j < cmd.length() ? cmd.at(j) : QChar();
-                Qt::CaseSensitivity matchcase = Qt::CaseSensitive;
+                QRegularExpression::PatternOptions matchcase = QRegularExpression::NoPatternOption;
                 bool escaped = false;
                 int phase = 1;
                 QStringList phases;
@@ -110,7 +86,7 @@ static int doSed(int argc, char **argv)
                         && (c == QLatin1Char('+') || c == QLatin1Char('?') || c == QLatin1Char('|')
                             || c == QLatin1Char('{') || c == QLatin1Char('}')
                             || c == QLatin1Char('(') || c == QLatin1Char(')'))) {
-                        // translate sed rx to QRegExp
+                        // translate sed rx to QRegularExpression
                         escaped ^= 1;
                     }
                     if (escaped) {
@@ -129,14 +105,14 @@ static int doSed(int argc, char **argv)
                 }
                 if (curr.contains(QLatin1Char('i'))) {
                     curr.remove(QLatin1Char('i'));
-                    matchcase = Qt::CaseInsensitive;
+                    matchcase = QRegularExpression::CaseInsensitiveOption;
                 }
                 if (curr != QLatin1String("g")) {
                     fprintf(stderr, "Error: sed s command supports only g & i options; g is required\n");
                     return 3;
                 }
                 SedSubst subst;
-                subst.from = QRegExp(phases.at(0), matchcase);
+                subst.from = QRegularExpression(phases.at(0), matchcase);
                 subst.to = phases.at(1);
                 subst.to.replace(QLatin1String("\\\\"), QLatin1String("\\")); // QString::replace(rx, sub) groks \1, but not \\.
                 substs << subst;
@@ -150,7 +126,7 @@ static int doSed(int argc, char **argv)
     }
     if (inFiles.isEmpty())
         inFiles << "-";
-    for (const char *inFile : qAsConst(inFiles)) {
+    for (const char *inFile : std::as_const(inFiles)) {
         FILE *f;
         if (!strcmp(inFile, "-")) {
             f = stdin;
@@ -265,6 +241,8 @@ static bool copyFileTimes(QFile &targetFile, const QString &sourceFilePath,
                 return false;
         }
     }
+#else
+    Q_UNUSED(mustEnsureWritability);
 #endif
     if (!IoUtils::touchFile(targetFile.fileName(), sourceFilePath, errorString))
         return false;
@@ -338,8 +316,7 @@ static int installFileOrDirectory(const QString &source, const QString &target,
 
         QDirIterator it(source, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden);
         while (it.hasNext()) {
-            it.next();
-            const QFileInfo &entry = it.fileInfo();
+            const QFileInfo entry = it.nextFileInfo();
             const QString &entryTarget = target + QDir::separator() + entry.fileName();
 
             const int recursionResult = installFileOrDirectory(entry.filePath(), entryTarget, true);
@@ -446,7 +423,7 @@ bool qmake_setpwd(const QString &p)
 
 int runQMake(int argc, char **argv)
 {
-    qSetGlobalQHashSeed(0);
+    QHashSeed::setDeterministicGlobalSeed();
 
     // stderr is unbuffered by default, but stdout buffering depends on whether
     // there is a terminal attached. Buffering can make output from stderr and stdout
@@ -455,6 +432,8 @@ int runQMake(int argc, char **argv)
     setvbuf(stdout, (char *)NULL, _IONBF, 0);
 
     // Workaround for inferior/missing command line tools on Windows: make our own!
+    if (argc >= 4 && !strcmp(argv[1], "-qtconf") && !strcmp(argv[3], "-install"))
+        return doInstall(argc - 4, argv + 4);
     if (argc >= 2 && !strcmp(argv[1], "-install"))
         return doInstall(argc - 2, argv + 2);
 
@@ -500,14 +479,22 @@ int runQMake(int argc, char **argv)
 
         Option::output_dir = dir.path();
         QString absoluteFilePath = QDir::cleanPath(fi.absoluteFilePath());
-        Option::output.setFileName(absoluteFilePath.mid(Option::output_dir.length() + 1));
+        Option::output.setFileName(absoluteFilePath.mid(Option::output_dir.size() + 1));
     }
 
     QMakeProperty prop;
-    if(Option::qmake_mode == Option::QMAKE_QUERY_PROPERTY ||
-       Option::qmake_mode == Option::QMAKE_SET_PROPERTY ||
-       Option::qmake_mode == Option::QMAKE_UNSET_PROPERTY)
-        return prop.exec() ? 0 : 101;
+    switch (Option::qmake_mode) {
+    case Option::QMAKE_QUERY_PROPERTY:
+        return prop.queryProperty(Option::prop::properties);
+    case Option::QMAKE_SET_PROPERTY:
+        return prop.setProperty(Option::prop::properties);
+    case Option::QMAKE_UNSET_PROPERTY:
+        prop.unsetProperty(Option::prop::properties);
+        return 0;
+    default:
+        break;
+    }
+
     globals.setQMakeProperty(&prop);
 
     ProFileCache proFileCache;
@@ -544,7 +531,7 @@ int runQMake(int argc, char **argv)
                 if(!qmake_setpwd(fn.left(di)))
                     fprintf(stderr, "Cannot find directory: %s\n",
                             QDir::toNativeSeparators(fn.left(di)).toLatin1().constData());
-                fn = fn.right(fn.length() - di - 1);
+                fn = fn.right(fn.size() - di - 1);
             }
 
             Option::prepareProject(fn);
@@ -586,5 +573,7 @@ QT_END_NAMESPACE
 
 int main(int argc, char **argv)
 {
+    // Set name of the qmake application in QCoreApplication instance
+    QT_PREPEND_NAMESPACE(QCoreApplication) app(argc, argv);
     return QT_PREPEND_NAMESPACE(runQMake)(argc, argv);
 }

@@ -1,45 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QIBUSTYPES_H
 #define QIBUSTYPES_H
 
-#include <qvector.h>
+#include <qlist.h>
 #include <qevent.h>
 #include <QDBusArgument>
 #include <QTextCharFormat>
@@ -92,7 +56,7 @@ public:
     quint32 start;
     quint32 end;
 };
-Q_DECLARE_TYPEINFO(QIBusAttribute, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QIBusAttribute, Q_RELOCATABLE_TYPE);
 
 class QIBusAttributeList : private QIBusSerializable
 {
@@ -104,9 +68,9 @@ public:
     void serializeTo(QDBusArgument &argument) const;
     void deserializeFrom(const QDBusArgument &argument);
 
-    QVector<QIBusAttribute> attributes;
+    QList<QIBusAttribute> attributes;
 };
-Q_DECLARE_TYPEINFO(QIBusAttributeList, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QIBusAttributeList, Q_RELOCATABLE_TYPE);
 
 class QIBusText : private QIBusSerializable
 {
@@ -119,7 +83,7 @@ public:
     QString text;
     QIBusAttributeList attributes;
 };
-Q_DECLARE_TYPEINFO(QIBusText, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QIBusText, Q_RELOCATABLE_TYPE);
 
 class QIBusEngineDesc : private QIBusSerializable
 {
@@ -147,7 +111,7 @@ public:
     QString textdomain;
     QString iconpropkey;
 };
-Q_DECLARE_TYPEINFO(QIBusEngineDesc, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QIBusEngineDesc, Q_RELOCATABLE_TYPE);
 
 inline QDBusArgument &operator<<(QDBusArgument &argument, const QIBusAttribute &attribute)
 { attribute.serializeTo(argument); return argument; }
@@ -169,6 +133,44 @@ inline QDBusArgument &operator<<(QDBusArgument &argument, const QIBusEngineDesc 
 inline const QDBusArgument &operator>>(const QDBusArgument &argument, QIBusEngineDesc &desc)
 { desc.deserializeFrom(argument); return argument; }
 
+class QIBusPropTypeClientCommitPreedit
+{
+public:
+    QIBusPropTypeClientCommitPreedit() {};
+
+    QIBusPropTypeClientCommitPreedit(bool inClientCommitPreedit);
+
+    void serializeTo(QDBusArgument &argument) const;
+    void deserializeFrom(const QDBusArgument &argument);
+
+    bool clientCommitPreedit;
+};
+inline QDBusArgument &operator<<(QDBusArgument &argument, const QIBusPropTypeClientCommitPreedit &data)
+{ data.serializeTo(argument); return argument; }
+inline const QDBusArgument &operator>>(const QDBusArgument &argument, QIBusPropTypeClientCommitPreedit &data)
+{ data.deserializeFrom(argument); return argument; }
+
+class QIBusPropTypeContentType
+{
+public:
+    QIBusPropTypeContentType() {};
+
+    QIBusPropTypeContentType(unsigned int inPurpose, unsigned int inHint);
+
+    void serializeTo(QDBusArgument &argument) const;
+    void deserializeFrom(const QDBusArgument &argument);
+
+    unsigned int purpose;
+    unsigned int hints;
+};
+inline QDBusArgument &operator<<(QDBusArgument &argument, const QIBusPropTypeContentType &data)
+{ data.serializeTo(argument); return argument; }
+inline const QDBusArgument &operator>>(const QDBusArgument &argument, QIBusPropTypeContentType &data)
+{ data.deserializeFrom(argument); return argument; }
+
+Q_DECLARE_TYPEINFO(QIBusPropTypeClientCommitPreedit, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(QIBusPropTypeContentType, Q_RELOCATABLE_TYPE);
+
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(QIBusAttribute)
@@ -176,4 +178,6 @@ Q_DECLARE_METATYPE(QIBusAttributeList)
 Q_DECLARE_METATYPE(QIBusText)
 Q_DECLARE_METATYPE(QIBusEngineDesc)
 
+Q_DECLARE_METATYPE(QIBusPropTypeClientCommitPreedit)
+Q_DECLARE_METATYPE(QIBusPropTypeContentType)
 #endif

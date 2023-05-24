@@ -1,13 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIASTREAM_MEDIA_STREAM_VIDEO_RENDERER_SINK_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIASTREAM_MEDIA_STREAM_VIDEO_RENDERER_SINK_H_
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "third_party/blink/public/common/media/video_capture.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream_video_renderer.h"
@@ -41,8 +42,12 @@ class MODULES_EXPORT MediaStreamVideoRendererSink
   MediaStreamVideoRendererSink(
       MediaStreamComponent* video_component,
       const WebMediaStreamVideoRenderer::RepaintCB& repaint_cb,
-      scoped_refptr<base::SingleThreadTaskRunner> io_task_runner,
+      scoped_refptr<base::SequencedTaskRunner> video_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> main_render_task_runner);
+
+  MediaStreamVideoRendererSink(const MediaStreamVideoRendererSink&) = delete;
+  MediaStreamVideoRendererSink& operator=(const MediaStreamVideoRendererSink&) =
+      delete;
 
   // WebMediaStreamVideoRenderer implementation. Called on the main
   // thread.
@@ -57,9 +62,9 @@ class MODULES_EXPORT MediaStreamVideoRendererSink
  private:
   friend class MediaStreamVideoRendererSinkTest;
   enum State {
-    STARTED,
-    PAUSED,
-    STOPPED,
+    kStarted,
+    kPaused,
+    kStopped,
   };
 
   // MediaStreamVideoSink implementation. Called on the main thread.
@@ -76,14 +81,12 @@ class MODULES_EXPORT MediaStreamVideoRendererSink
   class FrameDeliverer;
   std::unique_ptr<FrameDeliverer> frame_deliverer_;
 
-  const scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> video_task_runner_;
   const scoped_refptr<base::SingleThreadTaskRunner> main_render_task_runner_;
 
   THREAD_CHECKER(main_thread_checker_);
 
   base::WeakPtrFactory<MediaStreamVideoRendererSink> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(MediaStreamVideoRendererSink);
 };
 
 }  // namespace blink

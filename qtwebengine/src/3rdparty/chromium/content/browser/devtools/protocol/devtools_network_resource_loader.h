@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -46,7 +46,6 @@ class CONTENT_EXPORT DevToolsNetworkResourceLoader
       net::SiteForCookies site_for_cookies,
       Caching caching,
       Credentials include_credentials,
-      int32_t render_frame_id,
       CompletionCallback complete_callback);
 
   ~DevToolsNetworkResourceLoader() override;

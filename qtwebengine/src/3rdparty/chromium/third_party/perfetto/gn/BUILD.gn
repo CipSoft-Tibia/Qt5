@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import("perfetto.gni")
+import("perfetto_python.gni")
 import("proto_library.gni")
 
 if (perfetto_root_path == "//") {
@@ -43,6 +44,9 @@ action("gen_buildflags") {
   perfetto_force_dlog_on = perfetto_force_dlog == "on"
   perfetto_force_dlog_off = perfetto_force_dlog == "off"
 
+  perfetto_force_dcheck_on = perfetto_force_dcheck == "on"
+  perfetto_force_dcheck_off = perfetto_force_dcheck == "off"
+
   # We can't just use (is_linux || is_android) in perfetto.gni because that
   # doesn't work in Android Mac host builds. We lose the GN notion of OS once
   # we run the tools/gen_xxx generators.
@@ -55,18 +59,11 @@ action("gen_buildflags") {
   if (enable_perfetto_tools) {
     perfetto_local_symbolizer =
         "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_LINUX() || " +
-        "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_MAC()"
+        "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_MAC() ||" +
+        "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_WIN()"
   } else {
     perfetto_local_symbolizer = "0"
   }
-  if (enable_perfetto_trace_processor_httpd) {
-    perfetto_tp_httpd = "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_ANDROID() || " +
-                        "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_LINUX() || " +
-                        "PERFETTO_BUILDFLAG_DEFINE_PERFETTO_OS_MAC()"
-  } else {
-    perfetto_tp_httpd = "0"
-  }
-
   response_file_contents = [
     "--flags",  # Keep this marker first.
     "PERFETTO_ANDROID_BUILD=$perfetto_build_with_android",
@@ -78,14 +75,22 @@ action("gen_buildflags") {
     "PERFETTO_COMPONENT_BUILD=$perfetto_component_build",
     "PERFETTO_FORCE_DLOG_ON=$perfetto_force_dlog_on",
     "PERFETTO_FORCE_DLOG_OFF=$perfetto_force_dlog_off",
+    "PERFETTO_FORCE_DCHECK_ON=$perfetto_force_dcheck_on",
+    "PERFETTO_FORCE_DCHECK_OFF=$perfetto_force_dcheck_off",
     "PERFETTO_VERBOSE_LOGS=$perfetto_verbose_logs_enabled",
     "PERFETTO_VERSION_GEN=$enable_perfetto_version_gen",
     "PERFETTO_TP_PERCENTILE=$enable_perfetto_trace_processor_percentile",
     "PERFETTO_TP_LINENOISE=$enable_perfetto_trace_processor_linenoise",
-    "PERFETTO_TP_HTTPD=$perfetto_tp_httpd",
+    "PERFETTO_TP_HTTPD=$enable_perfetto_trace_processor_httpd",
     "PERFETTO_TP_JSON=$enable_perfetto_trace_processor_json",
     "PERFETTO_LOCAL_SYMBOLIZER=$perfetto_local_symbolizer",
     "PERFETTO_ZLIB=$enable_perfetto_zlib",
+    "PERFETTO_TRACED_PERF=$enable_perfetto_traced_perf",
+    "PERFETTO_HEAPPROFD=$enable_perfetto_heapprofd",
+    "PERFETTO_STDERR_CRASH_DUMP=$enable_perfetto_stderr_crash_dump",
+    "PERFETTO_X64_CPU_OPT=$enable_perfetto_x64_cpu_opt",
+    "PERFETTO_LLVM_DEMANGLE=$enable_perfetto_llvm_demangle",
+    "PERFETTO_SYSTEM_CONSUMER=$enable_perfetto_system_consumer",
   ]
 
   rel_out_path = rebase_path(gen_header_path, "$root_build_dir")
@@ -102,6 +107,8 @@ action("gen_buildflags") {
 # All targets should depend on this target to inherit the right flags and
 # include directories.
 group("default_deps") {
+  visibility = [ "../*" ]  # Prevent chromium targets from depending on this
+                           # (breaks component).
   public_configs = [ ":default_config" ]
   deps = [ ":gen_buildflags" ]
   if (perfetto_build_standalone) {
@@ -121,9 +128,14 @@ group("default_deps") {
 # embedders that depend on perfetto (e.g. chrome). :public_config (see below) is
 # used for that.
 config("default_config") {
+  visibility = [ "../*" ]  # Prevent chromium targets from depending on this
+                           # (breaks component).
   configs = [ ":public_config" ]
   defines = [ "PERFETTO_IMPLEMENTATION" ]
-  include_dirs = [ ".." ]
+  include_dirs = [
+    "..",
+    "../src/profiling/memory/include",
+  ]
 
   if (build_with_chromium && is_android) {
     # Included for __android_log_print
@@ -197,8 +209,11 @@ group("gtest_main") {
 protobuf_full_deps_allowlist = [
   "../src/ipc/protoc_plugin:*",
   "../src/protozero/protoc_plugin:*",
+  "../src/protozero/filtering:filter_util",
   "../src/trace_processor:trace_processor_shell",
+  "../src/protozero/filtering:filter_util",
   "../tools/*",
+  "../src/tools/*",
 ]
 
 group("protoc") {
@@ -259,19 +274,30 @@ config("protobuf_gen_config") {
     "GOOGLE_PROTOBUF_NO_RTTI",
     "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
   ]
-  cflags = [
-    "-Wno-unknown-warning-option",
-    "-Wno-deprecated",
-    "-Wno-undef",
-    "-Wno-zero-as-null-pointer-constant",
-  ]
+  cflags = []
+  if (!is_clang || !is_win) {
+    cflags += [ "-Wno-deprecated-declarations" ]
+  }
+  if (is_clang && is_win) {
+    cflags += [
+      "-Wno-reserved-id-macro",
+      "-Wno-language-extension-token",
+      "-Wno-sign-conversion",
+      "-Wno-suggest-destructor-override",
+      "-Wno-undefined-reinterpret-cast",
+      "-Wno-inconsistent-missing-destructor-override",
+      "-Wno-unused-parameter",
+      "-Wno-shadow-field-in-constructor",
+      "-Wno-zero-as-null-pointer-constant",
+    ]
+  }
 
   if (!perfetto_use_system_protobuf) {
     cflags += [
       # Using -isystem instead of include_dirs (-I), so we don't need to
       # suppress warnings coming from libprotobuf headers. Doing so would mask
       # warnings in our own code.
-      "-isystem",
+      perfetto_isystem_cflag,
       rebase_path("../buildtools/protobuf/src", root_build_dir),
     ]
   }
@@ -351,10 +377,16 @@ if (enable_perfetto_traced_perf) {
   }
 }
 
+config("system_zlib_config") {
+  libs = [ "z" ]
+}
+
 # Zlib is used both by trace_processor and by perfetto_cmd.
 if (enable_perfetto_zlib) {
   group("zlib") {
-    if (perfetto_root_path == "//") {
+    if (perfetto_use_system_zlib) {
+      public_configs = [ "//gn:system_zlib_config" ]
+    } else if (perfetto_root_path == "//") {
       public_configs = [ "//buildtools:zlib_config" ]
       public_deps = [ "//buildtools:zlib" ]
     } else {
@@ -364,10 +396,32 @@ if (enable_perfetto_zlib) {
   }
 }
 
+if (enable_perfetto_llvm_demangle) {
+  group("llvm_demangle") {
+    public_deps = [ "//buildtools:llvm_demangle" ]
+  }
+}
+
+# Allows overriding platform-specific functionality used by base at a
+# build-system level. This allows e.g. different implementations of base
+# functions in Google3.
+group("base_platform") {
+  public_deps = [ "../src/base:perfetto_base_default_platform" ]
+}
+
 # Used by fuzzers.
 if (enable_perfetto_fuzzers && use_libfuzzer) {
   group("libfuzzer") {
     assert(perfetto_root_path == "//")
     public_deps = [ "//buildtools:libfuzzer" ]
   }
+}
+
+# Python libraries which need to be installed on the system
+# or provided (for other build systems).
+perfetto_py_library("pandas_py") {
+}
+perfetto_py_library("tp_vendor_py") {
+}
+perfetto_py_library("protobuf_py") {
 }

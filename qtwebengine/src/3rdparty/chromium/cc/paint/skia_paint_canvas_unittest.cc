@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -37,7 +37,7 @@ TEST(SkiaPaintCanvasTest, ContextFlushesRecording) {
   PaintRecorder recorder;
   SkRect rect = SkRect::MakeWH(10, 10);
   PaintFlags flags;
-  recorder.beginRecording(rect);
+  recorder.beginRecording();
   for (int i = 0; i < 11; i++)
     recorder.getRecordingCanvas()->drawRect(rect, flags);
   auto record = recorder.finishRecordingAsPicture();

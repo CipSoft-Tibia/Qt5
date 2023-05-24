@@ -1,13 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/chromeos_camera/gpu_mjpeg_decode_accelerator_factory.h"
 
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "components/chromeos_camera/fake_mjpeg_decode_accelerator.h"
 #include "media/base/media_switches.h"
@@ -64,7 +63,8 @@ bool GpuMjpegDecodeAcceleratorFactory::IsAcceleratedJpegDecodeSupported() {
   auto accelerator_factory_functions = GetAcceleratorFactories();
   for (auto& factory_function : accelerator_factory_functions) {
     std::unique_ptr<MjpegDecodeAccelerator> accelerator =
-        std::move(factory_function).Run(base::ThreadTaskRunnerHandle::Get());
+        std::move(factory_function)
+            .Run(base::SingleThreadTaskRunner::GetCurrentDefault());
     if (accelerator && accelerator->IsSupported())
       return true;
   }

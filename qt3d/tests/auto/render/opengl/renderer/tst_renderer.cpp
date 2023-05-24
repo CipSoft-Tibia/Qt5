@@ -1,39 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QThread>
 #include <renderer_p.h>
 #include <renderview_p.h>
 #include <renderviewbuilder_p.h>
-#include <renderqueue_p.h>
+#include <Qt3DRender/private/renderqueue_p.h>
 #include <Qt3DRender/private/viewportnode_p.h>
 #include <Qt3DRender/private/offscreensurfacehelper_p.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
@@ -50,11 +25,16 @@ public :
 
 private Q_SLOTS:
 
+    void initTestCase()
+    {
+        qputenv("QT3D_RENDERER", "opengl");
+    }
+
     void checkPreRenderBinJobs()
     {
         // GIVEN
         Qt3DRender::Render::NodeManagers nodeManagers;
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         Qt3DRender::Render::OffscreenSurfaceHelper offscreenHelper(&renderer);
         Qt3DRender::Render::RenderSettings settings;
         // owned by FG manager
@@ -73,17 +53,17 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
 
         // WHEN (nothing dirty, no buffers, no layers to be rebuilt, no materials to be rebuilt)
-        QVector<Qt3DCore::QAspectJobPtr> jobs = renderer.preRenderingJobs();
+        std::vector<Qt3DCore::QAspectJobPtr> jobs = renderer.preRenderingJobs();
 
         // THEN
-        QCOMPARE(jobs.size(), 0);
+        QCOMPARE(jobs.size(), 0U);
 
         // WHEN
         renderer.m_sendBufferCaptureJob->addRequest({Qt3DCore::QNodeId(), {}});
         jobs = renderer.preRenderingJobs();
 
         // THEN
-        QCOMPARE(jobs.size(), 1); // SendBufferCaptureJob
+        QCOMPARE(jobs.size(), 1U); // SendBufferCaptureJob
         // Note: pending render buffer captures are only cleared when the job is run
 
         // WHEN
@@ -92,8 +72,7 @@ private Q_SLOTS:
 
         // THEN
         QCOMPARE(jobs.size(),
-                 1 + // SendBufferCaptureJob
-                 1); // SendSetFenceHandlesJob
+                 1U); // SendBufferCaptureJob´
         // Note: pending set fence handles are only cleared when the job is run
 
         // Properly shutdown command thread
@@ -109,7 +88,7 @@ private Q_SLOTS:
 
         Qt3DRender::Render::NodeManagers nodeManagers;
         auto &renderer = *(static_cast<Qt3DRender::Render::OpenGL::Renderer *>(daspect->m_renderer));
-        Qt3DRender::Render::OpenGL::RenderQueue *renderQueue = renderer.renderQueue();
+        Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> *renderQueue = renderer.renderQueue();
         Qt3DRender::Render::OffscreenSurfaceHelper offscreenHelper(&renderer);
         Qt3DRender::Render::RenderSettings settings;
         // owned by FG manager
@@ -134,16 +113,16 @@ private Q_SLOTS:
         // NOTE: FilterCompatibleTechniqueJob and ShaderGathererJob cannot run because the context
         // is not initialized in this test
 
-        const int renderViewBuilderMaterialCacheJobCount = 1 + 1;
+        const uint renderViewBuilderMaterialCacheJobCount = 1 + 1;
         // syncMaterialGathererJob
         // n * materialGathererJob (where n depends on the numbers of available threads and the number of materials)
-        const int layerCacheJobCount = 2;
+        const uint layerCacheJobCount = 2;
         // filterEntityByLayerJob,
         // syncFilterEntityByLayerJob
 
-        const int singleRenderViewCommandRebuildJobCount  = 1 + Qt3DRender::Render::OpenGL::RenderViewBuilder::defaultJobCount();
+        const uint singleRenderViewCommandRebuildJobCount  = 1 + Qt3DCore::QAspectJobManager::idealThreadCount();
 
-        const int singleRenderViewJobCount = 8 + 1 * Qt3DRender::Render::OpenGL::RenderViewBuilder::defaultJobCount();
+        const uint singleRenderViewJobCount = 8 + 1 * Qt3DCore::QAspectJobManager::idealThreadCount();
         // RenderViewBuilder renderViewJob,
         //                   syncRenderViewInitializationJob,
         //                   syncFrustumCullingJob,
@@ -155,7 +134,7 @@ private Q_SLOTS:
         //                   n * (RenderViewCommandBuildJobs)
 
         // WHEN
-        QVector<Qt3DCore::QAspectJobPtr> jobs = renderer.renderBinJobs();
+        std::vector<Qt3DCore::QAspectJobPtr> jobs = renderer.renderBinJobs();
 
         // THEN -> AllDirty
         // (Renderer is not initialized so FilterCompatibleTechniqueJob
@@ -195,7 +174,7 @@ private Q_SLOTS:
 
         // WHEN (nothing dirty, no buffers, no layers to be rebuilt, no materials to be rebuilt) (RV leaf in cache)
         renderer.markDirty(Qt3DRender::Render::AbstractRenderer::FrameGraphDirty, nullptr);
-        renderer.cache()->leafNodeCache[renderer.m_frameGraphLeaves.first()] = {};
+        renderer.cache()->leafNodeCache[renderer.m_frameGraphLeaves.front()] = {};
         jobs = renderer.renderBinJobs();
 
         // THEN (level

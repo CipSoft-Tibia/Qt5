@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtAddOn.ImageFormats module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QtGui/QtGui>
@@ -113,7 +88,7 @@ void tst_qtiff::formatHandler()
 
     bool formatSupported = false;
     for (QList<QByteArray>::Iterator it = formats.begin(); it != formats.end(); ++it) {
-        if (*it == testFormat.toLower()) {
+        if (*it == testFormat.toLatin1().toLower()) {
             formatSupported = true;
             break;
         }
@@ -407,6 +382,20 @@ void tst_qtiff::readWriteNonDestructive_data()
     QTest::newRow("tiff rgb64") << QImage::Format_RGBX64 << QImage::Format_RGBX64 << QImageIOHandler::TransformationNone;
     QTest::newRow("tiff rgba64") << QImage::Format_RGBA64 << QImage::Format_RGBA64 << QImageIOHandler::TransformationRotate90;
     QTest::newRow("tiff rgba64pm") << QImage::Format_RGBA64_Premultiplied << QImage::Format_RGBA64_Premultiplied << QImageIOHandler::TransformationNone;
+    QTest::newRow("tiff rgb16fpx4") << QImage::Format_RGBX16FPx4 << QImage::Format_RGBX16FPx4
+                                    << QImageIOHandler::TransformationNone;
+    QTest::newRow("tiff rgba16fpx4") << QImage::Format_RGBA16FPx4 << QImage::Format_RGBA16FPx4
+                                     << QImageIOHandler::TransformationRotate90;
+    QTest::newRow("tiff rgba16fpx4pm") << QImage::Format_RGBA16FPx4_Premultiplied
+                                       << QImage::Format_RGBA16FPx4_Premultiplied
+                                       << QImageIOHandler::TransformationNone;
+    QTest::newRow("tiff rgb32fpx4") << QImage::Format_RGBX32FPx4 << QImage::Format_RGBX32FPx4
+                                    << QImageIOHandler::TransformationNone;
+    QTest::newRow("tiff rgba32fpx4") << QImage::Format_RGBA32FPx4 << QImage::Format_RGBA32FPx4
+                                     << QImageIOHandler::TransformationRotate90;
+    QTest::newRow("tiff rgba32fpx4pm") << QImage::Format_RGBA32FPx4_Premultiplied
+                                       << QImage::Format_RGBA32FPx4_Premultiplied
+                                       << QImageIOHandler::TransformationNone;
 }
 
 void tst_qtiff::readWriteNonDestructive()
@@ -430,8 +419,7 @@ void tst_qtiff::readWriteNonDestructive()
     QImageReader reader(&buf);
     QCOMPARE(reader.imageFormat(), expectedFormat);
     QCOMPARE(reader.size(), image.size());
-    QCOMPARE(reader.autoTransform(), true);
-    reader.setAutoTransform(false);
+    QCOMPARE(reader.autoTransform(), false);
     QCOMPARE(reader.transformation(), transformation);
     QImage image2 = reader.read();
     QVERIFY2(!image.isNull(), qPrintable(reader.errorString()));
@@ -476,8 +464,7 @@ void tst_qtiff::supportsOption_data()
     QTest::newRow("tiff") << (QIntList()
                               << QImageIOHandler::Size
                               << QImageIOHandler::CompressionRatio
-                              << QImageIOHandler::ImageTransformation
-                              << QImageIOHandler::TransformedByDefault);
+                              << QImageIOHandler::ImageTransformation);
 }
 
 void tst_qtiff::supportsOption()
@@ -499,8 +486,7 @@ void tst_qtiff::supportsOption()
                << QImageIOHandler::Endianness
                << QImageIOHandler::Animation
                << QImageIOHandler::BackgroundColor
-               << QImageIOHandler::ImageTransformation
-               << QImageIOHandler::TransformedByDefault;
+               << QImageIOHandler::ImageTransformation;
 
     QImageWriter writer;
     writer.setFormat("tiff");
@@ -509,7 +495,7 @@ void tst_qtiff::supportsOption()
         allOptions.remove(QImageIOHandler::ImageOption(options.at(i)));
     }
 
-    for (QImageIOHandler::ImageOption option : qAsConst(allOptions))
+    for (QImageIOHandler::ImageOption option : std::as_const(allOptions))
         QVERIFY(!writer.supportsOption(option));
 }
 
@@ -555,9 +541,9 @@ void tst_qtiff::multipage_data()
 {
     QTest::addColumn<QString>("filename");
     QTest::addColumn<int>("expectedNumPages");
-    QTest::addColumn<QVector<QSize>>("expectedSizes");
+    QTest::addColumn<QList<QSize>>("expectedSizes");
 
-    QVector<QSize> sizes = QVector<QSize>() << QSize(640, 480) << QSize(800, 600) << QSize(320, 240);
+    QList<QSize> sizes = QList<QSize>() << QSize(640, 480) << QSize(800, 600) << QSize(320, 240);
     QTest::newRow("3 page TIFF") << ("multipage.tiff") << 3 << sizes;
 }
 
@@ -565,7 +551,7 @@ void tst_qtiff::multipage()
 {
     QFETCH(QString, filename);
     QFETCH(int, expectedNumPages);
-    QFETCH(QVector<QSize>, expectedSizes);
+    QFETCH(QList<QSize>, expectedSizes);
 
     QImageReader reader(prefix + filename);
     QCOMPARE(reader.imageCount(), expectedNumPages);

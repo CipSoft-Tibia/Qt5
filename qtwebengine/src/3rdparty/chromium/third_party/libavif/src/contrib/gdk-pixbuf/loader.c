@@ -59,16 +59,24 @@ static gboolean avif_context_try_load(struct avif_context * context, GError ** e
     avifDecoder * decoder = context->decoder;
     avifImage * image;
     avifRGBImage rgb;
-    avifROData raw;
+    const uint8_t * data;
+    size_t size;
     int width, height;
     GdkPixbuf *output;
 
-    raw.data = g_bytes_get_data(context->bytes, &raw.size);
+    data = g_bytes_get_data(context->bytes, &size);
 
-    ret = avifDecoderParse(decoder, &raw);
+    ret = avifDecoderSetIOMemory(decoder, data, size);
     if (ret != AVIF_RESULT_OK) {
         g_set_error(error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_CORRUPT_IMAGE,
-                    "Couldn’t decode image: %s", avifResultToString(ret));
+                    "Couldn't decode image: %s", avifResultToString(ret));
+        return FALSE;
+    }
+
+    ret = avifDecoderParse(decoder);
+    if (ret != AVIF_RESULT_OK) {
+        g_set_error(error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_CORRUPT_IMAGE,
+                    "Couldn't decode image: %s", avifResultToString(ret));
         return FALSE;
     }
 
@@ -200,7 +208,7 @@ static gboolean avif_context_try_load(struct avif_context * context, GError ** e
     if (image->transformFlags & AVIF_TRANSFORM_IMIR) {
         GdkPixbuf *output_mirrored = NULL;
 
-        switch (image->imir.axis) {
+        switch (image->imir.mode) {
         case 0:
             output_mirrored = gdk_pixbuf_flip(output, FALSE);
             break;
@@ -266,7 +274,7 @@ static gpointer begin_load(GdkPixbufModuleSizeFunc size_func,
     decoder = avifDecoderCreate();
     if (!decoder) {
         g_set_error_literal(error, GDK_PIXBUF_ERROR, GDK_PIXBUF_ERROR_INSUFFICIENT_MEMORY,
-                            "Couldn’t allocate memory for decoder");
+                            "Couldn't allocate memory for decoder");
         return NULL;
     }
 
@@ -350,19 +358,18 @@ static gboolean avif_image_saver(FILE          *f,
                     g_set_error(error,
                                 GDK_PIXBUF_ERROR,
                                 GDK_PIXBUF_ERROR_BAD_OPTION,
-                                "AVIF quality must be a value between 0 and 100; value “%s” could not be parsed.",
+                                "AVIF quality must be a value between 0 and 100; value \"%s\" could not be parsed.",
                                 *viter);
 
                     return FALSE;
                 }
 
                 if (quality < 0 || quality > 100) {
-
                     g_set_error(error,
                                 GDK_PIXBUF_ERROR,
                                 GDK_PIXBUF_ERROR_BAD_OPTION,
-                                "AVIF quality must be a value between 0 and 100; value “%d” is not allowed.",
-                                (int)quality);
+                                "AVIF quality must be a value between 0 and 100; value \"%ld\" is not allowed.",
+                                quality);
 
                     return FALSE;
                 }
@@ -415,7 +422,7 @@ static gboolean avif_image_saver(FILE          *f,
         }
     }
 
-    max_quantizer = AVIF_QUANTIZER_WORST_QUALITY * ( 100 - CLAMP(quality, 0, 100)) / 100;
+    max_quantizer = AVIF_QUANTIZER_WORST_QUALITY * (100 - (int)quality) / 100;
     min_quantizer = 0;
     alpha_quantizer = 0;
 
@@ -459,7 +466,7 @@ static gboolean avif_image_saver(FILE          *f,
     encoder->maxQuantizer = max_quantizer;
     encoder->minQuantizerAlpha = 0;
     encoder->maxQuantizerAlpha = alpha_quantizer;
-    encoder->speed = 8;
+    encoder->speed = 6;
 
     res = avifEncoderWrite(encoder, avif, &raw);
     avifEncoderDestroy(encoder);

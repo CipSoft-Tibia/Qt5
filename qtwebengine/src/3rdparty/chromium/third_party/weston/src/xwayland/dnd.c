@@ -40,7 +40,6 @@
 #include <libweston/libweston.h>
 #include "xwayland.h"
 
-#include "cairo-util.h"
 #include "hash.h"
 
 struct dnd_data_source {

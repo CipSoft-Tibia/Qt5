@@ -1,45 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4engine_p.h"
 #include "qv4object_p.h"
-#include "qv4objectproto_p.h"
 #include "qv4mm_p.h"
 #include "qv4qobjectwrapper_p.h"
 #include "qv4identifiertable_p.h"
@@ -50,8 +13,6 @@
 #include <qqmlengine.h>
 #include "PageReservation.h"
 #include "PageAllocation.h"
-#include "PageAllocationAligned.h"
-#include "StdLibExtras.h"
 
 #include <QElapsedTimer>
 #include <QMap>
@@ -63,7 +24,6 @@
 #include "qv4profiling_p.h"
 #include "qv4mapobject_p.h"
 #include "qv4setobject_p.h"
-#include "qv4writebarrier_p.h"
 
 //#define MM_STATS
 
@@ -122,7 +82,7 @@ struct MemorySegment {
 
     MemorySegment(size_t size)
     {
-        size += Chunk::ChunkSize; // make sure we can get enough 64k aligment memory
+        size += Chunk::ChunkSize; // make sure we can get enough 64k alignment memory
         if (size < SegmentSize)
             size = SegmentSize;
 
@@ -311,9 +271,6 @@ bool Chunk::sweep(ExecutionEngine *engine)
     HeapItem *o = realBase();
     bool lastSlotFree = false;
     for (uint i = 0; i < Chunk::EntriesInBitmap; ++i) {
-#if WRITEBARRIER(none)
-        Q_ASSERT((grayBitmap[i] | blackBitmap[i]) == blackBitmap[i]); // check that we don't have gray only objects
-#endif
         quintptr toFree = objectBitmap[i] ^ blackBitmap[i];
         Q_ASSERT((toFree & objectBitmap[i]) == toFree); // check all black objects are marked as being used
         quintptr e = extendsBitmap[i];
@@ -357,7 +314,6 @@ bool Chunk::sweep(ExecutionEngine *engine)
                                                       - (blackBitmap[i] | e)) * Chunk::SlotSize,
                              Profiling::SmallItem);
         objectBitmap[i] = blackBitmap[i];
-        grayBitmap[i] = 0;
         hasUsedSlots |= (blackBitmap[i] != 0);
         extendsBitmap[i] = e;
         lastSlotFree = !((objectBitmap[i]|extendsBitmap[i]) >> (sizeof(quintptr)*8 - 1));
@@ -407,7 +363,6 @@ void Chunk::freeAll(ExecutionEngine *engine)
         Q_V4_PROFILE_DEALLOC(engine, (qPopulationCount(objectBitmap[i]|extendsBitmap[i])
                              - qPopulationCount(e)) * Chunk::SlotSize, Profiling::SmallItem);
         objectBitmap[i] = 0;
-        grayBitmap[i] = 0;
         extendsBitmap[i] = e;
         o += Chunk::Bits;
     }
@@ -417,36 +372,6 @@ void Chunk::freeAll(ExecutionEngine *engine)
 void Chunk::resetBlackBits()
 {
     memset(blackBitmap, 0, sizeof(blackBitmap));
-}
-
-void Chunk::collectGrayItems(MarkStack *markStack)
-{
-    //    DEBUG << "sweeping chunk" << this << (*freeList);
-    HeapItem *o = realBase();
-    for (uint i = 0; i < Chunk::EntriesInBitmap; ++i) {
-#if WRITEBARRIER(none)
-        Q_ASSERT((grayBitmap[i] | blackBitmap[i]) == blackBitmap[i]); // check that we don't have gray only objects
-#endif
-        quintptr toMark = blackBitmap[i] & grayBitmap[i]; // correct for a Steele type barrier
-        Q_ASSERT((toMark & objectBitmap[i]) == toMark); // check all black objects are marked as being used
-        //        DEBUG << hex << "   index=" << i << toFree;
-        while (toMark) {
-            uint index = qCountTrailingZeroBits(toMark);
-            quintptr bit = (static_cast<quintptr>(1) << index);
-
-            toMark ^= bit; // mask out marked slot
-            //            DEBUG << "       index" << hex << index << toFree;
-
-            HeapItem *itemToFree = o + index;
-            Heap::Base *b = *itemToFree;
-            Q_ASSERT(b->inUse());
-            markStack->push(b);
-        }
-        grayBitmap[i] = 0;
-        o += Chunk::Bits;
-    }
-    //    DEBUG << "swept chunk" << this << "freed" << slotsFreed << "slots.";
-
 }
 
 void Chunk::sortIntoBins(HeapItem **bins, uint nBins)
@@ -597,6 +522,14 @@ HeapItem *BlockAllocator::allocate(size_t size, bool forceAllocation) {
     if (!m) {
         if (!forceAllocation)
             return nullptr;
+        if (nFree) {
+            // Save any remaining slots of the current chunk
+            // for later, smaller allocations.
+            size_t bin = binForSlots(nFree);
+            nextFree->freeData.next = freeBins[bin];
+            nextFree->freeData.availableSlots = nFree;
+            freeBins[bin] = nextFree;
+        }
         Chunk *newChunk = chunkAllocator->allocate();
         Q_V4_PROFILE_ALLOC(engine, Chunk::DataSize, Profiling::HeapPage);
         chunks.push_back(newChunk);
@@ -659,13 +592,6 @@ void BlockAllocator::resetBlackBits()
 {
     for (auto c : chunks)
         c->resetBlackBits();
-}
-
-void BlockAllocator::collectGrayItems(MarkStack *markStack)
-{
-    for (auto c : chunks)
-        c->collectGrayItems(markStack);
-
 }
 
 HeapItem *HugeItemAllocator::allocate(size_t size) {
@@ -737,18 +663,6 @@ void HugeItemAllocator::resetBlackBits()
         Chunk::clearBit(c.chunk->blackBitmap, c.chunk->first() - c.chunk->realBase());
 }
 
-void HugeItemAllocator::collectGrayItems(MarkStack *markStack)
-{
-    for (auto c : chunks)
-        // Correct for a Steele type barrier
-        if (Chunk::testBit(c.chunk->blackBitmap, c.chunk->first() - c.chunk->realBase()) &&
-            Chunk::testBit(c.chunk->grayBitmap, c.chunk->first() - c.chunk->realBase())) {
-            HeapItem *i = c.chunk->first();
-            Heap::Base *b = *i;
-            b->mark(markStack);
-        }
-}
-
 void HugeItemAllocator::freeAll()
 {
     for (auto &c : chunks) {
@@ -790,6 +704,13 @@ Heap::Base *MemoryManager::allocString(std::size_t unmanagedSize)
 
     HeapItem *m = allocate(&blockAllocator, stringSize);
     memset(m, 0, stringSize);
+    if (gcBlocked) {
+        // If the gc is running right now, it will not have a chance to mark the newly created item
+        // and may therefore sweep it right away.
+        // Protect the new object from the current GC run to avoid this.
+        m->as<Heap::Base>()->setMarkBit();
+    }
+
     return *m;
 }
 
@@ -805,6 +726,13 @@ Heap::Base *MemoryManager::allocData(std::size_t size)
 
     HeapItem *m = allocate(&blockAllocator, size);
     memset(m, 0, size);
+    if (gcBlocked) {
+        // If the gc is running right now, it will not have a chance to mark the newly created item
+        // and may therefore sweep it right away.
+        // Protect the new object from the current GC run to avoid this.
+        m->as<Heap::Base>()->setMarkBit();
+    }
+
     return *m;
 }
 
@@ -965,7 +893,7 @@ void MemoryManager::sweep(bool lastSweep, ClassDestroyStatsCallback classCountPt
     }
 
     // Now it is time to free QV4::QObjectWrapper Value, we must check the Value's tag to make sure its object has been destroyed
-    const int pendingCount = m_pendingFreedObjectWrapperValue.count();
+    const int pendingCount = m_pendingFreedObjectWrapperValue.size();
     if (pendingCount) {
         QVector<Value *> remainingWeakQObjectWrappers;
         remainingWeakQObjectWrappers.reserve(pendingCount);
@@ -1100,7 +1028,7 @@ void MemoryManager::runGC()
         std::swap(freedObjectStats, *freedObjectStatsGlobal());
         typedef std::pair<const char*, int> ObjectStatInfo;
         std::vector<ObjectStatInfo> freedObjectsSorted;
-        freedObjectsSorted.reserve(freedObjectStats.count());
+        freedObjectsSorted.reserve(freedObjectStats.size());
         for (auto it = freedObjectStats.constBegin(); it != freedObjectStats.constEnd(); ++it) {
             freedObjectsSorted.push_back(std::make_pair(it.key(), it.value()));
         }

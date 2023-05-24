@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,19 @@
 
 #include "base/check.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
 #include "extensions/renderer/script_context.h"
 #include "extensions/renderer/v8_helpers.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-exception.h"
+#include "v8/include/v8-extension.h"
+#include "v8/include/v8-function.h"
+#include "v8/include/v8-isolate.h"
+#include "v8/include/v8-microtask-queue.h"
+#include "v8/include/v8-object.h"
+#include "v8/include/v8-primitive-object.h"
+#include "v8/include/v8-primitive.h"
+#include "v8/include/v8-template.h"
 
 namespace extensions {
 
@@ -177,6 +186,10 @@ class ExtensionImpl : public v8::Extension {
           info[2]->IsObject() &&  // args
           info[3]->IsInt32() &&   // first_arg_index
           info[4]->IsInt32());    // args_length
+    v8::Local<v8::Context> context = info.GetIsolate()->GetCurrentContext();
+    v8::MicrotasksScope microtasks(info.GetIsolate(),
+                                   context->GetMicrotaskQueue(),
+                                   v8::MicrotasksScope::kDoNotRunMicrotasks);
     v8::Local<v8::Function> function = info[0].As<v8::Function>();
     v8::Local<v8::Object> recv;
     if (info[1]->IsObject()) {
@@ -196,7 +209,6 @@ class ExtensionImpl : public v8::Extension {
     int first_arg_index = info[3].As<v8::Int32>()->Value();
     int args_length = info[4].As<v8::Int32>()->Value();
 
-    v8::Local<v8::Context> context = info.GetIsolate()->GetCurrentContext();
     int argc = args_length - first_arg_index;
     std::unique_ptr<v8::Local<v8::Value>[]> argv(
         new v8::Local<v8::Value>[argc]);
@@ -208,8 +220,6 @@ class ExtensionImpl : public v8::Extension {
         return;
     }
 
-    v8::MicrotasksScope microtasks(
-        info.GetIsolate(), v8::MicrotasksScope::kDoNotRunMicrotasks);
     v8::Local<v8::Value> return_value;
     if (function->Call(context, recv, argc, argv.get()).ToLocal(&return_value))
       info.GetReturnValue().Set(return_value);
@@ -231,7 +241,7 @@ std::unique_ptr<v8::Extension> SafeBuiltins::CreateV8Extension() {
 
 SafeBuiltins::SafeBuiltins(ScriptContext* context) : context_(context) {}
 
-SafeBuiltins::~SafeBuiltins() {}
+SafeBuiltins::~SafeBuiltins() = default;
 
 v8::Local<v8::Object> SafeBuiltins::GetArray() const {
   return Load("Array", context_->v8_context());

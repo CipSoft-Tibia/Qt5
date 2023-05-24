@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qmath.h>
 
@@ -64,7 +28,7 @@ int QTextureGlyphCache::calculateSubPixelPositionCount(glyph_t glyph) const
     QImage images[NumSubpixelPositions];
     int numImages = 0;
     for (int i = 0; i < NumSubpixelPositions; ++i) {
-        QImage img = textureMapForGlyph(glyph, QFixed::fromReal(i / 12.0));
+        QImage img = textureMapForGlyph(glyph, QFixedPoint(QFixed::fromReal(i / 12.0), 0));
 
         if (numImages == 0) {
             QPainterPath path;
@@ -92,11 +56,15 @@ int QTextureGlyphCache::calculateSubPixelPositionCount(glyph_t glyph) const
     return numImages;
 }
 
-bool QTextureGlyphCache::populate(QFontEngine *fontEngine, int numGlyphs, const glyph_t *glyphs,
-                                                const QFixedPoint *positions)
+bool QTextureGlyphCache::populate(QFontEngine *fontEngine,
+                                  qsizetype numGlyphs,
+                                  const glyph_t *glyphs,
+                                  const QFixedPoint *positions,
+                                  QPainter::RenderHints renderHints,
+                                  bool includeGlyphCacheScale)
 {
 #ifdef CACHE_DEBUG
-    printf("Populating with %d glyphs\n", numGlyphs);
+    printf("Populating with %lld glyphs\n", static_cast<long long>(numGlyphs));
     qDebug() << " -> current transformation: " << m_transform;
 #endif
 
@@ -105,11 +73,13 @@ bool QTextureGlyphCache::populate(QFontEngine *fontEngine, int numGlyphs, const 
     const int paddingDoubled = padding * 2;
 
     bool supportsSubPixelPositions = fontEngine->supportsSubPixelPositions();
+    bool verticalSubPixelPositions = fontEngine->supportsVerticalSubPixelPositions()
+            && (renderHints & QPainter::VerticalSubpixelPositioning) != 0;
     if (fontEngine->m_subPixelPositionCount == 0) {
         if (!supportsSubPixelPositions) {
             fontEngine->m_subPixelPositionCount = 1;
         } else {
-            int i = 0;
+            qsizetype i = 0;
             while (fontEngine->m_subPixelPositionCount == 0 && i < numGlyphs)
                 fontEngine->m_subPixelPositionCount = calculateSubPixelPositionCount(glyphs[i++]);
         }
@@ -120,17 +90,26 @@ bool QTextureGlyphCache::populate(QFontEngine *fontEngine, int numGlyphs, const 
         m_cy = padding;
     }
 
+    qreal glyphCacheScaleX = transform().m11();
+    qreal glyphCacheScaleY = transform().m22();
+
     QHash<GlyphAndSubPixelPosition, Coord> listItemCoordinates;
     int rowHeight = 0;
 
     // check each glyph for its metrics and get the required rowHeight.
-    for (int i=0; i < numGlyphs; ++i) {
+    for (qsizetype i = 0; i < numGlyphs; ++i) {
         const glyph_t glyph = glyphs[i];
 
-        QFixed subPixelPosition;
+        QFixedPoint subPixelPosition;
         if (supportsSubPixelPositions) {
-            QFixed x = positions != nullptr ? positions[i].x : QFixed();
-            subPixelPosition = fontEngine->subPixelPositionForX(x);
+            QFixedPoint pos = positions != nullptr ? positions[i] : QFixedPoint();
+            if (includeGlyphCacheScale) {
+                pos = QFixedPoint(QFixed::fromReal(pos.x.toReal() * glyphCacheScaleX),
+                                  QFixed::fromReal(pos.y.toReal() * glyphCacheScaleY));
+            }
+            subPixelPosition = fontEngine->subPixelPositionFor(pos);
+            if (!verticalSubPixelPositions)
+                subPixelPosition.y = 0;
         }
 
         if (coords.contains(GlyphAndSubPixelPosition(glyph, subPixelPosition)))
@@ -263,7 +242,7 @@ void QTextureGlyphCache::fillInPendingGlyphs()
     m_pendingGlyphs.clear();
 }
 
-QImage QTextureGlyphCache::textureMapForGlyph(glyph_t g, QFixed subPixelPosition) const
+QImage QTextureGlyphCache::textureMapForGlyph(glyph_t g, const QFixedPoint &subPixelPosition) const
 {
     switch (m_format) {
     case QFontEngine::Format_A32:
@@ -317,7 +296,9 @@ void QImageTextureGlyphCache::createTextureData(int width, int height)
     m_image.fill(0);
 }
 
-void QImageTextureGlyphCache::fillTexture(const Coord &c, glyph_t g, QFixed subPixelPosition)
+void QImageTextureGlyphCache::fillTexture(const Coord &c,
+                                          glyph_t g,
+                                          const QFixedPoint &subPixelPosition)
 {
     QImage mask = textureMapForGlyph(g, subPixelPosition);
 
@@ -352,7 +333,7 @@ void QImageTextureGlyphCache::fillTexture(const Coord &c, glyph_t g, QFixed subP
         int mw = qMin(mask.width(), c.w);
         int mh = qMin(mask.height(), c.h);
         uchar *d = m_image.bits();
-        int dbpl = m_image.bytesPerLine();
+        qsizetype dbpl = m_image.bytesPerLine();
 
         for (int y = 0; y < c.h; ++y) {
             uchar *dest = d + (c.y + y) *dbpl + c.x/8;
@@ -374,7 +355,7 @@ void QImageTextureGlyphCache::fillTexture(const Coord &c, glyph_t g, QFixed subP
         int mw = qMin(mask.width(), c.w);
         int mh = qMin(mask.height(), c.h);
         uchar *d = m_image.bits();
-        int dbpl = m_image.bytesPerLine();
+        qsizetype dbpl = m_image.bytesPerLine();
 
         if (mask.depth() == 1) {
             for (int y = 0; y < c.h; ++y) {

@@ -16,14 +16,14 @@ ifdef DRV_AMDGPU
 	CFLAGS += $(shell $(PKG_CONFIG) --cflags libdrm_amdgpu)
 	LDLIBS += -ldrm_amdgpu -ldl
 endif
-ifdef DRV_EXYNOS
-	CFLAGS += $(shell $(PKG_CONFIG) --cflags libdrm_exynos)
-endif
 ifdef DRV_I915
 	CFLAGS += $(shell $(PKG_CONFIG) --cflags libdrm_intel)
 endif
 ifdef DRV_MESON
 	CFLAGS += $(shell $(PKG_CONFIG) --cflags libdrm_meson)
+endif
+ifdef DRV_MSM
+	CFLAGS += -ldl
 endif
 ifdef DRV_RADEON
 	CFLAGS += $(shell $(PKG_CONFIG) --cflags libdrm_radeon)
@@ -46,6 +46,7 @@ MINIGBM_FILENAME := libminigbm.so.$(MINIGBM_VERSION)
 
 CC_LIBRARY($(MINIGBM_FILENAME)): LDFLAGS += -Wl,-soname,libgbm.so.$(GBM_VERSION_MAJOR)
 CC_LIBRARY($(MINIGBM_FILENAME)): $(C_OBJECTS)
+CC_STATIC_LIBRARY(libminigbm.pie.a): $(C_OBJECTS)
 
 all: CC_LIBRARY($(MINIGBM_FILENAME))
 
@@ -58,3 +59,4 @@ install: all
 	ln -sf $(MINIGBM_FILENAME) $(DESTDIR)/$(LIBDIR)/libgbm.so.$(GBM_VERSION_MAJOR)
 	install -D -m 0644 $(SRC)/gbm.pc $(DESTDIR)$(LIBDIR)/pkgconfig/gbm.pc
 	install -D -m 0644 $(SRC)/gbm.h $(DESTDIR)/usr/include/gbm.h
+	install -D -m 0644 $(SRC)/minigbm_helpers.h $(DESTDIR)/usr/include/minigbm/minigbm_helpers.h

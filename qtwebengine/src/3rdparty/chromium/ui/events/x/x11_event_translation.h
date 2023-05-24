@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 #include "ui/events/event.h"
 #include "ui/events/events_export.h"
 #include "ui/gfx/x/event.h"
-#include "ui/gfx/x/x11.h"
 
 namespace ui {
 

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/values.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/extension_host_delegate.h"
 #include "extensions/browser/test_runtime_api_delegate.h"
@@ -13,8 +14,8 @@
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 
-#if defined(OS_CHROMEOS)
-#include "chromeos/login/login_state/login_state.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chromeos/ash/components/login/login_state/login_state.h"
 #endif
 
 using content::BrowserContext;
@@ -34,8 +35,8 @@ TestExtensionsBrowserClient::TestExtensionsBrowserClient()
 TestExtensionsBrowserClient::~TestExtensionsBrowserClient() = default;
 
 void TestExtensionsBrowserClient::SetUpdateClientFactory(
-    const base::Callback<update_client::UpdateClient*(void)>& factory) {
-  update_client_factory_ = factory;
+    base::RepeatingCallback<update_client::UpdateClient*(void)> factory) {
+  update_client_factory_ = std::move(factory);
 }
 
 void TestExtensionsBrowserClient::SetMainContext(
@@ -91,12 +92,44 @@ BrowserContext* TestExtensionsBrowserClient::GetOriginalContext(
   return main_context_;
 }
 
-#if defined(OS_CHROMEOS)
+content::BrowserContext*
+TestExtensionsBrowserClient::GetRedirectedContextInIncognito(
+    content::BrowserContext* context,
+    bool force_guest_profile,
+    bool force_system_profile) {
+  return GetOriginalContext(context);
+}
+
+content::BrowserContext*
+TestExtensionsBrowserClient::GetContextForRegularAndIncognito(
+    content::BrowserContext* context,
+    bool force_guest_profile,
+    bool force_system_profile) {
+  return context;
+}
+
+content::BrowserContext* TestExtensionsBrowserClient::GetRegularProfile(
+    content::BrowserContext* context,
+    bool force_guest_profile,
+    bool force_system_profile) {
+  // Default implementation of
+  // `BrowserContextKeyedServiceFactory::GetBrowserContextToUse()`.
+  return context->IsOffTheRecord() ? nullptr : context;
+}
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 std::string TestExtensionsBrowserClient::GetUserIdHashFromContext(
     content::BrowserContext* context) {
-  if (context != main_context_ || !chromeos::LoginState::IsInitialized())
+  if (context != main_context_ || !ash::LoginState::IsInitialized())
     return "";
-  return chromeos::LoginState::Get()->primary_user_hash();
+  return ash::LoginState::Get()->primary_user_hash();
+}
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+bool TestExtensionsBrowserClient::IsFromMainProfile(
+    content::BrowserContext* context) {
+  return context == main_context_;
 }
 #endif
 
@@ -130,16 +163,15 @@ void TestExtensionsBrowserClient::LoadResourceFromResourceBundle(
     mojo::PendingReceiver<network::mojom::URLLoader> loader,
     const base::FilePath& resource_relative_path,
     int resource_id,
-    const std::string& content_security_policy,
-    mojo::PendingRemote<network::mojom::URLLoaderClient> client,
-    bool send_cors_header) {
+    scoped_refptr<net::HttpResponseHeaders> headers,
+    mojo::PendingRemote<network::mojom::URLLoaderClient> client) {
   // Should not be called because GetBundleResourcePath() returned empty path.
   NOTREACHED() << "Resource is not from a bundle.";
 }
 
 bool TestExtensionsBrowserClient::AllowCrossRendererResourceLoad(
-    const GURL& url,
-    blink::mojom::ResourceType resource_type,
+    const network::ResourceRequest& request,
+    network::mojom::RequestDestination destination,
     ui::PageTransition page_transition,
     int child_id,
     bool is_incognito,
@@ -165,7 +197,7 @@ ProcessManagerDelegate* TestExtensionsBrowserClient::GetProcessManagerDelegate()
 
 std::unique_ptr<ExtensionHostDelegate>
 TestExtensionsBrowserClient::CreateExtensionHostDelegate() {
-  return std::unique_ptr<ExtensionHostDelegate>();
+  return nullptr;
 }
 
 bool TestExtensionsBrowserClient::DidVersionUpdate(BrowserContext* context) {
@@ -220,7 +252,7 @@ TestExtensionsBrowserClient::GetComponentExtensionResourceManager() {
 void TestExtensionsBrowserClient::BroadcastEventToRenderers(
     events::HistogramValue histogram_value,
     const std::string& event_name,
-    std::unique_ptr<base::ListValue> args,
+    base::Value::List args,
     bool dispatch_to_off_the_record_profiles) {}
 
 ExtensionCache* TestExtensionsBrowserClient::GetExtensionCache() {

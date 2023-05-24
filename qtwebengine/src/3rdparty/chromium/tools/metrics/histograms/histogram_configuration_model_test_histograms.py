@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -84,6 +84,7 @@ PRETTY_XML = """
   </obsolete>
   <owner>owner1@chromium.org</owner>
   <owner>owner2@chromium.org</owner>
+  <component>Component&gt;Subcomponent</component>
   <summary>Summary text</summary>
 </histogram>
 
@@ -119,6 +120,7 @@ XML_WRONG_ATTRIBUTE_ORDER = """
   </obsolete>
   <owner>owner1@chromium.org</owner>
   <owner>owner2@chromium.org</owner>
+  <component>Component&gt;Subcomponent</component>
   <summary>Summary text</summary>
 </histogram>
 
@@ -189,6 +191,7 @@ XML_WRONG_INDENT = """
     </obsolete>
       <owner>owner1@chromium.org</owner>
       <owner>owner2@chromium.org</owner>
+      <component>Component&gt;Subcomponent</component>
     <summary>Summary text</summary>
   </histogram>
 
@@ -224,6 +227,9 @@ XML_WRONG_SINGLELINE = """
     owner1@chromium.org
   </owner>
   <owner>owner2@chromium.org</owner>
+  <component>
+    Component&gt;Subcomponent
+  </component>
   <summary>
     Summary text
   </summary>
@@ -259,6 +265,7 @@ XML_WRONG_LINEBREAK = """
   </obsolete>
   <owner>owner1@chromium.org</owner>
   <owner>owner2@chromium.org</owner>
+  <component>Component&gt;Subcomponent</component>
   <summary>Summary text</summary>
 
 </histogram>
@@ -292,6 +299,7 @@ XML_WRONG_CHILDREN_ORDER = """
   </obsolete>
   <summary>Summary text</summary>
   <owner>owner1@chromium.org</owner>
+  <component>Component&gt;Subcomponent</component>
   <owner>owner2@chromium.org</owner>
 </histogram>
 
@@ -627,6 +635,38 @@ class HistogramXmlTest(unittest.TestCase):
     result = histogram_configuration_model.PrettifyTree(
         etree_util.ParseXMLString(input_xml))
     self.assertMultiLineEqual(result.strip(), expected_xml)
+
+  def testIndividualTagParsing_improvement(self):
+    """Tests that <improvement> has the right format and can be parsed."""
+
+    improvement_tag_good = '<improvement direction="HIGHER_IS_BETTER"/>'
+    improvement_tag_bad = ' <improvement>HIGHER_IS_BETTER</improvement>'
+    config = """
+<histogram-configuration>
+
+<histograms>
+
+<histogram name="Histogram.With.ImprovementTag" expires_after="M100">
+  <owner>owner1@chromium.org</owner>
+  {improvement_tag}
+  <summary>The improvement tag says higher value is good!</summary>
+</histogram>
+
+</histograms>
+
+</histogram-configuration>"""
+
+    config_good = config.format(improvement_tag=improvement_tag_good)
+    config_bad = config.format(improvement_tag=improvement_tag_bad)
+
+    result = histogram_configuration_model.PrettifyTree(
+        etree_util.ParseXMLString(config_good))
+    self.assertMultiLineEqual(result.strip(), config_good.strip())
+
+    with self.assertRaisesRegex(ValueError,
+                                'direction "" does not match regex'):
+      histogram_configuration_model.PrettifyTree(
+          etree_util.ParseXMLString(config_bad))
 
 
 if __name__ == '__main__':

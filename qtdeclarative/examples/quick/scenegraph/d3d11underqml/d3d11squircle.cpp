@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "d3d11squircle.h"
 #include <QtCore/QFile>
@@ -210,7 +163,7 @@ void SquircleRenderer::frameStart()
     QSGRendererInterface *rif = m_window->rendererInterface();
 
     // We are not prepared for anything other than running with the RHI and its D3D11 backend.
-    Q_ASSERT(rif->graphicsApi() == QSGRendererInterface::Direct3D11Rhi);
+    Q_ASSERT(rif->graphicsApi() == QSGRendererInterface::Direct3D11);
 
     m_device = reinterpret_cast<ID3D11Device *>(rif->getResource(m_window, QSGRendererInterface::DeviceResource));
     Q_ASSERT(m_device);
@@ -245,7 +198,7 @@ void SquircleRenderer::mainPassRecordingStart()
         memcpy(mp.pData, &t, 4);
         m_context->Unmap(m_cbuf, 0);
     } else {
-        qFatal("Failed to map constant buffer: 0x%x", hr);
+        qFatal("Failed to map constant buffer: 0x%x", uint(hr));
     }
 
     D3D11_VIEWPORT v;
@@ -353,11 +306,11 @@ void SquircleRenderer::init()
 
     HRESULT hr = m_device->CreateVertexShader(vs.constData(), vs.size(), nullptr, &m_vs);
     if (FAILED(hr))
-        qFatal("Failed to create vertex shader: 0x%x", hr);
+        qFatal("Failed to create vertex shader: 0x%x", uint(hr));
 
     hr = m_device->CreatePixelShader(fs.constData(), fs.size(), nullptr, &m_ps);
     if (FAILED(hr))
-        qFatal("Failed to create pixel shader: 0x%x", hr);
+        qFatal("Failed to create pixel shader: 0x%x", uint(hr));
 
     D3D11_BUFFER_DESC bufDesc;
     memset(&bufDesc, 0, sizeof(bufDesc));
@@ -366,7 +319,7 @@ void SquircleRenderer::init()
     bufDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     hr = m_device->CreateBuffer(&bufDesc, nullptr, &m_vbuf);
     if (FAILED(hr))
-        qFatal("Failed to create buffer: 0x%x", hr);
+        qFatal("Failed to create buffer: 0x%x", uint(hr));
 
     m_context->UpdateSubresource(m_vbuf, 0, nullptr, vertices, 0, 0);
 
@@ -376,7 +329,7 @@ void SquircleRenderer::init()
     bufDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     hr = m_device->CreateBuffer(&bufDesc, nullptr, &m_cbuf);
     if (FAILED(hr))
-        qFatal("Failed to create buffer: 0x%x", hr);
+        qFatal("Failed to create buffer: 0x%x", uint(hr));
 
     D3D11_INPUT_ELEMENT_DESC inputDesc;
     memset(&inputDesc, 0, sizeof(inputDesc));
@@ -389,7 +342,7 @@ void SquircleRenderer::init()
     inputDesc.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
     hr = m_device->CreateInputLayout(&inputDesc, 1, vs.constData(), vs.size(), &m_inputLayout);
     if (FAILED(hr))
-        qFatal("Failed to create input layout: 0x%x", hr);
+        qFatal("Failed to create input layout: 0x%x", uint(hr));
 
     D3D11_RASTERIZER_DESC rastDesc;
     memset(&rastDesc, 0, sizeof(rastDesc));
@@ -397,13 +350,13 @@ void SquircleRenderer::init()
     rastDesc.CullMode = D3D11_CULL_NONE;
     hr = m_device->CreateRasterizerState(&rastDesc, &m_rastState);
     if (FAILED(hr))
-        qFatal("Failed to create rasterizer state: 0x%x", hr);
+        qFatal("Failed to create rasterizer state: 0x%x", uint(hr));
 
     D3D11_DEPTH_STENCIL_DESC dsDesc;
     memset(&dsDesc, 0, sizeof(dsDesc));
     hr = m_device->CreateDepthStencilState(&dsDesc, &m_dsState);
     if (FAILED(hr))
-        qFatal("Failed to create depth/stencil state: 0x%x", hr);
+        qFatal("Failed to create depth/stencil state: 0x%x", uint(hr));
 
     D3D11_BLEND_DESC blendDesc;
     memset(&blendDesc, 0, sizeof(blendDesc));
@@ -421,7 +374,7 @@ void SquircleRenderer::init()
     blendDesc.RenderTarget[0] = blend;
     hr = m_device->CreateBlendState(&blendDesc, &m_blendState);
     if (FAILED(hr))
-        qFatal("Failed to create blend state: 0x%x", hr);
+        qFatal("Failed to create blend state: 0x%x", uint(hr));
 }
 
 #include "d3d11squircle.moc"

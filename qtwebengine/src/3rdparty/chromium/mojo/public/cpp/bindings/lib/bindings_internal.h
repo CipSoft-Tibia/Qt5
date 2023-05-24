@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,13 @@
 
 #include <functional>
 #include <type_traits>
+#include <utility>
 
 #include "mojo/public/cpp/bindings/enum_traits.h"
 #include "mojo/public/cpp/bindings/interface_id.h"
 #include "mojo/public/cpp/bindings/lib/template_util.h"
 #include "mojo/public/cpp/platform/platform_handle.h"
-#include "mojo/public/cpp/system/core.h"
+#include "mojo/public/cpp/system/handle.h"
 
 namespace mojo {
 
@@ -57,7 +58,7 @@ class Map_Data;
 using String_Data = Array_Data<char>;
 
 inline size_t Align(size_t size) {
-  return (size + 7) & ~0x7;
+  return (size + 7) & ~size_t{7};
 }
 
 inline bool IsAligned(const void* ptr) {
@@ -167,20 +168,14 @@ T FetchAndReset(T* ptr) {
   return temp;
 }
 
+template <typename T, typename SFINAE = void>
+struct IsUnionDataType : std::false_type {
+  static_assert(sizeof(T), "T must be a complete type.");
+};
+
 template <typename T>
-struct IsUnionDataType {
- private:
-  template <typename U>
-  static YesType Test(const typename U::MojomUnionDataType*);
-
-  template <typename U>
-  static NoType Test(...);
-
-  EnsureTypeIsComplete<T> check_t_;
-
- public:
-  static const bool value =
-      sizeof(Test<T>(0)) == sizeof(YesType) && !IsConst<T>::value;
+struct IsUnionDataType<T, typename T::MojomUnionDataType> {
+  static const bool value = !std::is_const_v<T>;
 };
 
 enum class MojomTypeCategory : uint32_t {
@@ -334,6 +329,23 @@ T ConvertEnumValue(MojomType input) {
   bool result = EnumTraits<MojomType, T>::FromMojom(input, &output);
   DCHECK(result);
   return output;
+}
+
+template <typename MojomType, typename SFINAE = void>
+struct EnumKnownValueTraits {
+  static MojomType ToKnownValue(MojomType in) { return in; }
+};
+
+template <typename MojomType>
+struct EnumKnownValueTraits<
+    MojomType,
+    std::void_t<decltype(ToKnownEnumValue(std::declval<MojomType>()))>> {
+  static MojomType ToKnownValue(MojomType in) { return ToKnownEnumValue(in); }
+};
+
+template <typename MojomType>
+MojomType ToKnownEnumValueHelper(MojomType in) {
+  return EnumKnownValueTraits<MojomType>::ToKnownValue(in);
 }
 
 }  // namespace internal

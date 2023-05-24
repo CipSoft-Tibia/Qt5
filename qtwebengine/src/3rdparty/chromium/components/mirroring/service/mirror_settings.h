@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include "base/component_export.h"
 #include "base/time/time.h"
-#include "base/values.h"
 #include "media/capture/video_capture_types.h"
 #include "media/cast/cast_config.h"
 
@@ -17,6 +16,10 @@ class AudioParameters;
 
 namespace mirroring {
 
+// The interval since the last video frame was received from the video source,
+// before requesting a refresh frame.
+constexpr base::TimeDelta kFrameRefreshInterval = base::Milliseconds(50);
+
 // Holds the default settings for a mirroring session. This class provides the
 // audio/video configs that this sender supports. And also provides the
 // audio/video constraints used for capturing.
@@ -25,6 +28,10 @@ namespace mirroring {
 class COMPONENT_EXPORT(MIRRORING_SERVICE) MirrorSettings {
  public:
   MirrorSettings();
+
+  MirrorSettings(const MirrorSettings&) = delete;
+  MirrorSettings& operator=(const MirrorSettings&) = delete;
+
   ~MirrorSettings();
 
   // Get the audio/video config with given codec.
@@ -48,14 +55,18 @@ class COMPONENT_EXPORT(MIRRORING_SERVICE) MirrorSettings {
   int max_width() const { return max_width_; }
   int max_height() const { return max_height_; }
 
+  base::TimeDelta refresh_interval() const { return refresh_interval_; }
+  void set_refresh_interval(base::TimeDelta refresh_interval) {
+    refresh_interval_ = refresh_interval;
+  }
+
  private:
   const int min_width_;
   const int min_height_;
   int max_width_;
   int max_height_;
   bool enable_sender_side_letterboxing_ = true;
-
-  DISALLOW_COPY_AND_ASSIGN(MirrorSettings);
+  base::TimeDelta refresh_interval_{kFrameRefreshInterval};
 };
 
 }  // namespace mirroring

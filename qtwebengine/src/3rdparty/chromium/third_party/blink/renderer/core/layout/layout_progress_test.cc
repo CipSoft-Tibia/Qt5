@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,8 +25,8 @@ TEST_F(LayoutProgressTest, AnimationScheduling) {
   UpdateAllLifecyclePhasesForTest();
   Element* progress_element =
       GetDocument().getElementById(AtomicString("progressElement"));
-  LayoutProgress* layout_progress =
-      ToLayoutProgress(progress_element->GetLayoutObject());
+  auto* layout_progress =
+      To<LayoutProgress>(progress_element->GetLayoutObject());
 
   // Verify that we do not schedule a timer for a determinant progress element
   EXPECT_FALSE(LayoutProgressTest::IsAnimationTimerActive(layout_progress));

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,68 +6,48 @@
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_CLIENT_HINTS_CLIENT_HINTS_H_
 
 #include <stddef.h>
+#include <set>
 #include <string>
 
-#include "base/optional.h"
+#include "base/containers/flat_map.h"
 #include "services/network/public/mojom/web_client_hints_types.mojom-shared.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/common_export.h"
-#include "third_party/blink/public/mojom/feature_policy/feature_policy_feature.mojom.h"
+#include "third_party/blink/public/mojom/permissions_policy/permissions_policy_feature.mojom.h"
 
 class GURL;
 
 namespace blink {
 
-class FeaturePolicy;
+class PermissionsPolicy;
 
-// Mapping from WebClientHintsType to the hint's outgoing header
-// (e.g. kLang => "sec-ch-lang"). The ordering matches the ordering of enums in
-// services/network/public/mojom/web_client_hints_types.mojom
-BLINK_COMMON_EXPORT extern const char* const kClientHintsHeaderMapping[];
+using ClientHintToPolicyFeatureMap =
+    base::flat_map<network::mojom::WebClientHintsType,
+                   mojom::PermissionsPolicyFeature>;
 
-// Mapping from WebClientHintsType to the corresponding Feature-Policy (e.g.
+using PolicyFeatureToClientHintMap =
+    base::flat_map<mojom::PermissionsPolicyFeature,
+                   std::set<network::mojom::WebClientHintsType>>;
+
+// Mapping from WebClientHintsType to the corresponding Permissions-Policy (e.g.
 // kDpr => kClientHintsDPR). The order matches the header mapping and the enum
 // order in services/network/public/mojom/web_client_hints_types.mojom
-BLINK_COMMON_EXPORT extern const mojom::FeaturePolicyFeature
-    kClientHintsFeaturePolicyMapping[];
+BLINK_COMMON_EXPORT const ClientHintToPolicyFeatureMap&
+GetClientHintToPolicyFeatureMap();
 
-// The size of the mapping arrays.
-BLINK_COMMON_EXPORT extern const size_t kClientHintsMappingsCount;
-
-// Mapping from WebEffectiveConnectionType to the header value. This value is
-// sent to the origins and is returned by the JavaScript API. The ordering
-// should match the ordering in //net/nqe/effective_connection_type.h and
-// public/platform/WebEffectiveConnectionType.h.
-// This array should be updated if either of the enums in
-// effective_connection_type.h or WebEffectiveConnectionType.h are updated.
-BLINK_COMMON_EXPORT extern const char* const
-    kWebEffectiveConnectionTypeMapping[];
-
-BLINK_COMMON_EXPORT extern const size_t kWebEffectiveConnectionTypeMappingCount;
-
-// Given a comma-separated, ordered list of language codes, return the list
-// formatted as a structured header, as described in
-// https://tools.ietf.org/html/draft-west-lang-client-hint-00#section-2.1
-std::string BLINK_COMMON_EXPORT
-SerializeLangClientHint(const std::string& raw_language_list);
-
-// Filters a parsed accept-CH list to exclude clients hints support for which
-// is currently conditional on experiments:
-// Language hints will only be kept if |permit_lang_hints| is true;
-// UA-related ones if |permit_ua_hints| is.
-BLINK_COMMON_EXPORT
-base::Optional<std::vector<network::mojom::WebClientHintsType>> FilterAcceptCH(
-    base::Optional<std::vector<network::mojom::WebClientHintsType>> in,
-    bool permit_lang_hints,
-    bool permit_ua_hints);
+// Mapping from Permissions-Policy to the corresponding WebClientHintsType(s)
+// (e.g. kClientHintsDPR => {kDpr, kDpr_DEPRECATED}).
+BLINK_COMMON_EXPORT const PolicyFeatureToClientHintMap&
+GetPolicyFeatureToClientHintMap();
 
 // Indicates that a hint is sent by default, regardless of an opt-in.
 BLINK_COMMON_EXPORT
 bool IsClientHintSentByDefault(network::mojom::WebClientHintsType type);
 
 // Add a list of Client Hints headers to be removed to the output vector, based
-// on FeaturePolicy and the url's origin.
+// on Permissions Policy and the url's origin.
 BLINK_COMMON_EXPORT void FindClientHintsToRemove(
-    const FeaturePolicy* feature_policy,
+    const PermissionsPolicy* permissions_policy,
     const GURL& url,
     std::vector<std::string>* removed_headers);
 

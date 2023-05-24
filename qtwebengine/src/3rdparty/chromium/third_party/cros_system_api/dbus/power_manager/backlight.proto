@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,10 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package power_manager;
-option go_package = "power_manager_proto";
+option go_package = "chromiumos/system_api/power_manager_proto";
 
 // See
-// https://chromium.googlesource.com/chromiumos/platform2/+/master/power_manager/docs/screen_brightness.md
+// https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/power_manager/docs/screen_brightness.md
 // for information about the mapping between brightness percents and backlight
 // hardware levels.
 
@@ -78,7 +78,12 @@ message BacklightBrightnessChange {
     MODEL = 9;
     // A notification that is allowed to wake the device was created or updated.
     WAKE_NOTIFICATION = 10;
-    // Next value to use: 11
+    // Backlights were toggled off by the user (typically due to the
+    // user pressing the keyboard backlight toggle keyboard key).
+    USER_TOGGLED_OFF = 11;
+    // Backlights are toggled on by user.
+    USER_TOGGLED_ON = 12;
+    // Next value to use: 13
   }
   optional Cause cause = 2;
 

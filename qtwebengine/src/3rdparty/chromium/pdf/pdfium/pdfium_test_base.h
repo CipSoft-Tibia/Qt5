@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,11 @@
 #include <stddef.h>
 
 #include <memory>
+#include <vector>
 
 #include "base/files/file_path.h"
+#include "base/memory/raw_ptr.h"
+#include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace chrome_pdf {
@@ -19,15 +22,15 @@ class PDFiumPage;
 class TestClient;
 class TestDocumentLoader;
 
-class PDFiumTestBase : public testing::Test {
+class PDFiumTestBase : public testing::TestWithParam<bool> {
  public:
   PDFiumTestBase();
   PDFiumTestBase(const PDFiumTestBase&) = delete;
   PDFiumTestBase& operator=(const PDFiumTestBase&) = delete;
   ~PDFiumTestBase() override;
 
-  // Returns true when actually running in a Chrome OS environment.
-  static bool IsRunningOnChromeOS();
+  // Returns true in test environments that use //third_party/test_fonts.
+  static bool UsingTestFonts();
 
  protected:
   // Result of calling InitializeEngineWithoutLoading().
@@ -37,19 +40,22 @@ class PDFiumTestBase : public testing::Test {
     InitializeEngineResult& operator=(InitializeEngineResult&& other) noexcept;
     ~InitializeEngineResult();
 
+    // Completes loading the document.
+    void FinishLoading();
+
     // Initialized engine.
     std::unique_ptr<PDFiumEngine> engine;
 
     // Corresponding test document loader.
-    TestDocumentLoader* document_loader;
+    raw_ptr<TestDocumentLoader> document_loader;
   };
 
   // testing::Test:
   void SetUp() override;
   void TearDown() override;
 
-  // Initializes a PDFiumEngine for use in testing with |client|. Loads a PDF
-  // named |pdf_name|. See TestDocumentLoader for more info about |pdf_name|.
+  // Initializes a PDFiumEngine for use in testing with `client`. Loads a PDF
+  // named `pdf_name`. See TestDocumentLoader for more info about `pdf_name`.
   std::unique_ptr<PDFiumEngine> InitializeEngine(
       TestClient* client,
       const base::FilePath::CharType* pdf_name);
@@ -69,6 +75,17 @@ class PDFiumTestBase : public testing::Test {
 
  private:
   void InitializePDFium();
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  base::FilePath test_fonts_path_;
+#endif
+
+  // Stores custom font paths, if any, in a format compatible with
+  // FPDF_InitLibraryWithConfig(). This must outlive `test_fonts_path_`, as it
+  // may point to it. This must remain valid while PDFium is active, from when
+  // FPDF_InitLibraryWithConfig() first gets called to when
+  // FPDF_DestroyLibrary() gets called.
+  std::vector<const char*> font_paths_;
 };
 
 }  // namespace chrome_pdf

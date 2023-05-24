@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 #define COMPONENTS_OFFLINE_PAGES_CORE_VISUALS_DECODER_H_
 
 #include <string>
-#include "base/callback.h"
+#include "base/functional/callback.h"
 
 namespace gfx {
 class Image;

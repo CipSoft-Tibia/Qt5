@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 
 #ifndef CORE_FPDFAPI_PAGE_CPDF_ICCPROFILE_H_
 #define CORE_FPDFAPI_PAGE_CPDF_ICCPROFILE_H_
+
+#include <stdint.h>
 
 #include <memory>
 
@@ -16,28 +18,35 @@
 class CPDF_Stream;
 
 namespace fxcodec {
-class CLcmsCmm;
+class IccTransform;
 }  // namespace fxcodec
 
 class CPDF_IccProfile final : public Retainable, public Observable {
  public:
   CONSTRUCT_VIA_MAKE_RETAIN;
 
-  const CPDF_Stream* GetStream() const { return m_pStream.Get(); }
   bool IsValid() const { return IsSRGB() || IsSupported(); }
   bool IsSRGB() const { return m_bsRGB; }
   bool IsSupported() const { return !!m_Transform; }
-  fxcodec::CLcmsCmm* transform() { return m_Transform.get(); }
   uint32_t GetComponents() const { return m_nSrcComponents; }
 
+  bool IsNormal() const;
+  void Translate(pdfium::span<const float> pSrcValues,
+                 pdfium::span<float> pDestValues);
+  void TranslateScanline(pdfium::span<uint8_t> pDest,
+                         pdfium::span<const uint8_t> pSrc,
+                         int pixels);
+
  private:
-  CPDF_IccProfile(const CPDF_Stream* pStream, pdfium::span<const uint8_t> span);
+  // Keeps stream alive for the duration of the CPDF_IccProfile.
+  CPDF_IccProfile(RetainPtr<const CPDF_Stream> pStream,
+                  pdfium::span<const uint8_t> span);
   ~CPDF_IccProfile() override;
 
   const bool m_bsRGB;
   uint32_t m_nSrcComponents = 0;
-  RetainPtr<const CPDF_Stream> const m_pStream;
-  std::unique_ptr<fxcodec::CLcmsCmm> m_Transform;
+  RetainPtr<const CPDF_Stream> const m_pStream;  // Used by `m_Transform`.
+  std::unique_ptr<fxcodec::IccTransform> m_Transform;
 };
 
 #endif  // CORE_FPDFAPI_PAGE_CPDF_ICCPROFILE_H_

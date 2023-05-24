@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2011-2012 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2011 Sergey Belyashov <Sergey.Belyashov@gmail.com>
-** Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSerialPort module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011-2012 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (C) 2011 Sergey Belyashov <Sergey.Belyashov@gmail.com>
+// Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSERIALPORT_P_H
 #define QSERIALPORT_P_H
@@ -55,14 +19,17 @@
 
 #include "qserialport.h"
 
-#include <private/qiodevice_p.h>
 #include <qdeadlinetimer.h>
+
+#include <private/qiodevice_p.h>
+#include <private/qproperty_p.h>
+
+#include <memory>
 
 #if defined(Q_OS_WIN32)
 #  include <qt_windows.h>
 #elif defined(Q_OS_UNIX)
 #  include <QtCore/qlockfile.h>
-#  include <QtCore/qscopedpointer.h>
 #  include <QtCore/qfileinfo.h>
 #  include <QtCore/qstringlist.h>
 #  include <limits.h>
@@ -104,6 +71,7 @@ struct serial_struct {
 
 QT_BEGIN_NAMESPACE
 
+class QWinOverlappedIoNotifier;
 class QTimer;
 class QSocketNotifier;
 
@@ -114,7 +82,7 @@ QString serialPortLockFilePath(const QString &portName);
 class QSerialPortErrorInfo
 {
 public:
-    explicit QSerialPortErrorInfo(QSerialPort::SerialPortError newErrorCode = QSerialPort::UnknownError,
+    QSerialPortErrorInfo(QSerialPort::SerialPortError newErrorCode = QSerialPort::UnknownError,
                                   const QString &newErrorString = QString());
     QSerialPort::SerialPortError errorCode = QSerialPort::UnknownError;
     QString errorString;
@@ -122,8 +90,9 @@ public:
 
 class QSerialPortPrivate : public QIODevicePrivate
 {
-    Q_DECLARE_PUBLIC(QSerialPort)
 public:
+    Q_DECLARE_PUBLIC(QSerialPort)
+
     QSerialPortPrivate();
 
     bool open(QIODevice::OpenMode mode);
@@ -164,16 +133,42 @@ public:
     static QList<qint32> standardBaudRates();
 
     qint64 readBufferMaxSize = 0;
-    QSerialPort::SerialPortError error = QSerialPort::NoError;
+
+    void setBindableError(QSerialPort::SerialPortError error)
+    { setError(error); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QSerialPortPrivate, QSerialPort::SerialPortError, error,
+        &QSerialPortPrivate::setBindableError, QSerialPort::NoError)
+
     QString systemLocation;
     qint32 inputBaudRate = QSerialPort::Baud9600;
     qint32 outputBaudRate = QSerialPort::Baud9600;
-    QSerialPort::DataBits dataBits = QSerialPort::Data8;
-    QSerialPort::Parity parity = QSerialPort::NoParity;
-    QSerialPort::StopBits stopBits = QSerialPort::OneStop;
-    QSerialPort::FlowControl flowControl = QSerialPort::NoFlowControl;
+
+    bool setBindableDataBits(QSerialPort::DataBits dataBits)
+    { return q_func()->setDataBits(dataBits); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QSerialPortPrivate, QSerialPort::DataBits, dataBits,
+        &QSerialPortPrivate::setBindableDataBits, QSerialPort::Data8)
+
+    bool setBindableParity(QSerialPort::Parity parity)
+    { return q_func()->setParity(parity); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QSerialPortPrivate, QSerialPort::Parity, parity,
+        &QSerialPortPrivate::setBindableParity, QSerialPort::NoParity)
+
+    bool setBindableStopBits(QSerialPort::StopBits stopBits)
+    { return q_func()->setStopBits(stopBits); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QSerialPortPrivate, QSerialPort::StopBits, stopBits,
+        &QSerialPortPrivate::setBindableStopBits, QSerialPort::OneStop)
+
+    bool setBindableFlowControl(QSerialPort::FlowControl flowControl)
+    { return q_func()->setFlowControl(flowControl); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QSerialPortPrivate, QSerialPort::FlowControl, flowControl,
+        &QSerialPortPrivate::setBindableFlowControl, QSerialPort::NoFlowControl)
+
     bool settingsRestoredOnClose = true;
-    bool isBreakEnabled = false;
+
+    bool setBindableBreakEnabled(bool isBreakEnabled)
+    { return q_func()->setBreakEnabled(isBreakEnabled); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QSerialPortPrivate, bool, isBreakEnabled,
+        &QSerialPortPrivate::setBindableBreakEnabled, false)
 
     bool startAsyncRead();
 
@@ -181,6 +176,7 @@ public:
 
     bool setDcb(DCB *dcb);
     bool getDcb(DCB *dcb);
+    OVERLAPPED *waitForNotified(QDeadlineTimer deadline);
 
     qint64 queuedBytesCount(QSerialPort::Direction direction) const;
 
@@ -190,14 +186,9 @@ public:
 
     bool startAsyncCommunication();
     bool _q_startAsyncWrite();
-    void handleNotification(DWORD bytesTransferred, DWORD errorCode,
-                            OVERLAPPED *overlapped);
+    void _q_notified(DWORD numberOfBytes, DWORD errorCode, OVERLAPPED *overlapped);
 
     void emitReadyRead();
-
-    static void CALLBACK ioCompletionRoutine(
-            DWORD errorCode, DWORD bytesTransfered,
-            OVERLAPPED *overlappedBase);
 
     DCB restoredDcb;
     COMMTIMEOUTS currentCommTimeouts;
@@ -208,12 +199,11 @@ public:
     bool communicationStarted = false;
     bool writeStarted = false;
     bool readStarted = false;
-    qint64 writeBytesTransferred = 0;
-    qint64 readBytesTransferred = 0;
+    QWinOverlappedIoNotifier *notifier = nullptr;
     QTimer *startAsyncWriteTimer = nullptr;
-    class Overlapped *communicationCompletionOverlapped = nullptr;
-    class Overlapped *readCompletionOverlapped = nullptr;
-    class Overlapped *writeCompletionOverlapped = nullptr;
+    OVERLAPPED communicationOverlapped;
+    OVERLAPPED readCompletionOverlapped;
+    OVERLAPPED writeCompletionOverlapped;
     DWORD triggeredEventMask = 0;
 
 #elif defined(Q_OS_UNIX)
@@ -262,7 +252,7 @@ public:
     qint64 pendingBytesWritten = 0;
     bool writeSequenceStarted = false;
 
-    QScopedPointer<QLockFile> lockFileScopedPointer;
+    std::unique_ptr<QLockFile> lockFileScopedPointer;
 
 #endif
 };

@@ -31,9 +31,9 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_DOM_EDITOR_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_DOM_EDITOR_H_
 
-#include "base/macros.h"
-#include "third_party/blink/renderer/core/inspector/protocol/Forward.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/core/inspector/protocol/forward.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -43,11 +43,12 @@ class Element;
 class ExceptionState;
 class InspectorHistory;
 class Node;
-class Text;
 
 class DOMEditor final : public GarbageCollected<DOMEditor> {
  public:
   explicit DOMEditor(InspectorHistory*);
+  DOMEditor(const DOMEditor&) = delete;
+  DOMEditor& operator=(const DOMEditor&) = delete;
 
   void Trace(Visitor*) const;
 
@@ -65,7 +66,6 @@ class DOMEditor final : public GarbageCollected<DOMEditor> {
                     const String& html,
                     Node** new_node,
                     ExceptionState&);
-  bool ReplaceWholeText(Text*, const String& text, ExceptionState&);
   bool ReplaceChild(ContainerNode* parent_node,
                     Node* new_node,
                     Node* old_node,
@@ -81,7 +81,7 @@ class DOMEditor final : public GarbageCollected<DOMEditor> {
                                   const String& value);
   protocol::Response RemoveAttribute(Element*, const String& name);
   protocol::Response SetOuterHTML(Node*, const String& html, Node** new_node);
-  protocol::Response ReplaceWholeText(Text*, const String& text);
+  protocol::Response SetNodeValue(Node* parent_node, const String& value);
 
  private:
   class DOMAction;
@@ -90,15 +90,12 @@ class DOMEditor final : public GarbageCollected<DOMEditor> {
   class RemoveAttributeAction;
   class SetAttributeAction;
   class SetOuterHTMLAction;
-  class ReplaceWholeTextAction;
   class ReplaceChildNodeAction;
   class SetNodeValueAction;
 
   Member<InspectorHistory> history_;
-
-  DISALLOW_COPY_AND_ASSIGN(DOMEditor);
 };
 
 }  // namespace blink
 
-#endif  // !defined(DOMEditor_h)
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_DOM_EDITOR_H_

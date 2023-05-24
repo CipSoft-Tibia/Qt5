@@ -1,7 +1,8 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/linux/pkg_config.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//build/shim_headers.gni")
 
@@ -15,6 +16,7 @@ config("re2_config") {
 
 static_library("bundled_re2") {
   sources = [
+    "src/re2/bitmap256.cc",
     "src/re2/bitmap256.h",
     "src/re2/bitstate.cc",
     "src/re2/compile.cc",
@@ -81,9 +83,15 @@ shim_headers("re2_shim") {
   ]
 }
 
-source_set("system_re2") {
-  deps = [ ":re2_shim" ]
-  libs = [ "re2" ]
+if (use_system_re2) {
+  pkg_config("re2_from_pkgconfig") {
+    packages = [ "re2" ]
+  }
+
+  source_set("system_re2") {
+    deps = [ ":re2_shim" ]
+    public_configs = [ ":re2_from_pkgconfig" ]
+  }
 }
 
 group("re2") {

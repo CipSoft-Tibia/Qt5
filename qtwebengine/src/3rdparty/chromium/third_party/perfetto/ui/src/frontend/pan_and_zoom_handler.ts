@@ -106,7 +106,7 @@ export class PanAndZoomHandler {
     onZoomed,
     editSelection,
     onSelection,
-    endSelection
+    endSelection,
   }: {
     element: HTMLElement,
     contentOffsetX: number,
@@ -211,8 +211,9 @@ export class PanAndZoomHandler {
   }
 
   private onMouseMove(e: MouseEvent) {
-    const pageOffset =
-        globals.frontendLocalState.sidebarVisible ? this.contentOffsetX : 0;
+    const pageOffset = globals.state.sidebarVisible && !globals.hideSidebar ?
+        this.contentOffsetX :
+        0;
     // We can't use layerX here because there are many layers in this element.
     this.mousePositionX = e.clientX - pageOffset;
     // Only change the cursor when hovering, the DragGestureHandler handles
@@ -242,6 +243,10 @@ export class PanAndZoomHandler {
 
   private onKeyDown(e: KeyboardEvent) {
     this.updateShift(e.shiftKey);
+
+    // Handle key events that are not pan or zoom.
+    if (handleKey(e, true)) return;
+
     if (keyToPan(e) !== Pan.None) {
       if (this.panning !== keyToPan(e)) {
         this.panAnimation.stop();
@@ -261,25 +266,23 @@ export class PanAndZoomHandler {
       this.zooming = keyToZoom(e);
       this.zoomAnimation.start(DEFAULT_ANIMATION_DURATION);
     }
-
-    // Handle key events that are not pan or zoom.
-    handleKey(e, true);
   }
 
   private onKeyUp(e: KeyboardEvent) {
     this.updateShift(e.shiftKey);
+
+    // Handle key events that are not pan or zoom.
+    if (handleKey(e, false)) return;
+
     if (keyToPan(e) === this.panning) {
       this.panning = Pan.None;
     }
     if (keyToZoom(e) === this.zooming) {
       this.zooming = Zoom.None;
     }
-
-    // Handle key events that are not pan or zoom.
-    handleKey(e, false);
   }
 
-  // TODO(taylori): Move this shift handling into the viewer page.
+  // TODO(hjd): Move this shift handling into the viewer page.
   private updateShift(down: boolean) {
     if (down === this.shiftDown) return;
     this.shiftDown = down;

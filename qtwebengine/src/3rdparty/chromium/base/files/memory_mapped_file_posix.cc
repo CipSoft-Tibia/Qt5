@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,9 +19,9 @@
 
 namespace base {
 
-MemoryMappedFile::MemoryMappedFile() : data_(nullptr), length_(0) {}
+MemoryMappedFile::MemoryMappedFile() = default;
 
-#if !defined(OS_NACL)
+#if !BUILDFLAG(IS_NACL)
 bool MemoryMappedFile::MapFileRegionToMemory(
     const MemoryMappedFile::Region& region,
     Access access) {
@@ -100,11 +100,10 @@ bool MemoryMappedFile::MapFileRegionToMemory(
 void MemoryMappedFile::CloseHandles() {
   ScopedBlockingCall scoped_blocking_call(FROM_HERE, BlockingType::MAY_BLOCK);
 
-  if (data_ != nullptr)
-    munmap(data_, length_);
+  if (data_ != nullptr) {
+    munmap(data_.ExtractAsDangling(), length_);
+  }
   file_.Close();
-
-  data_ = nullptr;
   length_ = 0;
 }
 

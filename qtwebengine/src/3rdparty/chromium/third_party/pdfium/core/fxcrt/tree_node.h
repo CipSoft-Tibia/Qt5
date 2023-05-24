@@ -1,12 +1,13 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CORE_FXCRT_TREE_NODE_H_
 #define CORE_FXCRT_TREE_NODE_H_
 
-#include "core/fxcrt/fx_system.h"
-#include "third_party/base/logging.h"
+#include <stdint.h>
+
+#include "third_party/base/check.h"
 
 namespace fxcrt {
 

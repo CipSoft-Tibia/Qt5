@@ -1,13 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/core/browser/mirror_account_reconcilor_delegate.h"
 
+#include "base/containers/contains.h"
 #include "base/logging.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "components/signin/core/browser/account_reconcilor.h"
-#include "components/signin/public/base/account_consistency_method.h"
 
 namespace signin {
 
@@ -28,10 +29,6 @@ bool MirrorAccountReconcilorDelegate::IsReconcileEnabled() const {
   return reconcile_enabled_;
 }
 
-bool MirrorAccountReconcilorDelegate::IsAccountConsistencyEnforced() const {
-  return true;
-}
-
 gaia::GaiaSource MirrorAccountReconcilorDelegate::GetGaiaApiSource() const {
   return gaia::GaiaSource::kAccountReconcilorMirror;
 }
@@ -43,24 +40,16 @@ bool MirrorAccountReconcilorDelegate::ShouldAbortReconcileIfPrimaryHasError()
 
 ConsentLevel MirrorAccountReconcilorDelegate::GetConsentLevelForPrimaryAccount()
     const {
-#if defined(OS_ANDROID)
-  if (base::FeatureList::IsEnabled(kMobileIdentityConsistency)) {
-    return ConsentLevel::kNotRequired;
-  }
-#endif
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  return ConsentLevel::kSignin;
+#elif BUILDFLAG(IS_CHROMEOS_LACROS)
+  // Whenever Mirror is enabled on a Lacros Profile, the Primary Account may or
+  // may not have consented to Chrome Sync. But we want to enable
+  // `AccountReconcilor` regardless - for minting Gaia cookies.
+  return ConsentLevel::kSignin;
+#else
   return ConsentLevel::kSync;
-}
-
-CoreAccountId MirrorAccountReconcilorDelegate::GetFirstGaiaAccountForReconcile(
-    const std::vector<CoreAccountId>& chrome_accounts,
-    const std::vector<gaia::ListedAccount>& gaia_accounts,
-    const CoreAccountId& primary_account,
-    bool first_execution,
-    bool will_logout) const {
-  // Mirror only uses the primary account, and it is never empty.
-  DCHECK(!primary_account.empty());
-  DCHECK(base::Contains(chrome_accounts, primary_account));
-  return primary_account;
+#endif
 }
 
 std::vector<CoreAccountId>
@@ -77,25 +66,8 @@ MirrorAccountReconcilorDelegate::GetChromeAccountsForReconcile(
                                            gaia_accounts);
 }
 
-// TODO(https://crbug.com/1046746): Replace separate IdentityManager::Observer
-// method overrides below with a single OnPrimaryAccountChanged method and
-// inline UpdateReconcilorStatus.
-void MirrorAccountReconcilorDelegate::OnPrimaryAccountSet(
-    const CoreAccountInfo& primary_account_info) {
-  UpdateReconcilorStatus();
-}
-
-void MirrorAccountReconcilorDelegate::OnPrimaryAccountCleared(
-    const CoreAccountInfo& previous_primary_account_info) {
-  UpdateReconcilorStatus();
-}
-
-void MirrorAccountReconcilorDelegate::OnUnconsentedPrimaryAccountChanged(
-    const CoreAccountInfo& unconsented_primary_account_info) {
-  UpdateReconcilorStatus();
-}
-
-void MirrorAccountReconcilorDelegate::UpdateReconcilorStatus() {
+void MirrorAccountReconcilorDelegate::OnPrimaryAccountChanged(
+    const PrimaryAccountChangeEvent& event) {
   // Have to check whether the state has actually changed, as calling
   // DisableReconcile logs out all accounts even if it was already disabled.
   bool should_enable_reconcile =

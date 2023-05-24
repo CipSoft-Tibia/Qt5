@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -43,7 +43,7 @@ void GamingSeat::OnWindowFocused(aura::Window* gained_focus,
     if (!target) {
       aura::Window* top_level_window = gained_focus->GetToplevelWindow();
       if (top_level_window)
-        target = GetShellMainSurface(top_level_window);
+        target = GetShellRootSurface(top_level_window);
     }
   }
 

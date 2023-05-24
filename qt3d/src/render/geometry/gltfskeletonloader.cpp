@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "gltfskeletonloader_p.h"
 
@@ -52,6 +19,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt3DCore;
+
 namespace {
 
 void jsonArrayToSqt(const QJsonArray &jsonArray, Qt3DCore::Sqt &sqt)
@@ -60,7 +29,7 @@ void jsonArrayToSqt(const QJsonArray &jsonArray, Qt3DCore::Sqt &sqt)
     QMatrix4x4 m;
     float *data = m.data();
     int i = 0;
-    for (const auto &element : jsonArray)
+    for (const auto element : jsonArray)
         *(data + i++) = static_cast<float>(element.toDouble());
 
     decomposeQMatrix4x4(m, sqt);
@@ -333,12 +302,12 @@ bool GLTFSkeletonLoader::load(QIODevice *ioDev)
 
 SkeletonData GLTFSkeletonLoader::createSkeleton(const QString &skeletonName)
 {
-    if (m_skins.isEmpty()) {
+    if (m_skins.empty()) {
         qCWarning(Jobs, "glTF file does not contain any skins");
         return SkeletonData();
     }
 
-    Skin *skin = m_skins.begin();
+    auto skin = m_skins.begin();
     if (!skeletonName.isNull()) {
         const auto result = std::find_if(m_skins.begin(), m_skins.end(),
             [skeletonName](const Skin &skin) { return skin.name == skeletonName; });
@@ -346,15 +315,15 @@ SkeletonData GLTFSkeletonLoader::createSkeleton(const QString &skeletonName)
             skin = result;
     }
 
-    Q_ASSERT(skin != nullptr);
-    return createSkeletonFromSkin(skin);
+    Q_ASSERT(skin != m_skins.end());
+    return createSkeletonFromSkin(*skin);
 }
 
-SkeletonData GLTFSkeletonLoader::createSkeletonFromSkin(Skin *skin) const
+SkeletonData GLTFSkeletonLoader::createSkeletonFromSkin(const Skin &skin) const
 {
     SkeletonData skel;
 
-    const int jointCount = skin->jointNodeIndices.size();
+    const int jointCount = int(skin.jointNodeIndices.size());
     skel.reserve(jointCount);
 
     QHash<const Node *, int> jointIndexMap;
@@ -362,7 +331,7 @@ SkeletonData GLTFSkeletonLoader::createSkeletonFromSkin(Skin *skin) const
         // Get a pointer to the node for this joint and store it in
         // a map to the JointInfo index. We can later use this to set
         // the parent indices of the joints
-        const Node *node = &m_nodes[skin->jointNodeIndices[i]];
+        const Node *node = &m_nodes[skin.jointNodeIndices[i]];
         jointIndexMap.insert(node, i);
 
         JointInfo joint;
@@ -379,10 +348,10 @@ SkeletonData GLTFSkeletonLoader::createSkeletonFromSkin(Skin *skin) const
     return skel;
 }
 
-QMatrix4x4 GLTFSkeletonLoader::inverseBindMatrix(Skin *skin, int jointIndex) const
+QMatrix4x4 GLTFSkeletonLoader::inverseBindMatrix(const Skin &skin, int jointIndex) const
 {
     // Create a matrix and copy the data into it
-    RawData rawData = accessorData(skin->inverseBindAccessorIndex, jointIndex);
+    RawData rawData = accessorData(skin.inverseBindAccessorIndex, jointIndex);
     QMatrix4x4 m;
     memcpy(m.data(), rawData.data, rawData.byteLength);
     return m;
@@ -447,23 +416,23 @@ bool GLTFSkeletonLoader::parseGLTF2()
 {
     bool success = true;
     const QJsonArray buffers = m_json.object().value(KEY_BUFFERS).toArray();
-    for (const auto &bufferValue : buffers)
+    for (const auto bufferValue : buffers)
         success &= processJSONBuffer(bufferValue.toObject());
 
     const QJsonArray bufferViews = m_json.object().value(KEY_BUFFER_VIEWS).toArray();
-    for (const auto &bufferViewValue : bufferViews)
+    for (const auto bufferViewValue : bufferViews)
         success &= processJSONBufferView(bufferViewValue.toObject());
 
     const QJsonArray accessors = m_json.object().value(KEY_ACCESSORS).toArray();
-    for (const auto &accessorValue : accessors)
+    for (const auto accessorValue : accessors)
         success &= processJSONAccessor(accessorValue.toObject());
 
     const QJsonArray skins = m_json.object().value(KEY_SKINS).toArray();
-    for (const auto &skinValue : skins)
+    for (const auto skinValue : skins)
         success &= processJSONSkin(skinValue.toObject());
 
     const QJsonArray nodes = m_json.object().value(KEY_NODES).toArray();
-    for (const auto &nodeValue : nodes)
+    for (const auto nodeValue : nodes)
         success &= processJSONNode(nodeValue.toObject());
     setupNodeParentLinks();
 
@@ -498,7 +467,7 @@ bool GLTFSkeletonLoader::processJSONBufferView(const QJsonObject &json)
 
     // Perform sanity checks
     const auto bufferIndex = bufferView.bufferIndex;
-    if (Q_UNLIKELY(bufferIndex) >= m_bufferDatas.size()) {
+    if (Q_UNLIKELY(bufferIndex >= int(m_bufferDatas.size()))) {
         qCWarning(Jobs, "Unknown buffer %d when processing buffer view", bufferIndex);
         return false;
     }
@@ -550,15 +519,15 @@ bool GLTFSkeletonLoader::processJSONNode(const QJsonObject &json)
 
 void GLTFSkeletonLoader::setupNodeParentLinks()
 {
-    const int nodeCount = m_nodes.size();
-    for (int i = 0; i < nodeCount; ++i) {
+    const size_t nodeCount = m_nodes.size();
+    for (size_t i = 0; i < nodeCount; ++i) {
         const Node &node = m_nodes[i];
-        const QVector<int> &childNodeIndices = node.childNodeIndices;
+        const std::vector<int> &childNodeIndices = node.childNodeIndices;
         for (const auto childNodeIndex : childNodeIndices) {
-            Q_ASSERT(childNodeIndex < m_nodes.size());
-            Node &childNode = m_nodes[childNodeIndex];
+            Q_ASSERT(childNodeIndex < int(m_nodes.size()));
+            Node &childNode = m_nodes[size_t(childNodeIndex)];
             Q_ASSERT(childNode.parentNodeIndex == -1);
-            childNode.parentNodeIndex = i;
+            childNode.parentNodeIndex = int(i);
         }
     }
 }

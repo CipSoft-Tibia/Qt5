@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,21 +7,27 @@
 #include <linux/input.h>
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ui/events/devices/device_data_manager.h"
+#include "ui/events/devices/stylus_state.h"
 #include "ui/events/ozone/evdev/input_device_factory_evdev_proxy.h"
 #include "ui/events/ozone/evdev/keyboard_evdev.h"
 #include "ui/events/ozone/evdev/mouse_button_map_evdev.h"
 
 namespace ui {
 
-InputControllerEvdev::InputControllerEvdev(KeyboardEvdev* keyboard,
-                                           MouseButtonMapEvdev* button_map)
-    : keyboard_(keyboard), button_map_(button_map) {}
+InputControllerEvdev::InputControllerEvdev(
+    KeyboardEvdev* keyboard,
+    MouseButtonMapEvdev* mouse_button_map,
+    MouseButtonMapEvdev* pointing_stick_button_map)
+    : keyboard_(keyboard),
+      mouse_button_map_(mouse_button_map),
+      pointing_stick_button_map_(pointing_stick_button_map) {}
 
 InputControllerEvdev::~InputControllerEvdev() {
 }
@@ -46,6 +52,10 @@ void InputControllerEvdev::set_has_touchpad(bool has_touchpad) {
   has_touchpad_ = has_touchpad;
 }
 
+void InputControllerEvdev::set_has_haptic_touchpad(bool has_haptic_touchpad) {
+  has_haptic_touchpad_ = has_haptic_touchpad;
+}
+
 void InputControllerEvdev::SetInputDevicesEnabled(bool enabled) {
   input_device_settings_.enable_devices = enabled;
   ScheduleUpdateDeviceSettings();
@@ -61,6 +71,10 @@ bool InputControllerEvdev::HasPointingStick() {
 
 bool InputControllerEvdev::HasTouchpad() {
   return has_touchpad_;
+}
+
+bool InputControllerEvdev::HasHapticTouchpad() {
+  return has_haptic_touchpad_;
 }
 
 bool InputControllerEvdev::IsCapsLockEnabled() {
@@ -92,6 +106,18 @@ void InputControllerEvdev::SetAutoRepeatRate(const base::TimeDelta& delay,
 void InputControllerEvdev::GetAutoRepeatRate(base::TimeDelta* delay,
                                              base::TimeDelta* interval) {
   keyboard_->GetAutoRepeatRate(delay, interval);
+}
+
+void InputControllerEvdev::SetKeyboardKeyBitsMapping(
+    base::flat_map<int, std::vector<uint64_t>> key_bits_mapping) {
+  keyboard_key_bits_mapping_ = std::move(key_bits_mapping);
+}
+
+std::vector<uint64_t> InputControllerEvdev::GetKeyboardKeyBits(int id) {
+  auto key_bits_mapping_iter = keyboard_key_bits_mapping_.find(id);
+  return key_bits_mapping_iter == keyboard_key_bits_mapping_.end()
+             ? std::vector<uint64_t>()
+             : key_bits_mapping_iter->second;
 }
 
 void InputControllerEvdev::SetCurrentLayoutByName(
@@ -137,6 +163,16 @@ void InputControllerEvdev::SetTouchpadScrollSensitivity(int value) {
   ScheduleUpdateDeviceSettings();
 }
 
+void InputControllerEvdev::SetTouchpadHapticFeedback(bool enabled) {
+  input_device_settings_.touchpad_haptic_feedback_enabled = enabled;
+  ScheduleUpdateDeviceSettings();
+}
+
+void InputControllerEvdev::SetTouchpadHapticClickSensitivity(int value) {
+  input_device_settings_.touchpad_haptic_click_sensitivity = value;
+  ScheduleUpdateDeviceSettings();
+}
+
 void InputControllerEvdev::SetTapToClick(bool enabled) {
   input_device_settings_.tap_to_click_enabled = enabled;
   ScheduleUpdateDeviceSettings();
@@ -167,8 +203,38 @@ void InputControllerEvdev::SetMouseScrollSensitivity(int value) {
   ScheduleUpdateDeviceSettings();
 }
 
+void InputControllerEvdev::SetPointingStickSensitivity(int value) {
+  input_device_settings_.pointing_stick_sensitivity = value;
+  ScheduleUpdateDeviceSettings();
+}
+
+void InputControllerEvdev::SetPointingStickAcceleration(bool enabled) {
+  if (is_mouse_acceleration_suspended()) {
+    stored_acceleration_settings_->pointing_stick = enabled;
+    return;
+  }
+  input_device_settings_.pointing_stick_acceleration_enabled = enabled;
+  ScheduleUpdateDeviceSettings();
+}
+
+void InputControllerEvdev::SetGamepadKeyBitsMapping(
+    base::flat_map<int, std::vector<uint64_t>> key_bits_mapping) {
+  gamepad_key_bits_mapping_ = std::move(key_bits_mapping);
+}
+
+std::vector<uint64_t> InputControllerEvdev::GetGamepadKeyBits(int id) {
+  auto gamepad_key_bits_iter = gamepad_key_bits_mapping_.find(id);
+  return gamepad_key_bits_iter == gamepad_key_bits_mapping_.end()
+             ? std::vector<uint64_t>()
+             : gamepad_key_bits_iter->second;
+}
+
 void InputControllerEvdev::SetPrimaryButtonRight(bool right) {
-  button_map_->SetPrimaryButtonRight(right);
+  mouse_button_map_->SetPrimaryButtonRight(right);
+}
+
+void InputControllerEvdev::SetPointingStickPrimaryButtonRight(bool right) {
+  pointing_stick_button_map_->SetPrimaryButtonRight(right);
 }
 
 void InputControllerEvdev::SetMouseReverseScroll(bool enabled) {
@@ -177,8 +243,8 @@ void InputControllerEvdev::SetMouseReverseScroll(bool enabled) {
 }
 
 void InputControllerEvdev::SetMouseAcceleration(bool enabled) {
-  if (mouse_acceleration_suspended_) {
-    stored_mouse_acceleration_setting_ = enabled;
+  if (is_mouse_acceleration_suspended()) {
+    stored_acceleration_settings_->mouse = enabled;
     return;
   }
   input_device_settings_.mouse_acceleration_enabled = enabled;
@@ -187,17 +253,22 @@ void InputControllerEvdev::SetMouseAcceleration(bool enabled) {
 
 void InputControllerEvdev::SuspendMouseAcceleration() {
   // multiple calls to suspend are currently not supported.
-  DCHECK(!mouse_acceleration_suspended_);
-  stored_mouse_acceleration_setting_ =
+  DCHECK(!is_mouse_acceleration_suspended());
+  stored_acceleration_settings_ =
+      std::make_unique<StoredAccelerationSettings>();
+  stored_acceleration_settings_->mouse =
       input_device_settings_.mouse_acceleration_enabled;
-  mouse_acceleration_suspended_ = true;
+  stored_acceleration_settings_->pointing_stick =
+      input_device_settings_.pointing_stick_acceleration_enabled;
   input_device_settings_.mouse_acceleration_enabled = false;
+  input_device_settings_.pointing_stick_acceleration_enabled = false;
   ScheduleUpdateDeviceSettings();
 }
 
 void InputControllerEvdev::EndMouseAccelerationSuspension() {
-  mouse_acceleration_suspended_ = false;
-  SetMouseAcceleration(stored_mouse_acceleration_setting_);
+  auto stored_settings = std::move(stored_acceleration_settings_);
+  SetMouseAcceleration(stored_settings->mouse);
+  SetPointingStickAcceleration(stored_settings->pointing_stick);
 }
 
 void InputControllerEvdev::SetMouseScrollAcceleration(bool enabled) {
@@ -218,6 +289,14 @@ void InputControllerEvdev::SetTouchpadScrollAcceleration(bool enabled) {
 void InputControllerEvdev::SetTapToClickPaused(bool state) {
   input_device_settings_.tap_to_click_paused = state;
   ScheduleUpdateDeviceSettings();
+}
+
+void InputControllerEvdev::GetStylusSwitchState(
+    GetStylusSwitchStateReply reply) {
+  if (input_device_factory_)
+    input_device_factory_->GetStylusSwitchState(std::move(reply));
+  else
+    std::move(reply).Run(ui::StylusState::REMOVED);
 }
 
 void InputControllerEvdev::GetTouchDeviceStatus(
@@ -245,7 +324,7 @@ void InputControllerEvdev::GetGesturePropertiesService(
 void InputControllerEvdev::ScheduleUpdateDeviceSettings() {
   if (!input_device_factory_ || settings_update_pending_)
     return;
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&InputControllerEvdev::UpdateDeviceSettings,
                                 weak_ptr_factory_.GetWeakPtr()));
   settings_update_pending_ = true;
@@ -277,6 +356,23 @@ void InputControllerEvdev::StopVibration(int id) {
   if (!input_device_factory_)
     return;
   input_device_factory_->StopVibration(id);
+}
+
+void InputControllerEvdev::PlayHapticTouchpadEffect(
+    ui::HapticTouchpadEffect effect,
+    ui::HapticTouchpadEffectStrength strength) {
+  if (!input_device_factory_)
+    return;
+  input_device_factory_->PlayHapticTouchpadEffect(effect, strength);
+}
+
+void InputControllerEvdev::SetHapticTouchpadEffectForNextButtonRelease(
+    ui::HapticTouchpadEffect effect,
+    ui::HapticTouchpadEffectStrength strength) {
+  if (!input_device_factory_)
+    return;
+  input_device_factory_->SetHapticTouchpadEffectForNextButtonRelease(effect,
+                                                                     strength);
 }
 
 }  // namespace ui

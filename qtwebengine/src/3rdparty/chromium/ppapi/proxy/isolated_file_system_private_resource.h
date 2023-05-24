@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -23,8 +23,7 @@
 
 #include <string>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "ppapi/proxy/connection.h"
 #include "ppapi/proxy/plugin_resource.h"
 #include "ppapi/proxy/ppapi_proxy_export.h"
@@ -44,6 +43,12 @@ class PPAPI_PROXY_EXPORT IsolatedFileSystemPrivateResource
  public:
   IsolatedFileSystemPrivateResource(
       Connection connection, PP_Instance instance);
+
+  IsolatedFileSystemPrivateResource(const IsolatedFileSystemPrivateResource&) =
+      delete;
+  IsolatedFileSystemPrivateResource& operator=(
+      const IsolatedFileSystemPrivateResource&) = delete;
+
   ~IsolatedFileSystemPrivateResource() override;
 
   // Resource overrides.
@@ -62,8 +67,6 @@ class PPAPI_PROXY_EXPORT IsolatedFileSystemPrivateResource
                              scoped_refptr<TrackedCallback> callback,
                              const ResourceMessageReplyParams& params,
                              const std::string& fsid);
-
-  DISALLOW_COPY_AND_ASSIGN(IsolatedFileSystemPrivateResource);
 };
 
 }  // namespace proxy

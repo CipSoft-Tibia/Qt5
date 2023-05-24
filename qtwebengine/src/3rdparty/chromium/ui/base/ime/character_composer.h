@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/memory/raw_ref.h"
 #include "base/strings/string_util.h"
 #include "ui/events/keycodes/dom/dom_key.h"
 
@@ -25,6 +25,10 @@ class COMPONENT_EXPORT(UI_BASE_IME_TYPES) CharacterComposer {
   using ComposeBuffer = std::vector<DomKey>;
 
   CharacterComposer();
+
+  CharacterComposer(const CharacterComposer&) = delete;
+  CharacterComposer& operator=(const CharacterComposer&) = delete;
+
   ~CharacterComposer();
 
   void Reset();
@@ -37,12 +41,12 @@ class COMPONENT_EXPORT(UI_BASE_IME_TYPES) CharacterComposer {
 
   // Returns a string consisting of composed character.
   // Empty string is returned when there is no composition result.
-  const base::string16& composed_character() const {
+  const std::u16string& composed_character() const {
     return composed_character_;
   }
 
   // Returns the preedit string.
-  const base::string16& preedit_string() const { return preedit_string_; }
+  const std::u16string& preedit_string() const { return preedit_string_; }
 
  private:
   // An enum to describe composition mode.
@@ -73,15 +77,13 @@ class COMPONENT_EXPORT(UI_BASE_IME_TYPES) CharacterComposer {
   std::vector<unsigned int> hex_buffer_;
 
   // A string representing the composed character.
-  base::string16 composed_character_;
+  std::u16string composed_character_;
 
   // Preedit string.
-  base::string16 preedit_string_;
+  std::u16string preedit_string_;
 
   // Composition mode which this instance is in.
   CompositionMode composition_mode_;
-
-  DISALLOW_COPY_AND_ASSIGN(CharacterComposer);
 };
 
 // Abstract class for determining whether a ComposeBuffer forms a valid
@@ -98,13 +100,14 @@ class ComposeChecker {
     FULL_MATCH
   };
   ComposeChecker() {}
+
+  ComposeChecker(const ComposeChecker&) = delete;
+  ComposeChecker& operator=(const ComposeChecker&) = delete;
+
   virtual ~ComposeChecker() {}
   virtual CheckSequenceResult CheckSequence(
       const ui::CharacterComposer::ComposeBuffer& sequence,
       uint32_t* composed_character) const = 0;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ComposeChecker);
 };
 
 // Implementation of |ComposeChecker| using a compact generated tree.
@@ -123,7 +126,7 @@ class TreeComposeChecker : public ComposeChecker {
 
  private:
   bool Find(uint16_t index, uint16_t size, uint16_t key, uint16_t* value) const;
-  const CompositionData& data_;
+  const raw_ref<const CompositionData> data_;
 };
 
 }  // namespace ui

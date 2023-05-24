@@ -30,9 +30,13 @@
 
 #include "third_party/blink/renderer/core/dom/element_rare_data.h"
 
+#include <memory>
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
+#include "third_party/blink/renderer/core/css/container_query_data.h"
 #include "third_party/blink/renderer/core/css/cssom/inline_style_property_map.h"
+#include "third_party/blink/renderer/core/editing/ime/edit_context.h"
 #include "third_party/blink/renderer/core/html/custom/element_internals.h"
+#include "third_party/blink/renderer/core/layout/anchor_scroll_data.h"
 #include "third_party/blink/renderer/core/resize_observer/resize_observation.h"
 #include "third_party/blink/renderer/core/resize_observer/resize_observer.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
@@ -40,15 +44,15 @@
 
 namespace blink {
 
-struct SameSizeAsElementRareData : NodeRareData {
-  IntSize scroll_offset;
-  void* pointers_or_strings[3];
-  Member<void*> members[17];
-  bool flags[1];
+struct SameSizeAsElementRareData : ElementRareDataBase {
+  void* pointers_or_strings[4];
+  Member<void*> members[22];
+  gfx::Vector2dF scroll_offset;
+  wtf_size_t anchored_popover_count;
 };
 
-ElementRareData::ElementRareData(NodeRenderingData* node_layout_data)
-    : NodeRareData(node_layout_data, true), class_list_(nullptr) {}
+ElementRareData::ElementRareData(NodeData* node_layout_data)
+    : ElementRareDataBase(node_layout_data), class_list_(nullptr) {}
 
 ElementRareData::~ElementRareData() {
   DCHECK(!pseudo_element_data_);
@@ -87,6 +91,22 @@ ElementRareData::EnsureResizeObserverData() {
   return *resize_observer_data_;
 }
 
+PopoverData& ElementRareData::EnsurePopoverData() {
+  if (!popover_data_)
+    popover_data_ = MakeGarbageCollected<PopoverData>();
+  return *popover_data_;
+}
+void ElementRareData::RemovePopoverData() {
+  popover_data_.Clear();
+}
+
+CSSToggleMap& ElementRareData::EnsureToggleMap(Element* owner_element) {
+  DCHECK(!toggle_map_ || toggle_map_->OwnerElement() == owner_element);
+  if (!toggle_map_)
+    toggle_map_ = MakeGarbageCollected<CSSToggleMap>(owner_element);
+  return *toggle_map_;
+}
+
 ElementInternals& ElementRareData::EnsureElementInternals(HTMLElement& target) {
   if (element_internals_)
     return *element_internals_;
@@ -94,25 +114,39 @@ ElementInternals& ElementRareData::EnsureElementInternals(HTMLElement& target) {
   return *element_internals_;
 }
 
-void ElementRareData::TraceAfterDispatch(blink::Visitor* visitor) const {
+AnchorScrollData& ElementRareData::EnsureAnchorScrollData(
+    Element* owner_element) {
+  DCHECK(!anchor_scroll_data_ ||
+         anchor_scroll_data_->OwnerElement() == owner_element);
+  if (!anchor_scroll_data_)
+    anchor_scroll_data_ = MakeGarbageCollected<AnchorScrollData>(owner_element);
+  return *anchor_scroll_data_;
+}
+
+void ElementRareData::Trace(blink::Visitor* visitor) const {
   visitor->Trace(dataset_);
-  visitor->Trace(class_list_);
-  visitor->Trace(part_);
   visitor->Trace(shadow_root_);
+  visitor->Trace(class_list_);
   visitor->Trace(attribute_map_);
   visitor->Trace(attr_node_list_);
-  visitor->Trace(element_animations_);
   visitor->Trace(cssom_wrapper_);
-  visitor->Trace(cssom_map_wrapper_);
+  visitor->Trace(element_animations_);
+  visitor->Trace(intersection_observer_data_);
   visitor->Trace(pseudo_element_data_);
+  visitor->Trace(edit_context_);
+  visitor->Trace(part_);
+  visitor->Trace(cssom_map_wrapper_);
+  visitor->Trace(element_internals_);
   visitor->Trace(accessible_node_);
   visitor->Trace(display_lock_context_);
-  visitor->Trace(v0_custom_element_definition_);
-  visitor->Trace(custom_element_definition_);
-  visitor->Trace(element_internals_);
-  visitor->Trace(intersection_observer_data_);
+  visitor->Trace(container_query_data_);
   visitor->Trace(resize_observer_data_);
-  NodeRareData::TraceAfterDispatch(visitor);
+  visitor->Trace(custom_element_definition_);
+  visitor->Trace(last_intrinsic_size_);
+  visitor->Trace(popover_data_);
+  visitor->Trace(toggle_map_);
+  visitor->Trace(anchor_scroll_data_);
+  NodeRareData::Trace(visitor);
 }
 
 ASSERT_SIZE(ElementRareData, SameSizeAsElementRareData);

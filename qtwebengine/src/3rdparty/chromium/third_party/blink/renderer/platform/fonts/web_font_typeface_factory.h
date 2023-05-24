@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,6 @@
 
 #include "build/build_config.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#if defined(OS_WIN) || defined(OS_MAC)
-#include "third_party/skia/include/ports/SkFontMgr_empty.h"
-#endif
 
 namespace blink {
 
@@ -31,11 +28,12 @@ class WebFontTypefaceFactory {
   static sk_sp<SkFontMgr> FontManagerForSbix();
   static sk_sp<SkFontMgr> FreeTypeFontManager();
   static sk_sp<SkFontMgr> FontManagerForColrCpal();
+  static sk_sp<SkFontMgr> FontManagerForColrV0Variations();
 
  private:
   // These values are written to logs.  New enum values can be added, but
   // existing enums must never be renumbered or deleted and reused.
-  enum WebFontInstantiationResult {
+  enum class InstantiationResult {
     kErrorInstantiatingVariableFont = 0,
     kSuccessConventionalWebFont = 1,
     kSuccessVariableWebFont = 2,
@@ -43,12 +41,13 @@ class WebFontTypefaceFactory {
     kSuccessCff2Font = 4,
     kSuccessSbixFont = 5,
     kSuccessColrCpalFont = 6,
-    kMaxWebFontInstantiationResult = 7
+    kSuccessColrV1Font = 7,
+    kMaxValue = kSuccessColrV1Font
   };
 
   static sk_sp<SkFontMgr> DefaultFontManager();
 
-  static void ReportWebFontInstantiationResult(WebFontInstantiationResult);
+  static void ReportInstantiationResult(InstantiationResult);
 };
 
 }  // namespace blink

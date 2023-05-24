@@ -8,9 +8,9 @@
 #ifndef SkBitmapProcState_opts_DEFINED
 #define SkBitmapProcState_opts_DEFINED
 
-#include "include/private/SkVx.h"
+#include "src/base/SkMSAN.h"
+#include "src/base/SkVx.h"
 #include "src/core/SkBitmapProcState.h"
-#include "src/core/SkMSAN.h"
 
 // SkBitmapProcState optimized Shader, Sample, or Matrix procs.
 //
@@ -42,7 +42,7 @@ static void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, O
     void S32_alpha_D32_filter_DX(const SkBitmapProcState& s,
                                  const uint32_t* xy, int count, uint32_t* colors) {
         SkASSERT(count > 0 && colors != nullptr);
-        SkASSERT(s.fFilterQuality != kNone_SkFilterQuality);
+        SkASSERT(s.fBilerp);
         SkASSERT(kN32_SkColorType == s.fPixmap.colorType());
         SkASSERT(s.fAlphaScale <= 256);
 
@@ -174,7 +174,7 @@ static void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, O
     void S32_alpha_D32_filter_DX(const SkBitmapProcState& s,
                                  const uint32_t* xy, int count, uint32_t* colors) {
         SkASSERT(count > 0 && colors != nullptr);
-        SkASSERT(s.fFilterQuality != kNone_SkFilterQuality);
+        SkASSERT(s.fBilerp);
         SkASSERT(kN32_SkColorType == s.fPixmap.colorType());
         SkASSERT(s.fAlphaScale <= 256);
 
@@ -313,7 +313,7 @@ static void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, O
     void S32_alpha_D32_filter_DX(const SkBitmapProcState& s,
                                  const uint32_t* xy, int count, uint32_t* colors) {
         SkASSERT(count > 0 && colors != nullptr);
-        SkASSERT(s.fFilterQuality != kNone_SkFilterQuality);
+        SkASSERT(s.fBilerp);
         SkASSERT(kN32_SkColorType == s.fPixmap.colorType());
         SkASSERT(s.fAlphaScale <= 256);
 
@@ -475,7 +475,7 @@ static void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, O
     void S32_alpha_D32_filter_DX(const SkBitmapProcState& s,
                                  const uint32_t* xy, int count, SkPMColor* colors) {
         SkASSERT(count > 0 && colors != nullptr);
-        SkASSERT(s.fFilterQuality != kNone_SkFilterQuality);
+        SkASSERT(s.fBilerp);
         SkASSERT(4 == s.fPixmap.info().bytesPerPixel());
         SkASSERT(s.fAlphaScale <= 256);
 
@@ -504,7 +504,7 @@ static void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, O
     void S32_alpha_D32_filter_DXDY(const SkBitmapProcState& s,
                                    const uint32_t* xy, int count, SkPMColor* colors) {
         SkASSERT(count > 0 && colors != nullptr);
-        SkASSERT(s.fFilterQuality != kNone_SkFilterQuality);
+        SkASSERT(s.fBilerp);
         SkASSERT(4 == s.fPixmap.info().bytesPerPixel());
         SkASSERT(s.fAlphaScale <= 256);
 
@@ -534,5 +534,12 @@ static void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, O
 #endif
 
 }  // namespace SK_OPTS_NS
+
+namespace sktests {
+    template <typename U32, typename Out>
+    void decode_packed_coordinates_and_weight(U32 packed, Out* v0, Out* v1, Out* w) {
+        SK_OPTS_NS::decode_packed_coordinates_and_weight<U32, Out>(packed, v0, v1, w);
+    }
+}
 
 #endif

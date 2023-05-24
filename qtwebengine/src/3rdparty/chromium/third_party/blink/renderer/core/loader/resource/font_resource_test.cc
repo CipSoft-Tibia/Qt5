@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
-#include "third_party/blink/public/platform/web_url_loader_mock_factory.h"
 #include "third_party/blink/renderer/core/css/css_font_face_src_value.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/loader/resource/mock_font_resource_client.h"
@@ -25,8 +24,9 @@
 #include "third_party/blink/renderer/platform/loader/testing/mock_resource_client.h"
 #include "third_party/blink/renderer/platform/loader/testing/test_loader_factory.h"
 #include "third_party/blink/renderer/platform/loader/testing/test_resource_fetcher_properties.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/testing/histogram_tester.h"
 #include "third_party/blink/renderer/platform/testing/mock_context_lifecycle_notifier.h"
+#include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 
@@ -66,11 +66,13 @@ TEST_F(FontResourceTest,
 
   MockFetchContext* context = MakeGarbageCollected<MockFetchContext>();
   auto* properties = MakeGarbageCollected<TestResourceFetcherProperties>();
-  auto* fetcher = MakeGarbageCollected<ResourceFetcher>(ResourceFetcherInit(
-      properties->MakeDetachable(), context,
-      base::MakeRefCounted<scheduler::FakeTaskRunner>(),
-      MakeGarbageCollected<TestLoaderFactory>(),
-      MakeGarbageCollected<MockContextLifecycleNotifier>()));
+  auto* fetcher = MakeGarbageCollected<ResourceFetcher>(
+      ResourceFetcherInit(properties->MakeDetachable(), context,
+                          base::MakeRefCounted<scheduler::FakeTaskRunner>(),
+                          base::MakeRefCounted<scheduler::FakeTaskRunner>(),
+                          MakeGarbageCollected<TestLoaderFactory>(),
+                          MakeGarbageCollected<MockContextLifecycleNotifier>(),
+                          nullptr /* back_forward_cache_loader_helper */));
 
   // Fetch to cache a resource.
   ResourceRequest request1(url);
@@ -117,7 +119,91 @@ TEST_F(FontResourceTest,
   EXPECT_TRUE(resource2->IsLoaded());
   EXPECT_FALSE(resource2->ErrorOccurred());
 
-  GetMemoryCache()->Remove(resource1);
+  MemoryCache::Get()->Remove(resource1);
+}
+
+// Tests if the RevalidationPolicy UMA works properly for fonts.
+TEST_F(FontResourceTest, RevalidationPolicyMetrics) {
+  blink::HistogramTester histogram_tester;
+  auto* properties = MakeGarbageCollected<TestResourceFetcherProperties>();
+  MockFetchContext* context = MakeGarbageCollected<MockFetchContext>();
+  auto* fetcher = MakeGarbageCollected<ResourceFetcher>(
+      ResourceFetcherInit(properties->MakeDetachable(), context,
+                          base::MakeRefCounted<scheduler::FakeTaskRunner>(),
+                          base::MakeRefCounted<scheduler::FakeTaskRunner>(),
+                          MakeGarbageCollected<TestLoaderFactory>(),
+                          MakeGarbageCollected<MockContextLifecycleNotifier>(),
+                          nullptr /* back_forward_cache_loader_helper */));
+
+  KURL url_preload_font("http://127.0.0.1:8000/font_preload.ttf");
+  ResourceResponse response_preload_font(url_preload_font);
+  response_preload_font.SetHttpStatusCode(200);
+  response_preload_font.SetHttpHeaderField(http_names::kCacheControl,
+                                           "max-age=3600");
+  url_test_helpers::RegisterMockedURLLoadWithCustomResponse(
+      url_preload_font, "", WrappedResourceResponse(response_preload_font));
+
+  // Test font preloads are immediately loaded.
+  FetchParameters fetch_params_preload =
+      FetchParameters::CreateForTest(ResourceRequest(url_preload_font));
+  fetch_params_preload.SetLinkPreload(true);
+
+  Resource* resource =
+      FontResource::Fetch(fetch_params_preload, fetcher, nullptr);
+  url_test_helpers::ServeAsynchronousRequests();
+  ASSERT_TRUE(resource);
+  EXPECT_TRUE(MemoryCache::Get()->Contains(resource));
+
+  Resource* new_resource =
+      FontResource::Fetch(fetch_params_preload, fetcher, nullptr);
+  EXPECT_EQ(resource, new_resource);
+
+  // Test histograms.
+  histogram_tester.ExpectTotalCount(
+      "Blink.MemoryCache.RevalidationPolicy.Preload.Font", 2);
+  histogram_tester.ExpectBucketCount(
+      "Blink.MemoryCache.RevalidationPolicy.Preload.Font",
+      static_cast<int>(ResourceFetcher::RevalidationPolicyForMetrics::kLoad),
+      1);
+  histogram_tester.ExpectBucketCount(
+      "Blink.MemoryCache.RevalidationPolicy.Preload.Font",
+      static_cast<int>(ResourceFetcher::RevalidationPolicyForMetrics::kUse), 1);
+
+  KURL url_font("http://127.0.0.1:8000/font.ttf");
+  ResourceResponse response_font(url_preload_font);
+  response_font.SetHttpStatusCode(200);
+  response_font.SetHttpHeaderField(http_names::kCacheControl, "max-age=3600");
+  url_test_helpers::RegisterMockedURLLoadWithCustomResponse(
+      url_font, "", WrappedResourceResponse(response_font));
+
+  // Test deferred and ordinal font loads are correctly counted as deferred.
+  FetchParameters fetch_params =
+      FetchParameters::CreateForTest(ResourceRequest(url_font));
+  resource = FontResource::Fetch(fetch_params, fetcher, nullptr);
+  ASSERT_TRUE(resource);
+  histogram_tester.ExpectTotalCount("Blink.MemoryCache.RevalidationPolicy.Font",
+                                    1);
+  histogram_tester.ExpectBucketCount(
+      "Blink.MemoryCache.RevalidationPolicy.Font",
+      static_cast<int>(ResourceFetcher::RevalidationPolicyForMetrics::kDefer),
+      1);
+  fetcher->StartLoad(resource);
+  url_test_helpers::ServeAsynchronousRequests();
+  histogram_tester.ExpectTotalCount("Blink.MemoryCache.RevalidationPolicy.Font",
+                                    2);
+  histogram_tester.ExpectBucketCount(
+      "Blink.MemoryCache.RevalidationPolicy.Font",
+      static_cast<int>(ResourceFetcher::RevalidationPolicyForMetrics::
+                           kPreviouslyDeferredLoad),
+      1);
+  // Load the resource again, deferred resource already loaded shall be counted
+  // as kUse.
+  resource = FontResource::Fetch(fetch_params, fetcher, nullptr);
+  histogram_tester.ExpectTotalCount("Blink.MemoryCache.RevalidationPolicy.Font",
+                                    3);
+  histogram_tester.ExpectBucketCount(
+      "Blink.MemoryCache.RevalidationPolicy.Font",
+      static_cast<int>(ResourceFetcher::RevalidationPolicyForMetrics::kUse), 1);
 }
 
 // Tests if cache-aware font loading works correctly.
@@ -130,7 +216,8 @@ TEST_F(CacheAwareFontResourceTest, CacheAwareFontLoading) {
   url_test_helpers::RegisterMockedURLLoadWithCustomResponse(
       url, "", WrappedResourceResponse(response));
 
-  auto dummy_page_holder = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  auto dummy_page_holder =
+      std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   Document& document = dummy_page_holder->GetDocument();
   ResourceFetcher* fetcher = document.Fetcher();
   CSSFontFaceSrcValue* src_value = CSSFontFaceSrcValue::Create(
@@ -189,7 +276,7 @@ TEST_F(CacheAwareFontResourceTest, CacheAwareFontLoading) {
   EXPECT_TRUE(client3->FontLoadLongLimitExceededCalled());
 
   url_test_helpers::ServeAsynchronousRequests();
-  GetMemoryCache()->Remove(&resource);
+  MemoryCache::Get()->Remove(&resource);
 }
 
 }  // namespace blink

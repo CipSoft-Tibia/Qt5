@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
@@ -154,21 +129,21 @@ void tst_QBluetoothDeviceInfo::tst_construction_data()
     QTest::newRow("0x000300 COD") << QBluetoothAddress("000000000000") << "My Bluetooth Device"
         << quint32(0x000300)
         << QBluetoothDeviceInfo::ServiceClasses(QBluetoothDeviceInfo::NoService)
-        << QBluetoothDeviceInfo::LANAccessDevice
+        << QBluetoothDeviceInfo::NetworkDevice
         << quint8(QBluetoothDeviceInfo::NetworkFullService)
         << QBluetoothDeviceInfo::BaseRateAndLowEnergyCoreConfiguration
         << leDeviceUuid;
     QTest::newRow("0x000320 COD") << QBluetoothAddress("000000000000") << "My Bluetooth Device"
         << quint32(0x000320)
         << QBluetoothDeviceInfo::ServiceClasses(QBluetoothDeviceInfo::NoService)
-        << QBluetoothDeviceInfo::LANAccessDevice
+        << QBluetoothDeviceInfo::NetworkDevice
         << quint8(QBluetoothDeviceInfo::NetworkLoadFactorOne)
         << QBluetoothDeviceInfo::BaseRateAndLowEnergyCoreConfiguration
         << leDeviceUuid;
     QTest::newRow("0x0003E0 COD") << QBluetoothAddress("000000000000") << "My Bluetooth Device"
         << quint32(0x0003E0)
         << QBluetoothDeviceInfo::ServiceClasses(QBluetoothDeviceInfo::NoService)
-        << QBluetoothDeviceInfo::LANAccessDevice
+        << QBluetoothDeviceInfo::NetworkDevice
         << quint8(QBluetoothDeviceInfo::NetworkNoService)
         << QBluetoothDeviceInfo::BaseRateAndLowEnergyCoreConfiguration
         << leDeviceUuid;
@@ -449,15 +424,15 @@ void tst_QBluetoothDeviceInfo::tst_serviceUuids()
     QBluetoothDeviceInfo deviceInfo;
     QBluetoothDeviceInfo copyInfo = deviceInfo;
 
-    QVector<QBluetoothUuid> servicesList;
-    servicesList.append(QBluetoothUuid::L2cap);
-    servicesList.append(QBluetoothUuid::Rfcomm);
-    QVERIFY(servicesList.count() > 0);
+    QList<QBluetoothUuid> servicesList;
+    servicesList.append(QBluetoothUuid::ProtocolUuid::L2cap);
+    servicesList.append(QBluetoothUuid::ProtocolUuid::Rfcomm);
+    QVERIFY(!servicesList.isEmpty());
 
     deviceInfo.setServiceUuids(servicesList);
-    QVERIFY(deviceInfo.serviceUuids().count() > 0);
-    deviceInfo.setServiceUuids(QVector<QBluetoothUuid>());
-    QCOMPARE(deviceInfo.serviceUuids().count(), 0);
+    QVERIFY(!deviceInfo.serviceUuids().isEmpty());
+    deviceInfo.setServiceUuids(QList<QBluetoothUuid>());
+    QCOMPARE(deviceInfo.serviceUuids().size(), 0);
 }
 
 void tst_QBluetoothDeviceInfo::tst_cached()
@@ -528,8 +503,8 @@ void tst_QBluetoothDeviceInfo::tst_manufacturerData()
     QVERIFY(!info.setManufacturerData(manufacturerAVM, QByteArray::fromHex("ABCD")));
     QCOMPARE(info.manufacturerData(manufacturerAVM), QByteArray::fromHex("ABCD"));
     auto temp = info.manufacturerData();
-    QCOMPARE(temp.keys().count(), 1);
-    QCOMPARE(temp.values().count(), 1);
+    QCOMPARE(temp.keys().size(), 1);
+    QCOMPARE(temp.values().size(), 1);
     QCOMPARE(temp.values(), QList<QByteArray>() << QByteArray::fromHex("ABCD"));
 
     QVERIFY(info.setManufacturerData(manufacturerAVM, QByteArray::fromHex("CDEF")));
@@ -537,8 +512,8 @@ void tst_QBluetoothDeviceInfo::tst_manufacturerData()
     QVERIFY(!info.setManufacturerData(manufacturerAVM, QByteArray::fromHex("CDEF")));
 
     temp = info.manufacturerData();
-    QCOMPARE(temp.keys().count(), 2);
-    QCOMPARE(temp.values().count(), 2);
+    QCOMPARE(temp.keys().size(), 2);
+    QCOMPARE(temp.values().size(), 2);
     auto list = temp.values();
 
     QCOMPARE(QSet<QByteArray> (list.begin(), list.end()),

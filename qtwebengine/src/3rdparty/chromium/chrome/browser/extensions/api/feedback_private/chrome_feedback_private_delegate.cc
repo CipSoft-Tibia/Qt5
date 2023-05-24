@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,45 +7,48 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/values.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/feedback/feedback_uploader_chrome.h"
 #include "chrome/browser/feedback/feedback_uploader_factory_chrome.h"
 #include "chrome/browser/feedback/system_logs/chrome_system_logs_fetcher.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/simple_message_box.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/feedback/system_logs/system_logs_fetcher.h"
-#include "components/signin/public/identity_manager/consent_level.h"
+#include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/browser_context.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/webui/web_ui_util.h"
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "base/strings/string_split.h"
 #include "base/system/sys_info.h"
-#include "chrome/browser/chromeos/arc/arc_util.h"
-#include "chrome/browser/chromeos/system_logs/iwlwifi_dump_log_source.h"
-#include "chrome/browser/chromeos/system_logs/single_debug_daemon_log_source.h"
-#include "chrome/browser/chromeos/system_logs/single_log_file_log_source.h"
+#include "chrome/browser/ash/arc/arc_util.h"
+#include "chrome/browser/ash/crosapi/browser_manager.h"
+#include "chrome/browser/ash/system_logs/iwlwifi_dump_log_source.h"
+#include "chrome/browser/ash/system_logs/single_debug_daemon_log_source.h"
+#include "chrome/browser/ash/system_logs/single_log_file_log_source.h"
 #include "chrome/browser/extensions/component_loader.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "components/feedback/system_logs/system_logs_source.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/common/constants.h"
 #include "google_apis/gaia/gaia_auth_util.h"
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 namespace extensions {
 
 namespace {
 
 int GetSysInfoCheckboxStringId(content::BrowserContext* browser_context) {
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   if (arc::IsArcPlayStoreEnabledForProfile(
           Profile::FromBrowserContext(browser_context))) {
     return IDS_FEEDBACK_INCLUDE_SYSTEM_INFORMATION_AND_METRICS_CHKBOX_ARC;
@@ -62,14 +65,12 @@ int GetSysInfoCheckboxStringId(content::BrowserContext* browser_context) {
 ChromeFeedbackPrivateDelegate::ChromeFeedbackPrivateDelegate() = default;
 ChromeFeedbackPrivateDelegate::~ChromeFeedbackPrivateDelegate() = default;
 
-std::unique_ptr<base::DictionaryValue>
-ChromeFeedbackPrivateDelegate::GetStrings(
+base::Value::Dict ChromeFeedbackPrivateDelegate::GetStrings(
     content::BrowserContext* browser_context,
     bool from_crash) const {
-  std::unique_ptr<base::DictionaryValue> dict =
-      std::make_unique<base::DictionaryValue>();
+  base::Value::Dict dict;
 
-#define SET_STRING(id, idr) dict->SetString(id, l10n_util::GetStringUTF16(idr))
+#define SET_STRING(id, idr) dict.Set(id, l10n_util::GetStringUTF16(idr))
   SET_STRING("pageTitle", from_crash
                               ? IDS_FEEDBACK_REPORT_PAGE_TITLE_SAD_TAB_FLOW
                               : IDS_FEEDBACK_REPORT_PAGE_TITLE);
@@ -77,6 +78,7 @@ ChromeFeedbackPrivateDelegate::GetStrings(
   SET_STRING("additionalInfo", IDS_FEEDBACK_ADDITIONAL_INFO_LABEL);
   SET_STRING("minimizeBtnLabel", IDS_FEEDBACK_MINIMIZE_BUTTON_LABEL);
   SET_STRING("closeBtnLabel", IDS_FEEDBACK_CLOSE_BUTTON_LABEL);
+  SET_STRING("freeFormText", IDS_FEEDBACK_FREE_TEXT_LABEL);
   SET_STRING("pageUrl", IDS_FEEDBACK_REPORT_URL_LABEL);
   SET_STRING("screenshot", IDS_FEEDBACK_SCREENSHOT_LABEL);
   SET_STRING("screenshotA11y", IDS_FEEDBACK_SCREENSHOT_A11Y_TEXT);
@@ -110,18 +112,21 @@ ChromeFeedbackPrivateDelegate::GetStrings(
 #undef SET_STRING
 
   const std::string& app_locale = g_browser_process->GetApplicationLocale();
-  webui::SetLoadTimeDataDefaults(app_locale, dict.get());
+  webui::SetLoadTimeDataDefaults(app_locale, &dict);
 
   return dict;
 }
 
-system_logs::SystemLogsFetcher*
-ChromeFeedbackPrivateDelegate::CreateSystemLogsFetcher(
-    content::BrowserContext* context) const {
-  return system_logs::BuildChromeSystemLogsFetcher(/*scrub_data=*/true);
+void ChromeFeedbackPrivateDelegate::FetchSystemInformation(
+    content::BrowserContext* context,
+    system_logs::SysLogsFetcherCallback callback) const {
+  // self-deleting object
+  auto* fetcher =
+      system_logs::BuildChromeSystemLogsFetcher(/*scrub_data=*/true);
+  fetcher->Fetch(std::move(callback));
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 std::unique_ptr<system_logs::SystemLogsSource>
 ChromeFeedbackPrivateDelegate::CreateSingleLogSource(
     api::feedback_private::LogSource source_type) const {
@@ -214,14 +219,6 @@ void ChromeFeedbackPrivateDelegate::FetchExtraLogs(
   }
 }
 
-void ChromeFeedbackPrivateDelegate::UnloadFeedbackExtension(
-    content::BrowserContext* context) const {
-  extensions::ExtensionSystem::Get(context)
-      ->extension_service()
-      ->component_loader()
-      ->Remove(extension_misc::kFeedbackExtensionId);
-}
-
 api::feedback_private::LandingPageType
 ChromeFeedbackPrivateDelegate::GetLandingPageType(
     const feedback::FeedbackData& feedback_data) const {
@@ -235,7 +232,18 @@ ChromeFeedbackPrivateDelegate::GetLandingPageType(
   return board[0] == "eve" ? api::feedback_private::LANDING_PAGE_TYPE_TECHSTOP
                            : api::feedback_private::LANDING_PAGE_TYPE_NORMAL;
 }
-#endif  // defined(OS_CHROMEOS)
+
+void ChromeFeedbackPrivateDelegate::GetLacrosHistograms(
+    GetHistogramsCallback callback) {
+  crosapi::BrowserManager* browser_manager = crosapi::BrowserManager::Get();
+  if (browser_manager->GetHistogramsSupported() &&
+      browser_manager->IsRunning()) {
+    browser_manager->GetHistograms(std::move(callback));
+  } else {
+    std::move(callback).Run(std::string());
+  }
+}
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 std::string ChromeFeedbackPrivateDelegate::GetSignedInUserEmail(
     content::BrowserContext* context) const {
@@ -244,8 +252,7 @@ std::string ChromeFeedbackPrivateDelegate::GetSignedInUserEmail(
   if (!identity_manager)
     return std::string();
   // Browser sync consent is not required to use feedback.
-  return identity_manager
-      ->GetPrimaryAccountInfo(signin::ConsentLevel::kNotRequired)
+  return identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
       .email;
 }
 
@@ -261,6 +268,23 @@ feedback::FeedbackUploader*
 ChromeFeedbackPrivateDelegate::GetFeedbackUploaderForContext(
     content::BrowserContext* context) const {
   return feedback::FeedbackUploaderFactoryChrome::GetForBrowserContext(context);
+}
+
+void ChromeFeedbackPrivateDelegate::OpenFeedback(
+    content::BrowserContext* context,
+    api::feedback_private::FeedbackSource source) const {
+  GURL url;
+
+  DCHECK(source ==
+         api::feedback_private::FeedbackSource::FEEDBACK_SOURCE_QUICKOFFICE);
+
+  Profile* profile = Profile::FromBrowserContext(context);
+  chrome::ShowFeedbackPage(url, profile,
+                           /*source=*/chrome::kFeedbackSourceQuickOffice,
+                           /*description_template=*/std::string(),
+                           /*description_placeholder_text=*/std::string(),
+                           /*category_tag=*/std::string(),
+                           /*extra_diagnostics=*/std::string());
 }
 
 }  // namespace extensions

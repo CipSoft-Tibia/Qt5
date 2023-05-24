@@ -23,9 +23,9 @@
 
 #include "third_party/blink/renderer/core/html/html_frame_element.h"
 
-#include "third_party/blink/public/mojom/feature_policy/feature_policy.mojom-blink.h"
-#include "third_party/blink/public/mojom/feature_policy/policy_value.mojom-blink-forward.h"
-#include "third_party/blink/renderer/core/dom/element_traversal.h"
+#include "third_party/blink/public/mojom/permissions_policy/permissions_policy.mojom-blink.h"
+#include "third_party/blink/public/mojom/permissions_policy/policy_value.mojom-blink-forward.h"
+#include "third_party/blink/renderer/core/html/frame_edge_info.h"
 #include "third_party/blink/renderer/core/html/html_frame_set_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_frame.h"
@@ -37,28 +37,32 @@ HTMLFrameElement::HTMLFrameElement(Document& document)
       frame_border_(true),
       frame_border_set_(false) {}
 
-bool HTMLFrameElement::LayoutObjectIsNeeded(const ComputedStyle&) const {
+bool HTMLFrameElement::LayoutObjectIsNeeded(const DisplayStyle&) const {
   // For compatibility, frames render even when display: none is set.
   return ContentFrame();
 }
 
-LayoutObject* HTMLFrameElement::CreateLayoutObject(const ComputedStyle&,
-                                                   LegacyLayout) {
-  return new LayoutFrame(this);
+LayoutObject* HTMLFrameElement::CreateLayoutObject(const ComputedStyle& style,
+                                                   LegacyLayout legacy) {
+  if (IsA<HTMLFrameSetElement>(parentNode()))
+    return MakeGarbageCollected<LayoutFrame>(this);
+  return LayoutObject::CreateObject(this, style, legacy);
+}
+
+bool HTMLFrameElement::HasFrameBorder() const {
+  if (!frame_border_set_) {
+    if (const auto* frame_set = DynamicTo<HTMLFrameSetElement>(parentNode()))
+      return frame_set->HasFrameBorder();
+  }
+  return frame_border_;
 }
 
 bool HTMLFrameElement::NoResize() const {
   return FastHasAttribute(html_names::kNoresizeAttr);
 }
 
-void HTMLFrameElement::AttachLayoutTree(AttachContext& context) {
-  HTMLFrameElementBase::AttachLayoutTree(context);
-
-  if (HTMLFrameSetElement* frame_set_element =
-          Traversal<HTMLFrameSetElement>::FirstAncestor(*this)) {
-    if (!frame_border_set_)
-      frame_border_ = frame_set_element->HasFrameBorder();
-  }
+FrameEdgeInfo HTMLFrameElement::EdgeInfo() const {
+  return FrameEdgeInfo(NoResize(), HasFrameBorder());
 }
 
 void HTMLFrameElement::ParseAttribute(
@@ -66,23 +70,24 @@ void HTMLFrameElement::ParseAttribute(
   if (params.name == html_names::kFrameborderAttr) {
     frame_border_ = params.new_value.ToInt();
     frame_border_set_ = !params.new_value.IsNull();
-    // FIXME: If we are already attached, this has no effect.
+    if (auto* frame_set = DynamicTo<HTMLFrameSetElement>(parentNode()))
+      frame_set->DirtyEdgeInfoAndFullPaintInvalidation();
   } else if (params.name == html_names::kNoresizeAttr) {
-    if (GetLayoutObject())
-      GetLayoutObject()->UpdateFromElement();
+    if (auto* frame_set = DynamicTo<HTMLFrameSetElement>(parentNode()))
+      frame_set->DirtyEdgeInfo();
   } else {
     HTMLFrameElementBase::ParseAttribute(params);
   }
 }
 
-ParsedFeaturePolicy HTMLFrameElement::ConstructContainerPolicy() const {
+ParsedPermissionsPolicy HTMLFrameElement::ConstructContainerPolicy() const {
   // Frame elements are not allowed to enable the fullscreen feature. Add an
   // empty allowlist for the fullscreen feature so that the framed content is
   // unable to use the API, regardless of origin.
   // https://fullscreen.spec.whatwg.org/#model
-  ParsedFeaturePolicy container_policy;
-  ParsedFeaturePolicyDeclaration allowlist(
-      mojom::blink::FeaturePolicyFeature::kFullscreen);
+  ParsedPermissionsPolicy container_policy;
+  ParsedPermissionsPolicyDeclaration allowlist(
+      mojom::blink::PermissionsPolicyFeature::kFullscreen);
   container_policy.push_back(allowlist);
   return container_policy;
 }

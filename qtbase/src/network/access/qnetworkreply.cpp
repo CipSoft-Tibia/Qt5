@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -44,6 +8,8 @@
 #include <QtNetwork/qsslconfiguration.h>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QNetworkReply::NetworkError, QNetworkReply__NetworkError)
 
 const int QNetworkReplyPrivate::progressSignalInterval = 100;
 
@@ -76,7 +42,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     itself.
 
     QNetworkReply is a sequential-access QIODevice, which means that
-    once data is read from the object, it no longer kept by the
+    once data is read from the object, it is no longer kept by the
     device. It is therefore the application's responsibility to keep
     this data if it needs to. Whenever more data is received from the
     network and processed, the readyRead() signal is emitted.
@@ -298,13 +264,13 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     \fn void QNetworkReply::redirected(const QUrl &url)
     \since 5.6
 
-    This signal is emitted if the QNetworkRequest::FollowRedirectsAttribute was
+    This signal is emitted if the QNetworkRequest::ManualRedirectPolicy was not
     set in the request and the server responded with a 3xx status (specifically
     301, 302, 303, 305, 307 or 308 status code) with a valid url in the location
     header, indicating a HTTP redirect. The \a url parameter contains the new
     redirect url as returned by the server in the location header.
 
-    \sa QNetworkRequest::FollowRedirectsAttribute
+    \sa QNetworkRequest::RedirectPolicy
 */
 
 /*!
@@ -319,6 +285,27 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     \sa QNetworkRequest::UserVerifiedRedirectPolicy,
     QNetworkAccessManager::setRedirectPolicy(),
     QNetworkRequest::RedirectPolicyAttribute
+*/
+
+/*!
+    \fn void QNetworkReply::socketStartedConnecting()
+    \since 6.3
+
+    This signal is emitted 0 or more times, when the socket
+    is connecting, before sending the request. Useful for
+    custom progress or timeout handling.
+
+    \sa metaDataChanged(), requestSent()
+*/
+
+/*!
+    \fn void QNetworkReply::requestSent()
+    \since 6.3
+
+    This signal is emitted 1 or more times when the request was
+    sent. Useful for custom progress or timeout handling.
+
+    \sa metaDataChanged(), socketStartedConnecting()
 */
 
 /*!
@@ -344,7 +331,7 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     processing. After this signal is emitted, there will be no more
     updates to the reply's data or metadata.
 
-    Unless close() or abort() have been called, the reply will be still be opened
+    Unless close() or abort() have been called, the reply will still be opened
     for reading, so the data can be retrieved by calls to read() or
     readAll(). In particular, if no calls to read() were made as a
     result of readyRead(), a call to readAll() will retrieve the full
@@ -361,13 +348,6 @@ QNetworkReplyPrivate::QNetworkReplyPrivate()
     has finished even before you receive the finished() signal.
 
     \sa QNetworkAccessManager::finished(), isFinished()
-*/
-
-/*!
-    \fn void QNetworkReply::error(QNetworkReply::NetworkError code)
-    \obsolete
-
-    Use errorOccurred() instead.
 */
 
 /*!
@@ -463,8 +443,6 @@ QNetworkReply::QNetworkReply(QObject *parent)
 QNetworkReply::QNetworkReply(QNetworkReplyPrivate &dd, QObject *parent)
     : QIODevice(dd, parent)
 {
-    // Support the deprecated error() signal:
-    connect(this, &QNetworkReply::errorOccurred, this, QOverload<QNetworkReply::NetworkError>::of(&QNetworkReply::error));
 }
 
 /*!
@@ -605,10 +583,10 @@ bool QNetworkReply::isRunning() const
 
 /*!
     Returns the URL of the content downloaded or uploaded. Note that
-    the URL may be different from that of the original request. If the
-    QNetworkRequest::FollowRedirectsAttribute was set in the request, then this
+    the URL may be different from that of the original request.
+    If redirections were enabled in the request, then this
     function returns the current url that the network API is accessing, i.e the
-    url emitted in the QNetworkReply::redirected signal.
+    url of the resource the request got redirected to.
 
     \sa request(), setUrl(), QNetworkRequest::url(), redirected()
 */
@@ -955,3 +933,5 @@ void QNetworkReply::setAttribute(QNetworkRequest::Attribute code, const QVariant
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkreply.cpp"

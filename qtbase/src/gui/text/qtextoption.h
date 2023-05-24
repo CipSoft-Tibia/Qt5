@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTOPTION_H
 #define QTEXTOPTION_H
@@ -48,8 +12,6 @@
 
 QT_BEGIN_NAMESPACE
 
-
-template <typename T> class QList;
 struct QTextOptionPrivate;
 
 class Q_GUI_EXPORT QTextOption
@@ -83,7 +45,7 @@ public:
     };
 
     QTextOption();
-    /*implicit*/ QTextOption(Qt::Alignment alignment);
+    Q_IMPLICIT QTextOption(Qt::Alignment alignment);
     ~QTextOption();
 
     QTextOption(const QTextOption &o);
@@ -117,11 +79,6 @@ public:
     inline void setFlags(Flags flags);
     inline Flags flags() const { return Flags(f); }
 
-#if QT_DEPRECATED_SINCE(5, 10)
-    QT_DEPRECATED inline void setTabStop(qreal tabStop);
-    QT_DEPRECATED inline qreal tabStop() const { return tabStopDistance(); }
-#endif
-
     inline void setTabStopDistance(qreal tabStopDistance);
     inline qreal tabStopDistance() const { return tab; }
 
@@ -135,12 +92,11 @@ public:
     bool useDesignMetrics() const { return design; }
 
 private:
-    uint align : 8;
+    uint align : 9;
     uint wordWrap : 4;
     uint design : 1;
     uint direction : 2;
-    uint unused : 17;
-    uint unused2; // ### Qt 6: remove unnecessary, extra 32 bits
+    uint unused : 16;
     uint f;
     qreal tab;
     QTextOptionPrivate *d;
@@ -149,21 +105,16 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QTextOption::Flags)
 
 inline void QTextOption::setAlignment(Qt::Alignment aalignment)
-{ align = aalignment; }
+{ align = uint(aalignment.toInt()); }
 
 inline void QTextOption::setFlags(Flags aflags)
-{ f = aflags; }
-
-#if QT_DEPRECATED_SINCE(5, 10)
-inline void QTextOption::setTabStop(qreal atabStop)
-{ setTabStopDistance(atabStop); }
-#endif
+{ f = uint(aflags.toInt()); }
 
 inline void QTextOption::setTabStopDistance(qreal atabStop)
 { tab = atabStop; }
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE( QTextOption::Tab )
+QT_DECL_METATYPE_EXTERN_TAGGED(QTextOption::Tab, QTextOption_Tab, Q_GUI_EXPORT)
 
 #endif // QTEXTOPTION_H

@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 en_001{
     Countries{
         BL{"St Barthélemy"}
@@ -9,8 +10,7 @@ en_001{
         PM{"St Pierre & Miquelon"}
         SH{"St Helena"}
         UM{"US Outlying Islands"}
-        VC{"St Vincent & Grenadines"}
+        VC{"St Vincent & the Grenadines"}
         VI{"US Virgin Islands"}
     }
-    Version{"37"}
 }

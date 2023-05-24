@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsurfaceformat.h"
 
 #include <QtCore/qatomic.h>
 #include <QtCore/QDebug>
 #include <QOpenGLContext>
+#include <QtGui/qcolorspace.h>
 #include <QtGui/qguiapplication.h>
 
 #ifdef major
@@ -73,7 +38,6 @@ public:
         , major(2)
         , minor(0)
         , swapInterval(1) // default to vsync
-        , colorSpace(QSurfaceFormat::DefaultColorSpace)
     {
     }
 
@@ -112,7 +76,7 @@ public:
     int major;
     int minor;
     int swapInterval;
-    QSurfaceFormat::ColorSpace colorSpace;
+    QColorSpace colorSpace;
 };
 
 /*!
@@ -152,6 +116,9 @@ public:
         the monitoring of the loss of context, such as, Windows with WGL, or Linux/X11 (xcb) with GLX, will
         monitor the status in every call to \l{QOpenGLContext::makeCurrent()}{makeCurrent()}. See
         \l{QOpenGLContext::isValid()}{isValid()} for more information on this.
+    \value ProtectedContent Enables access to protected content. This allows the GPU to operate on protected
+        resources (surfaces, buffers, textures), for example DRM-protected video content.
+        Currently only implemented for EGL.
 */
 
 /*!
@@ -346,48 +313,13 @@ void QSurfaceFormat::setSamples(int numSamples)
     }
 }
 
-#if QT_DEPRECATED_SINCE(5, 2)
-/*!
-    \obsolete
-    \overload
-
-    Use setOption(QSurfaceFormat::FormatOption, bool) or setOptions() instead.
-
-    Sets the format options to the OR combination of \a opt and the
-    current format options.
-
-    \sa options(), testOption()
-*/
-void QSurfaceFormat::setOption(QSurfaceFormat::FormatOptions opt)
-{
-    const QSurfaceFormat::FormatOptions newOptions = d->opts | opt;
-    if (int(newOptions) != int(d->opts)) {
-        detach();
-        d->opts = newOptions;
-    }
-}
-
-/*!
-    \obsolete
-    \overload
-
-    Use testOption(QSurfaceFormat::FormatOption) instead.
-
-    Returns \c true if any of the options in \a opt is currently set
-    on this object; otherwise returns false.
-
-    \sa setOption()
-*/
-bool QSurfaceFormat::testOption(QSurfaceFormat::FormatOptions opt) const
-{
-    return d->opts & opt;
-}
-#endif // QT_DEPRECATED_SINCE(5, 2)
-
 /*!
     \since 5.3
 
     Sets the format options to \a options.
+
+    To verify that an option was respected, compare the actual format to the
+    requested format after surface/context creation.
 
     \sa options(), testOption()
 */
@@ -403,6 +335,9 @@ void QSurfaceFormat::setOptions(QSurfaceFormat::FormatOptions options)
     \since 5.3
 
     Sets the format option \a option if \a on is true; otherwise, clears the option.
+
+    To verify that an option was respected, compare the actual format to the
+    requested format after surface/context creation.
 
     \sa setOptions(), options(), testOption()
 */
@@ -770,17 +705,41 @@ int QSurfaceFormat::swapInterval() const
     blending to be performed in the given color space instead of using the
     standard linear operations.
 
-    \since 5.10
+    \since 6.0
 
     \sa colorSpace()
  */
-void QSurfaceFormat::setColorSpace(ColorSpace colorSpace)
+void QSurfaceFormat::setColorSpace(const QColorSpace &colorSpace)
 {
     if (d->colorSpace != colorSpace) {
         detach();
         d->colorSpace = colorSpace;
     }
 }
+
+#if QT_DEPRECATED_SINCE(6, 0)
+/*!
+    \overload
+    \deprecated [6.0] Use setColorSpace(QColorSpace) instead.
+
+    Sets the colorspace to one of the predefined values.
+
+    \since 5.10
+
+    \sa colorSpace()
+ */
+void QSurfaceFormat::setColorSpace(ColorSpace colorSpace)
+{
+    switch (colorSpace) {
+    case DefaultColorSpace:
+        setColorSpace(QColorSpace());
+        break;
+    case sRGBColorSpace:
+        setColorSpace(QColorSpace::SRgb);
+        break;
+    }
+}
+#endif // QT_DEPRECATED_SINCE(6, 0)
 
 /*!
     \return the color space.
@@ -789,7 +748,7 @@ void QSurfaceFormat::setColorSpace(ColorSpace colorSpace)
 
     \sa setColorSpace()
 */
-QSurfaceFormat::ColorSpace QSurfaceFormat::colorSpace() const
+const QColorSpace &QSurfaceFormat::colorSpace() const
 {
     return d->colorSpace;
 }
@@ -806,7 +765,7 @@ Q_GLOBAL_STATIC(QSurfaceFormat, qt_default_surface_format)
     question's own setFormat() function. However, it is often more convenient to
     set the format for all windows once at the start of the application. It also
     guarantees proper behavior in cases where shared contexts are required,
-    because settings the format via this function guarantees that all contexts
+    because setting the format via this function guarantees that all contexts
     and surfaces, even the ones created internally by Qt, will use the same
     format.
 
@@ -848,37 +807,37 @@ QSurfaceFormat QSurfaceFormat::defaultFormat()
 }
 
 /*!
-    Returns \c true if all the options of the two QSurfaceFormat objects
-    \a a and \a b are equal.
+    \fn bool QSurfaceFormat::operator==(const QSurfaceFormat& lhs, const QSurfaceFormat& rhs)
 
-    \relates QSurfaceFormat
+    Returns \c true if all the options of the two QSurfaceFormat objects
+    \a lhs and \a rhs are equal.
 */
-bool operator==(const QSurfaceFormat& a, const QSurfaceFormat& b)
-{
-    return (a.d == b.d) || ((int) a.d->opts == (int) b.d->opts
-        && a.d->stencilSize == b.d->stencilSize
-        && a.d->redBufferSize == b.d->redBufferSize
-        && a.d->greenBufferSize == b.d->greenBufferSize
-        && a.d->blueBufferSize == b.d->blueBufferSize
-        && a.d->alphaBufferSize == b.d->alphaBufferSize
-        && a.d->depthSize == b.d->depthSize
-        && a.d->numSamples == b.d->numSamples
-        && a.d->swapBehavior == b.d->swapBehavior
-        && a.d->profile == b.d->profile
-        && a.d->major == b.d->major
-        && a.d->minor == b.d->minor
-        && a.d->swapInterval == b.d->swapInterval);
-}
 
 /*!
-    Returns \c false if all the options of the two QSurfaceFormat objects
-    \a a and \a b are equal; otherwise returns \c true.
+    \fn bool QSurfaceFormat::operator!=(const QSurfaceFormat& lhs, const QSurfaceFormat& rhs)
 
-    \relates QSurfaceFormat
+    Returns \c false if all the options of the two QSurfaceFormat objects
+    \a lhs and \a rhs are equal; otherwise returns \c true.
 */
-bool operator!=(const QSurfaceFormat& a, const QSurfaceFormat& b)
+
+/*!
+    \internal
+*/
+bool QSurfaceFormat::equals(const QSurfaceFormat& other) const noexcept
 {
-    return !(a == b);
+    return (d == other.d) || ((int) d->opts == (int) other.d->opts
+        && d->stencilSize == other.d->stencilSize
+        && d->redBufferSize == other.d->redBufferSize
+        && d->greenBufferSize == other.d->greenBufferSize
+        && d->blueBufferSize == other.d->blueBufferSize
+        && d->alphaBufferSize == other.d->alphaBufferSize
+        && d->depthSize == other.d->depthSize
+        && d->numSamples == other.d->numSamples
+        && d->swapBehavior == other.d->swapBehavior
+        && d->profile == other.d->profile
+        && d->major == other.d->major
+        && d->minor == other.d->minor
+        && d->swapInterval == other.d->swapInterval);
 }
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -908,3 +867,5 @@ QDebug operator<<(QDebug dbg, const QSurfaceFormat &f)
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qsurfaceformat.cpp"

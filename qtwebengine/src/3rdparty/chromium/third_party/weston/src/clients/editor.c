@@ -77,7 +77,7 @@ struct text_entry {
 	uint32_t serial;
 	uint32_t reset_serial;
 	uint32_t content_purpose;
-	uint32_t click_to_show;
+	bool click_to_show;
 	char *preferred_language;
 	bool button_pressed;
 };
@@ -1504,10 +1504,10 @@ global_handler(struct display *display, uint32_t name,
 }
 
 /** Display help for command line options, and exit */
-static uint32_t opt_help = 0;
+static bool opt_help = false;
 
 /** Require a distinct click to show the input panel (virtual keyboard) */
-static uint32_t opt_click_to_show = 0;
+static bool opt_click_to_show = false;
 
 /** Set a specific (RFC-3066) language.  Used for the virtual keyboard, etc. */
 static const char *opt_preferred_language = NULL;

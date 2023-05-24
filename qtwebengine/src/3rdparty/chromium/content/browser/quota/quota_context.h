@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/sequence_checker.h"
 #include "content/browser/quota/quota_change_dispatcher.h"
-#include "content/public/browser/quota_permission_context.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "storage/browser/quota/quota_settings.h"
@@ -23,19 +22,18 @@ class FilePath;
 class SingleThreadTaskRunner;
 }  // namespace base
 
+namespace blink {
+class StorageKey;
+}  // namespace blink
+
 namespace storage {
 class QuotaManager;
 class SpecialStoragePolicy;
 }  // namespace storage
 
-namespace url {
-class Origin;
-}  // namespace url
-
 namespace content {
 
 class QuotaManagerHost;
-class QuotaPermissionContext;
 
 // Owns the Quota sub-system for a StoragePartition.
 //
@@ -59,9 +57,7 @@ class QuotaContext : public base::RefCountedDeleteOnSequence<QuotaContext> {
 
   // Must be called from the UI thread.
   void BindQuotaManagerHost(
-      int process_id,
-      int render_frame_id,
-      const url::Origin& origin,
+      const blink::StorageKey& storage_key,
       mojo::PendingReceiver<blink::mojom::QuotaManagerHost> receiver);
 
   void OverrideQuotaManagerForTesting(
@@ -74,24 +70,19 @@ class QuotaContext : public base::RefCountedDeleteOnSequence<QuotaContext> {
   ~QuotaContext();
 
   void BindQuotaManagerHostOnIOThread(
-      int process_id,
-      int render_frame_id,
-      const url::Origin& origin,
+      const blink::StorageKey& storage_key,
       mojo::PendingReceiver<blink::mojom::QuotaManagerHost> receiver);
 
   // QuotaManager runs on the IO thread, so mojo receivers must be bound there.
   const scoped_refptr<base::SingleThreadTaskRunner> io_thread_;
 
+  // Owning reference for the QuotaChangeDispatcher.
+  scoped_refptr<QuotaChangeDispatcher> quota_change_dispatcher_;
+
   // Owning reference for the QuotaManager.
   //
   // This is not const because of OverrideQuotaManagerForTesting().
   scoped_refptr<storage::QuotaManager> quota_manager_;
-
-  // Owning reference for the QuotaChangeDispatcher.
-  scoped_refptr<QuotaChangeDispatcher> quota_change_dispatcher_;
-
-  // Owning reference for the QuotaPermissionContext.
-  const scoped_refptr<QuotaPermissionContext> permission_context_;
 
   // Only accessed on the IO thread.
   mojo::ReceiverSet<blink::mojom::QuotaManagerHost,
@@ -103,4 +94,4 @@ class QuotaContext : public base::RefCountedDeleteOnSequence<QuotaContext> {
 
 }  // namespace content
 
-#endif  // CONTENT_BROWSER_QUOTA_QUOTA_MANAGER_HOST_H_
+#endif  // CONTENT_BROWSER_QUOTA_QUOTA_CONTEXT_H_

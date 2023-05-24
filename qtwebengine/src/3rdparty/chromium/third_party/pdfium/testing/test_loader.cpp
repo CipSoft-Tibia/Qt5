@@ -1,4 +1,4 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <string.h>
 
-#include "third_party/base/logging.h"
+#include "third_party/base/notreached.h"
 
 TestLoader::TestLoader(pdfium::span<const char> span) : m_Span(span) {}
 

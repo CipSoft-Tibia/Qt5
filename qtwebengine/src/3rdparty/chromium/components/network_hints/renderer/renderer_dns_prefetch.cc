@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,14 @@
 
 #include <ctype.h>
 
-#include "base/bind.h"
+#include <utility>
+#include <vector>
+
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "components/network_hints/renderer/dns_prefetch_queue.h"
 
 namespace network_hints {
@@ -54,11 +58,11 @@ void RendererDnsPrefetch::Resolve(const char* name, size_t length) {
       if (0 != old_size)
         return;  // Overkill safety net: Don't send too many InvokeLater's.
       weak_factory_.InvalidateWeakPtrs();
-      base::SequencedTaskRunnerHandle::Get()->PostDelayedTask(
+      base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
           FROM_HERE,
           base::BindOnce(&RendererDnsPrefetch::SubmitHostnames,
                          weak_factory_.GetWeakPtr()),
-          base::TimeDelta::FromMilliseconds(10));
+          base::Milliseconds(10));
     }
     return;
   }
@@ -93,11 +97,11 @@ void RendererDnsPrefetch::SubmitHostnames() {
   GetNamesToPrefetch(kMaxDnsHostnamesPerRequest, &names);
   if (new_name_count_ > 0 || 0 < c_string_queue_.Size()) {
     weak_factory_.InvalidateWeakPtrs();
-    base::SequencedTaskRunnerHandle::Get()->PostDelayedTask(
+    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
         FROM_HERE,
         base::BindOnce(&RendererDnsPrefetch::SubmitHostnames,
                        weak_factory_.GetWeakPtr()),
-        base::TimeDelta::FromMilliseconds(10));
+        base::Milliseconds(10));
   } else {
     // TODO(JAR): Should we only clear the map when we navigate, or reload?
     domain_map_.clear();

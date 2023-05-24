@@ -1,8 +1,25 @@
-[dependentImplicitSizes]
-b2qt
-qemu
-macos
 [fontSizeMode]
 opensuse-42.1
+[contentSize]
+windows gcc
+msvc-2019
 [hAlignVisual]
 sles
+# QTQAINFRA-4127
+[fontSizeModeMultiline]
+ci b2qt 32bit
+[baselineOffset]
+ci b2qt 32bit
+# QTBUG-102721
+[hAlignWidthDependsOnImplicitWidth]
+android
+[hAlignImplicitWidth]
+android
+[transparentBackground]
+android
+
+# QTBUG-103096
+[largeTextObservesViewport]
+android
+[baselineOffset]
+android

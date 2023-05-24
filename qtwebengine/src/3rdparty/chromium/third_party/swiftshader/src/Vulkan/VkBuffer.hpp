@@ -28,18 +28,23 @@ public:
 	void destroy(const VkAllocationCallbacks *pAllocator);
 
 	static size_t ComputeRequiredAllocationSize(const VkBufferCreateInfo *pCreateInfo);
+	static const VkMemoryRequirements GetMemoryRequirements(VkDeviceSize size, VkBufferUsageFlags usage);
 
 	const VkMemoryRequirements getMemoryRequirements() const;
 	void bind(DeviceMemory *pDeviceMemory, VkDeviceSize pMemoryOffset);
 	void copyFrom(const void *srcMemory, VkDeviceSize size, VkDeviceSize offset);
 	void copyTo(void *dstMemory, VkDeviceSize size, VkDeviceSize offset) const;
-	void copyTo(Buffer *dstBuffer, const VkBufferCopy &pRegion) const;
+	void copyTo(Buffer *dstBuffer, const VkBufferCopy2KHR &pRegion) const;
 	void fill(VkDeviceSize dstOffset, VkDeviceSize fillSize, uint32_t data);
 	void update(VkDeviceSize dstOffset, VkDeviceSize dataSize, const void *pData);
 	void *getOffsetPointer(VkDeviceSize offset) const;
+	uint64_t getOpaqueCaptureAddress() const;
 	inline VkDeviceSize getSize() const { return size; }
 	uint8_t *end() const;
 	bool canBindToMemory(DeviceMemory *pDeviceMemory) const;
+
+	VkBufferUsageFlags getUsage() const { return usage; }
+	VkBufferCreateFlags getFlags() const { return flags; }
 
 private:
 	void *memory = nullptr;
@@ -49,6 +54,7 @@ private:
 	VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	uint32_t queueFamilyIndexCount = 0;
 	uint32_t *queueFamilyIndices = nullptr;
+	uint64_t opaqueCaptureAddress = 0;
 
 	VkExternalMemoryHandleTypeFlags supportedExternalMemoryHandleTypes = (VkExternalMemoryHandleTypeFlags)0;
 };

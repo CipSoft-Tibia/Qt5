@@ -14,13 +14,14 @@
 
 import {ColumnDef, ThreadStateExtra} from '../../common/aggregation_data';
 import {Engine} from '../../common/engine';
+import {NUM, NUM_NULL, STR_NULL} from '../../common/query_result';
 import {Area, Sorting} from '../../common/state';
 import {translateState} from '../../common/thread_state';
 import {toNs} from '../../common/time';
 import {
   Config,
-  THREAD_STATE_TRACK_KIND
-} from '../../tracks/thread_state/common';
+  THREAD_STATE_TRACK_KIND,
+} from '../../tracks/thread_state';
 import {globals} from '../globals';
 
 import {AggregationController} from './aggregation_controller';
@@ -72,31 +73,37 @@ export class ThreadAggregationController extends AggregationController {
     this.setThreadStateUtids(area.tracks);
     if (this.utids === undefined || this.utids.length === 0) return;
 
-    const query = `select state, io_wait, sum(dur) as total_dur from process
+    const query =
+        `select state, io_wait as ioWait, sum(dur) as totalDur from process
       JOIN thread USING(upid)
       JOIN thread_state USING(utid)
       WHERE utid IN (${this.utids}) AND thread_state.ts + thread_state.dur > ${
-        toNs(area.startSec)} AND
+            toNs(area.startSec)} AND
       thread_state.ts < ${toNs(area.endSec)}
       GROUP BY state, io_wait`;
     const result = await engine.query(query);
-    const numRows = +result.numRecords;
+
+    const it = result.iter({
+      state: STR_NULL,
+      ioWait: NUM_NULL,
+      totalDur: NUM,
+    });
 
     const summary: ThreadStateExtra = {
       kind: 'THREAD_STATE',
       states: [],
-      values: new Float64Array(numRows),
-      totalMs: 0
+      values: new Float64Array(result.numRows()),
+      totalMs: 0,
     };
-    for (let row = 0; row < numRows; row++) {
-      const state = result.columns[0].stringValues![row];
-      const ioWait = result.columns[1].isNulls![row] ?
-          undefined :
-          !!result.columns[1].longValues![row];
+    summary.totalMs = 0;
+    for (let i = 0; it.valid(); ++i, it.next()) {
+      const state = it.state == null ? undefined : it.state;
+      const ioWait = it.ioWait === null ? undefined : it.ioWait > 0;
       summary.states.push(translateState(state, ioWait));
-      summary.values[row] = result.columns[2].longValues![row] / 1000000;  // ms
+      const ms = it.totalDur / 1000000;
+      summary.values[i] = ms;
+      summary.totalMs += ms;
     }
-    summary.totalMs = summary.values.reduce((a, b) => a + b, 0);
     return summary;
   }
 
@@ -112,46 +119,46 @@ export class ThreadAggregationController extends AggregationController {
         title: 'PID',
         kind: 'NUMBER',
         columnConstructor: Uint16Array,
-        columnId: 'pid'
+        columnId: 'pid',
       },
       {
         title: 'Thread',
         kind: 'STRING',
         columnConstructor: Uint16Array,
-        columnId: 'thread_name'
+        columnId: 'thread_name',
       },
       {
         title: 'TID',
         kind: 'NUMBER',
         columnConstructor: Uint16Array,
-        columnId: 'tid'
+        columnId: 'tid',
       },
       {
         title: 'State',
         kind: 'STATE',
         columnConstructor: Uint16Array,
-        columnId: 'concat_state'
+        columnId: 'concat_state',
       },
       {
         title: 'Wall duration (ms)',
         kind: 'TIMESTAMP_NS',
         columnConstructor: Float64Array,
         columnId: 'total_dur',
-        sum: true
+        sum: true,
       },
       {
         title: 'Avg Wall duration (ms)',
         kind: 'TIMESTAMP_NS',
         columnConstructor: Float64Array,
-        columnId: 'avg_dur'
+        columnId: 'avg_dur',
       },
       {
         title: 'Occurrences',
         kind: 'NUMBER',
         columnConstructor: Uint16Array,
         columnId: 'occurrences',
-        sum: true
-      }
+        sum: true,
+      },
     ];
   }
 

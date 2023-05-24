@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 
 #include "base/memory/singleton.h"
 #include "components/sessions/core/serialized_navigation_entry.h"
-#include "content/public/common/page_state.h"
 #include "services/network/public/mojom/referrer_policy.mojom.h"
+#include "third_party/blink/public/common/page_state/page_state.h"
 
 namespace sessions {
 
@@ -60,8 +60,8 @@ ContentSerializedNavigationDriver::GetSanitizedPageStateForPickle(
   if (!navigation->has_post_data())
     return navigation->encoded_page_state();
 
-  content::PageState page_state = content::PageState::CreateFromEncodedData(
-      navigation->encoded_page_state());
+  blink::PageState page_state =
+      blink::PageState::CreateFromEncodedData(navigation->encoded_page_state());
   return page_state.RemovePasswordData().ToEncodedData();
 }
 
@@ -71,7 +71,7 @@ void ContentSerializedNavigationDriver::Sanitize(
 
 std::string ContentSerializedNavigationDriver::StripReferrerFromPageState(
       const std::string& page_state) const {
-  return content::PageState::CreateFromEncodedData(page_state)
+  return blink::PageState::CreateFromEncodedData(page_state)
       .RemoveReferrer()
       .ToEncodedData();
 }

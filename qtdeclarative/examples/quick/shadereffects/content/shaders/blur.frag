@@ -1,14 +1,24 @@
-uniform lowp float qt_Opacity;
-uniform sampler2D source;
-uniform highp vec2 delta;
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-varying highp vec2 qt_TexCoord0;
+#version 440
+
+layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 0) out vec4 fragColor;
+
+layout(binding = 1) uniform sampler2D source;
+
+layout(std140, binding = 0) uniform buf {
+    mat4 qt_Matrix;
+    float qt_Opacity;
+    vec2 delta;
+} ubuf;
 
 void main()
 {
-    gl_FragColor =(0.0538 * texture2D(source, qt_TexCoord0 - 3.182 * delta)
-                 + 0.3229 * texture2D(source, qt_TexCoord0 - 1.364 * delta)
-                 + 0.2466 * texture2D(source, qt_TexCoord0)
-                 + 0.3229 * texture2D(source, qt_TexCoord0 + 1.364 * delta)
-                 + 0.0538 * texture2D(source, qt_TexCoord0 + 3.182 * delta)) * qt_Opacity;
+    fragColor =(0.0538 * texture(source, qt_TexCoord0 - 3.182 * ubuf.delta)
+                + 0.3229 * texture(source, qt_TexCoord0 - 1.364 * ubuf.delta)
+                + 0.2466 * texture(source, qt_TexCoord0)
+                + 0.3229 * texture(source, qt_TexCoord0 + 1.364 * ubuf.delta)
+                + 0.0538 * texture(source, qt_TexCoord0 + 3.182 * ubuf.delta)) * ubuf.qt_Opacity;
 }

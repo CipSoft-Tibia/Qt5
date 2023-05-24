@@ -1,35 +1,47 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="8" failures="3" tests="7" name="tst_Blacklisted">
+<testsuite name="tst_Blacklisted" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="13" failures="0" errors="0" skipped="3" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="bpass" name="pass"/>
-  <testcase name="skip">
-    <!-- message="This test should SKIP" type="skip" -->
+  <testcase name="initTestCase" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="pass" classname="tst_Blacklisted" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[This test should BPASS]]>
+    </system-out>
   </testcase>
-  <testcase result="bfail" name="fail"/>
-  <testcase result="bxfail" name="xfail"/>
-  <testcase result="bxpass" name="xpass"/>
-  <testcase result="bfail" name="messages">
-    <!-- message="This is a warning that should not appear in silent test output" type="qwarn" -->
-    <!-- message="This is an internal testlib warning that should not appear in silent test output" type="warn" -->
-    <!-- message="This is a debug message that should not appear in silent test output" type="qdebug" -->
-    <!-- message="This is a critical message that should not appear in silent test output" type="system" -->
-    <!-- message="This is an info message that should not appear in silent test output" type="qinfo" -->
-    <!-- message="This is an internal testlib info message that should not appear in silent test output" type="info" -->
-    <!-- message="This is a fatal error message that should still appear in silent test output" type="qfatal" -->
+  <testcase name="skip" classname="tst_Blacklisted" time="@TEST_DURATION@">
+    <skipped message="This test should SKIP"/>
   </testcase>
-  <system-err>
-<![CDATA[This test should SKIP]]>
-<![CDATA[This is a warning that should not appear in silent test output]]>
-<![CDATA[This is an internal testlib warning that should not appear in silent test output]]>
-<![CDATA[This is a debug message that should not appear in silent test output]]>
-<![CDATA[This is a critical message that should not appear in silent test output]]>
-<![CDATA[This is an info message that should not appear in silent test output]]>
-<![CDATA[This is an internal testlib info message that should not appear in silent test output]]>
-<![CDATA[This is a fatal error message that should still appear in silent test output]]>
-  </system-err>
+  <testcase name="fail" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="xfail" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="multiSkip" classname="tst_Blacklisted" time="@TEST_DURATION@">
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="This skip should be repeated ten times"/>
+    <skipped message="But this test should only contribute one to the skip count"/>
+  </testcase>
+  <testcase name="multiFail" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="xfailContinueSkip" classname="tst_Blacklisted" time="@TEST_DURATION@">
+    <skipped message="This skip should be seen and counted"/>
+  </testcase>
+  <testcase name="xfailContinueFail" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="xpass" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="xpassContinueSkip" classname="tst_Blacklisted" time="@TEST_DURATION@">
+    <skipped message="This skip should be seen but not counted"/>
+  </testcase>
+  <testcase name="xpassContinueFail" classname="tst_Blacklisted" time="@TEST_DURATION@"/>
+  <testcase name="cleanupTestCase" classname="tst_Blacklisted" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[Totals should add up to 13: 2 passed, 0 failed, 3 skipped, 8 blacklisted]]>
+    </system-out>
+  </testcase>
 </testsuite>

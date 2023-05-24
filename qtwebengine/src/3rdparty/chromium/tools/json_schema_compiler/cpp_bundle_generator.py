@@ -1,8 +1,8 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import code
+import code_util
 import cpp_util
 from model import Platforms
 from schema_util import CapitalizeFirstLetter
@@ -33,10 +33,7 @@ def _RemoveUnneededFields(schema):
   # Return a copy so that we don't pollute the global api object, which may be
   # used elsewhere.
   ret = copy.deepcopy(schema)
-  if sys.version_info.major == 2:
-    _RemoveKey(ret, 'description', basestring)
-  else:
-    _RemoveKey(ret, 'description', str)
+  _RemoveKey(ret, 'description', str)
   _RemoveKey(ret, 'compiler_options', dict)
   _RemoveKey(ret, 'nodoc', bool)
   _RemoveKey(ret, 'nocompile', bool)
@@ -58,8 +55,7 @@ def _PrefixSchemaWithNamespace(schema):
       assert not mandatory, (
              'Required key "%s" is not present in object.' % key)
       return
-    assert type(obj[key]) is str or (sys.version_info.major == 2 and
-                                     isinstance(obj[key], basestring))
+    assert type(obj[key]) is str
     if obj[key].find('.') == -1:
       obj[key] = '%s.%s' % (namespace, obj[key])
 
@@ -114,17 +110,18 @@ class CppBundleGenerator(object):
     self.schemas_h_generator = _SchemasHGenerator(self)
 
   def _GenerateHeader(self, file_base, body_code):
-    """Generates a code.Code object for a header file
+    """Generates a code_util.Code object for a header file
 
     Parameters:
     - |file_base| - the base of the filename, e.g. 'foo' (for 'foo.h')
     - |body_code| - the code to put in between the multiple inclusion guards"""
-    c = code.Code()
+    c = code_util.Code()
     c.Append(cpp_util.CHROMIUM_LICENSE)
     c.Append()
-    c.Append(cpp_util.GENERATED_BUNDLE_FILE_MESSAGE % self._source_file_dir)
+    c.Append(cpp_util.GENERATED_BUNDLE_FILE_MESSAGE %
+             cpp_util.ToPosixPath(self._source_file_dir))
     ifndef_name = cpp_util.GenerateIfndefName(
-        '%s/%s.h' % (self._source_file_dir, file_base))
+        '%s/%s.h' % (cpp_util.ToPosixPath(self._source_file_dir), file_base))
     c.Append()
     c.Append('#ifndef %s' % ifndef_name)
     c.Append('#define %s' % ifndef_name)
@@ -144,25 +141,25 @@ class CppBundleGenerator(object):
     ifdefs = []
     for platform in model_object.platforms:
       if platform == Platforms.CHROMEOS:
-        # TODO(https://crbug.com/1052397): For readability, this should become
-        # defined(OS_CHROMEOS) && BUILDFLAG(IS_ASH).
-        ifdefs.append('(defined(OS_CHROMEOS) && !BUILDFLAG(IS_LACROS))')
+        ifdefs.append('BUILDFLAG(IS_CHROMEOS_ASH)')
+      elif platform == Platforms.FUCHSIA:
+        ifdefs.append('BUILDFLAG(IS_FUCHSIA)')
       elif platform == Platforms.LACROS:
         # TODO(https://crbug.com/1052397): For readability, this should become
-        # defined(OS_CHROMEOS) && BUILDFLAG(IS_LACROS).
-        ifdefs.append('BUILDFLAG(IS_LACROS)')
+        # BUILDFLAG(IS_CHROMEOS) && BUILDFLAG(IS_CHROMEOS_LACROS).
+        ifdefs.append('BUILDFLAG(IS_CHROMEOS_LACROS)')
       elif platform == Platforms.LINUX:
-        ifdefs.append('(defined(OS_LINUX) && !defined(OS_CHROMEOS))')
+        ifdefs.append('BUILDFLAG(IS_LINUX)')
       elif platform == Platforms.MAC:
-        ifdefs.append('defined(OS_MAC)')
+        ifdefs.append('BUILDFLAG(IS_MAC)')
       elif platform == Platforms.WIN:
-        ifdefs.append('defined(OS_WIN)')
+        ifdefs.append('BUILDFLAG(IS_WIN)')
       else:
         raise ValueError("Unsupported platform ifdef: %s" % platform.name)
     return ' || '.join(ifdefs)
 
   def _GenerateRegistrationEntry(self, namespace_name, function):
-    c = code.Code()
+    c = code_util.Code()
     function_ifdefs = self._GetPlatformIfdefs(function)
     if function_ifdefs is not None:
       c.Append("#if %s" % function_ifdefs, indent_level=0)
@@ -171,8 +168,8 @@ class CppBundleGenerator(object):
         namespace_name, function.name)
     c.Sblock('{')
     c.Append('&NewExtensionFunction<%s>,' % function_name)
-    c.Append('%s::function_name(),' % function_name)
-    c.Append('%s::histogram_value(),' % function_name)
+    c.Append('%s::static_function_name(),' % function_name)
+    c.Append('%s::static_histogram_value(),' % function_name)
     c.Eblock('},')
 
     if function_ifdefs is not None:
@@ -180,7 +177,7 @@ class CppBundleGenerator(object):
     return c
 
   def _GenerateFunctionRegistryRegisterAll(self):
-    c = code.Code()
+    c = code_util.Code()
     c.Append('// static')
     c.Sblock('void %s::RegisterAll(ExtensionFunctionRegistry* registry) {' %
              self._GenerateBundleClass('GeneratedFunctionRegistry'))
@@ -226,7 +223,7 @@ class _APIHGenerator(object):
     self._bundle = cpp_bundle
 
   def Generate(self, _):  # namespace not relevant, this is a bundle
-    c = code.Code()
+    c = code_util.Code()
 
     c.Append('#include <string>')
     c.Append()
@@ -246,18 +243,18 @@ class _APIHGenerator(object):
 
 
 class _APICCGenerator(object):
-  """Generates a code.Code object for the generated API .cc file"""
+  """Generates a code_util.Code object for the generated API .cc file"""
 
   def __init__(self, cpp_bundle):
     self._bundle = cpp_bundle
 
   def Generate(self, _):  # namespace not relevant, this is a bundle
-    c = code.Code()
+    c = code_util.Code()
     c.Append(cpp_util.CHROMIUM_LICENSE)
     c.Append()
     c.Append('#include "%s"' % (
-        os.path.join(self._bundle._impl_dir,
-                     'generated_api_registration.h')))
+        cpp_util.ToPosixPath(os.path.join(self._bundle._impl_dir,
+                                          'generated_api_registration.h'))))
     c.Append()
     c.Append('#include "build/build_config.h"')
     c.Append('#include "build/chromeos_buildflags.h"')
@@ -281,7 +278,7 @@ class _APICCGenerator(object):
       if ifdefs is not None:
         c.Append("#if %s" % ifdefs, indent_level=0)
 
-      c.Append('#include "%s"' % implementation_header)
+      c.Append('#include "%s"' % cpp_util.ToPosixPath(implementation_header))
 
       if ifdefs is not None:
         c.Append("#endif  // %s" % ifdefs, indent_level=0)
@@ -299,12 +296,12 @@ class _APICCGenerator(object):
 
 
 class _SchemasHGenerator(object):
-  """Generates a code.Code object for the generated schemas .h file"""
+  """Generates a code_util.Code object for the generated schemas .h file"""
   def __init__(self, cpp_bundle):
     self._bundle = cpp_bundle
 
   def Generate(self, _):  # namespace not relevant, this is a bundle
-    c = code.Code()
+    c = code_util.Code()
     c.Append('#include "base/strings/string_piece.h"')
     c.Append()
     c.Concat(cpp_util.OpenNamespace(self._bundle._cpp_namespace))
@@ -332,22 +329,24 @@ def _FormatNameAsConstant(name):
 
 
 class _SchemasCCGenerator(object):
-  """Generates a code.Code object for the generated schemas .cc file"""
+  """Generates a code_util.Code object for the generated schemas .cc file"""
 
   def __init__(self, cpp_bundle):
     self._bundle = cpp_bundle
 
   def Generate(self, _):  # namespace not relevant, this is a bundle
-    c = code.Code()
+    c = code_util.Code()
     c.Append(cpp_util.CHROMIUM_LICENSE)
     c.Append()
-    c.Append('#include "%s"' % (os.path.join(self._bundle._source_file_dir,
-                                             'generated_schemas.h')))
+    c.Append('#include "%s"' % (
+             cpp_util.ToPosixPath(os.path.join(self._bundle._source_file_dir,
+                                               'generated_schemas.h'))))
     c.Append()
     c.Append('#include <algorithm>')
     c.Append('#include <iterator>')
     c.Append()
-    c.Append('#include "base/stl_util.h"')
+    c.Append('#include "base/containers/fixed_flat_map.h"')
+    c.Append('#include "base/strings/string_piece.h"')
     c.Append()
     c.Append('namespace {')
     for api in self._bundle._api_defs:
@@ -379,33 +378,18 @@ class _SchemasCCGenerator(object):
     c.Append('// static')
     c.Sblock('base::StringPiece %s::Get(base::StringPiece name) {' %
              self._bundle._GenerateBundleClass('GeneratedSchemas'))
-    c.Sblock('static const struct kSchemaMapping {')
-    c.Append('const base::StringPiece name;')
-    c.Append('const base::StringPiece schema;')
-    c.Sblock('constexpr bool operator<(const kSchemaMapping& that) const {')
-    c.Append('return name < that.name;')
-    c.Eblock('}')
-    c.Eblock()
-    c.Sblock('} kSchemas[] = {')
+
+    c.Append('static constexpr auto kSchemas = '
+             'base::MakeFixedFlatMap<base::StringPiece, base::StringPiece>({')
+    c.Sblock()
     namespaces = [self._bundle._model.namespaces[api.get('namespace')].name
                   for api in self._bundle._api_defs]
     for namespace in sorted(namespaces):
       schema_constant_name = _FormatNameAsConstant(namespace)
       c.Append('{"%s", %s},' % (namespace, schema_constant_name))
-    c.Eblock('};')
-    #c.Append('static_assert(base::STLIsSorted(kSchemas), "|kSchemas| should be '
-    #         'sorted.");')
-
-    c.Sblock('auto it = std::lower_bound(std::begin(kSchemas), '
-             'std::end(kSchemas),')
-    c.Append('kSchemaMapping{name, base::StringPiece()});')
-    c.Eblock()
-
-    c.Sblock('if (it != std::end(kSchemas) && it->name == name)')
-    c.Append('return it->schema;')
-    c.Eblock()
-
-    c.Append('return base::StringPiece();')
+    c.Eblock('});')
+    c.Append('auto it = kSchemas.find(name);')
+    c.Append('return it != kSchemas.end() ? it->second : base::StringPiece();')
     c.Eblock('}')
     c.Append()
     c.Concat(cpp_util.CloseNamespace(self._bundle._cpp_namespace))

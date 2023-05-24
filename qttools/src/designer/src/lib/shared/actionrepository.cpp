@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "actionrepository_p.h"
 #include "qtresourceview_p.h"
@@ -35,29 +10,31 @@
 #include <QtDesigner/propertysheet.h>
 #include <QtDesigner/qextensionmanager.h>
 
-#include <QtGui/qdrag.h>
-#include <QtGui/qevent.h>
-#include <QtGui/qstandarditemmodel.h>
 #include <QtWidgets/qtoolbutton.h>
-#include <QtGui/qpixmap.h>
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qheaderview.h>
 #include <QtWidgets/qtoolbar.h>
 #include <QtWidgets/qmenu.h>
+
+#include <QtGui/qpixmap.h>
+#include <QtGui/qaction.h>
+#include <QtGui/qdrag.h>
 #include <QtGui/qevent.h>
+#include <QtGui/qstandarditemmodel.h>
+
 #include <QtCore/qset.h>
 #include <QtCore/qdebug.h>
-
-Q_DECLARE_METATYPE(QAction*)
+#include <QtCore/qmetaobject.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
     enum { listModeIconSize = 16, iconModeIconSize = 24 };
 }
 
-static const char *actionMimeType = "action-repository/actions";
-static const char *plainTextMimeType = "text/plain";
+static const char actionMimeType[] = "action-repository/actions";
+static const char plainTextMimeType[] = "text/plain";
 
 static inline QAction *actionOfItem(const QStandardItem* item)
 {
@@ -78,6 +55,7 @@ ActionModel::ActionModel(QWidget *parent ) :
     headers += tr("Shortcut");
     headers += tr("Checkable");
     headers += tr("ToolTip");
+    headers += tr("MenuRole");
     Q_ASSERT(NumColumns == headers.size());
     setHorizontalHeaderLabels(headers);
 }
@@ -138,14 +116,16 @@ QModelIndex ActionModel::addAction(QAction *action)
 // Find the associated menus and toolbars, ignore toolbuttons
 QWidgetList ActionModel::associatedWidgets(const QAction *action)
 {
-    QWidgetList rc = action->associatedWidgets();
-    for (QWidgetList::iterator it = rc.begin(); it != rc.end(); )
-        if (qobject_cast<const QMenu *>(*it) || qobject_cast<const QToolBar *>(*it)) {
-            ++it;
-        } else {
-            it = rc.erase(it);
+    const QObjectList rc = action->associatedObjects();
+    QWidgetList result;
+    result.reserve(rc.size());
+    for (QObject *obj : rc) {
+        if (QWidget *w = qobject_cast<QWidget *>(obj)) {
+            if (qobject_cast<const QMenu *>(w) || qobject_cast<const QToolBar *>(w))
+                result.push_back(w);
         }
-    return rc;
+    }
+    return result;
 }
 
 // shortcut is a fake property, need to retrieve it via property sheet.
@@ -159,7 +139,7 @@ PropertySheetKeySequenceValue ActionModel::actionShortCut(QDesignerFormEditorInt
 
 PropertySheetKeySequenceValue ActionModel::actionShortCut(const QDesignerPropertySheetExtension *sheet)
 {
-    const int index = sheet->indexOf(QStringLiteral("shortcut"));
+    const int index = sheet->indexOf(u"shortcut"_s);
     if (index == -1)
         return PropertySheetKeySequenceValue();
     return qvariant_cast<PropertySheetKeySequenceValue>(sheet->property(index));
@@ -173,10 +153,8 @@ void  ActionModel::setItems(QDesignerFormEditorInterface *core, QAction *action,
     // Tooltip, mostly for icon view mode
     QString firstTooltip = action->objectName();
     const QString text = action->text();
-    if (!text.isEmpty()) {
-        firstTooltip += QLatin1Char('\n');
-        firstTooltip += text;
-    }
+    if (!text.isEmpty())
+        firstTooltip += u'\n' + text;
 
     Q_ASSERT(sl.size() == NumColumns);
 
@@ -195,7 +173,7 @@ void  ActionModel::setItems(QDesignerFormEditorInterface *core, QAction *action,
     item->setCheckState(used ? Qt::Checked : Qt::Unchecked);
     if (used) {
         QString usedToolTip;
-        const QString separator = QStringLiteral(", ");
+        const auto separator = ", "_L1;
         const int count = associatedDesignerWidgets.size();
         for (int i = 0; i < count; i++) {
             if (i)
@@ -221,7 +199,11 @@ void  ActionModel::setItems(QDesignerFormEditorInterface *core, QAction *action,
     QString toolTip = action->toolTip();
     item = sl[ToolTipColumn];
     item->setToolTip(toolTip);
-    item->setText(toolTip.replace(QLatin1Char('\n'), QLatin1Char(' ')));
+    item->setText(toolTip.replace(u'\n', u' '));
+    // menuRole
+    const auto menuRole = action->menuRole();
+    item = sl[MenuRoleColumn];
+    item->setText(QLatin1StringView(QMetaEnum::fromType<QAction::MenuRole>().valueToKey(menuRole)));
 }
 
 QMimeData *ActionModel::mimeData(const QModelIndexList &indexes ) const
@@ -239,7 +221,7 @@ QMimeData *ActionModel::mimeData(const QModelIndexList &indexes ) const
 // Resource images are plain text. The drag needs to be restricted, however.
 QStringList ActionModel::mimeTypes() const
 {
-    return QStringList(QLatin1String(plainTextMimeType));
+    return QStringList(QLatin1StringView(plainTextMimeType));
 }
 
 QString ActionModel::actionName(int row) const
@@ -276,6 +258,16 @@ QAction *ActionModel::actionAt(const  QModelIndex &index) const
     return actionOfItem(i);
 }
 
+QModelIndex ActionModel::indexOf(QAction *a) const
+{
+    for (int r = rowCount() - 1; r >= 0; --r) {
+        QStandardItem *stdItem = item(r, 0);
+        if (actionOfItem(stdItem) == a)
+            return indexFromItem(stdItem);
+    }
+    return {};
+}
+
 // helpers
 
 static bool handleImageDragEnterMoveEvent(QDropEvent *event)
@@ -291,7 +283,7 @@ static bool handleImageDragEnterMoveEvent(QDropEvent *event)
 
 static void handleImageDropEvent(const QAbstractItemView *iv, QDropEvent *event, ActionModel *am)
 {
-    const QModelIndex index = iv->indexAt(event->pos());
+    const QModelIndex index = iv->indexAt(event->position().toPoint());
     if (!index.isValid()) {
         event->ignore();
         return;
@@ -563,6 +555,13 @@ void ActionView::clearSelection()
     m_actionTreeView->selectionModel()->clearSelection();
 }
 
+void ActionView::selectAction(QAction *a)
+{
+    const QModelIndex index = m_model->indexOf(a);
+    if (index.isValid())
+        setCurrentIndex(index);
+}
+
 void ActionView::setCurrentIndex(const QModelIndex &index)
 {
     m_actionTreeView->setCurrentIndex(index);
@@ -614,7 +613,7 @@ ActionRepositoryMimeData::ActionRepositoryMimeData(const ActionList &al, Qt::Dro
 
 QStringList ActionRepositoryMimeData::formats() const
 {
-    return QStringList(QLatin1String(actionMimeType));
+    return QStringList(QLatin1StringView(actionMimeType));
 }
 
 QPixmap  ActionRepositoryMimeData::actionDragPixmap(const QAction *action)
@@ -625,9 +624,9 @@ QPixmap  ActionRepositoryMimeData::actionDragPixmap(const QAction *action)
     if (!icon.isNull())
         return icon.pixmap(QSize(22, 22));
 
-    const QWidgetList &associatedWidgets = action->associatedWidgets();
-    for (QWidget *w : associatedWidgets) {
-        if (QToolButton *tb = qobject_cast<QToolButton *>(w))
+    const QObjectList associatedObjects = action->associatedObjects();
+    for (QObject *o : associatedObjects) {
+        if (QToolButton *tb = qobject_cast<QToolButton *>(o))
             return tb->grab(QRect(0, 0, -1, -1));
     }
 

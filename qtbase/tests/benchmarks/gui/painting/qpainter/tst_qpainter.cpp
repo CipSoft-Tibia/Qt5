@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QPainter>
@@ -310,7 +285,7 @@ void tst_QPainter::drawLine_data()
     QTest::addColumn<QLine>("line");
     QTest::addColumn<QPen>("pen");
 
-    QVector<QPen> pens;
+    QList<QPen> pens;
     pens << QPen(Qt::black)
          << QPen(Qt::black, 0, Qt::DashDotLine)
          << QPen(Qt::black, 4)
@@ -554,7 +529,7 @@ void tst_QPainter::drawLine_clipped()
                        qMin(line.y1(), line.y2())
                        + 2*offset + qAbs(line.dy()));
 
-    const QRect clip = QRect(line.p1(), line.p2()).normalized();
+    const QRect clip = QRect::span(line.p1(), line.p2());
 
     pixmapClipped.fill(Qt::white);
     QPainter p(&pixmapClipped);
@@ -589,7 +564,7 @@ void tst_QPainter::drawLine_antialiased_clipped()
                        qMin(line.y1(), line.y2())
                        + 2*offset + qAbs(line.dy()));
 
-    const QRect clip = QRect(line.p1(), line.p2()).normalized();
+    const QRect clip = QRect::span(line.p1(), line.p2());
 
     pixmapClipped.fill(Qt::white);
     QPainter p(&pixmapClipped);
@@ -695,7 +670,7 @@ void tst_QPainter::drawPixmapImage_data_helper(bool pixmaps)
     for (; *targetFormats != QImage::Format_Invalid; ++targetFormats) {
         const QImage::Format *sourceFormats = pixmaps ? pixmapFormats : sourceImageFormats;
         for (; *sourceFormats != QImage::Format_Invalid; ++sourceFormats) {
-            for (const QSize &s : qAsConst(sizes)) {
+            for (const QSize &s : std::as_const(sizes)) {
                 for (int type=0; type<=3; ++type) {
                     QString name = QString::fromLatin1("%1 on %2, (%3x%4), %5")
                                    .arg(formatNames[*sourceFormats])

@@ -13,20 +13,20 @@ from py_utils.refactor import snippet
 
 class AnnotatedSymbol(snippet.Symbol):
   def __init__(self, symbol_type, children):
-    super(AnnotatedSymbol, self).__init__(symbol_type, children)
+    super().__init__(symbol_type, children)
     self._modified = False
 
   @property
   def modified(self):
     if self._modified:
       return True
-    return super(AnnotatedSymbol, self).modified
+    return super().modified
 
   def __setattr__(self, name, value):
     if (hasattr(self.__class__, name) and
         isinstance(getattr(self.__class__, name), property)):
       self._modified = True
-    return super(AnnotatedSymbol, self).__setattr__(name, value)
+    return super().__setattr__(name, value)
 
   def Cut(self, child):
     for i in range(len(self._children)):

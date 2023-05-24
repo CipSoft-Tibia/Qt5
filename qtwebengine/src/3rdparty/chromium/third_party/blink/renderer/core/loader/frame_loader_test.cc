@@ -1,14 +1,20 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+#include "third_party/blink/public/web/web_view.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
-#include "third_party/blink/renderer/core/frame/web_view_frame_widget.h"
+#include "third_party/blink/renderer/core/frame/policy_container.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
 #include "third_party/blink/renderer/core/page/chrome_client_impl.h"
+#include "third_party/blink/renderer/core/testing/mock_policy_container_host.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_request.h"
 #include "third_party/blink/renderer/core/testing/sim/sim_test.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
@@ -73,8 +79,8 @@ TEST_F(FrameLoaderSimTest, LoadEventProgressBeforeUnloadCanceled) {
 
   // We'll only allow canceling a beforeunload if there's a sticky user
   // activation present so simulate a user gesture.
-  frame_b->NotifyUserActivationInLocalTree(
-      mojom::UserActivationNotificationType::kTest);
+  LocalFrame::NotifyUserActivation(
+      frame_b, mojom::UserActivationNotificationType::kTest);
 
   auto& chrome_client =
       To<ChromeClientImpl>(WebView().GetPage()->GetChromeClient());
@@ -108,6 +114,52 @@ TEST_F(FrameLoaderSimTest, LoadEventProgressBeforeUnloadCanceled) {
     EXPECT_TRUE(frame_b->GetDocument()->BeforeUnloadStarted());
     EXPECT_TRUE(frame_c->GetDocument()->BeforeUnloadStarted());
   }
+}
+
+class FrameLoaderTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    web_view_helper_.Initialize();
+    url_test_helpers::RegisterMockedURLLoad(
+        url_test_helpers::ToKURL("https://example.com/foo.html"),
+        test::CoreTestDataPath("foo.html"));
+  }
+
+  void TearDown() override {
+    url_test_helpers::UnregisterAllURLsAndClearMemoryCache();
+  }
+
+  frame_test_helpers::WebViewHelper web_view_helper_;
+};
+
+TEST_F(FrameLoaderTest, PolicyContainerIsStoredOnCommitNavigation) {
+  WebViewImpl* web_view_impl = web_view_helper_.Initialize();
+
+  const KURL& url = KURL(NullURL(), "https://www.example.com/bar.html");
+  std::unique_ptr<WebNavigationParams> params =
+      WebNavigationParams::CreateWithHTMLBufferForTesting(
+          SharedBuffer::Create(), url);
+  MockPolicyContainerHost mock_policy_container_host;
+  params->policy_container = std::make_unique<WebPolicyContainer>(
+      WebPolicyContainerPolicies{
+          network::mojom::CrossOriginEmbedderPolicyValue::kNone,
+          network::mojom::ReferrerPolicy::kAlways,
+          WebVector<WebContentSecurityPolicy>(),
+      },
+      mock_policy_container_host.BindNewEndpointAndPassDedicatedRemote());
+  LocalFrame* local_frame =
+      To<LocalFrame>(web_view_impl->GetPage()->MainFrame());
+  local_frame->Loader().CommitNavigation(std::move(params), nullptr);
+
+  EXPECT_EQ(*mojom::blink::PolicyContainerPolicies::New(
+                network::CrossOriginEmbedderPolicy(
+                    network::mojom::CrossOriginEmbedderPolicyValue::kNone),
+                network::mojom::ReferrerPolicy::kAlways,
+                Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
+                /*anonymous=*/false, network::mojom::WebSandboxFlags::kNone,
+                network::mojom::blink::IPAddressSpace::kUnknown,
+                /*can_navigate_top_without_user_gesture=*/true),
+            local_frame->DomWindow()->GetPolicyContainer()->GetPolicies());
 }
 
 }  // namespace blink

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWINDOWSSCREEN_H
 #define QWINDOWSSCREEN_H
@@ -43,10 +7,10 @@
 #include "qtwindowsglobal.h"
 
 #include <QtCore/qlist.h>
-#include <QtCore/qvector.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qscopedpointer.h>
 #include <qpa/qplatformscreen.h>
+#include <qpa/qplatformscreen_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,12 +31,19 @@ struct QWindowsScreenData
     QImage::Format format = QImage::Format_ARGB32_Premultiplied;
     unsigned flags = VirtualDesktop;
     QString name;
+    QString manufacturer;
+    QString model;
+    QString serialNumber;
     Qt::ScreenOrientation orientation = Qt::LandscapeOrientation;
     qreal refreshRateHz = 60;
     HMONITOR hMonitor = nullptr;
+    QString deviceName;
+    QString devicePath;
+    std::optional<int> deviceIndex = std::nullopt;
 };
 
 class QWindowsScreen : public QPlatformScreen
+                     , public QNativeInterface::Private::QWindowsScreen
 {
 public:
 #ifndef QT_NO_CURSOR
@@ -87,10 +58,13 @@ public:
     QImage::Format format() const override { return m_data.format; }
     QSizeF physicalSize() const override { return m_data.physicalSizeMM; }
     QDpi logicalDpi() const override { return m_data.dpi; }
-    QDpi logicalBaseDpi() const override { return QDpi(96, 96); };
+    QDpi logicalBaseDpi() const override { return QDpi(baseDpi, baseDpi); }
     qreal devicePixelRatio() const override { return 1.0; }
     qreal refreshRate() const override { return m_data.refreshRateHz; }
-    QString name() const override { return m_data.name; }
+    QString name() const override;
+    QString manufacturer() const override { return m_data.manufacturer; }
+    QString model() const override { return m_data.model; }
+    QString serialNumber() const override { return m_data.serialNumber; }
     Qt::ScreenOrientation orientation() const override { return m_data.orientation; }
     QList<QPlatformScreen *> virtualSiblings() const override;
     QWindow *topLevelAt(const QPoint &point) const override;
@@ -104,7 +78,7 @@ public:
 
     inline void handleChanges(const QWindowsScreenData &newData);
 
-    HMONITOR handle() const;
+    HMONITOR handle() const override;
 
 #ifndef QT_NO_CURSOR
     QPlatformCursor *cursor() const override { return m_cursor.data(); }
@@ -116,6 +90,7 @@ public:
     const QWindowsScreenData &data() const  { return m_data; }
 
     static QRect virtualGeometry(const QPlatformScreen *screen);
+    static inline int baseDpi = 96;
 
 private:
     QWindowsScreenData m_data;
@@ -126,15 +101,17 @@ private:
 
 class QWindowsScreenManager
 {
+    Q_DISABLE_COPY_MOVE(QWindowsScreenManager)
 public:
-    using WindowsScreenList = QVector<QWindowsScreen *>;
+    using WindowsScreenList = QList<QWindowsScreen *>;
 
     QWindowsScreenManager();
+    void initialize();
+    ~QWindowsScreenManager();
 
     void clearScreens();
 
     bool handleScreenChanges();
-    bool handleDisplayChange(WPARAM wParam, LPARAM lParam);
     const WindowsScreenList &screens() const { return m_screens; }
 
     const QWindowsScreen *screenAtDp(const QPoint &p) const;
@@ -145,10 +122,8 @@ public:
 private:
     void removeScreen(int index);
 
+    HWND m_displayChangeObserver = nullptr;
     WindowsScreenList m_screens;
-    int m_lastDepth = -1;
-    WORD m_lastHorizontalResolution = 0;
-    WORD m_lastVerticalResolution = 0;
 };
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -57,6 +57,7 @@ SyntheticSmoothMoveGesture::~SyntheticSmoothMoveGesture() {}
 SyntheticGesture::Result SyntheticSmoothMoveGesture::ForwardInputEvents(
     const base::TimeTicks& timestamp,
     SyntheticGestureTarget* target) {
+  DCHECK(dispatching_controller_);
   if (state_ == SETUP) {
     state_ = STARTED;
     current_move_segment_ = -1;
@@ -66,22 +67,33 @@ SyntheticGesture::Result SyntheticSmoothMoveGesture::ForwardInputEvents(
   switch (params_.input_type) {
     case SyntheticSmoothMoveGestureParams::TOUCH_INPUT:
       if (!synthetic_pointer_driver_)
-        synthetic_pointer_driver_ =
-            SyntheticPointerDriver::Create(SyntheticGestureParams::TOUCH_INPUT);
+        synthetic_pointer_driver_ = SyntheticPointerDriver::Create(
+            content::mojom::GestureSourceType::kTouchInput,
+            params_.from_devtools_debugger);
       ForwardTouchInputEvents(timestamp, target);
       break;
     case SyntheticSmoothMoveGestureParams::MOUSE_DRAG_INPUT:
       if (!synthetic_pointer_driver_)
-        synthetic_pointer_driver_ =
-            SyntheticPointerDriver::Create(SyntheticGestureParams::MOUSE_INPUT);
+        synthetic_pointer_driver_ = SyntheticPointerDriver::Create(
+            content::mojom::GestureSourceType::kMouseInput,
+            params_.from_devtools_debugger);
       ForwardMouseClickInputEvents(timestamp, target);
       break;
     case SyntheticSmoothMoveGestureParams::MOUSE_WHEEL_INPUT:
       ForwardMouseWheelInputEvents(timestamp, target);
+      // A mousewheel should not be able to close the WebContents.
+      DCHECK(dispatching_controller_);
       break;
     default:
       return SyntheticGesture::GESTURE_SOURCE_TYPE_NOT_IMPLEMENTED;
   }
+  if (!dispatching_controller_) {
+    // A pointer gesture can cause the controller (and therefore `this`) to be
+    // synchronously deleted (e.g. clicking tab-close). Return immediately in
+    // this case.
+    return SyntheticGesture::GESTURE_ABORT;
+  }
+
   return (state_ == DONE) ? SyntheticGesture::GESTURE_FINISHED
                           : SyntheticGesture::GESTURE_RUNNING;
 }
@@ -92,6 +104,7 @@ SyntheticGesture::Result SyntheticSmoothMoveGesture::ForwardInputEvents(
 // for all input types. The gesture class can use instance of device actions.
 // Refer: crbug.com/461825
 
+// CAUTION: forwarding a pointer press/release can cause `this` to be deleted.
 void SyntheticSmoothMoveGesture::ForwardTouchInputEvents(
     const base::TimeTicks& timestamp,
     SyntheticGestureTarget* target) {
@@ -105,6 +118,9 @@ void SyntheticSmoothMoveGesture::ForwardTouchInputEvents(
         AddTouchSlopToFirstDistance(target);
       ComputeNextMoveSegment();
       PressPoint(target, timestamp);
+      if (!dispatching_controller_) {
+        return;
+      }
       state_ = MOVING;
       break;
     case MOVING: {
@@ -121,6 +137,9 @@ void SyntheticSmoothMoveGesture::ForwardTouchInputEvents(
           state_ = STOPPING;
         } else {
           ReleasePoint(target, event_timestamp);
+          if (!dispatching_controller_) {
+            return;
+          }
           state_ = DONE;
         }
       }
@@ -131,6 +150,9 @@ void SyntheticSmoothMoveGesture::ForwardTouchInputEvents(
         base::TimeTicks event_timestamp = current_move_segment_stop_time_ +
                                           target->PointerAssumedStoppedTime();
         ReleasePoint(target, event_timestamp);
+        if (!dispatching_controller_) {
+          return;
+        }
         state_ = DONE;
       }
       break;
@@ -208,6 +230,7 @@ void SyntheticSmoothMoveGesture::ForwardMouseWheelInputEvents(
   }
 }
 
+// CAUTION: forwarding a pointer press/release can cause `this` to be deleted.
 void SyntheticSmoothMoveGesture::ForwardMouseClickInputEvents(
     const base::TimeTicks& timestamp,
     SyntheticGestureTarget* target) {
@@ -219,6 +242,9 @@ void SyntheticSmoothMoveGesture::ForwardMouseClickInputEvents(
       }
       ComputeNextMoveSegment();
       PressPoint(target, timestamp);
+      if (!dispatching_controller_) {
+        return;
+      }
       state_ = MOVING;
       break;
     case MOVING: {
@@ -233,6 +259,9 @@ void SyntheticSmoothMoveGesture::ForwardMouseClickInputEvents(
           ComputeNextMoveSegment();
         } else {
           ReleasePoint(target, event_timestamp);
+          if (!dispatching_controller_) {
+            return;
+          }
           state_ = DONE;
         }
       }
@@ -258,6 +287,9 @@ void SyntheticSmoothMoveGesture::ForwardMouseWheelEvent(
     const blink::WebMouseWheelEvent::Phase phase,
     const base::TimeTicks& timestamp,
     int modifiers) const {
+  if (params_.from_devtools_debugger) {
+    modifiers |= blink::WebInputEvent::kFromDebugger;
+  }
   blink::WebMouseWheelEvent mouse_wheel_event =
       blink::SyntheticWebMouseWheelEventBuilder::Build(
           0, 0, delta.x(), delta.y(), modifiers, params_.granularity);
@@ -356,9 +388,8 @@ void SyntheticSmoothMoveGesture::ComputeNextMoveSegment() {
                params_.speed_in_pixels_s));
     DCHECK_GT(total_duration_in_us, 0);
     current_move_segment_start_time_ = current_move_segment_stop_time_;
-    current_move_segment_stop_time_ =
-        current_move_segment_start_time_ +
-        base::TimeDelta::FromMicroseconds(total_duration_in_us);
+    current_move_segment_stop_time_ = current_move_segment_start_time_ +
+                                      base::Microseconds(total_duration_in_us);
   }
 }
 

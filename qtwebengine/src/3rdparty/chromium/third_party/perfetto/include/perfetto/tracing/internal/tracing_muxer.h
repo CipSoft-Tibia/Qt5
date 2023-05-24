@@ -22,6 +22,7 @@
 
 #include "perfetto/base/export.h"
 #include "perfetto/tracing/core/forward_decls.h"
+#include "perfetto/tracing/interceptor.h"
 #include "perfetto/tracing/internal/basic_types.h"
 #include "perfetto/tracing/internal/tracing_tls.h"
 #include "perfetto/tracing/platform.h"
@@ -33,6 +34,11 @@ struct TracingInitArgs;
 class TracingSession;
 
 namespace internal {
+
+struct DataSourceParams {
+  bool supports_multiple_instances;
+  bool requires_callbacks_under_lock;
+};
 
 struct DataSourceStaticState;
 
@@ -46,7 +52,7 @@ struct DataSourceStaticState;
 // and methods that are required to implement them should go into
 // src/tracing/internal/tracing_muxer_impl.h instead: that one can pull in
 // perfetto headers outside of public, this one cannot.
-class PERFETTO_EXPORT TracingMuxer {
+class PERFETTO_EXPORT_COMPONENT TracingMuxer {
  public:
   static TracingMuxer* Get() { return instance_; }
 
@@ -61,19 +67,41 @@ class PERFETTO_EXPORT TracingMuxer {
   using DataSourceFactory = std::function<std::unique_ptr<DataSourceBase>()>;
   virtual bool RegisterDataSource(const DataSourceDescriptor&,
                                   DataSourceFactory,
+                                  DataSourceParams,
                                   DataSourceStaticState*) = 0;
+
+  // Updates the DataSourceDescriptor for the DataSource.
+  virtual void UpdateDataSourceDescriptor(const DataSourceDescriptor&,
+                                          const DataSourceStaticState*) = 0;
 
   // It identifies the right backend and forwards the call to it.
   // The returned TraceWriter must be used within the same sequence (for most
   // projects this means "same thread"). Alternatively the client needs to take
   // care of using synchronization primitives to prevent concurrent accesses.
   virtual std::unique_ptr<TraceWriterBase> CreateTraceWriter(
+      DataSourceStaticState*,
+      uint32_t data_source_instance_index,
       DataSourceState*,
       BufferExhaustedPolicy buffer_exhausted_policy) = 0;
 
   virtual void DestroyStoppedTraceWritersForCurrentThread() = 0;
 
   uint32_t generation(std::memory_order ord) { return generation_.load(ord); }
+
+  using InterceptorFactory = std::function<std::unique_ptr<InterceptorBase>()>;
+  virtual void RegisterInterceptor(const InterceptorDescriptor&,
+                                   InterceptorFactory,
+                                   InterceptorBase::TLSFactory,
+                                   InterceptorBase::TracePacketCallback) = 0;
+
+  // Informs the tracing services to activate any of these triggers if any
+  // tracing session was waiting for them.
+  //
+  // Sends the trigger signal to all the initialized backends that are currently
+  // connected and that connect in the next `ttl_ms` milliseconds (but returns
+  // immediately anyway).
+  virtual void ActivateTriggers(const std::vector<std::string>&,
+                                uint32_t ttl_ms) = 0;
 
  protected:
   explicit TracingMuxer(Platform* platform) : platform_(platform) {}

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,7 @@ namespace {
 // RenderViewHostDelegate::HandledKeybardEvent after the original aura
 // event is destroyed.
 ui::Event* CopyEvent(const ui::Event* event) {
-  return event ? ui::Event::Clone(*event).release() : nullptr;
+  return event ? event->Clone().release() : nullptr;
 }
 
 int WebEventModifiersToEventFlags(int modifiers) {
@@ -75,6 +75,11 @@ class TranslatedKeyEvent : public ui::KeyEvent {
         web_event.dom_key, web_event.TimeStamp(), is_char);
   }
 
+  // Event:
+  std::unique_ptr<ui::Event> Clone() const override {
+    return std::make_unique<TranslatedKeyEvent>(*this);
+  }
+
  private:
   TranslatedKeyEvent(ui::EventType type,
                      ui::KeyboardCode keyboard_code,
@@ -125,7 +130,7 @@ NativeWebKeyboardEvent::NativeWebKeyboardEvent(
 }
 
 NativeWebKeyboardEvent::NativeWebKeyboardEvent(const ui::KeyEvent& key_event,
-                                               base::char16 character)
+                                               char16_t character)
     : WebKeyboardEvent(ui::MakeWebKeyboardEvent(key_event)),
       os_event(nullptr),
       skip_in_browser(false) {

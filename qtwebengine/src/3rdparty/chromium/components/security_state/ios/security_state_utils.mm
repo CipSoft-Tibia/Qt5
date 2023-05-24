@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 
 #import "components/safe_browsing/ios/browser/safe_browsing_url_allow_list.h"
 #include "components/security_state/core/security_state.h"
-#include "components/security_state/ios/ssl_status_input_event_data.h"
 #include "ios/web/public/navigation/navigation_item.h"
 #import "ios/web/public/navigation/navigation_manager.h"
 #include "ios/web/public/security/security_style.h"
@@ -63,16 +62,18 @@ MaliciousContentStatus GetMaliciousContentStatus(
         DEPRECATED_SB_THREAT_TYPE_URL_PASSWORD_PROTECTION_PHISHING:
     case safe_browsing::SB_THREAT_TYPE_URL_BINARY_MALWARE:
     case safe_browsing::SB_THREAT_TYPE_EXTENSION:
-    case safe_browsing::SB_THREAT_TYPE_BLACKLISTED_RESOURCE:
+    case safe_browsing::SB_THREAT_TYPE_BLOCKLISTED_RESOURCE:
     case safe_browsing::SB_THREAT_TYPE_API_ABUSE:
     case safe_browsing::SB_THREAT_TYPE_SUBRESOURCE_FILTER:
-    case safe_browsing::SB_THREAT_TYPE_CSD_WHITELIST:
+    case safe_browsing::SB_THREAT_TYPE_CSD_ALLOWLIST:
     case safe_browsing::SB_THREAT_TYPE_AD_SAMPLE:
     case safe_browsing::SB_THREAT_TYPE_BLOCKED_AD_POPUP:
     case safe_browsing::SB_THREAT_TYPE_BLOCKED_AD_REDIRECT:
     case safe_browsing::SB_THREAT_TYPE_SUSPICIOUS_SITE:
     case safe_browsing::SB_THREAT_TYPE_APK_DOWNLOAD:
     case safe_browsing::SB_THREAT_TYPE_HIGH_CONFIDENCE_ALLOWLIST:
+    case safe_browsing::SB_THREAT_TYPE_MANAGED_POLICY_WARN:
+    case safe_browsing::SB_THREAT_TYPE_MANAGED_POLICY_BLOCK:
       // These threat types are not currently associated with
       // interstitials, and thus resources with these threat types are
       // not ever whitelisted or pending whitelisting.
@@ -101,12 +102,6 @@ GetVisibleSecurityStateForWebState(const web::WebState* web_state) {
   state->displayed_mixed_content =
       (ssl.content_status & web::SSLStatus::DISPLAYED_INSECURE_CONTENT) ? true
                                                                         : false;
-
-  security_state::SSLStatusInputEventData* input_events =
-      static_cast<security_state::SSLStatusInputEventData*>(
-          ssl.user_data.get());
-  if (input_events)
-    state->insecure_input_events = *input_events->input_events();
 
   return state;
 }

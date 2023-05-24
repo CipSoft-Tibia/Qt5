@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmlstatemachine_p.h"
 #include "qscxmlexecutablecontent_p.h"
@@ -94,16 +58,21 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
 */
 
 /*!
-    \fn template<typename PointerToMemberFunction> QMetaObject::Connection QScxmlStateMachine::connectToEvent(
-                                           const QString &scxmlEventSpec,
-                                           const typename QtPrivate::FunctionPointer<PointerToMemberFunction>::Object *receiver,
-                                           PointerToMemberFunction method,
-                                           Qt::ConnectionType type)
+    \fn template<typename Functor> QMetaObject::Connection QScxmlStateMachine::connectToEvent(
+            const QString &scxmlEventSpec,
+            const QObject *context,
+            Functor &&functor,
+            Qt::ConnectionType type)
+    \fn template<typename Functor> QMetaObject::Connection QScxmlStateMachine::connectToEvent(
+            const QString &scxmlEventSpec,
+            Functor &&functor,
+            Qt::ConnectionType type)
 
     Creates a connection of the given \a type from the event specified by
-    \a scxmlEventSpec to \a method in the \a receiver object.
+    \a scxmlEventSpec to \a functor, which can be a functor or a member function of
+    the optional \a context object.
 
-    The receiver's \a method must take a QScxmlEvent as a parameter.
+    The receiver's \a functor must take a QScxmlEvent as a parameter.
 
     In contrast to event specifications in SCXML documents, spaces are not
     allowed in the \a scxmlEventSpec here. In order to connect to multiple
@@ -114,93 +83,28 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
 */
 
 /*!
-    \fn template<typename Functor> typename QtPrivate::QEnableIf<!QtPrivate::FunctionPointer<Functor>::IsPointerToMemberFunction && !std::is_same<const char*, Functor>::value, QMetaObject::Connection>::Type QScxmlStateMachine::connectToEvent(
-                                           const QString &scxmlEventSpec,
-                                           Functor functor,
-                                           Qt::ConnectionType type)
-
-    Creates a connection of the given \a type from the event specified by
-    \a scxmlEventSpec to \a functor.
-
-    The \a functor must take a QScxmlEvent as a parameter.
-
-    In contrast to event specifications in SCXML documents, spaces are not
-    allowed in the \a scxmlEventSpec here. In order to connect to multiple
-    events with different prefixes, connectToEvent() has to be called multiple
-    times.
-
-    Returns a handle to the connection, which can be used later to disconnect.
-*/
-
-/*!
-    \fn template<typename Functor> typename QtPrivate::QEnableIf<!QtPrivate::FunctionPointer<Functor>::IsPointerToMemberFunction && !std::is_same<const char*, Functor>::value, QMetaObject::Connection>::Type QScxmlStateMachine::connectToEvent(
-                                           const QString &scxmlEventSpec,
-                                           const QObject *context,
-                                           Functor functor,
-                                           Qt::ConnectionType type)
-
-    Creates a connection of the given \a type from the event specified by
-    \a scxmlEventSpec to \a functor using \a context as context.
-
-    The \a functor must take a QScxmlEvent as a parameter.
-
-    In contrast to event specifications in SCXML documents, spaces are not
-    allowed in the \a scxmlEventSpec here. In order to connect to multiple
-    events with different prefixes, connectToEvent() has to be called multiple
-    times.
-
-    Returns a handle to the connection, which can be used later to disconnect.
-*/
-
-/*!
-    \fn template<typename PointerToMemberFunction> QMetaObject::Connection QScxmlStateMachine::connectToState(
-                                           const QString &scxmlStateName,
-                                           const typename QtPrivate::FunctionPointer<PointerToMemberFunction>::Object *receiver,
-                                           PointerToMemberFunction method,
-                                           Qt::ConnectionType type)
+    \fn template<typename Functor> QMetaObject::Connection QScxmlStateMachine::connectToState(
+            const QString &scxmlStateName,
+            const QObject *context,
+            Functor &&functor,
+            Qt::ConnectionType type)
+    \fn template<typename Functor> QMetaObject::Connection QScxmlStateMachine::connectToState(
+            const QString &scxmlStateName,
+            Functor &&functor,
+            Qt::ConnectionType type)
 
     Creates a connection of the given \a type from the state specified by
-    \a scxmlStateName to \a method in the \a receiver object.
+    \a scxmlStateName to \a functor, which can be a functor or a member function of
+    the optional \a context object.
 
-    The receiver's \a method must take a boolean argument that indicates
+    The receiver's \a functor must take a boolean argument that indicates
     whether the state connected became active or inactive.
 
     Returns a handle to the connection, which can be used later to disconnect.
 */
 
 /*!
-    \fn template<typename Functor> typename QtPrivate::QEnableIf<!QtPrivate::FunctionPointer<Functor>::IsPointerToMemberFunction && !std::is_same<const char*, Functor>::value, QMetaObject::Connection>::Type QScxmlStateMachine::connectToState(
-                                           const QString &scxmlStateName,
-                                           Functor functor,
-                                           Qt::ConnectionType type)
-
-    Creates a connection of the given \a type from the state specified by
-    \a scxmlStateName to \a functor.
-
-    The \a functor must take a boolean argument that indicates whether the
-    state connected became active or inactive.
-
-    Returns a handle to the connection, which can be used later to disconnect.
-*/
-
-/*!
-    \fn template<typename Functor> typename QtPrivate::QEnableIf<!QtPrivate::FunctionPointer<Functor>::IsPointerToMemberFunction && !std::is_same<const char*, Functor>::value, QMetaObject::Connection>::Type QScxmlStateMachine::connectToState(
-                                           const QString &scxmlStateName,
-                                           const QObject *context,
-                                           Functor functor,
-                                           Qt::ConnectionType type)
-
-    Creates a connection of the given \a type from the state specified by
-    \a scxmlStateName to \a functor using \a context as context.
-
-    The \a functor must take a boolean argument that indicates whether the
-    state connected became active or inactive.
-
-    Returns a handle to the connection, which can be used later to disconnect.
-*/
-
-/*!
-    \fn std::function<void(bool)> QScxmlStateMachine::onEntry(
+    \fn [onentry] std::function<void(bool)> QScxmlStateMachine::onEntry(
             const QObject *receiver, const char *method)
 
     Returns a functor that accepts a boolean argument and calls the given
@@ -215,7 +119,7 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
  */
 
 /*!
-    \fn std::function<void(bool)> QScxmlStateMachine::onExit(
+    \fn [onexit] std::function<void(bool)> QScxmlStateMachine::onExit(
             const QObject *receiver, const char *method)
 
     Returns a functor that accepts a boolean argument and calls the given
@@ -230,7 +134,7 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
  */
 
 /*!
-    \fn template<typename Functor> std::function<void(bool)> QScxmlStateMachine::onEntry(
+    \fn [onentry-functor] template<typename Functor> std::function<void(bool)> QScxmlStateMachine::onEntry(
             Functor functor)
 
     Returns a functor that accepts a boolean argument and calls the given
@@ -242,7 +146,7 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
  */
 
 /*!
-    \fn template<typename Functor> std::function<void(bool)> QScxmlStateMachine::onExit(Functor functor)
+    \fn [onexit-functor] template<typename Functor> std::function<void(bool)> QScxmlStateMachine::onExit(Functor functor)
 
     Returns a functor that accepts a boolean argument and calls the given
     \a functor if that argument is \c false. The given \a functor must not
@@ -253,7 +157,7 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
  */
 
 /*!
-    \fn template<typename PointerToMemberFunction> std::function<void(bool)> QScxmlStateMachine::onEntry(
+    \fn [onentry-template] template<typename PointerToMemberFunction> std::function<void(bool)> QScxmlStateMachine::onEntry(
             const typename QtPrivate::FunctionPointer<PointerToMemberFunction>::Object *receiver,
             PointerToMemberFunction method)
 
@@ -267,7 +171,7 @@ Q_LOGGING_CATEGORY(scxmlLog, "scxml.statemachine")
  */
 
 /*!
-    \fn template<typename PointerToMemberFunction> std::function<void(bool)> QScxmlStateMachine::onExit(
+    \fn [onexit-template] template<typename PointerToMemberFunction> std::function<void(bool)> QScxmlStateMachine::onExit(
             const typename QtPrivate::FunctionPointer<PointerToMemberFunction>::Object *receiver,
             PointerToMemberFunction method)
 
@@ -429,12 +333,8 @@ QScxmlStateMachinePrivate::QScxmlStateMachinePrivate(const QMetaObject *metaObje
     : QObjectPrivate()
     , m_sessionId(QScxmlStateMachinePrivate::generateSessionId(QStringLiteral("session-")))
     , m_isInvoked(false)
-    , m_isInitialized(false)
     , m_isProcessingEvents(false)
-    , m_dataModel(nullptr)
-    , m_loader(&m_defaultLoader)
     , m_executionEngine(nullptr)
-    , m_tableData(nullptr)
     , m_parentStateMachine(nullptr)
     , m_eventLoopHook(this)
     , m_metaObject(metaObject)
@@ -442,6 +342,7 @@ QScxmlStateMachinePrivate::QScxmlStateMachinePrivate(const QMetaObject *metaObje
 {
     static int metaType = qRegisterMetaType<QScxmlStateMachine *>();
     Q_UNUSED(metaType);
+    m_loader.setValueBypassingBindings(&m_defaultLoader);
 }
 
 QScxmlStateMachinePrivate::~QScxmlStateMachinePrivate()
@@ -502,13 +403,13 @@ QScxmlInvokableServiceFactory *QScxmlStateMachinePrivate::serviceFactory(int id)
     Q_ASSERT(id <= m_stateTable->maxServiceId && id >= 0);
     QScxmlInvokableServiceFactory *& factory = m_cachedFactories[size_t(id)];
     if (factory == nullptr)
-        factory = m_tableData->serviceFactory(id);
+        factory = m_tableData.value()->serviceFactory(id);
     return factory;
 }
 
 bool QScxmlStateMachinePrivate::executeInitialSetup()
 {
-    return m_executionEngine->execute(m_tableData->initialSetup());
+    return m_executionEngine->execute(m_tableData.value()->initialSetup());
 }
 
 void QScxmlStateMachinePrivate::routeEvent(QScxmlEvent *event)
@@ -529,7 +430,7 @@ void QScxmlStateMachinePrivate::routeEvent(QScxmlEvent *event)
         }
     } else if (origin.startsWith(QStringLiteral("#_")) && origin != QStringLiteral("#_internal")) {
         // route to children
-        auto originId = origin.midRef(2);
+        auto originId = QStringView{origin}.mid(2);
         for (const auto &invokedService : m_invokedServices) {
             auto service = invokedService.service;
             if (service == nullptr)
@@ -727,12 +628,12 @@ void QScxmlStateMachinePrivate::processEvents()
 void QScxmlStateMachinePrivate::setEvent(QScxmlEvent *event)
 {
     Q_ASSERT(event);
-    m_dataModel->setScxmlEvent(*event);
+    m_dataModel.value()->setScxmlEvent(*event);
 }
 
 void QScxmlStateMachinePrivate::resetEvent()
 {
-    m_dataModel->setScxmlEvent(QScxmlEvent());
+    m_dataModel.value()->setScxmlEvent(QScxmlEvent());
 }
 
 void QScxmlStateMachinePrivate::emitStateActive(int stateIndex, bool active)
@@ -747,6 +648,7 @@ void QScxmlStateMachinePrivate::emitStateActive(int stateIndex, bool active)
 void QScxmlStateMachinePrivate::emitInvokedServicesChanged()
 {
     Q_Q(QScxmlStateMachine);
+    m_invokedServicesComputedProperty.notify();
     emit q->invokedServicesChanged(q->invokedServices());
 }
 
@@ -767,10 +669,14 @@ void QScxmlStateMachinePrivate::attach(QScxmlStateMachineInfo *info)
 
 void QScxmlStateMachinePrivate::updateMetaCache()
 {
+    // This function creates a mapping from state index/name to their signal indexes.
+    // The state index may differ from its signal index as we don't generate history
+    // and invalid states, effectively skipping them
     m_stateIndexToSignalIndex.clear();
     m_stateNameToSignalIndex.clear();
 
-    if (!m_tableData)
+    const QScxmlTableData *tableData = m_tableData.valueBypassingBindings();
+    if (!tableData)
         return;
 
     if (!m_stateTable)
@@ -782,7 +688,7 @@ void QScxmlStateMachinePrivate::updateMetaCache()
         const auto &s = m_stateTable->state(i);
         if (!s.isHistoryState() && s.type != StateTable::State::Invalid) {
             m_stateIndexToSignalIndex.insert(i, signalIndex);
-            m_stateNameToSignalIndex.insert(m_tableData->string(s.name),
+            m_stateNameToSignalIndex.insert(tableData->string(s.name),
                                             signalIndex + methodOffset);
 
             ++signalIndex;
@@ -794,7 +700,7 @@ QStringList QScxmlStateMachinePrivate::stateNames(const std::vector<int> &stateI
 {
     QStringList names;
     for (int idx : stateIndexes)
-        names.append(m_tableData->string(m_stateTable->state(idx).name));
+        names.append(m_tableData.value()->string(m_stateTable->state(idx).name));
     return names;
 }
 
@@ -852,7 +758,7 @@ bool QScxmlStateMachinePrivate::nameMatch(const StateTable::Array &patterns,
     const QString eventName = event->name();
     bool selected = false;
     for (int eventSelectorIter = 0; eventSelectorIter < patterns.size(); ++eventSelectorIter) {
-        QString eventStr = m_tableData->string(patterns[eventSelectorIter]);
+        QString eventStr = m_tableData.value()->string(patterns[eventSelectorIter]);
         if (eventStr == QStringLiteral("*")) {
             selected = true;
             break;
@@ -913,7 +819,7 @@ void QScxmlStateMachinePrivate::selectTransitions(OrderedSet &enabledTransitions
                                 enabled = true;
                             } else {
                                 bool ok = false;
-                                enabled = m_dataModel->evaluateToBool(t.condition, &ok) && ok;
+                                enabled = m_dataModel.value()->evaluateToBool(t.condition, &ok) && ok;
                             }
                         }
                     } else {
@@ -922,7 +828,7 @@ void QScxmlStateMachinePrivate::selectTransitions(OrderedSet &enabledTransitions
                                 enabled = true;
                             } else {
                                 bool ok = false;
-                                enabled = m_dataModel->evaluateToBool(t.condition, &ok) && ok;
+                                enabled = m_dataModel.value()->evaluateToBool(t.condition, &ok) && ok;
                             }
                         }
                     }
@@ -1037,13 +943,13 @@ void QScxmlStateMachinePrivate::microstep(const OrderedSet &enabledTransitions)
             const auto &transition = m_stateTable->transition(t);
             QString from = QStringLiteral("(none)");
             if (transition.source != StateTable::InvalidIndex)
-                from = m_tableData->string(m_stateTable->state(transition.source).name);
+                from = m_tableData.value()->string(m_stateTable->state(transition.source).name);
             QStringList to;
             if (transition.targets == StateTable::InvalidIndex) {
                 to.append(QStringLiteral("(none)"));
             } else {
                 for (int t : m_stateTable->array(transition.targets))
-                    to.append(m_tableData->string(m_stateTable->state(t).name));
+                    to.append(m_tableData.value()->string(m_stateTable->state(t).name));
             }
             qCDebug(qscxmlLog) << q_func() << "\t" << t << ":" << from << "->"
                                << to.join(QLatin1Char(','));
@@ -1073,7 +979,7 @@ void QScxmlStateMachinePrivate::exitStates(const OrderedSet &enabledTransitions)
     for (int s : statesToExitSorted) {
         for (int h : historyStates(s)) {
             const auto &hState = m_stateTable->state(h);
-            QVector<int> history;
+            QList<int> history;
 
             for (int s0 : m_configuration) {
                 const auto &s0State = m_stateTable->state(s0);
@@ -1100,7 +1006,7 @@ void QScxmlStateMachinePrivate::exitStates(const OrderedSet &enabledTransitions)
 
     if (m_infoSignalProxy) {
         emit m_infoSignalProxy->statesExited(
-                QVector<QScxmlStateMachineInfo::StateId>(statesToExitSorted.begin(),
+                QList<QScxmlStateMachineInfo::StateId>(statesToExitSorted.begin(),
                                                          statesToExitSorted.end()));
     }
 }
@@ -1132,7 +1038,7 @@ void QScxmlStateMachinePrivate::executeTransitionContent(const OrderedSet &enabl
 
     if (m_infoSignalProxy) {
         emit m_infoSignalProxy->transitionsTriggered(
-                QVector<QScxmlStateMachineInfo::TransitionId>(enabledTransitions.list().begin(),
+                QList<QScxmlStateMachineInfo::TransitionId>(enabledTransitions.list().begin(),
                                                               enabledTransitions.list().end()));
     }
 }
@@ -1176,7 +1082,7 @@ void QScxmlStateMachinePrivate::enterStates(const OrderedSet &enabledTransitions
                     emit q->runningChanged(false);
             } else {
                 const auto &parent = m_stateTable->state(state.parent);
-                m_executionEngine->execute(state.doneData, m_tableData->string(parent.name));
+                m_executionEngine->execute(state.doneData, m_tableData.value()->string(parent.name));
                 if (parent.parent != StateTable::InvalidIndex) {
                     const auto &grandParent = m_stateTable->state(parent.parent);
                     if (grandParent.isParallel()) {
@@ -1184,7 +1090,7 @@ void QScxmlStateMachinePrivate::enterStates(const OrderedSet &enabledTransitions
                             auto e = new QScxmlEvent;
                             e->setEventType(QScxmlEvent::InternalEvent);
                             e->setName(QStringLiteral("done.state.")
-                                       + m_tableData->string(grandParent.name));
+                                       + m_tableData.value()->string(grandParent.name));
                             q->submitEvent(e);
                         }
                     }
@@ -1196,7 +1102,7 @@ void QScxmlStateMachinePrivate::enterStates(const OrderedSet &enabledTransitions
         emitStateActive(s, true);
     if (m_infoSignalProxy) {
         emit m_infoSignalProxy->statesEntered(
-                QVector<QScxmlStateMachineInfo::StateId>(sortedStates.begin(),
+                QList<QScxmlStateMachineInfo::StateId>(sortedStates.begin(),
                                                          sortedStates.end()));
     }
 }
@@ -1247,7 +1153,15 @@ void QScxmlStateMachinePrivate::addDescendantStatesToEnter(
                 addAncestorStatesToEnter(s, state.parent, statesToEnter, statesForDefaultEntry,
                                          defaultHistoryContent);
         } else {
-            const auto transitionIdx = m_stateTable->array(state.transitions)[0];
+            int transitionIdx = StateTable::InvalidIndex;
+            if (state.transitions == StateTable::InvalidIndex) {
+                int parentInitialTransition = m_stateTable->state(state.parent).initialTransition;
+                if (parentInitialTransition == StateTable::InvalidIndex)
+                    return;
+                transitionIdx = parentInitialTransition;
+            } else {
+                transitionIdx = m_stateTable->array(state.transitions)[0];
+            }
             const auto &defaultHistoryTransition = m_stateTable->transition(transitionIdx);
             defaultHistoryContent->operator[](state.parent) =
                     defaultHistoryTransition.transitionInstructions;
@@ -1457,7 +1371,7 @@ void QScxmlStateMachinePrivate::getEffectiveTargetStates(OrderedSet *targets,
                 for (int historyState : historyValueIter.value()) {
                     targets->add(historyState);
                 }
-            } else {
+            } else if (state.transitions != StateTable::InvalidIndex) {
                 getEffectiveTargetStates(targets, m_stateTable->array(state.transitions)[0]);
             }
         } else {
@@ -1507,10 +1421,10 @@ QScxmlStateMachine *QScxmlStateMachine::fromData(QIODevice *data, const QString 
     return compiler.compile();
 }
 
-QVector<QScxmlError> QScxmlStateMachine::parseErrors() const
+QList<QScxmlError> QScxmlStateMachine::parseErrors() const
 {
     Q_D(const QScxmlStateMachine);
-    return d->m_parserData ? d->m_parserData->m_errors : QVector<QScxmlError>();
+    return d->m_parserData ? d->m_parserData->m_errors : QList<QScxmlError>();
 }
 
 QScxmlStateMachine::QScxmlStateMachine(const QMetaObject *metaObject, QObject *parent)
@@ -1553,8 +1467,7 @@ QScxmlStateMachine::QScxmlStateMachine(QScxmlStateMachinePrivate &dd, QObject *p
     Changing the data model when the state machine has been \c initialized is
     not specified in the SCXML standard and leads to undefined behavior.
 
-    \sa QScxmlDataModel, QScxmlNullDataModel, QScxmlEcmaScriptDataModel,
-        QScxmlCppDataModel
+    \sa QScxmlDataModel, QScxmlNullDataModel, QScxmlCppDataModel
 */
 
 /*!
@@ -1569,8 +1482,7 @@ QScxmlStateMachine::QScxmlStateMachine(QScxmlStateMachinePrivate &dd, QObject *p
     Changing the data model when the state machine has been \l initialized is
     not specified in the SCXML standard and leads to undefined behavior.
 
-    \sa QScxmlDataModel, QScxmlNullDataModel, QScxmlEcmaScriptDataModel,
-        QScxmlCppDataModel
+    \sa QScxmlDataModel, QScxmlNullDataModel, QScxmlCppDataModel
 */
 
 /*!
@@ -1723,6 +1635,12 @@ bool QScxmlStateMachine::isInitialized() const
     return d->m_isInitialized;
 }
 
+QBindable<bool> QScxmlStateMachine::bindableInitialized() const
+{
+    Q_D(const QScxmlStateMachine);
+    return &d->m_isInitialized;
+}
+
 /*!
  * Sets the data model for this state machine to \a model. There is a 1:1
  * relation between state machines and models. After setting the model once you
@@ -1733,10 +1651,13 @@ void QScxmlStateMachine::setDataModel(QScxmlDataModel *model)
 {
     Q_D(QScxmlStateMachine);
 
-    if (d->m_dataModel == nullptr && model != nullptr) {
-        d->m_dataModel = model;
-        if (model)
-            model->setStateMachine(this);
+    if (d->m_dataModel.valueBypassingBindings() == nullptr && model != nullptr) {
+        // the binding is removed only on the first valid set
+        // as the later attempts are ignored
+        d->m_dataModel.removeBindingUnlessInWrapper();
+        d->m_dataModel.setValueBypassingBindings(model);
+        model->setStateMachine(this);
+        d->m_dataModel.notify();
         emit dataModelChanged(model);
     }
 }
@@ -1751,14 +1672,16 @@ QScxmlDataModel *QScxmlStateMachine::dataModel() const
     return d->m_dataModel;
 }
 
+QBindable<QScxmlDataModel*> QScxmlStateMachine::bindableDataModel()
+{
+    Q_D(QScxmlStateMachine);
+    return &d->m_dataModel;
+}
+
 void QScxmlStateMachine::setLoader(QScxmlCompiler::Loader *loader)
 {
     Q_D(QScxmlStateMachine);
-
-    if (loader != d->m_loader) {
-        d->m_loader = loader;
-        emit loaderChanged(loader);
-    }
+    d->m_loader.setValue(loader);
 }
 
 QScxmlCompiler::Loader *QScxmlStateMachine::loader() const
@@ -1766,6 +1689,12 @@ QScxmlCompiler::Loader *QScxmlStateMachine::loader() const
     Q_D(const QScxmlStateMachine);
 
     return d->m_loader;
+}
+
+QBindable<QScxmlCompiler::Loader*> QScxmlStateMachine::bindableLoader()
+{
+    Q_D(QScxmlStateMachine);
+    return &d->m_loader;
 }
 
 QScxmlTableData *QScxmlStateMachine::tableData() const
@@ -1779,14 +1708,18 @@ void QScxmlStateMachine::setTableData(QScxmlTableData *tableData)
 {
     Q_D(QScxmlStateMachine);
 
-    if (d->m_tableData == tableData)
+    d->m_tableData.removeBindingUnlessInWrapper();
+    if (d->m_tableData.valueBypassingBindings() == tableData)
         return;
 
-    d->m_tableData = tableData;
+    d->m_tableData.setValueBypassingBindings(tableData);
     if (tableData) {
         d->m_stateTable = reinterpret_cast<const QScxmlExecutableContent::StateTable *>(
                     tableData->stateMachineTable());
-        if (objectName().isEmpty()) {
+        // cannot use objectName() here, because it creates binding loop
+        const QString currentObjectName = d->extraData
+                ? d->extraData->objectName.valueBypassingBindings() : QString();
+        if (currentObjectName.isEmpty()) {
             setObjectName(tableData->name());
         }
         if (d->m_stateTable->maxServiceId != QScxmlExecutableContent::StateTable::InvalidIndex) {
@@ -1806,7 +1739,14 @@ void QScxmlStateMachine::setTableData(QScxmlTableData *tableData)
 
     d->updateMetaCache();
 
+    d->m_tableData.notify();
     emit tableDataChanged(tableData);
+}
+
+QBindable<QScxmlTableData*> QScxmlStateMachine::bindableTableData()
+{
+    Q_D(QScxmlStateMachine);
+    return &d->m_tableData;
 }
 
 /*!
@@ -1845,7 +1785,7 @@ QStringList QScxmlStateMachine::stateNames(bool compress) const
     for (int i = 0; i < d->m_stateTable->stateCount; ++i) {
         const auto &state = d->m_stateTable->state(i);
         if (!compress || state.isAtomic())
-            names.append(d->m_tableData->string(state.name));
+            names.append(d->m_tableData.value()->string(state.name));
     }
     return names;
 }
@@ -1876,7 +1816,7 @@ QStringList QScxmlStateMachine::activeStateNames(bool compress) const
     for (int stateIdx : d->m_configuration) {
         const auto &state = d->m_stateTable->state(stateIdx);
         if (state.isAtomic() || !compress)
-            result.append(d->m_tableData->string(state.name));
+            result.append(d->m_tableData.value()->string(state.name));
     }
     return result;
 }
@@ -1897,7 +1837,7 @@ bool QScxmlStateMachine::isActive(const QString &scxmlStateName) const
 
     for (int stateIndex : d->m_configuration) {
         const auto &state = d->m_stateTable->state(stateIndex);
-        if (d->m_tableData->string(state.name) == scxmlStateName)
+        if (d->m_tableData.value()->string(state.name) == scxmlStateName)
             return true;
     }
 
@@ -2003,20 +1943,19 @@ bool QScxmlStateMachine::init()
 {
     Q_D(QScxmlStateMachine);
 
-    if (d->m_isInitialized)
+    if (d->m_isInitialized.value())
         return false;
 
     if (!parseErrors().isEmpty())
         return false;
 
-    if (!dataModel() || !dataModel()->setup(d->m_initialValues))
+    if (!dataModel() || !dataModel()->setup(d->m_initialValues.value()))
         return false;
 
     if (!d->executeInitialSetup())
         return false;
 
-    d->m_isInitialized = true;
-    emit initializedChanged(true);
+    d->m_isInitialized.setValue(true);
     return true;
 }
 
@@ -2054,10 +1993,13 @@ QVariantMap QScxmlStateMachine::initialValues()
 void QScxmlStateMachine::setInitialValues(const QVariantMap &initialValues)
 {
     Q_D(QScxmlStateMachine);
-    if (initialValues != d->m_initialValues) {
-        d->m_initialValues = initialValues;
-        emit initialValuesChanged(initialValues);
-    }
+    d->m_initialValues.setValue(initialValues);
+}
+
+QBindable<QVariantMap> QScxmlStateMachine::bindableInitialValues()
+{
+    Q_D(QScxmlStateMachine);
+    return &d->m_initialValues;
 }
 
 QString QScxmlStateMachine::name() const
@@ -2206,7 +2148,7 @@ bool QScxmlStateMachine::isDispatchableTarget(const QString &target) const
         return true; // that's the current state machine
 
     if (target.startsWith(QStringLiteral("#_"))) {
-        QStringRef targetId = target.midRef(2);
+        QStringView targetId = QStringView{target}.mid(2);
         for (auto invokedService : d->m_invokedServices) {
             if (invokedService.service && invokedService.service->id() == targetId)
                 return true;
@@ -2229,16 +2171,16 @@ bool QScxmlStateMachine::isDispatchableTarget(const QString &target) const
     state machine (possibly recursively).
 */
 
-QVector<QScxmlInvokableService *> QScxmlStateMachine::invokedServices() const
+QList<QScxmlInvokableService *> QScxmlStateMachine::invokedServices() const
 {
     Q_D(const QScxmlStateMachine);
+    return d->m_invokedServicesComputedProperty;
+}
 
-    QVector<QScxmlInvokableService *> result;
-    for (int i = 0, ei = int(d->m_invokedServices.size()); i != ei; ++i) {
-        if (auto service = d->m_invokedServices[size_t(i)].service)
-            result.append(service);
-    }
-    return result;
+QBindable<QList<QScxmlInvokableService*>> QScxmlStateMachine::bindableInvokedServices()
+{
+    Q_D(QScxmlStateMachine);
+    return &d->m_invokedServicesComputedProperty;
 }
 
 /*!
@@ -2366,7 +2308,11 @@ void QScxmlStateMachine::stop()
 bool QScxmlStateMachine::isActive(int stateIndex) const
 {
     Q_D(const QScxmlStateMachine);
-    return d->m_configuration.contains(stateIndex);
+    // Here we need to find the actual internal state index that corresponds with the
+    // index of the compiled metaobject (which is same as its mapped signal index).
+    // See updateMetaCache()
+    const int mappedStateIndex = d->m_stateIndexToSignalIndex.key(stateIndex, -1);
+    return d->m_configuration.contains(mappedStateIndex);
 }
 
 QT_END_NAMESPACE

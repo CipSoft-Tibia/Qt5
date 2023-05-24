@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbluetoothsocket.h"
 #if QT_CONFIG(bluez)
@@ -47,10 +11,8 @@
 #include "qbluetoothsocket_android_p.h"
 #elif defined(QT_WINRT_BLUETOOTH)
 #include "qbluetoothsocket_winrt_p.h"
-#elif defined(QT_WIN_BLUETOOTH)
-#include "qbluetoothsocket_win_p.h"
 #elif defined(QT_OSX_BLUETOOTH)
-#include "qbluetoothsocket_osx_p.h"
+#include "qbluetoothsocket_macos_p.h"
 #else
 #include "qbluetoothsocket_dummy_p.h"
 #endif
@@ -87,7 +49,7 @@ Q_DECLARE_LOGGING_CATEGORY(QT_BT)
     the connected() signal when the connection is established.
 
     If the \l {QBluetoothServiceInfo::Protocol}{Protocol} is not supported on a platform, calling
-    \l connectToService() will emit a \l {QBluetoothSocket::UnsupportedProtocolError}{UnsupportedProtocolError} error.
+    \l connectToService() will emit a \l {QBluetoothSocket::SocketError::UnsupportedProtocolError}{UnsupportedProtocolError} error.
 
     \note QBluetoothSocket does not support synchronous read and write operations. Functions such
     as \l waitForReadyRead() and \l waitForBytesWritten() are not implemented. I/O operations should be
@@ -95,6 +57,11 @@ Q_DECLARE_LOGGING_CATEGORY(QT_BT)
 
     On iOS, this class cannot be used because the platform does not expose
     an API which may permit access to QBluetoothSocket related features.
+
+    \note On macOS Monterey (12) the socket data flow is paused when a
+    modal dialogue is executing, or an event tracking mode is entered (for
+    example by long-pressing a Window close button). This may change in the
+    future releases of macOS.
 */
 
 /*!
@@ -126,8 +93,10 @@ Q_DECLARE_LOGGING_CATEGORY(QT_BT)
                                     supported on this platform.
     \value OperationError           An operation was attempted while the socket was in a state
                                     that did not permit it.
-    \value RemoteHostClosedError    The remote host closed the connection. This value was
-                                    introduced by Qt 5.10.
+    \value [since 5.10] RemoteHostClosedError   The remote host closed the connection.
+    \value [since 6.4] MissingPermissionsError  The operating system requests
+                                                permissions which were not
+                                                granted by the user.
 */
 
 /*!
@@ -135,7 +104,7 @@ Q_DECLARE_LOGGING_CATEGORY(QT_BT)
 
     This signal is emitted when a connection is established.
 
-    \sa QBluetoothSocket::ConnectedState, stateChanged()
+    \sa QBluetoothSocket::SocketState::ConnectedState, stateChanged()
 */
 
 /*!
@@ -143,15 +112,16 @@ Q_DECLARE_LOGGING_CATEGORY(QT_BT)
 
     This signal is emitted when the socket is disconnected.
 
-    \sa QBluetoothSocket::UnconnectedState, stateChanged()
+    \sa QBluetoothSocket::SocketState::UnconnectedState, stateChanged()
 */
 
 /*!
-    \fn void QBluetoothSocket::error(QBluetoothSocket::SocketError error)
+    \fn void QBluetoothSocket::errorOccurred(QBluetoothSocket::SocketError error)
 
     This signal is emitted when an \a error occurs.
 
     \sa error()
+    \since 6.2
 */
 
 /*!
@@ -271,10 +241,8 @@ static QBluetoothSocketBasePrivate *createSocketPrivate()
     return new QBluetoothSocketPrivateAndroid();
 #elif defined(QT_WINRT_BLUETOOTH)
     return new QBluetoothSocketPrivateWinRT();
-#elif defined(QT_WIN_BLUETOOTH)
-    return new QBluetoothSocketPrivateWin();
 #elif defined(QT_OSX_BLUETOOTH)
-    return new QBluetoothSocketPrivate();
+    return new QBluetoothSocketPrivateDarwin();
 #else
     return new QBluetoothSocketPrivateDummy();
 #endif
@@ -375,7 +343,7 @@ qint64 QBluetoothSocket::bytesToWrite() const
     \a service. If a connection is established, QBluetoothSocket enters ConnectedState and
     emits connected().
 
-    At any point, the socket can emit error() to signal that an error occurred.
+    At any point, the socket can emit errorOccurred() to signal that an error occurred.
 
     Note that most platforms require a pairing prior to connecting to the remote device. Otherwise
     the connection process may fail.
@@ -415,7 +383,7 @@ void QBluetoothSocket::connectToService(const QBluetoothServiceInfo &service, Op
     the \l ServiceLookupState and \l socketType() is always set to
     \l QBluetoothServiceInfo::RfcommProtocol.
 
-    At any point, the socket can emit error() to signal that an error occurred.
+    At any point, the socket can emit errorOccurred() to signal that an error occurred.
 
     Note that most platforms require a pairing prior to connecting to the remote device. Otherwise
     the connection process may fail.
@@ -436,10 +404,10 @@ void QBluetoothSocket::connectToService(const QBluetoothAddress &address, const 
     The socket first enters ConnectingState, and attempts to connect to \a address. If a
     connection is established, QBluetoothSocket enters ConnectedState and emits connected().
 
-    At any point, the socket can emit error() to signal that an error occurred.
+    At any point, the socket can emit errorOccurred() to signal that an error occurred.
 
     On Android and BlueZ (version 5.46 or above), a connection to a service can not be established using a port.
-    Calling this function will emit a \l {QBluetoothSocket::ServiceNotFoundError}{ServiceNotFoundError}.
+    Calling this function will emit a \l {QBluetoothSocket::SocketError::ServiceNotFoundError}{ServiceNotFoundError}.
 
     Note that most platforms require a pairing prior to connecting to the remote device. Otherwise
     the connection process may fail.
@@ -498,17 +466,18 @@ QString QBluetoothSocket::errorString() const
     Therefore it is required to reconnect to change this parameter for an
     existing connection.
 
-    On Bluez this property is set to QBluetooth::Authorization by default.
+    On Bluez this property is set to QBluetooth::Security::Authorization by default.
 
     On \macos, this value is ignored as the platform does not permit access
     to the security parameter of the socket. By default the platform prefers
     secure/encrypted connections though and therefore this function always
-    returns \l QBluetooth::Secure.
+    returns \l QBluetooth::Security::Secure.
 
-    Android only supports two levels of security (secure and non-secure). If this flag is set to
-    \l QBluetooth::NoSecurity the socket object will not employ any authentication or encryption.
-    Any other security flag combination will trigger a secure Bluetooth connection.
-    This flag is set to \l QBluetooth::Secure by default.
+    Android only supports two levels of security (secure and non-secure).
+    If this flag is set to \l QBluetooth::Security::NoSecurity the socket
+    object will not employ any authentication or encryption. Any other
+    security flag combination will trigger a secure Bluetooth connection.
+    This flag is set to \l QBluetooth::Security::Secure by default.
 
     \note A secure connection requires a pairing between the two devices. On
     some platforms, the pairing is automatically initiated during the establishment
@@ -537,7 +506,7 @@ void QBluetoothSocket::setPreferredSecurityFlags(QBluetooth::SecurityFlags flags
     during or after the connection has been established. If such a change happens
     it is not reflected in the value of this flag.
 
-    On \macos, this flag is always set to \l QBluetooth::Secure.
+    On \macos, this flag is always set to \l QBluetooth::Security::Secure.
 
     \sa setPreferredSecurityFlags()
 
@@ -547,7 +516,7 @@ QBluetooth::SecurityFlags QBluetoothSocket::preferredSecurityFlags() const
 {
 #if QT_OSX_BLUETOOTH
     // not supported on macOS - platform always uses encryption
-    return QBluetooth::Secure;
+    return QBluetooth::Security::Secure;
 #else
     Q_D(const QBluetoothSocketBase);
     return d->secFlags;
@@ -567,14 +536,14 @@ void QBluetoothSocket::setSocketState(QBluetoothSocket::SocketState state)
     d->state = state;
     if(old != d->state)
         emit stateChanged(state);
-    if (state == QBluetoothSocket::ConnectedState) {
+    if (state == QBluetoothSocket::SocketState::ConnectedState) {
         emit connected();
-    } else if ((old == QBluetoothSocket::ConnectedState
-                || old == QBluetoothSocket::ClosingState)
-               && state == QBluetoothSocket::UnconnectedState) {
+    } else if ((old == QBluetoothSocket::SocketState::ConnectedState
+                || old == QBluetoothSocket::SocketState::ClosingState)
+               && state == QBluetoothSocket::SocketState::UnconnectedState) {
         emit disconnected();
     }
-    if(state == ListeningState){
+    if (state == SocketState::ListeningState){
 #ifdef QT_OSX_BLUETOOTH
         qCWarning(QT_BT) << "listening socket is not supported by IOBluetooth";
 #endif
@@ -603,7 +572,7 @@ void QBluetoothSocket::setSocketError(QBluetoothSocket::SocketError error_)
 {
     Q_D(QBluetoothSocketBase);
     d->socketError = error_;
-    emit error(error_);
+    emit errorOccurred(error_);
 }
 
 /*!
@@ -616,7 +585,7 @@ void QBluetoothSocket::doDeviceDiscovery(const QBluetoothServiceInfo &service, O
 {
     Q_D(QBluetoothSocketBase);
 
-    setSocketState(QBluetoothSocket::ServiceLookupState);
+    setSocketState(QBluetoothSocket::SocketState::ServiceLookupState);
     qCDebug(QT_BT) << "Starting Bluetooth service discovery";
 
     if(d->discoveryAgent) {
@@ -678,8 +647,8 @@ void QBluetoothSocket::discoveryFinished()
     if (d->discoveryAgent){
         qCDebug(QT_BT) << "Didn't find any";
         d->errorString = tr("Service cannot be found");
-        setSocketError(ServiceNotFoundError);
-        setSocketState(QBluetoothSocket::UnconnectedState);
+        setSocketError(SocketError::ServiceNotFoundError);
+        setSocketState(QBluetoothSocket::SocketState::UnconnectedState);
         d->discoveryAgent->deleteLater();
         d->discoveryAgent = nullptr;
     }
@@ -687,19 +656,19 @@ void QBluetoothSocket::discoveryFinished()
 
 void QBluetoothSocket::abort()
 {
-    if (state() == UnconnectedState)
+    if (state() == SocketState::UnconnectedState)
         return;
 
     Q_D(QBluetoothSocketBase);
     setOpenMode(QIODevice::NotOpen);
 
-    if (state() == ServiceLookupState && d->discoveryAgent) {
+    if (state() == SocketState::ServiceLookupState && d->discoveryAgent) {
         d->discoveryAgent->disconnect();
         d->discoveryAgent->stop();
         d->discoveryAgent = nullptr;
     }
 
-    setSocketState(ClosingState);
+    setSocketState(SocketState::ClosingState);
     d->abort();
 }
 
@@ -750,7 +719,7 @@ qint64 QBluetoothSocket::writeData(const char *data, qint64 maxSize)
 
     if (!data || maxSize <= 0) {
         d_ptr->errorString = tr("Invalid data/data size");
-        setSocketError(QBluetoothSocket::OperationError);
+        setSocketError(QBluetoothSocket::SocketError::OperationError);
         return -1;
     }
 
@@ -765,31 +734,38 @@ qint64 QBluetoothSocket::readData(char *data, qint64 maxSize)
 
 void QBluetoothSocket::close()
 {
-    if (state() == UnconnectedState)
+    if (state() == SocketState::UnconnectedState)
         return;
 
     Q_D(QBluetoothSocketBase);
     setOpenMode(QIODevice::NotOpen);
 
-    if (state() == ServiceLookupState && d->discoveryAgent) {
+    if (state() == SocketState::ServiceLookupState && d->discoveryAgent) {
         d->discoveryAgent->disconnect();
         d->discoveryAgent->stop();
         d->discoveryAgent = nullptr;
     }
 
-    setSocketState(ClosingState);
+    setSocketState(SocketState::ClosingState);
 
     d->close();
 }
 
 /*!
-  Set the socket to use \a socketDescriptor with a type of \a socketType,
-  which is in state, \a socketState, and mode, \a openMode.
+  \fn bool QBluetoothSocket::setSocketDescriptor(int socketDescriptor, QBluetoothServiceInfo::Protocol socketType, SocketState socketState, OpenMode openMode)
 
-  Returns true on success
+  Sets the socket to use \a socketDescriptor with a type of \a socketType,
+  which is in state \a socketState, and mode \a openMode.
+
+  The socket descriptor is owned by the QBluetoothSocket instance and may
+  be closed once finished.
+
+  Returns \c true on success.
 */
 
-
+// ### Qt 7 consider making this function private. The qbluetoothsocket_bluez backend is the
+// the only backend providing publicly accessible support for this. Other backends implement
+// similarly named, but private, overload
 bool QBluetoothSocket::setSocketDescriptor(int socketDescriptor, QBluetoothServiceInfo::Protocol socketType,
                                            SocketState socketState, OpenMode openMode)
 {
@@ -807,67 +783,6 @@ int QBluetoothSocket::socketDescriptor() const
     Q_D(const QBluetoothSocketBase);
     return d->socket;
 }
-
-
-
-#ifndef QT_NO_DEBUG_STREAM
-QDebug operator<<(QDebug debug, QBluetoothSocket::SocketError error)
-{
-    switch (error) {
-    case QBluetoothSocket::UnknownSocketError:
-        debug << "QBluetoothSocket::UnknownSocketError";
-        break;
-    case QBluetoothSocket::HostNotFoundError:
-        debug << "QBluetoothSocket::HostNotFoundError";
-        break;
-    case QBluetoothSocket::RemoteHostClosedError:
-        debug << "QBluetoothSocket::RemoteHostClosedError";
-        break;
-    case QBluetoothSocket::ServiceNotFoundError:
-        debug << "QBluetoothSocket::ServiceNotFoundError";
-        break;
-    case QBluetoothSocket::NetworkError:
-        debug << "QBluetoothSocket::NetworkError";
-        break;
-    case QBluetoothSocket::UnsupportedProtocolError:
-        debug << "QBluetoothSocket::UnsupportedProtocolError";
-        break;
-    default:
-        debug << "QBluetoothSocket::SocketError(" << (int)error << ")";
-    }
-    return debug;
-}
-
-QDebug operator<<(QDebug debug, QBluetoothSocket::SocketState state)
-{
-    switch (state) {
-    case QBluetoothSocket::UnconnectedState:
-        debug << "QBluetoothSocket::UnconnectedState";
-        break;
-    case QBluetoothSocket::ConnectingState:
-        debug << "QBluetoothSocket::ConnectingState";
-        break;
-    case QBluetoothSocket::ConnectedState:
-        debug << "QBluetoothSocket::ConnectedState";
-        break;
-    case QBluetoothSocket::BoundState:
-        debug << "QBluetoothSocket::BoundState";
-        break;
-    case QBluetoothSocket::ClosingState:
-        debug << "QBluetoothSocket::ClosingState";
-        break;
-    case QBluetoothSocket::ListeningState:
-        debug << "QBluetoothSocket::ListeningState";
-        break;
-    case QBluetoothSocket::ServiceLookupState:
-        debug << "QBluetoothSocket::ServiceLookupState";
-        break;
-    default:
-        debug << "QBluetoothSocket::SocketState(" << (int)state << ")";
-    }
-    return debug;
-}
-#endif
 
 QT_END_NAMESPACE
 

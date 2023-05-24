@@ -9,7 +9,7 @@
     </message>
     <message>
         <source>&amp;Next</source>
-        <translation>&amp;Következő </translation>
+        <translation>&amp;Következő</translation>
     </message>
     <message>
         <source>&amp;Case sensitive</source>
@@ -22,6 +22,10 @@
     <message>
         <source>&lt;img src=&quot;:/qt-project.org/shared/images/wrap.png&quot;&gt;&amp;nbsp;Search wrapped</source>
         <translation>&lt;img src=&quot;:/qt-project.org/shared/images/wrap.png&quot;&gt;&amp;nbsp;A keresés körbeért</translation>
+    </message>
+    <message>
+        <source>&amp;Find in Text...</source>
+        <translation>Ke&amp;resés a szövegben…</translation>
     </message>
 </context>
 <context>
@@ -178,7 +182,7 @@
     <name>AssistantClient</name>
     <message>
         <source>Unable to send request: Assistant is not responding.</source>
-        <translation>Nem küldhető el a kérés: az Asszisztens nem válaszol.</translation>
+        <translation>Nem küldhető el a kérés: az Assistant nem válaszol.</translation>
     </message>
     <message>
         <source>The binary &apos;%1&apos; does not exist.</source>
@@ -186,7 +190,7 @@
     </message>
     <message>
         <source>Unable to launch assistant (%1).</source>
-        <translation>Nem indítható el az Asszisztens (%1)</translation>
+        <translation>Nem indítható el az Assistant (%1).</translation>
     </message>
 </context>
 <context>
@@ -622,7 +626,11 @@
     <name>Designer</name>
     <message>
         <source>Unable to launch %1.</source>
-        <translation>A(z) %1 nem indítható el.</translation>
+        <translation type="vanished">A(z) %1 nem indítható el.</translation>
+    </message>
+    <message>
+        <source>Unable to launch %1: %2</source>
+        <translation>A(z) %1 nem indítható el: %2</translation>
     </message>
     <message>
         <source>%1 timed out.</source>
@@ -804,8 +812,77 @@
         <translation>Élsimítás előnyben részesítése</translation>
     </message>
     <message>
+        <source>PreferDefaultHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>Alapértelmezett hinting előnyben részesítése</translation>
+    </message>
+    <message>
+        <source>PreferNoHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>Hinting nélküliség előnyben részesítése</translation>
+    </message>
+    <message>
+        <source>PreferVerticalHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>Függőleges hinting előnyben részesítése</translation>
+    </message>
+    <message>
+        <source>PreferFullHinting</source>
+        <comment>QFont::StyleStrategy combo</comment>
+        <translation>Teljes hinting előnyben részesítése</translation>
+    </message>
+    <message>
         <source>Antialiasing</source>
         <translation>Élsimítás</translation>
+    </message>
+    <message>
+        <source>HintingPreference</source>
+        <translation>Hinting beállítások</translation>
+    </message>
+    <message>
+        <source>Thin</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Vékony</translation>
+    </message>
+    <message>
+        <source>ExtraLight</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Nagyon sovány</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Sovány</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Normál</translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Közepes</translation>
+    </message>
+    <message>
+        <source>DemiBold</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Kicsit kövér</translation>
+    </message>
+    <message>
+        <source>Bold</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Félkövér</translation>
+    </message>
+    <message>
+        <source>ExtraBold</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Kövér</translation>
+    </message>
+    <message>
+        <source>Black</source>
+        <comment>QFont::Weight combo</comment>
+        <translation>Nagyon kövér</translation>
     </message>
 </context>
 <context>
@@ -844,6 +921,22 @@
     <message>
         <source>Default Grid</source>
         <translation>Alapértelmezett rács</translation>
+    </message>
+    <message>
+        <source>Object Naming Convention</source>
+        <translation>Objektum-elnezvezési konvenció</translation>
+    </message>
+    <message>
+        <source>Naming convention used for generating action object names from their text</source>
+        <translation>Névkonvenció műveletobjektumok neveinek generálásához a szövegeikből</translation>
+    </message>
+    <message>
+        <source>Camel Case</source>
+        <translation>CamelCase</translation>
+    </message>
+    <message>
+        <source>Underscore</source>
+        <translation>Alávonás</translation>
     </message>
 </context>
 <context>
@@ -937,6 +1030,22 @@
     <message>
         <source>&amp;Author</source>
         <translation>&amp;Szerző</translation>
+    </message>
+    <message>
+        <source>Translations</source>
+        <translation>Fordítások</translation>
+    </message>
+    <message>
+        <source>ID-based</source>
+        <translation>Azonosító alapú</translation>
+    </message>
+    <message>
+        <source>Connections</source>
+        <translation>Kapcsolatok</translation>
+    </message>
+    <message>
+        <source>Connect slots by name</source>
+        <translation>Tárolóhelyek csatlakoztatása név szerint</translation>
     </message>
 </context>
 <context>
@@ -1089,12 +1198,20 @@
         <translation>Olvasási hiba</translation>
     </message>
     <message>
+        <source>A temporary form file could not be created in %1: %2</source>
+        <translation>Egy átmeneti űrlapfájlt nem sikerült létrehozni ebben: %1: %2</translation>
+    </message>
+    <message>
+        <source>The temporary form file %1 could not be written: %2</source>
+        <translation>A(z) %1 átmeneti űrlapfájlt nem sikerült kiírni: %2</translation>
+    </message>
+    <message>
         <source>A temporary form file could not be created in %1.</source>
-        <translation>Egy átmeneti űrlapfájlt nem sikerült létrehozni ebben: %1.</translation>
+        <translation type="vanished">Egy átmeneti űrlapfájlt nem sikerült létrehozni ebben: %1.</translation>
     </message>
     <message>
         <source>The temporary form file %1 could not be written.</source>
-        <translation>A(z) %1 átmeneti űrlapfájlt nem sikerült kiírni.</translation>
+        <translation type="vanished">A(z) %1 átmeneti űrlapfájlt nem sikerült kiírni.</translation>
     </message>
 </context>
 <context>
@@ -1322,7 +1439,7 @@ Ez következetlenséget jelez a felhasználói felület fájlban.</translation>
     <message>
         <source>%1 already exists.
 Do you want to replace it?</source>
-        <translation>A(z) %1 már létezik.
+        <translation type="vanished">A(z) %1 már létezik.
 Szeretné lecserélni?</translation>
     </message>
     <message>
@@ -1371,7 +1488,7 @@ Szeretné lecserélni?</translation>
     </message>
     <message>
         <source>View &amp;Code...</source>
-        <translation>&amp;Kód megtekintése…</translation>
+        <translation type="vanished">&amp;Kód megtekintése…</translation>
     </message>
     <message>
         <source>&amp;Minimize</source>
@@ -1446,6 +1563,14 @@ Szeretné lecserélni?</translation>
         <translation>Űrlap mentése másként</translation>
     </message>
     <message>
+        <source>View &amp;C++ Code...</source>
+        <translation>&amp;C++ kód megtekintése…</translation>
+    </message>
+    <message>
+        <source>View &amp;Python Code...</source>
+        <translation>&amp;Python kód megtekintése…</translation>
+    </message>
+    <message>
         <source>Designer</source>
         <translation>Tervező</translation>
     </message>
@@ -1500,14 +1625,24 @@ Szeretné megpróbálni újra, vagy választ egy másik fájlt?</translation>
         <translation>Másik fájl választása</translation>
     </message>
     <message>
+        <source>Save Form</source>
+        <translation>Űrlap mentése</translation>
+    </message>
+    <message>
         <source>Could not write file</source>
         <translation>Nem sikerült írni a fájlt</translation>
+    </message>
+    <message>
+        <source>It was not possible to write the file %1 to disk.
+Reason: %2</source>
+        <translation>Nem volt lehetséges a teljes %1 fájlt kiírni a lemezre.
+Ok: %2</translation>
     </message>
     <message>
         <source>It was not possible to write the entire file %1 to disk.
 Reason:%2
 Would you like to retry?</source>
-        <translation>Nem volt lehetséges a teljes %1 fájlt kiírni a lemezre.
+        <translation type="vanished">Nem volt lehetséges a teljes %1 fájlt kiírni a lemezre.
 Ok: %2
 Szeretné megpróbálni újra?</translation>
     </message>
@@ -2168,6 +2303,11 @@ Konténeroldalak csak az egyéni felületi elem domXml() metódusa által vissza
     </message>
     <message>
         <source>Bold</source>
+        <translation type="vanished">Félkövér</translation>
+    </message>
+    <message>
+        <source>Bold</source>
+        <comment>Bold toggle</comment>
         <translation>Félkövér</translation>
     </message>
     <message>
@@ -2185,6 +2325,10 @@ Konténeroldalak csak az egyéni felületi elem domXml() metódusa által vissza
     <message>
         <source>Kerning</source>
         <translation>Alávágás</translation>
+    </message>
+    <message>
+        <source>Weight</source>
+        <translation>Vastagság</translation>
     </message>
 </context>
 <context>
@@ -2525,8 +2669,12 @@ Konténeroldalak csak az egyéni felületi elem domXml() metódusa által vissza
         <translation>Nyelv</translation>
     </message>
     <message>
+        <source>Territory</source>
+        <translation>Régió</translation>
+    </message>
+    <message>
         <source>Country</source>
-        <translation>Ország</translation>
+        <translation type="vanished">Ország</translation>
     </message>
 </context>
 <context>
@@ -3217,7 +3365,11 @@ Szeretné felülírni a sablont?</translation>
     <name>WidgetDataBase</name>
     <message>
         <source>A custom widget plugin whose class name (%1) matches that of an existing class has been found.</source>
-        <translation>Egy egyéni felületi elem bővítmény, amely osztályneve (%1) megegyezik azzal, hogy egy létező osztály található.</translation>
+        <translation type="vanished">Egy egyéni felületi elem bővítmény, amely osztályneve (%1) megegyezik azzal, hogy egy létező osztály található.</translation>
+    </message>
+    <message>
+        <source>Abstract base class that cannot be instantiated. For promotion/custom widget usage only.</source>
+        <translation>Absztrakt bázisosztály nem példányosítható. Csak előléptetés/egyéni felületi elem használatához.</translation>
     </message>
     <message>
         <source>The file contains a custom widget &apos;%1&apos; whose base class (%2) differs from the current entry in the widget database (%3). The widget database is left unchanged.</source>
@@ -3228,7 +3380,7 @@ Szeretné felülírni a sablont?</translation>
     <name>qdesigner_internal</name>
     <message>
         <source>%1 Widget</source>
-        <translation>%1 felületi elem</translation>
+        <translation type="vanished">%1 felületi elem</translation>
     </message>
 </context>
 <context>
@@ -3332,6 +3484,10 @@ Szeretné felülírni a sablont?</translation>
         <source>ToolTip</source>
         <translation>Buboréksúgó</translation>
     </message>
+    <message>
+        <source>MenuRole</source>
+        <translation>Menü szerepkör</translation>
+    </message>
 </context>
 <context>
     <name>qdesigner_internal::BuddyEditor</name>
@@ -3424,7 +3580,7 @@ Szeretné felülírni a sablont?</translation>
     </message>
     <message>
         <source>&amp;Find in Text...</source>
-        <translation>Ke&amp;resés a szövegben…</translation>
+        <translation type="vanished">Ke&amp;resés a szövegben…</translation>
     </message>
     <message>
         <source>A temporary form file could not be created in %1.</source>
@@ -3436,7 +3592,7 @@ Szeretné felülírni a sablont?</translation>
     </message>
     <message>
         <source>%1 - [Code]</source>
-        <translation>%1 – [Kód]</translation>
+        <translation type="vanished">%1 – [Kód]</translation>
     </message>
     <message>
         <source>Save Code</source>
@@ -3444,7 +3600,11 @@ Szeretné felülírni a sablont?</translation>
     </message>
     <message>
         <source>Header Files (*.%1)</source>
-        <translation>Fejlécfájlok (*.%1)</translation>
+        <translation type="vanished">Fejlécfájlok (*.%1)</translation>
+    </message>
+    <message>
+        <source>%1 - [%2 Code]</source>
+        <translation>%1 - [%2 kód]</translation>
     </message>
     <message>
         <source>The file %1 could not be opened: %2</source>
@@ -3598,7 +3758,7 @@ Szeretné felülírni a sablont?</translation>
     <name>qdesigner_internal::DesignerPropertyManager</name>
     <message>
         <source>translatable</source>
-        <translation>lefordítható</translation>
+        <translation type="vanished">lefordítható</translation>
     </message>
     <message>
         <source>disambiguation</source>
@@ -3606,7 +3766,11 @@ Szeretné felülírni a sablont?</translation>
     </message>
     <message>
         <source>comment</source>
-        <translation>megjegyzés</translation>
+        <translation type="vanished">megjegyzés</translation>
+    </message>
+    <message>
+        <source>id</source>
+        <translation>azonosító</translation>
     </message>
     <message>
         <source>AlignLeft</source>
@@ -4167,8 +4331,12 @@ Szeretné felülírni a sablont?</translation>
         <translation>Ikon beállítása témából</translation>
     </message>
     <message>
+        <source>Select icon name from theme:</source>
+        <translation>Ikonnév kiválasztása témából:</translation>
+    </message>
+    <message>
         <source>Input icon name from the current theme:</source>
-        <translation>Adja meg az ikon nevét a jelenlegi témából:</translation>
+        <translation type="vanished">Adja meg az ikon nevét a jelenlegi témából:</translation>
     </message>
 </context>
 <context>
@@ -4340,6 +4508,10 @@ Szeretné felülírni a sablont?</translation>
         <source>&amp;Shortcut:</source>
         <translation>&amp;Gyorsbillentyű:</translation>
     </message>
+    <message>
+        <source>&amp;Menu role:</source>
+        <translation>&amp;Menü szerepkör:</translation>
+    </message>
 </context>
 <context>
     <name>qdesigner_internal::NewDynamicPropertyDialog</name>
@@ -4433,7 +4605,7 @@ Válasszon egy másik nevet.</translation>
     </message>
     <message>
         <source>Error loading form</source>
-        <translation>Hiba az űrlap beöltésekor</translation>
+        <translation>Hiba az űrlap betöltésekor</translation>
     </message>
     <message>
         <source>Unable to open the form template file &apos;%1&apos;: %2</source>
@@ -4463,8 +4635,16 @@ Válasszon egy másik nevet.</translation>
         <translation>Előléptetett osztály neve:</translation>
     </message>
     <message>
+        <source>Header file for C++ classes or module name for Qt for Python.</source>
+        <translation>Fejlécfájl C++ osztályokhoz vagy modulnév a Qt for Pythonhoz.</translation>
+    </message>
+    <message>
         <source>Header file:</source>
         <translation>Fejlécfájl:</translation>
+    </message>
+    <message>
+        <source>Indicates that the header file is a global header file. Does not have any effect on Qt for Python.</source>
+        <translation>Jelzi, hogy a fejlécfájl globális fejlécfájl. Nincs hatása a Qt for Pythonra.</translation>
     </message>
     <message>
         <source>Global include</source>
@@ -4478,12 +4658,16 @@ Válasszon egy másik nevet.</translation>
 <context>
     <name>qdesigner_internal::ObjectInspector</name>
     <message>
+        <source>Filter</source>
+        <translation>Szűrő</translation>
+    </message>
+    <message>
         <source>Change Current Page</source>
         <translation>Jelenlegi oldal módosítása</translation>
     </message>
     <message>
         <source>&amp;Find in Text...</source>
-        <translation>Ke&amp;resés a szövegben…</translation>
+        <translation type="vanished">Ke&amp;resés a szövegben…</translation>
     </message>
 </context>
 <context>
@@ -4550,6 +4734,66 @@ Válasszon egy másik nevet.</translation>
     <message>
         <source>Active</source>
         <translation>Aktív</translation>
+    </message>
+    <message>
+        <source>Save...</source>
+        <translation>Mentés…</translation>
+    </message>
+    <message>
+        <source>Load...</source>
+        <translation>Betöltés…</translation>
+    </message>
+    <message>
+        <source>Lighter</source>
+        <translation>Világosabb</translation>
+    </message>
+    <message>
+        <source>Darker</source>
+        <translation>Sötétebb</translation>
+    </message>
+    <message>
+        <source>Copy color %1</source>
+        <translation>%1 szín másolása</translation>
+    </message>
+    <message>
+        <source>QPalette UI file (*.xml)</source>
+        <translation>QPalett UI-fájl (*.xml)</translation>
+    </message>
+    <message>
+        <source>Cannot open %1 for writing: %2</source>
+        <translation>Nem nyitható meg a(z) %1 írásra: %2</translation>
+    </message>
+    <message>
+        <source>Cannot write %1: %2</source>
+        <translation>A(z) %1 nem írható: %2</translation>
+    </message>
+    <message>
+        <source>Cannot read palette from %1:%2:%3</source>
+        <translation>Nem olvasható a paletta innen: %1:%2:%3</translation>
+    </message>
+    <message>
+        <source>Cannot open %1 for reading: %2</source>
+        <translation>Nem nyitható meg a(z) %1 olvasásra: %2</translation>
+    </message>
+    <message>
+        <source>Invalid element &quot;%1&quot;, expected &quot;palette&quot;.</source>
+        <translation>Érvénytelen elem: „%1”, „paletta” szükséges.</translation>
+    </message>
+    <message>
+        <source>Save Palette</source>
+        <translation>Paletta mentése</translation>
+    </message>
+    <message>
+        <source>Error Writing Palette</source>
+        <translation>Hiba a paletta írásakor</translation>
+    </message>
+    <message>
+        <source>Load Palette</source>
+        <translation>Paletta betöltése</translation>
+    </message>
+    <message>
+        <source>Error Reading Palette</source>
+        <translation>Hiba a paletta olvasásakor</translation>
     </message>
 </context>
 <context>
@@ -4653,6 +4897,11 @@ Válasszon egy másik nevet.</translation>
     <message>
         <source>New custom widget plugins have been found.</source>
         <translation>Új egyéni felületi elem bővítmények találhatók.</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <extracomment>Copy error text</extracomment>
+        <translation>Másolás</translation>
     </message>
 </context>
 <context>
@@ -4766,7 +5015,7 @@ gyakran gyatra gyapjas jak apa gyapja.</translation>
     <message>
         <source>ButtonGroup2</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>2. gombcsoport</translation>
+        <translation type="vanished">2. gombcsoport</translation>
     </message>
     <message>
         <source>CheckBox1</source>
@@ -4776,12 +5025,12 @@ gyakran gyatra gyapjas jak apa gyapja.</translation>
     <message>
         <source>CheckBox2</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>2. jelölőnégyzet</translation>
+        <translation type="vanished">2. jelölőnégyzet</translation>
     </message>
     <message>
         <source>ButtonGroup</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>Gombcsoport</translation>
+        <translation type="vanished">Gombcsoport</translation>
     </message>
     <message>
         <source>RadioButton1</source>
@@ -4797,6 +5046,99 @@ gyakran gyatra gyapjas jak apa gyapja.</translation>
         <source>RadioButton3</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
         <translation>3. választógomb</translation>
+    </message>
+    <message>
+        <source>Buttons</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Gombok</translation>
+    </message>
+    <message>
+        <source>Tristate CheckBox</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Háromállapotú jelölőnégyzet</translation>
+    </message>
+    <message>
+        <source>ToggleButton</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Kapcsoló</translation>
+    </message>
+    <message>
+        <source>ToolButton</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Eszközgomb</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Menü</translation>
+    </message>
+    <message>
+        <source>Item Views</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Elemnézetek</translation>
+    </message>
+    <message>
+        <source>Column 1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>1. oszlop</translation>
+    </message>
+    <message>
+        <source>Top Level 1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>1. legfelső szint</translation>
+    </message>
+    <message>
+        <source>Nested Item 1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>1. beágyazott elem</translation>
+    </message>
+    <message>
+        <source>Nested Item 2</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>2. beágyazott elem</translation>
+    </message>
+    <message>
+        <source>Nested Item 3</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>3. beágyazott elem</translation>
+    </message>
+    <message>
+        <source>Simple Input Widgets</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Egyszerű beviteli felületi elem</translation>
+    </message>
+    <message>
+        <source>Item1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>1. elem</translation>
+    </message>
+    <message>
+        <source>Item2</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>2. elem</translation>
+    </message>
+    <message>
+        <source>Display Widgets</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Megjelenítő felületi elemek</translation>
+    </message>
+    <message>
+        <source>QLabel</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>QLabel</translation>
+    </message>
+    <message>
+        <source>QLabel with frame</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>QLabel kerettel</translation>
+    </message>
+    <message>
+        <source>Option 1</source>
+        <translation>1. lehetőség</translation>
+    </message>
+    <message>
+        <source>Checkable</source>
+        <translation>Bejelölhető</translation>
     </message>
 </context>
 <context>
@@ -5006,6 +5348,10 @@ Osztály: %2</translation>
         <translation>Eszköztár hozzáadása</translation>
     </message>
     <message>
+        <source>Add Tool Bar to Other Area</source>
+        <translation>Eszköztár hozzáadása másik területhez</translation>
+    </message>
+    <message>
         <source>Create Status Bar</source>
         <translation>Állapotsor létrehozása</translation>
     </message>
@@ -5059,7 +5405,7 @@ Osztály: %2</translation>
     </message>
     <message>
         <source>no signals available</source>
-        <translation>nincsenek elérhető jelzések</translation>
+        <translation type="vanished">nincsenek elérhető jelzések</translation>
     </message>
     <message numerus="yes">
         <source>Set size constraint on %n widget(s)</source>
@@ -5088,19 +5434,19 @@ Osztály: %2</translation>
     </message>
     <message>
         <source>An error has been encountered at line %1 of %2: %3</source>
-        <translation>Hiba történt a(z) %2 %1. sorában: %3</translation>
+        <translation type="vanished">Hiba történt a(z) %2 %1. sorában: %3</translation>
     </message>
     <message>
         <source>Unexpected element &lt;%1&gt; encountered when parsing for &lt;widget&gt; or &lt;ui&gt;</source>
-        <translation>Váratlan &lt;%1&gt; elem fordult elő a &lt;widget&gt; vagy az &lt;ui&gt; címkék feldolgozásakor</translation>
+        <translation type="vanished">Váratlan &lt;%1&gt; elem fordult elő a &lt;widget&gt; vagy az &lt;ui&gt; címkék feldolgozásakor</translation>
     </message>
     <message>
         <source>Unexpected end of file encountered when parsing widgets.</source>
-        <translation>Váratlan fájlvég fordult elő a felületi elemek feldolgozásakor.</translation>
+        <translation type="vanished">Váratlan fájlvég fordult elő a felületi elemek feldolgozásakor.</translation>
     </message>
     <message>
         <source>A widget element could not be found.</source>
-        <translation>Egy felületi elem nem található.</translation>
+        <translation type="vanished">Egy felületi elem nem található.</translation>
     </message>
 </context>
 <context>
@@ -5667,6 +6013,10 @@ Osztály: %2</translation>
         <translation>Osztálynév eltérés történt a felületi elem létrehozásánál a(z) %1 osztályú felületi elemekhez regisztrált egyéni felületi elem gyár használatakor. A gyár %2 osztályú felületi elemet adott vissza.</translation>
     </message>
     <message>
+        <source>%1 Widget</source>
+        <translation>%1 felületi elem</translation>
+    </message>
+    <message>
         <source>The current page of the container &apos;%1&apos; (%2) could not be determined while creating a layout.This indicates an inconsistency in the ui-file, probably a layout being constructed on a container widget.</source>
         <translation>A(z) „%1” (%2) konténer jelenlegi oldalát nem sikerült meghatározni az elrendezés létrehozása során. Ez a felhasználói felület fájlban lévő következetlenséget jelzi, valószínűleg egy elrendezés hoztak létre egy konténer felületi elemen.</translation>
     </message>
@@ -5705,6 +6055,85 @@ Ez a felhasználói felület fájlban lévő következetlenséget jelzi.</transl
     <message>
         <source>&amp;Zoom</source>
         <translation>&amp;Nagyítás</translation>
+    </message>
+</context>
+<context>
+    <name>Dialog</name>
+    <message>
+        <source>Dialog</source>
+        <translation>Párbeszédablak</translation>
+    </message>
+</context>
+<context>
+    <name>MainWindow</name>
+    <message>
+        <source>MainWindow</source>
+        <translation>Főablak</translation>
+    </message>
+</context>
+<context>
+    <name>Form</name>
+    <message>
+        <source>Form</source>
+        <translation>Űrlap</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::PropertySheetValue</name>
+    <message>
+        <source>translatable</source>
+        <translation>lefordítható</translation>
+    </message>
+    <message>
+        <source>comment</source>
+        <translation>megjegyzés</translation>
+    </message>
+</context>
+<context>
+    <name>QDesignerWidgetBox</name>
+    <message>
+        <source>An error has been encountered at line %1 of %2: %3</source>
+        <translation>Hiba történt a(z) %2 %1. sorában: %3</translation>
+    </message>
+    <message>
+        <source>Unexpected element &lt;%1&gt; encountered when parsing for &lt;widget&gt; or &lt;ui&gt;</source>
+        <translation>Váratlan &lt;%1&gt; elem fordult elő a &lt;widget&gt; vagy az &lt;ui&gt; címkék feldolgozásakor</translation>
+    </message>
+    <message>
+        <source>Unexpected end of file encountered when parsing widgets.</source>
+        <translation>Váratlan fájlvég fordult elő a felületi elemek feldolgozásakor.</translation>
+    </message>
+    <message>
+        <source>A widget element could not be found.</source>
+        <translation>Egy felületi elem nem található.</translation>
+    </message>
+</context>
+<context>
+    <name>QDesignerTaskMenu</name>
+    <message>
+        <source>no signals available</source>
+        <translation>nincsenek elérhető jelzések</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::WidgetDataBase</name>
+    <message>
+        <source>A custom widget plugin whose class name (%1) matches that of an existing class has been found.</source>
+        <translation>Egy egyéni felületi elem bővítmény, amely osztályneve (%1) megegyezik azzal, hogy egy létező osztály található.</translation>
+    </message>
+</context>
+<context>
+    <name>QView3DPlugin</name>
+    <message>
+        <source>3D View</source>
+        <translation>3D nézet</translation>
+    </message>
+</context>
+<context>
+    <name>QView3DTool</name>
+    <message>
+        <source>3DView</source>
+        <translation>3D nézet</translation>
     </message>
 </context>
 </TS>

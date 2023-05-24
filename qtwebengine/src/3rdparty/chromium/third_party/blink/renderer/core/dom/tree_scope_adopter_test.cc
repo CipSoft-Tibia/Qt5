@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,29 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
+#include "third_party/blink/renderer/core/dom/events/native_event_listener.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/core/html/html_element.h"
+#include "third_party/blink/renderer/core/testing/dummy_page_holder.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
+
+namespace {
+
+class DoNothingListener : public NativeEventListener {
+  void Invoke(ExecutionContext*, Event*) override {}
+};
+
+}  // namespace
 
 // TODO(hayato): It's hard to see what's happening in these tests.
 // It would be better to refactor these tests.
 TEST(TreeScopeAdopterTest, SimpleMove) {
-  auto* doc1 = Document::CreateForTest();
-  auto* doc2 = Document::CreateForTest();
+  ScopedNullExecutionContext execution_context;
+  auto* doc1 = Document::CreateForTest(execution_context.GetExecutionContext());
+  auto* doc2 = Document::CreateForTest(execution_context.GetExecutionContext());
 
   Element* html1 = doc1->CreateRawElement(html_names::kHTMLTag);
   doc1->AppendChild(html1);
@@ -42,107 +55,49 @@ TEST(TreeScopeAdopterTest, SimpleMove) {
   EXPECT_EQ(div2->ownerDocument(), doc1);
 }
 
-TEST(TreeScopeAdopterTest, AdoptV1ShadowRootToV0Document) {
-  auto* doc1 = Document::CreateForTest();
-  auto* doc2 = Document::CreateForTest();
+TEST(TreeScopeAdopterTest, MoveNestedShadowRoots) {
+  DummyPageHolder source_page_holder;
+  auto* source_doc = &source_page_holder.GetDocument();
+  NativeEventListener* listener = MakeGarbageCollected<DoNothingListener>();
 
-  Element* html1 = doc1->CreateRawElement(html_names::kHTMLTag);
-  doc1->AppendChild(html1);
-  Element* div1 = doc1->CreateRawElement(html_names::kDivTag);
-  html1->AppendChild(div1);
-  EXPECT_EQ(doc1->GetShadowCascadeOrder(),
-            ShadowCascadeOrder::kShadowCascadeNone);
-  div1->CreateV0ShadowRootForTesting();
-  EXPECT_EQ(doc1->GetShadowCascadeOrder(),
-            ShadowCascadeOrder::kShadowCascadeV0);
-  EXPECT_TRUE(doc1->MayContainV0Shadow());
+  Element* html = source_doc->CreateRawElement(html_names::kHTMLTag);
+  source_doc->body()->AppendChild(html);
+  Element* outer_div = source_doc->CreateRawElement(html_names::kDivTag);
+  html->AppendChild(outer_div);
 
-  Element* html2 = doc2->CreateRawElement(html_names::kHTMLTag);
-  doc2->AppendChild(html2);
-  Element* div2 = doc1->CreateRawElement(html_names::kDivTag);
-  html2->AppendChild(div2);
-  div2->AttachShadowRootInternal(ShadowRootType::kOpen);
+  ShadowRoot& outer_shadow =
+      outer_div->AttachShadowRootInternal(ShadowRootType::kOpen);
+  Element* middle_div = source_doc->CreateRawElement(html_names::kDivTag);
+  outer_shadow.AppendChild(middle_div);
 
-  EXPECT_EQ(div1->ownerDocument(), doc1);
-  EXPECT_EQ(div2->ownerDocument(), doc2);
+  // Append an event target to a node that will be traversed after the inner
+  // shadow tree.
+  Element* middle_target = source_doc->CreateRawElement(html_names::kDivTag);
+  outer_shadow.AppendChild(middle_target);
+  ASSERT_TRUE(middle_target->addEventListener(event_type_names::kMousewheel,
+                                              listener, false));
 
-  TreeScopeAdopter adopter(*div2, *doc1);
+  ShadowRoot& middle_shadow =
+      middle_div->AttachShadowRootInternal(ShadowRootType::kOpen);
+  Element* inner_div = source_doc->CreateRawElement(html_names::kDivTag);
+  middle_shadow.AppendChild(inner_div);
+  // This event listener may force a consistency check in EventHandlerRegistry,
+  // which will check the consistency of the above event handler as a
+  // side-effect too.
+  ASSERT_TRUE(inner_div->addEventListener(event_type_names::kMousewheel,
+                                          listener, false));
+
+  DummyPageHolder target_page_holder;
+  auto* target_doc = &target_page_holder.GetDocument();
+  ASSERT_TRUE(target_doc->GetPage());
+  ASSERT_NE(source_doc->GetPage(), target_doc->GetPage());
+
+  TreeScopeAdopter adopter(*outer_div, *target_doc);
   ASSERT_TRUE(adopter.NeedsScopeChange());
 
   adopter.Execute();
-  EXPECT_EQ(div1->ownerDocument(), doc1);
-  EXPECT_EQ(div2->ownerDocument(), doc1);
-  EXPECT_EQ(doc1->GetShadowCascadeOrder(),
-            ShadowCascadeOrder::kShadowCascadeV1);
-  EXPECT_TRUE(doc1->MayContainV0Shadow());
-  EXPECT_FALSE(doc2->MayContainV0Shadow());
-}
-
-TEST(TreeScopeAdopterTest, AdoptV0ShadowRootToV1Document) {
-  auto* doc1 = Document::CreateForTest();
-  auto* doc2 = Document::CreateForTest();
-
-  Element* html1 = doc1->CreateRawElement(html_names::kHTMLTag);
-  doc1->AppendChild(html1);
-  Element* div1 = doc1->CreateRawElement(html_names::kDivTag);
-  html1->AppendChild(div1);
-  EXPECT_EQ(doc1->GetShadowCascadeOrder(),
-            ShadowCascadeOrder::kShadowCascadeNone);
-  div1->AttachShadowRootInternal(ShadowRootType::kOpen);
-  EXPECT_EQ(doc1->GetShadowCascadeOrder(),
-            ShadowCascadeOrder::kShadowCascadeV1);
-  EXPECT_FALSE(doc1->MayContainV0Shadow());
-
-  Element* html2 = doc2->CreateRawElement(html_names::kHTMLTag);
-  doc2->AppendChild(html2);
-  Element* div2 = doc1->CreateRawElement(html_names::kDivTag);
-  html2->AppendChild(div2);
-  div2->CreateV0ShadowRootForTesting();
-
-  EXPECT_EQ(div1->ownerDocument(), doc1);
-  EXPECT_EQ(div2->ownerDocument(), doc2);
-
-  TreeScopeAdopter adopter(*div2, *doc1);
-  ASSERT_TRUE(adopter.NeedsScopeChange());
-
-  adopter.Execute();
-  EXPECT_EQ(div1->ownerDocument(), doc1);
-  EXPECT_EQ(div2->ownerDocument(), doc1);
-  EXPECT_EQ(doc1->GetShadowCascadeOrder(),
-            ShadowCascadeOrder::kShadowCascadeV1);
-  EXPECT_TRUE(doc1->MayContainV0Shadow());
-  EXPECT_TRUE(doc2->MayContainV0Shadow());
-}
-
-TEST(TreeScopeAdopterTest, AdoptV0InV1ToNewDocument) {
-  auto* old_doc = Document::CreateForTest();
-  Element* html = old_doc->CreateRawElement(html_names::kHTMLTag);
-  old_doc->AppendChild(html);
-  Element* host1 = old_doc->CreateRawElement(html_names::kDivTag);
-  html->AppendChild(host1);
-  ShadowRoot& shadow_root_v1 =
-      host1->AttachShadowRootInternal(ShadowRootType::kOpen);
-  Element* host2 = old_doc->CreateRawElement(html_names::kDivTag);
-  shadow_root_v1.AppendChild(host2);
-  host2->CreateV0ShadowRootForTesting();
-
-  // old_doc
-  // └── html
-  //     └── host1
-  //         └──/shadow-root-v1
-  //             └── host2
-  //                 └──/shadow-root-v0
-  EXPECT_TRUE(old_doc->MayContainV0Shadow());
-
-  auto* new_doc = Document::CreateForTest();
-  EXPECT_FALSE(new_doc->MayContainV0Shadow());
-
-  TreeScopeAdopter adopter(*host1, *new_doc);
-  ASSERT_TRUE(adopter.NeedsScopeChange());
-  adopter.Execute();
-
-  EXPECT_TRUE(old_doc->MayContainV0Shadow());
-  EXPECT_TRUE(new_doc->MayContainV0Shadow());
+  EXPECT_EQ(outer_shadow.ownerDocument(), target_doc);
+  EXPECT_EQ(middle_shadow.ownerDocument(), target_doc);
 }
 
 }  // namespace blink

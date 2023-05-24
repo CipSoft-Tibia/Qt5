@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 David Edmundson <davidedmundson@kde.org>
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mockcompositor.h"
 
 namespace MockCompositor {
 
-DefaultCompositor::DefaultCompositor()
+DefaultCompositor::DefaultCompositor(CompositorType t, int socketFd)
+    : CoreCompositor(t, socketFd)
 {
     {
         Lock l(this);
@@ -42,15 +19,32 @@ DefaultCompositor::DefaultCompositor()
         auto *output = add<Output>();
         output->m_data.physicalSize = output->m_data.mode.physicalSizeForDpi(96);
         add<Seat>(Seat::capability_pointer | Seat::capability_keyboard | Seat::capability_touch);
+        add<WlShell>();
         add<XdgWmBase>();
-        add<Shm>();
+        add<FractionalScaleManager>();
+        add<Viewporter>();
+
+        switch (m_type) {
+        case CompositorType::Default:
+            add<Shm>();
+            break;
+        case CompositorType::Legacy:
+            wl_display_init_shm(m_display);
+            break;
+        }
+        add<FullScreenShellV1>();
+        add<IviApplication>();
+
         // TODO: other shells, viewporter, xdgoutput etc
 
-        QObject::connect(get<WlCompositor>(), &WlCompositor::surfaceCreated, [&] (Surface *surface){
-            QObject::connect(surface, &Surface::bufferCommitted, [=] {
+        QObject::connect(get<WlCompositor>(), &WlCompositor::surfaceCreated, [this] (Surface *surface){
+            QObject::connect(surface, &Surface::bufferCommitted, [this, surface] {
                 if (m_config.autoRelease) {
                     // Pretend we made a copy of the buffer and just release it immediately
                     surface->m_committed.buffer->send_release();
+                }
+                if (m_config.autoFrameCallback) {
+                    surface->sendFrameCallbacks();
                 }
                 if (m_config.autoEnter && get<Output>() && surface->m_outputs.empty())
                     surface->sendEnter(get<Output>());
@@ -58,12 +52,35 @@ DefaultCompositor::DefaultCompositor()
             });
         });
 
-        QObject::connect(get<XdgWmBase>(), &XdgWmBase::toplevelCreated, get<XdgWmBase>(), [&] (XdgToplevel *toplevel) {
+        QObject::connect(get<XdgWmBase>(), &XdgWmBase::toplevelCreated, get<XdgWmBase>(), [this] (XdgToplevel *toplevel) {
             if (m_config.autoConfigure)
                 toplevel->sendCompleteConfigure();
         }, Qt::DirectConnection);
     }
     Q_ASSERT(isClean());
+}
+
+Surface *DefaultCompositor::surface(int i)
+{
+    QList<Surface *> surfaces;
+    switch (m_type) {
+    case CompositorType::Default:
+        return get<WlCompositor>()->m_surfaces.value(i, nullptr);
+    case CompositorType::Legacy: {
+            QList<Surface *> msurfaces = get<WlCompositor>()->m_surfaces;
+            for (Surface *surface : msurfaces) {
+                if (surface->isMapped()) {
+                    surfaces << surface;
+                }
+            }
+        }
+        break;
+    }
+
+    if (i >= 0 && i < surfaces.size())
+        return surfaces[i];
+
+    return nullptr;
 }
 
 uint DefaultCompositor::sendXdgShellPing()
@@ -79,10 +96,47 @@ uint DefaultCompositor::sendXdgShellPing()
 
 void DefaultCompositor::xdgPingAndWaitForPong()
 {
-    QSignalSpy pongSpy(exec([=] { return get<XdgWmBase>(); }), &XdgWmBase::pong);
-    uint serial = exec([=] { return sendXdgShellPing(); });
-    QTRY_COMPARE(pongSpy.count(), 1);
+    QSignalSpy pongSpy(exec([&] { return get<XdgWmBase>(); }), &XdgWmBase::pong);
+    uint serial = exec([&] { return sendXdgShellPing(); });
+    QTRY_COMPARE(pongSpy.size(), 1);
     QTRY_COMPARE(pongSpy.first().at(0).toUInt(), serial);
+}
+
+void DefaultCompositor::sendShellSurfaceConfigure(Surface *surface)
+{
+    switch (m_type) {
+    case CompositorType::Default:
+        break;
+    case CompositorType::Legacy: {
+            if (auto wlShellSurface = surface->wlShellSurface()) {
+                wlShellSurface->sendConfigure(0, 0, 0);
+                return;
+            }
+            break;
+        }
+    }
+
+    qWarning() << "The mocking framework doesn't know how to send a configure event for this surface";
+}
+
+WlShellCompositor::WlShellCompositor(CompositorType t)
+    : DefaultCompositor(t)
+{
+}
+
+Surface *DefaultCompositor::wlSurface(int i)
+{
+    QList<Surface *> surfaces, msurfaces;
+    msurfaces = get<WlCompositor>()->m_surfaces;
+    for (Surface *surface : msurfaces) {
+        if (surface->isMapped())
+            surfaces << surface;
+    }
+
+    if (i >=0 && i < surfaces.size())
+        return surfaces[i];
+
+    return nullptr;
 }
 
 } // namespace MockCompositor

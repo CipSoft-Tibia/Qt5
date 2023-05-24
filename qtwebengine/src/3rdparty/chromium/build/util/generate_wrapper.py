@@ -1,5 +1,5 @@
-#!/usr/bin/env vpython
-# Copyright 2019 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -14,9 +14,8 @@ import textwrap
 # The bash template passes the python script into vpython via stdin.
 # The interpreter doesn't know about the script, so we have bash
 # inject the script location.
-BASH_TEMPLATE = textwrap.dedent(
-    """\
-    #!/usr/bin/env vpython
+BASH_TEMPLATE = textwrap.dedent("""\
+    #!/usr/bin/env vpython3
     _SCRIPT_LOCATION = __file__
     {script}
     """)
@@ -26,10 +25,9 @@ BASH_TEMPLATE = textwrap.dedent(
 # flag instructing the interpreter to ignore the first line. The interpreter
 # knows about the (batch) script in this case, so it can get the file location
 # directly.
-BATCH_TEMPLATE = textwrap.dedent(
-    """\
+BATCH_TEMPLATE = textwrap.dedent("""\
     @SETLOCAL ENABLEDELAYEDEXPANSION \
-      & vpython.bat -x "%~f0" %* \
+      & vpython3.bat -x "%~f0" %* \
       & EXIT /B !ERRORLEVEL!
     _SCRIPT_LOCATION = __file__
     {script}
@@ -45,8 +43,11 @@ SCRIPT_TEMPLATES = {
 PY_TEMPLATE = textwrap.dedent("""\
     import os
     import re
+    import shlex
+    import signal
     import subprocess
     import sys
+    import time
 
     _WRAPPED_PATH_RE = re.compile(r'@WrappedPath\(([^)]+)\)')
     _PATH_TO_OUTPUT_DIR = '{path_to_output_dir}'
@@ -88,13 +89,106 @@ PY_TEMPLATE = textwrap.dedent("""\
       return args
 
 
+    def FindIsolatedOutdir(raw_args):
+      outdir = None
+      i = 0
+      remaining_args = []
+      while i < len(raw_args):
+        if raw_args[i] == '--isolated-outdir' and i < len(raw_args)-1:
+          outdir = raw_args[i+1]
+          i += 2
+        elif raw_args[i].startswith('--isolated-outdir='):
+          outdir = raw_args[i][len('--isolated-outdir='):]
+          i += 1
+        else:
+          remaining_args.append(raw_args[i])
+          i += 1
+      if not outdir and 'ISOLATED_OUTDIR' in os.environ:
+        outdir = os.environ['ISOLATED_OUTDIR']
+      return outdir, remaining_args
+
+    def InsertWrapperScriptArgs(args):
+      if '--wrapper-script-args' in args:
+        idx = args.index('--wrapper-script-args')
+        args.insert(idx + 1, shlex.join(sys.argv))
+
+    def FilterIsolatedOutdirBasedArgs(outdir, args):
+      rargs = []
+      i = 0
+      while i < len(args):
+        if 'ISOLATED_OUTDIR' in args[i]:
+          if outdir:
+            # Rewrite the arg.
+            rargs.append(args[i].replace('${{ISOLATED_OUTDIR}}',
+                                         outdir).replace(
+              '$ISOLATED_OUTDIR', outdir))
+            i += 1
+          else:
+            # Simply drop the arg.
+            i += 1
+        elif (not outdir and
+              args[i].startswith('-') and
+              '=' not in args[i] and
+              i < len(args) - 1 and
+              'ISOLATED_OUTDIR' in args[i+1]):
+          # Parsing this case is ambiguous; if we're given
+          # `--foo $ISOLATED_OUTDIR` we can't tell if $ISOLATED_OUTDIR
+          # is meant to be the value of foo, or if foo takes no argument
+          # and $ISOLATED_OUTDIR is the first positional arg.
+          #
+          # We assume the former will be much more common, and so we
+          # need to drop --foo and $ISOLATED_OUTDIR.
+          i += 2
+        else:
+          rargs.append(args[i])
+          i += 1
+      return rargs
+
+    def ForwardSignals(proc):
+      def _sig_handler(sig, _):
+        if proc.poll() is not None:
+          return
+        # SIGBREAK is defined only for win32.
+        # pylint: disable=no-member
+        if sys.platform == 'win32' and sig == signal.SIGBREAK:
+          print("Received signal(%d), sending CTRL_BREAK_EVENT to process %d" % (sig, proc.pid))
+          proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+          print("Forwarding signal(%d) to process %d" % (sig, proc.pid))
+          proc.send_signal(sig)
+        # pylint: enable=no-member
+      if sys.platform == 'win32':
+        signal.signal(signal.SIGBREAK, _sig_handler) # pylint: disable=no-member
+      else:
+        signal.signal(signal.SIGTERM, _sig_handler)
+        signal.signal(signal.SIGINT, _sig_handler)
+
+    def Popen(*args, **kwargs):
+      assert 'creationflags' not in kwargs
+      if sys.platform == 'win32':
+        # Necessary for signal handling. See crbug.com/733612#c6.
+        kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+      return subprocess.Popen(*args, **kwargs)
+
+    def RunCommand(cmd):
+      process = Popen(cmd)
+      ForwardSignals(process)
+      while process.poll() is None:
+        time.sleep(0.1)
+      return process.returncode
+
+
     def main(raw_args):
       executable_path = ExpandWrappedPath('{executable_path}')
-      executable_args = ExpandWrappedPaths({executable_args})
-      cmd = [executable_path] + executable_args + raw_args
+      outdir, remaining_args = FindIsolatedOutdir(raw_args)
+      args = {executable_args}
+      InsertWrapperScriptArgs(args)
+      args = FilterIsolatedOutdirBasedArgs(outdir, args)
+      executable_args = ExpandWrappedPaths(args)
+      cmd = [executable_path] + executable_args + remaining_args
       if executable_path.endswith('.py'):
         cmd = [sys.executable] + cmd
-      return subprocess.call(cmd)
+      return RunCommand(cmd)
 
 
     if __name__ == '__main__':
@@ -119,8 +213,7 @@ def Wrap(args):
         executable_path=str(args.executable),
         executable_args=str(args.executable_args))
     template = SCRIPT_TEMPLATES[args.script_language]
-    wrapper_script.write(template.format(
-        script=py_contents))
+    wrapper_script.write(template.format(script=py_contents))
   os.chmod(args.wrapper_script, 0o750)
 
   return 0

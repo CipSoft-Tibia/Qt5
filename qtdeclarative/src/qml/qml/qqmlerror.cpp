@@ -1,45 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlerror.h"
 #include "qqmlfile.h"
-#include "qqmlsourcecoordinate_p.h"
 #include <private/qqmljsdiagnosticmessage_p.h>
 
 #include <QtCore/qdebug.h>
@@ -86,6 +49,12 @@ public:
     QtMsgType type = QtWarningMsg;
     int line = -1;
     int column = -1;
+
+    friend bool operator==(const QQmlErrorPrivate &a, const QQmlErrorPrivate &b)
+    {
+        return a.url == b.url && a.object == b.object && a.message == b.message
+                && a.type == b.type && a.line == b.line && a.column == b.column;
+    }
 };
 
 /*!
@@ -298,6 +267,11 @@ QString QQmlError::toString() const
     return rv;
 }
 
+bool operator==(const QQmlError &a, const QQmlError &b)
+{
+    return a.d == b.d || (a.d && b.d && *a.d == *b.d);
+}
+
 /*!
     \relates QQmlError
     \fn QDebug operator<<(QDebug debug, const QQmlError &error)
@@ -317,19 +291,16 @@ QDebug operator<<(QDebug debug, const QQmlError &error)
         if (f.open(QIODevice::ReadOnly)) {
             QByteArray data = f.readAll();
             QTextStream stream(data, QIODevice::ReadOnly);
-#if QT_CONFIG(textcodec)
-            stream.setCodec("UTF-8");
-#endif
             const QString code = stream.readAll();
-            const auto lines = code.splitRef(QLatin1Char('\n'));
+            const auto lines = QStringView{code}.split(QLatin1Char('\n'));
 
-            if (lines.count() >= error.line()) {
-                const QStringRef &line = lines.at(error.line() - 1);
+            if (lines.size() >= error.line()) {
+                const QStringView &line = lines.at(error.line() - 1);
                 debug << "\n    " << line.toLocal8Bit().constData();
 
                 if(error.column() > 0) {
                     int column = qMax(0, error.column() - 1);
-                    column = qMin(column, line.length());
+                    column = qMin(column, line.size());
 
                     QByteArray ind;
                     ind.reserve(column);

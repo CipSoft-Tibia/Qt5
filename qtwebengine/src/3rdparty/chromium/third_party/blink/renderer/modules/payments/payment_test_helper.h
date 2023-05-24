@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_payment_details_update.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_payment_item.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_payment_shipping_option.h"
-#include "third_party/blink/renderer/platform/heap/heap_allocator.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -23,8 +23,6 @@
 namespace blink {
 
 class PaymentMethodData;
-class ScriptState;
-class ScriptValue;
 class V8TestingScope;
 
 enum PaymentTestDetailToChange {
@@ -93,31 +91,6 @@ class PaymentRequestV8TestingScope : public V8TestingScope {
 
  public:
   PaymentRequestV8TestingScope();
-};
-
-class PaymentRequestMockFunctionScope {
-  STACK_ALLOCATED();
-
- public:
-  explicit PaymentRequestMockFunctionScope(ScriptState*);
-  ~PaymentRequestMockFunctionScope();
-
-  v8::Local<v8::Function> ExpectCall();
-  v8::Local<v8::Function> ExpectCall(String* captor);
-  v8::Local<v8::Function> ExpectNoCall();
-
- private:
-  class MockFunction : public ScriptFunction {
-   public:
-    explicit MockFunction(ScriptState*);
-    MockFunction(ScriptState*, String* captor);
-    v8::Local<v8::Function> Bind();
-    MOCK_METHOD1(Call, ScriptValue(ScriptValue));
-    String* value_;
-  };
-
-  ScriptState* script_state_;
-  Vector<Persistent<MockFunction>> mock_functions_;
 };
 
 }  // namespace blink

@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,41 +29,45 @@ bool CJX_DataWindow::DynamicTypeIs(TypeTag eType) const {
 }
 
 CJS_Result CJX_DataWindow::moveCurrentRecord(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_DataWindow::record(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_DataWindow::gotoRecord(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_DataWindow::isRecordGroup(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   return CJS_Result::Success();
 }
 
-void CJX_DataWindow::recordsBefore(CFXJSE_Value* pValue,
+void CJX_DataWindow::recordsBefore(v8::Isolate* pIsolate,
+                                   v8::Local<v8::Value>* pValue,
                                    bool bSetting,
                                    XFA_Attribute eAttribute) {}
 
-void CJX_DataWindow::currentRecordNumber(CFXJSE_Value* pValue,
+void CJX_DataWindow::currentRecordNumber(v8::Isolate* pIsolate,
+                                         v8::Local<v8::Value>* pValue,
                                          bool bSetting,
                                          XFA_Attribute eAttribute) {}
 
-void CJX_DataWindow::recordsAfter(CFXJSE_Value* pValue,
+void CJX_DataWindow::recordsAfter(v8::Isolate* pIsolate,
+                                  v8::Local<v8::Value>* pValue,
                                   bool bSetting,
                                   XFA_Attribute eAttribute) {}
 
-void CJX_DataWindow::isDefined(CFXJSE_Value* pValue,
+void CJX_DataWindow::isDefined(v8::Isolate* pIsolate,
+                               v8::Local<v8::Value>* pValue,
                                bool bSetting,
                                XFA_Attribute eAttribute) {}

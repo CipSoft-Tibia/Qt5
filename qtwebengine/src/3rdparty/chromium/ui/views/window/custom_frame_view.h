@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 
 #include <memory>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/views/controls/button/button.h"
 #include "ui/views/widget/widget.h"
@@ -33,10 +32,13 @@ class Widget;
 //  rendering the non-standard window caption, border, and controls.
 //
 ////////////////////////////////////////////////////////////////////////////////
-class VIEWS_EXPORT CustomFrameView : public NonClientFrameView,
-                                     public ButtonListener {
+class VIEWS_EXPORT CustomFrameView : public NonClientFrameView {
  public:
   explicit CustomFrameView(Widget* frame);
+
+  CustomFrameView(const CustomFrameView&) = delete;
+  CustomFrameView& operator=(const CustomFrameView&) = delete;
+
   ~CustomFrameView() override;
 
   // Overridden from NonClientFrameView:
@@ -56,9 +58,6 @@ class VIEWS_EXPORT CustomFrameView : public NonClientFrameView,
   gfx::Size CalculatePreferredSize() const override;
   gfx::Size GetMinimumSize() const override;
   gfx::Size GetMaximumSize() const override;
-
-  // Overridden from ButtonListener:
-  void ButtonPressed(Button* sender, const ui::Event& event) override;
 
   // Returns the font list to use in the window's title bar.
   // TODO(https://crbug.com/968860): Move this into the typography provider.
@@ -124,7 +123,8 @@ class VIEWS_EXPORT CustomFrameView : public NonClientFrameView,
 
   // Creates, adds and returns a new window caption button (e.g, minimize,
   // maximize, restore).
-  ImageButton* InitWindowCaptionButton(int accessibility_string_id,
+  ImageButton* InitWindowCaptionButton(Button::PressedCallback callback,
+                                       int accessibility_string_id,
                                        int normal_image_id,
                                        int hot_image_id,
                                        int pushed_image_id);
@@ -140,16 +140,16 @@ class VIEWS_EXPORT CustomFrameView : public NonClientFrameView,
   gfx::Rect title_bounds_;
 
   // Not owned.
-  Widget* const frame_;
+  const raw_ptr<Widget> frame_;
 
   // The icon of this window. May be NULL.
-  ImageButton* window_icon_ = nullptr;
+  raw_ptr<ImageButton> window_icon_ = nullptr;
 
   // Window caption buttons.
-  ImageButton* minimize_button_;
-  ImageButton* maximize_button_;
-  ImageButton* restore_button_;
-  ImageButton* close_button_;
+  raw_ptr<ImageButton> minimize_button_;
+  raw_ptr<ImageButton> maximize_button_;
+  raw_ptr<ImageButton> restore_button_;
+  raw_ptr<ImageButton> close_button_;
 
   // Background painter for the window frame.
   std::unique_ptr<FrameBackground> frame_background_;
@@ -159,13 +159,10 @@ class VIEWS_EXPORT CustomFrameView : public NonClientFrameView,
   int minimum_title_bar_x_ = 0;
   int maximum_title_bar_x_ = -1;
 
-  std::unique_ptr<Widget::PaintAsActiveCallbackList::Subscription>
-      paint_as_active_subscription_ =
-          frame_->RegisterPaintAsActiveChangedCallback(
-              base::BindRepeating(&CustomFrameView::SchedulePaint,
-                                  base::Unretained(this)));
-
-  DISALLOW_COPY_AND_ASSIGN(CustomFrameView);
+  base::CallbackListSubscription paint_as_active_subscription_ =
+      frame_->RegisterPaintAsActiveChangedCallback(
+          base::BindRepeating(&CustomFrameView::SchedulePaint,
+                              base::Unretained(this)));
 };
 
 }  // namespace views

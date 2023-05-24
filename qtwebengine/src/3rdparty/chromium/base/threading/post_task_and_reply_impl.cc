@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,12 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check_op.h"
 #include "base/debug/leak_annotations.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
-#include "base/sequenced_task_runner.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool/thread_pool_instance.h"
 
 namespace base {
 
@@ -28,6 +28,9 @@ class PostTaskAndReplyRelay {
         reply_(std::move(reply)),
         reply_task_runner_(std::move(reply_task_runner)) {}
   PostTaskAndReplyRelay(PostTaskAndReplyRelay&&) = default;
+
+  PostTaskAndReplyRelay(const PostTaskAndReplyRelay&) = delete;
+  PostTaskAndReplyRelay& operator=(const PostTaskAndReplyRelay&) = delete;
 
   // It is important that |reply_| always be deleted on the origin sequence
   // (|reply_task_runner_|) since its destructor can be affine to it. More
@@ -71,6 +74,12 @@ class PostTaskAndReplyRelay {
     // Case 2:
     if (!reply_task_runner_->RunsTasksInCurrentSequence()) {
       DCHECK(reply_);
+      // Allow this task to be leaked on shutdown even if `reply_task_runner_`
+      // has the TaskShutdownBehaviour::BLOCK_SHUTDOWN trait. Without `fizzler`,
+      // such a task runner would DCHECK when posting to `reply_task_runner_`
+      // after shutdown. Ignore this DCHECK as the poster isn't in control when
+      // its Callback is destroyed late into shutdown. Ref. crbug.com/1375270.
+      base::ThreadPoolInstance::ScopedFizzleBlockShutdownTasks fizzler;
 
       SequencedTaskRunner* reply_task_runner_raw = reply_task_runner_.get();
       auto relay_to_delete =
@@ -120,8 +129,6 @@ class PostTaskAndReplyRelay {
   OnceClosure reply_;
   // Not const to allow moving.
   scoped_refptr<SequencedTaskRunner> reply_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(PostTaskAndReplyRelay);
 };
 
 }  // namespace
@@ -134,19 +141,20 @@ bool PostTaskAndReplyImpl::PostTaskAndReply(const Location& from_here,
   DCHECK(task) << from_here.ToString();
   DCHECK(reply) << from_here.ToString();
 
-  const bool has_sequenced_context = SequencedTaskRunnerHandle::IsSet();
+  const bool has_sequenced_context = SequencedTaskRunner::HasCurrentDefault();
 
   const bool post_task_success = PostTask(
-      from_here,
-      BindOnce(&PostTaskAndReplyRelay::RunTaskAndPostReply,
-               PostTaskAndReplyRelay(
-                   from_here, std::move(task), std::move(reply),
-                   has_sequenced_context ? SequencedTaskRunnerHandle::Get()
-                                         : nullptr)));
+      from_here, BindOnce(&PostTaskAndReplyRelay::RunTaskAndPostReply,
+                          PostTaskAndReplyRelay(
+                              from_here, std::move(task), std::move(reply),
+                              has_sequenced_context
+                                  ? SequencedTaskRunner::GetCurrentDefault()
+                                  : nullptr)));
 
-  // PostTaskAndReply() requires a SequencedTaskRunnerHandle to post the reply.
-  // Having no SequencedTaskRunnerHandle is allowed when posting the task fails,
-  // to simplify calls during shutdown (https://crbug.com/922938).
+  // PostTaskAndReply() requires a SequencedTaskRunner::CurrentDefaultHandle to
+  // post the reply.  Having no SequencedTaskRunner::CurrentDefaultHandle is
+  // allowed when posting the task fails, to simplify calls during shutdown
+  // (https://crbug.com/922938).
   CHECK(has_sequenced_context || !post_task_success);
 
   return post_task_success;

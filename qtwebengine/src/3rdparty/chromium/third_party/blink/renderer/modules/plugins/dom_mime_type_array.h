@@ -25,13 +25,14 @@
 #include "third_party/blink/renderer/core/page/plugins_changed_observer.h"
 #include "third_party/blink/renderer/modules/plugins/dom_mime_type.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
 class ExceptionState;
-class LocalFrame;
+class LocalDOMWindow;
 class PluginData;
 
 class DOMMimeTypeArray final : public ScriptWrappable,
@@ -40,7 +41,7 @@ class DOMMimeTypeArray final : public ScriptWrappable,
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  explicit DOMMimeTypeArray(LocalFrame*);
+  DOMMimeTypeArray(LocalDOMWindow*, bool should_return_fixed_plugin_data);
 
   void UpdatePluginData();
 
@@ -58,6 +59,8 @@ class DOMMimeTypeArray final : public ScriptWrappable,
  private:
   PluginData* GetPluginData() const;
   void ContextDestroyed() override;
+
+  const bool should_return_fixed_plugin_data_;
 
   HeapVector<Member<DOMMimeType>> dom_mime_types_;
 };

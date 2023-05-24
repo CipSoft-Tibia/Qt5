@@ -120,10 +120,10 @@ bool isEntryBreakpointForShaderType(spv::ExecutionModel type, const std::string 
 {
 	switch(type)
 	{
-		case spv::ExecutionModelGLCompute: return name == "ComputeShader";
-		case spv::ExecutionModelFragment: return name == "FragmentShader";
-		case spv::ExecutionModelVertex: return name == "VertexShader";
-		default: return false;
+	case spv::ExecutionModelGLCompute: return name == "ComputeShader";
+	case spv::ExecutionModelFragment: return name == "FragmentShader";
+	case spv::ExecutionModelVertex: return name == "VertexShader";
+	default: return false;
 	}
 }
 
@@ -146,28 +146,50 @@ std::shared_ptr<vk::dbg::Value> makeDbgValue(const sw::vec<T, N> &vec)
 	});
 }
 
-// store() emits a store instruction to write sizeof(T) bytes from val into ptr.
+// NullptrValue is an implementation of vk::dbg::Value that simply displays
+// "<null>" for the given type.
+class NullptrValue : public vk::dbg::Value
+{
+public:
+	NullptrValue(const std::string &ty)
+	    : ty(ty)
+	{}
+	std::string type() override { return ty; }
+	std::string get(const vk::dbg::FormatFlags &) { return "<null>"; }
+
+private:
+	std::string ty;
+};
+
+// store() emits a store instruction to copy val into ptr.
 template<typename T>
 void store(const rr::RValue<rr::Pointer<rr::Byte>> &ptr, const rr::RValue<T> &val)
 {
 	*rr::Pointer<T>(ptr) = val;
 }
 
-// store() emits a store instruction to write sizeof(T) bytes from val into ptr.
+// store() emits a store instruction to copy val into ptr.
 template<typename T>
 void store(const rr::RValue<rr::Pointer<rr::Byte>> &ptr, const T &val)
 {
 	*rr::Pointer<T>(ptr) = val;
 }
 
-// store() emits a store instruction to write sizeof(T) * N bytes from val into
-// ptr.
+// clang-format off
+template<typename T> struct ReactorTypeSize {};
+template<> struct ReactorTypeSize<rr::Int>    { static constexpr const int value = 4; };
+template<> struct ReactorTypeSize<rr::Float>  { static constexpr const int value = 4; };
+template<> struct ReactorTypeSize<rr::Int4>   { static constexpr const int value = 16; };
+template<> struct ReactorTypeSize<rr::Float4> { static constexpr const int value = 16; };
+// clang-format on
+
+// store() emits a store instruction to copy val into ptr.
 template<typename T, std::size_t N>
 void store(const rr::RValue<rr::Pointer<rr::Byte>> &ptr, const std::array<T, N> &val)
 {
 	for(std::size_t i = 0; i < N; i++)
 	{
-		store<T>(ptr + i * sizeof(T), val[i]);
+		store<T>(ptr + i * ReactorTypeSize<T>::value, val[i]);
 	}
 }
 
@@ -360,27 +382,27 @@ constexpr const char *cstr(Object::Kind k)
 {
 	switch(k)
 	{
-		case Object::Kind::Object: return "Object";
-		case Object::Kind::Declare: return "Declare";
-		case Object::Kind::Expression: return "Expression";
-		case Object::Kind::Function: return "Function";
-		case Object::Kind::InlinedAt: return "InlinedAt";
-		case Object::Kind::GlobalVariable: return "GlobalVariable";
-		case Object::Kind::LocalVariable: return "LocalVariable";
-		case Object::Kind::Member: return "Member";
-		case Object::Kind::Operation: return "Operation";
-		case Object::Kind::Source: return "Source";
-		case Object::Kind::SourceScope: return "SourceScope";
-		case Object::Kind::Value: return "Value";
-		case Object::Kind::TemplateParameter: return "TemplateParameter";
-		case Object::Kind::CompilationUnit: return "CompilationUnit";
-		case Object::Kind::LexicalBlock: return "LexicalBlock";
-		case Object::Kind::BasicType: return "BasicType";
-		case Object::Kind::ArrayType: return "ArrayType";
-		case Object::Kind::VectorType: return "VectorType";
-		case Object::Kind::FunctionType: return "FunctionType";
-		case Object::Kind::CompositeType: return "CompositeType";
-		case Object::Kind::TemplateType: return "TemplateType";
+	case Object::Kind::Object: return "Object";
+	case Object::Kind::Declare: return "Declare";
+	case Object::Kind::Expression: return "Expression";
+	case Object::Kind::Function: return "Function";
+	case Object::Kind::InlinedAt: return "InlinedAt";
+	case Object::Kind::GlobalVariable: return "GlobalVariable";
+	case Object::Kind::LocalVariable: return "LocalVariable";
+	case Object::Kind::Member: return "Member";
+	case Object::Kind::Operation: return "Operation";
+	case Object::Kind::Source: return "Source";
+	case Object::Kind::SourceScope: return "SourceScope";
+	case Object::Kind::Value: return "Value";
+	case Object::Kind::TemplateParameter: return "TemplateParameter";
+	case Object::Kind::CompilationUnit: return "CompilationUnit";
+	case Object::Kind::LexicalBlock: return "LexicalBlock";
+	case Object::Kind::BasicType: return "BasicType";
+	case Object::Kind::ArrayType: return "ArrayType";
+	case Object::Kind::VectorType: return "VectorType";
+	case Object::Kind::FunctionType: return "FunctionType";
+	case Object::Kind::CompositeType: return "CompositeType";
+	case Object::Kind::TemplateType: return "TemplateType";
 	}
 	return "<unknown>";
 }
@@ -537,27 +559,29 @@ struct BasicType : ObjectImpl<BasicType, Type, Object::Kind::BasicType>
 
 	std::shared_ptr<vk::dbg::Value> value(void *ptr, bool interleaved) const override
 	{
+		if(ptr == nullptr) { return std::make_shared<NullptrValue>(name()); }
+
 		switch(encoding)
 		{
-			case OpenCLDebugInfo100Address:
-				// return vk::dbg::make_reference(*static_cast<void **>(ptr));
-				UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100 OpenCLDebugInfo100Address BasicType");
-				return nullptr;
-			case OpenCLDebugInfo100Boolean:
-				return vk::dbg::make_reference(*static_cast<bool *>(ptr));
-			case OpenCLDebugInfo100Float:
-				return vk::dbg::make_reference(*static_cast<float *>(ptr));
-			case OpenCLDebugInfo100Signed:
-				return vk::dbg::make_reference(*static_cast<int32_t *>(ptr));
-			case OpenCLDebugInfo100SignedChar:
-				return vk::dbg::make_reference(*static_cast<int8_t *>(ptr));
-			case OpenCLDebugInfo100Unsigned:
-				return vk::dbg::make_reference(*static_cast<uint32_t *>(ptr));
-			case OpenCLDebugInfo100UnsignedChar:
-				return vk::dbg::make_reference(*static_cast<uint8_t *>(ptr));
-			default:
-				UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100 encoding %d", int(encoding));
-				return nullptr;
+		case OpenCLDebugInfo100Address:
+			// return vk::dbg::make_reference(*static_cast<void **>(ptr));
+			UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100 OpenCLDebugInfo100Address BasicType");
+			return nullptr;
+		case OpenCLDebugInfo100Boolean:
+			return vk::dbg::make_reference(*static_cast<bool *>(ptr));
+		case OpenCLDebugInfo100Float:
+			return vk::dbg::make_reference(*static_cast<float *>(ptr));
+		case OpenCLDebugInfo100Signed:
+			return vk::dbg::make_reference(*static_cast<int32_t *>(ptr));
+		case OpenCLDebugInfo100SignedChar:
+			return vk::dbg::make_reference(*static_cast<int8_t *>(ptr));
+		case OpenCLDebugInfo100Unsigned:
+			return vk::dbg::make_reference(*static_cast<uint32_t *>(ptr));
+		case OpenCLDebugInfo100UnsignedChar:
+			return vk::dbg::make_reference(*static_cast<uint8_t *>(ptr));
+		default:
+			UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100 encoding %d", int(encoding));
+			return nullptr;
 		}
 	}
 };
@@ -586,6 +610,8 @@ struct ArrayType : ObjectImpl<ArrayType, Type, Object::Kind::ArrayType>
 
 	std::shared_ptr<vk::dbg::Value> value(void *ptr, bool interleaved) const override
 	{
+		if(ptr == nullptr) { return std::make_shared<NullptrValue>(name()); }
+
 		auto members = std::make_shared<vk::dbg::VariableContainer>();
 
 		auto addr = static_cast<uint8_t *>(ptr);
@@ -618,6 +644,8 @@ struct VectorType : ObjectImpl<VectorType, Type, Object::Kind::VectorType>
 
 	std::shared_ptr<vk::dbg::Value> value(void *ptr, bool interleaved) const override
 	{
+		if(ptr == nullptr) { return std::make_shared<NullptrValue>(name()); }
+
 		const auto elSize = base->sizeInBytes();
 		auto members = std::make_shared<vk::dbg::VariableContainer>();
 		for(uint32_t i = 0; i < components; i++)
@@ -734,29 +762,37 @@ struct TemplateType : ObjectImpl<TemplateType, Type, Object::Kind::TemplateType>
 	}
 };
 
-// Function represents the OpenCL.DebugInfo.100 DebugFunction instruction.
-// https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.DebugInfo.100.html#DebugFunction
-struct Function : ObjectImpl<Function, Scope, Object::Kind::Function>
-{
-	std::string name;
-	FunctionType *type = nullptr;
-	uint32_t line = 0;
-	uint32_t column = 0;
-	std::string linkage;
-	uint32_t flags = 0;  // OR'd from OpenCLDebugInfo100DebugInfoFlags
-	uint32_t scopeLine = 0;
-	sw::SpirvShader::Function::ID function;
-};
-
 // LexicalBlock represents the OpenCL.DebugInfo.100 DebugLexicalBlock instruction.
 // https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.DebugInfo.100.html#DebugLexicalBlock
-struct LexicalBlock : ObjectImpl<LexicalBlock, Scope, Object::Kind::LexicalBlock>
+struct LexicalBlock : Scope
 {
+	using ID = sw::SpirvID<LexicalBlock>;
+	static constexpr auto Kind = Object::Kind::LexicalBlock;
+
+	inline LexicalBlock(Object::Kind kind = Kind)
+	    : Scope(kind)
+	{}
+
 	uint32_t line = 0;
 	uint32_t column = 0;
 	std::string name;
 
 	std::vector<LocalVariable *> variables;
+
+	static constexpr bool kindof(Object::Kind kind) { return kind == Kind || kind == Object::Kind::Function; }
+};
+
+// Function represents the OpenCL.DebugInfo.100 DebugFunction instruction.
+// https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.DebugInfo.100.html#DebugFunction
+struct Function : ObjectImpl<Function, LexicalBlock, Object::Kind::Function>
+{
+	std::string name;
+	FunctionType *type = nullptr;
+	uint32_t declLine = 0;
+	uint32_t declColumn = 0;
+	std::string linkage;
+	uint32_t flags = 0;  // OR'd from OpenCLDebugInfo100DebugInfoFlags
+	sw::SpirvShader::Function::ID function;
 };
 
 // InlinedAt represents the OpenCL.DebugInfo.100 DebugInlinedAt instruction.
@@ -875,6 +911,17 @@ T *find(Scope *scope)
 {
 	if(auto out = cast<T>(scope)) { return out; }
 	return scope->parent ? find<T>(scope->parent) : nullptr;
+}
+
+inline const char *tostring(LocalVariable::Definition def)
+{
+	switch(def)
+	{
+	case LocalVariable::Definition::Undefined: return "Undefined";
+	case LocalVariable::Definition::Declaration: return "Declaration";
+	case LocalVariable::Definition::Values: return "Values";
+	default: return "<unknown>";
+	}
 }
 
 }  // namespace debug
@@ -1031,8 +1078,8 @@ struct SpirvShader::Impl::Debugger : public vk::dbg::ClientEventListener
 		void create(const SpirvShader *, const EmitState *, Object::ID);
 
 		// get() returns a Memory pointing to the shadow memory for the object
-		// with the given id for the given SIMD lane.
-		Memory get(const State *, Object::ID, int lane) const;
+		// with the given id.
+		Memory get(const State *, Object::ID) const;
 
 		std::unordered_map<Object::ID, Entry> entries;
 		uint32_t size = 0;  // Total size of the shadow memory in bytes.
@@ -1122,7 +1169,7 @@ public:
 	// Data shared across all nodes in the LocalVariableValue.
 	struct Shared
 	{
-		Shared(debug::LocalVariable const *const variable, State const *const state, int const lane)
+		Shared(const debug::LocalVariable *const variable, const State *const state, int const lane)
 		    : variable(variable)
 		    , state(state)
 		    , lane(lane)
@@ -1130,17 +1177,17 @@ public:
 			ASSERT(variable->definition == debug::LocalVariable::Definition::Values);
 		}
 
-		debug::LocalVariable const *const variable;
-		State const *const state;
+		const debug::LocalVariable *const variable;
+		const State *const state;
 		int const lane;
 	};
 
-	LocalVariableValue(debug::LocalVariable *variable, State const *const state, int lane);
+	LocalVariableValue(debug::LocalVariable *variable, const State *const state, int lane);
 
 	LocalVariableValue(
-	    std::shared_ptr<const Shared> const &shared,
-	    debug::Type const *ty,
-	    debug::LocalVariable::ValueNode const *node);
+	    const std::shared_ptr<const Shared> &shared,
+	    const debug::Type *ty,
+	    const debug::LocalVariable::ValueNode *node);
 
 private:
 	// vk::dbg::Value
@@ -1150,8 +1197,8 @@ private:
 
 	void updateValue();
 	std::shared_ptr<const Shared> const shared;
-	debug::Type const *const ty;
-	debug::LocalVariable::ValueNode const *const node;
+	const debug::Type *const ty;
+	const debug::LocalVariable::ValueNode *const node;
 	debug::Value *activeValue = nullptr;
 	std::shared_ptr<vk::dbg::Value> value;
 };
@@ -1301,7 +1348,7 @@ private:
 
 		// getOrCreateLocals() creates and returns the per-lane local variables
 		// from those in the lexical block.
-		PerLaneVariables getOrCreateLocals(State *state, debug::LexicalBlock const *block);
+		PerLaneVariables getOrCreateLocals(State *state, const debug::LexicalBlock *block);
 
 		// buildGlobal() creates and adds to globals global variable with the
 		// given name and value. The value is copied instead of holding a
@@ -1326,7 +1373,7 @@ private:
 		GlobalVariables globals;
 		std::shared_ptr<vk::dbg::Thread> thread;
 		std::vector<StackEntry> stack;
-		std::unordered_map<debug::LexicalBlock const *, PerLaneVariables> locals;
+		std::unordered_map<const debug::LexicalBlock *, PerLaneVariables> locals;
 	};
 
 	State(const Debugger *debugger);
@@ -1515,12 +1562,12 @@ void SpirvShader::Impl::Debugger::defineOrEmit(InsnIterator insn, Pass pass, F &
 	auto id = SpirvID<T>(insn.word(2));
 	switch(pass)
 	{
-		case Pass::Define:
-			add(id, std::unique_ptr<debug::Object>(new T()));
-			break;
-		case Pass::Emit:
-			emit(get<T>(id));
-			break;
+	case Pass::Define:
+		add(id, std::unique_ptr<debug::Object>(new T()));
+		break;
+	case Pass::Emit:
+		emit(get<T>(id));
+		break;
 	}
 }
 
@@ -1529,305 +1576,320 @@ void SpirvShader::Impl::Debugger::process(const InsnIterator &insn, EmitState *s
 	auto extInstIndex = insn.word(4);
 	switch(extInstIndex)
 	{
-		case OpenCLDebugInfo100DebugInfoNone:
-			if(pass == Pass::Define)
+	case OpenCLDebugInfo100DebugInfoNone:
+		if(pass == Pass::Define)
+		{
+			addNone(debug::Object::ID(insn.word(2)));
+		}
+		break;
+	case OpenCLDebugInfo100DebugCompilationUnit:
+		defineOrEmit(insn, pass, [&](debug::CompilationUnit *cu) {
+			cu->source = get(debug::Source::ID(insn.word(7)));
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeBasic:
+		defineOrEmit(insn, pass, [&](debug::BasicType *type) {
+			type->name_ = shader->getString(insn.word(5));
+			type->size = shader->GetConstScalarInt(insn.word(6));
+			type->encoding = static_cast<OpenCLDebugInfo100DebugBaseTypeAttributeEncoding>(insn.word(7));
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeArray:
+		defineOrEmit(insn, pass, [&](debug::ArrayType *type) {
+			type->base = get(debug::Type::ID(insn.word(5)));
+			type->size = shader->GetConstScalarInt(insn.word(6));
+			for(uint32_t i = 7; i < insn.wordCount(); i++)
 			{
-				addNone(debug::Object::ID(insn.word(2)));
+				// Decompose multi-dimentional into nested single
+				// dimensional arrays. Greatly simplifies logic.
+				auto inner = new debug::ArrayType();
+				inner->base = type->base;
+				type->size = shader->GetConstScalarInt(insn.word(i));
+				type->base = inner;
+				type->ownsBase = true;
+				type = inner;
 			}
-			break;
-		case OpenCLDebugInfo100DebugCompilationUnit:
-			defineOrEmit(insn, pass, [&](debug::CompilationUnit *cu) {
-				cu->source = get(debug::Source::ID(insn.word(7)));
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeBasic:
-			defineOrEmit(insn, pass, [&](debug::BasicType *type) {
-				type->name_ = shader->getString(insn.word(5));
-				type->size = shader->GetConstScalarInt(insn.word(6));
-				type->encoding = static_cast<OpenCLDebugInfo100DebugBaseTypeAttributeEncoding>(insn.word(7));
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeArray:
-			defineOrEmit(insn, pass, [&](debug::ArrayType *type) {
-				type->base = get(debug::Type::ID(insn.word(5)));
-				type->size = shader->GetConstScalarInt(insn.word(6));
-				for(uint32_t i = 7; i < insn.wordCount(); i++)
-				{
-					// Decompose multi-dimentional into nested single
-					// dimensional arrays. Greatly simplifies logic.
-					auto inner = new debug::ArrayType();
-					inner->base = type->base;
-					type->size = shader->GetConstScalarInt(insn.word(i));
-					type->base = inner;
-					type->ownsBase = true;
-					type = inner;
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeVector:
-			defineOrEmit(insn, pass, [&](debug::VectorType *type) {
-				type->base = get(debug::Type::ID(insn.word(5)));
-				type->components = insn.word(6);
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeFunction:
-			defineOrEmit(insn, pass, [&](debug::FunctionType *type) {
-				type->flags = insn.word(5);
-				type->returnTy = getOrNull(debug::Type::ID(insn.word(6)));
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeVector:
+		defineOrEmit(insn, pass, [&](debug::VectorType *type) {
+			type->base = get(debug::Type::ID(insn.word(5)));
+			type->components = insn.word(6);
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeFunction:
+		defineOrEmit(insn, pass, [&](debug::FunctionType *type) {
+			type->flags = insn.word(5);
+			type->returnTy = getOrNull(debug::Type::ID(insn.word(6)));
 
-				// 'Return Type' operand must be a debug type or OpTypeVoid. See
-				// https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.DebugInfo.100.html#DebugTypeFunction
-				ASSERT_MSG(type->returnTy != nullptr || shader->getType(insn.word(6)).opcode() == spv::Op::OpTypeVoid, "Invalid return type of DebugTypeFunction: %d", insn.word(6));
+			// 'Return Type' operand must be a debug type or OpTypeVoid. See
+			// https://www.khronos.org/registry/spir-v/specs/unified1/OpenCL.DebugInfo.100.html#DebugTypeFunction
+			ASSERT_MSG(type->returnTy != nullptr || shader->getType(insn.word(6)).opcode() == spv::Op::OpTypeVoid, "Invalid return type of DebugTypeFunction: %d", insn.word(6));
 
-				for(uint32_t i = 7; i < insn.wordCount(); i++)
+			for(uint32_t i = 7; i < insn.wordCount(); i++)
+			{
+				type->paramTys.push_back(get(debug::Type::ID(insn.word(i))));
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeComposite:
+		defineOrEmit(insn, pass, [&](debug::CompositeType *type) {
+			type->name_ = shader->getString(insn.word(5));
+			type->tag = static_cast<OpenCLDebugInfo100DebugCompositeType>(insn.word(6));
+			type->source = get(debug::Source::ID(insn.word(7)));
+			type->line = insn.word(8);
+			type->column = insn.word(9);
+			type->parent = get(debug::Object::ID(insn.word(10)));
+			type->linkage = shader->getString(insn.word(11));
+			type->size = isNone(insn.word(12)) ? 0 : shader->GetConstScalarInt(insn.word(12));
+			type->flags = insn.word(13);
+			for(uint32_t i = 14; i < insn.wordCount(); i++)
+			{
+				auto obj = get(debug::Object::ID(insn.word(i)));
+				if(auto member = debug::cast<debug::Member>(obj))  // Can also be Function or TypeInheritance, which we don't care about.
 				{
-					type->paramTys.push_back(get(debug::Type::ID(insn.word(i))));
+					type->members_.push_back(member);
 				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeComposite:
-			defineOrEmit(insn, pass, [&](debug::CompositeType *type) {
-				type->name_ = shader->getString(insn.word(5));
-				type->tag = static_cast<OpenCLDebugInfo100DebugCompositeType>(insn.word(6));
-				type->source = get(debug::Source::ID(insn.word(7)));
-				type->line = insn.word(8);
-				type->column = insn.word(9);
-				type->parent = get(debug::Object::ID(insn.word(10)));
-				type->linkage = shader->getString(insn.word(11));
-				type->size = isNone(insn.word(12)) ? 0 : shader->GetConstScalarInt(insn.word(12));
-				type->flags = insn.word(13);
-				for(uint32_t i = 14; i < insn.wordCount(); i++)
-				{
-					auto obj = get(debug::Object::ID(insn.word(i)));
-					if(auto member = debug::cast<debug::Member>(obj))  // Can also be Function or TypeInheritance, which we don't care about.
-					{
-						type->members_.push_back(member);
-					}
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeMember:
-			defineOrEmit(insn, pass, [&](debug::Member *member) {
-				member->name = shader->getString(insn.word(5));
-				member->type = get(debug::Type::ID(insn.word(6)));
-				member->source = get(debug::Source::ID(insn.word(7)));
-				member->line = insn.word(8);
-				member->column = insn.word(9);
-				member->parent = get(debug::CompositeType::ID(insn.word(10)));
-				member->offset = shader->GetConstScalarInt(insn.word(11));
-				member->size = shader->GetConstScalarInt(insn.word(12));
-				member->flags = insn.word(13);
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeTemplate:
-			defineOrEmit(insn, pass, [&](debug::TemplateType *tpl) {
-				tpl->target = get(debug::Type::ID(insn.word(5)));
-				for(size_t i = 6, c = insn.wordCount(); i < c; i++)
-				{
-					tpl->parameters.emplace_back(get(debug::TemplateParameter::ID(insn.word(i))));
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugTypeTemplateParameter:
-			defineOrEmit(insn, pass, [&](debug::TemplateParameter *param) {
-				param->name = shader->getString(insn.word(5));
-				param->type = get(debug::Type::ID(insn.word(6)));
-				param->value = 0;  // TODO: Get value from OpConstant if "a template value parameter".
-				param->source = get(debug::Source::ID(insn.word(8)));
-				param->line = insn.word(9);
-				param->column = insn.word(10);
-			});
-			break;
-		case OpenCLDebugInfo100DebugGlobalVariable:
-			defineOrEmit(insn, pass, [&](debug::GlobalVariable *var) {
-				var->name = shader->getString(insn.word(5));
-				var->type = get(debug::Type::ID(insn.word(6)));
-				var->source = get(debug::Source::ID(insn.word(7)));
-				var->line = insn.word(8);
-				var->column = insn.word(9);
-				var->parent = get(debug::Scope::ID(insn.word(10)));
-				var->linkage = shader->getString(insn.word(11));
-				var->variable = isNone(insn.word(12)) ? 0 : insn.word(12);
-				var->flags = insn.word(13);
-				// static member declaration: word(14)
-			});
-			break;
-		case OpenCLDebugInfo100DebugFunction:
-			defineOrEmit(insn, pass, [&](debug::Function *func) {
-				func->name = shader->getString(insn.word(5));
-				func->type = get(debug::FunctionType::ID(insn.word(6)));
-				func->source = get(debug::Source::ID(insn.word(7)));
-				func->line = insn.word(8);
-				func->column = insn.word(9);
-				func->parent = get(debug::Scope::ID(insn.word(10)));
-				func->linkage = shader->getString(insn.word(11));
-				func->flags = insn.word(12);
-				func->scopeLine = insn.word(13);
-				func->function = Function::ID(insn.word(14));
-				// declaration: word(13)
-			});
-			break;
-		case OpenCLDebugInfo100DebugLexicalBlock:
-			defineOrEmit(insn, pass, [&](debug::LexicalBlock *scope) {
-				scope->source = get(debug::Source::ID(insn.word(5)));
-				scope->line = insn.word(6);
-				scope->column = insn.word(7);
-				scope->parent = get(debug::Scope::ID(insn.word(8)));
-				if(insn.wordCount() > 9)
-				{
-					scope->name = shader->getString(insn.word(9));
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugScope:
-			defineOrEmit(insn, pass, [&](debug::SourceScope *ss) {
-				ss->scope = get(debug::Scope::ID(insn.word(5)));
-				if(insn.wordCount() > 6)
-				{
-					ss->inlinedAt = get(debug::InlinedAt::ID(insn.word(6)));
-				}
-				setScope(ss);
-			});
-			break;
-		case OpenCLDebugInfo100DebugNoScope:
-			break;
-		case OpenCLDebugInfo100DebugInlinedAt:
-			defineOrEmit(insn, pass, [&](debug::InlinedAt *ia) {
-				ia->line = insn.word(5);
-				ia->scope = get(debug::Scope::ID(insn.word(6)));
-				if(insn.wordCount() > 7)
-				{
-					ia->inlined = get(debug::InlinedAt::ID(insn.word(7)));
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugLocalVariable:
-			defineOrEmit(insn, pass, [&](debug::LocalVariable *var) {
-				var->name = shader->getString(insn.word(5));
-				var->type = get(debug::Type::ID(insn.word(6)));
-				var->source = get(debug::Source::ID(insn.word(7)));
-				var->line = insn.word(8);
-				var->column = insn.word(9);
-				var->parent = get(debug::Scope::ID(insn.word(10)));
-				if(insn.wordCount() > 11)
-				{
-					var->arg = insn.word(11);
-				}
-				if(auto block = debug::find<debug::LexicalBlock>(var->parent))
-				{
-					block->variables.emplace_back(var);
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugDeclare:
-			defineOrEmit(insn, pass, [&](debug::Declare *decl) {
-				decl->local = get(debug::LocalVariable::ID(insn.word(5)));
-				decl->variable = Object::ID(insn.word(6));
-				decl->expression = get(debug::Expression::ID(insn.word(7)));
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeMember:
+		defineOrEmit(insn, pass, [&](debug::Member *member) {
+			member->name = shader->getString(insn.word(5));
+			member->type = get(debug::Type::ID(insn.word(6)));
+			member->source = get(debug::Source::ID(insn.word(7)));
+			member->line = insn.word(8);
+			member->column = insn.word(9);
+			member->parent = get(debug::CompositeType::ID(insn.word(10)));
+			member->offset = shader->GetConstScalarInt(insn.word(11));
+			member->size = shader->GetConstScalarInt(insn.word(12));
+			member->flags = insn.word(13);
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeTemplate:
+		defineOrEmit(insn, pass, [&](debug::TemplateType *tpl) {
+			tpl->target = get(debug::Type::ID(insn.word(5)));
+			for(size_t i = 6, c = insn.wordCount(); i < c; i++)
+			{
+				tpl->parameters.emplace_back(get(debug::TemplateParameter::ID(insn.word(i))));
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugTypeTemplateParameter:
+		defineOrEmit(insn, pass, [&](debug::TemplateParameter *param) {
+			param->name = shader->getString(insn.word(5));
+			param->type = get(debug::Type::ID(insn.word(6)));
+			param->value = 0;  // TODO: Get value from OpConstant if "a template value parameter".
+			param->source = get(debug::Source::ID(insn.word(8)));
+			param->line = insn.word(9);
+			param->column = insn.word(10);
+		});
+		break;
+	case OpenCLDebugInfo100DebugGlobalVariable:
+		defineOrEmit(insn, pass, [&](debug::GlobalVariable *var) {
+			var->name = shader->getString(insn.word(5));
+			var->type = get(debug::Type::ID(insn.word(6)));
+			var->source = get(debug::Source::ID(insn.word(7)));
+			var->line = insn.word(8);
+			var->column = insn.word(9);
+			var->parent = get(debug::Scope::ID(insn.word(10)));
+			var->linkage = shader->getString(insn.word(11));
+			var->variable = isNone(insn.word(12)) ? 0 : insn.word(12);
+			var->flags = insn.word(13);
+			// static member declaration: word(14)
+		});
+		break;
+	case OpenCLDebugInfo100DebugFunction:
+		defineOrEmit(insn, pass, [&](debug::Function *func) {
+			func->name = shader->getString(insn.word(5));
+			func->type = get(debug::FunctionType::ID(insn.word(6)));
+			func->source = get(debug::Source::ID(insn.word(7)));
+			func->declLine = insn.word(8);
+			func->declColumn = insn.word(9);
+			func->parent = get(debug::Scope::ID(insn.word(10)));
+			func->linkage = shader->getString(insn.word(11));
+			func->flags = insn.word(12);
+			func->line = insn.word(13);
+			func->function = Function::ID(insn.word(14));
+			// declaration: word(13)
+		});
+		break;
+	case OpenCLDebugInfo100DebugLexicalBlock:
+		defineOrEmit(insn, pass, [&](debug::LexicalBlock *scope) {
+			scope->source = get(debug::Source::ID(insn.word(5)));
+			scope->line = insn.word(6);
+			scope->column = insn.word(7);
+			scope->parent = get(debug::Scope::ID(insn.word(8)));
+			if(insn.wordCount() > 9)
+			{
+				scope->name = shader->getString(insn.word(9));
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugScope:
+		defineOrEmit(insn, pass, [&](debug::SourceScope *ss) {
+			ss->scope = get(debug::Scope::ID(insn.word(5)));
+			if(insn.wordCount() > 6)
+			{
+				ss->inlinedAt = get(debug::InlinedAt::ID(insn.word(6)));
+			}
+			setScope(ss);
+		});
+		break;
+	case OpenCLDebugInfo100DebugNoScope:
+		break;
+	case OpenCLDebugInfo100DebugInlinedAt:
+		defineOrEmit(insn, pass, [&](debug::InlinedAt *ia) {
+			ia->line = insn.word(5);
+			ia->scope = get(debug::Scope::ID(insn.word(6)));
+			if(insn.wordCount() > 7)
+			{
+				ia->inlined = get(debug::InlinedAt::ID(insn.word(7)));
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugLocalVariable:
+		defineOrEmit(insn, pass, [&](debug::LocalVariable *var) {
+			var->name = shader->getString(insn.word(5));
+			var->type = get(debug::Type::ID(insn.word(6)));
+			var->source = get(debug::Source::ID(insn.word(7)));
+			var->line = insn.word(8);
+			var->column = insn.word(9);
+			var->parent = get(debug::Scope::ID(insn.word(10)));
+			if(insn.wordCount() > 11)
+			{
+				var->arg = insn.word(11);
+			}
+			if(auto block = debug::find<debug::LexicalBlock>(var->parent))
+			{
+				block->variables.emplace_back(var);
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugDeclare:
+		defineOrEmit(insn, pass, [&](debug::Declare *decl) {
+			decl->local = get(debug::LocalVariable::ID(insn.word(5)));
+			decl->variable = Object::ID(insn.word(6));
+			decl->expression = get(debug::Expression::ID(insn.word(7)));
 
-				decl->local->declaration = decl;
+			decl->local->declaration = decl;
 
-				ASSERT(decl->local->definition == debug::LocalVariable::Definition::Undefined);
-				decl->local->definition = debug::LocalVariable::Definition::Declaration;
-			});
-			break;
-		case OpenCLDebugInfo100DebugValue:
-			defineOrEmit(insn, pass, [&](debug::Value *value) {
-				value->local = get(debug::LocalVariable::ID(insn.word(5)));
-				value->value = insn.word(6);
-				value->expression = get(debug::Expression::ID(insn.word(7)));
+			ASSERT_MSG(decl->local->definition == debug::LocalVariable::Definition::Undefined,
+			           "DebugLocalVariable '%s' declared at %s:%d was previously defined as %s, now again as %s",
+			           decl->local->name.c_str(),
+			           decl->local->source ? decl->local->source->file.c_str() : "<unknown>",
+			           (int)decl->local->line,
+			           tostring(decl->local->definition),
+			           tostring(debug::LocalVariable::Definition::Declaration));
+			decl->local->definition = debug::LocalVariable::Definition::Declaration;
+		});
+		break;
+	case OpenCLDebugInfo100DebugValue:
+		defineOrEmit(insn, pass, [&](debug::Value *value) {
+			value->local = get(debug::LocalVariable::ID(insn.word(5)));
+			value->value = insn.word(6);
+			value->expression = get(debug::Expression::ID(insn.word(7)));
 
-				if(value->local->definition == debug::LocalVariable::Definition::Undefined)
+			if(value->local->definition == debug::LocalVariable::Definition::Undefined)
+			{
+				value->local->definition = debug::LocalVariable::Definition::Values;
+			}
+			else
+			{
+				ASSERT_MSG(value->local->definition == debug::LocalVariable::Definition::Values,
+				           "DebugLocalVariable '%s' declared at %s:%d was previously defined as %s, now again as %s",
+				           value->local->name.c_str(),
+				           value->local->source ? value->local->source->file.c_str() : "<unknown>",
+				           (int)value->local->line,
+				           tostring(value->local->definition),
+				           tostring(debug::LocalVariable::Definition::Values));
+			}
+
+			auto node = &value->local->values;
+			for(uint32_t i = 8; i < insn.wordCount(); i++)
+			{
+				auto idx = shader->GetConstScalarInt(insn.word(i));
+				value->indexes.push_back(idx);
+
+				auto it = node->children.find(idx);
+				if(it != node->children.end())
 				{
-					value->local->definition = debug::LocalVariable::Definition::Values;
-				}
-				ASSERT(value->local->definition == debug::LocalVariable::Definition::Values);
-
-				auto node = &value->local->values;
-				for(uint32_t i = 8; i < insn.wordCount(); i++)
-				{
-					auto idx = shader->GetConstScalarInt(insn.word(i));
-					value->indexes.push_back(idx);
-
-					auto it = node->children.find(i);
-					if(it != node->children.end())
-					{
-						node = it->second.get();
-					}
-					else
-					{
-						auto parent = node;
-						auto child = std::make_unique<debug::LocalVariable::ValueNode>();
-						node = child.get();
-						parent->children.emplace(i, std::move(child));
-					}
-				}
-
-				if(node->debugValueIndex == debug::LocalVariable::ValueNode::NoDebugValueIndex)
-				{
-					node->debugValueIndex = numDebugValueSlots++;
-				}
-
-				rr::Pointer<rr::Pointer<Byte>> lastReachedArray = *rr::Pointer<rr::Pointer<rr::Pointer<Byte>>>(
-				    state->routine->dbgState + OFFSET(Impl::Debugger::State, lastReachedDebugValues));
-				rr::Pointer<rr::Pointer<Byte>> lastReached = &lastReachedArray[node->debugValueIndex];
-				*lastReached = rr::ConstantPointer(value);
-			});
-			break;
-		case OpenCLDebugInfo100DebugExpression:
-			defineOrEmit(insn, pass, [&](debug::Expression *expr) {
-				for(uint32_t i = 5; i < insn.wordCount(); i++)
-				{
-					expr->operations.push_back(get(debug::Operation::ID(insn.word(i))));
-				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugSource:
-			defineOrEmit(insn, pass, [&](debug::Source *source) {
-				source->file = shader->getString(insn.word(5));
-				if(insn.wordCount() > 6)
-				{
-					source->source = shader->getString(insn.word(6));
-					auto file = ctx->lock().createVirtualFile(source->file.c_str(), source->source.c_str());
-					source->dbgFile = file;
-					files.emplace(source->file.c_str(), file);
+					node = it->second.get();
 				}
 				else
 				{
-					auto file = ctx->lock().createPhysicalFile(source->file.c_str());
-					source->dbgFile = file;
-					files.emplace(source->file.c_str(), file);
+					auto parent = node;
+					auto child = std::make_unique<debug::LocalVariable::ValueNode>();
+					node = child.get();
+					parent->children.emplace(idx, std::move(child));
 				}
-			});
-			break;
-		case OpenCLDebugInfo100DebugOperation:
-			defineOrEmit(insn, pass, [&](debug::Operation *operation) {
-				operation->opcode = insn.word(5);
-				for(uint32_t i = 6; i < insn.wordCount(); i++)
-				{
-					operation->operands.push_back(insn.word(i));
-				}
-			});
-			break;
+			}
 
-		case OpenCLDebugInfo100DebugTypePointer:
-		case OpenCLDebugInfo100DebugTypeQualifier:
-		case OpenCLDebugInfo100DebugTypedef:
-		case OpenCLDebugInfo100DebugTypeEnum:
-		case OpenCLDebugInfo100DebugTypeInheritance:
-		case OpenCLDebugInfo100DebugTypePtrToMember:
-		case OpenCLDebugInfo100DebugTypeTemplateTemplateParameter:
-		case OpenCLDebugInfo100DebugTypeTemplateParameterPack:
-		case OpenCLDebugInfo100DebugFunctionDeclaration:
-		case OpenCLDebugInfo100DebugLexicalBlockDiscriminator:
-		case OpenCLDebugInfo100DebugInlinedVariable:
-		case OpenCLDebugInfo100DebugMacroDef:
-		case OpenCLDebugInfo100DebugMacroUndef:
-		case OpenCLDebugInfo100DebugImportedEntity:
-			UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100 instruction %d", int(extInstIndex));
-			break;
-		default:
-			UNSUPPORTED("OpenCLDebugInfo100 instruction %d", int(extInstIndex));
+			if(node->debugValueIndex == debug::LocalVariable::ValueNode::NoDebugValueIndex)
+			{
+				node->debugValueIndex = numDebugValueSlots++;
+			}
+
+			rr::Pointer<rr::Pointer<Byte>> lastReachedArray = *rr::Pointer<rr::Pointer<rr::Pointer<Byte>>>(
+			    state->routine->dbgState + OFFSET(Impl::Debugger::State, lastReachedDebugValues));
+			rr::Pointer<rr::Pointer<Byte>> lastReached = &lastReachedArray[node->debugValueIndex];
+			*lastReached = rr::ConstantPointer(value);
+		});
+		break;
+	case OpenCLDebugInfo100DebugExpression:
+		defineOrEmit(insn, pass, [&](debug::Expression *expr) {
+			for(uint32_t i = 5; i < insn.wordCount(); i++)
+			{
+				expr->operations.push_back(get(debug::Operation::ID(insn.word(i))));
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugSource:
+		defineOrEmit(insn, pass, [&](debug::Source *source) {
+			source->file = shader->getString(insn.word(5));
+			if(insn.wordCount() > 6)
+			{
+				source->source = shader->getString(insn.word(6));
+				auto file = ctx->lock().createVirtualFile(source->file.c_str(), source->source.c_str());
+				source->dbgFile = file;
+				files.emplace(source->file.c_str(), file);
+			}
+			else
+			{
+				auto file = ctx->lock().createPhysicalFile(source->file.c_str());
+				source->dbgFile = file;
+				files.emplace(source->file.c_str(), file);
+			}
+		});
+		break;
+	case OpenCLDebugInfo100DebugOperation:
+		defineOrEmit(insn, pass, [&](debug::Operation *operation) {
+			operation->opcode = insn.word(5);
+			for(uint32_t i = 6; i < insn.wordCount(); i++)
+			{
+				operation->operands.push_back(insn.word(i));
+			}
+		});
+		break;
+
+	case OpenCLDebugInfo100DebugTypePointer:
+	case OpenCLDebugInfo100DebugTypeQualifier:
+	case OpenCLDebugInfo100DebugTypedef:
+	case OpenCLDebugInfo100DebugTypeEnum:
+	case OpenCLDebugInfo100DebugTypeInheritance:
+	case OpenCLDebugInfo100DebugTypePtrToMember:
+	case OpenCLDebugInfo100DebugTypeTemplateTemplateParameter:
+	case OpenCLDebugInfo100DebugTypeTemplateParameterPack:
+	case OpenCLDebugInfo100DebugFunctionDeclaration:
+	case OpenCLDebugInfo100DebugLexicalBlockDiscriminator:
+	case OpenCLDebugInfo100DebugInlinedVariable:
+	case OpenCLDebugInfo100DebugMacroDef:
+	case OpenCLDebugInfo100DebugMacroUndef:
+	case OpenCLDebugInfo100DebugImportedEntity:
+		UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100 instruction %d", int(extInstIndex));
+		break;
+	default:
+		UNSUPPORTED("OpenCLDebugInfo100 instruction %d", int(extInstIndex));
 	}
 }
 
@@ -1893,11 +1955,11 @@ void SpirvShader::Impl::Debugger::Shadow::create(const SpirvShader *shader, cons
 	auto mask = state->activeLaneMask();
 	switch(obj.kind)
 	{
-		case Object::Kind::Constant:
-		case Object::Kind::Intermediate:
+	case Object::Kind::Constant:
+	case Object::Kind::Intermediate:
 		{
 			size += objTy.componentCount * sizeof(uint32_t) * sw::SIMD::Width;
-			auto dst = InterleaveByLane(SIMD::Pointer(base, 0));
+			auto dst = GetElementPointer(SIMD::Pointer(base, 0), 0, true);
 			for(uint32_t i = 0u; i < objTy.componentCount; i++)
 			{
 				auto val = SpirvShader::Operand(shader, state, objId).Int(i);
@@ -1905,31 +1967,31 @@ void SpirvShader::Impl::Debugger::Shadow::create(const SpirvShader *shader, cons
 				dst += sizeof(uint32_t) * SIMD::Width;
 			}
 			entry.kind = Entry::Kind::Value;
-			break;
 		}
-		case Object::Kind::Pointer:
-		case Object::Kind::InterfaceVariable:
+		break;
+	case Object::Kind::Pointer:
+	case Object::Kind::InterfaceVariable:
 		{
 			size += sizeof(void *) + sizeof(uint32_t) * SIMD::Width;
 			auto ptr = state->getPointer(objId);
-			store(base, ptr.base);
+			store(base, ptr.getUniformPointer());
 			store(base + sizeof(void *), ptr.offsets());
 			entry.kind = Entry::Kind::Pointer;
-			break;
 		}
-		default:
-			break;
+		break;
+	default:
+		break;
 	}
 	entries.emplace(objId, entry);
 }
 
 SpirvShader::Impl::Debugger::Shadow::Memory
-SpirvShader::Impl::Debugger::Shadow::get(const State *state, Object::ID objId, int lane) const
+SpirvShader::Impl::Debugger::Shadow::get(const State *state, Object::ID objId) const
 {
 	auto entryIt = entries.find(objId);
 	ASSERT_MSG(entryIt != entries.end(), "Missing shadow entry for object %%%d (%s)",
 	           (int)objId.value(),
-	           OpcodeName(state->debugger->shader->getObject(objId).opcode()).c_str());
+	           OpcodeName(state->debugger->shader->getObject(objId).opcode()));
 	auto &entry = entryIt->second;
 	auto data = &state->shadow[entry.offset];
 	return Memory{ data };
@@ -1952,15 +2014,15 @@ SpirvShader::Impl::Debugger::Shadow::Memory::dref(int lane) const
 ////////////////////////////////////////////////////////////////////////////////
 sw::SpirvShader::Impl::Debugger::LocalVariableValue::LocalVariableValue(
     debug::LocalVariable *variable,
-    State const *const state,
+    const State *state,
     int lane)
     : LocalVariableValue(std::make_shared<Shared>(variable, state, lane), variable->type, &variable->values)
 {}
 
 sw::SpirvShader::Impl::Debugger::LocalVariableValue::LocalVariableValue(
-    std::shared_ptr<const Shared> const &shared,
-    debug::Type const *ty,
-    debug::LocalVariable::ValueNode const *node)
+    const std::shared_ptr<const Shared> &shared,
+    const debug::Type *ty,
+    const debug::LocalVariable::ValueNode *node)
     : shared(shared)
     , ty(ty)
     , node(node)
@@ -2000,17 +2062,17 @@ void sw::SpirvShader::Impl::Debugger::LocalVariableValue::updateValue()
 		ASSERT(activeValue->local == shared->variable);  // If this isn't true, then something is very wonky.
 
 		// Update the value.
-		auto ptr = shared->state->debugger->shadow.get(shared->state, activeValue->value, shared->lane);
+		auto ptr = shared->state->debugger->shadow.get(shared->state, activeValue->value);
 		for(auto op : activeValue->expression->operations)
 		{
 			switch(op->opcode)
 			{
-				case OpenCLDebugInfo100Deref:
-					ptr = ptr.dref(shared->lane);
-					break;
-				default:
-					UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100DebugOperation %d", (int)op->opcode);
-					break;
+			case OpenCLDebugInfo100Deref:
+				ptr = ptr.dref(shared->lane);
+				break;
+			default:
+				UNIMPLEMENTED("b/148401179 OpenCLDebugInfo100DebugOperation %d", (int)op->opcode);
+				break;
 			}
 		}
 		value = ty->value(ptr, true);
@@ -2136,7 +2198,7 @@ void SpirvShader::Impl::Debugger::State::Data::trap(int index, State *state)
 	auto debugger = state->debugger;
 
 	// Update the thread frames from the stack of scopes
-	auto const &locationAndScope = debugger->traps.byIndex[index];
+	const auto &locationAndScope = debugger->traps.byIndex[index];
 
 	if(locationAndScope.scope)
 	{
@@ -2159,7 +2221,7 @@ void SpirvShader::Impl::Debugger::State::Data::trap(int index, State *state)
 		auto shrink = [&](size_t maxLen) {
 			while(stack.size() > maxLen)
 			{
-				thread->exit();
+				thread->exit(true);
 				stack.pop_back();
 			}
 		};
@@ -2175,10 +2237,10 @@ void SpirvShader::Impl::Debugger::State::Data::trap(int index, State *state)
 		{
 			if(stack[i] != newStack[i])
 			{
-				bool isTopMostFrame = i == (newStack.size() - 1);
+				bool wasTopMostFrame = i == (stack.size() - 1);
 				auto oldFunction = debug::find<debug::Function>(stack[i].block);
 				auto newFunction = debug::find<debug::Function>(newStack[i].block);
-				if(isTopMostFrame && oldFunction == newFunction)
+				if(wasTopMostFrame && oldFunction == newFunction)
 				{
 					// Deviation is just a movement in the top most frame's
 					// function.
@@ -2186,8 +2248,20 @@ void SpirvShader::Impl::Debugger::State::Data::trap(int index, State *state)
 					// be treated as a step out and step in, breaking stepping
 					// commands. Instead, just update the frame variables for
 					// the new scope.
-					stack[i].block = newStack[i].block;
+					stack[i] = newStack[i];
 					thread->update(true, [&](vk::dbg::Frame &frame) {
+						// Update the frame location if we're entering a
+						// function. This allows the debugger to pause at the
+						// line (which may not have any instructions or OpLines)
+						// of a inlined function call. This is less jarring
+						// than magically appearing in another function before
+						// you've reached the line of the call site.
+						// See b/170650010 for more context.
+						if(stack.size() < newStack.size())
+						{
+							auto function = debug::find<debug::Function>(stack[i].block);
+							frame.location = vk::dbg::Location{ function->source->dbgFile, (int)stack[i].line };
+						}
 						updateFrameLocals(state, frame, stack[i].block);
 					});
 				}
@@ -2199,16 +2273,33 @@ void SpirvShader::Impl::Debugger::State::Data::trap(int index, State *state)
 			}
 		}
 
-		// Now rebuild the parts of stack frames that are new
+		// Now rebuild the parts of stack frames that are new.
+		//
+		// This is done in two stages:
+		// (1) thread->enter() is called to construct the new stack frame with
+		//     the opening scope line. The frames locals and hovers are built
+		//     and assigned.
+		// (2) thread->update() is called to adjust the frame's location to
+		//     entry.line. This may be different to the function entry in the
+		//     case of multiple nested inline functions. If its the same, then
+		//     this is a no-op.
+		//
+		// This two-stage approach allows the debugger to step through chains of
+		// inlined function calls without having a jarring jump from the outer
+		// function to the first statement within the function.
+		// See b/170650010 for more context.
 		for(size_t i = stack.size(); i < newStack.size(); i++)
 		{
 			auto entry = newStack[i];
 			stack.emplace_back(entry);
 			auto function = debug::find<debug::Function>(entry.block);
 			thread->enter(entry.block->source->dbgFile, function->name, [&](vk::dbg::Frame &frame) {
-				frame.location = vk::dbg::Location{ function->source->dbgFile, (int)entry.line };
+				frame.location = vk::dbg::Location{ function->source->dbgFile, (int)function->line };
 				frame.hovers->variables->extend(std::make_shared<HoversFromLocals>(frame.locals->variables));
 				updateFrameLocals(state, frame, entry.block);
+			});
+			thread->update(true, [&](vk::dbg::Frame &frame) {
+				frame.location.line = (int)entry.line;
 			});
 		}
 	}
@@ -2247,7 +2338,7 @@ void SpirvShader::Impl::Debugger::State::Data::updateFrameLocals(State *state, v
 }
 
 SpirvShader::Impl::Debugger::State::Data::PerLaneVariables
-SpirvShader::Impl::Debugger::State::Data::getOrCreateLocals(State *state, debug::LexicalBlock const *block)
+SpirvShader::Impl::Debugger::State::Data::getOrCreateLocals(State *state, const debug::LexicalBlock *block)
 {
 	return getOrCreate(locals, block, [&] {
 		PerLaneVariables locals;
@@ -2261,18 +2352,18 @@ SpirvShader::Impl::Debugger::State::Data::getOrCreateLocals(State *state, debug:
 
 				switch(var->definition)
 				{
-					case debug::LocalVariable::Definition::Undefined:
+				case debug::LocalVariable::Definition::Undefined:
 					{
 						vc->put(name, var->type->undefined());
-						break;
 					}
-					case debug::LocalVariable::Definition::Declaration:
+					break;
+				case debug::LocalVariable::Definition::Declaration:
 					{
-						auto data = state->debugger->shadow.get(state, var->declaration->variable, lane);
+						auto data = state->debugger->shadow.get(state, var->declaration->variable);
 						vc->put(name, var->type->value(data.dref(lane), true));
-						break;
 					}
-					case debug::LocalVariable::Definition::Values:
+					break;
+				case debug::LocalVariable::Definition::Values:
 					{
 						vc->put(name, std::make_shared<LocalVariableValue>(var, state, lane));
 						break;
@@ -2312,10 +2403,7 @@ void SpirvShader::Impl::Debugger::State::Data::buildGlobal(const char *name, con
 {
 	for(int lane = 0; lane < sw::SIMD::Width; lane++)
 	{
-		for(int i = 0; i < N; i++)
-		{
-			globals.lanes[lane]->put(name, makeDbgValue(simd[lane]));
-		}
+		globals.lanes[lane]->put(name, makeDbgValue(simd[lane]));
 	}
 }
 
@@ -2336,7 +2424,7 @@ void SpirvShader::Impl::Debugger::State::Data::buildGlobals(State *state)
 			{
 				if(var->variable != 0)
 				{
-					auto data = state->debugger->shadow.get(state, var->variable, lane);
+					auto data = state->debugger->shadow.get(state, var->variable);
 					vc->put(var->name, var->type->value(data.dref(lane), true));
 				}
 			}
@@ -2358,7 +2446,7 @@ void SpirvShader::Impl::Debugger::State::Data::buildGlobals(State *state)
 
 	switch(state->debugger->shader->executionModel)
 	{
-		case spv::ExecutionModelGLCompute:
+	case spv::ExecutionModelGLCompute:
 		{
 			buildGlobal("numWorkgroups", state->globals.compute.numWorkgroups);
 			buildGlobal("workgroupID", state->globals.compute.workgroupID);
@@ -2367,26 +2455,26 @@ void SpirvShader::Impl::Debugger::State::Data::buildGlobals(State *state)
 			buildGlobal("subgroupIndex", state->globals.compute.subgroupIndex);
 			buildGlobal("globalInvocationId", state->globals.compute.globalInvocationId);
 			buildGlobal("localInvocationIndex", state->globals.compute.localInvocationIndex);
-			break;
 		}
-		case spv::ExecutionModelFragment:
+		break;
+	case spv::ExecutionModelFragment:
 		{
 			buildGlobal("viewIndex", state->globals.fragment.viewIndex);
 			buildGlobal("fragCoord", state->globals.fragment.fragCoord);
 			buildGlobal("pointCoord", state->globals.fragment.pointCoord);
 			buildGlobal("windowSpacePosition", state->globals.fragment.windowSpacePosition);
 			buildGlobal("helperInvocation", state->globals.fragment.helperInvocation);
-			break;
 		}
-		case spv::ExecutionModelVertex:
+		break;
+	case spv::ExecutionModelVertex:
 		{
 			buildGlobal("viewIndex", state->globals.vertex.viewIndex);
 			buildGlobal("instanceIndex", state->globals.vertex.instanceIndex);
 			buildGlobal("vertexIndex", state->globals.vertex.vertexIndex);
-			break;
 		}
-		default:
-			break;
+		break;
+	default:
+		break;
 	}
 }
 
@@ -2408,18 +2496,18 @@ SpirvShader::Impl::Debugger::State::Data::buildSpirvVariables(State *state, int 
 			auto &obj = debugger->shader->getObject(id);
 			auto &objTy = debugger->shader->getType(obj.typeId());
 			auto name = "%" + std::to_string(id.value());
-			auto memory = debugger->shadow.get(state, id, lane);
+			auto memory = debugger->shadow.get(state, id);
 			switch(obj.kind)
 			{
-				case Object::Kind::Intermediate:
-				case Object::Kind::Constant:
-					if(auto val = buildSpirvValue(state, memory, objTy, lane))
-					{
-						vc->put(name, val);
-					}
-					break;
-				default:
-					break;  // Not handled yet.
+			case Object::Kind::Intermediate:
+			case Object::Kind::Constant:
+				if(auto val = buildSpirvValue(state, memory, objTy, lane))
+				{
+					vc->put(name, val);
+				}
+				break;
+			default:
+				break;  // Not handled yet.
 			}
 		}
 	});
@@ -2433,11 +2521,11 @@ SpirvShader::Impl::Debugger::State::Data::buildSpirvValue(State *state, Shadow::
 
 	switch(type.definition.opcode())
 	{
-		case spv::OpTypeInt:
-			return vk::dbg::make_reference(reinterpret_cast<uint32_t *>(memory.addr)[lane]);
-		case spv::OpTypeFloat:
-			return vk::dbg::make_reference(reinterpret_cast<float *>(memory.addr)[lane]);
-		case spv::OpTypeVector:
+	case spv::OpTypeInt:
+		return vk::dbg::make_reference(reinterpret_cast<uint32_t *>(memory.addr)[lane]);
+	case spv::OpTypeFloat:
+		return vk::dbg::make_reference(reinterpret_cast<float *>(memory.addr)[lane]);
+	case spv::OpTypeVector:
 		{
 			auto elTy = shader->getType(type.element);
 			return vk::dbg::Struct::create("vector", [&](auto &fields) {
@@ -2451,8 +2539,8 @@ SpirvShader::Impl::Debugger::State::Data::buildSpirvValue(State *state, Shadow::
 				}
 			});
 		}
-		default:
-			return nullptr;  // Not handled yet
+	default:
+		return nullptr;  // Not handled yet
 	}
 }
 
@@ -2482,24 +2570,24 @@ void SpirvShader::dbgCreateFile()
 	for(auto insn : *this)
 	{
 		auto instruction = spvtools::spvInstructionBinaryToText(
-		                       SPV_ENV_VULKAN_1_1,
-		                       insn.wordPointer(0),
+		                       vk::SPIRV_VERSION,
+		                       insn.data(),
 		                       insn.wordCount(),
 		                       insns.data(),
 		                       insns.size(),
 		                       SPV_BINARY_TO_TEXT_OPTION_NO_HEADER) +
 		                   "\n";
-		dbg->spirvLineMappings[insn.wordPointer(0)] = currentLine;
+		dbg->spirvLineMappings[insn.data()] = currentLine;
 		currentLine += std::count(instruction.begin(), instruction.end(), '\n');
 		source += instruction;
 	}
 	std::string name;
 	switch(executionModel)
 	{
-		case spv::ExecutionModelVertex: name = "VertexShader"; break;
-		case spv::ExecutionModelFragment: name = "FragmentShader"; break;
-		case spv::ExecutionModelGLCompute: name = "ComputeShader"; break;
-		default: name = "SPIR-V Shader"; break;
+	case spv::ExecutionModelVertex: name = "VertexShader"; break;
+	case spv::ExecutionModelFragment: name = "FragmentShader"; break;
+	case spv::ExecutionModelGLCompute: name = "ComputeShader"; break;
+	default: name = "SPIR-V Shader"; break;
 	}
 	static std::atomic<int> id = { 0 };
 	name += std::to_string(id++) + ".spvasm";
@@ -2530,7 +2618,7 @@ void SpirvShader::dbgBeginEmit(EmitState *state) const
 
 		switch(executionModel)
 		{
-			case spv::ExecutionModelGLCompute:
+		case spv::ExecutionModelGLCompute:
 			{
 				auto compute = globals + OFFSET(Globals, compute);
 				store(compute + OFFSET(Globals::Compute, numWorkgroups), routine->numWorkgroups);
@@ -2540,28 +2628,28 @@ void SpirvShader::dbgBeginEmit(EmitState *state) const
 				store(compute + OFFSET(Globals::Compute, subgroupIndex), routine->subgroupIndex);
 				store(compute + OFFSET(Globals::Compute, globalInvocationId), routine->globalInvocationID);
 				store(compute + OFFSET(Globals::Compute, localInvocationIndex), routine->localInvocationIndex);
-				break;
 			}
-			case spv::ExecutionModelFragment:
+			break;
+		case spv::ExecutionModelFragment:
 			{
 				auto fragment = globals + OFFSET(Globals, fragment);
-				store(fragment + OFFSET(Globals::Fragment, viewIndex), routine->viewID);
+				store(fragment + OFFSET(Globals::Fragment, viewIndex), routine->layer);
 				store(fragment + OFFSET(Globals::Fragment, fragCoord), routine->fragCoord);
 				store(fragment + OFFSET(Globals::Fragment, pointCoord), routine->pointCoord);
 				store(fragment + OFFSET(Globals::Fragment, windowSpacePosition), routine->windowSpacePosition);
 				store(fragment + OFFSET(Globals::Fragment, helperInvocation), routine->helperInvocation);
-				break;
 			}
-			case spv::ExecutionModelVertex:
+			break;
+		case spv::ExecutionModelVertex:
 			{
 				auto vertex = globals + OFFSET(Globals, vertex);
-				store(vertex + OFFSET(Globals::Vertex, viewIndex), routine->viewID);
+				store(vertex + OFFSET(Globals::Vertex, viewIndex), routine->layer);
 				store(vertex + OFFSET(Globals::Vertex, instanceIndex), routine->instanceID);
 				store(vertex + OFFSET(Globals::Vertex, vertexIndex), routine->vertexIndex);
-				break;
 			}
-			default:
-				break;
+			break;
+		default:
+			break;
 		}
 	}
 }
@@ -2581,8 +2669,8 @@ void SpirvShader::dbgBeginEmitInstruction(InsnIterator insn, EmitState *state) c
 #	if PRINT_EACH_EMITTED_INSTRUCTION
 	{
 		auto instruction = spvtools::spvInstructionBinaryToText(
-		    SPV_ENV_VULKAN_1_1,
-		    insn.wordPointer(0),
+		    vk::SPIRV_VERSION,
+		    insn.data(),
 		    insn.wordCount(),
 		    insns.data(),
 		    insns.size(),
@@ -2594,8 +2682,8 @@ void SpirvShader::dbgBeginEmitInstruction(InsnIterator insn, EmitState *state) c
 #	if PRINT_EACH_EXECUTED_INSTRUCTION
 	{
 		auto instruction = spvtools::spvInstructionBinaryToText(
-		    SPV_ENV_VULKAN_1_1,
-		    insn.wordPointer(0),
+		    vk::SPIRV_VERSION,
+		    insn.data(),
 		    insn.wordCount(),
 		    insns.data(),
 		    insns.size(),
@@ -2623,7 +2711,7 @@ void SpirvShader::dbgBeginEmitInstruction(InsnIterator insn, EmitState *state) c
 			// We're emitting debugger logic for SPIR-V.
 			if(IsStatement(insn.opcode()))
 			{
-				auto line = dbg->spirvLineMappings.at(insn.wordPointer(0));
+				auto line = dbg->spirvLineMappings.at(insn.data());
 				dbg->setLocation(state, dbg->spirvFile, line);
 			}
 		}
@@ -2637,17 +2725,17 @@ void SpirvShader::dbgEndEmitInstruction(InsnIterator insn, EmitState *state) con
 
 	switch(insn.opcode())
 	{
-		case spv::OpVariable:
-		case spv::OpConstant:  // TODO: Move constants out of shadow memory.
-		case spv::OpConstantNull:
-		case spv::OpConstantTrue:
-		case spv::OpConstantFalse:
-		case spv::OpConstantComposite:
-			dbg->shadow.create(this, state, insn.resultId());
-			break;
-		default:
+	case spv::OpVariable:
+	case spv::OpConstant:  // TODO: Move constants out of shadow memory.
+	case spv::OpConstantNull:
+	case spv::OpConstantTrue:
+	case spv::OpConstantFalse:
+	case spv::OpConstantComposite:
+		dbg->shadow.create(this, state, insn.resultId());
+		break;
+	default:
 		{
-			auto resIt = dbg->results.find(insn.wordPointer(0));
+			auto resIt = dbg->results.find(insn.data());
 			if(resIt != dbg->results.end())
 			{
 				dbg->shadow.create(this, state, resIt->second);
@@ -2671,7 +2759,7 @@ void SpirvShader::dbgDeclareResult(const InsnIterator &insn, Object::ID resultId
 	auto dbg = impl.debugger;
 	if(!dbg) { return; }
 
-	dbg->results.emplace(insn.wordPointer(0), resultId);
+	dbg->results.emplace(insn.data(), resultId);
 }
 
 SpirvShader::EmitResult SpirvShader::EmitLine(InsnIterator insn, EmitState *state) const
@@ -2690,8 +2778,8 @@ void SpirvShader::DefineOpenCLDebugInfo100(const InsnIterator &insn)
 #	if PRINT_EACH_DEFINED_DBG_INSTRUCTION
 	{
 		auto instruction = spvtools::spvInstructionBinaryToText(
-		    SPV_ENV_VULKAN_1_1,
-		    insn.wordPointer(0),
+		    vk::SPIRV_VERSION,
+		    insn.data(),
 		    insn.wordCount(),
 		    insns.data(),
 		    insns.size(),
@@ -2712,36 +2800,6 @@ SpirvShader::EmitResult SpirvShader::EmitOpenCLDebugInfo100(InsnIterator insn, E
 	{
 		dbg->process(insn, state, Impl::Debugger::Pass::Emit);
 	}
-	return EmitResult::Continue;
-}
-
-}  // namespace sw
-
-#else  // ENABLE_VK_DEBUGGER
-
-// Stub implementations of the dbgXXX functions.
-namespace sw {
-
-void SpirvShader::dbgInit(const std::shared_ptr<vk::dbg::Context> &dbgctx) {}
-void SpirvShader::dbgTerm() {}
-void SpirvShader::dbgCreateFile() {}
-void SpirvShader::dbgBeginEmit(EmitState *state) const {}
-void SpirvShader::dbgEndEmit(EmitState *state) const {}
-void SpirvShader::dbgBeginEmitInstruction(InsnIterator insn, EmitState *state) const {}
-void SpirvShader::dbgEndEmitInstruction(InsnIterator insn, EmitState *state) const {}
-void SpirvShader::dbgExposeIntermediate(Object::ID id, EmitState *state) const {}
-void SpirvShader::dbgUpdateActiveLaneMask(RValue<SIMD::Int> mask, EmitState *state) const {}
-void SpirvShader::dbgDeclareResult(const InsnIterator &insn, Object::ID resultId) const {}
-
-void SpirvShader::DefineOpenCLDebugInfo100(const InsnIterator &insn) {}
-
-SpirvShader::EmitResult SpirvShader::EmitOpenCLDebugInfo100(InsnIterator insn, EmitState *state) const
-{
-	return EmitResult::Continue;
-}
-
-SpirvShader::EmitResult SpirvShader::EmitLine(InsnIterator insn, EmitState *state) const
-{
 	return EmitResult::Continue;
 }
 

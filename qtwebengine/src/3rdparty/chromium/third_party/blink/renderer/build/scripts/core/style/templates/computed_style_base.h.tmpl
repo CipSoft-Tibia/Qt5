@@ -9,7 +9,6 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_COMPUTED_STYLE_BASE_H_
 
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/layout/layout_theme.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/core/style/data_ref.h"
 #include "third_party/blink/renderer/core/style/member_copy.h"
@@ -23,7 +22,9 @@
 #}
 {% import 'templates/fields/keyword.tmpl' as keyword %}
 {% import 'templates/fields/multi_keyword.tmpl' as multi_keyword %}
+{% import 'templates/fields/bitset_keyword.tmpl' as bitset_keyword %}
 {% import 'templates/fields/primitive.tmpl' as primitive %}
+{% import 'templates/fields/derived_flag.tmpl' as derived_flag %}
 {% import 'templates/fields/monotonic_flag.tmpl' as monotonic_flag %}
 {% import 'templates/fields/external.tmpl' as external %}
 {% import 'templates/fields/pointer.tmpl' as pointer %}
@@ -31,7 +32,9 @@
 {% set field_templates = {
      'keyword': keyword,
      'multi_keyword': multi_keyword,
+     'bitset_keyword': bitset_keyword,
      'primitive': primitive,
+     'derived_flag': derived_flag,
      'monotonic_flag': monotonic_flag,
      'external': external,
      'pointer': pointer
@@ -41,6 +44,13 @@ namespace blink {
 
 // Forward declaration for diff functions.
 class ComputedStyle;
+
+// Forward declaration of friends:
+{% for property in longhands %}
+{% if property.computed_style_custom_functions or property.computed_style_protected_functions %}
+namespace {{property.namespace}} { class {{property.classname}}; }
+{% endif %}
+{% endfor %}
 
 // The generated portion of ComputedStyle. For more info, see the header comment
 // in ComputedStyle.h.
@@ -79,6 +89,14 @@ class ComputedStyle;
 // 'external' field has an extra setter that takes an rvalue reference. A list
 // of the available templates can be found in css_properties.json5.
 class ComputedStyleBase {
+  // Properties with protected accessors must be friends because
+  // Longhand::Apply* functions typically need the "raw" computed value:
+  {% for property in longhands %}
+  {% if property.computed_style_custom_functions or property.computed_style_protected_functions %}
+  friend class {{property.namespace}}::{{property.classname}};
+  {% endif %}
+  {% endfor %}
+
  public:
   inline bool IndependentInheritedEqual(const ComputedStyleBase& o) const {
     return (
@@ -136,24 +154,9 @@ class ComputedStyleBase {
     );
   }
 
-  enum IsAtShadowBoundary {
-    kAtShadowBoundary,
-    kNotAtShadowBoundary,
-  };
-
-  void InheritFrom(const ComputedStyleBase& other,
-                                      IsAtShadowBoundary isAtShadowBoundary);
-  void InheritCustomPropertiesFrom(const ComputedStyleBase& other) {
-    inherited_variables_data_ = other.inherited_variables_data_;
+  inline bool IsSurroundDataSharedWith(const ComputedStyleBase& o) const {
+    return surround_data_.Get() == o.surround_data_.Get();
   }
-
-  void CopyNonInheritedFromCached(
-      const ComputedStyleBase& other);
-
-  // Copies the values of any independent inherited properties from the parent
-  // style that are marked as inherited by this style.
-  void PropagateIndependentInheritedProperties(
-      const ComputedStyleBase& parentStyle);
 
   {% for name, groups_to_diff in diff_functions_map.items() %}
   static bool {{name}}(const ComputedStyle& a, const ComputedStyle& b);
@@ -168,6 +171,20 @@ class ComputedStyleBase {
   {{field_templates[field.field_template].decl_public_methods(field)|indent(2)}}
 
   {% endfor %}
+
+#if DCHECK_IS_ON()
+  enum class DebugField {
+    {% for field in computed_style.all_fields|sort(attribute='name') %}
+    {{field.name}},
+    {% endfor %}
+  };
+
+  CORE_EXPORT static String DebugFieldToString(DebugField);
+
+  // Returns a list of all fields that differ between |this| and |o|.
+  CORE_EXPORT Vector<DebugField> DebugDiffFields(const ComputedStyleBase& o) const;
+#endif // DCHECK_IS_ON()
+
  private:
   {% for subgroup in computed_style.subgroups %}
   {{declare_field_group_class(subgroup)|indent(2)}}
@@ -190,6 +207,9 @@ class ComputedStyleBase {
   ~ComputedStyleBase() = default;
 
  private:
+  friend class ComputedStyleBuilder;
+  friend class ComputedStyleBuilderBase;
+
   // Storage.
   {% for subgroup in computed_style.subgroups %}
   DataRef<{{subgroup.type_name}}> {{subgroup.member_name}};
@@ -198,6 +218,52 @@ class ComputedStyleBase {
   {% for field in computed_style.fields %}
   {{declare_storage(field)}}
   {% endfor %}
+};
+
+
+class ComputedStyleBuilderBase {
+  STACK_ALLOCATED();
+ public:
+
+  enum IsAtShadowBoundary {
+    kAtShadowBoundary,
+    kNotAtShadowBoundary,
+  };
+
+  {% for field in computed_style_builder.all_fields|sort(attribute='name') %}
+  // {{field.property_name}}
+  {{field_templates[field.field_template].decl_public_methods(field)|indent(2)}}
+
+  {% endfor %}
+
+ protected:
+  ComputedStyleBuilderBase() = default;
+  explicit ComputedStyleBuilderBase(ComputedStyleBase& style) {
+    SetStyleBase(style);
+  }
+
+  void SetStyleBase(ComputedStyleBase& style) {
+    style_ = &style;
+
+    // Reset derived flags:
+    {% for field in computed_style_builder.all_fields|selectattr('derived_from')|sort(attribute='name') %}
+    {{derived_flag.reset_expression(field)|indent(2)}}
+    {% endfor %}
+  }
+
+  CORE_EXPORT void InheritFrom(const ComputedStyleBase& other, IsAtShadowBoundary isAtShadowBoundary);
+  CORE_EXPORT void CopyNonInheritedFromCached(const ComputedStyleBase& other);
+
+  void PropagateIndependentInheritedProperties(const ComputedStyleBase& parent_style);
+
+  {% for field in computed_style_builder.all_fields|sort(attribute='name') %}
+  // {{field.property_name}}
+  {{field_templates[field.field_template].decl_protected_methods(field)|indent(2)}}
+
+  {% endfor %}
+
+ private:
+  ComputedStyleBase* style_ = nullptr;
 };
 
 }  // namespace blink

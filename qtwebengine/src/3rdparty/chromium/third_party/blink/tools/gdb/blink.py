@@ -248,10 +248,7 @@ class BlinkLengthPrinter:
 
     def to_string(self):
         ltype = self.val['type_']
-        if self.val['is_float_']:
-            val = self.val['float_value_']
-        else:
-            val = int(self.val['int_value_'])
+        val = self.val['value_']
 
         quirk = ''
         if self.val['quirk_']:
@@ -268,20 +265,22 @@ class BlinkLengthPrinter:
         if ltype == 4:
             return 'Length(MaxContent)'
         if ltype == 5:
-            return 'Length(FillAvailable)'
+            return 'Length(MinIntrinsic)'
         if ltype == 6:
-            return 'Length(FitContent)'
+            return 'Length(FillAvailable)'
         if ltype == 7:
+            return 'Length(FitContent)'
+        if ltype == 8:
             # Would like to print pixelsAndPercent() but can't call member
             # functions - https://sourceware.org/bugzilla/show_bug.cgi?id=13326
             return 'Length(Calculated)'
-        if ltype == 8:
-            return 'Length(ExtendToZoom)'
         if ltype == 9:
-            return 'Length(DeviceWidth)'
+            return 'Length(ExtendToZoom)'
         if ltype == 10:
-            return 'Length(DeviceHeight)'
+            return 'Length(DeviceWidth)'
         if ltype == 11:
+            return 'Length(DeviceHeight)'
+        if ltype == 12:
             return 'Length(MaxSizeNone)'
         return 'Length(unknown type %i)' % ltype
 
@@ -356,6 +355,57 @@ class WTFVectorPrinter:
         return 'array'
 
 
+class WTFHashTablePrinter:
+    """Pretty printer for a WTF::HashTable.
+
+    The output of this pretty printer is similar to the output of
+    std::unordered_map's pretty printer, which is bundled with gcc.
+
+    An example gdb session should look like:
+    (gdb) print m
+    $1 = {impl_ = WTF::HashTable with 2 elements = {
+        ["a-start"] = 0, ["a-end"] = 1}}
+    """
+
+    class Iterator:
+        def __init__(self, start, finish):
+            self.item = start
+            self.finish = finish
+            self.count = 0
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            # Loop until we find a non-empty bucket.
+            while True:
+                if self.item == self.finish:
+                    raise StopIteration
+                count = self.count
+                self.count += 1
+                element = self.item.dereference()
+                self.item += 1
+
+                # If the bucket is not empty, return it.
+                if element['key']['impl_']['ptr_']:
+                    pretty = '[%s] = %s' % (element['key'], element['value'])
+                    return ('[%d]' % count, pretty)
+
+    def __init__(self, val):
+        self.val = val
+
+    def children(self):
+        start = self.val['table_']
+        return self.Iterator(start, start + self.val['table_size_'])
+
+    def to_string(self):
+        return ('%s with %d elements' %
+                ('WTF::HashTable', self.val['key_count_']))
+
+    def display_hint(self):
+        return 'array'
+
+
 # Copied from //tools/gdb/gdb_chrome.py
 def typed_ptr(ptr):
     """Prints a pointer along with its exact type.
@@ -401,6 +451,7 @@ class CcPaintOpBufferPrinter:
 def add_pretty_printers():
     pretty_printers = (
         (re.compile("^WTF::Vector<.*>$"), WTFVectorPrinter),
+        (re.compile("^WTF::HashTable<.*>$"), WTFHashTablePrinter),
         (re.compile("^WTF::AtomicString$"), WTFAtomicStringPrinter),
         (re.compile("^WTF::String$"), WTFStringPrinter),
         (re.compile("^WTF::StringImpl$"), WTFStringImplPrinter),

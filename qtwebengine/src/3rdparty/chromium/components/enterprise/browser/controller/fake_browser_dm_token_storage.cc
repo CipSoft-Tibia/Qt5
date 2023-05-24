@@ -1,16 +1,19 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/enterprise/browser/controller/fake_browser_dm_token_storage.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "components/enterprise/browser/enterprise_switches.h"
 
 namespace policy {
 
 FakeBrowserDMTokenStorage::FakeBrowserDMTokenStorage() {
+  base::CommandLine::ForCurrentProcess()->AppendSwitch(
+      switches::kEnableChromeBrowserCloudManagement);
   BrowserDMTokenStorage::SetForTesting(this);
   delegate_ = std::make_unique<MockDelegate>();
 }
@@ -20,12 +23,16 @@ FakeBrowserDMTokenStorage::FakeBrowserDMTokenStorage(
     const std::string& enrollment_token,
     const std::string& dm_token,
     bool enrollment_error_option) {
+  base::CommandLine::ForCurrentProcess()->AppendSwitch(
+      switches::kEnableChromeBrowserCloudManagement);
   BrowserDMTokenStorage::SetForTesting(this);
   delegate_ = std::make_unique<MockDelegate>(client_id, enrollment_token,
                                              dm_token, enrollment_error_option);
 }
 
-FakeBrowserDMTokenStorage::~FakeBrowserDMTokenStorage() = default;
+FakeBrowserDMTokenStorage::~FakeBrowserDMTokenStorage() {
+  BrowserDMTokenStorage::SetForTesting(nullptr);
+}
 
 void FakeBrowserDMTokenStorage::SetClientId(const std::string& client_id) {
   static_cast<MockDelegate*>(delegate_.get())->SetClientId(client_id);
@@ -104,6 +111,10 @@ bool FakeBrowserDMTokenStorage::MockDelegate::InitEnrollmentErrorOption() {
   return enrollment_error_option_;
 }
 
+bool FakeBrowserDMTokenStorage::MockDelegate::CanInitEnrollmentToken() const {
+  return true;
+}
+
 BrowserDMTokenStorage::StoreTask
 FakeBrowserDMTokenStorage::MockDelegate::SaveDMTokenTask(
     const std::string& token,
@@ -112,9 +123,16 @@ FakeBrowserDMTokenStorage::MockDelegate::SaveDMTokenTask(
                         storage_enabled_);
 }
 
+BrowserDMTokenStorage::StoreTask
+FakeBrowserDMTokenStorage::MockDelegate::DeleteDMTokenTask(
+    const std::string& client_id) {
+  return base::BindOnce([](bool enabled) -> bool { return enabled; },
+                        storage_enabled_);
+}
+
 scoped_refptr<base::TaskRunner>
 FakeBrowserDMTokenStorage::MockDelegate::SaveDMTokenTaskRunner() {
-  return base::ThreadTaskRunnerHandle::Get();
+  return base::SingleThreadTaskRunner::GetCurrentDefault();
 }
 
 }  // namespace policy

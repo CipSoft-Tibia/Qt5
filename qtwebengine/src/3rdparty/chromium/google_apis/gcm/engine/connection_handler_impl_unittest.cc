@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,13 +10,13 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/test/bind_test_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_timeouts.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
@@ -27,13 +27,15 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "net/base/ip_address.h"
-#include "net/base/network_isolation_key.h"
+#include "net/base/network_anonymization_key.h"
 #include "net/base/test_completion_callback.h"
 #include "net/log/net_log_source.h"
 #include "net/socket/socket_test_util.h"
 #include "net/socket/stream_socket.h"
 #include "net/test/gtest_util.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
+#include "net/url_request/url_request_context.h"
+#include "net/url_request/url_request_context_builder.h"
 #include "net/url_request/url_request_test_util.h"
 #include "services/network/network_context.h"
 #include "services/network/network_service.h"
@@ -199,7 +201,7 @@ class GCMConnectionHandlerImplTest : public testing::Test {
   std::unique_ptr<network::NetworkService> network_service_;
   mojo::Remote<network::mojom::NetworkContext> network_context_remote_;
   net::MockClientSocketFactory socket_factory_;
-  net::TestURLRequestContext url_request_context_;
+  std::unique_ptr<net::URLRequestContext> url_request_context_;
   std::unique_ptr<network::NetworkContext> network_context_;
   mojo::Remote<network::mojom::ProxyResolvingSocketFactory>
       mojo_socket_factory_remote_;
@@ -212,18 +214,18 @@ GCMConnectionHandlerImplTest::GCMConnectionHandlerImplTest()
       task_environment_(base::test::TaskEnvironment::MainThreadType::IO),
       network_change_notifier_(
           net::NetworkChangeNotifier::CreateMockIfNeeded()),
-      network_service_(network::NetworkService::CreateForTesting()),
-      url_request_context_(true /* delay_initialization */) {
+      network_service_(network::NetworkService::CreateForTesting()) {
   address_list_ = net::AddressList::CreateFromIPAddress(
       net::IPAddress::IPv4Localhost(), kMCSPort);
   socket_factory_.set_enable_read_if_ready(true);
-  url_request_context_.set_client_socket_factory(&socket_factory_);
-  url_request_context_.Init();
+  auto context_builder = net::CreateTestURLRequestContextBuilder();
+  context_builder->set_client_socket_factory_for_testing(&socket_factory_);
+  url_request_context_ = context_builder->Build();
 
   network_context_ = std::make_unique<network::NetworkContext>(
       network_service_.get(),
       network_context_remote_.BindNewPipeAndPassReceiver(),
-      &url_request_context_,
+      url_request_context_.get(),
       /*cors_exempt_header_list=*/std::vector<std::string>());
 }
 
@@ -254,15 +256,16 @@ void GCMConnectionHandlerImplTest::BuildSocket(const ReadList& read_list,
   const url::Origin kOrigin = url::Origin::Create(kDestination);
   mojo_socket_factory_remote_->CreateProxyResolvingSocket(
       kDestination,
-      net::NetworkIsolationKey(kOrigin /* top_frame_origin */,
-                               kOrigin /* frame_origin */),
+      net::NetworkAnonymizationKey(
+          /*top_frame_site=*/net::SchemefulSite(kOrigin),
+          /*frame_site=*/net::SchemefulSite(kOrigin)),
       std::move(options),
       net::MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS),
       mojo_socket_remote_.BindNewPipeAndPassReceiver(),
       mojo::NullRemote() /* observer */,
       base::BindLambdaForTesting(
-          [&](int result, const base::Optional<net::IPEndPoint>& local_addr,
-              const base::Optional<net::IPEndPoint>& peer_addr,
+          [&](int result, const absl::optional<net::IPEndPoint>& local_addr,
+              const absl::optional<net::IPEndPoint>& peer_addr,
               mojo::ScopedDataPipeConsumerHandle receive_pipe_handle,
               mojo::ScopedDataPipeProducerHandle send_pipe_handle) {
             net_error = result;
@@ -282,7 +285,8 @@ void GCMConnectionHandlerImplTest::PumpLoop() {
 void GCMConnectionHandlerImplTest::Connect(
     ScopedMessage* dst_proto) {
   connection_handler_ = std::make_unique<ConnectionHandlerImpl>(
-      base::ThreadTaskRunnerHandle::Get(), TestTimeouts::tiny_timeout(),
+      base::SingleThreadTaskRunner::GetCurrentDefault(),
+      TestTimeouts::tiny_timeout(),
       base::BindRepeating(&GCMConnectionHandlerImplTest::ReadContinuation,
                           base::Unretained(this), dst_proto),
       base::BindRepeating(&GCMConnectionHandlerImplTest::WriteContinuation,
@@ -450,7 +454,7 @@ TEST_F(GCMConnectionHandlerImplTest, ReInit) {
 
 // Verify that messages can be received after initialization.
 // Flaky on Linux (crbug.com/906093)
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #define MAYBE_RecvMsg DISABLED_RecvMsg
 #else
 #define MAYBE_RecvMsg RecvMsg

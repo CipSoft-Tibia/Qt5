@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,5 +9,10 @@ namespace ui {
 MockPlatformWindowDelegate::MockPlatformWindowDelegate() {}
 
 MockPlatformWindowDelegate::~MockPlatformWindowDelegate() {}
+
+bool operator==(const PlatformWindowDelegate::BoundsChange& a,
+                const PlatformWindowDelegate::BoundsChange& b) {
+  return a.origin_changed == b.origin_changed;
+}
 
 }  // namespace ui

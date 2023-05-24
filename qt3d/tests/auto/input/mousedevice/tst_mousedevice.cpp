@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QTest>
@@ -105,172 +80,201 @@ private Q_SLOTS:
         // GIVEN
         Qt3DInput::Input::MouseDevice backendMouseDevice;
 
-        // WHEN
-        auto eventList = QList<QT_PREPEND_NAMESPACE(QMouseEvent)>() << QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseButtonPress,
-                                                                                                         QPointF(400.0f, 400.0f),
-                                                                                                         QPointF(400.0f, 400.0f),
-                                                                                                         QPointF(400.0f, 400.0f),
-                                                                                                         Qt::LeftButton,
-                                                                                                         Qt::LeftButton,
-                                                                                                         Qt::NoModifier);
-        backendMouseDevice.updateMouseEvents(eventList);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseButtonPress,
+                                                           QPointF(400.0, 400.0),
+                                                           QPointF(400.0, 400.0),
+                                                           QPointF(400.0, 400.0),
+                                                           Qt::LeftButton,
+                                                           Qt::LeftButton,
+                                                           Qt::NoModifier);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateMouseEvent(&event);
 
-        // THEN
-        // Note: axis are only modified when moving (> 1 event)
-        QCOMPARE(backendMouseDevice.mouseState().xAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().yAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().leftPressed, true);
-        QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
-        QCOMPARE(backendMouseDevice.previousPos(), QPointF(400.0f, 400.0f));
-        QCOMPARE(backendMouseDevice.wasPressed(), true);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
-        QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+            // THEN
+            // Note: axis are only modified when moving (> 1 event)
+            QCOMPARE(backendMouseDevice.mouseState().xAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().yAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().leftPressed, true);
+            QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
+            QCOMPARE(backendMouseDevice.previousPos(), QPointF(400.0, 400.0));
+            QCOMPARE(backendMouseDevice.wasPressed(), true);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+        }
 
-        // WHEN
-        eventList = QList<QT_PREPEND_NAMESPACE(QMouseEvent)>() << QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseMove,
-                                                                                                    QPointF(600.0f, 600.0f),
-                                                                                                    QPointF(600.0f, 600.0f),
-                                                                                                    QPointF(600.0f, 600.0f),
-                                                                                                    Qt::LeftButton,
-                                                                                                    Qt::LeftButton,
-                                                                                                    Qt::NoModifier);
-        backendMouseDevice.updateMouseEvents(eventList);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseMove,
+                                                           QPointF(600.0, 600.0),
+                                                           QPointF(600.0, 600.0),
+                                                           QPointF(600.0, 600.0),
+                                                           Qt::LeftButton,
+                                                           Qt::LeftButton,
+                                                           Qt::NoModifier);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateMouseEvent(&event);
 
-        // THEN
-        QCOMPARE(backendMouseDevice.mouseState().xAxis, (600.0f - 400.0f) * 0.1f);
-        QCOMPARE(backendMouseDevice.mouseState().yAxis, (400.0f - 600.0f) * 0.1f);
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().leftPressed, true);
-        QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
-        QCOMPARE(backendMouseDevice.previousPos(), QPointF(600.0f, 600.0f));
-        QCOMPARE(backendMouseDevice.wasPressed(), true);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
-        QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+            // THEN
+            QCOMPARE(backendMouseDevice.mouseState().xAxis, (600.0f - 400.0f) * 0.1f);
+            QCOMPARE(backendMouseDevice.mouseState().yAxis, (400.0f - 600.0f) * 0.1f);
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().leftPressed, true);
+            QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
+            QCOMPARE(backendMouseDevice.previousPos(), QPointF(600.0, 600.0));
+            QCOMPARE(backendMouseDevice.wasPressed(), true);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+        }
 
-        // WHEN
-        eventList = QList<QT_PREPEND_NAMESPACE(QMouseEvent)>() << QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseButtonRelease,
-                                                                                                    QPointF(800.0f, 800.0f),
-                                                                                                    QPointF(800.0f, 800.0f),
-                                                                                                    QPointF(800.0f, 800.0f),
-                                                                                                    Qt::LeftButton,
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoModifier);
-        backendMouseDevice.updateMouseEvents(eventList);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseButtonRelease,
+                                                           QPointF(800.0, 800.0),
+                                                           QPointF(800.0, 800.0),
+                                                           QPointF(800.0, 800.0),
+                                                           Qt::LeftButton,
+                                                           Qt::NoButton,
+                                                           Qt::NoModifier);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateMouseEvent(&event);
 
-        // THEN
-        QCOMPARE(backendMouseDevice.mouseState().xAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().yAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().leftPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
-        QCOMPARE(backendMouseDevice.previousPos(), QPointF(800.0f, 800.0f));
-        QCOMPARE(backendMouseDevice.wasPressed(), false);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
-        QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+            // THEN
+            QCOMPARE(backendMouseDevice.mouseState().xAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().yAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().leftPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
+            QCOMPARE(backendMouseDevice.previousPos(), QPointF(800.0, 800.0));
+            QCOMPARE(backendMouseDevice.wasPressed(), false);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+        }
 
-        // WHEN
-        eventList = QList<QT_PREPEND_NAMESPACE(QMouseEvent)>() << QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseMove,
-                                                                                                    QPointF(900.0f, 900.0f),
-                                                                                                    QPointF(900.0f, 900.0f),
-                                                                                                    QPointF(900.0f, 900.0f),
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoModifier);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseMove,
+                                                           QPointF(900.0, 900.0),
+                                                           QPointF(900.0, 900.0),
+                                                           QPointF(900.0, 900.0),
+                                                           Qt::NoButton,
+                                                           Qt::NoButton,
+                                                           Qt::NoModifier);
 
-        // THEN -> no axes update
-        backendMouseDevice.updateMouseEvents(eventList);
-        QCOMPARE(backendMouseDevice.mouseState().xAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().yAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().leftPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
-        QCOMPARE(backendMouseDevice.previousPos(), QPointF(900.0f, 900.0f));
-        QCOMPARE(backendMouseDevice.wasPressed(), false);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
-        QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+            // THEN -> no axes update
+            backendMouseDevice.updateMouseEvent(&event);
+            QCOMPARE(backendMouseDevice.mouseState().xAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().yAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().leftPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
+            QCOMPARE(backendMouseDevice.previousPos(), QPointF(900.0, 900.0));
+            QCOMPARE(backendMouseDevice.wasPressed(), false);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            QCOMPARE(backendMouseDevice.updateAxesContinuously(), false);
+        }
 
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseMove,
+                                                           QPointF(1000.0, 1000.0),
+                                                           QPointF(1000.0, 1000.0),
+                                                           QPointF(1000.0, 1000.0),
+                                                           Qt::NoButton,
+                                                           Qt::NoButton,
+                                                           Qt::NoModifier);
 
-        // WHEN
-        eventList = QList<QT_PREPEND_NAMESPACE(QMouseEvent)>() << QT_PREPEND_NAMESPACE(QMouseEvent)(QMouseEvent::MouseMove,
-                                                                                                    QPointF(1000.0f, 1000.0f),
-                                                                                                    QPointF(1000.0f, 1000.0f),
-                                                                                                    QPointF(1000.0f, 1000.0f),
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoModifier);
+            Qt3DInput::QMouseDevice mouseDevice;
+            mouseDevice.setUpdateAxesContinuously(true);
+            backendMouseDevice.syncFromFrontEnd(&mouseDevice, false);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateMouseEvent(&event);
 
-        Qt3DInput::QMouseDevice mouseDevice;
-        mouseDevice.setUpdateAxesContinuously(true);
-        backendMouseDevice.syncFromFrontEnd(&mouseDevice, false);
-        backendMouseDevice.updateMouseEvents(eventList);
-
-        // THEN
-        QCOMPARE(backendMouseDevice.mouseState().xAxis, (1000.0f - 900.0f) * 0.1f);
-        QCOMPARE(backendMouseDevice.mouseState().yAxis, (900.0f - 1000.0f) * 0.1f);
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().leftPressed,false);
-        QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
-        QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
-        QCOMPARE(backendMouseDevice.previousPos(), QPointF(1000.0f, 1000.0f));
-        QCOMPARE(backendMouseDevice.wasPressed(), false);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
-        QCOMPARE(backendMouseDevice.updateAxesContinuously(), true);
+            // THEN
+            QCOMPARE(backendMouseDevice.mouseState().xAxis, (1000.0f - 900.0f) * 0.1f);
+            QCOMPARE(backendMouseDevice.mouseState().yAxis, (900.0f - 1000.0f) * 0.1f);
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().leftPressed,false);
+            QCOMPARE(backendMouseDevice.mouseState().rightPressed, false);
+            QCOMPARE(backendMouseDevice.mouseState().centerPressed, false);
+            QCOMPARE(backendMouseDevice.previousPos(), QPointF(1000.0, 1000.0));
+            QCOMPARE(backendMouseDevice.wasPressed(), false);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            QCOMPARE(backendMouseDevice.updateAxesContinuously(), true);
+        }
     }
 
+#if QT_CONFIG(wheelevent)
     void checkMouseWheelState()
     {
         // GIVEN
         Qt3DInput::Input::MouseDevice backendMouseDevice;
 
-        // WHEN
-        auto eventList = QList<QT_PREPEND_NAMESPACE(QWheelEvent)>() << QT_PREPEND_NAMESPACE(QWheelEvent)(QPointF(500.0f, 500.0f),
-                                                                                                         120,
-                                                                                                         Qt::NoButton,
-                                                                                                         Qt::NoModifier,
-                                                                                                         Qt::Vertical);
-        backendMouseDevice.updateWheelEvents(eventList);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QWheelEvent)(QPointF(500.0, 500.0),
+                                                           QPointF(), QPoint(),
+                                                           QPoint(0, 120),
+                                                           Qt::NoButton,
+                                                           Qt::NoModifier,
+                                                           Qt::NoScrollPhase,
+                                                           false);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateWheelEvent(&event);
 
-        // THEN
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.1f * 120);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            // THEN
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.1f * 120);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+        }
 
-        // WHEN
-        eventList = QList<QT_PREPEND_NAMESPACE(QWheelEvent)>() << QT_PREPEND_NAMESPACE(QWheelEvent)(QPointF(500.0f, 500.0f),
-                                                                                                    120,
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoModifier,
-                                                                                                    Qt::Horizontal);
-        backendMouseDevice.updateWheelEvents(eventList);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QWheelEvent)(QPointF(500.0, 500.0),
+                                                           QPointF(), QPoint(),
+                                                           QPoint(120, 0),
+                                                           Qt::NoButton,
+                                                           Qt::NoModifier,
+                                                           Qt::NoScrollPhase,
+                                                           false);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateWheelEvent(&event);
 
-        // THEN
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.1f * 120);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            // THEN
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.1f * 120);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+        }
 
-        // WHEN
-        eventList = QList<QT_PREPEND_NAMESPACE(QWheelEvent)>() << QT_PREPEND_NAMESPACE(QWheelEvent)(QPointF(500.0f, 500.0f),
-                                                                                                    0,
-                                                                                                    Qt::NoButton,
-                                                                                                    Qt::NoModifier,
-                                                                                                    Qt::Horizontal);
-        backendMouseDevice.updateWheelEvents(eventList);
+        {
+            // WHEN
+            auto event = QT_PREPEND_NAMESPACE(QWheelEvent)(QPointF(500.0, 500.0),
+                                                           QPointF(), QPoint(), QPoint(),
+                                                           Qt::NoButton,
+                                                           Qt::NoModifier,
+                                                           Qt::NoScrollPhase,
+                                                           false);
+            backendMouseDevice.resetMouseAxisState();
+            backendMouseDevice.updateWheelEvent(&event);
 
-        // THEN
-        QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
-        QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+            // THEN
+            QCOMPARE(backendMouseDevice.mouseState().wXAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.mouseState().wYAxis, 0.0f);
+            QCOMPARE(backendMouseDevice.sensitivity(), 0.1f);
+        }
     }
+#endif
 
     void checkSceneChangeEvents()
     {

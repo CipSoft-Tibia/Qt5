@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 
 namespace extensions {
 
-StringSourceMap::StringSourceMap() {}
-StringSourceMap::~StringSourceMap() {}
+StringSourceMap::StringSourceMap() = default;
+StringSourceMap::~StringSourceMap() = default;
 
 v8::Local<v8::String> StringSourceMap::GetSource(
     v8::Isolate* isolate,

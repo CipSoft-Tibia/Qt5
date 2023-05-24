@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,42 +9,37 @@
 
 #include <memory>
 
-#include "core/fpdfapi/render/cpdf_imageloader.h"
 #include "core/fxcrt/fx_coordinates.h"
+#include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "core/fxge/dib/cfx_imagerenderer.h"
-#include "core/fxge/fx_dib.h"
-#include "third_party/base/optional.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-class CFX_DIBitmap;
 class CFX_DIBBase;
 class CFX_DefaultRenderDevice;
 class CFX_ImageTransformer;
+class CPDF_ImageLoader;
 class CPDF_ImageObject;
-class CPDF_PageObject;
 class CPDF_Pattern;
 class CPDF_RenderOptions;
 class CPDF_RenderStatus;
 
 class CPDF_ImageRenderer {
  public:
-  CPDF_ImageRenderer();
+  explicit CPDF_ImageRenderer(CPDF_RenderStatus* pStatus);
   ~CPDF_ImageRenderer();
 
-  bool Start(CPDF_RenderStatus* pStatus,
-             CPDF_ImageObject* pImageObject,
+  bool Start(CPDF_ImageObject* pImageObject,
              const CFX_Matrix& mtObj2Device,
              bool bStdCS,
              BlendMode blendType);
 
-  bool Start(CPDF_RenderStatus* pStatus,
-             const RetainPtr<CFX_DIBBase>& pDIBBase,
+  bool Start(RetainPtr<CFX_DIBBase> pDIBBase,
              FX_ARGB bitmap_argb,
-             int bitmap_alpha,
              const CFX_Matrix& mtImage2Device,
              const FXDIB_ResampleOptions& options,
-             bool bStdCS,
-             BlendMode blendType);
+             bool bStdCS);
 
   bool Continue(PauseIndicatorIface* pPause);
   bool GetResult() const { return m_Result; }
@@ -71,25 +66,25 @@ class CPDF_ImageRenderer {
   CFX_Matrix GetDrawMatrix(const FX_RECT& rect) const;
   void CalculateDrawImage(CFX_DefaultRenderDevice* pBitmapDevice1,
                           CFX_DefaultRenderDevice* pBitmapDevice2,
-                          const RetainPtr<CFX_DIBBase>& pDIBBase,
+                          RetainPtr<CFX_DIBBase> pDIBBase,
                           const CFX_Matrix& mtNewMatrix,
                           const FX_RECT& rect) const;
   const CPDF_RenderOptions& GetRenderOptions() const;
   void HandleFilters();
-  Optional<FX_RECT> GetUnitRect() const;
+  absl::optional<FX_RECT> GetUnitRect() const;
   bool GetDimensionsFromUnitRect(const FX_RECT& rect,
                                  int* left,
                                  int* top,
                                  int* width,
                                  int* height) const;
 
-  UnownedPtr<CPDF_RenderStatus> m_pRenderStatus;
+  UnownedPtr<CPDF_RenderStatus> const m_pRenderStatus;
   UnownedPtr<CPDF_ImageObject> m_pImageObject;
   RetainPtr<CPDF_Pattern> m_pPattern;
   RetainPtr<CFX_DIBBase> m_pDIBBase;
   CFX_Matrix m_mtObj2Device;
   CFX_Matrix m_ImageMatrix;
-  CPDF_ImageLoader m_Loader;
+  std::unique_ptr<CPDF_ImageLoader> const m_pLoader;
   std::unique_ptr<CFX_ImageTransformer> m_pTransformer;
   std::unique_ptr<CFX_ImageRenderer> m_DeviceHandle;
   Mode m_Mode = Mode::kNone;

@@ -1,17 +1,31 @@
 """
-Extensions
------------------------------------------------------------------------------
+Python Markdown
+
+A Python implementation of John Gruber's Markdown.
+
+Documentation: https://python-markdown.github.io/
+GitHub: https://github.com/Python-Markdown/markdown/
+PyPI: https://pypi.org/project/Markdown/
+
+Started by Manfred Stienstra (http://www.dwerg.net/).
+Maintained for a few years by Yuri Takhteyev (http://www.freewisdom.org).
+Currently maintained by Waylan Limberg (https://github.com/waylan),
+Dmitry Shachnev (https://github.com/mitya57) and Isaac Muse (https://github.com/facelessuser).
+
+Copyright 2007-2018 The Python Markdown Project (v. 1.7 and later)
+Copyright 2004, 2005, 2006 Yuri Takhteyev (v. 0.2-1.6b)
+Copyright 2004 Manfred Stienstra (the original version)
+
+License: BSD (see LICENSE.md for details).
 """
 
-from __future__ import unicode_literals
 from ..util import parseBoolValue
-import warnings
 
 
-class Extension(object):
+class Extension:
     """ Base class for extensions to subclass. """
 
-    # Default config -- to be overriden by a subclass
+    # Default config -- to be overridden by a subclass
     # Must be of the following format:
     #     {
     #       'key': ['value', 'description']
@@ -20,34 +34,8 @@ class Extension(object):
     # if a default is not set here.
     config = {}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """ Initiate Extension and set up configs. """
-
-        # check for configs arg for backward compat.
-        # (there only ever used to be one so we use arg[0])
-        if len(args):
-            if args[0] is not None:
-                self.setConfigs(args[0])
-            warnings.warn('Extension classes accepting positional args is '
-                          'pending Deprecation. Each setting should be '
-                          'passed into the Class as a keyword. Positional '
-                          'args are deprecated and will raise '
-                          'an error in version 2.7. See the Release Notes for '
-                          'Python-Markdown version 2.6 for more info.',
-                          DeprecationWarning)
-        # check for configs kwarg for backward compat.
-        if 'configs' in kwargs.keys():
-            if kwargs['configs'] is not None:
-                self.setConfigs(kwargs.pop('configs', {}))
-            warnings.warn('Extension classes accepting a dict on the single '
-                          'keyword "config" is pending Deprecation. Each '
-                          'setting should be passed into the Class as a '
-                          'keyword directly. The "config" keyword is '
-                          'deprecated and raise an error in '
-                          'version 2.7. See the Release Notes for '
-                          'Python-Markdown version 2.6 for more info.',
-                          DeprecationWarning)
-        # finally, use kwargs
         self.setConfigs(kwargs)
 
     def getConfig(self, key, default=''):
@@ -59,7 +47,7 @@ class Extension(object):
 
     def getConfigs(self):
         """ Return all configs settings as a dict. """
-        return dict([(key, self.getConfig(key)) for key in self.config.keys()])
+        return {key: self.getConfig(key) for key in self.config.keys()}
 
     def getConfigInfo(self):
         """ Return all config descriptions as a list of tuples. """
@@ -81,17 +69,15 @@ class Extension(object):
         for key, value in items:
             self.setConfig(key, value)
 
-    def extendMarkdown(self, md, md_globals):
+    def extendMarkdown(self, md):
         """
-        Add the various proccesors and patterns to the Markdown Instance.
+        Add the various processors and patterns to the Markdown Instance.
 
-        This method must be overriden by every extension.
+        This method must be overridden by every extension.
 
         Keyword arguments:
 
         * md: The Markdown instance.
-
-        * md_globals: Global variables in the markdown module namespace.
 
         """
         raise NotImplementedError(

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "proxy_server.h"
 #include <QTest>
@@ -33,7 +8,7 @@
 #include <QWebEnginePage>
 #include <QWebEngineView>
 #include <QWebEngineUrlRequestInterceptor>
-
+#include <QWebEngineLoadingInfo>
 
 struct Interceptor : public QWebEngineUrlRequestInterceptor
 {
@@ -53,6 +28,7 @@ public:
 private slots:
     void proxyAuthentication();
     void forwardCookie();
+    void invalidHostName();
 };
 
 
@@ -74,7 +50,7 @@ void tst_Proxy::proxyAuthentication()
     QWebEnginePage page;
     QSignalSpy successSpy(&server, &ProxyServer::authenticationSuccess);
     page.load(QUrl("http://www.qt.io"));
-    QTRY_VERIFY2(successSpy.count() > 0, "Could not get authentication token");
+    QTRY_VERIFY2(successSpy.size() > 0, "Could not get authentication token");
 }
 
 void tst_Proxy::forwardCookie()
@@ -94,7 +70,20 @@ void tst_Proxy::forwardCookie()
     page.setUrlRequestInterceptor(&interceptor);
     QSignalSpy cookieSpy(&server, &ProxyServer::cookieMatch);
     page.load(QUrl("http://www.qt.io"));
-    QTRY_VERIFY2(cookieSpy.count() > 0, "Could not get cookie");
+    QTRY_VERIFY2(cookieSpy.size() > 0, "Could not get cookie");
+}
+
+// Crash test ( https://bugreports.qt.io/browse/QTBUG-113992 )
+void tst_Proxy::invalidHostName()
+{
+    QNetworkProxy proxy;
+    proxy.setType(QNetworkProxy::HttpProxy);
+    proxy.setHostName("999.0.0.0");
+    QNetworkProxy::setApplicationProxy(proxy);
+    QWebEnginePage page;
+    QSignalSpy loadSpy(&page, SIGNAL(loadFinished(bool)));
+    page.load(QUrl("http://www.qt.io"));
+    QTRY_COMPARE_WITH_TIMEOUT(loadSpy.size(), 1, 20000);
 }
 
 #include "tst_proxy.moc"

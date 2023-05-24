@@ -1,56 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "triangleoncuberenderer.h"
 #include <QFile>
-#include <QtGui/private/qshader_p.h>
+#include <rhi/qshader.h>
 
 // toggle to test the preserved content (no clear) path
 const bool IMAGE_UNDER_OFFSCREEN_RENDERING = false;
@@ -78,12 +31,12 @@ void TriangleOnCubeRenderer::initResources(QRhiRenderPassDescriptor *rp)
 {
     m_vbuf = m_r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(cube));
     m_vbuf->setName(QByteArrayLiteral("Cube vbuf (textured with offscreen)"));
-    m_vbuf->build();
+    m_vbuf->create();
     m_vbufReady = false;
 
     m_ubuf = m_r->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, 64 + 4);
     m_ubuf->setName(QByteArrayLiteral("Cube ubuf (textured with offscreen)"));
-    m_ubuf->build();
+    m_ubuf->create();
 
     if (IMAGE_UNDER_OFFSCREEN_RENDERING) {
         m_image = QImage(QLatin1String(":/qt256.png")).scaled(OFFSCREEN_SIZE).convertToFormat(QImage::Format_RGBA8888);
@@ -93,34 +46,34 @@ void TriangleOnCubeRenderer::initResources(QRhiRenderPassDescriptor *rp)
 
     m_tex = m_r->newTexture(QRhiTexture::RGBA8, OFFSCREEN_SIZE, 1, QRhiTexture::RenderTarget);
     m_tex->setName(QByteArrayLiteral("Texture for offscreen content"));
-    m_tex->build();
+    m_tex->create();
 
     if (MRT) {
         m_tex2 = m_r->newTexture(QRhiTexture::RGBA8, OFFSCREEN_SIZE, 1, QRhiTexture::RenderTarget);
-        m_tex2->build();
+        m_tex2->create();
     }
 
     if (DS_ATT) {
         m_offscreenTriangle.setDepthWrite(true);
         m_ds = m_r->newRenderBuffer(QRhiRenderBuffer::DepthStencil, m_tex->pixelSize());
-        m_ds->build();
+        m_ds->create();
     }
 
     if (DEPTH_TEXTURE) {
         m_offscreenTriangle.setDepthWrite(true);
         m_depthTex = m_r->newTexture(QRhiTexture::D32F, OFFSCREEN_SIZE, 1, QRhiTexture::RenderTarget);
-        m_depthTex->build();
+        m_depthTex->create();
     }
 
     m_sampler = m_r->newSampler(QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None, QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge);
-    m_sampler->build();
+    m_sampler->create();
 
     m_srb = m_r->newShaderResourceBindings();
     m_srb->setBindings({
         QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, m_ubuf),
         QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, m_tex, m_sampler)
     });
-    m_srb->build();
+    m_srb->create();
 
     m_ps = m_r->newGraphicsPipeline();
 
@@ -156,7 +109,7 @@ void TriangleOnCubeRenderer::initResources(QRhiRenderPassDescriptor *rp)
     m_ps->setShaderResourceBindings(m_srb);
     m_ps->setRenderPassDescriptor(rp);
 
-    m_ps->build();
+    m_ps->create();
 
     QRhiTextureRenderTarget::Flags rtFlags;
     if (IMAGE_UNDER_OFFSCREEN_RENDERING)
@@ -184,7 +137,7 @@ void TriangleOnCubeRenderer::initResources(QRhiRenderPassDescriptor *rp)
     m_rp = m_rt->newCompatibleRenderPassDescriptor();
     m_rt->setRenderPassDescriptor(m_rp);
 
-    m_rt->build();
+    m_rt->create();
 
     m_offscreenTriangle.setRhi(m_r);
     m_offscreenTriangle.initResources(m_rp);
@@ -285,7 +238,7 @@ void TriangleOnCubeRenderer::queueDraw(QRhiCommandBuffer *cb, const QSize &outpu
     cb->setShaderResources();
     const QRhiCommandBuffer::VertexInput vbufBindings[] = {
         { m_vbuf, 0 },
-        { m_vbuf, 36 * 3 * sizeof(float) }
+        { m_vbuf, quint32(36 * 3 * sizeof(float)) }
     };
     cb->setVertexInput(0, 2, vbufBindings);
     cb->draw(36);

@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QApplication>
 #include <QWidget>
@@ -60,33 +13,17 @@
 #include <QWindow>
 #include <QPlatformSurfaceEvent>
 #include <QElapsedTimer>
-
-#include <QtGui/private/qshader_p.h>
 #include <QFile>
-
-#ifndef QT_NO_OPENGL
-#include <QtGui/private/qrhigles2_p.h>
-#include <QOffscreenSurface>
-#endif
-
-#if QT_CONFIG(vulkan)
 #include <QLoggingCategory>
-#include <QtGui/private/qrhivulkan_p.h>
-#endif
-
-#ifdef Q_OS_WIN
-#include <QtGui/private/qrhid3d11_p.h>
-#endif
-
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
-#include <QtGui/private/qrhimetal_p.h>
-#endif
+#include <QOffscreenSurface>
+#include <rhi/qrhi.h>
 
 enum GraphicsApi
 {
     OpenGL,
     Vulkan,
     D3D11,
+    D3D12,
     Metal
 };
 
@@ -101,6 +38,8 @@ static QString graphicsApiName()
         return QLatin1String("Vulkan");
     case D3D11:
         return QLatin1String("Direct3D 11");
+    case D3D12:
+        return QLatin1String("Direct3D 12");
     case Metal:
         return QLatin1String("Metal");
     default:
@@ -145,6 +84,10 @@ void createRhi()
         QRhiD3D11InitParams params;
         params.enableDebugLayer = true;
         r.r = QRhi::create(QRhi::D3D11, &params);
+    } else if (graphicsApi == D3D12) {
+        QRhiD3D12InitParams params;
+        params.enableDebugLayer = true;
+        r.r = QRhi::create(QRhi::D3D12, &params);
     }
 #endif
 
@@ -169,7 +112,7 @@ void destroyRhi()
 }
 
 struct {
-    QVector<QWindow *> windows;
+    QList<QWindow *> windows;
 
     QRhiBuffer *vbuf = nullptr;
     QRhiBuffer *ubuf = nullptr;
@@ -201,14 +144,14 @@ void ensureSharedResources(QRhiRenderPassDescriptor *rp)
 {
     if (!d.vbuf) {
         d.vbuf = r.r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(vertexData));
-        d.vbuf->build();
+        d.vbuf->create();
         d.initialUpdates = r.r->nextResourceUpdateBatch();
         d.initialUpdates->uploadStaticBuffer(d.vbuf, vertexData);
     }
 
     if (!d.ubuf) {
         d.ubuf = r.r->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, 68);
-        d.ubuf->build();
+        d.ubuf->create();
     }
 
     if (!d.srb) {
@@ -216,7 +159,7 @@ void ensureSharedResources(QRhiRenderPassDescriptor *rp)
         d.srb->setBindings({
                                QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d.ubuf)
                            });
-        d.srb->build();
+        d.srb->create();
     }
 
     if (!d.ps) {
@@ -251,7 +194,7 @@ void ensureSharedResources(QRhiRenderPassDescriptor *rp)
         d.ps->setShaderResourceBindings(d.srb);
         d.ps->setRenderPassDescriptor(rp);
 
-        d.ps->build();
+        d.ps->create();
     }
 }
 
@@ -295,7 +238,7 @@ protected:
     bool m_newlyExposed = false;
 
     QMatrix4x4 m_proj;
-    QVector<QRhiResource *> m_releasePool;
+    QList<QRhiResource *> m_releasePool;
 
     bool m_hasSwapChain = false;
     QRhiSwapChain *m_sc = nullptr;
@@ -315,27 +258,24 @@ Window::Window(const QString &title, const QColor &bgColor, int axis, bool noVSy
     switch (graphicsApi) {
     case OpenGL:
     {
-#if QT_CONFIG(opengl)
         setSurfaceType(OpenGLSurface);
-        QSurfaceFormat fmt = QRhiGles2InitParams::adjustedFormat(); // default + depth/stencil
-        fmt.setSwapInterval(noVSync ? 0 : 1); // + swap interval
+        QSurfaceFormat fmt = QSurfaceFormat::defaultFormat();
+        fmt.setSwapInterval(noVSync ? 0 : 1);
         setFormat(fmt);
-#endif
     }
         break;
     case Vulkan:
-#if QT_CONFIG(vulkan)
         setSurfaceType(VulkanSurface);
+#if QT_CONFIG(vulkan)
         setVulkanInstance(r.instance);
 #endif
         break;
     case D3D11:
-        setSurfaceType(OpenGLSurface); // not a typo
+    case D3D12:
+        setSurfaceType(Direct3DSurface);
         break;
     case Metal:
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
         setSurfaceType(MetalSurface);
-#endif
         break;
     default:
         break;
@@ -427,7 +367,7 @@ void Window::releaseResources()
 
 void Window::resizeSwapChain()
 {
-    m_hasSwapChain = m_sc->buildOrResize();
+    m_hasSwapChain = m_sc->createOrResize();
 
     const QSize outputSize = m_sc->currentPixelSize();
     m_proj = r.r->clipSpaceCorrMatrix();
@@ -439,7 +379,7 @@ void Window::releaseSwapChain()
 {
     if (m_hasSwapChain) {
         m_hasSwapChain = false;
-        m_sc->release();
+        m_sc->destroy();
     }
 }
 
@@ -525,7 +465,6 @@ void closeWindow()
 
 int main(int argc, char **argv)
 {
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QApplication app(argc, argv);
 
 #if defined(Q_OS_WIN)
@@ -546,6 +485,8 @@ int main(int argc, char **argv)
     cmdLineParser.addOption(vkOption);
     QCommandLineOption d3dOption({ "d", "d3d11" }, QLatin1String("Direct3D 11"));
     cmdLineParser.addOption(d3dOption);
+    QCommandLineOption d3d12Option({ "D", "d3d12" }, QLatin1String("Direct3D 12"));
+    cmdLineParser.addOption(d3d12Option);
     QCommandLineOption mtlOption({ "m", "metal" }, QLatin1String("Metal"));
     cmdLineParser.addOption(mtlOption);
     cmdLineParser.process(app);
@@ -555,27 +496,23 @@ int main(int argc, char **argv)
         graphicsApi = Vulkan;
     if (cmdLineParser.isSet(d3dOption))
         graphicsApi = D3D11;
+    if (cmdLineParser.isSet(d3d12Option))
+        graphicsApi = D3D12;
     if (cmdLineParser.isSet(mtlOption))
         graphicsApi = Metal;
 
     qDebug("Selected graphics API is %s", qPrintable(graphicsApiName()));
     qDebug("This is a multi-api example, use command line arguments to override:\n%s", qPrintable(cmdLineParser.helpText()));
 
+    QSurfaceFormat fmt;
+    fmt.setDepthBufferSize(24);
+    QSurfaceFormat::setDefaultFormat(fmt);
+
 #if QT_CONFIG(vulkan)
     r.instance = new QVulkanInstance;
     if (graphicsApi == Vulkan) {
-#ifndef Q_OS_ANDROID
-        r.instance->setLayers({ "VK_LAYER_LUNARG_standard_validation" });
-#else
-        r.instance->setLayers(QByteArrayList()
-                       << "VK_LAYER_GOOGLE_threading"
-                       << "VK_LAYER_LUNARG_parameter_validation"
-                       << "VK_LAYER_LUNARG_object_tracker"
-                       << "VK_LAYER_LUNARG_core_validation"
-                       << "VK_LAYER_LUNARG_image"
-                       << "VK_LAYER_LUNARG_swapchain"
-                       << "VK_LAYER_GOOGLE_unique_objects");
-#endif
+        r.instance->setLayers({ "VK_LAYER_KHRONOS_validation" });
+        r.instance->setExtensions(QRhiVulkanInitParams::preferredInstanceExtensions());
         if (!r.instance->create()) {
             qWarning("Failed to create Vulkan instance, switching to OpenGL");
             graphicsApi = OpenGL;

@@ -1,9 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/accessibility/platform/ax_platform_node_win.h"
 
+#include "base/command_line.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/win/scoped_variant.h"
 #include "content/browser/accessibility/accessibility_content_browsertest.h"
 #include "content/browser/accessibility/browser_accessibility.h"
@@ -17,7 +19,11 @@
 #include "content/public/test/content_browser_test_utils.h"
 #include "content/shell/browser/shell.h"
 #include "testing/gmock/include/gmock/gmock-matchers.h"
+#include "ui/accessibility/accessibility_features.h"
+#include "ui/accessibility/accessibility_switches.h"
+#include "ui/accessibility/platform/uia_registrar_win.h"
 
+using base::win::ScopedVariant;
 using Microsoft::WRL::ComPtr;
 
 namespace content {
@@ -32,8 +38,28 @@ namespace content {
     EXPECT_EQ(expectedVariant.ptr()->intVal, actual.ptr()->intVal); \
   }
 
+#define EXPECT_UIA_BSTR_EQ(node, property_id, expected)                  \
+  {                                                                      \
+    ScopedVariant expectedVariant(expected);                             \
+    ASSERT_EQ(VT_BSTR, expectedVariant.type());                          \
+    ASSERT_NE(nullptr, expectedVariant.ptr()->bstrVal);                  \
+    ScopedVariant actual;                                                \
+    ASSERT_HRESULT_SUCCEEDED(                                            \
+        node->GetPropertyValue(property_id, actual.Receive()));          \
+    ASSERT_EQ(VT_BSTR, actual.type());                                   \
+    ASSERT_NE(nullptr, actual.ptr()->bstrVal);                           \
+    EXPECT_STREQ(expectedVariant.ptr()->bstrVal, actual.ptr()->bstrVal); \
+  }
+
 class AXPlatformNodeWinBrowserTest : public AccessibilityContentBrowserTest {
  protected:
+  void SetUp() override {
+    scoped_feature_list_.InitAndEnableFeature(
+        features::kEnableAccessibilityAriaVirtualContent);
+
+    ContentBrowserTest::SetUp();
+  }
+
   template <typename T>
   ComPtr<T> QueryInterfaceFromNode(
       BrowserAccessibility* browser_accessibility) {
@@ -112,18 +138,18 @@ class AXPlatformNodeWinBrowserTest : public AccessibilityContentBrowserTest {
       ASSERT_HRESULT_SUCCEEDED(raw_element_provider_simple->GetPropertyValue(
           UIA_NamePropertyId, name.Receive()));
       ASSERT_EQ(VT_BSTR, name.type());
-      names.push_back(base::UTF16ToUTF8(
+      names.push_back(base::WideToUTF8(
           std::wstring(V_BSTR(name.ptr()), SysStringLen(V_BSTR(name.ptr())))));
     }
 
-    ASSERT_THAT(names, testing::UnorderedElementsAreArray(expected_names));
+    ASSERT_THAT(names, ::testing::UnorderedElementsAreArray(expected_names));
   }
 
   void UIAIWindowProviderGetIsModalBrowserTestTemplate(
       ax::mojom::Role expected_role,
-      content::BrowserAccessibility* (content::BrowserAccessibility::*f)(
-          uint32_t) const,
-      uint32_t index_arg,
+      content::BrowserAccessibility* (content::BrowserAccessibility::*f)(size_t)
+          const,
+      size_t index_arg,
       bool expected_is_modal,
       bool expected_is_window_provider_available) {
     BrowserAccessibility* root_browser_accessibility =
@@ -153,6 +179,9 @@ class AXPlatformNodeWinBrowserTest : public AccessibilityContentBrowserTest {
       ASSERT_EQ(nullptr, window_provider.Get());
     }
   }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
@@ -171,7 +200,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
   ASSERT_EQ(ax::mojom::Role::kStaticText, browser_accessibility->GetRole());
 
   BrowserAccessibility* iframe_browser_accessibility =
-      browser_accessibility->manager()->GetRoot();
+      browser_accessibility->manager()->GetBrowserAccessibilityRoot();
   ASSERT_NE(nullptr, iframe_browser_accessibility);
   ASSERT_EQ(ax::mojom::Role::kRootWebArea,
             iframe_browser_accessibility->GetRole());
@@ -187,14 +216,24 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
   ASSERT_EQ(S_OK, root_iaccessible2->scrollToPoint(
                       IA2_COORDTYPE_SCREEN_RELATIVE, iframe_screen_bounds.x(),
                       iframe_screen_bounds.y()));
-  location_changed_waiter.WaitForNotification();
+  ASSERT_TRUE(location_changed_waiter.WaitForNotification());
 
   gfx::Rect bounds = browser_accessibility->GetBoundsRect(
       ui::AXCoordinateSystem::kScreenDIPs, ui::AXClippingBehavior::kUnclipped);
   ASSERT_EQ(iframe_screen_bounds.y(), bounds.y());
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+class AXPlatformNodeWinUIABrowserTest : public AXPlatformNodeWinBrowserTest {
+ protected:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    AXPlatformNodeWinBrowserTest::SetUpCommandLine(command_line);
+
+    base::CommandLine::ForCurrentProcess()->AppendSwitch(
+        ::switches::kEnableExperimentalUIAutomation);
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAGetPropertyValueFlowsFromNone) {
   LoadInitialAccessibilityTreeFromHtmlFilePath(
       "/accessibility/aria/aria-label.html");
@@ -209,7 +248,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
   ASSERT_EQ(nullptr, V_ARRAY(flows_from_variant.ptr()));
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAGetPropertyValueFlowsFromSingle) {
   LoadInitialAccessibilityTreeFromHtmlFilePath(
       "/accessibility/aria/aria-flowto.html");
@@ -218,7 +257,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       FindNode(ax::mojom::Role::kFooter, "next"), {"current"});
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAGetPropertyValueFlowsFromMultiple) {
   LoadInitialAccessibilityTreeFromHtmlFilePath(
       "/accessibility/aria/aria-flowto-multiple.html");
@@ -227,7 +266,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       FindNode(ax::mojom::Role::kGenericContainer, "b3"), {"a3", "c3"});
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDialog) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -243,7 +282,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       false, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDialogAriaModalFalse) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -259,7 +298,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       false, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDialogAriaModalTrue) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -275,7 +314,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       true, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDiv) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -291,7 +330,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       &BrowserAccessibility::PlatformGetChild, 0, false, false);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDivAriaModalFalse) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -307,7 +346,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       &BrowserAccessibility::PlatformGetChild, 0, false, false);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDivAriaModalTrue) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -323,7 +362,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       &BrowserAccessibility::PlatformGetChild, 0, false, false);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDivDialog) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -339,7 +378,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       false, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDivDialogAriaModalFalse) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -355,7 +394,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       false, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDivDialogAriaModalTrue) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -371,7 +410,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       true, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAIWindowProviderGetIsModalOnDivAlertDialog) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -388,7 +427,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(
-    AXPlatformNodeWinBrowserTest,
+    AXPlatformNodeWinUIABrowserTest,
     UIAIWindowProviderGetIsModalOnDivAlertDialogAriaModalFalse) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -405,7 +444,7 @@ IN_PROC_BROWSER_TEST_F(
 }
 
 IN_PROC_BROWSER_TEST_F(
-    AXPlatformNodeWinBrowserTest,
+    AXPlatformNodeWinUIABrowserTest,
     UIAIWindowProviderGetIsModalOnDivAlertDialogAriaModalTrue) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -421,12 +460,12 @@ IN_PROC_BROWSER_TEST_F(
       true, true);
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAGetPropertyValueAutomationId) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
       <html>
-        </body>
+        <body>
           <div id="id"></div>
         </body>
       </html>
@@ -454,7 +493,51 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
   EXPECT_EQ(0, expected_scoped_variant.Compare(scoped_variant));
 }
 
-IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest, UIAScrollIntoView) {
+  LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
+      <!DOCTYPE html>
+      <html>
+        <body>
+          <div id="id" style="height: 20px; overflow: scroll;">
+            <ul>
+              <li>Item 1</li>
+              <li>Item 2</li>
+              <li>Item 3</li>
+              <li>Item 4</li>
+              <li>Item 5</li>
+              <li>Item 6</li>
+            </ul>
+          </div>
+        </body>
+      </html>
+  )HTML"));
+
+  BrowserAccessibility* root_browser_accessibility = GetRootAndAssertNonNull();
+  BrowserAccessibilityComWin* root_browser_accessibility_com_win =
+      ToBrowserAccessibilityWin(root_browser_accessibility)->GetCOM();
+  ASSERT_NE(nullptr, root_browser_accessibility_com_win);
+
+  BrowserAccessibility* browser_accessibility =
+      root_browser_accessibility->PlatformDeepestLastChild();
+  ASSERT_NE(nullptr, browser_accessibility);
+  ASSERT_EQ(ax::mojom::Role::kStaticText, browser_accessibility->GetRole());
+  BrowserAccessibilityComWin* browser_accessibility_com_win =
+      ToBrowserAccessibilityWin(browser_accessibility)->GetCOM();
+  ASSERT_NE(nullptr, browser_accessibility_com_win);
+
+  ui::AXPlatformNodeWin* platform_node = static_cast<ui::AXPlatformNodeWin*>(
+      ui::AXPlatformNode::FromNativeViewAccessible(
+          browser_accessibility->GetNativeViewAccessible()));
+  ASSERT_NE(nullptr, platform_node);
+
+  AccessibilityNotificationWaiter waiter(shell()->web_contents(),
+                                         ui::kAXModeComplete,
+                                         ax::mojom::Event::kLocationChanged);
+  EXPECT_HRESULT_SUCCEEDED(platform_node->ScrollIntoView());
+  ASSERT_TRUE(waiter.WaitForNotification());
+}
+
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
                        UIAGetPropertyValueCulture) {
   LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
       <!DOCTYPE html>
@@ -504,9 +587,9 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
   BrowserAccessibilityComWin* fake_lang_node_com_win =
       ToBrowserAccessibilityWin(node)->GetCOM();
   ASSERT_NE(nullptr, fake_lang_node_com_win);
-  base::win::ScopedVariant actual;
+  base::win::ScopedVariant actual_value;
   EXPECT_HRESULT_FAILED(fake_lang_node_com_win->GetPropertyValue(
-      UIA_CulturePropertyId, actual.Receive()));
+      UIA_CulturePropertyId, actual_value.Receive()));
 
   // No lang should default to the page's default language (en-us).
   node = FindNodeAfter(node, "no lang");
@@ -523,6 +606,34 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       ToBrowserAccessibilityWin(node)->GetCOM();
   ASSERT_NE(nullptr, empty_lang_node_com_win);
   EXPECT_UIA_INT_EQ(empty_lang_node_com_win, UIA_CulturePropertyId, en_us_lcid);
+}
+
+IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinUIABrowserTest,
+                       UIAGetPropertyValueVirtualContent) {
+  LoadInitialAccessibilityTreeFromHtml(std::string(R"HTML(
+      <!DOCTYPE html>
+      <html>
+        <body>
+          <div role="group" aria-virtualcontent="block-end"
+               aria-label="vc">Hello World</div>
+        </body>
+      </html>
+  )HTML"));
+
+  BrowserAccessibility* root_node = GetRootAndAssertNonNull();
+  BrowserAccessibility* body_node = root_node->PlatformGetFirstChild();
+  ASSERT_NE(nullptr, body_node);
+
+  BrowserAccessibility* node = FindNode(ax::mojom::Role::kGroup, "vc");
+  ASSERT_NE(nullptr, node);
+  BrowserAccessibilityComWin* node_com_win =
+      ToBrowserAccessibilityWin(node)->GetCOM();
+  ASSERT_NE(nullptr, node_com_win);
+
+  EXPECT_UIA_BSTR_EQ(
+      node_com_win,
+      ui::UiaRegistrarWin::GetInstance().GetVirtualContentPropertyId(),
+      L"block-end");
 }
 
 IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
@@ -542,7 +653,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
       "</body></html>";
   GURL url(url_str);
   EXPECT_TRUE(NavigateToURL(shell(), url));
-  waiter.WaitForNotification();
+  ASSERT_TRUE(waiter.WaitForNotification());
 
   WebContentsImpl* web_contents =
       static_cast<WebContentsImpl*>(shell()->web_contents());
@@ -551,7 +662,7 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
 
   // Find a node to hit test. Note that this is a really simple page,
   // so synchronous hit testing will work fine.
-  BrowserAccessibility* node = manager->GetRoot();
+  BrowserAccessibility* node = manager->GetBrowserAccessibilityRoot();
   while (node && node->GetRole() != ax::mojom::Role::kButton)
     node = manager->NextInTreeOrder(node);
   DCHECK(node);
@@ -564,7 +675,8 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest,
   ui::AXPlatformNodeWin* root_platform_node =
       static_cast<ui::AXPlatformNodeWin*>(
           ui::AXPlatformNode::FromNativeViewAccessible(
-              manager->GetRoot()->GetNativeViewAccessible()));
+              manager->GetBrowserAccessibilityRoot()
+                  ->GetNativeViewAccessible()));
 
   // First test that calling accHitTest on the root node returns the button.
   {
@@ -615,7 +727,10 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest, IFrameTraversal) {
       FindNodeAfter(root_node, "Before iframe");
   ASSERT_NE(nullptr, before_iframe_node);
   ASSERT_EQ(ax::mojom::Role::kStaticText, before_iframe_node->GetRole());
-  before_iframe_node = before_iframe_node->PlatformGetFirstChild();
+
+  ASSERT_EQ(0U, before_iframe_node->PlatformChildCount());
+  ASSERT_EQ(1U, before_iframe_node->InternalChildCount());
+  before_iframe_node = before_iframe_node->InternalGetFirstChild();
   ASSERT_NE(nullptr, before_iframe_node);
   ASSERT_EQ(ax::mojom::Role::kInlineTextBox, before_iframe_node->GetRole());
 
@@ -623,7 +738,10 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest, IFrameTraversal) {
       FindNodeAfter(before_iframe_node, "Text in iframe");
   ASSERT_NE(nullptr, inside_iframe_node);
   ASSERT_EQ(ax::mojom::Role::kStaticText, inside_iframe_node->GetRole());
-  inside_iframe_node = inside_iframe_node->PlatformGetFirstChild();
+
+  ASSERT_EQ(0U, inside_iframe_node->PlatformChildCount());
+  ASSERT_EQ(1U, inside_iframe_node->InternalChildCount());
+  inside_iframe_node = inside_iframe_node->InternalGetFirstChild();
   ASSERT_NE(nullptr, inside_iframe_node);
   ASSERT_EQ(ax::mojom::Role::kInlineTextBox, inside_iframe_node->GetRole());
 
@@ -631,45 +749,56 @@ IN_PROC_BROWSER_TEST_F(AXPlatformNodeWinBrowserTest, IFrameTraversal) {
       FindNodeAfter(inside_iframe_node, "After iframe");
   ASSERT_NE(nullptr, after_iframe_node);
   ASSERT_EQ(ax::mojom::Role::kStaticText, after_iframe_node->GetRole());
-  after_iframe_node = after_iframe_node->PlatformGetFirstChild();
+
+  ASSERT_EQ(0U, after_iframe_node->PlatformChildCount());
+  ASSERT_EQ(1U, after_iframe_node->InternalChildCount());
+  after_iframe_node = after_iframe_node->InternalGetFirstChild();
   ASSERT_NE(nullptr, after_iframe_node);
   ASSERT_EQ(ax::mojom::Role::kInlineTextBox, after_iframe_node->GetRole());
 
-  EXPECT_LT(*before_iframe_node->CreatePositionAt(0),
-            *inside_iframe_node->CreatePositionAt(0));
-  EXPECT_EQ(*before_iframe_node->CreatePositionAt(13),
-            *inside_iframe_node->CreatePositionAt(0));
-  EXPECT_LT(*inside_iframe_node->CreatePositionAt(0),
-            *after_iframe_node->CreatePositionAt(0));
-  EXPECT_EQ(*inside_iframe_node->CreatePositionAt(14),
-            *after_iframe_node->CreatePositionAt(0));
+  EXPECT_LT(*before_iframe_node->CreateTextPositionAt(0),
+            *inside_iframe_node->CreateTextPositionAt(0));
+  // The following positions should not be equivalent because they are on two
+  // separate lines in the accessibility tree's text representation, i.e. the
+  // first has an upstream affinity while the second has a downstream affinity.
+  // Note that an iframe boundary is also a line boundary.
+  EXPECT_LT(*before_iframe_node->CreateTextPositionAt(13),
+            *inside_iframe_node->CreateTextPositionAt(0));
+  EXPECT_LT(*inside_iframe_node->CreateTextPositionAt(0),
+            *after_iframe_node->CreateTextPositionAt(0));
+  // The following positions should not be equivalent because they are on two
+  // separate lines in the accessibility tree's text representation, i.e. the
+  // first has an upstream affinity while the second has a downstream affinity.
+  // Note that an iframe boundary is also a line boundary.
+  EXPECT_LT(*inside_iframe_node->CreateTextPositionAt(14),
+            *after_iframe_node->CreateTextPositionAt(0));
 
   // Traverse the leaves of the AXTree forwards.
-  BrowserAccessibilityPosition::AXPositionInstance tree_position =
-      root_node->CreatePositionAt(0)->CreateNextLeafTreePosition();
+  BrowserAccessibility::AXPosition tree_position =
+      root_node->CreateTextPositionAt(0)->CreateNextLeafTreePosition();
   EXPECT_TRUE(tree_position->IsTreePosition());
-  EXPECT_EQ(before_iframe_node, tree_position->GetAnchor());
+  EXPECT_EQ(before_iframe_node->node(), tree_position->GetAnchor());
   tree_position = tree_position->CreateNextLeafTreePosition();
   EXPECT_TRUE(tree_position->IsTreePosition());
-  EXPECT_EQ(inside_iframe_node, tree_position->GetAnchor());
+  EXPECT_EQ(inside_iframe_node->node(), tree_position->GetAnchor());
   tree_position = tree_position->CreateNextLeafTreePosition();
   EXPECT_TRUE(tree_position->IsTreePosition());
-  EXPECT_EQ(after_iframe_node, tree_position->GetAnchor());
+  EXPECT_EQ(after_iframe_node->node(), tree_position->GetAnchor());
   tree_position = tree_position->CreateNextLeafTreePosition();
   EXPECT_TRUE(tree_position->IsNullPosition());
 
   // Traverse the leaves of the AXTree backwards.
-  tree_position = after_iframe_node->CreatePositionAt(0)
+  tree_position = after_iframe_node->CreateTextPositionAt(0)
                       ->CreatePositionAtEndOfAnchor()
                       ->AsLeafTreePosition();
   EXPECT_TRUE(tree_position->IsTreePosition());
-  EXPECT_EQ(after_iframe_node, tree_position->GetAnchor());
+  EXPECT_EQ(after_iframe_node->node(), tree_position->GetAnchor());
   tree_position = tree_position->CreatePreviousLeafTreePosition();
   EXPECT_TRUE(tree_position->IsTreePosition());
-  EXPECT_EQ(inside_iframe_node, tree_position->GetAnchor());
+  EXPECT_EQ(inside_iframe_node->node(), tree_position->GetAnchor());
   tree_position = tree_position->CreatePreviousLeafTreePosition();
   EXPECT_TRUE(tree_position->IsTreePosition());
-  EXPECT_EQ(before_iframe_node, tree_position->GetAnchor());
+  EXPECT_EQ(before_iframe_node->node(), tree_position->GetAnchor());
   tree_position = tree_position->CreatePreviousLeafTreePosition();
   EXPECT_TRUE(tree_position->IsNullPosition());
 }

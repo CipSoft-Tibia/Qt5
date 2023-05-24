@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qglobal.h"
 
@@ -50,8 +14,6 @@
 #include <QtWidgets/qstyleoption.h>
 #include <QtWidgets/QStyleOptionTitleBar>
 #include <QtWidgets/QGraphicsSceneMouseEvent>
-
-#include <private/qmemory_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -121,7 +83,7 @@ QGraphicsWidgetPrivate::~QGraphicsWidgetPrivate()
 void QGraphicsWidgetPrivate::ensureMargins() const
 {
     if (!margins)
-        margins = qt_make_unique<QMarginsF>();
+        margins = std::make_unique<QMarginsF>();
 }
 
 /*!
@@ -133,7 +95,7 @@ void QGraphicsWidgetPrivate::ensureMargins() const
 void QGraphicsWidgetPrivate::ensureWindowFrameMargins() const
 {
     if (!windowFrameMargins)
-        windowFrameMargins = qt_make_unique<QMarginsF>();
+        windowFrameMargins = std::make_unique<QMarginsF>();
 }
 
 /*!
@@ -145,12 +107,12 @@ void QGraphicsWidgetPrivate::ensureWindowFrameMargins() const
 void QGraphicsWidgetPrivate::ensureWindowData()
 {
     if (!windowData)
-        windowData = qt_make_unique<WindowData>();
+        windowData = std::make_unique<WindowData>();
 }
 
 void QGraphicsWidgetPrivate::setPalette_helper(const QPalette &palette)
 {
-    if (this->palette == palette && this->palette.resolve() == palette.resolve())
+    if (this->palette == palette && this->palette.resolveMask() == palette.resolveMask())
         return;
     updatePalette(palette);
 }
@@ -172,7 +134,7 @@ void QGraphicsWidgetPrivate::updatePalette(const QPalette &palette)
     // Calculate new mask.
     if (q->isWindow() && !q->testAttribute(Qt::WA_WindowPropagation))
         inheritedPaletteResolveMask = 0;
-    int mask = palette.resolve() | inheritedPaletteResolveMask;
+    int mask = palette.resolveMask() | inheritedPaletteResolveMask;
 
     // Propagate to children.
     for (int i = 0; i < children.size(); ++i) {
@@ -239,13 +201,13 @@ QPalette QGraphicsWidgetPrivate::naturalWidgetPalette() const
     } else if (scene) {
         palette = scene->palette();
     }
-    palette.resolve(0);
+    palette.setResolveMask(0);
     return palette;
 }
 
 void QGraphicsWidgetPrivate::setFont_helper(const QFont &font)
 {
-    if (this->font == font && this->font.resolve() == font.resolve())
+    if (this->font == font && this->font.resolveMask() == font.resolveMask())
         return;
     updateFont(font);
 }
@@ -270,7 +232,7 @@ void QGraphicsWidgetPrivate::updateFont(const QFont &font)
     // Calculate new mask.
     if (q->isWindow() && !q->testAttribute(Qt::WA_WindowPropagation))
         inheritedFontResolveMask = 0;
-    int mask = font.resolve() | inheritedFontResolveMask;
+    int mask = font.resolveMask() | inheritedFontResolveMask;
 
     // Propagate to children.
     for (int i = 0; i < children.size(); ++i) {
@@ -300,7 +262,7 @@ QFont QGraphicsWidgetPrivate::naturalWidgetFont() const
     } else if (scene) {
         naturalFont = scene->font();
     }
-    naturalFont.resolve(0);
+    naturalFont.setResolveMask(0);
     return naturalFont;
 }
 
@@ -786,7 +748,8 @@ void QGraphicsWidgetPrivate::fixFocusChainBeforeReparenting(QGraphicsWidget *new
 
     // detach from current focus chain; skip this widget subtree.
     focusBefore->d_func()->focusNext = focusAfter;
-    focusAfter->d_func()->focusPrev = focusBefore;
+    if (focusAfter)
+        focusAfter->d_func()->focusPrev = focusBefore;
 
     if (newParent) {
         // attach to new parent's focus chain as the last element
@@ -802,7 +765,8 @@ void QGraphicsWidgetPrivate::fixFocusChainBeforeReparenting(QGraphicsWidget *new
 
         newFocusLast->d_func()->focusNext = q;
         focusLast->d_func()->focusNext = newFocusAfter;
-        newFocusAfter->d_func()->focusPrev = focusLast;
+        if (newFocusAfter)
+            newFocusAfter->d_func()->focusPrev = focusLast;
         focusPrev = newFocusLast;
     } else {
         // no new parent, so just link up our own prev->last widgets.

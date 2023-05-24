@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,6 @@
 #define CC_INPUT_SCROLL_STATE_DATA_H_
 
 #include <stdint.h>
-
-#include <list>
 
 #include "cc/cc_export.h"
 #include "cc/trees/property_tree.h"
@@ -19,6 +17,7 @@ class CC_EXPORT ScrollStateData {
  public:
   ScrollStateData();
   ScrollStateData(const ScrollStateData& other);
+  ScrollStateData& operator=(const ScrollStateData& other);
 
   // Scroll delta in viewport coordinates (DIP).
   double delta_x;
@@ -47,6 +46,8 @@ class CC_EXPORT ScrollStateData {
   // True if the user interacts directly with the display, e.g., via
   // touch.
   bool is_direct_manipulation;
+  // True if the scroll is the result of a scrollbar interaction.
+  bool is_scrollbar_interaction;
 
   // Granularity units for the scroll delta.
   ui::ScrollGranularity delta_granularity;

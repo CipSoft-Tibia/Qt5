@@ -1,17 +1,20 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "weblayer/browser/signin_url_loader_throttle.h"
 
-#include "base/task/post_task.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/signin/core/browser/signin_header_helper.h"
 #include "components/signin/public/base/account_consistency_method.h"
+#include "components/signin/public/identity_manager/tribool.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "net/base/url_util.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
 #include "weblayer/browser/cookie_settings_factory.h"
 #include "weblayer/browser/tab_impl.h"
@@ -47,8 +50,7 @@ void ProcessMirrorHeader(content::WebContents::Getter web_contents_getter,
 void MaybeAddQueryParams(GURL* url) {
   // Add manage=true to query parameters for sign out URLs to make sure we
   // receive the Mirror response headers instead of the normal sign out page.
-  if (gaia::IsGaiaSignonRealm(url->GetOrigin()) &&
-      url->path_piece() == kSignOutPath) {
+  if (gaia::HasGaiaSchemeHostPort(*url) && url->path_piece() == kSignOutPath) {
     *url = net::AppendOrReplaceQueryParameter(*url, "manage", "true");
   }
 }
@@ -141,13 +143,17 @@ void SigninURLLoaderThrottle::ProcessRequest(
   // Disable incognito and adding accounts for now. This shouldn't matter in
   // practice though since we are skipping the /SignOutOptions page completely
   // with the manage=true param.
+  //
+  // TODO(crbug.com/1134042): Check whether the child account status should also
+  // be sent in the Mirror request header from WebLayer.
   signin::AppendOrRemoveMirrorRequestHeader(
       &request_adapter, new_url, delegate->GetGaiaId(),
+      /*is_child_account=*/signin::Tribool::kUnknown,
       signin::AccountConsistencyMethod::kMirror,
       CookieSettingsFactory::GetForBrowserContext(browser_context_).get(),
       signin::PROFILE_MODE_INCOGNITO_DISABLED |
           signin::PROFILE_MODE_ADD_ACCOUNT_DISABLED,
-      kWebLayerMirrorHeaderSource, true /* force_account_consistency */);
+      kWebLayerMirrorHeaderSource, /*force_account_consistency=*/true);
 
   original_headers->MergeFrom(*modified_headers);
   for (const std::string& name : *headers_to_remove)
@@ -156,7 +162,7 @@ void SigninURLLoaderThrottle::ProcessRequest(
 
 void SigninURLLoaderThrottle::ProcessResponse(
     const net::HttpResponseHeaders* headers) {
-  if (!gaia::IsGaiaSignonRealm(request_url_.GetOrigin()) || !is_main_frame_ ||
+  if (!gaia::HasGaiaSchemeHostPort(request_url_) || !is_main_frame_ ||
       !headers) {
     return;
   }
@@ -184,8 +190,8 @@ void SigninURLLoaderThrottle::ProcessResponse(
 
   // Post a task even if we are already on the UI thread to avoid making any
   // requests while processing a throttle event.
-  base::PostTask(
-      FROM_HERE, {content::BrowserThread::UI},
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
       base::BindOnce(&ProcessMirrorHeader, web_contents_getter_, params));
 }
 

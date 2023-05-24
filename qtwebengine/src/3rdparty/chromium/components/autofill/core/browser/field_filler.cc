@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,8 @@
 #include "base/feature_list.h"
 #include "base/i18n/case_conversion.h"
 #include "base/i18n/string_search.h"
+#include "base/ranges/algorithm.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
@@ -19,16 +21,18 @@
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/data_model/autofill_data_model.h"
-#include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/data_model/data_model_utils.h"
 #include "components/autofill/core/browser/data_model/phone_number.h"
 #include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/geo/alternative_state_name_map.h"
 #include "components/autofill/core/browser/geo/autofill_country.h"
 #include "components/autofill/core/browser/geo/country_names.h"
 #include "components/autofill/core/browser/geo/state_names.h"
+#include "components/autofill/core/browser/proto/states.pb.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_l10n_util.h"
+#include "components/autofill/core/common/autofill_regexes.h"
 #include "components/autofill/core/common/autofill_util.h"
 #include "components/strings/grit/components_strings.h"
 #include "third_party/libaddressinput/src/cpp/include/libaddressinput/address_data.h"
@@ -45,29 +49,28 @@ namespace {
 // Returns true if the value was successfully set, meaning |value| was found in
 // the list of select options in |field|. Optionally, the caller may pass
 // |best_match_index| which will be set to the index of the best match.
-bool SetSelectControlValue(const base::string16& value,
+bool SetSelectControlValue(const std::u16string& value,
                            FormFieldData* field,
                            size_t* best_match_index,
                            std::string* failure_to_fill) {
   l10n::CaseInsensitiveCompare compare;
 
-  DCHECK_EQ(field->option_values.size(), field->option_contents.size());
-  base::string16 best_match;
-  for (size_t i = 0; i < field->option_values.size(); ++i) {
-    if (value == field->option_values[i] ||
-        value == field->option_contents[i]) {
+  std::u16string best_match;
+  for (size_t i = 0; i < field->options.size(); ++i) {
+    const SelectOption& option = field->options[i];
+    if (value == option.value || value == option.content) {
       // An exact match, use it.
-      best_match = field->option_values[i];
+      best_match = option.value;
       if (best_match_index)
         *best_match_index = i;
       break;
     }
 
-    if (compare.StringsEqual(value, field->option_values[i]) ||
-        compare.StringsEqual(value, field->option_contents[i])) {
+    if (compare.StringsEqual(value, option.value) ||
+        compare.StringsEqual(value, option.content)) {
       // A match, but not in the same case. Save it in case an exact match is
       // not found.
-      best_match = field->option_values[i];
+      best_match = option.value;
       if (best_match_index)
         *best_match_index = i;
     }
@@ -87,7 +90,7 @@ bool SetSelectControlValue(const base::string16& value,
 
 // Like SetSelectControlValue, but searches within the field values and options
 // for |value|. For example, "NC - North Carolina" would match "north carolina".
-bool SetSelectControlValueSubstringMatch(const base::string16& value,
+bool SetSelectControlValueSubstringMatch(const std::u16string& value,
                                          bool ignore_whitespace,
                                          FormFieldData* field,
                                          std::string* failure_to_fill) {
@@ -95,7 +98,7 @@ bool SetSelectControlValueSubstringMatch(const base::string16& value,
       value, ignore_whitespace, field);
 
   if (best_match >= 0) {
-    field->value = field->option_values[best_match];
+    field->value = field->options[best_match].value;
     return true;
   }
 
@@ -110,33 +113,21 @@ bool SetSelectControlValueSubstringMatch(const base::string16& value,
 // Like SetSelectControlValue, but searches within the field values and options
 // for |value|. First it tokenizes the options, then tries to match against
 // tokens. For example, "NC - North Carolina" would match "nc" but not "ca".
-bool SetSelectControlValueTokenMatch(const base::string16& value,
+bool SetSelectControlValueTokenMatch(const std::u16string& value,
                                      FormFieldData* field,
                                      std::string* failure_to_fill) {
-  std::vector<base::string16> tokenized;
-  DCHECK_EQ(field->option_values.size(), field->option_contents.size());
+  const auto tokenize = [](const std::u16string& str) {
+    return base::SplitString(str, base::kWhitespaceASCIIAs16,
+                             base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+  };
   l10n::CaseInsensitiveCompare compare;
-
-  for (size_t i = 0; i < field->option_values.size(); ++i) {
-    tokenized =
-        base::SplitString(field->option_values[i], base::kWhitespaceASCIIAs16,
-                          base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-    if (std::find_if(tokenized.begin(), tokenized.end(),
-                     [&compare, value](base::string16& rhs) {
-                       return compare.StringsEqual(value, rhs);
-                     }) != tokenized.end()) {
-      field->value = field->option_values[i];
-      return true;
-    }
-
-    tokenized =
-        base::SplitString(field->option_contents[i], base::kWhitespaceASCIIAs16,
-                          base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-    if (std::find_if(tokenized.begin(), tokenized.end(),
-                     [&compare, value](base::string16& rhs) {
-                       return compare.StringsEqual(value, rhs);
-                     }) != tokenized.end()) {
-      field->value = field->option_values[i];
+  const auto equals_value = [&](const std::u16string& rhs) {
+    return compare.StringsEqual(value, rhs);
+  };
+  for (const SelectOption& option : field->options) {
+    if (base::ranges::any_of(tokenize(option.value), equals_value) ||
+        base::ranges::any_of(tokenize(option.content), equals_value)) {
+      field->value = option.value;
       return true;
     }
   }
@@ -151,7 +142,7 @@ bool SetSelectControlValueTokenMatch(const base::string16& value,
 
 // Helper method to normalize the |admin_area| for the given |country_code|.
 // The value in |admin_area| will be overwritten.
-bool NormalizeAdminAreaForCountryCode(base::string16* admin_area,
+bool NormalizeAdminAreaForCountryCode(std::u16string* admin_area,
                                       const std::string& country_code,
                                       AddressNormalizer* address_normalizer) {
   DCHECK(address_normalizer);
@@ -171,7 +162,7 @@ bool NormalizeAdminAreaForCountryCode(base::string16* admin_area,
 
 // Will normalize |value| and the options in |field| with |address_normalizer|
 // (which should not be null), and return whether the fill was successful.
-bool SetNormalizedStateSelectControlValue(const base::string16& value,
+bool SetNormalizedStateSelectControlValue(const std::u16string& value,
                                           FormFieldData* field,
                                           const std::string& country_code,
                                           AddressNormalizer* address_normalizer,
@@ -182,7 +173,7 @@ bool SetNormalizedStateSelectControlValue(const base::string16& value,
   // the normalizer will fetch the rule for next time it's called.
   // TODO(crbug.com/788417): We should probably sanitize |value| before
   // normalizing.
-  base::string16 field_value = value;
+  std::u16string field_value = value;
   if (!NormalizeAdminAreaForCountryCode(&field_value, country_code,
                                         address_normalizer)) {
     if (failure_to_fill)
@@ -201,11 +192,11 @@ bool SetNormalizedStateSelectControlValue(const base::string16& value,
   // |field_copy| before normalizing.
   FormFieldData field_copy(*field);
   bool normalized = false;
-  for (size_t i = 0; i < field_copy.option_values.size(); ++i) {
+  for (SelectOption& option : field_copy.options) {
+    normalized |= NormalizeAdminAreaForCountryCode(&option.value, country_code,
+                                                   address_normalizer);
     normalized |= NormalizeAdminAreaForCountryCode(
-        &field_copy.option_values[i], country_code, address_normalizer);
-    normalized |= NormalizeAdminAreaForCountryCode(
-        &field_copy.option_contents[i], country_code, address_normalizer);
+        &option.content, country_code, address_normalizer);
   }
 
   // If at least some normalization happened on the field options, try filling
@@ -213,9 +204,9 @@ bool SetNormalizedStateSelectControlValue(const base::string16& value,
   size_t best_match_index = 0;
   if (normalized && SetSelectControlValue(field_value, &field_copy,
                                           &best_match_index, failure_to_fill)) {
-    // |best_match_index| now points to the option in |field->option_values|
+    // |best_match_index| now points to the option in |field->options|
     // that corresponds to our best match. Update |field| with the answer.
-    field->value = field->option_values[best_match_index];
+    field->value = field->options[best_match_index].value;
     return true;
   }
 
@@ -229,12 +220,11 @@ bool SetNormalizedStateSelectControlValue(const base::string16& value,
 bool FillNumericSelectControl(int value,
                               FormFieldData* field,
                               std::string* failure_to_fill) {
-  DCHECK_EQ(field->option_values.size(), field->option_contents.size());
-  for (size_t i = 0; i < field->option_values.size(); ++i) {
-    int option;
-    if ((StringToInt(field->option_values[i], &option) && option == value) ||
-        (StringToInt(field->option_contents[i], &option) && option == value)) {
-      field->value = field->option_values[i];
+  for (const SelectOption& option : field->options) {
+    int num;
+    if ((StringToInt(option.value, &num) && num == value) ||
+        (StringToInt(option.content, &num) && num == value)) {
+      field->value = option.value;
       return true;
     }
   }
@@ -246,40 +236,91 @@ bool FillNumericSelectControl(int value,
   return false;
 }
 
-bool FillStateSelectControl(const base::string16& value,
+bool FillStateSelectControl(const std::u16string& value,
                             FormFieldData* field,
                             const std::string& country_code,
                             AddressNormalizer* address_normalizer,
                             std::string* failure_to_fill) {
-  base::string16 full;
-  base::string16 abbreviation;
+  std::vector<std::u16string> abbreviations;
+  std::vector<std::u16string> full_names;
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillUseAlternativeStateNameMap)) {
+    // Fetch the corresponding entry from AlternativeStateNameMap.
+    absl::optional<StateEntry> state_entry =
+        AlternativeStateNameMap::GetInstance()->GetEntry(
+            AlternativeStateNameMap::CountryCode(country_code),
+            AlternativeStateNameMap::StateName(value));
+    if (state_entry) {
+      for (const auto& abbr : state_entry->abbreviations())
+        abbreviations.push_back(base::UTF8ToUTF16(abbr));
+      if (state_entry->has_canonical_name())
+        full_names.push_back(base::UTF8ToUTF16(state_entry->canonical_name()));
+      for (const auto& alternative_name : state_entry->alternative_names())
+        full_names.push_back(base::UTF8ToUTF16(alternative_name));
+    } else {
+      if (value.size() > 2) {
+        full_names.push_back(value);
+      } else {
+        abbreviations.push_back(value);
+      }
+    }
+  }
+
+  std::u16string state_name;
+  std::u16string state_abbreviation;
   // |abbreviation| will be empty for non-US countries.
-  state_names::GetNameAndAbbreviation(value, &full, &abbreviation);
+  state_names::GetNameAndAbbreviation(value, &state_name, &state_abbreviation);
+
+  if (!state_name.empty())
+    full_names.push_back(std::move(state_name));
+
+  if (!state_abbreviation.empty())
+    abbreviations.push_back(std::move(state_abbreviation));
+
+  // Remove `abbreviations` from the `full_names` as a precautionary measure in
+  // case the `AlternativeStateNameMap` contains bad data.
+  base::ranges::sort(abbreviations);
+  full_names.erase(
+      base::ranges::remove_if(full_names,
+                              [&](const std::u16string& full_name) {
+                                return base::ranges::binary_search(
+                                    abbreviations, full_name);
+                              }),
+      full_names.end());
 
   // Try an exact match of the abbreviation first.
-  if (!abbreviation.empty() &&
-      SetSelectControlValue(abbreviation, field, /*best_match_index=*/nullptr,
-                            failure_to_fill)) {
-    return true;
+  for (const auto& abbreviation : abbreviations) {
+    if (!abbreviation.empty() &&
+        SetSelectControlValue(abbreviation, field, /*best_match_index=*/nullptr,
+                              failure_to_fill)) {
+      return true;
+    }
   }
 
   // Try an exact match of the full name.
-  if (!full.empty() &&
-      SetSelectControlValue(full, field, /*best_match_index=*/nullptr,
-                            failure_to_fill)) {
-    return true;
+  for (const auto& full : full_names) {
+    if (!full.empty() &&
+        SetSelectControlValue(full, field, /*best_match_index=*/nullptr,
+                              failure_to_fill)) {
+      return true;
+    }
   }
 
   // Try an inexact match of the full name.
-  if (!full.empty() && SetSelectControlValueSubstringMatch(full, false, field,
-                                                           failure_to_fill)) {
-    return true;
+  for (const auto& full : full_names) {
+    if (!full.empty() && SetSelectControlValueSubstringMatch(full, false, field,
+                                                             failure_to_fill)) {
+      return true;
+    }
   }
 
   // Try an inexact match of the abbreviation name.
-  if (!abbreviation.empty() &&
-      SetSelectControlValueTokenMatch(abbreviation, field, failure_to_fill)) {
-    return true;
+  for (const auto& abbreviation : abbreviations) {
+    if (!abbreviation.empty() &&
+        SetSelectControlValueTokenMatch(abbreviation, field, failure_to_fill)) {
+      return true;
+    }
   }
 
   // Try to match a normalized |value| of the state and the |field| options.
@@ -295,7 +336,7 @@ bool FillStateSelectControl(const base::string16& value,
   return false;
 }
 
-bool FillCountrySelectControl(const base::string16& value,
+bool FillCountrySelectControl(const std::u16string& value,
                               FormFieldData* field_data,
                               std::string* failure_to_fill) {
   std::string country_code = CountryNames::GetInstance()->GetCountryCode(value);
@@ -305,16 +346,14 @@ bool FillCountrySelectControl(const base::string16& value,
     return false;
   }
 
-  DCHECK_EQ(field_data->option_values.size(),
-            field_data->option_contents.size());
-  for (size_t i = 0; i < field_data->option_values.size(); ++i) {
+  for (const SelectOption& option : field_data->options) {
     // Canonicalize each <option> value to a country code, and compare to the
     // target country code.
-    base::string16 value = field_data->option_values[i];
-    base::string16 contents = field_data->option_contents[i];
-    if (country_code == CountryNames::GetInstance()->GetCountryCode(value) ||
-        country_code == CountryNames::GetInstance()->GetCountryCode(contents)) {
-      field_data->value = value;
+    if (country_code ==
+            CountryNames::GetInstance()->GetCountryCode(option.value) ||
+        country_code ==
+            CountryNames::GetInstance()->GetCountryCode(option.content)) {
+      field_data->value = option.value;
       return true;
     }
   }
@@ -329,7 +368,7 @@ bool FillCountrySelectControl(const base::string16& value,
 // Attempt to fill the user's expiration month |value| inside the <select>
 // |field|. Since |value| is well defined but the website's |field| option
 // values may not be, some heuristics are run to cover all observed cases.
-bool FillExpirationMonthSelectControl(const base::string16& value,
+bool FillExpirationMonthSelectControl(const std::u16string& value,
                                       const std::string& app_locale,
                                       FormFieldData* field,
                                       std::string* failure_to_fill) {
@@ -343,16 +382,16 @@ bool FillExpirationMonthSelectControl(const base::string16& value,
 
   // Trim the whitespace and specific prefixes used in AngularJS from the
   // select values before attempting to convert them to months.
-  std::vector<base::string16> trimmed_values(field->option_values.size());
-  const base::string16 kNumberPrefix = ASCIIToUTF16("number:");
-  const base::string16 kStringPrefix = ASCIIToUTF16("string:");
-  for (size_t i = 0; i < field->option_values.size(); ++i) {
-    base::TrimWhitespace(field->option_values[i], base::TRIM_ALL,
+  std::vector<std::u16string> trimmed_values(field->options.size());
+  const std::u16string kNumberPrefix = u"number:";
+  const std::u16string kStringPrefix = u"string:";
+  for (size_t i = 0; i < field->options.size(); ++i) {
+    base::TrimWhitespace(field->options[i].value, base::TRIM_ALL,
                          &trimmed_values[i]);
     base::ReplaceFirstSubstringAfterOffset(&trimmed_values[i], 0, kNumberPrefix,
-                                           ASCIIToUTF16(""));
+                                           u"");
     base::ReplaceFirstSubstringAfterOffset(&trimmed_values[i], 0, kStringPrefix,
-                                           ASCIIToUTF16(""));
+                                           u"");
   }
 
   if (trimmed_values.size() == 12) {
@@ -379,6 +418,7 @@ bool FillExpirationMonthSelectControl(const base::string16& value,
   }
 
   // Attempt to match the user's |month| with the field's value attributes.
+  DCHECK_EQ(trimmed_values.size(), field->options.size());
   for (size_t i = 0; i < trimmed_values.size(); ++i) {
     int converted_value = 0;
     // We use the trimmed value to match with |month|, but the original select
@@ -386,18 +426,18 @@ bool FillExpirationMonthSelectControl(const base::string16& value,
     if (data_util::ParseExpirationMonth(trimmed_values[i], app_locale,
                                         &converted_value) &&
         month == converted_value) {
-      field->value = field->option_values[i];
+      field->value = field->options[i].value;
       return true;
     }
   }
 
   // Attempt to match with each of the options' content.
-  for (size_t i = 0; i < field->option_contents.size(); ++i) {
+  for (const SelectOption& option : field->options) {
     int converted_contents = 0;
-    if (data_util::ParseExpirationMonth(field->option_contents[i], app_locale,
+    if (data_util::ParseExpirationMonth(option.content, app_locale,
                                         &converted_contents) &&
         month == converted_contents) {
-      field->value = field->option_values[i];
+      field->value = option.value;
       return true;
     }
   }
@@ -406,7 +446,7 @@ bool FillExpirationMonthSelectControl(const base::string16& value,
 }
 
 // Returns true if the last two digits in |year| match those in |str|.
-bool LastTwoDigitsMatch(const base::string16& year, const base::string16& str) {
+bool LastTwoDigitsMatch(const std::u16string& year, const std::u16string& str) {
   int year_int;
   int str_int;
   if (!StringToInt(year, &year_int) || !StringToInt(str, &str_int))
@@ -417,7 +457,7 @@ bool LastTwoDigitsMatch(const base::string16& year, const base::string16& str) {
 
 // Try to fill a year |value| into the given |field| by comparing the last two
 // digits of the year to the field's options.
-bool FillYearSelectControl(const base::string16& value,
+bool FillYearSelectControl(const std::u16string& value,
                            FormFieldData* field,
                            std::string* failure_to_fill) {
   if (value.size() != 2U && value.size() != 4U) {
@@ -426,11 +466,10 @@ bool FillYearSelectControl(const base::string16& value,
     return false;
   }
 
-  DCHECK_EQ(field->option_values.size(), field->option_contents.size());
-  for (size_t i = 0; i < field->option_values.size(); ++i) {
-    if (LastTwoDigitsMatch(value, field->option_values[i]) ||
-        LastTwoDigitsMatch(value, field->option_contents[i])) {
-      field->value = field->option_values[i];
+  for (const SelectOption& option : field->options) {
+    if (LastTwoDigitsMatch(value, option.value) ||
+        LastTwoDigitsMatch(value, option.content)) {
+      field->value = option.value;
       return true;
     }
   }
@@ -447,7 +486,7 @@ bool FillYearSelectControl(const base::string16& value,
 // given |field|. We ignore whitespace when filling credit card types to
 // allow for cases such as "Master card".
 
-bool FillCreditCardTypeSelectControl(const base::string16& value,
+bool FillCreditCardTypeSelectControl(const std::u16string& value,
                                      FormFieldData* field,
                                      std::string* failure_to_fill) {
   if (SetSelectControlValueSubstringMatch(value, /* ignore_whitespace= */ true,
@@ -456,7 +495,7 @@ bool FillCreditCardTypeSelectControl(const base::string16& value,
   }
   if (value == l10n_util::GetStringUTF16(IDS_AUTOFILL_CC_AMEX)) {
     // For American Express, also try filling as "AmEx".
-    return SetSelectControlValueSubstringMatch(ASCIIToUTF16("AmEx"),
+    return SetSelectControlValueSubstringMatch(u"AmEx",
                                                /* ignore_whitespace= */ true,
                                                field, failure_to_fill);
   }
@@ -466,58 +505,104 @@ bool FillCreditCardTypeSelectControl(const base::string16& value,
   return false;
 }
 
-// Set |field_data|'s value to |number|, or possibly an appropriate substring of
-// |number|.  The |field| specifies the type of the phone and whether this is a
-// phone prefix or suffix.
-void FillPhoneNumberField(const AutofillField& field,
-                          const base::string16& number,
-                          FormFieldData* field_data) {
-  field_data->value =
-      FieldFiller::GetPhoneNumberValue(field, number, *field_data);
+std::u16string TruncateCardNumberIfNecessary(const AutofillField& field,
+                                             const std::u16string& value) {
+  // Take the substring of the credit card number starting from the offset
+  // and ending at the field's max_length (or the entire string if
+  // max_length is 0).
+  // If the offset is greater than the length of the string, then the entire
+  // number should be returned;
+  if (field.credit_card_number_offset() < value.length()) {
+    return value.substr(
+        field.credit_card_number_offset(),
+        field.max_length > 0 ? field.max_length : std::u16string::npos);
+  }
+  return value;
 }
 
-// Set |field_data|'s value to |number|, or possibly an appropriate substring
-// of |number| for cases where credit card number splits across multiple HTML
-// form input fields.
-// The |field| specifies the |credit_card_number_offset_| to the substring
-// within credit card number.
-void FillCreditCardNumberField(const AutofillField& field,
-                               const base::string16& number,
-                               FormFieldData* field_data) {
-  base::string16 value = number;
+// Returns the appropriate credit card number from |credit_card|. Truncates the
+// credit card number to be split across HTML form input fields depending on if
+// 'field.credit_card_number_offset()' is less than the length of the credit
+// card number.
+std::u16string GetCreditCardNumberForInput(
+    const CreditCard& credit_card,
+    const AutofillField& field,
+    const std::string& app_locale,
+    mojom::RendererFormDataAction action) {
+  std::u16string value;
 
-  // |field|'s max_length truncates credit card number to fit within.
-  if (field.credit_card_number_offset() < number.length()) {
-    field_data->value = number.substr(
-        field.credit_card_number_offset(),
-        field.max_length > 0 ? field.max_length : base::string16::npos);
+  if (action == mojom::RendererFormDataAction::kPreview) {
+    // A single field is detected when the offset begins at 0 and the field's
+    // max_length can hold the entire obfuscated credit card number.
+    bool is_single_field =
+        (field.credit_card_number_offset() == 0 &&
+         (field.max_length == 0 ||
+          field.max_length >=
+              credit_card.ObfuscatedNumberWithVisibleLastFourDigits()
+                  .length()));
+
+    // If previewing a credit card number that needs to be split, pad the number
+    // to 16 digits rather than displaying a fancy string with RTL support. This
+    // also returns 16 digits if there is only one field and it cannot fit the
+    // longer version CC number.
+    value =
+        is_single_field
+            ? credit_card.ObfuscatedNumberWithVisibleLastFourDigits()
+            : credit_card
+                  .ObfuscatedNumberWithVisibleLastFourDigitsForSplitFields();
   } else {
-    // If the offset exceeds the length of the number, simply fill the whole
-    // number. By this, a wrongly detected second credit card number field
-    // before the actual field will not prevent the filling.
-    field_data->value = number;
+    value = credit_card.GetInfo(CREDIT_CARD_NUMBER, app_locale);
   }
+
+  // Check to truncate card number based on the field's credit card number
+  // offset and length of the credit card number.
+  return TruncateCardNumberIfNecessary(field, value);
+}
+
+// Returns the appropriate credit card number from |virtual_card|. Truncates the
+// credit card number to be split across HTML form input fields depending on if
+// 'field.credit_card_number_offset()' is less than the length of the credit
+// card number.
+std::u16string GetVirtualCardNumberForPreviewInput(
+    const CreditCard& virtual_card,
+    const AutofillField& field) {
+  std::u16string value =
+      l10n_util::GetStringUTF16(
+          IDS_AUTOFILL_VIRTUAL_CARD_SUGGESTION_OPTION_VALUE) +
+      u" " + virtual_card.CardIdentifierStringForAutofillDisplay();
+
+  // |field|'s max_length truncates the credit card number to fit within.
+  if (field.credit_card_number_offset() < value.length()) {
+    // A single field is detected when the offset begins at 0 and the field's
+    // max_length can hold the entire obfuscated credit card number.
+    bool is_single_field =
+        (field.credit_card_number_offset() == 0 &&
+         (field.max_length == 0 || field.max_length >= value.length()));
+
+    if (!is_single_field) {
+      value = virtual_card
+                  .ObfuscatedNumberWithVisibleLastFourDigitsForSplitFields();
+    }
+
+    // Check to truncate card number based on the field's credit card number
+    // offset and length of the credit card number.
+    return TruncateCardNumberIfNecessary(field, value);
+  }
+
+  return value;
 }
 
 // Fills in the select control |field| with |value|. If an exact match is not
 // found, falls back to alternate filling strategies based on the |type|.
 bool FillSelectControl(const AutofillType& type,
-                       const base::string16& value,
-                       FormFieldData* field,
-                       const AutofillDataModel& data_model,
+                       const std::u16string& value,
+                       absl::variant<const AutofillProfile*, const CreditCard*>
+                           profile_or_credit_card,
                        const std::string& app_locale,
+                       FormFieldData* field,
                        AddressNormalizer* address_normalizer,
                        std::string* failure_to_fill) {
   DCHECK_EQ("select-one", field->form_control_type);
-
-  // Guard against corrupted values passed over IPC.
-  if (field->option_values.size() != field->option_contents.size()) {
-    if (failure_to_fill) {
-      *failure_to_fill +=
-          "Corrupted values in options of select control element. ";
-    }
-    return false;
-  }
 
   ServerFieldType storable_type = type.GetStorableType();
 
@@ -534,9 +619,10 @@ bool FillSelectControl(const AutofillType& type,
 
   // If that fails, try specific fallbacks based on the field type.
   if (storable_type == ADDRESS_HOME_STATE) {
-    // Safe to cast the data model to AutofillProfile here.
+    DCHECK(absl::holds_alternative<const AutofillProfile*>(
+        profile_or_credit_card));
     const std::string country_code = data_util::GetCountryCodeWithFallback(
-        static_cast<const AutofillProfile&>(data_model), app_locale);
+        *absl::get<const AutofillProfile*>(profile_or_credit_card), app_locale);
     return FillStateSelectControl(value, field, country_code,
                                   address_normalizer, failure_to_fill);
   }
@@ -552,155 +638,230 @@ bool FillSelectControl(const AutofillType& type,
   return false;
 }
 
-// Fills in the month control |field| with the expiration date in |card|.
-void FillMonthControl(const CreditCard& card, FormFieldData* field) {
-  field->value = card.Expiration4DigitYearAsString() + ASCIIToUTF16("-") +
-                 card.Expiration2DigitMonthAsString();
+// Gets the appropriate expiration date from the |card| for a month control
+// field. (i.e. a <input type="month">)
+std::u16string GetExpirationForMonthControl(const CreditCard& card) {
+  return card.Expiration4DigitYearAsString() + u"-" +
+         card.Expiration2DigitMonthAsString();
 }
 
-// Fills |field| with the street address in |value|. Translates newlines into
+// Returns appropriate street address for |field|. Translates newlines into
 // equivalent separators when necessary, i.e. when filling a single-line field.
 // The separators depend on |address_language_code|.
-void FillStreetAddress(const base::string16& value,
-                       const std::string& address_language_code,
-                       FormFieldData* field) {
-  if (field->form_control_type == "textarea") {
-    field->value = value;
-    return;
-  }
+std::u16string GetStreetAddressForInput(
+    const std::u16string& address_value,
+    const std::string& address_language_code,
+    FormFieldData* field) {
+  if (field->form_control_type == "textarea")
+    return address_value;
 
   ::i18n::addressinput::AddressData address_data;
   address_data.language_code = address_language_code;
   address_data.address_line =
-      base::SplitString(base::UTF16ToUTF8(value), "\n", base::TRIM_WHITESPACE,
-                        base::SPLIT_WANT_ALL);
+      base::SplitString(base::UTF16ToUTF8(address_value), "\n",
+                        base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   std::string line;
   ::i18n::addressinput::GetStreetAddressLinesAsSingleLine(address_data, &line);
-  field->value = base::UTF8ToUTF16(line);
+  return base::UTF8ToUTF16(line);
 }
 
-// Returns whether the |field| was filled with the state in |value| or its
-// abbreviation. First looks if |value| fits directly in the field, then looks
-// if the abbreviation of |value| fits. Does not fill if neither |value| or its
-// abbreviation are too long for the field.
-bool FillStateText(const base::string16& value,
-                   FormFieldData* field,
-                   std::string* failure_to_fill) {
-  if (field->max_length == 0 || field->max_length >= value.size()) {
-    // Fill the state value directly.
-    field->value = value;
-    return true;
+// Returns appropriate state value that matches |field|.
+// First looks if |state_value| fits directly in the field, then looks if the
+// abbreviation of |state_value| fits in case the
+// |features::kAutofillUseAlternativeStateNameMap| is disabled.
+// If the |features::kAutofillUseAlternativeStateNameMap| is enabled, the
+// canonical state is checked if it fits in the field and at last the
+// abbreviations are tried. Does not return a state if neither |state_value| nor
+// the canonical state name nor its abbreviation fit into the field.
+std::u16string GetStateTextForInput(const std::u16string& state_value,
+                                    const std::string& country_code,
+                                    FormFieldData* field,
+                                    std::string* failure_to_fill) {
+  if (field->max_length == 0 || field->max_length >= state_value.size())
+    // Return the state value directly.
+    return state_value;
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillUseAlternativeStateNameMap)) {
+    absl::optional<StateEntry> state =
+        AlternativeStateNameMap::GetInstance()->GetEntry(
+            AlternativeStateNameMap::CountryCode(country_code),
+            AlternativeStateNameMap::StateName(state_value));
+    if (state) {
+      // Return the canonical state name if possible.
+      if (state->has_canonical_name() && !state->canonical_name().empty() &&
+          field->max_length >= state->canonical_name().size())
+        return base::UTF8ToUTF16(state->canonical_name());
+
+      // Return the abbreviation if possible.
+      for (const auto& abbr : state->abbreviations()) {
+        if (!abbr.empty() && field->max_length >= abbr.size())
+          return base::i18n::ToUpper(base::UTF8ToUTF16(abbr));
+      }
+    }
   }
-  // Fill with the state abbreviation.
-  base::string16 abbreviation;
-  state_names::GetNameAndAbbreviation(value, nullptr, &abbreviation);
-  if (!abbreviation.empty() && field->max_length >= abbreviation.size()) {
-    field->value = base::i18n::ToUpper(abbreviation);
-    return true;
-  }
+
+  // Return with the state abbreviation.
+  std::u16string abbreviation;
+  state_names::GetNameAndAbbreviation(state_value, nullptr, &abbreviation);
+  if (!abbreviation.empty() && field->max_length >= abbreviation.size())
+    return base::i18n::ToUpper(abbreviation);
+
   if (failure_to_fill)
     *failure_to_fill += "Could not fit raw state nor abbreviation. ";
-  return false;
+  return std::u16string();
 }
 
-// Fills the expiration year |value| into the |field|. Uses the |field_type|
-// and the |field|'s max_length attribute to determine if the |value| needs to
-// be truncated.
-void FillExpirationYearInput(base::string16 value,
-                             ServerFieldType field_type,
-                             FormFieldData* field) {
-  // If the |field_type| requires only 2 digits, keep only the last 2 digits of
-  // |value|.
-  if (field_type == CREDIT_CARD_EXP_2_DIGIT_YEAR && value.length() > 2)
-    value = value.substr(value.length() - 2, 2);
+// Returns the appropriate expiration year from |credit_card| for the field.
+// Uses the |field_type| and the |field|'s max_length attribute to
+// determine if the year needs to be truncated.
+std::u16string GetExpirationYearForInput(const CreditCard& credit_card,
+                                         ServerFieldType field_type,
+                                         const AutofillField& field) {
+  std::u16string value;
+  value = field_type == CREDIT_CARD_EXP_2_DIGIT_YEAR
+              ? credit_card.Expiration2DigitYearAsString()
+              : credit_card.Expiration4DigitYearAsString();
 
-  if (field->max_length == 0 || field->max_length >= value.size()) {
-    // No length restrictions, fill the year value directly.
-    field->value = value;
+  // In case the field's max_length is less than the length of the year, shorten
+  // the year to field.max_length.
+  if (field.max_length != 0 && field.max_length < value.length()) {
+    value = value.substr(value.length() - field.max_length, field.max_length);
+  }
+
+  return value;
+}
+
+// Returns the appropriate virtual card expiration year for the field. Uses the
+// |field_type| and the |field|'s max_length attribute to determine if the year
+// needs to be truncated.
+std::u16string GetExpirationYearForVirtualCardPreviewInput(
+    ServerFieldType storable_type,
+    const AutofillField& field) {
+  if (storable_type == CREDIT_CARD_EXP_2_DIGIT_YEAR &&
+      (field.max_length == 2 || field.max_length == 0)) {
+    return CreditCard::GetMidlineEllipsisDots(2);
+  } else if (storable_type == CREDIT_CARD_EXP_4_DIGIT_YEAR &&
+             (field.max_length == 4 || field.max_length == 0)) {
+    return CreditCard::GetMidlineEllipsisDots(4);
+  }
+
+  if (field.max_length > 4) {
+    return CreditCard::GetMidlineEllipsisDots(4);
   } else {
-    // Truncate the front of |value| to keep only the number of characters equal
-    // to the |field|'s max length.
-    field->value =
-        value.substr(value.length() - field->max_length, field->max_length);
+    return CreditCard::GetMidlineEllipsisDots(field.max_length);
   }
 }
 
-// Returns whether the expiration date |value| was filled into the |field|.
-// Uses the |field|'s max_length attribute to determine if the |value| needs to
-// be truncated. |value| should be a date formatted as either MM/YY or MM/YYYY.
-// If it isn't, the field doesn't get filled.
-bool FillExpirationDateInput(const base::string16& value,
-                             FormFieldData* field,
-                             std::string* failure_to_fill) {
-  const base::string16 kSeparator = ASCIIToUTF16("/");
-  // Autofill formats a combined date as month/year.
-  std::vector<base::string16> pieces = base::SplitString(
-      value, kSeparator, base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
-  if (pieces.size() != 2) {
-    if (failure_to_fill)
-      *failure_to_fill += "Could not split expiration into two pieces. ";
-    return false;
+// Returns the appropriate expiration date from |credit_card| for the field
+// based on the |field_type|. If the field contains a recognized date format
+// string, the function follows that format. Otherwise, it uses the |field|'s
+// max_length attribute to determine if the |value| needs to be truncated or
+// padded. Returns an empty string in case of a failure.
+std::u16string GetExpirationDateForInput(const CreditCard& credit_card,
+                                         const AutofillField& field,
+                                         ServerFieldType field_type,
+                                         std::string* failure_to_fill) {
+  const std::u16string kSeparator = u"/";
+  std::u16string month = credit_card.Expiration2DigitMonthAsString();
+  std::u16string two_digit_year = credit_card.Expiration2DigitYearAsString();
+  std::u16string four_digit_year = credit_card.Expiration4DigitYearAsString();
+
+  // Check whether we find one of the standard format descriptors like
+  // "mm/yy", "mm/yyyy", "mm / yy", "mm-yyyy", ... in one of the human
+  // readable labels. In that case, follow the specified pattern.
+  std::vector<std::u16string> groups;
+  static const char16_t kFormatRegEx[] = u"mm(\\s?[/-]?\\s?)?yy(yy)?";
+  //                                          ^^^^ opt white space
+  //                                              ^^^^^ opt separator
+  //                                                   ^^^ opt white space
+  //                                                           ^^^^^ 4 digit
+  //                                                                 year?
+  // TODO(crbug/1326244): We should use language specific regex.
+  if (MatchesRegex<kFormatRegEx>(field.placeholder, &groups) ||
+      MatchesRegex<kFormatRegEx>(field.label, &groups)) {
+    bool is_two_digit_year = groups[2].empty();
+    std::u16string expiration_candidate =
+        base::StrCat({month, groups[1],
+                      is_two_digit_year ? two_digit_year : four_digit_year});
+    if (field.max_length == 0 ||
+        expiration_candidate.size() <= field.max_length) {
+      return expiration_candidate;
+    }
+    // Try once more with a stripped version of the separator if the previous
+    // version did not fit.
+    expiration_candidate =
+        base::StrCat({month, base::TrimWhitespace(groups[1], base::TRIM_ALL),
+                      is_two_digit_year ? two_digit_year : four_digit_year});
+    if (field.max_length == 0 ||
+        expiration_candidate.size() <= field.max_length) {
+      return expiration_candidate;
+    }
   }
 
-  base::string16 month = pieces[0];
-  base::string16 year = pieces[1];
-  if (month.length() != 2 || (year.length() != 2 && year.length() != 4)) {
-    if (failure_to_fill)
-      *failure_to_fill += "Unexpected length of month or year to fill. ";
-    return false;
-  }
-
-  switch (field->max_length) {
+  switch (field.max_length) {
     case 1:
     case 2:
     case 3:
-      if (failure_to_fill)
-        *failure_to_fill += "Field to fill had a lenght of 1-3. ";
-      return false;
+      if (failure_to_fill) {
+        *failure_to_fill +=
+            "Field to fill must have a max length of at least 4. ";
+      }
+      return std::u16string();
     case 4:
       // Field likely expects MMYY
-      if (year.length() != 2) {
-        // Shorten year to 2 characters from 4
-        year = year.substr(2);
-      }
-
-      field->value = month + year;
-      break;
+      return month + two_digit_year;
     case 5:
       // Field likely expects MM/YY
-      if (year.length() != 2) {
-        // Shorten year to 2 characters
-        year = year.substr(2);
-        field->value = month + kSeparator + year;
-      } else {
-        field->value = value;
-      }
-      break;
+      return month + kSeparator + two_digit_year;
     case 6:
+      // Field likely expects MMYYYY
+      return month + four_digit_year;
     case 7:
-      if (year.length() != 4) {
-        // Will normalize 2-digit years to the 4-digit version.
-        year = ASCIIToUTF16("20") + year;
-      }
-
-      if (field->max_length == 6) {
-        // Field likely expects MMYYYY
-        field->value = month + year;
-      } else {
-        // Field likely expects MM/YYYY
-        field->value = month + kSeparator + year;
-      }
-      break;
+      // Field likely expects MM/YYYY
+      return month + kSeparator + four_digit_year;
     default:
       // Includes the case where max_length is not specified (0).
-      field->value = month + kSeparator + year;
+      return field_type == CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR
+                 ? month + kSeparator + two_digit_year
+                 : month + kSeparator + four_digit_year;
   }
-
-  return true;
 }
 
-base::string16 RemoveWhitespace(const base::string16& value) {
-  base::string16 stripped_value;
+// Returns the appropriate virtual_card expiration date from for the field based
+// on the |field|'s max_length. Returns an empty string in case of a failure.
+std::u16string GetExpirationDateForVirtualCardPreviewInput(
+    const AutofillField& field,
+    std::string* failure_to_fill) {
+  switch (field.max_length) {
+    case 1:
+    case 2:
+    case 3:
+      if (failure_to_fill) {
+        *failure_to_fill +=
+            "Field to fill must have a max length of at least 4. ";
+      }
+      return std::u16string();
+    case 4:
+      // Expects MMYY
+      return CreditCard::GetMidlineEllipsisDots(4);
+    case 5:
+      // Expects MM/YY
+      return CreditCard::GetMidlineEllipsisDots(2) + u"/" +
+             CreditCard::GetMidlineEllipsisDots(2);
+    case 6:
+      // Expects MMYYYY
+      return CreditCard::GetMidlineEllipsisDots(2) +
+             CreditCard::GetMidlineEllipsisDots(4);
+    default:
+      // Return MM/YYYY for default case
+      return CreditCard::GetMidlineEllipsisDots(2) + u"/" +
+             CreditCard::GetMidlineEllipsisDots(4);
+  }
+}
+
+std::u16string RemoveWhitespace(const std::u16string& value) {
+  std::u16string stripped_value;
   base::RemoveChars(value, base::kWhitespaceUTF16, &stripped_value);
   return stripped_value;
 }
@@ -709,29 +870,134 @@ base::string16 RemoveWhitespace(const base::string16& value) {
 // |country_code|.
 // If the exact match is not found, extracts the digits (ignoring leading '00'
 // or '+') from each option and compares them with the |country_code|.
-void FillPhoneCountryCodeSelectControl(const base::string16& country_code,
-                                       FormFieldData* field,
-                                       std::string* failure_to_fill) {
+std::u16string GetPhoneCountryCodeSelectControlForInput(
+    const std::u16string& country_code,
+    FormFieldData* field,
+    std::string* failure_to_fill) {
   if (country_code.empty())
-    return;
+    return std::u16string();
 
   // Find the option that exactly matches the |country_code|.
   if (SetSelectControlValue(country_code, field, /*best_match_index=*/nullptr,
-                            failure_to_fill))
-    return;
+                            failure_to_fill)) {
+    return country_code;
+  }
 
-  for (size_t i = 0; i < field->option_contents.size(); i++) {
-    base::string16 cc_candidate_in_value =
+  for (const SelectOption& option : field->options) {
+    std::u16string cc_candidate_in_value =
+        data_util::FindPossiblePhoneCountryCode(RemoveWhitespace(option.value));
+    std::u16string cc_candidate_in_content =
         data_util::FindPossiblePhoneCountryCode(
-            RemoveWhitespace(field->option_values[i]));
-    base::string16 cc_candidate_in_content =
-        data_util::FindPossiblePhoneCountryCode(
-            RemoveWhitespace(field->option_contents[i]));
+            RemoveWhitespace(option.content));
     if (cc_candidate_in_value == country_code ||
         cc_candidate_in_content == country_code) {
-      field->value = field->option_values[i];
-      return;
+      return option.value;
     }
+  }
+  return std::u16string();
+}
+
+// Returns the appropriate |credit_card| value based on |storable_type| to fill
+// into |field|.
+std::u16string GetValueForCreditCard(const CreditCard& credit_card,
+                                     const std::u16string& cvc,
+                                     const std::string& app_locale,
+                                     mojom::RendererFormDataAction action,
+                                     const AutofillField& field,
+                                     std::string* failure_to_fill) {
+  ServerFieldType storable_type = field.Type().GetStorableType();
+
+  if (field.form_control_type == "month") {
+    return GetExpirationForMonthControl(credit_card);
+  } else {
+    switch (storable_type) {
+      case CREDIT_CARD_VERIFICATION_CODE:
+        return cvc;
+      case CREDIT_CARD_NUMBER:
+        return GetCreditCardNumberForInput(credit_card, field, app_locale,
+                                           action);
+      case CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR:
+      case CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR:
+        return GetExpirationDateForInput(credit_card, field, storable_type,
+                                         failure_to_fill);
+      case CREDIT_CARD_EXP_2_DIGIT_YEAR:
+      case CREDIT_CARD_EXP_4_DIGIT_YEAR:
+        return GetExpirationYearForInput(credit_card, storable_type, field);
+      default:
+        // All other cases handled here.
+        return credit_card.GetInfo(storable_type, app_locale);
+    }
+  }
+}
+
+// Returns the appropriate |profile| value based on |type| to fill
+// into |field|.
+std::u16string GetValueForProfile(const AutofillProfile& profile,
+                                  const std::string& app_locale,
+                                  const AutofillField& field,
+                                  FormFieldData* field_data,
+                                  std::string* failure_to_fill) {
+  const AutofillType type = field.Type();
+  std::u16string value = profile.GetInfo(type, app_locale);
+
+  if (type.group() == FieldTypeGroup::kPhoneHome) {
+    // If the `field_data` is a selection box and having the type
+    // `PHONE_HOME_COUNTRY_CODE`, call
+    // `GetPhoneCountryCodeSelectControlForInput`.
+    if (field_data->form_control_type == "select-one" &&
+        type.GetStorableType() == PHONE_HOME_COUNTRY_CODE) {
+      value = GetPhoneCountryCodeSelectControlForInput(value, field_data,
+                                                       failure_to_fill);
+    } else {
+      const std::u16string phone_home_city_and_number =
+          profile.GetInfo(PHONE_HOME_CITY_AND_NUMBER, app_locale);
+      value = FieldFiller::GetPhoneNumberValueForInput(
+          field, value, phone_home_city_and_number, *field_data);
+    }
+  } else if (type.GetStorableType() == ADDRESS_HOME_STREET_ADDRESS) {
+    const std::string& profile_language_code = profile.language_code();
+    value = GetStreetAddressForInput(value, profile_language_code, field_data);
+  } else if (type.GetStorableType() == ADDRESS_HOME_STATE) {
+    const std::string& country_code =
+        data_util::GetCountryCodeWithFallback(profile, app_locale);
+    value =
+        GetStateTextForInput(value, country_code, field_data, failure_to_fill);
+  }
+  return value;
+}
+
+// Returns the appropriate |virtual_card| value based on |storable_type| to
+// preview into |field|.
+std::u16string GetValueForVirtualCardPreview(const CreditCard& virtual_card,
+                                             const std::string& app_locale,
+                                             const AutofillField& field,
+                                             std::string* failure_to_fill) {
+  DCHECK_EQ(virtual_card.record_type(), CreditCard::VIRTUAL_CARD);
+
+  ServerFieldType storable_type = field.Type().GetStorableType();
+
+  switch (storable_type) {
+    case CREDIT_CARD_VERIFICATION_CODE:
+      // For preview virtual card CVC, return three dots unless for American
+      // Express, which uses 4-digit CVCs.
+      return virtual_card.network() == kAmericanExpressCard
+                 ? CreditCard::GetMidlineEllipsisDots(4)
+                 : CreditCard::GetMidlineEllipsisDots(3);
+    case CREDIT_CARD_NUMBER:
+      return GetVirtualCardNumberForPreviewInput(virtual_card, field);
+    case CREDIT_CARD_EXP_MONTH:
+      // Expects MM
+      return CreditCard::GetMidlineEllipsisDots(2);
+    case CREDIT_CARD_EXP_2_DIGIT_YEAR:
+    case CREDIT_CARD_EXP_4_DIGIT_YEAR:
+      return GetExpirationYearForVirtualCardPreviewInput(storable_type, field);
+    case CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR:
+    case CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR:
+      return GetExpirationDateForVirtualCardPreviewInput(field,
+                                                         failure_to_fill);
+    default:
+      // All other cases handled here.
+      return virtual_card.GetInfo(storable_type, app_locale);
   }
 }
 
@@ -743,32 +1009,63 @@ FieldFiller::FieldFiller(const std::string& app_locale,
 
 FieldFiller::~FieldFiller() {}
 
-bool FieldFiller::FillFormField(const AutofillField& field,
-                                const AutofillDataModel& data_model,
-                                FormFieldData* field_data,
-                                const base::string16& cvc,
-                                std::string* failure_to_fill) {
+std::u16string FieldFiller::GetValueForFilling(
+    const AutofillField& field,
+    absl::variant<const AutofillProfile*, const CreditCard*>
+        profile_or_credit_card,
+    FormFieldData* field_data,
+    const std::u16string& cvc,
+    mojom::RendererFormDataAction action,
+    std::string* failure_to_fill) {
+  std::u16string value;
+  DCHECK(field_data);
+
+  if (absl::holds_alternative<const CreditCard*>(profile_or_credit_card)) {
+    const CreditCard* credit_card =
+        absl::get<const CreditCard*>(profile_or_credit_card);
+
+    if (credit_card->record_type() == CreditCard::VIRTUAL_CARD &&
+        action == mojom::RendererFormDataAction::kPreview) {
+      value = GetValueForVirtualCardPreview(*credit_card, app_locale_, field,
+                                            failure_to_fill);
+    } else {
+      value = GetValueForCreditCard(*credit_card, cvc, app_locale_, action,
+                                    field, failure_to_fill);
+    }
+  }
+
+  // Grab AutofillProfile data.
+  else {
+    DCHECK(absl::holds_alternative<const AutofillProfile*>(
+        profile_or_credit_card));
+    const AutofillProfile* profile =
+        absl::get<const AutofillProfile*>(profile_or_credit_card);
+
+    value = GetValueForProfile(*profile, app_locale_, field, field_data,
+                               failure_to_fill);
+  }
+
+  return value;
+}
+
+bool FieldFiller::FillFormField(
+    const AutofillField& field,
+    absl::variant<const AutofillProfile*, const CreditCard*>
+        profile_or_credit_card,
+    const std::map<FieldGlobalId, std::u16string>& forced_fill_values,
+    FormFieldData* field_data,
+    const std::u16string& cvc,
+    mojom::RendererFormDataAction action,
+    std::string* failure_to_fill) {
   const AutofillType type = field.Type();
 
-  // Don't fill if autocomplete=off is set on |field| on desktop for non credit
-  // card related fields.
-  if (!base::FeatureList::IsEnabled(features::kAutofillAlwaysFillAddresses) &&
-      !field.should_autocomplete && IsDesktopPlatform() &&
-      (type.group() != CREDIT_CARD)) {
-    if (failure_to_fill)
-      *failure_to_fill += "autocomplete=off. ";
-    return false;
-  }
-
-  if (data_model.ShouldSkipFillingOrSuggesting(type.GetStorableType())) {
-    if (failure_to_fill)
-      *failure_to_fill += "ShouldSkipFillingOrSuggesting() returned true. ";
-    return false;
-  }
-
-  base::string16 value = data_model.GetInfo(type, app_locale_);
-  if (type.GetStorableType() == CREDIT_CARD_VERIFICATION_CODE)
-    value = cvc;
+  auto it = forced_fill_values.find(field.global_id());
+  bool value_is_an_override = it != forced_fill_values.end();
+  std::u16string value =
+      value_is_an_override
+          ? it->second
+          : GetValueForFilling(field, profile_or_credit_card, field_data, cvc,
+                               action, failure_to_fill);
 
   // Do not attempt to fill empty values as it would skew the metrics.
   if (value.empty()) {
@@ -776,93 +1073,38 @@ bool FieldFiller::FillFormField(const AutofillField& field,
       *failure_to_fill += "No value to fill available. ";
     return false;
   }
-
-  if (type.group() == PHONE_HOME) {
-    // If the |field_data| is a selection box and having the type
-    // |PHONE_HOME_COUNTRY_CODE|, call |FillPhoneCountryCodeSelectControl|.
-    if (base::FeatureList::IsEnabled(
-            features::kAutofillEnableAugmentedPhoneCountryCode) &&
-        field_data->form_control_type == "select-one" &&
-        type.GetStorableType() == PHONE_HOME_COUNTRY_CODE) {
-      FillPhoneCountryCodeSelectControl(value, field_data, failure_to_fill);
-    } else {
-      FillPhoneNumberField(field, value, field_data);
-    }
-    return true;
+  if (field.form_control_type == "select-one") {
+    return FillSelectControl(type, value, profile_or_credit_card, app_locale_,
+                             field_data, address_normalizer_, failure_to_fill);
   }
-  if (field_data->form_control_type == "select-one") {
-    return FillSelectControl(type, value, field_data, data_model, app_locale_,
-                             address_normalizer_, failure_to_fill);
-  }
-  if (field_data->form_control_type == "month") {
-    // Safe to cast to CreditCard here because month control type only applying
-    // to credit card expirations.
-    FillMonthControl(static_cast<const CreditCard&>(data_model), field_data);
-    return true;
-  }
-  if (type.GetStorableType() == ADDRESS_HOME_STREET_ADDRESS) {
-    // Safe to cast to AutofillProfile here because of the address |type|.
-    const std::string profile_language_code =
-        static_cast<const AutofillProfile&>(data_model).language_code();
-    FillStreetAddress(value, profile_language_code, field_data);
-    return true;
-  }
-  if (type.GetStorableType() == CREDIT_CARD_NUMBER) {
-    FillCreditCardNumberField(field, value, field_data);
-    return true;
-  }
-  if (type.GetStorableType() == ADDRESS_HOME_STATE)
-    return FillStateText(value, field_data, failure_to_fill);
-  if (field_data->form_control_type == "text" &&
-      (type.GetStorableType() == CREDIT_CARD_EXP_2_DIGIT_YEAR ||
-       type.GetStorableType() == CREDIT_CARD_EXP_4_DIGIT_YEAR)) {
-    FillExpirationYearInput(value, type.GetStorableType(), field_data);
-    return true;
-  }
-  if (field_data->form_control_type == "text" &&
-      (type.GetStorableType() == CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR ||
-       type.GetStorableType() == CREDIT_CARD_EXP_DATE_4_DIGIT_YEAR)) {
-    return FillExpirationDateInput(value, field_data, failure_to_fill);
-  }
-
   field_data->value = value;
+  if (value_is_an_override)
+    field_data->force_override = true;
   return true;
 }
 
 // TODO(crbug.com/581514): Add support for filling only the prefix/suffix for
 // phone numbers with 10 or 11 digits.
 // static
-base::string16 FieldFiller::GetPhoneNumberValue(
+std::u16string FieldFiller::GetPhoneNumberValueForInput(
     const AutofillField& field,
-    const base::string16& number,
+    const std::u16string& number,
+    const std::u16string& phone_home_city_and_number,
     const FormFieldData& field_data) {
-  // TODO(crbug.com/581485): Investigate the use of libphonenumber here.
-  // Check to see if the |field| size matches the "prefix" or "suffix" size or
-  // if the field was labeled as such. If so, return the appropriate substring.
-  if (number.length() ==
-      PhoneNumber::kPrefixLength + PhoneNumber::kSuffixLength) {
-    if (field.phone_part() == AutofillField::PHONE_PREFIX ||
-        field_data.max_length == PhoneNumber::kPrefixLength) {
-      return number.substr(PhoneNumber::kPrefixOffset,
-                           PhoneNumber::kPrefixLength);
-    }
-
-    if (field.phone_part() == AutofillField::PHONE_SUFFIX ||
-        field_data.max_length == PhoneNumber::kSuffixLength) {
-      return number.substr(PhoneNumber::kSuffixOffset,
-                           PhoneNumber::kSuffixLength);
-    }
-  }
-
   // If no max length was specified, return the complete number.
   if (field_data.max_length == 0)
     return number;
 
-  // If |number| exceeds the maximum size of the field, cut the first part to
-  // provide a valid number for the field. For example, the number 15142365264
-  // with a field with a max length of 10 would return 5142365264, thus removing
-  // the country code and remaining valid.
   if (number.length() > field_data.max_length) {
+    // Try after removing the country code, if |number| exceeds the maximum size
+    // of the field.
+    if (phone_home_city_and_number.length() <= field_data.max_length)
+      return phone_home_city_and_number;
+
+    // If |number| exceeds the maximum size of the field, cut the first part to
+    // provide a valid number for the field. For example, the number 15142365264
+    // with a field with a max length of 10 would return 5142365264, thus
+    // filling in the last |field_data.max_length| characters from the |number|.
     return number.substr(number.length() - field_data.max_length,
                          field_data.max_length);
   }
@@ -872,29 +1114,25 @@ base::string16 FieldFiller::GetPhoneNumberValue(
 
 // static
 int FieldFiller::FindShortestSubstringMatchInSelect(
-    const base::string16& value,
+    const std::u16string& value,
     bool ignore_whitespace,
     const FormFieldData* field) {
-  DCHECK_EQ(field->option_values.size(), field->option_contents.size());
-
   int best_match = -1;
 
-  base::string16 value_stripped =
+  std::u16string value_stripped =
       ignore_whitespace ? RemoveWhitespace(value) : value;
   base::i18n::FixedPatternStringSearchIgnoringCaseAndAccents searcher(
       value_stripped);
-
-  for (size_t i = 0; i < field->option_values.size(); ++i) {
-    base::string16 option_value =
-        ignore_whitespace ? RemoveWhitespace(field->option_values[i])
-                          : field->option_values[i];
-    base::string16 option_content =
-        ignore_whitespace ? RemoveWhitespace(field->option_contents[i])
-                          : field->option_contents[i];
+  for (size_t i = 0; i < field->options.size(); ++i) {
+    const SelectOption& option = field->options[i];
+    std::u16string option_value =
+        ignore_whitespace ? RemoveWhitespace(option.value) : option.value;
+    std::u16string option_content =
+        ignore_whitespace ? RemoveWhitespace(option.content) : option.content;
     if (searcher.Search(option_value, nullptr, nullptr) ||
         searcher.Search(option_content, nullptr, nullptr)) {
-      if (best_match == -1 || field->option_values[best_match].size() >
-                                  field->option_values[i].size()) {
+      if (best_match == -1 ||
+          field->options[best_match].value.size() > option.value.size()) {
         best_match = i;
       }
     }

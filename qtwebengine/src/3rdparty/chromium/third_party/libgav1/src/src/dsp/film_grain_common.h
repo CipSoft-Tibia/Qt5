@@ -17,15 +17,7 @@
 #ifndef LIBGAV1_SRC_DSP_FILM_GRAIN_COMMON_H_
 #define LIBGAV1_SRC_DSP_FILM_GRAIN_COMMON_H_
 
-#include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <type_traits>
-
-#include "src/dsp/common.h"
-#include "src/utils/array_2d.h"
-#include "src/utils/constants.h"
-#include "src/utils/cpu.h"
 
 namespace libgav1 {
 
@@ -59,15 +51,16 @@ enum {
   // The two possible heights of the chroma noise array.
   kMinChromaHeight = 38,
   kMaxChromaHeight = 73,
-  // The scaling lookup table maps bytes to bytes, so only uses 256 elements,
-  // plus one for overflow in 10bit lookups.
+  // The standard scaling lookup table maps bytes to bytes, so only uses 256
+  // elements, plus one for overflow in 12bpp lookups. The size is scaled up for
+  // 10bpp.
   kScalingLookupTableSize = 257,
   // Padding is added to the scaling lookup table to permit overwrites by
   // InitializeScalingLookupTable_NEON.
   kScalingLookupTablePadding = 6,
   // Padding is added to each row of the noise image to permit overreads by
   // BlendNoiseWithImageLuma_NEON and overwrites by WriteOverlapLine8bpp_NEON.
-  kNoiseImagePadding = 7,
+  kNoiseImagePadding = 15,
   // Padding is added to the end of the |noise_stripes_| buffer to permit
   // overreads by WriteOverlapLine8bpp_NEON.
   kNoiseStripePadding = 7,

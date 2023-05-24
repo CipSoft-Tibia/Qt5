@@ -9,7 +9,7 @@ lib_backlight = static_library(
 		dep_libdrm_headers,
 		dependency('libudev')
 	],
-	include_directories: include_directories('../..'),
+	include_directories: common_inc,
 	install: false
 )
 dep_backlight = declare_dependency(
@@ -32,7 +32,8 @@ srcs_drm = [
 ]
 
 deps_drm = [
-	dep_libweston,
+	dep_libdl,
+	dep_libweston_private,
 	dep_session_helper,
 	dep_libdrm,
 	dep_libinput_backend,
@@ -40,11 +41,10 @@ deps_drm = [
 	dep_backlight
 ]
 
-# XXX: Actually let DRM-backend build without GBM, it really should
-if true # get_option('renderer-gl')
+if get_option('renderer-gl')
 	dep_gbm = dependency('gbm', required: false)
 	if not dep_gbm.found()
-		error('drm-backend requires gbm which was not found. Or, you can use \'-Dbackend-drm=false\'.')
+		error('drm-backend with GL renderer requires gbm which was not found. Or, you can use \'-Drenderer-gl=false\'.')
 	endif
 	if dep_gbm.version().version_compare('>= 17.1')
 		config_h.set('HAVE_GBM_MODIFIERS', '1')
@@ -53,6 +53,8 @@ if true # get_option('renderer-gl')
 		config_h.set('HAVE_GBM_FD_IMPORT', '1')
 	endif
 	deps_drm += dep_gbm
+	srcs_drm += 'drm-gbm.c'
+	config_h.set('BUILD_DRM_GBM', '1')
 endif
 
 if get_option('backend-drm-screencast-vaapi')
@@ -69,22 +71,18 @@ if get_option('backend-drm-screencast-vaapi')
 	config_h.set('BUILD_VAAPI_RECORDER', '1')
 endif
 
-if dep_libdrm.version().version_compare('>= 2.4.71')
-	config_h.set('HAVE_DRM_ADDFB2_MODIFIERS', '1')
-endif
-
-if dep_libdrm.version().version_compare('>= 2.4.78')
-	config_h.set('HAVE_DRM_ATOMIC', '1')
-endif
-
-if dep_libdrm.version().version_compare('>= 2.4.83')
-	config_h.set('HAVE_DRM_FORMATS_BLOB', '1')
+if get_option('remoting') or get_option('pipewire')
+	if not get_option('renderer-gl')
+		error('DRM virtual requires renderer-gl.')
+	endif
+	srcs_drm += 'drm-virtual.c'
+	config_h.set('BUILD_DRM_VIRTUAL', '1')
 endif
 
 plugin_drm = shared_library(
 	'drm-backend',
 	srcs_drm,
-	include_directories: include_directories('../..', '../../shared'),
+	include_directories: common_inc,
 	dependencies: deps_drm,
 	name_prefix: '',
 	install: true,

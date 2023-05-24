@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example richtext/syntaxhighlighter
     \title Syntax Highlighter Example
+    \examplecategory {User Interface Components}
     \ingroup examples-richtext
     \brief The Syntax Highlighter example shows how to perform
     simple syntax highlighting.
@@ -66,7 +43,7 @@
     We have chosen to store our highlighting rules using a private
     struct: A rule consists of a QRegularExpression pattern and a
     QTextCharFormat instance. The various rules are then stored using a
-    QVector.
+    QList.
 
     The QTextCharFormat class provides formatting information for
     characters in a QTextDocument specifying the visual properties of
@@ -137,7 +114,7 @@
     blocks that have changed.
 
     First we apply the syntax highlighting rules that we stored in the
-    \c highlightingRules vector. For each rule (i.e. for each
+    \c highlightingRules list. For each rule (i.e. for each
     HighlightingRule object) we search for the pattern in the given
     text block using the QString::indexOf() function. When the first
     occurrence of the pattern is found, we use the
@@ -243,10 +220,4 @@
     function. The QSyntaxHighlighter class also provides the \l
     {QSyntaxHighlighter::document()}{document()} function which
     returns the currently set document.
-
-    \section1 Other Code Editor Features
-
-    The \l{Code Editor Example} shows how to implement line
-    numbers and how to highlight the current line.
-
 */

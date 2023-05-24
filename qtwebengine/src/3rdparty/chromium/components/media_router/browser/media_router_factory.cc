@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,6 +27,16 @@ MediaRouter* MediaRouterFactory::GetApiForBrowserContext(
   // to return a pointer to MediaRouter.
   return static_cast<MediaRouter*>(
       g_instance->GetServiceForBrowserContext(context, true));
+}
+
+// static
+MediaRouter* MediaRouterFactory::GetApiForBrowserContextIfExists(
+    BrowserContext* context) {
+  if (!context) {
+    return nullptr;
+  }
+  return static_cast<MediaRouter*>(
+      g_instance->GetServiceForBrowserContext(context, false));
 }
 
 // static

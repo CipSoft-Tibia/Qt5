@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #ifndef TESTS_AUTO_CORELIB_TOOLS_MOC_CXX11_EXPLICIT_OVERRIDE_CONTROL_H
 #define TESTS_AUTO_CORELIB_TOOLS_MOC_CXX11_EXPLICIT_OVERRIDE_CONTROL_H
 
@@ -36,11 +11,14 @@
 # define sealed
 #endif
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wsuggest-override")
+
 class ExplicitOverrideControlBase : public QObject
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlBase(QObject *parent = 0)
+    explicit ExplicitOverrideControlBase(QObject *parent = nullptr)
         : QObject(parent) {}
 
 private Q_SLOTS:
@@ -62,7 +40,7 @@ class ExplicitOverrideControlFinalQt : public ExplicitOverrideControlBase
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlFinalQt(QObject *parent = 0)
+    explicit ExplicitOverrideControlFinalQt(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -84,7 +62,7 @@ class ExplicitOverrideControlFinalCxx11 : public ExplicitOverrideControlBase
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlFinalCxx11(QObject *parent = 0)
+    explicit ExplicitOverrideControlFinalCxx11(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -106,7 +84,7 @@ class ExplicitOverrideControlSealed : public ExplicitOverrideControlBase
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlSealed(QObject *parent = 0)
+    explicit ExplicitOverrideControlSealed(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -128,7 +106,7 @@ class ExplicitOverrideControlOverrideQt : public ExplicitOverrideControlBase
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlOverrideQt(QObject *parent = 0)
+    explicit ExplicitOverrideControlOverrideQt(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -150,7 +128,7 @@ class ExplicitOverrideControlOverrideCxx11 : public ExplicitOverrideControlBase
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlOverrideCxx11(QObject *parent = 0)
+    explicit ExplicitOverrideControlOverrideCxx11(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -172,7 +150,7 @@ class ExplicitOverrideControlFinalQtOverrideQt : public ExplicitOverrideControlB
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlFinalQtOverrideQt(QObject *parent = 0)
+    explicit ExplicitOverrideControlFinalQtOverrideQt(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -194,7 +172,7 @@ class ExplicitOverrideControlFinalCxx11OverrideCxx11 : public ExplicitOverrideCo
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlFinalCxx11OverrideCxx11(QObject *parent = 0)
+    explicit ExplicitOverrideControlFinalCxx11OverrideCxx11(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -216,7 +194,7 @@ class ExplicitOverrideControlSealedOverride : public ExplicitOverrideControlBase
 {
     Q_OBJECT
 public:
-    explicit ExplicitOverrideControlSealedOverride(QObject *parent = 0)
+    explicit ExplicitOverrideControlSealedOverride(QObject *parent = nullptr)
         : ExplicitOverrideControlBase(parent) {}
 
 private Q_SLOTS:
@@ -233,6 +211,8 @@ private Q_SLOTS:
     void pureSlot9() override sealed volatile const {}
 #endif
 };
+
+QT_WARNING_POP
 
 #ifndef Q_MOC_RUN
 # undef final

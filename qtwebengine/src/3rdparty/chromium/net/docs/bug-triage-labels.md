@@ -70,8 +70,6 @@ they fall largely outside the purview of the network stack team:
 
 * **Blink>ServiceWorker**
 
-* **Blink>Storage>AppCache**
-
 * **Blink>Network>WebSockets**
 
     Issues with the WebSockets.  Attach this component to any issue about the
@@ -131,6 +129,9 @@ they fall largely outside the purview of the network stack team:
     also have some logic at the Internals>Network>Cache layer.
 
 * **UI>Browser>Navigation**
+
+    Despite the name, this covers all issues related to page navigation, not
+    just UI issues.
 
 * **UI>Browser>History**
 

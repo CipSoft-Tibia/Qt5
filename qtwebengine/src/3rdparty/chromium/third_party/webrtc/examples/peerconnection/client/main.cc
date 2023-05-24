@@ -23,11 +23,9 @@
 #include "examples/peerconnection/client/main_wnd.h"
 #include "examples/peerconnection/client/peer_connection_client.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/constructor_magic.h"
 #include "rtc_base/ssl_adapter.h"
 #include "rtc_base/string_utils.h"  // For ToUtf8
 #include "rtc_base/win32_socket_init.h"
-#include "rtc_base/win32_socket_server.h"
 #include "system_wrappers/include/field_trial.h"
 #include "test/field_trial.h"
 
@@ -41,6 +39,9 @@ class WindowsCommandLineArguments {
  public:
   WindowsCommandLineArguments();
 
+  WindowsCommandLineArguments(const WindowsCommandLineArguments&) = delete;
+  WindowsCommandLineArguments& operator=(WindowsCommandLineArguments&) = delete;
+
   int argc() { return argv_.size(); }
   char** argv() { return argv_.data(); }
 
@@ -49,9 +50,6 @@ class WindowsCommandLineArguments {
   std::vector<std::string> args_;
   // Pointers, to get layout compatible with char** argv.
   std::vector<char*> argv_;
-
- private:
-  RTC_DISALLOW_COPY_AND_ASSIGN(WindowsCommandLineArguments);
 };
 
 WindowsCommandLineArguments::WindowsCommandLineArguments() {
@@ -76,9 +74,8 @@ int PASCAL wWinMain(HINSTANCE instance,
                     wchar_t* cmd_line,
                     int cmd_show) {
   rtc::WinsockInitializer winsock_init;
-  rtc::Win32SocketServer w32_ss;
-  rtc::Win32Thread w32_thread(&w32_ss);
-  rtc::ThreadManager::Instance()->SetCurrentThread(&w32_thread);
+  rtc::PhysicalSocketServer ss;
+  rtc::AutoSocketServerThread main_thread(&ss);
 
   WindowsCommandLineArguments win_args;
   int argc = win_args.argc();
@@ -103,14 +100,13 @@ int PASCAL wWinMain(HINSTANCE instance,
   MainWnd wnd(server.c_str(), absl::GetFlag(FLAGS_port),
               absl::GetFlag(FLAGS_autoconnect), absl::GetFlag(FLAGS_autocall));
   if (!wnd.Create()) {
-    RTC_NOTREACHED();
+    RTC_DCHECK_NOTREACHED();
     return -1;
   }
 
   rtc::InitializeSSL();
   PeerConnectionClient client;
-  rtc::scoped_refptr<Conductor> conductor(
-      new rtc::RefCountedObject<Conductor>(&client, &wnd));
+  auto conductor = rtc::make_ref_counted<Conductor>(&client, &wnd);
 
   // Main loop.
   MSG msg;

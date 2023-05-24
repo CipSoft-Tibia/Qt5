@@ -1,19 +1,24 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_VIZ_PUBLIC_CPP_COMPOSITING_COMPOSITOR_FRAME_METADATA_MOJOM_TRAITS_H_
 #define SERVICES_VIZ_PUBLIC_CPP_COMPOSITING_COMPOSITOR_FRAME_METADATA_MOJOM_TRAITS_H_
 
+#include <memory>
 #include <vector>
 
 #include "build/build_config.h"
 #include "components/viz/common/quads/compositor_frame_metadata.h"
+#include "components/viz/common/surfaces/region_capture_bounds.h"
 #include "services/viz/public/cpp/compositing/begin_frame_args_mojom_traits.h"
-#include "services/viz/public/cpp/compositing/delegated_ink_metadata_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/compositor_frame_transition_directive_mojom_traits.h"
 #include "services/viz/public/cpp/compositing/frame_deadline_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/region_capture_bounds_mojom_traits.h"
 #include "services/viz/public/cpp/compositing/surface_range_mojom_traits.h"
 #include "services/viz/public/mojom/compositing/compositor_frame_metadata.mojom-shared.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/mojom/delegated_ink_metadata_mojom_traits.h"
 #include "ui/gfx/mojom/display_color_spaces_mojom_traits.h"
 #include "ui/gfx/mojom/overlay_transform_mojom_traits.h"
 
@@ -28,7 +33,7 @@ struct StructTraits<viz::mojom::CompositorFrameMetadataDataView,
     return metadata.device_scale_factor;
   }
 
-  static gfx::Vector2dF root_scroll_offset(
+  static gfx::PointF root_scroll_offset(
       const viz::CompositorFrameMetadata& metadata) {
     return metadata.root_scroll_offset;
   }
@@ -51,12 +56,22 @@ struct StructTraits<viz::mojom::CompositorFrameMetadataDataView,
     return metadata.may_contain_video;
   }
 
+  static bool may_throttle_if_undrawn_frames(
+      const viz::CompositorFrameMetadata& metadata) {
+    return metadata.may_throttle_if_undrawn_frames;
+  }
+
+  static bool has_shared_element_resources(
+      const viz::CompositorFrameMetadata& metadata) {
+    return metadata.has_shared_element_resources;
+  }
+
   static bool is_resourceless_software_draw_with_scroll_or_animation(
       const viz::CompositorFrameMetadata& metadata) {
     return metadata.is_resourceless_software_draw_with_scroll_or_animation;
   }
 
-  static uint32_t root_background_color(
+  static SkColor4f root_background_color(
       const viz::CompositorFrameMetadata& metadata) {
     return metadata.root_background_color;
   }
@@ -106,8 +121,10 @@ struct StructTraits<viz::mojom::CompositorFrameMetadataDataView,
     return metadata.root_layer_size;
   }
 
-  static base::Optional<base::TimeDelta> preferred_frame_interval(
+  static absl::optional<base::TimeDelta> preferred_frame_interval(
       const viz::CompositorFrameMetadata& metadata) {
+    DCHECK(!metadata.preferred_frame_interval ||
+           metadata.preferred_frame_interval.value() >= base::TimeDelta());
     return metadata.preferred_frame_interval;
   }
 
@@ -126,9 +143,19 @@ struct StructTraits<viz::mojom::CompositorFrameMetadataDataView,
     return metadata.display_transform_hint;
   }
 
-  static const std::unique_ptr<viz::DelegatedInkMetadata>&
+  static const std::unique_ptr<gfx::DelegatedInkMetadata>&
   delegated_ink_metadata(const viz::CompositorFrameMetadata& metadata) {
     return metadata.delegated_ink_metadata;
+  }
+
+  static const std::vector<viz::CompositorFrameTransitionDirective>&
+  transition_directives(const viz::CompositorFrameMetadata& metadata) {
+    return metadata.transition_directives;
+  }
+
+  static const viz::RegionCaptureBounds& capture_bounds(
+      const viz::CompositorFrameMetadata& metadata) {
+    return metadata.capture_bounds;
   }
 
   static bool Read(viz::mojom::CompositorFrameMetadataDataView data,

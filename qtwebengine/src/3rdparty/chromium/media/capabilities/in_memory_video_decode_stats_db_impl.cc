@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,13 @@
 #include <memory>
 #include <tuple>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
 #include "base/format_macros.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/sequence_checker.h"
-#include "base/strings/stringprintf.h"
-#include "base/task/post_task.h"
-#include "media/base/bind_to_current_loop.h"
-#include "media/capabilities/video_decode_stats_db_impl.h"
+#include "base/task/bind_post_task.h"
 #include "media/capabilities/video_decode_stats_db_provider.h"
 
 namespace media {
@@ -29,9 +26,6 @@ InMemoryVideoDecodeStatsDBImpl::InMemoryVideoDecodeStatsDBImpl(
 
 InMemoryVideoDecodeStatsDBImpl::~InMemoryVideoDecodeStatsDBImpl() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  if (seed_db_)
-    seed_db_->set_dependent_db(nullptr);
 }
 
 void InMemoryVideoDecodeStatsDBImpl::Initialize(InitializeCB init_cb) {
@@ -42,7 +36,7 @@ void InMemoryVideoDecodeStatsDBImpl::Initialize(InitializeCB init_cb) {
   // Tracking down crbug.com/1114128. Suspect we're double initializing somehow,
   // so this should show who the crash at the time of the second initialize
   // call.
-  CHECK(!seed_db_) << __func__ << " Already have a seed_db_?";
+  DCHECK(!seed_db_) << __func__ << " Already have a seed_db_?";
 
   // Fetch an *initialized* seed DB.
   if (seed_db_provider_) {
@@ -55,7 +49,7 @@ void InMemoryVideoDecodeStatsDBImpl::Initialize(InitializeCB init_cb) {
     db_init_ = true;
 
     // Bind to avoid reentrancy.
-    std::move(BindToCurrentLoop(std::move(init_cb))).Run(true);
+    std::move(base::BindPostTaskToCurrentDefault(std::move(init_cb))).Run(true);
   }
 }
 
@@ -65,12 +59,8 @@ void InMemoryVideoDecodeStatsDBImpl::OnGotSeedDB(InitializeCB init_cb,
   DVLOG(2) << __func__ << (db ? " has" : " null") << " seed db";
 
   db_init_ = true;
-
-  CHECK(!seed_db_) << __func__ << " Already have a seed_db_?";
+  DCHECK(!seed_db_) << __func__ << " Already have a seed_db_?";
   seed_db_ = db;
-
-  if (seed_db_)
-    seed_db_->set_dependent_db(this);
 
   // Hard coding success = true. There are rare cases (e.g. disk corruption)
   // where an incognito profile may fail to acquire a reference to the base
@@ -113,7 +103,8 @@ void InMemoryVideoDecodeStatsDBImpl::AppendDecodeStats(
   }
 
   // Bind to avoid reentrancy.
-  std::move(BindToCurrentLoop(std::move(append_done_cb))).Run(true);
+  std::move(base::BindPostTaskToCurrentDefault(std::move(append_done_cb)))
+      .Run(true);
 }
 
 void InMemoryVideoDecodeStatsDBImpl::GetDecodeStats(
@@ -135,12 +126,12 @@ void InMemoryVideoDecodeStatsDBImpl::GetDecodeStats(
                               std::move(get_stats_cb)));
     } else {
       // No seed data. Return an empty entry. Bind to avoid reentrancy.
-      std::move(BindToCurrentLoop(std::move(get_stats_cb)))
+      std::move(base::BindPostTaskToCurrentDefault(std::move(get_stats_cb)))
           .Run(true, std::make_unique<DecodeStatsEntry>(0, 0, 0));
     }
   } else {
     // Return whatever what we found. Bind to avoid reentrancy.
-    std::move(BindToCurrentLoop(std::move(get_stats_cb)))
+    std::move(base::BindPostTaskToCurrentDefault(std::move(get_stats_cb)))
         .Run(true, std::make_unique<DecodeStatsEntry>(it->second));
   }
 }
@@ -206,7 +197,8 @@ void InMemoryVideoDecodeStatsDBImpl::ClearStats(
   in_memory_db_.clear();
 
   // Bind to avoid reentrancy.
-  std::move(BindToCurrentLoop(std::move(destroy_done_cb))).Run();
+  std::move(base::BindPostTaskToCurrentDefault(std::move(destroy_done_cb)))
+      .Run();
 }
 
 }  // namespace media

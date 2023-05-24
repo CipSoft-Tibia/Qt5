@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,7 @@
 #include <stdint.h>
 
 #include "base/check_op.h"
-#include "base/macros.h"
 #include "base/notreached.h"
-#include "base/strings/stringprintf.h"
 #include "gpu/command_buffer/common/gles2_cmd_utils.h"
 #include "gpu/command_buffer/service/framebuffer_completeness_cache.h"
 #include "gpu/command_buffer/service/renderbuffer_manager.h"
@@ -34,6 +32,9 @@ class RenderbufferAttachment
       Renderbuffer* renderbuffer)
       : renderbuffer_(renderbuffer) {
   }
+
+  RenderbufferAttachment(const RenderbufferAttachment&) = delete;
+  RenderbufferAttachment& operator=(const RenderbufferAttachment&) = delete;
 
   GLsizei width() const override { return renderbuffer_->width(); }
 
@@ -126,15 +127,11 @@ class RenderbufferAttachment
     return false;
   }
 
-  bool EmulatingRGB() const override { return false; }
-
  protected:
   ~RenderbufferAttachment() override = default;
 
  private:
   scoped_refptr<Renderbuffer> renderbuffer_;
-
-  DISALLOW_COPY_AND_ASSIGN(RenderbufferAttachment);
 };
 
 class TextureAttachment
@@ -149,6 +146,9 @@ class TextureAttachment
         samples_(samples),
         layer_(layer) {
   }
+
+  TextureAttachment(const TextureAttachment&) = delete;
+  TextureAttachment& operator=(const TextureAttachment&) = delete;
 
   GLsizei width() const override {
     GLsizei temp_width = 0;
@@ -302,10 +302,6 @@ class TextureAttachment
         level == level_ && layer == layer_;
   }
 
-  bool EmulatingRGB() const override {
-    return texture_ref_->texture()->EmulatingRGB();
-  }
-
  protected:
   ~TextureAttachment() override = default;
 
@@ -315,8 +311,6 @@ class TextureAttachment
   GLint level_;
   GLsizei samples_;
   GLint layer_;
-
-  DISALLOW_COPY_AND_ASSIGN(TextureAttachment);
 };
 
 FramebufferManager::FramebufferManager(
@@ -654,10 +648,6 @@ GLenum Framebuffer::GetReadBufferInternalFormat() const {
     return 0;
   }
   const Attachment* attachment = it->second.get();
-  if (attachment->EmulatingRGB()) {
-    DCHECK_EQ(static_cast<GLenum>(GL_RGBA), attachment->internal_format());
-    return GL_RGB;
-  }
   return attachment->internal_format();
 }
 
@@ -711,8 +701,6 @@ GLenum Framebuffer::IsPossiblyComplete(const FeatureInfo* feature_info) const {
   GLsizei samples = -1;
   uint32_t colorbufferSize = 0;
   bool colorbufferSizeValid = false;
-  const bool kSamplesMustMatch = feature_info->IsWebGLContext() ||
-      !feature_info->feature_flags().chromium_framebuffer_mixed_samples;
 
   for (AttachmentMap::const_iterator it = attachments_.begin();
        it != attachments_.end(); ++it) {
@@ -739,15 +727,13 @@ GLenum Framebuffer::IsPossiblyComplete(const FeatureInfo* feature_info) const {
       return GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT;
     }
 
-    if (kSamplesMustMatch) {
-      if (samples < 0) {
-        samples = attachment->samples();
-      } else if (attachment->samples() != samples) {
-        // It's possible that the specified samples isn't the actual samples a
-        // GL implementation uses, but we always return INCOMPLETE_MULTISAMPLE
-        // here to ensure consistent behaviors across platforms.
-        return GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE;
-      }
+    if (samples < 0) {
+      samples = attachment->samples();
+    } else if (attachment->samples() != samples) {
+      // It's possible that the specified samples isn't the actual samples a
+      // GL implementation uses, but we always return INCOMPLETE_MULTISAMPLE
+      // here to ensure consistent behaviors across platforms.
+      return GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE;
     }
     if (!attachment->CanRenderTo(feature_info)) {
       return GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT;

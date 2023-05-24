@@ -1,0 +1,8 @@
+outputformats             = DocBook
+DocBook.nosubdirs         = true
+DocBook.outputsubdir      = docbookext
+DocBook.usedocbookextensions = true
+
+# TODO: DocBook generator has trouble handling shared comment nodes
+# allow two warnings related to these
+warninglimit = 2

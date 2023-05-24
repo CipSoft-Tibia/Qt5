@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/functional/callback.h"
 #include "base/run_loop.h"
 #include "base/test/mock_callback.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
@@ -44,8 +45,8 @@ class ThumbnailTrackerTest : public ::testing::Test,
   ThumbnailTrackerTest()
       : thumbnail_tracker_(
             thumbnail_updated_callback_.Get(),
-            base::Bind(&ThumbnailTrackerTest::GetTestingThumbnail,
-                       base::Unretained(this))) {}
+            base::BindRepeating(&ThumbnailTrackerTest::GetTestingThumbnail,
+                                base::Unretained(this))) {}
 
   static SkBitmap CreateTestingBitmap() {
     SkBitmap bitmap;

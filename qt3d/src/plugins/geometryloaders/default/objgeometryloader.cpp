@@ -1,46 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "objgeometryloader.h"
 
+#include <QtCore/QHash>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QRegularExpression>
+#include <QtCore/QIODevice>
 
 QT_BEGIN_NAMESPACE
 
@@ -49,8 +15,8 @@ namespace Qt3DRender {
 Q_LOGGING_CATEGORY(ObjGeometryLoaderLog, "Qt3D.ObjGeometryLoader", QtWarningMsg)
 
 static void addFaceVertex(const FaceIndices &faceIndices,
-                          QVector<FaceIndices>& faceIndexVector,
-                          QHash<FaceIndices, unsigned int>& faceIndexMap);
+                          QList<FaceIndices> &faceIndexVector,
+                          QHash<FaceIndices, unsigned int> &faceIndexMap);
 
 inline uint qHash(const FaceIndices &faceIndices)
 {
@@ -65,11 +31,11 @@ bool ObjGeometryLoader::doLoad(QIODevice *ioDev, const QString &subMesh)
     // for the positions, normals and texture coords;
     // Generate unique vertices (in OpenGL parlance) and output to points, texCoords,
     // normals and calculate mapping from faces to unique indices
-    QVector<QVector3D> positions;
-    QVector<QVector3D> normals;
-    QVector<QVector2D> texCoords;
+    QList<QVector3D> positions;
+    QList<QVector3D> normals;
+    QList<QVector2D> texCoords;
     QHash<FaceIndices, unsigned int> faceIndexMap;
-    QVector<FaceIndices> faceIndexVector;
+    QList<FaceIndices> faceIndexVector;
 
     bool skipping = false;
     int positionsOffset = 0;
@@ -100,10 +66,19 @@ bool ObjGeometryLoader::doLoad(QIODevice *ioDev, const QString &subMesh)
         if (lineSize > 0 && line[0] != '#') {
             if (line[lineSize - 1] == '\n')
                 --lineSize; // chop newline
+            if (lineSize <= 0)
+                continue;
+
             if (line[lineSize - 1] == '\r')
                 --lineSize; // chop newline also for CRLF format
-            while (line[lineSize - 1] == ' ' || line[lineSize - 1] == '\t')
+            if (lineSize <= 0)
+                continue;
+
+            while (lineSize > 0 && (line[lineSize - 1] == ' ' || line[lineSize - 1] == '\t')) {
                 --lineSize; // chop trailing spaces
+            }
+            if (lineSize <= 0)
+                continue;
 
             const ByteArraySplitter tokens(line, line + lineSize, ' ', Qt::SkipEmptyParts);
 
@@ -209,7 +184,7 @@ bool ObjGeometryLoader::doLoad(QIODevice *ioDev, const QString &subMesh)
 
     // Iterate over the faceIndexMap and pull out pos, texCoord and normal data
     // thereby generating unique vertices of data (by OpenGL definition)
-    const int vertexCount = faceIndexMap.size();
+    const qsizetype vertexCount = faceIndexMap.size();
     const bool hasTexCoords = !texCoords.isEmpty();
     const bool hasNormals = !normals.isEmpty();
 
@@ -234,20 +209,20 @@ bool ObjGeometryLoader::doLoad(QIODevice *ioDev, const QString &subMesh)
     }
 
     // Now iterate over the face indices and lookup the unique vertex index
-    const int indexCount = faceIndexVector.size();
+    const qsizetype indexCount = faceIndexVector.size();
     m_indices.clear();
     m_indices.reserve(indexCount);
-    for (const FaceIndices faceIndices : qAsConst(faceIndexVector)) {
+    for (const FaceIndices &faceIndices : std::as_const(faceIndexVector)) {
         const unsigned int i = faceIndexMap.value(faceIndices);
-        m_indices.append(i);
+        m_indices.push_back(i);
     }
 
     return true;
 }
 
 static void addFaceVertex(const FaceIndices &faceIndices,
-                          QVector<FaceIndices>& faceIndexVector,
-                          QHash<FaceIndices, unsigned int>&faceIndexMap)
+                          QList<FaceIndices> &faceIndexVector,
+                          QHash<FaceIndices, unsigned int> &faceIndexMap)
 {
     if (faceIndices.positionIndex != std::numeric_limits<unsigned int>::max()) {
         faceIndexVector.append(faceIndices);

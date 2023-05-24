@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,20 +24,17 @@ class WebViewImpl;
 // only part of the layer was invalid.
 //
 // Note: This also does not support compositor driven animations.
-class SimCompositor final : public frame_test_helpers::TestWebWidgetClient {
+class SimCompositor final {
  public:
   SimCompositor();
-  ~SimCompositor() override;
+  ~SimCompositor();
 
   // When the compositor asks for a main frame, this WebViewImpl will have its
   // lifecycle updated and be painted.
-  // The WebWidget client is overridden (via the WebViewClient) to control
-  // BeginMainFrame scheduling since this test suite does not use the
-  // compositor's scheduler. The SimCompositor wants to monitor and verify
-  // expectations around this scheduling, so receives the WebViewClient. We
-  // pass it here explicitly to provide type safety, though it is the client
-  // available on the WebViewImpl as well.
-  void SetWebView(WebViewImpl&, frame_test_helpers::TestWebViewClient&);
+  void SetWebView(WebViewImpl&);
+
+  // Set the LayerTreeHost that the compositor is associated with.
+  void SetLayerTreeHost(cc::LayerTreeHost*);
 
   // Executes the BeginMainFrame processing steps, an approximation of what
   // cc::ThreadProxy::BeginMainFrame would do.
@@ -45,44 +42,48 @@ class SimCompositor final : public frame_test_helpers::TestWebWidgetClient {
   // Returns all drawing commands that were issued during painting the frame
   // (including cached ones).
   // TODO(dcheng): This should take a base::TimeDelta.
-  SimCanvas::Commands BeginFrame(double time_delta_in_seconds = 0.016);
-
-  // Similar to BeginFrame() but doesn't require NeedsBeginFrame(). This is
-  // useful for testing the painting after a frame is throttled (for which
-  // we don't schedule a BeginFrame).
-  SimCanvas::Commands PaintFrame();
+  // Rasterization of tiles is only performed when |raster| is true.
+  SimCanvas::Commands BeginFrame(double time_delta_in_seconds = 0.016,
+                                 bool raster = false);
 
   // Helpers to query the state of the compositor from tests.
   //
   // Returns true if a main frame has been requested from blink, until the
-  // BeginFrame() step occurs. The AnimationScheduled() checks if an explicit
-  // requet for BeginFrame() was made, vs an implicit one by making changes
-  // to the compositor's state.
+  // BeginFrame() step occurs.
   bool NeedsBeginFrame() const {
-    return AnimationScheduled() ||
-           layer_tree_host()->RequestedMainFramePendingForTesting();
+    return LayerTreeHost()->RequestedMainFramePending();
   }
   // Returns true if commits are deferred in the compositor. Since these tests
   // use synchronous compositing through BeginFrame(), the deferred state has no
   // real effect.
   bool DeferMainFrameUpdate() const {
-    return layer_tree_host()->defer_main_frame_update();
+    return LayerTreeHost()->defer_main_frame_update();
   }
   // Returns true if a selection is set on the compositor.
   bool HasSelection() const {
-    return layer_tree_host()->selection() != cc::LayerSelection();
+    return LayerTreeHost()->selection() != cc::LayerSelection();
   }
   // Returns the background color set on the compositor.
-  SkColor background_color() { return layer_tree_host()->background_color(); }
+  SkColor background_color() const {
+    // TODO(crbug/1308932): Remove toSkColor and make all SkColor4f.
+    return LayerTreeHost()->background_color().toSkColor();
+  }
 
   base::TimeTicks LastFrameTime() const { return last_frame_time_; }
 
+  // Sets last_frame_time_ to now, to sync with external time.
+  void ResetLastFrameTime() { last_frame_time_ = base::TimeTicks::Now(); }
+
+  // Called when the begin frame occured.
+  void DidBeginMainFrame();
+
+  cc::LayerTreeHost* LayerTreeHost() const;
+
  private:
-  // TestWebWidgetClient overrides:
-  void DidBeginMainFrame() override;
+  SimCanvas::Commands PaintFrame();
 
   WebViewImpl* web_view_ = nullptr;
-  frame_test_helpers::TestWebViewClient* test_web_view_client_ = nullptr;
+  cc::LayerTreeHost* layer_tree_host_ = nullptr;
 
   base::TimeTicks last_frame_time_;
 
@@ -94,4 +95,4 @@ class SimCompositor final : public frame_test_helpers::TestWebWidgetClient {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_TESTING_SIM_SIM_COMPOSITOR_H_

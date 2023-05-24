@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,11 @@
 
 #include <stddef.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
 #include "components/spellcheck/common/spellcheck_result.h"
 #include "content/public/test/test_utils.h"
@@ -66,8 +65,8 @@ TEST_F(SpellcheckPlatformMacTest, IgnoreWords_EN_US) {
     "noooen",
   };
 
-  for (size_t i = 0; i < base::size(kTestCases); ++i) {
-    const base::string16 word(base::ASCIIToUTF16(kTestCases[i]));
+  for (size_t i = 0; i < std::size(kTestCases); ++i) {
+    const std::u16string word(base::ASCIIToUTF16(kTestCases[i]));
     const int doc_tag = spellcheck_platform::GetDocumentTag();
 
     // The word should show up as misspelled.
@@ -364,15 +363,15 @@ TEST_F(SpellcheckPlatformMacTest, SpellCheckSuggestions_EN_US) {
     {"writting", "writing"},
   };
 
-  for (size_t i = 0; i < base::size(kTestCases); ++i) {
-    const base::string16 word(base::ASCIIToUTF16(kTestCases[i].input));
+  for (size_t i = 0; i < std::size(kTestCases); ++i) {
+    const std::u16string word(base::ASCIIToUTF16(kTestCases[i].input));
     EXPECT_FALSE(spellcheck_platform::CheckSpelling(word, 0)) << word;
 
     // Check if the suggested words occur.
-    std::vector<base::string16> suggestions;
+    std::vector<std::u16string> suggestions;
     spellcheck_platform::FillSuggestionList(word, &suggestions);
     bool suggested_word_is_present = false;
-    const base::string16 suggested_word(
+    const std::u16string suggested_word(
         base::ASCIIToUTF16(kTestCases[i].suggested_word));
     for (size_t j = 0; j < suggestions.size(); j++) {
       if (suggestions[j].compare(suggested_word) == 0) {
@@ -389,7 +388,7 @@ TEST_F(SpellcheckPlatformMacTest, SpellCheckSuggestions_EN_US) {
 // the language used in that sentence. Test that it is filtered out from
 // RequestTextCheck results.
 TEST_F(SpellcheckPlatformMacTest, SpellCheckIgnoresOrthography)  {
-  base::string16 test_string(base::ASCIIToUTF16("Icland is awesome."));
+  std::u16string test_string(u"Icland is awesome.");
   spellcheck_platform::RequestTextCheck(nullptr, 0, test_string,
                                         std::move(callback_));
   WaitForCallback();

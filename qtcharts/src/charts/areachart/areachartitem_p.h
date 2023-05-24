@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -45,7 +19,7 @@
 #include <QtCharts/QAreaSeries>
 #include <QtGui/QPen>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class AreaChartItem;
 
@@ -57,27 +31,27 @@ public:
     ~AreaChartItem();
 
     //from QGraphicsItem
-    QRectF boundingRect() const;
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    QPainterPath shape() const;
+    QRectF boundingRect() const override;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
+    QPainterPath shape() const override;
 
     LineChartItem *upperLineItem() const { return m_upper; }
     LineChartItem *lowerLineItem() const { return m_lower; }
 
     void updatePath();
 
-    void setPresenter(ChartPresenter *presenter);
+    void setPresenter(ChartPresenter *presenter) override;
     QAreaSeries *series() const { return m_series; }
 
     void setUpperSeries(QLineSeries *series);
     void setLowerSeries(QLineSeries *series);
 
 protected:
-    void mousePressEvent(QGraphicsSceneMouseEvent *event);
-    void hoverEnterEvent(QGraphicsSceneHoverEvent *event);
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event);
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event);
-    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event);
+    void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
+    void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event) override;
 
 Q_SIGNALS:
     void clicked(const QPointF &point);
@@ -88,7 +62,7 @@ Q_SIGNALS:
 
 public Q_SLOTS:
     void handleUpdated();
-    void handleDomainUpdated();
+    void handleDomainUpdated() override;
 
 private:
     void fixEdgeSeriesDomain(LineChartItem *edgeSeries);
@@ -126,7 +100,7 @@ public:
     }
     ~AreaBoundItem() {}
 
-    void updateGeometry()
+    void updateGeometry() override
     {
         // Make sure the series is in a chart before trying to update
         if (m_item->series()->chart()) {
@@ -145,6 +119,6 @@ private:
     AreaChartItem *m_item;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif

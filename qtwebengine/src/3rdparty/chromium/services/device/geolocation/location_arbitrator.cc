@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,10 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "services/device/geolocation/network_location_provider.h"
 #include "services/device/geolocation/wifi_polling_policy.h"
@@ -22,20 +23,21 @@ namespace device {
 // To avoid oscillations, set this to twice the expected update interval of a
 // a GPS-type location provider (in case it misses a beat) plus a little.
 const base::TimeDelta LocationArbitrator::kFixStaleTimeoutTimeDelta =
-    base::TimeDelta::FromSeconds(11);
+    base::Seconds(11);
 
 LocationArbitrator::LocationArbitrator(
     const CustomLocationProviderCallback& custom_location_provider_getter,
-    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
+    GeolocationManager* geolocation_manager,
+    const scoped_refptr<base::SingleThreadTaskRunner>& main_task_runner,
+    const scoped_refptr<network::SharedURLLoaderFactory>& url_loader_factory,
     const std::string& api_key,
     std::unique_ptr<PositionCache> position_cache)
     : custom_location_provider_getter_(custom_location_provider_getter),
+      geolocation_manager_(geolocation_manager),
+      main_task_runner_(main_task_runner),
       url_loader_factory_(url_loader_factory),
       api_key_(api_key),
-      position_provider_(nullptr),
-      is_permission_granted_(false),
-      position_cache_(std::move(position_cache)),
-      is_running_(false) {}
+      position_cache_(std::move(position_cache)) {}
 
 LocationArbitrator::~LocationArbitrator() {
   // Release the global wifi polling policy state.
@@ -148,21 +150,23 @@ LocationArbitrator::NewNetworkLocationProvider(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     const std::string& api_key) {
   DCHECK(url_loader_factory);
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Android uses its own SystemLocationProvider.
   return nullptr;
 #else
   return std::make_unique<NetworkLocationProvider>(
-      std::move(url_loader_factory), api_key, position_cache_.get());
+      std::move(url_loader_factory), geolocation_manager_, main_task_runner_,
+      api_key, position_cache_.get());
 #endif
 }
 
 std::unique_ptr<LocationProvider>
 LocationArbitrator::NewSystemLocationProvider() {
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
   return nullptr;
 #else
-  return device::NewSystemLocationProvider();
+  return device::NewSystemLocationProvider(main_task_runner_,
+                                           geolocation_manager_);
 #endif
 }
 

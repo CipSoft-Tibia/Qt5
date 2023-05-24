@@ -80,6 +80,8 @@ struct weston_desktop_api {
 				    bool maximized, void *user_data);
 	void (*minimized_requested)(struct weston_desktop_surface *surface,
 				    void *user_data);
+	void (*get_desktop_surface_root_geometry)(struct weston_desktop_surface *surface,
+						  struct weston_geometry *geometry);
 
 	/** Position suggestion for an Xwayland window
 	 *
@@ -167,6 +169,9 @@ weston_desktop_surface_close(struct weston_desktop_surface *surface);
 void
 weston_desktop_surface_add_metadata_listener(struct weston_desktop_surface *surface,
 					     struct wl_listener *listener);
+void
+weston_desktop_surface_get_root_geometry(struct weston_desktop_surface *surface,
+					 struct weston_geometry *geometry);
 
 void *
 weston_desktop_surface_get_user_data(struct weston_desktop_surface *surface);

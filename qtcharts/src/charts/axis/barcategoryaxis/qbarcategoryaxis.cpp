@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QBarCategoryAxis>
 #include <private/qbarcategoryaxis_p.h>
@@ -35,7 +9,7 @@
 #include <QtCharts/QChart>
 #include <QtCore/QtMath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 /*!
     \class QBarCategoryAxis
     \inmodule QtCharts
@@ -43,7 +17,7 @@ QT_CHARTS_BEGIN_NAMESPACE
 
     QBarCategoryAxis can be set up to show an axis line with tick marks, grid lines, and shades.
     Categories are drawn between the ticks. It can be used also with a line series, as demonstrated
-    by the \l {Line and BarChart Example} {Line and BarChart Example}.
+    by the \l {Charts with Widgets Gallery}.
 
     The following code illustrates how to use QBarCategoryAxis:
     \code
@@ -202,7 +176,7 @@ void QBarCategoryAxis::append(const QStringList &categories)
 
     Q_D(QBarCategoryAxis);
 
-    int count = d->m_categories.count();
+    int count = d->m_categories.size();
 
     foreach(QString category, categories) {
         if (!d->m_categories.contains(category) && !category.isNull()) {
@@ -210,7 +184,7 @@ void QBarCategoryAxis::append(const QStringList &categories)
         }
     }
 
-    if (d->m_categories.count() == count)
+    if (d->m_categories.size() == count)
         return;
 
     if (count == 0)
@@ -234,12 +208,12 @@ void QBarCategoryAxis::append(const QString &category)
 {
     Q_D(QBarCategoryAxis);
 
-    int count = d->m_categories.count();
+    int count = d->m_categories.size();
 
     if (!d->m_categories.contains(category) && !category.isNull())
         d->m_categories.append(category);
 
-    if (d->m_categories.count() == count)
+    if (d->m_categories.size() == count)
         return;
 
     if (count == 0)
@@ -286,12 +260,12 @@ void QBarCategoryAxis::insert(int index, const QString &category)
 {
     Q_D(QBarCategoryAxis);
 
-    int count = d->m_categories.count();
+    int count = d->m_categories.size();
 
     if (!d->m_categories.contains(category) && !category.isNull())
         d->m_categories.insert(index, category);
 
-    if (d->m_categories.count() == count)
+    if (d->m_categories.size() == count)
         return;
 
     if (count == 0) {
@@ -377,7 +351,7 @@ QStringList QBarCategoryAxis::categories()
 int QBarCategoryAxis::count() const
 {
     Q_D(const QBarCategoryAxis);
-    return d->m_categories.count();
+    return d->m_categories.size();
 }
 
 /*!
@@ -490,7 +464,7 @@ void QBarCategoryAxisPrivate::setRange(qreal min, qreal max)
         changed = true;
 
         int imin = m_min + 0.5;
-        if (imin >= 0 && imin < m_categories.count()) {
+        if (imin >= 0 && imin < m_categories.size()) {
             QString minCategory = m_categories.at(imin);
             if (m_minCategory != minCategory && !minCategory.isEmpty()) {
                 m_minCategory = minCategory;
@@ -506,7 +480,7 @@ void QBarCategoryAxisPrivate::setRange(qreal min, qreal max)
         changed = true;
 
         int imax = m_max - 0.5;
-        if (imax >= 0 && imax < m_categories.count()) {
+        if (imax >= 0 && imax < m_categories.size()) {
             QString maxCategory = m_categories.at(imax);
             if (m_maxCategory != maxCategory && !maxCategory.isEmpty()) {
                 m_maxCategory = maxCategory;
@@ -527,7 +501,7 @@ void QBarCategoryAxisPrivate::setRange(qreal min, qreal max)
 
 void  QBarCategoryAxisPrivate::setRange(const QString &minCategory, const QString &maxCategory)
 {
-	Q_Q(QBarCategoryAxis);
+    Q_Q(QBarCategoryAxis);
     bool changed = false;
 
     //special case in case or clearing all categories
@@ -618,7 +592,7 @@ void QBarCategoryAxisPrivate::initializeDomain(AbstractDomain *domain)
             max = domain->maxX() - 0.5;
         }
 
-        if (min > 0 && min < m_categories.count() && max > 0 && max < m_categories.count())
+        if (min > 0 && min < m_categories.size() && max > 0 && max < m_categories.size())
             q->setRange(m_categories.at(min), m_categories.at(max));
     } else {
         if (orientation() == Qt::Vertical)
@@ -628,7 +602,7 @@ void QBarCategoryAxisPrivate::initializeDomain(AbstractDomain *domain)
     }
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qbarcategoryaxis.cpp"
 #include "moc_qbarcategoryaxis_p.cpp"

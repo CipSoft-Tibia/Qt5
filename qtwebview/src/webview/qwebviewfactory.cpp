@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtWebView module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebviewfactory_p.h"
 #include "qwebviewplugin_p.h"
@@ -55,9 +22,27 @@ static QString getPluginName()
     return name;
 }
 
+class QNullWebViewSettings : public QAbstractWebViewSettings
+{
+public:
+    explicit QNullWebViewSettings(QObject *p) : QAbstractWebViewSettings(p) {}
+    bool localStorageEnabled() const override { return false; }
+    bool javascriptEnabled() const override { return false; }
+    bool localContentCanAccessFileUrls() const override { return false; }
+    bool allowFileAccess() const override { return false; }
+    void setLocalContentCanAccessFileUrls(bool) override {}
+    void setJavascriptEnabled(bool) override {}
+    void setLocalStorageEnabled(bool) override {}
+    void setAllowFileAccess(bool) override {}
+};
+
 class QNullWebView : public QAbstractWebView
 {
 public:
+    explicit QNullWebView(QObject *p = nullptr)
+        : QAbstractWebView(p)
+        , m_settings(new QNullWebViewSettings(this))
+    {}
     void setParentView(QObject *view) override { Q_UNUSED(view); }
     QObject *parentView() const override { return nullptr; }
     void setGeometry(const QRect &geometry) override { Q_UNUSED(geometry); }
@@ -65,7 +50,7 @@ public:
     void setVisible(bool visible) override { Q_UNUSED(visible); }
 
     QString httpUserAgent() const override { return QString(); }
-    void setHttpUserAgent(const QString &userAgent) override { Q_UNUSED(userAgent) }
+    void setHttpUserAgent(const QString &userAgent) override { Q_UNUSED(userAgent); }
     QUrl url() const override { return QUrl(); }
     void setUrl(const QUrl &url) override { Q_UNUSED(url); }
     bool canGoBack() const override { return false; }
@@ -81,6 +66,20 @@ public:
     { Q_UNUSED(html); Q_UNUSED(baseUrl); }
     void runJavaScriptPrivate(const QString &script, int callbackId) override
     { Q_UNUSED(script); Q_UNUSED(callbackId); }
+    void setCookie(const QString &domain, const QString &name, const QString &value) override
+    { Q_UNUSED(domain); Q_UNUSED(name); Q_UNUSED(value); }
+    void deleteCookie(const QString &domain, const QString &name) override
+    { Q_UNUSED(domain); Q_UNUSED(name); }
+    void deleteAllCookies() override {}
+
+protected:
+    QAbstractWebViewSettings *getSettings() const override
+    {
+        return m_settings;
+    }
+
+private:
+    QNullWebViewSettings *m_settings = nullptr;
 };
 
 QAbstractWebView *QWebViewFactory::createWebView()
@@ -100,26 +99,17 @@ QAbstractWebView *QWebViewFactory::createWebView()
 
 bool QWebViewFactory::requiresExtraInitializationSteps()
 {
-    // The call to loader->indexOf(pluginName) will mess up winrt's main thread.
-#ifdef Q_OS_WINRT
-    return false;
-#endif
     const QString pluginName = getPluginName();
     const int index = pluginName.isEmpty() ? 0 : qMax<int>(0, loader->indexOf(pluginName));
 
-    const auto metaDataList = loader->metaData();
+    const QList<QPluginParsedMetaData> metaDataList = loader->metaData();
     if (metaDataList.isEmpty())
         return false;
 
     const auto &pluginMetaData = metaDataList.at(index);
-    const auto iid = pluginMetaData.value(QLatin1String("IID"));
-    Q_ASSERT(iid == QJsonValue(QLatin1String(QWebViewPluginInterface_iid)));
-    const auto metaDataObject = pluginMetaData.value(QLatin1String("MetaData")).toObject();
-    const auto it = metaDataObject.find(QLatin1String("RequiresInit"));
-    if (it != pluginMetaData.constEnd())
-        return it->isBool() ? it->toBool() : false;
-
-    return false;
+    Q_ASSERT(pluginMetaData.value(QtPluginMetaDataKeys::IID) == QLatin1String(QWebViewPluginInterface_iid));
+    const auto metaDataObject = pluginMetaData.value(QtPluginMetaDataKeys::MetaData).toMap();
+    return metaDataObject.value(QLatin1String("RequiresInit")).toBool();
 }
 
 QWebViewPlugin *QWebViewFactory::getPlugin()

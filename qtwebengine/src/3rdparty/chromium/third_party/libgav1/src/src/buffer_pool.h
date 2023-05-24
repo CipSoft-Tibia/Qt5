@@ -17,12 +17,13 @@
 #ifndef LIBGAV1_SRC_BUFFER_POOL_H_
 #define LIBGAV1_SRC_BUFFER_POOL_H_
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <climits>
 #include <condition_variable>  // NOLINT (unapproved c++11 header)
 #include <cstdint>
-#include <cstring>
+#include <memory>
 #include <mutex>  // NOLINT (unapproved c++11 header)
 
 #include "src/dsp/common.h"
@@ -32,6 +33,7 @@
 #include "src/symbol_decoder_context.h"
 #include "src/utils/compiler_attributes.h"
 #include "src/utils/constants.h"
+#include "src/utils/dynamic_buffer.h"
 #include "src/utils/reference_info.h"
 #include "src/utils/segmentation.h"
 #include "src/utils/segmentation_map.h"
@@ -52,7 +54,9 @@ enum FrameState : uint8_t {
 
 // A reference-counted frame buffer. Clients should access it via
 // RefCountedBufferPtr, which manages reference counting transparently.
-class RefCountedBuffer {
+// The alignment requirement is due to the SymbolDecoderContext member
+// frame_context_.
+class RefCountedBuffer : public MaxAlignedAllocable {
  public:
   // Not copyable or movable.
   RefCountedBuffer(const RefCountedBuffer&) = delete;
@@ -130,6 +134,36 @@ class RefCountedBuffer {
   void set_spatial_id(int value) { spatial_id_ = value; }
   int temporal_id() const { return temporal_id_; }
   void set_temporal_id(int value) { temporal_id_ = value; }
+
+  ObuMetadataHdrCll hdr_cll() const { return hdr_cll_; }
+  void set_hdr_cll(const ObuMetadataHdrCll& hdr_cll) {
+    hdr_cll_set_ = true;
+    hdr_cll_ = hdr_cll;
+  }
+  bool hdr_cll_set() const { return hdr_cll_set_; }
+
+  ObuMetadataHdrMdcv hdr_mdcv() const { return hdr_mdcv_; }
+  void set_hdr_mdcv(const ObuMetadataHdrMdcv& hdr_mdcv) {
+    hdr_mdcv_set_ = true;
+    hdr_mdcv_ = hdr_mdcv;
+  }
+  bool hdr_mdcv_set() const { return hdr_mdcv_set_; }
+
+  ObuMetadataItutT35 itut_t35() const { return itut_t35_; }
+  bool set_itut_t35(const ObuMetadataItutT35& itut_t35,
+                    const uint8_t* const payload) {
+    itut_t35_ = itut_t35;
+    if (itut_t35.payload_size > 0) {
+      if (!itut_t35_payload_.Resize(itut_t35.payload_size)) return false;
+      memcpy(itut_t35_payload_.get(), payload, itut_t35.payload_size);
+      itut_t35_.payload_bytes = itut_t35_payload_.get();
+    } else {
+      itut_t35_.payload_bytes = nullptr;
+    }
+    itut_t35_set_ = true;
+    return true;
+  }
+  bool itut_t35_set() const { return itut_t35_set_; }
 
   SegmentationMap* segmentation_map() { return &segmentation_map_; }
   const SegmentationMap* segmentation_map() const { return &segmentation_map_; }
@@ -313,6 +347,14 @@ class RefCountedBuffer {
   int32_t rows4x4_ = 0;
   int spatial_id_ = 0;
   int temporal_id_ = 0;
+
+  ObuMetadataHdrCll hdr_cll_ = {};
+  bool hdr_cll_set_ = false;  // Set to true when set_hdr_cll() is called.
+  ObuMetadataHdrMdcv hdr_mdcv_ = {};
+  bool hdr_mdcv_set_ = false;  // Set to true when set_hdr_mdcv() is called.
+  ObuMetadataItutT35 itut_t35_ = {};
+  DynamicBuffer<uint8_t> itut_t35_payload_;
+  bool itut_t35_set_ = false;  // Set to true when set_itut_t35() is called.
 
   // segmentation_map_ contains a rows4x4_ by columns4x4_ 2D array.
   SegmentationMap segmentation_map_;

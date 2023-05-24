@@ -1,9 +1,9 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef MEDIA_RENDERERS_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
-#define MEDIA_RENDERERS_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
+#ifndef MEDIA_VIDEO_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
+#define MEDIA_VIDEO_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -11,34 +11,35 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/unsafe_shared_memory_region.h"
-#include "base/optional.h"
 #include "base/unguessable_token.h"
 #include "gpu/command_buffer/client/gles2_interface.h"
+#include "gpu/command_buffer/common/capabilities.h"
 #include "gpu/command_buffer/common/mailbox.h"
+#include "gpu/ipc/common/gpu_channel.mojom.h"
 #include "media/base/media_export.h"
 #include "media/base/overlay_info.h"
+#include "media/base/supported_video_decoder_config.h"
 #include "media/base/video_decoder.h"
 #include "media/base/video_types.h"
-#include "media/video/supported_video_decoder_config.h"
 #include "media/video/video_encode_accelerator.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/gpu_memory_buffer.h"
 
 namespace base {
-class SingleThreadTaskRunner;
+class SequencedTaskRunner;
 }  // namespace base
 
 namespace gfx {
 class ColorSpace;
 class Size;
-}
+}  // namespace gfx
 
 namespace gpu {
 class GpuMemoryBufferManager;
 class SharedImageInterface;
-}
+}  // namespace gpu
 
 namespace viz {
 class RasterContextProvider;
@@ -52,10 +53,10 @@ class MediaLog;
 // video accelerator.
 // Threading model:
 // * The GpuVideoAcceleratorFactories may be constructed on any thread.
-// * The GpuVideoAcceleratorFactories has an associated message loop, which may
-//   be retrieved as |GetMessageLoop()|.
-// * All calls to the Factories after construction must be made on its message
-//   loop, unless otherwise documented below.
+// * The GpuVideoAcceleratorFactories has an associated task runner, which may
+//   be retrieved as |GetTaskRunner()|.
+// * All calls to the Factories after construction must be made on its task
+//   runnner, unless otherwise documented below.
 class MEDIA_EXPORT GpuVideoAcceleratorFactories {
  public:
   enum class OutputFormat {
@@ -67,6 +68,7 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
     XB30,             // 10:10:10:2 RGBX in one GMB
     RGBA,             // One 8:8:8:8 RGBA
     BGRA,             // One 8:8:8:8 BGRA (Usually Mac)
+    P010,             // One P010 GMB.
   };
 
   enum class Supported {
@@ -75,11 +77,15 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
     kUnknown,
   };
 
-  // Return whether GPU encoding/decoding is enabled.
-  virtual bool IsGpuVideoAcceleratorEnabled() = 0;
+  // Return whether GPU decoding is enabled.
+  virtual bool IsGpuVideoDecodeAcceleratorEnabled() = 0;
+  // Return whether GPU encoding is enabled.
+  virtual bool IsGpuVideoEncodeAcceleratorEnabled() = 0;
 
   // Return the channel token, or an empty token if the channel is unusable.
-  virtual base::UnguessableToken GetChannelToken() = 0;
+  // |cb| could be called re-entrantly. This function is not thread safe.
+  virtual void GetChannelToken(
+      gpu::mojom::GpuChannel::GetChannelTokenCallback cb) = 0;
 
   // Returns the |route_id| of the command buffer, or 0 if there is none.
   virtual int32_t GetCommandBufferRouteId() = 0;
@@ -94,8 +100,18 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
   // TODO(sandersd): Switch to bool if/when all clients check
   // IsDecoderSupportKnown().
   virtual Supported IsDecoderConfigSupported(
-      VideoDecoderImplementation implementation,
       const VideoDecoderConfig& config) = 0;
+
+  // Returns VideoDecoderType::kUnknown in cases where IsDecoderSupportKnown()
+  // is false. Otherwise, it returns the type of decoder that provided the
+  // configs for the config support check.
+  virtual VideoDecoderType GetDecoderType() = 0;
+
+  // Callers must verify IsDecoderSupportKnown() prior to using this, or they
+  // will immediately receive a kUnknown.
+  //
+  // May be called on any thread.
+  Supported IsDecoderConfigSupportedOrUnknown(const VideoDecoderConfig& config);
 
   // Returns true if IsDecoderConfigSupported() is ready to answer queries.
   // Once decoder support is known, it remains known for the lifetime of |this|.
@@ -115,7 +131,6 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
 
   virtual std::unique_ptr<media::VideoDecoder> CreateVideoDecoder(
       MediaLog* media_log,
-      VideoDecoderImplementation implementation,
       RequestOverlayInfoCB request_overlay_info_cb) = 0;
 
   // Returns the supported codec profiles of video encode accelerator.
@@ -126,7 +141,7 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
   //
   // TODO(sandersd): Remove Optional if/when all clients check
   // IsEncoderSupportKnown().
-  virtual base::Optional<VideoEncodeAccelerator::SupportedProfiles>
+  virtual absl::optional<VideoEncodeAccelerator::SupportedProfiles>
   GetVideoEncodeAcceleratorSupportedProfiles() = 0;
 
   // Returns true if GetVideoEncodeAcceleratorSupportedProfiles() is populated.
@@ -145,9 +160,6 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
   // May be called on any thread.
   virtual void NotifyEncoderSupportKnown(base::OnceClosure callback) = 0;
 
-  // Caller owns returned pointer, but should call Destroy() on it (instead of
-  // directly deleting) for proper destruction, as per the
-  // VideoEncodeAccelerator interface.
   virtual std::unique_ptr<VideoEncodeAccelerator>
   CreateVideoEncodeAccelerator() = 0;
 
@@ -184,16 +196,19 @@ class MEDIA_EXPORT GpuVideoAcceleratorFactories {
       size_t size) = 0;
 
   // Returns the task runner the video accelerator runs on.
-  virtual scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunner() = 0;
+  virtual scoped_refptr<base::SequencedTaskRunner> GetTaskRunner() = 0;
 
   virtual viz::RasterContextProvider* GetMediaContextProvider() = 0;
 
-  // Sets the current pipeline rendering color space.
+  virtual const gpu::Capabilities* ContextCapabilities() = 0;
+
+  // Sets or gets the current pipeline rendering color space.
   virtual void SetRenderingColorSpace(const gfx::ColorSpace& color_space) = 0;
+  virtual const gfx::ColorSpace& GetRenderingColorSpace() const = 0;
 
   virtual ~GpuVideoAcceleratorFactories() = default;
 };
 
 }  // namespace media
 
-#endif  // MEDIA_RENDERERS_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
+#endif  // MEDIA_VIDEO_GPU_VIDEO_ACCELERATOR_FACTORIES_H_

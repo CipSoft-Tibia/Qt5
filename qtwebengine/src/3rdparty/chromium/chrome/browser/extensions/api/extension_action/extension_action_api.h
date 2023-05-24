@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,28 +7,27 @@
 
 #include <string>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/observer_list.h"
-#include "content/public/browser/notification_observer.h"
-#include "content/public/browser/notification_registrar.h"
+#include "base/scoped_observation.h"
+#include "base/values.h"
+#include "chrome/browser/ui/extensions/extension_popup_types.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/extension_action.h"
 #include "extensions/browser/extension_event_histogram_value.h"
 #include "extensions/browser/extension_function.h"
+#include "extensions/browser/extension_host_registry.h"
 #include "third_party/skia/include/core/SkColor.h"
-
-namespace base {
-class DictionaryValue;
-}
 
 namespace content {
 class BrowserContext;
 class WebContents;
 }
 
-class Browser;
-
 namespace extensions {
+
+class ExtensionHost;
 class ExtensionPrefs;
 
 class ExtensionActionAPI : public BrowserContextKeyedAPI {
@@ -55,6 +54,10 @@ class ExtensionActionAPI : public BrowserContextKeyedAPI {
   };
 
   explicit ExtensionActionAPI(content::BrowserContext* context);
+
+  ExtensionActionAPI(const ExtensionActionAPI&) = delete;
+  ExtensionActionAPI& operator=(const ExtensionActionAPI&) = delete;
+
   ~ExtensionActionAPI() override;
 
   // Convenience method to get the instance for a profile.
@@ -66,10 +69,6 @@ class ExtensionActionAPI : public BrowserContextKeyedAPI {
   // Add or remove observers.
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
-
-  // Opens the popup for the given |extension| in the given |browser|'s window.
-  bool ShowExtensionActionPopupForAPICall(const Extension* extension,
-                                          Browser* browser);
 
   // Notifies that there has been a change in the given |extension_action|.
   void NotifyChange(ExtensionAction* extension_action,
@@ -100,7 +99,7 @@ class ExtensionActionAPI : public BrowserContextKeyedAPI {
                                 const std::string& extension_id,
                                 events::HistogramValue histogram_value,
                                 const std::string& event_name,
-                                std::unique_ptr<base::ListValue> event_args);
+                                base::Value::List event_args);
 
   // BrowserContextKeyedAPI implementation.
   void Shutdown() override;
@@ -109,11 +108,9 @@ class ExtensionActionAPI : public BrowserContextKeyedAPI {
 
   base::ObserverList<Observer>::Unchecked observers_;
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
 
-  ExtensionPrefs* extension_prefs_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExtensionActionAPI);
+  raw_ptr<ExtensionPrefs> extension_prefs_;
 };
 
 // Implementation of the browserAction and pageAction APIs.
@@ -140,17 +137,19 @@ class ExtensionActionFunction : public ExtensionFunction {
 
   // All the extension action APIs take a single argument called details that
   // is a dictionary.
-  base::DictionaryValue* details_;
+  raw_ptr<base::Value::Dict> details_;
 
   // The tab id the extension action function should apply to, if any, or
   // kDefaultTabId if none was specified.
   int tab_id_;
 
   // WebContents for |tab_id_| if one exists.
-  content::WebContents* contents_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION content::WebContents* contents_;
 
   // The extension action for the current extension.
-  ExtensionAction* extension_action_;
+  raw_ptr<ExtensionAction> extension_action_;
 };
 
 //
@@ -322,6 +321,26 @@ class ActionSetBadgeBackgroundColorFunction
   ~ActionSetBadgeBackgroundColorFunction() override {}
 };
 
+class ActionGetBadgeTextColorFunction : public ExtensionActionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("action.getBadgeTextColor",
+                             ACTION_GETBADGETEXTCOLOR)
+
+ protected:
+  ~ActionGetBadgeTextColorFunction() override = default;
+  ResponseAction RunExtensionAction() override;
+};
+
+class ActionSetBadgeTextColorFunction : public ExtensionActionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("action.setBadgeTextColor",
+                             ACTION_SETBADGETEXTCOLOR)
+
+ protected:
+  ~ActionSetBadgeTextColorFunction() override = default;
+  ResponseAction RunExtensionAction() override;
+};
+
 class ActionEnableFunction : public ExtensionActionShowFunction {
  public:
   DECLARE_EXTENSION_FUNCTION("action.enable", ACTION_ENABLE)
@@ -336,6 +355,55 @@ class ActionDisableFunction : public ExtensionActionHideFunction {
 
  protected:
   ~ActionDisableFunction() override {}
+};
+
+class ActionIsEnabledFunction : public ExtensionActionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("action.isEnabled", ACTION_ISENABLED)
+
+ protected:
+  ~ActionIsEnabledFunction() override = default;
+  ResponseAction RunExtensionAction() override;
+};
+
+class ActionGetUserSettingsFunction : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("action.getUserSettings", ACTION_GETUSERSETTINGS)
+
+  ActionGetUserSettingsFunction();
+  ActionGetUserSettingsFunction(const ActionGetUserSettingsFunction&) = delete;
+  ActionGetUserSettingsFunction& operator=(
+      const ActionGetUserSettingsFunction&) = delete;
+
+  ResponseAction Run() override;
+
+ protected:
+  ~ActionGetUserSettingsFunction() override;
+};
+
+// Note: action.openPopup() and browserAction.openPopup() have subtly different
+// implementations:
+//   * action.openPopup() allows the extension to specify a window ID.
+//   * browserAction.openPopup() will time out after 10 seconds;
+//     action.openPopup() does not time out and instead waits for the popup to
+//     either be shown or encounter an error.
+//   * browserAction.openPopup() returns a handle to the HTMLWindow of the
+//     popup; action.openPopup() returns nothing.
+// Due to these differences, the implementations are distinct classes.
+class ActionOpenPopupFunction : public ExtensionFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("action.openPopup", ACTION_OPENPOPUP)
+
+  ActionOpenPopupFunction();
+  ActionOpenPopupFunction(const ActionOpenPopupFunction&) = delete;
+  ActionOpenPopupFunction& operator=(const ActionOpenPopupFunction&) = delete;
+
+ protected:
+  // ExtensionFunction:
+  ~ActionOpenPopupFunction() override;
+  ResponseAction Run() override;
+
+  void OnShowPopupComplete(ExtensionHost* popup_host);
 };
 
 //
@@ -438,27 +506,38 @@ class BrowserActionDisableFunction : public ExtensionActionHideFunction {
   ~BrowserActionDisableFunction() override {}
 };
 
+// Note: action.openPopup() and browserAction.openPopup() have subtly different
+// implementations. See ActionOpenPopupFunction above.
+// TODO(devlin): Remove browserAction.openPopup().
 class BrowserActionOpenPopupFunction : public ExtensionFunction,
-                                       public content::NotificationObserver {
+                                       public ExtensionHostRegistry::Observer {
  public:
   DECLARE_EXTENSION_FUNCTION("browserAction.openPopup",
                              BROWSERACTION_OPEN_POPUP)
   BrowserActionOpenPopupFunction();
 
+  BrowserActionOpenPopupFunction(const BrowserActionOpenPopupFunction&) =
+      delete;
+  BrowserActionOpenPopupFunction& operator=(
+      const BrowserActionOpenPopupFunction&) = delete;
+
  private:
-  ~BrowserActionOpenPopupFunction() override {}
+  ~BrowserActionOpenPopupFunction() override;
 
   // ExtensionFunction:
   ResponseAction Run() override;
+  void OnBrowserContextShutdown() override;
 
-  void Observe(int type,
-               const content::NotificationSource& source,
-               const content::NotificationDetails& details) override;
+  // ExtensionHostRegistry::Observer:
+  void OnExtensionHostCompletedFirstLoad(
+      content::BrowserContext* browser_context,
+      ExtensionHost* host) override;
+
   void OpenPopupTimedOut();
 
-  content::NotificationRegistrar registrar_;
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserActionOpenPopupFunction);
+  base::ScopedObservation<ExtensionHostRegistry,
+                          ExtensionHostRegistry::Observer>
+      host_registry_observation_{this};
 };
 
 }  // namespace extensions

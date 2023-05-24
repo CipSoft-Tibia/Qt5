@@ -1,52 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include <QSet>
+#include <QTemporaryFile>
+#include <QBuffer>
+#include <QTest>
+#include <QPixmap>
+#include <QBitmap>
+#include <QImage>
+#include <QImageReader>
+#include <QPaintEngine>
 
-#include <QtTest/QtTest>
-#include <qpixmap.h>
-#include <qbitmap.h>
-#include <qimage.h>
-#include <qimagereader.h>
 #ifndef QT_NO_WIDGETS
-#include <qdesktopwidget.h>
-#include <qsplashscreen.h>
+#include <QSplashScreen>
 #endif
-#include <qpaintengine.h>
 
 #include <qpa/qplatformpixmap.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qguiapplication_p.h>
 #include <private/qdrawhelper_p.h>
 
-#include <QSet>
-
 #ifdef Q_OS_WIN
-#include <windows.h>
+#include <qt_windows.h>
 #endif
 
 
@@ -103,7 +78,7 @@ private slots:
     void convertFromImageDetach();
     void convertFromImageCacheKey();
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     void toWinHBITMAP_data();
     void toWinHBITMAP();
     void fromWinHBITMAP_data();
@@ -119,6 +94,7 @@ private slots:
     void refUnref();
 
     void copy();
+    void move();
     void deepCopyPreservesDpr();
     void fillPreservesDpr();
     void dprPassthrough();
@@ -161,6 +137,7 @@ private slots:
 
     void copyOnNonAlignedBoundary();
     void devicePixelRatio();
+    void deviceIndependentSize();
 
 private:
     const QString m_prefix;
@@ -842,7 +819,7 @@ void tst_QPixmap::convertFromImageCacheKey()
     QCOMPARE(copy.cacheKey(), pix.cacheKey());
 }
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
 
 QT_BEGIN_NAMESPACE
 Q_GUI_EXPORT HBITMAP qt_createIconMask(const QBitmap &bitmap);
@@ -1058,14 +1035,14 @@ void tst_QPixmap::fromWinHICON()
     QVERIFY(compareImages(imageFromHICON, imageFromFile));
 }
 
-#endif // Q_OS_WIN && !Q_OS_WINRT
+#endif // Q_OS_WIN
 
 void tst_QPixmap::onlyNullPixmapsOutsideGuiThread()
 {
     class Thread : public QThread
     {
     public:
-        void run()
+        void run() override
         {
             QTest::ignoreMessage(QtWarningMsg,
                                  "QPixmap: It is not safe to use pixmaps outside the GUI thread");
@@ -1142,6 +1119,20 @@ void tst_QPixmap::copy()
 
     QPixmap transCopy = trans.copy();
     QCOMPARE(trans, transCopy);
+}
+
+void tst_QPixmap::move()
+{
+    QPixmap moveFrom(32, 32);
+
+    QPixmap moveAssigned;
+    moveAssigned = std::move(moveFrom);
+    QVERIFY(!moveAssigned.isNull());
+    QVERIFY(moveFrom.isNull());
+
+    QPixmap moveConstructed(std::move(moveAssigned));
+    QVERIFY(moveAssigned.isNull());
+    QVERIFY(!moveConstructed.isNull());
 }
 
 // QTBUG-58653: Force a deep copy of a pixmap by
@@ -1675,6 +1666,15 @@ void tst_QPixmap::devicePixelRatio()
     a.setDevicePixelRatio(qreal(2.0));
     QCOMPARE(a.devicePixelRatio(), qreal(2.0));
     QCOMPARE(b.devicePixelRatio(), qreal(1.0));
+}
+
+void tst_QPixmap::deviceIndependentSize() {
+    QPixmap a(64, 64);
+    a.fill(Qt::white);
+    a.setDevicePixelRatio(1.0);
+    QCOMPARE(a.deviceIndependentSize(), QSizeF(64, 64));
+    a.setDevicePixelRatio(2.0);
+    QCOMPARE(a.deviceIndependentSize(), QSizeF(32, 32));
 }
 
 QTEST_MAIN(tst_QPixmap)

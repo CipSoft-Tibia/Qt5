@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,10 +24,11 @@ namespace errors = manifest_errors;
 typedef ChromeManifestTest ChromePermissionManifestTest;
 
 TEST_F(ChromePermissionManifestTest, ChromeURLPermissionInvalid) {
-  LoadAndExpectWarning("permission_chrome_url_invalid.json",
-                       ErrorUtils::FormatErrorMessage(
-                           errors::kInvalidPermissionScheme,
-                           chrome::kChromeUINewTabURL));
+  LoadAndExpectWarning(
+      "permission_chrome_url_invalid.json",
+      ErrorUtils::FormatErrorMessage(errors::kInvalidPermissionScheme,
+                                     manifest_keys::kPermissions,
+                                     chrome::kChromeUINewTabURL));
 }
 
 TEST_F(ChromePermissionManifestTest, ChromeUntrustedURLPermissionInvalid) {
@@ -39,7 +40,7 @@ TEST_F(ChromePermissionManifestTest, ChromeUntrustedURLPermissionInvalid) {
 
 TEST_F(ChromePermissionManifestTest, ChromeURLPermissionAllowedWithFlag) {
   // Ignore the policy delegate for this test.
-  PermissionsData::SetPolicyDelegate(NULL);
+  PermissionsData::SetPolicyDelegate(nullptr);
   base::CommandLine::ForCurrentProcess()->AppendSwitch(
       switches::kExtensionsOnChromeURLs);
   std::string error;
@@ -71,11 +72,10 @@ TEST_F(ChromePermissionManifestTest,
   LoadAndExpectWarning("permission_chrome_resources_url.json",
                        ErrorUtils::FormatErrorMessage(
                            errors::kInvalidPermissionScheme,
-                           "chrome://resources/"));
+                           manifest_keys::kPermissions, "chrome://resources/"));
   std::string error;
-  LoadExtension(ManifestData("permission_chrome_resources_url.json"),
-                &error,
-                extensions::Manifest::COMPONENT,
+  LoadExtension(ManifestData("permission_chrome_resources_url.json"), &error,
+                extensions::mojom::ManifestLocation::kComponent,
                 Extension::NO_FLAGS);
   EXPECT_EQ("", error);
 }

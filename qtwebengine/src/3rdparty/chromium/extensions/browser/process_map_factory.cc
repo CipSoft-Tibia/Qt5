@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,7 +30,7 @@ ProcessMapFactory::ProcessMapFactory()
   // No dependencies on other services.
 }
 
-ProcessMapFactory::~ProcessMapFactory() {}
+ProcessMapFactory::~ProcessMapFactory() = default;
 
 KeyedService* ProcessMapFactory::BuildServiceInstanceFor(
     BrowserContext* context) const {

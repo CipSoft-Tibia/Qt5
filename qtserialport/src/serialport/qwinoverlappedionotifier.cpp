@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwinoverlappedionotifier_p.h"
 #include <qdebug.h>
@@ -129,6 +93,7 @@ public:
     HANDLE hSemaphore = nullptr;
     HANDLE hResultsMutex = nullptr;
     QAtomicInt waiting;
+    QAtomicInt signalSent;
     QQueue<IOResult> results;
 };
 
@@ -200,7 +165,7 @@ public:
     using QThread::isRunning;
 
 protected:
-    void run()
+    void run() override
     {
         DWORD dwBytesRead = 0;
         ULONG_PTR pulCompletionKey = 0;
@@ -313,13 +278,13 @@ OVERLAPPED *QWinOverlappedIoNotifierPrivate::waitForAnyNotified(QDeadlineTimer d
         return 0;
     }
 
-    DWORD msecs = deadline.remainingTime();
+    qint64 msecs = deadline.remainingTime();
     if (msecs == 0)
         iocp->drainQueue();
     if (msecs == -1)
         msecs = INFINITE;
 
-    const DWORD wfso = WaitForSingleObject(hSemaphore, msecs);
+    const DWORD wfso = WaitForSingleObject(hSemaphore, DWORD(msecs));
     switch (wfso) {
     case WAIT_OBJECT_0:
         return dispatchNextIoResult();
@@ -395,16 +360,45 @@ void QWinOverlappedIoNotifierPrivate::notify(DWORD numberOfBytes, DWORD errorCod
     Q_Q(QWinOverlappedIoNotifier);
     WaitForSingleObject(hResultsMutex, INFINITE);
     results.enqueue(IOResult(numberOfBytes, errorCode, overlapped));
-    ReleaseMutex(hResultsMutex);
     ReleaseSemaphore(hSemaphore, 1, NULL);
-    if (!waiting)
+    ReleaseMutex(hResultsMutex);
+    // Do not send a signal if we didn't process the previous one.
+    // This is done to prevent soft memory leaks when working in a completely
+    // synchronous way.
+    if (!waiting && !signalSent.loadAcquire()) {
+        signalSent.storeRelease(1);
         emit q->_q_notify();
+    }
 }
 
 void QWinOverlappedIoNotifierPrivate::_q_notified()
 {
-    if (WaitForSingleObject(hSemaphore, 0) == WAIT_OBJECT_0)
-        dispatchNextIoResult();
+    Q_Q(QWinOverlappedIoNotifier);
+    signalSent.storeRelease(0); // signal processed - ready for a new one
+    if (WaitForSingleObject(hSemaphore, 0) == WAIT_OBJECT_0) {
+        // As we do not queue signals anymore, we need to process the whole
+        // queue at once.
+        WaitForSingleObject(hResultsMutex, INFINITE);
+        QQueue<IOResult> values;
+        results.swap(values);
+        // Decreasing the semaphore count to keep it in sync with the number
+        // of messages in queue. As ReleaseSemaphore does not accept negative
+        // values, this is sort of a recommended way to go:
+        // https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-releasesemaphore#remarks
+        int numToDecrease = values.size() - 1;
+        while (numToDecrease > 0) {
+            WaitForSingleObject(hSemaphore, 0);
+            --numToDecrease;
+        }
+        ReleaseMutex(hResultsMutex);
+        // 'q' can go out of scope if the user decides to close the serial port
+        // while processing some answer. So we need to guard against that.
+        QPointer<QWinOverlappedIoNotifier> qptr(q);
+        while (!values.empty() && qptr) {
+            IOResult ioresult = values.dequeue();
+            emit qptr->notified(ioresult.numberOfBytes, ioresult.errorCode, ioresult.overlapped);
+        }
+    }
 }
 
 OVERLAPPED *QWinOverlappedIoNotifierPrivate::dispatchNextIoResult()

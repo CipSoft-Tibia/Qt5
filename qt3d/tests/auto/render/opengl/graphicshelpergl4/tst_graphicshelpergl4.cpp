@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DRender/qrendertargetoutput.h>
@@ -36,8 +11,9 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
 #include <QSurfaceFormat>
+#include <QtOpenGL/QOpenGLVersionFunctionsFactory>
 
-#if !defined(QT_OPENGL_ES_2) && defined(QT_OPENGL_4_3)
+#if !QT_CONFIG(opengles2) && defined(QT_OPENGL_4_3)
 
 #define TEST_SHOULD_BE_PERFORMED 1
 
@@ -255,7 +231,7 @@ private Q_SLOTS:
             return;
         }
 
-        if ((m_func = m_glContext.versionFunctions<QOpenGLFunctions_4_3_Core>()) != nullptr) {
+        if ((m_func = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_4_3_Core>()) != nullptr) {
             m_glHelper.initializeHelper(&m_glContext, m_func);
             m_initializationSuccessful = true;
         }
@@ -923,7 +899,7 @@ private Q_SLOTS:
         QVERIFY(error == 0);
 
         // THEN
-        QVector<QVector4D> colors(512 * 512);
+        QList<QVector4D> colors(512 * 512);
         textures[3]->bind();
         m_func->glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, colors.data());
         textures[3]->release();
@@ -1345,11 +1321,11 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        const QVector<ShaderUniformBlock> activeUniformBlocks = m_glHelper.programUniformBlocks(shaderProgram.programId());
+        const std::vector<ShaderUniformBlock> activeUniformBlocks = m_glHelper.programUniformBlocks(shaderProgram.programId());
 
         // THEN
-        QCOMPARE(activeUniformBlocks.size(), 1);
-        const ShaderUniformBlock uniformBlock = activeUniformBlocks.first();
+        QCOMPARE(activeUniformBlocks.size(), 1U);
+        const ShaderUniformBlock uniformBlock = activeUniformBlocks.front();
 
         QCOMPARE(uniformBlock.m_activeUniformsCount, 1);
         QCOMPARE(uniformBlock.m_name, QStringLiteral("ColorArray"));
@@ -1368,10 +1344,10 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        QVector<ShaderAttribute> activeAttributes = m_glHelper.programAttributesAndLocations(shaderProgram.programId());
+        std::vector<ShaderAttribute> activeAttributes = m_glHelper.programAttributesAndLocations(shaderProgram.programId());
 
         // THEN
-        QCOMPARE(activeAttributes.size(), 2);
+        QCOMPARE(activeAttributes.size(), 2U);
         std::sort(activeAttributes.begin(), activeAttributes.end(), [] (const ShaderAttribute &a, const ShaderAttribute &b) { return a.m_location < b.m_location; });
 
         const ShaderAttribute attribute1 = activeAttributes.at(0);
@@ -1399,10 +1375,10 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        QVector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
+        std::vector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
 
         // THEN
-        QCOMPARE(activeUniforms.size(), 4);
+        QCOMPARE(activeUniforms.size(), 4U);
         std::sort(activeUniforms.begin(), activeUniforms.end(), [] (const ShaderUniform &a, const ShaderUniform &b) { return a.m_location < b.m_location; });
 
         const ShaderUniform uniform1 = activeUniforms.at(0);
@@ -1457,11 +1433,11 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        const QVector<ShaderStorageBlock> activeShaderStorageBlocks = m_glHelper.programShaderStorageBlocks(shaderProgram.programId());
+        const std::vector<ShaderStorageBlock> activeShaderStorageBlocks = m_glHelper.programShaderStorageBlocks(shaderProgram.programId());
 
         // THEN
         QVERIFY(activeShaderStorageBlocks.size() == 1);
-        ShaderStorageBlock block = activeShaderStorageBlocks.first();
+        ShaderStorageBlock block = activeShaderStorageBlocks.front();
         QCOMPARE(block.m_name, QStringLiteral("Particles"));
         QCOMPARE(block.m_activeVariablesCount, 3);
         QCOMPARE(block.m_index, 0);
@@ -1665,7 +1641,7 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        const QVector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
+        const std::vector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
         ShaderUniform matchingUniform;
         for (const ShaderUniform &u : activeUniforms) {
             if (u.m_location == location) {

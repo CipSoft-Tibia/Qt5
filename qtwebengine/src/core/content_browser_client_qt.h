@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef CONTENT_BROWSER_CLIENT_QT_H
 #define CONTENT_BROWSER_CLIENT_QT_H
@@ -58,27 +22,25 @@ class ResourceContext;
 class WebContents;
 struct MainFunctionParams;
 struct Referrer;
-}
+} // namespace content
 
-namespace gl {
-class GLShareGroup;
-}
+namespace device {
+class GeolocationManager;
+} // namespace device
 
 namespace QtWebEngineCore {
 
-class ShareGroupQtQuick;
+class BrowserMainPartsQt;
 
 class ContentBrowserClientQt : public content::ContentBrowserClient
 {
 public:
     ContentBrowserClientQt();
     ~ContentBrowserClientQt();
-    std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(const content::MainFunctionParams&) override;
+    std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(bool is_integration_test) override;
     void RenderProcessWillLaunch(content::RenderProcessHost *host) override;
-    gl::GLShareGroup* GetInProcessGpuShareGroup() override;
     content::MediaObserver* GetMediaObserver() override;
-    scoped_refptr<content::QuotaPermissionContext> CreateQuotaPermissionContext() override;
-    void OverrideWebkitPrefs(content::RenderViewHost *render_view_host,
+    void OverrideWebkitPrefs(content::WebContents *web_contents,
                              blink::web_pref::WebPreferences *prefs) override;
     void AllowCertificateError(content::WebContents *web_contents,
                                int cert_error,
@@ -92,8 +54,7 @@ public:
                                               net::ClientCertIdentityList client_certs,
                                               std::unique_ptr<content::ClientCertificateDelegate> delegate) override;
     std::unique_ptr<net::ClientCertStore> CreateClientCertStore(content::BrowserContext *browser_context) override;
-    content::DevToolsManagerDelegate *GetDevToolsManagerDelegate() override;
-    content::PlatformNotificationService * GetPlatformNotificationService(content::BrowserContext *browser_context) override;
+    std::unique_ptr<content::DevToolsManagerDelegate> CreateDevToolsManagerDelegate() override;
 
     std::string GetApplicationLocale() override;
     std::string GetAcceptLangs(content::BrowserContext* context) override;
@@ -103,18 +64,18 @@ public:
     void GetAdditionalWebUISchemes(std::vector<std::string>* additional_schemes) override;
     void GetAdditionalAllowedSchemesForFileSystem(std::vector<std::string>* additional_schemes) override;
 
+    std::unique_ptr<ui::SelectFilePolicy>
+    CreateSelectFilePolicy(content::WebContents *web_contents) override;
     void BindHostReceiverForRenderer(content::RenderProcessHost *render_process_host,
                                      mojo::GenericPendingReceiver receiver) override;
     void RegisterBrowserInterfaceBindersForFrame(content::RenderFrameHost *render_frame_host,
                                                  mojo::BinderMapWithContext<content::RenderFrameHost *> *map) override;
-    void RunServiceInstance(const service_manager::Identity &identity,
-                            mojo::PendingReceiver<service_manager::mojom::Service> *receiver) override;
     void ExposeInterfacesToRenderer(service_manager::BinderRegistry *registry,
                                     blink::AssociatedInterfaceRegistry *associated_registry,
                                     content::RenderProcessHost *render_process_host) override;
+    void RegisterAssociatedInterfaceBindersForRenderFrameHost(content::RenderFrameHost &render_frame_host,
+                                                              blink::AssociatedInterfaceRegistry &associated_registry) override;
 
-    std::vector<service_manager::Manifest> GetExtraServiceManifests() override;
-    base::Optional<service_manager::Manifest> GetServiceManifestOverlay(base::StringPiece name) override;
     bool CanCreateWindow(content::RenderFrameHost *opener,
                          const GURL &opener_url,
                          const GURL &opener_top_level_frame_url,
@@ -134,38 +95,35 @@ public:
             network::mojom::RestrictedCookieManagerRole role,
             content::BrowserContext *browser_context,
             const url::Origin &origin,
-            const net::SiteForCookies &site_for_cookies,
-            const url::Origin &top_frame_origin,
+            const net::IsolationInfo &isolation_info,
             bool is_service_worker,
             int process_id,
             int routing_id,
             mojo::PendingReceiver<network::mojom::RestrictedCookieManager> *receiver) override;
+    bool WillInterceptWebSocket(content::RenderFrameHost *frame) override;
+    void CreateWebSocket(
+            content::RenderFrameHost *frame,
+            WebSocketFactory factory,
+            const GURL &url,
+            const net::SiteForCookies &site_for_cookies,
+            const absl::optional<std::string> &user_agent,
+            mojo::PendingRemote<network::mojom::WebSocketHandshakeClient> handshake_client) override;
 
-    bool AllowAppCache(const GURL &manifest_url,
-                       const GURL &first_party,
-                       const base::Optional<url::Origin> &top_frame_origin,
-                       content::BrowserContext *context) override;
-    content::AllowServiceWorkerResult AllowServiceWorkerOnIO(
+    content::AllowServiceWorkerResult AllowServiceWorker(
             const GURL &scope,
-            const GURL &site_for_cookies,
-            const base::Optional<url::Origin> &top_frame_origin,
-            const GURL &script_url,
-            content::ResourceContext *context) override;
-    content::AllowServiceWorkerResult AllowServiceWorkerOnUI(
-            const GURL &scope,
-            const GURL &site_for_cookies,
-            const base::Optional<url::Origin> &top_frame_origin,
+            const net::SiteForCookies &site_for_cookies,
+            const absl::optional<url::Origin> &top_frame_origin,
             const GURL &script_url,
             content::BrowserContext *context) override;
 
     void AllowWorkerFileSystem(const GURL &url,
                                content::BrowserContext *context,
-                               const std::vector<content::GlobalFrameRoutingId> &render_frames,
+                               const std::vector<content::GlobalRenderFrameHostId> &render_frames,
                                base::OnceCallback<void(bool)> callback) override;
 
     bool AllowWorkerIndexedDB(const GURL &url,
                               content::BrowserContext *context,
-                              const std::vector<content::GlobalFrameRoutingId> &render_frames) override;
+                              const std::vector<content::GlobalRenderFrameHostId> &render_frames) override;
     AllowWebBluetoothResult AllowWebBluetooth(content::BrowserContext *browser_context,
                                               const url::Origin &requesting_origin,
                                               const url::Origin &embedding_origin) override;
@@ -173,6 +131,8 @@ public:
 #if QT_CONFIG(webengine_geolocation)
     std::unique_ptr<device::LocationProvider> OverrideSystemLocationProvider() override;
 #endif
+    device::GeolocationManager *GetGeolocationManager() override;
+
     bool ShouldIsolateErrorPage(bool in_main_frame) override;
     bool ShouldUseProcessPerSite(content::BrowserContext *browser_context, const GURL &effective_url) override;
     bool DoesSiteRequireDedicatedProcess(content::BrowserContext *browser_context,
@@ -189,10 +149,6 @@ public:
     void GetAdditionalMappedFilesForChildProcess(const base::CommandLine& command_line, int child_process_id, content::PosixFileDescriptorInfo* mappings) override;
 #endif
 
-#if QT_CONFIG(webengine_pepper_plugins)
-    void DidCreatePpapiPlugin(content::BrowserPpapiHost* browser_host) override;
-#endif
-
     std::unique_ptr<content::LoginDelegate> CreateLoginDelegate(
             const net::AuthChallengeInfo &auth_info,
             content::WebContents *web_contents,
@@ -205,13 +161,16 @@ public:
 
     bool HandleExternalProtocol(
             const GURL &url,
-            base::OnceCallback<content::WebContents*()> web_contents_getter,
-            int child_id,
+            base::RepeatingCallback<content::WebContents*()> web_contents_getter,
+            int frame_tree_node_id,
             content::NavigationUIData *navigation_data,
-            bool is_main_frame,
+            bool is_primary_main_frame,
+            bool is_in_fenced_frame_tree,
+            network::mojom::WebSandboxFlags sandbox_flags,
             ui::PageTransition page_transition,
             bool has_user_gesture,
-            const base::Optional<url::Origin> &initiating_origin,
+            const absl::optional<url::Origin> &initiating_origin,
+            content::RenderFrameHost *initiator_document,
             mojo::PendingRemote<network::mojom::URLLoaderFactory> *out_factory) override;
 
     std::vector<std::unique_ptr<blink::URLLoaderThrottle>> CreateURLLoaderThrottles(
@@ -223,14 +182,19 @@ public:
             content::NavigationHandle *navigation_handle) override;
 
     bool IsHandledURL(const GURL &url) override;
-
+    bool HasErrorPage(int http_status_code, content::WebContents *contents) override;
+    bool HasCustomSchemeHandler(content::BrowserContext *browser_context,
+                                const std::string &scheme) override;
+    std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
+    WillCreateURLLoaderRequestInterceptors(content::NavigationUIData *navigation_ui_data,
+                                           int frame_tree_node_id) override;
     bool WillCreateURLLoaderFactory(content::BrowserContext *browser_context,
                                     content::RenderFrameHost *frame,
                                     int render_process_id,
                                     URLLoaderFactoryType type,
                                     const url::Origin &request_initiator,
-                                    base::Optional<int64_t> navigation_id,
-                                    base::UkmSourceId ukm_source_id,
+                                    absl::optional<int64_t> navigation_id,
+                                    ukm::SourceIdObj ukm_source_id,
                                     mojo::PendingReceiver<network::mojom::URLLoaderFactory> *factory_receiver,
                                     mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient> *header_client,
                                     bool *bypass_redirect_checks,
@@ -243,14 +207,14 @@ public:
                                        bool in_memory,
                                        const base::FilePath &relative_partition_path,
                                        network::mojom::NetworkContextParams *network_context_params,
-                                       network::mojom::CertVerifierCreationParams *cert_verifier_creation_params) override;
+                                       cert_verifier::mojom::CertVerifierCreationParams *cert_verifier_creation_params) override;
 
     std::vector<base::FilePath> GetNetworkContextsParentDirectory() override;
-    void RegisterNonNetworkNavigationURLLoaderFactories(int frame_tree_node_id, base::UkmSourceId ukm_source_id,
-                                                        NonNetworkURLLoaderFactoryDeprecatedMap *uniquely_owned_factories,
+    void RegisterNonNetworkNavigationURLLoaderFactories(int frame_tree_node_id,
+                                                        ukm::SourceIdObj ukm_source_id,
                                                         NonNetworkURLLoaderFactoryMap *factories) override;
     void RegisterNonNetworkSubresourceURLLoaderFactories(int render_process_id, int render_frame_id,
-                                                         NonNetworkURLLoaderFactoryDeprecatedMap *uniquely_owned_factories,
+                                                         const absl::optional<url::Origin>& request_initiator_origin,
                                                          NonNetworkURLLoaderFactoryMap *factories) override;
     void RegisterNonNetworkWorkerMainResourceURLLoaderFactories(content::BrowserContext* browser_context,
                                                                 NonNetworkURLLoaderFactoryMap* factories) override;
@@ -260,15 +224,17 @@ public:
     void SiteInstanceDeleting(content::SiteInstance *site_instance) override;
     base::flat_set<std::string> GetPluginMimeTypesWithExternalHandlers(content::BrowserContext *browser_context) override;
 
-    content::WebContentsViewDelegate* GetWebContentsViewDelegate(content::WebContents* web_contents) override;
+    std::unique_ptr<content::WebContentsViewDelegate> GetWebContentsViewDelegate(content::WebContents *web_contents) override;
 
     static std::string getUserAgent();
+    static blink::UserAgentMetadata getUserAgentMetadata();
 
     std::string GetUserAgent() override { return getUserAgent(); }
+    blink::UserAgentMetadata GetUserAgentMetadata() override { return getUserAgentMetadata(); }
     std::string GetProduct() override;
 
 private:
-    scoped_refptr<ShareGroupQtQuick> m_shareGroupQtQuick;
+    BrowserMainPartsQt *m_browserMainParts = nullptr;
 };
 
 } // namespace QtWebEngineCore

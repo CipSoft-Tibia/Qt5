@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_piece_forward.h"
 #include "services/network/public/cpp/simple_url_loader.h"
@@ -25,6 +25,10 @@ struct NetworkTrafficAnnotationTag;
 struct RedirectInfo;
 class URLRequest;
 }  // namespace net
+
+namespace url {
+class Origin;
+}
 
 namespace network {
 
@@ -121,7 +125,8 @@ class TrustTokenKeyCommitmentController final {
 
   // On redirect, fails (key commitment endpoints must not redirect
   // their clients).
-  void HandleRedirect(const net::RedirectInfo& redirect_info,
+  void HandleRedirect(const GURL& url_before_redirect,
+                      const net::RedirectInfo& redirect_info,
                       const mojom::URLResponseHead& response_head,
                       std::vector<std::string>* to_be_removed_headers);
 

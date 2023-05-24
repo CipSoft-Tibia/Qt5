@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,13 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_DOM_SCRIPTED_IDLE_TASK_CONTROLLER_H_
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_idle_request_callback.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/idle_deadline.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_state_observer.h"
-#include "third_party/blink/renderer/core/probe/async_task_id.h"
+#include "third_party/blink/renderer/core/probe/async_task_context.h"
 #include "third_party/blink/renderer/platform/bindings/name_client.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -22,6 +24,38 @@ class IdleRequestCallbackWrapper;
 class ExecutionContext;
 class IdleRequestOptions;
 class ThreadScheduler;
+
+// |IdleTask| is an interface type which generalizes tasks which are invoked
+// on idle. The tasks need to define what to do on idle in |invoke|.
+class IdleTask : public GarbageCollected<IdleTask>, public NameClient {
+ public:
+  virtual void Trace(Visitor* visitor) const {}
+  const char* NameInHeapSnapshot() const override { return "IdleTask"; }
+  ~IdleTask() override = default;
+  virtual void invoke(IdleDeadline*) = 0;
+  probe::AsyncTaskContext* async_task_context() { return &async_task_context_; }
+
+ private:
+  probe::AsyncTaskContext async_task_context_;
+};
+
+// |V8IdleTask| is the adapter class for the conversion from
+// |V8IdleRequestCallback| to |IdleTask|.
+class V8IdleTask : public IdleTask {
+ public:
+  static V8IdleTask* Create(V8IdleRequestCallback* callback) {
+    return MakeGarbageCollected<V8IdleTask>(callback);
+  }
+
+  explicit V8IdleTask(V8IdleRequestCallback*);
+  ~V8IdleTask() override = default;
+
+  void invoke(IdleDeadline*) override;
+  void Trace(Visitor*) const override;
+
+ private:
+  Member<V8IdleRequestCallback> callback_;
+};
 
 class CORE_EXPORT ScriptedIdleTaskController
     : public GarbageCollected<ScriptedIdleTaskController>,
@@ -44,38 +78,6 @@ class CORE_EXPORT ScriptedIdleTaskController
   }
 
   using CallbackId = int;
-
-  // |IdleTask| is an interface type which generalizes tasks which are invoked
-  // on idle. The tasks need to define what to do on idle in |invoke|.
-  class IdleTask : public GarbageCollected<IdleTask>, public NameClient {
-   public:
-    virtual void Trace(Visitor* visitor) const {}
-    const char* NameInHeapSnapshot() const override { return "IdleTask"; }
-    virtual ~IdleTask() = default;
-    virtual void invoke(IdleDeadline*) = 0;
-    probe::AsyncTaskId* async_task_id() { return &async_task_id_; }
-
-   private:
-    probe::AsyncTaskId async_task_id_;
-  };
-
-  // |V8IdleTask| is the adapter class for the conversion from
-  // |V8IdleRequestCallback| to |IdleTask|.
-  class V8IdleTask : public IdleTask {
-   public:
-    static V8IdleTask* Create(V8IdleRequestCallback* callback) {
-      return MakeGarbageCollected<V8IdleTask>(callback);
-    }
-
-    explicit V8IdleTask(V8IdleRequestCallback*);
-    ~V8IdleTask() override = default;
-
-    void invoke(IdleDeadline*) override;
-    void Trace(Visitor*) const override;
-
-   private:
-    Member<V8IdleRequestCallback> callback_;
-  };
 
   int RegisterCallback(IdleTask*, const IdleRequestOptions*);
   void CancelCallback(CallbackId);
@@ -100,8 +102,7 @@ class CORE_EXPORT ScriptedIdleTaskController
 
   bool IsValidCallbackId(int id) {
     using Traits = HashTraits<CallbackId>;
-    return !Traits::IsDeletedValue(id) &&
-           !WTF::IsHashTraitsEmptyValue<Traits, CallbackId>(id);
+    return !WTF::IsHashTraitsEmptyOrDeletedValue<Traits, CallbackId>(id);
   }
 
   void RunCallback(CallbackId,

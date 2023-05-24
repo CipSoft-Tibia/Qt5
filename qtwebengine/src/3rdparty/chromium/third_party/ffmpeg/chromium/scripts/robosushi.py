@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #
 # Copyright 2018 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
@@ -22,9 +22,9 @@ import sys
 from subprocess import check_output
 
 import robo_branch
-from robo_lib import log
-from robo_lib import UserInstructions
-import robo_lib
+from robo_lib import shell
+from robo_lib import errors
+from robo_lib import config
 import robo_build
 import robo_setup
 
@@ -37,9 +37,8 @@ def AreGnConfigsDone(cfg):
   #
   # So, if you're just editing ffmpeg sources to get tests to pass, then you
   # probably don't need to do this step again.
-  #
-  # TODO: Add a way to override this.  I guess just edit out the config
-  # commit with a rebase for now.
+  if cfg.force_gn_rebuild():
+    return False
   return robo_branch.IsCommitOnThisBranch(cfg, cfg.gn_commit_title())
 
 def BuildGnConfigsUnconditionally(robo_configuration):
@@ -55,6 +54,7 @@ def BuildGnConfigsUnconditionally(robo_configuration):
   robo_branch.AddAndCommit(robo_configuration,
                            robo_configuration.gn_commit_title())
 
+
 # Array of steps that this script knows how to perform.  Each step is a
 # dictionary that has the following keys:
 # desc:   (required) user-friendly description of this step.
@@ -69,8 +69,8 @@ steps = {
                        "do_fn": robo_setup.InstallPrereqs },
   "ensure_toolchains": { "desc": "Download mac / win toolchains",
                          "do_fn": robo_setup.EnsureToolchains },
-  "ensure_asan_dir": { "desc": "Create ninja ASAN output directory if needed",
-                       "do_fn": robo_setup.EnsureASANDirWorks },
+  "ensure_new_asan_dir": { "desc": "Create ninja ASAN output directory",
+                           "do_fn": robo_setup.EnsureNewASANDirWorks },
   "ensure_nasm": { "desc": "Compile chromium's nasm if needed",
                    "do_fn": robo_setup.EnsureChromiumNasm },
   "ensure_remote": { "desc": "Set git remotes if needed",
@@ -79,11 +79,14 @@ steps = {
   # Convenience roll-up for --setup
   "setup": { "do_fn": lambda cfg : RunSteps(cfg, ["install_prereqs",
                                 "ensure_toolchains",
-                                "ensure_asan_dir",
+                                "ensure_new_asan_dir",
                                 "ensure_nasm",
                                 "ensure_remote"]) },
 
   # TODO(liberato): consider moving the "if needed" to |req_fn|.
+  "erase_build_output":
+    { "desc": "Once, at the start of the merge, delete build_ffmpeg output.",
+      "do_fn": robo_build.ObliterateOldBuildOutputIfNeeded },
   "create_sushi_branch":
       { "desc": "Create a sushi-MDY branch if we're not on one",
         "do_fn": robo_branch.CreateAndCheckoutDatedSushiBranchIfNeeded },
@@ -115,19 +118,33 @@ steps = {
         "skip_fn": robo_branch.IsUploadedForReview,
         "do_fn": robo_branch.UploadForReview },
 
+  "merge_back_to_origin":
+      { "desc": "Once sushi has landed after review, merge/push to origin",
+        "do_fn": robo_branch.MergeBackToOriginMaster },
+
 # This is a WIP, present in case you're feeling particularly brave.  :)
   "start_fake_deps_roll":
       { "desc": "Try a test deps roll against the sushi (not master) branch",
         "do_fn": robo_branch.TryFakeDepsRoll },
 
+# This is a WIP, present in case you're feeling even more brave.  :)
+  "start_real_deps_roll":
+      { "desc": "Try a real deps roll against the sushi branch",
+        "do_fn": robo_branch.TryRealDepsRoll },
+
+  "win_the_game":
+      { "desc": "Print a happy message when things have completed.",
+        "do_fn": robo_branch.PrintHappyMessage },
+
   # Some things you probably don't need unless you're debugging.
   "download_mac_sdk":
       { "desc": "Try to download the mac SDK, if needed.",
-        "do_fn": robo_setup.FetchMacSDKs },
+        "do_fn": robo_setup.FetchMacSDK },
 
   # Roll-up for --auto-merge
   "auto-merge":
-      { "do_fn": lambda cfg : RunSteps(cfg, [ "create_sushi_branch",
+      { "do_fn": lambda cfg : RunSteps(cfg, [ "erase_build_output",
+                                              "create_sushi_branch",
                                               "merge_from_upstream",
                                               "push_merge_to_origin",
                                               "build_gn_configs",
@@ -137,34 +154,40 @@ steps = {
   # to do is to upload the gn config / patches for review and land it.
                                               "run_tests",
                                               "upload_for_review",
+                                              "merge_back_to_origin",
+                                              "start_real_deps_roll",
+                                              "print_happy_message",
                                             ]) },
 }
+
 
 def RunSteps(cfg, step_names):
   for step_name in step_names:
     if not step_name in steps:
       raise Exception("Unknown step %s" % step_name)
-    log("Step %s" % step_name)
+    shell.log("Step %s" % step_name)
     step = steps[step_name]
     try:
       if "pre_fn" in step:
         raise Exception("pre_fn not supported yet")
-      if "skip_fn" in step:
+      if cfg.skip_allowed() and "skip_fn" in step:
         if step["skip_fn"](cfg):
-          log("Step %s not needed, skipping" % step_name)
+          shell.log("Step %s not needed, skipping" % step_name)
           continue
       step["do_fn"](cfg)
-    except Exception, e:
-      log("Step %s failed" % step_name)
+    except Exception as e:
+      shell.log("Step %s failed" % step_name)
       raise e
+
 
 def ListSteps():
   for name, step in steps.iteritems():
     if "desc" in step:
-      print "%s: %s\n" % (name, step["desc"])
+      print(f"{name}: {step['desc']}\n")
+
 
 def main(argv):
-  robo_configuration = robo_lib.RoboConfiguration()
+  robo_configuration = config.RoboConfiguration()
   robo_configuration.chdir_to_ffmpeg_home();
 
   # TODO(liberato): Add a way to skip |skip_fn|.
@@ -175,17 +198,21 @@ def main(argv):
            "test",
            "build-gn",
            "patches",
+           "force-gn-rebuild",
            "auto-merge",
            "step=",
            "list",
            "dev-merge",
+           "no-skip",
           ])
+
+  exec_steps = []
 
   for opt, arg in parsed:
     if opt == "--prompt":
       robo_configuration.set_prompt_on_call(True)
     elif opt == "--setup":
-      RunSteps(robo_configuration, ["setup"])
+      exec_steps = ["setup"]
     elif opt == "--test":
       robo_build.BuildAndImportFFmpegConfigForHost(robo_configuration)
       robo_build.RunTests(robo_configuration)
@@ -195,39 +222,44 @@ def main(argv):
     elif opt == "--patches":
       # To be run after committing a local change to fix the tests.
       if not robo_branch.IsWorkingDirectoryClean():
-        raise UserInstructions(
+        raise errors.UserInstructions(
                     "Working directory must be clean to generate patches file")
       robo_branch.UpdatePatchesFileUnconditionally(robo_configuration)
     elif opt == "--auto-merge":
-      # TODO: make sure that any untracked autorename files are removed, or
-      # make sure that the autorename git script doesn't try to 'git rm'
-      # untracked files, else the script fails.
-      RunSteps(robo_configuration, ["auto-merge"])
-
-      # TODO: Start a fake deps roll.  To do this, we would:
-      # Create new remote branch from the current remote sushi branch.
-      # Create and check out a new local branch at the current local branch.
-      # Make the new local branch track the new remote branch.
-      # Push to origin/new remote branch.
-      # Start a fake deps roll CL that runs the *san bots.
-      # Switch back to original local branch.
-      # For extra points, include a pointer to the fake deps roll CL in the
-      # local branch, so that when it's pushed for review, it'll point the
-      # reviewer at it.
-
-      # TODO: git cl upload for review.
+      exec_steps = ["auto-merge"]
     elif opt == "--step":
-      RunSteps(robo_configuration, arg.split(","))
+      exec_steps = arg.split(",")
     elif opt == "--list":
       ListSteps()
+    elif opt == "--no-skip":
+      robo_configuration.set_skip_allowed(False)
     elif opt == "--dev-merge":
       # Use HEAD rather than origin/master, so that local robosushi changes
       # are part of the merge.  Only useful for testing those changes.
-      new_merge_base = check_output(["git", "log", "--format=%H", "-1"]).strip()
-      log("Using %s as new origin merge base for testing" % new_merge_base)
+      new_merge_base = shell.output_or_error(["git", "log", "--format=%H", "-1"])
+      shell.log(f"Using {new_merge_base} as new origin merge base for testing")
       robo_configuration.override_origin_merge_base(new_merge_base)
+    elif opt == "--force-gn-rebuild":
+      robo_configuration.set_force_gn_rebuild()
     else:
       raise Exception("Unknown option '%s'" % opt);
+
+    # TODO: make sure that any untracked autorename files are removed, or
+    # make sure that the autorename git script doesn't try to 'git rm'
+    # untracked files, else the script fails.
+    RunSteps(robo_configuration, exec_steps)
+    # TODO: Start a fake deps roll.  To do this, we would:
+    # Create new remote branch from the current remote sushi branch.
+    # Create and check out a new local branch at the current local branch.
+    # Make the new local branch track the new remote branch.
+    # Push to origin/new remote branch.
+    # Start a fake deps roll CL that runs the *san bots.
+    # Switch back to original local branch.
+    # For extra points, include a pointer to the fake deps roll CL in the
+    # local branch, so that when it's pushed for review, it'll point the
+    # reviewer at it.
+    # TODO: git cl upload for review.
+
 
 if __name__ == "__main__":
   main(sys.argv[1:])

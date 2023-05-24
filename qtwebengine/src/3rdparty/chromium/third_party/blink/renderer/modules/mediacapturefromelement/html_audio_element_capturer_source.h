@@ -1,13 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIACAPTUREFROMELEMENT_HTML_AUDIO_ELEMENT_CAPTURER_SOURCE_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIACAPTUREFROMELEMENT_HTML_AUDIO_ELEMENT_CAPTURER_SOURCE_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_audio_source.h"
@@ -37,6 +38,12 @@ class MODULES_EXPORT HtmlAudioElementCapturerSource final
   HtmlAudioElementCapturerSource(
       scoped_refptr<blink::WebAudioSourceProviderImpl> audio_source,
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+
+  HtmlAudioElementCapturerSource(const HtmlAudioElementCapturerSource&) =
+      delete;
+  HtmlAudioElementCapturerSource& operator=(
+      const HtmlAudioElementCapturerSource&) = delete;
+
   ~HtmlAudioElementCapturerSource() override;
 
  private:
@@ -60,8 +67,6 @@ class MODULES_EXPORT HtmlAudioElementCapturerSource final
   THREAD_CHECKER(thread_checker_);
 
   base::WeakPtrFactory<HtmlAudioElementCapturerSource> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(HtmlAudioElementCapturerSource);
 };
 
 }  // namespace blink

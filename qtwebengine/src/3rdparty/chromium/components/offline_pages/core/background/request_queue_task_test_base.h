@@ -1,12 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_OFFLINE_PAGES_CORE_BACKGROUND_REQUEST_QUEUE_TASK_TEST_BASE_H_
 #define COMPONENTS_OFFLINE_PAGES_CORE_BACKGROUND_REQUEST_QUEUE_TASK_TEST_BASE_H_
 
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/test_mock_time_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/offline_pages/core/background/test_request_queue_store.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -28,7 +28,8 @@ class RequestQueueTaskTestBase : public testing::Test {
 
  protected:
   scoped_refptr<base::TestMockTimeTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle task_runner_handle_;
+  base::SingleThreadTaskRunner::CurrentDefaultHandle
+      task_runner_current_default_handle_;
   TestRequestQueueStore store_;
 };
 }  // namespace offline_pages

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,9 +10,7 @@
 #include <string>
 #include <utility>
 
-#include "base/containers/mru_cache.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/containers/lru_cache.h"
 #include "base/synchronization/lock.h"
 #include "components/autofill/core/browser/geo/country_names_for_locale.h"
 
@@ -31,21 +29,24 @@ class CountryNames {
   // is expensive.
   static CountryNames* GetInstance();
 
+  CountryNames(const CountryNames&) = delete;
+  CountryNames& operator=(const CountryNames&) = delete;
+
   // Tells CountryNames, what is the application locale. Only the first supplied
   // value is used, further calls result in no changes.  Call this on the UI
-  // thread, before first using CountryNames. |locale| must not be empty.
+  // thread, before first using CountryNames. `locale` must not be empty.
   static void SetLocaleString(const std::string& locale);
 
-  // Returns the country code corresponding to the |country_name| queried for
+  // Returns the country code corresponding to the `country_name` queried for
   // the application and default locale.
-  const std::string GetCountryCode(const base::string16& country_name) const;
+  const std::string GetCountryCode(const std::u16string& country_name) const;
 
-  // Returns the country code for a |country_name| provided with a
-  // |locale_name|. If no country code can be determined, an empty string is
+  // Returns the country code for a `country_name` provided with a
+  // `locale_name`. If no country code can be determined, an empty string is
   // returned. The purpose of this method is to translate country names from a
   // locale different to one the instance was constructed for.
   const std::string GetCountryCodeForLocalizedCountryName(
-      const base::string16& country_name,
+      const std::u16string& country_name,
       const std::string& locale_name);
 
 #if defined(UNIT_TEST)
@@ -58,7 +59,7 @@ class CountryNames {
 #endif
 
  protected:
-  // Create CountryNames for |locale_name|. Protected for testing.
+  // Create CountryNames for `locale_name`. Protected for testing.
   explicit CountryNames(const std::string& locale_name);
 
   // Protected for testing.
@@ -72,9 +73,9 @@ class CountryNames {
 
   // Caches localized country name for a locale that is neither the application
   // or default locale. The Cache is keyed by the locale_name and contains
-  // |CountryNamesForLocale| instances.
+  // `CountryNamesForLocale` instances.
   using LocalizedCountryNamesCache =
-      base::MRUCache<std::string, CountryNamesForLocale>;
+      base::LRUCache<std::string, CountryNamesForLocale>;
 
   // The locale object for the application locale string.
   const std::string application_locale_name_;
@@ -98,8 +99,6 @@ class CountryNames {
 
   // A lock for accessing and manipulating the localization cache.
   base::Lock localized_country_names_cache_lock_;
-
-  DISALLOW_COPY_AND_ASSIGN(CountryNames);
 };
 
 }  // namespace autofill

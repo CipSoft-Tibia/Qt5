@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,14 +8,15 @@
 #include <set>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "components/sync/model/data_batch.h"
-#include "components/sync/model/mock_model_type_change_processor.h"
-#include "components/sync/model/model_type_store_test_util.h"
-#include "components/sync/protocol/sync.pb.h"
+#include "components/sync/protocol/entity_specifics.pb.h"
+#include "components/sync/protocol/user_event_specifics.pb.h"
+#include "components/sync/test/mock_model_type_change_processor.h"
+#include "components/sync/test/model_type_store_test_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -25,7 +26,6 @@ namespace {
 using sync_pb::UserEventSpecifics;
 using testing::_;
 using testing::ElementsAre;
-using testing::Eq;
 using testing::InvokeWithoutArgs;
 using testing::IsEmpty;
 using testing::IsNull;
@@ -120,7 +120,7 @@ class UserEventSyncBridgeTest : public testing::Test {
     base::RunLoop loop;
     base::RepeatingClosure quit_closure = loop.QuitClosure();
     // Let the bridge initialize fully, which should run ModelReadyToSync().
-    ON_CALL(*processor(), ModelReadyToSync(_))
+    ON_CALL(*processor(), ModelReadyToSync)
         .WillByDefault(InvokeWithoutArgs([=]() { quit_closure.Run(); }));
     loop.Run();
     ON_CALL(*processor(), IsTrackingMetadata()).WillByDefault(Return(true));
@@ -151,8 +151,8 @@ class UserEventSyncBridgeTest : public testing::Test {
     std::map<std::string, sync_pb::EntitySpecifics> storage_key_to_specifics;
     if (batch != nullptr) {
       while (batch->HasNext()) {
-        const syncer::KeyAndData& pair = batch->Next();
-        storage_key_to_specifics[pair.first] = pair.second->specifics;
+        auto [key, data] = batch->Next();
+        storage_key_to_specifics[key] = data->specifics;
       }
     }
     return storage_key_to_specifics;
@@ -176,9 +176,8 @@ class UserEventSyncBridgeTest : public testing::Test {
 
     std::unique_ptr<sync_pb::EntitySpecifics> specifics;
     if (batch != nullptr && batch->HasNext()) {
-      const syncer::KeyAndData& pair = batch->Next();
-      specifics =
-          std::make_unique<sync_pb::EntitySpecifics>(pair.second->specifics);
+      auto [key, data] = batch->Next();
+      specifics = std::make_unique<sync_pb::EntitySpecifics>(data->specifics);
       EXPECT_FALSE(batch->HasNext());
     }
     return specifics;
@@ -200,8 +199,7 @@ TEST_F(UserEventSyncBridgeTest, SingleRecord) {
   WaitUntilModelReadyToSync();
   const UserEventSpecifics specifics(CreateSpecifics(1u, 2u, 3u));
   std::string storage_key;
-  EXPECT_CALL(*processor(), Put(_, _, _))
-      .WillOnce(WithArg<0>(SaveArg<0>(&storage_key)));
+  EXPECT_CALL(*processor(), Put).WillOnce(WithArg<0>(SaveArg<0>(&storage_key)));
   bridge()->RecordUserEvent(std::make_unique<UserEventSpecifics>(specifics));
 
   EXPECT_THAT(GetData(storage_key), Pointee(MatchesUserEvent(specifics)));
@@ -226,7 +224,7 @@ TEST_F(UserEventSyncBridgeTest, ApplyStopSyncChanges) {
 TEST_F(UserEventSyncBridgeTest, MultipleRecords) {
   WaitUntilModelReadyToSync();
   std::set<std::string> unique_storage_keys;
-  EXPECT_CALL(*processor(), Put(_, _, _))
+  EXPECT_CALL(*processor(), Put)
       .Times(4)
       .WillRepeatedly(
           [&unique_storage_keys](const std::string& storage_key,
@@ -248,7 +246,7 @@ TEST_F(UserEventSyncBridgeTest, ApplySyncChanges) {
   WaitUntilModelReadyToSync();
   std::string storage_key1;
   std::string storage_key2;
-  EXPECT_CALL(*processor(), Put(_, _, _))
+  EXPECT_CALL(*processor(), Put)
       .WillOnce(WithArg<0>(SaveArg<0>(&storage_key1)))
       .WillOnce(WithArg<0>(SaveArg<0>(&storage_key2)));
 
@@ -275,8 +273,7 @@ TEST_F(UserEventSyncBridgeTest, HandleGlobalIdChange) {
   int64_t fourth_id = 14;
 
   std::string storage_key;
-  EXPECT_CALL(*processor(), Put(_, _, _))
-      .WillOnce(WithArg<0>(SaveArg<0>(&storage_key)));
+  EXPECT_CALL(*processor(), Put).WillOnce(WithArg<0>(SaveArg<0>(&storage_key)));
 
   // This id update should be applied to the event as it is initially
   // recorded.
@@ -302,7 +299,7 @@ TEST_F(UserEventSyncBridgeTest, HandleGlobalIdChange) {
 
   // This id update should be ignored, since we received commit confirmation
   // above.
-  EXPECT_CALL(*processor(), Put(_, _, _)).Times(0);
+  EXPECT_CALL(*processor(), Put).Times(0);
   mapper()->ChangeId(third_id, fourth_id);
   EXPECT_THAT(GetAllData(), IsEmpty());
 }
@@ -354,7 +351,7 @@ TEST_F(UserEventSyncBridgeTest, RecordBeforeMetadataLoads) {
   ON_CALL(*processor(), IsTrackingMetadata()).WillByDefault(Return(false));
   ON_CALL(*processor(), TrackedAccountId()).WillByDefault(Return(""));
   bridge()->RecordUserEvent(SpecificsUniquePtr(1u, 2u, 3u));
-  EXPECT_CALL(*processor(), ModelReadyToSync(_));
+  EXPECT_CALL(*processor(), ModelReadyToSync);
   WaitUntilModelReadyToSync("account_id");
   EXPECT_THAT(GetAllData(), IsEmpty());
 }

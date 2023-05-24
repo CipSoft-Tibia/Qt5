@@ -1,47 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativecategory_p.h"
-#include "qdeclarativeplaceicon_p.h"
 #include "qdeclarativegeoserviceprovider_p.h"
 #include "error_messages_p.h"
 
 #include <QtQml/QQmlInfo>
 #include <QtLocation/QGeoServiceProvider>
+#include <QtLocation/QPlaceIcon>
 #include <QtLocation/QPlaceManager>
+#include <QtLocation/QPlaceIdReply>
 #include <QCoreApplication>
 
 QT_BEGIN_NAMESPACE
@@ -78,15 +46,14 @@ QT_BEGIN_NAMESPACE
 */
 
 QDeclarativeCategory::QDeclarativeCategory(QObject *parent)
-:   QObject(parent), m_icon(0), m_plugin(0), m_reply(0), m_complete(false), m_status(Ready)
+    : QObject(parent)
 {
 }
 
 QDeclarativeCategory::QDeclarativeCategory(const QPlaceCategory &category,
                                            QDeclarativeGeoServiceProvider *plugin,
                                            QObject *parent)
-:   QObject(parent), m_category(category), m_icon(0), m_plugin(plugin), m_reply(0),
-    m_complete(false), m_status(Ready)
+    : QObject(parent), m_category(category), m_plugin(plugin)
 {
     setCategory(category);
 }
@@ -96,12 +63,6 @@ QDeclarativeCategory::~QDeclarativeCategory() {}
 // From QQmlParserStatus
 void QDeclarativeCategory::componentComplete()
 {
-    // delayed instantiation of QObject based properties.
-    if (!m_icon) {
-        m_icon = new QDeclarativePlaceIcon(this);
-        m_icon->setPlugin(m_plugin);
-    }
-
     m_complete = true;
 }
 
@@ -119,17 +80,14 @@ void QDeclarativeCategory::setPlugin(QDeclarativeGeoServiceProvider *plugin)
     if (m_complete)
         emit pluginChanged();
 
-    if (m_icon && m_icon->parent() == this && !m_icon->plugin())
-        m_icon->setPlugin(m_plugin);
-
     if (!m_plugin)
         return;
 
     if (m_plugin->isAttached()) {
         pluginReady();
     } else {
-        connect(m_plugin, SIGNAL(attached()),
-                this, SLOT(pluginReady()));
+        connect(m_plugin, &QDeclarativeGeoServiceProvider::attached,
+                this, &QDeclarativeCategory::pluginReady);
     }
 }
 
@@ -154,11 +112,7 @@ void QDeclarativeCategory::pluginReady()
 
 
 /*!
-    \qmlproperty QPlaceCategory Category::category
-    \keyword Category::category
-
-    For details on how to use this property to interface between C++ and QML see
-    "\l {Category - QPlaceCategory} {Interfaces between C++ and QML Code}".
+    \internal
 */
 void QDeclarativeCategory::setCategory(const QPlaceCategory &category)
 {
@@ -171,18 +125,12 @@ void QDeclarativeCategory::setCategory(const QPlaceCategory &category)
     if (category.categoryId() != previous.categoryId())
         emit categoryIdChanged();
 
-    if (m_icon && m_icon->parent() == this) {
-        m_icon->setPlugin(m_plugin);
-        m_icon->setIcon(m_category.icon());
-    } else if (!m_icon || m_icon->parent() != this) {
-        m_icon = new QDeclarativePlaceIcon(m_category.icon(), m_plugin, this);
+    if (category.icon() != previous.icon())
         emit iconChanged();
-    }
 }
 
 QPlaceCategory QDeclarativeCategory::category()
 {
-    m_category.setIcon(m_icon ? m_icon->icon() : QPlaceIcon());
     return m_category;
 }
 
@@ -272,21 +220,17 @@ void QDeclarativeCategory::setVisibility(Visibility visibility)
     This property holds the image source associated with the category. To display the icon you can use 
     the \l Image type.
 */
-QDeclarativePlaceIcon *QDeclarativeCategory::icon() const
+QPlaceIcon QDeclarativeCategory::icon() const
 {
-    return m_icon;
+    return m_category.icon();
 }
 
-void QDeclarativeCategory::setIcon(QDeclarativePlaceIcon *icon)
+void QDeclarativeCategory::setIcon(const QPlaceIcon &icon)
 {
-    if (m_icon == icon)
-        return;
-
-    if (m_icon && m_icon->parent() == this)
-        delete m_icon;
-
-    m_icon = icon;
-    emit iconChanged();
+    if (m_category.icon() != icon) {
+        m_category.setIcon(icon);
+        emit iconChanged();
+    }
 }
 
 /*!
@@ -351,7 +295,8 @@ void QDeclarativeCategory::save(const QString &parentId)
         return;
 
     m_reply = placeManager->saveCategory(category(), parentId);
-    connect(m_reply, SIGNAL(finished()), this, SLOT(replyFinished()));
+    connect(m_reply, &QPlaceReply::finished,
+            this, &QDeclarativeCategory::replyFinished);
     setStatus(QDeclarativeCategory::Saving);
 }
 
@@ -367,7 +312,8 @@ void QDeclarativeCategory::remove()
         return;
 
     m_reply = placeManager->removeCategory(m_category.categoryId());
-    connect(m_reply, SIGNAL(finished()), this, SLOT(replyFinished()));
+    connect(m_reply, &QPlaceReply::finished,
+            this, &QDeclarativeCategory::replyFinished);
     setStatus(QDeclarativeCategory::Removing);
 }
 
@@ -405,14 +351,14 @@ void QDeclarativeCategory::replyFinished()
         m_errorString.clear();
 
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
 
         setStatus(QDeclarativeCategory::Ready);
     } else {
         QString errorString = m_reply->errorString();
 
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
 
         setStatus(QDeclarativeCategory::Error, errorString);
     }
@@ -427,29 +373,29 @@ void QDeclarativeCategory::replyFinished()
 QPlaceManager *QDeclarativeCategory::manager()
 {
     if (m_status != QDeclarativeCategory::Ready && m_status != QDeclarativeCategory::Error)
-        return 0;
+        return nullptr;
 
     if (m_reply) {
         m_reply->abort();
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
     }
 
     if (!m_plugin) {
         setStatus(Error, QCoreApplication::translate(CONTEXT_NAME, PLUGIN_PROPERTY_NOT_SET));
-        return 0;
+        return nullptr;
     }
 
     QGeoServiceProvider *serviceProvider = m_plugin->sharedGeoServiceProvider();
     if (!serviceProvider) {
         setStatus(Error, QCoreApplication::translate(CONTEXT_NAME, PLUGIN_NOT_VALID));
-        return 0;
+        return nullptr;
     }
     QPlaceManager *placeManager = serviceProvider->placeManager();
     if (!placeManager) {
         setStatus(Error, QCoreApplication::translate(CONTEXT_NAME, PLUGIN_ERROR)
                          .arg(m_plugin->name()).arg(serviceProvider->errorString()));
-        return 0;
+        return nullptr;
     }
 
     return placeManager;

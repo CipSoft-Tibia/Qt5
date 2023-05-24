@@ -1,13 +1,12 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/media/android/stream_texture_wrapper_impl.h"
 
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
 
@@ -17,11 +16,12 @@ class StreamTextureWrapperImplTest : public testing::Test {
  public:
   StreamTextureWrapperImplTest() {}
 
+  StreamTextureWrapperImplTest(const StreamTextureWrapperImplTest&) = delete;
+  StreamTextureWrapperImplTest& operator=(const StreamTextureWrapperImplTest&) =
+      delete;
+
   // Necessary, or else GetSingleThreadTaskRunnerForTesting() fails.
   base::test::SingleThreadTaskEnvironment task_environment_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(StreamTextureWrapperImplTest);
 };
 
 // This test's purpose is to make sure the StreamTextureWrapperImpl can properly

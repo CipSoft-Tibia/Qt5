@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #ifndef WIDGETS_H
 #define WIDGETS_H
 
@@ -131,12 +106,12 @@ public:
     void setCheckersBackground(bool b) { m_checkersBackground = b; }
     void setType(DeviceType t) { m_deviceType = t; }
 
-    void resizeEvent(QResizeEvent *e) {
+    void resizeEvent(QResizeEvent *e) override {
         m_image = QImage();
         T::resizeEvent(e);
     }
 
-    void paintEvent(QPaintEvent *) {
+    void paintEvent(QPaintEvent *) override {
         switch (m_view_mode) {
         case RenderView: paintRenderView(); break;
         case BaselineView: paintBaselineView(); break;
@@ -254,7 +229,7 @@ public:
     }
 
 
-    void mouseMoveEvent(QMouseEvent *e)
+    void mouseMoveEvent(QMouseEvent *e) override
     {
         if (m_currentPoint == -1)
             return;
@@ -263,7 +238,7 @@ public:
         T::update();
     }
 
-    void mousePressEvent(QMouseEvent *e)
+    void mousePressEvent(QMouseEvent *e) override
     {
         if (e->button() == Qt::RightButton) {
             m_showControlPoints = true;
@@ -280,7 +255,7 @@ public:
         T::update();
     }
 
-    void mouseReleaseEvent(QMouseEvent *e)
+    void mouseReleaseEvent(QMouseEvent *e) override
     {
         if (e->button() == Qt::LeftButton)
             m_currentPoint = -1;
@@ -289,9 +264,9 @@ public:
         T::update();
     }
 
-    QSize sizeHint() const { return QSize(800, 800); }
+    QSize sizeHint() const override { return QSize(800, 800); }
 
-    QVector<QPointF> m_controlPoints;
+    QList<QPointF> m_controlPoints;
     int m_currentPoint;
     bool m_showControlPoints;
 

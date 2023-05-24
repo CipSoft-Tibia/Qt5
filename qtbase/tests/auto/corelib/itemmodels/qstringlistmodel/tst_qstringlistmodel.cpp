@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
 #include <qabstractitemmodel.h>
 #include <qcoreapplication.h>
 #include <qmap.h>
@@ -92,6 +68,7 @@ private slots:
 
     void itemData();
     void setItemData();
+    void createPersistentOnLayoutAboutToBeChanged();
 };
 
 void tst_QStringListModel::moveRowsInvalid_data()
@@ -330,7 +307,7 @@ template <class C>
 C sorted(C c)
 {
     std::sort(c.begin(), c.end());
-    return std::move(c);
+    return c;
 }
 
 void tst_QStringListModel::setData_emits_both_roles()
@@ -340,7 +317,7 @@ void tst_QStringListModel::setData_emits_both_roles()
     QFETCH(int, role);
 
     QStringListModel model(QStringList() << "one" << "two");
-    QVector<int> expected;
+    QList<int> expected;
     expected.reserve(2);
     expected.append(Qt::DisplayRole);
     expected.append(Qt::EditRole);
@@ -349,7 +326,7 @@ void tst_QStringListModel::setData_emits_both_roles()
     QVERIFY(spy.isValid());
     model.setData(model.index(row, 0), data, role);
     QCOMPARE(spy.size(), 1);
-    QCOMPARE(sorted(spy.at(0).at(2).value<QVector<int> >()),
+    QCOMPARE(sorted(spy.at(0).at(2).value<QList<int> >()),
              expected);
 }
 
@@ -380,7 +357,7 @@ void tst_QStringListModel::setItemData()
     }};
     QSignalSpy dataChangedSpy(&testModel, &QAbstractItemModel::dataChanged);
     QModelIndex changeIndex = testModel.index(1, 0);
-    const QVector<int> changeRoles{Qt::DisplayRole, Qt::EditRole};
+    const QList<int> changeRoles{Qt::DisplayRole, Qt::EditRole};
     const QString changedString("Changed");
     QMap<int, QVariant> newItemData{std::make_pair<int>(Qt::DisplayRole, changedString)};
     // invalid index does nothing and returns false
@@ -393,7 +370,7 @@ void tst_QStringListModel::setItemData()
     QVariantList dataChangedArguments = dataChangedSpy.takeFirst();
     QCOMPARE(dataChangedArguments.at(0).value<QModelIndex>(), changeIndex);
     QCOMPARE(dataChangedArguments.at(1).value<QModelIndex>(), changeIndex);
-    QCOMPARE(dataChangedArguments.at(2).value<QVector<int> >(), changeRoles);
+    QCOMPARE(dataChangedArguments.at(2).value<QList<int> >(), changeRoles);
     // Unsupported roles do nothing return false
     newItemData.clear();
     newItemData.insert(Qt::UserRole, changedString);
@@ -418,7 +395,7 @@ void tst_QStringListModel::setItemData()
     dataChangedArguments = dataChangedSpy.takeFirst();
     QCOMPARE(dataChangedArguments.at(0).value<QModelIndex>(), changeIndex);
     QCOMPARE(dataChangedArguments.at(1).value<QModelIndex>(), changeIndex);
-    QCOMPARE(dataChangedArguments.at(2).value<QVector<int> >(), changeRoles);
+    QCOMPARE(dataChangedArguments.at(2).value<QList<int> >(), changeRoles);
 }
 
 void tst_QStringListModel::setData_emits_on_change_only()
@@ -429,12 +406,12 @@ void tst_QStringListModel::setData_emits_on_change_only()
     const QModelIndex modelIdx = model.index(0, 0);
     const QString newStringData = QStringLiteral("test");
     QVERIFY(model.setData(modelIdx, newStringData));
-    QCOMPARE(dataChangedSpy.count(), 1);
+    QCOMPARE(dataChangedSpy.size(), 1);
     const QList<QVariant> spyList = dataChangedSpy.takeFirst();
     QCOMPARE(spyList.at(0).value<QModelIndex>(), modelIdx);
     QCOMPARE(spyList.at(1).value<QModelIndex>(), modelIdx);
-    const QVector<int> expectedRoles{Qt::DisplayRole, Qt::EditRole};
-    QCOMPARE(spyList.at(2).value<QVector<int> >(), expectedRoles);
+    const QList<int> expectedRoles{Qt::DisplayRole, Qt::EditRole};
+    QCOMPARE(spyList.at(2).value<QList<int> >(), expectedRoles);
     QVERIFY(model.setData(modelIdx, newStringData));
     QVERIFY(dataChangedSpy.isEmpty());
 }
@@ -444,6 +421,35 @@ void tst_QStringListModel::supportedDragDropActions()
     QStringListModel model;
     QCOMPARE(model.supportedDragActions(), Qt::CopyAction | Qt::MoveAction);
     QCOMPARE(model.supportedDropActions(), Qt::CopyAction | Qt::MoveAction);
+}
+
+void tst_QStringListModel::createPersistentOnLayoutAboutToBeChanged() // QTBUG-93466
+{
+    QStringListModel model(QStringList{QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3")});
+    QList<QPersistentModelIndex> idxList;
+    QSignalSpy layoutAboutToBeChangedSpy(&model, &QAbstractItemModel::layoutAboutToBeChanged);
+    QSignalSpy layoutChangedSpy(&model, &QAbstractItemModel::layoutChanged);
+    connect(&model, &QAbstractItemModel::layoutAboutToBeChanged, this, [&idxList, &model](){
+        idxList.clear();
+        for (int row = 0; row < 3; ++row)
+            idxList << QPersistentModelIndex(model.index(row, 0));
+    });
+    connect(&model, &QAbstractItemModel::layoutChanged, this, [&idxList](){
+        QCOMPARE(idxList.size(), 3);
+        QCOMPARE(idxList.at(0).row(), 1);
+        QCOMPARE(idxList.at(0).column(), 0);
+        QCOMPARE(idxList.at(0).data().toString(), QStringLiteral("1"));
+        QCOMPARE(idxList.at(1).row(), 0);
+        QCOMPARE(idxList.at(1).column(), 0);
+        QCOMPARE(idxList.at(1).data().toString(), QStringLiteral("0"));
+        QCOMPARE(idxList.at(2).row(), 2);
+        QCOMPARE(idxList.at(2).column(), 0);
+        QCOMPARE(idxList.at(2).data().toString(), QStringLiteral("3"));
+    });
+    model.setData(model.index(1, 0), QStringLiteral("0"));
+    model.sort(0);
+    QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
+    QCOMPARE(layoutChangedSpy.size(), 1);
 }
 
 QTEST_MAIN(tst_QStringListModel)

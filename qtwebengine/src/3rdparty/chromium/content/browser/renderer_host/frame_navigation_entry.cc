@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,9 @@
 
 #include <utility>
 
-#include "base/stl_util.h"
 #include "base/strings/utf_string_conversions.h"
-#include "content/browser/web_package/web_bundle_navigation_info.h"
-#include "content/common/page_state_serialization.h"
+#include "content/browser/web_package/subresource_web_bundle_navigation_info.h"
+#include "third_party/blink/public/common/page_state/page_state_serialization.h"
 
 namespace content {
 
@@ -20,36 +19,44 @@ FrameNavigationEntry::FrameNavigationEntry(
     const std::string& frame_unique_name,
     int64_t item_sequence_number,
     int64_t document_sequence_number,
+    const std::string& navigation_api_key,
     scoped_refptr<SiteInstanceImpl> site_instance,
     scoped_refptr<SiteInstanceImpl> source_site_instance,
     const GURL& url,
-    const url::Origin* origin,
+    const absl::optional<url::Origin>& origin,
     const Referrer& referrer,
-    const base::Optional<url::Origin>& initiator_origin,
+    const absl::optional<url::Origin>& initiator_origin,
+    const absl::optional<GURL>& initiator_base_url,
     const std::vector<GURL>& redirect_chain,
-    const PageState& page_state,
+    const blink::PageState& page_state,
     const std::string& method,
     int64_t post_id,
     scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory,
-    std::unique_ptr<WebBundleNavigationInfo> web_bundle_navigation_info)
+    std::unique_ptr<SubresourceWebBundleNavigationInfo>
+        subresource_web_bundle_navigation_info,
+    std::unique_ptr<PolicyContainerPolicies> policy_container_policies,
+    bool protect_url_in_navigation_api)
     : frame_unique_name_(frame_unique_name),
       item_sequence_number_(item_sequence_number),
       document_sequence_number_(document_sequence_number),
+      navigation_api_key_(navigation_api_key),
       site_instance_(std::move(site_instance)),
       source_site_instance_(std::move(source_site_instance)),
       url_(url),
+      committed_origin_(origin),
       referrer_(referrer),
       initiator_origin_(initiator_origin),
+      initiator_base_url_(initiator_base_url),
       redirect_chain_(redirect_chain),
       page_state_(page_state),
       bindings_(kInvalidBindings),
       method_(method),
       post_id_(post_id),
       blob_url_loader_factory_(std::move(blob_url_loader_factory)),
-      web_bundle_navigation_info_(std::move(web_bundle_navigation_info)) {
-  if (origin)
-    committed_origin_ = *origin;
-}
+      subresource_web_bundle_navigation_info_(
+          std::move(subresource_web_bundle_navigation_info)),
+      policy_container_policies_(std::move(policy_container_policies)),
+      protect_url_in_navigation_api_(protect_url_in_navigation_api) {}
 
 FrameNavigationEntry::~FrameNavigationEntry() {}
 
@@ -57,12 +64,16 @@ scoped_refptr<FrameNavigationEntry> FrameNavigationEntry::Clone() const {
   auto copy = base::MakeRefCounted<FrameNavigationEntry>();
 
   // Omit any fields cleared at commit time.
-  copy->UpdateEntry(frame_unique_name_, item_sequence_number_,
-                    document_sequence_number_, site_instance_.get(), nullptr,
-                    url_, committed_origin_, referrer_, initiator_origin_,
-                    redirect_chain_, page_state_, method_, post_id_,
-                    nullptr /* blob_url_loader_factory */,
-                    nullptr /* web_bundle_navigation_info */);
+  copy->UpdateEntry(
+      frame_unique_name_, item_sequence_number_, document_sequence_number_,
+      navigation_api_key_, site_instance_.get(), nullptr, url_,
+      committed_origin_, referrer_, initiator_origin_, initiator_base_url_,
+      redirect_chain_, page_state_, method_, post_id_,
+      nullptr /* blob_url_loader_factory */,
+      nullptr /* subresource_web_bundle_navigation_info */,
+      policy_container_policies_ ? policy_container_policies_->ClonePtr()
+                                 : nullptr,
+      protect_url_in_navigation_api_);
   // |bindings_| gets only updated through the SetBindings API, not through
   // UpdateEntry, so make a copy of it explicitly here as part of cloning.
   copy->bindings_ = bindings_;
@@ -73,21 +84,27 @@ void FrameNavigationEntry::UpdateEntry(
     const std::string& frame_unique_name,
     int64_t item_sequence_number,
     int64_t document_sequence_number,
+    const std::string& navigation_api_key,
     SiteInstanceImpl* site_instance,
     scoped_refptr<SiteInstanceImpl> source_site_instance,
     const GURL& url,
-    const base::Optional<url::Origin>& origin,
+    const absl::optional<url::Origin>& origin,
     const Referrer& referrer,
-    const base::Optional<url::Origin>& initiator_origin,
+    const absl::optional<url::Origin>& initiator_origin,
+    const absl::optional<GURL>& initiator_base_url,
     const std::vector<GURL>& redirect_chain,
-    const PageState& page_state,
+    const blink::PageState& page_state,
     const std::string& method,
     int64_t post_id,
     scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory,
-    std::unique_ptr<WebBundleNavigationInfo> web_bundle_navigation_info) {
+    std::unique_ptr<SubresourceWebBundleNavigationInfo>
+        subresource_web_bundle_navigation_info,
+    std::unique_ptr<PolicyContainerPolicies> policy_container_policies,
+    bool protect_url_in_navigation_api) {
   frame_unique_name_ = frame_unique_name;
   item_sequence_number_ = item_sequence_number;
   document_sequence_number_ = document_sequence_number;
+  navigation_api_key_ = navigation_api_key;
   site_instance_ = site_instance;
   source_site_instance_ = std::move(source_site_instance);
   redirect_chain_ = redirect_chain;
@@ -95,11 +112,15 @@ void FrameNavigationEntry::UpdateEntry(
   committed_origin_ = origin;
   referrer_ = referrer;
   initiator_origin_ = initiator_origin;
+  initiator_base_url_ = initiator_base_url;
   page_state_ = page_state;
   method_ = method;
   post_id_ = post_id;
   blob_url_loader_factory_ = std::move(blob_url_loader_factory);
-  web_bundle_navigation_info_ = std::move(web_bundle_navigation_info);
+  subresource_web_bundle_navigation_info_ =
+      std::move(subresource_web_bundle_navigation_info);
+  policy_container_policies_ = std::move(policy_container_policies);
+  protect_url_in_navigation_api_ = protect_url_in_navigation_api;
 }
 
 void FrameNavigationEntry::set_item_sequence_number(
@@ -118,15 +139,25 @@ void FrameNavigationEntry::set_document_sequence_number(
   document_sequence_number_ = document_sequence_number;
 }
 
-void FrameNavigationEntry::SetPageState(const PageState& page_state) {
+void FrameNavigationEntry::set_navigation_api_key(
+    const std::string& navigation_api_key) {
+  // Once assigned, the navigation API key shouldn't change.
+  DCHECK(navigation_api_key_.empty() ||
+         navigation_api_key_ == navigation_api_key);
+  navigation_api_key_ = navigation_api_key;
+}
+
+void FrameNavigationEntry::SetPageState(const blink::PageState& page_state) {
   page_state_ = page_state;
 
-  ExplodedPageState exploded_state;
-  if (!DecodePageState(page_state_.ToEncodedData(), &exploded_state))
+  blink::ExplodedPageState exploded_state;
+  if (!blink::DecodePageState(page_state_.ToEncodedData(), &exploded_state))
     return;
 
   item_sequence_number_ = exploded_state.top.item_sequence_number;
   document_sequence_number_ = exploded_state.top.document_sequence_number;
+  navigation_api_key_ = base::UTF16ToUTF8(
+      exploded_state.top.navigation_api_key.value_or(std::u16string()));
 }
 
 void FrameNavigationEntry::SetBindings(int bindings) {
@@ -142,24 +173,19 @@ scoped_refptr<network::ResourceRequestBody> FrameNavigationEntry::GetPostData(
     return nullptr;
 
   // Generate the body from the PageState.
-  ExplodedPageState exploded_state;
-  if (!DecodePageState(page_state_.ToEncodedData(), &exploded_state))
+  blink::ExplodedPageState exploded_state;
+  if (!blink::DecodePageState(page_state_.ToEncodedData(), &exploded_state))
     return nullptr;
 
   *content_type = base::UTF16ToASCII(
       exploded_state.top.http_body.http_content_type.value_or(
-          base::string16()));
+          std::u16string()));
   return exploded_state.top.http_body.request_body;
 }
 
-void FrameNavigationEntry::set_web_bundle_navigation_info(
-    std::unique_ptr<WebBundleNavigationInfo> web_bundle_navigation_info) {
-  web_bundle_navigation_info_ = std::move(web_bundle_navigation_info);
-}
-
-WebBundleNavigationInfo* FrameNavigationEntry::web_bundle_navigation_info()
-    const {
-  return web_bundle_navigation_info_.get();
+SubresourceWebBundleNavigationInfo*
+FrameNavigationEntry::subresource_web_bundle_navigation_info() const {
+  return subresource_web_bundle_navigation_info_.get();
 }
 
 }  // namespace content

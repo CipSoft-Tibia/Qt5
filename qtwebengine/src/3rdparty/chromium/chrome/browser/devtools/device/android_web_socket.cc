@@ -1,17 +1,15 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
 #include "base/rand_util.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "chrome/browser/devtools/device/android_device_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "net/base/io_buffer.h"
@@ -69,6 +67,9 @@ class AndroidDeviceManager::AndroidWebSocket::WebSocketImpl {
     thread_checker_.DetachFromThread();
   }
 
+  WebSocketImpl(const WebSocketImpl&) = delete;
+  WebSocketImpl& operator=(const WebSocketImpl&) = delete;
+
   void StartListening() {
     DCHECK(thread_checker_.CalledOnValidThread());
     DCHECK(socket_);
@@ -88,7 +89,7 @@ class AndroidDeviceManager::AndroidWebSocket::WebSocketImpl {
       return;
     int mask = base::RandInt(0, 0x7FFFFFFF);
     std::string encoded_frame;
-    encoder_->EncodeFrame(message, mask, &encoded_frame);
+    encoder_->EncodeTextFrame(message, mask, &encoded_frame);
     SendData(encoded_frame);
   }
 
@@ -123,7 +124,7 @@ class AndroidDeviceManager::AndroidWebSocket::WebSocketImpl {
     WebSocket::ParseResult parse_result = encoder_->DecodeFrame(
         response_buffer_, &bytes_consumed, &output);
 
-    while (parse_result == WebSocket::FRAME_OK) {
+    while (parse_result == WebSocket::FRAME_OK_FINAL) {
       response_buffer_ = response_buffer_.substr(bytes_consumed);
       response_task_runner_->PostTask(
           FROM_HERE,
@@ -182,7 +183,6 @@ class AndroidDeviceManager::AndroidWebSocket::WebSocketImpl {
   std::string response_buffer_;
   std::string request_buffer_;
   base::ThreadChecker thread_checker_;
-  DISALLOW_COPY_AND_ASSIGN(WebSocketImpl);
 
   base::WeakPtrFactory<WebSocketImpl> weak_factory_{this};
 };
@@ -200,7 +200,7 @@ AndroidDeviceManager::AndroidWebSocket::AndroidWebSocket(
   DCHECK(device_);
   device_->HttpUpgrade(
       socket_name, path, net::WebSocketEncoder::kClientExtensions,
-      base::Bind(&AndroidWebSocket::Connected, weak_factory_.GetWeakPtr()));
+      base::BindOnce(&AndroidWebSocket::Connected, weak_factory_.GetWeakPtr()));
 }
 
 AndroidDeviceManager::AndroidWebSocket::~AndroidWebSocket() = default;
@@ -225,9 +225,9 @@ void AndroidDeviceManager::AndroidWebSocket::Connected(
     OnSocketClosed();
     return;
   }
-  socket_impl_.reset(new WebSocketImpl(base::ThreadTaskRunnerHandle::Get(),
-                                       weak_factory_.GetWeakPtr(), extensions,
-                                       body_head, std::move(socket)));
+  socket_impl_.reset(new WebSocketImpl(
+      base::SingleThreadTaskRunner::GetCurrentDefault(),
+      weak_factory_.GetWeakPtr(), extensions, body_head, std::move(socket)));
   device_->task_runner_->PostTask(FROM_HERE,
                                   base::BindOnce(&WebSocketImpl::StartListening,
                                                  socket_impl_->GetWeakPtr()));

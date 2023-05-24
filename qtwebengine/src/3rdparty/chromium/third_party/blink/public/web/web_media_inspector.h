@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,9 +33,20 @@ struct InspectorPlayerEvent {
 using InspectorPlayerEvents = WebVector<InspectorPlayerEvent>;
 
 struct InspectorPlayerError {
-  enum class Type { kPipelineError, kMediaStatus };
-  Type type;
-  WebString errorCode;
+  struct Data {
+    WebString name;
+    WebString value;
+  };
+  struct SourceLocation {
+    WebString filename;
+    int line_number;
+  };
+  WebString group;
+  int code;
+  WebString message;
+  WebVector<SourceLocation> stack;
+  WebVector<InspectorPlayerError> caused_by;
+  WebVector<Data> data;
 };
 using InspectorPlayerErrors = WebVector<InspectorPlayerError>;
 
@@ -43,7 +54,8 @@ class MediaInspectorContext {
  public:
   virtual WebString CreatePlayer() = 0;
 
-  // These methods DCHECK if the player id is invalid.
+  virtual void DestroyPlayer(const WebString& playerId) = 0;
+
   virtual void NotifyPlayerEvents(WebString player_id,
                                   const InspectorPlayerEvents&) = 0;
   virtual void NotifyPlayerErrors(WebString player_id,

@@ -12,25 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Patch, produce} from 'immer';
+import {applyPatches, Patch} from 'immer';
 
 import {assertExists} from '../base/logging';
-import {Remote} from '../base/remote';
-import {DeferredAction, StateActions} from '../common/actions';
-import {createEmptyState, State} from '../common/state';
-import {ControllerAny} from './controller';
+import {createEmptyState} from '../common/empty_state';
+import {State} from '../common/state';
 
-type PublishKinds = 'OverviewData'|'TrackData'|'Threads'|'QueryResult'|
-    'LegacyTrace'|'SliceDetails'|'CounterDetails'|'HeapProfileDetails'|
-    'HeapProfileFlamegraph'|'FileDownload'|'Loading'|'Search'|'BufferUsage'|
-    'RecordingLog'|'SearchResult'|'AggregateData'|'CpuProfileDetails'|
-    'TraceErrors'|'UpdateChromeCategories'|'BoundFlows'|'ThreadStateDetails'|
-    'MetricError'|'MetricResult';
+import {ControllerAny} from './controller';
 
 export interface App {
   state: State;
-  dispatch(action: DeferredAction): void;
-  publish(what: PublishKinds, data: {}, transferList?: Array<{}>): void;
 }
 
 /**
@@ -39,28 +30,17 @@ export interface App {
 class Globals implements App {
   private _state?: State;
   private _rootController?: ControllerAny;
-  private _frontend?: Remote;
   private _runningControllers = false;
-  private _queuedActions = new Array<DeferredAction>();
 
-  initialize(rootController: ControllerAny, frontendProxy: Remote) {
+  initialize(rootController: ControllerAny) {
     this._rootController = rootController;
-    this._frontend = frontendProxy;
     this._state = createEmptyState();
   }
 
-  dispatch(action: DeferredAction): void {
-    this.dispatchMultiple([action]);
-  }
-
-  dispatchMultiple(actions: DeferredAction[]): void {
-    this._queuedActions = this._queuedActions.concat(actions);
-
-    // If we are in the middle of running the controllers, queue the actions
-    // and run them at the end of the run, so the state is atomically updated
-    // only at the end and all controllers see the same state.
-    if (this._runningControllers) return;
-
+  // This is called by the frontend logic which now owns and handle the
+  // source-of-truth state, to give us an update on the newer state updates.
+  patchState(patches: Patch[]): void {
+    this._state = applyPatches(assertExists(this._state), patches);
     this.runControllers();
   }
 
@@ -68,21 +48,9 @@ class Globals implements App {
     if (this._runningControllers) throw new Error('Re-entrant call detected');
 
     // Run controllers locally until all state machines reach quiescence.
-    let runAgain = false;
-    const patches: Patch[] = [];
-    for (let iter = 0; runAgain || this._queuedActions.length > 0; iter++) {
+    let runAgain = true;
+    for (let iter = 0; runAgain; iter++) {
       if (iter > 100) throw new Error('Controllers are stuck in a livelock');
-      const actions = this._queuedActions;
-      this._queuedActions = new Array<DeferredAction>();
-
-      for (const action of actions) {
-        const originalLength = patches.length;
-        const morePatches = this.applyAction(action);
-        patches.length += morePatches.length;
-        for (let i = 0; i < morePatches.length; ++i) {
-          patches[i + originalLength] = morePatches[i];
-        }
-      }
       this._runningControllers = true;
       try {
         runAgain = assertExists(this._rootController).invoke();
@@ -90,40 +58,10 @@ class Globals implements App {
         this._runningControllers = false;
       }
     }
-    assertExists(this._frontend).send<void>('patchState', [patches]);
-  }
-
-  // TODO: this needs to be cleaned up.
-  publish(what: PublishKinds, data: {}, transferList?: Transferable[]) {
-    assertExists(this._frontend)
-        .send<void>(`publish${what}`, [data], transferList);
   }
 
   get state(): State {
     return assertExists(this._state);
-  }
-
-  applyAction(action: DeferredAction): Patch[] {
-    assertExists(this._state);
-    const patches: Patch[] = [];
-
-    // 'produce' creates a immer proxy which wraps the current state turning
-    // all imperative mutations of the state done in the callback into
-    // immutable changes to the returned state.
-    this._state = produce(
-        this.state,
-        draft => {
-          // tslint:disable-next-line no-any
-          (StateActions as any)[action.type](draft, action.args);
-        },
-        (morePatches, _) => {
-          const originalLength = patches.length;
-          patches.length += morePatches.length;
-          for (let i = 0; i < morePatches.length; ++i) {
-            patches[i + originalLength] = morePatches[i];
-          }
-        });
-    return patches;
   }
 
   resetForTesting() {

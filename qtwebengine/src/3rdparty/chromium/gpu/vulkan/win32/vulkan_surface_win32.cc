@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <windows.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
 #include "base/synchronization/waitable_event.h"
@@ -148,7 +148,7 @@ class VulkanSurfaceWin32::WindowThread : public base::Thread,
     DCHECK(!g_thread);
     g_thread = this;
     base::Thread::Options options(base::MessagePumpType::UI, 0);
-    StartWithOptions(options);
+    StartWithOptions(std::move(options));
   }
 
   WindowThread(const WindowThread&) = delete;
@@ -194,12 +194,12 @@ std::unique_ptr<VulkanSurfaceWin32> VulkanSurfaceWin32::Create(
   event.Wait();
 
   VkSurfaceKHR surface;
-  VkWin32SurfaceCreateInfoKHR surface_create_info;
-  surface_create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  surface_create_info.hinstance = reinterpret_cast<HINSTANCE>(
-          GetWindowLongPtr(window->hwnd(), GWLP_HINSTANCE));
-  surface_create_info.hwnd = window->hwnd();
-
+  VkWin32SurfaceCreateInfoKHR surface_create_info = {
+      .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+      .hinstance = reinterpret_cast<HINSTANCE>(
+          GetWindowLongPtr(window->hwnd(), GWLP_HINSTANCE)),
+      .hwnd = window->hwnd(),
+  };
   VkResult result = vkCreateWin32SurfaceKHR(vk_instance, &surface_create_info,
                                             nullptr, &surface);
   if (VK_SUCCESS != result) {
@@ -207,20 +207,17 @@ std::unique_ptr<VulkanSurfaceWin32> VulkanSurfaceWin32::Create(
     return nullptr;
   }
   return std::make_unique<VulkanSurfaceWin32>(
-      util::PassKey<VulkanSurfaceWin32>(), vk_instance, surface,
+      base::PassKey<VulkanSurfaceWin32>(), vk_instance, surface,
       std::move(thread), std::move(window));
 }
 
 VulkanSurfaceWin32::VulkanSurfaceWin32(
-    util::PassKey<VulkanSurfaceWin32> pass_key,
+    base::PassKey<VulkanSurfaceWin32> pass_key,
     VkInstance vk_instance,
     VkSurfaceKHR vk_surface,
     scoped_refptr<WindowThread> thread,
     std::unique_ptr<gfx::WindowImpl> window)
-    : VulkanSurface(vk_instance,
-                    window->hwnd(),
-                    vk_surface,
-                    false /* use_protected_memory */),
+    : VulkanSurface(vk_instance, window->hwnd(), vk_surface),
       thread_(std::move(thread)),
       window_(std::move(window)) {}
 

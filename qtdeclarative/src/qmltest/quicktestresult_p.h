@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QUICKTESTRESULT_P_H
 #define QUICKTESTRESULT_P_H
@@ -51,19 +15,20 @@
 // We mean it.
 //
 
-#include <QtQuickTest/quicktestglobal.h>
+#include <QtQuickTest/private/quicktestglobal_p.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qscopedpointer.h>
 #include <QtQuick/qquickitem.h>
+#include <QtQuick/qquickwindow.h>
 
 QT_BEGIN_NAMESPACE
 
 class QUrl;
 class QuickTestResultPrivate;
 
-class Q_QUICK_TEST_EXPORT QuickTestResult : public QObject
+class Q_QUICK_TEST_PRIVATE_EXPORT QuickTestResult : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString testCaseName READ testCaseName WRITE setTestCaseName NOTIFY testCaseNameChanged)
@@ -76,6 +41,9 @@ class Q_QUICK_TEST_EXPORT QuickTestResult : public QObject
     Q_PROPERTY(int skipCount READ skipCount)
     Q_PROPERTY(QStringList functionsToRun READ functionsToRun)
     Q_PROPERTY(QStringList tagsToRun READ tagsToRun)
+
+    QML_NAMED_ELEMENT(TestResult)
+    QML_ADDED_IN_VERSION(1, 0)
 
 public:
     QuickTestResult(QObject *parent = nullptr);
@@ -140,6 +108,7 @@ public Q_SLOTS:
     void warn(const QString &message, const QUrl &location, int line);
 
     void ignoreWarning(const QJSValue &message);
+    Q_REVISION(6, 3) void failOnWarning(const QJSValue &message);
 
     void wait(int ms);
     void sleep(int ms);
@@ -158,10 +127,10 @@ public Q_SLOTS:
 
     QObject *grabImage(QQuickItem *item);
 
-    Q_REVISION(1) QObject *findChild(QObject *parent, const QString &objectName);
+    Q_REVISION(1, 1) QObject *findChild(QObject *parent, const QString &objectName);
 
-    Q_REVISION(13) bool isPolishScheduled(QQuickItem *item) const;
-    Q_REVISION(13) bool waitForItemPolished(QQuickItem *item, int timeout);
+    Q_REVISION(1, 13) bool isPolishScheduled(QObject *itemOrWindow) const;
+    Q_REVISION(6, 5) bool waitForPolish(QObject *itemOrWindow, int timeout) const;
 
 public:
     // Helper functions for the C++ main() shell.

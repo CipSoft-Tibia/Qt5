@@ -1,28 +1,27 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/gamepad/gamepad_shared_memory_reader.h"
 
 #include "base/metrics/histogram_macros.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "device/gamepad/public/cpp/gamepads.h"
 #include "device/gamepad/public/mojom/gamepad_hardware_buffer.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
-#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/modules/gamepad/gamepad_listener.h"
 
 namespace blink {
 
-GamepadSharedMemoryReader::GamepadSharedMemoryReader(LocalFrame& frame)
-    : receiver_(this, frame.DomWindow()),
-      gamepad_monitor_remote_(frame.DomWindow()) {
+GamepadSharedMemoryReader::GamepadSharedMemoryReader(LocalDOMWindow& window)
+    : receiver_(this, &window), gamepad_monitor_remote_(&window) {
   // See https://bit.ly/2S0zRAS for task types
   scoped_refptr<base::SingleThreadTaskRunner> task_runner =
-      frame.GetTaskRunner(TaskType::kMiscPlatformAPI);
-  frame.GetBrowserInterfaceBroker().GetInterface(
+      window.GetTaskRunner(TaskType::kMiscPlatformAPI);
+  window.GetBrowserInterfaceBroker().GetInterface(
       gamepad_monitor_remote_.BindNewPipeAndPassReceiver(task_runner));
   gamepad_monitor_remote_->SetObserver(
       receiver_.BindNewPipeAndPassRemote(task_runner));
@@ -153,11 +152,9 @@ void GamepadSharedMemoryReader::GamepadDisconnected(
     listener_->DidDisconnectGamepad(index, gamepad);
 }
 
-void GamepadSharedMemoryReader::GamepadButtonOrAxisChanged(
-    uint32_t index,
-    const device::Gamepad& gamepad) {
-  if (listener_)
-    listener_->ButtonOrAxisDidChange(index, gamepad);
+void GamepadSharedMemoryReader::GamepadChanged(
+    device::mojom::blink::GamepadChangesPtr change) {
+  // TODO(crbug.com/856290): use these calls to Generate Button Event.
 }
 
 }  // namespace blink

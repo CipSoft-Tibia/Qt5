@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,17 +6,16 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/memory/read_only_shared_memory_region.h"
-#include "base/stl_util.h"
 #include "build/build_config.h"
-#include "components/discardable_memory/service/discardable_shared_memory_manager.h"
-#include "components/printing/browser/service_sandbox_type.h"
-#include "components/printing/common/print_messages.h"
 #include "components/services/print_compositor/public/cpp/print_service_mojo_types.h"
+#include "components/services/print_compositor/public/mojom/print_compositor.mojom.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/service_process_host.h"
@@ -50,7 +49,8 @@ ContentToFrameMap ConvertContentInfoMap(
     auto proxy_token = entry.second;
     // Find the RenderFrameHost that the proxy id corresponds to.
     content::RenderFrameHost* rfh =
-        content::RenderFrameHost::FromPlaceholderToken(process_id, proxy_token);
+        content::RenderFrameHost::FromPlaceholderToken(
+            process_id, blink::RemoteFrameToken(proxy_token));
     if (!rfh) {
       // If the corresponding RenderFrameHost cannot be found, just skip it.
       continue;
@@ -62,18 +62,11 @@ ContentToFrameMap ConvertContentInfoMap(
   return content_frame_map;
 }
 
-void BindDiscardableSharedMemoryManagerOnIOThread(
-    mojo::PendingReceiver<
-        discardable_memory::mojom::DiscardableSharedMemoryManager> receiver) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
-  discardable_memory::DiscardableSharedMemoryManager::Get()->Bind(
-      std::move(receiver));
-}
-
 }  // namespace
 
 PrintCompositeClient::PrintCompositeClient(content::WebContents* web_contents)
-    : content::WebContentsObserver(web_contents) {}
+    : content::WebContentsUserData<PrintCompositeClient>(*web_contents),
+      content::WebContentsObserver(web_contents) {}
 
 PrintCompositeClient::~PrintCompositeClient() {}
 
@@ -101,9 +94,20 @@ void PrintCompositeClient::RenderFrameDeleted(
   print_render_frames_.erase(render_frame_host);
 }
 
+PrintCompositeClient::RequestedSubFrame::RequestedSubFrame(
+    content::GlobalRenderFrameHostId rfh_id,
+    int document_cookie,
+    mojom::DidPrintContentParamsPtr params,
+    bool is_live)
+    : rfh_id_(rfh_id),
+      document_cookie_(document_cookie),
+      params_(std::move(params)),
+      is_live_(is_live) {}
+
+PrintCompositeClient::RequestedSubFrame::~RequestedSubFrame() = default;
+
 void PrintCompositeClient::OnDidPrintFrameContent(
-    int render_process_id,
-    int render_frame_id,
+    content::GlobalRenderFrameHostId rfh_id,
     int document_cookie,
     mojom::DidPrintContentParamsPtr params) {
   auto* outer_contents = web_contents()->GetOuterWebContents();
@@ -116,16 +120,22 @@ void PrintCompositeClient::OnDidPrintFrameContent(
     // contents nested in multiple layers.
     auto* outer_client = PrintCompositeClient::FromWebContents(outer_contents);
     DCHECK(outer_client);
-    outer_client->OnDidPrintFrameContent(render_process_id, render_frame_id,
-                                         document_cookie, std::move(params));
+    outer_client->OnDidPrintFrameContent(rfh_id, document_cookie,
+                                         std::move(params));
     return;
   }
 
-  if (!IsDocumentCookieValid(document_cookie))
+  if (!IsDocumentCookieValid(document_cookie)) {
+    if (!compositor_) {
+      // Queues the subframe information to |requested_subframes_| to handle it
+      // after |compositor_| is created by the main frame.
+      requested_subframes_.insert(std::make_unique<RequestedSubFrame>(
+          rfh_id, document_cookie, std::move(params), /*is_live=*/true));
+    }
     return;
+  }
 
-  auto* render_frame_host =
-      content::RenderFrameHost::FromID(render_process_id, render_frame_id);
+  auto* render_frame_host = content::RenderFrameHost::FromID(rfh_id);
   if (!render_frame_host)
     return;
 
@@ -161,8 +171,16 @@ void PrintCompositeClient::PrintCrossProcessSubframe(
     content::RenderFrameHost* subframe_host) {
   auto params = mojom::PrintFrameContentParams::New(rect, document_cookie);
   if (!subframe_host->IsRenderFrameLive()) {
-    if (!IsDocumentCookieValid(document_cookie))
+    if (!IsDocumentCookieValid(document_cookie)) {
+      if (!compositor_) {
+        // Queues the subframe information to |requested_subframes_| to handle
+        // it after |compositor_| is created by the main frame.
+        requested_subframes_.insert(std::make_unique<RequestedSubFrame>(
+            subframe_host->GetGlobalId(), document_cookie, /*params=*/nullptr,
+            /*is_live=*/false));
+      }
       return;
+    }
 
     // When the subframe is dead, no need to send message,
     // just notify the service.
@@ -178,14 +196,12 @@ void PrintCompositeClient::PrintCrossProcessSubframe(
   }
 
   // Send the request to the destination frame.
-  int render_process_id = subframe_host->GetProcess()->GetID();
-  int render_frame_id = subframe_host->GetRoutingID();
   GetPrintRenderFrame(subframe_host)
       ->PrintFrameContent(
           std::move(params),
           base::BindOnce(&PrintCompositeClient::OnDidPrintFrameContent,
-                         weak_ptr_factory_.GetWeakPtr(), render_process_id,
-                         render_frame_id));
+                         weak_ptr_factory_.GetWeakPtr(),
+                         subframe_host->GetGlobalId()));
   pending_subframes_.insert(subframe_host);
 }
 
@@ -253,6 +269,20 @@ void PrintCompositeClient::DoCompositeDocumentToPdf(
   DCHECK(!GetIsDocumentConcurrentlyComposited(document_cookie));
 
   auto* compositor = CreateCompositeRequest(document_cookie, render_frame_host);
+
+  for (auto& requested : requested_subframes_) {
+    if (!IsDocumentCookieValid(requested->document_cookie_))
+      continue;
+    if (requested->is_live_) {
+      OnDidPrintFrameContent(requested->rfh_id_, requested->document_cookie_,
+                             std::move(requested->params_));
+    } else {
+      compositor->NotifyUnavailableSubframe(GenerateFrameGuid(
+          content::RenderFrameHost::FromID(requested->rfh_id_)));
+    }
+  }
+  requested_subframes_.clear();
+
   auto region = content.metafile_data_region.Duplicate();
 
   // Since this class owns compositor, compositor will be gone when this class
@@ -323,15 +353,6 @@ mojom::PrintCompositor* PrintCompositeClient::CreateCompositeRequest(
           .WithDisplayName(IDS_PRINT_COMPOSITOR_SERVICE_DISPLAY_NAME)
           .Pass());
 
-  mojo::PendingRemote<discardable_memory::mojom::DiscardableSharedMemoryManager>
-      discardable_memory_manager;
-  content::GetIOThreadTaskRunner({})->PostTask(
-      FROM_HERE,
-      base::BindOnce(
-          &BindDiscardableSharedMemoryManagerOnIOThread,
-          discardable_memory_manager.InitWithNewPipeAndPassReceiver()));
-  compositor_->SetDiscardableSharedMemoryManager(
-      std::move(discardable_memory_manager));
   compositor_->SetWebContentsURL(web_contents()->GetLastCommittedURL());
   compositor_->SetUserAgent(user_agent_);
 
@@ -344,9 +365,10 @@ void PrintCompositeClient::RemoveCompositeRequest(int cookie) {
   document_cookie_ = 0;
   initiator_frame_ = nullptr;
 
-  // Clear all stored printed and pending subframes.
+  // Reset state of the client.
   pending_subframes_.clear();
   printed_subframes_.clear();
+  print_render_frames_.clear();
 
   // No longer concurrently compositing this document.
   is_doc_concurrently_composited_ = false;
@@ -375,6 +397,6 @@ PrintCompositeClient::GetPrintRenderFrame(content::RenderFrameHost* rfh) {
   return it->second;
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(PrintCompositeClient)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(PrintCompositeClient);
 
 }  // namespace printing

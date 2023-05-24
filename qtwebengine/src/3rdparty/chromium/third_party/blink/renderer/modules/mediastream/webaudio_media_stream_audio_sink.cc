@@ -1,12 +1,14 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/mediastream/webaudio_media_stream_audio_sink.h"
 
+#include <memory>
 #include <string>
 
 #include "base/logging.h"
+#include "base/trace_event/trace_event.h"
 #include "media/base/audio_fifo.h"
 #include "media/base/audio_parameters.h"
 #include "third_party/blink/public/web/web_local_frame.h"
@@ -21,7 +23,7 @@ namespace blink {
 // Size of the buffer that WebAudio processes each time, it is the same value
 // as AudioNode::ProcessingSizeInFrames in WebKit.
 // static
-const size_t WebAudioMediaStreamAudioSink::kWebAudioRenderBufferSize = 128;
+const int WebAudioMediaStreamAudioSink::kWebAudioRenderBufferSize = 128;
 
 WebAudioMediaStreamAudioSink::WebAudioMediaStreamAudioSink(
     MediaStreamComponent* component,
@@ -33,8 +35,8 @@ WebAudioMediaStreamAudioSink::WebAudioMediaStreamAudioSink(
   WebLocalFrame* const web_frame = WebLocalFrame::FrameForCurrentContext();
   if (web_frame) {
     sink_params_.Reset(media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
-                       media::CHANNEL_LAYOUT_STEREO, context_sample_rate,
-                       kWebAudioRenderBufferSize);
+                       media::ChannelLayoutConfig::Stereo(),
+                       context_sample_rate, kWebAudioRenderBufferSize);
   }
   // Connect the source provider to the track as a sink.
   WebMediaStreamAudioSink::AddToAudioTrack(
@@ -65,12 +67,12 @@ void WebAudioMediaStreamAudioSink::OnSetFormat(
   // converter will request source_params.frames_per_buffer() each time.
   // This will not increase the complexity as there is only one client to
   // the converter.
-  audio_converter_.reset(
-      new media::AudioConverter(params, sink_params_, false));
+  audio_converter_ =
+      std::make_unique<media::AudioConverter>(params, sink_params_, false);
   audio_converter_->AddInput(this);
-  fifo_.reset(new media::AudioFifo(
+  fifo_ = std::make_unique<media::AudioFifo>(
       params.channels(),
-      kMaxNumberOfAudioFifoBuffers * params.frames_per_buffer()));
+      kMaxNumberOfAudioFifoBuffers * params.frames_per_buffer());
 }
 
 void WebAudioMediaStreamAudioSink::OnReadyStateChanged(
@@ -85,8 +87,9 @@ void WebAudioMediaStreamAudioSink::OnData(
     base::TimeTicks estimated_capture_time) {
   NON_REENTRANT_SCOPE(capture_reentrancy_checker_);
   DCHECK(!estimated_capture_time.is_null());
-  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("mediastream"),
-               "WebAudioMediaStreamAudioSink::OnData");
+  TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("mediastream"),
+               "WebAudioMediaStreamAudioSink::OnData", "this",
+               static_cast<void*>(this), "frames", audio_bus.frames());
 
   base::AutoLock auto_lock(lock_);
   if (!is_enabled_)
@@ -117,12 +120,13 @@ void WebAudioMediaStreamAudioSink::SetClient(
 
 void WebAudioMediaStreamAudioSink::ProvideInput(
     const WebVector<float*>& audio_data,
-    size_t number_of_frames) {
+    int number_of_frames) {
   NON_REENTRANT_SCOPE(provide_input_reentrancy_checker_);
   DCHECK_EQ(number_of_frames, kWebAudioRenderBufferSize);
 
-  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("mediastream"),
-               "WebAudioMediaStreamAudioSink::ProvideInput");
+  TRACE_EVENT2(TRACE_DISABLED_BY_DEFAULT("mediastream"),
+               "WebAudioMediaStreamAudioSink::ProvideInput", "this",
+               static_cast<void*>(this), "frames", number_of_frames);
 
   if (!output_wrapper_ ||
       static_cast<size_t>(output_wrapper_->channels()) != audio_data.size()) {
@@ -130,7 +134,7 @@ void WebAudioMediaStreamAudioSink::ProvideInput(
         media::AudioBus::CreateWrapper(static_cast<int>(audio_data.size()));
   }
 
-  output_wrapper_->set_frames(static_cast<int>(number_of_frames));
+  output_wrapper_->set_frames(number_of_frames);
   for (size_t i = 0; i < audio_data.size(); ++i)
     output_wrapper_->SetChannelData(static_cast<int>(i), audio_data[i]);
 
@@ -149,9 +153,10 @@ void WebAudioMediaStreamAudioSink::ProvideInput(
 // AudioConverter which in turn is called by the above ProvideInput() function.
 // Thus thread safety analysis is disabled here and |lock_| acquire manually
 // asserted.
-double WebAudioMediaStreamAudioSink::ProvideInput(media::AudioBus* audio_bus,
-                                                  uint32_t frames_delayed)
-    NO_THREAD_SAFETY_ANALYSIS {
+double WebAudioMediaStreamAudioSink::ProvideInput(
+    media::AudioBus* audio_bus,
+    uint32_t frames_delayed,
+    const media::AudioGlitchInfo& glitch_info) NO_THREAD_SAFETY_ANALYSIS {
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("mediastream"),
                "WebAudioMediaStreamAudioSink::ProvideInput 2");
 

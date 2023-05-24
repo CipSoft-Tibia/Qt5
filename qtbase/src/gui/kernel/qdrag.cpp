@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qdrag.h>
 #include "private/qguiapplication_p.h"
@@ -99,9 +63,8 @@ QT_BEGIN_NAMESPACE
     \l{QWidget::mouseMoveEvent()}{mouseMoveEvent()} to check whether a QDrag is
     required.
 
-    \sa {Drag and Drop}, QClipboard, QMimeData, QMacPasteboardMime,
-        {Draggable Icons Example}, {Draggable Text Example}, {Drop Site Example},
-        {Fridge Magnets Example}
+    \sa {Drag and Drop}, QClipboard, QMimeData, {Draggable Icons Example},
+        {Draggable Text Example}, {Drop Site Example}
 */
 
 /*!
@@ -287,36 +250,6 @@ Qt::DropAction QDrag::exec(Qt::DropActions supportedActions, Qt::DropAction defa
     return d->executed_action;
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \obsolete
-
-    \b{Note:} It is recommended to use exec() instead of this function.
-
-    Starts the drag and drop operation and returns a value indicating the requested
-    drop action when it is completed. The drop actions that the user can choose
-    from are specified in \a request. Qt::CopyAction is always allowed.
-
-    \b{Note:} Although the drag and drop operation can take some time, this function
-    does not block the event loop. Other events are still delivered to the application
-    while the operation is performed.
-
-    \sa exec()
-*/
-Qt::DropAction QDrag::start(Qt::DropActions request)
-{
-    Q_D(QDrag);
-    if (!d->data) {
-        qWarning("QDrag: No mimedata set before starting the drag");
-        return d->executed_action;
-    }
-    d->supported_actions = request | Qt::CopyAction;
-    d->default_action = Qt::IgnoreAction;
-    d->executed_action = QDragManager::self()->drag(this);
-    return d->executed_action;
-}
-#endif
-
 /*!
     Sets the drag \a cursor for the \a action. This allows you
     to override the default native cursors. To revert to using the
@@ -423,3 +356,5 @@ void QDrag::cancel()
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qdrag.cpp"

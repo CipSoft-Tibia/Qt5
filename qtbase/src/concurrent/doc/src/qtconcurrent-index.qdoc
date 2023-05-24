@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtconcurrent-index.html
@@ -31,18 +7,17 @@
 
     \brief The Qt Concurrent module contains functionality to support concurrent execution of program code.
 
-    \section1 Getting Started
 
-    The QtConcurrent namespace provides high-level APIs that make it
+    The Qt Concurrent module provides high-level APIs that make it
     possible to write multi-threaded programs without using low-level
     threading primitives such as mutexes, read-write locks, wait
-    conditions, or semaphores. Programs written with QtConcurrent
+    conditions, or semaphores. Programs written with Qt Concurrent
     automatically adjust the number of threads used according to the
     number of processor cores available. This means that applications
     written today will continue to scale when deployed on multi-core
     systems in the future.
 
-    QtConcurrent includes functional programming style APIs for
+    Qt Concurrent includes functional programming style APIs for
     parallel list processing, including a MapReduce and FilterReduce
     implementation for shared-memory (non-distributed) systems, and
     classes for managing asynchronous computations in GUI
@@ -79,6 +54,13 @@
             another thread.
     \endlist
 
+    \li \l {Concurrent Task}
+    \list
+        \li \l {QtConcurrent::task}{QtConcurrent::task()} creates an instance
+            of QtConcurrent::QTaskBuilder. This object can be used for adjusting
+            parameters and for kicking off a task in a separate thread.
+    \endlist
+
     \li QFuture represents the result of an asynchronous computation.
 
     \li QFutureIterator allows iterating through results available via QFuture.
@@ -88,11 +70,16 @@
     \li QFutureSynchronizer is a convenience class that automatically
     synchronizes several QFutures.
 
+    \li QPromise provides a way to report progress and results of the
+    asynchronous computation to QFuture. Allows suspending or canceling the task
+    when requested by QFuture.
+
     \endlist
 
     Qt Concurrent supports several STL-compatible container and iterator types,
     but works best with Qt containers that have random-access iterators, such as
-    QList or QVector. The map and filter functions accept both containers and begin/end iterators.
+    QList. The map and filter functions accept both containers and begin/end
+    iterators.
 
     STL Iterator support overview:
 
@@ -115,31 +102,50 @@
         \li Supported
     \row
         \li Bidirectional Iterator
-        \li QLinkedList, std::list
+        \li std::list
         \li Supported
     \row
         \li Random Access Iterator
-        \li QList, QVector, std::vector
+        \li QList, std::vector
         \li Supported and Recommended
     \endtable
 
-    Random access iterators can be faster in cases where Qt Concurrent is iterating
-    over a large number of lightweight items, since they allow skipping to any point
-    in the container. In addition, using random access iterators allows Qt Concurrent
-    to provide progress information trough QFuture::progressValue() and
-    QFutureWatcher::progressValueChanged().
+    Random access iterators can be faster in cases where Qt Concurrent is
+    iterating over a large number of lightweight items, since they allow
+    skipping to any point in the container. In addition, using random access
+    iterators allows Qt Concurrent to provide progress information through
+     QFuture::progressValue() and QFutureWatcher::progressValueChanged().
 
     The non in-place modifying functions such as mapped() and filtered() makes a
-    copy of the container when called. If you are using STL containers this copy operation
-    might take some time, in this case we recommend specifying the begin and end iterators
-    for the container instead.
+    copy of the container when called. If you are using STL containers this copy
+    operation might take some time, in this case we recommend specifying the
+    begin and end iterators for the container instead.
+
+
+    \include module-use.qdocinc using qt module
+    \snippet snippets/CMakeLists.txt cmake_use
+
+    See also the \l {Build with CMake} overview.
+
+    \include module-use.qdocinc building with qmake
+    \snippet snippets/snippets.pro qmake_use
+
+    \section1 Examples
+
+    \list
+        \li \l {Qt Concurrent Examples}
+    \endlist
+
+    \section1 Module Evolution
+    \l{Changes to Qt Concurrent} lists important changes in the module API
+    and functionality that were done for the Qt 6 series of Qt.
 
     \section1 Licenses
 
-    The Qt Concurrent module is available under commercial licenses from \l{The Qt Company}.
-    In addition, it is available under free software licenses. Since Qt 5.4,
-    these free software licenses are
-    \l{GNU Lesser General Public License, version 3}, or
+    The Qt Concurrent module is available under commercial licenses from
+    \l{The Qt Company}.
+    In addition, it is available under free software licenses:
+    The \l{GNU Lesser General Public License, version 3}, or
     the \l{GNU General Public License, version 2}.
     See \l{Qt Licensing} for further details.
 */

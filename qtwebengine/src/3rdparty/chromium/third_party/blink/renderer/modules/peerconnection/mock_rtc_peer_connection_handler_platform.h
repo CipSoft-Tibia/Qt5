@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,14 +8,44 @@
 #include <memory>
 #include <string>
 
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/modules/peerconnection/rtc_peer_connection_handler.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/webrtc/api/peer_connection_interface.h"
 #include "third_party/webrtc/api/stats/rtc_stats.h"
+#include "third_party/webrtc/api/test/mock_session_description_interface.h"
 
 namespace blink {
+
+class MockSessionDescription : public webrtc::MockSessionDescriptionInterface {
+ public:
+  MockSessionDescription(const std::string& type, const std::string& sdp)
+      : type_(type), sdp_(sdp) {}
+  ~MockSessionDescription() override = default;
+  std::string type() const override { return type_; }
+  bool ToString(std::string* out) const override {
+    *out = sdp_;
+    return true;
+  }
+
+ private:
+  std::string type_;
+  std::string sdp_;
+};
+
+// Class for creating a ParsedSessionDescription without running the parser.
+// It returns an empty (but non-null) description object.
+class MockParsedSessionDescription : public ParsedSessionDescription {
+ public:
+  MockParsedSessionDescription(const String& type, const String& sdp)
+      : ParsedSessionDescription(type, sdp) {
+    description_ =
+        std::make_unique<MockSessionDescription>(type.Utf8(), sdp.Utf8());
+  }
+  // Constructor for creating an error-returning session description.
+  MockParsedSessionDescription() : ParsedSessionDescription("error", "error") {}
+};
 
 // TODO(https://crbug.com/908461): This is currently implemented as NO-OPs or to
 // create dummy objects whose methods return default values. Consider renaming
@@ -27,36 +57,32 @@ class MockRTCPeerConnectionHandlerPlatform : public RTCPeerConnectionHandler {
   MockRTCPeerConnectionHandlerPlatform();
   ~MockRTCPeerConnectionHandlerPlatform() override;
 
-  bool Initialize(const webrtc::PeerConnectionInterface::RTCConfiguration&,
-                  const MediaConstraints&,
-                  WebLocalFrame*) override;
-  void Stop() override;
-  void StopAndUnregister() override;
+  bool Initialize(ExecutionContext* context,
+                  const webrtc::PeerConnectionInterface::RTCConfiguration&,
+                  GoogMediaConstraints* media_constraints,
+                  WebLocalFrame*,
+                  ExceptionState&) override;
+  void Close() override;
+  void CloseAndUnregister() override;
 
-  Vector<std::unique_ptr<RTCRtpTransceiverPlatform>> CreateOffer(
-      RTCSessionDescriptionRequest*,
-      const MediaConstraints&) override;
   Vector<std::unique_ptr<RTCRtpTransceiverPlatform>> CreateOffer(
       RTCSessionDescriptionRequest*,
       RTCOfferOptionsPlatform*) override;
   void CreateAnswer(RTCSessionDescriptionRequest*,
-                    const MediaConstraints&) override;
-  void CreateAnswer(RTCSessionDescriptionRequest*,
                     RTCAnswerOptionsPlatform*) override;
   void SetLocalDescription(RTCVoidRequest*) override;
-  void SetLocalDescription(RTCVoidRequest*,
-                           RTCSessionDescriptionPlatform*) override;
-  void SetRemoteDescription(RTCVoidRequest*,
-                            RTCSessionDescriptionPlatform*) override;
+  void SetLocalDescription(RTCVoidRequest*, ParsedSessionDescription) override;
+  void SetRemoteDescription(RTCVoidRequest*, ParsedSessionDescription) override;
   const webrtc::PeerConnectionInterface::RTCConfiguration& GetConfiguration()
       const override;
   webrtc::RTCErrorType SetConfiguration(
       const webrtc::PeerConnectionInterface::RTCConfiguration&) override;
-  void AddICECandidate(RTCVoidRequest*, RTCIceCandidatePlatform*) override;
+  void AddIceCandidate(RTCVoidRequest*, RTCIceCandidatePlatform*) override;
   void RestartIce() override;
   void GetStats(RTCStatsRequest*) override;
   void GetStats(RTCStatsReportCallback,
-                const Vector<webrtc::NonStandardGroupId>&) override;
+                const Vector<webrtc::NonStandardGroupId>&,
+                bool is_track_stats_deprecation_trial_enabled) override;
   webrtc::RTCErrorOr<std::unique_ptr<RTCRtpTransceiverPlatform>>
   AddTransceiverWithTrack(MediaStreamComponent*,
                           const webrtc::RtpTransceiverInit&) override;
@@ -75,11 +101,10 @@ class MockRTCPeerConnectionHandlerPlatform : public RTCPeerConnectionHandler {
   void RunSynchronousOnceClosureOnSignalingThread(
       CrossThreadOnceClosure closure,
       const char* trace_event_name) override;
-  void RunSynchronousRepeatingClosureOnSignalingThread(
-      const base::RepeatingClosure& closure,
+  void RunSynchronousOnceClosureOnSignalingThread(
+      base::OnceClosure closure,
       const char* trace_event_name) override;
   void TrackIceConnectionStateChange(
-      RTCPeerConnectionHandler::IceConnectionStateVersion version,
       webrtc::PeerConnectionInterface::IceConnectionState state) override;
 
  private:

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKITEMVIEW_P_P_H
 #define QQUICKITEMVIEW_P_P_H
@@ -57,7 +21,9 @@ QT_REQUIRE_CONFIG(quick_itemview);
 
 #include "qquickitemview_p.h"
 #include "qquickitemviewfxitem_p_p.h"
+#if QT_CONFIG(quick_viewtransitions)
 #include "qquickitemviewtransition_p.h"
+#endif
 #include "qquickflickable_p_p.h"
 #include <QtQmlModels/private/qqmlobjectmodel_p.h>
 #include <QtQmlModels/private/qqmldelegatemodel_p.h>
@@ -76,7 +42,7 @@ public:
 };
 
 
-class QQuickItemViewChangeSet
+class Q_AUTOTEST_EXPORT QQuickItemViewChangeSet
 {
 public:
     QQuickItemViewChangeSet();
@@ -100,10 +66,15 @@ public:
 };
 
 
-class Q_AUTOTEST_EXPORT QQuickItemViewPrivate : public QQuickFlickablePrivate, public QQuickItemViewTransitionChangeListener, public QAnimationJobChangeListener
+class Q_QUICK_AUTOTEST_EXPORT QQuickItemViewPrivate
+        : public QQuickFlickablePrivate
+#if QT_CONFIG(quick_viewtransitions)
+        , public QQuickItemViewTransitionChangeListener
+#endif
+        , public QAnimationJobChangeListener
 {
-    Q_DECLARE_PUBLIC(QQuickItemView)
 public:
+    Q_DECLARE_PUBLIC(QQuickItemView)
     QQuickItemViewPrivate();
     ~QQuickItemViewPrivate();
 
@@ -148,7 +119,6 @@ public:
     };
 
     enum BufferMode { NoBuffer = 0x00, BufferBefore = 0x01, BufferAfter = 0x02 };
-    enum MovementReason { Other, SetIndex, Mouse };
 
     bool isValid() const;
     qreal position() const;
@@ -178,6 +148,7 @@ public:
 
     QQuickItem *createHighlightItem() const;
     QQuickItem *createComponentItem(QQmlComponent *component, qreal zValue, bool createDefault = false) const;
+    virtual void initializeComponentItem(QQuickItem *) const;
 
     void updateCurrent(int modelIndex);
     void updateTrackedItem();
@@ -201,11 +172,13 @@ public:
     void repositionFirstItem(FxViewItem *prevVisibleItemsFirst, qreal prevVisibleItemsFirstPos,
             FxViewItem *prevFirstVisible, ChangeResult *insertionResult, ChangeResult *removalResult);
 
+#if QT_CONFIG(quick_viewtransitions)
     void createTransitioner();
     void prepareVisibleItemTransitions();
     void prepareRemoveTransitions(QMultiHash<QQmlChangeSet::MoveKey, FxViewItem *> *removedItems);
     bool prepareNonVisibleItemTransition(FxViewItem *item, const QRectF &viewBounds);
     void viewItemTransitionFinished(QQuickItemViewTransitionableItem *item) override;
+#endif
 
     int findMoveKeyIndex(QQmlChangeSet::MoveKey key, const QVector<QQmlChangeSet::Change> &changes) const;
 
@@ -222,7 +195,10 @@ public:
     bool hasPendingChanges() const {
         return currentChanges.hasPendingChanges()
                 || bufferedChanges.hasPendingChanges()
-                ||runDelayedRemoveTransition;
+#if QT_CONFIG(quick_viewtransitions)
+                ||runDelayedRemoveTransition
+#endif
+                ;
     }
 
     void refillOrLayout() {
@@ -259,8 +235,6 @@ public:
     Qt::LayoutDirection layoutDirection;
     QQuickItemView::VerticalLayoutDirection verticalLayoutDirection;
 
-    MovementReason moveReason;
-
     QList<FxViewItem *> visibleItems;
     qreal firstVisibleItemPosition = 0;
     void storeFirstVisibleItemPosition() {
@@ -279,7 +253,7 @@ public:
     QPauseAnimationJob bufferPause;
 
     QQmlComponent *highlightComponent;
-    FxViewItem *highlight;
+    std::unique_ptr<FxViewItem> highlight;
     int highlightRange;     // enum value
     qreal highlightRangeStart;
     qreal highlightRangeEnd;
@@ -301,8 +275,10 @@ public:
         MovedItem(FxViewItem *i, QQmlChangeSet::MoveKey k)
             : item(i), moveKey(k) {}
     };
+#if QT_CONFIG(quick_viewtransitions)
     QQuickItemViewTransitioner *transitioner;
     QVector<FxViewItem *> releasePendingTransition;
+#endif
 
     mutable qreal minExtent;
     mutable qreal maxExtent;
@@ -321,7 +297,9 @@ public:
     bool highlightRangeEndValid : 1;
     bool fillCacheBuffer : 1;
     bool inRequest : 1;
+#if QT_CONFIG(quick_viewtransitions)
     bool runDelayedRemoveTransition : 1;
+#endif
     bool delegateValidated : 1;
     bool isClearing : 1;
 
@@ -368,7 +346,9 @@ protected:
                 QList<FxViewItem *> *newItems, QList<MovedItem> *movingIntoView) = 0;
 
     virtual bool needsRefillForAddedOrRemovedIndex(int) const { return false; }
+#if QT_CONFIG(quick_viewtransitions)
     virtual void translateAndTransitionItemsAfter(int afterIndex, const ChangeResult &insertionResult, const ChangeResult &removalResult) = 0;
+#endif
 
     virtual void initializeViewItem(FxViewItem *) {}
     virtual void initializeCurrentItem() {}

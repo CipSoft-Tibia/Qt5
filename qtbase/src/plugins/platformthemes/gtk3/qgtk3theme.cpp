@@ -1,53 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgtk3theme.h"
 #include "qgtk3dialoghelpers.h"
 #include "qgtk3menu.h"
 #include <QVariant>
+#include <QGuiApplication>
+#include <qpa/qwindowsysteminterface.h>
 
 #undef signals
 #include <gtk/gtk.h>
 
+#if QT_CONFIG(xcb_xlib)
 #include <X11/Xlib.h>
+#endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 const char *QGtk3Theme::name = "gtk3";
 
@@ -84,13 +54,25 @@ void gtkMessageHandler(const gchar *log_domain,
 
 QGtk3Theme::QGtk3Theme()
 {
+    // Ensure gtk uses the same windowing system, but let it
+    // fallback in case GDK_BACKEND environment variable
+    // filters the preferred one out
+    if (QGuiApplication::platformName().startsWith("wayland"_L1))
+        gdk_set_allowed_backends("wayland,x11");
+    else if (QGuiApplication::platformName() == "xcb"_L1)
+        gdk_set_allowed_backends("x11,wayland");
+
+#if QT_CONFIG(xcb_xlib)
     // gtk_init will reset the Xlib error handler, and that causes
     // Qt applications to quit on X errors. Therefore, we need to manually restore it.
     int (*oldErrorHandler)(Display *, XErrorEvent *) = XSetErrorHandler(nullptr);
+#endif
 
     gtk_init(nullptr, nullptr);
 
+#if QT_CONFIG(xcb_xlib)
     XSetErrorHandler(oldErrorHandler);
+#endif
 
     /* Initialize some types here so that Gtk+ does not crash when reading
      * the treemodel for GtkFontChooser.
@@ -100,6 +82,29 @@ QGtk3Theme::QGtk3Theme()
 
     /* Use our custom log handler. */
     g_log_set_handler("Gtk", G_LOG_LEVEL_MESSAGE, gtkMessageHandler, nullptr);
+
+#define SETTING_CONNECT(setting) g_signal_connect(settings, "notify::" setting, G_CALLBACK(notifyThemeChanged), nullptr)
+    auto notifyThemeChanged = [] {
+        QWindowSystemInterface::handleThemeChange();
+    };
+
+    GtkSettings *settings = gtk_settings_get_default();
+    SETTING_CONNECT("gtk-cursor-blink-time");
+    SETTING_CONNECT("gtk-double-click-distance");
+    SETTING_CONNECT("gtk-double-click-time");
+    SETTING_CONNECT("gtk-long-press-time");
+    SETTING_CONNECT("gtk-entry-password-hint-timeout");
+    SETTING_CONNECT("gtk-dnd-drag-threshold");
+    SETTING_CONNECT("gtk-icon-theme-name");
+    SETTING_CONNECT("gtk-fallback-icon-theme");
+    SETTING_CONNECT("gtk-font-name");
+    SETTING_CONNECT("gtk-application-prefer-dark-theme");
+    SETTING_CONNECT("gtk-theme-name");
+    SETTING_CONNECT("gtk-cursor-theme-name");
+    SETTING_CONNECT("gtk-cursor-theme-size");
+#undef SETTING_CONNECT
+
+    m_storage.reset(new QGtk3Storage);
 }
 
 static inline QVariant gtkGetLongPressTime()
@@ -134,6 +139,14 @@ QVariant QGtk3Theme::themeHint(QPlatformTheme::ThemeHint hint) const
         return QVariant(gtkSetting("gtk-icon-theme-name"));
     case QPlatformTheme::SystemIconFallbackThemeName:
         return QVariant(gtkSetting("gtk-fallback-icon-theme"));
+    case QPlatformTheme::MouseCursorTheme:
+        return QVariant(gtkSetting("gtk-cursor-theme-name"));
+    case QPlatformTheme::MouseCursorSize: {
+        int s = gtkSetting<gint>("gtk-cursor-theme-size");
+        if (s > 0)
+            return QVariant(QSize(s, s));
+        return QGnomeTheme::themeHint(hint);
+    }
     default:
         return QGnomeTheme::themeHint(hint);
     }
@@ -145,6 +158,12 @@ QString QGtk3Theme::gtkFontName() const
     if (!cfgFontName.isEmpty())
         return cfgFontName;
     return QGnomeTheme::gtkFontName();
+}
+
+Qt::ColorScheme QGtk3Theme::colorScheme() const
+{
+    Q_ASSERT(m_storage);
+    return m_storage->colorScheme();
 }
 
 bool QGtk3Theme::usePlatformNativeDialog(DialogType type) const
@@ -198,6 +217,32 @@ bool QGtk3Theme::useNativeFileDialog()
      * dialog helper.
      */
     return gtk_check_version(3, 15, 5) == nullptr;
+}
+
+const QPalette *QGtk3Theme::palette(Palette type) const
+{
+    Q_ASSERT(m_storage);
+    return m_storage->palette(type);
+}
+
+QPixmap QGtk3Theme::standardPixmap(StandardPixmap sp, const QSizeF &size) const
+{
+    Q_ASSERT(m_storage);
+    return m_storage->standardPixmap(sp, size);
+}
+
+const QFont *QGtk3Theme::font(Font type) const
+{
+    Q_ASSERT(m_storage);
+    return m_storage->font(type);
+}
+
+QIcon QGtk3Theme::fileIcon(const QFileInfo &fileInfo,
+                           QPlatformTheme::IconOptions iconOptions) const
+{
+    Q_UNUSED(iconOptions);
+    Q_ASSERT(m_storage);
+    return m_storage->fileIcon(fileInfo);
 }
 
 QT_END_NAMESPACE

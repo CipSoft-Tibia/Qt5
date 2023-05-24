@@ -1,24 +1,23 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/extension_action.h"
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "base/base64.h"
 #include "base/check_op.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/values.h"
 #include "extensions/browser/extension_icon_image.h"
 #include "extensions/browser/extension_icon_placeholder.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension_icon_set.h"
 #include "extensions/common/manifest_handlers/icons_handler.h"
 #include "extensions/grit/extensions_browser_resources.h"
-#include "ipc/ipc_message.h"
-#include "ipc/ipc_message_utils.h"
+#include "skia/public/mojom/bitmap.mojom.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkPaint.h"
@@ -31,8 +30,8 @@
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_rep.h"
 #include "ui/gfx/image/image_skia_source.h"
-#include "ui/gfx/ipc/skia/gfx_skia_param_traits.h"
 #include "ui/gfx/skbitmap_operations.h"
 #include "url/gurl.h"
 
@@ -62,7 +61,7 @@ struct IconRepresentationInfo {
   // SetIcon function arguments.
   const char* size_string;
   // Scale factor for which the represantion should be used.
-  ui::ScaleFactor scale;
+  ui::ResourceScaleFactor scale;
 };
 
 template <class T>
@@ -95,7 +94,7 @@ ExtensionAction::ExtensionAction(const Extension& extension,
   Populate(extension, manifest_data);
 }
 
-ExtensionAction::~ExtensionAction() {}
+ExtensionAction::~ExtensionAction() = default;
 
 void ExtensionAction::SetPopupUrl(int tab_id, const GURL& url) {
   // We store |url| even if it is empty, rather than removing a URL from the
@@ -119,28 +118,28 @@ void ExtensionAction::SetIcon(int tab_id, const gfx::Image& image) {
 }
 
 ExtensionAction::IconParseResult ExtensionAction::ParseIconFromCanvasDictionary(
-    const base::DictionaryValue& dict,
+    const base::Value::Dict& dict,
     gfx::ImageSkia* icon) {
-  for (base::DictionaryValue::Iterator iter(dict); !iter.IsAtEnd();
-       iter.Advance()) {
-    std::string binary_string64;
-    IPC::Message pickle;
-    if (iter.value().is_blob()) {
-      pickle = IPC::Message(
-          reinterpret_cast<const char*>(iter.value().GetBlob().data()),
-          iter.value().GetBlob().size());
-    } else if (iter.value().GetAsString(&binary_string64)) {
-      std::string binary_string;
-      if (!base::Base64Decode(binary_string64, &binary_string))
+  for (const auto item : dict) {
+    std::string byte_string;
+    const void* bytes = nullptr;
+    size_t num_bytes = 0;
+    if (item.second.is_blob()) {
+      bytes = item.second.GetBlob().data();
+      num_bytes = item.second.GetBlob().size();
+    } else if (item.second.is_string()) {
+      if (!base::Base64Decode(item.second.GetString(), &byte_string))
         return IconParseResult::kDecodeFailure;
-      pickle = IPC::Message(binary_string.c_str(), binary_string.length());
+      bytes = byte_string.c_str();
+      num_bytes = byte_string.length();
     } else {
       continue;
     }
-    base::PickleIterator pickle_iter(pickle);
     SkBitmap bitmap;
-    if (!IPC::ReadParam(&pickle, &pickle_iter, &bitmap))
+    if (!skia::mojom::InlineBitmap::Deserialize(bytes, num_bytes, &bitmap)) {
       return IconParseResult::kUnpickleFailure;
+    }
+    // A well-behaved renderer will never send a null bitmap to us here.
     CHECK(!bitmap.isNull());
 
     // Chrome helpfully scales the provided icon(s), but let's not go overboard.
@@ -251,16 +250,13 @@ gfx::Image ExtensionAction::GetPlaceholderIconImage() const {
 }
 
 std::string ExtensionAction::GetDisplayBadgeText(int tab_id) const {
-  return UseDNRActionCountAsBadgeText(tab_id)
-             ? base::NumberToString(GetDNRActionCount(tab_id))
-             : GetExplicitlySetBadgeText(tab_id);
-}
-
-bool ExtensionAction::UseDNRActionCountAsBadgeText(int tab_id) const {
   // Tab specific badge text set by an extension overrides the automatically set
   // action count. Action count should only be shown if at least one action is
   // matched.
-  return !HasBadgeText(tab_id) && GetDNRActionCount(tab_id) > 0;
+  bool use_dnr_action_count =
+      !HasBadgeText(tab_id) && GetDNRActionCount(tab_id) > 0;
+  return use_dnr_action_count ? base::NumberToString(GetDNRActionCount(tab_id))
+                              : GetExplicitlySetBadgeText(tab_id);
 }
 
 bool ExtensionAction::HasPopupUrl(int tab_id) const {
@@ -311,12 +307,13 @@ void ExtensionAction::Populate(const Extension& extension,
 
   // Initialize the specified icon set.
   if (!manifest_data.default_icon.empty()) {
-    default_icon_.reset(new ExtensionIconSet(manifest_data.default_icon));
+    default_icon_ =
+        std::make_unique<ExtensionIconSet>(manifest_data.default_icon);
   } else {
     // Fall back to the product icons if no action icon exists.
     const ExtensionIconSet& product_icons = IconsInfo::GetIcons(&extension);
     if (!product_icons.empty())
-      default_icon_.reset(new ExtensionIconSet(product_icons));
+      default_icon_ = std::make_unique<ExtensionIconSet>(product_icons);
   }
 }
 
@@ -334,6 +331,20 @@ int ExtensionAction::GetIconWidth(int tab_id) const {
   // If no icon has been set and there is no default icon, we need favicon
   // width.
   return FallbackIcon().Width();
+}
+
+bool ExtensionAction::GetIsVisibleInternal(int tab_id,
+                                           bool include_declarative) const {
+  if (const bool* tab_is_visible = FindOrNull(&is_visible_, tab_id))
+    return *tab_is_visible;
+
+  if (include_declarative && base::Contains(declarative_show_count_, tab_id))
+    return true;
+
+  if (const bool* default_is_visible = FindOrNull(&is_visible_, kDefaultTabId))
+    return *default_is_visible;
+
+  return false;
 }
 
 }  // namespace extensions

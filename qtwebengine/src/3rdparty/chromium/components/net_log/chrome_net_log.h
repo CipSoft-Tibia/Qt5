@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,34 +9,18 @@
 #include <string>
 
 #include "base/command_line.h"
-#include "base/macros.h"
-
-namespace base {
-class DictionaryValue;
-class Value;
-}
+#include "base/values.h"
 
 namespace net_log {
 
-// Returns all the constants to include in NetLog files. This includes both
-// platform-specific details (GetPlatformConstantsForNetLog()) as well as the
-// basic src/net constants (net::GetNetConstants()) for things like symbolic
-// names of error codes.
-//
-// Safe to call on any thread.
-base::Value GetConstantsForNetLog(
-    const base::CommandLine::StringType& command_line_string,
-    const std::string& channel_string);
-
-// Returns constants to include in NetLog files for debugging purposes, which
-// includes information such as:
+// Returns constants to include in NetLog files including information such as:
 //
 //  * The version and build of Chrome
 //  * The command line arguments Chrome was launched with
 //  * The operating system version
 //
 //  Safe to call on any thread.
-std::unique_ptr<base::DictionaryValue> GetPlatformConstantsForNetLog(
+base::Value::Dict GetPlatformConstantsForNetLog(
     const base::CommandLine::StringType& command_line_string,
     const std::string& channel_string);
 

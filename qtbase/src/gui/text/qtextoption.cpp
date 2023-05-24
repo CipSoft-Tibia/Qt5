@@ -1,47 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtextoption.h"
 #include "qguiapplication.h"
 #include "qlist.h"
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QTextOption::Tab, QTextOption_Tab)
 
 struct QTextOptionPrivate
 {
@@ -55,14 +21,7 @@ struct QTextOptionPrivate
     using of design metrics flag is set to false.
 */
 QTextOption::QTextOption()
-    : align(Qt::AlignLeft),
-      wordWrap(QTextOption::WordWrap),
-      design(false),
-      unused(0),
-      unused2(0),
-      f(0),
-      tab(-1),
-      d(nullptr)
+    : QTextOption(Qt::AlignLeft)
 {
     direction = Qt::LayoutDirectionAuto;
 }
@@ -77,7 +36,6 @@ QTextOption::QTextOption(Qt::Alignment alignment)
       wordWrap(QTextOption::WordWrap),
       design(false),
       unused(0),
-      unused2(0),
       f(0),
       tab(-1),
       d(nullptr)
@@ -104,7 +62,6 @@ QTextOption::QTextOption(const QTextOption &o)
       design(o.design),
       direction(o.direction),
       unused(o.unused),
-      unused2(o.unused2),
       f(o.f),
       tab(o.tab),
       d(nullptr)
@@ -152,7 +109,7 @@ void QTextOption::setTabArray(const QList<qreal> &tabStops)
         d = new QTextOptionPrivate;
     QList<QTextOption::Tab> tabs;
     QTextOption::Tab tab;
-    tabs.reserve(tabStops.count());
+    tabs.reserve(tabStops.size());
     for (qreal pos : tabStops) {
         tab.position = pos;
         tabs.append(tab);
@@ -165,7 +122,7 @@ void QTextOption::setTabArray(const QList<qreal> &tabStops)
     Sets the tab positions for the text layout to those specified by
     \a tabStops.
 
-    \sa tabStop()
+    \sa tabStopDistance()
 */
 void QTextOption::setTabs(const QList<QTextOption::Tab> &tabStops)
 {
@@ -177,7 +134,7 @@ void QTextOption::setTabs(const QList<QTextOption::Tab> &tabStops)
 /*!
     Returns a list of tab positions defined for the text layout.
 
-    \sa setTabArray(), tabStop()
+    \sa setTabArray(), tabStopDistance()
 */
 QList<qreal> QTextOption::tabArray() const
 {
@@ -185,7 +142,7 @@ QList<qreal> QTextOption::tabArray() const
     if (!d)
         return answer;
 
-    answer.reserve(d->tabStops.count());
+    answer.reserve(d->tabStops.size());
     QList<QTextOption::Tab>::ConstIterator iter = d->tabStops.constBegin();
     while(iter != d->tabStops.constEnd()) {
         answer.append( (*iter).position);
@@ -333,28 +290,6 @@ QList<QTextOption::Tab> QTextOption::tabs() const
   \sa flags()
 */
 
-#if QT_DEPRECATED_SINCE(5, 10)
-/*!
-  \fn qreal QTextOption::tabStop() const
-  \deprecated in Qt 5.10. Use tabStopDistance() instead.
-
-  Returns the distance in device units between tab stops.
-  Convenient function for the above method
-
-  \sa setTabStopDistance(), tabArray(), setTabs(), tabs()
-*/
-
-/*!
-  \fn void QTextOption::setTabStop(qreal tabStop)
-  \deprecated in Qt 5.10. Use setTabStopDistance() instead.
-
-  Sets the default distance in device units between tab stops to the value specified
-  by \a tabStop.
-
-  \sa tabStopDistance(), setTabArray(), setTabs(), tabs()
-*/
-#endif
-
 /*!
   \fn qreal QTextOption::tabStopDistance() const
   \since 5.10
@@ -398,7 +333,7 @@ QList<QTextOption::Tab> QTextOption::tabs() const
     Distance from the start of the paragraph.
     The position of a tab is from the start of the paragraph which implies that when
     the alignment of the paragraph is set to centered, the tab is interpreted to be
-    moved the same distance as the left ege of the paragraph does.
+    moved the same distance as the left edge of the paragraph does.
     In case the paragraph is set to have a layoutDirection() RightToLeft the position
     is interpreted to be from the right side of the paragraph with higher numbers moving
     the tab to the left.
@@ -451,7 +386,7 @@ QList<QTextOption::Tab> QTextOption::tabs() const
   \fn QList<QTextOption::Tab> QTextOption::tabs() const
   Returns a list of tab positions defined for the text layout.
 
-  \sa tabStopDistance(), setTabs(), setTabStop()
+  \sa tabStopDistance(), setTabs(), setTabStopDistance()
 */
 
 

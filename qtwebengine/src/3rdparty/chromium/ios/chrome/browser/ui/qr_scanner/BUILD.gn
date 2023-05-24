@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -44,13 +44,13 @@ source_set("coordinator") {
     "//ios/chrome/browser/main:public",
     "//ios/chrome/browser/ui/commands",
     "//ios/chrome/browser/ui/coordinators:chrome_coordinators",
+    "//ios/chrome/browser/ui/main:scene_state_header",
     "//ios/chrome/browser/ui/scanner",
     "//ios/chrome/browser/ui/toolbar/public",
   ]
 }
 
 source_set("eg2_tests") {
-  defines = [ "CHROME_EARL_GREY_2" ]
   configs += [
     "//build/config/compiler:enable_arc",
     "//build/config/ios:xctest_config",
@@ -77,7 +77,6 @@ source_set("eg2_tests") {
 }
 
 source_set("eg_app_support+eg2") {
-  defines = [ "CHROME_EARL_GREY_2" ]
   configs += [
     "//build/config/compiler:enable_arc",
     "//build/config/ios:xctest_config",
@@ -90,10 +89,12 @@ source_set("eg_app_support+eg2") {
   deps = [
     ":qr_scanner",
     "//base",
+    "//components/search_engines",
     "//components/version_info",
     "//ios/chrome/app:app_internal",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/main",
+    "//ios/chrome/browser/search_engines",
     "//ios/chrome/browser/ui/icons",
     "//ios/chrome/browser/ui/location_bar",
     "//ios/chrome/browser/ui/scanner",
@@ -108,13 +109,18 @@ source_set("eg_app_support+eg2") {
 }
 
 source_set("eg_test_support+eg2") {
-  defines = [ "CHROME_EARL_GREY_2" ]
   configs += [
     "//build/config/compiler:enable_arc",
     "//build/config/ios:xctest_config",
   ]
   testonly = true
 
-  sources = [ "qr_scanner_app_interface.h" ]
-  deps = [ "//ios/chrome/browser/ui/scanner:camera_state" ]
+  sources = [
+    "qr_scanner_app_interface.h",
+    "qr_scanner_app_interface_stub.mm",
+  ]
+  deps = [
+    "//ios/chrome/browser/ui/scanner:camera_state",
+    "//ios/third_party/earl_grey2:test_lib",
+  ]
 }

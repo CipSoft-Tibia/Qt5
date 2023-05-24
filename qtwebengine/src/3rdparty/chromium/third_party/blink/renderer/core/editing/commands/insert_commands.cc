@@ -25,7 +25,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,13 +35,18 @@
 #include "third_party/blink/renderer/core/editing/commands/insert_list_command.h"
 #include "third_party/blink/renderer/core/editing/commands/replace_selection_command.h"
 #include "third_party/blink/renderer/core/editing/commands/typing_command.h"
+#include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/editor.h"
+#include "third_party/blink/renderer/core/editing/frame_selection.h"
+#include "third_party/blink/renderer/core/editing/selection_template.h"
 #include "third_party/blink/renderer/core/editing/serializers/serialization.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/html/forms/text_control_element.h"
 #include "third_party/blink/renderer/core/html/html_hr_element.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -93,18 +98,49 @@ bool InsertCommands::ExecuteInsertHorizontalRule(LocalFrame& frame,
                                                  const String& value) {
   DCHECK(frame.GetDocument());
   auto* const rule = MakeGarbageCollected<HTMLHRElement>(*frame.GetDocument());
-  if (!value.IsEmpty())
+  if (!value.empty())
     rule->SetIdAttribute(AtomicString(value));
   return ExecuteInsertElement(frame, rule);
 }
 
 bool InsertCommands::ExecuteInsertHTML(LocalFrame& frame,
-                                       Event*,
-                                       EditorCommandSource,
+                                       Event* event,
+                                       EditorCommandSource source,
                                        const String& value) {
   DCHECK(frame.GetDocument());
-  return ExecuteInsertFragment(
-      frame, CreateFragmentFromMarkup(*frame.GetDocument(), value, ""));
+  DocumentFragment* fragment =
+      CreateFragmentFromMarkup(*frame.GetDocument(), value, "");
+  if (const auto* text_control = EnclosingTextControl(
+          frame.Selection().RootEditableElementOrDocumentElement())) {
+    if (IsA<HTMLInputElement>(text_control)) {
+      UseCounter::Count(frame.GetDocument(),
+                        WebFeature::kInsertHTMLCommandOnInput);
+      // We'd like to turn off HTML insertion against <input> in order to avoid
+      // creating an anonymous block as a child of
+      // LayoutNGTextControlInnerEditor. See crbug.com/1174952
+      //
+      // |textContent()| contains the contents of <style> and <script>.
+      // It's not a reasonable behavior, but we think no one cares about
+      // the behavior of InsertHTML for <input>.
+
+      // Set convert_brs_to_newlines for fast/forms/8250.html.
+      const bool convert_brs_to_newlines = true;
+      return ExecuteInsertText(frame, event, source,
+                               fragment->textContent(convert_brs_to_newlines));
+    } else {
+      UseCounter::Count(frame.GetDocument(),
+                        WebFeature::kInsertHTMLCommandOnTextarea);
+    }
+  } else {
+    if (Node* anchor =
+            frame.Selection().GetSelectionInDOMTree().Base().AnchorNode()) {
+      if (IsEditable(*anchor) && !IsRichlyEditable(*anchor)) {
+        UseCounter::Count(frame.GetDocument(),
+                          WebFeature::kInsertHTMLCommandOnReadWritePlainText);
+      }
+    }
+  }
+  return ExecuteInsertFragment(frame, fragment);
 }
 
 bool InsertCommands::ExecuteInsertImage(LocalFrame& frame,
@@ -114,7 +150,7 @@ bool InsertCommands::ExecuteInsertImage(LocalFrame& frame,
   DCHECK(frame.GetDocument());
   auto* const image =
       MakeGarbageCollected<HTMLImageElement>(*frame.GetDocument());
-  if (!value.IsEmpty())
+  if (!value.empty())
     image->setAttribute(html_names::kSrcAttr, AtomicString(value));
   return ExecuteInsertElement(frame, image);
 }

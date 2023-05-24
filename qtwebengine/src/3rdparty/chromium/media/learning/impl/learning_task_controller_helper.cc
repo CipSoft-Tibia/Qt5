@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 
 namespace media {
 namespace learning {
@@ -19,7 +19,7 @@ LearningTaskControllerHelper::LearningTaskControllerHelper(
     SequenceBoundFeatureProvider feature_provider)
     : task_(task),
       feature_provider_(std::move(feature_provider)),
-      task_runner_(base::SequencedTaskRunnerHandle::Get()),
+      task_runner_(base::SequencedTaskRunner::GetCurrentDefault()),
       add_example_cb_(std::move(add_example_cb)) {}
 
 LearningTaskControllerHelper::~LearningTaskControllerHelper() = default;
@@ -27,7 +27,7 @@ LearningTaskControllerHelper::~LearningTaskControllerHelper() = default;
 void LearningTaskControllerHelper::BeginObservation(
     base::UnguessableToken id,
     FeatureVector features,
-    base::Optional<ukm::SourceId> source_id) {
+    absl::optional<ukm::SourceId> source_id) {
   auto& pending_example = pending_examples_[id];
 
   if (source_id)
@@ -35,10 +35,12 @@ void LearningTaskControllerHelper::BeginObservation(
 
   // Start feature prediction, so that we capture the current values.
   if (!feature_provider_.is_null()) {
-    feature_provider_.Post(
-        FROM_HERE, &FeatureProvider::AddFeatures, std::move(features),
-        base::BindOnce(&LearningTaskControllerHelper::OnFeaturesReadyTrampoline,
-                       task_runner_, AsWeakPtr(), id));
+    // TODO(dcheng): Convert this to use Then() helper.
+    feature_provider_.AsyncCall(&FeatureProvider::AddFeatures)
+        .WithArgs(std::move(features),
+                  base::BindOnce(
+                      &LearningTaskControllerHelper::OnFeaturesReadyTrampoline,
+                      task_runner_, AsWeakPtr(), id));
   } else {
     pending_example.example.features = std::move(features);
     pending_example.features_done = true;

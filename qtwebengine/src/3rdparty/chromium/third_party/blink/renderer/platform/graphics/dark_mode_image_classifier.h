@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,8 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
-#include "base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/renderer/platform/graphics/dark_mode_settings.h"
 #include "third_party/blink/renderer/platform/graphics/dark_mode_types.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/skia/include/core/SkPixmap.h"
@@ -23,7 +24,8 @@ FORWARD_DECLARE_TEST(DarkModeImageClassifierTest, FeaturesAndClassification);
 // results is not threadsafe. So it can be used only in blink main thread.
 class PLATFORM_EXPORT DarkModeImageClassifier {
  public:
-  DarkModeImageClassifier();
+  explicit DarkModeImageClassifier(
+      DarkModeImageClassifierPolicy image_classifier_policy);
   ~DarkModeImageClassifier();
 
   struct Features {
@@ -41,43 +43,45 @@ class PLATFORM_EXPORT DarkModeImageClassifier {
     float background_ratio;
   };
 
-  DarkModeResult Classify(const SkPixmap& pixmap, const SkIRect& src);
+  DarkModeResult Classify(const SkPixmap& pixmap, const SkIRect& src) const;
 
  private:
-  DarkModeResult ClassifyWithFeatures(const Features& features);
-  DarkModeResult ClassifyUsingDecisionTree(const Features& features);
+  DarkModeResult ClassifyWithFeatures(const Features& features) const;
+  DarkModeResult ClassifyUsingDecisionTree(const Features& features) const;
 
   enum class ColorMode { kColor = 0, kGrayscale = 1 };
 
-  base::Optional<Features> GetFeatures(const SkPixmap& pixmap,
-                                       const SkIRect& src);
+  absl::optional<Features> GetFeatures(const SkPixmap& pixmap,
+                                       const SkIRect& src) const;
   // Extracts a sample set of pixels (|sampled_pixels|), |transparency_ratio|,
   // and |background_ratio|.
   void GetSamples(const SkPixmap& pixmap,
                   const SkIRect& src,
                   std::vector<SkColor>* sampled_pixels,
                   float* transparency_ratio,
-                  float* background_ratio);
+                  float* background_ratio) const;
   // Gets the |required_samples_count| for a specific |block| of the given
   // pixmap, and returns |sampled_pixels| and |transparent_pixels_count|.
   void GetBlockSamples(const SkPixmap& pixmap,
                        const SkIRect& block,
                        const int required_samples_count,
                        std::vector<SkColor>* sampled_pixels,
-                       int* transparent_pixels_count);
+                       int* transparent_pixels_count) const;
 
   // Given |sampled_pixels|, |transparency_ratio|, and |background_ratio| for an
   // image, computes and returns the features required for classification.
   Features ComputeFeatures(const std::vector<SkColor>& sampled_pixels,
                            const float transparency_ratio,
-                           const float background_ratio);
+                           const float background_ratio) const;
 
   // Receives sampled pixels and color mode, and returns the ratio of color
   // buckets count to all possible color buckets. If image is in color, a color
   // bucket is a 4 bit per channel representation of each RGB color, and if it
   // is grayscale, each bucket is a 4 bit representation of luminance.
   float ComputeColorBucketsRatio(const std::vector<SkColor>& sampled_pixels,
-                                 const ColorMode color_mode);
+                                 const ColorMode color_mode) const;
+
+  const DarkModeImageClassifierPolicy image_classifier_policy_;
 
   FRIEND_TEST_ALL_PREFIXES(DarkModeImageClassifierTest, BlockSamples);
   FRIEND_TEST_ALL_PREFIXES(DarkModeImageClassifierTest,

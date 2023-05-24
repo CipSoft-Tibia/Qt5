@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Il pacchetto non è valido: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Fotocamera posteriore</translation>
 <translation id="1196338895211115272">Operazione di esportazione della chiave privata non riuscita.</translation>
+<translation id="132960226125594336">Impossibile caricare il file "<ph name="RELATIVE_PATH" />" per lo script di contenuti perché supererebbe le dimensioni massime consentite per gli script o le dimensioni massime totali consentite per gli script di contenuti dell'estensione.</translation>
 <translation id="1420684932347524586">Spiacenti, operazione di generazione della chiave privata RSA casuale non riuscita.</translation>
 <translation id="1445572445564823378">Questa estensione sta rallentando <ph name="PRODUCT_NAME" />. È necessario disabilitarla per ripristinare le prestazioni di <ph name="PRODUCT_NAME" />.</translation>
 <translation id="1468038450257740950">WebGL non è supportato.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">Il pacchetto non è valido. Dettagli: "<ph name="ERROR_MESSAGE" />".</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" richiede l'accesso a un dispositivo:</translation>
 <translation id="8885905466771744233">Esiste già una chiave privata per l'estensione specificata. Riutilizza tale chiave o prima eliminala.</translation>
+<translation id="9039223174332979184">L'amministratore di questa macchina richiede che <ph name="EXTENSION_NAME" /> abbia una versione minima del manifest di 3.</translation>
 <translation id="907841381057066561">Operazione di creazione di un file zip temporaneo durante la creazione del pacchetto non riuscita.</translation>
 <translation id="941543339607623937">Chiave privata non valida.</translation>
 </translationbundle>

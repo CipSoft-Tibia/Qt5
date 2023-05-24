@@ -1,46 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqlerror.h"
 #include "qdebug.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug dbg, const QSqlError &s)
@@ -53,7 +19,7 @@ QDebug operator<<(QDebug dbg, const QSqlError &s)
 }
 #endif
 
-class QSqlErrorPrivate
+class QSqlErrorPrivate : public QSharedData
 {
 public:
     QString driverError;
@@ -61,7 +27,7 @@ public:
     QSqlError::ErrorType errorType;
     QString errorCode;
 };
-
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QSqlErrorPrivate)
 
 /*!
     \class QSqlError
@@ -88,15 +54,6 @@ public:
     \value StatementError  SQL statement syntax error.
     \value TransactionError  Transaction failed error.
     \value UnknownError  Unknown error.
-*/
-
-/*!
-    \fn QSqlError::QSqlError(const QString &driverText, const QString &databaseText, ErrorType type, int number)
-    \obsolete
-
-    Constructs an error containing the driver error text \a
-    driverText, the database-specific error text \a databaseText, the
-    type \a type and the optional error number \a number.
 */
 
 /*! \fn QSqlError::QSqlError(QSqlError &&other)
@@ -127,33 +84,15 @@ public:
     \since 5.10
 */
 
-#if QT_DEPRECATED_SINCE(5, 3)
-QSqlError::QSqlError(const QString& driverText, const QString& databaseText, ErrorType type,
-                    int number)
-{
-    d = new QSqlErrorPrivate;
-
-    d->driverError = driverText;
-    d->databaseError = databaseText;
-    d->errorType = type;
-    if (number != -1)
-        d->errorCode = QString::number(number);
-}
-#endif
-
 /*!
     Constructs an error containing the driver error text \a
     driverText, the database-specific error text \a databaseText, the
     type \a type and the error code \a code.
-
-    \note DB2: It is possible for DB2 to report more than one error code.
-    When this happens, \c ; is used as separator between the error codes.
 */
 QSqlError::QSqlError(const QString &driverText, const QString &databaseText,
                      ErrorType type, const QString &code)
+    : d(new QSqlErrorPrivate)
 {
-    d = new QSqlErrorPrivate;
-
     d->driverError = driverText;
     d->databaseError = databaseText;
     d->errorType = type;
@@ -164,43 +103,38 @@ QSqlError::QSqlError(const QString &driverText, const QString &databaseText,
 /*!
     Creates a copy of \a other.
 */
-QSqlError::QSqlError(const QSqlError& other)
-{
-    d = new QSqlErrorPrivate;
-
-    *d = *other.d;
-}
+QSqlError::QSqlError(const QSqlError &other)
+    = default;
 
 /*!
     Assigns the \a other error's values to this error.
 */
 
-QSqlError& QSqlError::operator=(const QSqlError& other)
-{
-    if (d)
-        *d = *other.d;
-    else
-        d = new QSqlErrorPrivate(*other.d);
-    return *this;
-}
+QSqlError &QSqlError::operator=(const QSqlError &other)
+    = default;
+
 
 /*!
-    Compare the \a other error's values to this error and returns \c true, if it equal.
+    Compare the \a other error's type() and nativeErrorCode()
+    to this error and returns \c true, if it equal.
 */
 
-bool QSqlError::operator==(const QSqlError& other) const
+bool QSqlError::operator==(const QSqlError &other) const
 {
-    return (d->errorType == other.d->errorType);
+    return (d->errorType == other.d->errorType &&
+            d->errorCode == other.d->errorCode);
 }
 
 
 /*!
-    Compare the \a other error's values to this error and returns \c true if it is not equal.
+    Compare the \a other error's type() and nativeErrorCode()
+    to this error and returns \c true if it is not equal.
 */
 
-bool QSqlError::operator!=(const QSqlError& other) const
+bool QSqlError::operator!=(const QSqlError &other) const
 {
-    return (d->errorType != other.d->errorType);
+    return (d->errorType != other.d->errorType ||
+            d->errorCode != other.d->errorCode);
 }
 
 
@@ -209,9 +143,7 @@ bool QSqlError::operator!=(const QSqlError& other) const
 */
 
 QSqlError::~QSqlError()
-{
-    delete d;
-}
+    = default;
 
 /*!
     Returns the text of the error as reported by the driver. This may
@@ -223,25 +155,6 @@ QString QSqlError::driverText() const
 {
     return d->driverError;
 }
-
-/*!
-    \fn void QSqlError::setDriverText(const QString &driverText)
-    \obsolete
-
-    Sets the driver error text to the value of \a driverText.
-
-    Use QSqlError(const QString &driverText, const QString &databaseText,
-                  ErrorType type, int number) instead
-
-    \sa driverText(), setDatabaseText(), text()
-*/
-
-#if QT_DEPRECATED_SINCE(5, 1)
-void QSqlError::setDriverText(const QString& driverText)
-{
-    d->driverError = driverText;
-}
-#endif
 
 /*!
     Returns the text of the error as reported by the database. This
@@ -256,25 +169,6 @@ QString QSqlError::databaseText() const
 }
 
 /*!
-    \fn void QSqlError::setDatabaseText(const QString &databaseText)
-    \obsolete
-
-    Sets the database error text to the value of \a databaseText.
-
-    Use QSqlError(const QString &driverText, const QString &databaseText,
-                  ErrorType type, int number) instead
-
-    \sa databaseText(), setDriverText(), text()
-*/
-
-#if QT_DEPRECATED_SINCE(5, 1)
-void QSqlError::setDatabaseText(const QString& databaseText)
-{
-    d->databaseError = databaseText;
-}
-#endif
-
-/*!
     Returns the error type, or -1 if the type cannot be determined.
 */
 
@@ -284,70 +178,11 @@ QSqlError::ErrorType QSqlError::type() const
 }
 
 /*!
-    \fn void QSqlError::setType(ErrorType type)
-    \obsolete
-
-    Sets the error type to the value of \a type.
-
-    Use QSqlError(const QString &driverText, const QString &databaseText,
-                  ErrorType type, int number) instead
-
-    \sa type()
-*/
-
-#if QT_DEPRECATED_SINCE(5, 1)
-void QSqlError::setType(ErrorType type)
-{
-    d->errorType = type;
-}
-#endif
-
-/*!
-    \fn int QSqlError::number() const
-    \obsolete
-
-    Returns the database-specific error number, or -1 if it cannot be
-    determined.
-
-    Returns 0 if the error code is not an integer.
-
-    \warning Some databases use alphanumeric error codes, which makes
-             number() unreliable if such a database is used.
-
-    Use nativeErrorCode() instead
-
-    \sa nativeErrorCode()
-*/
-
-#if QT_DEPRECATED_SINCE(5, 3)
-int QSqlError::number() const
-{
-    return d->errorCode.isEmpty() ? -1 : d->errorCode.toInt();
-}
-#endif
-
-/*!
-    \fn void QSqlError::setNumber(int number)
-    \obsolete
-
-    Sets the database-specific error number to \a number.
-
-    Use QSqlError(const QString &driverText, const QString &databaseText,
-                  ErrorType type, int number) instead
-
-    \sa number()
-*/
-
-#if QT_DEPRECATED_SINCE(5, 1)
-void QSqlError::setNumber(int number)
-{
-    d->errorCode = QString::number(number);
-}
-#endif
-
-/*!
     Returns the database-specific error code, or an empty string if
     it cannot be determined.
+    \note Some drivers (like DB2 or ODBC) may return more than one
+    error code. When this happens, \c ; is used as separator between
+    the error codes.
 */
 
 QString QSqlError::nativeErrorCode() const
@@ -365,8 +200,8 @@ QString QSqlError::nativeErrorCode() const
 QString QSqlError::text() const
 {
     QString result = d->databaseError;
-    if (!d->databaseError.isEmpty() && !d->driverError.isEmpty() && !d->databaseError.endsWith(QLatin1String("\n")))
-        result += QLatin1Char(' ');
+    if (!d->databaseError.isEmpty() && !d->driverError.isEmpty() && !d->databaseError.endsWith(u'\n'))
+        result += u' ';
     result += d->driverError;
     return result;
 }

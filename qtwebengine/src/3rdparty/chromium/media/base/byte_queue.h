@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/process/memory.h"
 #include "media/base/media_export.h"
 
 namespace media {
@@ -24,13 +24,19 @@ namespace media {
 class MEDIA_EXPORT ByteQueue {
  public:
   ByteQueue();
+
+  ByteQueue(const ByteQueue&) = delete;
+  ByteQueue& operator=(const ByteQueue&) = delete;
+
   ~ByteQueue();
 
   // Reset the queue to the empty state.
   void Reset();
 
-  // Appends new bytes onto the end of the queue.
-  void Push(const uint8_t* data, int size);
+  // Appends new bytes onto the end of the queue. If allocation failure occurs,
+  // then the append of `data` is not done and returns false. Otherwise, returns
+  // true.
+  [[nodiscard]] bool Push(const uint8_t* data, int size);
 
   // Get a pointer to the front of the queue and the queue size. These values
   // are only valid until the next Push() or Pop() call.
@@ -55,9 +61,7 @@ class MEDIA_EXPORT ByteQueue {
   // Number of bytes stored in |buffer_|.
   int used_ = 0;
 
-  std::unique_ptr<uint8_t[]> buffer_;
-
-  DISALLOW_COPY_AND_ASSIGN(ByteQueue);
+  std::unique_ptr<uint8_t, base::UncheckedFreeDeleter> buffer_;
 };
 
 }  // namespace media

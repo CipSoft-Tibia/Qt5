@@ -1,17 +1,20 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/subresource_filter/content/browser/fake_safe_browsing_database_manager.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "url/gurl.h"
 
-FakeSafeBrowsingDatabaseManager::FakeSafeBrowsingDatabaseManager() {}
+FakeSafeBrowsingDatabaseManager::FakeSafeBrowsingDatabaseManager()
+    : safe_browsing::TestSafeBrowsingDatabaseManager(
+          content::GetUIThreadTaskRunner({}),
+          content::GetIOThreadTaskRunner({})) {}
 
 void FakeSafeBrowsingDatabaseManager::AddBlocklistedUrl(
     const GURL& url,
@@ -91,9 +94,6 @@ bool FakeSafeBrowsingDatabaseManager::CheckResourceUrl(const GURL& url,
   return true;
 }
 
-bool FakeSafeBrowsingDatabaseManager::IsSupported() const {
-  return true;
-}
 bool FakeSafeBrowsingDatabaseManager::ChecksAreAlwaysAsync() const {
   return false;
 }
@@ -101,8 +101,8 @@ void FakeSafeBrowsingDatabaseManager::CancelCheck(Client* client) {
   size_t erased = checks_.erase(client);
   DCHECK_EQ(erased, 1u);
 }
-bool FakeSafeBrowsingDatabaseManager::CanCheckResourceType(
-    blink::mojom::ResourceType /* resource_type */) const {
+bool FakeSafeBrowsingDatabaseManager::CanCheckRequestDestination(
+    network::mojom::RequestDestination /* request_destination */) const {
   return true;
 }
 

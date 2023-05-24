@@ -1,13 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/accessibility/ax_enum_util.h"
 
+#include "ui/accessibility/ax_enums.mojom-shared.h"
 #include "ui/accessibility/ax_enums.mojom.h"
-
-#include "ui/base/l10n/l10n_util.h"
-#include "ui/strings/grit/ui_strings.h"
 
 namespace ui {
 
@@ -55,8 +53,6 @@ const char* ToString(ax::mojom::Event event) {
       return "hover";
     case ax::mojom::Event::kImageFrameUpdated:
       return "imageFrameUpdated";
-    case ax::mojom::Event::kInvalidStatusChanged:
-      return "invalidStatusChanged";
     case ax::mojom::Event::kLayoutComplete:
       return "layoutComplete";
     case ax::mojom::Event::kLiveRegionCreated:
@@ -75,8 +71,6 @@ const char* ToString(ax::mojom::Event event) {
       return "mediaStoppedPlaying";
     case ax::mojom::Event::kMenuEnd:
       return "menuEnd";
-    case ax::mojom::Event::kMenuListItemSelected:
-      return "menuListItemSelected";
     case ax::mojom::Event::kMenuListValueChanged:
       return "menuListValueChanged";
     case ax::mojom::Event::kMenuPopupEnd:
@@ -125,16 +119,16 @@ const char* ToString(ax::mojom::Event event) {
       return "tooltipClosed";
     case ax::mojom::Event::kTooltipOpened:
       return "tooltipOpened";
+    case ax::mojom::Event::kTreeChanged:
+      return "treeChanged";
+    case ax::mojom::Event::kValueChanged:
+      return "valueChanged";
     case ax::mojom::Event::kWindowActivated:
       return "windowActivated";
     case ax::mojom::Event::kWindowDeactivated:
       return "windowDeactivated";
     case ax::mojom::Event::kWindowVisibilityChanged:
       return "windowVisibilityChanged";
-    case ax::mojom::Event::kTreeChanged:
-      return "treeChanged";
-    case ax::mojom::Event::kValueChanged:
-      return "valueChanged";
   }
 
   return "";
@@ -150,8 +144,6 @@ const char* ToString(ax::mojom::Role role) {
       return "alertDialog";
     case ax::mojom::Role::kAlert:
       return "alert";
-    case ax::mojom::Role::kAnchor:
-      return "anchor";
     case ax::mojom::Role::kApplication:
       return "application";
     case ax::mojom::Role::kArticle:
@@ -188,6 +180,8 @@ const char* ToString(ax::mojom::Role role) {
       return "comboBoxGrouping";
     case ax::mojom::Role::kComboBoxMenuButton:
       return "comboBoxMenuButton";
+    case ax::mojom::Role::kComboBoxSelect:
+      return "comboBoxSelect";
     case ax::mojom::Role::kComment:
       return "comment";
     case ax::mojom::Role::kComplementary:
@@ -280,6 +274,10 @@ const char* ToString(ax::mojom::Role role) {
       return "docNotice";
     case ax::mojom::Role::kDocPageBreak:
       return "docPageBreak";
+    case ax::mojom::Role::kDocPageFooter:
+      return "docPageFooter";
+    case ax::mojom::Role::kDocPageHeader:
+      return "docPageHeader";
     case ax::mojom::Role::kDocPageList:
       return "docPageList";
     case ax::mojom::Role::kDocPart:
@@ -338,10 +336,6 @@ const char* ToString(ax::mojom::Role role) {
       return "iframe";
     case ax::mojom::Role::kIframePresentational:
       return "iframePresentational";
-    case ax::mojom::Role::kIgnored:
-      return "ignored";
-    case ax::mojom::Role::kImageMap:
-      return "imageMap";
     case ax::mojom::Role::kImage:
       return "image";
     case ax::mojom::Role::kImeCandidate:
@@ -388,6 +382,50 @@ const char* ToString(ax::mojom::Role role) {
       return "marquee";
     case ax::mojom::Role::kMath:
       return "math";
+    case ax::mojom::Role::kMathMLFraction:
+      return "mathMLFraction";
+    case ax::mojom::Role::kMathMLIdentifier:
+      return "mathMLIdentifier";
+    case ax::mojom::Role::kMathMLMath:
+      return "mathMLMath";
+    case ax::mojom::Role::kMathMLMultiscripts:
+      return "mathMLMultiscripts";
+    case ax::mojom::Role::kMathMLNoneScript:
+      return "mathMLNoneScript";
+    case ax::mojom::Role::kMathMLNumber:
+      return "mathMLNumber";
+    case ax::mojom::Role::kMathMLOperator:
+      return "mathMLOperator";
+    case ax::mojom::Role::kMathMLOver:
+      return "mathMLOver";
+    case ax::mojom::Role::kMathMLPrescriptDelimiter:
+      return "mathMLPrescriptDelimiter";
+    case ax::mojom::Role::kMathMLRoot:
+      return "mathMLRoot";
+    case ax::mojom::Role::kMathMLRow:
+      return "mathMLRow";
+    case ax::mojom::Role::kMathMLSquareRoot:
+      return "mathMLSquareRoot";
+    case ax::mojom::Role::kMathMLStringLiteral:
+      return "mathMLStringLiteral";
+    case ax::mojom::Role::kMathMLSub:
+      return "mathMLSub";
+    case ax::mojom::Role::kMathMLSubSup:
+      return "mathMLSubSup";
+    case ax::mojom::Role::kMathMLSup:
+      return "mathMLSup";
+    case ax::mojom::Role::kMathMLTable:
+      return "mathMLTable";
+    case ax::mojom::Role::kMathMLTableCell:
+      return "mathMLTableCell";
+    case ax::mojom::Role::kMathMLTableRow:
+      return "mathMLTableRow";
+    case ax::mojom::Role::kMathMLText:
+      return "mathMLText";
+    case ax::mojom::Role::kMathMLUnder:
+      return "mathMLUnder";
+    case ax::mojom::Role::kMathMLUnderOver:
+      return "mathMLUnderOver";
     case ax::mojom::Role::kMenu:
       return "menu";
     case ax::mojom::Role::kMenuBar:
@@ -414,6 +452,8 @@ const char* ToString(ax::mojom::Role role) {
       return "paragraph";
     case ax::mojom::Role::kPdfActionableHighlight:
       return "pdfActionableHighlight";
+    case ax::mojom::Role::kPdfRoot:
+      return "pdfRoot";
     case ax::mojom::Role::kPluginObject:
       return "pluginObject";
     case ax::mojom::Role::kPopUpButton:
@@ -422,8 +462,6 @@ const char* ToString(ax::mojom::Role role) {
       return "portal";
     case ax::mojom::Role::kPre:
       return "pre";
-    case ax::mojom::Role::kPresentational:
-      return "presentational";
     case ax::mojom::Role::kProgressIndicator:
       return "progressIndicator";
     case ax::mojom::Role::kRadioButton:
@@ -448,8 +486,12 @@ const char* ToString(ax::mojom::Role role) {
       return "section";
     case ax::mojom::Role::kStrong:
       return "strong";
+    case ax::mojom::Role::kSubscript:
+      return "subscript";
     case ax::mojom::Role::kSuggestion:
       return "suggestion";
+    case ax::mojom::Role::kSuperscript:
+      return "superscript";
     case ax::mojom::Role::kSvgRoot:
       return "svgRoot";
     case ax::mojom::Role::kScrollBar:
@@ -462,8 +504,6 @@ const char* ToString(ax::mojom::Role role) {
       return "searchBox";
     case ax::mojom::Role::kSlider:
       return "slider";
-    case ax::mojom::Role::kSliderThumb:
-      return "sliderThumb";
     case ax::mojom::Role::kSpinButton:
       return "spinButton";
     case ax::mojom::Role::kSplitter:
@@ -512,8 +552,6 @@ const char* ToString(ax::mojom::Role role) {
       return "tooltip";
     case ax::mojom::Role::kVideo:
       return "video";
-    case ax::mojom::Role::kWebArea:
-      return "webArea";
     case ax::mojom::Role::kWebView:
       return "webView";
     case ax::mojom::Role::kWindow:
@@ -598,6 +636,8 @@ const char* ToString(ax::mojom::Action action) {
       return "loadInlineTextBoxes";
     case ax::mojom::Action::kReplaceSelectedText:
       return "replaceSelectedText";
+    case ax::mojom::Action::kResumeMedia:
+      return "resumeMedia";
     case ax::mojom::Action::kScrollBackward:
       return "scrollBackward";
     case ax::mojom::Action::kScrollForward:
@@ -614,6 +654,8 @@ const char* ToString(ax::mojom::Action action) {
       return "scrollToMakeVisible";
     case ax::mojom::Action::kScrollToPoint:
       return "scrollToPoint";
+    case ax::mojom::Action::kScrollToPositionAtRowColumn:
+      return "scrollToPositionAtRowColumn";
     case ax::mojom::Action::kSetAccessibilityFocus:
       return "setAccessibilityFocus";
     case ax::mojom::Action::kSetScrollOffset:
@@ -638,6 +680,14 @@ const char* ToString(ax::mojom::Action action) {
       return "hideTooltip";
     case ax::mojom::Action::kInternalInvalidateTree:
       return "internalInvalidateTree";
+    case ax::mojom::Action::kStartDuckingMedia:
+      return "startDuckingMedia";
+    case ax::mojom::Action::kStopDuckingMedia:
+      return "stopDuckingMedia";
+    case ax::mojom::Action::kSuspendMedia:
+      return "suspendMedia";
+    case ax::mojom::Action::kLongClick:
+      return "longClick";
   }
 
   return "";
@@ -688,7 +738,7 @@ const char* ToString(ax::mojom::DefaultActionVerb default_action_verb) {
     case ax::mojom::DefaultActionVerb::kClickAncestor:
       // Some screen readers, such as Jaws, expect the following spelling of
       // this verb.
-      return "click-ancestor";
+      return "clickAncestor";
     case ax::mojom::DefaultActionVerb::kJump:
       return "jump";
     case ax::mojom::DefaultActionVerb::kOpen:
@@ -699,33 +749,6 @@ const char* ToString(ax::mojom::DefaultActionVerb default_action_verb) {
       return "select";
     case ax::mojom::DefaultActionVerb::kUncheck:
       return "uncheck";
-  }
-
-  return "";
-}
-
-std::string ToLocalizedString(ax::mojom::DefaultActionVerb action_verb) {
-  switch (action_verb) {
-    case ax::mojom::DefaultActionVerb::kNone:
-      return "";
-    case ax::mojom::DefaultActionVerb::kActivate:
-      return l10n_util::GetStringUTF8(IDS_AX_ACTIVATE_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kCheck:
-      return l10n_util::GetStringUTF8(IDS_AX_CHECK_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kClick:
-      return l10n_util::GetStringUTF8(IDS_AX_CLICK_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kClickAncestor:
-      return l10n_util::GetStringUTF8(IDS_AX_CLICK_ANCESTOR_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kJump:
-      return l10n_util::GetStringUTF8(IDS_AX_JUMP_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kOpen:
-      return l10n_util::GetStringUTF8(IDS_AX_OPEN_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kPress:
-      return l10n_util::GetStringUTF8(IDS_AX_PRESS_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kSelect:
-      return l10n_util::GetStringUTF8(IDS_AX_SELECT_ACTION_VERB);
-    case ax::mojom::DefaultActionVerb::kUncheck:
-      return l10n_util::GetStringUTF8(IDS_AX_UNCHECK_ACTION_VERB);
   }
 
   return "";
@@ -743,6 +766,10 @@ const char* ToString(ax::mojom::Mutation mutation) {
       return "nodeChanged";
     case ax::mojom::Mutation::kNodeRemoved:
       return "nodeRemoved";
+    case ax::mojom::Mutation::kTextChanged:
+      return "textChanged";
+    case ax::mojom::Mutation::kSubtreeUpdateEnd:
+      return "subtreeUpdateEnd";
   }
 
   return "";
@@ -758,8 +785,16 @@ const char* ToString(ax::mojom::StringAttribute string_attribute) {
       return "ariaInvalidValue";
     case ax::mojom::StringAttribute::kAutoComplete:
       return "autoComplete";
+    case ax::mojom::StringAttribute::kAriaBrailleLabel:
+      return "ariaBrailleLabel";
+    case ax::mojom::StringAttribute::kAriaBrailleRoleDescription:
+      return "ariaBrailleRoleDescription";
+    case ax::mojom::StringAttribute::kCheckedStateDescription:
+      return "checkedStateDescription";
     case ax::mojom::StringAttribute::kChildTreeId:
       return "childTreeId";
+    case ax::mojom::StringAttribute::kChildTreeNodeAppId:
+      return "childTreeNodeAppId";
     case ax::mojom::StringAttribute::kClassName:
       return "className";
     case ax::mojom::StringAttribute::kContainerLiveRelevant:
@@ -770,6 +805,8 @@ const char* ToString(ax::mojom::StringAttribute string_attribute) {
       return "description";
     case ax::mojom::StringAttribute::kDisplay:
       return "display";
+    case ax::mojom::StringAttribute::kDoDefaultLabel:
+      return "doDefaultLabel";
     case ax::mojom::StringAttribute::kFontFamily:
       return "fontFamily";
     case ax::mojom::StringAttribute::kHtmlTag:
@@ -792,18 +829,24 @@ const char* ToString(ax::mojom::StringAttribute string_attribute) {
       return "liveRelevant";
     case ax::mojom::StringAttribute::kLiveStatus:
       return "liveStatus";
+    case ax::mojom::StringAttribute::kAppId:
+      return "appId";
     case ax::mojom::StringAttribute::kPlaceholder:
       return "placeholder";
     case ax::mojom::StringAttribute::kRole:
       return "role";
     case ax::mojom::StringAttribute::kRoleDescription:
       return "roleDescription";
+    case ax::mojom::StringAttribute::kLongClickLabel:
+      return "longClickLabel";
     case ax::mojom::StringAttribute::kTooltip:
       return "tooltip";
     case ax::mojom::StringAttribute::kUrl:
       return "url";
     case ax::mojom::StringAttribute::kValue:
       return "value";
+    case ax::mojom::StringAttribute::kVirtualContent:
+      return "virtualContent";
   }
 
   return "";
@@ -905,6 +948,8 @@ const char* ToString(ax::mojom::IntAttribute int_attribute) {
       return "color";
     case ax::mojom::IntAttribute::kHasPopup:
       return "haspopup";
+    case ax::mojom::IntAttribute::kIsPopup:
+      return "ispopup";
     case ax::mojom::IntAttribute::kInvalidState:
       return "invalidState";
     case ax::mojom::IntAttribute::kCheckedState:
@@ -933,6 +978,10 @@ const char* ToString(ax::mojom::IntAttribute int_attribute) {
       return "imageAnnotationStatus";
     case ax::mojom::IntAttribute::kDOMNodeId:
       return "domNodeId";
+    case ax::mojom::IntAttribute::kNextWindowFocusId:
+      return "nextWindowFocusId";
+    case ax::mojom::IntAttribute::kPreviousWindowFocusId:
+      return "previousWindowFocusId";
   }
 
   return "";
@@ -956,6 +1005,8 @@ const char* ToString(ax::mojom::FloatAttribute float_attribute) {
       return "fontWeight";
     case ax::mojom::FloatAttribute::kTextIndent:
       return "textIndent";
+    case ax::mojom::FloatAttribute::kChildTreeScale:
+      return "childTreeScale";
   }
 
   return "";
@@ -967,8 +1018,8 @@ const char* ToString(ax::mojom::BoolAttribute bool_attribute) {
       return "none";
     case ax::mojom::BoolAttribute::kBusy:
       return "busy";
-    case ax::mojom::BoolAttribute::kEditableRoot:
-      return "editableRoot";
+    case ax::mojom::BoolAttribute::kNonAtomicTextFieldRoot:
+      return "nonAtomicTextFieldRoot";
     case ax::mojom::BoolAttribute::kContainerLiveAtomic:
       return "containerLiveAtomic";
     case ax::mojom::BoolAttribute::kContainerLiveBusy:
@@ -1003,6 +1054,10 @@ const char* ToString(ax::mojom::BoolAttribute bool_attribute) {
       return "isPageBreakingObject";
     case ax::mojom::BoolAttribute::kHasAriaAttribute:
       return "hasAriaAttribute";
+    case ax::mojom::BoolAttribute::kTouchPassthrough:
+      return "touchPassthrough";
+    case ax::mojom::BoolAttribute::kLongClickable:
+      return "longClickable";
   }
 
   return "";
@@ -1032,10 +1087,20 @@ const char* ToString(ax::mojom::IntListAttribute int_list_attribute) {
       return "markerStarts";
     case ax::mojom::IntListAttribute::kMarkerEnds:
       return "markerEnds";
+    case ax::mojom::IntListAttribute::kHighlightTypes:
+      return "highlightTypes";
+    case ax::mojom::IntListAttribute::kCaretBounds:
+      return "caretBounds";
     case ax::mojom::IntListAttribute::kCharacterOffsets:
       return "characterOffsets";
-    case ax::mojom::IntListAttribute::kCachedLineStarts:
-      return "cachedLineStarts";
+    case ax::mojom::IntListAttribute::kLineStarts:
+      return "lineStarts";
+    case ax::mojom::IntListAttribute::kLineEnds:
+      return "lineEnds";
+    case ax::mojom::IntListAttribute::kSentenceStarts:
+      return "sentenceStarts";
+    case ax::mojom::IntListAttribute::kSentenceEnds:
+      return "sentenceEnds";
     case ax::mojom::IntListAttribute::kWordStarts:
       return "wordStarts";
     case ax::mojom::IntListAttribute::kWordEnds:
@@ -1093,9 +1158,24 @@ const char* ToString(ax::mojom::MarkerType marker_type) {
       return "activeSuggestion";
     case ax::mojom::MarkerType::kSuggestion:
       return "suggestion";
+    case ax::mojom::MarkerType::kHighlight:
+      return "highlight";
   }
 
   return "";
+}
+
+const char* ToString(ax::mojom::HighlightType highlight_type) {
+  switch (highlight_type) {
+    case ax::mojom::HighlightType::kNone:
+      return "none";
+    case ax::mojom::HighlightType::kHighlight:
+      return "highlight";
+    case ax::mojom::HighlightType::kSpellingError:
+      return "spelling-error";
+    case ax::mojom::HighlightType::kGrammarError:
+      return "grammar-error";
+  }
 }
 
 const char* ToString(ax::mojom::MoveDirection move_direction) {
@@ -1231,8 +1311,12 @@ const char* ToString(ax::mojom::TextBoundary text_boundary) {
       return "none";
     case ax::mojom::TextBoundary::kCharacter:
       return "character";
-    case ax::mojom::TextBoundary::kFormat:
-      return "format";
+    case ax::mojom::TextBoundary::kFormatEnd:
+      return "formatEnd";
+    case ax::mojom::TextBoundary::kFormatStart:
+      return "formatStart";
+    case ax::mojom::TextBoundary::kFormatStartOrEnd:
+      return "formatStartOrEnd";
     case ax::mojom::TextBoundary::kLineEnd:
       return "lineEnd";
     case ax::mojom::TextBoundary::kLineStart:
@@ -1251,6 +1335,8 @@ const char* ToString(ax::mojom::TextBoundary text_boundary) {
       return "paragraphEnd";
     case ax::mojom::TextBoundary::kParagraphStart:
       return "paragraphStart";
+    case ax::mojom::TextBoundary::kParagraphStartSkippingEmptyParagraphs:
+      return "paragraphStartSkippingEmptyParagraphs";
     case ax::mojom::TextBoundary::kParagraphStartOrEnd:
       return "paragraphStartOrEnd";
     case ax::mojom::TextBoundary::kSentenceEnd:
@@ -1371,8 +1457,6 @@ const char* ToString(ax::mojom::AriaCurrentState aria_current_state) {
       return "step";
     case ax::mojom::AriaCurrentState::kLocation:
       return "location";
-    case ax::mojom::AriaCurrentState::kUnclippedLocation:
-      return "unclippedLocation";
     case ax::mojom::AriaCurrentState::kDate:
       return "date";
     case ax::mojom::AriaCurrentState::kTime:
@@ -1403,6 +1487,17 @@ const char* ToString(ax::mojom::HasPopup has_popup) {
   return "";
 }
 
+const char* ToString(ax::mojom::IsPopup is_popup) {
+  switch (is_popup) {
+    case ax::mojom::IsPopup::kNone:
+      return "";
+    case ax::mojom::IsPopup::kAuto:
+      return "auto";
+    case ax::mojom::IsPopup::kManual:
+      return "manual";
+  }
+}
+
 const char* ToString(ax::mojom::InvalidState invalid_state) {
   switch (invalid_state) {
     case ax::mojom::InvalidState::kNone:
@@ -1411,8 +1506,6 @@ const char* ToString(ax::mojom::InvalidState invalid_state) {
       return "false";
     case ax::mojom::InvalidState::kTrue:
       return "true";
-    case ax::mojom::InvalidState::kOther:
-      return "other";
   }
 
   return "";
@@ -1467,8 +1560,6 @@ const char* ToString(ax::mojom::NameFrom name_from) {
   switch (name_from) {
     case ax::mojom::NameFrom::kNone:
       return "none";
-    case ax::mojom::NameFrom::kUninitialized:
-      return "uninitialized";
     case ax::mojom::NameFrom::kAttribute:
       return "attribute";
     case ax::mojom::NameFrom::kAttributeExplicitlyEmpty:
@@ -1494,14 +1585,24 @@ const char* ToString(ax::mojom::DescriptionFrom description_from) {
   switch (description_from) {
     case ax::mojom::DescriptionFrom::kNone:
       return "none";
-    case ax::mojom::DescriptionFrom::kUninitialized:
-      return "uninitialized";
-    case ax::mojom::DescriptionFrom::kAttribute:
-      return "attribute";
-    case ax::mojom::DescriptionFrom::kContents:
-      return "contents";
+    case ax::mojom::DescriptionFrom::kAriaDescription:
+      return "ariaDescription";
+    case ax::mojom::DescriptionFrom::kAttributeExplicitlyEmpty:
+      return "attributeExplicitlyEmpty";
+    case ax::mojom::DescriptionFrom::kButtonLabel:
+      return "buttonLabel";
+    case ax::mojom::DescriptionFrom::kPopoverAttribute:
+      return "popoverAttribute";
     case ax::mojom::DescriptionFrom::kRelatedElement:
       return "relatedElement";
+    case ax::mojom::DescriptionFrom::kRubyAnnotation:
+      return "rubyAnnotation";
+    case ax::mojom::DescriptionFrom::kSvgDescElement:
+      return "svgDescElement";
+    case ax::mojom::DescriptionFrom::kSummary:
+      return "summary";
+    case ax::mojom::DescriptionFrom::kTableCaption:
+      return "tableCaption";
     case ax::mojom::DescriptionFrom::kTitle:
       return "title";
   }

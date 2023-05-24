@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,34 +11,31 @@
 #include <utility>
 
 #include "base/base_paths.h"
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback_helpers.h"
 #include "base/containers/queue.h"
 #include "base/files/file.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/macros.h"
 #include "base/memory/platform_shared_memory_region.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/memory/shared_memory_mapping.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/memory/writable_shared_memory_region.h"
 #include "base/message_loop/message_pump_type.h"
-#include "base/optional.h"
 #include "base/path_service.h"
 #include "base/pickle.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/strings/stringprintf.h"
 #include "base/synchronization/waitable_event.h"
-#include "base/test/bind_test_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_io_thread.h"
 #include "base/test/test_shared_memory_util.h"
 #include "base/test/test_timeouts.h"
 #include "base/threading/thread.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "ipc/ipc_message.h"
 #include "ipc/ipc_message_utils.h"
@@ -57,8 +54,9 @@
 #include "mojo/public/cpp/system/functions.h"
 #include "mojo/public/cpp/system/wait.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 #include "base/file_descriptor_posix.h"
 #include "ipc/ipc_platform_file_attachment_posix.h"
 #endif
@@ -124,7 +122,7 @@ class TestListenerBase : public IPC::Listener {
   }
 
  private:
-  IPC::Sender* sender_ = nullptr;
+  raw_ptr<IPC::Sender> sender_ = nullptr;
   base::OnceClosure quit_closure_;
 };
 
@@ -346,8 +344,8 @@ TEST_F(IPCChannelMojoTest, NoImplicitChannelClosure) {
 
   // NOTE: We can't create a RunLoop before Init() is called, but we have to set
   // the default ProcessErrorCallback (which we want to reference the RunLoop)
-  // before Init() launches a child process. Hence the base::Optional here.
-  base::Optional<base::RunLoop> wait_for_error_loop;
+  // before Init() launches a child process. Hence the absl::optional here.
+  absl::optional<base::RunLoop> wait_for_error_loop;
   bool process_error_received = false;
   mojo::SetDefaultProcessErrorHandler(
       base::BindLambdaForTesting([&](const std::string&) {
@@ -417,7 +415,7 @@ class HandleSendingHelper {
               GetSendingFileContent());
   }
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
   static base::FilePath GetSendingFilePath(const base::FilePath& dir_path) {
     return dir_path.Append("ListenerThatExpectsFile.txt");
   }
@@ -753,7 +751,7 @@ class ListenerSendingAssociatedMessages : public IPC::Listener {
  private:
   void OnQuitAck() { std::move(quit_closure_).Run(); }
 
-  IPC::Channel* channel_ = nullptr;
+  raw_ptr<IPC::Channel> channel_ = nullptr;
   mojo::AssociatedRemote<IPC::mojom::SimpleTestDriver> driver_;
   base::OnceClosure quit_closure_;
 };
@@ -797,12 +795,15 @@ class ChannelProxyRunner {
                         base::WaitableEvent::InitialState::NOT_SIGNALED) {
   }
 
+  ChannelProxyRunner(const ChannelProxyRunner&) = delete;
+  ChannelProxyRunner& operator=(const ChannelProxyRunner&) = delete;
+
   void CreateProxy(IPC::Listener* listener) {
     io_thread_.StartWithOptions(
         base::Thread::Options(base::MessagePumpType::IO, 0));
-    proxy_ = IPC::SyncChannel::Create(listener, io_thread_.task_runner(),
-                                      base::ThreadTaskRunnerHandle::Get(),
-                                      &never_signaled_);
+    proxy_ = IPC::SyncChannel::Create(
+        listener, io_thread_.task_runner(),
+        base::SingleThreadTaskRunner::GetCurrentDefault(), &never_signaled_);
   }
 
   void RunProxy() {
@@ -810,11 +811,11 @@ class ChannelProxyRunner {
     if (for_server_) {
       factory = IPC::ChannelMojo::CreateServerFactory(
           std::move(handle_), io_thread_.task_runner(),
-          base::ThreadTaskRunnerHandle::Get());
+          base::SingleThreadTaskRunner::GetCurrentDefault());
     } else {
       factory = IPC::ChannelMojo::CreateClientFactory(
           std::move(handle_), io_thread_.task_runner(),
-          base::ThreadTaskRunnerHandle::Get());
+          base::SingleThreadTaskRunner::GetCurrentDefault());
     }
     proxy_->Init(std::move(factory), true);
   }
@@ -828,15 +829,13 @@ class ChannelProxyRunner {
   base::Thread io_thread_;
   base::WaitableEvent never_signaled_;
   std::unique_ptr<IPC::ChannelProxy> proxy_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChannelProxyRunner);
 };
 
 class IPCChannelProxyMojoTest : public IPCChannelMojoTestBase {
  public:
   void Init(const std::string& client_name) {
     IPCChannelMojoTestBase::Init(client_name);
-    runner_.reset(new ChannelProxyRunner(TakeHandle(), true));
+    runner_ = std::make_unique<ChannelProxyRunner>(TakeHandle(), true);
   }
   void CreateProxy(IPC::Listener* listener) { runner_->CreateProxy(listener); }
   void RunProxy() {
@@ -941,7 +940,7 @@ TEST_F(IPCChannelProxyMojoTest, ProxyThreadAssociatedInterface) {
 class ChannelProxyClient {
  public:
   void Init(mojo::ScopedMessagePipeHandle handle) {
-    runner_.reset(new ChannelProxyRunner(std::move(handle), false));
+    runner_ = std::make_unique<ChannelProxyRunner>(std::move(handle), false);
   }
 
   void CreateProxy(IPC::Listener* listener) { runner_->CreateProxy(listener); }
@@ -982,7 +981,8 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT_WITH_CUSTOM_FIXTURE(
   // Send a bunch of interleaved messages, alternating between the associated
   // interface and a legacy IPC::Message.
   mojo::AssociatedRemote<IPC::mojom::SimpleTestDriver> driver;
-  proxy()->GetRemoteAssociatedInterface(&driver);
+  proxy()->GetRemoteAssociatedInterface(
+      driver.BindNewEndpointAndPassReceiver());
   for (int i = 0; i < ListenerWithSimpleProxyAssociatedInterface::kNumMessages;
        ++i) {
     driver->ExpectValue(i);
@@ -1075,7 +1075,8 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT_WITH_CUSTOM_FIXTURE(
   // processed on the IO thread.
   mojo::AssociatedRemote<IPC::mojom::IndirectTestDriver> driver;
   mojo::AssociatedRemote<IPC::mojom::PingReceiver> ping_receiver;
-  proxy()->GetRemoteAssociatedInterface(&driver);
+  proxy()->GetRemoteAssociatedInterface(
+      driver.BindNewEndpointAndPassReceiver());
   driver->GetPingReceiver(ping_receiver.BindNewEndpointAndPassReceiver());
 
   base::RunLoop loop;
@@ -1154,7 +1155,9 @@ class ListenerWithSyncAssociatedInterface
     receiver_.Bind(std::move(receiver));
   }
 
-  IPC::Sender* sync_sender_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION IPC::Sender* sync_sender_ = nullptr;
   int32_t next_expected_value_ = 0;
   int32_t response_value_ = 0;
   base::OnceClosure quit_closure_;
@@ -1165,6 +1168,10 @@ class ListenerWithSyncAssociatedInterface
 class SyncReplyReader : public IPC::MessageReplyDeserializer {
  public:
   explicit SyncReplyReader(int32_t* storage) : storage_(storage) {}
+
+  SyncReplyReader(const SyncReplyReader&) = delete;
+  SyncReplyReader& operator=(const SyncReplyReader&) = delete;
+
   ~SyncReplyReader() override = default;
 
  private:
@@ -1176,9 +1183,7 @@ class SyncReplyReader : public IPC::MessageReplyDeserializer {
     return true;
   }
 
-  int32_t* storage_;
-
-  DISALLOW_COPY_AND_ASSIGN(SyncReplyReader);
+  raw_ptr<int32_t> storage_;
 };
 
 TEST_F(IPCChannelProxyMojoTest, SyncAssociatedInterface) {
@@ -1196,7 +1201,8 @@ TEST_F(IPCChannelProxyMojoTest, SyncAssociatedInterface) {
   // while waiting on it
   listener.set_response_value(42);
   mojo::AssociatedRemote<IPC::mojom::SimpleTestClient> client;
-  proxy()->GetRemoteAssociatedInterface(&client);
+  proxy()->GetRemoteAssociatedInterface(
+      client.BindNewEndpointAndPassReceiver());
   int32_t received_value;
   EXPECT_TRUE(client->RequestValue(&received_value));
   EXPECT_EQ(42, received_value);
@@ -1226,13 +1232,17 @@ class SimpleTestClientImpl : public IPC::mojom::SimpleTestClient,
                              public IPC::Listener {
  public:
   SimpleTestClientImpl() = default;
+
+  SimpleTestClientImpl(const SimpleTestClientImpl&) = delete;
+  SimpleTestClientImpl& operator=(const SimpleTestClientImpl&) = delete;
+
   ~SimpleTestClientImpl() override = default;
 
   void set_driver(IPC::mojom::SimpleTestDriver* driver) { driver_ = driver; }
   void set_sync_sender(IPC::Sender* sync_sender) { sync_sender_ = sync_sender; }
 
   void WaitForValueRequest() {
-    run_loop_.reset(new base::RunLoop);
+    run_loop_ = std::make_unique<base::RunLoop>();
     run_loop_->Run();
   }
 
@@ -1287,11 +1297,13 @@ class SimpleTestClientImpl : public IPC::mojom::SimpleTestClient,
 
   bool use_sync_sender_ = false;
   mojo::AssociatedReceiver<IPC::mojom::SimpleTestClient> receiver_{this};
-  IPC::Sender* sync_sender_ = nullptr;
-  IPC::mojom::SimpleTestDriver* driver_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION IPC::Sender* sync_sender_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION IPC::mojom::SimpleTestDriver* driver_ = nullptr;
   std::unique_ptr<base::RunLoop> run_loop_;
-
-  DISALLOW_COPY_AND_ASSIGN(SimpleTestClientImpl);
 };
 
 DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT_WITH_CUSTOM_FIXTURE(SyncAssociatedInterface,
@@ -1302,7 +1314,8 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT_WITH_CUSTOM_FIXTURE(SyncAssociatedInterface,
   RunProxy();
 
   mojo::AssociatedRemote<IPC::mojom::SimpleTestDriver> driver;
-  proxy()->GetRemoteAssociatedInterface(&driver);
+  proxy()->GetRemoteAssociatedInterface(
+      driver.BindNewEndpointAndPassReceiver());
   client_impl.set_driver(driver.get());
 
   // Simple sync message sanity check.
@@ -1386,6 +1399,11 @@ class ExpectValueSequenceListener : public IPC::Listener {
                               base::OnceClosure quit_closure)
       : expected_values_(expected_values),
         quit_closure_(std::move(quit_closure)) {}
+
+  ExpectValueSequenceListener(const ExpectValueSequenceListener&) = delete;
+  ExpectValueSequenceListener& operator=(const ExpectValueSequenceListener&) =
+      delete;
+
   ~ExpectValueSequenceListener() override = default;
 
   // IPC::Listener:
@@ -1402,10 +1420,8 @@ class ExpectValueSequenceListener : public IPC::Listener {
   }
 
  private:
-  base::queue<int32_t>* expected_values_;
+  raw_ptr<base::queue<int32_t>> expected_values_;
   base::OnceClosure quit_closure_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExpectValueSequenceListener);
 };
 
 DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT_WITH_CUSTOM_FIXTURE(CreatePausedClient,
@@ -1434,7 +1450,8 @@ TEST_F(IPCChannelProxyMojoTest, AssociatedRequestClose) {
   RunProxy();
 
   mojo::AssociatedRemote<IPC::mojom::AssociatedInterfaceVendor> vendor;
-  proxy()->GetRemoteAssociatedInterface(&vendor);
+  proxy()->GetRemoteAssociatedInterface(
+      vendor.BindNewEndpointAndPassReceiver());
   mojo::AssociatedRemote<IPC::mojom::SimpleTestDriver> tester;
   vendor->GetTestInterface(tester.BindNewEndpointAndPassReceiver());
   base::RunLoop run_loop;
@@ -1442,7 +1459,8 @@ TEST_F(IPCChannelProxyMojoTest, AssociatedRequestClose) {
   run_loop.Run();
 
   tester.reset();
-  proxy()->GetRemoteAssociatedInterface(&tester);
+  proxy()->GetRemoteAssociatedInterface(
+      tester.BindNewEndpointAndPassReceiver());
   EXPECT_TRUE(WaitForClientShutdown());
   DestroyProxy();
 }
@@ -1474,7 +1492,7 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT_WITH_CUSTOM_FIXTURE(DropAssociatedRequest,
   DestroyProxy();
 }
 
-#if !defined(OS_APPLE)
+#if !BUILDFLAG(IS_APPLE)
 // TODO(wez): On Mac we need to set up a MachPortBroker before we can transfer
 // Mach ports (which underpin Sharedmemory on Mac) across IPC.
 
@@ -1598,9 +1616,9 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT(
 
   Close();
 }
-#endif  // !defined(OS_APPLE)
+#endif  // !BUILDFLAG(IS_APPLE)
 
-#if defined(OS_POSIX) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 
 class ListenerThatExpectsFile : public TestListenerBase {
  public:
@@ -1699,9 +1717,9 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT(
   Close();
 }
 
-#endif  // defined(OS_POSIX) || defined(OS_FUCHSIA)
+#endif  // BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 const base::ProcessId kMagicChildId = 54321;
 
@@ -1721,6 +1739,8 @@ class ListenerThatVerifiesPeerPid : public TestListenerBase {
   }
 };
 
+// The global PID is only used on systems that use the zygote. Hence, this
+// test is disabled on other platforms.
 TEST_F(IPCChannelMojoTest, VerifyGlobalPid) {
   Init("IPCChannelMojoTestVerifyGlobalPidClient");
 
@@ -1748,6 +1768,6 @@ DEFINE_IPC_CHANNEL_MOJO_TEST_CLIENT(IPCChannelMojoTestVerifyGlobalPidClient) {
   Close();
 }
 
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace

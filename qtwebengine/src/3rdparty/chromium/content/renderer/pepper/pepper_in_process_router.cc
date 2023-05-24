@@ -1,16 +1,17 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/pepper/pepper_in_process_router.h"
 
-#include "base/bind.h"
+#include <memory>
+
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
+#include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_thread.h"
 #include "content/renderer/pepper/renderer_ppapi_host_impl.h"
-#include "content/renderer/render_frame_impl.h"
 #include "ipc/ipc_message.h"
 #include "ipc/ipc_sender.h"
 #include "ppapi/proxy/ppapi_messages.h"
@@ -36,12 +37,12 @@ class PepperInProcessRouter::Channel : public IPC::Sender {
 
 PepperInProcessRouter::PepperInProcessRouter(RendererPpapiHostImpl* host_impl)
     : host_impl_(host_impl), pending_message_id_(0), reply_result_(false) {
-  browser_channel_.reset(new Channel(base::BindRepeating(
-      &PepperInProcessRouter::SendToBrowser, base::Unretained(this))));
-  host_to_plugin_router_.reset(new Channel(base::BindRepeating(
-      &PepperInProcessRouter::SendToPlugin, base::Unretained(this))));
-  plugin_to_host_router_.reset(new Channel(base::BindRepeating(
-      &PepperInProcessRouter::SendToHost, base::Unretained(this))));
+  browser_channel_ = std::make_unique<Channel>(base::BindRepeating(
+      &PepperInProcessRouter::SendToBrowser, base::Unretained(this)));
+  host_to_plugin_router_ = std::make_unique<Channel>(base::BindRepeating(
+      &PepperInProcessRouter::SendToPlugin, base::Unretained(this)));
+  plugin_to_host_router_ = std::make_unique<Channel>(base::BindRepeating(
+      &PepperInProcessRouter::SendToHost, base::Unretained(this)));
 }
 
 PepperInProcessRouter::~PepperInProcessRouter() {}
@@ -108,7 +109,7 @@ bool PepperInProcessRouter::SendToHost(IPC::Message* msg) {
     // This won't cause message reordering problems because the resource
     // destroyed message is always the last one sent for a resource.
     if (message->type() == PpapiHostMsg_ResourceDestroyed::ID) {
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE, base::BindOnce(&PepperInProcessRouter::DispatchHostMsg,
                                     weak_factory_.GetWeakPtr(),
                                     base::Owned(message.release())));
@@ -142,7 +143,7 @@ bool PepperInProcessRouter::SendToPlugin(IPC::Message* msg) {
   } else {
     CHECK(!pending_message_id_);
     // Dispatch plugin messages from the message loop.
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&PepperInProcessRouter::DispatchPluginMsg,
                                   weak_factory_.GetWeakPtr(),
                                   base::Owned(message.release())));

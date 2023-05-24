@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,21 +7,20 @@
 #include <limits.h>  // for INT_MAX
 #include <stddef.h>
 
-#include <algorithm>
 #include <utility>
 #include <vector>
 
 #include "base/big_endian.h"
-#include "base/bind.h"
 #include "base/containers/circular_deque.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "net/base/auth.h"
 #include "net/base/io_buffer.h"
@@ -80,7 +79,7 @@ bool IsStrictlyValidCloseStatusCode(int code) {
       5000, 65536,  // Codes above 5000 are invalid.
   };
   const int* const kInvalidRangesEnd =
-      kInvalidRanges + base::size(kInvalidRanges);
+      kInvalidRanges + std::size(kInvalidRanges);
 
   DCHECK_GE(code, 0);
   DCHECK_LT(code, 65536);
@@ -124,6 +123,16 @@ void GetFrameTypeForOpcode(WebSocketFrameHeader::OpCode opcode,
   return;
 }
 
+base::Value NetLogFailParam(uint16_t code,
+                            base::StringPiece reason,
+                            base::StringPiece message) {
+  base::Value::Dict dict;
+  dict.Set("code", code);
+  dict.Set("reason", reason);
+  dict.Set("internal_reason", message);
+  return base::Value(std::move(dict));
+}
+
 class DependentIOBuffer : public WrappedIOBuffer {
  public:
   DependentIOBuffer(scoped_refptr<IOBuffer> buffer, size_t offset)
@@ -134,66 +143,13 @@ class DependentIOBuffer : public WrappedIOBuffer {
   scoped_refptr<IOBuffer> buffer_;
 };
 
-void LogCloseCodeForUma(uint16_t code) {
-  // From RFC6455: "The status code is an integer number between 1000 and 4999
-  // (inclusive)". In practice, any 16-bit unsigned integer may be sent. For UMA
-  // purposes, we bucket codes whose meanings are not standardised. This enum is
-  // emitted to UMA, so don't remove entries or renumber it. It's better not to
-  // add new entries at all, since it will make older records incompatible with
-  // newer records.
-  enum class BucketedCloseCode {
-    kNormalClosure = 0,            // 1000
-    kGoingAway = 1,                // 1001
-    kProtocolError = 2,            // 1002
-    kUnsupportedData = 3,          // 1003
-    kReserved = 4,                 // 1004
-    kNoStatusRcvd = 5,             // 1005
-    kAbnormalClosure = 6,          // 1006
-    kInvalidFramePayloadData = 7,  // 1007
-    kPolicyViolation = 8,          // 1008
-    kMessageTooBig = 9,            // 1009
-    kMandatoryExt = 10,            // 1010
-    kInternalError = 11,           // 1011
-    kServiceRestart = 12,          // 1012
-    kTryAgainLater = 13,           // 1013
-    kBadGateway = 14,              // 1014
-    kTlsHandshake = 15,            // 1015
-    kOther1000Range = 16,          // 1016-1999
-    k2000Range = 17,               // 2000-2999
-    k3000Range = 18,               // 3000-3999
-    k4000Range = 19,               // 4000-4999
-    kUnder1000 = 20,               // 0-999
-    k5000AndOver = 21,             // 5000-65535
-    kMaxValue = k5000AndOver
-  };
-
-  BucketedCloseCode bucketed_code;
-  if (code >= 1000 && code <= 1015) {
-    bucketed_code = static_cast<BucketedCloseCode>(code - 1000);
-  } else if (code < 1000) {
-    bucketed_code = BucketedCloseCode::kUnder1000;
-  } else if (code < 2000) {
-    bucketed_code = BucketedCloseCode::kOther1000Range;
-  } else if (code < 3000) {
-    bucketed_code = BucketedCloseCode::k2000Range;
-  } else if (code < 4000) {
-    bucketed_code = BucketedCloseCode::k3000Range;
-  } else if (code < 5000) {
-    bucketed_code = BucketedCloseCode::k4000Range;
-  } else {
-    bucketed_code = BucketedCloseCode::k5000AndOver;
-  }
-
-  base::UmaHistogramEnumeration("Net.WebSocket.CloseCode", bucketed_code);
-}
-
 }  // namespace
 
 // A class to encapsulate a set of frames and information about the size of
 // those frames.
 class WebSocketChannel::SendBuffer {
  public:
-  SendBuffer() : total_bytes_(0) {}
+  SendBuffer() = default;
 
   // Add a WebSocketFrame to the buffer and increase total_bytes_.
   void AddFrame(std::unique_ptr<WebSocketFrame> chunk,
@@ -211,7 +167,7 @@ class WebSocketChannel::SendBuffer {
   // The total size of the payload data in |frames_|. This will be used to
   // measure the throughput of the link.
   // TODO(ricea): Measure the throughput of the link.
-  uint64_t total_bytes_;
+  uint64_t total_bytes_ = 0;
 };
 
 void WebSocketChannel::SendBuffer::AddFrame(
@@ -229,6 +185,9 @@ class WebSocketChannel::ConnectDelegate
  public:
   explicit ConnectDelegate(WebSocketChannel* creator) : creator_(creator) {}
 
+  ConnectDelegate(const ConnectDelegate&) = delete;
+  ConnectDelegate& operator=(const ConnectDelegate&) = delete;
+
   void OnCreateRequest(URLRequest* request) override {
     creator_->OnCreateURLRequest(request);
   }
@@ -240,8 +199,10 @@ class WebSocketChannel::ConnectDelegate
     // |this| may have been deleted.
   }
 
-  void OnFailure(const std::string& message) override {
-    creator_->OnConnectFailure(message);
+  void OnFailure(const std::string& message,
+                 int net_error,
+                 absl::optional<int> response_code) override {
+    creator_->OnConnectFailure(message, net_error, response_code);
     // |this| has been deleted.
   }
 
@@ -264,7 +225,7 @@ class WebSocketChannel::ConnectDelegate
                      scoped_refptr<HttpResponseHeaders> headers,
                      const IPEndPoint& remote_endpoint,
                      base::OnceCallback<void(const AuthCredentials*)> callback,
-                     base::Optional<AuthCredentials>* credentials) override {
+                     absl::optional<AuthCredentials>* credentials) override {
     return creator_->OnAuthRequired(auth_info, std::move(headers),
                                     remote_endpoint, std::move(callback),
                                     credentials);
@@ -275,9 +236,7 @@ class WebSocketChannel::ConnectDelegate
   // danger of this pointer being stale, because deleting the WebSocketChannel
   // cancels the connect process, deleting this object and preventing its
   // callbacks from being called.
-  WebSocketChannel* const creator_;
-
-  DISALLOW_COPY_AND_ASSIGN(ConnectDelegate);
+  const raw_ptr<WebSocketChannel> creator_;
 };
 
 WebSocketChannel::WebSocketChannel(
@@ -286,16 +245,9 @@ WebSocketChannel::WebSocketChannel(
     : event_interface_(std::move(event_interface)),
       url_request_context_(url_request_context),
       closing_handshake_timeout_(
-          base::TimeDelta::FromSeconds(kClosingHandshakeTimeoutSeconds)),
-      underlying_connection_close_timeout_(base::TimeDelta::FromSeconds(
-          kUnderlyingConnectionCloseTimeoutSeconds)),
-      has_received_close_frame_(false),
-      received_close_code_(0),
-      state_(FRESHLY_CONSTRUCTED),
-      sending_text_message_(false),
-      receiving_text_message_(false),
-      expecting_to_handle_continuation_(false),
-      initial_frame_forwarded_(false) {}
+          base::Seconds(kClosingHandshakeTimeoutSeconds)),
+      underlying_connection_close_timeout_(
+          base::Seconds(kUnderlyingConnectionCloseTimeoutSeconds)) {}
 
 WebSocketChannel::~WebSocketChannel() {
   // The stream may hold a pointer to read_frames_, and so it needs to be
@@ -473,7 +425,8 @@ void WebSocketChannel::SendAddChannelRequestWithSuppliedCallback(
   if (!socket_url.SchemeIsWSOrWSS()) {
     // TODO(ricea): Kill the renderer (this error should have been caught by
     // Javascript).
-    event_interface_->OnFailChannel("Invalid scheme");
+    event_interface_->OnFailChannel("Invalid scheme", ERR_FAILED,
+                                    absl::nullopt);
     // |this| is deleted here.
     return;
   }
@@ -481,7 +434,7 @@ void WebSocketChannel::SendAddChannelRequestWithSuppliedCallback(
   auto connect_delegate = std::make_unique<ConnectDelegate>(this);
   stream_request_ = std::move(callback).Run(
       socket_url_, requested_subprotocols, origin, site_for_cookies,
-      isolation_info, additional_headers, url_request_context_,
+      isolation_info, additional_headers, url_request_context_.get(),
       NetLogWithSource(), traffic_annotation, std::move(connect_delegate));
   SetState(CONNECTING);
 }
@@ -508,7 +461,9 @@ void WebSocketChannel::OnConnectSuccess(
   // |this| may have been deleted after OnAddChannelResponse.
 }
 
-void WebSocketChannel::OnConnectFailure(const std::string& message) {
+void WebSocketChannel::OnConnectFailure(const std::string& message,
+                                        int net_error,
+                                        absl::optional<int> response_code) {
   DCHECK_EQ(CONNECTING, state_);
 
   // Copy the message before we delete its owner.
@@ -517,7 +472,7 @@ void WebSocketChannel::OnConnectFailure(const std::string& message) {
   SetState(CLOSED);
   stream_request_.reset();
 
-  event_interface_->OnFailChannel(message_copy);
+  event_interface_->OnFailChannel(message_copy, net_error, response_code);
   // |this| has been deleted.
 }
 
@@ -536,7 +491,7 @@ int WebSocketChannel::OnAuthRequired(
     scoped_refptr<HttpResponseHeaders> response_headers,
     const IPEndPoint& remote_endpoint,
     base::OnceCallback<void(const AuthCredentials*)> callback,
-    base::Optional<AuthCredentials>* credentials) {
+    absl::optional<AuthCredentials>* credentials) {
   return event_interface_->OnAuthRequired(
       auth_info, std::move(response_headers), remote_endpoint,
       std::move(callback), credentials);
@@ -651,8 +606,8 @@ ChannelState WebSocketChannel::OnReadDone(bool synchronous, int result) {
       // with no data read, not an empty response.
       DCHECK(!read_frames_.empty())
           << "ReadFrames() returned OK, but nothing was read.";
-      for (size_t i = 0; i < read_frames_.size(); ++i) {
-        if (HandleFrame(std::move(read_frames_[i])) == CHANNEL_DELETED)
+      for (auto& read_frame : read_frames_) {
+        if (HandleFrame(std::move(read_frame)) == CHANNEL_DELETED)
           return CHANNEL_DELETED;
       }
       read_frames_.clear();
@@ -723,7 +678,8 @@ ChannelState WebSocketChannel::HandleFrame(
   // Respond to the frame appropriately to its type.
   return HandleFrameByState(
       opcode, frame->header.final,
-      base::make_span(frame->payload, frame->header.payload_length));
+      base::make_span(frame->payload, base::checked_cast<size_t>(
+                                          frame->header.payload_length)));
 }
 
 ChannelState WebSocketChannel::HandleFrameByState(
@@ -945,7 +901,10 @@ void WebSocketChannel::FailChannel(const std::string& message,
   DCHECK_NE(CONNECTING, state_);
   DCHECK_NE(CLOSED, state_);
 
-  // TODO(ricea): Logging.
+  stream_->GetNetLogWithSource().AddEvent(
+      net::NetLogEventType::WEBSOCKET_INVALID_FRAME,
+      [&] { return NetLogFailParam(code, reason, message); });
+
   if (state_ == CONNECTED) {
     if (SendClose(code, reason) == CHANNEL_DELETED)
       return;
@@ -956,7 +915,7 @@ void WebSocketChannel::FailChannel(const std::string& message,
   // handshake.
   stream_->Close();
   SetState(CLOSED);
-  event_interface_->OnFailChannel(message);
+  event_interface_->OnFailChannel(message, ERR_FAILED, absl::nullopt);
 }
 
 ChannelState WebSocketChannel::SendClose(uint16_t code,
@@ -977,8 +936,7 @@ ChannelState WebSocketChannel::SendClose(uint16_t code,
     base::WriteBigEndian(body->data(), code);
     static_assert(sizeof(code) == kWebSocketCloseCodeLength,
                   "they should both be two");
-    std::copy(
-        reason.begin(), reason.end(), body->data() + kWebSocketCloseCodeLength);
+    base::ranges::copy(reason, body->data() + kWebSocketCloseCodeLength);
   }
 
   return SendFrameInternal(true, WebSocketFrameHeader::kOpCodeClose,
@@ -999,7 +957,7 @@ bool WebSocketChannel::ParseClose(base::span<const char> payload,
 
     DVLOG(1) << "Close frame with payload size " << size << " received "
              << "(the first byte is " << std::hex
-             << static_cast<int>(payload.data()[0]) << ")";
+             << static_cast<int>(payload[0]) << ")";
     *code = kWebSocketErrorProtocolError;
     *message =
         "Received a broken close frame containing an invalid size body.";
@@ -1008,7 +966,7 @@ bool WebSocketChannel::ParseClose(base::span<const char> payload,
 
   const char* data = payload.data();
   uint16_t unchecked_code = 0;
-  base::ReadBigEndian(data, &unchecked_code);
+  base::ReadBigEndian(reinterpret_cast<const uint8_t*>(data), &unchecked_code);
   static_assert(sizeof(unchecked_code) == kWebSocketCloseCodeLength,
                 "they should both be two bytes");
 
@@ -1041,14 +999,19 @@ bool WebSocketChannel::ParseClose(base::span<const char> payload,
 void WebSocketChannel::DoDropChannel(bool was_clean,
                                      uint16_t code,
                                      const std::string& reason) {
-  LogCloseCodeForUma(code);
   event_interface_->OnDropChannel(was_clean, code, reason);
 }
 
 void WebSocketChannel::CloseTimeout() {
+  stream_->GetNetLogWithSource().AddEvent(
+      net::NetLogEventType::WEBSOCKET_CLOSE_TIMEOUT);
   stream_->Close();
   SetState(CLOSED);
-  DoDropChannel(false, kWebSocketErrorAbnormalClosure, "");
+  if (has_received_close_frame_) {
+    DoDropChannel(true, received_close_code_, received_close_reason_);
+  } else {
+    DoDropChannel(false, kWebSocketErrorAbnormalClosure, "");
+  }
   // |this| has been deleted.
 }
 

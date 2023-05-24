@@ -1,47 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsplashscreen.h"
 
 #include "qapplication.h"
-#include "qdesktopwidget.h"
-#include <private/qdesktopwidget_p.h>
 #include "qpainter.h"
 #include "qpixmap.h"
 #include "qtextdocument.h"
@@ -71,9 +33,7 @@ public:
 
     inline QSplashScreenPrivate();
 
-    void setPixmap(const QPixmap &p, const QScreen *screen = nullptr);
-
-    static const QScreen *screenFor(const QWidget *w);
+    void handlePaintEvent();
 };
 
 /*!
@@ -109,9 +69,9 @@ public:
    \snippet qsplashscreen/main.cpp 1
 
    The user can hide the splash screen by clicking on it with the
-   mouse. Since the splash screen is typically displayed before the
-   event loop has started running, it is necessary to periodically
-   call QCoreApplication::processEvents() to receive the mouse clicks.
+   mouse. For mouse handling to work, call QApplication::processEvents()
+   periodically during startup.
+
 
    It is sometimes useful to update the splash screen with messages,
    for example, announcing connections established or modules loaded
@@ -154,27 +114,10 @@ QSplashScreen::QSplashScreen(const QPixmap &pixmap, Qt::WindowFlags f)
 QSplashScreen::QSplashScreen(QScreen *screen, const QPixmap &pixmap, Qt::WindowFlags f)
     : QWidget(*(new QSplashScreenPrivate()), nullptr, Qt::SplashScreen | Qt::FramelessWindowHint | f)
 {
-    d_func()->setPixmap(pixmap, screen);
+    Q_D(QSplashScreen);
+    d->setScreen(screen);
+    setPixmap(pixmap);
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \overload
-    \obsolete Use the constructor taking a \c {QScreen *} instead
-
-    This function allows you to specify a parent for your splashscreen. The
-    typical use for this constructor is if you have a multiple screens and
-    prefer to have the splash screen on a different screen than your primary
-    one. In that case pass the proper desktop() as the \a parent.
-*/
-QSplashScreen::QSplashScreen(QWidget *parent, const QPixmap &pixmap, Qt::WindowFlags f)
-    : QWidget(*new QSplashScreenPrivate, parent, Qt::SplashScreen | Qt::FramelessWindowHint | f)
-{
-    // Does an implicit repaint. Explicitly pass parent as QObject::parent()
-    // is still 0 here due to QWidget's special handling.
-    d_func()->setPixmap(pixmap, QSplashScreenPrivate::screenFor(parent));
-}
-#endif
 
 /*!
   Destructor.
@@ -260,28 +203,29 @@ void QSplashScreen::clearMessage()
     repaint();
 }
 
-// A copy of Qt Test's qWaitForWindowExposed() and qSleep().
-inline static bool waitForWindowExposed(QWindow *window, int timeout = 1000)
+static bool waitForWidgetMapped(QWidget *widget, int timeout = 1000)
 {
     enum { TimeOutMs = 10 };
+    auto isMapped = [widget](){
+        return widget->windowHandle() && widget->windowHandle()->isVisible();
+    };
+
     QElapsedTimer timer;
     timer.start();
-    while (!window->isExposed()) {
+    while (!isMapped()) {
         const int remaining = timeout - int(timer.elapsed());
         if (remaining <= 0)
             break;
         QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-#if defined(Q_OS_WINRT)
-        WaitForSingleObjectEx(GetCurrentThread(), TimeOutMs, false);
-#elif defined(Q_OS_WIN)
+        QCoreApplication::sendPostedEvents();
+#if defined(Q_OS_WIN)
         Sleep(uint(TimeOutMs));
 #else
         struct timespec ts = { TimeOutMs / 1000, (TimeOutMs % 1000) * 1000 * 1000 };
         nanosleep(&ts, nullptr);
 #endif
     }
-    return window->isExposed();
+    return isMapped();
 }
 
 /*!
@@ -294,7 +238,7 @@ void QSplashScreen::finish(QWidget *mainWin)
     if (mainWin) {
         if (!mainWin->windowHandle())
             mainWin->createWinId();
-        waitForWindowExposed(mainWin->windowHandle());
+        waitForWidgetMapped(mainWin);
     }
     close();
 }
@@ -305,63 +249,16 @@ void QSplashScreen::finish(QWidget *mainWin)
 */
 void QSplashScreen::setPixmap(const QPixmap &pixmap)
 {
-    d_func()->setPixmap(pixmap, QSplashScreenPrivate::screenFor(this));
-}
+    Q_D(QSplashScreen);
+    d->pixmap = pixmap;
+    setAttribute(Qt::WA_TranslucentBackground, pixmap.hasAlpha());
 
-// In setPixmap(), resize and try to position on a screen according to:
-// 1) If the screen for the given widget is available, use that
-// 2) If a QDesktopScreenWidget is found in the parent hierarchy, use that (see docs on
-//    QSplashScreen(QWidget *, QPixmap).
-// 3) If a widget with associated QWindow is found, use that
-// 4) When nothing can be found, try to center it over the cursor
+    const QRect r(QPoint(), pixmap.deviceIndependentSize().toSize());
+    resize(r.size());
 
-#if QT_DEPRECATED_SINCE(5, 15)
-static inline int screenNumberOf(const QDesktopScreenWidget *dsw)
-{
-    auto desktopWidgetPrivate =
-        static_cast<QDesktopWidgetPrivate *>(qt_widget_private(QApplication::desktop()));
-    return desktopWidgetPrivate->screens.indexOf(const_cast<QDesktopScreenWidget *>(dsw));
-}
-#endif
-
-const QScreen *QSplashScreenPrivate::screenFor(const QWidget *w)
-{
-    if (w && w->screen())
-        return w->screen();
-
-    for (const QWidget *p = w; p !=nullptr ; p = p->parentWidget()) {
-#if QT_DEPRECATED_SINCE(5, 15)
-        if (auto dsw = qobject_cast<const QDesktopScreenWidget *>(p))
-            return QGuiApplication::screens().value(screenNumberOf(dsw));
-#endif
-        if (QWindow *window = p->windowHandle())
-            return window->screen();
-    }
-
-#if QT_CONFIG(cursor)
-    // Note: We could rely on QPlatformWindow::initialGeometry() to center it
-    // over the cursor, but not all platforms (namely Android) use that.
-    if (QGuiApplication::screens().size() > 1) {
-        if (auto screenAtCursor = QGuiApplication::screenAt(QCursor::pos()))
-            return screenAtCursor;
-    }
-#endif // cursor
-    return QGuiApplication::primaryScreen();
-}
-
-void QSplashScreenPrivate::setPixmap(const QPixmap &p, const QScreen *screen)
-{
-    Q_Q(QSplashScreen);
-
-    pixmap = p;
-    q->setAttribute(Qt::WA_TranslucentBackground, pixmap.hasAlpha());
-
-    QRect r(QPoint(), pixmap.size() / pixmap.devicePixelRatio());
-    q->resize(r.size());
-    if (screen)
-        q->move(screen->geometry().center() - r.center());
-    if (q->isVisible())
-        q->repaint();
+    move(screen()->geometry().center() - r.center());
+    if (isVisible())
+        repaint();
 }
 
 /*!
@@ -419,18 +316,33 @@ void QSplashScreen::drawContents(QPainter *painter)
     }
 }
 
+void QSplashScreenPrivate::handlePaintEvent()
+{
+    Q_Q(QSplashScreen);
+    QPainter painter(q);
+    painter.setRenderHints(QPainter::SmoothPixmapTransform);
+    painter.setLayoutDirection(q->layoutDirection());
+    if (!pixmap.isNull())
+        painter.drawPixmap(QPoint(), pixmap);
+    q->drawContents(&painter);
+}
+
 /*! \reimp */
 bool QSplashScreen::event(QEvent *e)
 {
-    if (e->type() == QEvent::Paint) {
-        Q_D(QSplashScreen);
-        QPainter painter(this);
-        painter.setRenderHints(QPainter::SmoothPixmapTransform);
-        painter.setLayoutDirection(layoutDirection());
-        if (!d->pixmap.isNull())
-            painter.drawPixmap(QPoint(), d->pixmap);
-        drawContents(&painter);
+    Q_D(QSplashScreen);
+
+    switch (e->type()) {
+    case QEvent::Paint:
+        d->handlePaintEvent();
+        break;
+    case QEvent::Show:
+        waitForWidgetMapped(this);
+        break;
+    default:
+        break;
     }
+
     return QWidget::event(e);
 }
 

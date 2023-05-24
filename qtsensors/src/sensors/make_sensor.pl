@@ -1,42 +1,25 @@
 #!/usr/bin/perl
-#############################################################################
-##
-## Copyright (C) 2016 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the QtSensors module of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2021 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+# About this script
+#
+# The make_sensor.pl creates new sensor frontend placeholder implementations.
+# Both C++ and QML classes are generated. As the script makes assumptions on the
+# naming conventions and source file locations, the main
+# intended use case is adding new sensor frontends to the QtSensors module.
+#
+# To run the script, provide the sensor name starting with 'Q' as an argument
+# (here "QFlow"):
+#
+# perl make_sensor.pl QFlow
+#
+# This will generate the following files:
+# ../sensorsquick/qmlflow_p.h
+# ../sensorsquick/qmlflow.cpp
+# qflow_p.h
+# qflow.h
+# qflow.cpp
 
 use strict;
 use warnings;
@@ -75,8 +58,8 @@ $qmlfilebase = "qml".$qmlfilebase;
 my $pheader = $filebase."_p.h";
 my $header = $filebase.".h";
 my $source = $filebase.".cpp";
-my $qmlsource = "../imports/sensors/".$qmlfilebase.".cpp";
-my $qmlheader = "../imports/sensors/".$qmlfilebase.".h";
+my $qmlsource = "../sensorsquick/".$qmlfilebase.".cpp";
+my $qmlheader = "../sensorsquick/".$qmlfilebase."_p.h";
 
 my $pguard = uc($pheader);
 $pguard =~ s/\./_/g;
@@ -93,45 +76,53 @@ if (! -e $qmlheader) {
 #ifndef '.$qmlguard.'
 #define '.$qmlguard.'
 
-#include "qmlsensor.h"
+#include "qmlsensor_p.h"
 
 QT_BEGIN_NAMESPACE
 
 class '.$sensor.';
 
-class '.$qmlsensor.' : public QmlSensor
+class Q_SENSORSQUICK_PRIVATE_EXPORT '.$qmlsensor.' : public QmlSensor
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT('.$no_q_sensor.')
+    QML_ADDED_IN_VERSION(6,2) // CHANGE VERSION
 public:
     explicit '.$qmlsensor.'(QObject *parent = 0);
     ~'.$qmlsensor.'();
 
-private:
     QSensor *sensor() const override;
+
+private:
     QmlSensorReading *createReading() const override;
 
     '.$sensor.' *m_sensor;
 };
 
-class '.$qmlreading.' : public QmlSensorReading
+class Q_SENSORSQUICK_PRIVATE_EXPORT '.$qmlreading.' : public QmlSensorReading
 {
     Q_OBJECT
-    Q_PROPERTY(qreal prop1 READ prop1 NOTIFY prop1Changed)
+    Q_PROPERTY(qreal myprop READ myprop NOTIFY mypropChanged BINDABLE bindableMyprop)
+    QML_NAMED_ELEMENT('.$no_q_reading.')
+    QML_UNCREATABLE("Cannot create '.$no_q_reading.'")
+    QML_ADDED_IN_VERSION(6,2) // CHANGE VERSION
 public:
     explicit '.$qmlreading.'('.$sensor.' *sensor);
     ~'.$qmlreading.'();
 
-    qreal prop1() const;
+    qreal myprop() const;
+    QBindable<qreal> bindableMyprop() const;
 
 Q_SIGNALS:
-    void prop1Changed();
+    void mypropChanged();
 
 private:
     QSensorReading *reading() const override;
     void readingUpdate() override;
 
     '.$sensor.' *m_sensor;
-    qreal m_prop1;
+    Q_OBJECT_BINDABLE_PROPERTY('.$qmlreading.', qreal,
+                               m_myprop, &'.$qmlreading.'::mypropChanged);
 };
 
 QT_END_NAMESPACE
@@ -144,7 +135,7 @@ if (! -e $qmlsource) {
     print "Creating $qmlsource\n";
     open OUT, ">$qmlsource" or die $!;
     print OUT '
-#include "qml'.lc($no_q_sensor).'.h"
+#include "qml'.lc($no_q_sensor).'_p.h"
 #include <'.$sensor.'>
 
 /*!
@@ -152,7 +143,7 @@ if (! -e $qmlsource) {
     \instantiates '.$qmlsensor.'
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
-    \since QtSensors 5.[INSERT VERSION HERE]
+    \since QtSensors 6.[INSERT VERSION HERE]
     \inherits Sensor
     \brief The '.$no_q_sensor.' element reports on fubbleness.
 
@@ -189,7 +180,7 @@ QSensor *'.$qmlsensor.'::sensor() const
     \instantiates '.$qmlreading.'
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
-    \since QtSensors 5.[INSERT VERSION HERE]
+    \since QtSensors 6.[INSERT VERSION HERE]
     \inherits SensorReading
     \brief The '.$no_q_reading.' element holds the most recent '.$no_q_sensor.' reading.
 
@@ -202,9 +193,7 @@ QSensor *'.$qmlsensor.'::sensor() const
 */
 
 '.$qmlreading.'::'.$qmlreading.'('.$sensor.' *sensor)
-    : QmlSensorReading(sensor)
-    , m_sensor(sensor)
-    , m_prop1(0)
+    : m_sensor(sensor)
 {
 }
 
@@ -213,15 +202,20 @@ QSensor *'.$qmlsensor.'::sensor() const
 }
 
 /*!
-    \qmlproperty qreal '.$no_q_reading.'::prop1
+    \qmlproperty qreal '.$no_q_reading.'::myprop
     This property holds the fubble of the device.
 
-    Please see '.$reading.'::prop1 for information about this property.
+    Please see '.$reading.'::myprop for information about this property.
 */
 
-qreal '.$qmlreading.'::prop1() const
+qreal '.$qmlreading.'::myprop() const
 {
-    return m_prop1;
+    return m_myprop;
+}
+
+QBindable<qreal> '.$qmlreading.'::bindableMyprop() const
+{
+    return &m_myprop;
 }
 
 QSensorReading *'.$qmlreading.'::reading() const
@@ -231,11 +225,7 @@ QSensorReading *'.$qmlreading.'::reading() const
 
 void '.$qmlreading.'::readingUpdate()
 {
-    qreal prop1 = m_sensor->reading()->prop1();
-    if (m_prop1 != prop1) {
-        m_prop1 = prop1;
-        Q_EMIT prop1Changed();
-    }
+    m_myprop = m_sensor->reading()->myprop();
 }
 ';
     close OUT;
@@ -323,7 +313,7 @@ public:
     explicit '.$sensor.'(QObject *parent = 0);
     ~'.$sensor.'();
     '.$reading.' *reading() const;
-    static char const * const type;
+    static char const * const sensorType;
 
 private:
     Q_DISABLE_COPY('.$sensor.')
@@ -351,7 +341,7 @@ IMPLEMENT_READING('.$reading.')
     \class '.$reading.'
     \ingroup sensors_reading
     \inmodule QtSensors
-    \since 5.[INSERT VERSION HERE]
+    \since 6.[INSERT VERSION HERE]
 
     \brief The '.$reading.' class holds readings from the [X] sensor.
 
@@ -389,7 +379,7 @@ void '.$reading.'::setMyprop(qreal myprop)
     \class '.$filter.'
     \ingroup sensors_filter
     \inmodule QtSensors
-    \since 5.[INSERT VERSION HERE]
+    \since 6.[INSERT VERSION HERE]
 
     \brief The '.$filter.' class is a convenience wrapper around QSensorFilter.
 
@@ -410,13 +400,13 @@ bool '.$filter.'::filter(QSensorReading *reading)
     return filter(static_cast<'.$reading.'*>(reading));
 }
 
-char const * const '.$sensor.'::type("'.$sensor.'");
+char const * const '.$sensor.'::sensorType("'.$sensor.'");
 
 /*!
     \class '.$sensor.'
     \ingroup sensors_type
     \inmodule QtSensors
-    \since 5.[INSERT VERSION HERE]
+    \since 6.[INSERT VERSION HERE]
 
     \brief The '.$sensor.' class is a convenience wrapper around QSensor.
 
@@ -433,7 +423,7 @@ char const * const '.$sensor.'::type("'.$sensor.'");
     Construct the sensor as a child of \a parent.
 */
 '.$sensor.'::'.$sensor.'(QObject *parent)
-    : QSensor('.$sensor.'::type, parent)
+    : QSensor('.$sensor.'::sensorType, parent)
 {
 }
 
@@ -469,8 +459,7 @@ exit 0;
 sub get_arg
 {
     if (scalar(@ARGV) == 0) {
-        croak "Missing arg(s)";
+        croak "Missing sensor name argument (e.g. 'QFlow')";
     }
     return shift(@ARGV);
 }
-

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,8 +33,9 @@ CSSPrimitiveValue::UnitType ToCanonicalUnit(CSSPrimitiveValue::UnitType unit) {
 CSSPrimitiveValue::UnitType ToCanonicalUnitIfPossible(
     CSSPrimitiveValue::UnitType unit) {
   const auto canonical_unit = ToCanonicalUnit(unit);
-  if (canonical_unit == CSSPrimitiveValue::UnitType::kUnknown)
+  if (canonical_unit == CSSPrimitiveValue::UnitType::kUnknown) {
     return unit;
+  }
   return canonical_unit;
 }
 
@@ -44,9 +45,10 @@ bool IsValueOutOfRangeForProperty(CSSPropertyID property_id,
   // FIXME: Avoid this CSSProperty::Get call as it can be costly.
   // The caller often has a CSSProperty already, so we can just pass it here.
   if (LengthPropertyFunctions::GetValueRange(CSSProperty::Get(property_id)) ==
-          kValueRangeNonNegative &&
-      value < 0)
+          Length::ValueRange::kNonNegative &&
+      value < 0) {
     return true;
+  }
 
   // For non-length properties and special cases.
   switch (property_id) {
@@ -69,7 +71,6 @@ bool IsValueOutOfRangeForProperty(CSSPropertyID property_id,
     case CSSPropertyID::kFontSizeAdjust:
     case CSSPropertyID::kFontStretch:
     case CSSPropertyID::kInlineSize:
-    case CSSPropertyID::kLineHeightStep:
     case CSSPropertyID::kMaxBlockSize:
     case CSSPropertyID::kMaxInlineSize:
     case CSSPropertyID::kMinBlockSize:
@@ -106,19 +107,23 @@ CSSUnitValue* CSSUnitValue::Create(double value,
 
 CSSUnitValue* CSSUnitValue::FromCSSValue(const CSSNumericLiteralValue& value) {
   CSSPrimitiveValue::UnitType unit = value.GetType();
-  if (unit == CSSPrimitiveValue::UnitType::kInteger)
+  if (unit == CSSPrimitiveValue::UnitType::kInteger) {
     unit = CSSPrimitiveValue::UnitType::kNumber;
+  }
 
-  if (!IsValidUnit(unit))
+  if (!IsValidUnit(unit)) {
     return nullptr;
+  }
   return MakeGarbageCollected<CSSUnitValue>(value.GetDoubleValue(), unit);
 }
 
 String CSSUnitValue::unit() const {
-  if (unit_ == CSSPrimitiveValue::UnitType::kNumber)
+  if (unit_ == CSSPrimitiveValue::UnitType::kNumber) {
     return "number";
-  if (unit_ == CSSPrimitiveValue::UnitType::kPercentage)
+  }
+  if (unit_ == CSSPrimitiveValue::UnitType::kPercentage) {
     return "percent";
+  }
   return CSSPrimitiveValue::UnitTypeToString(unit_);
 }
 
@@ -128,16 +133,18 @@ CSSStyleValue::StyleValueType CSSUnitValue::GetType() const {
 
 CSSUnitValue* CSSUnitValue::ConvertTo(
     CSSPrimitiveValue::UnitType target_unit) const {
-  if (unit_ == target_unit)
+  if (unit_ == target_unit) {
     return Create(value_, unit_);
+  }
 
   // Instead of defining the scale factors for every unit to every other unit,
   // we simply convert to the canonical unit and back since we already have
   // the scale factors for canonical units.
   const auto canonical_unit = ToCanonicalUnit(unit_);
   if (canonical_unit != ToCanonicalUnit(target_unit) ||
-      canonical_unit == CSSPrimitiveValue::UnitType::kUnknown)
+      canonical_unit == CSSPrimitiveValue::UnitType::kUnknown) {
     return nullptr;
+  }
 
   const double scale_factor =
       CSSPrimitiveValue::ConversionToCanonicalUnitsScaleFactor(unit_) /
@@ -146,11 +153,12 @@ CSSUnitValue* CSSUnitValue::ConvertTo(
   return CSSUnitValue::Create(value_ * scale_factor, target_unit);
 }
 
-base::Optional<CSSNumericSumValue> CSSUnitValue::SumValue() const {
+absl::optional<CSSNumericSumValue> CSSUnitValue::SumValue() const {
   CSSNumericSumValue sum;
   CSSNumericSumValue::UnitMap unit_map;
-  if (unit_ != CSSPrimitiveValue::UnitType::kNumber)
+  if (unit_ != CSSPrimitiveValue::UnitType::kNumber) {
     unit_map.insert(ToCanonicalUnitIfPossible(unit_), 1);
+  }
 
   sum.terms.emplace_back(
       value_ * CSSPrimitiveValue::ConversionToCanonicalUnitsScaleFactor(unit_),
@@ -160,8 +168,9 @@ base::Optional<CSSNumericSumValue> CSSUnitValue::SumValue() const {
 
 bool CSSUnitValue::Equals(const CSSNumericValue& other) const {
   auto* other_unit_value = DynamicTo<CSSUnitValue>(other);
-  if (!other_unit_value)
+  if (!other_unit_value) {
     return false;
+  }
 
   return value_ == other_unit_value->value_ && unit_ == other_unit_value->unit_;
 }
@@ -193,8 +202,9 @@ CSSNumericValue* CSSUnitValue::Negate() {
 
 CSSNumericValue* CSSUnitValue::Invert() {
   if (unit_ == CSSPrimitiveValue::UnitType::kNumber) {
-    if (value_ == 0)
+    if (value_ == 0) {
       return nullptr;
+    }
     return CSSUnitValue::Create(1.0 / value_, unit_);
   }
   return CSSMathInvert::Create(this);

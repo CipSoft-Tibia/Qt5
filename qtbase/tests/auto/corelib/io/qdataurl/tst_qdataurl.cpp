@@ -1,77 +1,58 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "private/qdataurl_p.h"
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/QDebug>
+
+using namespace Qt::Literals;
 
 class tst_QDataUrl : public QObject
 {
     Q_OBJECT
 
 private slots:
-    void nonData();
-    void emptyData();
-    void alreadyPercentageEncoded();
+    void decode_data();
+    void decode();
 };
 
-void tst_QDataUrl::nonData()
+void tst_QDataUrl::decode_data()
 {
-    QLatin1String data("http://test.com");
-    QUrl url(data);
-    QString mimeType;
-    QByteArray payload;
-    bool result = qDecodeDataUrl(url, mimeType, payload);
-    QVERIFY(!result);
+    QTest::addColumn<QString>("input");
+    QTest::addColumn<bool>("result");
+    QTest::addColumn<QString>("mimeType");
+    QTest::addColumn<QByteArray>("payload");
+
+    auto row = [](const char *tag, const char *url, bool success, QString mimeType = {}, QByteArray payload = {}) {
+        QTest::newRow(tag) << url << success <<mimeType << payload;
+    };
+
+    row("nonData", "http://test.com", false);
+    row("emptyData", "data:text/plain", true,
+        "text/plain;charset=US-ASCII"_L1);
+    row("alreadyPercentageEncoded", "data:text/plain,%E2%88%9A", true,
+        "text/plain"_L1, QByteArray::fromPercentEncoding("%E2%88%9A"));
+    row("everythingIsCaseInsensitive", "Data:texT/PlaiN;charSet=iSo-8859-1;Base64,SGVsbG8=", true,
+        "texT/PlaiN;charSet=iSo-8859-1"_L1, QByteArrayLiteral("Hello"));
 }
 
-void tst_QDataUrl::emptyData()
+void tst_QDataUrl::decode()
 {
-    QLatin1String data("data:text/plain");
-    QUrl url(data);
-    QString mimeType;
-    QByteArray payload;
-    bool result = qDecodeDataUrl(url, mimeType, payload);
-    QVERIFY(result);
-    QCOMPARE(mimeType, QLatin1String("text/plain;charset=US-ASCII"));
-    QVERIFY(payload.isNull());
-}
+    QFETCH(const QString, input);
+    QFETCH(const bool, result);
+    QFETCH(const QString, mimeType);
+    QFETCH(const QByteArray, payload);
 
-void tst_QDataUrl::alreadyPercentageEncoded()
-{
-    QLatin1String data("data:text/plain,%E2%88%9A");
-    QUrl url(data);
-    QString mimeType;
-    QByteArray payload;
-    bool result = qDecodeDataUrl(url, mimeType, payload);
-    QVERIFY(result);
-    QCOMPARE(mimeType, QLatin1String("text/plain"));
-    QCOMPARE(payload, QByteArray::fromPercentEncoding("%E2%88%9A"));
+    QString actualMimeType;
+    QByteArray actualPayload;
+
+    QUrl url(input);
+    const bool actualResult = qDecodeDataUrl(url, actualMimeType, actualPayload);
+
+    QCOMPARE(actualResult, result);
+    QCOMPARE(actualMimeType, mimeType);
+    QCOMPARE(actualPayload, payload);
+    QCOMPARE(actualPayload.isNull(), payload.isNull()); // assume nullness is significant
 }
 
 QTEST_MAIN(tst_QDataUrl)

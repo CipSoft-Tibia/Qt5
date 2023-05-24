@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,14 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_PRESENTATION_PRESENTATION_H_
 
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/supplementable.h"
 
 namespace blink {
 
-class LocalDOMWindow;
+class Navigator;
 class PresentationReceiver;
 class PresentationRequest;
 
@@ -21,13 +22,13 @@ class PresentationRequest;
 // See https://w3c.github.io/presentation-api/#navigatorpresentation for
 // details.
 class Presentation final : public ScriptWrappable,
-                           public ExecutionContextClient {
+                           public Supplement<Navigator> {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  static Presentation* Create(LocalDOMWindow*);
-
-  explicit Presentation(LocalDOMWindow*);
+  static const char kSupplementName[];
+  static Presentation* presentation(Navigator&);
+  explicit Presentation(Navigator&);
 
   void Trace(Visitor*) const override;
 
@@ -37,6 +38,8 @@ class Presentation final : public ScriptWrappable,
   PresentationReceiver* receiver();
 
  private:
+  void MaybeInitReceiver();
+
   // Default PresentationRequest used by the embedder.
   Member<PresentationRequest> default_request_;
 

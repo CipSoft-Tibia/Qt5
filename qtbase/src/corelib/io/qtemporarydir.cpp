@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtemporarydir.h"
 
@@ -57,7 +21,14 @@
 #include <errno.h>
 #endif
 
+#include <type_traits>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+static_assert(std::is_nothrow_move_constructible_v<QTemporaryDir>);
+static_assert(std::is_nothrow_move_assignable_v<QTemporaryDir>);
 
 //************* QTemporaryDirPrivate
 class QTemporaryDirPrivate
@@ -90,9 +61,9 @@ static QString defaultTemplateName()
     baseName = QCoreApplication::applicationName();
     if (baseName.isEmpty())
 #endif
-        baseName = QLatin1String("qt_temp");
+        baseName = "qt_temp"_L1;
 
-    return QDir::tempPath() + QLatin1Char('/') + baseName + QLatin1String("-XXXXXX");
+    return QDir::tempPath() + u'/' + baseName + "-XXXXXX"_L1;
 }
 
 void QTemporaryDirPrivate::create(const QString &templateName)
@@ -101,17 +72,9 @@ void QTemporaryDirPrivate::create(const QString &templateName)
     for (int i = 0; i < 256; ++i) {
         tfn.generateNext();
         QFileSystemEntry fileSystemEntry(tfn.path, QFileSystemEntry::FromNativePath());
-        if (QFileSystemEngine::createDirectory(fileSystemEntry, false)) {
-            QSystemError error;
-            QFileSystemEngine::setPermissions(fileSystemEntry,
-                                              QFile::ReadOwner |
-                                              QFile::WriteOwner |
-                                              QFile::ExeOwner, error);
-            if (error.error() != 0) {
-                if (!QFileSystemEngine::removeDirectory(fileSystemEntry, false))
-                    qWarning() << "Unable to remove unused directory" << templateName;
-                continue;
-            }
+        if (QFileSystemEngine::createDirectory(fileSystemEntry, false,
+                                               QFile::ReadOwner | QFile::WriteOwner
+                                                       | QFile::ExeOwner)) {
             success = true;
             pathOrError = fileSystemEntry.filePath();
             return;
@@ -206,6 +169,39 @@ QTemporaryDir::QTemporaryDir(const QString &templatePath)
 }
 
 /*!
+    \fn QTemporaryDir::QTemporaryDir(QTemporaryDir &&other)
+
+    Move-constructs a new QTemporaryDir from \a other.
+
+    \note The moved-from object \a other is placed in a
+    partially-formed state, in which the only valid operations are
+    destruction and assignment of a new value.
+
+    \since 6.4
+*/
+
+/*!
+    \fn QTemporaryDir &QTemporaryDir::operator=(QTemporaryDir&& other)
+
+    Move-assigns \a other to this QTemporaryDir instance.
+
+    \note The moved-from object \a other is placed in a
+    partially-formed state, in which the only valid operations are
+    destruction and assignment of a new value.
+
+    \since 6.4
+*/
+
+/*!
+    \fn void QTemporaryDir::swap(QTemporaryDir &other)
+
+    Swaps temporary-dir \a other with this temporary-dir. This operation is
+    very fast and never fails.
+
+    \since 6.4
+*/
+
+/*!
     Destroys the temporary directory object.
     If auto remove mode was set, it will automatically delete the directory
     including all its contents.
@@ -214,8 +210,12 @@ QTemporaryDir::QTemporaryDir(const QString &templatePath)
 */
 QTemporaryDir::~QTemporaryDir()
 {
-    if (d_ptr->autoRemove)
-        remove();
+    if (d_ptr) {
+        if (d_ptr->autoRemove)
+            remove();
+
+        delete d_ptr;
+    }
 }
 
 /*!
@@ -268,7 +268,7 @@ QString QTemporaryDir::filePath(const QString &fileName) const
 
     QString ret = d_ptr->pathOrError;
     if (!fileName.isEmpty()) {
-        ret += QLatin1Char('/');
+        ret += u'/';
         ret += fileName;
     }
     return ret;
@@ -313,7 +313,7 @@ bool QTemporaryDir::remove()
     if (!d_ptr->success)
         return false;
     Q_ASSERT(!path().isEmpty());
-    Q_ASSERT(path() != QLatin1String("."));
+    Q_ASSERT(path() != "."_L1);
 
     const bool result = QDir(path()).removeRecursively();
     if (!result) {

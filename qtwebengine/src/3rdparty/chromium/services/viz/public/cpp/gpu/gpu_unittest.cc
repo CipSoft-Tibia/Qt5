@@ -1,19 +1,21 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/viz/public/cpp/gpu/gpu.h"
 
+#include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/run_loop.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "gpu/config/gpu_feature_info.h"
 #include "gpu/config/gpu_info.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -28,6 +30,10 @@ namespace {
 class TestGpuImpl : public mojom::Gpu {
  public:
   TestGpuImpl() = default;
+
+  TestGpuImpl(const TestGpuImpl&) = delete;
+  TestGpuImpl& operator=(const TestGpuImpl&) = delete;
+
   ~TestGpuImpl() override = default;
 
   void SetRequestWillSucceed(bool request_will_succeed) {
@@ -63,11 +69,11 @@ class TestGpuImpl : public mojom::Gpu {
                             gpu::GpuFeatureInfo());
   }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   void CreateJpegDecodeAccelerator(
       mojo::PendingReceiver<chromeos_camera::mojom::MjpegDecodeAccelerator>
           jda_receiver) override {}
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
   void CreateVideoEncodeAcceleratorProvider(
       mojo::PendingReceiver<media::mojom::VideoEncodeAcceleratorProvider>
@@ -80,8 +86,6 @@ class TestGpuImpl : public mojom::Gpu {
 
   // Closing this handle will result in GpuChannelHost being lost.
   mojo::ScopedMessagePipeHandle gpu_channel_handle_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestGpuImpl);
 };
 
 }  // namespace
@@ -90,9 +94,13 @@ class GpuTest : public testing::Test {
  public:
   GpuTest() : io_thread_("GPUIOThread") {
     base::Thread::Options thread_options(base::MessagePumpType::IO, 0);
-    thread_options.priority = base::ThreadPriority::NORMAL;
-    CHECK(io_thread_.StartWithOptions(thread_options));
+    thread_options.thread_type = base::ThreadType::kDefault;
+    CHECK(io_thread_.StartWithOptions(std::move(thread_options)));
   }
+
+  GpuTest(const GpuTest&) = delete;
+  GpuTest& operator=(const GpuTest&) = delete;
+
   ~GpuTest() override = default;
 
   Gpu* gpu() { return gpu_.get(); }
@@ -168,8 +176,6 @@ class GpuTest : public testing::Test {
   base::Thread io_thread_;
   std::unique_ptr<Gpu> gpu_;
   std::unique_ptr<TestGpuImpl> gpu_impl_;
-
-  DISALLOW_COPY_AND_ASSIGN(GpuTest);
 };
 
 // Tests that multiple calls for establishing a gpu channel are all notified

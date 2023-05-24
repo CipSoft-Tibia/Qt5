@@ -13,9 +13,15 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/types/optional.h"
+#include "api/make_ref_counted.h"
+#include "api/rtc_error.h"
 #include "p2p/base/fake_dtls_transport.h"
+#include "p2p/base/p2p_constants.h"
+#include "rtc_base/fake_ssl_identity.h"
 #include "rtc_base/gunit.h"
+#include "rtc_base/rtc_certificate.h"
+#include "rtc_base/ssl_identity.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
 
@@ -63,7 +69,7 @@ class DtlsTransportTest : public ::testing::Test {
     }
     cricket_transport->SetSslCipherSuite(kNonsenseCipherSuite);
     transport_ =
-        new rtc::RefCountedObject<DtlsTransport>(std::move(cricket_transport));
+        rtc::make_ref_counted<DtlsTransport>(std::move(cricket_transport));
   }
 
   void CompleteDtlsHandshake() {
@@ -79,6 +85,7 @@ class DtlsTransportTest : public ::testing::Test {
     fake_dtls1->SetDestination(fake_dtls2.get());
   }
 
+  rtc::AutoThread main_thread_;
   rtc::scoped_refptr<DtlsTransport> transport_;
   TestDtlsTransportObserver observer_;
 };
@@ -86,8 +93,8 @@ class DtlsTransportTest : public ::testing::Test {
 TEST_F(DtlsTransportTest, CreateClearDelete) {
   auto cricket_transport = std::make_unique<FakeDtlsTransport>(
       "audio", cricket::ICE_CANDIDATE_COMPONENT_RTP);
-  rtc::scoped_refptr<DtlsTransport> webrtc_transport =
-      new rtc::RefCountedObject<DtlsTransport>(std::move(cricket_transport));
+  auto webrtc_transport =
+      rtc::make_ref_counted<DtlsTransport>(std::move(cricket_transport));
   ASSERT_TRUE(webrtc_transport->internal());
   ASSERT_EQ(DtlsTransportState::kNew, webrtc_transport->Information().state());
   webrtc_transport->Clear();
@@ -118,6 +125,19 @@ TEST_F(DtlsTransportTest, CloseWhenClearing) {
   transport()->Clear();
   ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kClosed,
                    kDefaultTimeout);
+}
+
+TEST_F(DtlsTransportTest, RoleAppearsOnConnect) {
+  rtc::FakeSSLCertificate fake_certificate("fake data");
+  CreateTransport(&fake_certificate);
+  transport()->RegisterObserver(observer());
+  EXPECT_FALSE(transport()->Information().role());
+  CompleteDtlsHandshake();
+  ASSERT_TRUE_WAIT(observer_.state() == DtlsTransportState::kConnected,
+                   kDefaultTimeout);
+  EXPECT_TRUE(observer_.info_.role());
+  EXPECT_TRUE(transport()->Information().role());
+  EXPECT_EQ(transport()->Information().role(), DtlsTransportTlsRole::kClient);
 }
 
 TEST_F(DtlsTransportTest, CertificateAppearsOnConnect) {

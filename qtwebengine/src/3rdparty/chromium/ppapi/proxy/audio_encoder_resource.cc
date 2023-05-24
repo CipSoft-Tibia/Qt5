@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "ppapi/c/pp_array_output.h"
 #include "ppapi/c/pp_codecs.h"
@@ -45,8 +45,9 @@ int32_t AudioEncoderResource::GetSupportedProfiles(
   get_supported_profiles_callback_ = callback;
   Call<PpapiPluginMsg_AudioEncoder_GetSupportedProfilesReply>(
       RENDERER, PpapiHostMsg_AudioEncoder_GetSupportedProfiles(),
-      base::Bind(&AudioEncoderResource::OnPluginMsgGetSupportedProfilesReply,
-                 this, output));
+      base::BindOnce(
+          &AudioEncoderResource::OnPluginMsgGetSupportedProfilesReply, this,
+          output));
   return PP_OK_COMPLETIONPENDING;
 }
 
@@ -75,7 +76,7 @@ int32_t AudioEncoderResource::Initialize(
 
   Call<PpapiPluginMsg_AudioEncoder_InitializeReply>(
       RENDERER, PpapiHostMsg_AudioEncoder_Initialize(parameters),
-      base::Bind(&AudioEncoderResource::OnPluginMsgInitializeReply, this));
+      base::BindOnce(&AudioEncoderResource::OnPluginMsgInitializeReply, this));
   return PP_OK_COMPLETIONPENDING;
 }
 

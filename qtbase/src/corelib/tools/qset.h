@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSET_H
 #define QSET_H
@@ -71,28 +35,38 @@ public:
 
     inline void swap(QSet<T> &other) noexcept { q_hash.swap(other.q_hash); }
 
-    inline bool operator==(const QSet<T> &other) const
-        { return q_hash == other.q_hash; }
-    inline bool operator!=(const QSet<T> &other) const
-        { return q_hash != other.q_hash; }
+#ifndef Q_QDOC
+    template <typename U = T>
+    QTypeTraits::compare_eq_result_container<QSet, U> operator==(const QSet<T> &other) const
+    { return q_hash == other.q_hash; }
+    template <typename U = T>
+    QTypeTraits::compare_eq_result_container<QSet, U> operator!=(const QSet<T> &other) const
+    { return q_hash != other.q_hash; }
+#else
+    bool operator==(const QSet &other) const;
+    bool operator!=(const QSet &other) const;
+#endif
 
-    inline int size() const { return q_hash.size(); }
+    inline qsizetype size() const { return q_hash.size(); }
 
     inline bool isEmpty() const { return q_hash.isEmpty(); }
 
-    inline int capacity() const { return q_hash.capacity(); }
-    inline void reserve(int size);
+    inline qsizetype capacity() const { return q_hash.capacity(); }
+    inline void reserve(qsizetype size);
     inline void squeeze() { q_hash.squeeze(); }
 
     inline void detach() { q_hash.detach(); }
     inline bool isDetached() const { return q_hash.isDetached(); }
-#if !defined(QT_NO_UNSHARABLE_CONTAINERS)
-    inline void setSharable(bool sharable) { q_hash.setSharable(sharable); }
-#endif
 
     inline void clear() { q_hash.clear(); }
 
     inline bool remove(const T &value) { return q_hash.remove(value) != 0; }
+
+    template <typename Pred>
+    inline qsizetype removeIf(Pred predicate)
+    {
+        return QtPrivate::qset_erase_if(*this, predicate);
+    }
 
     inline bool contains(const T &value) const { return q_hash.contains(value); }
 
@@ -108,11 +82,7 @@ public:
         friend class QSet<T>;
 
     public:
-#if QT_DEPRECATED_WARNINGS_SINCE < QT_VERSION_CHECK(5, 15, 0)
-        typedef std::bidirectional_iterator_tag iterator_category;
-#else
         typedef std::forward_iterator_tag iterator_category;
-#endif
         typedef qptrdiff difference_type;
         typedef T value_type;
         typedef const T *pointer;
@@ -132,15 +102,6 @@ public:
             { return i != o.i; }
         inline iterator &operator++() { ++i; return *this; }
         inline iterator operator++(int) { iterator r = *this; ++i; return r; }
-#if QT_DEPRECATED_SINCE(5, 15)
-        inline QT_DEPRECATED_VERSION_5_15 iterator &operator--() { --i; return *this; }
-        inline QT_DEPRECATED_VERSION_5_15 iterator operator--(int) { iterator r = *this; --i; return r; }
-        inline QT_DEPRECATED_VERSION_5_15 iterator operator+(int j) const { return i + j; }
-        inline QT_DEPRECATED_VERSION_5_15 iterator operator-(int j) const { return i - j; }
-        friend inline QT_DEPRECATED_VERSION_5_15 iterator operator+(int j, iterator k) { return k + j; }
-        inline QT_DEPRECATED_VERSION_5_15 iterator &operator+=(int j) { i += j; return *this; }
-        inline QT_DEPRECATED_VERSION_5_15 iterator &operator-=(int j) { i -= j; return *this; }
-#endif
     };
 
     class const_iterator
@@ -151,11 +112,7 @@ public:
         friend class QSet<T>;
 
     public:
-#if QT_DEPRECATED_WARNINGS_SINCE < QT_VERSION_CHECK(5, 15, 0)
-        typedef std::bidirectional_iterator_tag iterator_category;
-#else
         typedef std::forward_iterator_tag iterator_category;
-#endif
         typedef qptrdiff difference_type;
         typedef T value_type;
         typedef const T *pointer;
@@ -173,15 +130,6 @@ public:
         inline bool operator!=(const const_iterator &o) const { return i != o.i; }
         inline const_iterator &operator++() { ++i; return *this; }
         inline const_iterator operator++(int) { const_iterator r = *this; ++i; return r; }
-#if QT_DEPRECATED_SINCE(5, 15)
-        inline QT_DEPRECATED_VERSION_5_15 const_iterator &operator--() { --i; return *this; }
-        inline QT_DEPRECATED_VERSION_5_15 const_iterator operator--(int) { const_iterator r = *this; --i; return r; }
-        inline QT_DEPRECATED_VERSION_5_15 const_iterator operator+(int j) const { return i + j; }
-        inline QT_DEPRECATED_VERSION_5_15 const_iterator operator-(int j) const { return i - j; }
-        friend inline QT_DEPRECATED_VERSION_5_15 const_iterator operator+(int j, const_iterator k) { return k + j; }
-        inline QT_DEPRECATED_VERSION_5_15 const_iterator &operator+=(int j) { i += j; return *this; }
-        inline QT_DEPRECATED_VERSION_5_15 const_iterator &operator-=(int j) { i -= j; return *this; }
-#endif
     };
 
     // STL style
@@ -194,32 +142,20 @@ public:
     inline const_iterator cend() const noexcept { return q_hash.end(); }
     inline const_iterator constEnd() const noexcept { return q_hash.constEnd(); }
 
-#if QT_DEPRECATED_SINCE(5, 15)
-    typedef std::reverse_iterator<iterator> reverse_iterator;
-    typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
-
-    reverse_iterator QT_DEPRECATED_VERSION_5_15 rbegin() { return reverse_iterator(end()); }
-    reverse_iterator QT_DEPRECATED_VERSION_5_15 rend() { return reverse_iterator(begin()); }
-    const_reverse_iterator QT_DEPRECATED_VERSION_5_15 rbegin() const noexcept { return const_reverse_iterator(end()); }
-    const_reverse_iterator QT_DEPRECATED_VERSION_5_15 rend() const noexcept { return const_reverse_iterator(begin()); }
-    const_reverse_iterator QT_DEPRECATED_VERSION_5_15 crbegin() const noexcept { return const_reverse_iterator(end()); }
-    const_reverse_iterator QT_DEPRECATED_VERSION_5_15 crend() const noexcept { return const_reverse_iterator(begin()); }
-#endif
-
-    iterator erase(iterator i)
-    { return erase(m2c(i)); }
     iterator erase(const_iterator i)
     {
-        Q_ASSERT_X(isValidIterator(i), "QSet::erase", "The specified const_iterator argument 'i' is invalid");
-        return q_hash.erase(reinterpret_cast<typename Hash::const_iterator &>(i));
+        Q_ASSERT(i != constEnd());
+        return q_hash.erase(i.i);
     }
 
     // more Qt
     typedef iterator Iterator;
     typedef const_iterator ConstIterator;
-    inline int count() const { return q_hash.count(); }
+    inline qsizetype count() const { return q_hash.size(); }
     inline iterator insert(const T &value)
-        { return static_cast<typename Hash::iterator>(q_hash.insert(value, QHashDummyValue())); }
+        { return q_hash.insert(value, QHashDummyValue()); }
+    inline iterator insert(T &&value)
+        { return q_hash.emplace(std::move(value), QHashDummyValue()); }
     iterator find(const T &value) { return q_hash.find(value); }
     const_iterator find(const T &value) const { return q_hash.find(value); }
     inline const_iterator constFind(const T &value) const { return find(value); }
@@ -236,9 +172,12 @@ public:
     typedef value_type &reference;
     typedef const value_type &const_reference;
     typedef qptrdiff difference_type;
-    typedef int size_type;
+    typedef qsizetype size_type;
 
     inline bool empty() const { return isEmpty(); }
+
+    iterator insert(const_iterator, const T &value) { return insert(value); }
+
     // comfort
     inline QSet<T> &operator<<(const T &value) { insert(value); return *this; }
     inline QSet<T> &operator|=(const QSet<T> &other) { unite(other); return *this; }
@@ -260,38 +199,18 @@ public:
         { QSet<T> result = *this; result -= other; return result; }
 
     QList<T> values() const;
-#if QT_DEPRECATED_SINCE(5, 14) && QT_VERSION < QT_VERSION_CHECK(6,0,0)
-    QT_DEPRECATED_X("Use values() instead.")
-    QList<T> toList() const { return values(); }
-    QT_DEPRECATED_X("Use QSet<T>(list.begin(), list.end()) instead.")
-    static QSet<T> fromList(const QList<T> &list);
-#endif
 
 private:
     Hash q_hash;
-
-    static const_iterator m2c(iterator it) noexcept
-    { return const_iterator(typename Hash::const_iterator(it.i.i)); }
-
-    bool isValidIterator(const iterator &i) const
-    {
-        return q_hash.isValidIterator(reinterpret_cast<const typename Hash::iterator&>(i));
-    }
-    bool isValidIterator(const const_iterator &i) const noexcept
-    {
-        return q_hash.isValidIterator(reinterpret_cast<const typename Hash::const_iterator&>(i));
-    }
 };
 
-#if defined(__cpp_deduction_guides) && __cpp_deduction_guides >= 201606
 template <typename InputIterator,
           typename ValueType = typename std::iterator_traits<InputIterator>::value_type,
           QtPrivate::IfIsInputIterator<InputIterator> = true>
 QSet(InputIterator, InputIterator) -> QSet<ValueType>;
-#endif
 
 template <typename T>
-uint qHash(const QSet<T> &key, uint seed = 0)
+size_t qHash(const QSet<T> &key, size_t seed = 0)
 noexcept(noexcept(qHashRangeCommutative(key.begin(), key.end(), seed)))
 {
     return qHashRangeCommutative(key.begin(), key.end(), seed);
@@ -300,7 +219,7 @@ noexcept(noexcept(qHashRangeCommutative(key.begin(), key.end(), seed)))
 // inline function implementations
 
 template <class T>
-Q_INLINE_TEMPLATE void QSet<T>::reserve(int asize) { q_hash.reserve(asize); }
+Q_INLINE_TEMPLATE void QSet<T>::reserve(qsizetype asize) { q_hash.reserve(asize); }
 
 template <class T>
 Q_INLINE_TEMPLATE QSet<T> &QSet<T>::unite(const QSet<T> &other)
@@ -325,7 +244,7 @@ Q_INLINE_TEMPLATE QSet<T> &QSet<T>::intersect(const QSet<T> &other)
         copy2 = *this;
         *this = copy1;
     }
-    for (const auto &e : qAsConst(copy1)) {
+    for (const auto &e : std::as_const(copy1)) {
         if (!copy2.contains(e))
             remove(e);
     }
@@ -338,24 +257,14 @@ Q_INLINE_TEMPLATE bool QSet<T>::intersects(const QSet<T> &other) const
     const bool otherIsBigger = other.size() > size();
     const QSet &smallestSet = otherIsBigger ? *this : other;
     const QSet &biggestSet = otherIsBigger ? other : *this;
-    const bool equalSeeds = q_hash.d->seed == other.q_hash.d->seed;
     typename QSet::const_iterator i = smallestSet.cbegin();
     typename QSet::const_iterator e = smallestSet.cend();
 
-    if (Q_LIKELY(equalSeeds)) {
-        // If seeds are equal we take the fast path so no hash is recalculated.
-        while (i != e) {
-            if (*biggestSet.q_hash.findNode(*i, i.i.i->h) != biggestSet.q_hash.e)
-                return true;
-            ++i;
-        }
-    } else {
-        while (i != e) {
-            if (biggestSet.contains(*i))
-                return true;
-            ++i;
-        }
-     }
+    while (i != e) {
+        if (biggestSet.contains(*i))
+            return true;
+        ++i;
+    }
 
     return false;
 }
@@ -397,37 +306,6 @@ Q_OUTOFLINE_TEMPLATE QList<T> QSet<T>::values() const
     return result;
 }
 
-#if QT_DEPRECATED_SINCE(5, 14) && QT_VERSION < QT_VERSION_CHECK(6,0,0)
-
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-
-template <typename T>
-Q_OUTOFLINE_TEMPLATE QSet<T> QList<T>::toSet() const
-{
-    QSet<T> result;
-    result.reserve(size());
-    for (int i = 0; i < size(); ++i)
-        result.insert(at(i));
-    return result;
-}
-
-template <typename T>
-QSet<T> QSet<T>::fromList(const QList<T> &list)
-{
-    return list.toSet();
-}
-
-template <typename T>
-QList<T> QList<T>::fromSet(const QSet<T> &set)
-{
-    return set.toList();
-}
-
-QT_WARNING_POP
-
-#endif
-
 Q_DECLARE_SEQUENTIAL_ITERATOR(Set)
 
 #if !defined(QT_NO_JAVA_STYLE_ITERATORS)
@@ -455,16 +333,14 @@ public:
     inline const T &value() const { Q_ASSERT(item_exists()); return *n; }
     inline bool findNext(const T &t)
     { while (c->constEnd() != (n = i)) if (*i++ == t) return true; return false; }
-#if QT_DEPRECATED_SINCE(5, 15)
-    inline QT_DEPRECATED_VERSION_5_15 bool hasPrevious() const { return c->constBegin() != i; }
-    inline QT_DEPRECATED_VERSION_5_15 const T &previous() { n = --i; return *n; }
-    inline QT_DEPRECATED_VERSION_5_15 const T &peekPrevious() const { iterator p = i; return *--p; }
-    inline QT_DEPRECATED_VERSION_5_15 bool findPrevious(const T &t)
-    { while (c->constBegin() != i) if (*(n = --i) == t) return true;
-      n = c->end(); return false;  }
-#endif
 };
 #endif // QT_NO_JAVA_STYLE_ITERATORS
+
+template <typename T, typename Predicate>
+qsizetype erase_if(QSet<T> &set, Predicate pred)
+{
+    return QtPrivate::qset_erase_if(set, pred);
+}
 
 QT_END_NAMESPACE
 

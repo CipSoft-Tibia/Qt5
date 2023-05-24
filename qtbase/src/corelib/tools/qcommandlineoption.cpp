@@ -1,42 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
-** Copyright (C) 2013 David Faure <faure@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
+// Copyright (C) 2013 David Faure <faure@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcommandlineoption.h"
 
@@ -151,8 +116,7 @@ QCommandLineOption::QCommandLineOption(const QStringList &names)
     The default value for the option is set to \a defaultValue.
 
     In Qt versions before 5.4, this constructor was \c explicit. In Qt 5.4
-    and later, it no longer is and can be used for C++11-style uniform
-    initialization:
+    and later, it no longer is and can be used for uniform initialization:
 
     \snippet code/src_corelib_tools_qcommandlineoption.cpp cxx11-init
 
@@ -187,8 +151,7 @@ QCommandLineOption::QCommandLineOption(const QString &name, const QString &descr
     The default value for the option is set to \a defaultValue.
 
     In Qt versions before 5.4, this constructor was \c explicit. In Qt 5.4
-    and later, it no longer is and can be used for C++11-style uniform
-    initialization:
+    and later, it no longer is and can be used for uniform initialization:
 
     \snippet code/src_corelib_tools_qcommandlineoption.cpp cxx11-init-list
 
@@ -260,11 +223,11 @@ namespace {
                 return warn("be empty");
 
             const QChar c = name.at(0);
-            if (Q_UNLIKELY(c == QLatin1Char('-')))
+            if (Q_UNLIKELY(c == u'-'))
                 return warn("start with a '-'");
-            if (Q_UNLIKELY(c == QLatin1Char('/')))
+            if (Q_UNLIKELY(c == u'/'))
                 return warn("start with a '/'");
-            if (Q_UNLIKELY(name.contains(QLatin1Char('='))))
+            if (Q_UNLIKELY(name.contains(u'=')))
                 return warn("contain a '='");
 
             return false;
@@ -285,8 +248,7 @@ QStringList QCommandLineOptionPrivate::removeInvalidNames(QStringList nameList)
     if (Q_UNLIKELY(nameList.isEmpty()))
         qWarning("QCommandLineOption: Options must have at least one name");
     else
-        nameList.erase(std::remove_if(nameList.begin(), nameList.end(), IsInvalidName()),
-                       nameList.end());
+        nameList.removeIf(IsInvalidName());
     return nameList;
 }
 
@@ -390,36 +352,6 @@ QStringList QCommandLineOption::defaultValues() const
 {
     return d->defaultValues;
 }
-
-#if QT_DEPRECATED_SINCE(5, 8)
-/*!
-    Sets whether to hide this option in the user-visible help output.
-
-    All options are visible by default. Setting \a hide to true for
-    a particular option makes it internal, i.e. not listed in the help output.
-
-    \since 5.6
-    \obsolete Use setFlags(QCommandLineOption::HiddenFromHelp), QCommandLineOption::HiddenFromHelp
-    \sa isHidden
- */
-void QCommandLineOption::setHidden(bool hide)
-{
-    d->flags.setFlag(HiddenFromHelp, hide);
-}
-
-/*!
-    Returns true if this option is omitted from the help output,
-    false if the option is listed.
-
-    \since 5.6
-    \obsolete Use flags() & QCommandLineOption::HiddenFromHelp
-    \sa setHidden(), QCommandLineOption::HiddenFromHelp
- */
-bool QCommandLineOption::isHidden() const
-{
-    return d->flags & HiddenFromHelp;
-}
-#endif
 
 /*!
     Returns a set of flags that affect this command-line option.

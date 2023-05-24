@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickitemanimation_p.h"
 #include "qquickitemanimation_p_p.h"
@@ -90,10 +54,6 @@ QT_BEGIN_NAMESPACE
 */
 QQuickParentAnimation::QQuickParentAnimation(QObject *parent)
     : QQuickAnimationGroup(*(new QQuickParentAnimationPrivate), parent)
-{
-}
-
-QQuickParentAnimation::~QQuickParentAnimation()
 {
 }
 
@@ -213,7 +173,7 @@ struct QQuickParentAnimationData : public QAbstractAnimationAction
     QList<QQuickParentChange *> pc;
     void doAction() override
     {
-        for (int ii = 0; ii < actions.count(); ++ii) {
+        for (int ii = 0; ii < actions.size(); ++ii) {
             const QQuickStateAction &action = actions.at(ii);
             if (reverse)
                 action.event->reverse();
@@ -369,7 +329,7 @@ QAbstractAnimationJob* QQuickParentAnimation::transition(QQuickStateActions &act
         }
     }
 
-    if (data->actions.count()) {
+    if (data->actions.size()) {
         QSequentialAnimationGroupJob *topLevelGroup = new QSequentialAnimationGroupJob;
         QActionAnimation *viaAction = d->via ? new QActionAnimation : nullptr;
         QActionAnimation *targetAction = new QActionAnimation;
@@ -383,7 +343,7 @@ QAbstractAnimationJob* QQuickParentAnimation::transition(QQuickStateActions &act
         //take care of any child animations
         bool valid = d->defaultProperty.isValid();
         QAbstractAnimationJob* anim;
-        for (int ii = 0; ii < d->animations.count(); ++ii) {
+        for (int ii = 0; ii < d->animations.size(); ++ii) {
             if (valid)
                 d->animations.at(ii)->setDefaultTarget(d->defaultProperty);
             anim = d->animations.at(ii)->transition(actions, modified, direction, defaultTarget);
@@ -436,10 +396,6 @@ QAbstractAnimationJob* QQuickParentAnimation::transition(QQuickStateActions &act
 */
 QQuickAnchorAnimation::QQuickAnchorAnimation(QObject *parent)
 : QQuickAbstractAnimation(*(new QQuickAnchorAnimationPrivate), parent)
-{
-}
-
-QQuickAnchorAnimation::~QQuickAnchorAnimation()
 {
 }
 
@@ -532,7 +488,7 @@ QAbstractAnimationJob* QQuickAnchorAnimation::transition(QQuickStateActions &act
     data->fromIsSourced = false;
     data->fromIsDefined = false;
 
-    for (int ii = 0; ii < actions.count(); ++ii) {
+    for (int ii = 0; ii < actions.size(); ++ii) {
         QQuickStateAction &action = actions[ii];
         if (action.event && action.event->type() == QQuickStateActionEvent::AnchorChanges
             && (d->targets.isEmpty() || d->targets.contains(static_cast<QQuickAnchorChanges*>(action.event)->object()))) {
@@ -541,7 +497,7 @@ QAbstractAnimationJob* QQuickAnchorAnimation::transition(QQuickStateActions &act
     }
 
     QQuickBulkValueAnimator *animator = new QQuickBulkValueAnimator;
-    if (data->actions.count()) {
+    if (data->actions.size()) {
         animator->setAnimValue(data);
         animator->setFromIsSourcedValue(&data->fromIsSourced);
     } else {
@@ -867,9 +823,9 @@ QAbstractAnimationJob* QQuickPathAnimation::transition(QQuickStateActions &actio
     data->fromIsSourced = false;
     data->fromIsDefined = (d->path && d->path->hasStartX() && d->path->hasStartY()) ? true : false;
     data->toIsDefined = d->path ? true : false;
-    int origModifiedSize = modified.count();
+    int origModifiedSize = modified.size();
 
-    for (int i = 0; i < actions.count(); ++i) {
+    for (int i = 0; i < actions.size(); ++i) {
         QQuickStateAction &action = actions[i];
         if (action.event)
             continue;
@@ -885,7 +841,7 @@ QAbstractAnimationJob* QQuickPathAnimation::transition(QQuickStateActions &actio
         }
     }
 
-    if (target && d->path && (modified.count() > origModifiedSize || data->toIsDefined)) {
+    if (target && d->path && (modified.size() > origModifiedSize || data->toIsDefined)) {
         data->target = target;
         data->path = d->path;
         data->path->invalidateSequentialHistory();

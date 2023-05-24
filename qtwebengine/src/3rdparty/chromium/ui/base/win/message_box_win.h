@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,9 @@
 
 #include <windows.h>
 
+#include <string>
+
 #include "base/component_export.h"
-#include "base/strings/string16.h"
 
 namespace ui {
 
@@ -18,8 +19,8 @@ namespace ui {
 // right-to-left locale.
 COMPONENT_EXPORT(UI_BASE)
 int MessageBox(HWND hwnd,
-               const base::string16& text,
-               const base::string16& caption,
+               const std::wstring& text,
+               const std::wstring& caption,
                UINT flags);
 
 }  // namespace ui

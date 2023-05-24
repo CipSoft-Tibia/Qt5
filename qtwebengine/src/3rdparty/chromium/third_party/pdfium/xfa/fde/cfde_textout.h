@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,14 +11,17 @@
 #include <memory>
 #include <vector>
 
-#include "core/fxge/fx_dib.h"
+#include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/widestring.h"
+#include "core/fxge/dib/fx_dib.h"
 #include "third_party/base/span.h"
 #include "xfa/fde/cfde_data.h"
-#include "xfa/fgas/layout/cfx_char.h"
+#include "xfa/fgas/layout/cfgas_break.h"
+#include "xfa/fgas/layout/cfgas_char.h"
 
 class CFGAS_GEFont;
+class CFGAS_TxtBreak;
 class CFX_RenderDevice;
-class CFX_TxtBreak;
 class TextCharPos;
 
 class CFDE_TextOut {
@@ -33,7 +36,7 @@ class CFDE_TextOut {
   CFDE_TextOut();
   ~CFDE_TextOut();
 
-  void SetFont(const RetainPtr<CFGAS_GEFont>& pFont);
+  void SetFont(RetainPtr<CFGAS_GEFont> pFont);
   void SetFontSize(float fFontSize);
   void SetTextColor(FX_ARGB color) { m_TxtColor = color; }
   void SetStyles(const FDE_TextStyle& dwStyles);
@@ -45,7 +48,7 @@ class CFDE_TextOut {
   void CalcLogicSize(WideStringView str, CFX_SizeF* pSize);
   void CalcLogicSize(WideStringView str, CFX_RectF* pRect);
   void DrawLogicText(CFX_RenderDevice* device,
-                     WideStringView str,
+                     const WideString& str,
                      const CFX_RectF& rect);
   int32_t GetTotalLines() const { return m_iTotalLines; }
 
@@ -81,7 +84,7 @@ class CFDE_TextOut {
     std::deque<Piece> pieces_;
   };
 
-  bool RetrieveLineWidth(CFX_BreakType dwBreakStatus,
+  bool RetrieveLineWidth(CFGAS_Char::BreakType dwBreakStatus,
                          float* pStartPos,
                          float* pWidth,
                          float* pHeight);
@@ -89,7 +92,7 @@ class CFDE_TextOut {
 
   void Reload(const CFX_RectF& rect);
   void ReloadLinePiece(Line* pLine, const CFX_RectF& rect);
-  bool RetrievePieces(CFX_BreakType dwBreakStatus,
+  bool RetrievePieces(CFGAS_Char::BreakType dwBreakStatus,
                       bool bReload,
                       const CFX_RectF& rect,
                       size_t* pStartChar,
@@ -98,7 +101,7 @@ class CFDE_TextOut {
   void DoAlignment(const CFX_RectF& rect);
   size_t GetDisplayPos(const Piece* pPiece);
 
-  std::unique_ptr<CFX_TxtBreak> const m_pTxtBreak;
+  std::unique_ptr<CFGAS_TxtBreak> const m_pTxtBreak;
   RetainPtr<CFGAS_GEFont> m_pFont;
   float m_fFontSize = 12.0f;
   float m_fLineSpace = 12.0f;
@@ -108,11 +111,11 @@ class CFDE_TextOut {
   FDE_TextStyle m_Styles;
   std::vector<int32_t> m_CharWidths;
   FX_ARGB m_TxtColor = 0xFF000000;
-  uint32_t m_dwTxtBkStyles = 0;
+  Mask<CFGAS_Break::LayoutStyle> m_dwTxtBkStyles;
   WideString m_wsText;
   CFX_Matrix m_Matrix;
   std::deque<Line> m_ttoLines;
-  int32_t m_iCurLine = 0;
+  size_t m_iCurLine = 0;
   size_t m_iCurPiece = 0;
   int32_t m_iTotalLines = 0;
   std::vector<TextCharPos> m_CharPos;

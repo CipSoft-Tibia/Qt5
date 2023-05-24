@@ -7,11 +7,12 @@
 
 import("//build_overrides/build.gni")
 
+visibility = [ "../../*" ]
+
 source_set("fuzzing_engine_main") {
-  deps = [
-    "//third_party/libfuzzer",
-  ]
+  public = []
   sources = []
+  deps = [ "//third_party/libfuzzer" ]
 }
 
 # A config used by all fuzzer_tests.

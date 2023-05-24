@@ -49,7 +49,7 @@ LayoutState::LayoutState(LayoutBox& layout_object,
       next_(layout_object.View()->GetLayoutState()),
       layout_object_(&layout_object) {
   if (layout_object.IsLayoutFlowThread())
-    flow_thread_ = ToLayoutFlowThread(&layout_object);
+    flow_thread_ = To<LayoutFlowThread>(&layout_object);
   else
     flow_thread_ = next_->FlowThread();
   pagination_state_changed_ = next_->pagination_state_changed_;
@@ -93,7 +93,7 @@ LayoutState::LayoutState(LayoutBox& layout_object,
   if (LayoutObject* container = layout_object.Container()) {
     if (container->StyleRef().HasInFlowPosition() &&
         container->IsLayoutInline()) {
-      pagination_offset_ += ToLayoutInline(container)
+      pagination_offset_ += To<LayoutInline>(container)
                                 ->OffsetForInFlowPositionedInline(layout_object)
                                 .ToLayoutSize();
     }
@@ -120,6 +120,11 @@ LayoutState::~LayoutState() {
     DCHECK_EQ(layout_object_->View()->GetLayoutState(), this);
     layout_object_->View()->PopLayoutState();
   }
+}
+
+void LayoutState::Trace(Visitor* visitor) const {
+  visitor->Trace(flow_thread_);
+  visitor->Trace(layout_object_);
 }
 
 }  // namespace blink

@@ -25,7 +25,7 @@
 #include <qwebenginescriptcollection.h>
 #include <qwebenginesettings.h>
 #include <qwebengineview.h>
-#include "../util.h"
+#include <util.h>
 #if QT_CONFIG(webengine_webchannel)
 #include <QWebChannel>
 #endif
@@ -70,10 +70,13 @@ private Q_SLOTS:
     void webChannelWithExistingQtObject();
     void navigation();
     void webChannelWithBadString();
+    void webChannelWithJavaScriptDisabled();
 #endif
     void noTransportWithoutWebChannel();
     void scriptsInNestedIframes();
     void matchQrcUrl();
+    void injectionOrder();
+    void reloadWithSubframes();
 };
 
 void tst_QWebEngineScript::domEditing()
@@ -182,7 +185,7 @@ void tst_QWebEngineScript::loadEvents()
 
     // Single frame / setHtml
     page.setHtml(QStringLiteral("<!DOCTYPE html><html><head><title>mr</title></head><body></body></html>"));
-    QTRY_COMPARE_WITH_TIMEOUT(page.spy.count(), 1, 20000);
+    QTRY_COMPARE_WITH_TIMEOUT(page.spy.size(), 1, 20000);
     QVERIFY(page.spy.takeFirst().value(0).toBool());
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::MainWorld).toStringList()));
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::ApplicationWorld).toStringList()));
@@ -190,14 +193,14 @@ void tst_QWebEngineScript::loadEvents()
     // After discard
     page.setLifecycleState(QWebEnginePage::LifecycleState::Discarded);
     page.setLifecycleState(QWebEnginePage::LifecycleState::Active);
-    QTRY_COMPARE_WITH_TIMEOUT(page.spy.count(), 1, 20000);
+    QTRY_COMPARE_WITH_TIMEOUT(page.spy.size(), 1, 20000);
     QVERIFY(page.spy.takeFirst().value(0).toBool());
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::MainWorld).toStringList()));
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::ApplicationWorld).toStringList()));
 
     // Multiple frames
     page.load(QUrl("qrc:/resources/test_iframe_main.html"));
-    QTRY_COMPARE_WITH_TIMEOUT(page.spy.count(), 1, 20000);
+    QTRY_COMPARE_WITH_TIMEOUT(page.spy.size(), 1, 20000);
     QVERIFY(page.spy.takeFirst().value(0).toBool());
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::MainWorld).toStringList()));
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::ApplicationWorld).toStringList()));
@@ -208,7 +211,7 @@ void tst_QWebEngineScript::loadEvents()
 
     // Cross-process navigation
     page.load(QUrl("chrome://gpu"));
-    QTRY_COMPARE_WITH_TIMEOUT(page.spy.count(), 1, 20000);
+    QTRY_COMPARE_WITH_TIMEOUT(page.spy.size(), 1, 20000);
     QVERIFY(page.spy.takeFirst().value(0).toBool());
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::MainWorld).toStringList()));
     QVERIFY(verifyOrder(page.eval("window.log", QWebEngineScript::ApplicationWorld).toStringList()));
@@ -216,9 +219,9 @@ void tst_QWebEngineScript::loadEvents()
     // Using window.open from JS
     QVERIFY(profile.pages.size() == 1);
     page.load(QUrl("qrc:/resources/test_window_open.html"));
-    QTRY_COMPARE(profile.pages.size(), 2);
-    QTRY_COMPARE(profile.pages.front().spy.count(), 1);
-    QTRY_COMPARE(profile.pages.back().spy.count(), 1);
+    QTRY_COMPARE(profile.pages.size(), 2u);
+    QTRY_COMPARE(profile.pages.front().spy.size(), 1);
+    QTRY_COMPARE(profile.pages.back().spy.size(), 1);
     QVERIFY(verifyOrder(profile.pages.front().eval("window.log", QWebEngineScript::MainWorld).toStringList()));
     QVERIFY(verifyOrder(profile.pages.front().eval("window.log", QWebEngineScript::ApplicationWorld).toStringList()));
     QVERIFY(verifyOrder(profile.pages.back().eval("window.log", QWebEngineScript::MainWorld).toStringList()));
@@ -269,7 +272,7 @@ void tst_QWebEngineScript::scriptDisabled()
     page.scripts().insert(script);
     page.load(QUrl("about:blank"));
     QSignalSpy spy(&page, &QWebEnginePage::loadFinished);
-    QTRY_COMPARE(spy.count(), 1);
+    QTRY_COMPARE(spy.size(), 1);
     QCOMPARE(spy.takeFirst().value(0).toBool(), true);
     // MainWorld scripts are disabled by the setting...
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "foo", QWebEngineScript::MainWorld), QVariant());
@@ -278,7 +281,7 @@ void tst_QWebEngineScript::scriptDisabled()
     page.scripts().clear();
     page.scripts().insert(script);
     page.load(QUrl("about:blank"));
-    QTRY_COMPARE(spy.count(), 1);
+    QTRY_COMPARE(spy.size(), 1);
     QCOMPARE(spy.takeFirst().value(0).toBool(), true);
     // ...but ApplicationWorld scripts should still work
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "foo", QWebEngineScript::MainWorld), QVariant());
@@ -296,7 +299,7 @@ void tst_QWebEngineScript::viewSource()
     page.scripts().insert(script);
     page.load(QUrl("view-source:about:blank"));
     QSignalSpy spy(&page, &QWebEnginePage::loadFinished);
-    QTRY_COMPARE(spy.count(), 1);
+    QTRY_COMPARE(spy.size(), 1);
     QCOMPARE(spy.takeFirst().value(0).toBool(), true);
     QCOMPARE(evaluateJavaScriptSync(&page, "foo"), QVariant(42));
 }
@@ -322,8 +325,8 @@ void tst_QWebEngineScript::scriptModifications()
     QVERIFY(spyFinished.wait());
     QCOMPARE(evaluateJavaScriptSync(&page, "document.body.innerText"), QVariant::fromValue(QStringLiteral("SUCCESS")));
     QVERIFY(page.scripts().count() == 1);
-    QWebEngineScript s = page.scripts().findScript(QStringLiteral("String1"));
-    QVERIFY(page.scripts().remove(s));
+    QList<QWebEngineScript> s = page.scripts().find(QStringLiteral("String1"));
+    QVERIFY(page.scripts().remove(s.first()));
     QVERIFY(page.scripts().count() == 0);
 }
 
@@ -415,7 +418,7 @@ void tst_QWebEngineScript::webChannel()
     QCOMPARE(testObject.text(), QStringLiteral("test"));
 
     if (worldId != QWebEngineScript::MainWorld)
-        QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant(QVariant::Invalid));
+        QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant());
 }
 #endif
 void tst_QWebEngineScript::noTransportWithoutWebChannel()
@@ -423,11 +426,11 @@ void tst_QWebEngineScript::noTransportWithoutWebChannel()
     QWebEnginePage page;
     page.setHtml(QStringLiteral("<html><body></body></html>"));
 
-    QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant(QVariant::Invalid));
+    QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant());
     page.triggerAction(QWebEnginePage::Reload);
     QSignalSpy spyFinished(&page, &QWebEnginePage::loadFinished);
     QVERIFY(spyFinished.wait());
-    QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant(QVariant::Invalid));
+    QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant());
 }
 
 void tst_QWebEngineScript::scriptsInNestedIframes()
@@ -455,7 +458,7 @@ void tst_QWebEngineScript::scriptsInNestedIframes()
     QSignalSpy spyFinished(&page, &QWebEnginePage::loadFinished);
     page.load(QUrl("qrc:/resources/test_iframe_main.html"));
     view.show();
-    QVERIFY(spyFinished.wait());
+    QTRY_VERIFY_WITH_TIMEOUT(spyFinished.size() > 0, 20000);
 
     // Check that main frame has modified content.
     QCOMPARE(
@@ -488,9 +491,9 @@ void tst_QWebEngineScript::webChannelResettingAndUnsetting()
 
     // There should be no webChannelTransport yet.
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::MainWorld),
-             QVariant(QVariant::Invalid));
+             QVariant());
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::ApplicationWorld),
-             QVariant(QVariant::Invalid));
+             QVariant());
 
     QWebChannel channel;
     page.setWebChannel(&channel, QWebEngineScript::MainWorld);
@@ -499,13 +502,13 @@ void tst_QWebEngineScript::webChannelResettingAndUnsetting()
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::MainWorld),
              QVariant(QVariantMap()));
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::ApplicationWorld),
-             QVariant(QVariant::Invalid));
+             QVariant());
 
     page.setWebChannel(&channel, QWebEngineScript::ApplicationWorld);
 
     // Now it should have moved to ApplicationWorld.
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::MainWorld),
-             QVariant(QVariant::Invalid));
+             QVariant());
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::ApplicationWorld),
              QVariant(QVariantMap()));
 
@@ -513,9 +516,9 @@ void tst_QWebEngineScript::webChannelResettingAndUnsetting()
 
     // And now it should be gone again.
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::MainWorld),
-             QVariant(QVariant::Invalid));
+             QVariant());
     QCOMPARE(evaluateJavaScriptSyncInWorld(&page, "qt.webChannelTransport", QWebEngineScript::ApplicationWorld),
-             QVariant(QVariant::Invalid));
+             QVariant());
 }
 
 void tst_QWebEngineScript::webChannelWithExistingQtObject()
@@ -523,7 +526,7 @@ void tst_QWebEngineScript::webChannelWithExistingQtObject()
     QWebEnginePage page;
 
     evaluateJavaScriptSync(&page, "qt = 42");
-    QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant(QVariant::Invalid));
+    QCOMPARE(evaluateJavaScriptSync(&page, "qt.webChannelTransport"), QVariant());
 
     QWebChannel channel;
     page.setWebChannel(&channel);
@@ -555,22 +558,22 @@ void tst_QWebEngineScript::navigation()
 
     QString url1 = QStringLiteral("about:blank");
     page.setUrl(url1);
-    QTRY_COMPARE(spyTextChanged.count(), 1);
+    QTRY_COMPARE(spyTextChanged.size(), 1);
     QCOMPARE(testObject.text(), url1);
 
     QString url2 = QStringLiteral("chrome://gpu/");
     page.setUrl(url2);
-    QTRY_COMPARE(spyTextChanged.count(), 2);
+    QTRY_COMPARE(spyTextChanged.size(), 2);
     QCOMPARE(testObject.text(), url2);
 
     QString url3 = QStringLiteral("qrc:/resources/test_iframe_main.html");
     page.setUrl(url3);
-    QTRY_COMPARE(spyTextChanged.count(), 3);
+    QTRY_COMPARE(spyTextChanged.size(), 3);
     QCOMPARE(testObject.text(), url3);
 
     page.setLifecycleState(QWebEnginePage::LifecycleState::Discarded);
     page.setUrl(url1);
-    QTRY_COMPARE(spyTextChanged.count(), 4);
+    QTRY_COMPARE(spyTextChanged.size(), 4);
     QCOMPARE(testObject.text(), url1);
 }
 
@@ -590,6 +593,36 @@ void tst_QWebEngineScript::webChannelWithBadString()
     // expect 0xD800 see https://chromium-review.googlesource.com/c/1282993
     QChar data(0xd800);
     QCOMPARE(host.text(), data);
+}
+
+void tst_QWebEngineScript::webChannelWithJavaScriptDisabled()
+{
+    QWebEnginePage page;
+    QSignalSpy spyFinished(&page, &QWebEnginePage::loadFinished);
+    // JavaScript disabled in main world
+    page.settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, false);
+
+    TestObject testObject;
+    QScopedPointer<QWebChannel> channel(new QWebChannel(this));
+    channel->registerObject(QStringLiteral("object"), &testObject);
+    page.setWebChannel(channel.data(), QWebEngineScript::ApplicationWorld);
+
+    QWebEngineScript script = webChannelScript();
+    script.setWorldId(QWebEngineScript::ApplicationWorld);
+    page.scripts().insert(script);
+
+    page.setHtml(QStringLiteral("<html><body></body></html>"));
+    QVERIFY(spyFinished.wait());
+
+    QSignalSpy spyTextChanged(&testObject, &TestObject::textChanged);
+    page.runJavaScript(QLatin1String(
+                                "new QWebChannel(qt.webChannelTransport,"
+                                "  function(channel) {"
+                                "    channel.objects.object.text = 'test';"
+                                "  }"
+                                ");"), QWebEngineScript::ApplicationWorld);
+    QVERIFY(spyTextChanged.wait());
+    QCOMPARE(testObject.text(), QStringLiteral("test"));
 }
 #endif
 
@@ -612,6 +645,86 @@ document.title = 'New title';
     QCOMPARE(page.title(), "A");
     loadSync(&page, QUrl("qrc:/resources/title_b.html"));
     QCOMPARE(page.title(), "New title");
+}
+
+// Add many scripts and check order of execution.
+void tst_QWebEngineScript::injectionOrder()
+{
+    QWebEngineProfile profile;
+    class Page : public QWebEnginePage
+    {
+    public:
+        Page(QWebEngineProfile *profile) : QWebEnginePage(profile) {}
+        QVector<QString> log;
+
+    protected:
+        void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel, const QString &message, int,
+                                      const QString &) override
+        {
+            log.append(message);
+        }
+    } page(&profile);
+    QWebEngineScript::InjectionPoint points[] = {
+        QWebEngineScript::DocumentCreation,
+        QWebEngineScript::DocumentReady,
+        QWebEngineScript::Deferred,
+    };
+    int nPoints = 3;
+    int nCollections = 2;
+    int nScripts = 5;
+
+    QVector<QString> expected;
+    for (int iPoint = 0; iPoint != nPoints; ++iPoint) {
+        for (int iCollection = 0; iCollection != nCollections; ++iCollection) {
+            for (int iScript = 0; iScript != nScripts; ++iScript) {
+                QWebEngineScript script;
+                script.setName(QString("%1%2%3").arg(iPoint).arg(iCollection).arg(iScript));
+                expected.append(script.name());
+                script.setInjectionPoint(points[iPoint]);
+                script.setWorldId(QWebEngineScript::MainWorld);
+                script.setSourceCode(QStringLiteral("console.error('%1');").arg(script.name()));
+                if (iCollection == 0)
+                    profile.scripts()->insert(script);
+                else
+                    page.scripts().insert(script);
+            }
+        }
+    }
+
+    page.load(QUrl("qrc:/resources/test_iframe_inner.html"));
+    QTRY_COMPARE(page.log, expected);
+}
+
+void tst_QWebEngineScript::reloadWithSubframes()
+{
+    class Page : public QWebEnginePage
+    {
+    public:
+        Page() : QWebEnginePage() {}
+        QVector<QString> log;
+
+    protected:
+        void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel, const QString &message, int,
+                                      const QString &) override
+        {
+            log.append(message);
+        }
+    } page;
+
+    QWebEngineScript s;
+    s.setInjectionPoint(QWebEngineScript::DocumentCreation);
+    s.setSourceCode(QStringLiteral("console.log('Hello');"));
+    page.scripts().insert(s);
+
+    page.setHtml(QStringLiteral("<body>"
+                                "  <h1>Test scripts working on reload </h1>"
+                                "  <iframe src='about://blank'>"
+                                "  </iframe>"
+                                "</body>"));
+    QTRY_COMPARE(page.log.size(), 1);
+
+    page.triggerAction(QWebEnginePage::Reload);
+    QTRY_COMPARE(page.log.size(), 2);
 }
 
 QTEST_MAIN(tst_QWebEngineScript)

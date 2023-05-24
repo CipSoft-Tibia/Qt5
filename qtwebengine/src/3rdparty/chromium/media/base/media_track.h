@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <string>
 
-#include "base/util/type_safety/strong_alias.h"
+#include "base/types/strong_alias.h"
 #include "media/base/media_export.h"
 #include "media/base/stream_parser.h"
 
@@ -16,10 +16,10 @@ namespace media {
 class MEDIA_EXPORT MediaTrack {
  public:
   enum Type { Text, Audio, Video };
-  using Id = util::StrongAlias<class IdTag, std::string>;
-  using Kind = util::StrongAlias<class KindTag, std::string>;
-  using Label = util::StrongAlias<class LabelTag, std::string>;
-  using Language = util::StrongAlias<class LanguageTag, std::string>;
+  using Id = base::StrongAlias<class IdTag, std::string>;
+  using Kind = base::StrongAlias<class KindTag, std::string>;
+  using Label = base::StrongAlias<class LabelTag, std::string>;
+  using Language = base::StrongAlias<class LanguageTag, std::string>;
   MediaTrack(Type type,
              StreamParser::TrackId bytestream_track_id,
              const Kind& kind,

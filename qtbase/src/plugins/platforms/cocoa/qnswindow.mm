@@ -1,48 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #if !defined(QNSWINDOW_PROTOCOL_IMPLMENTATION)
+
+#include <AppKit/AppKit.h>
 
 #include "qnswindow.h"
 #include "qcocoawindow.h"
 #include "qcocoahelpers.h"
 #include "qcocoaeventdispatcher.h"
+#include "qcocoaintegration.h"
 
 #include <qpa/qwindowsysteminterface.h>
 #include <qoperatingsystemversion.h>
@@ -91,6 +58,15 @@ static bool isMouseEvent(NSEvent *ev)
 }
 @end
 
+
+NSWindow<QNSWindowProtocol> *qnswindow_cast(NSWindow *window)
+{
+    if ([window conformsToProtocol:@protocol(QNSWindowProtocol)])
+        return static_cast<QCocoaNSWindow *>(window);
+    else
+        return nil;
+}
+
 @implementation QNSWindow
 #define QNSWINDOW_PROTOCOL_IMPLMENTATION 1
 #include "qnswindow.mm"
@@ -131,9 +107,10 @@ static bool isMouseEvent(NSEvent *ev)
             continue;
 
         if ([window conformsToProtocol:@protocol(QNSWindowProtocol)]) {
-            QCocoaWindow *cocoaWindow = static_cast<QCocoaNSWindow *>(window).platformWindow;
-            window.level = notification.name == NSApplicationWillResignActiveNotification ?
-                NSNormalWindowLevel : cocoaWindow->windowLevel(cocoaWindow->window()->flags());
+            if (QCocoaWindow *cocoaWindow = static_cast<QCocoaNSWindow *>(window).platformWindow) {
+                window.level = notification.name == NSApplicationWillResignActiveNotification ?
+                    NSNormalWindowLevel : cocoaWindow->windowLevel(cocoaWindow->window()->flags());
+            }
         }
 
         // The documentation says that "when a window enters a new level, it’s ordered
@@ -200,45 +177,6 @@ static bool isMouseEvent(NSEvent *ev)
 }
 @end
 
-#if !defined(QT_APPLE_NO_PRIVATE_APIS)
-// When creating an NSWindow the worksWhenModal function is queried,
-// and the resulting state is used to set the corresponding window tag,
-// which the window server uses to determine whether or not the window
-// should be allowed to activate via mouse clicks in the title-bar.
-// Unfortunately, prior to macOS 10.15, this window tag was never
-// updated after the initial assignment in [NSWindow _commonAwake],
-// which meant that windows that dynamically change their worksWhenModal
-// state will behave as if they were never allowed to work when modal.
-// We work around this by manually updating the window tag when needed.
-
-typedef uint32_t CGSConnectionID;
-typedef uint32_t CGSWindowID;
-
-extern "C" {
-CGSConnectionID CGSMainConnectionID() __attribute__((weak_import));
-OSStatus CGSSetWindowTags(const CGSConnectionID, const CGSWindowID, int *, int) __attribute__((weak_import));
-OSStatus CGSClearWindowTags(const CGSConnectionID, const CGSWindowID, int *, int) __attribute__((weak_import));
-}
-
-@interface QNSPanel (WorksWhenModalWindowTagWorkaround) @end
-@implementation QNSPanel (WorksWhenModalWindowTagWorkaround)
-- (void)setWorksWhenModal:(BOOL)worksWhenModal
-{
-    [super setWorksWhenModal:worksWhenModal];
-
-    if (QOperatingSystemVersion::current() < QOperatingSystemVersion::MacOSCatalina) {
-        if (CGSMainConnectionID && CGSSetWindowTags && CGSClearWindowTags) {
-            static int kWorksWhenModalWindowTag = 0x40;
-            auto *function = worksWhenModal ? CGSSetWindowTags : CGSClearWindowTags;
-            function(CGSMainConnectionID(), self.windowNumber, &kWorksWhenModalWindowTag, 64);
-        } else {
-            qWarning() << "Missing APIs for window tag handling, can not update worksWhenModal state";
-        }
-    }
-}
-@end
-#endif // QT_APPLE_NO_PRIVATE_APIS
-
 #else // QNSWINDOW_PROTOCOL_IMPLMENTATION
 
 // The following content is mixed in to the QNSWindow and QNSPanel classes via includes
@@ -246,6 +184,7 @@ OSStatus CGSClearWindowTags(const CGSConnectionID, const CGSWindowID, int *, int
 {
     // Member variables
     QPointer<QCocoaWindow> m_platformWindow;
+    bool m_isMinimizing;
 }
 
 - (instancetype)initWithContentRect:(NSRect)contentRect styleMask:(NSWindowStyleMask)style
@@ -257,12 +196,37 @@ OSStatus CGSClearWindowTags(const CGSConnectionID, const CGSWindowID, int *, int
     // we can properly reflect the window's state during initialization.
     m_platformWindow = window;
 
+    m_isMinimizing = false;
+
     return [super initWithContentRect:contentRect styleMask:style backing:backingStoreType defer:defer screen:screen];
 }
 
 - (QCocoaWindow *)platformWindow
 {
     return m_platformWindow;
+}
+
+- (void)setContentView:(NSView*)view
+{
+    [super setContentView:view];
+
+    if (!qnsview_cast(self.contentView))
+        return;
+
+    // Now that we're the content view, we can apply the properties of
+    // the QWindow. We do this here, instead of in init, so that we can
+    // use the same code paths for setting these properties during
+    // NSWindow initialization as we do when setting them later on.
+    const QWindow *window = m_platformWindow->window();
+    qCDebug(lcQpaWindow) << "Reflecting" << window << "state to" << self;
+
+    m_platformWindow->propagateSizeHints();
+    m_platformWindow->setWindowFlags(window->flags());
+    m_platformWindow->setWindowTitle(window->title());
+    m_platformWindow->setWindowFilePath(window->filePath()); // Also sets window icon
+    m_platformWindow->setWindowState(window->windowState());
+    m_platformWindow->setOpacity(window->opacity());
+    m_platformWindow->setVisible(window->isVisible());
 }
 
 - (NSString *)description
@@ -326,8 +290,13 @@ OSStatus CGSClearWindowTags(const CGSConnectionID, const CGSWindowID, int *, int
     // we assume that if you have translucent content, without a
     // frame then you intend to do all background drawing yourself.
     const QWindow *window = m_platformWindow ? m_platformWindow->window() : nullptr;
-    if (!self.opaque && window && window->flags().testFlag(Qt::FramelessWindowHint))
-        return [NSColor clearColor];
+    if (!self.opaque && window) {
+        // Qt::Popup also requires clearColor - in qmacstyle
+        // we fill background using a special path with rounded corners.
+        if (window->flags().testFlag(Qt::FramelessWindowHint)
+            || (window->flags() & Qt::WindowType_Mask) == Qt::Popup)
+            return [NSColor clearColor];
+    }
 
     // This still allows you to have translucent content with a frame,
     // where the system background (or color set via NSWindow) will
@@ -371,15 +340,50 @@ OSStatus CGSClearWindowTags(const CGSConnectionID, const CGSWindowID, int *, int
     // close open popups. Presses within the window's content are handled to do that in the
     // NSView::mouseDown implementation.
     if (theEvent.type == NSEventTypeLeftMouseDown && mouseEventInFrameStrut)
-        [qnsview_cast(m_platformWindow->view()) closePopups:theEvent];
+        QGuiApplicationPrivate::instance()->closeAllPopups();
 
     [super sendEvent:theEvent];
 
     if (!m_platformWindow)
         return; // Platform window went away while processing event
 
+    // Cocoa will not deliver mouse events to a window that is modally blocked (by Cocoa,
+    // not Qt). However, an active popup is expected to grab any mouse event within the
+    // application, so we need to handle those explicitly and trust Qt's isWindowBlocked
+    // implementation to eat events that shouldn't be delivered anyway.
+    if (isMouseEvent(theEvent) && QGuiApplicationPrivate::instance()->popupActive()
+        && QGuiApplicationPrivate::instance()->isWindowBlocked(m_platformWindow->window(), nullptr)) {
+        qCDebug(lcQpaWindow) << "Mouse event over modally blocked window" << m_platformWindow->window()
+                             << "while popup is open - redirecting";
+        [qnsview_cast(m_platformWindow->view()) handleMouseEvent:theEvent];
+    }
     if (m_platformWindow->frameStrutEventsEnabled() && mouseEventInFrameStrut)
         [qnsview_cast(m_platformWindow->view()) handleFrameStrutMouseEvent:theEvent];
+}
+
+- (void)miniaturize:(id)sender
+{
+    QBoolBlocker miniaturizeTracker(m_isMinimizing, true);
+    [super miniaturize:sender];
+}
+
+- (NSButton *)standardWindowButton:(NSWindowButton)buttonType
+{
+    NSButton *button = [super standardWindowButton:buttonType];
+
+    // When an NSWindow is asked to minimize it will check the
+    // NSWindowMiniaturizeButton for enablement before continuing,
+    // even if the style mask includes NSWindowStyleMaskMiniaturizable.
+    // To ensure that a window can be minimized, even when the
+    // minimize button has been disabled in response to the user
+    // setting CustomizeWindowHint, we temporarily return a default
+    // minimize-button that we haven't modified in updateTitleBarButtons.
+    // This ensures the window can be minimized, without visually
+    // toggling the actual minimize-button on and off.
+    if (buttonType == NSWindowMiniaturizeButton && m_isMinimizing && !button.enabled)
+        return [NSWindow standardWindowButton:buttonType forStyleMask:self.styleMask];
+
+    return button;
 }
 
 - (void)closeAndRelease

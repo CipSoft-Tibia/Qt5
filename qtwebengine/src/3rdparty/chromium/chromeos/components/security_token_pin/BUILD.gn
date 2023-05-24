@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -31,9 +31,5 @@ source_set("unit_tests") {
     "//base:i18n",
     "//testing/gtest",
     "//ui/base",
-  ]
-  data_deps = [
-    "//chromeos/strings:chromeos_test_strings",
-    "//ui/resources:ui_test_pak_data",
   ]
 }

@@ -2,11 +2,9 @@ import QtQuick 2.0
 
 QtObject {
     // Testing UiObjectBinding
-    readonly property Item
-    item: Item {
+    readonly property Item item: Item {
         id: test
-
-        signal foo()
+        signal foo
     }
     // End comment
 
@@ -14,16 +12,16 @@ QtObject {
     readonly property list<Item> array: [
         Item {
             id: test1
-
-            signal foo()
+            signal foo
         },
         Item {
             id: test2
-
-            signal bar()
+            signal bar
         }
     ]
+
     // Testing UiScriptBinding
     readonly property int script: Math.sin(Math.PI)
+
     property bool normalProperty: true
 }

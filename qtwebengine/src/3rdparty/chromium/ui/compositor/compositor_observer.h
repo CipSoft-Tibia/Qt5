@@ -1,17 +1,21 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_COMPOSITOR_COMPOSITOR_OBSERVER_H_
 #define UI_COMPOSITOR_COMPOSITOR_OBSERVER_H_
 
+#include "base/containers/flat_set.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "components/viz/common/surfaces/frame_sink_id.h"
 #include "ui/compositor/compositor_export.h"
 
 namespace gfx {
 class Size;
-}
+struct PresentationFeedback;
+}  // namespace gfx
 
 namespace ui {
 
@@ -42,15 +46,41 @@ class COMPOSITOR_EXPORT CompositorObserver {
   // Called when a child of the compositor is resizing.
   virtual void OnCompositingChildResizing(Compositor* compositor) {}
 
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
   // Called when a swap with new size is completed.
   virtual void OnCompositingCompleteSwapWithNewSize(ui::Compositor* compositor,
                                                     const gfx::Size& size) {}
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
   // Called at the top of the compositor's destructor, to give observers a
   // chance to remove themselves.
   virtual void OnCompositingShuttingDown(Compositor* compositor) {}
+
+  // Called when the presentation feedback was received from the viz.
+  virtual void OnDidPresentCompositorFrame(
+      uint32_t frame_token,
+      const gfx::PresentationFeedback& feedback) {}
+
+  // Called when first AnimationObserver was added to the compositor.
+  virtual void OnFirstAnimationStarted(Compositor* compositor) {}
+
+  // Called on first BeginMainFrame after the last animation has finished.
+  // This presents "animations finished" event from user point of view.
+  // When animations are temporary stopped and restarted in between painting
+  // two frames technically animations have stopped, but users will never
+  // notice it because animations are immediately restarted. This way we delay
+  // "Last Animation Ended" notification to the BeginMainFrame stage so that it
+  // only fires if there was a frame painted without animations.
+  // See go/report-ux-metrics-at-painting for details.
+  virtual void OnFirstNonAnimatedFrameStarted(Compositor* compositor) {}
+
+  virtual void OnFrameSinksToThrottleUpdated(
+      const base::flat_set<viz::FrameSinkId>& ids) {}
+
+  // Called at the end of the BeginMainFrame.
+  virtual void OnDidBeginMainFrame(Compositor* compositor) {}
 };
 
 }  // namespace ui

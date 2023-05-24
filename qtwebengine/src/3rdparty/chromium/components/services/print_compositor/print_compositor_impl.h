@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,11 +13,10 @@
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
 #include "base/containers/span.h"
-#include "base/macros.h"
+#include "base/gtest_prod_util.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/optional.h"
 #include "build/build_config.h"
 #include "components/services/print_compositor/public/cpp/print_service_mojo_types.h"
 #include "components/services/print_compositor/public/mojom/print_compositor.mojom.h"
@@ -46,21 +45,21 @@ class PrintCompositorImpl : public mojom::PrintCompositor {
  public:
   // Creates an instance with an optional Mojo receiver (may be null) and
   // optional initialization of the runtime environment necessary for
-  // compositing operations. |io_task_runner| is used for shared memory
-  // management, if and only if |SetDiscardableSharedMemoryManager()| is
-  // eventually called, which may not be the case in unit tests. In practice,
-  // |initialize_environment| is only false in unit tests.
+  // compositing operations. `io_task_runner` is used for shared memory
+  // management, if and only if there is a receiver, which may not be the case
+  // in unit tests. In practice, `initialize_environment` is only false in unit
+  // tests.
   PrintCompositorImpl(
       mojo::PendingReceiver<mojom::PrintCompositor> receiver,
       bool initialize_environment,
       scoped_refptr<base::SingleThreadTaskRunner> io_task_runner);
+
+  PrintCompositorImpl(const PrintCompositorImpl&) = delete;
+  PrintCompositorImpl& operator=(const PrintCompositorImpl&) = delete;
+
   ~PrintCompositorImpl() override;
 
   // mojom::PrintCompositor
-  void SetDiscardableSharedMemoryManager(
-      mojo::PendingRemote<
-          discardable_memory::mojom::DiscardableSharedMemoryManager> manager)
-      override;
   void NotifyUnavailableSubframe(uint64_t frame_guid) override;
   void AddSubframeContent(
       uint64_t frame_guid,
@@ -230,7 +229,7 @@ class PrintCompositorImpl : public mojom::PrintCompositor {
   mojo::Receiver<mojom::PrintCompositor> receiver_{this};
 
   const scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
-  std::unique_ptr<discardable_memory::ClientDiscardableSharedMemoryManager>
+  scoped_refptr<discardable_memory::ClientDiscardableSharedMemoryManager>
       discardable_shared_memory_manager_;
 
   // The creator of this service.
@@ -250,8 +249,6 @@ class PrintCompositorImpl : public mojom::PrintCompositor {
   // If present, the accessibility tree for the document needed to
   // export a tagged (accessible) PDF.
   ui::AXTreeUpdate accessibility_tree_;
-
-  DISALLOW_COPY_AND_ASSIGN(PrintCompositorImpl);
 };
 
 }  // namespace printing

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,11 @@
 
 #include <vector>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "gpu/command_buffer/common/mailbox_holder.h"
 #include "media/base/media_export.h"
+#include "media/base/video_frame.h"
 #include "media/base/video_types.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/rect.h"
@@ -25,6 +26,7 @@ namespace media {
 class MEDIA_EXPORT PictureBuffer {
  public:
   using TextureIds = std::vector<uint32_t>;
+  using TextureSizes = std::vector<gfx::Size>;
 
   PictureBuffer(int32_t id, const gfx::Size& size);
   PictureBuffer(int32_t id,
@@ -40,6 +42,13 @@ class MEDIA_EXPORT PictureBuffer {
                 const gfx::Size& size,
                 const TextureIds& client_texture_ids,
                 const std::vector<gpu::Mailbox>& texture_mailboxes,
+                uint32_t texture_target,
+                VideoPixelFormat pixel_format);
+  PictureBuffer(int32_t id,
+                const gfx::Size& size,
+                const TextureSizes& texture_sizes,
+                const TextureIds& client_texture_ids,
+                const TextureIds& service_texture_ids,
                 uint32_t texture_target,
                 VideoPixelFormat pixel_format);
   PictureBuffer(const PictureBuffer& other);
@@ -64,11 +73,12 @@ class MEDIA_EXPORT PictureBuffer {
 
   VideoPixelFormat pixel_format() const { return pixel_format_; }
 
-  gpu::Mailbox texture_mailbox(size_t plane) const;
+  gfx::Size texture_size(size_t plane) const;
 
  private:
   int32_t id_;
   gfx::Size size_;
+  TextureSizes texture_sizes_;
   TextureIds client_texture_ids_;
   TextureIds service_texture_ids_;
   std::vector<gpu::Mailbox> texture_mailboxes_;
@@ -118,6 +128,13 @@ class MEDIA_EXPORT Picture {
 
   // Returns the color space of the picture.
   const gfx::ColorSpace& color_space() const { return color_space_; }
+  const absl::optional<gfx::HDRMetadata>& hdr_metadata() const {
+    return hdr_metadata_;
+  }
+
+  void set_hdr_metadata(const absl::optional<gfx::HDRMetadata>& hdr_metadata) {
+    hdr_metadata_ = hdr_metadata;
+  }
 
   // Returns the visible rectangle of the picture. Its size may be smaller
   // than the size of the PictureBuffer, as it is the only visible part of the
@@ -151,24 +168,38 @@ class MEDIA_EXPORT Picture {
   }
 
   void set_scoped_shared_image(
-      scoped_refptr<ScopedSharedImage> scoped_shared_image) {
-    scoped_shared_image_ = scoped_shared_image;
+      scoped_refptr<ScopedSharedImage> scoped_shared_image,
+      uint32_t plane = 0) {
+    DCHECK(plane < scoped_shared_images_.size());
+    scoped_shared_images_[plane] = scoped_shared_image;
   }
-  scoped_refptr<ScopedSharedImage> scoped_shared_image() const {
-    return scoped_shared_image_;
+
+  scoped_refptr<ScopedSharedImage> scoped_shared_image(
+      uint32_t plane = 0) const {
+    DCHECK(plane < scoped_shared_images_.size());
+    return scoped_shared_images_[plane];
   }
+
+  void set_is_webgpu_compatible(bool is_webgpu_compatible) {
+    is_webgpu_compatible_ = is_webgpu_compatible;
+  }
+
+  bool is_webgpu_compatible() { return is_webgpu_compatible_; }
 
  private:
   int32_t picture_buffer_id_;
   int32_t bitstream_buffer_id_;
   gfx::Rect visible_rect_;
   gfx::ColorSpace color_space_;
+  absl::optional<gfx::HDRMetadata> hdr_metadata_;
   bool allow_overlay_;
   bool read_lock_fences_enabled_;
   bool size_changed_;
   bool texture_owner_;
   bool wants_promotion_hint_;
-  scoped_refptr<ScopedSharedImage> scoped_shared_image_;
+  bool is_webgpu_compatible_;
+  std::array<scoped_refptr<ScopedSharedImage>, VideoFrame::kMaxPlanes>
+      scoped_shared_images_;
 };
 
 }  // namespace media

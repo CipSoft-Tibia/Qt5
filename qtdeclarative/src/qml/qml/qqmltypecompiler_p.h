@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QQMLTYPECOMPILER_P_H
 #define QQMLTYPECOMPILER_P_H
 
@@ -88,12 +52,27 @@ public:
 
     // --- interface used by QQmlPropertyCacheCreator
     typedef QmlIR::Object CompiledObject;
+    typedef QmlIR::Binding CompiledBinding;
+    using ListPropertyAssignBehavior = QmlIR::Pragma::ListPropertyAssignBehaviorValue;
+
+    // Deliberate choice of map over hash here to ensure stable generated output.
+    using IdToObjectMap = QMap<int, int>;
+
     const QmlIR::Object *objectAt(int index) const { return document->objects.at(index); }
-    int objectCount() const { return document->objects.count(); }
+    QmlIR::Object *objectAt(int index) { return document->objects.at(index); }
+    int objectCount() const { return document->objects.size(); }
     QString stringAt(int idx) const;
     QmlIR::PoolList<QmlIR::Function>::Iterator objectFunctionsBegin(const QmlIR::Object *object) const { return object->functionsBegin(); }
     QmlIR::PoolList<QmlIR::Function>::Iterator objectFunctionsEnd(const QmlIR::Object *object) const { return object->functionsEnd(); }
     QV4::ResolvedTypeReferenceMap *resolvedTypes = nullptr;
+    ListPropertyAssignBehavior listPropertyAssignBehavior() const
+    {
+        for (const QmlIR::Pragma *pragma: document->pragmas) {
+            if (pragma->type == QmlIR::Pragma::ListPropertyAssignBehavior)
+                return pragma->listPropertyAssignBehavior;
+        }
+        return ListPropertyAssignBehavior::Append;
+    }
     // ---
 
     QQmlRefPointer<QV4::ExecutableCompilationUnit> compile();
@@ -112,27 +91,33 @@ public:
     QQmlEnginePrivate *enginePrivate() const { return engine; }
     const QQmlImports *imports() const;
     QVector<QmlIR::Object *> *qmlObjects() const;
-    void setPropertyCaches(QQmlPropertyCacheVector &&caches);
+    QQmlPropertyCacheVector *propertyCaches();
     const QQmlPropertyCacheVector *propertyCaches() const;
-    QQmlPropertyCacheVector &&takePropertyCaches();
-    void setComponentRoots(const QVector<quint32> &roots) { m_componentRoots = roots; }
-    const QVector<quint32> &componentRoots() const { return m_componentRoots; }
     QQmlJS::MemoryPool *memoryPool();
-    QStringRef newStringRef(const QString &string);
+    QStringView newStringRef(const QString &string);
     const QV4::Compiler::StringTableGenerator *stringPool() const;
 
     const QHash<int, QQmlCustomParser*> &customParserCache() const { return customParsers; }
 
     QString bindingAsString(const QmlIR::Object *object, int scriptIndex) const;
 
-    void addImport(const QString &module, const QString &qualifier, int majorVersion, int minorVersion);
+    void addImport(const QString &module, const QString &qualifier, QTypeRevision version);
 
     QV4::ResolvedTypeReference *resolvedType(int id) const
     {
         return resolvedTypes->value(id);
     }
 
-    CompositeMetaTypeIds typeIdsForComponent(int objectId = 0) const;
+    QV4::ResolvedTypeReference *resolvedType(QMetaType type) const
+    {
+        for (QV4::ResolvedTypeReference *ref : std::as_const(*resolvedTypes)) {
+            if (ref->type().typeId() == type)
+                return ref;
+        }
+        return nullptr;
+    }
+
+    CompositeMetaTypeIds typeIdsForComponent(const QString &inlineComponentName = QString()) const;
 
 private:
     QList<QQmlError> errors;
@@ -143,7 +128,6 @@ private:
     QHash<int, QQmlCustomParser*> customParsers;
 
     // index in first hash is component index, vector inside contains object indices of objects with id property
-    QVector<quint32> m_componentRoots;
     QQmlPropertyCacheVector m_propertyCaches;
 
     QQmlRefPointer<QQmlTypeNameCache> typeNameCache;
@@ -158,34 +142,27 @@ struct QQmlCompilePass
 protected:
     void recordError(const QV4::CompiledData::Location &location, const QString &description) const
     { compiler->recordError(location, description); }
-    void recordError(const QQmlError &error)
-    { compiler->recordError(error); }
 
     QV4::ResolvedTypeReference *resolvedType(int id) const
     { return compiler->resolvedType(id); }
-    bool containsResolvedType(int id) const
-    { return compiler->resolvedTypes->contains(id); }
-    QV4::ResolvedTypeReferenceMap::iterator insertResolvedType(
-            int id, QV4::ResolvedTypeReference *value)
-    { return compiler->resolvedTypes->insert(id, value); }
 
     QQmlTypeCompiler *compiler;
 };
 
-// "Converts" signal expressions to full-fleged function declarations with
-// parameters taken from the signal declarations
-// It also updates the QV4::CompiledData::Binding objects to set the property name
-// to the final signal name (onTextChanged -> textChanged) and sets the IsSignalExpression flag.
-struct SignalHandlerConverter : public QQmlCompilePass
+// Resolves signal handlers. Updates the QV4::CompiledData::Binding objects to
+// set the property name to the final signal name (onTextChanged -> textChanged)
+// and sets the IsSignalExpression flag.
+struct SignalHandlerResolver : public QQmlCompilePass
 {
-    Q_DECLARE_TR_FUNCTIONS(SignalHandlerConverter)
+    Q_DECLARE_TR_FUNCTIONS(SignalHandlerResolver)
 public:
-    SignalHandlerConverter(QQmlTypeCompiler *typeCompiler);
+    SignalHandlerResolver(QQmlTypeCompiler *typeCompiler);
 
-    bool convertSignalHandlerExpressionsToFunctionDeclarations();
+    bool resolveSignalHandlerExpressions();
 
 private:
-    bool convertSignalHandlerExpressionsToFunctionDeclarations(const QmlIR::Object *obj, const QString &typeName, QQmlPropertyCache *propertyCache);
+    bool resolveSignalHandlerExpressions(const QmlIR::Object *obj, const QString &typeName,
+                                         const QQmlPropertyCache::ConstPtr &propertyCache);
 
     QQmlEnginePrivate *enginePrivate;
     const QVector<QmlIR::Object*> &qmlObjects;
@@ -207,15 +184,15 @@ public:
     bool resolveEnumBindings();
 
 private:
-    bool assignEnumToBinding(QmlIR::Binding *binding, const QStringRef &enumName, int enumValue, bool isQtObject);
+    bool assignEnumToBinding(QmlIR::Binding *binding, QStringView enumName, int enumValue, bool isQtObject);
     bool assignEnumToBinding(QmlIR::Binding *binding, const QString &enumName, int enumValue, bool isQtObject)
     {
-        return assignEnumToBinding(binding, QStringRef(&enumName), enumValue, isQtObject);
+        return assignEnumToBinding(binding, QStringView(enumName), enumValue, isQtObject);
     }
-    bool tryQualifiedEnumAssignment(const QmlIR::Object *obj, const QQmlPropertyCache *propertyCache,
-                                    const QQmlPropertyData *prop,
-                                    QmlIR::Binding *binding);
-    int evaluateEnum(const QString &scope, const QStringRef &enumName, const QStringRef &enumValue, bool *ok) const;
+    bool tryQualifiedEnumAssignment(
+            const QmlIR::Object *obj, const QQmlPropertyCache::ConstPtr &propertyCache,
+            const QQmlPropertyData *prop, QmlIR::Binding *binding);
+    int evaluateEnum(const QString &scope, QStringView enumName, QStringView enumValue, bool *ok) const;
 
 
     const QVector<QmlIR::Object*> &qmlObjects;
@@ -261,52 +238,17 @@ private:
     const QQmlPropertyCacheVector * const propertyCaches;
 };
 
-class QQmlComponentAndAliasResolver : public QQmlCompilePass
-{
-    Q_DECLARE_TR_FUNCTIONS(QQmlAnonymousComponentResolver)
-public:
-    QQmlComponentAndAliasResolver(QQmlTypeCompiler *typeCompiler);
-
-    bool resolve();
-
-protected:
-    void findAndRegisterImplicitComponents(const QmlIR::Object *obj, QQmlPropertyCache *propertyCache);
-    bool collectIdsAndAliases(int objectIndex);
-    bool resolveAliases(int componentIndex);
-    void propertyDataForAlias(QmlIR::Alias *alias, int *type, quint32 *propertyFlags);
-
-    enum AliasResolutionResult {
-        NoAliasResolved,
-        SomeAliasesResolved,
-        AllAliasesResolved
-    };
-
-    AliasResolutionResult resolveAliasesInObject(int objectIndex, QQmlError *error);
-
-    QQmlEnginePrivate *enginePrivate;
-    QQmlJS::MemoryPool *pool;
-
-    QVector<QmlIR::Object*> *qmlObjects;
-
-    // indices of the objects that are actually Component {}
-    QVector<quint32> componentRoots;
-
-    // Deliberate choice of map over hash here to ensure stable generated output.
-    QMap<int, int> _idToObjectIndex;
-    QVector<int> _objectsWithAliases;
-
-    QQmlPropertyCacheVector propertyCaches;
-};
-
 class QQmlDeferredAndCustomParserBindingScanner : public QQmlCompilePass
 {
+    Q_DECLARE_TR_FUNCTIONS(QQmlDeferredAndCustomParserBindingScanner)
 public:
     QQmlDeferredAndCustomParserBindingScanner(QQmlTypeCompiler *typeCompiler);
 
     bool scanObject();
 
 private:
-    bool scanObject(int objectIndex);
+    enum class ScopeDeferred { False, True };
+    bool scanObject(int objectIndex, ScopeDeferred scopeDeferred);
 
     QVector<QmlIR::Object*> *qmlObjects;
     const QQmlPropertyCacheVector * const propertyCaches;

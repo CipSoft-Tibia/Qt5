@@ -52,7 +52,7 @@ NavigationPolicy NavigationPolicyFromEventModifiers(int16_t button,
                                                     bool shift,
                                                     bool alt,
                                                     bool meta) {
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   const bool new_tab_modifier = (button == 1) || meta;
 #else
   const bool new_tab_modifier = (button == 1) || ctrl;
@@ -61,17 +61,10 @@ NavigationPolicy NavigationPolicyFromEventModifiers(int16_t button,
     return kNavigationPolicyCurrentTab;
 
   if (new_tab_modifier) {
-    if (shift)
-      return kNavigationPolicyNewForegroundTab;
-    else
-      return kNavigationPolicyNewBackgroundTab;
-  } else {
-    if (shift)
-      return kNavigationPolicyNewWindow;
-    else
-      return kNavigationPolicyDownload;
+    return shift ? kNavigationPolicyNewForegroundTab
+                 : kNavigationPolicyNewBackgroundTab;
   }
-  return kNavigationPolicyCurrentTab;
+  return shift ? kNavigationPolicyNewWindow : kNavigationPolicyDownload;
 }
 
 NavigationPolicy NavigationPolicyFromEventInternal(const Event* event) {
@@ -163,9 +156,7 @@ NavigationPolicy NavigationPolicyForCreateWindow(
   // If our default configuration was modified by a script or wasn't
   // created by a user gesture, then show as a popup. Else, let this
   // new window be opened as a toplevel window.
-  bool as_popup = !features.tool_bar_visible || !features.status_bar_visible ||
-                  !features.scrollbars_visible || !features.menu_bar_visible ||
-                  !features.resizable;
+  bool as_popup = features.is_popup || !features.resizable;
   NavigationPolicy app_policy =
       as_popup ? kNavigationPolicyNewPopup : kNavigationPolicyNewForegroundTab;
   NavigationPolicy user_policy = NavigationPolicyFromCurrentEvent();
@@ -199,5 +190,7 @@ STATIC_ASSERT_ENUM(kWebNavigationPolicyNewForegroundTab,
                    kNavigationPolicyNewForegroundTab);
 STATIC_ASSERT_ENUM(kWebNavigationPolicyNewWindow, kNavigationPolicyNewWindow);
 STATIC_ASSERT_ENUM(kWebNavigationPolicyNewPopup, kNavigationPolicyNewPopup);
+STATIC_ASSERT_ENUM(kWebNavigationPolicyPictureInPicture,
+                   kNavigationPolicyPictureInPicture);
 
 }  // namespace blink

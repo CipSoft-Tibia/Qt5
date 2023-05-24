@@ -1,15 +1,17 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/style/typography.h"
 
 #include "base/check_op.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
 #include "ui/views/layout/layout_provider.h"
 #include "ui/views/style/typography_provider.h"
+#include "ui/views/view.h"
 
-namespace views {
-namespace style {
+namespace views::style {
 namespace {
 
 void ValidateContextAndStyle(int context, int style) {
@@ -20,6 +22,12 @@ void ValidateContextAndStyle(int context, int style) {
 
 }  // namespace
 
+ui::ResourceBundle::FontDetails GetFontDetails(int context, int style) {
+  ValidateContextAndStyle(context, style);
+  return LayoutProvider::Get()->GetTypographyProvider().GetFontDetails(context,
+                                                                       style);
+}
+
 const gfx::FontList& GetFont(int context, int style) {
   ValidateContextAndStyle(context, style);
   return LayoutProvider::Get()->GetTypographyProvider().GetFont(context, style);
@@ -27,8 +35,15 @@ const gfx::FontList& GetFont(int context, int style) {
 
 SkColor GetColor(const views::View& view, int context, int style) {
   ValidateContextAndStyle(context, style);
-  return LayoutProvider::Get()->GetTypographyProvider().GetColor(view, context,
-                                                                 style);
+  return view.GetColorProvider()->GetColor(
+      LayoutProvider::Get()->GetTypographyProvider().GetColorId(context,
+                                                                style));
+}
+
+ui::ColorId GetColorId(int context, int style) {
+  ValidateContextAndStyle(context, style);
+  return LayoutProvider::Get()->GetTypographyProvider().GetColorId(context,
+                                                                   style);
 }
 
 int GetLineHeight(int context, int style) {
@@ -37,5 +52,4 @@ int GetLineHeight(int context, int style) {
                                                                       style);
 }
 
-}  // namespace style
-}  // namespace views
+}  // namespace views::style

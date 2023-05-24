@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_RHI_RENDERER_H
 #define QT3DRENDER_RENDER_RHI_RENDERER_H
@@ -61,7 +25,6 @@
 #include <Qt3DRender/private/rendersettings_p.h>
 #include <Qt3DRender/private/updateshaderdatatransformjob_p.h>
 #include <Qt3DRender/private/framecleanupjob_p.h>
-#include <Qt3DRender/private/platformsurfacefilter_p.h>
 #include <Qt3DRender/private/sendbuffercapturejob_p.h>
 #include <Qt3DRender/private/genericlambdajob_p.h>
 #include <Qt3DRender/private/shaderbuilder_p.h>
@@ -69,24 +32,23 @@
 #include <Qt3DRender/private/texture_p.h>
 #include <Qt3DRender/private/attachmentpack_p.h>
 #include <Qt3DRender/private/filterentitybycomponentjob_p.h>
+#include <Qt3DRender/private/filtercompatibletechniquejob_p.h>
+#include <Qt3DRender/private/renderqueue_p.h>
+#include <Qt3DRender/private/renderercache_p.h>
+#include <Qt3DRender/private/renderviewinitializerjob_p.h>
 
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 #include <shaderparameterpack_p.h>
-#include <renderviewinitializerjob_p.h>
-#include <filtercompatibletechniquejob_p.h>
-#include <renderercache_p.h>
 #include <logging_p.h>
 #include <rhihandle_types_p.h>
-#include <renderercache_p.h>
+#include <renderview_p.h>
 
 #include <QHash>
 #include <QMatrix4x4>
 #include <QObject>
 
-#include <QOpenGLShaderProgram>
-#include <QOpenGLVertexArrayObject>
-#include <QOpenGLBuffer>
+#include <QOffscreenSurface>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QAtomicInt>
@@ -107,8 +69,6 @@ class QScreen;
 
 namespace Qt3DCore {
 class QEntity;
-class QFrameAllocator;
-class QEventFilterService;
 }
 
 namespace Qt3DRender {
@@ -122,7 +82,7 @@ class QAbstractShapeMesh;
 struct GraphicsApiFilterData;
 class QSceneImporter;
 
-namespace Debug {
+namespace DebugRhi {
 class CommandExecuter;
 }
 
@@ -136,7 +96,6 @@ class Shader;
 class Entity;
 class Effect;
 class RenderPass;
-class RenderThread;
 class RenderStateSet;
 class VSyncFrameAdvanceService;
 class NodeManagers;
@@ -158,19 +117,25 @@ namespace Rhi {
 class CommandThread;
 class SubmissionContext;
 class RenderCommand;
-class RenderQueue;
-class RenderView;
+struct RHIRenderTarget;
 class RHIShader;
 class RHIResourceManagers;
+class RenderView;
+class RHIGraphicsPipeline;
+class RHIComputePipeline;
+class PipelineUBOSet;
 
 class Q_AUTOTEST_EXPORT Renderer : public AbstractRenderer
 {
 public:
-    explicit Renderer(QRenderAspect::RenderType type);
+    explicit Renderer();
     ~Renderer();
 
     void dumpInfo() const override;
     API api() const override;
+
+    void setRenderDriver(AbstractRenderer::RenderDriver driver) override;
+    AbstractRenderer::RenderDriver renderDriver() const override;
 
     qint64 time() const override;
     void setTime(qint64 time) override;
@@ -189,8 +154,7 @@ public:
     void shutdown() override;
     void releaseGraphicsResources() override;
 
-    void render() override;
-    void doRender(bool swapBuffers = true) override;
+    void render(bool swapBuffers = true) override;
     void cleanGraphicsResources() override;
 
     bool isRunning() const override { return m_running.loadRelaxed(); }
@@ -199,7 +163,7 @@ public:
     Entity *sceneRoot() const override { return m_renderSceneRoot; }
 
     FrameGraphNode *frameGraphRoot() const override;
-    RenderQueue *renderQueue() const { return m_renderQueue; }
+    RenderQueue<RenderView> *renderQueue() { return &m_renderQueue; }
 
     void markDirty(BackendNodeDirtySet changes, BackendNode *node) override;
     BackendNodeDirtySet dirtyBits() override;
@@ -211,11 +175,11 @@ public:
     void skipNextFrame() override;
     void jobsDone(Qt3DCore::QAspectManager *manager) override;
 
-    void setPendingEvents(const QList<QPair<QObject *, QMouseEvent>> &mouseEvents,
-                          const QList<QKeyEvent> &keyEvents) override;
+    bool processMouseEvent(QObject *object, QMouseEvent *event) override;
+    bool processKeyEvent(QObject *object, QKeyEvent *event) override;
 
-    QVector<Qt3DCore::QAspectJobPtr> preRenderingJobs() override;
-    QVector<Qt3DCore::QAspectJobPtr> renderBinJobs() override;
+    std::vector<Qt3DCore::QAspectJobPtr> preRenderingJobs() override;
+    std::vector<Qt3DCore::QAspectJobPtr> renderBinJobs() override;
 
     inline FrameCleanupJobPtr frameCleanupJob() const { return m_cleanupJob; }
     inline UpdateShaderDataTransformJobPtr updateShaderDataTransformJob() const
@@ -247,36 +211,32 @@ public:
 
     inline RHIResourceManagers *rhiResourceManagers() const { return m_RHIResourceManagers; }
 
-    // Executed in secondary GL thread
-    void loadShader(Shader *shader, Qt3DRender::Render::HShader shaderHandle) override;
-
     void updateResources();
     void updateTexture(Texture *texture);
     void cleanupTexture(Qt3DCore::QNodeId cleanedUpTextureId);
     void cleanupShader(const Shader *shader);
-    void downloadGLBuffers();
-    void blitFramebuffer(Qt3DCore::QNodeId inputRenderTargetId,
-                         Qt3DCore::QNodeId outputRenderTargetId, QRect inputRect, QRect outputRect,
-                         GLuint defaultFramebuffer);
+    void downloadRHIBuffers();
 
     struct RHIPassInfo
     {
-        QVector<RenderView *> rvs;
+        std::vector<RenderView *> rvs;
         QSurface *surface = nullptr;
         Qt3DCore::QNodeId renderTargetId;
-        AttachmentPack attachmentPack;
     };
 
-    QVector<RHIPassInfo> prepareCommandsSubmission(const QVector<RenderView *> &renderViews);
+    std::vector<RHIPassInfo> prepareCommandsSubmission(const std::vector<RenderView *> &renderViews);
     bool executeCommandsSubmission(const RHIPassInfo &passInfo);
 
-    // For Scene2D rendering
+    // For Scene3D/Scene2D rendering
     void setOpenGLContext(QOpenGLContext *context) override;
+    void setRHIContext(QRhi *ctx) override;
+    void setDefaultRHIRenderTarget(QRhiRenderTarget *defaultTarget) override;
+    void setRHICommandBuffer(QRhiCommandBuffer *commandBuffer) override;
     bool accessOpenGLTexture(Qt3DCore::QNodeId nodeId, QOpenGLTexture **texture, QMutex **lock,
                              bool readonly) override;
     QSharedPointer<RenderBackendResourceAccessor> resourceAccessor() const override;
 
-    const GraphicsApiFilterData *contextInfo() const;
+    const GraphicsApiFilterData *contextInfo() const override;
     SubmissionContext *submissionContext() const;
 
     inline RenderStateSet *defaultRenderState() const { return m_defaultRenderStateSet; }
@@ -285,23 +245,22 @@ public:
     QList<QKeyEvent> pendingKeyEvents() const;
 
     void enqueueRenderView(RenderView *renderView, int submitOrder);
-    bool isReadyToSubmit();
+    bool waitUntilReadyToSubmit();
 
     QVariant executeCommand(const QStringList &args) override;
-    void setOffscreenSurfaceHelper(OffscreenSurfaceHelper *helper) override;
+    void setOffscreenSurfaceHelper(OffscreenSurfaceHelper *) override {};
     QSurfaceFormat format() override;
 
     struct ViewSubmissionResultData
     {
-        ViewSubmissionResultData() : lastBoundFBOId(0), surface(nullptr) { }
+        ViewSubmissionResultData() : surface(nullptr) { }
 
-        uint lastBoundFBOId;
         QSurface *surface;
     };
 
-    ViewSubmissionResultData submitRenderViews(const QVector<RHIPassInfo> &rhiPassesInfo);
+    ViewSubmissionResultData submitRenderViews(const std::vector<RHIPassInfo> &rhiPassesInfo);
 
-    RendererCache *cache() { return &m_cache; }
+    RendererCache<RenderCommand> *cache() { return &m_cache; }
     void setScreen(QScreen *scr) override;
     QScreen *screen() const override;
 
@@ -313,8 +272,6 @@ public:
 
 private:
 #endif
-    bool canRender() const;
-
     Qt3DCore::QServiceLocator *m_services;
     QRenderAspect *m_aspect;
     NodeManagers *m_nodesManager;
@@ -331,8 +288,7 @@ private:
 
     QScopedPointer<SubmissionContext> m_submissionContext;
 
-    RenderQueue *m_renderQueue;
-    QScopedPointer<RenderThread> m_renderThread;
+    RenderQueue<RenderView> m_renderQueue;
     QScopedPointer<VSyncFrameAdvanceService> m_vsyncFrameAdvanceService;
 
     QSemaphore m_submitRenderViewsSemaphore;
@@ -341,8 +297,8 @@ private:
 
     QAtomicInt m_running;
 
-    QVector<Attribute *> m_dirtyAttributes;
-    QVector<Geometry *> m_dirtyGeometry;
+    std::vector<Attribute *> m_dirtyAttributes;
+    std::vector<Geometry *> m_dirtyGeometry;
     QAtomicInt m_exposed;
 
     struct DirtyBits
@@ -354,6 +310,7 @@ private:
 
     QAtomicInt m_lastFrameCorrect;
     QOpenGLContext *m_glContext;
+    QRhi *m_rhiContext;
 
     qint64 m_time;
 
@@ -367,10 +324,8 @@ private:
     RenderableEntityFilterPtr m_renderableEntityFilterJob;
     ComputableEntityFilterPtr m_computableEntityFilterJob;
 
-    QVector<Qt3DCore::QNodeId> m_pendingRenderCaptureSendRequests;
-
-    void performDraw(RenderCommand *command);
-    void performCompute(const RenderView *rv, RenderCommand *command);
+    QMutex m_pendingRenderCaptureSendRequestsMutex;
+    std::vector<Qt3DCore::QNodeId> m_pendingRenderCaptureSendRequests;
 
     SynchronizerJobPtr m_bufferGathererJob;
     SynchronizerJobPtr m_textureGathererJob;
@@ -385,53 +340,78 @@ private:
     void sendSetFenceHandlesToFrontend();
     void sendDisablesToFrontend(Qt3DCore::QAspectManager *manager);
 
-    QVector<HBuffer> m_dirtyBuffers;
-    QVector<Qt3DCore::QNodeId> m_downloadableBuffers;
-    QVector<HShader> m_dirtyShaders;
-    QVector<HTexture> m_dirtyTextures;
-    QVector<QPair<Texture::TextureUpdateInfo, Qt3DCore::QNodeIdVector>> m_updatedTextureProperties;
-    QVector<Qt3DCore::QNodeId> m_updatedDisableSubtreeEnablers;
+    std::vector<HBuffer> m_dirtyBuffers;
+    std::vector<Qt3DCore::QNodeId> m_downloadableBuffers;
+    std::vector<HShader> m_dirtyShaders;
+    std::vector<HTexture> m_dirtyTextures;
+    std::vector<QPair<Texture::TextureUpdateInfo, Qt3DCore::QNodeIdVector>> m_updatedTextureProperties;
+    std::vector<Qt3DCore::QNodeId> m_updatedDisableSubtreeEnablers;
     Qt3DCore::QNodeIdVector m_textureIdsToCleanup;
-    QVector<ShaderBuilderUpdate> m_shaderBuilderUpdates;
+    std::vector<ShaderBuilderUpdate> m_shaderBuilderUpdates;
 
     bool m_ownedContext;
 
-    OffscreenSurfaceHelper *m_offscreenHelper;
     RHIResourceManagers *m_RHIResourceManagers;
     QMutex m_offscreenSurfaceMutex;
 
-    QScopedPointer<Qt3DRender::Debug::CommandExecuter> m_commandExecuter;
+    QScopedPointer<Qt3DRender::DebugRhi::CommandExecuter> m_commandExecuter;
 
 #ifdef QT_BUILD_INTERNAL
     friend class ::tst_Renderer;
 #endif
 
     QMetaObject::Connection m_contextConnection;
-    RendererCache m_cache;
+    RendererCache<RenderCommand> m_cache;
     bool m_shouldSwapBuffers;
 
-    QVector<FrameGraphNode *> m_frameGraphLeaves;
+    std::vector<FrameGraphNode *> m_frameGraphLeaves;
     QScreen *m_screen = nullptr;
     QSharedPointer<ResourceAccessor> m_scene2DResourceAccessor;
-
-    QOffscreenSurface *m_fallbackSurface {};
+    QHash<RenderView *, std::vector<RHIGraphicsPipeline *>> m_rvToGraphicsPipelines;
+    QHash<RenderView *, std::vector<RHIComputePipeline *>> m_rvToComputePipelines;
+    RenderDriver m_driver = RenderDriver::Qt3D;
 
     bool m_hasSwapChain = false;
 
-    QList<QPair<QObject *, QMouseEvent>> m_frameMouseEvents;
-    QList<QKeyEvent> m_frameKeyEvents;
-    QMutex m_frameEventsMutex;
     int m_jobsInLastFrame = 0;
 
     float m_textureTransform[4];
 
-    void updateGraphicsPipeline(RenderCommand &command, RenderView *rv, int renderViewIndex);
+    bool prepareGeometryInputBindings(const Geometry *geometry, const RHIShader *shader,
+                                      QVarLengthArray<QRhiVertexInputBinding, 8> &inputBindings,
+                                      QVarLengthArray<QRhiVertexInputAttribute, 8> &rhiAttributes,
+                                      QHash<int, int> &attributeNameToBinding);
+
+    void updateGraphicsPipeline(RenderCommand &command, RenderView *rv);
+    void updateComputePipeline(RenderCommand &cmd, RenderView *rv,
+                               int renderViewIndex);
+
+    void buildGraphicsPipelines(RHIGraphicsPipeline *graphicsPipeline,
+                                RenderView *rv,
+                                const RenderCommand &command);
+
+    void buildComputePipelines(RHIComputePipeline *computePipeline,
+                               RenderView *rv,
+                               const RenderCommand &command);
+
+    void cleanupRenderTarget(const Qt3DCore::QNodeId &renderTarget);
+
+    void createRenderTarget(RenderTarget *);
+    bool setupRenderTarget(RenderView* rv, RHIGraphicsPipeline* graphicsPipeline, QRhiSwapChain* swapchain);
+
     bool uploadBuffersForCommand(QRhiCommandBuffer *cb, const RenderView *rv,
                                  RenderCommand &command);
+
+    bool uploadBuffersForCommand(RHIComputePipeline* compute, RenderCommand &command);
+    bool uploadBuffersForCommand(RHIGraphicsPipeline* graphics, RenderCommand &command);
     bool uploadUBOsForCommand(QRhiCommandBuffer *cb, const RenderView *rv,
                               const RenderCommand &command);
+    bool performCompute(QRhiCommandBuffer *cb, RenderCommand &command);
     bool performDraw(QRhiCommandBuffer *cb, const QRhiViewport &vp, const QRhiScissor *scissor,
-                     const RenderCommand &command);
+                     RenderCommand &command);
+    bool setBindingAndShaderResourcesForCommand(QRhiCommandBuffer *cb,
+                                                RenderCommand &command,
+                                                PipelineUBOSet *uboSet);
 };
 
 } // namespace Rhi

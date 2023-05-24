@@ -1,83 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2011 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qidentityproxymodel.h"
+#include "qidentityproxymodel_p.h"
 #include "qitemselectionmodel.h"
 #include <private/qabstractproxymodel_p.h>
 
 QT_BEGIN_NAMESPACE
-
-class QIdentityProxyModelPrivate : public QAbstractProxyModelPrivate
-{
-    QIdentityProxyModelPrivate()
-    {
-
-    }
-
-    Q_DECLARE_PUBLIC(QIdentityProxyModel)
-
-    QList<QPersistentModelIndex> layoutChangePersistentIndexes;
-    QModelIndexList proxyIndexes;
-
-    void _q_sourceRowsAboutToBeInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsAboutToBeRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceRowsAboutToBeMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-    void _q_sourceRowsMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-
-    void _q_sourceColumnsAboutToBeInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsInserted(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsAboutToBeRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsRemoved(const QModelIndex &parent, int start, int end);
-    void _q_sourceColumnsAboutToBeMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-    void _q_sourceColumnsMoved(const QModelIndex &sourceParent, int sourceStart, int sourceEnd, const QModelIndex &destParent, int dest);
-
-    void _q_sourceDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles);
-    void _q_sourceHeaderDataChanged(Qt::Orientation orientation, int first, int last);
-
-    void _q_sourceLayoutAboutToBeChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint);
-    void _q_sourceLayoutChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint);
-    void _q_sourceModelAboutToBeReset();
-    void _q_sourceModelReset();
-
-};
 
 /*!
     \since 4.8
@@ -215,7 +144,7 @@ QItemSelection QIdentityProxyModel::mapSelectionFromSource(const QItemSelection&
 
     QItemSelection::const_iterator it = selection.constBegin();
     const QItemSelection::const_iterator end = selection.constEnd();
-    proxySelection.reserve(selection.count());
+    proxySelection.reserve(selection.size());
     for ( ; it != end; ++it) {
         Q_ASSERT(it->model() == d->model);
         const QItemSelectionRange range(mapFromSource(it->topLeft()), mapFromSource(it->bottomRight()));
@@ -238,7 +167,7 @@ QItemSelection QIdentityProxyModel::mapSelectionToSource(const QItemSelection& s
 
     QItemSelection::const_iterator it = selection.constBegin();
     const QItemSelection::const_iterator end = selection.constEnd();
-    sourceSelection.reserve(selection.count());
+    sourceSelection.reserve(selection.size());
     for ( ; it != end; ++it) {
         Q_ASSERT(it->model() == this);
         const QItemSelectionRange range(mapToSource(it->topLeft()), mapToSource(it->bottomRight()));
@@ -257,7 +186,7 @@ QModelIndex QIdentityProxyModel::mapToSource(const QModelIndex& proxyIndex) cons
     if (!d->model || !proxyIndex.isValid())
         return QModelIndex();
     Q_ASSERT(proxyIndex.model() == this);
-    return d->model->createIndex(proxyIndex.row(), proxyIndex.column(), proxyIndex.internalPointer());
+    return createSourceIndex(proxyIndex.row(), proxyIndex.column(), proxyIndex.internalPointer());
 }
 
 /*!
@@ -274,7 +203,7 @@ QModelIndexList QIdentityProxyModel::match(const QModelIndex& start, int role, c
     QModelIndexList::const_iterator it = sourceList.constBegin();
     const QModelIndexList::const_iterator end = sourceList.constEnd();
     QModelIndexList proxyList;
-    proxyList.reserve(sourceList.count());
+    proxyList.reserve(sourceList.size());
     for ( ; it != end; ++it)
         proxyList.append(mapFromSource(*it));
     return proxyList;
@@ -390,8 +319,8 @@ void QIdentityProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
                    this, SLOT(_q_sourceModelAboutToBeReset()));
         disconnect(sourceModel(), SIGNAL(modelReset()),
                    this, SLOT(_q_sourceModelReset()));
-        disconnect(sourceModel(), SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)),
-                   this, SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QVector<int>)));
+        disconnect(sourceModel(), SIGNAL(dataChanged(QModelIndex,QModelIndex,QList<int>)),
+                   this, SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QList<int>)));
         disconnect(sourceModel(), SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
                    this, SLOT(_q_sourceHeaderDataChanged(Qt::Orientation,int,int)));
         disconnect(sourceModel(), SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
@@ -431,8 +360,8 @@ void QIdentityProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
                 SLOT(_q_sourceModelAboutToBeReset()));
         connect(sourceModel(), SIGNAL(modelReset()),
                 SLOT(_q_sourceModelReset()));
-        connect(sourceModel(), SIGNAL(dataChanged(QModelIndex,QModelIndex,QVector<int>)),
-                SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QVector<int>)));
+        connect(sourceModel(), SIGNAL(dataChanged(QModelIndex,QModelIndex,QList<int>)),
+                SLOT(_q_sourceDataChanged(QModelIndex,QModelIndex,QList<int>)));
         connect(sourceModel(), SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
                 SLOT(_q_sourceHeaderDataChanged(Qt::Orientation,int,int)));
         connect(sourceModel(), SIGNAL(layoutAboutToBeChanged(QList<QPersistentModelIndex>,QAbstractItemModel::LayoutChangeHint)),
@@ -470,9 +399,9 @@ void QIdentityProxyModelPrivate::_q_sourceColumnsInserted(const QModelIndex &par
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endInsertColumns();
 }
 
@@ -481,11 +410,11 @@ void QIdentityProxyModelPrivate::_q_sourceColumnsMoved(const QModelIndex &source
     Q_ASSERT(sourceParent.isValid() ? sourceParent.model() == model : true);
     Q_ASSERT(destParent.isValid() ? destParent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(sourceParent)
-    Q_UNUSED(sourceStart)
-    Q_UNUSED(sourceEnd)
-    Q_UNUSED(destParent)
-    Q_UNUSED(dest)
+    Q_UNUSED(sourceParent);
+    Q_UNUSED(sourceStart);
+    Q_UNUSED(sourceEnd);
+    Q_UNUSED(destParent);
+    Q_UNUSED(dest);
     q->endMoveColumns();
 }
 
@@ -493,13 +422,13 @@ void QIdentityProxyModelPrivate::_q_sourceColumnsRemoved(const QModelIndex &pare
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endRemoveColumns();
 }
 
-void QIdentityProxyModelPrivate::_q_sourceDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QVector<int> &roles)
+void QIdentityProxyModelPrivate::_q_sourceDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight, const QList<int> &roles)
 {
     Q_ASSERT(topLeft.isValid() ? topLeft.model() == model : true);
     Q_ASSERT(bottomRight.isValid() ? bottomRight.model() == model : true);
@@ -605,9 +534,9 @@ void QIdentityProxyModelPrivate::_q_sourceRowsInserted(const QModelIndex &parent
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endInsertRows();
 }
 
@@ -616,11 +545,11 @@ void QIdentityProxyModelPrivate::_q_sourceRowsMoved(const QModelIndex &sourcePar
     Q_ASSERT(sourceParent.isValid() ? sourceParent.model() == model : true);
     Q_ASSERT(destParent.isValid() ? destParent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(sourceParent)
-    Q_UNUSED(sourceStart)
-    Q_UNUSED(sourceEnd)
-    Q_UNUSED(destParent)
-    Q_UNUSED(dest)
+    Q_UNUSED(sourceParent);
+    Q_UNUSED(sourceStart);
+    Q_UNUSED(sourceEnd);
+    Q_UNUSED(destParent);
+    Q_UNUSED(dest);
     q->endMoveRows();
 }
 
@@ -628,9 +557,9 @@ void QIdentityProxyModelPrivate::_q_sourceRowsRemoved(const QModelIndex &parent,
 {
     Q_ASSERT(parent.isValid() ? parent.model() == model : true);
     Q_Q(QIdentityProxyModel);
-    Q_UNUSED(parent)
-    Q_UNUSED(start)
-    Q_UNUSED(end)
+    Q_UNUSED(parent);
+    Q_UNUSED(start);
+    Q_UNUSED(end);
     q->endRemoveRows();
 }
 

@@ -1,11 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/download/internal/background_service/client_set.h"
 
-#include <algorithm>
-
+#include "base/ranges/algorithm.h"
 #include "components/download/public/background_service/clients.h"
 #include "components/download/public/background_service/test/empty_client.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -35,9 +34,7 @@ TEST(DownloadServiceClientSetTest, TestGetRegisteredClients) {
                                            DownloadClient::DEBUGGING};
   std::set<DownloadClient> actual_set = clients.GetRegisteredClients();
 
-  EXPECT_EQ(expected_set.size(), actual_set.size());
-  EXPECT_TRUE(
-      std::equal(expected_set.begin(), expected_set.end(), actual_set.begin()));
+  EXPECT_TRUE(base::ranges::equal(expected_set, actual_set));
 }
 
 }  // namespace download

@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'wateringconfigdialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -10,6 +10,7 @@
 #define WATERINGCONFIGDIALOG_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
@@ -64,14 +65,14 @@ public:
     void setupUi(QDialog *WateringConfigDialog)
     {
         if (WateringConfigDialog->objectName().isEmpty())
-            WateringConfigDialog->setObjectName(QString::fromUtf8("WateringConfigDialog"));
+            WateringConfigDialog->setObjectName("WateringConfigDialog");
         WateringConfigDialog->resize(334, 550);
         vboxLayout = new QVBoxLayout(WateringConfigDialog);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         gridLayout = new QGridLayout();
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         label_3 = new QLabel(WateringConfigDialog);
-        label_3->setObjectName(QString::fromUtf8("label_3"));
+        label_3->setObjectName("label_3");
 
         gridLayout->addWidget(label_3, 0, 0, 1, 1);
 
@@ -82,8 +83,8 @@ public:
         plantComboBox->addItem(QString());
         plantComboBox->addItem(QString());
         plantComboBox->addItem(QString());
-        plantComboBox->setObjectName(QString::fromUtf8("plantComboBox"));
-        QSizePolicy sizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        plantComboBox->setObjectName("plantComboBox");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(plantComboBox->sizePolicy().hasHeightForWidth());
@@ -91,26 +92,26 @@ public:
 
         gridLayout->addWidget(plantComboBox, 0, 1, 1, 3);
 
-        spacerItem = new QSpacerItem(67, 16, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem = new QSpacerItem(67, 16, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem, 1, 0, 1, 1);
 
         label_2 = new QLabel(WateringConfigDialog);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
 
         gridLayout->addWidget(label_2, 2, 0, 1, 1);
 
         temperatureCheckBox = new QCheckBox(WateringConfigDialog);
-        temperatureCheckBox->setObjectName(QString::fromUtf8("temperatureCheckBox"));
+        temperatureCheckBox->setObjectName("temperatureCheckBox");
 
         gridLayout->addWidget(temperatureCheckBox, 3, 1, 1, 3);
 
-        spacerItem1 = new QSpacerItem(16, 20, QSizePolicy::Fixed, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(16, 20, QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem1, 4, 1, 1, 1);
 
         temperatureSpinBox = new QSpinBox(WateringConfigDialog);
-        temperatureSpinBox->setObjectName(QString::fromUtf8("temperatureSpinBox"));
+        temperatureSpinBox->setObjectName("temperatureSpinBox");
         temperatureSpinBox->setEnabled(false);
         temperatureSpinBox->setMinimum(10);
         temperatureSpinBox->setMaximum(60);
@@ -118,51 +119,51 @@ public:
 
         gridLayout->addWidget(temperatureSpinBox, 4, 2, 1, 1);
 
-        spacerItem2 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem2 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem2, 4, 3, 1, 1);
 
         rainCheckBox = new QCheckBox(WateringConfigDialog);
-        rainCheckBox->setObjectName(QString::fromUtf8("rainCheckBox"));
+        rainCheckBox->setObjectName("rainCheckBox");
 
         gridLayout->addWidget(rainCheckBox, 5, 1, 1, 3);
 
-        spacerItem3 = new QSpacerItem(16, 20, QSizePolicy::Fixed, QSizePolicy::Minimum);
+        spacerItem3 = new QSpacerItem(16, 20, QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem3, 6, 1, 1, 1);
 
         rainSpinBox = new QSpinBox(WateringConfigDialog);
-        rainSpinBox->setObjectName(QString::fromUtf8("rainSpinBox"));
+        rainSpinBox->setObjectName("rainSpinBox");
         rainSpinBox->setEnabled(false);
         rainSpinBox->setMinimum(1);
 
         gridLayout->addWidget(rainSpinBox, 6, 2, 1, 1);
 
-        spacerItem4 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem4 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem4, 6, 3, 1, 1);
 
-        spacerItem5 = new QSpacerItem(20, 20, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem5 = new QSpacerItem(20, 20, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem5, 7, 2, 1, 1);
 
         label = new QLabel(WateringConfigDialog);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
 
         gridLayout->addWidget(label, 8, 0, 1, 1);
 
         startTimeEdit = new QTimeEdit(WateringConfigDialog);
-        startTimeEdit->setObjectName(QString::fromUtf8("startTimeEdit"));
+        startTimeEdit->setObjectName("startTimeEdit");
 
         gridLayout->addWidget(startTimeEdit, 8, 1, 1, 3);
 
         label_4 = new QLabel(WateringConfigDialog);
-        label_4->setObjectName(QString::fromUtf8("label_4"));
+        label_4->setObjectName("label_4");
 
         gridLayout->addWidget(label_4, 9, 0, 1, 1);
 
         amountSpinBox = new QSpinBox(WateringConfigDialog);
-        amountSpinBox->setObjectName(QString::fromUtf8("amountSpinBox"));
+        amountSpinBox->setObjectName("amountSpinBox");
         amountSpinBox->setMinimum(100);
         amountSpinBox->setMaximum(10000);
         amountSpinBox->setSingleStep(100);
@@ -171,7 +172,7 @@ public:
         gridLayout->addWidget(amountSpinBox, 9, 1, 1, 3);
 
         label_5 = new QLabel(WateringConfigDialog);
-        label_5->setObjectName(QString::fromUtf8("label_5"));
+        label_5->setObjectName("label_5");
 
         gridLayout->addWidget(label_5, 10, 0, 1, 1);
 
@@ -180,25 +181,25 @@ public:
         sourceComboBox->addItem(QString());
         sourceComboBox->addItem(QString());
         sourceComboBox->addItem(QString());
-        sourceComboBox->setObjectName(QString::fromUtf8("sourceComboBox"));
+        sourceComboBox->setObjectName("sourceComboBox");
 
         gridLayout->addWidget(sourceComboBox, 10, 1, 1, 3);
 
         label_6 = new QLabel(WateringConfigDialog);
-        label_6->setObjectName(QString::fromUtf8("label_6"));
+        label_6->setObjectName("label_6");
 
         gridLayout->addWidget(label_6, 11, 0, 1, 1);
 
         filterCheckBox = new QCheckBox(WateringConfigDialog);
-        filterCheckBox->setObjectName(QString::fromUtf8("filterCheckBox"));
+        filterCheckBox->setObjectName("filterCheckBox");
 
         gridLayout->addWidget(filterCheckBox, 11, 1, 1, 2);
 
-        spacerItem6 = new QSpacerItem(20, 10, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem6 = new QSpacerItem(20, 10, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem6, 12, 0, 1, 1);
 
-        spacerItem7 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem7 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem7, 4, 4, 1, 1);
 
@@ -206,18 +207,18 @@ public:
         vboxLayout->addLayout(gridLayout);
 
         gridLayout1 = new QGridLayout();
-        gridLayout1->setObjectName(QString::fromUtf8("gridLayout1"));
-        spacerItem8 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        gridLayout1->setObjectName("gridLayout1");
+        spacerItem8 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout1->addItem(spacerItem8, 0, 1, 1, 1);
 
         helpBrowser = new HelpBrowser(WateringConfigDialog);
-        helpBrowser->setObjectName(QString::fromUtf8("helpBrowser"));
+        helpBrowser->setObjectName("helpBrowser");
 
         gridLayout1->addWidget(helpBrowser, 1, 0, 1, 2);
 
         helpLabel = new QLabel(WateringConfigDialog);
-        helpLabel->setObjectName(QString::fromUtf8("helpLabel"));
+        helpLabel->setObjectName("helpLabel");
 
         gridLayout1->addWidget(helpLabel, 0, 0, 1, 1);
 
@@ -225,14 +226,14 @@ public:
         vboxLayout->addLayout(gridLayout1);
 
         line = new QFrame(WateringConfigDialog);
-        line->setObjectName(QString::fromUtf8("line"));
+        line->setObjectName("line");
         line->setFrameShape(QFrame::HLine);
         line->setFrameShadow(QFrame::Sunken);
 
         vboxLayout->addWidget(line);
 
         buttonBox = new QDialogButtonBox(WateringConfigDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
 
@@ -240,10 +241,10 @@ public:
 
 
         retranslateUi(WateringConfigDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), WateringConfigDialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), WateringConfigDialog, SLOT(reject()));
-        QObject::connect(temperatureCheckBox, SIGNAL(toggled(bool)), temperatureSpinBox, SLOT(setEnabled(bool)));
-        QObject::connect(rainCheckBox, SIGNAL(toggled(bool)), rainSpinBox, SLOT(setEnabled(bool)));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, WateringConfigDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, WateringConfigDialog, qOverload<>(&QDialog::reject));
+        QObject::connect(temperatureCheckBox, &QCheckBox::toggled, temperatureSpinBox, &QSpinBox::setEnabled);
+        QObject::connect(rainCheckBox, &QCheckBox::toggled, rainSpinBox, &QSpinBox::setEnabled);
 
         QMetaObject::connectSlotsByName(WateringConfigDialog);
     } // setupUi

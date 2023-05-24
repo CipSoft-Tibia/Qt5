@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qget.h"
 
@@ -33,39 +8,44 @@
 #include <QCoreApplication>
 #include <QList>
 #include <QStringList>
-#include <QNetworkConfiguration>
-#include <QNetworkConfigurationManager>
-#include <QNetworkSession>
 
 void printShortUsage()
 {
-    qDebug() << QCoreApplication::applicationName() << " [options] [list of urls]" << endl
-             << "Get one or more urls using QNetworkAccessManager" << endl
-             << "--help to display detailed usage" << endl;
+    qDebug() << QCoreApplication::applicationName() << " [options] [list of urls]" << Qt::endl
+             << "Get one or more urls using QNetworkAccessManager" << Qt::endl
+             << "--help to display detailed usage" << Qt::endl;
 }
 
 void printUsage()
 {
-    qDebug() << QCoreApplication::applicationName() << " [options] [list of urls]" << endl
-             << "Get one or more urls using QNetworkAccessManager" << endl
+    qDebug() << QCoreApplication::applicationName() << " [options] [list of urls]" << Qt::endl
+             << "Get one or more urls using QNetworkAccessManager" << Qt::endl
              << "Options:"
-             << "--help                             This message" << endl
-             << "--user=<username>                  Set username to use for authentication" << endl
-             << "--password=<password>              Set password to use for authentication" << endl
-             << "--proxy-user=<username>            Set username to use for proxy authentication" << endl
-             << "--proxy-password=<password>        Set password to use for proxy authentication" << endl
-             << "--proxy=on                         Use system proxy (default)" << endl
-             << "--proxy=off                        Don't use system proxy" << endl
-             << "--proxy=<host:port>[,type]         Use specified proxy" << endl
-             << "                   ,http           HTTP proxy (default)" << endl
-             << "                   ,socks          SOCKS5 proxy" << endl
-             << "                   ,ftp            FTP proxy" << endl
-             << "                   ,httpcaching    HTTP caching proxy (no CONNECT method)" << endl
-             << "--headers=filename                 Set request headers from file contents" << endl
-             << "--post=filename                    upload the file to the next url using HTTP POST" << endl
-             << "--put=filename                     upload the file to the next url using HTTP PUT" << endl
-             << "--content-type=<MIME>              set content-type header for upload" << endl
-             << "--serial                           don't run requests in parallel" << endl;
+             << "--help                             This message" << Qt::endl
+             << "--user=<username>                  Set username to use for authentication"
+             << Qt::endl
+             << "--password=<password>              Set password to use for authentication"
+             << Qt::endl
+             << "--proxy-user=<username>            Set username to use for proxy authentication"
+             << Qt::endl
+             << "--proxy-password=<password>        Set password to use for proxy authentication"
+             << Qt::endl
+             << "--proxy=on                         Use system proxy (default)" << Qt::endl
+             << "--proxy=off                        Don't use system proxy" << Qt::endl
+             << "--proxy=<host:port>[,type]         Use specified proxy" << Qt::endl
+             << "                   ,http           HTTP proxy (default)" << Qt::endl
+             << "                   ,socks          SOCKS5 proxy" << Qt::endl
+             << "                   ,ftp            FTP proxy" << Qt::endl
+             << "                   ,httpcaching    HTTP caching proxy (no CONNECT method)"
+             << Qt::endl
+             << "--headers=filename                 Set request headers from file contents"
+             << Qt::endl
+             << "--post=filename                    upload the file to the next url using HTTP POST"
+             << Qt::endl
+             << "--put=filename                     upload the file to the next url using HTTP PUT"
+             << Qt::endl
+             << "--content-type=<MIME>              set content-type header for upload" << Qt::endl
+             << "--serial                           don't run requests in parallel" << Qt::endl;
 }
 
 int main(int argc, char *argv[])

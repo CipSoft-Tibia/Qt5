@@ -20,6 +20,10 @@ source_set("unittests") {
     "../receiver:test_helpers",
     "../sender:channel",
   ]
+
+  if (!build_with_chromium) {
+    deps += [ "../protocol:unittests" ]
+  }
 }
 
 if (is_posix && !build_with_chromium) {
@@ -29,11 +33,15 @@ if (is_posix && !build_with_chromium) {
 
     deps = [
       "../../platform",
+      "../../platform:standalone_impl",
+      "../../testing/util",
       "../../third_party/abseil",
       "../../third_party/boringssl",
+      "../../third_party/googletest:gmock",
       "../../third_party/googletest:gtest",
       "../../util",
       "../common:certificate",
+      "../common:certificate_boringssl",
       "../common:channel",
       "../common:test_helpers",
       "../receiver:channel",
@@ -49,6 +57,7 @@ if (is_posix && !build_with_chromium) {
       "../../platform:test",
       "../../third_party/boringssl",
       "../../util",
+      "../common:certificate_boringssl",
       "../common:test_helpers",
       "../common/certificate/proto:certificate_proto",
     ]

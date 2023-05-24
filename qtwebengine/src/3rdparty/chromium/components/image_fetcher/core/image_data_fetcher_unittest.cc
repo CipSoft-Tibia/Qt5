@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,20 +7,21 @@
 #include <memory>
 
 #include "base/base64.h"
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
 #include "components/image_fetcher/core/request_metadata.h"
+#include "net/base/data_url.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_status_code.h"
 #include "net/http/http_util.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
 #include "services/network/test/test_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -44,6 +45,10 @@ class ImageDataFetcherTest : public testing::Test {
             base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
                 &test_url_loader_factory_)),
         image_data_fetcher_(shared_factory_) {}
+
+  ImageDataFetcherTest(const ImageDataFetcherTest&) = delete;
+  ImageDataFetcherTest& operator=(const ImageDataFetcherTest&) = delete;
+
   ~ImageDataFetcherTest() override {}
 
   base::HistogramTester& histogram_tester() { return histogram_tester_; }
@@ -65,9 +70,6 @@ class ImageDataFetcherTest : public testing::Test {
   scoped_refptr<network::SharedURLLoaderFactory> shared_factory_;
 
   ImageDataFetcher image_data_fetcher_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ImageDataFetcherTest);
 };
 
 TEST_F(ImageDataFetcherTest, FetchImageData) {
@@ -108,14 +110,16 @@ TEST_F(ImageDataFetcherTest, FetchImageData) {
 }
 
 TEST_F(ImageDataFetcherTest, FetchImageDataWithDataUrl) {
-  std::string data =
+  std::string data_url =
+      "data:image/png;base64,"
       "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVQYlWNk+M/"
       "wn4GBgYGJAQoAHhgCAh6X4CYAAAAASUVORK5CYII=";
-  std::string data_url = "data:image/png;base64," + data;
 
   RequestMetadata expected_metadata;
-  std::string expected;
-  base::Base64Decode(data, &expected);
+  expected_metadata.mime_type = "image/png";
+  std::string mime_type, expected, charset;
+  EXPECT_TRUE(
+      net::DataURL::Parse(GURL(data_url), &mime_type, &charset, &expected));
   EXPECT_CALL(*this, OnImageDataFetched(expected, expected_metadata));
 
   image_data_fetcher_.FetchImageData(

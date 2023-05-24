@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLTHREAD_P_H
 #define QQMLTHREAD_P_H
@@ -76,51 +40,30 @@ public:
     void lock();
     void unlock();
     void wakeOne();
-    void wakeAll();
     void wait();
 
     QThread *thread() const;
     bool isThisThread() const;
 
     // Synchronously invoke a method in the thread
-    template<class O>
-    inline void callMethodInThread(void (O::*Member)());
-    template<typename T, class V, class O>
-    inline void callMethodInThread(void (O::*Member)(V), const T &);
-    template<typename T, typename T2, class V, class V2, class O>
-    inline void callMethodInThread(void (O::*Member)(V, V2), const T &, const T2 &);
+    template<typename Method, typename ...Args>
+    void callMethodInThread(Method &&method, Args &&...args);
 
     // Synchronously invoke a method in the main thread.  If the main thread is
     // blocked in a callMethodInThread() call, the call is made from within that
     // call.
-    template<class O>
-    inline void callMethodInMain(void (O::*Member)());
-    template<typename T, class V, class O>
-    inline void callMethodInMain(void (O::*Member)(V), const T &);
-    template<typename T, typename T2, class V, class V2, class O>
-    inline void callMethodInMain(void (O::*Member)(V, V2), const T &, const T2 &);
+    template<typename Method, typename ...Args>
+    void callMethodInMain(Method &&method, Args &&...args);
 
     // Asynchronously invoke a method in the thread.
-    template<class O>
-    inline void postMethodToThread(void (O::*Member)());
-    template<typename T, class V, class O>
-    inline void postMethodToThread(void (O::*Member)(V), const T &);
-    template<typename T, typename T2, class V, class V2, class O>
-    inline void postMethodToThread(void (O::*Member)(V, V2), const T &, const T2 &);
+    template<typename Method, typename ...Args>
+    void postMethodToThread(Method &&method, Args &&...args);
 
     // Asynchronously invoke a method in the main thread.
-    template<class O>
-    inline void postMethodToMain(void (O::*Member)());
-    template<typename T, class V, class O>
-    inline void postMethodToMain(void (O::*Member)(V), const T &);
-    template<typename T, typename T2, class V, class V2, class O>
-    inline void postMethodToMain(void (O::*Member)(V, V2), const T &, const T2 &);
+    template<typename Method, typename ...Args>
+    void postMethodToMain(Method &&method, Args &&...args);
 
     void waitForNextMessage();
-
-protected:
-    virtual void startupThread();
-    virtual void shutdownThread();
 
 private:
     friend class QQmlThreadPrivate;
@@ -131,6 +74,8 @@ private:
         Message *next;
         virtual void call(QQmlThread *) = 0;
     };
+    template<typename Method, typename ...Args>
+    Message *createMessageFromMethod(Method &&method, Args &&...args);
     void internalCallMethodInThread(Message *);
     void internalCallMethodInMain(Message *);
     void internalPostMethodToThread(Message *);
@@ -138,184 +83,58 @@ private:
     QQmlThreadPrivate *d;
 };
 
-template<class O>
-void QQmlThread::callMethodInThread(void (O::*Member)())
+namespace QtPrivate {
+template <typename> struct member_function_traits;
+
+template <typename Return, typename Object, typename... Args>
+struct member_function_traits<Return (Object::*)(Args...)>
 {
-    struct I : public Message {
-        void (O::*Member)();
-        I(void (O::*Member)()) : Member(Member) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)();
-        }
-    };
-    internalCallMethodInThread(new I(Member));
+    using class_type = Object;
+};
 }
 
-template<typename T, class V, class O>
-void QQmlThread::callMethodInThread(void (O::*Member)(V), const T &arg)
+template<typename Method, typename ...Args>
+QQmlThread::Message *QQmlThread::createMessageFromMethod(Method &&method, Args &&...args)
 {
     struct I : public Message {
-        void (O::*Member)(V);
-        T arg;
-        I(void (O::*Member)(V), const T &arg) : Member(Member), arg(arg) {}
+        Method m;
+        std::tuple<std::decay_t<Args>...> arguments;
+        I(Method &&method, Args&& ...args) : m(std::forward<Method>(method)), arguments(std::forward<Args>(args)...) {}
         void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg);
+            using class_type = typename QtPrivate::member_function_traits<Method>::class_type;
+            class_type *me = static_cast<class_type *>(thread);
+            std::apply(m, std::tuple_cat(std::make_tuple(me), arguments));
         }
     };
-    internalCallMethodInThread(new I(Member, arg));
+    return new I(std::forward<Method>(method), std::forward<Args>(args)...);
 }
 
-template<typename T, typename T2, class V, class V2, class O>
-void QQmlThread::callMethodInThread(void (O::*Member)(V, V2), const T &arg, const T2 &arg2)
+template<typename Method, typename ...Args>
+void QQmlThread::callMethodInMain(Method &&method, Args&& ...args)
 {
-    struct I : public Message {
-        void (O::*Member)(V, V2);
-        T arg;
-        T2 arg2;
-        I(void (O::*Member)(V, V2), const T &arg, const T2 &arg2) : Member(Member), arg(arg), arg2(arg2) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg, arg2);
-        }
-    };
-    internalCallMethodInThread(new I(Member, arg, arg2));
+    Message *m = createMessageFromMethod(std::forward<Method>(method), std::forward<Args>(args)...);
+    internalCallMethodInMain(m);
 }
 
-template<class O>
-void QQmlThread::callMethodInMain(void (O::*Member)())
+template<typename Method, typename ...Args>
+void QQmlThread::callMethodInThread(Method &&method, Args&& ...args)
 {
-    struct I : public Message {
-        void (O::*Member)();
-        I(void (O::*Member)()) : Member(Member) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)();
-        }
-    };
-    internalCallMethodInMain(new I(Member));
+    Message *m = createMessageFromMethod(std::forward<Method>(method), std::forward<Args>(args)...);
+    internalCallMethodInThread(m);
 }
 
-template<typename T, class V, class O>
-void QQmlThread::callMethodInMain(void (O::*Member)(V), const T &arg)
+template<typename Method, typename ...Args>
+void QQmlThread::postMethodToThread(Method &&method, Args&& ...args)
 {
-    struct I : public Message {
-        void (O::*Member)(V);
-        T arg;
-        I(void (O::*Member)(V), const T &arg) : Member(Member), arg(arg) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg);
-        }
-    };
-    internalCallMethodInMain(new I(Member, arg));
+    Message *m = createMessageFromMethod(std::forward<Method>(method), std::forward<Args>(args)...);
+    internalPostMethodToThread(m);
 }
 
-template<typename T, typename T2, class V, class V2, class O>
-void QQmlThread::callMethodInMain(void (O::*Member)(V, V2), const T &arg, const T2 &arg2)
+template<typename Method, typename ...Args>
+void QQmlThread::postMethodToMain(Method &&method, Args&& ...args)
 {
-    struct I : public Message {
-        void (O::*Member)(V, V2);
-        T arg;
-        T2 arg2;
-        I(void (O::*Member)(V, V2), const T &arg, const T2 &arg2) : Member(Member), arg(arg), arg2(arg2) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg, arg2);
-        }
-    };
-    internalCallMethodInMain(new I(Member, arg, arg2));
-}
-
-template<class O>
-void QQmlThread::postMethodToThread(void (O::*Member)())
-{
-    struct I : public Message {
-        void (O::*Member)();
-        I(void (O::*Member)()) : Member(Member) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)();
-        }
-    };
-    internalPostMethodToThread(new I(Member));
-}
-
-template<typename T, class V, class O>
-void QQmlThread::postMethodToThread(void (O::*Member)(V), const T &arg)
-{
-    struct I : public Message {
-        void (O::*Member)(V);
-        T arg;
-        I(void (O::*Member)(V), const T &arg) : Member(Member), arg(arg) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg);
-        }
-    };
-    internalPostMethodToThread(new I(Member, arg));
-}
-
-template<typename T, typename T2, class V, class V2, class O>
-void QQmlThread::postMethodToThread(void (O::*Member)(V, V2), const T &arg, const T2 &arg2)
-{
-    struct I : public Message {
-        void (O::*Member)(V, V2);
-        T arg;
-        T2 arg2;
-        I(void (O::*Member)(V, V2), const T &arg, const T2 &arg2) : Member(Member), arg(arg), arg2(arg2) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg, arg2);
-        }
-    };
-    internalPostMethodToThread(new I(Member, arg, arg2));
-}
-
-template<class O>
-void QQmlThread::postMethodToMain(void (O::*Member)())
-{
-    struct I : public Message {
-        void (O::*Member)();
-        I(void (O::*Member)()) : Member(Member) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)();
-        }
-    };
-    internalPostMethodToMain(new I(Member));
-}
-
-template<typename T, class V, class O>
-void QQmlThread::postMethodToMain(void (O::*Member)(V), const T &arg)
-{
-    struct I : public Message {
-        void (O::*Member)(V);
-        T arg;
-        I(void (O::*Member)(V), const T &arg) : Member(Member), arg(arg) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg);
-        }
-    };
-    internalPostMethodToMain(new I(Member, arg));
-}
-
-template<typename T, typename T2, class V, class V2, class O>
-void QQmlThread::postMethodToMain(void (O::*Member)(V, V2), const T &arg, const T2 &arg2)
-{
-    struct I : public Message {
-        void (O::*Member)(V, V2);
-        T arg;
-        T2 arg2;
-        I(void (O::*Member)(V, V2), const T &arg, const T2 &arg2) : Member(Member), arg(arg), arg2(arg2) {}
-        void call(QQmlThread *thread) override {
-            O *me = static_cast<O *>(thread);
-            (me->*Member)(arg, arg2);
-        }
-    };
-    internalPostMethodToMain(new I(Member, arg, arg2));
+    Message *m = createMessageFromMethod(std::forward<Method>(method), std::forward<Args>(args)...);
+    internalPostMethodToMain(m);
 }
 
 QT_END_NAMESPACE

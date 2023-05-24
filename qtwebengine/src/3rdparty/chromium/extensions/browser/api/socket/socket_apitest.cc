@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,13 +23,12 @@ IN_PROC_BROWSER_TEST_F(SocketApiTest, SocketUDPCreateGood) {
   socket_create_function->set_extension(empty_extension.get());
   socket_create_function->set_has_callback(true);
 
-  std::unique_ptr<base::Value> result(RunFunctionAndReturnSingleResult(
+  absl::optional<base::Value> result(RunFunctionAndReturnSingleResult(
       socket_create_function.get(), "[\"udp\"]", browser_context()));
-  base::DictionaryValue* value = NULL;
-  ASSERT_TRUE(result->GetAsDictionary(&value));
-  int socket_id = -1;
-  EXPECT_TRUE(value->GetInteger("socketId", &socket_id));
-  EXPECT_GT(socket_id, 0);
+  const base::Value::Dict& value = result->GetDict();
+  absl::optional<int> socket_id = value.FindInt("socketId");
+  ASSERT_TRUE(socket_id);
+  EXPECT_GT(*socket_id, 0);
 }
 
 IN_PROC_BROWSER_TEST_F(SocketApiTest, SocketTCPCreateGood) {
@@ -41,13 +40,12 @@ IN_PROC_BROWSER_TEST_F(SocketApiTest, SocketTCPCreateGood) {
   socket_create_function->set_extension(empty_extension.get());
   socket_create_function->set_has_callback(true);
 
-  std::unique_ptr<base::Value> result(RunFunctionAndReturnSingleResult(
+  absl::optional<base::Value> result(RunFunctionAndReturnSingleResult(
       socket_create_function.get(), "[\"tcp\"]", browser_context()));
-  base::DictionaryValue* value = NULL;
-  ASSERT_TRUE(result->GetAsDictionary(&value));
-  int socket_id = -1;
-  EXPECT_TRUE(value->GetInteger("socketId", &socket_id));
-  ASSERT_GT(socket_id, 0);
+  const base::Value::Dict& value = result->GetDict();
+  absl::optional<int> socket_id = value.FindInt("socketId");
+  ASSERT_TRUE(socket_id);
+  ASSERT_GT(*socket_id, 0);
 }
 
 IN_PROC_BROWSER_TEST_F(SocketApiTest, GetNetworkList) {
@@ -59,14 +57,13 @@ IN_PROC_BROWSER_TEST_F(SocketApiTest, GetNetworkList) {
   socket_function->set_extension(empty_extension.get());
   socket_function->set_has_callback(true);
 
-  std::unique_ptr<base::Value> result(RunFunctionAndReturnSingleResult(
+  absl::optional<base::Value> result(RunFunctionAndReturnSingleResult(
       socket_function.get(), "[]", browser_context()));
 
   // If we're invoking socket tests, all we can confirm is that we have at
   // least one address, but not what it is.
-  base::ListValue* value = NULL;
-  ASSERT_TRUE(result->GetAsList(&value));
-  ASSERT_GT(value->GetSize(), 0U);
+  ASSERT_TRUE(result->is_list());
+  ASSERT_FALSE(result->GetList().empty());
 }
 
 }  //  namespace extensions

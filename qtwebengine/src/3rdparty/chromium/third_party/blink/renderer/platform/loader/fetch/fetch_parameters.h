@@ -26,10 +26,13 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_FETCH_PARAMETERS_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_FETCH_PARAMETERS_H_
 
+#include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/script/script_type.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/script/script_type.mojom-shared.h"
 #include "third_party/blink/public/platform/web_url_request.h"
-#include "third_party/blink/renderer/platform/loader/fetch/client_hints_preferences.h"
 #include "third_party/blink/renderer/platform/loader/fetch/cross_origin_attribute_value.h"
 #include "third_party/blink/renderer/platform/loader/fetch/integrity_metadata.h"
+#include "third_party/blink/renderer/platform/loader/fetch/render_blocking_behavior.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_request.h"
 #include "third_party/blink/renderer/platform/loader/fetch/text_resource_decoder_options.h"
@@ -39,7 +42,6 @@
 
 namespace blink {
 
-class DOMWrapperWorld;
 class SecurityOrigin;
 
 // A FetchParameters is a "parameter object" for
@@ -57,14 +59,15 @@ class PLATFORM_EXPORT FetchParameters {
     kInDocument,  // The request was discovered in the main document
     kInserted     // The request was discovered in a document.write()
   };
-  enum ImageRequestBehavior {
-    kNone = 0,          // No optimization.
-    kDeferImageLoad,    // Defer loading the image from network. Full image
-                        // might still load if the request is already-loaded or
-                        // in memory cache.
-    kNonBlockingImage   // The image load may continue, but must be placed in
-                        // ResourceFetcher::non_blocking_loaders_.
+  enum class ImageRequestBehavior {
+    kNone = 0,         // No optimization.
+    kDeferImageLoad,   // Defer loading the image from network. Full image
+                       // might still load if the request is already-loaded or
+                       // in memory cache.
+    kNonBlockingImage  // The image load may continue, but must be placed in
+                       // ResourceFetcher::non_blocking_loaders_.
   };
+
   struct ResourceWidth {
     DISALLOW_NEW();
     float width;
@@ -75,8 +78,7 @@ class PLATFORM_EXPORT FetchParameters {
 
   static FetchParameters CreateForTest(ResourceRequest);
 
-  FetchParameters(ResourceRequest, scoped_refptr<const DOMWrapperWorld> world);
-  FetchParameters(ResourceRequest, const ResourceLoaderOptions&);
+  FetchParameters(ResourceRequest, ResourceLoaderOptions);
   FetchParameters(const FetchParameters&) = delete;
   FetchParameters& operator=(const FetchParameters&) = delete;
   FetchParameters(FetchParameters&&);
@@ -88,7 +90,7 @@ class PLATFORM_EXPORT FetchParameters {
   }
   const KURL& Url() const { return resource_request_.Url(); }
 
-  void SetRequestContext(mojom::RequestContextType context) {
+  void SetRequestContext(mojom::blink::RequestContextType context) {
     resource_request_.SetRequestContext(context);
   }
 
@@ -96,8 +98,9 @@ class PLATFORM_EXPORT FetchParameters {
     resource_request_.SetRequestDestination(destination);
   }
 
-  void SetFetchImportanceMode(mojom::FetchImportanceMode importance_mode) {
-    resource_request_.SetFetchImportanceMode(importance_mode);
+  void SetFetchPriorityHint(
+      mojom::blink::FetchPriorityHint fetch_priority_hint) {
+    resource_request_.SetFetchPriorityHint(fetch_priority_hint);
   }
 
   const TextResourceDecoderOptions& DecoderOptions() const {
@@ -123,10 +126,6 @@ class PLATFORM_EXPORT FetchParameters {
 
   ResourceWidth GetResourceWidth() const { return resource_width_; }
   void SetResourceWidth(ResourceWidth);
-
-  ClientHintsPreferences& GetClientHintsPreferences() {
-    return client_hint_preferences_;
-  }
 
   bool IsSpeculativePreload() const {
     return speculative_preload_type_ != SpeculativePreloadType::kNotSpeculative;
@@ -191,6 +190,10 @@ class PLATFORM_EXPORT FetchParameters {
   void SetLazyImageDeferred();
   void SetLazyImageNonBlocking();
 
+  mojom::blink::ScriptType GetScriptType() const { return script_type_; }
+
+  void SetModuleScript();
+
   // See documentation in blink::ResourceRequest.
   bool IsFromOriginDirtyStyleSheet() const {
     return is_from_origin_dirty_style_sheet_;
@@ -199,8 +202,13 @@ class PLATFORM_EXPORT FetchParameters {
     is_from_origin_dirty_style_sheet_ = dirty;
   }
 
-  void SetSignedExchangePrefetchCacheEnabled(bool enabled) {
-    resource_request_.SetSignedExchangePrefetchCacheEnabled(enabled);
+  RenderBlockingBehavior GetRenderBlockingBehavior() const {
+    return render_blocking_behavior_;
+  }
+
+  void SetRenderBlockingBehavior(
+      RenderBlockingBehavior render_blocking_behavior) {
+    render_blocking_behavior_ = render_blocking_behavior;
   }
 
  private:
@@ -213,12 +221,14 @@ class PLATFORM_EXPORT FetchParameters {
   SpeculativePreloadType speculative_preload_type_;
   DeferOption defer_;
   ResourceWidth resource_width_;
-  ClientHintsPreferences client_hint_preferences_;
   ImageRequestBehavior image_request_behavior_;
+  mojom::blink::ScriptType script_type_ = mojom::blink::ScriptType::kClassic;
   bool is_stale_revalidation_ = false;
   bool is_from_origin_dirty_style_sheet_ = false;
+  RenderBlockingBehavior render_blocking_behavior_ =
+      RenderBlockingBehavior::kUnset;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_FETCH_PARAMETERS_H_

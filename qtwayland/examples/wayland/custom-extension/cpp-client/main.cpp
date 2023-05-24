@@ -1,69 +1,19 @@
-/****************************************************************************
- **
- ** Copyright (C) 2017 The Qt Company Ltd.
- ** Contact: https://www.qt.io/licensing/
- **
- ** This file is part of the examples of the Qt Wayland module
- **
- ** $QT_BEGIN_LICENSE:BSD$
- ** Commercial License Usage
- ** Licensees holding valid commercial Qt licenses may use this file in
- ** accordance with the commercial license agreement provided with the
- ** Software or, alternatively, in accordance with the terms contained in
- ** a written agreement between you and The Qt Company. For licensing terms
- ** and conditions see https://www.qt.io/terms-conditions. For further
- ** information use the contact form at https://www.qt.io/contact-us.
- **
- ** BSD License Usage
- ** Alternatively, you may use this file under the terms of the BSD license
- ** as follows:
- **
- ** "Redistribution and use in source and binary forms, with or without
- ** modification, are permitted provided that the following conditions are
- ** met:
- **   * Redistributions of source code must retain the above copyright
- **     notice, this list of conditions and the following disclaimer.
- **   * Redistributions in binary form must reproduce the above copyright
- **     notice, this list of conditions and the following disclaimer in
- **     the documentation and/or other materials provided with the
- **     distribution.
- **   * Neither the name of The Qt Company Ltd nor the names of its
- **     contributors may be used to endorse or promote products derived
- **     from this software without specific prior written permission.
- **
- **
- ** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- ** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- ** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- ** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- ** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- ** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- ** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- ** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- ** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- ** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- ** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
- **
- ** $QT_END_LICENSE$
- **
- ****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QGuiApplication>
 #include <QRasterWindow>
 #include <QPainter>
 #include <QMouseEvent>
 #include <QPlatformSurfaceEvent>
+#include <QDebug>
+#include <QTimer>
 
 #include "../client-common/customextension.h"
-
-#include <QDebug>
-#include <QtGui/qpa/qplatformnativeinterface.h>
-#include <QTimer>
 
 class TestWindow : public QRasterWindow
 {
     Q_OBJECT
-
 public:
     TestWindow(CustomExtension *customExtension)
         : m_extension(customExtension)
@@ -72,8 +22,12 @@ public:
         , rect3(50, 350, 100, 100)
         , rect4(200,350, 100, 100)
     {
+        setTitle(tr("C++ Client"));
         m_extension->registerWindow(this);
+
+//! [connection]
         connect(m_extension, &CustomExtension::fontSize, this, &TestWindow::handleSetFontSize);
+//! [connection]
     }
 
 public slots:
@@ -86,6 +40,7 @@ public slots:
         qDebug() << "sending spin...";
         m_extension->sendSpin(this, 500);
     }
+
     void doBounce()
     {
         if (!m_extension->isActive()) {
@@ -105,7 +60,7 @@ public slots:
     CustomExtensionObject *newObject()
     {
         m_objectCount++;
-        QColor col = QColor::fromHsv(0, 511/(m_objectCount+1), 255);
+        QColor col = QColor::fromHsv(0, 511 / (m_objectCount + 1), 255);
 
         return m_extension->createCustomObject(col.name(), QString::number(m_objectCount));
     }
@@ -123,36 +78,38 @@ protected:
     {
         QPainter p(this);
         p.setFont(m_font);
-        p.fillRect(QRect(0,0,width(),height()),Qt::gray);
-        p.fillRect(rect1, QColor("#C0FFEE"));
+        p.fillRect(QRect(0, 0, width(), height()), Qt::gray);
+        p.fillRect(rect1, QColor::fromString("#C0FFEE"));
         p.drawText(rect1, Qt::TextWordWrap, "Press here to send spin request.");
-        p.fillRect(rect2, QColor("#decaff"));
+        p.fillRect(rect2, QColor::fromString("#decaff"));
         p.drawText(rect2, Qt::TextWordWrap, "Press here to send bounce request.");
-        p.fillRect(rect3, QColor("#7EA"));
+        p.fillRect(rect3, QColor::fromString("#7EA"));
         p.drawText(rect3, Qt::TextWordWrap, "Create new window.");
-        p.fillRect(rect4, QColor("#7EABA6"));
+        p.fillRect(rect4, QColor::fromString("#7EABA6"));
         p.drawText(rect4, Qt::TextWordWrap, "Create custom object.");
 
     }
 
+//! [mousePressEvent]
     void mousePressEvent(QMouseEvent *ev) override
     {
-        if (rect1.contains(ev->pos()))
+        if (rect1.contains(ev->position()))
             doSpin();
-        else if (rect2.contains(ev->pos()))
+        else if (rect2.contains(ev->position()))
             doBounce();
-        else if (rect3.contains(ev->pos()))
+        else if (rect3.contains(ev->position()))
             newWindow();
-        else if (rect4.contains(ev->pos()))
+        else if (rect4.contains(ev->position()))
             newObject();
     }
+//! [mousePressEvent]
 
 private:
     CustomExtension *m_extension = nullptr;
-    QRect rect1;
-    QRect rect2;
-    QRect rect3;
-    QRect rect4;
+    QRectF rect1;
+    QRectF rect2;
+    QRectF rect3;
+    QRectF rect4;
     QFont m_font;
     static int m_objectCount;
     static int m_hue;

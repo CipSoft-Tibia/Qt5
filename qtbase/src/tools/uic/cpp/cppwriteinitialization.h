@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef CPPWRITEINITIALIZATION_H
 #define CPPWRITEINITIALIZATION_H
@@ -36,6 +11,9 @@
 #include <qmap.h>
 #include <qstack.h>
 #include <qtextstream.h>
+
+enum class ConnectionSyntax;
+namespace language { struct SignalSlot; }
 
 QT_BEGIN_NAMESPACE
 
@@ -141,7 +119,7 @@ private:
 
     QString iconCall(const DomProperty *prop);
     QString pixCall(const DomProperty *prop) const;
-    QString pixCall(const QString &type, const QString &text) const;
+    QString pixCall(QLatin1StringView type, const QString &text) const;
     QString trCall(const QString &str, const QString &comment = QString(), const QString &id = QString()) const;
     QString trCall(DomString *str, const QString &defaultString = QString()) const;
     QString noTrCall(DomString *str, const QString &defaultString = QString()) const;
@@ -187,7 +165,7 @@ private:
         };
         ItemData m_setupUiData;
         ItemData m_retranslateUiData;
-        QVector<Item *> m_children;
+        QList<Item *> m_children;
         Item *m_parent = nullptr;
 
         const QString m_itemClassName;
@@ -196,7 +174,7 @@ private:
         QTextStream &m_retranslateUiStream;
         Driver *m_driver;
     };
-    using Items = QVector<Item *>;
+    using Items = QList<Item *>;
 
     void addInitializer(Item *item,
             const QString &name, int column, const QString &value, const QString &directive = QString(), bool translatable = false) const;
@@ -215,7 +193,7 @@ private:
     void initializeComboBox(DomWidget *w);
     void initializeListWidget(DomWidget *w);
     void initializeTreeWidget(DomWidget *w);
-    Items initializeTreeWidgetItems(const QVector<DomItem *> &domItems);
+    Items initializeTreeWidgetItems(const QList<DomItem *> &domItems);
     void initializeTableWidget(DomWidget *w);
 
     QString disableSorting(DomWidget *w, const QString &varName);
@@ -238,6 +216,9 @@ private:
     QString writeBrushInitialization(const DomBrush *brush);
     void addButtonGroup(const DomWidget *node, const QString &varName);
     void addWizardPage(const QString &pageVarName, const DomWidget *page, const QString &parentWidget);
+    bool isCustomWidget(const QString &className) const;
+    ConnectionSyntax connectionSyntax(const language::SignalSlot &sender,
+                                      const language::SignalSlot &receiver) const;
 
     const Uic *m_uic;
     Driver *m_driver;
@@ -257,7 +238,7 @@ private:
     QStack<DomWidget*> m_widgetChain;
     QStack<DomLayout*> m_layoutChain;
     QStack<DomActionGroup*> m_actionGroupChain;
-    QVector<Buddy> m_buddies;
+    QList<Buddy> m_buddies;
 
     QSet<QString> m_buttonGroups;
     using ColorBrushHash = QHash<uint, QString>;
@@ -299,6 +280,8 @@ private:
 
     QString m_generatedClass;
     QString m_mainFormVarName;
+    QStringList m_customSlots;
+    QStringList m_customSignals;
     bool m_mainFormUsedInRetranslateUi = false;
 
     QString m_delayedInitialization;
@@ -317,7 +300,7 @@ private:
 
 } // namespace CPP
 
-Q_DECLARE_TYPEINFO(CPP::WriteInitialization::Buddy, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(CPP::WriteInitialization::Buddy, Q_RELOCATABLE_TYPE);
 
 QT_END_NAMESPACE
 

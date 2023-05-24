@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeocodingmanagerengine.h"
 #include "qgeocodingmanagerengine_p.h"
@@ -54,9 +21,14 @@ QT_BEGIN_NAMESPACE
     convenience methods to implementers of QGeoServiceProvider plugins who want
     to provide support for geocoding operations.
 
-    In the default implementation, supportsGeocoding() and supportsReverseGeocoding() returns false while
-    geocode() and reverseGeocode()
-    cause QGeoCodeReply::UnsupportedOptionError to occur.
+    \note There are no source or binary compatibility guarantees for the
+    backend classes. The API is only guaranteed to work with the Qt version it
+    was developed against. API changes will however only be made in minor
+    releases. (6.6, 6.7, and so on.)
+
+    In the default implementation, supportsGeocoding() and
+    supportsReverseGeocoding() returns false while geocode() and
+    reverseGeocode() cause QGeoCodeReply::UnsupportedOptionError to occur.
 
     If the service provider supports geocoding the subclass should provide an
     implementation of geocode() and call setSupportsGeocoding(true) at
@@ -168,8 +140,8 @@ int QGeoCodingManagerEngine::managerVersion() const
 
     The user is responsible for deleting the returned reply object, although
     this can be done in the slot connected to QGeoCodingManagerEngine::finished(),
-    QGeoCodingManagerEngine::error(), QGeoCodeReply::finished() or
-    QGeoCodeReply::error() with deleteLater().
+    QGeoCodingManagerEngine::errorOccurred(), QGeoCodeReply::finished() or
+    QGeoCodeReply::errorOccurred() with deleteLater().
 */
 QGeoCodeReply *QGeoCodingManagerEngine::geocode(const QGeoAddress &address,
         const QGeoShape &bounds)
@@ -213,8 +185,8 @@ QGeoCodeReply *QGeoCodingManagerEngine::geocode(const QGeoAddress &address,
 
     The user is responsible for deleting the returned reply object, although
     this can be done in the slot connected to QGeoCodingManagerEngine::finished(),
-    QGeoCodingManagerEngine::error(), QGeoCodeReply::finished() or
-    QGeoCodeReply::error() with deleteLater().
+    QGeoCodingManagerEngine::errorOccurred(), QGeoCodeReply::finished() or
+    QGeoCodeReply::errorOccurred() with deleteLater().
 */
 QGeoCodeReply *QGeoCodingManagerEngine::reverseGeocode(const QGeoCoordinate &coordinate,
                                                        const QGeoShape &bounds)
@@ -251,8 +223,8 @@ QGeoCodeReply *QGeoCodingManagerEngine::reverseGeocode(const QGeoCoordinate &coo
 
     The user is responsible for deleting the returned reply object, although
     this can be done in the slot connected to QGeoCodingManagerEngine::finished(),
-    QGeoCodingManagerEngine::error(), QGeoCodeReply::finished() or
-    QGeoCodeReply::error() with deleteLater().
+    QGeoCodingManagerEngine::errorOccurred(), QGeoCodeReply::finished() or
+    QGeoCodeReply::errorOccurred() with deleteLater().
 */
 QGeoCodeReply *QGeoCodingManagerEngine::geocode(const QString &address,
                                                 int limit,
@@ -306,7 +278,7 @@ QLocale QGeoCodingManagerEngine::locale() const
 */
 
 /*!
-\fn void QGeoCodingManagerEngine::error(QGeoCodeReply *reply, QGeoCodeReply::Error error, QString errorString)
+\fn void QGeoCodingManagerEngine::errorOccurred(QGeoCodeReply *reply, QGeoCodeReply::Error error, const QString &errorString)
 
     This signal is emitted when an error has been detected in the processing of
     \a reply. The QGeoCodingManagerEngine::finished() signal will probably follow.
@@ -314,21 +286,10 @@ QLocale QGeoCodingManagerEngine::locale() const
     The error will be described by the error code \a error. If \a errorString is
     not empty it will contain a textual description of the error.
 
-    This signal and QGeoCodeReply::error() will be emitted at the same time.
+    This signal and QGeoCodeReply::errorOccurred() will be emitted at the same time.
 
     \note Do not delete the \a reply object in the slot connected to this
     signal. Use deleteLater() instead.
 */
-
-/*******************************************************************************
-*******************************************************************************/
-
-QGeoCodingManagerEnginePrivate::QGeoCodingManagerEnginePrivate()
-    : managerVersion(-1)
-{}
-
-QGeoCodingManagerEnginePrivate::~QGeoCodingManagerEnginePrivate()
-{
-}
 
 QT_END_NAMESPACE

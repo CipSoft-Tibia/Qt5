@@ -1,24 +1,10 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.16)
 
 project(cmake_axcontainer)
 
-find_package(Qt5Core REQUIRED)
-find_package(Qt5Gui REQUIRED)
-find_package(Qt5Widgets REQUIRED)
-
-find_package(Qt5AxContainer REQUIRED)
-
-include_directories(
-    ${Qt5AxContainer_INCLUDE_DIRS}
-)
-
-add_definitions(${Qt5AxContainer_DEFINITIONS})
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${Qt5Core_EXECUTABLE_COMPILE_FLAGS}")
-
+find_package(Qt6 COMPONENTS Core Gui Widgets AxContainer CONFIG REQUIRED)
 add_executable(axcontainerapp axcontainer.cpp)
-
-target_link_libraries(axcontainerapp
-    ${Qt5AxContainer_LIBRARIES}
-)
+target_link_libraries(axcontainerapp Qt6::Core Qt6::Gui Qt6::Widgets Qt6::AxContainer)

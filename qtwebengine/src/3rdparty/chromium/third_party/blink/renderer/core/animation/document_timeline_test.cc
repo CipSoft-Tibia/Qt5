@@ -33,17 +33,20 @@
 #include "base/test/simple_test_tick_clock.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_cssnumericvalue_double.h"
 #include "third_party/blink/renderer/core/animation/animation_clock.h"
 #include "third_party/blink/renderer/core/animation/animation_effect.h"
 #include "third_party/blink/renderer/core/animation/keyframe_effect.h"
 #include "third_party/blink/renderer/core/animation/keyframe_effect_model.h"
 #include "third_party/blink/renderer/core/animation/pending_animations.h"
+#include "third_party/blink/renderer/core/animation/timing_calculations.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/qualified_name.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
-#include "third_party/blink/renderer/platform/animation/compositor_animation_timeline.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 
 // NaN has the special property that NaN != NaN.
@@ -51,8 +54,12 @@
 
 namespace {
 base::TimeTicks TimeTicksFromMillisecondsD(double seconds) {
-  return base::TimeTicks() + base::TimeDelta::FromMillisecondsD(seconds);
+  return base::TimeTicks() + base::Milliseconds(seconds);
 }
+
+#define EXPECT_TIME_NEAR(expected, value)                              \
+  EXPECT_NEAR((expected).InMillisecondsF(), (value).InMillisecondsF(), \
+              Animation::kTimeToleranceMs)
 }  // namespace
 
 namespace blink {
@@ -92,7 +99,7 @@ class TestDocumentTimeline : public DocumentTimeline {
 class AnimationDocumentTimelineTest : public PageTestBase {
  protected:
   void SetUp() override {
-    PageTestBase::SetUp(IntSize());
+    PageTestBase::SetUp(gfx::Size());
     document = &GetDocument();
     GetAnimationClock().ResetTimeForTesting();
     GetAnimationClock().SetAllowedToDynamicallyUpdateTime(false);
@@ -104,7 +111,7 @@ class AnimationDocumentTimelineTest : public PageTestBase {
     timeline->SetTimingForTesting(platform_timing);
 
     timeline->ResetForTesting();
-    ASSERT_EQ(0, timeline->currentTime());
+    ASSERT_EQ(0, timeline->CurrentTimeMilliseconds());
   }
 
   void TearDown() override {
@@ -138,7 +145,7 @@ class AnimationDocumentTimelineTest : public PageTestBase {
 class AnimationDocumentTimelineRealTimeTest : public PageTestBase {
  protected:
   void SetUp() override {
-    PageTestBase::SetUp(IntSize());
+    PageTestBase::SetUp(gfx::Size());
     document = &GetDocument();
     timeline = document->Timeline();
     GetAnimationClock().SetAllowedToDynamicallyUpdateTime(false);
@@ -163,11 +170,11 @@ TEST_F(AnimationDocumentTimelineTest, EmptyKeyframeAnimation) {
   timeline->Play(keyframe_effect);
 
   UpdateClockAndService(0);
-  EXPECT_FLOAT_EQ(0, timeline->currentTime().value());
+  EXPECT_FLOAT_EQ(0, timeline->CurrentTimeMilliseconds().value());
   EXPECT_FALSE(keyframe_effect->IsInEffect());
 
   UpdateClockAndService(1000);
-  EXPECT_FLOAT_EQ(1000, timeline->currentTime().value());
+  EXPECT_FLOAT_EQ(1000, timeline->CurrentTimeMilliseconds().value());
 }
 
 TEST_F(AnimationDocumentTimelineTest, EmptyForwardsKeyframeAnimation) {
@@ -180,179 +187,184 @@ TEST_F(AnimationDocumentTimelineTest, EmptyForwardsKeyframeAnimation) {
   timeline->Play(keyframe_effect);
 
   UpdateClockAndService(0);
-  EXPECT_EQ(0, timeline->currentTime());
+  EXPECT_EQ(0, timeline->CurrentTimeMilliseconds());
   EXPECT_TRUE(keyframe_effect->IsInEffect());
 
   UpdateClockAndService(1000);
-  EXPECT_FLOAT_EQ(1000, timeline->currentTime().value());
+  EXPECT_FLOAT_EQ(1000, timeline->CurrentTimeMilliseconds().value());
 }
 
 TEST_F(AnimationDocumentTimelineTest, ZeroTime) {
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(1000));
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(2000));
-  EXPECT_EQ(2000, timeline->currentTime());
+  EXPECT_EQ(2000, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, CurrentTimeSeconds) {
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(2000));
   EXPECT_EQ(2, timeline->CurrentTimeSeconds());
-  EXPECT_EQ(2000, timeline->currentTime());
+  EXPECT_EQ(2000, timeline->CurrentTimeMilliseconds());
 
-  auto* document_without_frame = Document::CreateForTest();
+  ScopedNullExecutionContext execution_context;
+  auto* document_without_frame =
+      Document::CreateForTest(execution_context.GetExecutionContext());
   auto* inactive_timeline = MakeGarbageCollected<DocumentTimeline>(
       document_without_frame, base::TimeDelta(), platform_timing);
 
   EXPECT_FALSE(inactive_timeline->CurrentTimeSeconds());
-  EXPECT_FALSE(inactive_timeline->currentTime());
+  EXPECT_FALSE(inactive_timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRateNormal) {
-  base::TimeTicks zero_time = timeline->ZeroTime();
+  base::TimeTicks zero_time = timeline->CalculateZeroTime();
 
   timeline->SetPlaybackRate(1.0);
   EXPECT_EQ(1.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(1000));
-  EXPECT_EQ(zero_time, timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(zero_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(2000));
-  EXPECT_EQ(zero_time, timeline->ZeroTime());
-  EXPECT_EQ(2000, timeline->currentTime());
+  EXPECT_EQ(zero_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(2000, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRateNormalWithOriginTime) {
-  base::TimeDelta origin_time = base::TimeDelta::FromMilliseconds(-1000);
+  base::TimeDelta origin_time = base::Milliseconds(-1000);
   DocumentTimeline* timeline = MakeGarbageCollected<DocumentTimeline>(
       document.Get(), origin_time, platform_timing);
   timeline->ResetForTesting();
 
   EXPECT_EQ(1.0, timeline->PlaybackRate());
-  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(100));
-  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->ZeroTime());
-  EXPECT_EQ(1100, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(1100, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(200));
-  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->ZeroTime());
-  EXPECT_EQ(1200, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(1200, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRatePause) {
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(1000));
-  EXPECT_EQ(base::TimeTicks(), timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks(), timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(0.0);
   EXPECT_EQ(0.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(2000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(1000), timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(1000), timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(1.0);
   EXPECT_EQ(1.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(4000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(1000), timeline->ZeroTime());
-  EXPECT_EQ(3000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(1000), timeline->CalculateZeroTime());
+  EXPECT_EQ(3000, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRatePauseWithOriginTime) {
-  base::TimeDelta origin_time = base::TimeDelta::FromMilliseconds(-1000);
+  base::TimeDelta origin_time = base::Milliseconds(-1000);
   DocumentTimeline* timeline = MakeGarbageCollected<DocumentTimeline>(
       document.Get(), origin_time, platform_timing);
   timeline->ResetForTesting();
 
-  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(100));
-  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->ZeroTime());
-  EXPECT_EQ(1100, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks() + origin_time, timeline->CalculateZeroTime());
+  EXPECT_EQ(1100, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(0.0);
   EXPECT_EQ(0.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(200));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(1100), timeline->ZeroTime());
-  EXPECT_EQ(1100, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(1100), timeline->CalculateZeroTime());
+  EXPECT_EQ(1100, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(1.0);
   EXPECT_EQ(1.0, timeline->PlaybackRate());
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-900), timeline->ZeroTime());
-  EXPECT_EQ(1100, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-900), timeline->CalculateZeroTime());
+  EXPECT_EQ(1100, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(400));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-900), timeline->ZeroTime());
-  EXPECT_EQ(1300, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-900), timeline->CalculateZeroTime());
+  EXPECT_EQ(1300, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRateSlow) {
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(1000));
-  EXPECT_EQ(base::TimeTicks(), timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks(), timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(0.5);
   EXPECT_EQ(0.5, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(3000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-1000), timeline->ZeroTime());
-  EXPECT_EQ(2000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-1000), timeline->CalculateZeroTime());
+  EXPECT_EQ(2000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(1.0);
   EXPECT_EQ(1.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(4000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(1000), timeline->ZeroTime());
-  EXPECT_EQ(3000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(1000), timeline->CalculateZeroTime());
+  EXPECT_EQ(3000, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRateFast) {
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(1000));
-  EXPECT_EQ(base::TimeTicks(), timeline->ZeroTime());
-  EXPECT_EQ(1000, timeline->currentTime());
+  EXPECT_EQ(base::TimeTicks(), timeline->CalculateZeroTime());
+  EXPECT_EQ(1000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(2.0);
   EXPECT_EQ(2.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(3000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(500), timeline->ZeroTime());
-  EXPECT_EQ(5000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(500), timeline->CalculateZeroTime());
+  EXPECT_EQ(5000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(1.0);
   EXPECT_EQ(1.0, timeline->PlaybackRate());
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(4000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-2000), timeline->ZeroTime());
-  EXPECT_EQ(6000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-2000), timeline->CalculateZeroTime());
+  EXPECT_EQ(6000, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlaybackRateFastWithOriginTime) {
   DocumentTimeline* timeline = MakeGarbageCollected<DocumentTimeline>(
-      document.Get(), base::TimeDelta::FromSeconds(-1000), platform_timing);
+      document.Get(), base::Seconds(-1000), platform_timing);
   timeline->ResetForTesting();
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(100000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-1000000), timeline->ZeroTime());
-  EXPECT_EQ(1100000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-1000000),
+            timeline->CalculateZeroTime());
+  EXPECT_EQ(1100000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(2.0);
   EXPECT_EQ(2.0, timeline->PlaybackRate());
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-450000), timeline->ZeroTime());
-  EXPECT_EQ(1100000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-450000), timeline->CalculateZeroTime());
+  EXPECT_EQ(1100000, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(300000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-450000), timeline->ZeroTime());
-  EXPECT_EQ(1500000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-450000), timeline->CalculateZeroTime());
+  EXPECT_EQ(1500000, timeline->CurrentTimeMilliseconds());
 
   timeline->SetPlaybackRate(1.0);
   EXPECT_EQ(1.0, timeline->PlaybackRate());
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-1200000), timeline->ZeroTime());
-  EXPECT_EQ(1500000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-1200000),
+            timeline->CalculateZeroTime());
+  EXPECT_EQ(1500000, timeline->CurrentTimeMilliseconds());
 
   GetAnimationClock().UpdateTime(TimeTicksFromMillisecondsD(400000));
-  EXPECT_EQ(TimeTicksFromMillisecondsD(-1200000), timeline->ZeroTime());
-  EXPECT_EQ(1600000, timeline->currentTime());
+  EXPECT_EQ(TimeTicksFromMillisecondsD(-1200000),
+            timeline->CalculateZeroTime());
+  EXPECT_EQ(1600000, timeline->CurrentTimeMilliseconds());
 }
 
 TEST_F(AnimationDocumentTimelineTest, PauseForTesting) {
-  float seek_time = 1;
+  AnimationTimeDelta seek_time = ANIMATION_TIME_DELTA_FROM_SECONDS(1);
   timing.fill_mode = Timing::FillMode::FORWARDS;
   auto* anim1 = MakeGarbageCollected<KeyframeEffect>(
       element.Get(), CreateEmptyEffectModel(), timing);
@@ -362,13 +374,17 @@ TEST_F(AnimationDocumentTimelineTest, PauseForTesting) {
   Animation* animation2 = timeline->Play(anim2);
   timeline->PauseAnimationsForTesting(seek_time);
 
-  EXPECT_FLOAT_EQ(seek_time * 1000, animation1->currentTime().value());
-  EXPECT_FLOAT_EQ(seek_time * 1000, animation2->currentTime().value());
+  V8CSSNumberish* current_time = animation1->currentTime();
+  EXPECT_NEAR(seek_time.InMillisecondsF(), current_time->GetAsDouble(),
+              Animation::kTimeToleranceMs);
+  current_time = animation2->currentTime();
+  EXPECT_NEAR(seek_time.InMillisecondsF(), current_time->GetAsDouble(),
+              Animation::kTimeToleranceMs);
 }
 
 TEST_F(AnimationDocumentTimelineTest, DelayBeforeAnimationStart) {
-  timing.iteration_duration = AnimationTimeDelta::FromSecondsD(2);
-  timing.start_delay = 5;
+  timing.iteration_duration = ANIMATION_TIME_DELTA_FROM_SECONDS(2);
+  timing.start_delay = Timing::Delay(ANIMATION_TIME_DELTA_FROM_SECONDS(5));
 
   auto* keyframe_effect = MakeGarbageCollected<KeyframeEffect>(
       element.Get(), CreateEmptyEffectModel(), timing);
@@ -377,13 +393,16 @@ TEST_F(AnimationDocumentTimelineTest, DelayBeforeAnimationStart) {
 
   // TODO: Put the animation startTime in the future when we add the capability
   // to change animation startTime
-  EXPECT_CALL(*platform_timing, WakeAfter(base::TimeDelta::FromSecondsD(
-                                    timing.start_delay - MinimumDelay())));
+  EXPECT_CALL(
+      *platform_timing,
+      WakeAfter(base::Seconds(timing.start_delay.AsTimeValue().InSecondsF() -
+                              MinimumDelay())));
   UpdateClockAndService(0);
 
-  EXPECT_CALL(*platform_timing,
-              WakeAfter(base::TimeDelta::FromSecondsD(timing.start_delay -
-                                                      MinimumDelay() - 1.5)));
+  EXPECT_CALL(
+      *platform_timing,
+      WakeAfter(base::Seconds(timing.start_delay.AsTimeValue().InSecondsF() -
+                              MinimumDelay() - 1.5)));
   UpdateClockAndService(1500);
 
   timeline->ScheduleServiceOnNextFrame();
@@ -397,12 +416,13 @@ TEST_F(AnimationDocumentTimelineTest, UseAnimationAfterTimelineDeref) {
   Animation* animation = timeline->Play(nullptr);
   timeline.Clear();
   // Test passes if this does not crash.
-  animation->setStartTime(0);
+  animation->setStartTime(MakeGarbageCollected<V8CSSNumberish>(0),
+                          ASSERT_NO_EXCEPTION);
 }
 
 TEST_F(AnimationDocumentTimelineTest, PlayAfterDocumentDeref) {
-  timing.iteration_duration = AnimationTimeDelta::FromSecondsD(2);
-  timing.start_delay = 5;
+  timing.iteration_duration = ANIMATION_TIME_DELTA_FROM_SECONDS(2);
+  timing.start_delay = Timing::Delay(ANIMATION_TIME_DELTA_FROM_SECONDS(5));
 
   DocumentTimeline* timeline = &document->Timeline();
   document = nullptr;
@@ -426,11 +446,11 @@ TEST_F(AnimationDocumentTimelineTest,
   // As long as we are inside the rendering loop, we shouldn't update even
   // across tasks.
   base::TimeTicks before_time = GetAnimationClock().CurrentTime();
-  test_clock.Advance(base::TimeDelta::FromSeconds(1));
+  test_clock.Advance(base::Seconds(1));
   EXPECT_EQ(GetAnimationClock().CurrentTime(), before_time);
 
   AnimationClock::NotifyTaskStart();
-  test_clock.Advance(base::TimeDelta::FromSeconds(1));
+  test_clock.Advance(base::Seconds(1));
   EXPECT_EQ(GetAnimationClock().CurrentTime(), before_time);
 
   // Once we leave the rendering loop, however, it is valid for the time to
@@ -440,7 +460,7 @@ TEST_F(AnimationDocumentTimelineTest,
 
   // The clock shouldn't tick again until we change task, however.
   base::TimeTicks current_time = GetAnimationClock().CurrentTime();
-  test_clock.Advance(base::TimeDelta::FromSeconds(1));
+  test_clock.Advance(base::Seconds(1));
   EXPECT_EQ(GetAnimationClock().CurrentTime(), current_time);
   AnimationClock::NotifyTaskStart();
   EXPECT_GT(GetAnimationClock().CurrentTime(), current_time);
@@ -455,12 +475,13 @@ TEST_F(AnimationDocumentTimelineRealTimeTest,
   EXPECT_FALSE(
       document->Loader()->GetTiming().ReferenceMonotonicTime().is_null());
 
-  base::TimeDelta origin_time = base::TimeDelta::FromSeconds(1000);
+  base::TimeDelta origin_time = base::Seconds(1000);
   DocumentTimeline* timeline =
       MakeGarbageCollected<DocumentTimeline>(document.Get(), origin_time);
   timeline->SetPlaybackRate(0.5);
-  EXPECT_EQ(origin_time * 2,
-            timeline->ZeroTime() - document->Timeline().ZeroTime());
+
+  EXPECT_TIME_NEAR(AnimationTimeDelta(origin_time) * 2,
+                   timeline->ZeroTime() - document->Timeline().ZeroTime());
 }
 
 }  // namespace blink

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCALENDAR_H
 #define QCALENDAR_H
@@ -130,14 +94,31 @@ public:
     // New entries must be added to the \enum doc in qcalendar.cpp and
     // handled in QCalendarBackend::fromEnum()
     Q_ENUM(System)
+    class SystemId
+    {
+        size_t id;
+        friend class QCalendarBackend;
+        constexpr bool isInEnum() const { return id <= size_t(QCalendar::System::Last); }
+        constexpr explicit SystemId(QCalendar::System e) : id(size_t(e)) { }
+        constexpr explicit SystemId(size_t i) : id(i) { }
+
+    public:
+        constexpr SystemId() : id(~size_t(0)) {}
+        constexpr size_t index() const noexcept { return id; }
+        constexpr bool isValid() const noexcept { return ~id; }
+    };
 
     explicit QCalendar(); // Gregorian, optimised
     explicit QCalendar(System system);
-    explicit QCalendar(QLatin1String name);
+#if QT_CORE_REMOVED_SINCE(6, 4)
+    explicit QCalendar(QLatin1StringView name);
     explicit QCalendar(QStringView name);
+#endif
+    explicit QCalendar(QAnyStringView name);
+    explicit QCalendar(SystemId id);
 
     // QCalendar is a trivially copyable value type.
-    bool isValid() const { return d != nullptr; }
+    bool isValid() const { return d_ptr != nullptr; }
 
     // Date queries:
     int daysInMonth(int month, int year = Unspecified) const;
@@ -178,14 +159,17 @@ public:
 
     // Formatting of date-times:
     QString dateTimeToString(QStringView format, const QDateTime &datetime,
-                             const QDate &dateOnly, const QTime &timeOnly,
+                             QDate dateOnly, QTime timeOnly,
                              const QLocale &locale) const;
 
     // What's available ?
     static QStringList availableCalendars();
 private:
     // Always supplied by QCalendarBackend and expected to be a singleton
-    const QCalendarBackend *d;
+    // Note that the calendar registry destroys all backends when it is itself
+    // destroyed. The code should check if the registry is destroyed before
+    // dereferencing this pointer.
+    const QCalendarBackend *d_ptr;
 };
 
 QT_END_NAMESPACE

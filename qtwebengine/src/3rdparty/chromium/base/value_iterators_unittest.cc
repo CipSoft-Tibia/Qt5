@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,11 +32,6 @@ bool are_equal(InputIterator1 first1,
 }
 
 }  // namespace
-
-TEST(ValueIteratorsTest, SameDictStorage) {
-  static_assert(std::is_same<Value::DictStorage, DictStorage>::value,
-                "DictStorage differs between Value and Value Iterators.");
-}
 
 TEST(ValueIteratorsTest, IsAssignable) {
   static_assert(
@@ -272,7 +267,7 @@ TEST(ValueIteratorsTest, DictIteratorProxy) {
   storage.emplace("double", std::make_unique<Value>(Value::Type::DOUBLE));
   storage.emplace("string", std::make_unique<Value>(Value::Type::STRING));
   storage.emplace("blob", std::make_unique<Value>(Value::Type::BINARY));
-  storage.emplace("dict", std::make_unique<Value>(Value::Type::DICTIONARY));
+  storage.emplace("dict", std::make_unique<Value>(Value::Type::DICT));
   storage.emplace("list", std::make_unique<Value>(Value::Type::LIST));
 
   using iterator = const_dict_iterator;
@@ -305,7 +300,7 @@ TEST(ValueIteratorsTest, ConstDictIteratorProxy) {
   storage.emplace("double", std::make_unique<Value>(Value::Type::DOUBLE));
   storage.emplace("string", std::make_unique<Value>(Value::Type::STRING));
   storage.emplace("blob", std::make_unique<Value>(Value::Type::BINARY));
-  storage.emplace("dict", std::make_unique<Value>(Value::Type::DICTIONARY));
+  storage.emplace("dict", std::make_unique<Value>(Value::Type::DICT));
   storage.emplace("list", std::make_unique<Value>(Value::Type::LIST));
 
   using iterator = const_dict_iterator;

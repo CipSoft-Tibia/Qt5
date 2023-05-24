@@ -37,7 +37,6 @@
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/workers/dedicated_worker_global_scope.h"
 #include "third_party/blink/renderer/core/workers/dedicated_worker_object_proxy.h"
 #include "third_party/blink/renderer/core/workers/global_scope_creation_params.h"
@@ -47,19 +46,22 @@ namespace blink {
 
 DedicatedWorkerThread::DedicatedWorkerThread(
     ExecutionContext* parent_execution_context,
-    DedicatedWorkerObjectProxy& worker_object_proxy)
+    DedicatedWorkerObjectProxy& worker_object_proxy,
+    mojo::PendingRemote<mojom::blink::DedicatedWorkerHost>
+        dedicated_worker_host,
+    mojo::PendingRemote<mojom::blink::BackForwardCacheControllerHost>
+        back_forward_cache_controller_host)
     : WorkerThread(worker_object_proxy),
-      worker_object_proxy_(worker_object_proxy) {
+      worker_object_proxy_(worker_object_proxy),
+      pending_dedicated_worker_host_(std::move(dedicated_worker_host)),
+      pending_back_forward_cache_controller_host_(
+          std::move(back_forward_cache_controller_host)) {
   FrameOrWorkerScheduler* scheduler =
       parent_execution_context ? parent_execution_context->GetScheduler()
                                : nullptr;
   worker_backing_thread_ = std::make_unique<WorkerBackingThread>(
       ThreadCreationParams(GetThreadType())
           .SetFrameOrWorkerScheduler(scheduler));
-
-  // As a dedicated worker can only be associated with one parent context,
-  // we inherit the parent's UKM source id.
-  ukm_source_id_ = parent_execution_context->UkmSourceID();
 }
 
 DedicatedWorkerThread::~DedicatedWorkerThread() = default;
@@ -70,8 +72,11 @@ void DedicatedWorkerThread::ClearWorkerBackingThread() {
 
 WorkerOrWorkletGlobalScope* DedicatedWorkerThread::CreateWorkerGlobalScope(
     std::unique_ptr<GlobalScopeCreationParams> creation_params) {
-  return DedicatedWorkerGlobalScope::Create(std::move(creation_params), this,
-                                            time_origin_, ukm_source_id_);
+  DCHECK(pending_dedicated_worker_host_);
+  return DedicatedWorkerGlobalScope::Create(
+      std::move(creation_params), this, time_origin_,
+      std::move(pending_dedicated_worker_host_),
+      std::move(pending_back_forward_cache_controller_host_));
 }
 
 }  // namespace blink

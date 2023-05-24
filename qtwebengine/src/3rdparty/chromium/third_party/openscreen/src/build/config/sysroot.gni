@@ -11,29 +11,37 @@ declare_args() {
   # The relative path to directory containing sysroot images
   target_sysroot_dir = "../"
 
-  use_sysroot = current_cpu == "arm" || current_cpu == "arm64"
-
-  sysroot_platform = "sid"
+  # Sysroots should only be used for cross compilation, which are currently only
+  # supported on Linux. Only current, valid sysroot is "bullseye", based on the
+  # Debian release of the same name.
+  #
+  # NOTE: to add new platforms, start with the documentation located
+  # at //docs/cross_compilation.md. Also please update the VALID_PLATFORMS
+  # array in //build/scripts/install-sysroot.py.
+  sysroot_platform = ""
+  if (is_linux && (current_cpu == "arm" || current_cpu == "arm64")) {
+    sysroot_platform = "bullseye"
+  }
 }
 
-if (use_sysroot) {
-  assert(sysroot_platform == "sid" || sysroot_platform == "stretch")
-  assert(current_cpu == "arm" || current_cpu == "arm64")
+if (sysroot_platform == "bullseye") {
+  # Only actually use the sysroot for targets that are cross-compiling. Some
+  # targets, such as CDDL, are compiled for the host toolchain.
+  assert(is_linux)
+  if (current_cpu == "arm" || current_cpu == "arm64") {
+    # By default build against a sysroot image downloaded from Cloud Storage
+    # during gclient runhooks.
+    sysroot = "${target_sysroot_dir}/debian_${sysroot_platform}_${current_cpu}-sysroot"
+    _script_arch = current_cpu
 
-  # By default build against a sysroot image downloaded from Cloud Storage
-  # during gclient runhooks.
-  sysroot =
-      "${target_sysroot_dir}/debian_${sysroot_platform}_${current_cpu}-sysroot"
-  _script_arch = current_cpu
-
-  if (exec_script("//build/scripts/dir_exists.py",
-                  [ rebase_path(sysroot) ],
-                  "string") != "True") {
-    print("Missing or outdated sysroot for $current_cpu, downloading latest...")
-    exec_script("//build/scripts/install-sysroot.py",
-                [
-                  "$current_cpu",
-                  "$sysroot_platform",
-                ])
+    if (exec_script("//build/scripts/dir_exists.py",
+                    [ rebase_path(sysroot) ],
+                    "string") != "True") {
+      exec_script("//build/scripts/install-sysroot.py",
+                  [
+                    "$current_cpu",
+                    "$sysroot_platform",
+                  ])
+    }
   }
 }

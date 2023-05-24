@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,6 +26,16 @@ using ::testing::Pair;
 namespace base {
 
 namespace {
+
+// A macro to work around the fact that lambdas are not constexpr in C++14.
+// This will define an unnamed struct with a constexpr call operator, similarly
+// to how lambdas behave in C++17+.
+// Note that this does not support capture groups, so all lambdas defined like
+// this must be stateless.
+// Example Usage: `CONSTEXPR_LAMBDA((int i, int j) { return i + j; }) lambda;`
+// TODO(crbug.com/752720): Remove once we have constexpr lambdas for real.
+#define CONSTEXPR_LAMBDA(fun) \
+  constexpr struct { constexpr bool operator() fun }
 
 struct Int {
   constexpr Int() = default;
@@ -139,19 +149,28 @@ TEST(RangesTest, ForEach) {
 
   auto result = ranges::for_each(array, array + 3, times_two);
   EXPECT_EQ(result.in, array + 3);
-  EXPECT_EQ(result.fun, times_two);
+  // TODO(https://crbug.com/1191256): Fix googletest and switch this back to
+  // EXPECT_EQ.
+  EXPECT_TRUE(result.fun == times_two);
   EXPECT_THAT(array, ElementsAre(0, 2, 4, 3, 4, 5));
 
   ranges::for_each(array + 3, array + 6, times_two);
   EXPECT_EQ(result.in, array + 3);
-  EXPECT_EQ(result.fun, times_two);
+  // TODO(https://crbug.com/1191256): Fix googletest and switch this back to
+  // EXPECT_EQ.
+  EXPECT_TRUE(result.fun == times_two);
   EXPECT_THAT(array, ElementsAre(0, 2, 4, 6, 8, 10));
 
-  EXPECT_EQ(times_two, ranges::for_each(array, times_two).fun);
+  // TODO(https://crbug.com/1191256): Fix googletest and switch this back to
+  // EXPECT_EQ.
+  EXPECT_TRUE(times_two == ranges::for_each(array, times_two).fun);
   EXPECT_THAT(array, ElementsAre(0, 4, 8, 12, 16, 20));
 
   Int values[] = {0, 2, 4, 5};
-  EXPECT_EQ(times_two, ranges::for_each(values, times_two, &Int::value).fun);
+  // TODO(https://crbug.com/1191256): Fix googletest and switch this back to
+  // EXPECT_EQ.
+  EXPECT_TRUE(times_two ==
+              ranges::for_each(values, times_two, &Int::value).fun);
   EXPECT_THAT(values,
               ElementsAre(Field(&Int::value, 0), Field(&Int::value, 4),
                           Field(&Int::value, 8), Field(&Int::value, 10)));
@@ -163,26 +182,31 @@ TEST(RangesTest, ForEachN) {
 
   auto result = ranges::for_each_n(array, 3, times_two);
   EXPECT_EQ(result.in, array + 3);
-  EXPECT_EQ(result.fun, times_two);
+  // TODO(https://crbug.com/1191256): Fix googletest and switch this back to
+  // EXPECT_EQ.
+  EXPECT_TRUE(result.fun == times_two);
   EXPECT_THAT(array, ElementsAre(0, 2, 4, 3, 4, 5));
 
   Int values[] = {0, 2, 4, 5};
-  EXPECT_EQ(times_two,
-            ranges::for_each_n(values, 4, times_two, &Int::value).fun);
+  // TODO(https://crbug.com/1191256): Fix googletest and switch this back to
+  // EXPECT_EQ.
+  EXPECT_TRUE(times_two ==
+              ranges::for_each_n(values, 4, times_two, &Int::value).fun);
   EXPECT_THAT(values,
               ElementsAre(Field(&Int::value, 0), Field(&Int::value, 4),
                           Field(&Int::value, 8), Field(&Int::value, 10)));
 }
 
 TEST(RangesTest, Find) {
-  int array[] = {0, 1, 2, 3, 4, 5};
+  constexpr int array[] = {0, 1, 2, 3, 4, 5};
 
-  EXPECT_EQ(array + 6, ranges::find(array + 1, array + 6, 0));
-  EXPECT_EQ(array, ranges::find(array, 0));
+  static_assert(array + 6 == ranges::find(array + 1, array + 6, 0), "");
+  static_assert(array == ranges::find(array, 0), "");
 
-  Int values[] = {{0}, {2}, {4}, {5}};
-  EXPECT_EQ(values, ranges::find(values, values, 0, &Int::value));
-  EXPECT_EQ(ranges::end(values), ranges::find(values, 3, &Int::value));
+  constexpr Int values[] = {{0}, {2}, {4}, {5}};
+  static_assert(values == ranges::find(values, values, 0, &Int::value), "");
+  static_assert(ranges::end(values) == ranges::find(values, 3, &Int::value),
+                "");
 }
 
 TEST(RangesTest, FindIf) {
@@ -255,15 +279,19 @@ TEST(RangesTest, FindFirstOf) {
 }
 
 TEST(RangesTest, AdjacentFind) {
-  int array[] = {1, 2, 3, 3};
-  EXPECT_EQ(array + 2, ranges::adjacent_find(array, ranges::end(array)));
-  EXPECT_EQ(array,
-            ranges::adjacent_find(array, ranges::end(array), ranges::less{}));
+  constexpr int array[] = {1, 2, 3, 3};
+  static_assert(array + 2 == ranges::adjacent_find(array, ranges::end(array)),
+                "");
+  static_assert(
+      array == ranges::adjacent_find(array, ranges::end(array), ranges::less{}),
+      "");
 
-  Int ints[] = {{6}, {6}, {5}, {4}};
-  EXPECT_EQ(ints, ranges::adjacent_find(ints, ranges::equal_to{}, &Int::value));
-  EXPECT_EQ(ranges::end(ints),
-            ranges::adjacent_find(ints, ranges::less{}, &Int::value));
+  constexpr Int ints[] = {{6}, {6}, {5}, {4}};
+  static_assert(
+      ints == ranges::adjacent_find(ints, ranges::equal_to{}, &Int::value), "");
+  static_assert(ranges::end(ints) ==
+                    ranges::adjacent_find(ints, ranges::less{}, &Int::value),
+                "");
 }
 
 TEST(RangesTest, Count) {
@@ -307,15 +335,27 @@ TEST(RangesTest, Mismatch) {
 }
 
 TEST(RangesTest, Equal) {
-  int array1[] = {1, 3, 6, 7};
-  int array2[] = {1, 3, 5, 7};
+  static constexpr int array1[] = {1, 3, 6, 7};
+  static constexpr int array2[] = {1, 3, 5, 7};
+
+  static_assert(ranges::equal(array1, array1 + 2, array2, array2 + 2), "");
   EXPECT_TRUE(ranges::equal(array1, array1 + 2, array2, array2 + 2));
+
+  static_assert(!ranges::equal(array1, array1 + 4, array2, array2 + 4), "");
   EXPECT_FALSE(ranges::equal(array1, array1 + 4, array2, array2 + 4));
+
+  static_assert(!ranges::equal(array1, array1 + 2, array2, array2 + 3), "");
   EXPECT_FALSE(ranges::equal(array1, array1 + 2, array2, array2 + 3));
 
-  Int ints[] = {{1}, {3}, {5}, {7}};
-  EXPECT_TRUE(ranges::equal(ints, array2,
-                            [](Int lhs, int rhs) { return lhs.value == rhs; }));
+  static constexpr Int ints[] = {{1}, {3}, {5}, {7}};
+
+  CONSTEXPR_LAMBDA((Int lhs, int rhs) { return lhs.value == rhs; }) lambda;
+  static_assert(ranges::equal(ints, array2, lambda), "");
+  EXPECT_TRUE(ranges::equal(ints, array2, lambda));
+
+  static_assert(
+      ranges::equal(array2, ints, ranges::equal_to{}, identity{}, &Int::value),
+      "");
   EXPECT_TRUE(
       ranges::equal(array2, ints, ranges::equal_to{}, identity{}, &Int::value));
 }
@@ -899,27 +939,29 @@ TEST(RangesTest, PartialSortCopy) {
 }
 
 TEST(RangesTest, IsSorted) {
-  int input[] = {3, 1, 2, 0, 4};
-  EXPECT_TRUE(ranges::is_sorted(input + 1, input + 3));
-  EXPECT_FALSE(ranges::is_sorted(input + 1, input + 4));
-  EXPECT_TRUE(ranges::is_sorted(input, input + 2, ranges::greater()));
+  constexpr int input[] = {3, 1, 2, 0, 4};
+  static_assert(ranges::is_sorted(input + 1, input + 3), "");
+  static_assert(!ranges::is_sorted(input + 1, input + 4), "");
+  static_assert(ranges::is_sorted(input, input + 2, ranges::greater()), "");
 
-  Int ints[] = {0, 1, 2, 3, 4};
-  EXPECT_TRUE(ranges::is_sorted(ints, {}, &Int::value));
-  EXPECT_FALSE(ranges::is_sorted(ints, ranges::greater(), &Int::value));
+  constexpr Int ints[] = {0, 1, 2, 3, 4};
+  static_assert(ranges::is_sorted(ints, {}, &Int::value), "");
+  static_assert(!ranges::is_sorted(ints, ranges::greater(), &Int::value), "");
 }
 
 TEST(RangesTest, IsSortedUntil) {
-  int input[] = {3, 1, 2, 0, 4};
-  EXPECT_EQ(input + 3, ranges::is_sorted_until(input + 1, input + 3));
-  EXPECT_EQ(input + 3, ranges::is_sorted_until(input + 1, input + 4));
-  EXPECT_EQ(input + 2,
-            ranges::is_sorted_until(input, input + 2, ranges::greater()));
+  constexpr int input[] = {3, 1, 2, 0, 4};
+  static_assert(input + 3 == ranges::is_sorted_until(input + 1, input + 3), "");
+  static_assert(input + 3 == ranges::is_sorted_until(input + 1, input + 4), "");
+  static_assert(
+      input + 2 == ranges::is_sorted_until(input, input + 2, ranges::greater()),
+      "");
 
-  Int ints[] = {0, 1, 2, 3, 4};
-  EXPECT_EQ(ints + 5, ranges::is_sorted_until(ints, {}, &Int::value));
-  EXPECT_EQ(ints + 1,
-            ranges::is_sorted_until(ints, ranges::greater(), &Int::value));
+  constexpr Int ints[] = {0, 1, 2, 3, 4};
+  static_assert(ints + 5 == ranges::is_sorted_until(ints, {}, &Int::value), "");
+  static_assert(
+      ints + 1 == ranges::is_sorted_until(ints, ranges::greater(), &Int::value),
+      "");
 }
 
 TEST(RangesTest, NthElement) {
@@ -1662,6 +1704,28 @@ TEST(RangesTest, PrevPermutation) {
   int bits[] = {0, 0, 1, 0, 0};
   EXPECT_TRUE(ranges::prev_permutation(bits));
   EXPECT_THAT(bits, ElementsAre(0, 0, 0, 1, 0));
+}
+
+namespace internal {
+const auto predicate = [](int value) { return value; };
+struct TestPair {
+  int a;
+  int b;
+};
+}  // namespace internal
+
+// This is a compilation test that checks that using predicates and projections
+// from the base::internal namespace in range algorithms doesn't result in
+// ambiguous calls to base::invoke.
+TEST(RangesTest, DontClashWithPredicateFromInternalInvoke) {
+  {
+    int input[] = {0, 1, 2};
+    ranges::any_of(input, internal::predicate);
+  }
+  {
+    internal::TestPair input[] = {{1, 2}, {3, 4}};
+    ranges::any_of(input, base::identity{}, &internal::TestPair::a);
+  }
 }
 
 }  // namespace base

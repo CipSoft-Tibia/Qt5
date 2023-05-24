@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "glshader_p.h"
 #include <QMutexLocker>
@@ -43,6 +7,7 @@
 #include <graphicscontext_p.h>
 #include <logging_p.h>
 #include <gllights_p.h>
+#include <Qt3DCore/private/vector_helper_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -54,31 +19,31 @@ namespace OpenGL {
 
 namespace {
 
-QVector<int> getLightUniformNameIds()
+std::vector<int> getLightUniformNameIds()
 {
-    QVector<int> names;
+    std::vector<int> names;
     names.reserve(MAX_LIGHTS * 18 + 1);
 
-    names << GLLights::LIGHT_COUNT_NAME_ID;
+    names.push_back(GLLights::LIGHT_COUNT_NAME_ID);
     for (int i = 0; i < MAX_LIGHTS; ++i) {
-        names << GLLights::LIGHT_TYPE_NAMES[i]
-              << GLLights::LIGHT_COLOR_NAMES[i]
-              << GLLights::LIGHT_POSITION_NAMES[i]
-              << GLLights::LIGHT_INTENSITY_NAMES[i]
-              << GLLights::LIGHT_DIRECTION_NAMES[i]
-              << GLLights::LIGHT_LINEAR_ATTENUATION_NAMES[i]
-              << GLLights::LIGHT_QUADRATIC_ATTENUATION_NAMES[i]
-              << GLLights::LIGHT_CONSTANT_ATTENUATION_NAMES[i]
-              << GLLights::LIGHT_CUT_OFF_ANGLE_NAMES[i]
-              << GLLights::LIGHT_TYPE_UNROLL_NAMES[i]
-              << GLLights::LIGHT_COLOR_UNROLL_NAMES[i]
-              << GLLights::LIGHT_POSITION_UNROLL_NAMES[i]
-              << GLLights::LIGHT_INTENSITY_UNROLL_NAMES[i]
-              << GLLights::LIGHT_DIRECTION_UNROLL_NAMES[i]
-              << GLLights::LIGHT_LINEAR_ATTENUATION_UNROLL_NAMES[i]
-              << GLLights::LIGHT_QUADRATIC_ATTENUATION_UNROLL_NAMES[i]
-              << GLLights::LIGHT_CONSTANT_ATTENUATION_UNROLL_NAMES[i]
-              << GLLights::LIGHT_CUT_OFF_ANGLE_UNROLL_NAMES[i];
+        names.push_back(GLLights::LIGHT_TYPE_NAMES[i]);
+        names.push_back(GLLights::LIGHT_COLOR_NAMES[i]);
+        names.push_back(GLLights::LIGHT_POSITION_NAMES[i]);
+        names.push_back(GLLights::LIGHT_INTENSITY_NAMES[i]);
+        names.push_back(GLLights::LIGHT_DIRECTION_NAMES[i]);
+        names.push_back(GLLights::LIGHT_LINEAR_ATTENUATION_NAMES[i]);
+        names.push_back(GLLights::LIGHT_QUADRATIC_ATTENUATION_NAMES[i]);
+        names.push_back(GLLights::LIGHT_CONSTANT_ATTENUATION_NAMES[i]);
+        names.push_back(GLLights::LIGHT_CUT_OFF_ANGLE_NAMES[i]);
+        names.push_back(GLLights::LIGHT_TYPE_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_COLOR_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_POSITION_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_INTENSITY_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_DIRECTION_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_LINEAR_ATTENUATION_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_QUADRATIC_ATTENUATION_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_CONSTANT_ATTENUATION_UNROLL_NAMES[i]);
+        names.push_back(GLLights::LIGHT_CUT_OFF_ANGLE_UNROLL_NAMES[i]);
     }
 
     return names;
@@ -125,27 +90,27 @@ GraphicsContext *GLShader::graphicsContext()
 }
 
 
-QVector<QString> GLShader::uniformsNames() const
+const std::vector<QString> &GLShader::uniformsNames() const
 {
     return m_uniformsNames;
 }
 
-QVector<QString> GLShader::attributesNames() const
+const std::vector<QString> &GLShader::attributesNames() const
 {
     return m_attributesNames;
 }
 
-QVector<QString> GLShader::uniformBlockNames() const
+const std::vector<QString> &GLShader::uniformBlockNames() const
 {
     return m_uniformBlockNames;
 }
 
-QVector<QString> GLShader::storageBlockNames() const
+const std::vector<QString> &GLShader::storageBlockNames() const
 {
     return m_shaderStorageBlockNames;
 }
 
-QVector<QByteArray> GLShader::shaderCode() const
+const std::vector<QByteArray> &GLShader::shaderCode() const
 {
     return m_shaderCode;
 }
@@ -157,7 +122,7 @@ QHash<QString, ShaderUniform> GLShader::activeUniformsForUniformBlock(int blockI
 
 ShaderUniformBlock GLShader::uniformBlockForBlockIndex(int blockIndex) const noexcept
 {
-    for (int i = 0, m = m_uniformBlocks.size(); i < m; ++i) {
+    for (size_t i = 0, m = m_uniformBlocks.size(); i < m; ++i) {
         if (m_uniformBlocks[i].m_index == blockIndex) {
             return m_uniformBlocks[i];
         }
@@ -167,7 +132,7 @@ ShaderUniformBlock GLShader::uniformBlockForBlockIndex(int blockIndex) const noe
 
 ShaderUniformBlock GLShader::uniformBlockForBlockNameId(int blockNameId) const noexcept
 {
-    for (int i = 0, m = m_uniformBlocks.size(); i < m; ++i) {
+    for (size_t i = 0, m = m_uniformBlocks.size(); i < m; ++i) {
         if (m_uniformBlocks[i].m_nameId == blockNameId) {
             return m_uniformBlocks[i];
         }
@@ -177,7 +142,7 @@ ShaderUniformBlock GLShader::uniformBlockForBlockNameId(int blockNameId) const n
 
 ShaderUniformBlock GLShader::uniformBlockForBlockName(const QString &blockName) const noexcept
 {
-    for (int i = 0, m = m_uniformBlocks.size(); i < m; ++i) {
+    for (size_t i = 0, m = m_uniformBlocks.size(); i < m; ++i) {
         if (m_uniformBlocks[i].m_name == blockName) {
             return m_uniformBlocks[i];
         }
@@ -187,7 +152,7 @@ ShaderUniformBlock GLShader::uniformBlockForBlockName(const QString &blockName) 
 
 ShaderStorageBlock GLShader::storageBlockForBlockIndex(int blockIndex) const noexcept
 {
-    for (int i = 0, m = m_shaderStorageBlockNames.size(); i < m; ++i) {
+    for (size_t i = 0, m = m_shaderStorageBlockNames.size(); i < m; ++i) {
         if (m_shaderStorageBlocks[i].m_index == blockIndex)
             return m_shaderStorageBlocks[i];
     }
@@ -196,7 +161,7 @@ ShaderStorageBlock GLShader::storageBlockForBlockIndex(int blockIndex) const noe
 
 ShaderStorageBlock GLShader::storageBlockForBlockNameId(int blockNameId) const noexcept
 {
-    for (int i = 0, m = m_shaderStorageBlockNames.size(); i < m; ++i) {
+    for (size_t i = 0, m = m_shaderStorageBlockNames.size(); i < m; ++i) {
         if (m_shaderStorageBlocks[i].m_nameId == blockNameId)
             return m_shaderStorageBlocks[i];
     }
@@ -205,7 +170,7 @@ ShaderStorageBlock GLShader::storageBlockForBlockNameId(int blockNameId) const n
 
 ShaderStorageBlock GLShader::storageBlockForBlockName(const QString &blockName) const noexcept
 {
-    for (int i = 0, m = m_shaderStorageBlockNames.size(); i < m; ++i) {
+    for (size_t i = 0, m = m_shaderStorageBlockNames.size(); i < m; ++i) {
         if (m_shaderStorageBlocks[i].m_name == blockName)
             return m_shaderStorageBlocks[i];
     }
@@ -225,7 +190,7 @@ GLShader::ParameterKind GLShader::categorizeVariable(int nameId) const noexcept
 
 bool GLShader::hasUniform(int nameId) const noexcept
 {
-    return m_uniformsNamesIds.contains(nameId);
+    return Qt3DCore::contains(m_uniformsNamesIds, nameId);
 }
 
 void GLShader::prepareUniforms(ShaderParameterPack &pack)
@@ -235,7 +200,7 @@ void GLShader::prepareUniforms(ShaderParameterPack &pack)
     auto it = values.keys.cbegin();
     const auto end = values.keys.cend();
 
-    const int shaderUniformsCount = m_uniforms.size();
+    const int shaderUniformsCount = int(m_uniforms.size());
     const auto uIt = m_uniforms.cbegin();
 
     while (it != end) {
@@ -267,7 +232,7 @@ const QHash<QString, int> GLShader::fragOutputs() const
     return m_fragOutputs;
 }
 
-void GLShader::initializeUniforms(const QVector<ShaderUniform> &uniformsDescription)
+void GLShader::initializeUniforms(const std::vector<ShaderUniform> &uniformsDescription)
 {
     m_uniforms = uniformsDescription;
     m_uniformsNames.resize(uniformsDescription.size());
@@ -276,7 +241,7 @@ void GLShader::initializeUniforms(const QVector<ShaderUniform> &uniformsDescript
     m_lightUniformsNamesIds.reserve(MAX_LIGHTS * 8 + 1);
     QHash<QString, ShaderUniform> activeUniformsInDefaultBlock;
 
-    static const QVector<int> standardUniformNameIds = {
+    static const std::vector<int> standardUniformNameIds = {
         Shader::modelMatrixNameId,
         Shader::viewMatrixNameId,
         Shader::projectionMatrixNameId,
@@ -302,17 +267,17 @@ void GLShader::initializeUniforms(const QVector<ShaderUniform> &uniformsDescript
         Shader::skinningPaletteNameId,
     };
 
-    static const QVector<int> lightUniformNameIds = getLightUniformNameIds();
+    static const std::vector<int> lightUniformNameIds = getLightUniformNameIds();
 
-    for (int i = 0, m = uniformsDescription.size(); i < m; i++) {
+    for (size_t i = 0, m = uniformsDescription.size(); i < m; i++) {
         m_uniformsNames[i] = m_uniforms[i].m_name;
         const int nameId = StringToInt::lookupId(m_uniformsNames[i]);
         m_uniforms[i].m_nameId = nameId;
 
         // Is the uniform a Qt3D "Standard" uniform, a light uniform or a user defined one?
-        if (standardUniformNameIds.contains(nameId))
+        if (Qt3DCore::contains(standardUniformNameIds, nameId))
             m_standardUniformNamesIds.push_back(nameId);
-        else if (lightUniformNameIds.contains(nameId))
+        else if (Qt3DCore::contains(lightUniformNameIds, nameId))
             m_lightUniformsNamesIds.push_back(nameId);
         else
             m_uniformsNamesIds.push_back(nameId);
@@ -324,7 +289,7 @@ void GLShader::initializeUniforms(const QVector<ShaderUniform> &uniformsDescript
     }
     m_uniformBlockIndexToShaderUniforms.insert(-1, activeUniformsInDefaultBlock);
 
-    m_parameterPackSize += m_standardUniformNamesIds.size() + m_lightUniformsNamesIds.size() + m_uniformsNamesIds.size();
+    m_parameterPackSize += int(m_standardUniformNamesIds.size()) + int(m_lightUniformsNamesIds.size()) + int(m_uniformsNamesIds.size());
     m_hasActiveVariables |= (m_parameterPackSize > 0);
 
     // Sort by ascending order to make contains check faster
@@ -337,12 +302,12 @@ void GLShader::initializeUniforms(const QVector<ShaderUniform> &uniformsDescript
     });
 }
 
-void GLShader::initializeAttributes(const QVector<ShaderAttribute> &attributesDescription)
+void GLShader::initializeAttributes(const std::vector<ShaderAttribute> &attributesDescription)
 {
     m_attributes = attributesDescription;
     m_attributesNames.resize(attributesDescription.size());
     m_attributeNamesIds.resize(attributesDescription.size());
-    for (int i = 0, m = attributesDescription.size(); i < m; i++) {
+    for (int i = 0, m = int(attributesDescription.size()); i < m; i++) {
         m_attributesNames[i] = attributesDescription[i].m_name;
         m_attributes[i].m_nameId = StringToInt::lookupId(m_attributesNames[i]);
         m_attributeNamesIds[i] = m_attributes[i].m_nameId;
@@ -351,23 +316,23 @@ void GLShader::initializeAttributes(const QVector<ShaderAttribute> &attributesDe
     m_hasActiveVariables |= (m_attributeNamesIds.size() > 0);
 }
 
-void GLShader::initializeUniformBlocks(const QVector<ShaderUniformBlock> &uniformBlockDescription)
+void GLShader::initializeUniformBlocks(const std::vector<ShaderUniformBlock> &uniformBlockDescription)
 {
     m_uniformBlocks = uniformBlockDescription;
     m_uniformBlockNames.resize(uniformBlockDescription.size());
     m_uniformBlockNamesIds.resize(uniformBlockDescription.size());
-    for (int i = 0, m = uniformBlockDescription.size(); i < m; ++i) {
+    for (int i = 0, m = int(uniformBlockDescription.size()); i < m; ++i) {
         m_uniformBlockNames[i] = m_uniformBlocks[i].m_name;
         m_uniformBlockNamesIds[i] = StringToInt::lookupId(m_uniformBlockNames[i]);
         m_uniformBlocks[i].m_nameId = m_uniformBlockNamesIds[i];
         qCDebug(Shaders) << "Initializing Uniform Block {" << m_uniformBlockNames[i] << "}";
 
         // Find all active uniforms for the shader block
-        QVector<ShaderUniform>::const_iterator uniformsIt = m_uniforms.cbegin();
-        const QVector<ShaderUniform>::const_iterator uniformsEnd = m_uniforms.cend();
+        std::vector<ShaderUniform>::const_iterator uniformsIt = m_uniforms.cbegin();
+        const std::vector<ShaderUniform>::const_iterator uniformsEnd = m_uniforms.cend();
 
-        QVector<QString>::const_iterator uniformNamesIt = m_uniformsNames.cbegin();
-        const QVector<QString>::const_iterator uniformNamesEnd = m_attributesNames.cend();
+        std::vector<QString>::const_iterator uniformNamesIt = m_uniformsNames.cbegin();
+        const std::vector<QString>::const_iterator uniformNamesEnd = m_attributesNames.cend();
 
         QHash<QString, ShaderUniform> activeUniformsInBlock;
 
@@ -385,27 +350,27 @@ void GLShader::initializeUniformBlocks(const QVector<ShaderUniformBlock> &unifor
         m_uniformBlockIndexToShaderUniforms.insert(uniformBlockDescription[i].m_index, activeUniformsInBlock);
     }
 
-    m_parameterPackSize += m_uniformsNamesIds.size();
+    m_parameterPackSize += int(m_uniformsNamesIds.size());
     m_hasActiveVariables |= (m_parameterPackSize > 0);
 
     // Sort by ascending order to make contains check faster
     std::sort(m_uniformBlockNamesIds.begin(), m_uniformBlockNamesIds.end());
 }
 
-void GLShader::initializeShaderStorageBlocks(const QVector<ShaderStorageBlock> &shaderStorageBlockDescription)
+void GLShader::initializeShaderStorageBlocks(const std::vector<ShaderStorageBlock> &shaderStorageBlockDescription)
 {
     m_shaderStorageBlocks = shaderStorageBlockDescription;
     m_shaderStorageBlockNames.resize(shaderStorageBlockDescription.size());
     m_shaderStorageBlockNamesIds.resize(shaderStorageBlockDescription.size());
 
-    for (int i = 0, m = shaderStorageBlockDescription.size(); i < m; ++i) {
+    for (int i = 0, m = int(shaderStorageBlockDescription.size()); i < m; ++i) {
         m_shaderStorageBlockNames[i] = m_shaderStorageBlocks[i].m_name;
         m_shaderStorageBlockNamesIds[i] = StringToInt::lookupId(m_shaderStorageBlockNames[i]);
         m_shaderStorageBlocks[i].m_nameId =m_shaderStorageBlockNamesIds[i];
         qCDebug(Shaders) << "Initializing Shader Storage Block {" << m_shaderStorageBlockNames[i] << "}";
     }
 
-    m_parameterPackSize += m_shaderStorageBlockNamesIds.size();
+    m_parameterPackSize += int(m_shaderStorageBlockNamesIds.size());
     m_hasActiveVariables |= (m_parameterPackSize > 0);
 
     // Sort by ascending order to make contains check faster

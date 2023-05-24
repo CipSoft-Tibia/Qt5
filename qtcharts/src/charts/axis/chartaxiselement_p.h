@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -51,7 +25,7 @@
 #include <QtCharts/QValueAxis>
 #include <QtGui/QFont>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class ChartPresenter;
 class QAbstractAxis;
@@ -67,18 +41,25 @@ public:
 
     virtual QRectF gridGeometry() const = 0;
     virtual void setGeometry(const QRectF &axis, const QRectF &grid) = 0;
-    virtual bool isEmpty() = 0;
+    virtual bool emptyAxis() const = 0;
 
     void setAnimation(AxisAnimation *animation) { m_animation = animation; }
-    AxisAnimation *animation() const { return m_animation; }
+    AxisAnimation *animation() const override { return m_animation; }
 
     QAbstractAxis *axis() const { return m_axis; }
-    void setLayout(QVector<qreal> &layout) { m_layout = layout; }
-    QVector<qreal> &layout() { return m_layout; } // Modifiable reference
-    void setDynamicMinorTickLayout(const QVector<qreal> &layout) { m_dynamicMinorTickLayout = layout; }
-    QVector<qreal> &dynamicMinorTicklayout() { return m_dynamicMinorTickLayout; } // Modifiable reference
+    void setLayout(const QList<qreal> &layout) { m_layout = layout; }
+    QList<qreal> &layout() { return m_layout; } // Modifiable reference
+    void setDynamicMinorTickLayout(const QList<qreal> &layout)
+    {
+        m_dynamicMinorTickLayout = layout;
+    }
+    QList<qreal> &dynamicMinorTicklayout()
+    {
+        return m_dynamicMinorTickLayout;
+    } // Modifiable reference
     inline qreal labelPadding() const { return qreal(4.0); }
     inline qreal titlePadding() const { return qreal(2.0); }
+    inline qreal colorScalePadding() const { return qreal { 8.0 }; }
     void setLabels(const QStringList &labels) { m_labelsList = labels; }
     QStringList labels() const { return m_labelsList; }
 
@@ -102,24 +83,26 @@ public:
     QStringList createLogValueLabels(qreal min, qreal max, qreal base, int ticks,
                                      const QString &format) const;
     QStringList createDateTimeLabels(qreal max, qreal min, int ticks, const QString &format) const;
+    QStringList createColorLabels(qreal min, qreal max, int ticks) const;
 
     // from QGraphicsLayoutItem
-    QRectF boundingRect() const
+    QRectF boundingRect() const override
     {
         return QRectF();
     }
 
     // from QGraphicsLayoutItem
-    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*)
+    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override
     {
     }
 
     bool labelsEditable() const;
     void setLabelsEditable(bool labelsEditable);
+    bool labelsVisible() const;
 
 protected:
-    virtual QVector<qreal> calculateLayout() const = 0;
-    virtual void updateLayout(QVector<qreal> &layout) = 0;
+    virtual QList<qreal> calculateLayout() const = 0;
+    virtual void updateLayout(const QList<qreal> &layout) = 0;
 
     QList<QGraphicsItem *> gridItems() { return m_grid->childItems(); }
     QList<QGraphicsItem *> minorGridItems() { return m_minorGrid->childItems(); }
@@ -128,12 +111,15 @@ protected:
     QList<QGraphicsItem *> arrowItems() { return m_arrow->childItems(); }
     QList<QGraphicsItem *> minorArrowItems() { return m_minorArrow->childItems(); }
     QGraphicsTextItem *titleItem() const { return m_title.data(); }
+    QGraphicsPixmapItem *colorScaleItem() const { return m_colorScale.get(); }
     QGraphicsItemGroup *gridGroup() { return m_grid.data(); }
     QGraphicsItemGroup *minorGridGroup() { return m_minorGrid.data(); }
     QGraphicsItemGroup *labelGroup() { return m_labels.data(); }
     QGraphicsItemGroup *shadeGroup() { return m_shades.data(); }
     QGraphicsItemGroup *arrowGroup() { return m_arrow.data(); }
     QGraphicsItemGroup *minorArrowGroup() { return m_minorArrow.data(); }
+
+    void prepareColorScale(const qreal width, const qreal height);
 
 public Q_SLOTS:
     void handleVisibleChanged(bool visible);
@@ -161,6 +147,9 @@ public Q_SLOTS:
     void handleMinorArrowVisibleChanged(bool visible);
     void handleMinorGridVisibleChanged(bool visible);
     void handleLabelsPositionChanged();
+    void handleTruncateLabelsChanged();
+    void handleColorScaleSizeChanged();
+    void handleColorScaleGradientChanged();
     void valueLabelEdited(qreal oldValue, qreal newValue);
     void dateTimeLabelEdited(const QDateTime &oldTime, const QDateTime &newTime);
 
@@ -175,8 +164,8 @@ private:
 
     QAbstractAxis *m_axis;
     AxisAnimation *m_animation;
-    QVector<qreal> m_layout;
-    QVector<qreal> m_dynamicMinorTickLayout;
+    QList<qreal> m_layout;
+    QList<qreal> m_dynamicMinorTickLayout;
     QStringList m_labelsList;
     QRectF m_axisRect;
     QScopedPointer<QGraphicsItemGroup> m_grid;
@@ -186,10 +175,11 @@ private:
     QScopedPointer<QGraphicsItemGroup> m_shades;
     QScopedPointer<QGraphicsItemGroup> m_labels;
     QScopedPointer<QGraphicsTextItem> m_title;
+    std::unique_ptr<QGraphicsPixmapItem> m_colorScale;
     bool m_intervalAxis;
     bool m_labelsEditable = false;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif /* CHARTAXISELEMENT_H */

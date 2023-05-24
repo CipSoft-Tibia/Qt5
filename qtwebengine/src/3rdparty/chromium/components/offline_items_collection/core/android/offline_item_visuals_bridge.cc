@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,7 +24,7 @@ ScopedJavaLocalRef<jobject> OfflineItemVisualsBridge::CreateOfflineItemVisuals(
   base::android::ScopedJavaLocalRef<jobject> j_icon;
 
   if (!visuals->icon.IsEmpty())
-    j_icon = gfx::ConvertToJavaBitmap(visuals->icon.ToSkBitmap());
+    j_icon = gfx::ConvertToJavaBitmap(*visuals->icon.ToSkBitmap());
 
   return Java_OfflineItemVisualsBridge_createOfflineItemVisuals(env, j_icon);
 }

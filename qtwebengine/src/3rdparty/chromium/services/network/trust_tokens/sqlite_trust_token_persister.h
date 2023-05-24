@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -79,8 +79,13 @@ class SQLiteTrustTokenPersister : public TrustTokenPersister {
       const SuitableTrustTokenOrigin& toplevel,
       std::unique_ptr<TrustTokenIssuerToplevelPairConfig> config) override;
 
-  bool DeleteForOrigins(
-      base::RepeatingCallback<bool(const SuitableTrustTokenOrigin&)> matcher)
+  bool DeleteIssuerConfig(PSTKeyMatcher key_matcher,
+                          PSTTimeMatcher time_matcher) override;
+  bool DeleteToplevelConfig(PSTKeyMatcher key_matcher) override;
+  bool DeleteIssuerToplevelPairConfig(PSTKeyMatcher key_matcher,
+                                      PSTTimeMatcher time_matcher) override;
+
+  base::flat_map<SuitableTrustTokenOrigin, int> GetStoredTrustTokenCounts()
       override;
 
  private:

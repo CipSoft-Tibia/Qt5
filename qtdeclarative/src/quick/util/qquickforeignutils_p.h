@@ -1,47 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTQUICKFOREIGN_P_H
 #define QTQUICKFOREIGN_P_H
 
-#include <qtquickglobal_p.h>
+#include <QtQuick/private/qtquickglobal_p.h>
 
+#include <QtGui/qstylehints.h>
+#include <QtGui/qeventpoint.h>
 #if QT_CONFIG(im)
 #include <QtGui/qinputmethod.h>
 #endif
@@ -67,19 +33,28 @@
 
 QT_BEGIN_NAMESPACE
 
+struct QStyleHintsForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QStyleHints)
+    QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(6, 4)
+};
+
+struct QImageForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QImage)
+    QML_ANONYMOUS
+};
+
 #if QT_CONFIG(validator)
 struct QValidatorForeign
 {
     Q_GADGET
     QML_FOREIGN(QValidator)
     QML_ANONYMOUS
-};
-
-struct QRegExpValidatorForeign
-{
-    Q_GADGET
-    QML_FOREIGN(QRegExpValidator)
-    QML_NAMED_ELEMENT(RegExpValidator)
+    QML_ADDED_IN_VERSION(2, 0)
 };
 
 #if QT_CONFIG(regularexpression)
@@ -88,7 +63,7 @@ struct QRegularExpressionValidatorForeign
     Q_GADGET
     QML_FOREIGN(QRegularExpressionValidator)
     QML_NAMED_ELEMENT(RegularExpressionValidator)
-    QML_ADDED_IN_MINOR_VERSION(14)
+    QML_ADDED_IN_VERSION(2, 14)
 };
 #endif // QT_CONFIG(regularexpression)
 
@@ -100,20 +75,45 @@ struct QInputMethodForeign
     Q_GADGET
     QML_FOREIGN(QInputMethod)
     QML_NAMED_ELEMENT(InputMethod)
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_REMOVED_IN_VERSION(6, 4)
     QML_UNCREATABLE("InputMethod is an abstract class.")
 };
 #endif // QT_CONFIG(im)
 
 #if QT_CONFIG(shortcut)
-struct QKeySequenceForeign
+namespace QKeySequenceForeign
 {
-    Q_GADGET
-    QML_FOREIGN(QKeySequence)
+    Q_NAMESPACE
+    QML_FOREIGN_NAMESPACE(QKeySequence)
     QML_NAMED_ELEMENT(StandardKey)
-    QML_ADDED_IN_MINOR_VERSION(2)
-    QML_UNCREATABLE("Cannot create an instance of StandardKey.")
+    QML_ADDED_IN_VERSION(2, 2)
 };
 #endif // QT_CONFIG(shortcut)
+
+struct QEventPointForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QEventPoint)
+    QML_VALUE_TYPE(eventPoint)
+    QML_ADDED_IN_VERSION(6, 5)
+};
+
+// Prevent the same QEventPoint type from being exported into qmltypes
+// twice, as a value type and a namespace.
+// TODO: Remove once QTBUG-115855 is fixed.
+struct QEventPointDerived : public QEventPoint
+{
+    Q_GADGET
+};
+
+namespace QEventPointForeignNamespace
+{
+    Q_NAMESPACE
+    QML_FOREIGN_NAMESPACE(QEventPointDerived)
+    QML_NAMED_ELEMENT(EventPoint)
+    QML_ADDED_IN_VERSION(6, 6)
+};
 
 QT_END_NAMESPACE
 

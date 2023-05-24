@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,7 +26,7 @@ typedef uint32_t CertStatus;
 static const CertStatus CERT_STATUS_ALL_ERRORS = 0xFF00FFFF;
 
 // Returns true if the specified cert status has an error set.
-static inline bool IsCertStatusError(CertStatus status) {
+inline bool IsCertStatusError(CertStatus status) {
   return (CERT_STATUS_ALL_ERRORS & status) != 0;
 }
 

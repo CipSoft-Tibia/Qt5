@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.weblayer_private.interfaces;
 
 import org.chromium.weblayer_private.interfaces.IClientNavigation;
+import org.chromium.weblayer_private.interfaces.IClientPage;
 import org.chromium.weblayer_private.interfaces.INavigation;
 import org.chromium.weblayer_private.interfaces.IObjectWrapper;
 
@@ -25,12 +26,22 @@ interface INavigationControllerClient {
 
   void navigationFailed(IClientNavigation navigation) = 5;
 
-  void loadStateChanged(boolean isLoading, boolean toDifferentDocument) = 6;
+  void loadStateChanged(boolean isLoading, boolean shouldShowLoadingUi) = 6;
 
   void loadProgressChanged(double progress) = 7;
 
   void onFirstContentfulPaint() = 8;
 
-  // Added in M85.
   void onOldPageNoLongerRendered(in String uri) = 9;
+
+  // Added in M88.
+  void onFirstContentfulPaint2(long navigationStartMs, long firstContentfulPaintDurationMs) = 10;
+  void onLargestContentfulPaint(long navigationStartMs, long largestContentfulPaintDurationMs) = 11;
+
+  // Added in M90.
+  IClientPage createClientPage() = 12;
+  void onPageDestroyed(IClientPage page) = 13;
+
+  // Added in M93.
+  void onPageLanguageDetermined(IClientPage page, in String language) = 14;
 }

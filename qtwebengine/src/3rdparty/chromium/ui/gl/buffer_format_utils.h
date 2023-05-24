@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,9 +13,6 @@ namespace gl {
 // Map buffer format to GL internalformat. Return GL_NONE if no sensible
 // mapping.
 GL_EXPORT unsigned BufferFormatToGLInternalFormat(gfx::BufferFormat format);
-
-// Map buffer format to GL type. Return GL_NONE if no sensible mapping.
-GL_EXPORT unsigned BufferFormatToGLDataType(gfx::BufferFormat format);
 
 }  // namespace gl
 

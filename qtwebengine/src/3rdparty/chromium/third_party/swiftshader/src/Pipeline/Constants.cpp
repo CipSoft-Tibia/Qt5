@@ -21,8 +21,6 @@
 
 namespace sw {
 
-Constants constants;
-
 Constants::Constants()
 {
 	static const unsigned int transposeBit0[16] = {
@@ -244,6 +242,10 @@ Constants::Constants()
 	for(int i = 0; i < 16; i++)
 	{
 		mask5551Q[i] = word4((i & 0x1 ? 0x001F : 0) | (i & 0x2 ? 0x03E0 : 0) | (i & 0x4 ? 0x7C00 : 0) | (i & 8 ? 0x8000 : 0));
+		maskr5g5b5a1Q[i] = word4((i & 0x1 ? 0xF800 : 0) | (i & 0x2 ? 0x07C0 : 0) | (i & 0x4 ? 0x003E : 0) | (i & 8 ? 0x0001 : 0));
+		maskb5g5r5a1Q[i] = word4((i & 0x1 ? 0x003E : 0) | (i & 0x2 ? 0x07C0 : 0) | (i & 0x4 ? 0xF800 : 0) | (i & 8 ? 0x0001 : 0));
+		mask4argbQ[i] = word4((i & 0x1 ? 0x00F0 : 0) | (i & 0x2 ? 0x0F00 : 0) | (i & 0x4 ? 0xF000 : 0) | (i & 8 ? 0x000F : 0));
+		mask4rgbaQ[i] = word4((i & 0x1 ? 0x000F : 0) | (i & 0x2 ? 0x00F0 : 0) | (i & 0x4 ? 0x0F00 : 0) | (i & 8 ? 0xF000 : 0));
 	}
 
 	for(int i = 0; i < 4; i++)
@@ -273,34 +275,14 @@ Constants::Constants()
 		sRGBtoLinearFF_FF00[i] = (unsigned short)(sRGBtoLinear((float)i / 0xFF) * 0xFF00 + 0.5f);
 	}
 
-	for(int i = 0; i < 0x1000; i++)
-	{
-		linearToSRGB12_16[i] = (unsigned short)(clamp(linearToSRGB((float)i / 0x0FFF) * 0xFFFF + 0.5f, 0.0f, (float)0xFFFF));
-		sRGBtoLinear12_16[i] = (unsigned short)(clamp(sRGBtoLinear((float)i / 0x0FFF) * 0xFFFF + 0.5f, 0.0f, (float)0xFFFF));
-	}
-
-	const float4 X[4] = {
-		float4(SampleLocationsX[0]),
-		float4(SampleLocationsX[1]),
-		float4(SampleLocationsX[2]),
-		float4(SampleLocationsX[3]),
-	};
-
-	const float4 Y[4] = {
-		float4(SampleLocationsY[0]),
-		float4(SampleLocationsY[1]),
-		float4(SampleLocationsY[2]),
-		float4(SampleLocationsY[3]),
-	};
-
 	for(int q = 0; q < 4; q++)
 	{
 		for(int c = 0; c < 16; c++)
 		{
 			for(int i = 0; i < 4; i++)
 			{
-				sampleX[q][c][i] = c & (1 << i) ? X[q][0] : 0.0f;
-				sampleY[q][c][i] = c & (1 << i) ? Y[q][0] : 0.0f;
+				sampleX[q][c][i] = c & (1 << i) ? SampleLocationsX[q] : 0.0f;
+				sampleY[q][c][i] = c & (1 << i) ? SampleLocationsY[q] : 0.0f;
 				weight[c][i] = c & (1 << i) ? 1.0f : 0.0f;
 			}
 		}
@@ -308,58 +290,15 @@ Constants::Constants()
 
 	constexpr auto subPixB = vk::SUBPIXEL_PRECISION_BITS;
 
-	const int Xf[4] = { toFixedPoint(X[0][0], subPixB), toFixedPoint(X[1][0], subPixB), toFixedPoint(X[2][0], subPixB), toFixedPoint(X[3][0], subPixB) };
-	const int Yf[4] = { toFixedPoint(Y[0][0], subPixB), toFixedPoint(Y[1][0], subPixB), toFixedPoint(Y[2][0], subPixB), toFixedPoint(Y[3][0], subPixB) };
+	const int Xf[4] = { toFixedPoint(SampleLocationsX[0], subPixB), toFixedPoint(SampleLocationsX[1], subPixB), toFixedPoint(SampleLocationsX[2], subPixB), toFixedPoint(SampleLocationsX[3], subPixB) };
+	const int Yf[4] = { toFixedPoint(SampleLocationsY[0], subPixB), toFixedPoint(SampleLocationsY[1], subPixB), toFixedPoint(SampleLocationsY[2], subPixB), toFixedPoint(SampleLocationsY[3], subPixB) };
 
 	memcpy(&this->Xf, &Xf, sizeof(Xf));
 	memcpy(&this->Yf, &Yf, sizeof(Yf));
 
-	memcpy(&this->X, &X, sizeof(X));
-	memcpy(&this->Y, &Y, sizeof(Y));
-
-	const dword maxX[16] = { 0x00000000, 0x00000001, 0x00000100, 0x00000101, 0x00010000, 0x00010001, 0x00010100, 0x00010101, 0x01000000, 0x01000001, 0x01000100, 0x01000101, 0x01010000, 0x01010001, 0x01010100, 0x01010101 };
-	const dword maxY[16] = { 0x00000000, 0x00000002, 0x00000200, 0x00000202, 0x00020000, 0x00020002, 0x00020200, 0x00020202, 0x02000000, 0x02000002, 0x02000200, 0x02000202, 0x02020000, 0x02020002, 0x02020200, 0x02020202 };
-	const dword maxZ[16] = { 0x00000000, 0x00000004, 0x00000400, 0x00000404, 0x00040000, 0x00040004, 0x00040400, 0x00040404, 0x04000000, 0x04000004, 0x04000400, 0x04000404, 0x04040000, 0x04040004, 0x04040400, 0x04040404 };
-	const dword minX[16] = { 0x00000000, 0x00000008, 0x00000800, 0x00000808, 0x00080000, 0x00080008, 0x00080800, 0x00080808, 0x08000000, 0x08000008, 0x08000800, 0x08000808, 0x08080000, 0x08080008, 0x08080800, 0x08080808 };
-	const dword minY[16] = { 0x00000000, 0x00000010, 0x00001000, 0x00001010, 0x00100000, 0x00100010, 0x00101000, 0x00101010, 0x10000000, 0x10000010, 0x10001000, 0x10001010, 0x10100000, 0x10100010, 0x10101000, 0x10101010 };
-	const dword minZ[16] = { 0x00000000, 0x00000020, 0x00002000, 0x00002020, 0x00200000, 0x00200020, 0x00202000, 0x00202020, 0x20000000, 0x20000020, 0x20002000, 0x20002020, 0x20200000, 0x20200020, 0x20202000, 0x20202020 };
-	const dword fini[16] = { 0x00000000, 0x00000080, 0x00008000, 0x00008080, 0x00800000, 0x00800080, 0x00808000, 0x00808080, 0x80000000, 0x80000080, 0x80008000, 0x80008080, 0x80800000, 0x80800080, 0x80808000, 0x80808080 };
-
-	memcpy(&this->maxX, &maxX, sizeof(maxX));
-	memcpy(&this->maxY, &maxY, sizeof(maxY));
-	memcpy(&this->maxZ, &maxZ, sizeof(maxZ));
-	memcpy(&this->minX, &minX, sizeof(minX));
-	memcpy(&this->minY, &minY, sizeof(minY));
-	memcpy(&this->minZ, &minZ, sizeof(minZ));
-	memcpy(&this->fini, &fini, sizeof(fini));
-
-	static const dword4 maxPos = { 0x7F7FFFFF, 0x7F7FFFFF, 0x7F7FFFFF, 0x7F7FFFFE };
-
-	memcpy(&this->maxPos, &maxPos, sizeof(maxPos));
-
-	static const float4 unscaleByte = { 1.0f / 0xFF, 1.0f / 0xFF, 1.0f / 0xFF, 1.0f / 0xFF };
-	static const float4 unscaleSByte = { 1.0f / 0x7F, 1.0f / 0x7F, 1.0f / 0x7F, 1.0f / 0x7F };
-	static const float4 unscaleShort = { 1.0f / 0x7FFF, 1.0f / 0x7FFF, 1.0f / 0x7FFF, 1.0f / 0x7FFF };
-	static const float4 unscaleUShort = { 1.0f / 0xFFFF, 1.0f / 0xFFFF, 1.0f / 0xFFFF, 1.0f / 0xFFFF };
-
-	// NOTE: Using "1.0f / 0x7FFFFFF" below results in a compiler error, e.g.:
-	// error: implicit conversion from 'int' to 'float' changes value from 2147483646 to 2147483648
-	static const float4 unscaleInt = { (float)(1.0 / 0x7FFFFFFF), (float)(1.0 / 0x7FFFFFFF), (float)(1.0 / 0x7FFFFFFF), (float)(1.0 / 0x7FFFFFFF) };
-	static const float4 unscaleUInt = { (float)(1.0 / 0xFFFFFFFF), (float)(1.0 / 0xFFFFFFFF), (float)(1.0 / 0xFFFFFFFF), (float)(1.0 / 0xFFFFFFFF) };
-
-	static const float4 unscaleFixed = { 1.0f / 0x00010000, 1.0f / 0x00010000, 1.0f / 0x00010000, 1.0f / 0x00010000 };
-
-	memcpy(&this->unscaleByte, &unscaleByte, sizeof(unscaleByte));
-	memcpy(&this->unscaleSByte, &unscaleSByte, sizeof(unscaleSByte));
-	memcpy(&this->unscaleShort, &unscaleShort, sizeof(unscaleShort));
-	memcpy(&this->unscaleUShort, &unscaleUShort, sizeof(unscaleUShort));
-	memcpy(&this->unscaleInt, &unscaleInt, sizeof(unscaleInt));
-	memcpy(&this->unscaleUInt, &unscaleUInt, sizeof(unscaleUInt));
-	memcpy(&this->unscaleFixed, &unscaleFixed, sizeof(unscaleFixed));
-
 	for(int i = 0; i <= 0xFFFF; i++)
 	{
-		half2float[i] = (float)reinterpret_cast<half &>(i);
+		half2float[i] = static_cast<float>(bit_cast<half>(i));
 	}
 }
 

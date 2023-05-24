@@ -7,7 +7,7 @@
 /* at a redacted point in time
  */
 /* Compiler settings for ../../chrome/elevation_service/elevation_service_idl.idl:
-    Oicf, W1, Zp8, env=Win64 (32b run), target_arch=ARM64 8.01.0622 
+    Oicf, W1, Zp8, env=Win64 (32b run), target_arch=ARM64 8.01.0628 
     protocol : dce , ms_ext, c_ext, robust
     error checks: allocation ref bounds_check enum stub_data 
     VC __declspec() decoration level: 
@@ -46,11 +46,11 @@
 
 #include "elevation_service_idl.h"
 
-#define TYPE_FORMAT_STRING_SIZE   11                                
-#define PROC_FORMAT_STRING_SIZE   77                                
+#define TYPE_FORMAT_STRING_SIZE   69                                
+#define PROC_FORMAT_STRING_SIZE   195                               
 #define EXPR_FORMAT_STRING_SIZE   1                                 
 #define TRANSMIT_AS_TABLE_SIZE    0            
-#define WIRE_MARSHAL_TABLE_SIZE   0            
+#define WIRE_MARSHAL_TABLE_SIZE   1            
 
 typedef struct _elevation_service_idl_MIDL_TYPE_FORMAT_STRING
     {
@@ -71,57 +71,148 @@ typedef struct _elevation_service_idl_MIDL_EXPR_FORMAT_STRING
     } elevation_service_idl_MIDL_EXPR_FORMAT_STRING;
 
 
-static const RPC_SYNTAX_IDENTIFIER  _RpcTransferSyntax = 
+static const RPC_SYNTAX_IDENTIFIER  _RpcTransferSyntax_2_0 = 
 {{0x8A885D04,0x1CEB,0x11C9,{0x9F,0xE8,0x08,0x00,0x2B,0x10,0x48,0x60}},{2,0}};
+
+#if defined(_CONTROL_FLOW_GUARD_XFG)
+#define XFG_TRAMPOLINES(ObjectType)\
+NDR_SHAREABLE unsigned long ObjectType ## _UserSize_XFG(unsigned long * pFlags, unsigned long Offset, void * pObject)\
+{\
+return  ObjectType ## _UserSize(pFlags, Offset, (ObjectType *)pObject);\
+}\
+NDR_SHAREABLE unsigned char * ObjectType ## _UserMarshal_XFG(unsigned long * pFlags, unsigned char * pBuffer, void * pObject)\
+{\
+return ObjectType ## _UserMarshal(pFlags, pBuffer, (ObjectType *)pObject);\
+}\
+NDR_SHAREABLE unsigned char * ObjectType ## _UserUnmarshal_XFG(unsigned long * pFlags, unsigned char * pBuffer, void * pObject)\
+{\
+return ObjectType ## _UserUnmarshal(pFlags, pBuffer, (ObjectType *)pObject);\
+}\
+NDR_SHAREABLE void ObjectType ## _UserFree_XFG(unsigned long * pFlags, void * pObject)\
+{\
+ObjectType ## _UserFree(pFlags, (ObjectType *)pObject);\
+}
+#define XFG_TRAMPOLINES64(ObjectType)\
+NDR_SHAREABLE unsigned long ObjectType ## _UserSize64_XFG(unsigned long * pFlags, unsigned long Offset, void * pObject)\
+{\
+return  ObjectType ## _UserSize64(pFlags, Offset, (ObjectType *)pObject);\
+}\
+NDR_SHAREABLE unsigned char * ObjectType ## _UserMarshal64_XFG(unsigned long * pFlags, unsigned char * pBuffer, void * pObject)\
+{\
+return ObjectType ## _UserMarshal64(pFlags, pBuffer, (ObjectType *)pObject);\
+}\
+NDR_SHAREABLE unsigned char * ObjectType ## _UserUnmarshal64_XFG(unsigned long * pFlags, unsigned char * pBuffer, void * pObject)\
+{\
+return ObjectType ## _UserUnmarshal64(pFlags, pBuffer, (ObjectType *)pObject);\
+}\
+NDR_SHAREABLE void ObjectType ## _UserFree64_XFG(unsigned long * pFlags, void * pObject)\
+{\
+ObjectType ## _UserFree64(pFlags, (ObjectType *)pObject);\
+}
+#define XFG_BIND_TRAMPOLINES(HandleType, ObjectType)\
+static void* ObjectType ## _bind_XFG(HandleType pObject)\
+{\
+return ObjectType ## _bind((ObjectType) pObject);\
+}\
+static void ObjectType ## _unbind_XFG(HandleType pObject, handle_t ServerHandle)\
+{\
+ObjectType ## _unbind((ObjectType) pObject, ServerHandle);\
+}
+#define XFG_TRAMPOLINE_FPTR(Function) Function ## _XFG
+#define XFG_TRAMPOLINE_FPTR_DEPENDENT_SYMBOL(Symbol) Symbol ## _XFG
+#else
+#define XFG_TRAMPOLINES(ObjectType)
+#define XFG_TRAMPOLINES64(ObjectType)
+#define XFG_BIND_TRAMPOLINES(HandleType, ObjectType)
+#define XFG_TRAMPOLINE_FPTR(Function) Function
+#define XFG_TRAMPOLINE_FPTR_DEPENDENT_SYMBOL(Symbol) Symbol
+#endif
 
 
 extern const elevation_service_idl_MIDL_TYPE_FORMAT_STRING elevation_service_idl__MIDL_TypeFormatString;
 extern const elevation_service_idl_MIDL_PROC_FORMAT_STRING elevation_service_idl__MIDL_ProcFormatString;
 extern const elevation_service_idl_MIDL_EXPR_FORMAT_STRING elevation_service_idl__MIDL_ExprFormatString;
 
+#ifdef __cplusplus
+namespace {
+#endif
 
 extern const MIDL_STUB_DESC Object_StubDesc;
+#ifdef __cplusplus
+}
+#endif
 
 
 extern const MIDL_SERVER_INFO IElevator_ServerInfo;
 extern const MIDL_STUBLESS_PROXY_INFO IElevator_ProxyInfo;
 
+#ifdef __cplusplus
+namespace {
+#endif
 
 extern const MIDL_STUB_DESC Object_StubDesc;
+#ifdef __cplusplus
+}
+#endif
 
 
 extern const MIDL_SERVER_INFO IElevatorChromium_ServerInfo;
 extern const MIDL_STUBLESS_PROXY_INFO IElevatorChromium_ProxyInfo;
 
+#ifdef __cplusplus
+namespace {
+#endif
 
 extern const MIDL_STUB_DESC Object_StubDesc;
+#ifdef __cplusplus
+}
+#endif
 
 
 extern const MIDL_SERVER_INFO IElevatorChrome_ServerInfo;
 extern const MIDL_STUBLESS_PROXY_INFO IElevatorChrome_ProxyInfo;
 
+#ifdef __cplusplus
+namespace {
+#endif
 
 extern const MIDL_STUB_DESC Object_StubDesc;
+#ifdef __cplusplus
+}
+#endif
 
 
 extern const MIDL_SERVER_INFO IElevatorChromeBeta_ServerInfo;
 extern const MIDL_STUBLESS_PROXY_INFO IElevatorChromeBeta_ProxyInfo;
 
+#ifdef __cplusplus
+namespace {
+#endif
 
 extern const MIDL_STUB_DESC Object_StubDesc;
+#ifdef __cplusplus
+}
+#endif
 
 
 extern const MIDL_SERVER_INFO IElevatorChromeDev_ServerInfo;
 extern const MIDL_STUBLESS_PROXY_INFO IElevatorChromeDev_ProxyInfo;
 
+#ifdef __cplusplus
+namespace {
+#endif
 
 extern const MIDL_STUB_DESC Object_StubDesc;
+#ifdef __cplusplus
+}
+#endif
 
 
 extern const MIDL_SERVER_INFO IElevatorChromeCanary_ServerInfo;
 extern const MIDL_STUBLESS_PROXY_INFO IElevatorChromeCanary_ProxyInfo;
 
 
+extern const USER_MARSHAL_ROUTINE_QUADRUPLE UserMarshalRoutines[ WIRE_MARSHAL_TABLE_SIZE ];
 
 #if !defined(__RPC_ARM64__)
 #error  Invalid build platform for this stub.
@@ -203,6 +294,113 @@ static const elevation_service_idl_MIDL_PROC_FORMAT_STRING elevation_service_idl
 /* 74 */	0x8,		/* FC_LONG */
 			0x0,		/* 0 */
 
+	/* Procedure EncryptData */
+
+/* 76 */	0x33,		/* FC_AUTO_HANDLE */
+			0x6c,		/* Old Flags:  object, Oi2 */
+/* 78 */	NdrFcLong( 0x0 ),	/* 0 */
+/* 82 */	NdrFcShort( 0x4 ),	/* 4 */
+/* 84 */	NdrFcShort( 0x30 ),	/* ARM64 Stack size/offset = 48 */
+/* 86 */	NdrFcShort( 0x6 ),	/* 6 */
+/* 88 */	NdrFcShort( 0x24 ),	/* 36 */
+/* 90 */	0x47,		/* Oi2 Flags:  srv must size, clt must size, has return, has ext, */
+			0x5,		/* 5 */
+/* 92 */	0x10,		/* 16 */
+			0x7,		/* Ext Flags:  new corr desc, clt corr check, srv corr check, */
+/* 94 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 96 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 98 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 100 */	NdrFcShort( 0x5 ),	/* 5 */
+/* 102 */	0x5,		/* 5 */
+			0x80,		/* 128 */
+/* 104 */	0x81,		/* 129 */
+			0x82,		/* 130 */
+/* 106 */	0x83,		/* 131 */
+			0x84,		/* 132 */
+
+	/* Parameter protection_level */
+
+/* 108 */	NdrFcShort( 0x48 ),	/* Flags:  in, base type, */
+/* 110 */	NdrFcShort( 0x8 ),	/* ARM64 Stack size/offset = 8 */
+/* 112 */	0xd,		/* FC_ENUM16 */
+			0x0,		/* 0 */
+
+	/* Parameter plaintext */
+
+/* 114 */	NdrFcShort( 0x8b ),	/* Flags:  must size, must free, in, by val, */
+/* 116 */	NdrFcShort( 0x10 ),	/* ARM64 Stack size/offset = 16 */
+/* 118 */	NdrFcShort( 0x24 ),	/* Type Offset=36 */
+
+	/* Parameter ciphertext */
+
+/* 120 */	NdrFcShort( 0x2113 ),	/* Flags:  must size, must free, out, simple ref, srv alloc size=8 */
+/* 122 */	NdrFcShort( 0x18 ),	/* ARM64 Stack size/offset = 24 */
+/* 124 */	NdrFcShort( 0x36 ),	/* Type Offset=54 */
+
+	/* Parameter last_error */
+
+/* 126 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 128 */	NdrFcShort( 0x20 ),	/* ARM64 Stack size/offset = 32 */
+/* 130 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Return value */
+
+/* 132 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
+/* 134 */	NdrFcShort( 0x28 ),	/* ARM64 Stack size/offset = 40 */
+/* 136 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Procedure DecryptData */
+
+/* 138 */	0x33,		/* FC_AUTO_HANDLE */
+			0x6c,		/* Old Flags:  object, Oi2 */
+/* 140 */	NdrFcLong( 0x0 ),	/* 0 */
+/* 144 */	NdrFcShort( 0x5 ),	/* 5 */
+/* 146 */	NdrFcShort( 0x28 ),	/* ARM64 Stack size/offset = 40 */
+/* 148 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 150 */	NdrFcShort( 0x24 ),	/* 36 */
+/* 152 */	0x47,		/* Oi2 Flags:  srv must size, clt must size, has return, has ext, */
+			0x4,		/* 4 */
+/* 154 */	0x10,		/* 16 */
+			0x7,		/* Ext Flags:  new corr desc, clt corr check, srv corr check, */
+/* 156 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 158 */	NdrFcShort( 0x1 ),	/* 1 */
+/* 160 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 162 */	NdrFcShort( 0x4 ),	/* 4 */
+/* 164 */	0x4,		/* 4 */
+			0x80,		/* 128 */
+/* 166 */	0x81,		/* 129 */
+			0x82,		/* 130 */
+/* 168 */	0x83,		/* 131 */
+			0x0,		/* 0 */
+
+	/* Parameter ciphertext */
+
+/* 170 */	NdrFcShort( 0x8b ),	/* Flags:  must size, must free, in, by val, */
+/* 172 */	NdrFcShort( 0x8 ),	/* ARM64 Stack size/offset = 8 */
+/* 174 */	NdrFcShort( 0x24 ),	/* Type Offset=36 */
+
+	/* Parameter plaintext */
+
+/* 176 */	NdrFcShort( 0x2113 ),	/* Flags:  must size, must free, out, simple ref, srv alloc size=8 */
+/* 178 */	NdrFcShort( 0x10 ),	/* ARM64 Stack size/offset = 16 */
+/* 180 */	NdrFcShort( 0x36 ),	/* Type Offset=54 */
+
+	/* Parameter last_error */
+
+/* 182 */	NdrFcShort( 0x2150 ),	/* Flags:  out, base type, simple ref, srv alloc size=8 */
+/* 184 */	NdrFcShort( 0x18 ),	/* ARM64 Stack size/offset = 24 */
+/* 186 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
+	/* Return value */
+
+/* 188 */	NdrFcShort( 0x70 ),	/* Flags:  out, return, base type, */
+/* 190 */	NdrFcShort( 0x20 ),	/* ARM64 Stack size/offset = 32 */
+/* 192 */	0x8,		/* FC_LONG */
+			0x0,		/* 0 */
+
 			0x0
         }
     };
@@ -221,10 +419,75 @@ static const elevation_service_idl_MIDL_TYPE_FORMAT_STRING elevation_service_idl
 			0x11, 0xc,	/* FC_RP [alloced_on_stack] [simple_pointer] */
 /*  8 */	0xb9,		/* FC_UINT3264 */
 			0x5c,		/* FC_PAD */
+/* 10 */	
+			0x12, 0x0,	/* FC_UP */
+/* 12 */	NdrFcShort( 0xe ),	/* Offset= 14 (26) */
+/* 14 */	
+			0x1b,		/* FC_CARRAY */
+			0x1,		/* 1 */
+/* 16 */	NdrFcShort( 0x2 ),	/* 2 */
+/* 18 */	0x9,		/* Corr desc: FC_ULONG */
+			0x0,		/*  */
+/* 20 */	NdrFcShort( 0xfffc ),	/* -4 */
+/* 22 */	NdrFcShort( 0x1 ),	/* Corr flags:  early, */
+/* 24 */	0x6,		/* FC_SHORT */
+			0x5b,		/* FC_END */
+/* 26 */	
+			0x17,		/* FC_CSTRUCT */
+			0x3,		/* 3 */
+/* 28 */	NdrFcShort( 0x8 ),	/* 8 */
+/* 30 */	NdrFcShort( 0xfff0 ),	/* Offset= -16 (14) */
+/* 32 */	0x8,		/* FC_LONG */
+			0x8,		/* FC_LONG */
+/* 34 */	0x5c,		/* FC_PAD */
+			0x5b,		/* FC_END */
+/* 36 */	0xb4,		/* FC_USER_MARSHAL */
+			0x83,		/* 131 */
+/* 38 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 40 */	NdrFcShort( 0x8 ),	/* 8 */
+/* 42 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 44 */	NdrFcShort( 0xffde ),	/* Offset= -34 (10) */
+/* 46 */	
+			0x11, 0x4,	/* FC_RP [alloced_on_stack] */
+/* 48 */	NdrFcShort( 0x6 ),	/* Offset= 6 (54) */
+/* 50 */	
+			0x13, 0x0,	/* FC_OP */
+/* 52 */	NdrFcShort( 0xffe6 ),	/* Offset= -26 (26) */
+/* 54 */	0xb4,		/* FC_USER_MARSHAL */
+			0x83,		/* 131 */
+/* 56 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 58 */	NdrFcShort( 0x8 ),	/* 8 */
+/* 60 */	NdrFcShort( 0x0 ),	/* 0 */
+/* 62 */	NdrFcShort( 0xfff4 ),	/* Offset= -12 (50) */
+/* 64 */	
+			0x11, 0xc,	/* FC_RP [alloced_on_stack] [simple_pointer] */
+/* 66 */	0x8,		/* FC_LONG */
+			0x5c,		/* FC_PAD */
 
 			0x0
         }
     };
+
+XFG_TRAMPOLINES(BSTR)
+
+static const USER_MARSHAL_ROUTINE_QUADRUPLE UserMarshalRoutines[ WIRE_MARSHAL_TABLE_SIZE ] = 
+        {
+            
+            {
+            (USER_MARSHAL_SIZING_ROUTINE)XFG_TRAMPOLINE_FPTR(BSTR_UserSize)
+            ,(USER_MARSHAL_MARSHALLING_ROUTINE)XFG_TRAMPOLINE_FPTR(BSTR_UserMarshal)
+            ,(USER_MARSHAL_UNMARSHALLING_ROUTINE)XFG_TRAMPOLINE_FPTR(BSTR_UserUnmarshal)
+            ,(USER_MARSHAL_FREEING_ROUTINE)XFG_TRAMPOLINE_FPTR(BSTR_UserFree)
+            
+            }
+            
+
+        };
+
+
+
+/* Standard interface: __MIDL_itf_elevation_service_idl_0000_0000, ver. 0.0,
+   GUID={0x00000000,0x0000,0x0000,{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}} */
 
 
 /* Object interface: IUnknown, ver. 0.0,
@@ -237,7 +500,9 @@ static const elevation_service_idl_MIDL_TYPE_FORMAT_STRING elevation_service_idl
 #pragma code_seg(".orpc")
 static const unsigned short IElevator_FormatStringOffsetTable[] =
     {
-    0
+    0,
+    76,
+    138
     };
 
 static const MIDL_STUBLESS_PROXY_INFO IElevator_ProxyInfo =
@@ -261,21 +526,23 @@ static const MIDL_SERVER_INFO IElevator_ServerInfo =
     0,
     0,
     0};
-CINTERFACE_PROXY_VTABLE(4) _IElevatorProxyVtbl = 
+CINTERFACE_PROXY_VTABLE(6) _IElevatorProxyVtbl = 
 {
     &IElevator_ProxyInfo,
     &IID_IElevator,
     IUnknown_QueryInterface_Proxy,
     IUnknown_AddRef_Proxy,
     IUnknown_Release_Proxy ,
-    (void *) (INT_PTR) -1 /* IElevator::RunRecoveryCRXElevated */
+    (void *) (INT_PTR) -1 /* IElevator::RunRecoveryCRXElevated */ ,
+    (void *) (INT_PTR) -1 /* IElevator::EncryptData */ ,
+    (void *) (INT_PTR) -1 /* IElevator::DecryptData */
 };
 
 const CInterfaceStubVtbl _IElevatorStubVtbl =
 {
     &IID_IElevator,
     &IElevator_ServerInfo,
-    4,
+    6,
     0, /* pure interpreted */
     CStdStubBuffer_METHODS
 };
@@ -288,6 +555,8 @@ const CInterfaceStubVtbl _IElevatorStubVtbl =
 static const unsigned short IElevatorChromium_FormatStringOffsetTable[] =
     {
     0,
+    76,
+    138,
     0
     };
 
@@ -312,19 +581,23 @@ static const MIDL_SERVER_INFO IElevatorChromium_ServerInfo =
     0,
     0,
     0};
-CINTERFACE_PROXY_VTABLE(4) _IElevatorChromiumProxyVtbl = 
+CINTERFACE_PROXY_VTABLE(6) _IElevatorChromiumProxyVtbl = 
 {
     0,
     &IID_IElevatorChromium,
     IUnknown_QueryInterface_Proxy,
     IUnknown_AddRef_Proxy,
     IUnknown_Release_Proxy ,
-    0 /* forced delegation IElevator::RunRecoveryCRXElevated */
+    0 /* forced delegation IElevator::RunRecoveryCRXElevated */ ,
+    0 /* forced delegation IElevator::EncryptData */ ,
+    0 /* forced delegation IElevator::DecryptData */
 };
 
 
-static const PRPC_STUB_FUNCTION IElevatorChromium_table[] =
+EXTERN_C DECLSPEC_SELECTANY const PRPC_STUB_FUNCTION IElevatorChromium_table[] =
 {
+    NdrStubCall2,
+    NdrStubCall2,
     NdrStubCall2
 };
 
@@ -332,7 +605,7 @@ CInterfaceStubVtbl _IElevatorChromiumStubVtbl =
 {
     &IID_IElevatorChromium,
     &IElevatorChromium_ServerInfo,
-    4,
+    6,
     &IElevatorChromium_table[-3],
     CStdStubBuffer_DELEGATING_METHODS
 };
@@ -345,6 +618,8 @@ CInterfaceStubVtbl _IElevatorChromiumStubVtbl =
 static const unsigned short IElevatorChrome_FormatStringOffsetTable[] =
     {
     0,
+    76,
+    138,
     0
     };
 
@@ -369,19 +644,23 @@ static const MIDL_SERVER_INFO IElevatorChrome_ServerInfo =
     0,
     0,
     0};
-CINTERFACE_PROXY_VTABLE(4) _IElevatorChromeProxyVtbl = 
+CINTERFACE_PROXY_VTABLE(6) _IElevatorChromeProxyVtbl = 
 {
     0,
     &IID_IElevatorChrome,
     IUnknown_QueryInterface_Proxy,
     IUnknown_AddRef_Proxy,
     IUnknown_Release_Proxy ,
-    0 /* forced delegation IElevator::RunRecoveryCRXElevated */
+    0 /* forced delegation IElevator::RunRecoveryCRXElevated */ ,
+    0 /* forced delegation IElevator::EncryptData */ ,
+    0 /* forced delegation IElevator::DecryptData */
 };
 
 
-static const PRPC_STUB_FUNCTION IElevatorChrome_table[] =
+EXTERN_C DECLSPEC_SELECTANY const PRPC_STUB_FUNCTION IElevatorChrome_table[] =
 {
+    NdrStubCall2,
+    NdrStubCall2,
     NdrStubCall2
 };
 
@@ -389,7 +668,7 @@ CInterfaceStubVtbl _IElevatorChromeStubVtbl =
 {
     &IID_IElevatorChrome,
     &IElevatorChrome_ServerInfo,
-    4,
+    6,
     &IElevatorChrome_table[-3],
     CStdStubBuffer_DELEGATING_METHODS
 };
@@ -402,6 +681,8 @@ CInterfaceStubVtbl _IElevatorChromeStubVtbl =
 static const unsigned short IElevatorChromeBeta_FormatStringOffsetTable[] =
     {
     0,
+    76,
+    138,
     0
     };
 
@@ -426,19 +707,23 @@ static const MIDL_SERVER_INFO IElevatorChromeBeta_ServerInfo =
     0,
     0,
     0};
-CINTERFACE_PROXY_VTABLE(4) _IElevatorChromeBetaProxyVtbl = 
+CINTERFACE_PROXY_VTABLE(6) _IElevatorChromeBetaProxyVtbl = 
 {
     0,
     &IID_IElevatorChromeBeta,
     IUnknown_QueryInterface_Proxy,
     IUnknown_AddRef_Proxy,
     IUnknown_Release_Proxy ,
-    0 /* forced delegation IElevator::RunRecoveryCRXElevated */
+    0 /* forced delegation IElevator::RunRecoveryCRXElevated */ ,
+    0 /* forced delegation IElevator::EncryptData */ ,
+    0 /* forced delegation IElevator::DecryptData */
 };
 
 
-static const PRPC_STUB_FUNCTION IElevatorChromeBeta_table[] =
+EXTERN_C DECLSPEC_SELECTANY const PRPC_STUB_FUNCTION IElevatorChromeBeta_table[] =
 {
+    NdrStubCall2,
+    NdrStubCall2,
     NdrStubCall2
 };
 
@@ -446,7 +731,7 @@ CInterfaceStubVtbl _IElevatorChromeBetaStubVtbl =
 {
     &IID_IElevatorChromeBeta,
     &IElevatorChromeBeta_ServerInfo,
-    4,
+    6,
     &IElevatorChromeBeta_table[-3],
     CStdStubBuffer_DELEGATING_METHODS
 };
@@ -459,6 +744,8 @@ CInterfaceStubVtbl _IElevatorChromeBetaStubVtbl =
 static const unsigned short IElevatorChromeDev_FormatStringOffsetTable[] =
     {
     0,
+    76,
+    138,
     0
     };
 
@@ -483,19 +770,23 @@ static const MIDL_SERVER_INFO IElevatorChromeDev_ServerInfo =
     0,
     0,
     0};
-CINTERFACE_PROXY_VTABLE(4) _IElevatorChromeDevProxyVtbl = 
+CINTERFACE_PROXY_VTABLE(6) _IElevatorChromeDevProxyVtbl = 
 {
     0,
     &IID_IElevatorChromeDev,
     IUnknown_QueryInterface_Proxy,
     IUnknown_AddRef_Proxy,
     IUnknown_Release_Proxy ,
-    0 /* forced delegation IElevator::RunRecoveryCRXElevated */
+    0 /* forced delegation IElevator::RunRecoveryCRXElevated */ ,
+    0 /* forced delegation IElevator::EncryptData */ ,
+    0 /* forced delegation IElevator::DecryptData */
 };
 
 
-static const PRPC_STUB_FUNCTION IElevatorChromeDev_table[] =
+EXTERN_C DECLSPEC_SELECTANY const PRPC_STUB_FUNCTION IElevatorChromeDev_table[] =
 {
+    NdrStubCall2,
+    NdrStubCall2,
     NdrStubCall2
 };
 
@@ -503,7 +794,7 @@ CInterfaceStubVtbl _IElevatorChromeDevStubVtbl =
 {
     &IID_IElevatorChromeDev,
     &IElevatorChromeDev_ServerInfo,
-    4,
+    6,
     &IElevatorChromeDev_table[-3],
     CStdStubBuffer_DELEGATING_METHODS
 };
@@ -516,6 +807,8 @@ CInterfaceStubVtbl _IElevatorChromeDevStubVtbl =
 static const unsigned short IElevatorChromeCanary_FormatStringOffsetTable[] =
     {
     0,
+    76,
+    138,
     0
     };
 
@@ -540,19 +833,23 @@ static const MIDL_SERVER_INFO IElevatorChromeCanary_ServerInfo =
     0,
     0,
     0};
-CINTERFACE_PROXY_VTABLE(4) _IElevatorChromeCanaryProxyVtbl = 
+CINTERFACE_PROXY_VTABLE(6) _IElevatorChromeCanaryProxyVtbl = 
 {
     0,
     &IID_IElevatorChromeCanary,
     IUnknown_QueryInterface_Proxy,
     IUnknown_AddRef_Proxy,
     IUnknown_Release_Proxy ,
-    0 /* forced delegation IElevator::RunRecoveryCRXElevated */
+    0 /* forced delegation IElevator::RunRecoveryCRXElevated */ ,
+    0 /* forced delegation IElevator::EncryptData */ ,
+    0 /* forced delegation IElevator::DecryptData */
 };
 
 
-static const PRPC_STUB_FUNCTION IElevatorChromeCanary_table[] =
+EXTERN_C DECLSPEC_SELECTANY const PRPC_STUB_FUNCTION IElevatorChromeCanary_table[] =
 {
+    NdrStubCall2,
+    NdrStubCall2,
     NdrStubCall2
 };
 
@@ -560,11 +857,14 @@ CInterfaceStubVtbl _IElevatorChromeCanaryStubVtbl =
 {
     &IID_IElevatorChromeCanary,
     &IElevatorChromeCanary_ServerInfo,
-    4,
+    6,
     &IElevatorChromeCanary_table[-3],
     CStdStubBuffer_DELEGATING_METHODS
 };
 
+#ifdef __cplusplus
+namespace {
+#endif
 static const MIDL_STUB_DESC Object_StubDesc = 
     {
     0,
@@ -579,15 +879,18 @@ static const MIDL_STUB_DESC Object_StubDesc =
     1, /* -error bounds_check flag */
     0x50002, /* Ndr library version */
     0,
-    0x801026e, /* MIDL Version 8.1.622 */
+    0x8010274, /* MIDL Version 8.1.628 */
     0,
-    0,
+    UserMarshalRoutines,
     0,  /* notify & notify_flag routine table */
     0x1, /* MIDL flag */
     0, /* cs routines */
     0,   /* proxy/server info */
     0
     };
+#ifdef __cplusplus
+}
+#endif
 
 const CInterfaceProxyVtbl * const _elevation_service_idl_ProxyVtblList[] = 
 {
@@ -647,7 +950,7 @@ int __stdcall _elevation_service_idl_IID_Lookup( const IID * pIID, int * pIndex 
     
 }
 
-const ExtendedProxyFileInfo elevation_service_idl_ProxyFileInfo = 
+EXTERN_C const ExtendedProxyFileInfo elevation_service_idl_ProxyFileInfo = 
 {
     (PCInterfaceProxyVtblList *) & _elevation_service_idl_ProxyVtblList,
     (PCInterfaceStubVtblList *) & _elevation_service_idl_StubVtblList,
@@ -666,5 +969,5 @@ const ExtendedProxyFileInfo elevation_service_idl_ProxyFileInfo =
 #endif
 
 
-#endif /* defined(_M_ARM64)*/
+#endif /* defined(_M_ARM64) */
 

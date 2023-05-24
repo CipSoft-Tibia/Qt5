@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest>
+#include <QTest>
 #include <QtGui/QWindow>
 #include <QtGui/QCursor>
 #include <QtGui/private/qguiapplication_p.h>
@@ -49,6 +24,7 @@ private slots:
     void stateHandlingPart2();
     void deterministicEvents_data();
     void deterministicEvents();
+    void doubleClick();
 };
 
 class MouseWindow : public QWindow
@@ -61,25 +37,25 @@ public:
     ulong lastTimeStamp = 0;
 
 protected:
-    void mousePressEvent(QMouseEvent *e)
+    void mousePressEvent(QMouseEvent *e) override
     {
         pressCount++;
         processEvent(e);
     }
 
-    void mouseMoveEvent(QMouseEvent *e)
+    void mouseMoveEvent(QMouseEvent *e) override
     {
         moveCount++;
         stateInMouseMove = e->buttons();
         processEvent(e);
     }
 
-    void mouseReleaseEvent(QMouseEvent *e)
+    void mouseReleaseEvent(QMouseEvent *e) override
     {
         processEvent(e);
     }
 
-    void mouseDoubleClickEvent(QMouseEvent *e)
+    void mouseDoubleClickEvent(QMouseEvent *e) override
     {
         doubleClickCount++;
         processEvent(e);
@@ -274,6 +250,54 @@ void tst_Mouse::deterministicEvents()
     }
     QCOMPARE(w.pressCount, 1);
     QCOMPARE(w.moveCount, 1);
+}
+
+void tst_Mouse::doubleClick()
+{
+    MouseWindow w;
+    w.show();
+    w.setGeometry(100, 100, 200, 200);
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+
+    // click
+    QPoint point(10, 10);
+    QCOMPARE(w.pressCount, 0);
+    QTest::mousePress(&w, Qt::LeftButton, { }, point);
+    QCOMPARE(w.pressCount, 1);
+    // give a delay of 10ms
+    auto ts = w.lastTimeStamp;
+    QTest::mouseRelease(&w, Qt::LeftButton, { }, point, 10);
+    QCOMPARE(w.lastTimeStamp, ts + 10);
+    QCOMPARE(w.doubleClickCount, 0);
+
+    // click again within a short time to generate double-click
+    QTest::mousePress(&w, Qt::LeftButton, { }, point, 10);
+    QCOMPARE(w.pressCount, 2);
+    QCOMPARE(w.lastTimeStamp, ts + 20);
+    // this time, let some virtual time elapse, because we're going to test double-click again afterwards
+    QTest::mouseRelease(&w, Qt::LeftButton, { }, point);
+    QCOMPARE_GT(w.lastTimeStamp, ts + 20);
+    QCOMPARE(w.doubleClickCount, 1);
+
+    // use the mouseClick function to generate another double-click
+    ts = w.lastTimeStamp;
+    QTest::mouseClick(&w, Qt::LeftButton, {}, point, 10);
+    QCOMPARE_GE(w.lastTimeStamp, ts + 500); // because the last release had a default delay
+    QTest::mouseClick(&w, Qt::LeftButton, {}, point);
+    QCOMPARE(w.doubleClickCount, 2);
+
+    // use the mouseDClick function to generate another double-click
+    ts = w.lastTimeStamp;
+    QTest::mouseDClick(&w, Qt::LeftButton, {}, point);
+    QCOMPARE_GE(w.lastTimeStamp, ts + 500); // because the last release had a default delay
+    QCOMPARE(w.doubleClickCount, 3);
+
+    // use the mouseClick function with default delay to avoid double-click
+    ts = w.lastTimeStamp;
+    QTest::mouseClick(&w, Qt::LeftButton, {}, point);
+    QCOMPARE_GE(w.lastTimeStamp, ts + 500); // because the last release had a default delay
+    QTest::mouseClick(&w, Qt::LeftButton, {}, point);
+    QCOMPARE(w.doubleClickCount, 3);
 }
 
 QTEST_MAIN(tst_Mouse)

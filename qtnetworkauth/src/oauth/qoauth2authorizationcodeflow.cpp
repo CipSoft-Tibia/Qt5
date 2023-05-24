@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Network Auth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QT_NO_HTTP
 
@@ -44,6 +18,8 @@
 #include <functional>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QOAuth2AuthorizationCodeFlow
@@ -87,7 +63,8 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_handleCallback(const QVariantMap &d
     using Key = QAbstractOAuth2Private::OAuth2KeyString;
 
     if (status != QAbstractOAuth::Status::NotAuthenticated) {
-        qCWarning(loggingCategory, "Unexpected call");
+        qCWarning(loggingCategory) << "Authorization stage: callback in unexpected status:"
+                                   << static_cast<int>(status) << ", ignoring the callback";
         return;
     }
 
@@ -97,23 +74,30 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_handleCallback(const QVariantMap &d
     const QString code = data.value(Key::code).toString();
     const QString receivedState = data.value(Key::state).toString();
     if (error.size()) {
+        // RFC 6749, Section 5.2 Error Response
         const QString uri = data.value(Key::errorUri).toString();
         const QString description = data.value(Key::errorDescription).toString();
-        qCWarning(loggingCategory, "AuthenticationError: %s(%s): %s",
-                 qPrintable(error), qPrintable(uri), qPrintable(description));
+        qCWarning(loggingCategory, "Authorization stage: AuthenticationError: %s(%s): %s",
+                  qPrintable(error), qPrintable(uri), qPrintable(description));
         Q_EMIT q->error(error, description, uri);
+        // Emit also requestFailed() so that it is a signal for all errors
+        emit q->requestFailed(QAbstractOAuth::Error::ServerError);
         return;
     }
+
     if (code.isEmpty()) {
-        qCWarning(loggingCategory, "AuthenticationError: Code not received");
+        qCWarning(loggingCategory, "Authorization stage: Code not received");
+        emit q->requestFailed(QAbstractOAuth::Error::OAuthTokenNotFoundError);
         return;
     }
     if (receivedState.isEmpty()) {
-        qCWarning(loggingCategory, "State not received");
+        qCWarning(loggingCategory, "Authorization stage: State not received");
+        emit q->requestFailed(QAbstractOAuth::Error::ServerError);
         return;
     }
     if (state != receivedState) {
-        qCWarning(loggingCategory, "State mismatch");
+        qCWarning(loggingCategory) << "Authorization stage: State mismatch";
+        emit q->requestFailed(QAbstractOAuth::Error::ServerError);
         return;
     }
 
@@ -131,8 +115,8 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished(const QV
     using Key = QAbstractOAuth2Private::OAuth2KeyString;
 
     if (values.contains(Key::error)) {
-        const QString error = values.value(Key::error).toString();
-        qCWarning(loggingCategory, "Error: %s", qPrintable(error));
+        _q_accessTokenRequestFailed(QAbstractOAuth::Error::ServerError,
+                                    values.value(Key::error).toString());
         return;
     }
 
@@ -146,7 +130,8 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished(const QV
         q->setRefreshToken(values.value(Key::refreshToken).toString());
     scope = values.value(Key::scope).toString();
     if (accessToken.isEmpty()) {
-        qCWarning(loggingCategory, "Access token not received");
+        _q_accessTokenRequestFailed(QAbstractOAuth::Error::OAuthTokenNotFoundError,
+                                    "Access token not received"_L1);
         return;
     }
     q->setToken(accessToken);
@@ -166,6 +151,23 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished(const QV
     extraTokens.insert(copy);
 
     setStatus(QAbstractOAuth::Status::Granted);
+}
+
+void QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFailed(QAbstractOAuth::Error error,
+                                                                      const QString& errorString)
+{
+    Q_Q(QOAuth2AuthorizationCodeFlow);
+    qCWarning(loggingCategory) << "Token request failed:" << errorString;
+    // If we were refreshing, reset status to Granted if we have an access token.
+    // The access token might still be valid, and even if it wouldn't be,
+    // refreshing can be attempted again.
+    if (q->status() == QAbstractOAuth::Status::RefreshingToken) {
+        if (!q->token().isEmpty())
+            setStatus(QAbstractOAuth::Status::Granted);
+        else
+            setStatus(QAbstractOAuth::Status::NotAuthenticated);
+    }
+    emit q->requestFailed(error);
 }
 
 void QOAuth2AuthorizationCodeFlowPrivate::_q_authenticate(QNetworkReply *reply,
@@ -299,8 +301,12 @@ void QOAuth2AuthorizationCodeFlow::grant()
     permanent. After a time specified along with the access token
     when it was obtained, the access token will become invalid.
 
-    \b {See also}:
-    \l {https://tools.ietf.org/html/rfc6749#section-1.5}{Refresh
+    If refreshing the token fails and an access token exists, the status is
+    set to QAbstractOAuth::Status::Granted, and to
+    QAbstractOAuth::Status::NotAuthenticated otherwise.
+
+    \sa QAbstractOAuth::requestFailed()
+    \sa {https://tools.ietf.org/html/rfc6749#section-1.5}{Refresh
     Token}
 */
 void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
@@ -319,8 +325,12 @@ void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
 
     using Key = QAbstractOAuth2Private::OAuth2KeyString;
 
-    QVariantMap parameters;
+    QMultiMap<QString, QVariant> parameters;
     QNetworkRequest request(d->accessTokenUrl);
+#ifndef QT_NO_SSL
+    if (d->sslConfiguration && !d->sslConfiguration->isNull())
+        request.setSslConfiguration(*d->sslConfiguration);
+#endif
     QUrlQuery query;
     parameters.insert(Key::grantType, QStringLiteral("refresh_token"));
     parameters.insert(Key::refreshToken, d->refreshToken);
@@ -335,7 +345,7 @@ void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
 
     const QString data = query.toString(QUrl::FullyEncoded);
     d->currentReply = d->networkAccessManager()->post(request, data.toUtf8());
-    d->status = Status::RefreshingToken;
+    setStatus(Status::RefreshingToken);
 
     QNetworkReply *reply = d->currentReply.data();
     QAbstractOAuthReplyHandler *handler = replyHandler();
@@ -349,6 +359,10 @@ void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
                             &QNetworkAccessManager::authenticationRequired,
                             d, &QOAuth2AuthorizationCodeFlowPrivate::_q_authenticate,
                             Qt::UniqueConnection);
+    QObjectPrivate::connect(d->replyHandler.data(),
+                            &QAbstractOAuthReplyHandler::tokenRequestErrorOccurred,
+                            d, &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFailed,
+                            Qt::UniqueConnection);
 }
 
 /*!
@@ -356,7 +370,7 @@ void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
     \l {https://tools.ietf.org/html/rfc6749#section-4.1.1}
     {Authorization Request} using \a parameters.
 */
-QUrl QOAuth2AuthorizationCodeFlow::buildAuthenticateUrl(const QVariantMap &parameters)
+QUrl QOAuth2AuthorizationCodeFlow::buildAuthenticateUrl(const QMultiMap<QString, QVariant> &parameters)
 {
     Q_D(QOAuth2AuthorizationCodeFlow);
     using Key = QAbstractOAuth2Private::OAuth2KeyString;
@@ -366,7 +380,7 @@ QUrl QOAuth2AuthorizationCodeFlow::buildAuthenticateUrl(const QVariantMap &param
     Q_ASSERT(!d->state.isEmpty());
     const QString state = d->state;
 
-    QVariantMap p(parameters);
+    QMultiMap<QString, QVariant> p(parameters);
     QUrl url(d->authorizationUrl);
     p.insert(Key::responseType, responseType());
     p.insert(Key::clientIdentifier, d->clientIdentifier);
@@ -393,8 +407,12 @@ void QOAuth2AuthorizationCodeFlow::requestAccessToken(const QString &code)
     Q_D(QOAuth2AuthorizationCodeFlow);
     using Key = QAbstractOAuth2Private::OAuth2KeyString;
 
-    QVariantMap parameters;
+    QMultiMap<QString, QVariant> parameters;
     QNetworkRequest request(d->accessTokenUrl);
+#ifndef QT_NO_SSL
+    if (d->sslConfiguration && !d->sslConfiguration->isNull())
+        request.setSslConfiguration(*d->sslConfiguration);
+#endif
     QUrlQuery query;
     parameters.insert(Key::grantType, QStringLiteral("authorization_code"));
     parameters.insert(Key::code, QUrl::toPercentEncoding(code));
@@ -414,12 +432,17 @@ void QOAuth2AuthorizationCodeFlow::requestAccessToken(const QString &code)
     QAbstractOAuthReplyHandler *handler = replyHandler();
     QObject::connect(reply, &QNetworkReply::finished,
                      [handler, reply] { handler->networkReplyFinished(reply); });
+    connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
     QObjectPrivate::connect(d->replyHandler.data(), &QAbstractOAuthReplyHandler::tokensReceived, d,
                             &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished,
                             Qt::UniqueConnection);
     QObjectPrivate::connect(d->networkAccessManager(),
                             &QNetworkAccessManager::authenticationRequired,
                             d, &QOAuth2AuthorizationCodeFlowPrivate::_q_authenticate,
+                            Qt::UniqueConnection);
+    QObjectPrivate::connect(d->replyHandler.data(),
+                            &QAbstractOAuthReplyHandler::tokenRequestErrorOccurred,
+                            d, &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFailed,
                             Qt::UniqueConnection);
 }
 
@@ -429,7 +452,7 @@ void QOAuth2AuthorizationCodeFlow::requestAccessToken(const QString &code)
     interaction.
 */
 void QOAuth2AuthorizationCodeFlow::resourceOwnerAuthorization(const QUrl &url,
-                                                              const QVariantMap &parameters)
+                                                              const QMultiMap<QString, QVariant> &parameters)
 {
     Q_D(QOAuth2AuthorizationCodeFlow);
     if (Q_UNLIKELY(url != d->authorizationUrl)) {
@@ -444,5 +467,7 @@ void QOAuth2AuthorizationCodeFlow::resourceOwnerAuthorization(const QUrl &url,
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qoauth2authorizationcodeflow.cpp"
 
 #endif // QT_NO_HTTP

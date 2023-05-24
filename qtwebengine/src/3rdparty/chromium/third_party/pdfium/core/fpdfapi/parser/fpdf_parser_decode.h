@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,17 @@
 #ifndef CORE_FPDFAPI_PARSER_FPDF_PARSER_DECODE_H_
 #define CORE_FPDFAPI_PARSER_FPDF_PARSER_DECODE_H_
 
+#include <stdint.h>
+
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
 #include "core/fxcrt/fx_string.h"
-#include "third_party/base/optional.h"
+#include "core/fxcrt/retain_ptr.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/base/span.h"
 
 class CPDF_Array;
@@ -25,13 +29,14 @@ class ScanlineDecoder;
 }
 
 // Indexed by 8-bit char code, contains unicode code points.
-extern const uint16_t PDFDocEncoding[256];
+extern const uint16_t kPDFDocEncoding[256];
 
 bool ValidateDecoderPipeline(const CPDF_Array* pDecoders);
 
-ByteString PDF_EncodeString(const ByteString& src, bool bHex);
+ByteString PDF_EncodeString(ByteStringView src);
+ByteString PDF_HexEncodeString(ByteStringView src);
 WideString PDF_DecodeText(pdfium::span<const uint8_t> span);
-ByteString PDF_EncodeText(const WideString& str);
+ByteString PDF_EncodeText(WideStringView str);
 
 std::unique_ptr<fxcodec::ScanlineDecoder> CreateFaxDecoder(
     pdfium::span<const uint8_t> src_span,
@@ -47,9 +52,7 @@ std::unique_ptr<fxcodec::ScanlineDecoder> CreateFlateDecoder(
     int bpc,
     const CPDF_Dictionary* pParams);
 
-bool FlateEncode(pdfium::span<const uint8_t> src_span,
-                 std::unique_ptr<uint8_t, FxFreeDeleter>* dest_buf,
-                 uint32_t* dest_size);
+DataVector<uint8_t> FlateEncode(pdfium::span<const uint8_t> src_span);
 
 uint32_t FlateDecode(pdfium::span<const uint8_t> src_span,
                      std::unique_ptr<uint8_t, FxFreeDeleter>* dest_buf,
@@ -74,13 +77,15 @@ uint32_t FlateOrLZWDecode(bool bLZW,
                           std::unique_ptr<uint8_t, FxFreeDeleter>* dest_buf,
                           uint32_t* dest_size);
 
-// Returns pdfium::nullopt if the filter in |pDict| is the wrong type or an
+// Returns absl::nullopt if the filter in |pDict| is the wrong type or an
 // invalid decoder pipeline.
 // Returns an empty vector if there is no filter, or if the filter is an empty
 // array.
 // Otherwise, returns a vector of decoders.
-using DecoderArray = std::vector<std::pair<ByteString, const CPDF_Object*>>;
-Optional<DecoderArray> GetDecoderArray(const CPDF_Dictionary* pDict);
+using DecoderArray =
+    std::vector<std::pair<ByteString, RetainPtr<const CPDF_Object>>>;
+absl::optional<DecoderArray> GetDecoderArray(
+    RetainPtr<const CPDF_Dictionary> pDict);
 
 bool PDF_DataDecode(pdfium::span<const uint8_t> src_span,
                     uint32_t estimated_size,

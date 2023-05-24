@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include "base/check_op.h"
 #include "base/logging.h"
-#include "base/macros.h"
 
 namespace media {
 
@@ -53,17 +52,37 @@ PictureBuffer::PictureBuffer(int32_t id,
   DCHECK_EQ(client_texture_ids.size(), texture_mailboxes.size());
 }
 
+PictureBuffer::PictureBuffer(int32_t id,
+                             const gfx::Size& size,
+                             const TextureSizes& texture_sizes,
+                             const TextureIds& client_texture_ids,
+                             const TextureIds& service_texture_ids,
+                             uint32_t texture_target,
+                             VideoPixelFormat pixel_format)
+    : id_(id),
+      size_(size),
+      texture_sizes_(texture_sizes),
+      client_texture_ids_(client_texture_ids),
+      service_texture_ids_(service_texture_ids),
+      texture_target_(texture_target),
+      pixel_format_(pixel_format) {
+  // We either not have client texture ids at all, or if we do, then their
+  // number must be the same as the number of service texture ids.
+  DCHECK(client_texture_ids_.empty() ||
+         client_texture_ids_.size() == service_texture_ids_.size());
+}
+
 PictureBuffer::PictureBuffer(const PictureBuffer& other) = default;
 
 PictureBuffer::~PictureBuffer() = default;
 
-gpu::Mailbox PictureBuffer::texture_mailbox(size_t plane) const {
-  if (plane >= texture_mailboxes_.size()) {
-    LOG(ERROR) << "No mailbox for plane " << plane;
-    return gpu::Mailbox();
+gfx::Size PictureBuffer::texture_size(size_t plane) const {
+  if (plane >= texture_sizes_.size()) {
+    LOG(ERROR) << "Missing texture size for plane " << plane;
+    return gfx::Size();
   }
 
-  return texture_mailboxes_[plane];
+  return texture_sizes_[plane];
 }
 
 Picture::Picture(int32_t picture_buffer_id,
@@ -79,7 +98,8 @@ Picture::Picture(int32_t picture_buffer_id,
       read_lock_fences_enabled_(false),
       size_changed_(false),
       texture_owner_(false),
-      wants_promotion_hint_(false) {}
+      wants_promotion_hint_(false),
+      is_webgpu_compatible_(false) {}
 
 Picture::Picture(const Picture& other) = default;
 

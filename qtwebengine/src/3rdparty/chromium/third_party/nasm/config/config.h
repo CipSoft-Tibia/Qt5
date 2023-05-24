@@ -4,6 +4,8 @@
 
 #if __APPLE__
 #include "config-mac.h"
+#elif __MINGW64__
+#include "mingw.h"
 #elif _WIN32
 #include "msvc.h"
 #include "unconfig.h"

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,9 +10,10 @@
 #include <map>
 #include <utility>
 
-#include "base/callback.h"
 #include "base/containers/adapters.h"
+#include "base/functional/callback.h"
 #include "base/no_destructor.h"
+#include "base/ranges/algorithm.h"
 #include "build/build_config.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_tree_data.h"
@@ -20,12 +21,13 @@
 #include "ui/base/layout.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/views/accessibility/ax_event_manager.h"
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/accessibility/view_ax_platform_node_delegate.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget.h"
 
-#if OS_WIN
+#if BUILDFLAG(IS_WIN)
 #include "ui/views/win/hwnd_util.h"
 #endif
 
@@ -62,20 +64,26 @@ AXVirtualView::~AXVirtualView() {
          "not both.";
 
   if (ax_platform_node_) {
-    ax_platform_node_->Destroy();
-    ax_platform_node_ = nullptr;
+    // Clear ax_platform_node_ and return another raw_ptr instance that is
+    // allowed to dangle.
+    ax_platform_node_.ExtractAsDangling()->Destroy();
   }
+
+#if defined(USE_AURA)
+  if (ax_aura_obj_cache_)
+    ax_aura_obj_cache_->Remove(this);
+#endif
 }
 
 void AXVirtualView::AddChildView(std::unique_ptr<AXVirtualView> view) {
   DCHECK(view);
   if (view->virtual_parent_view_ == this)
     return;  // Already a child of this virtual view.
-  AddChildViewAt(std::move(view), int{children_.size()});
+  AddChildViewAt(std::move(view), children_.size());
 }
 
 void AXVirtualView::AddChildViewAt(std::unique_ptr<AXVirtualView> view,
-                                   int index) {
+                                   size_t index) {
   DCHECK(view);
   CHECK_NE(view.get(), this)
       << "You cannot add an AXVirtualView as its own child.";
@@ -84,35 +92,35 @@ void AXVirtualView::AddChildViewAt(std::unique_ptr<AXVirtualView> view,
   DCHECK(!view->virtual_parent_view_) << "This |view| already has an "
                                          "AXVirtualView parent. Call "
                                          "RemoveChildView first.";
-  DCHECK_GE(index, 0);
-  DCHECK_LE(index, int{children_.size()});
+  DCHECK_LE(index, children_.size());
 
   view->virtual_parent_view_ = this;
-  children_.insert(children_.begin() + index, std::move(view));
+  children_.insert(children_.begin() + static_cast<ptrdiff_t>(index),
+                   std::move(view));
   if (GetOwnerView()) {
     GetOwnerView()->NotifyAccessibilityEvent(ax::mojom::Event::kChildrenChanged,
                                              true);
   }
 }
 
-void AXVirtualView::ReorderChildView(AXVirtualView* view, int index) {
+void AXVirtualView::ReorderChildView(AXVirtualView* view, size_t index) {
   DCHECK(view);
-  if (index >= int{children_.size()})
-    return;
-  if (index < 0)
-    index = int{children_.size()} - 1;
+  index = std::min(index, children_.size() - 1);
 
   DCHECK_EQ(view->virtual_parent_view_, this);
   if (children_[index].get() == view)
     return;
 
-  int cur_index = GetIndexOf(view);
-  if (cur_index < 0)
+  auto cur_index = GetIndexOf(view);
+  if (!cur_index.has_value())
     return;
 
-  std::unique_ptr<AXVirtualView> child = std::move(children_[cur_index]);
-  children_.erase(children_.begin() + cur_index);
-  children_.insert(children_.begin() + index, std::move(child));
+  std::unique_ptr<AXVirtualView> child =
+      std::move(children_[cur_index.value()]);
+  children_.erase(children_.begin() +
+                  static_cast<ptrdiff_t>(cur_index.value()));
+  children_.insert(children_.begin() + static_cast<ptrdiff_t>(index),
+                   std::move(child));
 
   GetOwnerView()->NotifyAccessibilityEvent(ax::mojom::Event::kChildrenChanged,
                                            true);
@@ -122,19 +130,17 @@ std::unique_ptr<AXVirtualView> AXVirtualView::RemoveFromParentView() {
   if (parent_view_)
     return parent_view_->RemoveVirtualChildView(this);
 
-  if (virtual_parent_view_)
-    return virtual_parent_view_->RemoveChildView(this);
-
   // This virtual view hasn't been added to a parent view yet.
-  NOTREACHED() << "Cannot remove from parent view if there is no parent.";
-  return {};
+  CHECK(virtual_parent_view_)
+      << "Cannot remove from parent view if there is no parent.";
+  return virtual_parent_view_->RemoveChildView(this);
 }
 
 std::unique_ptr<AXVirtualView> AXVirtualView::RemoveChildView(
     AXVirtualView* view) {
   DCHECK(view);
-  int cur_index = GetIndexOf(view);
-  if (cur_index < 0)
+  auto cur_index = GetIndexOf(view);
+  if (!cur_index.has_value())
     return {};
 
   bool focus_changed = false;
@@ -147,8 +153,10 @@ std::unique_ptr<AXVirtualView> AXVirtualView::RemoveChildView(
     }
   }
 
-  std::unique_ptr<AXVirtualView> child = std::move(children_[cur_index]);
-  children_.erase(children_.begin() + cur_index);
+  std::unique_ptr<AXVirtualView> child =
+      std::move(children_[cur_index.value()]);
+  children_.erase(children_.begin() +
+                  static_cast<ptrdiff_t>(cur_index.value()));
   child->virtual_parent_view_ = nullptr;
   child->populate_data_callback_.Reset();
 
@@ -176,13 +184,14 @@ bool AXVirtualView::Contains(const AXVirtualView* view) const {
   return false;
 }
 
-int AXVirtualView::GetIndexOf(const AXVirtualView* view) const {
+absl::optional<size_t> AXVirtualView::GetIndexOf(
+    const AXVirtualView* view) const {
   DCHECK(view);
   const auto iter =
-      std::find_if(children_.begin(), children_.end(),
-                   [view](const auto& child) { return child.get() == view; });
-  return iter != children_.end() ? static_cast<int>(iter - children_.begin())
-                                 : -1;
+      base::ranges::find(children_, view, &std::unique_ptr<AXVirtualView>::get);
+  return iter != children_.end() ? absl::make_optional(static_cast<size_t>(
+                                       iter - children_.begin()))
+                                 : absl::nullopt;
 }
 
 const char* AXVirtualView::GetViewClassName() const {
@@ -202,7 +211,12 @@ void AXVirtualView::NotifyAccessibilityEvent(ax::mojom::Event event_type) {
     if (events_callback)
       events_callback.Run(this, event_type);
   }
+
+  // This is used on platforms that have a native accessibility API.
   ax_platform_node_->NotifyAccessibilityEvent(event_type);
+
+  // This is used on platforms that don't have a native accessibility API.
+  AXEventManager::Get()->NotifyVirtualViewEvent(this, event_type);
 }
 
 ui::AXNodeData& AXVirtualView::GetCustomData() {
@@ -251,44 +265,41 @@ const ui::AXNodeData& AXVirtualView::GetData() const {
   return node_data;
 }
 
-int AXVirtualView::GetChildCount() const {
-  int count = 0;
+size_t AXVirtualView::GetChildCount() const {
+  size_t count = 0;
   for (const std::unique_ptr<AXVirtualView>& child : children_) {
     if (child->IsIgnored()) {
       count += child->GetChildCount();
-      continue;
+    } else {
+      ++count;
     }
-    count++;
   }
   return count;
 }
 
-gfx::NativeViewAccessible AXVirtualView::ChildAtIndex(int index) {
-  DCHECK_GE(index, 0) << "Child indices should be greater or equal to 0.";
+gfx::NativeViewAccessible AXVirtualView::ChildAtIndex(size_t index) {
   DCHECK_LT(index, GetChildCount())
-      << "Child indices should be less than the child count.";
-  int i = 0;
+      << "|index| should be less than the child count.";
+
   for (const std::unique_ptr<AXVirtualView>& child : children_) {
     if (child->IsIgnored()) {
-      if (index - i < child->GetChildCount()) {
-        gfx::NativeViewAccessible result = child->ChildAtIndex(index - i);
-        if (result)
-          return result;
-      }
-      i += child->GetChildCount();
-      continue;
+      size_t child_count = child->GetChildCount();
+      if (index < child_count)
+        return child->ChildAtIndex(index);
+      index -= child_count;
+    } else {
+      if (index == 0)
+        return child->GetNativeObject();
+      --index;
     }
-    if (i == index)
-      return child->GetNativeObject();
-    i++;
   }
-  return nullptr;
+
+  NOTREACHED_NORETURN() << "|index| should be less than the child count.";
 }
 
-#if !defined(OS_APPLE)
+#if !BUILDFLAG(IS_MAC)
 gfx::NativeViewAccessible AXVirtualView::GetNSWindow() {
-  NOTREACHED();
-  return nullptr;
+  NOTREACHED_NORETURN();
 }
 #endif
 
@@ -296,9 +307,12 @@ gfx::NativeViewAccessible AXVirtualView::GetNativeViewAccessible() {
   return GetNativeObject();
 }
 
-gfx::NativeViewAccessible AXVirtualView::GetParent() {
-  if (parent_view_)
-    return parent_view_->GetNativeObject();
+gfx::NativeViewAccessible AXVirtualView::GetParent() const {
+  if (parent_view_) {
+    if (!parent_view_->IsIgnored())
+      return parent_view_->GetNativeObject();
+    return GetDelegate()->GetParent();
+  }
 
   if (virtual_parent_view_) {
     if (virtual_parent_view_->IsIgnored())
@@ -342,8 +356,7 @@ gfx::Rect AXVirtualView::GetBoundsRect(
 gfx::NativeViewAccessible AXVirtualView::HitTestSync(
     int screen_physical_pixel_x,
     int screen_physical_pixel_y) const {
-  const ui::AXNodeData& node_data = GetData();
-  if (node_data.HasState(ax::mojom::State::kInvisible))
+  if (GetData().IsInvisible())
     return nullptr;
 
   // Check if the point is within any of the virtual children of this view.
@@ -366,14 +379,14 @@ gfx::NativeViewAccessible AXVirtualView::HitTestSync(
   if (bounds_in_screen_physical_pixels.Contains(
           static_cast<float>(screen_physical_pixel_x),
           static_cast<float>(screen_physical_pixel_y)) &&
-      !node_data.IsIgnored()) {
+      !IsIgnored()) {
     return GetNativeObject();
   }
 
   return nullptr;
 }
 
-gfx::NativeViewAccessible AXVirtualView::GetFocus() {
+gfx::NativeViewAccessible AXVirtualView::GetFocus() const {
   View* owner_view = GetOwnerView();
   if (owner_view) {
     if (!(owner_view->HasFocus())) {
@@ -417,18 +430,14 @@ const ui::AXUniqueId& AXVirtualView::GetUniqueId() const {
   return unique_id_;
 }
 
-// Virtual views need to implement this function in order for A11Y events
-// to be routed correctly.
+// Virtual views need to implement this function in order for accessibility
+// events to be routed correctly.
 gfx::AcceleratedWidget AXVirtualView::GetTargetForNativeAccessibilityEvent() {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (GetOwnerView())
     return HWNDForView(GetOwnerView());
 #endif
   return gfx::kNullAcceleratedWidget;
-}
-
-base::Optional<bool> AXVirtualView::GetTableHasColumnOrRowHeaderNode() const {
-  return GetDelegate()->GetTableHasColumnOrRowHeaderNode();
 }
 
 std::vector<int32_t> AXVirtualView::GetColHeaderNodeIds() const {
@@ -439,8 +448,9 @@ std::vector<int32_t> AXVirtualView::GetColHeaderNodeIds(int col_index) const {
   return GetDelegate()->GetColHeaderNodeIds(col_index);
 }
 
-bool AXVirtualView::IsIgnored() const {
-  return GetData().IsIgnored();
+absl::optional<int32_t> AXVirtualView::GetCellId(int row_index,
+                                                 int col_index) const {
+  return GetDelegate()->GetCellId(row_index, col_index);
 }
 
 bool AXVirtualView::HandleAccessibleAction(
@@ -478,6 +488,15 @@ bool AXVirtualView::HandleAccessibleActionInOwnerView(
   return GetOwnerView()->HandleAccessibleAction(forwarded_action_data);
 }
 
+void AXVirtualView::set_cache(AXAuraObjCache* cache) {
+#if defined(USE_AURA)
+  if (ax_aura_obj_cache_ && cache)
+    ax_aura_obj_cache_->Remove(this);
+#endif
+
+  ax_aura_obj_cache_ = cache;
+}
+
 View* AXVirtualView::GetOwnerView() const {
   if (parent_view_)
     return parent_view_->view();
@@ -498,10 +517,10 @@ ViewAXPlatformNodeDelegate* AXVirtualView::GetDelegate() const {
 AXVirtualViewWrapper* AXVirtualView::GetOrCreateWrapper(
     views::AXAuraObjCache* cache) {
 #if defined(USE_AURA)
-  if (!wrapper_)
-    wrapper_ = std::make_unique<AXVirtualViewWrapper>(this, cache);
+  return static_cast<AXVirtualViewWrapper*>(cache->GetOrCreate(this));
+#else
+  return nullptr;
 #endif
-  return wrapper_.get();
 }
 
 }  // namespace views

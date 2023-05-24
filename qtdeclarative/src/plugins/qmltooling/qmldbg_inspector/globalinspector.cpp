@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "globalinspector.h"
 #include "highlight.h"
@@ -48,8 +12,9 @@
 #include <private/qversionedpacket_p.h>
 
 #include <QtGui/qwindow.h>
-#include <QtCore/qregularexpression.h>
-
+#if QT_CONFIG(regularexpression)
+#  include <QtCore/qregularexpression.h>
+#endif
 //INSPECTOR SERVICE PROTOCOL
 // <HEADER><COMMAND><DATA>
 // <HEADER> : <type{request, response, event}><requestId/eventId>[<response_success_bool>]
@@ -95,7 +60,7 @@ void GlobalInspector::setSelectedItems(const QList<QQuickItem *> &items)
         return;
 
     QList<QObject*> objectList;
-    objectList.reserve(items.count());
+    objectList.reserve(items.size());
     for (QQuickItem *item : items)
         objectList << item;
 
@@ -116,7 +81,7 @@ void GlobalInspector::sendCurrentObjects(const QList<QObject*> &objects)
     ds << QByteArray(EVENT) << m_eventId++ << QByteArray(SELECT);
 
     QList<int> debugIds;
-    debugIds.reserve(objects.count());
+    debugIds.reserve(objects.size());
     for (QObject *object : objects)
         debugIds << QQmlDebugService::idForObject(object);
     ds << debugIds;
@@ -227,7 +192,7 @@ void GlobalInspector::removeWindow(QQuickWindow *window)
 
 void GlobalInspector::setParentWindow(QQuickWindow *window, QWindow *parentWindow)
 {
-    for (QmlJSDebugger::QQuickWindowInspector *inspector : qAsConst(m_windowInspectors)) {
+    for (QmlJSDebugger::QQuickWindowInspector *inspector : std::as_const(m_windowInspectors)) {
         if (inspector->quickWindow() == window)
             inspector->setParentWindow(parentWindow);
     }
@@ -257,7 +222,7 @@ bool GlobalInspector::syncSelectedItems(const QList<QQuickItem *> &items)
         selectionChanged = true;
         connect(item, &QObject::destroyed, this, &GlobalInspector::removeFromSelectedItems);
         m_selectedItems.append(item);
-        for (QQuickWindowInspector *inspector : qAsConst(m_windowInspectors)) {
+        for (QQuickWindowInspector *inspector : std::as_const(m_windowInspectors)) {
             if (inspector->isEnabled() && inspector->quickWindow() == item->window()) {
                 m_highlightItems.insert(item, new SelectionHighlight(titleForItem(item), item,
                                                                      inspector->overlay()));
@@ -298,7 +263,7 @@ QString GlobalInspector::idStringForObject(QObject *obj) const
 {
     QQmlContext *context = qmlContext(obj);
     if (context) {
-        QQmlContextData *cdata = QQmlContextData::get(context);
+        QQmlRefPointer<QQmlContextData> cdata = QQmlContextData::get(context);
         if (cdata)
             return cdata->findObjectId(obj);
     }
@@ -319,12 +284,12 @@ void GlobalInspector::processMessage(const QByteArray &message)
         ds >> requestId >> command;
 
         if (command == ENABLE) {
-            for (QQuickWindowInspector *inspector : qAsConst(m_windowInspectors))
+            for (QQuickWindowInspector *inspector : std::as_const(m_windowInspectors))
                 inspector->setEnabled(true);
             success = !m_windowInspectors.isEmpty();
         } else if (command == DISABLE) {
             setSelectedItems(QList<QQuickItem*>());
-            for (QQuickWindowInspector *inspector : qAsConst(m_windowInspectors))
+            for (QQuickWindowInspector *inspector : std::as_const(m_windowInspectors))
                 inspector->setEnabled(false);
             success = !m_windowInspectors.isEmpty();
         } else if (command == SELECT) {
@@ -332,7 +297,7 @@ void GlobalInspector::processMessage(const QByteArray &message)
             ds >> debugIds;
 
             QList<QQuickItem *> selectedObjects;
-            for (int debugId : qAsConst(debugIds)) {
+            for (int debugId : std::as_const(debugIds)) {
                 if (QQuickItem *obj =
                         qobject_cast<QQuickItem *>(QQmlDebugService::objectForId(debugId)))
                     selectedObjects << obj;
@@ -346,7 +311,7 @@ void GlobalInspector::processMessage(const QByteArray &message)
         } else if (command == SHOW_APP_ON_TOP) {
             bool showOnTop;
             ds >> showOnTop;
-            for (QmlJSDebugger::QQuickWindowInspector *inspector : qAsConst(m_windowInspectors))
+            for (QmlJSDebugger::QQuickWindowInspector *inspector : std::as_const(m_windowInspectors))
                 inspector->setShowAppOnTop(showOnTop);
             success = !m_windowInspectors.isEmpty();
         } else if (command == CREATE_OBJECT) {
@@ -406,5 +371,7 @@ GlobalInspector::~GlobalInspector()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_globalinspector.cpp"
 
 #include <globalinspector.moc>

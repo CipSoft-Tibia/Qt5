@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/private/qaspectfactory_p.h>
@@ -45,9 +20,9 @@ private: \
     void onEngineStartup() override {} \
     void onEngineShutdown() override {} \
 \
-    QVector<QAspectJobPtr> jobsToExecute(qint64) override \
+    std::vector<QAspectJobPtr> jobsToExecute(qint64) override \
     { \
-        return QVector<QAspectJobPtr>(); \
+        return std::vector<QAspectJobPtr>(); \
     } \
 };
 
@@ -66,8 +41,10 @@ private Q_SLOTS:
         QAspectFactory factory;
 
         // THEN
-        QCOMPARE(factory.availableFactories().size(), 1);
-        QCOMPARE(factory.availableFactories().first(), QLatin1String("default"));
+        QCOMPARE(factory.availableFactories().size(), 2);
+        // order is not deterministic
+        QVERIFY(factory.availableFactories().contains(QLatin1String("core")));
+        QVERIFY(factory.availableFactories().contains(QLatin1String("default")));
 
         // WHEN
         QAbstractAspect *aspect = factory.createAspect(QLatin1String("default"));

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_custom_element_form_associated_callback.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_custom_element_form_disabled_callback.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_custom_element_form_state_restore_callback.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_custom_element_registry.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_element.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_form_state_restore_mode.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_function.h"
@@ -23,63 +22,15 @@
 #include "third_party/blink/renderer/core/events/error_event.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/html/custom/custom_element.h"
+#include "third_party/blink/renderer/core/html/custom/custom_element_registry.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
-#include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/bindings/v8_binding_macros.h"
-#include "third_party/blink/renderer/platform/bindings/v8_per_context_data.h"
-#include "third_party/blink/renderer/platform/bindings/v8_private_property.h"
-#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "v8/include/v8.h"
+#include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
 
 namespace blink {
 
-class CSSStyleSheet;
-
-ScriptCustomElementDefinition* ScriptCustomElementDefinition::ForConstructor(
-    ScriptState* script_state,
-    CustomElementRegistry* registry,
-    v8::Local<v8::Value> constructor) {
-  V8PerContextData* per_context_data = script_state->PerContextData();
-  // TODO(yukishiino): Remove this check when crbug.com/583429 is fixed.
-  if (UNLIKELY(!per_context_data))
-    return nullptr;
-  auto private_id = per_context_data->GetPrivateCustomElementDefinitionId();
-  v8::Local<v8::Value> id_value;
-  if (!constructor.As<v8::Object>()
-           ->GetPrivate(script_state->GetContext(), private_id)
-           .ToLocal(&id_value))
-    return nullptr;
-  if (!id_value->IsUint32())
-    return nullptr;
-  uint32_t id = id_value.As<v8::Uint32>()->Value();
-
-  // This downcast is safe because only ScriptCustomElementDefinitions
-  // have an ID associated with them. This relies on three things:
-  //
-  // 1. Only ScriptCustomElementDefinition::Create sets the private
-  //    property on a constructor.
-  //
-  // 2. CustomElementRegistry adds ScriptCustomElementDefinitions
-  //    assigned an ID to the list of definitions without fail.
-  //
-  // 3. The relationship between the CustomElementRegistry and its
-  //    private property is never mixed up; this is guaranteed by the
-  //    bindings system because the registry is associated with its
-  //    context.
-  //
-  // At a meta-level, this downcast is safe because there is
-  // currently only one implementation of CustomElementDefinition in
-  // product code and that is ScriptCustomElementDefinition. But
-  // that may change in the future.
-  CustomElementDefinition* definition = registry->DefinitionForId(id);
-  CHECK(definition);
-  return static_cast<ScriptCustomElementDefinition*>(definition);
-}
-
 ScriptCustomElementDefinition::ScriptCustomElementDefinition(
     const ScriptCustomElementDefinitionData& data,
-    const CustomElementDescriptor& descriptor,
-    CustomElementDefinition::Id id)
+    const CustomElementDescriptor& descriptor)
     : CustomElementDefinition(descriptor,
                               std::move(data.observed_attributes_),
                               data.disabled_features_,
@@ -95,17 +46,7 @@ ScriptCustomElementDefinition::ScriptCustomElementDefinition(
       form_associated_callback_(data.form_associated_callback_),
       form_reset_callback_(data.form_reset_callback_),
       form_disabled_callback_(data.form_disabled_callback_),
-      form_state_restore_callback_(data.form_state_restore_callback_) {
-  // Tag the JavaScript constructor object with its ID.
-  ScriptState* script_state = data.script_state_;
-  v8::Local<v8::Value> id_value =
-      v8::Integer::NewFromUnsigned(script_state->GetIsolate(), id);
-  auto private_id =
-      script_state->PerContextData()->GetPrivateCustomElementDefinitionId();
-  CHECK(data.constructor_->CallbackObject()
-            ->SetPrivate(script_state->GetContext(), private_id, id_value)
-            .ToChecked());
-}
+      form_state_restore_callback_(data.form_state_restore_callback_) {}
 
 void ScriptCustomElementDefinition::Trace(Visitor* visitor) const {
   visitor->Trace(script_state_);
@@ -156,22 +97,7 @@ HTMLElement* ScriptCustomElementDefinition::CreateAutonomousCustomElementSync(
   Element* element = nullptr;
   {
     v8::TryCatch try_catch(script_state_->GetIsolate());
-
-    if (document.IsHTMLImport()) {
-      // V8HTMLElement::constructorCustom() can only refer to
-      // window.document() which is not the import document. Create
-      // elements in import documents ahead of time so they end up in
-      // the right document. This subtly violates recursive
-      // construction semantics, but only in import documents.
-      element = CreateElementForConstructor(document);
-      DCHECK(!try_catch.HasCaught());
-
-      ConstructionStackScope construction_stack_scope(*this, *element);
-      element = CallConstructor();
-    } else {
-      element = CallConstructor();
-    }
-
+    element = CallConstructor();
     if (try_catch.HasCaught()) {
       exception_state.RethrowV8Exception(try_catch.Exception());
       return HandleCreateElementSyncException(document, tag_name, isolate,
@@ -189,7 +115,6 @@ HTMLElement* ScriptCustomElementDefinition::CreateAutonomousCustomElementSync(
   if (element->prefix() != tag_name.Prefix())
     element->SetTagNameForCreateElementNS(tag_name);
   DCHECK_EQ(element->GetCustomElementState(), CustomElementState::kCustom);
-  AddDefaultStylesTo(*element);
   return To<HTMLElement>(element);
 }
 
@@ -344,16 +269,12 @@ void ScriptCustomElementDefinition::RunFormDisabledCallback(Element& element,
 
 void ScriptCustomElementDefinition::RunFormStateRestoreCallback(
     Element& element,
-    const FileOrUSVStringOrFormData& value,
+    const V8ControlValue* value,
     const String& mode) {
   if (!form_state_restore_callback_)
     return;
-#if defined(USE_BLINK_V8_BINDING_NEW_IDL_CALLBACK_FUNCTION)
   form_state_restore_callback_->InvokeAndReportException(
       &element, value, V8FormStateRestoreMode::Create(mode).value());
-#else
-  form_state_restore_callback_->InvokeAndReportException(&element, value, mode);
-#endif
 }
 
 }  // namespace blink

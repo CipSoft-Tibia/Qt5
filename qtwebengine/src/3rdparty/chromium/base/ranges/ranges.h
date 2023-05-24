@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,17 +25,30 @@ constexpr T* begin(T (&array)[N], priority_tag<2>) {
 // Overload for mutable std::array. Required since std::array::begin is not
 // constexpr prior to C++17. Needs to dispatch to the const overload since only
 // const operator[] is constexpr in C++14.
+#ifdef _MSC_VER
+template <typename T, size_t N>
+constexpr typename std::array<T, N>::iterator begin(std::array<T, N>& array, priority_tag<2> tag) {
+  return array.begin();
+}
+#else
 template <typename T, size_t N>
 constexpr T* begin(std::array<T, N>& array, priority_tag<2> tag) {
   return const_cast<T*>(begin(const_cast<const std::array<T, N>&>(array), tag));
 }
-
+#endif
 // Overload for const std::array. Required since std::array::begin is not
 // constexpr prior to C++17.
+#ifdef _MSC_VER
+template <typename T, size_t N>
+constexpr typename std::array<T, N>::const_iterator begin(const std::array<T, N>& array, priority_tag<2>) {
+  return array.cbegin();
+}
+#else
 template <typename T, size_t N>
 constexpr const T* begin(const std::array<T, N>& array, priority_tag<2>) {
   return N != 0 ? &array[0] : nullptr;
 }
+#endif
 
 // Generic container overload.
 template <typename Range>
@@ -60,17 +73,31 @@ constexpr T* end(T (&array)[N], priority_tag<2>) {
 // Overload for mutable std::array. Required since std::array::end is not
 // constexpr prior to C++17. Needs to dispatch to the const overload since only
 // const operator[] is constexpr in C++14.
+#ifdef _MSC_VER
+template <typename T, size_t N>
+constexpr typename std::array<T, N>::iterator end(std::array<T, N>& array, priority_tag<2> tag) {
+  return array.end();
+}
+#else
 template <typename T, size_t N>
 constexpr T* end(std::array<T, N>& array, priority_tag<2> tag) {
   return const_cast<T*>(end(const_cast<const std::array<T, N>&>(array), tag));
 }
+#endif
 
 // Overload for const std::array. Required since std::array::end is not
 // constexpr prior to C++17.
+#ifdef _MSC_VER
+template <typename T, size_t N>
+constexpr typename std::array<T, N>::const_iterator end(const std::array<T, N>& array, priority_tag<2>) {
+  return array.cend();
+}
+#else
 template <typename T, size_t N>
 constexpr const T* end(const std::array<T, N>& array, priority_tag<2>) {
   return N != 0 ? (&array[0]) + N : nullptr;
 }
+#endif
 
 // Generic container overload.
 template <typename Range>

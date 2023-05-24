@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGRAPHICSITEM_H
 #define QGRAPHICSITEM_H
@@ -71,7 +35,6 @@ class QGraphicsTransform;
 class QGraphicsWidget;
 class QInputMethodEvent;
 class QKeyEvent;
-class QMatrix;
 class QMenu;
 class QPainter;
 class QPen;
@@ -110,9 +73,6 @@ public:
 
     enum GraphicsItemChange {
         ItemPositionChange,
-#if QT_DEPRECATED_SINCE(5, 14)
-        ItemMatrixChange Q_DECL_ENUMERATOR_DEPRECATED_X("Use ItemTransformChange instead"),
-#endif
         ItemVisibleChange = 2,
         ItemEnabledChange,
         ItemSelectedChange,
@@ -173,9 +133,6 @@ public:
     QGraphicsWidget *window() const;
     QGraphicsItem *panel() const;
     void setParentItem(QGraphicsItem *parent);
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline QList<QGraphicsItem *> children() const { return childItems(); }
-#endif
     QList<QGraphicsItem *> childItems() const;
     bool isWidget() const;
     bool isWindow() const;
@@ -198,7 +155,7 @@ public:
     void setPanelModality(PanelModality panelModality);
     bool isBlockedByModalPanel(QGraphicsItem **blockingPanel = nullptr) const;
 
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     QString toolTip() const;
     void setToolTip(const QString &toolTip);
 #endif
@@ -237,10 +194,6 @@ public:
 
     Qt::MouseButtons acceptedMouseButtons() const;
     void setAcceptedMouseButtons(Qt::MouseButtons buttons);
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline bool acceptsHoverEvents() const { return acceptHoverEvents(); }
-    QT_DEPRECATED inline void setAcceptsHoverEvents(bool enabled) { setAcceptHoverEvents(enabled); }
-#endif
     bool acceptHoverEvents() const;
     void setAcceptHoverEvents(bool enabled);
     bool acceptTouchEvents() const;
@@ -285,28 +238,12 @@ public:
     inline void ensureVisible(qreal x, qreal y, qreal w, qreal h, int xmargin = 50, int ymargin = 50);
 
     // Local transformation
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use transform() instead")
-    QMatrix matrix() const;
-    QT_DEPRECATED_X("Use sceneTransform() instead")
-    QMatrix sceneMatrix() const;
-    QT_DEPRECATED_X("Use setTransform() instead")
-    void setMatrix(const QMatrix &matrix, bool combine = false);
-    QT_DEPRECATED_X("Use resetTransform() instead")
-    void resetMatrix();
-#endif
     QTransform transform() const;
     QTransform sceneTransform() const;
     QTransform deviceTransform(const QTransform &viewportTransform) const;
     QTransform itemTransform(const QGraphicsItem *other, bool *ok = nullptr) const;
     void setTransform(const QTransform &matrix, bool combine = false);
     void resetTransform();
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED inline void rotate(qreal angle) { setTransform(QTransform().rotate(angle), true); }
-    QT_DEPRECATED inline void scale(qreal sx, qreal sy) { setTransform(QTransform::fromScale(sx, sy), true); }
-    QT_DEPRECATED inline void shear(qreal sh, qreal sv) { setTransform(QTransform().shear(sh, sv), true); }
-    QT_DEPRECATED inline void translate(qreal dx, qreal dy) { setTransform(QTransform::fromTranslate(dx, dy), true); }
-#endif
     void setRotation(qreal angle);
     qreal rotation() const;
 
@@ -495,7 +432,7 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QGraphicsItem::GraphicsItemFlags)
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
 Q_DECLARE_INTERFACE(QGraphicsItem, "org.qt-project.Qt.QGraphicsItem")
 #endif
 
@@ -548,7 +485,8 @@ inline QRectF QGraphicsItem::mapRectFromScene(qreal ax, qreal ay, qreal w, qreal
 class Q_WIDGETS_EXPORT QGraphicsObject : public QObject, public QGraphicsItem
 {
     Q_OBJECT
-    Q_PROPERTY(QGraphicsObject* parent READ parentObject WRITE setParentItem NOTIFY parentChanged DESIGNABLE false)
+    Q_PROPERTY(QGraphicsObject* parent READ parentObject WRITE setParentItem NOTIFY parentChanged
+               DESIGNABLE false)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity NOTIFY opacityChanged FINAL)
     Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled NOTIFY enabledChanged)
     Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged FINAL)
@@ -562,10 +500,10 @@ class Q_WIDGETS_EXPORT QGraphicsObject : public QObject, public QGraphicsItem
 #if QT_CONFIG(graphicseffect)
     Q_PROPERTY(QGraphicsEffect *effect READ graphicsEffect WRITE setGraphicsEffect)
 #endif
-    Q_PRIVATE_PROPERTY(QGraphicsItem::d_func(), QDeclarativeListProperty<QGraphicsObject> children READ childrenList DESIGNABLE false NOTIFY childrenChanged)
-    Q_PRIVATE_PROPERTY(QGraphicsItem::d_func(), qreal width READ width WRITE setWidth NOTIFY widthChanged RESET resetWidth FINAL)
-    Q_PRIVATE_PROPERTY(QGraphicsItem::d_func(), qreal height READ height WRITE setHeight NOTIFY heightChanged RESET resetHeight FINAL)
-    Q_CLASSINFO("DefaultProperty", "children")
+    Q_PRIVATE_PROPERTY(QGraphicsItem::d_func(), qreal width READ width WRITE setWidth
+                       NOTIFY widthChanged RESET resetWidth FINAL)
+    Q_PRIVATE_PROPERTY(QGraphicsItem::d_func(), qreal height READ height WRITE setHeight
+                       NOTIFY heightChanged RESET resetHeight FINAL)
     Q_INTERFACES(QGraphicsItem)
 public:
     explicit QGraphicsObject(QGraphicsItem *parent = nullptr);
@@ -964,9 +902,6 @@ protected:
 
 private:
     Q_DISABLE_COPY(QGraphicsTextItem)
-    Q_PRIVATE_SLOT(dd, void _q_updateBoundingRect(const QSizeF &))
-    Q_PRIVATE_SLOT(dd, void _q_update(QRectF))
-    Q_PRIVATE_SLOT(dd, void _q_ensureVisible(QRectF))
     QGraphicsTextItemPrivate *dd;
     friend class QGraphicsTextItemPrivate;
 };
@@ -1035,19 +970,19 @@ template <class T> inline T qgraphicsitem_cast(QGraphicsItem *item)
 {
     typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type Item;
     return int(Item::Type) == int(QGraphicsItem::Type)
-        || (item && int(Item::Type) == item->type()) ? static_cast<T>(item) : 0;
+        || (item && int(Item::Type) == item->type()) ? static_cast<T>(item) : nullptr;
 }
 
 template <class T> inline T qgraphicsitem_cast(const QGraphicsItem *item)
 {
     typedef typename std::remove_cv<typename std::remove_pointer<T>::type>::type Item;
     return int(Item::Type) == int(QGraphicsItem::Type)
-        || (item && int(Item::Type) == item->type()) ? static_cast<T>(item) : 0;
+        || (item && int(Item::Type) == item->type()) ? static_cast<T>(item) : nullptr;
 }
 
 #ifndef QT_NO_DEBUG_STREAM
-Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, QGraphicsItem *item);
-Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, QGraphicsObject *item);
+Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, const QGraphicsItem *item);
+Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, const QGraphicsObject *item);
 Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, QGraphicsItem::GraphicsItemChange change);
 Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, QGraphicsItem::GraphicsItemFlag flag);
 Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, QGraphicsItem::GraphicsItemFlags flags);
@@ -1055,10 +990,6 @@ Q_WIDGETS_EXPORT QDebug operator<<(QDebug debug, QGraphicsItem::GraphicsItemFlag
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QGraphicsItem *)
-
-QT_BEGIN_NAMESPACE
-
-QT_END_NAMESPACE
+QT_DECL_METATYPE_EXTERN_TAGGED(QGraphicsItem*, QGraphicsItem_ptr, Q_WIDGETS_EXPORT)
 
 #endif // QGRAPHICSITEM_H

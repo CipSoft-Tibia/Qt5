@@ -7,6 +7,8 @@
       /* General toolbar layout. */
 
       cr-toolbar {
+        --cr-toolbar-center-basis: var(--cluster-max-width);
+        --cr-toolbar-left-spacer-width: var(--side-bar-width);
         --cr-toolbar-field-margin: var(--side-bar-width);
         flex: 1;
       }
@@ -18,7 +20,7 @@
 
       cr-toolbar-selection-overlay {
         opacity: 0;
-        --selection-overlay-max-width: var(--card-max-width);
+        --cr-toolbar-selection-overlay-max-width: var(--card-max-width);
         --cr-toolbar-field-margin: var(--side-bar-width);
       }
 
@@ -26,7 +28,8 @@
         opacity: 1;
       }
     </style>
-    <cr-toolbar id="main-toolbar"
+    <cr-toolbar id="mainToolbar"
+        disable-right-content-grow
         has-overlay$="[[itemsSelected_]]"
         page-name="$i18n{title}"
         clear-label="$i18n{clearSearch}"
@@ -34,17 +37,16 @@
         spinner-active="[[spinnerActive]]"
         autofocus
         show-menu="[[hasDrawer]]"
-        show-menu-promo="[[canShowMenuPromo_(showMenuPromo)]]"
         menu-label="$i18n{historyMenuButton}"
-        menu-promo="$i18n{menuPromo}"
-        close-menu-promo="$i18n{closeMenuPromo}"
+        narrow-threshold="1023"
         on-search-changed="onSearchChanged_">
     </cr-toolbar>
     <cr-toolbar-selection-overlay show="[[itemsSelected_]]"
-        delete-label="$i18n{delete}"
         cancel-label="$i18n{cancel}"
-        delete-disabled="[[pendingDelete]]"
         selection-label="[[numberOfItemsSelected_(count)]]"
-        on-clear-selected-items="clearSelectedItems"
-        on-delete-selected-items="deleteSelectedItems">
+        on-clear-selected-items="clearSelectedItems">
+      <cr-button
+          on-click="deleteSelectedItems" disabled$="[[pendingDelete]]">
+        $i18n{delete}
+      </cr-button>
     </cr-toolbar-selection-overlay>

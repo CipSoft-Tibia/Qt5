@@ -1,8 +1,9 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import HTMLParser
+
+
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ import tempfile
 import threading
 import xml.etree.ElementTree
 
+import six
 from devil.android import apk_helper
 from pylib import constants
 from pylib.constants import host_paths
@@ -18,6 +20,7 @@ from pylib.base import base_test_result
 from pylib.base import test_instance
 from pylib.symbols import stack_symbolizer
 from pylib.utils import test_filter
+
 
 with host_paths.SysPath(host_paths.BUILD_COMMON_PATH):
   import unittest_util # pylint: disable=import-error
@@ -28,7 +31,6 @@ BROWSER_TEST_SUITES = [
     'android_sync_integration_tests',
     'components_browsertests',
     'content_browsertests',
-    'weblayer_browsertests',
 ]
 
 # The max number of tests to run on a shard during the test run.
@@ -85,7 +87,7 @@ _EXTRA_SHARD_SIZE_LIMIT = (
 # results.
 _RE_TEST_STATUS = re.compile(
     # Test state.
-    r'\[ +((?:RUN)|(?:FAILED)|(?:OK)|(?:CRASHED)) +\] ?'
+    r'\[ +((?:RUN)|(?:FAILED)|(?:OK)|(?:CRASHED)|(?:SKIPPED)) +\] ?'
     # Test name.
     r'([^ ]+)?'
     # Optional parameters.
@@ -101,8 +103,9 @@ _RE_TEST_STATUS = re.compile(
 # Crash detection constants.
 _RE_TEST_ERROR = re.compile(r'FAILURES!!! Tests run: \d+,'
                                     r' Failures: \d+, Errors: 1')
-_RE_TEST_CURRENTLY_RUNNING = re.compile(r'\[ERROR:.*?\]'
-                                    r' Currently running: (.*)')
+_RE_TEST_CURRENTLY_RUNNING = re.compile(
+    r'\[ERROR:.*?\] Currently running: (.*)')
+_RE_TEST_DCHECK_FATAL = re.compile(r'\[.*:FATAL:.*\] (.*)')
 _RE_DISABLED = re.compile(r'DISABLED_')
 _RE_FLAKY = re.compile(r'FLAKY_')
 
@@ -174,10 +177,15 @@ def ParseGTestOutput(output, symbolizer, device_abi):
 
   def handle_possibly_unknown_test():
     if test_name is not None:
-      results.append(base_test_result.BaseTestResult(
-          TestNameWithoutDisabledPrefix(test_name),
-          fallback_result_type or base_test_result.ResultType.UNKNOWN,
-          duration, log=symbolize_stack_and_merge_with_log()))
+      results.append(
+          base_test_result.BaseTestResult(
+              TestNameWithoutDisabledPrefix(test_name),
+              # If we get here, that means we started a test, but it did not
+              # produce a definitive test status output, so assume it crashed.
+              # crbug/1191716
+              fallback_result_type or base_test_result.ResultType.CRASH,
+              duration,
+              log=symbolize_stack_and_merge_with_log()))
 
   for l in output:
     matcher = _RE_TEST_STATUS.match(l)
@@ -191,6 +199,8 @@ def ParseGTestOutput(output, symbolizer, device_abi):
         result_type = None
       elif matcher.group(1) == 'OK':
         result_type = base_test_result.ResultType.PASS
+      elif matcher.group(1) == 'SKIPPED':
+        result_type = base_test_result.ResultType.SKIP
       elif matcher.group(1) == 'FAILED':
         result_type = base_test_result.ResultType.FAIL
       elif matcher.group(1) == 'CRASHED':
@@ -200,12 +210,17 @@ def ParseGTestOutput(output, symbolizer, device_abi):
       duration = int(matcher.group(3)) if matcher.group(3) else 0
 
     else:
-      # Needs another matcher here to match crashes, like those of DCHECK.
-      matcher = _RE_TEST_CURRENTLY_RUNNING.match(l)
-      if matcher:
-        test_name = matcher.group(1)
+      # Can possibly add more matchers, such as different results from DCHECK.
+      currently_running_matcher = _RE_TEST_CURRENTLY_RUNNING.match(l)
+      dcheck_matcher = _RE_TEST_DCHECK_FATAL.match(l)
+
+      if currently_running_matcher:
+        test_name = currently_running_matcher.group(1)
         result_type = base_test_result.ResultType.CRASH
-        duration = 0 # Don't know.
+        duration = None  # Don't know. Not using 0 as this is unknown vs 0.
+      elif dcheck_matcher:
+        result_type = base_test_result.ResultType.CRASH
+        duration = None  # Don't know.  Not using 0 as this is unknown vs 0.
 
     if log is not None:
       if not matcher and _STACK_LINE_RE.match(l):
@@ -233,7 +248,7 @@ def ParseGTestXML(xml_content):
   if not xml_content:
     return results
 
-  html = HTMLParser.HTMLParser()
+  html = six.moves.html_parser.HTMLParser()
 
   testsuites = xml.etree.ElementTree.fromstring(xml_content)
   for testsuite in testsuites:
@@ -263,17 +278,25 @@ def ParseGTestJSON(json_content):
 
   json_data = json.loads(json_content)
 
-  openstack = json_data['tests'].items()
+  openstack = list(json_data['tests'].items())
 
   while openstack:
     name, value = openstack.pop()
 
     if 'expected' in value and 'actual' in value:
-      result_type = base_test_result.ResultType.PASS if value[
-          'actual'] == 'PASS' else base_test_result.ResultType.FAIL
+      if value['actual'] == 'PASS':
+        result_type = base_test_result.ResultType.PASS
+      elif value['actual'] == 'SKIP':
+        result_type = base_test_result.ResultType.SKIP
+      elif value['actual'] == 'CRASH':
+        result_type = base_test_result.ResultType.CRASH
+      elif value['actual'] == 'TIMEOUT':
+        result_type = base_test_result.ResultType.TIMEOUT
+      else:
+        result_type = base_test_result.ResultType.FAIL
       results.append(base_test_result.BaseTestResult(name, result_type))
     else:
-      openstack += [("%s.%s" % (name, k), v) for k, v in value.iteritems()]
+      openstack += [("%s.%s" % (name, k), v) for k, v in six.iteritems(value)]
 
   return results
 
@@ -295,7 +318,7 @@ def TestNameWithoutDisabledPrefix(test_name):
 class GtestTestInstance(test_instance.TestInstance):
 
   def __init__(self, args, data_deps_delegate, error_func):
-    super(GtestTestInstance, self).__init__()
+    super().__init__()
     # TODO(jbudorick): Support multiple test suites.
     if len(args.suite_name) > 1:
       raise ValueError('Platform mode currently supports only 1 gtest suite')
@@ -315,6 +338,7 @@ class GtestTestInstance(test_instance.TestInstance):
     self._symbolizer = stack_symbolizer.Symbolizer(None)
     self._total_external_shards = args.test_launcher_total_shards
     self._wait_for_java_debugger = args.wait_for_java_debugger
+    self._use_existing_test_data = args.use_existing_test_data
 
     # GYP:
     if args.executable_dist_dir:
@@ -361,7 +385,7 @@ class GtestTestInstance(test_instance.TestInstance):
       error_func('Could not find apk or executable for %s' % self._suite)
 
     self._data_deps = []
-    self._gtest_filter = test_filter.InitializeFilterFromArgs(args)
+    self._gtest_filters = test_filter.InitializeFiltersFromArgs(args)
     self._run_disabled = args.run_disabled
 
     self._data_deps_delegate = data_deps_delegate
@@ -450,8 +474,8 @@ class GtestTestInstance(test_instance.TestInstance):
     return self._gs_test_artifacts_bucket
 
   @property
-  def gtest_filter(self):
-    return self._gtest_filter
+  def gtest_filters(self):
+    return self._gtest_filters
 
   @property
   def isolated_script_test_output(self):
@@ -509,6 +533,10 @@ class GtestTestInstance(test_instance.TestInstance):
   def wait_for_java_debugger(self):
     return self._wait_for_java_debugger
 
+  @property
+  def use_existing_test_data(self):
+    return self._use_existing_test_data
+
   #override
   def TestType(self):
     return 'gtest'
@@ -546,8 +574,8 @@ class GtestTestInstance(test_instance.TestInstance):
     """
     gtest_filter_strings = [
         self._GenerateDisabledFilterString(disabled_prefixes)]
-    if self._gtest_filter:
-      gtest_filter_strings.append(self._gtest_filter)
+    if self._gtest_filters:
+      gtest_filter_strings.extend(self._gtest_filters)
 
     filtered_test_list = test_list
     # This lock is required because on older versions of Python
@@ -558,12 +586,16 @@ class GtestTestInstance(test_instance.TestInstance):
         filtered_test_list = unittest_util.FilterTestNames(
             filtered_test_list, gtest_filter_string)
 
-      if self._run_disabled and self._gtest_filter:
+      if self._run_disabled and self._gtest_filters:
         out_filtered_test_list = list(set(test_list)-set(filtered_test_list))
         for test in out_filtered_test_list:
           test_name_no_disabled = TestNameWithoutDisabledPrefix(test)
-          if test_name_no_disabled != test and unittest_util.FilterTestNames(
-              [test_name_no_disabled], self._gtest_filter):
+          if test_name_no_disabled == test:
+            continue
+          if all(
+              unittest_util.FilterTestNames([test_name_no_disabled],
+                                            gtest_filter)
+              for gtest_filter in self._gtest_filters):
             filtered_test_list.append(test)
     return filtered_test_list
 
@@ -594,4 +626,3 @@ class GtestTestInstance(test_instance.TestInstance):
   #override
   def TearDown(self):
     """Do nothing."""
-    pass

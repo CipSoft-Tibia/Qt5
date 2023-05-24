@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include <algorithm>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/lazy_instance.h"
 #include "base/no_destructor.h"
 #include "base/numerics/safe_conversions.h"
@@ -27,10 +27,6 @@ namespace internal {
 
 namespace {
 
-// The first 8 characters of sha1 of "ScopedBlockingCall".
-// echo -n "ScopedBlockingCall" | sha1sum
-constexpr uint32_t kActivityTrackerId = 0x11be9915;
-
 LazyInstance<ThreadLocalPointer<BlockingObserver>>::Leaky
     tls_blocking_observer = LAZY_INSTANCE_INITIALIZER;
 
@@ -38,9 +34,13 @@ LazyInstance<ThreadLocalPointer<BlockingObserver>>::Leaky
 LazyInstance<ThreadLocalPointer<UncheckedScopedBlockingCall>>::Leaky
     tls_last_scoped_blocking_call = LAZY_INSTANCE_INITIALIZER;
 
+// Set to true by scoped_blocking_call_unittest to ensure unrelated threads
+// entering ScopedBlockingCalls don't affect test outcomes.
+bool g_only_monitor_observed_threads = false;
+
 bool IsBackgroundPriorityWorker() {
   return GetTaskPriorityForCurrentThread() == TaskPriority::BEST_EFFORT &&
-         CanUseBackgroundPriorityForWorkerThread();
+         CanUseBackgroundThreadTypeForWorkerThread();
 }
 
 }  // namespace
@@ -57,17 +57,29 @@ void ClearBlockingObserverForCurrentThread() {
 IOJankMonitoringWindow::ScopedMonitoredCall::ScopedMonitoredCall()
     : call_start_(TimeTicks::Now()),
       assigned_jank_window_(MonitorNextJankWindowIfNecessary(call_start_)) {
-  if (assigned_jank_window_) {
-    // TimeTicks using a monotonic clock and MonitorNextJankWindowIfNecessary
-    // synchronizing via a lock to return |assigned_jank_window_| was initially
-    // believed to guarantee that |call_start_| is either equal or beyond
-    // |assigned_jank_window_->start_time_|. Violating this assumption can
-    // result in negative indexing and OOB-writes in AddJank().
-    // We now know this assumption can be violated. This condition hotfixes
-    // the issue by discarding ScopedMonitoredCalls where it occurs.
-    // TODO(crbug.com/1209622): Implement a proper fix.
-    if (call_start_ < assigned_jank_window_->start_time_)
-      assigned_jank_window_.reset();
+  if (assigned_jank_window_ &&
+      call_start_ < assigned_jank_window_->start_time_) {
+    // Sampling |call_start_| and being assigned an IOJankMonitoringWindow is
+    // racy. It is possible that |call_start_| is sampled near the very end of
+    // the current window; meanwhile, another ScopedMonitoredCall on another
+    // thread samples a |call_start_| which lands in the next window. If that
+    // thread beats this one to MonitorNextJankWindowIfNecessary(), this thread
+    // will incorrectly be assigned that window (in the future w.r.t. to its
+    // |call_start_|). To avoid OOB-indexing in AddJank(), crbug.com/1209622, it
+    // is necessary to correct this by bumping |call_start_| to the received
+    // window's |start_time_|.
+    //
+    // Note: The alternate approach of getting |assigned_jank_window_| before
+    // |call_start_| has the opposite problem where |call_start_| can be more
+    // than kNumIntervals ahead of |start_time_| when sampling across the window
+    // boundary, resulting in OOB-indexing the other way. To solve that a loop
+    // would be required (re-getting the latest window and re-sampling
+    // |call_start_| until the condition holds). The loopless solution is thus
+    // preferred.
+    //
+    // A lock covering this entire constructor is also undesired because of the
+    // lock-free logic at the end of MonitorNextJankWindowIfNecessary().
+    call_start_ = assigned_jank_window_->start_time_;
   }
 }
 
@@ -87,6 +99,7 @@ IOJankMonitoringWindow::IOJankMonitoringWindow(TimeTicks start_time)
 
 // static
 void IOJankMonitoringWindow::CancelMonitoringForTesting() {
+  g_only_monitor_observed_threads = false;
   AutoLock lock(current_jank_window_lock());
   current_jank_window_storage() = nullptr;
   reporting_callback_storage() = NullCallback();
@@ -283,22 +296,21 @@ IOJankReportingCallback& IOJankMonitoringWindow::reporting_callback_storage() {
 }
 
 UncheckedScopedBlockingCall::UncheckedScopedBlockingCall(
-    const Location& from_here,
     BlockingType blocking_type,
     BlockingCallType blocking_call_type)
     : blocking_observer_(tls_blocking_observer.Get().Get()),
       previous_scoped_blocking_call_(tls_last_scoped_blocking_call.Get().Get()),
       is_will_block_(blocking_type == BlockingType::WILL_BLOCK ||
                      (previous_scoped_blocking_call_ &&
-                      previous_scoped_blocking_call_->is_will_block_)),
-      scoped_activity_(from_here, 0, kActivityTrackerId, 0) {
+                      previous_scoped_blocking_call_->is_will_block_)) {
   tls_last_scoped_blocking_call.Get().Set(this);
 
   // Only monitor non-nested ScopedBlockingCall(MAY_BLOCK) calls on foreground
   // threads. Cancels() any pending monitored call when a WILL_BLOCK or
   // ScopedBlockingCallWithBaseSyncPrimitives nests into a
   // ScopedBlockingCall(MAY_BLOCK).
-  if (!IsBackgroundPriorityWorker()) {
+  if (!IsBackgroundPriorityWorker() &&
+      (!g_only_monitor_observed_threads || blocking_observer_)) {
     const bool is_monitored_type =
         blocking_call_type == BlockingCallType::kRegular && !is_will_block_;
     if (is_monitored_type && !previous_scoped_blocking_call_) {
@@ -317,14 +329,6 @@ UncheckedScopedBlockingCall::UncheckedScopedBlockingCall(
       blocking_observer_->BlockingTypeUpgraded();
     }
   }
-
-  if (scoped_activity_.IsRecorded()) {
-    // Also record the data for extended crash reporting.
-    const TimeTicks now = TimeTicks::Now();
-    auto& user_data = scoped_activity_.user_data();
-    user_data.SetUint("timestamp_us", now.since_origin().InMicroseconds());
-    user_data.SetUint("blocking_type", static_cast<uint64_t>(blocking_type));
-  }
 }
 
 UncheckedScopedBlockingCall::~UncheckedScopedBlockingCall() {
@@ -332,7 +336,7 @@ UncheckedScopedBlockingCall::~UncheckedScopedBlockingCall() {
   // prevents side effect.
   ScopedClearLastError save_last_error;
   DCHECK_EQ(this, tls_last_scoped_blocking_call.Get().Get());
-  tls_last_scoped_blocking_call.Get().Set(previous_scoped_blocking_call_);
+  tls_last_scoped_blocking_call.Get().Set(previous_scoped_blocking_call_.get());
   if (blocking_observer_ && !previous_scoped_blocking_call_)
     blocking_observer_->BlockingEnded();
 }
@@ -340,7 +344,8 @@ UncheckedScopedBlockingCall::~UncheckedScopedBlockingCall() {
 }  // namespace internal
 
 void EnableIOJankMonitoringForProcess(
-    IOJankReportingCallback reporting_callback) {
+    IOJankReportingCallback reporting_callback,
+    OnlyObservedThreadsForTest only_observed_threads) {
   {
     AutoLock lock(internal::IOJankMonitoringWindow::current_jank_window_lock());
 
@@ -348,6 +353,15 @@ void EnableIOJankMonitoringForProcess(
                .is_null());
     internal::IOJankMonitoringWindow::reporting_callback_storage() =
         std::move(reporting_callback);
+  }
+
+  if (only_observed_threads) {
+    internal::g_only_monitor_observed_threads = true;
+  } else {
+    // Do not set it to `false` when it already is as that causes data races in
+    // browser tests (which EnableIOJankMonitoringForProcess after ThreadPool is
+    // already running).
+    DCHECK(!internal::g_only_monitor_observed_threads);
   }
 
   // Make sure monitoring starts now rather than randomly at the next

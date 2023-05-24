@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qrect.h"
 #include "qdatastream.h"
@@ -223,9 +187,14 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn QRect::QRect(const QPoint &topLeft, const QPoint &bottomRight)
 
-    Constructs a rectangle with the given \a topLeft and \a bottomRight corners.
+    Constructs a rectangle with the given \a topLeft and \a bottomRight corners, both included.
 
-    \sa setTopLeft(), setBottomRight()
+    If \a bottomRight is to higher and to the left of \a topLeft, the rectangle defined
+    is instead non-inclusive of the corners.
+
+    \note To ensure both points are included regardless of relative order, use span().
+
+    \sa setTopLeft(), setBottomRight(), span()
 */
 
 
@@ -295,27 +264,22 @@ QT_BEGIN_NAMESPACE
     non-negative width and height.
 
     If width() < 0 the function swaps the left and right corners, and
-    it swaps the top and bottom corners if height() < 0.
+    it swaps the top and bottom corners if height() < 0. The corners
+    are at the same time changed from being non-inclusive to inclusive.
 
     \sa isValid(), isEmpty()
 */
 
 QRect QRect::normalized() const noexcept
 {
-    QRect r;
-    if (x2 < x1 - 1) {                                // swap bad x values
-        r.x1 = x2;
-        r.x2 = x1;
-    } else {
-        r.x1 = x1;
-        r.x2 = x2;
+    QRect r(*this);
+    if (x2 < x1) {                                // swap bad x values
+        r.x1 = x2 + 1;
+        r.x2 = x1 - 1;
     }
-    if (y2 < y1 - 1) {                                // swap bad y values
-        r.y1 = y2;
-        r.y2 = y1;
-    } else {
-        r.y1 = y1;
-        r.y2 = y2;
+    if (y2 < y1) {                                // swap bad y values
+        r.y1 = y2 + 1;
+        r.y2 = y1 - 1;
     }
     return r;
 }
@@ -824,8 +788,8 @@ bool QRect::contains(const QPoint &p, bool proper) const noexcept
 {
     int l, r;
     if (x2 < x1 - 1) {
-        l = x2;
-        r = x1;
+        l = x2 + 1;
+        r = x1 - 1;
     } else {
         l = x1;
         r = x2;
@@ -839,8 +803,8 @@ bool QRect::contains(const QPoint &p, bool proper) const noexcept
     }
     int t, b;
     if (y2 < y1 - 1) {
-        t = y2;
-        b = y1;
+        t = y2 + 1;
+        b = y1 - 1;
     } else {
         t = y1;
         b = y2;
@@ -890,16 +854,16 @@ bool QRect::contains(const QRect &r, bool proper) const noexcept
         return false;
 
     int l1 = x1;
-    int r1 = x1;
-    if (x2 - x1 + 1 < 0)
-        l1 = x2;
+    int r1 = x1 - 1;
+    if (x2 < x1 - 1)
+        l1 = x2 + 1;
     else
         r1 = x2;
 
     int l2 = r.x1;
-    int r2 = r.x1;
-    if (r.x2 - r.x1 + 1 < 0)
-        l2 = r.x2;
+    int r2 = r.x1 - 1;
+    if (r.x2 < r.x1 - 1)
+        l2 = r.x2 + 1;
     else
         r2 = r.x2;
 
@@ -912,16 +876,16 @@ bool QRect::contains(const QRect &r, bool proper) const noexcept
     }
 
     int t1 = y1;
-    int b1 = y1;
-    if (y2 - y1 + 1 < 0)
-        t1 = y2;
+    int b1 = y1 - 1;
+    if (y2 < y1 - 1)
+        t1 = y2 + 1;
     else
         b1 = y2;
 
     int t2 = r.y1;
-    int b2 = r.y1;
-    if (r.y2 - r.y1 + 1 < 0)
-        t2 = r.y2;
+    int b2 = r.y1 - 1;
+    if (r.y2 < r.y1 - 1)
+        t2 = r.y2 + 1;
     else
         b2 = r.y2;
 
@@ -970,30 +934,30 @@ QRect QRect::operator|(const QRect &r) const noexcept
         return *this;
 
     int l1 = x1;
-    int r1 = x1;
-    if (x2 - x1 + 1 < 0)
-        l1 = x2;
+    int r1 = x1 - 1;
+    if (x2 < x1 - 1)
+        l1 = x2 + 1;
     else
         r1 = x2;
 
     int l2 = r.x1;
-    int r2 = r.x1;
-    if (r.x2 - r.x1 + 1 < 0)
-        l2 = r.x2;
+    int r2 = r.x1 - 1;
+    if (r.x2 < r.x1 - 1)
+        l2 = r.x2 + 1;
     else
         r2 = r.x2;
 
     int t1 = y1;
-    int b1 = y1;
-    if (y2 - y1 + 1 < 0)
-        t1 = y2;
+    int b1 = y1 - 1;
+    if (y2 < y1 - 1)
+        t1 = y2 + 1;
     else
         b1 = y2;
 
     int t2 = r.y1;
-    int b2 = r.y1;
-    if (r.y2 - r.y1 + 1 < 0)
-        t2 = r.y2;
+    int b2 = r.y1 - 1;
+    if (r.y2 < r.y1 - 1)
+        t2 = r.y2 + 1;
     else
         b2 = r.y2;
 
@@ -1004,13 +968,6 @@ QRect QRect::operator|(const QRect &r) const noexcept
     tmp.y2 = qMax(b1, b2);
     return tmp;
 }
-
-/*!
-    \fn QRect QRect::unite(const QRect &rectangle) const
-    \obsolete
-
-    Use united(\a rectangle) instead.
-*/
 
 /*!
     \fn QRect QRect::united(const QRect &rectangle) const
@@ -1039,35 +996,35 @@ QRect QRect::operator&(const QRect &r) const noexcept
         return QRect();
 
     int l1 = x1;
-    int r1 = x1;
-    if (x2 - x1 + 1 < 0)
-        l1 = x2;
-    else
-        r1 = x2;
+    int r1 = x2;
+    if (x2 < x1 - 1) {
+        l1 = x2 + 1;
+        r1 = x1 - 1;
+    }
 
     int l2 = r.x1;
-    int r2 = r.x1;
-    if (r.x2 - r.x1 + 1 < 0)
-        l2 = r.x2;
-    else
-        r2 = r.x2;
+    int r2 = r.x2;
+    if (r.x2 < r.x1 - 1) {
+        l2 = r.x2 + 1;
+        r2 = r.x1 - 1;
+    }
 
     if (l1 > r2 || l2 > r1)
         return QRect();
 
     int t1 = y1;
-    int b1 = y1;
-    if (y2 - y1 + 1 < 0)
-        t1 = y2;
-    else
-        b1 = y2;
+    int b1 = y2;
+    if (y2 < y1 - 1) {
+        t1 = y2 + 1;
+        b1 = y1 - 1;
+    }
 
     int t2 = r.y1;
-    int b2 = r.y1;
-    if (r.y2 - r.y1 + 1 < 0)
-        t2 = r.y2;
-    else
-        b2 = r.y2;
+    int b2 = r.y2;
+    if (r.y2 < r.y1 - 1) {
+        t2 = r.y2 + 1;
+        b2 = r.y1 - 1;
+    }
 
     if (t1 > b2 || t2 > b1)
         return QRect();
@@ -1079,13 +1036,6 @@ QRect QRect::operator&(const QRect &r) const noexcept
     tmp.y2 = qMin(b1, b2);
     return tmp;
 }
-
-/*!
-    \fn QRect QRect::intersect(const QRect &rectangle) const
-    \obsolete
-
-    Use intersected(\a rectangle) instead.
-*/
 
 /*!
     \fn QRect QRect::intersected(const QRect &rectangle) const
@@ -1118,35 +1068,35 @@ bool QRect::intersects(const QRect &r) const noexcept
         return false;
 
     int l1 = x1;
-    int r1 = x1;
-    if (x2 - x1 + 1 < 0)
-        l1 = x2;
-    else
-        r1 = x2;
+    int r1 = x2;
+    if (x2 < x1 - 1) {
+        l1 = x2 + 1;
+        r1 = x1 - 1;
+    }
 
     int l2 = r.x1;
-    int r2 = r.x1;
-    if (r.x2 - r.x1 + 1 < 0)
-        l2 = r.x2;
-    else
-        r2 = r.x2;
+    int r2 = r.x2;
+    if (r.x2 < r.x1 - 1) {
+        l2 = r.x2 + 1;
+        r2 = r.x1 - 1;
+    }
 
     if (l1 > r2 || l2 > r1)
         return false;
 
     int t1 = y1;
-    int b1 = y1;
-    if (y2 - y1 + 1 < 0)
-        t1 = y2;
-    else
-        b1 = y2;
+    int b1 = y2;
+    if (y2 < y1 - 1) {
+        t1 = y2 + 1;
+        b1 = y1 - 1;
+    }
 
     int t2 = r.y1;
-    int b2 = r.y1;
-    if (r.y2 - r.y1 + 1 < 0)
-        t2 = r.y2;
-    else
-        b2 = r.y2;
+    int b2 = r.y2;
+    if (r.y2 < r.y1 - 1) {
+        t2 = r.y2 + 1;
+        b2 = r.y1 - 1;
+    }
 
     if (t1 > b2 || t2 > b1)
         return false;
@@ -1155,8 +1105,7 @@ bool QRect::intersects(const QRect &r) const noexcept
 }
 
 /*!
-    \fn bool operator==(const QRect &r1, const QRect &r2)
-    \relates QRect
+    \fn bool QRect::operator==(const QRect &r1, const QRect &r2)
 
     Returns \c true if the rectangles \a r1 and \a r2 are equal,
     otherwise returns \c false.
@@ -1164,8 +1113,7 @@ bool QRect::intersects(const QRect &r) const noexcept
 
 
 /*!
-    \fn bool operator!=(const QRect &r1, const QRect &r2)
-    \relates QRect
+    \fn bool QRect::operator!=(const QRect &r1, const QRect &r2)
 
     Returns \c true if the rectangles \a r1 and \a r2 are different, otherwise
     returns \c false.
@@ -1239,6 +1187,26 @@ bool QRect::intersects(const QRect &r) const noexcept
     \since 5.1
 */
 
+/*!
+    \fn static QRect QRect::span(const QPoint &p1, const QPoint &p2)
+
+    Returns a rectangle spanning the two points \a p1 and \a p2, including both and
+    everything in between.
+
+    \since 6.0
+*/
+
+/*!
+    \fn QRect::toRectF() const
+    \since 6.4
+
+    Returns this rectangle as a rectangle with floating point accuracy.
+
+    \note This function, like the QRectF(QRect) constructor, preserves the
+    size() of the rectangle, not its bottomRight() corner.
+
+    \sa QRectF::toRect()
+*/
 
 /*****************************************************************************
   QRect stream functions
@@ -1311,8 +1279,8 @@ QDebug operator<<(QDebug dbg, const QRect &r)
     \ingroup painting
     \reentrant
 
-    \brief The QRectF class defines a rectangle in the plane using floating
-    point precision.
+    \brief The QRectF class defines a finite rectangle in the plane using
+    floating point precision.
 
     A rectangle is normally expressed as a top-left corner and a
     size.  The size (width and height) of a QRectF is always equivalent
@@ -1477,8 +1445,8 @@ QDebug operator<<(QDebug dbg, const QRect &r)
 /*!
     \fn QRectF::QRectF(qreal x, qreal y, qreal width, qreal height)
 
-    Constructs a rectangle with (\a x, \a y) as its top-left corner
-    and the given \a width and \a height.
+    Constructs a rectangle with (\a x, \a y) as its top-left corner and the
+    given \a width and \a height. All parameters must be finite.
 
     \sa setRect()
 */
@@ -1488,7 +1456,10 @@ QDebug operator<<(QDebug dbg, const QRect &r)
 
     Constructs a QRectF rectangle from the given QRect \a rectangle.
 
-    \sa toRect()
+    \note This function, like QRect::toRectF(), preserves the size() of
+    \a rectangle, not its bottomRight() corner.
+
+    \sa toRect(), QRect::toRectF()
 */
 
 /*!
@@ -1577,7 +1548,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setLeft(qreal x)
 
-    Sets the left edge of the rectangle to the given \a x
+    Sets the left edge of the rectangle to the given finite \a x
     coordinate. May change the width, but will never change the right
     edge of the rectangle.
 
@@ -1589,7 +1560,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setTop(qreal y)
 
-    Sets the top edge of the rectangle to the given \a y coordinate. May
+    Sets the top edge of the rectangle to the given finite \a y coordinate. May
     change the height, but will never change the bottom edge of the
     rectangle.
 
@@ -1601,7 +1572,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setRight(qreal x)
 
-    Sets the right edge of the rectangle to the given \a x
+    Sets the right edge of the rectangle to the given finite \a x
     coordinate. May change the width, but will never change the left
     edge of the rectangle.
 
@@ -1611,7 +1582,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setBottom(qreal y)
 
-    Sets the bottom edge of the rectangle to the given \a y
+    Sets the bottom edge of the rectangle to the given finite \a y
     coordinate. May change the height, but will never change the top
     edge of the rectangle.
 
@@ -1621,7 +1592,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setX(qreal x)
 
-    Sets the left edge of the rectangle to the given \a x
+    Sets the left edge of the rectangle to the given finite \a x
     coordinate. May change the width, but will never change the right
     edge of the rectangle.
 
@@ -1633,7 +1604,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setY(qreal y)
 
-    Sets the top edge of the rectangle to the given \a y
+    Sets the top edge of the rectangle to the given finite \a y
     coordinate. May change the height, but will never change the
     bottom edge of the rectangle.
 
@@ -1715,7 +1686,7 @@ QRectF QRectF::normalized() const noexcept
     \fn void QRectF::moveLeft(qreal x)
 
     Moves the rectangle horizontally, leaving the rectangle's left
-    edge at the given \a x coordinate. The rectangle's size is
+    edge at the given finite \a x coordinate. The rectangle's size is
     unchanged.
 
     \sa left(), setLeft(), moveRight()
@@ -1725,7 +1696,7 @@ QRectF QRectF::normalized() const noexcept
     \fn void QRectF::moveTop(qreal y)
 
     Moves the rectangle vertically, leaving the rectangle's top line
-    at the given \a y coordinate. The rectangle's size is unchanged.
+    at the given finite \a y coordinate. The rectangle's size is unchanged.
 
     \sa top(), setTop(), moveBottom()
 */
@@ -1735,7 +1706,7 @@ QRectF QRectF::normalized() const noexcept
     \fn void QRectF::moveRight(qreal x)
 
     Moves the rectangle horizontally, leaving the rectangle's right
-    edge at the given \a x coordinate. The rectangle's size is
+    edge at the given finite \a x coordinate. The rectangle's size is
     unchanged.
 
     \sa right(), setRight(), moveLeft()
@@ -1746,7 +1717,7 @@ QRectF QRectF::normalized() const noexcept
     \fn void QRectF::moveBottom(qreal y)
 
     Moves the rectangle vertically, leaving the rectangle's bottom
-    edge at the given \a y coordinate. The rectangle's size is
+    edge at the given finite \a y coordinate. The rectangle's size is
     unchanged.
 
     \sa bottom(), setBottom(), moveTop()
@@ -1796,8 +1767,8 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::moveTo(qreal x, qreal y)
 
-    Moves the rectangle, leaving the top-left corner at the given
-    position (\a x, \a y). The rectangle's size is unchanged.
+    Moves the rectangle, leaving the top-left corner at the given position (\a
+    x, \a y). The rectangle's size is unchanged. Both parameters must be finite.
 
     \sa translate(), moveTopLeft()
 */
@@ -1815,7 +1786,7 @@ QRectF QRectF::normalized() const noexcept
 
     Moves the rectangle \a dx along the x-axis and \a dy along the y-axis,
     relative to the current position. Positive values move the rectangle to the
-    right and downwards.
+    right and downwards. Both parameters must be finite.
 
     \sa moveTopLeft(), moveTo(), translated()
 */
@@ -1837,7 +1808,7 @@ QRectF QRectF::normalized() const noexcept
     Returns a copy of the rectangle that is translated \a dx along the
     x axis and \a dy along the y axis, relative to the current
     position. Positive values move the rectangle to the right and
-    down.
+    down. Both parameters must be finite.
 
     \sa translate()
 */
@@ -1868,8 +1839,8 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setRect(qreal x, qreal y, qreal width, qreal height)
 
-    Sets the coordinates of the rectangle's top-left corner to (\a x,
-    \a y), and its size to the given \a width and \a height.
+    Sets the coordinates of the rectangle's top-left corner to (\a x, \a y), and
+    its size to the given \a width and \a height. All parameters must be finite.
 
     \sa getRect(), setCoords()
 */
@@ -1880,7 +1851,7 @@ QRectF QRectF::normalized() const noexcept
 
     Sets the coordinates of the rectangle's top-left corner to (\a x1,
     \a y1), and the coordinates of its bottom-right corner to (\a x2,
-    \a y2).
+    \a y2). All parameters must be finite.
 
     \sa getCoords(), setRect()
 */
@@ -1890,6 +1861,7 @@ QRectF QRectF::normalized() const noexcept
 
     Returns a new rectangle with \a dx1, \a dy1, \a dx2 and \a dy2
     added respectively to the existing coordinates of this rectangle.
+    All parameters must be finite.
 
     \sa adjust()
 */
@@ -1897,7 +1869,7 @@ QRectF QRectF::normalized() const noexcept
 /*! \fn void QRectF::adjust(qreal dx1, qreal dy1, qreal dx2, qreal dy2)
 
     Adds \a dx1, \a dy1, \a dx2 and \a dy2 respectively to the
-    existing coordinates of the rectangle.
+    existing coordinates of the rectangle. All parameters must be finite.
 
     \sa adjusted(), setRect()
 */
@@ -1928,7 +1900,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setWidth(qreal width)
 
-    Sets the width of the rectangle to the given \a width. The right
+    Sets the width of the rectangle to the given finite \a width. The right
     edge is changed, but not the left one.
 
     \sa width(), setSize()
@@ -1938,7 +1910,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setHeight(qreal height)
 
-    Sets the height of the rectangle to the given \a height. The bottom
+    Sets the height of the rectangle to the given finite \a height. The bottom
     edge is changed, but not the top one.
 
     \sa height(), setSize()
@@ -1948,7 +1920,7 @@ QRectF QRectF::normalized() const noexcept
 /*!
     \fn void QRectF::setSize(const QSizeF &size)
 
-    Sets the size of the rectangle to the given \a size. The top-left
+    Sets the size of the rectangle to the given finite \a size. The top-left
     corner is not moved.
 
     \sa size(), setWidth(), setHeight()
@@ -2136,7 +2108,7 @@ bool QRectF::contains(const QRectF &r) const noexcept
 
     Intersects this rectangle with the given \a rectangle.
 
-    \sa intersected(), operator|=()
+    \sa intersected(), operator&()
 */
 
 
@@ -2187,13 +2159,6 @@ QRectF QRectF::operator|(const QRectF &r) const noexcept
 
     return QRectF(left, top, right - left, bottom - top);
 }
-
-/*!
-    \fn QRectF QRectF::unite(const QRectF &rectangle) const
-    \obsolete
-
-    Use united(\a rectangle) instead.
-*/
 
 /*!
     \fn QRectF QRectF::united(const QRectF &rectangle) const
@@ -2268,13 +2233,6 @@ QRectF QRectF::operator&(const QRectF &r) const noexcept
     tmp.h = qMin(b1, b2) - tmp.yp;
     return tmp;
 }
-
-/*!
-    \fn QRectF QRectF::intersect(const QRectF &rectangle) const
-    \obsolete
-
-    Use intersected(\a rectangle) instead.
-*/
 
 /*!
     \fn QRectF QRectF::intersected(const QRectF &rectangle) const
@@ -2355,7 +2313,7 @@ bool QRectF::intersects(const QRectF &r) const noexcept
     Returns a QRect based on the values of this rectangle.  Note that the
     coordinates in the returned rectangle are rounded to the nearest integer.
 
-    \sa QRectF(), toAlignedRect()
+    \sa QRectF(), toAlignedRect(), QRect::toRectF()
 */
 
 /*!
@@ -2388,8 +2346,7 @@ QRect QRectF::toAlignedRect() const noexcept
 */
 
 /*!
-    \fn bool operator==(const QRectF &r1, const QRectF &r2)
-    \relates QRectF
+    \fn bool QRectF::operator==(const QRectF &r1, const QRectF &r2)
 
     Returns \c true if the rectangles \a r1 and \a r2 are \b approximately equal,
     otherwise returns \c false.
@@ -2402,8 +2359,7 @@ QRect QRectF::toAlignedRect() const noexcept
 
 
 /*!
-    \fn bool operator!=(const QRectF &r1, const QRectF &r2)
-    \relates QRectF
+    \fn bool QRectF::operator!=(const QRectF &r1, const QRectF &r2)
 
     Returns \c true if the rectangles \a r1 and \a r2 are sufficiently
     different, otherwise returns \c false.

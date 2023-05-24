@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include <stdint.h>
 #include <memory>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/events/gesture_detection/gesture_event_data_packet.h"
 #include "ui/events/gesture_detection/gesture_provider.h"
 #include "ui/events/gesture_detection/touch_disposition_gesture_filter.h"
@@ -18,7 +17,7 @@ namespace ui {
 
 // Provides filtered gesture detection and dispatch given a sequence of touch
 // events and touch event acks.
-class GESTURE_DETECTION_EXPORT FilteredGestureProvider
+class GESTURE_DETECTION_EXPORT FilteredGestureProvider final
     : public ui::TouchDispositionGestureFilterClient,
       public ui::GestureProviderClient {
  public:
@@ -26,6 +25,10 @@ class GESTURE_DETECTION_EXPORT FilteredGestureProvider
   // and allowed by the |gesture_filter_|.
   FilteredGestureProvider(const GestureProvider::Config& config,
                           GestureProviderClient* client);
+
+  FilteredGestureProvider(const FilteredGestureProvider&) = delete;
+  FilteredGestureProvider& operator=(const FilteredGestureProvider&) = delete;
+
   ~FilteredGestureProvider() final;
 
   void UpdateConfig(const GestureProvider::Config& config);
@@ -41,15 +44,18 @@ class GESTURE_DETECTION_EXPORT FilteredGestureProvider
     // Whether |event| occurred beyond the touch slop region.
     bool moved_beyond_slop_region;
   };
-  TouchHandlingResult OnTouchEvent(const MotionEvent& event) WARN_UNUSED_RESULT;
+  [[nodiscard]] TouchHandlingResult OnTouchEvent(const MotionEvent& event);
 
   // To be called upon asynchronous and synchronous ack of an event that was
   // forwarded after a successful call to |OnTouchEvent()|.
   void OnTouchEventAck(uint32_t unique_event_id,
                        bool event_consumed,
-                       bool is_source_touch_event_set_non_blocking);
+                       bool is_source_touch_event_set_blocking);
 
   void ResetGestureHandlingState();
+
+  // Synthesizes and propagates gesture end events.
+  void SendSynthesizedEndEvents();
 
   // Methods delegated to |gesture_provider_|.
   void ResetDetection();
@@ -66,7 +72,7 @@ class GESTURE_DETECTION_EXPORT FilteredGestureProvider
   // TouchDispositionGestureFilterClient implementation.
   void ForwardGestureEvent(const ui::GestureEventData& event) override;
 
-  GestureProviderClient* const client_;
+  const raw_ptr<GestureProviderClient> client_;
 
   std::unique_ptr<ui::GestureProvider> gesture_provider_;
   ui::TouchDispositionGestureFilter gesture_filter_;
@@ -74,8 +80,6 @@ class GESTURE_DETECTION_EXPORT FilteredGestureProvider
   bool handling_event_;
   bool any_touch_moved_beyond_slop_region_;
   ui::GestureEventDataPacket pending_gesture_packet_;
-
-  DISALLOW_COPY_AND_ASSIGN(FilteredGestureProvider);
 };
 
 }  // namespace ui

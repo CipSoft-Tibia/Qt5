@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,6 @@
 #include "base/check.h"
 #include "base/containers/flat_map.h"
 #include "base/containers/span.h"
-#include "base/macros.h"
 #include "base/notreached.h"
 #include "base/strings/string_piece.h"
 #include "components/cbor/cbor_export.h"
@@ -128,24 +127,27 @@ class CBOR_EXPORT Value {
   explicit Value(SimpleValue in_simple);
   explicit Value(bool boolean_value);
 
-  Value(int integer_value);
-  Value(int64_t integer_value);
-  Value(uint64_t integer_value) = delete;
+  explicit Value(int integer_value);
+  explicit Value(int64_t integer_value);
+  explicit Value(uint64_t integer_value) = delete;
 
-  Value(base::span<const uint8_t> in_bytes);
-  Value(BinaryValue&& in_bytes) noexcept;
+  explicit Value(base::span<const uint8_t> in_bytes);
+  explicit Value(BinaryValue&& in_bytes) noexcept;
 
-  Value(const char* in_string, Type type = Type::STRING);
-  Value(std::string&& in_string, Type type = Type::STRING) noexcept;
-  Value(base::StringPiece in_string, Type type = Type::STRING);
+  explicit Value(const char* in_string, Type type = Type::STRING);
+  explicit Value(std::string&& in_string, Type type = Type::STRING) noexcept;
+  explicit Value(base::StringPiece in_string, Type type = Type::STRING);
 
   explicit Value(const ArrayValue& in_array);
-  Value(ArrayValue&& in_array) noexcept;
+  explicit Value(ArrayValue&& in_array) noexcept;
 
   explicit Value(const MapValue& in_map);
-  Value(MapValue&& in_map) noexcept;
+  explicit Value(MapValue&& in_map) noexcept;
 
   Value& operator=(Value&& that) noexcept;
+
+  Value(const Value&) = delete;
+  Value& operator=(const Value&) = delete;
 
   ~Value();
 
@@ -206,8 +208,6 @@ class CBOR_EXPORT Value {
 
   void InternalMoveConstructFrom(Value&& that);
   void InternalCleanup();
-
-  DISALLOW_COPY_AND_ASSIGN(Value);
 };
 
 }  // namespace cbor

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,9 @@
 #include "base/metrics/histogram_macros.h"
 #include "build/build_config.h"
 #include "build/chromecast_buildflags.h"
+#include "media/base/key_systems.h"
+#include "media/base/renderer.h"
+#include "media/base/video_codecs.h"
 #include "media/learning/mojo/mojo_learning_task_controller_service.h"
 #include "media/mojo/services/video_decode_stats_recorder.h"
 #include "media/mojo/services/watch_time_recorder.h"
@@ -19,11 +22,12 @@
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 #include "media/filters/decrypting_video_decoder.h"
-#endif  // !defined(OS_ANDROID)
+#endif
 
-#if defined(OS_FUCHSIA) || (BUILDFLAG(IS_CHROMECAST) && defined(OS_ANDROID))
+#if BUILDFLAG(ENABLE_CAST_RECEIVER) && \
+    (BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_ANDROID))
 #include "media/mojo/services/playback_events_recorder.h"
 #endif
 
@@ -45,7 +49,8 @@ MediaMetricsProvider::MediaMetricsProvider(
     learning::FeatureValue origin,
     VideoDecodePerfHistory::SaveCallback save_cb,
     GetLearningSessionCallback learning_session_cb,
-    RecordAggregateWatchTimeCallback record_playback_cb)
+    RecordAggregateWatchTimeCallback record_playback_cb,
+    IsShuttingDownCallback is_shutting_down_cb)
     : player_id_(g_player_id++),
       is_top_frame_(is_top_frame == FrameStatus::kTopFrame),
       source_id_(source_id),
@@ -53,24 +58,39 @@ MediaMetricsProvider::MediaMetricsProvider(
       save_cb_(std::move(save_cb)),
       learning_session_cb_(std::move(learning_session_cb)),
       record_playback_cb_(std::move(record_playback_cb)),
+      is_shutting_down_cb_(std::move(is_shutting_down_cb)),
       uma_info_(is_incognito == BrowsingMode::kIncognito) {}
 
 MediaMetricsProvider::~MediaMetricsProvider() {
+  if (!IsInitialized())
+    return;
+
   // UKM may be unavailable in content_shell or other non-chrome/ builds; it
   // may also be unavailable if browser shutdown has started; so this may be a
   // nullptr. If it's unavailable, UKM reporting will be skipped.
   ukm::UkmRecorder* ukm_recorder = ukm::UkmRecorder::Get();
-  if (!ukm_recorder || !initialized_)
+  if (!ukm_recorder)
+    return;
+
+  // These UKM and UMA metrics do not apply to MediaStreams.
+  if (media_info_->media_stream_type != mojom::MediaStreamType::kNone)
     return;
 
   ukm::builders::Media_WebMediaPlayerState builder(source_id_);
   builder.SetPlayerID(player_id_);
   builder.SetIsTopFrame(is_top_frame_);
   builder.SetIsEME(uma_info_.is_eme);
-  builder.SetIsMSE(is_mse_);
+  builder.SetIsMSE(media_info_->is_mse);
+  builder.SetRendererType(static_cast<int>(renderer_type_));
+  builder.SetKeySystem(GetKeySystemIntForUKM(key_system_));
+  builder.SetIsHardwareSecure(is_hardware_secure_);
+  builder.SetAudioEncryptionType(
+      static_cast<int>(uma_info_.audio_pipeline_info.encryption_type));
+  builder.SetVideoEncryptionType(
+      static_cast<int>(uma_info_.video_pipeline_info.encryption_type));
   builder.SetFinalPipelineStatus(uma_info_.last_pipeline_status);
-  if (!is_mse_) {
-    builder.SetURLScheme(static_cast<int64_t>(url_scheme_));
+  if (!media_info_->is_mse) {
+    builder.SetURLScheme(static_cast<int64_t>(media_info_->url_scheme));
     if (container_name_)
       builder.SetContainerName(*container_name_);
   }
@@ -89,21 +109,20 @@ MediaMetricsProvider::~MediaMetricsProvider() {
 std::string MediaMetricsProvider::GetUMANameForAVStream(
     const PipelineInfo& player_info) {
   constexpr char kPipelineUmaPrefix[] = "Media.PipelineStatus.AudioVideo.";
-  std::string uma_name = kPipelineUmaPrefix;
-  if (player_info.video_codec == kCodecVP8)
-    uma_name += "VP8.";
-  else if (player_info.video_codec == kCodecVP9)
-    uma_name += "VP9.";
-  else if (player_info.video_codec == kCodecH264)
-    uma_name += "H264.";
-  else if (player_info.video_codec == kCodecAV1)
-    uma_name += "AV1.";
-  else
-    return uma_name + "Other";
+  std::string uma_name =
+      kPipelineUmaPrefix + GetCodecNameForUMA(player_info.video_codec) + ".";
 
-#if !defined(OS_ANDROID)
-  if (player_info.video_pipeline_info.decoder_name ==
-      DecryptingVideoDecoder::kDecoderName) {
+  // Add Renderer name when not using the default RendererImpl.
+  if (renderer_type_ == RendererType::kMediaFoundation) {
+    return uma_name + GetRendererName(RendererType::kMediaFoundation);
+  } else if (renderer_type_ != RendererType::kRendererImpl) {
+    return uma_name + "UnknownRenderer";
+  }
+
+  // Using default RendererImpl. Put more detailed info into the UMA name.
+#if !BUILDFLAG(IS_ANDROID)
+  if (player_info.video_pipeline_info.decoder_type ==
+      VideoDecoderType::kDecrypting) {
     return uma_name + "DVD";
   }
 #endif
@@ -115,6 +134,7 @@ std::string MediaMetricsProvider::GetUMANameForAVStream(
   // reported as HW forever, regardless of the underlying platform
   // implementation.
   uma_name += player_info.video_pipeline_info.is_platform_decoder ? "HW" : "SW";
+
   return uma_name;
 }
 
@@ -142,7 +162,8 @@ void MediaMetricsProvider::ReportPipelineUMA() {
 
   // Report whether video decoder fallback happened, but only if a video decoder
   // was reported.
-  if (!uma_info_.video_pipeline_info.decoder_name.empty()) {
+  if (uma_info_.video_pipeline_info.decoder_type !=
+      VideoDecoderType::kUnknown) {
     base::UmaHistogramBoolean("Media.VideoDecoderFallback",
                               uma_info_.video_decoder_changed);
   }
@@ -162,18 +183,19 @@ void MediaMetricsProvider::ReportPipelineUMA() {
 void MediaMetricsProvider::Create(
     BrowsingMode is_incognito,
     FrameStatus is_top_frame,
-    GetSourceIdCallback get_source_id_cb,
-    GetOriginCallback get_origin_cb,
+    ukm::SourceId source_id,
+    learning::FeatureValue origin,
     VideoDecodePerfHistory::SaveCallback save_cb,
     GetLearningSessionCallback learning_session_cb,
     GetRecordAggregateWatchTimeCallback get_record_playback_cb,
+    IsShuttingDownCallback is_shutting_down_cb,
     mojo::PendingReceiver<mojom::MediaMetricsProvider> receiver) {
   mojo::MakeSelfOwnedReceiver(
       std::make_unique<MediaMetricsProvider>(
-          is_incognito, is_top_frame, get_source_id_cb.Run(),
-          get_origin_cb.Run(), std::move(save_cb),
+          is_incognito, is_top_frame, source_id, origin, std::move(save_cb),
           std::move(learning_session_cb),
-          std::move(get_record_playback_cb).Run()),
+          std::move(get_record_playback_cb).Run(),
+          std::move(is_shutting_down_cb)),
       std::move(receiver));
 }
 
@@ -195,34 +217,54 @@ void MediaMetricsProvider::SetHaveEnough() {
   uma_info_.has_reached_have_enough = true;
 }
 
-void MediaMetricsProvider::SetVideoPipelineInfo(
-    const PipelineDecoderInfo& info) {
-  auto old_name = uma_info_.video_pipeline_info.decoder_name;
-  if (!old_name.empty() && old_name != info.decoder_name)
+void MediaMetricsProvider::SetVideoPipelineInfo(const VideoPipelineInfo& info) {
+  auto old_decoder = uma_info_.video_pipeline_info.decoder_type;
+  if (old_decoder != VideoDecoderType::kUnknown &&
+      old_decoder != info.decoder_type)
     uma_info_.video_decoder_changed = true;
   uma_info_.video_pipeline_info = info;
 }
 
-void MediaMetricsProvider::SetAudioPipelineInfo(
-    const PipelineDecoderInfo& info) {
+void MediaMetricsProvider::SetAudioPipelineInfo(const AudioPipelineInfo& info) {
   uma_info_.audio_pipeline_info = info;
 }
 
-void MediaMetricsProvider::Initialize(bool is_mse,
-                                      mojom::MediaURLScheme url_scheme) {
-  if (initialized_) {
+void MediaMetricsProvider::Initialize(
+    bool is_mse,
+    mojom::MediaURLScheme url_scheme,
+    mojom::MediaStreamType media_stream_type) {
+  if (IsInitialized()) {
     mojo::ReportBadMessage(kInvalidInitialize);
     return;
   }
 
-  is_mse_ = is_mse;
-  initialized_ = true;
-  url_scheme_ = url_scheme;
+  media_info_.emplace(MediaInfo{
+      .is_mse = is_mse,
+      .url_scheme = url_scheme,
+      .media_stream_type = media_stream_type,
+  });
+  DCHECK(IsInitialized());
 }
 
-void MediaMetricsProvider::OnError(PipelineStatus status) {
-  DCHECK(initialized_);
-  uma_info_.last_pipeline_status = status;
+void MediaMetricsProvider::OnError(const PipelineStatus& status) {
+  DCHECK(IsInitialized());
+  if (is_shutting_down_cb_.Run()) {
+    DVLOG(1) << __func__ << ": Error " << PipelineStatusToString(status)
+             << " ignored since it is reported during shutdown.";
+    return;
+  }
+
+  uma_info_.last_pipeline_status = status.code();
+}
+
+void MediaMetricsProvider::OnFallback(const PipelineStatus& status) {
+  DCHECK(IsInitialized());
+  if (is_shutting_down_cb_.Run()) {
+    DVLOG(1) << __func__ << ": Error " << PipelineStatusToString(status)
+             << " ignored since it is reported during shutdown.";
+    return;
+  }
+  // Do nothing for now.
 }
 
 void MediaMetricsProvider::SetIsEME() {
@@ -231,34 +273,46 @@ void MediaMetricsProvider::SetIsEME() {
 }
 
 void MediaMetricsProvider::SetTimeToMetadata(base::TimeDelta elapsed) {
-  DCHECK(initialized_);
+  DCHECK(IsInitialized());
   DCHECK_EQ(time_to_metadata_, kNoTimestamp);
   time_to_metadata_ = elapsed;
 }
 
 void MediaMetricsProvider::SetTimeToFirstFrame(base::TimeDelta elapsed) {
-  DCHECK(initialized_);
+  DCHECK(IsInitialized());
   DCHECK_EQ(time_to_first_frame_, kNoTimestamp);
   time_to_first_frame_ = elapsed;
 }
 
 void MediaMetricsProvider::SetTimeToPlayReady(base::TimeDelta elapsed) {
-  DCHECK(initialized_);
+  DCHECK(IsInitialized());
   DCHECK_EQ(time_to_play_ready_, kNoTimestamp);
   time_to_play_ready_ = elapsed;
 }
 
 void MediaMetricsProvider::SetContainerName(
     container_names::MediaContainerName container_name) {
-  DCHECK(initialized_);
+  DCHECK(IsInitialized());
   DCHECK(!container_name_.has_value());
   container_name_ = container_name;
+}
+
+void MediaMetricsProvider::SetRendererType(RendererType renderer_type) {
+  renderer_type_ = renderer_type;
+}
+
+void MediaMetricsProvider::SetKeySystem(const std::string& key_system) {
+  key_system_ = key_system;
+}
+
+void MediaMetricsProvider::SetIsHardwareSecure() {
+  is_hardware_secure_ = true;
 }
 
 void MediaMetricsProvider::AcquireWatchTimeRecorder(
     mojom::PlaybackPropertiesPtr properties,
     mojo::PendingReceiver<mojom::WatchTimeRecorder> receiver) {
-  if (!initialized_) {
+  if (!IsInitialized()) {
     mojo::ReportBadMessage(kInvalidInitialize);
     return;
   }
@@ -272,7 +326,7 @@ void MediaMetricsProvider::AcquireWatchTimeRecorder(
 
 void MediaMetricsProvider::AcquireVideoDecodeStatsRecorder(
     mojo::PendingReceiver<mojom::VideoDecodeStatsRecorder> receiver) {
-  if (!initialized_) {
+  if (!IsInitialized()) {
     mojo::ReportBadMessage(kInvalidInitialize);
     return;
   }
@@ -290,7 +344,8 @@ void MediaMetricsProvider::AcquireVideoDecodeStatsRecorder(
 
 void MediaMetricsProvider::AcquirePlaybackEventsRecorder(
     mojo::PendingReceiver<mojom::PlaybackEventsRecorder> receiver) {
-#if defined(OS_FUCHSIA) || (BUILDFLAG(IS_CHROMECAST) && defined(OS_ANDROID))
+#if BUILDFLAG(ENABLE_CAST_RECEIVER) && \
+    (BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_ANDROID))
   PlaybackEventsRecorder::Create(std::move(receiver));
 #endif
 }
@@ -316,6 +371,10 @@ void MediaMetricsProvider::AcquireLearningTaskController(
       std::make_unique<learning::MojoLearningTaskControllerService>(
           controller->GetLearningTask(), source_id_, std::move(controller)),
       std::move(receiver));
+}
+
+bool MediaMetricsProvider::IsInitialized() const {
+  return media_info_.has_value();
 }
 
 }  // namespace media

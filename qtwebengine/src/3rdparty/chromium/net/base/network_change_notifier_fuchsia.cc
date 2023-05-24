@@ -1,66 +1,55 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/base/network_change_notifier_fuchsia.h"
 
-#include <lib/async-loop/cpp/loop.h>
+#include <fuchsia/net/interfaces/cpp/fidl.h>
 #include <lib/sys/cpp/component_context.h>
 
 #include <algorithm>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/fuchsia/fuchsia_logging.h"
 #include "base/fuchsia/process_context.h"
-#include "base/optional.h"
-#include "base/run_loop.h"
-#include "net/base/network_interfaces.h"
-#include "net/base/network_interfaces_fuchsia.h"
+#include "base/logging.h"
+#include "base/threading/thread_checker.h"
+#include "base/types/expected.h"
+#include "net/base/fuchsia/network_interface_cache.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace net {
 
-NetworkChangeNotifierFuchsia::NetworkChangeNotifierFuchsia(
-    fuchsia::hardware::ethernet::Features required_features)
-    : NetworkChangeNotifierFuchsia(base::ComponentContextForProcess()
-                                       ->svc()
-                                       ->Connect<fuchsia::netstack::Netstack>(),
-                                   required_features) {}
+NetworkChangeNotifierFuchsia::NetworkChangeNotifierFuchsia(bool require_wlan)
+    : NetworkChangeNotifierFuchsia(internal::ConnectInterfacesWatcher(),
+                                   require_wlan,
+                                   /*system_dns_config_notifier=*/nullptr) {}
 
 NetworkChangeNotifierFuchsia::NetworkChangeNotifierFuchsia(
-    fidl::InterfaceHandle<fuchsia::netstack::Netstack> netstack,
-    fuchsia::hardware::ethernet::Features required_features,
+    fuchsia::net::interfaces::WatcherHandle watcher_handle,
+    bool require_wlan,
     SystemDnsConfigChangeNotifier* system_dns_config_notifier)
     : NetworkChangeNotifier(NetworkChangeCalculatorParams(),
                             system_dns_config_notifier),
-      required_features_(required_features) {
-  DCHECK(netstack);
+      cache_(require_wlan) {
+  DCHECK(watcher_handle);
 
-  netstack_.set_error_handler([](zx_status_t status) {
-    ZX_LOG(FATAL, status) << "Lost connection to netstack.";
-  });
+  std::vector<fuchsia::net::interfaces::Properties> interfaces;
+  auto handle_or_status = internal::ReadExistingNetworkInterfacesFromNewWatcher(
+      std::move(watcher_handle), interfaces);
+  if (!handle_or_status.has_value()) {
+    return;
+  }
 
-  netstack_.events().OnInterfacesChanged = fit::bind_member(
-      this, &NetworkChangeNotifierFuchsia::ProcessInterfaceList);
+  HandleCacheStatus(cache_.AddInterfaces(std::move(interfaces)));
 
-  // Temporarily bind to a local dispatcher so we can synchronously wait for the
-  // synthetic event to populate the initial state.
-  async::Loop loop(&kAsyncLoopConfigNeverAttachToThread);
-  zx_status_t status = netstack_.Bind(std::move(netstack), loop.dispatcher());
-  ZX_CHECK(status == ZX_OK, status) << "Bind()";
-  on_initial_interfaces_received_ =
-      base::BindOnce(&async::Loop::Quit, base::Unretained(&loop));
-  status = loop.Run();
-  ZX_CHECK(status == ZX_ERR_CANCELED, status) << "loop.Run()";
-
-  // Bind to the dispatcher for the thread's MessagePump.
-  //
-  // Note this must be done before |loop| is destroyed, since that would close
-  // the interface handle underlying |netstack_|.
-  status = netstack_.Bind(netstack_.Unbind());
-  ZX_CHECK(status == ZX_OK, status) << "Bind()";
+  watcher_.set_error_handler(base::LogFidlErrorAndExitProcess(
+      FROM_HERE, "fuchsia.net.interfaces.Watcher"));
+  zx_status_t bind_status = watcher_.Bind(std::move(handle_or_status.value()));
+  ZX_CHECK(bind_status == ZX_OK, bind_status) << "Bind()";
+  watcher_->Watch(
+      fit::bind_member(this, &NetworkChangeNotifierFuchsia::OnInterfacesEvent));
 }
 
 NetworkChangeNotifierFuchsia::~NetworkChangeNotifierFuchsia() {
@@ -70,85 +59,103 @@ NetworkChangeNotifierFuchsia::~NetworkChangeNotifierFuchsia() {
 
 NetworkChangeNotifier::ConnectionType
 NetworkChangeNotifierFuchsia::GetCurrentConnectionType() const {
-  ConnectionType type = static_cast<ConnectionType>(
-      base::subtle::Acquire_Load(&cached_connection_type_));
-  return type;
+  return cache_.GetConnectionType();
 }
 
-void NetworkChangeNotifierFuchsia::ProcessInterfaceList(
-    std::vector<fuchsia::netstack::NetInterface> interfaces) {
-  netstack_->GetRouteTable(
-      [this, interfaces = std::move(interfaces)](
-          std::vector<fuchsia::netstack::RouteTableEntry> route_table) mutable {
-        OnRouteTableReceived(std::move(interfaces), std::move(route_table));
-      });
+const internal::NetworkInterfaceCache*
+NetworkChangeNotifierFuchsia::GetNetworkInterfaceCacheInternal() const {
+  return &cache_;
 }
 
-void NetworkChangeNotifierFuchsia::OnRouteTableReceived(
-    std::vector<fuchsia::netstack::NetInterface> interfaces,
-    std::vector<fuchsia::netstack::RouteTableEntry> route_table) {
-  // Create a set of NICs that have default routes (ie 0.0.0.0).
-  base::flat_set<uint32_t> default_route_ids;
-  for (const auto& route : route_table) {
-    if (MaskPrefixLength(
-            internal::FuchsiaIpAddressToIPAddress(route.netmask)) == 0) {
-      default_route_ids.insert(route.nicid);
-    }
+void NetworkChangeNotifierFuchsia::OnInterfacesEvent(
+    fuchsia::net::interfaces::Event event) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+
+  // Immediately trigger the next watch, which will happen asynchronously. If
+  // event processing encounters an error it'll close the watcher channel which
+  // will cancel any pending callbacks.
+  watcher_->Watch(
+      fit::bind_member(this, &NetworkChangeNotifierFuchsia::OnInterfacesEvent));
+
+  switch (event.Which()) {
+    case fuchsia::net::interfaces::Event::kAdded:
+      HandleCacheStatus(cache_.AddInterface(std::move(event.added())));
+      break;
+    case fuchsia::net::interfaces::Event::kRemoved:
+      HandleCacheStatus(cache_.RemoveInterface(event.removed()));
+      break;
+    case fuchsia::net::interfaces::Event::kChanged:
+      HandleCacheStatus(cache_.ChangeInterface(std::move(event.changed())));
+      break;
+    default:
+      LOG(ERROR) << "Unexpected event: " << event.Which();
+      watcher_.Unbind();
+      cache_.SetError();
+      break;
+  }
+}
+
+void NetworkChangeNotifierFuchsia::HandleCacheStatus(
+    absl::optional<internal::NetworkInterfaceCache::ChangeBits> change_bits) {
+  if (!change_bits.has_value()) {
+    watcher_.Unbind();
+    return;
   }
 
-  ConnectionType connection_type = CONNECTION_NONE;
-  base::flat_set<IPAddress> addresses;
-  for (auto& interface : interfaces) {
-    // Filter out loopback and invalid connection types.
-    if ((internal::ConvertConnectionType(interface) ==
-         NetworkChangeNotifier::CONNECTION_NONE) ||
-        (interface.features &
-         fuchsia::hardware::ethernet::Features::LOOPBACK) ==
-            fuchsia::hardware::ethernet::Features::LOOPBACK) {
-      continue;
-    }
-
-    // Filter out interfaces that do not meet the |required_features_|.
-    if ((interface.features & required_features_) != required_features_) {
-      continue;
-    }
-
-    // Filter out interfaces with non-default routes.
-    if (!default_route_ids.contains(interface.id)) {
-      continue;
-    }
-
-    std::vector<NetworkInterface> flattened_interfaces =
-        internal::NetInterfaceToNetworkInterfaces(interface);
-    if (flattened_interfaces.empty()) {
-      continue;
-    }
-
-    // Add the addresses from this interface to the list of all addresses.
-    std::transform(
-        flattened_interfaces.begin(), flattened_interfaces.end(),
-        std::inserter(addresses, addresses.begin()),
-        [](const NetworkInterface& interface) { return interface.address; });
-
-    // Set the default connection to the first interface connection found.
-    if (connection_type == CONNECTION_NONE) {
-      connection_type = flattened_interfaces.front().type;
-    }
-  }
-
-  if (addresses != cached_addresses_) {
-    std::swap(cached_addresses_, addresses);
+  if (change_bits.value() &
+      internal::NetworkInterfaceCache::kIpAddressChanged) {
     NotifyObserversOfIPAddressChange();
   }
-
-  if (connection_type != cached_connection_type_) {
-    base::subtle::Release_Store(&cached_connection_type_, connection_type);
+  if (change_bits.value() &
+      internal::NetworkInterfaceCache::kConnectionTypeChanged) {
     NotifyObserversOfConnectionTypeChange();
-  }
-
-  if (on_initial_interfaces_received_) {
-    std::move(on_initial_interfaces_received_).Run();
   }
 }
 
+namespace internal {
+
+fuchsia::net::interfaces::WatcherHandle ConnectInterfacesWatcher() {
+  fuchsia::net::interfaces::StateSyncPtr state;
+  zx_status_t status =
+      base::ComponentContextForProcess()->svc()->Connect(state.NewRequest());
+  ZX_CHECK(status == ZX_OK, status) << "Connect()";
+
+  fuchsia::net::interfaces::WatcherHandle watcher;
+  status = state->GetWatcher(/*options=*/{}, watcher.NewRequest());
+  ZX_CHECK(status == ZX_OK, status) << "GetWatcher()";
+
+  return watcher;
+}
+
+base::expected<fuchsia::net::interfaces::WatcherHandle, zx_status_t>
+ReadExistingNetworkInterfacesFromNewWatcher(
+    fuchsia::net::interfaces::WatcherHandle watcher_handle,
+    std::vector<fuchsia::net::interfaces::Properties>& interfaces) {
+  DCHECK(watcher_handle);
+
+  fuchsia::net::interfaces::WatcherSyncPtr watcher = watcher_handle.BindSync();
+
+  while (true) {
+    fuchsia::net::interfaces::Event event;
+    if (auto watch_status = watcher->Watch(&event); watch_status != ZX_OK) {
+      ZX_LOG(ERROR, watch_status) << "Watch() failed";
+      return base::unexpected(watch_status);
+    }
+
+    switch (event.Which()) {
+      case fuchsia::net::interfaces::Event::Tag::kExisting:
+        interfaces.push_back(std::move(event.existing()));
+        break;
+      case fuchsia::net::interfaces::Event::Tag::kIdle:
+        // Idle means we've listed all the existing interfaces. We can stop
+        // fetching events.
+        return base::ok(watcher.Unbind());
+      default:
+        LOG(ERROR) << "Unexpected event " << event.Which();
+        return base::unexpected(ZX_ERR_NOT_SUPPORTED);
+    }
+  }
+}
+
+}  // namespace internal
 }  // namespace net

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@ package org.chromium.components.webapk.lib.client;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -30,13 +31,13 @@ import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowPackageManager;
 
-import org.chromium.testing.local.LocalRobolectricTestRunner;
+import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.testing.local.TestDir;
 
 import java.net.URISyntaxException;
 
 /** Unit tests for {@link org.chromium.webapk.lib.client.WebApkValidator}. */
-@RunWith(LocalRobolectricTestRunner.class)
+@RunWith(BaseRobolectricTestRunner.class)
 @Config(manifest = Config.NONE)
 public class WebApkValidatorTest {
     private static final String WEBAPK_PACKAGE_NAME = "org.chromium.webapk.foo";
@@ -78,6 +79,7 @@ public class WebApkValidatorTest {
     public void setUp() {
         mPackageManager = Shadows.shadowOf(RuntimeEnvironment.application.getPackageManager());
         WebApkValidator.init(EXPECTED_SIGNATURE, PUBLIC_KEY);
+        WebApkValidator.setDisableValidationForTesting(false);
     }
 
     /**
@@ -377,6 +379,48 @@ public class WebApkValidatorTest {
     }
 
     /**
+     * Tests {@link WebApkValidator.isValidV1WebApk} returns true if a package name corresponds to a
+     * WebAPK and the WebAPK is valid.
+     */
+    @Test
+    public void testIsValidV1WebApkReturnsTrueForValidWebApk() {
+        mPackageManager.addPackage(newPackageInfoWithBrowserSignature(
+                WEBAPK_PACKAGE_NAME, new Signature(EXPECTED_SIGNATURE), TEST_STARTURL, null));
+
+        assertTrue(WebApkValidator.isValidV1WebApk(
+                RuntimeEnvironment.application, WEBAPK_PACKAGE_NAME));
+    }
+
+    /**
+     * Tests {@link WebApkValidator.isValidV1WebApk} returns false if the package
+     * name is not valid for WebApks.
+     */
+    @Test
+    public void testIsValidV1WebApkFalseForInvalidPackageName() {
+        mPackageManager.addPackage(newPackageInfoWithBrowserSignature(INVALID_WEBAPK_PACKAGE_NAME,
+                new Signature(EXPECTED_SIGNATURE), TEST_STARTURL, null));
+
+        assertFalse(WebApkValidator.isValidV1WebApk(
+                RuntimeEnvironment.application, INVALID_WEBAPK_PACKAGE_NAME));
+    }
+
+    /**
+     * Tests {@link WebApkValidator.isValidV1WebApk} returns false if the package
+     * name is maps lite.
+     */
+    @Test
+    public void testIsValidV1WebApkFalseForMapsLite() {
+        mPackageManager.addPackage(newPackageInfoWithBrowserSignature(MAPSLITE_PACKAGE_NAME,
+                new Signature(SIGNATURE_1), MAPSLITE_EXAMPLE_STARTURL, null));
+        mPackageManager.addPackage(
+                newPackageInfoWithBrowserSignature(MAPSLITE_PACKAGE_NAME + ".other",
+                        new Signature(SIGNATURE_1), MAPSLITE_EXAMPLE_STARTURL, null));
+
+        assertFalse(WebApkValidator.isValidV1WebApk(
+                RuntimeEnvironment.application, MAPSLITE_PACKAGE_NAME));
+    }
+
+    /**
      * Tests {@link WebApkValidator#queryBoundWebApkForManifestUrl()} for a valid installed entry.
      */
     @Test
@@ -425,6 +469,83 @@ public class WebApkValidatorTest {
                 RuntimeEnvironment.application, "https://evil.com/manifest.json"));
     }
 
+    /**
+     * Tests when override validation is set, {@link WebApkValidator.isValidWebApk} returns
+     * true with invalid signature.
+     */
+    @Test
+    public void testIsValidWebApkWithOverridesSignature() {
+        mPackageManager.addPackage(newPackageInfoWithBrowserSignature(
+                WEBAPK_PACKAGE_NAME, new Signature(SIGNATURE_1), TEST_STARTURL, null));
+
+        assertFalse(
+                WebApkValidator.isValidWebApk(RuntimeEnvironment.application, WEBAPK_PACKAGE_NAME));
+
+        WebApkValidator.setDisableValidationForTesting(true);
+        assertTrue(
+                WebApkValidator.isValidWebApk(RuntimeEnvironment.application, WEBAPK_PACKAGE_NAME));
+    }
+
+    /**
+     * Tests when override validation is set, {@link WebApkValidator.isValidWebApk} returns false
+     * when no START_URL.
+     */
+    @Test
+    public void testIsValidWebApkOverridesReturnsFalseNoStartUrl() {
+        PackageInfo webapkPackage = newPackageInfoWithBrowserSignature(
+                WEBAPK_PACKAGE_NAME, new Signature(EXPECTED_SIGNATURE), TEST_STARTURL, null);
+        webapkPackage.applicationInfo.metaData.remove(START_URL);
+        mPackageManager.addPackage(webapkPackage);
+
+        WebApkValidator.setDisableValidationForTesting(true);
+        assertFalse(
+                WebApkValidator.isValidWebApk(RuntimeEnvironment.application, WEBAPK_PACKAGE_NAME));
+    }
+
+    /**
+     * Tests when override validation is set, {@link WebApkValidator.isValidWebApk} returns false
+     * when package is not installed.
+     */
+    @Test
+    public void testIsValidWebApkOverridesPackageNotFound() {
+        WebApkValidator.setDisableValidationForTesting(true);
+
+        assertFalse(WebApkValidator.isValidWebApk(
+                RuntimeEnvironment.application, INVALID_WEBAPK_PACKAGE_NAME));
+    }
+
+    @Test
+    public void testQueryWebApkResolveInfoWithPackageName() {
+        addWebApkResolveInfoWithPackageName(URL_OF_WEBAPK, WEBAPK_PACKAGE_NAME, EXPECTED_SIGNATURE);
+
+        ResolveInfo resolveInfo = WebApkValidator.queryFirstWebApkResolveInfo(
+                RuntimeEnvironment.application, URL_OF_WEBAPK, WEBAPK_PACKAGE_NAME);
+
+        assertNotNull(resolveInfo);
+        assertEquals(resolveInfo.activityInfo.packageName, WEBAPK_PACKAGE_NAME);
+    }
+
+    @Test
+    public void testQueryWebApkResolveInfoWithInvalidPackageName() {
+        addWebApkResolveInfoWithPackageName(
+                URL_OF_WEBAPK, INVALID_WEBAPK_PACKAGE_NAME, EXPECTED_SIGNATURE);
+
+        ResolveInfo resolveInfo = WebApkValidator.queryFirstWebApkResolveInfo(
+                RuntimeEnvironment.application, URL_OF_WEBAPK, INVALID_WEBAPK_PACKAGE_NAME);
+
+        assertNull(resolveInfo);
+    }
+
+    @Test
+    public void testQueryWebApkResolveInfoWithInvalidSignature() {
+        addWebApkResolveInfoWithPackageName(URL_OF_WEBAPK, WEBAPK_PACKAGE_NAME, SIGNATURE_1);
+
+        ResolveInfo resolveInfo = WebApkValidator.queryFirstWebApkResolveInfo(
+                RuntimeEnvironment.application, URL_OF_WEBAPK, WEBAPK_PACKAGE_NAME);
+
+        assertNull(resolveInfo);
+    }
+
     // Get the full test file path.
     private static String testFilePath(String fileName) {
         return TestDir.getTestFilePath(TEST_DATA_DIR + fileName);
@@ -458,5 +579,20 @@ public class WebApkValidatorTest {
             String packageName, Signature signature, String startUrl, String manifestUrl) {
         return newPackageInfo(packageName, new Signature[] {new Signature(""), signature}, null,
                 startUrl, manifestUrl);
+    }
+
+    private void addWebApkResolveInfoWithPackageName(
+            String startUrl, String packageName, byte[] signature) {
+        try {
+            Intent intent = Intent.parseUri(startUrl, Intent.URI_INTENT_SCHEME);
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+            intent.setPackage(packageName);
+
+            mPackageManager.addResolveInfoForIntent(intent, newResolveInfo(packageName));
+            mPackageManager.addPackage(newPackageInfoWithBrowserSignature(
+                    packageName, new Signature(signature), startUrl, null));
+        } catch (URISyntaxException e) {
+            Assert.fail("URI is invalid.");
+        }
     }
 }

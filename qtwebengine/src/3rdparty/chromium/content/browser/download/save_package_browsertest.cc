@@ -1,13 +1,16 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/bind.h"
+#include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 #include "content/browser/download/download_manager_impl.h"
 #include "content/browser/download/save_package.h"
+#include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/web_contents.h"
@@ -15,9 +18,11 @@
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
 #include "content/public/test/download_test_observer.h"
+#include "content/public/test/fenced_frame_test_util.h"
 #include "content/shell/browser/shell.h"
 #include "content/shell/browser/shell_download_manager_delegate.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
+#include "testing/gmock/include/gmock/gmock.h"
 
 namespace content {
 
@@ -62,7 +67,7 @@ class DownloadicidalObserver : public DownloadManager::Observer {
         after_closure_(std::move(after_closure)) {}
   void OnDownloadCreated(DownloadManager* manager,
                          download::DownloadItem* item) override {
-    base::SequencedTaskRunnerHandle::Get()->PostTask(
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(
                        [](bool remove_download, base::OnceClosure closure,
                           download::DownloadItem* item) {
@@ -77,36 +82,38 @@ class DownloadicidalObserver : public DownloadManager::Observer {
   base::OnceClosure after_closure_;
 };
 
-class DownloadCancelObserver : public DownloadManager::Observer {
+class DownloadCompleteObserver : public DownloadManager::Observer {
  public:
-  explicit DownloadCancelObserver(base::OnceClosure canceled_closure,
-                                  std::string* mime_type_out)
-      : canceled_closure_(std::move(canceled_closure)),
-        mime_type_out_(mime_type_out) {}
-  DownloadCancelObserver(const DownloadCancelObserver&) = delete;
-  DownloadCancelObserver& operator=(const DownloadCancelObserver&) = delete;
+  explicit DownloadCompleteObserver(base::OnceClosure completed_closure)
+      : completed_closure_(std::move(completed_closure)) {}
+  DownloadCompleteObserver(const DownloadCompleteObserver&) = delete;
+  DownloadCompleteObserver& operator=(const DownloadCompleteObserver&) = delete;
 
   void OnDownloadCreated(DownloadManager* manager,
                          download::DownloadItem* item) override {
-    *mime_type_out_ = item->GetMimeType();
-    DCHECK(!item_cancel_observer_);
-    item_cancel_observer_ = std::make_unique<DownloadItemCancelObserver>(
-        item, std::move(canceled_closure_));
+    DCHECK(!item_observer_);
+    mime_type_ = item->GetMimeType();
+    target_file_path_ = item->GetTargetFilePath();
+    item_observer_ = std::make_unique<DownloadItemCompleteObserver>(
+        item, std::move(completed_closure_));
   }
 
+  const std::string& mime_type() const { return mime_type_; }
+  const base::FilePath& target_file_path() const { return target_file_path_; }
+
  private:
-  class DownloadItemCancelObserver : public download::DownloadItem::Observer {
+  class DownloadItemCompleteObserver : public download::DownloadItem::Observer {
    public:
-    DownloadItemCancelObserver(download::DownloadItem* item,
-                               base::OnceClosure canceled_closure)
-        : item_(item), canceled_closure_(std::move(canceled_closure)) {
+    DownloadItemCompleteObserver(download::DownloadItem* item,
+                                 base::OnceClosure completed_closure)
+        : item_(item), completed_closure_(std::move(completed_closure)) {
       item_->AddObserver(this);
     }
-    DownloadItemCancelObserver(const DownloadItemCancelObserver&) = delete;
-    DownloadItemCancelObserver& operator=(const DownloadItemCancelObserver&) =
-        delete;
+    DownloadItemCompleteObserver(const DownloadItemCompleteObserver&) = delete;
+    DownloadItemCompleteObserver& operator=(
+        const DownloadItemCompleteObserver&) = delete;
 
-    ~DownloadItemCancelObserver() override {
+    ~DownloadItemCompleteObserver() override {
       if (item_)
         item_->RemoveObserver(this);
     }
@@ -114,8 +121,8 @@ class DownloadCancelObserver : public DownloadManager::Observer {
    private:
     void OnDownloadUpdated(download::DownloadItem* item) override {
       DCHECK_EQ(item_, item);
-      if (item_->GetState() == download::DownloadItem::CANCELLED)
-        std::move(canceled_closure_).Run();
+      if (item_->GetState() == download::DownloadItem::COMPLETE)
+        std::move(completed_closure_).Run();
     }
 
     void OnDownloadDestroyed(download::DownloadItem* item) override {
@@ -124,13 +131,14 @@ class DownloadCancelObserver : public DownloadManager::Observer {
       item_ = nullptr;
     }
 
-    download::DownloadItem* item_;
-    base::OnceClosure canceled_closure_;
+    raw_ptr<download::DownloadItem> item_;
+    base::OnceClosure completed_closure_;
   };
 
-  std::unique_ptr<DownloadItemCancelObserver> item_cancel_observer_;
-  base::OnceClosure canceled_closure_;
-  std::string* mime_type_out_;
+  std::unique_ptr<DownloadItemCompleteObserver> item_observer_;
+  base::OnceClosure completed_closure_;
+  std::string mime_type_;
+  base::FilePath target_file_path_;
 };
 
 }  // namespace
@@ -158,9 +166,8 @@ class SavePackageBrowserTest : public ContentBrowserTest {
     ASSERT_TRUE(embedded_test_server()->Start());
     GURL url = embedded_test_server()->GetURL("/page_with_iframe.html");
     EXPECT_TRUE(NavigateToURL(shell(), url));
-    auto* download_manager =
-        static_cast<DownloadManagerImpl*>(BrowserContext::GetDownloadManager(
-            shell()->web_contents()->GetBrowserContext()));
+    auto* download_manager = static_cast<DownloadManagerImpl*>(
+        shell()->web_contents()->GetBrowserContext()->GetDownloadManager());
     auto delegate =
         std::make_unique<TestShellDownloadManagerDelegate>(save_page_type);
     delegate->download_dir_ = save_dir_.GetPath();
@@ -174,7 +181,7 @@ class SavePackageBrowserTest : public ContentBrowserTest {
       download_manager->AddObserver(&download_item_killer);
 
       scoped_refptr<SavePackage> save_package(
-          new SavePackage(shell()->web_contents()));
+          new SavePackage(web_contents_impl()->GetPrimaryPage()));
       save_package->GetSaveInfo();
       run_loop.Run();
       download_manager->RemoveObserver(&download_item_killer);
@@ -195,6 +202,10 @@ class SavePackageBrowserTest : public ContentBrowserTest {
     download_manager->SetDelegate(old_delegate);
   }
 
+  WebContentsImpl* web_contents_impl() {
+    return static_cast<WebContentsImpl*>(shell()->web_contents());
+  }
+
   // Temporary directory we will save pages to.
   base::ScopedTempDir save_dir_;
 };
@@ -207,9 +218,9 @@ IN_PROC_BROWSER_TEST_F(SavePackageBrowserTest, ImplicitCancel) {
   EXPECT_TRUE(NavigateToURL(shell(), url));
   base::FilePath full_file_name, dir;
   GetDestinationPaths("a", &full_file_name, &dir);
-  scoped_refptr<SavePackage> save_package(new SavePackage(
-      shell()->web_contents(), SAVE_PAGE_TYPE_AS_ONLY_HTML, full_file_name,
-      dir));
+  scoped_refptr<SavePackage> save_package(
+      new SavePackage(web_contents_impl()->GetPrimaryPage(),
+                      SAVE_PAGE_TYPE_AS_ONLY_HTML, full_file_name, dir));
 }
 
 // Create a SavePackage, call Cancel, then delete it.
@@ -220,9 +231,9 @@ IN_PROC_BROWSER_TEST_F(SavePackageBrowserTest, ExplicitCancel) {
   EXPECT_TRUE(NavigateToURL(shell(), url));
   base::FilePath full_file_name, dir;
   GetDestinationPaths("a", &full_file_name, &dir);
-  scoped_refptr<SavePackage> save_package(new SavePackage(
-      shell()->web_contents(), SAVE_PAGE_TYPE_AS_ONLY_HTML, full_file_name,
-      dir));
+  scoped_refptr<SavePackage> save_package(
+      new SavePackage(web_contents_impl()->GetPrimaryPage(),
+                      SAVE_PAGE_TYPE_AS_ONLY_HTML, full_file_name, dir));
   save_package->Cancel(true);
 }
 
@@ -234,40 +245,111 @@ IN_PROC_BROWSER_TEST_F(SavePackageBrowserTest, DownloadItemCanceled) {
   RunAndCancelSavePackageDownload(SAVE_PAGE_TYPE_AS_MHTML, false);
 }
 
-// Currently, SavePageAsWebBundle feature is not implemented yet.
-// WebContentsImpl::GenerateWebBundle() will call the passed callback with 0
-// file size and WebBundlerError::kNotImplemented via WebBundler in the utility
-// process which means it cancels all SavePageAsWebBundle requests. So this test
-// checks that the request is successfully canceled.
-// TODO(crbug.com/1040752): Implement WebBundler and update this test.
-IN_PROC_BROWSER_TEST_F(SavePackageBrowserTest, SaveAsWebBundleCanceled) {
+// Create a SavePackage and reload the page. This tests that when the
+// Reload destroys the primary Page SavePackage's ContinueSaveInfo
+// will not crash with a destroyed Page reference.
+IN_PROC_BROWSER_TEST_F(SavePackageBrowserTest, Reload) {
   ASSERT_TRUE(embedded_test_server()->Start());
-  GURL url = embedded_test_server()->GetURL("/page_with_iframe.html");
+  GURL url = embedded_test_server()->GetURL(kTestFile);
   EXPECT_TRUE(NavigateToURL(shell(), url));
-  auto* download_manager =
-      static_cast<DownloadManagerImpl*>(BrowserContext::GetDownloadManager(
-          shell()->web_contents()->GetBrowserContext()));
+  base::FilePath full_file_name, dir;
+  GetDestinationPaths("a", &full_file_name, &dir);
+
+  auto* download_manager = static_cast<DownloadManagerImpl*>(
+      shell()->web_contents()->GetBrowserContext()->GetDownloadManager());
   auto delegate = std::make_unique<TestShellDownloadManagerDelegate>(
-      SAVE_PAGE_TYPE_AS_WEB_BUNDLE);
+      SAVE_PAGE_TYPE_AS_ONLY_HTML);
   delegate->download_dir_ = save_dir_.GetPath();
   auto* old_delegate = download_manager->GetDelegate();
   download_manager->SetDelegate(delegate.get());
 
+  scoped_refptr<SavePackage> save_package(
+      new SavePackage(web_contents_impl()->GetPrimaryPage(),
+                      SAVE_PAGE_TYPE_AS_ONLY_HTML, full_file_name, dir));
+  save_package->GetSaveInfo();
+  shell()->web_contents()->GetController().Reload(content::ReloadType::NORMAL,
+                                                  false /* check_for_repost */);
+  download_manager->SetDelegate(old_delegate);
+}
+
+class SavePackageFencedFrameBrowserTest : public SavePackageBrowserTest {
+ public:
+  test::FencedFrameTestHelper& fenced_frame_test_helper() {
+    return fenced_frame_helper_;
+  }
+
+ protected:
+  test::FencedFrameTestHelper fenced_frame_helper_;
+};
+
+// If fenced frames become savable, this test will need to be updated.
+// See https://crbug.com/1321102
+IN_PROC_BROWSER_TEST_F(SavePackageFencedFrameBrowserTest,
+                       IgnoreFencedFrameInMHTML) {
+  ASSERT_TRUE(embedded_test_server()->Start());
+  GURL main_url = embedded_test_server()->GetURL(kTestFile);
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+
+  RenderFrameHost* main_frame = shell()->web_contents()->GetPrimaryMainFrame();
+
+  // Create an iframe.
+  GURL iframe_url = embedded_test_server()->GetURL("/title2.html");
+  constexpr char kAddIframeScript[] = R"({
+      (()=>{
+          return new Promise((resolve) => {
+            const frame = document.createElement('iframe');
+            frame.addEventListener('load', () => {resolve();});
+            frame.src = $1;
+            document.body.appendChild(frame);
+          });
+      })();
+    })";
+  EXPECT_TRUE(ExecJs(main_frame, JsReplace(kAddIframeScript, iframe_url)));
+
+  // Create a fenced frame.
+  GURL fenced_frame_url =
+      embedded_test_server()->GetURL("/fenced_frames/title1.html");
+  fenced_frame_test_helper().CreateFencedFrame(
+      shell()->web_contents()->GetPrimaryMainFrame(), fenced_frame_url);
+
+  auto* download_manager = static_cast<DownloadManagerImpl*>(
+      shell()->web_contents()->GetBrowserContext()->GetDownloadManager());
+  auto delegate = std::make_unique<TestShellDownloadManagerDelegate>(
+      SAVE_PAGE_TYPE_AS_MHTML);
+  delegate->download_dir_ = save_dir_.GetPath();
+  auto* old_delegate = download_manager->GetDelegate();
+  download_manager->SetDelegate(delegate.get());
+
+  // Save a page as the MHTML.
+  base::FilePath file_path;
   {
     base::RunLoop run_loop;
-    std::string mime_type;
-    DownloadCancelObserver observer(run_loop.QuitClosure(), &mime_type);
+    DownloadCompleteObserver observer(run_loop.QuitClosure());
     download_manager->AddObserver(&observer);
     scoped_refptr<SavePackage> save_package(
-        new SavePackage(shell()->web_contents()));
+        new SavePackage(web_contents_impl()->GetPrimaryPage()));
     save_package->GetSaveInfo();
     run_loop.Run();
     download_manager->RemoveObserver(&observer);
-    EXPECT_TRUE(save_package->canceled());
-    EXPECT_EQ("application/webbundle", mime_type);
+    EXPECT_TRUE(save_package->finished());
+    file_path = observer.target_file_path();
   }
 
   download_manager->SetDelegate(old_delegate);
+
+  // Read the saved MHTML.
+  std::string mhtml;
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    ASSERT_TRUE(base::ReadFileToString(file_path, &mhtml));
+  }
+
+  // Verify a title in the iframe's document.
+  EXPECT_THAT(mhtml, testing::HasSubstr("Title Of Awesomeness"));
+
+  // Verify the absence of the fenced frame's document.
+  EXPECT_THAT(mhtml,
+              ::testing::Not(testing::HasSubstr("This page has no title")));
 }
 
 }  // namespace content

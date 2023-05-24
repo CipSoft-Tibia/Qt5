@@ -13,7 +13,7 @@
   }
 
   .option-image {
-    border: 1px solid var(--ntp-border-color);
+    border: 1px solid var(--color-new-tab-page-dialog-border);
     border-radius: 4px;
     box-sizing: border-box;
     cursor: pointer;
@@ -27,13 +27,13 @@
   }
 
   .selected .option-image {
-    background-color: var(--ntp-selected-background-color);
-    border-color: var(--ntp-selected-border-color);
+    background-color: var(--color-new-tab-page-selected-background);
+    border-color: var(--color-new-tab-page-dialog-border-selected);
   }
 
   .option-mini {
-    background-color: var(--ntp-background-override-color);
-    border: 1px solid var(--ntp-border-color);
+    background-color: var(--color-new-tab-page-dialog-background);
+    border: 1px solid var(--color-new-tab-page-dialog-border);
     border-radius: 4px;
     box-sizing: border-box;
     height: 144px;
@@ -62,17 +62,18 @@
   }
 
   ntp-mini-page {
-    --ntp-mini-page-shortcut-color: var(--google-grey-refresh-500);
+    --ntp-mini-page-shortcut-color: var(--google-grey-500);
   }
 
   .selected ntp-mini-page {
-    --ntp-mini-page-shortcut-color: var(--ntp-selected-border-color);
+    --ntp-mini-page-shortcut-color:
+        var(--color-new-tab-page-dialog-border-selected);
   }
 
   .option-icon {
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-size: 100%;
-    background: 96px 96px var(--ntp-border-color);
+    background: 96px 96px var(--color-new-tab-page-dialog-border);
     height: 96px;
     left: 16px;
     position: absolute;
@@ -93,12 +94,12 @@
   }
 
   .selected .option-icon {
-    background-color: var(--ntp-selected-light-background-color);
+    background-color: var(--color-new-tab-page-control-background-selected);
   }
 
   @media (prefers-color-scheme: dark) {
     .selected .option-icon {
-      background-color: var(--ntp-selected-border-color);
+      background-color: var(--color-new-tab-page-dialog-border-selected);
     }
   }
 
@@ -129,12 +130,21 @@
 
   .option-title {
     font-weight: bold;
-    margin: 8px 0;
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+
+  .option-description {
+    color: var(--color-new-tab-page-dialog-secondary-foreground);
+  }
+
+  .selected #hideDescription {
+    color: var(--color-new-tab-page-dialog-border-selected);
   }
 
   #hide {
     align-items: center;
-    border: 1px solid var(--ntp-border-color);
+    border: 1px solid var(--color-new-tab-page-dialog-border);
     border-radius: 4px;
     box-sizing: border-box;
     display: flex;
@@ -145,9 +155,9 @@
   }
 
   #hide.selected {
-    background-color: var(--ntp-selected-background-color);
-    border-color: var(--ntp-selected-border-color);
-    color: var(--ntp-selected-border-color);
+    background-color: var(--color-new-tab-page-selected-background);
+    border-color: var(--color-new-tab-page-dialog-border-selected);
+    color: var(--color-new-tab-page-dialog-border-selected);
   }
 
   #hideIcon {
@@ -156,7 +166,7 @@
   }
 
   .selected #hideIcon {
-    background-color: var(--ntp-selected-border-color);
+    background-color: var(--color-new-tab-page-dialog-border-selected);
   }
 
   #hideTitleContainer {
@@ -172,7 +182,7 @@
   }
 
   .selected-circle {
-    background: var(--ntp-background-override-color) no-repeat center;
+    background: var(--color-new-tab-page--dialog-background) no-repeat center;
     border-radius: 50%;
     display: none;
     height: 22px;
@@ -219,7 +229,7 @@
       -webkit-mask-image: url(icons/check_circle.svg);
       -webkit-mask-repeat: no-repeat;
       -webkit-mask-size: 28px;
-      background-color: var(--google-blue-refresh-300);
+      background-color: var(--google-blue-300);
       content: '';
       display: block;
       height: 28px;
@@ -227,6 +237,16 @@
       position: absolute;
       top: 0;
       width: 28px;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .option-icon {
+      background-color: ButtonText;
+    }
+
+    .selected .option-icon {
+      background-color: SelectedItem;
     }
   }
 </style>
@@ -245,7 +265,7 @@
       <div class="selected-check"></div>
     </cr-button>
     <div class="option-title">$i18n{myShortcuts}</div>
-    $i18n{shortcutsCurated}
+    <div class="option-description">$i18n{shortcutsCurated}</div>
   </div>
   <div id="optionMostVisited"
       class$="option [[getMostVisitedSelected_(customLinksEnabled_, hide_)]]">
@@ -262,15 +282,17 @@
       <div class="selected-check"></div>
     </cr-button>
     <div class="option-title">$i18n{mostVisited}</div>
-    $i18n{shortcutsSuggested}
+    <div class="option-description">$i18n{shortcutsSuggested}</div>
   </div>
 </div>
 <div id="hide" class$="[[getHideClass_(hide_)]]">
   <div id="hideIcon" class="cr-icon icon-visibility-off"></div>
   <div id="hideTitleContainer">
     <div id="hideTitle">$i18n{hideShortcuts}</div>
-    $i18n{hideShortcutsDesc}
+    <div id="hideDescription" class="option-description">
+      $i18n{hideShortcutsDesc}
+    </div>
   </div>
-  <cr-toggle id="hideToggle" title="$i18n{hideShortcuts}" checked="[[hide_]]"
-      on-change="onHideChange_"></cr-toggle>
+  <cr-toggle id="hideToggle" title="$i18n{hideShortcuts}"
+      checked="[[hide_]]" on-change="onHideChange_"></cr-toggle>
 </div>

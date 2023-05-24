@@ -52,7 +52,7 @@
 }
 
 - (void)setTrack:(RTC_OBJC_TYPE(RTCMediaStreamTrack) *)track {
-  if (!_nativeRtpSender->SetTrack(track.nativeTrack)) {
+  if (!_nativeRtpSender->SetTrack(track.nativeTrack.get())) {
     RTCLogError(@"RTC_OBJC_TYPE(RTCRtpSender)(%p): Failed to set track %@", self, track);
   }
 }
@@ -116,11 +116,13 @@
   if (self = [super init]) {
     _factory = factory;
     _nativeRtpSender = nativeRtpSender;
-    rtc::scoped_refptr<webrtc::DtmfSenderInterface> nativeDtmfSender(
-        _nativeRtpSender->GetDtmfSender());
-    if (nativeDtmfSender) {
-      _dtmfSender =
-          [[RTC_OBJC_TYPE(RTCDtmfSender) alloc] initWithNativeDtmfSender:nativeDtmfSender];
+    if (_nativeRtpSender->media_type() == cricket::MEDIA_TYPE_AUDIO) {
+      rtc::scoped_refptr<webrtc::DtmfSenderInterface> nativeDtmfSender(
+          _nativeRtpSender->GetDtmfSender());
+      if (nativeDtmfSender) {
+        _dtmfSender =
+            [[RTC_OBJC_TYPE(RTCDtmfSender) alloc] initWithNativeDtmfSender:nativeDtmfSender];
+      }
     }
     RTCLogInfo(@"RTC_OBJC_TYPE(RTCRtpSender)(%p): created sender: %@", self, self.description);
   }

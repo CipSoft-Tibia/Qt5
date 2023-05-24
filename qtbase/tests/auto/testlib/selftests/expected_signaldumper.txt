@@ -1,6 +1,5 @@
 ********* Start testing of tst_Signaldumper *********
 Config: Using QtTest library
-INFO   : tst_Signaldumper::initTestCase() Signal: QThread(_POINTER_) started ()
 PASS   : tst_Signaldumper::initTestCase()
 INFO   : tst_Signaldumper::noConnections() Signal: SignalSlotClass(_POINTER_) signalWithoutParameters ()
 INFO   : tst_Signaldumper::noConnections() Signal: SignalSlotClass(_POINTER_) signalWithParameters (int(242), char(m))
@@ -135,17 +134,16 @@ INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qSt
 INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qStringConstRefSignal (QString(Test string))
 INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qByteArraySignal (QByteArray(Test bytearray))
 INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qListSignal (QList<int>())
-INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorSignal (QVector<int>())
-INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorRefSignal ((QVector<int>&)@_POINTER_)
-INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorConstRefSignal (QVector<int>())
-INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorConstPointerSignal ((const QVector<int>*)_POINTER_)
-INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorPointerConstSignal ()
+INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorSignal (QList<int>())
+INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorRefSignal ((QList<int>&)@_POINTER_)
+INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorConstRefSignal (QList<int>())
+INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorConstPointerSignal ((const QList<int>*)_POINTER_)
+INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVectorPointerConstSignal ((QList<int>*)_POINTER_)
 INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVariantSignal (QVariant())
 INFO   : tst_Signaldumper::variousTypes() Signal: SignalSlotClass(_POINTER_) qVariantSignal (QVariant())
 PASS   : tst_Signaldumper::variousTypes()
 INFO   : tst_Signaldumper::deletingSender() Signal: SignalSlotClass(_POINTER_) signalWithoutParameters ()
 PASS   : tst_Signaldumper::deletingSender()
 PASS   : tst_Signaldumper::cleanupTestCase()
-INFO   : tst_Signaldumper::UnknownTestFunc()     Signal: QThread(_POINTER_) finished ()
 Totals: 21 passed, 0 failed, 0 skipped, 0 blacklisted, 0ms
 ********* Finished testing of tst_Signaldumper *********

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,9 @@
 #include <map>
 #include <string>
 
-#include "base/macros.h"
-#include "ui/gfx/gfx_export.h"
-#include "ui/gfx/x/x11_types.h"
+#include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
+#include "ui/gfx/x/xproto.h"
 
 namespace base {
 template <typename T>
@@ -21,38 +21,39 @@ namespace x11 {
 class Connection;
 }
 
-namespace gfx {
+namespace x11 {
 
 // Gets the X atom for default display corresponding to atom_name.
-GFX_EXPORT x11::Atom GetAtom(const std::string& atom_name);
+COMPONENT_EXPORT(X11) Atom GetAtom(const std::string& atom_name);
 
 // Pre-caches all Atoms on first use to minimize roundtrips to the X11
 // server. By default, GetAtom() will CHECK() that atoms accessed through
 // GetAtom() were passed to the constructor, but this behaviour can be changed
 // with allow_uncached_atoms().
-class GFX_EXPORT X11AtomCache {
+class COMPONENT_EXPORT(X11) X11AtomCache {
  public:
   static X11AtomCache* GetInstance();
 
+  X11AtomCache(const X11AtomCache&) = delete;
+  X11AtomCache& operator=(const X11AtomCache&) = delete;
+
  private:
-  friend x11::Atom GetAtom(const std::string& atom_name);
+  friend Atom GetAtom(const std::string& atom_name);
   friend struct base::DefaultSingletonTraits<X11AtomCache>;
 
   X11AtomCache();
   ~X11AtomCache();
 
   // Returns the pre-interned Atom without having to go to the x server.
-  // On failure, x11::None is returned.
-  x11::Atom GetAtom(const std::string&) const;
+  // On failure, None is returned.
+  Atom GetAtom(const std::string&) const;
 
-  x11::Connection* connection_;
+  raw_ptr<Connection> connection_;
 
   // Using std::map, as it is possible for thousands of atoms to be registered.
-  mutable std::map<std::string, x11::Atom> cached_atoms_;
-
-  DISALLOW_COPY_AND_ASSIGN(X11AtomCache);
+  mutable std::map<std::string, Atom> cached_atoms_;
 };
 
-}  // namespace gfx
+}  // namespace x11
 
 #endif  // UI_GFX_X_X11_ATOM_CACHE_H_

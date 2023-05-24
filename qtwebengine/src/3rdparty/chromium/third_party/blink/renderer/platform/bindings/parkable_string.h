@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,19 @@
 #include <memory>
 #include <utility>
 
+#include "base/check_op.h"
+#include "base/dcheck_is_on.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
+#include "base/time/time.h"
 #include "third_party/blink/renderer/platform/disk_data_metadata.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "third_party/blink/renderer/platform/wtf/ref_counted.h"
 #include "third_party/blink/renderer/platform/wtf/size_assertions.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "third_party/blink/renderer/platform/wtf/thread_safe_ref_counted.h"
 #include "third_party/blink/renderer/platform/wtf/threading.h"
 #include "third_party/blink/renderer/platform/wtf/threading_primitives.h"
 
@@ -26,22 +29,20 @@
 // |ToString()| method.
 // As a consequence, the inner pointer should never be cached, and only touched
 // through a string returned by the |ToString()| method.
-//
-// As with WTF::AtomicString, this class is *not* thread-safe, and strings
-// created on a thread must always be used on the same thread.
-
+// It is safe to call `ToString()` and destroy ParkableStrings from any thread,
+// although the interactions with the ParkableStringManager must always be
+// performed on the main thread.
 namespace blink {
 
+class DiskDataAllocator;
 class WebProcessMemoryDump;
 struct BackgroundTaskParams;
 
 // A parked string is parked by calling |Park()|, and unparked by calling
 // |ToString()| on a parked string.
-// |Lock()| does *not* unpark a string, and |ToString()| must be called on
-// a single thread, the one on which the string was created. Only |Lock()|
-// and |Unlock()| can be called from any thread.
-class PLATFORM_EXPORT ParkableStringImpl final
-    : public RefCounted<ParkableStringImpl> {
+// |Lock()| does *not* unpark a string.
+class PLATFORM_EXPORT ParkableStringImpl
+    : public WTF::ThreadSafeRefCounted<ParkableStringImpl> {
  public:
   enum class ParkingMode { kSynchronousOnly, kCompress, kToDisk };
   enum class AgeOrParkResult {
@@ -53,6 +54,9 @@ class PLATFORM_EXPORT ParkableStringImpl final
   constexpr static size_t kDigestSize = 32;  // SHA256.
   using SecureDigest = Vector<uint8_t, kDigestSize>;
   // Computes a secure hash of a |string|, to be passed to |MakeParkable()|.
+  //
+  // TODO(lizeb): This is the "right" way of hashing a string. Move this code
+  // into WTF, and make sure it's the only way that is used.
   static std::unique_ptr<SecureDigest> HashString(StringImpl* string);
 
   // Not all ParkableStringImpls are actually parkable.
@@ -63,7 +67,8 @@ class PLATFORM_EXPORT ParkableStringImpl final
       scoped_refptr<StringImpl>&& impl,
       std::unique_ptr<SecureDigest> digest);
 
-  ~ParkableStringImpl();
+  ParkableStringImpl(const ParkableStringImpl&) = delete;
+  ParkableStringImpl& operator=(const ParkableStringImpl&) = delete;
 
   void Lock();
   void Unlock();
@@ -85,7 +90,7 @@ class PLATFORM_EXPORT ParkableStringImpl final
 
     return metadata_->length_;
   }
-  unsigned CharactersSizeInBytes() const;
+  size_t CharactersSizeInBytes() const;
   size_t MemoryFootprintForDump() const;
 
   // Returns true iff the string can be parked. This does not mean that the
@@ -121,9 +126,10 @@ class PLATFORM_EXPORT ParkableStringImpl final
   // Returns true if the string is being parked or has been parked.
   bool Park(ParkingMode mode);
 
-  // Returns true if the string is parked.
-  bool is_parked() const;
-  bool is_on_disk() const;
+  // Returns true if the string is parked, takes the lock inside.
+  bool is_parked() const LOCKS_EXCLUDED(metadata_->lock_);
+  bool is_on_disk() const LOCKS_EXCLUDED(metadata_->lock_);
+
   // Returns whether synchronous parking is possible, that is the string was
   // parked in the past.
   bool has_compressed_data() const { return !!metadata_->compressed_; }
@@ -144,7 +150,7 @@ class PLATFORM_EXPORT ParkableStringImpl final
   }
 
   Age age_for_testing() {
-    MutexLocker locker(metadata_->mutex_);
+    base::AutoLock locker(metadata_->lock_);
     return metadata_->age_;
   }
 
@@ -158,6 +164,25 @@ class PLATFORM_EXPORT ParkableStringImpl final
     return &metadata_->digest_;
   }
 
+  void Release() const LOCKS_EXCLUDED(metadata_->lock_) {
+    if (!may_be_parked()) {
+      if (RefCountedThreadSafeBase::Release()) {
+        delete this;
+      }
+      return;
+    }
+    base::ReleasableAutoLock locker(&metadata_->lock_);
+    if (HasOneRef()) {
+      // Release the lock early because, if we are in the main thread,
+      // `ParkableStringManager::RemoveOnMainThread()` will try to take the lock
+      // inside a locked scope.
+      locker.Release();
+      ReleaseAndRemoveIfNeeded();
+      return;
+    }
+    RefCountedThreadSafeBase::Release();
+  }
+
  private:
   enum class State : uint8_t;
   enum class Status : uint8_t;
@@ -168,27 +193,35 @@ class PLATFORM_EXPORT ParkableStringImpl final
   ParkableStringImpl(scoped_refptr<StringImpl>&& impl,
                      std::unique_ptr<SecureDigest> digest);
 
+  ~ParkableStringImpl();
+
   // Note: Private member  functions below must only be called on strings for
   // which |may_be_parked()| returns true. Otherwise, these will either trigger
   // a DCHECK() or crash.
 
   // Doesn't make the string young. May be called from any thread.
   void LockWithoutMakingYoung() {
-    MutexLocker locker(metadata_->mutex_);
+    base::AutoLock locker(metadata_->lock_);
     metadata_->lock_depth_ += 1;
   }
 
-  void MakeYoung() EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_) {
+  void MakeYoung() EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_) {
     metadata_->age_ = Age::kYoung;
   }
   // Whether the string is referenced or locked. The return value is valid as
-  // long as |mutex_| is held.
-  Status CurrentStatus() const EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_);
-  bool CanParkNow() const EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_);
+  // long as |lock_| is held.
+  Status CurrentStatus() const EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+  bool CanParkNow() const EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
   bool ParkInternal(ParkingMode mode)
-      EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_);
-  void Unpark() EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_);
-  String UnparkInternal() EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_);
+      EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+  void Unpark() EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+  String UnparkInternal() EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+
+  // Called by `Release()` when the ref count would reach 0 to post or execute
+  // the removal of the entry from the `ParkableStringManager` on the Main
+  // thread. The removal can be cancelled if the Main Thread takes a new
+  // reference on the string before the posted task is executed.
+  void ReleaseAndRemoveIfNeeded() const;
 
   void PostBackgroundCompressionTask();
   static void CompressInBackground(std::unique_ptr<BackgroundTaskParams>);
@@ -203,8 +236,9 @@ class PLATFORM_EXPORT ParkableStringImpl final
       std::unique_ptr<Vector<uint8_t>> compressed,
       base::TimeDelta parking_thread_time);
 
-  void PostBackgroundWritingTask() EXCLUSIVE_LOCKS_REQUIRED(metadata_->mutex_);
-  static void WriteToDiskInBackground(std::unique_ptr<BackgroundTaskParams>);
+  void PostBackgroundWritingTask() EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+  static void WriteToDiskInBackground(std::unique_ptr<BackgroundTaskParams>,
+                                      DiskDataAllocator* data_allocator);
   // Called on the main thread after writing is done.
   // |params| is the same as the one passed to PostBackgroundWritingTask()|,
   // |metadata| is the on-disk metadata, nullptr if writing failed.
@@ -214,27 +248,36 @@ class PLATFORM_EXPORT ParkableStringImpl final
       std::unique_ptr<DiskDataMetadata> metadata,
       base::TimeDelta writing_time);
 
-  void DiscardUncompressedData();
-  void DiscardCompressedData();
+  void DiscardUncompressedData() EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+  void DiscardCompressedData() EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
 
   int lock_depth_for_testing() {
-    MutexLocker locker_(metadata_->mutex_);
+    base::AutoLock locker_(metadata_->lock_);
     return metadata_->lock_depth_;
   }
+
+  // Returns true if the string is parked. Doesn't take the lock inside but
+  // expects it to be held before entering.
+  bool is_parked_no_lock() const EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
+  bool is_on_disk_no_lock() const EXCLUSIVE_LOCKS_REQUIRED(metadata_->lock_);
 
   // Metadata only used for parkable ParkableStrings.
   struct ParkableMetadata {
     ParkableMetadata(String string, std::unique_ptr<SecureDigest> digest);
+    ParkableMetadata(const ParkableMetadata&) = delete;
+    ParkableMetadata& operator=(const ParkableMetadata&) = delete;
 
-    Mutex mutex_;
-    int lock_depth_ GUARDED_BY(mutex_);
+    // `lock_` protects access to the metadata and prevents concurrent
+    // execution of parking and unparking operations.
+    base::Lock lock_;
+    unsigned int lock_depth_ GUARDED_BY(lock_);
 
-    // Main thread only.
-    State state_;
-    bool background_task_in_progress_;
+    State state_ GUARDED_BY(lock_);
+    bool background_task_in_progress_{false};
     std::unique_ptr<Vector<uint8_t>> compressed_;
     std::unique_ptr<DiskDataMetadata> on_disk_metadata_;
     const SecureDigest digest_;
+    base::TimeTicks last_disk_parking_time_;
 
     // A string can be young, old or very old. It starts young, and ages with
     // |MaybeAgeOrParkString()|.
@@ -247,13 +290,15 @@ class PLATFORM_EXPORT ParkableStringImpl final
     // Thread safety: it is typically not safe to guard only one part of a
     // bitfield with a mutex, but this is correct here, as the other members are
     // const (and never change).
-    Age age_ : 3 GUARDED_BY(mutex_);
+    Age age_ : 3 GUARDED_BY(lock_);
     const bool is_8bit_ : 1;
     const unsigned length_;
-
-    DISALLOW_COPY_AND_ASSIGN(ParkableMetadata);
   };
 
+  // Access to `string_` is guarded by `metadata_->lock_` with 2 exceptions:
+  // 1. There is no lock in unparkable ParkableStringImpls.
+  // 2. Concurrent `AsanPoisonString()` and `AsanUnpoisonString()` are
+  // prevented through lock levels.
   String string_;
   const std::unique_ptr<ParkableMetadata> metadata_;
 
@@ -274,8 +319,6 @@ class PLATFORM_EXPORT ParkableStringImpl final
   FRIEND_TEST_ALL_PREFIXES(ParkableStringTest, LockParkedString);
   FRIEND_TEST_ALL_PREFIXES(ParkableStringTest, ReportMemoryDump);
   FRIEND_TEST_ALL_PREFIXES(ParkableStringTest, MemoryFootprintForDump);
-
-  DISALLOW_COPY_AND_ASSIGN(ParkableStringImpl);
 };
 
 #if !DCHECK_IS_ON()
@@ -292,6 +335,8 @@ class PLATFORM_EXPORT ParkableString final {
  public:
   ParkableString() : impl_(nullptr) {}
   explicit ParkableString(scoped_refptr<StringImpl>&& impl);
+  ParkableString(scoped_refptr<StringImpl>&& impl,
+                 std::unique_ptr<ParkableStringImpl::SecureDigest> digest);
   ParkableString(const ParkableString& rhs) : impl_(rhs.impl_) {}
   ~ParkableString();
 
@@ -317,7 +362,7 @@ class PLATFORM_EXPORT ParkableString final {
   // The string is guaranteed to be valid for
   // max(lifetime of a copy of the returned reference, current thread task).
   const String& ToString() const;
-  wtf_size_t CharactersSizeInBytes() const;
+  size_t CharactersSizeInBytes() const;
 
   // Causes the string to be unparked. Note that the pointer must not be
   // cached.

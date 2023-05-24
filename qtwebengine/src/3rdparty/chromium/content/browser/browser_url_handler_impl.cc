@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <stddef.h>
 
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "content/browser/renderer_host/debug_urls.h"
 #include "content/browser/webui/web_ui_impl.h"
@@ -14,6 +14,7 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
+#include "third_party/blink/public/common/chrome_debug_urls.h"
 #include "url/gurl.h"
 #include "url/url_util_qt.h"
 
@@ -30,7 +31,6 @@ static bool HandleViewSource(GURL* url, BrowserContext* browser_context) {
     static const char* const default_allowed_sub_schemes[] = {
         url::kHttpScheme,
         url::kHttpsScheme,
-        url::kFtpScheme,
         kChromeUIScheme,
         url::kFileScheme,
         url::kFileSystemScheme
@@ -39,7 +39,7 @@ static bool HandleViewSource(GURL* url, BrowserContext* browser_context) {
     // Merge all the schemes for which view-source is allowed by default, with
     // the view-source schemes defined by the ContentBrowserClient.
     std::vector<std::string> all_allowed_sub_schemes;
-    for (size_t i = 0; i < base::size(default_allowed_sub_schemes); ++i)
+    for (size_t i = 0; i < std::size(default_allowed_sub_schemes); ++i)
       all_allowed_sub_schemes.push_back(default_allowed_sub_schemes[i]);
     GetContentClient()->browser()->GetAdditionalViewSourceSchemes(
         &all_allowed_sub_schemes);
@@ -78,7 +78,7 @@ static bool ReverseViewSource(GURL* url, BrowserContext* browser_context) {
 
 static bool DebugURLHandler(GURL* url, BrowserContext* browser_context) {
   // Circumvent processing URLs that the renderer process will handle.
-  return IsRendererDebugURL(*url);
+  return blink::IsRendererDebugURL(*url);
 }
 
 // static
@@ -97,8 +97,7 @@ BrowserURLHandlerImpl* BrowserURLHandlerImpl::GetInstance() {
   return base::Singleton<BrowserURLHandlerImpl>::get();
 }
 
-BrowserURLHandlerImpl::BrowserURLHandlerImpl() :
-    fixup_handler_(nullptr) {
+BrowserURLHandlerImpl::BrowserURLHandlerImpl() {
   AddHandlerPair(&DebugURLHandler, BrowserURLHandlerImpl::null_handler());
 
   // view-source: should take precedence over other rewriters, so it's
@@ -109,11 +108,6 @@ BrowserURLHandlerImpl::BrowserURLHandlerImpl() :
 }
 
 BrowserURLHandlerImpl::~BrowserURLHandlerImpl() {
-}
-
-void BrowserURLHandlerImpl::SetFixupHandler(URLHandler handler) {
-  DCHECK(fixup_handler_ == nullptr);
-  fixup_handler_ = handler;
 }
 
 void BrowserURLHandlerImpl::AddHandlerPair(URLHandler handler,
@@ -145,13 +139,6 @@ std::vector<GURL> BrowserURLHandlerImpl::GetPossibleRewrites(
   }
 
   return rewrites;
-}
-
-void BrowserURLHandlerImpl::FixupURLBeforeRewrite(
-    GURL* url,
-    BrowserContext* browser_context) {
-  if (fixup_handler_)
-    fixup_handler_(url, browser_context);
 }
 
 void BrowserURLHandlerImpl::RewriteURLIfNecessary(
@@ -195,8 +182,15 @@ bool BrowserURLHandlerImpl::ReverseURLRewrite(
   return false;
 }
 
-void BrowserURLHandlerImpl::SetFixupHandlerForTesting(URLHandler handler) {
-  fixup_handler_ = handler;
+void BrowserURLHandlerImpl::RemoveHandlerForTesting(URLHandler handler) {
+  auto it = url_handlers_.begin();
+  for (; it != url_handlers_.end(); ++it) {
+    if (it->first == handler) {
+      url_handlers_.erase(it);
+      return;
+    }
+  }
+  NOTREACHED();
 }
 
 }  // namespace content

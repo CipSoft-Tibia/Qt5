@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,11 @@
 
 #include "fxjs/xfa/cjx_draw.h"
 
+#include "fxjs/fxv8.h"
 #include "fxjs/xfa/cfxjse_value.h"
+#include "third_party/base/check.h"
+#include "v8/include/v8-primitive.h"
+#include "v8/include/v8-value.h"
 #include "xfa/fxfa/parser/cxfa_draw.h"
 
 CJX_Draw::CJX_Draw(CXFA_Draw* node) : CJX_Container(node) {}
@@ -17,32 +21,33 @@ bool CJX_Draw::DynamicTypeIs(TypeTag eType) const {
   return eType == static_type__ || ParentType__::DynamicTypeIs(eType);
 }
 
-void CJX_Draw::rawValue(CFXJSE_Value* pValue,
+void CJX_Draw::rawValue(v8::Isolate* pIsolate,
+                        v8::Local<v8::Value>* pValue,
                         bool bSetting,
                         XFA_Attribute eAttribute) {
-  defaultValue(pValue, bSetting, eAttribute);
+  defaultValue(pIsolate, pValue, bSetting, eAttribute);
 }
 
-void CJX_Draw::defaultValue(CFXJSE_Value* pValue,
+void CJX_Draw::defaultValue(v8::Isolate* pIsolate,
+                            v8::Local<v8::Value>* pValue,
                             bool bSetting,
                             XFA_Attribute eAttribute) {
   if (!bSetting) {
-    WideString content = GetContent(true);
-    if (content.IsEmpty())
-      pValue->SetNull();
-    else
-      pValue->SetString(content.ToUTF8().AsStringView());
-
+    ByteString content = GetContent(true).ToUTF8();
+    *pValue = content.IsEmpty()
+                  ? fxv8::NewNullHelper(pIsolate).As<v8::Value>()
+                  : fxv8::NewStringHelper(pIsolate, content.AsStringView())
+                        .As<v8::Value>();
     return;
   }
 
-  if (!pValue || !pValue->IsString())
+  if (!pValue || !fxv8::IsString(*pValue))
     return;
 
-  ASSERT(GetXFANode()->IsWidgetReady());
+  DCHECK(GetXFANode()->IsWidgetReady());
   if (GetXFANode()->GetFFWidgetType() != XFA_FFWidgetType::kText)
     return;
 
-  WideString wsNewValue = pValue->ToWideString();
+  WideString wsNewValue = fxv8::ReentrantToWideStringHelper(pIsolate, *pValue);
   SetContent(wsNewValue, wsNewValue, true, true, true);
 }

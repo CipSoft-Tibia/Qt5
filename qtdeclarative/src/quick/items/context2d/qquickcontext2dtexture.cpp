@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickcontext2dtexture_p.h"
 #include "qquickcontext2dtile_p.h"
@@ -43,13 +7,6 @@
 #include <private/qquickitem_p.h>
 #include <QtQuick/private/qsgplaintexture_p.h>
 #include "qquickcontext2dcommandbuffer_p.h"
-#include <QOpenGLPaintDevice>
-#if QT_CONFIG(opengl)
-#include <QOpenGLFramebufferObject>
-#include <QOpenGLFramebufferObjectFormat>
-#include <QOpenGLFunctions>
-#include <QtGui/private/qopenglextensions_p.h>
-#endif
 #include <QtCore/QThread>
 #include <QtGui/QGuiApplication>
 
@@ -57,46 +14,8 @@ QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcCanvas, "qt.quick.canvas")
 
-#if QT_CONFIG(opengl)
-#define QT_MINIMUM_FBO_SIZE 64
-
-static inline int qt_next_power_of_two(int v)
-{
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    ++v;
-    return v;
-}
-
-struct GLAcquireContext {
-    GLAcquireContext(QOpenGLContext *c, QSurface *s):ctx(c) {
-        if (ctx) {
-            Q_ASSERT(s);
-            if (!ctx->isValid())
-                ctx->create();
-
-            if (!ctx->isValid())
-                qWarning() << "Unable to create GL context";
-            else if (!ctx->makeCurrent(s))
-                qWarning() << "Can't make current GL context";
-        }
-    }
-    ~GLAcquireContext() {
-        if (ctx)
-            ctx->doneCurrent();
-    }
-    QOpenGLContext *ctx;
-};
-#endif
 QQuickContext2DTexture::QQuickContext2DTexture()
     : m_context(nullptr)
-#if QT_CONFIG(opengl)
-    , m_gl(nullptr)
-#endif
     , m_surface(nullptr)
     , m_item(nullptr)
     , m_canvasDevicePixelRatio(1)
@@ -194,7 +113,7 @@ bool QQuickContext2DTexture::setDirtyRect(const QRect &r)
 {
     bool doDirty = false;
     if (m_tiledCanvas) {
-        for (QQuickContext2DTile* t : qAsConst(m_tiles)) {
+        for (QQuickContext2DTile* t : std::as_const(m_tiles)) {
             bool dirty = t->rect().intersected(r).isValid();
             t->markDirty(dirty);
             if (dirty)
@@ -269,9 +188,6 @@ void QQuickContext2DTexture::paint(QQuickContext2DCommandBuffer *ccb)
         return;
     }
     QQuickContext2D::mutex.unlock();
-#if QT_CONFIG(opengl)
-    GLAcquireContext currentContext(m_gl, m_surface);
-#endif
     if (!m_tiledCanvas) {
         paintWithoutTiles(ccb);
         delete ccb;
@@ -281,7 +197,7 @@ void QQuickContext2DTexture::paint(QQuickContext2DCommandBuffer *ccb)
     QRect tiledRegion = createTiles(m_canvasWindow.intersected(QRect(QPoint(0, 0), m_canvasSize)));
     if (!tiledRegion.isEmpty()) {
         QRect dirtyRect;
-        for (QQuickContext2DTile* tile : qAsConst(m_tiles)) {
+        for (QQuickContext2DTile* tile : std::as_const(m_tiles)) {
             if (tile->dirty()) {
                 if (dirtyRect.isEmpty())
                     dirtyRect = tile->rect();
@@ -292,7 +208,7 @@ void QQuickContext2DTexture::paint(QQuickContext2DCommandBuffer *ccb)
 
         if (beginPainting()) {
             QQuickContext2D::State oldState = m_state;
-            for (QQuickContext2DTile* tile : qAsConst(m_tiles)) {
+            for (QQuickContext2DTile* tile : std::as_const(m_tiles)) {
                 if (tile->dirty()) {
                     ccb->replay(tile->createPainter(m_smooth, m_antialiasing), oldState, scaleFactor());
                     tile->drawFinished();
@@ -398,278 +314,6 @@ bool QQuickContext2DTexture::event(QEvent *e)
     }
     return QObject::event(e);
 }
-#if QT_CONFIG(opengl)
-static inline QSize npotAdjustedSize(const QSize &size)
-{
-    static bool checked = false;
-    static bool npotSupported = false;
-
-    if (!checked) {
-        npotSupported = QOpenGLContext::currentContext()->functions()->hasOpenGLFeature(QOpenGLFunctions::NPOTTextures);
-        checked = true;
-    }
-
-    if (npotSupported) {
-        return QSize(qMax(QT_MINIMUM_FBO_SIZE, size.width()),
-                     qMax(QT_MINIMUM_FBO_SIZE, size.height()));
-    }
-
-    return QSize(qMax(QT_MINIMUM_FBO_SIZE, qt_next_power_of_two(size.width())),
-                       qMax(QT_MINIMUM_FBO_SIZE, qt_next_power_of_two(size.height())));
-}
-
-QQuickContext2DFBOTexture::QQuickContext2DFBOTexture()
-    : QQuickContext2DTexture()
-    , m_fbo(nullptr)
-    , m_multisampledFbo(nullptr)
-    , m_paint_device(nullptr)
-{
-    m_displayTextures[0] = 0;
-    m_displayTextures[1] = 0;
-    m_displayTexture = -1;
-}
-
-QQuickContext2DFBOTexture::~QQuickContext2DFBOTexture()
-{
-    if (m_multisampledFbo)
-        m_multisampledFbo->release();
-    else if (m_fbo)
-        m_fbo->release();
-
-    delete m_fbo;
-    delete m_multisampledFbo;
-    delete m_paint_device;
-
-    if (QOpenGLContext::currentContext())
-        QOpenGLContext::currentContext()->functions()->glDeleteTextures(2, m_displayTextures);
-}
-
-QVector2D QQuickContext2DFBOTexture::scaleFactor() const
-{
-    if (!m_fbo)
-        return QVector2D(1, 1);
-    return QVector2D(m_fbo->width() / m_fboSize.width(),
-                     m_fbo->height() / m_fboSize.height());
-}
-
-QSGTexture *QQuickContext2DFBOTexture::textureForNextFrame(QSGTexture *lastTexture, QQuickWindow *)
-{
-    QSGPlainTexture *texture = static_cast<QSGPlainTexture *>(lastTexture);
-
-    if (m_onCustomThread)
-        m_mutex.lock();
-
-    if (m_fbo) {
-        if (!texture) {
-            texture = new QSGPlainTexture();
-            texture->setHasAlphaChannel(true);
-            texture->setOwnsTexture(false);
-            m_dirtyTexture = true;
-        }
-
-        if (m_dirtyTexture) {
-            if (!m_gl) {
-                // on a rendering thread, use the fbo directly...
-                texture->setTextureId(m_fbo->texture());
-            } else {
-                // on GUI or custom thread, use display textures...
-                m_displayTexture = m_displayTexture == 0 ? 1 : 0;
-                texture->setTextureId(m_displayTextures[m_displayTexture]);
-            }
-            texture->setTextureSize(m_fbo->size());
-            m_dirtyTexture = false;
-        }
-
-    }
-
-    if (m_onCustomThread) {
-        m_condition.wakeOne();
-        m_mutex.unlock();
-    }
-
-    return texture;
-}
-
-QSize QQuickContext2DFBOTexture::adjustedTileSize(const QSize &ts)
-{
-    return npotAdjustedSize(ts);
-}
-
-QRectF QQuickContext2DFBOTexture::normalizedTextureSubRect() const
-{
-    return QRectF(0
-                , 0
-                , qreal(m_canvasWindow.width()) / m_fboSize.width()
-                , qreal(m_canvasWindow.height()) / m_fboSize.height());
-}
-
-QQuickContext2DTile* QQuickContext2DFBOTexture::createTile() const
-{
-    return new QQuickContext2DFBOTile();
-}
-
-bool QQuickContext2DFBOTexture::doMultisampling() const
-{
-    static bool extensionsChecked = false;
-    static bool multisamplingSupported = false;
-
-    if (!extensionsChecked) {
-        QOpenGLExtensions *e = static_cast<QOpenGLExtensions *>(QOpenGLContext::currentContext()->functions());
-        multisamplingSupported = e->hasOpenGLExtension(QOpenGLExtensions::FramebufferMultisample)
-            && e->hasOpenGLExtension(QOpenGLExtensions::FramebufferBlit);
-        extensionsChecked = true;
-    }
-
-    return multisamplingSupported  && m_antialiasing;
-}
-
-void QQuickContext2DFBOTexture::grabImage(const QRectF& rf)
-{
-    Q_ASSERT(rf.isValid());
-    QQuickContext2D::mutex.lock();
-    if (m_context) {
-        if (!m_fbo) {
-            m_context->setGrabbedImage(QImage());
-        } else {
-            QImage grabbed;
-            GLAcquireContext ctx(m_gl, m_surface);
-            grabbed = m_fbo->toImage().scaled(m_fboSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).mirrored().copy(rf.toRect());
-            m_context->setGrabbedImage(grabbed);
-        }
-    }
-    QQuickContext2D::mutex.unlock();
-}
-
-void QQuickContext2DFBOTexture::compositeTile(QQuickContext2DTile* tile)
-{
-    QQuickContext2DFBOTile* t = static_cast<QQuickContext2DFBOTile*>(tile);
-    QRect target = t->rect().intersected(m_canvasWindow);
-    if (target.isValid()) {
-        QRect source = target;
-
-        source.moveTo(source.topLeft() - t->rect().topLeft());
-        target.moveTo(target.topLeft() - m_canvasWindow.topLeft());
-
-        QOpenGLFramebufferObject::blitFramebuffer(m_fbo, target, t->fbo(), source);
-    }
-}
-
-QQuickCanvasItem::RenderTarget QQuickContext2DFBOTexture::renderTarget() const
-{
-    return QQuickCanvasItem::FramebufferObject;
-}
-
-QPaintDevice* QQuickContext2DFBOTexture::beginPainting()
-{
-    QQuickContext2DTexture::beginPainting();
-
-    if (m_canvasWindow.size().isEmpty()) {
-        delete m_fbo;
-        delete m_multisampledFbo;
-        delete m_paint_device;
-        m_fbo = nullptr;
-        m_multisampledFbo = nullptr;
-        m_paint_device = nullptr;
-        return nullptr;
-    } else if (!m_fbo || m_canvasWindowChanged) {
-        delete m_fbo;
-        delete m_multisampledFbo;
-        delete m_paint_device;
-        m_paint_device = nullptr;
-
-        m_fboSize = npotAdjustedSize(m_canvasWindow.size() * m_canvasDevicePixelRatio);
-        m_canvasWindowChanged = false;
-
-        if (doMultisampling()) {
-            {
-                QOpenGLFramebufferObjectFormat format;
-                format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-                format.setSamples(8);
-                m_multisampledFbo = new QOpenGLFramebufferObject(m_fboSize, format);
-            }
-            {
-                QOpenGLFramebufferObjectFormat format;
-                format.setAttachment(QOpenGLFramebufferObject::NoAttachment);
-                m_fbo = new QOpenGLFramebufferObject(m_fboSize, format);
-            }
-        } else {
-            QOpenGLFramebufferObjectFormat format;
-            format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-            QSize s = m_fboSize;
-            if (m_antialiasing) { // do supersampling since multisampling is not available
-                GLint max;
-                QOpenGLContext::currentContext()->functions()->glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max);
-                if (s.width() * 2 <= max && s.height() * 2 <= max)
-                    s = s * 2;
-            }
-            m_fbo = new QOpenGLFramebufferObject(s, format);
-        }
-    }
-
-    if (doMultisampling())
-        m_multisampledFbo->bind();
-    else
-        m_fbo->bind();
-
-    if (!m_paint_device) {
-        QOpenGLPaintDevice *gl_device = new QOpenGLPaintDevice(m_fbo->size());
-        gl_device->setPaintFlipped(true);
-        gl_device->setSize(m_fbo->size());
-        gl_device->setDevicePixelRatio(m_canvasDevicePixelRatio);
-        qCDebug(lcCanvas, "%s size %.1lf x %.1lf painting with size %d x %d DPR %.1lf",
-                (m_item->objectName().isEmpty() ? "Canvas" : qPrintable(m_item->objectName())),
-                m_item->width(), m_item->height(), m_fbo->size().width(), m_fbo->size().height(), m_canvasDevicePixelRatio);
-        m_paint_device = gl_device;
-    }
-
-    return m_paint_device;
-}
-
-void QQuickContext2DFBOTexture::endPainting()
-{
-    QQuickContext2DTexture::endPainting();
-
-    // There may not be an FBO due to zero width or height.
-    if (!m_fbo)
-        return;
-
-    if (m_multisampledFbo)
-        QOpenGLFramebufferObject::blitFramebuffer(m_fbo, m_multisampledFbo);
-
-    if (m_gl) {
-        /* When rendering happens on the render thread, the fbo's texture is
-         * used directly for display. If we are on the GUI thread or a
-         * dedicated Canvas render thread, we need to decouple the FBO from
-         * the texture we are displaying in the SG rendering thread to avoid
-         * stalls and read/write issues in the GL pipeline as the FBO's texture
-         * could then potentially be used in different threads.
-         *
-         * We could have gotten away with only one display texture, but this
-         * would have implied that beginPainting would have to wait for SG
-         * to release that texture.
-         */
-
-        if (m_onCustomThread)
-            m_mutex.lock();
-
-        QOpenGLFunctions *funcs = QOpenGLContext::currentContext()->functions();
-        if (m_displayTextures[0] == 0) {
-            m_displayTexture = 1;
-            funcs->glGenTextures(2, m_displayTextures);
-        }
-
-        m_fbo->bind();
-        GLuint target = m_displayTexture == 0 ? 1 : 0;
-        funcs->glBindTexture(GL_TEXTURE_2D, m_displayTextures[target]);
-        funcs->glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, m_fbo->width(), m_fbo->height(), 0);
-
-        if (m_onCustomThread)
-            m_mutex.unlock();
-    }
-
-    m_fbo->bindDefault();
-}
-#endif
 
 QQuickContext2DImageTexture::QQuickContext2DImageTexture()
     : QQuickContext2DTexture()

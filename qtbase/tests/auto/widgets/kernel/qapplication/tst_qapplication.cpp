@@ -1,37 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #define QT_STATICPLUGIN
 #include <QtWidgets/qstyleplugin.h>
 
 #include <qdebug.h>
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTimer>
+#include <QLibraryInfo>
+#include <QSignalSpy>
+#include <QFileSystemWatcher>
+#include <QSharedMemory>
 
 #include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QFileInfo>
@@ -62,6 +42,7 @@
 
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qwindowsysteminterface_p.h>
+#include <private/qevent_p.h>
 #include <private/qhighdpiscaling_p.h>
 
 #include <algorithm>
@@ -119,6 +100,7 @@ private slots:
     void desktopSettingsAware();
 
     void setActiveWindow();
+    void activateDeactivateEvent();
 
     void focusWidget();
     void focusChanged();
@@ -146,6 +128,7 @@ private slots:
     void wheelEventPropagation();
 
     void qtbug_12673();
+    void qtbug_103611();
     void noQuitOnHide();
 
     void globalStaticObjectDestruction(); // run this last
@@ -181,6 +164,20 @@ void tst_QApplication::sendEventsOnProcessEvents()
 
     QCoreApplication::postEvent(&app,  new QEvent(QEvent::Type(QEvent::User + 1)));
     QCoreApplication::processEvents();
+
+#ifdef Q_OS_LINUX
+    if ((QSysInfo::productType() == "rhel" && QSysInfo::productVersion().startsWith(u'9'))
+        || (QSysInfo::productType() == "ubuntu" && QSysInfo::productVersion().startsWith(u'2')))
+    {
+        QFile f("/proc/self/maps");
+        QVERIFY(f.open(QIODevice::ReadOnly));
+
+        QByteArray libs = f.readAll();
+        if (libs.contains("libqgtk3.") || libs.contains("libqgtk3TestInfix."))
+            QEXPECT_FAIL("", "Fails if qgtk3 (Glib) is loaded, see QTBUG-87137", Abort);
+    }
+#endif
+
     QVERIFY(spy.recordedEvents.contains(QEvent::User + 1));
 }
 
@@ -216,19 +213,65 @@ void tst_QApplication::staticSetup()
     QVERIFY(style);
     QApplication::setStyle(style);
 
-    bool palette_changed = false;
     QPalette pal;
     QApplication::setPalette(pal);
-
-    /*QFont font;
-    QApplication::setFont(font);*/
+    QFont font;
+    QApplication::setFont(font);
 
     int argc = 0;
     QApplication app(argc, nullptr);
-    QObject::connect(&app, &QApplication::paletteChanged, [&palette_changed]{ palette_changed = true; });
-    QVERIFY(!palette_changed);
+
+    class EventWatcher : public QObject
+    {
+    public:
+        int palette_changed = 0;
+        int font_changed = 0;
+
+        EventWatcher()
+        {
+            qApp->installEventFilter(this);
+#if QT_DEPRECATED_SINCE(6, 0)
+QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
+            QObject::connect(qApp, &QApplication::paletteChanged, [&]{ ++palette_changed; });
+            QObject::connect(qApp, &QApplication::fontChanged, [&]{ ++font_changed; });
+QT_WARNING_POP
+#endif
+        }
+
+    protected:
+        bool eventFilter(QObject *, QEvent *event) override
+        {
+            switch (event->type()) {
+            case QEvent::ApplicationPaletteChange:
+                ++palette_changed;
+                break;
+            case QEvent::ApplicationFontChange:
+                ++font_changed;
+                break;
+            default:
+                break;
+            }
+
+            return false;
+        }
+    };
+
+    EventWatcher watcher;
+
+    QCOMPARE(watcher.palette_changed, 0);
+    QCOMPARE(watcher.font_changed, 0);
     qApp->setPalette(QPalette(Qt::red));
-    QVERIFY(palette_changed);
+
+    font.setBold(!font.bold());
+    qApp->setFont(font);
+    QApplication::processEvents();
+#if QT_DEPRECATED_SINCE(6, 0)
+    QCOMPARE(watcher.palette_changed, 2);
+    QCOMPARE(watcher.font_changed, 2);
+#else
+    QCOMPARE(watcher.palette_changed, 1);
+    QCOMPARE(watcher.font_changed, 1);
+#endif
 }
 
 
@@ -249,9 +292,6 @@ public:
 
 void tst_QApplication::alert()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("WinRT does not support more than 1 native widget at the same time");
-#endif
     int argc = 0;
     QApplication app(argc, nullptr);
     QApplication::alert(nullptr, 0);
@@ -268,10 +308,10 @@ void tst_QApplication::alert()
     QApplication::alert(&widget, -1);
     QApplication::alert(&widget, 250);
     widget2.activateWindow();
-    QApplication::setActiveWindow(&widget2);
+    QApplicationPrivate::setActiveWindow(&widget2);
     QApplication::alert(&widget, 0);
     widget.activateWindow();
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     QApplication::alert(&widget, 200);
 }
 
@@ -334,13 +374,12 @@ void tst_QApplication::setFont_data()
     int argc = 0;
     QApplication app(argc, nullptr); // Needed for QFontDatabase
 
-    QFontDatabase fdb;
-    const QStringList &families = fdb.families();
+    const QStringList &families = QFontDatabase::families();
     for (int i = 0, count = qMin(3, families.size()); i < count; ++i) {
         const auto &family = families.at(i);
-        const QStringList &styles = fdb.styles(family);
+        const QStringList &styles = QFontDatabase::styles(family);
         if (!styles.isEmpty()) {
-            QList<int> sizes = fdb.pointSizes(family, styles.constFirst());
+            QList<int> sizes = QFontDatabase::pointSizes(family, styles.constFirst());
             if (sizes.isEmpty())
                 sizes = QFontDatabase::standardSizes();
             if (!sizes.isEmpty()) {
@@ -460,8 +499,8 @@ static char **QString2cstrings(const QString &args)
 {
     static QByteArrayList cache;
 
-    const auto &list = args.splitRef(' ');
-    auto argarray = new char*[list.count() + 1];
+    const auto &list = QStringView{ args }.split(' ');
+    auto argarray = new char*[list.size() + 1];
 
     int i = 0;
     for (; i < list.size(); ++i ) {
@@ -550,7 +589,7 @@ void tst_QApplication::lastWindowClosed()
     QTimer::singleShot(1000, dialog.data(), &QDialog::accept);
     dialog->exec();
     QVERIFY(dialog);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     QPointer<CloseWidget>widget = new CloseWidget;
     widget->setWindowTitle(QLatin1String(QTest::currentTestFunction()) + QLatin1String("CloseWidget"));
@@ -559,7 +598,7 @@ void tst_QApplication::lastWindowClosed()
     QObject::connect(&app, &QGuiApplication::lastWindowClosed, widget.data(), &QObject::deleteLater);
     QCoreApplication::exec();
     QVERIFY(!widget);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     spy.clear();
 
     delete dialog;
@@ -577,7 +616,7 @@ void tst_QApplication::lastWindowClosed()
 
     QTimer::singleShot(1000, &app, &QApplication::closeAllWindows);
     QCoreApplication::exec();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 class QuitOnLastWindowClosedDialog : public QDialog
@@ -610,8 +649,8 @@ public slots:
         other.exec();
 
         // verify that the eventloop ran and let the timer fire
-        QCOMPARE(spy.count(), 1);
-        QCOMPARE(appSpy.count(), 1);
+        QCOMPARE(spy.size(), 1);
+        QCOMPARE(appSpy.size(), 1);
     }
 
 private:
@@ -636,7 +675,7 @@ public slots:
         timer1.setSingleShot(true);
         timer1.start(1000);
         dialog.exec();
-        QCOMPARE(spy1.count(), 1);
+        QCOMPARE(spy1.size(), 1);
 
         show();
     }
@@ -657,7 +696,7 @@ void tst_QApplication::quitOnLastWindowClosed()
         QCoreApplication::exec();
 
         // lastWindowClosed() signal should only be sent after the last dialog is closed
-        QCOMPARE(appSpy.count(), 2);
+        QCOMPARE(appSpy.size(), 2);
     }
     {
         int argc = 0;
@@ -672,8 +711,8 @@ void tst_QApplication::quitOnLastWindowClosed()
         timer1.setSingleShot(true);
         timer1.start(1000);
         dialog.exec();
-        QCOMPARE(spy1.count(), 1);
-        QCOMPARE(appSpy.count(), 0);
+        QCOMPARE(spy1.size(), 1);
+        QCOMPARE(appSpy.size(), 0);
 
         QTimer timer2;
         connect(&timer2, &QTimer::timeout, &app, &QCoreApplication::quit);
@@ -682,8 +721,8 @@ void tst_QApplication::quitOnLastWindowClosed()
         timer2.start(1000);
         int returnValue = QCoreApplication::exec();
         QCOMPARE(returnValue, 0);
-        QCOMPARE(spy2.count(), 1);
-        QCOMPARE(appSpy.count(), 0);
+        QCOMPARE(spy2.size(), 1);
+        QCOMPARE(appSpy.size(), 0);
     }
     {
         int argc = 0;
@@ -714,14 +753,14 @@ void tst_QApplication::quitOnLastWindowClosed()
 
         QCoreApplication::exec();
 
-        QCOMPARE(spy.count(), 1);
-        QVERIFY(spy2.count() < 15);      // Should be around 10 if closing caused the quit
+        QCOMPARE(spy.size(), 1);
+        QVERIFY(spy2.size() < 15);      // Should be around 10 if closing caused the quit
     }
 
     bool quitApplicationTriggered = false;
     auto quitSlot = [&quitApplicationTriggered] () {
         quitApplicationTriggered = true;
-        QCoreApplication::quit();
+        QCoreApplication::exit();
     };
 
     {
@@ -745,13 +784,13 @@ void tst_QApplication::quitOnLastWindowClosed()
 
         QCoreApplication::exec();
 
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QVERIFY(quitApplicationTriggered);
     }
     {
         int argc = 0;
         QApplication app(argc, nullptr);
-        QSignalSpy appSpy(&app, &QApplication::lastWindowClosed);
+        QSignalSpy appSpy(&app, &QGuiApplication::lastWindowClosed);
 
         // exec a dialog for 1 second, then show the window
         QuitOnLastWindowClosedWindow window;
@@ -767,8 +806,8 @@ void tst_QApplication::quitOnLastWindowClosed()
         QCOMPARE(returnValue, 0);
         // failure here means the timer above didn't fire, and the
         // quit was caused the dialog being closed (not the window)
-        QCOMPARE(timerSpy.count(), 1);
-        QCOMPARE(appSpy.count(), 2);
+        QCOMPARE(timerSpy.size(), 1);
+        QCOMPARE(appSpy.size(), 2);
     }
     {
         int argc = 0;
@@ -817,7 +856,7 @@ void tst_QApplication::quitOnLastWindowClosed()
         QTimer::singleShot(100, &w1, &QWidget::close);
         QCoreApplication::exec();
 
-        QVERIFY(timerSpy.count() < 10);
+        QVERIFY(timerSpy.size() < 10);
     }
 }
 
@@ -859,11 +898,9 @@ public:
 
 void tst_QApplication::closeAllWindows()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("PromptOnCloseWidget does not work on WinRT - QTBUG-68297");
-#endif
     int argc = 0;
     QApplication app(argc, nullptr);
+    app.setAttribute(Qt::AA_DontUseNativeDialogs, true);
 
     // create some windows
     new QWidget;
@@ -872,7 +909,7 @@ void tst_QApplication::closeAllWindows()
 
     // show all windows
     auto topLevels = QApplication::topLevelWidgets();
-    for (QWidget *w : qAsConst(topLevels)) {
+    for (QWidget *w : std::as_const(topLevels)) {
         w->show();
         QVERIFY(QTest::qWaitForWindowExposed(w));
     }
@@ -889,14 +926,14 @@ void tst_QApplication::closeAllWindows()
     PromptOnCloseWidget *promptOnCloseWidget = new PromptOnCloseWidget;
     // show all windows
     topLevels = QApplication::topLevelWidgets();
-    for (QWidget *w : qAsConst(topLevels)) {
+    for (QWidget *w : std::as_const(topLevels)) {
         w->show();
         QVERIFY(QTest::qWaitForWindowExposed(w));
     }
     // close the last window to open the prompt (eventloop recurses)
     promptOnCloseWidget->close();
     // all windows should not be visible, except the one that opened the prompt
-    for (QWidget *w : qAsConst(topLevels)) {
+    for (QWidget *w : std::as_const(topLevels)) {
         if (w == promptOnCloseWidget)
             QVERIFY(w->isVisible());
         else
@@ -908,8 +945,8 @@ void tst_QApplication::closeAllWindows()
 
 bool isPathListIncluded(const QStringList &l, const QStringList &r)
 {
-    int size = r.count();
-    if (size > l.count())
+    int size = r.size();
+    if (size > l.size())
         return false;
 #if defined (Q_OS_WIN)
     Qt::CaseSensitivity cs = Qt::CaseInsensitive;
@@ -917,22 +954,22 @@ bool isPathListIncluded(const QStringList &l, const QStringList &r)
     Qt::CaseSensitivity cs = Qt::CaseSensitive;
 #endif
     int i = 0, j = 0;
-    for ( ; i < l.count() && j < r.count(); ++i) {
+    for ( ; i < l.size() && j < r.size(); ++i) {
         if (QDir::toNativeSeparators(l[i]).compare(QDir::toNativeSeparators(r[j]), cs) == 0) {
             ++j;
             i = -1;
         }
     }
-    return j == r.count();
+    return j == r.size();
 }
 
 #if QT_CONFIG(library)
 void tst_QApplication::libraryPaths()
 {
 #ifndef BUILTIN_TESTDATA
-        const QString testDir = QFileInfo(QFINDTESTDATA("test/test.pro")).absolutePath();
+        const QString testDir = QFileInfo(QFINDTESTDATA("test/CMakeLists.txt")).absolutePath();
 #else
-        const QString testDir = QFileInfo(QFINDTESTDATA("test.pro")).absolutePath();
+        const QString testDir = QFileInfo(QFINDTESTDATA("CMakeLists.txt")).absolutePath();
 #endif
         QVERIFY(!testDir.isEmpty());
     {
@@ -960,7 +997,7 @@ void tst_QApplication::libraryPaths()
         int argc = 1;
         QApplication app(argc, &argv0);
         QString appDirPath = QCoreApplication::applicationDirPath();
-        QString installPathPlugins =  QLibraryInfo::location(QLibraryInfo::PluginsPath);
+        QString installPathPlugins =  QLibraryInfo::path(QLibraryInfo::PluginsPath);
 
         QStringList actual = QApplication::libraryPaths();
         actual.sort();
@@ -970,9 +1007,6 @@ void tst_QApplication::libraryPaths()
         expected = QSet<QString>(expected.constBegin(), expected.constEnd()).values();
         expected.sort();
 
-#ifdef Q_OS_WINRT
-        QEXPECT_FAIL("", "On WinRT PluginsPath is outside of sandbox. QTBUG-68297", Abort);
-#endif
         QVERIFY2(isPathListIncluded(actual, expected),
                  qPrintable("actual:\n - " + actual.join("\n - ") +
                             "\nexpected:\n - " + expected.join("\n - ")));
@@ -986,18 +1020,18 @@ void tst_QApplication::libraryPaths()
     {
         qCDebug(lcTests) << "Initial library path:" << QApplication::libraryPaths();
 
-        int count = QApplication::libraryPaths().count();
+        int count = QApplication::libraryPaths().size();
 #if 0
         // this test doesn't work if KDE 4 is installed
         QCOMPARE(count, 1); // before creating QApplication, only the PluginsPath is in the libraryPaths()
 #endif
-        QString installPathPlugins =  QLibraryInfo::location(QLibraryInfo::PluginsPath);
+        QString installPathPlugins =  QLibraryInfo::path(QLibraryInfo::PluginsPath);
         QApplication::addLibraryPath(installPathPlugins);
         qCDebug(lcTests) << "installPathPlugins" << installPathPlugins;
         qCDebug(lcTests) << "After adding plugins path:" << QApplication::libraryPaths();
-        QCOMPARE(QApplication::libraryPaths().count(), count);
+        QCOMPARE(QApplication::libraryPaths().size(), count);
         QApplication::addLibraryPath(testDir);
-        QCOMPARE(QApplication::libraryPaths().count(), count + 1);
+        QCOMPARE(QApplication::libraryPaths().size(), count + 1);
 
         // creating QApplication adds the applicationDirPath to the libraryPath
         int argc = 1;
@@ -1007,19 +1041,19 @@ void tst_QApplication::libraryPaths()
         // On Windows CE these are identical and might also be the case for other
         // systems too
         if (appDirPath != installPathPlugins)
-            QCOMPARE(QApplication::libraryPaths().count(), count + 2);
+            QCOMPARE(QApplication::libraryPaths().size(), count + 2);
     }
     {
         int argc = 1;
         QApplication app(argc, &argv0);
 
         qCDebug(lcTests) << "Initial library path:" << QCoreApplication::libraryPaths();
-        int count = QCoreApplication::libraryPaths().count();
-        QString installPathPlugins =  QLibraryInfo::location(QLibraryInfo::PluginsPath);
+        int count = QCoreApplication::libraryPaths().size();
+        QString installPathPlugins =  QLibraryInfo::path(QLibraryInfo::PluginsPath);
         QCoreApplication::addLibraryPath(installPathPlugins);
         qCDebug(lcTests) << "installPathPlugins" << installPathPlugins;
         qCDebug(lcTests) << "After adding plugins path:" << QCoreApplication::libraryPaths();
-        QCOMPARE(QCoreApplication::libraryPaths().count(), count);
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count);
 
         QString appDirPath = QCoreApplication::applicationDirPath();
 
@@ -1027,14 +1061,14 @@ void tst_QApplication::libraryPaths()
         QCoreApplication::addLibraryPath(appDirPath + "/..");
         qCDebug(lcTests) << "appDirPath" << appDirPath;
         qCDebug(lcTests) << "After adding appDirPath && appDirPath + /..:" << QCoreApplication::libraryPaths();
-        QCOMPARE(QCoreApplication::libraryPaths().count(), count + 1);
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count + 1);
 #ifdef Q_OS_MACOS
         QCoreApplication::addLibraryPath(appDirPath + "/../MacOS");
 #else
         QCoreApplication::addLibraryPath(appDirPath + "/tmp/..");
 #endif
         qCDebug(lcTests) << "After adding appDirPath + /tmp/..:" << QCoreApplication::libraryPaths();
-        QCOMPARE(QCoreApplication::libraryPaths().count(), count + 1);
+        QCOMPARE(QCoreApplication::libraryPaths().size(), count + 1);
     }
 }
 
@@ -1076,13 +1110,10 @@ void tst_QApplication::libraryPaths_qt_plugin_path_2()
         // library path list should contain the default plus the one valid path
         QStringList expected =
             QStringList()
-            << QLibraryInfo::location(QLibraryInfo::PluginsPath)
+            << QLibraryInfo::path(QLibraryInfo::PluginsPath)
             << QDir(QCoreApplication::applicationDirPath()).canonicalPath()
             << QDir(QDir::fromNativeSeparators(QString::fromLatin1(validPath))).canonicalPath();
 
-#ifdef Q_OS_WINRT
-        QEXPECT_FAIL("", "On WinRT PluginsPath is outside of sandbox. QTBUG-68297", Abort);
-#endif
         QVERIFY2(isPathListIncluded(QCoreApplication::libraryPaths(), expected),
                  qPrintable("actual:\n - " + QCoreApplication::libraryPaths().join("\n - ") +
                             "\nexpected:\n - " + expected.join("\n - ")));
@@ -1100,11 +1131,11 @@ void tst_QApplication::libraryPaths_qt_plugin_path_2()
         // library path list should contain the default
         QStringList expected =
             QStringList()
-            << QLibraryInfo::location(QLibraryInfo::PluginsPath)
+            << QLibraryInfo::path(QLibraryInfo::PluginsPath)
             << QCoreApplication::applicationDirPath();
         QVERIFY(isPathListIncluded(QCoreApplication::libraryPaths(), expected));
 
-        qputenv("QT_PLUGIN_PATH", QByteArray());
+        qputenv("QT_PLUGIN_PATH", nullptr);
     }
 }
 #endif
@@ -1137,7 +1168,7 @@ void SendPostedEventsTester::doTest()
     eventLoop.exec();
     QVERIFY(p != nullptr);
 
-    QCOMPARE(eventSpy.count(), 2);
+    QCOMPARE(eventSpy.size(), 2);
     QCOMPARE(eventSpy.at(0), int(QEvent::MetaCall));
     QCOMPARE(eventSpy.at(1), int(QEvent::User));
     eventSpy.clear();
@@ -1303,7 +1334,7 @@ void tst_QApplication::testDeleteLater()
 #endif
     int argc = 0;
     QApplication app(argc, nullptr);
-    connect(&app, &QApplication::lastWindowClosed, &app, &QCoreApplication::quit);
+    connect(&app, &QGuiApplication::lastWindowClosed, &app, &QCoreApplication::quit);
 
     DeleteLaterWidget *wgt = new DeleteLaterWidget(&app);
     QTimer::singleShot(500, wgt, &DeleteLaterWidget::runTest);
@@ -1526,9 +1557,59 @@ void tst_QApplication::setActiveWindow()
     delete pb2;
 
     w->show();
-    QApplication::setActiveWindow(w); // needs this on twm (focus follows mouse)
+    QApplicationPrivate::setActiveWindow(w); // needs this on twm (focus follows mouse)
     QVERIFY(pb1->hasFocus());
     delete w;
+}
+
+void tst_QApplication::activateDeactivateEvent()
+{
+    // Ensure that QWindows (other than QWidgetWindow)
+    // are activated / deactivated.
+    class Window : public QWindow
+    {
+    public:
+        using QWindow::QWindow;
+
+        int activateCount = 0;
+        int deactivateCount = 0;
+    protected:
+        bool event(QEvent *e) override
+        {
+            switch (e->type()) {
+            case QEvent::WindowActivate:
+                ++activateCount;
+                break;
+            case QEvent::WindowDeactivate:
+                ++deactivateCount;
+                break;
+            default:
+                break;
+            }
+            return QWindow::event(e);
+        }
+    };
+
+    int argc = 0;
+    QApplication app(argc, nullptr);
+
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("QWindow::requestActivate() is not supported.");
+
+    Window w1;
+    Window w2;
+
+    w1.show();
+    w1.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&w1));
+    QCOMPARE(w1.activateCount, 1);
+    QCOMPARE(w1.deactivateCount, 0);
+
+    w2.show();
+    w2.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&w2));
+    QCOMPARE(w1.deactivateCount, 1);
+    QCOMPARE(w2.activateCount, 1);
 }
 
 void tst_QApplication::focusWidget()
@@ -1541,7 +1622,7 @@ void tst_QApplication::focusWidget()
         QTextEdit te;
         te.show();
 
-        QApplication::setActiveWindow(&te);
+        QApplicationPrivate::setActiveWindow(&te);
         QVERIFY(QTest::qWaitForWindowActive(&te));
 
         const auto focusWidget = QApplication::focusWidget();
@@ -1557,7 +1638,7 @@ void tst_QApplication::focusWidget()
         QTextEdit te(&w);
         w.show();
 
-        QApplication::setActiveWindow(&w);
+        QApplicationPrivate::setActiveWindow(&w);
         QVERIFY(QTest::qWaitForWindowActive(&w));
 
         const auto focusWidget = QApplication::focusWidget();
@@ -1590,22 +1671,22 @@ void tst_QApplication::focusChanged()
     hbox1.addWidget(&le1);
     hbox1.addWidget(&pb1);
 
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     parent1.show();
-    QApplication::setActiveWindow(&parent1); // needs this on twm (focus follows mouse)
-    QCOMPARE(spy.count(), 1);
-    QCOMPARE(spy.at(0).count(), 2);
+    QApplicationPrivate::setActiveWindow(&parent1); // needs this on twm (focus follows mouse)
+    QCOMPARE(spy.size(), 1);
+    QCOMPARE(spy.at(0).size(), 2);
     old = qvariant_cast<QWidget*>(spy.at(0).at(0));
     now = qvariant_cast<QWidget*>(spy.at(0).at(1));
     QCOMPARE(now, &le1);
     QCOMPARE(now, QApplication::focusWidget());
     QVERIFY(!old);
     spy.clear();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     pb1.setFocus();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     old = qvariant_cast<QWidget*>(spy.at(0).at(0));
     now = qvariant_cast<QWidget*>(spy.at(0).at(1));
     QCOMPARE(now, &pb1);
@@ -1614,7 +1695,7 @@ void tst_QApplication::focusChanged()
     spy.clear();
 
     lb1.setFocus();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     old = qvariant_cast<QWidget*>(spy.at(0).at(0));
     now = qvariant_cast<QWidget*>(spy.at(0).at(1));
     QCOMPARE(now, &lb1);
@@ -1623,7 +1704,7 @@ void tst_QApplication::focusChanged()
     spy.clear();
 
     lb1.clearFocus();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     old = qvariant_cast<QWidget*>(spy.at(0).at(0));
     now = qvariant_cast<QWidget*>(spy.at(0).at(1));
     QVERIFY(!now);
@@ -1642,10 +1723,10 @@ void tst_QApplication::focusChanged()
     hbox2.addWidget(&pb2);
 
     parent2.show();
-    QApplication::setActiveWindow(&parent2); // needs this on twm (focus follows mouse)
-    QVERIFY(spy.count() > 0); // one for deactivation, one for activation on Windows
-    old = qvariant_cast<QWidget*>(spy.at(spy.count()-1).at(0));
-    now = qvariant_cast<QWidget*>(spy.at(spy.count()-1).at(1));
+    QApplicationPrivate::setActiveWindow(&parent2); // needs this on twm (focus follows mouse)
+    QVERIFY(spy.size() > 0); // one for deactivation, one for activation on Windows
+    old = qvariant_cast<QWidget*>(spy.at(spy.size()-1).at(0));
+    now = qvariant_cast<QWidget*>(spy.at(spy.size()-1).at(1));
     QCOMPARE(now, &le2);
     QCOMPARE(now, QApplication::focusWidget());
     QVERIFY(!old);
@@ -1670,10 +1751,10 @@ void tst_QApplication::focusChanged()
 
     tab.simulate(now);
     if (!tabAllControls) {
-        QCOMPARE(spy.count(), 0);
+        QCOMPARE(spy.size(), 0);
         QCOMPARE(now, QApplication::focusWidget());
     } else {
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         old = qvariant_cast<QWidget*>(spy.at(0).at(0));
         now = qvariant_cast<QWidget*>(spy.at(0).at(1));
         QCOMPARE(now, &pb2);
@@ -1683,11 +1764,11 @@ void tst_QApplication::focusChanged()
     }
 
     if (!tabAllControls) {
-        QCOMPARE(spy.count(), 0);
+        QCOMPARE(spy.size(), 0);
         QCOMPARE(now, QApplication::focusWidget());
     } else {
         tab.simulate(now);
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         old = qvariant_cast<QWidget*>(spy.at(0).at(0));
         now = qvariant_cast<QWidget*>(spy.at(0).at(1));
         QCOMPARE(now, &le2);
@@ -1697,11 +1778,11 @@ void tst_QApplication::focusChanged()
     }
 
     if (!tabAllControls) {
-        QCOMPARE(spy.count(), 0);
+        QCOMPARE(spy.size(), 0);
         QCOMPARE(now, QApplication::focusWidget());
     } else {
         backtab.simulate(now);
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         old = qvariant_cast<QWidget*>(spy.at(0).at(0));
         now = qvariant_cast<QWidget*>(spy.at(0).at(1));
         QCOMPARE(now, &pb2);
@@ -1712,12 +1793,12 @@ void tst_QApplication::focusChanged()
 
 
     if (!tabAllControls) {
-        QCOMPARE(spy.count(), 0);
+        QCOMPARE(spy.size(), 0);
         QCOMPARE(now, QApplication::focusWidget());
         old = &pb2;
     } else {
         backtab.simulate(now);
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         old = qvariant_cast<QWidget*>(spy.at(0).at(0));
         now = qvariant_cast<QWidget*>(spy.at(0).at(1));
         QCOMPARE(now, &le2);
@@ -1728,10 +1809,10 @@ void tst_QApplication::focusChanged()
 
     click.simulate(old);
     if (!(pb2.focusPolicy() & Qt::ClickFocus)) {
-        QCOMPARE(spy.count(), 0);
+        QCOMPARE(spy.size(), 0);
         QCOMPARE(now, QApplication::focusWidget());
     } else {
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         old = qvariant_cast<QWidget*>(spy.at(0).at(0));
         now = qvariant_cast<QWidget*>(spy.at(0).at(1));
         QCOMPARE(now, &pb2);
@@ -1740,7 +1821,7 @@ void tst_QApplication::focusChanged()
         spy.clear();
 
         click.simulate(old);
-        QVERIFY(spy.count() > 0);
+        QVERIFY(spy.size() > 0);
         old = qvariant_cast<QWidget*>(spy.at(0).at(0));
         now = qvariant_cast<QWidget*>(spy.at(0).at(1));
         QCOMPARE(now, &le2);
@@ -1750,16 +1831,16 @@ void tst_QApplication::focusChanged()
     }
 
     parent1.activateWindow();
-    QApplication::setActiveWindow(&parent1); // needs this on twm (focus follows mouse)
-    QVERIFY(spy.count() == 1 || spy.count() == 2); // one for deactivation, one for activation on Windows
+    QApplicationPrivate::setActiveWindow(&parent1); // needs this on twm (focus follows mouse)
+    QVERIFY(spy.size() == 1 || spy.size() == 2); // one for deactivation, one for activation on Windows
 
     //on windows, the change of focus is made in 2 steps
     //(the focusChanged SIGNAL is emitted twice)
-    if (spy.count()==1)
-        old = qvariant_cast<QWidget*>(spy.at(spy.count()-1).at(0));
+    if (spy.size()==1)
+        old = qvariant_cast<QWidget*>(spy.at(spy.size()-1).at(0));
     else
-        old = qvariant_cast<QWidget*>(spy.at(spy.count()-2).at(0));
-    now = qvariant_cast<QWidget*>(spy.at(spy.count()-1).at(1));
+        old = qvariant_cast<QWidget*>(spy.at(spy.size()-2).at(0));
+    now = qvariant_cast<QWidget*>(spy.at(spy.size()-1).at(1));
     QCOMPARE(now, &le1);
     QCOMPARE(now, QApplication::focusWidget());
     QCOMPARE(old, &le2);
@@ -1833,7 +1914,7 @@ void tst_QApplication::focusMouseClick()
     // front most widget has Qt::TabFocus, parent widget accepts clicks as well
     // now send a mouse button press event and check what happens with the focus
     // it should be given to the parent widget
-    QMouseEvent ev(QEvent::MouseButtonPress, QPointF(), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent ev(QEvent::MouseButtonPress, QPointF(), w.mapToGlobal(QPointF()), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
     QSpontaneKeyEvent::setSpontaneous(&ev);
     QVERIFY(ev.spontaneous());
     qApp->notify(&w2, &ev);
@@ -1844,9 +1925,6 @@ void tst_QApplication::focusMouseClick()
     QSpontaneKeyEvent::setSpontaneous(&ev);
     QVERIFY(ev.spontaneous());
     qApp->notify(&w2, &ev);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT - QTBUG-68297", Abort);
-#endif
     QTRY_COMPARE(QApplication::focusWidget(), &w2);
 
     // now back to tab focus and click again (it already had focus) -> focus should stay
@@ -1908,7 +1986,7 @@ class CustomStyle : public QProxyStyle
 public:
     CustomStyle() : QProxyStyle("Windows") { Q_ASSERT(!polished); }
     ~CustomStyle() { polished = 0; }
-    void polish(QPalette &palette)
+    void polish(QPalette &palette) override
     {
         polished++;
         palette.setColor(QPalette::Active, QPalette::Link, Qt::red);
@@ -1923,7 +2001,7 @@ class CustomStylePlugin : public QStylePlugin
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QStyleFactoryInterface" FILE "customstyle.json")
 public:
-    QStyle *create(const QString &) { return new CustomStyle; }
+    QStyle *create(const QString &) override { return new CustomStyle; }
 };
 
 Q_IMPORT_PLUGIN(CustomStylePlugin)
@@ -1937,7 +2015,7 @@ void tst_QApplication::applicationPalettePolish()
         qputenv("QT_DESKTOP_STYLE_KEY", "customstyle");
         QApplication app(argc, &argv0);
         QVERIFY(CustomStyle::polished);
-        QVERIFY(!app.palette().resolve());
+        QVERIFY(!app.palette().resolveMask());
         QCOMPARE(app.palette().color(QPalette::Link), Qt::red);
         qunsetenv("QT_DESKTOP_STYLE_KEY");
     }
@@ -1947,7 +2025,7 @@ void tst_QApplication::applicationPalettePolish()
         QApplication::setStyle(new CustomStyle);
         QApplication app(argc, &argv0);
         QVERIFY(CustomStyle::polished);
-        QVERIFY(!app.palette().resolve());
+        QVERIFY(!app.palette().resolveMask());
         QCOMPARE(app.palette().color(QPalette::Link), Qt::red);
     }
 
@@ -1955,13 +2033,13 @@ void tst_QApplication::applicationPalettePolish()
         QApplication app(argc, &argv0);
         app.setStyle(new CustomStyle);
         QVERIFY(CustomStyle::polished);
-        QVERIFY(!app.palette().resolve());
+        QVERIFY(!app.palette().resolveMask());
         QCOMPARE(app.palette().color(QPalette::Link), Qt::red);
 
         CustomStyle::polished = 0;
         app.setPalette(QPalette());
         QVERIFY(CustomStyle::polished);
-        QVERIFY(!app.palette().resolve());
+        QVERIFY(!app.palette().resolveMask());
         QCOMPARE(app.palette().color(QPalette::Link), Qt::red);
 
         CustomStyle::polished = 0;
@@ -1969,7 +2047,7 @@ void tst_QApplication::applicationPalettePolish()
         palette.setColor(QPalette::Active, QPalette::Highlight, Qt::green);
         app.setPalette(palette);
         QVERIFY(CustomStyle::polished);
-        QVERIFY(app.palette().resolve());
+        QVERIFY(app.palette().resolveMask());
         QCOMPARE(app.palette().color(QPalette::Link), Qt::red);
         QCOMPARE(app.palette().color(QPalette::Highlight), Qt::green);
     }
@@ -1997,11 +2075,11 @@ void tst_QApplication::topLevelWidgets()
 #endif
     QCoreApplication::processEvents();
     QVERIFY(QApplication::topLevelWidgets().contains(w));
-    QCOMPARE(QApplication::topLevelWidgets().count(), 1);
+    QCOMPARE(QApplication::topLevelWidgets().size(), 1);
     delete w;
     w = nullptr;
     QCoreApplication::processEvents();
-    QCOMPARE(QApplication::topLevelWidgets().count(), 0);
+    QCOMPARE(QApplication::topLevelWidgets().size(), 0);
 }
 
 
@@ -2010,25 +2088,24 @@ void tst_QApplication::setAttribute()
 {
     int argc = 1;
     QApplication app(argc, &argv0);
-    QVERIFY(!QApplication::testAttribute(Qt::AA_ImmediateWidgetCreation));
+    QVERIFY(!QApplication::testAttribute(Qt::AA_NativeWindows));
     QWidget  *w = new QWidget;
-    QVERIFY(!w->testAttribute(Qt::WA_WState_Created));
+    w->show(); // trigger creation;
+    QVERIFY(!w->testAttribute(Qt::WA_NativeWindow));
     delete w;
 
-    QApplication::setAttribute(Qt::AA_ImmediateWidgetCreation);
-    QVERIFY(QApplication::testAttribute(Qt::AA_ImmediateWidgetCreation));
+    QApplication::setAttribute(Qt::AA_NativeWindows);
+    QVERIFY(QApplication::testAttribute(Qt::AA_NativeWindows));
     w = new QWidget;
-    QVERIFY(w->testAttribute(Qt::WA_WState_Created));
-    QWidget *w2 = new QWidget(w);
-    w2->setParent(nullptr);
-    QVERIFY(w2->testAttribute(Qt::WA_WState_Created));
+    w->show(); // trigger creation
+    QVERIFY(w->testAttribute(Qt::WA_NativeWindow));
     delete w;
-    delete w2;
 
-    QApplication::setAttribute(Qt::AA_ImmediateWidgetCreation, false);
-    QVERIFY(!QApplication::testAttribute(Qt::AA_ImmediateWidgetCreation));
+    QApplication::setAttribute(Qt::AA_NativeWindows, false);
+    QVERIFY(!QApplication::testAttribute(Qt::AA_NativeWindows));
     w = new QWidget;
-    QVERIFY(!w->testAttribute(Qt::WA_WState_Created));
+    w->show(); // trigger creation;
+    QVERIFY(!w->testAttribute(Qt::WA_NativeWindow));
     delete w;
 }
 
@@ -2079,17 +2156,8 @@ void tst_QApplication::touchEventPropagation()
     int argc = 1;
     QApplication app(argc, &argv0);
 
-    QList<QTouchEvent::TouchPoint> pressedTouchPoints;
-    QTouchEvent::TouchPoint press(0);
-    press.setState(Qt::TouchPointPressed);
-    pressedTouchPoints << press;
 
-    QList<QTouchEvent::TouchPoint> releasedTouchPoints;
-    QTouchEvent::TouchPoint release(0);
-    release.setState(Qt::TouchPointReleased);
-    releasedTouchPoints << release;
-
-    QTouchDevice *device = QTest::createTouchDevice();
+    QPointingDevice *device = QTest::createTouchDevice();
 
     {
         // touch event behavior on a window
@@ -2106,8 +2174,10 @@ void tst_QApplication::touchEventPropagation()
         // we must ensure there is a screen position in the TouchPoint that maps to a local 0, 0.
         const QPoint deviceGlobalPos =
             QHighDpi::toNativePixels(window.mapToGlobal(QPoint(0, 0)), window.windowHandle()->screen());
-        pressedTouchPoints[0].setScreenPos(deviceGlobalPos);
-        releasedTouchPoints[0].setScreenPos(deviceGlobalPos);
+        auto pressedTouchPoints = QList<QEventPoint>() <<
+            QEventPoint(0, QEventPoint::State::Pressed, QPointF(), deviceGlobalPos);
+        auto releasedTouchPoints = QList<QEventPoint>() <<
+            QEventPoint(0, QEventPoint::State::Released, QPointF(), deviceGlobalPos);
 
         QWindowSystemInterface::handleTouchEvent(handle,
                                                  0,
@@ -2164,8 +2234,10 @@ void tst_QApplication::touchEventPropagation()
         QVERIFY(QTest::qWaitForWindowExposed(&window));
         const QPoint deviceGlobalPos =
             QHighDpi::toNativePixels(window.mapToGlobal(QPoint(50, 150)), window.windowHandle()->screen());
-        pressedTouchPoints[0].setScreenPos(deviceGlobalPos);
-        releasedTouchPoints[0].setScreenPos(deviceGlobalPos);
+        auto pressedTouchPoints = QList<QEventPoint>() <<
+            QEventPoint(0, QEventPoint::State::Pressed, QPointF(), deviceGlobalPos);
+        auto releasedTouchPoints = QList<QEventPoint>() <<
+            QEventPoint(0, QEventPoint::State::Released, QPointF(), deviceGlobalPos);
 
         QWindowSystemInterface::handleTouchEvent(handle,
                                                  0,
@@ -2323,7 +2395,6 @@ struct WheelEvent
     Qt::Orientation orientation = Qt::Vertical;
 };
 using WheelEventList = QList<WheelEvent>;
-Q_DECLARE_METATYPE(WheelEvent);
 
 void tst_QApplication::wheelEventPropagation_data()
 {
@@ -2360,10 +2431,6 @@ void tst_QApplication::wheelEventPropagation_data()
 
 void tst_QApplication::wheelEventPropagation()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("Not enough available screen space on WinRT for this test");
-#endif
-
     QFETCH(bool, innerScrolls);
     QFETCH(WheelEventList, events);
 
@@ -2429,7 +2496,7 @@ void tst_QApplication::wheelEventPropagation()
     int vcount = 0;
     int hcount = 0;
 
-    for (const auto &event : qAsConst(events)) {
+    for (const auto &event : std::as_const(events)) {
         const QPoint pixelDelta = event.orientation == Qt::Vertical ? QPoint(0, -scrollStep) : QPoint(-scrollStep, 0);
         const QPoint angleDelta = event.orientation == Qt::Vertical ? QPoint(0, -120) : QPoint(-120, 0);
         QWindowSystemInterface::handleWheelEvent(outerArea.windowHandle(), center, global,
@@ -2440,10 +2507,10 @@ void tst_QApplication::wheelEventPropagation()
         else
             ++hcount;
         QCoreApplication::processEvents();
-        QCOMPARE(innerVSpy.count(), innerScrolls ? vcount : 0);
-        QCOMPARE(innerHSpy.count(), innerScrolls ? hcount : 0);
-        QCOMPARE(outerVSpy.count(), innerScrolls ? 0 : vcount);
-        QCOMPARE(outerHSpy.count(), innerScrolls ? 0 : hcount);
+        QCOMPARE(innerVSpy.size(), innerScrolls ? vcount : 0);
+        QCOMPARE(innerHSpy.size(), innerScrolls ? hcount : 0);
+        QCOMPARE(outerVSpy.size(), innerScrolls ? 0 : vcount);
+        QCOMPARE(outerHSpy.size(), innerScrolls ? 0 : hcount);
     }
 }
 
@@ -2460,6 +2527,20 @@ void tst_QApplication::qtbug_12673()
 #else
     QSKIP( "No QProcess support", SkipAll);
 #endif
+}
+
+void tst_QApplication::qtbug_103611()
+{
+    {
+        int argc = 0;
+        QApplication app(argc, nullptr);
+        auto ll = QLocale().uiLanguages();
+    }
+    {
+        int argc = 0;
+        QApplication app(argc, nullptr);
+        auto ll = QLocale().uiLanguages();
+    }
 }
 
 class NoQuitOnHideWidget : public QWidget
@@ -2527,16 +2608,15 @@ void tst_QApplication::staticFunctions()
     QApplication::setStyle(QStringLiteral("blub"));
     QApplication::allWidgets();
     QApplication::topLevelWidgets();
-    QApplication::desktop();
     QApplication::activePopupWidget();
+    QTest::ignoreMessage(QtWarningMsg, "Must construct a QGuiApplication first.");
     QApplication::activeModalWidget();
     QApplication::focusWidget();
     QApplication::activeWindow();
-    QApplication::setActiveWindow(nullptr);
+    QApplicationPrivate::setActiveWindow(nullptr);
     QApplication::widgetAt(QPoint(0, 0));
     QApplication::topLevelAt(QPoint(0, 0));
-    QApplication::setGlobalStrut(QSize(0, 0));
-    QApplication::globalStrut();
+    QTest::ignoreMessage(QtWarningMsg, "Must construct a QApplication first.");
     QApplication::isEffectEnabled(Qt::UI_General);
     QApplication::setEffectEnabled(Qt::UI_General, false);
 }
@@ -2589,7 +2669,6 @@ Q_GLOBAL_STATIC(QWidget, tst_qapp_widget);
 Q_GLOBAL_STATIC(QPixmap, tst_qapp_pixmap);
 Q_GLOBAL_STATIC(QFont, tst_qapp_font);
 Q_GLOBAL_STATIC(QRegion, tst_qapp_region);
-Q_GLOBAL_STATIC(QFontDatabase, tst_qapp_fontDatabase);
 #ifndef QT_NO_CURSOR
 Q_GLOBAL_STATIC(QCursor, tst_qapp_cursor);
 #endif
@@ -2614,7 +2693,6 @@ void tst_QApplication::globalStaticObjectDestruction()
     QVERIFY(tst_qapp_pixmap());
     QVERIFY(tst_qapp_font());
     QVERIFY(tst_qapp_region());
-    QVERIFY(tst_qapp_fontDatabase());
 #ifndef QT_NO_CURSOR
     QVERIFY(tst_qapp_cursor());
 #endif
@@ -2625,6 +2703,7 @@ int main(int argc, char *argv[])
 {
     tst_QApplication tc;
     argv0 = argv[0];
+    QTEST_SET_MAIN_SOURCE_PATH
     return QTest::qExec(&tc, argc, argv);
 }
 

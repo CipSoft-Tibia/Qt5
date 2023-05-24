@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioManager;
-import android.os.IBinder;
 import android.os.RemoteException;
 
+import androidx.annotation.NonNull;
+
+import org.chromium.base.ContextUtils;
 import org.chromium.weblayer_private.interfaces.ObjectWrapper;
 
 /**
@@ -19,26 +21,21 @@ import org.chromium.weblayer_private.interfaces.ObjectWrapper;
  * This class is a thin wrapper that forwards lifecycle events to the WebLayer implementation, which
  * in turn manages a system notification and {@link MediaSession}. This service will be in the
  * foreground when the MediaSession is active.
- * @since 85
  */
-public class MediaSessionService extends Service {
+public class MediaSessionService extends MediaPlaybackBaseService {
     // A helper to automatically pause the media session when a user removes headphones.
     private BroadcastReceiver mAudioBecomingNoisyReceiver;
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
+    public void onDestroy() {
+        super.onDestroy();
+        if (mAudioBecomingNoisyReceiver != null) {
+            unregisterReceiver(mAudioBecomingNoisyReceiver);
+        }
     }
 
     @Override
-    public void onCreate() {
-        super.onCreate();
-
-        if (!WebLayer.hasWebLayerInitializationStarted()) {
-            stopSelf();
-            return;
-        }
-
+    void init() {
         mAudioBecomingNoisyReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -53,47 +50,17 @@ public class MediaSessionService extends Service {
         };
 
         IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
-        registerReceiver(mAudioBecomingNoisyReceiver, filter);
+        ContextUtils.registerProtectedBroadcastReceiver(this, mAudioBecomingNoisyReceiver, filter);
     }
 
     @Override
-    public void onDestroy() {
-        super.onDestroy();
-
-        if (mAudioBecomingNoisyReceiver == null) return;
-
-        try {
-            getWebLayer().getImpl().onMediaSessionServiceDestroyed();
-        } catch (RemoteException e) {
-            throw new RuntimeException(e);
-        }
-
-        unregisterReceiver(mAudioBecomingNoisyReceiver);
+    void forwardStartCommandToImpl(@NonNull WebLayer webLayer, Intent intent)
+            throws RemoteException {
+        webLayer.getImpl().onMediaSessionServiceStarted(ObjectWrapper.wrap(this), intent);
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        try {
-            WebLayer webLayer = getWebLayer();
-            if (webLayer == null) {
-                stopSelf();
-            } else {
-                webLayer.getImpl().onMediaSessionServiceStarted(ObjectWrapper.wrap(this), intent);
-            }
-        } catch (RemoteException e) {
-            throw new RuntimeException(e);
-        }
-
-        return START_NOT_STICKY;
-    }
-
-    private WebLayer getWebLayer() {
-        WebLayer webLayer;
-        try {
-            webLayer = WebLayer.getLoadedWebLayer(getApplication());
-        } catch (UnsupportedVersionException e) {
-            throw new RuntimeException(e);
-        }
-        return webLayer;
+    void forwardDestroyToImpl() throws RemoteException {
+        getWebLayer().getImpl().onMediaSessionServiceDestroyed();
     }
 }

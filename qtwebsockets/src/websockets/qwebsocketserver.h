@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWEBSOCKETSERVER_H
 #define QWEBSOCKETSERVER_H
@@ -52,7 +16,7 @@
 #include <QtNetwork/QSslError>
 #endif
 
-#if QT_HAS_INCLUDE(<chrono>)
+#if __has_include(<chrono>)
 #include <chrono>
 #endif
 
@@ -90,7 +54,7 @@ public:
     void setMaxPendingConnections(int numConnections);
     int maxPendingConnections() const;
 
-#if QT_HAS_INCLUDE(<chrono>) || defined(Q_CLANG_QDOC)
+#if __has_include(<chrono>) || defined(Q_QDOC)
     void setHandshakeTimeout(std::chrono::milliseconds msec)
     {
         setHandshakeTimeout(int(msec.count()));
@@ -109,18 +73,14 @@ public:
 
     SslMode secureMode() const;
 
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
     bool setSocketDescriptor(qintptr socketDescriptor);
     qintptr socketDescriptor() const;
+#if QT_DEPRECATED_SINCE(6, 2)
+    QT_DEPRECATED_VERSION_X_6_2("Use setSocketDescriptor instead")
     bool setNativeDescriptor(qintptr descriptor) { return setSocketDescriptor(descriptor); }
+    QT_DEPRECATED_VERSION_X_6_2("Use socketDescriptor instead")
     qintptr nativeDescriptor() const { return socketDescriptor(); }
-#else // ### Qt 6: Remove leftovers
-    Q_DECL_DEPRECATED_X("Use setNativeDescriptor") bool setSocketDescriptor(int socketDescriptor);
-    Q_DECL_DEPRECATED_X("Use nativeDescriptor") int socketDescriptor() const;
-    bool setNativeDescriptor(qintptr descriptor);
-    qintptr nativeDescriptor() const;
-#endif // (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-
+#endif
 
     bool hasPendingConnections() const;
     virtual QWebSocket *nextPendingConnection();
@@ -133,6 +93,9 @@ public:
 
     void setServerName(const QString &serverName);
     QString serverName() const;
+
+    void setSupportedSubprotocols(const QStringList &protocols);
+    QStringList supportedSubprotocols() const;
 
 #ifndef QT_NO_NETWORKPROXY
     void setProxy(const QNetworkProxy &networkProxy);
@@ -158,6 +121,9 @@ Q_SIGNALS:
     void peerVerifyError(const QSslError &error);
     void sslErrors(const QList<QSslError> &errors);
     void preSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator *authenticator);
+    void alertSent(QSsl::AlertLevel level, QSsl::AlertType type, const QString &description);
+    void alertReceived(QSsl::AlertLevel level, QSsl::AlertType type, const QString &description);
+    void handshakeInterruptedOnError(const QSslError &error);
 #endif
     void closed();
 };

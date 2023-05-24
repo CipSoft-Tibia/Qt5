@@ -1,31 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
+    \keyword Drag and Drop in Qt
     \page dnd.html
     \title Drag and Drop
     \brief An overview of the drag and drop system provided by Qt.
@@ -358,7 +335,9 @@
     For example, we can copy the contents of a QLineEdit to the clipboard
     with the following code:
 
-    \snippet ../widgets/widgets/charactermap/mainwindow.cpp 11
+    \code
+    QGuiApplication::clipboard()->setText(lineEdit->text(), QClipboard::Clipboard);
+    \endcode
 
     Data with different MIME types can also be put on the clipboard.
     Construct a QMimeData object and set data with setData() function in
@@ -377,8 +356,6 @@
     using one of the MIME types that can be used to represent it:
 
     \snippet clipboard/clipwindow.cpp 1
-    \dots
-    \snippet clipboard/clipwindow.cpp 2
 
     The \l{QClipboard::selectionChanged()}{selectionChanged()} signal can
     be used on X11 to monitor the mouse selection.
@@ -389,23 +366,20 @@
     \li \l{draganddrop/draggableicons}{Draggable Icons}
     \li \l{draganddrop/draggabletext}{Draggable Text}
     \li \l{draganddrop/dropsite}{Drop Site}
-    \li \l{draganddrop/fridgemagnets}{Fridge Magnets}
-    \li \l{draganddrop/puzzle}{Drag and Drop Puzzle}
     \endlist
 
     \section1 Interoperating with Other Applications
 
-    On X11, the public \l{http://www.newplanetsoftware.com/xdnd/}{XDND
-    protocol} is used, while on Windows Qt uses the OLE standard, and
-    Qt for \macos uses the Cocoa Drag Manager. On X11, XDND uses MIME,
-    so no translation is necessary. The Qt API is the same regardless of
-    the platform. On Windows, MIME-aware applications can communicate by
-    using clipboard format names that are MIME types. Already some
-    Windows applications use MIME naming conventions for their
-    clipboard formats.
+    On X11, the public
+    \l{https://freedesktop.org/wiki/Specifications/XDND}{XDND protocol} is
+    used, while on Windows Qt uses the OLE standard, and Qt for \macos uses the
+    Cocoa Drag Manager. On X11, XDND uses MIME, so no translation is necessary.
+    The Qt API is the same regardless of the platform. On Windows, MIME-aware
+    applications can communicate by using clipboard format names that are MIME
+    types. Some Windows applications already use MIME naming conventions for
+    their clipboard formats.
 
     Custom classes for translating proprietary clipboard formats can be
-    registered by reimplementing QWinMime on Windows or
-    QMacPasteboardMime on \macos.
-
+    registered by reimplementing QWindowsMimeConverter on Windows or
+    QUtiMimeConverter on \macos.
 */

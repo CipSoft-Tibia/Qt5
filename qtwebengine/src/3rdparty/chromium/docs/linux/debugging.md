@@ -62,7 +62,7 @@ instances will fight over the terminal). To auto-start the renderers in the
 debugger, send the "run" command to the debugger:
 
     chrome --no-sandbox --renderer-cmd-prefix='xterm -title renderer -e gdb \
-        -ex run --args
+        -ex run --args'
 
 If you're using Emacs and `M-x gdb`, you can do
 
@@ -83,6 +83,10 @@ to debug the renderer code. Go to
 https://www.chromium.org/blink/getting-started-with-blink-debugging for more
 information on how this can be done.
 
+For utilities you can use `--utility-startup-dialog` to have all utilities
+prompt, or `--utility-startup-dialog=data_decoder.mojom.DataDecoderService`
+to debug only a particular service type.
+
 #### Choosing which renderers to debug
 
 If you are starting multiple renderers then the above means that multiple gdb's
@@ -99,6 +103,46 @@ if [ "$input" = "y" ] ; then
 else
   $*
 fi
+```
+
+#### Choosing renderer to debug by URL
+
+In most cases you'll want to debug the renderer which is loading a particular
+site. If you want a script which will automatically debug the renderer which has
+visited a given target URL and continue all other renderers, you can use the
+following:
+
+```sh
+./third_party/blink/tools/debug_renderer out/Default/content_shell https://example.domain/path
+```
+
+The script also supports specifying a different URL than the navigation URL.
+This is useful when the renderer you want to debug is not the top frame but one
+of the subframes on the page. For example, you could debug a particular subframe
+on a page with:
+
+```sh
+./third_party/blink/tools/debug_renderer -d https://subframe.url/path out/Default/content_shell https://example.domain/path
+```
+
+However, if you need more fine-grained control over which renderers to debug
+you can run chrome or content_shell directly with the
+`--wait-for-debugger-on-navigation` flag which will pause each renderer at the
+point of navigation (when the URL is known).
+
+This will result in a series of lines such as the following in the output:
+```
+...:content_switches_internal.cc(119)] Renderer url="https://example.domain/path" (PID) paused waiting for debugger to attach. Send SIGUSR1 to unpause.
+```
+
+You can signal the renderers you aren't interested in to continue running with:
+```sh
+kill -s SIGUSR1 <pid>
+```
+
+And debug the renderer you are interested in debugging with:
+```sh
+gdb -p <pid>
 ```
 
 #### Selective breakpoints
@@ -207,7 +251,7 @@ three) but you'll still need to use `--plugin-launcher` or another approach.
 ### Printing Chromium types
 
 gdb 7 lets us use Python to write pretty-printers for Chromium types. See
-[gdbinit](https://chromium.googlesource.com/chromium/src/+/master/docs/gdbinit.md)
+[gdbinit](https://chromium.googlesource.com/chromium/src/+/main/docs/gdbinit.md)
 to enable pretty-printing of Chromium types.  This will import Blink
 pretty-printers as well.
 
@@ -255,37 +299,37 @@ installation instructions.
 
 You can use [rr](https://rr-project.org) for time travel debugging, so you
 can also step or execute backwards. This works by first recording a trace
-and then debugging based on that. I recommend installing it by compiling
-[from source](https://github.com/mozilla/rr/wiki/Building-And-Installing).
+and then debugging based on that.
 
-As of May 2020, you must build from source for [`MADV_WIPEONFORK`
-support](https://bugs.chromium.org/p/chromium/issues/detail?id=1082304). If you
-get the following error, rr is too old:
-```
-Expected EINVAL for 'madvise' but got result 0 (errno SUCCESS); unknown madvise(18)
-```
+You need an up-to-date version of rr, since rr is frequently updated to support
+new parts of the Linux system call API surface that Chromium uses. If you have
+any issues with the latest release version, try compiling rr
+[from source](https://github.com/rr-debugger/rr/wiki/Building-And-Installing).
 
 Once installed, you can use it like this:
 ```
-rr record out/Debug/content_shell --single-process --no-sandbox --disable-hang-monitor --single-process  --disable-seccomp-sandbox --disable-setuid-sandbox
+rr record out/Debug/content_shell --single-process
 rr replay
-(gdb) c
-(gdb) break blink::NGBlockNode::Layout
-(gdb) rc # reverse-continue to the last Layout call
-(gdb) jsdbg # run JsDbg as described above to find the interesting object
-(gdb) watch -l box_->frame_rect_.size_.width_.value_
-(gdb) rc # reverse-continue to the last time the width was changed
-(gdb) rn # reverse-next to the previous line
-(gdb) reverse-fin # run to where this function was called from
+(rr) c
+(rr) break blink::NGBlockNode::Layout
+(rr) rc # reverse-continue to the last Layout call
+(rr) jsdbg # run JsDbg as described above to find the interesting object
+(rr) watch -l box_->frame_rect_.size_.width_.value_
+(rr) rc # reverse-continue to the last time the width was changed
+(rr) rn # reverse-next to the previous line
+(rr) reverse-fin # run to where this function was called from
 ```
 
-You can debug multi-process chrome using `rr -f [PID]`. To find the process
-id you can either run `rr ps` after recording, or a convenient way
-to find the correct process id is to run with `--vmodule=render_frame_impl=1`
-which will log a message on navigations. e.g.
+You can debug multi-process chrome using `rr -f [PID]`
+for processes `fork()`ed from a [zygote process](zygote.md) without exec,
+which includes renderer processes,
+or `rr -p [PID]` for other processes.
+To find the process id you can either run `rr ps` after recording, or for
+renderer processes use `--vmodule=render_frame_impl=1` which will log a
+message on navigations. Example:
 
 ```
-$ rr record out/Debug/content_shell --disable-hang-monitor --no-sandbox --disable-seccomp-sandbox --disable-setuid-sandbox --vmodule=render_frame_impl=1 https://google.com/
+$ rr record out/Debug/content_shell --disable-hang-monitor --vmodule=render_frame_impl=1 https://www.google.com/
 rr: Saving execution to trace directory `...'.
 ...
 [128515:128515:0320/164124.768687:VERBOSE1:render_frame_impl.cc(4244)] Committed provisional load: https://www.google.com/
@@ -298,11 +342,29 @@ and can set a breakpoint for when that process is forked.
 rr replay -f 128515
 ```
 
+If you want to call debugging functions from gdb that use `LOG()`,
+then those functions need to disable the printing of timestamps using
+[`SetLogItems`](https://source.chromium.org/search?q=SetLogItems&sq=&ss=chromium%2Fchromium%2Fsrc).
+See `LayoutObject::ShowLayoutObject()` for an example of this, and
+[issue 2829](https://github.com/rr-debugger/rr/issues/2829) for why it is needed.
+
+If rr doesn't work correctly, the rr developers are generally quite responsive
+to [bug reports](https://github.com/rr-debugger/rr/issues),
+especially ones that have enough information so that
+they don't have to build Chromium.
+
+See Also:
+
+* [The Chromium Chronicle #13: Time-Travel Debugging with RR](https://developer.chrome.com/blog/chromium-chronicle-13/)
+* [@davidbaron demo using rr](https://twitter.com/davidbaron/status/1473761042278887433)
+* [@davidbaron demo using pernosco](https://twitter.com/davidbaron/status/1475836824409022469)
+(Googlers: see [go/pernosco](https://goto.google.com/pernosco))
+
 ### Graphical Debugging Aid for Chromium Views
 
 The following link describes a tool that can be used on Linux, Windows and Mac under GDB.
 
-[graphical_debugging_aid_chromium_views](graphical_debugging_aid_chromium_views.md)
+[graphical_debugging_aid_chromium_views](../graphical_debugging_aid_chromium_views.md)
 
 ### Faster startup
 
@@ -316,7 +378,7 @@ See
 https://groups.google.com/a/chromium.org/forum/#!searchin/chromium-dev/gdb-add-index/chromium-dev/ELRuj1BDCL4/5Ki4LGx41CcJ
 for more info.
 
-You can improve GDB load time significantly at the cost of link time by
+You can improve GDB load time significantly at the cost of link time by not
 splitting symbols from the object files. In GN, set `use_debug_fission=false` in
 your "gn args".
 
@@ -325,7 +387,7 @@ your "gn args".
 When `strip_absolute_paths_from_debug_symbols` is enabled (which is the
 default), gdb may not be able to find debug files, making source-level debugging
 impossible. See
-[gdbinit](https://chromium.googlesource.com/chromium/src/+/master/docs/gdbinit.md)
+[gdbinit](https://chromium.googlesource.com/chromium/src/+/main/docs/gdbinit.md)
 to configure gdb to be able to find debug files.
 
 ## Core files
@@ -350,8 +412,7 @@ See [minidump_to_core.md](minidump_to_core.md)
 Many of our tests bring up windows on screen. This can be annoying (they steal
 your focus) and hard to debug (they receive extra events as you mouse over them).
 Instead, use `Xvfb` or `Xephyr` to run a nested X session to debug them, as
-outlined on [testing/web_tests_linux.md](testing/web_tests_linux.md).
-
+outlined on [testing/web_tests_linux.md](../testing/web_tests_linux.md).
 ### Browser tests
 
 By default the `browser_tests` forks a new browser for each test. To debug the
@@ -369,7 +430,7 @@ To debug a renderer process in this case, use the tips above about renderers.
 
 ### Web tests
 
-See [testing/web_tests_linux.md](testing/web_tests_linux.md) for some tips. In particular,
+See [testing/web_tests_linux.md](../testing/web_tests_linux.md) for some tips. In particular,
 note that it's possible to debug a web test via `ssh`ing to a Linux box; you
 don't need anything on screen if you use `Xvfb`.
 
@@ -508,7 +569,7 @@ See the last section of [Linux Crash Dumping](crash_dumping.md).
 If you break in a debugger during a drag, Chrome will have grabbed your mouse
 and keyboard so you won't be able to interact with the debugger!  To work around
 this, run via `Xephyr`. Instructions for how to use `Xephyr` are on the
-[Running web tests on Linux](testing/web_tests_linux.md) page.
+[Running web tests on Linux](../testing/web_tests_linux.md) page.
 
 ## Tracking Down Bugs
 
@@ -564,7 +625,7 @@ Some strategies are:
 
 To test on various window managers, you can use a nested X server like `Xephyr`.
 Instructions for how to use `Xephyr` are on the
-[Running web tests on Linux](web_tests_linux.md) page.
+[Running web tests on Linux](../testing/web_tests_linux.md) page.
 
 If you need to test something with hardware accelerated compositing
 (e.g., compiz), you can use `Xgl` (`sudo apt-get install xserver-xgl`). E.g.:
@@ -574,3 +635,10 @@ If you need to test something with hardware accelerated compositing
 ## Mozilla Tips
 
 https://developer.mozilla.org/en/Debugging_Mozilla_on_Linux_FAQ
+
+## Google Chrome Symbol Files
+
+Symbols for Google Chrome's official builds are available from
+`https://edgedl.me.gvt1.com/chrome/linux/symbols/google-chrome-debug-info-linux64-${VERSION}.zip`
+where ${VERSION} is any version of Google Chrome that has recently been served
+to Stable, Beta, or Unstable (Dev) channels on Linux.

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "jsonparserhelpers.h"
 #include "../qplacemanagerengine_nokiav2.h"
@@ -43,9 +10,10 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QVariantMap>
 #include <QtPositioning/QGeoCoordinate>
-#include <QtLocation/QPlaceImage>
-#include <QtLocation/QPlaceReview>
-#include <QtLocation/QPlaceEditorial>
+#include <QtLocation/QPlaceContentRequest>
+#include <QtLocation/QPlaceIcon>
+#include <QtLocation/QPlaceSupplier>
+#include <QtLocation/QPlaceContent>
 #include <QtLocation/QPlaceUser>
 #include <QtLocation/QPlaceContactDetail>
 #include <QtLocation/QPlaceCategory>
@@ -119,51 +87,61 @@ QList<QPlaceContactDetail> parseContactDetails(const QJsonArray &contacts)
     return contactDetails;
 }
 
-QPlaceImage parseImage(const QJsonObject &imageObject,
-                       const QPlaceManagerEngineNokiaV2 *engine)
-{
-    Q_ASSERT(engine);
-
-    QPlaceImage image;
-
-    image.setAttribution(imageObject.value(QStringLiteral("attribution")).toString());
-    image.setUrl(imageObject.value(QStringLiteral("src")).toString());
-    image.setSupplier(parseSupplier(imageObject.value(QStringLiteral("supplier")).toObject(),
-                                    engine));
-
-    return image;
-}
-
-QPlaceReview parseReview(const QJsonObject &reviewObject,
+QPlaceContent parseImage(const QJsonObject &imageObject,
                          const QPlaceManagerEngineNokiaV2 *engine)
 {
     Q_ASSERT(engine);
 
-    QPlaceReview review;
+    QPlaceContent image(QPlaceContent::ImageType);
 
-    review.setDateTime(QDateTime::fromString(reviewObject.value(QStringLiteral("date")).toString()));
+    image.setValue(QPlaceContent::ContentAttribution, imageObject.value(
+                   QStringLiteral("attribution")).toString());
+    image.setValue(QPlaceContent::ImageUrl, imageObject.value(
+                   QStringLiteral("src")).toString());
+    image.setValue(QPlaceContent::ContentSupplier, QVariant::fromValue(parseSupplier(
+                   imageObject.value(QStringLiteral("supplier")).toObject(), engine)));
 
-    if (reviewObject.contains(QStringLiteral("title")))
-        review.setTitle(reviewObject.value(QStringLiteral("title")).toString());
+    return image;
+}
 
-    if (reviewObject.contains(QStringLiteral("rating")))
-        review.setRating(reviewObject.value(QStringLiteral("rating")).toDouble());
+QPlaceContent parseReview(const QJsonObject &reviewObject,
+                          const QPlaceManagerEngineNokiaV2 *engine)
+{
+    Q_ASSERT(engine);
 
-    review.setText(reviewObject.value(QStringLiteral("description")).toString());
+    QPlaceContent review(QPlaceContent::ReviewType);
+
+    review.setValue(QPlaceContent::ReviewDateTime, QDateTime::fromString(
+                    reviewObject.value(QStringLiteral("date")).toString()));
+
+    if (reviewObject.contains(QStringLiteral("title"))) {
+        review.setValue(QPlaceContent::ReviewTitle, reviewObject.value(
+                        QStringLiteral("title")).toString());
+    }
+
+    if (reviewObject.contains(QStringLiteral("rating"))) {
+        review.setValue(QPlaceContent::ReviewRating, reviewObject.value(
+                        QStringLiteral("rating")).toDouble());
+    }
+
+    review.setValue(QPlaceContent::ReviewText, reviewObject.value(
+                    QStringLiteral("description")).toString());
 
     QJsonObject userObject = reviewObject.value(QStringLiteral("user")).toObject();
 
     QPlaceUser user;
     user.setUserId(userObject.value(QStringLiteral("id")).toString());
     user.setName(userObject.value(QStringLiteral("title")).toString());
-    review.setUser(user);
+    review.setValue(QPlaceContent::ContentUser, QVariant::fromValue(user));
 
-    review.setAttribution(reviewObject.value(QStringLiteral("attribution")).toString());
+    review.setValue(QPlaceContent::ContentAttribution, reviewObject.value(
+                    QStringLiteral("attribution")).toString());
 
-    review.setLanguage(reviewObject.value(QStringLiteral("language")).toString());
+    review.setValue(QPlaceContent::ReviewLanguage, reviewObject.value(
+                    QStringLiteral("language")).toString());
 
-    review.setSupplier(parseSupplier(reviewObject.value(QStringLiteral("supplier")).toObject(),
-                                     engine));
+    review.setValue(QPlaceContent::ContentSupplier, QVariant::fromValue(parseSupplier(
+                    reviewObject.value(QStringLiteral("supplier")).toObject(), engine)));
 
     //if (reviewObject.contains(QStringLiteral("via"))) {
     //    QJsonObject viaObject = reviewObject.value(QStringLiteral("via")).toObject();
@@ -172,23 +150,25 @@ QPlaceReview parseReview(const QJsonObject &reviewObject,
     return review;
 }
 
-QPlaceEditorial parseEditorial(const QJsonObject &editorialObject,
-                               const QPlaceManagerEngineNokiaV2 *engine)
+QPlaceContent parseEditorial(const QJsonObject &editorialObject,
+                             const QPlaceManagerEngineNokiaV2 *engine)
 {
     Q_ASSERT(engine);
 
-    QPlaceEditorial editorial;
+    QPlaceContent editorial(QPlaceContent::EditorialType);
 
-    editorial.setAttribution(editorialObject.value(QStringLiteral("attribution")).toString());
+    editorial.setValue(QPlaceContent::ContentAttribution, editorialObject.value(QStringLiteral("attribution")).toString());
 
     //if (editorialObject.contains(QStringLiteral("via"))) {
     //    QJsonObject viaObject = editorialObject.value(QStringLiteral("via")).toObject();
     //}
 
-    editorial.setSupplier(parseSupplier(editorialObject.value(QStringLiteral("supplier")).toObject(),
-                                        engine));
-    editorial.setLanguage(editorialObject.value(QStringLiteral("language")).toString());
-    editorial.setText(editorialObject.value(QStringLiteral("description")).toString());
+    editorial.setValue(QPlaceContent::ContentSupplier, QVariant::fromValue(parseSupplier(
+                       editorialObject.value(QStringLiteral("supplier")).toObject(), engine)));
+    editorial.setValue(QPlaceContent::EditorialLanguage, editorialObject.value(
+                       QStringLiteral("language")).toString());
+    editorial.setValue(QPlaceContent::EditorialText, editorialObject.value(
+                       QStringLiteral("description")).toString());
 
     return editorial;
 }

@@ -64,7 +64,8 @@ void MojomSpeechSynthesisMock::SpeakingErrorOccurred(TimerBase*) {
 
 void MojomSpeechSynthesisMock::SpeakingFinished(TimerBase*) {
   DCHECK(current_utterance_);
-  current_client_->OnFinishedSpeaking();
+  current_client_->OnFinishedSpeaking(
+      blink::mojom::SpeechSynthesisErrorCode::kNoError);
   SpeakNext();
 }
 
@@ -75,7 +76,7 @@ void MojomSpeechSynthesisMock::SpeakNext() {
   current_utterance_.reset();
   current_client_.reset();
 
-  if (queued_requests_.IsEmpty())
+  if (queued_requests_.empty())
     return;
 
   SpeechRequest next_request = queued_requests_.TakeFirst();
@@ -147,8 +148,7 @@ void MojomSpeechSynthesisMock::Speak(
 
   // Give the fake speech job some time so that pause and other functions have
   // time to be called.
-  speaking_finished_timer_.StartOneShot(base::TimeDelta::FromMilliseconds(100),
-                                        FROM_HERE);
+  speaking_finished_timer_.StartOneShot(base::Milliseconds(100), FROM_HERE);
 }
 
 void MojomSpeechSynthesisMock::Cancel() {
@@ -159,8 +159,8 @@ void MojomSpeechSynthesisMock::Cancel() {
   queued_requests_.clear();
 
   speaking_finished_timer_.Stop();
-  speaking_error_occurred_timer_.StartOneShot(
-      base::TimeDelta::FromMilliseconds(100), FROM_HERE);
+  speaking_error_occurred_timer_.StartOneShot(base::Milliseconds(100),
+                                              FROM_HERE);
 }
 
 void MojomSpeechSynthesisMock::Pause() {

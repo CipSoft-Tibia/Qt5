@@ -25,15 +25,22 @@
 
 #include "third_party/blink/renderer/bindings/core/v8/script_regexp.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/html/forms/email_input_type.h"
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
-BaseTextInputType::BaseTextInputType(HTMLInputElement& element)
-    : TextFieldInputType(element) {}
+void BaseTextInputType::Trace(Visitor* visitor) const {
+  visitor->Trace(regexp_);
+  TextFieldInputType::Trace(visitor);
+}
+
+BaseTextInputType::BaseTextInputType(Type type, HTMLInputElement& element)
+    : TextFieldInputType(type, element) {}
 
 BaseTextInputType::~BaseTextInputType() = default;
 
@@ -78,30 +85,61 @@ bool BaseTextInputType::TooShort(
 }
 
 bool BaseTextInputType::PatternMismatch(const String& value) const {
+  if (IsEmailInputType() && GetElement().Multiple()) {
+    Vector<String> values = EmailInputType::ParseMultipleValues(value);
+    for (const auto& val : values) {
+      if (PatternMismatchPerValue(val))
+        return true;
+    }
+    return false;
+  }
+  return PatternMismatchPerValue(value);
+}
+
+bool BaseTextInputType::PatternMismatchPerValue(const String& value) const {
   const AtomicString& raw_pattern =
       GetElement().FastGetAttribute(html_names::kPatternAttr);
-  // Empty values can't be mismatched
-  if (raw_pattern.IsNull() || value.IsEmpty())
+  // Empty values can't be mismatched.
+  if (raw_pattern.IsNull() || value.empty())
     return false;
   if (!regexp_ || pattern_for_regexp_ != raw_pattern) {
-    std::unique_ptr<ScriptRegexp> raw_regexp(
-        new ScriptRegexp(raw_pattern, kTextCaseSensitive, kMultilineDisabled,
-                         ScriptRegexp::UTF16));
-    if (!raw_regexp->IsValid()) {
+    ScriptRegexp* raw_regexp_u = MakeGarbageCollected<ScriptRegexp>(
+        raw_pattern, kTextCaseSensitive, MultilineMode::kMultilineDisabled,
+        UnicodeMode::kUnicode);
+    ScriptRegexp* raw_regexp_v = MakeGarbageCollected<ScriptRegexp>(
+        raw_pattern, kTextCaseSensitive, MultilineMode::kMultilineDisabled,
+        UnicodeMode::kUnicodeSets);
+    if (raw_regexp_u->IsValid() && !raw_regexp_v->IsValid()) {
+      UseCounter::Count(
+          GetElement().GetDocument(),
+          WebFeature::
+              kHTMLPatternRegExpUnicodeSetIncompatibilitiesWithUnicodeMode);
       GetElement().GetDocument().AddConsoleMessage(
           MakeGarbageCollected<ConsoleMessage>(
-              mojom::ConsoleMessageSource::kRendering,
-              mojom::ConsoleMessageLevel::kError,
+              mojom::blink::ConsoleMessageSource::kRendering,
+              mojom::blink::ConsoleMessageLevel::kWarning,
+              "Pattern attribute value " + raw_pattern +
+                  " is valid with the RegExp `u` flag, but not with the `v` "
+                  "flag: " +
+                  raw_regexp_v->ExceptionMessage() +
+                  ". See https://crbug.com/1412729"));
+    }
+    if (!raw_regexp_u->IsValid()) {
+      GetElement().GetDocument().AddConsoleMessage(
+          MakeGarbageCollected<ConsoleMessage>(
+              mojom::blink::ConsoleMessageSource::kRendering,
+              mojom::blink::ConsoleMessageLevel::kError,
               "Pattern attribute value " + raw_pattern +
                   " is not a valid regular expression: " +
-                  raw_regexp->ExceptionMessage()));
-      regexp_.reset(raw_regexp.release());
+                  raw_regexp_u->ExceptionMessage()));
+      regexp_ = raw_regexp_u;
       pattern_for_regexp_ = raw_pattern;
       return false;
     }
     String pattern = "^(?:" + raw_pattern + ")$";
-    regexp_.reset(new ScriptRegexp(pattern, kTextCaseSensitive,
-                                   kMultilineDisabled, ScriptRegexp::UTF16));
+    regexp_ = MakeGarbageCollected<ScriptRegexp>(
+        pattern, kTextCaseSensitive, MultilineMode::kMultilineDisabled,
+        UnicodeMode::kUnicode);
     pattern_for_regexp_ = raw_pattern;
   } else if (!regexp_->IsValid()) {
     return false;

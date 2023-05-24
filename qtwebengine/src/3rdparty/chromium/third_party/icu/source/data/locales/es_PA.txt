@@ -1,15 +1,15 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 es_PA{
     %%Parent{"es_419"}
-    Version{"37"}
     calendar{
         generic{
             DateTimePatterns{
-                "h:mm:ss a zzzz",
-                "h:mm:ss a z",
-                "h:mm:ss a",
-                "h:mm a",
+                "h:mm:ss a zzzz",
+                "h:mm:ss a z",
+                "h:mm:ss a",
+                "h:mm a",
                 "EEEE, d 'de' MMMM 'de' y G",
                 "d 'de' MMMM 'de' y G",
                 "MM/dd/y G",
@@ -19,6 +19,16 @@ es_PA{
                 "{1}, {0}",
                 "{1} {0}",
                 "{1} {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "GyMMMMEEEEd",
+                "GyMMMMd",
+                "GyMMdd",
+                "GGGGGyyMMdd",
             }
             availableFormats{
                 MEd{"E, MM/dd"}
@@ -56,36 +66,36 @@ es_PA{
             }
         }
         gregorian{
-            AmPmMarkers{
-                "a. m.",
-                "p. m.",
-            }
-            AmPmMarkersAbbr{
-                "a. m.",
-                "p. m.",
-            }
             DateTimePatterns{
-                "h:mm:ss a zzzz",
-                "h:mm:ss a z",
-                "h:mm:ss a",
-                "h:mm a",
+                "h:mm:ss a zzzz",
+                "h:mm:ss a z",
+                "h:mm:ss a",
+                "h:mm a",
                 "EEEE, d 'de' MMMM 'de' y",
                 "d 'de' MMMM 'de' y",
                 "MM/dd/y",
                 "MM/dd/yy",
                 "{1} {0}",
-                "{1} 'a' 'las' {0}",
-                "{1} 'a' 'las' {0}",
+                "{1}, {0}",
+                "{1}, {0}",
                 "{1} {0}",
-                "{1} {0}",
+                "{1}, {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "yMMMMEEEEd",
+                "yMMMMd",
+                "yMMdd",
+                "yyMMdd",
             }
             availableFormats{
                 MEd{"E, MM/dd"}
                 Md{"MM/dd"}
                 yM{"MM/y"}
                 yMEd{"E MM/dd/y"}
-                yMMM{"MMM y"}
-                yMMMd{"d MMM y"}
                 yMd{"MM/dd/y"}
             }
             dayPeriod{
@@ -105,16 +115,6 @@ es_PA{
                         noon{"mediodía"}
                     }
                 }
-                stand-alone{
-                    abbreviated{
-                        am{"a. m."}
-                        pm{"p. m."}
-                    }
-                    wide{
-                        am{"a. m."}
-                        pm{"p. m."}
-                    }
-                }
             }
             intervalFormats{
                 MMMEd{
@@ -125,8 +125,8 @@ es_PA{
                     M{"d 'de' MMM 'al' d 'de' MMM"}
                 }
                 yM{
-                    M{"MM/y – MM/y"}
-                    y{"MM/y – MM/y"}
+                    M{"MM/y – MM/y"}
+                    y{"MM/y – MM/y"}
                 }
                 yMMM{
                     y{"MMM 'de' y 'a' MMM 'de' y"}

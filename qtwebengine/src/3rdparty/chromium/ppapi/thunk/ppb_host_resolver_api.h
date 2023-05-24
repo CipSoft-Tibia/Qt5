@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "ppapi/c/ppb_host_resolver.h"
 #include "ppapi/thunk/ppapi_thunk_export.h"
 
@@ -33,4 +33,4 @@ class PPAPI_THUNK_EXPORT PPB_HostResolver_API {
 }  // namespace thunk
 }  // namespace ppapi
 
-#endif  // PPAPI_THUNK_PPB_TCP_SOCKET_API_H_
+#endif  // PPAPI_THUNK_PPB_HOST_RESOLVER_API_H_

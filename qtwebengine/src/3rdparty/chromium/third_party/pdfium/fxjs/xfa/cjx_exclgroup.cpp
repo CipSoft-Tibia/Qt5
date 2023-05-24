@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,11 @@
 
 #include <vector>
 
+#include "fxjs/fxv8.h"
 #include "fxjs/js_resources.h"
 #include "fxjs/xfa/cfxjse_engine.h"
-#include "fxjs/xfa/cfxjse_value.h"
+#include "v8/include/v8-object.h"
+#include "v8/include/v8-primitive.h"
 #include "xfa/fxfa/cxfa_eventparam.h"
 #include "xfa/fxfa/cxfa_ffnotify.h"
 #include "xfa/fxfa/fxfa.h"
@@ -35,7 +37,7 @@ bool CJX_ExclGroup::DynamicTypeIs(TypeTag eType) const {
 }
 
 CJS_Result CJX_ExclGroup::execEvent(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   if (params.size() != 1)
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -46,7 +48,7 @@ CJS_Result CJX_ExclGroup::execEvent(
 }
 
 CJS_Result CJX_ExclGroup::execInitialize(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   if (!params.empty())
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -59,7 +61,7 @@ CJS_Result CJX_ExclGroup::execInitialize(
 }
 
 CJS_Result CJX_ExclGroup::execCalculate(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   if (!params.empty())
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -72,7 +74,7 @@ CJS_Result CJX_ExclGroup::execCalculate(
 }
 
 CJS_Result CJX_ExclGroup::execValidate(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   if (!params.empty())
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -88,7 +90,7 @@ CJS_Result CJX_ExclGroup::execValidate(
 }
 
 CJS_Result CJX_ExclGroup::selectedMember(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
   if (!params.empty())
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -102,20 +104,18 @@ CJS_Result CJX_ExclGroup::selectedMember(
     pReturnNode = node->GetSelectedMember();
   } else {
     pReturnNode = node->SetSelectedMember(
-        runtime->ToWideString(params[0]).AsStringView(), true);
+        runtime->ToWideString(params[0]).AsStringView());
   }
   if (!pReturnNode)
     return CJS_Result::Success(runtime->NewNull());
 
-  CFXJSE_Value* value =
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
-          pReturnNode);
-
   return CJS_Result::Success(
-      value->DirectGetValue().Get(runtime->GetIsolate()));
+      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
+          pReturnNode));
 }
 
-void CJX_ExclGroup::defaultValue(CFXJSE_Value* pValue,
+void CJX_ExclGroup::defaultValue(v8::Isolate* pIsolate,
+                                 v8::Local<v8::Value>* pValue,
                                  bool bSetting,
                                  XFA_Attribute eAttribute) {
   CXFA_Node* node = GetXFANode();
@@ -123,33 +123,37 @@ void CJX_ExclGroup::defaultValue(CFXJSE_Value* pValue,
     return;
 
   if (bSetting) {
-    node->SetSelectedMemberByValue(pValue->ToWideString().AsStringView(), true,
-                                   true, true);
+    node->SetSelectedMemberByValue(
+        fxv8::ReentrantToWideStringHelper(pIsolate, *pValue).AsStringView(),
+        true, true, true);
     return;
   }
 
   WideString wsValue = GetContent(true);
   XFA_VERSION curVersion = GetDocument()->GetCurVersionMode();
   if (wsValue.IsEmpty() && curVersion >= XFA_VERSION_300) {
-    pValue->SetNull();
+    *pValue = fxv8::NewNullHelper(pIsolate);
     return;
   }
-  pValue->SetString(wsValue.ToUTF8().AsStringView());
+  *pValue = fxv8::NewStringHelper(pIsolate, wsValue.ToUTF8().AsStringView());
 }
 
-void CJX_ExclGroup::rawValue(CFXJSE_Value* pValue,
+void CJX_ExclGroup::rawValue(v8::Isolate* pIsolate,
+                             v8::Local<v8::Value>* pValue,
                              bool bSetting,
                              XFA_Attribute eAttribute) {
-  defaultValue(pValue, bSetting, eAttribute);
+  defaultValue(pIsolate, pValue, bSetting, eAttribute);
 }
 
-void CJX_ExclGroup::transient(CFXJSE_Value* pValue,
+void CJX_ExclGroup::transient(v8::Isolate* pIsolate,
+                              v8::Local<v8::Value>* pValue,
                               bool bSetting,
                               XFA_Attribute eAttribute) {}
 
-void CJX_ExclGroup::errorText(CFXJSE_Value* pValue,
+void CJX_ExclGroup::errorText(v8::Isolate* pIsolate,
+                              v8::Local<v8::Value>* pValue,
                               bool bSetting,
                               XFA_Attribute eAttribute) {
   if (bSetting)
-    ThrowInvalidPropertyException();
+    ThrowInvalidPropertyException(pIsolate);
 }

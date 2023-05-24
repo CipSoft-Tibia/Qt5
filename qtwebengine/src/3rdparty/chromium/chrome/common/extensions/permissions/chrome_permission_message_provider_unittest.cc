@@ -1,14 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/common/extensions/permissions/chrome_permission_message_provider.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/strings/string16.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "chrome/common/extensions/manifest_tests/chrome_manifest_test.h"
@@ -22,6 +21,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
 
+using extensions::mojom::APIPermissionID;
+
 namespace extensions {
 
 // Tests that ChromePermissionMessageProvider provides correct permission
@@ -33,6 +34,12 @@ class ChromePermissionMessageProviderUnittest : public ChromeManifestTest {
  public:
   ChromePermissionMessageProviderUnittest()
       : message_provider_(new ChromePermissionMessageProvider()) {}
+
+  ChromePermissionMessageProviderUnittest(
+      const ChromePermissionMessageProviderUnittest&) = delete;
+  ChromePermissionMessageProviderUnittest& operator=(
+      const ChromePermissionMessageProviderUnittest&) = delete;
+
   ~ChromePermissionMessageProviderUnittest() override {}
 
  protected:
@@ -74,8 +81,6 @@ class ChromePermissionMessageProviderUnittest : public ChromeManifestTest {
 
  private:
   std::unique_ptr<ChromePermissionMessageProvider> message_provider_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromePermissionMessageProviderUnittest);
 };
 
 // Checks that if an app has a superset and a subset permission, only the
@@ -84,7 +89,7 @@ TEST_F(ChromePermissionMessageProviderUnittest,
        SupersetOverridesSubsetPermission) {
   {
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTab);
+    permissions.insert(APIPermissionID::kTab);
     PermissionMessages messages =
         GetMessages(permissions, Manifest::TYPE_PLATFORM_APP);
     ASSERT_EQ(1U, messages.size());
@@ -94,7 +99,7 @@ TEST_F(ChromePermissionMessageProviderUnittest,
   }
   {
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTopSites);
+    permissions.insert(APIPermissionID::kTopSites);
     PermissionMessages messages =
         GetMessages(permissions, Manifest::TYPE_PLATFORM_APP);
     ASSERT_EQ(1U, messages.size());
@@ -103,8 +108,8 @@ TEST_F(ChromePermissionMessageProviderUnittest,
   }
   {
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTab);
-    permissions.insert(APIPermission::kTopSites);
+    permissions.insert(APIPermissionID::kTab);
+    permissions.insert(APIPermissionID::kTopSites);
     PermissionMessages messages =
         GetMessages(permissions, Manifest::TYPE_PLATFORM_APP);
     ASSERT_EQ(1U, messages.size());
@@ -120,17 +125,18 @@ TEST_F(ChromePermissionMessageProviderUnittest,
        WarningsAndDetailsCoalesceTogether) {
   // kTab and kTopSites should be merged into a single message.
   APIPermissionSet permissions;
-  permissions.insert(APIPermission::kTab);
-  permissions.insert(APIPermission::kTopSites);
+  permissions.insert(APIPermissionID::kTab);
+  permissions.insert(APIPermissionID::kTopSites);
   // The USB device permission message has a non-empty details string.
-  std::unique_ptr<UsbDevicePermission> usb(new UsbDevicePermission(
-      PermissionsInfo::GetInstance()->GetByID(APIPermission::kUsbDevice)));
-  std::unique_ptr<base::ListValue> devices_list(new base::ListValue());
-  devices_list->Append(
-      UsbDevicePermissionData(0x02ad, 0x138c, -1, -1).ToValue());
-  devices_list->Append(
-      UsbDevicePermissionData(0x02ad, 0x138d, -1, -1).ToValue());
-  ASSERT_TRUE(usb->FromValue(devices_list.get(), nullptr, nullptr));
+  std::unique_ptr<UsbDevicePermission> usb(
+      new UsbDevicePermission(PermissionsInfo::GetInstance()->GetByID(
+          mojom::APIPermissionID::kUsbDevice)));
+  base::Value devices_list(base::Value::Type::LIST);
+  devices_list.GetList().Append(base::Value::FromUniquePtrValue(
+      UsbDevicePermissionData(0x02ad, 0x138c, -1, -1).ToValue()));
+  devices_list.GetList().Append(base::Value::FromUniquePtrValue(
+      UsbDevicePermissionData(0x02ad, 0x138d, -1, -1).ToValue()));
+  ASSERT_TRUE(usb->FromValue(&devices_list, nullptr, nullptr));
   permissions.insert(std::move(usb));
 
   PermissionMessages messages =
@@ -169,10 +175,9 @@ TEST_F(ChromePermissionMessageProviderUnittest,
                                               Manifest::TYPE_EXTENSION));
 
   ASSERT_EQ(1U, messages.size());
-  EXPECT_EQ(l10n_util::GetStringFUTF16(
-                IDS_EXTENSION_PROMPT_WARNING_2_HOSTS,
-                base::ASCIIToUTF16("all xn--oogle-qmc.com sites"),
-                base::ASCIIToUTF16("xn--oogle-qmc.com")),
+  EXPECT_EQ(l10n_util::GetStringFUTF16(IDS_EXTENSION_PROMPT_WARNING_2_HOSTS,
+                                       u"all xn--oogle-qmc.com sites",
+                                       u"xn--oogle-qmc.com"),
             messages.front().message());
 }
 
@@ -180,7 +185,7 @@ TEST_F(ChromePermissionMessageProviderUnittest,
 TEST_F(ChromePermissionMessageProviderUnittest, PowerfulPermissions) {
   {
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTab);
+    permissions.insert(APIPermissionID::kTab);
     PermissionMessages messages = GetManagementUIPermissionIDs(
         permissions, ManifestPermissionSet(), Manifest::TYPE_EXTENSION);
     ASSERT_EQ(1U, messages.size());
@@ -190,15 +195,15 @@ TEST_F(ChromePermissionMessageProviderUnittest, PowerfulPermissions) {
   }
   {
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kBookmark);
+    permissions.insert(APIPermissionID::kBookmark);
     PermissionMessages messages = GetManagementUIPermissionIDs(
         permissions, ManifestPermissionSet(), Manifest::TYPE_EXTENSION);
     ASSERT_EQ(0U, messages.size());
   }
   {
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTab);
-    permissions.insert(APIPermission::kBookmark);
+    permissions.insert(APIPermissionID::kTab);
+    permissions.insert(APIPermissionID::kBookmark);
     PermissionMessages messages = GetManagementUIPermissionIDs(
         permissions, ManifestPermissionSet(), Manifest::TYPE_EXTENSION);
     ASSERT_EQ(1U, messages.size());
@@ -215,9 +220,9 @@ TEST_F(ChromePermissionMessageProviderUnittest, PowerfulPermissions) {
                                                      .manifest_permissions()
                                                      .Clone();
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTab);
-    permissions.insert(APIPermission::kBookmark);
-    permissions.insert(APIPermission::kDebugger);
+    permissions.insert(APIPermissionID::kTab);
+    permissions.insert(APIPermissionID::kBookmark);
+    permissions.insert(APIPermissionID::kDebugger);
     PermissionMessages messages = GetManagementUIPermissionIDs(
         permissions, manifest_permissions, Manifest::TYPE_EXTENSION);
     ASSERT_EQ(2U, messages.size());
@@ -236,7 +241,7 @@ TEST_F(ChromePermissionMessageProviderUnittest, PowerfulPermissions) {
                                                      .manifest_permissions()
                                                      .Clone();
     APIPermissionSet permissions;
-    permissions.insert(APIPermission::kTab);
+    permissions.insert(APIPermissionID::kTab);
     PermissionMessages messages = GetManagementUIPermissionIDs(
         permissions, manifest_permissions, Manifest::TYPE_EXTENSION);
     ASSERT_EQ(1U, messages.size());
@@ -250,14 +255,14 @@ TEST_F(ChromePermissionMessageProviderUnittest, PowerfulPermissions) {
 // crbug.com/1014505.
 TEST_F(ChromePermissionMessageProviderUnittest, PrivilegeIncreaseAllUrls) {
   APIPermissionSet granted_permissions;
-  granted_permissions.insert(APIPermission::kWebRequest);
+  granted_permissions.insert(APIPermissionID::kWebRequest);
 
   extensions::URLPatternSet granted_hosts;
   granted_hosts.AddPattern(URLPattern(URLPattern::SCHEME_ALL, "<all_urls>"));
 
   APIPermissionSet requested_permissions;
-  requested_permissions.insert(APIPermission::kWebRequest);
-  requested_permissions.insert(APIPermission::kDeclarativeNetRequest);
+  requested_permissions.insert(APIPermissionID::kWebRequest);
+  requested_permissions.insert(APIPermissionID::kDeclarativeNetRequest);
 
   extensions::URLPatternSet requested_hosts;
   requested_hosts.AddPattern(URLPattern(URLPattern::SCHEME_ALL, "<all_urls>"));

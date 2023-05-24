@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusinterface.h"
 #include "qdbusinterface_p.h"
@@ -51,9 +15,11 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 static void copyArgument(void *to, int id, const QVariant &arg)
 {
-    if (id == arg.userType()) {
+    if (id == arg.metaType().id()) {
         switch (id) {
         case QMetaType::Bool:
             *reinterpret_cast<bool *>(to) = arg.toBool();
@@ -104,13 +70,13 @@ static void copyArgument(void *to, int id, const QVariant &arg)
             return;
         }
 
-        if (id == QDBusMetaTypeId::variant()) {
+        if (id == QDBusMetaTypeId::variant().id()) {
             *reinterpret_cast<QDBusVariant *>(to) = qvariant_cast<QDBusVariant>(arg);
             return;
-        } else if (id == QDBusMetaTypeId::objectpath()) {
+        } else if (id == QDBusMetaTypeId::objectpath().id()) {
             *reinterpret_cast<QDBusObjectPath *>(to) = qvariant_cast<QDBusObjectPath>(arg);
             return;
-        } else if (id == QDBusMetaTypeId::signature()) {
+        } else if (id == QDBusMetaTypeId::signature().id()) {
             *reinterpret_cast<QDBusSignature *>(to) = qvariant_cast<QDBusSignature>(arg);
             return;
         }
@@ -121,14 +87,14 @@ static void copyArgument(void *to, int id, const QVariant &arg)
     }
 
     // if we got here, it's either an un-dermarshalled type or a mismatch
-    if (arg.userType() != QDBusMetaTypeId::argument()) {
+    if (arg.metaType() != QDBusMetaTypeId::argument()) {
         // it's a mismatch
         //qWarning?
         return;
     }
 
     // is this type registered?
-    const char *userSignature = QDBusMetaType::typeToSignature(id);
+    const char *userSignature = QDBusMetaType::typeToSignature(QMetaType(id));
     if (!userSignature || !*userSignature) {
         // type not registered
         //qWarning?
@@ -137,14 +103,14 @@ static void copyArgument(void *to, int id, const QVariant &arg)
 
     // is it the same signature?
     QDBusArgument dbarg = qvariant_cast<QDBusArgument>(arg);
-    if (dbarg.currentSignature() != QLatin1String(userSignature)) {
+    if (dbarg.currentSignature() != QLatin1StringView(userSignature)) {
         // not the same signature, another mismatch
         //qWarning?
         return;
     }
 
     // we can demarshall
-    QDBusMetaType::demarshall(dbarg, id, to);
+    QDBusMetaType::demarshall(dbarg, QMetaType(id), to);
 }
 
 QDBusInterfacePrivate::QDBusInterfacePrivate(const QString &serv, const QString &p,
@@ -161,7 +127,7 @@ QDBusInterfacePrivate::QDBusInterfacePrivate(const QString &serv, const QString 
             // those are not fatal errors, so we continue working
 
             if (!lastError.isValid())
-                lastError = QDBusError(QDBusError::InternalError, QLatin1String("Unknown error"));
+                lastError = QDBusError(QDBusError::InternalError, "Unknown error"_L1);
         }
     }
 }
@@ -289,7 +255,7 @@ int QDBusInterfacePrivate::metacall(QMetaObject::Call c, int id, void **argv)
             args.reserve(inputTypesCount);
             int i = 1;
             for ( ; i <= inputTypesCount; ++i)
-                args << QVariant(inputTypes[i], argv[i]);
+                args << QVariant(QMetaType(inputTypes[i]), argv[i]);
 
             // make the call
             QDBusMessage reply = q->callWithArgumentList(QDBus::Block, methodName, args);

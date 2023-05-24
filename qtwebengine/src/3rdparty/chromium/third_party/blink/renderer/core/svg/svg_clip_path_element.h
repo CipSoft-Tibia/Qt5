@@ -24,7 +24,7 @@
 #include "third_party/blink/renderer/core/svg/svg_animated_enumeration.h"
 #include "third_party/blink/renderer/core/svg/svg_graphics_element.h"
 #include "third_party/blink/renderer/core/svg/svg_unit_types.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -45,7 +45,7 @@ class SVGClipPathElement final : public SVGGraphicsElement {
   void Trace(Visitor*) const override;
 
  private:
-  void SvgAttributeChanged(const QualifiedName&) override;
+  void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
   void ChildrenChanged(const ChildrenChange&) override;
 
   LayoutObject* CreateLayoutObject(const ComputedStyle&, LegacyLayout) override;

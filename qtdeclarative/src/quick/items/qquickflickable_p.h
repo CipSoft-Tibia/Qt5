@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKFLICKABLE_P_H
 #define QQUICKFLICKABLE_P_H
@@ -64,57 +28,58 @@ class Q_QUICK_PRIVATE_EXPORT QQuickFlickable : public QQuickItem
 
     Q_PROPERTY(qreal contentWidth READ contentWidth WRITE setContentWidth NOTIFY contentWidthChanged)
     Q_PROPERTY(qreal contentHeight READ contentHeight WRITE setContentHeight NOTIFY contentHeightChanged)
-    Q_PROPERTY(qreal contentX READ contentX WRITE setContentX NOTIFY contentXChanged)
-    Q_PROPERTY(qreal contentY READ contentY WRITE setContentY NOTIFY contentYChanged)
-    Q_PROPERTY(QQuickItem *contentItem READ contentItem CONSTANT)
+    Q_PROPERTY(qreal contentX READ contentX WRITE setContentX NOTIFY contentXChanged FINAL)
+    Q_PROPERTY(qreal contentY READ contentY WRITE setContentY NOTIFY contentYChanged FINAL)
+    Q_PROPERTY(QQuickItem *contentItem READ contentItem CONSTANT FINAL)
 
-    Q_PROPERTY(qreal topMargin READ topMargin WRITE setTopMargin NOTIFY topMarginChanged)
-    Q_PROPERTY(qreal bottomMargin READ bottomMargin WRITE setBottomMargin NOTIFY bottomMarginChanged)
-    Q_PROPERTY(qreal originY READ originY NOTIFY originYChanged)
+    Q_PROPERTY(qreal topMargin READ topMargin WRITE setTopMargin NOTIFY topMarginChanged FINAL)
+    Q_PROPERTY(qreal bottomMargin READ bottomMargin WRITE setBottomMargin NOTIFY bottomMarginChanged FINAL)
+    Q_PROPERTY(qreal originY READ originY NOTIFY originYChanged FINAL)
 
-    Q_PROPERTY(qreal leftMargin READ leftMargin WRITE setLeftMargin NOTIFY leftMarginChanged)
-    Q_PROPERTY(qreal rightMargin READ rightMargin WRITE setRightMargin NOTIFY rightMarginChanged)
-    Q_PROPERTY(qreal originX READ originX NOTIFY originXChanged)
+    Q_PROPERTY(qreal leftMargin READ leftMargin WRITE setLeftMargin NOTIFY leftMarginChanged FINAL)
+    Q_PROPERTY(qreal rightMargin READ rightMargin WRITE setRightMargin NOTIFY rightMarginChanged FINAL)
+    Q_PROPERTY(qreal originX READ originX NOTIFY originXChanged FINAL)
 
-    Q_PROPERTY(qreal horizontalVelocity READ horizontalVelocity NOTIFY horizontalVelocityChanged)
-    Q_PROPERTY(qreal verticalVelocity READ verticalVelocity NOTIFY verticalVelocityChanged)
+    Q_PROPERTY(qreal horizontalVelocity READ horizontalVelocity NOTIFY horizontalVelocityChanged FINAL)
+    Q_PROPERTY(qreal verticalVelocity READ verticalVelocity NOTIFY verticalVelocityChanged FINAL)
 
-    Q_PROPERTY(BoundsBehavior boundsBehavior READ boundsBehavior WRITE setBoundsBehavior NOTIFY boundsBehaviorChanged)
-    Q_PROPERTY(BoundsMovement boundsMovement READ boundsMovement WRITE setBoundsMovement NOTIFY boundsMovementChanged REVISION 10)
-    Q_PROPERTY(QQuickTransition *rebound READ rebound WRITE setRebound NOTIFY reboundChanged)
-    Q_PROPERTY(qreal maximumFlickVelocity READ maximumFlickVelocity WRITE setMaximumFlickVelocity NOTIFY maximumFlickVelocityChanged)
-    Q_PROPERTY(qreal flickDeceleration READ flickDeceleration WRITE setFlickDeceleration NOTIFY flickDecelerationChanged)
-    Q_PROPERTY(bool moving READ isMoving NOTIFY movingChanged)
-    Q_PROPERTY(bool movingHorizontally READ isMovingHorizontally NOTIFY movingHorizontallyChanged)
-    Q_PROPERTY(bool movingVertically READ isMovingVertically NOTIFY movingVerticallyChanged)
-    Q_PROPERTY(bool flicking READ isFlicking NOTIFY flickingChanged)
-    Q_PROPERTY(bool flickingHorizontally READ isFlickingHorizontally NOTIFY flickingHorizontallyChanged)
-    Q_PROPERTY(bool flickingVertically READ isFlickingVertically NOTIFY flickingVerticallyChanged)
-    Q_PROPERTY(bool dragging READ isDragging NOTIFY draggingChanged)
-    Q_PROPERTY(bool draggingHorizontally READ isDraggingHorizontally NOTIFY draggingHorizontallyChanged)
-    Q_PROPERTY(bool draggingVertically READ isDraggingVertically NOTIFY draggingVerticallyChanged)
-    Q_PROPERTY(FlickableDirection flickableDirection READ flickableDirection WRITE setFlickableDirection NOTIFY flickableDirectionChanged)
+    Q_PROPERTY(BoundsBehavior boundsBehavior READ boundsBehavior WRITE setBoundsBehavior NOTIFY boundsBehaviorChanged FINAL)
+    Q_PROPERTY(BoundsMovement boundsMovement READ boundsMovement WRITE setBoundsMovement NOTIFY boundsMovementChanged REVISION(2, 10) FINAL)
+    Q_PROPERTY(QQuickTransition *rebound READ rebound WRITE setRebound NOTIFY reboundChanged FINAL)
+    Q_PROPERTY(qreal maximumFlickVelocity READ maximumFlickVelocity WRITE setMaximumFlickVelocity NOTIFY maximumFlickVelocityChanged FINAL)
+    Q_PROPERTY(qreal flickDeceleration READ flickDeceleration WRITE setFlickDeceleration NOTIFY flickDecelerationChanged FINAL)
+    Q_PROPERTY(bool moving READ isMoving NOTIFY movingChanged FINAL)
+    Q_PROPERTY(bool movingHorizontally READ isMovingHorizontally NOTIFY movingHorizontallyChanged FINAL)
+    Q_PROPERTY(bool movingVertically READ isMovingVertically NOTIFY movingVerticallyChanged FINAL)
+    Q_PROPERTY(bool flicking READ isFlicking NOTIFY flickingChanged FINAL)
+    Q_PROPERTY(bool flickingHorizontally READ isFlickingHorizontally NOTIFY flickingHorizontallyChanged FINAL)
+    Q_PROPERTY(bool flickingVertically READ isFlickingVertically NOTIFY flickingVerticallyChanged FINAL)
+    Q_PROPERTY(bool dragging READ isDragging NOTIFY draggingChanged FINAL)
+    Q_PROPERTY(bool draggingHorizontally READ isDraggingHorizontally NOTIFY draggingHorizontallyChanged FINAL)
+    Q_PROPERTY(bool draggingVertically READ isDraggingVertically NOTIFY draggingVerticallyChanged FINAL)
+    Q_PROPERTY(FlickableDirection flickableDirection READ flickableDirection WRITE setFlickableDirection NOTIFY flickableDirectionChanged FINAL)
 
-    Q_PROPERTY(bool interactive READ isInteractive WRITE setInteractive NOTIFY interactiveChanged)
-    Q_PROPERTY(int pressDelay READ pressDelay WRITE setPressDelay NOTIFY pressDelayChanged)
+    Q_PROPERTY(bool interactive READ isInteractive WRITE setInteractive NOTIFY interactiveChanged FINAL)
+    Q_PROPERTY(int pressDelay READ pressDelay WRITE setPressDelay NOTIFY pressDelayChanged FINAL)
 
-    Q_PROPERTY(bool atXEnd READ isAtXEnd NOTIFY atXEndChanged)
-    Q_PROPERTY(bool atYEnd READ isAtYEnd NOTIFY atYEndChanged)
-    Q_PROPERTY(bool atXBeginning READ isAtXBeginning NOTIFY atXBeginningChanged)
-    Q_PROPERTY(bool atYBeginning READ isAtYBeginning NOTIFY atYBeginningChanged)
+    Q_PROPERTY(bool atXEnd READ isAtXEnd NOTIFY atXEndChanged FINAL)
+    Q_PROPERTY(bool atYEnd READ isAtYEnd NOTIFY atYEndChanged FINAL)
+    Q_PROPERTY(bool atXBeginning READ isAtXBeginning NOTIFY atXBeginningChanged FINAL)
+    Q_PROPERTY(bool atYBeginning READ isAtYBeginning NOTIFY atYBeginningChanged FINAL)
 
-    Q_PROPERTY(QQuickFlickableVisibleArea *visibleArea READ visibleArea CONSTANT)
+    Q_PROPERTY(QQuickFlickableVisibleArea *visibleArea READ visibleArea CONSTANT FINAL)
 
-    Q_PROPERTY(bool pixelAligned READ pixelAligned WRITE setPixelAligned NOTIFY pixelAlignedChanged)
-    Q_PROPERTY(bool synchronousDrag READ synchronousDrag WRITE setSynchronousDrag NOTIFY synchronousDragChanged REVISION 12)
+    Q_PROPERTY(bool pixelAligned READ pixelAligned WRITE setPixelAligned NOTIFY pixelAlignedChanged FINAL)
+    Q_PROPERTY(bool synchronousDrag READ synchronousDrag WRITE setSynchronousDrag NOTIFY synchronousDragChanged REVISION(2, 12) FINAL)
 
-    Q_PROPERTY(qreal horizontalOvershoot READ horizontalOvershoot NOTIFY horizontalOvershootChanged REVISION 9)
-    Q_PROPERTY(qreal verticalOvershoot READ verticalOvershoot NOTIFY verticalOvershootChanged REVISION 9)
+    Q_PROPERTY(qreal horizontalOvershoot READ horizontalOvershoot NOTIFY horizontalOvershootChanged REVISION(2, 9) FINAL)
+    Q_PROPERTY(qreal verticalOvershoot READ verticalOvershoot NOTIFY verticalOvershootChanged REVISION(2, 9) FINAL)
 
-    Q_PROPERTY(QQmlListProperty<QObject> flickableData READ flickableData)
-    Q_PROPERTY(QQmlListProperty<QQuickItem> flickableChildren READ flickableChildren)
+    Q_PROPERTY(QQmlListProperty<QObject> flickableData READ flickableData FINAL)
+    Q_PROPERTY(QQmlListProperty<QQuickItem> flickableChildren READ flickableChildren FINAL)
     Q_CLASSINFO("DefaultProperty", "flickableData")
     QML_NAMED_ELEMENT(Flickable)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickFlickable(QQuickItem *parent=nullptr);
@@ -252,7 +217,7 @@ Q_SIGNALS:
     void flickableDirectionChanged();
     void interactiveChanged();
     void boundsBehaviorChanged();
-    Q_REVISION(10) void boundsMovementChanged();
+    Q_REVISION(2, 10) void boundsMovementChanged();
     void reboundChanged();
     void maximumFlickVelocityChanged();
     void flickDecelerationChanged();
@@ -264,11 +229,11 @@ Q_SIGNALS:
     void dragStarted();
     void dragEnded();
     void pixelAlignedChanged();
-    Q_REVISION(12) void synchronousDragChanged();
-    Q_REVISION(9) void horizontalOvershootChanged();
-    Q_REVISION(9) void verticalOvershootChanged();
+    Q_REVISION(2, 12) void synchronousDragChanged();
+    Q_REVISION(2, 9) void horizontalOvershootChanged();
+    Q_REVISION(2, 9) void verticalOvershootChanged();
 
-    // The next four signals should be marked as Q_REVISION(12). See QTBUG-71243
+    // The next four signals should be marked as Q_REVISION(2, 12). See QTBUG-71243
     void atXEndChanged();
     void atYEndChanged();
     void atXBeginningChanged();
@@ -279,6 +244,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void touchEvent(QTouchEvent *event) override;
 #if QT_CONFIG(wheelevent)
     void wheelEvent(QWheelEvent *event) override;
 #endif
@@ -302,10 +268,9 @@ protected:
     qreal vHeight() const;
     void componentComplete() override;
     virtual void viewportMoved(Qt::Orientations orient);
-    void geometryChanged(const QRectF &newGeometry,
-                         const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
     void mouseUngrabEvent() override;
-    bool filterMouseEvent(QQuickItem *receiver, QMouseEvent *event);
+    bool filterPointerEvent(QQuickItem *receiver, QPointerEvent *event);
 
     bool xflick() const;
     bool yflick() const;
@@ -316,7 +281,6 @@ protected:
 private:
     Q_DISABLE_COPY(QQuickFlickable)
     Q_DECLARE_PRIVATE(QQuickFlickable)
-    friend class QQuickFlickableContentItem;
     friend class QQuickFlickableVisibleArea;
     friend class QQuickFlickableReboundTransition;
 };

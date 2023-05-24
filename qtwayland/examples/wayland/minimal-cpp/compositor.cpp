@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Wayland module
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "compositor.h"
 #include "window.h"
@@ -59,11 +12,13 @@
 #include <QRandomGenerator>
 #include <QOpenGLFunctions>
 
+//! [getTexture]
 QOpenGLTexture *View::getTexture() {
     if (advance())
         m_texture = currentBuffer().toOpenGLTexture();
     return m_texture;
 }
+//! [getTexture]
 
 QPoint View::mapToLocal(const QPoint &globalPos) const
 {
@@ -95,6 +50,7 @@ Compositor::~Compositor()
 {
 }
 
+//! [create]
 void Compositor::create()
 {
     QWaylandOutput *output = new QWaylandOutput(this, m_window);
@@ -106,6 +62,7 @@ void Compositor::create()
     m_iviApplication = new QWaylandIviApplication(this);
     connect(m_iviApplication, &QWaylandIviApplication::iviSurfaceCreated, this, &Compositor::onIviSurfaceCreated);
 }
+//! [create]
 
 View *Compositor::viewAt(const QPoint &position)
 {
@@ -132,17 +89,20 @@ static inline QPoint mapToView(const View *view, const QPoint &position)
     return view ? view->mapToLocal(position) : position;
 }
 
+//! [handleMousePress]
 void Compositor::handleMousePress(const QPoint &position, Qt::MouseButton button)
 {
     if (!m_mouseView) {
-        if (m_mouseView = viewAt(position))
+        if ((m_mouseView = viewAt(position)))
             raise(m_mouseView);
     }
     auto *seat = defaultSeat();
     seat->sendMouseMoveEvent(m_mouseView, mapToView(m_mouseView, position));
     seat->sendMousePressEvent(button);
 }
+//! [handleMousePress]
 
+//! [handleMouseRelease]
 void Compositor::handleMouseRelease(const QPoint &position, Qt::MouseButton button, Qt::MouseButtons buttons)
 {
     auto *seat = defaultSeat();
@@ -156,6 +116,7 @@ void Compositor::handleMouseRelease(const QPoint &position, Qt::MouseButton butt
         m_mouseView = nullptr;
     }
 }
+//! [handleMouseRelease]
 
 void Compositor::handleMouseMove(const QPoint &position)
 {
@@ -182,7 +143,7 @@ void Compositor::handleKeyRelease(quint32 nativeScanCode)
     defaultSeat()->sendKeyReleaseEvent(nativeScanCode);
 }
 
-
+//! [surfaceCreated]
 void Compositor::onIviSurfaceCreated(QWaylandIviSurface *iviSurface)
 {
     View *view = new View(iviSurface->iviId());
@@ -193,12 +154,9 @@ void Compositor::onIviSurfaceCreated(QWaylandIviSurface *iviSurface)
     connect(view, &QWaylandView::surfaceDestroyed, this, &Compositor::viewSurfaceDestroyed);
     connect(iviSurface->surface(), &QWaylandSurface::redraw, this, &Compositor::triggerRender);
 }
+//! [surfaceCreated]
 
-void Compositor::onSurfaceDestroyed()
-{
-    triggerRender();
-}
-
+//! [surfaceDestroyed]
 void Compositor::viewSurfaceDestroyed()
 {
     View *view = qobject_cast<View*>(sender());
@@ -206,6 +164,7 @@ void Compositor::viewSurfaceDestroyed()
     delete view;
     triggerRender();
 }
+//! [surfaceDestroyed]
 
 void Compositor::triggerRender()
 {

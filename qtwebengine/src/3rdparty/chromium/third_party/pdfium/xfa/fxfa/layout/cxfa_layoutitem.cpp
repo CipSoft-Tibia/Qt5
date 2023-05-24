@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,8 +27,8 @@ void XFA_ReleaseLayoutItem(CXFA_LayoutItem* pLayoutItem) {
   auto* pDocLayout = CXFA_LayoutProcessor::FromDocument(pDocument);
   pNotify->OnLayoutItemRemoving(pDocLayout, pLayoutItem);
   if (pLayoutItem->GetFormNode()->GetElementType() == XFA_Element::PageArea) {
-    pNotify->OnPageEvent(ToViewLayoutItem(pLayoutItem),
-                         XFA_PAGEVIEWEVENT_PostRemoved);
+    pNotify->OnPageViewEvent(ToViewLayoutItem(pLayoutItem),
+                             CXFA_FFDoc::PageViewEvent::kPostRemoved);
   }
   pLayoutItem->RemoveSelfIfParented();
 }

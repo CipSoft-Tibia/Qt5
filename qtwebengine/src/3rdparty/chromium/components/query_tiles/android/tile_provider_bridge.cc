@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include "base/android/callback_android.h"
 #include "base/android/jni_string.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "components/query_tiles/android/tile_conversion_bridge.h"
 #include "components/query_tiles/jni_headers/TileProviderBridge_jni.h"
 #include "ui/gfx/android/java_bitmap.h"
@@ -28,6 +28,16 @@ void RunGetTilesCallback(const JavaRef<jobject>& j_callback,
   JNIEnv* env = AttachCurrentThread();
   RunObjectCallbackAndroid(
       j_callback, TileConversionBridge::CreateJavaTiles(env, std::move(tiles)));
+}
+
+void RunGetTileCallback(const JavaRef<jobject>& j_callback,
+                        absl::optional<Tile> tile) {
+  JNIEnv* env = AttachCurrentThread();
+  RunObjectCallbackAndroid(
+      j_callback,
+      TileConversionBridge::CreateJavaTiles(
+          env, tile.has_value() ? std::move(tile->sub_tiles)
+                                : std::vector<std::unique_ptr<Tile>>()));
 }
 
 }  // namespace
@@ -63,9 +73,19 @@ TileProviderBridge::~TileProviderBridge() {
 
 void TileProviderBridge::GetQueryTiles(JNIEnv* env,
                                        const JavaParamRef<jobject>& jcaller,
+                                       const JavaParamRef<jstring>& j_tile_id,
                                        const JavaParamRef<jobject>& jcallback) {
-  tile_service_->GetQueryTiles(base::BindOnce(
-      &RunGetTilesCallback, ScopedJavaGlobalRef<jobject>(jcallback)));
+  // TODO(qinmin): refactor TileService to use a single call to handle both
+  // cases.
+  if (j_tile_id.is_null()) {
+    tile_service_->GetQueryTiles(base::BindOnce(
+        &RunGetTilesCallback, ScopedJavaGlobalRef<jobject>(jcallback)));
+  } else {
+    tile_service_->GetTile(
+        ConvertJavaStringToUTF8(env, j_tile_id),
+        base::BindOnce(&RunGetTileCallback,
+                       ScopedJavaGlobalRef<jobject>(jcallback)));
+  }
 }
 
 void TileProviderBridge::OnTileClicked(JNIEnv* env,

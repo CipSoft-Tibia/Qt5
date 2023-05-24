@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,28 +16,30 @@ namespace content {
 class WebContentsAttachedClass1
     : public WebContentsUserData<WebContentsAttachedClass1> {
  public:
-  ~WebContentsAttachedClass1() override {}
+  ~WebContentsAttachedClass1() override = default;
 
  private:
-  explicit WebContentsAttachedClass1(WebContents* contents) {}
+  explicit WebContentsAttachedClass1(WebContents* contents)
+      : WebContentsUserData<WebContentsAttachedClass1>(*contents) {}
   friend class WebContentsUserData<WebContentsAttachedClass1>;
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(WebContentsAttachedClass1)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(WebContentsAttachedClass1);
 
 class WebContentsAttachedClass2
     : public WebContentsUserData<WebContentsAttachedClass2> {
  public:
-  ~WebContentsAttachedClass2() override {}
+  ~WebContentsAttachedClass2() override = default;
 
  private:
-  explicit WebContentsAttachedClass2(WebContents* contents) {}
+  explicit WebContentsAttachedClass2(WebContents* contents)
+      : WebContentsUserData<WebContentsAttachedClass2>(*contents) {}
   friend class WebContentsUserData<WebContentsAttachedClass2>;
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(WebContentsAttachedClass2)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(WebContentsAttachedClass2);
 
 typedef RenderViewHostTestHarness WebContentsUserDataTest;
 
@@ -109,6 +111,60 @@ TEST_F(WebContentsUserDataTest, Idempotence) {
       WebContentsAttachedClass1::FromWebContents(contents);
   ASSERT_TRUE(class_again != nullptr);
   ASSERT_EQ(clazz, class_again);
+}
+
+class NonCopyableNonMovableClass {
+ public:
+  explicit NonCopyableNonMovableClass(int value) : value_(value) {}
+
+  NonCopyableNonMovableClass(const NonCopyableNonMovableClass&) = delete;
+  NonCopyableNonMovableClass& operator=(const NonCopyableNonMovableClass&) =
+      delete;
+  NonCopyableNonMovableClass(NonCopyableNonMovableClass&&) = delete;
+  NonCopyableNonMovableClass& operator=(NonCopyableNonMovableClass&&) = delete;
+
+  int value() const { return value_; }
+
+ private:
+  int value_;
+};
+
+class AttachedClassWithParams
+    : public WebContentsUserData<AttachedClassWithParams> {
+ public:
+  ~AttachedClassWithParams() override = default;
+
+  int param1() const { return param1_; }
+  int param2() const { return param2_; }
+
+ private:
+  friend class WebContentsUserData<AttachedClassWithParams>;
+
+  explicit AttachedClassWithParams(WebContents* contents,
+                                   int param1,
+                                   NonCopyableNonMovableClass&& param2)
+      : WebContentsUserData<AttachedClassWithParams>(*contents),
+        param1_(param1),
+        param2_(param2.value()) {}
+
+  int param1_;
+  int param2_;
+
+  WEB_CONTENTS_USER_DATA_KEY_DECL();
+};
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(AttachedClassWithParams);
+
+TEST_F(WebContentsUserDataTest, CreateWithParameters) {
+  ASSERT_EQ(nullptr, AttachedClassWithParams::FromWebContents(web_contents()));
+
+  AttachedClassWithParams::CreateForWebContents(web_contents(), 1,
+                                                NonCopyableNonMovableClass(42));
+  auto* instance = AttachedClassWithParams::FromWebContents(web_contents());
+  ASSERT_NE(nullptr, instance);
+
+  EXPECT_EQ(1, instance->param1());
+  EXPECT_EQ(42, instance->param2());
 }
 
 }  // namespace content

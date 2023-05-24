@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWINDOWSGLCONTEXT_H
 #define QWINDOWSGLCONTEXT_H
@@ -174,6 +138,7 @@ public:
     static QByteArray getGlString(unsigned int which);
 
     QWindowsOpenGLContext *createContext(QOpenGLContext *context) override;
+    QWindowsOpenGLContext *createContext(HGLRC context, HWND window) override;
     void *moduleHandle() const override { return opengl32.moduleHandle(); }
     QOpenGLContext::OpenGLModuleType moduleType() const override
     { return QOpenGLContext::LibGL; }
@@ -199,12 +164,14 @@ public:
     static QWindowsOpengl32DLL opengl32;
 };
 
-class QWindowsGLContext : public QWindowsOpenGLContext
+class QWindowsGLContext : public QWindowsOpenGLContext, public QNativeInterface::QWGLContext
 {
 public:
     explicit QWindowsGLContext(QOpenGLStaticContext *staticContext, QOpenGLContext *context);
+    explicit QWindowsGLContext(QOpenGLStaticContext *staticContext, HGLRC context, HWND window);
+
     ~QWindowsGLContext() override;
-    bool isSharing() const override { return m_context->shareHandle(); }
+    bool isSharing() const override { return context()->shareHandle(); }
     bool isValid() const override { return m_renderingContext && !m_lost; }
     QSurfaceFormat format() const override { return m_obtainedFormat; }
 
@@ -219,7 +186,7 @@ public:
 
     HGLRC renderingContext() const { return m_renderingContext; }
 
-    void *nativeContext() const override { return m_renderingContext; }
+    HGLRC nativeContext() const override { return m_renderingContext; }
 
 private:
     typedef GLenum (APIENTRY *GlGetGraphicsResetStatusArbType)();
@@ -227,18 +194,17 @@ private:
     inline void releaseDCs();
     bool updateObtainedParams(HDC hdc, int *obtainedSwapInterval = nullptr);
 
-    QOpenGLStaticContext *m_staticContext;
-    QOpenGLContext *m_context;
+    QOpenGLStaticContext *m_staticContext = nullptr;
     QSurfaceFormat m_obtainedFormat;
-    HGLRC m_renderingContext;
+    HGLRC m_renderingContext = nullptr;
     std::vector<QOpenGLContextData> m_windowContexts;
     PIXELFORMATDESCRIPTOR m_obtainedPixelFormatDescriptor;
-    int m_pixelFormat;
-    bool m_extensionsUsed;
-    int m_swapInterval;
-    bool m_ownsContext;
-    GlGetGraphicsResetStatusArbType m_getGraphicsResetStatus;
-    bool m_lost;
+    int m_pixelFormat = 0;
+    bool m_extensionsUsed = false;
+    int m_swapInterval = -1;
+    bool m_ownsContext = true;
+    GlGetGraphicsResetStatusArbType m_getGraphicsResetStatus = nullptr;
+    bool m_lost = false;
 };
 #endif
 QT_END_NAMESPACE

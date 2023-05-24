@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
 #include "ui/base/accelerators/accelerator_manager.h"
 #include "ui/views/view_observer.h"
@@ -21,12 +22,6 @@
 //
 // - The native focus, which is the focus that a gfx::NativeView has.
 // - The view focus, which is the focus that a views::View has.
-//
-// When registering a view with the FocusManager, the caller can provide a view
-// whose focus will be kept in sync with the view the FocusManager is managing.
-//
-// (Focus registration is already done for you if you subclass the NativeControl
-// class or if you use the NativeViewHost class.)
 //
 // When a top window (derived from views::Widget) that is not a child window is
 // created, it creates and owns a FocusManager to manage the focus for itself
@@ -43,8 +38,8 @@
 // order.
 //
 // If you are embedding a native view containing a nested RootView (for example
-// by adding a NativeControl that contains a NativeWidgetWin as its native
-// component), then you need to:
+// by adding a view that contains a native widget as its native component),
+// then you need to:
 //
 // - Override the View::GetFocusTraversable method in your outer component.
 //   It should return the RootView of the inner component. This is used when
@@ -137,7 +132,7 @@ class VIEWS_EXPORT FocusManager : public ViewObserver {
   };
 
   // TODO(dmazzoni): use Direction in place of bool reverse throughout.
-  enum Direction { kForward, kBackward };
+  enum class Direction { kForward, kBackward };
 
   enum class FocusCycleWrapping { kEnabled, kDisabled };
 
@@ -292,11 +287,6 @@ class VIEWS_EXPORT FocusManager : public ViewObserver {
     return arrow_key_traversal_enabled_;
   }
 
-  // Similar to above, but only for the widget that owns this FocusManager.
-  void set_arrow_key_traversal_enabled_for_widget(bool enabled) {
-    arrow_key_traversal_enabled_for_widget_ = enabled;
-  }
-
   // Returns the next focusable view. Traversal starts at |starting_view|. If
   // |starting_view| is null, |starting_widget| is consulted to determine which
   // Widget to start from. See WidgetDelegate::Params::focus_traverses_out for
@@ -312,6 +302,9 @@ class VIEWS_EXPORT FocusManager : public ViewObserver {
   // Updates |keyboard_accessible_| to the given value and advances focus if
   // necessary.
   void SetKeyboardAccessible(bool keyboard_accessible);
+
+  // Checks if a focused view is being set.
+  bool IsSettingFocusedView() const;
 
  private:
   // Returns the focusable view found in the FocusTraversable specified starting
@@ -338,22 +331,21 @@ class VIEWS_EXPORT FocusManager : public ViewObserver {
   bool RedirectAcceleratorToBubbleAnchorWidget(
       const ui::Accelerator& accelerator);
 
+  // Returns true if arrow key traversal is enabled for the current widget.
+  bool IsArrowKeyTraversalEnabledForWidget() const;
+
   // Whether arrow key traversal is enabled globally.
   static bool arrow_key_traversal_enabled_;
 
-  // Whether arrow key traversal is enabled for all widgets under the top-level
-  // widget that owns the FocusManager.
-  bool arrow_key_traversal_enabled_for_widget_ = false;
-
   // The top-level Widget this FocusManager is associated with.
-  Widget* widget_;
+  raw_ptr<Widget> widget_;
 
   // The object which handles an accelerator when |accelerator_manager_| doesn't
   // handle it.
   std::unique_ptr<FocusManagerDelegate> delegate_;
 
   // The view that currently is focused.
-  View* focused_view_ = nullptr;
+  raw_ptr<View> focused_view_ = nullptr;
 
   // The AcceleratorManager this FocusManager is associated with.
   ui::AcceleratorManager accelerator_manager_;
@@ -381,6 +373,11 @@ class VIEWS_EXPORT FocusManager : public ViewObserver {
 
   // Whether FocusManager is currently trying to restore a focused view.
   bool in_restoring_focused_view_ = false;
+
+  // Count of SetFocusedViewWithReason() in the current stack.
+  // This value is ideally 0 or 1, i.e. no nested focus change.
+  // See crbug.com/1203960.
+  int setting_focused_view_entrance_count_ = 0;
 };
 
 }  // namespace views

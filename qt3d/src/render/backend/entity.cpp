@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "entity_p.h"
 #include "entity_p_p.h"
@@ -53,6 +17,7 @@
 #include <Qt3DRender/private/sphere_p.h>
 #include <Qt3DRender/qshaderdata.h>
 #include <Qt3DRender/qgeometryrenderer.h>
+#include <Qt3DRender/qpickingproxy.h>
 #include <Qt3DRender/qobjectpicker.h>
 #include <Qt3DRender/qcomputecommand.h>
 #include <Qt3DRender/private/geometryrenderermanager_p.h>
@@ -63,7 +28,6 @@
 #include <Qt3DCore/qentity.h>
 #include <Qt3DCore/qtransform.h>
 #include <Qt3DCore/private/qentity_p.h>
-#include <Qt3DCore/qnodecreatedchange.h>
 
 #include <QMatrix4x4>
 #include <QString>
@@ -103,6 +67,7 @@ void EntityPrivate::componentRemoved(Qt3DCore::QNode *frontend)
 Entity::Entity()
     : BackendNode(*new EntityPrivate)
     , m_nodeManagers(nullptr)
+    , m_parentLessTransform(true)
     , m_boundingDirty(false)
     , m_treeEnabled(true)
 {
@@ -121,7 +86,7 @@ void Entity::cleanup()
 
         removeFromParentChildHandles();
 
-        for (auto &childHandle : qAsConst(m_childrenHandles)) {
+        for (auto &childHandle : std::as_const(m_childrenHandles)) {
             auto child = m_nodeManagers->renderNodesManager()->data(childHandle);
             // children should always exist and have this as parent
             // if they were destroyed, they would have removed themselves from our m_childrenHandles
@@ -139,6 +104,7 @@ void Entity::cleanup()
     m_cameraComponent = Qt3DCore::QNodeId();
     m_materialComponent = Qt3DCore::QNodeId();
     m_geometryRendererComponent = Qt3DCore::QNodeId();
+    m_pickingProxyComponent = Qt3DCore::QNodeId();
     m_objectPickerComponent = QNodeId();
     m_boundingVolumeDebugComponent = QNodeId();
     m_computeComponent = QNodeId();
@@ -220,6 +186,7 @@ void Entity::syncFromFrontEnd(const QNode *frontEnd, bool firstTime)
         m_materialComponent = QNodeId();
         m_cameraComponent = QNodeId();
         m_geometryRendererComponent = QNodeId();
+        m_pickingProxyComponent = QNodeId();
         m_objectPickerComponent = QNodeId();
         m_boundingVolumeDebugComponent = QNodeId();
         m_computeComponent = QNodeId();
@@ -267,9 +234,9 @@ void Entity::removeFromParentChildHandles()
         p->removeChildHandle(m_handle);
 }
 
-QVector<Entity *> Entity::children() const
+QList<Entity *> Entity::children() const
 {
-    QVector<Entity *> childrenVector;
+    QList<Entity *> childrenVector;
     childrenVector.reserve(m_childrenHandles.size());
     for (const HEntity &handle : m_childrenHandles) {
         Entity *child = m_nodeManagers->renderNodesManager()->data(handle);
@@ -282,7 +249,7 @@ QVector<Entity *> Entity::children() const
 void Entity::traverse(const std::function<void(Entity *)> &operation)
 {
     operation(this);
-    for (const HEntity &handle : qAsConst(m_childrenHandles)) {
+    for (const HEntity &handle : std::as_const(m_childrenHandles)) {
         Entity *child = m_nodeManagers->renderNodesManager()->data(handle);
         if (child != nullptr)
             child->traverse(operation);
@@ -339,6 +306,8 @@ void Entity::addComponent(Qt3DCore::QNodeIdTypePair idAndType)
     } else if (type->inherits(&QGeometryRenderer::staticMetaObject)) {
         m_geometryRendererComponent = id;
         m_boundingDirty = true;
+    } else if (type->inherits(&QPickingProxy::staticMetaObject)) {
+        m_pickingProxyComponent = id;
     } else if (type->inherits(&QObjectPicker::staticMetaObject)) {
         m_objectPickerComponent = id;
 //    } else if (type->inherits(&QBoundingVolumeDebug::staticMetaObject)) {
@@ -370,6 +339,8 @@ void Entity::removeComponent(Qt3DCore::QNodeId nodeId)
     } else if (m_geometryRendererComponent == nodeId) {
         m_geometryRendererComponent = QNodeId();
         m_boundingDirty = true;
+    } else if (m_pickingProxyComponent == nodeId) {
+        m_pickingProxyComponent = QNodeId();
     } else if (m_objectPickerComponent == nodeId) {
         m_objectPickerComponent = QNodeId();
 //    } else if (m_boundingVolumeDebugComponent == nodeId) {
@@ -411,6 +382,7 @@ ENTITY_COMPONENT_TEMPLATE_IMPL(Material, HMaterial, MaterialManager, m_materialC
 ENTITY_COMPONENT_TEMPLATE_IMPL(CameraLens, HCamera, CameraManager, m_cameraComponent)
 ENTITY_COMPONENT_TEMPLATE_IMPL(Transform, HTransform, TransformManager, m_transformComponent)
 ENTITY_COMPONENT_TEMPLATE_IMPL(GeometryRenderer, HGeometryRenderer, GeometryRendererManager, m_geometryRendererComponent)
+ENTITY_COMPONENT_TEMPLATE_IMPL(PickingProxy, HPickingProxy, PickingProxyManager, m_pickingProxyComponent)
 ENTITY_COMPONENT_TEMPLATE_IMPL(ObjectPicker, HObjectPicker, ObjectPickerManager, m_objectPickerComponent)
 ENTITY_COMPONENT_TEMPLATE_IMPL(ComputeCommand, HComputeCommand, ComputeCommandManager, m_computeComponent)
 ENTITY_COMPONENT_TEMPLATE_IMPL(Armature, HArmature, ArmatureManager, m_armatureComponent)
@@ -427,9 +399,9 @@ RenderEntityFunctor::RenderEntityFunctor(AbstractRenderer *renderer, NodeManager
 {
 }
 
-Qt3DCore::QBackendNode *RenderEntityFunctor::create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const
+Qt3DCore::QBackendNode *RenderEntityFunctor::create(Qt3DCore::QNodeId id) const
 {
-    HEntity renderNodeHandle = m_nodeManagers->renderNodesManager()->getOrAcquireHandle(change->subjectId());
+    HEntity renderNodeHandle = m_nodeManagers->renderNodesManager()->getOrAcquireHandle(id);
     Entity *entity = m_nodeManagers->renderNodesManager()->data(renderNodeHandle);
     entity->setNodeManagers(m_nodeManagers);
     entity->setHandle(renderNodeHandle);

@@ -18,8 +18,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/audio_fifo.h"
-#include "libavutil/avassert.h"
 #include "libavutil/fifo.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
@@ -71,8 +72,8 @@ static int aconfig_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     LoopContext *s  = ctx->priv;
 
-    s->fifo = av_audio_fifo_alloc(inlink->format, inlink->channels, 8192);
-    s->left = av_audio_fifo_alloc(inlink->format, inlink->channels, 8192);
+    s->fifo = av_audio_fifo_alloc(inlink->format, inlink->ch_layout.nb_channels, 8192);
+    s->left = av_audio_fifo_alloc(inlink->format, inlink->ch_layout.nb_channels, 8192);
     if (!s->fifo || !s->left)
         return AVERROR(ENOMEM);
 
@@ -94,7 +95,7 @@ static int push_samples(AVFilterContext *ctx, int nb_samples)
     AVFilterLink *outlink = ctx->outputs[0];
     LoopContext *s = ctx->priv;
     AVFrame *out;
-    int ret, i = 0;
+    int ret = 0, i = 0;
 
     while (s->loop != 0 && i < nb_samples) {
         out = ff_get_audio_buffer(outlink, FFMIN(nb_samples, s->nb_samples - s->current_sample));
@@ -270,7 +271,6 @@ static const AVFilterPad ainputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = aconfig_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad aoutputs[] = {
@@ -278,18 +278,17 @@ static const AVFilterPad aoutputs[] = {
         .name          = "default",
         .type          = AVMEDIA_TYPE_AUDIO,
     },
-    { NULL }
 };
 
-AVFilter ff_af_aloop = {
+const AVFilter ff_af_aloop = {
     .name          = "aloop",
     .description   = NULL_IF_CONFIG_SMALL("Loop audio samples."),
     .priv_size     = sizeof(LoopContext),
     .priv_class    = &aloop_class,
     .activate      = aactivate,
     .uninit        = auninit,
-    .inputs        = ainputs,
-    .outputs       = aoutputs,
+    FILTER_INPUTS(ainputs),
+    FILTER_OUTPUTS(aoutputs),
 };
 #endif /* CONFIG_ALOOP_FILTER */
 
@@ -332,8 +331,15 @@ static int push_frame(AVFilterContext *ctx)
     if (!out)
         return AVERROR(ENOMEM);
     out->pts += s->duration - s->start_pts;
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
     if (out->pkt_duration)
         duration = out->pkt_duration;
+    else
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    if (out->duration)
+        duration = out->duration;
     else
         duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
     pts = out->pts + duration;
@@ -369,8 +375,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
                 return AVERROR(ENOMEM);
             }
             s->nb_frames++;
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
             if (frame->pkt_duration)
                 duration = frame->pkt_duration;
+            else
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+            if (frame->duration)
+                duration = frame->duration;
             else
                 duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
             s->duration = frame->pts + duration;
@@ -443,7 +456,6 @@ static const AVFilterPad inputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 static const AVFilterPad outputs[] = {
@@ -451,10 +463,9 @@ static const AVFilterPad outputs[] = {
         .name = "default",
         .type = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
-AVFilter ff_vf_loop = {
+const AVFilter ff_vf_loop = {
     .name        = "loop",
     .description = NULL_IF_CONFIG_SMALL("Loop video frames."),
     .priv_size   = sizeof(LoopContext),
@@ -462,7 +473,7 @@ AVFilter ff_vf_loop = {
     .init        = init,
     .uninit      = uninit,
     .activate    = activate,
-    .inputs      = inputs,
-    .outputs     = outputs,
+    FILTER_INPUTS(inputs),
+    FILTER_OUTPUTS(outputs),
 };
 #endif /* CONFIG_LOOP_FILTER */

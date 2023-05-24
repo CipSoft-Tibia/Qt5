@@ -1,49 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpassworddigestor.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QMessageAuthenticationCode>
 #include <QtCore/QtEndian>
+#include <QtCore/QList>
+
+#include "qtcore-config_p.h"
 
 #include <limits>
+
+#if QT_CONFIG(opensslv30) && QT_CONFIG(openssl_linked)
+#define USING_OPENSSL30
+#include <openssl/core_names.h>
+#include <openssl/kdf.h>
+#include <openssl/params.h>
+#include <openssl/provider.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 namespace QPasswordDigestor {
@@ -60,7 +35,7 @@ namespace QPasswordDigestor {
     \since 5.12
 
     Returns a hash computed using the PBKDF1-algorithm as defined in
-    \l {https://tools.ietf.org/html/rfc8018#section-5.1} {RFC 8018}.
+    \l {RFC 8018, section 5.1}.
 
     The function takes the \a data and \a salt, and then hashes it repeatedly
     for \a iterations iterations using the specified hash \a algorithm. If the
@@ -122,11 +97,90 @@ Q_NETWORK_EXPORT QByteArray deriveKeyPbkdf1(QCryptographicHash::Algorithm algori
     return key.left(dkLen);
 }
 
+#ifdef USING_OPENSSL30
+// Copied from QCryptographicHashPrivate
+static constexpr const char * methodToName(QCryptographicHash::Algorithm method) noexcept
+{
+    switch (method) {
+#define CASE(Enum, Name) \
+    case QCryptographicHash:: Enum : \
+        return Name \
+    /*end*/
+    CASE(Sha1, "SHA1");
+    CASE(Md4, "MD4");
+    CASE(Md5, "MD5");
+    CASE(Sha224, "SHA224");
+    CASE(Sha256, "SHA256");
+    CASE(Sha384, "SHA384");
+    CASE(Sha512, "SHA512");
+    CASE(RealSha3_224, "SHA3-224");
+    CASE(RealSha3_256, "SHA3-256");
+    CASE(RealSha3_384, "SHA3-384");
+    CASE(RealSha3_512, "SHA3-512");
+    CASE(Keccak_224, "SHA3-224");
+    CASE(Keccak_256, "SHA3-256");
+    CASE(Keccak_384, "SHA3-384");
+    CASE(Keccak_512, "SHA3-512");
+    CASE(Blake2b_512, "BLAKE2B512");
+    CASE(Blake2s_256, "BLAKE2S256");
+#undef CASE
+    default: return nullptr;
+    }
+}
+
+static QByteArray opensslDeriveKeyPbkdf2(QCryptographicHash::Algorithm algorithm,
+                                         const QByteArray &data, const QByteArray &salt,
+                                         uint64_t iterations, quint64 dkLen)
+{
+    EVP_KDF *kdf = EVP_KDF_fetch(nullptr, "PBKDF2", nullptr);
+
+    if (!kdf)
+        return QByteArray();
+
+    auto cleanUpKdf = qScopeGuard([kdf] {
+        EVP_KDF_free(kdf);
+    });
+
+    EVP_KDF_CTX *ctx = EVP_KDF_CTX_new(kdf);
+
+    if (!ctx)
+        return QByteArray();
+
+    auto cleanUpCtx = qScopeGuard([ctx] {
+        EVP_KDF_CTX_free(ctx);
+    });
+
+    // Do not enable SP800-132 compliance check, otherwise we will require:
+    // - the iteration count is at least 1000
+    // - the salt length is at least 128 bits
+    // - the derived key length is at least 112 bits
+    // This would be a different behavior from the original implementation.
+    int checkDisabled = 1;
+    QList<OSSL_PARAM> params;
+    params.append(OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST, const_cast<char*>(methodToName(algorithm)), 0));
+    params.append(OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT, const_cast<char*>(salt.data()), salt.size()));
+    params.append(OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD, const_cast<char*>(data.data()), data.size()));
+    params.append(OSSL_PARAM_construct_uint64(OSSL_KDF_PARAM_ITER, &iterations));
+    params.append(OSSL_PARAM_construct_int(OSSL_KDF_PARAM_PKCS5, &checkDisabled));
+    params.append(OSSL_PARAM_construct_end());
+
+    if (EVP_KDF_CTX_set_params(ctx, params.data()) <= 0)
+        return QByteArray();
+
+    QByteArray derived(dkLen, '\0');
+
+    if (!EVP_KDF_derive(ctx, reinterpret_cast<unsigned char*>(derived.data()), derived.size(), nullptr))
+        return QByteArray();
+
+    return derived;
+}
+#endif
+
 /*!
     \since 5.12
 
     Derive a key using the PBKDF2-algorithm as defined in
-    \l {https://tools.ietf.org/html/rfc8018#section-5.2} {RFC 8018}.
+    \l {RFC 8018, section 5.2}.
 
     This function takes the \a data and \a salt, and then applies HMAC-X, where
     the X is \a algorithm, repeatedly. It internally concatenates intermediate
@@ -143,8 +197,6 @@ Q_NETWORK_EXPORT QByteArray deriveKeyPbkdf2(QCryptographicHash::Algorithm algori
                                             const QByteArray &data, const QByteArray &salt,
                                             int iterations, quint64 dkLen)
 {
-    // https://tools.ietf.org/html/rfc8018#section-5.2
-
     // The RFC recommends checking that 'dkLen' is not greater than '(2^32 - 1) * hLen'
     int hashLen = QCryptographicHash::hashLength(algorithm);
     const quint64 maxLen = quint64(std::numeric_limits<quint32>::max() - 1) * hashLen;
@@ -158,11 +210,17 @@ Q_NETWORK_EXPORT QByteArray deriveKeyPbkdf2(QCryptographicHash::Algorithm algori
     if (iterations < 1 || dkLen < 1)
         return QByteArray();
 
+#ifdef USING_OPENSSL30
+    if (methodToName(algorithm))
+        return opensslDeriveKeyPbkdf2(algorithm, data, salt, iterations, dkLen);
+#endif
+
+    // https://tools.ietf.org/html/rfc8018#section-5.2
     QByteArray key;
     quint32 currentIteration = 1;
     QMessageAuthenticationCode hmac(algorithm, data);
     QByteArray index(4, Qt::Uninitialized);
-    while (quint64(key.length()) < dkLen) {
+    while (quint64(key.size()) < dkLen) {
         hmac.addData(salt);
 
         qToBigEndian(currentIteration, index.data());

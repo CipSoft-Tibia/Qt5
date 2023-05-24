@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,14 @@
 
 #if defined(OS_ANDROID)
 #include "base/android/library_loader/anchor_functions.h"
-#include "base/android/library_loader/anchor_functions_buildflags.h"
 #endif
+#include "base/android/library_loader/anchor_functions_buildflags.h"
 #include "base/debug/elf_reader.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
 #include "base/format_macros.h"
+#include "base/memory/page_size.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/process/process_metrics.h"
 #include "base/strings/string_number_conversions.h"
@@ -71,8 +72,7 @@ bool ResetPeakRSSIfPossible(base::ProcessId pid) {
   base::ScopedFD clear_refs_fd(open(clear_refs_file.value().c_str(), O_WRONLY));
   is_peak_rss_resettable =
       clear_refs_fd.get() >= 0 &&
-      base::WriteFileDescriptor(clear_refs_fd.get(), kClearPeakRssCommand,
-                                sizeof(kClearPeakRssCommand) - 1);
+      base::WriteFileDescriptor(clear_refs_fd.get(), kClearPeakRssCommand);
   return is_peak_rss_resettable;
 }
 
@@ -301,7 +301,7 @@ bool OSMetrics::FillOSMemoryDump(base::ProcessId pid,
 
   auto process_metrics = CreateProcessMetrics(pid);
 
-  const static size_t page_size = base::GetPageSize();
+  static const size_t page_size = base::GetPageSize();
   uint64_t rss_anon_bytes = (resident_pages - shared_pages) * page_size;
   uint64_t vm_swap_bytes = process_metrics->GetVmSwapBytes();
 
@@ -311,7 +311,7 @@ bool OSMetrics::FillOSMemoryDump(base::ProcessId pid,
   dump->peak_resident_set_kb = GetPeakResidentSetSize(pid);
   dump->is_peak_rss_resettable = ResetPeakRSSIfPossible(pid);
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(SUPPORTS_CODE_ORDERING)
   if (!base::android::AreAnchorsSane()) {
     DLOG(WARNING) << "Incorrect code ordering";
@@ -335,7 +335,7 @@ bool OSMetrics::FillOSMemoryDump(base::ProcessId pid,
 
   dump->native_library_pages_bitmap = std::move(accessed_pages_bitmap);
 #endif  // BUILDFLAG(SUPPORTS_CODE_ORDERING)
-#endif  //  defined(OS_ANDROID)
+#endif  //  BUILDFLAG(IS_ANDROID)
 
   return true;
 }

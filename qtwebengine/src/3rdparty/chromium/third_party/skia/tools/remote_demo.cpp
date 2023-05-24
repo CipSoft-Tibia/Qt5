@@ -6,7 +6,6 @@
  */
 
 #include <chrono>
-#include <err.h>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -16,9 +15,10 @@
 #include <thread>
 #include <unistd.h>
 
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkGraphics.h"
 #include "include/core/SkSurface.h"
-#include "src/core/SkRemoteGlyphCache.h"
+#include "include/private/chromium/SkChromeRemoteGlyphCache.h"
 #include "src/core/SkScalerContext.h"
 
 static std::string gSkpName;
@@ -36,6 +36,8 @@ public:
         return handleId > lastPurgedHandleId;
     }
     void purgeAll() { lastPurgedHandleId = nextHandleId; }
+
+    bool isHandleDeleted(SkDiscardableHandleId id) override { return false; }
 
 private:
     SkDiscardableHandleId nextHandleId = 0u;
@@ -62,6 +64,8 @@ public:
 
     bool deleteHandle(SkDiscardableHandleId) override { return allowPurging; }
 
+    void notifyCacheMiss(SkStrikeClient::CacheMissType type, int fontSize) override { }
+
 private:
     bool allowPurging = false;
 };
@@ -70,14 +74,12 @@ static bool write_SkData(int fd, const SkData& data) {
     size_t size = data.size();
     ssize_t bytesWritten = ::write(fd, &size, sizeof(size));
     if (bytesWritten < 0) {
-        err(1,"Failed write %zu", size);
-        return false;
+        SK_ABORT("Failed write %zu", size);
     }
 
     bytesWritten = ::write(fd, data.data(), data.size());
     if (bytesWritten < 0) {
-        err(1,"Failed write %zu", size);
-        return false;
+        SK_ABORT("Failed write %zu", size);
     }
 
     return true;
@@ -88,7 +90,7 @@ static sk_sp<SkData> read_SkData(int fd) {
     ssize_t readSize = ::read(fd, &size, sizeof(size));
     if (readSize <= 0) {
         if (readSize < 0) {
-            err(1, "Failed read %zu", size);
+            SK_ABORT("Failed read %zu", size);
         }
         return nullptr;
     }
@@ -102,7 +104,7 @@ static sk_sp<SkData> read_SkData(int fd) {
         sizeRead = ::read(fd, &data[totalRead], size - totalRead);
         if (sizeRead <= 0) {
             if (readSize < 0) {
-                err(1, "Failed read %zu", size);
+                SK_ABORT("Failed read %zu", size);
             }
             return nullptr;
         }
@@ -135,10 +137,10 @@ private:
 static bool push_font_data(const SkPicture& pic, SkStrikeServer* strikeServer,
                            sk_sp<SkColorSpace> colorSpace, int writeFd) {
     const SkIRect bounds = pic.cullRect().round();
-    const SkSurfaceProps props(SkSurfaceProps::kLegacyFontHost_InitType);
-    SkTextBlobCacheDiffCanvas filter(bounds.width(), bounds.height(), props,
-                                     strikeServer, std::move(colorSpace), true);
-    pic.playback(&filter);
+    const SkSurfaceProps props(0, kRGB_H_SkPixelGeometry);
+    std::unique_ptr<SkCanvas> filter = strikeServer->makeAnalysisCanvas(
+            bounds.width(), bounds.height(), props, std::move(colorSpace), true, true);
+    pic.playback(filter.get());
 
     std::vector<uint8_t> fontData;
     strikeServer->writeStrikeData(&fontData);
@@ -324,4 +326,3 @@ int main(int argc, char** argv) {
 
     return 0;
 }
-

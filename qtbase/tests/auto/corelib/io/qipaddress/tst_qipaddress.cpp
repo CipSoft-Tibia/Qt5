@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#define _CRT_SECURE_NO_WARNINGS 1
 
 #include <QtCore/QString>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/private/qipaddress_p.h>
 
 #ifdef __GLIBC__
@@ -93,7 +70,7 @@ namespace QTest {
     char *toString(const Ip6 &ip6)
     {
         char buf[sizeof "1111:2222:3333:4444:5555:6666:7777:8888" + 2];
-        sprintf(buf, "%x:%x:%x:%x:%x:%x:%x:%x",
+        snprintf(buf, sizeof(buf), "%x:%x:%x:%x:%x:%x:%x:%x",
                 ip6.u8[0] << 8 | ip6.u8[1],
                 ip6.u8[2] << 8 | ip6.u8[3],
                 ip6.u8[4] << 8 | ip6.u8[5],

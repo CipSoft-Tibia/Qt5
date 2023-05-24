@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/qjoint.h>
@@ -34,7 +9,7 @@
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DCore/private/qbackendnode_p.h>
 #include <qbackendnodetester.h>
-#include <testpostmanarbiter.h>
+#include <testarbiter.h>
 
 using namespace Qt3DCore;
 using namespace Qt3DAnimation;
@@ -103,11 +78,10 @@ private Q_SLOTS:
         QCOMPARE(backendSkeleton.jointLocalPoses().size(), 0);
 
         // GIVEN
-        const QVector<QString> names = (QVector<QString>()
-                                        << QLatin1String("root")
-                                        << QLatin1String("child1")
-                                        << QLatin1String("child2"));
-        const QVector<Sqt> localPoses = (QVector<Sqt>() << Sqt() << Sqt() << Sqt());
+        const QVector<QString> names = { QLatin1String("root"),
+                                         QLatin1String("child1"),
+                                         QLatin1String("child2") };
+        const QVector<Sqt> localPoses = { Sqt(), Sqt(), Sqt() };
 
         // WHEN
         backendSkeleton.setJointNames(names);
@@ -140,12 +114,12 @@ private Q_SLOTS:
     void checkJointTransforms_data()
     {
         QTest::addColumn<Skeleton*>("skeleton");
-        QTest::addColumn<QVector<Sqt>>("jointTransforms");
+        QTest::addColumn<QList<Sqt>>("jointTransforms");
 
         const int count = 5;
         auto skeleton = new Skeleton;
         skeleton->setJointCount(count);
-        QVector<Sqt> jointTransforms;
+        QList<Sqt> jointTransforms;
         jointTransforms.reserve(count);
         for (int i = 0; i < count; ++i) {
             const float f = float(i);
@@ -166,7 +140,7 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Skeleton*, skeleton);
-        QFETCH(QVector<Sqt>, jointTransforms);
+        QFETCH(QList<Sqt>, jointTransforms);
 
         const int count = skeleton->jointCount();
         for (int i = 0; i < count; ++i) {

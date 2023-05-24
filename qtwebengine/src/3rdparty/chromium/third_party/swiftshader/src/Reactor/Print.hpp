@@ -18,6 +18,7 @@
 #ifdef ENABLE_RR_PRINT
 
 #	include "Reactor.hpp"
+#	include "SIMD.hpp"
 
 #	include <string>
 #	include <vector>
@@ -324,6 +325,63 @@ struct PrintValue::Ty<Pointer<T>>
 	static std::string fmt(const RValue<Pointer<T>> &v) { return "%p"; }
 	static std::vector<Value *> val(const RValue<Pointer<T>> &v) { return { v.value() }; }
 };
+template<>
+struct PrintValue::Ty<SIMD::Pointer>
+{
+	static std::string fmt(const SIMD::Pointer &v)
+	{
+		if(v.isBasePlusOffset)
+		{
+			std::string format;
+			for(int i = 1; i < SIMD::Width; i++) { format += ", %d"; }
+			return "{%p + [%d" + format + "]}";
+		}
+		else
+		{
+			std::string format;
+			for(int i = 1; i < SIMD::Width; i++) { format += ", %p"; }
+			return "{%p" + format + "}";
+		}
+	}
+
+	static std::vector<Value *> val(const SIMD::Pointer &v)
+	{
+		return v.getPrintValues();
+	}
+};
+template<>
+struct PrintValue::Ty<SIMD::Int>
+{
+	static std::string fmt(const RValue<SIMD::Int> &v)
+	{
+		std::string format;
+		for(int i = 1; i < SIMD::Width; i++) { format += ", %d"; }
+		return "[%d" + format + "]";
+	}
+	static std::vector<Value *> val(const RValue<SIMD::Int> &v);
+};
+template<>
+struct PrintValue::Ty<SIMD::UInt>
+{
+	static std::string fmt(const RValue<SIMD::UInt> &v)
+	{
+		std::string format;
+		for(int i = 1; i < SIMD::Width; i++) { format += ", %u"; }
+		return "[%u" + format + "]";
+	}
+	static std::vector<Value *> val(const RValue<SIMD::UInt> &v);
+};
+template<>
+struct PrintValue::Ty<SIMD::Float>
+{
+	static std::string fmt(const RValue<SIMD::Float> &v)
+	{
+		std::string format;
+		for(int i = 1; i < SIMD::Width; i++) { format += ", %f"; }
+		return "[%f" + format + "]";
+	}
+	static std::vector<Value *> val(const RValue<SIMD::Float> &v);
+};
 template<typename T>
 struct PrintValue::Ty<Reference<T>>
 {
@@ -364,7 +422,7 @@ inline void Printv(const char *msg, std::initializer_list<PrintValue> vals)
 // Print is a wrapper over Printv that wraps the variadic arguments into an
 // initializer_list before calling Printv.
 template<typename... ARGS>
-void Print(const char *msg, const ARGS &... vals)
+void Print(const char *msg, const ARGS &...vals)
 {
 	Printv(msg, { vals... });
 }
@@ -372,7 +430,7 @@ void Print(const char *msg, const ARGS &... vals)
 // Print is a wrapper over Printv that wraps the variadic arguments into an
 // initializer_list before calling Printv.
 template<typename... ARGS>
-void Print(const char *function, const char *file, int line, const char *msg, const ARGS &... vals)
+void Print(const char *function, const char *file, int line, const char *msg, const ARGS &...vals)
 {
 	Printv(function, file, line, msg, { vals... });
 }

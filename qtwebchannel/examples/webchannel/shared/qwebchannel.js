@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 "use strict";
 
@@ -53,7 +17,7 @@ var QWebChannelMessageTypes = {
     response: 10,
 };
 
-var QWebChannel = function(transport, initCallback)
+var QWebChannel = function(transport, initCallback, converters)
 {
     if (typeof transport !== "object" || typeof transport.send !== "function") {
         console.error("The QWebChannel expects a transport object with a send function and onmessage callback property." +
@@ -63,6 +27,43 @@ var QWebChannel = function(transport, initCallback)
 
     var channel = this;
     this.transport = transport;
+
+    var converterRegistry =
+    {
+        Date : function(response) {
+            if (typeof response === "string"
+                && response.match(
+                        /^-?\d+-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d*)?([-+\u2212](\d{2}):(\d{2})|Z)?$/)) {
+                var date = new Date(response);
+                if (!isNaN(date))
+                    return date;
+            }
+            return undefined; // Return undefined if current converter is not applicable
+        }
+    };
+
+    this.usedConverters = [];
+
+    this.addConverter = function(converter)
+    {
+        if (typeof converter === "string") {
+            if (converterRegistry.hasOwnProperty(converter))
+                this.usedConverters.push(converterRegistry[converter]);
+            else
+                console.error("Converter '" + converter + "' not found");
+        } else if (typeof converter === "function") {
+            this.usedConverters.push(converter);
+        } else {
+            console.error("Invalid converter object type " + typeof converter);
+        }
+    }
+
+    if (Array.isArray(converters)) {
+        for (const converter of converters)
+            this.addConverter(converter);
+    } else if (converters !== undefined) {
+        this.addConverter(converters);
+    }
 
     this.send = function(data)
     {
@@ -190,6 +191,12 @@ function QObject(name, data, webChannel)
 
     this.unwrapQObject = function(response)
     {
+        for (const converter of webChannel.usedConverters) {
+            var result = converter(response);
+            if (result !== undefined)
+                return result;
+        }
+
         if (response instanceof Array) {
             // support list of objects
             return response.map(qobj => object.unwrapQObject(qobj))
@@ -273,13 +280,11 @@ function QObject(name, data, webChannel)
                     console.error("Bad callback given to disconnect from signal " + signalName);
                     return;
                 }
-                object.__objectSignals__[signalIndex] = object.__objectSignals__[signalIndex] || [];
-                var idx = object.__objectSignals__[signalIndex].indexOf(callback);
-                if (idx === -1) {
-                    console.error("Cannot find connection of signal " + signalName + " to " + callback.name);
-                    return;
-                }
-                object.__objectSignals__[signalIndex].splice(idx, 1);
+                // This makes a new list. This is important because it won't interfere with
+                // signal processing if a disconnection happens while emittig a signal
+                object.__objectSignals__[signalIndex] = (object.__objectSignals__[signalIndex] || []).filter(function(c) {
+                  return c != callback;
+                });
                 if (!isPropertyNotifySignal && object.__objectSignals__[signalIndex].length === 0) {
                     // only required for "pure" signals, handled separately for properties in propertyUpdate
                     webChannel.exec({
@@ -341,10 +346,6 @@ function QObject(name, data, webChannel)
                 var argument = arguments[i];
                 if (typeof argument === "function")
                     callback = argument;
-                else if (argument instanceof QObject && webChannel.objects[argument.__id__] !== undefined)
-                    args.push({
-                        "id": argument.__id__
-                    });
                 else
                     args.push(argument);
             }
@@ -416,8 +417,6 @@ function QObject(name, data, webChannel)
                 }
                 object.__propertyCache__[propertyIndex] = value;
                 var valueToSend = value;
-                if (valueToSend instanceof QObject && webChannel.objects[valueToSend.__id__] !== undefined)
-                    valueToSend = { "id": valueToSend.__id__ };
                 webChannel.exec({
                     "type": QWebChannelMessageTypes.setProperty,
                     "object": object.__id__,
@@ -439,6 +438,14 @@ function QObject(name, data, webChannel)
 
     Object.assign(object, data.enums);
 }
+
+QObject.prototype.toJSON = function() {
+    if (this.__id__ === undefined) return {};
+    return {
+        id: this.__id__,
+        "__QObject*__": true
+    };
+};
 
 //required for use with nodejs
 if (typeof module === 'object') {

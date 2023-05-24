@@ -1,9 +1,10 @@
-// Copyright (c) 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/quic/quic_connectivity_monitor.h"
 
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 
 namespace net {
@@ -19,14 +20,14 @@ bool IsErrorRelatedToConnectivity(int error_code) {
 }  // namespace
 
 QuicConnectivityMonitor::QuicConnectivityMonitor(
-    NetworkChangeNotifier::NetworkHandle default_network)
+    handles::NetworkHandle default_network)
     : default_network_(default_network) {}
 
 QuicConnectivityMonitor::~QuicConnectivityMonitor() = default;
 
 void QuicConnectivityMonitor::RecordConnectivityStatsToHistograms(
     const std::string& notification,
-    NetworkChangeNotifier::NetworkHandle affected_network) const {
+    handles::NetworkHandle affected_network) const {
   if (notification == "OnNetworkSoonToDisconnect" ||
       notification == "OnNetworkDisconnected") {
     // If the disconnected network is not the default network, ignore
@@ -71,7 +72,8 @@ void QuicConnectivityMonitor::RecordConnectivityStatsToHistograms(
       "Net.QuicConnectivityMonitor.PercentageAllDegradedSessions." +
       notification;
 
-  base::UmaHistogramPercentage(percentage_histogram_name1, percentage);
+  base::UmaHistogramPercentageObsoleteDoNotUse(percentage_histogram_name1,
+                                               percentage);
 
   // Skip degrading session collection if there are less than two sessions.
   if (active_sessions_.size() < 2u)
@@ -89,7 +91,8 @@ void QuicConnectivityMonitor::RecordConnectivityStatsToHistograms(
   const std::string percentage_histogram_name =
       "Net.QuicConnectivityMonitor.PercentageActiveDegradingSessions." +
       notification;
-  base::UmaHistogramPercentage(percentage_histogram_name, percentage);
+  base::UmaHistogramPercentageObsoleteDoNotUse(percentage_histogram_name,
+                                               percentage);
 }
 
 size_t QuicConnectivityMonitor::GetNumDegradingSessions() const {
@@ -103,13 +106,13 @@ size_t QuicConnectivityMonitor::GetCountForWriteErrorCode(
 }
 
 void QuicConnectivityMonitor::SetInitialDefaultNetwork(
-    NetworkChangeNotifier::NetworkHandle default_network) {
+    handles::NetworkHandle default_network) {
   default_network_ = default_network;
 }
 
 void QuicConnectivityMonitor::OnSessionPathDegrading(
     QuicChromiumClientSession* session,
-    NetworkChangeNotifier::NetworkHandle network) {
+    handles::NetworkHandle network) {
   if (network != default_network_)
     return;
 
@@ -133,7 +136,7 @@ void QuicConnectivityMonitor::OnSessionPathDegrading(
 
 void QuicConnectivityMonitor::OnSessionResumedPostPathDegrading(
     QuicChromiumClientSession* session,
-    NetworkChangeNotifier::NetworkHandle network) {
+    handles::NetworkHandle network) {
   if (network != default_network_)
     return;
 
@@ -145,12 +148,13 @@ void QuicConnectivityMonitor::OnSessionResumedPostPathDegrading(
   active_sessions_.insert(session);
 
   num_all_degraded_sessions_ = 0u;
-  num_sessions_active_during_current_speculative_connectivity_failure_.reset();
+  num_sessions_active_during_current_speculative_connectivity_failure_ =
+      absl::nullopt;
 }
 
 void QuicConnectivityMonitor::OnSessionEncounteringWriteError(
     QuicChromiumClientSession* session,
-    NetworkChangeNotifier::NetworkHandle network,
+    handles::NetworkHandle network,
     int error_code) {
   if (network != default_network_)
     return;
@@ -178,7 +182,7 @@ void QuicConnectivityMonitor::OnSessionEncounteringWriteError(
 
 void QuicConnectivityMonitor::OnSessionClosedAfterHandshake(
     QuicChromiumClientSession* session,
-    NetworkChangeNotifier::NetworkHandle network,
+    handles::NetworkHandle network,
     quic::ConnectionCloseSource source,
     quic::QuicErrorCode error_code) {
   if (network != default_network_)
@@ -202,7 +206,7 @@ void QuicConnectivityMonitor::OnSessionClosedAfterHandshake(
 
 void QuicConnectivityMonitor::OnSessionRegistered(
     QuicChromiumClientSession* session,
-    NetworkChangeNotifier::NetworkHandle network) {
+    handles::NetworkHandle network) {
   if (network != default_network_)
     return;
 
@@ -220,22 +224,23 @@ void QuicConnectivityMonitor::OnSessionRemoved(
 }
 
 void QuicConnectivityMonitor::OnDefaultNetworkUpdated(
-    NetworkChangeNotifier::NetworkHandle default_network) {
+    handles::NetworkHandle default_network) {
   default_network_ = default_network;
   active_sessions_.clear();
   degrading_sessions_.clear();
-  num_sessions_active_during_current_speculative_connectivity_failure_.reset();
+  num_sessions_active_during_current_speculative_connectivity_failure_ =
+      absl::nullopt;
   write_error_map_.clear();
   quic_error_map_.clear();
 }
 
 void QuicConnectivityMonitor::OnIPAddressChanged() {
-  // If NetworkHandle is supported, connectivity monitor will receive
+  // If handles::NetworkHandle is supported, connectivity monitor will receive
   // notifications via OnDefaultNetworkUpdated.
   if (NetworkChangeNotifier::AreNetworkHandlesSupported())
     return;
 
-  DCHECK_EQ(default_network_, NetworkChangeNotifier::kInvalidNetworkHandle);
+  DCHECK_EQ(default_network_, handles::kInvalidNetworkHandle);
   degrading_sessions_.clear();
   write_error_map_.clear();
 }

@@ -15,10 +15,26 @@
 import * as m from 'mithril';
 
 import {Actions} from '../common/actions';
+import {timeToCode} from '../common/time';
 
-import {globals} from './globals';
+import {Flow, globals} from './globals';
+import {BLANK_CHECKBOX, CHECKBOX} from './icons';
 import {Panel, PanelSize} from './panel';
-import {findUiTrackId} from './scroll_helper';
+
+export const ALL_CATEGORIES = '_all_';
+
+export function getFlowCategories(flow: Flow): string[] {
+  const categories: string[] = [];
+  // v1 flows have their own categories
+  if (flow.category) {
+    categories.push(...flow.category.split(','));
+    return categories;
+  }
+  const beginCats = flow.begin.sliceCategory.split(',');
+  const endCats = flow.end.sliceCategory.split(',');
+  categories.push(...new Set([...beginCats, ...endCats]));
+  return categories;
+}
 
 export class FlowEventsPanel extends Panel {
   view() {
@@ -26,13 +42,9 @@ export class FlowEventsPanel extends Panel {
     if (!selection || selection.kind !== 'CHROME_SLICE') {
       return;
     }
-    const flowsIn =
-        globals.boundFlows.filter(flow => flow.end.sliceId === selection.id);
-    const flowsOut =
-        globals.boundFlows.filter(flow => flow.begin.sliceId === selection.id);
 
     const flowClickHandler = (sliceId: number, trackId: number) => {
-      const uiTrackId = findUiTrackId(trackId);
+      const uiTrackId = globals.state.uiTrackIdByTraceTrackId[trackId];
       if (uiTrackId) {
         globals.makeSelection(
             Actions.selectChromeSlice(
@@ -40,58 +52,155 @@ export class FlowEventsPanel extends Panel {
             'bound_flows');
       }
     };
-    const incomingFlowsTable: m.Vnode[] = [
-      m('.details-panel-heading', m('h2', `Incoming flow events`)),
-      m(
-          '.flow-events-table',
-          m('table.half-width',
-            m('tr', m('th', 'Source Slice ID'), m('th', 'Source Slice Name')),
-            flowsIn.map(flow => {
-              const args = {
-                onclick: () =>
-                    flowClickHandler(flow.begin.sliceId, flow.begin.trackId),
-                onmousemove: () =>
-                    globals.frontendLocalState.setHighlightedSliceId(
-                        flow.begin.sliceId),
-                onmouseleave: () =>
-                    globals.frontendLocalState.setHighlightedSliceId(-1)
-              };
-              return m(
-                  'tr',
-                  m('td.flow-link', args, flow.begin.sliceId.toString()),
-                  m('td.flow-link', args, flow.begin.sliceName));
-            })),
-          )
+
+    // Can happen only for flow events version 1
+    const haveCategories =
+        globals.connectedFlows.filter((flow) => flow.category).length > 0;
+
+    const columns = [
+      m('th', 'Direction'),
+      m('th', 'Duration'),
+      m('th', 'Connected Slice ID'),
+      m('th', 'Connected Slice Name'),
+      m('th', 'Thread Out'),
+      m('th', 'Thread In'),
+      m('th', 'Process Out'),
+      m('th', 'Process In'),
     ];
-    const outgoingFlowsTable: m.Vnode[] = [
-      m('.details-panel-heading', m('h2', `Outgoing flow events`)),
-      m(
-          '.flow-events-table',
-          m('table.half-width',
-            m('tr',
-              m('th', 'Destination Slice ID'),
-              m('th', 'Destination Slice Name')),
-            flowsOut.map(flow => {
-              const args = {
-                onclick: () =>
-                    flowClickHandler(flow.end.sliceId, flow.end.trackId),
-                onmousemove: () =>
-                    globals.frontendLocalState.setHighlightedSliceId(
-                        flow.end.sliceId),
-                onmouseleave: () =>
-                    globals.frontendLocalState.setHighlightedSliceId(-1)
-              };
-              return m(
-                  'tr',
-                  m('td.flow-link', args, flow.end.sliceId.toString()),
-                  m('td.flow-link', args, flow.end.sliceName));
-            })),
-          )
+
+    if (haveCategories) {
+      columns.push(m('th', 'Flow Category'));
+      columns.push(m('th', 'Flow Name'));
+    }
+
+    const rows = [m('tr', columns)];
+
+    // Fill the table with all the directly connected flow events
+    globals.connectedFlows.forEach((flow) => {
+      if (selection.id !== flow.begin.sliceId &&
+          selection.id !== flow.end.sliceId) {
+        return;
+      }
+
+      const outgoing = selection.id === flow.begin.sliceId;
+      const otherEnd = (outgoing ? flow.end : flow.begin);
+
+      const args = {
+        onclick: () => flowClickHandler(otherEnd.sliceId, otherEnd.trackId),
+        onmousemove: () => globals.dispatch(
+            Actions.setHighlightedSliceId({sliceId: otherEnd.sliceId})),
+        onmouseleave: () =>
+            globals.dispatch(Actions.setHighlightedSliceId({sliceId: -1})),
+      };
+
+      const data = [
+        m('td.flow-link', args, outgoing ? 'Outgoing' : 'Incoming'),
+        m('td.flow-link', args, timeToCode(flow.dur)),
+        m('td.flow-link', args, otherEnd.sliceId.toString()),
+        m('td.flow-link', args, otherEnd.sliceName),
+        m('td.flow-link', args, flow.begin.threadName),
+        m('td.flow-link', args, flow.end.threadName),
+        m('td.flow-link', args, flow.begin.processName),
+        m('td.flow-link', args, flow.end.processName),
+      ];
+
+      if (haveCategories) {
+        data.push(m('td.flow-info', flow.category || '-'));
+        data.push(m('td.flow-info', flow.name || '-'));
+      }
+
+      rows.push(m('tr', data));
+    });
+
+    return m('.details-panel', [
+      m('.details-panel-heading', m('h2', `Flow events`)),
+      m('.flow-events-table', m('table', rows)),
+    ]);
+  }
+
+  renderCanvas(_ctx: CanvasRenderingContext2D, _size: PanelSize) {}
+}
+
+export class FlowEventsAreaSelectedPanel extends Panel {
+  view() {
+    const selection = globals.state.currentSelection;
+    if (!selection || selection.kind !== 'AREA') {
+      return;
+    }
+
+    const columns = [
+      m('th', 'Flow Category'),
+      m('th', 'Number of flows'),
+      m('th',
+        'Show',
+        m('a.warning',
+          m('i.material-icons', 'warning'),
+          m('.tooltip',
+            'Showing a large number of flows may impact performance.'))),
     ];
-    return m(
-        '.details-panel',
-        flowsIn.length > 0 ? incomingFlowsTable : [],
-        flowsOut.length > 0 ? outgoingFlowsTable : []);
+
+    const rows = [m('tr', columns)];
+
+    const categoryToFlowsNum = new Map<string, number>();
+
+    globals.selectedFlows.forEach((flow) => {
+      const categories = getFlowCategories(flow);
+      categories.forEach((cat) => {
+        if (!categoryToFlowsNum.has(cat)) {
+          categoryToFlowsNum.set(cat, 0);
+        }
+        categoryToFlowsNum.set(cat, categoryToFlowsNum.get(cat)! + 1);
+      });
+    });
+
+    const allWasChecked = globals.visibleFlowCategories.get(ALL_CATEGORIES);
+    rows.push(m('tr.sum', [
+      m('td.sum-data', 'All'),
+      m('td.sum-data', globals.selectedFlows.length),
+      m('td.sum-data',
+        m('i.material-icons',
+          {
+            onclick: () => {
+              if (allWasChecked) {
+                globals.visibleFlowCategories.clear();
+              } else {
+                categoryToFlowsNum.forEach((_, cat) => {
+                  globals.visibleFlowCategories.set(cat, true);
+                });
+              }
+              globals.visibleFlowCategories.set(ALL_CATEGORIES, !allWasChecked);
+              globals.rafScheduler.scheduleFullRedraw();
+            },
+          },
+          allWasChecked ? CHECKBOX : BLANK_CHECKBOX)),
+    ]));
+
+    categoryToFlowsNum.forEach((num, cat) => {
+      const wasChecked = globals.visibleFlowCategories.get(cat) ||
+          globals.visibleFlowCategories.get(ALL_CATEGORIES);
+      const data = [
+        m('td.flow-info', cat),
+        m('td.flow-info', num),
+        m('td.flow-info',
+          m('i.material-icons',
+            {
+              onclick: () => {
+                if (wasChecked) {
+                  globals.visibleFlowCategories.set(ALL_CATEGORIES, false);
+                }
+                globals.visibleFlowCategories.set(cat, !wasChecked);
+                globals.rafScheduler.scheduleFullRedraw();
+              },
+            },
+            wasChecked ? CHECKBOX : BLANK_CHECKBOX)),
+      ];
+      rows.push(m('tr', data));
+    });
+
+    return m('.details-panel', [
+      m('.details-panel-heading', m('h2', `Selected flow events`)),
+      m('.flow-events-table', m('table', rows)),
+    ]);
   }
 
   renderCanvas(_ctx: CanvasRenderingContext2D, _size: PanelSize) {}

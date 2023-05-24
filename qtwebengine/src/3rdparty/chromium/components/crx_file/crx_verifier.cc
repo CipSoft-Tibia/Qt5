@@ -1,9 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/crx_file/crx_verifier.h"
 
+#include <algorithm>
+#include <climits>
 #include <cstring>
 #include <iterator>
 #include <memory>
@@ -11,11 +13,11 @@
 #include <utility>
 
 #include "base/base64.h"
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
-#include "base/stl_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/crx_file/crx3.pb.h"
 #include "components/crx_file/crx_file.h"
@@ -24,13 +26,11 @@
 #include "crypto/secure_util.h"
 #include "crypto/sha2.h"
 #include "crypto/signature_verifier.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace crx_file {
 
 namespace {
-
-// The maximum size the Crx3 parser will tolerate for a header.
-constexpr uint32_t kMaxHeaderSize = 1 << 18;
 
 // The SHA256 hash of the DER SPKI "ecdsa_2017_public" Crx3 key.
 constexpr uint8_t kPublisherKeyHash[] = {
@@ -43,6 +43,9 @@ constexpr uint8_t kPublisherTestKeyHash[] = {
     0x6c, 0x46, 0x41, 0x3b, 0x00, 0xd0, 0xfa, 0x0e, 0x72, 0xc8, 0xd2,
     0x5f, 0x64, 0xf3, 0xa6, 0x17, 0x03, 0x0d, 0xde, 0x21, 0x61, 0xbe,
     0xb7, 0x95, 0x91, 0x95, 0x83, 0x68, 0x12, 0xe9, 0x78, 0x1e};
+
+constexpr uint8_t kEocd[] = {'P', 'K', 0x05, 0x06};
+constexpr uint8_t kEocd64[] = {'P', 'K', 0x06, 0x07};
 
 using VerifierCollection =
     std::vector<std::unique_ptr<crypto::SignatureVerifier>>;
@@ -75,8 +78,7 @@ bool ReadHashAndVerifyArchive(base::File* file,
                               const VerifierCollection& verifiers) {
   uint8_t buffer[1 << 12] = {};
   size_t len = 0;
-  while ((len = ReadAndHashBuffer(buffer, base::size(buffer), file, hash)) >
-         0) {
+  while ((len = ReadAndHashBuffer(buffer, std::size(buffer), file, hash)) > 0) {
     for (auto& verifier : verifiers)
       verifier->VerifyUpdate(base::make_span(buffer, len));
   }
@@ -98,20 +100,41 @@ VerifierResult VerifyCrx3(
     const std::vector<std::vector<uint8_t>>& required_key_hashes,
     std::string* public_key,
     std::string* crx_id,
+    std::vector<uint8_t>* compressed_verified_contents,
     bool require_publisher_key,
     bool accept_publisher_test_key) {
   // Parse [header-size] and [header].
-  const uint32_t header_size = ReadAndHashLittleEndianUInt32(file, hash);
-  if (header_size > kMaxHeaderSize)
+  int header_size =
+      base::saturated_cast<int>(ReadAndHashLittleEndianUInt32(file, hash));
+  if (header_size == INT_MAX)
     return VerifierResult::ERROR_HEADER_INVALID;
   std::vector<uint8_t> header_bytes(header_size);
-  // Assuming kMaxHeaderSize can fit in an int, the following cast is safe.
   if (ReadAndHashBuffer(header_bytes.data(), header_size, file, hash) !=
-      static_cast<int>(header_size))
+      header_size) {
     return VerifierResult::ERROR_HEADER_INVALID;
+  }
+
+  // If the header contains a ZIP EOCD or EOCD64 token, unzipping may not work
+  // correctly.
+  if (std::search(std::begin(header_bytes), std::end(header_bytes),
+                  std::begin(kEocd),
+                  std::end(kEocd)) != std::end(header_bytes) ||
+      std::search(std::begin(header_bytes), std::end(header_bytes),
+                  std::begin(kEocd64),
+                  std::end(kEocd64)) != std::end(header_bytes)) {
+    return VerifierResult::ERROR_HEADER_INVALID;
+  }
+
   CrxFileHeader header;
   if (!header.ParseFromArray(header_bytes.data(), header_size))
     return VerifierResult::ERROR_HEADER_INVALID;
+
+  // Parse [verified_contents].
+  if (header.has_verified_contents() && compressed_verified_contents) {
+    const std::string& header_verified_contents(header.verified_contents());
+    compressed_verified_contents->assign(header_verified_contents.begin(),
+                                         header_verified_contents.end());
+  }
 
   // Parse [signed-header].
   const std::string& signed_header_data_str = header.signed_header_data();
@@ -125,8 +148,10 @@ VerifierResult VerifyCrx3(
   // Create a little-endian representation of [signed-header-size].
   const int signed_header_size = signed_header_data_str.size();
   const uint8_t header_size_octets[] = {
-      uint8_t(signed_header_size), uint8_t(signed_header_size >> 8),
-      uint8_t(signed_header_size >> 16), uint8_t(signed_header_size >> 24)};
+      static_cast<uint8_t>(signed_header_size),
+      static_cast<uint8_t>(signed_header_size >> 8),
+      static_cast<uint8_t>(signed_header_size >> 16),
+      static_cast<uint8_t>(signed_header_size >> 24)};
 
   // Create a set of all required key hashes.
   std::set<std::vector<uint8_t>> required_key_set(required_key_hashes.begin(),
@@ -148,7 +173,7 @@ VerifierResult VerifyCrx3(
 
   std::vector<uint8_t> publisher_key(std::begin(kPublisherKeyHash),
                                      std::end(kPublisherKeyHash));
-  base::Optional<std::vector<uint8_t>> publisher_test_key;
+  absl::optional<std::vector<uint8_t>> publisher_test_key;
   if (accept_publisher_test_key) {
     publisher_test_key.emplace(std::begin(kPublisherTestKeyHash),
                                std::end(kPublisherTestKeyHash));
@@ -179,7 +204,7 @@ VerifierResult VerifyCrx3(
                          base::as_bytes(base::make_span(sig)),
                          base::as_bytes(base::make_span(key))))
         return VerifierResult::ERROR_SIGNATURE_INITIALIZATION_FAILED;
-      v->VerifyUpdate(kSignatureContext);
+      v->VerifyUpdate(base::as_bytes(base::make_span(kSignatureContext)));
       v->VerifyUpdate(header_size_octets);
       v->VerifyUpdate(base::as_bytes(base::make_span(signed_header_data_str)));
       verifiers.push_back(std::move(v));
@@ -208,7 +233,8 @@ VerifierResult Verify(
     const std::vector<std::vector<uint8_t>>& required_key_hashes,
     const std::vector<uint8_t>& required_file_hash,
     std::string* public_key,
-    std::string* crx_id) {
+    std::string* crx_id,
+    std::vector<uint8_t>* compressed_verified_contents) {
   std::string public_key_local;
   std::string crx_id_local;
   base::File file(crx_path, base::File::FLAG_OPEN | base::File::FLAG_READ);
@@ -238,10 +264,10 @@ VerifierResult Verify(
     bool require_publisher_key =
         format == VerifierFormat::CRX3_WITH_PUBLISHER_PROOF ||
         format == VerifierFormat::CRX3_WITH_TEST_PUBLISHER_PROOF;
-    result =
-        VerifyCrx3(&file, file_hash.get(), required_key_hashes,
-                   &public_key_local, &crx_id_local, require_publisher_key,
-                   format == VerifierFormat::CRX3_WITH_TEST_PUBLISHER_PROOF);
+    result = VerifyCrx3(
+        &file, file_hash.get(), required_key_hashes, &public_key_local,
+        &crx_id_local, compressed_verified_contents, require_publisher_key,
+        format == VerifierFormat::CRX3_WITH_TEST_PUBLISHER_PROOF);
   } else {
     result = VerifierResult::ERROR_HEADER_INVALID;
   }

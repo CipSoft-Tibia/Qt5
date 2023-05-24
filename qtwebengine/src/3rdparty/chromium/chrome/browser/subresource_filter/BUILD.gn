@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,8 +13,9 @@ if (is_android) {
 
   android_library("subresource_filter_java_test_support") {
     testonly = true
+    annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]
     sources = [ "../../android/javatests/src/org/chromium/chrome/browser/subresource_filter/TestRulesetPublisher.java" ]
-    deps = [ "//base:base_java" ]
+    deps = [ "//base:jni_java" ]
   }
 
   android_library("subresource_filter_javatests") {
@@ -29,38 +30,37 @@ if (is_android) {
       "//chrome/browser/tab:java",
       "//chrome/browser/tabmodel:java",
       "//chrome/browser/ui/messages/android:java",
-      "//chrome/test/android:chrome_java_test_support",
+      "//chrome/test/android:chrome_java_integration_test_support",
+      "//components/browser_ui/modaldialog/android:java",
       "//components/infobars/android:java",
+      "//components/messages/android:java",
+      "//components/messages/android/internal:java",
+      "//components/messages/android/test:test_support_java",
       "//components/safe_browsing/android:safe_browsing_java",
+      "//components/subresource_filter/android:java",
       "//content/public/test/android:content_java_test_support",
       "//net/android:net_java_test_support",
-      "//third_party/android_deps:androidx_test_runner_java",
+      "//third_party/android_deps:espresso_java",
       "//third_party/android_support_test_runner:rules_java",
       "//third_party/android_support_test_runner:runner_java",
+      "//third_party/androidx:androidx_test_runner_java",
       "//third_party/junit",
+      "//ui/android:ui_java_test_support",
+      "//ui/android:ui_no_recycler_view_java",
+      "//url:gurl_java",
     ]
   }
-}
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "test_ruleset_publisher.cc",
-    "test_ruleset_publisher.h",
-  ]
-  deps = [
-    "//chrome/browser",
-    "//components/subresource_filter/content/browser:browser",
-    "//components/subresource_filter/core/browser:browser",
-    "//components/subresource_filter/core/common:test_support",
-    "//net",
-    "//services/network/public/mojom",
-    "//testing/gtest:gtest",
-    "//third_party/protobuf:protobuf_lite",
-  ]
-
-  if (is_android) {
-    sources += [ "android_test_ruleset_publisher.cc" ]
-    deps += [ ":jni_headers" ]
+  source_set("android_test_support") {
+    testonly = true
+    sources = [ "android_test_ruleset_publisher.cc" ]
+    deps = [
+      ":jni_headers",
+      "//base",
+      "//chrome/browser",
+      "//chrome/browser:browser_process",
+      "//components/subresource_filter/content/browser",
+      "//components/subresource_filter/core/common:test_support",
+    ]
   }
 }

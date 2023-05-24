@@ -1,53 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/QFileSelector>
 #include <QtQml/QQmlAbstractUrlInterceptor>
+#include <QtQml/private/qqmlengine_p.h>
+#include <QtQml/private/qqmlapplicationengine_p.h>
 #include <qobjectdefs.h>
 #include "qqmlfileselector.h"
 #include "qqmlfileselector_p.h"
+#include "qqmlengine_p.h"
 #include <QDebug>
 
 QT_BEGIN_NAMESPACE
 
-typedef QHash<QQmlAbstractUrlInterceptor*, QQmlFileSelector*> interceptorSelectorMap;
-Q_GLOBAL_STATIC(interceptorSelectorMap, interceptorInstances);
 /*!
    \class QQmlFileSelector
    \since 5.2
@@ -89,8 +54,7 @@ Q_GLOBAL_STATIC(interceptorSelectorMap, interceptorInstances);
   directories used for selection must start with a '+' character, so you will not accidentally
   trigger this feature unless you have directories with such names inside your project.
 
-  If a new QQmlFileSelector is set on the engine, the old one will be replaced. Use
-  \l QQmlFileSelector::get() to query or use the existing instance.
+  If a new QQmlFileSelector is set on the engine, the old one will be replaced.
  */
 
 /*!
@@ -104,8 +68,7 @@ QQmlFileSelector::QQmlFileSelector(QQmlEngine* engine, QObject* parent)
 {
     Q_D(QQmlFileSelector);
     d->engine = engine;
-    interceptorInstances()->insert(d->myInstance.data(), this);
-    d->engine->setUrlInterceptor(d->myInstance.data());
+    d->engine->addUrlInterceptor(d->myInstance.data());
 }
 
 /*!
@@ -114,18 +77,17 @@ QQmlFileSelector::QQmlFileSelector(QQmlEngine* engine, QObject* parent)
 QQmlFileSelector::~QQmlFileSelector()
 {
     Q_D(QQmlFileSelector);
-    if (d->engine && QQmlFileSelector::get(d->engine) == this) {
-        d->engine->setUrlInterceptor(nullptr);
+    if (d->engine) {
+        d->engine->removeUrlInterceptor(d->myInstance.data());
         d->engine = nullptr;
     }
-    interceptorInstances()->remove(d->myInstance.data());
 }
 
 /*!
   \since 5.7
   Returns the QFileSelector instance used by the QQmlFileSelector.
 */
-QFileSelector *QQmlFileSelector::selector() const Q_DECL_NOTHROW
+QFileSelector *QQmlFileSelector::selector() const noexcept
 {
     Q_D(const QQmlFileSelector);
     return d->selector;
@@ -173,35 +135,49 @@ void QQmlFileSelector::setSelector(QFileSelector *selector)
   Use this when extra selectors are all you need to avoid having to create your own
   QFileSelector instance.
 */
-void QQmlFileSelector::setExtraSelectors(QStringList &strings)
-{
-    Q_D(QQmlFileSelector);
-    d->selector->setExtraSelectors(strings);
-}
-
-
-/*!
-  Adds extra selectors contained in \a strings to the current QFileSelector being used.
-  Use this when extra selectors are all you need to avoid having to create your own
-  QFileSelector instance.
-*/
 void QQmlFileSelector::setExtraSelectors(const QStringList &strings)
 {
     Q_D(QQmlFileSelector);
     d->selector->setExtraSelectors(strings);
 }
 
+#if QT_DEPRECATED_SINCE(6, 0)
 /*!
+  \deprecated [6.0] The file selector should not be accessed after it
+  is set. It may be in use. See below for further details.
+
   Gets the QQmlFileSelector currently active on the target \a engine.
+
+  This method is deprecated. You should not retrieve the files selector from an
+  engine after setting it. It may be in use.
+
+  If the \a engine passed here is a QQmlApplicationEngine that hasn't loaded any
+  QML files, yet, it will be initialized. Any later calls to
+  QQmlApplicationEngine::setExtraFileSelectors() will have no effect.
+
+  \sa QQmlApplicationEngine
 */
 QQmlFileSelector* QQmlFileSelector::get(QQmlEngine* engine)
 {
-    //Since I think we still can't use dynamic_cast inside Qt...
-    QQmlAbstractUrlInterceptor* current = engine->urlInterceptor();
-    if (current && interceptorInstances()->contains(current))
-        return interceptorInstances()->value(current);
+    QQmlEnginePrivate *enginePrivate = QQmlEnginePrivate::get(engine);
+
+    if (qobject_cast<QQmlApplicationEngine *>(engine)) {
+        auto *appEnginePrivate = static_cast<QQmlApplicationEnginePrivate *>(enginePrivate);
+        appEnginePrivate->ensureInitialized();
+    }
+
+    const QUrl nonEmptyInvalid(QLatin1String(":"));
+    for (QQmlAbstractUrlInterceptor *interceptor : enginePrivate->urlInterceptors) {
+        const QUrl result = interceptor->intercept(
+                    nonEmptyInvalid, QQmlAbstractUrlInterceptor::UrlString);
+        if (result.scheme() == QLatin1String("type")
+                && result.path() == QLatin1String("fileselector")) {
+            return static_cast<QQmlFileSelectorInterceptor *>(interceptor)->d->q_func();
+        }
+    }
     return nullptr;
 }
+#endif
 
 /*!
   \internal
@@ -216,9 +192,12 @@ QQmlFileSelectorInterceptor::QQmlFileSelectorInterceptor(QQmlFileSelectorPrivate
 */
 QUrl QQmlFileSelectorInterceptor::intercept(const QUrl &path, DataType type)
 {
-    if ( type ==  QQmlAbstractUrlInterceptor::QmldirFile ) //Don't intercept qmldir files, to prevent double interception
-        return path;
-    return d->selector->select(path);
+    if (!path.isEmpty() && !path.isValid())
+        return QUrl(QLatin1String("type:fileselector"));
+
+    return type == QQmlAbstractUrlInterceptor::QmldirFile
+            ? path // Don't intercept qmldir files, to prevent double interception
+            : d->selector->select(path);
 }
 
 QT_END_NAMESPACE

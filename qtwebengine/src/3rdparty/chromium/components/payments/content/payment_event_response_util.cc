@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,19 +19,8 @@ base::StringPiece ConvertCanMakePaymentEventResponseTypeToErrorString(
       return errors::kCanMakePaymentEventBrowserError;
     case mojom::CanMakePaymentEventResponseType::INTERNAL_ERROR:
       return errors::kCanMakePaymentEventInternalError;
-    case mojom::CanMakePaymentEventResponseType::INVALID_ACCOUNT_BALANCE_VALUE:
-      return errors::kCanMakePaymentEventInvalidAccountBalanceValue;
-    case mojom::CanMakePaymentEventResponseType::
-        MINIMAL_UI_RESPONSE_CONVERSION_ERROR:
-      return errors::kCanMakePaymentEventMinimalUiResponseConversionError;
-    case mojom::CanMakePaymentEventResponseType::NO_ACCOUNT_BALANCE_VALUE:
-      return errors::kCanMakePaymentEventNoAccountBalanceValue;
-    case mojom::CanMakePaymentEventResponseType::NO_CAN_MAKE_PAYMENT_VALUE:
-      return errors::kCanMakePaymentEventNoCanMakePaymentValue;
     case mojom::CanMakePaymentEventResponseType::NO_EXPLICITLY_VERIFIED_METHODS:
       return errors::kCanMakePaymentEventNoExplicitlyVerifiedMethods;
-    case mojom::CanMakePaymentEventResponseType::NO_READY_FOR_MINIMAL_UI_VALUE:
-      return errors::kCanMakePaymentEventNoReadyForMinimalUiValue;
     case mojom::CanMakePaymentEventResponseType::NO_RESPONSE:
       return errors::kCanMakePaymentEventNoResponse;
     case mojom::CanMakePaymentEventResponseType::NOT_INSTALLED:
@@ -78,6 +67,13 @@ base::StringPiece ConvertPaymentEventResponseTypeToErrorString(
       return errors::kPaymentEventTimeout;
     case mojom::PaymentEventResponseType::PAYMENT_HANDLER_INSECURE_NAVIGATION:
       return errors::kPaymentHandlerInsecureNavigation;
+    case mojom::PaymentEventResponseType::PAYMENT_HANDLER_INSTALL_FAILED:
+      return errors::kPaymentHandlerInstallFailed;
+    case mojom::PaymentEventResponseType::PAYMENT_HANDLER_ACTIVITY_DIED:
+      return errors::kPaymentHandlerActivityDied;
+    case mojom::PaymentEventResponseType::
+        PAYMENT_HANDLER_FAIL_TO_LOAD_MAIN_FRAME:
+      return errors::kPaymentHandlerFailToLoadMainFrame;
     case mojom::PaymentEventResponseType::PAYER_NAME_EMPTY:
       return errors::kPayerNameEmpty;
     case mojom::PaymentEventResponseType::PAYER_EMAIL_EMPTY:

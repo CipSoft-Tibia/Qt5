@@ -1,41 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
 
 #include "qnsview.h"
 #include "qcocoainputcontext.h"
@@ -55,8 +21,8 @@ QT_BEGIN_NAMESPACE
     \class QCocoaInputContext
     \brief Cocoa Input context implementation
 
-    Handles input of foreign characters (particularly East Asian)
-    languages.
+    Handles input of languages that support character composition,
+    for example East Asian languages.
 
     \section1 Testing
 
@@ -72,17 +38,20 @@ QT_BEGIN_NAMESPACE
 
     \section1 Interaction
 
-    Input method support in Cocoa uses NSTextInput protorol. Therefore
-    almost all functionality is implemented in QNSView.
+    Input method support in Cocoa is based on the NSTextInputClient protocol,
+    therefore almost all functionality is in QNSView (qnsview_complextext.mm).
 */
-
-
 
 QCocoaInputContext::QCocoaInputContext()
     : QPlatformInputContext()
-    , mWindow(QGuiApplication::focusWindow())
+    , m_focusWindow(QGuiApplication::focusWindow())
 {
-    QMetaObject::invokeMethod(this, "connectSignals", Qt::QueuedConnection);
+    m_inputSourceObserver = QMacNotificationObserver(nil,
+        NSTextInputContextKeyboardSelectionDidChangeNotification, [&]() {
+        qCDebug(lcQpaInputMethods) << "Text input source changed";
+        updateLocale();
+    });
+
     updateLocale();
 }
 
@@ -91,42 +60,69 @@ QCocoaInputContext::~QCocoaInputContext()
 }
 
 /*!
-    \brief Cancels a composition.
+    Commits the current composition if there is one,
+    by "unmarking" the text in the edit buffer, and
+    informing the system input context of this fact.
 */
-
-void QCocoaInputContext::reset()
+void QCocoaInputContext::commit()
 {
-    QPlatformInputContext::reset();
+    qCDebug(lcQpaInputMethods) << "Committing composition";
 
-    if (!mWindow)
+    if (!m_focusWindow)
         return;
 
-    QCocoaWindow *window = static_cast<QCocoaWindow *>(mWindow->handle());
+    auto *platformWindow = m_focusWindow->handle();
+    if (!platformWindow)
+        return;
+
+    auto *cocoaWindow = static_cast<QCocoaWindow *>(platformWindow);
+    QNSView *view = qnsview_cast(cocoaWindow->view());
+    if (!view)
+        return;
+
+    [view unmarkText];
+
+    [view.inputContext discardMarkedText];
+    if (view.inputContext != NSTextInputContext.currentInputContext) {
+        // discardMarkedText will activate the TSM document of the given input context,
+        // which may not match the current input context. To ensure the current input
+        // context is not left in an inconsistent state with a deactivated document
+        // we need to manually activate it here.
+        [NSTextInputContext.currentInputContext activate];
+    }
+}
+
+
+/*!
+    \brief Cancels a composition.
+*/
+void QCocoaInputContext::reset()
+{
+    qCDebug(lcQpaInputMethods) << "Resetting input method";
+
+    if (!m_focusWindow)
+        return;
+
+    QCocoaWindow *window = static_cast<QCocoaWindow *>(m_focusWindow->handle());
     QNSView *view = qnsview_cast(window->view());
     if (!view)
         return;
 
-    QMacAutoReleasePool pool;
     if (NSTextInputContext *ctxt = [NSTextInputContext currentInputContext]) {
         [ctxt discardMarkedText];
         [view unmarkText];
     }
 }
 
-void QCocoaInputContext::connectSignals()
+void QCocoaInputContext::setFocusObject(QObject *focusObject)
 {
-    connect(qApp, SIGNAL(focusObjectChanged(QObject*)), this, SLOT(focusObjectChanged(QObject*)));
-    focusObjectChanged(qApp->focusObject());
-}
+    qCDebug(lcQpaInputMethods) << "Focus object changed to" << focusObject;
 
-void QCocoaInputContext::focusObjectChanged(QObject *focusObject)
-{
-    Q_UNUSED(focusObject);
-    if (mWindow == QGuiApplication::focusWindow()) {
-        if (!mWindow)
+    if (m_focusWindow == QGuiApplication::focusWindow()) {
+        if (!m_focusWindow)
             return;
 
-        QCocoaWindow *window = static_cast<QCocoaWindow *>(mWindow->handle());
+        QCocoaWindow *window = static_cast<QCocoaWindow *>(m_focusWindow->handle());
         if (!window)
             return;
         QNSView *view = qnsview_cast(window->view());
@@ -138,24 +134,27 @@ void QCocoaInputContext::focusObjectChanged(QObject *focusObject)
             [view cancelComposingText];
         }
     } else {
-        mWindow = QGuiApplication::focusWindow();
+        m_focusWindow = QGuiApplication::focusWindow();
     }
 }
 
 void QCocoaInputContext::updateLocale()
 {
-    TISInputSourceRef source = TISCopyCurrentKeyboardInputSource();
-    CFArrayRef languages = (CFArrayRef) TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages);
-    if (CFArrayGetCount(languages) > 0) {
-        CFStringRef langRef = (CFStringRef)CFArrayGetValueAtIndex(languages, 0);
-        QString name = QString::fromCFString(langRef);
-        QLocale locale(name);
-        if (m_locale != locale) {
-            m_locale = locale;
-            emitLocaleChanged();
-        }
+    QCFType<TISInputSourceRef> source = TISCopyCurrentKeyboardInputSource();
+    NSArray *languages = static_cast<NSArray*>(TISGetInputSourceProperty(source,
+                                               kTISPropertyInputSourceLanguages));
+
+    qCDebug(lcQpaInputMethods) << "Input source supports" << languages;
+    if (!languages.count)
+        return;
+
+    QString language = QString::fromNSString(languages.firstObject);
+    QLocale locale(language);
+    if (m_locale != locale) {
+        qCDebug(lcQpaInputMethods) << "Reporting new locale" << locale;
+        m_locale = locale;
+        emitLocaleChanged();
     }
-    CFRelease(source);
 }
 
 QT_END_NAMESPACE

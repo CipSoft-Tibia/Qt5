@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,12 @@
 
 #include "build/build_config.h"
 #include "services/viz/public/cpp/compositing/begin_frame_args_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/compositor_frame_transition_directive_mojom_traits.h"
 #include "services/viz/public/cpp/compositing/selection_mojom_traits.h"
 #include "services/viz/public/cpp/compositing/surface_id_mojom_traits.h"
 #include "services/viz/public/cpp/crash_keys.h"
+#include "skia/public/mojom/skcolor4f_mojom_traits.h"
+#include "ui/gfx/geometry/mojom/geometry_mojom_traits.h"
 #include "ui/gfx/mojom/display_color_spaces_mojom_traits.h"
 #include "ui/gfx/mojom/selection_bound_mojom_traits.h"
 #include "ui/latency/mojom/latency_info_mojom_traits.h"
@@ -39,27 +42,40 @@ bool StructTraits<viz::mojom::CompositorFrameMetadataDataView,
 
   if (!data.ReadContentColorUsage(&out->content_color_usage))
     return false;
+
+  if (!data.ReadRootBackgroundColor(&out->root_background_color))
+    return false;
+
   out->may_contain_video = data.may_contain_video();
+  out->may_throttle_if_undrawn_frames = data.may_throttle_if_undrawn_frames();
+  out->has_shared_element_resources = data.has_shared_element_resources();
   out->is_resourceless_software_draw_with_scroll_or_animation =
       data.is_resourceless_software_draw_with_scroll_or_animation();
   out->send_frame_token_to_embedder = data.send_frame_token_to_embedder();
-  out->root_background_color = data.root_background_color();
   out->min_page_scale_factor = data.min_page_scale_factor();
   if (data.top_controls_visible_height_set()) {
     out->top_controls_visible_height.emplace(
         data.top_controls_visible_height());
   }
 
-  if (!data.ReadLatencyInfo(&out->latency_info) ||
-      !data.ReadReferencedSurfaces(&out->referenced_surfaces) ||
-      !data.ReadDeadline(&out->deadline) ||
-      !data.ReadActivationDependencies(&out->activation_dependencies) ||
-      !data.ReadBeginFrameAck(&out->begin_frame_ack)) {
+  if (!data.ReadPreferredFrameInterval(&out->preferred_frame_interval))
+    return false;
+
+  // Preferred_frame_interval must be nullopt or non-negative.
+  if (out->preferred_frame_interval &&
+      out->preferred_frame_interval->is_negative()) {
     return false;
   }
-  return data.ReadPreferredFrameInterval(&out->preferred_frame_interval) &&
+
+  return data.ReadLatencyInfo(&out->latency_info) &&
+         data.ReadReferencedSurfaces(&out->referenced_surfaces) &&
+         data.ReadDeadline(&out->deadline) &&
+         data.ReadActivationDependencies(&out->activation_dependencies) &&
+         data.ReadBeginFrameAck(&out->begin_frame_ack) &&
          data.ReadDisplayTransformHint(&out->display_transform_hint) &&
-         data.ReadDelegatedInkMetadata(&out->delegated_ink_metadata);
+         data.ReadDelegatedInkMetadata(&out->delegated_ink_metadata) &&
+         data.ReadTransitionDirectives(&out->transition_directives) &&
+         data.ReadCaptureBounds(&out->capture_bounds);
 }
 
 }  // namespace mojo

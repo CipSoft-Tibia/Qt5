@@ -1,14 +1,16 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_FORM_PARSING_FIELD_CANDIDATES_H_
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_FORM_PARSING_FIELD_CANDIDATES_H_
 
-#include <unordered_map>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/common/unique_ids.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace autofill {
 
@@ -29,7 +31,8 @@ struct FieldCandidate {
 class FieldCandidates {
  public:
   FieldCandidates();
-  FieldCandidates(const FieldCandidates& other);
+  FieldCandidates(FieldCandidates&& other);
+  FieldCandidates& operator=(FieldCandidates&& other);
   ~FieldCandidates();
 
   // Includes a possible |type| for a given field.
@@ -49,8 +52,8 @@ class FieldCandidates {
   std::vector<FieldCandidate> field_candidates_;
 };
 
-// A map from the field's unique name to its possible candidates.
-using FieldCandidatesMap = std::unordered_map<base::string16, FieldCandidates>;
+// A map from the field's global ID to its possible candidates.
+using FieldCandidatesMap = base::flat_map<FieldGlobalId, FieldCandidates>;
 
 }  // namespace autofill
 

@@ -2,30 +2,12 @@ TEMPLATE = subdirs
 qtHaveModule(quick) {
     SUBDIRS += qmlbars \
                qmlscatter \
-               qmlsurface \
-               qmlcustominput \
-               qmllegend \
-               qmlmultigraph \
-               qmloscilloscope \
-               qmlsurfacelayers \
-               qmlaxisformatter \
-               qmlaxisdrag \
-               qmlspectrogram
+               qmlaxishandling \
+               qmlsurfacegallery
 }
 
 !android:!ios:!winrt {
-    SUBDIRS += bars \
-               custominput \
-               customproxy \
-               itemmodel \
-               scatter \
-               surface \
-               rotations \
-               draggableaxes \
-               customitems \
-               texturesurface \
+    SUBDIRS += graphgallery \
                volumetric
-
-    qtHaveModule(multimedia): SUBDIRS += audiolevels
 }
 

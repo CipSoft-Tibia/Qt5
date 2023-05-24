@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,8 @@
 #ifndef CHROME_BROWSER_EXTENSIONS_API_CONTEXT_MENUS_CONTEXT_MENUS_API_HELPERS_H_
 #define CHROME_BROWSER_EXTENSIONS_API_CONTEXT_MENUS_CONTEXT_MENUS_API_HELPERS_H_
 
+#include "base/notreached.h"
+#include "base/types/optional_util.h"
 #include "chrome/browser/extensions/menu_manager.h"
 #include "chrome/common/extensions/api/context_menus.h"
 #include "content/public/browser/browser_context.h"
@@ -24,7 +26,7 @@ std::unique_ptr<extensions::MenuItem::Id> GetParentId(
     bool is_off_the_record,
     const MenuItem::ExtensionKey& key) {
   if (!property.parent_id)
-    return std::unique_ptr<extensions::MenuItem::Id>();
+    return nullptr;
 
   std::unique_ptr<extensions::MenuItem::Id> parent_id(
       new extensions::MenuItem::Id(is_off_the_record, key));
@@ -61,8 +63,6 @@ MenuItem::ContextList GetContexts(const std::vector<
 MenuItem::Type GetType(extensions::api::context_menus::ItemType type,
                        MenuItem::Type default_type);
 
-bool HasLazyContext(const Extension* extension);
-
 // Creates and adds a menu item from |create_properties|.
 template <typename PropertyWithEnumT>
 bool CreateMenuItem(const PropertyWithEnumT& create_properties,
@@ -79,15 +79,15 @@ bool CreateMenuItem(const PropertyWithEnumT& create_properties,
     return false;
   }
 
-  if (!is_webview && HasLazyContext(extension) &&
-      create_properties.onclick.get()) {
+  if (!is_webview && BackgroundInfo::HasLazyContext(extension) &&
+      create_properties.onclick) {
     *error = kOnclickDisallowedError;
     return false;
   }
 
   // Contexts.
   MenuItem::ContextList contexts;
-  if (create_properties.contexts.get())
+  if (create_properties.contexts)
     contexts = GetContexts(*create_properties.contexts);
   else
     contexts.Add(MenuItem::PAGE);
@@ -112,7 +112,7 @@ bool CreateMenuItem(const PropertyWithEnumT& create_properties,
 
   // Title.
   std::string title;
-  if (create_properties.title.get())
+  if (create_properties.title)
     title = *create_properties.title;
 
   MenuItem::Type type = GetType(create_properties.type, MenuItem::NORMAL);
@@ -122,28 +122,21 @@ bool CreateMenuItem(const PropertyWithEnumT& create_properties,
   }
 
   // Visibility state.
-  bool visible = true;
-  if (create_properties.visible)
-    visible = *create_properties.visible;
+  bool visible = create_properties.visible.value_or(true);
 
   // Checked state.
-  bool checked = false;
-  if (create_properties.checked.get())
-    checked = *create_properties.checked;
+  bool checked = create_properties.checked.value_or(false);
 
   // Enabled.
-  bool enabled = true;
-  if (create_properties.enabled.get())
-    enabled = *create_properties.enabled;
+  bool enabled = create_properties.enabled.value_or(true);
 
   std::unique_ptr<MenuItem> item(
       new MenuItem(item_id, title, checked, visible, enabled, type, contexts));
 
   // URL Patterns.
   if (!item->PopulateURLPatterns(
-          create_properties.document_url_patterns.get(),
-          create_properties.target_url_patterns.get(),
-          error)) {
+          base::OptionalToPtr(create_properties.document_url_patterns),
+          base::OptionalToPtr(create_properties.target_url_patterns), error)) {
     return false;
   }
 
@@ -196,7 +189,7 @@ bool UpdateMenuItem(const PropertyWithEnumT& update_properties,
   }
 
   // Title.
-  if (update_properties.title.get()) {
+  if (update_properties.title) {
     std::string title(*update_properties.title);
     if (title.empty() && item->type() != MenuItem::SEPARATOR) {
       *error = kTitleNeededError;
@@ -206,7 +199,7 @@ bool UpdateMenuItem(const PropertyWithEnumT& update_properties,
   }
 
   // Checked state.
-  if (update_properties.checked.get()) {
+  if (update_properties.checked) {
     bool checked = *update_properties.checked;
     if (checked &&
         item->type() != MenuItem::CHECKBOX &&
@@ -237,12 +230,12 @@ bool UpdateMenuItem(const PropertyWithEnumT& update_properties,
     item->set_visible(*update_properties.visible);
 
   // Enabled.
-  if (update_properties.enabled.get())
+  if (update_properties.enabled)
     item->set_enabled(*update_properties.enabled);
 
   // Contexts.
   MenuItem::ContextList contexts;
-  if (update_properties.contexts.get()) {
+  if (update_properties.contexts) {
     contexts = GetContexts(*update_properties.contexts);
 
     if (contexts.Contains(MenuItem::LAUNCHER)) {
@@ -258,7 +251,6 @@ bool UpdateMenuItem(const PropertyWithEnumT& update_properties,
   }
 
   // Parent id.
-  MenuItem* parent = NULL;
   std::unique_ptr<MenuItem::Id> parent_id(
       GetParentId(update_properties, browser_context->IsOffTheRecord(),
                   item_id.extension_key));
@@ -270,14 +262,14 @@ bool UpdateMenuItem(const PropertyWithEnumT& update_properties,
 
   // URL Patterns.
   if (!item->PopulateURLPatterns(
-          update_properties.document_url_patterns.get(),
-          update_properties.target_url_patterns.get(), error)) {
+          base::OptionalToPtr(update_properties.document_url_patterns),
+          base::OptionalToPtr(update_properties.target_url_patterns), error)) {
     return false;
   }
 
   // There is no need to call ItemUpdated if ChangeParent is called because
   // all sanitation is taken care of in ChangeParent.
-  if (!parent && radio_item_updated && !menu_manager->ItemUpdated(item->id()))
+  if (radio_item_updated && !menu_manager->ItemUpdated(item->id()))
     return false;
 
   menu_manager->WriteToStorage(extension, item_id.extension_key);

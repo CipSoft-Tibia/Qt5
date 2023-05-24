@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -21,7 +21,7 @@ def _ResourceNameToJavaSymbol(resource_name):
   return re.sub('[\.:]', '_', resource_name)
 
 
-class RTxtGenerator(object):
+class RTxtGenerator:
   def __init__(self,
                res_dirs,
                ignore_pattern=resource_utils.AAPT_IGNORE_PATTERN):
@@ -73,17 +73,26 @@ class RTxtGenerator(object):
       ret.update(self._ExtractNewIdsFromNode(child))
     return ret
 
+  def _ParseXml(self, xml_path):
+    try:
+      return ElementTree.parse(xml_path).getroot()
+    except Exception as e:
+      raise RuntimeError('Failure parsing {}:\n'.format(xml_path)) from e
+
   def _ExtractNewIdsFromXml(self, xml_path):
-    root = ElementTree.parse(xml_path).getroot()
-    return self._ExtractNewIdsFromNode(root)
+    return self._ExtractNewIdsFromNode(self._ParseXml(xml_path))
 
   def _ParseValuesXml(self, xml_path):
     ret = set()
-    root = ElementTree.parse(xml_path).getroot()
+    root = self._ParseXml(xml_path)
+
     assert root.tag == 'resources'
     for child in root:
       if child.tag == 'eat-comment':
         # eat-comment is just a dummy documentation element.
+        continue
+      if child.tag == 'skip':
+        # skip is just a dummy element.
         continue
       if child.tag == 'declare-styleable':
         ret.update(self._ParseDeclareStyleable(child))
@@ -128,11 +137,11 @@ class RTxtGenerator(object):
     ret = set()
     for res_dir in self.res_dirs:
       ret.update(self._CollectResourcesListFromDirectory(res_dir))
-    return ret
+    return sorted(ret)
 
   def WriteRTxtFile(self, rtxt_path):
     resources = self._CollectResourcesListFromDirectories()
-    with build_utils.AtomicOutput(rtxt_path) as f:
+    with build_utils.AtomicOutput(rtxt_path, mode='w') as f:
       for resource in resources:
         line = '{0.java_type} {0.resource_type} {0.name} {0.value}\n'.format(
             resource)

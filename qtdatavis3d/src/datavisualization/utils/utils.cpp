@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "utils_p.h"
 
@@ -33,8 +7,10 @@
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QOffscreenSurface>
 #include <QtCore/QCoreApplication>
+#include <QtCore/QRegularExpression>
+#include <QLocale>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 #define NUM_IN_POWER(y, x) for (;y<x;y<<=1)
 #define MIN_POWER 2
@@ -217,24 +193,28 @@ QImage Utils::getGradientImage(QLinearGradient &gradient)
 Utils::ParamType Utils::preParseFormat(const QString &format, QString &preStr, QString &postStr,
                                        int &precision, char &formatSpec)
 {
-    static QRegExp formatMatcher(QStringLiteral("^([^%]*)%([\\-\\+#\\s\\d\\.lhjztL]*)([dicuoxfegXFEG])(.*)$"));
-    static QRegExp precisionMatcher(QStringLiteral("\\.(\\d+)"));
+    static QRegularExpression formatMatcher(QStringLiteral("^([^%]*)%([\\-\\+#\\s\\d\\.lhjztL]*)([dicuoxfegXFEG])(.*)$"));
+    static QRegularExpression precisionMatcher(QStringLiteral("\\.(\\d+)"));
 
     Utils::ParamType retVal;
 
-    if (formatMatcher.indexIn(format, 0) != -1) {
-        preStr = formatMatcher.cap(1);
+    QRegularExpressionMatch formatMatch = formatMatcher.match(format, 0);
+
+    if (formatMatch.hasMatch()) {
+        preStr = formatMatch.captured(1);
         // Six and 'g' are defaults in Qt API
         precision = 6;
-        if (!formatMatcher.cap(2).isEmpty()) {
-            if (precisionMatcher.indexIn(formatMatcher.cap(2), 0) != -1)
-                precision = precisionMatcher.cap(1).toInt();
+        if (!formatMatch.captured(2).isEmpty()) {
+            QRegularExpressionMatch precisionMatch = precisionMatcher.match(formatMatch.captured(2),
+                                                                            0);
+            if (precisionMatch.hasMatch())
+                precision = precisionMatch.captured(1).toInt();
         }
-        if (formatMatcher.cap(3).isEmpty())
+        if (formatMatch.captured(3).isEmpty())
             formatSpec = 'g';
         else
-            formatSpec = formatMatcher.cap(3).at(0).toLatin1();
-        postStr = formatMatcher.cap(4);
+            formatSpec = formatMatch.captured(3).at(0).toLatin1();
+        postStr = formatMatch.captured(4);
         retVal = mapFormatCharToParamType(formatSpec);
     } else {
         retVal = ParamTypeUnknown;
@@ -350,7 +330,7 @@ void Utils::resolveStatics()
         ctx->makeCurrent(dummySurface);
     }
 
-#if defined(QT_OPENGL_ES_2)
+#if QT_CONFIG(opengles2)
     isES = true;
 #elif (QT_VERSION < QT_VERSION_CHECK(5, 3, 0))
     isES = false;
@@ -383,4 +363,4 @@ void Utils::resolveStatics()
     staticsResolved = true;
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

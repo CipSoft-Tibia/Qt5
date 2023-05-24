@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKPOINTERMULTIHANDLER_H
 #define QQUICKPOINTERMULTIHANDLER_H
@@ -51,8 +15,9 @@
 // We mean it.
 //
 
-#include "qquickitem.h"
-#include "qevent.h"
+#include <QtGui/qevent.h>
+#include <QtQuick/qquickitem.h>
+
 #include "qquickhandlerpoint_p.h"
 #include "qquickpointerdevicehandler_p.h"
 
@@ -63,9 +28,9 @@ class QQuickMultiPointHandlerPrivate;
 class Q_QUICK_PRIVATE_EXPORT QQuickMultiPointHandler : public QQuickPointerDeviceHandler
 {
     Q_OBJECT
-    Q_PROPERTY(int minimumPointCount READ minimumPointCount WRITE setMinimumPointCount NOTIFY minimumPointCountChanged)
-    Q_PROPERTY(int maximumPointCount READ maximumPointCount WRITE setMaximumPointCount NOTIFY maximumPointCountChanged)
-    Q_PROPERTY(QQuickHandlerPoint centroid READ centroid NOTIFY centroidChanged)
+    Q_PROPERTY(int minimumPointCount READ minimumPointCount WRITE setMinimumPointCount NOTIFY minimumPointCountChanged FINAL)
+    Q_PROPERTY(int maximumPointCount READ maximumPointCount WRITE setMaximumPointCount NOTIFY maximumPointCountChanged FINAL)
+    Q_PROPERTY(QQuickHandlerPoint centroid READ centroid NOTIFY centroidChanged FINAL)
 
 public:
     explicit QQuickMultiPointHandler(QQuickItem *parent = nullptr, int minimumPointCount = 2, int maximumPointCount = -1);
@@ -78,7 +43,7 @@ public:
 
     const QQuickHandlerPoint &centroid() const;
 
-signals:
+Q_SIGNALS:
     void minimumPointCountChanged();
     void maximumPointCountChanged();
     void centroidChanged();
@@ -91,29 +56,27 @@ protected:
         qreal angle;
     };
 
-    bool wantsPointerEvent(QQuickPointerEvent *event) override;
-    void handlePointerEventImpl(QQuickPointerEvent *event) override;
+    bool wantsPointerEvent(QPointerEvent *event) override;
+    void handlePointerEventImpl(QPointerEvent *event) override;
     void onActiveChanged() override;
-    void onGrabChanged(QQuickPointerHandler *grabber, QQuickEventPoint::GrabTransition transition, QQuickEventPoint *point) override;
-    QVector<QQuickHandlerPoint> &currentPoints();
+    void onGrabChanged(QQuickPointerHandler *grabber, QPointingDevice::GrabTransition transition, QPointerEvent *event, QEventPoint &point) override;
+    QList<QQuickHandlerPoint> &currentPoints();
     QQuickHandlerPoint &mutableCentroid();
-    bool hasCurrentPoints(QQuickPointerEvent *event);
-    QVector<QQuickEventPoint *> eligiblePoints(QQuickPointerEvent *event);
+    bool hasCurrentPoints(QPointerEvent *event);
+    QVector<QEventPoint> eligiblePoints(QPointerEvent *event);
     qreal averageTouchPointDistance(const QPointF &ref);
     qreal averageStartingDistance(const QPointF &ref);
     qreal averageTouchPointAngle(const QPointF &ref);
     qreal averageStartingAngle(const QPointF &ref);
     QVector<PointData> angles(const QPointF &ref) const;
     static qreal averageAngleDelta(const QVector<PointData> &old, const QVector<PointData> &newAngles);
-    void acceptPoints(const QVector<QQuickEventPoint *> &points);
-    bool grabPoints(const QVector<QQuickEventPoint *> &points);
+    void acceptPoints(const QVector<QEventPoint> &points);
+    bool grabPoints(QPointerEvent *event, const QVector<QEventPoint> &points);
     void moveTarget(QPointF pos);
 
     Q_DECLARE_PRIVATE(QQuickMultiPointHandler)
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickMultiPointHandler)
 
 #endif // QQUICKPOINTERMULTIHANDLER_H

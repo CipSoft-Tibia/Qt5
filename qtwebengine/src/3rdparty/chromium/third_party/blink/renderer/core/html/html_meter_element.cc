@@ -20,17 +20,18 @@
 
 #include "third_party/blink/renderer/core/html/html_meter_element.h"
 
+#include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
-#include "third_party/blink/renderer/core/html/html_div_element.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
+#include "third_party/blink/renderer/core/html/shadow/meter_shadow_element.h"
 #include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "ui/base/ui_base_features.h"
 
@@ -176,22 +177,21 @@ void HTMLMeterElement::DidElementStateChange() {
 void HTMLMeterElement::DidAddUserAgentShadowRoot(ShadowRoot& root) {
   DCHECK(!value_);
 
-  auto* inner = MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  auto* inner = MakeGarbageCollected<MeterShadowElement>(GetDocument());
   inner->SetShadowPseudoId(shadow_element_names::kPseudoMeterInnerElement);
   root.AppendChild(inner);
 
-  auto* bar = MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  auto* bar = MakeGarbageCollected<MeterShadowElement>(GetDocument());
   bar->SetShadowPseudoId(AtomicString("-webkit-meter-bar"));
 
-  value_ = MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  value_ = MakeGarbageCollected<MeterShadowElement>(GetDocument());
   UpdateValueAppearance(0);
   bar->AppendChild(value_);
 
   inner->AppendChild(bar);
 
-  auto* fallback = MakeGarbageCollected<HTMLDivElement>(GetDocument());
-  fallback->AppendChild(
-      HTMLSlotElement::CreateUserAgentDefaultSlot(GetDocument()));
+  auto* fallback = MakeGarbageCollected<MeterShadowElement>(GetDocument());
+  fallback->AppendChild(MakeGarbageCollected<HTMLSlotElement>(GetDocument()));
   fallback->SetShadowPseudoId(AtomicString("-internal-fallback"));
   root.AppendChild(fallback);
 }
@@ -204,7 +204,9 @@ void HTMLMeterElement::UpdateValueAppearance(double percentage) {
   DEFINE_STATIC_LOCAL(AtomicString, even_less_good_pseudo_id,
                       ("-webkit-meter-even-less-good-value"));
 
-  value_->SetInlineStyleProperty(CSSPropertyID::kWidth, percentage,
+  value_->SetInlineStyleProperty(CSSPropertyID::kInlineSize, percentage,
+                                 CSSPrimitiveValue::UnitType::kPercentage);
+  value_->SetInlineStyleProperty(CSSPropertyID::kBlockSize, 100,
                                  CSSPrimitiveValue::UnitType::kPercentage);
   switch (GetGaugeRegion()) {
     case kGaugeRegionOptimum:
@@ -220,7 +222,13 @@ void HTMLMeterElement::UpdateValueAppearance(double percentage) {
 }
 
 bool HTMLMeterElement::CanContainRangeEndPoint() const {
-  GetDocument().UpdateStyleAndLayoutTreeForNode(this);
+  if (DisplayLockUtilities::LockedAncestorPreventingPaint(*this)) {
+    // If this element is DisplayLocked, then we can't access GetComputedStyle.
+    // Even with GetComputedStyle's scoped unlock, this function may be called
+    // during selection modification which prevents lifecycle updates that the
+    // unlock would incur.
+    return false;
+  }
   return GetComputedStyle() && !GetComputedStyle()->HasEffectiveAppearance();
 }
 

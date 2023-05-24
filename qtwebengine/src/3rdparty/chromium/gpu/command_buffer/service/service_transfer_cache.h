@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <memory>
 #include <vector>
 
-#include "base/containers/mru_cache.h"
+#include "base/containers/lru_cache.h"
 #include "base/containers/span.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "cc/paint/image_transfer_cache_entry.h"
@@ -21,6 +21,7 @@
 #include "gpu/gpu_gles2_export.h"
 #include "third_party/skia/include/core/SkImageInfo.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkYUVAInfo.h"
 
 class GrDirectContext;
 class SkImage;
@@ -49,6 +50,10 @@ class GPU_GLES2_EXPORT ServiceTransferCache
   };
 
   explicit ServiceTransferCache(const GpuPreferences& preferences);
+
+  ServiceTransferCache(const ServiceTransferCache&) = delete;
+  ServiceTransferCache& operator=(const ServiceTransferCache&) = delete;
+
   ~ServiceTransferCache() override;
 
   bool CreateLockedEntry(const EntryKey& key,
@@ -74,7 +79,8 @@ class GPU_GLES2_EXPORT ServiceTransferCache
       ServiceDiscardableHandle handle,
       GrDirectContext* context,
       std::vector<sk_sp<SkImage>> plane_images,
-      cc::YUVDecodeFormat plane_images_format,
+      SkYUVAInfo::PlaneConfig plane_config,
+      SkYUVAInfo::Subsampling subsampling,
       SkYUVColorSpace yuv_color_space,
       size_t buffer_byte_size,
       bool needs_mips);
@@ -100,12 +106,12 @@ class GPU_GLES2_EXPORT ServiceTransferCache
 
  private:
   struct CacheEntryInternal {
-    CacheEntryInternal(base::Optional<ServiceDiscardableHandle> handle,
+    CacheEntryInternal(absl::optional<ServiceDiscardableHandle> handle,
                        std::unique_ptr<cc::ServiceTransferCacheEntry> entry);
     CacheEntryInternal(CacheEntryInternal&& other);
     CacheEntryInternal& operator=(CacheEntryInternal&& other);
     ~CacheEntryInternal();
-    base::Optional<ServiceDiscardableHandle> handle;
+    absl::optional<ServiceDiscardableHandle> handle;
     std::unique_ptr<cc::ServiceTransferCacheEntry> entry;
   };
 
@@ -119,7 +125,7 @@ class GPU_GLES2_EXPORT ServiceTransferCache
     }
   };
 
-  using EntryCache = base::MRUCache<EntryKey, CacheEntryInternal, EntryKeyComp>;
+  using EntryCache = base::LRUCache<EntryKey, CacheEntryInternal, EntryKeyComp>;
 
   void EnforceLimits();
 
@@ -141,8 +147,6 @@ class GPU_GLES2_EXPORT ServiceTransferCache
 
   // The max number of entries we will hold in the cache.
   size_t max_cache_entries_;
-
-  DISALLOW_COPY_AND_ASSIGN(ServiceTransferCache);
 };
 
 }  // namespace gpu

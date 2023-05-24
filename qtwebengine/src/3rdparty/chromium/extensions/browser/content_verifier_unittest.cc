@@ -1,10 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <memory>
 
 #include "base/files/file_path.h"
+#include "base/memory/raw_ptr.h"
 #include "base/path_service.h"
 #include "base/values.h"
 #include "content/public/test/browser_task_environment.h"
@@ -14,6 +15,7 @@
 #include "extensions/browser/content_verifier/test_utils.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extensions_test.h"
+#include "extensions/common/api/content_scripts.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_builder.h"
 #include "extensions/common/extension_paths.h"
@@ -70,6 +72,11 @@ base::FilePath AppendSuffix(const base::FilePath& path,
 class TestContentVerifierDelegate : public MockContentVerifierDelegate {
  public:
   TestContentVerifierDelegate() = default;
+
+  TestContentVerifierDelegate(const TestContentVerifierDelegate&) = delete;
+  TestContentVerifierDelegate& operator=(const TestContentVerifierDelegate&) =
+      delete;
+
   ~TestContentVerifierDelegate() override = default;
 
   std::set<base::FilePath> GetBrowserImagePaths(
@@ -79,8 +86,6 @@ class TestContentVerifierDelegate : public MockContentVerifierDelegate {
 
  private:
   std::set<base::FilePath> browser_images_paths_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestContentVerifierDelegate);
 };
 
 std::set<base::FilePath> TestContentVerifierDelegate::GetBrowserImagePaths(
@@ -150,7 +155,7 @@ class ContentVerifierTest : public ExtensionsTest {
 
     // Manually register handlers since the |ContentScriptsHandler| is not
     // usually registered in extensions_unittests.
-    ScopedTestingManifestHandlerRegistry registry;
+    ScopedTestingManifestHandlerRegistry scoped_registry;
     {
       ManifestHandlerRegistry* registry = ManifestHandlerRegistry::Get();
       registry->RegisterHandler(std::make_unique<BackgroundManifestHandler>());
@@ -200,46 +205,48 @@ class ContentVerifierTest : public ExtensionsTest {
   // Create a test extension with a content script and possibly a background
   // page or background script.
   scoped_refptr<Extension> CreateTestExtension() {
-    base::DictionaryValue manifest;
-    manifest.SetString("name", "Dummy Extension");
-    manifest.SetString("version", "1");
-    manifest.SetInteger("manifest_version", 2);
+    base::Value::Dict manifest;
+    manifest.Set("name", "Dummy Extension");
+    manifest.Set("version", "1");
+    manifest.Set("manifest_version", 2);
 
     if (background_manifest_type_ ==
         BackgroundManifestType::kBackgroundScript) {
-      auto background_scripts = std::make_unique<base::ListValue>();
-      background_scripts->AppendString("foo/bg.txt");
-      manifest.Set(manifest_keys::kBackgroundScripts,
-                   std::move(background_scripts));
+      base::Value::List background_scripts;
+      background_scripts.Append("foo/bg.txt");
+      manifest.SetByDottedPath(manifest_keys::kBackgroundScripts,
+                               std::move(background_scripts));
     } else if (background_manifest_type_ ==
                BackgroundManifestType::kBackgroundPage) {
-      manifest.SetString(manifest_keys::kBackgroundPage, "foo/page.txt");
+      manifest.SetByDottedPath(manifest_keys::kBackgroundPage, "foo/page.txt");
     }
 
-    auto content_scripts = std::make_unique<base::ListValue>();
-    auto content_script = std::make_unique<base::DictionaryValue>();
-    auto js_files = std::make_unique<base::ListValue>();
-    auto matches = std::make_unique<base::ListValue>();
-    js_files->AppendString("foo/content.txt");
-    content_script->Set("js", std::move(js_files));
-    matches->AppendString("http://*/*");
-    content_script->Set("matches", std::move(matches));
-    content_scripts->Append(std::move(content_script));
-    manifest.Set(manifest_keys::kContentScripts, std::move(content_scripts));
+    base::Value::List content_scripts;
+    base::Value::Dict content_script;
+    base::Value::List js_files;
+    base::Value::List matches;
+    js_files.Append("foo/content.txt");
+    content_script.Set("js", std::move(js_files));
+    matches.Append("http://*/*");
+    content_script.Set("matches", std::move(matches));
+    content_scripts.Append(std::move(content_script));
+    manifest.Set(api::content_scripts::ManifestKeys::kContentScripts,
+                 std::move(content_scripts));
 
     base::FilePath path;
     EXPECT_TRUE(base::PathService::Get(DIR_TEST_DATA, &path));
 
     std::string error;
-    scoped_refptr<Extension> extension(Extension::Create(
-        path, Manifest::INTERNAL, manifest, Extension::NO_FLAGS, &error));
+    scoped_refptr<Extension> extension(
+        Extension::Create(path, mojom::ManifestLocation::kInternal, manifest,
+                          Extension::NO_FLAGS, &error));
     EXPECT_TRUE(extension.get()) << error;
     return extension;
   }
 
   scoped_refptr<ContentVerifier> content_verifier_;
   scoped_refptr<Extension> extension_;
-  TestContentVerifierDelegate* content_verifier_delegate_raw_;
+  raw_ptr<TestContentVerifierDelegate> content_verifier_delegate_raw_;
 };
 
 class ContentVerifierTestWithBackgroundType

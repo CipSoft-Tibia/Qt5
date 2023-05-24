@@ -1,33 +1,41 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_HISTORY_CORE_BROWSER_HISTORY_DATABASE_H_
 #define COMPONENTS_HISTORY_CORE_BROWSER_HISTORY_DATABASE_H_
 
-#include <stddef.h>
+#include <memory>
 
 #include "base/compiler_specific.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/history/core/browser/download_database.h"
 #include "components/history/core/browser/history_types.h"
+#if !defined(TOOLKIT_QT)
+#include "components/history/core/browser/sync/history_sync_metadata_database.h"
 #include "components/history/core/browser/sync/typed_url_sync_metadata_database.h"
+#endif
 #include "components/history/core/browser/url_database.h"
+#include "components/history/core/browser/visit_annotations_database.h"
 #include "components/history/core/browser/visit_database.h"
 #include "components/history/core/browser/visitsegment_database.h"
 #include "sql/database.h"
 #include "sql/init_status.h"
 #include "sql/meta_table.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "components/history/core/browser/android/android_cache_database.h"
 #include "components/history/core/browser/android/android_urls_database.h"
 #endif
 
 namespace base {
 class FilePath;
+}
+
+namespace sql {
+class Transaction;
 }
 
 class InMemoryURLIndexTest;
@@ -42,33 +50,23 @@ namespace history {
 // as the storage interface. Logic for manipulating this storage layer should
 // be in HistoryBackend.cc.
 class HistoryDatabase : public DownloadDatabase,
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
                         public AndroidURLsDatabase,
                         public AndroidCacheDatabase,
 #endif
-                        public TypedURLSyncMetadataDatabase,
                         public URLDatabase,
                         public VisitDatabase,
+                        public VisitAnnotationsDatabase,
                         public VisitSegmentDatabase {
  public:
-  // A simple class for scoping a history database transaction. This does not
-  // support rollback since the history database doesn't, either.
-  class TransactionScoper {
-   public:
-    explicit TransactionScoper(HistoryDatabase* db) : db_(db) {
-      db_->BeginTransaction();
-    }
-    ~TransactionScoper() { db_->CommitTransaction(); }
-
-   private:
-    HistoryDatabase* db_;
-  };
-
   // Must call Init() to complete construction. Although it can be created on
   // any thread, it must be destructed on the history thread for proper
   // database cleanup.
   HistoryDatabase(DownloadInterruptReason download_interrupt_reason_none,
                   DownloadInterruptReason download_interrupt_reason_crash);
+
+  HistoryDatabase(const HistoryDatabase&) = delete;
+  HistoryDatabase& operator=(const HistoryDatabase&) = delete;
 
   ~HistoryDatabase() override;
 
@@ -92,7 +90,7 @@ class HistoryDatabase : public DownloadDatabase,
   int CountUniqueHostsVisitedLastMonth();
 
   // Counts the number of unique domains (eLTD+1) visited within
-  // [|begin_time|, |end_time|).
+  // [`begin_time`, `end_time`).
   int CountUniqueDomainsVisited(base::Time begin_time, base::Time end_time);
 
   // Call to set the mode on the database to exclusive. The default locking mode
@@ -105,19 +103,19 @@ class HistoryDatabase : public DownloadDatabase,
   // Returns the current version that we will generate history databases with.
   static int GetCurrentVersion();
 
-  // Transactions on the history database. Use the Transaction object above
-  // for most work instead of these directly. We support nested transactions
-  // and only commit when the outermost transaction is committed. This means
-  // that it is impossible to rollback a specific transaction. We could roll
-  // back the outermost transaction if any inner one is rolled back, but it
-  // turns out we don't really need this type of integrity for the history
-  // database, so we just don't support it.
-  void BeginTransaction();
-  void CommitTransaction();
-  int transaction_nesting() const {  // for debugging and assertion purposes
-    return db_.transaction_nesting();
-  }
-  void RollbackTransaction();
+  // Creates a new inactive transaction for the history database. Caller is
+  // responsible for calling `sql::Transaction::Begin()` and checking the return
+  // value. Only call this after `Init()`.
+  //
+  // There should only ever be one instance of these alive, as transaction
+  // nesting doesn't exist. The caller is responsible for ensuring this, and
+  // therefore, ONLY the owner of this instance (`HistoryBackend`) should call
+  // this, NOT any `HistoryDBTask`, which has a non-owning pointer to this.
+  std::unique_ptr<sql::Transaction> CreateTransaction();
+
+  // We DO NOT support transaction nesting. It's considered a "misfeature", and
+  // so the return value of this should always be 0 or 1 during runtime.
+  int transaction_nesting() const { return db_.transaction_nesting(); }
 
   // Drops all tables except the URL, and download tables, and recreates them
   // from scratch. This is done to rapidly clean up stuff when deleting all
@@ -148,7 +146,11 @@ class HistoryDatabase : public DownloadDatabase,
   // Razes the database. Returns true if successful.
   bool Raze();
 
-  std::string GetDiagnosticInfo(int extended_error, sql::Statement* statement);
+  // A simple passthrough to `sql::Database::GetDiagnosticInfo()`.
+  std::string GetDiagnosticInfo(
+      int extended_error,
+      sql::Statement* statement,
+      sql::DatabaseDiagnostics* diagnostics = nullptr);
 
   // Visit table functions ----------------------------------------------------
 
@@ -159,42 +161,67 @@ class HistoryDatabase : public DownloadDatabase,
   // visit id wasn't found.
   SegmentID GetSegmentID(VisitID visit_id);
 
-  // TODO(https://crbug.com/1141501): this is for an experiment, and will be
-  // removed once data is collected from experiment.
-  bool GetVisitsForUrl2(URLID url_id, VisitVector* visits) override;
-
   // Retrieves/Updates early expiration threshold, which specifies the earliest
   // known point in history that may possibly to contain visits suitable for
   // early expiration (AUTO_SUBFRAMES).
   virtual base::Time GetEarlyExpirationThreshold();
   virtual void UpdateEarlyExpirationThreshold(base::Time threshold);
 
+  // Retrieves/updates the bit that indicates whether the DB may contain any
+  // foreign visits, i.e. visits coming from other syncing devices.
+  // Note that this only counts visits *not* pending deletion (see below) - as
+  // soon as a deletion operation is started, this will get set to false.
+  // TODO(crbug.com/1365291): After syncer::HISTORY has launched, consider
+  // whether this bit is still required.
+  bool MayContainForeignVisits();
+  void SetMayContainForeignVisits(bool may_contain_foreign_visits);
+
+  // Retrieves/updates the max-foreign-visit-to-delete threshold. If this is
+  // not kInvalidVisitID, then all foreign visits with an ID <= this value
+  // should be deleted from the DB.
+  VisitID GetDeleteForeignVisitsUntilId();
+  void SetDeleteForeignVisitsUntilId(VisitID visit_id);
+
+  // Retrieves/updates the bit that indicates whether the DB may contain any
+  // visits known to sync.
+  // TODO(crbug.com/1365291): After syncer::HISTORY has launched, consider
+  // whether this bit is still required.
+  bool KnownToSyncVisitsExist();
+  void SetKnownToSyncVisitsExist(bool exist);
+
+  // Sync metadata storage ----------------------------------------------------
+
+#if !defined(TOOLKIT_QT)
+  // Returns the sub-database used for storing Sync metadata for Typed URLs.
+  TypedURLSyncMetadataDatabase* GetTypedURLMetadataDB();
+
+  // Returns the sub-database used for storing Sync metadata for History.
+  HistorySyncMetadataDatabase* GetHistoryMetadataDB();
+#endif  // !defined(TOOLKIT_QT)
+
  private:
-#if defined(OS_ANDROID)
-  // AndroidProviderBackend uses the |db_|.
+#if BUILDFLAG(IS_ANDROID)
+  // AndroidProviderBackend uses the `db_`.
   friend class AndroidProviderBackend;
   FRIEND_TEST_ALL_PREFIXES(AndroidURLsMigrationTest, MigrateToVersion22);
 #endif
   friend class ::InMemoryURLIndexTest;
 
-  // Overridden from URLDatabase, DownloadDatabase, VisitDatabase,
-  // VisitSegmentDatabase and TypedURLSyncMetadataDatabase.
+  // Overridden from URLDatabase, DownloadDatabase, VisitDatabase, and
+  // VisitSegmentDatabase.
   sql::Database& GetDB() override;
-
-  // Overridden from TypedURLSyncMetadataDatabase.
-  sql::MetaTable& GetMetaTable() override;
 
   // Migration -----------------------------------------------------------------
 
   // Makes sure the version is up to date, updating if necessary. If the
   // database is too old to migrate, the user will be notified. Returns
-  // sql::INIT_OK iff  the DB is up to date and ready for use.
+  // sql::INIT_OK iff the DB is up to date and ready for use.
   //
   // This assumes it is called from the init function inside a transaction. It
   // may commit the transaction and start a new one if migration requires it.
   sql::InitStatus EnsureCurrentVersion();
 
-#if !defined(OS_WIN)
+#if !BUILDFLAG(IS_WIN)
   // Converts the time epoch in the database from being 1970-based to being
   // 1601-based which corresponds to the change in Time.internal_value_.
   void MigrateTimeEpoch();
@@ -205,9 +232,16 @@ class HistoryDatabase : public DownloadDatabase,
   sql::Database db_;
   sql::MetaTable meta_table_;
 
-  base::Time cached_early_expiration_threshold_;
+#if !defined(TOOLKIT_QT)
+  // Most of the sub-DBs (URLDatabase etc.) are integrated into HistoryDatabase
+  // via inheritance. However, that can lead to "diamond inheritance" issues
+  // when multiple of these base classes define the same methods. Therefore the
+  // Sync metadata DBs are integrated via composition instead.
+  TypedURLSyncMetadataDatabase typed_url_metadata_db_;
+  HistorySyncMetadataDatabase history_metadata_db_;
+#endif  // !defined(TOOLKIT_QT)
 
-  DISALLOW_COPY_AND_ASSIGN(HistoryDatabase);
+  base::Time cached_early_expiration_threshold_;
 };
 
 }  // namespace history

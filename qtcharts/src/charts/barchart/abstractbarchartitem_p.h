@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -45,8 +19,10 @@
 #include <QtCharts/private/qchartglobal_p.h>
 #include <QtGui/QPen>
 #include <QtGui/QBrush>
+#include <QtCore/QMap>
+#include <QtCore/QList>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class Bar;
 class QAxisCategories;
@@ -63,21 +39,21 @@ public:
     virtual ~AbstractBarChartItem();
 
 public:
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
-    QRectF boundingRect() const;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
+    QRectF boundingRect() const override;
 
-    virtual QVector<QRectF> calculateLayout() = 0;
+    virtual QList<QRectF> calculateLayout() = 0;
     void initializeFullLayout();
     virtual void initializeLayout(int set, int category, int layoutIndex, bool resetAnimation) = 0;
-    virtual void applyLayout(const QVector<QRectF> &layout);
+    virtual void applyLayout(const QList<QRectF> &layout);
     virtual void setAnimation(BarAnimation *animation);
-    virtual ChartAnimation *animation() const;
-    void setLayout(const QVector<QRectF> &layout);
+    ChartAnimation *animation() const override;
+    void setLayout(const QList<QRectF> &layout);
     QRectF geometry() const { return m_rect;}
     void resetAnimation();
 
 public Q_SLOTS:
-    void handleDomainUpdated();
+    void handleDomainUpdated() override;
     void handleLayoutChanged();
     void handleLabelsVisibleChanged(bool visible);
     void handleDataStructureChanged();     // structure of of series has changed, recreate graphic items
@@ -102,7 +78,7 @@ protected:
     void calculateSeriesPositionAdjustmentAndWidth();
 
     QRectF m_rect;
-    QVector<QRectF> m_layout;
+    QList<QRectF> m_layout;
 
     BarAnimation *m_animation;
 
@@ -120,6 +96,6 @@ protected:
     qreal m_seriesWidth;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // ABSTRACTBARCHARTITEM_H

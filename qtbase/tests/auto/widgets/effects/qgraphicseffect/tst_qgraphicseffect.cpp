@@ -1,34 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QtTestWidgets>
-#include <QtWidgets/qdesktopwidget.h>
 #include <QtWidgets/qgraphicseffect.h>
 #include <QtWidgets/qgraphicsview.h>
 #include <QtWidgets/qgraphicsscene.h>
@@ -69,12 +43,12 @@ void tst_QGraphicsEffect::initTestCase()
 class CustomItem : public QGraphicsRectItem
 {
 public:
-    CustomItem(qreal x, qreal y, qreal width, qreal height, QGraphicsItem *parent = 0)
+    CustomItem(qreal x, qreal y, qreal width, qreal height, QGraphicsItem *parent = nullptr)
         : QGraphicsRectItem(x, y, width, height, parent), numRepaints(0),
-          m_painter(0), m_styleOption(0)
+          m_painter(nullptr), m_styleOption(nullptr)
     {}
 
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override
     {
         m_painter = painter;
         m_styleOption = option;
@@ -85,8 +59,8 @@ public:
     void reset()
     {
         numRepaints = 0;
-        m_painter = 0;
-        m_styleOption = 0;
+        m_painter = nullptr;
+        m_styleOption = nullptr;
     }
 
     int numRepaints;
@@ -99,19 +73,20 @@ class CustomEffect : public QGraphicsEffect
 public:
     CustomEffect()
         : QGraphicsEffect(), numRepaints(0), m_margin(10),
-          doNothingInDraw(false), m_painter(0), m_styleOption(0), m_source(0), m_opacity(1.0)
+          doNothingInDraw(false), m_painter(nullptr), m_styleOption(nullptr),
+          m_source(nullptr), m_opacity(1.0)
     {}
 
-    QRectF boundingRectFor(const QRectF &rect) const
+    QRectF boundingRectFor(const QRectF &rect) const override
     { return rect.adjusted(-m_margin, -m_margin, m_margin, m_margin); }
 
     void reset()
     {
         numRepaints = 0;
         m_sourceChangedFlags = QGraphicsEffect::ChangeFlags();
-        m_painter = 0;
-        m_styleOption = 0;
-        m_source = 0;
+        m_painter = nullptr;
+        m_styleOption = nullptr;
+        m_source = nullptr;
         m_opacity = 1.0;
     }
 
@@ -124,7 +99,7 @@ public:
     int margin() const
     { return m_margin; }
 
-    void draw(QPainter *painter)
+    void draw(QPainter *painter) override
     {
         ++numRepaints;
         if (doNothingInDraw)
@@ -136,7 +111,7 @@ public:
         drawSource(painter);
     }
 
-    void sourceChanged(QGraphicsEffect::ChangeFlags flags)
+    void sourceChanged(QGraphicsEffect::ChangeFlags flags) override
     { m_sourceChangedFlags |= flags; }
 
     int numRepaints;
@@ -379,7 +354,9 @@ void tst_QGraphicsEffect::draw()
 
     // Effect is already enabled; nothing should happen.
     effect->setEnabled(true);
-    QTest::qWait(50);
+    // Send only posted events, not window system events,
+    // so that we don't get any spontaneous paint events.
+    QCoreApplication::sendPostedEvents();
     QCOMPARE(effect->numRepaints, 0);
     QCOMPARE(item->numRepaints, 0);
 
@@ -409,7 +386,7 @@ void tst_QGraphicsEffect::opacity()
 
 void tst_QGraphicsEffect::grayscale()
 {
-    if (qApp->desktop()->depth() < 24)
+    if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("Test only works on 32 bit displays");
 
     QGraphicsScene scene(0, 0, 100, 100);
@@ -456,7 +433,7 @@ void tst_QGraphicsEffect::grayscale()
 
 void tst_QGraphicsEffect::colorize()
 {
-    if (qApp->desktop()->depth() < 24)
+    if (QGuiApplication::primaryScreen()->depth() < 24)
         QSKIP("Test only works on 32 bit displays");
 
     QGraphicsScene scene(0, 0, 100, 100);
@@ -510,10 +487,10 @@ public:
         , repaints(0)
     {}
 
-    QRectF boundingRectFor(const QRectF &rect) const
+    QRectF boundingRectFor(const QRectF &rect) const override
     { return rect; }
 
-    void draw(QPainter *painter)
+    void draw(QPainter *painter) override
     {
         QCOMPARE(sourcePixmap(Qt::LogicalCoordinates).handle(), pixmap.handle());
         QVERIFY((painter->worldTransform().type() <= QTransform::TxTranslate) == (sourcePixmap(Qt::DeviceCoordinates).handle() == pixmap.handle()));
@@ -552,10 +529,10 @@ void tst_QGraphicsEffect::drawPixmapItem()
 class DeviceEffect : public QGraphicsEffect
 {
 public:
-    QRectF boundingRectFor(const QRectF &rect) const
+    QRectF boundingRectFor(const QRectF &rect) const override
     { return rect; }
 
-    void draw(QPainter *painter)
+    void draw(QPainter *painter) override
     {
         QPoint offset;
         QPixmap pixmap = sourcePixmap(Qt::DeviceCoordinates, &offset, QGraphicsEffect::NoPad);
@@ -646,10 +623,10 @@ void tst_QGraphicsEffect::dropShadowClipping()
 class MyGraphicsItem : public QGraphicsWidget
 {
 public:
-    MyGraphicsItem(QGraphicsItem *parent = 0) :
+    MyGraphicsItem(QGraphicsItem *parent = nullptr) :
             QGraphicsWidget(parent), nbPaint(0)
     {}
-    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override
     {
         nbPaint++;
         QGraphicsWidget::paint(painter, option, widget);
@@ -694,6 +671,7 @@ void tst_QGraphicsEffect::prepareGeometryChangeInvalidateCache()
     QGraphicsView view(&scene);
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QTRY_VERIFY(view.windowHandle()->isActive());
     QTRY_VERIFY(item->nbPaint >= 1);
 
     item->nbPaint = 0;

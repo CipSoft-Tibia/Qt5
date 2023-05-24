@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #ifndef QBLUETOOTHSOCKET_ANDROID_P_H
@@ -54,7 +18,7 @@
 
 #include "qbluetoothsocketbase_p.h"
 
-#include <QtAndroidExtras/QAndroidJniObject>
+#include <QtCore/QJniObject>
 #include <QtCore/QPointer>
 #include "android/inputstreamthread_p.h"
 #include <jni.h>
@@ -81,7 +45,6 @@ public:
     void connectToService(const QBluetoothAddress &address, quint16 port,
                           QIODevice::OpenMode openMode) override;
 
-    bool fallBackConnect(QAndroidJniObject uuid, int channel);
     bool fallBackReversedConnect(const QBluetoothUuid &uuid);
 
     bool ensureNativeSocket(QBluetoothServiceInfo::Protocol type) override;
@@ -100,12 +63,12 @@ public:
     qint64 writeData(const char *data, qint64 maxSize) override;
     qint64 readData(char *data, qint64 maxSize) override;
 
-    bool setSocketDescriptor(const QAndroidJniObject &socket, QBluetoothServiceInfo::Protocol socketType,
-                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::ConnectedState,
+    bool setSocketDescriptor(const QJniObject &socket, QBluetoothServiceInfo::Protocol socketType,
+                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::SocketState::ConnectedState,
                              QBluetoothSocket::OpenMode openMode = QBluetoothSocket::ReadWrite) override;
 
     bool setSocketDescriptor(int socketDescriptor, QBluetoothServiceInfo::Protocol socketType,
-                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::ConnectedState,
+                             QBluetoothSocket::SocketState socketState = QBluetoothSocket::SocketState::ConnectedState,
                              QBluetoothSocket::OpenMode openMode = QBluetoothSocket::ReadWrite) override;
 
     qint64 bytesAvailable() const override;
@@ -114,20 +77,20 @@ public:
 
     static QBluetoothUuid reverseUuid(const QBluetoothUuid &serviceUuid);
 
-    QAndroidJniObject adapter;
-    QAndroidJniObject socketObject;
-    QAndroidJniObject remoteDevice;
-    QAndroidJniObject inputStream;
-    QAndroidJniObject outputStream;
+    QJniObject adapter;
+    QJniObject socketObject;
+    QJniObject remoteDevice;
+    QJniObject inputStream;
+    QJniObject outputStream;
     InputStreamThread *inputThread;
 
 public slots:
-    void socketConnectSuccess(const QAndroidJniObject &socket);
-    void defaultSocketConnectFailed(const QAndroidJniObject & socket,
-                                    const QAndroidJniObject &targetUuid,
+    void socketConnectSuccess(const QJniObject &socket);
+    void defaultSocketConnectFailed(const QJniObject & socket,
+                                    const QJniObject &targetUuid,
                                     const QBluetoothUuid &qtTargetUuid);
-    void fallbackSocketConnectFailed(const QAndroidJniObject &socket,
-                                     const QAndroidJniObject &targetUuid);
+    void fallbackSocketConnectFailed(const QJniObject &socket,
+                                     const QJniObject &targetUuid);
     void inputThreadError(int errorCode);
 
 signals:

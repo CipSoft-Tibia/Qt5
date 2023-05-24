@@ -1,9 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/warning_service.h"
 
+#include "base/observer_list.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/warning_service_factory.h"
@@ -17,7 +18,7 @@ WarningService::WarningService(content::BrowserContext* browser_context)
     : browser_context_(browser_context) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   if (browser_context_) {
-    extension_registry_observer_.Add(ExtensionRegistry::Get(
+    extension_registry_observation_.Observe(ExtensionRegistry::Get(
         ExtensionsBrowserClient::Get()->GetOriginalContext(browser_context_)));
   }
 }

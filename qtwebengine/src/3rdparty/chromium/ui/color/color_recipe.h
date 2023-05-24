@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,11 +24,11 @@ class COMPONENT_EXPORT(COLOR) ColorRecipe {
   ColorRecipe();
   // This constructor acts as a shorthand initialization of a recipe with a
   // transform which is by far the most common means of recipe initialization.
-  ColorRecipe(const ColorTransform& transform);
+  ColorRecipe(const ColorTransform& transform);  // NOLINT
   ColorRecipe(const ColorRecipe&);
   ColorRecipe& operator=(const ColorRecipe&);
-  ColorRecipe(ColorRecipe&&);
-  ColorRecipe& operator=(ColorRecipe&&);
+  ColorRecipe(ColorRecipe&&) noexcept;
+  ColorRecipe& operator=(ColorRecipe&&) noexcept;
   ~ColorRecipe();
 
   ColorRecipe& operator+=(const ColorTransform& transform);

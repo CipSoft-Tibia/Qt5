@@ -7,9 +7,14 @@
 #include "qaxbindable.h"
 #include "qaxfactory.h"
 #include "qaxobject.h"
+#include "qaxobjectinterface.h"
 #include "qaxscript.h"
 #include "qaxselect.h"
 #include "qaxtypefunctions.h"
 #include "qaxtypes.h"
 #include "qaxwidget.h"
 #include "qaxutils_p.h"
+
+#ifndef WINAPI
+#define WINAPI
+#endif

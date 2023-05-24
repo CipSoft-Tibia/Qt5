@@ -28,6 +28,7 @@
 #include <inttypes.h>
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/opt.h"
 #include "avformat.h"
 #include "internal.h"
 
@@ -75,6 +76,8 @@ typedef struct VideoProperties {
 } VideoProperties;
 
 typedef struct EaDemuxContext {
+    const AVClass *class;
+
     int big_endian;
 
     VideoProperties video, alpha;
@@ -88,6 +91,7 @@ typedef struct EaDemuxContext {
     int num_samples;
 
     int platform;
+    int merge_alpha;
 } EaDemuxContext;
 
 static uint32_t read_arbitrary(AVIOContext *pb)
@@ -442,6 +446,10 @@ static int process_ea_header(AVFormatContext *s)
 
         case AVhd_TAG:
             err = process_video_header_vp6(s, &ea->alpha);
+            if (err >= 0 && ea->video.codec == AV_CODEC_ID_VP6 && ea->merge_alpha) {
+                ea->alpha.codec = 0;
+                ea->video.codec = AV_CODEC_ID_VP6A;
+            }
             break;
         }
 
@@ -503,7 +511,7 @@ static int init_video_stream(AVFormatContext *s, VideoProperties *video)
     st->codecpar->codec_id    = video->codec;
     // parsing is necessary to make FFmpeg generate correct timestamps
     if (st->codecpar->codec_id == AV_CODEC_ID_MPEG2VIDEO)
-        st->need_parsing = AVSTREAM_PARSE_HEADERS;
+        ffstream(st)->need_parsing = AVSTREAM_PARSE_HEADERS;
     st->codecpar->codec_tag   = 0; /* no fourcc */
     st->codecpar->width       = video->width;
     st->codecpar->height      = video->height;
@@ -530,20 +538,17 @@ static int ea_read_header(AVFormatContext *s)
         if (ea->num_channels <= 0 || ea->num_channels > 2) {
             av_log(s, AV_LOG_WARNING,
                    "Unsupported number of channels: %d\n", ea->num_channels);
-            ea->audio_codec = 0;
-            return 1;
+            goto no_audio;
         }
         if (ea->sample_rate <= 0) {
             av_log(s, AV_LOG_ERROR,
                    "Unsupported sample rate: %d\n", ea->sample_rate);
-            ea->audio_codec = 0;
-            return 1;
+            goto no_audio;
         }
         if (ea->bytes <= 0 || ea->bytes > 2) {
             av_log(s, AV_LOG_ERROR,
                    "Invalid number of bytes per sample: %d\n", ea->bytes);
-            ea->audio_codec = AV_CODEC_ID_NONE;
-            return 1;
+            goto no_audio;
         }
 
         /* initialize the audio decoder stream */
@@ -554,19 +559,24 @@ static int ea_read_header(AVFormatContext *s)
         st->codecpar->codec_type            = AVMEDIA_TYPE_AUDIO;
         st->codecpar->codec_id              = ea->audio_codec;
         st->codecpar->codec_tag             = 0;   /* no tag */
-        st->codecpar->channels              = ea->num_channels;
+        st->codecpar->ch_layout.nb_channels = ea->num_channels;
         st->codecpar->sample_rate           = ea->sample_rate;
         st->codecpar->bits_per_coded_sample = ea->bytes * 8;
-        st->codecpar->bit_rate              = (int64_t)st->codecpar->channels *
+        st->codecpar->bit_rate              = (int64_t)ea->num_channels *
                                               st->codecpar->sample_rate *
                                               st->codecpar->bits_per_coded_sample / 4;
-        st->codecpar->block_align           = st->codecpar->channels *
+        st->codecpar->block_align           = ea->num_channels *
                                               st->codecpar->bits_per_coded_sample;
         ea->audio_stream_index           = st->index;
         st->start_time                   = 0;
+        return 0;
     }
+no_audio:
+    ea->audio_codec = AV_CODEC_ID_NONE;
 
-    return 1;
+    if (!ea->video.codec)
+        return AVERROR_INVALIDDATA;
+    return 0;
 }
 
 static int ea_read_packet(AVFormatContext *s, AVPacket *pkt)
@@ -576,11 +586,13 @@ static int ea_read_packet(AVFormatContext *s, AVPacket *pkt)
     int partial_packet = 0;
     int hit_end = 0;
     unsigned int chunk_type, chunk_size;
-    int ret = 0, packet_read = 0, key = 0;
+    int ret = 0, packet_read = 0, key = 0, vp6a;
     int av_uninit(num_samples);
 
     while ((!packet_read && !hit_end) || partial_packet) {
         chunk_type = avio_rl32(pb);
+        if (avio_feof(pb))
+            return AVERROR_EOF;
         chunk_size = ea->big_endian ? avio_rb32(pb) : avio_rl32(pb);
         if (chunk_size < 8)
             return AVERROR_INVALIDDATA;
@@ -603,10 +615,14 @@ static int ea_read_packet(AVFormatContext *s, AVPacket *pkt)
                 break;
             } else if (ea->audio_codec == AV_CODEC_ID_PCM_S16LE_PLANAR ||
                        ea->audio_codec == AV_CODEC_ID_MP3) {
+                if (chunk_size < 12)
+                    return AVERROR_INVALIDDATA;
                 num_samples = avio_rl32(pb);
                 avio_skip(pb, 8);
                 chunk_size -= 12;
             } else if (ea->audio_codec == AV_CODEC_ID_ADPCM_PSX) {
+                if (chunk_size < 8)
+                    return AVERROR_INVALIDDATA;
                 avio_skip(pb, 8);
                 chunk_size -= 8;
             }
@@ -689,6 +705,8 @@ static int ea_read_packet(AVFormatContext *s, AVPacket *pkt)
         case fVGT_TAG:
         case MADm_TAG:
         case MADe_TAG:
+            if (chunk_size > INT_MAX - 8)
+                return AVERROR_INVALIDDATA;
             avio_seek(pb, -8, SEEK_CUR);    // include chunk preamble
             chunk_size += 8;
             goto get_video_packet;
@@ -711,22 +729,32 @@ static int ea_read_packet(AVFormatContext *s, AVPacket *pkt)
 get_video_packet:
             if (!chunk_size)
                 continue;
+            if (chunk_size > INT_MAX - 3)
+                return AVERROR_INVALIDDATA;
+
+            vp6a = (ea->video.codec == AV_CODEC_ID_VP6A && (chunk_type == MV0F_TAG || chunk_type == MV0K_TAG));
 
             if (partial_packet) {
                 ret = av_append_packet(pb, pkt, chunk_size);
-            } else
-                ret = av_get_packet(pb, pkt, chunk_size);
+            } else {
+                if (vp6a)
+                    avio_seek(pb, -3, SEEK_CUR);
+                ret = av_get_packet(pb, pkt, chunk_size + (vp6a ? 3 : 0));
+                if (ret >= 0 && vp6a)
+                   AV_WB24(pkt->data, chunk_size);
+            }
+            packet_read = 1;
+
             if (ret < 0) {
-                packet_read = 1;
+                partial_packet = 0;
                 break;
             }
-            partial_packet = chunk_type == MVIh_TAG;
-            if (chunk_type == AV0K_TAG || chunk_type == AV0F_TAG)
+            partial_packet = vp6a || chunk_type == MVIh_TAG;
+            if (ea->alpha.codec && (chunk_type == AV0K_TAG || chunk_type == AV0F_TAG))
                 pkt->stream_index = ea->alpha.stream_index;
             else
                 pkt->stream_index = ea->video.stream_index;
             pkt->flags       |= key;
-            packet_read       = 1;
             break;
 
         default:
@@ -741,11 +769,26 @@ get_video_packet:
     return ret;
 }
 
-AVInputFormat ff_ea_demuxer = {
+#define OFFSET(x) offsetof(EaDemuxContext, x)
+#define FLAGS AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
+static const AVOption options[] = {
+    {"merge_alpha", "return VP6 alpha in the main video stream", OFFSET(merge_alpha), AV_OPT_TYPE_BOOL,  {.i64 = 0}, 0, 1, FLAGS },
+    {NULL}
+};
+
+static const AVClass ea_class = {
+    .class_name = "ea demuxer",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
+const AVInputFormat ff_ea_demuxer = {
     .name           = "ea",
     .long_name      = NULL_IF_CONFIG_SMALL("Electronic Arts Multimedia"),
     .priv_data_size = sizeof(EaDemuxContext),
     .read_probe     = ea_probe,
     .read_header    = ea_read_header,
     .read_packet    = ea_read_packet,
+    .priv_class     = &ea_class,
 };

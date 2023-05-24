@@ -13,24 +13,29 @@
   }
 
   #logo {
+    forced-color-adjust: none;
     height: 92px;
     width: 272px;
   }
 
   :host([single-colored]) #logo {
-    -webkit-mask-image: url(chrome://resources/images/google_logo.svg);
+    -webkit-mask-image: url(./icons/google_logo.svg);
     -webkit-mask-repeat: no-repeat;
     -webkit-mask-size: 100%;
     background-color: var(--ntp-logo-color);
   }
 
   :host(:not([single-colored])) #logo {
-    background-image: url(chrome://resources/images/google_logo.svg);
+    background-image: url(./icons/google_logo.svg);
   }
 
   #imageDoodle {
     cursor: pointer;
     outline: none;
+  }
+
+  #imageDoodle[tabindex='-1'] {
+    cursor: auto;
   }
 
   :host([doodle-boxed_]) #imageDoodle {
@@ -108,7 +113,8 @@
 <template is="dom-if" if="[[showDoodle_]]" restamp>
   <div id="doodle" title="[[doodle_.description]]">
     <div id="imageDoodle" hidden="[[!imageDoodle_]]"
-        tabindex="0" on-click="onImageClick_" on-keydown="onImageKeydown_">
+        tabindex$="[[imageDoodleTabIndex_]]" on-click="onImageClick_"
+        on-keydown="onImageKeydown_">
       <div id="imageContainer">
         <!-- The static image is always visible and the animated image is
              stacked on top of the static image so that there is no flicker
@@ -127,7 +133,8 @@
       </div>
     </div>
     <template is="dom-if" if="[[iframeUrl_]]" restamp>
-      <ntp-iframe id="iframe" src="[[iframeUrl_]]" expanded$="[[expanded_]]">
+      <ntp-iframe id="iframe" src="[[iframeUrl_]]" expanded$="[[expanded_]]"
+          allow="autoplay; clipboard-write">
       </ntp-iframe>
     </template>
   </div>

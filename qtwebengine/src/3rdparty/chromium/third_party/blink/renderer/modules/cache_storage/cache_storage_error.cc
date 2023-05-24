@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/modules/cache_storage/cache.h"
 #include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -50,48 +50,46 @@ void RejectCacheStorageWithError(ScriptPromiseResolver* resolver,
                                  const String& message) {
   String final_message =
 
-      !message.IsEmpty() ? message : GetDefaultMessage(web_error);
+      !message.empty() ? message : GetDefaultMessage(web_error);
   switch (web_error) {
     case mojom::CacheStorageError::kSuccess:
       // This function should only be called with an error.
       NOTREACHED();
       return;
     case mojom::CacheStorageError::kErrorExists:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kInvalidAccessError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kInvalidAccessError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorStorage:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kUnknownError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kUnknownError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorNotFound:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kNotFoundError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kNotFoundError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorQuotaExceeded:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kQuotaExceededError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kQuotaExceededError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorCacheNameNotFound:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kNotFoundError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kNotFoundError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorQueryTooLarge:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kAbortError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kAbortError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorNotImplemented:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kNotSupportedError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kNotSupportedError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorDuplicateOperation:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kInvalidStateError, final_message));
+      resolver->RejectWithDOMException(DOMExceptionCode::kInvalidStateError,
+                                       final_message);
       return;
     case mojom::CacheStorageError::kErrorCrossOriginResourcePolicy:
-      ScriptState::Scope scope(resolver->GetScriptState());
-      resolver->Reject(V8ThrowException::CreateTypeError(
-          resolver->GetScriptState()->GetIsolate(), message));
+      resolver->RejectWithTypeError(message);
       return;
   }
 }

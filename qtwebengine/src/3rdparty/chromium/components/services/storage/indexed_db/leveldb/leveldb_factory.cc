@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,7 +30,7 @@ DefaultLevelDBFactory::OpenInMemoryDB(leveldb::Env* in_memory_env) {
   std::unique_ptr<leveldb::DB> db;
   leveldb::Status s =
       leveldb_env::OpenDB(in_memory_options, std::string(), &db);
-  return std::make_tuple(std::move(db), s);
+  return {std::move(db), s};
 }
 
 std::tuple<std::unique_ptr<leveldb::DB>, leveldb::Status>
@@ -41,7 +41,7 @@ DefaultLevelDBFactory::OpenDB(const std::string& name,
   options_.create_if_missing = create_if_missing;
   options_.write_buffer_size = write_buffer_size;
   leveldb::Status s = leveldb_env::OpenDB(options_, name, &db);
-  return std::make_tuple(std::move(db), s);
+  return {std::move(db), s};
 }
 
 std::tuple<scoped_refptr<LevelDBState>,
@@ -50,35 +50,31 @@ std::tuple<scoped_refptr<LevelDBState>,
 DefaultLevelDBFactory::OpenLevelDBState(const base::FilePath& file_name,
                                         bool create_if_missing,
                                         size_t write_buffer_size) {
-  leveldb::Status status;
-  std::unique_ptr<leveldb::DB> db;
-
   if (file_name.empty()) {
     if (!create_if_missing)
-      return std::make_tuple(nullptr, leveldb::Status::NotFound("", ""), false);
+      return {nullptr, leveldb::Status::NotFound("", ""), false};
 
     std::unique_ptr<leveldb::Env> in_memory_env =
         leveldb_chrome::NewMemEnv(in_memory_db_name_, options_.env);
-    std::tie(db, status) = OpenInMemoryDB(in_memory_env.get());
+    auto [db, status] = OpenInMemoryDB(in_memory_env.get());
     if (UNLIKELY(!status.ok())) {
       LOG(ERROR) << "Failed to open in-memory LevelDB database: "
                  << status.ToString();
-      return std::make_tuple(nullptr, status, false);
+      return {nullptr, status, false};
     }
 
-    return std::make_tuple(
-        LevelDBState::CreateForInMemoryDB(
-            std::move(in_memory_env), options_.comparator, std::move(db),
-            "in-memory-database"),
-        status, false);
+    return {LevelDBState::CreateForInMemoryDB(
+                std::move(in_memory_env), options_.comparator, std::move(db),
+                "in-memory-database"),
+            status, false};
   }
 
   // ChromiumEnv assumes UTF8, converts back to FilePath before using.
-  std::tie(db, status) =
+  auto [db, status] =
       OpenDB(file_name.AsUTF8Unsafe(), create_if_missing, write_buffer_size);
   if (UNLIKELY(!status.ok())) {
     if (!create_if_missing && status.IsInvalidArgument())
-      return std::make_tuple(nullptr, leveldb::Status::NotFound("", ""), false);
+      return {nullptr, leveldb::Status::NotFound("", ""), false};
     constexpr int64_t kBytesInOneKilobyte = 1024;
     int64_t free_disk_space_bytes =
         base::SysInfo::AmountOfFreeDiskSpace(file_name);
@@ -91,13 +87,12 @@ DefaultLevelDBFactory::OpenLevelDBState(const base::FilePath& file_name,
 
     LOG(ERROR) << "Failed to open LevelDB database from "
                << file_name.AsUTF8Unsafe() << "," << status.ToString();
-    return std::make_tuple(nullptr, status, is_disk_full);
+    return {nullptr, status, is_disk_full};
   }
 
-  return std::make_tuple(
-      LevelDBState::CreateForDiskDB(options_.comparator, std::move(db),
-                                    std::move(file_name)),
-      status, false);
+  return {LevelDBState::CreateForDiskDB(options_.comparator, std::move(db),
+                                        std::move(file_name)),
+          status, false};
 }
 
 leveldb::Status DefaultLevelDBFactory::DestroyLevelDB(

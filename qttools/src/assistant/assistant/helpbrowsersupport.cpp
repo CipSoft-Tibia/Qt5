@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "helpbrowsersupport.h"
 #include "helpenginewrapper.h"
@@ -96,7 +71,7 @@ public:
     void abort() override;
 
     qint64 bytesAvailable() const override
-        { return data.length() + QNetworkReply::bytesAvailable(); }
+        { return data.size() + QNetworkReply::bytesAvailable(); }
 
 protected:
     qint64 readData(char *data, qint64 maxlen) override;
@@ -108,7 +83,7 @@ private:
 
 HelpNetworkReply::HelpNetworkReply(const QNetworkRequest &request,
         const QByteArray &fileData, const QString& mimeType)
-    : data(fileData), origLen(fileData.length())
+    : data(fileData), origLen(fileData.size())
 {
     TRACE_OBJ
     setRequest(request);
@@ -130,12 +105,12 @@ void HelpNetworkReply::abort()
 qint64 HelpNetworkReply::readData(char *buffer, qint64 maxlen)
 {
     TRACE_OBJ
-    qint64 len = qMin(qint64(data.length()), maxlen);
+    qint64 len = qMin(qint64(data.size()), maxlen);
     if (len) {
         memcpy(buffer, data.constData(), len);
         data.remove(0, len);
     }
-    if (!data.length())
+    if (!data.size())
         QTimer::singleShot(0, this, &QNetworkReply::finished);
     return len;
 }

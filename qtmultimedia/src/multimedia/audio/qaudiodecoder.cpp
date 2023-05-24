@@ -1,52 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qtmultimediaglobal_p.h"
 #include "qaudiodecoder.h"
 
-#include "qmediaobject_p.h"
-#include <qmediaservice.h>
-#include "qaudiodecodercontrol.h"
-#include <private/qmediaserviceprovider_p.h>
+#include "private/qplatformaudiodecoder_p.h"
+
+#include <private/qplatformmediaintegration_p.h>
+#include <private/qobject_p.h>
 
 #include <QtCore/qcoreevent.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/qurl.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qpointer.h>
 
@@ -54,103 +20,32 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \class QAudioDecoder
-    \brief The QAudioDecoder class allows decoding audio.
+    \brief The QAudioDecoder class implements decoding audio.
     \inmodule QtMultimedia
     \ingroup multimedia
     \ingroup multimedia_audio
 
     \preliminary
 
-    The QAudioDecoder class is a high level class for decoding local
+    The QAudioDecoder class is a high level class for decoding
     audio media files.  It is similar to the QMediaPlayer class except
     that audio is provided back through this API rather than routed
-    directly to audio hardware, and playlists and network and streaming
-    based media is not supported.
+    directly to audio hardware.
 
     \sa QAudioBuffer
 */
 
-static void qRegisterAudioDecoderMetaTypes()
-{
-    qRegisterMetaType<QAudioDecoder::State>("QAudioDecoder::State");
-    qRegisterMetaType<QAudioDecoder::Error>("QAudioDecoder::Error");
-}
-
-Q_CONSTRUCTOR_FUNCTION(qRegisterAudioDecoderMetaTypes)
-
-class QAudioDecoderPrivate : public QMediaObjectPrivate
-{
-    Q_DECLARE_NON_CONST_PUBLIC(QAudioDecoder)
-
-public:
-    QAudioDecoderPrivate()
-        : provider(nullptr)
-        , control(nullptr)
-        , state(QAudioDecoder::StoppedState)
-        , error(QAudioDecoder::NoError)
-    {}
-
-    QMediaServiceProvider *provider;
-    QAudioDecoderControl *control;
-    QAudioDecoder::State state;
-    QAudioDecoder::Error error;
-    QString errorString;
-
-    void _q_stateChanged(QAudioDecoder::State state);
-    void _q_error(int error, const QString &errorString);
-};
-
-void QAudioDecoderPrivate::_q_stateChanged(QAudioDecoder::State ps)
-{
-    Q_Q(QAudioDecoder);
-
-    if (ps != state) {
-        state = ps;
-
-        emit q->stateChanged(ps);
-    }
-}
-
-void QAudioDecoderPrivate::_q_error(int error, const QString &errorString)
-{
-    Q_Q(QAudioDecoder);
-
-    this->error = QAudioDecoder::Error(error);
-    this->errorString = errorString;
-
-    emit q->error(this->error);
-}
-
 /*!
-    Construct an QAudioDecoder instance
-    parented to \a parent.
+    Construct an QAudioDecoder instance with \a parent.
 */
 QAudioDecoder::QAudioDecoder(QObject *parent)
-    : QMediaObject(*new QAudioDecoderPrivate,
-                   parent,
-                   QMediaServiceProvider::defaultServiceProvider()->requestService(Q_MEDIASERVICE_AUDIODECODER))
+    : QObject(parent)
 {
-    Q_D(QAudioDecoder);
-
-    d->provider = QMediaServiceProvider::defaultServiceProvider();
-    if (d->service) {
-        d->control = qobject_cast<QAudioDecoderControl*>(d->service->requestControl(QAudioDecoderControl_iid));
-        if (d->control != nullptr) {
-            connect(d->control, SIGNAL(stateChanged(QAudioDecoder::State)), SLOT(_q_stateChanged(QAudioDecoder::State)));
-            connect(d->control, SIGNAL(error(int,QString)), SLOT(_q_error(int,QString)));
-
-            connect(d->control, SIGNAL(formatChanged(QAudioFormat)), SIGNAL(formatChanged(QAudioFormat)));
-            connect(d->control, SIGNAL(sourceChanged()), SIGNAL(sourceChanged()));
-            connect(d->control, SIGNAL(bufferReady()), this, SIGNAL(bufferReady()));
-            connect(d->control ,SIGNAL(bufferAvailableChanged(bool)), this, SIGNAL(bufferAvailableChanged(bool)));
-            connect(d->control ,SIGNAL(finished()), this, SIGNAL(finished()));
-            connect(d->control ,SIGNAL(positionChanged(qint64)), this, SIGNAL(positionChanged(qint64)));
-            connect(d->control ,SIGNAL(durationChanged(qint64)), this, SIGNAL(durationChanged(qint64)));
-        }
-    }
-    if (!d->control) {
-       d->error = ServiceMissingError;
-       d->errorString = tr("The QAudioDecoder object does not have a valid service");
+    auto maybeDecoder = QPlatformMediaIntegration::instance()->createAudioDecoder(this);
+    if (maybeDecoder) {
+        decoder = maybeDecoder.value();
+    } else {
+        qWarning() << "Failed to initialize QAudioDecoder" << maybeDecoder.error();
     }
 }
 
@@ -158,35 +53,45 @@ QAudioDecoder::QAudioDecoder(QObject *parent)
 /*!
     Destroys the audio decoder object.
 */
-QAudioDecoder::~QAudioDecoder()
+QAudioDecoder::~QAudioDecoder() = default;
+
+/*!
+    Returns true is audio decoding is supported on this platform.
+*/
+bool QAudioDecoder::isSupported() const
 {
-    Q_D(QAudioDecoder);
-
-    if (d->service) {
-        if (d->control)
-            d->service->releaseControl(d->control);
-
-        d->provider->releaseService(d->service);
-    }
-}
-
-QAudioDecoder::State QAudioDecoder::state() const
-{
-    return d_func()->state;
+    return bool(decoder);
 }
 
 /*!
-    Returns the current error state.
+    \property QAudioDecoder::isDecoding
+    \brief \c true if the decoder is currently running and decoding audio data.
 */
-
-QAudioDecoder::Error QAudioDecoder::error() const
+bool QAudioDecoder::isDecoding() const
 {
-    return d_func()->error;
+    return decoder && decoder->isDecoding();
 }
 
+/*!
+
+    Returns the current error state of the QAudioDecoder.
+*/
+QAudioDecoder::Error QAudioDecoder::error() const
+{
+    return decoder ? decoder->error() : NotSupportedError;
+}
+
+/*!
+    \property QAudioDecoder::error
+
+    Returns a human readable description of the current error, or
+    an empty string is there is no error.
+*/
 QString QAudioDecoder::errorString() const
 {
-    return d_func()->errorString;
+    if (!decoder)
+        return tr("QAudioDecoder not supported.");
+    return decoder->errorString();
 }
 
 /*!
@@ -203,20 +108,12 @@ QString QAudioDecoder::errorString() const
 */
 void QAudioDecoder::start()
 {
-    Q_D(QAudioDecoder);
-
-    if (d->control == nullptr) {
-        QMetaObject::invokeMethod(this, "_q_error", Qt::QueuedConnection,
-                                    Q_ARG(int, QAudioDecoder::ServiceMissingError),
-                                    Q_ARG(QString, tr("The QAudioDecoder object does not have a valid service")));
+    if (!decoder)
         return;
-    }
 
     // Reset error conditions
-    d->error = NoError;
-    d->errorString.clear();
-
-    d->control->start();
+    decoder->clearError();
+    decoder->start();
 }
 
 /*!
@@ -224,10 +121,8 @@ void QAudioDecoder::start()
 */
 void QAudioDecoder::stop()
 {
-    Q_D(QAudioDecoder);
-
-    if (d->control != nullptr)
-        d->control->stop();
+    if (decoder)
+        decoder->stop();
 }
 
 /*!
@@ -235,12 +130,9 @@ void QAudioDecoder::stop()
     If \l setSourceDevice was called, this will
     be empty.
 */
-QString QAudioDecoder::sourceFilename() const
+QUrl QAudioDecoder::source() const
 {
-    Q_D(const QAudioDecoder);
-    if (d->control)
-        return d->control->sourceFilename();
-    return QString();
+    return decoder ? decoder->source() : QString{};
 }
 
 /*!
@@ -252,24 +144,22 @@ QString QAudioDecoder::sourceFilename() const
     You can only specify either a source filename or
     a source QIODevice.  Setting one will unset the other.
 */
-void QAudioDecoder::setSourceFilename(const QString &fileName)
+void QAudioDecoder::setSource(const QUrl &fileName)
 {
-    Q_D(QAudioDecoder);
+    if (!decoder)
+        return;
 
-    if (d->control != nullptr)
-        d_func()->control->setSourceFilename(fileName);
+    decoder->clearError();
+    decoder->setSource(fileName);
 }
 
 /*!
     Returns the current source QIODevice, if one was set.
-    If \l setSourceFilename() was called, this will be 0.
+    If \l setSource() was called, this will be a nullptr.
 */
 QIODevice *QAudioDecoder::sourceDevice() const
 {
-    Q_D(const QAudioDecoder);
-    if (d->control)
-        return d->control->sourceDevice();
-    return nullptr;
+    return decoder ? decoder->sourceDevice() : nullptr;
 }
 
 /*!
@@ -283,25 +173,21 @@ QIODevice *QAudioDecoder::sourceDevice() const
 */
 void QAudioDecoder::setSourceDevice(QIODevice *device)
 {
-    Q_D(QAudioDecoder);
-
-    if (d->control != nullptr)
-        d_func()->control->setSourceDevice(device);
+    if (decoder)
+        decoder->setSourceDevice(device);
 }
 
 /*!
-    Returns the current audio format of the decoded stream.
+    Returns the audio format the decoder is set to.
 
-    Any buffers returned should have this format.
+    \note This may be different than the format of the decoded
+    samples, if the audio format was set to an invalid one.
 
     \sa setAudioFormat(), formatChanged()
 */
 QAudioFormat QAudioDecoder::audioFormat() const
 {
-    Q_D(const QAudioDecoder);
-    if (d->control)
-        return d->control->audioFormat();
-    return QAudioFormat();
+    return decoder ? decoder->audioFormat() : QAudioFormat{};
 }
 
 /*!
@@ -319,45 +205,18 @@ QAudioFormat QAudioDecoder::audioFormat() const
 
     If you wish to reset the decoded format to that of the original
     audio file, you can specify an invalid \a format.
+
+    \warning Setting a desired audio format is not yet supported
+    on the Android backend. It does work with the default FFMPEG
+    backend.
 */
 void QAudioDecoder::setAudioFormat(const QAudioFormat &format)
 {
-    Q_D(QAudioDecoder);
-
-    if (state() != QAudioDecoder::StoppedState)
+    if (isDecoding())
         return;
 
-    if (d->control != nullptr)
-        d_func()->control->setAudioFormat(format);
-}
-
-/*!
-    \internal
-*/
-
-bool QAudioDecoder::bind(QObject *obj)
-{
-    return QMediaObject::bind(obj);
-}
-
-/*!
-    \internal
-*/
-
-void QAudioDecoder::unbind(QObject *obj)
-{
-    QMediaObject::unbind(obj);
-}
-
-/*!
-    Returns the level of support an audio decoder has for a \a mimeType and a set of \a codecs.
-*/
-QMultimedia::SupportEstimate QAudioDecoder::hasSupport(const QString &mimeType,
-                                               const QStringList& codecs)
-{
-    return QMediaServiceProvider::defaultServiceProvider()->hasSupport(QByteArray(Q_MEDIASERVICE_AUDIODECODER),
-                                                                    mimeType,
-                                                                    codecs);
+    if (decoder)
+        decoder->setAudioFormat(format);
 }
 
 /*!
@@ -367,10 +226,7 @@ QMultimedia::SupportEstimate QAudioDecoder::hasSupport(const QString &mimeType,
 */
 bool QAudioDecoder::bufferAvailable() const
 {
-    Q_D(const QAudioDecoder);
-    if (d->control)
-        return d->control->bufferAvailable();
-    return false;
+    return decoder && decoder->bufferAvailable();
 }
 
 /*!
@@ -380,10 +236,7 @@ bool QAudioDecoder::bufferAvailable() const
 
 qint64 QAudioDecoder::position() const
 {
-    Q_D(const QAudioDecoder);
-    if (d->control)
-        return d->control->position();
-    return -1;
+    return decoder ? decoder->position() : -1;
 }
 
 /*!
@@ -393,10 +246,7 @@ qint64 QAudioDecoder::position() const
 
 qint64 QAudioDecoder::duration() const
 {
-    Q_D(const QAudioDecoder);
-    if (d->control)
-        return d->control->duration();
-    return -1;
+    return decoder ? decoder->duration() : -1;
 }
 
 /*!
@@ -411,26 +261,10 @@ qint64 QAudioDecoder::duration() const
 
 QAudioBuffer QAudioDecoder::read() const
 {
-    Q_D(const QAudioDecoder);
-
-    if (d->control) {
-        return d->control->read();
-    } else {
-        return QAudioBuffer();
-    }
+    return decoder ? decoder->read() : QAudioBuffer{};
 }
 
 // Enums
-/*!
-    \enum QAudioDecoder::State
-
-    Defines the current state of a media player.
-
-    \value StoppedState The decoder is not decoding.  Decoding will
-           start at the start of the media.
-    \value DecodingState The audio player is currently decoding media.
-*/
-
 /*!
     \enum QAudioDecoder::Error
 
@@ -440,12 +274,12 @@ QAudioBuffer QAudioDecoder::read() const
     \value ResourceError A media resource couldn't be resolved.
     \value FormatError The format of a media resource isn't supported.
     \value AccessDeniedError There are not the appropriate permissions to play a media resource.
-    \value ServiceMissingError A valid playback service was not found, playback cannot proceed.
+    \value NotSupportedError QAudioDecoder is not supported on this platform
 */
 
 // Signals
 /*!
-    \fn QAudioDecoder::error(QAudioDecoder::Error error)
+    \fn void QAudioDecoder::error(QAudioDecoder::Error error)
 
     Signals that an \a error condition has occurred.
 
@@ -453,17 +287,11 @@ QAudioBuffer QAudioDecoder::read() const
 */
 
 /*!
-    \fn void QAudioDecoder::stateChanged(State state)
-
-    Signal the \a state of the decoder object has changed.
-*/
-
-/*!
     \fn void QAudioDecoder::sourceChanged()
 
     Signals that the current source of the decoder has changed.
 
-    \sa sourceFilename(), sourceDevice()
+    \sa source(), sourceDevice()
 */
 
 /*!
@@ -520,23 +348,7 @@ QAudioBuffer QAudioDecoder::read() const
 
 // Properties
 /*!
-    \property QAudioDecoder::state
-    \brief the audio decoder's playback state.
-
-    By default this property is QAudioDecoder::Stopped
-
-    \sa start(), stop()
-*/
-
-/*!
-    \property QAudioDecoder::error
-    \brief a string describing the last error condition.
-
-    \sa error()
-*/
-
-/*!
-    \property QAudioDecoder::sourceFilename
+    \property QAudioDecoder::source
     \brief the active filename being decoded by the decoder object.
 */
 

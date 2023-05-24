@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbuspendingreply.h"
 #include "qdbuspendingcall_p.h"
@@ -53,16 +17,15 @@
 
     \brief The QDBusPendingReply class contains the reply to an asynchronous method call.
 
-    The QDBusPendingReply is a template class with up to 8 template
-    parameters. Those parameters are the types that will be used to
-    extract the contents of the reply's data.
+    The QDBusPendingReply is a variadic template class. The template parameters
+    are the types that will be used to extract the contents of the reply's data.
 
     This class is similar in functionality to QDBusReply, but with two
     important differences:
 
     \list
       \li QDBusReply accepts exactly one return type, whereas
-         QDBusPendingReply can have from 1 to 8 types
+         QDBusPendingReply can have any number of types
       \li QDBusReply only works on already completed replies, whereas
          QDBusPendingReply allows one to wait for replies from pending
          calls
@@ -95,7 +58,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::QDBusPendingReply()
+    \fn template<typename... Types> QDBusPendingReply<Types...>::QDBusPendingReply()
 
     Creates an empty QDBusPendingReply object. Without assigning a
     QDBusPendingCall object to this reply, QDBusPendingReply cannot do
@@ -103,7 +66,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::QDBusPendingReply(const QDBusPendingReply &other)
+    \fn template<typename... Types> QDBusPendingReply<Types...>::QDBusPendingReply(const QDBusPendingReply &other)
 
     Creates a copy of the \a other QDBusPendingReply object. Just like
     QDBusPendingCall and QDBusPendingCallWatcher, this QDBusPendingReply
@@ -112,7 +75,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::QDBusPendingReply(const QDBusPendingCall &call)
+    \fn template<typename... Types> QDBusPendingReply<Types...>::QDBusPendingReply(const QDBusPendingCall &call)
 
     Creates a QDBusPendingReply object that will take its contents from
     the \a call pending asynchronous call. This QDBusPendingReply object
@@ -120,7 +83,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::QDBusPendingReply(const QDBusMessage &message)
+    \fn template<typename... Types> QDBusPendingReply<Types...>::QDBusPendingReply(const QDBusMessage &message)
 
     Creates a QDBusPendingReply object that will take its contents from
     the message \a message. In this case, this object will be already
@@ -130,7 +93,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply &QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::operator=(const QDBusPendingReply &other)
+    \fn template<typename... Types> QDBusPendingReply &QDBusPendingReply<Types...>::operator=(const QDBusPendingReply &other)
 
     Makes a copy of \a other and drops the reference to the current
     pending call. If the current reference is to an unfinished pending
@@ -140,7 +103,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply &QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::operator=(const QDBusPendingCall &call)
+    \fn template<typename... Types> QDBusPendingReply &QDBusPendingReply<Types...>::operator=(const QDBusPendingCall &call)
 
     Makes this object take its contents from the \a call pending call
     and drops the reference to the current pending call. If the
@@ -150,7 +113,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply &QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::operator=(const QDBusMessage &message)
+    \fn template<typename... Types> QDBusPendingReply &QDBusPendingReply<Types...>::operator=(const QDBusMessage &message)
 
     Makes this object take its contents from the \a message message
     and drops the reference to the current pending call. If the
@@ -172,7 +135,7 @@
  */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> int QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::count() const
+    \fn template<typename... Types> int QDBusPendingReply<Types...>::count() const
 
     Return the number of arguments the reply is supposed to have. This
     number matches the number of non-void template parameters in this
@@ -184,7 +147,7 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QVariant QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::argumentAt(int index) const
+    \fn template<typename... Types> QVariant QDBusPendingReply<Types...>::argumentAt(int index) const
 
     Returns the argument at position \a index in the reply's
     contents. If the reply doesn't have that many elements, this
@@ -199,9 +162,9 @@
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> T1 QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::value() const
+    \fn template<typename... Types> typename Select<0>::Type QDBusPendingReply<Types...>::value() const
 
-    Returns the first argument in this reply, cast to type \c T1 (the
+    Returns the first argument in this reply, cast to type \c Types[0] (the
     first template parameter of this class). This is equivalent to
     calling argumentAt<0>().
 
@@ -212,14 +175,14 @@
     calling thread to block until the reply is processed.
 
     If the reply is an error reply, this function returns a default-constructed
-    \c T1 object, which may be indistinguishable from a valid value. To
+    \c Types[0] object, which may be indistinguishable from a valid value. To
     reliably determine whether the message was an error, use isError().
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::operator T1() const
+    \fn template<typename... Types> QDBusPendingReply<Types...>::operator typename Select<0>::Type() const
 
-    Returns the first argument in this reply, cast to type \c T1 (the
+    Returns the first argument in this reply, cast to type \c Types[0] (the
     first template parameter of this class). This is equivalent to
     calling argumentAt<0>().
 
@@ -230,12 +193,12 @@
     calling thread to block until the reply is processed.
 
     If the reply is an error reply, this function returns a default-constructed
-    \c T1 object, which may be indistinguishable from a valid value. To
+    \c Types[0] object, which may be indistinguishable from a valid value. To
     reliably determine whether the message was an error, use isError().
 */
 
 /*!
-    \fn template<typename T1, typename T2, typename T3, typename T4, typename T5, typename T6, typename T7, typename T8> void QDBusPendingReply<T1, T2, T3, T4, T5, T6, T7, T8>::waitForFinished()
+    \fn template<typename... Types> void QDBusPendingReply<Types...>::waitForFinished()
 
     Suspends the execution of the calling thread until the reply is
     received and processed. After this function returns, isFinished()
@@ -245,27 +208,27 @@
     \sa QDBusPendingCallWatcher::waitForFinished()
 */
 
-QDBusPendingReplyData::QDBusPendingReplyData()
+QDBusPendingReplyBase::QDBusPendingReplyBase()
     : QDBusPendingCall(nullptr)         // initialize base class empty
 {
 }
 
-QDBusPendingReplyData::~QDBusPendingReplyData()
+QDBusPendingReplyBase::~QDBusPendingReplyBase()
 {
 }
 
-void QDBusPendingReplyData::assign(const QDBusPendingCall &other)
+void QDBusPendingReplyBase::assign(const QDBusPendingCall &other)
 {
     QDBusPendingCall::operator=(other);
 }
 
-void QDBusPendingReplyData::assign(const QDBusMessage &message)
+void QDBusPendingReplyBase::assign(const QDBusMessage &message)
 {
     d = new QDBusPendingCallPrivate(QDBusMessage(), nullptr); // drops the reference to the old one
     d->replyMessage = message;
 }
 
-QVariant QDBusPendingReplyData::argumentAt(int index) const
+QVariant QDBusPendingReplyBase::argumentAt(int index) const
 {
     if (!d)
         return QVariant();
@@ -275,7 +238,7 @@ QVariant QDBusPendingReplyData::argumentAt(int index) const
     return d->replyMessage.arguments().value(index);
 }
 
-void QDBusPendingReplyData::setMetaTypes(int count, const int *types)
+void QDBusPendingReplyBase::setMetaTypes(int count, const QMetaType *types)
 {
     Q_ASSERT(d);
     const auto locker = qt_scoped_lock(d->mutex);

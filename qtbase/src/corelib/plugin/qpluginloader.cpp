@@ -1,54 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qplatformdefs.h"
-
-#include "qplugin.h"
-#include "qcoreapplication.h"
 #include "qpluginloader.h"
-#include <qfileinfo.h>
-#include "qfactoryloader_p.h"
+
+#include "qcoreapplication.h"
 #include "qdebug.h"
 #include "qdir.h"
+#include "qfactoryloader_p.h"
+#include "qfileinfo.h"
+#include "qjsondocument.h"
+
+#if QT_CONFIG(library)
+#  include "qlibrary_p.h"
+#endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #if QT_CONFIG(library)
 
@@ -102,35 +71,10 @@ QT_BEGIN_NAMESPACE
     link to plugins statically. You can use QLibrary if you need to
     load dynamic libraries in a statically linked application.
 
-    \sa QLibrary, {Plug & Paint Example}
+    \sa QLibrary, {Echo Plugin Example}
 */
 
-/*!
-    \class QStaticPlugin
-    \inmodule QtCore
-    \since 5.2
-
-    \brief QStaticPlugin is a struct containing a reference to a
-    static plugin instance together with its meta data.
-
-    \sa QPluginLoader, {How to Create Qt Plugins}
-*/
-
-/*!
-    \fn QObject *QStaticPlugin::instance()
-
-    Returns the plugin instance.
-
-    \sa QPluginLoader::staticInstances()
-*/
-
-/*!
-    \fn const char *QStaticPlugin::rawMetaData()
-
-    Returns the raw meta data for the plugin.
-
-    \sa metaData(), Q_PLUGIN_METADATA()
-*/
+static constexpr QLibrary::LoadHints defaultLoadHints = QLibrary::PreventUnloadHint;
 
 /*!
     Constructs a plugin loader with the given \a parent.
@@ -155,7 +99,7 @@ QPluginLoader::QPluginLoader(const QString &fileName, QObject *parent)
     : QObject(parent), d(nullptr), did_load(false)
 {
     setFileName(fileName);
-    setLoadHints(QLibrary::PreventUnloadHint);
+    setLoadHints(defaultLoadHints);
 }
 
 /*!
@@ -213,7 +157,7 @@ QJsonObject QPluginLoader::metaData() const
 {
     if (!d)
         return QJsonObject();
-    return d->metaData;
+    return d->metaData.toJson();
 }
 
 /*!
@@ -238,7 +182,6 @@ bool QPluginLoader::load()
     return d->loadPlugin();
 }
 
-
 /*!
     Unloads the plugin and returns \c true if the plugin could be
     unloaded; otherwise returns \c false.
@@ -261,7 +204,7 @@ bool QPluginLoader::unload()
         did_load = false;
         return d->unload();
     }
-    if (d)  // Ouch
+    if (d) // Ouch
         d->errorString = tr("The plugin was not loaded.");
     return false;
 }
@@ -292,11 +235,9 @@ static QString locatePlugin(const QString& fileName)
     suffixes.prepend(QString());
 
     // Split up "subdir/filename"
-    const int slash = fileName.lastIndexOf(QLatin1Char('/'));
-    const QStringRef baseName = fileName.midRef(slash + 1);
-    const QStringRef basePath = isAbsolute ? QStringRef() : fileName.leftRef(slash + 1); // keep the '/'
-
-    const bool debug = qt_debug_component();
+    const qsizetype slash = fileName.lastIndexOf(u'/');
+    const auto baseName = QStringView{fileName}.mid(slash + 1);
+    const auto basePath = isAbsolute ? QStringView() : QStringView{fileName}.left(slash + 1); // keep the '/'
 
     QStringList paths;
     if (isAbsolute) {
@@ -305,29 +246,26 @@ static QString locatePlugin(const QString& fileName)
         paths = QCoreApplication::libraryPaths();
     }
 
-    for (const QString &path : qAsConst(paths)) {
-        for (const QString &prefix : qAsConst(prefixes)) {
-            for (const QString &suffix : qAsConst(suffixes)) {
+    for (const QString &path : std::as_const(paths)) {
+        for (const QString &prefix : std::as_const(prefixes)) {
+            for (const QString &suffix : std::as_const(suffixes)) {
 #ifdef Q_OS_ANDROID
                 {
                     QString pluginPath = basePath + prefix + baseName + suffix;
-                    const QString fn = path + QLatin1String("/lib") + pluginPath.replace(QLatin1Char('/'), QLatin1Char('_'));
-                    if (debug)
-                        qDebug() << "Trying..." << fn;
+                    const QString fn = path + "/lib"_L1 + pluginPath.replace(u'/', u'_');
+                    qCDebug(qt_lcDebugPlugins) << "Trying..." << fn;
                     if (QFileInfo(fn).isFile())
                         return fn;
                 }
 #endif
-                const QString fn = path + QLatin1Char('/') + basePath + prefix + baseName + suffix;
-                if (debug)
-                    qDebug() << "Trying..." << fn;
+                const QString fn = path + u'/' + basePath + prefix + baseName + suffix;
+                qCDebug(qt_lcDebugPlugins) << "Trying..." << fn;
                 if (QFileInfo(fn).isFile())
                     return fn;
             }
         }
     }
-    if (debug)
-        qDebug() << fileName << "not found";
+    qCDebug(qt_lcDebugPlugins) << fileName << "not found";
     return QString();
 }
 #endif
@@ -357,7 +295,7 @@ static QString locatePlugin(const QString& fileName)
 void QPluginLoader::setFileName(const QString &fileName)
 {
 #if defined(QT_SHARED)
-    QLibrary::LoadHints lh = QLibrary::PreventUnloadHint;
+    QLibrary::LoadHints lh = defaultLoadHints;
     if (d) {
         lh = d->loadHints();
         d->release();
@@ -372,11 +310,8 @@ void QPluginLoader::setFileName(const QString &fileName)
         d->updatePluginState();
 
 #else
-    if (qt_debug_component()) {
-        qWarning("Cannot load %s into a statically linked Qt library.",
-            (const char*)QFile::encodeName(fileName));
-    }
-    Q_UNUSED(fileName);
+    qCWarning(qt_lcDebugPlugins, "Cannot load '%ls' into a statically linked Qt library.",
+              qUtf16Printable(fileName));
 #endif
 }
 
@@ -422,12 +357,17 @@ void QPluginLoader::setLoadHints(QLibrary::LoadHints loadHints)
 
 QLibrary::LoadHints QPluginLoader::loadHints() const
 {
-    return d ? d->loadHints() : QLibrary::LoadHints();
+    // Not having a d-pointer means that the user hasn't called
+    // setLoadHints() / setFileName() yet. In setFileName() we will
+    // then force defaultLoadHints on loading, so we must return them
+    // from here as well.
+
+    return d ? d->loadHints() : defaultLoadHints;
 }
 
 #endif // QT_CONFIG(library)
 
-typedef QVector<QStaticPlugin> StaticPluginList;
+typedef QList<QStaticPlugin> StaticPluginList;
 Q_GLOBAL_STATIC(StaticPluginList, staticPluginList)
 
 /*!
@@ -439,7 +379,19 @@ Q_GLOBAL_STATIC(StaticPluginList, staticPluginList)
 */
 void Q_CORE_EXPORT qRegisterStaticPluginFunction(QStaticPlugin plugin)
 {
-    staticPluginList()->append(plugin);
+    // using operator* because we shouldn't be registering plugins while
+    // unloading the application!
+    StaticPluginList &plugins = *staticPluginList;
+
+    // insert the plugin in the list, sorted by address, so we can detect
+    // duplicate registrations
+    auto comparator = [=](const QStaticPlugin &p1, const QStaticPlugin &p2) {
+        using Less = std::less<decltype(plugin.instance)>;
+        return Less{}(p1.instance, p2.instance);
+    };
+    auto pos = std::lower_bound(plugins.constBegin(), plugins.constEnd(), plugin, comparator);
+    if (pos == plugins.constEnd() || pos->instance != plugin.instance)
+        plugins.insert(pos, plugin);
 }
 
 /*!
@@ -450,12 +402,11 @@ void Q_CORE_EXPORT qRegisterStaticPluginFunction(QStaticPlugin plugin)
 QObjectList QPluginLoader::staticInstances()
 {
     QObjectList instances;
-    const StaticPluginList *plugins = staticPluginList();
-    if (plugins) {
-        const int numPlugins = plugins->size();
-        instances.reserve(numPlugins);
-        for (int i = 0; i < numPlugins; ++i)
-            instances += plugins->at(i).instance();
+    if (staticPluginList.exists()) {
+        const StaticPluginList &plugins = *staticPluginList;
+        instances.reserve(plugins.size());
+        for (QStaticPlugin plugin : plugins)
+            instances += plugin.instance();
     }
     return instances;
 }
@@ -467,34 +418,49 @@ QObjectList QPluginLoader::staticInstances()
     meta data information.
     \sa staticInstances()
 */
-QVector<QStaticPlugin> QPluginLoader::staticPlugins()
+QList<QStaticPlugin> QPluginLoader::staticPlugins()
 {
     StaticPluginList *plugins = staticPluginList();
     if (plugins)
         return *plugins;
-    return QVector<QStaticPlugin>();
+    return QList<QStaticPlugin>();
 }
+
+/*!
+    \class QStaticPlugin
+    \inmodule QtCore
+    \since 5.2
+
+    \brief QStaticPlugin is a struct containing a reference to a
+    static plugin instance together with its meta data.
+
+    \sa QPluginLoader, {How to Create Qt Plugins}
+*/
+
+/*!
+    \fn QStaticPlugin::QStaticPlugin(QtPluginInstanceFunction i, QtPluginMetaDataFunction m)
+    \internal
+*/
+
+/*!
+    \variable QStaticPlugin::instance
+
+    Holds the plugin instance.
+
+    \sa QPluginLoader::staticInstances()
+*/
 
 /*!
     Returns a the meta data for the plugin as a QJsonObject.
 
-    \sa rawMetaData()
+    \sa Q_PLUGIN_METADATA()
 */
 QJsonObject QStaticPlugin::metaData() const
 {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    // the data is already loaded, so this doesn't matter
-    qsizetype rawMetaDataSize = INT_MAX;
-    const char *ptr = rawMetaData();
-#else
-    auto ptr = static_cast<const char *>(rawMetaData);
-#endif
-
-    QString errMsg;
-    QJsonDocument doc = qJsonFromRawLibraryMetaData(ptr, rawMetaDataSize, &errMsg);
-    Q_ASSERT(doc.isObject());
-    Q_ASSERT(errMsg.isEmpty());
-    return doc.object();
+    QByteArrayView data(static_cast<const char *>(rawMetaData), rawMetaDataSize);
+    QPluginParsedMetaData parsed(data);
+    Q_ASSERT(!parsed.isError());
+    return parsed.toJson();
 }
 
 QT_END_NAMESPACE

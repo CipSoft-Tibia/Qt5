@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,10 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/test/scoped_feature_list.h"
 #include "components/assist_ranker/example_preprocessing.h"
 #include "components/assist_ranker/fake_ranker_model_loader.h"
@@ -64,15 +65,16 @@ std::unique_ptr<ClassifierPredictor> ClassifierPredictorTest::InitPredictor(
   return predictor;
 }
 
-const base::Feature kTestRankerQuery{"TestRankerQuery",
-                                     base::FEATURE_ENABLED_BY_DEFAULT};
+BASE_FEATURE(kTestRankerQuery,
+             "TestRankerQuery",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 const base::FeatureParam<std::string> kTestRankerUrl{
     &kTestRankerQuery, "url-param-name", "https://default.model.url"};
 
 PredictorConfig ClassifierPredictorTest::GetConfig() {
   return PredictorConfig("model_name", "logging_name", "uma_prefix", LOG_NONE,
-                         GetEmptyWhitelist(), &kTestRankerQuery,
+                         GetEmptyAllowlist(), &kTestRankerQuery,
                          &kTestRankerUrl, 0);
 }
 
@@ -104,7 +106,7 @@ TEST_F(ClassifierPredictorTest, NoInferenceModuleForModel) {
   features[kFeatureName0].set_bool_value(true);
   std::vector<float> response;
   EXPECT_FALSE(predictor->Predict(ranker_example, &response));
-  EXPECT_FALSE(predictor->Predict({0, 0}, &response));
+  EXPECT_FALSE(predictor->Predict({{0, 0}}, &response));
 }
 
 TEST_F(ClassifierPredictorTest, PredictFeatureVector) {
@@ -116,18 +118,18 @@ TEST_F(ClassifierPredictorTest, PredictFeatureVector) {
 
   std::vector<float> response;
   // True responses.
-  EXPECT_TRUE(predictor->Predict({0, 1}, &response));
+  EXPECT_TRUE(predictor->Predict({{0.0, 1}}, &response));
   EXPECT_EQ(response.size(), 1u);
   EXPECT_THAT(response[0], FloatEq(2.8271765));
-  EXPECT_TRUE(predictor->Predict({1, 0}, &response));
+  EXPECT_TRUE(predictor->Predict({{1, 0}}, &response));
   EXPECT_EQ(response.size(), 1u);
   EXPECT_THAT(response[0], FloatEq(2.6790769));
 
   // False responses.
-  EXPECT_TRUE(predictor->Predict({0, 0}, &response));
+  EXPECT_TRUE(predictor->Predict({{0, 0}}, &response));
   EXPECT_EQ(response.size(), 1u);
   EXPECT_THAT(response[0], FloatEq(-2.7154054));
-  EXPECT_TRUE(predictor->Predict({1, 1}, &response));
+  EXPECT_TRUE(predictor->Predict({{1, 1}}, &response));
   EXPECT_EQ(response.size(), 1u);
   EXPECT_THAT(response[0], FloatEq(-3.1652793));
 }

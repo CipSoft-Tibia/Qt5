@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,20 +7,19 @@
 #include "xfa/fde/cfde_texteditengine.h"
 
 #include <algorithm>
-#include <limits>
 #include <utility>
 
 #include "core/fxcrt/fx_extension.h"
+#include "core/fxcrt/span_util.h"
 #include "core/fxge/text_char_pos.h"
+#include "third_party/base/check.h"
+#include "third_party/base/notreached.h"
+#include "third_party/base/numerics/safe_conversions.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fde/cfde_wordbreak_data.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
 
 namespace {
-
-constexpr size_t kMaxEditOperations = 128;
-constexpr size_t kGapSize = 128;
-constexpr size_t kPageWidthMax = 0xffff;
 
 class InsertOperation final : public CFDE_TextEditEngine::Operation {
  public:
@@ -29,7 +28,7 @@ class InsertOperation final : public CFDE_TextEditEngine::Operation {
                   const WideString& added_text)
       : engine_(engine), start_idx_(start_idx), added_text_(added_text) {}
 
-  ~InsertOperation() override {}
+  ~InsertOperation() override = default;
 
   void Redo() const override {
     engine_->Insert(start_idx_, added_text_,
@@ -54,7 +53,7 @@ class DeleteOperation final : public CFDE_TextEditEngine::Operation {
                   const WideString& removed_text)
       : engine_(engine), start_idx_(start_idx), removed_text_(removed_text) {}
 
-  ~DeleteOperation() override {}
+  ~DeleteOperation() override = default;
 
   void Redo() const override {
     engine_->Delete(start_idx_, removed_text_.GetLength(),
@@ -81,7 +80,7 @@ class ReplaceOperation final : public CFDE_TextEditEngine::Operation {
       : insert_op_(engine, start_idx, added_text),
         delete_op_(engine, start_idx, removed_text) {}
 
-  ~ReplaceOperation() override {}
+  ~ReplaceOperation() override = default;
 
   void Redo() const override {
     delete_op_.Redo();
@@ -121,32 +120,7 @@ bool BreakFlagsChanged(int flags, WordBreakProperty previous) {
 
 }  // namespace
 
-CFDE_TextEditEngine::CFDE_TextEditEngine()
-    : font_color_(0xff000000),
-      font_size_(10.0f),
-      line_spacing_(10.0f),
-      text_length_(0),
-      gap_position_(0),
-      gap_size_(kGapSize),
-      available_width_(kPageWidthMax),
-      character_limit_(std::numeric_limits<size_t>::max()),
-      visible_line_count_(1),
-      next_operation_index_to_undo_(kMaxEditOperations - 1),
-      next_operation_index_to_insert_(0),
-      max_edit_operations_(kMaxEditOperations),
-      character_alignment_(CFX_TxtLineAlignment_Left),
-      has_character_limit_(false),
-      is_comb_text_(false),
-      is_dirty_(false),
-      validation_enabled_(false),
-      is_multiline_(false),
-      is_linewrap_enabled_(false),
-      limit_horizontal_area_(false),
-      limit_vertical_area_(false),
-      password_mode_(false),
-      password_alias_(L'*'),
-      has_selection_(false),
-      selection_({0, 0}) {
+CFDE_TextEditEngine::CFDE_TextEditEngine() {
   content_.resize(gap_size_);
   operation_buffer_.resize(max_edit_operations_);
 
@@ -299,7 +273,7 @@ void CFDE_TextEditEngine::Insert(size_t idx,
       // Raise the limit to allow subsequent changes to expanded text.
       character_limit_ = text_length_ + length;
     } else {
-      // Trucate the text to comply with the limit.
+      // Truncate the text to comply with the limit.
       CHECK(text_length_ <= character_limit_);
       length = character_limit_ - text_length_;
       exceeded_limit = true;
@@ -352,8 +326,8 @@ void CFDE_TextEditEngine::Insert(size_t idx,
     previous_text = GetText();
 
   // Copy the new text into the gap.
-  static const size_t char_size = sizeof(WideString::CharType);
-  memcpy(content_.data() + gap_position_, text.c_str(), length * char_size);
+  fxcrt::spancpy(pdfium::make_span(content_).subspan(gap_position_),
+                 text.span().first(length));
   gap_position_ += length;
   gap_size_ -= length;
   text_length_ += length;
@@ -419,14 +393,6 @@ void CFDE_TextEditEngine::ClearOperationRecords() {
 
   next_operation_index_to_undo_ = max_edit_operations_ - 1;
   next_operation_index_to_insert_ = 0;
-}
-
-size_t CFDE_TextEditEngine::GetIndexBefore(size_t pos) {
-  int32_t bidi_level;
-  CFX_RectF rect;
-  // Possible |Layout| triggered by |GetCharacterInfo|.
-  std::tie(bidi_level, rect) = GetCharacterInfo(pos);
-  return FX_IsOdd(bidi_level) ? GetIndexRight(pos) : GetIndexLeft(pos);
 }
 
 size_t CFDE_TextEditEngine::GetIndexLeft(size_t pos) const {
@@ -654,7 +620,7 @@ void CFDE_TextEditEngine::SetFont(RetainPtr<CFGAS_GEFont> font) {
   if (font_ == font)
     return;
 
-  font_ = font;
+  font_ = std::move(font);
   text_break_.SetFont(font_);
   is_dirty_ = true;
 }
@@ -702,13 +668,13 @@ void CFDE_TextEditEngine::EnableMultiLine(bool val) {
   if (is_multiline_ == val)
     return;
 
-  is_multiline_ = true;
-
-  uint32_t style = text_break_.GetLayoutStyles();
+  is_multiline_ = val;
+  Mask<CFGAS_Break::LayoutStyle> style = text_break_.GetLayoutStyles();
   if (is_multiline_)
-    style &= ~FX_LAYOUTSTYLE_SingleLine;
+    style.Clear(CFGAS_Break::LayoutStyle::kSingleLine);
   else
-    style |= FX_LAYOUTSTYLE_SingleLine;
+    style |= CFGAS_Break::LayoutStyle::kSingleLine;
+
   text_break_.SetLayoutStyles(style);
   is_dirty_ = true;
 }
@@ -729,12 +695,12 @@ void CFDE_TextEditEngine::SetCombText(bool enable) {
 
   is_comb_text_ = enable;
 
-  uint32_t style = text_break_.GetLayoutStyles();
+  Mask<CFGAS_Break::LayoutStyle> style = text_break_.GetLayoutStyles();
   if (enable) {
-    style |= FX_LAYOUTSTYLE_CombText;
+    style |= CFGAS_Break::LayoutStyle::kCombText;
     SetCombTextWidth();
   } else {
-    style &= ~FX_LAYOUTSTYLE_CombText;
+    style.Clear(CFGAS_Break::LayoutStyle::kCombText);
   }
   text_break_.SetLayoutStyles(style);
   is_dirty_ = true;
@@ -931,7 +897,7 @@ wchar_t CFDE_TextEditEngine::GetChar(size_t idx) const {
              : content_[gap_position_ + gap_size_ + (idx - gap_position_)];
 }
 
-size_t CFDE_TextEditEngine::GetWidthOfChar(size_t idx) {
+int32_t CFDE_TextEditEngine::GetWidthOfChar(size_t idx) {
   // Recalculate the widths if necessary.
   Layout();
   return idx < char_widths_.size() ? char_widths_[idx] : 0;
@@ -983,7 +949,7 @@ size_t CFDE_TextEditEngine::GetIndexForPoint(const CFX_PointF& point) {
       // move the cursor after it.
       bool closer_to_left =
           (point.x - rects[i].left < rects[i].right() - point.x);
-      int caret_pos = (closer_to_left ? i : i + 1);
+      size_t caret_pos = closer_to_left ? i : i + 1;
       size_t pos = start_it->nStart + caret_pos;
       if (pos >= text_length_)
         return text_length_;
@@ -1037,7 +1003,7 @@ std::vector<CFX_RectF> CFDE_TextEditEngine::GetCharRects(
   if (piece.nCount < 1)
     return std::vector<CFX_RectF>();
 
-  CFX_TxtBreak::Run tr;
+  CFGAS_TxtBreak::Run tr;
   tr.pEdtEngine = this;
   tr.iStart = piece.nStart;
   tr.iLength = piece.nCount;
@@ -1046,7 +1012,7 @@ std::vector<CFX_RectF> CFDE_TextEditEngine::GetCharRects(
   tr.dwStyles = text_break_.GetLayoutStyles();
   tr.dwCharStyles = piece.dwCharStyles;
   tr.pRect = &piece.rtPiece;
-  return text_break_.GetCharRects(&tr, false);
+  return text_break_.GetCharRects(tr);
 }
 
 std::vector<TextCharPos> CFDE_TextEditEngine::GetDisplayPos(
@@ -1054,7 +1020,7 @@ std::vector<TextCharPos> CFDE_TextEditEngine::GetDisplayPos(
   if (piece.nCount < 1)
     return std::vector<TextCharPos>();
 
-  CFX_TxtBreak::Run tr;
+  CFGAS_TxtBreak::Run tr;
   tr.pEdtEngine = this;
   tr.iStart = piece.nStart;
   tr.iLength = piece.nCount;
@@ -1064,20 +1030,20 @@ std::vector<TextCharPos> CFDE_TextEditEngine::GetDisplayPos(
   tr.dwCharStyles = piece.dwCharStyles;
   tr.pRect = &piece.rtPiece;
 
-  std::vector<TextCharPos> data(text_break_.GetDisplayPos(&tr, nullptr));
-  text_break_.GetDisplayPos(&tr, data.data());
+  std::vector<TextCharPos> data(text_break_.GetDisplayPos(tr, nullptr));
+  text_break_.GetDisplayPos(tr, data.data());
   return data;
 }
 
 void CFDE_TextEditEngine::RebuildPieces() {
-  text_break_.EndBreak(CFX_BreakType::kParagraph);
+  text_break_.EndBreak(CFGAS_Char::BreakType::kParagraph);
   text_break_.ClearBreakPieces();
 
   char_widths_.clear();
   text_piece_info_.clear();
 
   // Must have a font set in order to break the text.
-  if (text_length_ == 0 || !font_)
+  if (!CanGenerateCharacterInfo())
     return;
 
   bool initialized_bounding_box = false;
@@ -1089,27 +1055,28 @@ void CFDE_TextEditEngine::RebuildPieces() {
   while (!iter.IsEOF(false)) {
     iter.Next(false);
 
-    CFX_BreakType break_status = text_break_.AppendChar(
+    CFGAS_Char::BreakType break_status = text_break_.AppendChar(
         password_mode_ ? password_alias_ : iter.GetChar());
     if (iter.IsEOF(false) && CFX_BreakTypeNoneOrPiece(break_status))
-      break_status = text_break_.EndBreak(CFX_BreakType::kParagraph);
+      break_status = text_break_.EndBreak(CFGAS_Char::BreakType::kParagraph);
 
     if (CFX_BreakTypeNoneOrPiece(break_status))
       continue;
     int32_t piece_count = text_break_.CountBreakPieces();
     for (int32_t i = 0; i < piece_count; ++i) {
-      const CFX_BreakPiece* piece = text_break_.GetBreakPieceUnstable(i);
+      const CFGAS_BreakPiece* piece = text_break_.GetBreakPieceUnstable(i);
 
       FDE_TEXTEDITPIECE txtEdtPiece;
-      txtEdtPiece.rtPiece.left = piece->m_iStartPos / 20000.0f;
+      txtEdtPiece.rtPiece.left = piece->GetStartPos() / 20000.0f;
       txtEdtPiece.rtPiece.top = current_line_start;
-      txtEdtPiece.rtPiece.width = piece->m_iWidth / 20000.0f;
+      txtEdtPiece.rtPiece.width = piece->GetWidth() / 20000.0f;
       txtEdtPiece.rtPiece.height = line_spacing_;
-      txtEdtPiece.nStart = current_piece_start;
-      txtEdtPiece.nCount = piece->GetLength();
-      txtEdtPiece.nBidiLevel = piece->m_iBidiLevel;
-      txtEdtPiece.dwCharStyles = piece->m_dwCharStyles;
-      if (FX_IsOdd(piece->m_iBidiLevel))
+      txtEdtPiece.nStart =
+          pdfium::base::checked_cast<int32_t>(current_piece_start);
+      txtEdtPiece.nCount = piece->GetCharCount();
+      txtEdtPiece.nBidiLevel = piece->GetBidiLevel();
+      txtEdtPiece.dwCharStyles = piece->GetCharStyles();
+      if (FX_IsOdd(piece->GetBidiLevel()))
         txtEdtPiece.dwCharStyles |= FX_TXTCHARSTYLE_OddBidiLevel;
 
       text_piece_info_.push_back(txtEdtPiece);
@@ -1152,8 +1119,8 @@ void CFDE_TextEditEngine::RebuildPieces() {
 
 std::pair<int32_t, CFX_RectF> CFDE_TextEditEngine::GetCharacterInfo(
     int32_t start_idx) {
-  ASSERT(start_idx >= 0);
-  ASSERT(static_cast<size_t>(start_idx) <= text_length_);
+  DCHECK(start_idx >= 0);
+  DCHECK(static_cast<size_t>(start_idx) <= text_length_);
 
   // Make sure the current available data is fresh.
   Layout();
@@ -1217,7 +1184,7 @@ std::pair<size_t, size_t> CFDE_TextEditEngine::BoundsForWordAt(
 }
 
 CFDE_TextEditEngine::Iterator::Iterator(const CFDE_TextEditEngine* engine)
-    : engine_(engine), current_position_(-1) {}
+    : engine_(engine) {}
 
 CFDE_TextEditEngine::Iterator::~Iterator() = default;
 
@@ -1240,10 +1207,8 @@ wchar_t CFDE_TextEditEngine::Iterator::GetChar() const {
 }
 
 void CFDE_TextEditEngine::Iterator::SetAt(size_t nIndex) {
-  if (static_cast<size_t>(nIndex) >= engine_->GetLength())
-    current_position_ = engine_->GetLength();
-  else
-    current_position_ = nIndex;
+  nIndex = std::min(nIndex, engine_->GetLength());
+  current_position_ = pdfium::base::checked_cast<int32_t>(nIndex);
 }
 
 bool CFDE_TextEditEngine::Iterator::IsEOF(bool bPrev) const {

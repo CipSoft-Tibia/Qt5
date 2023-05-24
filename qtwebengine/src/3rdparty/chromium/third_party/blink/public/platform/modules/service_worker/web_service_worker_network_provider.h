@@ -31,14 +31,15 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_PLATFORM_MODULES_SERVICE_WORKER_WEB_SERVICE_WORKER_NETWORK_PROVIDER_H_
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_MODULES_SERVICE_WORKER_WEB_SERVICE_WORKER_NETWORK_PROVIDER_H_
 
-#include <memory>
-
 #include "base/memory/scoped_refptr.h"
+#include "third_party/blink/public/mojom/frame/frame.mojom-shared.h"
 #include "third_party/blink/public/mojom/service_worker/controller_service_worker_mode.mojom-shared.h"
-#include "third_party/blink/public/mojom/timing/worker_timing_container.mojom-shared.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_fetch_handler_type.mojom-shared.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
-#include "third_party/blink/public/platform/scheduler/web_resource_loading_task_runner_handle.h"
-#include "third_party/blink/public/platform/web_url_loader.h"
+
+namespace network {
+class SharedURLLoaderFactory;
+}  // namespace network
 
 namespace blink {
 
@@ -61,15 +62,15 @@ class WebServiceWorkerNetworkProvider {
   // request made.
   virtual void WillSendRequest(WebURLRequest&) = 0;
 
-  // Returns a URLLoader for loading |request|. May return nullptr to fall back
-  // to the default loading behavior.
-  virtual std::unique_ptr<WebURLLoader> CreateURLLoader(
-      const WebURLRequest& request,
-      std::unique_ptr<scheduler::WebResourceLoadingTaskRunnerHandle>) = 0;
+  // Returns a SharedURLLoaderFactory for loading |request|. May return nullptr
+  // to fall back to the default loading behavior.
+  virtual scoped_refptr<network::SharedURLLoaderFactory>
+  GetSubresourceLoaderFactory(const WebURLRequest& request) = 0;
 
   // For service worker clients.
   virtual blink::mojom::ControllerServiceWorkerMode
   GetControllerServiceWorkerMode() = 0;
+  virtual mojom::ServiceWorkerFetchHandlerType GetFetchHandlerType() = 0;
 
   // For service worker clients. Returns an identifier of the controller service
   // worker associated with the loading context.
@@ -78,12 +79,6 @@ class WebServiceWorkerNetworkProvider {
   // For service worker clients. Called when IdlenessDetector emits its network
   // idle signal.
   virtual void DispatchNetworkQuiet() = 0;
-
-  // Returns the blink::mojom::WorkerTimingContainer receiver for the
-  // blink::ResourceResponse with the given |request_id|. Null if the request
-  // has not been intercepted by a service worker.
-  virtual CrossVariantMojoReceiver<mojom::WorkerTimingContainerInterfaceBase>
-  TakePendingWorkerTimingReceiver(int request_id) = 0;
 };
 
 }  // namespace blink

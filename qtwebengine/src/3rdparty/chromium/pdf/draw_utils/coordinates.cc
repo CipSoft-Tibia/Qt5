@@ -1,10 +1,9 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "pdf/draw_utils/coordinates.h"
 
-#include <algorithm>
 #include <math.h>
 #include <algorithm>
 
@@ -12,8 +11,7 @@
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
-
-#include <algorithm>
+#include "ui/gfx/geometry/size_f.h"
 
 namespace chrome_pdf {
 namespace draw_utils {
@@ -58,17 +56,17 @@ int GetMostVisiblePage(const std::vector<IndexedPage>& visible_pages,
     return -1;
 
   int most_visible_page_index = visible_pages.front().index;
-  double most_visible_page_area = 0.0;
+  float most_visible_page_area = 0;
   for (const auto& visible_page : visible_pages) {
-    double page_area = static_cast<double>(visible_page.rect.size().GetArea());
+    float page_area = gfx::SizeF(visible_page.rect.size()).GetArea();
     // TODO(thestig): Check whether we can remove this check.
-    if (page_area <= 0.0)
+    if (page_area <= 0)
       continue;
 
     gfx::Rect screen_intersect =
         gfx::IntersectRects(visible_screen, visible_page.rect);
-    double intersect_area =
-        static_cast<double>(screen_intersect.size().GetArea()) / page_area;
+    float intersect_area =
+        gfx::SizeF(screen_intersect.size()).GetArea() / page_area;
     if (intersect_area > most_visible_page_area) {
       most_visible_page_index = visible_page.index;
       most_visible_page_area = intersect_area;
@@ -85,7 +83,7 @@ PageInsetSizes GetPageInsetsForTwoUpView(
     int horizontal_separator) {
   DCHECK_LT(page_index, num_of_pages);
 
-  // Don't change |two_up_insets| if the page is on the left side and is the
+  // Don't change `two_up_insets` if the page is on the left side and is the
   // last page. In this case, the shadows on both sides should be the same size.
   PageInsetSizes two_up_insets = single_view_insets;
   if (page_index % 2 == 1)

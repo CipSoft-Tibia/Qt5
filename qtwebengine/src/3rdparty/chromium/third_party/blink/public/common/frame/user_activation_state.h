@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_FRAME_USER_ACTIVATION_STATE_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_FRAME_USER_ACTIVATION_STATE_H_
 
+#include "base/time/time.h"
 #include "base/time/time_override.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-forward.h"
@@ -59,7 +60,7 @@ namespace blink {
 // ==========================================
 //
 // The user activation state is replicated in the browser process (in
-// |FrameTreeNode|) and in the renderer processes (in |LocalFrame| and
+// |RenderFrameHostImpl|) and in the renderer processes (in |LocalFrame| and
 // |RemoteFrame|).  The replicated states across the browser and renderer
 // processes are kept in sync as follows:
 //
@@ -94,6 +95,9 @@ class BLINK_COMMON_EXPORT UserActivationState {
   // true and updates the transient state timestamp to "now".
   //
   // The |notification_type| parameter is used for histograms only.
+  //
+  // TODO(mustaq): When removing |notification_type|, explicitly pass
+  // |is_restricted| as a parameter here.
   void Activate(mojom::UserActivationNotificationType notification_type);
 
   void Clear();

@@ -1,2 +1,4 @@
-[dynamicEdgeSeriesChange]
-msvc-2019
+# QTBUG-102722
+android
+[areaSeries]
+android

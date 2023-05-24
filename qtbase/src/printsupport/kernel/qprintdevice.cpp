@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtPrintSupport module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qprintdevice_p.h"
 #include "qplatformprintdevice.h"
@@ -210,9 +174,9 @@ QPrint::InputSlot QPrintDevice::defaultInputSlot() const
     return isValid() ? d->defaultInputSlot() : QPrint::InputSlot();
 }
 
-QVector<QPrint::InputSlot> QPrintDevice::supportedInputSlots() const
+QList<QPrint::InputSlot> QPrintDevice::supportedInputSlots() const
 {
-    return isValid() ? d->supportedInputSlots() : QVector<QPrint::InputSlot>{};
+    return isValid() ? d->supportedInputSlots() : QList<QPrint::InputSlot>{};
 }
 
 QPrint::OutputBin QPrintDevice::defaultOutputBin() const
@@ -220,9 +184,9 @@ QPrint::OutputBin QPrintDevice::defaultOutputBin() const
     return isValid() ? d->defaultOutputBin() : QPrint::OutputBin();
 }
 
-QVector<QPrint::OutputBin> QPrintDevice::supportedOutputBins() const
+QList<QPrint::OutputBin> QPrintDevice::supportedOutputBins() const
 {
-    return isValid() ? d->supportedOutputBins() : QVector<QPrint::OutputBin>{};
+    return isValid() ? d->supportedOutputBins() : QList<QPrint::OutputBin>{};
 }
 
 QPrint::DuplexMode QPrintDevice::defaultDuplexMode() const
@@ -230,9 +194,9 @@ QPrint::DuplexMode QPrintDevice::defaultDuplexMode() const
     return isValid() ? d->defaultDuplexMode() : QPrint::DuplexNone;
 }
 
-QVector<QPrint::DuplexMode> QPrintDevice::supportedDuplexModes() const
+QList<QPrint::DuplexMode> QPrintDevice::supportedDuplexModes() const
 {
-    return isValid() ? d->supportedDuplexModes() : QVector<QPrint::DuplexMode>{};
+    return isValid() ? d->supportedDuplexModes() : QList<QPrint::DuplexMode>{};
 }
 
 QPrint::ColorMode QPrintDevice::defaultColorMode() const
@@ -240,9 +204,9 @@ QPrint::ColorMode QPrintDevice::defaultColorMode() const
     return isValid() ? d->defaultColorMode() : QPrint::GrayScale;
 }
 
-QVector<QPrint::ColorMode> QPrintDevice::supportedColorModes() const
+QList<QPrint::ColorMode> QPrintDevice::supportedColorModes() const
 {
-    return isValid() ? d->supportedColorModes() : QVector<QPrint::ColorMode>{};
+    return isValid() ? d->supportedColorModes() : QList<QPrint::ColorMode>{};
 }
 
 QVariant QPrintDevice::property(PrintDevicePropertyKey key) const

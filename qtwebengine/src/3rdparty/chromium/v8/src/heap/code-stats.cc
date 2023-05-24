@@ -14,24 +14,25 @@
 namespace v8 {
 namespace internal {
 
-// Record code statisitcs.
+// Record code statistics.
 void CodeStatistics::RecordCodeAndMetadataStatistics(HeapObject object,
                                                      Isolate* isolate) {
-  if (object.IsScript()) {
+  PtrComprCageBase cage_base(isolate);
+  if (object.IsScript(cage_base)) {
     Script script = Script::cast(object);
     // Log the size of external source code.
-    Object source = script.source();
-    if (source.IsExternalString()) {
+    Object source = script.source(cage_base);
+    if (source.IsExternalString(cage_base)) {
       ExternalString external_source_string = ExternalString::cast(source);
       int size = isolate->external_script_source_size();
       size += external_source_string.ExternalPayloadSize();
       isolate->set_external_script_source_size(size);
     }
-  } else if (object.IsAbstractCode()) {
-    // Record code+metadata statisitcs.
+  } else if (object.IsAbstractCode(cage_base)) {
+    // Record code+metadata statistics.
     AbstractCode abstract_code = AbstractCode::cast(object);
-    int size = abstract_code.SizeIncludingMetadata();
-    if (abstract_code.IsCode()) {
+    int size = abstract_code.SizeIncludingMetadata(cage_base);
+    if (abstract_code.IsCode(cage_base)) {
       size += isolate->code_and_metadata_size();
       isolate->set_code_and_metadata_size(size);
     } else {
@@ -41,9 +42,10 @@ void CodeStatistics::RecordCodeAndMetadataStatistics(HeapObject object,
 
 #ifdef DEBUG
     // Record code kind and code comment statistics.
-    isolate->code_kind_statistics()[static_cast<int>(abstract_code.kind())] +=
-        abstract_code.Size();
-    CodeStatistics::CollectCodeCommentStatistics(object, isolate);
+    CodeKind code_kind = abstract_code.kind(cage_base);
+    isolate->code_kind_statistics()[static_cast<int>(code_kind)] +=
+        abstract_code.Size(cage_base);
+    CodeStatistics::CollectCodeCommentStatistics(abstract_code, isolate);
 #endif
   }
 }
@@ -95,7 +97,7 @@ void CodeStatistics::ReportCodeStatistics(Isolate* isolate) {
   }
   PrintF("\n");
 
-  // Report code and metadata statisitcs
+  // Report code and metadata statistics
   if (isolate->code_and_metadata_size() > 0) {
     PrintF("Code size including metadata    : %10d bytes\n",
            isolate->code_and_metadata_size());
@@ -194,14 +196,15 @@ void CodeStatistics::CollectCommentStatistics(Isolate* isolate,
   EnterComment(isolate, comment_txt, flat_delta);
 }
 
-// Collects code comment statistics
-void CodeStatistics::CollectCodeCommentStatistics(HeapObject obj,
+// Collects code comment statistics.
+void CodeStatistics::CollectCodeCommentStatistics(AbstractCode obj,
                                                   Isolate* isolate) {
-  // Bytecode objects do not contain RelocInfo. Only process code objects
-  // for code comment statistics.
-  if (!obj.IsCode()) {
-    return;
-  }
+  // Bytecode objects do not contain RelocInfo. Off-heap builtins might contain
+  // comments but they are a part of binary so it doesn't make sense to account
+  // them in the stats.
+  // Only process code objects for code comment statistics.
+  PtrComprCageBase cage_base(isolate);
+  if (!obj.IsCode(cage_base)) return;
 
   Code code = Code::cast(obj);
   CodeCommentsIterator cit(code.code_comments(), code.code_comments_size());
@@ -214,8 +217,8 @@ void CodeStatistics::CollectCodeCommentStatistics(HeapObject obj,
     cit.Next();
   }
 
-  DCHECK(0 <= prev_pc_offset && prev_pc_offset <= code.raw_instruction_size());
-  delta += static_cast<int>(code.raw_instruction_size() - prev_pc_offset);
+  DCHECK(0 <= prev_pc_offset && prev_pc_offset <= code.InstructionSize());
+  delta += static_cast<int>(code.InstructionSize() - prev_pc_offset);
   EnterComment(isolate, "NoComment", delta);
 }
 #endif

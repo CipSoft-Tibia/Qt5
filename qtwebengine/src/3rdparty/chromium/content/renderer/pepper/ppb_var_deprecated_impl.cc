@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include <limits>
+#include <memory>
 
 #include "content/renderer/pepper/host_globals.h"
 #include "content/renderer/pepper/message_channel.h"
@@ -45,8 +46,8 @@ class ObjectAccessor {
       : object_var_(V8ObjectVar::FromPPVar(var).get()),
         instance_(object_var_ ? object_var_->instance() : nullptr) {
     if (instance_) {
-      converter_.reset(new V8VarConverter(instance_->pp_instance(),
-                                          V8VarConverter::kAllowObjectVars));
+      converter_ = std::make_unique<V8VarConverter>(
+          instance_->pp_instance(), V8VarConverter::kAllowObjectVars);
     }
   }
 
@@ -93,11 +94,11 @@ bool HasPropertyDeprecated(PP_Var var, PP_Var name, PP_Var* exception) {
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
-  v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
-  if (try_catch.HasException())
-    return false;
-
   v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
+  v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
   if (try_catch.HasException())
     return false;
 
@@ -117,11 +118,11 @@ bool HasMethodDeprecated(PP_Var var, PP_Var name, PP_Var* exception) {
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
-  v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
-  if (try_catch.HasException())
-    return false;
-
   v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
+  v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
   if (try_catch.HasException())
     return false;
 
@@ -146,13 +147,17 @@ PP_Var GetProperty(PP_Var var, PP_Var name, PP_Var* exception) {
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
+  v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
   v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
   if (try_catch.HasException())
     return PP_MakeUndefined();
 
   v8::Local<v8::Value> result;
-  ScopedPPVar result_var = try_catch.FromV8Maybe(
-      accessor.GetObject()->Get(try_catch.GetContext(), v8_name));
+  ScopedPPVar result_var =
+      try_catch.FromV8Maybe(accessor.GetObject()->Get(context, v8_name));
   if (try_catch.HasException())
     return PP_MakeUndefined();
 
@@ -169,11 +174,14 @@ void EnumerateProperties(PP_Var var,
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
+  v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
 
   *properties = nullptr;
   *property_count = 0;
 
-  v8::Local<v8::Context> context = try_catch.GetContext();
   v8::Local<v8::Array> identifiers;
   if (!accessor.GetObject()->GetPropertyNames(context).ToLocal(&identifiers))
     return;
@@ -202,6 +210,10 @@ void SetPropertyDeprecated(PP_Var var,
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
+  v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
   v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
   v8::Local<v8::Value> v8_value = try_catch.ToV8(value);
 
@@ -222,12 +234,12 @@ void DeletePropertyDeprecated(PP_Var var, PP_Var name, PP_Var* exception) {
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
+  v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
   v8::Local<v8::Value> v8_name = try_catch.ToV8(name);
 
-  if (try_catch.HasException())
-    return;
-
-  v8::Local<v8::Context> context = try_catch.GetContext();
   if (try_catch.HasException())
     return;
 
@@ -258,6 +270,10 @@ PP_Var CallDeprecatedInternal(PP_Var var,
 
   PepperTryCatchVar try_catch(accessor.instance(), accessor.converter(),
                               exception);
+  v8::Local<v8::Context> context = try_catch.GetContext();
+  v8::MicrotasksScope microtasks_scope(
+      accessor.GetObject()->GetIsolate(), context->GetMicrotaskQueue(),
+      v8::MicrotasksScope::kDoNotRunMicrotasks);
   v8::Local<v8::Value> v8_method_name = try_catch.ToV8(scoped_name.get());
   if (try_catch.HasException())
     return PP_MakeUndefined();
@@ -268,7 +284,6 @@ PP_Var CallDeprecatedInternal(PP_Var var,
   }
 
   v8::Local<v8::Object> function = accessor.GetObject();
-  v8::Local<v8::Context> context = accessor.instance()->GetMainWorldContext();
   v8::Local<v8::Object> recv = context->Global();
   if (v8_method_name.As<v8::String>()->Length() != 0) {
     v8::Local<v8::Value> value;

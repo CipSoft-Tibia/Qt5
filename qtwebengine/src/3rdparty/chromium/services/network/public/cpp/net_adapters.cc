@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,12 +27,14 @@ MojoResult NetToMojoPendingBuffer::BeginWrite(
     scoped_refptr<NetToMojoPendingBuffer>* pending,
     uint32_t* num_bytes) {
   void* buf = nullptr;
-  *num_bytes = 0;
+  *num_bytes = kMaxBufSize;
   MojoResult result =
       (*handle)->BeginWriteData(&buf, num_bytes, MOJO_WRITE_DATA_FLAG_NONE);
   if (result == MOJO_RESULT_OK) {
-    if (*num_bytes > kMaxBufSize)
+    if (*num_bytes > kMaxBufSize) {
       *num_bytes = kMaxBufSize;
+    }
+
     *pending = new NetToMojoPendingBuffer(std::move(*handle), buf);
   }
   return result;

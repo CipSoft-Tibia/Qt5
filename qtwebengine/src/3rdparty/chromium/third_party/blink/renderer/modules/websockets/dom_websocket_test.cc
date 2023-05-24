@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,11 @@
 #include <memory>
 #include <string>
 
-#include "base/test/scoped_feature_list.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
+#include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink.h"
 #include "third_party/blink/public/mojom/security_context/insecure_request_policy.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
@@ -22,9 +22,8 @@
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/websockets/mock_websocket_channel.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
-#include "third_party/blink/renderer/platform/heap/impl/thread_state.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -145,19 +144,6 @@ TEST(DOMWebSocketTest, connectToURLHavingFragmentIdentifier) {
       "The URL contains a fragment identifier ('fragment'). Fragment "
       "identifiers are not allowed in WebSocket URLs.",
       scope.GetExceptionState().Message());
-  EXPECT_EQ(DOMWebSocket::kClosed, websocket_scope.Socket().readyState());
-}
-
-TEST(DOMWebSocketTest, invalidPort) {
-  V8TestingScope scope;
-  DOMWebSocketTestScope websocket_scope(scope.GetExecutionContext());
-  websocket_scope.Socket().Connect("ws://example.com:7", Vector<String>(),
-                                   scope.GetExceptionState());
-
-  EXPECT_TRUE(scope.GetExceptionState().HadException());
-  EXPECT_EQ(DOMExceptionCode::kSecurityError,
-            scope.GetExceptionState().CodeAs<DOMExceptionCode>());
-  EXPECT_EQ("The port 7 is not allowed.", scope.GetExceptionState().Message());
   EXPECT_EQ(DOMWebSocket::kClosed, websocket_scope.Socket().readyState());
 }
 

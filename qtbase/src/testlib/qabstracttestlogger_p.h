@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTTESTLOGGER_P_H
 #define QABSTRACTTESTLOGGER_P_H
@@ -52,6 +16,8 @@
 //
 
 #include <QtTest/qttestglobal.h>
+#include <QtCore/private/qglobal_p.h>
+#include <QtCore/qbytearrayalgorithms.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,8 +29,10 @@ class QTestData;
 
 class Q_TESTLIB_EXPORT QAbstractTestLogger
 {
+    Q_DISABLE_COPY_MOVE(QAbstractTestLogger)
 public:
     enum IncidentTypes {
+        Skip,
         Pass,
         XFail,
         Fail,
@@ -76,14 +44,14 @@ public:
     };
 
     enum MessageTypes {
-        Warn,
-        QWarning,
         QDebug,
-        QSystem,
+        QInfo,
+        QWarning,
+        QCritical,
         QFatal,
-        Skip,
+        // testlib's internal messages:
         Info,
-        QInfo
+        Warn
     };
 
     QAbstractTestLogger(const char *filename);
@@ -100,6 +68,7 @@ public:
     virtual void addIncident(IncidentTypes type, const char *description,
                              const char *file = nullptr, int line = 0) = 0;
     virtual void addBenchmarkResult(const QBenchmarkResult &result) = 0;
+    virtual void addBenchmarkResults(const QList<QBenchmarkResult> &result);
 
     virtual void addMessage(QtMsgType, const QMessageLogContext &,
                             const QString &);
@@ -124,6 +93,8 @@ struct QTestCharBuffer
     {
         staticBuf[0] = '\0';
     }
+
+    Q_DISABLE_COPY_MOVE(QTestCharBuffer)
 
     inline ~QTestCharBuffer()
     {
@@ -151,12 +122,14 @@ struct QTestCharBuffer
         return _size;
     }
 
-    inline bool reset(int newSize)
+    bool reset(int newSize, bool copy = false)
     {
         char *newBuf = nullptr;
         if (buf == staticBuf) {
             // if we point to our internal buffer, we need to malloc first
             newBuf = reinterpret_cast<char *>(malloc(newSize));
+            if (copy && newBuf)
+                qstrncpy(newBuf, buf, _size);
         } else {
             // if we already malloc'ed, just realloc
             newBuf = reinterpret_cast<char *>(realloc(buf, newSize));
@@ -170,6 +143,13 @@ struct QTestCharBuffer
         buf = newBuf;
         return true;
     }
+
+    bool resize(int newSize) {
+        return newSize <= _size || reset(newSize, true);
+    }
+
+    void clear() { buf[0] = '\0'; }
+    bool isEmpty() { return buf[0] == '\0'; }
 
 private:
     int _size = InitialSize;
@@ -186,6 +166,7 @@ namespace QTestPrivate
 {
     enum IdentifierPart { TestObject = 0x1, TestFunction = 0x2, TestDataTag = 0x4, AllParts = 0xFFFF };
     void Q_TESTLIB_EXPORT generateTestIdentifier(QTestCharBuffer *identifier, int parts = AllParts);
+    bool appendCharBuffer(QTestCharBuffer *accumulator, const QTestCharBuffer &more);
 }
 
 QT_END_NAMESPACE

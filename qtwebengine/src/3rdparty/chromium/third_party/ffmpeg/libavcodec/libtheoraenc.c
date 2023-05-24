@@ -37,7 +37,8 @@
 #include "libavutil/log.h"
 #include "libavutil/base64.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "encode.h"
 
 /* libtheora includes */
 #include <theora/theoraenc.h>
@@ -118,7 +119,7 @@ static int get_stats(AVCodecContext *avctx, int eos)
     return 0;
 #else
     av_log(avctx, AV_LOG_ERROR, "libtheora too old to support 2pass\n");
-    return AVERROR(ENOSUP);
+    return AVERROR(ENOTSUP);
 #endif
 }
 
@@ -157,7 +158,7 @@ static int submit_stats(AVCodecContext *avctx)
     return 0;
 #else
     av_log(avctx, AV_LOG_ERROR, "libtheora too old to support 2pass\n");
-    return AVERROR(ENOSUP);
+    return AVERROR(ENOTSUP);
 #endif
 }
 
@@ -339,18 +340,19 @@ static int encode_frame(AVCodecContext* avc_context, AVPacket *pkt,
     }
 
     /* Copy ogg_packet content out to buffer */
-    if ((ret = ff_alloc_packet2(avc_context, pkt, o_packet.bytes, 0)) < 0)
+    if ((ret = ff_get_encode_buffer(avc_context, pkt, o_packet.bytes, 0)) < 0)
         return ret;
     memcpy(pkt->data, o_packet.packet, o_packet.bytes);
 
     // HACK: assumes no encoder delay, this is true until libtheora becomes
     // multithreaded (which will be disabled unless explicitly requested)
-    pkt->pts = pkt->dts = frame->pts;
-#if FF_API_CODED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avc_context->coded_frame->key_frame = !(o_packet.granulepos & h->keyframe_mask);
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
+    pkt->pts = frame->pts;
+    pkt->duration = frame->duration;
+
+    ret = ff_encode_reordered_opaque(avc_context, pkt, frame);
+    if (ret < 0)
+        return ret;
+
     if (!(o_packet.granulepos & h->keyframe_mask))
         pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
@@ -365,25 +367,28 @@ static av_cold int encode_close(AVCodecContext* avc_context)
     th_encode_free(h->t_state);
     av_freep(&h->stats);
     av_freep(&avc_context->stats_out);
-    av_freep(&avc_context->extradata);
     avc_context->extradata_size = 0;
 
     return 0;
 }
 
 /** AVCodec struct exposed to libavcodec */
-AVCodec ff_libtheora_encoder = {
-    .name           = "libtheora",
-    .long_name      = NULL_IF_CONFIG_SMALL("libtheora Theora"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_THEORA,
+const FFCodec ff_libtheora_encoder = {
+    .p.name         = "libtheora",
+    CODEC_LONG_NAME("libtheora Theora"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_THEORA,
+    .p.capabilities = AV_CODEC_CAP_DR1 |
+                      /* for statsfile summary */
+                      AV_CODEC_CAP_DELAY |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size = sizeof(TheoraContext),
     .init           = encode_init,
     .close          = encode_close,
-    .encode2        = encode_frame,
-    .capabilities   = AV_CODEC_CAP_DELAY, // needed to get the statsfile summary
-    .pix_fmts       = (const enum AVPixelFormat[]){
+    FF_CODEC_ENCODE_CB(encode_frame),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE
     },
-    .wrapper_name   = "libtheora",
+    .p.wrapper_name = "libtheora",
 };

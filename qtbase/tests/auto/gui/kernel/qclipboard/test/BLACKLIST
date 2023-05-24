@@ -1,4 +1,5 @@
-[modes]
-winrt
+# QTBUG-87429
 [testSignals]
-winrt
+android
+[setMimeData]
+android

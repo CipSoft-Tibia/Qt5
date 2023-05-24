@@ -1,54 +1,41 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//third_party/closure_compiler/compile_js.gni")
-import("//tools/grit/grit_rule.gni")
+import("//ui/webui/resources/tools/build_webui.gni")
 
-js_type_check("closure_compile") {
-  deps = [
-    ":descriptor_panel",
-    ":devices_page",
-    ":usb_internals",
-  ]
-}
+build_webui("build") {
+  grd_prefix = "usb_internals"
 
-js_library("usb_internals") {
-  deps = [
-    ":devices_page",
-    "//chrome/browser/ui/webui/usb_internals:mojo_bindings_js_library_for_compile",
-    "//ui/webui/resources/js:cr",
-    "//ui/webui/resources/js:util",
-    "//ui/webui/resources/js/cr/ui:tabs",
-    "//ui/webui/resources/js/cr/ui:tree",
+  static_files = [
+    "usb_internals.css",
+    "usb_internals.html",
   ]
-}
 
-js_library("devices_page") {
-  deps = [
-    ":descriptor_panel",
-    "//chrome/browser/ui/webui/usb_internals:mojo_bindings_js_library_for_compile",
-    "//ui/webui/resources/js:cr",
+  web_component_files = [ "app.ts" ]
+  non_web_component_files = [
+    "descriptor_panel.ts",
+    "devices_page.ts",
   ]
-}
 
-js_library("descriptor_panel") {
-  deps = [
-    "//chrome/browser/ui/webui/usb_internals:mojo_bindings_js_library_for_compile",
-    "//ui/webui/resources/js:cr",
+  mojo_files_deps = [
+    "//chrome/browser/ui/webui/usb_internals:mojo_bindings_ts__generator",
+    "//services/device/public/mojom:usb_test_ts__generator",
+    "//services/device/public/mojom:usb_ts__generator",
   ]
-}
-
-grit("resources") {
-  source = "resources.grd"
-  outputs = [
-    "grit/usb_internals_resources.h",
-    "usb_internals_resources.pak",
+  mojo_files = [
+    "$root_gen_dir/chrome/browser/ui/webui/usb_internals/usb_internals.mojom-webui.ts",
+    "$root_gen_dir/services/device/public/mojom/usb_device.mojom-webui.ts",
+    "$root_gen_dir/services/device/public/mojom/usb_enumeration_options.mojom-webui.ts",
+    "$root_gen_dir/services/device/public/mojom/usb_manager.mojom-webui.ts",
+    "$root_gen_dir/services/device/public/mojom/usb_manager_client.mojom-webui.ts",
+    "$root_gen_dir/services/device/public/mojom/usb_manager_test.mojom-webui.ts",
   ]
-  output_dir = "$root_gen_dir/chrome"
-  grit_flags = [
-    "-E",
-    "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
+  ts_deps = [
+    "//ui/webui/resources/cr_elements:build_ts",
+    "//ui/webui/resources/js:build_ts",
+    "//ui/webui/resources/mojo:library",
   ]
-  deps = [ "//chrome/browser/ui/webui/usb_internals:mojo_bindings_js" ]
+  ts_use_local_config = false
+  html_to_wrapper_template = "native"
 }

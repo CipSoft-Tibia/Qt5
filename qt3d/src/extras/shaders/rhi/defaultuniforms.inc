@@ -1,6 +1,8 @@
-layout(std140, binding = auto) uniform qt3d_render_view_uniforms {
+layout(std140, binding = 0) uniform qt3d_render_view_uniforms {
   mat4 viewMatrix;
   mat4 projectionMatrix;
+  mat4 uncorrectedProjectionMatrix;
+  mat4 clipCorrectionMatrix;
   mat4 viewProjectionMatrix;
   mat4 inverseViewMatrix;
   mat4 inverseProjectionMatrix;
@@ -15,7 +17,7 @@ layout(std140, binding = auto) uniform qt3d_render_view_uniforms {
   float time;
 };
 
-layout(std140, binding = auto) uniform qt3d_command_uniforms {
+layout(std140, binding = 1) uniform qt3d_command_uniforms {
   mat4 modelMatrix;
   mat4 inverseModelMatrix;
   mat4 modelViewMatrix;

@@ -1,75 +1,126 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwasmscreen.h"
-#include "qwasmwindow.h"
-#include "qwasmeventtranslator.h"
+
 #include "qwasmcompositor.h"
+#include "qwasmcssstyle.h"
 #include "qwasmintegration.h"
-#include "qwasmstring.h"
+#include "qwasmkeytranslator.h"
+#include "qwasmwindow.h"
 
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
-#include <QtEglSupport/private/qeglconvenience_p.h>
-#ifndef QT_NO_OPENGL
-# include <QtEglSupport/private/qeglplatformcontext_p.h>
-#endif
 #include <qpa/qwindowsysteminterface.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtGui/qguiapplication.h>
 #include <private/qhighdpiscaling_p.h>
 
-using namespace emscripten;
+#include <tuple>
 
 QT_BEGIN_NAMESPACE
 
-const char * QWasmScreen::m_canvasResizeObserverCallbackContextPropertyName = "data-qtCanvasResizeObserverCallbackContext";
+using namespace emscripten;
 
-QWasmScreen::QWasmScreen(const emscripten::val &canvas)
-    : m_canvas(canvas)
+const char *QWasmScreen::m_canvasResizeObserverCallbackContextPropertyName =
+        "data-qtCanvasResizeObserverCallbackContext";
+
+QWasmScreen::QWasmScreen(const emscripten::val &containerOrCanvas)
+    : m_container(containerOrCanvas),
+      m_intermediateContainer(emscripten::val::undefined()),
+      m_shadowContainer(emscripten::val::undefined()),
+      m_compositor(new QWasmCompositor(this)),
+      m_deadKeySupport(std::make_unique<QWasmDeadKeySupport>())
 {
-    m_compositor = new QWasmCompositor(this);
-    m_eventTranslator = new QWasmEventTranslator(this);
+    auto document = m_container["ownerDocument"];
+    // Each screen is represented by a div container. All of the windows exist therein as
+    // its children. Qt versions < 6.5 used to represent screens as canvas. Support that by
+    // transforming the canvas into a div.
+    if (m_container["tagName"].call<std::string>("toLowerCase") == "canvas") {
+        qWarning() << "Support for canvas elements as an element backing screen is deprecated. The "
+                      "canvas provided for the screen will be transformed into a div.";
+        auto container = document.call<emscripten::val>("createElement", emscripten::val("div"));
+        m_container["parentNode"].call<void>("replaceChild", container, m_container);
+        m_container = container;
+    }
+
+    // Create an intermediate container which we can remove during cleanup in ~QWasmScreen().
+    // This is required due to the attachShadow() call below; there is no corresponding
+    // "detachShadow()" API to return the container to its previous state.
+    m_intermediateContainer = document.call<emscripten::val>("createElement", emscripten::val("div"));
+    m_intermediateContainer.set("id", std::string("qt-shadow-container"));
+    emscripten::val intermediateContainerStyle = m_intermediateContainer["style"];
+    intermediateContainerStyle.set("width", std::string("100%"));
+    intermediateContainerStyle.set("height", std::string("100%"));
+    m_container.call<void>("appendChild", m_intermediateContainer);
+
+    auto shadowOptions = emscripten::val::object();
+    shadowOptions.set("mode", "open");
+    auto shadow = m_intermediateContainer.call<emscripten::val>("attachShadow", shadowOptions);
+
+    m_shadowContainer = document.call<emscripten::val>("createElement", emscripten::val("div"));
+
+    shadow.call<void>("appendChild", QWasmCSSStyle::createStyleElement(m_shadowContainer));
+
+    shadow.call<void>("appendChild", m_shadowContainer);
+
+    m_shadowContainer.set("id", std::string("qt-screen-") + std::to_string(uintptr_t(this)));
+
+    m_shadowContainer["classList"].call<void>("add", std::string("qt-screen"));
+
+    // Disable the default context menu; Qt applications typically
+    // provide custom right-click behavior.
+    m_onContextMenu = std::make_unique<qstdweb::EventCallback>(
+            m_shadowContainer, "contextmenu",
+            [](emscripten::val event) { event.call<void>("preventDefault"); });
+    // Create "specialHTMLTargets" mapping for the canvas - the element  might be unreachable based
+    // on its id only under some conditions, like the target being embedded in a shadow DOM or a
+    // subframe.
+    emscripten::val::module_property("specialHTMLTargets")
+            .set(eventTargetId().toStdString(), m_shadowContainer);
+
+    emscripten::val::module_property("specialHTMLTargets")
+            .set(outerScreenId().toStdString(), m_container);
+
     updateQScreenAndCanvasRenderSize();
-    m_canvas.call<void>("focus");
+    m_shadowContainer.call<void>("focus");
+
+    m_touchDevice = std::make_unique<QPointingDevice>(
+            "touchscreen", 1, QInputDevice::DeviceType::TouchScreen,
+            QPointingDevice::PointerType::Finger,
+            QPointingDevice::Capability::Position | QPointingDevice::Capability::Area
+                    | QPointingDevice::Capability::NormalizedPosition,
+            10, 0);
+    m_tabletDevice = std::make_unique<QPointingDevice>(
+            "stylus", 2, QInputDevice::DeviceType::Stylus,
+            QPointingDevice::PointerType::Pen,
+            QPointingDevice::Capability::Position | QPointingDevice::Capability::Pressure
+                | QPointingDevice::Capability::NormalizedPosition
+                | QInputDevice::Capability::MouseEmulation
+                | QInputDevice::Capability::Hover | QInputDevice::Capability::Rotation
+                | QInputDevice::Capability::XTilt | QInputDevice::Capability::YTilt
+                | QInputDevice::Capability::TangentialPressure,
+            0, 0);
+
+    QWindowSystemInterface::registerInputDevice(m_touchDevice.get());
 }
 
 QWasmScreen::~QWasmScreen()
 {
-    m_canvas.set(m_canvasResizeObserverCallbackContextPropertyName, emscripten::val(intptr_t(0)));
-    destroy();
+    m_intermediateContainer.call<void>("remove");
+
+    emscripten::val::module_property("specialHTMLTargets")
+            .set(eventTargetId().toStdString(), emscripten::val::undefined());
+
+    m_shadowContainer.set(m_canvasResizeObserverCallbackContextPropertyName,
+                          emscripten::val(intptr_t(0)));
 }
 
-void QWasmScreen::destroy()
+void QWasmScreen::deleteScreen()
 {
-    m_compositor->destroy();
+    // Deletes |this|!
+    QWindowSystemInterface::handleScreenRemoved(this);
 }
 
 QWasmScreen *QWasmScreen::get(QPlatformScreen *screen)
@@ -79,27 +130,31 @@ QWasmScreen *QWasmScreen::get(QPlatformScreen *screen)
 
 QWasmScreen *QWasmScreen::get(QScreen *screen)
 {
+    if (!screen)
+        return nullptr;
     return get(screen->handle());
 }
 
 QWasmCompositor *QWasmScreen::compositor()
 {
-    return m_compositor;
+    return m_compositor.get();
 }
 
-QWasmEventTranslator *QWasmScreen::eventTranslator()
+emscripten::val QWasmScreen::element() const
 {
-    return m_eventTranslator;
+    return m_shadowContainer;
 }
 
-emscripten::val QWasmScreen::canvas() const
+QString QWasmScreen::eventTargetId() const
 {
-    return m_canvas;
+    // Return a globally unique id for the canvas. We can choose any string,
+    // as long as it starts with a "!".
+    return QString("!qtcanvas_%1").arg(uintptr_t(this));
 }
 
-QString QWasmScreen::canvasId() const
+QString QWasmScreen::outerScreenId() const
 {
-    return QWasmString::toQString(m_canvas["id"]);
+    return QString("!outerscreen_%1").arg(uintptr_t(this));
 }
 
 QRect QWasmScreen::geometry() const
@@ -151,7 +206,7 @@ qreal QWasmScreen::devicePixelRatio() const
 
 QString QWasmScreen::name() const
 {
-    return canvasId();
+    return QString::fromEcmaString(m_shadowContainer["id"]);
 }
 
 QPlatformCursor *QWasmScreen::cursor() const
@@ -176,6 +231,18 @@ QWindow *QWasmScreen::topLevelAt(const QPoint &p) const
     return m_compositor->windowAt(p);
 }
 
+QPointF QWasmScreen::mapFromLocal(const QPointF &p) const
+{
+    return geometry().topLeft() + p;
+}
+
+QPointF QWasmScreen::clipPoint(const QPointF &p) const
+{
+    const auto geometryF = screen()->geometry().toRectF();
+    return QPointF(qBound(geometryF.left(), p.x(), geometryF.right()),
+                   qBound(geometryF.top(), p.y(), geometryF.bottom()));
+}
+
 void QWasmScreen::invalidateSize()
 {
     m_geometry = QRect();
@@ -184,7 +251,8 @@ void QWasmScreen::invalidateSize()
 void QWasmScreen::setGeometry(const QRect &rect)
 {
     m_geometry = rect;
-    QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(), availableGeometry());
+    QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(),
+                                                       availableGeometry());
     resizeMaximizedWindows();
 }
 
@@ -196,27 +264,26 @@ void QWasmScreen::updateQScreenAndCanvasRenderSize()
     // size must be set manually and is not auto-updated on CSS size change.
     // Setting the render size to a value larger than the CSS size enables high-dpi
     // rendering.
-
-    QByteArray canvasSelector = "#" + canvasId().toUtf8();
     double css_width;
     double css_height;
-    emscripten_get_element_css_size(canvasSelector.constData(), &css_width, &css_height);
+    emscripten_get_element_css_size(outerScreenId().toUtf8().constData(), &css_width, &css_height);
     QSizeF cssSize(css_width, css_height);
 
     QSizeF canvasSize = cssSize * devicePixelRatio();
 
-    m_canvas.set("width", canvasSize.width());
-    m_canvas.set("height", canvasSize.height());
+    m_shadowContainer.set("width", canvasSize.width());
+    m_shadowContainer.set("height", canvasSize.height());
 
-    QPoint offset;
-    offset.setX(m_canvas["offsetLeft"].as<int>());
-    offset.setY(m_canvas["offsetTop"].as<int>());
+    // Returns the html elements document/body position
+    auto getElementBodyPosition = [](const emscripten::val &element) -> QPoint {
+        emscripten::val bodyRect =
+                element["ownerDocument"]["body"].call<emscripten::val>("getBoundingClientRect");
+        emscripten::val canvasRect = element.call<emscripten::val>("getBoundingClientRect");
+        return QPoint(canvasRect["left"].as<int>() - bodyRect["left"].as<int>(),
+                      canvasRect["top"].as<int>() - bodyRect["top"].as<int>());
+    };
 
-    emscripten::val rect = m_canvas.call<emscripten::val>("getBoundingClientRect");
-    QPoint position(rect["left"].as<int>() - offset.x(), rect["top"].as<int>() - offset.y());
-
-    setGeometry(QRect(position, cssSize.toSize()));
-    m_compositor->redrawWindowContent();
+    setGeometry(QRect(getElementBodyPosition(m_shadowContainer), cssSize.toSize()));
 }
 
 void QWasmScreen::canvasResizeObserverCallback(emscripten::val entries, emscripten::val)
@@ -225,20 +292,23 @@ void QWasmScreen::canvasResizeObserverCallback(emscripten::val entries, emscript
     if (count == 0)
         return;
     emscripten::val entry = entries[0];
-    QWasmScreen *screen =
-        reinterpret_cast<QWasmScreen *>(entry["target"][m_canvasResizeObserverCallbackContextPropertyName].as<intptr_t>());
+    QWasmScreen *screen = reinterpret_cast<QWasmScreen *>(
+            entry["target"][m_canvasResizeObserverCallbackContextPropertyName].as<intptr_t>());
     if (!screen) {
         qWarning() << "QWasmScreen::canvasResizeObserverCallback: missing screen pointer";
         return;
     }
 
     // We could access contentBoxSize|contentRect|devicePixelContentBoxSize on the entry here, but
-    // these are not universally supported across all browsers. Get the sizes from the canvas instead.
+    // these are not universally supported across all browsers. Get the sizes from the canvas
+    // instead.
     screen->updateQScreenAndCanvasRenderSize();
 }
 
-EMSCRIPTEN_BINDINGS(qtCanvasResizeObserverCallback) {
-    emscripten::function("qtCanvasResizeObserverCallback", &QWasmScreen::canvasResizeObserverCallback);
+EMSCRIPTEN_BINDINGS(qtCanvasResizeObserverCallback)
+{
+    emscripten::function("qtCanvasResizeObserverCallback",
+                         &QWasmScreen::canvasResizeObserverCallback);
 }
 
 void QWasmScreen::installCanvasResizeObserver()
@@ -246,15 +316,17 @@ void QWasmScreen::installCanvasResizeObserver()
     emscripten::val ResizeObserver = emscripten::val::global("ResizeObserver");
     if (ResizeObserver == emscripten::val::undefined())
         return; // ResizeObserver API is not available
-    emscripten::val resizeObserver = ResizeObserver.new_(emscripten::val::module_property("qtCanvasResizeObserverCallback"));
+    emscripten::val resizeObserver =
+            ResizeObserver.new_(emscripten::val::module_property("qtCanvasResizeObserverCallback"));
     if (resizeObserver == emscripten::val::undefined())
         return; // Something went horribly wrong
 
     // We need to get back to this instance from the (static) resize callback;
     // set a "data-" property on the canvas element.
-    m_canvas.set(m_canvasResizeObserverCallbackContextPropertyName, emscripten::val(intptr_t(this)));
+    m_shadowContainer.set(m_canvasResizeObserverCallbackContextPropertyName,
+                          emscripten::val(intptr_t(this)));
 
-    resizeObserver.call<void>("observe", m_canvas);
+    resizeObserver.call<void>("observe", m_shadowContainer);
 }
 
 QT_END_NAMESPACE

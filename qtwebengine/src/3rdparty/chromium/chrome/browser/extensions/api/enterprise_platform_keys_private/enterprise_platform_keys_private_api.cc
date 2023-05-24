@@ -1,14 +1,15 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/enterprise_platform_keys_private/enterprise_platform_keys_private_api.h"
 
 #include "base/base64.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/values.h"
-#include "chrome/browser/chromeos/profiles/profile_helper.h"
-#include "chrome/browser/extensions/chrome_extension_function_details.h"
+#include "chrome/browser/ash/attestation/tpm_challenge_key.h"
+#include "chrome/browser/ash/profiles/profile_helper.h"
+#include "chrome/browser/extensions/api/enterprise_platform_keys/enterprise_platform_keys_api.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/api/enterprise_platform_keys_private.h"
 #include "chrome/common/pref_names.h"
@@ -18,12 +19,6 @@
 #include "content/public/browser/browser_thread.h"
 #include "extensions/common/manifest.h"
 
-namespace {
-// Prefix for naming machine keys used for SignedPublicKeyAndChallenge when
-// challenging the EMK with register=true.
-const char kEnterpriseMachineKeyForSpkacPrefix[] = "attest-ent-machine-";
-}  // namespace
-
 namespace extensions {
 
 namespace api_epkp = api::enterprise_platform_keys_private;
@@ -31,57 +26,43 @@ namespace api_epkp = api::enterprise_platform_keys_private;
 EPKPChallengeKey::EPKPChallengeKey() = default;
 EPKPChallengeKey::~EPKPChallengeKey() = default;
 
-void EPKPChallengeKey::RegisterProfilePrefs(
-    user_prefs::PrefRegistrySyncable* registry) {
-  registry->RegisterListPref(prefs::kAttestationExtensionAllowlist);
-}
-
 // Check if the extension is allowisted in the user policy.
 bool EPKPChallengeKey::IsExtensionAllowed(
     Profile* profile,
     scoped_refptr<const Extension> extension) {
-  if (!chromeos::ProfileHelper::Get()->GetUserByProfile(profile)) {
+  if (!ash::ProfileHelper::Get()->GetUserByProfile(profile)) {
     // Only allow remote attestation for apps that were force-installed on the
     // login/signin screen.
     // TODO(drcrash): Use a separate device-wide policy for the API.
     return Manifest::IsPolicyLocation(extension->location());
   }
-  if (Manifest::IsComponentLocation(extension->location())) {
-    // Note: For this to even be called, the component extension must also be
-    // allowed in chrome/common/extensions/api/_permission_features.json
-    return true;
-  }
-  const base::ListValue* list =
-      profile->GetPrefs()->GetList(prefs::kAttestationExtensionAllowlist);
-  base::Value value(extension->id());
-  return list->Find(value) != list->end();
+  return platform_keys::IsExtensionAllowed(profile, extension.get());
 }
 
-void EPKPChallengeKey::Run(
-    chromeos::attestation::AttestationKeyType type,
-    scoped_refptr<ExtensionFunction> caller,
-    chromeos::attestation::TpmChallengeKeyCallback callback,
-    const std::string& challenge,
-    bool register_key) {
-  Profile* profile = ChromeExtensionFunctionDetails(caller.get()).GetProfile();
+void EPKPChallengeKey::Run(ash::attestation::AttestationKeyType type,
+                           scoped_refptr<ExtensionFunction> caller,
+                           ash::attestation::TpmChallengeKeyCallback callback,
+                           const std::string& challenge,
+                           bool register_key) {
+  Profile* profile = Profile::FromBrowserContext(caller->browser_context());
 
   if (!IsExtensionAllowed(profile, caller->extension())) {
-    std::move(callback).Run(
-        chromeos::attestation::TpmChallengeKeyResult::MakeError(
-            chromeos::attestation::TpmChallengeKeyResultCode::
-                kExtensionNotAllowedError));
+    std::move(callback).Run(ash::attestation::TpmChallengeKeyResult::MakeError(
+        ash::attestation::TpmChallengeKeyResultCode::
+            kExtensionNotAllowedError));
     return;
   }
 
   std::string key_name_for_spkac;
-  if (register_key && (type == chromeos::attestation::KEY_DEVICE)) {
-    key_name_for_spkac =
-        kEnterpriseMachineKeyForSpkacPrefix + caller->extension()->id();
+  if (register_key && (type == ash::attestation::KEY_DEVICE)) {
+    key_name_for_spkac = ash::attestation::kEnterpriseMachineKeyForSpkacPrefix +
+                         caller->extension()->id();
   }
 
-  impl_ = chromeos::attestation::TpmChallengeKeyFactory::Create();
+  impl_ = ash::attestation::TpmChallengeKeyFactory::Create();
   impl_->BuildResponse(type, profile, std::move(callback), challenge,
-                       register_key, key_name_for_spkac);
+                       register_key, attestation::KEY_TYPE_RSA,
+                       key_name_for_spkac, /*signals=*/absl::nullopt);
 }
 
 EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::
@@ -93,18 +74,17 @@ EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::
 ExtensionFunction::ResponseAction
 EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::Run() {
   std::unique_ptr<api_epkp::ChallengeMachineKey::Params> params(
-      api_epkp::ChallengeMachineKey::Params::Create(*args_));
+      api_epkp::ChallengeMachineKey::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
-  chromeos::attestation::TpmChallengeKeyCallback callback =
+  ash::attestation::TpmChallengeKeyCallback callback =
       base::BindOnce(&EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::
                          OnChallengedKey,
                      this);
 
   std::string challenge;
   if (!base::Base64Decode(params->challenge, &challenge)) {
-    auto result = chromeos::attestation::TpmChallengeKeyResult::MakeError(
-        chromeos::attestation::TpmChallengeKeyResultCode::
-            kChallengeBadBase64Error);
+    auto result = ash::attestation::TpmChallengeKeyResult::MakeError(
+        ash::attestation::TpmChallengeKeyResultCode::kChallengeBadBase64Error);
     return RespondNow(Error(result.GetErrorMessage()));
   }
 
@@ -112,7 +92,7 @@ EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::Run() {
   // |callback| holds a reference to |this|.
   base::OnceClosure task = base::BindOnce(
       &EPKPChallengeKey::Run, base::Unretained(&impl_),
-      chromeos::attestation::KEY_DEVICE, scoped_refptr<ExtensionFunction>(this),
+      ash::attestation::KEY_DEVICE, scoped_refptr<ExtensionFunction>(this),
       std::move(callback), challenge,
       /*register_key=*/false);
   content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE, std::move(task));
@@ -120,7 +100,7 @@ EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::Run() {
 }
 
 void EnterprisePlatformKeysPrivateChallengeMachineKeyFunction::OnChallengedKey(
-    const chromeos::attestation::TpmChallengeKeyResult& result) {
+    const ash::attestation::TpmChallengeKeyResult& result) {
   if (result.IsSuccess()) {
     std::string encoded_response;
     base::Base64Encode(result.challenge_response, &encoded_response);
@@ -140,17 +120,16 @@ EnterprisePlatformKeysPrivateChallengeUserKeyFunction::
 ExtensionFunction::ResponseAction
 EnterprisePlatformKeysPrivateChallengeUserKeyFunction::Run() {
   std::unique_ptr<api_epkp::ChallengeUserKey::Params> params(
-      api_epkp::ChallengeUserKey::Params::Create(*args_));
+      api_epkp::ChallengeUserKey::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
-  chromeos::attestation::TpmChallengeKeyCallback callback = base::BindOnce(
+  ash::attestation::TpmChallengeKeyCallback callback = base::BindOnce(
       &EnterprisePlatformKeysPrivateChallengeUserKeyFunction::OnChallengedKey,
       this);
 
   std::string challenge;
   if (!base::Base64Decode(params->challenge, &challenge)) {
-    auto result = chromeos::attestation::TpmChallengeKeyResult::MakeError(
-        chromeos::attestation::TpmChallengeKeyResultCode::
-            kChallengeBadBase64Error);
+    auto result = ash::attestation::TpmChallengeKeyResult::MakeError(
+        ash::attestation::TpmChallengeKeyResultCode::kChallengeBadBase64Error);
     return RespondNow(Error(result.GetErrorMessage()));
   }
 
@@ -158,14 +137,14 @@ EnterprisePlatformKeysPrivateChallengeUserKeyFunction::Run() {
   // |callback| holds a reference to |this|.
   base::OnceClosure task = base::BindOnce(
       &EPKPChallengeKey::Run, base::Unretained(&impl_),
-      chromeos::attestation::KEY_USER, scoped_refptr<ExtensionFunction>(this),
+      ash::attestation::KEY_USER, scoped_refptr<ExtensionFunction>(this),
       std::move(callback), challenge, params->register_key);
   content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE, std::move(task));
   return RespondLater();
 }
 
 void EnterprisePlatformKeysPrivateChallengeUserKeyFunction::OnChallengedKey(
-    const chromeos::attestation::TpmChallengeKeyResult& result) {
+    const ash::attestation::TpmChallengeKeyResult& result) {
   if (result.IsSuccess()) {
     std::string encoded_response;
     base::Base64Encode(result.challenge_response, &encoded_response);

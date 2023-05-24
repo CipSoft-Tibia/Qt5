@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -184,23 +184,23 @@ void CSSTranslateInterpolationType::ApplyStandardPropertyValue(
     StyleResolverState& state) const {
   const auto& list = To<InterpolableList>(interpolable_value);
   if (list.length() == 0) {
-    state.Style()->SetTranslate(nullptr);
+    state.StyleBuilder().SetTranslate(nullptr);
     return;
   }
   const CSSToLengthConversionData& conversion_data =
       state.CssToLengthConversionData();
   Length x = To<InterpolableLength>(*list.Get(kTranslateX))
-                 .CreateLength(conversion_data, kValueRangeAll);
+                 .CreateLength(conversion_data, Length::ValueRange::kAll);
   Length y = To<InterpolableLength>(*list.Get(kTranslateY))
-                 .CreateLength(conversion_data, kValueRangeAll);
+                 .CreateLength(conversion_data, Length::ValueRange::kAll);
   float z = To<InterpolableLength>(*list.Get(kTranslateZ))
-                .CreateLength(conversion_data, kValueRangeAll)
+                .CreateLength(conversion_data, Length::ValueRange::kAll)
                 .Pixels();
 
   scoped_refptr<TranslateTransformOperation> result =
       TranslateTransformOperation::Create(x, y, z,
                                           TransformOperation::kTranslate3D);
-  state.Style()->SetTranslate(std::move(result));
+  state.StyleBuilder().SetTranslate(std::move(result));
 }
 
 }  // namespace blink

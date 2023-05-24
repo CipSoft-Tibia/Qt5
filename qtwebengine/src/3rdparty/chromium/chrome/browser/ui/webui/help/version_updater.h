@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,15 @@
 
 #include <string>
 
-#include "base/callback.h"
-#include "base/strings/string16.h"
+#include "base/functional/callback.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 
-#if defined(OS_CHROMEOS)
-#include "chromeos/dbus/update_engine_client.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chromeos/ash/components/dbus/update_engine/update_engine_client.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/cros_system_api/dbus/update_engine/dbus-constants.h"
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 namespace content {
 class WebContents;
@@ -33,8 +34,11 @@ class VersionUpdater {
     FAILED,
     FAILED_OFFLINE,
     FAILED_CONNECTION_TYPE_DISALLOWED,
+    FAILED_HTTP,
+    FAILED_DOWNLOAD,
     DISABLED,
-    DISABLED_BY_ADMIN
+    DISABLED_BY_ADMIN,
+    DEFERRED
   };
 
   // Promotion state (Mac-only).
@@ -47,10 +51,12 @@ class VersionUpdater {
 
   // TODO(jhawkins): Use a delegate interface instead of multiple callback
   // types.
-#if defined(OS_CHROMEOS)
-  typedef base::Callback<void(const std::string&)> ChannelCallback;
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  typedef base::OnceCallback<void(const std::string&)> ChannelCallback;
   using EolInfoCallback =
-      base::OnceCallback<void(chromeos::UpdateEngineClient::EolInfo eol_info)>;
+      base::OnceCallback<void(ash::UpdateEngineClient::EolInfo eol_info)>;
+  using IsFeatureEnabledCallback =
+      base::OnceCallback<void(absl::optional<bool>)>;
 #endif
 
   // Used to update the client of status changes.
@@ -64,17 +70,17 @@ class VersionUpdater {
   // |update_size| is the size of the available update in bytes and should be 0
   //     when update is not available.
   // |message| is a message explaining a failure.
-  typedef base::Callback<void(Status status,
-                              int progress,
-                              bool rollback,
-                              bool powerwash,
-                              const std::string& version,
-                              int64_t update_size,
-                              const base::string16& message)>
+  typedef base::RepeatingCallback<void(Status status,
+                                       int progress,
+                                       bool rollback,
+                                       bool powerwash,
+                                       const std::string& version,
+                                       int64_t update_size,
+                                       const std::u16string& message)>
       StatusCallback;
 
   // Used to show or hide the promote UI elements. Mac-only.
-  typedef base::Callback<void(PromotionState)> PromoteCallback;
+  typedef base::RepeatingCallback<void(PromotionState)> PromoteCallback;
 
   virtual ~VersionUpdater() {}
 
@@ -88,21 +94,26 @@ class VersionUpdater {
   // |status_callback| is called for each status update. |promote_callback|
   // (which is only used on the Mac) can be used to show or hide the promote UI
   // elements.
-  virtual void CheckForUpdate(const StatusCallback& status_callback,
-                              const PromoteCallback& promote_callback) = 0;
+  virtual void CheckForUpdate(StatusCallback status_callback,
+                              PromoteCallback promote_callback) = 0;
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   // Make updates available for all users.
-  virtual void PromoteUpdater() const = 0;
+  virtual void PromoteUpdater() = 0;
 #endif
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   virtual void SetChannel(const std::string& channel,
                           bool is_powerwash_allowed) = 0;
   virtual void GetChannel(bool get_current_channel,
-                          const ChannelCallback& callback) = 0;
+                          ChannelCallback callback) = 0;
   // Get the End of Life (Auto Update Expiration) Date.
   virtual void GetEolInfo(EolInfoCallback callback) = 0;
+
+  virtual void ToggleFeature(const std::string& feature, bool enable) = 0;
+  virtual void IsFeatureEnabled(const std::string& feature,
+                                IsFeatureEnabledCallback callback) = 0;
+  virtual bool IsManagedAutoUpdateEnabled() = 0;
 
   // Sets a one time permission on a certain update in Update Engine.
   // - update_version: the Chrome OS version we want to update to.
@@ -114,9 +125,12 @@ class VersionUpdater {
   // there's a new update available or a delta update becomes a full update with
   // a larger size.
   virtual void SetUpdateOverCellularOneTimePermission(
-      const StatusCallback& callback,
+      StatusCallback callback,
       const std::string& update_version,
       int64_t update_size) = 0;
+
+  // If an update is downloaded but deferred, apply the deferred update.
+  virtual void ApplyDeferredUpdate() = 0;
 #endif
 };
 

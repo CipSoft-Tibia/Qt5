@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,14 @@
 #include <string>
 #include <vector>
 
+#include "base/synchronization/lock.h"
+#include "base/synchronization/waitable_event.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "media/capture/video/chromeos/mojom/camera_common.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
 
@@ -41,13 +46,14 @@ class VendorTagOpsDelegate {
   const VendorTagInfo* GetInfoByTag(cros::mojom::CameraMetadataTag tag);
 
  private:
+  void StopInitialization();
   void RemovePending(uint32_t tag);
 
   void OnGotTagCount(int32_t tag_count);
   void OnGotAllTags(size_t tag_count, const std::vector<uint32_t>& tags);
   void OnGotSectionName(uint32_t tag,
-                        const base::Optional<std::string>& section_name);
-  void OnGotTagName(uint32_t tag, const base::Optional<std::string>& tag_name);
+                        const absl::optional<std::string>& section_name);
+  void OnGotTagName(uint32_t tag, const absl::optional<std::string>& tag_name);
   void OnGotTagType(uint32_t tag, int32_t type);
 
   scoped_refptr<base::SequencedTaskRunner> ipc_task_runner_;
@@ -63,6 +69,9 @@ class VendorTagOpsDelegate {
   std::map<cros::mojom::CameraMetadataTag, VendorTagInfo> tag_map_;
 
   base::WaitableEvent initialized_;
+
+  base::Lock lock_;
+  bool is_initializing_ GUARDED_BY(lock_);
 };
 
 }  // namespace media

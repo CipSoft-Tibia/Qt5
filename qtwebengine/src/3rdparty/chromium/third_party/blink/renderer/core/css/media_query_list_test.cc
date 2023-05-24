@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,8 @@
 #include "third_party/blink/renderer/core/css/media_query_list_listener.h"
 #include "third_party/blink/renderer/core/css/media_query_matcher.h"
 #include "third_party/blink/renderer/core/dom/document.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -23,7 +24,9 @@ class TestListener : public MediaQueryListListener {
 }  // anonymous namespace
 
 TEST(MediaQueryListTest, CrashInStop) {
-  auto* document = Document::CreateForTest();
+  ScopedNullExecutionContext execution_context;
+  auto* document =
+      Document::CreateForTest(execution_context.GetExecutionContext());
   auto* list = MakeGarbageCollected<MediaQueryList>(
       document->GetExecutionContext(),
       MakeGarbageCollected<MediaQueryMatcher>(*document),

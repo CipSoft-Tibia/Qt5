@@ -1,25 +1,27 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "gpu/command_buffer/service/skia_utils.h"
 
+#include "base/command_line.h"
 #include "base/logging.h"
 #include "build/build_config.h"
+#include "components/viz/common/resources/resource_format.h"
 #include "components/viz/common/resources/resource_format_utils.h"
 #include "gpu/command_buffer/service/feature_info.h"
 #include "gpu/command_buffer/service/shared_context_state.h"
+#include "gpu/config/gpu_finch_features.h"
+#include "gpu/config/gpu_switches.h"
 #include "gpu/config/skia_limits.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
+#include "third_party/skia/include/gpu/GrContextThreadSafeProxy.h"
 #include "third_party/skia/include/gpu/gl/GrGLTypes.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_gl_api_implementation.h"
 #include "ui/gl/gl_version_info.h"
-
-#if defined(OS_ANDROID)
-#include "gpu/config/gpu_finch_features.h"
-#endif
 
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "components/viz/common/gpu/vulkan_context_provider.h"
@@ -61,7 +63,7 @@ void DeleteSkObject(SharedContextState* context_state, sk_sp<T> sk_object) {
   auto* fence_helper =
       context_state->vk_context_provider()->GetDeviceQueue()->GetFenceHelper();
   fence_helper->EnqueueCleanupTaskForSubmittedWork(base::BindOnce(
-      [](const sk_sp<GrContext>& gr_context, sk_sp<T> sk_object,
+      [](const sk_sp<GrDirectContext>& gr_context, sk_sp<T> sk_object,
          gpu::VulkanDeviceQueue* device_queue, bool is_lost) {},
       sk_ref_sp(context_state->gr_context()), std::move(sk_object)));
 #endif
@@ -81,24 +83,68 @@ GrContextOptions GetDefaultGrContextOptions(GrContextType type) {
                                             &glyph_cache_max_texture_bytes);
   options.fDisableCoverageCountingPaths = true;
   options.fGlyphCacheTextureMaximumBytes = glyph_cache_max_texture_bytes;
-  // TODO(csmartdalton): enable internal multisampling after the related Skia
-  // rolls are in.
-  options.fInternalMultisampleCount = 0;
+  // TODO(junov, csmartdalton): Find a way to control fInternalMultisampleCount
+  // in a more granular way.  For OOPR-Canvas we want 8, but for other purposes,
+  // a texture atlas with sample count of 4 would be sufficient
+  options.fInternalMultisampleCount = 8;
+  options.fAllowMSAAOnNewIntel =
+      base::FeatureList::IsEnabled(features::kEnableMSAAOnNewIntelGPUs);
+
   if (type == GrContextType::kMetal)
     options.fRuntimeProgramCacheSize = 1024;
+
+  options.fSuppressMipmapSupport =
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableMipmapGeneration);
+
+  // fSupportBilerpFromGlyphAtlas is needed for Raw Draw.
+  options.fSupportBilerpFromGlyphAtlas = features::IsUsingRawDraw();
+
   return options;
 }
 
-GLuint GetGrGLBackendTextureFormat(const gles2::FeatureInfo* feature_info,
-                                   viz::ResourceFormat resource_format) {
+GLuint GetGrGLBackendTextureFormat(
+    const gles2::FeatureInfo* feature_info,
+    GLenum gl_storage_format,
+    sk_sp<GrContextThreadSafeProxy> gr_context_thread_safe) {
+  // TODO(hitawala): Internalize the skia version specifics to a
+  // SharedImageFormat util function after getting the TextureStorageFormat.
   const gl::GLVersionInfo* version_info = &feature_info->gl_version_info();
-  GLuint internal_format = gl::GetInternalFormat(
-      version_info, viz::TextureStorageFormat(resource_format));
+  GLuint internal_format =
+      gl::GetInternalFormat(version_info, gl_storage_format);
 
   bool use_version_es2 = false;
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   use_version_es2 = base::FeatureList::IsEnabled(features::kUseGles2ForOopR);
 #endif
+
+  // Use R8 and R16F when using later GLs where ALPHA8, LUMINANCE8, ALPHA16F and
+  // LUMINANCE16F are deprecated
+  if (feature_info->gl_version_info().NeedsLuminanceAlphaEmulation()) {
+    switch (internal_format) {
+      case GL_ALPHA8_EXT:
+      case GL_LUMINANCE8:
+        internal_format = GL_R8_EXT;
+        break;
+      case GL_ALPHA16F_EXT:
+      case GL_LUMINANCE16F_EXT:
+        internal_format = GL_R16F_EXT;
+        break;
+    }
+  }
+
+  // Map ETC1 to ETC2 type depending on conversion by skia
+  if (gl_storage_format == GL_ETC1_RGB8_OES) {
+    GrGLFormat gr_gl_format =
+        gr_context_thread_safe
+            ->compressedBackendFormat(SkImage::kETC1_CompressionType)
+            .asGLFormat();
+    if (gr_gl_format == GrGLFormat::kCOMPRESSED_ETC1_RGB8) {
+      internal_format = GL_ETC1_RGB8_OES;
+    } else if (gr_gl_format == GrGLFormat::kCOMPRESSED_RGB8_ETC2) {
+      internal_format = GL_COMPRESSED_RGB8_ETC2;
+    }
+  }
 
   // We tell Skia to use es2 which does not have GL_R8_EXT
   if (feature_info->gl_version_info().is_es3 && use_version_es2) {
@@ -113,7 +159,8 @@ bool GetGrBackendTexture(const gles2::FeatureInfo* feature_info,
                          GLenum target,
                          const gfx::Size& size,
                          GLuint service_id,
-                         viz::ResourceFormat resource_format,
+                         GLenum gl_storage_format,
+                         sk_sp<GrContextThreadSafeProxy> gr_context_thread_safe,
                          GrBackendTexture* gr_texture) {
   if (target != GL_TEXTURE_2D && target != GL_TEXTURE_RECTANGLE_ARB &&
       target != GL_TEXTURE_EXTERNAL_OES) {
@@ -124,8 +171,8 @@ bool GetGrBackendTexture(const gles2::FeatureInfo* feature_info,
   GrGLTextureInfo texture_info;
   texture_info.fID = service_id;
   texture_info.fTarget = target;
-  texture_info.fFormat =
-      GetGrGLBackendTextureFormat(feature_info, resource_format);
+  texture_info.fFormat = GetGrGLBackendTextureFormat(
+      feature_info, gl_storage_format, gr_context_thread_safe);
   *gr_texture = GrBackendTexture(size.width(), size.height(), GrMipMapped::kNo,
                                  texture_info);
   return true;
@@ -180,8 +227,9 @@ void DeleteGrBackendTexture(SharedContextState* context_state,
   auto* fence_helper =
       context_state->vk_context_provider()->GetDeviceQueue()->GetFenceHelper();
   fence_helper->EnqueueCleanupTaskForSubmittedWork(base::BindOnce(
-      [](const sk_sp<GrContext>& gr_context, GrBackendTexture backend_texture,
-         gpu::VulkanDeviceQueue* device_queue, bool is_lost) {
+      [](const sk_sp<GrDirectContext>& gr_context,
+         GrBackendTexture backend_texture, gpu::VulkanDeviceQueue* device_queue,
+         bool is_lost) {
         if (!gr_context->abandoned())
           gr_context->deleteBackendTexture(std::move(backend_texture));
       },
@@ -215,9 +263,25 @@ GrVkImageInfo CreateGrVkImageInfo(VulkanImage* image) {
   GrVkImageInfo image_info;
   image_info.fImage = image->image();
   image_info.fAlloc = alloc;
-  image_info.fImageTiling = image->image_tiling();
-  image_info.fImageLayout = image->image_layout();
+  // TODO(hitawala, https://crbug.com/1310028): Skia assumes that all VkImages
+  // with DRM modifier extensions are only for reads. When using Vulkan with
+  // OzoneImageBackings on Skia, when importing buffer we create SkSurface and
+  // write to it which fails. To fix this, we add checks for tiling with DRM
+  // modifiers and set it to optimal. This will be removed once skia adds write
+  // support.
+  if (image->image_tiling() == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT &&
+      (image->format() == VK_FORMAT_R8G8B8A8_UNORM ||
+       image->format() == VK_FORMAT_R8G8B8_UNORM ||
+       image->format() == VK_FORMAT_B8G8R8A8_UNORM ||
+       image->format() == VK_FORMAT_B8G8R8_UNORM)) {
+    image_info.fImageTiling = VK_IMAGE_TILING_OPTIMAL;
+  } else {
+    image_info.fImageTiling = image->image_tiling();
+  }
+  image_info.fImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   image_info.fFormat = image->format();
+  image_info.fImageUsageFlags = image->usage();
+  image_info.fSampleCount = 1;
   image_info.fLevelCount = 1;
   image_info.fCurrentQueueFamily = image->queue_family_index();
   image_info.fProtected = is_protected ? GrProtected::kYes : GrProtected::kNo;
@@ -229,7 +293,7 @@ GrVkImageInfo CreateGrVkImageInfo(VulkanImage* image) {
 GrVkYcbcrConversionInfo CreateGrVkYcbcrConversionInfo(
     VkPhysicalDevice physical_device,
     VkImageTiling tiling,
-    const base::Optional<VulkanYCbCrInfo>& ycbcr_info) {
+    const absl::optional<VulkanYCbCrInfo>& ycbcr_info) {
   if (!ycbcr_info)
     return GrVkYcbcrConversionInfo();
 
@@ -282,5 +346,61 @@ GrVkYcbcrConversionInfo CreateGrVkYcbcrConversionInfo(
 }
 
 #endif  // BUILDFLAG(ENABLE_VULKAN)
+
+bool ShouldVulkanSyncCpuForSkiaSubmit(
+    viz::VulkanContextProvider* context_provider) {
+#if BUILDFLAG(ENABLE_VULKAN)
+  if (context_provider) {
+    const absl::optional<uint32_t>& sync_cpu_memory_limit =
+        context_provider->GetSyncCpuMemoryLimit();
+    if (sync_cpu_memory_limit.has_value()) {
+      uint64_t total_allocated_bytes = gpu::vma::GetTotalAllocatedMemory(
+          context_provider->GetDeviceQueue()->vma_allocator());
+      if (total_allocated_bytes > sync_cpu_memory_limit.value()) {
+        return true;
+      }
+    }
+  }
+#endif
+  return false;
+}
+
+uint64_t GrBackendTextureTracingID(const GrBackendTexture& backend_texture) {
+  switch (backend_texture.backend()) {
+    case GrBackendApi::kOpenGL: {
+      GrGLTextureInfo tex_info;
+      if (backend_texture.getGLTextureInfo(&tex_info))
+        return tex_info.fID;
+      break;
+    }
+#if BUILDFLAG(IS_MAC)
+    case GrBackendApi::kMetal: {
+      GrMtlTextureInfo image_info;
+      if (backend_texture.getMtlTextureInfo(&image_info))
+        return reinterpret_cast<uint64_t>(image_info.fTexture.get());
+      break;
+    }
+#endif
+#if BUILDFLAG(ENABLE_VULKAN)
+    case GrBackendApi::kVulkan: {
+      GrVkImageInfo image_info;
+      if (backend_texture.getVkImageInfo(&image_info))
+        return reinterpret_cast<uint64_t>(image_info.fImage);
+      break;
+    }
+#endif
+#if BUILDFLAG(SKIA_USE_DAWN)
+    case GrBackendApi::kDawn: {
+      GrDawnTextureInfo tex_info;
+      if (backend_texture.getDawnTextureInfo(&tex_info))
+        return reinterpret_cast<uint64_t>(tex_info.fTexture.Get());
+      break;
+    }
+#endif
+    default:
+      break;
+  }
+  return 0;
+}
 
 }  // namespace gpu

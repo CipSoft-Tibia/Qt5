@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,17 +6,17 @@
 
 #include <windows.foundation.h>
 
+#include <utility>
+
+#include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/core_winrt_util.h"
 #include "base/win/hstring_reference.h"
 #include "base/win/scoped_hstring.h"
-#include "base/win/windows_version.h"
+#include "base/win/scoped_winrt_initializer.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-namespace ABI {
-namespace Windows {
-namespace Foundation {
-namespace Collections {
+namespace ABI::Windows::Foundation::Collections {
 
 // Add missing template specializations (since UWP doesn't provide them):
 
@@ -153,13 +153,9 @@ struct __declspec(uuid("079e2180-0c7a-4508-85ff-7a5f2b29b92b"))
     IObservableVector<IKeyValuePair<HSTRING, IInspectable*>*>
     : IObservableVector_impl<IKeyValuePair<HSTRING, IInspectable*>*> {};
 
-}  // namespace Collections
-}  // namespace Foundation
-}  // namespace Windows
-}  // namespace ABI
+}  // namespace ABI::Windows::Foundation::Collections
 
-namespace base {
-namespace win {
+namespace base::win {
 
 namespace {
 
@@ -191,9 +187,7 @@ const std::map<int, double, internal::Less> g_one{{1, 10.7}};
 const std::map<int, double, internal::Less> g_two{{1, 10.7}, {2, 20.3}};
 
 bool ResolveCoreWinRT() {
-  return base::win::ResolveCoreWinRTDelayload() &&
-         base::win::ScopedHString::ResolveCoreWinRTStringDelayload() &&
-         base::win::HStringReference::ResolveCoreWinRTStringDelayload();
+  return base::win::ResolveCoreWinRTDelayload();
 }
 
 HRESULT GetPropertyValueStaticsActivationFactory(
@@ -234,7 +228,7 @@ class FakeMapChangedEventHandler
  private:
   ComPtr<IObservableMap<K, V>> map_;
   EventRegistrationToken token_;
-  IObservableMap<K, V>* sender_ = nullptr;
+  raw_ptr<IObservableMap<K, V>> sender_ = nullptr;
   CollectionChange change_ = CollectionChange_Reset;
   K key_ = 0;
 };
@@ -505,11 +499,9 @@ TEST(MapTest, First) {
 TEST(MapTest, Properties) {
   // This test case validates Map against Windows property key system,
   // which is used to store WinRT device properties.
-  if (GetVersion() < Version::WIN8)
-    return;
-
   ASSERT_TRUE(ResolveCoreWinRT());
-  ASSERT_HRESULT_SUCCEEDED(base::win::RoInitialize(RO_INIT_MULTITHREADED));
+  ScopedWinrtInitializer winrt_initializer;
+  ASSERT_TRUE(winrt_initializer.Succeeded());
 
   auto map = Make<Map<HSTRING, IInspectable*>>();
 
@@ -547,5 +539,4 @@ TEST(MapTest, Properties) {
   EXPECT_EQ(kTestValue, value_stringref_lookedup.Get());
 }
 
-}  // namespace win
-}  // namespace base
+}  // namespace base::win

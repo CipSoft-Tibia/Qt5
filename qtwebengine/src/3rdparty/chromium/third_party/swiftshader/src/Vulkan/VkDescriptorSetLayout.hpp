@@ -29,20 +29,17 @@ class DescriptorSet;
 class Device;
 
 // TODO(b/129523279): Move to the Device or Pipeline layer.
-struct alignas(16) SampledImageDescriptor
+struct alignas(16) ImageDescriptor
+{
+	uint32_t imageViewId;
+};
+
+struct alignas(16) SampledImageDescriptor : ImageDescriptor
 {
 	~SampledImageDescriptor() = delete;
 
-	void updateSampler(const vk::Sampler *sampler);
+	uint32_t samplerId;
 
-	// TODO(b/129523279): Minimize to the data actually needed.
-	vk::Sampler sampler;
-	vk::Device *device;
-
-	uint32_t imageViewId;
-	VkImageViewType type;
-	VkFormat format;
-	VkComponentMapping swizzle;
 	alignas(16) sw::Texture texture;
 	int width;  // Of base mip-level.
 	int height;
@@ -53,7 +50,7 @@ struct alignas(16) SampledImageDescriptor
 	ImageView *memoryOwner;  // Pointer to the view which owns the memory used by the descriptor set
 };
 
-struct alignas(16) StorageImageDescriptor
+struct alignas(16) StorageImageDescriptor : ImageDescriptor
 {
 	~StorageImageDescriptor() = delete;
 
@@ -107,13 +104,12 @@ public:
 	static void WriteDescriptorSet(Device *device, const VkWriteDescriptorSet &descriptorWrites);
 	static void CopyDescriptorSet(const VkCopyDescriptorSet &descriptorCopies);
 
-	static void WriteDescriptorSet(Device *device, DescriptorSet *dstSet, VkDescriptorUpdateTemplateEntry const &entry, char const *src);
-	static void WriteTextureLevelInfo(sw::Texture *texture, int level, int width, int height, int depth, int pitchP, int sliceP, int samplePitchP, int sampleMax);
+	static void WriteDescriptorSet(Device *device, DescriptorSet *dstSet, const VkDescriptorUpdateTemplateEntry &entry, const char *src);
 
-	void initialize(DescriptorSet *descriptorSet);
+	void initialize(DescriptorSet *descriptorSet, uint32_t variableDescriptorCount);
 
 	// Returns the total size of the descriptor set in bytes.
-	size_t getDescriptorSetAllocationSize() const;
+	size_t getDescriptorSetAllocationSize(uint32_t variableDescriptorCount) const;
 
 	// Returns the byte offset from the base address of the descriptor set for
 	// the given binding number.
@@ -140,7 +136,7 @@ public:
 
 private:
 	uint8_t *getDescriptorPointer(DescriptorSet *descriptorSet, uint32_t bindingNumber, uint32_t arrayElement, uint32_t count, size_t *typeSize) const;
-	size_t getDescriptorSetDataSize() const;
+	size_t getDescriptorSetDataSize(uint32_t variableDescriptorCount) const;
 	static bool isDynamic(VkDescriptorType type);
 
 	const VkDescriptorSetLayoutCreateFlags flags;

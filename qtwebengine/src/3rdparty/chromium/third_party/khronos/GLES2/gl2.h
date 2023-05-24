@@ -85,8 +85,12 @@ typedef khronos_uint8_t GLubyte;
 #define GL_DEPTH_BUFFER_BIT               0x00000100
 #define GL_STENCIL_BUFFER_BIT             0x00000400
 #define GL_COLOR_BUFFER_BIT               0x00004000
+#ifndef GL_FALSE
 #define GL_FALSE                          0
+#endif
+#ifndef GL_TRUE
 #define GL_TRUE                           1
+#endif
 #define GL_POINTS                         0x0000
 #define GL_LINES                          0x0001
 #define GL_LINE_LOOP                      0x0002
@@ -94,8 +98,12 @@ typedef khronos_uint8_t GLubyte;
 #define GL_TRIANGLES                      0x0004
 #define GL_TRIANGLE_STRIP                 0x0005
 #define GL_TRIANGLE_FAN                   0x0006
+#ifndef GL_ZERO
 #define GL_ZERO                           0
+#endif
+#ifndef GL_ONE
 #define GL_ONE                            1
+#endif
 #define GL_SRC_COLOR                      0x0300
 #define GL_ONE_MINUS_SRC_COLOR            0x0301
 #define GL_SRC_ALPHA                      0x0302
@@ -143,7 +151,9 @@ typedef khronos_uint8_t GLubyte;
 #define GL_POLYGON_OFFSET_FILL            0x8037
 #define GL_SAMPLE_ALPHA_TO_COVERAGE       0x809E
 #define GL_SAMPLE_COVERAGE                0x80A0
+#ifndef GL_NO_ERROR
 #define GL_NO_ERROR                       0
+#endif
 #define GL_INVALID_ENUM                   0x0500
 #define GL_INVALID_VALUE                  0x0501
 #define GL_INVALID_OPERATION              0x0502
@@ -373,7 +383,9 @@ typedef khronos_uint8_t GLubyte;
 #define GL_COLOR_ATTACHMENT0              0x8CE0
 #define GL_DEPTH_ATTACHMENT               0x8D00
 #define GL_STENCIL_ATTACHMENT             0x8D20
+#ifndef GL_NONE
 #define GL_NONE                           0
+#endif
 #define GL_FRAMEBUFFER_COMPLETE           0x8CD5
 #define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 0x8CD6
 #define GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT 0x8CD7

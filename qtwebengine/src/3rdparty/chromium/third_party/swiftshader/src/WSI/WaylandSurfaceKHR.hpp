@@ -34,13 +34,14 @@ struct WaylandImage
 class WaylandSurfaceKHR : public SurfaceKHR, public ObjectBase<WaylandSurfaceKHR, VkSurfaceKHR>
 {
 public:
+	static bool isSupported();
 	WaylandSurfaceKHR(const VkWaylandSurfaceCreateInfoKHR *pCreateInfo, void *mem);
 
 	void destroySurface(const VkAllocationCallbacks *pAllocator) override;
 
 	static size_t ComputeRequiredAllocationSize(const VkWaylandSurfaceCreateInfoKHR *pCreateInfo);
 
-	void getSurfaceCapabilities(VkSurfaceCapabilitiesKHR *pSurfaceCapabilities) const override;
+	VkResult getSurfaceCapabilities(const void *pSurfaceInfoPNext, VkSurfaceCapabilitiesKHR *pSurfaceCapabilities, void *pSurfaceCapabilitiesPNext) const override;
 
 	virtual void attachImage(PresentImage *image) override;
 	virtual void detachImage(PresentImage *image) override;
@@ -54,4 +55,4 @@ private:
 };
 
 }  // namespace vk
-#endif  //SWIFTSHADER_WAYLANDSURFACEKHR_HPP
+#endif  // SWIFTSHADER_WAYLANDSURFACEKHR_HPP

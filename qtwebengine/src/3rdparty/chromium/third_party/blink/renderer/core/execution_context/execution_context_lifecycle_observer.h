@@ -34,7 +34,6 @@ namespace blink {
 
 class ExecutionContext;
 class LocalDOMWindow;
-class LocalFrame;
 
 // ExecutionContextClient and ExecutionContextLifecycleObserver are helpers to
 // associate an object with an ExecutionContext. It is unsafe to access an
@@ -47,11 +46,11 @@ class LocalFrame;
 // scope, this occurs when it shuts down.
 //
 // * If an object only needs to refer to a valid ExecutionContext but does not
-//   need to stop or suspend any activity, it should be a
+//   need to stop or suspend any activity, it should be an
 //   ExecutionContextClient.
 // * If an object associated with an ExecutionContext has shutdown logic to
 //   perform, such as halting activity or disconnecting from longer-lived
-//   objects, it should be a PausableObject.
+//   objects, it should be a ExecutionContextLifecycleObserver.
 // * If an object additionally must suspend its activity during pause (see
 //   execution_context_lifecycle_state_observer.h), it should be a
 //   ExecutionContextLifecycleStateObserver (and thus, transitively, also a
@@ -73,15 +72,10 @@ class CORE_EXPORT ExecutionContextClient : public GarbageCollectedMixin {
   // execution context is not a window or if it has been detached.
   LocalDOMWindow* DomWindow() const;
 
-  // If associated with a live window, returns the associated frame.
-  // Returns null otherwise.
-  LocalFrame* GetFrame() const;
-
   void Trace(Visitor*) const override;
 
  protected:
   explicit ExecutionContextClient(ExecutionContext*);
-  explicit ExecutionContextClient(LocalFrame*);
 
  private:
   WeakMember<ExecutionContext> execution_context_;
@@ -94,8 +88,9 @@ class CORE_EXPORT ExecutionContextClient : public GarbageCollectedMixin {
 // Execution context associated objects which have ongoing activity,
 // registration with objects which outlive the context, or resources which
 // should be promptly released, should consider deriving from
-// PausableObject. As a rule of thumb: if the destructor contains
-// non-trivial logic, that logic may belong in ContextDestroyed() instead.
+// ExecutionContextLifecycleObserver. As a rule of thumb: if the destructor
+// contains non-trivial logic, that logic may belong in ContextDestroyed()
+// instead.
 //
 // If there is ongoing activity associated with the object, consider whether it
 // needs to be paused when execution is suspended (see
@@ -105,15 +100,14 @@ class CORE_EXPORT ExecutionContextClient : public GarbageCollectedMixin {
 class CORE_EXPORT ExecutionContextLifecycleObserver
     : public ContextLifecycleObserver {
  public:
-
   // Returns the execution context until it is detached.
   // From then on, returns null instead.
   ExecutionContext* GetExecutionContext() const;
   virtual void SetExecutionContext(ExecutionContext*);
 
-  // If associated with a live document, returns the associated frame.
-  // Returns null otherwise.
-  LocalFrame* GetFrame() const;
+  // If the execution context is a window, returns it. Returns nullptr if the
+  // execution context is not a window or if it has been detached.
+  LocalDOMWindow* DomWindow() const;
 
   enum Type {
     kGenericType,
@@ -125,6 +119,9 @@ class CORE_EXPORT ExecutionContextLifecycleObserver
   bool IsExecutionContextLifecycleObserver() const override { return true; }
 
   void Trace(Visitor*) const override;
+
+  // This will be triggered when the ExecutionContext is moved into BFCache.
+  virtual void ContextEnteredBackForwardCache() {}
 
  protected:
   explicit ExecutionContextLifecycleObserver(

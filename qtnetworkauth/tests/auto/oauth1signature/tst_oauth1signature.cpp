@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore>
 #include <QtTest>
@@ -109,7 +84,7 @@ void tst_OAuth1Signature::signatures_data()
     QTest::addColumn<QString>("tokenSecret");
     QTest::addColumn<QString>("nonce");
     QTest::addColumn<QString>("timestamp");
-    QTest::addColumn<QVariantMap>("parameters");
+    QTest::addColumn<QMultiMap<QString, QVariant>>("parameters");
     QTest::addColumn<QString>("result");
 
     QTest::newRow("standard") << QUrl("http://example.net")
@@ -122,7 +97,7 @@ void tst_OAuth1Signature::signatures_data()
                               << "accesssecret"
                               << "468167367"
                               << "1494852816"
-                              << QVariantMap()
+                              << QMultiMap<QString, QVariant>()
                               << "mQaARxv7pqJyViuwNGtUfm6QSIQ=";
     QTest::newRow("post") << QUrl("http://example.net")
                           << QOAuth1Signature::HttpRequestMethod::Post
@@ -134,7 +109,7 @@ void tst_OAuth1Signature::signatures_data()
                           << "accesssecret"
                           << "468167367"
                           << "1494852816"
-                          << QVariantMap()
+                          << QMultiMap<QString, QVariant>()
                           << "L4blJKqYMTSNUEt32rCgDLhxQxM=";
     QTest::newRow("put") << QUrl("http://example.net")
                          << QOAuth1Signature::HttpRequestMethod::Put
@@ -146,7 +121,7 @@ void tst_OAuth1Signature::signatures_data()
                          << "accesssecret"
                          << "468167367"
                          << "1494852816"
-                         << QVariantMap()
+                         << QMultiMap<QString, QVariant>()
                          << "+eiZ+phNoYnETf6SqI+XSE43JSY=";
     QTest::newRow("delete") << QUrl("http://example.net")
                             << QOAuth1Signature::HttpRequestMethod::Delete
@@ -158,7 +133,7 @@ void tst_OAuth1Signature::signatures_data()
                             << "accesssecret"
                             << "468167367"
                             << "1494852816"
-                            << QVariantMap()
+                            << QMultiMap<QString, QVariant>()
                             << "enbOVNG7/vGliie2/L44NdccMaw=";
     QTest::newRow("head") << QUrl("http://example.net")
                           << QOAuth1Signature::HttpRequestMethod::Head
@@ -170,7 +145,7 @@ void tst_OAuth1Signature::signatures_data()
                           << "accesssecret"
                           << "468167367"
                           << "1494852816"
-                          << QVariantMap()
+                          << QMultiMap<QString, QVariant>()
                           << "6v74w0rRsVibJsJ796Nj8cJPqEU=";
     QTest::newRow("no-hmac-key") << QUrl("http://example.net")
                                  << QOAuth1Signature::HttpRequestMethod::Get
@@ -182,7 +157,7 @@ void tst_OAuth1Signature::signatures_data()
                                  << QString()
                                  << "468167367"
                                  << "1494852816"
-                                 << QVariantMap()
+                                 << QMultiMap<QString, QVariant>()
                                  << "N2qP+LJdLbjalZq71M7oxPdeUjc=";
     QTest::newRow("custom-values") << QUrl("http://example.net")
                                    << QOAuth1Signature::HttpRequestMethod::Get
@@ -194,7 +169,7 @@ void tst_OAuth1Signature::signatures_data()
                                    << "accesssecret"
                                    << "468167367"
                                    << "1494852816"
-                                   << QVariantMap {
+                                   << QMultiMap<QString, QVariant> {
                                         { "firstKey", "firstValue" },
                                         { "secondKey", "secondValue" }
                                     }
@@ -209,7 +184,7 @@ void tst_OAuth1Signature::signatures_data()
                                      << "accesssecret"
                                      << "468167367"
                                      << "1494852816"
-                                     << QVariantMap()
+                                     << QMultiMap<QString, QVariant>()
                                      << "mQaARxv7pqJyViuwNGtUfm6QSIQ=";
     QTest::newRow("custom-verb-patch") << QUrl("http://example.net")
                                        << QOAuth1Signature::HttpRequestMethod::Custom
@@ -221,7 +196,7 @@ void tst_OAuth1Signature::signatures_data()
                                        << "accesssecret"
                                        << "468167367"
                                        << "1494852816"
-                                       << QVariantMap()
+                                       << QMultiMap<QString, QVariant>()
                                        << "kcRO68D7IBQWlQvUR/jkhuF8AKM=";
 }
 
@@ -240,7 +215,8 @@ void tst_OAuth1Signature::signatures()
     QFETCH(QString, tokenSecret);
     QFETCH(QString, nonce);
     QFETCH(QString, timestamp);
-    QFETCH(QVariantMap, parameters);
+    using MultiMap = QMultiMap<QString, QVariant>;
+    QFETCH(MultiMap, parameters);
     QFETCH(QString, result);
 
     parameters.insert(oauthVersion, version);
@@ -254,7 +230,7 @@ void tst_OAuth1Signature::signatures()
     if (method == QOAuth1Signature::HttpRequestMethod::Custom)
         signature.setCustomMethodString(customVerb);
     const auto signatureData = signature.hmacSha1();
-    QCOMPARE(signatureData.toBase64(), result);
+    QCOMPARE(signatureData.toBase64(), result.toLatin1());
 }
 
 QTEST_MAIN(tst_OAuth1Signature)

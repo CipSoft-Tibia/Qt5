@@ -1,10 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_BROWSER_INTERFACE_BROKER_PROXY_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_BROWSER_INTERFACE_BROKER_PROXY_H_
 
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/generic_pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/blink/public/common/common_export.h"
@@ -18,8 +19,14 @@ namespace blink {
 class BLINK_COMMON_EXPORT BrowserInterfaceBrokerProxy {
  public:
   BrowserInterfaceBrokerProxy() = default;
-  void Bind(mojo::PendingRemote<blink::mojom::BrowserInterfaceBroker>);
-  mojo::PendingReceiver<blink::mojom::BrowserInterfaceBroker> Reset();
+  BrowserInterfaceBrokerProxy(const BrowserInterfaceBrokerProxy&) = delete;
+  BrowserInterfaceBrokerProxy& operator=(const BrowserInterfaceBrokerProxy&) =
+      delete;
+
+  void Bind(mojo::PendingRemote<blink::mojom::BrowserInterfaceBroker> broker,
+            scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+  mojo::PendingReceiver<blink::mojom::BrowserInterfaceBroker> Reset(
+      scoped_refptr<base::SingleThreadTaskRunner> task_runner);
 
   // Asks the browser to bind the given receiver. If a non-null testing override
   // was set by |SetBinderForTesting()|, the request will be intercepted by that
@@ -30,6 +37,8 @@ class BLINK_COMMON_EXPORT BrowserInterfaceBrokerProxy {
   void GetInterface(const std::string& name,
                     mojo::ScopedMessagePipeHandle pipe) const;
 
+  bool is_bound() const;
+
   // Overrides how the named interface is bound, rather than sending its
   // receivers to the browser. If |binder| is null, any registered override
   // for the interface is cancelled.
@@ -39,7 +48,8 @@ class BLINK_COMMON_EXPORT BrowserInterfaceBrokerProxy {
   // named interface.
   bool SetBinderForTesting(
       const std::string& name,
-      base::RepeatingCallback<void(mojo::ScopedMessagePipeHandle)> binder);
+      base::RepeatingCallback<void(mojo::ScopedMessagePipeHandle)> binder)
+      const;
 
  private:
   mojo::Remote<blink::mojom::BrowserInterfaceBroker> broker_;
@@ -47,9 +57,7 @@ class BLINK_COMMON_EXPORT BrowserInterfaceBrokerProxy {
   using BinderMap =
       std::map<std::string,
                base::RepeatingCallback<void(mojo::ScopedMessagePipeHandle)>>;
-  BinderMap binder_map_for_testing_;
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserInterfaceBrokerProxy);
+  mutable BinderMap binder_map_for_testing_;
 };
 
 // Returns an instance of BrowserInterfaceBrokerProxy that is safe to use but is

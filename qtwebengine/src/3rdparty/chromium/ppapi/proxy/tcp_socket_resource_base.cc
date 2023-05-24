@@ -1,15 +1,15 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/tcp_socket_resource_base.h"
 
 #include <cstring>
+#include <iterator>
 
-#include "base/bind.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "ppapi/c/pp_bool.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/proxy/error_conversion.h"
@@ -37,10 +37,10 @@ TCPSocketResourceBase::TCPSocketResourceBase(Connection connection,
       version_(version) {
   local_addr_.size = 0;
   memset(local_addr_.data, 0,
-         base::size(local_addr_.data) * sizeof(*local_addr_.data));
+         std::size(local_addr_.data) * sizeof(*local_addr_.data));
   remote_addr_.size = 0;
   memset(remote_addr_.data, 0,
-         base::size(remote_addr_.data) * sizeof(*remote_addr_.data));
+         std::size(remote_addr_.data) * sizeof(*remote_addr_.data));
 }
 
 TCPSocketResourceBase::TCPSocketResourceBase(
@@ -77,10 +77,9 @@ int32_t TCPSocketResourceBase::BindImpl(
   state_.SetPendingTransition(TCPSocketState::BIND);
 
   Call<PpapiPluginMsg_TCPSocket_BindReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_Bind(*addr),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgBindReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_Bind(*addr),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgBindReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -100,10 +99,9 @@ int32_t TCPSocketResourceBase::ConnectImpl(
   state_.SetPendingTransition(TCPSocketState::CONNECT);
 
   Call<PpapiPluginMsg_TCPSocket_ConnectReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_Connect(host, port),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgConnectReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_Connect(host, port),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgConnectReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -122,10 +120,9 @@ int32_t TCPSocketResourceBase::ConnectWithNetAddressImpl(
   state_.SetPendingTransition(TCPSocketState::CONNECT);
 
   Call<PpapiPluginMsg_TCPSocket_ConnectReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_ConnectWithNetAddress(*addr),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgConnectReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_ConnectWithNetAddress(*addr),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgConnectReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -166,12 +163,11 @@ int32_t TCPSocketResourceBase::SSLHandshakeImpl(
 
   Call<PpapiPluginMsg_TCPSocket_SSLHandshakeReply>(
       BROWSER,
-      PpapiHostMsg_TCPSocket_SSLHandshake(server_name,
-                                          server_port,
+      PpapiHostMsg_TCPSocket_SSLHandshake(server_name, server_port,
                                           trusted_certificates_,
                                           untrusted_certificates_),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgSSLHandshakeReply,
-                 base::Unretained(this)),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgSSLHandshakeReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -213,10 +209,9 @@ int32_t TCPSocketResourceBase::ReadImpl(
   read_callback_ = callback;
 
   Call<PpapiPluginMsg_TCPSocket_ReadReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_Read(bytes_to_read_),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgReadReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_Read(bytes_to_read_),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgReadReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -242,8 +237,8 @@ int32_t TCPSocketResourceBase::WriteImpl(
   Call<PpapiPluginMsg_TCPSocket_WriteReply>(
       BROWSER,
       PpapiHostMsg_TCPSocket_Write(std::string(buffer, bytes_to_write)),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgWriteReply,
-                 base::Unretained(this)),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgWriteReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -262,10 +257,9 @@ int32_t TCPSocketResourceBase::ListenImpl(
   state_.SetPendingTransition(TCPSocketState::LISTEN);
 
   Call<PpapiPluginMsg_TCPSocket_ListenReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_Listen(backlog),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgListenReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_Listen(backlog),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgListenReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -284,10 +278,9 @@ int32_t TCPSocketResourceBase::AcceptImpl(
   accepted_tcp_socket_ = accepted_tcp_socket;
 
   Call<PpapiPluginMsg_TCPSocket_AcceptReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_Accept(),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgAcceptReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_Accept(),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgAcceptReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }
@@ -348,10 +341,9 @@ int32_t TCPSocketResourceBase::SetOptionImpl(
   set_option_callbacks_.push(callback);
 
   Call<PpapiPluginMsg_TCPSocket_SetOptionReply>(
-      BROWSER,
-      PpapiHostMsg_TCPSocket_SetOption(name, option_data),
-      base::Bind(&TCPSocketResourceBase::OnPluginMsgSetOptionReply,
-                 base::Unretained(this)),
+      BROWSER, PpapiHostMsg_TCPSocket_SetOption(name, option_data),
+      base::BindOnce(&TCPSocketResourceBase::OnPluginMsgSetOptionReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,14 @@
 #include <vector>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/kiosk/kiosk_delegate.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "services/network/public/mojom/fetch_api.mojom.h"
 
 class PrefService;
 
@@ -47,9 +49,26 @@ class ShellExtensionsBrowserClient : public ExtensionsBrowserClient {
       content::BrowserContext* context) override;
   content::BrowserContext* GetOriginalContext(
       content::BrowserContext* context) override;
-#if defined(OS_CHROMEOS)
+
+  content::BrowserContext* GetRedirectedContextInIncognito(
+      content::BrowserContext* context,
+      bool force_guest_profile,
+      bool force_system_profile) override;
+  content::BrowserContext* GetContextForRegularAndIncognito(
+      content::BrowserContext* context,
+      bool force_guest_profile,
+      bool force_system_profile) override;
+  content::BrowserContext* GetRegularProfile(
+      content::BrowserContext* context,
+      bool force_guest_profile,
+      bool force_system_profile) override;
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   std::string GetUserIdHashFromContext(
       content::BrowserContext* context) override;
+#endif
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  bool IsFromMainProfile(content::BrowserContext* context) override;
 #endif
   bool IsGuestSession(content::BrowserContext* context) const override;
   bool IsExtensionIncognitoEnabled(
@@ -67,17 +86,17 @@ class ShellExtensionsBrowserClient : public ExtensionsBrowserClient {
       mojo::PendingReceiver<network::mojom::URLLoader> loader,
       const base::FilePath& resource_relative_path,
       int resource_id,
-      const std::string& content_security_policy,
-      mojo::PendingRemote<network::mojom::URLLoaderClient> client,
-      bool send_cors_header) override;
-  bool AllowCrossRendererResourceLoad(const GURL& url,
-                                      blink::mojom::ResourceType resource_type,
-                                      ui::PageTransition page_transition,
-                                      int child_id,
-                                      bool is_incognito,
-                                      const Extension* extension,
-                                      const ExtensionSet& extensions,
-                                      const ProcessMap& process_map) override;
+      scoped_refptr<net::HttpResponseHeaders> headers,
+      mojo::PendingRemote<network::mojom::URLLoaderClient> client) override;
+  bool AllowCrossRendererResourceLoad(
+      const network::ResourceRequest& request,
+      network::mojom::RequestDestination destination,
+      ui::PageTransition page_transition,
+      int child_id,
+      bool is_incognito,
+      const Extension* extension,
+      const ExtensionSet& extensions,
+      const ProcessMap& process_map) override;
   PrefService* GetPrefServiceForContext(
       content::BrowserContext* context) override;
   void GetEarlyExtensionPrefsObservers(
@@ -104,7 +123,7 @@ class ShellExtensionsBrowserClient : public ExtensionsBrowserClient {
   void BroadcastEventToRenderers(
       events::HistogramValue histogram_value,
       const std::string& event_name,
-      std::unique_ptr<base::ListValue> args,
+      base::Value::List args,
       bool dispatch_to_off_the_record_profiles) override;
   ExtensionCache* GetExtensionCache() override;
   bool IsBackgroundUpdateAllowed() override;
@@ -127,11 +146,12 @@ class ShellExtensionsBrowserClient : public ExtensionsBrowserClient {
  private:
   // The single BrowserContext for app_shell. Not owned. Must be initialized
   // when ready by calling InitWithBrowserContext().
-  content::BrowserContext* browser_context_ = nullptr;
+  raw_ptr<content::BrowserContext, DanglingUntriaged> browser_context_ =
+      nullptr;
 
   // The PrefService for |browser_context_|. Not owned. Must be initialized when
   // ready by calling InitWithBrowserContext().
-  PrefService* pref_service_ = nullptr;
+  raw_ptr<PrefService, DanglingUntriaged> pref_service_ = nullptr;
 
   // Support for extension APIs.
   std::unique_ptr<ExtensionsAPIClient> api_client_;

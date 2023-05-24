@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,13 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/strings/string_piece.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/download/internal/background_service/blob_task_proxy.h"
 #include "net/base/load_flags.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "storage/browser/blob/blob_data_handle.h"
 #include "storage/browser/blob/blob_storage_context.h"
@@ -110,8 +113,8 @@ size_t InMemoryDownloadImpl::EstimateMemoryUsage() const {
 
 void InMemoryDownloadImpl::OnDataReceived(base::StringPiece string_piece,
                                           base::OnceClosure resume) {
-  size_t size = string_piece.as_string().size();
-  data_.append(string_piece.as_string().data(), size);
+  size_t size = string_piece.size();
+  data_.append(std::string(string_piece).data(), size);
   bytes_downloaded_ += size;
 
   if (paused_) {
@@ -204,6 +207,10 @@ void InMemoryDownloadImpl::SendRequest() {
     request->request_body = std::move(request_body_);
     request->enable_upload_progress = true;
   }
+  if (request_params_.isolation_info) {
+    request->site_for_cookies =
+        request_params_.isolation_info->site_for_cookies();
+  }
 
   url_chain_.push_back(request_params_.url);
 
@@ -223,6 +230,7 @@ void InMemoryDownloadImpl::SendRequest() {
 }
 
 void InMemoryDownloadImpl::OnRedirect(
+    const GURL& url_before_redirect,
     const net::RedirectInfo& redirect_info,
     const network::mojom::URLResponseHead& response_head,
     std::vector<std::string>* to_be_removed_headers) {

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "orderdialog_p.h"
 #include "iconloader_p.h"
@@ -38,6 +13,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 // OrderDialog: Used to reorder the pages of QStackedWidget and QToolBox.
 // Provides up and down buttons as well as  DnD via QAbstractItemView::InternalMove mode
 namespace qdesigner_internal {
@@ -48,9 +25,8 @@ OrderDialog::OrderDialog(QWidget *parent) :
     m_format(PageOrderFormat)
 {
     m_ui->setupUi(this);
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
-    m_ui->upButton->setIcon(createIconSet(QString::fromUtf8("up.png")));
-    m_ui->downButton->setIcon(createIconSet(QString::fromUtf8("down.png")));
+    m_ui->upButton->setIcon(createIconSet(u"up.png"_s));
+    m_ui->downButton->setIcon(createIconSet(u"down.png"_s));
     m_ui->buttonBox->button(QDialogButtonBox::Ok)->setDefault(true);
     connect(m_ui->buttonBox->button(QDialogButtonBox::Reset), &QAbstractButton::clicked,
             this, &OrderDialog::slotReset);
@@ -58,6 +34,11 @@ OrderDialog::OrderDialog(QWidget *parent) :
     // Selection mode is 'contiguous' to enable DnD of groups
     connect(m_ui->pageList->model(), &QAbstractItemModel::rowsRemoved,
             this, &OrderDialog::slotEnableButtonsAfterDnD);
+
+    connect(m_ui->upButton, &QAbstractButton::clicked, this, &OrderDialog::upButtonClicked);
+    connect(m_ui->downButton, &QAbstractButton::clicked, this, &OrderDialog::downButtonClicked);
+    connect(m_ui->pageList, &QListWidget::currentRowChanged,
+            this, &OrderDialog::pageListCurrentRowChanged);
 
     m_ui->upButton->setEnabled(false);
     m_ui->downButton->setEnabled(false);
@@ -79,17 +60,16 @@ void OrderDialog::setPageList(const QWidgetList &pages)
     // The old index is set as user data on the item instead of the QWidget*
     // because DnD is enabled which requires the user data to serializable
     m_orderMap.clear();
-    const int count = pages.count();
-    for (int i=0; i < count; ++i)
-        m_orderMap.insert(i, pages.at(i));
+    const qsizetype count = pages.size();
+    for (qsizetype i = 0; i < count; ++i)
+        m_orderMap.insert(int(i), pages.at(i));
     buildList();
 }
 
 void OrderDialog::buildList()
 {
     m_ui->pageList->clear();
-    const OrderMap::const_iterator cend = m_orderMap.constEnd();
-    for (OrderMap::const_iterator it = m_orderMap.constBegin(); it != cend; ++it) {
+    for (auto it = m_orderMap.cbegin(), cend = m_orderMap.cend(); it != cend; ++it) {
         QListWidgetItem *item = new QListWidgetItem();
         const int index = it.key();
         switch (m_format) {
@@ -124,7 +104,7 @@ QWidgetList OrderDialog::pageList() const
     return rc;
 }
 
-void OrderDialog::on_upButton_clicked()
+void OrderDialog::upButtonClicked()
 {
     const int row = m_ui->pageList->currentRow();
     if (row <= 0)
@@ -134,7 +114,7 @@ void OrderDialog::on_upButton_clicked()
     m_ui->pageList->setCurrentRow(row - 1);
 }
 
-void OrderDialog::on_downButton_clicked()
+void OrderDialog::downButtonClicked()
 {
     const int row = m_ui->pageList->currentRow();
     if (row == -1 || row == m_ui->pageList->count() - 1)
@@ -149,7 +129,7 @@ void OrderDialog::slotEnableButtonsAfterDnD()
     enableButtons(m_ui->pageList->currentRow());
 }
 
-void OrderDialog::on_pageList_currentRowChanged(int r)
+void OrderDialog::pageListCurrentRowChanged(int r)
 {
     enableButtons(r);
 }

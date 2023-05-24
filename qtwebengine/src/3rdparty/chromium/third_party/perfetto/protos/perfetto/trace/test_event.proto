@@ -16,6 +16,8 @@
 
 syntax = "proto2";
 
+import "protos/perfetto/trace/track_event/debug_annotation.proto";
+
 package perfetto.protos;
 
 // Event used by testing code.
@@ -36,8 +38,15 @@ message TestEvent {
     repeated string str = 1;
     repeated TestPayload nested = 2;
 
+    optional string single_string = 4;
+
+    optional int32 single_int = 5;
+    repeated int32 repeated_ints = 6;
+
     // When 0 this is the bottom-most nested message.
     optional uint32 remaining_nesting_depth = 3;
+
+    repeated DebugAnnotation debug_annotations = 7;
   }
   optional TestPayload payload = 5;
 }

@@ -1,45 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "controllerwidget.h"
 #include <controls.h>
 
-#if QT_VERSION >= 0x050000
-#    include <QtWidgets>
-#    include <QWindow>
-#    include <QBackingStore>
-#    include <QPaintDevice>
-#    include <QPainter>
-#else
-#    include <QtGui>
-#endif
+#include <QtWidgets>
 
+#include <QBackingStore>
+#include <QPaintDevice>
+#include <QPainter>
 #include <QResizeEvent>
+#include <QWindow>
 
 CoordinateControl::CoordinateControl(const QString &sep) : m_x(new QSpinBox), m_y(new QSpinBox)
 {
@@ -85,7 +56,8 @@ RectControl::RectControl()
 {
     QHBoxLayout *l = new QHBoxLayout(this);
     l->setSpacing(0);
-    l->setMargin(ControlLayoutMargin);
+    l->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                          ControlLayoutMargin, ControlLayoutMargin);
     connect(m_point, SIGNAL(pointValueChanged(QPoint)), this, SLOT(handleChanged()));
     connect(m_point, SIGNAL(pointValueChanged(QPoint)), this, SIGNAL(positionChanged(QPoint)));
     l->addWidget(m_point);
@@ -128,11 +100,13 @@ BaseWindowControl::BaseWindowControl(QObject *w)
     m_geometry->setTitle(tr("Geometry"));
     int row = 0;
     m_layout->addWidget(m_geometry, row, 0, 1, 2);
-    m_layout->setMargin(ControlLayoutMargin);
+    m_layout->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                                 ControlLayoutMargin, ControlLayoutMargin);
     QGroupBox *frameGB = new QGroupBox(tr("Frame"));
     QVBoxLayout *frameL = new QVBoxLayout(frameGB);
     frameL->setSpacing(0);
-    frameL->setMargin(ControlLayoutMargin);
+    frameL->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                               ControlLayoutMargin, ControlLayoutMargin);
     frameL->addWidget(m_framePosition);
     m_layout->addWidget(frameGB, row, 2);
 
@@ -144,7 +118,8 @@ BaseWindowControl::BaseWindowControl(QObject *w)
     QGroupBox *eventGroupBox = new QGroupBox(tr("Events"));
     QVBoxLayout *l = new QVBoxLayout(eventGroupBox);
     l->setSpacing(0);
-    l->setMargin(ControlLayoutMargin);
+    l->setContentsMargins(ControlLayoutMargin, ControlLayoutMargin,
+                          ControlLayoutMargin, ControlLayoutMargin);
     l->addWidget(m_moveEventLabel);
     l->addWidget(m_resizeEventLabel);
     l->addWidget(m_mouseEventLabel);
@@ -287,13 +262,11 @@ void WidgetWindowControl::statesChanged()
     w->setWindowState(m_statesControl->states());
 }
 
-#if QT_VERSION >= 0x050000
-
 // Test window drawing diagonal lines
 class Window : public QWindow
 {
 public:
-    explicit Window(QWindow *parent = 0)
+    explicit Window(QWindow *parent = nullptr)
         : QWindow(parent)
         , m_backingStore(new QBackingStore(this))
     {
@@ -384,26 +357,20 @@ void WindowControl::stateChanged()
     w->setWindowStates(m_statesControl->states());
 }
 
-#endif
-
 ControllerWidget::ControllerWidget(QWidget *parent)
     : QMainWindow(parent)
     , m_testWidget(new QWidget)
-#if QT_VERSION >= 0x050000
     , m_testWindow(new Window)
-#endif
 {
     QMenu *fileMenu = menuBar()->addMenu(tr("File"));
     QAction *exitAction = fileMenu->addAction(tr("Exit"));
     exitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
-    connect(exitAction, SIGNAL(triggered()), qApp, SLOT(closeAllWindows()));
+    connect(exitAction, SIGNAL(triggered()), qApp, SLOT(quit()));
 
     QString title = QLatin1String("Geometry test, (Qt ");
     title += QLatin1String(QT_VERSION_STR);
-#if QT_VERSION >= 0x050000
     title += QLatin1String(", ");
     title += qApp->platformName();
-#endif
     title += QLatin1Char(')');
     setWindowTitle(title);
 
@@ -413,9 +380,6 @@ ControllerWidget::ControllerWidget(QWidget *parent)
     const int offsetArgIndex = args.indexOf(QLatin1String("-offset"));
     if (offsetArgIndex >=0 && offsetArgIndex < args.size() - 1) {
         y += args.at(offsetArgIndex + 1).toInt();
-    } else {
-        if (QT_VERSION < 0x050000)
-            y += 400;
     }
 
     move(x, y);
@@ -439,7 +403,6 @@ ControllerWidget::ControllerWidget(QWidget *parent)
     else
         m_testWidget->show();
 
-#if QT_VERSION >= 0x050000
     x += 300;
     m_testWindow->setFlags(Qt::Window | Qt::WindowSystemMenuHint | Qt::WindowCloseButtonHint
                                  | Qt::WindowMinimizeButtonHint | Qt::WindowMaximizeButtonHint
@@ -455,7 +418,6 @@ ControllerWidget::ControllerWidget(QWidget *parent)
     else
         m_testWindow->show();
     m_testWindow->setTitle(tr("TestWindow"));
-#endif
 
     QWidget *central = new QWidget ;
     QVBoxLayout *l = new QVBoxLayout(central);
@@ -474,11 +436,9 @@ ControllerWidget::ControllerWidget(QWidget *parent)
     widgetControl->refresh();
     l->addWidget(widgetControl);
 
-#if QT_VERSION >= 0x050000
     BaseWindowControl *windowControl = new WindowControl(m_testWindow.data());
     windowControl->refresh();
     l->addWidget(windowControl);
-#endif
 
     setCentralWidget(central);
 }

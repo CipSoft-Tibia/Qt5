@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,23 +17,23 @@
 
 namespace {
 
-const wchar_t g_FX_Percent[] = L"z,zzz,zzz,zzz,zzz,zzz%";
-const wchar_t g_FX_Currency[] = L"$z,zzz,zzz,zzz,zzz,zz9.99";
-const wchar_t g_FX_Decimal[] = L"z,zzz,zzz,zzz,zzz,zz9.zzz";
-const wchar_t g_FX_Integer[] = L"z,zzz,zzz,zzz,zzz,zzz";
+const wchar_t kFxPercent[] = L"z,zzz,zzz,zzz,zzz,zzz%";
+const wchar_t kFxCurrency[] = L"$z,zzz,zzz,zzz,zzz,zz9.99";
+const wchar_t kFxDecimal[] = L"z,zzz,zzz,zzz,zzz,zz9.zzz";
+const wchar_t kFxInteger[] = L"z,zzz,zzz,zzz,zzz,zzz";
 
 }  // namespace
 
 WideString XFA_PatternToString(LocaleIface::NumSubcategory category) {
   switch (category) {
     case LocaleIface::NumSubcategory::kPercent:
-      return g_FX_Percent;
+      return kFxPercent;
     case LocaleIface::NumSubcategory::kCurrency:
-      return g_FX_Currency;
+      return kFxCurrency;
     case LocaleIface::NumSubcategory::kDecimal:
-      return g_FX_Decimal;
+      return kFxDecimal;
     case LocaleIface::NumSubcategory::kInteger:
-      return g_FX_Integer;
+      return kFxInteger;
   }
   return WideString();
 }
@@ -91,8 +91,8 @@ WideString CXFA_NodeLocale::GetMeridiemName(bool bAM) const {
   return GetCalendarSymbol(XFA_Element::MeridiemNames, bAM ? 0 : 1, false);
 }
 
-FX_TIMEZONE CXFA_NodeLocale::GetTimeZone() const {
-  return CXFA_TimeZoneProvider().GetTimeZone();
+int CXFA_NodeLocale::GetTimeZoneInMinutes() const {
+  return CXFA_TimeZoneProvider().GetTimeZoneInMinutes();
 }
 
 WideString CXFA_NodeLocale::GetEraName(bool bAD) const {

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include <utility>
 
 #include "base/command_line.h"
-#include "base/sequenced_task_runner.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/time/default_clock.h"
 #include "base/time/default_tick_clock.h"
@@ -59,6 +58,7 @@ std::unique_ptr<TileService> CreateTileService(
     const std::string& country_code,
     const std::string& api_key,
     const std::string& client_version,
+    const std::string& default_server_url,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     PrefService* pref_service) {
   // Create image loader.
@@ -83,12 +83,13 @@ std::unique_ptr<TileService> CreateTileService(
       task_runner);
   auto tile_store = std::make_unique<TileStore>(std::move(tile_db));
   auto tile_manager =
-      TileManager::Create(std::move(tile_store), clock, accepted_language);
+      TileManager::Create(std::move(tile_store), accepted_language);
 
   // Create fetcher.
   auto tile_fetcher = TileFetcher::Create(
-      TileConfig::GetQueryTilesServerUrl(), country_code, accepted_language,
-      api_key, TileConfig::GetExperimentTag(), client_version,
+      TileConfig::GetQueryTilesServerUrl(default_server_url, false),
+      country_code, accepted_language, api_key,
+      TileConfig::GetExperimentTag(country_code), client_version,
       url_loader_factory);
 
   // Wrap background task scheduler.

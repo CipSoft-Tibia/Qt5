@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -91,8 +91,8 @@
 #include "base/check_op.h"
 #include "base/containers/span.h"
 #include "base/notreached.h"
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
+#include "build/build_config.h"
 #include "url/gurl.h"
 
 namespace net {
@@ -577,7 +577,7 @@ static const MagicNumber kByteOrderMark[] = {
 static bool SniffBinary(base::StringPiece content,
                         bool* have_enough_content,
                         std::string* result) {
-  // There is no concensus about exactly how to sniff for binary content.
+  // There is no consensus about exactly how to sniff for binary content.
   // * IE 7: Don't sniff for binary looking bytes, but trust the file extension.
   // * Firefox 3.5: Sniff first 4096 bytes for a binary looking byte.
   // Here, we side with FF, but with a smaller buffer. This size was chosen
@@ -656,13 +656,11 @@ static bool SniffCRX(base::StringPiece content,
 }
 
 bool ShouldSniffMimeType(const GURL& url, base::StringPiece mime_type) {
-  bool sniffable_scheme = url.is_empty() ||
-                          url.SchemeIsHTTPOrHTTPS() ||
-#if defined(OS_ANDROID)
+  bool sniffable_scheme = url.is_empty() || url.SchemeIsHTTPOrHTTPS() ||
+#if BUILDFLAG(IS_ANDROID)
                           url.SchemeIs("content") ||
 #endif
-                          url.SchemeIsFile() ||
-                          url.SchemeIsFileSystem();
+                          url.SchemeIsFile() || url.SchemeIsFileSystem();
   if (!sniffable_scheme)
     return false;
 
@@ -795,29 +793,13 @@ bool SniffMimeType(base::StringPiece content,
   return have_enough_content;
 }
 
-bool SniffMimeType(const char* content,
-                   size_t content_size,
-                   const GURL& url,
-                   const std::string& type_hint,
-                   ForceSniffFileUrlsForHtml force_sniff_file_url_for_html,
-                   std::string* result) {
-  return SniffMimeType(base::StringPiece(content, content_size), url, type_hint,
-                       force_sniff_file_url_for_html, result);
-}
-
-NET_EXPORT bool SniffMimeTypeFromLocalData(base::StringPiece content,
-                                           std::string* result) {
+bool SniffMimeTypeFromLocalData(base::StringPiece content,
+                                std::string* result) {
   // First check the extra table.
   if (CheckForMagicNumbers(content, kExtraMagicNumbers, result))
     return true;
   // Finally check the original table.
   return CheckForMagicNumbers(content, kMagicNumbers, result);
-}
-
-bool SniffMimeTypeFromLocalData(const char* content,
-                                size_t size,
-                                std::string* result) {
-  return SniffMimeTypeFromLocalData(base::StringPiece(content, size), result);
 }
 
 bool LooksLikeBinary(base::StringPiece content) {
@@ -830,8 +812,8 @@ bool LooksLikeBinary(base::StringPiece content) {
   // represents byte 0x1F.
   const uint32_t kBinaryBits =
       ~(1u << '\t' | 1u << '\n' | 1u << '\r' | 1u << '\f' | 1u << '\x1b');
-  for (size_t i = 0; i < content.length(); ++i) {
-    uint8_t byte = static_cast<uint8_t>(content[i]);
+  for (char c : content) {
+    uint8_t byte = static_cast<uint8_t>(c);
     if (byte < 0x20 && (kBinaryBits & (1u << byte)))
       return true;
   }

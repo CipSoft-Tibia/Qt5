@@ -1,57 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplaceuser.h"
 #include "qplaceuser_p.h"
 
 QT_USE_NAMESPACE
 
-QPlaceUserPrivate::QPlaceUserPrivate()
-    : QSharedData()
-{
-}
-
-QPlaceUserPrivate::QPlaceUserPrivate(const QPlaceUserPrivate &other)
-    : QSharedData(), userId(other.userId), name(other.name)
-{
-}
-
-QPlaceUserPrivate::~QPlaceUserPrivate()
-{
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceUserPrivate)
 
 bool QPlaceUserPrivate::operator==(const QPlaceUserPrivate &other) const
 {
@@ -69,6 +24,31 @@ bool QPlaceUserPrivate::operator==(const QPlaceUserPrivate &other) const
 */
 
 /*!
+    \qmlvaluetype user
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 5.5
+
+    \brief The user type identifies a user who contributed a particular \l Place content item.
+
+    Each \l Place content item has an associated user who contributed the content.  This type
+    provides information about that user.
+
+    \section1 Example
+
+    The following example shows how to display information about the user who
+    submitted an editorial:
+
+    \snippet declarative/places.qml QtQuick import
+    \snippet declarative/maps.qml QtLocation import
+    \codeline
+    \snippet declarative/places.qml EditorialModel
+
+    \sa ImageModel, ReviewModel, EditorialModel
+*/
+
+/*!
     Constructs a new user object.
 */
 QPlaceUser::QPlaceUser()
@@ -79,22 +59,17 @@ QPlaceUser::QPlaceUser()
 /*!
     Constructs a copy of \a other.
 */
-QPlaceUser::QPlaceUser(const QPlaceUser &other)
-    :d(other.d)
-{
-}
+QPlaceUser::QPlaceUser(const QPlaceUser &other) noexcept = default;
 
 /*!
     Destroys the user object.
 */
-QPlaceUser::~QPlaceUser()
-{
-}
+QPlaceUser::~QPlaceUser() = default;
 
 /*!
     Assigns \a other to this user and returns a reference to this user.
 */
-QPlaceUser &QPlaceUser::operator=(const QPlaceUser &other)
+QPlaceUser &QPlaceUser::operator=(const QPlaceUser &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -104,50 +79,60 @@ QPlaceUser &QPlaceUser::operator=(const QPlaceUser &other)
 }
 
 /*!
-    \fn bool QPlaceUser::operator!=(const QPlaceUser &other) const
+    \fn bool QPlaceUser::operator==(const QPlaceUser &lhs, const QPlaceUser &rhs) noexcept
 
-    Returns true if \a other is not equal to this user,
-    otherwise returns false.
+    Returns true if \a lhs is equal to \a rhs, otherwise returns false.
 */
 
 /*!
-    Returns true if this user is equal to \a other.
-    Otherwise returns false.
+    \fn bool QPlaceUser::operator!=(const QPlaceUser &lhs, const QPlaceUser &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs, otherwise returns false.
 */
-bool QPlaceUser::operator==(const QPlaceUser &other) const
+
+bool QPlaceUser::isEqual(const QPlaceUser &other) const noexcept
 {
     return (*d) == *(other.d);
 }
 
 /*!
-    Returns the identifier of the user.
+    \qmlproperty string QtLocation::user::userId
+
+    This property holds the unique identifier of the user.
+*/
+
+/*!
+    \property QPlaceUser::userId
+    \brief the identifier of the user.
 */
 QString QPlaceUser::userId() const
 {
     return d->userId;
 }
 
-/*!
-    Sets the \a identifier of the user.
-*/
 void QPlaceUser::setUserId(const QString &identifier)
 {
     d->userId = identifier;
 }
 
 /*!
-    Returns the name of the user.
+    \qmlproperty string QtLocation::User::name
+
+    This property holds the name of a user.
+*/
+
+/*!
+    \property QPlaceUser::name
+    \brief the name of the user.
 */
 QString QPlaceUser::name() const
 {
     return d->name;
 }
 
-/*!
-    Sets the \a name of the user.
-*/
-
 void QPlaceUser::setName(const QString &name)
 {
     d->name = name;
 }
+
+#include "moc_qplaceuser.cpp"

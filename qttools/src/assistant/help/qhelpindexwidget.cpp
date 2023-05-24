@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpindexwidget.h"
 #include "qhelpenginecore.h"
@@ -135,7 +99,6 @@ void QHelpIndexProvider::run()
         return;
 
     QHelpCollectionHandler collectionHandler(collectionFile);
-    collectionHandler.setReadOnly(true);
     if (!collectionHandler.openCollectionFile())
         return;
 
@@ -233,20 +196,6 @@ QHelpEngineCore *QHelpIndexModel::helpEngine() const
     return d->helpEngine->q;
 }
 
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \obsolete
-    Use QHelpEngineCore::documentsForKeyword() instead.
-*/
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-QMap<QString, QUrl> QHelpIndexModel::linksForKeyword(const QString &keyword) const
-{
-    return d->helpEngine->q->linksForKeyword(keyword);
-}
-QT_WARNING_POP
-#endif
-
 /*!
     Filters the indices and returns the model index of the best
     matching keyword. In a first step, only the keywords containing
@@ -269,33 +218,35 @@ QModelIndex QHelpIndexModel::filter(const QString &filter, const QString &wildca
     int perfectMatch = -1;
 
     if (!wildcard.isEmpty()) {
-        const QRegExp regExp(wildcard, Qt::CaseInsensitive, QRegExp::Wildcard);
-        for (const QString &index : qAsConst(d->indices)) {
+        auto re = QRegularExpression::wildcardToRegularExpression(wildcard,
+                                                                  QRegularExpression::UnanchoredWildcardConversion);
+        const QRegularExpression regExp(re, QRegularExpression::CaseInsensitiveOption);
+        for (const QString &index : std::as_const(d->indices)) {
             if (index.contains(regExp)) {
                 lst.append(index);
                 if (perfectMatch == -1 && index.startsWith(filter, Qt::CaseInsensitive)) {
                     if (goodMatch == -1)
-                        goodMatch = lst.count() - 1;
-                    if (filter.length() == index.length()){
-                        perfectMatch = lst.count() - 1;
+                        goodMatch = lst.size() - 1;
+                    if (filter.size() == index.size()){
+                        perfectMatch = lst.size() - 1;
                     }
                 } else if (perfectMatch > -1 && index == filter) {
-                    perfectMatch = lst.count() - 1;
+                    perfectMatch = lst.size() - 1;
                 }
             }
         }
     } else {
-        for (const QString &index : qAsConst(d->indices)) {
+        for (const QString &index : std::as_const(d->indices)) {
             if (index.contains(filter, Qt::CaseInsensitive)) {
                 lst.append(index);
                 if (perfectMatch == -1 && index.startsWith(filter, Qt::CaseInsensitive)) {
                     if (goodMatch == -1)
-                        goodMatch = lst.count() - 1;
-                    if (filter.length() == index.length()){
-                        perfectMatch = lst.count() - 1;
+                        goodMatch = lst.size() - 1;
+                    if (filter.size() == index.size()){
+                        perfectMatch = lst.size() - 1;
                     }
                 } else if (perfectMatch > -1 && index == filter) {
-                    perfectMatch = lst.count() - 1;
+                    perfectMatch = lst.size() - 1;
                 }
             }
         }
@@ -323,26 +274,13 @@ QModelIndex QHelpIndexModel::filter(const QString &filter, const QString &wildca
     \fn void QHelpIndexWidget::linkActivated(const QUrl &link,
         const QString &keyword)
 
-    \obsolete
+    \deprecated
 
     Use documentActivated() instead.
 
     This signal is emitted when an item is activated and its
     associated \a link should be shown. To know where the link
     belongs to, the \a keyword is given as a second parameter.
-*/
-
-/*!
-    \fn void QHelpIndexWidget::linksActivated(const QMap<QString, QUrl> &links,
-        const QString &keyword)
-
-    \obsolete
-
-    Use documentsActivated() instead.
-
-    This signal is emitted when the item representing the \a keyword
-    is activated and the item has more than one link associated.
-    The \a links consist of the document titles and their URLs.
 */
 
 /*!
@@ -389,21 +327,25 @@ void QHelpIndexWidget::showLink(const QModelIndex &index)
     const QString name = v.isValid() ? v.toString() : QString();
 
     const QList<QHelpLink> &docs = indexModel->helpEngine()->documentsForKeyword(name);
-    if (docs.count() > 1) {
+    if (docs.size() > 1) {
         emit documentsActivated(docs, name);
+#if QT_DEPRECATED_SINCE(5, 15)
         QT_WARNING_PUSH
         QT_WARNING_DISABLE_DEPRECATED
-        QMap<QString, QUrl> links;
+        QMultiMap<QString, QUrl> links;
         for (const auto &doc : docs)
-            static_cast<QMultiMap<QString, QUrl> &>(links).insert(doc.title, doc.url);
+            links.insert(doc.title, doc.url);
         emit linksActivated(links, name);
         QT_WARNING_POP
+#endif
     } else if (!docs.isEmpty()) {
         emit documentActivated(docs.first(), name);
+#if QT_DEPRECATED_SINCE(5, 15)
         QT_WARNING_PUSH
         QT_WARNING_DISABLE_DEPRECATED
         emit linkActivated(docs.first().url, name);
         QT_WARNING_POP
+#endif
     }
 }
 

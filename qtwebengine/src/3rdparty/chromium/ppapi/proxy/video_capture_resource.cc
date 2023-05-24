@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <stddef.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "ppapi/c/dev/ppp_video_capture_dev.h"
 #include "ppapi/proxy/dispatch_reply_message.h"
 #include "ppapi/proxy/plugin_dispatcher.h"
@@ -93,7 +93,7 @@ int32_t VideoCaptureResource::Open(
   Call<PpapiPluginMsg_VideoCapture_OpenReply>(
       RENDERER,
       PpapiHostMsg_VideoCapture_Open(device_id, requested_info, buffer_count),
-      base::Bind(&VideoCaptureResource::OnPluginMsgOpenReply, this));
+      base::BindOnce(&VideoCaptureResource::OnPluginMsgOpenReply, this));
   return PP_OK_COMPLETIONPENDING;
 }
 

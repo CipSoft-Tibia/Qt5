@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,18 +22,16 @@
 
 #include "fxbarcode/pdf417/BC_PDF417BarcodeRow.h"
 
-#include <algorithm>
+#include "core/fxcrt/span_util.h"
+#include "third_party/base/check_op.h"
 
-CBC_BarcodeRow::CBC_BarcodeRow(size_t width)
-    : m_row(width), m_currentLocation(0) {}
+CBC_BarcodeRow::CBC_BarcodeRow(size_t width) : row_(width) {}
 
 CBC_BarcodeRow::~CBC_BarcodeRow() = default;
 
-void CBC_BarcodeRow::addBar(bool black, int32_t width) {
-  std::fill_n(m_row.begin() + m_currentLocation, width, black ? 1 : 0);
-  m_currentLocation += width;
-}
-
-std::vector<uint8_t, FxAllocAllocator<uint8_t>>& CBC_BarcodeRow::getRow() {
-  return m_row;
+void CBC_BarcodeRow::AddBar(bool black, size_t width) {
+  pdfium::span<uint8_t> available = row_.writable_span().subspan(offset_);
+  CHECK_LE(width, available.size());
+  fxcrt::spanset(available.first(width), black ? 1 : 0);
+  offset_ += width;
 }

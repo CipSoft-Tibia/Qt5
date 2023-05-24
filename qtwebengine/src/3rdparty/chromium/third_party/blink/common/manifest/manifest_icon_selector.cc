@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <limits>
 
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "third_party/blink/public/common/mime_util/mime_util.h"
@@ -18,7 +18,7 @@ BLINK_COMMON_EXPORT GURL ManifestIconSelector::FindBestMatchingSquareIcon(
     const std::vector<blink::Manifest::ImageResource>& icons,
     int ideal_icon_size_in_px,
     int minimum_icon_size_in_px,
-    blink::Manifest::ImageResource::Purpose purpose) {
+    blink::mojom::ManifestImageResource_Purpose purpose) {
   return FindBestMatchingIcon(icons, ideal_icon_size_in_px,
                               minimum_icon_size_in_px,
                               1 /*max_width_to_height_ratio */, purpose);
@@ -30,7 +30,7 @@ BLINK_COMMON_EXPORT GURL ManifestIconSelector::FindBestMatchingIcon(
     int ideal_icon_height_in_px,
     int minimum_icon_height_in_px,
     float max_width_to_height_ratio,
-    blink::Manifest::ImageResource::Purpose purpose) {
+    blink::mojom::ManifestImageResource_Purpose purpose) {
   DCHECK_LE(minimum_icon_height_in_px, ideal_icon_height_in_px);
   DCHECK_GE(max_width_to_height_ratio, 1.0);
 

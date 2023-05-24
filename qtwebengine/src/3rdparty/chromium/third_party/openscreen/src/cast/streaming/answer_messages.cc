@@ -9,17 +9,13 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "platform/base/error.h"
+#include "util/enum_name_table.h"
 #include "util/json/json_helpers.h"
 #include "util/osp_logging.h"
-
 namespace openscreen {
 namespace cast {
 
 namespace {
-
-/// NOTE: Constants here are all taken from the Cast V2: Mirroring Control
-/// Protocol specification: http://goto.google.com/mirroring-control-protocol
-// TODO(jophba): document the protocol in a public repository.
 
 /// Constraint properties.
 // Audio constraints. See properties below.
@@ -51,7 +47,7 @@ static constexpr char kMaxPixelsPerSecond[] = "maxPixelsPerSecond";
 // Minimum dimensions. If omitted, the sender will assume a reasonable minimum
 // with the same aspect ratio as maxDimensions, as close to 320*180 as possible.
 // Should reflect the true operational minimum.
-static constexpr char kMinDimensions[] = "minDimensions";
+static constexpr char kMinResolution[] = "minResolution";
 // Maximum dimensions, not necessarily ideal dimensions.
 static constexpr char kMaxDimensions[] = "maxDimensions";
 
@@ -60,15 +56,6 @@ static constexpr char kMaxDimensions[] = "maxDimensions";
 static constexpr char kMaxSampleRate[] = "maxSampleRate";
 // Maximum number of audio channels (1 is mono, 2 is stereo, etc.).
 static constexpr char kMaxChannels[] = "maxChannels";
-
-/// Dimension properties.
-// Width in pixels.
-static constexpr char kWidth[] = "width";
-// Height in pixels.
-static constexpr char kHeight[] = "height";
-// Frame rate as a rational decimal number or fraction.
-// E.g. 30 and "3000/1001" are both valid representations.
-static constexpr char kFrameRate[] = "frameRate";
 
 /// Display description properties
 // If this optional field is included in the ANSWER message, the receiver is
@@ -87,7 +74,7 @@ static constexpr char kAspectRatioDelimiter[] = ":";
 // Sets the aspect ratio constraints. Value must be either "sender" or
 // "receiver", see kScalingSender and kScalingReceiver below.
 static constexpr char kScaling[] = "scaling";
-// sclaing = "sender" means that the sender must provide video frames of a fixed
+// scaling = "sender" means that the sender must provide video frames of a fixed
 // aspect ratio. In this case, the dimensions object must be passed or an error
 // case will occur.
 static constexpr char kScalingSender[] = "sender";
@@ -119,41 +106,33 @@ static constexpr char kReceiverRtcpEventLog[] = "receiverRtcpEventLog";
 // OPtional array of numbers specifying the indexes of streams that will use
 // DSCP values specified in the OFFER message for RTCP packets.
 static constexpr char kReceiverRtcpDscp[] = "receiverRtcpDscp";
-// True if receiver can report wifi status.
-static constexpr char kReceiverGetStatus[] = "receiverGetStatus";
 // If this optional field is present the receiver supports the specific
 // RTP extensions (such as adaptive playout delay).
 static constexpr char kRtpExtensions[] = "rtpExtensions";
 
+EnumNameTable<AspectRatioConstraint, 2> kAspectRatioConstraintNames{
+    {{kScalingReceiver, AspectRatioConstraint::kVariable},
+     {kScalingSender, AspectRatioConstraint::kFixed}}};
+
 Json::Value AspectRatioConstraintToJson(AspectRatioConstraint aspect_ratio) {
-  switch (aspect_ratio) {
-    case AspectRatioConstraint::kVariable:
-      return Json::Value(kScalingReceiver);
-    case AspectRatioConstraint::kFixed:
-    default:
-      return Json::Value(kScalingSender);
-  }
+  return Json::Value(GetEnumName(kAspectRatioConstraintNames, aspect_ratio)
+                         .value(kScalingSender));
 }
 
-bool AspectRatioConstraintParseAndValidate(const Json::Value& value,
-                                           AspectRatioConstraint* out) {
-  // the aspect ratio constraint is an optional field.
-  if (!value) {
-    return true;
-  }
-
+bool TryParseAspectRatioConstraint(const Json::Value& value,
+                                   AspectRatioConstraint* out) {
   std::string aspect_ratio;
-  if (!json::ParseAndValidateString(value, &aspect_ratio)) {
+  if (!json::TryParseString(value, &aspect_ratio)) {
     return false;
   }
-  if (aspect_ratio == kScalingReceiver) {
-    *out = AspectRatioConstraint::kVariable;
-    return true;
-  } else if (aspect_ratio == kScalingSender) {
-    *out = AspectRatioConstraint::kFixed;
-    return true;
+
+  ErrorOr<AspectRatioConstraint> constraint =
+      GetEnum(kAspectRatioConstraintNames, aspect_ratio);
+  if (constraint.is_error()) {
+    return false;
   }
-  return false;
+  *out = constraint.value();
+  return true;
 }
 
 template <typename T>
@@ -175,7 +154,7 @@ bool ParseOptional(const Json::Value& value, absl::optional<T>* out) {
     return true;
   }
   T tentative_out;
-  if (!T::ParseAndValidate(value, &tentative_out)) {
+  if (!T::TryParse(value, &tentative_out)) {
     return false;
   }
   *out = tentative_out;
@@ -185,9 +164,9 @@ bool ParseOptional(const Json::Value& value, absl::optional<T>* out) {
 }  // namespace
 
 // static
-bool AspectRatio::ParseAndValidate(const Json::Value& value, AspectRatio* out) {
+bool AspectRatio::TryParse(const Json::Value& value, AspectRatio* out) {
   std::string parsed_value;
-  if (!json::ParseAndValidateString(value, &parsed_value)) {
+  if (!json::TryParseString(value, &parsed_value)) {
     return false;
   }
 
@@ -209,16 +188,20 @@ bool AspectRatio::IsValid() const {
 }
 
 // static
-bool AudioConstraints::ParseAndValidate(const Json::Value& root,
-                                        AudioConstraints* out) {
-  if (!json::ParseAndValidateInt(root[kMaxSampleRate],
-                                 &(out->max_sample_rate)) ||
-      !json::ParseAndValidateInt(root[kMaxChannels], &(out->max_channels)) ||
-      !json::ParseAndValidateInt(root[kMaxBitRate], &(out->max_bit_rate)) ||
-      !json::ParseAndValidateMilliseconds(root[kMaxDelay], &(out->max_delay))) {
+bool AudioConstraints::TryParse(const Json::Value& root,
+                                AudioConstraints* out) {
+  if (!json::TryParseInt(root[kMaxSampleRate], &(out->max_sample_rate)) ||
+      !json::TryParseInt(root[kMaxChannels], &(out->max_channels)) ||
+      !json::TryParseInt(root[kMaxBitRate], &(out->max_bit_rate))) {
     return false;
   }
-  if (!json::ParseAndValidateInt(root[kMinBitRate], &(out->min_bit_rate))) {
+
+  std::chrono::milliseconds max_delay;
+  if (json::TryParseMilliseconds(root[kMaxDelay], &max_delay)) {
+    out->max_delay = max_delay;
+  }
+
+  if (!json::TryParseInt(root[kMinBitRate], &(out->min_bit_rate))) {
     out->min_bit_rate = kDefaultAudioMinBitRate;
   }
   return out->IsValid();
@@ -231,7 +214,9 @@ Json::Value AudioConstraints::ToJson() const {
   root[kMaxChannels] = max_channels;
   root[kMinBitRate] = min_bit_rate;
   root[kMaxBitRate] = max_bit_rate;
-  root[kMaxDelay] = Json::Value::Int64(max_delay.count());
+  if (max_delay.has_value()) {
+    root[kMaxDelay] = Json::Value::Int64(max_delay->count());
+  }
   return root;
 }
 
@@ -240,43 +225,27 @@ bool AudioConstraints::IsValid() const {
          max_bit_rate >= min_bit_rate;
 }
 
-bool Dimensions::ParseAndValidate(const Json::Value& root, Dimensions* out) {
-  if (!json::ParseAndValidateInt(root[kWidth], &(out->width)) ||
-      !json::ParseAndValidateInt(root[kHeight], &(out->height)) ||
-      !json::ParseAndValidateSimpleFraction(root[kFrameRate],
-                                            &(out->frame_rate))) {
-    return false;
-  }
-  return out->IsValid();
-}
-
-bool Dimensions::IsValid() const {
-  return width > 0 && height > 0 && frame_rate.is_positive();
-}
-
-Json::Value Dimensions::ToJson() const {
-  OSP_DCHECK(IsValid());
-  Json::Value root;
-  root[kWidth] = width;
-  root[kHeight] = height;
-  root[kFrameRate] = frame_rate.ToString();
-  return root;
-}
-
 // static
-bool VideoConstraints::ParseAndValidate(const Json::Value& root,
-                                        VideoConstraints* out) {
-  if (!json::ParseAndValidateDouble(root[kMaxPixelsPerSecond],
-                                    &(out->max_pixels_per_second)) ||
-      !Dimensions::ParseAndValidate(root[kMaxDimensions],
-                                    &(out->max_dimensions)) ||
-      !json::ParseAndValidateInt(root[kMaxBitRate], &(out->max_bit_rate)) ||
-      !json::ParseAndValidateMilliseconds(root[kMaxDelay], &(out->max_delay)) ||
-      !ParseOptional<Dimensions>(root[kMinDimensions],
-                                 &(out->min_dimensions))) {
+bool VideoConstraints::TryParse(const Json::Value& root,
+                                VideoConstraints* out) {
+  if (!Dimensions::TryParse(root[kMaxDimensions], &(out->max_dimensions)) ||
+      !json::TryParseInt(root[kMaxBitRate], &(out->max_bit_rate)) ||
+      !ParseOptional<Dimensions>(root[kMinResolution],
+                                 &(out->min_resolution))) {
     return false;
   }
-  if (!json::ParseAndValidateInt(root[kMinBitRate], &(out->min_bit_rate))) {
+
+  std::chrono::milliseconds max_delay;
+  if (json::TryParseMilliseconds(root[kMaxDelay], &max_delay)) {
+    out->max_delay = max_delay;
+  }
+
+  double max_pixels_per_second;
+  if (json::TryParseDouble(root[kMaxPixelsPerSecond], &max_pixels_per_second)) {
+    out->max_pixels_per_second = max_pixels_per_second;
+  }
+
+  if (!json::TryParseInt(root[kMinBitRate], &(out->min_bit_rate))) {
     out->min_bit_rate = kDefaultVideoMinBitRate;
   }
   return out->IsValid();
@@ -284,30 +253,37 @@ bool VideoConstraints::ParseAndValidate(const Json::Value& root,
 
 bool VideoConstraints::IsValid() const {
   return max_pixels_per_second > 0 && min_bit_rate > 0 &&
-         max_bit_rate > min_bit_rate && max_delay.count() > 0 &&
+         max_bit_rate > min_bit_rate &&
+         (!max_delay.has_value() || max_delay->count() > 0) &&
          max_dimensions.IsValid() &&
-         (!min_dimensions.has_value() || min_dimensions->IsValid()) &&
-         max_dimensions.frame_rate.numerator > 0;
+         (!min_resolution.has_value() || min_resolution->IsValid()) &&
+         max_dimensions.frame_rate.numerator() > 0;
 }
 
 Json::Value VideoConstraints::ToJson() const {
   OSP_DCHECK(IsValid());
   Json::Value root;
-  root[kMaxPixelsPerSecond] = max_pixels_per_second;
-  if (min_dimensions.has_value()) {
-    root[kMinDimensions] = min_dimensions->ToJson();
-  }
   root[kMaxDimensions] = max_dimensions.ToJson();
   root[kMinBitRate] = min_bit_rate;
   root[kMaxBitRate] = max_bit_rate;
-  root[kMaxDelay] = Json::Value::Int64(max_delay.count());
+  if (max_pixels_per_second.has_value()) {
+    root[kMaxPixelsPerSecond] = max_pixels_per_second.value();
+  }
+
+  if (min_resolution.has_value()) {
+    root[kMinResolution] = min_resolution->ToJson();
+  }
+
+  if (max_delay.has_value()) {
+    root[kMaxDelay] = Json::Value::Int64(max_delay->count());
+  }
   return root;
 }
 
 // static
-bool Constraints::ParseAndValidate(const Json::Value& root, Constraints* out) {
-  if (!AudioConstraints::ParseAndValidate(root[kAudio], &(out->audio)) ||
-      !VideoConstraints::ParseAndValidate(root[kVideo], &(out->video))) {
+bool Constraints::TryParse(const Json::Value& root, Constraints* out) {
+  if (!AudioConstraints::TryParse(root[kAudio], &(out->audio)) ||
+      !VideoConstraints::TryParse(root[kVideo], &(out->video))) {
     return false;
   }
   return out->IsValid();
@@ -326,15 +302,15 @@ Json::Value Constraints::ToJson() const {
 }
 
 // static
-bool DisplayDescription::ParseAndValidate(const Json::Value& root,
-                                          DisplayDescription* out) {
+bool DisplayDescription::TryParse(const Json::Value& root,
+                                  DisplayDescription* out) {
   if (!ParseOptional<Dimensions>(root[kDimensions], &(out->dimensions)) ||
       !ParseOptional<AspectRatio>(root[kAspectRatio], &(out->aspect_ratio))) {
     return false;
   }
 
   AspectRatioConstraint constraint;
-  if (AspectRatioConstraintParseAndValidate(root[kScaling], &constraint)) {
+  if (TryParseAspectRatioConstraint(root[kScaling], &constraint)) {
     out->aspect_ratio_constraint =
         absl::optional<AspectRatioConstraint>(std::move(constraint));
   } else {
@@ -350,9 +326,11 @@ bool DisplayDescription::IsValid() const {
   if (aspect_ratio.has_value() && !aspect_ratio->IsValid()) {
     return false;
   }
+
   if (dimensions.has_value() && !dimensions->IsValid()) {
     return false;
   }
+
   // Sender behavior is undefined if the aspect ratio is fixed but no
   // dimensions or aspect ratio are provided.
   if (aspect_ratio_constraint.has_value() &&
@@ -381,28 +359,21 @@ Json::Value DisplayDescription::ToJson() const {
   return root;
 }
 
-bool Answer::ParseAndValidate(const Json::Value& root, Answer* out) {
-  if (!json::ParseAndValidateInt(root[kUdpPort], &(out->udp_port)) ||
-      !json::ParseAndValidateIntArray(root[kSendIndexes],
-                                      &(out->send_indexes)) ||
-      !json::ParseAndValidateUintArray(root[kSsrcs], &(out->ssrcs)) ||
+bool Answer::TryParse(const Json::Value& root, Answer* out) {
+  if (!json::TryParseInt(root[kUdpPort], &(out->udp_port)) ||
+      !json::TryParseIntArray(root[kSendIndexes], &(out->send_indexes)) ||
+      !json::TryParseUintArray(root[kSsrcs], &(out->ssrcs)) ||
       !ParseOptional<Constraints>(root[kConstraints], &(out->constraints)) ||
       !ParseOptional<DisplayDescription>(root[kDisplay], &(out->display))) {
     return false;
   }
-  if (!json::ParseBool(root[kReceiverGetStatus],
-                       &(out->supports_wifi_status_reporting))) {
-    out->supports_wifi_status_reporting = false;
-  }
 
   // These function set to empty array if not present, so we can ignore
   // the return value for optional values.
-  json::ParseAndValidateIntArray(root[kReceiverRtcpEventLog],
-                                 &(out->receiver_rtcp_event_log));
-  json::ParseAndValidateIntArray(root[kReceiverRtcpDscp],
-                                 &(out->receiver_rtcp_dscp));
-  json::ParseAndValidateStringArray(root[kRtpExtensions],
-                                    &(out->rtp_extensions));
+  json::TryParseIntArray(root[kReceiverRtcpEventLog],
+                         &(out->receiver_rtcp_event_log));
+  json::TryParseIntArray(root[kReceiverRtcpDscp], &(out->receiver_rtcp_dscp));
+  json::TryParseStringArray(root[kRtpExtensions], &(out->rtp_extensions));
 
   return out->IsValid();
 }
@@ -438,7 +409,6 @@ Json::Value Answer::ToJson() const {
     root[kDisplay] = display->ToJson();
   }
   root[kUdpPort] = udp_port;
-  root[kReceiverGetStatus] = supports_wifi_status_reporting;
   root[kSendIndexes] = PrimitiveVectorToJson(send_indexes);
   root[kSsrcs] = PrimitiveVectorToJson(ssrcs);
   // Some sender do not handle empty array properly, so we omit these fields

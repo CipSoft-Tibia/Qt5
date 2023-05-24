@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QAtomicInt>
 #include <QCoreApplication>
@@ -85,7 +60,7 @@ private:
 };
 
 template <int I>
-static inline void assemblyMarker(void *ptr = 0)
+static inline void assemblyMarker(void *ptr = nullptr)
 {
     puts((char *)ptr + I);
 }
@@ -154,17 +129,11 @@ template <bool> inline void booleanHelper()
 template <typename Atomic>
 static void constexprFunctionsHelperTemplate()
 {
-#ifdef Q_COMPILER_CONSTEXPR
     // this is a compile-time test only
-    booleanHelper<Atomic::isReferenceCountingNative()>();
     booleanHelper<Atomic::isReferenceCountingWaitFree()>();
-    booleanHelper<Atomic::isTestAndSetNative()>();
     booleanHelper<Atomic::isTestAndSetWaitFree()>();
-    booleanHelper<Atomic::isFetchAndStoreNative()>();
     booleanHelper<Atomic::isFetchAndStoreWaitFree()>();
-    booleanHelper<Atomic::isFetchAndAddNative()>();
     booleanHelper<Atomic::isFetchAndAddWaitFree()>();
-#endif
 }
 
 void tst_QAtomicInt::warningFreeHelper()
@@ -177,10 +146,8 @@ void tst_QAtomicInt::warningFreeHelper()
     warningFreeHelperTemplate<unsigned int, QBasicAtomicInteger<unsigned int> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<int> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<unsigned int> >();
-# ifdef Q_COMPILER_UNICODE_STRINGS
     warningFreeHelperTemplate<qint16, QBasicAtomicInteger<char32_t> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<char32_t> >();
-# endif
 
     // pointer-sized integers are always supported:
     warningFreeHelperTemplate<int, QBasicAtomicInteger<qptrdiff> >();
@@ -194,25 +161,19 @@ void tst_QAtomicInt::warningFreeHelper()
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<long int> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<unsigned long int> >();
 
-#ifdef Q_ATOMIC_INT16_IS_SUPPORTED
     warningFreeHelperTemplate<qint16, QBasicAtomicInteger<qint16> >();
     warningFreeHelperTemplate<quint16, QBasicAtomicInteger<quint16> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<qint16> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<quint16> >();
-# ifdef Q_COMPILER_UNICODE_STRINGS
     warningFreeHelperTemplate<qint16, QBasicAtomicInteger<char16_t> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<char16_t> >();
-# endif
-#endif
 
-#ifdef Q_ATOMIC_INT8_IS_SUPPORTED
     warningFreeHelperTemplate<char, QBasicAtomicInteger<char> >();
     warningFreeHelperTemplate<signed char, QBasicAtomicInteger<signed char> >();
     warningFreeHelperTemplate<unsigned char, QBasicAtomicInteger<unsigned char> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<char> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<signed char> >();
     constexprFunctionsHelperTemplate<QBasicAtomicInteger<unsigned char> >();
-#endif
 
 #ifdef Q_ATOMIC_INT64_IS_SUPPORTED
 #if !defined(__i386__) || (defined(Q_CC_GNU) && defined(__OPTIMIZE__))
@@ -237,28 +198,16 @@ template <typename T> struct TypeInStruct { T type; };
 
 void tst_QAtomicInt::alignment()
 {
-#ifdef Q_ALIGNOF
-    // this will cause a build error if the alignment isn't the same
-    char dummy1[Q_ALIGNOF(QBasicAtomicInt) == Q_ALIGNOF(TypeInStruct<int>) ? 1 : -1];
-    char dummy2[Q_ALIGNOF(QAtomicInt) == Q_ALIGNOF(TypeInStruct<int>) ? 1 : -1];
-    (void)dummy1; (void)dummy2;
+    static_assert(alignof(QBasicAtomicInt) == alignof(TypeInStruct<int>));
+    static_assert(alignof(QBasicAtomicInt) == alignof(TypeInStruct<int>));
 
-#ifdef Q_ATOMIC_INT32_IS_SUPPORTED
-    QCOMPARE(Q_ALIGNOF(QBasicAtomicInteger<int>), Q_ALIGNOF(TypeInStruct<int>));
-#endif
+    QCOMPARE(alignof(QBasicAtomicInteger<int>), alignof(TypeInStruct<int>));
+    QCOMPARE(alignof(QBasicAtomicInteger<short>), alignof(TypeInStruct<short>));
+    QCOMPARE(alignof(QBasicAtomicInteger<char>), alignof(TypeInStruct<char>));
 
-#ifdef Q_ATOMIC_INT16_IS_SUPPORTED
-    QCOMPARE(Q_ALIGNOF(QBasicAtomicInteger<short>), Q_ALIGNOF(TypeInStruct<short>));
-#endif
-
-#ifdef Q_ATOMIC_INT8_IS_SUPPORTED
-    QCOMPARE(Q_ALIGNOF(QBasicAtomicInteger<char>), Q_ALIGNOF(TypeInStruct<char>));
-#endif
-
-#ifdef Q_ATOMIC_INT64_IS_SUPPORTED
-    QCOMPARE(Q_ALIGNOF(QBasicAtomicInteger<qlonglong>), Q_ALIGNOF(TypeInStruct<qlonglong>));
-#endif
-
+#if !defined(Q_PROCESSOR_X86_32) && defined(Q_ATOMIC_INT64_IS_SUPPORTED)
+    // The alignment is different on x86_32
+    QCOMPARE(alignof(QBasicAtomicInteger<qlonglong>), alignof(TypeInStruct<qlonglong>));
 #endif
 }
 
@@ -532,7 +481,6 @@ void tst_QAtomicInt::testAndSet()
         QTEST(atomic.testAndSetOrdered(expected, newval), "result");
     }
 
-#ifdef Q_ATOMIC_INT32_IS_SUPPORTED
     QFETCH(bool, result);
     // the new implementation has the version that loads the current value
 
@@ -567,7 +515,6 @@ void tst_QAtomicInt::testAndSet()
         if (!result)
             QCOMPARE(currentval, value);
     }
-#endif
 }
 
 void tst_QAtomicInt::isFetchAndStoreNative()
@@ -729,7 +676,6 @@ void tst_QAtomicInt::fetchAndAdd_data()
     QTest::newRow("7272+2181") << 7272 << 2181;
 
     QTest::newRow("0+-1") << 0 << -1;
-    QTest::newRow("1+0") << 1 << 0;
     QTest::newRow("1+-2") << 1 << -2;
     QTest::newRow("2+-1") << 2 << -1;
     QTest::newRow("10+-21") << 10 << -21;
@@ -745,7 +691,6 @@ void tst_QAtomicInt::fetchAndAdd_data()
     QTest::newRow("5451+-4362") << 5451 << -4362;
     QTest::newRow("7272+-2181") << 7272 << -2181;
 
-    QTest::newRow("0+1") << 0 << 1;
     QTest::newRow("-1+0") << -1 << 0;
     QTest::newRow("-1+2") << -1 << 2;
     QTest::newRow("-2+1") << -2 << 1;
@@ -845,9 +790,12 @@ void tst_QAtomicInt::operators()
     QCOMPARE(int(atomic), x);
     QCOMPARE(int(atomic), 0x13);
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wself-assign-overloaded")
     x = (atomic ^= atomic);
     QCOMPARE(int(atomic), x);
     QCOMPARE(int(atomic), 0);
+QT_WARNING_POP
 }
 
 void tst_QAtomicInt::testAndSet_loop()
@@ -889,7 +837,7 @@ void tst_QAtomicInt::fetchAndAdd_loop()
 class FetchAndAddThread : public QThread
 {
 public:
-    void run()
+    void run() override
     {
 
         for (int i = 0; i < iterations; ++i)

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/message_loop/message_pump_type.h"
 #include "base/no_destructor.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
 
 namespace net {
@@ -14,6 +15,9 @@ namespace {
 
 class NotificationThreadMac {
  public:
+  NotificationThreadMac(const NotificationThreadMac&) = delete;
+  NotificationThreadMac& operator=(const NotificationThreadMac&) = delete;
+
   scoped_refptr<base::SingleThreadTaskRunner> task_runner() const {
     return task_runner_;
   }
@@ -25,7 +29,7 @@ class NotificationThreadMac {
     base::Thread::Options options;
     options.message_pump_type = base::MessagePumpType::UI;
     options.joinable = false;
-    thread_.StartWithOptions(options);
+    thread_.StartWithOptions(std::move(options));
     task_runner_ = thread_.task_runner();
     thread_.DetachFromSequence();
   }
@@ -38,8 +42,6 @@ class NotificationThreadMac {
 
   // Saved TaskRunner handle that can be accessed from any thread.
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(NotificationThreadMac);
 };
 
 }  // namespace

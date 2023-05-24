@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -87,7 +87,7 @@ enum class HistogramCategories {
   PHYSICAL_WEB_PAGES_DEPRECATED,
   FOREIGN_TABS_DEPRECATED,
   ARTICLES,
-  READING_LIST,
+  READING_LIST_DEPRECATED,
   CONTEXTUAL,
   // Insert new values here!
   COUNT
@@ -106,8 +106,8 @@ HistogramCategories GetHistogramCategory(Category category) {
   switch (known_category) {
     case KnownCategories::ARTICLES:
       return HistogramCategories::ARTICLES;
-    case KnownCategories::READING_LIST:
-      return HistogramCategories::READING_LIST;
+    case KnownCategories::READING_LIST_DEPRECATED:
+      return HistogramCategories::READING_LIST_DEPRECATED;
     case KnownCategories::BOOKMARKS_DEPRECATED:
       return HistogramCategories::BOOKMARKS_DEPRECATED;
     case KnownCategories::DOWNLOADS_DEPRECATED:
@@ -134,7 +134,7 @@ std::string GetCategorySuffix(Category category) {
       return "Articles";
     case HistogramCategories::EXPERIMENTAL:
       return "Experimental";
-    case HistogramCategories::READING_LIST:
+    case HistogramCategories::READING_LIST_DEPRECATED:
       return "ReadingList";
     case HistogramCategories::CONTEXTUAL:
       return "Contextual";
@@ -159,7 +159,7 @@ std::string GetCategoryHistogramName(const char* base_name, Category category) {
 // for the age of suggestions) for use with dynamic histogram names.
 void UmaHistogramAge(const std::string& name, const base::TimeDelta& value) {
   base::Histogram::FactoryTimeGet(
-      name, base::TimeDelta::FromSeconds(1), base::TimeDelta::FromDays(7), 100,
+      name, base::Seconds(1), base::Days(7), 100,
       base::HistogramBase::kUmaTargetedHistogramFlag)
       ->AddTime(value);
 }
@@ -259,10 +259,10 @@ void OnSuggestionShown(int global_position,
 
   if (category.IsKnownCategory(KnownCategories::ARTICLES)) {
     // Records the time since the fetch time of the displayed snippet.
-    UMA_HISTOGRAM_CUSTOM_TIMES(
-        kHistogramTimeSinceSuggestionFetched, base::Time::Now() - fetch_date,
-        base::TimeDelta::FromSeconds(1), base::TimeDelta::FromDays(7),
-        /*bucket_count=*/100);
+    UMA_HISTOGRAM_CUSTOM_TIMES(kHistogramTimeSinceSuggestionFetched,
+                               base::Time::Now() - fetch_date, base::Seconds(1),
+                               base::Days(7),
+                               /*bucket_count=*/100);
   }
 
   // TODO(markusheintz): Discuss whether the code below should be moved into a

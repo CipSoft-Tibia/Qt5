@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,23 @@
 #include <utility>
 
 #include "build/build_config.h"
+#include "cc/paint/paint_op.h"
 #include "cc/paint/paint_record.h"
 #include "printing/common/metafile_utils.h"
 #include "printing/mojom/print.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkPaint.h"
+#include "third_party/skia/include/core/SkPicture.h"
 #include "third_party/skia/include/core/SkPictureRecorder.h"
+#include "third_party/skia/include/core/SkRect.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkSerialProcs.h"
+#include "third_party/skia/include/core/SkSize.h"
+#include "third_party/skia/include/core/SkStream.h"
+#include "third_party/skia/include/core/SkSurfaceProps.h"
+#include "third_party/skia/include/core/SkTextBlob.h"
 
 namespace printing {
 
@@ -25,18 +37,18 @@ TEST(MetafileSkiaTest, TestFrameContent) {
 
   // Create the page with nested content which is the placeholder and will be
   // replaced later.
-  sk_sp<cc::PaintRecord> record = sk_make_sp<cc::PaintRecord>();
+  cc::PaintOpBuffer buffer;
   cc::PaintFlags flags;
   flags.setColor(SK_ColorWHITE);
   const SkRect page_rect = SkRect::MakeXYWH(0, 0, kPageSideLen, kPageSideLen);
-  record->push<cc::DrawRectOp>(page_rect, flags);
+  buffer.push<cc::DrawRectOp>(page_rect, flags);
   const uint32_t content_id = pic_holder->uniqueID();
-  record->push<cc::CustomDataOp>(content_id);
+  buffer.push<cc::CustomDataOp>(content_id);
   SkSize page_size = SkSize::Make(kPageSideLen, kPageSideLen);
 
   // Finish creating the entire metafile.
   MetafileSkia metafile(mojom::SkiaDocumentType::kMSKP, 1);
-  metafile.AppendPage(page_size, std::move(record));
+  metafile.AppendPage(page_size, buffer.ReleaseAsRecord());
   metafile.AppendSubframeInfo(content_id, base::UnguessableToken::Create(),
                               std::move(pic_holder));
   metafile.FinishFrameContent();
@@ -68,7 +80,7 @@ TEST(MetafileSkiaTest, TestFrameContent) {
   EXPECT_TRUE(pic->cullRect() == page_rect);
   SkBitmap bitmap;
   bitmap.allocN32Pixels(kPageSideLen, kPageSideLen);
-  SkCanvas bitmap_canvas(bitmap);
+  SkCanvas bitmap_canvas(bitmap, SkSurfaceProps{});
   pic->playback(&bitmap_canvas);
   // Check top left pixel color of the red square.
   EXPECT_EQ(bitmap.getColor(0, 0), SK_ColorRED);
@@ -96,7 +108,7 @@ TEST(MetafileSkiaTest, TestMultiPictureDocumentTypefaces) {
 
   // The typefaces which will be reused across the multiple (duplicate) pages.
   constexpr char kTypefaceName1[] = "sans-serif";
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   constexpr char kTypefaceName2[] = "Courier New";
 #else
   constexpr char kTypefaceName2[] = "monospace";
@@ -128,7 +140,7 @@ TEST(MetafileSkiaTest, TestMultiPictureDocumentTypefaces) {
     // When the stream is serialized inside FinishFrameContent(), any typeface
     // which is used on any page will be serialized only once by the first
     // page's metafile which needed it.  Any subsequent page that reuses the
-    // same typeface will rely upon |serialize_typeface_ctx| which is used by
+    // same typeface will rely upon `serialize_typeface_ctx` which is used by
     // printing::SerializeOopTypeface() to optimize away the need to resend.
     metafile.UtilizeTypefaceContext(&serialize_typeface_ctx);
 
@@ -136,25 +148,28 @@ TEST(MetafileSkiaTest, TestMultiPictureDocumentTypefaces) {
         SkRect::MakeXYWH(0, 0, kPictureSideLen, kPictureSideLen));
 
     // Create the page for the text content.
-    sk_sp<cc::PaintRecord> record = sk_make_sp<cc::PaintRecord>();
-    record->push<cc::DrawRectOp>(page_rect, flags);
+    cc::PaintOpBuffer buffer;
+    buffer.push<cc::DrawRectOp>(page_rect, flags);
     const uint32_t content_id = pic_holder->uniqueID();
-    record->push<cc::CustomDataOp>(content_id);
+    buffer.push<cc::CustomDataOp>(content_id);
 
     // Mark the page with some text using multiple fonts.
     // Use the first font.
     sk_sp<SkTextBlob> text_blob1 = SkTextBlob::MakeFromString("foo", font1);
-    record->push<cc::DrawTextBlobOp>(text_blob1, 0, 0, ++node_id, flags_text);
+    buffer.push<cc::DrawTextBlobOp>(text_blob1, 0.0f, 0.0f, ++node_id,
+                                    flags_text);
 
     // Use the second font.
     sk_sp<SkTextBlob> text_blob2 = SkTextBlob::MakeFromString("bar", font2);
-    record->push<cc::DrawTextBlobOp>(text_blob2, 0, 0, ++node_id, flags_text);
+    buffer.push<cc::DrawTextBlobOp>(text_blob2, 0.0f, 0.0f, ++node_id,
+                                    flags_text);
 
     // Reuse the first font again on same page.
     sk_sp<SkTextBlob> text_blob3 = SkTextBlob::MakeFromString("bar", font2);
-    record->push<cc::DrawTextBlobOp>(text_blob3, 0, 0, ++node_id, flags_text);
+    buffer.push<cc::DrawTextBlobOp>(text_blob3, 0.0f, 0.0f, ++node_id,
+                                    flags_text);
 
-    metafile.AppendPage(page_size, std::move(record));
+    metafile.AppendPage(page_size, buffer.ReleaseAsRecord());
     metafile.AppendSubframeInfo(content_id, base::UnguessableToken::Create(),
                                 std::move(pic_holder));
     metafile.FinishFrameContent();
@@ -162,8 +177,8 @@ TEST(MetafileSkiaTest, TestMultiPictureDocumentTypefaces) {
     ASSERT_TRUE(metafile_stream);
 
     // Deserialize the stream.  Any given typeface is expected to appear only
-    // once in the stream, so the deserialization context of |typefaces| bundled
-    // with |procs| should be empty the first time through, and afterwards
+    // once in the stream, so the deserialization context of `typefaces` bundled
+    // with `procs` should be empty the first time through, and afterwards
     // there should never be more than the number of unique typefaces we used,
     // regardless of number of pages.
     EXPECT_EQ(typefaces.size(), i ? kNumTypefaces : 0);

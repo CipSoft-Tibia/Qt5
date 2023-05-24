@@ -4,5 +4,8 @@ TEMPLATE = subdirs
 !integrity:!android|android_app:!wasm:!cross_compile {
     SUBDIRS = \
         balsam \
-        meshdebug
+        meshdebug \
+        shadergen \
+        instancer \
+        shapegen
 }

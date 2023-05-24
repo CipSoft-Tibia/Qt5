@@ -1,11 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/gpu/vaapi/vaapi_dmabuf_video_frame_mapper.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include <sys/mman.h>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "build/build_config.h"
 #include "media/base/color_plane_layout.h"
@@ -97,13 +99,17 @@ scoped_refptr<VideoFrame> CreateMappedVideoFrame(
   std::vector<std::unique_ptr<uint16_t[]>> p016le_buffers(kNumPlanes);
   if (src_video_frame->format() == PIXEL_FORMAT_P016LE) {
     for (size_t i = 0; i < kNumPlanes; i++) {
-      const gfx::Size plane_size = VideoFrame::PlaneSize(
+      const gfx::Size plane_dimensions_in_bytes = VideoFrame::PlaneSize(
           PIXEL_FORMAT_P016LE, i, src_video_frame->visible_rect().size());
+      const gfx::Size plane_dimensions_in_16bit_words(
+          plane_dimensions_in_bytes.width() / 2,
+          plane_dimensions_in_bytes.height());
       p016le_buffers[i] = std::make_unique<uint16_t[]>(planes[i].size / 2);
       ConvertP010ToP016LE(reinterpret_cast<const uint16_t*>(addrs[i]),
                           planes[i].stride, p016le_buffers[i].get(),
-                          planes[i].stride, plane_size.width(),
-                          plane_size.height());
+                          planes[i].stride,
+                          plane_dimensions_in_16bit_words.width(),
+                          plane_dimensions_in_16bit_words.height());
       addrs[i] = reinterpret_cast<uint8_t*>(p016le_buffers[i].get());
     }
   }
@@ -129,8 +135,7 @@ scoped_refptr<VideoFrame> CreateMappedVideoFrame(
       DeallocateBuffers, std::move(va_image), std::move(src_video_frame)));
   for (auto&& buffer : p016le_buffers) {
     video_frame->AddDestructionObserver(
-        base::BindOnce(base::DoNothing::Once<std::unique_ptr<uint16_t[]>>(),
-                       std::move(buffer)));
+        base::DoNothingWithBoundArgs(std::move(buffer)));
   }
   return video_frame;
 }
@@ -162,15 +167,22 @@ VaapiDmaBufVideoFrameMapper::VaapiDmaBufVideoFrameMapper(
     : VideoFrameMapper(format),
       vaapi_wrapper_(VaapiWrapper::Create(VaapiWrapper::kVideoProcess,
                                           VAProfileNone,
+                                          EncryptionScheme::kUnencrypted,
                                           base::DoNothing())) {}
 
 VaapiDmaBufVideoFrameMapper::~VaapiDmaBufVideoFrameMapper() {}
 
 scoped_refptr<VideoFrame> VaapiDmaBufVideoFrameMapper::Map(
-    scoped_refptr<const VideoFrame> video_frame) const {
+    scoped_refptr<const VideoFrame> video_frame,
+    int permissions) const {
   DCHECK(vaapi_wrapper_);
   if (!video_frame) {
     LOG(ERROR) << "Video frame is nullptr";
+    return nullptr;
+  }
+
+  if (!(permissions & PROT_READ)) {
+    LOG(ERROR) << "VAAPI DMA Buffer must be mapped with read permissions.";
     return nullptr;
   }
 

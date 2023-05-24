@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,19 +6,19 @@
 #define UI_VIEWS_CONTROLS_TABBED_PANE_TABBED_PANE_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/gfx/animation/animation_delegate.h"
 #include "ui/gfx/animation/linear_animation.h"
+#include "ui/views/metadata/view_factory.h"
 #include "ui/views/view.h"
 
 namespace views {
 
 class Label;
-class Tab;
+class TabbedPaneTab;
 class TabbedPaneListener;
 class TabStrip;
 
@@ -48,7 +48,12 @@ class VIEWS_EXPORT TabbedPane : public View {
   };
 
   explicit TabbedPane(Orientation orientation = Orientation::kHorizontal,
-                      TabStripStyle style = TabStripStyle::kBorder);
+                      TabStripStyle style = TabStripStyle::kBorder,
+                      bool scrollable = false);
+
+  TabbedPane(const TabbedPane&) = delete;
+  TabbedPane& operator=(const TabbedPane&) = delete;
+
   ~TabbedPane() override;
 
   TabbedPaneListener* listener() const { return listener_; }
@@ -59,13 +64,13 @@ class VIEWS_EXPORT TabbedPane : public View {
   size_t GetSelectedTabIndex() const;
 
   // Returns the number of tabs.
-  size_t GetTabCount();
+  size_t GetTabCount() const;
 
   // Adds a new tab at the end of this TabbedPane with the specified |title|.
   // |contents| is the view displayed when the tab is selected and is owned by
   // the TabbedPane.
   template <typename T>
-  T* AddTab(const base::string16& title, std::unique_ptr<T> contents) {
+  T* AddTab(const std::u16string& title, std::unique_ptr<T> contents) {
     return AddTabAtIndex(GetTabCount(), title, std::move(contents));
   }
 
@@ -74,7 +79,7 @@ class VIEWS_EXPORT TabbedPane : public View {
   // is currently empty, the new tab is selected.
   template <typename T>
   T* AddTabAtIndex(size_t index,
-                   const base::string16& title,
+                   const std::u16string& title,
                    std::unique_ptr<T> contents) {
     T* result = contents.get();
     AddTabInternal(index, title, std::move(contents));
@@ -85,7 +90,10 @@ class VIEWS_EXPORT TabbedPane : public View {
   void SelectTabAt(size_t index, bool animate = true);
 
   // Selects |tab| (the tabstrip view, not its content) if it is valid.
-  void SelectTab(Tab* tab, bool animate = true);
+  void SelectTab(TabbedPaneTab* tab, bool animate = true);
+
+  // Gets the scroll view containing the tab strip, if it exists
+  ScrollView* GetScrollView();
 
   // Gets the orientation of the tab alignment.
   Orientation GetOrientation() const;
@@ -94,11 +102,11 @@ class VIEWS_EXPORT TabbedPane : public View {
   TabStripStyle GetStyle() const;
 
   // Returns the tab at the given index.
-  Tab* GetTabAt(size_t index);
+  TabbedPaneTab* GetTabAt(size_t index);
 
  private:
   friend class FocusTraversalTest;
-  friend class Tab;
+  friend class TabbedPaneTab;
   friend class TabStrip;
   friend class test::TabbedPaneWithWidgetTest;
   friend class test::TabbedPaneAccessibilityMacTest;
@@ -107,13 +115,14 @@ class VIEWS_EXPORT TabbedPane : public View {
   // when the tab is selected and is owned by the TabbedPane. If the tabbed pane
   // is currently empty, the new tab is selected.
   void AddTabInternal(size_t index,
-                      const base::string16& title,
+                      const std::u16string& title,
                       std::unique_ptr<View> contents);
 
-  // Get the Tab (the tabstrip view, not its content) at the selected index.
-  Tab* GetSelectedTab();
+  // Get the TabbedPaneTab (the tabstrip view, not its content) at the selected
+  // index.
+  TabbedPaneTab* GetSelectedTab();
 
-  // Returns the content View of the currently selected Tab.
+  // Returns the content View of the currently selected TabbedPaneTab.
   View* GetSelectedTabContentView();
 
   // Moves the selection by |delta| tabs, where negative delta means leftwards
@@ -127,31 +136,39 @@ class VIEWS_EXPORT TabbedPane : public View {
   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
 
   // A listener notified when tab selection changes. Weak, not owned.
-  TabbedPaneListener* listener_ = nullptr;
+  raw_ptr<TabbedPaneListener> listener_ = nullptr;
 
   // The tab strip and contents container. The child indices of these members
-  // correspond to match each Tab with its respective content View.
-  TabStrip* tab_strip_ = nullptr;
-  View* contents_ = nullptr;
+  // correspond to match each TabbedPaneTab with its respective content View.
+  raw_ptr<TabStrip> tab_strip_ = nullptr;
+  raw_ptr<View> contents_ = nullptr;
 
-  DISALLOW_COPY_AND_ASSIGN(TabbedPane);
+  // The scroll view containing the tab strip, if |scrollable| is specified on
+  // creation.
+  raw_ptr<ScrollView> scroll_view_ = nullptr;
 };
 
 // The tab view shown in the tab strip.
-class VIEWS_EXPORT Tab : public View {
+class VIEWS_EXPORT TabbedPaneTab : public View {
  public:
-  METADATA_HEADER(Tab);
+  METADATA_HEADER(TabbedPaneTab);
 
-  Tab(TabbedPane* tabbed_pane, const base::string16& title, View* contents);
-  ~Tab() override;
+  TabbedPaneTab(TabbedPane* tabbed_pane,
+                const std::u16string& title,
+                View* contents);
+
+  TabbedPaneTab(const TabbedPaneTab&) = delete;
+  TabbedPaneTab& operator=(const TabbedPaneTab&) = delete;
+
+  ~TabbedPaneTab() override;
 
   View* contents() const { return contents_; }
 
   bool selected() const { return contents_->GetVisible(); }
   void SetSelected(bool selected);
 
-  const base::string16& GetTitleText() const;
-  void SetTitleText(const base::string16& text);
+  const std::u16string& GetTitleText() const;
+  void SetTitleText(const std::u16string& text);
 
   // Overridden from View:
   bool OnMousePressed(const ui::MouseEvent& event) override;
@@ -164,6 +181,7 @@ class VIEWS_EXPORT Tab : public View {
   void OnFocus() override;
   void OnBlur() override;
   bool OnKeyPressed(const ui::KeyEvent& event) override;
+  void OnThemeChanged() override;
 
  private:
   enum class State {
@@ -181,15 +199,14 @@ class VIEWS_EXPORT Tab : public View {
   void OnPaint(gfx::Canvas* canvas) override;
 
   void UpdatePreferredTitleWidth();
+  void UpdateTitleColor();
 
-  TabbedPane* tabbed_pane_;
-  Label* title_ = nullptr;
+  raw_ptr<TabbedPane> tabbed_pane_;
+  raw_ptr<Label> title_ = nullptr;
   int preferred_title_width_;
   State state_ = State::kActive;
   // The content view associated with this tab.
-  View* contents_;
-
-  DISALLOW_COPY_AND_ASSIGN(Tab);
+  raw_ptr<View> contents_;
 };
 
 // The tab strip shown above/left of the tab contents.
@@ -198,10 +215,14 @@ class TabStrip : public View, public gfx::AnimationDelegate {
   METADATA_HEADER(TabStrip);
 
   // The return value of GetSelectedTabIndex() when no tab is selected.
-  static constexpr size_t kNoSelectedTab = size_t{-1};
+  static constexpr size_t kNoSelectedTab = static_cast<size_t>(-1);
 
   TabStrip(TabbedPane::Orientation orientation,
            TabbedPane::TabStripStyle style);
+
+  TabStrip(const TabStrip&) = delete;
+  TabStrip& operator=(const TabStrip&) = delete;
+
   ~TabStrip() override;
 
   // AnimationDelegate:
@@ -211,11 +232,13 @@ class TabStrip : public View, public gfx::AnimationDelegate {
   // Called by TabStrip when the selected tab changes. This function is only
   // called if |from_tab| is not null, i.e., there was a previously selected
   // tab.
-  void OnSelectedTabChanged(Tab* from_tab, Tab* to_tab, bool animate = true);
+  void OnSelectedTabChanged(TabbedPaneTab* from_tab,
+                            TabbedPaneTab* to_tab,
+                            bool animate = true);
 
-  Tab* GetSelectedTab() const;
-  Tab* GetTabAtDeltaFromSelected(int delta) const;
-  Tab* GetTabAtIndex(size_t index) const;
+  TabbedPaneTab* GetSelectedTab() const;
+  TabbedPaneTab* GetTabAtDeltaFromSelected(int delta) const;
+  TabbedPaneTab* GetTabAtIndex(size_t index) const;
   size_t GetSelectedTabIndex() const;
 
   TabbedPane::Orientation GetOrientation() const;
@@ -228,6 +251,10 @@ class TabStrip : public View, public gfx::AnimationDelegate {
   void OnPaintBorder(gfx::Canvas* canvas) override;
 
  private:
+  struct Coordinates {
+    int start, end;
+  };
+
   // The orientation of the tab alignment.
   const TabbedPane::Orientation orientation_;
 
@@ -245,12 +272,19 @@ class TabStrip : public View, public gfx::AnimationDelegate {
       std::make_unique<gfx::LinearAnimation>(this);
 
   // The x-coordinate ranges of the old selection and the new selection.
-  gfx::Range animating_from_;
-  gfx::Range animating_to_;
-
-  DISALLOW_COPY_AND_ASSIGN(TabStrip);
+  Coordinates animating_from_;
+  Coordinates animating_to_;
 };
 
+BEGIN_VIEW_BUILDER(VIEWS_EXPORT, TabbedPane, View)
+VIEW_BUILDER_METHOD_ALIAS(AddTab,
+                          AddTab<View>,
+                          const std::u16string&,
+                          std::unique_ptr<View>)
+END_VIEW_BUILDER
+
 }  // namespace views
+
+DEFINE_VIEW_BUILDER(VIEWS_EXPORT, TabbedPane)
 
 #endif  // UI_VIEWS_CONTROLS_TABBED_PANE_TABBED_PANE_H_

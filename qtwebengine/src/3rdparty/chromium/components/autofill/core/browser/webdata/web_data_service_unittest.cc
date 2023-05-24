@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,21 +6,18 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/macros.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/ref_counted.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/synchronization/waitable_event.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "components/autofill/core/browser/data_model/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
@@ -42,7 +39,6 @@
 
 using base::ASCIIToUTF16;
 using base::Time;
-using base::TimeDelta;
 using base::WaitableEvent;
 using testing::_;
 using testing::DoDefault;
@@ -55,6 +51,12 @@ template <class T>
 class AutofillWebDataServiceConsumer : public WebDataServiceConsumer {
  public:
   AutofillWebDataServiceConsumer() : handle_(0) {}
+
+  AutofillWebDataServiceConsumer(const AutofillWebDataServiceConsumer&) =
+      delete;
+  AutofillWebDataServiceConsumer& operator=(
+      const AutofillWebDataServiceConsumer&) = delete;
+
   virtual ~AutofillWebDataServiceConsumer() {}
 
   virtual void OnWebDataServiceRequestDone(
@@ -70,7 +72,6 @@ class AutofillWebDataServiceConsumer : public WebDataServiceConsumer {
  private:
   WebDataServiceBase::Handle handle_;
   T result_;
-  DISALLOW_COPY_AND_ASSIGN(AutofillWebDataServiceConsumer);
 };
 
 const int kWebDataServiceTimeoutSeconds = 8;
@@ -86,9 +87,14 @@ ACTION_P(SignalEvent, event) {
 class MockAutofillWebDataServiceObserver
     : public AutofillWebDataServiceObserverOnDBSequence {
  public:
-  MOCK_METHOD1(AutofillEntriesChanged, void(const AutofillChangeList& changes));
-  MOCK_METHOD1(AutofillProfileChanged,
-               void(const AutofillProfileChange& change));
+  MOCK_METHOD(void,
+              AutofillEntriesChanged,
+              (const AutofillChangeList& changes),
+              (override));
+  MOCK_METHOD(void,
+              AutofillProfileChanged,
+              (const AutofillProfileChange& change),
+              (override));
 };
 
 class WebDataServiceTest : public testing::Test {
@@ -107,13 +113,15 @@ class WebDataServiceTest : public testing::Test {
     // should each use their own sequences instead of sharing this one.
     auto db_task_runner =
         base::ThreadPool::CreateSingleThreadTaskRunner({base::MayBlock()});
-    wdbs_ = new WebDatabaseService(path, base::ThreadTaskRunnerHandle::Get(),
-                                   db_task_runner);
+    wdbs_ = new WebDatabaseService(
+        path, base::SingleThreadTaskRunner::GetCurrentDefault(),
+        db_task_runner);
     wdbs_->AddTable(std::make_unique<AutofillTable>());
     wdbs_->LoadDatabase();
 
     wds_ = new AutofillWebDataService(
-        wdbs_, base::ThreadTaskRunnerHandle::Get(), db_task_runner);
+        wdbs_, base::SingleThreadTaskRunner::GetCurrentDefault(),
+        db_task_runner);
     wds_->Init(base::NullCallback());
   }
 
@@ -137,17 +145,17 @@ class WebDataServiceAutofillTest : public WebDataServiceTest {
   WebDataServiceAutofillTest()
       : unique_id1_(1),
         unique_id2_(2),
-        test_timeout_(TimeDelta::FromSeconds(kWebDataServiceTimeoutSeconds)),
+        test_timeout_(base::Seconds(kWebDataServiceTimeoutSeconds)),
         done_event_(base::WaitableEvent::ResetPolicy::AUTOMATIC,
                     base::WaitableEvent::InitialState::NOT_SIGNALED) {}
 
  protected:
   void SetUp() override {
     WebDataServiceTest::SetUp();
-    name1_ = ASCIIToUTF16("name1");
-    name2_ = ASCIIToUTF16("name2");
-    value1_ = ASCIIToUTF16("value1");
-    value2_ = ASCIIToUTF16("value2");
+    name1_ = u"name1";
+    name2_ = u"name2";
+    value1_ = u"value1";
+    value2_ = u"value2";
 
     void (AutofillWebDataService::*add_observer_func)(
         AutofillWebDataServiceObserverOnDBSequence*) =
@@ -167,8 +175,8 @@ class WebDataServiceAutofillTest : public WebDataServiceTest {
     WebDataServiceTest::TearDown();
   }
 
-  void AppendFormField(const base::string16& name,
-                       const base::string16& value,
+  void AppendFormField(const std::u16string& name,
+                       const std::u16string& value,
                        std::vector<FormFieldData>* form_fields) {
     FormFieldData field;
     field.name = name;
@@ -176,12 +184,12 @@ class WebDataServiceAutofillTest : public WebDataServiceTest {
     form_fields->push_back(field);
   }
 
-  base::string16 name1_;
-  base::string16 name2_;
-  base::string16 value1_;
-  base::string16 value2_;
+  std::u16string name1_;
+  std::u16string name2_;
+  std::u16string value1_;
+  std::u16string value2_;
   int unique_id1_, unique_id2_;
-  const TimeDelta test_timeout_;
+  const base::TimeDelta test_timeout_;
   testing::NiceMock<MockAutofillWebDataServiceObserver> observer_;
   WaitableEvent done_event_;
 };
@@ -208,7 +216,7 @@ TEST_F(WebDataServiceAutofillTest, FormFillAdd) {
   AutofillWebDataServiceConsumer<std::vector<AutofillEntry>> consumer;
   WebDataServiceBase::Handle handle;
   static const int limit = 10;
-  handle = wds_->GetFormValuesForElementName(name1_, base::string16(), limit,
+  handle = wds_->GetFormValuesForElementName(name1_, std::u16string(), limit,
                                              &consumer);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle, consumer.handle());
@@ -241,7 +249,7 @@ TEST_F(WebDataServiceAutofillTest, FormFillRemoveOne) {
 }
 
 TEST_F(WebDataServiceAutofillTest, FormFillRemoveMany) {
-  TimeDelta one_day(TimeDelta::FromDays(1));
+  base::TimeDelta one_day(base::Days(1));
   Time t = AutofillClock::Now();
 
   EXPECT_CALL(observer_, AutofillEntriesChanged(_))
@@ -284,7 +292,8 @@ TEST_F(WebDataServiceAutofillTest, ProfileAdd) {
   // Check that it was added.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       consumer;
-  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(&consumer);
+  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &consumer);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle, consumer.handle());
   ASSERT_EQ(1U, consumer.result().size());
@@ -303,7 +312,8 @@ TEST_F(WebDataServiceAutofillTest, ProfileRemove) {
   // Check that it was added.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       consumer;
-  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(&consumer);
+  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &consumer);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle, consumer.handle());
   ASSERT_EQ(1U, consumer.result().size());
@@ -316,13 +326,15 @@ TEST_F(WebDataServiceAutofillTest, ProfileRemove) {
       .WillOnce(SignalEvent(&done_event_));
 
   // Remove the profile.
-  wds_->RemoveAutofillProfile(profile.guid());
+  wds_->RemoveAutofillProfile(profile.guid(),
+                              AutofillProfile::Source::kLocalOrSyncable);
   done_event_.TimedWait(test_timeout_);
 
   // Check that it was removed.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       consumer2;
-  WebDataServiceBase::Handle handle2 = wds_->GetAutofillProfiles(&consumer2);
+  WebDataServiceBase::Handle handle2 = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &consumer2);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle2, consumer2.handle());
   ASSERT_EQ(0U, consumer2.result().size());
@@ -332,12 +344,12 @@ TEST_F(WebDataServiceAutofillTest, ProfileUpdate) {
   // The GUIDs are alphabetical for easier testing.
   AutofillProfile profile1("6141084B-72D7-4B73-90CF-3D6AC154673B",
                            std::string());
-  profile1.SetRawInfo(NAME_FIRST, ASCIIToUTF16("Abe"));
+  profile1.SetRawInfo(NAME_FIRST, u"Abe");
   profile1.FinalizeAfterImport();
 
   AutofillProfile profile2("087151C8-6AB1-487C-9095-28E80BE5DA15",
                            std::string());
-  profile2.SetRawInfo(NAME_FIRST, ASCIIToUTF16("Alice"));
+  profile2.SetRawInfo(NAME_FIRST, u"Alice");
   profile2.FinalizeAfterImport();
 
   EXPECT_CALL(observer_, AutofillProfileChanged(_))
@@ -351,7 +363,8 @@ TEST_F(WebDataServiceAutofillTest, ProfileUpdate) {
   // Check that they were added.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       consumer;
-  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(&consumer);
+  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &consumer);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle, consumer.handle());
   ASSERT_EQ(2U, consumer.result().size());
@@ -359,7 +372,7 @@ TEST_F(WebDataServiceAutofillTest, ProfileUpdate) {
   EXPECT_EQ(profile1, *consumer.result()[1]);
 
   AutofillProfile profile2_changed(profile2);
-  profile2_changed.SetRawInfo(NAME_FIRST, ASCIIToUTF16("Bill"));
+  profile2_changed.SetRawInfo(NAME_FIRST, u"Bill");
   const AutofillProfileChange expected_change(
       AutofillProfileChange::UPDATE, profile2.guid(), &profile2_changed);
 
@@ -373,7 +386,8 @@ TEST_F(WebDataServiceAutofillTest, ProfileUpdate) {
   // Check that the updates were made.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       consumer2;
-  WebDataServiceBase::Handle handle2 = wds_->GetAutofillProfiles(&consumer2);
+  WebDataServiceBase::Handle handle2 = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &consumer2);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle2, consumer2.handle());
   ASSERT_EQ(2U, consumer2.result().size());
@@ -425,9 +439,9 @@ TEST_F(WebDataServiceAutofillTest, CreditCardRemove) {
 
 TEST_F(WebDataServiceAutofillTest, CreditUpdate) {
   CreditCard card1("E4D2662E-5E16-44F3-AF5A-5A77FAE4A6F3", std::string());
-  card1.SetRawInfo(CREDIT_CARD_NAME_FULL, ASCIIToUTF16("Abe"));
+  card1.SetRawInfo(CREDIT_CARD_NAME_FULL, u"Abe");
   CreditCard card2("B9C52112-BD5F-4080-84E1-C651D2CB90E2", std::string());
-  card2.SetRawInfo(CREDIT_CARD_NAME_FULL, ASCIIToUTF16("Alice"));
+  card2.SetRawInfo(CREDIT_CARD_NAME_FULL, u"Alice");
 
   wds_->AddCreditCard(card1);
   wds_->AddCreditCard(card2);
@@ -443,7 +457,7 @@ TEST_F(WebDataServiceAutofillTest, CreditUpdate) {
   EXPECT_EQ(card1, *consumer.result()[1]);
 
   CreditCard card2_changed(card2);
-  card2_changed.SetRawInfo(CREDIT_CARD_NAME_FULL, ASCIIToUTF16("Bill"));
+  card2_changed.SetRawInfo(CREDIT_CARD_NAME_FULL, u"Bill");
 
   wds_->UpdateCreditCard(card2_changed);
 
@@ -470,8 +484,8 @@ TEST_F(WebDataServiceAutofillTest, AutofillRemoveModifiedBetween) {
   // Check that it was added.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       profile_consumer;
-  WebDataServiceBase::Handle handle =
-      wds_->GetAutofillProfiles(&profile_consumer);
+  WebDataServiceBase::Handle handle = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &profile_consumer);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle, profile_consumer.handle());
   ASSERT_EQ(1U, profile_consumer.result().size());
@@ -503,8 +517,8 @@ TEST_F(WebDataServiceAutofillTest, AutofillRemoveModifiedBetween) {
   // Check that the profile was removed.
   AutofillWebDataServiceConsumer<std::vector<std::unique_ptr<AutofillProfile>>>
       profile_consumer2;
-  WebDataServiceBase::Handle handle2 =
-      wds_->GetAutofillProfiles(&profile_consumer2);
+  WebDataServiceBase::Handle handle2 = wds_->GetAutofillProfiles(
+      AutofillProfile::Source::kLocalOrSyncable, &profile_consumer2);
   task_environment_.RunUntilIdle();
   EXPECT_EQ(handle2, profile_consumer2.handle());
   ASSERT_EQ(0U, profile_consumer2.result().size());

@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,10 @@
 #include <utility>
 #include <vector>
 
+#include "base/containers/contains.h"
+#include "base/containers/cxx20_erase.h"
 #include "base/memory/ptr_util.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/trace_event/trace_event.h"
 #include "cc/raster/raster_source.h"
 #include "ui/gfx/geometry/rect_conversions.h"
@@ -280,9 +282,10 @@ PictureLayerTiling* PictureLayerTilingSet::AddTiling(
     raster_source_ = raster_source;
 
 #if DCHECK_IS_ON()
-  for (size_t i = 0; i < tilings_.size(); ++i) {
-    DCHECK_NE(tilings_[i]->contents_scale_key(), raster_transform.scale());
-    DCHECK_EQ(tilings_[i]->raster_source(), raster_source.get());
+  for (const auto& tiling : tilings_) {
+    const gfx::Vector2dF& scale = raster_transform.scale();
+    DCHECK_NE(tiling->contents_scale_key(), std::max(scale.x(), scale.y()));
+    DCHECK_EQ(tiling->raster_source(), raster_source.get());
   }
 #endif  // DCHECK_IS_ON()
 
@@ -298,31 +301,42 @@ PictureLayerTiling* PictureLayerTilingSet::AddTiling(
 }
 
 int PictureLayerTilingSet::NumHighResTilings() const {
-  return std::count_if(tilings_.begin(), tilings_.end(),
-                       [](const std::unique_ptr<PictureLayerTiling>& tiling) {
-                         return tiling->resolution() == HIGH_RESOLUTION;
-                       });
+  return base::ranges::count(tilings_, HIGH_RESOLUTION,
+                             &PictureLayerTiling::resolution);
 }
 
 PictureLayerTiling* PictureLayerTilingSet::FindTilingWithScaleKey(
     float scale_key) const {
-  for (size_t i = 0; i < tilings_.size(); ++i) {
-    if (tilings_[i]->contents_scale_key() == scale_key)
-      return tilings_[i].get();
+  for (const auto& tiling : tilings_) {
+    if (tiling->contents_scale_key() == scale_key)
+      return tiling.get();
   }
   return nullptr;
 }
 
 PictureLayerTiling* PictureLayerTilingSet::FindTilingWithResolution(
     TileResolution resolution) const {
-  auto iter = std::find_if(
-      tilings_.begin(), tilings_.end(),
-      [resolution](const std::unique_ptr<PictureLayerTiling>& tiling) {
-        return tiling->resolution() == resolution;
-      });
+  auto iter =
+      base::ranges::find(tilings_, resolution, &PictureLayerTiling::resolution);
   if (iter == tilings_.end())
     return nullptr;
   return iter->get();
+}
+
+PictureLayerTiling* PictureLayerTilingSet::FindTilingWithNearestScaleKey(
+    float start_scale,
+    float snap_to_existing_tiling_ratio) const {
+  PictureLayerTiling* nearest_tiling = nullptr;
+  float nearest_ratio = snap_to_existing_tiling_ratio;
+  for (const auto& tiling : tilings_) {
+    float tiling_contents_scale = tiling->contents_scale_key();
+    float ratio = LargerRatio(tiling_contents_scale, start_scale);
+    if (ratio <= nearest_ratio) {
+      nearest_tiling = tiling.get();
+      nearest_ratio = ratio;
+    }
+  }
+  return nearest_tiling;
 }
 
 void PictureLayerTilingSet::RemoveTilingsBelowScaleKey(
@@ -353,43 +367,23 @@ void PictureLayerTilingSet::RemoveAllTilings() {
 }
 
 void PictureLayerTilingSet::Remove(PictureLayerTiling* tiling) {
-  auto iter = std::find_if(
-      tilings_.begin(), tilings_.end(),
-      [tiling](const std::unique_ptr<PictureLayerTiling>& candidate) {
-        return candidate.get() == tiling;
-      });
+  auto iter = base::ranges::find(tilings_, tiling,
+                                 &std::unique_ptr<PictureLayerTiling>::get);
   if (iter == tilings_.end())
     return;
   tilings_.erase(iter);
 }
 
 void PictureLayerTilingSet::RemoveAllTiles() {
-  for (size_t i = 0; i < tilings_.size(); ++i)
-    tilings_[i]->Reset();
-}
-
-float PictureLayerTilingSet::GetSnappedContentsScaleKey(
-    float start_scale,
-    float snap_to_existing_tiling_ratio) const {
-  // If a tiling exists within the max snapping ratio, snap to its scale.
-  float snapped_contents_scale = start_scale;
-  float snapped_ratio = snap_to_existing_tiling_ratio;
-  for (const auto& tiling : tilings_) {
-    float tiling_contents_scale = tiling->contents_scale_key();
-    float ratio = LargerRatio(tiling_contents_scale, start_scale);
-    if (ratio < snapped_ratio) {
-      snapped_contents_scale = tiling_contents_scale;
-      snapped_ratio = ratio;
-    }
-  }
-  return snapped_contents_scale;
+  for (const auto& tiling : tilings_)
+    tiling->Reset();
 }
 
 float PictureLayerTilingSet::GetMaximumContentsScale() const {
   if (tilings_.empty())
     return 0.f;
   // The first tiling has the largest contents scale.
-  return tilings_[0]->raster_transform().scale();
+  return tilings_[0]->contents_scale_key();
 }
 
 bool PictureLayerTilingSet::TilingsNeedUpdate(
@@ -455,10 +449,10 @@ gfx::Rect PictureLayerTilingSet::ComputeSkewport(
   int skewport_extrapolation_limit_in_layer_pixels =
       skewport_extrapolation_limit_in_screen_pixels_ / ideal_contents_scale;
   gfx::Rect max_skewport = skewport;
-  max_skewport.Inset(-skewport_extrapolation_limit_in_layer_pixels,
-                     -skewport_extrapolation_limit_in_layer_pixels);
+  max_skewport.Inset(-skewport_extrapolation_limit_in_layer_pixels);
 
-  skewport.Inset(inset_x, inset_y, inset_right, inset_bottom);
+  skewport.Inset(
+      gfx::Insets::TLBR(inset_y, inset_x, inset_bottom, inset_right));
   skewport.Union(visible_rect_in_layer_space);
   skewport.Intersect(max_skewport);
 
@@ -481,7 +475,7 @@ gfx::Rect PictureLayerTilingSet::ComputeSoonBorderRect(
                     max_dimension * kSoonBorderDistanceViewportPercentage);
 
   gfx::Rect soon_border_rect = visible_rect;
-  soon_border_rect.Inset(-distance, -distance);
+  soon_border_rect.Inset(-distance);
   soon_border_rect.Intersect(eventually_rect_in_layer_space_);
   return soon_border_rect;
 }
@@ -496,9 +490,8 @@ void PictureLayerTilingSet::UpdatePriorityRects(
   // We keep things as floats in here.
   if (!visible_rect_in_layer_space.IsEmpty()) {
     gfx::RectF eventually_rectf(visible_rect_in_layer_space);
-    eventually_rectf.Inset(
-        -tiling_interest_area_padding_ / ideal_contents_scale,
-        -tiling_interest_area_padding_ / ideal_contents_scale);
+    eventually_rectf.Inset(-tiling_interest_area_padding_ /
+                           ideal_contents_scale);
     if (eventually_rectf.Intersects(
             gfx::RectF(gfx::SizeF(raster_source_->GetSize())))) {
       visible_rect_in_layer_space_ = visible_rect_in_layer_space;
@@ -713,8 +706,6 @@ PictureLayerTilingSet::CoverageIterator::operator++() {
     tiling_iter_ = PictureLayerTiling::CoverageIterator(
         set_->tilings_[current_tiling_].get(), coverage_scale_, last_rect);
   }
-
-  return *this;
 }
 
 PictureLayerTilingSet::CoverageIterator::operator bool() const {
@@ -724,17 +715,17 @@ PictureLayerTilingSet::CoverageIterator::operator bool() const {
 
 void PictureLayerTilingSet::AsValueInto(
     base::trace_event::TracedValue* state) const {
-  for (size_t i = 0; i < tilings_.size(); ++i) {
+  for (const auto& tiling : tilings_) {
     state->BeginDictionary();
-    tilings_[i]->AsValueInto(state);
+    tiling->AsValueInto(state);
     state->EndDictionary();
   }
 }
 
 size_t PictureLayerTilingSet::GPUMemoryUsageInBytes() const {
   size_t amount = 0;
-  for (size_t i = 0; i < tilings_.size(); ++i)
-    amount += tilings_[i]->GPUMemoryUsageInBytes();
+  for (const auto& tiling : tilings_)
+    amount += tiling->GPUMemoryUsageInBytes();
   return amount;
 }
 
@@ -745,7 +736,7 @@ PictureLayerTilingSet::TilingRange PictureLayerTilingSet::GetTilingRange(
   // compute them only when the tiling set has changed instead.
   size_t tilings_size = tilings_.size();
   TilingRange high_res_range(0, 0);
-  TilingRange low_res_range(tilings_.size(), tilings_.size());
+  TilingRange low_res_range(tilings_size, tilings_size);
   for (size_t i = 0; i < tilings_size; ++i) {
     const PictureLayerTiling* tiling = tilings_[i].get();
     if (tiling->resolution() == HIGH_RESOLUTION)

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,9 +14,8 @@
 
 #include <stdint.h>
 
-#include "base/check.h"
-#include "base/compiler_specific.h"
 #include "mojo/public/c/system/data_pipe.h"
+#include "mojo/public/c/system/types.h"
 #include "mojo/public/cpp/system/handle.h"
 
 namespace mojo {
@@ -115,10 +114,8 @@ static_assert(sizeof(ScopedDataPipeConsumerHandle) ==
 // documentation.
 inline MojoResult CreateDataPipe(
     const MojoCreateDataPipeOptions* options,
-    ScopedDataPipeProducerHandle* data_pipe_producer,
-    ScopedDataPipeConsumerHandle* data_pipe_consumer) {
-  DCHECK(data_pipe_producer);
-  DCHECK(data_pipe_consumer);
+    ScopedDataPipeProducerHandle& data_pipe_producer,
+    ScopedDataPipeConsumerHandle& data_pipe_consumer) {
   DataPipeProducerHandle producer_handle;
   DataPipeConsumerHandle consumer_handle;
   MojoResult rv = MojoCreateDataPipe(options,
@@ -126,27 +123,24 @@ inline MojoResult CreateDataPipe(
                                      consumer_handle.mutable_value());
   // Reset even on failure (reduces the chances that a "stale"/incorrect handle
   // will be used).
-  data_pipe_producer->reset(producer_handle);
-  data_pipe_consumer->reset(consumer_handle);
+  data_pipe_producer.reset(producer_handle);
+  data_pipe_consumer.reset(consumer_handle);
   return rv;
 }
 
-// DEPRECATED: use |CreateDataPipe| instead.
-//
-// This class is not safe to use in production code as there is no way for it to
-// report failure while creating the pipe and it will CHECK in case of failures.
-//
-// A wrapper class that automatically creates a data pipe and owns both handles.
-class MOJO_CPP_SYSTEM_EXPORT DataPipe {
- public:
-  DataPipe();
-  explicit DataPipe(uint32_t capacity_num_bytes);
-  explicit DataPipe(const MojoCreateDataPipeOptions& options);
-  ~DataPipe();
-
-  ScopedDataPipeProducerHandle producer_handle;
-  ScopedDataPipeConsumerHandle consumer_handle;
-};
+// Creates a new data pipe with a specified capacity size. For setting
+// additional options, see |CreateDataPipe()| above.
+inline MojoResult CreateDataPipe(
+    uint32_t capacity_num_bytes,
+    ScopedDataPipeProducerHandle& data_pipe_producer,
+    ScopedDataPipeConsumerHandle& data_pipe_consumer) {
+  MojoCreateDataPipeOptions options;
+  options.struct_size = sizeof(MojoCreateDataPipeOptions);
+  options.flags = MOJO_CREATE_DATA_PIPE_FLAG_NONE;
+  options.element_num_bytes = 1;
+  options.capacity_num_bytes = capacity_num_bytes;
+  return CreateDataPipe(&options, data_pipe_producer, data_pipe_consumer);
+}
 
 }  // namespace mojo
 

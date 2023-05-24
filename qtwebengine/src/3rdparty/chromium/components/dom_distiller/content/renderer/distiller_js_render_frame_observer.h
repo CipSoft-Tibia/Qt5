@@ -1,16 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_DOM_DISTILLER_CONTENT_RENDERER_DISTILLER_JS_RENDER_FRAME_OBSERVER_H_
 #define COMPONENTS_DOM_DISTILLER_CONTENT_RENDERER_DISTILLER_JS_RENDER_FRAME_OBSERVER_H_
 
-#include "base/memory/weak_ptr.h"
-#include "components/dom_distiller/content/common/mojom/distiller_javascript_service.mojom.h"
 #include "components/dom_distiller/content/renderer/distiller_native_javascript.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_frame_observer.h"
-#include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/service_manager/public/cpp/binder_registry.h"
 #include "v8/include/v8.h"
 
@@ -27,12 +24,11 @@ class DistillerJsRenderFrameObserver : public content::RenderFrameObserver {
   // RenderFrameObserver implementation.
   void DidStartNavigation(
       const GURL& url,
-      base::Optional<blink::WebNavigationType> navigation_type) override;
+      absl::optional<blink::WebNavigationType> navigation_type) override;
   void DidCreateScriptContext(v8::Local<v8::Context> context,
                               int32_t world_id) override;
 
  private:
-
   // RenderFrameObserver implementation.
   void OnDestruct() override;
 

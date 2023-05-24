@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QREMOTEOBJECTNODE_H
 #define QREMOTEOBJECTNODE_H
@@ -125,10 +89,10 @@ public:
         const QString typeName = QString::fromLatin1(mobj->classInfo(index).value());
         return instances(typeName);
     }
-    QStringList instances(const QString &typeName) const;
+    QStringList instances(QStringView typeName) const;
 
     QRemoteObjectDynamicReplica *acquireDynamic(const QString &name);
-    QAbstractItemModelReplica *acquireModel(const QString &name, QtRemoteObjects::InitialAction action = QtRemoteObjects::FetchRootSize, const QVector<int> &rolesHint = {});
+    QAbstractItemModelReplica *acquireModel(const QString &name, QtRemoteObjects::InitialAction action = QtRemoteObjects::FetchRootSize, const QList<int> &rolesHint = {});
     QUrl registryUrl() const;
     virtual bool setRegistryUrl(const QUrl &registryAddress);
     bool waitForRegistry(int timeout = 30000);
@@ -164,6 +128,7 @@ private:
 
     Q_DECLARE_PRIVATE(QRemoteObjectNode)
     friend class QRemoteObjectReplica;
+    friend class QConnectedReplicaImplementation;
 };
 
 class Q_REMOTEOBJECTS_EXPORT QRemoteObjectHostBase : public QRemoteObjectNode
@@ -182,16 +147,16 @@ public:
         return enableRemoting(object, api);
     }
     Q_INVOKABLE bool enableRemoting(QObject *object, const QString &name = QString());
-    bool enableRemoting(QAbstractItemModel *model, const QString &name, const QVector<int> roles, QItemSelectionModel *selectionModel = nullptr);
+    bool enableRemoting(QAbstractItemModel *model, const QString &name, const QList<int> roles, QItemSelectionModel *selectionModel = nullptr);
     Q_INVOKABLE bool disableRemoting(QObject *remoteObject);
     void addHostSideConnection(QIODevice *ioDevice);
 
-    typedef std::function<bool(const QString &, const QString &)> RemoteObjectNameFilter;
+    typedef std::function<bool(QStringView, QStringView)> RemoteObjectNameFilter;
     bool proxy(const QUrl &registryUrl, const QUrl &hostUrl={},
-               RemoteObjectNameFilter filter=[](const QString &, const QString &) {return true; });
-    // ### Qt 6: Fix -> This should only be part of the QRemoteObjectRegistryHost type, since the
-    // reverse aspect requires the registry.
-    bool reverseProxy(RemoteObjectNameFilter filter=[](const QString &, const QString &) {return true; });
+               RemoteObjectNameFilter filter=[](QStringView, QStringView) {return true; });
+    // TODO: Currently the reverse aspect requires the registry, so this is supported only for
+    // QRemoteObjectRegistryHost for now. Consider enabling it also for QRemoteObjectHost.
+    bool reverseProxy(RemoteObjectNameFilter filter=[](QStringView, QStringView) {return true; });
 
 protected:
     virtual QUrl hostUrl() const;

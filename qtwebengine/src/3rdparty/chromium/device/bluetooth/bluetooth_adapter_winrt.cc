@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,25 +13,24 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
-#include "base/callback_helpers.h"
+#include "base/containers/contains.h"
+#include "base/containers/cxx20_erase.h"
 #include "base/containers/span.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/scoped_native_library.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/win/com_init_util.h"
 #include "base/win/core_winrt_util.h"
 #include "base/win/post_async_results.h"
 #include "components/device_event_log/device_event_log.h"
@@ -106,11 +105,6 @@ using ABI::Windows::Storage::Streams::IDataReaderStatics;
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
-bool ResolveCoreWinRT() {
-  return base::win::ResolveCoreWinRTDelayload() &&
-         base::win::ScopedHString::ResolveCoreWinRTStringDelayload();
-}
-
 // Query string for powered Bluetooth radios. GUID Reference:
 // https://docs.microsoft.com/en-us/windows-hardware/drivers/install/guid-bthport-device-interface
 // TODO(https://crbug.com/821766): Consider adding WindowsCreateStringReference
@@ -157,7 +151,7 @@ bool ToStdVector(VectorView* view, std::vector<T>* vector) {
   return true;
 }
 
-base::Optional<std::vector<uint8_t>> ExtractVector(IBuffer* buffer) {
+absl::optional<std::vector<uint8_t>> ExtractVector(IBuffer* buffer) {
   ComPtr<IDataReaderStatics> data_reader_statics;
   HRESULT hr = base::win::GetActivationFactory<
       IDataReaderStatics, RuntimeClass_Windows_Storage_Streams_DataReader>(
@@ -166,7 +160,7 @@ base::Optional<std::vector<uint8_t>> ExtractVector(IBuffer* buffer) {
     BLUETOOTH_LOG(ERROR)
         << "Getting DataReaderStatics Activation Factory failed: "
         << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   ComPtr<IDataReader> data_reader;
@@ -174,7 +168,7 @@ base::Optional<std::vector<uint8_t>> ExtractVector(IBuffer* buffer) {
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "FromBuffer() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   uint32_t buffer_length;
@@ -182,7 +176,7 @@ base::Optional<std::vector<uint8_t>> ExtractVector(IBuffer* buffer) {
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "get_Length() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   std::vector<uint8_t> bytes(buffer_length);
@@ -190,27 +184,27 @@ base::Optional<std::vector<uint8_t>> ExtractVector(IBuffer* buffer) {
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "ReadBytes() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   return bytes;
 }
 
-base::Optional<uint8_t> ExtractFlags(IBluetoothLEAdvertisement* advertisement) {
+absl::optional<uint8_t> ExtractFlags(IBluetoothLEAdvertisement* advertisement) {
   if (!advertisement)
-    return base::nullopt;
+    return absl::nullopt;
 
   ComPtr<IReference<BluetoothLEAdvertisementFlags>> flags_ref;
   HRESULT hr = advertisement->get_Flags(&flags_ref);
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "get_Flags() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   if (!flags_ref) {
     BLUETOOTH_LOG(DEBUG) << "No advertisement flags found.";
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   BluetoothLEAdvertisementFlags flags;
@@ -218,7 +212,7 @@ base::Optional<uint8_t> ExtractFlags(IBluetoothLEAdvertisement* advertisement) {
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "get_Value() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   return flags;
@@ -385,10 +379,10 @@ BluetoothDevice::ManufacturerDataMap ExtractManufacturerData(
 // Similarly to extracting the service data Windows does not provide a specific
 // API to extract the tx power. Thus we also parse the raw data sections here.
 // If present, we expect a single entry for tx power with a blob of size 1 byte.
-base::Optional<int8_t> ExtractTxPower(
+absl::optional<int8_t> ExtractTxPower(
     IBluetoothLEAdvertisement* advertisement) {
   if (!advertisement)
-    return base::nullopt;
+    return absl::nullopt;
 
   ComPtr<IVectorView<BluetoothLEAdvertisementDataSection*>> data_sections;
   HRESULT hr = advertisement->GetSectionsByType(
@@ -396,17 +390,17 @@ base::Optional<int8_t> ExtractTxPower(
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "GetSectionsByType() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   std::vector<ComPtr<IBluetoothLEAdvertisementDataSection>> vector;
   if (!ToStdVector(data_sections.Get(), &vector) || vector.empty())
-    return base::nullopt;
+    return absl::nullopt;
 
   if (vector.size() != 1u) {
     BLUETOOTH_LOG(ERROR) << "Unexpected number of data sections: "
                          << vector.size();
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   ComPtr<IBuffer> buffer;
@@ -414,16 +408,16 @@ base::Optional<int8_t> ExtractTxPower(
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "get_Data() failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   auto bytes = ExtractVector(buffer.Get());
   if (!bytes)
-    return base::nullopt;
+    return absl::nullopt;
 
   if (bytes->size() != 1) {
     BLUETOOTH_LOG(ERROR) << "Unexpected number of bytes: " << bytes->size();
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   return bytes->front();
@@ -441,22 +435,22 @@ ComPtr<IBluetoothLEAdvertisement> GetAdvertisement(
   return advertisement;
 }
 
-base::Optional<std::string> ExtractDeviceName(
+absl::optional<std::string> ExtractDeviceName(
     IBluetoothLEAdvertisement* advertisement) {
   if (!advertisement)
-    return base::nullopt;
+    return absl::nullopt;
 
   HSTRING local_name;
   HRESULT hr = advertisement->get_LocalName(&local_name);
   if (FAILED(hr)) {
     BLUETOOTH_LOG(ERROR) << "Getting Local Name failed: "
                          << logging::SystemErrorCodeToString(hr);
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   // Return early otherwise ScopedHString will create an empty string.
   if (!local_name)
-    return base::nullopt;
+    return absl::nullopt;
 
   return base::win::ScopedHString(local_name).GetAsUTF8();
 }
@@ -614,7 +608,7 @@ IDeviceWatcher* BluetoothAdapterWinrt::GetPoweredRadioWatcherForTesting() {
 }
 
 BluetoothAdapterWinrt::BluetoothAdapterWinrt() {
-  ui_task_runner_ = base::ThreadTaskRunnerHandle::Get();
+  ui_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
 }
 
 BluetoothAdapterWinrt::~BluetoothAdapterWinrt() {
@@ -672,7 +666,7 @@ void BluetoothAdapterWinrt::InitForTests(
     ComPtr<IBluetoothAdapterStatics> bluetooth_adapter_statics,
     ComPtr<IDeviceInformationStatics> device_information_statics,
     ComPtr<IRadioStatics> radio_statics) {
-  if (!ResolveCoreWinRT()) {
+  if (!base::win::ResolveCoreWinRTDelayload()) {
     CompleteInit(std::move(init_callback), std::move(bluetooth_adapter_statics),
                  std::move(device_information_statics),
                  std::move(radio_statics));
@@ -701,9 +695,10 @@ void BluetoothAdapterWinrt::InitForTests(
 // static
 BluetoothAdapterWinrt::StaticsInterfaces
 BluetoothAdapterWinrt::PerformSlowInitTasks() {
-  if (!ResolveCoreWinRT())
+  base::win::AssertComApartmentType(base::win::ComApartmentType::MTA);
+  if (!base::win::ResolveCoreWinRTDelayload()) {
     return BluetoothAdapterWinrt::StaticsInterfaces();
-
+  }
   ComPtr<IBluetoothAdapterStatics> adapter_statics;
   HRESULT hr = base::win::GetActivationFactory<
       IBluetoothAdapterStatics,
@@ -1316,14 +1311,14 @@ void BluetoothAdapterWinrt::OnAdvertisementReceived(
     return;
   }
 
-  std::string bluetooth_address =
+  const std::string bluetooth_address =
       BluetoothDeviceWinrt::CanonicalizeAddress(raw_bluetooth_address);
   auto it = devices_.find(bluetooth_address);
   const bool is_new_device = (it == devices_.end());
   if (is_new_device) {
     bool was_inserted = false;
     std::tie(it, was_inserted) = devices_.emplace(
-        std::move(bluetooth_address), CreateDevice(raw_bluetooth_address));
+        bluetooth_address, CreateDevice(raw_bluetooth_address));
     DCHECK(was_inserted);
   }
 
@@ -1338,9 +1333,9 @@ void BluetoothAdapterWinrt::OnAdvertisementReceived(
 
   // Extract the remaining advertisement data.
   ComPtr<IBluetoothLEAdvertisement> advertisement = GetAdvertisement(received);
-  base::Optional<std::string> device_name =
+  absl::optional<std::string> device_name =
       ExtractDeviceName(advertisement.Get());
-  base::Optional<int8_t> tx_power = ExtractTxPower(advertisement.Get());
+  absl::optional<int8_t> tx_power = ExtractTxPower(advertisement.Get());
   BluetoothDevice::UUIDList advertised_uuids =
       ExtractAdvertisedUUIDs(advertisement.Get());
   BluetoothDevice::ServiceDataMap service_data_map =

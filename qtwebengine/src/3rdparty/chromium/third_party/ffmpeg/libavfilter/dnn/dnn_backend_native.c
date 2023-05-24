@@ -27,18 +27,52 @@
 #include "libavutil/avassert.h"
 #include "dnn_backend_native_layer_conv2d.h"
 #include "dnn_backend_native_layers.h"
+#include "dnn_io_proc.h"
+#include "dnn_backend_common.h"
+
+#define OFFSET(x) offsetof(NativeContext, x)
+#define FLAGS AV_OPT_FLAG_FILTERING_PARAM
+static const AVOption dnn_native_options[] = {
+    { "conv2d_threads", "threads num for conv2d layer", OFFSET(options.conv2d_threads), AV_OPT_TYPE_INT,  { .i64 = 0 }, INT_MIN, INT_MAX, FLAGS },
+    { "async",          "use DNN async inference",      OFFSET(options.async),          AV_OPT_TYPE_BOOL, { .i64 = 0 },       0,       1, FLAGS },
+    { NULL },
+};
 
 static const AVClass dnn_native_class = {
     .class_name = "dnn_native",
     .item_name  = av_default_item_name,
-    .option     = NULL,
+    .option     = dnn_native_options,
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_FILTER,
 };
 
-static DNNReturnType get_input_native(void *model, DNNData *input, const char *input_name)
+static int execute_model_native(Queue *lltask_queue);
+
+static int extract_lltask_from_task(TaskItem *task, Queue *lltask_queue)
 {
-    NativeModel *native_model = (NativeModel *)model;
+    NativeModel *native_model = task->model;
+    NativeContext *ctx = &native_model->ctx;
+    LastLevelTaskItem *lltask = av_malloc(sizeof(*lltask));
+
+    if (!lltask) {
+        av_log(ctx, AV_LOG_ERROR, "Unable to allocate space for LastLevelTaskItem\n");
+        return AVERROR(ENOMEM);
+    }
+    task->inference_todo = 1;
+    task->inference_done = 0;
+    lltask->task = task;
+
+    if (ff_queue_push_back(lltask_queue, lltask) < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to push back lltask_queue.\n");
+        av_freep(&lltask);
+        return AVERROR(ENOMEM);
+    }
+    return 0;
+}
+
+static int get_input_native(void *model, DNNData *input, const char *input_name)
+{
+    NativeModel *native_model = model;
     NativeContext *ctx = &native_model->ctx;
 
     for (int i = 0; i < native_model->operands_num; ++i) {
@@ -46,82 +80,68 @@ static DNNReturnType get_input_native(void *model, DNNData *input, const char *i
         if (strcmp(oprd->name, input_name) == 0) {
             if (oprd->type != DOT_INPUT) {
                 av_log(ctx, AV_LOG_ERROR, "Found \"%s\" in model, but it is not input node\n", input_name);
-                return DNN_ERROR;
+                return AVERROR(EINVAL);
             }
             input->dt = oprd->data_type;
             av_assert0(oprd->dims[0] == 1);
             input->height = oprd->dims[1];
             input->width = oprd->dims[2];
             input->channels = oprd->dims[3];
-            return DNN_SUCCESS;
+            return 0;
         }
     }
 
     // do not find the input operand
     av_log(ctx, AV_LOG_ERROR, "Could not find \"%s\" in model\n", input_name);
-    return DNN_ERROR;
+    return AVERROR(EINVAL);
 }
 
-static DNNReturnType set_input_native(void *model, DNNData *input, const char *input_name)
+static int get_output_native(void *model, const char *input_name, int input_width, int input_height,
+                                       const char *output_name, int *output_width, int *output_height)
 {
-    NativeModel *native_model = (NativeModel *)model;
+    int ret = 0;
+    NativeModel *native_model = model;
     NativeContext *ctx = &native_model->ctx;
-    DnnOperand *oprd = NULL;
+    TaskItem task;
+    DNNExecBaseParams exec_params = {
+        .input_name     = input_name,
+        .output_names   = &output_name,
+        .nb_output      = 1,
+        .in_frame       = NULL,
+        .out_frame      = NULL,
+    };
 
-    if (native_model->layers_num <= 0 || native_model->operands_num <= 0) {
-        av_log(ctx, AV_LOG_ERROR, "No operands or layers in model\n");
-        return DNN_ERROR;
+    ret = ff_dnn_fill_gettingoutput_task(&task, &exec_params, native_model, input_height, input_width, ctx);
+    if (ret != 0) {
+        goto err;
     }
 
-    /* inputs */
-    for (int i = 0; i < native_model->operands_num; ++i) {
-        oprd = &native_model->operands[i];
-        if (strcmp(oprd->name, input_name) == 0) {
-            if (oprd->type != DOT_INPUT) {
-                av_log(ctx, AV_LOG_ERROR, "Found \"%s\" in model, but it is not input node\n", input_name);
-                return DNN_ERROR;
-            }
-            break;
-        }
-        oprd = NULL;
-    }
-    if (!oprd) {
-        av_log(ctx, AV_LOG_ERROR, "Could not find \"%s\" in model\n", input_name);
-        return DNN_ERROR;
+    ret = extract_lltask_from_task(&task, native_model->lltask_queue);
+    if (ret != 0) {
+        av_log(ctx, AV_LOG_ERROR, "unable to extract last level task from task.\n");
+        goto err;
     }
 
-    oprd->dims[0] = 1;
-    oprd->dims[1] = input->height;
-    oprd->dims[2] = input->width;
-    oprd->dims[3] = input->channels;
+    ret = execute_model_native(native_model->lltask_queue);
+    *output_width = task.out_frame->width;
+    *output_height = task.out_frame->height;
 
-    av_freep(&oprd->data);
-    oprd->length = calculate_operand_data_length(oprd);
-    if (oprd->length <= 0) {
-        av_log(ctx, AV_LOG_ERROR, "The input data length overflow\n");
-        return DNN_ERROR;
-    }
-    oprd->data = av_malloc(oprd->length);
-    if (!oprd->data) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to malloc memory for input data\n");
-        return DNN_ERROR;
-    }
-
-    input->data = oprd->data;
-
-    return DNN_SUCCESS;
+err:
+    av_frame_free(&task.out_frame);
+    av_frame_free(&task.in_frame);
+    return ret;
 }
 
 // Loads model and its parameters that are stored in a binary file with following structure:
 // layers_num,layer_type,layer_parameterss,layer_type,layer_parameters...
 // For CONV layer: activation_function, input_num, output_num, kernel_size, kernel, biases
 // For DEPTH_TO_SPACE layer: block_size
-DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *options)
+DNNModel *ff_dnn_load_model_native(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx)
 {
+#define DNN_NATIVE_MAGIC "FFMPEGDNNNATIVE"
     DNNModel *model = NULL;
-    char header_expected[] = "FFMPEGDNNNATIVE";
-    char *buf;
-    size_t size;
+    // sizeof - 1 to skip the terminating '\0' which is not written in the file
+    char buf[sizeof(DNN_NATIVE_MAGIC) - 1];
     int version, header_size, major_version_expected = 1;
     NativeModel *native_model = NULL;
     AVIOContext *model_file_context;
@@ -142,20 +162,10 @@ DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *optio
     /**
      * check file header with string and version
      */
-    size = sizeof(header_expected);
-    buf = av_malloc(size);
-    if (!buf) {
+    if (avio_read(model_file_context, buf, sizeof(buf)) != sizeof(buf) ||
+        memcmp(buf, DNN_NATIVE_MAGIC, sizeof(buf)))
         goto fail;
-    }
-
-    // size - 1 to skip the ending '\0' which is not saved in file
-    avio_get_str(model_file_context, size - 1, buf, size);
-    dnn_size = size - 1;
-    if (strncmp(buf, header_expected, size) != 0) {
-        av_freep(&buf);
-        goto fail;
-    }
-    av_freep(&buf);
+    dnn_size = sizeof(buf);
 
     version = (int32_t)avio_rl32(model_file_context);
     dnn_size += 4;
@@ -172,9 +182,25 @@ DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *optio
     if (!native_model){
         goto fail;
     }
+    model->model = native_model;
 
     native_model->ctx.class = &dnn_native_class;
-    model->model = (void *)native_model;
+    model->options = options;
+    if (av_opt_set_from_string(&native_model->ctx, model->options, NULL, "=", "&") < 0)
+        goto fail;
+    native_model->model = model;
+
+    if (native_model->ctx.options.async) {
+        av_log(&native_model->ctx, AV_LOG_WARNING, "Async not supported. Rolling back to sync\n");
+        native_model->ctx.options.async = 0;
+    }
+
+#if !HAVE_PTHREAD_CANCEL
+    if (native_model->ctx.options.conv2d_threads > 1){
+        av_log(&native_model->ctx, AV_LOG_WARNING, "'conv2d_threads' option was set but it is not supported "
+                       "on this build (pthread support is required)\n");
+    }
+#endif
 
     avio_seek(model_file_context, file_size - 8, SEEK_SET);
     native_model->layers_num = (int32_t)avio_rl32(model_file_context);
@@ -192,6 +218,16 @@ DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *optio
         goto fail;
     }
 
+    native_model->task_queue = ff_queue_create();
+    if (!native_model->task_queue) {
+        goto fail;
+    }
+
+    native_model->lltask_queue = ff_queue_create();
+    if (!native_model->lltask_queue) {
+        goto fail;
+    }
+
     for (layer = 0; layer < native_model->layers_num; ++layer){
         layer_type = (int32_t)avio_rl32(model_file_context);
         dnn_size += 4;
@@ -201,7 +237,7 @@ DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *optio
         }
 
         native_model->layers[layer].type = layer_type;
-        parsed_size = layer_funcs[layer_type].pf_load(&native_model->layers[layer], model_file_context, file_size, native_model->operands_num);
+        parsed_size = ff_layer_funcs[layer_type].pf_load(&native_model->layers[layer], model_file_context, file_size, native_model->operands_num);
         if (!parsed_size) {
             goto fail;
         }
@@ -235,6 +271,8 @@ DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *optio
             oprd->dims[dim] = (int32_t)avio_rl32(model_file_context);
             dnn_size += 4;
         }
+        if (oprd->type == DOT_INPUT && oprd->dims[0] != 1)
+            goto fail;
 
         oprd->isNHWC = 1;
     }
@@ -246,9 +284,10 @@ DNNModel *ff_dnn_load_model_native(const char *model_filename, const char *optio
         return NULL;
     }
 
-    model->set_input = &set_input_native;
     model->get_input = &get_input_native;
-    model->options = options;
+    model->get_output = &get_output_native;
+    model->filter_ctx = filter_ctx;
+    model->func_type = func_type;
 
     return model;
 
@@ -258,36 +297,105 @@ fail:
     return NULL;
 }
 
-DNNReturnType ff_dnn_execute_model_native(const DNNModel *model, DNNData *outputs, const char **output_names, uint32_t nb_output)
+static int execute_model_native(Queue *lltask_queue)
 {
-    NativeModel *native_model = (NativeModel *)model->model;
-    NativeContext *ctx = &native_model->ctx;
+    NativeModel *native_model = NULL;
+    NativeContext *ctx = NULL;
     int32_t layer;
+    DNNData input, output;
+    DnnOperand *oprd = NULL;
+    LastLevelTaskItem *lltask = NULL;
+    TaskItem *task = NULL;
+    int ret = 0;
+
+    lltask = ff_queue_pop_front(lltask_queue);
+    if (!lltask) {
+        av_log(NULL, AV_LOG_ERROR, "Failed to get LastLevelTaskItem\n");
+        ret = AVERROR(EINVAL);
+        goto err;
+    }
+    task = lltask->task;
+    native_model = task->model;
+    ctx = &native_model->ctx;
 
     if (native_model->layers_num <= 0 || native_model->operands_num <= 0) {
         av_log(ctx, AV_LOG_ERROR, "No operands or layers in model\n");
-        return DNN_ERROR;
+        ret = AVERROR(EINVAL);
+        goto err;
     }
-    if (!native_model->operands[0].data) {
-        av_log(ctx, AV_LOG_ERROR, "Empty model input data\n");
-        return DNN_ERROR;
+
+    for (int i = 0; i < native_model->operands_num; ++i) {
+        oprd = &native_model->operands[i];
+        if (strcmp(oprd->name, task->input_name) == 0) {
+            if (oprd->type != DOT_INPUT) {
+                av_log(ctx, AV_LOG_ERROR, "Found \"%s\" in model, but it is not input node\n", task->input_name);
+                ret = AVERROR(EINVAL);
+                goto err;
+            }
+            break;
+        }
+        oprd = NULL;
+    }
+    if (!oprd) {
+        av_log(ctx, AV_LOG_ERROR, "Could not find \"%s\" in model\n", task->input_name);
+        ret = AVERROR(EINVAL);
+        goto err;
+    }
+
+    oprd->dims[1] = task->in_frame->height;
+    oprd->dims[2] = task->in_frame->width;
+
+    av_freep(&oprd->data);
+    oprd->length = ff_calculate_operand_data_length(oprd);
+    if (oprd->length <= 0) {
+        av_log(ctx, AV_LOG_ERROR, "The input data length overflow\n");
+        ret = AVERROR(EINVAL);
+        goto err;
+    }
+    oprd->data = av_malloc(oprd->length);
+    if (!oprd->data) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to malloc memory for input data\n");
+        ret = AVERROR(ENOMEM);
+        goto err;
+    }
+
+    input.height = oprd->dims[1];
+    input.width = oprd->dims[2];
+    input.channels = oprd->dims[3];
+    input.data = oprd->data;
+    input.dt = oprd->data_type;
+    if (task->do_ioproc) {
+        if (native_model->model->frame_pre_proc != NULL) {
+            native_model->model->frame_pre_proc(task->in_frame, &input, native_model->model->filter_ctx);
+        } else {
+            ff_proc_from_frame_to_dnn(task->in_frame, &input, ctx);
+        }
+    }
+
+    if (task->nb_output != 1) {
+        // currently, the filter does not need multiple outputs,
+        // so we just pending the support until we really need it.
+        avpriv_report_missing_feature(ctx, "multiple outputs");
+        ret = AVERROR(ENOSYS);
+        goto err;
     }
 
     for (layer = 0; layer < native_model->layers_num; ++layer){
         DNNLayerType layer_type = native_model->layers[layer].type;
-        if (layer_funcs[layer_type].pf_exec(native_model->operands,
-                                            native_model->layers[layer].input_operand_indexes,
-                                            native_model->layers[layer].output_operand_index,
-                                            native_model->layers[layer].params,
-                                            &native_model->ctx) == DNN_ERROR) {
-            av_log(ctx, AV_LOG_ERROR, "Failed to execuet model\n");
-            return DNN_ERROR;
+        ret = ff_layer_funcs[layer_type].pf_exec(native_model->operands,
+                                                 native_model->layers[layer].input_operand_indexes,
+                                                 native_model->layers[layer].output_operand_index,
+                                                 native_model->layers[layer].params,
+                                                 &native_model->ctx);
+        if (ret != 0) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to execute model\n");
+            goto err;
         }
     }
 
-    for (uint32_t i = 0; i < nb_output; ++i) {
+    for (uint32_t i = 0; i < task->nb_output; ++i) {
         DnnOperand *oprd = NULL;
-        const char *output_name = output_names[i];
+        const char *output_name = task->output_names[i];
         for (int j = 0; j < native_model->operands_num; ++j) {
             if (strcmp(native_model->operands[j].name, output_name) == 0) {
                 oprd = &native_model->operands[j];
@@ -297,20 +405,93 @@ DNNReturnType ff_dnn_execute_model_native(const DNNModel *model, DNNData *output
 
         if (oprd == NULL) {
             av_log(ctx, AV_LOG_ERROR, "Could not find output in model\n");
-            return DNN_ERROR;
+            ret = AVERROR(EINVAL);
+            goto err;
         }
 
-        outputs[i].data = oprd->data;
-        outputs[i].height = oprd->dims[1];
-        outputs[i].width = oprd->dims[2];
-        outputs[i].channels = oprd->dims[3];
-        outputs[i].dt = oprd->data_type;
-    }
+        output.data = oprd->data;
+        output.height = oprd->dims[1];
+        output.width = oprd->dims[2];
+        output.channels = oprd->dims[3];
+        output.dt = oprd->data_type;
 
-    return DNN_SUCCESS;
+        if (task->do_ioproc) {
+            if (native_model->model->frame_post_proc != NULL) {
+                native_model->model->frame_post_proc(task->out_frame, &output, native_model->model->filter_ctx);
+            } else {
+                ff_proc_from_dnn_to_frame(task->out_frame, &output, ctx);
+            }
+        } else {
+            task->out_frame->width = output.width;
+            task->out_frame->height = output.height;
+        }
+    }
+    task->inference_done++;
+err:
+    av_freep(&lltask);
+    return ret;
 }
 
-int32_t calculate_operand_dims_count(const DnnOperand *oprd)
+int ff_dnn_execute_model_native(const DNNModel *model, DNNExecBaseParams *exec_params)
+{
+    NativeModel *native_model = model->model;
+    NativeContext *ctx = &native_model->ctx;
+    TaskItem *task;
+    int ret = 0;
+
+    ret = ff_check_exec_params(ctx, DNN_NATIVE, model->func_type, exec_params);
+    if (ret != 0) {
+        return ret;
+    }
+
+    task = av_malloc(sizeof(*task));
+    if (!task) {
+        av_log(ctx, AV_LOG_ERROR, "unable to alloc memory for task item.\n");
+        return AVERROR(ENOMEM);
+    }
+
+    ret = ff_dnn_fill_task(task, exec_params, native_model, ctx->options.async, 1);
+    if (ret != 0) {
+        av_freep(&task);
+        return ret;
+    }
+
+    if (ff_queue_push_back(native_model->task_queue, task) < 0) {
+        av_freep(&task);
+        av_log(ctx, AV_LOG_ERROR, "unable to push back task_queue.\n");
+        return AVERROR(ENOMEM);
+    }
+
+    ret = extract_lltask_from_task(task, native_model->lltask_queue);
+    if (ret != 0) {
+        av_log(ctx, AV_LOG_ERROR, "unable to extract last level task from task.\n");
+        return ret;
+    }
+
+    return execute_model_native(native_model->lltask_queue);
+}
+
+int ff_dnn_flush_native(const DNNModel *model)
+{
+    NativeModel *native_model = model->model;
+
+    if (ff_queue_size(native_model->lltask_queue) == 0) {
+        // no pending task need to flush
+        return 0;
+    }
+
+    // for now, use sync node with flush operation
+    // Switch to async when it is supported
+    return execute_model_native(native_model->lltask_queue);
+}
+
+DNNAsyncStatusType ff_dnn_get_result_native(const DNNModel *model, AVFrame **in, AVFrame **out)
+{
+    NativeModel *native_model = model->model;
+    return ff_dnn_get_result_common(native_model->task_queue, in, out);
+}
+
+int32_t ff_calculate_operand_dims_count(const DnnOperand *oprd)
 {
     int32_t result = 1;
     for (int i = 0; i < 4; ++i)
@@ -319,7 +500,7 @@ int32_t calculate_operand_dims_count(const DnnOperand *oprd)
     return result;
 }
 
-int32_t calculate_operand_data_length(const DnnOperand* oprd)
+int32_t ff_calculate_operand_data_length(const DnnOperand* oprd)
 {
     // currently, we just support DNN_FLOAT
     uint64_t len = sizeof(float);
@@ -340,7 +521,7 @@ void ff_dnn_free_model_native(DNNModel **model)
     if (*model)
     {
         if ((*model)->model) {
-            native_model = (NativeModel *)(*model)->model;
+            native_model = (*model)->model;
             if (native_model->layers) {
                 for (layer = 0; layer < native_model->layers_num; ++layer){
                     if (native_model->layers[layer].type == DLT_CONV2D){
@@ -358,6 +539,20 @@ void ff_dnn_free_model_native(DNNModel **model)
                     av_freep(&native_model->operands[operand].data);
                 av_freep(&native_model->operands);
             }
+
+            while (ff_queue_size(native_model->lltask_queue) != 0) {
+                LastLevelTaskItem *item = ff_queue_pop_front(native_model->lltask_queue);
+                av_freep(&item);
+            }
+            ff_queue_destroy(native_model->lltask_queue);
+
+            while (ff_queue_size(native_model->task_queue) != 0) {
+                TaskItem *item = ff_queue_pop_front(native_model->task_queue);
+                av_frame_free(&item->in_frame);
+                av_frame_free(&item->out_frame);
+                av_freep(&item);
+            }
+            ff_queue_destroy(native_model->task_queue);
 
             av_freep(&native_model);
         }

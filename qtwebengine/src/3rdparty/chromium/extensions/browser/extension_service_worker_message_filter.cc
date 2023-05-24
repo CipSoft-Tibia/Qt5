@@ -1,22 +1,57 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/extension_service_worker_message_filter.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/singleton.h"
+#include "components/keyed_service/content/browser_context_keyed_service_shutdown_notifier_factory.h"
+#include "components/keyed_service/core/keyed_service_shutdown_notifier.h"
 #include "content/public/browser/service_worker_context.h"
 #include "content/public/browser/service_worker_external_request_result.h"
 #include "extensions/browser/bad_message.h"
 #include "extensions/browser/event_router.h"
+#include "extensions/browser/event_router_factory.h"
 #include "extensions/browser/events/event_ack_data.h"
 #include "extensions/browser/extension_function_dispatcher.h"
+#include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extension_registry_factory.h"
 #include "extensions/browser/process_manager.h"
+#include "extensions/browser/process_manager_factory.h"
 #include "extensions/browser/process_map.h"
 #include "extensions/browser/service_worker_task_queue.h"
 #include "extensions/common/extension_messages.h"
+#include "extensions/common/mojom/frame.mojom.h"
 
 namespace extensions {
+
+namespace {
+
+class ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter
+    : public BrowserContextKeyedServiceShutdownNotifierFactory {
+ public:
+  ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter(const ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter&) = delete;
+  ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter& operator=(const ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter&) = delete;
+
+  static ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter* GetInstance() {
+    return base::Singleton<ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter>::get();
+  }
+
+ private:
+  friend struct base::DefaultSingletonTraits<ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter>;
+
+  ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter()
+      : BrowserContextKeyedServiceShutdownNotifierFactory(
+            "ExtensionServiceWorkerMessageFilter") {
+    DependsOn(ExtensionRegistryFactory::GetInstance());
+    DependsOn(EventRouterFactory::GetInstance());
+    DependsOn(ProcessManagerFactory::GetInstance());
+  }
+  ~ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter() override = default;
+};
+
+}  // namespace
 
 ExtensionServiceWorkerMessageFilter::ExtensionServiceWorkerMessageFilter(
     int render_process_id,
@@ -28,9 +63,28 @@ ExtensionServiceWorkerMessageFilter::ExtensionServiceWorkerMessageFilter(
       service_worker_context_(service_worker_context),
       dispatcher_(new ExtensionFunctionDispatcher(context)) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  shutdown_notifier_subscription_ =
+      ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter::GetInstance()->Get(context)->Subscribe(
+          base::BindRepeating(
+              &ExtensionServiceWorkerMessageFilter::ShutdownOnUIThread,
+              base::Unretained(this)));
 }
 
-ExtensionServiceWorkerMessageFilter::~ExtensionServiceWorkerMessageFilter() {}
+void ExtensionServiceWorkerMessageFilter::ShutdownOnUIThread() {
+  browser_context_ = nullptr;
+  shutdown_notifier_subscription_ = {};
+}
+
+void ExtensionServiceWorkerMessageFilter::OnDestruct() const {
+  content::BrowserThread::DeleteOnUIThread::Destruct(this);
+}
+
+void ExtensionServiceWorkerMessageFilter::EnsureShutdownNotifierFactoryBuilt() {
+  ShutdownNotifierFactoryForExtensionServiceWorkerMessageFilter::GetInstance();
+}
+
+ExtensionServiceWorkerMessageFilter::~ExtensionServiceWorkerMessageFilter() =
+    default;
 
 void ExtensionServiceWorkerMessageFilter::OverrideThreadForMessage(
     const IPC::Message& message,
@@ -45,9 +99,8 @@ void ExtensionServiceWorkerMessageFilter::OverrideThreadForMessage(
     *thread = content::BrowserThread::UI;
   }
 
-  if (content::ServiceWorkerContext::IsServiceWorkerOnUIEnabled() &&
-      (message.type() == ExtensionHostMsg_IncrementServiceWorkerActivity::ID ||
-       message.type() == ExtensionHostMsg_DecrementServiceWorkerActivity::ID)) {
+  if (message.type() == ExtensionHostMsg_IncrementServiceWorkerActivity::ID ||
+      message.type() == ExtensionHostMsg_DecrementServiceWorkerActivity::ID) {
     *thread = content::BrowserThread::UI;
   }
 }
@@ -75,14 +128,18 @@ bool ExtensionServiceWorkerMessageFilter::OnMessageReceived(
 }
 
 void ExtensionServiceWorkerMessageFilter::OnRequestWorker(
-    const ExtensionHostMsg_Request_Params& params) {
+    const mojom::RequestParams& params) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  dispatcher_->Dispatch(params, nullptr, render_process_id_);
+  if (!browser_context_)
+    return;
+  dispatcher_->DispatchForServiceWorker(params, render_process_id_);
 }
 
 void ExtensionServiceWorkerMessageFilter::OnResponseWorker(
     int request_id,
     int64_t service_worker_version_id) {
+  if (!browser_context_)
+    return;
   dispatcher_->ProcessServiceWorkerResponse(request_id,
                                             service_worker_version_id);
 }
@@ -90,19 +147,24 @@ void ExtensionServiceWorkerMessageFilter::OnResponseWorker(
 void ExtensionServiceWorkerMessageFilter::OnIncrementServiceWorkerActivity(
     int64_t service_worker_version_id,
     const std::string& request_uuid) {
-  DCHECK_CURRENTLY_ON(content::ServiceWorkerContext::GetCoreThreadId());
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (!browser_context_)
+    return;
   active_request_uuids_.insert(request_uuid);
   // The worker might have already stopped before we got here, so the increment
   // below might fail legitimately. Therefore, we do not send bad_message to the
   // worker even if it fails.
-  service_worker_context_->StartingExternalRequest(service_worker_version_id,
-                                                   request_uuid);
+  service_worker_context_->StartingExternalRequest(
+      service_worker_version_id,
+      content::ServiceWorkerExternalRequestTimeoutType::kDefault, request_uuid);
 }
 
 void ExtensionServiceWorkerMessageFilter::OnDecrementServiceWorkerActivity(
     int64_t service_worker_version_id,
     const std::string& request_uuid) {
-  DCHECK_CURRENTLY_ON(content::ServiceWorkerContext::GetCoreThreadId());
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (!browser_context_)
+    return;
   content::ServiceWorkerExternalRequestResult result =
       service_worker_context_->FinishedExternalRequest(
           service_worker_version_id, request_uuid);
@@ -126,6 +188,8 @@ void ExtensionServiceWorkerMessageFilter::OnEventAckWorker(
     int worker_thread_id,
     int event_id) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (!browser_context_)
+    return;
   const bool worker_stopped =
       !ProcessManager::Get(browser_context_)
            ->HasServiceWorker({extension_id, render_process_id_,
@@ -144,11 +208,26 @@ void ExtensionServiceWorkerMessageFilter::OnDidInitializeServiceWorkerContext(
     const ExtensionId& extension_id,
     int64_t service_worker_version_id,
     int thread_id) {
-  if (!ProcessMap::Get(browser_context_)
-           ->Contains(extension_id, render_process_id_)) {
-    // We can legitimately get here if the extension was already unloaded.
+  if (!browser_context_)
+    return;
+
+  ExtensionRegistry* registry = ExtensionRegistry::Get(browser_context_);
+  DCHECK(registry);
+  if (!registry->enabled_extensions().GetByID(extension_id)) {
+    // This can happen if the extension is unloaded at this point. Just
+    // checking the extension process (as below) is insufficient because
+    // tearing down processes is async and happens after extension unload.
     return;
   }
+
+  if (!ProcessMap::Get(browser_context_)
+           ->Contains(extension_id, render_process_id_)) {
+    // We check the process in addition to the registry to guard against
+    // situations in which an extension may still be enabled, but no longer
+    // running in a given process.
+    return;
+  }
+
   ServiceWorkerTaskQueue::Get(browser_context_)
       ->DidInitializeServiceWorkerContext(render_process_id_, extension_id,
                                           service_worker_version_id, thread_id);
@@ -161,6 +240,8 @@ void ExtensionServiceWorkerMessageFilter::OnDidStartServiceWorkerContext(
     int64_t service_worker_version_id,
     int thread_id) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (!browser_context_)
+    return;
   DCHECK_NE(kMainThreadId, thread_id);
   if (!ProcessMap::Get(browser_context_)
            ->Contains(extension_id, render_process_id_)) {
@@ -183,6 +264,8 @@ void ExtensionServiceWorkerMessageFilter::OnDidStopServiceWorkerContext(
     int64_t service_worker_version_id,
     int thread_id) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (!browser_context_)
+    return;
   DCHECK_NE(kMainThreadId, thread_id);
   if (!ProcessMap::Get(browser_context_)
            ->Contains(extension_id, render_process_id_)) {

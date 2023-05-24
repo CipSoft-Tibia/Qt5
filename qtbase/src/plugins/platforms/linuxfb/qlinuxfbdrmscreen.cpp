@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // Experimental DRM dumb buffer backend.
 //
@@ -98,7 +62,7 @@ public:
 
     void swapBuffers(Output *output);
 
-    int outputCount() const { return m_outputs.count(); }
+    int outputCount() const { return m_outputs.size(); }
     Output *output(int idx) { return &m_outputs[idx]; }
 
 private:
@@ -115,7 +79,7 @@ private:
     static void pageFlipHandler(int fd, unsigned int sequence,
                                 unsigned int tv_sec, unsigned int tv_usec, void *user_data);
 
-    QVector<Output> m_outputs;
+    QList<Output> m_outputs;
 };
 
 QLinuxFbDevice::QLinuxFbDevice(QKmsScreenConfig *screenConfig)
@@ -161,8 +125,7 @@ void QLinuxFbDevice::close()
 
 void *QLinuxFbDevice::nativeDisplay() const
 {
-    Q_UNREACHABLE();
-    return nullptr;
+    Q_UNREACHABLE_RETURN(nullptr);
 }
 
 QPlatformScreen *QLinuxFbDevice::createScreen(const QKmsOutput &output)
@@ -279,7 +242,7 @@ bool QLinuxFbDevice::createFramebuffer(QLinuxFbDevice::Output *output, int buffe
         qErrnoWarning(errno, "Failed to map dumb buffer");
         return false;
     }
-    fb.p = mmap(0, fb.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd(), mreq.offset);
+    fb.p = mmap(nullptr, fb.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd(), mreq.offset);
     if (fb.p == MAP_FAILED) {
         qErrnoWarning(errno, "Failed to mmap dumb buffer");
         return false;
@@ -399,6 +362,7 @@ QLinuxFbDrmScreen::~QLinuxFbDrmScreen()
 bool QLinuxFbDrmScreen::initialize()
 {
     m_screenConfig = new QKmsScreenConfig;
+    m_screenConfig->loadConfig();
     m_device = new QLinuxFbDevice(m_screenConfig);
     if (!m_device->open())
         return false;
@@ -443,7 +407,7 @@ QRegion QLinuxFbDrmScreen::doRedraw()
     // Image has alpha but no need for blending at this stage.
     // Do not waste time with the default SourceOver.
     pntr.setCompositionMode(QPainter::CompositionMode_Source);
-    for (const QRect &rect : qAsConst(output->dirty[output->backFb]))
+    for (const QRect &rect : std::as_const(output->dirty[output->backFb]))
         pntr.drawImage(rect, mScreenImage, rect);
     pntr.end();
 
@@ -466,3 +430,5 @@ QPixmap QLinuxFbDrmScreen::grabWindow(WId wid, int x, int y, int width, int heig
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qlinuxfbdrmscreen.cpp"

@@ -1,42 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef SCENE3DITEM_H
 #define SCENE3DITEM_H
 
@@ -53,6 +16,8 @@
 
 #include <QtCore/qpointer.h>
 #include <QtQuick/QQuickItem>
+#include <Qt3DCore/qentity.h>
+#include <private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -69,7 +34,6 @@ class QCamera;
 class QRenderAspect;
 class Scene3DRenderer;
 class Scene3DCleaner;
-class Scene3DView;
 class QFrameGraphNode;
 class QRenderSurfaceSelector;
 class AspectEngineDestroyer;
@@ -110,9 +74,6 @@ public:
     Q_ENUM(CompositingMode) // LCOV_EXCL_LINE
     CompositingMode compositingMode() const;
 
-    void addView(Scene3DView *view);
-    void removeView(Scene3DView *view);
-
 public Q_SLOTS:
     void setAspects(const QStringList &aspects);
     void setEntity(Qt3DCore::QEntity *entity);
@@ -147,8 +108,6 @@ private:
 
     QStringList m_aspects;
     Qt3DCore::QEntity *m_entity;
-    Qt3DCore::QEntity *m_viewHolderEntity;
-    Qt3DRender::QFrameGraphNode *m_viewHolderFG;
 
     Qt3DCore::QAspectEngine *m_aspectEngine;
     Qt3DCore::QAspectEngine *m_aspectToDelete;
@@ -157,9 +116,6 @@ private:
 
     bool m_multisample;
     bool m_dirty;
-    bool m_dirtyViews;
-    bool m_clearsWindowByDefault;
-    bool m_disableClearWindow;
     bool m_wasFrameProcessed;
     bool m_wasSGUpdated;
 
@@ -167,11 +123,10 @@ private:
     CameraAspectRatioMode m_cameraAspectRatioMode;
     CompositingMode m_compositingMode;
     QOffscreenSurface *m_dummySurface;
-    QVector<Scene3DView *> m_views;
     QMetaObject::Connection m_windowConnection;
     qint8 m_framesToRender;
 
-    static const qint8 ms_framesNeededToFlushPipeline = 2;
+    static const qint8 ms_framesNeededToFlushPipeline = 3;
 };
 
 } // Qt3DRender

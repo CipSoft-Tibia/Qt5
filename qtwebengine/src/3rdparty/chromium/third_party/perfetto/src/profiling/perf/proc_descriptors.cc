@@ -16,9 +16,12 @@
 
 #include "src/profiling/perf/proc_descriptors.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include "perfetto/ext/base/string_utils.h"
 
 namespace perfetto {
 
@@ -35,26 +38,42 @@ void DirectDescriptorGetter::SetDelegate(ProcDescriptorDelegate* delegate) {
 }
 
 void DirectDescriptorGetter::GetDescriptorsForPid(pid_t pid) {
-  char buf[128] = {};
-  snprintf(buf, sizeof(buf), "/proc/%d/maps", pid);
-  auto maps_fd = base::ScopedFile{open(buf, O_RDONLY | O_CLOEXEC)};
+  base::StackString<128> dir_buf("/proc/%d", pid);
+  auto dir_fd = base::ScopedFile(
+      open(dir_buf.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC));
+  if (!dir_fd) {
+    if (errno != ENOENT)  // not surprising if the process has quit
+      PERFETTO_PLOG("Failed to open [%s]", dir_buf.c_str());
+
+    return;
+  }
+
+  struct stat stat_buf;
+  if (fstat(dir_fd.get(), &stat_buf) == -1) {
+    PERFETTO_PLOG("Failed to stat [%s]", dir_buf.c_str());
+    return;
+  }
+
+  auto maps_fd =
+      base::ScopedFile{openat(dir_fd.get(), "maps", O_RDONLY | O_CLOEXEC)};
   if (!maps_fd) {
     if (errno != ENOENT)  // not surprising if the process has quit
-      PERFETTO_PLOG("Failed to open [%s]", buf);
+      PERFETTO_PLOG("Failed to open %s/maps", dir_buf.c_str());
 
     return;
   }
 
-  snprintf(buf, sizeof(buf), "/proc/%d/mem", pid);
-  auto mem_fd = base::ScopedFile{open(buf, O_RDONLY | O_CLOEXEC)};
+  auto mem_fd =
+      base::ScopedFile{openat(dir_fd.get(), "mem", O_RDONLY | O_CLOEXEC)};
   if (!mem_fd) {
     if (errno != ENOENT)  // not surprising if the process has quit
-      PERFETTO_PLOG("Failed to open [%s]", buf);
+      PERFETTO_PLOG("Failed to open %s/mem", dir_buf.c_str());
 
     return;
   }
 
-  delegate_->OnProcDescriptors(pid, std::move(maps_fd), std::move(mem_fd));
+  delegate_->OnProcDescriptors(pid, stat_buf.st_uid, std::move(maps_fd),
+                               std::move(mem_fd));
 }
 
 // AndroidRemoteDescriptorGetter:
@@ -88,14 +107,14 @@ void AndroidRemoteDescriptorGetter::OnNewIncomingConnection(
     base::UnixSocket*,
     std::unique_ptr<base::UnixSocket> new_connection) {
   PERFETTO_DLOG("remote fds: new connection from pid [%d]",
-                static_cast<int>(new_connection->peer_pid()));
+                static_cast<int>(new_connection->peer_pid_linux()));
 
   active_connections_.emplace(new_connection.get(), std::move(new_connection));
 }
 
 void AndroidRemoteDescriptorGetter::OnDisconnect(base::UnixSocket* self) {
   PERFETTO_DLOG("remote fds: disconnect from pid [%d]",
-                static_cast<int>(self->peer_pid()));
+                static_cast<int>(self->peer_pid_linux()));
 
   auto it = active_connections_.find(self);
   PERFETTO_CHECK(it != active_connections_.end());
@@ -116,8 +135,8 @@ void AndroidRemoteDescriptorGetter::OnDataAvailable(base::UnixSocket* self) {
   if (!received_bytes)
     return;
 
-  delegate_->OnProcDescriptors(self->peer_pid(), std::move(fds[0]),
-                               std::move(fds[1]));
+  delegate_->OnProcDescriptors(self->peer_pid_linux(), self->peer_uid_posix(),
+                               std::move(fds[0]), std::move(fds[1]));
 }
 
 }  // namespace perfetto

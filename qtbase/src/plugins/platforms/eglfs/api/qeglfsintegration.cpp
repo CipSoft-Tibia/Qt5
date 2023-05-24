@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qtextstream.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -61,22 +25,20 @@
 #endif
 #include "qeglfsoffscreenwindow_p.h"
 
-#include <QtEglSupport/private/qeglconvenience_p.h>
+#include <QtGui/private/qeglconvenience_p.h>
 #ifndef QT_NO_OPENGL
-# include <QtEglSupport/private/qeglplatformcontext_p.h>
-# include <QtEglSupport/private/qeglpbuffer_p.h>
+# include <QtGui/private/qeglplatformcontext_p.h>
+# include <QtGui/private/qeglpbuffer_p.h>
 #endif
 
-#include <QtFontDatabaseSupport/private/qgenericunixfontdatabase_p.h>
-#include <QtServiceSupport/private/qgenericunixservices_p.h>
-#include <QtThemeSupport/private/qgenericunixthemes_p.h>
-#include <QtEventDispatcherSupport/private/qgenericunixeventdispatcher_p.h>
+#include <QtGui/private/qgenericunixfontdatabase_p.h>
+#include <QtGui/private/qgenericunixservices_p.h>
+#include <QtGui/private/qgenericunixthemes_p.h>
+#include <QtGui/private/qgenericunixeventdispatcher_p.h>
 #include <QtFbSupport/private/qfbvthandler_p.h>
 #ifndef QT_NO_OPENGL
-# include <QtPlatformCompositorSupport/private/qopenglcompositorbackingstore_p.h>
+# include <QtOpenGL/private/qopenglcompositorbackingstore_p.h>
 #endif
-
-#include <QtPlatformHeaders/QEGLNativeContext>
 
 #if QT_CONFIG(libinput)
 #include <QtInputSupport/private/qlibinputhandler_p.h>
@@ -96,8 +58,6 @@
 #include <QtInputSupport/qintegrityhidmanager.h>
 #endif
 
-#include <QtPlatformHeaders/qeglfsfunctions.h>
-
 static void initResources()
 {
 #ifndef QT_NO_CURSOR
@@ -107,12 +67,14 @@ static void initResources()
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 QEglFSIntegration::QEglFSIntegration()
-    : m_display(EGL_NO_DISPLAY),
+    : m_kbdMgr(nullptr),
+      m_display(EGL_NO_DISPLAY),
       m_inputContext(nullptr),
       m_fontDb(new QGenericUnixFontDatabase),
       m_services(new QGenericUnixServices),
-      m_kbdMgr(nullptr),
       m_disableInputHandlers(false)
 {
     m_disableInputHandlers = qEnvironmentVariableIntValue("QT_QPA_EGLFS_DISABLE_INPUT");
@@ -148,7 +110,8 @@ void QEglFSIntegration::initialize()
 
 void QEglFSIntegration::destroy()
 {
-    foreach (QWindow *w, qGuiApp->topLevelWindows())
+    const auto toplevels = qGuiApp->topLevelWindows();
+    for (QWindow *w : toplevels)
         w->destroy();
 
     qt_egl_device_integration()->screenDestroy();
@@ -215,20 +178,18 @@ QPlatformOpenGLContext *QEglFSIntegration::createPlatformOpenGLContext(QOpenGLCo
 {
     EGLDisplay dpy = context->screen() ? static_cast<QEglFSScreen *>(context->screen()->handle())->display() : display();
     QPlatformOpenGLContext *share = context->shareHandle();
-    QVariant nativeHandle = context->nativeHandle();
 
     QEglFSContext *ctx;
     QSurfaceFormat adjustedFormat = qt_egl_device_integration()->surfaceFormatFor(context->format());
-    if (nativeHandle.isNull()) {
-        EGLConfig config = QEglFSDeviceIntegration::chooseConfig(dpy, adjustedFormat);
-        ctx = new QEglFSContext(adjustedFormat, share, dpy, &config, QVariant());
-    } else {
-        ctx = new QEglFSContext(adjustedFormat, share, dpy, nullptr, nativeHandle);
-    }
-    nativeHandle = QVariant::fromValue<QEGLNativeContext>(QEGLNativeContext(ctx->eglContext(), dpy));
+    EGLConfig config = QEglFSDeviceIntegration::chooseConfig(dpy, adjustedFormat);
+    ctx = new QEglFSContext(adjustedFormat, share, dpy, &config);
 
-    context->setNativeHandle(nativeHandle);
     return ctx;
+}
+
+QOpenGLContext *QEglFSIntegration::createOpenGLContext(EGLContext context, EGLDisplay contextDisplay, QOpenGLContext *shareContext) const
+{
+    return QEGLPlatformContext::createFrom<QEglFSContext>(context, contextDisplay, display(), shareContext);
 }
 
 QPlatformOffscreenSurface *QEglFSIntegration::createPlatformOffscreenSurface(QOffscreenSurface *surface) const
@@ -246,13 +207,6 @@ QPlatformOffscreenSurface *QEglFSIntegration::createPlatformOffscreenSurface(QOf
     // Never return null. Multiple QWindows are not supported by this plugin.
 }
 #endif // QT_NO_OPENGL
-
-#if QT_CONFIG(vulkan)
-QPlatformVulkanInstance *QEglFSIntegration::createPlatformVulkanInstance(QVulkanInstance *instance) const
-{
-    return qt_egl_device_integration()->createPlatformVulkanInstance(instance);
-}
-#endif
 
 bool QEglFSIntegration::hasCapability(QPlatformIntegration::Capability cap) const
 {
@@ -373,12 +327,6 @@ void *QEglFSIntegration::nativeResourceForWindow(const QByteArray &resource, QWi
         if (window && window->handle())
             result = reinterpret_cast<void*>(static_cast<QEglFSWindow *>(window->handle())->surface());
         break;
-#if QT_CONFIG(vulkan)
-    case VkSurface:
-        if (window && window->handle() && window->surfaceType() == QSurface::VulkanSurface)
-            result = static_cast<QEglFSWindow *>(window->handle())->vulkanSurfacePtr();
-        break;
-#endif
     default:
         break;
     }
@@ -436,45 +384,32 @@ QPlatformNativeInterface::NativeResourceForContextFunction QEglFSIntegration::na
 
 QFunctionPointer QEglFSIntegration::platformFunction(const QByteArray &function) const
 {
-#if QT_CONFIG(evdev)
-    if (function == QEglFSFunctions::loadKeymapTypeIdentifier())
-        return QFunctionPointer(loadKeymapStatic);
-    else if (function == QEglFSFunctions::switchLangTypeIdentifier())
-        return QFunctionPointer(switchLangStatic);
-#endif
-
     return qt_egl_device_integration()->platformFunction(function);
 }
 
-void QEglFSIntegration::loadKeymapStatic(const QString &filename)
-{
 #if QT_CONFIG(evdev)
-    QEglFSIntegration *self = static_cast<QEglFSIntegration *>(QGuiApplicationPrivate::platformIntegration());
-    if (self->m_kbdMgr)
-        self->m_kbdMgr->loadKeymap(filename);
+void QEglFSIntegration::loadKeymap(const QString &filename)
+{
+    if (m_kbdMgr)
+        m_kbdMgr->loadKeymap(filename);
     else
         qWarning("QEglFSIntegration: Cannot load keymap, no keyboard handler found");
-#else
-    Q_UNUSED(filename);
-#endif
 }
 
-void QEglFSIntegration::switchLangStatic()
+void QEglFSIntegration::switchLang()
 {
-#if QT_CONFIG(evdev)
-    QEglFSIntegration *self = static_cast<QEglFSIntegration *>(QGuiApplicationPrivate::platformIntegration());
-    if (self->m_kbdMgr)
-        self->m_kbdMgr->switchLang();
+    if (m_kbdMgr)
+        m_kbdMgr->switchLang();
     else
         qWarning("QEglFSIntegration: Cannot switch language, no keyboard handler found");
-#endif
 }
+#endif
 
 void QEglFSIntegration::createInputHandlers()
 {
 #if QT_CONFIG(libinput)
     if (!qEnvironmentVariableIntValue("QT_QPA_EGLFS_NO_LIBINPUT")) {
-        new QLibInputHandler(QLatin1String("libinput"), QString());
+        new QLibInputHandler("libinput"_L1, QString());
         return;
     }
 #endif
@@ -482,16 +417,16 @@ void QEglFSIntegration::createInputHandlers()
 #if QT_CONFIG(tslib)
     bool useTslib = qEnvironmentVariableIntValue("QT_QPA_EGLFS_TSLIB");
     if (useTslib)
-        new QTsLibMouseHandler(QLatin1String("TsLib"), QString() /* spec */);
+        new QTsLibMouseHandler("TsLib"_L1, QString() /* spec */);
 #endif
 
 #if QT_CONFIG(evdev)
-    m_kbdMgr = new QEvdevKeyboardManager(QLatin1String("EvdevKeyboard"), QString() /* spec */, this);
-    new QEvdevMouseManager(QLatin1String("EvdevMouse"), QString() /* spec */, this);
+    m_kbdMgr = new QEvdevKeyboardManager("EvdevKeyboard"_L1, QString() /* spec */, this);
+    new QEvdevMouseManager("EvdevMouse"_L1, QString() /* spec */, this);
 #if QT_CONFIG(tslib)
     if (!useTslib)
 #endif
-        new QEvdevTouchManager(QLatin1String("EvdevTouch"), QString() /* spec */, this);
+        new QEvdevTouchManager("EvdevTouch"_L1, QString() /* spec */, this);
 #endif
 
 #if QT_CONFIG(integrityhid)

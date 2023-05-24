@@ -5,7 +5,6 @@
 #ifndef V8_INTERPRETER_BYTECODE_ARRAY_WRITER_H_
 #define V8_INTERPRETER_BYTECODE_ARRAY_WRITER_H_
 
-#include "src/base/compiler-specific.h"
 #include "src/codegen/source-position-table.h"
 #include "src/common/globals.h"
 #include "src/interpreter/bytecodes.h"
@@ -36,6 +35,8 @@ class V8_EXPORT_PRIVATE BytecodeArrayWriter final {
   BytecodeArrayWriter(
       Zone* zone, ConstantArrayBuilder* constant_array_builder,
       SourcePositionTableBuilder::RecordingMode source_position_mode);
+  BytecodeArrayWriter(const BytecodeArrayWriter&) = delete;
+  BytecodeArrayWriter& operator=(const BytecodeArrayWriter&) = delete;
 
   void Write(BytecodeNode* node);
   void WriteJump(BytecodeNode* node, BytecodeLabel* label);
@@ -53,15 +54,15 @@ class V8_EXPORT_PRIVATE BytecodeArrayWriter final {
 
   void SetFunctionEntrySourcePosition(int position);
 
-  template <typename LocalIsolate>
+  template <typename IsolateT>
   EXPORT_TEMPLATE_DECLARE(V8_EXPORT_PRIVATE)
-  Handle<BytecodeArray> ToBytecodeArray(LocalIsolate* isolate,
-                                        int register_count, int parameter_count,
+  Handle<BytecodeArray> ToBytecodeArray(IsolateT* isolate, int register_count,
+                                        int parameter_count,
                                         Handle<ByteArray> handler_table);
 
-  template <typename LocalIsolate>
+  template <typename IsolateT>
   EXPORT_TEMPLATE_DECLARE(V8_EXPORT_PRIVATE)
-  Handle<ByteArray> ToSourcePositionTable(LocalIsolate* isolate);
+  Handle<ByteArray> ToSourcePositionTable(IsolateT* isolate);
 
 #ifdef DEBUG
   // Returns -1 if they match or the offset of the first mismatching byte.
@@ -126,7 +127,6 @@ class V8_EXPORT_PRIVATE BytecodeArrayWriter final {
   bool exit_seen_in_block_;
 
   friend class bytecode_array_writer_unittest::BytecodeArrayWriterUnittest;
-  DISALLOW_COPY_AND_ASSIGN(BytecodeArrayWriter);
 };
 
 }  // namespace interpreter

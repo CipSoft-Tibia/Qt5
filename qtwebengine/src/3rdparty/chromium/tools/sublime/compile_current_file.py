@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# Copyright 2016 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -18,15 +18,15 @@ import threading
 import time
 
 # Path to the version of ninja checked in into Chrome.
-rel_path_to_ninja = os.path.join('third_party', 'depot_tools', 'ninja')
+rel_path_to_ninja = os.path.join('third_party', 'ninja', 'ninja')
 
 
 class PrintOutputCommand(sublime_plugin.TextCommand):
-    def run(self, edit, **args):
-        self.view.set_read_only(False)
-        self.view.insert(edit, self.view.size(), args['text'])
-        self.view.show(self.view.size())
-        self.view.set_read_only(True)
+  def run(self, edit, **args):
+    self.view.set_read_only(False)
+    self.view.insert(edit, self.view.size(), args['text'])
+    self.view.show(self.view.size())
+    self.view.set_read_only(True)
 
 
 class CompileCurrentFile(sublime_plugin.TextCommand):

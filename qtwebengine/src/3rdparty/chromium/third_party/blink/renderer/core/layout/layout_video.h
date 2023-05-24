@@ -26,6 +26,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_VIDEO_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_VIDEO_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/layout_media.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 
@@ -33,14 +34,16 @@ namespace blink {
 
 class HTMLVideoElement;
 
-class LayoutVideo final : public LayoutMedia {
+class CORE_EXPORT LayoutVideo final : public LayoutMedia {
  public:
   explicit LayoutVideo(HTMLVideoElement*);
   ~LayoutVideo() override;
 
   static LayoutSize DefaultSize();
 
-  PhysicalRect ReplacedContentRect() const final;
+  PhysicalRect ReplacedContentRectFrom(
+      const LayoutSize size,
+      const NGPhysicalBoxStrut& border_padding) const final;
 
   bool SupportsAcceleratedRendering() const;
 
@@ -58,8 +61,11 @@ class LayoutVideo final : public LayoutMedia {
 
   OverflowClipAxes ComputeOverflowClipAxes() const final {
     NOT_DESTROYED();
-    return kOverflowClipBothAxis;
+    return RespectsCSSOverflow() ? LayoutMedia::ComputeOverflowClipAxes()
+                                 : kOverflowClipBothAxis;
   }
+
+  void UpdatePlayer(bool is_in_layout);
 
  private:
   void UpdateFromElement() override;
@@ -79,19 +85,11 @@ class LayoutVideo final : public LayoutMedia {
 
   void UpdateLayout() override;
 
-  LayoutUnit ComputeReplacedLogicalWidth(
-      ShouldComputePreferred = kComputeActual) const override;
-  LayoutUnit ComputeReplacedLogicalHeight(
-      LayoutUnit estimated_used_width = LayoutUnit()) const override;
-  LayoutUnit MinimumReplacedHeight() const override;
-
   bool CanHaveAdditionalCompositingReasons() const override {
     NOT_DESTROYED();
     return true;
   }
   CompositingReasons AdditionalCompositingReasons() const override;
-
-  void UpdatePlayer(bool is_in_layout);
 
   LayoutSize cached_image_size_;
 };

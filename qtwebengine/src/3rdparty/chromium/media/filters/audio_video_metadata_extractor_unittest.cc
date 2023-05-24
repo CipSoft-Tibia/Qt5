@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -53,6 +53,19 @@ const std::string GetTagValue(
   }
 
   return tag_data->second;
+}
+
+const std::string TagsToString(
+    const media::AudioVideoMetadataExtractor::TagDictionary& tags) {
+  std::string result;
+  for (auto& kv : tags) {
+    if (!result.empty())
+      result += " | ";
+    result += kv.first;
+    result += ": ";
+    result += kv.second;
+  }
+  return result;
 }
 
 TEST(AudioVideoMetadataExtractorTest, InvalidFile) {
@@ -154,7 +167,7 @@ TEST(AudioVideoMetadataExtractorTest, VideoWebM) {
 #if BUILDFLAG(USE_PROPRIETARY_CODECS)
 TEST(AudioVideoMetadataExtractorTest, AndroidRotatedMP4Video) {
   std::unique_ptr<AudioVideoMetadataExtractor> extractor =
-      GetExtractor("90rotation.mp4", true, true, 0.196, 1920, 1080);
+      GetExtractor("90rotation.mp4", true, true, 0.196056, 1920, 1080);
 
   EXPECT_EQ(90, extractor->rotation());
 
@@ -172,16 +185,19 @@ TEST(AudioVideoMetadataExtractorTest, AndroidRotatedMP4Video) {
             GetTagValue(extractor->stream_infos()[0].tags, "minor_version"));
 
   EXPECT_EQ("h264", extractor->stream_infos()[1].type);
-  EXPECT_EQ(5u, extractor->stream_infos()[1].tags.size());
+  EXPECT_EQ(6u, extractor->stream_infos()[1].tags.size())
+      << "Tags: " << TagsToString(extractor->stream_infos()[1].tags);
   EXPECT_EQ("2014-02-11T00:39:25.000000Z",
             GetTagValue(extractor->stream_infos()[1].tags, "creation_time"));
   EXPECT_EQ("VideoHandle",
             GetTagValue(extractor->stream_infos()[1].tags, "handler_name"));
+  EXPECT_EQ("MOTO", GetTagValue(extractor->stream_infos()[1].tags, "encoder"));
   EXPECT_EQ("eng", GetTagValue(extractor->stream_infos()[1].tags, "language"));
   EXPECT_EQ("90", GetTagValue(extractor->stream_infos()[1].tags, "rotate"));
 
   EXPECT_EQ("aac", extractor->stream_infos()[2].type);
-  EXPECT_EQ(3u, extractor->stream_infos()[2].tags.size());
+  EXPECT_EQ(4u, extractor->stream_infos()[2].tags.size())
+      << "Tags: " << TagsToString(extractor->stream_infos()[2].tags);
   EXPECT_EQ("2014-02-11T00:39:25.000000Z",
             GetTagValue(extractor->stream_infos()[2].tags, "creation_time"));
   EXPECT_EQ("SoundHandle",
@@ -241,7 +257,7 @@ TEST(AudioVideoMetadataExtractorTest, AudioMP3) {
 
 TEST(AudioVideoMetadataExtractorTest, AudioFLACInMp4) {
   std::unique_ptr<AudioVideoMetadataExtractor> extractor =
-      GetExtractor("sfx-flac.mp4", true, true, 0.289, -1, -1);
+      GetExtractor("sfx-flac.mp4", true, true, 0.288413, -1, -1);
   EXPECT_EQ("Lavf57.75.100", extractor->encoder());
 
   EXPECT_EQ("mov,mp4,m4a,3gp,3g2,mj2", extractor->stream_infos()[0].type);
@@ -258,7 +274,8 @@ TEST(AudioVideoMetadataExtractorTest, AudioFLACInMp4) {
             GetTagValue(extractor->stream_infos()[0].tags, "encoder"));
 
   EXPECT_EQ("flac", extractor->stream_infos()[1].type);
-  EXPECT_EQ(2u, extractor->stream_infos()[1].tags.size());
+  EXPECT_EQ(3u, extractor->stream_infos()[1].tags.size())
+      << "Tags: " << TagsToString(extractor->stream_infos()[1].tags);
   EXPECT_EQ("SoundHandler",
             GetTagValue(extractor->stream_infos()[1].tags, "handler_name"));
   EXPECT_EQ("und", GetTagValue(extractor->stream_infos()[1].tags, "language"));

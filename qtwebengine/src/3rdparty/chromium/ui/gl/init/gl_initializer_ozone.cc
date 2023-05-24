@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,51 +9,36 @@
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_gl_api_implementation.h"
 #include "ui/gl/gl_surface.h"
-
-#if defined(USE_OZONE)
+#include "ui/gl/gl_utils.h"
 #include "ui/gl/init/gl_display_egl_util_ozone.h"
+#include "ui/gl/init/gl_display_initializer.h"
 #include "ui/gl/init/ozone_util.h"
 #include "ui/ozone/public/ozone_platform.h"
-#endif
-
-#if defined(USE_X11)
-#include "ui/base/ui_base_features.h"
-#include "ui/gl/init/gl_initializer_linux_x11.h"
-#endif
 
 namespace gl {
 namespace init {
 
-bool InitializeGLOneOffPlatform() {
-#if defined(USE_X11)
-  if (!features::IsUsingOzonePlatform())
-    return gl::init::InitializeGLOneOffPlatformX11();
-#endif
-
-#if defined(USE_OZONE)
+GLDisplay* InitializeGLOneOffPlatform(gl::GpuPreference gpu_preference) {
   if (HasGLOzone()) {
     gl::GLDisplayEglUtil::SetInstance(gl::GLDisplayEglUtilOzone::GetInstance());
-    return GetGLOzone()->InitializeGLOneOffPlatform();
+    bool supports_angle = false;
+    std::vector<gl::DisplayType> init_displays;
+    GetDisplayInitializationParams(&supports_angle, &init_displays);
+    return GetGLOzone()->InitializeGLOneOffPlatform(
+        supports_angle, init_displays, gpu_preference);
   }
 
   switch (GetGLImplementation()) {
     case kGLImplementationMockGL:
     case kGLImplementationStubGL:
-      return true;
+      return GetDisplayEGL(gpu_preference);
     default:
       NOTREACHED();
   }
-#endif
-  return false;
+  return nullptr;
 }
 
-bool InitializeStaticGLBindings(GLImplementation implementation) {
-#if defined(USE_X11)
-  if (!features::IsUsingOzonePlatform())
-    return gl::init::InitializeStaticGLBindingsX11(implementation);
-#endif
-
-#if defined(USE_OZONE)
+bool InitializeStaticGLBindings(GLImplementationParts implementation) {
   // Prevent reinitialization with a different implementation. Once the gpu
   // unit tests have initialized with kGLImplementationMock, we don't want to
   // later switch to another GL implementation.
@@ -64,34 +49,25 @@ bool InitializeStaticGLBindings(GLImplementation implementation) {
         ->InitializeStaticGLBindings(implementation);
   }
 
-  switch (implementation) {
+  switch (implementation.gl) {
     case kGLImplementationMockGL:
     case kGLImplementationStubGL:
-      SetGLImplementation(implementation);
+      SetGLImplementationParts(implementation);
       InitializeStaticGLBindingsGL();
       return true;
     default:
       NOTREACHED();
   }
-#endif
-
   return false;
 }
 
-void ShutdownGLPlatform() {
-#if defined(USE_X11)
-  if (!features::IsUsingOzonePlatform())
-    return gl::init::ShutdownGLPlatformX11();
-#endif
-
-#if defined(USE_OZONE)
+void ShutdownGLPlatform(GLDisplay* display) {
   if (HasGLOzone()) {
-    GetGLOzone()->ShutdownGL();
+    GetGLOzone()->ShutdownGL(display);
     return;
   }
 
   ClearBindingsGL();
-#endif
 }
 
 }  // namespace init

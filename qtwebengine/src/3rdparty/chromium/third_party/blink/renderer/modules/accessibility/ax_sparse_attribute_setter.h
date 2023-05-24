@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,49 +13,26 @@
 
 namespace blink {
 
-class AXSparseAttributeSetter {
-  USING_FAST_MALLOC(AXSparseAttributeSetter);
-
- public:
-  virtual void Run(const AXObject&,
-                   AXSparseAttributeClient&,
-                   const AtomicString& value) = 0;
-};
-
-using AXSparseAttributeSetterMap =
-    HashMap<QualifiedName, AXSparseAttributeSetter*>;
-
-// A map from attribute name to a AXSparseAttributeSetter that
-// calls AXSparseAttributeClient when that attribute's value
-// changes.
+// A map from attribute name to a callback that sets the |value| for that
+// attribute on an AXNodeData.
 //
 // That way we only need to iterate over the list of attributes once,
 // rather than calling getAttribute() once for each possible obscure
 // accessibility attribute.
-// TODO(meredithl): Migrate this to the temp setter for crbug/1068668
-AXSparseAttributeSetterMap& GetSparseAttributeSetterMap();
 
-// A map from attribute name to a callback that sets the |value| for that
-// attribute on an AXNodeData. This is designed to replace the above sparse
-// attribute setter. This name is temporary, the above name of
-// AXSparseAttributeSetterMap will be used once all sparse attributes are
-// migrated.
 using AXSparseSetterFunc =
-    base::RepeatingCallback<void(ui::AXNodeData* node_data,
+    base::RepeatingCallback<void(AXObject* ax_object,
+                                 ui::AXNodeData* node_data,
                                  const AtomicString& value)>;
-using TempSetterMap = HashMap<QualifiedName, AXSparseSetterFunc>;
+using AXSparseAttributeSetterMap = HashMap<QualifiedName, AXSparseSetterFunc>;
 
-TempSetterMap& GetTempSetterMap(ui::AXNodeData* node_data);
+AXSparseAttributeSetterMap& GetAXSparseAttributeSetterMap();
 
-// An implementation of AOMPropertyClient that calls
-// AXSparseAttributeClient for an AOM property.
-class AXSparseAttributeAOMPropertyClient : public AOMPropertyClient {
+class AXNodeDataAOMPropertyClient : public AOMPropertyClient {
  public:
-  AXSparseAttributeAOMPropertyClient(
-      AXObjectCacheImpl& ax_object_cache,
-      AXSparseAttributeClient& sparse_attribute_client)
-      : ax_object_cache_(ax_object_cache),
-        sparse_attribute_client_(sparse_attribute_client) {}
+  AXNodeDataAOMPropertyClient(AXObjectCacheImpl& ax_object_cache,
+                              ui::AXNodeData& node_data)
+      : ax_object_cache_(ax_object_cache), node_data_(node_data) {}
 
   void AddStringProperty(AOMStringProperty, const String& value) override;
   void AddBooleanProperty(AOMBooleanProperty, bool value) override;
@@ -67,7 +44,7 @@ class AXSparseAttributeAOMPropertyClient : public AOMPropertyClient {
 
  private:
   Persistent<AXObjectCacheImpl> ax_object_cache_;
-  AXSparseAttributeClient& sparse_attribute_client_;
+  ui::AXNodeData& node_data_;
 };
 
 }  // namespace blink

@@ -1,35 +1,5 @@
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: http://www.qt.io/licensing/
-##
-## This file is part of the provisioning scripts of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL21$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see http://www.qt.io/terms-conditions. For further
-## information use the contact form at http://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 2.1 or version 3 as published by the Free
-## Software Foundation and appearing in the file LICENSE.LGPLv21 and
-## LICENSE.LGPLv3 included in the packaging of this file. Please review the
-## following information to ensure the GNU Lesser General Public License
-## requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-## http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-##
-## As a special exception, The Qt Company gives you certain additional
-## rights. These rights are described in The Qt Company LGPL Exception
-## version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2020 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 . "$PSScriptRoot\helpers.ps1"
 
@@ -55,10 +25,10 @@ if (Is64BitWinHost) {
     Extract-7Zip $packagex64 $installFolder "pgsql\lib pgsql\bin pgsql\share pgsql\include"
 
     Write-Host "Remove downloaded $packagex64 ..."
-    Remove-Item -Path $packagex64
+    Remove $packagex64
     # Remove pthread.h file so it won't be used in mingw builds (QTBUG-79555)
-    Remove-item -Path "$installFolder\pgsql\include\pthread.h"
-    Remove-item -Path "$installFolder\pgsql\include\unistd.h"
+    Remove "$installFolder\pgsql\include\pthread.h"
+    Remove "$installFolder\pgsql\include\unistd.h"
 
     Set-EnvironmentVariable "POSTGRESQL_INCLUDE_x64" "$installFolder\pgsql\include"
     Set-EnvironmentVariable "POSTGRESQL_LIB_x64" "$installFolder\pgsql\lib"
@@ -83,10 +53,10 @@ Write-Host "Installing $packagex86 ..."
 Extract-7Zip $packagex86 $installFolder "pgsql\lib pgsql\bin pgsql\share pgsql\include"
 
 Write-Host "Remove downloaded $packagex86 ..."
-Remove-Item -Path $packagex86
+Remove $packagex86
 # Remove pthread.h file so it won't be used in mingw builds (QTBUG-79555)
-Remove-item -Path "$installFolder\pgsql\include\pthread.h"
-Remove-item -Path "$installFolder\pgsql\include\unistd.h"
+Remove "$installFolder\pgsql\include\pthread.h"
+Remove "$installFolder\pgsql\include\unistd.h"
 
 Set-EnvironmentVariable "POSTGRESQL_INCLUDE_x86" "$installFolder\pgsql\include"
 Set-EnvironmentVariable "POSTGRESQL_LIB_x86" "$installFolder\pgsql\lib"

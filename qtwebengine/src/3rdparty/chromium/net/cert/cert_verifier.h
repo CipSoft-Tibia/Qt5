@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/strings/string_piece.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/hash_value.h"
 #include "net/base/net_export.h"
@@ -22,6 +22,7 @@ namespace net {
 class CertVerifyResult;
 class CRLSet;
 class NetLogWithSource;
+class ChromeRootStoreData;
 
 // CertVerifier represents a service for verifying certificates.
 //
@@ -75,13 +76,13 @@ class NET_EXPORT CertVerifier {
 
   class Request {
    public:
-    Request() {}
+    Request() = default;
+
+    Request(const Request&) = delete;
+    Request& operator=(const Request&) = delete;
 
     // Destruction of the Request cancels it.
-    virtual ~Request() {}
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(Request);
+    virtual ~Request() = default;
   };
 
   enum VerifyFlags {
@@ -123,10 +124,10 @@ class NET_EXPORT CertVerifier {
    public:
     RequestParams();
     RequestParams(scoped_refptr<X509Certificate> certificate,
-                  const std::string& hostname,
+                  base::StringPiece hostname,
                   int flags,
-                  const std::string& ocsp_response,
-                  const std::string& sct_list);
+                  base::StringPiece ocsp_response,
+                  base::StringPiece sct_list);
     RequestParams(const RequestParams& other);
     ~RequestParams();
 
@@ -154,16 +155,16 @@ class NET_EXPORT CertVerifier {
 
   // When the verifier is destroyed, all certificate verification requests are
   // canceled, and their completion callbacks will not be called.
-  virtual ~CertVerifier() {}
+  virtual ~CertVerifier() = default;
 
   // Verifies the given certificate against the given hostname as an SSL server.
   // Returns OK if successful or an error code upon failure.
   //
   // The |*verify_result| structure, including the |verify_result->cert_status|
-  // bitmask, is always filled out regardless of the return value. If the
-  // certificate has multiple errors, the corresponding status flags are set in
-  // |verify_result->cert_status|, and the error code for the most serious
-  // error is returned.
+  // bitmask and |verify_result->verified_cert|, is always filled out regardless
+  // of the return value. If the certificate has multiple errors, the
+  // corresponding status flags are set in |verify_result->cert_status|, and the
+  // error code for the most serious error is returned.
   //
   // |callback| must not be null. ERR_IO_PENDING is returned if the operation
   // could not be completed synchronously, in which case the result code will
@@ -218,6 +219,15 @@ NET_EXPORT bool operator==(const CertVerifier::Config& lhs,
                            const CertVerifier::Config& rhs);
 NET_EXPORT bool operator!=(const CertVerifier::Config& lhs,
                            const CertVerifier::Config& rhs);
+
+// A CertVerifier that can update its CertVerifyProc while it is running.
+class NET_EXPORT CertVerifierWithUpdatableProc : public CertVerifier {
+ public:
+  // Update the CertVerifyProc with new ChromeRootStoreData.
+  virtual void UpdateChromeRootStoreData(
+      scoped_refptr<CertNetFetcher> cert_net_fetcher,
+      const ChromeRootStoreData* root_store_data) = 0;
+};
 
 }  // namespace net
 

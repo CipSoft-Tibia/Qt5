@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include "tools/win/chromeexts/chrome_exts_command.h"
 #include "tools/win/chromeexts/commands/hwnd_command.h"
+#include "tools/win/chromeexts/commands/view_command.h"
 
 namespace {
 using Microsoft::WRL::ComPtr;
@@ -37,4 +38,9 @@ HRESULT CALLBACK help(IDebugClient* client, PCSTR args) {
 HRESULT CALLBACK RunHwndCommand(IDebugClient* client, PCSTR args) {
   return tools::win::chromeexts::ChromeExtsCommand::Run<
       tools::win::chromeexts::HwndCommand>(client, args);
+}
+
+HRESULT CALLBACK RunViewCommand(IDebugClient* client, PCSTR args) {
+  return tools::win::chromeexts::ChromeExtsCommand::Run<
+      tools::win::chromeexts::ViewCommand>(client, args);
 }

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquicktransition_p.h"
 
@@ -81,6 +45,11 @@ QT_BEGIN_NAMESPACE
     parent item. The  Transition \l {Transition::}{from} and \l {Transition::}{to}
     values can be set to restrict the animations to only be applied when changing
     from one particular state to another.
+
+    Top-level animations within a transition are run in parallel. To run them
+    sequentially, define them within a SequentialAnimation:
+
+    \snippet qml/transition-reversible.qml sequential animations
 
     To define multiple Transitions, specify \l Item::transitions as a list:
 
@@ -135,8 +104,8 @@ public:
 protected:
 
     static void append_animation(QQmlListProperty<QQuickAbstractAnimation> *list, QQuickAbstractAnimation *a);
-    static int animation_count(QQmlListProperty<QQuickAbstractAnimation> *list);
-    static QQuickAbstractAnimation* animation_at(QQmlListProperty<QQuickAbstractAnimation> *list, int pos);
+    static qsizetype animation_count(QQmlListProperty<QQuickAbstractAnimation> *list);
+    static QQuickAbstractAnimation* animation_at(QQmlListProperty<QQuickAbstractAnimation> *list, qsizetype pos);
     static void clear_animations(QQmlListProperty<QQuickAbstractAnimation> *list);
     QList<QQuickAbstractAnimation *> animations;
 };
@@ -148,13 +117,13 @@ void QQuickTransitionPrivate::append_animation(QQmlListProperty<QQuickAbstractAn
     a->setDisableUserControl();
 }
 
-int QQuickTransitionPrivate::animation_count(QQmlListProperty<QQuickAbstractAnimation> *list)
+qsizetype QQuickTransitionPrivate::animation_count(QQmlListProperty<QQuickAbstractAnimation> *list)
 {
     QQuickTransition *q = static_cast<QQuickTransition *>(list->object);
-    return q->d_func()->animations.count();
+    return q->d_func()->animations.size();
 }
 
-QQuickAbstractAnimation* QQuickTransitionPrivate::animation_at(QQmlListProperty<QQuickAbstractAnimation> *list, int pos)
+QQuickAbstractAnimation* QQuickTransitionPrivate::animation_at(QQmlListProperty<QQuickAbstractAnimation> *list, qsizetype pos)
 {
     QQuickTransition *q = static_cast<QQuickTransition *>(list->object);
     return q->d_func()->animations.at(pos);
@@ -163,7 +132,7 @@ QQuickAbstractAnimation* QQuickTransitionPrivate::animation_at(QQmlListProperty<
 void QQuickTransitionPrivate::clear_animations(QQmlListProperty<QQuickAbstractAnimation> *list)
 {
     QQuickTransition *q = static_cast<QQuickTransition *>(list->object);
-    while (q->d_func()->animations.count()) {
+    while (q->d_func()->animations.size()) {
         QQuickAbstractAnimation *firstAnim = q->d_func()->animations.at(0);
         q->d_func()->animations.removeAll(firstAnim);
     }
@@ -229,6 +198,12 @@ void QQuickTransitionInstance::stop()
         m_anim->stop();
 }
 
+void QQuickTransitionInstance::complete()
+{
+    if (m_anim)
+        m_anim->complete();
+}
+
 bool QQuickTransitionInstance::isRunning() const
 {
     return m_anim && m_anim->state() == QAbstractAnimationJob::Running;
@@ -262,8 +237,8 @@ QQuickTransitionInstance *QQuickTransition::prepare(QQuickStateOperation::Action
     group->manager = manager;
 
     QQuickAbstractAnimation::TransitionDirection direction = d->reversed ? QQuickAbstractAnimation::Backward : QQuickAbstractAnimation::Forward;
-    int start = d->reversed ? d->animations.count() - 1 : 0;
-    int end = d->reversed ? -1 : d->animations.count();
+    int start = d->reversed ? d->animations.size() - 1 : 0;
+    int end = d->reversed ? -1 : d->animations.size();
 
     QAbstractAnimationJob *anim = nullptr;
     for (int i = start; i != end;) {
@@ -429,10 +404,12 @@ void QQuickTransition::setEnabled(bool enabled)
 
 /*!
     \qmlproperty bool QtQuick::Transition::running
+    \readonly
 
     This property holds whether the transition is currently running.
 
-    This property is read only.
+    \note Unlike Animation::running, this property is read only,
+    and can not be used to control the transition.
 */
 bool QQuickTransition::running() const
 {
@@ -443,7 +420,7 @@ bool QQuickTransition::running() const
 
 /*!
     \qmlproperty list<Animation> QtQuick::Transition::animations
-    \default
+    \qmldefault
 
     This property holds a list of the animations to be run for this transition.
 

@@ -1,9 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_DEVICE_USB_USB_DEVICE_ANDROID_H_
 #define SERVICES_DEVICE_USB_USB_DEVICE_ANDROID_H_
+
+#include <list>
+#include <memory>
+#include <string>
 
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/weak_ptr.h"
@@ -38,9 +42,9 @@ class UsbDeviceAndroid : public UsbDevice {
                    uint16_t vendor_id,
                    uint16_t product_id,
                    uint16_t device_version,
-                   const base::string16& manufacturer_string,
-                   const base::string16& product_string,
-                   const base::string16& serial_number,
+                   const std::u16string& manufacturer_string,
+                   const std::u16string& product_string,
+                   const std::u16string& serial_number,
                    const base::android::JavaRef<jobject>& wrapper);
   ~UsbDeviceAndroid() override;
 

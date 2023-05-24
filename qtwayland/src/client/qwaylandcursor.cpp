@@ -1,47 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2023 David Edmundson <davidedmundson@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandcursor_p.h"
 
 #include "qwaylanddisplay_p.h"
 #include "qwaylandinputdevice_p.h"
 #include "qwaylandshmbackingstore_p.h"
+
+#include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatformtheme.h>
 
 #include <QtGui/QImageReader>
 #include <QDebug>
@@ -54,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QtWaylandClient {
 
-QWaylandCursorTheme *QWaylandCursorTheme::create(QWaylandShm *shm, int size, const QString &themeName)
+std::unique_ptr<QWaylandCursorTheme> QWaylandCursorTheme::create(QWaylandShm *shm, int size, const QString &themeName)
 {
     QByteArray nameBytes = themeName.toLocal8Bit();
     struct ::wl_cursor_theme *theme = wl_cursor_theme_load(nameBytes.constData(), size, shm->object());
@@ -64,7 +32,7 @@ QWaylandCursorTheme *QWaylandCursorTheme::create(QWaylandShm *shm, int size, con
         return nullptr;
     }
 
-    return new QWaylandCursorTheme(theme);
+    return std::unique_ptr<QWaylandCursorTheme>{new QWaylandCursorTheme(theme)};
 }
 
 QWaylandCursorTheme::~QWaylandCursorTheme()
@@ -74,7 +42,7 @@ QWaylandCursorTheme::~QWaylandCursorTheme()
 
 wl_cursor *QWaylandCursorTheme::requestCursor(WaylandCursor shape)
 {
-    if (struct wl_cursor *cursor = m_cursors.value(shape, nullptr))
+    if (struct wl_cursor *cursor = m_cursors[shape])
         return cursor;
 
     static Q_CONSTEXPR struct ShapeAndName {
@@ -208,7 +176,7 @@ wl_cursor *QWaylandCursorTheme::requestCursor(WaylandCursor shape)
                                     ShapeAndName{shape, ""}, byShape);
     for (auto it = p.first; it != p.second; ++it) {
         if (wl_cursor *cursor = wl_cursor_theme_get_cursor(m_theme, it->name)) {
-            m_cursors.insert(shape, cursor);
+            m_cursors[shape] = cursor;
             return cursor;
         }
     }
@@ -242,6 +210,77 @@ wl_cursor *QWaylandCursorTheme::requestCursor(WaylandCursor shape)
     return waylandCursor;
 }
 
+QWaylandCursorShape::QWaylandCursorShape(::wp_cursor_shape_device_v1 *object)
+    : QtWayland::wp_cursor_shape_device_v1(object)
+{}
+
+QWaylandCursorShape::~QWaylandCursorShape()
+{
+    destroy();
+}
+
+static QtWayland::wp_cursor_shape_device_v1::shape qtCursorShapeToWaylandShape(Qt::CursorShape cursorShape)
+{
+    using QtWayland::wp_cursor_shape_device_v1;
+
+    switch (cursorShape) {
+    case Qt::BlankCursor:
+    case Qt::CustomCursor:
+    case Qt::BitmapCursor:
+        // these should have been handled separately before using the shape protocol
+        Q_ASSERT(false);
+        break;
+    case Qt::ArrowCursor:
+        return wp_cursor_shape_device_v1::shape_default;
+    case Qt::SizeVerCursor:
+        return wp_cursor_shape_device_v1::shape_ns_resize;
+    case Qt::UpArrowCursor:
+        return wp_cursor_shape_device_v1::shape_n_resize;
+    case Qt::SizeHorCursor:
+        return wp_cursor_shape_device_v1::shape_ew_resize;
+    case Qt::CrossCursor:
+        return wp_cursor_shape_device_v1::shape_crosshair;
+    case Qt::SizeBDiagCursor:
+        return wp_cursor_shape_device_v1::shape_nesw_resize;
+    case Qt::IBeamCursor:
+        return wp_cursor_shape_device_v1::shape_text;
+    case Qt::SizeFDiagCursor:
+        return wp_cursor_shape_device_v1::shape_nwse_resize;
+    case Qt::WaitCursor:
+        return wp_cursor_shape_device_v1::shape_wait;
+    case Qt::SizeAllCursor:
+        return wp_cursor_shape_device_v1::shape_all_scroll;
+    case Qt::BusyCursor:
+        return wp_cursor_shape_device_v1::shape_progress;
+    case Qt::SplitVCursor:
+        return wp_cursor_shape_device_v1::shape_row_resize;
+    case Qt::ForbiddenCursor:
+        return wp_cursor_shape_device_v1::shape_not_allowed;
+    case Qt::SplitHCursor:
+        return wp_cursor_shape_device_v1::shape_col_resize;
+    case Qt::PointingHandCursor:
+        return wp_cursor_shape_device_v1::shape_pointer;
+    case Qt::OpenHandCursor:
+        return wp_cursor_shape_device_v1::shape_grab;
+    case Qt::WhatsThisCursor:
+        return wp_cursor_shape_device_v1::shape_help;
+    case Qt::ClosedHandCursor:
+        return wp_cursor_shape_device_v1::shape_grabbing;
+    case Qt::DragMoveCursor:
+        return wp_cursor_shape_device_v1::shape_move;
+    case Qt::DragCopyCursor:
+        return wp_cursor_shape_device_v1::shape_copy;
+    case Qt::DragLinkCursor:
+        return wp_cursor_shape_device_v1::shape_alias;
+    }
+    return wp_cursor_shape_device_v1::shape_default;
+}
+
+void QWaylandCursorShape::setShape(uint32_t serial, Qt::CursorShape shape)
+{
+    set_shape(serial, qtCursorShapeToWaylandShape(shape));
+}
+
 QWaylandCursor::QWaylandCursor(QWaylandDisplay *display)
     : mDisplay(display)
 {
@@ -250,7 +289,21 @@ QWaylandCursor::QWaylandCursor(QWaylandDisplay *display)
 QSharedPointer<QWaylandBuffer> QWaylandCursor::cursorBitmapBuffer(QWaylandDisplay *display, const QCursor *cursor)
 {
     Q_ASSERT(cursor->shape() == Qt::BitmapCursor);
-    const QImage &img = cursor->pixmap().toImage();
+    QImage img = !cursor->pixmap().isNull() ? cursor->pixmap().toImage() : cursor->bitmap().toImage();
+
+    // convert to supported format if necessary
+    if (!display->shm()->formatSupported(img.format())) {
+        if (cursor->mask().isNull()) {
+            img.convertTo(QImage::Format_RGB32);
+        } else {
+            // preserve mask
+            img.convertTo(QImage::Format_ARGB32);
+            QPixmap pixmap = QPixmap::fromImage(img);
+            pixmap.setMask(cursor->mask());
+            img = pixmap.toImage();
+        }
+    }
+
     QSharedPointer<QWaylandShmBuffer> buffer(new QWaylandShmBuffer(display, img.size(), img.format()));
     memcpy(buffer->image()->bits(), img.bits(), size_t(img.sizeInBytes()));
     return buffer;
@@ -272,7 +325,7 @@ void QWaylandCursor::changeCursor(QCursor *cursor, QWindow *window)
 
 void QWaylandCursor::pointerEvent(const QMouseEvent &event)
 {
-    mLastPos = event.globalPos();
+    mLastPos = event.globalPosition().toPoint();
 }
 
 QPoint QWaylandCursor::pos() const
@@ -284,6 +337,13 @@ void QWaylandCursor::setPos(const QPoint &pos)
 {
     Q_UNUSED(pos);
     qCWarning(lcQpaWayland) << "Setting cursor position is not possible on wayland";
+}
+
+QSize QWaylandCursor::size() const
+{
+    if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())
+        return theme->themeHint(QPlatformTheme::MouseCursorSize).toSize();
+    return QSize(24, 24);
 }
 
 } // namespace QtWaylandClient

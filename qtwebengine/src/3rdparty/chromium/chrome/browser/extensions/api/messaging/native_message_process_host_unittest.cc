@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,16 +13,16 @@
 
 #include "base/base_paths.h"
 #include "base/base_switches.h"
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
 #include "base/json/json_reader.h"
+#include "base/memory/page_size.h"
 #include "base/path_service.h"
-#include "base/process/process_metrics.h"
 #include "base/rand_util.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
@@ -31,6 +31,7 @@
 #include "base/test/test_timeouts.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
+#include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/extensions/api/messaging/native_messaging_launch_from_native.h"
 #include "chrome/browser/extensions/api/messaging/native_messaging_test_util.h"
@@ -46,12 +47,13 @@
 #include "extensions/common/extension.h"
 #include "extensions/common/features/feature_channel.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 #include "base/files/file_descriptor_watcher_posix.h"
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <windows.h>
 #include "base/win/scoped_handle.h"
 #else
@@ -76,7 +78,7 @@ class FakeLauncher : public NativeProcessLauncher {
       base::FilePath write_file) {
     int read_flags = base::File::FLAG_OPEN | base::File::FLAG_READ;
     int write_flags = base::File::FLAG_CREATE | base::File::FLAG_WRITE;
-#if !defined(OS_POSIX)
+#if !BUILDFLAG(IS_POSIX)
     read_flags |= base::File::FLAG_ASYNC;
     write_flags |= base::File::FLAG_ASYNC;
 #endif
@@ -89,7 +91,7 @@ class FakeLauncher : public NativeProcessLauncher {
       base::File read_pipe,
       base::FilePath write_file) {
     int write_flags = base::File::FLAG_CREATE | base::File::FLAG_WRITE;
-#if !defined(OS_POSIX)
+#if !BUILDFLAG(IS_POSIX)
     write_flags |= base::File::FLAG_ASYNC;
 #endif
 
@@ -99,9 +101,10 @@ class FakeLauncher : public NativeProcessLauncher {
 
   void Launch(const GURL& origin,
               const std::string& native_host_name,
-              const LaunchedCallback& callback) const override {
-    callback.Run(NativeProcessLauncher::RESULT_SUCCESS, base::Process(),
-                 std::move(read_file_), std::move(write_file_));
+              LaunchedCallback callback) const override {
+    std::move(callback).Run(NativeProcessLauncher::RESULT_SUCCESS,
+                            base::Process(), std::move(read_file_),
+                            std::move(write_file_));
   }
 
  private:
@@ -110,13 +113,11 @@ class FakeLauncher : public NativeProcessLauncher {
 };
 
 class NativeMessagingTest : public ::testing::Test,
-                            public NativeMessageHost::Client,
-                            public base::SupportsWeakPtr<NativeMessagingTest> {
+                            public NativeMessageHost::Client {
  protected:
   NativeMessagingTest()
       : current_channel_(version_info::Channel::DEV),
-        task_environment_(content::BrowserTaskEnvironment::IO_MAINLOOP),
-        channel_closed_(false) {}
+        task_environment_(content::BrowserTaskEnvironment::IO_MAINLOOP) {}
 
   void SetUp() override { ASSERT_TRUE(temp_dir_.CreateUniqueTempDir()); }
 
@@ -132,13 +133,12 @@ class NativeMessagingTest : public ::testing::Test,
     last_message_ = message;
 
     // Parse the message.
-    std::unique_ptr<base::DictionaryValue> dict_value =
-        base::DictionaryValue::From(base::JSONReader::ReadDeprecated(message));
-    if (dict_value) {
-      last_message_parsed_ = std::move(dict_value);
-    } else {
+    absl::optional<base::Value> dict_value = base::JSONReader::Read(message);
+    if (!dict_value || !dict_value->is_dict()) {
       LOG(ERROR) << "Failed to parse " << message;
       last_message_parsed_.reset();
+    } else {
+      last_message_parsed_ = std::move(*dict_value).TakeDict();
     }
 
     if (run_loop_)
@@ -178,30 +178,29 @@ class NativeMessagingTest : public ::testing::Test,
   TestingProfile profile_;
 
   std::string last_message_;
-  std::unique_ptr<base::DictionaryValue> last_message_parsed_;
-  bool channel_closed_;
+  absl::optional<base::Value::Dict> last_message_parsed_;
+  bool channel_closed_ = false;
 };
 
 // Read a single message from a local file.
 TEST_F(NativeMessagingTest, SingleSendMessageRead) {
   base::FilePath temp_output_file = temp_dir_.GetPath().AppendASCII("output");
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   base::FilePath temp_input_file = CreateTempFileWithMessage(kTestMessage);
   ASSERT_FALSE(temp_input_file.empty());
   std::unique_ptr<NativeProcessLauncher> launcher =
       FakeLauncher::Create(temp_input_file, temp_output_file);
-#else   // defined(OS_WIN)
+#else   // BUILDFLAG(IS_WIN)
   base::PlatformFile pipe_handles[2];
   ASSERT_EQ(0, pipe(pipe_handles));
   base::File read_file(pipe_handles[0]);
   std::string formatted_message = FormatMessage(kTestMessage);
   ASSERT_GT(base::GetPageSize(), formatted_message.size());
-  ASSERT_TRUE(base::WriteFileDescriptor(
-      pipe_handles[1], formatted_message.data(), formatted_message.size()));
+  ASSERT_TRUE(base::WriteFileDescriptor(pipe_handles[1], formatted_message));
   base::File write_file(pipe_handles[1]);
   std::unique_ptr<NativeProcessLauncher> launcher =
       FakeLauncher::CreateWithPipeInput(std::move(read_file), temp_output_file);
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
   native_message_host_ = NativeMessageProcessHost::CreateWithLauncher(
       ScopedTestNativeMessagingHost::kExtensionId, "empty_app.py",
       std::move(launcher));
@@ -209,7 +208,7 @@ TEST_F(NativeMessagingTest, SingleSendMessageRead) {
   native_message_host_->Start(this);
 
   ASSERT_TRUE(native_message_host_);
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
 
   EXPECT_EQ(kTestMessage, last_message_);
@@ -221,8 +220,8 @@ TEST_F(NativeMessagingTest, SingleSendMessageWrite) {
   base::FilePath temp_output_file = temp_dir_.GetPath().AppendASCII("output");
 
   base::File read_file;
-#if defined(OS_WIN)
-  base::string16 pipe_name = base::StringPrintf(
+#if BUILDFLAG(IS_WIN)
+  std::wstring pipe_name = base::StringPrintf(
       L"\\\\.\\pipe\\chrome.nativeMessaging.out.%llx", base::RandUint64());
   base::File write_handle =
       base::File(base::ScopedPlatformFile(CreateNamedPipeW(
@@ -240,12 +239,12 @@ TEST_F(NativeMessagingTest, SingleSendMessageWrite) {
   ASSERT_TRUE(read_handle.IsValid());
 
   read_file = std::move(read_handle);
-#else  // defined(OS_WIN)
+#else   // BUILDFLAG(IS_WIN)
   base::PlatformFile pipe_handles[2];
   ASSERT_EQ(0, pipe(pipe_handles));
   read_file = base::File(pipe_handles[0]);
   base::File write_file(pipe_handles[1]);
-#endif  // !defined(OS_WIN)
+#endif  // !BUILDFLAG(IS_WIN)
 
   std::unique_ptr<NativeProcessLauncher> launcher =
       FakeLauncher::CreateWithPipeInput(std::move(read_file), temp_output_file);
@@ -284,52 +283,57 @@ TEST_F(NativeMessagingTest, EchoConnect) {
   ASSERT_TRUE(native_message_host_);
 
   native_message_host_->OnMessage("{\"text\": \"Hello.\"}");
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
   ASSERT_FALSE(last_message_.empty());
   ASSERT_TRUE(last_message_parsed_);
 
   std::string expected_url = std::string("chrome-extension://") +
-      ScopedTestNativeMessagingHost::kExtensionId + "/";
-  int id;
-  EXPECT_TRUE(last_message_parsed_->GetInteger("id", &id));
-  EXPECT_EQ(1, id);
-  std::string text;
-  EXPECT_TRUE(last_message_parsed_->GetString("echo.text", &text));
-  EXPECT_EQ("Hello.", text);
-  std::string url;
-  EXPECT_TRUE(last_message_parsed_->GetString("caller_url", &url));
-  EXPECT_EQ(expected_url, url);
+                             ScopedTestNativeMessagingHost::kExtensionId + "/";
+
+  {
+    absl::optional<int> id = last_message_parsed_->FindInt("id");
+    ASSERT_TRUE(id);
+    EXPECT_EQ(1, *id);
+    const std::string* text =
+        last_message_parsed_->FindStringByDottedPath("echo.text");
+    ASSERT_TRUE(text);
+    EXPECT_EQ("Hello.", *text);
+    const std::string* url = last_message_parsed_->FindString("caller_url");
+    EXPECT_TRUE(url);
+    EXPECT_EQ(expected_url, *url);
+  }
 
   native_message_host_->OnMessage("{\"foo\": \"bar\"}");
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
-  EXPECT_TRUE(last_message_parsed_->GetInteger("id", &id));
-  EXPECT_EQ(2, id);
-  EXPECT_TRUE(last_message_parsed_->GetString("echo.foo", &text));
-  EXPECT_EQ("bar", text);
-  EXPECT_TRUE(last_message_parsed_->GetString("caller_url", &url));
-  EXPECT_EQ(expected_url, url);
 
-  const base::Value* args = nullptr;
-  ASSERT_TRUE(last_message_parsed_->Get("args", &args));
+  {
+    absl::optional<int> id = last_message_parsed_->FindInt("id");
+    ASSERT_TRUE(id);
+    EXPECT_EQ(2, *id);
+    const std::string* text =
+        last_message_parsed_->FindStringByDottedPath("echo.foo");
+    ASSERT_TRUE(text);
+    EXPECT_EQ("bar", *text);
+    const std::string* url = last_message_parsed_->FindString("caller_url");
+    ASSERT_TRUE(url);
+    EXPECT_EQ(expected_url, *url);
+  }
+
+  const base::Value* args = last_message_parsed_->Find("args");
+  ASSERT_TRUE(args);
   EXPECT_TRUE(args->is_none());
 
-  const base::Value* connect_id_value = nullptr;
-  ASSERT_TRUE(last_message_parsed_->Get("connect_id", &connect_id_value));
+  const base::Value* connect_id_value =
+      last_message_parsed_->Find("connect_id");
+  ASSERT_TRUE(connect_id_value);
   EXPECT_TRUE(connect_id_value->is_none());
 }
 
 // Test send message with a real client. The args passed when launching the
 // native messaging host should contain reconnect args.
-//
-// TODO(crbug.com/1026121): Fix it. This test is flaky on Win7 bots.
-#if defined(OS_WIN)
-#define MAYBE_ReconnectArgs DISABLED_ReconnectArgs
-#else
-#define MAYBE_ReconnectArgs ReconnectArgs
-#endif
-TEST_F(NativeMessagingTest, MAYBE_ReconnectArgs) {
+TEST_F(NativeMessagingTest, ReconnectArgs) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(features::kOnConnectNative);
   ScopedAllowNativeAppConnectionForTest allow_native_app_connection(true);
@@ -345,19 +349,19 @@ TEST_F(NativeMessagingTest, MAYBE_ReconnectArgs) {
   ASSERT_TRUE(native_message_host_);
 
   native_message_host_->OnMessage("{\"text\": \"Hello.\"}");
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
   ASSERT_FALSE(last_message_.empty());
   ASSERT_TRUE(last_message_parsed_);
 
-  const base::ListValue* args_value = nullptr;
-  ASSERT_TRUE(last_message_parsed_->GetList("args", &args_value));
+  const base::Value::List* args_value = last_message_parsed_->FindList("args");
+  ASSERT_TRUE(args_value);
   std::vector<base::CommandLine::StringType> args;
-  args.reserve(args_value->GetSize());
-  for (auto& arg : args_value->GetList()) {
+  args.reserve(args_value->size());
+  for (auto& arg : *args_value) {
     ASSERT_TRUE(arg.is_string());
-#if defined(OS_WIN)
-    args.push_back(base::UTF8ToUTF16(arg.GetString()));
+#if BUILDFLAG(IS_WIN)
+    args.push_back(base::UTF8ToWide(arg.GetString()));
 #else
     args.push_back(arg.GetString());
 #endif
@@ -376,7 +380,7 @@ TEST_F(NativeMessagingTest, MAYBE_ReconnectArgs) {
       cmd_line.GetSwitchValueASCII(switches::kNativeMessagingConnectExtension));
   EXPECT_EQ(features::kOnConnectNative.name,
             cmd_line.GetSwitchValueASCII(switches::kEnableFeatures));
-  EXPECT_EQ(profile_.GetPath().BaseName(),
+  EXPECT_EQ(profile_.GetBaseName(),
             cmd_line.GetSwitchValuePath(switches::kProfileDirectory));
   EXPECT_EQ(profile_.GetPath().DirName(),
             cmd_line.GetSwitchValuePath(switches::kUserDataDir));
@@ -399,13 +403,13 @@ TEST_F(NativeMessagingTest, ReconnectArgs_Disabled) {
   ASSERT_TRUE(native_message_host_);
 
   native_message_host_->OnMessage("{\"text\": \"Hello.\"}");
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
   ASSERT_FALSE(last_message_.empty());
   ASSERT_TRUE(last_message_parsed_);
 
-  const base::Value* args = nullptr;
-  ASSERT_TRUE(last_message_parsed_->Get("args", &args));
+  const base::Value* args = last_message_parsed_->Find("args");
+  ASSERT_TRUE(args);
   EXPECT_TRUE(args->is_none());
 }
 
@@ -427,17 +431,18 @@ TEST_F(NativeMessagingTest, ReconnectArgsIfNativeConnectionDisallowed) {
   ASSERT_TRUE(native_message_host_);
 
   native_message_host_->OnMessage("{\"text\": \"Hello.\"}");
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
   ASSERT_FALSE(last_message_.empty());
   ASSERT_TRUE(last_message_parsed_);
 
-  const base::Value* args_value = nullptr;
-  ASSERT_TRUE(last_message_parsed_->Get("args", &args_value));
+  const base::Value* args_value = last_message_parsed_->Find("args");
+  ASSERT_TRUE(args_value);
   EXPECT_TRUE(args_value->is_none());
 
-  const base::Value* connect_id_value = nullptr;
-  ASSERT_TRUE(last_message_parsed_->Get("connect_id", &connect_id_value));
+  const base::Value* connect_id_value =
+      last_message_parsed_->Find("connect_id");
+  ASSERT_TRUE(connect_id_value);
   EXPECT_TRUE(connect_id_value->is_none());
 }
 
@@ -453,7 +458,7 @@ TEST_F(NativeMessagingTest, UserLevel) {
   ASSERT_TRUE(native_message_host_);
 
   native_message_host_->OnMessage("{\"text\": \"Hello.\"}");
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
   ASSERT_FALSE(last_message_.empty());
   ASSERT_TRUE(last_message_parsed_);
@@ -469,7 +474,7 @@ TEST_F(NativeMessagingTest, DisallowUserLevel) {
       ScopedTestNativeMessagingHost::kHostName, false, &error_message);
   native_message_host_->Start(this);
   ASSERT_TRUE(native_message_host_);
-  run_loop_.reset(new base::RunLoop());
+  run_loop_ = std::make_unique<base::RunLoop>();
   run_loop_->Run();
 
   // The host should fail to start.

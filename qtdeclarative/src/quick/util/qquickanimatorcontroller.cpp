@@ -1,46 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickanimatorcontroller_p.h"
 
-#include <private/qquickwindow_p.h>
+#include <private/qquickitem_p.h>
 #include <private/qsgrenderloop_p.h>
 
 #include <private/qanimationgroupjob_p.h>
@@ -65,15 +29,14 @@ static void qquickanimator_invalidate_jobs(QAbstractAnimationJob *job)
     if (job->isRenderThreadJob()) {
         static_cast<QQuickAnimatorJob *>(job)->invalidate();
     } else if (job->isGroup()) {
-        QAnimationGroupJob *g = static_cast<QAnimationGroupJob *>(job);
-        for (QAbstractAnimationJob *a = g->firstChild(); a; a = a->nextSibling())
+        for (QAbstractAnimationJob *a : *static_cast<QAnimationGroupJob *>(job)->children())
             qquickanimator_invalidate_jobs(a);
     }
 }
 
 void QQuickAnimatorController::windowNodesDestroyed()
 {
-    for (const QSharedPointer<QAbstractAnimationJob> &toStop : qAsConst(m_rootsPendingStop)) {
+    for (const QSharedPointer<QAbstractAnimationJob> &toStop : std::as_const(m_rootsPendingStop)) {
         qquickanimator_invalidate_jobs(toStop.data());
         toStop->stop();
     }
@@ -96,14 +59,14 @@ void QQuickAnimatorController::windowNodesDestroyed()
 void QQuickAnimatorController::advance()
 {
     bool running = false;
-    for (const QSharedPointer<QAbstractAnimationJob> &job : qAsConst(m_animationRoots)) {
+    for (const QSharedPointer<QAbstractAnimationJob> &job : std::as_const(m_animationRoots)) {
         if (job->isRunning()) {
             running = true;
             break;
         }
     }
 
-    for (QQuickAnimatorJob *job : qAsConst(m_runningAnimators))
+    for (QQuickAnimatorJob *job : std::as_const(m_runningAnimators))
         job->commit();
 
     if (running)
@@ -115,26 +78,25 @@ static void qquickanimator_sync_before_start(QAbstractAnimationJob *job)
     if (job->isRenderThreadJob()) {
         static_cast<QQuickAnimatorJob *>(job)->preSync();
     } else if (job->isGroup()) {
-        QAnimationGroupJob *g = static_cast<QAnimationGroupJob *>(job);
-        for (QAbstractAnimationJob *a = g->firstChild(); a; a = a->nextSibling())
+        for (QAbstractAnimationJob *a : *static_cast<QAnimationGroupJob *>(job)->children())
             qquickanimator_sync_before_start(a);
     }
 }
 
 void QQuickAnimatorController::beforeNodeSync()
 {
-    for (const QSharedPointer<QAbstractAnimationJob> &toStop : qAsConst(m_rootsPendingStop)) {
+    for (const QSharedPointer<QAbstractAnimationJob> &toStop : std::as_const(m_rootsPendingStop)) {
         toStop->stop();
         m_animationRoots.remove(toStop.data());
     }
     m_rootsPendingStop.clear();
 
 
-    for (QQuickAnimatorJob *job : qAsConst(m_runningAnimators))
+    for (QQuickAnimatorJob *job : std::as_const(m_runningAnimators))
         job->preSync();
 
     // Start pending jobs
-    for (const QSharedPointer<QAbstractAnimationJob> &job : qAsConst(m_rootsPendingStart)) {
+    for (const QSharedPointer<QAbstractAnimationJob> &job : std::as_const(m_rootsPendingStart)) {
         Q_ASSERT(!job->isRunning());
 
         // We want to make sure that presync is called before
@@ -156,7 +118,7 @@ void QQuickAnimatorController::beforeNodeSync()
 
 void QQuickAnimatorController::afterNodeSync()
 {
-    for (QQuickAnimatorJob *job : qAsConst(m_runningAnimators))
+    for (QQuickAnimatorJob *job : std::as_const(m_runningAnimators))
         job->postSync();
 }
 
@@ -195,8 +157,7 @@ void QQuickAnimatorController::start_helper(QAbstractAnimationJob *job)
         j->addAnimationChangeListener(this, QAbstractAnimationJob::StateChange);
         j->initialize(this);
     } else if (job->isGroup()) {
-        QAnimationGroupJob *g = static_cast<QAnimationGroupJob *>(job);
-        for (QAbstractAnimationJob *a = g->firstChild(); a; a = a->nextSibling())
+        for (QAbstractAnimationJob *a : *static_cast<QAnimationGroupJob *>(job)->children())
             start_helper(a);
     }
 }

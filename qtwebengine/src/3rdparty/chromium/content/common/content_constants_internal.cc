@@ -1,8 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/common/content_constants_internal.h"
+
+#include "media/media_buildflags.h"
 
 namespace content {
 
@@ -17,9 +19,18 @@ const int kTraceEventGpuProcessSortIndex = -1;
 
 const int kTraceEventRendererMainThreadSortIndex = -1;
 
-const char kDoNotTrackHeader[] = "DNT";
+#if BUILDFLAG(ENABLE_AV1_DECODER)
+const char kFrameAcceptHeaderValue[] =
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,"
+    "image/webp,image/apng,*/*;q=0.8";
+#else
+const char kFrameAcceptHeaderValue[] =
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,"
+    "image/apng,*/*;q=0.8";
+#endif
 
 const int kChildProcessReceiverAttachmentName = 0;
 const int kChildProcessHostRemoteAttachmentName = 1;
+const int kLegacyIpcBootstrapAttachmentName = 2;
 
 } // namespace content

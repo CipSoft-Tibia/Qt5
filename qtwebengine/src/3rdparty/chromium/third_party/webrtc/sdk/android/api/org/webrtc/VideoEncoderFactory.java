@@ -10,7 +10,7 @@
 
 package org.webrtc;
 
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 
 /** Factory for creating VideoEncoders. */
 public interface VideoEncoderFactory {
@@ -23,6 +23,16 @@ public interface VideoEncoderFactory {
      * keep the current encoder or a VideoCodecInfo if a new encoder is preferred.
      */
     @Nullable @CalledByNative("VideoEncoderSelector") VideoCodecInfo onAvailableBitrate(int kbps);
+
+    /**
+     * Called every time the encoder input resolution change. Returns null if the encoder selector
+     * prefers to keep the current encoder or a VideoCodecInfo if a new encoder is preferred.
+     */
+    @Nullable
+    @CalledByNative("VideoEncoderSelector")
+    default VideoCodecInfo onResolutionChange(int widht, int height) {
+      return null;
+    }
 
     /**
      * Called when the currently used encoder signal itself as broken. Returns null if the encoder

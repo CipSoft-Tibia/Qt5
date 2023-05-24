@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,11 +17,8 @@ WebUIAllowlistProvider::WebUIAllowlistProvider(
 WebUIAllowlistProvider::~WebUIAllowlistProvider() = default;
 
 std::unique_ptr<content_settings::RuleIterator>
-WebUIAllowlistProvider::GetRuleIterator(
-    ContentSettingsType content_type,
-    const content_settings::ResourceIdentifier& /*resource_identifier*/,
-    bool incognito) const {
-
+WebUIAllowlistProvider::GetRuleIterator(ContentSettingsType content_type,
+                                        bool incognito) const {
   return allowlist_->GetRuleIterator(content_type);
 }
 
@@ -29,16 +26,14 @@ void WebUIAllowlistProvider::NotifyContentSettingChange(
     const ContentSettingsPattern& primary_pattern,
     const ContentSettingsPattern& secondary_pattern,
     ContentSettingsType content_type) {
-  NotifyObservers(primary_pattern, secondary_pattern, content_type,
-                  /*resource_identifier*/ std::string());
+  NotifyObservers(primary_pattern, secondary_pattern, content_type);
 }
 
 bool WebUIAllowlistProvider::SetWebsiteSetting(
     const ContentSettingsPattern& primary_pattern,
     const ContentSettingsPattern& secondary_pattern,
     ContentSettingsType content_type,
-    const content_settings::ResourceIdentifier& /*resource_identifier*/,
-    std::unique_ptr<base::Value>&& value,
+    base::Value&& value,
     const content_settings::ContentSettingConstraints& constraints) {
   // WebUIAllowlistProvider doesn't support settings Website settings.
   return false;
@@ -51,6 +46,7 @@ void WebUIAllowlistProvider::ClearAllContentSettingsRules(
 
 void WebUIAllowlistProvider::ShutdownOnUIThread() {
   DCHECK(CalledOnValidThread());
+
   RemoveAllObservers();
   allowlist_->ResetWebUIAllowlistProvider();
 }

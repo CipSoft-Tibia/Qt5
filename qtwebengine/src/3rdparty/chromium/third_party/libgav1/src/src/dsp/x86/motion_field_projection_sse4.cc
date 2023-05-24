@@ -15,7 +15,7 @@
 #include "src/dsp/motion_field_projection.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 
 #include <smmintrin.h>
 
@@ -139,9 +139,9 @@ inline void Store(const __m128i position, const __m128i reference_offset,
   const ptrdiff_t offset =
       static_cast<int16_t>(_mm_extract_epi16(position, idx));
   if ((idx & 3) == 0) {
-    dst_mv[offset].mv32 = _mm_cvtsi128_si32(mv);
+    dst_mv[offset].mv32 = static_cast<uint32_t>(_mm_cvtsi128_si32(mv));
   } else {
-    dst_mv[offset].mv32 = _mm_extract_epi32(mv, idx & 3);
+    dst_mv[offset].mv32 = static_cast<uint32_t>(_mm_extract_epi32(mv, idx & 3));
   }
   dst_reference_offset[offset] = _mm_extract_epi8(reference_offset, idx);
 }
@@ -360,33 +360,18 @@ void MotionFieldProjectionKernel_SSE4_1(
   } while (++y8 < y8_end);
 }
 
-void Init8bpp() {
+}  // namespace
+
+void MotionFieldProjectionInit_SSE4_1() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
   dsp->motion_field_projection_kernel = MotionFieldProjectionKernel_SSE4_1;
 }
 
-#if LIBGAV1_MAX_BITDEPTH >= 10
-void Init10bpp() {
-  Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth10);
-  assert(dsp != nullptr);
-  dsp->motion_field_projection_kernel = MotionFieldProjectionKernel_SSE4_1;
-}
-#endif
-
-}  // namespace
-
-void MotionFieldProjectionInit_SSE4_1() {
-  Init8bpp();
-#if LIBGAV1_MAX_BITDEPTH >= 10
-  Init10bpp();
-#endif
-}
-
 }  // namespace dsp
 }  // namespace libgav1
 
-#else  // !LIBGAV1_ENABLE_SSE4_1
+#else   // !LIBGAV1_TARGETING_SSE4_1
 namespace libgav1 {
 namespace dsp {
 
@@ -394,4 +379,4 @@ void MotionFieldProjectionInit_SSE4_1() {}
 
 }  // namespace dsp
 }  // namespace libgav1
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1

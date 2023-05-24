@@ -1,21 +1,23 @@
-#!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """code generator for GLES2 command buffers."""
 
 import filecmp
 import os
-import os.path
 import sys
 from optparse import OptionParser
 
 import build_cmd_buffer_lib
 
+# Additional space required after "type" here and elsewhere because otherwise
+# pylint detects "# type:" as invalid syntax on Python 3.8, see
+# https://github.com/PyCQA/pylint/issues/3556.
 # Named type info object represents a named type that is used in OpenGL call
 # arguments.  Each named type defines a set of valid OpenGL call arguments.  The
 # named types are used in 'gles2_cmd_buffer_functions.txt'.
-# type: The actual GL type of the named type.
+# type : The actual GL type of the named type.
 # valid: The list of values that are valid for both the client and the service.
 # valid_es3: The list of values that are valid in OpenGL ES 3, but not ES 2.
 # invalid: Examples of invalid values for the type. At least these values
@@ -36,12 +38,6 @@ _NAMED_TYPE_INFO = {
     ],
     'invalid': [
       'GL_LINEAR_MIPMAP_LINEAR',
-    ],
-  },
-  'CoverageModulationComponents': {
-    'type': 'GLenum',
-    'valid': [
-      'GL_RGB', 'GL_RGBA', 'GL_ALPHA', 'GL_NONE'
     ],
   },
   'FramebufferTarget': {
@@ -1341,6 +1337,7 @@ _NAMED_TYPE_INFO = {
       'GL_RGB_YCRCB_420_CHROMIUM',
       'GL_RGB_YCBCR_422_CHROMIUM',
       'GL_RGB_YCBCR_420V_CHROMIUM',
+      'GL_RGB_YCBCR_P010_CHROMIUM',
       'GL_R16_EXT',
     ],
   },
@@ -1428,6 +1425,7 @@ _NAMED_TYPE_INFO = {
       'GL_RGB_YCRCB_420_CHROMIUM',
       'GL_RGB_YCBCR_422_CHROMIUM',
       'GL_RGB_YCBCR_420V_CHROMIUM',
+      'GL_RGB_YCBCR_P010_CHROMIUM',
       'GL_RGBA',
     ],
   },
@@ -1577,16 +1575,6 @@ _NAMED_TYPE_INFO = {
       'GL_SYNC_FENCE',
     ],
   },
-  'ClientBufferUsage': {
-    'type': 'GLenum',
-    'is_complete': True,
-    'valid': [
-      'GL_SCANOUT_CHROMIUM',
-    ],
-    'invalid': [
-      'GL_NONE',
-    ],
-  },
   'WindowRectanglesMode': {
     'type': 'GLenum',
     'is_complete': True,
@@ -1607,7 +1595,6 @@ _NAMED_TYPE_INFO = {
     'type': 'GLenum',
     'is_complete': True,
     'valid': [
-      'GL_SHARED_IMAGE_ACCESS_MODE_OVERLAY_CHROMIUM',
       'GL_SHARED_IMAGE_ACCESS_MODE_READWRITE_CHROMIUM',
       'GL_SHARED_IMAGE_ACCESS_MODE_READ_CHROMIUM',
     ],
@@ -1623,7 +1610,7 @@ _NAMED_TYPE_INFO = {
 # Must match function names specified in "gles2_cmd_buffer_functions.txt".
 #
 # cmd_comment:  A comment added to the cmd format.
-# type:         defines which handler will be used to generate code.
+# type :        defines which handler will be used to generate code.
 # decoder_func: defines which function to call in the decoder to execute the
 #               corresponding GL command. If not specified the GL command will
 #               be called directly.
@@ -1875,13 +1862,6 @@ _FUNCTION_INFO = {
     'unit_test': False,
     'es3': True,
   },
-  'CoverageModulationCHROMIUM': {
-    'type': 'StateSet',
-    'state': 'CoverageModulationCHROMIUM',
-    'decoder_func': 'glCoverageModulationNV',
-    'extension': 'CHROMIUM_framebuffer_mixed_samples',
-    'extension_flag': 'chromium_framebuffer_mixed_samples',
-  },
   'CreateAndConsumeTextureCHROMIUM': {
     'type': 'NoCommand',
     'extension': "CHROMIUM_texture_mailbox",
@@ -1948,20 +1928,6 @@ _FUNCTION_INFO = {
     'unit_test': False,
     'defer_reads': True,
     'es3': True,
-    'trace_level': 1,
-  },
-  'CreateImageCHROMIUM': {
-    'type': 'NoCommand',
-    'cmd_args':
-        'ClientBuffer buffer, GLsizei width, GLsizei height, '
-        'GLenum internalformat',
-    'result': ['GLuint'],
-    'extension': "CHROMIUM_image",
-    'trace_level': 1,
-  },
-  'DestroyImageCHROMIUM': {
-    'type': 'NoCommand',
-    'extension': "CHROMIUM_image",
     'trace_level': 1,
   },
   'DescheduleUntilFinishedCHROMIUM': {
@@ -3103,12 +3069,6 @@ _FUNCTION_INFO = {
     'type': 'Custom',
     'impl_func': False,
   },
-  'PostSubBufferCHROMIUM': {
-    'type': 'Custom',
-    'impl_func': False,
-    'client_test': False,
-    'extension': True,
-  },
   'ProduceTextureDirectCHROMIUM': {
     'decoder_func': 'DoProduceTextureDirectCHROMIUM',
     'impl_func': False,
@@ -3118,6 +3078,11 @@ _FUNCTION_INFO = {
     'client_test': False,
     'extension': "CHROMIUM_texture_mailbox",
     'trace_level': 1,
+  },
+  'ProvokingVertexANGLE': {
+    'extension_flag': 'angle_provoking_vertex',
+    'unit_test': False,
+    'extension': 'ANGLE_provoking_vertex',
   },
   'RenderbufferStorage': {
     'decoder_func': 'DoRenderbufferStorage',
@@ -3261,15 +3226,6 @@ _FUNCTION_INFO = {
     'extension': True,
     'trace_level': 1,
     'trace_queueing_flow': True,
-  },
-  'SwapBuffersWithBoundsCHROMIUM': {
-    'type': 'PUTn',
-    'count': 4,
-    'decoder_func': 'DoSwapBuffersWithBoundsCHROMIUM',
-    'impl_func': False,
-    'client_test': False,
-    'unit_test': False,
-    'extension': True,
   },
   'TexImage2D': {
     'type': 'Custom',
@@ -3902,26 +3858,7 @@ _FUNCTION_INFO = {
     'unit_test': False,
     'pepper_interface': 'VertexArrayObject',
   },
-  'BindTexImage2DCHROMIUM': {
-    'decoder_func': 'DoBindTexImage2DCHROMIUM',
-    'unit_test': False,
-    'extension': "CHROMIUM_image",
-  },
-  'BindTexImage2DWithInternalformatCHROMIUM': {
-    'decoder_func': 'DoBindTexImage2DWithInternalformatCHROMIUM',
-    'unit_test': False,
-    'extension': "CHROMIUM_image",
-  },
-  'ReleaseTexImage2DCHROMIUM': {
-    'decoder_func': 'DoReleaseTexImage2DCHROMIUM',
-    'unit_test': False,
-    'extension': "CHROMIUM_image",
-  },
   'ShallowFinishCHROMIUM': {
-    'type': 'NoCommand',
-    'extension': 'CHROMIUM_ordering_barrier',
-  },
-  'ShallowFlushCHROMIUM': {
     'type': 'NoCommand',
     'extension': 'CHROMIUM_ordering_barrier',
   },
@@ -3971,69 +3908,6 @@ _FUNCTION_INFO = {
     'extension': True,
     'trace_level': 2,
   },
-  'ScheduleOverlayPlaneCHROMIUM': {
-    'type': 'Custom',
-    'client_test': False,
-    'extension': 'CHROMIUM_schedule_overlay_plane',
-  },
-  'ScheduleCALayerSharedStateCHROMIUM': {
-    'type': 'Custom',
-    'impl_func': False,
-    'client_test': False,
-    'cmd_args': 'GLfloat opacity, GLboolean is_clipped, '
-                'GLint sorting_context_id, '
-                'GLuint shm_id, GLuint shm_offset',
-    'extension': 'CHROMIUM_schedule_ca_layer',
-  },
-  'ScheduleCALayerCHROMIUM': {
-    'type': 'Custom',
-    'impl_func': False,
-    'client_test': False,
-    'cmd_args': 'GLuint contents_texture_id, GLuint background_color, '
-                'GLuint edge_aa_mask, GLuint filter, GLuint shm_id, '
-                'GLuint shm_offset',
-    'extension': 'CHROMIUM_schedule_ca_layer',
-  },
-  'ScheduleCALayerInUseQueryCHROMIUM': {
-    'type': 'PUTn',
-    'count': 1,
-    'decoder_func': 'DoScheduleCALayerInUseQueryCHROMIUM',
-    'cmd_args': 'GLsizei count, const GLuint* textures',
-    'extension': 'CHROMIUM_schedule_ca_layer',
-    'unit_test': False,
-  },
-  'ScheduleDCLayerCHROMIUM': {
-    'cmd_args': 'GLuint texture_0, GLuint texture_1, GLint z_order, '
-                'GLint content_x, GLint content_y, GLint content_width, '
-                'GLint content_height, GLint quad_x, GLint quad_y, '
-                'GLint quad_width, GLint quad_height, '
-                'GLfloat transform_c1r1, GLfloat transform_c2r1, '
-                'GLfloat transform_c1r2, GLfloat transform_c2r2, '
-                'GLfloat transform_tx, GLfloat transform_ty, '
-                'GLboolean is_clipped, GLint clip_x, GLint clip_y, '
-                'GLint clip_width, GLint clip_height, '
-                'GLuint protected_video_type',
-    'decoder_func': 'DoScheduleDCLayerCHROMIUM',
-    'extension': 'CHROMIUM_schedule_dc_layer',
-    'unit_test': False,
-  },
-  'CommitOverlayPlanesCHROMIUM': {
-    'impl_func': False,
-    'decoder_func': 'DoCommitOverlayPlanes',
-    'unit_test': False,
-    'client_test': False,
-    'extension': 'CHROMIUM_commit_overlay_planes',
-  },
-  'SetDrawRectangleCHROMIUM': {
-    'decoder_func': 'DoSetDrawRectangleCHROMIUM',
-    'unit_test': False,
-    'extension': 'CHROMIUM_set_draw_rectangle',
-  },
-  'SetEnableDCLayersCHROMIUM': {
-    'decoder_func': 'DoSetEnableDCLayersCHROMIUM',
-    'unit_test': False,
-    'extension': 'CHROMIUM_dc_layers',
-  },
   'InitializeDiscardableTextureCHROMIUM': {
     'type': 'Custom',
     'cmd_args': 'GLuint texture_id, uint32_t shm_id, '
@@ -4055,86 +3929,6 @@ _FUNCTION_INFO = {
     'impl_func': False,
     'client_test': False,
     'extension': True,
-  },
-  'BeginRasterCHROMIUM': {
-    'decoder_func': 'DoBeginRasterCHROMIUM',
-    'impl_func': True,
-    'unit_test': False,
-    'extension': 'CHROMIUM_raster_transport',
-    'extension_flag': 'chromium_raster_transport',
-  },
-  'RasterCHROMIUM': {
-    'decoder_func': 'DoRasterCHROMIUM',
-    'internal': True,
-    'impl_func': True,
-    'unit_test': False,
-    'cmd_args': 'GLuint raster_shm_id, GLuint raster_shm_offset,'
-                'GLsizeiptr raster_shm_size, GLuint font_shm_id,'
-                'GLuint font_shm_offset, GLsizeiptr font_shm_size',
-    'extension': 'CHROMIUM_raster_transport',
-    'extension_flag': 'chromium_raster_transport',
-  },
-  'MapRasterCHROMIUM': {
-    'type': 'NoCommand',
-    'extension': "CHROMIUM_raster_transport",
-  },
-  'UnmapRasterCHROMIUM': {
-    'type': 'NoCommand',
-    'extension': "CHROMIUM_raster_transport",
-  },
-  'MapFontBufferCHROMIUM': {
-    'type': 'NoCommand',
-    'extension': "CHROMIUM_raster_transport",
-  },
-  'EndRasterCHROMIUM': {
-    'decoder_func': 'DoEndRasterCHROMIUM',
-    'impl_func': True,
-    'unit_test': False,
-    'extension': 'CHROMIUM_raster_transport',
-    'extension_flag': 'chromium_raster_transport',
-  },
-  'CreateTransferCacheEntryINTERNAL': {
-    'decoder_func': 'DoCreateTransferCacheEntryINTERNAL',
-    'cmd_args': 'GLuint entry_type, GLuint entry_id, GLuint handle_shm_id, '
-                'GLuint handle_shm_offset, GLuint data_shm_id, '
-                'GLuint data_shm_offset, GLuint data_size',
-    'internal': True,
-    'impl_func': True,
-    'client_test': False,
-    'unit_test': False,
-    'extension': True,
-  },
-  'DeleteTransferCacheEntryINTERNAL': {
-    'decoder_func': 'DoDeleteTransferCacheEntryINTERNAL',
-    'cmd_args': 'GLuint entry_type, GLuint entry_id',
-    'internal': True,
-    'impl_func': True,
-    'client_test': False,
-    'unit_test': False,
-    'extension': True,
-  },
-  'UnlockTransferCacheEntryINTERNAL': {
-    'decoder_func': 'DoUnlockTransferCacheEntryINTERNAL',
-    'cmd_args': 'GLuint entry_type, GLuint entry_id',
-    'internal': True,
-    'impl_func': True,
-    'client_test': False,
-    'unit_test': False,
-    'extension': True,
-  },
-  'TexStorage2DImageCHROMIUM': {
-    'decoder_func': 'DoTexStorage2DImageCHROMIUM',
-    'unit_test': False,
-    'extension': 'CHROMIUM_texture_storage_image',
-    'extension_flag': 'chromium_texture_storage_image',
-  },
-  'SetColorSpaceMetadataCHROMIUM': {
-    'type': 'Custom',
-    'impl_func': False,
-    'client_test': False,
-    'cmd_args': 'GLuint texture_id, GLuint shm_id, GLuint shm_offset, '
-                'GLsizei color_space_size',
-    'extension': 'CHROMIUM_color_space_metadata',
   },
   'WindowRectanglesEXT': {
     'type': 'PUTn',
@@ -4179,16 +3973,6 @@ _FUNCTION_INFO = {
     'extension': 'CHROMIUM_gpu_fence',
     'extension_flag': 'chromium_gpu_fence',
   },
-  'UnpremultiplyAndDitherCopyCHROMIUM': {
-    'decoder_func': 'DoUnpremultiplyAndDitherCopyCHROMIUM',
-    'cmd_args': 'GLuint source_id, GLuint dest_id, GLint x, GLint y, '
-                'GLsizei width, GLsizei height',
-    'client_test': False,
-    'unit_test': False,
-    'impl_func': True,
-    'extension': 'CHROMIUM_unpremultiply_and_dither_copy',
-    'extension_flag': 'unpremultiply_and_dither_copy',
-  },
   'InvalidateReadbackBufferShadowDataCHROMIUM': {
     'type': 'NoCommand',
     'impl_func': False,
@@ -4229,11 +4013,6 @@ _FUNCTION_INFO = {
     'extension': "CHROMIUM_shared_image",
     'trace_level': 2,
   },
-  'CreateAndTexStorage2DSharedImageWithInternalFormatCHROMIUM': {
-    'type': 'NoCommand',
-    'extension': "CHROMIUM_shared_image",
-    'trace_level': 2,
-  },
   'CreateAndTexStorage2DSharedImageINTERNAL': {
     'decoder_func': 'DoCreateAndTexStorage2DSharedImageINTERNAL',
     'internal': True,
@@ -4255,15 +4034,35 @@ _FUNCTION_INFO = {
     'extension': 'CHROMIUM_shared_image',
     'unit_test': False,
   },
-  'BeginBatchReadAccessSharedImageCHROMIUM': {
-    'decoder_func': 'DoBeginBatchReadAccessSharedImageCHROMIUM',
+  'ConvertRGBAToYUVAMailboxesINTERNAL': {
+    'decoder_func': 'DoConvertRGBAToYUVAMailboxesINTERNAL',
     'extension': 'CHROMIUM_shared_image',
+    'internal': False,
+    'type': 'PUT',
+    'count': 80, #GL_MAILBOX_SIZE_CHROMIUM x5
+    'impl_func': True,
     'unit_test': False,
+    'trace_level': 2,
   },
-  'EndBatchReadAccessSharedImageCHROMIUM': {
-    'decoder_func': 'DoEndBatchReadAccessSharedImageCHROMIUM',
+  'ConvertYUVAMailboxesToRGBINTERNAL': {
+    'decoder_func': 'DoConvertYUVAMailboxesToRGBINTERNAL',
     'extension': 'CHROMIUM_shared_image',
+    'internal': False,
+    'type': 'PUT',
+    'count': 144, #GL_MAILBOX_SIZE_CHROMIUM x5 + 16 floats
+    'impl_func': True,
     'unit_test': False,
+    'trace_level': 2,
+  },
+  'CopySharedImageINTERNAL': {
+    'decoder_func': 'DoCopySharedImageINTERNAL',
+    'extension': 'CHROMIUM_shared_image',
+    'internal': False,
+    'type': 'PUT',
+    'count': 32, #GL_MAILBOX_SIZE_CHROMIUM x2
+    'impl_func': True,
+    'unit_test': False,
+    'trace_level': 2,
   }
 
 }
@@ -4396,7 +4195,7 @@ def main(argv):
                               chromium_root_dir)
 
   if gen.errors > 0:
-    print "build_gles2_cmd_buffer.py: Failed with %d errors" % gen.errors
+    print("build_gles2_cmd_buffer.py: Failed with %d errors" % gen.errors)
     return 1
 
   check_failed_filenames = []
@@ -4407,10 +4206,10 @@ def main(argv):
         check_failed_filenames.append(filename)
 
   if len(check_failed_filenames) > 0:
-    print 'Please run gpu/command_buffer/build_gles2_cmd_buffer.py'
-    print 'Failed check on autogenerated command buffer files:'
+    print('Please run gpu/command_buffer/build_gles2_cmd_buffer.py')
+    print('Failed check on autogenerated command buffer files:')
     for filename in check_failed_filenames:
-      print filename
+      print(filename)
     return 1
 
   return 0

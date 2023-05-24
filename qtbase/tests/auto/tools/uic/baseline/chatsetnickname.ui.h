@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'chatsetnickname.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -37,9 +37,9 @@ public:
     void setupUi(QDialog *NicknameDialog)
     {
         if (NicknameDialog->objectName().isEmpty())
-            NicknameDialog->setObjectName(QString::fromUtf8("NicknameDialog"));
+            NicknameDialog->setObjectName("NicknameDialog");
         NicknameDialog->resize(396, 105);
-        QSizePolicy sizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Minimum);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(NicknameDialog->sizePolicy().hasHeightForWidth());
@@ -51,7 +51,7 @@ public:
 #ifndef Q_OS_MAC
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         vboxLayout1 = new QVBoxLayout();
 #ifndef Q_OS_MAC
         vboxLayout1->setSpacing(6);
@@ -59,16 +59,16 @@ public:
 #ifndef Q_OS_MAC
         vboxLayout1->setContentsMargins(0, 0, 0, 0);
 #endif
-        vboxLayout1->setObjectName(QString::fromUtf8("vboxLayout1"));
+        vboxLayout1->setObjectName("vboxLayout1");
         label = new QLabel(NicknameDialog);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
         sizePolicy.setHeightForWidth(label->sizePolicy().hasHeightForWidth());
         label->setSizePolicy(sizePolicy);
 
         vboxLayout1->addWidget(label);
 
         nickname = new QLineEdit(NicknameDialog);
-        nickname->setObjectName(QString::fromUtf8("nickname"));
+        nickname->setObjectName("nickname");
 
         vboxLayout1->addWidget(nickname);
 
@@ -80,22 +80,22 @@ public:
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
-        spacerItem = new QSpacerItem(131, 31, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        hboxLayout->setObjectName("hboxLayout");
+        spacerItem = new QSpacerItem(131, 31, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
         okButton = new QPushButton(NicknameDialog);
-        okButton->setObjectName(QString::fromUtf8("okButton"));
+        okButton->setObjectName("okButton");
 
         hboxLayout->addWidget(okButton);
 
         cancelButton = new QPushButton(NicknameDialog);
-        cancelButton->setObjectName(QString::fromUtf8("cancelButton"));
+        cancelButton->setObjectName("cancelButton");
 
         hboxLayout->addWidget(cancelButton);
 
-        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem1);
 
@@ -104,8 +104,8 @@ public:
 
 
         retranslateUi(NicknameDialog);
-        QObject::connect(okButton, SIGNAL(clicked()), NicknameDialog, SLOT(accept()));
-        QObject::connect(cancelButton, SIGNAL(clicked()), NicknameDialog, SLOT(reject()));
+        QObject::connect(okButton, &QPushButton::clicked, NicknameDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(cancelButton, &QPushButton::clicked, NicknameDialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(NicknameDialog);
     } // setupUi

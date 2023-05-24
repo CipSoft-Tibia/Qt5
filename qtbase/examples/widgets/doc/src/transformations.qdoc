@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example painting/transformations
     \title Transformations Example
+    \examplecategory {Graphics & Multimedia}
     \ingroup examples-painting
     \brief The Transformations example shows how transformations
     influence the way that QPainter renders graphics primitives.
@@ -72,8 +49,8 @@
     coordinate system around the origin (called shearing) using the
     QPainter::shear() function.
 
-    All the tranformation operations operate on QPainter's
-    tranformation matrix that you can retrieve using the
+    All the transformation operations operate on QPainter's
+    transformation matrix that you can retrieve using the
     QPainter::worldTransform() function. A matrix transforms a point in the
     plane to another point. For more information about the
     transformation matrix, see the \l {Coordinate System} and
@@ -289,11 +266,11 @@
     \snippet painting/transformations/window.cpp 1
 
     Then we create the \c RenderArea widgets that will render their
-    shapes with coordinate tranformations. By default the applied
+    shapes with coordinate transformations. By default the applied
     operation is \uicontrol {No Transformation}, i.e. the shapes are
     rendered within the default coordinate system. We create and
     initialize the associated \l {QComboBox}es with items
-    corresponding to the various transformation operations decribed by
+    corresponding to the various transformation operations described by
     the global \c Operation enum.
 
     We also connect the \l {QComboBox}es' \l
@@ -359,10 +336,10 @@
     also has good support for coordinate transformations. With the
     Transformations application you can scale, rotate and translate
     QPainter's coordinate system.  The order in which these
-    tranformations are applied is essential for the result.
+    transformations are applied is essential for the result.
 
-    All the tranformation operations operate on QPainter's
-    tranformation matrix. For more information about the
+    All the transformation operations operate on QPainter's
+    transformation matrix. For more information about the
     transformation matrix, see the \l {Coordinate System} and
     QTransform documentation.
 

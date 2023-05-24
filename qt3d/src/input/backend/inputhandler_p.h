@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DINPUT_INPUT_INPUTHANDLER_P_H
 #define QT3DINPUT_INPUT_INPUTHANDLER_P_H
@@ -63,6 +27,7 @@ QT_BEGIN_NAMESPACE
 namespace Qt3DCore {
 class QEventFilterService;
 class QNodeId;
+class QScene;
 }
 
 namespace Qt3DInput {
@@ -75,10 +40,9 @@ namespace Input {
 class AbstractActionInput;
 class KeyboardInputManager;
 class KeyboardDeviceManager;
-class KeyboardEventFilter;
 class MouseDeviceManager;
 class MouseInputManager;
-class MouseEventFilter;
+class InternalEventFilter;
 class AxisManager;
 class AxisAccumulatorManager;
 class ActionManager;
@@ -93,13 +57,14 @@ class GenericPhysicalDeviceManager;
 class GenericDeviceBackendNodeManager;
 class PhysicalDeviceProxyManager;
 class InputSettings;
-class EventSourceSetterHelper;
 
 class Q_AUTOTEST_EXPORT InputHandler
 {
 public:
     InputHandler();
     ~InputHandler();
+
+    void setScene(Qt3DCore::QScene *scene) { m_scene = scene; }
 
     inline KeyboardDeviceManager *keyboardDeviceManager() const { return m_keyboardDeviceManager; }
     inline KeyboardInputManager *keyboardInputManager() const  { return m_keyboardInputManager; }
@@ -119,20 +84,6 @@ public:
     inline PhysicalDeviceProxyManager *physicalDeviceProxyManager() const { return m_physicalDeviceProxyManager; }
     inline InputSettings *inputSettings() const { return m_settings; }
 
-    void appendKeyEvent(const QT_PREPEND_NAMESPACE(QKeyEvent) &event);
-    QList<QT_PREPEND_NAMESPACE(QKeyEvent)> pendingKeyEvents();
-    void clearPendingKeyEvents();
-
-    void appendMouseEvent(const QT_PREPEND_NAMESPACE(QMouseEvent) &event);
-    QList<QT_PREPEND_NAMESPACE(QMouseEvent)> pendingMouseEvents();
-    void clearPendingMouseEvents();
-
-#if QT_CONFIG(wheelevent)
-    void appendWheelEvent(const QT_PREPEND_NAMESPACE(QWheelEvent) &event);
-    QList<QT_PREPEND_NAMESPACE(QWheelEvent)> pendingWheelEvents();
-    void clearPendingWheelEvents();
-#endif
-
     void appendKeyboardDevice(HKeyboardDevice device);
     void removeKeyboardDevice(HKeyboardDevice device);
 
@@ -142,40 +93,33 @@ public:
     void appendGenericDevice(HGenericDeviceBackendNode device);
     void removeGenericDevice(HGenericDeviceBackendNode device);
 
-    QVector<Qt3DCore::QAspectJobPtr> keyboardJobs();
-    QVector<Qt3DCore::QAspectJobPtr> mouseJobs();
+    void resetMouseAxisState();
 
-    QVector<Qt3DInput::QInputDeviceIntegration *> inputDeviceIntegrations() const;
+    QList<Qt3DInput::QInputDeviceIntegration *> inputDeviceIntegrations() const;
     void addInputDeviceIntegration(QInputDeviceIntegration *inputIntegration);
 
     void setInputSettings(InputSettings *settings);
-    void setEventSourceHelper(EventSourceSetterHelper *helper);
-    EventSourceSetterHelper *eventSourceHelper() const;
 
     QAbstractPhysicalDevice *createPhysicalDevice(const QString &name);
 
     void updateEventSource();
+    void setEventFilterService(Qt3DCore::QEventFilterService *service);
 
     AbstractActionInput *lookupActionInput(Qt3DCore::QNodeId id) const;
 
 private:
+    friend class InternalEventFilter;
+
+    Qt3DCore::QScene *m_scene;
     KeyboardDeviceManager *m_keyboardDeviceManager;
     KeyboardInputManager *m_keyboardInputManager;
     MouseDeviceManager *m_mouseDeviceManager;
     MouseInputManager *m_mouseInputManager;
 
-    QVector<HKeyboardDevice> m_activeKeyboardDevices;
-    QVector<HMouseDevice> m_activeMouseDevices;
-    QVector<HGenericDeviceBackendNode> m_activeGenericPhysicalDevices;
-    KeyboardEventFilter *m_keyboardEventFilter;
-    MouseEventFilter *m_mouseEventFilter;
-
-    QList<QT_PREPEND_NAMESPACE(QKeyEvent)> m_pendingKeyEvents;
-    QList<QT_PREPEND_NAMESPACE(QMouseEvent)> m_pendingMouseEvents;
-#if QT_CONFIG(wheelevent)
-    QList<QT_PREPEND_NAMESPACE(QWheelEvent)> m_pendingWheelEvents;
-#endif
-    mutable QMutex m_mutex;
+    QList<HKeyboardDevice> m_activeKeyboardDevices;
+    QList<HMouseDevice> m_activeMouseDevices;
+    QList<HGenericDeviceBackendNode> m_activeGenericPhysicalDevices;
+    InternalEventFilter *m_eventFilter;
 
     AxisManager *m_axisManager;
     AxisAccumulatorManager *m_axisAccumulatorManager;
@@ -189,13 +133,13 @@ private:
     LogicalDeviceManager *m_logicalDeviceManager;
     GenericDeviceBackendNodeManager *m_genericPhysicalDeviceBackendNodeManager;
     PhysicalDeviceProxyManager *m_physicalDeviceProxyManager;
-    QVector<Qt3DInput::QInputDeviceIntegration *> m_inputDeviceIntegrations;
+    QList<Qt3DInput::QInputDeviceIntegration *> m_inputDeviceIntegrations;
     InputSettings *m_settings;
-    QScopedPointer<EventSourceSetterHelper> m_eventSourceSetter;
+    Qt3DCore::QEventFilterService *m_service;
+    QObject *m_lastEventSource;
 
-    void registerEventFilters(Qt3DCore::QEventFilterService *service);
-    void unregisterEventFilters(Qt3DCore::QEventFilterService *service);
-    friend class EventSourceSetterHelper;
+    void registerEventFilters();
+    void unregisterEventFilters();
 };
 
 } // namespace Input

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeometryrenderer.h"
 #include "qgeometryrenderer_p.h"
@@ -48,30 +12,8 @@ using namespace Qt3DCore;
 
 namespace Qt3DRender {
 
-/*
-    \internal
-
-    sortIndex property: overrides the sorting index when depth sorting is enabled.
-
-    If depth sorting is enabled on the frame graph, the renderer will sort
-    objects based on how far the center of the bounding volume is from
-    the camera and render objects from the furthest to the closest.
-
-    This property can be used to override the depth index and precisely
-    control the order in which objects are rendered. This is useful when
-    all objects are at the same physical distance from the camera.
-
-    The actual values are not significant, only that they define an order
-    to sort the objects. These are sorted such as the object with the
-    smallest value is drawn first, then the second smallest, and so on.
-
-    \note Setting this to -1.f will disable the explicit sorting for this
-    entity and revert to using the distance from the center of the bounding
-    volume.
-*/
-
 QGeometryRendererPrivate::QGeometryRendererPrivate()
-    : QComponentPrivate()
+    : Qt3DCore::QBoundingVolumePrivate()
     , m_instanceCount(1)
     , m_vertexCount(0)
     , m_indexOffset(0)
@@ -85,17 +27,45 @@ QGeometryRendererPrivate::QGeometryRendererPrivate()
     , m_primitiveType(QGeometryRenderer::Triangles)
     , m_sortIndex(-1.f)
 {
+    m_primaryProvider = false;
 }
 
 QGeometryRendererPrivate::~QGeometryRendererPrivate()
 {
 }
 
+void QGeometryRendererPrivate::setView(QGeometryView *view)
+{
+    Q_Q(QGeometryRenderer);
+    if (m_view == view)
+        return;
+
+    if (m_view)
+        m_view->disconnect(q);
+
+    QBoundingVolumePrivate::setView(view);
+
+    // Ensures proper bookkeeping
+    if (m_view) {
+        QObject::connect(view, &QGeometryView::instanceCountChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::vertexCountChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::indexOffsetChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::firstInstanceChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::firstVertexChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::indexBufferByteOffsetChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::restartIndexValueChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::verticesPerPatchChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::primitiveRestartEnabledChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::geometryChanged, q, [this]() { update(); });
+        QObject::connect(view, &QGeometryView::primitiveTypeChanged, q, [this]() { update(); });
+    }
+}
+
 /*!
     \qmltype GeometryRenderer
     \instantiates Qt3DRender::QGeometryRenderer
     \inqmlmodule Qt3D.Render
-    \inherits Component3D
+    \inherits BoundingVolume
     \since 5.7
     \brief Encapsulates geometry rendering.
 
@@ -111,7 +81,7 @@ QGeometryRendererPrivate::~QGeometryRendererPrivate()
     \brief Encapsulates geometry rendering.
 
     A Qt3DRender::QGeometryRenderer holds all the information necessary to draw
-    a Qt3DRender::QGeometry. A QGeometry holds the coordinates of the geometry data -
+    a Qt3DCore::QGeometry. A QGeometry holds the coordinates of the geometry data -
     QGeometryRenderer specifies how to interpret that data.
  */
 
@@ -216,13 +186,39 @@ QGeometryRendererPrivate::~QGeometryRendererPrivate()
     \endlist
     \sa Qt3DRender::QGeometryRenderer::PrimitiveType
  */
+/*!
+    \qmlproperty float GeometryRenderer::sortIndex
+    \since 6.0
+
+    Overrides the sorting index when depth sorting is enabled.
+
+    If depth sorting is enabled on the frame graph, the renderer will sort
+    objects based on how far the center of the bounding volume is from
+    the camera and render objects from the furthest to the closest.
+
+    This property can be used to override the depth index and precisely
+    control the order in which objects are rendered. This is useful when
+    all objects are at the same physical distance from the camera.
+
+    The actual values are not significant, only that they define an order
+    to sort the objects. These are sorted such as the object with the
+    smallest value is drawn first, then the second smallest, and so on.
+
+    \note Setting this to -1.f will disable the explicit sorting for this
+    entity and revert to using the distance from the center of the bounding
+    volume.
+
+    \sa SortPolicy
+*/
+
 
 /*!
     Constructs a new QGeometryRenderer with \a parent.
  */
 QGeometryRenderer::QGeometryRenderer(QNode *parent)
-    : QComponent(*new QGeometryRendererPrivate(), parent)
+    : Qt3DCore::QBoundingVolume(*new QGeometryRendererPrivate(), parent)
 {
+    Q_UNUSED(m_sortIndex)
 }
 
 /*!
@@ -236,12 +232,7 @@ QGeometryRenderer::~QGeometryRenderer()
     \internal
  */
 QGeometryRenderer::QGeometryRenderer(QGeometryRendererPrivate &dd, QNode *parent)
-    : QComponent(dd, parent)
-{
-}
-
-// TODO Unused remove in Qt6
-void QGeometryRenderer::sceneChangeEvent(const QSceneChangePtr &)
+    : Qt3DCore::QBoundingVolume(dd, parent)
 {
 }
 
@@ -367,12 +358,33 @@ QGeometryRenderer::PrimitiveType QGeometryRenderer::primitiveType() const
 }
 
 /*!
-    Returns the geometry functor.
- */
-QGeometryFactoryPtr QGeometryRenderer::geometryFactory() const
+    \property QGeometryRenderer::sortIndex
+    \since 6.0
+
+    Overrides the sorting index when depth sorting is enabled.
+
+    If depth sorting is enabled on the frame graph, the renderer will sort
+    objects based on how far the center of the bounding volume is from
+    the camera and render objects from the furthest to the closest.
+
+    This property can be used to override the depth index and precisely
+    control the order in which objects are rendered. This is useful when
+    all objects are at the same physical distance from the camera.
+
+    The actual values are not significant, only that they define an order
+    to sort the objects. These are sorted such as the object with the
+    smallest value is drawn first, then the second smallest, and so on.
+
+    \note Setting this to -1.f will disable the explicit sorting for this
+    entity and revert to using the distance from the center of the bounding
+    volume.
+
+    \sa Qt3DRender::QSortPolicy
+*/
+float QGeometryRenderer::sortIndex() const
 {
     Q_D(const QGeometryRenderer);
-    return d->m_geometryFactory;
+    return d->m_sortIndex;
 }
 
 void QGeometryRenderer::setInstanceCount(int instanceCount)
@@ -495,38 +507,18 @@ void QGeometryRenderer::setPrimitiveType(QGeometryRenderer::PrimitiveType primit
     emit primitiveTypeChanged(primitiveType);
 }
 
-/*!
-    Sets the geometry \a factory.
- */
-void QGeometryRenderer::setGeometryFactory(const QGeometryFactoryPtr &factory)
+void QGeometryRenderer::setSortIndex(float sortIndex)
 {
     Q_D(QGeometryRenderer);
-    if (factory && d->m_geometryFactory && *factory == *d->m_geometryFactory)
+    if (qFuzzyCompare(d->m_sortIndex, sortIndex))
         return;
-    d->m_geometryFactory = factory;
-    d->update();
-}
 
-Qt3DCore::QNodeCreatedChangeBasePtr QGeometryRenderer::createNodeCreationChange() const
-{
-    auto creationChange = Qt3DCore::QNodeCreatedChangePtr<QGeometryRendererData>::create(this);
-    auto &data = creationChange->data;
-    Q_D(const QGeometryRenderer);
-    data.instanceCount = d->m_instanceCount;
-    data.vertexCount = d->m_vertexCount;
-    data.indexOffset = d->m_indexOffset;
-    data.firstInstance = d->m_firstInstance;
-    data.firstVertex = d->m_firstVertex;
-    data.indexBufferByteOffset = d->m_indexBufferByteOffset;
-    data.restartIndexValue = d->m_restartIndexValue;
-    data.verticesPerPatch = d->m_verticesPerPatch;
-    data.primitiveRestart = d->m_primitiveRestart;
-    data.geometryId = qIdForNode(d->m_geometry);
-    data.primitiveType = d->m_primitiveType;
-    data.geometryFactory = d->m_geometryFactory;
-    return creationChange;
+    d->m_sortIndex = sortIndex;
+    emit sortIndexChanged(d->m_sortIndex);
 }
 
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_qgeometryrenderer.cpp"

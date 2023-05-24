@@ -1,39 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example fortuneserver
-    \title Fortune Server Example
+    \title Fortune Server
+    \examplecategory {Networking}
+    \meta tags {tcp,network,server}
     \ingroup examples-network
     \brief Demonstrates how to create a server for a network service.
 
     This example is intended to be run alongside the
     \l{fortuneclient}{Fortune Client} example or the
-    \l{blockingfortuneclient}{Blocking Fortune Client Example}.
+    \l{blockingfortuneclient}{Blocking Fortune Client} example.
 
     \image fortuneserver-example.png Screenshot of the Fortune Server example
 
@@ -72,7 +50,7 @@
     to the connecting socket. This is a common way to transfer binary data
     using QTcpSocket. First we create a QByteArray and a QDataStream object,
     passing the bytearray to QDataStream's constructor. We then explicitly set
-    the protocol version of QDataStream to QDataStream::Qt_4_0 to ensure that
+    the protocol version of QDataStream to QDataStream::Qt_5_10 to ensure that
     we can communicate with clients from future versions of Qt (see
     QDataStream::setVersion()). We continue by streaming in a random fortune.
 
@@ -93,5 +71,5 @@
     will then close, which in turn will cause QObject::deleteLater() to delete
     it.
 
-    \sa {Fortune Client Example}, {Threaded Fortune Server Example}
+    \sa {Fortune Client}, {Threaded Fortune Server}
  */

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/field_trial.h"
 #include "base/sequence_checker.h"
@@ -16,6 +17,7 @@
 #include "components/metrics/enabled_state_provider.h"
 #include "components/metrics/metrics_log_uploader.h"
 #include "components/metrics/metrics_service_client.h"
+#include "components/variations/synthetic_trial_registry.h"
 #include "components/version_info/android/channel_getter.h"
 #include "components/version_info/version_info.h"
 #include "content/public/browser/notification_observer.h"
@@ -87,6 +89,9 @@ extern const char kCrashpadHistogramAllocatorName[];
 // the client ID (generating a new ID if there was none). If this client is in
 // the sample, it then calls MetricsService::Start(). If consent was not
 // granted, MaybeStartMetrics() instead clears the client ID, if any.
+//
+// To match chrome on other platforms (including android), the MetricsService is
+// always created.
 class AndroidMetricsServiceClient : public MetricsServiceClient,
                                     public EnabledStateProvider,
                                     public content::NotificationObserver {
@@ -100,12 +105,12 @@ class AndroidMetricsServiceClient : public MetricsServiceClient,
 
   static void RegisterPrefs(PrefRegistrySimple* registry);
 
+  // Initializes, but does not necessarily start, the MetricsService. See the
+  // documentation at the top of the file for more details.
   void Initialize(PrefService* pref_service);
   void SetHaveMetricsConsent(bool user_consent, bool app_consent);
   void SetFastStartupForTesting(bool fast_startup_for_testing);
   void SetUploadIntervalForTesting(const base::TimeDelta& upload_interval);
-  std::unique_ptr<const base::FieldTrial::EntropyProvider>
-  CreateLowEntropyProvider();
 
   // Updates the state of whether UKM is enabled or not by calling back into
   // IsUkmAllowedForAllProfiles(). If |must_purge| is true then currently
@@ -125,13 +130,20 @@ class AndroidMetricsServiceClient : public MetricsServiceClient,
   bool IsConsentGiven() const override;
   bool IsReportingEnabled() const override;
 
+  // Returns the MetricService only if it has been started (which means consent
+  // was given).
+  MetricsService* GetMetricsServiceIfStarted();
+
   // MetricsServiceClient
+  variations::SyntheticTrialRegistry* GetSyntheticTrialRegistry() override;
   MetricsService* GetMetricsService() override;
   ukm::UkmService* GetUkmService() override;
   void SetMetricsClientId(const std::string& client_id) override;
   std::string GetApplicationLocale() override;
+  const network_time::NetworkTimeTracker* GetNetworkTimeTracker() override;
   bool GetBrand(std::string* brand_code) override;
   SystemProfileProto::Channel GetChannel() override;
+  bool IsExtendedStableChannel() override;
   std::string GetVersionString() override;
   void CollectFinalMetricsForLog(
       const base::OnceClosure done_callback) override;
@@ -147,19 +159,45 @@ class AndroidMetricsServiceClient : public MetricsServiceClient,
 
   // Gets the embedding app's package name if it's OK to log. Otherwise, this
   // returns the empty string.
-  std::string GetAppPackageName() override;
+  std::string GetAppPackageNameIfLoggable() override;
 
   // content::NotificationObserver
   void Observe(int type,
                const content::NotificationSource& source,
                const content::NotificationDetails& details) override;
 
-  // Runs |closure| when CollectFinalMetricsForLog() is called.
+  // Runs |closure| when CollectFinalMetricsForLog() is called, when we begin
+  // collecting final metrics.
   void SetCollectFinalMetricsForLogClosureForTesting(base::OnceClosure closure);
+
+  // Runs |listener| after all final metrics have been collected.
+  void SetOnFinalMetricsCollectedListenerForTesting(
+      base::RepeatingClosure listener);
 
   metrics::MetricsStateManager* metrics_state_manager() const {
     return metrics_state_manager_.get();
   }
+
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.metrics
+  enum class InstallerPackageType {
+    // App has been initially preinstalled in the system image.
+    SYSTEM_APP,
+    // App has been installed/updated by Google Play Store. Doesn't apply for
+    // apps whose most recent updates are sideloaded, even if the app was
+    // installed via Google Play Store.
+    GOOGLE_PLAY_STORE,
+    // App has been Sideloaded or installed/updated through a 3rd party app
+    // store.
+    OTHER,
+  };
+
+  // Returns the embedding application's package name (unconditionally). The
+  // value returned by this method shouldn't be logged/stored anywhere, callers
+  // should use `GetAppPackageNameIfLoggable`.
+  std::string GetAppPackageName();
+
+  // Returns the installer type of the app.
+  virtual InstallerPackageType GetInstallerPackageType();
 
  protected:
   // Called by MaybeStartMetrics() to allow embedder specific initialization.
@@ -172,51 +210,39 @@ class AndroidMetricsServiceClient : public MetricsServiceClient,
   // per mille value, so this integer must always be in the inclusive range [0,
   // 1000]. A value of 0 will always be out-of-sample, and a value of 1000 is
   // always in-sample.
-  virtual int GetSampleRatePerMille() = 0;
+  virtual int GetSampleRatePerMille() const = 0;
 
   // Returns a value in the inclusive range [0, 999], to be compared against a
   // per mille sample rate. This value will be based on a persisted value, so it
   // should be consistent across restarts. This value should also be mostly
   // consistent across upgrades, to avoid significantly impacting IsInSample()
-  // and IsInPackageNameSample(). Virtual for testing.
-  virtual int GetSampleBucketValue();
+  // and ShouldRecordPackageName(). Virtual for testing.
+  virtual int GetSampleBucketValue() const;
 
   // Determines if the client is within the random sample of clients for which
   // we log metrics. If this returns false, MetricsServiceClient should
   // indicate reporting is disabled. Sampling is due to storage/bandwidth
   // considerations.
-  bool IsInSample();
+  virtual bool IsInSample() const;
 
   // Determines if the embedder app is the type of app for which we may log the
-  // package name. If this returns false, GetAppPackageName() must return empty
-  // string. Virtual for testing.
+  // package name. If this returns false, GetAppPackageNameIfLoggable() must
+  // return empty string. Virtual for testing.
   virtual bool CanRecordPackageNameForAppType();
 
-  // Determines if this client falls within the group for which it's acceptable
-  // to include the embedding app's package name. If this returns false,
-  // GetAppPackageName() must return the empty string (for
-  // privacy/fingerprintability reasons).
-  bool IsInPackageNameSample();
+  // Determines if this client falls within the group for which the embedding
+  // app's package name may be included. If this returns false,
+  // GetAppPackageNameIfLoggable() must return the empty string.
+  virtual bool ShouldRecordPackageName();
 
   // Caps the rate at which we include package names in UMA logs, expressed as a
   // per mille value. See GetSampleRatePerMille() for a description of how per
-  // mille values are handled. Including package names in logs may be privacy
-  // sensitive, see https://crbug.com/969803.
+  // mille values are handled.
   virtual int GetPackageNameLimitRatePerMille() = 0;
 
   // Called by CreateMetricsService, allows the embedder to register additional
   // MetricsProviders. Does nothing by default.
   virtual void RegisterAdditionalMetricsProviders(MetricsService* service);
-
-  // Called by CreateMetricsService if metrics should be persisted. If the
-  // client returns true then its
-  // variations::PlatformFieldTrials::SetupFieldTrials needs to also call
-  // InstantiatePersistentHistograms.
-  virtual bool IsPersistentHistogramsEnabled();
-
-  // Returns the embedding application's package name (unconditionally). Virtual
-  // for testing.
-  virtual std::string GetAppPackageNameInternal();
 
   // Returns whether there are any OffTheRecord browsers/tabs open.
   virtual bool IsOffTheRecordSessionActive();
@@ -234,28 +260,33 @@ class AndroidMetricsServiceClient : public MetricsServiceClient,
   void MaybeStartMetrics();
   void RegisterForNotifications();
 
-  void CreateMetricsService(MetricsStateManager* state_manager,
-                            AndroidMetricsServiceClient* client,
-                            PrefService* prefs);
+  void RegisterMetricsProvidersAndInitState();
   void CreateUkmService();
 
   std::unique_ptr<MetricsStateManager> metrics_state_manager_;
+  std::unique_ptr<variations::SyntheticTrialRegistry> synthetic_trial_registry_;
   std::unique_ptr<MetricsService> metrics_service_;
   std::unique_ptr<ukm::UkmService> ukm_service_;
   content::NotificationRegistrar registrar_;
-  PrefService* pref_service_ = nullptr;
+  raw_ptr<PrefService> pref_service_ = nullptr;
   bool init_finished_ = false;
   bool set_consent_finished_ = false;
   bool user_consent_ = false;
   bool app_consent_ = false;
-  bool is_in_sample_ = false;
+  bool is_client_id_forced_ = false;
   bool fast_startup_for_testing_ = false;
+  bool did_start_metrics_ = false;
 
   // When non-zero, this overrides the default value in
   // GetStandardUploadInterval().
   base::TimeDelta overridden_upload_interval_;
 
   base::OnceClosure collect_final_metrics_for_log_closure_;
+  base::RepeatingClosure on_final_metrics_collected_listener_;
+
+#if DCHECK_IS_ON()
+  bool did_start_metrics_with_consent_ = false;
+#endif
 
   // MetricsServiceClient may be created before the UI thread is promoted to
   // BrowserThread::UI. Use |sequence_checker_| to enforce that the

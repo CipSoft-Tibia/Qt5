@@ -1,3 +1,5 @@
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2017 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -5,7 +7,6 @@
 # tree. An additional intellectual property rights grant can be found
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
-
 """This script helps to invoke gn and ninja
 which lie in depot_tools repository."""
 
@@ -35,8 +36,8 @@ def RunGnCommand(args, root_dir=None):
   """Runs `gn` with provided args and return error if any."""
   try:
     command = [
-      sys.executable,
-      os.path.join(find_depot_tools.DEPOT_TOOLS_PATH, 'gn.py')
+        sys.executable,
+        os.path.join(find_depot_tools.DEPOT_TOOLS_PATH, 'gn.py')
     ] + args
     subprocess.check_output(command, cwd=root_dir)
   except subprocess.CalledProcessError as err:
@@ -62,17 +63,17 @@ def RunGnCheck(root_dir=None):
     error = RunGnCommand(['gen', '--check', out_dir], root_dir)
   finally:
     shutil.rmtree(out_dir, ignore_errors=True)
-  return GN_ERROR_RE.findall(error) if error else []
+  return GN_ERROR_RE.findall(error.decode('utf-8')) if error else []
 
 
 def RunNinjaCommand(args, root_dir=None):
   """Runs ninja quietly. Any failure (e.g. clang not found) is
      silently discarded, since this is unlikely an error in submitted CL."""
-  command = [
-              os.path.join(find_depot_tools.DEPOT_TOOLS_PATH, 'ninja')
-            ] + args
-  p = subprocess.Popen(command, cwd=root_dir,
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  command = [os.path.join(SRC_DIR, 'third_party', 'ninja', 'ninja')] + args
+  p = subprocess.Popen(command,
+                       cwd=root_dir,
+                       stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE)
   out, _ = p.communicate()
   return out
 
@@ -106,9 +107,8 @@ def GetCompilationCommand(filepath, gn_args, work_dir):
   """
   gn_errors = RunGnCommand(['gen'] + gn_args + [work_dir])
   if gn_errors:
-    raise(RuntimeError(
-      'FYI, cannot complete check due to gn error:\n%s\n'
-      'Please open a bug.' % gn_errors))
+    raise RuntimeError('FYI, cannot complete check due to gn error:\n%s\n'
+                       'Please open a bug.' % gn_errors)
 
   # Needed for single file compilation.
   commands = GetCompilationDb(work_dir)
@@ -119,9 +119,9 @@ def GetCompilationCommand(filepath, gn_args, work_dir):
   # Gather defines, include path and flags (such as -std=c++11).
   try:
     compilation_entry = commands[rel_path]
-  except KeyError:
+  except KeyError as not_found:
     raise ValueError('%s: Not found in compilation database.\n'
-                     'Please check the path.' % filepath)
+                     'Please check the path.' % filepath) from not_found
   command = compilation_entry['command'].split()
 
   # Remove troublesome flags. May trigger an error otherwise.
@@ -129,6 +129,6 @@ def GetCompilationCommand(filepath, gn_args, work_dir):
     command.remove('-MMD')
   if '-MF' in command:
     index = command.index('-MF')
-    del command[index:index+2]  # Remove filename as well.
+    del command[index:index + 2]  # Remove filename as well.
 
   return command

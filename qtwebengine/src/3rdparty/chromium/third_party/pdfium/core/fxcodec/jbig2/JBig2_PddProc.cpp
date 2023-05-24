@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,8 +21,8 @@ std::unique_ptr<CJBig2_PatternDict> CJBig2_PDDProc::DecodeArith(
     return nullptr;
 
   pGRD->GBTEMPLATE = HDTEMPLATE;
-  pGRD->TPGDON = 0;
-  pGRD->USESKIP = 0;
+  pGRD->TPGDON = false;
+  pGRD->USESKIP = false;
   pGRD->GBAT[0] = -1 * static_cast<int32_t>(HDPW);
   pGRD->GBAT[1] = 0;
   if (pGRD->GBTEMPLATE == 0) {
@@ -43,7 +43,7 @@ std::unique_ptr<CJBig2_PatternDict> CJBig2_PDDProc::DecodeArith(
 
   FXCODEC_STATUS status = pGRD->StartDecodeArith(&state);
   state.pPause = pPause;
-  while (status == FXCODEC_STATUS_DECODE_TOBECONTINUE)
+  while (status == FXCODEC_STATUS::kDecodeToBeContinued)
     status = pGRD->ContinueDecode(&state);
   if (!BHDC)
     return nullptr;
@@ -74,7 +74,7 @@ std::unique_ptr<CJBig2_PatternDict> CJBig2_PDDProc::DecodeMMR(
 std::unique_ptr<CJBig2_GRDProc> CJBig2_PDDProc::CreateGRDProc() {
   uint32_t width = (GRAYMAX + 1) * HDPW;
   uint32_t height = HDPH;
-  if (width > JBIG2_MAX_IMAGE_SIZE || height > JBIG2_MAX_IMAGE_SIZE)
+  if (width > kJBig2MaxImageSize || height > kJBig2MaxImageSize)
     return nullptr;
 
   auto pGRD = std::make_unique<CJBig2_GRDProc>();

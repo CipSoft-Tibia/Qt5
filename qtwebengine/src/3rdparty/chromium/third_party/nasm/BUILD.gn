@@ -7,6 +7,8 @@ import("nasm_sources.gni")
 
 configs_to_delete = [ "//build/config/compiler:chromium_code" ]
 
+should_remove_default_deps_for_performance = false
+
 # We'd like to disable sanitizers in all cases, but this is not possible with
 # MSAN due to its linkage with instrumented libraries. https://crbug.com/928357
 if (!is_msan) {
@@ -14,6 +16,14 @@ if (!is_msan) {
     # Don't enable sanitizers for build tools. They slow down the overall build.
     "//build/config/sanitizers:default_sanitizer_flags",
   ]
+
+  # Without no_default_deps, an implicit dependency on libc++ is added.
+  # libc++ may have been built referencing the debug CRT, but since we're
+  # explicitly using the release CRT, this would result in undefined symbol
+  # errors when linking, so we need to remove the implicit libc++ dependency.
+  # This is also needed to remove some configurations which make nasm's
+  # performance slow.
+  should_remove_default_deps_for_performance = true
 }
 
 configs_to_add = [ "//build/config/compiler:no_chromium_code" ]
@@ -38,12 +48,6 @@ if (is_debug) {
     # of highbd_sad4d_sse2.asm on Windows this saved about 15 s.
     configs_to_delete += [ "//build/config/win:default_crt" ]
     configs_to_add += [ "//build/config/win:release_crt" ]
-
-    # Without no_default_deps, an implicit dependency on libc++ is added.
-    # libc++ may have been built referencing the debug CRT, but since we're
-    # explicitly using the release CRT, this would result in undefined symbol
-    # errors when linking, so we need to remove the implicit libc++ dependency.
-    no_default_deps = true
   }
 }
 
@@ -78,8 +82,11 @@ config("nasm_config") {
 
       # NASM sometimes uses uninitialized values.
       "-Wno-uninitialized",
+
+      # NASM sometimes set variables but doesn't use them.
+      "-Wno-unused-but-set-variable",
     ]
-  } else if (is_win) {
+  } else if (is_win && !is_mingw) {
     # Please note that's a slightly different set of warnings.
     cflags = [
       # NASM sometimes redefines macros from its config.h.
@@ -120,5 +127,7 @@ if (current_toolchain == host_toolchain) {
       # Default manifest on Windows (a no-op elsewhere).
       "//build/win:default_exe_manifest",
     ]
+
+    no_default_deps = should_remove_default_deps_for_performance
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,13 +27,6 @@ struct CONTENT_EXPORT MHTMLGenerationParams {
 
   // Removes popups that could obstruct the user's view of normal content.
   bool remove_popup_overlay = false;
-
-  // Run page problem detectors while generating MTHML if true.
-  bool use_page_problem_detectors = false;
-
-  // Whether to compute the hash of the contents while saving the MHTML file.
-  // This is triggered by the feature flag kOnTheFlyMhtmlHashComputation.
-  bool compute_contents_hash = false;
 };
 
 }  // namespace content

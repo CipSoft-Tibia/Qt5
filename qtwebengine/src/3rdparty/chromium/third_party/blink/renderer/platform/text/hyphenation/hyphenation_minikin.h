@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,7 +28,16 @@ class PLATFORM_EXPORT HyphenationMinikin final : public Hyphenation {
                                 wtf_size_t before_index) const override;
   Vector<wtf_size_t, 8> HyphenLocations(const StringView&) const override;
 
-  static scoped_refptr<HyphenationMinikin> FromFileForTesting(base::File);
+  // Extract the word to hyphenate by skipping leading and trailing spaces and
+  // punctuations.
+  static StringView WordToHyphenate(const StringView& text,
+                                    unsigned* num_leading_chars_out);
+
+  static AtomicString MapLocale(const AtomicString& locale);
+
+  static scoped_refptr<HyphenationMinikin> FromFileForTesting(
+      const AtomicString& locale,
+      base::File);
 
  private:
   bool OpenDictionary(base::File);

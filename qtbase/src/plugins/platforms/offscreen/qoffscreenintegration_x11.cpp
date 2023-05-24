@@ -1,52 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qoffscreenintegration_x11.h"
 
 #include <QByteArray>
 #include <QOpenGLContext>
-#include <QtPlatformHeaders/QGLXNativeContext>
 
 #include <X11/Xlib.h>
 #include <GL/glx.h>
 
-#include <QtGlxSupport/private/qglxconvenience_p.h>
+#include <QtGui/private/qglxconvenience_p.h>
 
 #include <qpa/qplatformsurface.h>
 #include <qsurface.h>
@@ -77,6 +40,12 @@ private:
     QOffscreenX11Connection *m_connection;
 };
 
+QOffscreenX11Integration::QOffscreenX11Integration(const QStringList& paramList)
+: QOffscreenIntegration(paramList)
+{
+
+}
+
 QOffscreenX11Integration::~QOffscreenX11Integration() = default;
 
 bool QOffscreenX11Integration::hasCapability(QPlatformIntegration::Capability cap) const
@@ -89,6 +58,7 @@ bool QOffscreenX11Integration::hasCapability(QPlatformIntegration::Capability ca
     }
 }
 
+#if !defined(QT_NO_OPENGL) && QT_CONFIG(xcb_glx_plugin)
 QPlatformOpenGLContext *QOffscreenX11Integration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
     auto &connection = nativeInterface()->m_connection;
@@ -101,19 +71,26 @@ QPlatformOpenGLContext *QOffscreenX11Integration::createPlatformOpenGLContext(QO
 
     return new QOffscreenX11GLXContext(connection->x11Info(), context);
 }
+#endif // !defined(QT_NO_OPENGL) && QT_CONFIG(xcb_glx_plugin)
 
 QOffscreenX11PlatformNativeInterface *QOffscreenX11Integration::nativeInterface() const
 {
    if (!m_nativeInterface)
-       m_nativeInterface.reset(new QOffscreenX11PlatformNativeInterface);
+       m_nativeInterface.reset(new QOffscreenX11PlatformNativeInterface(const_cast<QOffscreenX11Integration *>(this)));
    return static_cast<QOffscreenX11PlatformNativeInterface *>(m_nativeInterface.data());
+}
+
+QOffscreenX11PlatformNativeInterface::QOffscreenX11PlatformNativeInterface(QOffscreenIntegration *integration)
+:QOffscreenPlatformNativeInterface(integration)
+{
+
 }
 
 QOffscreenX11PlatformNativeInterface::~QOffscreenX11PlatformNativeInterface() = default;
 
 void *QOffscreenX11PlatformNativeInterface::nativeResourceForScreen(const QByteArray &resource, QScreen *screen)
 {
-    Q_UNUSED(screen)
+    Q_UNUSED(screen);
     if (resource.toLower() == QByteArrayLiteral("display") ) {
         if (!m_connection)
             m_connection.reset(new QOffscreenX11Connection);
@@ -122,7 +99,7 @@ void *QOffscreenX11PlatformNativeInterface::nativeResourceForScreen(const QByteA
     return nullptr;
 }
 
-#ifndef QT_NO_OPENGL
+#if !defined(QT_NO_OPENGL) && QT_CONFIG(xcb_glx_plugin)
 void *QOffscreenX11PlatformNativeInterface::nativeResourceForContext(const QByteArray &resource, QOpenGLContext *context) {
     if (resource.toLower() == QByteArrayLiteral("glxconfig") ) {
         if (context) {
@@ -139,6 +116,13 @@ void *QOffscreenX11PlatformNativeInterface::nativeResourceForContext(const QByte
         }
     }
     return nullptr;
+}
+#endif
+
+#if QT_CONFIG(xcb)
+Display *QOffscreenX11PlatformNativeInterface::display() const
+{
+    return m_connection ? reinterpret_cast<Display *>(m_connection->display()) : nullptr;
 }
 #endif
 
@@ -165,6 +149,7 @@ QOffscreenX11Info *QOffscreenX11Connection::x11Info()
     return m_x11Info.data();
 }
 
+#if QT_CONFIG(xcb_glx_plugin)
 class QOffscreenX11GLXContextData
 {
 public:
@@ -251,9 +236,6 @@ QOffscreenX11GLXContext::QOffscreenX11GLXContext(QOffscreenX11Info *x11, QOpenGL
         d->window = createDummyWindow(x11, visualInfo);
         XFree(visualInfo);
     }
-    if (d->context)
-        context->setNativeHandle(QVariant::fromValue<QGLXNativeContext>(QGLXNativeContext(d->context)));
-
 }
 
 QOffscreenX11GLXContext::~QOffscreenX11GLXContext()
@@ -306,7 +288,7 @@ bool QOffscreenX11GLXContext::isValid() const
     return d->context && d->window;
 }
 
-void *QOffscreenX11GLXContext::glxContext() const
+GLXContext QOffscreenX11GLXContext::glxContext() const
 {
     return d->context;
 }
@@ -315,5 +297,5 @@ void *QOffscreenX11GLXContext::glxConfig() const
 {
     return d->config;
 }
-
+#endif // QT_CONFIG(xcb_glx_plugin)
 QT_END_NAMESPACE

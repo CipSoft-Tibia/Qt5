@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -39,21 +13,24 @@
 #ifndef DECLARATIVEAXES_H
 #define DECLARATIVEAXES_H
 
-#include <QtCharts/QChartGlobal>
+#include <QtQml/qqmlregistration.h>
+#include <QtCharts/qabstractaxis.h>
 #include <QtCore/QObject>
 #include <private/declarativechartglobal_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
-class QAbstractAxis;
-
-class Q_QMLCHARTS_PRIVATE_EXPORT DeclarativeAxes : public QObject
+class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeAxes : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisXTop READ axisXTop WRITE setAxisXTop NOTIFY axisXTopChanged)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisYRight READ axisYRight WRITE setAxisYRight NOTIFY axisYRightChanged)
+    Q_PROPERTY(QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged)
+    Q_PROPERTY(QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged)
+    Q_PROPERTY(QAbstractAxis *axisXTop READ axisXTop WRITE setAxisXTop NOTIFY axisXTopChanged)
+    Q_PROPERTY(QAbstractAxis *axisYRight READ axisYRight WRITE setAxisYRight NOTIFY axisYRightChanged)
+    QML_NAMED_ELEMENT(DeclarativeAxes)
+    QML_ADDED_IN_VERSION(1, 0)
+    QML_EXTRA_VERSION(2, 0)
+    QML_UNCREATABLE("Abstract base type")
 
 public:
     explicit DeclarativeAxes(QObject *parent = 0);
@@ -86,6 +63,6 @@ private:
     QAbstractAxis *m_axisYRight;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // DECLARATIVEAXES_H

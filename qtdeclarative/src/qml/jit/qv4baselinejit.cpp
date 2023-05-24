@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4baselinejit_p.h"
 #include "qv4baselineassembler_p.h"
@@ -209,6 +173,7 @@ void BaselineJIT::generate_LoadName(int name)
 
 void BaselineJIT::generate_LoadGlobalLookup(int index)
 {
+    STORE_IP();
     as->prepareCallWithArgCount(3);
     as->passInt32AsArg(index, 2);
     as->passFunctionAsArg(1);
@@ -218,6 +183,7 @@ void BaselineJIT::generate_LoadGlobalLookup(int index)
 
 void BaselineJIT::generate_LoadQmlContextPropertyLookup(int index)
 {
+    STORE_IP();
     as->prepareCallWithArgCount(2);
     as->passInt32AsArg(index, 1);
     as->passEngineAsArg(0);
@@ -283,6 +249,13 @@ void BaselineJIT::generate_LoadProperty(int name)
     BASELINEJIT_GENERATE_RUNTIME_CALL(LoadProperty, CallResultDestination::InAccumulator);
 }
 
+void BaselineJIT::generate_LoadOptionalProperty(int name, int offset)
+{
+    labels.insert(as->jumpEqNull(absoluteOffset(offset)));
+
+    generate_LoadProperty(name);
+}
+
 void BaselineJIT::generate_GetLookup(int index)
 {
     STORE_IP();
@@ -293,6 +266,13 @@ void BaselineJIT::generate_GetLookup(int index)
     as->passFunctionAsArg(1);
     as->passEngineAsArg(0);
     BASELINEJIT_GENERATE_RUNTIME_CALL(GetLookup, CallResultDestination::InAccumulator);
+}
+
+void BaselineJIT::generate_GetOptionalLookup(int index, int offset)
+{
+    labels.insert(as->jumpEqNull(absoluteOffset(offset)));
+
+    generate_GetLookup(index);
 }
 
 void BaselineJIT::generate_StoreProperty(int name, int base)
@@ -407,18 +387,6 @@ void BaselineJIT::generate_CallPropertyLookup(int lookupIndex, int base, int arg
     as->passJSSlotAsArg(base, 1);
     as->passEngineAsArg(0);
     BASELINEJIT_GENERATE_RUNTIME_CALL(CallPropertyLookup, CallResultDestination::InAccumulator);
-}
-
-void BaselineJIT::generate_CallElement(int base, int index, int argc, int argv)
-{
-    STORE_IP();
-    as->prepareCallWithArgCount(5);
-    as->passInt32AsArg(argc, 4);
-    as->passJSSlotAsArg(argv, 3);
-    as->passJSSlotAsArg(index, 2);
-    as->passJSSlotAsArg(base, 1);
-    as->passEngineAsArg(0);
-    BASELINEJIT_GENERATE_RUNTIME_CALL(CallElement, CallResultDestination::InAccumulator);
 }
 
 void BaselineJIT::generate_CallName(int name, int argc, int argv)
@@ -540,6 +508,8 @@ void BaselineJIT::generate_ThrowException()
     as->passEngineAsArg(0);
     BASELINEJIT_GENERATE_RUNTIME_CALL(ThrowException, CallResultDestination::Ignore);
     as->gotoCatchException();
+
+    // LOAD_ACC(); <- not needed here since it would be unreachable.
 }
 
 void BaselineJIT::generate_GetException() { as->getException(); }
@@ -547,9 +517,11 @@ void BaselineJIT::generate_SetException() { as->setException(); }
 
 void BaselineJIT::generate_CreateCallContext()
 {
+    STORE_ACC();
     as->prepareCallWithArgCount(1);
     as->passCppFrameAsArg(0);
     BASELINEJIT_GENERATE_RUNTIME_CALL(PushCallContext, CallResultDestination::Ignore);
+    LOAD_ACC();
 }
 
 void BaselineJIT::generate_PushCatchContext(int index, int name) { as->pushCatchContext(index, name); }
@@ -831,6 +803,7 @@ void BaselineJIT::generate_CmpStrictNotEqual(int lhs) { as->cmpStrictNotEqual(lh
 
 void BaselineJIT::generate_CmpIn(int lhs)
 {
+    STORE_IP();
     STORE_ACC();
     as->prepareCallWithArgCount(3);
     as->passAccumulatorAsArg(2);
@@ -847,6 +820,16 @@ void BaselineJIT::generate_CmpInstanceOf(int lhs)
     as->passJSSlotAsArg(lhs, 1);
     as->passEngineAsArg(0);
     BASELINEJIT_GENERATE_RUNTIME_CALL(Instanceof, CallResultDestination::InAccumulator);
+}
+
+void BaselineJIT::generate_As(int lhs)
+{
+    STORE_ACC();
+    as->prepareCallWithArgCount(3);
+    as->passAccumulatorAsArg(2);
+    as->passJSSlotAsArg(lhs, 1);
+    as->passEngineAsArg(0);
+    BASELINEJIT_GENERATE_RUNTIME_CALL(As, CallResultDestination::InAccumulator);
 }
 
 void BaselineJIT::generate_UNot() { as->unot(); }

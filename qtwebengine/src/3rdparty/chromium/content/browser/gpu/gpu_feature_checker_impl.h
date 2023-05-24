@@ -1,24 +1,25 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_GPU_GPU_FEATURE_CHECKER_IMPL_H_
 #define CONTENT_BROWSER_GPU_GPU_FEATURE_CHECKER_IMPL_H_
 
-#include "base/callback.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
 #include "content/public/browser/gpu_data_manager_observer.h"
 #include "content/public/browser/gpu_feature_checker.h"
 #include "gpu/config/gpu_feature_type.h"
 
 namespace content {
 
-class CONTENT_EXPORT GpuFeatureCheckerImpl : public GpuFeatureChecker,
-                                             public GpuDataManagerObserver {
+class GpuFeatureCheckerImpl : public GpuFeatureChecker,
+                              public GpuDataManagerObserver {
  public:
   GpuFeatureCheckerImpl(gpu::GpuFeatureType feature,
                         FeatureAvailableCallback callback);
+
+  GpuFeatureCheckerImpl(const GpuFeatureCheckerImpl&) = delete;
+  GpuFeatureCheckerImpl& operator=(const GpuFeatureCheckerImpl&) = delete;
 
   // GpuFeatureChecker implementation.
   void CheckGpuFeatureAvailability() override;
@@ -32,8 +33,6 @@ class CONTENT_EXPORT GpuFeatureCheckerImpl : public GpuFeatureChecker,
   gpu::GpuFeatureType feature_;
   FeatureAvailableCallback callback_;
   bool checking_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(GpuFeatureCheckerImpl);
 };
 
 }  // namespace content

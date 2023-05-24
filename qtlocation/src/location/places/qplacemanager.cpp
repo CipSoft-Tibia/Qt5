@@ -1,44 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacemanager.h"
+
 #include "qplacemanagerengine.h"
 #include "qplacemanagerengine_p.h"
 
 #include <QtCore/QDebug>
+#include <QtCore/QLocale>
+
+
+#include <QtLocation/QPlace>
+#include <QtLocation/QPlaceCategory>
+#include <QtLocation/QPlaceContentReply>
+#include <QtLocation/QPlaceContentRequest>
+#include <QtLocation/QPlaceDetailsReply>
+#include <QtLocation/QPlaceIcon>
+#include <QtLocation/QPlaceIdReply>
+#include <QtLocation/QPlaceMatchReply>
+#include <QtLocation/QPlaceMatchRequest>
+#include <QtLocation/QPlaceReply>
+#include <QtLocation/QPlaceSearchSuggestionReply>
+#include <QtLocation/QPlaceSearchRequest>
+#include <QtLocation/QPlaceSearchResult>
 
 QT_BEGIN_NAMESPACE
 
@@ -143,25 +127,26 @@ QPlaceManager::QPlaceManager(QPlaceManagerEngine *engine, QObject *parent)
 
         qRegisterMetaType<QPlaceCategory>();
 
-        connect(d, SIGNAL(finished(QPlaceReply*)), this, SIGNAL(finished(QPlaceReply*)));
-        connect(d, SIGNAL(error(QPlaceReply*,QPlaceReply::Error)),
-                this, SIGNAL(error(QPlaceReply*,QPlaceReply::Error)));
+        connect(d, &QPlaceManagerEngine::finished,
+                this, &QPlaceManager::finished);
+        connect(d, &QPlaceManagerEngine::errorOccurred,
+                this, &QPlaceManager::errorOccurred);
 
-        connect(d, SIGNAL(placeAdded(QString)),
-                this, SIGNAL(placeAdded(QString)), Qt::QueuedConnection);
-        connect(d, SIGNAL(placeUpdated(QString)),
-                this, SIGNAL(placeUpdated(QString)), Qt::QueuedConnection);
-        connect(d, SIGNAL(placeRemoved(QString)),
-                this, SIGNAL(placeRemoved(QString)), Qt::QueuedConnection);
+        connect(d, &QPlaceManagerEngine::placeAdded,
+                this, &QPlaceManager::placeAdded, Qt::QueuedConnection);
+        connect(d, &QPlaceManagerEngine::placeUpdated,
+                this, &QPlaceManager::placeUpdated, Qt::QueuedConnection);
+        connect(d, &QPlaceManagerEngine::placeRemoved,
+                this, &QPlaceManager::placeRemoved, Qt::QueuedConnection);
 
-        connect(d, SIGNAL(categoryAdded(QPlaceCategory,QString)),
-                this, SIGNAL(categoryAdded(QPlaceCategory,QString)));
-        connect(d, SIGNAL(categoryUpdated(QPlaceCategory,QString)),
-                this, SIGNAL(categoryUpdated(QPlaceCategory,QString)));
-        connect(d, SIGNAL(categoryRemoved(QString,QString)),
-                this, SIGNAL(categoryRemoved(QString,QString)));
-        connect(d, SIGNAL(dataChanged()),
-                this, SIGNAL(dataChanged()), Qt::QueuedConnection);
+        connect(d, &QPlaceManagerEngine::categoryAdded,
+                this, &QPlaceManager::categoryAdded);
+        connect(d, &QPlaceManagerEngine::categoryUpdated,
+                this, &QPlaceManager::categoryUpdated);
+        connect(d, &QPlaceManagerEngine::categoryRemoved,
+                this, &QPlaceManager::categoryRemoved);
+        connect(d, &QPlaceManagerEngine::dataChanged,
+                this, &QPlaceManager::dataChanged, Qt::QueuedConnection);
     } else {
         qFatal("The place manager engine that was set for this place manager was NULL.");
     }
@@ -369,7 +354,7 @@ void QPlaceManager::setLocales(const QList<QLocale> &locales)
     present in the modified version.  Manager specific data such
     as the place id, is not copied over from the \a original.
 */
-QPlace QPlaceManager::compatiblePlace(const QPlace &original)
+QPlace QPlaceManager::compatiblePlace(const QPlace &original) const
 {
     return d->compatiblePlace(original);
 }
@@ -399,7 +384,7 @@ QPlaceMatchReply *QPlaceManager::matchingPlaces(const QPlaceMatchRequest &reques
 */
 
 /*!
-    \fn void QPlaceManager::error(QPlaceReply *reply, QPlaceReply::Error error, const QString &errorString)
+    \fn void QPlaceManager::errorOccurred(QPlaceReply *reply, QPlaceReply::Error error, const QString &errorString)
 
     This signal is emitted when an error has been detected in the processing of
     \a reply.  The QPlaceManager::finished() signal will probably follow.
@@ -408,7 +393,7 @@ QPlaceMatchReply *QPlaceManager::matchingPlaces(const QPlaceMatchRequest &reques
     not empty it will contain a textual description of the error meant for developers
     and not end users.
 
-    This signal and QPlaceReply::error() will be emitted at the same time.
+    This signal and QPlaceReply::errorOccurred() will be emitted at the same time.
 
     \note Do not delete the \a reply object in the slot connected to this signal.
     Use deleteLater() instead.

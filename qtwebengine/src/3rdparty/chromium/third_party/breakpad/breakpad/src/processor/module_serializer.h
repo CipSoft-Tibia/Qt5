@@ -1,5 +1,4 @@
-// Copyright (c) 2010, Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -99,6 +98,7 @@ class ModuleSerializer {
   typedef BasicSourceLineResolver::Line Line;
   typedef BasicSourceLineResolver::Function Function;
   typedef BasicSourceLineResolver::PublicSymbol PublicSymbol;
+  typedef BasicSourceLineResolver::InlineOrigin InlineOrigin;
 
   // Internal implementation for ConvertOneModule and ConvertAllModules methods.
   bool SerializeModuleAndLoadIntoFastResolver(
@@ -120,6 +120,7 @@ class ModuleSerializer {
                               linked_ptr<WindowsFrameInfo> > wfi_serializer_;
   RangeMapSerializer<MemAddr, string> cfi_init_rules_serializer_;
   StdMapSerializer<MemAddr, string> cfi_delta_rules_serializer_;
+  StdMapSerializer<int, linked_ptr<InlineOrigin>> inline_origin_serializer_;
 };
 
 }  // namespace google_breakpad

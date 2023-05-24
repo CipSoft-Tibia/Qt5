@@ -1,45 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qprogressdialog.h"
 
-#include "qshortcut.h"
+#if QT_CONFIG(shortcut)
+#  include "qshortcut.h"
+#endif
 #include "qpainter.h"
 #include "qdrawutil.h"
 #include "qlabel.h"
@@ -66,18 +32,7 @@ class QProgressDialogPrivate : public QDialogPrivate
     Q_DECLARE_PUBLIC(QProgressDialog)
 
 public:
-    QProgressDialogPrivate() : label(nullptr), cancel(nullptr), bar(nullptr),
-        shown_once(false),
-        cancellation_flag(false),
-        setValue_called(false),
-        processingEvents(false),
-        showTime(defaultShowTime),
-#ifndef QT_NO_SHORTCUT
-        escapeShortcut(nullptr),
-#endif
-        useDefaultCancelText(false)
-    {
-    }
+    QProgressDialogPrivate() = default;
 
     void init(const QString &labelText, const QString &cancelText, int min, int max);
     void layout();
@@ -87,25 +42,25 @@ public:
     void ensureSizeIsAtLeastSizeHint();
     void _q_disconnectOnClose();
 
-    QLabel *label;
-    QPushButton *cancel;
-    QProgressBar *bar;
-    QTimer *forceTimer;
-    bool shown_once;
-    bool cancellation_flag;
-    bool setValue_called;
-    bool processingEvents;
-    QElapsedTimer starttime;
-    int showTime;
-    bool autoClose;
-    bool autoReset;
-    bool forceHide;
+    QLabel *label = nullptr;
+    QPushButton *cancel = nullptr;
+    QProgressBar *bar = nullptr;
+    QTimer *forceTimer = nullptr;
 #ifndef QT_NO_SHORTCUT
-    QShortcut *escapeShortcut;
+    QShortcut *escapeShortcut = nullptr;
 #endif
-    bool useDefaultCancelText;
     QPointer<QObject> receiverToDisconnectOnClose;
+    QElapsedTimer starttime;
     QByteArray memberToDisconnectOnClose;
+    int showTime = defaultShowTime;
+    bool processingEvents = false;
+    bool shownOnce = false;
+    bool autoClose = true;
+    bool autoReset = true;
+    bool forceHide = false;
+    bool cancellationFlag = false;
+    bool setValueCalled = false;
+    bool useDefaultCancelText = false;
 };
 
 void QProgressDialogPrivate::init(const QString &labelText, const QString &cancelText,
@@ -117,9 +72,6 @@ void QProgressDialogPrivate::init(const QString &labelText, const QString &cance
     bar->setRange(min, max);
     int align = q->style()->styleHint(QStyle::SH_ProgressDialog_TextLabelAlignment, nullptr, q);
     label->setAlignment(Qt::Alignment(align));
-    autoClose = true;
-    autoReset = true;
-    forceHide = false;
     QObject::connect(q, SIGNAL(canceled()), q, SLOT(cancel()));
     forceTimer = new QTimer(q);
     QObject::connect(forceTimer, SIGNAL(timeout()), q, SLOT(forceShow()));
@@ -263,8 +215,7 @@ void QProgressDialogPrivate::_q_disconnectOnClose()
 
   \image fusion-progressdialog.png A progress dialog shown in the Fusion widget style.
 
-  \sa QDialog, QProgressBar, {fowler}{GUI Design Handbook: Progress Indicator},
-      {Find Files Example}, {Pixelator Example}
+  \sa QDialog, QProgressBar
 */
 
 
@@ -415,7 +366,6 @@ void QProgressDialog::setCancelButton(QPushButton *cancelButton)
     if (cancelButton) {
         connect(d->cancel, SIGNAL(clicked()), this, SIGNAL(canceled()));
 #ifndef QT_NO_SHORTCUT
-        // FIXME: This only registers the primary key sequence of the cancel action
         d->escapeShortcut = new QShortcut(QKeySequence::Cancel, this, SIGNAL(canceled()));
 #endif
     } else {
@@ -498,6 +448,8 @@ void QProgressDialogPrivate::adoptChildWidget(QWidget *c)
             c->setParent(q, { });
     }
     ensureSizeIsAtLeastSizeHint();
+    //The layout should be updated again to prevent layout errors when the new 'widget' is replaced
+    layout();
     if (c)
         c->show();
 }
@@ -521,7 +473,7 @@ void QProgressDialogPrivate::ensureSizeIsAtLeastSizeHint()
 bool QProgressDialog::wasCanceled() const
 {
     Q_D(const QProgressDialog);
-    return d->cancellation_flag;
+    return d->cancellationFlag;
 }
 
 
@@ -599,9 +551,9 @@ void QProgressDialog::reset()
     if (d->autoClose || d->forceHide)
         hide();
     d->bar->reset();
-    d->cancellation_flag = false;
-    d->shown_once = false;
-    d->setValue_called = false;
+    d->cancellationFlag = false;
+    d->shownOnce = false;
+    d->setValueCalled = false;
     d->forceTimer->stop();
 
     /*
@@ -625,7 +577,7 @@ void QProgressDialog::cancel()
     d->forceHide = true;
     reset();
     d->forceHide = false;
-    d->cancellation_flag = true;
+    d->cancellationFlag = true;
 }
 
 
@@ -655,24 +607,24 @@ int QProgressDialog::value() const
 void QProgressDialog::setValue(int progress)
 {
     Q_D(QProgressDialog);
-    if (d->setValue_called && progress == d->bar->value())
+    if (d->setValueCalled && progress == d->bar->value())
         return;
 
     d->bar->setValue(progress);
 
-    if (d->shown_once) {
+    if (d->shownOnce) {
         if (isModal() && !d->processingEvents) {
-            const QScopedValueRollback<bool> guard(d->processingEvents, true);
+            const QScopedValueRollback guard(d->processingEvents, true);
             QCoreApplication::processEvents();
         }
     } else {
-        if ((!d->setValue_called && progress == 0 /* for compat with Qt < 5.4 */) || progress == minimum()) {
+        if ((!d->setValueCalled && progress == 0 /* for compat with Qt < 5.4 */) || progress == minimum()) {
             d->starttime.start();
             d->forceTimer->start(d->showTime);
-            d->setValue_called = true;
+            d->setValueCalled = true;
             return;
         } else {
-            d->setValue_called = true;
+            d->setValueCalled = true;
             bool need_show;
             int elapsed = d->starttime.elapsed();
             if (elapsed >= d->showTime) {
@@ -695,7 +647,7 @@ void QProgressDialog::setValue(int progress)
             if (need_show) {
                 d->ensureSizeIsAtLeastSizeHint();
                 show();
-                d->shown_once = true;
+                d->shownOnce = true;
             }
         }
     }
@@ -854,11 +806,11 @@ void QProgressDialog::forceShow()
 {
     Q_D(QProgressDialog);
     d->forceTimer->stop();
-    if (d->shown_once || d->cancellation_flag)
+    if (d->shownOnce || d->cancellationFlag)
         return;
 
     show();
-    d->shown_once = true;
+    d->shownOnce = true;
 }
 
 /*!

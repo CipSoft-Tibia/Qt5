@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "chromecast/device/bluetooth/le/gatt_client_manager.h"
@@ -46,6 +45,9 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterCast
   BluetoothAdapterCast(
       chromecast::bluetooth::GattClientManager* gatt_client_manager,
       chromecast::bluetooth::LeScanManager* le_scan_manager);
+
+  BluetoothAdapterCast(const BluetoothAdapterCast&) = delete;
+  BluetoothAdapterCast& operator=(const BluetoothAdapterCast&) = delete;
 
   // BluetoothAdapter implementation
   // |callback| will be executed asynchronously on the calling sequence.
@@ -86,6 +88,11 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterCast
       AdvertisementErrorCallback error_callback) override;
   void ResetAdvertising(base::OnceClosure callback,
                         AdvertisementErrorCallback error_callback) override;
+  void ConnectDevice(
+      const std::string& address,
+      const absl::optional<BluetoothDevice::AddressType>& address_type,
+      ConnectDeviceCallback callback,
+      ConnectDeviceErrorCallback error_callback) override;
   BluetoothLocalGattService* GetGattService(
       const std::string& identifier) const override;
   base::WeakPtr<BluetoothAdapter> GetWeakPtr() override;
@@ -185,8 +192,6 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterCast
 
   SEQUENCE_CHECKER(sequence_checker_);
   base::WeakPtrFactory<BluetoothAdapterCast> weak_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(BluetoothAdapterCast);
 };
 
 }  // namespace device

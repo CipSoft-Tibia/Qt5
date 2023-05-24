@@ -1,82 +1,26 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "arthurwidgets.h"
 #include "hoverpoints.h"
 
 #include <algorithm>
 
-#define printf
+#if QT_CONFIG(opengl)
+#include <QtOpenGL/QOpenGLWindow>
+#endif
 
 HoverPoints::HoverPoints(QWidget *widget, PointShape shape)
-    : QObject(widget)
+    : QObject(widget),
+      m_widget(widget),
+      m_shape(shape)
 {
-    m_widget = widget;
     widget->installEventFilter(this);
     widget->setAttribute(Qt::WA_AcceptTouchEvents);
-
-    m_connectionType = CurveConnection;
-    m_sortType = NoSort;
-    m_shape = shape;
-    m_pointPen = QPen(QColor(255, 255, 255, 191), 1);
-    m_connectionPen = QPen(QColor(255, 255, 255, 127), 2);
-    m_pointBrush = QBrush(QColor(191, 191, 191, 127));
-    m_pointSize = QSize(11, 11);
-    m_currentIndex = -1;
-    m_editable = true;
-    m_enabled = true;
 
     connect(this, &HoverPoints::pointsChanged,
             m_widget, QOverload<>::of(&QWidget::update));
 }
-
 
 void HoverPoints::setEnabled(bool enabled)
 {
@@ -86,191 +30,200 @@ void HoverPoints::setEnabled(bool enabled)
     }
 }
 
-
 bool HoverPoints::eventFilter(QObject *object, QEvent *event)
 {
-    if (object == m_widget && m_enabled) {
-        switch (event->type()) {
+    if (object != m_widget || !m_enabled)
+        return false;
 
-        case QEvent::MouseButtonPress:
-        {
-            if (!m_fingerPointMapping.isEmpty())
-                return true;
-            QMouseEvent *me = (QMouseEvent *) event;
+    switch (event->type()) {
+    case QEvent::MouseButtonPress:
+    {
+        if (!m_fingerPointMapping.isEmpty())
+            return true;
+        auto *me = static_cast<const QMouseEvent *>(event);
+        QPointF clickPos = me->position().toPoint();
+        qsizetype index = -1;
+        for (qsizetype i = 0; i < m_points.size(); ++i) {
+            QPainterPath path;
+            const QRectF rect = pointBoundingRect(m_points.at(i));
+            if (m_shape == CircleShape)
+                path.addEllipse(rect);
+            else
+                path.addRect(rect);
 
-            QPointF clickPos = me->pos();
-            int index = -1;
-            for (int i=0; i<m_points.size(); ++i) {
-                QPainterPath path;
-                if (m_shape == CircleShape)
-                    path.addEllipse(pointBoundingRect(i));
-                else
-                    path.addRect(pointBoundingRect(i));
+            if (path.contains(clickPos)) {
+                index = i;
+                break;
+            }
+        }
 
-                if (path.contains(clickPos)) {
-                    index = i;
+        if (me->button() == Qt::LeftButton) {
+            if (index == -1) {
+                if (!m_editable)
+                    return false;
+                qsizetype pos = 0;
+                // Insert sort for x or y
+                switch (m_sortType) {
+                case XSort:
+                    for (qsizetype i = 0; i < m_points.size(); ++i) {
+                        if (m_points.at(i).x() > clickPos.x()) {
+                            pos = i;
+                            break;
+                        }
+                    }
+                    break;
+                case YSort:
+                    for (qsizetype i = 0; i < m_points.size(); ++i) {
+                        if (m_points.at(i).y() > clickPos.y()) {
+                            pos = i;
+                            break;
+                        }
+                    }
+                    break;
+                default:
                     break;
                 }
+
+                m_points.insert(pos, clickPos);
+                m_locks.insert(pos, 0);
+                m_currentIndex = pos;
+                firePointChange();
+            } else {
+                m_currentIndex = index;
             }
+            return true;
 
-            if (me->button() == Qt::LeftButton) {
-                if (index == -1) {
-                    if (!m_editable)
-                        return false;
-                    int pos = 0;
-                    // Insert sort for x or y
-                    if (m_sortType == XSort) {
-                        for (int i=0; i<m_points.size(); ++i)
-                            if (m_points.at(i).x() > clickPos.x()) {
-                                pos = i;
-                                break;
-                            }
-                    } else if (m_sortType == YSort) {
-                        for (int i=0; i<m_points.size(); ++i)
-                            if (m_points.at(i).y() > clickPos.y()) {
-                                pos = i;
-                                break;
-                            }
-                    }
-
-                    m_points.insert(pos, clickPos);
-                    m_locks.insert(pos, 0);
-                    m_currentIndex = pos;
-                    firePointChange();
-                } else {
-                    m_currentIndex = index;
+        } else if (me->button() == Qt::RightButton) {
+            if (index >= 0 && m_editable) {
+                if (m_locks[index] == 0) {
+                    m_locks.remove(index);
+                    m_points.remove(index);
                 }
+                firePointChange();
                 return true;
-
-            } else if (me->button() == Qt::RightButton) {
-                if (index >= 0 && m_editable) {
-                    if (m_locks[index] == 0) {
-                        m_locks.remove(index);
-                        m_points.remove(index);
-                    }
-                    firePointChange();
-                    return true;
-                }
             }
+        }
+    }
+    break;
 
+    case QEvent::MouseButtonRelease:
+        if (!m_fingerPointMapping.isEmpty())
+            return true;
+        m_currentIndex = -1;
+        break;
+
+    case QEvent::MouseMove:
+        if (!m_fingerPointMapping.isEmpty())
+            return true;
+        if (m_currentIndex >= 0) {
+            auto *me = static_cast<const QMouseEvent *>(event);
+            movePoint(m_currentIndex, me->position().toPoint());
         }
         break;
 
-        case QEvent::MouseButtonRelease:
-            if (!m_fingerPointMapping.isEmpty())
-                return true;
-            m_currentIndex = -1;
-            break;
-
-        case QEvent::MouseMove:
-            if (!m_fingerPointMapping.isEmpty())
-                return true;
-            if (m_currentIndex >= 0)
-                movePoint(m_currentIndex, ((QMouseEvent *)event)->pos());
-            break;
-        case QEvent::TouchBegin:
-        case QEvent::TouchUpdate:
+    case QEvent::TouchBegin:
+    case QEvent::TouchUpdate:
+    {
+        auto *touchEvent = static_cast<const QTouchEvent*>(event);
+        const auto points = touchEvent->points();
+        const qreal pointSize = qMax(m_pointSize.width(), m_pointSize.height());
+        for (const auto &point : points) {
+            const int id = point.id();
+            switch (point.state()) {
+            case QEventPoint::Pressed:
+            case QEventPoint::Stationary:
             {
-                const QTouchEvent *const touchEvent = static_cast<const QTouchEvent*>(event);
-                const QList<QTouchEvent::TouchPoint> points = touchEvent->touchPoints();
-                const qreal pointSize = qMax(m_pointSize.width(), m_pointSize.height());
-                for (const QTouchEvent::TouchPoint &touchPoint : points) {
-                    const int id = touchPoint.id();
-                    switch (touchPoint.state()) {
-                    case Qt::TouchPointPressed:
-                        {
-                            // find the point, move it
-                            const auto mappedPoints = m_fingerPointMapping.values();
-                            QSet<int> activePoints = QSet<int>(mappedPoints.begin(), mappedPoints.end());
-                            int activePoint = -1;
-                            qreal distance = -1;
-                            const int pointsCount = m_points.size();
-                            const int activePointCount = activePoints.size();
-                            if (pointsCount == 2 && activePointCount == 1) { // only two points
-                                activePoint = activePoints.contains(0) ? 1 : 0;
-                            } else {
-                                for (int i=0; i<pointsCount; ++i) {
-                                    if (activePoints.contains(i))
-                                        continue;
+                // find the point, move it
+                const auto mappedPoints = m_fingerPointMapping.values();
+                QSet<qsizetype> activePoints(mappedPoints.begin(), mappedPoints.end());
+                qsizetype activePoint = -1;
+                qreal distance = -1;
+                const qsizetype pointsCount = m_points.size();
+                const qsizetype activePointCount = activePoints.size();
+                if (pointsCount == 2 && activePointCount == 1) { // only two points
+                    activePoint = activePoints.contains(0) ? 1 : 0;
+                } else {
+                    for (qsizetype i = 0; i < pointsCount; ++i) {
+                        if (activePoints.contains(i))
+                            continue;
 
-                                    qreal d = QLineF(touchPoint.pos(), m_points.at(i)).length();
-                                    if ((distance < 0 && d < 12 * pointSize) || d < distance) {
-                                        distance = d;
-                                        activePoint = i;
-                                    }
+                        qreal d = QLineF(point.position(), m_points.at(i)).length();
+                        if ((distance < 0 && d < 12 * pointSize) || d < distance) {
+                            distance = d;
+                            activePoint = i;
+                        }
 
-                                }
-                            }
-                            if (activePoint != -1) {
-                                m_fingerPointMapping.insert(touchPoint.id(), activePoint);
-                                movePoint(activePoint, touchPoint.pos());
-                            }
-                        }
-                        break;
-                    case Qt::TouchPointReleased:
-                        {
-                            // move the point and release
-                            QHash<int,int>::iterator it = m_fingerPointMapping.find(id);
-                            movePoint(it.value(), touchPoint.pos());
-                            m_fingerPointMapping.erase(it);
-                        }
-                        break;
-                    case Qt::TouchPointMoved:
-                        {
-                            // move the point
-                            const int pointIdx = m_fingerPointMapping.value(id, -1);
-                            if (pointIdx >= 0) // do we track this point?
-                                movePoint(pointIdx, touchPoint.pos());
-                        }
-                        break;
-                    default:
-                        break;
                     }
                 }
-                if (m_fingerPointMapping.isEmpty()) {
-                    event->ignore();
-                    return false;
-                } else {
-                    return true;
+                if (activePoint != -1) {
+                    m_fingerPointMapping.insert(id, activePoint);
+                    movePoint(activePoint, point.position());
                 }
             }
             break;
-        case QEvent::TouchEnd:
-            if (m_fingerPointMapping.isEmpty()) {
-                event->ignore();
-                return false;
+            case QEventPoint::Released:
+            {
+                // move the point and release
+                const auto it = m_fingerPointMapping.constFind(id);
+                if (it != m_fingerPointMapping.constEnd()) {
+                    movePoint(it.value(), point.position());
+                    m_fingerPointMapping.erase(it);
+                }
             }
-            return true;
             break;
-
-        case QEvent::Resize:
-        {
-            QResizeEvent *e = (QResizeEvent *) event;
-            if (e->oldSize().width() == 0 || e->oldSize().height() == 0)
+            case QEventPoint::Updated:
+            {
+                // move the point
+                const qsizetype pointIdx = m_fingerPointMapping.value(id, -1);
+                if (pointIdx >= 0) // do we track this point?
+                    movePoint(pointIdx, point.position());
+            }
+            break;
+            default:
                 break;
-            qreal stretch_x = e->size().width() / qreal(e->oldSize().width());
-            qreal stretch_y = e->size().height() / qreal(e->oldSize().height());
-            for (int i=0; i<m_points.size(); ++i) {
-                QPointF p = m_points[i];
-                movePoint(i, QPointF(p.x() * stretch_x, p.y() * stretch_y), false);
             }
+        }
+        if (m_fingerPointMapping.isEmpty()) {
+            event->ignore();
+            return false;
+        }
+        return true;
+    }
+    case QEvent::TouchEnd:
+        if (m_fingerPointMapping.isEmpty()) {
+            event->ignore();
+            return false;
+        }
+        return true;
 
-            firePointChange();
+    case QEvent::Resize:
+    {
+        auto *e = static_cast<const QResizeEvent *>(event);
+        if (e->oldSize().width() <= 0 || e->oldSize().height() <= 0)
             break;
+        qreal stretch_x = e->size().width() / qreal(e->oldSize().width());
+        qreal stretch_y = e->size().height() / qreal(e->oldSize().height());
+        for (qsizetype i = 0; i < m_points.size(); ++i) {
+            QPointF p = m_points.at(i);
+            movePoint(i, QPointF(p.x() * stretch_x, p.y() * stretch_y), false);
         }
 
-        case QEvent::Paint:
-        {
-            QWidget *that_widget = m_widget;
-            m_widget = nullptr;
-            QCoreApplication::sendEvent(object, event);
-            m_widget = that_widget;
-            paintPoints();
-            return true;
-        }
-        default:
-            break;
-        }
+        firePointChange();
+        break;
+    }
+
+    case QEvent::Paint:
+    {
+        QWidget *that_widget = m_widget;
+        m_widget = nullptr;
+        QCoreApplication::sendEvent(object, event);
+        m_widget = that_widget;
+        paintPoints();
+        return true;
+    }
+
+    default:
+        break;
     }
 
     return false;
@@ -300,8 +253,8 @@ void HoverPoints::paintPoints()
         if (m_connectionType == CurveConnection) {
             QPainterPath path;
             path.moveTo(m_points.at(0));
-            for (int i=1; i<m_points.size(); ++i) {
-                QPointF p1 = m_points.at(i-1);
+            for (qsizetype i = 1; i < m_points.size(); ++i) {
+                QPointF p1 = m_points.at(i - 1);
                 QPointF p2 = m_points.at(i);
                 qreal distance = p2.x() - p1.x();
 
@@ -318,8 +271,8 @@ void HoverPoints::paintPoints()
     p.setPen(m_pointPen);
     p.setBrush(m_pointBrush);
 
-    for (int i=0; i<m_points.size(); ++i) {
-        QRectF bounds = pointBoundingRect(i);
+    for (const auto &point : std::as_const(m_points)) {
+        QRectF bounds = pointBoundingRect(point);
         if (m_shape == CircleShape)
             p.drawEllipse(bounds);
         else
@@ -350,31 +303,27 @@ void HoverPoints::setPoints(const QPolygonF &points)
     if (points.size() != m_points.size())
         m_fingerPointMapping.clear();
     m_points.clear();
-    for (int i=0; i<points.size(); ++i)
+    for (qsizetype i = 0; i < points.size(); ++i)
         m_points << bound_point(points.at(i), boundingRect(), 0);
 
     m_locks.clear();
     if (m_points.size() > 0) {
         m_locks.resize(m_points.size());
-
         m_locks.fill(0);
     }
 }
 
-
-void HoverPoints::movePoint(int index, const QPointF &point, bool emitUpdate)
+void HoverPoints::movePoint(qsizetype index, const QPointF &point, bool emitUpdate)
 {
     m_points[index] = bound_point(point, boundingRect(), m_locks.at(index));
     if (emitUpdate)
         firePointChange();
 }
 
-
 inline static bool x_less_than(const QPointF &p1, const QPointF &p2)
 {
     return p1.x() < p2.x();
 }
-
 
 inline static bool y_less_than(const QPointF &p1, const QPointF &p2)
 {
@@ -383,14 +332,11 @@ inline static bool y_less_than(const QPointF &p1, const QPointF &p2)
 
 void HoverPoints::firePointChange()
 {
-//    printf("HoverPoints::firePointChange(), current=%d\n", m_currentIndex);
-
     if (m_sortType != NoSort) {
 
         QPointF oldCurrent;
-        if (m_currentIndex != -1) {
+        if (m_currentIndex != -1)
             oldCurrent = m_points[m_currentIndex];
-        }
 
         if (m_sortType == XSort)
             std::sort(m_points.begin(), m_points.end(), x_less_than);
@@ -399,22 +345,14 @@ void HoverPoints::firePointChange()
 
         // Compensate for changed order...
         if (m_currentIndex != -1) {
-            for (int i=0; i<m_points.size(); ++i) {
+            for (qsizetype i = 0; i < m_points.size(); ++i) {
                 if (m_points[i] == oldCurrent) {
                     m_currentIndex = i;
                     break;
                 }
             }
         }
-
-//         printf(" - firePointChange(), current=%d\n", m_currentIndex);
-
     }
-
-//     for (int i=0; i<m_points.size(); ++i) {
-//         printf(" - point(%2d)=[%.2f, %.2f], lock=%d\n",
-//                i, m_points.at(i).x(), m_points.at(i).y(), m_locks.at(i));
-//     }
 
     emit pointsChanged(m_points);
 }

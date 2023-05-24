@@ -29,13 +29,12 @@
 
 namespace libgav1 {
 namespace dsp {
-namespace low_bitdepth {
 namespace {
 
 // (abs(p1 - p0) > thresh) || (abs(q1 - q0) > thresh)
 inline uint8x8_t Hev(const uint8x8_t abd_p0p1_q0q1, const uint8_t thresh) {
   const uint8x8_t a = vcgt_u8(abd_p0p1_q0q1, vdup_n_u8(thresh));
-  return vorr_u8(a, RightShift<32>(a));
+  return vorr_u8(a, RightShiftVector<32>(a));
 }
 
 // abs(p0 - q0) * 2 + abs(p1 - q1) / 2 <= outer_thresh
@@ -44,19 +43,19 @@ inline uint8x8_t OuterThreshold(const uint8x8_t p0q0, const uint8x8_t p1q1,
   const uint8x8x2_t a = Interleave32(p0q0, p1q1);
   const uint8x8_t b = vabd_u8(a.val[0], a.val[1]);
   const uint8x8_t p0q0_double = vqadd_u8(b, b);
-  const uint8x8_t p1q1_half = RightShift<32>(vshr_n_u8(b, 1));
+  const uint8x8_t p1q1_half = RightShiftVector<32>(vshr_n_u8(b, 1));
   const uint8x8_t c = vqadd_u8(p0q0_double, p1q1_half);
   return vcle_u8(c, vdup_n_u8(outer_thresh));
 }
 
 // abs(p1 - p0) <= inner_thresh && abs(q1 - q0) <= inner_thresh &&
-//   OuterThreshhold()
+//   OuterThreshold()
 inline uint8x8_t NeedsFilter4(const uint8x8_t abd_p0p1_q0q1,
                               const uint8x8_t p0q0, const uint8x8_t p1q1,
                               const uint8_t inner_thresh,
                               const uint8_t outer_thresh) {
   const uint8x8_t a = vcle_u8(abd_p0p1_q0q1, vdup_n_u8(inner_thresh));
-  const uint8x8_t inner_mask = vand_u8(a, RightShift<32>(a));
+  const uint8x8_t inner_mask = vand_u8(a, RightShiftVector<32>(a));
   const uint8x8_t outer_mask = OuterThreshold(p0q0, p1q1, outer_thresh);
   return vand_u8(inner_mask, outer_mask);
 }
@@ -65,6 +64,7 @@ inline void Filter4Masks(const uint8x8_t p0q0, const uint8x8_t p1q1,
                          const uint8_t hev_thresh, const uint8_t outer_thresh,
                          const uint8_t inner_thresh, uint8x8_t* const hev_mask,
                          uint8x8_t* const needs_filter4_mask) {
+  // First half is |p0 - p1|, second half is |q0 - q1|.
   const uint8x8_t p0p1_q0q1 = vabd_u8(p0q0, p1q1);
   // This includes cases where NeedsFilter4() is not true and so Filter2() will
   // not be applied.
@@ -121,7 +121,7 @@ inline void Filter4(const uint8x8_t q0p1, const uint8x8_t p0q1,
       vcombine_s16(vget_low_s16(p0q1_l), vget_low_s16(q0p1_l));
   // Need to shift the second term or we end up with a2_ma2.
   const int8x8_t a2_ma1 =
-      InterleaveLow32(a2_a1, RightShift<32>(vneg_s8(a2_a1)));
+      InterleaveLow32(a2_a1, RightShiftVector<32>(vneg_s8(a2_a1)));
   const int16x8_t p0q0_a = vaddw_s8(p0q0_l, a2_ma1);
 
   *p1q1_result = vqmovun_s16(p1q1_a3);
@@ -131,7 +131,7 @@ inline void Filter4(const uint8x8_t q0p1, const uint8x8_t p0q1,
 void Horizontal4_NEON(void* const dest, const ptrdiff_t stride,
                       const int outer_thresh, const int inner_thresh,
                       const int hev_thresh) {
-  uint8_t* dst = static_cast<uint8_t*>(dest);
+  auto* dst = static_cast<uint8_t*>(dest);
 
   const uint8x8_t p1_v = Load4(dst - 2 * stride);
   const uint8x8_t p0_v = Load4(dst - stride);
@@ -148,10 +148,6 @@ void Horizontal4_NEON(void* const dest, const ptrdiff_t stride,
   needs_filter4_mask = InterleaveLow32(needs_filter4_mask, needs_filter4_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter4_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -180,7 +176,7 @@ void Horizontal4_NEON(void* const dest, const ptrdiff_t stride,
 void Vertical4_NEON(void* const dest, const ptrdiff_t stride,
                     const int outer_thresh, const int inner_thresh,
                     const int hev_thresh) {
-  uint8_t* dst = static_cast<uint8_t*>(dest);
+  auto* dst = static_cast<uint8_t*>(dest);
 
   // Move |dst| to the left side of the filter window.
   dst -= 2;
@@ -208,10 +204,6 @@ void Vertical4_NEON(void* const dest, const ptrdiff_t stride,
   needs_filter4_mask = InterleaveLow32(needs_filter4_mask, needs_filter4_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter4_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -251,12 +243,12 @@ inline uint8x8_t IsFlat3(const uint8x8_t abd_p0p1_q0q1,
                          const uint8x8_t abd_p0p2_q0q2) {
   const uint8x8_t a = vmax_u8(abd_p0p1_q0q1, abd_p0p2_q0q2);
   const uint8x8_t b = vcle_u8(a, vdup_n_u8(1));
-  return vand_u8(b, RightShift<32>(b));
+  return vand_u8(b, RightShiftVector<32>(b));
 }
 
 // abs(p2 - p1) <= inner_thresh && abs(p1 - p0) <= inner_thresh &&
 //   abs(q1 - q0) <= inner_thresh && abs(q2 - q1) <= inner_thresh &&
-//   OuterThreshhold()
+//   OuterThreshold()
 inline uint8x8_t NeedsFilter6(const uint8x8_t abd_p0p1_q0q1,
                               const uint8x8_t abd_p1p2_q1q2,
                               const uint8x8_t p0q0, const uint8x8_t p1q1,
@@ -264,7 +256,7 @@ inline uint8x8_t NeedsFilter6(const uint8x8_t abd_p0p1_q0q1,
                               const uint8_t outer_thresh) {
   const uint8x8_t a = vmax_u8(abd_p0p1_q0q1, abd_p1p2_q1q2);
   const uint8x8_t b = vcle_u8(a, vdup_n_u8(inner_thresh));
-  const uint8x8_t inner_mask = vand_u8(b, RightShift<32>(b));
+  const uint8x8_t inner_mask = vand_u8(b, RightShiftVector<32>(b));
   const uint8x8_t outer_mask = OuterThreshold(p0q0, p1q1, outer_thresh);
   return vand_u8(inner_mask, outer_mask);
 }
@@ -288,26 +280,26 @@ inline void Filter6(const uint8x8_t p2q2, const uint8x8_t p1q1,
   // Sum p1 and q1 output from opposite directions
   // p1 = (3 * p2) + (2 * p1) + (2 * p0) + q0
   //      ^^^^^^^^
-  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q3)
+  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q2)
   //                                 ^^^^^^^^
   const uint16x8_t p2q2_double = vaddl_u8(p2q2, p2q2);
   uint16x8_t sum = vaddw_u8(p2q2_double, p2q2);
 
   // p1 = (3 * p2) + (2 * p1) + (2 * p0) + q0
   //                 ^^^^^^^^
-  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q3)
+  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q2)
   //                      ^^^^^^^^
   sum = vaddq_u16(vaddl_u8(p1q1, p1q1), sum);
 
   // p1 = (3 * p2) + (2 * p1) + (2 * p0) + q0
   //                            ^^^^^^^^
-  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q3)
+  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q2)
   //           ^^^^^^^^
   sum = vaddq_u16(vaddl_u8(p0q0, p0q0), sum);
 
   // p1 = (3 * p2) + (2 * p1) + (2 * p0) + q0
   //                                       ^^
-  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q3)
+  // q1 = p0 + (2 * q0) + (2 * q1) + (3 * q2)
   //      ^^
   const uint8x8_t q0p0 = Transpose32(p0q0);
   sum = vaddw_u8(sum, q0p0);
@@ -345,10 +337,6 @@ void Horizontal6_NEON(void* const dest, const ptrdiff_t stride,
   hev_mask = InterleaveLow32(hev_mask, hev_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter6_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -419,10 +407,6 @@ void Vertical6_NEON(void* const dest, const ptrdiff_t stride,
   hev_mask = InterleaveLow32(hev_mask, hev_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter6_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -482,13 +466,13 @@ inline uint8x8_t IsFlat4(const uint8x8_t abd_p0n0_q0n0,
   const uint8x8_t a = vmax_u8(abd_p0n0_q0n0, abd_p0n1_q0n1);
   const uint8x8_t b = vmax_u8(a, abd_p0n2_q0n2);
   const uint8x8_t c = vcle_u8(b, vdup_n_u8(1));
-  return vand_u8(c, RightShift<32>(c));
+  return vand_u8(c, RightShiftVector<32>(c));
 }
 
 // abs(p3 - p2) <= inner_thresh && abs(p2 - p1) <= inner_thresh &&
 //   abs(p1 - p0) <= inner_thresh && abs(q1 - q0) <= inner_thresh &&
 //   abs(q2 - q1) <= inner_thresh && abs(q3 - q2) <= inner_thresh
-//   OuterThreshhold()
+//   OuterThreshold()
 inline uint8x8_t NeedsFilter8(const uint8x8_t abd_p0p1_q0q1,
                               const uint8x8_t abd_p1p2_q1q2,
                               const uint8x8_t abd_p2p3_q2q3,
@@ -498,7 +482,7 @@ inline uint8x8_t NeedsFilter8(const uint8x8_t abd_p0p1_q0q1,
   const uint8x8_t a = vmax_u8(abd_p0p1_q0q1, abd_p1p2_q1q2);
   const uint8x8_t b = vmax_u8(a, abd_p2p3_q2q3);
   const uint8x8_t c = vcle_u8(b, vdup_n_u8(inner_thresh));
-  const uint8x8_t inner_mask = vand_u8(c, RightShift<32>(c));
+  const uint8x8_t inner_mask = vand_u8(c, RightShiftVector<32>(c));
   const uint8x8_t outer_mask = OuterThreshold(p0q0, p1q1, outer_thresh);
   return vand_u8(inner_mask, outer_mask);
 }
@@ -522,29 +506,35 @@ inline void Filter8(const uint8x8_t p3q3, const uint8x8_t p2q2,
                     const uint8x8_t p1q1, const uint8x8_t p0q0,
                     uint8x8_t* const p2q2_output, uint8x8_t* const p1q1_output,
                     uint8x8_t* const p0q0_output) {
-  // Sum p2 and q2 output from opposite directions
+  // Sum p2 and q2 output from opposite directions.
+  // The formula is regrouped to allow 2 doubling operations to be combined.
   // p2 = (3 * p3) + (2 * p2) + p1 + p0 + q0
   //      ^^^^^^^^
   // q2 = p0 + q0 + q1 + (2 * q2) + (3 * q3)
   //                                ^^^^^^^^
-  uint16x8_t sum = vaddw_u8(vaddl_u8(p3q3, p3q3), p3q3);
+  // p2q2 = p3q3 + 2 * (p3q3 + p2q2) + p1q1 + p0q0 + q0p0
+  //                    ^^^^^^^^^^^
+  const uint16x8_t p23q23 = vaddl_u8(p3q3, p2q2);
 
-  // p2 = (3 * p3) + (2 * p2) + p1 + p0 + q0
-  //                 ^^^^^^^^
-  // q2 = p0 + q0 + q1 + (2 * q2) + (3 * q3)
-  //                     ^^^^^^^^
-  sum = vaddq_u16(vaddl_u8(p2q2, p2q2), sum);
+  // p2q2 = p3q3 + 2 * (p3q3 + p2q2) + p1q1 + p0q0 + q0p0
+  //               ^^^^^
+  uint16x8_t sum = vshlq_n_u16(p23q23, 1);
 
-  // p2 = (3 * p3) + (2 * p2) + p1 + p0 + q0
-  //                            ^^^^^^^
-  // q2 = p0 + q0 + q1 + (2 * q2) + (3 * q3)
-  //           ^^^^^^^
-  sum = vaddq_u16(vaddl_u8(p1q1, p0q0), sum);
+  // Add two other terms to make dual issue with shift more likely.
+  // p2q2 = p3q3 + 2 * (p3q3 + p2q2) + p1q1 + p0q0 + q0p0
+  //                                   ^^^^^^^^^^^
+  const uint16x8_t p01q01 = vaddl_u8(p0q0, p1q1);
 
-  // p2 = (3 * p3) + (2 * p2) + p1 + p0 + q0
-  //                                      ^^
-  // q2 = p0 + q0 + q1 + (2 * q2) + (3 * q3)
-  //      ^^
+  // p2q2 = p3q3 + 2 * (p3q3 + p2q2) + p1q1 + p0q0 + q0p0
+  //                                 ^^^^^^^^^^^^^
+  sum = vaddq_u16(sum, p01q01);
+
+  // p2q2 = p3q3 + 2 * (p3q3 + p2q2) + p1q1 + p0q0 + q0p0
+  //        ^^^^^^
+  sum = vaddw_u8(sum, p3q3);
+
+  // p2q2 = p3q3 + 2 * (p3q3 + p2q2) + p1q1 + p0q0 + q0p0
+  //                                               ^^^^^^
   const uint8x8_t q0p0 = Transpose32(p0q0);
   sum = vaddw_u8(sum, q0p0);
 
@@ -553,9 +543,9 @@ inline void Filter8(const uint8x8_t p3q3, const uint8x8_t p2q2,
   // Convert to p1 and q1 output:
   // p1 = p2 - p3 - p2 + p1 + q1
   // q1 = q2 - q3 - q2 + q0 + p1
-  sum = vsubq_u16(sum, vaddl_u8(p3q3, p2q2));
+  sum = vsubq_u16(sum, p23q23);
   const uint8x8_t q1p1 = Transpose32(p1q1);
-  sum = vaddq_u16(vaddl_u8(p1q1, q1p1), sum);
+  sum = vaddq_u16(sum, vaddl_u8(p1q1, q1p1));
 
   *p1q1_output = vrshrn_n_u16(sum, 3);
 
@@ -564,7 +554,7 @@ inline void Filter8(const uint8x8_t p3q3, const uint8x8_t p2q2,
   // q0 = q1 - q3 - q1 + q0 + p2
   sum = vsubq_u16(sum, vaddl_u8(p3q3, p1q1));
   const uint8x8_t q2p2 = Transpose32(p2q2);
-  sum = vaddq_u16(vaddl_u8(p0q0, q2p2), sum);
+  sum = vaddq_u16(sum, vaddl_u8(p0q0, q2p2));
 
   *p0q0_output = vrshrn_n_u16(sum, 3);
 }
@@ -593,10 +583,6 @@ void Horizontal8_NEON(void* const dest, const ptrdiff_t stride,
   hev_mask = InterleaveLow32(hev_mask, hev_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter8_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -672,10 +658,6 @@ void Vertical8_NEON(void* const dest, const ptrdiff_t stride,
   hev_mask = InterleaveLow32(hev_mask, hev_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter8_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -856,10 +838,6 @@ void Horizontal14_NEON(void* const dest, const ptrdiff_t stride,
   hev_mask = InterleaveLow32(hev_mask, hev_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter8_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -1024,10 +1002,6 @@ void Vertical14_NEON(void* const dest, const ptrdiff_t stride,
   hev_mask = InterleaveLow32(hev_mask, hev_mask);
 
 #if defined(__aarch64__)
-  // This provides a good speedup for the unit test. Not sure how applicable it
-  // is to valid streams though.
-  // Consider doing this on armv7 if there is a quick way to check if a vector
-  // is zero.
   if (vaddv_u8(needs_filter8_mask) == 0) {
     // None of the values will be filtered.
     return;
@@ -1151,7 +1125,9 @@ void Vertical14_NEON(void* const dest, const ptrdiff_t stride,
   vst1q_u8(dst, output_3);
 }
 
-void Init8bpp() {
+}  // namespace
+
+void LoopFilterInit_NEON() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(kBitdepth8);
   assert(dsp != nullptr);
   dsp->loop_filters[kLoopFilterSize4][kLoopFilterTypeHorizontal] =
@@ -1171,15 +1147,11 @@ void Init8bpp() {
   dsp->loop_filters[kLoopFilterSize14][kLoopFilterTypeVertical] =
       Vertical14_NEON;
 }
-}  // namespace
-}  // namespace low_bitdepth
-
-void LoopFilterInit_NEON() { low_bitdepth::Init8bpp(); }
 
 }  // namespace dsp
 }  // namespace libgav1
 
-#else  // !LIBGAV1_ENABLE_NEON
+#else   // !LIBGAV1_ENABLE_NEON
 namespace libgav1 {
 namespace dsp {
 

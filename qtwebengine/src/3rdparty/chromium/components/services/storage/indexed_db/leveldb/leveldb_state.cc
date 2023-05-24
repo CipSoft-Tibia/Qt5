@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -58,14 +58,14 @@ void LevelDBState::RequestDestruction(
 }
 
 LevelDBState::~LevelDBState() {
+  if (db_) {
+    base::TimeTicks begin_time = base::TimeTicks::Now();
+    const_cast<std::unique_ptr<leveldb::DB>*>(&db_)->reset();
+    base::UmaHistogramMediumTimes("WebCore.IndexedDB.LevelDB.CloseTime",
+                                  base::TimeTicks::Now() - begin_time);
+  }
   if (signal_on_destruction_)
     signal_on_destruction_->Signal();
-  if (!db_)
-    return;
-  base::TimeTicks begin_time = base::TimeTicks::Now();
-  const_cast<std::unique_ptr<leveldb::DB>*>(&db_)->reset();
-  base::UmaHistogramMediumTimes("WebCore.IndexedDB.LevelDB.CloseTime",
-                                base::TimeTicks::Now() - begin_time);
 }
 
 }  // namespace content

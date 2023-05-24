@@ -4,38 +4,47 @@
 
 #include "cast/standalone_sender/looping_file_sender.h"
 
+#include <utility>
+
+#if defined(CAST_STANDALONE_SENDER_HAVE_LIBAOM)
+#include "cast/standalone_sender/streaming_av1_encoder.h"
+#endif
+#include "cast/standalone_sender/streaming_vpx_encoder.h"
+#include "platform/base/trivial_clock_traits.h"
+#include "util/osp_logging.h"
 #include "util/trace_logging.h"
 
 namespace openscreen {
 namespace cast {
 
-LoopingFileSender::LoopingFileSender(TaskRunner* task_runner,
-                                     const char* path,
-                                     const IPEndpoint& remote_endpoint,
+LoopingFileSender::LoopingFileSender(Environment* environment,
+                                     ConnectionSettings settings,
+                                     const SenderSession* session,
                                      SenderSession::ConfiguredSenders senders,
-                                     int max_bitrate)
-    : env_(&Clock::now, task_runner),
-      path_(path),
-      packet_router_(&env_),
-      max_bitrate_(max_bitrate),
+                                     ShutdownCallback shutdown_callback)
+    : env_(environment),
+      settings_(std::move(settings)),
+      session_(session),
+      shutdown_callback_(std::move(shutdown_callback)),
       audio_encoder_(senders.audio_sender->config().channels,
                      StreamingOpusEncoder::kDefaultCastAudioFramesPerSecond,
-                     senders.audio_sender),
-      video_encoder_(StreamingVp8Encoder::Parameters{},
-                     env_.task_runner(),
-                     senders.video_sender),
-      next_task_(env_.now_function(), env_.task_runner()),
-      console_update_task_(env_.now_function(), env_.task_runner()) {
-  env_.set_remote_endpoint(remote_endpoint);
+                     std::move(senders.audio_sender)),
+      video_encoder_(CreateVideoEncoder(
+          StreamingVideoEncoder::Parameters{.codec = settings.codec},
+          env_->task_runner(),
+          std::move(senders.video_sender))),
+      next_task_(env_->now_function(), env_->task_runner()),
+      console_update_task_(env_->now_function(), env_->task_runner()) {
   // Opus and Vp8 are the default values for the config, and if these are set
   // to a different value that means we offered a codec that we do not
   // support, which is a developer error.
   OSP_CHECK(senders.audio_config.codec == AudioCodec::kOpus);
-  OSP_CHECK(senders.video_config.codec == VideoCodec::kVp8);
-  OSP_LOG_INFO << "Streaming to " << remote_endpoint << "...";
+  OSP_CHECK(senders.video_config.codec == VideoCodec::kVp8 ||
+            senders.video_config.codec == VideoCodec::kVp9 ||
+            senders.video_config.codec == VideoCodec::kAv1);
   OSP_LOG_INFO << "Max allowed media bitrate (audio + video) will be "
-               << max_bitrate_;
-  bandwidth_being_utilized_ = max_bitrate_ / 2;
+               << settings_.max_bitrate;
+  bandwidth_being_utilized_ = settings_.max_bitrate / 2;
   UpdateEncoderBitrates();
 
   next_task_.Schedule([this] { SendFileAgain(); }, Alarm::kImmediately);
@@ -43,18 +52,23 @@ LoopingFileSender::LoopingFileSender(TaskRunner* task_runner,
 
 LoopingFileSender::~LoopingFileSender() = default;
 
+void LoopingFileSender::SetPlaybackRate(double rate) {
+  video_capturer_->SetPlaybackRate(rate);
+  audio_capturer_->SetPlaybackRate(rate);
+}
+
 void LoopingFileSender::UpdateEncoderBitrates() {
   if (bandwidth_being_utilized_ >= kHighBandwidthThreshold) {
     audio_encoder_.UseHighQuality();
   } else {
     audio_encoder_.UseStandardQuality();
   }
-  video_encoder_.SetTargetBitrate(bandwidth_being_utilized_ -
-                                  audio_encoder_.GetBitrate());
+  video_encoder_->SetTargetBitrate(bandwidth_being_utilized_ -
+                                   audio_encoder_.GetBitrate());
 }
 
 void LoopingFileSender::ControlForNetworkCongestion() {
-  bandwidth_estimate_ = packet_router_.ComputeNetworkBandwidth();
+  bandwidth_estimate_ = session_->GetEstimatedNetworkBandwidth();
   if (bandwidth_estimate_ > 0) {
     // Don't ever try to use *all* of the network bandwidth! However, don't go
     // below the absolute minimum requirement either.
@@ -74,7 +88,7 @@ void LoopingFileSender::ControlForNetworkCongestion() {
 
     // Repsect the user's maximum bitrate setting.
     bandwidth_being_utilized_ =
-        std::min(bandwidth_being_utilized_, max_bitrate_);
+        std::min(bandwidth_being_utilized_, settings_.max_bitrate);
 
     UpdateEncoderBitrates();
   } else {
@@ -86,16 +100,18 @@ void LoopingFileSender::ControlForNetworkCongestion() {
 }
 
 void LoopingFileSender::SendFileAgain() {
-  OSP_LOG_INFO << "Sending " << path_ << " (starts in one second)...";
+  OSP_LOG_INFO << "Sending " << settings_.path_to_file
+               << " (starts in one second)...";
   TRACE_DEFAULT_SCOPED(TraceCategory::kStandaloneSender);
 
   OSP_DCHECK_EQ(num_capturers_running_, 0);
   num_capturers_running_ = 2;
-  capture_start_time_ = latest_frame_time_ = env_.now() + seconds(1);
-  audio_capturer_.emplace(&env_, path_, audio_encoder_.num_channels(),
-                          audio_encoder_.sample_rate(), capture_start_time_,
-                          this);
-  video_capturer_.emplace(&env_, path_, capture_start_time_, this);
+  capture_start_time_ = latest_frame_time_ = env_->now() + seconds(1);
+  audio_capturer_.emplace(
+      env_, settings_.path_to_file.c_str(), audio_encoder_.num_channels(),
+      audio_encoder_.sample_rate(), capture_start_time_, this);
+  video_capturer_.emplace(env_, settings_.path_to_file.c_str(),
+                          capture_start_time_, this);
 
   next_task_.ScheduleFromNow([this] { ControlForNetworkCongestion(); },
                              kCongestionCheckInterval);
@@ -106,16 +122,19 @@ void LoopingFileSender::SendFileAgain() {
 void LoopingFileSender::OnAudioData(const float* interleaved_samples,
                                     int num_samples,
                                     Clock::time_point capture_time) {
-  TRACE_DEFAULT_SCOPED(TraceCategory::kStandaloneSender);
+  TRACE_SCOPED2(TraceCategory::kStandaloneSender, "OnAudioData", "num_samples",
+                std::to_string(num_samples), "capture_time",
+                ToString(capture_time));
   latest_frame_time_ = std::max(capture_time, latest_frame_time_);
   audio_encoder_.EncodeAndSend(interleaved_samples, num_samples, capture_time);
 }
 
 void LoopingFileSender::OnVideoFrame(const AVFrame& av_frame,
                                      Clock::time_point capture_time) {
-  TRACE_DEFAULT_SCOPED(TraceCategory::kStandaloneSender);
+  TRACE_SCOPED1(TraceCategory::kStandaloneSender, "OnVideoFrame",
+                "capture_time", ToString(capture_time));
   latest_frame_time_ = std::max(capture_time, latest_frame_time_);
-  StreamingVp8Encoder::VideoFrame frame{};
+  StreamingVideoEncoder::VideoFrame frame{};
   frame.width = av_frame.width - av_frame.crop_left - av_frame.crop_right;
   frame.height = av_frame.height - av_frame.crop_top - av_frame.crop_bottom;
   frame.yuv_planes[0] = av_frame.data[0] + av_frame.crop_left +
@@ -127,15 +146,15 @@ void LoopingFileSender::OnVideoFrame(const AVFrame& av_frame,
   for (int i = 0; i < 3; ++i) {
     frame.yuv_strides[i] = av_frame.linesize[i];
   }
-  // TODO(miu): Add performance metrics visual overlay (based on Stats
+  // TODO(jophba): Add performance metrics visual overlay (based on Stats
   // callback).
-  video_encoder_.EncodeAndSend(frame, capture_time, {});
+  video_encoder_->EncodeAndSend(frame, capture_time, {});
 }
 
 void LoopingFileSender::UpdateStatusOnConsole() {
   const Clock::duration elapsed = latest_frame_time_ - capture_start_time_;
   const auto seconds_part = to_seconds(elapsed);
-  const auto millis_part = to_microseconds(elapsed - seconds_part);
+  const auto millis_part = to_milliseconds(elapsed - seconds_part);
   // The control codes here attempt to erase the current line the cursor is
   // on, and then print out the updated status text. If the terminal does not
   // support simple ANSI escape codes, the following will still work, but
@@ -158,7 +177,14 @@ void LoopingFileSender::OnEndOfFile(SimulatedCapturer* capturer) {
   --num_capturers_running_;
   if (num_capturers_running_ == 0) {
     console_update_task_.Cancel();
-    next_task_.Schedule([this] { SendFileAgain(); }, Alarm::kImmediately);
+
+    if (settings_.should_loop_video) {
+      OSP_DLOG_INFO << "Starting the media stream over again.";
+      next_task_.Schedule([this] { SendFileAgain(); }, Alarm::kImmediately);
+    } else {
+      OSP_DLOG_INFO << "Video complete. Exiting...";
+      shutdown_callback_();
+    }
   }
 }
 
@@ -173,16 +199,38 @@ void LoopingFileSender::OnError(SimulatedCapturer* capturer,
 }
 
 const char* LoopingFileSender::ToTrackName(SimulatedCapturer* capturer) const {
-  const char* which;
   if (capturer == &*audio_capturer_) {
-    which = "audio";
+    return "audio";
   } else if (capturer == &*video_capturer_) {
-    which = "video";
+    return "video";
   } else {
     OSP_NOTREACHED();
-    which = "";
   }
-  return which;
+}
+
+std::unique_ptr<StreamingVideoEncoder> LoopingFileSender::CreateVideoEncoder(
+    const StreamingVideoEncoder::Parameters& params,
+    TaskRunner* task_runner,
+    std::unique_ptr<Sender> sender) {
+  switch (params.codec) {
+    case VideoCodec::kVp8:
+    case VideoCodec::kVp9:
+      return std::make_unique<StreamingVpxEncoder>(params, task_runner,
+                                                   std::move(sender));
+    case VideoCodec::kAv1:
+#if defined(CAST_STANDALONE_SENDER_HAVE_LIBAOM)
+      return std::make_unique<StreamingAv1Encoder>(params, task_runner,
+                                                   std::move(sender));
+#else
+      OSP_LOG_FATAL << "AV1 codec selected, but could not be used because "
+                       "LibAOM not installed.";
+#endif
+    default:
+      // Since we only support VP8, VP9, and AV1, any other codec value here
+      // should be due only to developer error.
+      OSP_LOG_ERROR << "Unsupported codec " << CodecToString(params.codec);
+      OSP_NOTREACHED();
+  }
 }
 
 }  // namespace cast

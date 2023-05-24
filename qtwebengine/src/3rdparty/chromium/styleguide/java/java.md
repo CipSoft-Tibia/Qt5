@@ -1,7 +1,7 @@
 # Chromium Java style guide
 
 _For other languages, please see the [Chromium style
-guides](https://chromium.googlesource.com/chromium/src/+/master/styleguide/styleguide.md)._
+guides](https://chromium.googlesource.com/chromium/src/+/main/styleguide/styleguide.md)._
 
 Chromium follows the [Android Open Source style
 guide](http://source.android.com/source/code-style.html) unless an exception
@@ -10,57 +10,70 @@ is listed below.
 You can propose changes to this style guide by sending an email to
 `java@chromium.org`. Ideally, the list will arrive at some consensus and you can
 request review for a change to this file. If there's no consensus,
-[`//styleguide/java/OWNERS`](https://chromium.googlesource.com/chromium/src/+/master/styleguide/java/OWNERS)
+[`//styleguide/java/OWNERS`](https://chromium.googlesource.com/chromium/src/+/main/styleguide/java/OWNERS)
 get to decide.
 
 [TOC]
 
+## Java 10 Language Features
+
+### Type deduction using `var`
+
+A variable declaration can use the `var` keyword in place of the type (similar
+to the `auto` keyword in C++). In line with the [guidance for
+C++](https://google.github.io/styleguide/cppguide.html#Type_deduction), the
+`var` keyword may be used when it aids readability and the type of the value is
+already clear (ex. `var bundle = new Bundle()` is OK, but `var something =
+returnValueIsNotObvious()` may be unclear to readers who are new to this part of
+the code).
+
+The `var` keyword may also be used in try-with-resources when the resource is
+not directly accessed (or when it falls under the previous guidance), such as:
+
+```java
+try (var ignored = StrictModeContext.allowDiskWrites()) {
+    // 'var' is permitted so long as the 'ignored' variable is not used directly
+    // in the code.
+}
+```
+
 ## Java 8 Language Features
-[Desugar](https://github.com/bazelbuild/bazel/blob/master/src/tools/android/java/com/google/devtools/build/android/desugar/Desugar.java)
-is used to rewrite some Java 7 & 8 language constructs in a way that is
-compatible with Java 6 (and thus all Android versions). Use of
-[these features](https://developer.android.com/studio/write/java8-support)
-is encouraged, but there are some gotchas:
+[D8] is used to rewrite some Java 7 & 8 language constructs in a way that is
+compatible with Java 6 (and thus all Android versions). Use of [these features]
+is encouraged.
 
-### Default Interface Methods
- * Desugar makes default interface methods work by copy & pasting the default
-   implementations into all implementing classes.
- * This technique is fine for infrequently-used interfaces, but should be
-   avoided (e.g. via a base class) if it noticeably increases method count.
+[D8]: https://developer.android.com/studio/command-line/d8
+[these features]: https://developer.android.com/studio/write/java8-support
 
-### Lambdas and Method References
- * These are syntactic sugar for creating anonymous inner classes.
- * Use them only where the cost of an extra class & method definition is
-   justified.
+## Java Library APIs
 
-### try-with-resources
- * Some library classes do not implement Closeable on older platform APIs.
-   Runtime exceptions are thrown if you use them with a try-with-resources.
-   Do not use the following classes in a try-with-resources:
-   * java.util.zip.ZipFile (implemented in API 19)
-   * java.net.Socket (implemented in API 19)
+Android provides the ability to bundle copies of `java.` APIs alongside
+application code, known as [Java Library Desugaring]. However, since this
+bundling comes with a performance cost, Chrome does not use it. Treat `java.`
+APIs the same as you would `android.` ones and guard them with
+`Build.VERSION.SDK_INT` checks [when necessary]. The one exception is if the
+method is [directly backported by D8] (these are okay to use, since they are
+lightweight). Android Lint will fail if you try to use an API without a
+corresponding `Build.VERSION.SDK_INT` guard or `@RequiresApi` annotation.
+
+[Java Library Desugaring]: https://developer.android.com/studio/write/java8-support-table
+[when necessary]: https://developer.android.com/reference/packages
+[directly backported by D8]: https://source.chromium.org/chromium/chromium/src/+/main:third_party/r8/backported_methods.txt
 
 ## Other Language Features & APIs
 
 ### Exceptions
-* As with the Android style guide, we discourage overly broad catches via
-`Exception` / `Throwable` / `RuntimeException`.
-  * If you need to have a broad catch expression, use a comment to explain why.
-* Catching multiple exceptions in one line is fine.
+We discourage overly broad catches via `Throwable`, `Exception`, or
+`RuntimeException`, except when dealing with `RemoteException` or similar
+system APIs.
+ * There have been many cases of crashes caused by `IllegalStateException` /
+   `IllegalArgumentException` / `SecurityException` being thrown where only
+   `RemoteException` was being caught. In these cases, use
+   `catch (RemoteException | RuntimeException e)`.
+ * For all broad catch expressions, add a comment to explain why.
 
-It is OK to do:
-```java
-try {
-  somethingThatThrowsIOException(filePath);
-  somethingThatThrowsParseException(filePath);
-} catch (IOException | ParseException e) {
-  Log.w(TAG, "Failed to read: %s", filePath, e);
-}
-```
+Avoid adding messages to exceptions that do not aid in debugging. For example:
 
-* Avoid adding messages to exceptions that do not aid in debugging.
-
-For example:
 ```java
 try {
   somethingThatThrowsIOException();
@@ -92,9 +105,10 @@ The Chromium build system strips asserts in release builds (via ProGuard) and
 enables them in debug builds (or when `dcheck_always_on=true`) (via a [build
 step](https://codereview.chromium.org/2517203002)). You should use asserts in
 the [same
-scenarios](https://chromium.googlesource.com/chromium/src/+/master/styleguide/c++/c++.md#CHECK_DCHECK_and-NOTREACHED)
+scenarios](https://chromium.googlesource.com/chromium/src/+/main/styleguide/c++/c++.md#CHECK_DCHECK_and-NOTREACHED)
 where C++ DCHECK()s make sense. For multi-statement asserts, use
-`org.chromium.base.BuildConfig.DCHECK_IS_ON` to guard your code.
+`org.chromium.build.BuildConfig.ENABLE_ASSERTS` to guard your code (similar to
+`#if DCHECK_IS_ON()` in C++).
 
 Example assert:
 
@@ -102,10 +116,14 @@ Example assert:
 assert someCallWithoutSideEffects() : "assert description";
 ```
 
-Example use of `DCHECK_IS_ON`:
+Example use of `BuildConfig.ENABLE_ASSERTS`:
 
 ```java
-if (org.chromium.base.BuildConfig.DCHECK_IS_ON) {
+import org.chromium.build.BuildConfig;
+
+...
+
+if (BuildConfig.ENABLE_ASSERTS) {
   // Any code here will be stripped in Release by ProGuard.
   ...
 }
@@ -121,16 +139,46 @@ Custom finalizers:
 * causes additional garbage collector jank.
 
 Classes that need destructor logic should provide an explicit `destroy()`
-method. Use [LifetimeAssert](https://chromium.googlesource.com/chromium/src/+/master/base/android/java/src/org/chromium/base/LifetimeAssert.java)
+method. Use [LifetimeAssert](https://chromium.googlesource.com/chromium/src/+/main/base/android/java/src/org/chromium/base/LifetimeAssert.java)
 to ensure in debug builds and tests that `destroy()` is called.
 
-### Other Android Support Library Annotations
+### AndroidX Annotations
 * Use them! They are [documented here](https://developer.android.com/studio/write/annotations).
   * They generally improve readability.
   * Some make lint more useful.
-* `javax.annotation.Nullable` vs `android.support.annotation.Nullable`
-  * Always prefer `android.support.annotation.Nullable`.
+* `javax.annotation.Nullable` vs `androidx.annotation.Nullable`
+  * Always prefer `androidx.annotation.Nullable`.
   * It uses `@Retention(SOURCE)` rather than `@Retention(RUNTIME)`.
+
+### IntDef Instead of Enum
+
+Java enums generate far more bytecode than integer constants. When integers are
+sufficient, prefer using an [@IntDef annotation], which will have usage checked
+by [Android lint].
+
+Values can be declared outside or inside the `@interface`. We recommend the
+latter, with constants nested within it as follows:
+
+```java
+@IntDef({ContactsPickerAction.CANCEL, ContactsPickerAction.CONTACTS_SELECTED,
+        ContactsPickerAction.SELECT_ALL, ContactsPickerAction.UNDO_SELECT_ALL})
+@Retention(RetentionPolicy.SOURCE)
+public @interface ContactsPickerAction {
+    int CANCEL = 0;
+    int CONTACTS_SELECTED = 1;
+    int SELECT_ALL = 2;
+    int UNDO_SELECT_ALL = 3;
+    int NUM_ENTRIES = 4;
+}
+// ...
+void onContactsPickerUserAction(@ContactsPickerAction int action, ...);
+```
+
+Values of `Integer` type are also supported, which allows using a sentinel
+`null` if needed.
+
+[@IntDef annotation]: https://developer.android.com/studio/write/annotations#enum-annotations
+[Android lint]: https://chromium.googlesource.com/chromium/src/+/HEAD/build/android/docs/lint.md
 
 ## Tools
 
@@ -145,8 +193,8 @@ You can run `git cl format` to apply the automatic formatting.
 For automatically using the correct style, follow the guide to set up your
 favorite IDE:
 
-* [Android Studio](https://chromium.googlesource.com/chromium/src/+/master/docs/android_studio.md)
-* [Eclipse](https://chromium.googlesource.com/chromium/src/+/master/docs/eclipse.md)
+* [Android Studio](https://chromium.googlesource.com/chromium/src/+/main/docs/android_studio.md)
+* [Eclipse](https://chromium.googlesource.com/chromium/src/+/main/docs/eclipse.md)
 
 ### Checkstyle
 Checkstyle is automatically run by the build bots, and to ensure you do not have
@@ -155,12 +203,12 @@ guide](https://sites.google.com/a/chromium.org/dev/developers/checkstyle).
 
 ### Lint
 Lint is run as part of the build. For more information, see
-[here](https://chromium.googlesource.com/chromium/src/+/master/build/android/docs/lint.md).
+[here](https://chromium.googlesource.com/chromium/src/+/main/build/android/docs/lint.md).
 
 ## Style / Formatting
 
 ### File Headers
-* Use the same format as in the [C++ style guide](https://chromium.googlesource.com/chromium/src/+/master/styleguide/c++/c++.md#File-headers).
+* Use the same format as in the [C++ style guide](https://chromium.googlesource.com/chromium/src/+/main/styleguide/c++/c++.md#File-headers).
 
 ### TODOs
 * TODO should follow chromium convention. Examples:
@@ -216,21 +264,26 @@ This is the order of the import groups:
 
 ## Test-only Code
 Functions used only for testing should be restricted to test-only usages
-with the testing suffixes supported [PRESUMBIT.py](https://chromium.googlesource.com/chromium/src/+/master/PRESUBMIT.py).
+with the testing suffixes supported [PRESUMBIT.py](https://chromium.googlesource.com/chromium/src/+/main/PRESUBMIT.py).
 `ForTesting` is the conventional suffix although similar patterns, such as
 `ForTest`, are also accepted. These suffixes are checked at presubmit time
 to ensure the functions are called only by test files.
 
+It's generally bad practice to directly call test-only methods from
+non-test-only code. However, occasionally it has to be done, and if so, you
+should guard the check with an `if (BuildConfig.IS_FOR_TEST)` so that our Java
+optimizer can still remove the call in non-test builds.
+
 ## Location
 "Top level directories" are defined as directories with a GN file, such as
-[//base](https://chromium.googlesource.com/chromium/src/+/master/base/)
+[//base](https://chromium.googlesource.com/chromium/src/+/main/base/)
 and
-[//content](https://chromium.googlesource.com/chromium/src/+/master/content/),
+[//content](https://chromium.googlesource.com/chromium/src/+/main/content/),
 Chromium Java should live in a directory named
 `<top level directory>/android/java`, with a package name
 `org.chromium.<top level directory>`.  Each top level directory's Java should
 build into a distinct JAR that honors the abstraction specified in a native
-[checkdeps](https://chromium.googlesource.com/chromium/buildtools/+/master/checkdeps/checkdeps.py)
+[checkdeps](https://chromium.googlesource.com/chromium/buildtools/+/main/checkdeps/checkdeps.py)
 (e.g. `org.chromium.base` does not import `org.chromium.content`).  The full
 path of any java file should contain the complete package name.
 
@@ -243,7 +296,7 @@ For example, top level directory `//base` might contain a file named
 
 New `<top level directory>/android` directories should have an `OWNERS` file
 much like
-[//base/android/OWNERS](https://chromium.googlesource.com/chromium/src/+/master/base/android/OWNERS).
+[//base/android/OWNERS](https://chromium.googlesource.com/chromium/src/+/main/base/android/OWNERS).
 
 ## Miscellany
 * Use UTF-8 file encodings and LF line endings.

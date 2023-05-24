@@ -1,28 +1,16 @@
 #define IN_LIBEXSLT
 #include "libexslt/libexslt.h"
 
-#if defined(_WIN32) && !defined (__CYGWIN__) && (!__MINGW32__)
-#include <win32config.h>
-#else
-#include "config.h"
-#endif
-
 #include <libxml/tree.h>
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
-#include <libxslt/xsltconfig.h>
 #include <libxslt/xsltutils.h>
 #include <libxslt/xsltInternals.h>
 #include <libxslt/extensions.h>
 
-#ifdef HAVE_MATH_H
 #include <math.h>
-#endif
-
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 
 #include "exslt.h"
 
@@ -460,8 +448,6 @@ exsltMathConstantFunction (xmlXPathParserContextPtr ctxt, int nargs) {
     xmlXPathReturnNumber(ctxt, ret);
 }
 
-#if defined(HAVE_STDLIB_H) && defined(RAND_MAX)
-
 /**
  * exsltMathRandom:
  *
@@ -500,10 +486,6 @@ exsltMathRandomFunction (xmlXPathParserContextPtr ctxt, int nargs) {
 
     xmlXPathReturnNumber(ctxt, ret);
 }
-
-#endif /* defined(HAVE_STDLIB_H) && defined(RAND_MAX) */
-
-#if HAVE_MATH_H
 
 /**
  * exsltMathAbs:
@@ -1036,8 +1018,6 @@ exsltMathExpFunction (xmlXPathParserContextPtr ctxt, int nargs) {
     xmlXPathReturnNumber(ctxt, ret);
 }
 
-#endif /* HAVE_MATH_H */
-
 /**
  * exsltMathRegister:
  *
@@ -1058,16 +1038,12 @@ exsltMathRegister (void) {
     xsltRegisterExtModuleFunction ((const xmlChar *) "lowest",
 				   EXSLT_MATH_NAMESPACE,
 				   exsltMathLowestFunction);
-    /* register other math functions */
     xsltRegisterExtModuleFunction ((const xmlChar *) "constant",
 				   EXSLT_MATH_NAMESPACE,
 				   exsltMathConstantFunction);
-#ifdef HAVE_STDLIB_H
     xsltRegisterExtModuleFunction ((const xmlChar *) "random",
 				   EXSLT_MATH_NAMESPACE,
 				   exsltMathRandomFunction);
-#endif
-#if HAVE_MATH_H
     xsltRegisterExtModuleFunction ((const xmlChar *) "abs",
 				   EXSLT_MATH_NAMESPACE,
 				   exsltMathAbsFunction);
@@ -1104,7 +1080,6 @@ exsltMathRegister (void) {
     xsltRegisterExtModuleFunction ((const xmlChar *) "exp",
 				   EXSLT_MATH_NAMESPACE,
 				   exsltMathExpFunction);
-#endif
 }
 
 /**
@@ -1136,13 +1111,10 @@ exsltMathXpathCtxtRegister (xmlXPathContextPtr ctxt, const xmlChar *prefix)
                                    (const xmlChar *) "lowest",
                                    (const xmlChar *) EXSLT_MATH_NAMESPACE,
                                    exsltMathLowestFunction)
-#ifdef HAVE_STDLIB_H
         && !xmlXPathRegisterFuncNS(ctxt,
                                    (const xmlChar *) "random",
                                    (const xmlChar *) EXSLT_MATH_NAMESPACE,
                                    exsltMathRandomFunction)
-#endif
-#if HAVE_MATH_H
         && !xmlXPathRegisterFuncNS(ctxt,
                                    (const xmlChar *) "abs",
                                    (const xmlChar *) EXSLT_MATH_NAMESPACE,
@@ -1191,7 +1163,6 @@ exsltMathXpathCtxtRegister (xmlXPathContextPtr ctxt, const xmlChar *prefix)
                                    (const xmlChar *) "exp",
                                    (const xmlChar *) EXSLT_MATH_NAMESPACE,
                                    exsltMathExpFunction)
-#endif
         && !xmlXPathRegisterFuncNS(ctxt,
                                    (const xmlChar *) "constant",
                                    (const xmlChar *) EXSLT_MATH_NAMESPACE,

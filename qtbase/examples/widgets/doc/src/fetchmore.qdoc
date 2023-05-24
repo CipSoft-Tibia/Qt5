@@ -1,54 +1,34 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example itemviews/fetchmore
     \title Fetch More Example
+    \examplecategory {User Interface Components}
     \ingroup examples-itemviews
     \brief The Fetch More example shows how to add items to an item view
     model on demand.
 
     \image fetchmore-example.png
 
-
-    This example consists of a dialog where you can enter a directory
-    name in the \uicontrol Directory edit field. The application loads and
-    visualizes all files it finds as you are typing. It is not required
-    to press [Enter] to launch the search.
-
     When you have large - or perhaps even infinite - data sets, you
     will need to add items to the model in batches, and preferably only
-    when the items are needed by the view (i.e., when they are visible
+    when the items are needed by the view (i.e., when they become visible
     in the view).
 
     In this example, we implement \c FileListModel - an item view
     model containing the entries of a directory. We also have \c
     Window, which sets up the GUI and feeds the model with
     directories.
+
+    The UI consists of a dialog with a list showing the contents
+    of the root directory. Directories can be navigated by double-clicking.
+
+    At the bottom, there is a log window displaying messages when the view
+    asks the model for more data.
+
+    To exercise it, navigate to a large directory (say \c /bin), and scroll
+    to the bottom. Log messages appear showing the data being retrieved.
 
     Let's take a tour of \c {FileListModel}'s code.
 

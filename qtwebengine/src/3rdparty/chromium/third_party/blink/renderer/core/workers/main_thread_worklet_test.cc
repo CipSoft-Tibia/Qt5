@@ -1,13 +1,15 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <bitset>
-#include "base/single_thread_task_runner.h"
+
+#include "base/task/single_thread_task_runner.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/origin_trials/origin_trial_context.h"
 #include "third_party/blink/renderer/core/script/script.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
@@ -45,17 +47,19 @@ class MainThreadWorkletTest : public PageTestBase {
     SetUpScope("script-src 'self' https://allowed.example.com");
   }
   void SetUpScope(const String& csp_header) {
-    PageTestBase::SetUp(IntSize());
-    NavigateTo(KURL("https://example.com/"));
+    PageTestBase::SetUp(gfx::Size());
+    KURL url = KURL("https://example.com/");
+    NavigateTo(url);
     LocalDOMWindow* window = GetFrame().DomWindow();
 
     // Set up the CSP for Document before starting MainThreadWorklet because
     // MainThreadWorklet inherits the owner Document's CSP.
     auto* csp = MakeGarbageCollected<ContentSecurityPolicy>();
-    csp->DidReceiveHeader(csp_header,
-                          network::mojom::ContentSecurityPolicyType::kEnforce,
-                          network::mojom::ContentSecurityPolicySource::kHTTP);
-    window->GetSecurityContext().SetContentSecurityPolicy(csp);
+    scoped_refptr<SecurityOrigin> self_origin = SecurityOrigin::Create(url);
+    csp->AddPolicies(ParseContentSecurityPolicies(
+        csp_header, network::mojom::ContentSecurityPolicyType::kEnforce,
+        network::mojom::ContentSecurityPolicySource::kHTTP, *(self_origin)));
+    window->SetContentSecurityPolicy(csp);
 
     reporting_proxy_ =
         std::make_unique<MainThreadWorkletReportingProxyForTest>(window);
@@ -63,17 +67,20 @@ class MainThreadWorkletTest : public PageTestBase {
         window->Url(), mojom::blink::ScriptType::kModule, "MainThreadWorklet",
         window->UserAgent(), window->GetFrame()->Loader().UserAgentMetadata(),
         nullptr /* web_worker_fetch_context */,
-        window->GetContentSecurityPolicy()->Headers(),
+        mojo::Clone(window->GetContentSecurityPolicy()->GetParsedPolicies()),
+        Vector<network::mojom::blink::ContentSecurityPolicyPtr>(),
         window->GetReferrerPolicy(), window->GetSecurityOrigin(),
         window->IsSecureContext(), window->GetHttpsState(),
         nullptr /* worker_clients */, nullptr /* content_settings_client */,
-        window->AddressSpace(), OriginTrialContext::GetTokens(window).get(),
+        OriginTrialContext::GetInheritedTrialFeatures(window).get(),
         base::UnguessableToken::Create(), nullptr /* worker_settings */,
         mojom::blink::V8CacheOptions::kDefault,
         MakeGarbageCollected<WorkletModuleResponsesMap>(),
         mojo::NullRemote() /* browser_interface_broker */,
-        BeginFrameProviderParams(), nullptr /* parent_feature_policy */,
-        window->GetAgentClusterID(), window->GetExecutionContextToken());
+        window->GetFrame()->Loader().CreateWorkerCodeCacheHost(),
+        mojo::NullRemote() /* blob_url_store */, BeginFrameProviderParams(),
+        nullptr /* parent_permissions_policy */, window->GetAgentClusterID(),
+        ukm::kInvalidSourceId, window->GetExecutionContextToken());
     global_scope_ = MakeGarbageCollected<FakeWorkletGlobalScope>(
         std::move(creation_params), *reporting_proxy_, &GetFrame(),
         false /* create_microtask_queue */);
@@ -143,7 +150,7 @@ TEST_F(MainThreadWorkletTest, UseCounter) {
   UseCounter::Count(global_scope_, kFeature1);
 
   // This feature is randomly selected from Deprecation::deprecationMessage().
-  const WebFeature kFeature2 = WebFeature::kPrefixedStorageInfo;
+  const WebFeature kFeature2 = WebFeature::kPaymentInstruments;
 
   // Deprecated API use on WorkletGlobalScope for the main thread should be
   // recorded in UseCounter on the Document.
@@ -165,13 +172,14 @@ TEST_F(MainThreadWorkletTest, TaskRunner) {
 // Test that having an invalid CSP does not result in an exception.
 // See bugs: 844383,844317
 TEST_F(MainThreadWorkletInvalidCSPTest, InvalidContentSecurityPolicy) {
-  ContentSecurityPolicy* csp = global_scope_->GetContentSecurityPolicy();
+  const Vector<network::mojom::blink::ContentSecurityPolicyPtr>& csp =
+      global_scope_->GetContentSecurityPolicy()->GetParsedPolicies();
 
   // At this point check that the CSP that was set is indeed invalid.
-  EXPECT_EQ(1ul, csp->Headers().size());
-  EXPECT_EQ("invalid-csp", csp->Headers().at(0).first);
+  EXPECT_EQ(1ul, csp.size());
+  EXPECT_EQ("invalid-csp", csp[0]->header->header_value);
   EXPECT_EQ(network::mojom::ContentSecurityPolicyType::kEnforce,
-            csp->Headers().at(0).second);
+            csp[0]->header->type);
 }
 
 }  // namespace blink

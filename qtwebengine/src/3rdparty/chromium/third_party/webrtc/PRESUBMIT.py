@@ -1,3 +1,5 @@
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2012 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -13,31 +15,36 @@ import sys
 from collections import defaultdict
 from contextlib import contextmanager
 
+# Runs PRESUBMIT.py in py3 mode by git cl presubmit.
+USE_PYTHON3 = True
+
 # Files and directories that are *skipped* by cpplint in the presubmit script.
 CPPLINT_EXCEPTIONS = [
-  'api/video_codecs/video_decoder.h',
-  'common_types.cc',
-  'common_types.h',
-  'examples/objc',
-  'media/base/stream_params.h',
-  'media/base/video_common.h',
-  'media/sctp/sctp_transport.cc',
-  'modules/audio_coding',
-  'modules/audio_device',
-  'modules/audio_processing',
-  'modules/desktop_capture',
-  'modules/include/module_common_types.h',
-  'modules/utility',
-  'modules/video_capture',
-  'p2p/base/pseudo_tcp.cc',
-  'p2p/base/pseudo_tcp.h',
-  'rtc_base',
-  'sdk/android/src/jni',
-  'sdk/objc',
-  'system_wrappers',
-  'test',
-  'tools_webrtc',
-  'voice_engine',
+    'api/video_codecs/video_decoder.h',
+    'common_types.cc',
+    'common_types.h',
+    'examples/objc',
+    'media/base/stream_params.h',
+    'media/base/video_common.h',
+    'modules/audio_coding',
+    'modules/audio_device',
+    'modules/audio_processing',
+    'modules/desktop_capture',
+    'modules/include/module_common_types.h',
+    'modules/utility',
+    'modules/video_capture',
+    'p2p/base/pseudo_tcp.cc',
+    'p2p/base/pseudo_tcp.h',
+    'PRESUBMIT.py',
+    'presubmit_test_mocks.py',
+    'presubmit_test.py',
+    'rtc_base',
+    'sdk/android/src/jni',
+    'sdk/objc',
+    'system_wrappers',
+    'test',
+    'tools_webrtc',
+    'voice_engine',
 ]
 
 # These filters will always be removed, even if the caller specifies a filter
@@ -52,9 +59,9 @@ CPPLINT_EXCEPTIONS = [
 # - whitespace/operators: Same as above (doesn't seem sufficient to eliminate
 #                         all move-related errors).
 DISABLED_LINT_FILTERS = [
-  '-build/c++11',
-  '-runtime/references',
-  '-whitespace/operators',
+    '-build/c++11',
+    '-runtime/references',
+    '-whitespace/operators',
 ]
 
 # List of directories of "supported" native APIs. That means changes to headers
@@ -65,31 +72,31 @@ DISABLED_LINT_FILTERS = [
 #    webrtc-users@google.com (internal list).
 # 4. (later) The deprecated APIs are removed.
 NATIVE_API_DIRS = (
-  'api',  # All subdirectories of api/ are included as well.
-  'media/base',
-  'media/engine',
-  'modules/audio_device/include',
-  'pc',
+    'api',  # All subdirectories of api/ are included as well.
+    'media/base',
+    'media/engine',
+    'modules/audio_device/include',
+    'pc',
 )
 
 # These directories should not be used but are maintained only to avoid breaking
 # some legacy downstream code.
 LEGACY_API_DIRS = (
-  'common_audio/include',
-  'modules/audio_coding/include',
-  'modules/audio_processing/include',
-  'modules/congestion_controller/include',
-  'modules/include',
-  'modules/remote_bitrate_estimator/include',
-  'modules/rtp_rtcp/include',
-  'modules/rtp_rtcp/source',
-  'modules/utility/include',
-  'modules/video_coding/codecs/h264/include',
-  'modules/video_coding/codecs/vp8/include',
-  'modules/video_coding/codecs/vp9/include',
-  'modules/video_coding/include',
-  'rtc_base',
-  'system_wrappers/include',
+    'common_audio/include',
+    'modules/audio_coding/include',
+    'modules/audio_processing/include',
+    'modules/congestion_controller/include',
+    'modules/include',
+    'modules/remote_bitrate_estimator/include',
+    'modules/rtp_rtcp/include',
+    'modules/rtp_rtcp/source',
+    'modules/utility/include',
+    'modules/video_coding/codecs/h264/include',
+    'modules/video_coding/codecs/vp8/include',
+    'modules/video_coding/codecs/vp9/include',
+    'modules/video_coding/include',
+    'rtc_base',
+    'system_wrappers/include',
 )
 
 # NOTE: The set of directories in API_DIRS should be the same as those
@@ -98,10 +105,9 @@ API_DIRS = NATIVE_API_DIRS[:] + LEGACY_API_DIRS[:]
 
 # TARGET_RE matches a GN target, and extracts the target name and the contents.
 TARGET_RE = re.compile(
-  r'(?P<indent>\s*)(?P<target_type>\w+)\("(?P<target_name>\w+)"\) {'
-  r'(?P<target_contents>.*?)'
-  r'(?P=indent)}',
-  re.MULTILINE | re.DOTALL)
+    r'(?P<indent>\s*)(?P<target_type>\w+)\("(?P<target_name>\w+)"\) {'
+    r'(?P<target_contents>.*?)'
+    r'(?P=indent)}', re.MULTILINE | re.DOTALL)
 
 # SOURCES_RE matches a block of sources inside a GN target.
 SOURCES_RE = re.compile(r'sources \+?= \[(?P<sources>.*?)\]',
@@ -111,7 +117,7 @@ SOURCES_RE = re.compile(r'sources \+?= \[(?P<sources>.*?)\]',
 DEPS_RE = re.compile(r'\bdeps \+?= \[(?P<deps>.*?)\]',
                      re.MULTILINE | re.DOTALL)
 
-# FILE_PATH_RE matchies a file path.
+# FILE_PATH_RE matches a file path.
 FILE_PATH_RE = re.compile(r'"(?P<file_path>(\w|\/)+)(?P<extension>\.\w+)"')
 
 
@@ -138,17 +144,19 @@ def VerifyNativeApiHeadersListIsValid(input_api, output_api):
   """Ensures the list of native API header directories is up to date."""
   non_existing_paths = []
   native_api_full_paths = [
-      input_api.os_path.join(input_api.PresubmitLocalPath(),
-                             *path.split('/')) for path in API_DIRS]
+      input_api.os_path.join(input_api.PresubmitLocalPath(), *path.split('/'))
+      for path in API_DIRS
+  ]
   for path in native_api_full_paths:
     if not os.path.isdir(path):
       non_existing_paths.append(path)
   if non_existing_paths:
-    return [output_api.PresubmitError(
-        'Directories to native API headers have changed which has made the '
-        'list in PRESUBMIT.py outdated.\nPlease update it to the current '
-        'location of our native APIs.',
-        non_existing_paths)]
+    return [
+        output_api.PresubmitError(
+            'Directories to native API headers have changed which has made '
+            'the list in PRESUBMIT.py outdated.\nPlease update it to the '
+            'current location of our native APIs.', non_existing_paths)
+    ]
   return []
 
 
@@ -156,7 +164,7 @@ API_CHANGE_MSG = """
 You seem to be changing native API header files. Please make sure that you:
   1. Make compatible changes that don't break existing clients. Usually
      this is done by keeping the existing method signatures unchanged.
-  2. Mark the old stuff as deprecated (see RTC_DEPRECATED macro).
+  2. Mark the old stuff as deprecated (use the ABSL_DEPRECATED macro).
   3. Create a timeline and plan for when the deprecated stuff will be
      removed. (The amount of time we give users to change their code
      should be informed by how much work it is for them. If they just
@@ -194,14 +202,13 @@ def CheckNativeApiHeaderChanges(input_api, output_api):
   return []
 
 
-def CheckNoIOStreamInHeaders(input_api, output_api,
-                             source_file_filter):
+def CheckNoIOStreamInHeaders(input_api, output_api, source_file_filter):
   """Checks to make sure no .h files include <iostream>."""
   files = []
   pattern = input_api.re.compile(r'^#include\s*<iostream>',
                                  input_api.re.MULTILINE)
-  file_filter = lambda x: (input_api.FilterSourceFile(x)
-                           and source_file_filter(x))
+  file_filter = lambda x: (input_api.FilterSourceFile(x) and source_file_filter(
+      x))
   for f in input_api.AffectedSourceFiles(file_filter):
     if not f.LocalPath().endswith('.h'):
       continue
@@ -209,23 +216,22 @@ def CheckNoIOStreamInHeaders(input_api, output_api,
     if pattern.search(contents):
       files.append(f)
 
-  if len(files):
-    return [output_api.PresubmitError(
-        'Do not #include <iostream> in header files, since it inserts static ' +
-        'initialization into every file including the header. Instead, ' +
-        '#include <ostream>. See http://crbug.com/94794',
-        files)]
+  if len(files) > 0:
+    return [
+        output_api.PresubmitError(
+            'Do not #include <iostream> in header files, since it inserts '
+            'static initialization into every file including the header. '
+            'Instead, #include <ostream>. See http://crbug.com/94794', files)
+    ]
   return []
 
 
-def CheckNoPragmaOnce(input_api, output_api,
-                      source_file_filter):
+def CheckNoPragmaOnce(input_api, output_api, source_file_filter):
   """Make sure that banned functions are not used."""
   files = []
-  pattern = input_api.re.compile(r'^#pragma\s+once',
-                                 input_api.re.MULTILINE)
-  file_filter = lambda x: (input_api.FilterSourceFile(x)
-                           and source_file_filter(x))
+  pattern = input_api.re.compile(r'^#pragma\s+once', input_api.re.MULTILINE)
+  file_filter = lambda x: (input_api.FilterSourceFile(x) and source_file_filter(
+      x))
   for f in input_api.AffectedSourceFiles(file_filter):
     if not f.LocalPath().endswith('.h'):
       continue
@@ -234,22 +240,26 @@ def CheckNoPragmaOnce(input_api, output_api,
       files.append(f)
 
   if files:
-    return [output_api.PresubmitError(
-        'Do not use #pragma once in header files.\n'
-        'See http://www.chromium.org/developers/coding-style#TOC-File-headers',
-        files)]
+    return [
+        output_api.PresubmitError(
+            'Do not use #pragma once in header files.\n'
+            'See http://www.chromium.org/developers/coding-style'
+            '#TOC-File-headers', files)
+    ]
   return []
 
 
-def CheckNoFRIEND_TEST(input_api, output_api,  # pylint: disable=invalid-name
-                       source_file_filter):
+def CheckNoFRIEND_TEST(# pylint: disable=invalid-name
+        input_api,
+        output_api,
+        source_file_filter):
   """Make sure that gtest's FRIEND_TEST() macro is not used, the
   FRIEND_TEST_ALL_PREFIXES() macro from testsupport/gtest_prod_util.h should be
   used instead since that allows for FLAKY_, FAILS_ and DISABLED_ prefixes."""
   problems = []
 
-  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h'))
-                           and source_file_filter(f))
+  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h')) and
+                           source_file_filter(f))
   for f in input_api.AffectedFiles(file_filter=file_filter):
     for line_num, line in f.ChangedContents():
       if 'FRIEND_TEST(' in line:
@@ -257,9 +267,12 @@ def CheckNoFRIEND_TEST(input_api, output_api,  # pylint: disable=invalid-name
 
   if not problems:
     return []
-  return [output_api.PresubmitPromptWarning('WebRTC\'s code should not use '
-      'gtest\'s FRIEND_TEST() macro. Include testsupport/gtest_prod_util.h and '
-      'use FRIEND_TEST_ALL_PREFIXES() instead.\n' + '\n'.join(problems))]
+  return [
+      output_api.PresubmitPromptWarning(
+          'WebRTC\'s code should not use gtest\'s FRIEND_TEST() macro. '
+          'Include testsupport/gtest_prod_util.h and use '
+          'FRIEND_TEST_ALL_PREFIXES() instead.\n' + '\n'.join(problems))
+  ]
 
 
 def IsLintDisabled(disabled_paths, file_path):
@@ -289,8 +302,9 @@ def CheckApprovedFilesLintClean(input_api, output_api,
   cpplint._SetFilters(','.join(lint_filters))
 
   # Create a platform independent exempt list for cpplint.
-  disabled_paths = [input_api.os_path.join(*path.split('/'))
-                     for path in CPPLINT_EXCEPTIONS]
+  disabled_paths = [
+      input_api.os_path.join(*path.split('/')) for path in CPPLINT_EXCEPTIONS
+  ]
 
   # Use the strictest verbosity level for cpplint.py (level 1) which is the
   # default when running cpplint.py from command line. To make it possible to
@@ -300,8 +314,7 @@ def CheckApprovedFilesLintClean(input_api, output_api,
   files = []
   for f in input_api.AffectedSourceFiles(source_file_filter):
     # Note that moved/renamed files also count as added.
-    if f.Action() == 'A' or not IsLintDisabled(disabled_paths,
-                                                  f.LocalPath()):
+    if f.Action() == 'A' or not IsLintDisabled(disabled_paths, f.LocalPath()):
       files.append(f.AbsoluteLocalPath())
 
   for file_name in files:
@@ -335,14 +348,16 @@ def CheckNoSourcesAbove(input_api, gn_files, output_api):
           violating_source_entries.append(source_file)
           violating_gn_files.add(gn_file)
   if violating_gn_files:
-    return [output_api.PresubmitError(
-        'Referencing source files above the directory of the GN file is not '
-        'allowed. Please introduce new GN targets in the proper location '
-        'instead.\n'
-        'Invalid source entries:\n'
-        '%s\n'
-        'Violating GN files:' % '\n'.join(violating_source_entries),
-        items=violating_gn_files)]
+    return [
+        output_api.PresubmitError(
+            'Referencing source files above the directory of the GN file '
+            'is not allowed. Please introduce new GN targets in the proper '
+            'location instead.\n'
+            'Invalid source entries:\n'
+            '%s\n'
+            'Violating GN files:' % '\n'.join(violating_source_entries),
+            items=violating_gn_files)
+    ]
   return []
 
 
@@ -350,15 +365,16 @@ def CheckAbseilDependencies(input_api, gn_files, output_api):
   """Checks that Abseil dependencies are declared in `absl_deps`."""
   absl_re = re.compile(r'third_party/abseil-cpp', re.MULTILINE | re.DOTALL)
   target_types_to_check = [
-    'rtc_library',
-    'rtc_source_set',
-    'rtc_static_library',
-    'webrtc_fuzzer_test',
+      'rtc_library',
+      'rtc_source_set',
+      'rtc_static_library',
+      'webrtc_fuzzer_test',
   ]
   error_msg = ('Abseil dependencies in target "%s" (file: %s) '
-              'should be moved to the "absl_deps" parameter.')
+               'should be moved to the "absl_deps" parameter.')
   errors = []
 
+  # pylint: disable=too-many-nested-blocks
   for gn_file in gn_files:
     gn_file_content = input_api.ReadFile(gn_file)
     for target_match in TARGET_RE.finditer(gn_file_content):
@@ -371,8 +387,8 @@ def CheckAbseilDependencies(input_api, gn_files, output_api):
           for dep in deps:
             if re.search(absl_re, dep):
               errors.append(
-                output_api.PresubmitError(error_msg % (target_name,
-                                                       gn_file.LocalPath())))
+                  output_api.PresubmitError(error_msg %
+                                            (target_name, gn_file.LocalPath())))
               break  # no need to warn more than once per target
   return errors
 
@@ -386,7 +402,7 @@ def CheckNoMixingSources(input_api, gn_files, output_api):
   def _MoreThanOneSourceUsed(*sources_lists):
     sources_used = 0
     for source_list in sources_lists:
-      if len(source_list):
+      if len(source_list) > 0:
         sources_used += 1
     return sources_used > 1
 
@@ -395,9 +411,9 @@ def CheckNoMixingSources(input_api, gn_files, output_api):
     gn_file_content = input_api.ReadFile(gn_file)
     for target_match in TARGET_RE.finditer(gn_file_content):
       # list_of_sources is a list of tuples of the form
-      # (c_files, cc_files, objc_files) that keeps track of all the sources
-      # defined in a target. A GN target can have more that on definition of
-      # sources (since it supports if/else statements).
+      # (c_files, cc_files, objc_files) that keeps track of all the
+      # sources defined in a target. A GN target can have more that
+      # on definition of sources (since it supports if/else statements).
       # E.g.:
       # rtc_static_library("foo") {
       #   if (is_win) {
@@ -435,27 +451,33 @@ def CheckNoMixingSources(input_api, gn_files, output_api):
           all_sources = sorted(c_files_list + cc_files_list + objc_files_list)
           errors[gn_file.LocalPath()].append((target_name, all_sources))
   if errors:
-    return [output_api.PresubmitError(
-        'GN targets cannot mix .c, .cc and .m (or .mm) source files.\n'
-        'Please create a separate target for each collection of sources.\n'
-        'Mixed sources: \n'
-        '%s\n'
-        'Violating GN files:\n%s\n' % (json.dumps(errors, indent=2),
-                                       '\n'.join(errors.keys())))]
+    return [
+        output_api.PresubmitError(
+            'GN targets cannot mix .c, .cc and .m (or .mm) source files.\n'
+            'Please create a separate target for each collection of '
+            'sources.\n'
+            'Mixed sources: \n'
+            '%s\n'
+            'Violating GN files:\n%s\n' %
+            (json.dumps(errors, indent=2), '\n'.join(list(errors.keys()))))
+    ]
   return []
 
 
 def CheckNoPackageBoundaryViolations(input_api, gn_files, output_api):
   cwd = input_api.PresubmitLocalPath()
-  with _AddToPath(input_api.os_path.join(
-      cwd, 'tools_webrtc', 'presubmit_checks_lib')):
+  with _AddToPath(
+      input_api.os_path.join(cwd, 'tools_webrtc', 'presubmit_checks_lib')):
     from check_package_boundaries import CheckPackageBoundaries
   build_files = [os.path.join(cwd, gn_file.LocalPath()) for gn_file in gn_files]
   errors = CheckPackageBoundaries(cwd, build_files)[:5]
   if errors:
-    return [output_api.PresubmitError(
-        'There are package boundary violations in the following GN files:',
-        long_text='\n\n'.join(str(err) for err in errors))]
+    return [
+        output_api.PresubmitError(
+            'There are package boundary violations in the following GN '
+            'files:',
+            long_text='\n\n'.join(str(err) for err in errors))
+    ]
   return []
 
 
@@ -464,9 +486,11 @@ def _ReportFileAndLine(filename, line_num):
   return '%s (line %s)' % (filename, line_num)
 
 
-def CheckNoWarningSuppressionFlagsAreAdded(gn_files, input_api, output_api,
+def CheckNoWarningSuppressionFlagsAreAdded(gn_files,
+                                           input_api,
+                                           output_api,
                                            error_formatter=_ReportFileAndLine):
-  """Make sure that warning suppression flags are not added wihtout a reason."""
+  """Ensure warning suppression flags are not added without a reason."""
   msg = ('Usage of //build/config/clang:extra_warnings is discouraged '
          'in WebRTC.\n'
          'If you are not adding this code (e.g. you are just moving '
@@ -477,6 +501,7 @@ def CheckNoWarningSuppressionFlagsAreAdded(gn_files, input_api, output_api,
          'Affected files:\n')
   errors = []  # 2-element tuples with (file, line number)
   clang_warn_re = input_api.re.compile(r'//build/config/clang:extra_warnings')
+  # pylint: disable-next=fixme
   no_presubmit_re = input_api.re.compile(
       r'# no-presubmit-check TODO\(bugs\.webrtc\.org/\d+\)')
   for f in gn_files:
@@ -488,7 +513,9 @@ def CheckNoWarningSuppressionFlagsAreAdded(gn_files, input_api, output_api,
   return []
 
 
-def CheckNoTestCaseUsageIsAdded(input_api, output_api, source_file_filter,
+def CheckNoTestCaseUsageIsAdded(input_api,
+                                output_api,
+                                source_file_filter,
                                 error_formatter=_ReportFileAndLine):
   error_msg = ('Usage of legacy GoogleTest API detected!\nPlease use the '
                'new API: https://github.com/google/googletest/blob/master/'
@@ -496,8 +523,8 @@ def CheckNoTestCaseUsageIsAdded(input_api, output_api, source_file_filter,
                'Affected files:\n')
   errors = []  # 2-element tuples with (file, line number)
   test_case_re = input_api.re.compile(r'TEST_CASE')
-  file_filter = lambda f: (source_file_filter(f)
-                           and f.LocalPath().endswith('.cc'))
+  file_filter = lambda f: (source_file_filter(f) and f.LocalPath().endswith(
+      '.cc'))
   for f in input_api.AffectedSourceFiles(file_filter):
     for line_num, line in f.ChangedContents():
       if test_case_re.search(line):
@@ -507,7 +534,8 @@ def CheckNoTestCaseUsageIsAdded(input_api, output_api, source_file_filter,
   return []
 
 
-def CheckNoStreamUsageIsAdded(input_api, output_api,
+def CheckNoStreamUsageIsAdded(input_api,
+                              output_api,
                               source_file_filter,
                               error_formatter=_ReportFileAndLine):
   """Make sure that no more dependencies on stringstream are added."""
@@ -534,17 +562,15 @@ def CheckNoStreamUsageIsAdded(input_api, output_api,
   usage_re = input_api.re.compile(r'std::(w|i|o|io|wi|wo|wio)(string)*stream')
   no_presubmit_re = input_api.re.compile(
       r'// no-presubmit-check TODO\(webrtc:8982\)')
-  file_filter = lambda x: (input_api.FilterSourceFile(x)
-                           and source_file_filter(x))
+  file_filter = lambda x: (input_api.FilterSourceFile(x) and source_file_filter(
+      x))
 
   def _IsException(file_path):
-    is_test = any(file_path.endswith(x) for x in ['_test.cc', '_tests.cc',
-                                                  '_unittest.cc',
-                                                  '_unittests.cc'])
-    return (file_path.startswith('examples') or
-            file_path.startswith('test') or
-            is_test)
-
+    is_test = any(
+        file_path.endswith(x)
+        for x in ['_test.cc', '_tests.cc', '_unittest.cc', '_unittests.cc'])
+    return (file_path.startswith('examples') or file_path.startswith('test')
+            or is_test)
 
   for f in input_api.AffectedSourceFiles(file_filter):
     # Usage of stringstream is allowed under examples/ and in tests.
@@ -577,8 +603,8 @@ def CheckPublicDepsIsNotUsed(gn_files, input_api, output_api):
         surpressed = no_presubmit_check_re.search(affected_line)
         if not surpressed:
           result.append(
-              output_api.PresubmitError(error_msg % (affected_file.LocalPath(),
-                                                     line_number)))
+              output_api.PresubmitError(
+                  error_msg % (affected_file.LocalPath(), line_number)))
   return result
 
 
@@ -591,6 +617,7 @@ def CheckCheckIncludesIsNotUsed(gn_files, input_api, output_api):
                'this is allowed: if so, get approval from a .gn owner in the '
                'root OWNERS file.\n'
                'Used in: %s (line %d).')
+  # pylint: disable-next=fixme
   no_presubmit_re = input_api.re.compile(
       r'# no-presubmit-check TODO\(bugs\.webrtc\.org/\d+\)')
   for affected_file in gn_files:
@@ -598,15 +625,16 @@ def CheckCheckIncludesIsNotUsed(gn_files, input_api, output_api):
       if ('check_includes' in affected_line
           and not no_presubmit_re.search(affected_line)):
         result.append(
-            output_api.PresubmitError(error_msg % (affected_file.LocalPath(),
-                                                   line_number)))
+            output_api.PresubmitError(error_msg %
+                                      (affected_file.LocalPath(), line_number)))
   return result
 
 
 def CheckGnChanges(input_api, output_api):
   file_filter = lambda x: (input_api.FilterSourceFile(
-      x, files_to_check=(r'.+\.(gn|gni)$',),
-      files_to_skip=(r'.*/presubmit_checks_lib/testdata/.*',)))
+      x,
+      files_to_check=(r'.+\.(gn|gni)$', ),
+      files_to_skip=(r'.*/presubmit_checks_lib/testdata/.*', )))
 
   gn_files = []
   for f in input_api.AffectedSourceFiles(file_filter):
@@ -617,12 +645,12 @@ def CheckGnChanges(input_api, output_api):
     result.extend(CheckNoSourcesAbove(input_api, gn_files, output_api))
     result.extend(CheckNoMixingSources(input_api, gn_files, output_api))
     result.extend(CheckAbseilDependencies(input_api, gn_files, output_api))
-    result.extend(CheckNoPackageBoundaryViolations(input_api, gn_files,
-                                                   output_api))
+    result.extend(
+        CheckNoPackageBoundaryViolations(input_api, gn_files, output_api))
     result.extend(CheckPublicDepsIsNotUsed(gn_files, input_api, output_api))
     result.extend(CheckCheckIncludesIsNotUsed(gn_files, input_api, output_api))
-    result.extend(CheckNoWarningSuppressionFlagsAreAdded(gn_files, input_api,
-                                                          output_api))
+    result.extend(
+        CheckNoWarningSuppressionFlagsAreAdded(gn_files, input_api, output_api))
   return result
 
 
@@ -631,15 +659,19 @@ def CheckGnGen(input_api, output_api):
   #includes and dependencies in the BUILD.gn files, as well as general build
   errors.
   """
-  with _AddToPath(input_api.os_path.join(
-      input_api.PresubmitLocalPath(), 'tools_webrtc', 'presubmit_checks_lib')):
+  with _AddToPath(
+      input_api.os_path.join(input_api.PresubmitLocalPath(), 'tools_webrtc',
+                             'presubmit_checks_lib')):
     from build_helpers import RunGnCheck
   errors = RunGnCheck(FindSrcDirPath(input_api.PresubmitLocalPath()))[:5]
   if errors:
-    return [output_api.PresubmitPromptWarning(
-        'Some #includes do not match the build dependency graph. Please run:\n'
-        '  gn gen --check <out_dir>',
-        long_text='\n\n'.join(errors))]
+    return [
+        output_api.PresubmitPromptWarning(
+            'Some #includes do not match the build dependency graph. '
+            'Please run:\n'
+            '  gn gen --check <out_dir>',
+            long_text='\n\n'.join(errors))
+    ]
   return []
 
 
@@ -656,9 +688,11 @@ def CheckUnwantedDependencies(input_api, output_api, source_file_filter):
   src_path = FindSrcDirPath(input_api.PresubmitLocalPath())
   checkdeps_path = input_api.os_path.join(src_path, 'buildtools', 'checkdeps')
   if not os.path.exists(checkdeps_path):
-    return [output_api.PresubmitError(
-        'Cannot find checkdeps at %s\nHave you run "gclient sync" to '
-        'download all the DEPS entries?' % checkdeps_path)]
+    return [
+        output_api.PresubmitError(
+            'Cannot find checkdeps at %s\nHave you run "gclient sync" to '
+            'download all the DEPS entries?' % checkdeps_path)
+    ]
   with _AddToPath(checkdeps_path):
     import checkdeps
     from cpp_checker import CppChecker
@@ -686,20 +720,22 @@ def CheckUnwantedDependencies(input_api, output_api, source_file_filter):
 
   results = []
   if error_descriptions:
-    results.append(output_api.PresubmitError(
-        'You added one or more #includes that violate checkdeps rules.\n'
-        'Check that the DEPS files in these locations contain valid rules.\n'
-        'See https://cs.chromium.org/chromium/src/buildtools/checkdeps/ for '
-        'more details about checkdeps.',
-        error_descriptions))
+    results.append(
+        output_api.PresubmitError(
+            'You added one or more #includes that violate checkdeps rules.'
+            '\nCheck that the DEPS files in these locations contain valid '
+            'rules.\nSee '
+            'https://cs.chromium.org/chromium/src/buildtools/checkdeps/ '
+            'for more details about checkdeps.', error_descriptions))
   if warning_descriptions:
-    results.append(output_api.PresubmitPromptOrNotify(
-        'You added one or more #includes of files that are temporarily\n'
-        'allowed but being removed. Can you avoid introducing the\n'
-        '#include? See relevant DEPS file(s) for details and contacts.\n'
-        'See https://cs.chromium.org/chromium/src/buildtools/checkdeps/ for '
-        'more details about checkdeps.',
-        warning_descriptions))
+    results.append(
+        output_api.PresubmitPromptOrNotify(
+            'You added one or more #includes of files that are temporarily'
+            '\nallowed but being removed. Can you avoid introducing the\n'
+            '#include? See relevant DEPS file(s) for details and contacts.'
+            '\nSee '
+            'https://cs.chromium.org/chromium/src/buildtools/checkdeps/ '
+            'for more details about checkdeps.', warning_descriptions))
   return results
 
 
@@ -741,12 +777,14 @@ def CheckChangeHasBugField(input_api, output_api):
   """
   if input_api.change.BugsFromDescription():
     return []
-  else:
-    return [output_api.PresubmitError(
-        'The "Bug: [bug number]" footer is mandatory. Please create a bug and '
-        'reference it using either of:\n'
-        ' * https://bugs.webrtc.org - reference it using Bug: webrtc:XXXX\n'
-        ' * https://crbug.com - reference it using Bug: chromium:XXXXXX')]
+  return [
+      output_api.PresubmitError(
+          'The "Bug: [bug number]" footer is mandatory. Please create a '
+          'bug and reference it using either of:\n'
+          ' * https://bugs.webrtc.org - reference it using Bug: '
+          'webrtc:XXXX\n'
+          ' * https://crbug.com - reference it using Bug: chromium:XXXXXX')
+  ]
 
 
 def CheckJSONParseErrors(input_api, output_api, source_file_filter):
@@ -765,14 +803,14 @@ def CheckJSONParseErrors(input_api, output_api, source_file_filter):
     return None
 
   results = []
-  for affected_file in input_api.AffectedFiles(
-      file_filter=FilterFile, include_deletes=False):
+  for affected_file in input_api.AffectedFiles(file_filter=FilterFile,
+                                               include_deletes=False):
     parse_error = GetJSONParseError(input_api,
                                     affected_file.AbsoluteLocalPath())
     if parse_error:
-      results.append(output_api.PresubmitError('%s could not be parsed: %s' %
-                                               (affected_file.LocalPath(),
-                                                parse_error)))
+      results.append(
+          output_api.PresubmitError('%s could not be parsed: %s' %
+                                    (affected_file.LocalPath(), parse_error)))
   return results
 
 
@@ -780,23 +818,32 @@ def RunPythonTests(input_api, output_api):
   def Join(*args):
     return input_api.os_path.join(input_api.PresubmitLocalPath(), *args)
 
+  excluded_files = [
+      # These tests should be run manually after webrtc_dashboard_upload target
+      # has been built.
+      'catapult_uploader_test.py',
+      'process_perf_results_test.py',
+  ]
+
   test_directories = [
       input_api.PresubmitLocalPath(),
       Join('rtc_tools', 'py_event_log_analyzer'),
       Join('audio', 'test', 'unittests'),
   ] + [
-      root for root, _, files in os.walk(Join('tools_webrtc'))
-      if any(f.endswith('_test.py') for f in files)
+      root for root, _, files in os.walk(Join('tools_webrtc')) if any(
+          f.endswith('_test.py') and f not in excluded_files for f in files)
   ]
 
   tests = []
+
   for directory in test_directories:
     tests.extend(
-      input_api.canned_checks.GetUnitTestsInDirectory(
-          input_api,
-          output_api,
-          directory,
-          files_to_check=[r'.+_test\.py$']))
+        input_api.canned_checks.GetUnitTestsInDirectory(
+            input_api,
+            output_api,
+            directory,
+            files_to_check=[r'.+_test\.py$'],
+            run_on_python2=False))
   return input_api.RunTests(tests, parallel=True)
 
 
@@ -806,8 +853,8 @@ def CheckUsageOfGoogleProtobufNamespace(input_api, output_api,
   files = []
   pattern = input_api.re.compile(r'google::protobuf')
   proto_utils_path = os.path.join('rtc_base', 'protobuf_utils.h')
-  file_filter = lambda x: (input_api.FilterSourceFile(x)
-                           and source_file_filter(x))
+  file_filter = lambda x: (input_api.FilterSourceFile(x) and source_file_filter(
+      x))
   for f in input_api.AffectedSourceFiles(file_filter):
     if f.LocalPath() in [proto_utils_path, 'PRESUBMIT.py']:
       continue
@@ -816,10 +863,12 @@ def CheckUsageOfGoogleProtobufNamespace(input_api, output_api,
       files.append(f)
 
   if files:
-    return [output_api.PresubmitError(
-        'Please avoid to use namespace `google::protobuf` directly.\n'
-        'Add a using directive in `%s` and include that header instead.'
-        % proto_utils_path, files)]
+    return [
+        output_api.PresubmitError(
+            'Please avoid to use namespace `google::protobuf` directly.\n'
+            'Add a using directive in `%s` and include that header instead.' %
+            proto_utils_path, files)
+    ]
   return []
 
 
@@ -827,16 +876,16 @@ def _LicenseHeader(input_api):
   """Returns the license header regexp."""
   # Accept any year number from 2003 to the current year
   current_year = int(input_api.time.strftime('%Y'))
-  allowed_years = (str(s) for s in reversed(xrange(2003, current_year + 1)))
+  allowed_years = (str(s) for s in reversed(range(2003, current_year + 1)))
   years_re = '(' + '|'.join(allowed_years) + ')'
   license_header = (
       r'.*? Copyright( \(c\))? %(year)s The WebRTC [Pp]roject [Aa]uthors\. '
-        r'All [Rr]ights [Rr]eserved\.\n'
+      r'All [Rr]ights [Rr]eserved\.\n'
       r'.*?\n'
       r'.*? Use of this source code is governed by a BSD-style license\n'
       r'.*? that can be found in the LICENSE file in the root of the source\n'
       r'.*? tree\. An additional intellectual property rights grant can be '
-        r'found\n'
+      r'found\n'
       r'.*? in the file PATENTS\.  All contributing project authors may\n'
       r'.*? be found in the AUTHORS file in the root of the source tree\.\n'
   ) % {
@@ -851,98 +900,148 @@ def CommonChecks(input_api, output_api):
   # Filter out files that are in objc or ios dirs from being cpplint-ed since
   # they do not follow C++ lint rules.
   exception_list = input_api.DEFAULT_FILES_TO_SKIP + (
-    r".*\bobjc[\\\/].*",
-    r".*objc\.[hcm]+$",
+      r".*\bobjc[\\\/].*",
+      r".*objc\.[hcm]+$",
   )
-  source_file_filter = lambda x: input_api.FilterSourceFile(x, None,
-                                                            exception_list)
-  results.extend(CheckApprovedFilesLintClean(
-      input_api, output_api, source_file_filter))
-  results.extend(input_api.canned_checks.CheckLicense(
-      input_api, output_api, _LicenseHeader(input_api)))
-  results.extend(input_api.canned_checks.RunPylint(input_api, output_api,
-      files_to_skip=(r'^base[\\\/].*\.py$',
-                     r'^build[\\\/].*\.py$',
-                     r'^buildtools[\\\/].*\.py$',
-                     r'^infra[\\\/].*\.py$',
-                     r'^ios[\\\/].*\.py$',
-                     r'^out.*[\\\/].*\.py$',
-                     r'^testing[\\\/].*\.py$',
-                     r'^third_party[\\\/].*\.py$',
-                     r'^tools[\\\/].*\.py$',
-                     # TODO(phoglund): should arguably be checked.
-                     r'^tools_webrtc[\\\/]mb[\\\/].*\.py$',
-                     r'^xcodebuild.*[\\\/].*\.py$',),
-      pylintrc='pylintrc'))
+  source_file_filter = lambda x: input_api.FilterSourceFile(
+      x, None, exception_list)
+  results.extend(
+      CheckApprovedFilesLintClean(input_api, output_api, source_file_filter))
+  results.extend(
+      input_api.canned_checks.CheckLicense(input_api, output_api,
+                                           _LicenseHeader(input_api)))
 
-  # TODO(nisse): talk/ is no more, so make below checks simpler?
-  # WebRTC can't use the presubmit_canned_checks.PanProjectChecks function since
-  # we need to have different license checks in talk/ and webrtc/ directories.
+  # TODO(bugs.webrtc.org/12114): Delete this filter and run pylint on
+  # all python files. This is a temporary solution.
+  python_file_filter = lambda f: (f.LocalPath().endswith('.py') and
+                                  source_file_filter(f))
+  python_changed_files = [
+      f.LocalPath()
+      for f in input_api.AffectedFiles(include_deletes=False,
+                                       file_filter=python_file_filter)
+  ]
+
+  results.extend(
+      input_api.canned_checks.RunPylint(
+          input_api,
+          output_api,
+          files_to_check=python_changed_files,
+          files_to_skip=(
+              r'^base[\\\/].*\.py$',
+              r'^build[\\\/].*\.py$',
+              r'^buildtools[\\\/].*\.py$',
+              r'^infra[\\\/].*\.py$',
+              r'^ios[\\\/].*\.py$',
+              r'^out.*[\\\/].*\.py$',
+              r'^testing[\\\/].*\.py$',
+              r'^third_party[\\\/].*\.py$',
+              r'^tools[\\\/].*\.py$',
+              r'^xcodebuild.*[\\\/].*\.py$',
+          ),
+          pylintrc='pylintrc',
+          version='2.7'))
+
+  # TODO(bugs.webrtc.org/13606): talk/ is no more, so make below checks simpler?
+  # WebRTC can't use the presubmit_canned_checks.PanProjectChecks function
+  # since we need to have different license checks
+  # in talk/ and webrtc/directories.
   # Instead, hand-picked checks are included below.
 
-  # .m and .mm files are ObjC files. For simplicity we will consider .h files in
-  # ObjC subdirectories ObjC headers.
+  # .m and .mm files are ObjC files. For simplicity we will consider
+  # .h files in ObjC subdirectories ObjC headers.
   objc_filter_list = (r'.+\.m$', r'.+\.mm$', r'.+objc\/.+\.h$')
   # Skip long-lines check for DEPS and GN files.
   build_file_filter_list = (r'.+\.gn$', r'.+\.gni$', 'DEPS')
   # Also we will skip most checks for third_party directory.
-  third_party_filter_list = (r'^third_party[\\\/].+',)
-  eighty_char_sources = lambda x: input_api.FilterSourceFile(x,
+  third_party_filter_list = (r'(^|.*[\\\/])third_party[\\\/].+', )
+  eighty_char_sources = lambda x: input_api.FilterSourceFile(
+      x,
       files_to_skip=build_file_filter_list + objc_filter_list +
-                 third_party_filter_list)
-  hundred_char_sources = lambda x: input_api.FilterSourceFile(x,
-      files_to_check=objc_filter_list)
-  non_third_party_sources = lambda x: input_api.FilterSourceFile(x,
-      files_to_skip=third_party_filter_list)
+      third_party_filter_list)
+  hundred_char_sources = lambda x: input_api.FilterSourceFile(
+      x, files_to_check=objc_filter_list)
+  non_third_party_sources = lambda x: input_api.FilterSourceFile(
+      x, files_to_skip=third_party_filter_list)
 
-  results.extend(input_api.canned_checks.CheckLongLines(
-      input_api, output_api, maxlen=80, source_file_filter=eighty_char_sources))
-  results.extend(input_api.canned_checks.CheckLongLines(
-      input_api, output_api, maxlen=100,
-      source_file_filter=hundred_char_sources))
-  results.extend(input_api.canned_checks.CheckChangeHasNoTabs(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(input_api.canned_checks.CheckChangeHasNoStrayWhitespace(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(input_api.canned_checks.CheckAuthorizedAuthor(
-      input_api, output_api, bot_allowlist=[
-          'chromium-webrtc-autoroll@webrtc-ci.iam.gserviceaccount.com'
-      ]))
-  results.extend(input_api.canned_checks.CheckChangeTodoHasOwner(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(input_api.canned_checks.CheckPatchFormatted(
-      input_api, output_api))
+  results.extend(
+      input_api.canned_checks.CheckLongLines(
+          input_api,
+          output_api,
+          maxlen=80,
+          source_file_filter=eighty_char_sources))
+  results.extend(
+      input_api.canned_checks.CheckLongLines(
+          input_api,
+          output_api,
+          maxlen=100,
+          source_file_filter=hundred_char_sources))
+  results.extend(
+      input_api.canned_checks.CheckChangeHasNoTabs(
+          input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      input_api.canned_checks.CheckChangeHasNoStrayWhitespace(
+          input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      input_api.canned_checks.CheckAuthorizedAuthor(
+          input_api,
+          output_api,
+          bot_allowlist=[
+              'chromium-webrtc-autoroll@webrtc-ci.iam.gserviceaccount.com',
+              'webrtc-version-updater@webrtc-ci.iam.gserviceaccount.com',
+          ]))
+  results.extend(
+      input_api.canned_checks.CheckChangeTodoHasOwner(
+          input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      input_api.canned_checks.CheckPatchFormatted(input_api, output_api))
   results.extend(CheckNativeApiHeaderChanges(input_api, output_api))
-  results.extend(CheckNoIOStreamInHeaders(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(CheckNoPragmaOnce(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(CheckNoFRIEND_TEST(
-      input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckNoIOStreamInHeaders(input_api,
+                               output_api,
+                               source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckNoPragmaOnce(input_api,
+                        output_api,
+                        source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckNoFRIEND_TEST(input_api,
+                         output_api,
+                         source_file_filter=non_third_party_sources))
   results.extend(CheckGnChanges(input_api, output_api))
-  results.extend(CheckUnwantedDependencies(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(CheckJSONParseErrors(
-      input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckUnwantedDependencies(input_api,
+                                output_api,
+                                source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckJSONParseErrors(input_api,
+                           output_api,
+                           source_file_filter=non_third_party_sources))
   results.extend(RunPythonTests(input_api, output_api))
-  results.extend(CheckUsageOfGoogleProtobufNamespace(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(CheckOrphanHeaders(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(CheckNewlineAtTheEndOfProtoFiles(
-      input_api, output_api, source_file_filter=non_third_party_sources))
-  results.extend(CheckNoStreamUsageIsAdded(
-      input_api, output_api, non_third_party_sources))
-  results.extend(CheckNoTestCaseUsageIsAdded(
-      input_api, output_api, non_third_party_sources))
+  results.extend(
+      CheckUsageOfGoogleProtobufNamespace(
+          input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckOrphanHeaders(input_api,
+                         output_api,
+                         source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckNewlineAtTheEndOfProtoFiles(
+          input_api, output_api, source_file_filter=non_third_party_sources))
+  results.extend(
+      CheckNoStreamUsageIsAdded(input_api, output_api, non_third_party_sources))
+  results.extend(
+      CheckNoTestCaseUsageIsAdded(input_api, output_api,
+                                  non_third_party_sources))
   results.extend(CheckAddedDepsHaveTargetApprovals(input_api, output_api))
   results.extend(CheckApiDepsFileIsUpToDate(input_api, output_api))
-  results.extend(CheckAbslMemoryInclude(
-      input_api, output_api, non_third_party_sources))
-  results.extend(CheckBannedAbslMakeUnique(
-      input_api, output_api, non_third_party_sources))
-  results.extend(CheckObjcApiSymbols(
-      input_api, output_api, non_third_party_sources))
+  results.extend(
+      CheckAbslMemoryInclude(input_api, output_api, non_third_party_sources))
+  results.extend(
+      CheckAssertUsage(input_api, output_api, non_third_party_sources))
+  results.extend(
+      CheckBannedAbslMakeUnique(input_api, output_api, non_third_party_sources))
+  results.extend(
+      CheckObjcApiSymbols(input_api, output_api, non_third_party_sources))
   return results
 
 
@@ -969,9 +1068,8 @@ def CheckApiDepsFileIsUpToDate(input_api, output_api):
   for f in input_api.AffectedFiles():
     path_tokens = [t for t in f.LocalPath().split(os.sep) if t]
     if len(path_tokens) > 1:
-      if (path_tokens[0] not in dirs_to_skip and
-          os.path.isdir(os.path.join(input_api.PresubmitLocalPath(),
-                                     path_tokens[0]))):
+      if (path_tokens[0] not in dirs_to_skip and os.path.isdir(
+          os.path.join(input_api.PresubmitLocalPath(), path_tokens[0]))):
         dirs_to_check.add(path_tokens[0])
 
   missing_include_rules = set()
@@ -982,8 +1080,8 @@ def CheckApiDepsFileIsUpToDate(input_api, output_api):
 
   if missing_include_rules:
     error_msg = [
-      'include_rules = [\n',
-      '  ...\n',
+        'include_rules = [\n',
+        '  ...\n',
     ]
 
     for r in sorted(missing_include_rules):
@@ -992,44 +1090,50 @@ def CheckApiDepsFileIsUpToDate(input_api, output_api):
     error_msg.append('  ...\n')
     error_msg.append(']\n')
 
-    results.append(output_api.PresubmitError(
-        'New root level directory detected! WebRTC api/ headers should '
-        'not #include headers from \n'
-        'the new directory, so please update "include_rules" in file\n'
-        '"%s". Example:\n%s\n' % (api_deps, ''.join(error_msg))))
+    results.append(
+        output_api.PresubmitError(
+            'New root level directory detected! WebRTC api/ headers should '
+            'not #include headers from \n'
+            'the new directory, so please update "include_rules" in file\n'
+            '"%s". Example:\n%s\n' % (api_deps, ''.join(error_msg))))
 
   return results
 
+
 def CheckBannedAbslMakeUnique(input_api, output_api, source_file_filter):
-  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h'))
-                           and source_file_filter(f))
+  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h')) and
+                           source_file_filter(f))
 
   files = []
-  for f in input_api.AffectedFiles(
-      include_deletes=False, file_filter=file_filter):
+  for f in input_api.AffectedFiles(include_deletes=False,
+                                   file_filter=file_filter):
     for _, line in f.ChangedContents():
       if 'absl::make_unique' in line:
         files.append(f)
         break
 
-  if len(files):
-    return [output_api.PresubmitError(
-        'Please use std::make_unique instead of absl::make_unique.\n'
-        'Affected files:',
-        files)]
+  if files:
+    return [
+        output_api.PresubmitError(
+            'Please use std::make_unique instead of absl::make_unique.\n'
+            'Affected files:', files)
+    ]
   return []
+
 
 def CheckObjcApiSymbols(input_api, output_api, source_file_filter):
   rtc_objc_export = re.compile(r'RTC_OBJC_EXPORT(.|\n){26}',
                                re.MULTILINE | re.DOTALL)
-  file_filter = lambda f: (f.LocalPath().endswith(('.h'))
-                           and source_file_filter(f))
+  file_filter = lambda f: (f.LocalPath().endswith(('.h')) and
+                           source_file_filter(f))
 
   files = []
-  file_filter = lambda x: (input_api.FilterSourceFile(x)
-                           and source_file_filter(x))
+  file_filter = lambda x: (input_api.FilterSourceFile(x) and source_file_filter(
+      x))
   for f in input_api.AffectedSourceFiles(file_filter):
     if not f.LocalPath().endswith('.h') or not 'sdk/objc' in f.LocalPath():
+      continue
+    if f.LocalPath().endswith('sdk/objc/base/RTCMacros.h'):
       continue
     contents = input_api.ReadFile(f)
     for match in rtc_objc_export.finditer(contents):
@@ -1037,26 +1141,49 @@ def CheckObjcApiSymbols(input_api, output_api, source_file_filter):
       if 'RTC_OBJC_TYPE' not in export_block:
         files.append(f.LocalPath())
 
-  if len(files):
-    return [output_api.PresubmitError(
-        'RTC_OBJC_EXPORT types must be wrapped into an RTC_OBJC_TYPE() ' +
-        'macro.\n\n' +
-        'For example:\n' +
-        'RTC_OBJC_EXPORT @protocol RTC_OBJC_TYPE(RtcFoo)\n\n' +
-        'RTC_OBJC_EXPORT @interface RTC_OBJC_TYPE(RtcFoo)\n\n' +
-        'Please fix the following files:',
-        files)]
+  if len(files) > 0:
+    return [
+        output_api.PresubmitError(
+            'RTC_OBJC_EXPORT types must be wrapped into an RTC_OBJC_TYPE() ' +
+            'macro.\n\n' + 'For example:\n' +
+            'RTC_OBJC_EXPORT @protocol RTC_OBJC_TYPE(RtcFoo)\n\n' +
+            'RTC_OBJC_EXPORT @interface RTC_OBJC_TYPE(RtcFoo)\n\n' +
+            'Please fix the following files:', files)
+    ]
   return []
 
-def CheckAbslMemoryInclude(input_api, output_api, source_file_filter):
-  pattern = input_api.re.compile(
-      r'^#include\s*"absl/memory/memory.h"', input_api.re.MULTILINE)
-  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h'))
+
+def CheckAssertUsage(input_api, output_api, source_file_filter):
+  pattern = input_api.re.compile(r'\bassert\(')
+  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h', '.m', '.mm'))
                            and source_file_filter(f))
 
   files = []
-  for f in input_api.AffectedFiles(
-      include_deletes=False, file_filter=file_filter):
+  for f in input_api.AffectedFiles(include_deletes=False,
+                                   file_filter=file_filter):
+    for _, line in f.ChangedContents():
+      if pattern.search(line):
+        files.append(f.LocalPath())
+        break
+
+  if len(files) > 0:
+    return [
+        output_api.PresubmitError(
+            'Usage of assert() has been detected in the following files, '
+            'please use RTC_DCHECK() instead.\n Files:', files)
+    ]
+  return []
+
+
+def CheckAbslMemoryInclude(input_api, output_api, source_file_filter):
+  pattern = input_api.re.compile(r'^#include\s*"absl/memory/memory.h"',
+                                 input_api.re.MULTILINE)
+  file_filter = lambda f: (f.LocalPath().endswith(('.cc', '.h')) and
+                           source_file_filter(f))
+
+  files = []
+  for f in input_api.AffectedFiles(include_deletes=False,
+                                   file_filter=file_filter):
     contents = input_api.ReadFile(f)
     if pattern.search(contents):
       continue
@@ -1065,20 +1192,22 @@ def CheckAbslMemoryInclude(input_api, output_api, source_file_filter):
         files.append(f)
         break
 
-  if len(files):
-    return [output_api.PresubmitError(
-        'Please include "absl/memory/memory.h" header for  absl::WrapUnique.\n'
-        'This header may or may not be included transitively depending on the '
-        'C++ standard version.',
-        files)]
+  if len(files) > 0:
+    return [
+        output_api.PresubmitError(
+            'Please include "absl/memory/memory.h" header for '
+            'absl::WrapUnique.\nThis header may or may not be included '
+            'transitively depending on the C++ standard version.', files)
+    ]
   return []
+
 
 def CheckChangeOnUpload(input_api, output_api):
   results = []
   results.extend(CommonChecks(input_api, output_api))
   results.extend(CheckGnGen(input_api, output_api))
-  results.extend(
-      input_api.canned_checks.CheckGNFormatted(input_api, output_api))
+  results.extend(input_api.canned_checks.CheckGNFormatted(
+      input_api, output_api))
   return results
 
 
@@ -1087,15 +1216,17 @@ def CheckChangeOnCommit(input_api, output_api):
   results.extend(CommonChecks(input_api, output_api))
   results.extend(VerifyNativeApiHeadersListIsValid(input_api, output_api))
   results.extend(input_api.canned_checks.CheckOwners(input_api, output_api))
-  results.extend(input_api.canned_checks.CheckChangeWasUploaded(
-      input_api, output_api))
-  results.extend(input_api.canned_checks.CheckChangeHasDescription(
-      input_api, output_api))
+  results.extend(
+      input_api.canned_checks.CheckChangeWasUploaded(input_api, output_api))
+  results.extend(
+      input_api.canned_checks.CheckChangeHasDescription(input_api, output_api))
   results.extend(CheckChangeHasBugField(input_api, output_api))
   results.extend(CheckCommitMessageBugEntry(input_api, output_api))
-  results.extend(input_api.canned_checks.CheckTreeIsOpen(
-      input_api, output_api,
-      json_url='http://webrtc-status.appspot.com/current?format=json'))
+  results.extend(
+      input_api.canned_checks.CheckTreeIsOpen(
+          input_api,
+          output_api,
+          json_url='http://webrtc-status.appspot.com/current?format=json'))
   return results
 
 
@@ -1105,11 +1236,11 @@ def CheckOrphanHeaders(input_api, output_api, source_file_filter):
   # eval-ed and thus doesn't have __file__.
   error_msg = """{} should be listed in {}."""
   results = []
-  exempt_paths = [
-    os.path.join('tools_webrtc', 'ios', 'SDK'),
-  ]
-  with _AddToPath(input_api.os_path.join(
-      input_api.PresubmitLocalPath(), 'tools_webrtc', 'presubmit_checks_lib')):
+  exempt_paths = [re.escape(os.path.join('tools_webrtc', 'ios', 'SDK'))]
+
+  with _AddToPath(
+      input_api.os_path.join(input_api.PresubmitLocalPath(), 'tools_webrtc',
+                             'presubmit_checks_lib')):
     from check_orphan_headers import GetBuildGnPathFromFilePath
     from check_orphan_headers import IsHeaderInBuildGn
 
@@ -1123,17 +1254,19 @@ def CheckOrphanHeaders(input_api, output_api, source_file_filter):
                                                 root_dir)
       in_build_gn = IsHeaderInBuildGn(file_path, gn_file_path)
       if not in_build_gn:
-        results.append(output_api.PresubmitError(error_msg.format(
-            f.LocalPath(), os.path.relpath(gn_file_path))))
+        results.append(
+            output_api.PresubmitError(
+                error_msg.format(f.LocalPath(), os.path.relpath(gn_file_path))))
   return results
 
 
-def CheckNewlineAtTheEndOfProtoFiles(input_api, output_api, source_file_filter):
+def CheckNewlineAtTheEndOfProtoFiles(input_api, output_api,
+                                     source_file_filter):
   """Checks that all .proto files are terminated with a newline."""
   error_msg = 'File {} must end with exactly one newline.'
   results = []
   file_filter = lambda x: input_api.FilterSourceFile(
-      x, files_to_check=(r'.+\.proto$',)) and source_file_filter(x)
+      x, files_to_check=(r'.+\.proto$', )) and source_file_filter(x)
   for f in input_api.AffectedSourceFiles(file_filter):
     file_path = f.LocalPath()
     with open(file_path) as f:
@@ -1153,8 +1286,7 @@ def _ExtractAddRulesFromParsedDeps(parsed_deps):
       rule[1:] for rule in parsed_deps.get('include_rules', [])
       if rule.startswith('+') or rule.startswith('!')
   ])
-  for _, rules in parsed_deps.get('specific_include_rules',
-                                              {}).iteritems():
+  for _, rules in parsed_deps.get('specific_include_rules', {}).items():
     add_rules.update([
         rule[1:] for rule in rules
         if rule.startswith('+') or rule.startswith('!')
@@ -1164,9 +1296,9 @@ def _ExtractAddRulesFromParsedDeps(parsed_deps):
 
 def _ParseDeps(contents):
   """Simple helper for parsing DEPS files."""
-  # Stubs for handling special syntax in the root DEPS file.
-  class VarImpl(object):
 
+  # Stubs for handling special syntax in the root DEPS file.
+  class VarImpl:
     def __init__(self, local_scope):
       self._local_scope = local_scope
 
@@ -1174,14 +1306,15 @@ def _ParseDeps(contents):
       """Implements the Var syntax."""
       try:
         return self._local_scope['vars'][var_name]
-      except KeyError:
-        raise Exception('Var is not defined: %s' % var_name)
+      except KeyError as var_not_defined:
+        raise Exception('Var is not defined: %s' %
+                        var_name) from var_not_defined
 
   local_scope = {}
   global_scope = {
       'Var': VarImpl(local_scope).Lookup,
   }
-  exec contents in global_scope, local_scope
+  exec(contents, global_scope, local_scope)
   return local_scope
 
 
@@ -1215,10 +1348,10 @@ def _CalculateAddedDeps(os_path, old_contents, new_contents):
 
 def CheckAddedDepsHaveTargetApprovals(input_api, output_api):
   """When a dependency prefixed with + is added to a DEPS file, we
-  want to make sure that the change is reviewed by an OWNER of the
-  target file or directory, to avoid layering violations from being
-  introduced. This check verifies that this happens.
-  """
+    want to make sure that the change is reviewed by an OWNER of the
+    target file or directory, to avoid layering violations from being
+    introduced. This check verifies that this happens.
+    """
   virtual_depended_on_files = set()
 
   file_filter = lambda f: not input_api.re.match(
@@ -1227,43 +1360,48 @@ def CheckAddedDepsHaveTargetApprovals(input_api, output_api):
                                    file_filter=file_filter):
     filename = input_api.os_path.basename(f.LocalPath())
     if filename == 'DEPS':
-      virtual_depended_on_files.update(_CalculateAddedDeps(
-          input_api.os_path,
-          '\n'.join(f.OldContents()),
-          '\n'.join(f.NewContents())))
+      virtual_depended_on_files.update(
+          _CalculateAddedDeps(input_api.os_path, '\n'.join(f.OldContents()),
+                              '\n'.join(f.NewContents())))
 
   if not virtual_depended_on_files:
     return []
 
   if input_api.is_committing:
     if input_api.tbr:
-      return [output_api.PresubmitNotifyResult(
-          '--tbr was specified, skipping OWNERS check for DEPS additions')]
+      return [
+          output_api.PresubmitNotifyResult(
+              '--tbr was specified, skipping OWNERS check for DEPS '
+              'additions')
+      ]
     if input_api.dry_run:
-      return [output_api.PresubmitNotifyResult(
-          'This is a dry run, skipping OWNERS check for DEPS additions')]
+      return [
+          output_api.PresubmitNotifyResult(
+              'This is a dry run, skipping OWNERS check for DEPS '
+              'additions')
+      ]
     if not input_api.change.issue:
-      return [output_api.PresubmitError(
-          "DEPS approval by OWNERS check failed: this change has "
-          "no change number, so we can't check it for approvals.")]
+      return [
+          output_api.PresubmitError(
+              "DEPS approval by OWNERS check failed: this change has "
+              "no change number, so we can't check it for approvals.")
+      ]
     output = output_api.PresubmitError
   else:
     output = output_api.PresubmitNotifyResult
 
-  owners_db = input_api.owners_db
   owner_email, reviewers = (
       input_api.canned_checks.GetCodereviewOwnerAndReviewers(
-        input_api,
-        owners_db.email_regexp,
-        approval_needed=input_api.is_committing))
+          input_api, None, approval_needed=input_api.is_committing))
 
   owner_email = owner_email or input_api.change.author_email
 
-  reviewers_plus_owner = set(reviewers)
-  if owner_email:
-    reviewers_plus_owner.add(owner_email)
-  missing_files = owners_db.files_not_covered_by(virtual_depended_on_files,
-                                                 reviewers_plus_owner)
+  approval_status = input_api.owners_client.GetFilesApprovalStatus(
+      virtual_depended_on_files, reviewers.union([owner_email]), [])
+  missing_files = [
+      f for f in virtual_depended_on_files
+      if approval_status[f] != input_api.owners_client.APPROVED
+  ]
 
   # We strip the /DEPS part that was added by
   # _FilesToCheckForIncomingDeps to fake a path to a file in a
@@ -1272,20 +1410,23 @@ def CheckAddedDepsHaveTargetApprovals(input_api, output_api):
     start_deps = path.rfind('/DEPS')
     if start_deps != -1:
       return path[:start_deps]
-    else:
-      return path
-  unapproved_dependencies = ["'+%s'," % StripDeps(path)
-                             for path in missing_files]
+    return path
+
+  unapproved_dependencies = [
+      "'+%s'," % StripDeps(path) for path in missing_files
+  ]
 
   if unapproved_dependencies:
     output_list = [
-      output('You need LGTM from owners of depends-on paths in DEPS that were '
-             'modified in this CL:\n    %s' %
-                 '\n    '.join(sorted(unapproved_dependencies)))]
-    suggested_owners = owners_db.reviewers_for(missing_files, owner_email)
-    output_list.append(output(
-        'Suggested missing target path OWNERS:\n    %s' %
-            '\n    '.join(suggested_owners or [])))
+        output('You need LGTM from owners of depends-on paths in DEPS that '
+               ' were modified in this CL:\n    %s' %
+               '\n    '.join(sorted(unapproved_dependencies)))
+    ]
+    suggested_owners = input_api.owners_client.SuggestOwners(
+        missing_files, exclude=[owner_email])
+    output_list.append(
+        output('Suggested missing target path OWNERS:\n    %s' %
+               '\n    '.join(suggested_owners or [])))
     return output_list
 
   return []

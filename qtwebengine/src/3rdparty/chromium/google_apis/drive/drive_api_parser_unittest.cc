@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include "base/time/time.h"
 #include "base/values.h"
-#include "google_apis/drive/test_util.h"
-#include "google_apis/drive/time_util.h"
+#include "google_apis/common/test_util.h"
+#include "google_apis/common/time_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace google_apis {
@@ -19,7 +19,7 @@ TEST(DriveAPIParserTest, AboutResourceParser) {
       test_util::LoadJSONFile("drive/about.json");
   ASSERT_TRUE(document.get());
 
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<AboutResource> resource(new AboutResource());
   EXPECT_TRUE(resource->Parse(*document));
 
@@ -35,7 +35,7 @@ TEST(DriveAPIParserTest, TeamDriveResourceParser) {
       test_util::LoadJSONFile("drive/team_drive.json");
   ASSERT_TRUE(document.get());
 
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<TeamDriveResource> resource(new TeamDriveResource());
   EXPECT_TRUE(resource->Parse(*document));
 
@@ -63,7 +63,7 @@ TEST(DriveAPIParserTest, TeamDriveListParser) {
   ASSERT_TRUE(document.get());
   EXPECT_TRUE(TeamDriveList::HasTeamDriveListKind(*document));
 
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<TeamDriveList> resource(new TeamDriveList());
   EXPECT_TRUE(resource->Parse(*document));
   EXPECT_EQ(3U, resource->items().size());
@@ -77,7 +77,7 @@ TEST(DriveAPIParserTest, FileListParser) {
       test_util::LoadJSONFile("drive/filelist.json");
   ASSERT_TRUE(document.get());
 
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<FileList> filelist(new FileList);
   EXPECT_TRUE(filelist->Parse(*document));
 
@@ -85,14 +85,14 @@ TEST(DriveAPIParserTest, FileListParser) {
                  "EgA6egpi96It9mH_____f_8AAP__AAD_okhU-cHLz83KzszMxsjMzs_RyNGJ"
                  "nridyrbHs7u9tv8AAP__AP7__n__AP8AokhU-cHLz83KzszMxsjMzs_RyNGJ"
                  "nridyrbHs7u9tv8A__4QZCEiXPTi_wtIgTkAAAAAngnSXUgCDEAAIgsJPgar"
-                 "t10AAAAABC"), filelist->next_link());
+                 "t10AAAAABC"),
+            filelist->next_link());
 
   ASSERT_EQ(3U, filelist->items().size());
   // Check file 1 (a regular file)
   const FileResource& file1 = *filelist->items()[0];
   EXPECT_EQ("0B4v7G8yEYAWHUmRrU2lMS2hLABC", file1.file_id());
-  EXPECT_EQ("\"WtRjAPZWbDA7_fkFjc5ojsEvDEF/MTM0MzM2NzgwMDIXYZ\"",
-            file1.etag());
+  EXPECT_EQ("\"WtRjAPZWbDA7_fkFjc5ojsEvDEF/MTM0MzM2NzgwMDIXYZ\"", file1.etag());
   EXPECT_EQ("My first file data", file1.title());
   EXPECT_EQ("application/octet-stream", file1.mime_type());
 
@@ -206,7 +206,7 @@ TEST(DriveAPIParserTest, ChangeListParser) {
       test_util::LoadJSONFile("drive/changelist.json");
   ASSERT_TRUE(document.get());
 
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<ChangeList> changelist(new ChangeList);
   EXPECT_TRUE(changelist->Parse(*document));
 
@@ -250,8 +250,8 @@ TEST(DriveAPIParserTest, ChangeListParser) {
   EXPECT_EQ("ABCv7G8yEYAWHc3Y5X0hMSkJYXYZ", change4.file_id());
   EXPECT_TRUE(change4.is_deleted());
   base::Time modification_time;
-  ASSERT_TRUE(util::GetTimeFromString("2012-07-27T12:34:56.789Z",
-                                      &modification_time));
+  ASSERT_TRUE(
+      util::GetTimeFromString("2012-07-27T12:34:56.789Z", &modification_time));
   EXPECT_EQ(modification_time, change4.modification_date());
 
   // Team Drive entry.
@@ -275,7 +275,7 @@ TEST(DriveAPIParserTest, ChangeListParserWithStartToken) {
       "drive/changelist_with_new_start_page_token.json");
   ASSERT_TRUE(document.get());
 
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<ChangeList> changelist = ChangeList::CreateFrom(*document);
   EXPECT_TRUE(changelist);
 
@@ -312,7 +312,7 @@ TEST(DriveAPIParserTest, StartPageToken) {
       test_util::LoadJSONFile("drive/start_page_token.json"));
 
   ASSERT_TRUE(document.get());
-  ASSERT_EQ(base::Value::Type::DICTIONARY, document->type());
+  ASSERT_EQ(base::Value::Type::DICT, document->type());
   std::unique_ptr<StartPageToken> resource =
       StartPageToken::CreateFrom(*document);
 

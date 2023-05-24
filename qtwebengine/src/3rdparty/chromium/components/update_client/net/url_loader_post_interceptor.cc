@@ -1,15 +1,16 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/update_client/net/url_loader_post_interceptor.h"
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
-#include "base/test/bind_test_util.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/test/bind.h"
 #include "components/update_client/test_configurator.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/http_request.h"
@@ -120,7 +121,7 @@ void URLLoaderPostInterceptor::Pause() {
 
 void URLLoaderPostInterceptor::Resume() {
   is_paused_ = false;
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindLambdaForTesting([&]() {
         if (!pending_expectations_.size())
           return;
@@ -165,10 +166,7 @@ void URLLoaderPostInterceptor::InitializeWithInterceptor() {
           replacements.ClearQuery();
           url = url.ReplaceComponents(replacements);
         }
-        auto it = std::find_if(
-            filtered_urls_.begin(), filtered_urls_.end(),
-            [url](const GURL& filtered_url) { return filtered_url == url; });
-        if (it == filtered_urls_.end())
+        if (!base::Contains(filtered_urls_, url))
           return;
 
         std::string request_body = network::GetUploadData(request);
@@ -182,7 +180,7 @@ void URLLoaderPostInterceptor::InitializeWithInterceptor() {
           const std::string response_body(expectation.second.response_body);
 
           if (url_job_request_ready_callback_) {
-            base::ThreadTaskRunnerHandle::Get()->PostTask(
+            base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
                 FROM_HERE, std::move(url_job_request_ready_callback_));
           }
 
@@ -218,16 +216,13 @@ URLLoaderPostInterceptor::RequestHandler(
     replacements.ClearQuery();
     url = url.ReplaceComponents(replacements);
   }
-  auto it = std::find_if(
-      filtered_urls_.begin(), filtered_urls_.end(),
-      [url](const GURL& filtered_url) { return filtered_url == url; });
-  if (it == filtered_urls_.end())
+  if (!base::Contains(filtered_urls_, url))
     return nullptr;
 
   std::string request_body = request.content;
   net::HttpRequestHeaders headers;
-  for (auto it : request.headers)
-    headers.SetHeader(it.first, it.second);
+  for (auto pair : request.headers)
+    headers.SetHeader(pair.first, pair.second);
   requests_.push_back({request_body, headers, url});
   if (expectations_.empty())
     return nullptr;

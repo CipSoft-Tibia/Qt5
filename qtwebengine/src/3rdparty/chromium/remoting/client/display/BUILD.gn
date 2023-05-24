@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -32,6 +32,9 @@ source_set("display") {
 
   public_deps = [ "//remoting/proto" ]
   deps = [
+    "//base",
+    "//remoting/base",
+    "//remoting/client/ui:ui_manipulation",
     "//third_party/libyuv",
     "//third_party/protobuf:protobuf_lite",
     "//third_party/webrtc_overrides:webrtc_component",
@@ -49,6 +52,8 @@ source_set("display") {
 
   if (is_mac) {
     frameworks = [ "OpenGL.framework" ]
+
+    defines = [ "GL_SILENCE_DEPRECATION" ]
   }
 
   if (is_ios) {
@@ -82,13 +87,12 @@ if (is_win) {
       "gl_renderer_unittest.cc",
     ]
 
-    configs += [
-      "//remoting/build/config:version",
-      "//remoting/build/config:enable_webrtc_remoting_client",
-    ]
+    configs += [ "//remoting/build/config:version" ]
 
     deps = [
       ":display",
+      "//base",
+      "//base/test:test_support",
       "//remoting/proto",
       "//testing/gmock",
       "//testing/gtest",

@@ -37,7 +37,7 @@
 **
 ****************************************************************************/
 
-// based on //chrome/browser/pdf/pdf_extension_util.h
+// based on //chrome/browser/pdf/pdf_extension_util.cc
 // Copyright 2015 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
@@ -63,7 +63,7 @@ namespace {
 
 // Adds strings that are used both by the stand-alone PDF Viewer and the Print
 // Preview PDF Viewer.
-static void AddCommonStrings(base::Value* dict) {
+static void AddCommonStrings(base::Value::Dict* dict) {
   static constexpr webui::LocalizedString kPdfResources[] = {
       {"errorDialogTitle", IDS_PDF_ERROR_DIALOG_TITLE},
       {"pageLoadFailed", IDS_PDF_PAGE_LOAD_FAILED},
@@ -76,13 +76,13 @@ static void AddCommonStrings(base::Value* dict) {
       {"twoUpViewEnable", IDS_PDF_TWO_UP_VIEW_ENABLE},
   };
   for (const auto& resource : kPdfResources)
-    dict->SetStringKey(resource.name, l10n_util::GetStringUTF16(resource.id));
+    dict->Set(resource.name, l10n_util::GetStringUTF16(resource.id));
 
-  dict->SetStringKey("presetZoomFactors", zoom::GetPresetZoomFactorsAsJSON());
+  dict->Set("presetZoomFactors", zoom::GetPresetZoomFactorsAsJSON());
 }
 
 // Adds strings that are used only by the stand-alone PDF Viewer.
-static void AddPdfViewerStrings(base::Value* dict) {
+static void AddPdfViewerStrings(base::Value::Dict* dict) {
   static constexpr webui::LocalizedString kPdfResources[] = {
     {"annotationsShowToggle", IDS_PDF_ANNOTATIONS_SHOW_TOGGLE},
     {"bookmarks", IDS_PDF_BOOKMARKS},
@@ -96,27 +96,47 @@ static void AddPdfViewerStrings(base::Value* dict) {
     {"passwordInvalid", IDS_PDF_PASSWORD_INVALID},
     {"passwordPrompt", IDS_PDF_NEED_PASSWORD},
     {"passwordSubmit", IDS_PDF_PASSWORD_SUBMIT},
+    {"present", IDS_PDF_PRESENT},
+    {"propertiesApplication", IDS_PDF_PROPERTIES_APPLICATION},
+    {"propertiesAuthor", IDS_PDF_PROPERTIES_AUTHOR},
+    {"propertiesCreated", IDS_PDF_PROPERTIES_CREATED},
     {"propertiesDialogClose", IDS_CLOSE},
+    {"propertiesDialogTitle", IDS_PDF_PROPERTIES_DIALOG_TITLE},
+    {"propertiesFastWebView", IDS_PDF_PROPERTIES_FAST_WEB_VIEW},
+    {"propertiesFastWebViewNo", IDS_PDF_PROPERTIES_FAST_WEB_VIEW_NO},
+    {"propertiesFastWebViewYes", IDS_PDF_PROPERTIES_FAST_WEB_VIEW_YES},
+    {"propertiesFileName", IDS_PDF_PROPERTIES_FILE_NAME},
+    {"propertiesFileSize", IDS_PDF_PROPERTIES_FILE_SIZE},
+    {"propertiesKeywords", IDS_PDF_PROPERTIES_KEYWORDS},
+    {"propertiesModified", IDS_PDF_PROPERTIES_MODIFIED},
+    {"propertiesPageCount", IDS_PDF_PROPERTIES_PAGE_COUNT},
+    {"propertiesPageSize", IDS_PDF_PROPERTIES_PAGE_SIZE},
+    {"propertiesPdfProducer", IDS_PDF_PROPERTIES_PDF_PRODUCER},
+    {"propertiesPdfVersion", IDS_PDF_PROPERTIES_PDF_VERSION},
+    {"propertiesSubject", IDS_PDF_PROPERTIES_SUBJECT},
+    {"propertiesTitle", IDS_PDF_PROPERTIES_TITLE},
+    {"rotationStateLabel0", IDS_PDF_ROTATION_STATE_LABEL_0},
+    {"rotationStateLabel90", IDS_PDF_ROTATION_STATE_LABEL_90},
+    {"rotationStateLabel180", IDS_PDF_ROTATION_STATE_LABEL_180},
+    {"rotationStateLabel270", IDS_PDF_ROTATION_STATE_LABEL_270},
     {"thumbnailPageAriaLabel", IDS_PDF_THUMBNAIL_PAGE_ARIA_LABEL},
     {"tooltipDocumentOutline", IDS_PDF_TOOLTIP_DOCUMENT_OUTLINE},
     {"tooltipDownload", IDS_PDF_TOOLTIP_DOWNLOAD},
     {"tooltipPrint", IDS_PDF_TOOLTIP_PRINT},
     {"tooltipRotateCCW", IDS_PDF_TOOLTIP_ROTATE_CCW},
-    {"tooltipRotateCW", IDS_PDF_TOOLTIP_ROTATE_CW},
     {"tooltipThumbnails", IDS_PDF_TOOLTIP_THUMBNAILS},
     {"zoomTextInputAriaLabel", IDS_PDF_ZOOM_TEXT_INPUT_ARIA_LABEL},
   };
   for (const auto& resource : kPdfResources)
-    dict->SetStringKey(resource.name, l10n_util::GetStringUTF16(resource.id));
+    dict->Set(resource.name, l10n_util::GetStringUTF16(resource.id));
 
   webui::SetLoadTimeDataDefaults(content::GetContentClient()->browser()->GetApplicationLocale(),
-                                 static_cast<base::DictionaryValue*>(dict));
-
+                                 dict);
 }
 
 } // namespace
 
-void AddStrings(PdfViewerContext context, base::Value* dict) {
+void AddStrings(PdfViewerContext context, base::Value::Dict* dict) {
   AddCommonStrings(dict);
   if (context == PdfViewerContext::kPdfViewer ||
       context == PdfViewerContext::kAll) {
@@ -128,18 +148,11 @@ void AddStrings(PdfViewerContext context, base::Value* dict) {
   }
 }
 
-void AddAdditionalData(base::Value* dict) {
-  dict->SetKey("pdfFormSaveEnabled",
-               base::Value(base::FeatureList::IsEnabled(
-                   chrome_pdf::features::kSaveEditedPDFForm)));
-  dict->SetStringKey(
-      "pdfViewerUpdateEnabledAttribute",
-      base::FeatureList::IsEnabled(chrome_pdf::features::kPDFViewerUpdate)
-          ? "pdf-viewer-update-enabled"
-          : "");
-
-  dict->SetKey("printingEnabled", base::Value(false));
-  dict->SetKey("pdfAnnotationsEnabled", base::Value(false));
+void AddAdditionalData(bool enable_annotations, base::Value::Dict* dict) {
+  bool printing_enabled = true;
+  bool annotations_enabled = false;
+  dict->Set("printingEnabled", printing_enabled);
+  dict->Set("pdfAnnotationsEnabled", annotations_enabled);
 }
 
 } // namespace pdf_extension_util

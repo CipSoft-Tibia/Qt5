@@ -1,9 +1,5 @@
-dpranke@google.com
+bpastene@chromium.org
 johnchen@chromium.org
 
-# These aren't actually great contact points for this directory, but
-# changes in this directory are rare and most changes happen in better-owned
-# subdirectories.
-#
-# TEAM: infra-dev@chromium.org
-# COMPONENT: Test
+per-file BUILD.gn=file://build/OWNERS
+per-file *.gni=file://build/OWNERS

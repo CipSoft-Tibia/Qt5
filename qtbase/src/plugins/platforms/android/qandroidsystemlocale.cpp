@@ -1,49 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qandroidsystemlocale.h"
 #include "androidjnimain.h"
-#include <QtCore/private/qjni_p.h>
-#include <QtCore/private/qjnihelpers_p.h>
+#include "qandroidsystemlocale.h"
 #include "qdatetime.h"
 #include "qstringlist.h"
 #include "qvariant.h"
+
+#include <QtCore/private/qjnihelpers_p.h>
+#include <QtCore/QJniObject>
 
 QT_BEGIN_NAMESPACE
 
@@ -55,23 +20,23 @@ void QAndroidSystemLocale::getLocaleFromJava() const
 {
     QWriteLocker locker(&m_lock);
 
-    QJNIObjectPrivate javaLocaleObject;
-    QJNIObjectPrivate javaActivity(QtAndroid::activity());
+    QJniObject javaLocaleObject;
+    QJniObject javaActivity(QtAndroid::activity());
     if (!javaActivity.isValid())
         javaActivity = QtAndroid::service();
     if (javaActivity.isValid()) {
-        QJNIObjectPrivate resources = javaActivity.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
-        QJNIObjectPrivate configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
+        QJniObject resources = javaActivity.callObjectMethod("getResources", "()Landroid/content/res/Resources;");
+        QJniObject configuration = resources.callObjectMethod("getConfiguration", "()Landroid/content/res/Configuration;");
 
         javaLocaleObject = configuration.getObjectField("locale", "Ljava/util/Locale;");
     } else {
-        javaLocaleObject = QJNIObjectPrivate::callStaticObjectMethod("java/util/Locale", "getDefault", "()Ljava/util/Locale;");
+        javaLocaleObject = QJniObject::callStaticObjectMethod("java/util/Locale", "getDefault", "()Ljava/util/Locale;");
     }
 
     QString languageCode = javaLocaleObject.callObjectMethod("getLanguage", "()Ljava/lang/String;").toString();
     QString countryCode = javaLocaleObject.callObjectMethod("getCountry", "()Ljava/lang/String;").toString();
 
-    m_locale = QLocale(languageCode + QLatin1Char('_') + countryCode);
+    m_locale = QLocale(languageCode + u'_' + countryCode);
 }
 
 QVariant QAndroidSystemLocale::query(QueryType type, QVariant in) const
@@ -104,14 +69,26 @@ QVariant QAndroidSystemLocale::query(QueryType type, QVariant in) const
         return m_locale.dayName(in.toInt(), QLocale::LongFormat);
     case DayNameShort:
         return m_locale.dayName(in.toInt(), QLocale::ShortFormat);
+    case DayNameNarrow:
+        return m_locale.dayName(in.toInt(), QLocale::NarrowFormat);
+    case StandaloneDayNameLong:
+        return m_locale.standaloneDayName(in.toInt(), QLocale::LongFormat);
+    case StandaloneDayNameShort:
+        return m_locale.standaloneDayName(in.toInt(), QLocale::ShortFormat);
+    case StandaloneDayNameNarrow:
+        return m_locale.standaloneDayName(in.toInt(), QLocale::NarrowFormat);
     case MonthNameLong:
         return m_locale.monthName(in.toInt(), QLocale::LongFormat);
     case MonthNameShort:
         return m_locale.monthName(in.toInt(), QLocale::ShortFormat);
+    case MonthNameNarrow:
+        return m_locale.monthName(in.toInt(), QLocale::NarrowFormat);
     case StandaloneMonthNameLong:
         return m_locale.standaloneMonthName(in.toInt(), QLocale::LongFormat);
     case StandaloneMonthNameShort:
         return m_locale.standaloneMonthName(in.toInt(), QLocale::ShortFormat);
+    case StandaloneMonthNameNarrow:
+        return m_locale.standaloneMonthName(in.toInt(), QLocale::NarrowFormat);
     case DateToStringLong:
         return m_locale.toString(in.toDate(), QLocale::LongFormat);
     case DateToStringShort:
@@ -139,16 +116,16 @@ QVariant QAndroidSystemLocale::query(QueryType type, QVariant in) const
     case CurrencySymbol:
         return m_locale .currencySymbol(QLocale::CurrencySymbolFormat(in.toUInt()));
     case CurrencyToString: {
-        switch (in.type()) {
-        case QVariant::Int:
+        switch (in.metaType().id()) {
+        case QMetaType::Int:
             return m_locale .toCurrencyString(in.toInt());
-        case QVariant::UInt:
+        case QMetaType::UInt:
             return m_locale .toCurrencyString(in.toUInt());
-        case QVariant::Double:
+        case QMetaType::Double:
             return m_locale .toCurrencyString(in.toDouble());
-        case QVariant::LongLong:
+        case QMetaType::LongLong:
             return m_locale .toCurrencyString(in.toLongLong());
-        case QVariant::ULongLong:
+        case QMetaType::ULongLong:
             return m_locale .toCurrencyString(in.toULongLong());
         default:
             break;
@@ -156,18 +133,18 @@ QVariant QAndroidSystemLocale::query(QueryType type, QVariant in) const
         return QString();
     }
     case StringToStandardQuotation:
-        return m_locale.quoteString(in.value<QStringRef>());
+        return m_locale.quoteString(in.value<QStringView>());
     case StringToAlternateQuotation:
-        return m_locale.quoteString(in.value<QStringRef>(), QLocale::AlternateQuotation);
+        return m_locale.quoteString(in.value<QStringView>(), QLocale::AlternateQuotation);
     case ListToSeparatedString:
         return m_locale.createSeparatedList(in.value<QStringList>());
     case LocaleChanged:
         Q_ASSERT_X(false, Q_FUNC_INFO, "This can't happen.");
     case UILanguages: {
         if (QtAndroidPrivate::androidSdkVersion() >= 24) {
-            QJNIObjectPrivate localeListObject =
-                QJNIObjectPrivate::callStaticObjectMethod("android/os/LocaleList", "getDefault",
-                                                          "()Landroid/os/LocaleList;");
+            QJniObject localeListObject =
+                QJniObject::callStaticObjectMethod("android/os/LocaleList", "getDefault",
+                                                   "()Landroid/os/LocaleList;");
             if (localeListObject.isValid()) {
                 QString lang = localeListObject.callObjectMethod("toLanguageTags",
                                                                  "()Ljava/lang/String;").toString();
@@ -186,7 +163,7 @@ QVariant QAndroidSystemLocale::query(QueryType type, QVariant in) const
     return QVariant();
 }
 
-QLocale QAndroidSystemLocale::fallbackUiLocale() const
+QLocale QAndroidSystemLocale::fallbackLocale() const
 {
     QReadLocker locker(&m_lock);
     return m_locale;

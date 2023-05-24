@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,22 @@
 #include "base/base64.h"
 #include "base/json/json_reader.h"
 #include "base/numerics/safe_conversions.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/values.h"
-#include "services/network/public/mojom/trust_tokens.mojom-forward.h"
 #include "services/network/public/mojom/trust_tokens.mojom.h"
 #include "services/network/trust_tokens/suitable_trust_token_origin.h"
+#include "services/network/trust_tokens/types.h"
 
 namespace network {
+
+const char kTrustTokenKeyCommitmentProtocolVersionField[] = "protocol_version";
+const char kTrustTokenKeyCommitmentIDField[] = "id";
+const char kTrustTokenKeyCommitmentBatchsizeField[] = "batchsize";
+const char kTrustTokenKeyCommitmentKeysField[] = "keys";
+const char kTrustTokenKeyCommitmentExpiryField[] = "expiry";
+const char kTrustTokenKeyCommitmentKeyField[] = "Y";
 
 namespace {
 
@@ -44,14 +52,11 @@ enum class ParseKeyResult {
 // key has expired but is otherwise valid, ignores the key rather than failing
 // the prase.
 ParseKeyResult ParseSingleKeyExceptLabel(
-    const base::Value& in,
+    const base::Value::Dict& in,
     mojom::TrustTokenVerificationKey* out) {
-  CHECK(in.is_dict());
-
   const std::string* expiry =
-      in.FindStringKey(kTrustTokenKeyCommitmentExpiryField);
-  const std::string* key_body =
-      in.FindStringKey(kTrustTokenKeyCommitmentKeyField);
+      in.FindString(kTrustTokenKeyCommitmentExpiryField);
+  const std::string* key_body = in.FindString(kTrustTokenKeyCommitmentKeyField);
   if (!expiry || !key_body)
     return ParseKeyResult::kFail;
 
@@ -62,9 +67,8 @@ ParseKeyResult ParseSingleKeyExceptLabel(
   if (!base::Base64Decode(*key_body, &out->body))
     return ParseKeyResult::kFail;
 
-  out->expiry =
-      base::Time::UnixEpoch() +
-      base::TimeDelta::FromMicroseconds(expiry_microseconds_since_unix_epoch);
+  out->expiry = base::Time::UnixEpoch() +
+                base::Microseconds(expiry_microseconds_since_unix_epoch);
   if (out->expiry <= base::Time::Now())
     return ParseKeyResult::kIgnore;
 
@@ -72,32 +76,55 @@ ParseKeyResult ParseSingleKeyExceptLabel(
 }
 
 mojom::TrustTokenKeyCommitmentResultPtr ParseSingleIssuer(
-    const base::Value& value) {
-  if (!value.is_dict())
+    const base::Value& commitments_by_version) {
+  if (!commitments_by_version.is_dict())
     return nullptr;
+  const base::Value::Dict& commitments_dict = commitments_by_version.GetDict();
 
   auto result = mojom::TrustTokenKeyCommitmentResult::New();
 
+  const base::Value::Dict* dict = nullptr;
+  // Confirm that the protocol_version field is present. If the server supports
+  // multiple versions, we prefer the VOPRF version, since it's more efficient
+  // (and we're free to choose which version to use).
+  for (auto version : {mojom::TrustTokenProtocolVersion::kTrustTokenV3Voprf,
+                       mojom::TrustTokenProtocolVersion::kTrustTokenV3Pmb}) {
+    std::string version_label = internal::ProtocolVersionToString(version);
+    if (commitments_dict.contains(version_label)) {
+      dict = commitments_dict.FindDict(version_label);
+      if (!dict)
+        return nullptr;
+      const std::string* maybe_version =
+          dict->FindString(kTrustTokenKeyCommitmentProtocolVersionField);
+      if (!maybe_version || *maybe_version != version_label)
+        return nullptr;
+      result->protocol_version = version;
+      break;
+    }
+  }
+  if (!dict)
+    return nullptr;
+
+  // Confirm that the id field is present and type-safe.
+  absl::optional<int> maybe_id = dict->FindInt(kTrustTokenKeyCommitmentIDField);
+  if (!maybe_id || *maybe_id <= 0)
+    return nullptr;
+  result->id = *maybe_id;
+
   // Confirm that the batchsize field is present and type-safe.
-  base::Optional<int> maybe_batch_size =
-      value.FindIntKey(kTrustTokenKeyCommitmentBatchsizeField);
+  absl::optional<int> maybe_batch_size =
+      dict->FindInt(kTrustTokenKeyCommitmentBatchsizeField);
   if (!maybe_batch_size || *maybe_batch_size <= 0)
     return nullptr;
   result->batch_size = *maybe_batch_size;
 
-  // Confirm that the srrkey field is present and base64-encoded.
-  const std::string* maybe_srrkey =
-      value.FindStringKey(kTrustTokenKeyCommitmentSrrkeyField);
-  if (!maybe_srrkey)
+  // Parse the key commitments in the result if available.
+  const base::Value* maybe_keys = dict->Find(kTrustTokenKeyCommitmentKeysField);
+  if (!maybe_keys)
+    return result;
+  if (!maybe_keys->is_dict())
     return nullptr;
-  if (!base::Base64Decode(*maybe_srrkey,
-                          &result->signed_redemption_record_verification_key)) {
-    return nullptr;
-  }
-
-  // Parse the key commitments in the result (these are exactly the
-  // key-value pairs in the dictionary with dictionary-typed values).
-  for (const auto& kv : value.DictItems()) {
+  for (auto kv : maybe_keys->GetDict()) {
     const base::Value& item = kv.second;
     if (!item.is_dict())
       continue;
@@ -107,7 +134,7 @@ mojom::TrustTokenKeyCommitmentResultPtr ParseSingleIssuer(
     if (!ParseSingleKeyLabel(kv.first))
       return nullptr;
 
-    switch (ParseSingleKeyExceptLabel(item, key.get())) {
+    switch (ParseSingleKeyExceptLabel(item.GetDict(), key.get())) {
       case ParseKeyResult::kFail:
         return nullptr;
       case ParseKeyResult::kIgnore:
@@ -137,32 +164,9 @@ mojom::TrustTokenKeyCommitmentResultPtr& commitment(Entry& e) {
 
 }  // namespace
 
-const char kTrustTokenKeyCommitmentBatchsizeField[] = "batchsize";
-const char kTrustTokenKeyCommitmentSrrkeyField[] = "srrkey";
-const char kTrustTokenKeyCommitmentExpiryField[] = "expiry";
-const char kTrustTokenKeyCommitmentKeyField[] = "Y";
-
-// https://docs.google.com/document/d/1TNnya6B8pyomDK2F1R9CL3dY10OAmqWlnCxsWyOBDVQ/edit#bookmark=id.6wh9crbxdizi
-// {
-//   "batchsize" : ..., // Batch size; value of type int.
-//   "srrkey" : ...,    // Required Signed Redemption Record (SRR)
-//                      // verification key, in base64.
-//
-//   "1" : {            // Key label, a number in uint32_t range; ignored except
-//                      // for checking that it is present and type-safe.
-//     "Y" : ...,       // Required token issuance verification key, in
-//                      // base64.
-//     "expiry" : ...,  // Required token issuance key expiry time, in
-//                      // microseconds since the Unix epoch.
-//   },
-//   "17" : {           // No guarantee that key labels (1, 17) are dense.
-//     "Y" : ...,
-//     "expiry" : ...,
-//   }
-// }
 mojom::TrustTokenKeyCommitmentResultPtr TrustTokenKeyCommitmentParser::Parse(
     base::StringPiece response_body) {
-  base::Optional<base::Value> maybe_value =
+  absl::optional<base::Value> maybe_value =
       base::JSONReader::Read(response_body);
   if (!maybe_value)
     return nullptr;
@@ -174,7 +178,7 @@ std::unique_ptr<base::flat_map<SuitableTrustTokenOrigin,
                                mojom::TrustTokenKeyCommitmentResultPtr>>
 TrustTokenKeyCommitmentParser::ParseMultipleIssuers(
     base::StringPiece response_body) {
-  base::Optional<base::Value> maybe_value =
+  absl::optional<base::Value> maybe_value =
       base::JSONReader::Read(response_body);
   if (!maybe_value)
     return nullptr;
@@ -191,9 +195,9 @@ TrustTokenKeyCommitmentParser::ParseMultipleIssuers(
 
   std::vector<Entry> parsed_entries;
 
-  for (const auto& kv : maybe_value->DictItems()) {
+  for (auto kv : maybe_value->DictItems()) {
     const std::string& raw_key_from_json = kv.first;
-    base::Optional<SuitableTrustTokenOrigin> maybe_issuer =
+    absl::optional<SuitableTrustTokenOrigin> maybe_issuer =
         SuitableTrustTokenOrigin::Create(GURL(raw_key_from_json));
 
     if (!maybe_issuer)
@@ -205,9 +209,8 @@ TrustTokenKeyCommitmentParser::ParseMultipleIssuers(
     if (!commitment_result)
       continue;
 
-    parsed_entries.emplace_back(Entry(std::move(*maybe_issuer),
-                                      raw_key_from_json,
-                                      std::move(commitment_result)));
+    parsed_entries.emplace_back(std::move(*maybe_issuer), raw_key_from_json,
+                                std::move(commitment_result));
   }
 
   // Deterministically deduplicate entries corresponding to the same issuer,

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #import <UIKit/UIKit.h>
 
@@ -47,7 +11,10 @@
 
 #include "qiosglobal.h"
 #include "quiview.h"
+#include "qiosscreen.h"
 #include "qiosmessagedialog.h"
+
+using namespace Qt::StringLiterals;
 
 QIOSMessageDialog::QIOSMessageDialog()
     : m_alertController(nullptr)
@@ -73,7 +40,7 @@ inline QString QIOSMessageDialog::messageTextPlain()
     if (!detailedText.isEmpty())
         text += lineShift + detailedText;
 
-    text.replace(QLatin1String("<p>"), QStringLiteral("\n"), Qt::CaseInsensitive);
+    text.replace("<p>"_L1, QStringLiteral("\n"), Qt::CaseInsensitive);
     text.remove(QRegularExpression(QStringLiteral("<[^>]*>")));
 
     return text;
@@ -125,6 +92,9 @@ bool QIOSMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality win
             || windowModality == Qt::NonModal) // We can only do modal dialogs
         return false;
 
+    if (!options()->checkBoxLabel().isNull())
+        return false; // Can't support
+
     m_alertController = [[UIAlertController
         alertControllerWithTitle:options()->windowTitle().toNSString()
         message:messageTextPlain().toNSString()
@@ -147,6 +117,25 @@ bool QIOSMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality win
     }
 
     UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window : qt_apple_sharedApplication().keyWindow;
+    if (!window) {
+        qCDebug(lcQpaWindow, "Attempting to exec a dialog without any window/widget visible.");
+
+        auto *primaryScreen = static_cast<QIOSScreen*>(QGuiApplication::primaryScreen()->handle());
+        Q_ASSERT(primaryScreen);
+
+        window = primaryScreen->uiWindow();
+        if (window.hidden) {
+            // With a window hidden, an attempt to present view controller
+            // below fails with a warning, that a view "is not a part of
+            // any view hierarchy". The UIWindow is initially hidden,
+            // as unhiding it is what hides the splash screen.
+            window.hidden = NO;
+        }
+    }
+
+    if (!window)
+        return false;
+
     [window.rootViewController presentViewController:m_alertController animated:YES completion:nil];
     return true;
 }

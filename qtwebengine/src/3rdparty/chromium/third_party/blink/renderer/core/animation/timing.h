@@ -31,14 +31,23 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_TIMING_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_TIMING_H_
 
+#include "base/check_op.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/optional.h"
+#include "base/memory/values_equivalent.h"
+#include "cc/animation/keyframe_model.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_timeline_range.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_typedefs.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_cssnumericvalue_double.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_string_timelinerangeoffset.h"
 #include "third_party/blink/renderer/core/animation/animation_time_delta.h"
-#include "third_party/blink/renderer/core/style/data_equivalency.h"
-#include "third_party/blink/renderer/platform/animation/compositor_keyframe_model.h"
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/platform/animation/timing_function.h"
+#include "third_party/blink/renderer/platform/geometry/length.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
 
@@ -59,7 +68,7 @@ struct CORE_EXPORT Timing {
   };
   // Represents the animation direction from the Web Animations spec, see
   // https://drafts.csswg.org/web-animations-1/#animation-direction.
-  enum AnimationDirection {
+  enum class AnimationDirection {
     kForwards,
     kBackwards,
   };
@@ -76,11 +85,49 @@ struct CORE_EXPORT Timing {
     kOverrideIterationStart = 1 << 5,
     kOverrideStartDelay = 1 << 6,
     kOverrideTimingFunction = 1 << 7,
-    kOverrideAll = (1 << 8) - 1
+    kOverrideRangeStart = 1 << 8,
+    kOverrideRangeEnd = 1 << 9,
+    kOverrideAll = (1 << 10) - 1
   };
 
-  using FillMode = CompositorKeyframeModel::FillMode;
-  using PlaybackDirection = CompositorKeyframeModel::Direction;
+  using V8Delay = V8UnionCSSNumericValueOrDouble;
+
+  // Delay can be directly expressed as time delays or calculated based on a
+  // position on a view timeline. As part of the normalization process, a
+  // timeline offsets are converted to time-based delays.
+  struct Delay {
+    // TODO(crbug.com/7575): Support percent delays in addition to time-based
+    // delays.
+    AnimationTimeDelta time_delay;
+    absl::optional<double> relative_delay;
+
+    Delay() = default;
+
+    explicit Delay(AnimationTimeDelta time) : time_delay(time) {}
+
+    bool IsInfinite() const { return time_delay.is_inf(); }
+
+    bool operator==(const Delay& other) const {
+      return time_delay == other.time_delay &&
+             relative_delay == other.relative_delay;
+    }
+
+    bool operator!=(const Delay& other) const { return !(*this == other); }
+
+    bool IsNonzeroTimeBasedDelay() const {
+      return !relative_delay && !time_delay.is_zero();
+    }
+
+    // Scaling only affects time based delays.
+    void Scale(double scale_factor) { time_delay *= scale_factor; }
+
+    AnimationTimeDelta AsTimeValue() const { return time_delay; }
+
+    V8Delay* ToV8Delay() const;
+  };
+
+  using FillMode = cc::KeyframeModel::FillMode;
+  using PlaybackDirection = cc::KeyframeModel::Direction;
 
   static double NullValue() { return std::numeric_limits<double>::quiet_NaN(); }
 
@@ -88,20 +135,11 @@ struct CORE_EXPORT Timing {
   static FillMode StringToFillMode(const String&);
   static String PlaybackDirectionString(PlaybackDirection);
 
-  Timing()
-      : start_delay(0),
-        end_delay(0),
-        fill_mode(FillMode::AUTO),
-        iteration_start(0),
-        iteration_count(1),
-        iteration_duration(base::nullopt),
-        direction(PlaybackDirection::NORMAL),
-        timing_function(LinearTimingFunction::Shared()),
-        timing_overrides(kOverrideNode) {}
+  Timing() = default;
 
   void AssertValid() const {
-    DCHECK(std::isfinite(start_delay));
-    DCHECK(std::isfinite(end_delay));
+    DCHECK(!start_delay.IsInfinite());
+    DCHECK(!end_delay.IsInfinite());
     DCHECK(std::isfinite(iteration_start));
     DCHECK_GE(iteration_start, 0);
     DCHECK_GE(iteration_count, 0);
@@ -109,13 +147,6 @@ struct CORE_EXPORT Timing {
            iteration_duration.value() >= AnimationTimeDelta());
     DCHECK(timing_function);
   }
-
-  // https://drafts.csswg.org/web-animations-1/#iteration-duration
-  AnimationTimeDelta IterationDuration() const;
-
-  // https://drafts.csswg.org/web-animations-1/#active-duration
-  double ActiveDuration() const;
-  double EndTimeInternal() const;
 
   Timing::FillMode ResolvedFillMode(bool is_animation) const;
   EffectTiming* ConvertToEffectTiming() const;
@@ -127,7 +158,8 @@ struct CORE_EXPORT Timing {
            iteration_count == other.iteration_count &&
            iteration_duration == other.iteration_duration &&
            direction == other.direction &&
-           DataEquivalent(timing_function.get(), other.timing_function.get());
+           base::ValuesEquivalent(timing_function.get(),
+                                  other.timing_function.get());
   }
 
   bool operator!=(const Timing& other) const { return !(*this == other); }
@@ -142,30 +174,34 @@ struct CORE_EXPORT Timing {
   }
   bool HasTimingOverrides() { return timing_overrides != kOverrideNode; }
 
-  double start_delay;
-  double end_delay;
-  FillMode fill_mode;
-  double iteration_start;
-  double iteration_count;
-  // If empty, indicates the 'auto' value.
-  base::Optional<AnimationTimeDelta> iteration_duration;
+  V8CSSNumberish* ToComputedValue(absl::optional<AnimationTimeDelta>,
+                                  absl::optional<AnimationTimeDelta>) const;
 
-  PlaybackDirection direction;
-  scoped_refptr<TimingFunction> timing_function;
+  Delay start_delay;
+  Delay end_delay;
+  FillMode fill_mode = FillMode::AUTO;
+  double iteration_start = 0;
+  double iteration_count = 1;
+  // If empty, indicates the 'auto' value.
+  absl::optional<AnimationTimeDelta> iteration_duration = absl::nullopt;
+
+  PlaybackDirection direction = PlaybackDirection::NORMAL;
+  scoped_refptr<TimingFunction> timing_function =
+      LinearTimingFunction::Shared();
   // Mask of timing attributes that are set by calls to
   // AnimationEffect.updateTiming. Once set, these attributes ignore changes
   // based on the CSS style.
-  uint16_t timing_overrides;
+  uint16_t timing_overrides = kOverrideNode;
 
   struct CalculatedTiming {
     DISALLOW_NEW();
     Phase phase = Phase::kPhaseNone;
-    base::Optional<double> current_iteration = 0;
-    base::Optional<double> progress = 0;
+    absl::optional<double> current_iteration = 0;
+    absl::optional<double> progress = 0;
     bool is_current = false;
     bool is_in_effect = false;
     bool is_in_play = false;
-    base::Optional<double> local_time;
+    absl::optional<AnimationTimeDelta> local_time;
     AnimationTimeDelta time_to_forwards_effect_change =
         AnimationTimeDelta::Max();
     AnimationTimeDelta time_to_reverse_effect_change =
@@ -173,15 +209,40 @@ struct CORE_EXPORT Timing {
     AnimationTimeDelta time_to_next_iteration = AnimationTimeDelta::Max();
   };
 
-  CalculatedTiming CalculateTimings(base::Optional<double> local_time,
-                                    base::Optional<Phase> timeline_phase,
-                                    AnimationDirection animation_direction,
-                                    bool is_keyframe_effect,
-                                    base::Optional<double> playback_rate) const;
+  // Normalized values contain specified timing values after normalizing to
+  // timeline.
+  struct NormalizedTiming {
+    DISALLOW_NEW();
+    // Value used in normalization math. Stored so that we can convert back if
+    // needed. At present, only scroll-linked animations have a timeline
+    // duration. If this changes, we need to update the is_current calculation.
+    absl::optional<AnimationTimeDelta> timeline_duration;
+    // Though timing delays may be expressed as either times or (phase,offset)
+    // pairs, post normalization, delays is expressed in time.
+    AnimationTimeDelta start_delay;
+    AnimationTimeDelta end_delay;
+    AnimationTimeDelta iteration_duration;
+    // Calculated as (iteration_duration * iteration_count)
+    AnimationTimeDelta active_duration;
+    // Calculated as (start_delay + active_duration + end_delay)
+    AnimationTimeDelta end_time;
+  };
+
+  // TODO(crbug.com/1394434): Cleanup method signature by passing in
+  // AnimationEffectOwner.
+  CalculatedTiming CalculateTimings(
+      absl::optional<AnimationTimeDelta> local_time,
+      bool at_progress_timeline_boundary,
+      bool is_idle,
+      const NormalizedTiming& normalized_timing,
+      AnimationDirection animation_direction,
+      bool is_keyframe_effect,
+      absl::optional<double> playback_rate) const;
   ComputedEffectTiming* getComputedTiming(const CalculatedTiming& calculated,
+                                          const NormalizedTiming& normalized,
                                           bool is_keyframe_effect) const;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_TIMING_H_

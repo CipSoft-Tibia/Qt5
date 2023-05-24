@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/memory/scoped_refptr.h"
 #include "ui/gfx/x/xproto.h"
@@ -25,27 +26,26 @@ void ReadEvent(Event* event, Connection* connection, ReadBuffer* buffer);
 class COMPONENT_EXPORT(X11) Event {
  public:
   template <typename T>
-  explicit Event(T&& xproto_event, bool sequence_valid = true) {
+  Event(bool send_event, T&& xproto_event) {
     using DecayT = std::decay_t<T>;
-    sequence_valid_ = true;
+    send_event_ = send_event;
     sequence_ = xproto_event.sequence;
     type_id_ = DecayT::type_id;
-    deleter_ = [](void* event) { delete reinterpret_cast<DecayT*>(event); };
     auto* event = new DecayT(std::forward<T>(xproto_event));
-    event_ = event;
+    event_ = {event, [](void* e) {
+                if (e) {
+                  delete reinterpret_cast<DecayT*>(e);
+                }
+              }};
     window_ = event->GetWindow();
-    sequence_valid_ = sequence_valid;
   }
 
   Event();
-  Event(xcb_generic_event_t* xcb_event,
-        Connection* connection,
-        bool sequence_valid = true);
+
   // |event_bytes| is modified and will not be valid after this call.
   // A copy is necessary if the original data is still needed.
   Event(scoped_refptr<base::RefCountedMemory> event_bytes,
-        Connection* connection,
-        bool sequence_valid = true);
+        Connection* connection);
 
   Event(const Event&) = delete;
   Event& operator=(const Event&) = delete;
@@ -58,7 +58,7 @@ class COMPONENT_EXPORT(X11) Event {
   template <typename T>
   T* As() {
     if (type_id_ == T::type_id)
-      return reinterpret_cast<T*>(event_);
+      return reinterpret_cast<T*>(event_.get());
     return nullptr;
   }
 
@@ -67,35 +67,35 @@ class COMPONENT_EXPORT(X11) Event {
     return const_cast<Event*>(this)->As<T>();
   }
 
-  bool sequence_valid() const { return sequence_valid_; }
+  bool send_event() const { return send_event_; }
+
   uint32_t sequence() const { return sequence_; }
 
-  x11::Window window() const { return window_ ? *window_ : x11::Window::None; }
-  void set_window(x11::Window window) {
+  Window window() const { return window_ ? *window_ : Window::None; }
+  void set_window(Window window) {
     if (window_)
       *window_ = window;
   }
 
-  bool Initialized() const { return deleter_; }
+  bool Initialized() const { return !!event_; }
 
  private:
   friend void ReadEvent(Event* event,
                         Connection* connection,
                         ReadBuffer* buffer);
 
-  void Dealloc();
-
-  bool sequence_valid_ = false;
+  // True if this event was sent from another X client.  False if this event
+  // was sent by the X server.
+  bool send_event_ = false;
   uint16_t sequence_ = 0;
 
   // XProto event state.
   int type_id_ = 0;
-  void (*deleter_)(void*) = nullptr;
-  void* event_ = nullptr;
+  std::unique_ptr<void, void (*)(void*)> event_ = {nullptr, nullptr};
 
   // This member points to a field in |event_|, or may be nullptr if there's no
   // associated window for the event.  It's owned by |event_|, not us.
-  x11::Window* window_ = nullptr;
+  raw_ptr<Window> window_ = nullptr;
 };
 
 }  // namespace x11

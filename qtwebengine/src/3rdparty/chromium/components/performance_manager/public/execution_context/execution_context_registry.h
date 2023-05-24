@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,9 +33,18 @@ class ExecutionContextRegistry {
   // Graph.
   static ExecutionContextRegistry* GetFromGraph(Graph* graph);
 
+  // Returns the ExecutionContext associated with a node.
+  static const ExecutionContext* GetExecutionContextForFrameNode(
+      const FrameNode* frame_node);
+  static const ExecutionContext* GetExecutionContextForWorkerNode(
+      const WorkerNode* worker_node);
+
   // Adds an observer to the registry. The observer needs to be removed before
   // the registry is torn down.
   virtual void AddObserver(ExecutionContextObserver* observer) = 0;
+
+  // Determines if an observer is in the registry.
+  virtual bool HasObserver(ExecutionContextObserver* observer) const = 0;
 
   // Removes an observer from the registry.
   virtual void RemoveObserver(ExecutionContextObserver* observer) = 0;
@@ -55,10 +64,11 @@ class ExecutionContextRegistry {
   virtual const WorkerNode* GetWorkerNodeByWorkerToken(
       const blink::WorkerToken& token) = 0;
 
-  // Returns the ExecutionContext associated with a node.
-  virtual const ExecutionContext* GetExecutionContextForFrameNode(
+  // Returns the ExecutionContext associated with a node. These provide
+  // implementations for the static functions above, which should be preferred.
+  virtual const ExecutionContext* GetExecutionContextForFrameNodeImpl(
       const FrameNode* frame_node) = 0;
-  virtual const ExecutionContext* GetExecutionContextForWorkerNode(
+  virtual const ExecutionContext* GetExecutionContextForWorkerNodeImpl(
       const WorkerNode* worker_node) = 0;
 };
 

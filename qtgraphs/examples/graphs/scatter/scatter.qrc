@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/scatter/Data.qml</file>
+        <file>qml/scatter/main.qml</file>
+    </qresource>
+</RCC>

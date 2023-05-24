@@ -1,45 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef Q_TEST_MODEL_H
 #define Q_TEST_MODEL_H
 
 #include <QtCore/qabstractitemmodel.h>
 
+#include <limits.h>
+
 class TestModel: public QAbstractItemModel
 {
     Q_OBJECT
 
 public:
-    TestModel(QObject *parent = 0): QAbstractItemModel(parent),
+    TestModel(QObject *parent = nullptr): QAbstractItemModel(parent),
        fetched(false), rows(10), cols(1), levels(INT_MAX), wrongIndex(false) { init(); }
 
-    TestModel(int _rows, int _cols, QObject *parent = 0): QAbstractItemModel(parent),
+    TestModel(int _rows, int _cols, QObject *parent = nullptr): QAbstractItemModel(parent),
        fetched(false), rows(_rows), cols(_cols), levels(INT_MAX), wrongIndex(false) { init(); }
 
     void init() {
@@ -74,15 +51,15 @@ public:
         return QString("[%1,%2,%3,%4]").arg(idx.row()).arg(idx.column()).arg(idx.internalId()).arg(hasChildren(idx));
     }
 
-    bool canFetchMore(const QModelIndex &) const {
+    bool canFetchMore(const QModelIndex &) const override {
         return !fetched;
     }
 
-    void fetchMore(const QModelIndex &) {
+    void fetchMore(const QModelIndex &) override {
         fetched = true;
     }
 
-    bool hasChildren(const QModelIndex &parent = QModelIndex()) const {
+    bool hasChildren(const QModelIndex &parent = QModelIndex()) const override {
         bool hasFetched = fetched;
         fetched = true;
         bool r = QAbstractItemModel::hasChildren(parent);
@@ -90,17 +67,17 @@ public:
         return r;
     }
 
-    int rowCount(const QModelIndex& parent = QModelIndex()) const {
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override {
         if ((parent.column() > 0) || (level(parent) > levels)
             || (alternateChildlessRows && parent.row() > 0 && (parent.row() & 1)))
             return 0;
         Node *n = (Node*)parent.internalPointer();
         if (!n)
             n = tree;
-        return n->children.count();
+        return n->children.size();
     }
 
-    int columnCount(const QModelIndex& parent = QModelIndex()) const {
+    int columnCount(const QModelIndex& parent = QModelIndex()) const override {
         if ((parent.column() > 0) || (level(parent) > levels)
             || (alternateChildlessRows && parent.row() > 0 && (parent.row() & 1)))
             return 0;
@@ -113,14 +90,14 @@ public:
         return false;
     }
 
-    Q_INVOKABLE QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const
+    Q_INVOKABLE QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const override
     {
         if (row < 0 || column < 0 || (level(parent) > levels) || column >= cols)
             return QModelIndex();
         Node *pn = (Node*)parent.internalPointer();
         if (!pn)
             pn = tree;
-        if (row >= pn->children.count())
+        if (row >= pn->children.size())
             return QModelIndex();
 
         Node *n = pn->children.at(row);
@@ -131,7 +108,7 @@ public:
         return createIndex(row, column, n);
     }
 
-    QModelIndex parent(const QModelIndex &index) const
+    QModelIndex parent(const QModelIndex &index) const override
     {
         Node *n = (Node *)index.internalPointer();
         if (!n || n->parent == tree)
@@ -142,7 +119,7 @@ public:
         return createIndex(parentRow, 0, n->parent);
     }
 
-    QVariant data(const QModelIndex &idx, int role) const
+    QVariant data(const QModelIndex &idx, int role) const override
     {
         if (!idx.isValid())
             return QVariant();
@@ -153,7 +130,7 @@ public:
         if (pn != tree)
             pn = pn->parent;
         if (idx.row() < 0 || idx.column() < 0 || idx.column() >= cols
-            || idx.row() >= pn->children.count()) {
+            || idx.row() >= pn->children.size()) {
             wrongIndex = true;
             qWarning("Invalid modelIndex [%d,%d,%p]", idx.row(), idx.column(),
                      idx.internalPointer());
@@ -167,7 +144,7 @@ public:
         return QVariant();
     }
 
-    bool setData(const QModelIndex &index, const QVariant &value, int role)
+    bool setData(const QModelIndex &index, const QVariant &value, int role) override
     {
         Q_UNUSED(value);
         QVector<int> changedRole(1, role);
@@ -186,7 +163,7 @@ public:
         emit layoutChanged(parents);
     }
 
-    bool removeRows(int row, int count, const QModelIndex &parent)
+    bool removeRows(int row, int count, const QModelIndex &parent) override
     {
         beginRemoveRows(parent, row, row + count - 1);
         Node *n = (Node *)parent.internalPointer();
@@ -211,7 +188,7 @@ public:
         endRemoveColumns();
     }
 
-    bool insertRows(int row, int count, const QModelIndex &parent)
+    bool insertRows(int row, int count, const QModelIndex &parent) override
     {
         beginInsertRows(parent, row, row + count - 1);
         Node *n = (Node *)parent.internalPointer();
@@ -222,7 +199,7 @@ public:
         return true;
     }
 
-    bool moveRows(const QModelIndex &sourceParent, int sourceRow, int count, const QModelIndex &destinationParent, int destinationChild)
+    bool moveRows(const QModelIndex &sourceParent, int sourceRow, int count, const QModelIndex &destinationParent, int destinationChild) override
     {
         Q_ASSERT_X(sourceRow >= 0 && sourceRow < rowCount(sourceParent)
                    && count > 0 && sourceRow + count < rowCount(sourceParent)
@@ -274,6 +251,8 @@ public:
     mutable bool wrongIndex;
 
     struct Node {
+        Q_DISABLE_COPY_MOVE(Node)
+
         Node *parent;
         QVector<Node *> children;
 
@@ -291,15 +270,15 @@ public:
         void addRows(int row, int count)
         {
             if (count > 0) {
-                children.reserve(children.count() + count);
+                children.reserve(children.size() + count);
                 children.insert(row, count, (Node *)0);
             }
         }
 
         void removeRows(int row, int count, bool keepAlive = false)
         {
-            int newCount = qMax(children.count() - count, 0);
-            int effectiveCountDiff = children.count() - newCount;
+            int newCount = qMax(children.size() - count, 0);
+            int effectiveCountDiff = children.size() - newCount;
             if (effectiveCountDiff > 0) {
                 if (!keepAlive)
                     for (int i = 0; i < effectiveCountDiff; i++)

@@ -4,6 +4,7 @@
 
 """Wrappers for gsutil, for basic interaction with Google Cloud Storage."""
 
+from __future__ import absolute_import
 import collections
 import contextlib
 import hashlib
@@ -75,10 +76,10 @@ class CloudStorageError(Exception):
             '  3. For the project-id, just enter 0.' % command)
 
 
-class PermissionError(CloudStorageError):
+class CloudStoragePermissionError(CloudStorageError):
 
   def __init__(self):
-    super(PermissionError, self).__init__(
+    super().__init__(
         'Attempted to access a file from Cloud Storage but you don\'t '
         'have permission. ' + self._GetConfigInstructions())
 
@@ -86,7 +87,7 @@ class PermissionError(CloudStorageError):
 class CredentialsError(CloudStorageError):
 
   def __init__(self):
-    super(CredentialsError, self).__init__(
+    super().__init__(
         'Attempted to access a file from Cloud Storage but you have no '
         'configured credentials. ' + self._GetConfigInstructions())
 
@@ -138,13 +139,9 @@ def _RunCommand(args):
   elif _IsRunningOnSwarming():
     gsutil_env = os.environ.copy()
 
-  if os.name == 'nt':
-    # If Windows, prepend python. Python scripts aren't directly executable.
-    args = [sys.executable, _GSUTIL_PATH] + args
-  else:
-    # Don't do it on POSIX, in case someone is using a shell script to redirect.
-    args = [_GSUTIL_PATH] + args
-    _EnsureExecutable(_GSUTIL_PATH)
+  # Always prepend executable to take advantage of vpython following advice of:
+  # https://chromium.googlesource.com/infra/infra/+/main/doc/users/vpython.md
+  args = [sys.executable, _GSUTIL_PATH] + args
 
   if args[0] not in ('help', 'hash', 'version') and not IsNetworkIOEnabled():
     raise CloudStorageIODisabled(
@@ -156,9 +153,9 @@ def _RunCommand(args):
   stdout, stderr = gsutil.communicate()
 
   if gsutil.returncode:
-    raise GetErrorObjectForCloudStorageStderr(stderr)
+    raise GetErrorObjectForCloudStorageStderr(stderr.decode('utf-8'))
 
-  return stdout
+  return stdout.decode('utf-8')
 
 
 def GetErrorObjectForCloudStorageStderr(stderr):
@@ -170,7 +167,7 @@ def GetErrorObjectForCloudStorageStderr(stderr):
   if ('status=403' in stderr or 'status 403' in stderr or
       '403 Forbidden' in stderr or
       re.match('.*403.*does not have .* access to .*', stderr)):
-    return PermissionError()
+    return CloudStoragePermissionError()
   if (stderr.startswith('InvalidUriError') or 'No such object' in stderr or
       'No URLs matched' in stderr or 'One or more URLs matched no' in stderr):
     return NotFoundError(stderr)
@@ -192,10 +189,66 @@ def IsNetworkIOEnabled():
   return disable_cloud_storage_env_val != '1'
 
 
-def List(bucket):
-  query = 'gs://%s/' % bucket
-  stdout = _RunCommand(['ls', query])
-  return [url[len(query):] for url in stdout.splitlines()]
+def List(bucket, prefix=None):
+  """Returns all paths matching the given prefix in bucket.
+
+  Returned paths are relative to the bucket root.
+  If path is given, 'gsutil ls gs://<bucket>/<path>' will be executed, otherwise
+  'gsutil ls gs://<bucket>' will be executed.
+
+  For more details, see:
+  https://cloud.google.com/storage/docs/gsutil/commands/ls#directory-by-directory,-flat,-and-recursive-listings
+
+  Args:
+    bucket: Name of cloud storage bucket to look at.
+    prefix: Path within the bucket to filter to.
+
+  Returns:
+    A list of files. All returned path are relative to the bucket root
+    directory. For example, List('my-bucket', path='foo/') will returns results
+    of the form ['/foo/123', '/foo/124', ...], as opposed to ['123', '124',
+    ...].
+  """
+  bucket_prefix = 'gs://%s' % bucket
+  if prefix is None:
+    full_path = bucket_prefix
+  else:
+    full_path = '%s/%s' % (bucket_prefix, prefix)
+  stdout = _RunCommand(['ls', full_path])
+  return [url[len(bucket_prefix):] for url in stdout.splitlines()]
+
+
+def ListFiles(bucket, path='', sort_by='name'):
+  """Returns files matching the given path in bucket.
+
+  Args:
+    bucket: Name of cloud storage bucket to look at.
+    path: Path within the bucket to filter to. Path can include wildcards.
+    sort_by: 'name' (default), 'time' or 'size'.
+
+  Returns:
+    A sorted list of files.
+  """
+  bucket_prefix = 'gs://%s' % bucket
+  full_path = '%s/%s' % (bucket_prefix, path)
+  stdout = _RunCommand(['ls', '-l', '-d', full_path])
+
+  # Filter out directories and the summary line.
+  file_infos = [line.split(None, 2) for line in stdout.splitlines()
+                if len(line) > 0 and not line.startswith("TOTAL")
+                and not line.endswith('/')]
+
+  # The first field in the info is size, the second is time, the third is name.
+  if sort_by == 'size':
+    file_infos.sort(key=lambda info: int(info[0]))
+  elif sort_by == 'time':
+    file_infos.sort(key=lambda info: info[1])
+  elif sort_by == 'name':
+    file_infos.sort(key=lambda info: info[2])
+  else:
+    raise ValueError("Wrong sort_by value: %s" % sort_by)
+
+  return [url[len(bucket_prefix):] for _, _, url in file_infos]
 
 
 def ListDirs(bucket, path=''):
@@ -228,6 +281,7 @@ def ListDirs(bucket, path=''):
     if url[-1] == '/':
       dirs.append(url[len(bucket_prefix):])
   return dirs
+
 
 def Exists(bucket, remote_path):
   try:
@@ -409,7 +463,7 @@ def Insert(bucket, remote_path, local_path, publicly_readable=False):
   return cloud_filepath.view_url
 
 
-class CloudFilepath(object):
+class CloudFilepath():
   def __init__(self, bucket, remote_path):
     self.bucket = bucket
     self.remote_path = remote_path
@@ -417,7 +471,7 @@ class CloudFilepath(object):
   @property
   def view_url(self):
     """Get a human viewable url for the cloud file."""
-    return 'https://console.developers.google.com/m/cloudstorage/b/%s/o/%s' % (
+    return 'https://storage.cloud.google.com/%s/%s' % (
         self.bucket, self.remote_path)
 
   @property
@@ -567,4 +621,4 @@ def CalculateHash(file_path):
 
 def ReadHash(hash_path):
   with open(hash_path, 'rb') as f:
-    return f.read(1024).rstrip()
+    return f.read(1024).rstrip().decode('utf-8')

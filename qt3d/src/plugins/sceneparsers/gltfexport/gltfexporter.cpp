@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "gltfexporter.h"
 
@@ -53,20 +17,21 @@
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qregularexpression.h>
 #include <QtCore/qmetaobject.h>
+#include <QtCore/qlibraryinfo.h>
 #include <QtGui/qvector2d.h>
 #include <QtGui/qvector4d.h>
 #include <QtGui/qmatrix4x4.h>
 
 #include <Qt3DCore/qentity.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/qgeometry.h>
 #include <Qt3DCore/qtransform.h>
 #include <Qt3DRender/qcameralens.h>
 #include <Qt3DRender/qcamera.h>
 #include <Qt3DRender/qblendequation.h>
 #include <Qt3DRender/qblendequationarguments.h>
 #include <Qt3DRender/qeffect.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
 #include <Qt3DRender/qmaterial.h>
 #include <Qt3DRender/qgraphicsapifilter.h>
 #include <Qt3DRender/qparameter.h>
@@ -75,9 +40,7 @@
 #include <Qt3DRender/qpointlight.h>
 #include <Qt3DRender/qspotlight.h>
 #include <Qt3DRender/qdirectionallight.h>
-#include <Qt3DRender/qgeometry.h>
 #include <Qt3DRender/qgeometryrenderer.h>
-#include <Qt3DRender/qgeometryfactory.h>
 #include <Qt3DRender/qtechnique.h>
 #include <Qt3DRender/qalphacoverage.h>
 #include <Qt3DRender/qalphatest.h>
@@ -134,11 +97,11 @@ inline QJsonArray col2jsvec(const QColor &color, bool alpha = false)
 }
 
 template <typename T>
-inline QJsonArray vec2jsvec(const QVector<T> &v)
+inline QJsonArray vec2jsvec(const std::vector<T> &v)
 {
     QJsonArray arr;
-    for (int i = 0; i < v.count(); ++i)
-        arr << v.at(i);
+    for (size_t i = 0; i < v.size(); ++i)
+        arr << v[i];
     return arr;
 }
 
@@ -284,9 +247,7 @@ GLTFExporter::~GLTFExporter()
 // options    : Export options.
 //
 // Supported options are:
-// "binaryJson"  (bool): Generates a binary JSON file, which is more efficient to parse.
 // "compactJson" (bool): Removes unnecessary whitespace from the generated JSON file.
-//                       Ignored if "binaryJson" option is true.
 
 /*!
     Exports the scene to the GLTF format
@@ -322,8 +283,6 @@ bool GLTFExporter::exportScene(QEntity *sceneRoot, const QString &outDir,
     m_renderPassCount = 0;
     m_effectCount = 0;
 
-    m_gltfOpts.binaryJson = options.value(QStringLiteral("binaryJson"),
-                                          QVariant(false)).toBool();
     m_gltfOpts.compactJson = options.value(QStringLiteral("compactJson"),
                                            QVariant(false)).toBool();
 
@@ -396,7 +355,7 @@ bool GLTFExporter::exportScene(QEntity *sceneRoot, const QString &outDir,
     QFile::Permissions targetPermissions = gltfFile.permissions();
 
     // Copy exported scene to actual export directory
-    for (const auto &sourceFileStr : qAsConst(m_exportedFiles)) {
+    for (const auto &sourceFileStr : std::as_const(m_exportedFiles)) {
         QFileInfo fiSource(m_exportDir + sourceFileStr);
         QFileInfo fiDestination(finalExportDir + sourceFileStr);
         if (fiDestination.exists()) {
@@ -483,7 +442,7 @@ void GLTFExporter::cacheDefaultProperties(GLTFExporter::PropertyCacheType type)
 
     // Cache metaproperties of supported types (but not their parent class types)
     const QMetaObject *meta = defaultObject->metaObject();
-    QVector<QMetaProperty> properties;
+    QList<QMetaProperty> properties;
     properties.reserve(meta->propertyCount() - meta->propertyOffset());
     for (int i = meta->propertyOffset(); i < meta->propertyCount(); ++i) {
         if (meta->property(i).isWritable())
@@ -550,7 +509,7 @@ void GLTFExporter::copyTextures()
 void GLTFExporter::createShaders()
 {
     qCDebug(GLTFExporterLog, "Creating shaders...");
-    for (const auto &si : qAsConst(m_shaderInfo)) {
+    for (const auto &si : std::as_const(m_shaderInfo)) {
         const QString fileName = m_exportDir + si.uri;
         QFile f(fileName);
         if (f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
@@ -666,9 +625,9 @@ void GLTFExporter::parseMaterials()
             // Default materials do not have separate effect, all effect parameters are stored as
             // material values.
             if (material->effect()) {
-                QVector<QParameter *> parameters = material->effect()->parameters();
+                QList<QParameter *> parameters = material->effect()->parameters();
                 for (auto param : parameters) {
-                    if (param->value().type() == QVariant::Color) {
+                    if (param->value().metaType().id() == QMetaType::QColor) {
                         QColor color = param->value().value<QColor>();
                         if (param->name() == MATERIAL_AMBIENT_COLOR) {
                             matInfo.colors.insert(QStringLiteral("ambient"), color);
@@ -783,15 +742,7 @@ void GLTFExporter::parseMeshes()
             }
         } else {
             meshInfo.meshComponent = nullptr;
-            QGeometry *meshGeometry = nullptr;
-            QGeometryFactoryPtr geometryFunctorPtr = mesh->geometryFactory();
-            if (!geometryFunctorPtr.data()) {
-                meshGeometry = mesh->geometry();
-            } else {
-                // Execute the geometry functor to get the geometry, if it is available.
-                // Functor gives us the latest data if geometry has changed.
-                meshGeometry = geometryFunctorPtr.data()->operator()();
-            }
+            QGeometry *meshGeometry = mesh->geometry();
 
             if (!meshGeometry) {
                 qCWarning(GLTFExporterLog, "Ignoring mesh without geometry!");
@@ -810,7 +761,7 @@ void GLTFExporter::parseMeshes()
                 int index;
             };
 
-            QVector<VertexAttrib> vAttribs;
+            QList<VertexAttrib> vAttribs;
             vAttribs.reserve(meshGeometry->attributes().size());
 
             uint stride(0);
@@ -970,15 +921,15 @@ void GLTFExporter::parseMeshes()
                         qUtf16PrintableImpl(meshInfo.name), qUtf16PrintableImpl(meshInfo.originalName));
                 qCDebug(GLTFExporterLog, "    Vertex count: %i", vertexCount);
                 qCDebug(GLTFExporterLog, "    Bytes per vertex: %i", stride);
-                qCDebug(GLTFExporterLog, "    Vertex buffer size (bytes): %i", vertexBuf.size());
-                qCDebug(GLTFExporterLog, "    Index buffer size (bytes): %i", indexBuf.size());
+                qCDebug(GLTFExporterLog, "    Vertex buffer size (bytes): %lli", vertexBuf.size());
+                qCDebug(GLTFExporterLog, "    Index buffer size (bytes): %lli", indexBuf.size());
                 QStringList sl;
                 const auto views = meshInfo.views;
                 for (const auto &bv : views)
                     sl << bv.name;
                 qCDebug(GLTFExporterLog) << "    buffer views:" << sl;
                 sl.clear();
-                for (const auto &acc : qAsConst(meshInfo.accessors))
+                for (const auto &acc : std::as_const(meshInfo.accessors))
                     sl << acc.name;
                 qCDebug(GLTFExporterLog) << "    accessors:" << sl;
                 qCDebug(GLTFExporterLog, "    material: '%ls'",
@@ -990,7 +941,7 @@ void GLTFExporter::parseMeshes()
         m_meshInfo.insert(mesh, meshInfo);
     }
 
-    qCDebug(GLTFExporterLog, "Total buffer size: %i", m_buffer.size());
+    qCDebug(GLTFExporterLog, "Total buffer size: %lli", m_buffer.size());
 }
 
 void GLTFExporter::parseCameras()
@@ -1023,7 +974,7 @@ void GLTFExporter::parseCameras()
         // GLTF cameras point in -Z by default, the rest is in the
         // node matrix, so no separate look-at params given here, unless it's actually QCamera.
         QCamera *cameraEntity = nullptr;
-        const QVector<QEntity *> entities = camera->entities();
+        const QList<QEntity *> entities = camera->entities();
         if (entities.size() == 1)
             cameraEntity = qobject_cast<QCamera *>(entities.at(0));
         c.cameraEntity = cameraEntity;
@@ -1165,7 +1116,7 @@ QString GLTFExporter::addShaderInfo(QShaderProgram::ShaderType type, QByteArray 
     if (code.isEmpty())
         return QString();
 
-    for (const auto &si : qAsConst(m_shaderInfo)) {
+    for (const auto &si : std::as_const(m_shaderInfo)) {
         if (si.type == QShaderProgram::Vertex && code == si.code)
             return si.name;
     }
@@ -1187,8 +1138,8 @@ bool GLTFExporter::saveScene()
 {
     qCDebug(GLTFExporterLog, "Saving scene...");
 
-    QVector<MeshInfo::BufferView> bvList;
-    QVector<MeshInfo::Accessor> accList;
+    QList<MeshInfo::BufferView> bvList;
+    QList<MeshInfo::Accessor> accList;
     for (auto it = m_meshInfo.begin(); it != m_meshInfo.end(); ++it) {
         auto &mi = it.value();
         for (auto &v : mi.views)
@@ -1230,7 +1181,7 @@ bool GLTFExporter::saveScene()
     m_obj["buffers"] = buffers;
 
     QJsonObject bufferViews;
-    for (const auto &bv : qAsConst(bvList)) {
+    for (const auto &bv : std::as_const(bvList)) {
         QJsonObject bufferView;
         bufferView["buffer"] = QStringLiteral("buf");
         bufferView["byteLength"] = int(bv.length);
@@ -1243,7 +1194,7 @@ bool GLTFExporter::saveScene()
         m_obj["bufferViews"] = bufferViews;
 
     QJsonObject accessors;
-    for (const auto &acc : qAsConst(accList)) {
+    for (const auto &acc : std::as_const(accList)) {
         QJsonObject accessor;
         accessor["bufferView"] = acc.bufferView;
         accessor["byteOffset"] = int(acc.offset);
@@ -1290,7 +1241,7 @@ bool GLTFExporter::saveScene()
         m_obj["meshes"] = meshes;
 
     QJsonObject cameras;
-    for (const auto &camInfo : qAsConst(m_cameraInfo)) {
+    for (const auto &camInfo : std::as_const(m_cameraInfo)) {
         QJsonObject camera;
         QJsonObject proj;
         proj["znear"] = camInfo.znear;
@@ -1322,7 +1273,7 @@ bool GLTFExporter::saveScene()
     if (m_rootNodeEmpty) {
         // Don't export the root node if it is there just to group the scene, so we don't get
         // an extra empty node when we import the scene back.
-        for (auto c : qAsConst(m_rootNode->children))
+        for (auto c : std::as_const(m_rootNode->children))
             sceneNodes << exportNodes(c, nodes);
     } else {
         sceneNodes << exportNodes(m_rootNode, nodes);
@@ -1530,7 +1481,7 @@ bool GLTFExporter::saveScene()
 
     // Save shaders for custom materials
     QJsonObject shaders;
-    for (const auto &si : qAsConst(m_shaderInfo)) {
+    for (const auto &si : std::as_const(m_shaderInfo)) {
         QJsonObject shaderObj;
         shaderObj["uri"] = si.uri;
         shaders[si.name] = shaderObj;
@@ -1582,35 +1533,18 @@ bool GLTFExporter::saveScene()
 
     QString gltfName = m_exportDir + m_exportName + QStringLiteral(".qgltf");
     f.setFileName(gltfName);
-    qCDebug(GLTFExporterLog, "  Writing %sJSON file: '%ls'",
-            m_gltfOpts.binaryJson ? "binary " : "", qUtf16PrintableImpl(gltfName));
+    qCDebug(GLTFExporterLog, "  Writing JSON file: '%ls'", qUtf16PrintableImpl(gltfName));
 
-    if (m_gltfOpts.binaryJson) {
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            m_exportedFiles.insert(QFileInfo(f.fileName()).fileName());
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-            QByteArray json = m_doc.toBinaryData();
-QT_WARNING_POP
-            f.write(json);
-            f.close();
-        } else {
-            qCWarning(GLTFExporterLog, "  Writing binary JSON file '%ls' failed!",
-                      qUtf16PrintableImpl(gltfName));
-            return false;
-        }
+    if (f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        m_exportedFiles.insert(QFileInfo(f.fileName()).fileName());
+        QByteArray json = m_doc.toJson(m_gltfOpts.compactJson ? QJsonDocument::Compact
+                                                              : QJsonDocument::Indented);
+        f.write(json);
+        f.close();
     } else {
-        if (f.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-            m_exportedFiles.insert(QFileInfo(f.fileName()).fileName());
-            QByteArray json = m_doc.toJson(m_gltfOpts.compactJson ? QJsonDocument::Compact
-                                                                  : QJsonDocument::Indented);
-            f.write(json);
-            f.close();
-        } else {
-            qCWarning(GLTFExporterLog, "  Writing JSON file '%ls' failed!",
-                      qUtf16PrintableImpl(gltfName));
-            return false;
-        }
+        qCWarning(GLTFExporterLog, "  Writing JSON file '%ls' failed!",
+                  qUtf16PrintableImpl(gltfName));
+        return false;
     }
 
     QString qrcName = m_exportDir + m_exportName + QStringLiteral(".qrc");
@@ -1620,7 +1554,7 @@ QT_WARNING_POP
         QByteArray pre = "<RCC><qresource prefix=\"/gltf_res\">\n";
         QByteArray post = "</qresource></RCC>\n";
         f.write(pre);
-        for (const auto &file : qAsConst(m_exportedFiles)) {
+        for (const auto &file : std::as_const(m_exportedFiles)) {
             QString line = QString(QStringLiteral("  <file>%1</file>\n")).arg(file);
             f.write(line.toUtf8());
         }
@@ -1642,7 +1576,7 @@ void GLTFExporter::delNode(GLTFExporter::Node *n)
 {
     if (!n)
         return;
-    for (auto *c : qAsConst(n->children))
+    for (auto *c : std::as_const(n->children))
         delNode(c);
     delete n;
 }
@@ -1652,7 +1586,7 @@ QString GLTFExporter::exportNodes(GLTFExporter::Node *n, QJsonObject &nodes)
     QJsonObject node;
     node["name"] = n->name;
     QJsonArray children;
-    for (auto c : qAsConst(n->children))
+    for (auto c : std::as_const(n->children))
         children << exportNodes(c, nodes);
     node["children"] = children;
     if (auto transform = m_transformMap.value(n))
@@ -1691,7 +1625,7 @@ void GLTFExporter::exportMaterials(QJsonObject &materials)
         materialObj["name"] = matInfo.originalName;
 
         if (matInfo.type == MaterialInfo::TypeCustom) {
-            QVector<QParameter *> parameters = material->parameters();
+            QList<QParameter *> parameters = material->parameters();
             QJsonObject paramObj;
             for (auto param : parameters)
                 exportParameter(paramObj, param->name(), param->value());
@@ -1765,9 +1699,9 @@ void GLTFExporter::exportMaterials(QJsonObject &materials)
 
             // Blend function handling is our own extension used for Phong Alpha material.
             QJsonObject functions;
-            if (!matInfo.blendEquations.isEmpty())
+            if (!matInfo.blendEquations.empty())
                 functions["blendEquationSeparate"] = vec2jsvec(matInfo.blendEquations);
-            if (!matInfo.blendArguments.isEmpty())
+            if (!matInfo.blendArguments.empty())
                 functions["blendFuncSeparate"] = vec2jsvec(matInfo.blendArguments);
             if (!functions.isEmpty())
                 commonMat["functions"] = functions;
@@ -1783,7 +1717,7 @@ void GLTFExporter::exportMaterials(QJsonObject &materials)
 void GLTFExporter::exportGenericProperties(QJsonObject &jsonObj, PropertyCacheType type,
                                            QObject *obj)
 {
-    QVector<QMetaProperty> properties = m_propertyCache.value(type);
+    QList<QMetaProperty> properties = m_propertyCache.value(type);
     QObject *defaultObject = m_defaultObjectCache.value(type);
     for (const QMetaProperty &property : properties) {
         // Only output property if it is different from default
@@ -1830,7 +1764,7 @@ void GLTFExporter::exportParameter(QJsonObject &jsonObj, const QString &name,
         paramObj[typeStr] = GL_SAMPLER_2D;
         paramObj[valueStr] = m_textureIdMap.value(textureVariantToUrl(variant));
     } else {
-        switch (QMetaType::Type(variant.type())) {
+        switch (variant.metaType().id()) {
         case QMetaType::Bool:
             paramObj[typeStr] = GL_BOOL;
             paramObj[valueStr] = variant.toBool();
@@ -2102,7 +2036,7 @@ QString GLTFExporter::textureVariantToUrl(const QVariant &var)
 
 void GLTFExporter::setVarToJSonObject(QJsonObject &jsObj, const QString &key, const QVariant &var)
 {
-    switch (QMetaType::Type(var.type())) {
+    switch (var.metaType().id()) {
     case QMetaType::Bool:
         jsObj[key] = var.toBool();
         break;

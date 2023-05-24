@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -11,8 +11,6 @@ blink_modules_sources("battery") {
     "battery_manager.cc",
     "battery_manager.h",
     "battery_status.h",
-    "navigator_battery.cc",
-    "navigator_battery.h",
   ]
 
   deps = [ "//services/service_manager/public/cpp" ]

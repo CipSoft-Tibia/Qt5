@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 /*
@@ -32,7 +7,7 @@
     Please don't save this file in emacs. It contains utf8 text sequences emacs will
     silently convert to a series of question marks.
  */
-#include <QtTest/QtTest>
+#include <QTest>
 
 
 
@@ -68,11 +43,15 @@ private slots:
     void forcedBreaks();
     void breakAny();
     void noWrap();
+
     void cursorToXForInlineObjects();
     void cursorToXForSetColumns();
     void cursorToXForTrailingSpaces_data();
     void cursorToXForTrailingSpaces();
     void cursorToXInvalidInput();
+    void cursorToXForBidiBoundaries_data();
+    void cursorToXForBidiBoundaries();
+
     void horizontalAlignment_data();
     void horizontalAlignment();
     void horizontalAlignmentMultiline_data();
@@ -86,6 +65,8 @@ private slots:
 #ifdef QT_BUILD_INTERNAL
     void xToCursorAtEndOfLine();
 #endif
+    void xToCursorForBidiEnds_data();
+    void xToCursorForBidiEnds();
     void boundingRectTopLeft();
     void graphemeBoundaryForSurrogatePairs();
     void tabStops();
@@ -143,7 +124,9 @@ private slots:
     void tooManyDirectionalCharctersCrash_qtbug77819();
     void softHyphens_data();
     void softHyphens();
+    void min_maximumWidth_data();
     void min_maximumWidth();
+    void negativeLineWidth();
 
 private:
     QFont testFont;
@@ -308,14 +291,14 @@ void tst_QTextLayout::simpleBoundingRect()
 
     QString hello("hello world");
 
-    const int width = hello.length() * testFont.pixelSize();
+    const int width = hello.size() * testFont.pixelSize();
 
     QTextLayout layout(hello, testFont);
     layout.beginLayout();
 
     QTextLine line = layout.createLine();
     line.setLineWidth(width);
-    QCOMPARE(line.textLength(), hello.length());
+    QCOMPARE(line.textLength(), hello.size());
     QCOMPARE(layout.boundingRect(), QRectF(0, 0, width, QFontMetrics(testFont).height()));
 }
 
@@ -350,18 +333,18 @@ void tst_QTextLayout::threeLineBoundingRect()
     QString thirdWord("world");
     QString text(firstWord + wordBoundary1 + secondWord + wordBoundary2 + thirdWord);
 
-    int firstLineWidth = firstWord.length() * testFont.pixelSize();
-    int secondLineWidth = secondWord.length() * testFont.pixelSize();
-    int thirdLineWidth = thirdWord.length() * testFont.pixelSize();
+    int firstLineWidth = firstWord.size() * testFont.pixelSize();
+    int secondLineWidth = secondWord.size() * testFont.pixelSize();
+    int thirdLineWidth = thirdWord.size() * testFont.pixelSize();
     // Trailing spaces do not count to line width:
     if (!wordBoundary1.isSpace())
         firstLineWidth += testFont.pixelSize();
     if (!wordBoundary2.isSpace())
         secondLineWidth += testFont.pixelSize();
     // But trailing spaces do count to line length:
-    const int firstLineLength = firstWord.length() + 1;
-    const int secondLineLength = secondWord.length() + 1;
-    const int thirdLineLength = thirdWord.length();
+    const int firstLineLength = firstWord.size() + 1;
+    const int secondLineLength = secondWord.size() + 1;
+    const int thirdLineLength = thirdWord.size();
 
     const int longestLine = qMax(firstLineWidth, qMax(secondLineWidth, thirdLineWidth));
 
@@ -405,7 +388,7 @@ void tst_QTextLayout::boundingRectWithLongLineAndNoWrap()
 {
     QString longString("thisisaverylongstringthatcannotbewrappedatallitjustgoesonandonlikeonebigword");
 
-    const int width = longString.length() * testFont.pixelSize() / 20; // very small widthx
+    const int width = longString.size() * testFont.pixelSize() / 20; // very small widthx
 
     QTextLayout layout(longString, testFont);
     layout.beginLayout();
@@ -530,18 +513,24 @@ void tst_QTextLayout::noWrap()
 
 void tst_QTextLayout::cursorToXForInlineObjects()
 {
-    QChar ch(QChar::ObjectReplacementCharacter);
-    QString text(ch);
-    QTextLayout layout(text, testFont);
-    layout.beginLayout();
+    QString text = QStringLiteral("<html><body><img src=\"\" width=\"32\" height=\"32\" /></body></html>");
 
-    QTextEngine *engine = layout.engine();
-    const int item = engine->findItem(0);
-    engine->layoutData->items[item].width = 32;
+    QTextDocument document;
+    document.setHtml(text);
+    QCOMPARE(document.blockCount(), 1);
 
-    QTextLine line = layout.createLine();
-    line.setLineWidth(0x10000);
+    // Trigger layout
+    {
+        QImage img(1, 1, QImage::Format_ARGB32_Premultiplied);
+        QPainter p(&img);
+        document.drawContents(&p);
+    }
 
+    QTextLayout *layout = document.firstBlock().layout();
+    QVERIFY(layout != nullptr);
+    QCOMPARE(layout->lineCount(), 1);
+
+    QTextLine line = layout->lineAt(0);
     QCOMPARE(line.cursorToX(0), qreal(0));
     QCOMPARE(line.cursorToX(1), qreal(32));
 }
@@ -732,6 +721,76 @@ void tst_QTextLayout::cursorToXInvalidInput()
     cursorPos = 300;
     layout.lineAt(0).cursorToX(&cursorPos);
     QCOMPARE(cursorPos, 3);
+}
+
+void tst_QTextLayout::cursorToXForBidiBoundaries_data()
+{
+    QTest::addColumn<Qt::LayoutDirection>("textDirection");
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<int>("cursorPosition");
+    QTest::addColumn<int>("runsToInclude");
+
+    QTest::addRow("LTR, abcشزذabc, 0") << Qt::LeftToRight << "abcشزذabc"
+        << 0 << 0;
+    QTest::addRow("RTL, abcشزذabc, 9") << Qt::RightToLeft << "abcشزذabc"
+        << 9 << 1;
+    QTest::addRow("LTR, abcشزذabc, 3") << Qt::LeftToRight << "abcشزذabc"
+        << 0 << 0;
+    QTest::addRow("RTL, abcشزذabc, 6") << Qt::RightToLeft << "abcشزذabc"
+        << 9 << 1;
+
+    QTest::addRow("LTR, شزذabcشزذ, 0") << Qt::LeftToRight << "شزذabcشزذ"
+        << 0 << 1;
+    QTest::addRow("RTL, شزذabcشزذ, 9") << Qt::RightToLeft << "شزذabcشزذ"
+        << 9 << 0;
+    QTest::addRow("LTR, شزذabcشزذ, 3") << Qt::LeftToRight << "شزذabcشزذ"
+        << 3 << 1;
+    QTest::addRow("RTL, شزذabcشزذ, 3") << Qt::RightToLeft << "شزذabcشزذ"
+        << 3 << 2;
+    QTest::addRow("LTR, شزذabcشزذ, 6") << Qt::LeftToRight << "شزذabcشزذ"
+        << 6 << 2;
+    QTest::addRow("RTL, شزذabcشزذ, 6") << Qt::RightToLeft << "شزذabcشزذ"
+        << 6 << 1;
+}
+
+void tst_QTextLayout::cursorToXForBidiBoundaries()
+{
+    QFETCH(Qt::LayoutDirection, textDirection);
+    QFETCH(QString, text);
+    QFETCH(int, cursorPosition);
+    QFETCH(int, runsToInclude);
+
+    QTextOption option;
+    option.setTextDirection(textDirection);
+
+    QTextLayout layout(text, testFont);
+    layout.setTextOption(option);
+    layout.beginLayout();
+
+    {
+        QTextLine line = layout.createLine();
+        line.setLineWidth(0x10000);
+    }
+    layout.endLayout();
+
+    QTextLine line = layout.lineAt(0);
+    QList<QGlyphRun> glyphRuns = line.glyphRuns(-1,
+                                                -1,
+                                                QTextLayout::RetrieveStringIndexes
+                                                | QTextLayout::RetrieveGlyphIndexes);
+    QVERIFY(runsToInclude <= glyphRuns.size());
+
+    std::sort(glyphRuns.begin(), glyphRuns.end(),
+              [](const QGlyphRun &first, const QGlyphRun &second) {
+                    return first.stringIndexes().first() < second.stringIndexes().first();
+                 });
+
+    qreal expectedX = 0.0;
+    for (int i = 0; i < runsToInclude; ++i) {
+        expectedX += glyphRuns.at(i).boundingRect().width();
+    }
+
+    QCOMPARE(line.cursorToX(cursorPosition), expectedX);
 }
 
 void tst_QTextLayout::horizontalAlignment_data()
@@ -1026,7 +1085,7 @@ void tst_QTextLayout::defaultWordSeparators_data()
 
     QString separators(".,:;-<>[](){}=/+%&^*");
     separators += QLatin1String("!?");
-    for (int i = 0; i < separators.count(); ++i) {
+    for (int i = 0; i < separators.size(); ++i) {
         QTest::newRow(QString::number(i).toLatin1().data())
             << QString::fromLatin1("abcd") + separators.at(i) + QString::fromLatin1("efgh")
             <<  0 << 4;
@@ -1106,7 +1165,7 @@ void tst_QTextLayout::xToCursorAtEndOfLine()
     QString text = "FirstLine SecondLine";
     text.replace('\n', QChar::LineSeparator);
 
-    const qreal firstLineWidth = QString("FirstLine").length() * testFont.pixelSize();
+    const qreal firstLineWidth = QString("FirstLine").size() * testFont.pixelSize();
 
     QTextLayout layout(text, testFont);
     layout.setCacheEnabled(true);
@@ -1125,6 +1184,60 @@ void tst_QTextLayout::xToCursorAtEndOfLine()
     QCOMPARE(line.xToCursor(100000), 20);
 }
 #endif
+
+
+void tst_QTextLayout::xToCursorForBidiEnds_data()
+{
+    QTest::addColumn<Qt::LayoutDirection>("textDirection");
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<int>("leftPosition");
+    QTest::addColumn<int>("rightPosition");
+
+    QTest::addRow("LTR, abcشزذ") << Qt::LeftToRight << "abcشزذ"
+        << 0 << 6;
+    QTest::addRow("RTL, abcشزذ") << Qt::RightToLeft << "abcشزذ"
+        << 6 << 0;
+    QTest::addRow("LTR, شزذabc") << Qt::LeftToRight << "شزذabc"
+        << 0 << 6;
+    QTest::addRow("RTL, شزذabc") << Qt::RightToLeft << "شزذabc"
+        << 6 << 0;
+    QTest::addRow("LTR, شزذ123") << Qt::LeftToRight << "شزذ123"
+        << 0 << 6;
+    QTest::addRow("RTL, شزذ123") << Qt::RightToLeft << "شزذ123"
+        << 6 << 0;
+
+    QTest::addRow("LTR, abcشزذabc") << Qt::LeftToRight << "abcشزذabc"
+        << 0 << 9;
+    QTest::addRow("RTL, abcشزذabc") << Qt::RightToLeft << "abcشزذabc"
+        << 9 << 0;
+    QTest::addRow("LTR, شزذabcشزذ") << Qt::LeftToRight << "شزذabcشزذ"
+        << 0 << 9;
+    QTest::addRow("RTL, شزذabcشزذ") << Qt::RightToLeft << "شزذabcشزذ"
+        << 9 << 0;
+}
+
+void tst_QTextLayout::xToCursorForBidiEnds()
+{
+    QFETCH(Qt::LayoutDirection, textDirection);
+    QFETCH(QString, text);
+    QFETCH(int, leftPosition);
+    QFETCH(int, rightPosition);
+
+    QTextOption option;
+    option.setTextDirection(textDirection);
+
+    QTextLayout layout(text, testFont);
+    layout.setTextOption(option);
+    layout.beginLayout();
+
+    QTextLine line = layout.createLine();
+    line.setLineWidth(0x10000);
+
+    QCOMPARE(line.xToCursor(0), leftPosition);
+    QCOMPARE(line.xToCursor(line.width()), rightPosition);
+
+    layout.endLayout();
+}
 
 void tst_QTextLayout::boundingRectTopLeft()
 {
@@ -1150,8 +1263,8 @@ void tst_QTextLayout::graphemeBoundaryForSurrogatePairs()
 {
     QString txt;
     txt.append(QLatin1Char('a'));
-    txt.append(0xd87e);
-    txt.append(0xdc25);
+    txt.append(QChar(0xd87e));
+    txt.append(QChar(0xdc25));
     txt.append(QLatin1Char('b'));
     QTextLayout layout(txt);
     QTextEngine *engine = layout.engine();
@@ -1195,7 +1308,7 @@ void tst_QTextLayout::integerOverflow()
 
     QVERIFY(line.isValid());
     line.setLineWidth(INT_MAX);
-    QCOMPARE(line.textLength(), txt.length());
+    QCOMPARE(line.textLength(), txt.size());
 
     QVERIFY(!layout.createLine().isValid());
 
@@ -1684,8 +1797,8 @@ QT_END_NAMESPACE
 void tst_QTextLayout::testTabDPIScale()
 {
     class MyPaintDevice : public QPaintDevice {
-        QPaintEngine *paintEngine () const { return 0; }
-        int metric (QPaintDevice::PaintDeviceMetric metric) const {
+        QPaintEngine *paintEngine () const override { return 0; }
+        int metric (QPaintDevice::PaintDeviceMetric metric) const override {
             switch(metric) {
             case QPaintDevice::PdmWidth:
             case QPaintDevice::PdmHeight:
@@ -1770,7 +1883,7 @@ void tst_QTextLayout::capitalization_allUpperCase()
 
     QTextEngine *engine = layout.engine();
     engine->itemize();
-    QCOMPARE(engine->layoutData->items.count(), 1);
+    QCOMPARE(engine->layoutData->items.size(), 1);
     QCOMPARE(engine->layoutData->items.at(0).analysis.flags, ushort(QScriptAnalysis::Uppercase));
 }
 
@@ -1790,7 +1903,7 @@ void tst_QTextLayout::capitalization_allUpperCase_newline()
 
     QTextEngine *engine = layout.engine();
     engine->itemize();
-    QCOMPARE(engine->layoutData->items.count(), 3);
+    QCOMPARE(engine->layoutData->items.size(), 3);
     QCOMPARE(engine->layoutData->items.at(0).analysis.flags, ushort(QScriptAnalysis::Uppercase));
     QCOMPARE(engine->layoutData->items.at(1).analysis.flags, ushort(QScriptAnalysis::LineOrParagraphSeparator));
     QCOMPARE(engine->layoutData->items.at(2).analysis.flags, ushort(QScriptAnalysis::Uppercase));
@@ -1808,7 +1921,7 @@ void tst_QTextLayout::capitalization_allLowerCase()
 
     QTextEngine *engine = layout.engine();
     engine->itemize();
-    QCOMPARE(engine->layoutData->items.count(), 1);
+    QCOMPARE(engine->layoutData->items.size(), 1);
     QCOMPARE(engine->layoutData->items.at(0).analysis.flags, ushort(QScriptAnalysis::Lowercase));
 }
 
@@ -1824,7 +1937,7 @@ void tst_QTextLayout::capitalization_smallCaps()
 
     QTextEngine *engine = layout.engine();
     engine->itemize();
-    QCOMPARE(engine->layoutData->items.count(), 2);
+    QCOMPARE(engine->layoutData->items.size(), 2);
     QCOMPARE(engine->layoutData->items.at(0).analysis.flags, ushort(QScriptAnalysis::None));
     QCOMPARE(engine->layoutData->items.at(1).analysis.flags, ushort(QScriptAnalysis::SmallCaps));
 }
@@ -1841,7 +1954,7 @@ void tst_QTextLayout::capitalization_capitalize()
 
     QTextEngine *engine = layout.engine();
     engine->itemize();
-    QCOMPARE(engine->layoutData->items.count(), 5);
+    QCOMPARE(engine->layoutData->items.size(), 5);
     QCOMPARE(engine->layoutData->items.at(0).analysis.flags, ushort(QScriptAnalysis::Uppercase));
     QCOMPARE(engine->layoutData->items.at(1).analysis.flags, ushort(QScriptAnalysis::None));
     QCOMPARE(engine->layoutData->items.at(2).analysis.flags, ushort(QScriptAnalysis::Tab));
@@ -1952,7 +2065,7 @@ void tst_QTextLayout::columnWrapWithTabs()
         textLayout.beginLayout();
         QTextLine line = textLayout.createLine();
         line.setNumColumns(30);
-        QCOMPARE(line.textLength(), text.length());
+        QCOMPARE(line.textLength(), text.size());
         textLayout.endLayout();
     }
 
@@ -1963,7 +2076,7 @@ void tst_QTextLayout::columnWrapWithTabs()
         textLayout.beginLayout();
         QTextLine line = textLayout.createLine();
         line.setNumColumns(30);
-        QVERIFY(line.textLength() < text.length());
+        QVERIFY(line.textLength() < text.size());
         textLayout.endLayout();
     }
 
@@ -2367,7 +2480,7 @@ void tst_QTextLayout::nbspWithFormat()
     layout.setText(s1 + s2 + nbsp + s3);
 
     QTextLayout::FormatRange formatRange;
-    formatRange.start = s1.length() + s2.length();
+    formatRange.start = s1.size() + s2.size();
     formatRange.length = 1;
     formatRange.format.setFontUnderline(true);
 
@@ -2384,9 +2497,9 @@ void tst_QTextLayout::nbspWithFormat()
 
     QCOMPARE(layout.lineCount(), 2);
     QCOMPARE(layout.lineAt(0).textStart(), 0);
-    QCOMPARE(layout.lineAt(0).textLength(), s1.length());
-    QCOMPARE(layout.lineAt(1).textStart(), s1.length());
-    QCOMPARE(layout.lineAt(1).textLength(), s2.length() + 1 + s3.length());
+    QCOMPARE(layout.lineAt(0).textLength(), s1.size());
+    QCOMPARE(layout.lineAt(1).textStart(), s1.size());
+    QCOMPARE(layout.lineAt(1).textLength(), s2.size() + 1 + s3.size());
 }
 
 void tst_QTextLayout::koreanWordWrap()
@@ -2560,13 +2673,35 @@ void tst_QTextLayout::softHyphens()
     }
 }
 
+void tst_QTextLayout::min_maximumWidth_data()
+{
+    QTest::addColumn<QString>("text");
+
+    QTest::newRow("long string") << QStringLiteral("lmong_long_crazy_87235982735_23857239682376923876923876-fuwhfhfw-names-AAAA-deeaois2019-03-03.and.more");
+    QTest::newRow("QTBUG-106947") << QStringLiteral("text                                text");
+    QTest::newRow("spaces") << QStringLiteral("                text                text                ");
+    QTest::newRow("QTBUG-104986") << QStringLiteral("text\ntext\ntext");
+    QTest::newRow("spaces + line breaks") << QStringLiteral("       \n         text\n                \ntext       \n         ");
+}
+
 void tst_QTextLayout::min_maximumWidth()
 {
-    QString longString("lmong_long_crazy_87235982735_23857239682376923876923876-fuwhfhfw-names-AAAA-deeaois2019-03-03.and.more");
-    QTextLayout layout(longString, testFont);
+    QFETCH(QString, text);
+    text.replace('\n', QChar::LineSeparator);
+
+    QTextLayout layout(text, testFont);
+    layout.setCacheEnabled(true);
+
+    QTextOption opt;
+    opt.setWrapMode(QTextOption::NoWrap);
+    layout.setTextOption(opt);
+    layout.beginLayout();
+    while (layout.createLine().isValid()) { }
+    layout.endLayout();
+
+    const qreal nonWrappedMaxWidth = layout.maximumWidth();
 
     for (int wrapMode = QTextOption::NoWrap; wrapMode <= QTextOption::WrapAtWordBoundaryOrAnywhere; ++wrapMode) {
-        QTextOption opt;
         opt.setWrapMode((QTextOption::WrapMode)wrapMode);
         layout.setTextOption(opt);
         layout.beginLayout();
@@ -2574,6 +2709,9 @@ void tst_QTextLayout::min_maximumWidth()
         layout.endLayout();
         const qreal minWidth = layout.minimumWidth();
         const qreal maxWidth = layout.maximumWidth();
+
+        QCOMPARE_LE(minWidth, maxWidth);
+        QCOMPARE_LE(maxWidth, nonWrappedMaxWidth); // maxWidth for wrapped text shouldn't exceed maxWidth for the text without wrapping.
 
         // Try the layout from slightly wider than the widest (maxWidth)
         // and narrow it down to slighly narrower than minWidth
@@ -2593,6 +2731,29 @@ void tst_QTextLayout::min_maximumWidth()
             QCOMPARE(layout.maximumWidth(), maxWidth);
             width -= stepSize;
         }
+    }
+}
+
+void tst_QTextLayout::negativeLineWidth()
+{
+    {
+        QTextLayout layout;
+        layout.setText("Foo bar");
+        layout.beginLayout();
+        QTextLine line = layout.createLine();
+        line.setLineWidth(-1);
+        QVERIFY(line.textLength() > 0);
+        layout.endLayout();
+    }
+
+    {
+        QTextLayout layout;
+        layout.setText("Foo bar");
+        layout.beginLayout();
+        QTextLine line = layout.createLine();
+        line.setNumColumns(2, -1);
+        QVERIFY(line.textLength() > 0);
+        layout.endLayout();
     }
 }
 

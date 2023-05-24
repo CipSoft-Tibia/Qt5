@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,17 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "ui/gfx/geometry/rect_f.h"
+#include "ui/gfx/native_pixmap.h"
 #include "ui/ozone/demo/gl_renderer.h"
 
 namespace gl {
-class GLImage;
+class Presenter;
 }
 
 namespace ui {
 class OverlayCandidatesOzone;
+class NativePixmapGLBinding;
 class PlatformWindowSurface;
 
 static const int kMaxLayers = 8;
@@ -25,8 +26,13 @@ class SurfacelessGlRenderer : public RendererBase {
  public:
   SurfacelessGlRenderer(gfx::AcceleratedWidget widget,
                         std::unique_ptr<PlatformWindowSurface> window_surface,
-                        const scoped_refptr<gl::GLSurface>& surface,
+                        const scoped_refptr<gl::GLSurface>& offscreen_surface,
+                        const scoped_refptr<gl::Presenter>& presenter,
                         const gfx::Size& size);
+
+  SurfacelessGlRenderer(const SurfacelessGlRenderer&) = delete;
+  SurfacelessGlRenderer& operator=(const SurfacelessGlRenderer&) = delete;
+
   ~SurfacelessGlRenderer() override;
 
   // Renderer:
@@ -42,7 +48,7 @@ class SurfacelessGlRenderer : public RendererBase {
     BufferWrapper();
     ~BufferWrapper();
 
-    gl::GLImage* image() const { return image_.get(); }
+    scoped_refptr<gfx::NativePixmap> image() const;
 
     bool Initialize(gfx::AcceleratedWidget widget, const gfx::Size& size);
     void BindFramebuffer();
@@ -53,7 +59,8 @@ class SurfacelessGlRenderer : public RendererBase {
     gfx::AcceleratedWidget widget_ = gfx::kNullAcceleratedWidget;
     gfx::Size size_;
 
-    scoped_refptr<gl::GLImage> image_;
+    scoped_refptr<gfx::NativePixmap> pixmap_;
+    std::unique_ptr<NativePixmapGLBinding> pixmap_gl_binding_;
     unsigned int gl_fb_ = 0;
     unsigned int gl_tex_ = 0;
   };
@@ -75,9 +82,9 @@ class SurfacelessGlRenderer : public RendererBase {
   scoped_refptr<gl::GLSurface> gl_surface_;
   scoped_refptr<gl::GLContext> context_;
 
-  base::WeakPtrFactory<SurfacelessGlRenderer> weak_ptr_factory_{this};
+  scoped_refptr<gl::Presenter> presenter_;
 
-  DISALLOW_COPY_AND_ASSIGN(SurfacelessGlRenderer);
+  base::WeakPtrFactory<SurfacelessGlRenderer> weak_ptr_factory_{this};
 };
 
 }  // namespace ui

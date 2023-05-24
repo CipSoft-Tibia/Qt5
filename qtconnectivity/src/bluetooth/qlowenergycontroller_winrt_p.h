@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLOWENERGYCONTROLLERPRIVATEWINRT_P_H
 #define QLOWENERGYCONTROLLERPRIVATEWINRT_P_H
@@ -52,16 +16,30 @@
 //
 
 #include <qglobal.h>
+#include <QtCore/QList>
 #include <QtCore/QQueue>
-#include <QtCore/QVector>
 #include <QtBluetooth/qbluetooth.h>
 #include <QtBluetooth/qlowenergycharacteristic.h>
 #include <QtBluetooth/qlowenergyservicedata.h>
 #include "qlowenergycontroller.h"
 #include "qlowenergycontrollerbase_p.h"
 
+namespace ABI {
+    namespace Windows {
+        namespace Devices {
+            namespace Bluetooth {
+                struct IBluetoothLEDevice;
+            }
+        }
+        namespace Foundation {
+            template <typename T> struct IAsyncOperation;
+            enum class AsyncStatus;
+        }
+    }
+}
+
 #include <wrl.h>
-#include <windows.devices.bluetooth.h>
+#include <windows.devices.bluetooth.genericattributeprofile.h>
 
 #include <functional>
 
@@ -69,7 +47,6 @@ QT_BEGIN_NAMESPACE
 
 class QLowEnergyServiceData;
 class QTimer;
-class QWinRTLowEnergyServiceHandler;
 
 extern void registerQLowEnergyControllerMetaType();
 
@@ -86,7 +63,8 @@ public:
     void disconnectFromDevice() override;
 
     void discoverServices() override;
-    void discoverServiceDetails(const QBluetoothUuid &service) override;
+    void discoverServiceDetails(const QBluetoothUuid &service,
+                                QLowEnergyService::DiscoveryMode mode) override;
 
     void startAdvertising(const QLowEnergyAdvertisingParameters &params,
                           const QLowEnergyAdvertisingData &advertisingData,
@@ -114,16 +92,24 @@ public:
     void addToGenericAttributeList(const QLowEnergyServiceData &service,
                                    QLowEnergyHandle startHandle) override;
 
+    int mtu() const override;
+
 signals:
     void characteristicChanged(quint16 charHandle, const QByteArray &data);
+    void abortConnection();
 
 private slots:
     void handleCharacteristicChanged(quint16 charHandle, const QByteArray &data);
-    void doConnectToDevice();
+    void handleServiceHandlerError(const QString &error);
 
 private:
+    void handleConnectionError(const char *logMessage);
+
     Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::IBluetoothLEDevice> mDevice;
+    Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattSession>
+            mGattSession;
     EventRegistrationToken mStatusChangedToken;
+    EventRegistrationToken mMtuChangedToken;
     struct ValueChangedEntry {
         ValueChangedEntry() {}
         ValueChangedEntry(Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattCharacteristic> c,
@@ -136,17 +122,61 @@ private:
         Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattCharacteristic> characteristic;
         EventRegistrationToken token;
     };
-    QVector<ValueChangedEntry> mValueChangedTokens;
+    QList<ValueChangedEntry> mValueChangedTokens;
 
-    Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattDeviceService> getNativeService(const QBluetoothUuid &serviceUuid);
-    Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattCharacteristic> getNativeCharacteristic(const QBluetoothUuid &serviceUuid, const QBluetoothUuid &charUuid);
+    using GattDeviceServiceComPtr = Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattDeviceService>;
+    QMap<QBluetoothUuid, GattDeviceServiceComPtr> m_openedServices;
+    QSet<QBluetoothUuid> m_requestDetailsServiceUuids;
+
+    using NativeServiceCallback = std::function<void(GattDeviceServiceComPtr)>;
+    HRESULT getNativeService(const QBluetoothUuid &serviceUuid, NativeServiceCallback callback);
+
+    using GattCharacteristicComPtr = Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattCharacteristic>;
+    using NativeCharacteristicCallback = std::function<void(GattCharacteristicComPtr)>;
+    HRESULT getNativeCharacteristic(const QBluetoothUuid &serviceUuid,
+                                    const QBluetoothUuid &charUuid,
+                                    NativeCharacteristicCallback callback);
 
     void registerForValueChanges(const QBluetoothUuid &serviceUuid, const QBluetoothUuid &charUuid);
     void unregisterFromValueChanges();
+    HRESULT onValueChange(ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattCharacteristic *characteristic,
+                          ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattValueChangedEventArgs *args);
+    HRESULT onMtuChange(ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattSession *session,
+                        IInspectable *args);
+    bool registerForMtuChanges();
+    void unregisterFromMtuChanges();
+
+    bool registerForStatusChanges();
+    void unregisterFromStatusChanges();
+    HRESULT onStatusChange(ABI::Windows::Devices::Bluetooth::IBluetoothLEDevice *dev, IInspectable *);
 
     void obtainIncludedServices(QSharedPointer<QLowEnergyServicePrivate> servicePointer,
         Microsoft::WRL::ComPtr<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::IGattDeviceService> nativeService);
+    HRESULT onServiceDiscoveryFinished(ABI::Windows::Foundation::IAsyncOperation<ABI::Windows::Devices::Bluetooth::GenericAttributeProfile::GattDeviceServicesResult *> *op,
+                                       ABI::Windows::Foundation::AsyncStatus status);
 
+    void readCharacteristicHelper(const QSharedPointer<QLowEnergyServicePrivate> service,
+                                  const QLowEnergyHandle charHandle,
+                                  GattCharacteristicComPtr characteristic);
+    void readDescriptorHelper(const QSharedPointer<QLowEnergyServicePrivate> service,
+                              const QLowEnergyHandle charHandle,
+                              const QLowEnergyHandle descriptorHandle,
+                              GattCharacteristicComPtr characteristic);
+    void writeCharacteristicHelper(const QSharedPointer<QLowEnergyServicePrivate> service,
+                                   const QLowEnergyHandle charHandle, const QByteArray &newValue,
+                                   bool writeWithResponse,
+                                   GattCharacteristicComPtr characteristic);
+    void writeDescriptorHelper(const QSharedPointer<QLowEnergyServicePrivate> service,
+                               const QLowEnergyHandle charHandle,
+                               const QLowEnergyHandle descriptorHandle,
+                               const QByteArray &newValue,
+                               GattCharacteristicComPtr characteristic);
+    void discoverServiceDetailsHelper(const QBluetoothUuid &service,
+                                      QLowEnergyService::DiscoveryMode mode,
+                                      GattDeviceServiceComPtr deviceService);
+
+    void clearAllServices();
+    void closeAndRemoveService(const QBluetoothUuid &uuid);
 };
 
 QT_END_NAMESPACE

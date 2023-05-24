@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qv4arraydata_p.h"
 #include "qv4object_p.h"
 #include "qv4functionobject_p.h"
@@ -563,7 +527,7 @@ uint ArrayData::append(Object *obj, ArrayObject *otherObj, uint n)
         ScopedValue v(scope);
         for (uint i = 0; i < n; ++i)
             obj->arraySet(oldSize + i, (v = otherObj->get(i)));
-    } else if (other && other->isSparse()) {
+    } else if (other->isSparse()) {
         Heap::SparseArrayData *os = static_cast<Heap::SparseArrayData *>(other->d());
         if (other->hasAttributes()) {
             ScopedValue v(scope);
@@ -586,7 +550,7 @@ uint ArrayData::append(Object *obj, ArrayObject *otherObj, uint n)
         obj->arrayPut(oldSize, os->values.data() + os->offset, chunk);
         toCopy -= chunk;
         if (toCopy)
-            obj->setArrayLength(oldSize + chunk + toCopy);
+            obj->arrayPut(oldSize + chunk, os->values.data(), toCopy);
     }
 
     return oldSize + n;
@@ -623,21 +587,6 @@ void ArrayData::insert(Object *o, uint index, const Value *v, bool isAccessor)
         s->setArrayData(o->engine(), n->value + Object::SetterOffset, v[Object::SetterOffset]);
 }
 
-
-class ArrayElementLessThan
-{
-public:
-    inline ArrayElementLessThan(ExecutionEngine *engine, const Value &comparefn)
-        : m_engine(engine), m_comparefn(comparefn) {}
-
-    bool operator()(Value v1, Value v2) const;
-
-private:
-    ExecutionEngine *m_engine;
-    const Value &m_comparefn;
-};
-
-
 bool ArrayElementLessThan::operator()(Value v1, Value v2) const
 {
     Scope scope(m_engine);
@@ -650,9 +599,9 @@ bool ArrayElementLessThan::operator()(Value v1, Value v2) const
     if (o) {
         Scope scope(o->engine());
         ScopedValue result(scope);
-        JSCallData jsCallData(scope, 2);
-        jsCallData->args[0] = v1;
-        jsCallData->args[1] = v2;
+        JSCallArguments jsCallData(scope, 2);
+        jsCallData.args[0] = v1;
+        jsCallData.args[1] = v2;
         result = o->call(jsCallData);
         if (scope.hasException())
             return false;
@@ -669,60 +618,6 @@ bool ArrayElementLessThan::operator()(Value v1, Value v2) const
 
     return p1s->toQString() < p2s->toQString();
 }
-
-template <typename RandomAccessIterator, typename T, typename LessThan>
-void sortHelper(RandomAccessIterator start, RandomAccessIterator end, const T &t, LessThan lessThan)
-{
-top:
-    int span = int(end - start);
-    if (span < 2)
-        return;
-
-    --end;
-    RandomAccessIterator low = start, high = end - 1;
-    RandomAccessIterator pivot = start + span / 2;
-
-    if (lessThan(*end, *start))
-        qSwap(*end, *start);
-    if (span == 2)
-        return;
-
-    if (lessThan(*pivot, *start))
-        qSwap(*pivot, *start);
-    if (lessThan(*end, *pivot))
-        qSwap(*end, *pivot);
-    if (span == 3)
-        return;
-
-    qSwap(*pivot, *end);
-
-    while (low < high) {
-        while (low < high && lessThan(*low, *end))
-            ++low;
-
-        while (high > low && lessThan(*end, *high))
-            --high;
-
-        if (low < high) {
-            qSwap(*low, *high);
-            ++low;
-            --high;
-        } else {
-            break;
-        }
-    }
-
-    if (lessThan(*low, *end))
-        ++low;
-
-    qSwap(*end, *low);
-    sortHelper(start, low, t, lessThan);
-
-    start = low + 1;
-    ++end;
-    goto top;
-}
-
 
 void ArrayData::sort(ExecutionEngine *engine, Object *thisObject, const Value &comparefn, uint len)
 {
@@ -814,10 +709,38 @@ void ArrayData::sort(ExecutionEngine *engine, Object *thisObject, const Value &c
     }
 
 
-    ArrayElementLessThan lessThan(engine, static_cast<const FunctionObject &>(comparefn));
+    ArrayElementLessThan lessThan(engine, comparefn);
 
-    Value *begin = thisObject->arrayData()->values.values;
-    sortHelper(begin, begin + len, *begin, lessThan);
+    const auto thisArrayData = thisObject->arrayData();
+    uint startIndex = thisArrayData->mappedIndex(0);
+    uint endIndex = thisArrayData->mappedIndex(len - 1) + 1;
+    if (startIndex < endIndex) {
+        // Values are contiguous. Sort right away.
+        sortHelper(
+                thisArrayData->values.values + startIndex,
+                thisArrayData->values.values + endIndex,
+                lessThan);
+    } else {
+        // Values wrap around the end of the allocation. Close the gap to form a contiguous array.
+        // We're going to sort anyway. So we don't need to care about order.
+
+        // ArrayElementLessThan sorts empty and undefined to the end of the array anyway, but we
+        // probably shouldn't rely on the unused slots to be actually undefined or empty.
+
+        const uint gap = startIndex - endIndex;
+        const uint allocEnd = thisArrayData->values.alloc - 1;
+        for (uint i = 0; i < gap; ++i) {
+            const uint from = allocEnd - i;
+            const uint to = endIndex + i;
+            if (from < startIndex)
+                break;
+
+            std::swap(thisArrayData->values.values[from], thisArrayData->values.values[to]);
+        }
+
+        thisArrayData->offset = 0;
+        sortHelper(thisArrayData->values.values, thisArrayData->values.values + len, lessThan);
+    }
 
 #ifdef CHECK_SPARSE_ARRAYS
     thisObject->initSparseArray();

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*
  * Copyright (C) 2006 Nikolas Zimmermann <zimmermann@kde.org>
@@ -82,7 +46,7 @@
 #include <QMouseEvent>
 #include <QStyleHints>
 #if QT_CONFIG(tabletevent)
-#include <QTabletEvent>
+#include <QPointingDevice>
 #endif
 #include <QWheelEvent>
 
@@ -594,6 +558,8 @@ static int windowsKeyCodeForQtKey(int qtKey, bool isKeypad)
         case Qt::Key_QuoteDbl:
             return VK_OEM_7; // case '\'': case '"': return 0xDE;
             // VK_OEM_8 (DF) Used for miscellaneous characters; it can vary by keyboard.
+        case Qt::Key_AltGr:
+            return 0xE1; // (E1) VK_OEM_AX = ui::VKEY_ALTGR see ui/events/keycodes/keyboard_codes_win.h
             // VK_OEM_102 (E2) Windows 2000/XP: Either the angle bracket key or the backslash key on the RT 102-key keyboard
 
         case Qt::Key_AudioRewind:
@@ -950,7 +916,6 @@ static ui::DomKey domKeyForQtKey(int qtKey)
         return ui::DomKey::ZENKAKU;
     case Qt::Key_Zenkaku_Hankaku:
         return ui::DomKey::ZENKAKU_HANKAKU;
-#if QT_VERSION >= QT_VERSION_CHECK(5, 12, 0)
     // Dead keys (ui/events/keycodes/keyboard_code_conversion_xkb.cc)
     case Qt::Key_Dead_Grave:
         return ui::DomKey::DeadKeyFromCombiningCharacter(0x0300);
@@ -1018,7 +983,6 @@ static ui::DomKey domKeyForQtKey(int qtKey)
         return ui::DomKey::DeadKeyFromCombiningCharacter(0x00A4);
     case Qt::Key_Dead_Greek:
         return ui::DomKey::DeadKeyFromCombiningCharacter(0x037E);
-#endif
     // General-Purpose Function Keys
     case Qt::Key_F1:
         return ui::DomKey::F1;
@@ -1443,12 +1407,14 @@ static WebInputEvent::Type webEventTypeForEvent(const QEvent* event)
 static WebPointerProperties::PointerType pointerTypeForTabletEvent(const QTabletEvent *ev)
 {
     switch (ev->pointerType()) {
-    case QTabletEvent::UnknownPointer:
+    case QPointingDevice::PointerType::Unknown:
         return WebPointerProperties::PointerType::kUnknown;
-    case QTabletEvent::Pen:
+    case QPointingDevice::PointerType::Pen:
         return WebPointerProperties::PointerType::kPen;
-    case QTabletEvent::Eraser:
+    case QPointingDevice::PointerType::Eraser:
         return WebPointerProperties::PointerType::kEraser;
+    case QPointingDevice::PointerType::Finger:
+        return WebPointerProperties::PointerType::kTouch;
     default:
         return WebPointerProperties::PointerType::kMouse;
     }
@@ -1458,8 +1424,8 @@ static WebPointerProperties::PointerType pointerTypeForTabletEvent(const QTablet
 WebMouseEvent WebEventFactory::toWebMouseEvent(QMouseEvent *ev)
 {
     WebMouseEvent webKitEvent(webEventTypeForEvent(ev),
-                              gfx::PointF(ev->x(), ev->y()),
-                              gfx::PointF(ev->globalX(), ev->globalY()),
+                              gfx::PointF(ev->position().x(), ev->position().y()),
+                              gfx::PointF(ev->globalPosition().x(), ev->globalPosition().y()),
                               mouseButtonForEvent<QMouseEvent>(ev),
                               0,
                               modifiersForEvent(ev),
@@ -1477,9 +1443,10 @@ WebMouseEvent WebEventFactory::toWebMouseEvent(QHoverEvent *ev)
     webKitEvent.SetModifiers(modifiersForEvent(ev));
     webKitEvent.SetType(webEventTypeForEvent(ev));
 
-    webKitEvent.SetPositionInWidget(ev->pos().x(), ev->pos().y());
-    webKitEvent.movement_x = ev->pos().x() - ev->oldPos().x();
-    webKitEvent.movement_y = ev->pos().y() - ev->oldPos().y();
+    webKitEvent.SetPositionInWidget(ev->position().x(), ev->position().y());
+    webKitEvent.movement_x = ev->position().x() - ev->oldPos().x();
+    webKitEvent.movement_y = ev->position().y() - ev->oldPos().y();
+    webKitEvent.is_raw_movement_event = true;
     webKitEvent.pointer_type = WebPointerProperties::PointerType::kMouse;
 
     return webKitEvent;
@@ -1489,8 +1456,8 @@ WebMouseEvent WebEventFactory::toWebMouseEvent(QHoverEvent *ev)
 WebMouseEvent WebEventFactory::toWebMouseEvent(QTabletEvent *ev)
 {
     WebMouseEvent webKitEvent(webEventTypeForEvent(ev),
-                              gfx::PointF(ev->x(), ev->y()),
-                              gfx::PointF(ev->globalX(), ev->globalY()),
+                              gfx::PointF(ev->position().x(), ev->position().y()),
+                              gfx::PointF(ev->globalPosition().x(), ev->globalPosition().y()),
                               mouseButtonForEvent<QTabletEvent>(ev),
                               0,
                               modifiersForEvent(ev),
@@ -1516,16 +1483,18 @@ WebMouseEvent WebEventFactory::toWebMouseEvent(QEvent *ev)
     return webKitEvent;
 }
 
-#ifndef QT_NO_GESTURES
+#if QT_CONFIG(gestures)
 WebGestureEvent WebEventFactory::toWebGestureEvent(QNativeGestureEvent *ev)
 {
     WebGestureEvent webKitEvent;
     webKitEvent.SetTimeStamp(base::TimeTicks::Now());
     webKitEvent.SetModifiers(modifiersForEvent(ev));
 
-    webKitEvent.SetPositionInWidget(gfx::PointF(ev->localPos().x(), ev->localPos().y()));
+    webKitEvent.SetPositionInWidget(gfx::PointF(ev->position().x(),
+                                                ev->position().y()));
 
-    webKitEvent.SetPositionInScreen(gfx::PointF(ev->screenPos().x(), ev->screenPos().y()));
+    webKitEvent.SetPositionInScreen(gfx::PointF(ev->globalPosition().x(),
+                                                ev->globalPosition().y()));
 
     webKitEvent.SetSourceDevice(blink::WebGestureDevice::kTouchpad);
 
@@ -1574,17 +1543,16 @@ static QPoint getWheelEventDelta(const blink::WebGestureEvent &webEvent)
 {
     static const float cDefaultQtScrollStep = 20.f;
     static const int wheelScrollLines = QGuiApplication::styleHints()->wheelScrollLines();
-    return QPoint(webEvent.data.scroll_update.delta_x * QWheelEvent::DefaultDeltasPerStep / (wheelScrollLines * cDefaultQtScrollStep),
-                  webEvent.data.scroll_update.delta_y * QWheelEvent::DefaultDeltasPerStep / (wheelScrollLines * cDefaultQtScrollStep));
+    static const float deltasPerStep = static_cast<float>(QWheelEvent::DefaultDeltasPerStep);
+    return QPoint(webEvent.data.scroll_update.delta_x * deltasPerStep / (wheelScrollLines * cDefaultQtScrollStep),
+                  webEvent.data.scroll_update.delta_y * deltasPerStep / (wheelScrollLines * cDefaultQtScrollStep));
 }
 
 blink::WebMouseWheelEvent::Phase toBlinkPhase(QWheelEvent *ev)
 {
     switch (ev->phase()) {
     case Qt::NoScrollPhase:
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
     case Qt::ScrollMomentum:
-#endif
         return blink::WebMouseWheelEvent::kPhaseNone;
     case Qt::ScrollBegin:
         return blink::WebMouseWheelEvent::kPhaseBegan;
@@ -1597,27 +1565,39 @@ blink::WebMouseWheelEvent::Phase toBlinkPhase(QWheelEvent *ev)
     return blink::WebMouseWheelEvent::kPhaseNone;
 }
 
+blink::WebMouseWheelEvent::Phase getMomentumPhase(QWheelEvent *ev)
+{
+    switch (ev->phase()) {
+    case Qt::ScrollMomentum:
+        return blink::WebMouseWheelEvent::kPhaseBegan;
+    case Qt::ScrollEnd:
+        return blink::WebMouseWheelEvent::kPhaseEnded;
+    case Qt::NoScrollPhase:
+    case Qt::ScrollBegin:
+    case Qt::ScrollUpdate:
+        return blink::WebMouseWheelEvent::kPhaseNone;
+    }
+    Q_UNREACHABLE();
+    return blink::WebMouseWheelEvent::kPhaseNone;
+}
+
 blink::WebMouseWheelEvent WebEventFactory::toWebWheelEvent(QWheelEvent *ev)
 {
     WebMouseWheelEvent webEvent;
     webEvent.SetType(webEventTypeForEvent(ev));
     webEvent.SetModifiers(modifiersForEvent(ev));
     webEvent.SetTimeStamp(base::TimeTicks::Now());
-#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
-    webEvent.SetPositionInWidget(ev->x(), ev->y());
-    webEvent.SetPositionInScreen(ev->globalX(), ev->globalY());
-#else
     webEvent.SetPositionInWidget(static_cast<float>(ev->position().x()),
                                  static_cast<float>(ev->position().y()));
     webEvent.SetPositionInScreen(static_cast<float>(ev->globalPosition().x()),
                                  static_cast<float>(ev->globalPosition().y()));
-#endif
 
-    webEvent.wheel_ticks_x = static_cast<float>(ev->angleDelta().x()) / QWheelEvent::DefaultDeltasPerStep;
-    webEvent.wheel_ticks_y = static_cast<float>(ev->angleDelta().y()) / QWheelEvent::DefaultDeltasPerStep;
+    webEvent.wheel_ticks_x = ev->angleDelta().x() / static_cast<float>(QWheelEvent::DefaultDeltasPerStep);
+    webEvent.wheel_ticks_y = ev->angleDelta().y() / static_cast<float>(QWheelEvent::DefaultDeltasPerStep);
     webEvent.phase = toBlinkPhase(ev);
 #if defined(Q_OS_DARWIN)
     // PrecisePixel is a macOS term meaning it is a system scroll gesture, see qnsview_mouse.mm
+    webEvent.momentum_phase = getMomentumPhase(ev);
     if (ev->source() == Qt::MouseEventSynthesizedBySystem)
         webEvent.delta_units = ui::ScrollGranularity::kScrollByPrecisePixel;
 #endif
@@ -1636,24 +1616,22 @@ bool WebEventFactory::coalesceWebWheelEvent(blink::WebMouseWheelEvent &webEvent,
     if (toBlinkPhase(ev) != webEvent.phase)
         return false;
 #if defined(Q_OS_DARWIN)
+    if (getMomentumPhase(ev) != webEvent.momentum_phase)
+        return false;
+
     if ((webEvent.delta_units == ui::ScrollGranularity::kScrollByPrecisePixel)
             != (ev->source() == Qt::MouseEventSynthesizedBySystem))
         return false;
 #endif
 
     webEvent.SetTimeStamp(base::TimeTicks::Now());
-#if QT_VERSION < QT_VERSION_CHECK(5, 14, 0)
-    webEvent.SetPositionInWidget(ev->x(), ev->y());
-    webEvent.SetPositionInScreen(ev->globalX(), ev->globalY());
-#else
     webEvent.SetPositionInWidget(static_cast<float>(ev->position().x()),
                                  static_cast<float>(ev->position().y()));
     webEvent.SetPositionInScreen(static_cast<float>(ev->globalPosition().x()),
                                  static_cast<float>(ev->globalPosition().y()));
-#endif
 
-    webEvent.wheel_ticks_x += static_cast<float>(ev->angleDelta().x()) / QWheelEvent::DefaultDeltasPerStep;
-    webEvent.wheel_ticks_y += static_cast<float>(ev->angleDelta().y()) / QWheelEvent::DefaultDeltasPerStep;
+    webEvent.wheel_ticks_x = ev->angleDelta().x() / static_cast<float>(QWheelEvent::DefaultDeltasPerStep);
+    webEvent.wheel_ticks_y = ev->angleDelta().y() / static_cast<float>(QWheelEvent::DefaultDeltasPerStep);
     setBlinkWheelEventDelta(webEvent);
 
     return true;
@@ -1722,10 +1700,12 @@ content::NativeWebKeyboardEvent WebEventFactory::toWebKeyboardEvent(QKeyEvent *e
                 ui::DomCodeToUsLayoutKeyboardCode(static_cast<ui::DomCode>(webKitEvent.dom_code));
 
     const ushort* text = qtText.utf16();
-    size_t textSize = std::min(sizeof(webKitEvent.text), size_t(qtText.length() * 2));
-    memcpy(&webKitEvent.text, text, textSize);
-    memcpy(&webKitEvent.unmodified_text, text, textSize);
-
+    size_t size = std::char_traits<char16_t>::length((char16_t *)text);
+    if (size <= blink::WebKeyboardEvent::kTextLengthCap - 1) { // should be null terminated
+        size_t textSize = std::min(sizeof(webKitEvent.text), size * sizeof(char16_t));
+        memcpy(&webKitEvent.text, text, textSize);
+        memcpy(&webKitEvent.unmodified_text, text, textSize);
+    }
     if (webKitEvent.windows_key_code == VK_RETURN) {
         // This is the same behavior as GTK:
         // We need to treat the enter key as a key press of character \r. This

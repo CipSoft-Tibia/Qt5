@@ -1,40 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
-#include <QtCore/QThread>
-#include <QtCore/QSemaphore>
+#include <QTest>
+#include <QtTest/qtesteventloop.h>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QList>
+#include <QtCore/QSemaphore>
 #include <QtCore/QSharedPointer>
-#include <QtCore/QVector>
-#include <QtNetwork/QTcpSocket>
-#include <QtNetwork/QNetworkReply>
+#include <QtCore/QThread>
 #include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
+#include <QtNetwork/QTcpSocket>
 
 #ifdef QT_BUILD_INTERNAL
 # include <private/qnetworkaccessmanager_p.h>
@@ -42,6 +18,7 @@
 
 #include "minihttpserver.h"
 #include "../../auto/network-settings.h"
+#include "private/qurl_p.h"
 
 #include <qplatformdefs.h>
 #ifdef Q_OS_UNIX
@@ -118,7 +95,8 @@ void tst_NetworkStressTest::initTestCase_data()
     QTest::addColumn<int>("port");
 
     QTest::newRow("localhost") << true << "localhost" << server.port();
-    QTest::newRow("remote") << false << QtNetworkSettings::serverName() << 80;
+    if (QtNetworkSettings::verifyTestNetworkSettings()) // emits its own warnings if not
+        QTest::newRow("remote") << false << QtNetworkSettings::serverName() << 80;
 }
 
 void tst_NetworkStressTest::initTestCase()
@@ -260,8 +238,9 @@ void tst_NetworkStressTest::nativeBlockingConnectDisconnect()
                 QFAIL("Timeout");
             } else if (ret == 0) {
                 break; // EOF
+            } else {
+                byteCounter += ret;
             }
-            byteCounter += ret;
         }
         ::close(fd);
 
@@ -379,7 +358,8 @@ void tst_NetworkStressTest::nativeNonBlockingConnectDisconnect()
             } else if (ret == 0) {
                 break; // EOF
             }
-            byteCounter += ret;
+            if (ret != -1)
+                byteCounter += ret;
         }
         ::close(fd);
 
@@ -543,8 +523,10 @@ void tst_NetworkStressTest::blockingMultipleRequests()
             while (socket.state() == QAbstractSocket::ConnectedState && !timeout.hasExpired(10000) && bytesExpected > bytesRead) {
                 socket.waitForReadyRead();
                 int blocklen = socket.read(bytesExpected - bytesRead).length(); // discard
-                bytesRead += blocklen;
-                byteCounter += blocklen;
+                if (blocklen >= 0) {
+                    bytesRead += blocklen;
+                    byteCounter += blocklen;
+                }
             }
             QVERIFY2(!timeout.hasExpired(10000), "Timeout");
             QCOMPARE(bytesRead, bytesExpected);
@@ -712,6 +694,7 @@ void tst_NetworkStressTest::namGet()
             QSKIP("Localhost-only test");
     }
 
+    const int halfMinute = 30000;
     qint64 totalBytes = 0;
     QElapsedTimer outerTimer;
     outerTimer.start();
@@ -722,14 +705,14 @@ void tst_NetworkStressTest::namGet()
         timeout.start();
 
         QUrl url;
-        url.setScheme("http");
+        url.setScheme(QStringLiteral("http"));
         url.setHost(hostname);
         url.setPort(port);
-        url.setEncodedPath("/qtest/bigfile");
+        url.setPath(QStringLiteral("/qtest/bigfile"));
         QNetworkRequest req(url);
         req.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, pipelineAllowed);
 
-        QVector<QSharedPointer<QNetworkReply> > replies;
+        QList<QSharedPointer<QNetworkReply> > replies;
         replies.resize(parallelAttempts);
         for (int j = 0; j < parallelAttempts; ++j) {
             QNetworkReply *r = manager.get(req);
@@ -740,7 +723,7 @@ void tst_NetworkStressTest::namGet()
             replies[j] = QSharedPointer<QNetworkReply>(r);
         }
 
-        while (!timeout.hasExpired(30000)) {
+        while (!timeout.hasExpired(halfMinute)) {
             QTestEventLoop::instance().enterLoop(10);
             int done = 0;
             for (int j = 0; j < parallelAttempts; ++j)
@@ -750,7 +733,7 @@ void tst_NetworkStressTest::namGet()
         }
         replies.clear();
 
-        QVERIFY2(!timeout.hasExpired(30000), "Timeout");
+        QVERIFY2(!timeout.hasExpired(halfMinute), "Timeout");
         totalBytes += byteCounter;
         if (intermediateDebug) {
             double rate = (byteCounter * 1.0 / timeout.elapsed());

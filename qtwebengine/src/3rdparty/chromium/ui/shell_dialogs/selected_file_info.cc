@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,6 +24,12 @@ SelectedFileInfo& SelectedFileInfo::operator=(const SelectedFileInfo& other) =
     default;
 SelectedFileInfo& SelectedFileInfo::operator=(SelectedFileInfo&& other) =
     default;
+
+bool SelectedFileInfo::operator==(const SelectedFileInfo& other) const {
+  return file_path == other.file_path && local_path == other.local_path &&
+         display_name == other.display_name && url == other.url &&
+         virtual_path == other.virtual_path;
+}
 
 // Converts a list of FilePaths to a list of ui::SelectedFileInfo.
 std::vector<SelectedFileInfo> FilePathListToSelectedFileInfoList(

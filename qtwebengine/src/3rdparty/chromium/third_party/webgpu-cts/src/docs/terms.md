@@ -1,4 +1,4 @@
-# Writing Tests
+# Terminology
 
 Each test suite is organized as a tree, both in the filesystem and further within each file.
 
@@ -60,8 +60,8 @@ Queries are used to:
 - Identify a subtree of a suite (by identifying the root node of that subtree).
 - Identify individual cases.
 - Represent the list of tests that a test runner (standalone, wpt, or cmdline) should run.
-- Identify subtrees which should not be "collapsed" during WPT `cts.html` generation,
-  so that that cts.html "variants" can have individual test expectations
+- Identify subtrees which should not be "collapsed" during WPT `cts.https.html` generation,
+  so that that cts.https.html "variants" can have individual test expectations
   (i.e. marked as "expected to fail", "skip", etc.).
 
 There are four types of `TestQuery`:
@@ -141,12 +141,14 @@ It may represent multiple _test cases_, each of which runs the same Test Functio
 Parameters.
 
 A test is named using `TestGroup.test()`, which returns a `TestBuilder`.
-`TestBuilder.params()` can optionally be used to parameterize the test.
-Then, `TestBuilder.fn()` provides the Test Function.
+`TestBuilder.params()`/`.paramsSimple()`/`.paramsSubcasesOnly()`
+can optionally be used to parametrically generate instances (cases and subcases) of the test.
+Finally, `TestBuilder.fn()` provides the Test Function
+(or, a test can be marked unimplemented with `TestBuilder.unimplemented()`).
 
 ### Test Function
 
-When a test case is run, the Test Function receives an instance of the
+When a test subcase is run, the Test Function receives an instance of the
 Test Fixture provided to the Test Group, producing test results.
 
 **Type:** `TestFn`
@@ -155,20 +157,36 @@ Test Fixture provided to the Test Group, producing test results.
 
 A single case of a test. It is identified by a `TestCaseID`: a test name, and its parameters.
 
+Each case appears as an individual item (tree leaf) in `/standalone/`,
+and as an individual "step" in WPT.
+
+If `TestBuilder.params()`/`.paramsSimple()`/`.paramsSubcasesOnly()` are not used,
+there is exactly one case with one subcase, with parameters `{}`.
+
 **Type:** During test run time, a case is encapsulated as a `RunCase`.
 
-## Parameters / Params
+## Test Subcase / Subcase
 
-Each Test Case has a (possibly empty) set of Parameters.
-The parameters are available to the Test Function `f(t)` via `t.params`.
+A single "subcase" of a test. It can also be identified by a `TestCaseID`, though
+not all contexts allow subdividing cases into subcases.
 
-A set of Public Parameters identifies a Test Case within a Test.
+All of the subcases of a case will run _inside_ the case, essentially as a for-loop wrapping the
+test function. They do _not_ appear individually in `/standalone/` or WPT.
 
-There are also Private Paremeters: any parameter name beginning with an underscore (`_`).
+If `CaseParamsBuilder.beginSubcases()` is not used, there is exactly one subcase per case.
+
+## Test Parameters / Params
+
+Each Test Subcase has a (possibly empty) set of Test Parameters,
+The parameters are passed to the Test Function `f(t)` via `t.params`.
+
+A set of Public Parameters identifies a Test Case or Test Subcase within a Test.
+
+There are also Private Parameters: any parameter name beginning with an underscore (`_`).
 These parameters are not part of the Test Case identification, but are still passed into
-the Test Function. They can be used to manually specify expected results.
+the Test Function. They can be used, e.g., to manually specify expected results.
 
-**Type:** `CaseParams`
+**Type:** `TestParams`
 
 ## Test Fixture / Fixture
 

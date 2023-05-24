@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 const fs = require('fs');
 const path = require('path');
+const {writeIfChanged} = require('./write-if-changed.js');
 const [, , src, dest] = process.argv;
 
 const srcPath = path.join(process.cwd(), src);
@@ -12,7 +13,7 @@ const destPath = path.join(process.cwd(), dest);
 // is because the file in that location might be a hardlinked file, and
 // overwriting it doesn't change the fact that it's hardlinked.
 const srcContents = fs.readFileSync(srcPath);
-if (fs.existsSync(destPath)) {
+if (fileExists(destPath)) {
   // Check contents, return early if match
   const destContents = fs.readFileSync(destPath);
   if (srcContents.equals(destContents)) {
@@ -23,4 +24,13 @@ if (fs.existsSync(destPath)) {
 // Force a write to the target filesystem, since by default the ninja
 // toolchain will create a hardlink, which in turn reflects changes in
 // gen and resources/inspector back to //front_end.
-fs.writeFileSync(destPath, srcContents);
+writeIfChanged(destPath, srcContents);
+
+/**
+ * Case sensitive implementation of a file look up.
+ */
+function fileExists(filePath) {
+  const dir = path.dirname(filePath);
+  const files = fs.readdirSync(dir);
+  return files.includes(path.basename(filePath));
+}

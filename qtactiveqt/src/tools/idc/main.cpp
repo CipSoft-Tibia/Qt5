@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QDir>
 #include <QFile>
@@ -145,7 +120,7 @@ static bool attachTypeLibrary(const QString &applicationName, int resource, cons
         return false;
     }
     if (!UpdateResource(hExe, L"TYPELIB", MAKEINTRESOURCE(resource), 0,
-                        const_cast<char *>(data.data()), DWORD(data.count()))) {
+                        const_cast<char *>(data.data()), DWORD(data.size()))) {
         EndUpdateResource(hExe, true);
         if (errorMessage)
             *errorMessage = QString::fromLatin1("Failed to attach type library to binary %1 - could not update file.").arg(applicationName);
@@ -194,7 +169,8 @@ static bool dllInstall(const QString &input, bool doRegister)
     }
 
     typedef HRESULT(__stdcall* DllInstallProc)(BOOL bInstall, PCWSTR pszCmdLine);
-    DllInstallProc DllInstall = reinterpret_cast<DllInstallProc>(GetProcAddress(hdll, "DllInstall"));
+    DllInstallProc DllInstall = reinterpret_cast<DllInstallProc>
+            (reinterpret_cast<void *>(GetProcAddress(hdll, "DllInstall")));
     if (!DllInstall) {
         fprintf(stderr, "Library file %s doesn't appear to be a COM library supporting DllInstall\n", qPrintable(input));
         return false;
@@ -219,7 +195,8 @@ static bool registerServer(const QString &input, bool perUser)
             }
 
             typedef HRESULT(__stdcall* RegServerProc)();
-            RegServerProc DllRegisterServer = reinterpret_cast<RegServerProc>(GetProcAddress(hdll, "DllRegisterServer"));
+            RegServerProc DllRegisterServer = reinterpret_cast<RegServerProc>
+                    (reinterpret_cast<void *>(GetProcAddress(hdll, "DllRegisterServer")));
             if (!DllRegisterServer) {
                 fprintf(stderr, "Library file %s doesn't appear to be a COM library\n", qPrintable(input));
                 return false;
@@ -246,7 +223,8 @@ static bool unregisterServer(const QString &input, bool perUser)
             }
 
             typedef HRESULT(__stdcall* RegServerProc)();
-            RegServerProc DllUnregisterServer = reinterpret_cast<RegServerProc>(GetProcAddress(hdll, "DllUnregisterServer"));
+            RegServerProc DllUnregisterServer = reinterpret_cast<RegServerProc>
+                    (reinterpret_cast<void *>(GetProcAddress(hdll, "DllUnregisterServer")));
             if (!DllUnregisterServer) {
                 fprintf(stderr, "Library file %s doesn't appear to be a COM library\n", qPrintable(input));
                 return false;
@@ -273,7 +251,8 @@ static HRESULT dumpIdl(const QString &input, const QString &idlfile, const QStri
             return 3;
         }
         typedef HRESULT(__stdcall* DumpIDLProc)(const QString&, const QString&);
-        DumpIDLProc DumpIDL = reinterpret_cast<DumpIDLProc>(GetProcAddress(hdll, "DumpIDL"));
+        DumpIDLProc DumpIDL = reinterpret_cast<DumpIDLProc>
+                (reinterpret_cast<void *>(GetProcAddress(hdll, "DumpIDL")));
         if (!DumpIDL) {
             fprintf(stderr, "Couldn't resolve 'DumpIDL' symbol in %s\n", qPrintable(input));
             return 3;
@@ -289,7 +268,7 @@ const char usage[] =
 "Usage: idc [options] [input_file]\n"
 "Interface Description Compiler " QT_VERSION_STR "\n\n"
 "Options:\n"
-"  -?, /h, -h, -help                 Displays this help.\n"
+"  /?, -?, /h, -h, /help, -help      Displays this help.\n"
 "  /v, -v                            Displays version information.\n"
 "  /version, -version <version>      Specify the interface version.\n"
 "  /idl, -idl <file>                 Specify the interface definition file.\n"
@@ -343,7 +322,9 @@ int runIdc(int argc, char **argv)
         } else if (p == QLatin1String("/v") || p == QLatin1String("-v")) {
             fprintf(stdout, "Qt Interface Definition Compiler version 1.0 using Qt %s\n", QT_VERSION_STR);
             return 0;
-        } else if (p == QLatin1String("/h") || p == QLatin1String("-h") || p == QLatin1String("-?") || p == QLatin1String("/?")) {
+        } else if (p == QLatin1String("/h") || p == QLatin1String("-h")
+                   || p == QLatin1String("/?") || p == QLatin1String("-?")
+                   || p == QLatin1String("/help") || p == QLatin1String("-help")) {
             fprintf(stdout, "%s\n", usage);
             return 0;
         } else if (p == QLatin1String("/regserver") || p == QLatin1String("-regserver")) {

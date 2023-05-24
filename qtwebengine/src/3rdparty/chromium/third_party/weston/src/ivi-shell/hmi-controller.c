@@ -1981,6 +1981,10 @@ wet_module_init(struct weston_compositor *ec,
 	struct hmi_controller *hmi_ctrl = NULL;
 	struct wl_event_loop *loop = NULL;
 
+	/* ad hoc weston_compositor_add_destroy_listener_once() */
+	if (wl_signal_get(&ec->destroy_signal, hmi_controller_destroy))
+		return 0;
+
 	hmi_ctrl = hmi_controller_create(ec);
 	if (hmi_ctrl == NULL)
 		return -1;

@@ -26,7 +26,9 @@
 
 #include "third_party/blink/renderer/core/dom/layout_tree_builder_traversal.h"
 
+#include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
+#include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/pseudo_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
@@ -40,45 +42,26 @@ inline static bool HasDisplayContentsStyle(const Node& node) {
 }
 
 static bool IsLayoutObjectReparented(const LayoutObject* layout_object) {
-  auto* element = DynamicTo<Element>(layout_object->GetNode());
-  if (!element)
-    return false;
-  return element->IsInTopLayer();
+  return layout_object->IsInTopLayer();
 }
 
-void LayoutTreeBuilderTraversal::ParentDetails::DidTraverseInsertionPoint(
-    const V0InsertionPoint* insertion_point) {
-  if (!insertion_point_) {
-    insertion_point_ = insertion_point;
-  }
-}
-
-inline static void AssertPseudoElementParent(
-    const PseudoElement& pseudo_element) {
-  DCHECK(pseudo_element.parentNode());
-  DCHECK(pseudo_element.parentNode()->CanParticipateInFlatTree());
-}
-
-ContainerNode* LayoutTreeBuilderTraversal::Parent(const Node& node,
-                                                  ParentDetails* details) {
+ContainerNode* LayoutTreeBuilderTraversal::Parent(const Node& node) {
   // TODO(hayato): Uncomment this once we can be sure
   // LayoutTreeBuilderTraversal::parent() is used only for a node which is
   // connected.
   // DCHECK(node.isConnected());
   if (auto* element = DynamicTo<PseudoElement>(node)) {
-    AssertPseudoElementParent(*element);
+    DCHECK(node.parentNode());
     return node.parentNode();
   }
-  return FlatTreeTraversal::Parent(node, details);
+  return FlatTreeTraversal::Parent(node);
 }
 
-ContainerNode* LayoutTreeBuilderTraversal::LayoutParent(
-    const Node& node,
-    ParentDetails* details) {
-  ContainerNode* parent = LayoutTreeBuilderTraversal::Parent(node, details);
+ContainerNode* LayoutTreeBuilderTraversal::LayoutParent(const Node& node) {
+  ContainerNode* parent = LayoutTreeBuilderTraversal::Parent(node);
 
   while (parent && HasDisplayContentsStyle(*parent))
-    parent = LayoutTreeBuilderTraversal::Parent(*parent, details);
+    parent = LayoutTreeBuilderTraversal::Parent(*parent);
 
   return parent;
 }
@@ -92,18 +75,18 @@ Node* LayoutTreeBuilderTraversal::NextSibling(const Node& node) {
   PseudoId pseudo_id = node.GetPseudoId();
   Element* parent_element;
   if (pseudo_id != kPseudoIdNone) {
-    AssertPseudoElementParent(To<PseudoElement>(node));
     parent_element = DynamicTo<Element>(*node.parentNode());
+    DCHECK(parent_element);
   }
   switch (pseudo_id) {
     case kPseudoIdMarker:
       if (Node* next = parent_element->GetPseudoElement(kPseudoIdBefore))
         return next;
-      FALLTHROUGH;
+      [[fallthrough]];
     case kPseudoIdBefore:
       if (Node* next = FlatTreeTraversal::FirstChild(*parent_element))
         return next;
-      FALLTHROUGH;
+      [[fallthrough]];
     case kPseudoIdNone:
       if (pseudo_id == kPseudoIdNone) {  // Not falling through
         if (Node* next = FlatTreeTraversal::NextSibling(node))
@@ -114,8 +97,37 @@ Node* LayoutTreeBuilderTraversal::NextSibling(const Node& node) {
       }
       if (Node* next = parent_element->GetPseudoElement(kPseudoIdAfter))
         return next;
-      FALLTHROUGH;
+      [[fallthrough]];
     case kPseudoIdAfter:
+      return nullptr;
+    case kPseudoIdViewTransition:
+      return nullptr;
+    case kPseudoIdViewTransitionGroup: {
+      auto* pseudo_element = DynamicTo<PseudoElement>(node);
+      DCHECK(pseudo_element);
+
+      // Iterate the list of IDs until we hit the entry for |node's| ID. The
+      // sibling is the next ID in the list which generates a pseudo element.
+      bool found = false;
+      for (const auto& view_transition_name : parent_element->GetDocument()
+                                                  .GetStyleEngine()
+                                                  .ViewTransitionTags()) {
+        if (!found) {
+          if (view_transition_name == pseudo_element->view_transition_name())
+            found = true;
+          continue;
+        }
+
+        if (auto* sibling = parent_element->GetPseudoElement(
+                kPseudoIdViewTransitionGroup, view_transition_name)) {
+          return sibling;
+        }
+      }
+      return nullptr;
+    }
+    case kPseudoIdViewTransitionImagePair:
+    case kPseudoIdViewTransitionOld:
+    case kPseudoIdViewTransitionNew:
       return nullptr;
     default:
       NOTREACHED();
@@ -127,14 +139,14 @@ Node* LayoutTreeBuilderTraversal::PreviousSibling(const Node& node) {
   PseudoId pseudo_id = node.GetPseudoId();
   Element* parent_element;
   if (pseudo_id != kPseudoIdNone) {
-    AssertPseudoElementParent(To<PseudoElement>(node));
     parent_element = DynamicTo<Element>(*node.parentNode());
+    DCHECK(parent_element);
   }
   switch (pseudo_id) {
     case kPseudoIdAfter:
       if (Node* previous = FlatTreeTraversal::LastChild(*parent_element))
         return previous;
-      FALLTHROUGH;
+      [[fallthrough]];
     case kPseudoIdNone:
       if (pseudo_id == kPseudoIdNone) {  // Not falling through
         if (Node* previous = FlatTreeTraversal::PreviousSibling(node))
@@ -145,11 +157,11 @@ Node* LayoutTreeBuilderTraversal::PreviousSibling(const Node& node) {
       }
       if (Node* previous = parent_element->GetPseudoElement(kPseudoIdBefore))
         return previous;
-      FALLTHROUGH;
+      [[fallthrough]];
     case kPseudoIdBefore:
       if (Node* previous = parent_element->GetPseudoElement(kPseudoIdMarker))
         return previous;
-      FALLTHROUGH;
+      [[fallthrough]];
     case kPseudoIdMarker:
       return nullptr;
     default:
@@ -332,8 +344,9 @@ LayoutObject* LayoutTreeBuilderTraversal::PreviousSiblingLayoutObject(
 
 LayoutObject* LayoutTreeBuilderTraversal::NextInTopLayer(
     const Element& element) {
-  if (!element.IsInTopLayer())
-    return nullptr;
+  DCHECK(element.ComputedStyleRef().IsInTopLayer(element))
+      << "This method should only be called with an element in the top layer "
+         "candidate list which is rendered in the top layer";
   const HeapVector<Member<Element>>& top_layer_elements =
       element.GetDocument().TopLayerElements();
   wtf_size_t position = top_layer_elements.Find(&element);
@@ -343,8 +356,11 @@ LayoutObject* LayoutTreeBuilderTraversal::NextInTopLayer(
     // If top_layer_elements[i] is not a LayoutView child, its LayoutObject is
     // not re-attached and not in the top layer yet, thus we can not use it as a
     // sibling LayoutObject.
-    if (layout_object && IsA<LayoutView>(layout_object->Parent()))
+    if (layout_object &&
+        layout_object->StyleRef().TopLayer() == ETopLayer::kBrowser &&
+        IsA<LayoutView>(layout_object->Parent())) {
       return layout_object;
+    }
   }
   return nullptr;
 }

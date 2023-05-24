@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef LINUXDMABUFCLIENTBUFFERINTEGRATION_H
 #define LINUXDMABUFCLIENTBUFFERINTEGRATION_H
@@ -35,6 +9,7 @@
 #include <QtWaylandCompositor/private/qwlclientbufferintegration_p.h>
 #include <QtWaylandCompositor/private/qwlclientbuffer_p.h>
 #include <QtWaylandCompositor/private/qwayland-server-wayland.h>
+#include <QtCore/QMutex>
 
 #include <drm_fourcc.h>
 
@@ -71,9 +46,7 @@ public:
     QtWayland::ClientBuffer *createBufferFor(wl_resource *resource) override;
     bool importBuffer(wl_resource *resource, LinuxDmabufWlBuffer *linuxDmabufBuffer);
     void removeBuffer(wl_resource *resource);
-    void deleteOrphanedTextures();
     void deleteImage(EGLImageKHR image);
-    void deleteGLTextureWhenPossible(QOpenGLTexture *texture) { m_orphanedTextures << texture; }
     PFNGLEGLIMAGETARGETTEXTURE2DOESPROC gl_egl_image_target_texture_2d = nullptr;
 
 private:
@@ -88,12 +61,13 @@ private:
 
     bool initSimpleTexture(LinuxDmabufWlBuffer *dmabufBuffer);
     bool initYuvTexture(LinuxDmabufWlBuffer *dmabufBuffer);
-    QVector<uint32_t> supportedDrmFormats();
-    QVector<uint64_t> supportedDrmModifiers(uint32_t format);
+    QList<uint32_t> supportedDrmFormats();
+    QList<uint64_t> supportedDrmModifiers(uint32_t format);
 
     EGLDisplay m_eglDisplay = EGL_NO_DISPLAY;
+    ::wl_display *m_wlDisplay = nullptr;
     bool m_displayBound = false;
-    QVector<QOpenGLTexture *> m_orphanedTextures;
+
     QHash<EGLint, YuvFormatConversion> m_yuvFormats;
     bool m_supportsDmabufModifiers = false;
     QHash<struct ::wl_resource *, LinuxDmabufWlBuffer *> m_importedBuffers;

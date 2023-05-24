@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef METATRANSLATOR_H
 #define METATRANSLATOR_H
 
 #include "translatormessage.h"
+#include "fmt.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -41,10 +17,6 @@
 
 
 QT_BEGIN_NAMESPACE
-
-class FMT {
-    Q_DECLARE_TR_FUNCTIONS(Linguist)
-};
 
 class QIODevice;
 
@@ -80,6 +52,7 @@ public:
     QString m_unTrPrefix; // QM specific
     QString m_sourceFileName;
     QString m_targetFileName;
+    QString m_compilationDatabaseDir;
     QStringList m_excludes;
     QDir m_sourceDir;
     QDir m_targetDir; // FIXME: TS specific
@@ -94,6 +67,7 @@ public:
     bool m_noUiLines;
     bool m_idBased;
     TranslatorSaveMode m_saveMode;
+    QStringList m_rootDirs;
 };
 
 class TMMKey {
@@ -104,8 +78,11 @@ public:
         { return context == o.context && source == o.source && comment == o.comment; }
     QString context, source, comment;
 };
-Q_DECLARE_TYPEINFO(TMMKey, Q_MOVABLE_TYPE);
-inline uint qHash(const TMMKey &key) { return qHash(key.context) ^ qHash(key.source) ^ qHash(key.comment); }
+Q_DECLARE_TYPEINFO(TMMKey, Q_RELOCATABLE_TYPE);
+inline size_t qHash(const TMMKey &key)
+{
+    return qHash(key.context) ^ qHash(key.source) ^ qHash(key.comment);
+}
 
 class Translator
 {
@@ -135,11 +112,17 @@ public:
     void dropTranslations();
     void dropUiLines();
     void makeFileNamesAbsolute(const QDir &originalPath);
-    bool translationsExist();
+    bool translationsExist() const;
 
-    struct Duplicates { QSet<int> byId, byContents; };
+    using DuplicateEntries = QHash<int, QVector<int>>;
+    struct Duplicates
+    {
+        DuplicateEntries byId, byContents;
+    };
     Duplicates resolveDuplicates();
     void reportDuplicates(const Duplicates &dupes, const QString &fileName, bool verbose);
+    void reportDuplicatesLines(const TranslatorMessage &msg,
+                               const DuplicateEntries::value_type &dups) const;
 
     QString languageCode() const { return m_language; }
     QString sourceLanguageCode() const { return m_sourceLanguage; }
@@ -148,13 +131,13 @@ public:
     void setLocationsType(LocationsType lt) { m_locationsType = lt; }
     LocationsType locationsType() const { return m_locationsType; }
 
-    static QString makeLanguageCode(QLocale::Language language, QLocale::Country country);
-    static void languageAndCountry(const QString &languageCode,
-        QLocale::Language *lang, QLocale::Country *country);
+    static QString makeLanguageCode(QLocale::Language language, QLocale::Territory territory);
+    static void languageAndTerritory(QStringView languageCode, QLocale::Language *langPtr,
+                                     QLocale::Territory *territoryPtr);
     void setLanguageCode(const QString &languageCode) { m_language = languageCode; }
     void setSourceLanguageCode(const QString &languageCode) { m_sourceLanguage = languageCode; }
     static QString guessLanguageCodeFromFileName(const QString &fileName);
-    QList<TranslatorMessage> messages() const;
+    const QList<TranslatorMessage> &messages() const;
     static QStringList normalizedTranslations(const TranslatorMessage &m, int numPlurals);
     void normalizeTranslations(ConversionData &cd);
     QStringList normalizedTranslations(const TranslatorMessage &m, ConversionData &cd, bool *ok) const;
@@ -212,9 +195,9 @@ private:
     LocationsType m_locationsType;
 
     // A string beginning with a 2 or 3 letter language code (ISO 639-1
-    // or ISO-639-2), followed by the optional country variant to distinguish
-    //  between country-specific variations of the language. The language code
-    // and country code are always separated by '_'
+    // or ISO-639-2), followed by the optional territory variant to distinguish
+    // between territory-specific variations of the language. The language code
+    // and territory code are always separated by '_'
     // Note that the language part can also be a 3-letter ISO 639-2 code.
     // Legal examples:
     // 'pt'         portuguese, assumes portuguese from portugal
@@ -231,8 +214,8 @@ private:
     mutable QHash<TMMKey, int> m_msgIdx;
 };
 
-bool getNumerusInfo(QLocale::Language language, QLocale::Country country,
-                    QByteArray *rules, QStringList *forms, const char **gettextRules);
+bool getNumerusInfo(QLocale::Language language, QLocale::Territory territory, QByteArray *rules,
+                    QStringList *forms, const char **gettextRules);
 
 QString getNumerusInfoString();
 

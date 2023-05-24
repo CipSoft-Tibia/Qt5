@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 
@@ -58,12 +33,14 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
 
-#include <QtWidgets/QAction>
-#include <QtWidgets/QComboBox>
-#include <QtWidgets/QDockWidget>
+#include <QtGui/QAction>
 #include <QtGui/QFontDatabase>
 #include <QtGui/QImageReader>
 #include <QtGui/QScreen>
+#include <QtGui/QShortcut>
+
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QDockWidget>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QLayout>
@@ -71,7 +48,6 @@
 #include <QtWidgets/QMenuBar>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressBar>
-#include <QtWidgets/QShortcut>
 #include <QtWidgets/QStatusBar>
 #include <QtWidgets/QToolBar>
 #include <QtWidgets/QToolButton>
@@ -190,7 +166,7 @@ MainWindow::MainWindow(CmdLineParser *cmdLine, QWidget *parent)
         } while (reader.jumpToNextImage());
         qApp->setWindowIcon(appIcon);
     }
-#if !defined(Q_OS_OSX) && !defined(Q_OS_WIN)
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_WIN)
     else {
         QIcon appIcon(QLatin1String(":/qt-project.org/assistant/images/assistant-128.png"));
         qApp->setWindowIcon(appIcon);
@@ -217,9 +193,9 @@ MainWindow::MainWindow(CmdLineParser *cmdLine, QWidget *parent)
         tabifyDockWidget(bookmarkDock, searchDock);
         contentDock->raise();
         const QRect screen = QGuiApplication::primaryScreen()->geometry();
-        resize(4*screen.width()/5, 4*screen.height()/5);
-
         adjustSize();   // make sure we won't start outside of the screen
+        resize(4 * screen.width() / 5, 4 * screen.height() / 5);
+
         move(screen.center() - rect().center());
     }
 
@@ -317,45 +293,9 @@ bool MainWindow::initHelpDB(bool registerInternalDoc)
     if (!helpEngineWrapper.setupData())
         return false;
 
-    if (!registerInternalDoc) {
-        if (helpEngineWrapper.defaultHomePage() == QLatin1String("help"))
-            helpEngineWrapper.setDefaultHomePage(QLatin1String("about:blank"));
-        return true;
-    }
-    bool assistantInternalDocRegistered = false;
-    QString intern(QLatin1String("org.qt-project.assistantinternal-"));
-    for (const QString &ns : helpEngineWrapper.registeredDocumentations()) {
-        if (ns.startsWith(intern)) {
-            intern = ns;
-            assistantInternalDocRegistered = true;
-            break;
-        }
-    }
+    if (!registerInternalDoc && helpEngineWrapper.defaultHomePage() == QLatin1String("help"))
+        helpEngineWrapper.setDefaultHomePage(QLatin1String("about:blank"));
 
-    const QString &collectionFile = helpEngineWrapper.collectionFile();
-    QFileInfo fi(collectionFile);
-    QString helpFile;
-    QTextStream(&helpFile) << fi.absolutePath() << QDir::separator()
-        << QLatin1String("assistant.qch.") << (QT_VERSION >> 16)
-        << QLatin1Char('.') << ((QT_VERSION >> 8) & 0xFF);
-
-    bool needsSetup = false;
-    if (!assistantInternalDocRegistered || !QFile::exists(helpFile)) {
-        QFile file(helpFile);
-        if (file.open(QIODevice::WriteOnly)) {
-            QResource res(QLatin1String(":/qt-project.org/assistant/assistant.qch"));
-            if (file.write((const char*)res.data(), res.size()) != res.size())
-                qDebug() << QLatin1String("could not write assistant.qch...");
-
-            file.close();
-        }
-        helpEngineWrapper.unregisterDocumentation(intern);
-        helpEngineWrapper.registerDocumentation(helpFile);
-        needsSetup = true;
-    }
-
-    if (needsSetup)
-        helpEngineWrapper.setupData();
     return true;
 }
 
@@ -417,7 +357,7 @@ static const char *docs[] = {
 static QStringList newQtDocumentation()
 {
     QStringList result;
-    const QDir docDirectory(QLibraryInfo::location(QLibraryInfo::DocumentationPath));
+    const QDir docDirectory(QLibraryInfo::path(QLibraryInfo::DocumentationPath));
     const QFileInfoList entries = docDirectory.entryInfoList(QStringList(QStringLiteral("*.qch")),
                                                              QDir::Files, QDir::Name);
     if (!entries.isEmpty()) {
@@ -458,7 +398,7 @@ void MainWindow::lookForNewQtDocumentation()
             this, &MainWindow::resetQtDocInfo);
     connect(m_qtDocInstaller, &QtDocInstaller::registerDocumentation,
             this, &MainWindow::registerDocumentation);
-    if (helpEngine.qtDocInfo(QLatin1String("qt")).count() != 2)
+    if (helpEngine.qtDocInfo(QLatin1String("qt")).size() != 2)
         statusBar()->showMessage(tr("Looking for Qt Documentation..."));
     m_qtDocInstaller->installDocs();
 }
@@ -466,6 +406,7 @@ void MainWindow::lookForNewQtDocumentation()
 void MainWindow::qtDocumentationInstalled()
 {
     TRACE_OBJ
+    OpenPagesManager::instance()->resetHelpPage();
     statusBar()->clearMessage();
     checkInitState();
 }
@@ -585,16 +526,16 @@ void MainWindow::setupActions()
 
     m_viewMenu->addSeparator();
 
-    m_viewMenu->addAction(tr("Contents"),
-            this, &MainWindow::showContents, QKeySequence(tr("ALT+C")));
-    m_viewMenu->addAction(tr("Index"),
-            this, &MainWindow::showIndex, QKeySequence(tr("ALT+I")));
-    m_viewMenu->addAction(tr("Bookmarks"),
-            this, &MainWindow::showBookmarksDockWidget, QKeySequence(tr("ALT+O")));
-    m_viewMenu->addAction(tr("Search"),
-            this, &MainWindow::showSearch, QKeySequence(tr("ALT+S")));
-    m_viewMenu->addAction(tr("Open Pages"),
-            this, &MainWindow::showOpenPages, QKeySequence(tr("ALT+P")));
+    m_viewMenu->addAction(tr("Contents"), QKeySequence(tr("ALT+C")),
+                          this, &MainWindow::showContents);
+    m_viewMenu->addAction(tr("Index"), QKeySequence(tr("ALT+I")),
+                          this, &MainWindow::showIndex);
+    m_viewMenu->addAction(tr("Bookmarks"), QKeySequence(tr("ALT+O")),
+                          this, &MainWindow::showBookmarksDockWidget);
+    m_viewMenu->addAction(tr("Search"), QKeySequence(tr("ALT+S")),
+                          this, &MainWindow::showSearch);
+    m_viewMenu->addAction(tr("Open Pages"), QKeySequence(tr("ALT+P")),
+                          this, &MainWindow::showOpenPages);
 
     menu = menuBar()->addMenu(tr("&Go"));
     menu->addAction(globalActions->homeAction());
@@ -666,8 +607,8 @@ void MainWindow::setupActions()
     menuBar()->insertMenu(menu->menuAction(), windowMenu);
     windowMenu->addAction(tr("Zoom"),
             this, &QWidget::showMaximized);
-    windowMenu->addAction(tr("Minimize"),
-            this, &QWidget::showMinimized, QKeySequence(tr("Ctrl+M")));
+    windowMenu->addAction(tr("Minimize"), QKeySequence(tr("Ctrl+M")),
+            this, &QWidget::showMinimized);
 #endif
 
     // content viewer connections
@@ -744,7 +685,7 @@ void MainWindow::setupFilterToolbar()
 
     connect(&helpEngine, &HelpEngineWrapper::setupFinished,
             this, &MainWindow::setupFilterCombo, Qt::QueuedConnection);
-    connect(m_filterCombo, QOverload<int>::of(&QComboBox::activated),
+    connect(m_filterCombo, &QComboBox::activated,
             this, &MainWindow::filterDocumentation);
     connect(helpEngine.filterEngine(), &QHelpFilterEngine::filterActivated,
             this, &MainWindow::currentFilterChanged);
@@ -903,16 +844,18 @@ void MainWindow::showAboutDialog()
     } else {
         QByteArray resources;
 #if defined(BROWSER_QTWEBKIT)
-        const QString browser = QStringLiteral("Qt WebKit");
+        QString browser = QStringLiteral("Qt WebKit");
 #else
-        const QString browser = QStringLiteral("QTextBrowser");
+        QString browser = QStringLiteral("QTextBrowser");
 #endif
+        if (m_centralWidget->currentHelpViewer())
+            browser = QStringLiteral("QLiteHtmlWidget");
         aboutDia.setText(tr("<center>"
             "<h3>%1</h3>"
             "<p>Version %2</p>"
             "<p>Browser: %3</p></center>"
             "<p>Copyright (C) %4 The Qt Company Ltd.</p>")
-            .arg(tr("Qt Assistant"), QLatin1String(QT_VERSION_STR), browser, QStringLiteral("2021")),
+            .arg(tr("Qt Assistant"), QLatin1String(QT_VERSION_STR), browser, QString()),
             resources);
         QLatin1String path(":/qt-project.org/assistant/images/assistant-128.png");
         aboutDia.setPixmap(QString(path));

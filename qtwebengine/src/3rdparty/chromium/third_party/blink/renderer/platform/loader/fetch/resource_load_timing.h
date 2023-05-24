@@ -27,6 +27,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_RESOURCE_LOAD_TIMING_H_
 
 #include "base/memory/scoped_refptr.h"
+#include "base/time/time.h"
 #include "services/network/public/mojom/load_timing_info.mojom-blink-forward.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
@@ -38,18 +39,15 @@ class PLATFORM_EXPORT ResourceLoadTiming
  public:
   static scoped_refptr<ResourceLoadTiming> Create();
 
-  bool operator==(const ResourceLoadTiming&) const;
-  bool operator!=(const ResourceLoadTiming&) const;
-
   static scoped_refptr<ResourceLoadTiming> FromMojo(
       const network::mojom::blink::LoadTimingInfo*);
   network::mojom::blink::LoadTimingInfoPtr ToMojo() const;
 
-  void SetDnsStart(base::TimeTicks);
+  void SetDomainLookupStart(base::TimeTicks);
   void SetRequestTime(base::TimeTicks);
   void SetProxyStart(base::TimeTicks);
   void SetProxyEnd(base::TimeTicks);
-  void SetDnsEnd(base::TimeTicks);
+  void SetDomainLookupEnd(base::TimeTicks);
   void SetConnectStart(base::TimeTicks);
   void SetConnectEnd(base::TimeTicks);
   void SetWorkerStart(base::TimeTicks);
@@ -60,16 +58,18 @@ class PLATFORM_EXPORT ResourceLoadTiming
   void SetSendEnd(base::TimeTicks);
   void SetReceiveHeadersStart(base::TimeTicks);
   void SetReceiveHeadersEnd(base::TimeTicks);
+  void SetReceiveNonInformationalHeaderStart(base::TimeTicks);
+  void SetReceiveEarlyHintsStart(base::TimeTicks);
   void SetSslStart(base::TimeTicks);
   void SetSslEnd(base::TimeTicks);
   void SetPushStart(base::TimeTicks);
   void SetPushEnd(base::TimeTicks);
 
-  base::TimeTicks DnsStart() const { return dns_start_; }
+  base::TimeTicks DomainLookupStart() const { return domain_lookup_start_; }
   base::TimeTicks RequestTime() const { return request_time_; }
   base::TimeTicks ProxyStart() const { return proxy_start_; }
   base::TimeTicks ProxyEnd() const { return proxy_end_; }
-  base::TimeTicks DnsEnd() const { return dns_end_; }
+  base::TimeTicks DomainLookupEnd() const { return domain_lookup_end_; }
   base::TimeTicks ConnectStart() const { return connect_start_; }
   base::TimeTicks ConnectEnd() const { return connect_end_; }
   base::TimeTicks WorkerStart() const { return worker_start_; }
@@ -82,6 +82,12 @@ class PLATFORM_EXPORT ResourceLoadTiming
   base::TimeTicks SendEnd() const { return send_end_; }
   base::TimeTicks ReceiveHeadersStart() const { return receive_headers_start_; }
   base::TimeTicks ReceiveHeadersEnd() const { return receive_headers_end_; }
+  base::TimeTicks ReceiveNonInformationalHeadersStart() const {
+    return receive_non_informational_headers_start_;
+  }
+  base::TimeTicks ReceiveEarlyHintsStart() const {
+    return receive_early_hints_start_;
+  }
   base::TimeTicks SslStart() const { return ssl_start_; }
   base::TimeTicks SslEnd() const { return ssl_end_; }
   base::TimeTicks PushStart() const { return push_start_; }
@@ -94,8 +100,8 @@ class PLATFORM_EXPORT ResourceLoadTiming
   ResourceLoadTiming(base::TimeTicks request_time,
                      base::TimeTicks proxy_start,
                      base::TimeTicks proxy_end,
-                     base::TimeTicks dns_start,
-                     base::TimeTicks dns_end,
+                     base::TimeTicks domain_lookup_start,
+                     base::TimeTicks domain_lookup_end,
                      base::TimeTicks connect_start,
                      base::TimeTicks connect_end,
                      base::TimeTicks worker_start,
@@ -106,6 +112,8 @@ class PLATFORM_EXPORT ResourceLoadTiming
                      base::TimeTicks send_end,
                      base::TimeTicks receive_headers_start,
                      base::TimeTicks receive_headers_end,
+                     base::TimeTicks receive_non_informational_headers_start,
+                     base::TimeTicks receive_early_hints_starts,
                      base::TimeTicks ssl_start,
                      base::TimeTicks ssl_end,
                      base::TimeTicks push_start,
@@ -125,8 +133,8 @@ class PLATFORM_EXPORT ResourceLoadTiming
   base::TimeTicks request_time_;
   base::TimeTicks proxy_start_;
   base::TimeTicks proxy_end_;
-  base::TimeTicks dns_start_;
-  base::TimeTicks dns_end_;
+  base::TimeTicks domain_lookup_start_;
+  base::TimeTicks domain_lookup_end_;
   base::TimeTicks connect_start_;
   base::TimeTicks connect_end_;
   base::TimeTicks worker_start_;
@@ -137,6 +145,8 @@ class PLATFORM_EXPORT ResourceLoadTiming
   base::TimeTicks send_end_;
   base::TimeTicks receive_headers_start_;
   base::TimeTicks receive_headers_end_;
+  base::TimeTicks receive_non_informational_headers_start_;
+  base::TimeTicks receive_early_hints_start_;
   base::TimeTicks ssl_start_;
   base::TimeTicks ssl_end_;
   base::TimeTicks push_start_;
@@ -145,4 +155,4 @@ class PLATFORM_EXPORT ResourceLoadTiming
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_RESOURCE_LOAD_TIMING_H_

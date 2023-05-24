@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -39,21 +13,24 @@
 #ifndef DECLARATIVECANDLESTICKSERIES_H
 #define DECLARATIVECANDLESTICKSERIES_H
 
+#include <QtQml/qqmlregistration.h>
 #include <QtCharts/QCandlestickSeries>
+#include <QtCharts/qabstractaxis.h>
 #include <QtCharts/QCandlestickSet>
 #include <QtQml/QQmlParserStatus>
 #include <QtQuick/QQuickItem>
 #include <private/declarativechartglobal_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class DeclarativeAxes;
-class QAbstractAxis;
 
-class Q_QMLCHARTS_PRIVATE_EXPORT DeclarativeCandlestickSet : public QCandlestickSet
+class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeCandlestickSet : public QCandlestickSet
 {
     Q_OBJECT
     Q_PROPERTY(QString brushFilename READ brushFilename WRITE setBrushFilename NOTIFY brushFilenameChanged)
+    QML_NAMED_ELEMENT(CandlestickSet)
+    QML_ADDED_IN_VERSION(2, 2)
 
 public:
     explicit DeclarativeCandlestickSet(qreal timestamp = 0.0, QObject *parent = nullptr);
@@ -75,13 +52,15 @@ class DeclarativeCandlestickSeries : public QCandlestickSeries, public QQmlParse
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisXTop READ axisXTop WRITE setAxisXTop NOTIFY axisXTopChanged)
-    Q_PROPERTY(QtCharts::QAbstractAxis *axisYRight READ axisYRight WRITE setAxisYRight NOTIFY axisYRightChanged)
+    Q_PROPERTY(QAbstractAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged)
+    Q_PROPERTY(QAbstractAxis *axisY READ axisY WRITE setAxisY NOTIFY axisYChanged)
+    Q_PROPERTY(QAbstractAxis *axisXTop READ axisXTop WRITE setAxisXTop NOTIFY axisXTopChanged)
+    Q_PROPERTY(QAbstractAxis *axisYRight READ axisYRight WRITE setAxisYRight NOTIFY axisYRightChanged)
     Q_PROPERTY(QQmlListProperty<QObject> seriesChildren READ seriesChildren)
     Q_PROPERTY(QString brushFilename READ brushFilename WRITE setBrushFilename NOTIFY brushFilenameChanged)
     Q_CLASSINFO("DefaultProperty", "seriesChildren")
+    QML_NAMED_ELEMENT(CandlestickSeries)
+    QML_ADDED_IN_VERSION(2, 2)
 
 public:
     explicit DeclarativeCandlestickSeries(QQuickItem *parent = nullptr);
@@ -107,8 +86,8 @@ public:
     Q_INVOKABLE void clear();
 
 public: // from QDeclarativeParserStatus
-    void classBegin();
-    void componentComplete();
+    void classBegin() override;
+    void componentComplete() override;
 
 Q_SIGNALS:
     void axisXChanged(QAbstractAxis *axis);
@@ -141,6 +120,6 @@ private:
     QImage m_brushImage;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // DECLARATIVECANDLESTICKSERIES_H

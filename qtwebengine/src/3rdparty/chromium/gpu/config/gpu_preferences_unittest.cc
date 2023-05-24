@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "base/command_line.h"
 #include "base/message_loop/message_pump_type.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "gpu/config/gpu_switches.h"
 #include "gpu/ipc/common/gpu_preferences.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -58,7 +59,6 @@ void CheckGpuPreferencesEqual(GpuPreferences left, GpuPreferences right) {
   EXPECT_EQ(left.enable_threaded_texture_mailboxes,
             right.enable_threaded_texture_mailboxes);
   EXPECT_EQ(left.gl_shader_interm_output, right.gl_shader_interm_output);
-  EXPECT_EQ(left.emulate_shader_precision, right.emulate_shader_precision);
   EXPECT_EQ(left.enable_gpu_service_logging, right.enable_gpu_service_logging);
   EXPECT_EQ(left.enable_gpu_service_tracing, right.enable_gpu_service_tracing);
   EXPECT_EQ(left.use_passthrough_cmd_decoder,
@@ -68,30 +68,38 @@ void CheckGpuPreferencesEqual(GpuPreferences left, GpuPreferences right) {
   EXPECT_EQ(left.texture_target_exception_list,
             right.texture_target_exception_list);
   EXPECT_EQ(left.ignore_gpu_blocklist, right.ignore_gpu_blocklist);
-  EXPECT_EQ(left.enable_oop_rasterization, right.enable_oop_rasterization);
-  EXPECT_EQ(left.disable_oop_rasterization, right.disable_oop_rasterization);
   EXPECT_EQ(left.watchdog_starts_backgrounded,
             right.watchdog_starts_backgrounded);
   EXPECT_EQ(left.gr_context_type, right.gr_context_type);
   EXPECT_EQ(left.use_vulkan, right.use_vulkan);
+  EXPECT_EQ(left.enable_vulkan_protected_memory,
+            right.enable_vulkan_protected_memory);
+  EXPECT_EQ(left.vulkan_heap_memory_limit, right.vulkan_heap_memory_limit);
+  EXPECT_EQ(left.vulkan_sync_cpu_memory_limit,
+            right.vulkan_sync_cpu_memory_limit);
   EXPECT_EQ(left.enable_gpu_benchmarking_extension,
             right.enable_gpu_benchmarking_extension);
   EXPECT_EQ(left.enable_webgpu, right.enable_webgpu);
   EXPECT_EQ(left.enable_dawn_backend_validation,
             right.enable_dawn_backend_validation);
+  EXPECT_EQ(left.enabled_dawn_features_list, right.enabled_dawn_features_list);
+  EXPECT_EQ(left.disabled_dawn_features_list,
+            right.disabled_dawn_features_list);
   EXPECT_EQ(left.enable_gpu_blocked_time_metric,
             right.enable_gpu_blocked_time_metric);
   EXPECT_EQ(left.enable_perf_data_collection,
             right.enable_perf_data_collection);
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
   EXPECT_EQ(left.message_pump_type, right.message_pump_type);
 #endif
   EXPECT_EQ(left.enable_native_gpu_memory_buffers,
             right.enable_native_gpu_memory_buffers);
-#if defined(OS_CHROMEOS)
-  EXPECT_EQ(left.platform_disallows_chromeos_direct_video_decoder,
-            right.platform_disallows_chromeos_direct_video_decoder);
+#if BUILDFLAG(IS_CHROMEOS)
+  EXPECT_EQ(left.enable_chromeos_direct_video_decoder,
+            right.enable_chromeos_direct_video_decoder);
 #endif
+  EXPECT_EQ(left.force_separate_egl_display_for_webgl_testing,
+            right.force_separate_egl_display_for_webgl_testing);
 }
 
 }  // namespace
@@ -112,12 +120,6 @@ TEST(GpuPreferencesTest, EncodeDecode) {
 
     GpuPreferences default_prefs;
     mojom::GpuPreferences prefs_mojom;
-
-    // Make sure all fields are included in mojo struct.
-    // TODO(zmo): This test isn't perfect. If a field isn't included in
-    // mojom::GpuPreferences, the two struct sizes might still be equal due to
-    // alignment.
-    EXPECT_EQ(sizeof(default_prefs), sizeof(prefs_mojom));
 
 #define GPU_PREFERENCES_FIELD(name, value)         \
   input_prefs.name = value;                        \
@@ -160,34 +162,35 @@ TEST(GpuPreferencesTest, EncodeDecode) {
     GPU_PREFERENCES_FIELD(disable_gpu_shader_disk_cache, true)
     GPU_PREFERENCES_FIELD(enable_threaded_texture_mailboxes, true)
     GPU_PREFERENCES_FIELD(gl_shader_interm_output, true)
-    GPU_PREFERENCES_FIELD(emulate_shader_precision, true)
     GPU_PREFERENCES_FIELD(enable_gpu_service_logging, true)
     GPU_PREFERENCES_FIELD(enable_gpu_service_tracing, true)
     GPU_PREFERENCES_FIELD(use_passthrough_cmd_decoder, true)
     GPU_PREFERENCES_FIELD(disable_biplanar_gpu_memory_buffers_for_video_frames,
                           true)
     GPU_PREFERENCES_FIELD(ignore_gpu_blocklist, true)
-    GPU_PREFERENCES_FIELD(enable_oop_rasterization, true)
-    GPU_PREFERENCES_FIELD(disable_oop_rasterization, true)
     GPU_PREFERENCES_FIELD(watchdog_starts_backgrounded, true)
     GPU_PREFERENCES_FIELD_ENUM(gr_context_type, GrContextType::kVulkan,
                                mojom::GrContextType::kVulkan)
     GPU_PREFERENCES_FIELD_ENUM(use_vulkan, VulkanImplementationName::kNative,
                                mojom::VulkanImplementationName::kNative)
+    GPU_PREFERENCES_FIELD(vulkan_heap_memory_limit, 1);
+    GPU_PREFERENCES_FIELD(vulkan_sync_cpu_memory_limit, 1);
     GPU_PREFERENCES_FIELD(enable_gpu_benchmarking_extension, true)
     GPU_PREFERENCES_FIELD(enable_webgpu, true)
-    GPU_PREFERENCES_FIELD(enable_dawn_backend_validation, true)
+    GPU_PREFERENCES_FIELD_ENUM(enable_dawn_backend_validation,
+                               DawnBackendValidationLevel::kPartial,
+                               mojom::DawnBackendValidationLevel::kPartial)
     GPU_PREFERENCES_FIELD(enable_gpu_blocked_time_metric, true)
     GPU_PREFERENCES_FIELD(enable_perf_data_collection, true)
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
     GPU_PREFERENCES_FIELD_ENUM(message_pump_type, base::MessagePumpType::UI,
                                base::MessagePumpType::UI)
 #endif
     GPU_PREFERENCES_FIELD(enable_native_gpu_memory_buffers, true);
-#if defined(OS_CHROMEOS)
-    GPU_PREFERENCES_FIELD(platform_disallows_chromeos_direct_video_decoder,
-                          true);
+#if BUILDFLAG(IS_CHROMEOS)
+    GPU_PREFERENCES_FIELD(enable_chromeos_direct_video_decoder, true);
 #endif
+    GPU_PREFERENCES_FIELD(force_separate_egl_display_for_webgl_testing, true);
 
     input_prefs.texture_target_exception_list.emplace_back(
         gfx::BufferUsage::SCANOUT, gfx::BufferFormat::RGBA_8888);
@@ -253,7 +256,6 @@ TEST(GpuPreferencesTest, DISABLED_DecodePreferences) {
   PRINT_BOOL(disable_gpu_shader_disk_cache);
   PRINT_BOOL(enable_threaded_texture_mailboxes);
   PRINT_BOOL(gl_shader_interm_output);
-  PRINT_BOOL(emulate_shader_precision);
   PRINT_BOOL(enable_gpu_service_logging);
   PRINT_BOOL(enable_gpu_service_tracing);
   PRINT_BOOL(use_passthrough_cmd_decoder);
@@ -264,23 +266,24 @@ TEST(GpuPreferencesTest, DISABLED_DecodePreferences) {
     PRINT_INT(texture_target_exception_list[i].format);
   }
   PRINT_BOOL(ignore_gpu_blocklist);
-  PRINT_BOOL(enable_oop_rasterization);
-  PRINT_BOOL(disable_oop_rasterization);
   PRINT_BOOL(watchdog_starts_backgrounded);
   PRINT_INT(gr_context_type);
   PRINT_INT(use_vulkan);
+  PRINT_INT(vulkan_heap_memory_limit);
+  PRINT_INT(vulkan_sync_cpu_memory_limit);
   PRINT_BOOL(enable_gpu_benchmarking_extension);
   PRINT_BOOL(enable_webgpu);
-  PRINT_BOOL(enable_dawn_backend_validation);
+  PRINT_INT(enable_dawn_backend_validation);
   PRINT_BOOL(enable_gpu_blocked_time_metric);
   PRINT_BOOL(enable_perf_data_collection);
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
   PRINT_INT(message_pump_type);
 #endif
   PRINT_BOOL(enable_native_gpu_memory_buffers);
-#if defined(OS_CHROMEOS)
-  PRINT_BOOL(platform_disallows_chromeos_direct_video_decoder);
+#if BUILDFLAG(IS_CHROMEOS)
+  PRINT_BOOL(enable_chromeos_direct_video_decoder);
 #endif
+  PRINT_BOOL(force_separate_egl_display_for_webgl_testing);
   printf("}\n");
 }
 

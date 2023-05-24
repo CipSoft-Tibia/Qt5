@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -121,6 +121,7 @@ jumbo_source_set("unit_tests") {
     "//base/test:test_support",
     "//components/feature_engagement/internal/test:test_support",
     "//components/feature_engagement/public",
+    "//components/feature_engagement/test:test_support",
     "//components/leveldb_proto:test_support",
     "//testing/gmock",
     "//testing/gtest",
@@ -136,8 +137,9 @@ if (is_android) {
     deps = [
       "//base:base_java",
       "//base:jni_java",
+      "//build/android:build_java",
       "//components/feature_engagement/public:public_java",
-      "//third_party/android_deps:androidx_annotation_annotation_java",
+      "//third_party/androidx:androidx_annotation_annotation_java",
       "//ui/android:ui_java",
     ]
     annotation_processor_deps = [ "//base/android/jni_generator:jni_processor" ]

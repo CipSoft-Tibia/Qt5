@@ -34,6 +34,16 @@ PERFETTO_CONFIG = struct(
         # "perfetto_build_flags.h" file that can be included via:
         # #include "perfetto_build_flags.h".
         build_config = ["//:build_config_hdr"],
+
+        # Target exposing the PERFETTO_VERSION_STRING() and
+        # PERFETTO_VERSION_SCM_REVISION() macros. This is overridden in google
+        # internal builds.
+        version_header = ["//:cc_perfetto_version_header"],
+
+        # Target exposing platform-specific functionality for base. This is
+        # overriden in Google internal builds.
+        base_platform = ["//:perfetto_base_default_platform"],
+
         zlib = ["@perfetto_dep_zlib//:zlib"],
         jsoncpp = ["@perfetto_dep_jsoncpp//:jsoncpp"],
         linenoise = ["@perfetto_dep_linenoise//:linenoise"],
@@ -43,7 +53,28 @@ PERFETTO_CONFIG = struct(
         protoc_lib = ["@com_google_protobuf//:protoc_lib"],
         protobuf_lite = ["@com_google_protobuf//:protobuf_lite"],
         protobuf_full = ["@com_google_protobuf//:protobuf"],
-        protobuf_descriptor_proto = ["@com_google_protobuf//:descriptor_proto"]
+        protobuf_descriptor_proto = ["@com_google_protobuf//:descriptor_proto"],
+
+        # The Python targets are empty on the standalone build because we assume
+        # any relevant deps are installed on the system or are not applicable.
+        protobuf_py = [],
+        pandas_py = [],
+        tp_vendor_py = [],
+
+        # There are multiple configurations for the function name demangling
+        # logic in trace processor:
+        # (1) The following defaults include a subset of demangling sources
+        #     from llvm-project. This is the most complete implementation.
+        # (2) You can avoid the llvm dependency by setting "llvm_demangle = []"
+        #     here and PERFETTO_LLVM_DEMANGLE to false in your
+        #     perfetto_build_flags.h. Then the implementation will use a
+        #     demangler from the c++ runtime, which will most likely handle
+        #     only itanium mangling, and is unavailable on some platforms (e.g.
+        #     Windows, where it becomes a nop).
+        # (3) You can override the whole demangle_wrapper below, and provide
+        #     your own demangling implementation.
+        demangle_wrapper = [ "//:src_trace_processor_demangle" ],
+        llvm_demangle = ["@perfetto_dep_llvm_demangle//:llvm_demangle"],
     ),
 
     # This struct allows embedders to customize the cc_opts for Perfetto
@@ -54,6 +85,7 @@ PERFETTO_CONFIG = struct(
         jsoncpp = [],
         linenoise = [],
         sqlite = [],
+        llvm_demangle = [],
     ),
 
     # Allow Bazel embedders to change the visibility of "public" targets.
@@ -68,6 +100,11 @@ PERFETTO_CONFIG = struct(
     # making the targets public in the google internal tree.
     proto_library_visibility = "//visibility:private",
 
+    # Allow Bazel embedders to change the visibility of the Go protos.
+    # Go protos have all sorts of strange behaviour in Google3 so need special
+    # handling as the rules for other languages do not work for Go.
+    go_proto_library_visibility = "//visibility:private",
+
     # This struct allows the embedder to customize copts and other args passed
     # to rules like cc_binary. Prefixed rules (e.g. perfetto_cc_binary) will
     # look into this struct before falling back on native.cc_binary().
@@ -75,6 +112,8 @@ PERFETTO_CONFIG = struct(
     # |rule_overrides| or invidivual keys. They are assigned to None or noop
     # actions here just for documentation purposes.
     rule_overrides = struct(
+        proto_library = None,
+
         cc_binary = None,
         cc_library = None,
         cc_proto_library = None,
@@ -84,12 +123,15 @@ PERFETTO_CONFIG = struct(
         java_proto_library = _noop_override,
         java_lite_proto_library = _noop_override,
 
-        proto_library = None,
         py_binary = None,
         py_library = None,
+        py_proto_library = None,
 
-        # We only need this for internal binaries. No other embeedder should
-        # care about this.
-        gensignature_internal_only = None,
+        go_proto_library = None,
     ),
+
+    # The default copts which we use to compile C++ code.
+    default_copts = [
+        "-std=c++17",
+    ]
 )

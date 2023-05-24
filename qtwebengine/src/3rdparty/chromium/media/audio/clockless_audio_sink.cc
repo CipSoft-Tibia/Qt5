@@ -1,14 +1,19 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/audio/clockless_audio_sink.h"
 
-#include "base/bind.h"
+#include <memory>
+
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/memory/raw_ptr.h"
+#include "base/synchronization/waitable_event.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/simple_thread.h"
+#include "media/base/audio_glitch_info.h"
 #include "media/base/audio_hash.h"
 
 namespace media {
@@ -26,12 +31,13 @@ class ClocklessAudioSinkThread : public base::DelegateSimpleThread::Delegate {
             base::WaitableEvent::ResetPolicy::AUTOMATIC,
             base::WaitableEvent::InitialState::NOT_SIGNALED)) {
     if (hashing)
-      audio_hash_.reset(new AudioHash());
+      audio_hash_ = std::make_unique<AudioHash>();
   }
 
   void Start() {
     stop_event_->Reset();
-    thread_.reset(new base::DelegateSimpleThread(this, "ClocklessAudioSink"));
+    thread_ = std::make_unique<base::DelegateSimpleThread>(
+        this, "ClocklessAudioSink");
     thread_->Start();
   }
 
@@ -53,7 +59,7 @@ class ClocklessAudioSinkThread : public base::DelegateSimpleThread::Delegate {
     base::TimeTicks start;
     while (!stop_event_->IsSignaled()) {
       const int frames_received = callback_->Render(
-          base::TimeDelta(), base::TimeTicks::Now(), 0, audio_bus_.get());
+          base::TimeDelta(), base::TimeTicks::Now(), {}, audio_bus_.get());
       DCHECK_GE(frames_received, 0);
       if (audio_hash_)
         audio_hash_->Update(audio_bus_.get(), frames_received);
@@ -70,7 +76,7 @@ class ClocklessAudioSinkThread : public base::DelegateSimpleThread::Delegate {
     }
   }
 
-  AudioRendererSink::RenderCallback* callback_;
+  raw_ptr<AudioRendererSink::RenderCallback> callback_;
   std::unique_ptr<AudioBus> audio_bus_;
   std::unique_ptr<base::WaitableEvent> stop_event_;
   std::unique_ptr<base::DelegateSimpleThread> thread_;
@@ -93,7 +99,8 @@ ClocklessAudioSink::~ClocklessAudioSink() = default;
 void ClocklessAudioSink::Initialize(const AudioParameters& params,
                                     RenderCallback* callback) {
   DCHECK(!initialized_);
-  thread_.reset(new ClocklessAudioSinkThread(params, callback, hashing_));
+  thread_ =
+      std::make_unique<ClocklessAudioSinkThread>(params, callback, hashing_);
   initialized_ = true;
 }
 
@@ -139,7 +146,7 @@ OutputDeviceInfo ClocklessAudioSink::GetOutputDeviceInfo() {
 }
 
 void ClocklessAudioSink::GetOutputDeviceInfoAsync(OutputDeviceInfoCB info_cb) {
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(info_cb), device_info_));
 }
 

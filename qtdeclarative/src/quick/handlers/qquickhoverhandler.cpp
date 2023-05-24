@@ -1,44 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickhoverhandler_p.h"
 #include <private/qquicksinglepointhandler_p_p.h>
+#include <private/qquickdeliveryagent_p.h>
+#include <private/qquickitem_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,71 +33,151 @@ Q_LOGGING_CATEGORY(lcHoverHandler, "qt.quick.handler.hover")
     The \l cursorShape property allows changing the cursor whenever
     \l hovered changes to \c true.
 
-    \sa MouseArea, PointHandler
+    \sa MouseArea, PointHandler, {Qt Quick Examples - Pointer Handlers}
 */
 
-QQuickHoverHandler::QQuickHoverHandler(QQuickItem *parent)
-    : QQuickSinglePointHandler(parent)
+class QQuickHoverHandlerPrivate : public QQuickSinglePointHandlerPrivate
 {
+    Q_DECLARE_PUBLIC(QQuickHoverHandler)
+
+public:
+    void onEnabledChanged() override;
+    void onParentChanged(QQuickItem *oldParent, QQuickItem *newParent) override;
+
+    void updateHasHoverInChild(QQuickItem *item, bool hasHover);
+};
+
+void QQuickHoverHandlerPrivate::onEnabledChanged()
+{
+    Q_Q(QQuickHoverHandler);
+
+    if (auto parent = q->parentItem())
+        updateHasHoverInChild(parent, enabled);
+    if (!enabled)
+        q->setHovered(false);
+
+    QQuickSinglePointHandlerPrivate::onEnabledChanged();
+}
+
+void QQuickHoverHandlerPrivate::onParentChanged(QQuickItem *oldParent, QQuickItem *newParent)
+{
+    if (oldParent)
+        updateHasHoverInChild(oldParent, false);
+    if (newParent)
+        updateHasHoverInChild(newParent, true);
+
+    QQuickSinglePointHandlerPrivate::onParentChanged(oldParent, newParent);
+}
+
+void QQuickHoverHandlerPrivate::updateHasHoverInChild(QQuickItem *item, bool hasHover)
+{
+    QQuickItemPrivate *itemPriv = QQuickItemPrivate::get(item);
+    itemPriv->setHasHoverInChild(hasHover);
+    // The DA needs to resolve which items and handlers should now be hovered or unhovered.
+    // Marking the parent item dirty ensures that flushFrameSynchronousEvents() will be called from the render loop,
+    // even if this change is not in response to a mouse event and no item has already marked itself dirty.
+    itemPriv->dirty(QQuickItemPrivate::Content);
+}
+
+QQuickHoverHandler::QQuickHoverHandler(QQuickItem *parent)
+    : QQuickSinglePointHandler(*(new QQuickHoverHandlerPrivate), parent)
+{
+    Q_D(QQuickHoverHandler);
     // Tell QQuickPointerDeviceHandler::wantsPointerEvent() to ignore button state
-    d_func()->acceptedButtons = Qt::NoButton;
+    d->acceptedButtons = Qt::NoButton;
+    if (parent)
+        d->updateHasHoverInChild(parent, true);
 }
 
 QQuickHoverHandler::~QQuickHoverHandler()
 {
+    Q_D(QQuickHoverHandler);
     if (auto parent = parentItem())
-        QQuickItemPrivate::get(parent)->setHasHoverInChild(false);
+        d->updateHasHoverInChild(parent, false);
+}
+
+/*!
+    \qmlproperty bool QtQuick::HoverHandler::blocking
+    \since 6.3
+
+    Whether this handler prevents other items or handlers behind it from
+    being hovered at the same time. This property is \c false by default.
+*/
+void QQuickHoverHandler::setBlocking(bool blocking)
+{
+    if (m_blocking == blocking)
+        return;
+
+    m_blocking = blocking;
+    emit blockingChanged();
+}
+
+bool QQuickHoverHandler::event(QEvent *event)
+{
+    switch (event->type())
+    {
+    case QEvent::HoverLeave:
+        setHovered(false);
+        setActive(false);
+        break;
+    default:
+        return QQuickSinglePointHandler::event(event);
+        break;
+    }
+
+    return true;
 }
 
 void QQuickHoverHandler::componentComplete()
 {
+    Q_D(QQuickHoverHandler);
     QQuickSinglePointHandler::componentComplete();
-    if (auto par = parentItem()) {
-        par->setAcceptHoverEvents(true);
-        QQuickItemPrivate::get(par)->setHasHoverInChild(true);
+
+    if (d->enabled) {
+        if (auto parent = parentItem())
+            d->updateHasHoverInChild(parent, true);
     }
 }
 
-bool QQuickHoverHandler::wantsPointerEvent(QQuickPointerEvent *event)
+bool QQuickHoverHandler::wantsPointerEvent(QPointerEvent *event)
 {
-    QQuickEventPoint *point = event->point(0);
-    if (QQuickPointerDeviceHandler::wantsPointerEvent(event) && wantsEventPoint(point) && parentContains(point)) {
+    // No state change should occur if a button is being pressed or released.
+    if (event->isSinglePointEvent() && static_cast<QSinglePointEvent *>(event)->button())
+        return false;
+    auto &point = event->point(0);
+    const bool inside = parentContains(point);
+    if (QQuickPointerDeviceHandler::wantsPointerEvent(event) && wantsEventPoint(event, point) && inside) {
         // assume this is a mouse or tablet event, so there's only one point
-        setPointId(point->pointId());
+        setPointId(point.id());
         return true;
     }
 
     // Some hover events come from QQuickWindow::tabletEvent(). In between,
-    // some hover events come from QQWindowPrivate::flushFrameSynchronousEvents(),
+    // some hover events come from QQuickDeliveryAgentPrivate::flushFrameSynchronousEvents(),
     // but those look like mouse events. If a particular HoverHandler instance
     // is filtering for tablet events only (e.g. by setting
     // acceptedDevices:PointerDevice.Stylus), those events should not cause
     // the hovered property to transition to false prematurely.
     // If a QQuickPointerTabletEvent caused the hovered property to become true,
     // then only another QQuickPointerTabletEvent can make it become false.
-    if (!(m_hoveredTablet && event->asPointerMouseEvent()))
+    // But after kCursorOverrideTimeout ms, QQuickItemPrivate::effectiveCursorHandler()
+    // will ignore it, just in case there is no QQuickPointerTabletEvent to unset it.
+    // For example, a tablet proximity leave event could occur, but we don't deliver it to the window.
+    if (!inside || !(m_hoveredTablet && QQuickDeliveryAgentPrivate::isMouseEvent(event)))
         setHovered(false);
 
     return false;
 }
 
-void QQuickHoverHandler::handleEventPoint(QQuickEventPoint *point)
+void QQuickHoverHandler::handleEventPoint(QPointerEvent *ev, QEventPoint &point)
 {
     bool hovered = true;
-    if (point->state() == QQuickEventPoint::Released &&
-            point->pointerEvent()->device()->pointerType() == QQuickPointerDevice::Finger)
+    if (point.state() == QEventPoint::Released &&
+            ev->pointingDevice()->pointerType() == QPointingDevice::PointerType::Finger)
         hovered = false;
-    else if (point->pointerEvent()->asPointerTabletEvent())
+    else if (QQuickDeliveryAgentPrivate::isTabletEvent(ev))
         m_hoveredTablet = true;
     setHovered(hovered);
-    setPassiveGrab(point);
-}
-
-void QQuickHoverHandler::onGrabChanged(QQuickPointerHandler *grabber, QQuickEventPoint::GrabTransition transition, QQuickEventPoint *point)
-{
-    QQuickSinglePointHandler::onGrabChanged(grabber, transition, point);
-    if (grabber == this && transition == QQuickEventPoint::CancelGrabPassive)
-        setHovered(false);
 }
 
 /*!
@@ -152,6 +198,101 @@ void QQuickHoverHandler::setHovered(bool hovered)
         emit hoveredChanged();
     }
 }
+
+/*!
+    \internal
+    \qmlproperty flags QtQuick::HoverHandler::acceptedButtons
+
+    This property is not used in HoverHandler.
+*/
+
+/*!
+    \qmlproperty flags QtQuick::HoverHandler::acceptedDevices
+
+    The types of pointing devices that can activate the pointer handler.
+
+    By default, this property is set to
+    \l{QInputDevice::DeviceType}{PointerDevice.AllDevices}.
+    If you set it to an OR combination of device types, it will ignore pointer
+    events from the non-matching devices.
+
+    For example, an item could be made to respond to mouse hover in one way,
+    and stylus hover in another way, with two handlers:
+
+    \snippet pointerHandlers/hoverMouseOrStylus.qml 0
+
+    The available device types are as follows:
+
+    \value PointerDevice.Mouse          A mouse.
+    \value PointerDevice.TouchScreen    A touchscreen.
+    \value PointerDevice.TouchPad       A touchpad or trackpad.
+    \value PointerDevice.Stylus         A stylus on a graphics tablet.
+    \value PointerDevice.Airbrush       An airbrush on a graphics tablet.
+    \value PointerDevice.Puck           A digitizer with crosshairs, on a graphics tablet.
+    \value PointerDevice.AllDevices     Any type of pointing device.
+
+    \note Not all platforms are yet able to distinguish mouse and touchpad; and
+    on those that do, you often want to make mouse and touchpad behavior the same.
+
+    \sa QInputDevice::DeviceType
+*/
+
+/*!
+    \qmlproperty flags QtQuick::HoverHandler::acceptedPointerTypes
+
+    The types of pointing instruments (generic, stylus, eraser, and so on)
+    that can activate the pointer handler.
+
+    By default, this property is set to
+    \l {QPointingDevice::PointerType} {PointerDevice.AllPointerTypes}.
+    If you set it to an OR combination of device types, it will ignore events
+    from non-matching events.
+
+    For example, you could provide feedback by changing the cursor depending on
+    whether a stylus or eraser is hovering over a graphics tablet:
+
+    \snippet pointerHandlers/hoverStylusOrEraser.qml 0
+
+    The available pointer types are as follows:
+
+    \value PointerDevice.Generic          A mouse or a device that emulates a mouse.
+    \value PointerDevice.Finger           A finger on a touchscreen (hover detection is unlikely).
+    \value PointerDevice.Pen              A stylus on a graphics tablet.
+    \value PointerDevice.Eraser           An eraser on a graphics tablet.
+    \value PointerDevice.Cursor           A digitizer with crosshairs, on a graphics tablet.
+    \value PointerDevice.AllPointerTypes  Any type of pointing device.
+
+    \sa QPointingDevice::PointerType
+*/
+
+/*!
+    \qmlproperty flags QtQuick::HoverHandler::acceptedModifiers
+
+    If this property is set, a hover event is handled only if the given keyboard
+    modifiers are pressed. The event is ignored without the modifiers.
+
+    This property is set to \c Qt.KeyboardModifierMask by default, resulting
+    in handling hover events regardless of any modifier keys.
+
+    For example, an \l[QML]{Item} could have two handlers of the same type, one
+    of which is enabled only if the required keyboard modifiers are pressed:
+
+    \snippet pointerHandlers/hoverModifiers.qml 0
+
+    The available modifiers are as follows:
+
+    \value Qt.NoModifier        No modifier key is allowed.
+    \value Qt.ShiftModifier     A Shift key on the keyboard must be pressed.
+    \value Qt.ControlModifier   A Ctrl key on the keyboard must be pressed.
+    \value Qt.AltModifier       An Alt key on the keyboard must be pressed.
+    \value Qt.MetaModifier      A Meta key on the keyboard must be pressed.
+    \value Qt.KeypadModifier    A keypad button must be pressed.
+    \value Qt.GroupSwitchModifier A Mode_switch key on the keyboard must be pressed.
+                                X11 only (unless activated on Windows by a command line argument).
+    \value Qt.KeyboardModifierMask The handler ignores modifier keys.
+
+    \sa Qt::KeyboardModifier
+*/
 
 /*!
     \since 5.15
@@ -186,14 +327,14 @@ void QQuickHoverHandler::setHovered(bool hovered)
     \endlist
 
     The default value of this property is not set, which allows any active
-    handler on the same \l parentItem to determine the cursor shape.
+    handler on the same \e parent item to determine the cursor shape.
     This property can be reset to the initial condition by setting it to
     \c undefined.
 
     If any handler with defined \c cursorShape is
     \l {PointerHandler::active}{active}, that cursor will appear.
     Else if the HoverHandler has a defined \c cursorShape, that cursor will appear.
-    Otherwise, the \l {QQuickItem::cursor()}{cursor} of \l parentItem will appear.
+    Otherwise, the \l {QQuickItem::cursor()}{cursor} of \e parent item will appear.
 
     \note When this property has not been set, or has been set to \c undefined,
     if you read the value it will return \c Qt.ArrowCursor.
@@ -201,4 +342,13 @@ void QQuickHoverHandler::setHovered(bool hovered)
     \sa Qt::CursorShape, QQuickItem::cursor()
 */
 
+/*!
+    \internal
+    \qmlproperty flags HoverHandler::dragThreshold
+
+    This property is not used in HoverHandler.
+*/
+
 QT_END_NAMESPACE
+
+#include "moc_qquickhoverhandler_p.cpp"

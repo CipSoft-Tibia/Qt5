@@ -10,11 +10,11 @@
 #include <chrono>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "cast/streaming/frame_id.h"
 #include "cast/streaming/rtp_time.h"
 #include "platform/api/time.h"
 #include "platform/base/macros.h"
+#include "platform/base/span.h"
 
 namespace openscreen {
 namespace cast {
@@ -22,33 +22,40 @@ namespace cast {
 // A combination of metadata and data for one encoded frame.  This can contain
 // audio data or video data or other.
 struct EncodedFrame {
-  enum Dependency : int8_t {
+  enum class Dependency : int8_t {
     // "null" value, used to indicate whether |dependency| has been set.
-    UNKNOWN_DEPENDENCY,
+    kUnknown,
 
     // Not decodable without the reference frame indicated by
     // |referenced_frame_id|.
-    DEPENDS_ON_ANOTHER,
+    kDependent,
 
     // Independently decodable.
-    INDEPENDENTLY_DECODABLE,
+    kIndependent,
 
     // Independently decodable, and no future frames will depend on any frames
     // before this one.
-    KEY_FRAME,
+    kKeyFrame,
   };
 
+  EncodedFrame(Dependency dependency,
+               FrameId frame_id,
+               FrameId referenced_frame_id,
+               RtpTimeTicks rtp_timestamp,
+               Clock::time_point reference_time,
+               std::chrono::milliseconds new_playout_delay,
+               ByteView data);
   EncodedFrame();
   ~EncodedFrame();
 
-  EncodedFrame(EncodedFrame&&) MAYBE_NOEXCEPT;
-  EncodedFrame& operator=(EncodedFrame&&) MAYBE_NOEXCEPT;
+  EncodedFrame(EncodedFrame&&) noexcept;
+  EncodedFrame& operator=(EncodedFrame&&);
 
   // Copies all members except |data| to |dest|. Does not modify |dest->data|.
   void CopyMetadataTo(EncodedFrame* dest) const;
 
   // This frame's dependency relationship with respect to other frames.
-  Dependency dependency = UNKNOWN_DEPENDENCY;
+  Dependency dependency = Dependency::kUnknown;
 
   // The label associated with this frame.  Implies an ordering relative to
   // other frames in the same stream.
@@ -84,11 +91,10 @@ struct EncodedFrame {
   // Playout delay extension. Non-positive values means no change.
   std::chrono::milliseconds new_playout_delay{};
 
-  // Pointer to a buffer containing the encoded signal data for the frame. In
-  // the sender context, this points to the data to be sent, and nothing will be
-  // mutated. In the receiver context, this is set to the region of a
-  // client-provided buffer that was populated.
-  absl::Span<uint8_t> data;
+  // A buffer containing the encoded signal data for the frame. In the sender
+  // context, this points to the data to be sent. In the receiver context, this
+  // is set to the region of a client-provided buffer that was populated.
+  ByteView data;
 
   OSP_DISALLOW_COPY_AND_ASSIGN(EncodedFrame);
 };

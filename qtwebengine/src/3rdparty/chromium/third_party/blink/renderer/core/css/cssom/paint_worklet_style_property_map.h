@@ -1,4 +1,4 @@
-// Copyright 2018 the Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/cssom/cross_thread_style_value.h"
 #include "third_party/blink/renderer/core/css/cssom/style_property_map_read_only.h"
 #include "third_party/blink/renderer/platform/graphics/compositor_element_id.h"
@@ -34,18 +35,16 @@ class CORE_EXPORT PaintWorkletStylePropertyMap
       HashMap<String, std::unique_ptr<CrossThreadStyleValue>>;
   // Build the data that will be passed to the worklet thread to construct a
   // style map. Should be called on the main thread only.
-#ifndef TOOLKIT_QT
   // TODO(xidachen): consider making the input_property_ids as part of the
   // return value. Or make both CrossThreadData and input_property_ids as
   // params and return a bool.
-  static base::Optional<CrossThreadData> BuildCrossThreadData(
+  static absl::optional<CrossThreadData> BuildCrossThreadData(
       const Document&,
       UniqueObjectId unique_object_id,
       const ComputedStyle&,
       const Vector<CSSPropertyID>& native_properties,
       const Vector<AtomicString>& custom_properties,
       CompositorPaintWorkletInput::PropertyKeys& input_property_keys);
-#endif
 
   static CrossThreadData CopyCrossThreadData(const CrossThreadData& data);
 
@@ -76,11 +75,12 @@ class CORE_EXPORT PaintWorkletStylePropertyMap
   CrossThreadData& StyleMapData() { return data_; }
 
  private:
-  IterationSource* StartIteration(ScriptState*, ExceptionState&) override;
+  IterationSource* CreateIterationSource(ScriptState*,
+                                         ExceptionState&) override;
 
   CrossThreadData data_;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSSOM_PAINT_WORKLET_STYLE_PROPERTY_MAP_H_

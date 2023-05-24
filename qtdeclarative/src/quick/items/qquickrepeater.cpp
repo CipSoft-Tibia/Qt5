@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickrepeater_p.h"
 #include "qquickrepeater_p_p.h"
@@ -161,7 +125,7 @@ QQuickRepeater::~QQuickRepeater()
 }
 
 /*!
-    \qmlproperty any QtQuick::Repeater::model
+    \qmlproperty var QtQuick::Repeater::model
 
     The model providing data for the repeater.
 
@@ -245,7 +209,7 @@ void QQuickRepeater::setModel(const QVariant &m)
 
 /*!
     \qmlproperty Component QtQuick::Repeater::delegate
-    \default
+    \qmldefault
 
     The delegate provides a template defining each item instantiated by the repeater.
 
@@ -333,7 +297,7 @@ int QQuickRepeater::count() const
 QQuickItem *QQuickRepeater::itemAt(int index) const
 {
     Q_D(const QQuickRepeater);
-    if (index >= 0 && index < d->deletables.count())
+    if (index >= 0 && index < d->deletables.size())
         return d->deletables[index];
     return nullptr;
 }
@@ -365,14 +329,14 @@ void QQuickRepeater::clear()
     if (d->model) {
         // We remove in reverse order deliberately; so that signals are emitted
         // with sensible indices.
-        for (int i = d->deletables.count() - 1; i >= 0; --i) {
+        for (int i = d->deletables.size() - 1; i >= 0; --i) {
             if (QQuickItem *item = d->deletables.at(i)) {
                 if (complete)
                     emit itemRemoved(i, item);
                 d->model->release(item);
             }
         }
-        for (QQuickItem *item : qAsConst(d->deletables)) {
+        for (QQuickItem *item : std::as_const(d->deletables)) {
             if (item)
                 item->setParentItem(nullptr);
         }
@@ -439,6 +403,12 @@ void QQuickRepeater::initItem(int index, QObject *object)
         }
         d->deletables[index] = item;
         item->setParentItem(parentItem());
+
+        // If the item comes from an ObjectModel, it might be used as
+        // ComboBox/Menu/TabBar's contentItem. These types unconditionally cull items
+        // that are inserted, so account for that here.
+        if (d->dataSourceIsObject)
+            QQuickItemPrivate::get(item)->setCulled(false);
         if (index > 0 && d->deletables.at(index-1)) {
             item->stackAfter(d->deletables.at(index-1));
         } else {
@@ -471,8 +441,8 @@ void QQuickRepeater::modelUpdated(const QQmlChangeSet &changeSet, bool reset)
     int difference = 0;
     QHash<int, QVector<QPointer<QQuickItem> > > moved;
     for (const QQmlChangeSet::Change &remove : changeSet.removes()) {
-        int index = qMin(remove.index, d->deletables.count());
-        int count = qMin(remove.index + remove.count, d->deletables.count()) - index;
+        int index = qMin(remove.index, d->deletables.size());
+        int count = qMin(remove.index + remove.count, d->deletables.size()) - index;
         if (remove.isMove()) {
             moved.insert(remove.moveId, d->deletables.mid(index, count));
             d->deletables.erase(
@@ -493,16 +463,16 @@ void QQuickRepeater::modelUpdated(const QQmlChangeSet &changeSet, bool reset)
     }
 
     for (const QQmlChangeSet::Change &insert : changeSet.inserts()) {
-        int index = qMin(insert.index, d->deletables.count());
+        int index = qMin(insert.index, d->deletables.size());
         if (insert.isMove()) {
             QVector<QPointer<QQuickItem> > items = moved.value(insert.moveId);
             d->deletables = d->deletables.mid(0, index) + items + d->deletables.mid(index);
-            QQuickItem *stackBefore = index + items.count() < d->deletables.count()
-                    ? d->deletables.at(index + items.count())
+            QQuickItem *stackBefore = index + items.size() < d->deletables.size()
+                    ? d->deletables.at(index + items.size())
                     : this;
             if (stackBefore) {
-                for (int i = index; i < index + items.count(); ++i) {
-                    if (i < d->deletables.count()) {
+                for (int i = index; i < index + items.size(); ++i) {
+                    if (i < d->deletables.size()) {
                         QPointer<QQuickItem> item = d->deletables.at(i);
                         if (item)
                             item->stackBefore(stackBefore);

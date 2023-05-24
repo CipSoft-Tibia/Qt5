@@ -1,14 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_PUBLIC_BROWSER_INSTALLED_PAYMENT_APPS_FINDER_H_
 #define CONTENT_PUBLIC_BROWSER_INSTALLED_PAYMENT_APPS_FINDER_H_
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/stored_payment_app.h"
-#include "third_party/blink/public/mojom/payments/payment_app.mojom.h"
 
 namespace content {
 

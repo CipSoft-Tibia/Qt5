@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include "base/files/file_path.h"
 #include "components/history/core/browser/download_types.h"
+#include "components/version_info/channel.h"
 
 namespace history {
 
@@ -15,15 +16,16 @@ namespace history {
 // and HistoryBackend.
 struct HistoryDatabaseParams {
   HistoryDatabaseParams();
-  HistoryDatabaseParams(
-      const base::FilePath& history_dir,
-      DownloadInterruptReason download_interrupt_reason_none,
-      DownloadInterruptReason download_interrupt_reason_crash);
+  HistoryDatabaseParams(const base::FilePath& history_dir,
+                        DownloadInterruptReason download_interrupt_reason_none,
+                        DownloadInterruptReason download_interrupt_reason_crash,
+                        version_info::Channel channel);
   ~HistoryDatabaseParams();
 
-  base::FilePath history_dir;
-  DownloadInterruptReason download_interrupt_reason_none;
-  DownloadInterruptReason download_interrupt_reason_crash;
+  const base::FilePath history_dir;
+  const DownloadInterruptReason download_interrupt_reason_none;
+  const DownloadInterruptReason download_interrupt_reason_crash;
+  const version_info::Channel channel;
 };
 
 }  // namespace history

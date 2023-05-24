@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbluetoothserviceinfo.h"
 #include "qbluetoothserviceinfo_p.h"
@@ -43,6 +7,11 @@
 #include <QUrl>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QBluetoothServiceInfo)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QBluetoothServiceInfo::Sequence, QBluetoothServiceInfo__Sequence)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QBluetoothServiceInfo::Alternative,
+                               QBluetoothServiceInfo__Alternative)
 
 /*!
     \class QBluetoothServiceInfo::Sequence
@@ -181,7 +150,7 @@ bool QBluetoothServiceInfo::isRegistered() const
 bool QBluetoothServiceInfo::registerService(const QBluetoothAddress &localAdapter)
 {
 #ifdef QT_OSX_BLUETOOTH
-    Q_UNUSED(localAdapter)
+    Q_UNUSED(localAdapter);
     return d_ptr->registerService(*this);
 #else
     return d_ptr->registerService(localAdapter);
@@ -469,11 +438,11 @@ void QBluetoothServiceInfo::removeAttribute(quint16 attributeId)
 */
 QBluetoothServiceInfo::Protocol QBluetoothServiceInfo::socketProtocol() const
 {
-    QBluetoothServiceInfo::Sequence parameters = protocolDescriptor(QBluetoothUuid::Rfcomm);
+    QBluetoothServiceInfo::Sequence parameters = protocolDescriptor(QBluetoothUuid::ProtocolUuid::Rfcomm);
     if (!parameters.isEmpty())
         return RfcommProtocol;
 
-    parameters = protocolDescriptor(QBluetoothUuid::L2cap);
+    parameters = protocolDescriptor(QBluetoothUuid::ProtocolUuid::L2cap);
     if (!parameters.isEmpty())
         return L2capProtocol;
 
@@ -490,11 +459,11 @@ QBluetoothServiceInfo::Protocol QBluetoothServiceInfo::socketProtocol() const
 */
 int QBluetoothServiceInfo::protocolServiceMultiplexer() const
 {
-    QBluetoothServiceInfo::Sequence parameters = protocolDescriptor(QBluetoothUuid::L2cap);
+    QBluetoothServiceInfo::Sequence parameters = protocolDescriptor(QBluetoothUuid::ProtocolUuid::L2cap);
 
     if (parameters.isEmpty())
         return -1;
-    else if (parameters.count() == 1)
+    else if (parameters.size() == 1)
         return 0;
     else
         return parameters.at(1).toUInt();
@@ -541,7 +510,7 @@ QList<QBluetoothUuid> QBluetoothServiceInfo::serviceClassUuids() const
         return results;
 
     const QBluetoothServiceInfo::Sequence seq = var.value<QBluetoothServiceInfo::Sequence>();
-    for (int i = 0; i < seq.count(); i++)
+    for (qsizetype i = 0; i < seq.size(); ++i)
         results.append(seq.at(i).value<QBluetoothUuid>());
 
     return results;
@@ -560,7 +529,7 @@ QBluetoothServiceInfo &QBluetoothServiceInfo::operator=(const QBluetoothServiceI
 
 static void dumpAttributeVariant(QDebug dbg, const QVariant &var, const QString& indent)
 {
-    switch (int(var.type())) {
+    switch (var.typeId()) {
     case QMetaType::Void:
         dbg << QString::asprintf("%sEmpty\n", indent.toUtf8().constData());
         break;
@@ -597,8 +566,8 @@ static void dumpAttributeVariant(QDebug dbg, const QVariant &var, const QString&
         dbg << QString::asprintf("%surl %s\n", indent.toUtf8().constData(),
                                  var.toUrl().toString().toUtf8().constData());
         break;
-    case QVariant::UserType:
-        if (var.userType() == qMetaTypeId<QBluetoothUuid>()) {
+    default:
+        if (var.typeId() == qMetaTypeId<QBluetoothUuid>()) {
             QBluetoothUuid uuid = var.value<QBluetoothUuid>();
             switch (uuid.minimumSize()) {
             case 0:
@@ -615,31 +584,29 @@ static void dumpAttributeVariant(QDebug dbg, const QVariant &var, const QString&
             case 16:
                 dbg << QString::asprintf("%suuid %s\n",
                             indent.toUtf8().constData(),
-                            QByteArray(reinterpret_cast<const char *>(uuid.toUInt128().data), 16).toHex().constData());
+                            uuid.toByteArray(QUuid::Id128).constData());
                 break;
             default:
                 dbg << QString::asprintf("%suuid ???\n", indent.toUtf8().constData());
             }
-        } else if (var.userType() == qMetaTypeId<QBluetoothServiceInfo::Sequence>()) {
+        } else if (var.typeId() == qMetaTypeId<QBluetoothServiceInfo::Sequence>()) {
             dbg << QString::asprintf("%sSequence\n", indent.toUtf8().constData());
             const QBluetoothServiceInfo::Sequence *sequence = static_cast<const QBluetoothServiceInfo::Sequence *>(var.data());
             for (const QVariant &v : *sequence)
                 dumpAttributeVariant(dbg, v, indent + QLatin1Char('\t'));
-        } else if (var.userType() == qMetaTypeId<QBluetoothServiceInfo::Alternative>()) {
+        } else if (var.typeId() == qMetaTypeId<QBluetoothServiceInfo::Alternative>()) {
             dbg << QString::asprintf("%sAlternative\n", indent.toUtf8().constData());
             const QBluetoothServiceInfo::Alternative *alternative = static_cast<const QBluetoothServiceInfo::Alternative *>(var.data());
             for (const QVariant &v : *alternative)
                 dumpAttributeVariant(dbg, v, indent + QLatin1Char('\t'));
+        } else {
+            dbg << QString::asprintf("%sunknown variant type %d\n", indent.toUtf8().constData(), var.typeId());
         }
-        break;
-    default:
-        dbg << QString::asprintf("%sunknown variant type %d\n", indent.toUtf8().constData(),
-                                 var.userType());
     }
 }
 
-
-QDebug operator<<(QDebug dbg, const QBluetoothServiceInfo &info)
+#ifndef QT_NO_DEBUG_STREAM
+QDebug QBluetoothServiceInfo::streamingOperator(QDebug dbg, const QBluetoothServiceInfo &info)
 {
     QDebugStateSaver saver(dbg);
     dbg.noquote() << "\n";
@@ -649,6 +616,7 @@ QDebug operator<<(QDebug dbg, const QBluetoothServiceInfo &info)
     }
     return dbg;
 }
+#endif
 
 QBluetoothServiceInfo::Sequence QBluetoothServiceInfoPrivate::protocolDescriptor(QBluetoothUuid::ProtocolUuid protocol) const
 {
@@ -672,11 +640,11 @@ QBluetoothServiceInfo::Sequence QBluetoothServiceInfoPrivate::protocolDescriptor
 
 int QBluetoothServiceInfoPrivate::serverChannel() const
 {
-    QBluetoothServiceInfo::Sequence parameters = protocolDescriptor(QBluetoothUuid::Rfcomm);
+    QBluetoothServiceInfo::Sequence parameters = protocolDescriptor(QBluetoothUuid::ProtocolUuid::Rfcomm);
 
     if (parameters.isEmpty())
         return -1;
-    else if (parameters.count() == 1)
+    else if (parameters.size() == 1)
         return 0;
     else
         return parameters.at(1).toUInt();

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/values.h"
 #include "chrome/browser/ui/webui/webui_util.h"
 #include "chrome/common/url_constants.h"
@@ -29,33 +28,35 @@ namespace {
 class DeviceLogMessageHandler : public content::WebUIMessageHandler {
  public:
   DeviceLogMessageHandler() {}
+
+  DeviceLogMessageHandler(const DeviceLogMessageHandler&) = delete;
+  DeviceLogMessageHandler& operator=(const DeviceLogMessageHandler&) = delete;
+
   ~DeviceLogMessageHandler() override {}
 
   // WebUIMessageHandler implementation.
   void RegisterMessages() override {
     web_ui()->RegisterMessageCallback(
-        "DeviceLog.getLog",
-        base::BindRepeating(&DeviceLogMessageHandler::GetLog,
-                            base::Unretained(this)));
+        "getLog", base::BindRepeating(&DeviceLogMessageHandler::GetLog,
+                                      base::Unretained(this)));
     web_ui()->RegisterMessageCallback(
-        "DeviceLog.clearLog",
-        base::BindRepeating(&DeviceLogMessageHandler::ClearLog,
-                            base::Unretained(this)));
+        "clearLog", base::BindRepeating(&DeviceLogMessageHandler::ClearLog,
+                                        base::Unretained(this)));
   }
 
  private:
-  void GetLog(const base::ListValue* value) const {
+  void GetLog(const base::Value::List& value) {
+    AllowJavascript();
+    std::string callback_id = value[0].GetString();
     base::Value data(device_event_log::GetAsString(
         device_event_log::NEWEST_FIRST, "json", "",
         device_event_log::LOG_LEVEL_DEBUG, 0));
-    web_ui()->CallJavascriptFunctionUnsafe("DeviceLogUI.getLogCallback", data);
+    ResolveJavascriptCallback(base::Value(callback_id), data);
   }
 
-  void ClearLog(const base::ListValue* value) const {
+  void ClearLog(const base::Value::List& value) const {
     device_event_log::ClearAll();
   }
-
-  DISALLOW_COPY_AND_ASSIGN(DeviceLogMessageHandler);
 };
 
 }  // namespace
@@ -64,8 +65,9 @@ DeviceLogUI::DeviceLogUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   web_ui->AddMessageHandler(std::make_unique<DeviceLogMessageHandler>());
 
-  content::WebUIDataSource* html =
-      content::WebUIDataSource::Create(chrome::kChromeUIDeviceLogHost);
+  content::WebUIDataSource* html = content::WebUIDataSource::CreateAndAdd(
+      web_ui->GetWebContents()->GetBrowserContext(),
+      chrome::kChromeUIDeviceLogHost);
 
   static constexpr webui::LocalizedString kStrings[] = {
       {"titleText", IDS_DEVICE_LOG_TITLE},
@@ -90,17 +92,17 @@ DeviceLogUI::DeviceLogUI(content::WebUI* web_ui)
       {"logTypePrinterText", IDS_DEVICE_LOG_TYPE_PRINTER},
       {"logTypeFidoText", IDS_DEVICE_LOG_TYPE_FIDO},
       {"logTypeSerialText", IDS_DEVICE_LOG_TYPE_SERIAL},
+      {"logTypeCameraText", IDS_DEVICE_LOG_TYPE_CAMERA},
+      {"logTypeGeolocationText", IDS_DEVICE_LOG_TYPE_GEOLOCATION},
+      {"logTypeExtensionsText", IDS_DEVICE_LOG_TYPE_EXTENSIONS},
       {"logEntryFormat", IDS_DEVICE_LOG_ENTRY},
   };
-  AddLocalizedStringsBulk(html, kStrings);
+  html->AddLocalizedStrings(kStrings);
 
   html->UseStringsJs();
   html->AddResourcePath("device_log_ui.css", IDR_DEVICE_LOG_UI_CSS);
   html->AddResourcePath("device_log_ui.js", IDR_DEVICE_LOG_UI_JS);
   html->SetDefaultResource(IDR_DEVICE_LOG_UI_HTML);
-
-  content::WebUIDataSource::Add(web_ui->GetWebContents()->GetBrowserContext(),
-                                html);
 }
 
 DeviceLogUI::~DeviceLogUI() {

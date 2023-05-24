@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,12 +32,13 @@ class ScopedUsHistogramTimerTest : public testing::Test {
 };
 
 TEST_F(ScopedUsHistogramTimerTest, Basic) {
-  TestCustomCountHistogram scoped_us_counter("ScopedUsHistogramTimerTest.Basic",
-                                             0, 10000000, 50);
+  TestCustomCountHistogram scoped_us_counter(
+      "ScopedUsHistogramTimerTest.Basic", kTimeBasedHistogramMinSample,
+      kTimeBasedHistogramMaxSample, kTimeBasedHistogramBucketCount);
   {
     ScopedUsHistogramTimer timer(scoped_us_counter,
                                  test_task_runner_->GetMockTickClock());
-    test_task_runner_->FastForwardBy(base::TimeDelta::FromMilliseconds(500));
+    test_task_runner_->FastForwardBy(base::Milliseconds(500));
   }
   // 500ms == 500000us
   EXPECT_EQ(500000, scoped_us_counter.Histogram()->SnapshotSamples()->sum());
@@ -45,11 +46,12 @@ TEST_F(ScopedUsHistogramTimerTest, Basic) {
 
 TEST_F(ScopedUsHistogramTimerTest, BasicHighRes) {
   TestCustomCountHistogram scoped_us_counter(
-      "ScopedHighResUsHistogramTimerTest.Basic", 0, 10000000, 50);
+      "ScopedHighResUsHistogramTimerTest.Basic", kTimeBasedHistogramMinSample,
+      kTimeBasedHistogramMaxSample, kTimeBasedHistogramBucketCount);
   {
     ScopedHighResUsHistogramTimer timer(scoped_us_counter,
                                         test_task_runner_->GetMockTickClock());
-    test_task_runner_->FastForwardBy(base::TimeDelta::FromMilliseconds(500));
+    test_task_runner_->FastForwardBy(base::Milliseconds(500));
   }
   int64_t expected = base::TimeTicks::IsHighResolution() ? 500000 : 0;
   EXPECT_EQ(expected, scoped_us_counter.Histogram()->SnapshotSamples()->sum());

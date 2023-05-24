@@ -1,8 +1,10 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "core/fpdfapi/edit/cpdf_contentstream_write_utils.h"
+
+#include <ostream>
 
 #include "third_party/skia_shared/SkFloatToDecimal.h"
 
@@ -13,18 +15,26 @@ std::ostream& WriteFloat(std::ostream& stream, float value) {
   return stream;
 }
 
-std::ostream& operator<<(std::ostream& ar, const CFX_Matrix& matrix) {
-  WriteFloat(ar, matrix.a) << " ";
-  WriteFloat(ar, matrix.b) << " ";
-  WriteFloat(ar, matrix.c) << " ";
-  WriteFloat(ar, matrix.d) << " ";
-  WriteFloat(ar, matrix.e) << " ";
-  WriteFloat(ar, matrix.f);
-  return ar;
+std::ostream& WriteMatrix(std::ostream& stream, const CFX_Matrix& matrix) {
+  WriteFloat(stream, matrix.a) << " ";
+  WriteFloat(stream, matrix.b) << " ";
+  WriteFloat(stream, matrix.c) << " ";
+  WriteFloat(stream, matrix.d) << " ";
+  WriteFloat(stream, matrix.e) << " ";
+  WriteFloat(stream, matrix.f);
+  return stream;
 }
 
-std::ostream& operator<<(std::ostream& ar, const CFX_PointF& point) {
-  WriteFloat(ar, point.x) << " ";
-  WriteFloat(ar, point.y);
-  return ar;
+std::ostream& WritePoint(std::ostream& stream, const CFX_PointF& point) {
+  WriteFloat(stream, point.x) << " ";
+  WriteFloat(stream, point.y);
+  return stream;
+}
+
+std::ostream& WriteRect(std::ostream& stream, const CFX_FloatRect& rect) {
+  WriteFloat(stream, rect.left) << " ";
+  WriteFloat(stream, rect.bottom) << " ";
+  WriteFloat(stream, rect.Width()) << " ";
+  WriteFloat(stream, rect.Height());
+  return stream;
 }

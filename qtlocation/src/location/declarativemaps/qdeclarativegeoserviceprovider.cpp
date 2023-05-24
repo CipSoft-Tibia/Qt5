@@ -1,42 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativegeoserviceprovider_p.h"
 #include <QtQml/QQmlInfo>
 #include <QtQml/QQmlEngine>
+#include <QLocale>
 
 QT_BEGIN_NAMESPACE
 
@@ -83,19 +51,13 @@ QT_BEGIN_NAMESPACE
 */
 
 QDeclarativeGeoServiceProvider::QDeclarativeGeoServiceProvider(QObject *parent)
-:   QObject(parent),
-    sharedProvider_(0),
-    required_(new QDeclarativeGeoServiceProviderRequirements),
-    complete_(false),
-    experimental_(false)
+:   QObject(parent), required_(new QDeclarativeGeoServiceProviderRequirements)
 {
     locales_.append(QLocale().name());
 }
 
 QDeclarativeGeoServiceProvider::~QDeclarativeGeoServiceProvider()
 {
-    delete required_;
-    delete sharedProvider_;
 }
 
 
@@ -124,7 +86,7 @@ void QDeclarativeGeoServiceProvider::setName(const QString &name)
     \internal
 */
 bool QDeclarativeGeoServiceProvider::parametersReady() {
-    for (const QDeclarativePluginParameter *p: qAsConst(parameters_)) {
+    for (const QDeclarativePluginParameter *p: std::as_const(parameters_)) {
         if (!p->isInitialized())
             return false;
     }
@@ -139,15 +101,14 @@ void QDeclarativeGeoServiceProvider::tryAttach()
     if (!parametersReady())
         return;
 
-    delete sharedProvider_;
-    sharedProvider_ = nullptr;
+    sharedProvider_.reset();
 
     if (name_.isEmpty())
         return;
 
-    sharedProvider_ = new QGeoServiceProvider(name_, parameterMap());
+    sharedProvider_.reset(new QGeoServiceProvider(name_, parameterMap()));
     sharedProvider_->setQmlEngine(qmlEngine(this));
-    sharedProvider_->setLocale(locales_.at(0));
+    sharedProvider_->setLocale(QLocale(locales_.at(0)));
     sharedProvider_->setAllowExperimental(experimental_);
 
     emit attached();
@@ -179,7 +140,7 @@ void QDeclarativeGeoServiceProvider::componentComplete()
 {
     complete_ = true;
 
-    for (QDeclarativePluginParameter *p: qAsConst(parameters_)) {
+    for (QDeclarativePluginParameter *p: std::as_const(parameters_)) {
         if (!p->isInitialized()) {
             connect(p, &QDeclarativePluginParameter::initialized,
                     this, &QDeclarativeGeoServiceProvider::tryAttach);
@@ -198,7 +159,7 @@ void QDeclarativeGeoServiceProvider::componentComplete()
         QStringList providers = QGeoServiceProvider::availableServiceProviders();
 
         /* first check any preferred plugins */
-        foreach (const QString &name, prefer_) {
+        for (const QString &name : std::as_const(prefer_)) {
             if (providers.contains(name)) {
                 // so we don't try it again later
                 providers.removeAll(name);
@@ -212,7 +173,7 @@ void QDeclarativeGeoServiceProvider::componentComplete()
         }
 
         /* then try the rest */
-        foreach (const QString &name, providers) {
+        for (const QString &name : std::as_const(providers)) {
             QGeoServiceProvider sp(name, parameterMap(), experimental_);
             if (required_->matches(&sp)) {
                 setName(name);
@@ -472,7 +433,7 @@ bool QDeclarativeGeoServiceProvider::supportsNavigation(const QDeclarativeGeoSer
 */
 QDeclarativeGeoServiceProviderRequirements *QDeclarativeGeoServiceProvider::requirements() const
 {
-    return required_;
+    return required_.get();
 }
 
 void QDeclarativeGeoServiceProvider::setRequirements(QDeclarativeGeoServiceProviderRequirements *req)
@@ -483,8 +444,7 @@ void QDeclarativeGeoServiceProvider::setRequirements(QDeclarativeGeoServiceProvi
     if (required_ && *required_ == *req)
         return;
 
-    delete required_;
-    required_ = req;
+    required_.reset(req);
     QQmlEngine::setObjectOwnership(req, QQmlEngine::CppOwnership); // To prevent the engine from making this object disappear
 }
 
@@ -543,7 +503,7 @@ void QDeclarativeGeoServiceProvider::setAllowExperimental(bool allow)
 */
 QGeoServiceProvider *QDeclarativeGeoServiceProvider::sharedGeoServiceProvider() const
 {
-    return sharedProvider_;
+    return sharedProvider_.get();
 }
 
 /*!
@@ -592,14 +552,14 @@ void QDeclarativeGeoServiceProvider::setLocales(const QStringList &locales)
         locales_.append(QLocale().name());
 
     if (sharedProvider_)
-        sharedProvider_->setLocale(locales_.at(0));
+        sharedProvider_->setLocale(QLocale(locales_.at(0)));
 
     emit localesChanged();
 }
 
 /*!
     \qmlproperty list<PluginParameter> Plugin::parameters
-    \default
+    \qmldefault
 
     This property holds the list of plugin parameters.
 */
@@ -627,7 +587,7 @@ void QDeclarativeGeoServiceProvider::parameter_append(QQmlListProperty<QDeclarat
 /*!
     \internal
 */
-int QDeclarativeGeoServiceProvider::parameter_count(QQmlListProperty<QDeclarativePluginParameter> *prop)
+qsizetype QDeclarativeGeoServiceProvider::parameter_count(QQmlListProperty<QDeclarativePluginParameter> *prop)
 {
     return static_cast<QDeclarativeGeoServiceProvider *>(prop->object)->parameters_.count();
 }
@@ -635,7 +595,7 @@ int QDeclarativeGeoServiceProvider::parameter_count(QQmlListProperty<QDeclarativ
 /*!
     \internal
 */
-QDeclarativePluginParameter *QDeclarativeGeoServiceProvider::parameter_at(QQmlListProperty<QDeclarativePluginParameter> *prop, int index)
+QDeclarativePluginParameter *QDeclarativeGeoServiceProvider::parameter_at(QQmlListProperty<QDeclarativePluginParameter> *prop, qsizetype index)
 {
     return static_cast<QDeclarativeGeoServiceProvider *>(prop->object)->parameters_[index];
 }
@@ -658,10 +618,8 @@ QVariantMap QDeclarativeGeoServiceProvider::parameterMap() const
 {
     QVariantMap map;
 
-    for (int i = 0; i < parameters_.size(); ++i) {
-        QDeclarativePluginParameter *parameter = parameters_.at(i);
+    for (const auto *parameter : parameters_)
         map.insert(parameter->name(), parameter->value());
-    }
 
     return map;
 }
@@ -670,12 +628,7 @@ QVariantMap QDeclarativeGeoServiceProvider::parameterMap() const
 *******************************************************************************/
 
 QDeclarativeGeoServiceProviderRequirements::QDeclarativeGeoServiceProviderRequirements(QObject *parent)
-    : QObject(parent),
-      mapping_(QDeclarativeGeoServiceProvider::NoMappingFeatures),
-      routing_(QDeclarativeGeoServiceProvider::NoRoutingFeatures),
-      geocoding_(QDeclarativeGeoServiceProvider::NoGeocodingFeatures),
-      places_(QDeclarativeGeoServiceProvider::NoPlacesFeatures),
-      navigation_(QDeclarativeGeoServiceProvider::NoNavigationFeatures)
+    : QObject(parent)
 {
 }
 
@@ -871,33 +824,17 @@ bool QDeclarativeGeoServiceProviderRequirements::operator == (const QDeclarative
     \ingroup qml-QtLocation5-common
     \since QtLocation 5.5
 
-    \brief The PluginParameter type describes a parameter for a plugin, either
-    geo service \l Plugin, or \l{Qt Positioning plugins}{position Plugin}.
+    \brief The PluginParameter type describes a parameter for a plugin.
 
     The PluginParameter object is used to provide a parameter of some kind
     to a plugin. Typically these parameters contain details like an application
     token for access to a service, or a proxy server to use for network access,
     or the serial port to which a serial GPS receiver is connected.
 
-    To set such a parameter, declare a PluginParameter inside an element that accepts
-    plugin parameters as configuration objects, such as a \l Plugin object, or a
-    \l PositionSource object, and give it \l{name} and \l{value} properties. A list of valid
-    parameter names for each plugin is available from the
-    \l {Qt Location#Plugin References and Parameters}{plugin reference pages} for geoservice plugins,
-    and \l {Qt Positioning plugins#Default plugins} for position plugins.
-
-    \section2 Example Usage
-
-    The following example shows an instantiation of the \l {Qt Location HERE Plugin}{HERE} plugin
-    with a mapping API \e app_id and \e token pair specific to the application.
-
-    \code
-    Plugin {
-        name: "here"
-        PluginParameter { name: "here.app_id"; value: "EXAMPLE_API_ID" }
-        PluginParameter { name: "here.token"; value: "EXAMPLE_TOKEN_123" }
-    }
-    \endcode
+    To set such a parameter, declare a PluginParameter inside an \l Plugin object
+    and give it \l{name} and \l{value} properties. A list of valid parameter names
+    is available from the
+    \l {Qt Location#Plugin References and Parameters}{plugin reference pages}.
 */
 
 /*!

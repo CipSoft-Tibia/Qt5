@@ -32,12 +32,11 @@
 
 #include <algorithm>
 
-#include "base/macros.h"
 #include "third_party/blink/renderer/core/css/css_property_value_set.h"
 #include "third_party/blink/renderer/core/dom/attribute.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/hash_functions.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 
@@ -68,7 +67,7 @@ struct PresentationAttributeCacheEntry final
 using PresentationAttributeCache =
     HeapHashMap<unsigned,
                 Member<PresentationAttributeCacheEntry>,
-                AlreadyHashed>;
+                AlreadyHashedTraits>;
 static PresentationAttributeCache& GetPresentationAttributeCache() {
   DEFINE_STATIC_LOCAL(Persistent<PresentationAttributeCache>, cache,
                       (MakeGarbageCollected<PresentationAttributeCache>()));
@@ -102,6 +101,8 @@ static unsigned MakePresentationAttributeCacheKey(
   // attribute.
   if (IsA<HTMLInputElement>(element))
     return 0;
+  if (element.HasExtraStyleForPresentationAttribute())
+    return 0;
   AttributeCollection attributes = element.AttributesWithoutUpdate();
   for (const Attribute& attr : attributes) {
     if (!element.IsPresentationAttribute(attr.GetName()))
@@ -115,7 +116,7 @@ static unsigned MakePresentationAttributeCacheKey(
     result.attributes_and_values.push_back(
         std::make_pair(attr.LocalName().Impl(), attr.Value()));
   }
-  if (result.attributes_and_values.IsEmpty())
+  if (result.attributes_and_values.empty())
     return 0;
   // Attribute order doesn't matter. Sort for easy equality comparison.
   std::sort(result.attributes_and_values.begin(),

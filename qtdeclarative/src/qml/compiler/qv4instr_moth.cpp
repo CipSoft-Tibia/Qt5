@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4instr_moth_p.h"
 #include <private/qv4compileddata_p.h>
@@ -142,11 +106,13 @@ QString dumpArguments(int argc, int argv, int nFormals)
     return QStringLiteral("(") + dumpRegister(argv, nFormals) + QStringLiteral(", ") + QString::number(argc) + QStringLiteral(")");
 }
 
-void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*startLine*/, const QVector<CompiledData::CodeOffsetToLine> &lineNumberMapping)
+void dumpBytecode(
+        const char *code, int len, int nLocals, int nFormals, int /*startLine*/,
+        const QVector<CompiledData::CodeOffsetToLineAndStatement> &lineAndStatementNumberMapping)
 {
     MOTH_JUMP_TABLE;
 
-    auto findLine = [](const CompiledData::CodeOffsetToLine &entry, uint offset) {
+    auto findLine = [](const CompiledData::CodeOffsetToLineAndStatement &entry, uint offset) {
         return entry.codeOffset < offset;
     };
 
@@ -154,7 +120,10 @@ void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*st
     const char *start = code;
     const char *end = code + len;
     while (code < end) {
-        const CompiledData::CodeOffsetToLine *codeToLine = std::lower_bound(lineNumberMapping.constBegin(), lineNumberMapping.constEnd(), static_cast<uint>(code - start) + 1, findLine) - 1;
+        const auto codeToLine = std::lower_bound(
+                    lineAndStatementNumberMapping.constBegin(),
+                    lineAndStatementNumberMapping.constEnd(),
+                    static_cast<uint>(code - start) + 1, findLine) - 1;
         int line = int(codeToLine->line);
         if (line != lastLine)
             lastLine = line;
@@ -280,9 +249,17 @@ void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*st
             d << "acc[" << name << "]";
         MOTH_END_INSTR(LoadProperty)
 
+        MOTH_BEGIN_INSTR(LoadOptionalProperty)
+            d << "acc[" << name << "], jump(" << ABSOLUTE_OFFSET() << ")";
+        MOTH_END_INSTR(LoadOptionalProperty)
+
         MOTH_BEGIN_INSTR(GetLookup)
             d << "acc(" << index << ")";
         MOTH_END_INSTR(GetLookup)
+
+        MOTH_BEGIN_INSTR(GetOptionalLookup)
+            d << "acc(" << index << "), jump(" << ABSOLUTE_OFFSET() << ")";
+        MOTH_END_INSTR(GetOptionalLookup)
 
         MOTH_BEGIN_INSTR(StoreProperty)
             d << dumpRegister(base, nFormals) << "[" << name<< "]";
@@ -328,11 +305,6 @@ void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*st
             d << dumpRegister(base, nFormals) << "." << lookupIndex
               << dumpArguments(argc, argv, nFormals);
         MOTH_END_INSTR(CallPropertyLookup)
-
-        MOTH_BEGIN_INSTR(CallElement)
-            d << dumpRegister(base, nFormals) << "[" << dumpRegister(index, nFormals) << "]"
-              << dumpArguments(argc, argv, nFormals);
-        MOTH_END_INSTR(CallElement)
 
         MOTH_BEGIN_INSTR(CallName)
             d << name << dumpArguments(argc, argv, nFormals);
@@ -646,6 +618,10 @@ void dumpBytecode(const char *code, int len, int nLocals, int nFormals, int /*st
         MOTH_END_INSTR(Mod)
 
         MOTH_BEGIN_INSTR(Sub)
+            d << dumpRegister(lhs, nFormals) << ", acc";
+        MOTH_END_INSTR(Sub)
+
+        MOTH_BEGIN_INSTR(As)
             d << dumpRegister(lhs, nFormals) << ", acc";
         MOTH_END_INSTR(Sub)
 

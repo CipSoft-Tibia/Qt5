@@ -1,52 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "shaderdata_p.h"
 #include "qshaderdata.h"
 #include "qshaderdata_p.h"
 #include <QMetaProperty>
 #include <QMetaObject>
-#include <Qt3DCore/qdynamicpropertyupdatedchange.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <private/qbackendnode_p.h>
 #include <private/managers_p.h>
 #include <private/nodemanagers_p.h>
+#include <Qt3DRender/private/stringtoint_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -84,6 +47,7 @@ void ShaderData::syncFromFrontEnd(const QNode *frontEnd, bool firstTime)
 
     if (firstTime) {
         m_propertyReader = node->propertyReader();
+        m_blockNameToPropertyValues.clear();
 
         const QMetaObject *metaObj = node->metaObject();
         const int propertyOffset = QShaderData::staticMetaObject.propertyOffset();
@@ -91,7 +55,7 @@ void ShaderData::syncFromFrontEnd(const QNode *frontEnd, bool firstTime)
         // Dynamic properties names
         const auto dynamicPropertyNames = node->dynamicPropertyNames();
 
-        QVector<QString> propertyNames;
+        QList<QString> propertyNames;
         propertyNames.reserve(propertyCount - propertyOffset + dynamicPropertyNames.size());
 
         // Statiically defined properties
@@ -106,28 +70,35 @@ void ShaderData::syncFromFrontEnd(const QNode *frontEnd, bool firstTime)
 
         for (const QString &propertyName : propertyNames) {
             if (propertyName == QStringLiteral("data") ||
+                    propertyName == QStringLiteral("objectName") ||
                     propertyName == QStringLiteral("childNodes")) // We don't handle default Node properties
                 continue;
 
             const QVariant &propertyValue = m_propertyReader->readProperty(node->property(propertyName.toLatin1()));
-            bool isNested = false;
+            bool isNode = false;
             bool isTransformed = false;
+            bool isArray = false;
 
             // We check if the property is a QNodeId
-            isNested = (propertyValue.userType() == qNodeIdTypeId);
-            // We check if QVector<QNodeId>
+            isNode = (propertyValue.userType() == qNodeIdTypeId);
+            // We check if QList<QNodeId>
             if (propertyValue.userType() == QMetaType::QVariantList) {
+                isArray = true;
                 QVariantList list = propertyValue.value<QVariantList>();
-                if (list.count() > 0 && list.at(0).userType() == qNodeIdTypeId)
-                    isNested = true;
+                if (list.size() > 0 && list.at(0).userType() == qNodeIdTypeId)
+                    isNode = true;
             }
 
             // We check if property is a Transformed property
-            if (propertyValue.userType() == QVariant::Vector3D) {
+            QString transformedPropertyName;
+            if (propertyValue.userType() == QMetaType::QVector3D) {
                 // if there is a matching QShaderData::TransformType propertyTransformed
-                isTransformed = propertyNames.contains(propertyName + QLatin1String("Transformed"));
+                transformedPropertyName = propertyName + QLatin1String("Transformed");
+                isTransformed = propertyNames.contains(transformedPropertyName);
+                if (!isTransformed)
+                    transformedPropertyName.clear();
             }
-            m_originalProperties.insert(propertyName, { propertyValue, isNested, isTransformed });
+            m_originalProperties.insert(propertyName, { propertyValue, isNode, isArray, isTransformed, transformedPropertyName });
         }
         BackendNode::markDirty(AbstractRenderer::ParameterDirty);
     } else {
@@ -151,6 +122,51 @@ void ShaderData::syncFromFrontEnd(const QNode *frontEnd, bool firstTime)
     }
 }
 
+const ShaderData::PropertyValuesForBlock &ShaderData::propertyValuesForBlock(int blockName) const
+{
+    std::shared_lock readLocker(m_lock);
+    return m_blockNameToPropertyValues.at(blockName);
+}
+
+void ShaderData::generatePropertyValuesForBlockIfNeeded(const QString &fullBlockName)
+{
+    const int fullBlockNameId = StringToInt::lookupId(fullBlockName);
+
+    std::unique_lock readWriteLocker(m_lock);
+    const bool hasPropertyValuesForBlock = m_blockNameToPropertyValues.find(fullBlockNameId) != m_blockNameToPropertyValues.cend();
+    if (hasPropertyValuesForBlock) {
+        return;
+    }
+
+    const QHash<QString, ShaderData::PropertyValue> &props = properties();
+
+    ShaderData::PropertyValuesForBlock valueBlock;
+    valueBlock.reserve(props.size());
+
+    auto it = props.cbegin();
+    const auto end = props.cend();
+    while (it != end) {
+        QString propertyName = it.key();
+        // If we are dealing with a nested value, check if it is an an array
+        if (it->isArray && !it->isNode)
+            propertyName += QLatin1String("[0]");
+
+        QString fullPropertyName;
+        fullPropertyName.reserve(fullBlockName.size() + 1 + it.key().size());
+        fullPropertyName.append(fullBlockName);
+        fullPropertyName.append(QLatin1String("."));
+        fullPropertyName.append(propertyName);
+
+        // We only do this for properties on root level
+        valueBlock.push_back({ StringToInt::lookupId(fullPropertyName),
+                               StringToInt::lookupId(propertyName),
+                               it.operator ->() });
+        ++it;
+    }
+
+    m_blockNameToPropertyValues[StringToInt::lookupId(fullBlockName)] = std::move(valueBlock);
+}
+
 ShaderData *ShaderData::lookupResource(NodeManagers *managers, QNodeId id)
 {
     return managers->shaderDataManager()->lookupResource(id);
@@ -162,33 +178,28 @@ ShaderData *ShaderData::lookupResource(QNodeId id)
 }
 
 // RenderCommand updater jobs
-QVariant ShaderData::getTransformedProperty(const QString &name, const Matrix4x4 &viewMatrix) const noexcept
+QVariant ShaderData::getTransformedProperty(const PropertyValue *v, const Matrix4x4 &viewMatrix) const noexcept
 {
     // Note protecting m_worldMatrix at this point as we assume all world updates
     // have been performed when reaching this point
-    const auto it = m_originalProperties.constFind(name);
-    if (it != m_originalProperties.constEnd()) {
-        const PropertyValue &propertyValue = it.value();
-        if (propertyValue.isTransformed) {
-            const auto transformedIt = m_originalProperties.constFind(name + QLatin1String("Transformed"));
-            if (transformedIt != m_originalProperties.constEnd()) {
-                const PropertyValue &transformedValue = transformedIt.value();
-                const TransformType transformType = static_cast<TransformType>(transformedValue.value.toInt());
-                switch (transformType) {
-                case ModelToEye:
-                    return QVariant::fromValue(viewMatrix * m_worldMatrix * Vector3D(propertyValue.value.value<QVector3D>()));
-                case ModelToWorld:
-                    return QVariant::fromValue(m_worldMatrix * Vector3D(propertyValue.value.value<QVector3D>()));
-                case ModelToWorldDirection:
-                    return QVariant::fromValue(Vector3D(m_worldMatrix * Vector4D(propertyValue.value.value<QVector3D>(), 0.0f)));
-                case NoTransform:
-                    break;
-                }
+    if (v->isTransformed) {
+        const auto transformedIt = m_originalProperties.constFind(v->transformedPropertyName);
+        if (transformedIt != m_originalProperties.constEnd()) {
+            const PropertyValue &transformedValue = transformedIt.value();
+            const TransformType transformType = static_cast<TransformType>(transformedValue.value.toInt());
+            switch (transformType) {
+            case ModelToEye:
+                return QVariant::fromValue(viewMatrix.map(m_worldMatrix.map(Vector3D(v->value.value<QVector3D>()))));
+            case ModelToWorld:
+                return QVariant::fromValue(m_worldMatrix.map(Vector3D(v->value.value<QVector3D>())));
+            case ModelToWorldDirection:
+                return QVariant::fromValue(Vector3D(m_worldMatrix * Vector4D(v->value.value<QVector3D>(), 0.0f)));
+            case NoTransform:
+                break;
             }
         }
-        return propertyValue.value;
     }
-    return QVariant();
+    return v->value;
 }
 
 // Unit tests only
@@ -220,9 +231,9 @@ RenderShaderDataFunctor::RenderShaderDataFunctor(AbstractRenderer *renderer, Nod
 {
 }
 
-Qt3DCore::QBackendNode *RenderShaderDataFunctor::create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const
+Qt3DCore::QBackendNode *RenderShaderDataFunctor::create(Qt3DCore::QNodeId id) const
 {
-    ShaderData *backend = m_managers->shaderDataManager()->getOrCreateResource(change->subjectId());
+    ShaderData *backend = m_managers->shaderDataManager()->getOrCreateResource(id);
     backend->setManagers(m_managers);
     backend->setRenderer(m_renderer);
     return backend;

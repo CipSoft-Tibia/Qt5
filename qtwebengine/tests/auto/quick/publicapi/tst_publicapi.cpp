@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QMetaEnum>
 #include <QMetaMethod>
@@ -33,25 +8,30 @@
 #include <QMetaType>
 #include <QQmlListProperty>
 #include <QtTest/QtTest>
-#include <QtWebEngine/QQuickWebEngineProfile>
-#include <QtWebEngine/QQuickWebEngineScript>
+#include <QtWebEngineQuick/QQuickWebEngineProfile>
+#include <QtWebEngineCore/QWebEngineCertificateError>
+#include <QtWebEngineCore/QWebEngineFileSystemAccessRequest>
 #include <QtWebEngineCore/QWebEngineFindTextResult>
+#include <QtWebEngineCore/QWebEngineFullScreenRequest>
+#include <QtWebEngineCore/QWebEngineHistory>
+#include <QtWebEngineCore/QWebEngineNavigationRequest>
+#include <QtWebEngineCore/QWebEngineNewWindowRequest>
 #include <QtWebEngineCore/QWebEngineNotification>
 #include <QtWebEngineCore/QWebEngineQuotaRequest>
 #include <QtWebEngineCore/QWebEngineRegisterProtocolHandlerRequest>
+#include <QtWebEngineCore/QWebEngineContextMenuRequest>
+#include <QtWebEngineCore/QWebEngineDownloadRequest>
+#include <QtWebEngineCore/QWebEngineScript>
+#include <QtWebEngineCore/QWebEngineLoadingInfo>
 #include <private/qquickwebengineview_p.h>
 #include <private/qquickwebengineaction_p.h>
-#include <private/qquickwebenginecertificateerror_p.h>
 #include <private/qquickwebengineclientcertificateselection_p.h>
 #include <private/qquickwebenginedialogrequests_p.h>
-#include <private/qquickwebenginedownloaditem_p.h>
-#include <private/qquickwebenginehistory_p.h>
-#include <private/qquickwebengineloadrequest_p.h>
-#include <private/qquickwebenginenavigationrequest_p.h>
-#include <private/qquickwebenginenewviewrequest_p.h>
+#include <private/qquickwebenginedownloadrequest_p.h>
+#include <private/qquickwebenginenewwindowrequest_p.h>
 #include <private/qquickwebenginesettings_p.h>
 #include <private/qquickwebenginesingleton_p.h>
-#include <private/qquickwebenginecontextmenurequest_p.h>
+#include <private/qquickwebenginetouchselectionmenurequest_p.h>
 
 class tst_publicapi : public QObject {
     Q_OBJECT
@@ -62,48 +42,52 @@ private Q_SLOTS:
 static const QList<const QMetaObject *> typesToCheck = QList<const QMetaObject *>()
     << &QQuickWebEngineView::staticMetaObject
     << &QQuickWebEngineAction::staticMetaObject
-    << &QQuickWebEngineCertificateError::staticMetaObject
     << &QQuickWebEngineClientCertificateOption::staticMetaObject
     << &QQuickWebEngineClientCertificateSelection::staticMetaObject
-    << &QQuickWebEngineDownloadItem::staticMetaObject
-    << &QQuickWebEngineHistory::staticMetaObject
-    << &QQuickWebEngineHistoryListModel::staticMetaObject
-    << &QQuickWebEngineLoadRequest::staticMetaObject
-    << &QQuickWebEngineNavigationRequest::staticMetaObject
-    << &QQuickWebEngineNewViewRequest::staticMetaObject
+    << &QQuickWebEngineDownloadRequest::staticMetaObject
+    << &QWebEngineDownloadRequest::staticMetaObject
+    << &QWebEngineHistory::staticMetaObject
+    << &QWebEngineHistoryModel::staticMetaObject
     << &QQuickWebEngineProfile::staticMetaObject
-    << &QQuickWebEngineScript::staticMetaObject
     << &QQuickWebEngineSettings::staticMetaObject
-    << &QQuickWebEngineFullScreenRequest::staticMetaObject
+    << &QWebEngineFullScreenRequest::staticMetaObject
+    << &QWebEngineScript::staticMetaObject
     << &QQuickWebEngineSingleton::staticMetaObject
     << &QQuickWebEngineAuthenticationDialogRequest::staticMetaObject
     << &QQuickWebEngineJavaScriptDialogRequest::staticMetaObject
     << &QQuickWebEngineColorDialogRequest::staticMetaObject
     << &QQuickWebEngineFileDialogRequest::staticMetaObject
-    << &QQuickWebEngineFormValidationMessageRequest::staticMetaObject
+    << &QQuickWebEngineNewWindowRequest::staticMetaObject
     << &QQuickWebEngineTooltipRequest::staticMetaObject
-    << &QQuickWebEngineContextMenuRequest::staticMetaObject
+    << &QWebEngineContextMenuRequest::staticMetaObject
+    << &QWebEngineCertificateError::staticMetaObject
+    << &QWebEngineFileSystemAccessRequest::staticMetaObject
+    << &QWebEngineFindTextResult::staticMetaObject
+    << &QWebEngineLoadingInfo::staticMetaObject
+    << &QWebEngineNavigationRequest::staticMetaObject
+    << &QWebEngineNewWindowRequest::staticMetaObject
+    << &QWebEngineNotification::staticMetaObject
     << &QWebEngineQuotaRequest::staticMetaObject
     << &QWebEngineRegisterProtocolHandlerRequest::staticMetaObject
-    << &QWebEngineNotification::staticMetaObject
-    << &QWebEngineFindTextResult::staticMetaObject
+    << &QQuickWebEngineTouchSelectionMenuRequest::staticMetaObject
     ;
 
-static QList<const char *> knownEnumNames = QList<const char *>();
+static QList<QMetaEnum> knownEnumNames = QList<QMetaEnum>()
+    << QWebEngineDownloadRequest::staticMetaObject.enumerator(QWebEngineDownloadRequest::staticMetaObject.indexOfEnumerator("SavePageFormat"))
+    ;
 
 static const QStringList hardcodedTypes = QStringList()
     << "QJSValue"
-    << "QQmlListProperty<QQuickWebEngineScript>"
+    << "QQmlListProperty<QWebEngineScript>"
     << "QQmlListProperty<QQuickWebEngineClientCertificateOption>"
     << "const QQuickWebEngineClientCertificateOption*"
     << "QQmlWebChannel*"
-    // Ignore the testSupport types without making a fuss.
-    << "QQuickWebEngineTestSupport*"
-    << "QQuickWebEngineErrorPage*"
     << "const QQuickWebEngineContextMenuData*"
     << "QWebEngineCookieStore*"
     << "Qt::LayoutDirection"
-    ;
+    << "QQuickWebEngineScriptCollection*"
+    << "QQmlComponent*"
+    << "QMultiMap<QByteArray,QByteArray>";
 
 static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineAction.text --> QString"
@@ -119,31 +103,33 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineAuthenticationDialogRequest.dialogReject() --> void"
     << "QQuickWebEngineAuthenticationDialogRequest.proxyHost --> QString"
     << "QQuickWebEngineAuthenticationDialogRequest.realm --> QString"
-    << "QQuickWebEngineAuthenticationDialogRequest.type --> AuthenticationType"
+    << "QQuickWebEngineAuthenticationDialogRequest.type --> QQuickWebEngineAuthenticationDialogRequest::AuthenticationType"
     << "QQuickWebEngineAuthenticationDialogRequest.url --> QUrl"
-    << "QQuickWebEngineCertificateError.CertificateAuthorityInvalid --> Error"
-    << "QQuickWebEngineCertificateError.CertificateCommonNameInvalid --> Error"
-    << "QQuickWebEngineCertificateError.CertificateContainsErrors --> Error"
-    << "QQuickWebEngineCertificateError.CertificateDateInvalid --> Error"
-    << "QQuickWebEngineCertificateError.CertificateInvalid --> Error"
-    << "QQuickWebEngineCertificateError.CertificateKnownInterceptionBlocked --> Error"
-    << "QQuickWebEngineCertificateError.CertificateNameConstraintViolation --> Error"
-    << "QQuickWebEngineCertificateError.CertificateNoRevocationMechanism --> Error"
-    << "QQuickWebEngineCertificateError.CertificateNonUniqueName --> Error"
-    << "QQuickWebEngineCertificateError.CertificateRevoked --> Error"
-    << "QQuickWebEngineCertificateError.CertificateTransparencyRequired --> Error"
-    << "QQuickWebEngineCertificateError.CertificateUnableToCheckRevocation --> Error"
-    << "QQuickWebEngineCertificateError.CertificateValidityTooLong --> Error"
-    << "QQuickWebEngineCertificateError.CertificateWeakKey --> Error"
-    << "QQuickWebEngineCertificateError.CertificateWeakSignatureAlgorithm --> Error"
-    << "QQuickWebEngineCertificateError.SslPinnedKeyNotInCertificateChain --> Error"
-    << "QQuickWebEngineCertificateError.defer() --> void"
-    << "QQuickWebEngineCertificateError.description --> QString"
-    << "QQuickWebEngineCertificateError.error --> Error"
-    << "QQuickWebEngineCertificateError.ignoreCertificateError() --> void"
-    << "QQuickWebEngineCertificateError.overridable --> bool"
-    << "QQuickWebEngineCertificateError.rejectCertificate() --> void"
-    << "QQuickWebEngineCertificateError.url --> QUrl"
+    << "QWebEngineCertificateError.CertificateAuthorityInvalid --> Type"
+    << "QWebEngineCertificateError.CertificateCommonNameInvalid --> Type"
+    << "QWebEngineCertificateError.CertificateContainsErrors --> Type"
+    << "QWebEngineCertificateError.CertificateDateInvalid --> Type"
+    << "QWebEngineCertificateError.CertificateInvalid --> Type"
+    << "QWebEngineCertificateError.CertificateKnownInterceptionBlocked --> Type"
+    << "QWebEngineCertificateError.CertificateNameConstraintViolation --> Type"
+    << "QWebEngineCertificateError.CertificateNoRevocationMechanism --> Type"
+    << "QWebEngineCertificateError.CertificateNonUniqueName --> Type"
+    << "QWebEngineCertificateError.CertificateRevoked --> Type"
+    << "QWebEngineCertificateError.CertificateTransparencyRequired --> Type"
+    << "QWebEngineCertificateError.CertificateUnableToCheckRevocation --> Type"
+    << "QWebEngineCertificateError.CertificateValidityTooLong --> Type"
+    << "QWebEngineCertificateError.CertificateWeakKey --> Type"
+    << "QWebEngineCertificateError.CertificateWeakSignatureAlgorithm --> Type"
+    << "QWebEngineCertificateError.CertificateSymantecLegacy --> Type"
+    << "QWebEngineCertificateError.SslObsoleteVersion --> Type"
+    << "QWebEngineCertificateError.SslPinnedKeyNotInCertificateChain --> Type"
+    << "QWebEngineCertificateError.defer() --> void"
+    << "QWebEngineCertificateError.description --> QString"
+    << "QWebEngineCertificateError.type --> QWebEngineCertificateError::Type"
+    << "QWebEngineCertificateError.acceptCertificate() --> void"
+    << "QWebEngineCertificateError.overridable --> bool"
+    << "QWebEngineCertificateError.rejectCertificate() --> void"
+    << "QWebEngineCertificateError.url --> QUrl"
     << "QQuickWebEngineClientCertificateOption.issuer --> QString"
     << "QQuickWebEngineClientCertificateOption.subject --> QString"
     << "QQuickWebEngineClientCertificateOption.effectiveDate --> QDateTime"
@@ -157,118 +143,108 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineClientCertificateSelection.selectNone() --> void"
     << "QQuickWebEngineColorDialogRequest.accepted --> bool"
     << "QQuickWebEngineColorDialogRequest.color --> QColor"
-    << "QQuickWebEngineContextMenuRequest.CanUndo --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanRedo --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanCut --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanCopy --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanPaste --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanDelete --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanSelectAll --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanTranslate --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.CanEditRichly --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanUndo --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanRedo --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanCut --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanCopy --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanPaste --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanDelete --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanSelectAll --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanTranslate --> EditFlags"
+    << "QWebEngineContextMenuRequest.CanEditRichly --> EditFlags"
     << "QQuickWebEngineColorDialogRequest.dialogAccept(QColor) --> void"
     << "QQuickWebEngineColorDialogRequest.dialogReject() --> void"
-    << "QQuickWebEngineContextMenuRequest.editFlags --> EditFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaInError --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaPaused --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaMuted --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaLoop --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaCanSave --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaHasAudio --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaCanToggleControls --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaControls --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaCanPrint --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaCanRotate --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.MediaTypeAudio --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.MediaTypeCanvas --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.MediaTypeFile --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.MediaTypeImage --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.MediaTypeNone --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.MediaTypePlugin --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.MediaTypeVideo --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.accepted --> bool"
-    << "QQuickWebEngineContextMenuRequest.isContentEditable --> bool"
-    << "QQuickWebEngineContextMenuRequest.linkText --> QString"
-    << "QQuickWebEngineContextMenuRequest.linkUrl --> QUrl"
-    << "QQuickWebEngineContextMenuRequest.mediaFlags --> MediaFlags"
-    << "QQuickWebEngineContextMenuRequest.mediaType --> MediaType"
-    << "QQuickWebEngineContextMenuRequest.mediaUrl --> QUrl"
-    << "QQuickWebEngineContextMenuRequest.misspelledWord --> QString"
-    << "QQuickWebEngineContextMenuRequest.selectedText --> QString"
-    << "QQuickWebEngineContextMenuRequest.spellCheckerSuggestions --> QStringList"
-    << "QQuickWebEngineContextMenuRequest.x --> int"
-    << "QQuickWebEngineContextMenuRequest.y --> int"
-    << "QQuickWebEngineDownloadItem.Attachment --> DownloadType"
-    << "QQuickWebEngineDownloadItem.CompleteHtmlSaveFormat --> SavePageFormat"
-    << "QQuickWebEngineDownloadItem.DownloadAttribute --> DownloadType"
-    << "QQuickWebEngineDownloadItem.DownloadCancelled --> DownloadState"
-    << "QQuickWebEngineDownloadItem.DownloadCompleted --> DownloadState"
-    << "QQuickWebEngineDownloadItem.DownloadInProgress --> DownloadState"
-    << "QQuickWebEngineDownloadItem.DownloadInterrupted --> DownloadState"
-    << "QQuickWebEngineDownloadItem.DownloadRequested --> DownloadState"
-    << "QQuickWebEngineDownloadItem.FileAccessDenied --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileBlocked --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileFailed --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileHashMismatch --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileNameTooLong --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileNoSpace --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileSecurityCheckFailed --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileTooLarge --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileTooShort --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileTransientError --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.FileVirusInfected --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.MimeHtmlSaveFormat --> SavePageFormat"
-    << "QQuickWebEngineDownloadItem.NetworkDisconnected --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.NetworkFailed --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.NetworkInvalidRequest --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.NetworkServerDown --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.NetworkTimeout --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.NoReason --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.SavePage --> DownloadType"
-    << "QQuickWebEngineDownloadItem.ServerBadContent --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.ServerCertProblem --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.ServerFailed --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.ServerForbidden --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.ServerUnauthorized --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.ServerUnreachable --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.SingleHtmlSaveFormat --> SavePageFormat"
-    << "QQuickWebEngineDownloadItem.UnknownSaveFormat --> SavePageFormat"
-    << "QQuickWebEngineDownloadItem.UserCanceled --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.UserRequested --> DownloadType"
-    << "QQuickWebEngineDownloadItem.accept() --> void"
-    << "QQuickWebEngineDownloadItem.cancel() --> void"
-    << "QQuickWebEngineDownloadItem.id --> uint"
-    << "QQuickWebEngineDownloadItem.interruptReason --> DownloadInterruptReason"
-    << "QQuickWebEngineDownloadItem.interruptReasonChanged() --> void"
-    << "QQuickWebEngineDownloadItem.interruptReasonString --> QString"
-    << "QQuickWebEngineDownloadItem.isFinished --> bool"
-    << "QQuickWebEngineDownloadItem.isFinishedChanged() --> void"
-    << "QQuickWebEngineDownloadItem.isPaused --> bool"
-    << "QQuickWebEngineDownloadItem.isPausedChanged() --> void"
-    << "QQuickWebEngineDownloadItem.isSavePageDownload --> bool"
-    << "QQuickWebEngineDownloadItem.mimeType --> QString"
-    << "QQuickWebEngineDownloadItem.mimeTypeChanged() --> void"
-    << "QQuickWebEngineDownloadItem.path --> QString"
-    << "QQuickWebEngineDownloadItem.pathChanged() --> void"
-    << "QQuickWebEngineDownloadItem.pause() --> void"
-    << "QQuickWebEngineDownloadItem.receivedBytes --> qlonglong"
-    << "QQuickWebEngineDownloadItem.receivedBytesChanged() --> void"
-    << "QQuickWebEngineDownloadItem.resume() --> void"
-    << "QQuickWebEngineDownloadItem.savePageFormat --> SavePageFormat"
-    << "QQuickWebEngineDownloadItem.savePageFormatChanged() --> void"
-    << "QQuickWebEngineDownloadItem.state --> DownloadState"
-    << "QQuickWebEngineDownloadItem.stateChanged() --> void"
-    << "QQuickWebEngineDownloadItem.totalBytes --> qlonglong"
-    << "QQuickWebEngineDownloadItem.totalBytesChanged() --> void"
-    << "QQuickWebEngineDownloadItem.type --> DownloadType"
-    << "QQuickWebEngineDownloadItem.typeChanged() --> void"
-    << "QQuickWebEngineDownloadItem.view --> QQuickWebEngineView*"
-    << "QQuickWebEngineDownloadItem.url --> QUrl"
-    << "QQuickWebEngineDownloadItem.suggestedFileName --> QString"
-    << "QQuickWebEngineDownloadItem.downloadDirectory --> QString"
-    << "QQuickWebEngineDownloadItem.downloadDirectoryChanged() --> void"
-    << "QQuickWebEngineDownloadItem.downloadFileName --> QString"
-    << "QQuickWebEngineDownloadItem.downloadFileNameChanged() --> void"
+    << "QWebEngineContextMenuRequest.editFlags --> QFlags<QWebEngineContextMenuRequest::EditFlag>"
+    << "QWebEngineContextMenuRequest.MediaInError --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaPaused --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaMuted --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaLoop --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaCanSave --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaHasAudio --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaCanToggleControls --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaControls --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaCanPrint --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaCanRotate --> MediaFlags"
+    << "QWebEngineContextMenuRequest.MediaTypeAudio --> MediaType"
+    << "QWebEngineContextMenuRequest.MediaTypeCanvas --> MediaType"
+    << "QWebEngineContextMenuRequest.MediaTypeFile --> MediaType"
+    << "QWebEngineContextMenuRequest.MediaTypeImage --> MediaType"
+    << "QWebEngineContextMenuRequest.MediaTypeNone --> MediaType"
+    << "QWebEngineContextMenuRequest.MediaTypePlugin --> MediaType"
+    << "QWebEngineContextMenuRequest.MediaTypeVideo --> MediaType"
+    << "QWebEngineContextMenuRequest.accepted --> bool"
+    << "QWebEngineContextMenuRequest.isContentEditable --> bool"
+    << "QWebEngineContextMenuRequest.linkText --> QString"
+    << "QWebEngineContextMenuRequest.linkUrl --> QUrl"
+    << "QWebEngineContextMenuRequest.mediaFlags --> QFlags<QWebEngineContextMenuRequest::MediaFlag>"
+    << "QWebEngineContextMenuRequest.mediaType --> QWebEngineContextMenuRequest::MediaType"
+    << "QWebEngineContextMenuRequest.mediaUrl --> QUrl"
+    << "QWebEngineContextMenuRequest.misspelledWord --> QString"
+    << "QWebEngineContextMenuRequest.selectedText --> QString"
+    << "QWebEngineContextMenuRequest.spellCheckerSuggestions --> QStringList"
+    << "QWebEngineContextMenuRequest.position --> QPoint"
+    << "QWebEngineDownloadRequest.CompleteHtmlSaveFormat --> SavePageFormat"
+    << "QWebEngineDownloadRequest.DownloadCancelled --> DownloadState"
+    << "QWebEngineDownloadRequest.DownloadCompleted --> DownloadState"
+    << "QWebEngineDownloadRequest.DownloadInProgress --> DownloadState"
+    << "QWebEngineDownloadRequest.DownloadInterrupted --> DownloadState"
+    << "QWebEngineDownloadRequest.DownloadRequested --> DownloadState"
+    << "QWebEngineDownloadRequest.FileAccessDenied --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileBlocked --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileFailed --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileHashMismatch --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileNameTooLong --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileNoSpace --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileSecurityCheckFailed --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileTooLarge --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileTooShort --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileTransientError --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.FileVirusInfected --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.MimeHtmlSaveFormat --> SavePageFormat"
+    << "QWebEngineDownloadRequest.NetworkDisconnected --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.NetworkFailed --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.NetworkInvalidRequest --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.NetworkServerDown --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.NetworkTimeout --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.NoReason --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.ServerBadContent --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.ServerCertProblem --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.ServerFailed --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.ServerForbidden --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.ServerUnauthorized --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.ServerUnreachable --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.SingleHtmlSaveFormat --> SavePageFormat"
+    << "QWebEngineDownloadRequest.UnknownSaveFormat --> SavePageFormat"
+    << "QWebEngineDownloadRequest.UserCanceled --> DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.accept() --> void"
+    << "QWebEngineDownloadRequest.cancel() --> void"
+    << "QWebEngineDownloadRequest.id --> uint"
+    << "QWebEngineDownloadRequest.interruptReason --> QWebEngineDownloadRequest::DownloadInterruptReason"
+    << "QWebEngineDownloadRequest.interruptReasonChanged() --> void"
+    << "QWebEngineDownloadRequest.interruptReasonString --> QString"
+    << "QWebEngineDownloadRequest.isFinished --> bool"
+    << "QWebEngineDownloadRequest.isFinishedChanged() --> void"
+    << "QWebEngineDownloadRequest.isPaused --> bool"
+    << "QWebEngineDownloadRequest.isPausedChanged() --> void"
+    << "QWebEngineDownloadRequest.isSavePageDownload --> bool"
+    << "QWebEngineDownloadRequest.mimeType --> QString"
+    << "QWebEngineDownloadRequest.pause() --> void"
+    << "QWebEngineDownloadRequest.receivedBytes --> qlonglong"
+    << "QWebEngineDownloadRequest.receivedBytesChanged() --> void"
+    << "QWebEngineDownloadRequest.resume() --> void"
+    << "QWebEngineDownloadRequest.savePageFormat --> QWebEngineDownloadRequest::SavePageFormat"
+    << "QWebEngineDownloadRequest.savePageFormatChanged() --> void"
+    << "QWebEngineDownloadRequest.state --> QWebEngineDownloadRequest::DownloadState"
+    << "QWebEngineDownloadRequest.stateChanged(QWebEngineDownloadRequest::DownloadState) --> void"
+    << "QWebEngineDownloadRequest.totalBytes --> qlonglong"
+    << "QWebEngineDownloadRequest.totalBytesChanged() --> void"
+    << "QWebEngineDownloadRequest.url --> QUrl"
+    << "QWebEngineDownloadRequest.suggestedFileName --> QString"
+    << "QWebEngineDownloadRequest.downloadDirectory --> QString"
+    << "QWebEngineDownloadRequest.downloadDirectoryChanged() --> void"
+    << "QWebEngineDownloadRequest.downloadFileName --> QString"
+    << "QWebEngineDownloadRequest.downloadFileNameChanged() --> void"
+    << "QQuickWebEngineDownloadRequest.view --> QQuickWebEngineView*"
     << "QQuickWebEngineFileDialogRequest.FileModeOpen --> FileMode"
     << "QQuickWebEngineFileDialogRequest.FileModeOpenMultiple --> FileMode"
     << "QQuickWebEngineFileDialogRequest.FileModeSave --> FileMode"
@@ -278,32 +254,34 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineFileDialogRequest.defaultFileName --> QString"
     << "QQuickWebEngineFileDialogRequest.dialogAccept(QStringList) --> void"
     << "QQuickWebEngineFileDialogRequest.dialogReject() --> void"
-    << "QQuickWebEngineFileDialogRequest.mode --> FileMode"
+    << "QQuickWebEngineFileDialogRequest.mode --> QQuickWebEngineFileDialogRequest::FileMode"
     << "QWebEngineFindTextResult.numberOfMatches --> int"
     << "QWebEngineFindTextResult.activeMatch --> int"
-    << "QQuickWebEngineFormValidationMessageRequest.Hide --> RequestType"
-    << "QQuickWebEngineFormValidationMessageRequest.Move --> RequestType"
-    << "QQuickWebEngineFormValidationMessageRequest.Show --> RequestType"
-    << "QQuickWebEngineFormValidationMessageRequest.accepted --> bool"
-    << "QQuickWebEngineFormValidationMessageRequest.anchor --> QRect"
-    << "QQuickWebEngineFormValidationMessageRequest.subText --> QString"
-    << "QQuickWebEngineFormValidationMessageRequest.text --> QString"
-    << "QQuickWebEngineFormValidationMessageRequest.type --> RequestType"
     << "QQuickWebEngineTooltipRequest.Hide --> RequestType"
     << "QQuickWebEngineTooltipRequest.Show --> RequestType"
     << "QQuickWebEngineTooltipRequest.x --> int"
     << "QQuickWebEngineTooltipRequest.y --> int"
     << "QQuickWebEngineTooltipRequest.text --> QString"
-    << "QQuickWebEngineTooltipRequest.type --> RequestType"
+    << "QQuickWebEngineTooltipRequest.type --> QQuickWebEngineTooltipRequest::RequestType"
     << "QQuickWebEngineTooltipRequest.accepted --> bool"
-    << "QQuickWebEngineFullScreenRequest.accept() --> void"
-    << "QQuickWebEngineFullScreenRequest.origin --> QUrl"
-    << "QQuickWebEngineFullScreenRequest.reject() --> void"
-    << "QQuickWebEngineFullScreenRequest.toggleOn --> bool"
-    << "QQuickWebEngineHistory.backItems --> QQuickWebEngineHistoryListModel*"
-    << "QQuickWebEngineHistory.clear() --> void"
-    << "QQuickWebEngineHistory.forwardItems --> QQuickWebEngineHistoryListModel*"
-    << "QQuickWebEngineHistory.items --> QQuickWebEngineHistoryListModel*"
+    << "QWebEngineFullScreenRequest.accept() --> void"
+    << "QWebEngineFullScreenRequest.origin --> QUrl"
+    << "QWebEngineFullScreenRequest.reject() --> void"
+    << "QWebEngineFullScreenRequest.toggleOn --> bool"
+    << "QWebEngineFileSystemAccessRequest.File --> HandleType"
+    << "QWebEngineFileSystemAccessRequest.Directory --> HandleType"
+    << "QWebEngineFileSystemAccessRequest.Read --> AccessFlags"
+    << "QWebEngineFileSystemAccessRequest.Write --> AccessFlags"
+    << "QWebEngineFileSystemAccessRequest.origin --> QUrl"
+    << "QWebEngineFileSystemAccessRequest.filePath --> QUrl"
+    << "QWebEngineFileSystemAccessRequest.handleType --> QWebEngineFileSystemAccessRequest::HandleType"
+    << "QWebEngineFileSystemAccessRequest.accessFlags --> QFlags<QWebEngineFileSystemAccessRequest::AccessFlag>"
+    << "QWebEngineFileSystemAccessRequest.accept() --> void"
+    << "QWebEngineFileSystemAccessRequest.reject() --> void"
+    << "QWebEngineHistory.backItems --> QWebEngineHistoryModel*"
+    << "QWebEngineHistory.clear() --> void"
+    << "QWebEngineHistory.forwardItems --> QWebEngineHistoryModel*"
+    << "QWebEngineHistory.items --> QWebEngineHistoryModel*"
     << "QQuickWebEngineJavaScriptDialogRequest.DialogTypeAlert --> DialogType"
     << "QQuickWebEngineJavaScriptDialogRequest.DialogTypeBeforeUnload --> DialogType"
     << "QQuickWebEngineJavaScriptDialogRequest.DialogTypeConfirm --> DialogType"
@@ -316,21 +294,51 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineJavaScriptDialogRequest.message --> QString"
     << "QQuickWebEngineJavaScriptDialogRequest.securityOrigin --> QUrl"
     << "QQuickWebEngineJavaScriptDialogRequest.title --> QString"
-    << "QQuickWebEngineJavaScriptDialogRequest.type --> DialogType"
-    << "QQuickWebEngineLoadRequest.errorCode --> int"
-    << "QQuickWebEngineLoadRequest.errorDomain --> QQuickWebEngineView::ErrorDomain"
-    << "QQuickWebEngineLoadRequest.errorString --> QString"
-    << "QQuickWebEngineLoadRequest.status --> QQuickWebEngineView::LoadStatus"
-    << "QQuickWebEngineLoadRequest.url --> QUrl"
-    << "QQuickWebEngineNavigationRequest.action --> QQuickWebEngineView::NavigationRequestAction"
-    << "QQuickWebEngineNavigationRequest.actionChanged() --> void"
-    << "QQuickWebEngineNavigationRequest.isMainFrame --> bool"
-    << "QQuickWebEngineNavigationRequest.navigationType --> QQuickWebEngineView::NavigationType"
-    << "QQuickWebEngineNavigationRequest.url --> QUrl"
-    << "QQuickWebEngineNewViewRequest.destination --> QQuickWebEngineView::NewViewDestination"
-    << "QQuickWebEngineNewViewRequest.openIn(QQuickWebEngineView*) --> void"
-    << "QQuickWebEngineNewViewRequest.requestedUrl --> QUrl"
-    << "QQuickWebEngineNewViewRequest.userInitiated --> bool"
+    << "QQuickWebEngineJavaScriptDialogRequest.type --> QQuickWebEngineJavaScriptDialogRequest::DialogType"
+    << "QWebEngineLoadingInfo.errorCode --> int"
+    << "QWebEngineLoadingInfo.responseHeaders --> QMultiMap<QByteArray,QByteArray>"
+    << "QWebEngineLoadingInfo.errorDomain --> QWebEngineLoadingInfo::ErrorDomain"
+    << "QWebEngineLoadingInfo.errorString --> QString"
+    << "QWebEngineLoadingInfo.status --> QWebEngineLoadingInfo::LoadStatus"
+    << "QWebEngineLoadingInfo.url --> QUrl"
+    << "QWebEngineLoadingInfo.isErrorPage --> bool"
+    << "QWebEngineLoadingInfo.LoadFailedStatus --> LoadStatus"
+    << "QWebEngineLoadingInfo.LoadStartedStatus --> LoadStatus"
+    << "QWebEngineLoadingInfo.LoadStoppedStatus --> LoadStatus"
+    << "QWebEngineLoadingInfo.LoadSucceededStatus --> LoadStatus"
+    << "QWebEngineLoadingInfo.HttpStatusCodeDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.CertificateErrorDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.ConnectionErrorDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.DnsErrorDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.FtpErrorDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.HttpErrorDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.InternalErrorDomain --> ErrorDomain"
+    << "QWebEngineLoadingInfo.NoErrorDomain --> ErrorDomain"
+    << "QWebEngineNavigationRequest.action --> QWebEngineNavigationRequest::NavigationRequestAction"
+    << "QWebEngineNavigationRequest.actionChanged() --> void"
+    << "QWebEngineNavigationRequest.isMainFrame --> bool"
+    << "QWebEngineNavigationRequest.navigationType --> QWebEngineNavigationRequest::NavigationType"
+    << "QWebEngineNavigationRequest.url --> QUrl"
+    << "QWebEngineNavigationRequest.AcceptRequest --> NavigationRequestAction"
+    << "QWebEngineNavigationRequest.IgnoreRequest --> NavigationRequestAction"
+    << "QWebEngineNavigationRequest.BackForwardNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.FormSubmittedNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.LinkClickedNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.OtherNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.RedirectNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.ReloadNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.TypedNavigation --> NavigationType"
+    << "QWebEngineNavigationRequest.accept() --> void"
+    << "QWebEngineNavigationRequest.reject() --> void"
+    << "QWebEngineNewWindowRequest.destination --> QWebEngineNewWindowRequest::DestinationType"
+    << "QWebEngineNewWindowRequest.requestedUrl --> QUrl"
+    << "QWebEngineNewWindowRequest.requestedGeometry --> QRect"
+    << "QWebEngineNewWindowRequest.userInitiated --> bool"
+    << "QWebEngineNewWindowRequest.InNewBackgroundTab --> DestinationType"
+    << "QWebEngineNewWindowRequest.InNewDialog --> DestinationType"
+    << "QWebEngineNewWindowRequest.InNewTab --> DestinationType"
+    << "QWebEngineNewWindowRequest.InNewWindow --> DestinationType"
+    << "QQuickWebEngineNewWindowRequest.openIn(QQuickWebEngineView*) --> void"
     << "QQuickWebEngineProfile.AllowPersistentCookies --> PersistentCookiesPolicy"
     << "QQuickWebEngineProfile.DiskHttpCache --> HttpCacheType"
     << "QQuickWebEngineProfile.ForcePersistentCookies --> PersistentCookiesPolicy"
@@ -340,8 +348,8 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineProfile.cachePath --> QString"
     << "QQuickWebEngineProfile.cachePathChanged() --> void"
     << "QQuickWebEngineProfile.clearHttpCache() --> void"
-    << "QQuickWebEngineProfile.downloadFinished(QQuickWebEngineDownloadItem*) --> void"
-    << "QQuickWebEngineProfile.downloadRequested(QQuickWebEngineDownloadItem*) --> void"
+    << "QQuickWebEngineProfile.downloadFinished(QQuickWebEngineDownloadRequest*) --> void"
+    << "QQuickWebEngineProfile.downloadRequested(QQuickWebEngineDownloadRequest*) --> void"
     << "QQuickWebEngineProfile.downloadPath --> QString"
     << "QQuickWebEngineProfile.downloadPathChanged() --> void"
     << "QQuickWebEngineProfile.presentNotification(QWebEngineNotification*) --> void"
@@ -349,50 +357,25 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineProfile.httpAcceptLanguageChanged() --> void"
     << "QQuickWebEngineProfile.httpCacheMaximumSize --> int"
     << "QQuickWebEngineProfile.httpCacheMaximumSizeChanged() --> void"
-    << "QQuickWebEngineProfile.httpCacheType --> HttpCacheType"
+    << "QQuickWebEngineProfile.httpCacheType --> QQuickWebEngineProfile::HttpCacheType"
     << "QQuickWebEngineProfile.httpCacheTypeChanged() --> void"
     << "QQuickWebEngineProfile.httpUserAgent --> QString"
     << "QQuickWebEngineProfile.httpUserAgentChanged() --> void"
     << "QQuickWebEngineProfile.offTheRecord --> bool"
     << "QQuickWebEngineProfile.offTheRecordChanged() --> void"
-    << "QQuickWebEngineProfile.persistentCookiesPolicy --> PersistentCookiesPolicy"
+    << "QQuickWebEngineProfile.persistentCookiesPolicy --> QQuickWebEngineProfile::PersistentCookiesPolicy"
     << "QQuickWebEngineProfile.persistentCookiesPolicyChanged() --> void"
     << "QQuickWebEngineProfile.persistentStoragePath --> QString"
     << "QQuickWebEngineProfile.persistentStoragePathChanged() --> void"
+    << "QQuickWebEngineProfile.isPushServiceEnabled --> bool"
+    << "QQuickWebEngineProfile.pushServiceEnabledChanged() --> void"
     << "QQuickWebEngineProfile.spellCheckEnabled --> bool"
     << "QQuickWebEngineProfile.spellCheckEnabledChanged() --> void"
     << "QQuickWebEngineProfile.spellCheckLanguages --> QStringList"
     << "QQuickWebEngineProfile.spellCheckLanguagesChanged() --> void"
     << "QQuickWebEngineProfile.storageName --> QString"
     << "QQuickWebEngineProfile.storageNameChanged() --> void"
-    << "QQuickWebEngineProfile.useForGlobalCertificateVerification --> bool"
-    << "QQuickWebEngineProfile.useForGlobalCertificateVerificationChanged() --> void"
-    << "QQuickWebEngineProfile.userScripts --> QQmlListProperty<QQuickWebEngineScript>"
-    << "QQuickWebEngineScript.ApplicationWorld --> ScriptWorldId"
-    << "QQuickWebEngineScript.Deferred --> InjectionPoint"
-    << "QQuickWebEngineScript.DocumentCreation --> InjectionPoint"
-    << "QQuickWebEngineScript.DocumentReady --> InjectionPoint"
-    << "QQuickWebEngineScript.MainWorld --> ScriptWorldId"
-    << "QQuickWebEngineScript.UserWorld --> ScriptWorldId"
-    << "QQuickWebEngineScript.injectionPoint --> InjectionPoint"
-    << "QQuickWebEngineScript.injectionPointChanged(InjectionPoint) --> void"
-    << "QQuickWebEngineScript.name --> QString"
-    << "QQuickWebEngineScript.nameChanged(QString) --> void"
-    << "QQuickWebEngineScript.runOnSubframes --> bool"
-    << "QQuickWebEngineScript.runOnSubframesChanged(bool) --> void"
-    << "QQuickWebEngineScript.setInjectionPoint(InjectionPoint) --> void"
-    << "QQuickWebEngineScript.setName(QString) --> void"
-    << "QQuickWebEngineScript.setRunOnSubframes(bool) --> void"
-    << "QQuickWebEngineScript.setSourceCode(QString) --> void"
-    << "QQuickWebEngineScript.setSourceUrl(QUrl) --> void"
-    << "QQuickWebEngineScript.setWorldId(ScriptWorldId) --> void"
-    << "QQuickWebEngineScript.sourceCode --> QString"
-    << "QQuickWebEngineScript.sourceCodeChanged(QString) --> void"
-    << "QQuickWebEngineScript.sourceUrl --> QUrl"
-    << "QQuickWebEngineScript.sourceUrlChanged(QUrl) --> void"
-    << "QQuickWebEngineScript.toString() --> QString"
-    << "QQuickWebEngineScript.worldId --> ScriptWorldId"
-    << "QQuickWebEngineScript.worldIdChanged(ScriptWorldId) --> void"
+    << "QQuickWebEngineProfile.userScripts --> QQuickWebEngineScriptCollection*"
     << "QQuickWebEngineSettings.AllowAllUnknownUrlSchemes --> UnknownUrlSchemePolicy"
     << "QQuickWebEngineSettings.AllowUnknownUrlSchemesFromUserInteraction --> UnknownUrlSchemePolicy"
     << "QQuickWebEngineSettings.DisallowUnknownUrlSchemes --> UnknownUrlSchemePolicy"
@@ -436,6 +419,8 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineSettings.localContentCanAccessRemoteUrlsChanged() --> void"
     << "QQuickWebEngineSettings.localStorageEnabled --> bool"
     << "QQuickWebEngineSettings.localStorageEnabledChanged() --> void"
+    << "QQuickWebEngineSettings.navigateOnDropEnabled --> bool"
+    << "QQuickWebEngineSettings.navigateOnDropEnabledChanged() --> void"
     << "QQuickWebEngineSettings.pdfViewerEnabled --> bool"
     << "QQuickWebEngineSettings.pdfViewerEnabledChanged() --> void"
     << "QQuickWebEngineSettings.playbackRequiresUserGesture --> bool"
@@ -452,18 +437,38 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineSettings.spatialNavigationEnabledChanged() --> void"
     << "QQuickWebEngineSettings.touchIconsEnabled --> bool"
     << "QQuickWebEngineSettings.touchIconsEnabledChanged() --> void"
-    << "QQuickWebEngineSettings.unknownUrlSchemePolicy --> UnknownUrlSchemePolicy"
+    << "QQuickWebEngineSettings.unknownUrlSchemePolicy --> QQuickWebEngineSettings::UnknownUrlSchemePolicy"
     << "QQuickWebEngineSettings.unknownUrlSchemePolicyChanged() --> void"
     << "QQuickWebEngineSettings.webGLEnabled --> bool"
     << "QQuickWebEngineSettings.webGLEnabledChanged() --> void"
     << "QQuickWebEngineSettings.webRTCPublicInterfacesOnly --> bool"
     << "QQuickWebEngineSettings.webRTCPublicInterfacesOnlyChanged() --> void"
+    << "QQuickWebEngineSettings.readingFromCanvasEnabled --> bool"
+    << "QQuickWebEngineSettings.readingFromCanvasEnabledChanged() --> void"
     << "QQuickWebEngineSingleton.defaultProfile --> QQuickWebEngineProfile*"
     << "QQuickWebEngineSingleton.settings --> QQuickWebEngineSettings*"
+    << "QQuickWebEngineSingleton.script() --> QWebEngineScript"
+    << "QQuickWebEngineTouchSelectionMenuRequest.accepted --> bool"
+    << "QQuickWebEngineTouchSelectionMenuRequest.Cut --> TouchSelectionCommandFlags"
+    << "QQuickWebEngineTouchSelectionMenuRequest.Copy --> TouchSelectionCommandFlags"
+    << "QQuickWebEngineTouchSelectionMenuRequest.Paste --> TouchSelectionCommandFlags"
+    << "QQuickWebEngineTouchSelectionMenuRequest.selectionBounds --> QRect"
+    << "QQuickWebEngineTouchSelectionMenuRequest.touchSelectionCommandFlags --> QFlags<QQuickWebEngineTouchSelectionMenuRequest::TouchSelectionCommandFlag>"
+    << "QWebEngineScript.ApplicationWorld --> ScriptWorldId"
+    << "QWebEngineScript.Deferred --> InjectionPoint"
+    << "QWebEngineScript.DocumentCreation --> InjectionPoint"
+    << "QWebEngineScript.DocumentReady --> InjectionPoint"
+    << "QWebEngineScript.MainWorld --> ScriptWorldId"
+    << "QWebEngineScript.UserWorld --> ScriptWorldId"
+    << "QWebEngineScript.injectionPoint --> QWebEngineScript::InjectionPoint"
+    << "QWebEngineScript.name --> QString"
+    << "QWebEngineScript.runsOnSubFrames --> bool"
+    << "QWebEngineScript.sourceCode --> QString"
+    << "QWebEngineScript.sourceUrl --> QUrl"
+    << "QWebEngineScript.worldId --> uint"
     << "QQuickWebEngineView.action(WebAction) --> QQuickWebEngineAction*"
     << "QQuickWebEngineView.A0 --> PrintedPageSizeId"
     << "QQuickWebEngineView.A1 --> PrintedPageSizeId"
-    << "QQuickWebEngineView.A10 --> PrintedPageSizeId"
     << "QQuickWebEngineView.A2 --> PrintedPageSizeId"
     << "QQuickWebEngineView.A3 --> PrintedPageSizeId"
     << "QQuickWebEngineView.A3Extra --> PrintedPageSizeId"
@@ -477,8 +482,8 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.A7 --> PrintedPageSizeId"
     << "QQuickWebEngineView.A8 --> PrintedPageSizeId"
     << "QQuickWebEngineView.A9 --> PrintedPageSizeId"
+    << "QQuickWebEngineView.A10 --> PrintedPageSizeId"
     << "QQuickWebEngineView.AbnormalTerminationStatus --> RenderProcessTerminationStatus"
-    << "QQuickWebEngineView.AcceptRequest --> NavigationRequestAction"
     << "QQuickWebEngineView.AlignCenter --> WebAction"
     << "QQuickWebEngineView.AlignJustified --> WebAction"
     << "QQuickWebEngineView.AlignLeft --> WebAction"
@@ -495,7 +500,6 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.ArchE --> PrintedPageSizeId"
     << "QQuickWebEngineView.B0 --> PrintedPageSizeId"
     << "QQuickWebEngineView.B1 --> PrintedPageSizeId"
-    << "QQuickWebEngineView.B10 --> PrintedPageSizeId"
     << "QQuickWebEngineView.B2 --> PrintedPageSizeId"
     << "QQuickWebEngineView.B3 --> PrintedPageSizeId"
     << "QQuickWebEngineView.B4 --> PrintedPageSizeId"
@@ -505,10 +509,12 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.B7 --> PrintedPageSizeId"
     << "QQuickWebEngineView.B8 --> PrintedPageSizeId"
     << "QQuickWebEngineView.B9 --> PrintedPageSizeId"
+    << "QQuickWebEngineView.B10 --> PrintedPageSizeId"
     << "QQuickWebEngineView.Back --> WebAction"
-    << "QQuickWebEngineView.BackForwardNavigation --> NavigationType"
     << "QQuickWebEngineView.C5E --> PrintedPageSizeId"
     << "QQuickWebEngineView.CertificateErrorDomain --> ErrorDomain"
+    << "QQuickWebEngineView.ChangeTextDirectionLTR --> WebAction"
+    << "QQuickWebEngineView.ChangeTextDirectionRTL --> WebAction"
     << "QQuickWebEngineView.Comm10E --> PrintedPageSizeId"
     << "QQuickWebEngineView.ConnectionErrorDomain --> ErrorDomain"
     << "QQuickWebEngineView.Copy --> WebAction"
@@ -574,12 +580,10 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.FindBackward --> FindFlags"
     << "QQuickWebEngineView.FindCaseSensitively --> FindFlags"
     << "QQuickWebEngineView.Folio --> PrintedPageSizeId"
-    << "QQuickWebEngineView.FormSubmittedNavigation --> NavigationType"
     << "QQuickWebEngineView.Forward --> WebAction"
     << "QQuickWebEngineView.FtpErrorDomain --> ErrorDomain"
     << "QQuickWebEngineView.Geolocation --> Feature"
     << "QQuickWebEngineView.HttpErrorDomain --> ErrorDomain"
-    << "QQuickWebEngineView.IgnoreRequest --> NavigationRequestAction"
     << "QQuickWebEngineView.Imperial10x11 --> PrintedPageSizeId"
     << "QQuickWebEngineView.Imperial10x13 --> PrintedPageSizeId"
     << "QQuickWebEngineView.Imperial10x14 --> PrintedPageSizeId"
@@ -619,7 +623,6 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.LifecycleState.Active --> LifecycleState"
     << "QQuickWebEngineView.LifecycleState.Discarded --> LifecycleState"
     << "QQuickWebEngineView.LifecycleState.Frozen --> LifecycleState"
-    << "QQuickWebEngineView.LinkClickedNavigation --> NavigationType"
     << "QQuickWebEngineView.LoadFailedStatus --> LoadStatus"
     << "QQuickWebEngineView.LoadStartedStatus --> LoadStatus"
     << "QQuickWebEngineView.LoadStoppedStatus --> LoadStatus"
@@ -627,12 +630,6 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.MediaAudioCapture --> Feature"
     << "QQuickWebEngineView.MediaAudioVideoCapture --> Feature"
     << "QQuickWebEngineView.MediaVideoCapture --> Feature"
-    << "QQuickWebEngineView.NPageSize --> PrintedPageSizeId"
-    << "QQuickWebEngineView.NPaperSize --> PrintedPageSizeId"
-    << "QQuickWebEngineView.NewViewInBackgroundTab --> NewViewDestination"
-    << "QQuickWebEngineView.NewViewInDialog --> NewViewDestination"
-    << "QQuickWebEngineView.NewViewInTab --> NewViewDestination"
-    << "QQuickWebEngineView.NewViewInWindow --> NewViewDestination"
     << "QQuickWebEngineView.NoErrorDomain --> ErrorDomain"
     << "QQuickWebEngineView.Notifications --> Feature"
     << "QQuickWebEngineView.NoWebAction --> WebAction"
@@ -641,7 +638,6 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.OpenLinkInNewTab --> WebAction"
     << "QQuickWebEngineView.OpenLinkInNewWindow --> WebAction"
     << "QQuickWebEngineView.OpenLinkInThisWindow --> WebAction"
-    << "QQuickWebEngineView.OtherNavigation --> NavigationType"
     << "QQuickWebEngineView.Outdent --> WebAction"
     << "QQuickWebEngineView.Paste --> WebAction"
     << "QQuickWebEngineView.PasteAndMatchStyle --> WebAction"
@@ -651,11 +647,9 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.Prc32K --> PrintedPageSizeId"
     << "QQuickWebEngineView.Prc32KBig --> PrintedPageSizeId"
     << "QQuickWebEngineView.Quarto --> PrintedPageSizeId"
-    << "QQuickWebEngineView.RedirectNavigation --> NavigationType"
     << "QQuickWebEngineView.Redo --> WebAction"
     << "QQuickWebEngineView.Reload --> WebAction"
     << "QQuickWebEngineView.ReloadAndBypassCache --> WebAction"
-    << "QQuickWebEngineView.ReloadNavigation --> NavigationType"
     << "QQuickWebEngineView.RequestClose --> WebAction"
     << "QQuickWebEngineView.SavePage --> WebAction"
     << "QQuickWebEngineView.SelectAll --> WebAction"
@@ -673,9 +667,9 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.ToggleMediaPlayPause --> WebAction"
     << "QQuickWebEngineView.ToggleStrikethrough --> WebAction"
     << "QQuickWebEngineView.ToggleUnderline --> WebAction"
-    << "QQuickWebEngineView.TypedNavigation --> NavigationType"
     << "QQuickWebEngineView.Undo --> WebAction"
     << "QQuickWebEngineView.Unselect --> WebAction"
+    << "QQuickWebEngineView.OpenLinkInNewBackgroundTab --> WebAction"
     << "QQuickWebEngineView.ViewSource --> WebAction"
     << "QQuickWebEngineView.WarningMessageLevel --> JavaScriptConsoleMessageLevel"
     << "QQuickWebEngineView.WebActionCount --> WebAction"
@@ -690,47 +684,61 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.canGoBackChanged() --> void"
     << "QQuickWebEngineView.canGoForward --> bool"
     << "QQuickWebEngineView.canGoForwardChanged() --> void"
-    << "QQuickWebEngineView.certificateError(QQuickWebEngineCertificateError*) --> void"
+    << "QQuickWebEngineView.certificateError(QWebEngineCertificateError) --> void"
     << "QQuickWebEngineView.colorDialogRequested(QQuickWebEngineColorDialogRequest*) --> void"
     << "QQuickWebEngineView.contentsSize --> QSizeF"
     << "QQuickWebEngineView.contentsSizeChanged(QSizeF) --> void"
-    << "QQuickWebEngineView.contextMenuRequested(QQuickWebEngineContextMenuRequest*) --> void"
+    << "QQuickWebEngineView.contextMenuRequested(QWebEngineContextMenuRequest*) --> void"
+    << "QQuickWebEngineView.devToolsId --> QString"
     << "QQuickWebEngineView.devToolsView --> QQuickWebEngineView*"
     << "QQuickWebEngineView.devToolsViewChanged() --> void"
-    << "QQuickWebEngineView.featurePermissionRequested(QUrl,Feature) --> void"
+    << "QQuickWebEngineView.featurePermissionRequested(QUrl,QQuickWebEngineView::Feature) --> void"
     << "QQuickWebEngineView.fileDialogRequested(QQuickWebEngineFileDialogRequest*) --> void"
+    << "QQuickWebEngineView.fileSystemAccessRequested(QWebEngineFileSystemAccessRequest) --> void"
     << "QQuickWebEngineView.findText(QString) --> void"
     << "QQuickWebEngineView.findText(QString,FindFlags) --> void"
     << "QQuickWebEngineView.findText(QString,FindFlags,QJSValue) --> void"
     << "QQuickWebEngineView.findTextFinished(QWebEngineFindTextResult) --> void"
-    << "QQuickWebEngineView.formValidationMessageRequested(QQuickWebEngineFormValidationMessageRequest*) --> void"
     << "QQuickWebEngineView.fullScreenCancelled() --> void"
-    << "QQuickWebEngineView.fullScreenRequested(QQuickWebEngineFullScreenRequest) --> void"
+    << "QQuickWebEngineView.fullScreenRequested(QWebEngineFullScreenRequest) --> void"
     << "QQuickWebEngineView.geometryChangeRequested(QRect,QRect) --> void"
     << "QQuickWebEngineView.goBack() --> void"
     << "QQuickWebEngineView.goBackOrForward(int) --> void"
     << "QQuickWebEngineView.goForward() --> void"
-    << "QQuickWebEngineView.grantFeaturePermission(QUrl,Feature,bool) --> void"
+    << "QQuickWebEngineView.grantFeaturePermission(QUrl,QQuickWebEngineView::Feature,bool) --> void"
+    << "QQuickWebEngineView.history --> QWebEngineHistory*"
     << "QQuickWebEngineView.icon --> QUrl"
     << "QQuickWebEngineView.iconChanged() --> void"
     << "QQuickWebEngineView.inspectedView --> QQuickWebEngineView*"
     << "QQuickWebEngineView.inspectedViewChanged() --> void"
     << "QQuickWebEngineView.isFullScreen --> bool"
     << "QQuickWebEngineView.isFullScreenChanged() --> void"
-    << "QQuickWebEngineView.javaScriptConsoleMessage(JavaScriptConsoleMessageLevel,QString,int,QString) --> void"
+    << "QQuickWebEngineView.javaScriptConsoleMessage(QQuickWebEngineView::JavaScriptConsoleMessageLevel,QString,int,QString) --> void"
     << "QQuickWebEngineView.javaScriptDialogRequested(QQuickWebEngineJavaScriptDialogRequest*) --> void"
-    << "QQuickWebEngineView.lifecycleState --> LifecycleState"
-    << "QQuickWebEngineView.lifecycleStateChanged(LifecycleState) --> void"
+    << "QQuickWebEngineView.lifecycleState --> QQuickWebEngineView::LifecycleState"
+    << "QQuickWebEngineView.lifecycleStateChanged(QQuickWebEngineView::LifecycleState) --> void"
     << "QQuickWebEngineView.linkHovered(QUrl) --> void"
     << "QQuickWebEngineView.loadHtml(QString) --> void"
     << "QQuickWebEngineView.loadHtml(QString,QUrl) --> void"
     << "QQuickWebEngineView.loadProgress --> int"
     << "QQuickWebEngineView.loadProgressChanged() --> void"
     << "QQuickWebEngineView.loading --> bool"
-    << "QQuickWebEngineView.loadingChanged(QQuickWebEngineLoadRequest*) --> void"
-    << "QQuickWebEngineView.navigationHistory --> QQuickWebEngineHistory*"
-    << "QQuickWebEngineView.navigationRequested(QQuickWebEngineNavigationRequest*) --> void"
-    << "QQuickWebEngineView.newViewRequested(QQuickWebEngineNewViewRequest*) --> void"
+    << "QQuickWebEngineView.loadingChanged(QWebEngineLoadingInfo) --> void"
+    << "QQuickWebEngineView.navigationRequested(QWebEngineNavigationRequest*) --> void"
+    << "QQuickWebEngineView.newWindowRequested(QQuickWebEngineNewWindowRequest*) --> void"
+    << "QQuickWebEngineView.AcceptRequest --> NavigationRequestAction"
+    << "QQuickWebEngineView.IgnoreRequest --> NavigationRequestAction"
+    << "QQuickWebEngineView.BackForwardNavigation --> NavigationType"
+    << "QQuickWebEngineView.FormSubmittedNavigation --> NavigationType"
+    << "QQuickWebEngineView.LinkClickedNavigation --> NavigationType"
+    << "QQuickWebEngineView.OtherNavigation --> NavigationType"
+    << "QQuickWebEngineView.RedirectNavigation --> NavigationType"
+    << "QQuickWebEngineView.ReloadNavigation --> NavigationType"
+    << "QQuickWebEngineView.TypedNavigation --> NavigationType"
+    << "QQuickWebEngineView.NewViewInBackgroundTab --> NewViewDestination"
+    << "QQuickWebEngineView.NewViewInDialog --> NewViewDestination"
+    << "QQuickWebEngineView.NewViewInTab --> NewViewDestination"
+    << "QQuickWebEngineView.NewViewInWindow --> NewViewDestination"
     << "QQuickWebEngineView.pdfPrintingFinished(QString,bool) --> void"
     << "QQuickWebEngineView.printRequested() --> void"
     << "QQuickWebEngineView.printToPdf(QJSValue) --> void"
@@ -746,12 +754,12 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.recentlyAudibleChanged(bool) --> void"
     << "QQuickWebEngineView.renderProcessPid --> qlonglong"
     << "QQuickWebEngineView.renderProcessPidChanged(qlonglong) --> void"
-    << "QQuickWebEngineView.recommendedState --> LifecycleState"
-    << "QQuickWebEngineView.recommendedStateChanged(LifecycleState) --> void"
+    << "QQuickWebEngineView.recommendedState --> QQuickWebEngineView::LifecycleState"
+    << "QQuickWebEngineView.recommendedStateChanged(QQuickWebEngineView::LifecycleState) --> void"
     << "QQuickWebEngineView.registerProtocolHandlerRequested(QWebEngineRegisterProtocolHandlerRequest) --> void"
     << "QQuickWebEngineView.reload() --> void"
     << "QQuickWebEngineView.reloadAndBypassCache() --> void"
-    << "QQuickWebEngineView.renderProcessTerminated(RenderProcessTerminationStatus,int) --> void"
+    << "QQuickWebEngineView.renderProcessTerminated(QQuickWebEngineView::RenderProcessTerminationStatus,int) --> void"
     << "QQuickWebEngineView.replaceMisspelledWord(QString) --> void"
     << "QQuickWebEngineView.runJavaScript(QString) --> void"
     << "QQuickWebEngineView.runJavaScript(QString,QJSValue) --> void"
@@ -763,24 +771,28 @@ static const QStringList expectedAPI = QStringList()
     << "QQuickWebEngineView.setActiveFocusOnPress(bool) --> void"
     << "QQuickWebEngineView.settings --> QQuickWebEngineSettings*"
     << "QQuickWebEngineView.stop() --> void"
-#if QT_CONFIG(webengine_testsupport)
-    << "QQuickWebEngineView.testSupport --> QQuickWebEngineTestSupport*"
-    << "QQuickWebEngineView.testSupportChanged() --> void"
-#endif
     << "QQuickWebEngineView.title --> QString"
     << "QQuickWebEngineView.titleChanged() --> void"
     << "QQuickWebEngineView.tooltipRequested(QQuickWebEngineTooltipRequest*) --> void"
+    << "QQuickWebEngineView.touchHandleDelegate --> QQmlComponent*"
+    << "QQuickWebEngineView.touchHandleDelegateChanged() --> void"
+    << "QQuickWebEngineView.touchSelectionMenuRequested(QQuickWebEngineTouchSelectionMenuRequest*) --> void"
     << "QQuickWebEngineView.triggerWebAction(WebAction) --> void"
     << "QQuickWebEngineView.url --> QUrl"
     << "QQuickWebEngineView.urlChanged() --> void"
-    << "QQuickWebEngineView.userScripts --> QQmlListProperty<QQuickWebEngineScript>"
+    << "QQuickWebEngineView.userScripts --> QQuickWebEngineScriptCollection*"
+#if QT_CONFIG(webengine_webchannel)
     << "QQuickWebEngineView.webChannel --> QQmlWebChannel*"
+#endif
     << "QQuickWebEngineView.webChannelChanged() --> void"
     << "QQuickWebEngineView.webChannelWorld --> uint"
     << "QQuickWebEngineView.webChannelWorldChanged(uint) --> void"
     << "QQuickWebEngineView.windowCloseRequested() --> void"
     << "QQuickWebEngineView.zoomFactor --> double"
     << "QQuickWebEngineView.zoomFactorChanged(double) --> void"
+    << "QQuickWebEngineView.acceptAsNewWindow(QWebEngineNewWindowRequest*) --> void"
+    << "QQuickWebEngineView.save(QString) --> void"
+    << "QQuickWebEngineView.save(QString,QWebEngineDownloadRequest::SavePageFormat) --> void"
     << "QWebEngineQuotaRequest.accept() --> void"
     << "QWebEngineQuotaRequest.origin --> QUrl"
     << "QWebEngineQuotaRequest.reject() --> void"
@@ -801,24 +813,21 @@ static const QStringList expectedAPI = QStringList()
     << "QWebEngineNotification.closed() --> void"
     ;
 
-static bool isCheckedEnum(const QByteArray &typeName)
+static bool isCheckedEnum(QMetaType t)
 {
-    QList<QByteArray> tokens = typeName.split(':');
-    if (tokens.size() == 3) {
-        QByteArray &enumClass = tokens[0];
-        QByteArray &enumName = tokens[2];
-        for (const QMetaObject *mo : typesToCheck) {
-            if (mo->className() != enumClass)
-                continue;
-            for (int i = mo->enumeratorOffset(); i < mo->enumeratorCount(); ++i)
-                if (mo->enumerator(i).name() == enumName)
+    if (t.flags() & QMetaType::IsEnumeration) {
+        if (const QMetaObject *metaObject = t.metaObject()) {
+            QRegularExpression re("^QFlags<(.*)>$");
+            QRegularExpressionMatch match = re.match(t.name());
+            const QByteArray enumName =
+                    match.hasMatch() ? match.captured(1).toUtf8() : QByteArray(t.name());
+            const char *lastColon = std::strrchr(enumName, ':');
+            QMetaEnum type = metaObject->enumerator(metaObject->indexOfEnumerator(
+                    lastColon ? lastColon + 1 : enumName.constData()));
+            for (auto knownEnum : knownEnumNames) {
+                if (type.name() == knownEnum.name() && type.scope() == knownEnum.scope())
                     return true;
-        }
-    } else if (tokens.size() == 1) {
-        QByteArray &enumName = tokens[0];
-        for (const char *knownEnumName : qAsConst(knownEnumNames)) {
-            if (enumName == knownEnumName)
-                return true;
+            }
         }
     }
     return false;
@@ -834,10 +843,12 @@ static bool isCheckedClass(const QByteArray &typeName)
     return false;
 }
 
-static void checkKnownType(const QByteArray &typeName)
+static void checkKnownType(const QMetaType &type)
 {
-    if ((!hardcodedTypes.contains(typeName) && !QMetaType::type(typeName)) || QMetaType::type(typeName) >= QMetaType::User) {
-        bool knownEnum = isCheckedEnum(typeName);
+    const QByteArray typeName = type.name();
+    // calling id() registers the object
+    if (!hardcodedTypes.contains(typeName) && type.id() >= QMetaType::User) {
+        bool knownEnum = isCheckedEnum(type);
         bool knownClass = isCheckedClass(typeName);
         QVERIFY2(knownEnum || knownClass, qPrintable(QString("The API uses an unknown type [%1], you might have to add it to the typesToCheck list.").arg(typeName.constData())));
     }
@@ -848,12 +859,13 @@ static void gatherAPI(const QString &prefix, const QMetaEnum &metaEnum, QStringL
     const auto format = metaEnum.isScoped() ? "%1%3.%2 --> %3" : "%1%2 --> %3";
     for (int i = 0; i < metaEnum.keyCount(); ++i)
         *output << QString::fromLatin1(format).arg(prefix).arg(metaEnum.key(i)).arg(metaEnum.name());
+    knownEnumNames << metaEnum;
 }
 
 static void gatherAPI(const QString &prefix, const QMetaProperty &property, QStringList *output)
 {
     *output << QString::fromLatin1("%1%2 --> %3").arg(prefix).arg(property.name()).arg(property.typeName());
-    checkKnownType(property.typeName());
+    checkKnownType(property.metaType());
 }
 
 static void gatherAPI(const QString &prefix, const QMetaMethod &method, QStringList *output)
@@ -862,20 +874,21 @@ static void gatherAPI(const QString &prefix, const QMetaMethod &method, QStringL
         const char *methodTypeName = !!strlen(method.typeName()) ? method.typeName() : "void";
         *output << QString::fromLatin1("%1%2 --> %3").arg(prefix).arg(QString::fromLatin1(method.methodSignature())).arg(QString::fromLatin1(methodTypeName));
 
-        checkKnownType(methodTypeName);
-        const QList<QByteArray> paramTypes = method.parameterTypes();
-        for (const QByteArray &paramType : paramTypes)
-            checkKnownType(paramType);
+        checkKnownType(method.returnMetaType());
+
+        const auto parameterCount = method.parameterCount();
+        for (int i = 0; i < parameterCount; ++i) {
+            const QMetaType metaType = method.parameterMetaType(i);
+            checkKnownType(metaType);
+        }
     }
 }
 
 static void gatherAPI(const QString &prefix, const QMetaObject *meta, QStringList *output)
 {
     // *Offset points us only at the leaf class members, we don't have inheritance in our API yet anyway.
-    for (int i = meta->enumeratorOffset(); i < meta->enumeratorCount(); ++i) {
-        knownEnumNames << meta->enumerator(i).name();
+    for (int i = meta->enumeratorOffset(); i < meta->enumeratorCount(); ++i)
         gatherAPI(prefix, meta->enumerator(i), output);
-    }
     for (int i = meta->propertyOffset(); i < meta->propertyCount(); ++i)
         gatherAPI(prefix, meta->property(i), output);
     for (int i = meta->methodOffset(); i < meta->methodCount(); ++i)
@@ -891,14 +904,14 @@ void tst_publicapi::publicAPI()
     // Uncomment to print the actual API.
     // QStringList sortedAPI(actualAPI);
     // std::sort(sortedAPI.begin(), sortedAPI.end());
-    // for (const QString &actual : qAsConst(sortedAPI))
+    // for (const QString &actual : std::as_const(sortedAPI))
     //     printf("    << \"%s\"\n", qPrintable(actual));
 
     bool apiMatch = true;
     // Make sure that nothing slips in the public API unintentionally.
-    for (const QString &actual : qAsConst(actualAPI)) {
+    for (const QString &actual : std::as_const(actualAPI)) {
         if (!expectedAPI.contains(actual)) {
-            QWARN(qPrintable("Expected list is not up-to-date: " + actual));
+            qWarning("Expected list is not up-to-date: %ls", qUtf16Printable(actual));
             apiMatch = false;
         }
     }
@@ -906,7 +919,7 @@ void tst_publicapi::publicAPI()
     for (const QString &expected : expectedAPI) {
         if (!actualAPI.contains(expected)) {
             apiMatch = false;
-            QWARN(qPrintable("Not implemented: " + expected));
+            qWarning("Not implemented: %ls", qUtf16Printable(expected));
         }
     }
 

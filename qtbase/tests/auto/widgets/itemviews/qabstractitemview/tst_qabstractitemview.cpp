@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <private/qguiapplication_p.h>
 
@@ -35,11 +10,13 @@
 #include <QHeaderView>
 #include <QIdentityProxyModel>
 #include <QItemDelegate>
+#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QProxyStyle>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QScroller>
 #include <QSignalSpy>
 #include <QSortFilterProxyModel>
 #include <QSpinBox>
@@ -52,11 +29,13 @@
 #include <QTest>
 #include <QVBoxLayout>
 #include <QtTest/private/qtesthelpers_p.h>
+#include <private/qabstractitemview_p.h>
+#include <QtWidgets/private/qapplication_p.h>
 
 Q_DECLARE_METATYPE(Qt::ItemFlags);
 
 using namespace QTestPrivate;
-using IntList = QVector<int>;
+using IntList = QList<int>;
 
 // Move cursor out of widget area to avoid undesired interaction on Mac.
 static inline void moveCursorAway(const QWidget *topLevel)
@@ -64,7 +43,7 @@ static inline void moveCursorAway(const QWidget *topLevel)
 #ifndef QT_NO_CURSOR
     QCursor::setPos(topLevel->geometry().topRight() + QPoint(100, 0));
 #else
-    Q_UNUSED(topLevel)
+    Q_UNUSED(topLevel);
 #endif
 }
 
@@ -100,6 +79,7 @@ private slots:
     void selectAll();
     void ctrlA();
     void persistentEditorFocus();
+    void pressClosesReleaseDoesntOpenEditor();
     void setItemDelegate();
     void setItemDelegate_data();
     // The dragAndDrop() test doesn't work, and is thus disabled on Mac and Windows
@@ -116,6 +96,9 @@ private slots:
     void setCurrentIndex_data();
     void setCurrentIndex();
 
+    void checkIntersectedRect_data();
+    void checkIntersectedRect();
+
     void task221955_selectedEditor();
     void task250754_fontChange();
     void task200665_itemEntered();
@@ -126,6 +109,7 @@ private slots:
     void QTBUG6407_extendedSelection();
     void QTBUG6753_selectOnSelection();
     void testDelegateDestroyEditor();
+    void testDelegateDestroyEditorChild();
     void testClickedSignal();
     void testChangeEditorState();
     void deselectInSingleSelection();
@@ -154,6 +138,20 @@ private slots:
     void dragWithSecondClick_data();
     void dragWithSecondClick();
     void clickAfterDoubleClick();
+    void selectionCommand_data();
+    void selectionCommand();
+    void mouseSelection_data();
+    void mouseSelection();
+    void keepSingleSelectionOnEmptyAreaClick();
+    void scrollerSmoothScroll();
+    void inputMethodOpensEditor_data();
+    void inputMethodOpensEditor();
+    void selectionAutoScrolling_data();
+    void selectionAutoScrolling();
+    void testSpinBoxAsEditor_data();
+    void testSpinBoxAsEditor();
+    void removeIndexWhileEditing();
+    void focusNextOnHide();
 
 private:
     static QAbstractItemView *viewFromString(const QByteArray &viewType, QWidget *parent = nullptr)
@@ -180,33 +178,35 @@ public:
     QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
     {
         openedEditor = new QWidget(parent);
+        virtualCtorCallCount++;
         return openedEditor;
     }
     void destroyEditor(QWidget *editor, const QModelIndex &) const override
     {
-        calledVirtualDtor = true;
+        virtualDtorCallCount++;
         editor->deleteLater();
     }
     void changeSize() { size = QSize(50, 50); emit sizeHintChanged(QModelIndex()); }
     mutable QWidget *openedEditor = nullptr;
     QSize size;
-    mutable bool calledVirtualDtor = false;
+    mutable int virtualCtorCallCount = 0;
+    mutable int virtualDtorCallCount = 0;
 };
 
 class DialogItemDelegate : public QStyledItemDelegate
 {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
-    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
     {
         openedEditor = new QDialog(parent);
         return openedEditor;
     }
 
-    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
     {
-        Q_UNUSED(model)
-        Q_UNUSED(index)
+        Q_UNUSED(model);
+        Q_UNUSED(index);
 
         QDialog *dialog = qobject_cast<QDialog *>(editor);
         result = static_cast<QDialog::DialogCode>(dialog->result());
@@ -306,7 +306,7 @@ void tst_QAbstractItemView::emptyModels_data()
 {
     QTest::addColumn<QByteArray>("viewType");
 
-    const QVector<QByteArray> widgets{ "QListView", "QTreeView", "QTableView", "QHeaderView" };
+    const QList<QByteArray> widgets { "QListView", "QTreeView", "QTableView", "QHeaderView" };
     for (const QByteArray &widget : widgets)
         QTest::newRow(widget) << widget;
 }
@@ -433,12 +433,12 @@ void tst_QAbstractItemView::basic_tests(QAbstractItemView *view)
     QVERIFY(spy.isValid());
     view->setIconSize(QSize(32, 32));
     QCOMPARE(view->iconSize(), QSize(32, 32));
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).at(0).value<QSize>(), QSize(32, 32));
     // Should this happen?
     view->setIconSize(QSize(-1, -1));
     QCOMPARE(view->iconSize(), QSize(-1, -1));
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
 
     QCOMPARE(view->currentIndex(), QModelIndex());
     QCOMPARE(view->rootIndex(), QModelIndex());
@@ -474,7 +474,8 @@ void tst_QAbstractItemView::basic_tests(QAbstractItemView *view)
     view->setCurrentIndex(QModelIndex());
 
     // protected methods
-    view->dataChanged(QModelIndex(), QModelIndex());
+    // will assert because an invalid index is passed
+    //view->dataChanged(QModelIndex(), QModelIndex());
     view->rowsInserted(QModelIndex(), -1, -1);
     view->rowsAboutToBeRemoved(QModelIndex(), -1, -1);
     view->selectionChanged(QItemSelection(), QItemSelection());
@@ -516,8 +517,8 @@ void tst_QAbstractItemView::basic_tests(QAbstractItemView *view)
 #if QT_CONFIG(draganddrop)
     if (!view->model())
         view->startDrag(Qt::CopyAction);
-
-    view->viewOptions();
+    QStyleOptionViewItem option;
+    view->initViewItemOption(&option);
 
     view->setState(QAbstractItemView::NoState);
     QCOMPARE(view->state(), QAbstractItemView::NoState);
@@ -671,9 +672,9 @@ void tst_QAbstractItemView::selectAll()
     GeometriesTestView view;
     view.setModel(&model);
 
-    QCOMPARE(view.selectedIndexes().count(), 0);
+    QCOMPARE(view.selectedIndexes().size(), 0);
     view.selectAll();
-    QCOMPARE(view.selectedIndexes().count(), 4 * 4);
+    QCOMPARE(view.selectedIndexes().size(), 4 * 4);
 }
 
 void tst_QAbstractItemView::ctrlA()
@@ -682,9 +683,9 @@ void tst_QAbstractItemView::ctrlA()
     GeometriesTestView view;
     view.setModel(&model);
 
-    QCOMPARE(view.selectedIndexes().count(), 0);
+    QCOMPARE(view.selectedIndexes().size(), 0);
     QTest::keyClick(&view, Qt::Key_A, Qt::ControlModifier);
-    QCOMPARE(view.selectedIndexes().count(), 4 * 4);
+    QCOMPARE(view.selectedIndexes().size(), 4 * 4);
 }
 
 void tst_QAbstractItemView::persistentEditorFocus()
@@ -701,7 +702,7 @@ void tst_QAbstractItemView::persistentEditorFocus()
 
     //these are spinboxes because we put numbers inside
     const QList<QSpinBox*> list = view.viewport()->findChildren<QSpinBox*>();
-    QCOMPARE(list.count(), 2); //these should be the 2 editors
+    QCOMPARE(list.size(), 2); //these should be the 2 editors
 
     view.setCurrentIndex(model.index(0, 0));
     QCOMPARE(view.currentIndex(), model.index(0, 0));
@@ -713,13 +714,54 @@ void tst_QAbstractItemView::persistentEditorFocus()
     const QPoint p(5, 5);
     for (QSpinBox *sb : list) {
         QTRY_VERIFY(sb->isVisible());
-        QMouseEvent mouseEvent(QEvent::MouseButtonPress, p, Qt::LeftButton,
-                               Qt::LeftButton, Qt::NoModifier);
+        QMouseEvent mouseEvent(QEvent::MouseButtonPress, p, sb->mapToGlobal(p),
+                               Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(sb, &mouseEvent);
         if (!QApplication::focusWidget())
             QSKIP("Some window managers don't handle focus that well");
         QTRY_COMPARE(QApplication::focusWidget(), sb);
     }
+}
+
+/*!
+    A press into the selection area of an item being edited, but outside the editor,
+    closes the editor by transferring focus to the view. The corresponding release
+    should then not re-open the editor.
+
+    QTBUG-20456.
+*/
+void tst_QAbstractItemView::pressClosesReleaseDoesntOpenEditor()
+{
+    QStandardItemModel model(0, 1);
+    auto *parent = new QStandardItem("parent");
+    for (const auto &childText : {"child1", "child2"}) {
+        auto *child = new QStandardItem(childText);
+        child->setFlags(Qt::ItemFlag::ItemIsEnabled | Qt::ItemFlag::ItemIsEditable | Qt::ItemIsSelectable);
+        parent->appendRow(child);
+    }
+    model.appendRow(parent);
+
+    QTreeView view;
+    view.setModel(&model);
+    view.setExpanded(model.indexFromItem(parent), true);
+    view.setSelectionMode(QAbstractItemView::SingleSelection);
+    view.setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::DoubleClicked);
+
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    const QRect childRect = view.visualRect(model.indexFromItem(parent->child(0)));
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, childRect.center()); // select
+    QVERIFY(view.selectionModel()->selectedIndexes().contains(model.indexFromItem(parent->child(0))));
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, childRect.center()); // edit
+    QTRY_COMPARE(view.state(), QAbstractItemView::EditingState);
+    QPoint inChildOutsideEditor = QPoint(view.indentation() / 2, childRect.center().y());
+    QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, inChildOutsideEditor); // focus itemview, editor closes
+    QCOMPARE(view.state(), QAbstractItemView::NoState);
+    QTest::qWait(10); // process some events, let the internal timer time out
+    QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, inChildOutsideEditor); // should not reopen editor
+    QTest::qWait(QApplication::doubleClickInterval() * 2);
+    QCOMPARE(view.state(), QAbstractItemView::NoState);
 }
 
 
@@ -899,7 +941,7 @@ void tst_QAbstractItemView::dragAndDrop()
 
     if (successes < attempts) {
         QString msg = QString("# successes (%1) < # attempts (%2)").arg(successes).arg(attempts);
-        QWARN(msg.toLatin1());
+        qWarning() << qPrintable(msg);
     }
     QVERIFY(successes > 0); // allow for some "event unstability" (i.e. unless
                             // successes == 0, QAbstractItemView is probably ok!)
@@ -1009,7 +1051,7 @@ void tst_QAbstractItemView::setItemDelegate()
     centerOnScreen(&v);
     moveCursorAway(&v);
     v.show();
-    QApplication::setActiveWindow(&v);
+    QApplicationPrivate::setActiveWindow(&v);
     QVERIFY(QTest::qWaitForWindowActive(&v));
 
     QModelIndex index = model.index(cellToEdit.y(), cellToEdit.x());
@@ -1059,7 +1101,7 @@ void tst_QAbstractItemView::setCurrentIndex_data()
     QTest::addColumn<Qt::ItemFlags>("itemFlags");
     QTest::addColumn<bool>("result");
 
-    const QVector<QByteArray> widgets{ "QListView", "QTreeView", "QTableView", "QHeaderView" };
+    const QList<QByteArray> widgets { "QListView", "QTreeView", "QTableView", "QHeaderView" };
     for (const QByteArray &widget : widgets) {
         QTest::newRow(widget + ": no flags")
             << widget << Qt::ItemFlags(Qt::NoItemFlags) << false;
@@ -1104,6 +1146,97 @@ void tst_QAbstractItemView::setCurrentIndex()
     QVERIFY(view->currentIndex() == model->index(result ? 1 : 0, 0));
 }
 
+void tst_QAbstractItemView::checkIntersectedRect_data()
+{
+    auto createModel = [](int rowCount) -> QStandardItemModel*
+    {
+        QStandardItemModel *model = new QStandardItemModel;
+        for (int i = 0; i < rowCount; ++i) {
+            const QList<QStandardItem *> sil({new QStandardItem(QString("Row %1 Item").arg(i)),
+                                              new QStandardItem(QString("2nd column"))});
+            model->appendRow(sil);
+        }
+        return model;
+    };
+    QTest::addColumn<QStandardItemModel *>("model");
+    QTest::addColumn<QList<QModelIndex>>("changedIndexes");
+    QTest::addColumn<bool>("isEmpty");
+    {
+        auto model = createModel(5);
+        QTest::newRow("multiple columns")
+                << model << QList<QModelIndex>({ model->index(0, 0), model->index(0, 1) }) << false;
+    }
+    {
+        auto model = createModel(5);
+        QTest::newRow("multiple rows")
+                << model
+                << QList<QModelIndex>(
+                           { model->index(0, 0), model->index(1, 0), model->index(2, 0) })
+                << false;
+    }
+    {
+        auto model = createModel(5);
+        QTest::newRow("hidden rows")
+                << model << QList<QModelIndex>({ model->index(3, 0), model->index(4, 0) }) << true;
+    }
+    {
+        auto model = createModel(500);
+        QTest::newRow("rows outside viewport")
+                << model << QList<QModelIndex>({ model->index(498, 0), model->index(499, 0) })
+                << true;
+    }
+}
+
+void tst_QAbstractItemView::checkIntersectedRect()
+{
+    QFETCH(QStandardItemModel *, model);
+    QFETCH(const QList<QModelIndex>, changedIndexes);
+    QFETCH(bool, isEmpty);
+
+    class TableView : public QTableView
+    {
+    public:
+        void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                         const QList<int> &roles = QList<int>()) override
+        {
+            QTableView::dataChanged(topLeft, bottomRight, roles);
+            // we want to check the base class implementation here!
+            QAbstractItemViewPrivate *av = static_cast<QAbstractItemViewPrivate*>(qt_widget_private(this));
+            m_intersectecRect = av->intersectedRect(av->viewport->rect(), topLeft, bottomRight);
+        }
+        mutable QRect m_intersectecRect;
+    };
+
+    TableView view;
+    model->setParent(&view);
+    view.setModel(model);
+    view.resize(400, 400);
+    view.show();
+    view.setRowHidden(3, true);
+    view.setRowHidden(4, true);
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    view.m_intersectecRect = QRect();
+    emit view.model()->dataChanged(changedIndexes.first(), changedIndexes.last());
+    if (isEmpty) {
+        QVERIFY(view.m_intersectecRect.isEmpty());
+    } else {
+        const auto parent = changedIndexes.first().parent();
+        const int rCount = view.model()->rowCount(parent);
+        const int cCount = view.model()->columnCount(parent);
+        for (int r = 0; r < rCount; ++r) {
+            for (int c = 0; c < cCount; ++c) {
+                const QModelIndex &idx = view.model()->index(r, c, parent);
+                const auto rect = view.visualRect(idx);
+                if (changedIndexes.contains(idx))
+                    QVERIFY(view.m_intersectecRect.contains(rect));
+                else
+                    QVERIFY(!view.m_intersectecRect.contains(rect));
+            }
+        }
+    }
+}
+
 void tst_QAbstractItemView::task221955_selectedEditor()
 {
     if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
@@ -1127,7 +1260,7 @@ void tst_QAbstractItemView::task221955_selectedEditor()
     tree.show();
     tree.setFocus();
     tree.setCurrentIndex(tree.model()->index(1,0));
-    QApplication::setActiveWindow(&tree);
+    QApplicationPrivate::setActiveWindow(&tree);
     QVERIFY(QTest::qWaitForWindowActive(&tree));
 
     QVERIFY(! tree.selectionModel()->selectedIndexes().contains(tree.model()->index(3,0)));
@@ -1183,9 +1316,6 @@ void tst_QAbstractItemView::task250754_fontChange()
 
     font.setPixelSize(60);
     tree.setFont(font);
-#ifdef Q_OS_WINRT
-    QSKIP("Resizing the widget does not work as expected for WinRT, so the scroll bar might not be visible");
-#endif
     //now with the huge items, the scrollbar must be visible
     QTRY_VERIFY(tree.verticalScrollBar()->isVisible());
 
@@ -1196,7 +1326,13 @@ void tst_QAbstractItemView::task200665_itemEntered()
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: This fails. Figure out why.");
-
+    {
+        // skip if we can't move mouse
+        const QPoint cursorPos = QCursor::pos() + QPoint(10, 10);
+        QCursor::setPos(cursorPos);
+        if (!QTest::qWaitFor([cursorPos] { return QCursor::pos() == cursorPos; }, 500))
+            QSKIP("Can't move mouse");
+    }
     //we test that view will emit entered
     //when the scrollbar move but not the mouse itself
     QStandardItemModel model(1000, 1);
@@ -1211,7 +1347,7 @@ void tst_QAbstractItemView::task200665_itemEntered()
     QSignalSpy spy(&view, &QAbstractItemView::entered);
     view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum());
 
-    QTRY_COMPARE(spy.count(), 1);
+    QTRY_COMPARE(spy.size(), 1);
 }
 
 void tst_QAbstractItemView::task257481_emptyEditor()
@@ -1234,17 +1370,17 @@ void tst_QAbstractItemView::task257481_emptyEditor()
 
     treeView.edit(model.index(0, 0));
     QList<QLineEdit *> lineEditors = treeView.viewport()->findChildren<QLineEdit *>();
-    QCOMPARE(lineEditors.count(), 1);
+    QCOMPARE(lineEditors.size(), 1);
     QVERIFY(!lineEditors.constFirst()->size().isEmpty());
 
     treeView.edit(model.index(1, 0));
     lineEditors = treeView.viewport()->findChildren<QLineEdit *>();
-    QCOMPARE(lineEditors.count(), 1);
+    QCOMPARE(lineEditors.size(), 1);
     QVERIFY(!lineEditors.constFirst()->size().isEmpty());
 
     treeView.edit(model.index(2, 0));
     lineEditors = treeView.viewport()->findChildren<QLineEdit *>();
-    QCOMPARE(lineEditors.count(), 1);
+    QCOMPARE(lineEditors.size(), 1);
     QVERIFY(!lineEditors.constFirst()->size().isEmpty());
 }
 
@@ -1278,7 +1414,7 @@ void tst_QAbstractItemView::shiftArrowSelectionAfterScrolling()
 
     QCOMPARE(view.currentIndex(), index1);
     QModelIndexList selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 2);
+    QCOMPARE(selected.size(), 2);
     QVERIFY(selected.contains(index0));
     QVERIFY(selected.contains(index1));
 }
@@ -1318,7 +1454,8 @@ void tst_QAbstractItemView::shiftSelectionAfterRubberbandSelection()
     // The mouse move event has to be created manually because the QTest framework does not
     // contain a function for mouse moves with buttons pressed
     QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, pressPos);
-    QMouseEvent moveEvent(QEvent::MouseMove, releasePos, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent moveEvent(QEvent::MouseMove, releasePos, view.viewport()->mapToGlobal(releasePos),
+                          Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     bool moveEventReceived = qApp->notify(view.viewport(), &moveEvent);
     QVERIFY(moveEventReceived);
     QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, releasePos);
@@ -1331,7 +1468,7 @@ void tst_QAbstractItemView::shiftSelectionAfterRubberbandSelection()
 
     // Verify that the selection worked OK
     QModelIndexList selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 2);
+    QCOMPARE(selected.size(), 2);
     QVERIFY(selected.contains(index1));
     QVERIFY(selected.contains(index2));
 
@@ -1341,7 +1478,8 @@ void tst_QAbstractItemView::shiftSelectionAfterRubberbandSelection()
 
     // Repeat the same steps as above, but with a Shift-Arrow selection
     QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, pressPos);
-    QMouseEvent moveEvent2(QEvent::MouseMove, releasePos, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent moveEvent2(QEvent::MouseMove, releasePos, view.viewport()->mapToGlobal(releasePos),
+                           Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     moveEventReceived = qApp->notify(view.viewport(), &moveEvent2);
     QVERIFY(moveEventReceived);
     QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, releasePos);
@@ -1353,7 +1491,7 @@ void tst_QAbstractItemView::shiftSelectionAfterRubberbandSelection()
 
     // Verify that the selection worked OK
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 2);
+    QCOMPARE(selected.size(), 2);
     QVERIFY(selected.contains(index1));
     QVERIFY(selected.contains(index2));
 }
@@ -1382,7 +1520,7 @@ void tst_QAbstractItemView::ctrlRubberbandSelection()
     // Select item 1
     view.setCurrentIndex(index1);
     QModelIndexList selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(index1));
 
     // Now press control and draw a rubberband around items 1 and 2.
@@ -1391,14 +1529,15 @@ void tst_QAbstractItemView::ctrlRubberbandSelection()
     QPoint pressPos = view.visualRect(index1).topLeft() - QPoint(1, 1);
     QPoint releasePos = view.visualRect(index2).bottomRight() + QPoint(1, 1);
     QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::ControlModifier, pressPos);
-    QMouseEvent moveEvent(QEvent::MouseMove, releasePos, Qt::NoButton, Qt::LeftButton, Qt::ControlModifier);
+    QMouseEvent moveEvent(QEvent::MouseMove, releasePos, view.viewport()->mapToGlobal(releasePos),
+                          Qt::NoButton, Qt::LeftButton, Qt::ControlModifier);
     bool moveEventReceived = qApp->notify(view.viewport(), &moveEvent);
     QVERIFY(moveEventReceived);
     QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::ControlModifier, releasePos);
 
     // Verify that item 2 is selected now
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(index2));
 }
 
@@ -1420,7 +1559,7 @@ void tst_QAbstractItemView::QTBUG6407_extendedSelection()
     moveCursorAway(&view);
 
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(&view, QApplication::activeWindow());
 
@@ -1431,21 +1570,21 @@ void tst_QAbstractItemView::QTBUG6407_extendedSelection()
     QVERIFY(view.viewport()->rect().contains(p));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, p);
     QCOMPARE(view.currentIndex(), index49);
-    QCOMPARE(view.selectedItems().count(), 1);
+    QCOMPARE(view.selectedItems().size(), 1);
 
     QModelIndex index47 = view.model()->index(47,0);
     p = view.visualRect(index47).center();
     QVERIFY(view.viewport()->rect().contains(p));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, p);
     QCOMPARE(view.currentIndex(), index47);
-    QCOMPARE(view.selectedItems().count(), 3); //49, 48, 47;
+    QCOMPARE(view.selectedItems().size(), 3); //49, 48, 47;
 
     QModelIndex index44 = view.model()->index(44,0);
     p = view.visualRect(index44).center();
     QVERIFY(view.viewport()->rect().contains(p));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, p);
     QCOMPARE(view.currentIndex(), index44);
-    QCOMPARE(view.selectedItems().count(), 6); //49 .. 44;
+    QCOMPARE(view.selectedItems().size(), 6); //49 .. 44;
 
 }
 
@@ -1470,7 +1609,7 @@ void tst_QAbstractItemView::QTBUG6753_selectOnSelection()
     QTest::mouseMove(table.viewport(), itemRect.center());
     QTest::mouseClick(table.viewport(), Qt::LeftButton, Qt::NoModifier, itemRect.center());
 
-    QCOMPARE(table.selectedItems().count(), 1);
+    QCOMPARE(table.selectedItems().size(), 1);
     QCOMPARE(table.selectedItems().first(), table.item(item.row(), item.column()));
 }
 
@@ -1481,9 +1620,31 @@ void tst_QAbstractItemView::testDelegateDestroyEditor()
     table.setItemDelegate(&delegate);
     table.edit(table.model()->index(1, 1));
     QAbstractItemView *tv = &table;
-    QVERIFY(!delegate.calledVirtualDtor);
+    QCOMPARE(delegate.virtualDtorCallCount, 0);
     tv->closeEditor(delegate.openedEditor, QAbstractItemDelegate::NoHint);
-    QVERIFY(delegate.calledVirtualDtor);
+    QCOMPARE(delegate.virtualDtorCallCount, 1);
+}
+
+void tst_QAbstractItemView::testDelegateDestroyEditorChild()
+{
+    QTreeWidget tree;
+    MyAbstractItemDelegate delegate;
+    tree.setItemDelegate(&delegate);
+    QTreeWidgetItem *topLevel = new QTreeWidgetItem;
+    QTreeWidgetItem *levelOne1 = new QTreeWidgetItem(topLevel);
+    QTreeWidgetItem *levelTwo1 = new QTreeWidgetItem(levelOne1);
+    QTreeWidgetItem *levelOne2 = new QTreeWidgetItem(topLevel);
+    QTreeWidgetItem *levelTwo2 = new QTreeWidgetItem(levelOne2);
+    tree.insertTopLevelItem(0, topLevel);
+    tree.openPersistentEditor(levelOne1);
+    tree.openPersistentEditor(levelTwo1);
+    tree.openPersistentEditor(levelOne2);
+    tree.openPersistentEditor(levelTwo2);
+    QCOMPARE(delegate.virtualCtorCallCount, 4);
+    levelOne1->removeChild(levelTwo1);
+    QCOMPARE(delegate.virtualDtorCallCount, 1);
+    topLevel->removeChild(levelOne2);
+    QCOMPARE(delegate.virtualDtorCallCount, 3);
 }
 
 void tst_QAbstractItemView::testClickedSignal()
@@ -1496,7 +1657,7 @@ void tst_QAbstractItemView::testClickedSignal()
     centerOnScreen(&view);
     moveCursorAway(&view);
     view.showNormal();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(&view, QApplication::activeWindow());
 
@@ -1507,15 +1668,12 @@ void tst_QAbstractItemView::testClickedSignal()
     QSignalSpy clickedSpy(&view, &QTableWidget::clicked);
 
     QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, p);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT - QTBUG-68297", Abort);
-#endif
-    QCOMPARE(clickedSpy.count(), 1);
+    QCOMPARE(clickedSpy.size(), 1);
 
     QTest::mouseClick(view.viewport(), Qt::RightButton, {}, p);
     // We expect that right-clicks do not cause the clicked() signal to
     // be emitted.
-    QCOMPARE(clickedSpy.count(), 1);
+    QCOMPARE(clickedSpy.size(), 1);
 
 }
 
@@ -1550,7 +1708,7 @@ void tst_QAbstractItemView::testChangeEditorState()
     centerOnScreen(&view);
     moveCursorAway(&view);
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(&view, QApplication::activeWindow());
 
@@ -1571,7 +1729,7 @@ void tst_QAbstractItemView::deselectInSingleSelection()
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     view.setSelectionMode(QAbstractItemView::SingleSelection);
     view.setEditTriggers(QAbstractItemView::NoEditTriggers);
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     // mouse
     QModelIndex index22 = s.index(2, 2);
@@ -1579,28 +1737,28 @@ void tst_QAbstractItemView::deselectInSingleSelection()
     QPoint clickpos = rect22.center();
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, clickpos);
     QCOMPARE(view.currentIndex(), index22);
-    QCOMPARE(view.selectionModel()->selectedIndexes().count(), 1);
+    QCOMPARE(view.selectionModel()->selectedIndexes().size(), 1);
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ControlModifier, clickpos);
     QCOMPARE(view.currentIndex(), index22);
-    QCOMPARE(view.selectionModel()->selectedIndexes().count(), 0);
+    QCOMPARE(view.selectionModel()->selectedIndexes().size(), 0);
 
     // second click with modifier however does select
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ControlModifier, clickpos);
     QCOMPARE(view.currentIndex(), index22);
-    QCOMPARE(view.selectionModel()->selectedIndexes().count(), 1);
+    QCOMPARE(view.selectionModel()->selectedIndexes().size(), 1);
 
     // keyboard
     QTest::keyClick(&view, Qt::Key_Space, Qt::NoModifier);
     QCOMPARE(view.currentIndex(), index22);
-    QCOMPARE(view.selectionModel()->selectedIndexes().count(), 1);
+    QCOMPARE(view.selectionModel()->selectedIndexes().size(), 1);
     QTest::keyClick(&view, Qt::Key_Space, Qt::ControlModifier);
     QCOMPARE(view.currentIndex(), index22);
-    QCOMPARE(view.selectionModel()->selectedIndexes().count(), 0);
+    QCOMPARE(view.selectionModel()->selectedIndexes().size(), 0);
 
     // second keypress with modifier however does select
     QTest::keyClick(&view, Qt::Key_Space, Qt::ControlModifier);
     QCOMPARE(view.currentIndex(), index22);
-    QCOMPARE(view.selectionModel()->selectedIndexes().count(), 1);
+    QCOMPARE(view.selectionModel()->selectedIndexes().size(), 1);
 }
 
 void tst_QAbstractItemView::testNoActivateOnDisabledItem()
@@ -1618,7 +1776,7 @@ void tst_QAbstractItemView::testNoActivateOnDisabledItem()
     moveCursorAway(&treeView);
     treeView.show();
 
-    QApplication::setActiveWindow(&treeView);
+    QApplicationPrivate::setActiveWindow(&treeView);
     QVERIFY(QTest::qWaitForWindowActive(&treeView));
 
     QSignalSpy activatedSpy(&treeView, &QAbstractItemView::activated);
@@ -1628,7 +1786,7 @@ void tst_QAbstractItemView::testNoActivateOnDisabledItem()
     QPoint clickPos = treeView.visualRect(itemIndex).center();
     QTest::mouseClick(treeView.viewport(), Qt::LeftButton, {}, clickPos);
 
-    QCOMPARE(activatedSpy.count(), 0);
+    QCOMPARE(activatedSpy.size(), 0);
 }
 
 void tst_QAbstractItemView::testFocusPolicy_data()
@@ -1665,7 +1823,7 @@ void tst_QAbstractItemView::testFocusPolicy()
     moveCursorAway(&window);
 
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     // itemview accepts focus => editor is closed => return focus to the itemview
@@ -1703,7 +1861,7 @@ void tst_QAbstractItemView::QTBUG31411_noSelection()
     moveCursorAway(&window);
 
     window.show();
-    QApplication::setActiveWindow(&window);
+    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     qRegisterMetaType<QItemSelection>();
@@ -1722,7 +1880,7 @@ void tst_QAbstractItemView::QTBUG31411_noSelection()
     QVERIFY(editor2);
     QTest::keyClick(editor2, Qt::Key_Escape, Qt::NoModifier);
 
-    QCOMPARE(selectionChangeSpy.count(), 0);
+    QCOMPARE(selectionChangeSpy.size(), 0);
 }
 
 void tst_QAbstractItemView::QTBUG39324_settingSameInstanceOfIndexWidget()
@@ -1764,7 +1922,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Click "C"
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, view.visualRect(indexC).center());
     QModelIndexList selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(indexC));
 
     // Insert new item "B1"
@@ -1774,14 +1932,14 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Shift-click "D" -> we expect that "C" and "D" are selected
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, view.visualRect(indexD).center());
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 2);
+    QCOMPARE(selected.size(), 2);
     QVERIFY(selected.contains(indexC));
     QVERIFY(selected.contains(indexD));
 
     // Click "D"
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, view.visualRect(indexD).center());
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(indexD));
 
     // Remove items "B" and "C"
@@ -1793,7 +1951,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Shift-click "F" -> we expect that "D", "E", and "F" are selected
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, view.visualRect(indexF).center());
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 3);
+    QCOMPARE(selected.size(), 3);
     QVERIFY(selected.contains(indexD));
     QVERIFY(selected.contains(indexE));
     QVERIFY(selected.contains(indexF));
@@ -1802,7 +1960,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     while (view.currentIndex() != indexA)
         QTest::keyClick(&view, Qt::Key_Up);
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(indexA));
 
     // Change the sort order
@@ -1811,7 +1969,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Shift-click "F" -> All items should be selected
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, view.visualRect(indexF).center());
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), model.rowCount());
+    QCOMPARE(selected.size(), model.rowCount());
 
     // Restore the old sort order
     proxyModel.sort(0, Qt::AscendingOrder);
@@ -1819,7 +1977,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Click "D"
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, view.visualRect(indexD).center());
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(indexD));
 
     // Insert new item "B2"
@@ -1829,7 +1987,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Press Shift+Down -> "D" and "E" should be selected.
     QTest::keyClick(&view, Qt::Key_Down, Qt::ShiftModifier);
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 2);
+    QCOMPARE(selected.size(), 2);
     QVERIFY(selected.contains(indexD));
     QVERIFY(selected.contains(indexE));
 
@@ -1838,7 +1996,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, view.visualRect(indexA).center());
     view.setCurrentIndex(indexD);
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 1);
+    QCOMPARE(selected.size(), 1);
     QVERIFY(selected.contains(indexD));
 
     // Insert new item "B3"
@@ -1848,7 +2006,7 @@ void tst_QAbstractItemView::shiftSelectionAfterChangingModelContents()
     // Press Shift+Down -> "D" and "E" should be selected.
     QTest::keyClick(&view, Qt::Key_Down, Qt::ShiftModifier);
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 2);
+    QCOMPARE(selected.size(), 2);
     QVERIFY(selected.contains(indexD));
     QVERIFY(selected.contains(indexE));
 }
@@ -2126,14 +2284,14 @@ void tst_QAbstractItemView::testClickToSelect()
 
     // Click the center of the visualRect of item "A"
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, centerA);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.back().front().value<QRect>(), QRect(centerA, QSize(1, 1)));
 
     // Click a point slightly away from the center
     const QPoint nearCenterA = centerA + QPoint(1, 1);
     QVERIFY(visualRectA.contains(nearCenterA));
     QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, nearCenterA);
-    QCOMPARE(spy.count(), 2);
+    QCOMPARE(spy.size(), 2);
     QCOMPARE(spy.back().front().value<QRect>(), QRect(nearCenterA, QSize(1, 1)));
 }
 
@@ -2216,9 +2374,6 @@ void tst_QAbstractItemView::QTBUG46785_mouseout_hover_state()
 
     QTest::mouseMove(table.viewport(), QPoint(-50, 0));
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "QTest::mouseMove does not work on WinRT", Abort);
-#endif
     QTRY_VERIFY(delegate.m_paintedWithoutHover);
 }
 
@@ -2251,7 +2406,7 @@ void tst_QAbstractItemView::inputMethodEnabled_data()
     QTest::addColumn<Qt::ItemFlags>("itemFlags");
     QTest::addColumn<bool>("result");
 
-    const QVector<QByteArray> widgets{ "QListView", "QTreeView", "QTableView" };
+    const QList<QByteArray> widgets { "QListView", "QTreeView", "QTableView" };
     for (const QByteArray &widget : widgets) {
         QTest::newRow(widget + ": no flags")
             << widget << Qt::ItemFlags(Qt::NoItemFlags) << false;
@@ -2306,15 +2461,15 @@ void tst_QAbstractItemView::inputMethodEnabled()
 
     // Check focus by switching the activation of the window to force a focus in
     view->setCurrentIndex(model->index(1, 0));
-    QApplication::setActiveWindow(nullptr);
-    QApplication::setActiveWindow(view.data());
+    QApplicationPrivate::setActiveWindow(nullptr);
+    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     QCOMPARE(view->testAttribute(Qt::WA_InputMethodEnabled), result);
 
     view->setCurrentIndex(QModelIndex());
     QVERIFY(!view->testAttribute(Qt::WA_InputMethodEnabled));
-    QApplication::setActiveWindow(nullptr);
-    QApplication::setActiveWindow(view.data());
+    QApplicationPrivate::setActiveWindow(nullptr);
+    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     QModelIndex index = model->index(1, 0);
     QPoint p = view->visualRect(index).center();
@@ -2324,8 +2479,8 @@ void tst_QAbstractItemView::inputMethodEnabled()
     QCOMPARE(view->testAttribute(Qt::WA_InputMethodEnabled), result);
 
     index = model->index(0, 0);
-    QApplication::setActiveWindow(nullptr);
-    QApplication::setActiveWindow(view.data());
+    QApplicationPrivate::setActiveWindow(nullptr);
+    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     p = view->visualRect(index).center();
     QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, p);
@@ -2335,11 +2490,11 @@ void tst_QAbstractItemView::inputMethodEnabled()
     // There is a case when it goes to the first visible item so we
     // make the flags of the first item match the ones we are testing
     // to check the attribute correctly
-    QApplication::setActiveWindow(nullptr);
+    QApplicationPrivate::setActiveWindow(nullptr);
     view->setCurrentIndex(QModelIndex());
     view->reset();
     item->setFlags(Qt::ItemFlags(itemFlags));
-    QApplication::setActiveWindow(view.data());
+    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     QCOMPARE(view->testAttribute(Qt::WA_InputMethodEnabled), result);
 }
@@ -2348,7 +2503,7 @@ void tst_QAbstractItemView::currentFollowsIndexWidget_data()
 {
     QTest::addColumn<QByteArray>("viewType");
 
-    const QVector<QByteArray> widgets{ "QListView", "QTreeView", "QTableView" };
+    const QList<QByteArray> widgets { "QListView", "QTreeView", "QTableView" };
     for (const QByteArray &widget : widgets)
         QTest::newRow(widget) << widget;
 }
@@ -2450,11 +2605,11 @@ void tst_QAbstractItemView::checkFocusAfterActivationChanges()
     QVERIFY(QTest::qWaitForWindowExposed(delegate.openedEditor));
     QVERIFY(delegate.openedEditor->hasFocus());
 
-    QApplication::setActiveWindow(&otherTopLevel);
+    QApplicationPrivate::setActiveWindow(&otherTopLevel);
     otherTopLevel.setFocus();
     QTRY_VERIFY(!delegate.openedEditor);
 
-    QApplication::setActiveWindow(&w);
+    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
     QVERIFY(view->hasFocus());
 }
@@ -2494,7 +2649,7 @@ void tst_QAbstractItemView::dragSelectAfterNewPress()
 
     // Verify that the selection worked OK
     QModelIndexList selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 3);
+    QCOMPARE(selected.size(), 3);
     for (int i = 0; i < 2; ++i)
         QVERIFY(selected.contains(model.index(i, 0)));
 
@@ -2502,8 +2657,8 @@ void tst_QAbstractItemView::dragSelectAfterNewPress()
     const QPoint releasePos = view.visualRect(index5).center();
     // The mouse move event has to be created manually because the QTest framework does not
     // contain a function for mouse moves with buttons pressed
-    QMouseEvent moveEvent2(QEvent::MouseMove, releasePos, Qt::NoButton, Qt::LeftButton,
-                           Qt::ShiftModifier);
+    QMouseEvent moveEvent2(QEvent::MouseMove, releasePos, view.viewport()->mapToGlobal(releasePos),
+                           Qt::NoButton, Qt::LeftButton, Qt::ShiftModifier);
     const bool moveEventReceived = qApp->notify(view.viewport(), &moveEvent2);
     QVERIFY(moveEventReceived);
     QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::ShiftModifier, releasePos);
@@ -2511,18 +2666,19 @@ void tst_QAbstractItemView::dragSelectAfterNewPress()
 
     // Verify that the selection worked OK
     selected = view.selectionModel()->selectedIndexes();
-    QCOMPARE(selected.count(), 6);
+    QCOMPARE(selected.size(), 6);
     for (int i = 0; i < 5; ++i)
         QVERIFY(selected.contains(model.index(i, 0)));
 }
 
 void tst_QAbstractItemView::dragWithSecondClick_data()
 {
-    QTest::addColumn<QString>("viewClass");
+    QTest::addColumn<QByteArray>("viewClass");
     QTest::addColumn<bool>("doubleClick");
-    for (QString viewClass : {"QListView", "QTreeView"}) {
-        QTest::addRow("DoubleClick") << viewClass << true;
-        QTest::addRow("Two Single Clicks") << viewClass << false;
+    const QList<QByteArray> widgets { "QListView", "QTreeView" };
+    for (const QByteArray &widget : widgets) {
+        QTest::newRow(widget + ": DoubleClick") << widget << true;
+        QTest::newRow(widget + ": Two Single Clicks") << widget << false;
     }
 }
 
@@ -2551,7 +2707,7 @@ protected:
 
 void tst_QAbstractItemView::dragWithSecondClick()
 {
-    QFETCH(QString, viewClass);
+    QFETCH(QByteArray, viewClass);
     QFETCH(bool, doubleClick);
 
     QStandardItemModel model;
@@ -2599,7 +2755,7 @@ void tst_QAbstractItemView::dragWithSecondClick()
     const QPoint dragTo = view->visualRect(index1).center()
                         + QPoint(2 * QApplication::startDragDistance(),
                                  2 * QApplication::startDragDistance());
-    QMouseEvent mouseMoveEvent(QEvent::MouseMove, dragTo,
+    QMouseEvent mouseMoveEvent(QEvent::MouseMove, dragTo, view->viewport()->mapToGlobal(dragTo),
                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     QVERIFY(QApplication::sendEvent(view->viewport(), &mouseMoveEvent));
     // twice since the view will first enter dragging state, then start the drag
@@ -2643,6 +2799,781 @@ void tst_QAbstractItemView::clickAfterDoubleClick()
     QCOMPARE(clickCount, 2);
     QTest::mouseClick(window, Qt::LeftButton, {}, clickPoint);
     QCOMPARE(clickCount, 3);
+}
+
+void tst_QAbstractItemView::selectionCommand_data()
+{
+    QTest::addColumn<QAbstractItemView::SelectionMode>("selectionMode");
+    QTest::addColumn<Qt::KeyboardModifier>("keyboardModifier");
+    QTest::addColumn<QItemSelectionModel::SelectionFlag>("selectionFlag");
+
+    QTest::newRow("NoSelection - NoModifier") << QAbstractItemView::NoSelection << Qt::NoModifier << QItemSelectionModel::NoUpdate;
+    QTest::newRow("NoSelection - ShiftModifier") << QAbstractItemView::NoSelection << Qt::ShiftModifier << QItemSelectionModel::NoUpdate;
+    QTest::newRow("NoSelection - ControlModifier") << QAbstractItemView::NoSelection << Qt::ControlModifier << QItemSelectionModel::NoUpdate;
+    QTest::newRow("NoSelection - AltModifier") << QAbstractItemView::NoSelection << Qt::AltModifier << QItemSelectionModel::NoUpdate;
+
+    QTest::newRow("SingleSelection - NoModifier") << QAbstractItemView::SingleSelection << Qt::NoModifier << QItemSelectionModel::ClearAndSelect;
+    QTest::newRow("SingleSelection - ShiftModifier") << QAbstractItemView::SingleSelection << Qt::ShiftModifier << QItemSelectionModel::ClearAndSelect;
+    QTest::newRow("SingleSelection - ControlModifier") << QAbstractItemView::SingleSelection << Qt::ControlModifier << QItemSelectionModel::ClearAndSelect;
+    QTest::newRow("SingleSelection - AltModifier") << QAbstractItemView::SingleSelection << Qt::AltModifier << QItemSelectionModel::ClearAndSelect;
+
+    QTest::newRow("MultiSelection - NoModifier") << QAbstractItemView::MultiSelection << Qt::NoModifier << QItemSelectionModel::Toggle;
+    QTest::newRow("MultiSelection - ShiftModifier") << QAbstractItemView::MultiSelection << Qt::ShiftModifier << QItemSelectionModel::Toggle;
+    QTest::newRow("MultiSelection - ControlModifier") << QAbstractItemView::MultiSelection << Qt::ControlModifier << QItemSelectionModel::Toggle;
+    QTest::newRow("MultiSelection - AltModifier") << QAbstractItemView::MultiSelection << Qt::AltModifier << QItemSelectionModel::Toggle;
+
+    QTest::newRow("ExtendedSelection - NoModifier") << QAbstractItemView::ExtendedSelection << Qt::NoModifier << QItemSelectionModel::ClearAndSelect;
+    QTest::newRow("ExtendedSelection - ShiftModifier") << QAbstractItemView::ExtendedSelection << Qt::ShiftModifier << QItemSelectionModel::SelectCurrent;
+    QTest::newRow("ExtendedSelection - ControlModifier") << QAbstractItemView::ExtendedSelection << Qt::ControlModifier << QItemSelectionModel::Toggle;
+    QTest::newRow("ExtendedSelection - AltModifier") << QAbstractItemView::ExtendedSelection << Qt::AltModifier << QItemSelectionModel::ClearAndSelect;
+
+    QTest::newRow("ContiguousSelection - NoModifier") << QAbstractItemView::ContiguousSelection << Qt::NoModifier << QItemSelectionModel::ClearAndSelect;
+    QTest::newRow("ContiguousSelection - ShiftModifier") << QAbstractItemView::ContiguousSelection << Qt::ShiftModifier << QItemSelectionModel::SelectCurrent;
+    QTest::newRow("ContiguousSelection - ControlModifier") << QAbstractItemView::ContiguousSelection << Qt::ControlModifier << QItemSelectionModel::SelectCurrent;
+    QTest::newRow("ContiguousSelection - AltModifier") << QAbstractItemView::ContiguousSelection << Qt::AltModifier << QItemSelectionModel::ClearAndSelect;
+}
+
+void tst_QAbstractItemView::selectionCommand()
+{
+    QFETCH(QAbstractItemView::SelectionMode, selectionMode);
+    QFETCH(Qt::KeyboardModifier, keyboardModifier);
+    QFETCH(QItemSelectionModel::SelectionFlag, selectionFlag);
+
+    QTableView view;
+    view.setSelectionMode(selectionMode);
+    QTest::keyPress(&view, Qt::Key_A, keyboardModifier);
+    QCOMPARE(selectionFlag, view.selectionCommand(QModelIndex(), nullptr));
+}
+
+struct SelectionEvent
+{
+    enum MouseEvent
+    { Press, Release, Click, Move };
+    constexpr SelectionEvent(MouseEvent type, int r = -1) noexcept
+        : eventType(type), row(r) {}
+    constexpr SelectionEvent(MouseEvent type, Qt::KeyboardModifiers mod, int r = -1) noexcept
+        : eventType(type), keyboardModifiers(mod), row(r) {}
+    MouseEvent eventType = Press;
+    Qt::KeyboardModifiers keyboardModifiers = Qt::NoModifier;
+    int row = -1;
+};
+
+void tst_QAbstractItemView::mouseSelection_data()
+{
+    QTest::addColumn<QAbstractItemView::SelectionMode>("selectionMode");
+    QTest::addColumn<bool>("dragEnabled");
+    QTest::addColumn<QAbstractItemView::EditTrigger>("editTrigger");
+    QTest::addColumn<QList<SelectionEvent>>("selectionEvents");
+    QTest::addColumn<QList<int>>("selectedRows");
+
+    // single selection mode - always one row selected, modifiers ignored
+    QTest::addRow("Single:Press") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1)}
+        << QList{1};
+    QTest::addRow("Single:Click") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent{SelectionEvent::Click, 1}}
+        << QList{1};
+    QTest::addRow("Single:Press+Drag") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent{SelectionEvent::Move, 2},
+                 SelectionEvent{SelectionEvent::Release}}
+        << QList{2};
+    QTest::addRow("Single:Shift+Click") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent{SelectionEvent::Click, Qt::ShiftModifier, 2}}
+        << QList{2};
+    QTest::addRow("Single:Press;Ctrl+Press") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent{SelectionEvent::Press, 3},
+                 SelectionEvent{SelectionEvent::Press, Qt::ControlModifier, 3}}
+        << QList{3};
+    QTest::addRow("Single:Ctrl+Click") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent{SelectionEvent::Click, Qt::ControlModifier, 3}}
+        << QList{3};
+    QTest::addRow("Single:Click;Ctrl+Click") << QAbstractItemView::SingleSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent{SelectionEvent::Click, 3},
+                 SelectionEvent{SelectionEvent::Click, Qt::ControlModifier, 3}}
+        << QList<int>{};
+
+    // multi selection mode - selection toggles on press, selection can be drag-extended
+    // modifiers ignored
+    QTest::addRow("Multi:Press") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1)}
+        << QList{1};
+    QTest::addRow("Multi:Press twice") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Press, 1)}
+        << QList<int>{};
+    QTest::addRow("Multi:Press twice with drag enabled") << QAbstractItemView::MultiSelection << true
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Click, 1),
+                 SelectionEvent(SelectionEvent::Press, 1)}
+        << QList{1};
+    QTest::addRow("Multi:Press and click with drag enabled") << QAbstractItemView::MultiSelection << true
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Click, 1)}
+        << QList<int>{};
+    QTest::addRow("Multi:Press,Press") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 2),
+                 SelectionEvent(SelectionEvent::Press, 3)}
+        << QList{2, 3};
+    QTest::addRow("Multi:Press,Drag") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Move, 5),
+                 SelectionEvent(SelectionEvent::Release)}
+        << QList{1, 2, 3, 4, 5};
+    QTest::addRow("Multi:Press,Drag,Deselect") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Move, 5),
+                 SelectionEvent(SelectionEvent::Release),
+                 SelectionEvent(SelectionEvent::Press, 3)}
+        << QList{1, 2, 4, 5};
+    // drag-select a few indices; then drag-select a larger area that includes the first
+    QTest::addRow("Multi:Press,Drag;Surround") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 3),
+                 SelectionEvent(SelectionEvent::Move, 5),
+                 SelectionEvent(SelectionEvent::Release),
+                 SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Move, 8),
+                 SelectionEvent(SelectionEvent::Release)}
+        << QList{1, 2, 3, 4, 5, 6, 7, 8};
+    // drag-select a few indices; then try to select more starting with the last -> not working
+    QTest::addRow("Multi:Press,Drag;Expand") << QAbstractItemView::MultiSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 3),
+                 SelectionEvent(SelectionEvent::Move, 5),
+                 SelectionEvent(SelectionEvent::Release),
+                 SelectionEvent(SelectionEvent::Press, 5), // this will deselect #5 and not select 6/7/8
+                 SelectionEvent(SelectionEvent::Move, 8),
+                 SelectionEvent(SelectionEvent::Release)}
+        << QList{3, 4};
+    // Multi: Press-dragging a selection should not deselect #QTBUG-59888
+    QTest::addRow("Multi:Press-Drag selection") << QAbstractItemView::MultiSelection << true
+        // with drag'n'drop enabled, we cannot drag a selection
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Click, 2),
+                 SelectionEvent(SelectionEvent::Click, 3),
+                 SelectionEvent(SelectionEvent::Click, 4),
+                 SelectionEvent(SelectionEvent::Click, 5),
+                 SelectionEvent(SelectionEvent::Press, 3),
+                 // two moves needed because of distance and state logic in QAbstractItemView
+                 SelectionEvent(SelectionEvent::Move, 5),
+                 SelectionEvent(SelectionEvent::Move, 6)}
+        << QList{2, 3, 4, 5};
+
+    // Extended selection: Press selects a single item
+    QTest::addRow("Extended:Press") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 3)}
+        << QList{3};
+    QTest::addRow("Extended:Press twice") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 3),
+                 SelectionEvent(SelectionEvent::Press, 3)}
+        << QList{3};
+    QTest::addRow("Extended:Press,Press") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 2),
+                 SelectionEvent(SelectionEvent::Press, 3)}
+        << QList{3};
+    // Extended selection: press with Ctrl toggles item
+    QTest::addRow("Extended:Press,Toggle") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 3),
+                 SelectionEvent(SelectionEvent::Click, Qt::ControlModifier, 3)}
+        << QList<int>{};
+    QTest::addRow("Extended:Press,Add") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Click, Qt::ControlModifier, 3)}
+        << QList{1, 3};
+    // Extended selection: Shift creates a range between first and last pressed
+    QTest::addRow("Extended:Press,Range") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Press, Qt::ShiftModifier, 5)}
+        << QList{1, 2, 3, 4, 5};
+    QTest::addRow("Extended:Press,Range,Fix Range") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 1),
+                 SelectionEvent(SelectionEvent::Press, Qt::ShiftModifier, 5),
+                 SelectionEvent(SelectionEvent::Press, Qt::ShiftModifier, 3)}
+        << QList{1, 2, 3};
+    // Extended: dragging extends the selection
+    QTest::addRow("Extended:Press,Drag") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 2),
+                 SelectionEvent(SelectionEvent::Move, 5)}
+        << QList{2, 3, 4, 5};
+    // Extended: Ctrl+Press-dragging extends the selection
+    QTest::addRow("Extended:Press,Drag;Ctrl-Press,Drag") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Press, 2),
+                 SelectionEvent(SelectionEvent::Move, 5),
+                 SelectionEvent(SelectionEvent::Release),
+                 SelectionEvent(SelectionEvent::Press, Qt::ControlModifier, 6),
+                 SelectionEvent(SelectionEvent::Move, Qt::ControlModifier, 8),
+                 SelectionEvent(SelectionEvent::Release, Qt::ControlModifier, 8)}
+        << QList{2, 3, 4, 5, 6, 7, 8};
+    // Extended: Ctrl+Press-dragging in a selection should not deselect #QTBUG-59888
+    QTest::addRow("Extended:Ctrl-Drag selection,no deselect") << QAbstractItemView::ExtendedSelection << true
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Click, 2),
+                 SelectionEvent(SelectionEvent::Click, Qt::ShiftModifier, 5),
+                 SelectionEvent(SelectionEvent::Press, Qt::ControlModifier, 3),
+                 SelectionEvent(SelectionEvent::Move, Qt::ControlModifier, 5),
+                 // two moves needed because of distance and state logic in QAbstractItemView
+                 SelectionEvent(SelectionEvent::Move, Qt::ControlModifier, 6)}
+        << QList{2, 3, 4, 5};
+    // Extended: Ctrl+Press-dragging with a selection extends, then drags #QTBUG-59888
+    QTest::addRow("Extended:Ctrl-Drag selection") << QAbstractItemView::ExtendedSelection << true
+        << QAbstractItemView::NoEditTriggers
+        << QList{SelectionEvent(SelectionEvent::Click, 2),
+                 SelectionEvent(SelectionEvent::Click, Qt::ShiftModifier, 5),
+                 SelectionEvent(SelectionEvent::Press, Qt::ControlModifier, 6),
+                 SelectionEvent(SelectionEvent::Move, Qt::ControlModifier, 7),
+                 // two moves needed because of distance and state logic in 7QAbstractItemView
+                 SelectionEvent(SelectionEvent::Move, Qt::ControlModifier, 8)}
+        << QList{2, 3, 4, 5, 6};
+    // Extended: when drag is enabled, click with Ctrl toggles item instead of editing # QTBUG-111131
+    QTest::addRow("Extended:Click,Toggle,editable") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::SelectedClicked
+        << QList{SelectionEvent(SelectionEvent::Click, 3),
+                 SelectionEvent(SelectionEvent::Click, Qt::ControlModifier, 3)}
+        << QList<int>{};
+    QTest::addRow("Extended:Click,Toggle,dragable,editable") << QAbstractItemView::ExtendedSelection << true
+        << QAbstractItemView::SelectedClicked
+        << QList{SelectionEvent(SelectionEvent::Click, 3),
+                 SelectionEvent(SelectionEvent::Click, Qt::ControlModifier, 3)}
+        << QList<int>{};
+    // Extended: when drag is enabled, click on selected without Ctrl clears before editing
+    QTest::addRow("Extended:Range,Click,editable") << QAbstractItemView::ExtendedSelection << false
+        << QAbstractItemView::SelectedClicked
+        << QList{SelectionEvent(SelectionEvent::Click, 1),
+                 SelectionEvent(SelectionEvent::Click, Qt::ShiftModifier, 3),
+                 SelectionEvent(SelectionEvent::Click, 2)}
+        << QList<int>{2};
+    QTest::addRow("Extended:Range,Click,dragable,editable") << QAbstractItemView::ExtendedSelection << true
+        << QAbstractItemView::SelectedClicked
+        << QList{SelectionEvent(SelectionEvent::Click, 1),
+                 SelectionEvent(SelectionEvent::Click, Qt::ShiftModifier, 3),
+                 SelectionEvent(SelectionEvent::Click, 2)}
+        << QList<int>{2};
+}
+
+void tst_QAbstractItemView::mouseSelection()
+{
+    QFETCH(QAbstractItemView::SelectionMode, selectionMode);
+    QFETCH(bool, dragEnabled);
+    QFETCH(QAbstractItemView::EditTrigger, editTrigger);
+    QFETCH(QList<SelectionEvent>, selectionEvents);
+    QFETCH(QList<int>, selectedRows);
+
+    QStandardItemModel model;
+    QStandardItem *parentItem = model.invisibleRootItem();
+    for (int i = 0; i < 10; ++i) {
+        QStandardItem *item = new QStandardItem(QString("item %0").arg(i));
+        item->setDragEnabled(dragEnabled);
+        item->setEditable(editTrigger != QAbstractItemView::NoEditTriggers);
+        parentItem->appendRow(item);
+    }
+
+    std::unique_ptr<DragRecorder> dragRecorder(new DragRecorderView<QTreeView>);
+    QAbstractItemView *view = dragRecorder->view;
+    QVERIFY(view);
+    view->setModel(&model);
+    view->setDragEnabled(dragEnabled);
+    view->setSelectionMode(selectionMode);
+    view->setEditTriggers(editTrigger);
+    view->show();
+    QVERIFY(QTest::qWaitForWindowActive(view));
+
+    Qt::MouseButton buttonDown = Qt::NoButton;
+    int targetRow = -1;
+    QModelIndex pressedIndex;
+    for (const auto &event : std::as_const(selectionEvents)) {
+        if (event.row != -1)
+            targetRow = event.row;
+        const QModelIndex targetIndex = model.index(targetRow, 0);
+        const QPoint targetPoint = view->visualRect(targetIndex).center();
+        switch (event.eventType) {
+        case SelectionEvent::Press:
+            if (buttonDown != Qt::NoButton) {
+                QTest::mouseRelease(view->viewport(), buttonDown, event.keyboardModifiers,
+                                    view->visualRect(pressedIndex).center());
+            }
+            buttonDown = Qt::LeftButton;
+            pressedIndex = model.index(targetRow, 0);
+            QTest::mousePress(view->viewport(), buttonDown, event.keyboardModifiers, targetPoint);
+            break;
+        case SelectionEvent::Release:
+            QTest::mouseRelease(view->viewport(), buttonDown, event.keyboardModifiers, targetPoint);
+            buttonDown = Qt::NoButton;
+            pressedIndex = QModelIndex();
+            break;
+        case SelectionEvent::Click:
+            QTest::mouseClick(view->viewport(), Qt::LeftButton, event.keyboardModifiers, targetPoint);
+            buttonDown = Qt::NoButton;
+            break;
+        case SelectionEvent::Move: {
+                QMouseEvent mouseMoveEvent(QEvent::MouseMove, targetPoint,
+                                           view->viewport()->mapToGlobal(targetPoint),
+                                           Qt::NoButton, buttonDown, event.keyboardModifiers);
+                QApplication::sendEvent(view->viewport(), &mouseMoveEvent);
+            }
+            break;
+        }
+    }
+
+    QList<int> actualSelected;
+    const auto selectedIndexes = dragRecorder->dragStarted
+                               ? dragRecorder->draggedIndexes
+                               : view->selectionModel()->selectedIndexes();
+    for (auto index : selectedIndexes)
+        actualSelected << index.row();
+
+    QCOMPARE(actualSelected, selectedRows);
+}
+
+/*!
+    Make sure that when clicking on empty space in the view, we don't
+    unselect the current row.
+    QTBUG-105870
+*/
+void tst_QAbstractItemView::keepSingleSelectionOnEmptyAreaClick()
+{
+    QListWidget view;
+    view.setSelectionMode(QAbstractItemView::SingleSelection);
+    QListWidgetItem *lastItem;
+    for (int i = 0; i < 5; i++)
+        lastItem = new QListWidgetItem("item " + QString::number(i), &view);
+
+    // Make widget large enough so that there is empty area below the last item
+    view.setFixedSize(300, 500);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+
+    // Select third row
+    view.setCurrentRow(2);
+
+    // Click below the last row
+    QPoint targetPoint = view.visualItemRect(lastItem).bottomLeft();
+    targetPoint += QPoint(10, 10);
+
+    QTest::mouseClick(view.viewport(), Qt::MouseButton::LeftButton, Qt::NoModifier, targetPoint);
+
+    QCOMPARE(view.currentRow(), 2);
+    QVERIFY(view.currentItem()->isSelected());
+}
+
+/*!
+    Verify that scrolling an autoScroll enabled itemview with a QScroller
+    produces a continuous, smooth scroll without any jumping around due to
+    the currentItem negotiation between QAbstractItemView and QScroller.
+    QTBUG-64543.
+*/
+void tst_QAbstractItemView::scrollerSmoothScroll()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("QWindow::requestActivate() is not supported.");
+
+    QListWidget view;
+    view.setAutoScroll(true);
+    view.setVerticalScrollMode(QListView::ScrollPerPixel);
+
+    QScroller::grabGesture(view.viewport(), QScroller::TouchGesture);
+    QScroller::grabGesture(view.viewport(), QScroller::LeftMouseButtonGesture);
+
+    for (int i = 0; i < 50; i++) {
+        QListWidgetItem* item = new QListWidgetItem("item " + QString::number(i), &view);
+        // gives items a touch friendly size so that only a few fit into the viewport
+        item->setSizeHint(QSize(100,50));
+    }
+
+    // make sure we have space for only a few items
+    view.setFixedSize(120, 200);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowActive(&view));
+
+    // we flick up, so we should never scroll back
+    int lastScrollPosition = 0;
+    bool scrollBack = false;
+    connect(view.verticalScrollBar(), &QScrollBar::valueChanged, [&](int value){
+        scrollBack |= (value < lastScrollPosition);
+        lastScrollPosition = value;
+    });
+
+    // start in the middle
+    view.scrollToItem(view.item(25));
+    QCOMPARE(view.currentItem(), view.item(0));
+    QListWidgetItem *pressItem = view.item(23);
+    QPoint dragPosition = view.visualRect(view.indexFromItem(pressItem)).center();
+    // the mouse press changes the current item temporarily, but the press is delayed
+    // by the gesture machinery. this is not what we are testing here, so skip the test
+    // if this fails within a reasonable amount of time.
+    QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, dragPosition);
+    if (!(QTest::qWaitFor([&]{ return view.currentItem() == pressItem; })))
+        QSKIP("Current item didn't change on press, skipping test");
+
+    // QAIV will reset the current item when the scroller changes state to Dragging
+    for (int y = 0; y < QApplication::startDragDistance() * 2; ++y) {
+        // gesture recognizer needs some throttling
+        QTest::qWait(10);
+        dragPosition -= QPoint(0, 10);
+        const QPoint globalPos = view.viewport()->mapToGlobal(dragPosition);
+        QMouseEvent mouseMoveEvent(QEvent::MouseMove, dragPosition, dragPosition, globalPos,
+                                    Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(view.viewport(), &mouseMoveEvent);
+        QVERIFY(!scrollBack);
+    }
+
+    QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, dragPosition);
+}
+
+/*!
+    Verify that starting the editing of an item with a key press while a composing
+    input method is active doesn't break the input method. See QTBUG-54848.
+*/
+void tst_QAbstractItemView::inputMethodOpensEditor_data()
+{
+    QTest::addColumn<QPoint>("editItem");
+    QTest::addColumn<QString>("preedit");
+    QTest::addColumn<QString>("commit");
+
+    QTest::addRow("IM accepted") << QPoint(1, 1) << "chang" << QString("长");
+    QTest::addRow("IM cancelled") << QPoint(25, 25) << "chang" << QString();
+}
+
+void tst_QAbstractItemView::inputMethodOpensEditor()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("QWindow::requestActivate() is not supported.");
+
+    QTableWidget tableWidget(50, 50);
+    tableWidget.setEditTriggers(QAbstractItemView::AnyKeyPressed);
+    for (int r = 0; r < 50; ++r) {
+        for (int c = 0; c < 50; ++c )
+            tableWidget.setItem(r, c, new QTableWidgetItem(QString("Item %1:%2").arg(r).arg(c)));
+    }
+
+    tableWidget.show();
+    QVERIFY(QTest::qWaitForWindowActive(&tableWidget));
+
+    const auto sendInputMethodEvent = [](const QString &preeditText, const QString &commitString = {}){
+        QInputMethodEvent imEvent(preeditText, {});
+        imEvent.setCommitString(commitString);
+        QApplication::sendEvent(QApplication::focusWidget(), &imEvent);
+    };
+
+    QCOMPARE(QApplication::focusWidget(), &tableWidget);
+
+    QFETCH(QPoint, editItem);
+    QFETCH(QString, preedit);
+    QFETCH(QString, commit);
+
+    tableWidget.setCurrentCell(editItem.y(), editItem.x());
+    const QString orgText = tableWidget.currentItem()->text();
+    const QModelIndex currentIndex = tableWidget.currentIndex();
+    QCOMPARE(tableWidget.inputMethodQuery(Qt::ImCursorRectangle), tableWidget.visualRect(currentIndex));
+
+    // simulate the start of input via a composing input method
+    sendInputMethodEvent(preedit.left(1));
+    QCOMPARE(tableWidget.state(), QAbstractItemView::EditingState);
+    QLineEdit *editor = tableWidget.findChild<QLineEdit*>();
+    QVERIFY(editor);
+    QCOMPARE(editor->text(), QString());
+    // the focus must remain with the tableWidget, as otherwise the compositing is interrupted
+    QCOMPARE(QApplication::focusWidget(), &tableWidget);
+    // the item view delegates input method queries to the editor
+    const QRect cursorRect = tableWidget.inputMethodQuery(Qt::ImCursorRectangle).toRect();
+    QVERIFY(cursorRect.isValid());
+    QVERIFY(tableWidget.visualRect(currentIndex).intersects(cursorRect));
+
+    // finish preediting, then commit or cancel the input
+    sendInputMethodEvent(preedit);
+    sendInputMethodEvent(QString(), commit);
+    // editing continues, the editor now has focus
+    QCOMPARE(tableWidget.state(), QAbstractItemView::EditingState);
+    QVERIFY(editor->hasFocus());
+    // finish editing
+    QTest::keyClick(editor, Qt::Key_Return);
+    if (commit.isEmpty()) {
+        // if composition was cancelled, then the item's value is unchanged
+        QCOMPARE(tableWidget.currentItem()->text(), orgText);
+    } else {
+        // otherwise, the item's value is now the commit string
+        QTRY_COMPARE(tableWidget.currentItem()->text(), commit);
+    }
+}
+
+void tst_QAbstractItemView::selectionAutoScrolling_data()
+{
+    QTest::addColumn<Qt::Orientation>("orientation");
+    QTest::addColumn<int>("direction"); // negative or positive
+
+    QTest::addRow("scroll up") << Qt::Vertical << -1;
+    QTest::addRow("scroll left") << Qt::Horizontal << -1;
+    QTest::addRow("scroll down") << Qt::Vertical << +1;
+    QTest::addRow("scroll right") << Qt::Horizontal << +1;
+}
+
+void tst_QAbstractItemView::selectionAutoScrolling()
+{
+    QFETCH(Qt::Orientation, orientation);
+    QFETCH(int, direction);
+
+    QListView listview;
+    listview.setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    listview.setResizeMode(QListView::Fixed);
+    listview.setAutoScroll(true);
+    listview.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    listview.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    listview.setSpacing(10);
+    listview.setGeometry(0, 0, 500, 500);
+    listview.setFrameShape(QFrame::Shape::NoFrame);
+    listview.setEditTriggers(QListView::NoEditTriggers);
+
+    QStandardItemModel *listModel = new QStandardItemModel(&listview);
+    listview.setModel(listModel);
+    listview.setViewMode(QListView::IconMode);
+    listview.setSelectionMode(QListView::ExtendedSelection);
+
+    QPixmap pm(50, 50);
+    pm.fill(Qt::red);
+    for (int i = 0; i < 80; i++) {
+        QStandardItem *item = new QStandardItem(pm, QString::number(i));
+        listModel->appendRow(item);
+    }
+
+    listview.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&listview));
+
+    listview.resize(200, 200);
+    // scroll to the middle
+    listview.verticalScrollBar()->setValue(listview.verticalScrollBar()->maximum() / 2);
+    listview.horizontalScrollBar()->setValue(listview.horizontalScrollBar()->maximum() / 2);
+
+    // remove all visible items so that we don't select any items at the edges, as that
+    // would scroll the view already
+    for (int x = 0; x < listview.viewport()->width(); x += 5) {
+        for (int y = 0; y < listview.viewport()->height(); y += 5) {
+            const QModelIndex index = listview.indexAt(QPoint(x, y));
+            if (index.isValid())
+                delete listModel->itemFromIndex(index);
+        }
+    }
+    // remove all items around the edges of the model
+    QRect topLeftRect = listview.visualRect(listModel->index(0, 0));
+    const QPoint topLeftCenter(topLeftRect.center());
+    QPoint bottomRightCenter;
+    for (int x = 0; x < listview.horizontalScrollBar()->maximum() + listview.viewport()->width(); x += 5) {
+        const QModelIndex index = listview.indexAt(topLeftCenter + QPoint(x, 0));
+        if (index.isValid()) {
+            delete listModel->itemFromIndex(index);
+            bottomRightCenter.rx() = x;
+        }
+    }
+    for (int y = 0; y < listview.verticalScrollBar()->maximum() + listview.viewport()->height(); y += 5) {
+        const QModelIndex index = listview.indexAt(topLeftCenter + QPoint(0, y));
+        if (index.isValid()) {
+            delete listModel->itemFromIndex(index);
+            bottomRightCenter.ry() = y;
+        }
+    }
+    for (int x = 0; x < bottomRightCenter.x(); x += 5) {
+        const QModelIndex index = listview.indexAt(topLeftCenter + QPoint(x, bottomRightCenter.y()));
+        if (index.isValid())
+            delete listModel->itemFromIndex(index);
+    }
+    for (int y = 0; y < bottomRightCenter.y(); y += 5) {
+        const QModelIndex index = listview.indexAt(topLeftCenter + QPoint(bottomRightCenter.x(), y));
+        if (index.isValid())
+            delete listModel->itemFromIndex(index);
+    }
+
+
+    // Simulate multiple select behavior; start in the middle, drag to the edge
+    const QPoint pressPoint(listview.viewport()->width() / 2, listview.viewport()->height() / 2);
+    QPoint dragPoint = pressPoint;
+    if (orientation == Qt::Vertical) {
+        dragPoint.rx() += 50;
+        dragPoint.ry() = direction > 0 ? listview.viewport()->height() : 0;
+    } else {
+        dragPoint.rx() = direction > 0 ? listview.viewport()->width() : 0;
+        dragPoint.ry() += 50;
+    }
+
+    QTest::mousePress(listview.viewport(), Qt::LeftButton, Qt::NoModifier, pressPoint);
+    QMouseEvent mmEvent(QEvent::MouseMove, dragPoint, listview.viewport()->mapToGlobal(dragPoint),
+                        Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(listview.viewport(), &mmEvent); // QTest::mouseMove is useless
+
+    // check that we scrolled to the end
+    QScrollBar *scrollBar = orientation == Qt::Vertical
+                          ? listview.verticalScrollBar()
+                          : listview.horizontalScrollBar();
+
+    if (direction < 0)
+        QTRY_COMPARE(scrollBar->value(), 0);
+    else
+        QTRY_COMPARE(scrollBar->value(), scrollBar->maximum());
+    QVERIFY(listview.selectionModel()->selectedIndexes().size() > 0);
+
+    QTest::mouseRelease(listview.viewport(), Qt::LeftButton, Qt::NoModifier, dragPoint);
+}
+class SpinBoxDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &, const QModelIndex &) const override
+    {
+        QSpinBox *spinboxEditor = new QSpinBox(parent);
+        return spinboxEditor;
+    }
+
+    void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override
+    {
+        if (QSpinBox *spin = qobject_cast<QSpinBox *>(editor)) {
+            model->setData(index, spin->value());
+        }
+    }
+};
+
+void tst_QAbstractItemView::testSpinBoxAsEditor_data()
+{
+    QTest::addColumn<bool>("keyboardTracking");
+    QTest::newRow("true") << true;
+    QTest::newRow("false")<< false;
+}
+
+void tst_QAbstractItemView::testSpinBoxAsEditor()
+{
+    QFETCH(bool, keyboardTracking);
+
+    QStandardItemModel model(2, 2);
+    SpinBoxDelegate delegate;
+
+    QTableView view;
+    view.setModel(&model);
+    view.setItemDelegate(&delegate);
+
+    view.setCurrentIndex(model.index(0, 1));
+    view.openPersistentEditor(model.index(0, 1));
+    const QList<QSpinBox *> list = view.viewport()->findChildren<QSpinBox *>();
+    QCOMPARE(list.size(), 1);
+    QSpinBox *sb = list.first();
+    QVERIFY(sb);
+
+    sb->setKeyboardTracking(keyboardTracking);
+
+    centerOnScreen(&view);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QTRY_COMPARE(QApplication::focusWidget(), sb);
+
+    QTest::keyClick(sb, Qt::Key_1, Qt::NoModifier);
+    QPoint clickpos = view.visualRect(model.index(0, 0)).center();
+    QTest::mouseDClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, clickpos);
+
+    QCOMPARE(model.data(model.index(0, 1)).toInt(), 1);
+}
+
+void tst_QAbstractItemView::removeIndexWhileEditing()
+{
+    QTreeView view;
+    QStandardItemModel treeModel;
+    auto editableItem1 = new QStandardItem("aa");
+    auto editableItem2 = new QStandardItem("ab");
+    auto editableItem3 = new QStandardItem("ac");
+    auto item = new QStandardItem("a");
+    item->appendRow(editableItem1);
+    item->appendRow(editableItem2);
+    item->appendRow(editableItem3);
+    treeModel.setItem(0, 0, item);
+    QSortFilterProxyModel filterModel;
+    filterModel.setSourceModel(&treeModel);
+    view.setModel(&filterModel);
+    view.show();
+
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    view.setExpanded(item->index(), true);
+
+    filterModel.setFilterRegularExpression("a.*");
+
+    QTest::failOnWarning(QRegularExpression("QAbstractItemView::closeEditor called with an editor "
+                                            "that does not belong to this view"));
+
+    // Verify that we shut editing down cleanly if the index we are editing is
+    // filtered out after committing
+    {
+        const QModelIndex filteredIndex = filterModel.mapFromSource(editableItem1->index());
+        QVERIFY(filteredIndex.isValid());
+        view.edit(filteredIndex);
+        QCOMPARE(view.state(), QAbstractItemView::EditingState);
+        QTRY_VERIFY(QApplication::focusWidget());
+        QPointer<QLineEdit> lineEdit = qobject_cast<QLineEdit *>(QApplication::focusWidget());
+        QVERIFY(lineEdit);
+        lineEdit->setText("c");
+        QTest::keyClick(lineEdit, Qt::Key_Enter);
+        QTRY_VERIFY(!lineEdit);
+        QCOMPARE(editableItem1->data(Qt::DisplayRole), "c");
+        QCOMPARE(view.state(), QAbstractItemView::NoState);
+    }
+
+    // If we change the filter while we edit, then we should clean up state as well
+    {
+        const QModelIndex filteredIndex = filterModel.mapFromSource(editableItem2->index());
+        QVERIFY(filteredIndex.isValid());
+        view.edit(filteredIndex);
+        QCOMPARE(view.state(), QAbstractItemView::EditingState);
+        QTRY_VERIFY(QApplication::focusWidget());
+        QPointer<QLineEdit> lineEdit = qobject_cast<QLineEdit *>(QApplication::focusWidget());
+        QVERIFY(lineEdit);
+        filterModel.setFilterFixedString("c");
+        QVERIFY(!filterModel.mapFromSource(editableItem2->index()).isValid());
+        QTRY_VERIFY(!lineEdit);
+        QCOMPARE(view.state(), QAbstractItemView::NoState);
+    }
+}
+
+void tst_QAbstractItemView::focusNextOnHide()
+{
+    QWidget widget;
+    QTableWidget table(10, 10);
+    table.setTabKeyNavigation(true);
+    QLineEdit lineEdit;
+
+    QHBoxLayout layout;
+    layout.addWidget(&table);
+    layout.addWidget(&lineEdit);
+    widget.setLayout(&layout);
+
+    widget.setTabOrder({&table, &lineEdit});
+
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    QVERIFY(table.hasFocus());
+    QCOMPARE(table.currentIndex(), table.model()->index(0, 0));
+    QTest::keyPress(&table, Qt::Key_Tab);
+    QCOMPARE(table.currentIndex(), table.model()->index(0, 1));
+
+    table.hide();
+    QCOMPARE(table.currentIndex(), table.model()->index(0, 1));
+    QVERIFY(lineEdit.hasFocus());
 }
 
 QTEST_MAIN(tst_QAbstractItemView)

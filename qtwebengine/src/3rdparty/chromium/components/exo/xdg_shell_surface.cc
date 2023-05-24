@@ -1,10 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/exo/xdg_shell_surface.h"
 
 #include "ash/frame/non_client_frame_view_ash.h"
+#include "chromeos/ui/base/window_properties.h"
+#include "ui/aura/client/aura_constants.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/rect.h"
@@ -18,12 +20,29 @@ namespace exo {
 
 XdgShellSurface::XdgShellSurface(Surface* surface,
                                  const gfx::Point& origin,
-                                 bool activatable,
                                  bool can_minimize,
                                  int container)
-    : ShellSurface(surface, origin, activatable, can_minimize, container) {}
+    : ShellSurface(surface, origin, can_minimize, container) {}
 
 XdgShellSurface::~XdgShellSurface() {}
+
+void XdgShellSurface::OverrideInitParams(views::Widget::InitParams* params) {
+  DCHECK(params);
+
+  // Auto-maximize can override the initial show_state, if it's enabled via
+  // window property.
+  bool auto_maximize_enabled = params->init_properties_container.GetProperty(
+      chromeos::kAutoMaximizeXdgShellEnabled);
+  if (auto_maximize_enabled && ShouldAutoMaximize())
+    params->show_state = ui::SHOW_STATE_MAXIMIZED;
+
+  // Show state should be overridden when set via window property.
+  if (params->init_properties_container.GetProperty(
+          aura::client::kShowStateKey)) {
+    params->show_state = params->init_properties_container.GetProperty(
+        aura::client::kShowStateKey);
+  }
+}
 
 bool XdgShellSurface::ShouldAutoMaximize() {
   if (initial_show_state() != ui::SHOW_STATE_DEFAULT || is_popup_ ||
@@ -41,10 +60,10 @@ bool XdgShellSurface::ShouldAutoMaximize() {
   // We rely on unit tests to guard against changes in the size of the window
   // decorations.
   if (frame_enabled()) {
-    window_bounds.Inset(0, 0, 0,
-                        -views::GetCaptionButtonLayoutSize(
-                             views::CaptionButtonLayoutSize::kNonBrowserCaption)
-                             .height());
+    window_bounds.Inset(gfx::Insets().set_bottom(
+        -views::GetCaptionButtonLayoutSize(
+             views::CaptionButtonLayoutSize::kNonBrowserCaption)
+             .height()));
   }
   return window_bounds.width() >= work_area_size.width() &&
          window_bounds.height() >= work_area_size.height();

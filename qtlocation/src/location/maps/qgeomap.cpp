@@ -1,47 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeomap_p.h"
 #include "qgeomap_p_p.h"
 #include "qgeocameracapabilities_p.h"
 #include "qgeomappingmanagerengine_p.h"
 #include "qdeclarativegeomapitembase_p.h"
-#include "qgeomapobject_p.h"
-#include "qgeomapobject_p_p.h"
-#include <QtQuick/private/qquickitem_p.h>
 #include <QDebug>
 #include <QRectF>
 
@@ -54,10 +18,6 @@ QGeoMap::QGeoMap(QGeoMapPrivate &dd, QObject *parent)
 
 QGeoMap::~QGeoMap()
 {
-    Q_D(QGeoMap);
-    clearParameters();
-    for (QGeoMapObject *p : d->mapObjects())
-        p->setMap(nullptr); // forces replacing pimpls with the default ones.
 }
 
 void QGeoMap::setViewportSize(const QSize& size)
@@ -154,7 +114,7 @@ const QGeoCameraData &QGeoMap::cameraData() const
     return d->m_cameraData;
 }
 
-void QGeoMap::setActiveMapType(const QGeoMapType type)
+void QGeoMap::setActiveMapType(const QGeoMapType &type)
 {
     Q_D(QGeoMap);
     if (type == d->m_activeMapType)
@@ -165,7 +125,7 @@ void QGeoMap::setActiveMapType(const QGeoMapType type)
     emit activeMapTypeChanged();
 }
 
-const QGeoMapType QGeoMap::activeMapType() const
+QGeoMapType QGeoMap::activeMapType() const
 {
     Q_D(const QGeoMap);
     return d->m_activeMapType;
@@ -228,32 +188,6 @@ void QGeoMap::clearData()
 
 }
 
-void QGeoMap::addParameter(QGeoMapParameter *param)
-{
-    Q_D(QGeoMap);
-    if (param && !d->m_mapParameters.contains(param)) {
-        d->m_mapParameters.append(param);
-        d->addParameter(param);
-    }
-}
-
-void QGeoMap::removeParameter(QGeoMapParameter *param)
-{
-    Q_D(QGeoMap);
-    if (param && d->m_mapParameters.contains(param)) {
-        d->removeParameter(param);
-        d->m_mapParameters.removeOne(param);
-    }
-}
-
-void QGeoMap::clearParameters()
-{
-    Q_D(QGeoMap);
-    for (QGeoMapParameter *p : qAsConst(d->m_mapParameters))
-        d->removeParameter(p);
-    d->m_mapParameters.clear();
-}
-
 QGeoMap::ItemTypes QGeoMap::supportedMapItemTypes() const
 {
     Q_D(const QGeoMap);
@@ -286,31 +220,6 @@ void QGeoMap::clearMapItems()
     d->m_mapItems.clear();
 }
 
-/*!
-    Fills obj with a backend-specific pimpl.
-*/
-bool QGeoMap::createMapObjectImplementation(QGeoMapObject *obj)
-{
-    Q_D(QGeoMap);
-    QExplicitlySharedDataPointer<QGeoMapObjectPrivate> pimpl =
-            QExplicitlySharedDataPointer<QGeoMapObjectPrivate>(d->createMapObjectImplementation(obj));
-    if (pimpl.constData())
-        return obj->setImplementation(pimpl);
-    return false;
-}
-
-/*!
-    To be called in ~QGeoMapObjectPrivate overrides, if needed
-*/
-void QGeoMap::removeMapObject(QGeoMapObject * /*obj*/)
-{
-}
-
-QList<QObject *> QGeoMap::mapObjectsAt(const QGeoCoordinate &/*coordinate*/) const
-{
-    return QList<QObject *>();
-}
-
 void QGeoMap::setItemToWindowTransform(const QTransform &itemToWindowTransform)
 {
     Q_D(QGeoMap);
@@ -330,12 +239,6 @@ QRectF QGeoMap::visibleArea() const
 {
     Q_D(const QGeoMap);
     return d->visibleArea();
-}
-
-QList<QGeoMapObject *> QGeoMap::mapObjects() const
-{
-    Q_D(const QGeoMap);
-    return d->mapObjects();
 }
 
 QString QGeoMap::copyrightsStyleSheet() const
@@ -364,8 +267,7 @@ void QGeoMap::setCopyrightVisible(bool visible)
 QGeoMapPrivate::QGeoMapPrivate(QGeoMappingManagerEngine *engine, QGeoProjection *geoProjection)
     : QObjectPrivate(),
       m_geoProjection(geoProjection),
-      m_engine(engine),
-      m_activeMapType(QGeoMapType())
+      m_engine(engine)
 {
     // Setting the default camera caps without emitting anything
     if (engine)
@@ -398,16 +300,6 @@ const QGeoMapPrivate *QGeoMapPrivate::get(const QGeoMap &map)
     return map.d_func();
 }
 
-void QGeoMapPrivate::addParameter(QGeoMapParameter *param)
-{
-    Q_UNUSED(param);
-}
-
-void QGeoMapPrivate::removeParameter(QGeoMapParameter *param)
-{
-    Q_UNUSED(param);
-}
-
 QGeoMap::ItemTypes QGeoMapPrivate::supportedMapItemTypes() const
 {
     return QGeoMap::NoItem;
@@ -421,17 +313,6 @@ void QGeoMapPrivate::addMapItem(QDeclarativeGeoMapItemBase *item)
 void QGeoMapPrivate::removeMapItem(QDeclarativeGeoMapItemBase *item)
 {
     Q_UNUSED(item);
-}
-
-QGeoMapObjectPrivate *QGeoMapPrivate::createMapObjectImplementation(QGeoMapObject *obj)
-{
-    Q_UNUSED(obj);
-    return nullptr;
-}
-
-QList<QGeoMapObject *> QGeoMapPrivate::mapObjects() const
-{
-    return QList<QGeoMapObject *>();
 }
 
 double QGeoMapPrivate::mapWidth() const

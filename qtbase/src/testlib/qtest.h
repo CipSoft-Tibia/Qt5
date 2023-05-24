@@ -1,45 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEST_H
 #define QTEST_H
+
+#if 0
+#pragma qt_class(QTest)
+#endif
 
 #include <QtTest/qttestglobal.h>
 #include <QtTest/qtestcase.h>
@@ -48,6 +16,10 @@
 
 #include <QtCore/qbitarray.h>
 #include <QtCore/qbytearray.h>
+#include <QtCore/qcborarray.h>
+#include <QtCore/qcborcommon.h>
+#include <QtCore/qcbormap.h>
+#include <QtCore/qcborvalue.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qcborcommon.h>
@@ -60,14 +32,18 @@
 #include <QtCore/qurl.h>
 #include <QtCore/quuid.h>
 
+#if defined(TESTCASE_LOWDPI)
+#include <QtCore/qcoreapplication.h>
+#endif
+
 #include <QtCore/qpoint.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qrect.h>
 
+#include <initializer_list>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
-
 
 namespace QTest
 {
@@ -82,14 +58,14 @@ template<> inline char *toString(const QString &str)
     return toString(QStringView(str));
 }
 
-template<> inline char *toString(const QLatin1String &str)
+template<> inline char *toString(const QLatin1StringView &str)
 {
     return toString(QString(str));
 }
 
 template<> inline char *toString(const QByteArray &ba)
 {
-    return QTest::toPrettyCString(ba.constData(), ba.length());
+    return QTest::toPrettyCString(ba.constData(), ba.size());
 }
 
 template<> inline char *toString(const QBitArray &ba)
@@ -198,7 +174,7 @@ template<> inline char *toString(const QRectF &s)
 template<> inline char *toString(const QUrl &uri)
 {
     if (!uri.isValid())
-        return qstrdup(qPrintable(QLatin1String("Invalid URL: ") + uri.errorString()));
+        return qstrdup(qPrintable(QLatin1StringView("Invalid URL: ") + uri.errorString()));
     return qstrdup(uri.toEncoded().constData());
 }
 
@@ -218,7 +194,7 @@ template<> inline char *toString(const QVariant &v)
         vstring.append(type);
         if (!v.isNull()) {
             vstring.append(',');
-            if (v.canConvert(QMetaType::QString)) {
+            if (v.canConvert<QString>()) {
                 vstring.append(v.toString().toLocal8Bit());
             }
             else {
@@ -231,12 +207,166 @@ template<> inline char *toString(const QVariant &v)
     return qstrdup(vstring.constData());
 }
 
-template <typename T1, typename T2>
-inline char *toString(const QPair<T1, T2> &pair)
+template<> inline char *toString(const QPartialOrdering &o)
 {
-    const QScopedArrayPointer<char> first(toString(pair.first));
-    const QScopedArrayPointer<char> second(toString(pair.second));
-    return toString(QString::asprintf("QPair(%s,%s)", first.data(), second.data()));
+    if (o == QPartialOrdering::Less)
+        return qstrdup("Less");
+    if (o == QPartialOrdering::Equivalent)
+        return qstrdup("Equivalent");
+    if (o == QPartialOrdering::Greater)
+        return qstrdup("Greater");
+    if (o == QPartialOrdering::Unordered)
+        return qstrdup("Unordered");
+    return qstrdup("<invalid>");
+}
+
+namespace Internal {
+struct QCborValueFormatter
+{
+    enum { BufferLen = 256 };
+    static char *formatSimpleType(QCborSimpleType st)
+    {
+        char *buf = new char[BufferLen];
+        qsnprintf(buf, BufferLen, "QCborValue(QCborSimpleType(%d))", int(st));
+        return buf;
+    }
+
+    static char *formatTag(QCborTag tag, const QCborValue &taggedValue)
+    {
+        QScopedArrayPointer<char> hold(format(taggedValue));
+        char *buf = new char[BufferLen];
+        qsnprintf(buf, BufferLen, "QCborValue(QCborTag(%llu), %s)", tag, hold.get());
+        return buf;
+    }
+
+    static char *innerFormat(QCborValue::Type t, const char *str)
+    {
+        static const QMetaEnum typeEnum = []() {
+            int idx = QCborValue::staticMetaObject.indexOfEnumerator("Type");
+            return QCborValue::staticMetaObject.enumerator(idx);
+        }();
+
+        char *buf = new char[BufferLen];
+        const char *typeName = typeEnum.valueToKey(t);
+        if (typeName)
+            qsnprintf(buf, BufferLen, "QCborValue(%s, %s)", typeName, str);
+        else
+            qsnprintf(buf, BufferLen, "QCborValue(<unknown type 0x%02x>)", t);
+        return buf;
+    }
+
+    template<typename T> static char *format(QCborValue::Type type, const T &t)
+    {
+        QScopedArrayPointer<char> hold(QTest::toString(t));
+        return innerFormat(type, hold.get());
+    }
+
+    static char *format(const QCborValue &v)
+    {
+        switch (v.type()) {
+        case QCborValue::Integer:
+            return format(v.type(), v.toInteger());
+        case QCborValue::ByteArray:
+            return format(v.type(), v.toByteArray());
+        case QCborValue::String:
+            return format(v.type(), v.toString());
+        case QCborValue::Array:
+            return innerFormat(v.type(), QScopedArrayPointer<char>(format(v.toArray())).get());
+        case QCborValue::Map:
+            return innerFormat(v.type(), QScopedArrayPointer<char>(format(v.toMap())).get());
+        case QCborValue::Tag:
+            return formatTag(v.tag(), v.taggedValue());
+        case QCborValue::SimpleType:
+            break;
+        case QCborValue::True:
+            return qstrdup("QCborValue(true)");
+        case QCborValue::False:
+            return qstrdup("QCborValue(false)");
+        case QCborValue::Null:
+            return qstrdup("QCborValue(nullptr)");
+        case QCborValue::Undefined:
+            return qstrdup("QCborValue()");
+        case QCborValue::Double:
+            return format(v.type(), v.toDouble());
+        case QCborValue::DateTime:
+        case QCborValue::Url:
+        case QCborValue::RegularExpression:
+            return format(v.type(), v.taggedValue().toString());
+        case QCborValue::Uuid:
+            return format(v.type(), v.toUuid());
+        case QCborValue::Invalid:
+            return qstrdup("QCborValue(<invalid>)");
+        }
+
+        if (v.isSimpleType())
+            return formatSimpleType(v.toSimpleType());
+        return innerFormat(v.type(), "");
+    }
+
+    static char *format(const QCborArray &a)
+    {
+        QByteArray out(1, '[');
+        const char *comma = "";
+        for (QCborValueConstRef v : a) {
+            QScopedArrayPointer<char> s(format(v));
+            out += comma;
+            out += s.get();
+            comma = ", ";
+        }
+        out += ']';
+        return qstrdup(out.constData());
+    }
+
+    static char *format(const QCborMap &m)
+    {
+        QByteArray out(1, '{');
+        const char *comma = "";
+        for (auto pair : m) {
+            QScopedArrayPointer<char> key(format(pair.first));
+            QScopedArrayPointer<char> value(format(pair.second));
+            out += comma;
+            out += key.get();
+            out += ": ";
+            out += value.get();
+            comma = ", ";
+        }
+        out += '}';
+        return qstrdup(out.constData());
+    }
+};
+}
+
+template<> inline char *toString(const QCborValue &v)
+{
+    return Internal::QCborValueFormatter::format(v);
+}
+
+template<> inline char *toString(const QCborValueRef &v)
+{
+    return toString(QCborValue(v));
+}
+
+template<> inline char *toString(const QCborArray &a)
+{
+    return Internal::QCborValueFormatter::format(a);
+}
+
+template<> inline char *toString(const QCborMap &m)
+{
+    return Internal::QCborValueFormatter::format(m);
+}
+
+template <typename Rep, typename Period> char *toString(std::chrono::duration<Rep, Period> dur)
+{
+    QString r;
+    QDebug d(&r);
+    d.nospace() << qSetRealNumberPrecision(9) << dur;
+    if constexpr (Period::num != 1 || Period::den != 1) {
+        // include the equivalent value in seconds, in parentheses
+        using namespace std::chrono;
+        d << " (" << duration_cast<duration<qreal>>(dur).count() << "s)";
+    }
+    return qstrdup(std::move(r).toUtf8().constData());
 }
 
 template <typename T1, typename T2>
@@ -244,11 +374,11 @@ inline char *toString(const std::pair<T1, T2> &pair)
 {
     const QScopedArrayPointer<char> first(toString(pair.first));
     const QScopedArrayPointer<char> second(toString(pair.second));
-    return toString(QString::asprintf("std::pair(%s,%s)", first.data(), second.data()));
+    return formatString("std::pair(", ")", 2, first.data(), second.data());
 }
 
-template <typename Tuple, int... I>
-inline char *toString(const Tuple & tuple, QtPrivate::IndexesList<I...>) {
+template <typename Tuple, std::size_t... I>
+inline char *tupleToString(const Tuple &tuple, std::index_sequence<I...>) {
     using UP = std::unique_ptr<char[]>;
     // Generate a table of N + 1 elements where N is the number of
     // elements in the tuple.
@@ -262,49 +392,55 @@ inline char *toString(const Tuple & tuple, QtPrivate::IndexesList<I...>) {
 template <class... Types>
 inline char *toString(const std::tuple<Types...> &tuple)
 {
-    static const std::size_t params_count = sizeof...(Types);
-    return toString(tuple, typename QtPrivate::Indexes<params_count>::Value());
+    return tupleToString(tuple, std::make_index_sequence<sizeof...(Types)>{});
 }
 
 inline char *toString(std::nullptr_t)
 {
-    return toString(QLatin1String("nullptr"));
+    return toString(QStringLiteral("nullptr"));
 }
 
 template<>
-inline bool qCompare(QString const &t1, QLatin1String const &t2, const char *actual,
-                    const char *expected, const char *file, int line)
+inline bool qCompare(QString const &t1, QLatin1StringView const &t2, const char *actual,
+                     const char *expected, const char *file, int line)
 {
     return qCompare(t1, QString(t2), actual, expected, file, line);
 }
 template<>
-inline bool qCompare(QLatin1String const &t1, QString const &t2, const char *actual,
-                    const char *expected, const char *file, int line)
+inline bool qCompare(QLatin1StringView const &t1, QString const &t2, const char *actual,
+                     const char *expected, const char *file, int line)
 {
     return qCompare(QString(t1), t2, actual, expected, file, line);
 }
 
-template <typename T>
-inline bool qCompare(QList<T> const &t1, QList<T> const &t2, const char *actual, const char *expected,
-                    const char *file, int line)
+// Compare sequences of equal size
+template <typename ActualIterator, typename ExpectedIterator>
+bool _q_compareSequence(ActualIterator actualIt, ActualIterator actualEnd,
+                        ExpectedIterator expectedBegin, ExpectedIterator expectedEnd,
+                        const char *actual, const char *expected,
+                        const char *file, int line)
 {
     char msg[1024];
     msg[0] = '\0';
-    bool isOk = true;
-    const int actualSize = t1.count();
-    const int expectedSize = t2.count();
-    if (actualSize != expectedSize) {
-        qsnprintf(msg, sizeof(msg), "Compared lists have different sizes.\n"
-                  "   Actual   (%s) size: %d\n"
-                  "   Expected (%s) size: %d", actual, actualSize, expected, expectedSize);
-        isOk = false;
-    }
-    for (int i = 0; isOk && i < actualSize; ++i) {
-        if (!(t1.at(i) == t2.at(i))) {
-            char *val1 = toString(t1.at(i));
-            char *val2 = toString(t2.at(i));
 
-            qsnprintf(msg, sizeof(msg), "Compared lists differ at index %d.\n"
+    const qsizetype actualSize = actualEnd - actualIt;
+    const qsizetype expectedSize = expectedEnd - expectedBegin;
+    bool isOk = actualSize == expectedSize;
+
+    if (!isOk) {
+        qsnprintf(msg, sizeof(msg), "Compared lists have different sizes.\n"
+                  "   Actual   (%s) size: %zd\n"
+                  "   Expected (%s) size: %zd", actual, actualSize,
+                  expected, expectedSize);
+    }
+
+    for (auto expectedIt = expectedBegin; isOk && expectedIt < expectedEnd; ++actualIt, ++expectedIt) {
+        if (!(*actualIt == *expectedIt)) {
+            const qsizetype i = qsizetype(expectedIt - expectedBegin);
+            char *val1 = toString(*actualIt);
+            char *val2 = toString(*expectedIt);
+
+            qsnprintf(msg, sizeof(msg), "Compared lists differ at index %zd.\n"
                       "   Actual   (%s): %s\n"
                       "   Expected (%s): %s", i, actual, val1 ? val1 : "<null>",
                       expected, val2 ? val2 : "<null>");
@@ -314,28 +450,62 @@ inline bool qCompare(QList<T> const &t1, QList<T> const &t2, const char *actual,
             delete [] val2;
         }
     }
-    return compare_helper(isOk, msg, nullptr, nullptr, actual, expected, file, line);
+    return compare_helper(isOk, msg, actual, expected, file, line);
 }
 
-template <>
-inline bool qCompare(QStringList const &t1, QStringList const &t2, const char *actual, const char *expected,
-                            const char *file, int line)
+namespace Internal {
+
+#if defined(TESTCASE_LOWDPI)
+void disableHighDpi()
 {
-    return qCompare<QString>(t1, t2, actual, expected, file, line);
+    qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+}
+Q_CONSTRUCTOR_FUNCTION(disableHighDpi);
+#endif
+
+} // namespace Internal
+
+template <typename T>
+inline bool qCompare(QList<T> const &t1, QList<T> const &t2, const char *actual, const char *expected,
+                     const char *file, int line)
+{
+    return _q_compareSequence(t1.cbegin(), t1.cend(), t2.cbegin(), t2.cend(),
+                                     actual, expected, file, line);
+}
+
+template <typename T, int N>
+bool qCompare(QList<T> const &t1, std::initializer_list<T> t2,
+              const char *actual, const char *expected,
+              const char *file, int line)
+{
+    return _q_compareSequence(t1.cbegin(), t1.cend(), t2.cbegin(), t2.cend(),
+                                     actual, expected, file, line);
+}
+
+// Compare QList against array
+template <typename T, int N>
+bool qCompare(QList<T> const &t1, const T (& t2)[N],
+              const char *actual, const char *expected,
+              const char *file, int line)
+{
+    return _q_compareSequence(t1.cbegin(), t1.cend(), t2, t2 + N,
+                                     actual, expected, file, line);
 }
 
 template <typename T>
 inline bool qCompare(QFlags<T> const &t1, T const &t2, const char *actual, const char *expected,
                     const char *file, int line)
 {
-    return qCompare(int(t1), int(t2), actual, expected, file, line);
+    using Int = typename QFlags<T>::Int;
+    return qCompare(Int(t1), Int(t2), actual, expected, file, line);
 }
 
 template <typename T>
 inline bool qCompare(QFlags<T> const &t1, int const &t2, const char *actual, const char *expected,
                     const char *file, int line)
 {
-    return qCompare(int(t1), t2, actual, expected, file, line);
+    using Int = typename QFlags<T>::Int;
+    return qCompare(Int(t1), Int(t2), actual, expected, file, line);
 }
 
 template<>
@@ -437,88 +607,82 @@ struct QtCoverageScanner
 #define TESTLIB_SELFCOVERAGE_START(name)
 #endif
 
-#define QTEST_APPLESS_MAIN(TestObject) \
+#if !defined(QTEST_BATCH_TESTS)
+// Internal (but used by some testlib selftests to hack argc and argv).
+// Tests should normally implement initMain() if they have set-up to do before
+// instantiating the test class.
+#define QTEST_MAIN_WRAPPER(TestObject, ...) \
 int main(int argc, char *argv[]) \
 { \
-    TESTLIB_SELFCOVERAGE_START(TestObject) \
+    TESTLIB_SELFCOVERAGE_START(#TestObject) \
+    QT_PREPEND_NAMESPACE(QTest::Internal::callInitMain)<TestObject>(); \
+    __VA_ARGS__ \
     TestObject tc; \
     QTEST_SET_MAIN_SOURCE_PATH \
     return QTest::qExec(&tc, argc, argv); \
 }
+#else
+// BATCHED_TEST_NAME is defined for each test in a batch in cmake. Some odd
+// targets, like snippets, don't define it though. Play safe by providing a
+// default value.
+#if !defined(BATCHED_TEST_NAME)
+#define BATCHED_TEST_NAME "other"
+#endif
+#define QTEST_MAIN_WRAPPER(TestObject, ...) \
+\
+void qRegister##TestObject() \
+{ \
+    auto runTest = [](int argc, char** argv) -> int { \
+        TESTLIB_SELFCOVERAGE_START(TestObject) \
+        QT_PREPEND_NAMESPACE(QTest::Internal::callInitMain)<TestObject>(); \
+        __VA_ARGS__ \
+        TestObject tc; \
+        QTEST_SET_MAIN_SOURCE_PATH \
+        return QTest::qExec(&tc, argc, argv); \
+    }; \
+    QTest::qRegisterTestCase(QStringLiteral(BATCHED_TEST_NAME), runTest); \
+} \
+\
+Q_CONSTRUCTOR_FUNCTION(qRegister##TestObject)
+#endif
+
+// For when you don't even want a QApplication:
+#define QTEST_APPLESS_MAIN(TestObject) QTEST_MAIN_WRAPPER(TestObject)
 
 #include <QtTest/qtestsystem.h>
-
-// Two backwards-compatibility defines for an obsolete feature:
-#define QTEST_ADD_GPU_BLACKLIST_SUPPORT_DEFS
-#define QTEST_ADD_GPU_BLACKLIST_SUPPORT
-// ### Qt 6: fully remove these.
 
 #if defined(QT_NETWORK_LIB)
 #  include <QtTest/qtest_network.h>
 #endif
 
+// Internal
+#define QTEST_QAPP_SETUP(klaz) \
+    klaz app(argc, argv); \
+    app.setAttribute(Qt::AA_Use96Dpi, true);
+
 #if defined(QT_WIDGETS_LIB)
-
-#include <QtTest/qtest_widgets.h>
-
-#ifdef QT_KEYPAD_NAVIGATION
-#  define QTEST_DISABLE_KEYPAD_NAVIGATION QApplication::setNavigationMode(Qt::NavigationModeNone);
-#else
-#  define QTEST_DISABLE_KEYPAD_NAVIGATION
-#endif
-
-#define QTEST_MAIN_IMPL(TestObject) \
-    TESTLIB_SELFCOVERAGE_START(#TestObject) \
-    QT_PREPEND_NAMESPACE(QTest::Internal::callInitMain)<TestObject>(); \
-    QApplication app(argc, argv); \
-    app.setAttribute(Qt::AA_Use96Dpi, true); \
-    QTEST_DISABLE_KEYPAD_NAVIGATION \
-    TestObject tc; \
-    QTEST_SET_MAIN_SOURCE_PATH \
-    return QTest::qExec(&tc, argc, argv);
-
+#  include <QtTest/qtest_widgets.h>
+#  ifdef QT_KEYPAD_NAVIGATION
+#    define QTEST_DISABLE_KEYPAD_NAVIGATION QApplication::setNavigationMode(Qt::NavigationModeNone);
+#  else
+#    define QTEST_DISABLE_KEYPAD_NAVIGATION
+#  endif
+// Internal
+#  define QTEST_MAIN_SETUP() QTEST_QAPP_SETUP(QApplication) QTEST_DISABLE_KEYPAD_NAVIGATION
 #elif defined(QT_GUI_LIB)
-
-#include <QtTest/qtest_gui.h>
-
-#define QTEST_MAIN_IMPL(TestObject) \
-    TESTLIB_SELFCOVERAGE_START(#TestObject) \
-    QT_PREPEND_NAMESPACE(QTest::Internal::callInitMain)<TestObject>(); \
-    QGuiApplication app(argc, argv); \
-    app.setAttribute(Qt::AA_Use96Dpi, true); \
-    TestObject tc; \
-    QTEST_SET_MAIN_SOURCE_PATH \
-    return QTest::qExec(&tc, argc, argv);
-
+#  include <QtTest/qtest_gui.h>
+// Internal
+#  define QTEST_MAIN_SETUP() QTEST_QAPP_SETUP(QGuiApplication)
 #else
-
-#define QTEST_MAIN_IMPL(TestObject) \
-    TESTLIB_SELFCOVERAGE_START(#TestObject) \
-    QT_PREPEND_NAMESPACE(QTest::Internal::callInitMain)<TestObject>(); \
-    QCoreApplication app(argc, argv); \
-    app.setAttribute(Qt::AA_Use96Dpi, true); \
-    TestObject tc; \
-    QTEST_SET_MAIN_SOURCE_PATH \
-    return QTest::qExec(&tc, argc, argv);
-
+// Internal
+#  define QTEST_MAIN_SETUP() QTEST_QAPP_SETUP(QCoreApplication)
 #endif // QT_GUI_LIB
 
-#define QTEST_MAIN(TestObject) \
-int main(int argc, char *argv[]) \
-{ \
-    QTEST_MAIN_IMPL(TestObject) \
-}
+// For most tests:
+#define QTEST_MAIN(TestObject) QTEST_MAIN_WRAPPER(TestObject, QTEST_MAIN_SETUP())
 
+// For command-line tests
 #define QTEST_GUILESS_MAIN(TestObject) \
-int main(int argc, char *argv[]) \
-{ \
-    TESTLIB_SELFCOVERAGE_START(#TestObject) \
-    QT_PREPEND_NAMESPACE(QTest::Internal::callInitMain)<TestObject>(); \
-    QCoreApplication app(argc, argv); \
-    app.setAttribute(Qt::AA_Use96Dpi, true); \
-    TestObject tc; \
-    QTEST_SET_MAIN_SOURCE_PATH \
-    return QTest::qExec(&tc, argc, argv); \
-}
+    QTEST_MAIN_WRAPPER(TestObject, QTEST_QAPP_SETUP(QCoreApplication))
 
 #endif

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include <QtPrintSupport/private/qtprintsupportglobal_p.h>
@@ -51,10 +15,10 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qglobal.h>
-#include <QtCore/qtextcodec.h>
+#include <QtCore/qstringconverter.h>
 #include <QtGui/qevent.h>
 #if QT_CONFIG(filesystemmodel)
-#include <QtWidgets/qfilesystemmodel.h>
+#include <QtGui/qfilesystemmodel.h>
 #endif
 #include <QtWidgets/qstyleditemdelegate.h>
 #include <QtWidgets/qformlayout.h>
@@ -66,6 +30,10 @@
 #include <private/qprintdevice_p.h>
 
 #include <QtWidgets/qdialogbuttonbox.h>
+
+#if QT_CONFIG(regularexpression)
+#include <qregularexpression.h>
+#endif
 
 #if QT_CONFIG(completer)
 #include <private/qcompleter_p.h>
@@ -115,12 +83,14 @@ Print dialog class declarations
                              Layout in qprintpropertieswidget.ui
 */
 
-static void initResources()
+static void _q_pdu_initResources()
 {
     Q_INIT_RESOURCE(qprintdialog);
 }
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QPrintPropertiesDialog : public QDialog
 {
@@ -159,8 +129,9 @@ private:
     bool anyAdvancedOptionConflict() const;
 
     QPrintDevice *m_currentPrintDevice;
-    QTextCodec *m_cupsCodec = nullptr;
-    QVector<QComboBox*> m_advancedOptionsCombos;
+
+    QStringDecoder toUnicode;
+    QList<QComboBox*> m_advancedOptionsCombos;
 #endif
 };
 
@@ -203,7 +174,7 @@ public:
     QUnixPrintWidget * const parent;
     QPrintPropertiesDialog *propertiesDialog;
     Ui::QPrintWidget widget;
-    QAbstractPrintDialog * q;
+    QPrintDialog * q;
     QPrinter *printer;
     QPrintDevice m_currentPrintDevice;
 
@@ -307,7 +278,7 @@ QPrintPropertiesDialog::QPrintPropertiesDialog(QPrinter *printer, QPrintDevice *
     });
 
 #else
-    Q_UNUSED(currentPrintDevice)
+    Q_UNUSED(currentPrintDevice);
     widget.tabs->setTabEnabled(advancedTabIndex, false);
 #endif
 }
@@ -351,7 +322,7 @@ void QPrintPropertiesDialog::reject()
 
 void QPrintPropertiesDialog::accept()
 {
-#if QT_CONFIG(cups)
+#if QT_CONFIG(cups) && QT_CONFIG(messagebox)
     if (widget.pageSetup->hasPpdConflict()) {
         widget.tabs->setCurrentWidget(widget.tabPage);
         const QMessageBox::StandardButton answer = QMessageBox::warning(this, tr("Page Setup Conflicts"),
@@ -429,7 +400,11 @@ bool QPrintPropertiesDialog::createAdvancedOptionsWidget()
     ppd_file_t *ppd = qvariant_cast<ppd_file_t*>(m_currentPrintDevice->property(PDPK_PpdFile));
 
     if (ppd) {
-        m_cupsCodec = QTextCodec::codecForName(ppd->lang_encoding);
+        toUnicode = QStringDecoder(ppd->lang_encoding, QStringDecoder::Flag::Stateless);
+        if (!toUnicode.isValid()) {
+            qWarning() << "QPrinSupport: Cups uses unsupported encoding" << ppd->lang_encoding;
+            toUnicode = QStringDecoder(QStringDecoder::Utf8, QStringDecoder::Flag::Stateless);
+        }
 
         QWidget *holdingWidget = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout(holdingWidget);
@@ -466,7 +441,7 @@ bool QPrintPropertiesDialog::createAdvancedOptionsWidget()
                             if (choiceIsInstallableConflict && static_cast<int>(choice->marked) == 1) {
                                 markedChoiceNotAvailable = true;
                             } else if (!choiceIsInstallableConflict) {
-                                choicesCb->addItem(m_cupsCodec->toUnicode(choice->text), i);
+                                choicesCb->addItem(toUnicode(choice->text), i);
                                 if (static_cast<int>(choice->marked) == 1) {
                                     choicesCb->setCurrentIndex(choicesCb->count() - 1);
                                     choicesCb->setProperty(ppdOriginallySelectedChoiceProperty, QVariant(i));
@@ -487,7 +462,7 @@ bool QPrintPropertiesDialog::createAdvancedOptionsWidget()
 
                         if (choicesCb->count() > 1) {
 
-                            connect(choicesCb, QOverload<int>::of(&QComboBox::currentIndexChanged), this, setPpdOptionFromCombo);
+                            connect(choicesCb, &QComboBox::currentIndexChanged, this, setPpdOptionFromCombo);
 
                             // We need an extra label at the end to show the conflict warning
                             QWidget *choicesCbWithLabel = new QWidget();
@@ -497,7 +472,7 @@ bool QPrintPropertiesDialog::createAdvancedOptionsWidget()
                             choicesCbWithLabelLayout->addWidget(choicesCb);
                             choicesCbWithLabelLayout->addWidget(warningLabel);
 
-                            QLabel *optionLabel = new QLabel(m_cupsCodec->toUnicode(option->text));
+                            QLabel *optionLabel = new QLabel(toUnicode(option->text));
                             groupLayout->addRow(optionLabel, choicesCbWithLabel);
                             anyWidgetCreated = true;
                             choicesCb->setProperty(ppdOptionProperty, QVariant::fromValue(option));
@@ -510,7 +485,7 @@ bool QPrintPropertiesDialog::createAdvancedOptionsWidget()
                 }
 
                 if (groupLayout->rowCount() > 0) {
-                    QGroupBox *groupBox = new QGroupBox(m_cupsCodec->toUnicode(group->text));
+                    QGroupBox *groupBox = new QGroupBox(toUnicode(group->text));
                     groupBox->setLayout(groupLayout);
                     layout->addWidget(groupBox);
                 } else {
@@ -522,9 +497,6 @@ bool QPrintPropertiesDialog::createAdvancedOptionsWidget()
         layout->addStretch();
         widget.scrollArea->setWidget(holdingWidget);
     }
-
-    if (!m_cupsCodec)
-        m_cupsCodec = QTextCodec::codecForLocale();
 
     return anyWidgetCreated;
 }
@@ -612,7 +584,7 @@ QPrintDialogPrivate::QPrintDialogPrivate()
     : top(nullptr), bottom(nullptr), buttons(nullptr), collapseButton(nullptr),
       explicitDuplexMode(QPrint::DuplexAuto)
 {
-    initResources();
+    _q_pdu_initResources();
 }
 
 QPrintDialogPrivate::~QPrintDialogPrivate()
@@ -627,9 +599,9 @@ void QPrintDialogPrivate::init()
     bottom = new QWidget(q);
     options.setupUi(bottom);
     options.color->setIconSize(QSize(32, 32));
-    options.color->setIcon(QIcon(QLatin1String(":/qt-project.org/dialogs/qprintdialog/images/status-color.png")));
+    options.color->setIcon(QIcon(":/qt-project.org/dialogs/qprintdialog/images/status-color.png"_L1));
     options.grayscale->setIconSize(QSize(32, 32));
-    options.grayscale->setIcon(QIcon(QLatin1String(":/qt-project.org/dialogs/qprintdialog/images/status-gray-scale.png")));
+    options.grayscale->setIcon(QIcon(":/qt-project.org/dialogs/qprintdialog/images/status-gray-scale.png"_L1));
 
 #if QT_CONFIG(cups)
     // Add Page Set widget if CUPS is available
@@ -703,7 +675,7 @@ void QPrintDialogPrivate::selectPrinter(const QPrinter::OutputFormat outputForma
             options.grayscale->setChecked(true);
 
         // duplex priorities to be as follows:
-        // 1) a user-selected duplex value in the dialog has highest prority
+        // 1) a user-selected duplex value in the dialog has highest priority
         // 2) duplex value set in the QPrinter
         QPrint::DuplexMode duplex;
         if (explicitDuplexMode != QPrint::DuplexAuto && supportedDuplexMode.contains(explicitDuplexMode))
@@ -742,85 +714,6 @@ void QPrintDialogPrivate::selectPrinter(const QPrinter::OutputFormat outputForma
 }
 
 #if QT_CONFIG(cups)
-static std::vector<std::pair<int, int>> pageRangesFromString(const QString &pagesString) noexcept
-{
-    std::vector<std::pair<int, int>> result;
-    const QStringList items = pagesString.split(',');
-    for (const QString &item : items) {
-        if (item.isEmpty())
-            return {};
-
-        if (item.contains(QLatin1Char('-'))) {
-            const QStringList rangeItems = item.split('-');
-            if (rangeItems.count() != 2)
-                return {};
-
-            bool ok;
-            const int number1 = rangeItems[0].toInt(&ok);
-            if (!ok)
-                return {};
-
-            const int number2 = rangeItems[1].toInt(&ok);
-            if (!ok)
-                return {};
-
-            if (number1 < 1 || number2 < 1 || number2 < number1)
-                return {};
-
-            result.push_back(std::make_pair(number1, number2));
-
-        } else {
-            bool ok;
-            const int number = item.toInt(&ok);
-            if (!ok)
-                return {};
-
-            if (number < 1)
-                return {};
-
-            result.push_back(std::make_pair(number, number));
-        }
-    }
-
-    // check no range intersects with the next
-    std::sort(result.begin(), result.end(),
-              [](const std::pair<int, int> &it1, const std::pair<int, int> &it2) { return it1.first < it2.first; });
-    int previousSecond = -1;
-    for (auto pair : result) {
-        if (pair.first <= previousSecond)
-            return {};
-
-        previousSecond = pair.second;
-    }
-
-    return result;
-}
-
-static QString stringFromPageRanges(const std::vector<std::pair<int, int>> &pageRanges) noexcept
-{
-    QString result;
-
-    for (auto pair : pageRanges) {
-        if (!result.isEmpty())
-            result += QLatin1Char(',');
-
-        if (pair.first == pair.second)
-            result += QString::number(pair.first);
-        else
-            result += QStringLiteral("%1-%2").arg(pair.first).arg(pair.second);
-    }
-
-    return result;
-}
-
-static bool isValidPagesString(const QString &pagesString) noexcept
-{
-    if (pagesString.isEmpty())
-        return false;
-
-    auto pagesRanges = pageRangesFromString(pagesString);
-    return !pagesRanges.empty();
-}
 
 void QPrintDialogPrivate::updatePpdDuplexOption(QRadioButton *radio)
 {
@@ -870,41 +763,42 @@ void QPrintDialogPrivate::setupPrinter()
     // print range
     if (options.printAll->isChecked()) {
         p->setPrintRange(QPrinter::AllPages);
-        p->setFromTo(0,0);
+        p->setPageRanges(QPageRanges());
     } else if (options.printSelection->isChecked()) {
         p->setPrintRange(QPrinter::Selection);
-        p->setFromTo(0,0);
+        p->setPageRanges(QPageRanges());
     } else if (options.printCurrentPage->isChecked()) {
         p->setPrintRange(QPrinter::CurrentPage);
-        p->setFromTo(0,0);
+        p->setPageRanges(QPageRanges());
     } else if (options.printRange->isChecked()) {
-        if (q->isOptionEnabled(QPrintDialog::PrintPageRange)) {
+        if (q->testOption(QPrintDialog::PrintPageRange)) {
             p->setPrintRange(QPrinter::PageRange);
             p->setFromTo(options.from->value(), qMax(options.from->value(), options.to->value()));
         } else {
             // This case happens when CUPS server-side page range is enabled
             // Setting the range to the printer occurs below
             p->setPrintRange(QPrinter::AllPages);
-            p->setFromTo(0,0);
+            p->setPageRanges(QPageRanges());
         }
     }
 
 #if QT_CONFIG(cups)
     if (options.pagesRadioButton->isChecked()) {
-        auto pageRanges = pageRangesFromString(options.pagesLineEdit->text());
-
-        p->setPrintRange(QPrinter::AllPages);
-        p->setFromTo(0, 0);
+        const QPageRanges ranges = QPageRanges::fromString(options.pagesLineEdit->text());
+        if (!ranges.isEmpty()) {
+            p->setPrintRange(QPrinter::PageRange);
+            p->setPageRanges(ranges);
+        }
 
         // server-side page filtering
-        QCUPSSupport::setPageRange(p, stringFromPageRanges(pageRanges));
+        QCUPSSupport::setPageRange(p, ranges.toString());
     }
 
     // page set
     if (p->printRange() == QPrinter::AllPages || p->printRange() == QPrinter::PageRange) {
         //If the application is selecting pages and the first page number is even then need to adjust the odd-even accordingly
         QCUPSSupport::PageSet pageSet = qvariant_cast<QCUPSSupport::PageSet>(options.pageSetCombo->itemData(options.pageSetCombo->currentIndex()));
-        if (q->isOptionEnabled(QPrintDialog::PrintPageRange)
+        if (q->testOption(QPrintDialog::PrintPageRange)
             && p->printRange() == QPrinter::PageRange
             && (q->fromPage() % 2 == 0)) {
 
@@ -924,7 +818,7 @@ void QPrintDialogPrivate::setupPrinter()
 
         // server-side page range, since we set the page range on the printer to 0-0/AllPages above,
         // we need to take the values directly from the widget as q->fromPage() will return 0
-        if (!q->isOptionEnabled(QPrintDialog::PrintPageRange) && options.printRange->isChecked())
+        if (!q->testOption(QPrintDialog::PrintPageRange) && options.printRange->isChecked())
             QCUPSSupport::setPageRange(p, options.from->value(), qMax(options.from->value(), options.to->value()));
     }
 #endif
@@ -973,19 +867,19 @@ void QPrintDialogPrivate::_q_checkFields()
 void QPrintDialogPrivate::updateWidgets()
 {
     Q_Q(QPrintDialog);
-    options.gbPrintRange->setVisible(q->isOptionEnabled(QPrintDialog::PrintPageRange) ||
-                                     q->isOptionEnabled(QPrintDialog::PrintSelection) ||
-                                     q->isOptionEnabled(QPrintDialog::PrintCurrentPage));
+    options.gbPrintRange->setVisible(q->testOption(QPrintDialog::PrintPageRange) ||
+                                     q->testOption(QPrintDialog::PrintSelection) ||
+                                     q->testOption(QPrintDialog::PrintCurrentPage));
 
-    options.printRange->setEnabled(q->isOptionEnabled(QPrintDialog::PrintPageRange));
-    options.printSelection->setVisible(q->isOptionEnabled(QPrintDialog::PrintSelection));
-    options.printCurrentPage->setVisible(q->isOptionEnabled(QPrintDialog::PrintCurrentPage));
-    options.collate->setVisible(q->isOptionEnabled(QPrintDialog::PrintCollateCopies));
+    options.printRange->setEnabled(q->testOption(QPrintDialog::PrintPageRange));
+    options.printSelection->setVisible(q->testOption(QPrintDialog::PrintSelection));
+    options.printCurrentPage->setVisible(q->testOption(QPrintDialog::PrintCurrentPage));
+    options.collate->setVisible(q->testOption(QPrintDialog::PrintCollateCopies));
 
 #if QT_CONFIG(cups)
     // Don't display Page Set if only Selection or Current Page are enabled
-    if (!q->isOptionEnabled(QPrintDialog::PrintPageRange)
-        && (q->isOptionEnabled(QPrintDialog::PrintSelection) || q->isOptionEnabled(QPrintDialog::PrintCurrentPage))) {
+    if (!q->testOption(QPrintDialog::PrintPageRange)
+        && (q->testOption(QPrintDialog::PrintSelection) || q->testOption(QPrintDialog::PrintCurrentPage))) {
         options.pageSetCombo->setVisible(false);
         options.pageSetLabel->setVisible(false);
     } else {
@@ -993,7 +887,7 @@ void QPrintDialogPrivate::updateWidgets()
         options.pageSetLabel->setVisible(true);
     }
 
-    if (!q->isOptionEnabled(QPrintDialog::PrintPageRange)) {
+    if (!q->testOption(QPrintDialog::PrintPageRange)) {
         // If we can do CUPS server side pages selection,
         // display the page range widgets
         options.gbPrintRange->setVisible(true);
@@ -1015,7 +909,7 @@ void QPrintDialogPrivate::updateWidgets()
         options.pageSetCombo->setEnabled(true);
         break;
     case QPrintDialog::CurrentPage:
-        if (q->isOptionEnabled(QPrintDialog::PrintCurrentPage)) {
+        if (q->testOption(QPrintDialog::PrintCurrentPage)) {
             options.printCurrentPage->setChecked(true);
             options.pageSetCombo->setEnabled(false);
         }
@@ -1096,8 +990,8 @@ int QPrintDialog::exec()
 void QPrintDialog::accept()
 {
     Q_D(QPrintDialog);
-#if QT_CONFIG(cups)
-    if (d->options.pagesRadioButton->isChecked() && !isValidPagesString(d->options.pagesLineEdit->text())) {
+#if QT_CONFIG(cups) && QT_CONFIG(messagebox)
+    if (d->options.pagesRadioButton->isChecked() && printer()->pageRanges().isEmpty()) {
         QMessageBox::critical(this, tr("Invalid Pages Definition"),
                               tr("%1 does not follow the correct syntax. Please use ',' to separate "
                               "ranges and pages, '-' to define ranges and make sure ranges do "
@@ -1141,7 +1035,7 @@ QUnixPrintWidgetPrivate::QUnixPrintWidgetPrivate(QUnixPrintWidget *p, QPrinter *
 {
     q = nullptr;
     if (parent)
-        q = qobject_cast<QAbstractPrintDialog*> (parent->parent());
+        q = qobject_cast<QPrintDialog*> (parent->parent());
 
     widget.setupUi(parent);
 
@@ -1179,7 +1073,7 @@ QUnixPrintWidgetPrivate::QUnixPrintWidgetPrivate(QUnixPrintWidget *p, QPrinter *
 
 void QUnixPrintWidgetPrivate::updateWidget()
 {
-    const bool printToFile = q == nullptr || q->isOptionEnabled(QPrintDialog::PrintToFile);
+    const bool printToFile = q == nullptr || q->testOption(QPrintDialog::PrintToFile);
     if (printToFile && !filePrintersAdded) {
         if (widget.printers->count())
             widget.printers->insertSeparator(widget.printers->count());
@@ -1208,7 +1102,8 @@ void QUnixPrintWidgetPrivate::updateWidget()
     widget.lOutput->setVisible(printToFile);
     widget.fileBrowser->setVisible(printToFile);
 
-    widget.properties->setVisible(q->isOptionEnabled(QAbstractPrintDialog::PrintShowPageSize));
+    if (q)
+        widget.properties->setVisible(q->testOption(QAbstractPrintDialog::PrintShowPageSize));
 }
 
 QUnixPrintWidgetPrivate::~QUnixPrintWidgetPrivate()
@@ -1355,7 +1250,7 @@ void QUnixPrintWidgetPrivate::setupPrinterProperties()
     QPrinter::OutputFormat outputFormat;
     QString printerName;
 
-    if (q->isOptionEnabled(QPrintDialog::PrintToFile)
+    if (q->testOption(QPrintDialog::PrintToFile)
         && (widget.printers->currentIndex() == widget.printers->count() - 1)) {// PDF
         outputFormat = QPrinter::PdfFormat;
     } else {
@@ -1427,20 +1322,23 @@ QUnixPrintWidget::QUnixPrintWidget(QPrinter *printer, QWidget *parent)
     if (printer->outputFileName().isEmpty()) {
         QString home = QDir::homePath();
         QString cur = QDir::currentPath();
-        if (!home.endsWith(QLatin1Char('/')))
-            home += QLatin1Char('/');
+        if (!home.endsWith(u'/'))
+            home += u'/';
         if (!cur.startsWith(home))
             cur = home;
-        else if (!cur.endsWith(QLatin1Char('/')))
-            cur += QLatin1Char('/');
+        else if (!cur.endsWith(u'/'))
+            cur += u'/';
         if (QGuiApplication::platformName() == QStringLiteral("xcb")) {
             if (printer->docName().isEmpty()) {
                 cur += QStringLiteral("print.pdf");
             } else {
-                const QRegExp re(QStringLiteral("(.*)\\.\\S+"));
-                if (re.exactMatch(printer->docName()))
-                    cur += re.cap(1);
+#if QT_CONFIG(regularexpression)
+                const QRegularExpression re(QStringLiteral("(.*)\\.\\S+"));
+                auto match = re.match(printer->docName());
+                if (match.hasMatch())
+                    cur += match.captured(1);
                 else
+#endif
                     cur += printer->docName();
                 cur += QStringLiteral(".pdf");
             }

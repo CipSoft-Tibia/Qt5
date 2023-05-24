@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickmultipointhandler_p.h"
 #include "qquickmultipointhandler_p_p.h"
@@ -64,18 +28,18 @@ QQuickMultiPointHandler::QQuickMultiPointHandler(QQuickItem *parent, int minimum
 {
 }
 
-bool QQuickMultiPointHandler::wantsPointerEvent(QQuickPointerEvent *event)
+bool QQuickMultiPointHandler::wantsPointerEvent(QPointerEvent *event)
 {
     Q_D(QQuickMultiPointHandler);
     if (!QQuickPointerDeviceHandler::wantsPointerEvent(event))
         return false;
 
-    if (event->asPointerScrollEvent())
+    if (event->type() == QEvent::Wheel)
         return false;
 
     bool ret = false;
 #if QT_CONFIG(gestures)
-    if (event->asPointerNativeGestureEvent() && event->point(0)->state() != QQuickEventPoint::Released)
+    if (event->type() == QEvent::NativeGesture && event->point(0).state() != QEventPoint::Released)
         ret = true;
 #endif
 
@@ -86,8 +50,8 @@ bool QQuickMultiPointHandler::wantsPointerEvent(QQuickPointerEvent *event)
     // are all still there in the event, we're good to go (do not reset
     // currentPoints, because we don't want to lose the pressPosition, and do
     // not want to reshuffle the order either).
-    const QVector<QQuickEventPoint *> candidatePoints = eligiblePoints(event);
-    if (candidatePoints.count() != d->currentPoints.count()) {
+    const auto candidatePoints = eligiblePoints(event);
+    if (candidatePoints.size() != d->currentPoints.size()) {
         d->currentPoints.clear();
         if (active()) {
             setActive(false);
@@ -100,11 +64,12 @@ bool QQuickMultiPointHandler::wantsPointerEvent(QQuickPointerEvent *event)
 
     ret = ret || (candidatePoints.size() >= minimumPointCount() && candidatePoints.size() <= maximumPointCount());
     if (ret) {
-        const int c = candidatePoints.count();
+        const int c = candidatePoints.size();
         d->currentPoints.resize(c);
         for (int i = 0; i < c; ++i) {
-            d->currentPoints[i].reset(candidatePoints[i]);
-            d->currentPoints[i].localize(parentItem());
+            d->currentPoints[i].reset(event, candidatePoints[i]);
+            if (auto par = parentItem())
+                d->currentPoints[i].localize(par);
         }
     } else {
         d->currentPoints.clear();
@@ -112,7 +77,7 @@ bool QQuickMultiPointHandler::wantsPointerEvent(QQuickPointerEvent *event)
     return ret;
 }
 
-void QQuickMultiPointHandler::handlePointerEventImpl(QQuickPointerEvent *event)
+void QQuickMultiPointHandler::handlePointerEventImpl(QPointerEvent *event)
 {
     Q_D(QQuickMultiPointHandler);
     QQuickPointerHandler::handlePointerEventImpl(event);
@@ -120,9 +85,8 @@ void QQuickMultiPointHandler::handlePointerEventImpl(QQuickPointerEvent *event)
     // is _not_ a shallow copy of the QQuickPointerTouchEvent::m_touchPoints vector.
     // So we have to update our currentPoints instances based on the given event.
     for (QQuickHandlerPoint &p : d->currentPoints) {
-        const QQuickEventPoint *ep = event->pointById(p.id());
-        if (ep)
-            p.reset(ep);
+        if (const QEventPoint *ep = event->pointById(p.id()))
+            p.reset(event, *ep);
     }
     QPointF sceneGrabPos = d->centroid.sceneGrabPosition();
     d->centroid.reset(d->currentPoints);
@@ -146,50 +110,56 @@ void QQuickMultiPointHandler::onActiveChanged()
     }
 }
 
-void QQuickMultiPointHandler::onGrabChanged(QQuickPointerHandler *grabber, QQuickEventPoint::GrabTransition transition, QQuickEventPoint *point)
+void QQuickMultiPointHandler::onGrabChanged(QQuickPointerHandler *grabber, QPointingDevice::GrabTransition transition, QPointerEvent *event, QEventPoint &point)
 {
     Q_D(QQuickMultiPointHandler);
     // If another handler or item takes over this set of points, assume it has
     // decided that it's the better fit for them. Don't immediately re-grab
     // at the next opportunity. This should help to avoid grab cycles
     // (e.g. between DragHandler and PinchHandler).
-    if (transition == QQuickEventPoint::UngrabExclusive || transition == QQuickEventPoint::CancelGrabExclusive)
+    if (transition == QPointingDevice::UngrabExclusive || transition == QPointingDevice::CancelGrabExclusive)
         d->currentPoints.clear();
     if (grabber != this)
         return;
     switch (transition) {
-    case QQuickEventPoint::GrabExclusive:
-    case QQuickEventPoint::GrabPassive:
-    case QQuickEventPoint::UngrabPassive:
-    case QQuickEventPoint::UngrabExclusive:
-    case QQuickEventPoint::CancelGrabPassive:
-    case QQuickEventPoint::CancelGrabExclusive:
-        QQuickPointerHandler::onGrabChanged(grabber, transition, point);
+    case QPointingDevice::GrabExclusive:
+        for (auto &pt : d->currentPoints)
+            if (pt.id() == point.id()) {
+                pt.m_sceneGrabPosition = point.scenePosition();
+                break;
+            }
+        QQuickPointerHandler::onGrabChanged(grabber, transition, event, point);
         break;
-    case QQuickEventPoint::OverrideGrabPassive:
+    case QPointingDevice::GrabPassive:
+    case QPointingDevice::UngrabPassive:
+    case QPointingDevice::UngrabExclusive:
+    case QPointingDevice::CancelGrabPassive:
+    case QPointingDevice::CancelGrabExclusive:
+        QQuickPointerHandler::onGrabChanged(grabber, transition, event, point);
+        break;
+    case QPointingDevice::OverrideGrabPassive:
         return; // don't emit
     }
 }
 
-QVector<QQuickEventPoint *> QQuickMultiPointHandler::eligiblePoints(QQuickPointerEvent *event)
+QVector<QEventPoint> QQuickMultiPointHandler::eligiblePoints(QPointerEvent *event)
 {
-    QVector<QQuickEventPoint *> ret;
-    int c = event->pointCount();
+    QVector<QEventPoint> ret;
     // If one or more points are newly pressed or released, all non-released points are candidates for this handler.
     // In other cases however, check whether it would be OK to steal the grab if the handler chooses to do that.
-    bool stealingAllowed = event->isPressEvent() || event->isReleaseEvent();
-    for (int i = 0; i < c; ++i) {
-        QQuickEventPoint *p = event->point(i);
-        if (QQuickPointerMouseEvent *me = event->asPointerMouseEvent()) {
-            if (me->buttons() == Qt::NoButton)
+    bool stealingAllowed = event->isBeginEvent() || event->isEndEvent();
+    for (int i = 0; i < event->pointCount(); ++i) {
+        auto &p = event->point(i);
+        if (QQuickDeliveryAgentPrivate::isMouseEvent(event)) {
+            if (static_cast<QMouseEvent *>(event)->buttons() == Qt::NoButton)
                 continue;
         }
         if (!stealingAllowed) {
-            QObject *exclusiveGrabber = p->exclusiveGrabber();
-            if (exclusiveGrabber && exclusiveGrabber != this && !canGrab(p))
+            QObject *exclusiveGrabber = event->exclusiveGrabber(p);
+            if (exclusiveGrabber && exclusiveGrabber != this && !canGrab(event, p))
                 continue;
         }
-        if (p->state() != QQuickEventPoint::Released && wantsEventPoint(p))
+        if (p.state() != QEventPoint::Released && wantsEventPoint(event, p))
             ret << p;
     }
     return ret;
@@ -259,7 +229,7 @@ void QQuickMultiPointHandler::setMaximumPointCount(int maximumPointCount)
 
 /*!
     \readonly
-    \qmlproperty QtQuick::HandlerPoint QtQuick::MultiPointHandler::centroid
+    \qmlproperty QtQuick::handlerPoint QtQuick::MultiPointHandler::centroid
 
     A point exactly in the middle of the currently-pressed touch points.
     If only one point is pressed, it's the same as that point.
@@ -288,18 +258,18 @@ QVector<QQuickHandlerPoint> &QQuickMultiPointHandler::currentPoints()
     return d->currentPoints;
 }
 
-bool QQuickMultiPointHandler::hasCurrentPoints(QQuickPointerEvent *event)
+bool QQuickMultiPointHandler::hasCurrentPoints(QPointerEvent *event)
 {
     Q_D(const QQuickMultiPointHandler);
     if (event->pointCount() < d->currentPoints.size() || d->currentPoints.size() == 0)
         return false;
     // TODO optimize: either ensure the points are sorted,
     // or use std::equal with a predicate
-    for (const QQuickHandlerPoint &p : qAsConst(d->currentPoints)) {
-        const QQuickEventPoint *ep = event->pointById(p.id());
+    for (const QQuickHandlerPoint &p : std::as_const(d->currentPoints)) {
+        const QEventPoint *ep = event->pointById(p.id());
         if (!ep)
             return false;
-        if (ep->state() == QQuickEventPoint::Released)
+        if (ep->state() == QEventPoint::Released)
             return false;
     }
     return true;
@@ -332,7 +302,7 @@ QVector<QQuickMultiPointHandler::PointData> QQuickMultiPointHandler::angles(cons
 {
     Q_D(const QQuickMultiPointHandler);
     QVector<PointData> angles;
-    angles.reserve(d->currentPoints.count());
+    angles.reserve(d->currentPoints.size());
     for (const QQuickHandlerPoint &p : d->currentPoints) {
         qreal angle = QLineF(ref, p.scenePosition()).angle();
         angles.append(PointData(p.id(), -angle));     // convert to clockwise, to be consistent with QQuickItem::rotation
@@ -372,26 +342,28 @@ qreal QQuickMultiPointHandler::averageAngleDelta(const QVector<PointData> &old, 
     return avgAngleDelta;
 }
 
-void QQuickMultiPointHandler::acceptPoints(const QVector<QQuickEventPoint *> &points)
+void QQuickMultiPointHandler::acceptPoints(const QVector<QEventPoint> &points)
 {
-    for (QQuickEventPoint* point : points)
-        point->setAccepted();
+    // "auto point" is a copy, but it's OK because
+    // setAccepted() changes QEventPointPrivate::accept via the shared d-pointer
+    for (auto point : points)
+        point.setAccepted();
 }
 
-bool QQuickMultiPointHandler::grabPoints(const QVector<QQuickEventPoint *> &points)
+bool QQuickMultiPointHandler::grabPoints(QPointerEvent *event, const QVector<QEventPoint> &points)
 {
     if (points.isEmpty())
         return false;
     bool allowed = true;
-    for (QQuickEventPoint* point : points) {
-        if (point->exclusiveGrabber() != this && !canGrab(point)) {
+    for (auto &point : points) {
+        if (event->exclusiveGrabber(point) != this && !canGrab(event, point)) {
             allowed = false;
             break;
         }
     }
     if (allowed) {
-        for (QQuickEventPoint* point : points)
-            setExclusiveGrab(point);
+        for (const auto &point : std::as_const(points))
+            setExclusiveGrab(event, point);
     }
     return allowed;
 }
@@ -436,3 +408,5 @@ QMetaProperty &QQuickMultiPointHandlerPrivate::yMetaProperty() const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qquickmultipointhandler_p.cpp"

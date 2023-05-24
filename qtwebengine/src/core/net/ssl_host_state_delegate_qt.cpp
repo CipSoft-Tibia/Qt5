@@ -1,47 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-#include "base/callback.h"
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "ssl_host_state_delegate_qt.h"
 
-#include "type_conversion.h"
+#include "base/functional/callback.h"
 
 namespace QtWebEngineCore {
 
@@ -77,7 +39,7 @@ SSLHostStateDelegateQt::SSLHostStateDelegateQt() {}
 
 SSLHostStateDelegateQt::~SSLHostStateDelegateQt() {}
 
-void SSLHostStateDelegateQt::AllowCert(const std::string &host, const net::X509Certificate &cert, int error, content::WebContents *)
+void SSLHostStateDelegateQt::AllowCert(const std::string &host, const net::X509Certificate &cert, int error, content::StoragePartition *)
 {
     m_certPolicyforHost[host].Allow(cert, error);
 }
@@ -105,7 +67,7 @@ void SSLHostStateDelegateQt::Clear(base::RepeatingCallback<bool(const std::strin
 // prior to this query, otherwise false.
 content::SSLHostStateDelegate::CertJudgment SSLHostStateDelegateQt::QueryPolicy(const std::string &host,
                                                                                 const net::X509Certificate &cert,
-                                                                                int error, content::WebContents *)
+                                                                                int error, content::StoragePartition *)
 {
     return m_certPolicyforHost[host].Check(cert, error) ? SSLHostStateDelegate::ALLOWED : SSLHostStateDelegate::DENIED;
 }
@@ -121,6 +83,16 @@ bool SSLHostStateDelegateQt::DidHostRunInsecureContent(const std::string &host, 
     return false;
 }
 
+void SSLHostStateDelegateQt::AllowHttpForHost(const std::string &host, content::StoragePartition *web_contents)
+{
+    // Intentional no-op see aw_ssl_host_state_delegate
+}
+
+bool SSLHostStateDelegateQt::IsHttpAllowedForHost(const std::string &host, content::StoragePartition *web_contents)
+{
+    return false;
+}
+
 // Revokes all SSL certificate error allow exceptions made by the user for
 // |host|.
 void SSLHostStateDelegateQt::RevokeUserAllowExceptions(const std::string &host)
@@ -132,7 +104,7 @@ void SSLHostStateDelegateQt::RevokeUserAllowExceptions(const std::string &host)
 // |host|. This does not mean that *all* certificate errors are allowed, just
 // that there exists an exception. To see if a particular certificate and
 // error combination exception is allowed, use QueryPolicy().
-bool SSLHostStateDelegateQt::HasAllowException(const std::string &host, content::WebContents *)
+bool SSLHostStateDelegateQt::HasAllowException(const std::string &host, content::StoragePartition *)
 {
     auto policy_iterator = m_certPolicyforHost.find(host);
     return policy_iterator != m_certPolicyforHost.end() &&

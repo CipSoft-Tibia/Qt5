@@ -29,6 +29,7 @@
 
 #include "third_party/blink/renderer/core/css/css_basic_shape_values.h"
 
+#include "base/check.h"
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_numeric_literal_value.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
@@ -46,12 +47,14 @@ static String BuildCircleString(const String& radius,
   char separator[] = " ";
   StringBuilder result;
   result.Append("circle(");
-  if (!radius.IsNull())
+  if (!radius.IsNull()) {
     result.Append(radius);
+  }
 
   if (!center_x.IsNull() || !center_y.IsNull()) {
-    if (!radius.IsNull())
+    if (!radius.IsNull()) {
       result.Append(separator);
+    }
     result.Append(at);
     result.Append(separator);
     result.Append(center_x);
@@ -59,7 +62,7 @@ static String BuildCircleString(const String& radius,
     result.Append(center_y);
   }
   result.Append(')');
-  return result.ToString();
+  return result.ReleaseString();
 }
 
 static String SerializePositionOffset(const CSSValuePair& offset,
@@ -70,8 +73,10 @@ static String SerializePositionOffset(const CSSValuePair& offset,
            CSSValueID::kTop) ||
       (To<CSSIdentifierValue>(offset.First()).GetValueID() ==
            CSSValueID::kTop &&
-       To<CSSIdentifierValue>(other.First()).GetValueID() == CSSValueID::kLeft))
+       To<CSSIdentifierValue>(other.First()).GetValueID() ==
+           CSSValueID::kLeft)) {
     return offset.Second().CssText();
+  }
   return offset.CssText();
 }
 
@@ -104,12 +109,13 @@ static CSSValuePair* BuildSerializablePositionOffset(CSSValue* offset,
     amount = CSSNumericLiteralValue::Create(
         50, CSSPrimitiveValue::UnitType::kPercentage);
   } else if (!amount || (amount->IsLength() && amount->IsZero())) {
-    if (side == CSSValueID::kRight || side == CSSValueID::kBottom)
+    if (side == CSSValueID::kRight || side == CSSValueID::kBottom) {
       amount = CSSNumericLiteralValue::Create(
           100, CSSPrimitiveValue::UnitType::kPercentage);
-    else
+    } else {
       amount = CSSNumericLiteralValue::Create(
           0, CSSPrimitiveValue::UnitType::kPercentage);
+    }
     side = default_side;
   }
 
@@ -128,8 +134,9 @@ String CSSBasicShapeCircleValue::CustomCSSText() const {
   auto* radius_identifier_value = DynamicTo<CSSIdentifierValue>(radius_.Get());
   if (radius_ &&
       !(radius_identifier_value &&
-        radius_identifier_value->GetValueID() == CSSValueID::kClosestSide))
+        radius_identifier_value->GetValueID() == CSSValueID::kClosestSide)) {
     radius = radius_->CssText();
+  }
 
   return BuildCircleString(
       radius, SerializePositionOffset(*normalized_cx, *normalized_cy),
@@ -138,9 +145,9 @@ String CSSBasicShapeCircleValue::CustomCSSText() const {
 
 bool CSSBasicShapeCircleValue::Equals(
     const CSSBasicShapeCircleValue& other) const {
-  return DataEquivalent(center_x_, other.center_x_) &&
-         DataEquivalent(center_y_, other.center_y_) &&
-         DataEquivalent(radius_, other.radius_);
+  return base::ValuesEquivalent(center_x_, other.center_x_) &&
+         base::ValuesEquivalent(center_y_, other.center_y_) &&
+         base::ValuesEquivalent(radius_, other.radius_);
 }
 
 void CSSBasicShapeCircleValue::TraceAfterDispatch(
@@ -165,15 +172,17 @@ static String BuildEllipseString(const String& radius_x,
     needs_separator = true;
   }
   if (!radius_y.IsNull()) {
-    if (needs_separator)
+    if (needs_separator) {
       result.Append(separator);
+    }
     result.Append(radius_y);
     needs_separator = true;
   }
 
   if (!center_x.IsNull() || !center_y.IsNull()) {
-    if (needs_separator)
+    if (needs_separator) {
       result.Append(separator);
+    }
     result.Append(at);
     result.Append(separator);
     result.Append(center_x);
@@ -181,7 +190,7 @@ static String BuildEllipseString(const String& radius_x,
     result.Append(center_y);
   }
   result.Append(')');
-  return result.ToString();
+  return result.ReleaseString();
 }
 
 String CSSBasicShapeEllipseValue::CustomCSSText() const {
@@ -221,10 +230,10 @@ String CSSBasicShapeEllipseValue::CustomCSSText() const {
 
 bool CSSBasicShapeEllipseValue::Equals(
     const CSSBasicShapeEllipseValue& other) const {
-  return DataEquivalent(center_x_, other.center_x_) &&
-         DataEquivalent(center_y_, other.center_y_) &&
-         DataEquivalent(radius_x_, other.radius_x_) &&
-         DataEquivalent(radius_y_, other.radius_y_);
+  return base::ValuesEquivalent(center_x_, other.center_x_) &&
+         base::ValuesEquivalent(center_y_, other.center_y_) &&
+         base::ValuesEquivalent(radius_x_, other.radius_x_) &&
+         base::ValuesEquivalent(radius_y_, other.radius_y_);
 }
 
 void CSSBasicShapeEllipseValue::TraceAfterDispatch(
@@ -250,36 +259,40 @@ static String BuildPolygonString(const WindRule& wind_rule,
   // Compute the required capacity in advance to reduce allocations.
   wtf_size_t length = sizeof(kEvenOddOpening) - 1;
   for (wtf_size_t i = 0; i < points.size(); i += 2) {
-    if (i)
+    if (i) {
       length += (sizeof(kCommaSeparator) - 1);
+    }
     // add length of two strings, plus one for the space separator.
     length += points[i].length() + 1 + points[i + 1].length();
   }
   result.ReserveCapacity(length);
 
-  if (wind_rule == RULE_EVENODD)
+  if (wind_rule == RULE_EVENODD) {
     result.Append(kEvenOddOpening);
-  else
+  } else {
     result.Append(kNonZeroOpening);
+  }
 
   for (wtf_size_t i = 0; i < points.size(); i += 2) {
-    if (i)
+    if (i) {
       result.Append(kCommaSeparator);
+    }
     result.Append(points[i]);
     result.Append(' ');
     result.Append(points[i + 1]);
   }
 
   result.Append(')');
-  return result.ToString();
+  return result.ReleaseString();
 }
 
 String CSSBasicShapePolygonValue::CustomCSSText() const {
   Vector<String> points;
   points.ReserveInitialCapacity(values_.size());
 
-  for (wtf_size_t i = 0; i < values_.size(); ++i)
+  for (wtf_size_t i = 0; i < values_.size(); ++i) {
     points.push_back(values_.at(i)->CssText());
+  }
 
   return BuildPolygonString(wind_rule_, points);
 }
@@ -307,50 +320,30 @@ static bool BuildInsetRadii(Vector<String>& radii,
       show_bottom_right || (top_right_radius != top_left_radius);
 
   radii.push_back(top_left_radius);
-  if (show_top_right)
+  if (show_top_right) {
     radii.push_back(top_right_radius);
-  if (show_bottom_right)
+  }
+  if (show_bottom_right) {
     radii.push_back(bottom_right_radius);
-  if (show_bottom_left)
+  }
+  if (show_bottom_left) {
     radii.push_back(bottom_left_radius);
+  }
 
   return radii.size() == 1 && radii[0] == "0px";
 }
 
-static String BuildInsetString(const String& top,
-                               const String& right,
-                               const String& bottom,
-                               const String& left,
-                               const String& top_left_radius_width,
-                               const String& top_left_radius_height,
-                               const String& top_right_radius_width,
-                               const String& top_right_radius_height,
-                               const String& bottom_right_radius_width,
-                               const String& bottom_right_radius_height,
-                               const String& bottom_left_radius_width,
-                               const String& bottom_left_radius_height) {
-  char opening[] = "inset(";
-  char separator[] = " ";
+static void AppendRoundedCorners(const char* separator,
+                                 const String& top_left_radius_width,
+                                 const String& top_left_radius_height,
+                                 const String& top_right_radius_width,
+                                 const String& top_right_radius_height,
+                                 const String& bottom_right_radius_width,
+                                 const String& bottom_right_radius_height,
+                                 const String& bottom_left_radius_width,
+                                 const String& bottom_left_radius_height,
+                                 StringBuilder& result) {
   char corners_separator[] = "round";
-  StringBuilder result;
-  result.Append(opening);
-  result.Append(top);
-  bool show_left_arg = !left.IsNull() && left != right;
-  bool show_bottom_arg = !bottom.IsNull() && (bottom != top || show_left_arg);
-  bool show_right_arg = !right.IsNull() && (right != top || show_bottom_arg);
-  if (show_right_arg) {
-    result.Append(separator);
-    result.Append(right);
-  }
-  if (show_bottom_arg) {
-    result.Append(separator);
-    result.Append(bottom);
-  }
-  if (show_left_arg) {
-    result.Append(separator);
-    result.Append(left);
-  }
-
   if (!top_left_radius_width.IsNull() && !top_left_radius_height.IsNull()) {
     Vector<String> horizontal_radii;
     bool are_default_corner_radii = BuildInsetRadii(
@@ -381,17 +374,99 @@ static String BuildInsetString(const String& top,
       }
     }
   }
+}
+
+static String BuildRectStringCommon(const char* opening,
+                                    bool show_left_arg,
+                                    const String& top,
+                                    const String& right,
+                                    const String& bottom,
+                                    const String& left,
+                                    const String& top_left_radius_width,
+                                    const String& top_left_radius_height,
+                                    const String& top_right_radius_width,
+                                    const String& top_right_radius_height,
+                                    const String& bottom_right_radius_width,
+                                    const String& bottom_right_radius_height,
+                                    const String& bottom_left_radius_width,
+                                    const String& bottom_left_radius_height) {
+  char separator[] = " ";
+  StringBuilder result;
+  result.Append(opening);
+  result.Append(top);
+  show_left_arg |= !left.IsNull() && left != right;
+  bool show_bottom_arg = !bottom.IsNull() && (bottom != top || show_left_arg);
+  bool show_right_arg = !right.IsNull() && (right != top || show_bottom_arg);
+  if (show_right_arg) {
+    result.Append(separator);
+    result.Append(right);
+  }
+  if (show_bottom_arg) {
+    result.Append(separator);
+    result.Append(bottom);
+  }
+  if (show_left_arg) {
+    result.Append(separator);
+    result.Append(left);
+  }
+
+  AppendRoundedCorners(separator, top_left_radius_width, top_left_radius_height,
+                       top_right_radius_width, top_right_radius_height,
+                       bottom_right_radius_width, bottom_right_radius_height,
+                       bottom_left_radius_width, bottom_left_radius_height,
+                       result);
+
   result.Append(')');
 
-  return result.ToString();
+  return result.ReleaseString();
+}
+
+static String BuildXYWHString(const String& x,
+                              const String& y,
+                              const String& width,
+                              const String& height,
+                              const String& top_left_radius_width,
+                              const String& top_left_radius_height,
+                              const String& top_right_radius_width,
+                              const String& top_right_radius_height,
+                              const String& bottom_right_radius_width,
+                              const String& bottom_right_radius_height,
+                              const String& bottom_left_radius_width,
+                              const String& bottom_left_radius_height) {
+  const char opening[] = "xywh(";
+  char separator[] = " ";
+  StringBuilder result;
+
+  result.Append(opening);
+  result.Append(x);
+
+  result.Append(separator);
+  result.Append(y);
+
+  result.Append(separator);
+  result.Append(width);
+
+  result.Append(separator);
+  result.Append(height);
+
+  AppendRoundedCorners(separator, top_left_radius_width, top_left_radius_height,
+                       top_right_radius_width, top_right_radius_height,
+                       bottom_right_radius_width, bottom_right_radius_height,
+                       bottom_left_radius_width, bottom_left_radius_height,
+                       result);
+
+  result.Append(')');
+
+  return result.ReleaseString();
 }
 
 static inline void UpdateCornerRadiusWidthAndHeight(
     const CSSValuePair* corner_radius,
     String& width,
     String& height) {
-  if (!corner_radius)
+  if (!corner_radius) {
     return;
+  }
 
   width = corner_radius->First().CssText();
   height = corner_radius->Second().CssText();
@@ -417,8 +492,9 @@ String CSSBasicShapeInsetValue::CustomCSSText() const {
   UpdateCornerRadiusWidthAndHeight(BottomLeftRadius(), bottom_left_radius_width,
                                    bottom_left_radius_height);
 
-  return BuildInsetString(
-      top_ ? top_->CssText() : String(), right_ ? right_->CssText() : String(),
+  return BuildRectStringCommon(
+      "inset(", false, top_ ? top_->CssText() : String(),
+      right_ ? right_->CssText() : String(),
       bottom_ ? bottom_->CssText() : String(),
       left_ ? left_->CssText() : String(), top_left_radius_width,
       top_left_radius_height, top_right_radius_width, top_right_radius_height,
@@ -428,14 +504,15 @@ String CSSBasicShapeInsetValue::CustomCSSText() const {
 
 bool CSSBasicShapeInsetValue::Equals(
     const CSSBasicShapeInsetValue& other) const {
-  return DataEquivalent(top_, other.top_) &&
-         DataEquivalent(right_, other.right_) &&
-         DataEquivalent(bottom_, other.bottom_) &&
-         DataEquivalent(left_, other.left_) &&
-         DataEquivalent(top_left_radius_, other.top_left_radius_) &&
-         DataEquivalent(top_right_radius_, other.top_right_radius_) &&
-         DataEquivalent(bottom_right_radius_, other.bottom_right_radius_) &&
-         DataEquivalent(bottom_left_radius_, other.bottom_left_radius_);
+  return base::ValuesEquivalent(top_, other.top_) &&
+         base::ValuesEquivalent(right_, other.right_) &&
+         base::ValuesEquivalent(bottom_, other.bottom_) &&
+         base::ValuesEquivalent(left_, other.left_) &&
+         base::ValuesEquivalent(top_left_radius_, other.top_left_radius_) &&
+         base::ValuesEquivalent(top_right_radius_, other.top_right_radius_) &&
+         base::ValuesEquivalent(bottom_right_radius_,
+                                other.bottom_right_radius_) &&
+         base::ValuesEquivalent(bottom_left_radius_, other.bottom_left_radius_);
 }
 
 void CSSBasicShapeInsetValue::TraceAfterDispatch(
@@ -449,6 +526,134 @@ void CSSBasicShapeInsetValue::TraceAfterDispatch(
   visitor->Trace(bottom_right_radius_);
   visitor->Trace(bottom_left_radius_);
   CSSValue::TraceAfterDispatch(visitor);
+}
+
+String CSSBasicShapeRectValue::CustomCSSText() const {
+  String top_left_radius_width;
+  String top_left_radius_height;
+  String top_right_radius_width;
+  String top_right_radius_height;
+  String bottom_right_radius_width;
+  String bottom_right_radius_height;
+  String bottom_left_radius_width;
+  String bottom_left_radius_height;
+
+  UpdateCornerRadiusWidthAndHeight(TopLeftRadius(), top_left_radius_width,
+                                   top_left_radius_height);
+  UpdateCornerRadiusWidthAndHeight(TopRightRadius(), top_right_radius_width,
+                                   top_right_radius_height);
+  UpdateCornerRadiusWidthAndHeight(BottomRightRadius(),
+                                   bottom_right_radius_width,
+                                   bottom_right_radius_height);
+  UpdateCornerRadiusWidthAndHeight(BottomLeftRadius(), bottom_left_radius_width,
+                                   bottom_left_radius_height);
+
+  return BuildRectStringCommon(
+      "rect(", true, top_->CssText(), right_->CssText(), bottom_->CssText(),
+      left_->CssText(), top_left_radius_width, top_left_radius_height,
+      top_right_radius_width, top_right_radius_height,
+      bottom_right_radius_width, bottom_right_radius_height,
+      bottom_left_radius_width, bottom_left_radius_height);
+}
+
+bool CSSBasicShapeRectValue::Equals(const CSSBasicShapeRectValue& other) const {
+  return base::ValuesEquivalent(top_, other.top_) &&
+         base::ValuesEquivalent(right_, other.right_) &&
+         base::ValuesEquivalent(bottom_, other.bottom_) &&
+         base::ValuesEquivalent(left_, other.left_) &&
+         base::ValuesEquivalent(top_left_radius_, other.top_left_radius_) &&
+         base::ValuesEquivalent(top_right_radius_, other.top_right_radius_) &&
+         base::ValuesEquivalent(bottom_right_radius_,
+                                other.bottom_right_radius_) &&
+         base::ValuesEquivalent(bottom_left_radius_, other.bottom_left_radius_);
+}
+
+void CSSBasicShapeRectValue::TraceAfterDispatch(blink::Visitor* visitor) const {
+  visitor->Trace(top_);
+  visitor->Trace(right_);
+  visitor->Trace(bottom_);
+  visitor->Trace(left_);
+  visitor->Trace(top_left_radius_);
+  visitor->Trace(top_right_radius_);
+  visitor->Trace(bottom_right_radius_);
+  visitor->Trace(bottom_left_radius_);
+  CSSValue::TraceAfterDispatch(visitor);
+}
+
+void CSSBasicShapeRectValue::Validate() const {
+  auto validate_length = [](const CSSValue* length) {
+    if (length->IsIdentifierValue()) {
+      DCHECK(To<CSSIdentifierValue>(length)->GetValueID() == CSSValueID::kAuto);
+      return;
+    }
+    DCHECK(length->IsPrimitiveValue());
+  };
+
+  validate_length(top_);
+  validate_length(left_);
+  validate_length(bottom_);
+  validate_length(right_);
+}
+
+String CSSBasicShapeXYWHValue::CustomCSSText() const {
+  String top_left_radius_width;
+  String top_left_radius_height;
+  String top_right_radius_width;
+  String top_right_radius_height;
+  String bottom_right_radius_width;
+  String bottom_right_radius_height;
+  String bottom_left_radius_width;
+  String bottom_left_radius_height;
+
+  UpdateCornerRadiusWidthAndHeight(TopLeftRadius(), top_left_radius_width,
+                                   top_left_radius_height);
+  UpdateCornerRadiusWidthAndHeight(TopRightRadius(), top_right_radius_width,
+                                   top_right_radius_height);
+  UpdateCornerRadiusWidthAndHeight(BottomRightRadius(),
+                                   bottom_right_radius_width,
+                                   bottom_right_radius_height);
+  UpdateCornerRadiusWidthAndHeight(BottomLeftRadius(), bottom_left_radius_width,
+                                   bottom_left_radius_height);
+
+  return BuildXYWHString(x_->CssText(), y_->CssText(), width_->CssText(),
+                         height_->CssText(), top_left_radius_width,
+                         top_left_radius_height, top_right_radius_width,
+                         top_right_radius_height, bottom_right_radius_width,
+                         bottom_right_radius_height, bottom_left_radius_width,
+                         bottom_left_radius_height);
+}
+
+bool CSSBasicShapeXYWHValue::Equals(const CSSBasicShapeXYWHValue& other) const {
+  return base::ValuesEquivalent(x_, other.x_) &&
+         base::ValuesEquivalent(y_, other.y_) &&
+         base::ValuesEquivalent(width_, other.width_) &&
+         base::ValuesEquivalent(height_, other.height_) &&
+         base::ValuesEquivalent(top_left_radius_, other.top_left_radius_) &&
+         base::ValuesEquivalent(top_right_radius_, other.top_right_radius_) &&
+         base::ValuesEquivalent(bottom_right_radius_,
+                                other.bottom_right_radius_) &&
+         base::ValuesEquivalent(bottom_left_radius_, other.bottom_left_radius_);
+}
+
+void CSSBasicShapeXYWHValue::TraceAfterDispatch(blink::Visitor* visitor) const {
+  visitor->Trace(x_);
+  visitor->Trace(y_);
+  visitor->Trace(width_);
+  visitor->Trace(height_);
+  visitor->Trace(top_left_radius_);
+  visitor->Trace(top_right_radius_);
+  visitor->Trace(bottom_right_radius_);
+  visitor->Trace(bottom_left_radius_);
+  CSSValue::TraceAfterDispatch(visitor);
+}
+
+void CSSBasicShapeXYWHValue::Validate() const {
+  DCHECK(x_);
+  DCHECK(y_);
+  DCHECK(width_);
+  DCHECK_GT(width_->GetFloatValue(), 0);
+  DCHECK(height_);
+  DCHECK_GT(height_->GetFloatValue(), 0);
 }
 
 }  // namespace cssvalue

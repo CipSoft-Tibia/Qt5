@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtCharts/QChartView>
@@ -36,7 +10,7 @@
 #include <QtGui/QStandardItemModel>
 #include <tst_definitions.h>
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 Q_DECLARE_METATYPE(QPieSlice*)
 Q_DECLARE_METATYPE(QList<QPieSlice*>)
@@ -134,8 +108,8 @@ void tst_qpieseries::properties()
     m_series->clear();
     QCOMPARE(m_series->count(), 0);
     QCOMPARE(m_series->sum(), 0.0);
-    QCOMPARE(countSpy.count(), 6);
-    QCOMPARE(sumSpy.count(), 6);
+    QCOMPARE(countSpy.size(), 6);
+    QCOMPARE(sumSpy.size(), 6);
 
     m_series->setPieSize(-1.0);
     QCOMPARE(m_series->pieSize(), 0.0);
@@ -186,13 +160,13 @@ void tst_qpieseries::properties()
 
     m_series->setOpacity(0.5);
     QCOMPARE(m_series->opacity(), 0.5);
-    QCOMPARE(opacitySpy.count(), 1);
+    QCOMPARE(opacitySpy.size(), 1);
     m_series->setOpacity(0.0);
     QCOMPARE(m_series->opacity(), 0.0);
-    QCOMPARE(opacitySpy.count(), 2);
+    QCOMPARE(opacitySpy.size(), 2);
     m_series->setOpacity(1.0);
     QCOMPARE(m_series->opacity(), 1.0);
-    QCOMPARE(opacitySpy.count(), 3);
+    QCOMPARE(opacitySpy.size(), 3);
 }
 
 void tst_qpieseries::append()
@@ -207,9 +181,9 @@ void tst_qpieseries::append()
     QVERIFY(m_series->append(slice1));
     QVERIFY(!m_series->append(slice1));
     QCOMPARE(m_series->count(), 1);
-    QCOMPARE(addedSpy.count(), 1);
+    QCOMPARE(addedSpy.size(), 1);
     QList<QPieSlice*> added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(0).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice1);
 
     // try to append same slice to another series
@@ -227,9 +201,9 @@ void tst_qpieseries::append()
     QVERIFY(m_series->append(list));
     QVERIFY(!m_series->append(list));
     QCOMPARE(m_series->count(), 3);
-    QCOMPARE(addedSpy.count(), 2);
+    QCOMPARE(addedSpy.size(), 2);
     added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(1).at(0));
-    QCOMPARE(added.count(), 2);
+    QCOMPARE(added.size(), 2);
     QCOMPARE(added, list);
 
     // append operator
@@ -237,9 +211,9 @@ void tst_qpieseries::append()
     *m_series << slice4;
     *m_series << slice1; // fails because already added
     QCOMPARE(m_series->count(), 4);
-    QCOMPARE(addedSpy.count(), 3);
+    QCOMPARE(addedSpy.size(), 3);
     added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(2).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice4);
 
     // append with params
@@ -248,9 +222,9 @@ void tst_qpieseries::append()
     QCOMPARE(slice5->value(), 5.0);
     QCOMPARE(slice5->label(), QString("slice 5"));
     QCOMPARE(m_series->count(), 5);
-    QCOMPARE(addedSpy.count(), 4);
+    QCOMPARE(addedSpy.size(), 4);
     added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(3).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice5);
 
     // check slices
@@ -281,9 +255,9 @@ void tst_qpieseries::insert()
     QVERIFY(m_series->insert(0, slice1));
     QVERIFY(!m_series->insert(0, slice1));
     QCOMPARE(m_series->count(), 1);
-    QCOMPARE(addedSpy.count(), 1);
+    QCOMPARE(addedSpy.size(), 1);
     QList<QPieSlice*> added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(0).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice1);
 
     // try to insert same slice to another series
@@ -294,21 +268,21 @@ void tst_qpieseries::insert()
     QPieSlice *slice2 = m_series->append("slice 2", 2);
     QPieSlice *slice4 = m_series->append("slice 4", 4);
     QCOMPARE(m_series->count(), 3);
-    QCOMPARE(addedSpy.count(), 3);
+    QCOMPARE(addedSpy.size(), 3);
     added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(1).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice2);
     added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(2).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice4);
 
     // insert between slices
     QPieSlice *slice3 = new QPieSlice("slice 3", 3);
     m_series->insert(2, slice3);
     QCOMPARE(m_series->count(), 4);
-    QCOMPARE(addedSpy.count(), 4);
+    QCOMPARE(addedSpy.size(), 4);
     added = qvariant_cast<QList<QPieSlice*> >(addedSpy.at(3).at(0));
-    QCOMPARE(added.count(), 1);
+    QCOMPARE(added.size(), 1);
     QCOMPARE(added.first(), slice3);
 
     // check slices
@@ -347,26 +321,26 @@ void tst_qpieseries::remove()
     QVERIFY(!m_series->remove(slice1));
     QCOMPARE(m_series->count(), 2);
     QCOMPARE(m_series->slices().at(0)->label(), slice2->label());
-    QCOMPARE(removedSpy.count(), 1);
+    QCOMPARE(removedSpy.size(), 1);
     QList<QPieSlice*> removed = qvariant_cast<QList<QPieSlice*> >(removedSpy.at(0).at(0));
-    QCOMPARE(removed.count(), 1);
-    QCOMPARE(removed.first(), slice1);
+    QCOMPARE(removed.size(), 1);
+    QCOMPARE(static_cast<const void *>(removed.first()), static_cast<const void *>(slice1));
 
     // remove all
     m_series->clear();
     QVERIFY(m_series->isEmpty());
     QVERIFY(m_series->slices().isEmpty());
     QCOMPARE(m_series->count(), 0);
-    QCOMPARE(removedSpy.count(), 2);
+    QCOMPARE(removedSpy.size(), 2);
     removed = qvariant_cast<QList<QPieSlice*> >(removedSpy.at(1).at(0));
-    QCOMPARE(removed.count(), 2);
-    QCOMPARE(removed.first(), slice2);
-    QCOMPARE(removed.last(), slice3);
+    QCOMPARE(removed.size(), 2);
+    QCOMPARE(static_cast<const void *>(removed.first()), static_cast<const void *>(slice2));
+    QCOMPARE(static_cast<const void *>(removed.last()), static_cast<const void *>(slice3));
 
     // check that slices were actually destroyed
-    TRY_COMPARE(spy1.count(), 1);
-    TRY_COMPARE(spy2.count(), 1);
-    TRY_COMPARE(spy3.count(), 1);
+    TRY_COMPARE(spy1.size(), 1);
+    TRY_COMPARE(spy2.size(), 1);
+    TRY_COMPARE(spy3.size(), 1);
 }
 
 void tst_qpieseries::removeAnimated()
@@ -392,14 +366,14 @@ void tst_qpieseries::take()
 
     // take first
     QVERIFY(m_series->take(slice1));
-    TRY_COMPARE(spy1.count(), 0);
+    TRY_COMPARE(spy1.size(), 0);
     QVERIFY(slice1->parent() == m_series); // series is still the parent object
     QVERIFY(!m_series->take(slice1));
     QCOMPARE(m_series->count(), 2);
     QCOMPARE(m_series->slices().at(0)->label(), slice2->label());
-    QCOMPARE(removedSpy.count(), 1);
+    QCOMPARE(removedSpy.size(), 1);
     QList<QPieSlice*> removed = qvariant_cast<QList<QPieSlice*> >(removedSpy.at(0).at(0));
-    QCOMPARE(removed.count(), 1);
+    QCOMPARE(removed.size(), 1);
     QCOMPARE(removed.first(), slice1);
 }
 
@@ -424,9 +398,9 @@ void tst_qpieseries::calculatedValues()
     verifyCalculatedData(*m_series, &ok);
     if (!ok)
         return;
-    QCOMPARE(percentageSpy.count(), 1);
-    QCOMPARE(startAngleSpy.count(), 0);
-    QCOMPARE(angleSpanSpy.count(), 1);
+    QCOMPARE(percentageSpy.size(), 1);
+    QCOMPARE(startAngleSpy.size(), 0);
+    QCOMPARE(angleSpanSpy.size(), 1);
 
     // add some more slices
     QList<QPieSlice *> list;
@@ -436,27 +410,27 @@ void tst_qpieseries::calculatedValues()
     verifyCalculatedData(*m_series, &ok);
     if (!ok)
         return;
-    QCOMPARE(percentageSpy.count(), 2);
-    QCOMPARE(startAngleSpy.count(), 0);
-    QCOMPARE(angleSpanSpy.count(), 2);
+    QCOMPARE(percentageSpy.size(), 2);
+    QCOMPARE(startAngleSpy.size(), 0);
+    QCOMPARE(angleSpanSpy.size(), 2);
 
     // remove a slice
     m_series->remove(list.first()); // remove slice 2
     verifyCalculatedData(*m_series, &ok);
     if (!ok)
         return;
-    QCOMPARE(percentageSpy.count(), 3);
-    QCOMPARE(startAngleSpy.count(), 0);
-    QCOMPARE(angleSpanSpy.count(), 3);
+    QCOMPARE(percentageSpy.size(), 3);
+    QCOMPARE(startAngleSpy.size(), 0);
+    QCOMPARE(angleSpanSpy.size(), 3);
 
     // insert a slice
     m_series->insert(0, new QPieSlice("Slice 4", 4));
     verifyCalculatedData(*m_series, &ok);
     if (!ok)
         return;
-    QCOMPARE(percentageSpy.count(), 4);
-    QCOMPARE(startAngleSpy.count(), 1);
-    QCOMPARE(angleSpanSpy.count(), 4);
+    QCOMPARE(percentageSpy.size(), 4);
+    QCOMPARE(startAngleSpy.size(), 1);
+    QCOMPARE(angleSpanSpy.size(), 4);
 
     // modify pie angles
     m_series->setPieStartAngle(-90);
@@ -464,18 +438,18 @@ void tst_qpieseries::calculatedValues()
     verifyCalculatedData(*m_series, &ok);
     if (!ok)
         return;
-    QCOMPARE(percentageSpy.count(), 4);
-    QCOMPARE(startAngleSpy.count(), 3);
-    QCOMPARE(angleSpanSpy.count(), 6);
+    QCOMPARE(percentageSpy.size(), 4);
+    QCOMPARE(startAngleSpy.size(), 3);
+    QCOMPARE(angleSpanSpy.size(), 6);
 
     // clear all
     m_series->clear();
     verifyCalculatedData(*m_series, &ok);
     if (!ok)
         return;
-    QCOMPARE(percentageSpy.count(), 4);
-    QCOMPARE(startAngleSpy.count(), 3);
-    QCOMPARE(angleSpanSpy.count(), 6);
+    QCOMPARE(percentageSpy.size(), 4);
+    QCOMPARE(startAngleSpy.size(), 3);
+    QCOMPARE(angleSpanSpy.size(), 6);
 }
 
 void tst_qpieseries::verifyCalculatedData(const QPieSeries &series, bool *ok)
@@ -533,7 +507,7 @@ void tst_qpieseries::clickedSignal()
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(3));
-    TRY_COMPARE(clickSpy.count(), 4);
+    TRY_COMPARE(clickSpy.size(), 4);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(1).at(0)), s2);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(2).at(0)), s3);
@@ -550,7 +524,7 @@ void tst_qpieseries::clickedSignal()
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(3));
-    TRY_COMPARE(clickSpy.count(), 4);
+    TRY_COMPARE(clickSpy.size(), 4);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(1).at(0)), s2);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(2).at(0)), s3);
@@ -593,7 +567,7 @@ void tst_qpieseries::hoverSignal()
     QTest::qWait(100);
 
     // check
-    QCOMPARE(hoverSpy.count(), 8);
+    QCOMPARE(hoverSpy.size(), 8);
     int i = 0;
     foreach (QPieSlice *s, m_series->slices()) {
         QCOMPARE(qvariant_cast<QPieSlice*>(hoverSpy.at(i).at(0)), s);
@@ -640,9 +614,9 @@ void tst_qpieseries::destruction()
     m_series = 0;
 
     // check that series has destroyed its slices
-    QCOMPARE(spy1.count(), 1);
-    QCOMPARE(spy2.count(), 1);
-    QCOMPARE(spy3.count(), 1);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy3.size(), 1);
 }
 
 QList<QPoint> tst_qpieseries::slicePoints(QRectF rect)
@@ -688,7 +662,7 @@ void tst_qpieseries::pressedSignal()
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(3));
-    TRY_COMPARE(clickSpy.count(), 4);
+    TRY_COMPARE(clickSpy.size(), 4);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(1).at(0)), s2);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(2).at(0)), s3);
@@ -705,7 +679,7 @@ void tst_qpieseries::pressedSignal()
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(3));
-    TRY_COMPARE(clickSpy.count(), 4);
+    TRY_COMPARE(clickSpy.size(), 4);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(1).at(0)), s2);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(2).at(0)), s3);
@@ -741,7 +715,7 @@ void tst_qpieseries::releasedSignal()
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(3));
-    TRY_COMPARE(clickSpy.count(), 4);
+    TRY_COMPARE(clickSpy.size(), 4);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(1).at(0)), s2);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(2).at(0)), s3);
@@ -758,7 +732,7 @@ void tst_qpieseries::releasedSignal()
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(1));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(2));
     QTest::mouseClick(m_view->viewport(), Qt::LeftButton, {}, points.at(3));
-    TRY_COMPARE(clickSpy.count(), 4);
+    TRY_COMPARE(clickSpy.size(), 4);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(1).at(0)), s2);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(2).at(0)), s3);
@@ -788,7 +762,7 @@ void tst_qpieseries::doubleClickedSignal()
     QRectF pieRect = m_view->chart()->plotArea();
     QList<QPoint> points = slicePoints(pieRect);
     QTest::mouseDClick(m_view->viewport(), Qt::LeftButton, {}, points.at(0));
-    TRY_COMPARE(clickSpy.count(), 1);
+    TRY_COMPARE(clickSpy.size(), 1);
     QCOMPARE(qvariant_cast<QPieSlice*>(clickSpy.at(0).at(0)), s1);
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,12 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace blink {
 
-using Purpose = blink::Manifest::ImageResource::Purpose;
+using Purpose = blink::mojom::ManifestImageResource_Purpose;
 
 namespace {
 const int kIdealIconSize = 144;
@@ -53,7 +52,7 @@ class ManifestIconSelectorTest : public testing::TestWithParam<bool> {
       const std::vector<blink::Manifest::ImageResource>& icons,
       int ideal_icon_size_in_px,
       int minimum_icon_size_in_px,
-      blink::Manifest::ImageResource::Purpose purpose) {
+      blink::mojom::ManifestImageResource_Purpose purpose) {
     if (selects_square_only_) {
       return ManifestIconSelector::FindBestMatchingSquareIcon(
           icons, ideal_icon_size_in_px, minimum_icon_size_in_px, purpose);

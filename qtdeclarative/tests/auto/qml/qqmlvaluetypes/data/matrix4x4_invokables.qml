@@ -44,7 +44,14 @@ Item {
         m.rotate(180, Qt.vector3d(0, 0, 1));
         if (m !== Qt.matrix4x4())
             return false;
+        m.rotate(Qt.quaternion(0.5, 0.5, 0.5, -0.5));
+        if (m !== Qt.matrix4x4(0, 1, 0, 0,
+                               0, 0, -1, 0,
+                               -1, 0, 0, 0,
+                               0, 0, 0, 1))
+            return false;
 
+        m = Qt.matrix4x4();
         m.translate(Qt.vector3d(1, 2, 4));
         if (m !== Qt.matrix4x4(1, 0, 0, 1,
                                0, 1, 0, 2,
@@ -58,6 +65,20 @@ Item {
                                0, 1, 0, -2,
                                0, 0, 1, -4,
                                0, 0, 0, 1))
+            return false;
+
+        return true;
+    }
+
+    function testMatrixMapping()
+    {
+        let m = Qt.matrix4x4();
+        m.scale(1, 2, 3);
+
+        if (m.mapRect(Qt.rect(10, 15, 20, 20)) !== Qt.rect(10, 30, 20, 40))
+            return false;
+
+        if (m.map(Qt.point(10, 15)) !== Qt.point(10, 30))
             return false;
 
         return true;
@@ -81,5 +102,6 @@ Item {
         if (m1.fuzzyEquals(m2)) success = false;
         if (!m1.fuzzyEquals(m2, 10)) success = false;
         if (!testTransformation()) success = false;
+        if (!testMatrixMapping()) success = false;
     }
 }

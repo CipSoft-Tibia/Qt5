@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKITEM_P_H
 #define QQUICKITEM_P_H
@@ -51,35 +15,33 @@
 // We mean it.
 //
 
-#include "qquickitem.h"
-
-#include "qquickanchors_p.h"
-#include "qquickanchors_p_p.h"
-#include "qquickitemchangelistener_p.h"
-#include "qquickevents_p_p.h"
-
-#include "qquickwindow_p.h"
-
-#include <QtQuick/qsgnode.h>
-#include "qquickclipnode_p.h"
-
+#include <QtQuick/private/qquickanchors_p.h>
+#include <QtQuick/private/qquickanchors_p_p.h>
+#include <QtQuick/private/qquickitemchangelistener_p.h>
+#include <QtQuick/private/qquickevents_p_p.h>
+#include <QtQuick/private/qquickclipnode_p.h>
 #include <QtQuick/private/qquickstate_p.h>
-#include <private/qqmlnullablevalue_p.h>
-#include <private/qqmlnotifier_p.h>
-#include <private/qqmlglobal_p.h>
-#include <private/qlazilyallocated_p.h>
-
-#include <qqml.h>
-#include <qqmlcontext.h>
-
-#include <QtCore/qlist.h>
-#include <QtCore/qdebug.h>
-#include <QtCore/qelapsedtimer.h>
-#include <QtCore/qpointer.h>
+#include <QtQuick/private/qquickpaletteproviderprivatebase_p.h>
+#include <QtQuick/private/qquickwindow_p.h>
+#include <QtCore/private/qproperty_p.h>
 
 #if QT_CONFIG(quick_shadereffect)
 #include <QtQuick/private/qquickshadereffectsource_p.h>
 #endif
+
+#include <QtQuick/qquickitem.h>
+#include <QtQuick/qsgnode.h>
+
+#include <QtQml/private/qqmlnullablevalue_p.h>
+#include <QtQml/private/qqmlnotifier_p.h>
+#include <QtQml/private/qqmlglobal_p.h>
+#include <QtQml/private/qlazilyallocated_p.h>
+#include <QtQml/qqml.h>
+#include <QtQml/qqmlcontext.h>
+
+#include <QtCore/qlist.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qelapsedtimer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -138,21 +100,23 @@ public:
 
 #if QT_CONFIG(quick_shadereffect)
 
-class QQuickItemLayer : public QObject, public QQuickItemChangeListener
+class Q_QUICK_PRIVATE_EXPORT QQuickItemLayer : public QObject, public QQuickItemChangeListener
 {
     Q_OBJECT
-    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
-    Q_PROPERTY(QSize textureSize READ size WRITE setSize NOTIFY sizeChanged)
-    Q_PROPERTY(QRectF sourceRect READ sourceRect WRITE setSourceRect NOTIFY sourceRectChanged)
-    Q_PROPERTY(bool mipmap READ mipmap WRITE setMipmap NOTIFY mipmapChanged)
-    Q_PROPERTY(bool smooth READ smooth WRITE setSmooth NOTIFY smoothChanged)
-    Q_PROPERTY(QQuickShaderEffectSource::WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged)
-    Q_PROPERTY(QQuickShaderEffectSource::Format format READ format WRITE setFormat NOTIFY formatChanged)
-    Q_PROPERTY(QByteArray samplerName READ name WRITE setName NOTIFY nameChanged)
-    Q_PROPERTY(QQmlComponent *effect READ effect WRITE setEffect NOTIFY effectChanged)
-    Q_PROPERTY(QQuickShaderEffectSource::TextureMirroring textureMirroring READ textureMirroring WRITE setTextureMirroring NOTIFY textureMirroringChanged)
-    Q_PROPERTY(int samples READ samples WRITE setSamples NOTIFY samplesChanged)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
+    Q_PROPERTY(QSize textureSize READ size WRITE setSize NOTIFY sizeChanged FINAL)
+    Q_PROPERTY(QRectF sourceRect READ sourceRect WRITE setSourceRect NOTIFY sourceRectChanged FINAL)
+    Q_PROPERTY(bool mipmap READ mipmap WRITE setMipmap NOTIFY mipmapChanged FINAL)
+    Q_PROPERTY(bool smooth READ smooth WRITE setSmooth NOTIFY smoothChanged FINAL)
+    Q_PROPERTY(bool live READ live WRITE setLive NOTIFY liveChanged REVISION(6, 5) FINAL)
+    Q_PROPERTY(QQuickShaderEffectSource::WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged FINAL)
+    Q_PROPERTY(QQuickShaderEffectSource::Format format READ format WRITE setFormat NOTIFY formatChanged FINAL)
+    Q_PROPERTY(QByteArray samplerName READ name WRITE setName NOTIFY nameChanged FINAL)
+    Q_PROPERTY(QQmlComponent *effect READ effect WRITE setEffect NOTIFY effectChanged FINAL)
+    Q_PROPERTY(QQuickShaderEffectSource::TextureMirroring textureMirroring READ textureMirroring WRITE setTextureMirroring NOTIFY textureMirroringChanged FINAL)
+    Q_PROPERTY(int samples READ samples WRITE setSamples NOTIFY samplesChanged FINAL)
     QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickItemLayer(QQuickItem *item);
@@ -169,6 +133,9 @@ public:
 
     bool smooth() const { return m_smooth; }
     void setSmooth(bool s);
+
+    bool live() const { return m_live; }
+    void setLive(bool live);
 
     QSize size() const { return m_size; }
     void setSize(const QSize &size);
@@ -215,6 +182,7 @@ Q_SIGNALS:
     void nameChanged(const QByteArray &name);
     void effectChanged(QQmlComponent *component);
     void smoothChanged(bool smooth);
+    void liveChanged(bool live);
     void formatChanged(QQuickShaderEffectSource::Format format);
     void sourceRectChanged(const QRectF &sourceRect);
     void textureMirroringChanged(QQuickShaderEffectSource::TextureMirroring mirroring);
@@ -233,6 +201,7 @@ private:
     bool m_enabled;
     bool m_mipmap;
     bool m_smooth;
+    bool m_live;
     bool m_componentComplete;
     QQuickShaderEffectSource::WrapMode m_wrapMode;
     QQuickShaderEffectSource::Format m_format;
@@ -248,7 +217,9 @@ private:
 
 #endif
 
-class Q_QUICK_PRIVATE_EXPORT QQuickItemPrivate : public QObjectPrivate
+class Q_QUICK_PRIVATE_EXPORT QQuickItemPrivate
+    : public QObjectPrivate
+    , public QQuickPaletteProviderPrivateBase<QQuickItem, QQuickItemPrivate>
 {
     Q_DECLARE_PUBLIC(QQuickItem)
 
@@ -279,39 +250,46 @@ public:
     QQuickAnchorLine verticalCenter() const;
     QQuickAnchorLine baseline() const;
 
+#if QT_CONFIG(quick_shadereffect)
     QQuickItemLayer *layer() const;
+#endif
 
+    void localizedTouchEvent(const QTouchEvent *event, bool isFiltering, QMutableTouchEvent *localized);
     bool hasPointerHandlers() const;
-    bool hasHoverHandlers() const;
+    bool hasEnabledHoverHandlers() const;
     virtual void addPointerHandler(QQuickPointerHandler *h);
+    virtual void removePointerHandler(QQuickPointerHandler *h);
 
     // data property
     static void data_append(QQmlListProperty<QObject> *, QObject *);
-    static int data_count(QQmlListProperty<QObject> *);
-    static QObject *data_at(QQmlListProperty<QObject> *, int);
+    static qsizetype data_count(QQmlListProperty<QObject> *);
+    static QObject *data_at(QQmlListProperty<QObject> *, qsizetype);
     static void data_clear(QQmlListProperty<QObject> *);
+    static void data_removeLast(QQmlListProperty<QObject> *);
 
     // resources property
-    static QObject *resources_at(QQmlListProperty<QObject> *, int);
+    static QObject *resources_at(QQmlListProperty<QObject> *, qsizetype);
     static void resources_append(QQmlListProperty<QObject> *, QObject *);
-    static int resources_count(QQmlListProperty<QObject> *);
+    static qsizetype resources_count(QQmlListProperty<QObject> *);
     static void resources_clear(QQmlListProperty<QObject> *);
+    static void resources_removeLast(QQmlListProperty<QObject> *);
 
     // children property
     static void children_append(QQmlListProperty<QQuickItem> *, QQuickItem *);
-    static int children_count(QQmlListProperty<QQuickItem> *);
-    static QQuickItem *children_at(QQmlListProperty<QQuickItem> *, int);
+    static qsizetype children_count(QQmlListProperty<QQuickItem> *);
+    static QQuickItem *children_at(QQmlListProperty<QQuickItem> *, qsizetype);
     static void children_clear(QQmlListProperty<QQuickItem> *);
+    static void children_removeLast(QQmlListProperty<QQuickItem> *);
 
     // visibleChildren property
     static void visibleChildren_append(QQmlListProperty<QQuickItem> *prop, QQuickItem *o);
-    static int visibleChildren_count(QQmlListProperty<QQuickItem> *prop);
-    static QQuickItem *visibleChildren_at(QQmlListProperty<QQuickItem> *prop, int index);
+    static qsizetype visibleChildren_count(QQmlListProperty<QQuickItem> *prop);
+    static QQuickItem *visibleChildren_at(QQmlListProperty<QQuickItem> *prop, qsizetype index);
 
     // transform property
-    static int transform_count(QQmlListProperty<QQuickTransform> *list);
+    static qsizetype transform_count(QQmlListProperty<QQuickTransform> *list);
     static void transform_append(QQmlListProperty<QQuickTransform> *list, QQuickTransform *);
-    static QQuickTransform *transform_at(QQmlListProperty<QQuickTransform> *list, int);
+    static QQuickTransform *transform_at(QQmlListProperty<QQuickTransform> *list, qsizetype);
     static void transform_clear(QQmlListProperty<QQuickTransform> *list);
 
     void _q_resourceObjectDeleted(QObject *);
@@ -329,6 +307,8 @@ public:
         ImplicitWidth = 0x100,
         ImplicitHeight = 0x200,
         Enabled = 0x400,
+        Focus = 0x800,
+        AllChanges = 0xFFFFFFFF
     };
 
     Q_DECLARE_FLAGS(ChangeTypes, ChangeType)
@@ -354,7 +334,30 @@ public:
         QQuickItemChangeListener *listener;
         ChangeTypes types;
         QQuickGeometryChange gTypes;  //NOTE: not used for ==
+
+#ifndef QT_NO_DEBUG_STREAM
+    private:
+        friend QDebug operator<<(QDebug debug, const QQuickItemPrivate::ChangeListener &listener);
+#endif // QT_NO_DEBUG_STREAM
     };
+
+    // call QQuickItemChangeListener
+    template <typename Fn, typename ...Args>
+    void notifyChangeListeners(QQuickItemPrivate::ChangeTypes changeTypes, Fn &&function, Args &&...args)
+    {
+        if (changeListeners.isEmpty())
+            return;
+
+        const auto listeners = changeListeners; // NOTE: intentional copy (QTBUG-54732)
+        for (const QQuickItemPrivate::ChangeListener &change : listeners) {
+            if (change.types & changeTypes) {
+                if constexpr (std::is_member_function_pointer_v<Fn>)
+                    (change.listener->*function)(args...);
+                else
+                    function(change, args...);
+            }
+        }
+    }
 
     struct ExtraData {
         ExtraData();
@@ -383,30 +386,40 @@ public:
         int hideRefCount;
         // updated recursively for child items as well
         int recursiveEffectRefCount;
+        // Mask contains() method index
+        int maskContainsIndex;
+
+        // Contains mask
+        QPointer<QObject> mask;
 
         QSGOpacityNode *opacityNode;
         QQuickDefaultClipNode *clipNode;
         QSGRootNode *rootNode;
-
-        // Mask contains() method
-        QMetaMethod maskContains;
+        // subsceneDeliveryAgent is set only if this item is the root of a subscene, not on all items within.
+        QQuickDeliveryAgent *subsceneDeliveryAgent = nullptr;
 
         QObjectList resourcesList;
 
         // Although acceptedMouseButtons is inside ExtraData, we actually store
-        // the LeftButton flag in the extra.flag() bit.  This is because it is
+        // the LeftButton flag in the extra.tag() bit.  This is because it is
         // extremely common to set acceptedMouseButtons to LeftButton, but very
         // rare to use any of the other buttons.
         Qt::MouseButtons acceptedMouseButtons;
+        Qt::MouseButtons acceptedMouseButtonsWithoutHandlers;
 
-        QQuickItem::TransformOrigin origin:5;
+        uint origin:5; // QQuickItem::TransformOrigin
         uint transparentForPositioner : 1;
 
         // 26 bits padding
     };
-    QLazilyAllocated<ExtraData> extra;
-    // Contains mask
-    QPointer<QObject> mask;
+
+    enum ExtraDataTag {
+        NoTag = 0x1,
+        LeftMouseButtonAccepted = 0x2
+    };
+    Q_DECLARE_FLAGS(ExtraDataTags, ExtraDataTag)
+
+    QLazilyAllocated<ExtraData, ExtraDataTags> extra;
     // If the mask is an Item, inform it that it's being used as a mask (true) or is no longer being used (false)
     virtual void registerAsContainmentMask(QQuickItem * /* maskedItem */, bool /* set */) { }
 
@@ -429,49 +442,54 @@ public:
     inline QQuickItem::TransformOrigin origin() const;
 
     // Bit 0
-    quint32 flags:5;
-    bool widthValid:1;
-    bool heightValid:1;
-    bool componentComplete:1;
-    bool keepMouse:1;
-    bool keepTouch:1;
-    bool hoverEnabled:1;
-    bool smooth:1;
-    bool antialiasing:1;
-    bool focus:1;
-    bool activeFocus:1;
-    bool notifiedFocus:1;
+    quint32 flags:7;
+    quint32 widthValidFlag:1;
+    quint32 heightValidFlag:1;
+    quint32 componentComplete:1;
+    quint32 keepMouse:1;
+    quint32 keepTouch:1;
+    quint32 hoverEnabled:1;
+    quint32 smooth:1;
+    quint32 antialiasing:1;
+    quint32 focus:1;
     // Bit 16
-    bool notifiedActiveFocus:1;
-    bool filtersChildMouseEvents:1;
-    bool explicitVisible:1;
-    bool effectiveVisible:1;
-    bool explicitEnable:1;
-    bool effectiveEnable:1;
-    bool polishScheduled:1;
-    bool inheritedLayoutMirror:1;
-    bool effectiveLayoutMirror:1;
-    bool isMirrorImplicit:1;
-    bool inheritMirrorFromParent:1;
-    bool inheritMirrorFromItem:1;
-    bool isAccessible:1;
-    bool culled:1;
-    bool hasCursor:1;
-    bool subtreeCursorEnabled:1;
+    quint32 activeFocus:1;
+    quint32 notifiedFocus:1;
+    quint32 notifiedActiveFocus:1;
+    quint32 filtersChildMouseEvents:1;
+    quint32 explicitVisible:1;
+    quint32 effectiveVisible:1;
+    quint32 explicitEnable:1;
+    quint32 effectiveEnable:1;
+    quint32 polishScheduled:1;
+    quint32 inheritedLayoutMirror:1;
+    quint32 effectiveLayoutMirror:1;
+    quint32 isMirrorImplicit:1;
+    quint32 inheritMirrorFromParent:1;
+    quint32 inheritMirrorFromItem:1;
+    quint32 isAccessible:1;
+    quint32 culled:1;
     // Bit 32
-    bool subtreeHoverEnabled:1;
-    bool activeFocusOnTab:1;
-    bool implicitAntialiasing:1;
-    bool antialiasingValid:1;
+    quint32 hasCursor:1;
+    quint32 subtreeCursorEnabled:1;
+    quint32 subtreeHoverEnabled:1;
+    quint32 activeFocusOnTab:1;
+    quint32 implicitAntialiasing:1;
+    quint32 antialiasingValid:1;
     // isTabFence: When true, the item acts as a fence within the tab focus chain.
     // This means that the item and its children will be skipped from the tab focus
     // chain when navigating from its parent or any of its siblings. Similarly,
     // when any of the item's descendants gets focus, the item constrains the tab
     // focus chain and prevents tabbing outside.
-    bool isTabFence:1;
-    bool replayingPressEvent:1;
-    bool touchEnabled:1;
-    bool hasCursorHandler:1;
+    quint32 isTabFence:1;
+    quint32 replayingPressEvent:1;
+    quint32 touchEnabled:1;
+    quint32 hasCursorHandler:1;
+    // set true when this item does not expect events via a subscene delivery agent; false otherwise
+    quint32 maybeHasSubsceneDeliveryAgent:1;
+    // set true if this item or any child wants QQuickItemPrivate::transformChanged() to visit all children
+    // (e.g. when parent has ItemIsViewport and child has ItemObservesViewport)
+    quint32 subtreeTransformChangedEnabled:1;
     quint32 inDestructor:1; // has entered ~QQuickItem
 
     enum DirtyType {
@@ -540,7 +558,7 @@ public:
 
     QTransform windowToItemTransform() const;
     QTransform itemToWindowTransform() const;
-    void itemToParentTransform(QTransform &) const;
+    void itemToParentTransform(QTransform *) const;
     QTransform globalToWindowTransform() const;
     QTransform windowToGlobalTransform() const;
 
@@ -551,12 +569,23 @@ public:
 
     static bool canAcceptTabFocus(QQuickItem *item);
 
-    qreal x;
-    qreal y;
-    qreal width;
-    qreal height;
+    void setX(qreal x) {q_func()->setX(x);}
+    void xChanged() {q_func()->xChanged();}
+    Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, x, &QQuickItemPrivate::setX, &QQuickItemPrivate::xChanged);
+    void setY(qreal y) {q_func()->setY(y);}
+    void yChanged() {q_func()->yChanged();}
+    Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, y, &QQuickItemPrivate::setY, &QQuickItemPrivate::yChanged);
+    void setWidth(qreal width) {q_func()->setWidth(width);}
+    void widthChanged() {q_func()->widthChanged();}
+    Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, width, &QQuickItemPrivate::setWidth, &QQuickItemPrivate::widthChanged);
+    void setHeight(qreal height) {q_func()->setHeight(height);}
+    void heightChanged() {q_func()->heightChanged();}
+    Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, height, &QQuickItemPrivate::setHeight, &QQuickItemPrivate::heightChanged);
     qreal implicitWidth;
     qreal implicitHeight;
+
+    bool widthValid() const { return widthValidFlag || (width.hasBinding() && !QQmlPropertyBinding::isUndefined(width.binding()) ); }
+    bool heightValid() const { return heightValidFlag || (height.hasBinding() && !QQmlPropertyBinding::isUndefined(height.binding()) ); }
 
     qreal baselineOffset;
 
@@ -575,7 +604,10 @@ public:
     virtual void implicitHeightChanged();
 
 #if QT_CONFIG(accessibility)
+    QAccessible::Role effectiveAccessibleRole() const;
+private:
     virtual QAccessible::Role accessibleRole() const;
+public:
 #endif
 
     void setImplicitAntialiasing(bool antialiasing);
@@ -593,12 +625,16 @@ public:
     }
 
     QPointF computeTransformOrigin() const;
-    virtual void transformChanged();
+    virtual bool transformChanged(QQuickItem *transformedItem);
 
     QPointF adjustedPosForTransform(const QPointF &centroid,
                                     const QPointF &startPos, const QVector2D &activeTranslatation,
                                     qreal startScale, qreal activeScale,
                                     qreal startRotation, qreal activeRotation);
+
+    QQuickDeliveryAgent *deliveryAgent();
+    QQuickDeliveryAgentPrivate *deliveryAgentPrivate();
+    QQuickDeliveryAgent *ensureSubsceneDeliveryAgent();
 
     void deliverKeyEvent(QKeyEvent *);
     bool filterKeyEvent(QKeyEvent *, bool post);
@@ -607,8 +643,8 @@ public:
 #endif
     void deliverShortcutOverrideEvent(QKeyEvent *);
 
-    bool anyPointerHandlerWants(QQuickEventPoint *point) const;
-    virtual bool handlePointerEvent(QQuickPointerEvent *, bool avoidExclusiveGrabber = false);
+    bool anyPointerHandlerWants(const QPointerEvent *event, const QEventPoint &point) const;
+    virtual bool handlePointerEvent(QPointerEvent *, bool avoidGrabbers = false);
 
     virtual void setVisible(bool visible);
 
@@ -659,7 +695,10 @@ public:
 #endif
 
     virtual void updatePolish() { }
+    virtual void dumpItemTree(int indent) const;
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(QQuickItemPrivate::ExtraDataTags)
 
 /*
     Key filters can be installed on a QQuickItem, but not removed.  Currently they
@@ -679,7 +718,7 @@ public:
     virtual void inputMethodEvent(QInputMethodEvent *event, bool post);
     virtual QVariant inputMethodQuery(Qt::InputMethodQuery query) const;
 #endif
-    virtual void shortcutOverride(QKeyEvent *event);
+    virtual void shortcutOverrideEvent(QKeyEvent *event);
     virtual void componentComplete();
 
     bool m_processPost;
@@ -714,15 +753,16 @@ class Q_QUICK_PRIVATE_EXPORT QQuickKeyNavigationAttached : public QObject, publi
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickKeyNavigationAttached)
 
-    Q_PROPERTY(QQuickItem *left READ left WRITE setLeft NOTIFY leftChanged)
-    Q_PROPERTY(QQuickItem *right READ right WRITE setRight NOTIFY rightChanged)
-    Q_PROPERTY(QQuickItem *up READ up WRITE setUp NOTIFY upChanged)
-    Q_PROPERTY(QQuickItem *down READ down WRITE setDown NOTIFY downChanged)
-    Q_PROPERTY(QQuickItem *tab READ tab WRITE setTab NOTIFY tabChanged)
-    Q_PROPERTY(QQuickItem *backtab READ backtab WRITE setBacktab NOTIFY backtabChanged)
-    Q_PROPERTY(Priority priority READ priority WRITE setPriority NOTIFY priorityChanged)
+    Q_PROPERTY(QQuickItem *left READ left WRITE setLeft NOTIFY leftChanged FINAL)
+    Q_PROPERTY(QQuickItem *right READ right WRITE setRight NOTIFY rightChanged FINAL)
+    Q_PROPERTY(QQuickItem *up READ up WRITE setUp NOTIFY upChanged FINAL)
+    Q_PROPERTY(QQuickItem *down READ down WRITE setDown NOTIFY downChanged FINAL)
+    Q_PROPERTY(QQuickItem *tab READ tab WRITE setTab NOTIFY tabChanged FINAL)
+    Q_PROPERTY(QQuickItem *backtab READ backtab WRITE setBacktab NOTIFY backtabChanged FINAL)
+    Q_PROPERTY(Priority priority READ priority WRITE setPriority NOTIFY priorityChanged FINAL)
 
     QML_NAMED_ELEMENT(KeyNavigation)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_UNCREATABLE("KeyNavigation is only available via attached properties.")
     QML_ATTACHED(QQuickKeyNavigationAttached)
 
@@ -768,10 +808,11 @@ private:
 class QQuickLayoutMirroringAttached : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled RESET resetEnabled NOTIFY enabledChanged)
-    Q_PROPERTY(bool childrenInherit READ childrenInherit WRITE setChildrenInherit NOTIFY childrenInheritChanged)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled RESET resetEnabled NOTIFY enabledChanged FINAL)
+    Q_PROPERTY(bool childrenInherit READ childrenInherit WRITE setChildrenInherit NOTIFY childrenInheritChanged FINAL)
 
     QML_NAMED_ELEMENT(LayoutMirroring)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_UNCREATABLE("LayoutMirroring is only available via attached properties.")
     QML_ATTACHED(QQuickLayoutMirroringAttached)
 
@@ -797,11 +838,11 @@ private:
 class QQuickEnterKeyAttached : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(Qt::EnterKeyType type READ type WRITE setType NOTIFY typeChanged)
+    Q_PROPERTY(Qt::EnterKeyType type READ type WRITE setType NOTIFY typeChanged FINAL)
 
     QML_NAMED_ELEMENT(EnterKey)
     QML_UNCREATABLE("EnterKey is only available via attached properties")
-    QML_ADDED_IN_MINOR_VERSION(6)
+    QML_ADDED_IN_VERSION(2, 6)
     QML_ATTACHED(QQuickEnterKeyAttached)
 
 public:
@@ -840,16 +881,17 @@ public:
     QQuickKeyEvent theKeyEvent;
 };
 
-class QQuickKeysAttached : public QObject, public QQuickItemKeyFilter
+class Q_QUICK_PRIVATE_EXPORT QQuickKeysAttached : public QObject, public QQuickItemKeyFilter
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickKeysAttached)
 
-    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
-    Q_PROPERTY(QQmlListProperty<QQuickItem> forwardTo READ forwardTo)
-    Q_PROPERTY(Priority priority READ priority WRITE setPriority NOTIFY priorityChanged)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
+    Q_PROPERTY(QQmlListProperty<QQuickItem> forwardTo READ forwardTo FINAL)
+    Q_PROPERTY(Priority priority READ priority WRITE setPriority NOTIFY priorityChanged FINAL)
 
     QML_NAMED_ELEMENT(Keys)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_UNCREATABLE("Keys is only available via attached properties")
     QML_ATTACHED(QQuickKeysAttached)
 
@@ -934,7 +976,7 @@ private:
     void inputMethodEvent(QInputMethodEvent *, bool post) override;
     QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 #endif
-    void shortcutOverride(QKeyEvent *event) override;
+    void shortcutOverrideEvent(QKeyEvent *event) override;
     static QByteArray keyToSignal(int key);
 
     bool isConnected(const char *signalName) const;
@@ -942,7 +984,7 @@ private:
 
 Qt::MouseButtons QQuickItemPrivate::acceptedMouseButtons() const
 {
-    return ((extra.flag() ? Qt::LeftButton : Qt::MouseButton(0)) |
+    return ((extra.tag().testFlag(LeftMouseButtonAccepted) ? Qt::LeftButton : Qt::MouseButton(0)) |
             (extra.isAllocated() ? extra->acceptedMouseButtons : Qt::MouseButtons{}));
 }
 
@@ -971,7 +1013,8 @@ void QQuickItemPrivate::markSortedChildrenDirty(QQuickItem *child)
 
 QQuickItem::TransformOrigin QQuickItemPrivate::origin() const
 {
-    return extra.isAllocated()?extra->origin:QQuickItem::Center;
+    return extra.isAllocated() ? QQuickItem::TransformOrigin(extra->origin)
+                               : QQuickItem::Center;
 }
 
 QSGTransformNode *QQuickItemPrivate::itemNode()

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,17 +10,17 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/path_service.h"
 #include "base/scoped_native_library.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/scoped_blocking_call.h"
+#include "base/threading/scoped_thread_priority.h"
 
 namespace base {
 
 namespace {
-
-// forward declare
-HMODULE AddDllDirectory(PCWSTR new_directory);
 
 // This enum is used to back an UMA histogram, and should therefore be treated
 // as append-only.
@@ -34,11 +34,11 @@ enum LoadLibraryResult {
   // LoadLibraryW is used but fails as well.
   FAIL_AND_FAIL,
   // LoadLibraryExW API/flags are unavailabe to use, then LoadLibraryW is used
-  // and succeeds.
-  UNAVAILABLE_AND_SUCCEED,
+  // and succeeds. Pre-Win10-only.
+  UNAVAILABLE_AND_SUCCEED_OBSOLETE,
   // LoadLibraryExW API/flags are unavailabe to use, then LoadLibraryW is used
-  // but fails.
-  UNAVAILABLE_AND_FAIL,
+  // but fails.  Pre-Win10-only.
+  UNAVAILABLE_AND_FAIL_OBSOLETE,
   // Add new items before this one, always keep this one at the end.
   END
 };
@@ -49,39 +49,11 @@ void LogLibrarayLoadResultToUMA(LoadLibraryResult result) {
                             LoadLibraryResult::END);
 }
 
-// A helper method to check if AddDllDirectory method is available, thus
-// LOAD_LIBRARY_SEARCH_* flags are available on systems.
-bool AreSearchFlagsAvailable() {
-  // The LOAD_LIBRARY_SEARCH_* flags are available on systems that have
-  // KB2533623 installed. To determine whether the flags are available, use
-  // GetProcAddress to get the address of the AddDllDirectory,
-  // RemoveDllDirectory, or SetDefaultDllDirectories function. If GetProcAddress
-  // succeeds, the LOAD_LIBRARY_SEARCH_* flags can be used with LoadLibraryEx.
-  // https://msdn.microsoft.com/en-us/library/windows/desktop/ms684179(v=vs.85).aspx
-  // The LOAD_LIBRARY_SEARCH_* flags are used in the LoadNativeLibraryHelper
-  // method.
-  static const auto add_dll_dir_func =
-      reinterpret_cast<decltype(AddDllDirectory)*>(
-          GetProcAddress(GetModuleHandle(L"kernel32.dll"), "AddDllDirectory"));
-  return !!add_dll_dir_func;
-}
-
 // A helper method to encode the library loading result to enum
 // LoadLibraryResult.
-LoadLibraryResult GetLoadLibraryResult(bool are_search_flags_available,
-                                       bool has_load_library_succeeded) {
-  LoadLibraryResult result;
-  if (are_search_flags_available) {
-    if (has_load_library_succeeded)
-      result = LoadLibraryResult::FAIL_AND_SUCCEED;
-    else
-      result = LoadLibraryResult::FAIL_AND_FAIL;
-  } else if (has_load_library_succeeded) {
-    result = LoadLibraryResult::UNAVAILABLE_AND_SUCCEED;
-  } else {
-    result = LoadLibraryResult::UNAVAILABLE_AND_FAIL;
-  }
-  return result;
+LoadLibraryResult GetLoadLibraryResult(bool has_load_library_succeeded) {
+  return has_load_library_succeeded ? LoadLibraryResult::FAIL_AND_SUCCEED
+                                    : LoadLibraryResult::FAIL_AND_FAIL;
 }
 
 NativeLibrary LoadNativeLibraryHelper(const FilePath& library_path,
@@ -90,28 +62,32 @@ NativeLibrary LoadNativeLibraryHelper(const FilePath& library_path,
   // must not be called from DllMain.
   ScopedBlockingCall scoped_blocking_call(FROM_HERE, BlockingType::MAY_BLOCK);
 
-  HMODULE module = nullptr;
+  // Mitigate the issues caused by loading DLLs on a background thread
+  // (see http://crbug/973868 for context). This temporarily boosts this
+  // thread's priority so that it doesn't get starved by higher priority threads
+  // while it holds the LoaderLock.
+  SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY_REPEATEDLY();
+
+  HMODULE module_handle = nullptr;
 
   // This variable records the library loading result.
   LoadLibraryResult load_library_result = LoadLibraryResult::SUCCEED;
 
-  bool are_search_flags_available = AreSearchFlagsAvailable();
-  if (are_search_flags_available) {
-    // LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR flag is needed to search the library
-    // directory as the library may have dependencies on DLLs in this
-    // directory.
-    module = ::LoadLibraryExW(
-        library_path.value().c_str(), nullptr,
-        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-    // If LoadLibraryExW succeeds, log this metric and return.
-    if (module) {
-      LogLibrarayLoadResultToUMA(load_library_result);
-      return module;
-    }
-    // GetLastError() needs to be called immediately after
-    // LoadLibraryExW call.
-    if (error)
-      error->code = ::GetLastError();
+  // LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR flag is needed to search the library
+  // directory as the library may have dependencies on DLLs in this
+  // directory.
+  module_handle = ::LoadLibraryExW(
+      library_path.value().c_str(), nullptr,
+      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+  // If LoadLibraryExW succeeds, log this metric and return.
+  if (module_handle) {
+    LogLibrarayLoadResultToUMA(load_library_result);
+    return module_handle;
+  }
+  // GetLastError() needs to be called immediately after
+  // LoadLibraryExW call.
+  if (error) {
+    error->code = ::GetLastError();
   }
 
   // If LoadLibraryExW API/flags are unavailable or API call fails, try
@@ -128,20 +104,20 @@ NativeLibrary LoadNativeLibraryHelper(const FilePath& library_path,
       restore_directory = true;
     }
   }
-  module = ::LoadLibraryW(library_path.value().c_str());
+  module_handle = ::LoadLibraryW(library_path.value().c_str());
 
   // GetLastError() needs to be called immediately after LoadLibraryW call.
-  if (!module && error)
+  if (!module_handle && error) {
     error->code = ::GetLastError();
+  }
 
   if (restore_directory)
     SetCurrentDirectory(current_directory);
 
   // Get the library loading result and log it to UMA.
-  LogLibrarayLoadResultToUMA(
-      GetLoadLibraryResult(are_search_flags_available, !!module));
+  LogLibrarayLoadResultToUMA(GetLoadLibraryResult(!!module_handle));
 
-  return module;
+  return module_handle;
 }
 
 NativeLibrary LoadSystemLibraryHelper(const FilePath& library_path,
@@ -153,17 +129,13 @@ NativeLibrary LoadSystemLibraryHelper(const FilePath& library_path,
   BOOL module_found =
       ::GetModuleHandleExW(0, library_path.value().c_str(), &module);
   if (!module_found) {
-    bool are_search_flags_available = AreSearchFlagsAvailable();
-    // Prefer LOAD_LIBRARY_SEARCH_SYSTEM32 to avoid DLL preloading attacks.
-    DWORD flags = are_search_flags_available ? LOAD_LIBRARY_SEARCH_SYSTEM32
-                                             : LOAD_WITH_ALTERED_SEARCH_PATH;
-    module = ::LoadLibraryExW(library_path.value().c_str(), nullptr, flags);
+    module = ::LoadLibraryExW(library_path.value().c_str(), nullptr,
+                              LOAD_LIBRARY_SEARCH_SYSTEM32);
 
     if (!module && error)
       error->code = ::GetLastError();
 
-    LogLibrarayLoadResultToUMA(
-        GetLoadLibraryResult(are_search_flags_available, !!module));
+    LogLibrarayLoadResultToUMA(GetLoadLibraryResult(!!module));
   }
 
   return module;
@@ -200,7 +172,7 @@ void* GetFunctionPointerFromNativeLibrary(NativeLibrary library,
 
 std::string GetNativeLibraryName(StringPiece name) {
   DCHECK(IsStringASCII(name));
-  return name.as_string() + ".dll";
+  return StrCat({name, ".dll"});
 }
 
 std::string GetLoadableModuleName(StringPiece name) {

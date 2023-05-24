@@ -13,9 +13,13 @@
 // limitations under the License.
 
 #include "VkQueue.hpp"
+
 #include "VkCommandBuffer.hpp"
 #include "VkFence.hpp"
 #include "VkSemaphore.hpp"
+#include "VkStringify.hpp"
+#include "VkStructConversion.hpp"
+#include "VkTimelineSemaphore.hpp"
 #include "Device/Renderer.hpp"
 #include "WSI/VkSwapchainKHR.hpp"
 
@@ -25,55 +29,6 @@
 #include "marl/trace.h"
 
 #include <cstring>
-
-namespace {
-
-VkSubmitInfo *DeepCopySubmitInfo(uint32_t submitCount, const VkSubmitInfo *pSubmits)
-{
-	size_t submitSize = sizeof(VkSubmitInfo) * submitCount;
-	size_t totalSize = submitSize;
-	for(uint32_t i = 0; i < submitCount; i++)
-	{
-		totalSize += pSubmits[i].waitSemaphoreCount * sizeof(VkSemaphore);
-		totalSize += pSubmits[i].waitSemaphoreCount * sizeof(VkPipelineStageFlags);
-		totalSize += pSubmits[i].signalSemaphoreCount * sizeof(VkSemaphore);
-		totalSize += pSubmits[i].commandBufferCount * sizeof(VkCommandBuffer);
-	}
-
-	uint8_t *mem = static_cast<uint8_t *>(
-	    vk::allocate(totalSize, vk::REQUIRED_MEMORY_ALIGNMENT, vk::DEVICE_MEMORY, vk::Fence::GetAllocationScope()));
-
-	auto submits = new(mem) VkSubmitInfo[submitCount];
-	memcpy(mem, pSubmits, submitSize);
-	mem += submitSize;
-
-	for(uint32_t i = 0; i < submitCount; i++)
-	{
-		size_t size = pSubmits[i].waitSemaphoreCount * sizeof(VkSemaphore);
-		submits[i].pWaitSemaphores = reinterpret_cast<const VkSemaphore *>(mem);
-		memcpy(mem, pSubmits[i].pWaitSemaphores, size);
-		mem += size;
-
-		size = pSubmits[i].waitSemaphoreCount * sizeof(VkPipelineStageFlags);
-		submits[i].pWaitDstStageMask = reinterpret_cast<const VkPipelineStageFlags *>(mem);
-		memcpy(mem, pSubmits[i].pWaitDstStageMask, size);
-		mem += size;
-
-		size = pSubmits[i].signalSemaphoreCount * sizeof(VkSemaphore);
-		submits[i].pSignalSemaphores = reinterpret_cast<const VkSemaphore *>(mem);
-		memcpy(mem, pSubmits[i].pSignalSemaphores, size);
-		mem += size;
-
-		size = pSubmits[i].commandBufferCount * sizeof(VkCommandBuffer);
-		submits[i].pCommandBuffers = reinterpret_cast<const VkCommandBuffer *>(mem);
-		memcpy(mem, pSubmits[i].pCommandBuffers, size);
-		mem += size;
-	}
-
-	return submits;
-}
-
-}  // anonymous namespace
 
 namespace vk {
 
@@ -95,18 +50,17 @@ Queue::~Queue()
 	garbageCollect();
 }
 
-VkResult Queue::submit(uint32_t submitCount, const VkSubmitInfo *pSubmits, Fence *fence)
+VkResult Queue::submit(uint32_t submitCount, SubmitInfo *pSubmits, Fence *fence)
 {
 	garbageCollect();
 
 	Task task;
 	task.submitCount = submitCount;
-	task.pSubmits = DeepCopySubmitInfo(submitCount, pSubmits);
-	task.events = fence;
-
-	if(task.events)
+	task.pSubmits = pSubmits;
+	if(fence)
 	{
-		task.events->start();
+		task.events = fence->getCountedEvent();
+		task.events->add();
 	}
 
 	pending.put(task);
@@ -123,25 +77,49 @@ void Queue::submitQueue(const Task &task)
 
 	for(uint32_t i = 0; i < task.submitCount; i++)
 	{
-		auto &submitInfo = task.pSubmits[i];
+		SubmitInfo &submitInfo = task.pSubmits[i];
 		for(uint32_t j = 0; j < submitInfo.waitSemaphoreCount; j++)
 		{
-			vk::Cast(submitInfo.pWaitSemaphores[j])->wait(submitInfo.pWaitDstStageMask[j]);
+			if(auto *sem = DynamicCast<TimelineSemaphore>(submitInfo.pWaitSemaphores[j]))
+			{
+				ASSERT(j < submitInfo.waitSemaphoreValueCount);
+				sem->wait(submitInfo.pWaitSemaphoreValues[j]);
+			}
+			else if(auto *sem = DynamicCast<BinarySemaphore>(submitInfo.pWaitSemaphores[j]))
+			{
+				sem->wait(submitInfo.pWaitDstStageMask[j]);
+			}
+			else
+			{
+				UNSUPPORTED("Unknown semaphore type");
+			}
 		}
 
 		{
 			CommandBuffer::ExecutionState executionState;
 			executionState.renderer = renderer.get();
-			executionState.events = task.events;
+			executionState.events = task.events.get();
 			for(uint32_t j = 0; j < submitInfo.commandBufferCount; j++)
 			{
-				vk::Cast(submitInfo.pCommandBuffers[j])->submit(executionState);
+				Cast(submitInfo.pCommandBuffers[j])->submit(executionState);
 			}
 		}
 
 		for(uint32_t j = 0; j < submitInfo.signalSemaphoreCount; j++)
 		{
-			vk::Cast(submitInfo.pSignalSemaphores[j])->signal();
+			if(auto *sem = DynamicCast<TimelineSemaphore>(submitInfo.pSignalSemaphores[j]))
+			{
+				ASSERT(j < submitInfo.signalSemaphoreValueCount);
+				sem->signal(submitInfo.pSignalSemaphoreValues[j]);
+			}
+			else if(auto *sem = DynamicCast<BinarySemaphore>(submitInfo.pSignalSemaphores[j]))
+			{
+				sem->signal();
+			}
+			else
+			{
+				UNSUPPORTED("Unknown semaphore type");
+			}
 		}
 	}
 
@@ -155,7 +133,7 @@ void Queue::submitQueue(const Task &task)
 		// TODO: fix renderer signaling so that work submitted separately from (but before) a fence
 		// is guaranteed complete by the time the fence signals.
 		renderer->synchronize();
-		task.events->finish();
+		task.events->done();
 	}
 }
 
@@ -171,15 +149,15 @@ void Queue::taskLoop(marl::Scheduler *scheduler)
 
 		switch(task.type)
 		{
-			case Task::KILL_THREAD:
-				ASSERT_MSG(pending.count() == 0, "queue has remaining work!");
-				return;
-			case Task::SUBMIT_QUEUE:
-				submitQueue(task);
-				break;
-			default:
-				UNREACHABLE("task.type %d", static_cast<int>(task.type));
-				break;
+		case Task::KILL_THREAD:
+			ASSERT_MSG(pending.count() == 0, "queue has remaining work!");
+			return;
+		case Task::SUBMIT_QUEUE:
+			submitQueue(task);
+			break;
+		default:
+			UNREACHABLE("task.type %d", static_cast<int>(task.type));
+			break;
 		}
 	}
 }
@@ -187,14 +165,14 @@ void Queue::taskLoop(marl::Scheduler *scheduler)
 VkResult Queue::waitIdle()
 {
 	// Wait for task queue to flush.
-	sw::WaitGroup wg;
-	wg.add();
+	auto event = std::make_shared<sw::CountedEvent>();
+	event->add();  // done() is called at the end of submitQueue()
 
 	Task task;
-	task.events = &wg;
+	task.events = event;
 	pending.put(task);
 
-	wg.wait();
+	event->wait();
 
 	garbageCollect();
 
@@ -207,7 +185,7 @@ void Queue::garbageCollect()
 	{
 		auto v = toDelete.tryTake();
 		if(!v.second) { break; }
-		vk::deallocate(v.first, DEVICE_MEMORY);
+		SubmitInfo::Release(v.first);
 	}
 }
 
@@ -219,16 +197,23 @@ VkResult Queue::present(const VkPresentInfoKHR *presentInfo)
 	// to get rid of it. b/132458423
 	waitIdle();
 
+	// Note: VkSwapchainPresentModeInfoEXT can be used to override the present mode, but present
+	// mode is currently ignored by SwiftShader.
+
 	for(uint32_t i = 0; i < presentInfo->waitSemaphoreCount; i++)
 	{
-		vk::Cast(presentInfo->pWaitSemaphores[i])->wait();
+		auto *semaphore = vk::DynamicCast<BinarySemaphore>(presentInfo->pWaitSemaphores[i]);
+		semaphore->wait();
 	}
+
+	const auto *presentFences = vk::GetExtendedStruct<VkSwapchainPresentFenceInfoEXT>(presentInfo->pNext, VK_STRUCTURE_TYPE_SWAPCHAIN_PRESENT_FENCE_INFO_EXT);
 
 	VkResult commandResult = VK_SUCCESS;
 
 	for(uint32_t i = 0; i < presentInfo->swapchainCount; i++)
 	{
-		VkResult perSwapchainResult = vk::Cast(presentInfo->pSwapchains[i])->present(presentInfo->pImageIndices[i]);
+		auto *swapchain = vk::Cast(presentInfo->pSwapchains[i]);
+		VkResult perSwapchainResult = swapchain->present(presentInfo->pImageIndices[i]);
 
 		if(presentInfo->pResults)
 		{
@@ -243,6 +228,12 @@ VkResult Queue::present(const VkPresentInfoKHR *presentInfo)
 			{
 				commandResult = perSwapchainResult;
 			}
+		}
+
+		// The wait semaphores and the swapchain are no longer accessed
+		if(presentFences)
+		{
+			vk::Cast(presentFences->pFences[i])->complete();
 		}
 	}
 

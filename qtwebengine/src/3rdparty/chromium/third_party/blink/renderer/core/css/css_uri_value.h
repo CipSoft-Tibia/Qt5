@@ -1,10 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_URI_VALUE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_URI_VALUE_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
@@ -23,7 +24,7 @@ class CORE_EXPORT CSSURIValue : public CSSValue {
   CSSURIValue(const AtomicString&, const KURL&);
   CSSURIValue(const AtomicString& relative_url,
               const AtomicString& absolute_url);
-  CSSURIValue(const AtomicString& absolute_url);
+  explicit CSSURIValue(const AtomicString& absolute_url);
   ~CSSURIValue();
 
   SVGResource* EnsureResourceReference() const;
@@ -38,10 +39,17 @@ class CORE_EXPORT CSSURIValue : public CSSValue {
   bool IsLocal(const Document&) const;
   AtomicString FragmentIdentifier() const;
 
+  // Fragment identifier with trailing spaces removed and URL
+  // escape sequences decoded. This is cached, because it can take
+  // a surprisingly long time to normalize the URL into an absolute
+  // value if we have lots of SVG elements that need to re-run this
+  // over and over again.
+  const AtomicString& NormalizedFragmentIdentifier() const;
+
   bool Equals(const CSSURIValue&) const;
 
-  CSSURIValue* ValueWithURLMadeAbsolute(const KURL& base_url,
-                                        const WTF::TextEncoding&) const;
+  CSSURIValue* ComputedCSSValue(const KURL& base_url,
+                                const WTF::TextEncoding&) const;
 
   void TraceAfterDispatch(blink::Visitor*) const;
 
@@ -49,6 +57,7 @@ class CORE_EXPORT CSSURIValue : public CSSValue {
   KURL AbsoluteUrl() const;
 
   AtomicString relative_url_;
+  mutable AtomicString normalized_fragment_identifier_cache_;
   bool is_local_;
 
   mutable Member<SVGResource> resource_;

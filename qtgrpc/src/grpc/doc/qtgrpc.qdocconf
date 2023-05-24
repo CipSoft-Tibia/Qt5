@@ -1,0 +1,57 @@
+include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
+
+project                 = QtGrpc
+description             = Qt GRPC Reference Documentation
+version                 = $QT_VERSION
+
+examplesinstallpath     = grpc
+examples.fileextensions += "*.proto"
+url.examples = "https://code.qt.io/cgit/qt/qtgrpc.git/tree/examples/\1?h=$QT_VER"
+
+qhp.projects            = QtGrpc
+
+qhp.QtGrpc.file                = qtgrpc.qhp
+qhp.QtGrpc.namespace           = org.qt-project.qtgrpc.$QT_VERSION_TAG
+qhp.QtGrpc.virtualFolder       = qtgrpc
+qhp.QtGrpc.indexTitle          = Qt GRPC
+qhp.QtGrpc.indexRoot           =
+
+qhp.QtGrpc.subprojects = qmltypes examples classes
+
+qhp.QtGrpc.subprojects.qmltypes.title = QML Types
+qhp.QtGrpc.subprojects.qmltypes.indexTitle = Qt GRPC QML Types
+qhp.QtGrpc.subprojects.qmltypes.selectors = qmlclass
+qhp.QtGrpc.subprojects.qmltypes.sortPages = true
+
+qhp.QtGrpc.subprojects.examples.title = Examples
+qhp.QtGrpc.subprojects.examples.indexTitle = Qt GRPC Examples
+qhp.QtGrpc.subprojects.examples.selectors = doc:example
+
+qhp.QtGrpc.subprojects.classes.title      = C++ Classes
+qhp.QtGrpc.subprojects.classes.indexTitle = Qt GRPC C++ Classes
+qhp.QtGrpc.subprojects.classes.selectors  = class doc:headerfile
+qhp.QtGrpc.subprojects.classes.sortPages  = true
+
+depends += qtdoc qtcore qtnetwork qtwidgets qtprotobuf qtcmake qtqml
+
+{headerdirs,sourcedirs}  += .. \
+                            ../../tools/doc/src \
+                            ../../tools/qtgrpcgen/doc/src
+
+
+exampledirs +=  ../../tools/qtgrpcgen/doc/src/snippets \
+                ../../../examples/grpc
+
+imagedirs   += images \
+               ../../../examples/grpc/doc/images
+
+navigation.landingpage = "Qt GRPC"
+navigation.cppclassespage = "Qt GRPC C++ Classes"
+navigation.qmltypespage = "Qt GRPC QML Types"
+
+manifestmeta.highlighted.names = "QtGrpc/Magic 8 Ball"
+
+tagfile                 = qtgrpc.tags
+
+# Enforce zero documentation warnings
+warninglimit = 0

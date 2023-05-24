@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qabstract3dgraph.h"
 #include "qabstract3dgraph_p.h"
@@ -37,15 +11,15 @@
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLPaintDevice>
+#include <QtOpenGL/QOpenGLPaintDevice>
 #include <QtGui/QPainter>
-#include <QtGui/QOpenGLFramebufferObject>
+#include <QtOpenGL/QOpenGLFramebufferObject>
 #include <QtGui/QOffscreenSurface>
-#if defined(Q_OS_OSX)
+#if defined(Q_OS_MACOS)
 #include <qpa/qplatformnativeinterface.h>
 #endif
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 /*!
  * \class QAbstract3DGraph
@@ -60,7 +34,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * Anti-aliasing is turned on by default on C++, except in OpenGL ES2
  * environments, where anti-aliasing is not supported by Qt Data Visualization.
  * To specify non-default anti-aliasing for a graph, give a custom surface format as
- * a constructor parameter. You can use the convenience function \c QtDataVisualization::qDefaultSurfaceFormat()
+ * a constructor parameter. You can use the convenience function \c qDefaultSurfaceFormat()
  * to create the surface format object.
  *
  * \note QAbstract3DGraph sets window flag \c Qt::FramelessWindowHint on by default. If you want to display
@@ -110,6 +84,8 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
     \value SelectionMultiSeries
            Setting this mode means that items for all series at same position are highlighted, instead
            of just the selected item. The actual selection in the other series doesn't change.
+           When setting this mode flag, one or more of the basic selection flags (\c {SelectionItem},
+           \c {SelectionRow}, or \c SelectionColumn) must also be set.
            Multi-series selection is not supported for Q3DScatter.
 */
 
@@ -186,7 +162,7 @@ QAbstract3DGraph::QAbstract3DGraph(QAbstract3DGraphPrivate *d, const QSurfaceFor
         // Make sure renderable type is correct
         surfaceFormat.setRenderableType(QSurfaceFormat::DefaultRenderableType);
     } else {
-        surfaceFormat = qDefaultSurfaceFormat();
+        surfaceFormat = qDefaultSurfaceFormat(true);
     }
 
     d_ptr->m_context = new QOpenGLContext(this);
@@ -224,7 +200,7 @@ QAbstract3DGraph::QAbstract3DGraph(QAbstract3DGraphPrivate *d, const QSurfaceFor
 
     d_ptr->renderLater();
 
-#if defined(Q_OS_OSX)
+#if defined(Q_OS_MACOS)
     // Enable touch events for Mac touchpads
     typedef void * (*EnableTouch)(QWindow*, bool);
     EnableTouch enableTouch =
@@ -436,6 +412,16 @@ void QAbstract3DGraph::clearSelection()
 }
 
 /*!
+ * Returns whether the \a series has already been added to the graph.
+ *
+ * \since 6.3
+ */
+bool QAbstract3DGraph::hasSeries(QAbstract3DSeries *series) const
+{
+    return d_ptr->m_visualController->hasSeries(series);
+}
+
+/*!
  * Adds a QCustom3DItem \a item to the graph. Graph takes ownership of the added item.
  *
  * Returns the index to the added item if the add operation was successful, -1
@@ -581,7 +567,7 @@ QCustom3DItem *QAbstract3DGraph::selectedCustomItem() const
  * \c selectedElementChanged signal is emitted.
  *
  * The signal can be used for example for implementing custom input handlers, as
- * demonstrated by the \l {Axis Range Dragging With Labels Example}.
+ * demonstrated in the \l {Graph Gallery} example under \uicontrol {Scatter Graph} tab.
  *
  * \sa selectedLabelIndex(), selectedAxis(), selectedCustomItemIndex(), selectedCustomItem(),
  * Q3DBars::selectedSeries(), Q3DScatter::selectedSeries(), Q3DSurface::selectedSeries(),
@@ -1193,4 +1179,4 @@ QImage QAbstract3DGraphPrivate::renderToImage(int msaaSamples, const QSize &imag
     return image;
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

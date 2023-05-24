@@ -27,10 +27,13 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_AUDIO_UTILITIES_H_
 
 #include <cstddef>
+
+#include "third_party/blink/public/common/mediastream/media_devices.h"
+#include "third_party/blink/public/platform/web_audio_sink_descriptor.h"
+#include "third_party/blink/public/platform/web_audio_latency_hint.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 
-namespace blink {
-namespace audio_utilities {
+namespace blink::audio_utilities {
 
 // How to do rounding when converting time to sample frame.
 enum SampleFrameRounding {
@@ -41,10 +44,6 @@ enum SampleFrameRounding {
   // Round up
   kRoundUp
 };
-
-// Rendering quantum size.  This is how many frames are processed at a time for
-// each node in the audio graph.
-static const unsigned kRenderQuantumFrames = 128;
 
 // Standard functions for converting to and from decibel values from linear.
 PLATFORM_EXPORT float LinearToDecibels(float);
@@ -73,7 +72,19 @@ PLATFORM_EXPORT float MaxAudioBufferSampleRate();
 // Check to see if x is a power of two.  If x == 0, returns false.
 PLATFORM_EXPORT bool IsPowerOfTwo(size_t x);
 
-}  // namespace audio_utilities
-}  // namespace blink
+PLATFORM_EXPORT const std::string GetSinkIdForTracing(
+    blink::WebAudioSinkDescriptor sink_descriptor);
+
+PLATFORM_EXPORT const std::string GetSinkInfoForTracing(
+    blink::WebAudioSinkDescriptor sink_descriptor,
+    blink::WebAudioLatencyHint latency_hint,
+    int channel_count,
+    float sample_rate,
+    int buffer_size);
+
+PLATFORM_EXPORT const std::string GetDeviceEnumerationForTracing(
+    const Vector<WebMediaDeviceInfo>& device_infos);
+
+}  // namespace blink::audio_utilities
 
 #endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_AUDIO_UTILITIES_H_

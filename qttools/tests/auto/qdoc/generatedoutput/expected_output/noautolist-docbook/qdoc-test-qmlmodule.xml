@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <db:article xmlns:db="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink" version="5.2" xml:lang="en">
 <db:info>
-<db:title></db:title>
+<db:title>QDoc.Test QML Module</db:title>
 <db:productname>Test</db:productname>
 <db:titleabbrev>A test project for QDoc build artifacts</db:titleabbrev>
 <db:abstract>
@@ -12,5 +12,4 @@
 </db:info>
 <db:para><db:emphasis role="bold">This module is under development and is subject to change.</db:emphasis></db:para>
 <db:para>This module was introduced in Qt 1.1.</db:para>
-<db:anchor xml:id="details"/>
 </db:article>

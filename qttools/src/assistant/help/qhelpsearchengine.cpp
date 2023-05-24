@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpenginecore.h"
 #include "qhelpsearchengine.h"
@@ -178,11 +142,11 @@ private:
         return indexReader ? indexReader->searchResultCount() : 0;
     }
 
-    QVector<QHelpSearchResult> searchResults(int start, int end) const
+    QList<QHelpSearchResult> searchResults(int start, int end) const
     {
         return indexReader ?
                indexReader->searchResults(start, end) :
-               QVector<QHelpSearchResult>();
+               QList<QHelpSearchResult>();
     }
 
     void updateIndex(bool reindex = false)
@@ -269,11 +233,9 @@ private:
     QString m_searchInput;
 };
 
-#include "qhelpsearchengine.moc"
-
 /*!
     \class QHelpSearchQuery
-    \obsolete
+    \deprecated
     \since 4.4
     \inmodule QtHelp
     \brief The QHelpSearchQuery class contains the field name and the associated
@@ -306,14 +268,14 @@ private:
 
     \value DEFAULT  the default field provided by the search widget, several terms should be
                     split and stored in the word list except search terms enclosed in quotes.
-    \value FUZZY    \obsolete Terms should be split in separate
+    \value FUZZY    \deprecated Terms should be split in separate
                     words and passed to the search engine.
-    \value WITHOUT  \obsolete  Terms should be split in separate
+    \value WITHOUT  \deprecated  Terms should be split in separate
                     words and passed to the search engine.
-    \value PHRASE   \obsolete  Terms should not be split in separate words.
-    \value ALL      \obsolete  Terms should be split in separate
+    \value PHRASE   \deprecated  Terms should not be split in separate words.
+    \value ALL      \deprecated  Terms should be split in separate
                     words and passed to the search engine
-    \value ATLEAST  \obsolete  Terms should be split in separate
+    \value ATLEAST  \deprecated  Terms should be split in separate
                     words and passed to the search engine
 */
 
@@ -433,8 +395,9 @@ QHelpSearchResultWidget* QHelpSearchEngine::resultWidget()
     return d->resultWidget;
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
-    \obsolete
+    \deprecated
     Use searchResultCount() instead.
 */
 int QHelpSearchEngine::hitsCount() const
@@ -444,13 +407,14 @@ int QHelpSearchEngine::hitsCount() const
 
 /*!
     \since 4.6
-    \obsolete
+    \deprecated
     Use searchResultCount() instead.
 */
 int QHelpSearchEngine::hitCount() const
 {
     return d->searchResultCount();
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \since 5.9
@@ -461,9 +425,10 @@ int QHelpSearchEngine::searchResultCount() const
     return d->searchResultCount();
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
     \typedef QHelpSearchEngine::SearchHit
-    \obsolete
+    \deprecated
 
     Use QHelpSearchResult instead.
 
@@ -474,7 +439,7 @@ int QHelpSearchEngine::searchResultCount() const
 */
 
 /*!
-    \obsolete
+    \deprecated
     Use searchResults() instead.
 */
 QList<QHelpSearchEngine::SearchHit> QHelpSearchEngine::hits(int start, int end) const
@@ -484,13 +449,14 @@ QList<QHelpSearchEngine::SearchHit> QHelpSearchEngine::hits(int start, int end) 
         hits.append(qMakePair(result.url().toString(), result.title()));
     return hits;
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \since 5.9
     Returns a list of search results within the range from the index
     specified by \a start to the index specified by \a end.
 */
-QVector<QHelpSearchResult> QHelpSearchEngine::searchResults(int start, int end) const
+QList<QHelpSearchResult> QHelpSearchEngine::searchResults(int start, int end) const
 {
     return d->searchResults(start, end);
 }
@@ -504,8 +470,9 @@ QString QHelpSearchEngine::searchInput() const
     return d->m_searchInput;
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
-    \obsolete
+    \deprecated
     \since 4.5
     Use searchInput() instead.
 */
@@ -514,6 +481,7 @@ QList<QHelpSearchQuery> QHelpSearchEngine::query() const
     return QList<QHelpSearchQuery>() << QHelpSearchQuery(QHelpSearchQuery::DEFAULT,
            d->m_searchInput.split(QChar::Space));
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     Forces the search engine to reindex all documentation files.
@@ -561,8 +529,9 @@ void QHelpSearchEngine::search(const QString &searchInput)
     d->search(searchInput);
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
-    \obsolete
+    \deprecated
     Use search(const QString &searchInput) instead.
 */
 void QHelpSearchEngine::search(const QList<QHelpSearchQuery> &queryList)
@@ -572,6 +541,7 @@ void QHelpSearchEngine::search(const QList<QHelpSearchQuery> &queryList)
 
     d->search(queryList.first().wordList.join(QChar::Space));
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \internal
@@ -592,3 +562,5 @@ void QHelpSearchEngine::indexDocumentation()
 }
 
 QT_END_NAMESPACE
+
+#include "qhelpsearchengine.moc"

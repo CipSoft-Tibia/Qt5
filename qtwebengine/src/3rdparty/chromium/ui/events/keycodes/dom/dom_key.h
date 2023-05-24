@@ -1,17 +1,17 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef UI_EVENTS_KEYCODES_DOM3_DOM_KEY_H_
-#define UI_EVENTS_KEYCODES_DOM3_DOM_KEY_H_
+#ifndef UI_EVENTS_KEYCODES_DOM_DOM_KEY_H_
+#define UI_EVENTS_KEYCODES_DOM_DOM_KEY_H_
 
 #include <stdint.h>
 
 #include <ostream>
 
 #include "base/check.h"
-#include "base/optional.h"
 #include "build/build_config.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace ui {
 
@@ -38,7 +38,7 @@ namespace ui {
 //
 class DomKey {
  public:
-  using Base = int32_t;
+  using Base = uint32_t;
 
  private:
   // Integer representation of DomKey. This is arranged so that DomKey encoded
@@ -79,6 +79,9 @@ class DomKey {
                 "suspicious representation change");
 
  public:
+  // Following block is a technique to add inlined constant with C++14
+  // compatible way. These can be replaced with inline constexpr after
+  // C++17 support.
   enum InvalidKey : Base { NONE = 0 };
 // |dom_key_data.inc| describes the non-printable DomKey values, and is
 // included here to create constants for them in the DomKey:: scope.
@@ -91,20 +94,20 @@ class DomKey {
 #undef DOM_KEY_UNI
 
   // Create a DomKey, with the undefined-value sentinel DomKey::NONE.
-  DomKey() : value_(NONE) {}
+  constexpr DomKey() = default;
 
   // Create a DomKey from an encoded integer value. This is implicit so
   // that DomKey::NAME constants don't need to be explicitly converted
   // to DomKey.
-  DomKey(Base value) : value_(value) {
-    DCHECK(value == 0 || IsValid()) << value;
-  }
+  // After switching to C++17, this can be replaced by inline constexpr,
+  // so can be private. On runtime, FromBase is preferred.
+  constexpr DomKey(Base value) : value_(value) {}
 
   // Factory that returns a DomKey for the specified value. Returns nullopt if
   // |value| is not a valid value (or NONE).
-  static base::Optional<DomKey> FromBase(Base value) {
+  static absl::optional<DomKey> FromBase(Base value) {
     if (value != 0 && !IsValidValue(value))
-      return base::nullopt;
+      return absl::nullopt;
     return Base(value);
   }
 
@@ -121,29 +124,32 @@ class DomKey {
   // True if the value is a dead key.
   bool IsDeadKey() const { return (value_ & TYPE_MASK) == TYPE_DEAD; }
 
+  // True if the value is the same as the value of DomKey::COMPOSE.
+  bool IsComposeKey() const { return *this == DomKey::COMPOSE; }
+
   // Returns the Unicode code point for a Unicode key.
   // It is incorrect to call this for other kinds of key.
-  int32_t ToCharacter() const {
+  uint32_t ToCharacter() const {
     DCHECK(IsCharacter()) << value_;
     return value_ & VALUE_MASK;
   }
 
   // Returns the associated combining code point for a dead key.
   // It is incorrect to call this for other kinds of key.
-  int32_t ToDeadKeyCombiningCharacter() const {
+  uint32_t ToDeadKeyCombiningCharacter() const {
     DCHECK(IsDeadKey()) << value_;
     return value_ & VALUE_MASK;
   }
 
   // Returns a DomKey for the given Unicode character.
-  static DomKey FromCharacter(int32_t character) {
-    DCHECK(character >= 0 && character <= 0x10FFFF);
+  static DomKey FromCharacter(uint32_t character) {
+    DCHECK(character <= 0x10FFFF);
     return DomKey(TYPE_UNICODE | character);
   }
 
   // Returns a dead-key DomKey for the given combining character.
-  static DomKey DeadKeyFromCombiningCharacter(int32_t combining_character) {
-    DCHECK(combining_character >= 0 && combining_character <= 0x10FFFF);
+  static DomKey DeadKeyFromCombiningCharacter(uint32_t combining_character) {
+    DCHECK(combining_character <= 0x10FFFF);
     return DomKey(TYPE_DEAD | combining_character);
   }
 
@@ -161,9 +167,9 @@ class DomKey {
  private:
   static bool IsValidValue(Base value) { return (value & TYPE_MASK) != 0; }
 
-  Base value_;
+  Base value_ = NONE;
 };
 
 }  // namespace ui
 
-#endif  // UI_EVENTS_KEYCODES_DOM3_DOM_KEY_H_
+#endif  // UI_EVENTS_KEYCODES_DOM_DOM_KEY_H_

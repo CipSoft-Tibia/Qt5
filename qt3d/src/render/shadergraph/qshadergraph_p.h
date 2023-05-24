@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_QSHADERGRAPH_P_H
 #define QT3DRENDER_QSHADERGRAPH_P_H
@@ -79,23 +43,23 @@ public:
         Q_3DRENDERSHARED_PRIVATE_EXPORT int portIndex(QShaderNodePort::Direction direction, const QString &portName) const noexcept;
 
         QShaderNode node;
-        QVector<int> inputs;
-        QVector<int> outputs;
+        QList<int> inputs;
+        QList<int> outputs;
     };
 
     Q_3DRENDERSHARED_PRIVATE_EXPORT void addNode(const QShaderNode &node);
     Q_3DRENDERSHARED_PRIVATE_EXPORT void removeNode(const QShaderNode &node);
-    Q_3DRENDERSHARED_PRIVATE_EXPORT QVector<QShaderNode> nodes() const noexcept;
+    Q_3DRENDERSHARED_PRIVATE_EXPORT QList<QShaderNode> nodes() const noexcept;
 
     Q_3DRENDERSHARED_PRIVATE_EXPORT void addEdge(const Edge &edge);
     Q_3DRENDERSHARED_PRIVATE_EXPORT void removeEdge(const Edge &edge);
-    Q_3DRENDERSHARED_PRIVATE_EXPORT QVector<Edge> edges() const noexcept;
+    Q_3DRENDERSHARED_PRIVATE_EXPORT QList<Edge> edges() const noexcept;
 
-    Q_3DRENDERSHARED_PRIVATE_EXPORT QVector<Statement> createStatements(const QStringList &enabledLayers = QStringList()) const;
+    Q_3DRENDERSHARED_PRIVATE_EXPORT QList<Statement> createStatements(const QStringList &enabledLayers = QStringList()) const;
 
 private:
-    QVector<QShaderNode> m_nodes;
-    QVector<Edge> m_edges;
+    QList<QShaderNode> m_nodes;
+    QList<Edge> m_edges;
 };
 
 Q_3DRENDERSHARED_PRIVATE_EXPORT bool operator==(const QShaderGraph::Edge &lhs, const QShaderGraph::Edge &rhs) noexcept;
@@ -114,9 +78,9 @@ inline bool operator!=(const QShaderGraph::Statement &lhs, const QShaderGraph::S
 
 }
 
-Q_DECLARE_TYPEINFO(Qt3DRender::QShaderGraph, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(Qt3DRender::QShaderGraph::Edge, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(Qt3DRender::QShaderGraph::Statement, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Qt3DRender::QShaderGraph, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(Qt3DRender::QShaderGraph::Edge, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(Qt3DRender::QShaderGraph::Statement, Q_RELOCATABLE_TYPE);
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(Qt3DRender::QShaderGraph)

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,6 +24,15 @@ void HTMLPictureElement::SourceOrMediaChanged() {
        image_element; image_element = Traversal<HTMLImageElement>::NextSibling(
                           *image_element)) {
     image_element->SelectSourceURL(ImageLoader::kUpdateNormal);
+  }
+}
+
+void HTMLPictureElement::SourceAttributeChanged() {
+  for (HTMLImageElement* image_element =
+           Traversal<HTMLImageElement>::FirstChild(*this);
+       image_element; image_element = Traversal<HTMLImageElement>::NextSibling(
+                          *image_element)) {
+    image_element->InvalidateAttributeMapping();
   }
 }
 

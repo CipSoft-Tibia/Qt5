@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickdesignersupportitems_p.h"
 #include "qquickdesignersupportproperties_p.h"
@@ -72,7 +36,6 @@ static void stopAnimation(QObject *object)
 //        QQuickScriptAction *scriptAimation = qobject_cast<QQuickScriptAction*>(animation);
 //        if (scriptAimation) FIXME
 //            scriptAimation->setScript(QQmlScriptString());
-        animation->setLoops(1);
         animation->complete();
         animation->setDisableUserControl();
     } else if (timer) {
@@ -115,7 +78,7 @@ static void allSubObjects(QObject *object, QObjectList &objectList)
         // search recursive in property objects
         if (metaProperty.isReadable()
                 && metaProperty.isWritable()
-                && QQmlMetaType::isQObject(metaProperty.userType())) {
+                && metaProperty.metaType().flags().testFlag(QMetaType::PointerToQObject)) {
             if (qstrcmp(metaProperty.name(), "parent")) {
                 QObject *propertyObject = QQmlMetaType::toQObject(metaProperty.read(object));
                 allSubObjects(propertyObject, objectList);
@@ -125,10 +88,10 @@ static void allSubObjects(QObject *object, QObjectList &objectList)
 
         // search recursive in property object lists
         if (metaProperty.isReadable()
-                && QQmlMetaType::isList(metaProperty.userType())) {
+                && QQmlMetaType::isList(metaProperty.metaType())) {
             QQmlListReference list(object, metaProperty.name());
             if (list.canCount() && list.canAt()) {
-                for (int i = 0; i < list.count(); i++) {
+                for (qsizetype i = 0; i < list.count(); i++) {
                     QObject *propertyObject = list.at(i);
                     allSubObjects(propertyObject, objectList);
 
@@ -155,7 +118,7 @@ void QQuickDesignerSupportItems::tweakObjects(QObject *object)
 {
     QObjectList objectList;
     allSubObjects(object, objectList);
-    for (QObject* childObject : qAsConst(objectList)) {
+    for (QObject* childObject : std::as_const(objectList)) {
         stopAnimation(childObject);
         makeLoaderSynchronous(childObject);
         if (fixResourcePathsForObjectCallBack)
@@ -210,14 +173,14 @@ static bool isCrashingType(const QQmlType &type)
     return false;
 }
 
-QObject *QQuickDesignerSupportItems::createPrimitive(const QString &typeName, int majorNumber, int minorNumber, QQmlContext *context)
+QObject *QQuickDesignerSupportItems::createPrimitive(const QString &typeName, QTypeRevision version, QQmlContext *context)
 {
     ComponentCompleteDisabler disableComponentComplete;
 
-    Q_UNUSED(disableComponentComplete)
+    Q_UNUSED(disableComponentComplete);
 
     QObject *object = nullptr;
-    QQmlType type = QQmlMetaType::qmlType(typeName, majorNumber, minorNumber);
+    QQmlType type = QQmlMetaType::qmlType(typeName, version);
 
     if (isCrashingType(type)) {
         object = new QObject;
@@ -242,7 +205,8 @@ QObject *QQuickDesignerSupportItems::createPrimitive(const QString &typeName, in
 
     if (!object) {
         qWarning() << "QuickDesigner: Cannot create an object of type"
-                   << QString::fromLatin1("%1 %2,%3").arg(typeName).arg(majorNumber).arg(minorNumber)
+                   << QString::fromLatin1("%1 %2,%3").arg(typeName)
+                      .arg(version.majorVersion()).arg(version.minorVersion())
                    << "- type isn't known to declarative meta type system";
     }
 
@@ -259,7 +223,7 @@ QObject *QQuickDesignerSupportItems::createPrimitive(const QString &typeName, in
 QObject *QQuickDesignerSupportItems::createComponent(const QUrl &componentUrl, QQmlContext *context)
 {
     ComponentCompleteDisabler disableComponentComplete;
-    Q_UNUSED(disableComponentComplete)
+    Q_UNUSED(disableComponentComplete);
 
     QQmlComponent component(context->engine(), componentUrl);
 

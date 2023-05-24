@@ -48,6 +48,7 @@ class AndroidPowerDataSource : public ProbesDataSource {
   // ProbesDataSource implementation.
   void Start() override;
   void Flush(FlushRequestID, std::function<void()> callback) override;
+  void ClearIncrementalState() override;
 
  private:
   struct DynamicLibLoader;
@@ -55,12 +56,25 @@ class AndroidPowerDataSource : public ProbesDataSource {
   void Tick();
   void WriteBatteryCounters();
   void WritePowerRailsData();
+  void WriteEnergyEstimationBreakdown();
+  void WriteEntityStateResidency();
+
+  // Battery counters.
+  std::bitset<8> counters_enabled_;
+
+  // Power rails.
+  bool rails_collection_enabled_ = false;
+
+  // Energy estimation.
+  bool energy_breakdown_collection_enabled_ = false;
+
+  // Entity state residency
+  bool entity_state_residency_collection_enabled_ = false;
+
+  uint32_t poll_interval_ms_ = 0;
+  bool should_emit_descriptors_ = true;
 
   base::TaskRunner* const task_runner_;
-  uint32_t poll_interval_ms_ = 0;
-  std::bitset<8> counters_enabled_;
-  bool rails_collection_enabled_;
-  bool rail_descriptors_logged_;
   std::unique_ptr<TraceWriter> writer_;
   std::unique_ptr<DynamicLibLoader> lib_;
   base::WeakPtrFactory<AndroidPowerDataSource> weak_factory_;  // Keep last.

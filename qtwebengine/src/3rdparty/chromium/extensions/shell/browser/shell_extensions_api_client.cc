@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 
 #include <utility>
 
+#include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/api/messaging/messaging_delegate.h"
 #include "extensions/shell/browser/api/feedback_private/shell_feedback_private_delegate.h"
@@ -16,15 +18,17 @@
 #include "extensions/shell/browser/shell_virtual_keyboard_delegate.h"
 #include "extensions/shell/browser/shell_web_view_guest_delegate.h"
 
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 #include "extensions/shell/browser/api/file_system/shell_file_system_delegate.h"
 #endif
 
 namespace extensions {
 
-ShellExtensionsAPIClient::ShellExtensionsAPIClient() {}
+ShellExtensionsAPIClient::ShellExtensionsAPIClient() = default;
 
-ShellExtensionsAPIClient::~ShellExtensionsAPIClient() {}
+ShellExtensionsAPIClient::~ShellExtensionsAPIClient() = default;
 
 void ShellExtensionsAPIClient::AttachWebContentsHelpers(
     content::WebContents* web_contents) const {
@@ -52,7 +56,9 @@ ShellExtensionsAPIClient::CreateDisplayInfoProvider() const {
   return std::make_unique<ShellDisplayInfoProvider>();
 }
 
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 FileSystemDelegate* ShellExtensionsAPIClient::GetFileSystemDelegate() {
   if (!file_system_delegate_)
     file_system_delegate_ = std::make_unique<ShellFileSystemDelegate>();

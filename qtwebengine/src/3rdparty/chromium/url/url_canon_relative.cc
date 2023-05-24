@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -239,7 +239,7 @@ void CopyOneComponent(const char* source,
                       const Component& source_component,
                       CanonOutput* output,
                       Component* output_component) {
-  if (source_component.len < 0) {
+  if (!source_component.is_valid()) {
     // This component is not present.
     *output_component = Component();
     return;
@@ -323,7 +323,7 @@ bool DoResolveRelativePath(const char* base_url,
                               std::max({path.end(), query.end(), ref.end()}));
   output->Append(base_url, base_parsed.path.begin);
 
-  if (path.len > 0) {
+  if (path.is_nonempty()) {
     // The path is replaced or modified.
     int true_path_begin = output->length();
 
@@ -355,11 +355,11 @@ bool DoResolveRelativePath(const char* base_url,
       // Relative path, replace the query, and reference. We take the
       // original path with the file part stripped, and append the new path.
       // The canonicalizer will take care of resolving ".." and "."
-      int path_begin = output->length();
+      size_t path_begin = output->length();
       CopyToLastSlash(base_url, base_path_begin, base_parsed.path.end(),
                       output);
-      success &= CanonicalizePartialPath(relative_url, path, path_begin,
-                                         output);
+      success &= CanonicalizePartialPathInternal(relative_url, path, path_begin,
+                                                 output);
       out_parsed->path = MakeRange(path_begin, output->length());
 
       // Copy the rest of the stuff after the path from the relative path.
@@ -492,7 +492,7 @@ bool DoResolveRelativeURL(const char* base_url,
   // paths (even the default path of "/" is OK).
   //
   // We allow hosts with no length so we can handle file URLs, for example.
-  if (base_parsed.path.len <= 0) {
+  if (base_parsed.path.is_empty()) {
     // On error, return the input (resolving a relative URL on a non-relative
     // base = the base).
     int base_len = base_parsed.Length();
@@ -501,7 +501,7 @@ bool DoResolveRelativeURL(const char* base_url,
     return false;
   }
 
-  if (relative_component.len <= 0) {
+  if (relative_component.is_empty()) {
     // Empty relative URL, leave unchanged, only removing the ref component.
     int base_len = base_parsed.Length();
     base_len -= base_parsed.ref.len + 1;
@@ -543,10 +543,7 @@ bool DoResolveRelativeURL(const char* base_url,
   // have a host, we want to use the special host detection logic for file
   // URLs provided by DoResolveAbsoluteFile(), as opposed to the generic host
   // detection logic, for consistency with parsing file URLs from scratch.
-  // This also handles the special case where the URL is only slashes,
-  // since that doesn't have a host part either.
-  if (base_is_file &&
-      (num_slashes >= 2 || num_slashes == relative_component.len)) {
+  if (base_is_file && num_slashes >= 2) {
     return DoResolveAbsoluteFile(relative_url, relative_component,
                                  query_converter, output, out_parsed);
   }
@@ -581,14 +578,14 @@ bool IsRelativeURL(const char* base,
 
 bool IsRelativeURL(const char* base,
                    const Parsed& base_parsed,
-                   const base::char16* fragment,
+                   const char16_t* fragment,
                    int fragment_len,
                    bool is_base_hierarchical,
                    bool* is_relative,
                    Component* relative_component) {
-  return DoIsRelativeURL<base::char16>(
-      base, base_parsed, fragment, fragment_len, is_base_hierarchical,
-      is_relative, relative_component);
+  return DoIsRelativeURL<char16_t>(base, base_parsed, fragment, fragment_len,
+                                   is_base_hierarchical, is_relative,
+                                   relative_component);
 }
 
 bool ResolveRelativeURL(const char* base_url,
@@ -607,14 +604,14 @@ bool ResolveRelativeURL(const char* base_url,
 bool ResolveRelativeURL(const char* base_url,
                         const Parsed& base_parsed,
                         bool base_is_file,
-                        const base::char16* relative_url,
+                        const char16_t* relative_url,
                         const Component& relative_component,
                         CharsetConverter* query_converter,
                         CanonOutput* output,
                         Parsed* out_parsed) {
-  return DoResolveRelativeURL<base::char16>(
-      base_url, base_parsed, base_is_file, relative_url,
-      relative_component, query_converter, output, out_parsed);
+  return DoResolveRelativeURL<char16_t>(base_url, base_parsed, base_is_file,
+                                        relative_url, relative_component,
+                                        query_converter, output, out_parsed);
 }
 
 }  // namespace url

@@ -1,45 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgenericmatrix.h"
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QMatrix2x2)
+QT_IMPL_METATYPE_EXTERN(QMatrix2x3)
+QT_IMPL_METATYPE_EXTERN(QMatrix2x4)
+QT_IMPL_METATYPE_EXTERN(QMatrix3x2)
+QT_IMPL_METATYPE_EXTERN(QMatrix3x3)
+QT_IMPL_METATYPE_EXTERN(QMatrix3x4)
+QT_IMPL_METATYPE_EXTERN(QMatrix4x2)
+QT_IMPL_METATYPE_EXTERN(QMatrix4x3)
 
 /*!
     \class QGenericMatrix
@@ -177,8 +150,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn template<int NN, int M1, int M2, typename TT> QGenericMatrix<M1, M2, TT> operator*(const QGenericMatrix<NN, M2, TT>& m1, const QGenericMatrix<M1, NN, TT>& m2)
-    \relates QGenericMatrix
+    \fn template <int N, int M, typename T> template<int NN, int M1, int M2, typename TT> QGenericMatrix<M1, M2, TT> QGenericMatrix<N, M, T>::operator*(const QGenericMatrix<NN, M2, TT>& m1, const QGenericMatrix<M1, NN, TT>& m2)
 
     Returns the product of the NNxM2 matrix \a m1 and the M1xNN matrix \a m2
     to produce a M1xM2 matrix result.

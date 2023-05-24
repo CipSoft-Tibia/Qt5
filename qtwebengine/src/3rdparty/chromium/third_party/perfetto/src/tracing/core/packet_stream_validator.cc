@@ -16,8 +16,9 @@
 
 #include "src/tracing/core/packet_stream_validator.h"
 
-#include <inttypes.h>
 #include <stddef.h>
+
+#include <cinttypes>
 
 #include "perfetto/base/logging.h"
 #include "perfetto/ext/base/utils.h"
@@ -38,6 +39,7 @@ const uint32_t kReservedFieldIds[] = {
     protos::pbzero::TracePacket::kTraceStatsFieldNumber,
     protos::pbzero::TracePacket::kCompressedPacketsFieldNumber,
     protos::pbzero::TracePacket::kSynchronizationMarkerFieldNumber,
+    protos::pbzero::TracePacket::kTrustedPidFieldNumber,
 };
 
 // This translation unit is quite subtle and perf-sensitive. Remember to check
@@ -72,8 +74,11 @@ class ProtoFieldParserFSM {
     varint_ |= static_cast<uint64_t>(octet & 0x7F) << varint_shift_;
     if (octet & 0x80) {
       varint_shift_ += 7;
-      if (varint_shift_ >= 64)
+      if (varint_shift_ >= 64) {
+        // Do not invoke UB on next call.
+        varint_shift_ = 0;
         state_ = kInvalidVarInt;
+      }
       return 0;
     }
     uint64_t varint = varint_;

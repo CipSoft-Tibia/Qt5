@@ -13,15 +13,15 @@
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/third_party/benchmark/include",
                 "${workspaceFolder}/third_party/cppdap/include",
-                "${workspaceFolder}/third_party/llvm-7.0/configs/common/include",
-                "${workspaceFolder}/third_party/llvm-7.0/configs/windows/include",
-                "${workspaceFolder}/third_party/llvm-7.0/llvm/include",
+                "${workspaceFolder}/third_party/llvm-10.0/configs/common/include",
+                "${workspaceFolder}/third_party/llvm-10.0/configs/windows/include",
+                "${workspaceFolder}/third_party/llvm-10.0/llvm/include",
                 "${workspaceFolder}/third_party/marl/include",
                 "${workspaceFolder}/third_party/SPIRV-Headers/include",
                 "${workspaceFolder}/third_party/SPIRV-Tools/include"
             ],
             "cStandard": "c11",
-            "cppStandard": "c++14"
+            "cppStandard": "c++17"
         },
         {
             "name": "Mac",
@@ -36,15 +36,15 @@
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/third_party/benchmark/include",
                 "${workspaceFolder}/third_party/cppdap/include",
-                "${workspaceFolder}/third_party/llvm-7.0/configs/common/include",
-                "${workspaceFolder}/third_party/llvm-7.0/configs/windows/include",
-                "${workspaceFolder}/third_party/llvm-7.0/llvm/include",
+                "${workspaceFolder}/third_party/llvm-10.0/configs/common/include",
+                "${workspaceFolder}/third_party/llvm-10.0/configs/windows/include",
+                "${workspaceFolder}/third_party/llvm-10.0/llvm/include",
                 "${workspaceFolder}/third_party/marl/include",
                 "${workspaceFolder}/third_party/SPIRV-Headers/include",
                 "${workspaceFolder}/third_party/SPIRV-Tools/include"
             ],
             "cStandard": "c11",
-            "cppStandard": "c++14"
+            "cppStandard": "c++17"
         },
         {
             "name": "Win32",
@@ -58,15 +58,15 @@
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/third_party/benchmark/include",
                 "${workspaceFolder}/third_party/cppdap/include",
-                "${workspaceFolder}/third_party/llvm-7.0/configs/common/include",
-                "${workspaceFolder}/third_party/llvm-7.0/configs/windows/include",
-                "${workspaceFolder}/third_party/llvm-7.0/llvm/include",
+                "${workspaceFolder}/third_party/llvm-10.0/configs/common/include",
+                "${workspaceFolder}/third_party/llvm-10.0/configs/windows/include",
+                "${workspaceFolder}/third_party/llvm-10.0/llvm/include",
                 "${workspaceFolder}/third_party/marl/include",
                 "${workspaceFolder}/third_party/SPIRV-Headers/include",
                 "${workspaceFolder}/third_party/SPIRV-Tools/include"
             ],
             "cStandard": "c11",
-            "cppStandard": "c++14"
+            "cppStandard": "c++17"
         }
     ],
     "version": 4

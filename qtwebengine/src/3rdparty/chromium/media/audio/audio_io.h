@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 
 #include "base/time/time.h"
 #include "media/base/audio_bus.h"
+#include "media/base/audio_glitch_info.h"
 #include "media/base/media_export.h"
 
 // Low-level audio output support. To make sound there are 3 objects involved:
@@ -39,7 +40,6 @@
 // Specifically for this case we avoid supporting complex formats such as MP3
 // or WMA. Complex format decoding should be done by the renderers.
 
-
 // Models an audio stream that gets rendered to the audio hardware output.
 // Because we support more audio streams than physically available channels
 // a given AudioOutputStream might or might not talk directly to hardware.
@@ -68,12 +68,18 @@ class MEDIA_EXPORT AudioOutputStream {
     // when the first sample added to |dest| is expected to be played out can be
     // calculated by adding |delay| to |delay_timestamp|. The accuracy of
     // |delay| and |delay_timestamp| may vary depending on the platform and
-    // implementation. |prior_frames_skipped| is the number of frames skipped by
-    // the consumer.
+    // implementation. |glitch_info| contains information about all
+    // glitches which have occurred since the last call to OnMoreData().
     virtual int OnMoreData(base::TimeDelta delay,
                            base::TimeTicks delay_timestamp,
-                           int prior_frames_skipped,
+                           const AudioGlitchInfo& glitch_info,
                            AudioBus* dest) = 0;
+
+    virtual int OnMoreData(base::TimeDelta delay,
+                           base::TimeTicks delay_timestamp,
+                           const AudioGlitchInfo& glitch_info,
+                           AudioBus* dest,
+                           bool is_mixing);
 
     // There was an error while playing a buffer. Audio source cannot be
     // destroyed yet. No direct action needed by the AudioStream, but it is
@@ -155,9 +161,20 @@ class MEDIA_EXPORT AudioInputStream {
 
   virtual ~AudioInputStream() {}
 
+  enum class OpenOutcome {
+    kSuccess,
+    kAlreadyOpen,
+    // Failed due to an unknown or unspecified reason.
+    kFailed,
+    // Failed to open due to OS-level System permissions.
+    kFailedSystemPermissions,
+    // Failed to open as the device is exclusively opened by another app.
+    kFailedInUse,
+  };
+
   // Open the stream and prepares it for recording. Call Start() to actually
   // begin recording.
-  virtual bool Open() = 0;
+  virtual OpenOutcome Open() = 0;
 
   // Starts recording audio and generating AudioInputCallback::OnData().
   // The input stream does not take ownership of this callback.

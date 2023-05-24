@@ -1,8 +1,7 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <android/native_window_jni.h>
 #include <cpu-features.h>
 
 #include "base/android/jni_array.h"
@@ -10,8 +9,8 @@
 #include "base/android/memory_pressure_listener_android.h"
 #include "base/android/unguessable_token_android.h"
 #include "base/check.h"
+#include "base/command_line.h"
 #include "base/lazy_instance.h"
-#include "base/macros.h"
 #include "base/unguessable_token.h"
 #include "content/child/child_thread_impl.h"
 #include "content/common/android/surface_wrapper.h"
@@ -23,6 +22,7 @@
 #include "gpu/ipc/common/android/scoped_surface_request_conduit.h"
 #include "gpu/ipc/common/gpu_surface_lookup.h"
 #include "ui/gl/android/scoped_java_surface.h"
+#include "ui/gl/android/scoped_java_surface_control.h"
 #include "ui/gl/android/surface_texture.h"
 
 using base::android::AttachCurrentThread;
@@ -38,6 +38,11 @@ class ChildProcessSurfaceManager : public gpu::ScopedSurfaceRequestConduit,
                                    public gpu::GpuSurfaceLookup {
  public:
   ChildProcessSurfaceManager() {}
+
+  ChildProcessSurfaceManager(const ChildProcessSurfaceManager&) = delete;
+  ChildProcessSurfaceManager& operator=(const ChildProcessSurfaceManager&) =
+      delete;
+
   ~ChildProcessSurfaceManager() override {}
 
   // |service_impl| is the instance of
@@ -60,35 +65,7 @@ class ChildProcessSurfaceManager : public gpu::ScopedSurfaceRequestConduit,
   }
 
   // Overridden from GpuSurfaceLookup:
-  gfx::AcceleratedWidget AcquireNativeWidget(
-      int surface_id,
-      bool* can_be_used_with_surface_control) override {
-    JNIEnv* env = base::android::AttachCurrentThread();
-    base::android::ScopedJavaLocalRef<jobject> surface_wrapper =
-        content::Java_ContentChildProcessServiceDelegate_getViewSurface(
-            env, service_impl_, surface_id);
-    if (!surface_wrapper)
-      return gfx::kNullAcceleratedWidget;
-
-    gl::ScopedJavaSurface surface(
-        content::JNI_SurfaceWrapper_getSurface(env, surface_wrapper));
-    DCHECK(!surface.j_surface().is_null());
-
-    // Note: This ensures that any local references used by
-    // ANativeWindow_fromSurface are released immediately. This is needed as a
-    // workaround for https://code.google.com/p/android/issues/detail?id=68174
-    base::android::ScopedJavaLocalFrame scoped_local_reference_frame(env);
-    ANativeWindow* native_window =
-        ANativeWindow_fromSurface(env, surface.j_surface().obj());
-
-    *can_be_used_with_surface_control =
-        content::JNI_SurfaceWrapper_canBeUsedWithSurfaceControl(
-            env, surface_wrapper);
-    return native_window;
-  }
-
-  // Overridden from GpuSurfaceLookup:
-  gl::ScopedJavaSurface AcquireJavaSurface(
+  JavaSurfaceVariant AcquireJavaSurface(
       int surface_id,
       bool* can_be_used_with_surface_control) override {
     JNIEnv* env = base::android::AttachCurrentThread();
@@ -98,22 +75,28 @@ class ChildProcessSurfaceManager : public gpu::ScopedSurfaceRequestConduit,
     if (!surface_wrapper)
       return gl::ScopedJavaSurface();
 
-    gl::ScopedJavaSurface surface(
-        content::JNI_SurfaceWrapper_getSurface(env, surface_wrapper));
-    DCHECK(!surface.j_surface().is_null());
-
     *can_be_used_with_surface_control =
-        content::JNI_SurfaceWrapper_canBeUsedWithSurfaceControl(
-            env, surface_wrapper);
-    return surface;
+        JNI_SurfaceWrapper_canBeUsedWithSurfaceControl(env, surface_wrapper);
+    bool wraps_surface =
+        JNI_SurfaceWrapper_getWrapsSurface(env, surface_wrapper);
+
+    if (wraps_surface) {
+      gl::ScopedJavaSurface surface(
+          content::JNI_SurfaceWrapper_takeSurface(env, surface_wrapper),
+          /*auto_release=*/true);
+      DCHECK(!surface.j_surface().is_null());
+      return surface;
+    } else {
+      return gl::ScopedJavaSurfaceControl(
+          JNI_SurfaceWrapper_takeSurfaceControl(env, surface_wrapper),
+          /*release_on_destroy=*/true);
+    }
   }
 
  private:
   friend struct base::LazyInstanceTraitsBase<ChildProcessSurfaceManager>;
   // The instance of org.chromium.content.app.ChildProcessService.
   base::android::ScopedJavaGlobalRef<jobject> service_impl_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChildProcessSurfaceManager);
 };
 
 base::LazyInstance<ChildProcessSurfaceManager>::Leaky
@@ -135,8 +118,6 @@ void JNI_ContentChildProcessServiceDelegate_InternalInitChildProcess(
       g_child_process_surface_manager.Pointer());
   gpu::ScopedSurfaceRequestConduit::SetInstance(
       g_child_process_surface_manager.Pointer());
-
-  base::android::MemoryPressureListenerAndroid::Initialize(env);
 }
 
 }  // namespace
@@ -150,6 +131,11 @@ void JNI_ContentChildProcessServiceDelegate_InitChildProcess(
       env, obj, cpu_count, cpu_features);
 }
 
+void JNI_ContentChildProcessServiceDelegate_InitMemoryPressureListener(
+    JNIEnv* env) {
+  base::android::MemoryPressureListenerAndroid::Initialize(env);
+}
+
 void JNI_ContentChildProcessServiceDelegate_RetrieveFileDescriptorsIdsToKeys(
     JNIEnv* env,
     const JavaParamRef<jobject>& obj) {
@@ -161,7 +147,7 @@ void JNI_ContentChildProcessServiceDelegate_RetrieveFileDescriptorsIdsToKeys(
   std::vector<int> ids;
   std::vector<std::string> keys;
   if (!file_switch_value.empty()) {
-    base::Optional<std::map<int, std::string>> ids_to_keys_from_command_line =
+    absl::optional<std::map<int, std::string>> ids_to_keys_from_command_line =
         ParseSharedFileSwitchValue(file_switch_value);
     if (ids_to_keys_from_command_line) {
       for (auto iter : *ids_to_keys_from_command_line) {

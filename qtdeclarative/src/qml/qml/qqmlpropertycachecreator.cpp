@@ -1,77 +1,69 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlpropertycachecreator_p.h"
 
 #include <private/qqmlengine_p.h>
+
+#if QT_CONFIG(regularexpression)
+#include <QtCore/qregularexpression.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
 QAtomicInt QQmlPropertyCacheCreatorBase::classIndexCounter(0);
 
 
-int QQmlPropertyCacheCreatorBase::metaTypeForPropertyType(QV4::CompiledData::BuiltinType type)
+QMetaType QQmlPropertyCacheCreatorBase::metaTypeForPropertyType(QV4::CompiledData::CommonType type)
 {
     switch (type) {
-    case QV4::CompiledData::BuiltinType::Var: return QMetaType::QVariant;
-    case QV4::CompiledData::BuiltinType::Variant: return QMetaType::QVariant;
-    case QV4::CompiledData::BuiltinType::Int: return QMetaType::Int;
-    case QV4::CompiledData::BuiltinType::Bool: return QMetaType::Bool;
-    case QV4::CompiledData::BuiltinType::Real: return QMetaType::Double;
-    case QV4::CompiledData::BuiltinType::String: return QMetaType::QString;
-    case QV4::CompiledData::BuiltinType::Url: return QMetaType::QUrl;
-    case QV4::CompiledData::BuiltinType::Color: return QMetaType::QColor;
-    case QV4::CompiledData::BuiltinType::Font: return QMetaType::QFont;
-    case QV4::CompiledData::BuiltinType::Time: return QMetaType::QTime;
-    case QV4::CompiledData::BuiltinType::Date: return QMetaType::QDate;
-    case QV4::CompiledData::BuiltinType::DateTime: return QMetaType::QDateTime;
-    case QV4::CompiledData::BuiltinType::Rect: return QMetaType::QRectF;
-    case QV4::CompiledData::BuiltinType::Point: return QMetaType::QPointF;
-    case QV4::CompiledData::BuiltinType::Size: return QMetaType::QSizeF;
-    case QV4::CompiledData::BuiltinType::Vector2D: return QMetaType::QVector2D;
-    case QV4::CompiledData::BuiltinType::Vector3D: return QMetaType::QVector3D;
-    case QV4::CompiledData::BuiltinType::Vector4D: return QMetaType::QVector4D;
-    case QV4::CompiledData::BuiltinType::Matrix4x4: return QMetaType::QMatrix4x4;
-    case QV4::CompiledData::BuiltinType::Quaternion: return QMetaType::QQuaternion;
-    case QV4::CompiledData::BuiltinType::InvalidBuiltin: break;
+    case QV4::CompiledData::CommonType::Void:     return QMetaType();
+    case QV4::CompiledData::CommonType::Var:      return QMetaType::fromType<QVariant>();
+    case QV4::CompiledData::CommonType::Int:      return QMetaType::fromType<int>();
+    case QV4::CompiledData::CommonType::Bool:     return QMetaType::fromType<bool>();
+    case QV4::CompiledData::CommonType::Real:     return QMetaType::fromType<qreal>();
+    case QV4::CompiledData::CommonType::String:   return QMetaType::fromType<QString>();
+    case QV4::CompiledData::CommonType::Url:      return QMetaType::fromType<QUrl>();
+    case QV4::CompiledData::CommonType::Time:     return QMetaType::fromType<QTime>();
+    case QV4::CompiledData::CommonType::Date:     return QMetaType::fromType<QDate>();
+    case QV4::CompiledData::CommonType::DateTime: return QMetaType::fromType<QDateTime>();
+#if QT_CONFIG(regularexpression)
+    case QV4::CompiledData::CommonType::RegExp:   return QMetaType::fromType<QRegularExpression>();
+#else
+    case QV4::CompiledData::CommonType::RegExp:   return QMetaType();
+#endif
+    case QV4::CompiledData::CommonType::Rect:     return QMetaType::fromType<QRectF>();
+    case QV4::CompiledData::CommonType::Point:    return QMetaType::fromType<QPointF>();
+    case QV4::CompiledData::CommonType::Size:     return QMetaType::fromType<QSizeF>();
+    case QV4::CompiledData::CommonType::Invalid:  break;
     };
-    return QMetaType::UnknownType;
+    return QMetaType {};
+}
+
+QMetaType QQmlPropertyCacheCreatorBase::listTypeForPropertyType(QV4::CompiledData::CommonType type)
+{
+    switch (type) {
+    case QV4::CompiledData::CommonType::Void:     return QMetaType();
+    case QV4::CompiledData::CommonType::Var:      return QMetaType::fromType<QList<QVariant>>();
+    case QV4::CompiledData::CommonType::Int:      return QMetaType::fromType<QList<int>>();
+    case QV4::CompiledData::CommonType::Bool:     return QMetaType::fromType<QList<bool>>();
+    case QV4::CompiledData::CommonType::Real:     return QMetaType::fromType<QList<qreal>>();
+    case QV4::CompiledData::CommonType::String:   return QMetaType::fromType<QList<QString>>();
+    case QV4::CompiledData::CommonType::Url:      return QMetaType::fromType<QList<QUrl>>();
+    case QV4::CompiledData::CommonType::Time:     return QMetaType::fromType<QList<QTime>>();
+    case QV4::CompiledData::CommonType::Date:     return QMetaType::fromType<QList<QDate>>();
+    case QV4::CompiledData::CommonType::DateTime: return QMetaType::fromType<QList<QDateTime>>();
+#if QT_CONFIG(regularexpression)
+    case QV4::CompiledData::CommonType::RegExp:   return QMetaType::fromType<QList<QRegularExpression>>();
+#else
+    case QV4::CompiledData::CommonType::RegExp:   return QMetaType();
+#endif
+    case QV4::CompiledData::CommonType::Rect:     return QMetaType::fromType<QList<QRectF>>();
+    case QV4::CompiledData::CommonType::Point:    return QMetaType::fromType<QList<QPointF>>();
+    case QV4::CompiledData::CommonType::Size:     return QMetaType::fromType<QList<QSizeF>>();
+    case QV4::CompiledData::CommonType::Invalid:  break;
+    };
+    return QMetaType {};
 }
 
 QByteArray QQmlPropertyCacheCreatorBase::createClassNameTypeByUrl(const QUrl &url)
@@ -82,7 +74,7 @@ QByteArray QQmlPropertyCacheCreatorBase::createClassNameTypeByUrl(const QUrl &ur
     if (lastSlash <= -1)
         return QByteArray();
     // ### this might not be correct for .ui.qml files
-    const QStringRef nameBase = path.midRef(lastSlash + 1, path.length() - lastSlash - 5);
+    const QStringView nameBase = QStringView{path}.mid(lastSlash + 1, path.size() - lastSlash - 5);
     // Not a reusable type if it doesn't start with a upper case letter.
     if (nameBase.isEmpty() || !nameBase.at(0).isUpper())
         return QByteArray();
@@ -99,8 +91,11 @@ QByteArray QQmlPropertyCacheCreatorBase::createClassNameForInlineComponent(const
     return baseName;
 }
 
-QQmlBindingInstantiationContext::QQmlBindingInstantiationContext(int referencingObjectIndex, const QV4::CompiledData::Binding *instantiatingBinding,
-                                                                 const QString &instantiatingPropertyName, QQmlPropertyCache *referencingObjectPropertyCache)
+QQmlBindingInstantiationContext::QQmlBindingInstantiationContext(
+        int referencingObjectIndex,
+        const QV4::CompiledData::Binding *instantiatingBinding,
+        const QString &instantiatingPropertyName,
+        const QQmlPropertyCache::ConstPtr &referencingObjectPropertyCache)
     : referencingObjectIndex(referencingObjectIndex)
     , instantiatingBinding(instantiatingBinding)
     , instantiatingPropertyName(instantiatingPropertyName)
@@ -110,11 +105,15 @@ QQmlBindingInstantiationContext::QQmlBindingInstantiationContext(int referencing
 
 bool QQmlBindingInstantiationContext::resolveInstantiatingProperty()
 {
-    if (!instantiatingBinding || instantiatingBinding->type != QV4::CompiledData::Binding::Type_GroupProperty)
+    if (!instantiatingBinding
+           || instantiatingBinding->type() != QV4::CompiledData::Binding::Type_GroupProperty) {
         return true;
+    }
+
+    if (!referencingObjectPropertyCache)
+        return false;
 
     Q_ASSERT(referencingObjectIndex >= 0);
-    Q_ASSERT(referencingObjectPropertyCache);
     Q_ASSERT(instantiatingBinding->propertyNameIndex != 0);
 
     bool notInRevision = false;
@@ -124,19 +123,23 @@ bool QQmlBindingInstantiationContext::resolveInstantiatingProperty()
     return instantiatingProperty != nullptr;
 }
 
-QQmlRefPointer<QQmlPropertyCache> QQmlBindingInstantiationContext::instantiatingPropertyCache(QQmlEnginePrivate *enginePrivate) const
+QQmlPropertyCache::ConstPtr QQmlBindingInstantiationContext::instantiatingPropertyCache() const
 {
     if (instantiatingProperty) {
         if (instantiatingProperty->isQObject()) {
-            return enginePrivate->rawPropertyCacheForType(instantiatingProperty->propType(), instantiatingProperty->typeMinorVersion());
-        } else if (const QMetaObject *vtmo = QQmlValueTypeFactory::metaObjectForMetaType(instantiatingProperty->propType())) {
-            return enginePrivate->cache(vtmo, instantiatingProperty->typeMinorVersion());
+            // rawPropertyCacheForType assumes a given unspecified version means "any version".
+            // There is another overload that takes no version, which we shall not use here.
+            return QQmlMetaType::rawPropertyCacheForType(instantiatingProperty->propType(),
+                                                         instantiatingProperty->typeVersion());
+        } else if (const QMetaObject *vtmo = QQmlMetaType::metaObjectForValueType(instantiatingProperty->propType())) {
+            return QQmlMetaType::propertyCache(vtmo, instantiatingProperty->typeVersion());
         }
     }
-    return QQmlRefPointer<QQmlPropertyCache>();
+    return QQmlPropertyCache::ConstPtr();
 }
 
-void QQmlPendingGroupPropertyBindings::resolveMissingPropertyCaches(QQmlEnginePrivate *enginePrivate, QQmlPropertyCacheVector *propertyCaches) const
+void QQmlPendingGroupPropertyBindings::resolveMissingPropertyCaches(
+        QQmlPropertyCacheVector *propertyCaches) const
 {
     for (QQmlBindingInstantiationContext pendingBinding: *this) {
         const int groupPropertyObjectIndex = pendingBinding.instantiatingBinding->value.objectIndex;
@@ -144,10 +147,21 @@ void QQmlPendingGroupPropertyBindings::resolveMissingPropertyCaches(QQmlEnginePr
         if (propertyCaches->at(groupPropertyObjectIndex))
             continue;
 
+        if (pendingBinding.instantiatingPropertyName.isEmpty()) {
+            // Generalized group property.
+            auto cache = propertyCaches->at(pendingBinding.referencingObjectIndex);
+            propertyCaches->set(groupPropertyObjectIndex, cache);
+            continue;
+        }
+
+        if (!pendingBinding.referencingObjectPropertyCache) {
+            pendingBinding.referencingObjectPropertyCache
+                    = propertyCaches->at(pendingBinding.referencingObjectIndex);
+        }
+
         if (!pendingBinding.resolveInstantiatingProperty())
             continue;
-
-        auto cache = pendingBinding.instantiatingPropertyCache(enginePrivate);
+        auto cache = pendingBinding.instantiatingPropertyCache();
         propertyCaches->set(groupPropertyObjectIndex, cache);
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 
 #include "base/time/time.h"
 #include "components/sync/base/model_type.h"
+#include "components/sync/protocol/sync_enums.pb.h"
+#include "components/sync_device_info/device_info.h"
 #include "components/sync_device_info/device_info_util.h"
 
 namespace syncer {
@@ -16,13 +18,17 @@ FakeLocalDeviceInfoProvider::FakeLocalDeviceInfoProvider()
                    "chrome_version",
                    "user_agent",
                    sync_pb::SyncEnums_DeviceType_TYPE_LINUX,
+                   DeviceInfo::OsType::kLinux,
+                   DeviceInfo::FormFactor::kDesktop,
                    "device_id",
                    "fake_manufacturer",
                    "fake_model",
+                   "fake_full_hardware_class",
                    /*last_updated_timestamp=*/base::Time::Now(),
                    DeviceInfoUtil::GetPulseInterval(),
                    /*send_tab_to_self_receiving_enabled=*/false,
-                   /*sharing_info=*/base::nullopt,
+                   /*sharing_info=*/absl::nullopt,
+                   /*paask_info=*/absl::nullopt,
                    /*fcm_registration_token=*/std::string(),
                    /*interested_data_types=*/ModelTypeSet()) {}
 
@@ -37,17 +43,18 @@ const DeviceInfo* FakeLocalDeviceInfoProvider::GetLocalDeviceInfo() const {
   return ready_ ? &device_info_ : nullptr;
 }
 
-std::unique_ptr<LocalDeviceInfoProvider::Subscription>
+base::CallbackListSubscription
 FakeLocalDeviceInfoProvider::RegisterOnInitializedCallback(
     const base::RepeatingClosure& callback) {
-  return callback_list_.Add(callback);
+  return closure_list_.Add(callback);
 }
 
 void FakeLocalDeviceInfoProvider::SetReady(bool ready) {
   bool got_ready = !ready_ && ready;
   ready_ = ready;
-  if (got_ready)
-    callback_list_.Notify();
+  if (got_ready) {
+    closure_list_.Notify();
+  }
 }
 
 DeviceInfo* FakeLocalDeviceInfoProvider::GetMutableDeviceInfo() {

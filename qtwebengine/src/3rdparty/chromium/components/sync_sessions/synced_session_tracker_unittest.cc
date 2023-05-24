@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,10 @@
 
 #include "base/rand_util.h"
 #include "base/strings/stringprintf.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/test/mock_callback.h"
-#include "base/test/scoped_feature_list.h"
 #include "components/sessions/core/serialized_navigation_entry_test_helper.h"
+#include "components/sync/protocol/sync_enums.pb.h"
 #include "components/sync_sessions/mock_sync_sessions_client.h"
-#include "components/sync_sessions/synced_tab_delegate.h"
 #include "components/sync_sessions/test_matchers.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -35,6 +33,8 @@ const char kValidUrl[] = "http://www.example.com";
 const char kSessionName[] = "sessionname";
 const sync_pb::SyncEnums::DeviceType kDeviceType =
     sync_pb::SyncEnums_DeviceType_TYPE_PHONE;
+const syncer::DeviceInfo::FormFactor kFormFactor =
+    syncer::DeviceInfo::FormFactor::kPhone;
 const char kTag[] = "tag";
 const char kTag2[] = "tag2";
 const char kTag3[] = "tag3";
@@ -55,7 +55,7 @@ const SessionID kTab6 = SessionID::FromSerializedValue(65);
 const SessionID kTab7 = SessionID::FromSerializedValue(75);
 
 MATCHER_P(HasSessionTag, expected_tag, "") {
-  return arg->session_tag == expected_tag;
+  return arg->GetSessionTag() == expected_tag;
 }
 
 }  // namespace
@@ -63,7 +63,7 @@ MATCHER_P(HasSessionTag, expected_tag, "") {
 class SyncedSessionTrackerTest : public testing::Test {
  public:
   SyncedSessionTrackerTest() : tracker_(&sessions_client_) {}
-  ~SyncedSessionTrackerTest() override {}
+  ~SyncedSessionTrackerTest() override = default;
 
   TabNodePool* GetLocalTabNodePool() {
     return &tracker_.LookupTrackedSession(tracker_.local_session_tag_)
@@ -95,9 +95,9 @@ class SyncedSessionTrackerTest : public testing::Test {
     // Now traverse the SyncedSession tree to verify the mapped tabs all match
     // up.
     int mapped_tab_count = 0;
-    for (auto& window_pair : session->synced_session.windows) {
-      mapped_tab_count += window_pair.second->wrapped_window.tabs.size();
-      for (auto& tab : window_pair.second->wrapped_window.tabs) {
+    for (auto& [window_id, window] : session->synced_session.windows) {
+      mapped_tab_count += window->wrapped_window.tabs.size();
+      for (auto& tab : window->wrapped_window.tabs) {
         const auto tab_map_it = session->synced_tab_map.find(tab->tab_id);
         if (tab_map_it == session->synced_tab_map.end()) {
           return AssertionFailure() << "Tab ID " << tab->tab_id.id()
@@ -113,21 +113,19 @@ class SyncedSessionTrackerTest : public testing::Test {
 
     // Wrap up by verifying all unmapped tabs are tracked.
     int unmapped_tab_count = session->unmapped_tabs.size();
-    for (const auto& tab_pair : session->unmapped_tabs) {
-      if (tab_pair.first != tab_pair.second->tab_id) {
-        return AssertionFailure()
-               << "Unmapped tab " << tab_pair.second->tab_id.id()
-               << " associated with wrong tab " << tab_pair.first;
+    for (const auto& [id, tab] : session->unmapped_tabs) {
+      if (id != tab->tab_id) {
+        return AssertionFailure() << "Unmapped tab " << tab->tab_id.id()
+                                  << " associated with wrong tab " << id;
       }
-      const auto tab_map_it =
-          session->synced_tab_map.find(tab_pair.second->tab_id);
+      const auto tab_map_it = session->synced_tab_map.find(tab->tab_id);
       if (tab_map_it == session->synced_tab_map.end()) {
-        return AssertionFailure() << "Unmapped tab " << tab_pair.second->tab_id
+        return AssertionFailure() << "Unmapped tab " << tab->tab_id
                                   << " has no corresponding synced tab entry";
       }
-      if (tab_map_it->second != tab_pair.second.get()) {
+      if (tab_map_it->second != tab.get()) {
         return AssertionFailure()
-               << "Unmapped tab " << tab_pair.second->tab_id.id()
+               << "Unmapped tab " << tab->tab_id.id()
                << " does not match synced tab map " << tab_map_it->second;
       }
     }
@@ -190,7 +188,7 @@ TEST_F(SyncedSessionTrackerTest, LookupAllSessions) {
   EXPECT_THAT(tracker_.LookupAllSessions(SyncedSessionTracker::PRESENTABLE),
               IsEmpty());
 
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   tracker_.PutWindowInSession(kTag, kWindow1);
   tracker_.PutTabInWindow(kTag, kWindow1, kTab1);
 
@@ -243,6 +241,7 @@ TEST_F(SyncedSessionTrackerTest, LookupAllForeignSessions) {
   tab->navigations.push_back(
       sessions::SerializedNavigationEntryTestHelper::CreateNavigationForTest());
   tab->navigations.back().set_virtual_url(GURL(kInvalidUrl));
+
   // Only the session with a valid window and tab gets returned.
   EXPECT_THAT(
       tracker_.LookupAllForeignSessions(SyncedSessionTracker::PRESENTABLE),
@@ -250,6 +249,15 @@ TEST_F(SyncedSessionTrackerTest, LookupAllForeignSessions) {
   EXPECT_THAT(tracker_.LookupAllForeignSessions(SyncedSessionTracker::RAW),
               ElementsAre(HasSessionTag(kTag), HasSessionTag(kTag2),
                           HasSessionTag(kTag3)));
+
+  // Annotate kTag as local session.
+  ON_CALL(sessions_client_, IsRecentLocalCacheGuid(kTag))
+      .WillByDefault(Return(true));
+  EXPECT_THAT(
+      tracker_.LookupAllForeignSessions(SyncedSessionTracker::PRESENTABLE),
+      IsEmpty());
+  EXPECT_THAT(tracker_.LookupAllForeignSessions(SyncedSessionTracker::RAW),
+              ElementsAre(HasSessionTag(kTag2), HasSessionTag(kTag3)));
 }
 
 TEST_F(SyncedSessionTrackerTest, LookupSessionWindows) {
@@ -279,7 +287,7 @@ TEST_F(SyncedSessionTrackerTest, LookupSessionTab) {
 }
 
 TEST_F(SyncedSessionTrackerTest, Complex) {
-  std::vector<sessions::SessionTab *> tabs1, tabs2;
+  std::vector<sessions::SessionTab*> tabs1, tabs2;
   sessions::SessionTab* temp_tab;
   ASSERT_TRUE(tracker_.Empty());
   ASSERT_EQ(0U, tracker_.num_synced_sessions());
@@ -296,14 +304,16 @@ TEST_F(SyncedSessionTrackerTest, Complex) {
   tabs2.push_back(tracker_.GetTab(kTag2, kTab1));
   ASSERT_EQ(1U, tracker_.num_synced_tabs(kTag2));
   ASSERT_EQ(2U, tracker_.num_synced_sessions());
-  ASSERT_FALSE(tracker_.DeleteForeignSession(kTag3));
+  tracker_.DeleteForeignSession(kTag3);
 
   SyncedSession* session = tracker_.GetSession(kTag);
   ASSERT_EQ(2U, tracker_.num_synced_sessions());
   SyncedSession* session2 = tracker_.GetSession(kTag2);
   ASSERT_EQ(2U, tracker_.num_synced_sessions());
   SyncedSession* session3 = tracker_.GetSession(kTag3);
-  session3->device_type = sync_pb::SyncEnums_DeviceType_TYPE_LINUX;
+  session3->SetDeviceTypeAndFormFactor(
+      sync_pb::SyncEnums_DeviceType_TYPE_LINUX,
+      syncer::DeviceInfo::FormFactor::kDesktop);
   ASSERT_EQ(3U, tracker_.num_synced_sessions());
 
   ASSERT_TRUE(session);
@@ -311,7 +321,7 @@ TEST_F(SyncedSessionTrackerTest, Complex) {
   ASSERT_TRUE(session3);
   ASSERT_NE(session, session2);
   ASSERT_NE(session2, session3);
-  ASSERT_TRUE(tracker_.DeleteForeignSession(kTag3));
+  tracker_.DeleteForeignSession(kTag3);
   ASSERT_EQ(2U, tracker_.num_synced_sessions());
 
   tracker_.PutWindowInSession(kTag, kWindow1);     // Create a window.
@@ -382,10 +392,10 @@ TEST_F(SyncedSessionTrackerTest, LookupTabNodeIds) {
   tracker_.PutWindowInSession(kTag3, kWindow2);
   tracker_.PutTabInWindow(kTag3, kWindow2, kTab2);
   EXPECT_THAT(tracker_.LookupTabNodeIds(kTag3), IsEmpty());
-  EXPECT_FALSE(tracker_.DeleteForeignSession(kTag3));
+  tracker_.DeleteForeignSession(kTag3);
   EXPECT_THAT(tracker_.LookupTabNodeIds(kTag3), IsEmpty());
 
-  EXPECT_FALSE(tracker_.DeleteForeignSession(kTag));
+  tracker_.DeleteForeignSession(kTag);
   EXPECT_THAT(tracker_.LookupTabNodeIds(kTag), IsEmpty());
   EXPECT_THAT(tracker_.LookupTabNodeIds(kTag2), ElementsAre(21, 22));
 
@@ -393,7 +403,7 @@ TEST_F(SyncedSessionTrackerTest, LookupTabNodeIds) {
   tracker_.OnTabNodeSeen(kTag2, 23, kTab7);
   EXPECT_THAT(tracker_.LookupTabNodeIds(kTag2), ElementsAre(21, 22, 23));
 
-  EXPECT_FALSE(tracker_.DeleteForeignSession(kTag2));
+  tracker_.DeleteForeignSession(kTag2);
   EXPECT_THAT(tracker_.LookupTabNodeIds(kTag2), IsEmpty());
 }
 
@@ -477,60 +487,8 @@ TEST_F(SyncedSessionTrackerTest, DeleteForeignTab) {
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
 }
 
-TEST_F(SyncedSessionTrackerTest, CleanupLocalTabsWithoutDeferredRecycling) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitWithFeatures(
-      /*enabled_features=*/{},
-      /*disabled_features=*/{kDeferRecyclingOfSyncTabNodesIfUnsynced,
-                             kTabNodePoolImmediateDeletion});
-
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
-
-  // Start with two restored tab nodes.
-  tracker_.ReassociateLocalTab(kTabNode1, kTab1);
-  tracker_.ReassociateLocalTab(kTabNode2, kTab2);
-  EXPECT_TRUE(
-      tracker_.CleanupLocalTabs(is_tab_node_unsynced_cb_.Get()).empty());
-
-  // Associate with no tabs. The tab pool should now be full.
-  tracker_.ResetSessionTracking(kTag);
-  EXPECT_TRUE(
-      tracker_.CleanupLocalTabs(is_tab_node_unsynced_cb_.Get()).empty());
-
-  // Associate with only 1 tab open. A tab node should be reused.
-  tracker_.ResetSessionTracking(kTag);
-  tracker_.PutWindowInSession(kTag, kWindow1);
-  tracker_.PutTabInWindow(kTag, kWindow1, kTab1);
-  EXPECT_EQ(kTabNode1, tracker_.AssociateLocalTabWithFreeTabNode(kTab1));
-  EXPECT_TRUE(
-      tracker_.CleanupLocalTabs(is_tab_node_unsynced_cb_.Get()).empty());
-
-  // Simulate a tab opening, which should use the last free tab node.
-  EXPECT_EQ(kTabNode2, tracker_.AssociateLocalTabWithFreeTabNode(kTab2));
-  EXPECT_EQ(kTabNode2, tracker_.LookupTabNodeFromTabId(kTag, kTab2));
-
-  // Simulate another tab opening, which should create a new associated tab
-  // node.
-  EXPECT_EQ(kTabNode3, tracker_.AssociateLocalTabWithFreeTabNode(kTab3));
-  EXPECT_EQ(kTabNode3, tracker_.LookupTabNodeFromTabId(kTag, kTab3));
-
-  // Previous tabs should still be associated.
-  EXPECT_EQ(kTabNode1, tracker_.LookupTabNodeFromTabId(kTag, kTab1));
-  EXPECT_EQ(kTabNode2, tracker_.LookupTabNodeFromTabId(kTag, kTab2));
-
-  // Associate with no tabs. All tabs should be freed again, and the pool
-  // should now be full.
-  tracker_.ResetSessionTracking(kTag);
-  EXPECT_TRUE(
-      tracker_.CleanupLocalTabs(is_tab_node_unsynced_cb_.Get()).empty());
-  ASSERT_TRUE(VerifyTabIntegrity(kTag));
-}
-
 TEST_F(SyncedSessionTrackerTest, CleanupLocalTabs) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(kDeferRecyclingOfSyncTabNodesIfUnsynced);
-
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
 
   // Start with four restored tab nodes, one of which is mapped (|kTab1|).
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
@@ -545,8 +503,7 @@ TEST_F(SyncedSessionTrackerTest, CleanupLocalTabs) {
   // unsynced.
   tracker_.GetTab(kTag, kTab1)->timestamp = base::Time::Now();
   tracker_.GetTab(kTag, kTab2)->timestamp = base::Time::Now();
-  tracker_.GetTab(kTag, kTab3)->timestamp =
-      base::Time::Now() - base::TimeDelta::FromDays(100);
+  tracker_.GetTab(kTag, kTab3)->timestamp = base::Time::Now() - base::Days(100);
   tracker_.GetTab(kTag, kTab4)->timestamp = base::Time::Now();
 
   // Among the unmapped (closed) ones, |kTab2| and |kTab3| are unsynced.
@@ -580,7 +537,7 @@ TEST_F(SyncedSessionTrackerTest, CleanupLocalTabs) {
 
 TEST_F(SyncedSessionTrackerTest, ReassociateTabMapped) {
   // First create the tab normally.
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   EXPECT_FALSE(IsLocalTabNodeAssociated(kTabNode1));
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
@@ -628,7 +585,7 @@ TEST_F(SyncedSessionTrackerTest, ReassociateTabMapped) {
 
 TEST_F(SyncedSessionTrackerTest, ReassociateTabMappedTwice) {
   // First create the tab normally.
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   EXPECT_FALSE(IsLocalTabNodeAssociated(kTabNode1));
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
@@ -688,7 +645,7 @@ TEST_F(SyncedSessionTrackerTest, ReassociateTabMappedTwice) {
 
 TEST_F(SyncedSessionTrackerTest, ReassociateTabUnmapped) {
   // First create the old tab in an unmapped state.
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   EXPECT_FALSE(IsLocalTabNodeAssociated(kTabNode1));
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
@@ -721,7 +678,7 @@ TEST_F(SyncedSessionTrackerTest, ReassociateTabUnmapped) {
 
 TEST_F(SyncedSessionTrackerTest, ReassociateTabOldUnmappedNewMapped) {
   // First create the old tab in an unmapped state.
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   EXPECT_FALSE(IsLocalTabNodeAssociated(kTabNode1));
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
@@ -755,7 +712,7 @@ TEST_F(SyncedSessionTrackerTest, ReassociateTabOldUnmappedNewMapped) {
 
 TEST_F(SyncedSessionTrackerTest, ReassociateTabSameTabId) {
   // First create the tab normally.
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   EXPECT_FALSE(IsLocalTabNodeAssociated(kTabNode1));
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
@@ -803,7 +760,7 @@ TEST_F(SyncedSessionTrackerTest, ReassociateTabSameTabId) {
 
 TEST_F(SyncedSessionTrackerTest, ReassociateTabOldMappedNewUnmapped) {
   // First create an unmapped tab.
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   EXPECT_FALSE(IsLocalTabNodeAssociated(kTabNode1));
   tracker_.ReassociateLocalTab(kTabNode1, kTab1);
   ASSERT_TRUE(VerifyTabIntegrity(kTag));
@@ -1033,10 +990,10 @@ TEST_F(SyncedSessionTrackerTest, UpdateTrackerWithTwoTabsSameId) {
 }
 
 TEST_F(SyncedSessionTrackerTest, SerializeTrackerToSpecifics) {
-  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType);
+  tracker_.InitLocalSession(kTag, kSessionName, kDeviceType, kFormFactor);
   tracker_.PutWindowInSession(kTag, kWindow1);
   tracker_.GetSession(kTag)->windows[kWindow1]->window_type =
-      sync_pb::SessionWindow_BrowserType_TYPE_TABBED;
+      sync_pb::SyncEnums_BrowserType_TYPE_TABBED;
   tracker_.PutTabInWindow(kTag, kWindow1, kTab1);
   tracker_.PutTabInWindow(kTag, kWindow1, kTab2);
   // Unmapped tab.
@@ -1085,7 +1042,7 @@ TEST_F(SyncedSessionTrackerTest, SerializeTrackerToSpecifics) {
   EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(&callback));
 
   // Attempt to serialize unknown entities.
-  EXPECT_CALL(callback, Run(_, _)).Times(0);
+  EXPECT_CALL(callback, Run).Times(0);
   SerializePartialTrackerToSpecifics(tracker_, {{kTag, {kTabNode5}}},
                                      callback.Get());
   SerializePartialTrackerToSpecifics(

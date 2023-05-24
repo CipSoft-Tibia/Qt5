@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,11 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "base/test/test_simple_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -40,11 +41,15 @@ class MockTaskWaiter {
 class TaskManagerImplTest : public testing::Test {
  public:
   TaskManagerImplTest()
-      : task_runner_(new base::TestMockTimeTaskRunner), handle_(task_runner_) {
+      : task_runner_(new base::TestMockTimeTaskRunner),
+        current_default_handle_(task_runner_) {
     auto scheduler = std::make_unique<MockTaskScheduler>();
     task_scheduler_ = scheduler.get();
     task_manager_ = std::make_unique<TaskManagerImpl>(std::move(scheduler));
   }
+
+  TaskManagerImplTest(const TaskManagerImplTest&) = delete;
+  TaskManagerImplTest& operator=(const TaskManagerImplTest&) = delete;
 
   ~TaskManagerImplTest() override = default;
 
@@ -72,13 +77,10 @@ class TaskManagerImplTest : public testing::Test {
   }
 
   scoped_refptr<base::TestMockTimeTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle handle_;
+  base::SingleThreadTaskRunner::CurrentDefaultHandle current_default_handle_;
 
-  MockTaskScheduler* task_scheduler_;
+  raw_ptr<MockTaskScheduler> task_scheduler_;
   std::unique_ptr<TaskManagerImpl> task_manager_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TaskManagerImplTest);
 };
 
 }  // namespace

@@ -1,34 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "../../../shared/highdpi.h"
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTimeZone>
+#include <QDateTime>
+#include <QTimer>
+#include <QTestEventLoop>
+#include <QSignalSpy>
 
 #include <qabstractitemview.h>
 #include <qstandarditemmodel.h>
@@ -55,11 +35,12 @@
 #include <qscreen.h>
 
 #include <QtWidgets/private/qabstractitemdelegate_p.h>
+#include <QtWidgets/private/qapplication_p.h>
 
 Q_DECLARE_METATYPE(QAbstractItemDelegate::EndEditHint)
 
-#if defined (Q_OS_WIN) && !defined(Q_OS_WINRT)
-#include <windows.h>
+#if defined (Q_OS_WIN)
+#include <qt_windows.h>
 #define Q_CHECK_PAINTEVENTS \
     if (::SwitchDesktop(::GetThreadDesktop(::GetCurrentThreadId())) == 0) \
         QSKIP("The widgets don't get the paint events");
@@ -72,12 +53,12 @@ Q_DECLARE_METATYPE(QAbstractItemDelegate::EndEditHint)
 class TestItemDelegate : public QItemDelegate
 {
 public:
-    TestItemDelegate(QObject *parent = 0) : QItemDelegate(parent) {}
+    TestItemDelegate(QObject *parent = nullptr) : QItemDelegate(parent) {}
     ~TestItemDelegate() {}
 
     void drawDisplay(QPainter *painter,
                      const QStyleOptionViewItem &option,
-                     const QRect &rect, const QString &text) const
+                     const QRect &rect, const QString &text) const override
     {
         displayText = text;
         displayFont = option.font;
@@ -86,7 +67,7 @@ public:
 
     void drawDecoration(QPainter *painter,
                         const QStyleOptionViewItem &option,
-                        const QRect &rect, const QPixmap &pixmap) const
+                        const QRect &rect, const QPixmap &pixmap) const override
     {
         decorationPixmap = pixmap;
         decorationRect = rect;
@@ -113,7 +94,7 @@ public:
         return QItemDelegate::rect(option, index, role);
     }
 
-    inline bool eventFilter(QObject *object, QEvent *event)
+    inline bool eventFilter(QObject *object, QEvent *event) override
     {
         return QItemDelegate::eventFilter(object, event);
     }
@@ -121,7 +102,7 @@ public:
     inline bool editorEvent(QEvent *event,
                             QAbstractItemModel *model,
                             const QStyleOptionViewItem &option,
-                            const QModelIndex &index)
+                            const QModelIndex &index) override
     {
         return QItemDelegate::editorEvent(event, model, option, index);
     }
@@ -149,19 +130,19 @@ public:
 
     ~TestItemModel() {}
 
-    int rowCount(const QModelIndex &parent) const
+    int rowCount(const QModelIndex &parent) const override
     {
         Q_UNUSED(parent);
         return 1;
     }
 
-    int columnCount(const QModelIndex &parent) const
+    int columnCount(const QModelIndex &parent) const override
     {
         Q_UNUSED(parent);
         return 1;
     }
 
-    QVariant data(const QModelIndex& index, int role) const
+    QVariant data(const QModelIndex& index, int role) const override
     {
         Q_UNUSED(index);
         static QPixmap pixmap(size);
@@ -225,6 +206,8 @@ private slots:
     void QTBUG16469_textForRole();
     void dateTextForRole_data();
     void dateTextForRole();
+
+    void reuseEditor();
 
 private:
 #ifdef QT_BUILD_INTERNAL
@@ -346,16 +329,15 @@ void tst_QItemDelegate::editorKeyPress()
     view.edit(index);
 
     QList<QLineEdit*> lineEditors = view.viewport()->findChildren<QLineEdit *>();
-    QCOMPARE(lineEditors.count(), 1);
+    QCOMPARE(lineEditors.size(), 1);
 
     QLineEdit *editor = lineEditors.at(0);
     QCOMPARE(editor->selectedText(), initial);
 
     QTest::keyClicks(editor, expected);
     QTest::keyClick(editor, Qt::Key_Enter);
-    QApplication::processEvents();
 
-    QCOMPARE(index.data().toString(), expected);
+    QTRY_COMPARE(index.data().toString(), expected);
 }
 
 void tst_QItemDelegate::doubleEditorNegativeInput()
@@ -375,7 +357,7 @@ void tst_QItemDelegate::doubleEditorNegativeInput()
     view.edit(index);
 
     QList<QDoubleSpinBox*> editors = view.viewport()->findChildren<QDoubleSpinBox *>();
-    QCOMPARE(editors.count(), 1);
+    QCOMPARE(editors.size(), 1);
 
     QDoubleSpinBox *editor = editors.at(0);
     QCOMPARE(editor->value(), double(10));
@@ -692,33 +674,33 @@ void tst_QItemDelegate::testEventFilter()
     //For each test we send a key event and check if signals were emitted.
     event = new QKeyEvent(QEvent::KeyPress, Qt::Key_Tab, Qt::NoModifier);
     QVERIFY(delegate.eventFilter(&widget, event));
-    QCOMPARE(closeEditorSpy.count(), 1);
-    QCOMPARE(commitDataSpy.count(), 1);
+    QCOMPARE(closeEditorSpy.size(), 1);
+    QCOMPARE(commitDataSpy.size(), 1);
     delete event;
 
     event = new QKeyEvent(QEvent::KeyPress, Qt::Key_Backtab, Qt::NoModifier);
     QVERIFY(delegate.eventFilter(&widget, event));
-    QCOMPARE(closeEditorSpy.count(), 2);
-    QCOMPARE(commitDataSpy.count(), 2);
+    QCOMPARE(closeEditorSpy.size(), 2);
+    QCOMPARE(commitDataSpy.size(), 2);
     delete event;
 
     event = new QKeyEvent(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
     QVERIFY(delegate.eventFilter(&widget, event));
-    QCOMPARE(closeEditorSpy.count(), 3);
-    QCOMPARE(commitDataSpy.count(), 2);
+    QCOMPARE(closeEditorSpy.size(), 3);
+    QCOMPARE(commitDataSpy.size(), 2);
     delete event;
 
     event = new QKeyEvent(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier);
     QVERIFY(!delegate.eventFilter(&widget, event));
-    QCOMPARE(closeEditorSpy.count(), 3);
-    QCOMPARE(commitDataSpy.count(), 2);
+    QCOMPARE(closeEditorSpy.size(), 3);
+    QCOMPARE(commitDataSpy.size(), 2);
     delete event;
 
     //Subtest focusEvent
     event = new QFocusEvent(QEvent::FocusOut);
     QVERIFY(!delegate.eventFilter(&widget, event));
-    QCOMPARE(closeEditorSpy.count(), 4);
-    QCOMPARE(commitDataSpy.count(), 3);
+    QCOMPARE(closeEditorSpy.size(), 4);
+    QCOMPARE(commitDataSpy.size(), 3);
     delete event;
 }
 
@@ -765,7 +747,7 @@ void tst_QItemDelegate::dateTimeEditor()
     widget.setItem(0, 2, item3);
     widget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
 
     widget.editItem(item1);
 
@@ -781,7 +763,7 @@ void tst_QItemDelegate::dateTimeEditor()
     timeEditor->setTime(time.addSecs(60));
 
     widget.clearFocus();
-    qApp->setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
     widget.setFocus();
     widget.editItem(item2);
 
@@ -812,7 +794,7 @@ void tst_QItemDelegate::dateTimeEditor()
 class ChooseEditorDelegate : public QItemDelegate
 {
 public:
-    virtual QWidget* createEditor(QWidget *parent, const QStyleOptionViewItem &o, const QModelIndex &i) const
+    virtual QWidget* createEditor(QWidget *parent, const QStyleOptionViewItem &o, const QModelIndex &i) const override
     {
         if (m_editor) {
             m_editor->setParent(parent);
@@ -822,14 +804,14 @@ public:
         return m_editor;
     }
 
-    virtual void destroyEditor(QWidget *editor, const QModelIndex &i) const
+    virtual void destroyEditor(QWidget *editor, const QModelIndex &i) const override
     {   // This is a reimplementation of QAbstractItemDelegate::destroyEditor just set the variable m_editor to 0
         // The only reason we do this is to avoid the not recommended direct delete of editor (destroyEditor uses deleteLater)
         QItemDelegate::destroyEditor(editor, i); // Allow destroy
         m_editor = 0;                            // but clear the variable
     }
 
-    ChooseEditorDelegate(QObject *parent = 0) : QItemDelegate(parent) { }
+    ChooseEditorDelegate(QObject *parent = nullptr) : QItemDelegate(parent) { }
     void setNextOpenEditor(QWidget *w) { m_editor = w; }
     QWidget* currentEditor() const { return m_editor; }
 private:
@@ -843,7 +825,9 @@ class FastEditItemView : public QTableView
 public:
     QWidget* fastEdit(const QModelIndex &i) // Consider this as QAbstractItemView::edit( )
     {
-        QWidget *v = itemDelegate()->createEditor(viewport(), viewOptions(), i);
+        QStyleOptionViewItem option;
+        initViewItemOption(&option);
+        QWidget *v = itemDelegate()->createEditor(viewport(), option, i);
         if (v)
             itemDelegate()->setEditorData(v, i);
         return v;
@@ -879,7 +863,7 @@ void tst_QItemDelegate::dateAndTimeEditorTest2()
     QCOMPARE(w.fastEdit(i1), timeEdit.data());
     timeEdit->setTime(time1);
     d->setModelData(timeEdit, &s, i1);
-    QCOMPARE(s.data(i1).type(), QVariant::Time); // ensure that we wrote a time variant.
+    QCOMPARE(s.data(i1).metaType().id(), QMetaType::QTime); // ensure that we wrote a time variant.
     QCOMPARE(s.data(i1).toTime(), time1);        // ensure that it is the correct time.
     w.doCloseEditor(timeEdit);
     QVERIFY(d->currentEditor() == 0); // should happen at doCloseEditor. We only test this once.
@@ -908,7 +892,7 @@ void tst_QItemDelegate::dateAndTimeEditorTest2()
     QCOMPARE(dateTimeEdit->dateTime(), datetime2);
     dateTimeEdit->setDateTime(datetime1);
     d->setModelData(dateTimeEdit, &s, i1);
-    QCOMPARE(s.data(i1).type(), QVariant::DateTime); // ensure that we wrote a datetime variant.
+    QCOMPARE(s.data(i1).metaType().id(), QMetaType::QDateTime); // ensure that we wrote a datetime variant.
     QCOMPARE(s.data(i1).toDateTime(), datetime1);
     w.doCloseEditor(dateTimeEdit);
 
@@ -919,7 +903,7 @@ void tst_QItemDelegate::dateAndTimeEditorTest2()
     QCOMPARE(w.fastEdit(i2), dateEdit.data());
     dateEdit->setDate(date1);
     d->setModelData(dateEdit, &s, i2);
-    QCOMPARE(s.data(i2).type(), QVariant::Date); // ensure that we wrote a time variant.
+    QCOMPARE(s.data(i2).metaType().id(), QMetaType::QDate); // ensure that we wrote a time variant.
     QCOMPARE(s.data(i2).toDate(), date1);        // ensure that it is the correct date.
     w.doCloseEditor(dateEdit);
 
@@ -1000,30 +984,30 @@ void tst_QItemDelegate::decoration_data()
     int pm = QApplication::style()->pixelMetric(QStyle::PM_SmallIconSize);
 
     QTest::newRow("pixmap 30x30")
-        << (int)QVariant::Pixmap
+        << (int)QMetaType::QPixmap
         << QSize(30, 30)
         << QSize(30, 30);
 
     QTest::newRow("image 30x30")
-        << (int)QVariant::Image
+        << (int)QMetaType::QImage
         << QSize(30, 30)
         << QSize(30, 30);
 
 //The default engine scales pixmaps down if required, but never up. For WinCE we need bigger IconSize than 30
     QTest::newRow("icon 30x30")
-        << (int)QVariant::Icon
+        << (int)QMetaType::QIcon
         << QSize(60, 60)
         << QSize(pm, pm);
 
     QTest::newRow("color 30x30")
-        << (int)QVariant::Color
+        << (int)QMetaType::QColor
         << QSize(30, 30)
         << QSize(pm, pm);
 
     // This demands too much memory and potentially hangs. Feel free to uncomment
     // for your own testing.
 //    QTest::newRow("pixmap 30x30 big")
-//        << (int)QVariant::Pixmap
+//        << (int)QMetaType::QPixmap
 //        << QSize(1024, 1024)        // Over 1M
 //        << QSize(1024, 1024);
 }
@@ -1043,30 +1027,30 @@ void tst_QItemDelegate::decoration()
     TestItemDelegate delegate;
     table.setItemDelegate(&delegate);
     table.show();
-    QApplication::setActiveWindow(&table);
+    QApplicationPrivate::setActiveWindow(&table);
     QVERIFY(QTest::qWaitForWindowActive(&table));
 
     QVariant value;
-    switch ((QVariant::Type)type) {
-    case QVariant::Pixmap: {
+    switch (type) {
+    case QMetaType::QPixmap: {
         QPixmap pm(size);
         pm.fill(Qt::black);
         value = pm;
         break;
     }
-    case QVariant::Image: {
+    case QMetaType::QImage: {
         QImage img(size, QImage::Format_Mono);
         memset(img.bits(), 0, img.sizeInBytes());
         value = img;
         break;
     }
-    case QVariant::Icon: {
+    case QMetaType::QIcon: {
         QPixmap pm(size);
         pm.fill(Qt::black);
         value = QIcon(pm);
         break;
     }
-    case QVariant::Color:
+    case QMetaType::QColor:
         value = QColor(Qt::green);
         break;
     default:
@@ -1239,7 +1223,7 @@ void tst_QItemDelegate::editorEvent()
     QPoint pos = inCheck ? qApp->style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, 0).center() + QPoint(checkMargin, 0) : QPoint(200,200);
 
     QEvent *event = new QMouseEvent((QEvent::Type)type,
-                                    pos,
+                                    pos, pos,
                                     (Qt::MouseButton)button,
                                     (Qt::MouseButton)button,
                                     Qt::NoModifier);
@@ -1298,14 +1282,14 @@ void tst_QItemDelegate::enterKey()
     QListView view;
     view.setModel(&model);
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     view.setFocus();
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
     struct TestDelegate : public QItemDelegate
     {
         WidgetType widgetType;
-        virtual QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem& /*option*/, const QModelIndex& /*index*/) const
+        virtual QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem& /*option*/, const QModelIndex& /*index*/) const override
         {
             QWidget *editor = 0;
             switch(widgetType) {
@@ -1332,7 +1316,7 @@ void tst_QItemDelegate::enterKey()
     view.edit(index);
 
     QList<QWidget*> lineEditors = view.viewport()->findChildren<QWidget *>(QString::fromLatin1("TheEditor"));
-    QCOMPARE(lineEditors.count(), 1);
+    QCOMPARE(lineEditors.size(), 1);
 
     QPointer<QWidget> editor = lineEditors.at(0);
     QCOMPARE(editor->hasFocus(), true);
@@ -1358,7 +1342,7 @@ void tst_QItemDelegate::task257859_finalizeEdit()
     QListView view;
     view.setModel(&model);
     view.show();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     view.setFocus();
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
@@ -1366,7 +1350,7 @@ void tst_QItemDelegate::task257859_finalizeEdit()
     view.edit(index);
 
     QList<QLineEdit *> lineEditors = view.viewport()->findChildren<QLineEdit *>();
-    QCOMPARE(lineEditors.count(), 1);
+    QCOMPARE(lineEditors.size(), 1);
 
     QPointer<QWidget> editor = lineEditors.at(0);
     QCOMPARE(editor->hasFocus(), true);
@@ -1388,6 +1372,7 @@ void tst_QItemDelegate::QTBUG4435_keepSelectionOnCheck()
     }
     QTableView view;
     view.setModel(&model);
+    view.setSelectionMode(QAbstractItemView::MultiSelection);
     view.setItemDelegate(new TestItemDelegate(&view));
     view.show();
     view.selectAll();
@@ -1398,11 +1383,16 @@ void tst_QItemDelegate::QTBUG4435_keepSelectionOnCheck()
     option.features = QStyleOptionViewItem::HasDisplay | QStyleOptionViewItem::HasCheckIndicator;
     option.checkState = Qt::CheckState(model.index(0, 0).data(Qt::CheckStateRole).toInt());
     const int checkMargin = qApp->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, 0, 0) + 1;
-    QPoint pos = qApp->style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, 0).center()
-                 + QPoint(checkMargin, 0);
-    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::ControlModifier, pos);
-    QTRY_VERIFY(view.selectionModel()->isColumnSelected(0, QModelIndex()));
+    QRect checkRect = qApp->style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, 0);
+    checkRect.translate(checkMargin, 0);
+    // click into the check mark checks, but doesn't change selection
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier, checkRect.center());
     QCOMPARE(model.item(0)->checkState(), Qt::Checked);
+    QTRY_VERIFY(view.selectionModel()->isColumnSelected(0, QModelIndex()));
+    // click outside the check mark doesn't check, and changes selection
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, Qt::NoModifier,
+                      checkRect.center() + QPoint(checkRect.width(), 0));
+    QTRY_VERIFY(!view.selectionModel()->isColumnSelected(0, QModelIndex()));
 }
 
 void tst_QItemDelegate::comboBox()
@@ -1414,7 +1404,7 @@ void tst_QItemDelegate::comboBox()
     widget.setItem(0, 0, item1);
     widget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
-    QApplication::setActiveWindow(&widget);
+    QApplicationPrivate::setActiveWindow(&widget);
 
     widget.editItem(item1);
 
@@ -1454,7 +1444,7 @@ void tst_QItemDelegate::testLineEditValidation()
 
     struct TestDelegate : public QItemDelegate
     {
-        virtual QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const
+        virtual QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override
         {
             Q_UNUSED(option);
             Q_UNUSED(index);
@@ -1479,7 +1469,7 @@ void tst_QItemDelegate::testLineEditValidation()
     view.setItemDelegate(&delegate);
     view.show();
     view.setFocus();
-    QApplication::setActiveWindow(&view);
+    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
     QPointer<QLineEdit> editor;
@@ -1491,7 +1481,7 @@ void tst_QItemDelegate::testLineEditValidation()
     const auto findEditors = [&]() {
         return view.findChildren<QLineEdit *>(QStringLiteral("TheEditor"));
     };
-    QCOMPARE(findEditors().count(), 1);
+    QCOMPARE(findEditors().size(), 1);
     editor = findEditors().at(0);
     editor->clear();
 
@@ -1511,7 +1501,7 @@ void tst_QItemDelegate::testLineEditValidation()
     view.setCurrentIndex(index);
     view.edit(index);
 
-    QTRY_COMPARE(findEditors().count(), 1);
+    QTRY_COMPARE(findEditors().size(), 1);
     editor = findEditors().at(0);
     editor->clear();
 
@@ -1533,13 +1523,13 @@ void tst_QItemDelegate::testLineEditValidation()
 
     // reset the view to forcibly close the editor
     view.reset();
-    QTRY_COMPARE(findEditors().count(), 0);
+    QTRY_COMPARE(findEditors().size(), 0);
 
     // set a valid text again
     view.setCurrentIndex(index);
     view.edit(index);
 
-    QTRY_COMPARE(findEditors().count(), 1);
+    QTRY_COMPARE(findEditors().size(), 1);
     editor = findEditors().at(0);
     editor->clear();
 
@@ -1603,12 +1593,12 @@ void tst_QItemDelegate::dateTextForRole_data()
     QDate date(2013, 12, 11);
     QTime time(10, 9, 8, 765);
     // Ensure we exercise every time-spec variant:
-    QTest::newRow("local") << QDateTime(date, time, Qt::LocalTime);
-    QTest::newRow("UTC") << QDateTime(date, time, Qt::UTC);
-#if QT_CONFIG(timezone)
+    QTest::newRow("local") << QDateTime(date, time);
+    QTest::newRow("UTC") << QDateTime(date, time, QTimeZone::UTC);
+#  if QT_CONFIG(timezone)
     QTest::newRow("zone") << QDateTime(date, time, QTimeZone("Europe/Dublin"));
-#endif
-    QTest::newRow("offset") << QDateTime(date, time, Qt::OffsetFromUTC, 36000);
+#  endif
+    QTest::newRow("offset") << QDateTime(date, time, QTimeZone::fromSecondsAheadOfUtc(36000));
 #endif
 }
 
@@ -1629,6 +1619,75 @@ void tst_QItemDelegate::dateTextForRole()
     CHECK(when.time());
 # undef CHECK
 #endif
+}
+
+void tst_QItemDelegate::reuseEditor()
+{
+    class ReusingDelegate: public QItemDelegate {
+    public:
+        using QItemDelegate::QItemDelegate;
+        ~ReusingDelegate()
+        {
+            if (cached)
+                cached->deleteLater();
+        }
+
+        QWidget* createEditor(QWidget* parent,
+                                const QStyleOptionViewItem&,
+                                const QModelIndex&) const override
+        {
+            auto *cb = new QComboBox(parent);
+            cb->addItem("One");
+            cb->addItem("Two");
+            cb->setEditable(true);
+            return cb;
+        }
+
+        void setEditorData(QWidget* editor, const QModelIndex& index)
+        const override
+        {
+            auto *cb = qobject_cast<QComboBox*>(editor);
+            cb->setCurrentText(index.data(Qt::DisplayRole).toString());
+        }
+
+        void setModelData(QWidget* editor,
+                          QAbstractItemModel* model,
+                          const QModelIndex& index) const override
+        {
+            auto *cb = qobject_cast<QComboBox*>(editor);
+            model->setData(index, cb->currentText(), Qt::DisplayRole);
+        }
+
+        void destroyEditor(QWidget* editor, const QModelIndex&) const override
+        {
+            auto *cb = qobject_cast<QComboBox*>(editor);
+            cb->setParent(nullptr); // How to completely detach the editor from treeview ?
+            cb->hide();
+            cb->setEnabled(false);
+            cached = cb;
+        }
+
+    private:
+        mutable QComboBox* cached = nullptr;
+    };
+
+    QStandardItemModel model;
+    model.appendRow(new QStandardItem("One"));
+    model.appendRow(new QStandardItem("Two"));
+
+    ReusingDelegate delegate;
+
+    QTreeView tree;
+    tree.setModel(&model);
+    tree.setItemDelegate(&delegate);
+
+    tree.show();
+    QVERIFY(QTest::qWaitForWindowActive(&tree));
+
+    tree.edit(model.index(0, 0));
+    QTRY_VERIFY(qobject_cast<QComboBox *>(tree.focusWidget()));
+
+    tree.close();
 }
 
 // ### _not_ covered:

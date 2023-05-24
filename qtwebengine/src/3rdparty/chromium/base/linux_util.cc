@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,22 +16,23 @@
 #include <iomanip>
 #include <memory>
 
+#include "base/base_export.h"
 #include "base/files/dir_reader_posix.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
-#include "base/no_destructor.h"
 #include "base/strings/safe_sprintf.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 
 namespace base {
 
 namespace {
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
 std::string GetKeyValueFromOSReleaseFile(const std::string& input,
                                          const char* key) {
   StringPairs key_value_pairs;
@@ -85,7 +86,7 @@ class DistroNameGetter {
     }
   }
 };
-#endif  // !defined(OS_CHROMEOS)
+#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
 // Account for the terminating null character.
 constexpr int kDistroSize = 128 + 1;
@@ -95,9 +96,9 @@ constexpr int kDistroSize = 128 + 1;
 // We use this static string to hold the Linux distro info. If we
 // crash, the crash handler code will send this in the crash dump.
 char g_linux_distro[kDistroSize] =
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     "CrOS";
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
     "Android";
 #else
     "Unknown";
@@ -111,18 +112,18 @@ char g_linux_distro[kDistroSize] =
 BASE_EXPORT std::string GetKeyValueFromOSReleaseFileForTesting(
     const std::string& input,
     const char* key) {
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   return GetKeyValueFromOSReleaseFile(input, key);
 #else
   return "";
-#endif  // !defined(OS_CHROMEOS)
+#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 }
 
 std::string GetLinuxDistro() {
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   // We do this check only once per process. If it fails, there's
   // little reason to believe it will work if we attempt to run it again.
-  static NoDestructor<DistroNameGetter> distro_name_getter;
+  static DistroNameGetter distro_name_getter;
 #endif
   return g_linux_distro;
 }
@@ -145,11 +146,9 @@ bool GetThreadsForProcess(pid_t pid, std::vector<pid_t>* tids) {
   }
 
   while (dir_reader.Next()) {
-    char* endptr;
-    const unsigned long int tid_ul = strtoul(dir_reader.name(), &endptr, 10);
-    if (tid_ul == ULONG_MAX || *endptr)
-      continue;
-    tids->push_back(tid_ul);
+    pid_t tid;
+    if (StringToInt(dir_reader.name(), &tid))
+      tids->push_back(tid);
   }
 
   return true;

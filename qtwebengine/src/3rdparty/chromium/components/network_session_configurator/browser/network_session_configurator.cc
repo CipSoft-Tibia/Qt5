@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/command_line.h"
+#include "base/containers/contains.h"
 #include "base/feature_list.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_macros.h"
@@ -23,17 +24,20 @@
 #include "components/network_session_configurator/common/network_features.h"
 #include "components/network_session_configurator/common/network_switches.h"
 #include "components/variations/variations_associated_data.h"
+#include "components/variations/variations_switches.h"
 #include "net/base/host_mapping_rules.h"
+#include "net/http/http_network_session.h"
 #include "net/http/http_stream_factory.h"
-#include "net/quic/platform/impl/quic_flags_impl.h"
 #include "net/quic/quic_context.h"
+#include "net/quic/set_quic_flag.h"
 #include "net/spdy/spdy_session.h"
 #include "net/spdy/spdy_session_pool.h"
-#include "net/third_party/quiche/src/quic/core/quic_packets.h"
-#include "net/third_party/quiche/src/quic/core/quic_tag.h"
-#include "net/third_party/quiche/src/spdy/core/spdy_protocol.h"
+#include "net/third_party/quiche/src/quiche/common/platform/api/quiche_flags.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_packets.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_tag.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/spdy_protocol.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
 #endif
 
@@ -97,17 +101,6 @@ spdy::SettingsMap GetHttp2Settings(
   return http2_settings;
 }
 
-bool ConfigureWebsocketOverHttp2(
-    const base::CommandLine& command_line,
-    const VariationParameters& http2_trial_params) {
-  if (command_line.HasSwitch(switches::kEnableWebsocketOverHttp2))
-    return true;
-
-  const std::string websocket_value =
-      GetVariationParam(http2_trial_params, "websocket_over_http2");
-  return websocket_value == "true";
-}
-
 int ConfigureSpdySessionMaxQueuedCappedFrames(
     const base::CommandLine& /*command_line*/,
     const VariationParameters& http2_trial_params) {
@@ -124,24 +117,22 @@ int ConfigureSpdySessionMaxQueuedCappedFrames(
 void ConfigureHttp2Params(const base::CommandLine& command_line,
                           base::StringPiece http2_trial_group,
                           const VariationParameters& http2_trial_params,
-                          net::HttpNetworkSession::Params* params) {
+                          net::HttpNetworkSessionParams* params) {
   if (GetVariationParam(http2_trial_params, "http2_enabled") == "false") {
     params->enable_http2 = false;
     return;
   }
 
-  // After parsing initial settings, optionally add a setting with reserved
-  // identifier to "grease" settings, see
-  // https://tools.ietf.org/html/draft-bishop-httpbis-grease-00.
   params->http2_settings = GetHttp2Settings(http2_trial_params);
-  if (command_line.HasSwitch(switches::kHttp2GreaseSettings) ||
-      GetVariationParam(http2_trial_params, "http2_grease_settings") ==
-          "true") {
-    spdy::SpdySettingsId id = 0x0a0a + 0x1000 * base::RandGenerator(0xf + 1) +
-                              0x0010 * base::RandGenerator(0xf + 1);
-    uint32_t value = base::RandGenerator(
-        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
-    params->http2_settings.insert(std::make_pair(id, value));
+
+  // Enable/disable greasing SETTINGS, see
+  // https://tools.ietf.org/html/draft-bishop-httpbis-grease-00.
+  if (command_line.HasSwitch(switches::kDisableHttp2GreaseSettings)) {
+    params->enable_http2_settings_grease = false;
+  } else if (command_line.HasSwitch(switches::kEnableHttp2GreaseSettings) ||
+             GetVariationParam(http2_trial_params, "http2_grease_settings") ==
+                 "true") {
+    params->enable_http2_settings_grease = true;
   }
 
   // Optionally define a frame of reserved type to "grease" frame types, see
@@ -160,7 +151,7 @@ void ConfigureHttp2Params(const base::CommandLine& command_line,
         (length > 0) ? base::RandBytesAsString(length) : std::string();
 
     params->greased_http2_frame =
-        base::Optional<net::SpdySessionPool::GreasedHttp2Frame>(
+        absl::optional<net::SpdySessionPool::GreasedHttp2Frame>(
             {type, flags, payload});
   }
 
@@ -169,9 +160,6 @@ void ConfigureHttp2Params(const base::CommandLine& command_line,
                         "http2_end_stream_with_data_frame") == "true") {
     params->http2_end_stream_with_data_frame = true;
   }
-
-  params->enable_websocket_over_http2 =
-      ConfigureWebsocketOverHttp2(command_line, http2_trial_params);
 
   params->spdy_session_max_queued_capped_frames =
       ConfigureSpdySessionMaxQueuedCappedFrames(command_line,
@@ -184,13 +172,13 @@ bool ShouldDisableQuic(base::StringPiece quic_trial_group,
   if (is_quic_force_disabled)
     return true;
 
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "enable_quic"), "false");
 }
 
 bool ShouldEnableQuicProxiesForHttpsUrls(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params,
                         "enable_quic_proxies_for_https_urls"),
       "true");
@@ -198,7 +186,7 @@ bool ShouldEnableQuicProxiesForHttpsUrls(
 
 bool ShouldRetryWithoutAltSvcOnQuicErrors(
     const VariationParameters& quic_trial_params) {
-  return !base::LowerCaseEqualsASCII(
+  return !base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params,
                         "retry_without_alt_svc_on_quic_errors"),
       "false");
@@ -226,16 +214,33 @@ quic::QuicTagVector GetQuicClientConnectionOptions(
 
 bool ShouldQuicCloseSessionsOnIpChange(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "close_sessions_on_ip_change"),
       "true");
 }
 
 bool ShouldQuicGoAwaySessionsOnIpChange(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "goaway_sessions_on_ip_change"),
       "true");
+}
+
+absl::optional<bool> GetExponentialBackOffOnInitialDelay(
+    const VariationParameters& quic_trial_params) {
+  if (base::EqualsCaseInsensitiveASCII(
+          GetVariationParam(quic_trial_params,
+                            "exponential_backoff_on_initial_delay"),
+          "false")) {
+    return false;
+  }
+  if (base::EqualsCaseInsensitiveASCII(
+          GetVariationParam(quic_trial_params,
+                            "exponential_backoff_on_initial_delay"),
+          "true")) {
+    return true;
+  }
+  return absl::nullopt;
 }
 
 int GetQuicIdleConnectionTimeoutSeconds(
@@ -286,21 +291,13 @@ int GetQuicMaxIdleTimeBeforeCryptoHandshakeSeconds(
 
 bool ShouldQuicEstimateInitialRtt(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "estimate_initial_rtt"), "true");
-}
-
-bool ShouldQuicHeadersIncludeH2StreamDependencies(
-    const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
-      GetVariationParam(quic_trial_params,
-                        "headers_include_h2_stream_dependency"),
-      "true");
 }
 
 bool ShouldQuicMigrateSessionsOnNetworkChangeV2(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params,
                         "migrate_sessions_on_network_change_v2"),
       "true");
@@ -308,29 +305,22 @@ bool ShouldQuicMigrateSessionsOnNetworkChangeV2(
 
 bool ShouldQuicMigrateSessionsEarlyV2(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "migrate_sessions_early_v2"),
       "true");
 }
 
 bool ShouldQuicAllowPortMigration(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
-      GetVariationParam(quic_trial_params, "allow_port_migration"), "true");
+  return !base::EqualsCaseInsensitiveASCII(
+      GetVariationParam(quic_trial_params, "allow_port_migration"), "false");
 }
 
 bool ShouldQuicRetryOnAlternateNetworkBeforeHandshake(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params,
                         "retry_on_alternate_network_before_handshake"),
-      "true");
-}
-
-bool ShouldQuicGoawayOnPathDegrading(
-    const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
-      GetVariationParam(quic_trial_params, "go_away_on_path_degrading"),
       "true");
 }
 
@@ -348,18 +338,18 @@ int GetQuicMaxTimeOnNonDefaultNetworkSeconds(
 
 bool ShouldQuicMigrateIdleSessions(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "migrate_idle_sessions"), "true");
 }
 
 bool ShouldQuicDisableTlsZeroRtt(const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "disable_tls_zero_rtt"), "true");
 }
 
 bool ShouldQuicDisableGQuicZeroRtt(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "disable_gquic_zero_rtt"), "true");
 }
 
@@ -434,6 +424,27 @@ base::flat_set<std::string> GetQuicHostAllowlist(
   return base::flat_set<std::string>(std::move(host_vector));
 }
 
+int GetInitialDelayForBrokenAlternativeServiceSeconds(
+    const VariationParameters& quic_trial_params) {
+  int value;
+  if (base::StringToInt(
+          GetVariationParam(
+              quic_trial_params,
+              "initial_delay_for_broken_alternative_service_seconds"),
+          &value)) {
+    return value;
+  }
+  return 0;
+}
+
+bool DelayMainJobWithAvailableSpdySession(
+    const VariationParameters& quic_trial_params) {
+  return base::EqualsCaseInsensitiveASCII(
+      GetVariationParam(quic_trial_params,
+                        "delay_main_job_with_available_spdy_session"),
+      "true");
+}
+
 void SetQuicFlags(const VariationParameters& quic_trial_params) {
   std::string flags_list =
       GetVariationParam(quic_trial_params, "set_quic_flags");
@@ -443,7 +454,7 @@ void SetQuicFlags(const VariationParameters& quic_trial_params) {
         flag, "=", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
     if (tokens.size() != 2)
       continue;
-    SetQuicFlagByName(tokens[0], tokens[1]);
+    net::SetQuicFlagByName(tokens[0], tokens[1]);
   }
 }
 
@@ -458,43 +469,88 @@ size_t GetQuicMaxPacketLength(const VariationParameters& quic_trial_params) {
 
 quic::ParsedQuicVersionVector GetQuicVersions(
     const VariationParameters& quic_trial_params) {
+  std::string trial_versions_str =
+      GetVariationParam(quic_trial_params, "quic_version");
   quic::ParsedQuicVersionVector trial_versions =
-      quic::ParseQuicVersionVectorString(
-          GetVariationParam(quic_trial_params, "quic_version"));
-  const bool obsolete_versions_allowed = base::LowerCaseEqualsASCII(
-      GetVariationParam(quic_trial_params, "obsolete_versions_allowed"),
-      "true");
-  if (!obsolete_versions_allowed) {
-    quic::ParsedQuicVersionVector filtered_versions;
-    quic::ParsedQuicVersionVector obsolete_versions =
-        net::ObsoleteQuicVersions();
-    for (const quic::ParsedQuicVersion& version : trial_versions) {
-      if (std::find(obsolete_versions.begin(), obsolete_versions.end(),
-                    version) == obsolete_versions.end()) {
-        filtered_versions.push_back(version);
-      }
+      quic::ParseQuicVersionVectorString(trial_versions_str);
+  quic::ParsedQuicVersionVector filtered_versions;
+  quic::ParsedQuicVersionVector obsolete_versions = net::ObsoleteQuicVersions();
+  bool found_obsolete_version = false;
+  for (const quic::ParsedQuicVersion& version : trial_versions) {
+    if (!base::Contains(obsolete_versions, version)) {
+      filtered_versions.push_back(version);
+    } else {
+      found_obsolete_version = true;
     }
-    trial_versions = filtered_versions;
   }
-  return trial_versions;
+  if (found_obsolete_version) {
+    UMA_HISTOGRAM_BOOLEAN("Net.QuicSession.FinchObsoleteVersion", true);
+  }
+  return filtered_versions;
 }
 
 bool ShouldEnableServerPushCancelation(
     const VariationParameters& quic_trial_params) {
-  return base::LowerCaseEqualsASCII(
+  return base::EqualsCaseInsensitiveASCII(
       GetVariationParam(quic_trial_params, "enable_server_push_cancellation"),
       "true");
 }
 
-void ConfigureQuicParams(base::StringPiece quic_trial_group,
+bool AreQuicParamsValid(const base::CommandLine& command_line,
+                        base::StringPiece quic_trial_group,
+                        const VariationParameters& quic_trial_params) {
+  if (command_line.HasSwitch(variations::switches::kForceFieldTrialParams)) {
+    // Skip validation of params from the command line.
+    return true;
+  }
+  if (!base::EqualsCaseInsensitiveASCII(
+          GetVariationParam(quic_trial_params, "enable_quic"), "true")) {
+    // Params that don't explicitly enable QUIC do not carry channel or epoch.
+    return true;
+  }
+  const std::string channel_string =
+      GetVariationParam(quic_trial_params, "channel");
+  if (channel_string.length() != 1) {
+    // Params without a valid channel are invalid.
+    return false;
+  }
+  const std::string epoch_string =
+      GetVariationParam(quic_trial_params, "epoch");
+  if (epoch_string.length() != 8) {
+    // Params without a valid epoch are invalid.
+    return false;
+  }
+  int epoch;
+  if (!base::StringToInt(epoch_string, &epoch)) {
+    // Failed to parse epoch as int.
+    return false;
+  }
+  if (epoch < 20211025) {
+    // All channels currently have an epoch of at least this value. This
+    // can be confirmed by checking the internal QUIC field trial config file.
+    return false;
+  }
+  return true;
+}
+
+void ConfigureQuicParams(const base::CommandLine& command_line,
+                         base::StringPiece quic_trial_group,
                          const VariationParameters& quic_trial_params,
                          bool is_quic_force_disabled,
                          const std::string& quic_user_agent_id,
-                         net::HttpNetworkSession::Params* params,
+                         net::HttpNetworkSessionParams* params,
                          net::QuicParams* quic_params) {
   if (ShouldDisableQuic(quic_trial_group, quic_trial_params,
                         is_quic_force_disabled)) {
     params->enable_quic = false;
+  }
+
+  const bool params_are_valid =
+      AreQuicParamsValid(command_line, quic_trial_group, quic_trial_params);
+  UMA_HISTOGRAM_BOOLEAN("Net.QuicSession.FinchConfigIsValid", params_are_valid);
+  if (!params_are_valid) {
+    // Skip parsing of invalid params.
+    return;
   }
 
   params->enable_server_push_cancellation =
@@ -518,33 +574,29 @@ void ConfigureQuicParams(base::StringPiece quic_trial_group,
         GetQuicIdleConnectionTimeoutSeconds(quic_trial_params);
     if (idle_connection_timeout_seconds != 0) {
       quic_params->idle_connection_timeout =
-          base::TimeDelta::FromSeconds(idle_connection_timeout_seconds);
+          base::Seconds(idle_connection_timeout_seconds);
     }
     int reduced_ping_timeout_seconds =
         GetQuicReducedPingTimeoutSeconds(quic_trial_params);
     if (reduced_ping_timeout_seconds > 0 &&
         reduced_ping_timeout_seconds < quic::kPingTimeoutSecs) {
       quic_params->reduced_ping_timeout =
-          base::TimeDelta::FromSeconds(reduced_ping_timeout_seconds);
+          base::Seconds(reduced_ping_timeout_seconds);
     }
     int max_time_before_crypto_handshake_seconds =
         GetQuicMaxTimeBeforeCryptoHandshakeSeconds(quic_trial_params);
     if (max_time_before_crypto_handshake_seconds > 0) {
       quic_params->max_time_before_crypto_handshake =
-          base::TimeDelta::FromSeconds(
-              max_time_before_crypto_handshake_seconds);
+          base::Seconds(max_time_before_crypto_handshake_seconds);
     }
     int max_idle_time_before_crypto_handshake_seconds =
         GetQuicMaxIdleTimeBeforeCryptoHandshakeSeconds(quic_trial_params);
     if (max_idle_time_before_crypto_handshake_seconds > 0) {
       quic_params->max_idle_time_before_crypto_handshake =
-          base::TimeDelta::FromSeconds(
-              max_idle_time_before_crypto_handshake_seconds);
+          base::Seconds(max_idle_time_before_crypto_handshake_seconds);
     }
     quic_params->estimate_initial_rtt =
         ShouldQuicEstimateInitialRtt(quic_trial_params);
-    quic_params->headers_include_h2_stream_dependency =
-        ShouldQuicHeadersIncludeH2StreamDependencies(quic_trial_params);
     quic_params->migrate_sessions_on_network_change_v2 =
         ShouldQuicMigrateSessionsOnNetworkChangeV2(quic_trial_params);
     quic_params->migrate_sessions_early_v2 =
@@ -553,14 +605,11 @@ void ConfigureQuicParams(base::StringPiece quic_trial_group,
         ShouldQuicAllowPortMigration(quic_trial_params);
     quic_params->retry_on_alternate_network_before_handshake =
         ShouldQuicRetryOnAlternateNetworkBeforeHandshake(quic_trial_params);
-    quic_params->go_away_on_path_degrading =
-        ShouldQuicGoawayOnPathDegrading(quic_trial_params);
     int initial_rtt_for_handshake_milliseconds =
         GetQuicInitialRttForHandshakeMilliseconds(quic_trial_params);
     if (initial_rtt_for_handshake_milliseconds > 0) {
       quic_params->initial_rtt_for_handshake =
-          base::TimeDelta::FromMilliseconds(
-              initial_rtt_for_handshake_milliseconds);
+          base::Milliseconds(initial_rtt_for_handshake_milliseconds);
     }
 
     quic_params->disable_tls_zero_rtt =
@@ -573,8 +622,7 @@ void ConfigureQuicParams(base::StringPiece quic_trial_group,
         GetQuicRetransmittableOnWireTimeoutMilliseconds(quic_trial_params);
     if (retransmittable_on_wire_timeout_milliseconds > 0) {
       quic_params->retransmittable_on_wire_timeout =
-          base::TimeDelta::FromMilliseconds(
-              retransmittable_on_wire_timeout_milliseconds);
+          base::Milliseconds(retransmittable_on_wire_timeout_milliseconds);
     }
     quic_params->migrate_idle_sessions =
         ShouldQuicMigrateIdleSessions(quic_trial_params);
@@ -582,13 +630,13 @@ void ConfigureQuicParams(base::StringPiece quic_trial_group,
         GetQuicIdleSessionMigrationPeriodSeconds(quic_trial_params);
     if (idle_session_migration_period_seconds > 0) {
       quic_params->idle_session_migration_period =
-          base::TimeDelta::FromSeconds(idle_session_migration_period_seconds);
+          base::Seconds(idle_session_migration_period_seconds);
     }
     int max_time_on_non_default_network_seconds =
         GetQuicMaxTimeOnNonDefaultNetworkSeconds(quic_trial_params);
     if (max_time_on_non_default_network_seconds > 0) {
       quic_params->max_time_on_non_default_network =
-          base::TimeDelta::FromSeconds(max_time_on_non_default_network_seconds);
+          base::Seconds(max_time_on_non_default_network_seconds);
     }
     int max_migrations_to_non_default_network_on_write_error =
         GetQuicMaxNumMigrationsToNonDefaultNetworkOnWriteError(
@@ -605,7 +653,17 @@ void ConfigureQuicParams(base::StringPiece quic_trial_group,
           max_migrations_to_non_default_network_on_path_degrading;
     }
     params->quic_host_allowlist = GetQuicHostAllowlist(quic_trial_params);
-
+    const int initial_delay_for_broken_alternative_service_seconds =
+        GetInitialDelayForBrokenAlternativeServiceSeconds(quic_trial_params);
+    if (initial_delay_for_broken_alternative_service_seconds > 0) {
+      quic_params->initial_delay_for_broken_alternative_service =
+          base::Seconds(initial_delay_for_broken_alternative_service_seconds);
+    }
+    quic_params->exponential_backoff_on_initial_delay =
+        GetExponentialBackOffOnInitialDelay(quic_trial_params);
+    if (DelayMainJobWithAvailableSpdySession(quic_trial_params)) {
+      quic_params->delay_main_job_with_available_spdy_session = true;
+    }
     SetQuicFlags(quic_trial_params);
   }
 
@@ -629,7 +687,7 @@ namespace network_session_configurator {
 void ParseCommandLineAndFieldTrials(const base::CommandLine& command_line,
                                     bool is_quic_force_disabled,
                                     const std::string& quic_user_agent_id,
-                                    net::HttpNetworkSession::Params* params,
+                                    net::HttpNetworkSessionParams* params,
                                     net::QuicParams* quic_params) {
   is_quic_force_disabled |= command_line.HasSwitch(switches::kDisableQuic);
 
@@ -638,7 +696,7 @@ void ParseCommandLineAndFieldTrials(const base::CommandLine& command_line,
   VariationParameters quic_trial_params;
   if (!variations::GetVariationParams(kQuicFieldTrialName, &quic_trial_params))
     quic_trial_params.clear();
-  ConfigureQuicParams(quic_trial_group, quic_trial_params,
+  ConfigureQuicParams(command_line, quic_trial_group, quic_trial_params,
                       is_quic_force_disabled, quic_user_agent_id, params,
                       quic_params);
 
@@ -724,7 +782,7 @@ void ParseCommandLineAndFieldTrials(const base::CommandLine& command_line,
 }
 
 net::URLRequestContextBuilder::HttpCacheParams::Type ChooseCacheType() {
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   const std::string experiment_name =
       base::FieldTrialList::FindFullName("SimpleCacheTrial");
   if (base::StartsWith(experiment_name, "Disable",
@@ -738,18 +796,18 @@ net::URLRequestContextBuilder::HttpCacheParams::Type ChooseCacheType() {
   // muddles the experiment data, but as this was written to be considered for
   // backport, having it behave differently than in stable would be a bigger
   // problem.
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   if (base::mac::IsAtLeastOS10_14())
     return net::URLRequestContextBuilder::HttpCacheParams::DISK_SIMPLE;
-#endif  // defined(OS_MAC)
+#endif  // BUILDFLAG(IS_MAC)
 
   if (base::StartsWith(experiment_name, "ExperimentYes",
                        base::CompareCase::INSENSITIVE_ASCII)) {
     return net::URLRequestContextBuilder::HttpCacheParams::DISK_SIMPLE;
   }
-#endif  // #if !defined(OS_ANDROID)
+#endif  // #if !BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   return net::URLRequestContextBuilder::HttpCacheParams::DISK_SIMPLE;
 #else
   return net::URLRequestContextBuilder::HttpCacheParams::DISK_BLOCKFILE;

@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,11 @@
 #include "xfa/fxfa/cxfa_fwltheme.h"
 
 #include "core/fxcrt/fx_codepage.h"
-#include "third_party/base/stl_util.h"
 #include "xfa/fde/cfde_textout.h"
 #include "xfa/fgas/font/cfgas_fontmgr.h"
 #include "xfa/fgas/font/cfgas_gefont.h"
 #include "xfa/fgas/font/cfgas_gemodule.h"
+#include "xfa/fgas/graphics/cfgas_gecolor.h"
 #include "xfa/fwl/cfwl_barcode.h"
 #include "xfa/fwl/cfwl_caret.h"
 #include "xfa/fwl/cfwl_checkbox.h"
@@ -30,7 +30,6 @@
 #include "xfa/fxfa/cxfa_ffwidget.h"
 #include "xfa/fxfa/cxfa_fontmgr.h"
 #include "xfa/fxfa/parser/cxfa_para.h"
-#include "xfa/fxgraphics/cxfa_gecolor.h"
 
 namespace {
 
@@ -50,17 +49,19 @@ CXFA_FFWidget* GetOutmostFFWidget(CFWL_Widget* pWidget) {
 
 }  // namespace
 
-CXFA_FWLTheme::CXFA_FWLTheme(CXFA_FFApp* pApp)
-    : m_pTextOut(std::make_unique<CFDE_TextOut>()), m_pApp(pApp) {}
+CXFA_FWLTheme::CXFA_FWLTheme(cppgc::Heap* pHeap, CXFA_FFApp* pApp)
+    : IFWL_ThemeProvider(pHeap),
+      m_pTextOut(std::make_unique<CFDE_TextOut>()),
+      m_pApp(pApp) {}
 
 CXFA_FWLTheme::~CXFA_FWLTheme() = default;
 
 void CXFA_FWLTheme::PreFinalize() {
   m_pTextOut.reset();
-  CFWL_FontManager::DestroyInstance();
 }
 
 void CXFA_FWLTheme::Trace(cppgc::Visitor* visitor) const {
+  IFWL_ThemeProvider::Trace(visitor);
   visitor->Trace(m_pApp);
 }
 
@@ -75,20 +76,20 @@ bool CXFA_FWLTheme::LoadCalendarFont(CXFA_FFDoc* doc) {
   }
 
   m_pCalendarFont = CFGAS_GEModule::Get()->GetFontMgr()->GetFontByCodePage(
-      FX_CODEPAGE_MSWin_WesternEuropean, 0, nullptr);
+      FX_CodePage::kMSWin_WesternEuropean, 0, nullptr);
   return !!m_pCalendarFont;
 }
 
 void CXFA_FWLTheme::DrawBackground(const CFWL_ThemeBackground& pParams) {
-  GetTheme(pParams.m_pWidget)->DrawBackground(pParams);
+  GetTheme(pParams.GetWidget())->DrawBackground(pParams);
 }
 
 void CXFA_FWLTheme::DrawText(const CFWL_ThemeText& pParams) {
   if (pParams.m_wsText.IsEmpty())
     return;
 
-  if (pParams.m_pWidget->GetClassID() == FWL_Type::MonthCalendar) {
-    CXFA_FFWidget* pWidget = GetOutmostFFWidget(pParams.m_pWidget);
+  if (pParams.GetWidget()->GetClassID() == FWL_Type::MonthCalendar) {
+    CXFA_FFWidget* pWidget = GetOutmostFFWidget(pParams.GetWidget());
     if (!pWidget)
       return;
 
@@ -97,16 +98,17 @@ void CXFA_FWLTheme::DrawText(const CFWL_ThemeText& pParams) {
     m_pTextOut->SetFont(m_pCalendarFont);
     m_pTextOut->SetFontSize(FWLTHEME_CAPACITY_FontSize);
     m_pTextOut->SetTextColor(FWLTHEME_CAPACITY_TextColor);
-    if ((pParams.m_iPart == CFWL_Part::DatesIn) &&
-        !(pParams.m_dwStates & FWL_ITEMSTATE_MCD_Flag) &&
+    if ((pParams.GetPart() == CFWL_ThemePart::Part::kDatesIn) &&
+        !(pParams.m_dwStates & CFWL_PartState::kFlagged) &&
         (pParams.m_dwStates &
-         (CFWL_PartState_Hovered | CFWL_PartState_Selected))) {
+         Mask<CFWL_PartState>{CFWL_PartState::kHovered,
+                              CFWL_PartState::kSelected})) {
       m_pTextOut->SetTextColor(0xFF888888);
     }
-    if (pParams.m_iPart == CFWL_Part::Caption)
+    if (pParams.GetPart() == CFWL_ThemePart::Part::kCaption)
       m_pTextOut->SetTextColor(ArgbEncode(0xff, 0, 153, 255));
 
-    CXFA_Graphics* pGraphics = pParams.m_pGraphics;
+    CFGAS_GEGraphics* pGraphics = pParams.GetGraphics();
     CFX_RenderDevice* pRenderDevice = pGraphics->GetRenderDevice();
     CFX_Matrix mtPart = pParams.m_matrix;
     const CFX_Matrix* pMatrix = pGraphics->GetMatrix();
@@ -114,16 +116,16 @@ void CXFA_FWLTheme::DrawText(const CFWL_ThemeText& pParams) {
       mtPart.Concat(*pMatrix);
 
     m_pTextOut->SetMatrix(mtPart);
-    m_pTextOut->DrawLogicText(pRenderDevice, pParams.m_wsText.AsStringView(),
+    m_pTextOut->DrawLogicText(pRenderDevice, pParams.m_wsText,
                               pParams.m_PartRect);
     return;
   }
-  CXFA_FFWidget* pWidget = GetOutmostFFWidget(pParams.m_pWidget);
+  CXFA_FFWidget* pWidget = GetOutmostFFWidget(pParams.GetWidget());
   if (!pWidget)
     return;
 
   CXFA_Node* pNode = pWidget->GetNode();
-  CXFA_Graphics* pGraphics = pParams.m_pGraphics;
+  CFGAS_GEGraphics* pGraphics = pParams.GetGraphics();
   CFX_RenderDevice* pRenderDevice = pGraphics->GetRenderDevice();
   m_pTextOut->SetStyles(pParams.m_dwTTOStyles);
   m_pTextOut->SetAlignment(pParams.m_iTTOAlign);
@@ -136,12 +138,12 @@ void CXFA_FWLTheme::DrawText(const CFWL_ThemeText& pParams) {
     mtPart.Concat(*pMatrix);
 
   m_pTextOut->SetMatrix(mtPart);
-  m_pTextOut->DrawLogicText(pRenderDevice, pParams.m_wsText.AsStringView(),
+  m_pTextOut->DrawLogicText(pRenderDevice, pParams.m_wsText,
                             pParams.m_PartRect);
 }
 
 CFX_RectF CXFA_FWLTheme::GetUIMargin(const CFWL_ThemePart& pThemePart) const {
-  CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.m_pWidget);
+  CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.GetWidget());
   if (!pWidget)
     return CFX_RectF();
 
@@ -175,20 +177,28 @@ float CXFA_FWLTheme::GetCYBorderSize() const {
 }
 
 float CXFA_FWLTheme::GetFontSize(const CFWL_ThemePart& pThemePart) const {
-  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.m_pWidget))
+  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.GetWidget()))
     return pWidget->GetNode()->GetFontSize();
   return FWLTHEME_CAPACITY_FontSize;
 }
 
 RetainPtr<CFGAS_GEFont> CXFA_FWLTheme::GetFont(
-    const CFWL_ThemePart& pThemePart) const {
-  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.m_pWidget))
+    const CFWL_ThemePart& pThemePart) {
+  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.GetWidget()))
     return pWidget->GetNode()->GetFGASFont(pWidget->GetDoc());
-  return GetTheme(pThemePart.m_pWidget)->GetFont();
+
+  return GetFWLFont();
+}
+
+RetainPtr<CFGAS_GEFont> CXFA_FWLTheme::GetFWLFont() {
+  if (!m_pFWLFont)
+    m_pFWLFont = CFGAS_GEFont::LoadFont(L"Helvetica", 0, FX_CodePage::kDefANSI);
+
+  return m_pFWLFont;
 }
 
 float CXFA_FWLTheme::GetLineHeight(const CFWL_ThemePart& pThemePart) const {
-  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.m_pWidget))
+  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.GetWidget()))
     return pWidget->GetNode()->GetLineHeight();
   return kLineHeight;
 }
@@ -199,7 +209,7 @@ float CXFA_FWLTheme::GetScrollBarWidth() const {
 
 FX_COLORREF CXFA_FWLTheme::GetTextColor(
     const CFWL_ThemePart& pThemePart) const {
-  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.m_pWidget))
+  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.GetWidget()))
     return pWidget->GetNode()->GetTextColor();
   return FWLTHEME_CAPACITY_TextColor;
 }
@@ -207,7 +217,7 @@ FX_COLORREF CXFA_FWLTheme::GetTextColor(
 CFX_SizeF CXFA_FWLTheme::GetSpaceAboveBelow(
     const CFWL_ThemePart& pThemePart) const {
   CFX_SizeF sizeAboveBelow;
-  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.m_pWidget)) {
+  if (CXFA_FFWidget* pWidget = GetOutmostFFWidget(pThemePart.GetWidget())) {
     CXFA_Para* para = pWidget->GetNode()->GetParaIfExists();
     if (para) {
       sizeAboveBelow.width = para->GetSpaceAbove();
@@ -219,14 +229,11 @@ CFX_SizeF CXFA_FWLTheme::GetSpaceAboveBelow(
 
 void CXFA_FWLTheme::CalcTextRect(const CFWL_ThemeText& pParams,
                                  CFX_RectF* pRect) {
-  if (!m_pTextOut)
-    return;
-
-  CXFA_FFWidget* pWidget = GetOutmostFFWidget(pParams.m_pWidget);
+  CXFA_FFWidget* pWidget = GetOutmostFFWidget(pParams.GetWidget());
   if (!pWidget)
     return;
 
-  if (pParams.m_pWidget->GetClassID() == FWL_Type::MonthCalendar) {
+  if (pParams.GetWidget()->GetClassID() == FWL_Type::MonthCalendar) {
     m_pTextOut->SetFont(m_pCalendarFont);
     m_pTextOut->SetFontSize(FWLTHEME_CAPACITY_FontSize);
     m_pTextOut->SetTextColor(FWLTHEME_CAPACITY_TextColor);

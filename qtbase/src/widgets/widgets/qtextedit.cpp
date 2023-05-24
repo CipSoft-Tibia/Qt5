@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtextedit_p.h"
 #if QT_CONFIG(lineedit)
@@ -58,7 +22,7 @@
 #endif
 #include <qstyle.h>
 #include <qtimer.h>
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include <qaccessible.h>
 #endif
 #include "private/qtextdocumentlayout_p.h"
@@ -79,7 +43,11 @@ QT_BEGIN_NAMESPACE
 
 static inline bool shouldEnableInputMethod(QTextEdit *textedit)
 {
+#if defined (Q_OS_ANDROID)
+    return !textedit->isReadOnly() || (textedit->textInteractionFlags() & Qt::TextSelectableByMouse);
+#else
     return !textedit->isReadOnly();
+#endif
 }
 
 class QTextEditControl : public QWidgetTextControl
@@ -224,7 +192,7 @@ void QTextEditPrivate::_q_cursorPositionChanged()
 {
     Q_Q(QTextEdit);
     emit q->cursorPositionChanged();
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessibleTextCursorEvent event(q, q->textCursor().position());
     QAccessible::updateAccessibility(&event);
 #endif
@@ -572,7 +540,7 @@ void QTextEditPrivate::_q_ensureVisible(const QRectF &_rect)
     of the movement keystrokes, for example, \e{Shift+Right}
     will select the character to the right, and \e{Shift+Ctrl+Right} will select the word to the right, etc.
 
-    \sa QTextDocument, QTextCursor, {Application Example},
+    \sa QTextDocument, QTextCursor,
         {Syntax Highlighter Example}, {Rich Text Processing}
 */
 
@@ -580,8 +548,9 @@ void QTextEditPrivate::_q_ensureVisible(const QRectF &_rect)
     \property QTextEdit::plainText
     \since 4.3
 
-    This property gets and sets the text editor's contents as plain
-    text. Previous contents are removed and undo/redo history is reset
+    \brief the text editor's contents as plain text.
+
+    Previous contents are removed and undo/redo history is reset
     when the property is set. currentCharFormat() is also reset, unless
     textCursor() is already at the beginning of the document.
 
@@ -598,7 +567,7 @@ void QTextEditPrivate::_q_ensureVisible(const QRectF &_rect)
 
 /*!
     \property QTextEdit::undoRedoEnabled
-    \brief whether undo and redo are enabled
+    \brief whether undo and redo are enabled.
 
     Users are only able to undo or redo actions if this property is
     true, and if there is an action that can be undone (or redone).
@@ -685,7 +654,7 @@ qreal QTextEdit::fontPointSize() const
 QString QTextEdit::fontFamily() const
 {
     Q_D(const QTextEdit);
-    return d->control->textCursor().charFormat().fontFamily();
+    return d->control->textCursor().charFormat().fontFamilies().toStringList().value(0, QString());
 }
 
 /*!
@@ -744,7 +713,8 @@ QColor QTextEdit::textColor() const
 QColor QTextEdit::textBackgroundColor() const
 {
     Q_D(const QTextEdit);
-    return d->control->textCursor().charFormat().background().color();
+    const QBrush &brush = d->control->textCursor().charFormat().background();
+    return brush.style() == Qt::NoBrush ? Qt::transparent : brush.color();
 }
 
 /*!
@@ -877,7 +847,7 @@ QTextCursor QTextEdit::textCursor() const
 void QTextEdit::setFontFamily(const QString &fontFamily)
 {
     QTextCharFormat fmt;
-    fmt.setFontFamily(fontFamily);
+    fmt.setFontFamilies({fontFamily});
     mergeCurrentCharFormat(fmt);
 }
 
@@ -1111,7 +1081,7 @@ bool QTextEdit::event(QEvent *e)
         d->sendControlEvent(e);
     }
 #else
-    Q_UNUSED(d)
+    Q_UNUSED(d);
 #endif // QT_NO_CONTEXTMENU
 #ifdef QT_KEYPAD_NAVIGATION
     if (e->type() == QEvent::EnterEditFocus || e->type() == QEvent::LeaveEditFocus) {
@@ -1402,8 +1372,8 @@ void QTextEdit::keyPressEvent(QKeyEvent *e)
         const QString text = e->text();
         if (cursor.atBlockStart()
             && (d->autoFormatting & AutoBulletList)
-            && (text.length() == 1)
-            && (text.at(0) == QLatin1Char('-') || text.at(0) == QLatin1Char('*'))
+            && (text.size() == 1)
+            && (text.at(0) == u'-' || text.at(0) == u'*')
             && (!cursor.currentList())) {
 
             d->createAutoBulletList();
@@ -1451,8 +1421,10 @@ void QTextEdit::keyPressEvent(QKeyEvent *e)
 */
 void QTextEdit::keyReleaseEvent(QKeyEvent *e)
 {
-#ifdef QT_KEYPAD_NAVIGATION
     Q_D(QTextEdit);
+    if (!isReadOnly())
+        d->handleSoftwareInputPanel();
+#ifdef QT_KEYPAD_NAVIGATION
     if (QApplicationPrivate::keypadNavigationEnabled()) {
         if (!e->isAutoRepeat() && e->key() == Qt::Key_Back
             && d->deleteAllTimer.isActive()) {
@@ -1627,6 +1599,8 @@ void QTextEditPrivate::paint(QPainter *p, QPaintEvent *e)
 This event handler can be reimplemented in a subclass to receive paint events passed in \a event.
 It is usually unnecessary to reimplement this function in a subclass of QTextEdit.
 
+\note If you create a QPainter, it must operate on the \l{QAbstractScrollArea::}{viewport()}.
+
 \warning The underlying text document must not be modified from within a reimplementation
 of this function.
 */
@@ -1677,7 +1651,7 @@ void QTextEdit::mouseMoveEvent(QMouseEvent *e)
 {
     Q_D(QTextEdit);
     d->inDrag = false; // paranoia
-    const QPoint pos = e->pos();
+    const QPoint pos = e->position().toPoint();
     d->sendControlEvent(e);
     if (!(e->buttons() & Qt::LeftButton))
         return;
@@ -1700,7 +1674,7 @@ void QTextEdit::mouseReleaseEvent(QMouseEvent *e)
         d->autoScrollTimer.stop();
         ensureCursorVisible();
     }
-    if (!isReadOnly() && rect().contains(e->pos()))
+    if (!isReadOnly() && rect().contains(e->position().toPoint()))
         d->handleSoftwareInputPanel(e->button(), d->clickCausedFocus);
     d->clickCausedFocus = 0;
 }
@@ -1771,7 +1745,7 @@ void QTextEdit::dragLeaveEvent(QDragLeaveEvent *e)
 void QTextEdit::dragMoveEvent(QDragMoveEvent *e)
 {
     Q_D(QTextEdit);
-    d->autoScrollDragPos = e->pos();
+    d->autoScrollDragPos = e->position().toPoint();
     if (!d->autoScrollTimer.isActive())
         d->autoScrollTimer.start(100, this);
     d->sendControlEvent(e);
@@ -1801,6 +1775,10 @@ void QTextEdit::inputMethodEvent(QInputMethodEvent *e)
         setEditFocus(true);
 #endif
     d->sendControlEvent(e);
+    const bool emptyEvent = e->preeditString().isEmpty() && e->commitString().isEmpty()
+                         && e->attributes().isEmpty();
+    if (emptyEvent)
+        return;
     ensureCursorVisible();
 }
 
@@ -1828,9 +1806,13 @@ QVariant QTextEdit::inputMethodQuery(Qt::InputMethodQuery query, QVariant argume
 {
     Q_D(const QTextEdit);
     switch (query) {
-        case Qt::ImHints:
-        case Qt::ImInputItemClipRectangle:
+    case Qt::ImEnabled:
+        return isEnabled() && !isReadOnly();
+    case Qt::ImHints:
+    case Qt::ImInputItemClipRectangle:
         return QWidget::inputMethodQuery(query);
+    case Qt::ImReadOnly:
+        return isReadOnly();
     default:
         break;
     }
@@ -1914,7 +1896,8 @@ void QTextEdit::changeEvent(QEvent *e)
     if (e->type() == QEvent::ApplicationFontChange
         || e->type() == QEvent::FontChange) {
         d->control->document()->setDefaultFont(font());
-    }  else if(e->type() == QEvent::ActivationChange) {
+    }  else if (e->type() == QEvent::ActivationChange) {
+        d->control->setPalette(palette());
         if (!isActiveWindow())
             d->autoScrollTimer.stop();
     } else if (e->type() == QEvent::EnabledChange) {
@@ -2053,33 +2036,18 @@ void QTextEdit::setOverwriteMode(bool overwrite)
     d->control->setOverwriteMode(overwrite);
 }
 
-#if QT_DEPRECATED_SINCE(5, 10)
-/*!
-    \property QTextEdit::tabStopWidth
-    \brief the tab stop width in pixels
-    \since 4.1
-    \deprecated in Qt 5.10. Use tabStopDistance instead.
-
-    By default, this property contains a value of 80 pixels.
-*/
-
-int QTextEdit::tabStopWidth() const
-{
-    return qRound(tabStopDistance());
-}
-
-void QTextEdit::setTabStopWidth(int width)
-{
-    setTabStopDistance(width);
-}
-#endif
-
 /*!
     \property QTextEdit::tabStopDistance
     \brief the tab stop distance in pixels
     \since 5.10
 
     By default, this property contains a value of 80 pixels.
+
+    Do not set a value less than the \l {QFontMetrics::}{horizontalAdvance()}
+    of the QChar::VisualTabCharacter character, otherwise the tab-character
+    will be drawn incompletely.
+
+    \sa QTextOption::ShowTabsAndSpaces, QTextDocument::defaultTextOption
 */
 
 qreal QTextEdit::tabStopDistance() const
@@ -2121,7 +2089,7 @@ void QTextEdit::setCursorWidth(int width)
     \brief whether the text edit accepts rich text insertions by the user
     \since 4.1
 
-    When this propery is set to false text edit will accept only
+    When this property is set to false text edit will accept only
     plain text input from the user. For example through clipboard or drag and drop.
 
     This property's default is true.
@@ -2245,7 +2213,7 @@ void QTextEdit::insertFromMimeData(const QMimeData *source)
 bool QTextEdit::isReadOnly() const
 {
     Q_D(const QTextEdit);
-    return !(d->control->textInteractionFlags() & Qt::TextEditable);
+    return !d->control || !(d->control->textInteractionFlags() & Qt::TextEditable);
 }
 
 void QTextEdit::setReadOnly(bool ro)
@@ -2610,38 +2578,20 @@ bool QTextEdit::find(const QString &exp, QTextDocument::FindFlags options)
 }
 
 /*!
-    \fn bool QTextEdit::find(const QRegExp &exp, QTextDocument::FindFlags options)
-
-    \since 5.3
-    \overload
-
-    Finds the next occurrence, matching the regular expression, \a exp, using the given
-    \a options. The QTextDocument::FindCaseSensitively option is ignored for this overload,
-    use QRegExp::caseSensitivity instead.
-
-    Returns \c true if a match was found and changes the cursor to select the match;
-    otherwise returns \c false.
-*/
-#ifndef QT_NO_REGEXP
-bool QTextEdit::find(const QRegExp &exp, QTextDocument::FindFlags options)
-{
-    Q_D(QTextEdit);
-    return d->control->find(exp, options);
-}
-#endif
-
-/*!
     \fn bool QTextEdit::find(const QRegularExpression &exp, QTextDocument::FindFlags options)
 
     \since 5.13
     \overload
 
     Finds the next occurrence, matching the regular expression, \a exp, using the given
-    \a options. The QTextDocument::FindCaseSensitively option is ignored for this overload,
-    use QRegularExpression::CaseInsensitiveOption instead.
+    \a options.
 
     Returns \c true if a match was found and changes the cursor to select the match;
     otherwise returns \c false.
+
+    \warning For historical reasons, the case sensitivity option set on
+    \a exp is ignored. Instead, the \a options are used to determine
+    if the search is case sensitive or not.
 */
 #if QT_CONFIG(regularexpression)
 bool QTextEdit::find(const QRegularExpression &exp, QTextDocument::FindFlags options)

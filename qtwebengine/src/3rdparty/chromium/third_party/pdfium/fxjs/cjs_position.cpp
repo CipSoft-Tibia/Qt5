@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ const JSConstSpec CJS_Position::ConstSpecs[] = {
     {"textIconH", JSConstSpec::Number, 5, 0},
     {"overlay", JSConstSpec::Number, 6, 0}};
 
-int CJS_Position::ObjDefnID = -1;
+uint32_t CJS_Position::ObjDefnID = 0;
 
 // static
 void CJS_Position::DefineJSObjects(CFXJS_Engine* pEngine) {

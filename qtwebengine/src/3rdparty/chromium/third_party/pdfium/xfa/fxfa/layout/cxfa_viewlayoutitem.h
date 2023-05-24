@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,7 @@
 #include "xfa/fxfa/layout/cxfa_layoutitem.h"
 
 class CXFA_FFPageView;
+class CXFA_LayoutProcessor;
 
 class CXFA_ViewLayoutItem final : public CXFA_LayoutItem {
  public:

@@ -30,7 +30,7 @@
 #include <memory>
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/page/page.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -55,7 +55,7 @@ class ContextFeatures final : public GarbageCollected<ContextFeatures>,
   static bool MutationEventsEnabled(Document*);
 
   explicit ContextFeatures(std::unique_ptr<ContextFeaturesClient> client)
-      : client_(std::move(client)) {}
+      : Supplement(nullptr), client_(std::move(client)) {}
 
   bool IsEnabled(Document*, FeatureType, bool) const;
   void UrlDidChange(Document*);

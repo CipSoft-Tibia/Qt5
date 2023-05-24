@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/logxlogydomain_p.h>
 #include <private/qabstractaxis_p.h>
@@ -33,7 +7,7 @@
 #include <QtCore/QtMath>
 #include <cmath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 LogXLogYDomain::LogXLogYDomain(QObject *parent)
     : AbstractDomain(parent),
@@ -62,8 +36,8 @@ void LogXLogYDomain::setRange(qreal minX, qreal maxX, qreal minY, qreal maxY)
         m_minX = minX;
         m_maxX = maxX;
         axisXChanged = true;
-        qreal logMinX = std::log10(m_minX) / std::log10(m_logBaseX);
-        qreal logMaxX = std::log10(m_maxX) / std::log10(m_logBaseX);
+        qreal logMinX = qLn(m_minX) / qLn(m_logBaseX);
+        qreal logMaxX = qLn(m_maxX) / qLn(m_logBaseX);
         m_logLeftX = logMinX < logMaxX ? logMinX : logMaxX;
         m_logRightX = logMinX > logMaxX ? logMinX : logMaxX;
         if(!m_signalsBlocked)
@@ -74,8 +48,8 @@ void LogXLogYDomain::setRange(qreal minX, qreal maxX, qreal minY, qreal maxY)
         m_minY = minY;
         m_maxY = maxY;
         axisYChanged = true;
-        qreal logMinY = std::log10(m_minY) / std::log10(m_logBaseY);
-        qreal logMaxY = std::log10(m_maxY) / std::log10(m_logBaseY);
+        qreal logMinY = qLn(m_minY) / qLn(m_logBaseY);
+        qreal logMaxY = qLn(m_maxY) / qLn(m_logBaseY);
         m_logLeftY = logMinY < logMaxY ? logMinY : logMaxY;
         m_logRightY = logMinY > logMaxY ? logMinY : logMaxY;
         if (!m_signalsBlocked)
@@ -166,18 +140,18 @@ QPointF LogXLogYDomain::calculateGeometryPoint(const QPointF &point, bool &ok) c
     qreal x(0);
     qreal y(0);
     if (point.x() > 0 && point.y() > 0) {
-        x = ((std::log10(point.x()) / std::log10(m_logBaseX)) - m_logLeftX) * deltaX;
-        y = ((std::log10(point.y()) / std::log10(m_logBaseY)) - m_logLeftY) * deltaY;
+        x = ((qLn(point.x()) / qLn(m_logBaseX)) - m_logLeftX) * deltaX;
+        y = ((qLn(point.y()) / qLn(m_logBaseY)) - m_logLeftY) * deltaY;
         ok = true;
     } else {
         qWarning() << "Logarithms of zero and negative values are undefined.";
         ok = false;
         if (point.x() > 0)
-            x = ((std::log10(point.x()) / std::log10(m_logBaseX)) - m_logLeftX) * deltaX;
+            x = ((qLn(point.x()) / qLn(m_logBaseX)) - m_logLeftX) * deltaX;
         else
             x = 0;
         if (point.y() > 0)
-            y = ((std::log10(point.y()) / std::log10(m_logBaseY)) - m_logLeftY) * deltaY;
+            y = ((qLn(point.y()) / qLn(m_logBaseY)) - m_logLeftY) * deltaY;
         else
             y = 0;
     }
@@ -188,27 +162,27 @@ QPointF LogXLogYDomain::calculateGeometryPoint(const QPointF &point, bool &ok) c
     return QPointF(x, y);
 }
 
-QVector<QPointF> LogXLogYDomain::calculateGeometryPoints(const QVector<QPointF> &vector) const
+QList<QPointF> LogXLogYDomain::calculateGeometryPoints(const QList<QPointF> &list) const
 {
     const qreal deltaX = m_size.width() / qAbs(m_logRightX - m_logLeftX);
     const qreal deltaY = m_size.height() / qAbs(m_logRightY - m_logLeftY);
 
-    QVector<QPointF> result;
-    result.resize(vector.count());
+    QList<QPointF> result;
+    result.resize(list.size());
 
-    for (int i = 0; i < vector.count(); ++i) {
-        if (vector[i].x() > 0 && vector[i].y() > 0) {
-            qreal x = ((std::log10(vector[i].x()) / std::log10(m_logBaseX)) - m_logLeftX) * deltaX;
+    for (int i = 0; i < list.size(); ++i) {
+        if (list[i].x() > 0 && list[i].y() > 0) {
+            qreal x = ((qLn(list[i].x()) / qLn(m_logBaseX)) - m_logLeftX) * deltaX;
             if (m_reverseX)
                 x = m_size.width() - x;
-            qreal y = ((std::log10(vector[i].y()) / std::log10(m_logBaseY)) - m_logLeftY) * deltaY;
+            qreal y = ((qLn(list[i].y()) / qLn(m_logBaseY)) - m_logLeftY) * deltaY;
             if (!m_reverseY)
                 y = m_size.height() - y;
             result[i].setX(x);
             result[i].setY(y);
         } else {
             qWarning() << "Logarithms of zero and negative values are undefined.";
-            return QVector<QPointF>();
+            return QList<QPointF>();
         }
     }
     return result;
@@ -260,8 +234,8 @@ bool LogXLogYDomain::detachAxis(QAbstractAxis *axis)
 void LogXLogYDomain::handleVerticalAxisBaseChanged(qreal baseY)
 {
     m_logBaseY = baseY;
-    qreal logMinY = std::log10(m_minY) / std::log10(m_logBaseY);
-    qreal logMaxY = std::log10(m_maxY) / std::log10(m_logBaseY);
+    qreal logMinY = qLn(m_minY) / qLn(m_logBaseY);
+    qreal logMaxY = qLn(m_maxY) / qLn(m_logBaseY);
     m_logLeftY = logMinY < logMaxY ? logMinY : logMaxY;
     m_logRightY = logMinY > logMaxY ? logMinY : logMaxY;
     emit updated();
@@ -270,8 +244,8 @@ void LogXLogYDomain::handleVerticalAxisBaseChanged(qreal baseY)
 void LogXLogYDomain::handleHorizontalAxisBaseChanged(qreal baseX)
 {
     m_logBaseX = baseX;
-    qreal logMinX = std::log10(m_minX) / std::log10(m_logBaseX);
-    qreal logMaxX = std::log10(m_maxX) / std::log10(m_logBaseX);
+    qreal logMinX = qLn(m_minX) / qLn(m_logBaseX);
+    qreal logMaxX = qLn(m_maxX) / qLn(m_logBaseX);
     m_logLeftX = logMinX < logMaxX ? logMinX : logMaxX;
     m_logRightX = logMinX > logMaxX ? logMinX : logMaxX;
     emit updated();
@@ -297,13 +271,13 @@ bool Q_AUTOTEST_EXPORT operator!= (const LogXLogYDomain &domain1, const LogXLogY
 QDebug Q_AUTOTEST_EXPORT operator<<(QDebug dbg, const LogXLogYDomain &domain)
 {
 #ifdef QT_NO_TEXTSTREAM
-    Q_UNUSED(domain)
+    Q_UNUSED(domain);
 #else
     dbg.nospace() << "AbstractDomain(" << domain.m_minX << ',' << domain.m_maxX << ',' << domain.m_minY << ',' << domain.m_maxY << ')' << domain.m_size;
 #endif
     return dbg.maybeSpace();
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_logxlogydomain_p.cpp"

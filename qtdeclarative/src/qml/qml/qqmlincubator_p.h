@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLINCUBATOR_P_H
 #define QQMLINCUBATOR_P_H
@@ -46,7 +10,7 @@
 #include <private/qqmlvme_p.h>
 #include <private/qrecursionwatcher_p.h>
 #include <private/qqmlengine_p.h>
-#include <private/qqmlcontext_p.h>
+#include <private/qqmlguardedcontextdata_p.h>
 
 //
 //  W A R N I N G
@@ -64,7 +28,7 @@ QT_BEGIN_NAMESPACE
 class RequiredProperties;
 
 class QQmlIncubator;
-class Q_QML_PRIVATE_EXPORT QQmlIncubatorPrivate : public QQmlEnginePrivate::Incubator
+class Q_QML_PRIVATE_EXPORT QQmlIncubatorPrivate : public QQmlEnginePrivate::Incubator, public QSharedData
 {
 public:
     QQmlIncubatorPrivate(QQmlIncubator *q, QQmlIncubator::IncubationMode m);
@@ -72,6 +36,7 @@ public:
 
     inline static QQmlIncubatorPrivate *get(QQmlIncubator *incubator) { return incubator->d; }
 
+    int subComponentToCreate;
     QQmlIncubator *q;
 
     QQmlIncubator::Status calculateStatus() const;
@@ -80,23 +45,31 @@ public:
 
     QQmlIncubator::IncubationMode mode;
     bool isAsynchronous;
+    enum Progress : char { Execute, Completing, Completed };
+    Progress progress;
 
     QList<QQmlError> errors;
 
-    enum Progress { Execute, Completing, Completed };
-    Progress progress;
 
     QPointer<QObject> result;
+    enum HadTopLevelRequired : bool {No = 0, Yes = 1};
+    /* TODO: unify with Creator pointer once QTBUG-108760 is implemented
+       though we don't acutally own the properties here; if we ever end up
+       with a use case for async incubation of C++ types, we however could
+       not rely on the component to still exist during incubation, and
+       would need to store a copy of the required properties instead
+    */
+    QTaggedPointer<RequiredProperties, HadTopLevelRequired> requiredPropertiesFromComponent;
     QQmlGuardedContextData rootContext;
     QQmlEnginePrivate *enginePriv;
     QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
     QScopedPointer<QQmlObjectCreator> creator;
-    int subComponentToCreate;
     QQmlVMEGuard vmeGuard;
 
     QExplicitlySharedDataPointer<QQmlIncubatorPrivate> waitingOnMe;
     typedef QQmlEnginePrivate::Incubator QIPBase;
-    QIntrusiveList<QIPBase, &QIPBase::nextWaitingFor> waitingFor;
+    QIntrusiveListNode nextWaitingFor;
+    QIntrusiveList<QQmlIncubatorPrivate, &QQmlIncubatorPrivate::nextWaitingFor> waitingFor;
 
     QRecursionNode recursion;
     QVariantMap initialProperties;
@@ -105,8 +78,9 @@ public:
 
     void forceCompletion(QQmlInstantiationInterrupt &i);
     void incubate(QQmlInstantiationInterrupt &i);
-    RequiredProperties &requiredProperties();
-    bool hadRequiredProperties() const;
+    void incubateCppBasedComponent(QQmlComponent *component, QQmlContext *context);
+    RequiredProperties *requiredProperties();
+    bool hadTopLevelRequiredProperties() const;
 };
 
 QT_END_NAMESPACE

@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qcustom3dvolume_p.h"
 #include "utils_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 /*!
  * \class QCustom3DVolume
@@ -278,13 +252,14 @@ QCustom3DVolume::QCustom3DVolume(QObject *parent) :
  * \sa textureData, setTextureFormat(), colorTable
  */
 QCustom3DVolume::QCustom3DVolume(const QVector3D &position, const QVector3D &scaling,
-                                 const QQuaternion &rotation, int textureWidth,
-                                 int textureHeight, int textureDepth,
-                                 QVector<uchar> *textureData, QImage::Format textureFormat,
-                                 const QVector<QRgb> &colorTable, QObject *parent) :
-    QCustom3DItem(new QCustom3DVolumePrivate(this, position, scaling, rotation, textureWidth,
-                                             textureHeight, textureDepth,
-                                             textureData, textureFormat, colorTable), parent)
+                                 const QQuaternion &rotation, int textureWidth, int textureHeight,
+                                 int textureDepth, QList<uchar> *textureData,
+                                 QImage::Format textureFormat, const QList<QRgb> &colorTable,
+                                 QObject *parent)
+    : QCustom3DItem(new QCustom3DVolumePrivate(this, position, scaling, rotation, textureWidth,
+                                               textureHeight, textureDepth, textureData,
+                                               textureFormat, colorTable),
+                    parent)
 {
 }
 
@@ -526,7 +501,7 @@ void QCustom3DVolume::setSliceIndices(int x, int y, int z)
  *
  * \sa textureData, setTextureFormat(), QImage::colorTable()
  */
-void QCustom3DVolume::setColorTable(const QVector<QRgb> &colors)
+void QCustom3DVolume::setColorTable(const QList<QRgb> &colors)
 {
     if (dptr()->m_colorTable != colors) {
         dptr()->m_colorTable = colors;
@@ -536,7 +511,7 @@ void QCustom3DVolume::setColorTable(const QVector<QRgb> &colors)
     }
 }
 
-QVector<QRgb> QCustom3DVolume::colorTable() const
+QList<QRgb> QCustom3DVolume::colorTable() const
 {
     return dptrc()->m_colorTable;
 }
@@ -570,7 +545,7 @@ QVector<QRgb> QCustom3DVolume::colorTable() const
  *
  * \sa colorTable, setTextureFormat(), setSubTextureData(), textureDataWidth()
  */
-void QCustom3DVolume::setTextureData(QVector<uchar> *data)
+void QCustom3DVolume::setTextureData(QList<uchar> *data)
 {
     if (dptr()->m_textureData != data)
         delete dptr()->m_textureData;
@@ -596,7 +571,7 @@ void QCustom3DVolume::setTextureData(QVector<uchar> *data)
  *
  * \sa textureData, textureWidth, textureHeight, textureDepth, setTextureFormat()
  */
-QVector<uchar> *QCustom3DVolume::createTextureData(const QVector<QImage *> &images)
+QList<uchar> *QCustom3DVolume::createTextureData(const QList<QImage *> &images)
 {
     int imageCount = images.size();
     if (imageCount) {
@@ -631,7 +606,7 @@ QVector<uchar> *QCustom3DVolume::createTextureData(const QVector<QImage *> &imag
         int imageByteWidth = (imageFormat == QImage::Format_Indexed8)
                 ? currentImage->bytesPerLine() : imageWidth;
         int frameSize = imageByteWidth * imageHeight * colorBytes;
-        QVector<uchar> *newTextureData = new QVector<uchar>;
+        QList<uchar> *newTextureData = new QList<uchar>;
         newTextureData->resize(frameSize * imageCount);
         uchar *texturePtr = newTextureData->data();
         QImage convertedImage;
@@ -662,7 +637,7 @@ QVector<uchar> *QCustom3DVolume::createTextureData(const QVector<QImage *> &imag
     return dptr()->m_textureData;
 }
 
-QVector<uchar> *QCustom3DVolume::textureData() const
+QList<uchar> *QCustom3DVolume::textureData() const
 {
     return dptrc()->m_textureData;
 }
@@ -1177,32 +1152,30 @@ QCustom3DVolumePrivate::QCustom3DVolumePrivate(QCustom3DVolume *q) :
     m_meshFile = QStringLiteral(":/defaultMeshes/barFull");
 }
 
-QCustom3DVolumePrivate::QCustom3DVolumePrivate(QCustom3DVolume *q, const QVector3D &position,
-                                               const QVector3D &scaling,
-                                               const QQuaternion &rotation,
-                                               int textureWidth, int textureHeight,
-                                               int textureDepth, QVector<uchar> *textureData,
-                                               QImage::Format textureFormat,
-                                               const QVector<QRgb> &colorTable) :
-    QCustom3DItemPrivate(q, QStringLiteral(":/defaultMeshes/barFull"), position, scaling, rotation),
-    m_textureWidth(textureWidth),
-    m_textureHeight(textureHeight),
-    m_textureDepth(textureDepth),
-    m_sliceIndexX(-1),
-    m_sliceIndexY(-1),
-    m_sliceIndexZ(-1),
-    m_textureFormat(textureFormat),
-    m_colorTable(colorTable),
-    m_textureData(textureData),
-    m_alphaMultiplier(1.0f),
-    m_preserveOpacity(true),
-    m_useHighDefShader(true),
-    m_drawSlices(false),
-    m_drawSliceFrames(false),
-    m_sliceFrameColor(Qt::black),
-    m_sliceFrameWidths(QVector3D(0.01f, 0.01f, 0.01f)),
-    m_sliceFrameGaps(QVector3D(0.01f, 0.01f, 0.01f)),
-    m_sliceFrameThicknesses(QVector3D(0.01f, 0.01f, 0.01f))
+QCustom3DVolumePrivate::QCustom3DVolumePrivate(
+        QCustom3DVolume *q, const QVector3D &position, const QVector3D &scaling,
+        const QQuaternion &rotation, int textureWidth, int textureHeight, int textureDepth,
+        QList<uchar> *textureData, QImage::Format textureFormat, const QList<QRgb> &colorTable)
+    : QCustom3DItemPrivate(q, QStringLiteral(":/defaultMeshes/barFull"), position, scaling,
+                           rotation),
+      m_textureWidth(textureWidth),
+      m_textureHeight(textureHeight),
+      m_textureDepth(textureDepth),
+      m_sliceIndexX(-1),
+      m_sliceIndexY(-1),
+      m_sliceIndexZ(-1),
+      m_textureFormat(textureFormat),
+      m_colorTable(colorTable),
+      m_textureData(textureData),
+      m_alphaMultiplier(1.0f),
+      m_preserveOpacity(true),
+      m_useHighDefShader(true),
+      m_drawSlices(false),
+      m_drawSliceFrames(false),
+      m_sliceFrameColor(Qt::black),
+      m_sliceFrameWidths(QVector3D(0.01f, 0.01f, 0.01f)),
+      m_sliceFrameGaps(QVector3D(0.01f, 0.01f, 0.01f)),
+      m_sliceFrameThicknesses(QVector3D(0.01f, 0.01f, 0.01f))
 {
     m_isVolumeItem = true;
     m_shadowCasting = false;
@@ -1268,7 +1241,7 @@ QImage QCustom3DVolumePrivate::renderSlice(Qt::Axis axis, int index)
         padding = x % 4;
         pixelWidth = 1;
     }
-    QVector<uchar> data((x + padding) * y * pixelWidth);
+    QList<uchar> data((x + padding) * y * pixelWidth);
     int frameSize = qptr()->textureDataWidth() * m_textureHeight;
 
     int dataIndex = 0;
@@ -1309,7 +1282,7 @@ QImage QCustom3DVolumePrivate::renderSlice(Qt::Axis axis, int index)
     QImage image(data.constData(), x, y, x * pixelWidth, m_textureFormat);
     image.bits(); // Call bits() to detach the new image from local data
     if (m_textureFormat == QImage::Format_Indexed8) {
-        QVector<QRgb> colorTable = m_colorTable;
+        QList<QRgb> colorTable = m_colorTable;
         if (m_alphaMultiplier != 1.0f) {
             for (int i = 0; i < colorTable.size(); i++) {
                 QRgb curCol = colorTable.at(i);
@@ -1339,4 +1312,4 @@ QCustom3DVolume *QCustom3DVolumePrivate::qptr()
     return static_cast<QCustom3DVolume *>(q_ptr);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

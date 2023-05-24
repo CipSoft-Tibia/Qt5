@@ -1,8 +1,8 @@
-# 
+#
 #  fontconfig/conf.d/Makefile.am
-# 
+#
 #  Copyright © 2005 Keith Packard
-# 
+#
 #  Permission to use, copy, modify, distribute, and sell this software and its
 #  documentation for any purpose is hereby granted without fee, provided that
 #  the above copyright notice appear in all copies and that both that
@@ -12,7 +12,7 @@
 #  specific, written prior permission.  The authors make no
 #  representations about the suitability of this software for any purpose.  It
 #  is provided "as is" without express or implied warranty.
-# 
+#
 #  THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
 #  INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
 #  EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
@@ -32,11 +32,15 @@ DOC_FILES = $(DOC_SOURCES:.in=)
 CONF_LINKS = \
 	10-hinting-$(PREFERRED_HINTING).conf	\
 	10-scale-bitmap-fonts.conf \
+	10-yes-antialias.conf	\
+	10-sub-pixel-$(PREFERRED_SUB_PIXEL_RENDERING).conf	\
+	11-lcdfilter-default.conf \
 	20-unhint-small-vera.conf \
 	30-metric-aliases.conf \
 	40-nonlatin.conf \
 	45-generic.conf \
 	45-latin.conf \
+	48-spacing.conf \
 	49-sansserif.conf \
 	50-user.conf \
 	51-local.conf \
@@ -63,13 +67,15 @@ template_DATA =				\
 	10-hinting-medium.conf		\
 	10-hinting-none.conf		\
 	10-hinting-slight.conf		\
-	10-no-sub-pixel.conf		\
+	10-no-antialias.conf		\
 	10-scale-bitmap-fonts.conf	\
 	10-sub-pixel-bgr.conf		\
+	10-sub-pixel-none.conf		\
 	10-sub-pixel-rgb.conf		\
 	10-sub-pixel-vbgr.conf		\
 	10-sub-pixel-vrgb.conf		\
 	10-unhinted.conf		\
+	10-yes-antialias.conf		\
 	11-lcdfilter-default.conf	\
 	11-lcdfilter-legacy.conf	\
 	11-lcdfilter-light.conf		\
@@ -80,6 +86,7 @@ template_DATA =				\
 	40-nonlatin.conf		\
 	45-generic.conf			\
 	45-latin.conf			\
+	48-spacing.conf			\
 	49-sansserif.conf		\
 	50-user.conf			\
 	51-local.conf			\

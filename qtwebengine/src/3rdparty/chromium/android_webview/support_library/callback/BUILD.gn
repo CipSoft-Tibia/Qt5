@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,6 +16,6 @@ android_library("callback_java") {
     "//android_webview:browser_java",
     "//android_webview/support_library/boundary_interfaces:boundary_interface_java",
     "//base:base_java",
-    "//third_party/android_deps:androidx_annotation_annotation_java",
+    "//third_party/androidx:androidx_annotation_annotation_java",
   ]
 }

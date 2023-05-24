@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtGui>
 #include <QApplication>
@@ -55,7 +8,7 @@
 class Widget : public QWidget
 {
 public:
-    Widget(QWidget *parent = 0);
+    Widget(QWidget *parent = nullptr);
 
     void constCharPointer();
     void constCharArray();
@@ -85,11 +38,9 @@ public:
     void isNullFunction();
     void isEmptyFunction();
     void lastIndexOfFunction();
-    void leftFunction();
+    void firstFunction();
     void leftJustifiedFunction();
-    void leftRefFunction();
-    void midFunction();
-    void midRefFunction();
+    void slicedFunction();
     void numberFunction();
 
     void prependFunction();
@@ -97,9 +48,8 @@ public:
     void replaceFunction();
     void reserveFunction();
     void resizeFunction();
-    void rightFunction();
+    void lastFunction();
     void rightJustifiedFunction();
-    void rightRefFunction();
     void sectionFunction();
     void setNumFunction();
     void simplifiedFunction();
@@ -167,7 +117,7 @@ void Widget::atFunction()
     //! [3]
     QString str;
 
-    for (int i = 0; i < str.size(); ++i) {
+    for (qsizetype i = 0; i < str.size(); ++i) {
         if (str.at(i) >= QChar('a') && str.at(i) <= QChar('f'))
             qDebug() << "Found character in range [a-f]";
     }
@@ -200,7 +150,7 @@ void Widget::index()
 {
     //! [6]
     QString str = "We must be <b>bold</b>, very <b>bold</b>";
-    int j = 0;
+    qsizetype j = 0;
 
     while ((j = str.indexOf("<b>", j)) != -1) {
         qDebug() << "Found <b> tag at index position" << j;
@@ -350,11 +300,6 @@ void Widget::containsFunction()
 
 void Widget::countFunction()
 {
-    //! [18]
-    QString str = "banana and panama";
-    str.count(QRegExp("a[nm]a"));    // returns 4
-    //! [18]
-
     //! [95]
     QString str = "banana and panama";
     str.count(QRegularExpression("a[nm]a"));    // returns 4
@@ -401,7 +346,7 @@ void Widget::fromRawDataFunction()
     static const QChar unicode[] = {
             0x005A, 0x007F, 0x00A4, 0x0060,
             0x1009, 0x0020, 0x0020};
-    int size = sizeof(unicode) / sizeof(QChar);
+    qsizetype size = sizeof(unicode) / sizeof(QChar);
 
     QString str = QString::fromRawData(unicode, size);
     if (str.contains(pattern) {
@@ -425,22 +370,15 @@ void Widget::indexOfFunction()
 
 void Widget::firstIndexOfFunction()
 {
-    //! [25]
-    QString str = "the minimum";
-    str.indexOf(QRegExp("m[aeiou]"), 0);       // returns 4
-    //! [25]
-
     //! [93]
     QString str = "the minimum";
     str.indexOf(QRegularExpression("m[aeiou]"), 0);       // returns 4
-    //! [93]
 
-    //! [99]
     QString str = "the minimum";
     QRegularExpressionMatch match;
     str.indexOf(QRegularExpression("m[aeiou]"), 0, &match);       // returns 4
     // match.captured() == mi
-    //! [99]
+    //! [93]
 }
 
 void Widget::insertFunction()
@@ -482,29 +420,22 @@ void Widget::lastIndexOfFunction()
     x.lastIndexOf(y, 1);        // returns -1
     //! [29]
 
-    //! [30]
-    QString str = "the minimum";
-    str.lastIndexOf(QRegExp("m[aeiou]"));      // returns 8
-    //! [30]
-
     //! [94]
     QString str = "the minimum";
     str.lastIndexOf(QRegularExpression("m[aeiou]"));      // returns 8
-    //! [94]
 
-    //! [100]
     QString str = "the minimum";
     QRegularExpressionMatch match;
     str.lastIndexOf(QRegularExpression("m[aeiou]"), -1, &match);      // returns 8
     // match.captured() == mu
-    //! [100]
+    //! [94]
 }
 
-void Widget::leftFunction()
+void Widget::firstFunction()
 {
     //! [31]
     QString x = "Pineapple";
-    QString y = x.left(4);      // y == "Pine"
+    QString y = x.first(4);      // y == "Pine"
     //! [31]
 }
 
@@ -521,12 +452,12 @@ void Widget::leftJustifiedFunction()
     //! [33]
 }
 
-void Widget::midFunction()
+void Widget::slicedFunction()
 {
     //! [34]
     QString x = "Nine pineapples";
-    QString y = x.mid(5, 4);            // y == "pine"
-    QString z = x.mid(5);               // z == "pineapples"
+    QString y = x.sliced(5, 4);            // y == "pine"
+    QString z = x.sliced(5);               // z == "pineapples"
     //! [34]
 }
 
@@ -563,12 +494,6 @@ void Widget::removeFunction()
     // t == "li Bb"
     //! [38]
 
-    //! [39]
-    QString r = "Telephone";
-    r.remove(QRegExp("[aeiou]."));
-    // r == "The"
-    //! [39]
-
     //! [96]
     QString r = "Telephone";
     r.remove(QRegularExpression("[aeiou]."));
@@ -590,18 +515,6 @@ void Widget::replaceFunction()
     str.replace(QString("ou"), QString("o"));
     // str == "color behavior flavor neighbor"
     //! [41]
-
-    //! [42]
-    QString s = "Banana";
-    s.replace(QRegExp("a[mn]"), "ox");
-    // s == "Boxoxa"
-    //! [42]
-
-    //! [43]
-    QString t = "A <i>bon mot</i>.";
-    t.replace(QRegExp("<i>([^<]*)</i>"), "\\emph{\\1}");
-    // t == "A \\emph{bon mot}."
-    //! [43]
 
     //! [86]
     QString equis = "xxxxxx";
@@ -626,7 +539,7 @@ void Widget::reserveFunction()
 {
     //! [44]
     QString result;
-    int maxSize;
+    qsizetype maxSize;
     bool condition;
     QChar nextChar;
 
@@ -663,11 +576,11 @@ void Widget::resizeFunction()
     //! [47]
 }
 
-void Widget::rightFunction()
+void Widget::lastFunction()
 {
     //! [48]
     QString x = "Pineapple";
-    QString y = x.right(5);      // y == "apple"
+    QString y = x.last(5);      // y == "apple"
     //! [48]
 }
 
@@ -711,13 +624,6 @@ void Widget::sectionFunction()
     str = data.section("**", -3, -2); // str == "middlename**surname"
     //! [54]
 
-    //! [55]
-    QString line = "forename\tmiddlename  surname \t \t phone";
-    QRegExp sep("\\s+");
-    str = line.section(sep, 2, 2); // str == "surname"
-    str = line.section(sep, -3, -2); // str == "middlename  surname"
-    //! [55]
-
     //! [89]
     QString line = "forename\tmiddlename  surname \t \t phone";
     QRegularExpression sep("\\s+");
@@ -747,7 +653,7 @@ void Widget::sizeFunction()
 {
     //! [58]
     QString str = "World";
-    int n = str.size();         // n == 5
+    qsizetype n = str.size();   // n == 5
     str.data()[0];              // returns 'W'
     str.data()[4];              // returns 'd'
     //! [58]
@@ -755,27 +661,6 @@ void Widget::sizeFunction()
 
 void Widget::splitFunction()
 {
-    //! [59]
-    QString str;
-    QStringList list;
-
-    str = "Some  text\n\twith  strange whitespace.";
-    list = str.split(QRegExp("\\s+"));
-    // list: [ "Some", "text", "with", "strange", "whitespace." ]
-    //! [59]
-
-    //! [60]
-    str = "This time, a normal English sentence.";
-    list = str.split(QRegExp("\\W+"), Qt::SkipEmptyParts);
-    // list: [ "This", "time", "a", "normal", "English", "sentence" ]
-    //! [60]
-
-    //! [61]
-    str = "Now: this sentence fragment.";
-    list = str.split(QRegExp("\\b"));
-    // list: [ "", "Now", ": ", "this", " ", "sentence", " ", "fragment", "." ]
-    //! [61]
-
     //! [90]
     QString str;
     QStringList list;
@@ -803,10 +688,10 @@ void Widget::splitCaseSensitiveFunction()
     //! [62]
     QString str = QStringLiteral("a,,b,c");
 
-    QStringList list1 = str.split(QLatin1Char(','));
+    QStringList list1 = str.split(u',');
     // list1: [ "a", "", "b", "c" ]
 
-    QStringList list2 = str.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    QStringList list2 = str.split(u',', Qt::SkipEmptyParts);
     // list2: [ "a", "b", "c" ]
     //! [62]
 
@@ -818,7 +703,7 @@ void Widget::splitCaseSensitiveFunction()
 
     //! [62-slashes]
     QString str = "/a/b/c/";
-    auto parts = str.split(QLatin1Char('/'));
+    auto parts = str.split(u'/');
     // parts: {"", "a", "b", "c", ""}
     //! [62-slashes]
 }
@@ -1022,31 +907,6 @@ void Widget::arrayOperator()
     if (str[0] == QChar('?'))
         str[0] = QChar('_');
     //! [85]
-}
-
-void Widget::midRefFunction()
-{
-    //! [midRef]
-    QString x = "Nine pineapples";
-    QStringRef y = x.midRef(5, 4);      // y == "pine"
-    QStringRef z = x.midRef(5);         // z == "pineapples"
-    //! [midRef]
-}
-
-void Widget::leftRefFunction()
-{
-    //! [leftRef]
-    QString x = "Pineapple";
-    QStringRef y = x.leftRef(4);        // y == "Pine"
-    //! [leftRef]
-}
-
-void Widget::rightRefFunction()
-{
-    //! [rightRef]
-    QString x = "Pineapple";
-    QStringRef y = x.rightRef(5);       // y == "apple"
-    //! [rightRef]
 }
 
 

@@ -1,18 +1,21 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_VIZ_PUBLIC_CPP_COMPOSITING_SHARED_QUAD_STATE_MOJOM_TRAITS_H_
 #define SERVICES_VIZ_PUBLIC_CPP_COMPOSITING_SHARED_QUAD_STATE_MOJOM_TRAITS_H_
 
+#include "base/memory/raw_ptr.h"
 #include "components/viz/common/quads/shared_quad_state.h"
 #include "services/viz/public/mojom/compositing/shared_quad_state.mojom-shared.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/mojom/mask_filter_info_mojom_traits.h"
 #include "ui/gfx/mojom/rrect_f_mojom_traits.h"
 
 namespace mojo {
 
 struct OptSharedQuadState {
-  const viz::SharedQuadState* sqs;
+  raw_ptr<const viz::SharedQuadState> sqs;
 };
 
 template <>
@@ -35,17 +38,14 @@ struct StructTraits<viz::mojom::SharedQuadStateDataView, OptSharedQuadState> {
     return input.sqs->visible_quad_layer_rect;
   }
 
-  static const gfx::RRectF& rounded_corner_bounds(
+  static const gfx::MaskFilterInfo& mask_filter_info(
       const OptSharedQuadState& input) {
-    return input.sqs->rounded_corner_bounds;
+    return input.sqs->mask_filter_info;
   }
 
-  static const gfx::Rect& clip_rect(const OptSharedQuadState& input) {
+  static const absl::optional<gfx::Rect>& clip_rect(
+      const OptSharedQuadState& input) {
     return input.sqs->clip_rect;
-  }
-
-  static bool is_clipped(const OptSharedQuadState& input) {
-    return input.sqs->is_clipped;
   }
 
   static bool are_contents_opaque(const OptSharedQuadState& input) {
@@ -67,14 +67,6 @@ struct StructTraits<viz::mojom::SharedQuadStateDataView, OptSharedQuadState> {
   static bool is_fast_rounded_corner(const OptSharedQuadState& input) {
     return input.sqs->is_fast_rounded_corner;
   }
-
-  static float de_jelly_delta_y(const OptSharedQuadState& input) {
-    return input.sqs->de_jelly_delta_y;
-  }
-
-  static bool no_damage(const OptSharedQuadState& input) {
-    return input.sqs->no_damage;
-  }
 };
 
 template <>
@@ -93,17 +85,14 @@ struct StructTraits<viz::mojom::SharedQuadStateDataView, viz::SharedQuadState> {
     return sqs.visible_quad_layer_rect;
   }
 
-  static const gfx::RRectF& rounded_corner_bounds(
+  static const gfx::MaskFilterInfo& mask_filter_info(
       const viz::SharedQuadState& sqs) {
-    return sqs.rounded_corner_bounds;
+    return sqs.mask_filter_info;
   }
 
-  static const gfx::Rect& clip_rect(const viz::SharedQuadState& sqs) {
+  static const absl::optional<gfx::Rect>& clip_rect(
+      const viz::SharedQuadState& sqs) {
     return sqs.clip_rect;
-  }
-
-  static bool is_clipped(const viz::SharedQuadState& sqs) {
-    return sqs.is_clipped;
   }
 
   static bool are_contents_opaque(const viz::SharedQuadState& sqs) {
@@ -124,25 +113,16 @@ struct StructTraits<viz::mojom::SharedQuadStateDataView, viz::SharedQuadState> {
     return sqs.is_fast_rounded_corner;
   }
 
-  static float de_jelly_delta_y(const viz::SharedQuadState& sqs) {
-    return sqs.de_jelly_delta_y;
-  }
-
-  static bool no_damage(const viz::SharedQuadState& sqs) {
-    return sqs.no_damage;
-  }
-
   static bool Read(viz::mojom::SharedQuadStateDataView data,
                    viz::SharedQuadState* out) {
     if (!data.ReadQuadToTargetTransform(&out->quad_to_target_transform) ||
         !data.ReadQuadLayerRect(&out->quad_layer_rect) ||
         !data.ReadVisibleQuadLayerRect(&out->visible_quad_layer_rect) ||
-        !data.ReadRoundedCornerBounds(&out->rounded_corner_bounds) ||
+        !data.ReadMaskFilterInfo(&out->mask_filter_info) ||
         !data.ReadClipRect(&out->clip_rect)) {
       return false;
     }
 
-    out->is_clipped = data.is_clipped();
     out->are_contents_opaque = data.are_contents_opaque();
     out->opacity = data.opacity();
     if (data.blend_mode() > static_cast<int>(SkBlendMode::kLastMode))
@@ -150,8 +130,7 @@ struct StructTraits<viz::mojom::SharedQuadStateDataView, viz::SharedQuadState> {
     out->blend_mode = static_cast<SkBlendMode>(data.blend_mode());
     out->sorting_context_id = data.sorting_context_id();
     out->is_fast_rounded_corner = data.is_fast_rounded_corner();
-    out->de_jelly_delta_y = data.de_jelly_delta_y();
-    out->no_damage = data.no_damage();
+
     return true;
   }
 };

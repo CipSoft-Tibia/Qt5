@@ -19,10 +19,11 @@
 #include "Pipeline/Constants.hpp"
 #include "System/Debug.hpp"
 #include "System/Math.hpp"
+#include "Vulkan/VkDevice.hpp"
 
 namespace sw {
 
-QuadRasterizer::QuadRasterizer(const PixelProcessor::State &state, SpirvShader const *spirvShader)
+QuadRasterizer::QuadRasterizer(const PixelProcessor::State &state, const SpirvShader *spirvShader)
     : state(state)
     , spirvShader{ spirvShader }
 {
@@ -34,7 +35,7 @@ QuadRasterizer::~QuadRasterizer()
 
 void QuadRasterizer::generate()
 {
-	constants = *Pointer<Pointer<Byte>>(data + OFFSET(DrawData, constants));
+	constants = device + OFFSET(vk::Device, constants);
 	occlusion = 0;
 
 	Do
@@ -69,13 +70,13 @@ void QuadRasterizer::generate()
 
 void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 {
-	Pointer<Byte> cBuffer[RENDERTARGETS];
+	Pointer<Byte> cBuffer[MAX_COLOR_BUFFERS];
 	Pointer<Byte> zBuffer;
 	Pointer<Byte> sBuffer;
 
 	Int clusterCountLog2 = 31 - Ctlz(UInt(clusterCount), false);
 
-	for(int index = 0; index < RENDERTARGETS; index++)
+	for(int index = 0; index < MAX_COLOR_BUFFERS; index++)
 	{
 		if(state.colorWriteActive(index))
 		{
@@ -83,7 +84,7 @@ void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 		}
 	}
 
-	if(state.depthTestActive)
+	if(state.depthTestActive || state.depthBoundsTestActive)
 	{
 		zBuffer = *Pointer<Pointer<Byte>>(data + OFFSET(DrawData, depthBuffer)) + yMin * *Pointer<Int>(data + OFFSET(DrawData, depthPitchB));
 	}
@@ -121,20 +122,22 @@ void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 			x1 = Max(x1, Max(x1a, x1b));
 		}
 
-		Float4 yyyy = Float4(Float(y)) + *Pointer<Float4>(primitive + OFFSET(Primitive, yQuad), 16);
+		// Compute the y coordinate of each fragment in the SIMD group.
+		const auto yMorton = SIMD::Float([](int i) { return float(compactEvenBits(i >> 1)); });  // 0, 0, 1, 1, 0, 0, 1, 1, 2, 2, 3, 3, 2, 2, 3, 3, ...
+		yFragment = SIMD::Float(Float(y)) + yMorton - SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, y0)));
 
 		if(interpolateZ())
 		{
 			for(unsigned int q = 0; q < state.multiSampleCount; q++)
 			{
-				Float4 y = yyyy;
+				SIMD::Float y = yFragment;
 
 				if(state.enableMultiSampling)
 				{
-					y -= *Pointer<Float4>(constants + OFFSET(Constants, Y) + q * sizeof(float4));
+					y += SIMD::Float(*Pointer<Float>(constants + OFFSET(Constants, SampleLocationsY) + q * sizeof(float)));
 				}
 
-				Dz[q] = *Pointer<Float4>(primitive + OFFSET(Primitive, z.C), 16) + y * *Pointer<Float4>(primitive + OFFSET(Primitive, z.B), 16);
+				Dz[q] = SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, z.C))) + y * SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, z.B)));
 			}
 		}
 
@@ -142,34 +145,36 @@ void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 		{
 			if(interpolateW())
 			{
-				Dw = *Pointer<Float4>(primitive + OFFSET(Primitive, w.C), 16) + yyyy * *Pointer<Float4>(primitive + OFFSET(Primitive, w.B), 16);
+				Dw = SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, w.C))) + yFragment * SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, w.B)));
 			}
 
 			if(spirvShader)
 			{
-				for(int interpolant = 0; interpolant < MAX_INTERFACE_COMPONENTS; interpolant++)
+				int packedInterpolant = 0;
+				for(int interfaceInterpolant = 0; interfaceInterpolant < MAX_INTERFACE_COMPONENTS; interfaceInterpolant++)
 				{
-					if(spirvShader->inputs[interpolant].Type == SpirvShader::ATTRIBTYPE_UNUSED)
-						continue;
-
-					Dv[interpolant] = *Pointer<Float4>(primitive + OFFSET(Primitive, V[interpolant].C), 16);
-					if(!spirvShader->inputs[interpolant].Flat)
+					if(spirvShader->inputs[interfaceInterpolant].Type != SpirvShader::ATTRIBTYPE_UNUSED)
 					{
-						Dv[interpolant] +=
-						    yyyy * *Pointer<Float4>(primitive + OFFSET(Primitive, V[interpolant].B), 16);
+						Dv[interfaceInterpolant] = *Pointer<Float>(primitive + OFFSET(Primitive, V[packedInterpolant].C));
+						if(!spirvShader->inputs[interfaceInterpolant].Flat)
+						{
+							Dv[interfaceInterpolant] +=
+							    yFragment * SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, V[packedInterpolant].B)));
+						}
+						packedInterpolant++;
 					}
 				}
 
 				for(unsigned int i = 0; i < state.numClipDistances; i++)
 				{
-					DclipDistance[i] = *Pointer<Float4>(primitive + OFFSET(Primitive, clipDistance[i].C), 16) +
-					                   yyyy * *Pointer<Float4>(primitive + OFFSET(Primitive, clipDistance[i].B), 16);
+					DclipDistance[i] = SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, clipDistance[i].C))) +
+					                   yFragment * SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, clipDistance[i].B)));
 				}
 
 				for(unsigned int i = 0; i < state.numCullDistances; i++)
 				{
-					DcullDistance[i] = *Pointer<Float4>(primitive + OFFSET(Primitive, cullDistance[i].C), 16) +
-					                   yyyy * *Pointer<Float4>(primitive + OFFSET(Primitive, cullDistance[i].B), 16);
+					DcullDistance[i] = SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, cullDistance[i].C))) +
+					                   yFragment * SIMD::Float(*Pointer<Float>(primitive + OFFSET(Primitive, cullDistance[i].B)));
 				}
 			}
 
@@ -198,17 +203,13 @@ void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 						Short4 mask = CmpGT(xxxx, xLeft[i]) & CmpGT(xRight[i], xxxx);
 						cMask[q] = SignMask(PackSigned(mask, mask)) & 0x0000000F;
 					}
-					else
-					{
-						cMask[q] = 0;
-					}
 				}
 
 				quad(cBuffer, zBuffer, sBuffer, cMask, x, y);
 			}
 		}
 
-		for(int index = 0; index < RENDERTARGETS; index++)
+		for(int index = 0; index < MAX_COLOR_BUFFERS; index++)
 		{
 			if(state.colorWriteActive(index))
 			{
@@ -216,7 +217,7 @@ void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 			}
 		}
 
-		if(state.depthTestActive)
+		if(state.depthTestActive || state.depthBoundsTestActive)
 		{
 			zBuffer += *Pointer<Int>(data + OFFSET(DrawData, depthPitchB)) << (1 + clusterCountLog2);  // FIXME: Precompute
 		}
@@ -231,23 +232,18 @@ void QuadRasterizer::rasterize(Int &yMin, Int &yMax)
 	Until(y >= yMax);
 }
 
-Float4 QuadRasterizer::interpolate(Float4 &x, Float4 &D, Float4 &rhw, Pointer<Byte> planeEquation, bool flat, bool perspective, bool clamp)
+SIMD::Float QuadRasterizer::interpolate(SIMD::Float &x, SIMD::Float &D, SIMD::Float &rhw, Pointer<Byte> planeEquation, bool flat, bool perspective)
 {
-	Float4 interpolant = D;
-
-	if(!flat)
+	if(flat)
 	{
-		interpolant += x * *Pointer<Float4>(planeEquation + OFFSET(PlaneEquation, A), 16);
-
-		if(perspective)
-		{
-			interpolant *= rhw;
-		}
+		return D;
 	}
 
-	if(clamp)
+	SIMD::Float interpolant = mulAdd(x, SIMD::Float(*Pointer<Float>(planeEquation + OFFSET(PlaneEquation, A))), D);
+
+	if(perspective)
 	{
-		interpolant = Min(Max(interpolant, Float4(0.0f)), Float4(1.0f));
+		interpolant *= rhw;
 	}
 
 	return interpolant;

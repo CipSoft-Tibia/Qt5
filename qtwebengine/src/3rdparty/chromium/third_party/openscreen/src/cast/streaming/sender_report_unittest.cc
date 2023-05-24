@@ -13,8 +13,6 @@ namespace openscreen {
 namespace cast {
 namespace {
 
-using openscreen::operator<<;
-
 constexpr Ssrc kSenderSsrc{1};
 constexpr Ssrc kReceiverSsrc{2};
 
@@ -184,7 +182,7 @@ TEST_F(SenderReportTest, ComputesTimePointsFromReportIds) {
                                          ? (report_time - expected_time)
                                          : (expected_time - report_time);
     EXPECT_LE(absolute_difference, kEpsilon)
-        << expected_time << " vs " << report_time;
+        << ToString(expected_time) << " vs " << ToString(report_time);
   }
 }
 

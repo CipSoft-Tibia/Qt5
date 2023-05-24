@@ -1,10 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_GL_GL_BINDINGS_H_
 #define UI_GL_GL_BINDINGS_H_
 
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 
 // Includes the platform independent and platform dependent GL headers.
@@ -13,7 +14,7 @@
 // __STDC_FORMAT_MACROS is defined in order for //base/format_macros.h to
 // function correctly. See comment and #error message in //base/format_macros.h
 // for details.
-#if defined(OS_POSIX) && !defined(__STDC_FORMAT_MACROS)
+#if BUILDFLAG(IS_POSIX) && !defined(__STDC_FORMAT_MACROS)
 #define __STDC_FORMAT_MACROS
 #endif
 
@@ -32,12 +33,19 @@
 #include "ui/gl/gl_export.h"
 
 // The standard OpenGL native extension headers are also included.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <GL/wglext.h>
-#elif defined(OS_APPLE)
+#elif BUILDFLAG(IS_MAC)
 #include <OpenGL/OpenGL.h>
 #elif defined(USE_GLX)
+using Display = struct _XDisplay;
+using Bool = int;
+using Status = int;
 using XID = unsigned long;
+using Colormap = XID;
+using Font = XID;
+using Pixmap = XID;
+using Window = XID;
 using GLXPixmap = XID;
 using GLXWindow = XID;
 using GLXDrawable = XID;
@@ -47,7 +55,6 @@ using GLXContext = struct __GLXcontextRec*;
 using GLXFBConfig = struct __GLXFBConfigRec*;
 struct XVisualInfo;
 
-#include "ui/gfx/x/x11.h"
 
 #include <GL/glxext.h>
 #include <GL/glxtokens.h>
@@ -127,6 +134,7 @@ struct XVisualInfo;
 
 // GL_ANGLE_robust_resource_initialization
 #define GL_ROBUST_RESOURCE_INITIALIZATION_ANGLE 0x93AB
+#define GL_RESOURCE_INITIALIZED_ANGLE 0x969F
 
 // GL_ANGLE_request_extension
 #define GL_REQUESTABLE_EXTENSIONS_ANGLE 0x93A8
@@ -134,6 +142,9 @@ struct XVisualInfo;
 
 // GL_ANGLE_memory_size
 #define GL_MEMORY_SIZE_ANGLE 0x93AD
+
+// GL_ANGLE_rgbx_internal_format
+#define GL_RGBX8_ANGLE 0x96BA
 
 // GL_EXT_occlusion_query_boolean
 #define GL_ANY_SAMPLES_PASSED_EXT                        0x8C2F
@@ -176,23 +187,12 @@ struct XVisualInfo;
 // GL_CHROMIUM_ycbcr_p010_image
 #define GL_RGB_YCBCR_P010_CHROMIUM 0x78FD
 
-// GL_CHROMIUM_schedule_overlay_plane
-#define GL_OVERLAY_TRANSFORM_NONE_CHROMIUM               0x9245
-#define GL_OVERLAY_TRANSFORM_FLIP_HORIZONTAL_CHROMIUM    0x9246
-#define GL_OVERLAY_TRANSFORM_FLIP_VERTICAL_CHROMIUM      0x9247
-#define GL_OVERLAY_TRANSFORM_ROTATE_90_CHROMIUM          0x9248
-#define GL_OVERLAY_TRANSFORM_ROTATE_180_CHROMIUM         0x9249
-#define GL_OVERLAY_TRANSFORM_ROTATE_270_CHROMIUM         0x924A
-
 // GL_CHROMIUM_subscribe_uniforms
 #define GL_SUBSCRIBED_VALUES_BUFFER_CHROMIUM             0x924B
 #define GL_MOUSE_POSITION_CHROMIUM                       0x924C
 
 // GL_CHROMIUM_texture_filtering_hint
 #define GL_TEXTURE_FILTERING_HINT_CHROMIUM               0x8AF0
-
-// GL_CHROMIUM_texture_storage_image
-#define GL_SCANOUT_CHROMIUM 0x6000
 
 // GL_OES_texure_3D
 #define GL_SAMPLER_3D_OES                                0x8B5F
@@ -214,6 +214,9 @@ struct XVisualInfo;
 
 // GL_OES_compressed_ETC1_RGB8_texture
 #define GL_ETC1_RGB8_OES                                 0x8D64
+
+// GL_OES_compressed_ETC2_RGB8_texture
+#define GL_COMPRESSED_RGB8_ETC2 0x9274
 
 // GL_AMD_compressed_ATC_texture
 #define GL_ATC_RGB_AMD                                   0x8C92
@@ -328,11 +331,6 @@ struct XVisualInfo;
 #define GL_MULTISAMPLE_EXT 0x809D
 #define GL_SAMPLE_ALPHA_TO_ONE_EXT 0x809F
 #endif /* GL_EXT_multisample_compatibility */
-
-#ifndef GL_CHROMIUM_framebuffer_mixed_samples
-#define GL_CHROMIUM_framebuffer_mixed_samples 1
-#define GL_COVERAGE_MODULATION_CHROMIUM 0x9332
-#endif /* GL_CHROMIUM_framebuffer_mixed_samples */
 
 #ifndef GL_KHR_blend_equation_advanced
 #define GL_KHR_blend_equation_advanced 1
@@ -456,7 +454,6 @@ struct XVisualInfo;
 #define GL_CHROMIUM_shared_image 1
 #define GL_SHARED_IMAGE_ACCESS_MODE_READ_CHROMIUM 0x8AF6
 #define GL_SHARED_IMAGE_ACCESS_MODE_READWRITE_CHROMIUM 0x8AF7
-#define GL_SHARED_IMAGE_ACCESS_MODE_OVERLAY_CHROMIUM 0x8AF8
 #endif /* GL_CHROMIUM_shared_image */
 
 #ifndef GL_NV_internalformat_sample_query
@@ -473,7 +470,7 @@ struct XVisualInfo;
 
 #define GL_GLEXT_PROTOTYPES 1
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define GL_BINDING_CALL WINAPI
 #else
 #define GL_BINDING_CALL
@@ -497,27 +494,6 @@ struct XVisualInfo;
 
 // Forward declare EGL types.
 typedef uint64_t EGLuint64CHROMIUM;
-#ifndef EGL_VERSION_1_5
-typedef intptr_t EGLAttrib;
-#endif
-#ifndef EGL_KHR_stream
-typedef void *EGLStreamKHR;
-typedef uint64_t EGLuint64KHR;
-#endif
-#ifndef EGL_ANDROID_presentation_time
-typedef khronos_stime_nanoseconds_t EGLnsecsANDROID;
-#endif
-#ifndef EGL_KHR_debug
-typedef void* EGLObjectKHR;
-typedef void* EGLLabelKHR;
-typedef void (APIENTRY *EGLDEBUGPROCKHR)(
-             EGLenum error,
-             const char *command,
-             EGLint messageType,
-             EGLLabelKHR threadLabel,
-             EGLLabelKHR objectLabel,
-             const char* message);
-#endif
 
 #include "gl_bindings_autogen_gl.h"
 
@@ -553,9 +529,9 @@ struct GL_EXPORT DriverGL {
 };
 
 struct GL_EXPORT CurrentGL {
-  GLApi* Api = nullptr;
-  DriverGL* Driver = nullptr;
-  const GLVersionInfo* Version = nullptr;
+  raw_ptr<GLApi, DanglingUntriaged> Api = nullptr;
+  raw_ptr<DriverGL, DanglingUntriaged> Driver = nullptr;
+  raw_ptr<const GLVersionInfo, DanglingUntriaged> Version = nullptr;
 };
 
 #if defined(OS_WIN)
@@ -575,16 +551,10 @@ struct GL_EXPORT DriverWGL {
 #if defined(USE_EGL)
 struct GL_EXPORT DriverEGL {
   void InitializeStaticBindings();
-  void InitializeClientExtensionBindings();
-  void InitializeExtensionBindings();
   void ClearBindings();
-  void UpdateConditionalExtensionBindings();
 
   ProcsEGL fn;
-  ExtensionsEGL ext;
-
-  static std::string GetPlatformExtensions();
-  static std::string GetClientExtensions();
+  ClientExtensionsEGL client_ext;
 };
 #endif
 
@@ -610,9 +580,9 @@ struct GL_EXPORT DriverGLX {
 #endif
 
 // This #define is here to support autogenerated code.
-#define g_current_gl_context g_current_gl_context_tls->Get()->Api
+#define g_current_gl_context g_current_gl_context_tls->Get()->Api.get()
 #define g_current_gl_driver g_current_gl_context_tls->Get()->Driver
-#define g_current_gl_version g_current_gl_context_tls->Get()->Version
+#define g_current_gl_version g_current_gl_context_tls->Get()->Version.get()
 GL_EXPORT extern base::ThreadLocalPointer<CurrentGL>* g_current_gl_context_tls;
 
 #if defined(USE_EGL)

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTOOLS_P_H
 #define QTOOLS_P_H
@@ -52,22 +16,32 @@
 //
 
 #include "QtCore/private/qglobal_p.h"
+
+#include <chrono>
 #include <limits.h>
+#include <time.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QtMiscUtils {
-Q_DECL_CONSTEXPR inline char toHexUpper(uint value) noexcept
+constexpr inline char toHexUpper(char32_t value) noexcept
 {
     return "0123456789ABCDEF"[value & 0xF];
 }
 
-Q_DECL_CONSTEXPR inline char toHexLower(uint value) noexcept
+constexpr inline char toHexLower(char32_t value) noexcept
 {
     return "0123456789abcdef"[value & 0xF];
 }
 
-Q_DECL_CONSTEXPR inline int fromHex(uint c) noexcept
+[[nodiscard]] constexpr inline bool isHexDigit(char32_t c) noexcept
+{
+    return (c >= '0' && c <= '9')
+        || (c >= 'A' && c <= 'F')
+        || (c >= 'a' && c <= 'f');
+}
+
+constexpr inline int fromHex(char32_t c) noexcept
 {
     return ((c >= '0') && (c <= '9')) ? int(c - '0') :
            ((c >= 'A') && (c <= 'F')) ? int(c - 'A' + 10) :
@@ -75,32 +49,86 @@ Q_DECL_CONSTEXPR inline int fromHex(uint c) noexcept
            /* otherwise */              -1;
 }
 
-Q_DECL_CONSTEXPR inline char toOct(uint value) noexcept
+constexpr inline char toOct(char32_t value) noexcept
 {
-    return '0' + char(value & 0x7);
+    return char('0' + (value & 0x7));
 }
 
-Q_DECL_CONSTEXPR inline int fromOct(uint c) noexcept
+[[nodiscard]] constexpr inline bool isOctalDigit(char32_t c) noexcept
 {
-    return ((c >= '0') && (c <= '7')) ? int(c - '0') : -1;
+    return c >= '0' && c <= '7';
 }
+
+constexpr inline int fromOct(char32_t c) noexcept
+{
+    return isOctalDigit(c) ? int(c - '0') : -1;
 }
+
+[[nodiscard]] constexpr inline bool isAsciiDigit(char32_t c) noexcept
+{
+    return c >= '0' && c <= '9';
+}
+
+constexpr inline bool isAsciiUpper(char32_t c) noexcept
+{
+    return c >= 'A' && c <= 'Z';
+}
+
+constexpr inline bool isAsciiLower(char32_t c) noexcept
+{
+    return c >= 'a' && c <= 'z';
+}
+
+constexpr inline bool isAsciiLetterOrNumber(char32_t c) noexcept
+{
+    return  isAsciiDigit(c) || isAsciiLower(c) || isAsciiUpper(c);
+}
+
+constexpr inline char toAsciiLower(char ch) noexcept
+{
+    return isAsciiUpper(ch) ? ch - 'A' + 'a' : ch;
+}
+
+constexpr inline char toAsciiUpper(char ch) noexcept
+{
+    return isAsciiLower(ch) ? ch - 'a' + 'A' : ch;
+}
+
+constexpr inline int caseCompareAscii(char lhs, char rhs) noexcept
+{
+    const char lhsLower = QtMiscUtils::toAsciiLower(lhs);
+    const char rhsLower = QtMiscUtils::toAsciiLower(rhs);
+    return int(uchar(lhsLower)) - int(uchar(rhsLower));
+}
+
+constexpr inline int isAsciiPrintable(char32_t ch) noexcept
+{
+    return ch >= ' ' && ch < 0x7f;
+}
+
+constexpr inline int qt_lencmp(qsizetype lhs, qsizetype rhs) noexcept
+{
+    return lhs == rhs ? 0 :
+           lhs >  rhs ? 1 :
+           /* else */  -1 ;
+}
+
+} // namespace QtMiscUtils
 
 // We typically need an extra bit for qNextPowerOfTwo when determining the next allocation size.
-enum {
-    MaxAllocSize = INT_MAX
-};
+constexpr qsizetype MaxAllocSize = (std::numeric_limits<qsizetype>::max)();
 
-struct CalculateGrowingBlockSizeResult {
-    size_t size;
-    size_t elementCount;
+struct CalculateGrowingBlockSizeResult
+{
+    qsizetype size;
+    qsizetype elementCount;
 };
 
 // Implemented in qarraydata.cpp:
-size_t Q_CORE_EXPORT Q_DECL_CONST_FUNCTION
-qCalculateBlockSize(size_t elementCount, size_t elementSize, size_t headerSize = 0) noexcept;
+qsizetype Q_CORE_EXPORT Q_DECL_CONST_FUNCTION
+qCalculateBlockSize(qsizetype elementCount, qsizetype elementSize, qsizetype headerSize = 0) noexcept;
 CalculateGrowingBlockSizeResult Q_CORE_EXPORT Q_DECL_CONST_FUNCTION
-qCalculateGrowingBlockSize(size_t elementCount, size_t elementSize, size_t headerSize = 0) noexcept ;
+qCalculateGrowingBlockSize(qsizetype elementCount, qsizetype elementSize, qsizetype headerSize = 0) noexcept ;
 
 QT_END_NAMESPACE
 

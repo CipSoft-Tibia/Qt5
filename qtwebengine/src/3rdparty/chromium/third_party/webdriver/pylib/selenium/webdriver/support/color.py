@@ -1,18 +1,38 @@
-#!/usr/bin/python
+# Licensed to the Software Freedom Conservancy (SFC) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The SFC licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
-# Copyright 2011 Software Freedom Conservancy.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+import sys
+from typing import Any, Optional, Sequence, TYPE_CHECKING
+
+if sys.version_info >= (3, 9):
+    from re import Match
+else:
+    from typing import Match
+
+if TYPE_CHECKING:
+    from typing import SupportsInt, SupportsFloat, Union
+    from typing_extensions import SupportsIndex
+
+    ParseableFloat = Union[SupportsFloat, SupportsIndex, str, bytes, bytearray]
+    ParseableInt = Union[SupportsInt, SupportsIndex, str, bytes]
+else:
+    ParseableFloat = Any
+    ParseableInt = Any
+
 
 RGB_PATTERN = r"^\s*rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)\s*$"
 RGB_PCT_PATTERN = r"^\s*rgb\(\s*(\d{1,3}|\d{1,2}\.\d+)%\s*,\s*(\d{1,3}|\d{1,2}\.\d+)%\s*,\s*(\d{1,3}|\d{1,2}\.\d+)%\s*\)\s*$"
@@ -30,30 +50,32 @@ class Color(object):
 
     Example:
 
-    .. code-block:: python
+    ::
 
         from selenium.webdriver.support.color import Color
 
-        print Color.from_string('#00ff33').rgba
-        print Color.from_string('rgb(1, 255, 3)').hex
-        print Color.from_string('blue').rgba
+        print(Color.from_string('#00ff33').rgba)
+        print(Color.from_string('rgb(1, 255, 3)').hex)
+        print(Color.from_string('blue').rgba)
     """
 
     @staticmethod
-    def from_string(str_):
+    def from_string(str_: str) -> "Color":
         import re
 
         class Matcher(object):
-            def __init__(self):
+            match_obj: Optional[Match[str]]
+
+            def __init__(self) -> None:
                 self.match_obj = None
 
-            def match(self, pattern, str_):
+            def match(self, pattern: str, str_: str) -> Optional[Match[str]]:
                 self.match_obj = re.match(pattern, str_)
                 return self.match_obj
 
             @property
-            def groups(self):
-                return () if self.match_obj is None else self.match_obj.groups()
+            def groups(self) -> Sequence[str]:
+                return () if not self.match_obj else self.match_obj.groups()
 
         m = Matcher()
 
@@ -65,7 +87,7 @@ class Color(object):
         elif m.match(RGBA_PATTERN, str_):
             return Color(*m.groups)
         elif m.match(RGBA_PCT_PATTERN, str_):
-            rgba = tuple([float(each) / 100 * 255 for each in m.groups[:3]] + [m.groups[3]])
+            rgba = tuple([float(each) / 100 * 255 for each in m.groups[:3]] + [m.groups[3]])  # type: ignore
             return Color(*rgba)
         elif m.match(HEX_PATTERN, str_):
             rgb = tuple([int(each, 16) for each in m.groups])
@@ -81,20 +103,20 @@ class Color(object):
             raise ValueError("Could not convert %s into color" % str_)
 
     @staticmethod
-    def _from_hsl(h, s, l, a=1):
+    def _from_hsl(h: ParseableFloat, s: ParseableFloat, light: ParseableFloat, a: ParseableFloat = 1) -> "Color":
         h = float(h) / 360
         s = float(s) / 100
-        l = float(l) / 100
+        _l = float(light) / 100
 
         if s == 0:
-            r = l
+            r = _l
             g = r
             b = r
         else:
-            luminocity2 = l * (1 + s) if  l < 0.5 else  l + s - l * s
-            luminocity1 = 2 * l - luminocity2
+            luminocity2 = _l * (1 + s) if _l < 0.5 else _l + s - _l * s
+            luminocity1 = 2 * _l - luminocity2
 
-            def hue_to_rgb(lum1, lum2, hue):
+            def hue_to_rgb(lum1: float, lum2: float, hue: float) -> float:
                 if hue < 0.0:
                     hue += 1
                 if hue > 1.0:
@@ -102,7 +124,7 @@ class Color(object):
 
                 if hue < 1.0 / 6.0:
                     return (lum1 + (lum2 - lum1) * 6.0 * hue)
-                elif  hue < 1.0 / 2.0:
+                elif hue < 1.0 / 2.0:
                     return lum2
                 elif hue < 2.0 / 3.0:
                     return lum1 + (lum2 - lum1) * ((2.0 / 3.0) - hue) * 6.0
@@ -113,40 +135,45 @@ class Color(object):
             g = hue_to_rgb(luminocity1, luminocity2, h)
             b = hue_to_rgb(luminocity1, luminocity2, h - 1.0 / 3.0)
 
-        return Color(r * 256, g * 256, b * 256, a)
+        return Color(round(r * 255), round(g * 255), round(b * 255), a)
 
-    def __init__(self, red, green, blue, alpha=1):
+    def __init__(self, red: ParseableInt, green: ParseableInt, blue: ParseableInt, alpha: ParseableFloat = 1) -> None:
         self.red = int(red)
         self.green = int(green)
         self.blue = int(blue)
-        self.alpha = float(alpha) or 0
+        self.alpha = "1" if float(alpha) == 1 else str(float(alpha) or 0)
 
     @property
-    def rgb(self):
+    def rgb(self) -> str:
         return "rgb(%d, %d, %d)" % (self.red, self.green, self.blue)
 
     @property
-    def rgba(self):
-        a = "1" if self.alpha == 1 else str(self.alpha)
-        return "rgba(%d, %d, %d, %s)" % (self.red, self.green, self.blue, a)
+    def rgba(self) -> str:
+        return "rgba(%d, %d, %d, %s)" % (self.red, self.green, self.blue, self.alpha)
 
     @property
-    def hex(self):
+    def hex(self) -> str:
         return "#%02x%02x%02x" % (self.red, self.green, self.blue)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, Color):
             return self.rgba == other.rgba
         return NotImplemented
 
-    def __ne__(self, other):
+    def __ne__(self, other: Any) -> bool:
         result = self.__eq__(other)
         if result is NotImplemented:
             return result
         return not result
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.red, self.green, self.blue, self.alpha))
+
+    def __repr__(self) -> str:
+        return "Color(red=%d, green=%d, blue=%d, alpha=%s)" % (self.red, self.green, self.blue, self.alpha)
+
+    def __str__(self) -> str:
+        return "Color: %s" % self.rgba
 
 
 # Basic, extended and transparent colour keywords as defined by the W3C HTML4 spec
@@ -272,6 +299,7 @@ Colors = {
     "PLUM": Color(221, 160, 221),
     "POWDERBLUE": Color(176, 224, 230),
     "PURPLE": Color(128, 0, 128),
+    "REBECCAPURPLE": Color(128, 51, 153),
     "RED": Color(255, 0, 0),
     "ROSYBROWN": Color(188, 143, 143),
     "ROYALBLUE": Color(65, 105, 225),

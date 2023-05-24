@@ -1,11 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_MEDIA_ANDROID_BROWSER_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
 #define CONTENT_BROWSER_MEDIA_ANDROID_BROWSER_GPU_VIDEO_ACCELERATOR_FACTORIES_H_
 
-#include "base/macros.h"
+#include "base/callback_list.h"
+#include "base/task/sequenced_task_runner.h"
 #include "media/video/gpu_video_accelerator_factories.h"
 
 namespace viz {
@@ -21,23 +22,30 @@ class BrowserGpuVideoAcceleratorFactories
  public:
   explicit BrowserGpuVideoAcceleratorFactories(
       scoped_refptr<viz::ContextProviderCommandBuffer>);
+
+  BrowserGpuVideoAcceleratorFactories(
+      const BrowserGpuVideoAcceleratorFactories&) = delete;
+  BrowserGpuVideoAcceleratorFactories& operator=(
+      const BrowserGpuVideoAcceleratorFactories&) = delete;
+
   ~BrowserGpuVideoAcceleratorFactories() override;
 
  private:
   // media::GpuVideoAcceleratorFactories implementation.
-  bool IsGpuVideoAcceleratorEnabled() override;
-  base::UnguessableToken GetChannelToken() override;
+  bool IsGpuVideoDecodeAcceleratorEnabled() override;
+  bool IsGpuVideoEncodeAcceleratorEnabled() override;
+  void GetChannelToken(
+      gpu::mojom::GpuChannel::GetChannelTokenCallback cb) override;
   int32_t GetCommandBufferRouteId() override;
   Supported IsDecoderConfigSupported(
-      media::VideoDecoderImplementation implementation,
       const media::VideoDecoderConfig& config) override;
+  media::VideoDecoderType GetDecoderType() override;
   bool IsDecoderSupportKnown() override;
   void NotifyDecoderSupportKnown(base::OnceClosure) override;
   std::unique_ptr<media::VideoDecoder> CreateVideoDecoder(
       media::MediaLog* media_log,
-      media::VideoDecoderImplementation implementation,
       media::RequestOverlayInfoCB request_overlay_info_cb) override;
-  base::Optional<media::VideoEncodeAccelerator::SupportedProfiles>
+  absl::optional<media::VideoEncodeAccelerator::SupportedProfiles>
   GetVideoEncodeAcceleratorSupportedProfiles() override;
   bool IsEncoderSupportKnown() override;
   void NotifyEncoderSupportKnown(base::OnceClosure) override;
@@ -55,14 +63,19 @@ class BrowserGpuVideoAcceleratorFactories
   gpu::SharedImageInterface* SharedImageInterface() override;
   gpu::GpuMemoryBufferManager* GpuMemoryBufferManager() override;
   base::UnsafeSharedMemoryRegion CreateSharedMemoryRegion(size_t size) override;
-  scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunner() override;
+  scoped_refptr<base::SequencedTaskRunner> GetTaskRunner() override;
   viz::RasterContextProvider* GetMediaContextProvider() override;
+  const gpu::Capabilities* ContextCapabilities() override;
   void SetRenderingColorSpace(const gfx::ColorSpace& color_space) override;
+  const gfx::ColorSpace& GetRenderingColorSpace() const override;
+
+  // Called when gpu channel token is retrieved asynchronously.
+  void OnChannelTokenReady(const base::UnguessableToken& token);
 
   scoped_refptr<viz::ContextProviderCommandBuffer> context_provider_;
   base::UnguessableToken channel_token_;
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserGpuVideoAcceleratorFactories);
+  base::OnceCallbackList<void(const base::UnguessableToken&)>
+      channel_token_callbacks_;
 };
 
 }  // namespace content

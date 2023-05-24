@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,19 +8,21 @@
 #include <string>
 #include <vector>
 
+#if defined(OS_ANDROID)
+#include "base/android/library_loader/anchor_functions.h"
+#endif
 #include "base/android/library_loader/anchor_functions_buildflags.h"
 #include "base/bits.h"
 #include "base/command_line.h"
 #include "base/files/file.h"
 #include "base/format_macros.h"
 #include "base/logging.h"
-#include "base/process/process_metrics.h"
+#include "base/memory/page_size.h"
 #include "base/strings/stringprintf.h"
 #include "base/trace_event/trace_event.h"
 #include "services/resource_coordinator/public/cpp/memory_instrumentation/global_memory_dump.h"
 
 #if BUILDFLAG(SUPPORTS_CODE_ORDERING)
-#include "base/android/library_loader/anchor_functions.h"
 
 namespace {
 
@@ -107,7 +109,7 @@ mojom::AggregatedMetricsPtr ComputeGlobalNativeCodeResidentMemoryKb(
         base::android::kStartOfOrderedText / kPageSize -
         start_of_text_page_index;
     size_t end_of_ordered_section_page_offset =
-        base::bits::Align(base::android::kEndOfOrderedText, kPageSize) /
+        base::bits::AlignUp(base::android::kEndOfOrderedText, kPageSize) /
             kPageSize -
         start_of_text_page_index;
 

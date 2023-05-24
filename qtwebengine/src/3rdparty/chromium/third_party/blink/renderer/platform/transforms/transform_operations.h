@@ -26,13 +26,16 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_TRANSFORMS_TRANSFORM_OPERATIONS_H_
 
 #include "base/memory/scoped_refptr.h"
-#include "third_party/blink/renderer/platform/geometry/layout_size.h"
 #include "third_party/blink/renderer/platform/transforms/transform_operation.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "ui/gfx/geometry/size_f.h"
+
+namespace gfx {
+class BoxF;
+}
 
 namespace blink {
-class FloatBox;
 
 class PLATFORM_EXPORT EmptyTransformOperations final {
   DISALLOW_NEW();
@@ -50,7 +53,7 @@ class PLATFORM_EXPORT TransformOperations {
 
   // Constructs a transformation matrix from the operations. The parameter
   // |border_box_size| is used when computing styles that are size-dependent.
-  void Apply(const FloatSize& border_box_size, TransformationMatrix& t) const {
+  void Apply(const gfx::SizeF& border_box_size, gfx::Transform& t) const {
     for (auto& operation : operations_)
       operation->Apply(t, border_box_size);
   }
@@ -59,9 +62,9 @@ class PLATFORM_EXPORT TransformOperations {
   // |start|. This process facilitates mixing pairwise operations for a common
   // prefix and matrix interpolation for the remainder.  The parameter
   // |border_box_size| is used when computing styles that are size-dependent.
-  void ApplyRemaining(const FloatSize& border_box_size,
+  void ApplyRemaining(const gfx::SizeF& border_box_size,
                       wtf_size_t start,
-                      TransformationMatrix& t) const;
+                      gfx::Transform& t) const;
 
   // Return true if any of the operation types are 3D operation types (even if
   // the values describe affine transforms)
@@ -91,6 +94,14 @@ class PLATFORM_EXPORT TransformOperations {
     return true;
   }
 
+  bool IsIdentityOrTranslation() const {
+    for (auto& operation : operations_) {
+      if (!operation->IsIdentityOrTranslation())
+        return false;
+    }
+    return true;
+  }
+
   // Returns true if any operation has a non-trivial component in the Z axis.
   bool HasNonTrivial3DComponent() const {
     for (auto& operation : operations_) {
@@ -109,22 +120,17 @@ class PLATFORM_EXPORT TransformOperations {
     return false;
   }
 
-  bool DependsOnBoxSize() const {
-    for (auto& operation : operations_) {
-      if (operation->DependsOnBoxSize())
-        return true;
-    }
-    return false;
-  }
+  TransformOperation::BoxSizeDependency BoxSizeDependencies(
+      wtf_size_t start = 0) const;
 
   wtf_size_t MatchingPrefixLength(const TransformOperations&) const;
 
   void clear() { operations_.clear(); }
 
-  Vector<scoped_refptr<TransformOperation>>& Operations() {
+  Vector<scoped_refptr<TransformOperation>, 2>& Operations() {
     return operations_;
   }
-  const Vector<scoped_refptr<TransformOperation>>& Operations() const {
+  const Vector<scoped_refptr<TransformOperation>, 2>& Operations() const {
     return operations_;
   }
 
@@ -133,11 +139,11 @@ class PLATFORM_EXPORT TransformOperations {
     return index < operations_.size() ? operations_.at(index).get() : nullptr;
   }
 
-  bool BlendedBoundsForBox(const FloatBox&,
+  bool BlendedBoundsForBox(const gfx::BoxF&,
                            const TransformOperations& from,
                            const double& min_progress,
                            const double& max_progress,
-                           FloatBox* bounds) const;
+                           gfx::BoxF* bounds) const;
 
   scoped_refptr<TransformOperation> BlendRemainingByUsingMatrixInterpolation(
       const TransformOperations& from,
@@ -154,7 +160,7 @@ class PLATFORM_EXPORT TransformOperations {
   TransformOperations Accumulate(const TransformOperations& to) const;
 
  private:
-  Vector<scoped_refptr<TransformOperation>> operations_;
+  Vector<scoped_refptr<TransformOperation>, 2> operations_;
 };
 
 }  // namespace blink

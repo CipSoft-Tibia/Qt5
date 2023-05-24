@@ -1,59 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qandroidplatformopenglwindow.h"
 
-#include "qandroidplatformscreen.h"
+#include "androiddeadlockprotector.h"
 #include "androidjnimain.h"
 #include "qandroideventdispatcher.h"
-#include "androiddeadlockprotector.h"
+#include "qandroidplatformscreen.h"
 
 #include <QSurfaceFormat>
 #include <QtGui/private/qwindow_p.h>
 #include <QtGui/qguiapplication.h>
 
-#include <qpa/qwindowsysteminterface.h>
-#include <qpa/qplatformscreen.h>
-#include <QtEglSupport/private/qeglconvenience_p.h>
+#include <QtGui/private/qeglconvenience_p.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+#include <qpa/qplatformscreen.h>
+#include <qpa/qwindowsysteminterface.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -75,8 +39,7 @@ QAndroidPlatformOpenGLWindow::~QAndroidPlatformOpenGLWindow()
 void QAndroidPlatformOpenGLWindow::repaint(const QRegion &region)
 {
     // This is only for real raster top-level windows. Stop in all other cases.
-    if ((window()->surfaceType() == QSurface::RasterGLSurface && qt_window_private(window())->compositing)
-        || window()->surfaceType() == QSurface::OpenGLSurface
+    if (window()->surfaceType() != QSurface::RasterSurface
         || QAndroidPlatformWindow::parent())
         return;
 
@@ -175,9 +138,9 @@ void QAndroidPlatformOpenGLWindow::applicationStateChanged(Qt::ApplicationState 
 void QAndroidPlatformOpenGLWindow::createEgl(EGLConfig config)
 {
     clearEgl();
-    QJNIEnvironmentPrivate env;
-    m_nativeWindow = ANativeWindow_fromSurface(env, m_androidSurfaceObject.object());
-    m_androidSurfaceObject = QJNIObjectPrivate();
+    QJniEnvironment env;
+    m_nativeWindow = ANativeWindow_fromSurface(env.jniEnv(), m_androidSurfaceObject.object());
+    m_androidSurfaceObject = QJniObject();
     m_eglSurface = eglCreateWindowSurface(m_eglDisplay, config, m_nativeWindow, NULL);
     m_format = q_glFormatFromConfig(m_eglDisplay, config, window()->requestedFormat());
     if (Q_UNLIKELY(m_eglSurface == EGL_NO_SURFACE)) {
@@ -191,8 +154,8 @@ QSurfaceFormat QAndroidPlatformOpenGLWindow::format() const
 {
     if (m_nativeWindow == 0)
         return window()->requestedFormat();
-    else
-        return m_format;
+
+    return m_format;
 }
 
 void QAndroidPlatformOpenGLWindow::clearEgl()

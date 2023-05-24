@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/bookmarks/bookmarks_api.h"
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -18,7 +19,9 @@ namespace extensions {
 
 class BookmarksApiUnittest : public ExtensionServiceTestBase {
  public:
-  BookmarksApiUnittest() {}
+  BookmarksApiUnittest() = default;
+  BookmarksApiUnittest(const BookmarksApiUnittest&) = delete;
+  BookmarksApiUnittest& operator=(const BookmarksApiUnittest&) = delete;
 
   void SetUp() override {
     ExtensionServiceTestBase::SetUp();
@@ -30,18 +33,16 @@ class BookmarksApiUnittest : public ExtensionServiceTestBase {
     model_ = BookmarkModelFactory::GetForBrowserContext(profile());
     bookmarks::test::WaitForBookmarkModelToLoad(model_);
 
-    const bookmarks::BookmarkNode* node = model_->AddFolder(
-        model_->other_node(), 0, base::ASCIIToUTF16("Empty folder"));
+    const bookmarks::BookmarkNode* node =
+        model_->AddFolder(model_->other_node(), 0, u"Empty folder");
     node_id_ = base::NumberToString(node->id());
   }
 
   std::string node_id() const { return node_id_; }
 
  private:
-  bookmarks::BookmarkModel* model_ = nullptr;
+  raw_ptr<bookmarks::BookmarkModel> model_ = nullptr;
   std::string node_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(BookmarksApiUnittest);
 };
 
 // Tests that running updating a bookmark folder's url does not succeed.

@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -22,7 +22,7 @@ import tempfile
 
 
 def sanitize_name(s):
-  return s.translate(None, ' -')
+  return s.translate(str.maketrans('', '', ' -'))
 
 
 def finalize_test_case(test_case_name, sanitized_test_names, output):
@@ -70,6 +70,9 @@ WRAPPED_TYPED_TEST_P(%(test_case_name)s, %(sanitized_test_name)s) {
 
   default_info = TestInfo(None)
 
+  if info.include_subpart_in_test_number:
+    test_number = "%s.%d" % (test_number, subpart_number)
+
   output.write('''PkitsTestInfo info;
   info.test_number = "%s";
   info.should_validate = %s;
@@ -107,9 +110,9 @@ WRAPPED_TYPED_TEST_P(%(test_case_name)s, %(sanitized_test_name)s) {
 
 
 # Matches a section header, ex: "4.1 Signature Verification"
-SECTION_MATCHER = re.compile('^\s*(\d+\.\d+)\s+(.+)\s*$')
+SECTION_MATCHER = re.compile('^\s*(\d+\.\d+)\s+(.+?)\s*\ufffd?$')
 # Matches a test header, ex: "4.1.1 Valid Signatures Test1"
-TEST_MATCHER = re.compile('^\s*(\d+\.\d+.\d+)\s+(.+)\s*$')
+TEST_MATCHER = re.compile('^\s*(\d+\.\d+.\d+)\s+(.+?)\s*\ufffd?$')
 
 # Matches the various headers in a test specification.
 EXPECTED_HEADER_MATCHER = re.compile('^\s*Expected Result:')
@@ -131,7 +134,7 @@ TEST_RESULT_MATCHER = re.compile(
 
 # Matches a line in the certification path, ex:
 #    "\u2022 Good CA Cert, Good CA CRL"
-PATH_MATCHER = re.compile('^\s*\xe2\x80\xa2\s*(.+)\s*$')
+PATH_MATCHER = re.compile('^\s*\u2022\s*(.+)\s*$')
 # Matches a page number. These may appear in the middle of multi-line fields and
 # thus need to be ignored.
 PAGE_NUMBER_MATCHER = re.compile('^\s*\d+\s*$')
@@ -245,13 +248,15 @@ class TestInfo(object):
                # In all of the tests that are not related to policy processing,
                # each certificate in the path asserts the certificate policy
                # 2.16.840.1.101.3.2.1.48.1
-               user_constrained_policy_set = [TEST_POLICY_1]):
+               user_constrained_policy_set = [TEST_POLICY_1],
+               include_subpart_in_test_number = False):
     self.should_validate = should_validate
     self.initial_policy_set = initial_policy_set
     self.initial_explicit_policy = initial_explicit_policy
     self.initial_policy_mapping_inhibit = initial_policy_mapping_inhibit
     self.initial_inhibit_any_policy = initial_inhibit_any_policy
     self.user_constrained_policy_set = user_constrained_policy_set
+    self.include_subpart_in_test_number = include_subpart_in_test_number
 
 
 TEST_OVERRIDES = {
@@ -615,20 +620,26 @@ TEST_OVERRIDES = {
   ],
 
   '4.10.1': [ # Valid Policy Mapping Test1
+    # The errors in subparts 2 and 3 vary slightly, so we set
+    # include_subpart_in_test_number.
+
     # 1. default settings, but with initial-policy-set = {NIST-test-policy-1}.
     # The path should validate successfully.
     TestInfo(True, initial_policy_set=[TEST_POLICY_1],
-             user_constrained_policy_set=[TEST_POLICY_1]),
+             user_constrained_policy_set=[TEST_POLICY_1],
+             include_subpart_in_test_number=True),
 
     # 2. default settings, but with initial-policy-set = {NIST-test-policy-2}.
     # The path should not validate successfully.
     TestInfo(False, initial_policy_set=[TEST_POLICY_2],
-             user_constrained_policy_set=[]),
+             user_constrained_policy_set=[],
+             include_subpart_in_test_number=True),
 
     # 3. default settings, but with initial-policy-mapping-inhibit set. The
     # path should not validate successfully.
     TestInfo(False, initial_policy_mapping_inhibit=True,
-             user_constrained_policy_set=[]),
+             user_constrained_policy_set=[],
+             include_subpart_in_test_number=True),
   ],
 
   '4.10.2': [ # Invalid Policy Mapping Test2
@@ -793,6 +804,16 @@ TEST_OVERRIDES = {
     # the path is accepted, the application should display the user notice
     # associated with NIST-testpolicy-1 in the intermediate certificate.
     TestInfo(True, user_constrained_policy_set=[TEST_POLICY_1]),
+
+    # While not explicitly divided into sub-parts, the above describes what
+    # should happen given various values of initial-policy-set. Test some
+    # combinations, as these cover an interesting interaction with anyPolicy.
+    #
+    # These extra tests are a regression test for https://crbug.com/1403258.
+    TestInfo(True, initial_policy_set=[TEST_POLICY_1, TEST_POLICY_2],
+             user_constrained_policy_set=[TEST_POLICY_1]),
+    TestInfo(False, initial_policy_set=[TEST_POLICY_2],
+             user_constrained_policy_set=[]),
   ],
 
   '4.10.14': [ # Valid Policy Mapping Test14
@@ -1174,7 +1195,7 @@ def main():
   subprocess.check_call(['pdftotext', '-layout', '-nopgbrk', '-eol', 'unix',
                          pkits_pdf_path, pkits_txt_file.name])
 
-  test_descriptions = pkits_txt_file.read()
+  test_descriptions = pkits_txt_file.read().decode('utf-8')
 
   # Extract section 4 of the text, which is the part that contains the tests.
   test_descriptions = test_descriptions.split(

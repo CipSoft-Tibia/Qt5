@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,6 +22,13 @@ struct Configuration {
   // relevant in multiprocess environments.
   bool is_broker_process = false;
 
+  // Forcibly disables the Mojo's ipcz-based implementation. This is an
+  // alternative to manual feature override for applications which don't use
+  // base::FeatureList.
+  //
+  // TODO(https://crbug.com/1299283): Remove this once dependents are gone.
+  bool disable_ipcz = false;
+
   // If |true|, this process will always attempt to allocate shared memory
   // directly rather than synchronously delegating to a broker process where
   // applicable.
@@ -39,6 +46,9 @@ struct Configuration {
 
   // Maximum size of a single shared memory segment, in bytes.
   size_t max_shared_memory_num_bytes = 1024 * 1024 * 1024;
+
+  // If true we will not advertise our capabilities to our peer.
+  bool dont_advertise_capabilities = false;
 };
 
 }  // namespace core

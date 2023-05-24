@@ -35,10 +35,12 @@ extern "C" {
 
 extern "C" {
 #include "config.h"
+#include "libavcodec/packet_internal.h"
 #include "libavformat/avformat.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avutil.h"
 #include "libavutil/common.h"
+#include "libavutil/internal.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/time.h"
@@ -481,16 +483,16 @@ static void avpacket_queue_init(AVFormatContext *avctx, AVPacketQueue *q)
 
 static void avpacket_queue_flush(AVPacketQueue *q)
 {
-    AVPacketList *pkt, *pkt1;
+    PacketListEntry *pkt, *pkt1;
 
     pthread_mutex_lock(&q->mutex);
-    for (pkt = q->first_pkt; pkt != NULL; pkt = pkt1) {
+    for (pkt = q->pkt_list.head; pkt != NULL; pkt = pkt1) {
         pkt1 = pkt->next;
         av_packet_unref(&pkt->pkt);
         av_freep(&pkt);
     }
-    q->last_pkt   = NULL;
-    q->first_pkt  = NULL;
+    q->pkt_list.head = NULL;
+    q->pkt_list.tail = NULL;
     q->nb_packets = 0;
     q->size       = 0;
     pthread_mutex_unlock(&q->mutex);
@@ -514,7 +516,7 @@ static unsigned long long avpacket_queue_size(AVPacketQueue *q)
 
 static int avpacket_queue_put(AVPacketQueue *q, AVPacket *pkt)
 {
-    AVPacketList *pkt1;
+    PacketListEntry *pkt1;
 
     // Drop Packet if queue size is > maximum queue size
     if (avpacket_queue_size(q) > (uint64_t)q->max_q_size) {
@@ -528,7 +530,7 @@ static int avpacket_queue_put(AVPacketQueue *q, AVPacket *pkt)
         return -1;
     }
 
-    pkt1 = (AVPacketList *)av_malloc(sizeof(AVPacketList));
+    pkt1 = (PacketListEntry *)av_malloc(sizeof(*pkt1));
     if (!pkt1) {
         av_packet_unref(pkt);
         return -1;
@@ -538,13 +540,13 @@ static int avpacket_queue_put(AVPacketQueue *q, AVPacket *pkt)
 
     pthread_mutex_lock(&q->mutex);
 
-    if (!q->last_pkt) {
-        q->first_pkt = pkt1;
+    if (!q->pkt_list.tail) {
+        q->pkt_list.head = pkt1;
     } else {
-        q->last_pkt->next = pkt1;
+        q->pkt_list.tail->next = pkt1;
     }
 
-    q->last_pkt = pkt1;
+    q->pkt_list.tail = pkt1;
     q->nb_packets++;
     q->size += pkt1->pkt.size + sizeof(*pkt1);
 
@@ -556,17 +558,16 @@ static int avpacket_queue_put(AVPacketQueue *q, AVPacket *pkt)
 
 static int avpacket_queue_get(AVPacketQueue *q, AVPacket *pkt, int block)
 {
-    AVPacketList *pkt1;
     int ret;
 
     pthread_mutex_lock(&q->mutex);
 
     for (;; ) {
-        pkt1 = q->first_pkt;
+        PacketListEntry *pkt1 = q->pkt_list.head;
         if (pkt1) {
-            q->first_pkt = pkt1->next;
-            if (!q->first_pkt) {
-                q->last_pkt = NULL;
+            q->pkt_list.head = pkt1->next;
+            if (!q->pkt_list.head) {
+                q->pkt_list.tail = NULL;
             }
             q->nb_packets--;
             q->size -= pkt1->pkt.size + sizeof(*pkt1);
@@ -673,8 +674,7 @@ static void handle_klv(AVFormatContext *avctx, decklink_ctx *ctx, IDeckLinkVideo
                 klv.insert(klv.end(), packet.data.begin(), packet.data.end());
         }
 
-        AVPacket klv_packet;
-        av_init_packet(&klv_packet);
+        AVPacket klv_packet = { 0 };
         klv_packet.pts = pts;
         klv_packet.dts = pts;
         klv_packet.flags |= AV_PKT_FLAG_KEY;
@@ -789,6 +789,52 @@ static int64_t get_pkt_pts(IDeckLinkVideoInputFrame *videoFrame,
     return pts;
 }
 
+static int get_bmd_timecode(AVFormatContext *avctx, AVTimecode *tc, AVRational frame_rate, BMDTimecodeFormat tc_format, IDeckLinkVideoInputFrame *videoFrame)
+{
+    IDeckLinkTimecode *timecode;
+    int ret = AVERROR(ENOENT);
+#if BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b000000
+    int hfr = (tc_format == bmdTimecodeRP188HighFrameRate);
+#else
+    int hfr = 0;
+#endif
+    if (videoFrame->GetTimecode(tc_format, &timecode) == S_OK) {
+        uint8_t hh, mm, ss, ff;
+        if (timecode->GetComponents(&hh, &mm, &ss, &ff) == S_OK) {
+            int flags = (timecode->GetFlags() & bmdTimecodeIsDropFrame) ? AV_TIMECODE_FLAG_DROPFRAME : 0;
+            if (!hfr && av_cmp_q(frame_rate, av_make_q(30, 1)) == 1)
+                ff = ff << 1 | !!(timecode->GetFlags() & bmdTimecodeFieldMark);
+            ret = av_timecode_init_from_components(tc, frame_rate, flags, hh, mm, ss, ff, avctx);
+        }
+        timecode->Release();
+    }
+    return ret;
+}
+
+static int get_frame_timecode(AVFormatContext *avctx, decklink_ctx *ctx, AVTimecode *tc, IDeckLinkVideoInputFrame *videoFrame)
+{
+    AVRational frame_rate = ctx->video_st->r_frame_rate;
+    int ret;
+    /* 50/60 fps content has alternating VITC1 and VITC2 timecode (see SMPTE ST
+     * 12-2, section 7), so the native ordering of RP188Any (HFR, VITC1, LTC,
+     * VITC2) would not work because LTC might not contain the field flag.
+     * Therefore we query the types manually. */
+    if (ctx->tc_format == bmdTimecodeRP188Any && av_cmp_q(frame_rate, av_make_q(30, 1)) == 1) {
+#if BLACKMAGIC_DECKLINK_API_VERSION >= 0x0b000000
+       ret = get_bmd_timecode(avctx, tc, frame_rate, bmdTimecodeRP188HighFrameRate, videoFrame);
+       if (ret == AVERROR(ENOENT))
+#endif
+           ret = get_bmd_timecode(avctx, tc, frame_rate, bmdTimecodeRP188VITC1, videoFrame);
+       if (ret == AVERROR(ENOENT))
+           ret = get_bmd_timecode(avctx, tc, frame_rate, bmdTimecodeRP188VITC2, videoFrame);
+       if (ret == AVERROR(ENOENT))
+           ret = get_bmd_timecode(avctx, tc, frame_rate, bmdTimecodeRP188LTC, videoFrame);
+    } else {
+       ret = get_bmd_timecode(avctx, tc, frame_rate, ctx->tc_format, videoFrame);
+    }
+    return ret;
+}
+
 HRESULT decklink_input_callback::VideoInputFrameArrived(
     IDeckLinkVideoInputFrame *videoFrame, IDeckLinkAudioInputPacket *audioFrame)
 {
@@ -826,8 +872,7 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
 
     // Handle Video Frame
     if (videoFrame) {
-        AVPacket pkt;
-        av_init_packet(&pkt);
+        AVPacket pkt = { 0 };
         if (ctx->frameCount % 25 == 0) {
             unsigned long long qsize = avpacket_queue_size(&ctx->queue);
             av_log(avctx, AV_LOG_DEBUG,
@@ -870,22 +915,15 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
 
             // Handle Timecode (if requested)
             if (ctx->tc_format) {
-                IDeckLinkTimecode *timecode;
-                if (videoFrame->GetTimecode(ctx->tc_format, &timecode) == S_OK) {
-                    const char *tc = NULL;
-                    DECKLINK_STR decklink_tc;
-                    if (timecode->GetString(&decklink_tc) == S_OK) {
-                        tc = DECKLINK_STRDUP(decklink_tc);
-                        DECKLINK_FREE(decklink_tc);
-                    }
-                    timecode->Release();
+                AVTimecode tcr;
+                if (get_frame_timecode(avctx, ctx, &tcr, videoFrame) >= 0) {
+                    char tcstr[AV_TIMECODE_STR_SIZE];
+                    const char *tc = av_timecode_make_string(&tcr, tcstr, 0);
                     if (tc) {
                         AVDictionary* metadata_dict = NULL;
-                        int metadata_len;
                         uint8_t* packed_metadata;
-                        AVTimecode tcr;
 
-                        if (av_timecode_init_from_string(&tcr, ctx->video_st->r_frame_rate, tc, ctx) >= 0) {
+                        if (av_cmp_q(ctx->video_st->r_frame_rate, av_make_q(60, 1)) < 1) {
                             uint32_t tc_data = av_timecode_get_smpte_from_framenum(&tcr, 0);
                             int size = sizeof(uint32_t) * 4;
                             uint32_t *sd = (uint32_t *)av_packet_new_side_data(&pkt, AV_PKT_DATA_S12M_TIMECODE, size);
@@ -896,7 +934,8 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
                             }
                         }
 
-                        if (av_dict_set(&metadata_dict, "timecode", tc, AV_DICT_DONT_STRDUP_VAL) >= 0) {
+                        if (av_dict_set(&metadata_dict, "timecode", tc, 0) >= 0) {
+                            size_t metadata_len;
                             packed_metadata = av_packet_pack_dictionary(metadata_dict, &metadata_len);
                             av_dict_free(&metadata_dict);
                             if (packed_metadata) {
@@ -935,7 +974,7 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
 
         if (!no_video) {
             IDeckLinkVideoFrameAncillary *vanc;
-            AVPacket txt_pkt;
+            AVPacket txt_pkt = { 0 };
             uint8_t txt_buf0[3531]; // 35 * 46 bytes decoded teletext lines + 1 byte data_identifier + 1920 bytes OP47 decode buffer
             uint8_t *txt_buf = txt_buf0;
 
@@ -945,13 +984,13 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
 
             if (videoFrame->GetAncillaryData(&vanc) == S_OK) {
                 int i;
-                int64_t line_mask = 1;
                 BMDPixelFormat vanc_format = vanc->GetPixelFormat();
                 txt_buf[0] = 0x10;    // data_identifier - EBU_data
                 txt_buf++;
 #if CONFIG_LIBZVBI
                 if (ctx->bmd_mode == bmdModePAL && ctx->teletext_lines &&
                     (vanc_format == bmdFormat8BitYUV || vanc_format == bmdFormat10BitYUV)) {
+                    int64_t line_mask = 1;
                     av_assert0(videoFrame->GetWidth() == 720);
                     for (i = 6; i < 336; i++, line_mask <<= 1) {
                         uint8_t *buf;
@@ -994,7 +1033,6 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
                         txt_buf[1] = 0x2c; // data_unit_length
                         txt_buf += 46;
                     }
-                    av_init_packet(&txt_pkt);
                     txt_pkt.pts = pkt.pts;
                     txt_pkt.dts = pkt.dts;
                     txt_pkt.stream_index = ctx->teletext_st->index;
@@ -1018,12 +1056,11 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
 
     // Handle Audio Frame
     if (audioFrame) {
-        AVPacket pkt;
+        AVPacket pkt = { 0 };
         BMDTimeValue audio_pts;
-        av_init_packet(&pkt);
 
         //hack among hacks
-        pkt.size = audioFrame->GetSampleFrameCount() * ctx->audio_st->codecpar->channels * (ctx->audio_depth / 8);
+        pkt.size = audioFrame->GetSampleFrameCount() * ctx->audio_st->codecpar->ch_layout.nb_channels * (ctx->audio_depth / 8);
         audioFrame->GetBytes(&audioFrameBytes);
         audioFrame->GetPacketTime(&audio_pts, ctx->audio_st->time_base.den);
         pkt.pts = get_pkt_pts(videoFrame, audioFrame, wallclock, abs_wallclock, ctx->audio_pts_source, ctx->audio_st->time_base, &initial_audio_pts, cctx->copyts);
@@ -1044,9 +1081,13 @@ HRESULT decklink_input_callback::VideoInputFrameArrived(
 
 HRESULT decklink_input_callback::VideoInputFormatChanged(
     BMDVideoInputFormatChangedEvents events, IDeckLinkDisplayMode *mode,
-    BMDDetectedVideoInputFormatFlags)
+    BMDDetectedVideoInputFormatFlags formatFlags)
 {
+    struct decklink_cctx *cctx = (struct decklink_cctx *) avctx->priv_data;
     ctx->bmd_mode = mode->GetDisplayMode();
+    // check the C context member to make sure we set both raw_format and bmd_mode with data from the same format change callback
+    if (!cctx->raw_format)
+        ctx->raw_format = (formatFlags & bmdDetectedVideoInputRGB444) ? bmdFormat8BitARGB : bmdFormat8BitYUV;
     return S_OK;
 }
 
@@ -1148,6 +1189,8 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
     ctx->video_pts_source = cctx->video_pts_source;
     ctx->draw_bars = cctx->draw_bars;
     ctx->audio_depth = cctx->audio_depth;
+    if (cctx->raw_format > 0 && (unsigned int)cctx->raw_format < FF_ARRAY_ELEMS(decklink_raw_format_map))
+        ctx->raw_format = decklink_raw_format_map[cctx->raw_format];
     cctx->ctx = ctx;
 
     /* Check audio channel option for valid values: 2, 8 or 16 */
@@ -1173,7 +1216,6 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
 
     /* List available devices. */
     if (ctx->list_devices) {
-        av_log(avctx, AV_LOG_WARNING, "The -list_devices option is deprecated and will be removed. Please use ffmpeg -sources decklink instead.\n");
         ff_decklink_list_devices_legacy(avctx, 1, 0);
         return AVERROR_EXIT;
     }
@@ -1227,6 +1269,8 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
         }
         av_log(avctx, AV_LOG_INFO, "Autodetected the input mode\n");
     }
+    if (ctx->raw_format == (BMDPixelFormat)0)
+        ctx->raw_format = bmdFormat8BitYUV;
     if (ff_decklink_set_format(avctx, DIRECTION_IN) < 0) {
         av_log(avctx, AV_LOG_ERROR, "Could not set format code %s for %s\n",
             cctx->format_code ? cctx->format_code : "(unset)", avctx->url);
@@ -1252,7 +1296,7 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id    = cctx->audio_depth == 32 ? AV_CODEC_ID_PCM_S32LE : AV_CODEC_ID_PCM_S16LE;
     st->codecpar->sample_rate = bmdAudioSampleRate48kHz;
-    st->codecpar->channels    = cctx->audio_channels;
+    st->codecpar->ch_layout.nb_channels = cctx->audio_channels;
     avpriv_set_pts_info(st, 64, 1, 1000000);  /* 64 bits pts in us */
     ctx->audio_st=st;
 
@@ -1270,40 +1314,34 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
     st->time_base.num      = ctx->bmd_tb_num;
     st->r_frame_rate       = av_make_q(st->time_base.den, st->time_base.num);
 
-    switch((BMDPixelFormat)cctx->raw_format) {
+    switch(ctx->raw_format) {
     case bmdFormat8BitYUV:
         st->codecpar->codec_id    = AV_CODEC_ID_RAWVIDEO;
-        st->codecpar->codec_tag   = MKTAG('U', 'Y', 'V', 'Y');
         st->codecpar->format      = AV_PIX_FMT_UYVY422;
         st->codecpar->bit_rate    = av_rescale(ctx->bmd_width * ctx->bmd_height * 16, st->time_base.den, st->time_base.num);
         break;
     case bmdFormat10BitYUV:
         st->codecpar->codec_id    = AV_CODEC_ID_V210;
-        st->codecpar->codec_tag   = MKTAG('V','2','1','0');
         st->codecpar->bit_rate    = av_rescale(ctx->bmd_width * ctx->bmd_height * 64, st->time_base.den, st->time_base.num * 3);
-        st->codecpar->bits_per_coded_sample = 10;
         break;
     case bmdFormat8BitARGB:
         st->codecpar->codec_id    = AV_CODEC_ID_RAWVIDEO;
         st->codecpar->format      = AV_PIX_FMT_0RGB;
-        st->codecpar->codec_tag   = avcodec_pix_fmt_to_codec_tag((enum AVPixelFormat)st->codecpar->format);
         st->codecpar->bit_rate    = av_rescale(ctx->bmd_width * ctx->bmd_height * 32, st->time_base.den, st->time_base.num);
         break;
     case bmdFormat8BitBGRA:
         st->codecpar->codec_id    = AV_CODEC_ID_RAWVIDEO;
         st->codecpar->format      = AV_PIX_FMT_BGR0;
-        st->codecpar->codec_tag   = avcodec_pix_fmt_to_codec_tag((enum AVPixelFormat)st->codecpar->format);
         st->codecpar->bit_rate    = av_rescale(ctx->bmd_width * ctx->bmd_height * 32, st->time_base.den, st->time_base.num);
         break;
     case bmdFormat10BitRGB:
         st->codecpar->codec_id    = AV_CODEC_ID_R210;
-        st->codecpar->codec_tag   = MKTAG('R','2','1','0');
-        st->codecpar->format      = AV_PIX_FMT_RGB48LE;
         st->codecpar->bit_rate    = av_rescale(ctx->bmd_width * ctx->bmd_height * 30, st->time_base.den, st->time_base.num);
-        st->codecpar->bits_per_coded_sample = 10;
         break;
     default:
-        av_log(avctx, AV_LOG_ERROR, "Raw Format %.4s not supported\n", (char*) &cctx->raw_format);
+        char fourcc_str[AV_FOURCC_MAX_STRING_SIZE] = {0};
+        av_fourcc_make_string(fourcc_str, ctx->raw_format);
+        av_log(avctx, AV_LOG_ERROR, "Raw Format %s not supported\n", fourcc_str);
         ret = AVERROR(EINVAL);
         goto error;
     }
@@ -1354,8 +1392,8 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
         ctx->teletext_st = st;
     }
 
-    av_log(avctx, AV_LOG_VERBOSE, "Using %d input audio channels\n", ctx->audio_st->codecpar->channels);
-    result = ctx->dli->EnableAudioInput(bmdAudioSampleRate48kHz, cctx->audio_depth == 32 ? bmdAudioSampleType32bitInteger : bmdAudioSampleType16bitInteger, ctx->audio_st->codecpar->channels);
+    av_log(avctx, AV_LOG_VERBOSE, "Using %d input audio channels\n", ctx->audio_st->codecpar->ch_layout.nb_channels);
+    result = ctx->dli->EnableAudioInput(bmdAudioSampleRate48kHz, cctx->audio_depth == 32 ? bmdAudioSampleType32bitInteger : bmdAudioSampleType16bitInteger, ctx->audio_st->codecpar->ch_layout.nb_channels);
 
     if (result != S_OK) {
         av_log(avctx, AV_LOG_ERROR, "Cannot enable audio input\n");
@@ -1364,7 +1402,7 @@ av_cold int ff_decklink_read_header(AVFormatContext *avctx)
     }
 
     result = ctx->dli->EnableVideoInput(ctx->bmd_mode,
-                                        (BMDPixelFormat) cctx->raw_format,
+                                        ctx->raw_format,
                                         bmdVideoInputFlagDefault);
 
     if (result != S_OK) {
@@ -1396,7 +1434,7 @@ int ff_decklink_read_packet(AVFormatContext *avctx, AVPacket *pkt)
     avpacket_queue_get(&ctx->queue, pkt, 1);
 
     if (ctx->tc_format && !(av_dict_get(ctx->video_st->metadata, "timecode", NULL, 0))) {
-        int size;
+        size_t size;
         const uint8_t *side_metadata = av_packet_get_side_data(pkt, AV_PKT_DATA_STRINGS_METADATA, &size);
         if (side_metadata) {
            if (av_packet_unpack_dictionary(side_metadata, size, &ctx->video_st->metadata) < 0)

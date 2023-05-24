@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <unistd.h>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "build/build_config.h"
 #include "sandbox/linux/bpf_dsl/bpf_dsl.h"
 #include "sandbox/linux/seccomp-bpf-helpers/syscall_sets.h"
@@ -49,6 +48,8 @@ ResultExpr CrosArmGpuProcessPolicy::EvaluateSyscall(int sysno) const {
     case __NR_connect:
     case __NR_getpeername:
     case __NR_getsockname:
+    case __NR_sched_setaffinity:
+    case __NR_sched_setscheduler:
     case __NR_sysinfo:
     case __NR_uname:
       return Allow();

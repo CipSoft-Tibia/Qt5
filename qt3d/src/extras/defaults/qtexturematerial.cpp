@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtexturematerial.h"
 #include "qtexturematerial_p.h"
@@ -67,11 +31,14 @@ QTextureMaterialPrivate::QTextureMaterialPrivate()
     , m_textureGL3Technique(new QTechnique)
     , m_textureGL2Technique(new QTechnique)
     , m_textureES2Technique(new QTechnique)
+    , m_textureRHITechnique(new QTechnique)
     , m_textureGL3RenderPass(new QRenderPass)
     , m_textureGL2RenderPass(new QRenderPass)
     , m_textureES2RenderPass(new QRenderPass)
+    , m_textureRHIRenderPass(new QRenderPass)
     , m_textureGL3Shader(new QShaderProgram)
     , m_textureGL2ES2Shader(new QShaderProgram)
+    , m_textureRHIShader(new QShaderProgram)
     , m_noDepthMask(new QNoDepthMask())
     , m_blendState(new QBlendEquationArguments())
     , m_blendEquation(new QBlendEquation())
@@ -90,6 +57,8 @@ void QTextureMaterialPrivate::init()
     m_textureGL3Shader->setFragmentShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/gl3/unlittexture.frag"))));
     m_textureGL2ES2Shader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/es2/unlittexture.vert"))));
     m_textureGL2ES2Shader->setFragmentShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/es2/unlittexture.frag"))));
+    m_textureRHIShader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/rhi/unlittexture.vert"))));
+    m_textureRHIShader->setFragmentShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/rhi/unlittexture.frag"))));
 
     m_textureGL3Technique->graphicsApiFilter()->setApi(QGraphicsApiFilter::OpenGL);
     m_textureGL3Technique->graphicsApiFilter()->setMajorVersion(3);
@@ -106,6 +75,10 @@ void QTextureMaterialPrivate::init()
     m_textureES2Technique->graphicsApiFilter()->setMinorVersion(0);
     m_textureES2Technique->graphicsApiFilter()->setProfile(QGraphicsApiFilter::NoProfile);
 
+    m_textureRHITechnique->graphicsApiFilter()->setApi(QGraphicsApiFilter::RHI);
+    m_textureRHITechnique->graphicsApiFilter()->setMajorVersion(1);
+    m_textureRHITechnique->graphicsApiFilter()->setMinorVersion(0);
+
     m_noDepthMask->setEnabled(false);
     m_blendState->setEnabled(false);
     m_blendState->setSourceRgb(QBlendEquationArguments::SourceAlpha);
@@ -121,10 +94,12 @@ void QTextureMaterialPrivate::init()
     m_textureGL3Technique->addFilterKey(m_filterKey);
     m_textureGL2Technique->addFilterKey(m_filterKey);
     m_textureES2Technique->addFilterKey(m_filterKey);
+    m_textureRHITechnique->addFilterKey(m_filterKey);
 
     m_textureGL3RenderPass->setShaderProgram(m_textureGL3Shader);
     m_textureGL2RenderPass->setShaderProgram(m_textureGL2ES2Shader);
     m_textureES2RenderPass->setShaderProgram(m_textureGL2ES2Shader);
+    m_textureRHIRenderPass->setShaderProgram(m_textureRHIShader);
 
     m_textureGL3RenderPass->addRenderState(m_noDepthMask);
     m_textureGL3RenderPass->addRenderState(m_blendState);
@@ -138,13 +113,19 @@ void QTextureMaterialPrivate::init()
     m_textureES2RenderPass->addRenderState(m_blendState);
     m_textureES2RenderPass->addRenderState(m_blendEquation);
 
+    m_textureRHIRenderPass->addRenderState(m_noDepthMask);
+    m_textureRHIRenderPass->addRenderState(m_blendState);
+    m_textureRHIRenderPass->addRenderState(m_blendEquation);
+
     m_textureGL3Technique->addRenderPass(m_textureGL3RenderPass);
     m_textureGL2Technique->addRenderPass(m_textureGL2RenderPass);
     m_textureES2Technique->addRenderPass(m_textureES2RenderPass);
+    m_textureRHITechnique->addRenderPass(m_textureRHIRenderPass);
 
     m_textureEffect->addTechnique(m_textureGL3Technique);
     m_textureEffect->addTechnique(m_textureGL2Technique);
     m_textureEffect->addTechnique(m_textureES2Technique);
+    m_textureEffect->addTechnique(m_textureRHITechnique);
 
     m_textureEffect->addParameter(m_textureParameter);
     m_textureEffect->addParameter(m_textureTransformParameter);
@@ -285,3 +266,5 @@ void QTextureMaterial::setAlphaBlendingEnabled(bool enabled)
 } // namespace Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qtexturematerial.cpp"

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMDIALOGHELPER_H
 #define QPLATFORMDIALOGHELPER_H
@@ -58,6 +22,8 @@
 #include <QtCore/QDir>
 #include <QtCore/QUrl>
 #include <QtGui/QRgb>
+Q_MOC_INCLUDE(<QFont>)
+Q_MOC_INCLUDE(<QColor>)
 
 QT_BEGIN_NAMESPACE
 
@@ -148,7 +114,6 @@ public:
         MacLayout,
         KdeLayout,
         GnomeLayout,
-        MacModelessLayout,
         AndroidLayout
     };
     Q_ENUM(ButtonLayout)
@@ -175,8 +140,10 @@ Q_SIGNALS:
 };
 
 QT_END_NAMESPACE
-Q_DECLARE_METATYPE(QPlatformDialogHelper::StandardButton)
-Q_DECLARE_METATYPE(QPlatformDialogHelper::ButtonRole)
+QT_DECL_METATYPE_EXTERN_TAGGED(QPlatformDialogHelper::StandardButton,
+                               QPlatformDialogHelper__StandardButton, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QPlatformDialogHelper::ButtonRole,
+                               QPlatformDialogHelper__ButtonRole, Q_GUI_EXPORT)
 QT_BEGIN_NAMESPACE
 
 class Q_GUI_EXPORT QColorDialogOptions
@@ -313,18 +280,16 @@ public:
     enum DialogLabel { LookIn, FileName, FileType, Accept, Reject, DialogLabelCount };
     Q_ENUM(DialogLabel)
 
+    // keep this in sync with QFileDialog::Options
     enum FileDialogOption
     {
         ShowDirsOnly                = 0x00000001,
         DontResolveSymlinks         = 0x00000002,
         DontConfirmOverwrite        = 0x00000004,
-#if QT_DEPRECATED_SINCE(5, 14)
-        DontUseSheet Q_DECL_ENUMERATOR_DEPRECATED = 0x00000008,
-#endif
-        DontUseNativeDialog         = 0x00000010,
-        ReadOnly                    = 0x00000020,
-        HideNameFilterDetails       = 0x00000040,
-        DontUseCustomDirectoryIcons = 0x00000080
+        DontUseNativeDialog         = 0x00000008,
+        ReadOnly                    = 0x00000010,
+        HideNameFilterDetails       = 0x00000020,
+        DontUseCustomDirectoryIcons = 0x00000040
     };
     Q_DECLARE_FLAGS(FileDialogOptions, FileDialogOption)
     Q_FLAG(FileDialogOptions)
@@ -438,9 +403,16 @@ protected:
     ~QMessageDialogOptions();
 
 public:
+    // Keep in sync with QMessageBox Option
+    enum class Option {
+        DontUseNativeDialog = 0x00000001,
+    };
+    Q_DECLARE_FLAGS(Options, Option);
+    Q_FLAG(Options);
+
     // Keep in sync with QMessageBox::Icon
-    enum Icon { NoIcon, Information, Warning, Critical, Question };
-    Q_ENUM(Icon)
+    enum StandardIcon { NoIcon, Information, Warning, Critical, Question };
+    Q_ENUM(StandardIcon)
 
     static QSharedPointer<QMessageDialogOptions> create();
     QSharedPointer<QMessageDialogOptions> clone() const;
@@ -448,8 +420,11 @@ public:
     QString windowTitle() const;
     void setWindowTitle(const QString &);
 
-    void setIcon(Icon icon);
-    Icon icon() const;
+    void setStandardIcon(StandardIcon icon);
+    StandardIcon standardIcon() const;
+
+    void setIconPixmap(const QPixmap &pixmap);
+    QPixmap iconPixmap() const;
 
     void setText(const QString &text);
     QString text() const;
@@ -459,6 +434,11 @@ public:
 
     void setDetailedText(const QString &text);
     QString detailedText() const;
+
+    void setOption(Option option, bool on = true);
+    bool testOption(Option option) const;
+    void setOptions(Options options);
+    Options options() const;
 
     void setStandardButtons(QPlatformDialogHelper::StandardButtons buttons);
     QPlatformDialogHelper::StandardButtons standardButtons() const;
@@ -478,10 +458,21 @@ public:
     };
 
     int addButton(const QString &label, QPlatformDialogHelper::ButtonRole role,
-                  void *buttonImpl = nullptr);
+                  void *buttonImpl = nullptr, int buttonId = 0);
     void removeButton(int id);
-    const QVector<CustomButton> &customButtons();
+    const QList<CustomButton> &customButtons();
     const CustomButton *customButton(int id);
+    void clearCustomButtons();
+
+    void setCheckBox(const QString &label, Qt::CheckState state);
+    QString checkBoxLabel() const;
+    Qt::CheckState checkBoxState() const;
+
+    void setEscapeButton(int id);
+    int escapeButton() const;
+
+    void setDefaultButton(int id);
+    int defaultButton() const;
 
 private:
     QMessageDialogOptionsPrivate *d;
@@ -496,6 +487,7 @@ public:
 
 Q_SIGNALS:
     void clicked(QPlatformDialogHelper::StandardButton button, QPlatformDialogHelper::ButtonRole role);
+    void checkBoxStateChanged(Qt::CheckState state);
 
 private:
     QSharedPointer<QMessageDialogOptions> m_options;

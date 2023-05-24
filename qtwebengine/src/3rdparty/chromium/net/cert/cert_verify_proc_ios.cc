@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,18 +19,9 @@
 #include "net/cert/known_roots.h"
 #include "net/cert/test_root_certs.h"
 #include "net/cert/x509_certificate.h"
-#include "net/cert/x509_util_ios.h"
-#include "net/cert/x509_util_ios_and_mac.h"
+#include "net/cert/x509_util_apple.h"
 
 using base::ScopedCFTypeRef;
-
-extern "C" {
-// Declared in <Security/SecTrust.h>, available in iOS 12.1.1+
-// TODO(mattm): Remove this weak_import once chromium requires a new enough
-// iOS SDK.
-OSStatus SecTrustSetSignedCertificateTimestamps(SecTrustRef, CFArrayRef)
-    __attribute__((weak_import));
-}  // extern "C"
 
 namespace net {
 
@@ -229,17 +220,9 @@ int BuildAndEvaluateSecTrustRef(CFArrayRef cert_array,
 #endif
   }
 
-  ScopedCFTypeRef<CFMutableArrayRef> tmp_verified_chain(
-      CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks));
-  const CFIndex chain_length = SecTrustGetCertificateCount(tmp_trust);
-  for (CFIndex i = 0; i < chain_length; ++i) {
-    SecCertificateRef chain_cert = SecTrustGetCertificateAtIndex(tmp_trust, i);
-    CFArrayAppendValue(tmp_verified_chain, chain_cert);
-  }
-
   trust_ref->swap(scoped_tmp_trust);
   trust_error->swap(tmp_error);
-  verified_chain->reset(tmp_verified_chain.release());
+  *verified_chain = x509_util::CertificateChainFromSecTrust(tmp_trust);
   *is_trusted = tmp_is_trusted;
   return OK;
 }
@@ -247,15 +230,15 @@ int BuildAndEvaluateSecTrustRef(CFArrayRef cert_array,
 void GetCertChainInfo(CFArrayRef cert_chain, CertVerifyResult* verify_result) {
   DCHECK_LT(0, CFArrayGetCount(cert_chain));
 
-  SecCertificateRef verified_cert = nullptr;
-  std::vector<SecCertificateRef> verified_chain;
+  base::ScopedCFTypeRef<SecCertificateRef> verified_cert;
+  std::vector<base::ScopedCFTypeRef<SecCertificateRef>> verified_chain;
   for (CFIndex i = 0, count = CFArrayGetCount(cert_chain); i < count; ++i) {
     SecCertificateRef chain_cert = reinterpret_cast<SecCertificateRef>(
         const_cast<void*>(CFArrayGetValueAtIndex(cert_chain, i)));
     if (i == 0) {
-      verified_cert = chain_cert;
+      verified_cert.reset(chain_cert, base::scoped_policy::RETAIN);
     } else {
-      verified_chain.push_back(chain_cert);
+      verified_chain.emplace_back(chain_cert, base::scoped_policy::RETAIN);
     }
 
     base::ScopedCFTypeRef<CFDataRef> der_data(
@@ -279,7 +262,7 @@ void GetCertChainInfo(CFArrayRef cert_chain, CertVerifyResult* verify_result) {
     CC_SHA256(spki_bytes.data(), spki_bytes.size(), sha256.data());
     verify_result->public_key_hashes.push_back(sha256);
   }
-  if (!verified_cert) {
+  if (!verified_cert.get()) {
     NOTREACHED();
     verify_result->cert_status |= CERT_STATUS_INVALID;
     return;

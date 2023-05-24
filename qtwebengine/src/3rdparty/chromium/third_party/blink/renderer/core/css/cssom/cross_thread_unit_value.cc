@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,9 @@ CSSStyleValue* CrossThreadUnitValue::ToCSSStyleValue() {
 
 bool CrossThreadUnitValue::operator==(
     const CrossThreadStyleValue& other) const {
-  if (auto* o = DynamicTo<CrossThreadUnitValue>(other))
+  if (auto* o = DynamicTo<CrossThreadUnitValue>(other)) {
     return value_ == o->value_ && unit_ == o->unit_;
+  }
   return false;
 }
 

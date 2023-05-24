@@ -1,96 +1,68 @@
+import { _connectToCDPBrowser, } from './BrowserConnector.js';
+import { clearCustomQueryHandlers, customQueryHandlerNames, registerCustomQueryHandler, unregisterCustomQueryHandler, } from './QueryHandler.js';
 /**
- * Copyright 2017 Google Inc. All rights reserved.
+ * The main Puppeteer class.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-import { BrowserFetcher, } from '../node/BrowserFetcher.js';
-import Launcher from '../node/Launcher.js';
-import { PUPPETEER_REVISIONS } from '../revisions.js';
-
-import { devicesMap } from './DeviceDescriptors.js';
-import { puppeteerErrors } from './Errors.js';
-import { clearQueryHandlers, customQueryHandlers, registerCustomQueryHandler, unregisterCustomQueryHandler, } from './QueryHandler.js';
-
-/**
- * The main Puppeteer class. Provides the {@link Puppeteer.launch | launch}
- * method to launch a browser.
- *
- * When you `require` or `import` the Puppeteer npm package you get back an
- * instance of this class.
- *
- * @remarks
- *
- * @example
- * The following is a typical example of using Puppeteer to drive automation:
- * ```js
- * const puppeteer = require('puppeteer');
- *
- * (async () => {
- *   const browser = await puppeteer.launch();
- *   const page = await browser.newPage();
- *   await page.goto('https://www.google.com');
- *   // other actions...
- *   await browser.close();
- * })();
- * ```
- *
- * Once you have created a `page` you have access to a large API to interact
- * with the page, navigate, or find certain elements in that page.
- * The {@link Page | `page` documentation} lists all the available methods.
- *
+ * IMPORTANT: if you are using Puppeteer in a Node environment, you will get an
+ * instance of {@link PuppeteerNode} when you import or require `puppeteer`.
+ * That class extends `Puppeteer`, so has all the methods documented below as
+ * well as all that are defined on {@link PuppeteerNode}.
  * @public
  */
 export class Puppeteer {
     /**
      * @internal
      */
-    constructor(projectRoot, preferredRevision, isPuppeteerCore, productName) {
+    constructor(settings) {
+        /**
+         * @internal
+         */
         this._changedProduct = false;
-        this._projectRoot = projectRoot;
-        this._preferredRevision = preferredRevision;
-        this._isPuppeteerCore = isPuppeteerCore;
-        // track changes to Launcher configuration via options or environment variables
-        this.__productName = productName;
+        this._isPuppeteerCore = settings.isPuppeteerCore;
+        this.connect = this.connect.bind(this);
     }
     /**
-     * Launches puppeteer and launches a browser instance with given arguments
-     * and options when specified.
+     * Registers a {@link CustomQueryHandler | custom query handler}.
      *
      * @remarks
+     * After registration, the handler can be used everywhere where a selector is
+     * expected by prepending the selection string with `<name>/`. The name is only
+     * allowed to consist of lower- and upper case latin letters.
      *
      * @example
-     * You can use `ignoreDefaultArgs` to filter out `--mute-audio` from default arguments:
-     * ```js
-     * const browser = await puppeteer.launch({
-     *   ignoreDefaultArgs: ['--mute-audio']
-     * });
+     *
+     * ```
+     * puppeteer.registerCustomQueryHandler('text', { … });
+     * const aHandle = await page.$('text/…');
      * ```
      *
-     * **NOTE** Puppeteer can also be used to control the Chrome browser,
-     * but it works best with the version of Chromium it is bundled with.
-     * There is no guarantee it will work with any other version.
-     * Use `executablePath` option with extreme caution.
-     * If Google Chrome (rather than Chromium) is preferred, a {@link https://www.google.com/chrome/browser/canary.html | Chrome Canary} or {@link https://www.chromium.org/getting-involved/dev-channel | Dev Channel} build is suggested.
-     * In `puppeteer.launch([options])`, any mention of Chromium also applies to Chrome.
-     * See {@link https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/ | this article} for a description of the differences between Chromium and Chrome. {@link https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md | This article} describes some differences for Linux users.
+     * @param name - The name that the custom query handler will be registered
+     * under.
+     * @param queryHandler - The {@link CustomQueryHandler | custom query handler}
+     * to register.
      *
-     * @param options - Set of configurable options to set on the browser.
-     * @returns Promise which resolves to browser instance.
+     * @public
      */
-    launch(options = {}) {
-        if (options.product)
-            this._productName = options.product;
-        return this._launcher.launch(options);
+    static registerCustomQueryHandler(name, queryHandler) {
+        return registerCustomQueryHandler(name, queryHandler);
+    }
+    /**
+     * Unregisters a custom query handler for a given name.
+     */
+    static unregisterCustomQueryHandler(name) {
+        return unregisterCustomQueryHandler(name);
+    }
+    /**
+     * Gets the names of all custom query handlers.
+     */
+    static customQueryHandlerNames() {
+        return customQueryHandlerNames();
+    }
+    /**
+     * Unregisters all custom query handlers.
+     */
+    static clearCustomQueryHandlers() {
+        return clearCustomQueryHandlers();
     }
     /**
      * This method attaches Puppeteer to an existing browser instance.
@@ -101,157 +73,7 @@ export class Puppeteer {
      * @returns Promise which resolves to browser instance.
      */
     connect(options) {
-        if (options.product)
-            this._productName = options.product;
-        return this._launcher.connect(options);
-    }
-    /**
-     * @internal
-     */
-    get _productName() {
-        return this.__productName;
-    }
-    // don't need any TSDoc here - because the getter is internal the setter is too.
-    set _productName(name) {
-        if (this.__productName !== name)
-            this._changedProduct = true;
-        this.__productName = name;
-    }
-    /**
-     * @remarks
-     *
-     * **NOTE** `puppeteer.executablePath()` is affected by the `PUPPETEER_EXECUTABLE_PATH`
-     * and `PUPPETEER_CHROMIUM_REVISION` environment variables.
-     *
-     * @returns A path where Puppeteer expects to find the bundled browser.
-     * The browser binary might not be there if the download was skipped with
-     * the `PUPPETEER_SKIP_DOWNLOAD` environment variable.
-     */
-    executablePath() {
-        return this._launcher.executablePath();
-    }
-    /**
-     * @internal
-     */
-    get _launcher() {
-        if (!this._lazyLauncher ||
-            this._lazyLauncher.product !== this._productName ||
-            this._changedProduct) {
-            switch (this._productName) {
-                case 'firefox':
-                    this._preferredRevision = PUPPETEER_REVISIONS.firefox;
-                    break;
-                case 'chrome':
-                default:
-                    this._preferredRevision = PUPPETEER_REVISIONS.chromium;
-            }
-            this._changedProduct = false;
-            this._lazyLauncher = Launcher(this._projectRoot, this._preferredRevision, this._isPuppeteerCore, this._productName);
-        }
-        return this._lazyLauncher;
-    }
-    /**
-     * The name of the browser that is under automation (`"chrome"` or `"firefox"`)
-     *
-     * @remarks
-     * The product is set by the `PUPPETEER_PRODUCT` environment variable or the `product`
-     * option in `puppeteer.launch([options])` and defaults to `chrome`.
-     * Firefox support is experimental.
-     */
-    get product() {
-        return this._launcher.product;
-    }
-    /**
-     * @remarks
-     * A list of devices to be used with `page.emulate(options)`. Actual list of devices can be found in {@link https://github.com/puppeteer/puppeteer/blob/main/src/common/DeviceDescriptors.ts | src/common/DeviceDescriptors.ts}.
-     *
-     * @example
-     *
-     * ```js
-     * const puppeteer = require('puppeteer');
-     * const iPhone = puppeteer.devices['iPhone 6'];
-     *
-     * (async () => {
-     *   const browser = await puppeteer.launch();
-     *   const page = await browser.newPage();
-     *   await page.emulate(iPhone);
-     *   await page.goto('https://www.google.com');
-     *   // other actions...
-     *   await browser.close();
-     * })();
-     * ```
-     *
-     */
-    get devices() {
-        return devicesMap;
-    }
-    /**
-     * @remarks
-     *
-     * Puppeteer methods might throw errors if they are unable to fulfill a request.
-     * For example, `page.waitForSelector(selector[, options])` might fail if
-     * the selector doesn't match any nodes during the given timeframe.
-     *
-     * For certain types of errors Puppeteer uses specific error classes.
-     * These classes are available via `puppeteer.errors`.
-     *
-     * @example
-     * An example of handling a timeout error:
-     * ```js
-     * try {
-     *   await page.waitForSelector('.foo');
-     * } catch (e) {
-     *   if (e instanceof puppeteer.errors.TimeoutError) {
-     *     // Do something if this is a timeout.
-     *   }
-     * }
-     * ```
-     */
-    get errors() {
-        return puppeteerErrors;
-    }
-    /**
-     *
-     * @param options - Set of configurable options to set on the browser.
-     * @returns The default flags that Chromium will be launched with.
-     */
-    defaultArgs(options = {}) {
-        return this._launcher.defaultArgs(options);
-    }
-    /**
-     * @param options - Set of configurable options to specify the settings
-     * of the BrowserFetcher.
-     * @returns A new BrowserFetcher instance.
-     */
-    createBrowserFetcher(options) {
-        return new BrowserFetcher(this._projectRoot, options);
-    }
-    /**
-     * @internal
-     */
-    // eslint-disable-next-line @typescript-eslint/camelcase
-    __experimental_registerCustomQueryHandler(name, queryHandler) {
-        registerCustomQueryHandler(name, queryHandler);
-    }
-    /**
-     * @internal
-     */
-    // eslint-disable-next-line @typescript-eslint/camelcase
-    __experimental_unregisterCustomQueryHandler(name) {
-        unregisterCustomQueryHandler(name);
-    }
-    /**
-     * @internal
-     */
-    // eslint-disable-next-line @typescript-eslint/camelcase
-    __experimental_customQueryHandlers() {
-        return customQueryHandlers();
-    }
-    /**
-     * @internal
-     */
-    // eslint-disable-next-line @typescript-eslint/camelcase
-    __experimental_clearQueryHandlers() {
-        clearQueryHandlers();
+        return _connectToCDPBrowser(options);
     }
 }
+//# sourceMappingURL=Puppeteer.js.map

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -52,6 +52,9 @@ class ProcessManagerObserver : public base::CheckedObserver {
 
   // Called when the observed ProcessManager is shutting down.
   virtual void OnProcessManagerShutdown(ProcessManager* manager) {}
+
+  // Called when the renderer process has gone.
+  virtual void OnExtensionProcessTerminated(const Extension* extension) {}
 };
 
 }  // namespace extensions

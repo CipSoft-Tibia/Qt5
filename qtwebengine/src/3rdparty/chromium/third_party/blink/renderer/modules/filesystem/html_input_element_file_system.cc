@@ -40,7 +40,7 @@
 #include "third_party/blink/renderer/modules/filesystem/file_entry.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/file_metadata.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -54,8 +54,12 @@ EntryHeapVector HTMLInputElementFileSystem::webkitEntries(
   if (!files)
     return entries;
 
+  auto* context = ExecutionContext::From(script_state);
+  if (!context)
+    return entries;
+
   DOMFileSystem* filesystem = DOMFileSystem::CreateIsolatedFileSystem(
-      ExecutionContext::From(script_state), input.DroppedFileSystemId());
+      context, input.DroppedFileSystemId());
   if (!filesystem) {
     // Drag-drop isolated filesystem is not available.
     return entries;
@@ -66,7 +70,7 @@ EntryHeapVector HTMLInputElementFileSystem::webkitEntries(
 
     // FIXME: This involves synchronous file operation.
     FileMetadata metadata;
-    if (!GetFileMetadata(file->GetPath(), metadata))
+    if (!GetFileMetadata(file->GetPath(), *context, metadata))
       continue;
 
     // The dropped entries are mapped as top-level entries in the isolated

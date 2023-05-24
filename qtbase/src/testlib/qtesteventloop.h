@@ -1,46 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTESTEVENTLOOP_H
 #define QTESTEVENTLOOP_H
 
 #include <QtTest/qttestglobal.h>
+#include <QtTest/qtestcase.h>
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qeventloop.h>
@@ -56,10 +21,13 @@ class Q_TESTLIB_EXPORT QTestEventLoop : public QObject
     Q_OBJECT
 
 public:
-    using QObject::QObject;
+    QTestEventLoop(QObject *parent = nullptr)
+        : QObject(parent), _timeout(false)
+    {}
 
-    inline void enterLoopMSecs(int ms);
-    inline void enterLoop(int secs) { enterLoopMSecs(secs * 1000); }
+    void enterLoopMSecs(int ms) { enterLoop(std::chrono::milliseconds{ms}); };
+    void enterLoop(int secs) { enterLoop(std::chrono::seconds{secs}); }
+    inline void enterLoop(std::chrono::milliseconds msecs);
 
     inline void changeInterval(int secs)
     { killTimer(timerId); timerId = startTimer(secs * 1000); }
@@ -69,7 +37,7 @@ public:
 
     inline static QTestEventLoop &instance()
     {
-        static QPointer<QTestEventLoop> testLoop;
+        Q_CONSTINIT static QPointer<QTestEventLoop> testLoop;
         if (testLoop.isNull())
             testLoop = new QTestEventLoop(QCoreApplication::instance());
         return *static_cast<QTestEventLoop *>(testLoop);
@@ -82,22 +50,24 @@ protected:
     inline void timerEvent(QTimerEvent *e) override;
 
 private:
-    Q_DECL_UNUSED_MEMBER bool inLoop; // ### Qt 6: remove
-    bool _timeout = false;
-    int timerId = -1;
-
     QEventLoop *loop = nullptr;
+    int timerId = -1;
+    uint _timeout   :1;
+    Q_DECL_UNUSED_MEMBER uint reserved   :31;
 };
 
-inline void QTestEventLoop::enterLoopMSecs(int ms)
+inline void QTestEventLoop::enterLoop(std::chrono::milliseconds msecs)
 {
     Q_ASSERT(!loop);
-
-    QEventLoop l;
-
     _timeout = false;
 
-    timerId = startTimer(ms);
+    if (QTest::runningTest() && QTest::currentTestResolved())
+        return;
+
+    using namespace std::chrono_literals;
+    QEventLoop l;
+    // if tests want to measure sub-second precision, use a precise timer
+    timerId = startTimer(msecs, msecs < 1s ? Qt::PreciseTimer : Qt::CoarseTimer);
 
     loop = &l;
     l.exec();

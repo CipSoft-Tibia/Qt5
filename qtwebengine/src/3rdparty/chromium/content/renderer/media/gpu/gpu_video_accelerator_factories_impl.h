@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,24 +11,24 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
-#include "base/memory/weak_ptr.h"
-#include "base/optional.h"
-#include "base/single_thread_task_runner.h"
-#include "base/synchronization/lock.h"
-#include "base/synchronization/waitable_event.h"
+#include "base/callback_list.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/unguessable_token.h"
+#include "build/build_config.h"
 #include "components/viz/common/gpu/context_lost_observer.h"
 #include "content/common/content_export.h"
-#include "media/mojo/mojom/interface_factory.mojom.h"
-#include "media/mojo/mojom/video_decoder.mojom.h"
-#include "media/mojo/mojom/video_encode_accelerator.mojom.h"
+#include "content/renderer/media/codec_factory.h"
+#include "media/mojo/buildflags.h"
 #include "media/video/gpu_video_accelerator_factories.h"
-#include "media/video/supported_video_decoder_config.h"
-#include "mojo/public/cpp/bindings/pending_remote.h"
-#include "mojo/public/cpp/bindings/remote.h"
-#include "ui/gfx/geometry/size.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+
+#if BUILDFLAG(IS_FUCHSIA)
+#include <fuchsia/mediacodec/cpp/fidl.h>
+#endif
+
+namespace base {
+class SequencedTaskRunner;
+}  // namespace base
 
 namespace gpu {
 class GpuChannelHost;
@@ -59,32 +59,41 @@ class CONTENT_EXPORT GpuVideoAcceleratorFactoriesImpl
   // use.  Safe to call from any thread.
   static std::unique_ptr<GpuVideoAcceleratorFactoriesImpl> Create(
       scoped_refptr<gpu::GpuChannelHost> gpu_channel_host,
-      const scoped_refptr<base::SingleThreadTaskRunner>&
-          main_thread_task_runner,
-      const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& main_thread_task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& task_runner,
       const scoped_refptr<viz::ContextProviderCommandBuffer>& context_provider,
+      std::unique_ptr<CodecFactory> codec_factory,
       bool enable_video_gpu_memory_buffers,
       bool enable_media_stream_gpu_memory_buffers,
-      bool enable_video_accelerator,
-      mojo::PendingRemote<media::mojom::InterfaceFactory>
-          interface_factory_remote,
-      mojo::PendingRemote<media::mojom::VideoEncodeAcceleratorProvider>
-          vea_provider_remote);
+      bool enable_video_decode_accelerator,
+      bool enable_video_encode_accelerator);
+  static std::unique_ptr<GpuVideoAcceleratorFactoriesImpl> CreateForTesting(
+      scoped_refptr<gpu::GpuChannelHost> gpu_channel_host,
+      const scoped_refptr<base::SequencedTaskRunner>& main_thread_task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& task_runner,
+      const scoped_refptr<viz::ContextProviderCommandBuffer>& context_provider,
+      std::unique_ptr<CodecFactory> codec_factory,
+      gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager,
+      bool enable_video_gpu_memory_buffers,
+      bool enable_media_stream_gpu_memory_buffers,
+      bool enable_video_decode_accelerator,
+      bool enable_video_encode_accelerator);
 
   // media::GpuVideoAcceleratorFactories implementation.
-  bool IsGpuVideoAcceleratorEnabled() override;
-  base::UnguessableToken GetChannelToken() override;
+  bool IsGpuVideoDecodeAcceleratorEnabled() override;
+  bool IsGpuVideoEncodeAcceleratorEnabled() override;
+  void GetChannelToken(
+      gpu::mojom::GpuChannel::GetChannelTokenCallback cb) override;
   int32_t GetCommandBufferRouteId() override;
   Supported IsDecoderConfigSupported(
-      media::VideoDecoderImplementation implementation,
       const media::VideoDecoderConfig& config) override;
+  media::VideoDecoderType GetDecoderType() override;
   bool IsDecoderSupportKnown() override;
   void NotifyDecoderSupportKnown(base::OnceClosure callback) override;
   std::unique_ptr<media::VideoDecoder> CreateVideoDecoder(
       media::MediaLog* media_log,
-      media::VideoDecoderImplementation implementation,
       media::RequestOverlayInfoCB request_overlay_info_cb) override;
-  base::Optional<media::VideoEncodeAccelerator::SupportedProfiles>
+  absl::optional<media::VideoEncodeAccelerator::SupportedProfiles>
   GetVideoEncodeAcceleratorSupportedProfiles() override;
   bool IsEncoderSupportKnown() override;
   void NotifyEncoderSupportKnown(base::OnceClosure callback) override;
@@ -116,71 +125,53 @@ class CONTENT_EXPORT GpuVideoAcceleratorFactoriesImpl
   // present otherwise.
   void DestroyContext();
   base::UnsafeSharedMemoryRegion CreateSharedMemoryRegion(size_t size) override;
-  scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunner() override;
+  scoped_refptr<base::SequencedTaskRunner> GetTaskRunner() override;
 
   viz::RasterContextProvider* GetMediaContextProvider() override;
 
+  const gpu::Capabilities* ContextCapabilities() override;
+
   void SetRenderingColorSpace(const gfx::ColorSpace& color_space) override;
+  const gfx::ColorSpace& GetRenderingColorSpace() const override;
 
   // Called on the main thread. Returns whether the media thread has seen the
   // ContextProvider become lost, in which case this class should be replaced
   // with a new ContextProvider.
   bool CheckContextProviderLostOnMainThread();
 
+  GpuVideoAcceleratorFactoriesImpl(const GpuVideoAcceleratorFactoriesImpl&) =
+      delete;
+  GpuVideoAcceleratorFactoriesImpl& operator=(
+      const GpuVideoAcceleratorFactoriesImpl&) = delete;
+
   ~GpuVideoAcceleratorFactoriesImpl() override;
 
  private:
-  class Notifier {
-   public:
-    Notifier();
-    ~Notifier();
-
-    void Register(base::OnceClosure callback);
-    void Notify();
-
-    bool is_notified() { return is_notified_; }
-
-   private:
-    bool is_notified_ = false;
-    std::vector<base::OnceClosure> callbacks_;
-  };
-
   GpuVideoAcceleratorFactoriesImpl(
       scoped_refptr<gpu::GpuChannelHost> gpu_channel_host,
-      const scoped_refptr<base::SingleThreadTaskRunner>&
-          main_thread_task_runner,
-      const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& main_thread_task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& task_runner,
       const scoped_refptr<viz::ContextProviderCommandBuffer>& context_provider,
+      std::unique_ptr<CodecFactory> codec_factory,
+      gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager,
       bool enable_gpu_memory_buffer_video_frames_for_video,
       bool enable_gpu_memory_buffer_video_frames_for_media_stream,
-      bool enable_video_accelerator,
-      mojo::PendingRemote<media::mojom::InterfaceFactory>
-          interface_factory_remote,
-      mojo::PendingRemote<media::mojom::VideoEncodeAcceleratorProvider>
-          vea_provider_remote);
+      bool enable_video_decode_accelerator,
+      bool enable_video_encode_accelerator);
 
-  void BindOnTaskRunner(
-      mojo::PendingRemote<media::mojom::InterfaceFactory>
-          interface_factory_remote,
-      mojo::PendingRemote<media::mojom::VideoEncodeAcceleratorProvider>
-          vea_provider_remote);
+  void BindOnTaskRunner();
 
   // viz::ContextLostObserver implementation.
   void OnContextLost() override;
   void SetContextProviderLostOnMainThread();
 
-  void OnSupportedDecoderConfigs(
-      const media::SupportedVideoDecoderConfigMap& supported_configs);
-  void OnDecoderSupportFailed();
+  void OnChannelTokenReady(const base::UnguessableToken& token);
 
-  void OnGetVideoEncodeAcceleratorSupportedProfiles(
-      const media::VideoEncodeAccelerator::SupportedProfiles&
-          supported_profiles);
-  void OnEncoderSupportFailed();
-
-  const scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner_;
-  const scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> main_thread_task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> task_runner_;
   const scoped_refptr<gpu::GpuChannelHost> gpu_channel_host_;
+
+  const std::unique_ptr<CodecFactory> codec_factory_;
 
   // Shared pointer to a shared context provider. It is initially set on main
   // thread, but all subsequent access and destruction should happen only on the
@@ -193,37 +184,19 @@ class CONTENT_EXPORT GpuVideoAcceleratorFactoriesImpl
   bool context_provider_lost_on_media_thread_ = false;
 
   base::UnguessableToken channel_token_;
+  base::OnceCallbackList<void(const base::UnguessableToken&)>
+      channel_token_callbacks_;
 
   // Whether gpu memory buffers should be used to hold video frames data.
   const bool enable_video_gpu_memory_buffers_;
   const bool enable_media_stream_gpu_memory_buffers_;
   // Whether video acceleration encoding/decoding should be enabled.
-  const bool video_accelerator_enabled_;
+  const bool video_decode_accelerator_enabled_;
+  const bool video_encode_accelerator_enabled_;
 
   gfx::ColorSpace rendering_color_space_;
 
   gpu::GpuMemoryBufferManager* const gpu_memory_buffer_manager_;
-
-  mojo::Remote<media::mojom::InterfaceFactory> interface_factory_;
-  mojo::Remote<media::mojom::VideoEncodeAcceleratorProvider> vea_provider_;
-
-  // SupportedDecoderConfigs state.
-  mojo::Remote<media::mojom::VideoDecoder> video_decoder_;
-
-  base::Lock supported_profiles_lock_;
-
-  // If the Optional is empty, then we have not yet gotten the configs.  If the
-  // Optional contains an empty vector, then we have gotten the result and there
-  // are no supported configs.
-  base::Optional<media::SupportedVideoDecoderConfigMap>
-      supported_decoder_configs_ GUARDED_BY(supported_profiles_lock_);
-  Notifier decoder_support_notifier_ GUARDED_BY(supported_profiles_lock_);
-
-  base::Optional<media::VideoEncodeAccelerator::SupportedProfiles>
-      supported_vea_profiles_ GUARDED_BY(supported_profiles_lock_);
-  Notifier encoder_support_notifier_ GUARDED_BY(supported_profiles_lock_);
-
-  DISALLOW_COPY_AND_ASSIGN(GpuVideoAcceleratorFactoriesImpl);
 };
 
 }  // namespace content

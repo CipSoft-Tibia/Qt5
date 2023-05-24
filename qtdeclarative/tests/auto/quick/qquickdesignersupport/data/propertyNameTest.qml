@@ -9,5 +9,5 @@ Rectangle {
     RecursiveProperty {
         objectName: "recursiveProperty"
 
-    }
+    } 
 }

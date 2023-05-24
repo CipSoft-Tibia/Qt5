@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -136,6 +136,17 @@ FPDF_EXPORT unsigned long FPDF_CALLCONV
 FPDFSignatureObj_GetTime(FPDF_SIGNATURE signature,
                          char* buffer,
                          unsigned long length);
+
+// Experimental API.
+// Function: FPDFSignatureObj_GetDocMDPPermission
+//          Get the DocMDP permission of a signature object.
+// Parameters:
+//          signature   -   Handle to the signature object. Returned by
+//                          FPDF_GetSignatureObject().
+// Return value:
+//          Returns the permission (1, 2 or 3) on success, 0 on error.
+FPDF_EXPORT unsigned int FPDF_CALLCONV
+FPDFSignatureObj_GetDocMDPPermission(FPDF_SIGNATURE signature);
 
 #ifdef __cplusplus
 }  // extern "C"

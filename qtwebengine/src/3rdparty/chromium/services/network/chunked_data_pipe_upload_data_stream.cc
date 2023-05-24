@@ -1,13 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/chunked_data_pipe_upload_data_stream.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/c/system/types.h"
 #include "net/base/io_buffer.h"
 
@@ -15,14 +16,19 @@ namespace network {
 
 ChunkedDataPipeUploadDataStream::ChunkedDataPipeUploadDataStream(
     scoped_refptr<ResourceRequestBody> resource_request_body,
-    mojo::PendingRemote<mojom::ChunkedDataPipeGetter> chunked_data_pipe_getter)
-    : net::UploadDataStream(true /* is_chunked */,
+    mojo::PendingRemote<mojom::ChunkedDataPipeGetter> chunked_data_pipe_getter,
+    bool has_null_source)
+    : net::UploadDataStream(/*is_chunked=*/true,
+                            /*has_null_source=*/has_null_source,
                             resource_request_body->identifier()),
       resource_request_body_(std::move(resource_request_body)),
       chunked_data_pipe_getter_(std::move(chunked_data_pipe_getter)),
       handle_watcher_(FROM_HERE,
                       mojo::SimpleWatcher::ArmingPolicy::MANUAL,
-                      base::SequencedTaskRunnerHandle::Get()) {
+                      base::SequencedTaskRunner::GetCurrentDefault()) {
+  // TODO(yhirano): Turn this to a DCHECK once we find the root cause of
+  // https://crbug.com/1156550.
+  CHECK(chunked_data_pipe_getter_.is_bound());
   chunked_data_pipe_getter_.set_disconnect_handler(
       base::BindOnce(&ChunkedDataPipeUploadDataStream::OnDataPipeGetterClosed,
                      base::Unretained(this)));
@@ -64,7 +70,7 @@ int ChunkedDataPipeUploadDataStream::InitInternal(
   mojo::ScopedDataPipeProducerHandle data_pipe_producer;
   mojo::ScopedDataPipeConsumerHandle data_pipe_consumer;
   MojoResult result =
-      mojo::CreateDataPipe(nullptr, &data_pipe_producer, &data_pipe_consumer);
+      mojo::CreateDataPipe(nullptr, data_pipe_producer, data_pipe_consumer);
   if (result != MOJO_RESULT_OK)
     return net::ERR_INSUFFICIENT_RESOURCES;
   chunked_data_pipe_getter_->StartReading(std::move(data_pipe_producer));
@@ -198,6 +204,7 @@ void ChunkedDataPipeUploadDataStream::OnSizeReceived(int32_t status,
     // Clear |buf_| as well, so it's only non-null while there's a pending read.
     buf_ = nullptr;
     buf_len_ = 0;
+    chunked_data_pipe_getter_.reset();
 
     OnReadCompleted(status_);
 
@@ -226,7 +233,7 @@ void ChunkedDataPipeUploadDataStream::OnDataPipeGetterClosed() {
   // If the size hasn't been received yet, treat this as receiving an error.
   // Otherwise, this will only be a problem if/when InitInternal() tries to
   // start reading again, so do nothing.
-  if (!size_)
+  if (status_ == net::OK && !size_)
     OnSizeReceived(net::ERR_FAILED, 0);
 }
 

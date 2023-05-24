@@ -1,68 +1,57 @@
 export const description = `
-indexed draws validation tests.
+Validation tests for indexed draws accessing the index buffer.
 `;
 
-import { params, poptions, pbool } from '../../../../../common/framework/params_builder.js';
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-
-import { ValidationTest } from './../../validation_test.js';
+import { ValidationTest } from '../../validation_test.js';
 
 class F extends ValidationTest {
-  createIndexBuffer(): GPUBuffer {
-    const indexArray = new Uint32Array([0, 1, 2, 3, 1, 2]);
-
-    const indexBuffer = this.device.createBuffer({
-      mappedAtCreation: true,
-      size: indexArray.byteLength,
-      usage: GPUBufferUsage.INDEX,
-    });
-    new Uint32Array(indexBuffer.getMappedRange()).set(indexArray);
-    indexBuffer.unmap();
-
-    return indexBuffer;
+  createIndexBuffer(indexData: Iterable<number>): GPUBuffer {
+    return this.makeBufferWithContents(new Uint32Array(indexData), GPUBufferUsage.INDEX);
   }
 
   createRenderPipeline(): GPURenderPipeline {
-    const vertexModule = this.makeShaderModule('vertex', {
-      glsl: `
-        #version 450
-        void main() {
-          gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
-        }
-      `,
-    });
-
-    const fragmentModule = this.makeShaderModule('fragment', {
-      glsl: `
-        #version 450
-        layout(location = 0) out vec4 fragColor;
-        void main() {
-            fragColor = vec4(0.0, 1.0, 0.0, 1.0);
-        }
-      `,
-    });
-
     return this.device.createRenderPipeline({
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [] }),
-      vertexStage: { module: vertexModule, entryPoint: 'main' },
-      fragmentStage: { module: fragmentModule, entryPoint: 'main' },
-      primitiveTopology: 'triangle-strip',
-      colorStates: [{ format: 'rgba8unorm' }],
+      layout: 'auto',
+      vertex: {
+        module: this.device.createShaderModule({
+          code: `
+            @vertex fn main() -> @builtin(position) vec4<f32> {
+              return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            }`,
+        }),
+        entryPoint: 'main',
+      },
+      fragment: {
+        module: this.device.createShaderModule({
+          code: `
+            @fragment fn main() -> @location(0) vec4<f32> {
+              return vec4<f32>(0.0, 1.0, 0.0, 1.0);
+            }`,
+        }),
+        entryPoint: 'main',
+        targets: [{ format: 'rgba8unorm' }],
+      },
+      primitive: {
+        topology: 'triangle-strip',
+        stripIndexFormat: 'uint32',
+      },
     });
   }
 
   beginRenderPass(encoder: GPUCommandEncoder) {
     const colorAttachment = this.device.createTexture({
       format: 'rgba8unorm',
-      size: { width: 1, height: 1, depth: 1 },
-      usage: GPUTextureUsage.OUTPUT_ATTACHMENT,
+      size: { width: 1, height: 1, depthOrArrayLayers: 1 },
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
     return encoder.beginRenderPass({
       colorAttachments: [
         {
-          attachment: colorAttachment.createView(),
-          loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+          view: colorAttachment.createView(),
+          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+          loadOp: 'clear',
           storeOp: 'store',
         },
       ],
@@ -70,71 +59,104 @@ class F extends ValidationTest {
   }
 
   drawIndexed(
+    indexBuffer: GPUBuffer,
     indexCount: number,
     instanceCount: number,
     firstIndex: number,
     baseVertex: number,
-    firstInstance: number
+    firstInstance: number,
+    isSuccess: boolean
   ) {
-    const indexBuffer = this.createIndexBuffer();
-
     const pipeline = this.createRenderPipeline();
 
     const encoder = this.device.createCommandEncoder();
     const pass = this.beginRenderPass(encoder);
     pass.setPipeline(pipeline);
-    pass.setIndexBuffer(indexBuffer);
+    pass.setIndexBuffer(indexBuffer, 'uint32');
     pass.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
-    pass.endPass();
+    pass.end();
 
-    this.device.defaultQueue.submit([encoder.finish()]);
-  }
-
-  drawIndexedIndirect(bufferArray: Uint32Array, indirectOffset: number) {
-    const indirectBuffer = this.device.createBuffer({
-      mappedAtCreation: true,
-      size: bufferArray.byteLength,
-      usage: GPUBufferUsage.INDIRECT,
-    });
-    new Uint32Array(indirectBuffer.getMappedRange()).set(bufferArray);
-    indirectBuffer.unmap();
-
-    const indexBuffer = this.createIndexBuffer();
-
-    const pipeline = this.createRenderPipeline();
-
-    const encoder = this.device.createCommandEncoder();
-    const pass = this.beginRenderPass(encoder);
-    pass.setPipeline(pipeline);
-    pass.setIndexBuffer(indexBuffer, 0);
-    pass.drawIndexedIndirect(indirectBuffer, indirectOffset);
-    pass.endPass();
-
-    this.device.defaultQueue.submit([encoder.finish()]);
+    if (isSuccess) {
+      this.device.queue.submit([encoder.finish()]);
+    } else {
+      this.expectValidationError(() => {
+        encoder.finish();
+      });
+    }
   }
 }
 
 export const g = makeTestGroup(F);
 
 g.test('out_of_bounds')
+  .desc(
+    `Test drawing with out of bound index access to make sure encoder validation catch the
+    following indexCount and firstIndex OOB conditions
+    - either is within bound but indexCount + firstIndex is out of bound
+    - only firstIndex is out of bound
+    - only indexCount is out of bound
+    - firstIndex much larger than indexCount
+    - indexCount much larger than firstIndex
+    - max uint32 value for both to make sure the sum doesn't overflow
+    - max uint32 indexCount and small firstIndex
+    - max uint32 firstIndex and small indexCount
+    Together with normal and large instanceCount`
+  )
   .params(
-    params()
-      .combine(pbool('indirect')) // indirect drawIndexed
-      .combine([
-        { indexCount: 6, firstIndex: 1 }, // indexCount + firstIndex out of bound
-        { indexCount: 6, firstIndex: 6 }, // only firstIndex out of bound
-        { indexCount: 6, firstIndex: 10000 }, // firstIndex much larger than the bound
-        { indexCount: 7, firstIndex: 0 }, // only indexCount out of bound
-        { indexCount: 10000, firstIndex: 0 }, // indexCount much larger than the bound
-      ] as const)
-      .combine(poptions('instanceCount', [1, 10000])) // normal and large instanceCount
+    u =>
+      u
+        .combineWithParams([
+          { indexCount: 6, firstIndex: 0 }, // draw all 6 out of 6 index
+          { indexCount: 5, firstIndex: 1 }, // draw the last 5 out of 6 index
+          { indexCount: 1, firstIndex: 5 }, // draw the last 1 out of 6 index
+          { indexCount: 0, firstIndex: 6 }, // firstIndex point to the one after last, but (indexCount + firstIndex) * stride <= bufferSize, valid
+          { indexCount: 0, firstIndex: 7 }, // (indexCount + firstIndex) * stride > bufferSize, invalid
+          { indexCount: 7, firstIndex: 0 }, // only indexCount out of bound
+          { indexCount: 6, firstIndex: 1 }, // indexCount + firstIndex out of bound
+          { indexCount: 1, firstIndex: 6 }, // indexCount valid, but (indexCount + firstIndex) out of bound
+          { indexCount: 6, firstIndex: 10000 }, // firstIndex much larger than the bound
+          { indexCount: 10000, firstIndex: 0 }, // indexCount much larger than the bound
+          { indexCount: 0xffffffff, firstIndex: 0xffffffff }, // max uint32 value
+          { indexCount: 0xffffffff, firstIndex: 2 }, // max uint32 indexCount and small firstIndex
+          { indexCount: 2, firstIndex: 0xffffffff }, // small indexCount and max uint32 firstIndex
+        ] as const)
+        .combine('instanceCount', [1, 10000]) // normal and large instanceCount
   )
   .fn(t => {
-    const { indirect, indexCount, firstIndex, instanceCount } = t.params;
+    const { indexCount, firstIndex, instanceCount } = t.params;
 
-    if (indirect) {
-      t.drawIndexedIndirect(new Uint32Array([indexCount, instanceCount, firstIndex, 0, 0]), 0);
-    } else {
-      t.drawIndexed(indexCount, instanceCount, firstIndex, 0, 0);
-    }
+    const indexBuffer = t.createIndexBuffer([0, 1, 2, 3, 1, 2]);
+    const isSuccess: boolean = indexCount + firstIndex <= 6;
+
+    t.drawIndexed(indexBuffer, indexCount, instanceCount, firstIndex, 0, 0, isSuccess);
+  });
+
+g.test('out_of_bounds_zero_sized_index_buffer')
+  .desc(
+    `Test drawing with an empty index buffer to make sure the encoder validation catch the
+    following indexCount and firstIndex conditions
+    - indexCount + firstIndex is out of bound
+    - indexCount is 0 but firstIndex is out of bound
+    - only indexCount is out of bound
+    - both are 0s (not out of bound) but index buffer size is 0
+    Together with normal and large instanceCount`
+  )
+  .params(
+    u =>
+      u
+        .combineWithParams([
+          { indexCount: 3, firstIndex: 1 }, // indexCount + firstIndex out of bound
+          { indexCount: 0, firstIndex: 1 }, // indexCount is 0 but firstIndex out of bound
+          { indexCount: 3, firstIndex: 0 }, // only indexCount out of bound
+          { indexCount: 0, firstIndex: 0 }, // just zeros, valid
+        ] as const)
+        .combine('instanceCount', [1, 10000]) // normal and large instanceCount
+  )
+  .fn(t => {
+    const { indexCount, firstIndex, instanceCount } = t.params;
+
+    const indexBuffer = t.createIndexBuffer([]);
+    const isSuccess: boolean = indexCount + firstIndex <= 0;
+
+    t.drawIndexed(indexBuffer, indexCount, instanceCount, firstIndex, 0, 0, isSuccess);
   });

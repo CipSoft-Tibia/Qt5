@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGADAPTATIONLAYER_P_H
 #define QSGADAPTATIONLAYER_P_H
@@ -53,6 +17,7 @@
 
 #include <QtQuick/qsgnode.h>
 #include <QtQuick/qsgtexture.h>
+#include <QtQuick/qquickpainteditem.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qrect.h>
 #include <QtGui/qbrush.h>
@@ -66,7 +31,7 @@
 #include <QtGui/private/qdatabuffer_p.h>
 #include <private/qdistancefield_p.h>
 #include <private/qintrusivelist_p.h>
-#include <QtGui/private/qshader_p.h>
+#include <rhi/qshader.h>
 
 // ### remove
 #include <QtQuick/private/qquicktext_p.h>
@@ -90,7 +55,7 @@ class QRhiTexture;
 class Q_QUICK_PRIVATE_EXPORT QSGNodeVisitorEx
 {
 public:
-    virtual ~QSGNodeVisitorEx() {}
+    virtual ~QSGNodeVisitorEx();
 
     // visit(...) returns true if the children are supposed to be
     // visisted and false if they're supposed to be skipped by the visitor.
@@ -128,6 +93,7 @@ class Q_QUICK_PRIVATE_EXPORT QSGVisitableNode : public QSGGeometryNode
 {
 public:
     QSGVisitableNode() { setFlag(IsVisitableNode); }
+    ~QSGVisitableNode() override;
 
     virtual void accept(QSGNodeVisitorEx *) = 0;
 };
@@ -135,6 +101,8 @@ public:
 class Q_QUICK_PRIVATE_EXPORT QSGInternalRectangleNode : public QSGVisitableNode
 {
 public:
+    ~QSGInternalRectangleNode() override;
+
     virtual void setRect(const QRectF &rect) = 0;
     virtual void setColor(const QColor &color) = 0;
     virtual void setPenColor(const QColor &color) = 0;
@@ -142,7 +110,7 @@ public:
     virtual void setGradientStops(const QGradientStops &stops) = 0;
     virtual void setGradientVertical(bool vertical) = 0;
     virtual void setRadius(qreal radius) = 0;
-    virtual void setAntialiasing(bool antialiasing) { Q_UNUSED(antialiasing) }
+    virtual void setAntialiasing(bool antialiasing) { Q_UNUSED(antialiasing); }
     virtual void setAligned(bool aligned) = 0;
 
     virtual void update() = 0;
@@ -154,6 +122,8 @@ public:
 class Q_QUICK_PRIVATE_EXPORT QSGInternalImageNode : public QSGVisitableNode
 {
 public:
+    ~QSGInternalImageNode() override;
+
     virtual void setTargetRect(const QRectF &rect) = 0;
     virtual void setInnerTargetRect(const QRectF &rect) = 0;
     virtual void setInnerSourceRect(const QRectF &rect) = 0;
@@ -162,8 +132,8 @@ public:
     // in the inner source rect maps to the upper-left corner of the inner target rect.
     virtual void setSubSourceRect(const QRectF &rect) = 0;
     virtual void setTexture(QSGTexture *texture) = 0;
-    virtual void setAntialiasing(bool antialiasing) { Q_UNUSED(antialiasing) }
-    virtual void setMirror(bool mirror) = 0;
+    virtual void setAntialiasing(bool antialiasing) { Q_UNUSED(antialiasing); }
+    virtual void setMirror(bool horizontally, bool vertically) = 0;
     virtual void setMipmapFiltering(QSGTexture::Filtering filtering) = 0;
     virtual void setFiltering(QSGTexture::Filtering filtering) = 0;
     virtual void setHorizontalWrapMode(QSGTexture::WrapMode wrapMode) = 0;
@@ -177,6 +147,7 @@ public:
 class Q_QUICK_PRIVATE_EXPORT QSGPainterNode : public QSGVisitableNode
 {
 public:
+    ~QSGPainterNode() override;
 
     virtual void setPreferredRenderTarget(QQuickPaintedItem::RenderTarget target) = 0;
     virtual void setSize(const QSize &size) = 0;
@@ -201,14 +172,21 @@ class Q_QUICK_EXPORT QSGLayer : public QSGDynamicTexture
 {
     Q_OBJECT
 public:
+    ~QSGLayer() override;
+
+    enum Format {
+        RGBA8 = 1,
+        RGBA16F,
+        RGBA32F
+    };
     virtual void setItem(QSGNode *item) = 0;
-    virtual void setRect(const QRectF &rect) = 0;
-    virtual void setSize(const QSize &size) = 0;
+    virtual void setRect(const QRectF &logicalRect) = 0;
+    virtual void setSize(const QSize &pixelSize) = 0;
     virtual void scheduleUpdate() = 0;
     virtual QImage toImage() const = 0;
     virtual void setLive(bool live) = 0;
     virtual void setRecursive(bool recursive) = 0;
-    virtual void setFormat(uint format) = 0;
+    virtual void setFormat(Format format) = 0;
     virtual void setHasMipmaps(bool mipmap) = 0;
     virtual void setDevicePixelRatio(qreal ratio) = 0;
     virtual void setMirrorHorizontal(bool mirror) = 0;
@@ -230,6 +208,8 @@ protected:
 class Q_QUICK_PRIVATE_EXPORT QSGSpriteNode : public QSGVisitableNode
 {
 public:
+    ~QSGSpriteNode() override;
+
     virtual void setTexture(QSGTexture *texture) = 0;
     virtual void setTime(float time) = 0;
     virtual void setSourceA(const QPoint &source) = 0;
@@ -251,6 +231,8 @@ class Q_QUICK_PRIVATE_EXPORT QSGGuiThreadShaderEffectManager : public QObject
     Q_OBJECT
 
 public:
+    ~QSGGuiThreadShaderEffectManager() override;
+
     enum Status {
         Compiled,
         Uncompiled,
@@ -274,7 +256,6 @@ public:
             Texture // for APIs with separate texture and sampler objects
         };
         struct Variable {
-            Variable() {}
             VariableType type = Constant;
             QByteArray name;
             uint offset = 0; // for cbuffer members
@@ -283,7 +264,6 @@ public:
         };
 
         QString name; // optional, f.ex. the filename, used for debugging purposes only
-        QByteArray blob; // source or bytecode (when not using QRhi)
         QShader rhiShader;
         Type type;
         QVector<Variable> variables;
@@ -295,11 +275,10 @@ public:
         // QSGGeometry::defaultAttributes_TexturedPoint2D()).
     };
 
-    virtual void prepareShaderCode(ShaderInfo::Type typeHint, const QByteArray &src, ShaderInfo *result) = 0;
+    virtual void prepareShaderCode(ShaderInfo::Type typeHint, const QUrl &src, ShaderInfo *result) = 0;
 
 Q_SIGNALS:
-    void shaderCodePrepared(bool ok, ShaderInfo::Type typeHint, const QByteArray &src, ShaderInfo *result);
-    void textureChanged();
+    void shaderCodePrepared(bool ok, ShaderInfo::Type typeHint, const QUrl &src, ShaderInfo *result);
     void logAndStatusChanged();
 };
 
@@ -307,9 +286,13 @@ Q_SIGNALS:
 Q_QUICK_PRIVATE_EXPORT QDebug operator<<(QDebug debug, const QSGGuiThreadShaderEffectManager::ShaderInfo::Variable &v);
 #endif
 
-class Q_QUICK_PRIVATE_EXPORT QSGShaderEffectNode : public QSGVisitableNode
+class Q_QUICK_PRIVATE_EXPORT QSGShaderEffectNode : public QObject, public QSGVisitableNode
 {
+    Q_OBJECT
+
 public:
+    ~QSGShaderEffectNode() override;
+
     enum DirtyShaderFlag {
         DirtyShaders = 0x01,
         DirtyShaderConstant = 0x02,
@@ -332,6 +315,7 @@ public:
 
         QVariant value;
         SpecialType specialType;
+        int propertyIndex = -1;
     };
 
     struct ShaderData {
@@ -352,15 +336,18 @@ public:
         };
         ShaderSyncData vertex;
         ShaderSyncData fragment;
+        void *materialTypeCacheKey;
     };
 
     // Each ShaderEffect item has one node (render thread) and one manager (gui thread).
-    QSGShaderEffectNode(QSGGuiThreadShaderEffectManager *) { }
 
     virtual QRectF updateNormalizedTextureSubRect(bool supportsAtlasTextures) = 0;
     virtual void syncMaterial(SyncData *syncData) = 0;
 
     void accept(QSGNodeVisitorEx *visitor) override { if (visitor->visit(this)) visitor->visitChildren(this); visitor->endVisit(this); }
+
+Q_SIGNALS:
+    void textureChanged();
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QSGShaderEffectNode::DirtyShaderFlags)
@@ -381,6 +368,7 @@ public:
     };
 
     QSGGlyphNode() {}
+    ~QSGGlyphNode() override;
 
     virtual void setGlyphs(const QPointF &position, const QGlyphRun &glyphs) = 0;
     virtual void setColor(const QColor &color) = 0;
@@ -392,6 +380,7 @@ public:
     virtual void setBoundingRect(const QRectF &bounds) { m_bounding_rect = bounds; }
 
     virtual void setPreferredAntialiasingMode(AntialiasingMode) = 0;
+    virtual void setRenderTypeQuality(int renderTypeQuality) { Q_UNUSED(renderTypeQuality) }
 
     virtual void update() = 0;
 
@@ -407,7 +396,7 @@ protected:
 class Q_QUICK_PRIVATE_EXPORT QSGDistanceFieldGlyphConsumer
 {
 public:
-    virtual ~QSGDistanceFieldGlyphConsumer() {}
+    virtual ~QSGDistanceFieldGlyphConsumer();
 
     virtual void invalidateGlyphs(const QVector<quint32> &glyphs) = 0;
     QIntrusiveListNode node;
@@ -417,7 +406,8 @@ typedef QIntrusiveList<QSGDistanceFieldGlyphConsumer, &QSGDistanceFieldGlyphCons
 class Q_QUICK_PRIVATE_EXPORT QSGDistanceFieldGlyphCache
 {
 public:
-    QSGDistanceFieldGlyphCache(const QRawFont &font);
+    QSGDistanceFieldGlyphCache(const QRawFont &font,
+                               int renderTypeQuality);
     virtual ~QSGDistanceFieldGlyphCache();
 
     struct Metrics {
@@ -444,18 +434,11 @@ public:
     };
 
     struct Texture {
-        uint textureId = 0;
         QRhiTexture *texture = nullptr;
         QSize size;
-        bool rhiBased = false;
 
         bool operator == (const Texture &other) const {
-            if (rhiBased != other.rhiBased)
-                return false;
-            if (rhiBased)
-                return texture == other.texture;
-            else
-                return textureId == other.textureId;
+            return texture == other.texture;
         }
     };
 
@@ -463,7 +446,7 @@ public:
 
     qreal fontScale(qreal pixelSize) const
     {
-        return pixelSize / QT_DISTANCEFIELD_BASEFONTSIZE(m_doubleGlyphResolution);
+        return pixelSize / baseFontSize();
     }
     qreal distanceFieldRadius() const
     {
@@ -471,6 +454,7 @@ public:
     }
     int glyphCount() const { return m_glyphCount; }
     bool doubleGlyphResolution() const { return m_doubleGlyphResolution; }
+    int renderTypeQuality() const { return m_renderTypeQuality; }
 
     Metrics glyphMetrics(glyph_t glyph, qreal pixelSize);
     inline TexCoord glyphTexCoord(glyph_t glyph);
@@ -489,6 +473,8 @@ public:
     virtual void processPendingGlyphs();
 
     virtual bool eightBitFormatIsAlphaSwizzled() const = 0;
+    virtual bool screenSpaceDerivativesSupported() const = 0;
+    virtual bool isActive() const;
 
 protected:
     struct GlyphPosition {
@@ -516,20 +502,21 @@ protected:
     void markGlyphsToRender(const QVector<glyph_t> &glyphs);
     inline void removeGlyph(glyph_t glyph);
 
-    void updateTexture(uint oldTex, uint newTex, const QSize &newTexSize);
     void updateRhiTexture(QRhiTexture *oldTex, QRhiTexture *newTex, const QSize &newTexSize);
 
     inline bool containsGlyph(glyph_t glyph);
-    uint textureIdForGlyph(glyph_t glyph) const;
 
     GlyphData &glyphData(glyph_t glyph);
     GlyphData &emptyData(glyph_t glyph);
 
+    int baseFontSize() const;
+
 #if defined(QSG_DISTANCEFIELD_CACHE_DEBUG)
-    void saveTexture(GLuint textureId, int width, int height) const;
+    virtual void saveTexture(QRhiTexture *texture, const QString &nameBase) const = 0;
 #endif
 
     bool m_doubleGlyphResolution;
+    int m_renderTypeQuality;
 
 protected:
     QRawFont m_referenceFont;

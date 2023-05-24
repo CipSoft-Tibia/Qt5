@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,12 +42,6 @@ std::ostream& operator<<(std::ostream& os, const ContentSuggestion::ID& id) {
 // static
 GURL ContentSuggestion::GetFaviconDomain(const GURL& favicon_url) {
   return favicon_url.GetWithEmptyPath();
-}
-
-void ContentSuggestion::set_reading_list_suggestion_extra(
-    std::unique_ptr<ReadingListSuggestionExtra> reading_list_suggestion_extra) {
-  DCHECK(id_.category().IsKnownCategory(KnownCategories::READING_LIST));
-  reading_list_suggestion_extra_ = std::move(reading_list_suggestion_extra);
 }
 
 void ContentSuggestion::set_notification_extra(

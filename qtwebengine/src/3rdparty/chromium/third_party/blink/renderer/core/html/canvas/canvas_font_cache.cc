@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,13 @@
 
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
+#include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/fonts/font_cache.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/memory_pressure_listener.h"
 
 namespace {
@@ -30,13 +31,18 @@ namespace blink {
 CanvasFontCache::CanvasFontCache(Document& document)
     : document_(&document), pruning_scheduled_(false) {
   FontFamily font_family;
-  font_family.SetFamily(defaultFontFamily);
+  font_family.SetFamily(defaultFontFamily,
+                        FontFamily::InferredTypeFor(defaultFontFamily));
   FontDescription default_font_description;
   default_font_description.SetFamily(font_family);
   default_font_description.SetSpecifiedSize(defaultFontSize);
   default_font_description.SetComputedSize(defaultFontSize);
-  default_font_style_ = ComputedStyle::Create();
-  default_font_style_->SetFontDescription(default_font_description);
+  ComputedStyleBuilder builder =
+      document.IsActive()
+          ? document.GetStyleResolver().CreateComputedStyleBuilder()
+          : ComputedStyleBuilder(*ComputedStyle::CreateInitialStyleSingleton());
+  builder.SetFontDescription(default_font_description);
+  default_font_style_ = builder.TakeStyle();
 }
 
 CanvasFontCache::~CanvasFontCache() {
@@ -72,12 +78,9 @@ bool CanvasFontCache::GetFontUsingDefaultStyle(HTMLCanvasElement& element,
   if (!parsed_style)
     return false;
 
-  scoped_refptr<ComputedStyle> font_style =
-      ComputedStyle::Clone(*default_font_style_.get());
-  document_->GetStyleEngine().ComputeFont(element, font_style.get(),
-                                          *parsed_style);
-  fonts_resolved_using_default_style_.insert(font_string,
-                                             font_style->GetFont());
+  fonts_resolved_using_default_style_.insert(
+      font_string, document_->GetStyleEngine().ComputeFont(
+                       element, *default_font_style_, *parsed_style));
   resolved_font = fonts_resolved_using_default_style_.find(font_string)->value;
   return true;
 }
@@ -91,8 +94,8 @@ MutableCSSPropertyValueSet* CanvasFontCache::ParseFont(
     DCHECK(!add_result.is_new_entry);
     parsed_style = i->value;
   } else {
-    parsed_style = CSSParser::ParseFont(
-        font_string, document_->GetExecutionContext()->GetSecureContextMode());
+    parsed_style =
+        CSSParser::ParseFont(font_string, document_->GetExecutionContext());
     if (!parsed_style)
       return nullptr;
     fetched_fonts_.insert(font_string, parsed_style);

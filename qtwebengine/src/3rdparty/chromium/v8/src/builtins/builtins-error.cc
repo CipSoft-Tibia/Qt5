@@ -18,9 +18,10 @@ namespace internal {
 // ES6 section 19.5.1.1 Error ( message )
 BUILTIN(ErrorConstructor) {
   HandleScope scope(isolate);
+  Handle<Object> options = args.atOrUndefined(isolate, 2);
   RETURN_RESULT_OR_FAILURE(
       isolate, ErrorUtils::Construct(isolate, args.target(), args.new_target(),
-                                     args.atOrUndefined(isolate, 1)));
+                                     args.atOrUndefined(isolate, 1), options));
 }
 
 // static
@@ -34,6 +35,9 @@ BUILTIN(ErrorCaptureStackTrace) {
     THROW_NEW_ERROR_RETURN_FAILURE(
         isolate, NewTypeError(MessageTemplate::kInvalidArgument, object_obj));
   }
+  if (object_obj->IsJSGlobalProxy()) {
+    return ReadOnlyRoots(isolate).undefined_value();
+  }
 
   Handle<JSObject> object = Handle<JSObject>::cast(object_obj);
   Handle<Object> caller = args.atOrUndefined(isolate, 2);
@@ -41,10 +45,8 @@ BUILTIN(ErrorCaptureStackTrace) {
 
   // Collect the stack trace.
 
-  RETURN_FAILURE_ON_EXCEPTION(isolate,
-                              isolate->CaptureAndSetDetailedStackTrace(object));
   RETURN_FAILURE_ON_EXCEPTION(
-      isolate, isolate->CaptureAndSetSimpleStackTrace(object, mode, caller));
+      isolate, isolate->CaptureAndSetErrorStack(object, mode, caller));
 
   // Add the stack accessors.
 
@@ -53,7 +55,7 @@ BUILTIN(ErrorCaptureStackTrace) {
 
   // Explicitly check for frozen objects. Other access checks are performed by
   // the LookupIterator in SetAccessor below.
-  if (!JSObject::IsExtensible(object)) {
+  if (!JSObject::IsExtensible(isolate, object)) {
     return isolate->Throw(*isolate->factory()->NewTypeError(
         MessageTemplate::kDefineDisallowed, name));
   }

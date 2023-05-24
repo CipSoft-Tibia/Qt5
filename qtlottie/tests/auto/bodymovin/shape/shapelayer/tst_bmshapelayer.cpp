@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the lottie-qt module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
@@ -157,7 +131,7 @@ void tst_BMShapeLayer::loadTestData(const QByteArray &filename)
         m_layer = nullptr;
     }
 
-    QFile sourceFile(QFINDTESTDATA(filename.constData()));
+    QFile sourceFile(QFINDTESTDATA(QLatin1String("data/") + filename));
     if (!sourceFile.exists())
         QFAIL("File does not exist");
     if (!sourceFile.open(QIODevice::ReadOnly))
@@ -172,6 +146,12 @@ void tst_BMShapeLayer::loadTestData(const QByteArray &filename)
     if (rootObj.empty())
         QFAIL("Cannot parse test file");
 
+    QStringList vs = rootObj.value(QLatin1String("v")).toString().split(u'.');
+    QList<int> vi;
+    foreach (QString v, vs)
+        vi.append(v.toInt());
+    QVersionNumber version = QVersionNumber(vi);
+
     m_width = rootObj.value(QLatin1String("w")).toVariant().toReal();
     m_height = rootObj.value(QLatin1String("h")).toVariant().toReal();
 
@@ -180,7 +160,7 @@ void tst_BMShapeLayer::loadTestData(const QByteArray &filename)
     int type = layerObj.value(QLatin1String("ty")).toInt();
     if (type != 4)
         QFAIL("It's not shape layer");
-    m_layer = new BMShapeLayer(layerObj);
+    m_layer = new BMShapeLayer(layerObj, version);
     QVERIFY(m_layer != nullptr);
 
     if (layers.size() > 1) {
@@ -188,7 +168,7 @@ void tst_BMShapeLayer::loadTestData(const QByteArray &filename)
         type = layerObj.value(QLatin1String("ty")).toInt();
         if (type != 4)
             QFAIL("it's not shape layer");
-        m_clippedlayer = new BMShapeLayer(layerObj);
+        m_clippedlayer = new BMShapeLayer(layerObj, version);
         QVERIFY(m_clippedlayer != nullptr);
     }
 }

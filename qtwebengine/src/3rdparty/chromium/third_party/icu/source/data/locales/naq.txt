@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 naq{
     AuxExemplarCharacters{"[j l v]"}
     ExemplarCharacters{"[a â b c d e f g h i î k m n o ô p q r s t u û w x y z ǀ ǁ ǂ ǃ]"}
@@ -11,14 +12,13 @@ naq{
             }
         }
     }
-    Version{"37"}
     calendar{
         generic{
             DateTimePatterns{
-                "h:mm:ss a zzzz",
-                "h:mm:ss a z",
-                "h:mm:ss a",
-                "h:mm a",
+                "h:mm:ss a zzzz",
+                "h:mm:ss a z",
+                "h:mm:ss a",
+                "h:mm a",
                 "EEEE, d MMMM y G",
                 "d MMMM y G",
                 "d MMM y G",
@@ -28,6 +28,16 @@ naq{
                 "{1} {0}",
                 "{1} {0}",
                 "{1} {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "GyMMMMEEEEd",
+                "GyMMMMd",
+                "GyMMMd",
+                "GGGGGyMMdd",
             }
             availableFormats{
                 Hm{"HH:mm"}
@@ -41,7 +51,7 @@ naq{
                 MMMd{"MMM d"}
                 Md{"M/d"}
                 d{"d"}
-                hm{"h:mm a"}
+                hm{"h:mm a"}
                 ms{"mm:ss"}
                 y{"y"}
                 yM{"M/y"}
@@ -63,10 +73,10 @@ naq{
                 "ǃuias",
             }
             DateTimePatterns{
-                "h:mm:ss a zzzz",
-                "h:mm:ss a z",
-                "h:mm:ss a",
-                "h:mm a",
+                "h:mm:ss a zzzz",
+                "h:mm:ss a z",
+                "h:mm:ss a",
+                "h:mm a",
                 "EEEE, d MMMM y",
                 "d MMMM y",
                 "d MMM y",
@@ -76,6 +86,16 @@ naq{
                 "{1} {0}",
                 "{1} {0}",
                 "{1} {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "yMMMMEEEEd",
+                "yMMMMd",
+                "yMMMd",
+                "yMMdd",
             }
             availableFormats{
                 Hm{"HH:mm"}
@@ -89,7 +109,7 @@ naq{
                 MMMd{"MMM d"}
                 Md{"M/d"}
                 d{"d"}
-                hm{"h:mm a"}
+                hm{"h:mm a"}
                 ms{"mm:ss"}
                 y{"y"}
                 yM{"M/y"}

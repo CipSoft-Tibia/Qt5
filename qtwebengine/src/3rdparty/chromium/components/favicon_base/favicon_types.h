@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,7 +32,7 @@ using FaviconID = int64_t;
 // data is returned.
 //
 // A Java counterpart will be generated for this enum.
-// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.chrome.browser.ui.favicon
+// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.favicon
 enum class IconType {
   kInvalid = 0,
   kFavicon,

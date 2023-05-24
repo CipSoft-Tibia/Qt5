@@ -1,49 +1,31 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QtTest/QtTest>
 #include <qsignalspy.h>
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQuick/qquickview.h>
 #include <QtQuick/private/qquickdraghandler_p.h>
-#include "../../shared/util.h"
-#include "../shared/viewtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/viewtestutils_p.h>
 
 class tst_qquickboundaryrule : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qquickboundaryrule() {}
+    tst_qquickboundaryrule() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
-    void init() { qApp->processEvents(); }  //work around animation timer bug (QTBUG-22865)
+    void init() override;
     void dragHandler();
 };
+
+void tst_qquickboundaryrule::init()
+{
+    QQmlDataTest::init();
+    //work around animation timer bug (QTBUG-22865)
+    qApp->processEvents();
+}
 
 void tst_qquickboundaryrule::dragHandler()
 {
@@ -59,6 +41,7 @@ void tst_qquickboundaryrule::dragHandler()
     QObject *boundaryRule = target->findChild<QObject *>(QLatin1String("boundaryRule"));
     QVERIFY(boundaryRule);
     QSignalSpy overshootChangedSpy(boundaryRule, SIGNAL(currentOvershootChanged()));
+    QSignalSpy returnedSpy(boundaryRule, SIGNAL(returnedToBounds()));
 
     QPoint p1(10, 10);
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, p1);
@@ -72,25 +55,26 @@ void tst_qquickboundaryrule::dragHandler()
     QVERIFY(ok);
     QCOMPARE(boundaryRule->property("peakOvershoot").toReal(&ok), 0);
     QVERIFY(ok);
-    QCOMPARE(overshootChangedSpy.count(), 0);
+    QCOMPARE(overshootChangedSpy.size(), 0);
     // restricted drag: halfway into overshoot
     p1 += QPoint(20, 0);
     QTest::mouseMove(&window, p1);
     QCOMPARE(target->position().x(), 117.5);
     QCOMPARE(boundaryRule->property("currentOvershoot").toReal(), 20);
     QCOMPARE(boundaryRule->property("peakOvershoot").toReal(), 20);
-    QCOMPARE(overshootChangedSpy.count(), 1);
+    QCOMPARE(overshootChangedSpy.size(), 1);
     // restricted drag: maximum overshoot
     p1 += QPoint(80, 0);
     QTest::mouseMove(&window, p1);
     QCOMPARE(target->position().x(), 140);
     QCOMPARE(boundaryRule->property("currentOvershoot").toReal(), 100);
     QCOMPARE(boundaryRule->property("peakOvershoot").toReal(), 100);
-    QCOMPARE(overshootChangedSpy.count(), 2);
+    QCOMPARE(overshootChangedSpy.size(), 2);
     // release and let it return to bounds
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, p1);
     QTRY_COMPARE(dragHandler->active(), false);
-    QTRY_COMPARE(overshootChangedSpy.count(), 3);
+    QTRY_COMPARE(returnedSpy.size(), 1);
+    QCOMPARE(overshootChangedSpy.size(), 3);
     QCOMPARE(boundaryRule->property("currentOvershoot").toReal(&ok), 0);
     QVERIFY(ok);
     QCOMPARE(boundaryRule->property("peakOvershoot").toReal(&ok), 0);

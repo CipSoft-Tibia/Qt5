@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSCXMLSTATEMACHINE_P_H
 #define QSCXMLSTATEMACHINE_P_H
@@ -56,7 +20,12 @@
 #include <QtScxml/private/qscxmlstatemachineinfo_p.h>
 #include <QtCore/private/qobject_p.h>
 #include <QtCore/private/qmetaobject_p.h>
+#include <QtCore/private/qproperty_p.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qvariant.h>
 #include <QtCore/qmetaobject.h>
+#include "qscxmlglobals_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -113,14 +82,14 @@ public:
     {}
 
 Q_SIGNALS:
-    void statesEntered(const QVector<QScxmlStateMachineInfo::StateId> &states);
-    void statesExited(const QVector<QScxmlStateMachineInfo::StateId> &states);
-    void transitionsTriggered(const QVector<QScxmlStateMachineInfo::TransitionId> &transitions);
+    void statesEntered(const QList<QScxmlStateMachineInfo::StateId> &states);
+    void statesExited(const QList<QScxmlStateMachineInfo::StateId> &states);
+    void transitionsTriggered(const QList<QScxmlStateMachineInfo::TransitionId> &transitions);
 };
 } // QScxmlInternal namespace
 
 class QScxmlInvokableService;
-class QScxmlStateMachinePrivate: public QObjectPrivate
+class Q_SCXML_PRIVATE_EXPORT QScxmlStateMachinePrivate: public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QScxmlStateMachine)
 
@@ -152,7 +121,7 @@ public: // types
     {
     public:
         QScopedPointer<QScxmlDataModel> m_ownedDataModel;
-        QVector<QScxmlError> m_errors;
+        QList<QScxmlError> m_errors;
     };
 
     // The OrderedSet is a set where it elements are in insertion order. See
@@ -216,7 +185,7 @@ public: // types
 
     class Queue
     {
-        QVector<QScxmlEvent *> storage;
+        QList<QScxmlEvent *> storage;
 
     public:
         Queue()
@@ -328,14 +297,46 @@ private:
 public: // types & data fields:
     QString m_sessionId;
     bool m_isInvoked;
-    bool m_isInitialized;
+
+    void isInitializedChanged()
+    {
+        emit q_func()->initializedChanged(m_isInitialized.value());
+    }
+    Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(QScxmlStateMachinePrivate,
+                                         bool, m_isInitialized, false,
+                                         &QScxmlStateMachinePrivate::isInitializedChanged);
+
+    void initialValuesChanged()
+    {
+        emit q_func()->initialValuesChanged(m_initialValues.value());
+    }
+    Q_OBJECT_BINDABLE_PROPERTY(QScxmlStateMachinePrivate, QVariantMap, m_initialValues,
+                               &QScxmlStateMachinePrivate::initialValuesChanged);
+
+    void loaderChanged()
+    {
+        emit q_func()->loaderChanged(m_loader.value());
+    }
+    Q_OBJECT_BINDABLE_PROPERTY(QScxmlStateMachinePrivate, QScxmlCompiler::Loader*, m_loader,
+                               &QScxmlStateMachinePrivate::loaderChanged);
+
+    void setDataModel(QScxmlDataModel* loader)
+    {
+        q_func()->setDataModel(loader);
+    }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QScxmlStateMachinePrivate, QScxmlDataModel*, m_dataModel,
+                                       &QScxmlStateMachinePrivate::setDataModel, nullptr);
+
+    void setTableData(QScxmlTableData* tableData)
+    {
+        q_func()->setTableData(tableData);
+    }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QScxmlStateMachinePrivate, QScxmlTableData*, m_tableData,
+                                       &QScxmlStateMachinePrivate::setTableData, nullptr);
+
     bool m_isProcessingEvents;
-    QVariantMap m_initialValues;
-    QScxmlDataModel *m_dataModel;
     QScxmlCompilerPrivate::DefaultLoader m_defaultLoader;
-    QScxmlCompiler::Loader *m_loader;
     QScxmlExecutionEngine *m_executionEngine;
-    QScxmlTableData *m_tableData;
     const StateTable *m_stateTable;
     QScxmlStateMachine *m_parentStateMachine;
     QScxmlInternal::EventLoopHook m_eventLoopHook;
@@ -346,7 +347,7 @@ public: // types & data fields:
 
 private:
     QScopedPointer<ParserData> m_parserData; // used when created by StateMachine::fromFile.
-    typedef QHash<int, QVector<int>> HistoryValues;
+    typedef QHash<int, QList<int>> HistoryValues;
     struct InvokedService {
         int invokingState;
         QScxmlInvokableService *service;
@@ -360,6 +361,18 @@ private:
     Queue m_externalQueue;
     QSet<int> m_statesToInvoke;
     std::vector<InvokedService> m_invokedServices;
+    QList<QScxmlInvokableService*> invokedServicesActualCalculation() const
+    {
+        QList<QScxmlInvokableService *> result;
+        for (size_t i = 0, ei = m_invokedServices.size(); i != ei; ++i) {
+            if (auto service = m_invokedServices[i].service)
+                result.append(service);
+        }
+        return result;
+    }
+    Q_OBJECT_COMPUTED_PROPERTY(QScxmlStateMachinePrivate, QList<QScxmlInvokableService*>,
+                               m_invokedServicesComputedProperty,
+                               &QScxmlStateMachinePrivate::invokedServicesActualCalculation);
     std::vector<bool> m_isFirstStateEntry;
     std::vector<QScxmlInvokableServiceFactory *> m_cachedFactories;
     enum { Invalid = 0, Starting, Running, Paused, Finished } m_runningState = Invalid;

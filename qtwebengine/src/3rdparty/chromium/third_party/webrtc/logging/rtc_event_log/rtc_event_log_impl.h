@@ -17,13 +17,14 @@
 #include <memory>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "api/rtc_event_log/rtc_event.h"
 #include "api/rtc_event_log/rtc_event_log.h"
 #include "api/rtc_event_log_output.h"
+#include "api/sequence_checker.h"
 #include "api/task_queue/task_queue_factory.h"
 #include "logging/rtc_event_log/encoder/rtc_event_log_encoder.h"
-#include "rtc_base/synchronization/sequence_checker.h"
 #include "rtc_base/system/no_unique_address.h"
 #include "rtc_base/task_queue.h"
 #include "rtc_base/thread_annotations.h"
@@ -32,12 +33,25 @@ namespace webrtc {
 
 class RtcEventLogImpl final : public RtcEventLog {
  public:
-  RtcEventLogImpl(EncodingType encoding_type,
-                  TaskQueueFactory* task_queue_factory);
+  // The max number of events that the history can store.
+  static constexpr size_t kMaxEventsInHistory = 10000;
+  // The max number of events that the config history can store.
+  // The config-history is supposed to be unbounded, but needs to have some
+  // bound to prevent an attack via unreasonable memory use.
+  static constexpr size_t kMaxEventsInConfigHistory = 1000;
+
+  RtcEventLogImpl(
+      std::unique_ptr<RtcEventLogEncoder> encoder,
+      TaskQueueFactory* task_queue_factory,
+      size_t max_events_in_history = kMaxEventsInHistory,
+      size_t max_config_events_in_history = kMaxEventsInConfigHistory);
   RtcEventLogImpl(const RtcEventLogImpl&) = delete;
   RtcEventLogImpl& operator=(const RtcEventLogImpl&) = delete;
 
   ~RtcEventLogImpl() override;
+
+  static std::unique_ptr<RtcEventLogEncoder> CreateEncoder(
+      EncodingType encoding_type);
 
   // TODO(eladalon): We should change these name to reflect that what we're
   // actually starting/stopping is the output of the log, not the log itself.
@@ -54,14 +68,20 @@ class RtcEventLogImpl final : public RtcEventLog {
 
   void StopOutput() RTC_RUN_ON(task_queue_);
 
-  void WriteConfigsAndHistoryToOutput(const std::string& encoded_configs,
-                                      const std::string& encoded_history)
+  void WriteConfigsAndHistoryToOutput(absl::string_view encoded_configs,
+                                      absl::string_view encoded_history)
       RTC_RUN_ON(task_queue_);
-  void WriteToOutput(const std::string& output_string) RTC_RUN_ON(task_queue_);
+  void WriteToOutput(absl::string_view output_string) RTC_RUN_ON(task_queue_);
 
   void StopLoggingInternal() RTC_RUN_ON(task_queue_);
 
   void ScheduleOutput() RTC_RUN_ON(task_queue_);
+
+  // Max size of event history.
+  const size_t max_events_in_history_;
+
+  // Max size of config event history.
+  const size_t max_config_events_in_history_;
 
   // History containing all past configuration events.
   std::deque<std::unique_ptr<RtcEvent>> config_history_
@@ -82,8 +102,8 @@ class RtcEventLogImpl final : public RtcEventLog {
   RTC_NO_UNIQUE_ADDRESS SequenceChecker logging_state_checker_;
   bool logging_state_started_ RTC_GUARDED_BY(logging_state_checker_);
 
-  // Since we are posting tasks bound to |this|,  it is critical that the event
-  // log and its members outlive |task_queue_|. Keep the |task_queue_|
+  // Since we are posting tasks bound to `this`,  it is critical that the event
+  // log and its members outlive `task_queue_`. Keep the `task_queue_`
   // last to ensure it destructs first, or else tasks living on the queue might
   // access other members after they've been torn down.
   std::unique_ptr<rtc::TaskQueue> task_queue_;

@@ -1,37 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "meshloader_p.h"
 #include "vertexindexer_p.h"
 #include "objecthelper_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 ObjectHelper::ObjectHelper(const QString &objectFile)
     : m_objectFile(objectFile)
@@ -113,10 +87,19 @@ ObjectHelper *ObjectHelper::getObjectHelper(const Abstract3DRenderer *cacheId,
         objRef = new ObjectHelperRef;
         objRef->refCount = 0;
         objRef->obj = new ObjectHelper(objectFile);
-        objectTable->insert(objectFile, objRef);
+        if (objRef->obj->m_meshDataLoaded) {
+            objectTable->insert(objectFile, objRef);
+        } else {
+            delete objRef->obj;
+            delete objRef;
+            objRef = nullptr;
+        }
     }
-    objRef->refCount++;
-    return objRef->obj;
+    if (objRef) {
+        objRef->refCount++;
+        return objRef->obj;
+    }
+    return nullptr;
 }
 
 void ObjectHelper::load()
@@ -136,45 +119,48 @@ void ObjectHelper::load()
         m_normalbuffer = 0;
         m_elementbuffer = 0;
     }
-    QVector<QVector3D> vertices;
-    QVector<QVector2D> uvs;
-    QVector<QVector3D> normals;
+    QList<QVector3D> vertices;
+    QList<QVector2D> uvs;
+    QList<QVector3D> normals;
     bool loadOk = MeshLoader::loadOBJ(m_objectFile, vertices, uvs, normals);
-    if (!loadOk)
-        qFatal("loading failed");
 
-    // Index vertices
-    VertexIndexer::indexVBO(vertices, uvs, normals, m_indices, m_indexedVertices, m_indexedUVs,
-                            m_indexedNormals);
+    if (!loadOk) {
+        qCritical() << "Loading" << m_objectFile << "failed";
+        m_meshDataLoaded = false;
+    } else {
+        // Index vertices
+        VertexIndexer::indexVBO(vertices, uvs, normals, m_indices, m_indexedVertices, m_indexedUVs,
+                                m_indexedNormals);
 
-    m_indexCount = m_indices.size();
+        m_indexCount = m_indices.size();
 
-    glGenBuffers(1, &m_vertexbuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vertexbuffer);
-    glBufferData(GL_ARRAY_BUFFER, m_indexedVertices.size() * sizeof(QVector3D),
-                 &m_indexedVertices.at(0),
-                 GL_STATIC_DRAW);
+        glGenBuffers(1, &m_vertexbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, m_vertexbuffer);
+        glBufferData(GL_ARRAY_BUFFER, m_indexedVertices.size() * sizeof(QVector3D),
+                     &m_indexedVertices.at(0),
+                     GL_STATIC_DRAW);
 
-    glGenBuffers(1, &m_normalbuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, m_normalbuffer);
-    glBufferData(GL_ARRAY_BUFFER, m_indexedNormals.size() * sizeof(QVector3D),
-                 &m_indexedNormals.at(0),
-                 GL_STATIC_DRAW);
+        glGenBuffers(1, &m_normalbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, m_normalbuffer);
+        glBufferData(GL_ARRAY_BUFFER, m_indexedNormals.size() * sizeof(QVector3D),
+                     &m_indexedNormals.at(0),
+                     GL_STATIC_DRAW);
 
-    glGenBuffers(1, &m_uvbuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, m_uvbuffer);
-    glBufferData(GL_ARRAY_BUFFER, m_indexedUVs.size() * sizeof(QVector2D),
-                 &m_indexedUVs.at(0), GL_STATIC_DRAW);
+        glGenBuffers(1, &m_uvbuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, m_uvbuffer);
+        glBufferData(GL_ARRAY_BUFFER, m_indexedUVs.size() * sizeof(QVector2D),
+                     &m_indexedUVs.at(0), GL_STATIC_DRAW);
 
-    glGenBuffers(1, &m_elementbuffer);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementbuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(GLuint),
-                 &m_indices.at(0), GL_STATIC_DRAW);
+        glGenBuffers(1, &m_elementbuffer);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_elementbuffer);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(GLuint),
+                     &m_indices.at(0), GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    m_meshDataLoaded = true;
+        m_meshDataLoaded = true;
+    }
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

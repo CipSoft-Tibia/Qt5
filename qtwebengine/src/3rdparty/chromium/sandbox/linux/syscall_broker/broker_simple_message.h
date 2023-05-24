@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 
 #include "base/containers/span.h"
 #include "base/files/scoped_file.h"
+#include "base/memory/raw_ptr.h"
 #include "sandbox/sandbox_export.h"
 
 namespace sandbox {
@@ -82,16 +83,16 @@ class SANDBOX_EXPORT BrokerSimpleMessage {
   // This returns a pointer to the next available data buffer in |data|. The
   // pointer is owned by |this| class. The resulting buffer is a string and
   // terminated with a '\0' character.
-  bool ReadString(const char** string);
+  [[nodiscard]] bool ReadString(const char** string);
 
   // This returns a pointer to the next available data buffer in the message
   // in |data|, and the length of the buffer in |length|. The buffer is owned
   // by |this| class.
-  bool ReadData(const char** data, size_t* length);
+  [[nodiscard]] bool ReadData(const char** data, size_t* length);
 
   // This reads the next available int from the message and stores it in
   // |result|.
-  bool ReadInt(int* result);
+  [[nodiscard]] bool ReadInt(int* result);
 
   // The maximum length of a message in the fixed size buffer.
   static constexpr size_t kMaxMessageLength = 4096;
@@ -117,9 +118,9 @@ class SANDBOX_EXPORT BrokerSimpleMessage {
   // The statically allocated buffer of size |kMaxMessageLength|.
   uint8_t message_[kMaxMessageLength];
   // The pointer to the next location in the |message_| buffer to read from.
-  uint8_t* read_next_ = message_;
+  raw_ptr<uint8_t, AllowPtrArithmetic> read_next_ = message_;
   // The pointer to the next location in the |message_| buffer to write from.
-  uint8_t* write_next_ = message_;
+  raw_ptr<uint8_t, AllowPtrArithmetic> write_next_ = message_;
 };
 
 }  // namespace syscall_broker

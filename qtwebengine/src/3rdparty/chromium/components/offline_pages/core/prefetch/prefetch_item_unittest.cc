@@ -1,11 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/offline_pages/core/prefetch/prefetch_item.h"
 
 #include "base/strings/string_split.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "components/offline_pages/core/prefetch/prefetch_types.h"
@@ -130,7 +129,7 @@ TEST_F(PrefetchItemTest, OperatorEqualsCopyConstructorAndToString) {
   item1.error_code = PrefetchItemErrorCode::TOO_MANY_NEW_URLS;
   CheckFieldAndResetItem(item1, "error_code");
 
-  item1.title = base::UTF8ToUTF16("F");
+  item1.title = u"F";
   CheckFieldAndResetItem(item1, "title");
 
   item1.file_path = base::FilePath(FILE_PATH_LITERAL("G"));

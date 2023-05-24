@@ -30,7 +30,7 @@
 
 #include "third_party/blink/renderer/core/scroll/scroll_animator_base.h"
 
-#include "base/callback_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "third_party/blink/renderer/core/scroll/scrollable_area.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 
@@ -49,7 +49,7 @@ ScrollOffset ScrollAnimatorBase::ComputeDeltaToConsume(
 }
 
 ScrollResult ScrollAnimatorBase::UserScroll(
-    ScrollGranularity,
+    ui::ScrollGranularity,
     const ScrollOffset& delta,
     ScrollableArea::ScrollCallback on_finish) {
   // Run the callback for non-animation user scroll.
@@ -58,21 +58,20 @@ ScrollResult ScrollAnimatorBase::UserScroll(
   ScrollOffset consumed_delta = ComputeDeltaToConsume(delta);
   ScrollOffset new_pos = current_offset_ + consumed_delta;
   if (current_offset_ == new_pos)
-    return ScrollResult(false, false, delta.Width(), delta.Height());
+    return ScrollResult(false, false, delta.x(), delta.y());
 
-  current_offset_ = new_pos;
+  SetCurrentOffset(new_pos);
+  ScrollOffsetChanged(current_offset_, mojom::blink::ScrollType::kUser);
 
-  NotifyOffsetChanged();
-
-  return ScrollResult(consumed_delta.Width(), consumed_delta.Height(),
-                      delta.Width() - consumed_delta.Width(),
-                      delta.Height() - consumed_delta.Height());
+  return ScrollResult(consumed_delta.x(), consumed_delta.y(),
+                      delta.x() - consumed_delta.x(),
+                      delta.y() - consumed_delta.y());
 }
 
 void ScrollAnimatorBase::ScrollToOffsetWithoutAnimation(
     const ScrollOffset& offset) {
-  current_offset_ = offset;
-  NotifyOffsetChanged();
+  SetCurrentOffset(offset);
+  ScrollOffsetChanged(current_offset_, mojom::blink::ScrollType::kUser);
 }
 
 void ScrollAnimatorBase::SetCurrentOffset(const ScrollOffset& offset) {
@@ -81,10 +80,6 @@ void ScrollAnimatorBase::SetCurrentOffset(const ScrollOffset& offset) {
 
 ScrollOffset ScrollAnimatorBase::CurrentOffset() const {
   return current_offset_;
-}
-
-void ScrollAnimatorBase::NotifyOffsetChanged() {
-  ScrollOffsetChanged(current_offset_, mojom::blink::ScrollType::kUser);
 }
 
 void ScrollAnimatorBase::Trace(Visitor* visitor) const {

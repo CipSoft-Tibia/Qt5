@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "templateoptionspage.h"
 #include "ui_templateoptionspage.h"
@@ -37,6 +12,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace qdesigner_internal {
 
 // ----------------- TemplateOptionsWidget
@@ -48,9 +25,9 @@ TemplateOptionsWidget::TemplateOptionsWidget(QDesignerFormEditorInterface *core,
     m_ui->setupUi(this);
 
     m_ui->m_addTemplatePathButton->setIcon(
-            qdesigner_internal::createIconSet(QString::fromUtf8("plus.png")));
+            qdesigner_internal::createIconSet(u"plus.png"_s));
     m_ui->m_removeTemplatePathButton->setIcon(
-            qdesigner_internal::createIconSet(QString::fromUtf8("minus.png")));
+            qdesigner_internal::createIconSet(u"minus.png"_s));
 
     connect(m_ui->m_templatePathListWidget, &QListWidget::itemSelectionChanged,
             this, &TemplateOptionsWidget::templatePathSelectionChanged);
@@ -83,9 +60,8 @@ void TemplateOptionsWidget::setTemplatePaths(const QStringList &l)
         // disable button
         templatePathSelectionChanged();
     } else {
-        const QStringList::const_iterator cend = l.constEnd();
-        for (QStringList::const_iterator it = l.constBegin(); it != cend; ++it)
-            m_ui->m_templatePathListWidget->addItem(*it);
+        for (const auto &s : l)
+            m_ui->m_templatePathListWidget->addItem(s);
         m_ui->m_templatePathListWidget->setCurrentItem(m_ui->m_templatePathListWidget->item(0));
     }
 }

@@ -1,6 +1,0 @@
-{
-  // No CSS prefix for this test palette.
-  colors: {
-    google_grey_900: "#202124",
-  },
-}

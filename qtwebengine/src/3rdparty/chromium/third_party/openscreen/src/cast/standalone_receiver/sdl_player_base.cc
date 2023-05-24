@@ -8,7 +8,6 @@
 #include <sstream>
 #include <utility>
 
-#include "absl/types/span.h"
 #include "cast/standalone_receiver/avcodec_glue.h"
 #include "cast/streaming/constants.h"
 #include "cast/streaming/encoded_frame.h"
@@ -74,7 +73,7 @@ Clock::time_point SDLPlayerBase::ResyncAndDeterminePresentationTime(
           .ToDuration<Clock::duration>(receiver_->rtp_timebase());
   Clock::time_point presentation_time =
       last_sync_reference_time_ + media_time_since_last_sync;
-  const auto drift = to_microseconds(frame.reference_time - presentation_time);
+  const auto drift = to_milliseconds(frame.reference_time - presentation_time);
   if (drift > kMaxPlayoutDrift || drift < -kMaxPlayoutDrift) {
     // Only log if not the very first frame.
     OSP_LOG_IF(INFO, frame.frame_id != FrameId::first())
@@ -102,7 +101,7 @@ void SDLPlayerBase::OnFramesReady(int buffer_size) {
   // Consume the next frame.
   const Clock::time_point start_time = now_();
   buffer_.Resize(buffer_size);
-  EncodedFrame frame = receiver_->ConsumeNextFrame(buffer_.GetSpan());
+  EncodedFrame frame = receiver_->ConsumeNextFrame(buffer_.AsByteBuffer());
 
   // Create the tracking state for the frame in the player pipeline.
   OSP_DCHECK_EQ(frames_to_render_.count(frame.frame_id), 0);

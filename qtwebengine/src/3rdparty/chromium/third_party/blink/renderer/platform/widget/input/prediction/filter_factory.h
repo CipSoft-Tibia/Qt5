@@ -1,13 +1,16 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_PREDICTION_FILTER_FACTORY_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_PREDICTION_FILTER_FACTORY_H_
 
+#include <unordered_map>
+
 #include "base/feature_list.h"
-#include "third_party/blink/public/platform/input/predictor_factory.h"
+#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
+#include "third_party/blink/renderer/platform/widget/input/prediction/predictor_factory.h"
 #include "ui/base/prediction/input_filter.h"
 
 namespace blink {
@@ -39,13 +42,13 @@ struct FilterParamMapKey {
 // in a hashmap
 struct FilterParamMapKeyHash {
   std::size_t operator()(const FilterParamMapKey& k) const {
-    return std::hash<int>{}(int(k.filter_type)) ^
-           std::hash<int>{}(int(k.predictor_type));
+    return std::hash<input_prediction::FilterType>{}(k.filter_type) ^
+           std::hash<input_prediction::PredictorType>{}(k.predictor_type);
   }
 };
 
 using FilterParams = std::unordered_map<std::string, double>;
-using FilterParamsMap =
+using FilterParamsMap ALLOW_DISCOURAGED_TYPE("TODO(crbug.com/1404327)") =
     std::unordered_map<FilterParamMapKey, FilterParams, FilterParamMapKeyHash>;
 
 // FilterFactory is a class containing methods to create filters.

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSURFACE3DSERIES_H
 #define QSURFACE3DSERIES_H
@@ -33,11 +7,11 @@
 #include <QtDataVisualization/qabstract3dseries.h>
 #include <QtDataVisualization/qsurfacedataproxy.h>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QSurface3DSeriesPrivate;
 
-class QT_DATAVISUALIZATION_EXPORT QSurface3DSeries : public QAbstract3DSeries
+class Q_DATAVISUALIZATION_EXPORT QSurface3DSeries : public QAbstract3DSeries
 {
     Q_OBJECT
     Q_FLAGS(DrawFlag DrawFlags)
@@ -48,6 +22,7 @@ class QT_DATAVISUALIZATION_EXPORT QSurface3DSeries : public QAbstract3DSeries
     Q_PROPERTY(DrawFlags drawMode READ drawMode WRITE setDrawMode NOTIFY drawModeChanged)
     Q_PROPERTY(QImage texture READ texture WRITE setTexture NOTIFY textureChanged)
     Q_PROPERTY(QString textureFile READ textureFile WRITE setTextureFile NOTIFY textureFileChanged)
+    Q_PROPERTY(QColor wireframeColor READ wireframeColor WRITE setWireframeColor NOTIFY wireframeColorChanged REVISION(6, 3))
 
 public:
     enum DrawFlag {
@@ -55,6 +30,7 @@ public:
         DrawSurface = 2,
         DrawSurfaceAndWireframe = DrawWireframe | DrawSurface
     };
+    Q_ENUM(DrawFlag)
     Q_DECLARE_FLAGS(DrawFlags, DrawFlag)
 
     explicit QSurface3DSeries(QObject *parent = nullptr);
@@ -81,6 +57,9 @@ public:
     void setTextureFile(const QString &filename);
     QString textureFile() const;
 
+    void setWireframeColor(const QColor &color);
+    QColor wireframeColor() const;
+
 Q_SIGNALS:
     void dataProxyChanged(QSurfaceDataProxy *proxy);
     void selectedPointChanged(const QPoint &position);
@@ -89,6 +68,7 @@ Q_SIGNALS:
     void drawModeChanged(QSurface3DSeries::DrawFlags mode);
     void textureChanged(const QImage &image);
     void textureFileChanged(const QString &filename);
+    Q_REVISION(6, 3) void wireframeColorChanged(const QColor &color);
 
 protected:
     explicit QSurface3DSeries(QSurface3DSeriesPrivate *d, QObject *parent = nullptr);
@@ -101,6 +81,8 @@ private:
     friend class Surface3DController;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+Q_DECLARE_OPERATORS_FOR_FLAGS(QSurface3DSeries::DrawFlags)
+
+QT_END_NAMESPACE
 
 #endif

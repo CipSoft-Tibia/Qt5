@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,11 @@ import android.util.AttributeSet;
 import android.view.View;
 import android.widget.ImageView;
 
+import androidx.annotation.ColorRes;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.appcompat.content.res.AppCompatResources;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceViewHolder;
 
@@ -34,17 +36,27 @@ public class ChromeImageViewPreference extends Preference {
     @Nullable
     private ManagedPreferenceDelegate mManagedPrefDelegate;
 
-    // The onClick listener to handle click events for the ImageView widget.
+    /** The onClick listener to handle click events for the ImageView widget. */
     @Nullable
     private View.OnClickListener mListener;
-    // The image resource ID to use for the ImageView widget source.
+    /** The image resource ID to use for the ImageView widget source. */
     @DrawableRes
     private int mImageRes;
-    // The string resource ID to use for the ImageView widget content description.
+    /** The color resource ID for tinting of ImageView widget. */
+    @ColorRes
+    private int mColorRes;
+    /** The color resource ID for tinting of the view's background. */
+    @ColorRes
+    private Integer mBackgroundColorRes;
+    /** The string resource ID to use for the ImageView widget content description. */
     @StringRes
     private int mContentDescriptionRes;
-    // Whether the ImageView should be enabled.
+    /** Whether the ImageView should be enabled. */
     private boolean mImageViewEnabled = true;
+    /** The ImageView Button. */
+    private ImageView mButton;
+    /** The View for this preference. */
+    private View mView;
 
     /**
      * Constructor for use in Java.
@@ -61,6 +73,7 @@ public class ChromeImageViewPreference extends Preference {
 
         setWidgetLayoutResource(R.layout.preference_chrome_image_view);
         setSingleLineTitle(false);
+        setImageColor(R.color.default_icon_color_tint_list);
     }
 
     /**
@@ -68,31 +81,22 @@ public class ChromeImageViewPreference extends Preference {
      */
     public void setManagedPreferenceDelegate(@Nullable ManagedPreferenceDelegate delegate) {
         mManagedPrefDelegate = delegate;
-        ManagedPreferencesUtils.initPreference(mManagedPrefDelegate, this);
+        ManagedPreferencesUtils.initPreference(
+                mManagedPrefDelegate, this, /*allowManagedIcon=*/false, /*hasCustomLayout=*/true);
     }
 
     @Override
     public void onBindViewHolder(PreferenceViewHolder holder) {
         super.onBindViewHolder(holder);
 
-        ImageView button = (ImageView) holder.findViewById(R.id.image_view_widget);
-        View view = holder.itemView;
+        mButton = (ImageView) holder.findViewById(R.id.image_view_widget);
+        mButton.setBackgroundColor(Color.TRANSPARENT);
+        mButton.setVisibility(View.VISIBLE);
 
-        if (mImageRes != 0) {
-            Drawable buttonImg = SettingsUtils.getTintedIcon(getContext(), mImageRes);
-
-            button.setImageDrawable(buttonImg);
-            button.setBackgroundColor(Color.TRANSPARENT);
-            button.setVisibility(View.VISIBLE);
-            button.setEnabled(mImageViewEnabled);
-            if (mImageViewEnabled) button.setOnClickListener(mListener);
-
-            if (mContentDescriptionRes != 0) {
-                button.setContentDescription(view.getResources().getString(mContentDescriptionRes));
-            }
-        }
-
-        ManagedPreferencesUtils.onBindViewToImageViewPreference(mManagedPrefDelegate, this, view);
+        mView = holder.itemView;
+        updateBackground();
+        configureImageView();
+        ManagedPreferencesUtils.onBindViewToImageViewPreference(mManagedPrefDelegate, this, mView);
     }
 
     @Override
@@ -110,14 +114,39 @@ public class ChromeImageViewPreference extends Preference {
         mImageRes = imageRes;
         mContentDescriptionRes = contentDescriptionRes;
         mListener = listener;
+        configureImageView();
         notifyChanged();
+    }
+
+    /**
+     * Sets the Color resource ID which will be used to set the color of the image.
+     * @param colorRes
+     */
+    public void setImageColor(@ColorRes int colorRes) {
+        if (mColorRes == colorRes) return;
+
+        mColorRes = colorRes;
+        configureImageView();
+    }
+
+    /**
+     * Sets the Color resource ID which will be used to set the color of the view.
+     * @param colorRes
+     */
+    public void setBackgroundColor(@ColorRes int colorRes) {
+        if (mBackgroundColorRes != null && mBackgroundColorRes == colorRes) return;
+        mBackgroundColorRes = colorRes;
+        updateBackground();
     }
 
     /**
      * Enables/Disables the ImageView, allowing for clicks to pass through (when disabled).
      */
     public void setImageViewEnabled(boolean enabled) {
+        if (mImageViewEnabled == enabled) return;
+
         mImageViewEnabled = enabled;
+        configureImageView();
     }
 
     /**
@@ -129,5 +158,26 @@ public class ChromeImageViewPreference extends Preference {
 
         return mManagedPrefDelegate.isPreferenceControlledByPolicy(this)
                 || mManagedPrefDelegate.isPreferenceControlledByCustodian(this);
+    }
+
+    private void configureImageView() {
+        if (mImageRes == 0 || mButton == null) return;
+
+        Drawable buttonImg = SettingsUtils.getTintedIcon(getContext(), mImageRes, mColorRes);
+        mButton.setImageDrawable(buttonImg);
+        mButton.setEnabled(mImageViewEnabled);
+
+        if (mImageViewEnabled) mButton.setOnClickListener(mListener);
+
+        if (mContentDescriptionRes != 0) {
+            mButton.setContentDescription(mButton.getResources().getString(mContentDescriptionRes));
+        }
+    }
+
+    private void updateBackground() {
+        if (mView == null || mBackgroundColorRes == null) return;
+        mView.setBackgroundColor(
+                AppCompatResources.getColorStateList(getContext(), mBackgroundColorRes)
+                        .getDefaultColor());
     }
 }

@@ -1,9 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/mathml/mathml_operator_element.h"
 
+#include "third_party/blink/renderer/core/css/style_change_reason.h"
+#include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/text/mathml_operator_dictionary.h"
@@ -17,23 +19,7 @@ static const uint32_t kOperatorPropertyFlagsAll =
     MathMLOperatorElement::kLargeOp | MathMLOperatorElement::kMovableLimits;
 static const uint32_t kOperatorPropertyFlagsNone = 0;
 
-UChar32 OperatorCodepoint(const String& text_content) {
-  DCHECK(!text_content.Is8Bit());
-  auto content_length = text_content.length();
-  // Reject malformed UTF-16 and operator strings consisting of more than one
-  // codepoint.
-  if ((content_length > 2) || (content_length == 0) ||
-      (content_length == 1 && !U16_IS_SINGLE(text_content[0])) ||
-      (content_length == 2 && !U16_IS_LEAD(text_content[0])))
-    return kNonCharacter;
-
-  UChar32 character;
-  size_t offset = 0;
-  U16_NEXT(text_content, offset, content_length, character);
-  return character;
-}
-
-// https://mathml-refresh.github.io/mathml-core/#operator-dictionary-categories-values
+// https://w3c.github.io/mathml-core/#operator-dictionary-categories-values
 // Leading and trailing spaces are respresented in math units, i.e. 1/18em.
 struct MathMLOperatorDictionaryProperties {
   unsigned leading_space_in_math_unit : 3;
@@ -43,10 +29,11 @@ struct MathMLOperatorDictionaryProperties {
 static const MathMLOperatorDictionaryProperties
     MathMLOperatorDictionaryCategories[] = {
         {5, 5, kOperatorPropertyFlagsNone},        // None (default values)
+        {5, 5, kOperatorPropertyFlagsNone},        // ForceDefault
         {5, 5, MathMLOperatorElement::kStretchy},  // Category A
         {4, 4, kOperatorPropertyFlagsNone},        // Category B
         {3, 3, kOperatorPropertyFlagsNone},        // Category C
-        {0, 0, kOperatorPropertyFlagsNone},        // Categories D, E, L
+        {0, 0, kOperatorPropertyFlagsNone},        // Categories D, E, K
         {0, 0,
          MathMLOperatorElement::kStretchy |
              MathMLOperatorElement::kSymmetric},  // Categories F, G
@@ -57,7 +44,7 @@ static const MathMLOperatorDictionaryProperties
         {3, 3,
          MathMLOperatorElement::kSymmetric | MathMLOperatorElement::kLargeOp |
              MathMLOperatorElement::kMovableLimits},  // Category J
-        {3, 0, kOperatorPropertyFlagsNone},           // Category K
+        {3, 0, kOperatorPropertyFlagsNone},           // Category L
         {0, 3, kOperatorPropertyFlagsNone},           // Category M
 };
 
@@ -80,32 +67,18 @@ static const QualifiedName& OperatorPropertyFlagToAttributeName(
 }  // namespace
 
 MathMLOperatorElement::MathMLOperatorElement(Document& doc)
-    : MathMLElement(mathml_names::kMoTag, doc) {
-  operator_content_ = base::nullopt;
+    : MathMLTokenElement(mathml_names::kMoTag, doc) {
   properties_.dictionary_category =
       MathMLOperatorDictionaryCategory::kUndefined;
   properties_.dirty_flags = kOperatorPropertyFlagsAll;
-}
-
-MathMLOperatorElement::OperatorContent
-MathMLOperatorElement::ParseOperatorContent() {
-  MathMLOperatorElement::OperatorContent operator_content;
-  if (HasOneTextChild()) {
-    operator_content.characters = textContent();
-    operator_content.characters.Ensure16Bit();
-    operator_content.is_vertical = Character::IsVerticalMathCharacter(
-        OperatorCodepoint(operator_content.characters));
-  }
-  return operator_content;
 }
 
 void MathMLOperatorElement::ChildrenChanged(
     const ChildrenChange& children_change) {
-  operator_content_ = base::nullopt;
   properties_.dictionary_category =
       MathMLOperatorDictionaryCategory::kUndefined;
   properties_.dirty_flags = kOperatorPropertyFlagsAll;
-  MathMLElement::ChildrenChanged(children_change);
+  MathMLTokenElement::ChildrenChanged(children_change);
 }
 
 void MathMLOperatorElement::SetOperatorPropertyDirtyFlagIfNeeded(
@@ -138,28 +111,37 @@ void MathMLOperatorElement::ParseAttribute(
   } else if (param.name == mathml_names::kMovablelimitsAttr) {
     SetOperatorPropertyDirtyFlagIfNeeded(
         param, MathMLOperatorElement::kMovableLimits, needs_layout);
+  } else if (param.name == mathml_names::kLspaceAttr ||
+             param.name == mathml_names::kRspaceAttr ||
+             param.name == mathml_names::kMinsizeAttr ||
+             param.name == mathml_names::kMaxsizeAttr) {
+    if (param.new_value != param.old_value) {
+      SetNeedsStyleRecalc(
+          kLocalStyleChange,
+          StyleChangeReasonForTracing::Create(style_change_reason::kAttribute));
+    }
   }
   if (needs_layout && GetLayoutObject() && GetLayoutObject()->IsMathML()) {
     GetLayoutObject()
         ->SetNeedsLayoutAndIntrinsicWidthsRecalcAndFullPaintInvalidation(
             layout_invalidation_reason::kAttributeChanged);
   }
-  MathMLElement::ParseAttribute(param);
+  MathMLTokenElement::ParseAttribute(param);
 }
 
-// https://mathml-refresh.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
+// https://w3c.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
 void MathMLOperatorElement::ComputeDictionaryCategory() {
   if (properties_.dictionary_category !=
       MathMLOperatorDictionaryCategory::kUndefined)
     return;
-  if (GetOperatorContent().characters.IsEmpty()) {
+  if (GetTokenContent().characters.empty()) {
     properties_.dictionary_category = MathMLOperatorDictionaryCategory::kNone;
     return;
   }
 
   // We first determine the form attribute and use the default spacing and
   // properties.
-  // https://mathml-refresh.github.io/mathml-core/#dfn-form
+  // https://w3c.github.io/mathml-core/#dfn-form
   const auto& value = FastGetAttribute(mathml_names::kFormAttr);
   bool explicit_form = true;
   MathMLOperatorDictionaryForm form;
@@ -172,11 +154,13 @@ void MathMLOperatorElement::ComputeDictionaryCategory() {
   } else {
     // TODO(crbug.com/1121113): Implement the remaining rules for determining
     // form.
-    // https://mathml-refresh.github.io/mathml-core/#dfn-algorithm-for-determining-the-form-of-an-embellished-operator
+    // https://w3c.github.io/mathml-core/#dfn-algorithm-for-determining-the-form-of-an-embellished-operator
     explicit_form = false;
-    if (!previousSibling() && nextSibling())
+    bool nextSibling = ElementTraversal::NextSibling(*this);
+    bool prevSibling = ElementTraversal::PreviousSibling(*this);
+    if (!prevSibling && nextSibling)
       form = MathMLOperatorDictionaryForm::kPrefix;
-    else if (previousSibling() && !nextSibling())
+    else if (prevSibling && !nextSibling)
       form = MathMLOperatorDictionaryForm::kPostfix;
     else
       form = MathMLOperatorDictionaryForm::kInfix;
@@ -184,21 +168,22 @@ void MathMLOperatorElement::ComputeDictionaryCategory() {
 
   // We then try and find an entry in the operator dictionary to override the
   // default values.
-  // https://mathml-refresh.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
-  auto category = FindCategory(GetOperatorContent().characters, form);
+  // https://w3c.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
+  auto category = FindCategory(GetTokenContent().characters, form);
   if (category != MathMLOperatorDictionaryCategory::kNone) {
     // Step 2.
     properties_.dictionary_category = category;
   } else {
     if (!explicit_form) {
       // Step 3.
-      for (uint8_t fallback_form = MathMLOperatorDictionaryForm::kInfix;
-           fallback_form <= MathMLOperatorDictionaryForm::kPostfix;
-           fallback_form++) {
+      for (const auto& fallback_form :
+           {MathMLOperatorDictionaryForm::kInfix,
+            MathMLOperatorDictionaryForm::kPostfix,
+            MathMLOperatorDictionaryForm::kPrefix}) {
         if (fallback_form == form)
           continue;
-        auto category = FindCategory(
-            GetOperatorContent().characters,
+        category = FindCategory(
+            GetTokenContent().characters,
             static_cast<MathMLOperatorDictionaryForm>(fallback_form));
         if (category != MathMLOperatorDictionaryCategory::kNone) {
           properties_.dictionary_category = category;
@@ -214,8 +199,8 @@ void MathMLOperatorElement::ComputeDictionaryCategory() {
 void MathMLOperatorElement::ComputeOperatorProperty(OperatorPropertyFlag flag) {
   DCHECK(properties_.dirty_flags & flag);
   const auto& name = OperatorPropertyFlagToAttributeName(flag);
-  if (base::Optional<bool> value = BooleanAttribute(name)) {
-    // https://mathml-refresh.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
+  if (absl::optional<bool> value = BooleanAttribute(name)) {
+    // https://w3c.github.io/mathml-core/#dfn-algorithm-for-determining-the-properties-of-an-embellished-operator
     // Step 1.
     if (*value) {
       properties_.flags |= flag;
@@ -239,11 +224,12 @@ void MathMLOperatorElement::ComputeOperatorProperty(OperatorPropertyFlag flag) {
   }
 }
 
-const MathMLOperatorElement::OperatorContent&
-MathMLOperatorElement::GetOperatorContent() {
-  if (!operator_content_)
-    operator_content_ = ParseOperatorContent();
-  return operator_content_.value();
+bool MathMLOperatorElement::IsVertical() {
+  if (!is_vertical_.has_value()) {
+    is_vertical_ =
+        Character::IsVerticalMathCharacter(GetTokenContent().code_point);
+  }
+  return is_vertical_.value();
 }
 
 bool MathMLOperatorElement::HasBooleanProperty(OperatorPropertyFlag flag) {
@@ -254,44 +240,51 @@ bool MathMLOperatorElement::HasBooleanProperty(OperatorPropertyFlag flag) {
   return properties_.flags & flag;
 }
 
+void MathMLOperatorElement::CheckFormAfterSiblingChange() {
+  if (properties_.dictionary_category !=
+          MathMLOperatorDictionaryCategory::kUndefined &&
+      !FastHasAttribute(mathml_names::kFormAttr))
+    SetOperatorFormDirty();
+}
+
 void MathMLOperatorElement::SetOperatorFormDirty() {
   properties_.dictionary_category =
       MathMLOperatorDictionaryCategory::kUndefined;
 }
 
 void MathMLOperatorElement::AddMathLSpaceIfNeeded(
-    ComputedStyle& style,
+    ComputedStyleBuilder& builder,
     const CSSToLengthConversionData& conversion_data) {
   if (auto length_or_percentage_value = AddMathLengthToComputedStyle(
           conversion_data, mathml_names::kLspaceAttr)) {
-    style.SetMathLSpace(std::move(*length_or_percentage_value));
+    builder.SetMathLSpace(std::move(*length_or_percentage_value));
   }
 }
 
 void MathMLOperatorElement::AddMathRSpaceIfNeeded(
-    ComputedStyle& style,
+    ComputedStyleBuilder& builder,
     const CSSToLengthConversionData& conversion_data) {
   if (auto length_or_percentage_value = AddMathLengthToComputedStyle(
           conversion_data, mathml_names::kRspaceAttr)) {
-    style.SetMathRSpace(std::move(*length_or_percentage_value));
+    builder.SetMathRSpace(std::move(*length_or_percentage_value));
   }
 }
 
 void MathMLOperatorElement::AddMathMinSizeIfNeeded(
-    ComputedStyle& style,
+    ComputedStyleBuilder& builder,
     const CSSToLengthConversionData& conversion_data) {
   if (auto length_or_percentage_value = AddMathLengthToComputedStyle(
           conversion_data, mathml_names::kMinsizeAttr)) {
-    style.SetMathMinSize(std::move(*length_or_percentage_value));
+    builder.SetMathMinSize(std::move(*length_or_percentage_value));
   }
 }
 
 void MathMLOperatorElement::AddMathMaxSizeIfNeeded(
-    ComputedStyle& style,
+    ComputedStyleBuilder& builder,
     const CSSToLengthConversionData& conversion_data) {
   if (auto length_or_percentage_value = AddMathLengthToComputedStyle(
           conversion_data, mathml_names::kMaxsizeAttr)) {
-    style.SetMathMaxSize(std::move(*length_or_percentage_value));
+    builder.SetMathMaxSize(std::move(*length_or_percentage_value));
   }
 }
 

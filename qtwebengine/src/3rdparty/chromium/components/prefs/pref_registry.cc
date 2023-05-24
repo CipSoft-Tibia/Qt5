@@ -1,13 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/prefs/pref_registry.h"
 
+#include <ostream>
 #include <utility>
 
 #include "base/check_op.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
 #include "base/values.h"
 #include "components/prefs/default_pref_store.h"
 #include "components/prefs/pref_store.h"

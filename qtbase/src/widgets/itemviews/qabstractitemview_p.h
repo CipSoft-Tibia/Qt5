@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTITEMVIEW_P_H
 #define QABSTRACTITEMVIEW_P_H
@@ -87,7 +51,7 @@ struct QItemViewPaintPair {
 template <>
 class QTypeInfo<QItemViewPaintPair> : public QTypeInfoMerger<QItemViewPaintPair, QRect, QModelIndex> {};
 
-typedef QVector<QItemViewPaintPair> QItemViewPaintPairs;
+typedef QList<QItemViewPaintPair> QItemViewPaintPairs;
 
 class Q_AUTOTEST_EXPORT QAbstractItemViewPrivate : public QAbstractScrollAreaPrivate
 {
@@ -108,9 +72,11 @@ public:
     virtual void _q_layoutChanged();
     virtual void _q_rowsMoved(const QModelIndex &source, int sourceStart, int sourceEnd, const QModelIndex &destination, int destinationStart);
     virtual void _q_columnsMoved(const QModelIndex &source, int sourceStart, int sourceEnd, const QModelIndex &destination, int destinationStart);
+    virtual QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const;
 
     void _q_headerDataChanged() { doDelayedItemsLayout(); }
     void _q_scrollerStateChanged();
+    void _q_delegateSizeHintChanged(const QModelIndex &index);
 
     void fetchMore();
 
@@ -139,6 +105,7 @@ public:
     bool sendDelegateEvent(const QModelIndex &index, QEvent *event) const;
     bool openEditor(const QModelIndex &index, QEvent *event);
     void updateEditorData(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void selectAllInEditor(QWidget *w);
 
     QItemSelectionModel::SelectionFlags multiSelectionCommand(const QModelIndex &index,
                                                               const QEvent *event) const;
@@ -197,7 +164,7 @@ public:
 #endif
             ) {
             QStyleOption opt;
-            opt.init(q_func());
+            opt.initFrom(q_func());
             opt.rect = dropIndicatorRect;
             q_func()->style()->drawPrimitive(QStyle::PE_IndicatorItemViewItemDrop, &opt, painter, q_func());
         }
@@ -210,11 +177,12 @@ public:
 
     inline void releaseEditor(QWidget *editor, const QModelIndex &index = QModelIndex()) const {
         if (editor) {
+            Q_Q(const QAbstractItemView);
             QObject::disconnect(editor, SIGNAL(destroyed(QObject*)),
                                 q_func(), SLOT(editorDestroyed(QObject*)));
             editor->removeEventFilter(itemDelegate);
             editor->hide();
-            QAbstractItemDelegate *delegate = delegateForIndex(index);
+            QAbstractItemDelegate *delegate = q->itemDelegateForIndex(index);
 
             if (delegate)
                 delegate->destroyEditor(editor, index);
@@ -275,20 +243,6 @@ public:
         return state == QAbstractItemView::AnimatingState;
     }
 
-    inline QAbstractItemDelegate *delegateForIndex(const QModelIndex &index) const {
-        QMap<int, QPointer<QAbstractItemDelegate> >::ConstIterator it;
-
-        it = rowDelegates.find(index.row());
-        if (it != rowDelegates.end())
-            return it.value();
-
-        it = columnDelegates.find(index.column());
-        if (it != columnDelegates.end())
-            return it.value();
-
-        return itemDelegate;
-    }
-
     inline bool isIndexValid(const QModelIndex &index) const {
          return (index.row() >= 0) && (index.column() >= 0) && (index.model() == model);
     }
@@ -298,12 +252,14 @@ public:
     inline bool isIndexEnabled(const QModelIndex &index) const {
         return (model->flags(index) & Qt::ItemIsEnabled);
     }
+#if QT_CONFIG(draganddrop)
     inline bool isIndexDropEnabled(const QModelIndex &index) const {
         return (model->flags(index) & Qt::ItemIsDropEnabled);
     }
     inline bool isIndexDragEnabled(const QModelIndex &index) const {
         return (model->flags(index) & Qt::ItemIsDragEnabled);
     }
+#endif
 
     virtual bool selectionAllowed(const QModelIndex &index) const {
         // in some views we want to go ahead with selections, even if the index is invalid
@@ -350,9 +306,9 @@ public:
         return static_cast<QAbstractItemModelPrivate *>(model->d_ptr.data())->persistent.indexes.contains(index);
     }
 
+#if QT_CONFIG(draganddrop)
     QModelIndexList selectedDraggableIndexes() const;
-
-    QStyleOptionViewItem viewOptionsV1() const;
+#endif
 
     void doDelayedReset()
     {
@@ -378,12 +334,17 @@ public:
     QIndexEditorHash indexEditorHash;
     QSet<QWidget*> persistent;
     QWidget *currentlyCommittingEditor;
+    QBasicTimer pressClosedEditorWatcher;
+    QPersistentModelIndex lastEditedIndex;
+    bool pressClosedEditor;
+    bool waitForIMCommit;
 
     QPersistentModelIndex enteredIndex;
     QPersistentModelIndex pressedIndex;
     QPersistentModelIndex currentSelectionStartIndex;
     Qt::KeyboardModifiers pressedModifiers;
     QPoint pressedPosition;
+    QPoint draggedPosition;
     bool pressedAlreadySelected;
     bool releaseFromDoubleClick;
 
@@ -454,17 +415,33 @@ public:
     bool verticalScrollModeSet;
     bool horizontalScrollModeSet;
 
+    virtual QRect visualRect(const QModelIndex &index) const { return q_func()->visualRect(index); }
+
 private:
+    inline QAbstractItemDelegate *delegateForIndex(const QModelIndex &index) const {
+        QMap<int, QPointer<QAbstractItemDelegate> >::ConstIterator it;
+
+        it = rowDelegates.find(index.row());
+        if (it != rowDelegates.end())
+            return it.value();
+
+        it = columnDelegates.find(index.column());
+        if (it != columnDelegates.end())
+            return it.value();
+
+        return itemDelegate;
+    }
+
     mutable QBasicTimer delayedLayout;
     mutable QBasicTimer fetchMoreTimer;
 };
 
 QT_BEGIN_INCLUDE_NAMESPACE
-#include <qvector.h>
+#include <qlist.h>
 QT_END_INCLUDE_NAMESPACE
 
-template <typename T>
-inline int qBinarySearch(const QVector<T> &vec, const T &item, int start, int end)
+template<typename T>
+inline int qBinarySearch(const QList<T> &vec, const T &item, int start, int end)
 {
     int i = (start + end + 1) >> 1;
     while (end - start > 0) {

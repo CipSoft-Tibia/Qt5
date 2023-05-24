@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,12 +25,16 @@ public final class WebMessageReplyProxyImpl extends IWebMessageReplyProxy.Stub {
     private final int mId;
 
     private WebMessageReplyProxyImpl(long nativeWebMessageReplyProxyImpl, int id,
-            IWebMessageCallbackClient client, boolean isMainFrame, String sourceOrigin) {
+            IWebMessageCallbackClient client, boolean isMainFrame, String sourceOrigin,
+            PageImpl page) {
         mNativeWebMessageReplyProxyImpl = nativeWebMessageReplyProxyImpl;
         mClient = client;
         mId = id;
         try {
             client.onNewReplyProxy(this, mId, isMainFrame, sourceOrigin);
+            if (WebLayerFactoryImpl.getClientMajorVersion() >= 99) {
+                client.onSetPage(mId, page.getClientPage());
+            }
         } catch (RemoteException e) {
             throw new APICallException(e);
         }
@@ -38,28 +42,28 @@ public final class WebMessageReplyProxyImpl extends IWebMessageReplyProxy.Stub {
 
     @CalledByNative
     private static WebMessageReplyProxyImpl create(long nativeWebMessageReplyProxyImpl, int id,
-            IWebMessageCallbackClient client, boolean isMainFrame, String sourceOrigin) {
+            IWebMessageCallbackClient client, boolean isMainFrame, String sourceOrigin,
+            PageImpl page) {
         return new WebMessageReplyProxyImpl(
-                nativeWebMessageReplyProxyImpl, id, client, isMainFrame, sourceOrigin);
+                nativeWebMessageReplyProxyImpl, id, client, isMainFrame, sourceOrigin, page);
     }
 
     @CalledByNative
-    private void onNativeDestroyed() {
+    private void onActiveStateChanged() throws RemoteException {
+        if (WebLayerFactoryImpl.getClientMajorVersion() >= 90) {
+            mClient.onReplyProxyActiveStateChanged(mId);
+        }
+    }
+
+    @CalledByNative
+    private void onNativeDestroyed() throws RemoteException {
         mNativeWebMessageReplyProxyImpl = 0;
-        try {
-            mClient.onReplyProxyDestroyed(mId);
-        } catch (RemoteException e) {
-            throw new APICallException(e);
-        }
+        mClient.onReplyProxyDestroyed(mId);
     }
 
     @CalledByNative
-    private void onPostMessage(String message) {
-        try {
-            mClient.onPostMessage(mId, message);
-        } catch (RemoteException e) {
-            throw new APICallException(e);
-        }
+    private void onPostMessage(String message) throws RemoteException {
+        mClient.onPostMessage(mId, message);
     }
 
     @Override
@@ -69,8 +73,16 @@ public final class WebMessageReplyProxyImpl extends IWebMessageReplyProxy.Stub {
         }
     }
 
+    @Override
+    public boolean isActive() {
+        // Client code checks for closed before calling this.
+        assert mNativeWebMessageReplyProxyImpl != 0;
+        return WebMessageReplyProxyImplJni.get().isActive(mNativeWebMessageReplyProxyImpl);
+    }
+
     @NativeMethods
     interface Natives {
         void postMessage(long nativeWebMessageReplyProxyImpl, String message);
+        boolean isActive(long nativeWebMessageReplyProxyImpl);
     }
 }

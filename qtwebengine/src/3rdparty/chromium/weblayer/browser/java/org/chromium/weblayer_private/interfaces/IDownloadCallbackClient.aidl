@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,6 +20,5 @@ interface IDownloadCallbackClient {
   void downloadProgressChanged(IClientDownload download) = 4;
   void downloadCompleted(IClientDownload download) = 5;
   void downloadFailed(IClientDownload download) = 6;
-  // Removed in 87.
-  // Intent createIntent() = 7;
+  // ID 7 was createIntent and was removed in M87.
 }

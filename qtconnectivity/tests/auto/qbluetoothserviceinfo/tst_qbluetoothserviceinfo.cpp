@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QUuid>
@@ -37,6 +12,8 @@
 #include <qbluetoothlocaldevice.h>
 #include <qbluetoothuuid.h>
 #include <QtBluetooth/QBluetoothServer>
+
+#include <QtCore/qoperatingsystemversion.h>
 
 QT_USE_NAMESPACE
 
@@ -78,10 +55,6 @@ void tst_QBluetoothServiceInfo::initTestCase()
     qRegisterMetaType<QBluetoothUuid::ProtocolUuid>();
     qRegisterMetaType<QUuid>();
     qRegisterMetaType<QBluetoothServiceInfo::Protocol>();
-    // start Bluetooth if not started
-    QBluetoothLocalDevice *device = new QBluetoothLocalDevice();
-    device->powerOn();
-    delete device;
 }
 
 void tst_QBluetoothServiceInfo::tst_construction()
@@ -93,31 +66,31 @@ void tst_QBluetoothServiceInfo::tst_construction()
 
     QList<QBluetoothUuid::ProtocolUuid> protUuids;
     //list taken from qbluetoothuuid.h
-    protUuids << QBluetoothUuid::Sdp;
-    protUuids << QBluetoothUuid::Udp;
-    protUuids << QBluetoothUuid::Rfcomm;
-    protUuids << QBluetoothUuid::Tcp;
-    protUuids << QBluetoothUuid::TcsBin;
-    protUuids << QBluetoothUuid::TcsAt;
-    protUuids << QBluetoothUuid::Att;
-    protUuids << QBluetoothUuid::Obex;
-    protUuids << QBluetoothUuid::Ip;
-    protUuids << QBluetoothUuid::Ftp;
-    protUuids << QBluetoothUuid::Http;
-    protUuids << QBluetoothUuid::Wsp;
-    protUuids << QBluetoothUuid::Bnep;
-    protUuids << QBluetoothUuid::Upnp;
-    protUuids << QBluetoothUuid::Hidp;
-    protUuids << QBluetoothUuid::HardcopyControlChannel;
-    protUuids << QBluetoothUuid::HardcopyDataChannel;
-    protUuids << QBluetoothUuid::HardcopyNotification;
-    protUuids << QBluetoothUuid::Avctp;
-    protUuids << QBluetoothUuid::Avdtp;
-    protUuids << QBluetoothUuid::Cmtp;
-    protUuids << QBluetoothUuid::UdiCPlain;
-    protUuids << QBluetoothUuid::McapControlChannel;
-    protUuids << QBluetoothUuid::McapDataChannel;
-    protUuids << QBluetoothUuid::L2cap;
+    protUuids << QBluetoothUuid::ProtocolUuid::Sdp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Udp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Rfcomm;
+    protUuids << QBluetoothUuid::ProtocolUuid::Tcp;
+    protUuids << QBluetoothUuid::ProtocolUuid::TcsBin;
+    protUuids << QBluetoothUuid::ProtocolUuid::TcsAt;
+    protUuids << QBluetoothUuid::ProtocolUuid::Att;
+    protUuids << QBluetoothUuid::ProtocolUuid::Obex;
+    protUuids << QBluetoothUuid::ProtocolUuid::Ip;
+    protUuids << QBluetoothUuid::ProtocolUuid::Ftp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Http;
+    protUuids << QBluetoothUuid::ProtocolUuid::Wsp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Bnep;
+    protUuids << QBluetoothUuid::ProtocolUuid::Upnp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Hidp;
+    protUuids << QBluetoothUuid::ProtocolUuid::HardcopyControlChannel;
+    protUuids << QBluetoothUuid::ProtocolUuid::HardcopyDataChannel;
+    protUuids << QBluetoothUuid::ProtocolUuid::HardcopyNotification;
+    protUuids << QBluetoothUuid::ProtocolUuid::Avctp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Avdtp;
+    protUuids << QBluetoothUuid::ProtocolUuid::Cmtp;
+    protUuids << QBluetoothUuid::ProtocolUuid::UdiCPlain;
+    protUuids << QBluetoothUuid::ProtocolUuid::McapControlChannel;
+    protUuids << QBluetoothUuid::ProtocolUuid::McapDataChannel;
+    protUuids << QBluetoothUuid::ProtocolUuid::L2cap;
 
     {
         QBluetoothServiceInfo serviceInfo;
@@ -129,13 +102,13 @@ void tst_QBluetoothServiceInfo::tst_construction()
         QCOMPARE(serviceInfo.serviceDescription(), QString());
         QCOMPARE(serviceInfo.serviceProvider(), QString());
         QCOMPARE(serviceInfo.serviceUuid(), QBluetoothUuid());
-        QCOMPARE(serviceInfo.serviceClassUuids().count(), 0);
-        QCOMPARE(serviceInfo.attributes().count(), 0);
+        QCOMPARE(serviceInfo.serviceClassUuids().size(), 0);
+        QCOMPARE(serviceInfo.attributes().size(), 0);
         QCOMPARE(serviceInfo.serverChannel(), -1);
         QCOMPARE(serviceInfo.protocolServiceMultiplexer(), -1);
 
-        for (QBluetoothUuid::ProtocolUuid u : qAsConst(protUuids))
-            QCOMPARE(serviceInfo.protocolDescriptor(u).count(), 0);
+        for (QBluetoothUuid::ProtocolUuid u : std::as_const(protUuids))
+            QCOMPARE(serviceInfo.protocolDescriptor(u).size(), 0);
     }
 
     {
@@ -168,10 +141,10 @@ void tst_QBluetoothServiceInfo::tst_construction()
         QCOMPARE(copyInfo.device().address(), alternatedeviceInfo.address());
         QCOMPARE(serviceInfo.device().address(), alternatedeviceInfo.address());
 
-        for (QBluetoothUuid::ProtocolUuid u : qAsConst(protUuids))
-            QCOMPARE(serviceInfo.protocolDescriptor(u).count(), 0);
-        for (QBluetoothUuid::ProtocolUuid u : qAsConst(protUuids))
-            QCOMPARE(copyInfo.protocolDescriptor(u).count(), 0);
+        for (QBluetoothUuid::ProtocolUuid u : std::as_const(protUuids))
+            QCOMPARE(serviceInfo.protocolDescriptor(u).size(), 0);
+        for (QBluetoothUuid::ProtocolUuid u : std::as_const(protUuids))
+            QCOMPARE(copyInfo.protocolDescriptor(u).size(), 0);
     }
 }
 
@@ -187,12 +160,17 @@ void tst_QBluetoothServiceInfo::tst_assignment_data()
 #if defined(QT_ANDROID_BLUETOOTH) || defined(Q_OS_WIN)
     l2cpSupported = false;
 #endif
+
+#if defined(Q_OS_MACOS)
+    l2cpSupported = QOperatingSystemVersion::current() < QOperatingSystemVersion::MacOSMonterey;
+#endif
+
     QTest::newRow("assignment_data_l2cp")
         << QUuid(0x67c8770b, 0x44f1, 0x410a, 0xab, 0x9a, 0xf9, 0xb5, 0x44, 0x6f, 0x13, 0xee)
-        << QBluetoothUuid::L2cap << QBluetoothServiceInfo::L2capProtocol << l2cpSupported;
+        << QBluetoothUuid::ProtocolUuid::L2cap << QBluetoothServiceInfo::L2capProtocol << l2cpSupported;
     QTest::newRow("assignment_data_rfcomm")
         << QUuid(0x67c8770b, 0x44f1, 0x410a, 0xab, 0x9a, 0xf9, 0xb5, 0x44, 0x6f, 0x13, 0xee)
-        << QBluetoothUuid::Rfcomm << QBluetoothServiceInfo::RfcommProtocol << true;
+        << QBluetoothUuid::ProtocolUuid::Rfcomm << QBluetoothServiceInfo::RfcommProtocol << true;
 
 }
 
@@ -279,7 +257,7 @@ void tst_QBluetoothServiceInfo::tst_assignment()
         copyInfo.setAttribute(QBluetoothServiceInfo::ProtocolDescriptorList, QBluetoothUuid(uuid));
         QVERIFY(copyInfo.contains(QBluetoothServiceInfo::ProtocolDescriptorList));
         QVERIFY(copyInfo.isComplete());
-        QVERIFY(copyInfo.attributes().count() > 0);
+        QVERIFY(!copyInfo.attributes().isEmpty());
 
         copyInfo.removeAttribute(QBluetoothServiceInfo::ProtocolDescriptorList);
         QVERIFY(!copyInfo.contains(QBluetoothServiceInfo::ProtocolDescriptorList));
@@ -319,11 +297,22 @@ void tst_QBluetoothServiceInfo::tst_assignment()
 
         QVERIFY(!copyInfo.isValid());
         copyInfo = serviceInfo;
-        copyInfo.setServiceUuid(QBluetoothUuid::SerialPort);
+        copyInfo.setServiceUuid(QBluetoothUuid::ServiceClassUuid::SerialPort);
         QVERIFY(!copyInfo.isRegistered());
 
-        if (!QBluetoothLocalDevice::allDevices().count()) {
-            QSKIP("Skipping test due to missing Bluetooth device");
+        // start Bluetooth if not started
+        QBluetoothLocalDevice device;
+        if (device.isValid()) {
+            device.powerOn();
+            int waitPowerOnMs = 1000;
+            while (device.hostMode() == QBluetoothLocalDevice::HostPoweredOff && waitPowerOnMs) {
+                QTest::qWait(100);
+                waitPowerOnMs -= 100;
+            }
+        }
+
+        if (device.hostMode() == QBluetoothLocalDevice::HostPoweredOff) {
+            QSKIP("Skipping test due to missing or powered OFF Bluetooth device");
         } else if (protocolSupported) {
             QBluetoothServer server(serviceInfoProtocol);
             QVERIFY(server.listen());
@@ -332,7 +321,7 @@ void tst_QBluetoothServiceInfo::tst_assignment()
 
             QBluetoothServiceInfo::Sequence protocolDescriptorList;
             QBluetoothServiceInfo::Sequence protocol;
-            protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::L2cap));
+            protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::L2cap));
 
             if (serviceInfoProtocol == QBluetoothServiceInfo::L2capProtocol) {
                 protocol << QVariant::fromValue(server.serverPort());
@@ -340,13 +329,26 @@ void tst_QBluetoothServiceInfo::tst_assignment()
             } else if (serviceInfoProtocol == QBluetoothServiceInfo::RfcommProtocol) {
                 protocolDescriptorList.append(QVariant::fromValue(protocol));
                 protocol.clear();
-                protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::Rfcomm))
+                protocol << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ProtocolUuid::Rfcomm))
                          << QVariant::fromValue(quint8(server.serverPort()));
                 protocolDescriptorList.append(QVariant::fromValue(protocol));
             }
 
             serviceInfo.setAttribute(QBluetoothServiceInfo::ProtocolDescriptorList,
                                      protocolDescriptorList);
+
+#if defined(Q_OS_MACOS)
+            // bluetoothd on Monterey does not want to register a record if there is no
+            // ServiceClassIDList provided.
+            if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMonterey) {
+                // Nothing seems to help with L2CAP though:
+                if (serviceInfoProtocol == QBluetoothServiceInfo::RfcommProtocol) {
+                    QBluetoothServiceInfo::Sequence classIds;
+                    classIds << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
+                    copyInfo.setAttribute(QBluetoothServiceInfo::ServiceClassIds, classIds);
+                }
+            }
+#endif // Q_OS_MACOS
 
             QVERIFY(copyInfo.registerService());
             QVERIFY(copyInfo.isRegistered());
@@ -369,22 +371,22 @@ void tst_QBluetoothServiceInfo::tst_assignment()
 void tst_QBluetoothServiceInfo::tst_serviceClassUuids()
 {
     QBluetoothServiceInfo info;
-    QCOMPARE(info.serviceClassUuids().count(), 0);
+    QCOMPARE(info.serviceClassUuids().size(), 0);
 
     QBluetoothServiceInfo::Sequence classIds;
-    classIds << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::SerialPort));
-    QCOMPARE(classIds.count(), 1);
+    classIds << QVariant::fromValue(QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
+    QCOMPARE(classIds.size(), 1);
 
     QBluetoothUuid uuid(QString("e8e10f95-1a70-4b27-9ccf-02010264e9c8"));
     classIds.prepend(QVariant::fromValue(uuid));
-    QCOMPARE(classIds.count(), 2);
+    QCOMPARE(classIds.size(), 2);
     QCOMPARE(classIds.at(0).value<QBluetoothUuid>(), uuid);
 
     info.setAttribute(QBluetoothServiceInfo::ServiceClassIds, classIds);
     QList<QBluetoothUuid> svclids = info.serviceClassUuids();
-    QCOMPARE(svclids.count(), 2);
+    QCOMPARE(svclids.size(), 2);
     QCOMPARE(svclids.at(0), uuid);
-    QCOMPARE(svclids.at(1), QBluetoothUuid(QBluetoothUuid::SerialPort));
+    QCOMPARE(svclids.at(1), QBluetoothUuid(QBluetoothUuid::ServiceClassUuid::SerialPort));
 }
 
 static QByteArray debugOutput;

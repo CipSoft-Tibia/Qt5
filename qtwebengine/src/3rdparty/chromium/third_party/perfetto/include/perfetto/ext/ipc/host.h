@@ -20,6 +20,7 @@
 #include <memory>
 
 #include "perfetto/ext/base/scoped_file.h"
+#include "perfetto/ext/base/unix_socket.h"
 #include "perfetto/ext/ipc/basic_types.h"
 
 namespace perfetto {
@@ -45,8 +46,13 @@ class Host {
 
   // Like the above but takes a file descriptor to a pre-bound unix socket.
   // Returns nullptr if listening on the socket fails.
-  static std::unique_ptr<Host> CreateInstance(base::ScopedFile socket_fd,
+  static std::unique_ptr<Host> CreateInstance(base::ScopedSocketHandle,
                                               base::TaskRunner*);
+
+  // Creates a Host which is not backed by a POSIX listening socket.
+  // Instead, it accepts sockets passed in via AdoptConnectedSocket_Fuchsia().
+  // See go/fuchsetto for more details.
+  static std::unique_ptr<Host> CreateInstance_Fuchsia(base::TaskRunner*);
 
   virtual ~Host();
 
@@ -58,6 +64,14 @@ class Host {
   // case of errors (e.g., another service with the same name is already
   // registered).
   virtual bool ExposeService(std::unique_ptr<Service>) = 0;
+
+  // Accepts a pre-connected socket handle and a callback used to send a
+  // shared memory FD to the remote client.
+  // The callback returns false if the FD could not be sent.
+  // Should only be used in conjunction with CreateInstance_Fuchsia().
+  virtual void AdoptConnectedSocket_Fuchsia(
+      base::ScopedSocketHandle,
+      std::function<bool(int)> send_fd_cb) = 0;
 };
 
 }  // namespace ipc

@@ -31,7 +31,7 @@
 #include "third_party/blink/renderer/core/svg/svg_point_tear_off.h"
 
 #include "third_party/blink/renderer/core/svg/svg_matrix_tear_off.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -62,11 +62,10 @@ void SVGPointTearOff::setY(float f, ExceptionState& exception_state) {
 }
 
 SVGPointTearOff* SVGPointTearOff::matrixTransform(SVGMatrixTearOff* matrix) {
-  FloatPoint point = Target()->MatrixTransform(matrix->Value());
-  return CreateDetached(point);
+  return CreateDetached(matrix->Value().MapPoint(Target()->Value()));
 }
 
-SVGPointTearOff* SVGPointTearOff::CreateDetached(const FloatPoint& point) {
+SVGPointTearOff* SVGPointTearOff::CreateDetached(const gfx::PointF& point) {
   return MakeGarbageCollected<SVGPointTearOff>(
       MakeGarbageCollected<SVGPoint>(point), nullptr, kPropertyIsNotAnimVal);
 }

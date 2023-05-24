@@ -1,20 +1,22 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module viz.mojom;
 
 import "gpu/ipc/common/context_result.mojom";
+import "gpu/ipc/common/surface_handle.mojom";
 import "mojo/public/mojom/base/time.mojom";
 import "ui/gfx/mojom/ca_layer_params.mojom";
+import "ui/gfx/mojom/delegated_ink_point_renderer.mojom";
 import "ui/gfx/mojom/display_color_spaces.mojom";
 import "ui/gfx/mojom/overlay_transform.mojom";
 import "ui/gfx/mojom/transform.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 import "ui/latency/mojom/latency_info.mojom";
+import "services/viz/privileged/mojom/compositing/begin_frame_observer.mojom";
 import "services/viz/privileged/mojom/compositing/layered_window_updater.mojom";
 import "services/viz/privileged/mojom/compositing/vsync_parameter_observer.mojom";
-import "services/viz/public/mojom/compositing/delegated_ink_point.mojom";
 
 // The DisplayPrivate is used by privileged clients to talk to Display.
 interface DisplayPrivate {
@@ -36,6 +38,10 @@ interface DisplayPrivate {
   // effect when using GPU compositing.
   SetDisplayColorSpaces(gfx.mojom.DisplayColorSpaces display_color_spaces);
   SetOutputIsSecure(bool secure);
+
+  // Sets CGDirectDisplayID for GPU begin frame source.
+  [EnableIf=is_mac]
+  SetVSyncDisplayID(int64 display_id);
 
   // Updates vsync parameters used to generate BeginFrames for this display.
   // This will do nothing if the display is using an external BeginFrame source.
@@ -63,6 +69,15 @@ interface DisplayPrivate {
   [EnableIf=is_android]
   SetSupportedRefreshRates(array<float> refresh_rates);
 
+  // Notifies associated Display to not detach child surface controls during
+  // destruction.
+  [EnableIf=is_android]
+  PreserveChildSurfaceControls();
+
+  // Lets client control whether it wants `DidCompleteSwapWithSize` callbacks.
+  [EnableIf=is_android]
+  SetSwapCompletionCallbackEnabled(bool enable);
+
   // Adds an observer that gets notified about vsync parameter changes. See
   // VSyncParameterObserver for details.
   //
@@ -76,17 +91,31 @@ interface DisplayPrivate {
   // Bind an interface between browser process and viz for ink points to be
   // sent to viz and stored, to be used when drawing a delegated ink trail.
   SetDelegatedInkPointRenderer(
-    pending_receiver<DelegatedInkPointRenderer> receiver);
+    pending_receiver<gfx.mojom.DelegatedInkPointRenderer> receiver);
+
+  // Allow browser to observe begin frames without implementing the contract of
+  // CompositorFrameSink and Client. Eg there is no need to respond by
+  // submitting a frame. Note setting this to non-null requests begin frames,
+  // not just observe begin frames requested by other observers. This only a
+  // single observer at a time; calling this will replace any existing observer.
+  SetStandaloneBeginFrameObserver(pending_remote<BeginFrameObserver> observer);
 };
 
+// DisplayClient allows privileged clients to receive events from the Display.
 interface DisplayClient {
-  [EnableIf=is_mac]
+  // Called when new Core Animation Layer params are received.
+  [EnableIf=is_apple]
   OnDisplayReceivedCALayerParams(gfx.mojom.CALayerParams ca_layer_params);
 
   // Creates a LayeredWindowUpdater implementation to draw into a layered
   // window.
   [EnableIf=is_win]
   CreateLayeredWindowUpdater(pending_receiver<LayeredWindowUpdater> receiver);
+
+  // Sends the created child window to the browser process so that it can be
+  // parented to the browser process window
+  [EnableIf=is_win]
+  AddChildWindowToBrowser(gpu.mojom.SurfaceHandle child_window);
 
   // Notifies that a swap has occurred and provides information about the pixel
   // size of the swapped frame.

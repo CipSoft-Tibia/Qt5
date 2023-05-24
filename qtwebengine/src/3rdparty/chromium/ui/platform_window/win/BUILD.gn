@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -11,6 +11,7 @@ jumbo_component("win") {
     "//base",
     "//skia",
     "//ui/base",
+    "//ui/base/cursor",
     "//ui/events",
     "//ui/gfx",
     "//ui/gfx/geometry",

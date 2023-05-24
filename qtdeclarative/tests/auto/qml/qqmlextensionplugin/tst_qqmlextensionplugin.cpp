@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore>
 #include <QtTest>
@@ -76,7 +51,17 @@ private Q_SLOTS:
 void tst_qqmlextensionplugin::iidCheck_data()
 {
     QList<QString> files;
-    for (QDirIterator it(QLibraryInfo::location(QLibraryInfo::Qml2ImportsPath), QDirIterator::Subdirectories); it.hasNext(); ) {
+    // On Android the plugins are located in the APK's libs subdir. They can
+    // be distinguished by the name, which starts from "libqml_" and ends with
+    // "plugin_${ARCH}.so"
+#ifdef Q_OS_ANDROID
+    const QStringList libraryPaths = QCoreApplication::libraryPaths();
+    QVERIFY(!libraryPaths.isEmpty());
+    const QLatin1String nameFilters("libqml_*plugin_" ANDROID_ARCH "*");
+    for (QDirIterator it(libraryPaths.front(), { nameFilters }, QDir::Files); it.hasNext(); ) {
+#else
+    for (QDirIterator it(QLibraryInfo::path(QLibraryInfo::QmlImportsPath), QDirIterator::Subdirectories); it.hasNext(); ) {
+#endif
         QString file = it.next();
 #if defined(Q_OS_DARWIN)
         if (file.contains(QLatin1String(".dSYM/")))

@@ -1,65 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgdefaultinternalimagenode_p.h"
 #include <private/qsgdefaultrendercontext_p.h>
 #include <private/qsgmaterialshader_p.h>
 #include <private/qsgtexturematerial_p.h>
-#include <QtGui/qopenglfunctions.h>
+#include <qopenglfunctions.h>
 #include <QtCore/qmath.h>
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 QT_BEGIN_NAMESPACE
-
-class SmoothTextureMaterialShader : public QSGTextureMaterialShader
-{
-public:
-    SmoothTextureMaterialShader();
-
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-    char const *const *attributeNames() const override;
-
-protected:
-    void initialize() override;
-
-    int m_pixelSizeLoc;
-};
 
 class SmoothTextureMaterialRhiShader : public QSGTextureMaterialRhiShader
 {
@@ -72,7 +22,6 @@ public:
 
 QSGSmoothTextureMaterial::QSGSmoothTextureMaterial()
 {
-    setFlag(SupportsRhiShader, true);
     setFlag(RequiresFullMatrixExceptTranslate, true);
     setFlag(Blending, true);
 }
@@ -88,46 +37,10 @@ QSGMaterialType *QSGSmoothTextureMaterial::type() const
     return &type;
 }
 
-QSGMaterialShader *QSGSmoothTextureMaterial::createShader() const
+QSGMaterialShader *QSGSmoothTextureMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new SmoothTextureMaterialRhiShader;
-    else
-        return new SmoothTextureMaterialShader;
-}
-
-SmoothTextureMaterialShader::SmoothTextureMaterialShader()
-{
-    setShaderSourceFile(QOpenGLShader::Vertex, QStringLiteral(":/qt-project.org/scenegraph/shaders/smoothtexture.vert"));
-    setShaderSourceFile(QOpenGLShader::Fragment, QStringLiteral(":/qt-project.org/scenegraph/shaders/smoothtexture.frag"));
-}
-
-void SmoothTextureMaterialShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
-{
-    if (oldEffect == nullptr) {
-        // The viewport is constant, so set the pixel size uniform only once.
-        QRect r = state.viewportRect();
-        program()->setUniformValue(m_pixelSizeLoc, 2.0f / r.width(), 2.0f / r.height());
-    }
-    QSGTextureMaterialShader::updateState(state, newEffect, oldEffect);
-}
-
-char const *const *SmoothTextureMaterialShader::attributeNames() const
-{
-    static char const *const attributes[] = {
-        "vertex",
-        "multiTexCoord",
-        "vertexOffset",
-        "texCoordOffset",
-        nullptr
-    };
-    return attributes;
-}
-
-void SmoothTextureMaterialShader::initialize()
-{
-    m_pixelSizeLoc = program()->uniformLocation("pixelSize");
-    QSGTextureMaterialShader::initialize();
+    Q_UNUSED(renderMode);
+    return new SmoothTextureMaterialRhiShader;
 }
 
 SmoothTextureMaterialRhiShader::SmoothTextureMaterialRhiShader()
@@ -247,24 +160,8 @@ inline static bool isPowerOfTwo(int x)
 
 bool QSGDefaultInternalImageNode::supportsWrap(const QSize &size) const
 {
-    bool wrapSupported = true;
-
-    if (m_rc->rhi()) {
-        wrapSupported = m_rc->rhi()->isFeatureSupported(QRhi::NPOTTextureRepeat)
-                || (isPowerOfTwo(size.width()) && isPowerOfTwo(size.height()));
-    } else {
-        QOpenGLContext *ctx = QOpenGLContext::currentContext();
-#ifndef QT_OPENGL_ES_2
-        if (ctx->isOpenGLES())
-#endif
-        {
-            bool npotSupported = ctx->functions()->hasOpenGLFeature(QOpenGLFunctions::NPOTTextureRepeat);
-            const bool isNpot = !isPowerOfTwo(size.width()) || !isPowerOfTwo(size.height());
-            wrapSupported = npotSupported || !isNpot;
-        }
-    }
-
-    return wrapSupported;
+    bool npotSupported = m_rc->rhi() && m_rc->rhi()->isFeatureSupported(QRhi::NPOTTextureRepeat);
+    return npotSupported || (isPowerOfTwo(size.width()) && isPowerOfTwo(size.height()));
 }
 
 QT_END_NAMESPACE

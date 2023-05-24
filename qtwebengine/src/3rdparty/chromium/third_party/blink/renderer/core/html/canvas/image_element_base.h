@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_HTML_CANVAS_IMAGE_ELEMENT_BASE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_HTML_CANVAS_IMAGE_ELEMENT_BASE_H_
 
+#include "third_party/blink/public/mojom/css/preferred_color_scheme.mojom-blink.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_image_source.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap_source.h"
@@ -26,21 +27,23 @@ class CORE_EXPORT ImageElementBase : public CanvasImageSource,
   // base for both elements.
   static Image::ImageDecodingMode ParseImageDecodingMode(const AtomicString&);
 
-  IntSize BitmapSourceSize() const override;
+  gfx::Size BitmapSourceSize() const override;
   ScriptPromise CreateImageBitmap(ScriptState*,
-                                  base::Optional<IntRect>,
+                                  absl::optional<gfx::Rect>,
                                   const ImageBitmapOptions*,
                                   ExceptionState&) override;
 
-  scoped_refptr<Image> GetSourceImageForCanvas(SourceImageStatus*,
-                                               const FloatSize&) override;
+  scoped_refptr<Image> GetSourceImageForCanvas(
+      SourceImageStatus*,
+      const gfx::SizeF&,
+      const AlphaDisposition alpha_disposition = kPremultiplyAlpha) override;
 
   bool WouldTaintOrigin() const override;
 
-  FloatSize ElementSize(const FloatSize& default_object_size,
-                        const RespectImageOrientationEnum) const override;
-  FloatSize DefaultDestinationSize(
-      const FloatSize& default_object_size,
+  gfx::SizeF ElementSize(const gfx::SizeF& default_object_size,
+                         const RespectImageOrientationEnum) const override;
+  gfx::SizeF DefaultDestinationSize(
+      const gfx::SizeF& default_object_size,
       const RespectImageOrientationEnum) const override;
 
   bool IsAccelerated() const override;
@@ -60,17 +63,14 @@ class CORE_EXPORT ImageElementBase : public CanvasImageSource,
   // Used with HTMLImageElement and SVGImageElement types.
   Image::ImageDecodingMode GetDecodingModeForPainting(PaintImage::Id);
 
-  // Return the image orientation setting from the layout object, if available.
-  // In the absence of a layout object, kRespectImageOrientation will be
-  // returned.
-  RespectImageOrientationEnum RespectImageOrientation() const;
-
  protected:
   Image::ImageDecodingMode decoding_mode_ =
       Image::ImageDecodingMode::kUnspecifiedDecode;
 
  private:
   const Element& GetElement() const;
+
+  mojom::blink::PreferredColorScheme PreferredColorScheme() const;
 
   // The id for the PaintImage used the last time this element was painted.
   PaintImage::Id last_painted_image_id_ = PaintImage::kInvalidId;

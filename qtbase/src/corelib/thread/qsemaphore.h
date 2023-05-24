@@ -1,53 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSEMAPHORE_H
 #define QSEMAPHORE_H
 
 #include <QtCore/qglobal.h>
+#include <QtCore/qdeadlinetimer.h>
+
+#include <chrono>
 
 QT_REQUIRE_CONFIG(thread);
 
 QT_BEGIN_NAMESPACE
 
 class QSemaphorePrivate;
-
 class Q_CORE_EXPORT QSemaphore
 {
 public:
@@ -56,33 +22,62 @@ public:
 
     void acquire(int n = 1);
     bool tryAcquire(int n = 1);
+    QT_CORE_INLINE_SINCE(6, 6)
     bool tryAcquire(int n, int timeout);
+    bool tryAcquire(int n, QDeadlineTimer timeout);
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    template <typename Rep, typename Period>
+    bool tryAcquire(int n, std::chrono::duration<Rep, Period> timeout)
+    { return tryAcquire(n, QDeadlineTimer(timeout)); }
+#endif
 
     void release(int n = 1);
 
     int available() const;
 
+    // std::counting_semaphore compatibility:
+    bool try_acquire() noexcept { return tryAcquire(); }
+    template <typename Rep, typename Period>
+    bool try_acquire_for(const std::chrono::duration<Rep, Period> &timeout)
+    { return tryAcquire(1, timeout); }
+    template <typename Clock, typename Duration>
+    bool try_acquire_until(const std::chrono::time_point<Clock, Duration> &tp)
+    {
+        return try_acquire_for(tp - Clock::now());
+    }
 private:
     Q_DISABLE_COPY(QSemaphore)
 
     union {
         QSemaphorePrivate *d;
-        QBasicAtomicInteger<quintptr> u;        // ### Qt6: make 64-bit
+        QBasicAtomicInteger<quintptr> u;
+        QBasicAtomicInteger<quint32> u32[2];
+        QBasicAtomicInteger<quint64> u64;
     };
 };
+
+#if QT_CORE_INLINE_IMPL_SINCE(6, 6)
+bool QSemaphore::tryAcquire(int n, int timeout)
+{
+    return tryAcquire(n, QDeadlineTimer(timeout));
+}
+#endif
 
 class QSemaphoreReleaser
 {
 public:
+    Q_NODISCARD_CTOR
     QSemaphoreReleaser() = default;
+    Q_NODISCARD_CTOR
     explicit QSemaphoreReleaser(QSemaphore &sem, int n = 1) noexcept
         : m_sem(&sem), m_n(n) {}
+    Q_NODISCARD_CTOR
     explicit QSemaphoreReleaser(QSemaphore *sem, int n = 1) noexcept
         : m_sem(sem), m_n(n) {}
+    Q_NODISCARD_CTOR
     QSemaphoreReleaser(QSemaphoreReleaser &&other) noexcept
         : m_sem(other.cancel()), m_n(other.m_n) {}
-    QSemaphoreReleaser &operator=(QSemaphoreReleaser &&other) noexcept
-    { QSemaphoreReleaser moved(std::move(other)); swap(moved); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QSemaphoreReleaser)
 
     ~QSemaphoreReleaser()
     {
@@ -92,8 +87,8 @@ public:
 
     void swap(QSemaphoreReleaser &other) noexcept
     {
-        qSwap(m_sem, other.m_sem);
-        qSwap(m_n, other.m_n);
+        qt_ptr_swap(m_sem, other.m_sem);
+        std::swap(m_n, other.m_n);
     }
 
     QSemaphore *semaphore() const noexcept
@@ -101,7 +96,7 @@ public:
 
     QSemaphore *cancel() noexcept
     {
-        return qExchange(m_sem, nullptr);
+        return std::exchange(m_sem, nullptr);
     }
 
 private:

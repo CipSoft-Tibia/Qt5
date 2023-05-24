@@ -27,6 +27,7 @@
 
 #include "third_party/blink/renderer/core/editing/plain_text_range.h"
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/container_node.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/range.h"
@@ -195,10 +196,14 @@ PlainTextRange PlainTextRange::Create(const ContainerNode& scope,
   DocumentLifecycle::DisallowTransitionScope disallow_transition(
       scope.GetDocument().Lifecycle());
 
-  wtf_size_t start =
+  const wtf_size_t start =
       TextIterator::RangeLength(Position(scope, 0), range.StartPosition());
-  wtf_size_t end =
-      TextIterator::RangeLength(Position(scope, 0), range.EndPosition());
+  // Note: We are not sure which one is bigger, scope to range.end or
+  // range.start to range.end.
+  const wtf_size_t end =
+      range.IsCollapsed()
+          ? start
+          : TextIterator::RangeLength(Position(scope, 0), range.EndPosition());
 
   return PlainTextRange(start, end);
 }
@@ -206,6 +211,13 @@ PlainTextRange PlainTextRange::Create(const ContainerNode& scope,
 PlainTextRange PlainTextRange::Create(const ContainerNode& scope,
                                       const Range& range) {
   return Create(scope, EphemeralRange(&range));
+}
+
+CORE_EXPORT std::ostream& operator<<(std::ostream& ostream,
+                                     const PlainTextRange& range) {
+  if (range.IsNull())
+    return ostream << "{}";
+  return ostream << "{" << range.Start() << "," << range.End() << "}";
 }
 
 }  // namespace blink

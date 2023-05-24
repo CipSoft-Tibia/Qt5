@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <private/qfontengine_p.h>
 #include <private/qtextengine_p.h>
 #include <qtextlayout.h>
@@ -81,6 +56,9 @@ private slots:
 
     void shapingDisabledDevanagari();
     void shapingDisabledLatin();
+
+    void privateUseArea();
+
 private:
     bool haveTestFonts;
 };
@@ -117,7 +95,7 @@ static void prepareShapingTest(const QFont &font, const ShapeTable *shape_table)
             string.append(QChar(*u));
             testName.append(" 0x" + QByteArray::number(*u, 16));
         }
-        QVector<ushort> glyphs;
+        QList<ushort> glyphs;
         for (const ushort *g = s->glyphs; *g; ++g)
             glyphs.append(*g);
 
@@ -129,7 +107,7 @@ static void doShapingTests()
 {
     QFETCH(QFont, font);
     QFETCH(QString, string);
-    QFETCH(QVector<ushort>, glyphs);
+    QFETCH(QList<ushort>, glyphs);
 
     QVERIFY(!string.isEmpty());
 
@@ -142,7 +120,7 @@ static void doShapingTests()
     if (e->fontEngine(e->layoutData->items[0])->type() == QFontEngine::Box)
         QSKIP("OpenType support missing for script");
 
-    QCOMPARE(e->fontEngine(e->layoutData->items[0])->fontDef.family, font.family());
+    QCOMPARE(e->fontEngine(e->layoutData->items[0])->fontDef.families.first(), font.family());
 
     ushort nglyphs = glyphs.size();
     if (!glyphs.isEmpty()) {
@@ -176,13 +154,13 @@ void tst_QTextScriptEngine::devanagari_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Devanagari).contains("Raghindi")) {
+        if (QFontDatabase::families(QFontDatabase::Devanagari).contains("Raghindi")) {
             QFont f("Raghindi");
             const ShapeTable shape_table [] = {
                 // Ka
@@ -228,7 +206,7 @@ void tst_QTextScriptEngine::devanagari_data()
     }
 
     {
-        if (QFontDatabase().families(QFontDatabase::Devanagari).contains("Mangal")) {
+        if (QFontDatabase::families(QFontDatabase::Devanagari).contains("Mangal")) {
             QFont f("Mangal");
             const ShapeTable shape_table [] = {
                 // Ka
@@ -283,13 +261,13 @@ void tst_QTextScriptEngine::bengali_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Bengali).contains("Akaash")) {
+        if (QFontDatabase::families(QFontDatabase::Bengali).contains("Akaash")) {
             QFont f("Akaash");
             const ShapeTable shape_table [] = {
                 // Ka
@@ -392,7 +370,7 @@ void tst_QTextScriptEngine::bengali_data()
             QSKIP("couldn't find Akaash");
     }
     {
-        if (QFontDatabase().families(QFontDatabase::Bengali).contains("Mukti Narrow")) {
+        if (QFontDatabase::families(QFontDatabase::Bengali).contains("Mukti Narrow")) {
             QFont f("Mukti Narrow");
             const ShapeTable shape_table [] = {
                 // Ka
@@ -490,7 +468,7 @@ void tst_QTextScriptEngine::bengali_data()
             QSKIP("couldn't find Mukti");
     }
     {
-        if (QFontDatabase().families(QFontDatabase::Bengali).contains("Likhan")) {
+        if (QFontDatabase::families(QFontDatabase::Bengali).contains("Likhan")) {
             QFont f("Likhan");
             const ShapeTable shape_table [] = {
                 { { 0x9a8, 0x9cd, 0x9af, 0x0 },
@@ -521,13 +499,13 @@ void tst_QTextScriptEngine::gurmukhi_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Gurmukhi).contains("Lohit Punjabi")) {
+        if (QFontDatabase::families(QFontDatabase::Gurmukhi).contains("Lohit Punjabi")) {
             QFont f("Lohit Punjabi");
             const ShapeTable shape_table [] = {
                 { { 0xA15, 0xA4D, 0xa39, 0x0 },
@@ -549,13 +527,13 @@ void tst_QTextScriptEngine::oriya_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Oriya).contains("utkal")) {
+        if (QFontDatabase::families(QFontDatabase::Oriya).contains("utkal")) {
             QFont f("utkal");
             const ShapeTable shape_table [] = {
                 { { 0xb15, 0xb4d, 0xb24, 0xb4d, 0xb30, 0x0 },
@@ -590,13 +568,13 @@ void tst_QTextScriptEngine::tamil_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Tamil).contains("AkrutiTml1")) {
+        if (QFontDatabase::families(QFontDatabase::Tamil).contains("AkrutiTml1")) {
             QFont f("AkrutiTml1");
             const ShapeTable shape_table [] = {
                 { { 0x0b95, 0x0bc2, 0x0 },
@@ -667,13 +645,13 @@ void tst_QTextScriptEngine::telugu_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Telugu).contains("Pothana2000")) {
+        if (QFontDatabase::families(QFontDatabase::Telugu).contains("Pothana2000")) {
             QFont f("Pothana2000");
             const ShapeTable shape_table [] = {
                 { { 0xc15, 0xc4d, 0x0 },
@@ -716,13 +694,13 @@ void tst_QTextScriptEngine::kannada_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Kannada).contains("Sampige")) {
+        if (QFontDatabase::families(QFontDatabase::Kannada).contains("Sampige")) {
             QFont f("Sampige");
             const ShapeTable shape_table [] = {
                 { { 0x0ca8, 0x0ccd, 0x0ca8, 0x0 },
@@ -753,7 +731,7 @@ void tst_QTextScriptEngine::kannada_data()
             QSKIP("couldn't find Sampige");
     }
     {
-        if (QFontDatabase().families(QFontDatabase::Kannada).contains("Tunga")) {
+        if (QFontDatabase::families(QFontDatabase::Kannada).contains("Tunga")) {
             QFont f("Tunga");
             const ShapeTable shape_table [] = {
                 { { 0x0cb7, 0x0cc6, 0x0 },
@@ -787,13 +765,13 @@ void tst_QTextScriptEngine::malayalam_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Malayalam).contains("AkrutiMal2")) {
+        if (QFontDatabase::families(QFontDatabase::Malayalam).contains("AkrutiMal2")) {
             QFont f("AkrutiMal2");
             const ShapeTable shape_table [] = {
                 { { 0x0d15, 0x0d46, 0x0 },
@@ -837,7 +815,7 @@ void tst_QTextScriptEngine::malayalam_data()
             QSKIP("couldn't find AkrutiMal2");
     }
     {
-        if (QFontDatabase().families(QFontDatabase::Malayalam).contains("Rachana")) {
+        if (QFontDatabase::families(QFontDatabase::Malayalam).contains("Rachana")) {
             QFont f("Rachana");
             const ShapeTable shape_table [] = {
                 { { 0xd37, 0xd4d, 0xd1f, 0xd4d, 0xd30, 0xd40, 0x0 },
@@ -868,13 +846,13 @@ void tst_QTextScriptEngine::sinhala_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Sinhala).contains("Malithi Web")) {
+        if (QFontDatabase::families(QFontDatabase::Sinhala).contains("Malithi Web")) {
             QFont f("Malithi Web");
             const ShapeTable shape_table [] = {
                 { { 0xd9a, 0xdd9, 0xdcf, 0x0 },
@@ -906,13 +884,13 @@ void tst_QTextScriptEngine::khmer_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Khmer).contains("Khmer OS")) {
+        if (QFontDatabase::families(QFontDatabase::Khmer).contains("Khmer OS")) {
             QFont f("Khmer OS");
             const ShapeTable shape_table [] = {
                 { { 0x179a, 0x17cd, 0x0 },
@@ -950,13 +928,13 @@ void tst_QTextScriptEngine::linearB_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Any).contains("Penuturesu")) {
+        if (QFontDatabase::families(QFontDatabase::Any).contains("Penuturesu")) {
             QFont f("Penuturesu");
             const ShapeTable shape_table [] = {
                 { { 0xd800, 0xdc01, 0xd800, 0xdc02, 0xd800, 0xdc03,  0 },
@@ -978,32 +956,32 @@ void tst_QTextScriptEngine::greek_data()
 {
     QTest::addColumn<QFont>("font");
     QTest::addColumn<QString>("string");
-    QTest::addColumn<QVector<ushort> >("glyphs");
+    QTest::addColumn<QList<ushort>>("glyphs");
 
     if (!haveTestFonts)
         QSKIP("Test fonts are not available");
 
     {
-        if (QFontDatabase().families(QFontDatabase::Any).contains("DejaVu Sans")) {
+        if (QFontDatabase::families(QFontDatabase::Any).contains("DejaVu Sans")) {
             QFont f("DejaVu Sans");
             for (int uc = 0x1f00; uc <= 0x1fff; ++uc) {
                 QString string;
                 string.append(QChar(uc));
                 QByteArray testName = f.family().toLatin1() + ": 0x" + QByteArray::number(uc, 16);
-                QTest::newRow(testName.constData()) << f << string << QVector<ushort>();
+                QTest::newRow(testName.constData()) << f << string << QList<ushort>();
             }
         } else
             QSKIP("couldn't find DejaVu Sans");
     }
 
     {
-        if (QFontDatabase().families(QFontDatabase::Any).contains("SBL Greek")) {
+        if (QFontDatabase::families(QFontDatabase::Any).contains("SBL Greek")) {
             QFont f("SBL Greek");
             for (int uc = 0x1f00; uc <= 0x1fff; ++uc) {
                 QString string;
                 string.append(QChar(uc));
                 QByteArray testName = f.family().toLatin1() + ": 0x" + QByteArray::number(uc, 16);
-                QTest::newRow(testName.constData()) << f << string << QVector<ushort>();
+                QTest::newRow(testName.constData()) << f << string << QList<ushort>();
             }
 
             const ShapeTable shape_table [] = {
@@ -1078,8 +1056,7 @@ void tst_QTextScriptEngine::mirroredChars()
 
 void tst_QTextScriptEngine::controlInSyllable_qtbug14204()
 {
-    QFontDatabase db;
-    if (!db.families().contains(QStringLiteral("Aparajita")))
+    if (!QFontDatabase::families().contains(QStringLiteral("Aparajita")))
         QSKIP("couldn't find 'Aparajita' font");
 
     QFont font(QStringLiteral("Aparajita"));
@@ -1099,7 +1076,7 @@ void tst_QTextScriptEngine::controlInSyllable_qtbug14204()
     QFontEngine *fe = e->fontEngine(e->layoutData->items[0]);
     if (fe->type() == QFontEngine::Box)
         QSKIP("OpenType support missing for script");
-    QCOMPARE(fe->fontDef.family, font.family());
+    QCOMPARE(fe->fontDef.families.first(), font.family());
 
     e->shape(0);
     QCOMPARE(e->layoutData->items[0].num_glyphs, ushort(3));
@@ -1120,11 +1097,12 @@ void tst_QTextScriptEngine::combiningMarks_qtbug15675_data()
 
     bool hasTests = false;
 
-    QStringList families;
-    families << QStringLiteral("Monaco");
-    families << QStringLiteral("DejaVu Sans Mono");
+    const QString families[] = {
+        QStringLiteral("Monaco"),
+        QStringLiteral("DejaVu Sans Mono"),
+    };
 
-    foreach (const QString &family, families) {
+    for (const QString &family : families) {
         QFont font(family);
         font.setStyleStrategy(QFont::NoFontMerging);
         if (QFontInfo(font).family() != family)
@@ -1157,7 +1135,7 @@ void tst_QTextScriptEngine::combiningMarks_qtbug15675()
     QFontEngine *fe = e->fontEngine(e->layoutData->items[0]);
     if (fe->type() == QFontEngine::Box)
         QSKIP("OpenType support missing for script");
-    QCOMPARE(fe->fontDef.family, font.family());
+    QCOMPARE(fe->fontDef.families.first(), font.family());
 
     e->shape(0);
     const int diff = e->layoutData->items[0].num_glyphs - string.size();
@@ -1181,8 +1159,7 @@ void tst_QTextScriptEngine::combiningMarks_qtbug15675()
 
 void tst_QTextScriptEngine::thaiIsolatedSaraAm()
 {
-    QFontDatabase db;
-    if (!db.families().contains("Waree"))
+    if (!QFontDatabase::families().contains("Waree"))
         QSKIP("couldn't find 'Waree' font");
 
     QFont font(QStringLiteral("Waree"));
@@ -1199,7 +1176,7 @@ void tst_QTextScriptEngine::thaiIsolatedSaraAm()
     QFontEngine *fe = e->fontEngine(e->layoutData->items[0]);
     if (fe->type() == QFontEngine::Box)
         QSKIP("OpenType support missing for script");
-    QCOMPARE(fe->fontDef.family, font.family());
+    QCOMPARE(fe->fontDef.families.first(), font.family());
 
     e->shape(0);
     QVERIFY(e->layoutData->items[0].num_glyphs > 0);
@@ -1210,15 +1187,15 @@ void tst_QTextScriptEngine::thaiIsolatedSaraAm()
 
 void tst_QTextScriptEngine::thaiWithZWJ()
 {
-    QFontDatabase db;
-    if (!db.families().contains("Waree"))
+#if QT_CONFIG(system_harfbuzz)
+    QSKIP("Requires up-to-date Harfbuzz");
+#endif
+
+    if (!QFontDatabase::families().contains("Waree"))
         QSKIP("couldn't find 'Waree' font");
 
     QFont font(QStringLiteral("Waree"));
     font.setStyleStrategy(QFont::NoFontMerging);
-
-    if (QFontInfo(font).styleName() != QStringLiteral("Book"))
-        QSKIP("couldn't find 'Waree Book' font");
 
     QString s(QString::fromUtf8("\xe0\xb8\xa3\xe2\x80\x8d\xe0\xb8\xa3\xe2\x80"
                                 "\x8c\x2e\xe0\xb8\xa3\x2e\xe2\x80\x9c\xe0\xb8"
@@ -1239,14 +1216,13 @@ void tst_QTextScriptEngine::thaiWithZWJ()
     QCOMPARE(e->layoutData->items[2].num_glyphs, ushort(2)); // Thai: Thai character followed by superscript "a" which is of inherited type
 
     //A quick sanity check - check all the characters are individual clusters
-    // A thai implementation could either remove the ZWJ and ZWNJ characters, or hide them.
-    // The current implementation hides them, so we test for that.
+    // A thai implementation could either remove the ZWJ character, or hide it.
+    // The current implementation merges the cluster for ZWJ and keeps ZWNJ, so we test for that.
     unsigned short *logClusters = e->layoutData->logClustersPtr;
     QCOMPARE(logClusters[0], ushort(0));
     QCOMPARE(logClusters[1], ushort(0));
     QCOMPARE(logClusters[2], ushort(2));
-    QCOMPARE(logClusters[3], ushort(2));
-    for (int i = 4; i < 15; i++)
+    for (int i = 3; i < 15; i++)
         QCOMPARE(logClusters[i], ushort(i));
     for (int i = 0; i < 3; i++)
         QCOMPARE(logClusters[i+15], ushort(0));
@@ -1338,6 +1314,42 @@ void tst_QTextScriptEngine::shapingDisabledDevanagari()
     QCOMPARE(normalRuns.size(), 1);
     QCOMPARE(noShapingRuns.size(), 1);
     QCOMPARE(noShapingRuns.first().glyphIndexes().size(), normalRuns.first().glyphIndexes().size());
+}
+
+void tst_QTextScriptEngine::privateUseArea()
+{
+    QString privateUseAreaString = QString::fromUtf8("");
+
+    QFont font;
+    QList<QGlyphRun> withFontMerging;
+    {
+        QTextLayout layout;
+        layout.setText(privateUseAreaString);
+        layout.setFont(font);
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        withFontMerging = layout.glyphRuns();
+    }
+
+    font.setStyleStrategy(QFont::NoFontMerging);
+    QList<QGlyphRun> withoutFontMerging;
+    {
+        QTextLayout layout;
+        layout.setText(privateUseAreaString);
+        layout.setFont(font);
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        withoutFontMerging = layout.glyphRuns();
+    }
+
+    QCOMPARE(withFontMerging.size(), withoutFontMerging.size());
+
+    for (int i = 0; i < withFontMerging.size(); ++i)
+        QCOMPARE(withFontMerging.at(i).glyphIndexes(), withoutFontMerging.at(i).glyphIndexes());
 }
 
 QTEST_MAIN(tst_QTextScriptEngine)

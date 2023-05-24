@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmetalroughmaterial.h"
 #include "qmetalroughmaterial_p.h"
@@ -61,7 +25,7 @@ namespace Qt3DExtras {
 
 QMetalRoughMaterialPrivate::QMetalRoughMaterialPrivate()
     : QMaterialPrivate()
-    , m_baseColorParameter(new QParameter(QStringLiteral("baseColor"), QColor("grey")))
+    , m_baseColorParameter(new QParameter(QStringLiteral("baseColor"), QColor::fromString("grey")))
     , m_metalnessParameter(new QParameter(QStringLiteral("metalness"), 0.0f))
     , m_roughnessParameter(new QParameter(QStringLiteral("roughness"), 0.0f))
     , m_baseColorMapParameter(new QParameter(QStringLiteral("baseColorMap"), QVariant()))
@@ -124,7 +88,7 @@ void QMetalRoughMaterialPrivate::init()
                                                     QStringLiteral("ambientOcclusion"),
                                                     QStringLiteral("normal")});
 
-    m_metalRoughRHIShader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/rhi/default.vert"))));
+    m_metalRoughRHIShader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/rhi/default_pos_norm.vert"))));
     m_metalRoughRHIShaderBuilder->setParent(q);
     m_metalRoughRHIShaderBuilder->setShaderProgram(m_metalRoughRHIShader);
     m_metalRoughRHIShaderBuilder->setFragmentShaderGraph(QUrl(QStringLiteral("qrc:/shaders/graphs/metalrough.frag.json")));
@@ -184,6 +148,40 @@ void QMetalRoughMaterialPrivate::handleTextureScaleChanged(const QVariant &var)
     Q_Q(QMetalRoughMaterial);
     emit q->textureScaleChanged(var.toFloat());
 }
+
+void QMetalRoughMaterialPrivate::updateLayersOnTechnique(const QStringList &layers)
+{
+    m_metalRoughGL3ShaderBuilder->setEnabledLayers(layers);
+    m_metalRoughES3ShaderBuilder->setEnabledLayers(layers);
+    m_metalRoughRHIShaderBuilder->setEnabledLayers(layers);
+    updateVertexShaderBasedOnLayers(layers);
+}
+
+void QMetalRoughMaterialPrivate::updateVertexShaderBasedOnLayers(const QStringList &layers)
+{
+    const QString mapsLayers[] = {
+        QStringLiteral("baseColorMap"),
+        QStringLiteral("metalnessMap"),
+        QStringLiteral("roughnessMap"),
+        QStringLiteral("ambientOcclusionMap"),
+        QStringLiteral("normalMap")
+    };
+
+    const bool needsTexCoords = std::any_of(std::cbegin(mapsLayers),
+                                            std::cend(mapsLayers),
+                                            [&] (const QString &mapLayers) { return layers.contains(mapLayers); });
+    const bool needsTangents = layers.contains(QStringLiteral("normalMap"));
+
+    QString vertexShader = QLatin1String("default_pos_norm");
+
+    if (needsTexCoords)
+        vertexShader += QLatin1String("_tex");
+    if (needsTangents)
+        vertexShader += QLatin1String("_tan");
+
+    m_metalRoughRHIShader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QLatin1String("qrc:/shaders/rhi/%1.vert").arg(vertexShader))));
+}
+
 
 /*!
     \class Qt3DExtras::QMetalRoughMaterial
@@ -375,9 +373,7 @@ void QMetalRoughMaterial::setBaseColor(const QVariant &baseColor)
             d->m_metalRoughEffect->removeParameter(d->m_baseColorMapParameter);
         d->m_metalRoughEffect->addParameter(d->m_baseColorParameter);
     }
-    d->m_metalRoughGL3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughES3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughRHIShaderBuilder->setEnabledLayers(layers);
+    d->updateLayersOnTechnique(layers);
 }
 
 void QMetalRoughMaterial::setMetalness(const QVariant &metalness)
@@ -400,9 +396,7 @@ void QMetalRoughMaterial::setMetalness(const QVariant &metalness)
             d->m_metalRoughEffect->removeParameter(d->m_metalnessMapParameter);
         d->m_metalRoughEffect->addParameter(d->m_metalnessParameter);
     }
-    d->m_metalRoughGL3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughES3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughRHIShaderBuilder->setEnabledLayers(layers);
+    d->updateLayersOnTechnique(layers);
 }
 
 void QMetalRoughMaterial::setRoughness(const QVariant &roughness)
@@ -425,9 +419,7 @@ void QMetalRoughMaterial::setRoughness(const QVariant &roughness)
             d->m_metalRoughEffect->removeParameter(d->m_roughnessMapParameter);
         d->m_metalRoughEffect->addParameter(d->m_roughnessParameter);
     }
-    d->m_metalRoughGL3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughES3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughRHIShaderBuilder->setEnabledLayers(layers);
+    d->updateLayersOnTechnique(layers);
 }
 
 void QMetalRoughMaterial::setAmbientOcclusion(const QVariant &ambientOcclusion)
@@ -446,9 +438,7 @@ void QMetalRoughMaterial::setAmbientOcclusion(const QVariant &ambientOcclusion)
         if (d->m_metalRoughEffect->parameters().contains(d->m_ambientOcclusionMapParameter))
             d->m_metalRoughEffect->removeParameter(d->m_ambientOcclusionMapParameter);
     }
-    d->m_metalRoughGL3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughES3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughRHIShaderBuilder->setEnabledLayers(layers);
+    d->updateLayersOnTechnique(layers);
 }
 
 void QMetalRoughMaterial::setNormal(const QVariant &normal)
@@ -467,9 +457,7 @@ void QMetalRoughMaterial::setNormal(const QVariant &normal)
         if (d->m_metalRoughEffect->parameters().contains(d->m_normalMapParameter))
             d->m_metalRoughEffect->removeParameter(d->m_normalMapParameter);
     }
-    d->m_metalRoughGL3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughES3ShaderBuilder->setEnabledLayers(layers);
-    d->m_metalRoughRHIShaderBuilder->setEnabledLayers(layers);
+    d->updateLayersOnTechnique(layers);
 }
 
 void QMetalRoughMaterial::setTextureScale(float textureScale)
@@ -481,3 +469,5 @@ void QMetalRoughMaterial::setTextureScale(float textureScale)
 } // namespace Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qmetalroughmaterial.cpp"

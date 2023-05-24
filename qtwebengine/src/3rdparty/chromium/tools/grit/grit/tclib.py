@@ -1,16 +1,13 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Adaptation of the extern.tclib classes for our needs.
 '''
 
-from __future__ import print_function
 
 import functools
 import re
-
-import six
 
 from grit import exception
 from grit import lazy_re
@@ -29,7 +26,7 @@ def Identity(i):
   return i
 
 
-class BaseMessage(object):
+class BaseMessage:
   '''Base class with methods shared by Message and Translation.
   '''
 
@@ -87,7 +84,7 @@ class BaseMessage(object):
     '''
     bits = []
     for item in self.parts:
-      if isinstance(item, six.string_types):
+      if isinstance(item, str):
         bits.append(escaping_function(item))
       else:
         bits.append(item.GetOriginal())
@@ -107,7 +104,13 @@ class BaseMessage(object):
     dup = False
     for other in self.GetPlaceholders():
       if other.presentation == placeholder.presentation:
-        assert other.original == placeholder.original
+        if (other.original != placeholder.original
+            or other.example != placeholder.example):
+          error = ("Conflicting declarations of %s within message. Originals" +
+                   " are [%s], [%s]. Example are [%s], [%s]") % (
+                       placeholder.GetPresentation(), other.original,
+                       placeholder.original, other.example, placeholder.example)
+          raise Exception(error)
         dup = True
 
     if not dup:
@@ -116,7 +119,7 @@ class BaseMessage(object):
     self.dirty = True
 
   def AppendText(self, text):
-    assert isinstance(text, six.string_types)
+    assert isinstance(text, str)
     assert text != ''
 
     self.parts.append(text)
@@ -161,7 +164,10 @@ class BaseMessage(object):
           part.presentation.encode('utf-8'),
           part.original.encode('utf-8'),
           part.example.encode('utf-8'))
-        msg.AppendPlaceholder(ph)
+        try:
+          msg.AppendPlaceholder(ph)
+        except:
+          raise Exception(self.parts)
       else:
         msg.AppendText(part.encode('utf-8'))
 
@@ -171,7 +177,7 @@ class Message(BaseMessage):
 
   def __init__(self, text='', placeholders=[], description='', meaning='',
                assigned_id=None):
-    super(Message, self).__init__(text, placeholders, description, meaning)
+    super().__init__(text, placeholders, description, meaning)
     self.assigned_id = assigned_id
 
   def ToTclibMessage(self):
@@ -184,7 +190,7 @@ class Message(BaseMessage):
     if self.assigned_id:
       return self.assigned_id
 
-    return super(Message, self).GetId()
+    return super().GetId()
 
   def HasAssignedId(self):
     '''Returns True if this message has an assigned id.'''
@@ -195,7 +201,7 @@ class Translation(BaseMessage):
   '''A translation.'''
 
   def __init__(self, text='', id='', placeholders=[], description='', meaning=''):
-    super(Translation, self).__init__(text, placeholders, description, meaning)
+    super().__init__(text, placeholders, description, meaning)
     self.id = id
 
   def GetId(self):

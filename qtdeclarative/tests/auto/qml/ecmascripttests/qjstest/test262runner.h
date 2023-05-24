@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the V4VM module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #ifndef TEST262RUNNER_H
 #define TEST262RUNNER_H
 #include <qstring.h>
@@ -38,17 +13,38 @@ struct TestCase {
     TestCase() = default;
     TestCase(const QString &test)
         : test(test) {}
-    enum Result {
-        Skipped,
-        Passes,
-        Fails,
-        Crashes
+
+    enum State { Skipped, Passes, Fails, Crashes };
+
+    struct Result
+    {
+        State state;
+        QString errorMessage;
+
+        Result(State state, QString errorMessage = "")
+            : state(state), errorMessage(errorMessage) { }
+
+        void negateResult()
+        {
+            switch (state) {
+            case TestCase::Passes:
+                state = TestCase::Fails;
+                break;
+            case TestCase::Fails:
+                state = TestCase::Passes;
+                break;
+            case TestCase::Skipped:
+            case TestCase::Crashes:
+                break;
+            }
+        }
     };
+
     bool skipTestCase = false;
-    Result strictExpectation = Passes;
-    Result sloppyExpectation = Passes;
-    Result strictResult = Skipped;
-    Result sloppyResult = Skipped;
+    Result strictExpectation = Result(Passes);
+    Result sloppyExpectation = Result(Passes);
+    Result strictResult = Result(Skipped);
+    Result sloppyResult = Result(Skipped);
 
     QString test;
 };
@@ -74,7 +70,7 @@ struct TestData : TestCase {
 class Test262Runner
 {
 public:
-    Test262Runner(const QString &command, const QString &testDir);
+    Test262Runner(const QString &command, const QString &testDir, const QString &expectationsFile);
     ~Test262Runner();
 
     enum Mode {
@@ -117,6 +113,7 @@ private:
 
     QString command;
     QString testDir;
+    QString expectationsFile;
     int flags = 0;
 
     QMutex mutex;

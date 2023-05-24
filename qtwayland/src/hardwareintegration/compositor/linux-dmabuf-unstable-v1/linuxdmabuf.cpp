@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "linuxdmabuf.h"
 #include "linuxdmabufclientbufferintegration.h"
 
 #include <QtWaylandCompositor/QWaylandCompositor>
+#include <QtWaylandCompositor/private/qwltextureorphanage_p.h>
 
 #include <drm_fourcc.h>
 #include <drm_mode.h>
@@ -44,7 +19,7 @@ LinuxDmabuf::LinuxDmabuf(wl_display *display, LinuxDmabufClientBufferIntegration
 {
 }
 
-void LinuxDmabuf::setSupportedModifiers(const QHash<uint32_t, QVector<uint64_t>> &modifiers)
+void LinuxDmabuf::setSupportedModifiers(const QHash<uint32_t, QList<uint64_t>> &modifiers)
 {
     Q_ASSERT(resourceMap().isEmpty());
     m_modifiers = modifiers;
@@ -58,7 +33,7 @@ void LinuxDmabuf::zwp_linux_dmabuf_v1_bind_resource(Resource *resource)
         // send DRM_FORMAT_MOD_INVALID when no modifiers are supported for a format
         if (modifiers.isEmpty())
             modifiers << DRM_FORMAT_MOD_INVALID;
-        for (const auto &modifier : qAsConst(modifiers)) {
+        for (const auto &modifier : std::as_const(modifiers)) {
             if (resource->version() >= ZWP_LINUX_DMABUF_V1_MODIFIER_SINCE_VERSION) {
                 const uint32_t modifier_lo = modifier & 0xFFFFFFFF;
                 const uint32_t modifier_hi = modifier >> 32;
@@ -118,7 +93,7 @@ bool LinuxDmabufParams::handleCreateParams(Resource *resource, int width, int he
     // check for holes in plane sequence
     auto planeIds = m_planes.keys();
     std::sort(planeIds.begin(), planeIds.end());
-    for (int i = 0; i < planeIds.count(); ++i) {
+    for (int i = 0; i < planeIds.size(); ++i) {
         if (uint(i) != planeIds[i]) {
             wl_resource_post_error(resource->handle,
                                    ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE,
@@ -283,10 +258,17 @@ LinuxDmabufWlBuffer::~LinuxDmabufWlBuffer()
 void LinuxDmabufWlBuffer::buffer_destroy(Resource *resource)
 {
     Q_UNUSED(resource);
+
+    QMutexLocker locker(&m_texturesLock);
+
     for (uint32_t i = 0; i < m_planesNumber; ++i) {
         if (m_textures[i] != nullptr) {
-            m_clientBufferIntegration->deleteGLTextureWhenPossible(m_textures[i]);
+            QtWayland::QWaylandTextureOrphanage::instance()->admitTexture(m_textures[i],
+                                                                          m_texturesContext[i]);
             m_textures[i] = nullptr;
+            m_texturesContext[i] = nullptr;
+            QObject::disconnect(m_texturesAboutToBeDestroyedConnection[i]);
+            m_texturesAboutToBeDestroyedConnection[i] = QMetaObject::Connection();
         }
         if (m_eglImages[i] != EGL_NO_IMAGE_KHR) {
             m_clientBufferIntegration->deleteImage(m_eglImages[i]);
@@ -308,9 +290,40 @@ void LinuxDmabufWlBuffer::initImage(uint32_t plane, EGLImageKHR image)
 
 void LinuxDmabufWlBuffer::initTexture(uint32_t plane, QOpenGLTexture *texture)
 {
+    QMutexLocker locker(&m_texturesLock);
+
     Q_ASSERT(plane < m_planesNumber);
     Q_ASSERT(m_textures.at(plane) == nullptr);
+    Q_ASSERT(QOpenGLContext::currentContext());
     m_textures[plane] = texture;
+    m_texturesContext[plane] = QOpenGLContext::currentContext();
+
+    m_texturesAboutToBeDestroyedConnection[plane] =
+            QObject::connect(m_texturesContext[plane], &QOpenGLContext::aboutToBeDestroyed,
+                             m_texturesContext[plane], [this, plane]() {
+
+        QMutexLocker locker(&this->m_texturesLock);
+
+        // See above lock - there is a chance that this has already been removed from m_textures[plane]!
+        // Furthermore, we can trust that all the rest (e.g. disconnect) has also been properly executed!
+        if (this->m_textures[plane] == nullptr)
+            return;
+
+        delete this->m_textures[plane];
+
+        qCDebug(qLcWaylandCompositorHardwareIntegration)
+                << Q_FUNC_INFO
+                << "texture deleted due to QOpenGLContext::aboutToBeDestroyed!"
+                << "Pointer (now dead) was:" << (void*)(this->m_textures[plane])
+                << "  Associated context (about to die too) is: " << (void*)(this->m_texturesContext[plane]);
+
+        this->m_textures[plane] = nullptr;
+        this->m_texturesContext[plane] = nullptr;
+
+        QObject::disconnect(this->m_texturesAboutToBeDestroyedConnection[plane]);
+        this->m_texturesAboutToBeDestroyedConnection[plane] = QMetaObject::Connection();
+
+    }, Qt::DirectConnection);
 }
 
 void LinuxDmabufWlBuffer::buffer_destroy_resource(Resource *resource)

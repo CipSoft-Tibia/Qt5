@@ -1,12 +1,14 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/ui_devtools/views/element_utility.h"
 
 #include "base/strings/string_number_conversions.h"
-#include "extensions/common/image_util.h"
+#include "base/strings/stringprintf.h"
+#include "cc/trees/layer_tree_host.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/compositor/layer.h"
 #include "ui/compositor/layer_owner.h"
 
 namespace ui_devtools {
@@ -18,7 +20,7 @@ void AppendLayerPropertiesMatchedStyle(
                     std::string(LayerTypeToString(layer->type())));
   ret->emplace_back("has-layer-mask",
                     layer->layer_mask_layer() ? "true" : "false");
-  ret->emplace_back("layer-is-drawn", layer->IsDrawn() ? "true" : "false");
+  ret->emplace_back("layer-is-visible", layer->IsVisible() ? "true" : "false");
   ret->emplace_back("layer-opacity", base::NumberToString((layer->opacity())));
   ret->emplace_back("layer-combined-opacity",
                     base::NumberToString(layer->GetCombinedOpacity()));
@@ -31,9 +33,20 @@ void AppendLayerPropertiesMatchedStyle(
                     base::NumberToString(layer->layer_brightness()));
   ret->emplace_back("layer-grayscale",
                     base::NumberToString(layer->layer_grayscale()));
+  ret->emplace_back("layer-fills-bounds-opaquely",
+                    layer->fills_bounds_opaquely() ? "true" : "false");
+  if (layer->type() == ui::LAYER_SOLID_COLOR) {
+    ret->emplace_back("layer-color",
+                      base::StringPrintf("%X", layer->GetTargetColor()));
+  }
+
   const auto offset = layer->GetSubpixelOffset();
   if (!offset.IsZero())
     ret->emplace_back("layer-subpixel-offset", offset.ToString());
+  const auto& rounded_corners = layer->rounded_corner_radii();
+  if (!rounded_corners.IsEmpty())
+    ret->emplace_back("layer-rounded-corners", rounded_corners.ToString());
+
   const ui::Layer::ShapeRects* alpha_shape_bounds = layer->alpha_shape();
   if (alpha_shape_bounds && alpha_shape_bounds->size()) {
     gfx::Rect bounding_box;
@@ -41,12 +54,13 @@ void AppendLayerPropertiesMatchedStyle(
       bounding_box.Union(shape_bound);
     ret->emplace_back("alpha-shape-bounding-box", bounding_box.ToString());
   }
+
   const cc::Layer* cc_layer = layer->cc_layer_for_testing();
   if (cc_layer) {
     // Property trees must be updated in order to get valid render surface
     // reasons.
     if (!cc_layer->layer_tree_host() ||
-        cc_layer->layer_tree_host()->property_trees()->needs_rebuild)
+        cc_layer->layer_tree_host()->property_trees()->needs_rebuild())
       return;
     cc::RenderSurfaceReason render_surface = cc_layer->GetRenderSurfaceReason();
     if (render_surface != cc::RenderSurfaceReason::kNone) {
@@ -54,16 +68,6 @@ void AppendLayerPropertiesMatchedStyle(
                         cc::RenderSurfaceReasonToString(render_surface));
     }
   }
-}
-
-bool ParseColorFromFrontend(const std::string& input, std::string* output) {
-  std::string value;
-  base::TrimWhitespaceASCII(input, base::TRIM_ALL, &value);
-  SkColor color;
-  if (!extensions::image_util::ParseCssColorString(value, &color))
-    return false;
-  *output = base::NumberToString(color);
-  return true;
 }
 
 }  // namespace ui_devtools

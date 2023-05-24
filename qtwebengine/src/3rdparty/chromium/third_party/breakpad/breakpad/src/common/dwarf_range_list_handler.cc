@@ -1,5 +1,4 @@
-// Copyright (c) 2018 Google Inc.
-// All rights reserved.
+// Copyright 2018 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -40,13 +39,9 @@
 namespace google_breakpad {
 
 void DwarfRangeListHandler::AddRange(uint64_t begin, uint64_t end) {
-  Module::Range r(begin + base_address_, end - begin);
+  Module::Range r(begin, end - begin);
 
   ranges_->push_back(r);
-}
-
-void DwarfRangeListHandler::SetBaseAddress(uint64_t base_address) {
-  base_address_ = base_address;
 }
 
 void DwarfRangeListHandler::Finish() {

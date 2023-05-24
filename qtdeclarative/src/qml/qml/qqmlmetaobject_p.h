@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLMETAOBJECT_P_H
 #define QQMLMETAOBJECT_P_H
@@ -51,11 +15,9 @@
 // We mean it.
 //
 
-#include <QtQml/qtqmlglobal.h>
-
-#include <private/qflagpointer_p.h>
 #include <private/qqmlpropertycache_p.h>
 
+#include <QtQml/qtqmlglobal.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qmetaobject.h>
 
@@ -72,12 +34,13 @@ class QQmlPropertyData;
 class Q_QML_EXPORT QQmlMetaObject
 {
 public:
-    typedef QVarLengthArray<int, 9> ArgTypeStorage;
+    template<qsizetype Prealloc>
+    using ArgTypeStorage = QVarLengthArray<QMetaType, Prealloc>;
 
-    inline QQmlMetaObject();
-    inline QQmlMetaObject(QObject *);
+    inline QQmlMetaObject() = default;
+    inline QQmlMetaObject(const QObject *);
     inline QQmlMetaObject(const QMetaObject *);
-    inline QQmlMetaObject(QQmlPropertyCache *);
+    inline QQmlMetaObject(const QQmlPropertyCache::ConstPtr &);
     inline QQmlMetaObject(const QQmlMetaObject &);
 
     inline QQmlMetaObject &operator=(const QQmlMetaObject &);
@@ -87,39 +50,131 @@ public:
     inline const char *className() const;
     inline int propertyCount() const;
 
-    inline bool hasMetaObject() const;
     inline const QMetaObject *metaObject() const;
 
-    QQmlPropertyCache *propertyCache(QQmlEnginePrivate *) const;
+    QMetaType methodReturnType(const QQmlPropertyData &data, QByteArray *unknownTypeError) const;
 
-    int methodReturnType(const QQmlPropertyData &data, QByteArray *unknownTypeError) const;
-    int *methodParameterTypes(int index, ArgTypeStorage *argStorage,
-                              QByteArray *unknownTypeError) const;
+    /*!
+      \internal
+      Returns false if one of the types is unknown. Otherwise, fills \a argstorage with the
+      metatypes of the function.
+    */
+    template<typename ArgTypeStorage>
+    bool methodParameterTypes(
+            int index, ArgTypeStorage *argStorage, QByteArray *unknownTypeError) const
+    {
+        Q_ASSERT(_m && index >= 0);
 
-    static bool canConvert(const QQmlMetaObject &from, const QQmlMetaObject &to);
+        QMetaMethod m = _m->method(index);
+        return methodParameterTypes(m, argStorage, unknownTypeError);
+    }
+
+    /*!
+      \internal
+      Returns false if one of the types is unknown. Otherwise, fills \a argstorage with the
+      metatypes of the function.
+    */
+    template<typename ArgTypeStorage>
+    bool constructorParameterTypes(
+            int index, ArgTypeStorage *dummy, QByteArray *unknownTypeError) const
+    {
+        QMetaMethod m = _m->constructor(index);
+        return methodParameterTypes(m, dummy, unknownTypeError);
+    }
+
+
+    static bool canConvert(const QQmlMetaObject &from, const QQmlMetaObject &to)
+    {
+        Q_ASSERT(!from.isNull() && !to.isNull());
+        return from.metaObject()->inherits(to.metaObject());
+    }
 
     // static_metacall (on Gadgets) doesn't call the base implementation and therefore
     // we need a helper to find the correct meta object and property/method index.
-    static void resolveGadgetMethodOrPropertyIndex(QMetaObject::Call type, const QMetaObject **metaObject, int *index);
+    static void resolveGadgetMethodOrPropertyIndex(
+            QMetaObject::Call type, const QMetaObject **metaObject, int *index);
+
+    template<typename ArgTypeStorage>
+    static bool methodParameterTypes(
+            const QMetaMethod &method, ArgTypeStorage *argStorage, QByteArray *unknownTypeError)
+    {
+        Q_ASSERT(argStorage);
+
+        const int argc = method.parameterCount();
+        argStorage->resize(argc);
+        for (int ii = 0; ii < argc; ++ii) {
+            if (!parameterType(method, ii, unknownTypeError, [argStorage](int ii, QMetaType &&type) {
+                    argStorage->operator[](ii) = std::forward<QMetaType>(type);
+                })) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    template<typename ArgTypeStorage>
+    static bool methodReturnAndParameterTypes(
+            const QMetaMethod &method, ArgTypeStorage *argStorage, QByteArray *unknownTypeError)
+    {
+        Q_ASSERT(argStorage);
+
+        const int argc = method.parameterCount();
+        argStorage->resize(argc + 1);
+
+        QMetaType type = method.returnMetaType();
+        if (type.flags().testFlag(QMetaType::IsEnumeration))
+            type = type.underlyingType();
+
+        if (!type.isValid()) {
+            if (unknownTypeError)
+                *unknownTypeError = "return type";
+            return false;
+        }
+
+        argStorage->operator[](0) = type;
+
+        for (int ii = 0; ii < argc; ++ii) {
+            if (!parameterType(
+                        method, ii, unknownTypeError, [argStorage](int ii, QMetaType &&type) {
+                    argStorage->operator[](ii + 1) = std::forward<QMetaType>(type);
+                })) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
 protected:
-    QBiPointer<QQmlPropertyCache, const QMetaObject> _m;
-    int *methodParameterTypes(const QMetaMethod &method, ArgTypeStorage *argStorage,
-                              QByteArray *unknownTypeError) const;
+    template<typename Store>
+    static bool parameterType(
+            const QMetaMethod &method, int ii, QByteArray *unknownTypeError, const Store &store)
+    {
+        QMetaType type = method.parameterMetaType(ii);
+
+               // we treat enumerations as their underlying type
+        if (type.flags().testFlag(QMetaType::IsEnumeration))
+            type = type.underlyingType();
+
+        if (!type.isValid()) {
+            if (unknownTypeError)
+                *unknownTypeError =  method.parameterTypeName(ii);
+            return false;
+        }
+
+        store(ii, std::move(type));
+        return true;
+    }
+
+
+    const QMetaObject *_m = nullptr;
 
 };
 
-QQmlMetaObject::QQmlMetaObject()
+QQmlMetaObject::QQmlMetaObject(const QObject *o)
 {
-}
-
-QQmlMetaObject::QQmlMetaObject(QObject *o)
-{
-    if (o) {
-        QQmlData *ddata = QQmlData::get(o, false);
-        if (ddata && ddata->propertyCache) _m = ddata->propertyCache;
-        else _m = o->metaObject();
-    }
+    if (o)
+        _m = o->metaObject();
 }
 
 QQmlMetaObject::QQmlMetaObject(const QMetaObject *m)
@@ -127,9 +182,10 @@ QQmlMetaObject::QQmlMetaObject(const QMetaObject *m)
 {
 }
 
-QQmlMetaObject::QQmlMetaObject(QQmlPropertyCache *m)
-    : _m(m)
+QQmlMetaObject::QQmlMetaObject(const QQmlPropertyCache::ConstPtr &m)
 {
+    if (m)
+        _m = m->createMetaObject();
 }
 
 QQmlMetaObject::QQmlMetaObject(const QQmlMetaObject &o)
@@ -145,41 +201,26 @@ QQmlMetaObject &QQmlMetaObject::operator=(const QQmlMetaObject &o)
 
 bool QQmlMetaObject::isNull() const
 {
-    return _m.isNull();
+    return !_m;
 }
 
 const char *QQmlMetaObject::className() const
 {
-    if (_m.isNull()) {
+    if (!_m)
         return nullptr;
-    } else if (_m.isT1()) {
-        return _m.asT1()->className();
-    } else {
-        return _m.asT2()->className();
-    }
+    return metaObject()->className();
 }
 
 int QQmlMetaObject::propertyCount() const
 {
-    if (_m.isNull()) {
+    if (!_m)
         return 0;
-    } else if (_m.isT1()) {
-        return _m.asT1()->propertyCount();
-    } else {
-        return _m.asT2()->propertyCount();
-    }
-}
-
-bool QQmlMetaObject::hasMetaObject() const
-{
-    return _m.isT2() || (!_m.isNull() && _m.asT1()->metaObject());
+    return metaObject()->propertyCount();
 }
 
 const QMetaObject *QQmlMetaObject::metaObject() const
 {
-    if (_m.isNull()) return nullptr;
-    if (_m.isT1()) return _m.asT1()->createMetaObject();
-    else return _m.asT2();
+    return _m;
 }
 
 QT_END_NAMESPACE

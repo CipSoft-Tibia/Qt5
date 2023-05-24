@@ -1,14 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/loader/resource/multipart_image_resource_parser.h"
 
+#include "base/ranges/algorithm.h"
+#include "third_party/blink/renderer/platform/heap/visitor.h"
 #include "third_party/blink/renderer/platform/network/http_parsers.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
-
-#include <algorithm>
 
 namespace blink {
 
@@ -119,7 +119,7 @@ void MultipartImageResourceParser::Finish() {
     return;
   // If we have any pending data and we're not in a header, go ahead and send
   // it to the client.
-  if (!is_parsing_headers_ && !data_.IsEmpty())
+  if (!is_parsing_headers_ && !data_.empty())
     client_->MultipartDataReceived(data_.data(), data_.size());
   data_.clear();
   saw_last_boundary_ = true;
@@ -163,9 +163,8 @@ bool MultipartImageResourceParser::ParseHeaders() {
 // doesn't require the dashes to exist.  See nsMultiMixedConv::FindToken.
 wtf_size_t MultipartImageResourceParser::FindBoundary(const Vector<char>& data,
                                                       Vector<char>* boundary) {
-  auto* it = std::search(data.data(), data.data() + data.size(),
-                         boundary->data(), boundary->data() + boundary->size());
-  if (it == data.data() + data.size())
+  auto* it = base::ranges::search(data, *boundary);
+  if (it == data.end())
     return kNotFound;
 
   wtf_size_t boundary_position = static_cast<wtf_size_t>(it - data.data());

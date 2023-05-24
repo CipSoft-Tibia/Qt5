@@ -1,10 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_RESOLVER_SELECTOR_FILTER_PARENT_SCOPE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_RESOLVER_SELECTOR_FILTER_PARENT_SCOPE_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/selector_filter.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -86,23 +87,27 @@ inline SelectorFilterParentScope::SelectorFilterParentScope(
 
 inline SelectorFilterParentScope::~SelectorFilterParentScope() {
   current_scope_ = previous_;
-  if (!pushed_)
+  if (!pushed_) {
     return;
+  }
   DCHECK(resolver_);
   DCHECK(parent_);
   resolver_->GetSelectorFilter().PopParent(*parent_);
-  if (scope_type_ == ScopeType::kRoot)
+  if (scope_type_ == ScopeType::kRoot) {
     PopAncestors(*parent_);
+  }
 }
 
 inline void SelectorFilterParentScope::EnsureParentStackIsPushed() {
-  if (current_scope_)
+  if (current_scope_) {
     current_scope_->PushParentIfNeeded();
+  }
 }
 
 inline void SelectorFilterParentScope::PushParentIfNeeded() {
-  if (pushed_)
+  if (pushed_) {
     return;
+  }
   if (!parent_) {
     DCHECK(scope_type_ == ScopeType::kRoot);
     return;

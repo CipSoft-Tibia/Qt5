@@ -1,14 +1,11 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
+import("//remoting/build/config/remoting_logging.gni")
+import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/protobuf/proto_library.gni")
-
-# Reset sources_assignment_filter for the BUILD.gn file to prevent
-# regression during the migration of Chromium away from the feature.
-# See docs/no_sources_assignment_filter.md for more information.
-# TODO(crbug.com/1018739): remove this when migration is done.
-set_sources_assignment_filter([])
 
 proto_library("protobuf_http_client_messages_proto") {
   sources = [ "protobuf_http_client_messages.proto" ]
@@ -32,6 +29,8 @@ source_set("base") {
     "compound_buffer.h",
     "constants.cc",
     "constants.h",
+    "cpu_utils.cc",
+    "cpu_utils.h",
     "directory_service_client.cc",
     "directory_service_client.h",
     "leaky_bucket.cc",
@@ -51,6 +50,8 @@ source_set("base") {
     "protobuf_http_stream_parser.h",
     "protobuf_http_stream_request.cc",
     "protobuf_http_stream_request.h",
+    "queued_task_poster.cc",
+    "queued_task_poster.h",
     "rate_counter.cc",
     "rate_counter.h",
     "result.h",
@@ -94,11 +95,15 @@ source_set("base") {
     "//third_party/protobuf:protobuf_lite",
   ]
   deps = [
+    ":authorization",
     ":protobuf_http_client_messages_proto",
     "//base/third_party/dynamic_annotations",
+    "//build:chromeos_buildflags",
     "//google_apis",
     "//remoting/proto/remoting/v1:directory_proto",
     "//remoting/proto/remoting/v1:telemetry_messages",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
     "//third_party/libvpx",
     "//third_party/libyuv",
     "//third_party/webrtc_overrides:webrtc_component",
@@ -107,6 +112,11 @@ source_set("base") {
 
   if (is_win) {
     sources += [ "scoped_sc_handle_win.h" ]
+  } else if (is_linux || is_chromeos) {
+    sources += [
+      "file_path_util_linux.cc",
+      "file_path_util_linux.h",
+    ]
   }
 }
 
@@ -130,6 +140,11 @@ source_set("authorization") {
     "//remoting/build/config:version",
   ]
 
+  deps = [
+    ":logging",
+    "//services/network/public/cpp",
+  ]
+
   public_deps = [
     "//base",
     "//google_apis",
@@ -151,11 +166,72 @@ source_set("breakpad") {
   if (is_mac) {
     sources += [ "breakpad_mac.mm" ]
     deps += [ "//third_party/breakpad" ]
+    frameworks = [ "Foundation.framework" ]
   }
 
   if (is_win) {
     sources += [ "breakpad_win.cc" ]
     deps += [ "//third_party/breakpad:breakpad_handler" ]
+  }
+}
+
+source_set("logging") {
+  public = [ "logging.h" ]
+
+  sources = [
+    "logging.cc",
+    "logging_internal.h",
+  ]
+
+  if (is_linux || is_chromeos) {
+    sources += [ "logging_linux.cc" ]
+  }
+
+  if (is_mac) {
+    sources += [ "logging_mac.cc" ]
+  }
+
+  if (is_win) {
+    sources += [ "logging_win.cc" ]
+  }
+
+  if (remoting_webrtc_verbose_logging) {
+    defines = [ "WEBRTC_VERBOSE_LOGGING" ]
+  }
+
+  deps = [ "//base" ]
+}
+
+source_set("settings") {
+  sources = [
+    "host_settings.cc",
+    "host_settings.h",
+    "user_settings.cc",
+    "user_settings.h",
+  ]
+  deps = [
+    ":logging",
+    "//base",
+    "//remoting/base",
+  ]
+
+  if (is_win) {
+    sources += [
+      "host_settings_win.cc",
+      "host_settings_win.h",
+      "user_settings_win.cc",
+      "user_settings_win.h",
+    ]
+  } else if (is_mac || is_linux) {
+    sources += [
+      "file_host_settings.cc",
+      "file_host_settings.h",
+    ]
+    if (is_linux) {
+      sources += [ "file_host_settings_linux.cc" ]
+    } else if (is_mac) {
+      sources += [ "file_host_settings_mac.cc" ]
+    }
   }
 }
 
@@ -173,7 +249,9 @@ static_library("test_support") {
   ]
 
   deps = [
+    ":logging",
     ":protobuf_http_client_messages_proto",
+    "//base/test:test_support",
     "//remoting/proto",
     "//services/network:test_support",
   ]
@@ -198,11 +276,26 @@ source_set("run_all_unittests") {
   testonly = true
 
   sources = [ "run_all_unittests.cc" ]
+  if (is_chromeos_ash) {
+    sources += [
+      "chromeos_remoting_test_suite.cc",
+      "chromeos_remoting_test_suite.h",
+    ]
+  }
   deps = [
     "//base",
+    "//base/test:test_support",
     "//mojo/core/embedder",
     "//testing/gtest",
   ]
+  if (is_chromeos_ash) {
+    deps += [
+      "//ui/aura:test_support",
+      "//ui/gl:test_support",
+    ]
+    data = [ "$root_out_dir/locales/en-US.pak" ]
+    data_deps = [ "//ui/resources:ui_test_pak_data" ]
+  }
 }
 
 source_set("unit_tests") {
@@ -218,6 +311,7 @@ source_set("unit_tests") {
     "oauth_token_getter_proxy_unittest.cc",
     "protobuf_http_client_unittest.cc",
     "protobuf_http_stream_parser_unittest.cc",
+    "queued_task_poster_unittest.cc",
     "rate_counter_unittest.cc",
     "result_unittest.cc",
     "rsa_key_pair_unittest.cc",
@@ -230,21 +324,37 @@ source_set("unit_tests") {
   ]
 
   deps = [
+    ":logging",
+    ":protobuf_http_client_messages_proto",
     ":run_all_unittests",
     ":test_proto",
     ":test_support",
     "//base",
     "//net:test_support",
+    "//remoting/proto/remoting/v1:telemetry_messages",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
     "//third_party/libyuv",
     "//third_party/webrtc_overrides:webrtc_component",
   ]
 
-  if (is_win || is_mac || is_chromeos) {
+  if (is_win || is_mac || is_chromeos_ash) {
     deps += [ "//third_party/breakpad:client" ]
   }
 
   if (is_win) {
     sources += [ "breakpad_win_unittest.cc" ]
+    deps += [ "//third_party/breakpad:breakpad_handler" ]
     libs = [ "rpcrt4.lib" ]  # For UuidCreate in breakpad_win_unittest.cc.
   }
+}
+
+fuzzer_test("remoting_protobuf_http_stream_parser_fuzzer") {
+  sources = [ "protobuf_http_stream_parser_fuzzer.cc" ]
+  deps = [
+    ":base",
+    "//base",
+    "//base/test:test_support",
+    "//third_party/protobuf:protobuf_lite",
+  ]
 }

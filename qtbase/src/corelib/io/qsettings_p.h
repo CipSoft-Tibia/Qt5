@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSETTINGS_P_H
 #define QSETTINGS_P_H
@@ -64,16 +28,11 @@
 #ifndef QT_NO_QOBJECT
 #include "private/qobject_p.h"
 #endif
-#include "private/qscopedpointer_p.h"
 
 QT_BEGIN_NAMESPACE
 
 #ifndef Q_OS_WIN
 #define QT_QSETTINGS_ALWAYS_CASE_SENSITIVE_AND_FORGET_ORIGINAL_KEY_ORDER
-#endif
-
-#if defined(Q_OS_WINRT)
-#define QT_QTSETTINGS_FORGET_ORIGINAL_KEY_ORDER
 #endif
 
 // used in testing framework
@@ -85,11 +44,11 @@ static const Qt::CaseSensitivity IniCaseSensitivity = Qt::CaseSensitive;
 class QSettingsKey : public QString
 {
 public:
-    inline QSettingsKey(const QString &key, Qt::CaseSensitivity cs, int /* position */ = -1)
+    inline QSettingsKey(const QString &key, Qt::CaseSensitivity cs, qsizetype /* position */ = -1)
         : QString(key) { Q_ASSERT(cs == Qt::CaseSensitive); Q_UNUSED(cs); }
 
     inline QString originalCaseKey() const { return *this; }
-    inline int originalKeyPosition() const { return -1; }
+    inline qsizetype originalKeyPosition() const { return -1; }
 };
 #else
 static const Qt::CaseSensitivity IniCaseSensitivity = Qt::CaseInsensitive;
@@ -97,23 +56,23 @@ static const Qt::CaseSensitivity IniCaseSensitivity = Qt::CaseInsensitive;
 class QSettingsKey : public QString
 {
 public:
-    inline QSettingsKey(const QString &key, Qt::CaseSensitivity cs, int position = -1)
-         : QString(key), theOriginalKey(key), theOriginalKeyPosition(position)
+    inline QSettingsKey(const QString &key, Qt::CaseSensitivity cs, qsizetype position = -1)
+        : QString(key), theOriginalKey(key), theOriginalKeyPosition(position)
     {
         if (cs == Qt::CaseInsensitive)
             QString::operator=(toLower());
     }
 
     inline QString originalCaseKey() const { return theOriginalKey; }
-    inline int originalKeyPosition() const { return theOriginalKeyPosition; }
+    inline qsizetype originalKeyPosition() const { return theOriginalKeyPosition; }
 
 private:
     QString theOriginalKey;
-    int theOriginalKeyPosition;
+    qsizetype theOriginalKeyPosition;
 };
 #endif
 
-Q_DECLARE_TYPEINFO(QSettingsKey, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QSettingsKey, Q_RELOCATABLE_TYPE);
 
 typedef QMap<QSettingsKey, QByteArray> UnparsedSettingsMap;
 typedef QMap<QSettingsKey, QVariant> ParsedSettingsMap;
@@ -131,28 +90,28 @@ public:
     inline QString name() const { return str; }
     inline QString toString() const;
     inline bool isArray() const { return num != -1; }
-    inline int arraySizeGuess() const { return maxNum; }
-    inline void setArrayIndex(int i)
+    inline qsizetype arraySizeGuess() const { return maxNum; }
+    inline void setArrayIndex(qsizetype i)
     { num = i + 1; if (maxNum != -1 && num > maxNum) maxNum = num; }
 
     QString str;
-    int num;
-    int maxNum;
+    qsizetype num;
+    qsizetype maxNum;
 };
-Q_DECLARE_TYPEINFO(QSettingsGroup, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QSettingsGroup, Q_RELOCATABLE_TYPE);
 
 inline QString QSettingsGroup::toString() const
 {
     QString result;
     result = str;
     if (num > 0) {
-        result += QLatin1Char('/');
+        result += u'/';
         result += QString::number(num);
     }
     return result;
 }
 
-class Q_AUTOTEST_EXPORT QConfFile
+class QConfFile
 {
 public:
     ~QConfFile();
@@ -161,6 +120,7 @@ public:
     bool isWritable() const;
 
     static QConfFile *fromName(const QString &name, bool _userPerms);
+    Q_AUTOTEST_EXPORT
     static void clearCache();
 
     QString name;
@@ -202,7 +162,7 @@ public:
 
     virtual void remove(const QString &key) = 0;
     virtual void set(const QString &key, const QVariant &value) = 0;
-    virtual bool get(const QString &key, QVariant *value) const = 0;
+    virtual std::optional<QVariant> get(const QString &key) const = 0;
 
     enum ChildSpec { AllKeys, ChildKeys, ChildGroups };
     virtual QStringList children(const QString &prefix, ChildSpec spec) const = 0;
@@ -213,18 +173,19 @@ public:
     virtual bool isWritable() const = 0;
     virtual QString fileName() const = 0;
 
-    QString actualKey(const QString &key) const;
+    QVariant value(QAnyStringView key, const QVariant *defaultValue) const;
+    QString actualKey(QAnyStringView key) const;
     void beginGroupOrArray(const QSettingsGroup &group);
     void setStatus(QSettings::Status status) const;
     void requestUpdate();
     void update();
 
-    static QString normalizedKey(const QString &key);
+    static QString normalizedKey(QAnyStringView key);
     static QSettingsPrivate *create(QSettings::Format format, QSettings::Scope scope,
                                         const QString &organization, const QString &application);
     static QSettingsPrivate *create(const QString &fileName, QSettings::Format format);
 
-    static void processChild(QStringRef key, ChildSpec spec, QStringList &result);
+    static void processChild(QStringView key, ChildSpec spec, QStringList &result);
 
     // Variant streaming functions
     static QStringList variantListToStringList(const QVariantList &l);
@@ -234,19 +195,17 @@ public:
     static QString variantToString(const QVariant &v);
     static QVariant stringToVariant(const QString &s);
     static void iniEscapedKey(const QString &key, QByteArray &result);
-    static bool iniUnescapedKey(const QByteArray &key, int from, int to, QString &result);
-    static void iniEscapedString(const QString &str, QByteArray &result, QTextCodec *codec);
-    static void iniEscapedStringList(const QStringList &strs, QByteArray &result, QTextCodec *codec);
-    static bool iniUnescapedStringList(const QByteArray &str, int from, int to,
-                                       QString &stringResult, QStringList &stringListResult,
-                                       QTextCodec *codec);
-    static QStringList splitArgs(const QString &s, int idx);
+    static bool iniUnescapedKey(QByteArrayView key, QString &result);
+    static void iniEscapedString(const QString &str, QByteArray &result);
+    static void iniEscapedStringList(const QStringList &strs, QByteArray &result);
+    static bool iniUnescapedStringList(QByteArrayView str, QString &stringResult,
+                                       QStringList &stringListResult);
+    static QStringList splitArgs(const QString &s, qsizetype idx);
 
     QSettings::Format format;
     QSettings::Scope scope;
     QString organizationName;
     QString applicationName;
-    QTextCodec *iniCodec;
 
 protected:
     QStack<QSettingsGroup> groupStack;
@@ -256,10 +215,6 @@ protected:
     bool atomicSyncOnly = true;
     mutable QSettings::Status status;
 };
-
-#ifdef Q_OS_WASM
-class QWasmSettingsPrivate;
-#endif
 
 class QConfFileSettingsPrivate : public QSettingsPrivate
 {
@@ -271,7 +226,7 @@ public:
 
     void remove(const QString &key) override;
     void set(const QString &key, const QVariant &value) override;
-    bool get(const QString &key, QVariant *value) const override;
+    std::optional<QVariant> get(const QString &key) const override;
 
     QStringList children(const QString &prefix, ChildSpec spec) const override;
 
@@ -281,32 +236,33 @@ public:
     bool isWritable() const override;
     QString fileName() const override;
 
-    bool readIniFile(const QByteArray &data, UnparsedSettingsMap *unparsedIniSections);
-    static bool readIniSection(const QSettingsKey &section, const QByteArray &data,
-                               ParsedSettingsMap *settingsMap, QTextCodec *codec);
-    static bool readIniLine(const QByteArray &data, int &dataPos, int &lineStart, int &lineLen,
-                            int &equalsPos);
+    bool readIniFile(QByteArrayView data, UnparsedSettingsMap *unparsedIniSections);
+    static bool readIniSection(const QSettingsKey &section, QByteArrayView data,
+                               ParsedSettingsMap *settingsMap);
+    static bool readIniLine(QByteArrayView data, qsizetype &dataPos,
+                            qsizetype &lineStart, qsizetype &lineLen,
+                            qsizetype &equalsPos);
 
 private:
     void initFormat();
     virtual void initAccess();
     void syncConfFile(QConfFile *confFile);
     bool writeIniFile(QIODevice &device, const ParsedSettingsMap &map);
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
     bool readPlistFile(const QByteArray &data, ParsedSettingsMap *map) const;
     bool writePlistFile(QIODevice &file, const ParsedSettingsMap &map) const;
 #endif
     void ensureAllSectionsParsed(QConfFile *confFile) const;
     void ensureSectionParsed(QConfFile *confFile, const QSettingsKey &key) const;
 
-    QVector<QConfFile *> confFiles;
+    QList<QConfFile *> confFiles;
     QSettings::ReadFunc readFunc;
     QSettings::WriteFunc writeFunc;
     QString extension;
     Qt::CaseSensitivity caseSensitivity;
-    int nextPosition;
+    qsizetype nextPosition;
 #ifdef Q_OS_WASM
-    friend class QWasmSettingsPrivate;
+    friend class QWasmIDBSettingsPrivate;
 #endif
 };
 

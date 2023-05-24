@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,13 @@
 #include <wrl/client.h>
 #include <wrl/event.h>
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "base/strings/string_piece.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/win/core_winrt_util.h"
 #include "base/win/scoped_hstring.h"
 #include "components/system_media_controls/system_media_controls_observer.h"
@@ -19,18 +25,22 @@
 namespace system_media_controls {
 
 // static
-SystemMediaControls* SystemMediaControls::GetInstance() {
-  internal::SystemMediaControlsWin* service =
-      internal::SystemMediaControlsWin::GetInstance();
+std::unique_ptr<SystemMediaControls> SystemMediaControls::Create(
+    const std::string& product_name) {
+  auto service = std::make_unique<internal::SystemMediaControlsWin>();
   if (service->Initialize())
-    return service;
+    return std::move(service);
   return nullptr;
 }
 
 namespace internal {
 
+using ABI::Windows::Media::IPlaybackPositionChangeRequestedEventArgs;
 using ABI::Windows::Media::ISystemMediaTransportControls;
+using ABI::Windows::Media::ISystemMediaTransportControls2;
 using ABI::Windows::Media::ISystemMediaTransportControlsButtonPressedEventArgs;
+using ABI::Windows::Media::ISystemMediaTransportControlsTimelineProperties;
+using ABI::Windows::Media::PlaybackPositionChangeRequestedEventArgs;
 using ABI::Windows::Media::SystemMediaTransportControls;
 using ABI::Windows::Media::SystemMediaTransportControlsButton;
 using ABI::Windows::Media::SystemMediaTransportControlsButtonPressedEventArgs;
@@ -43,19 +53,36 @@ using ABI::Windows::Storage::Streams::IRandomAccessStreamReferenceStatics;
 
 // static
 SystemMediaControlsWin* SystemMediaControlsWin::GetInstance() {
-  // We use a base::Singleton here instead of a base::NoDestruct so that we can
-  // clean up external listeners against the Windows platform at exit.
-  return base::Singleton<SystemMediaControlsWin>::get();
+  return instance_;
 }
 
-SystemMediaControlsWin::SystemMediaControlsWin() = default;
+// static
+SystemMediaControlsWin* SystemMediaControlsWin::instance_ = nullptr;
+
+SystemMediaControlsWin::SystemMediaControlsWin() {
+  DCHECK(!instance_);
+  instance_ = this;
+}
 
 SystemMediaControlsWin::~SystemMediaControlsWin() {
-  if (has_valid_registration_token_) {
+  if (has_valid_button_pressed_registration_token_) {
     DCHECK(system_media_controls_);
-    system_media_controls_->remove_ButtonPressed(registration_token_);
+    system_media_controls_->remove_ButtonPressed(
+        button_pressed_registration_token_);
+    if (has_valid_playback_position_change_requested_registration_token_) {
+      Microsoft::WRL::ComPtr<ISystemMediaTransportControls2>
+          system_media_controls_2;
+      HRESULT hr = system_media_controls_.As(&system_media_controls_2);
+      if (SUCCEEDED(hr)) {
+        system_media_controls_2->remove_PlaybackPositionChangeRequested(
+            playback_position_change_requested_registration_token_);
+      }
+    }
     ClearMetadata();
   }
+
+  DCHECK_EQ(instance_, this);
+  instance_ = nullptr;
 }
 
 bool SystemMediaControlsWin::Initialize() {
@@ -64,8 +91,7 @@ bool SystemMediaControlsWin::Initialize() {
 
   attempted_to_initialize_ = true;
 
-  if (!base::win::ResolveCoreWinRTDelayload() ||
-      !base::win::ScopedHString::ResolveCoreWinRTStringDelayload()) {
+  if (!base::win::ResolveCoreWinRTDelayload()) {
     return false;
   }
 
@@ -81,17 +107,17 @@ bool SystemMediaControlsWin::Initialize() {
   if (FAILED(hr))
     return false;
 
-  auto handler =
+  auto button_pressed_handler =
       Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
           SystemMediaTransportControls*,
           SystemMediaTransportControlsButtonPressedEventArgs*>>(
           &SystemMediaControlsWin::ButtonPressed);
-  hr = system_media_controls_->add_ButtonPressed(handler.Get(),
-                                                 &registration_token_);
+  hr = system_media_controls_->add_ButtonPressed(
+      button_pressed_handler.Get(), &button_pressed_registration_token_);
   if (FAILED(hr))
     return false;
 
-  has_valid_registration_token_ = true;
+  has_valid_button_pressed_registration_token_ = true;
 
   hr = system_media_controls_->put_IsEnabled(true);
   if (FAILED(hr))
@@ -164,6 +190,36 @@ void SystemMediaControlsWin::SetIsStopEnabled(bool value) {
   DCHECK(SUCCEEDED(hr));
 }
 
+void SystemMediaControlsWin::SetIsSeekToEnabled(bool value) {
+  DCHECK(initialized_);
+
+  Microsoft::WRL::ComPtr<ISystemMediaTransportControls2>
+      system_media_controls_2;
+  HRESULT hr = system_media_controls_.As(&system_media_controls_2);
+  if (FAILED(hr))
+    return;
+
+  if (value) {
+    auto playback_position_change_requested_handler =
+        Microsoft::WRL::Callback<ABI::Windows::Foundation::ITypedEventHandler<
+            SystemMediaTransportControls*,
+            PlaybackPositionChangeRequestedEventArgs*>>(
+            &SystemMediaControlsWin::PlaybackPositionChangeRequested);
+    hr = system_media_controls_2->add_PlaybackPositionChangeRequested(
+        playback_position_change_requested_handler.Get(),
+        &playback_position_change_requested_registration_token_);
+    DCHECK(SUCCEEDED(hr));
+    has_valid_playback_position_change_requested_registration_token_ = true;
+  } else {
+    if (has_valid_playback_position_change_requested_registration_token_) {
+      hr = system_media_controls_2->remove_PlaybackPositionChangeRequested(
+          playback_position_change_requested_registration_token_);
+      DCHECK(SUCCEEDED(hr));
+      has_valid_playback_position_change_requested_registration_token_ = false;
+    }
+  }
+}
+
 void SystemMediaControlsWin::SetPlaybackStatus(PlaybackStatus status) {
   DCHECK(initialized_);
   HRESULT hr =
@@ -171,18 +227,20 @@ void SystemMediaControlsWin::SetPlaybackStatus(PlaybackStatus status) {
   DCHECK(SUCCEEDED(hr));
 }
 
-void SystemMediaControlsWin::SetTitle(const base::string16& title) {
+void SystemMediaControlsWin::SetTitle(const std::u16string& title) {
   DCHECK(initialized_);
   DCHECK(display_properties_);
-  base::win::ScopedHString h_title = base::win::ScopedHString::Create(title);
+  base::win::ScopedHString h_title =
+      base::win::ScopedHString::Create(base::UTF16ToWide(title));
   HRESULT hr = display_properties_->put_Title(h_title.get());
   DCHECK(SUCCEEDED(hr));
 }
 
-void SystemMediaControlsWin::SetArtist(const base::string16& artist) {
+void SystemMediaControlsWin::SetArtist(const std::u16string& artist) {
   DCHECK(initialized_);
   DCHECK(display_properties_);
-  base::win::ScopedHString h_artist = base::win::ScopedHString::Create(artist);
+  base::win::ScopedHString h_artist =
+      base::win::ScopedHString::Create(base::UTF16ToWide(artist));
   HRESULT hr = display_properties_->put_Artist(h_artist.get());
   DCHECK(SUCCEEDED(hr));
 }
@@ -241,26 +299,73 @@ void SystemMediaControlsWin::SetThumbnail(const SkBitmap& bitmap) {
             status == ABI::Windows::Foundation::AsyncStatus::Completed) {
           Microsoft::WRL::ComPtr<IRandomAccessStreamReferenceStatics>
               reference_statics;
-          HRESULT hr = base::win::GetActivationFactory<
+          HRESULT result = base::win::GetActivationFactory<
               IRandomAccessStreamReferenceStatics,
               RuntimeClass_Windows_Storage_Streams_RandomAccessStreamReference>(
               &reference_statics);
-          DCHECK(SUCCEEDED(hr));
+          DCHECK(SUCCEEDED(result));
 
-          hr = reference_statics->CreateFromStream(icon_stream_.Get(),
-                                                   &icon_stream_reference_);
-          DCHECK(SUCCEEDED(hr));
+          result = reference_statics->CreateFromStream(icon_stream_.Get(),
+                                                       &icon_stream_reference_);
+          DCHECK(SUCCEEDED(result));
 
-          hr = display_updater_->put_Thumbnail(icon_stream_reference_.Get());
-          DCHECK(SUCCEEDED(hr));
+          result =
+              display_updater_->put_Thumbnail(icon_stream_reference_.Get());
+          DCHECK(SUCCEEDED(result));
 
-          hr = display_updater_->Update();
-          DCHECK(SUCCEEDED(hr));
+          result = display_updater_->Update();
+          DCHECK(SUCCEEDED(result));
         }
         return hr;
       });
 
   hr = store_async_operation->put_Completed(store_async_callback.Get());
+  DCHECK(SUCCEEDED(hr));
+}
+
+void SystemMediaControlsWin::SetPosition(
+    const media_session::MediaPosition& position) {
+  DCHECK(initialized_);
+
+  Microsoft::WRL::ComPtr<ISystemMediaTransportControls2>
+      system_media_controls_2;
+  HRESULT hr = system_media_controls_.As(&system_media_controls_2);
+  if (FAILED(hr))
+    return;
+
+  Microsoft::WRL::ComPtr<ISystemMediaTransportControlsTimelineProperties>
+      timeline_properties;
+  base::win::ScopedHString id = base::win::ScopedHString::Create(
+      RuntimeClass_Windows_Media_SystemMediaTransportControlsTimelineProperties);
+  hr = base::win::RoActivateInstance(id.get(), &timeline_properties);
+  DCHECK(SUCCEEDED(hr));
+
+  ABI::Windows::Foundation::TimeSpan timeSpanZero = {0};
+
+  hr = timeline_properties->put_MinSeekTime(timeSpanZero);
+  DCHECK(SUCCEEDED(hr));
+
+  hr = timeline_properties->put_StartTime(timeSpanZero);
+  DCHECK(SUCCEEDED(hr));
+
+  hr = timeline_properties->put_Position(
+      position.GetPosition().ToWinrtTimeSpan());
+  DCHECK(SUCCEEDED(hr));
+
+  ABI::Windows::Foundation::TimeSpan duration =
+      position.duration().ToWinrtTimeSpan();
+
+  hr = timeline_properties->put_EndTime(duration);
+  DCHECK(SUCCEEDED(hr));
+
+  hr = timeline_properties->put_MaxSeekTime(duration);
+  DCHECK(SUCCEEDED(hr));
+
+  hr = system_media_controls_2->UpdateTimelineProperties(
+      timeline_properties.Get());
+  DCHECK(SUCCEEDED(hr));
+
+  hr = system_media_controls_2->put_PlaybackRate(position.playback_rate());
   DCHECK(SUCCEEDED(hr));
 }
 
@@ -328,6 +433,11 @@ void SystemMediaControlsWin::OnStop() {
     obs.OnStop();
 }
 
+void SystemMediaControlsWin::OnSeekTo(const base::TimeDelta& time) {
+  for (SystemMediaControlsObserver& obs : observers_)
+    obs.OnSeekTo(time);
+}
+
 ABI::Windows::Media::MediaPlaybackStatus
 SystemMediaControlsWin::GetSmtcPlaybackStatus(PlaybackStatus status) {
   switch (status) {
@@ -389,6 +499,21 @@ HRESULT SystemMediaControlsWin::ButtonPressed(
         SystemMediaTransportControlsButton_ChannelDown:
       break;
   }
+
+  return S_OK;
+}
+
+// static
+HRESULT SystemMediaControlsWin::PlaybackPositionChangeRequested(
+    ISystemMediaTransportControls* sender,
+    IPlaybackPositionChangeRequestedEventArgs* args) {
+  ABI::Windows::Foundation::TimeSpan position;
+  HRESULT hr = args->get_RequestedPlaybackPosition(&position);
+  if (FAILED(hr))
+    return hr;
+
+  SystemMediaControlsWin* impl = GetInstance();
+  impl->OnSeekTo(base::TimeDelta::FromWinrtTimeSpan(position));
 
   return S_OK;
 }

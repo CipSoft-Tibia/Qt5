@@ -1,4 +1,4 @@
-# Enterprise Enrollment on Chrome OS
+# Enterprise Enrollment on ChromeOS
 
 Enterprise Enrollment is a process that marks a device as belonging to
 particular organization and enables [management](management.md) of the device
@@ -19,7 +19,7 @@ on the login screen), if it is not disabled via device policy.
 Developers can reset ownership by running following commands as root in shell:
 ```
 pkill -9 chrome
-rm -rf /home/chronos/Local\ State /var/lib/whitelist /home/.shadow
+rm -rf /home/chronos/Local\ State /var/lib/whitelist /var/lib/devicesettings /home/.shadow
 rm /home/chronos/.oobe_completed
 crossystem clear_tpm_owner_request=1
 reboot
@@ -70,7 +70,7 @@ enrollment can be skipped depends on policy set by admins.
 
 ### OEM-triggered Enrollment
 
-Device manufacturers can provide special [OEM manifest](https://cs.chromium.org/chromium/src/chromeos/system/statistics_provider.cc?rcl=2e366a611abdd2be6995e625f3281d40fab5b5e3&l=83)
+Device manufacturers can provide special [OEM manifest](https://cs.chromium.org/chromium/src/chromeos/ash/components/system/statistics_provider.cc?rcl=2e366a611abdd2be6995e625f3281d40fab5b5e3&l=83)
 that controls if device should be enrolled, and if enrollment is forced.
 Authentication is the same as in **Manual enrollment** case.
 

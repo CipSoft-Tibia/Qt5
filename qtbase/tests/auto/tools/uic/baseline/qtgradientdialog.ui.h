@@ -1,37 +1,14 @@
 /*
-*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the autotests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************
+
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 */
 
 /********************************************************************************
 ** Form generated from reading UI file 'qtgradientdialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -40,6 +17,7 @@
 #define QTGRADIENTDIALOG_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -58,13 +36,13 @@ public:
     void setupUi(QDialog *QtGradientDialog)
     {
         if (QtGradientDialog->objectName().isEmpty())
-            QtGradientDialog->setObjectName(QString::fromUtf8("QtGradientDialog"));
+            QtGradientDialog->setObjectName("QtGradientDialog");
         QtGradientDialog->resize(178, 81);
         vboxLayout = new QVBoxLayout(QtGradientDialog);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         gradientEditor = new QtGradientEditor(QtGradientDialog);
-        gradientEditor->setObjectName(QString::fromUtf8("gradientEditor"));
-        QSizePolicy sizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
+        gradientEditor->setObjectName("gradientEditor");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::MinimumExpanding, QSizePolicy::Policy::MinimumExpanding);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(gradientEditor->sizePolicy().hasHeightForWidth());
@@ -73,7 +51,7 @@ public:
         vboxLayout->addWidget(gradientEditor);
 
         buttonBox = new QDialogButtonBox(QtGradientDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
 
@@ -81,8 +59,8 @@ public:
 
 
         retranslateUi(QtGradientDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), QtGradientDialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), QtGradientDialog, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, QtGradientDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, QtGradientDialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(QtGradientDialog);
     } // setupUi

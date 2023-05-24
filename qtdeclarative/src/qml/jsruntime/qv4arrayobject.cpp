@@ -1,55 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Crimson AS <info@crimson.no>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Crimson AS <info@crimson.no>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4arrayobject_p.h"
-#include "qv4objectiterator_p.h"
 #include "qv4arrayiterator_p.h"
-#include "qv4sparsearray_p.h"
 #include "qv4objectproto_p.h"
-#include "qv4jscall_p.h"
 #include "qv4argumentsobject_p.h"
 #include "qv4runtime_p.h"
-#include "qv4string_p.h"
 #include "qv4symbol_p.h"
 #include <QtCore/qscopedvaluerollback.h>
-#include "qv4proxy_p.h"
 
 using namespace QV4;
 
@@ -258,7 +217,7 @@ ReturnedValue ArrayPrototype::method_from(const FunctionObject *builtin, const V
                 mapArguments[0] = *nextValue;
                 mapArguments[1] = Value::fromDouble(k);
                 mappedValue = mapfn->call(thisArg, mapArguments, 2);
-                if (scope.engine->hasException)
+                if (scope.hasException())
                     return Runtime::IteratorClose::call(scope.engine, iterator, Value::fromBoolean(false));
             } else {
                 mappedValue = *nextValue;
@@ -271,7 +230,7 @@ ReturnedValue ArrayPrototype::method_from(const FunctionObject *builtin, const V
                 scope.engine->throwTypeError(QString::fromLatin1("Cannot redefine property: %1").arg(k));
             }
 
-            if (scope.engine->hasException) {
+            if (scope.hasException()) {
                 ScopedValue falsey(scope, Encode(false));
                 return Runtime::IteratorClose::call(scope.engine, iterator, falsey);
             }
@@ -383,6 +342,9 @@ ReturnedValue ArrayPrototype::method_toLocaleString(const FunctionObject *b, con
     ScopedValue v(scope);
     ScopedString s(scope);
 
+    ScopedPropertyKey tolocaleString(scope, scope.engine->id_toLocaleString()->toPropertyKey());
+    Q_ASSERT(!scope.engine->hasException);
+
     for (uint k = 0; k < len; ++k) {
         if (k)
             R += separator;
@@ -390,7 +352,18 @@ ReturnedValue ArrayPrototype::method_toLocaleString(const FunctionObject *b, con
         v = instance->get(k);
         if (v->isNullOrUndefined())
             continue;
-        v = Runtime::CallElement::call(scope.engine, v, *scope.engine->id_toLocaleString(), nullptr, 0);
+
+        ScopedObject valueAsObject(scope, v->toObject(scope.engine));
+        Q_ASSERT(valueAsObject); // null and undefined handled above
+
+        ScopedFunctionObject function(scope, valueAsObject->get(tolocaleString));
+        if (!function)
+            return scope.engine->throwTypeError();
+
+        v = function->call(valueAsObject, nullptr, 0);
+        if (scope.hasException())
+            return Encode::undefined();
+
         s = v->toString(scope.engine);
         if (scope.hasException())
             return Encode::undefined();
@@ -423,7 +396,7 @@ ReturnedValue ArrayPrototype::method_concat(const FunctionObject *b, const Value
         } else if (eltAsObj && eltAsObj->isConcatSpreadable()) {
             const uint startIndex = result->getLength();
             const uint len = eltAsObj->getLength();
-            if (scope.engine->hasException)
+            if (scope.hasException())
                 return Encode::undefined();
 
             for (uint i = 0; i < len; ++i) {
@@ -434,7 +407,7 @@ ReturnedValue ArrayPrototype::method_concat(const FunctionObject *b, const Value
                         return scope.engine->throwTypeError();
                 }
             }
-        } else if (eltAsObj && eltAsObj->isListType()) {
+        } else if (eltAsObj && eltAsObj->isArrayLike()) {
             const uint startIndex = result->getLength();
             for (int i = 0, len = eltAsObj->getLength(); i < len; ++i) {
                 entry = eltAsObj->get(i);
@@ -1224,31 +1197,38 @@ ReturnedValue ArrayPrototype::method_fill(const FunctionObject *b, const Value *
     if (!instance)
         RETURN_UNDEFINED();
 
-    uint len = instance->getLength();
-    int relativeStart = argc > 1 ? argv[1].toInteger() : 0;
-    int relativeEnd = len;
-    if (argc > 2 && !argv[2].isUndefined()) {
+    const qsizetype len = instance->getLength();
+    Q_ASSERT(len >= 0);
+
+    const qsizetype relativeStart = argc > 1 ? argv[1].toInteger() : 0;
+    qsizetype relativeEnd = len;
+    if (argc > 2 && !argv[2].isUndefined())
         relativeEnd = argv[2].toInteger();
-    }
-    uint k = 0;
-    uint fin = 0;
+
+    qsizetype k = 0;
+    qsizetype fin = 0;
 
     if (relativeStart < 0) {
-        k = std::max(len+relativeStart, uint(0));
+        if (relativeStart > -len)
+            k = std::max(len + relativeStart, qsizetype(0));
     } else {
-        k = std::min(uint(relativeStart), len);
+        k = std::min(relativeStart, len);
     }
+    Q_ASSERT(k >= 0);
 
     if (relativeEnd < 0) {
-        fin = std::max(len + relativeEnd, uint(0));
+        if (relativeEnd > -len)
+            fin = std::max(len + relativeEnd, qsizetype(0));
     } else {
-        fin = std::min(uint(relativeEnd), len);
+        fin = std::min(relativeEnd, len);
     }
+    Q_ASSERT(fin >= 0);
 
-    while (k < fin) {
-        instance->setIndexed(k, argv[0], QV4::Object::DoThrowOnRejection);
-        k++;
-    }
+    if (sizeof(qsizetype) > sizeof(uint) && fin > qsizetype(std::numeric_limits<uint>::max()))
+        return scope.engine->throwRangeError(QString::fromLatin1("Array length out of range."));
+
+    for (; k < fin; ++k)
+        instance->setIndexed(uint(k), argv[0], QV4::Object::DoThrowOnRejection);
 
     return instance.asReturnedValue();
 }

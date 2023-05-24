@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2011-2012 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2011 Sergey Belyashov <Sergey.Belyashov@gmail.com>
-** Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSerialPort module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011-2012 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (C) 2011 Sergey Belyashov <Sergey.Belyashov@gmail.com>
+// Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qserialportinfo.h"
 #include "qserialportinfo_p.h"
@@ -46,6 +10,12 @@
 
 QT_BEGIN_NAMESPACE
 
+// We changed from QScopedPointer to std::unique_ptr, make sure it's
+// binary compatible. The QScopedPointer had a non-default deleter, but
+// the deleter just provides a static function to use for deletion so we don't
+// include it in this template definition (the deleter-class was deleted).
+static_assert(sizeof(std::unique_ptr<QSerialPortInfoPrivate>)
+              == sizeof(QScopedPointer<QSerialPortInfoPrivate>));
 
 /*!
     \class QSerialPortInfo
@@ -56,12 +26,20 @@ QT_BEGIN_NAMESPACE
     \inmodule QtSerialPort
     \since 5.1
 
-    Use the static functions to generate a list of QSerialPortInfo
-    objects. Each QSerialPortInfo object in the list represents a single
-    serial port and can be queried for the port name, system location,
-    description, and manufacturer. The QSerialPortInfo class can also be
-    used as an input parameter for the setPort() method of the QSerialPort
-    class.
+    Use the static \l availablePorts() function to generate a list of
+    QSerialPortInfo objects. Each QSerialPortInfo object in the list represents
+    a single serial port and can be queried for the \l {portName}{port name},
+    \l {systemLocation}{system location}, \l description, \l manufacturer, and
+    some other hardware parameters. The QSerialPortInfo class can also be
+    used as an input parameter for the \l {QSerialPort::}{setPort()} method of
+    the QSerialPort class.
+
+    \section1 Example Usage
+
+    The example code enumerates all available serial ports and prints their
+    parameters to console:
+
+    \snippet doc_src_serialport.cpp enumerate_ports
 
     \sa QSerialPort
 */
@@ -255,33 +233,7 @@ bool QSerialPortInfo::hasProductIdentifier() const
 
     Returns whether this QSerialPortInfo object holds a
     serial port definition.
-
-    \sa isBusy()
 */
-
-#if QT_DEPRECATED_SINCE(5, 6)
-/*!
-    \fn bool QSerialPortInfo::isBusy() const
-    \obsolete
-
-    Returns \c true if serial port is busy;
-    otherwise returns \c false.
-
-    \sa isNull()
-*/
-#endif // QT_DEPRECATED_SINCE(5, 6)
-
-#if QT_DEPRECATED_SINCE(5, 2)
-/*!
-    \fn bool QSerialPortInfo::isValid() const
-    \obsolete
-
-    Returns \c true if serial port is present on system;
-    otherwise returns \c false.
-
-    \sa isNull(), isBusy()
-*/
-#endif // QT_DEPRECATED_SINCE(5, 2)
 
 /*!
     \fn QList<qint32> QSerialPortInfo::standardBaudRates()

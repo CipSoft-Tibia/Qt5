@@ -1,43 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qtguiglobal.h>
+
+#include <AppKit/AppKit.h>
+#include <MetalKit/MetalKit.h>
 
 #include "qnsview.h"
 #include "qcocoawindow.h"
@@ -54,23 +21,20 @@
 #include <QtCore/QPointer>
 #include <QtCore/QSet>
 #include <QtCore/qsysinfo.h>
+#include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/QAccessible>
 #include <QtGui/QImage>
 #include <private/qguiapplication_p.h>
 #include <private/qcoregraphics_p.h>
 #include <private/qwindow_p.h>
+#include <private/qpointingdevice_p.h>
+#include <private/qhighdpiscaling_p.h>
 #include "qcocoabackingstore.h"
 #ifndef QT_NO_OPENGL
 #include "qcocoaglcontext.h"
 #endif
 #include "qcocoaintegration.h"
-
-// Private interface
-@interface QNSView ()
-- (BOOL)isTransparentForUserInput;
-@property (assign) NSView* previousSuperview;
-@property (assign) NSWindow* previousWindow;
-@end
+#include <QtGui/private/qmacmimeregistry_p.h>
 
 @interface QNSView (Drawing) <CALayerDelegate>
 - (void)initDrawing;
@@ -112,38 +76,60 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
 @end
 
 @interface QNSView (ComplexText) <NSTextInputClient>
-- (void)textInputContextKeyboardSelectionDidChangeNotification:(NSNotification *)textInputContextKeyboardSelectionDidChangeNotification;
+@property (readonly) QObject* focusObject;
+@end
+
+@interface QT_MANGLE_NAMESPACE(QNSViewMenuHelper) : NSObject
+- (instancetype)initWithView:(QNSView *)theView;
+@end
+QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMenuHelper);
+
+// Private interface
+@interface QNSView ()
+- (BOOL)isTransparentForUserInput;
+@property (assign) NSView* previousSuperview;
+@property (assign) NSWindow* previousWindow;
+@property (retain) QNSViewMenuHelper* menuHelper;
 @end
 
 @implementation QNSView {
     QPointer<QCocoaWindow> m_platformWindow;
+
+    // Mouse
+    QNSViewMouseMoveHelper *m_mouseMoveHelper;
     Qt::MouseButtons m_buttons;
     Qt::MouseButtons m_acceptedMouseDowns;
     Qt::MouseButtons m_frameStrutButtons;
-    QString m_composingText;
-    QPointer<QObject> m_composingFocusObject;
-    bool m_sendKeyEvent;
+    Qt::KeyboardModifiers m_currentWheelModifiers;
     bool m_dontOverrideCtrlLMB;
     bool m_sendUpAsRightButton;
-    Qt::KeyboardModifiers m_currentWheelModifiers;
-    NSString *m_inputSource;
-    QNSViewMouseMoveHelper *m_mouseMoveHelper;
-    bool m_resendKeyEvent;
     bool m_scrolling;
     bool m_updatingDrag;
+
+    // Keys
+    bool m_lastKeyDead;
+    bool m_sendKeyEvent;
+    bool m_sendKeyEventWithoutText;
     NSEvent *m_currentlyInterpretedKeyEvent;
     QSet<quint32> m_acceptedKeyDowns;
+
+    // Text
+    QString m_composingText;
+    QPointer<QObject> m_composingFocusObject;
+    NSDraggingContext m_lastSeenContext;
 }
 
 - (instancetype)initWithCocoaWindow:(QCocoaWindow *)platformWindow
 {
     if ((self = [super initWithFrame:NSZeroRect])) {
         m_platformWindow = platformWindow;
-        m_sendKeyEvent = false;
-        m_inputSource = nil;
-        m_resendKeyEvent = false;
-        m_updatingDrag = false;
-        m_currentlyInterpretedKeyEvent = nil;
+
+        // NSViews are by default visible, but QWindows are not.
+        // We should ideally pick up the actual QWindow state here,
+        // but QWindowPrivate::setVisible() expects to control the
+        // order of events tightly, so we need to wait for a call
+        // to QCocoaWindow::setVisible().
+        self.hidden = YES;
 
         self.focusRingType = NSFocusRingTypeNone;
 
@@ -154,10 +140,14 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
         [self initMouse];
         [self registerDragTypes];
 
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                              selector:@selector(textInputContextKeyboardSelectionDidChangeNotification:)
-                                              name:NSTextInputContextKeyboardSelectionDidChangeNotification
-                                              object:nil];
+        m_updatingDrag = false;
+
+        m_lastKeyDead = false;
+        m_sendKeyEvent = false;
+        m_currentlyInterpretedKeyEvent = nil;
+        m_lastSeenContext = NSDraggingContextWithinApplication;
+
+        self.menuHelper = [[[QNSViewMenuHelper alloc] initWithView:self] autorelease];
     }
     return self;
 }
@@ -166,7 +156,6 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
 {
     qCDebug(lcQpaWindow) << "Deallocating" << self;
 
-    [m_inputSource release];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [m_mouseMoveHelper release];
 
@@ -284,15 +273,29 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
     return focusWindow;
 }
 
+/*
+    Invoked when the view is hidden, either directly,
+    or in response to an ancestor being hidden.
+*/
 - (void)viewDidHide
 {
+    qCDebug(lcQpaWindow) << "Did hide" << self;
+
     if (!m_platformWindow->isExposed())
         return;
 
     m_platformWindow->handleExposeEvent(QRegion());
+}
 
-    // Note: setNeedsDisplay is automatically called for
-    // viewDidUnhide so no reason to override it here.
+/*
+    Invoked when the view is unhidden, either directly,
+    or in response to an ancestor being unhidden.
+*/
+- (void)viewDidUnhide
+{
+     qCDebug(lcQpaWindow) << "Did unhide" << self;
+
+     [self setNeedsDisplay:YES];
 }
 
 - (BOOL)isTransparentForUserInput
@@ -307,8 +310,28 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
         return NO;
     if ([self isTransparentForUserInput])
         return NO;
-    if (!m_platformWindow->windowIsPopupType())
-        QWindowSystemInterface::handleWindowActivated([self topLevelWindow]);
+
+    if (!m_platformWindow->windowIsPopupType()
+            && (!self.window.canBecomeKeyWindow || self.window.keyWindow)) {
+        // Calling handleWindowActivated for a QWindow has two effects: first, it
+        // will set the QWindow (and all other QWindows in the same hierarchy)
+        // as Active. Being Active means that the window should appear active from
+        // a style perspective (according to QWindow::isActive()). The second
+        // effect is that it will set QQuiApplication::focusWindow() to point to
+        // the QWindow. The latter means that the QWindow should have keyboard
+        // focus. But those two are not necessarily the same; A tool window could e.g be
+        // rendered as Active while the parent window, which is also Active, has
+        // input focus. But we currently don't distinguish between that cleanly in Qt.
+        // Since we don't want a QWindow to be rendered as Active when the NSWindow
+        // it belongs to is not key, we skip calling handleWindowActivated when
+        // that is the case. Instead, we wait for the window to become key, and handle
+        // QWindow activation from QCocoaWindow::windowDidBecomeKey instead. The only
+        // exception is if the window can never become key, in which case we naturally
+        // cannot wait for that to happen.
+        QWindowSystemInterface::handleWindowActivated<QWindowSystemInterface::SynchronousDelivery>(
+            [self topLevelWindow], Qt::ActiveWindowFocusReason);
+    }
+
     return YES;
 }
 
@@ -375,7 +398,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSViewMouseMoveHelper);
 #include "qnsview_keys.mm"
 #include "qnsview_complextext.mm"
 #include "qnsview_menus.mm"
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 #include "qnsview_accessibility.mm"
 #endif
 

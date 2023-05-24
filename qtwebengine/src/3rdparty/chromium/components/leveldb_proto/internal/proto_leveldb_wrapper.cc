@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,10 @@
 
 #include <string>
 
-#include "base/sequenced_task_runner.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_forward.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
-#include "base/threading/sequenced_task_runner_handle.h"
 #include "components/leveldb_proto/internal/leveldb_database.h"
 #include "components/leveldb_proto/internal/proto_leveldb_wrapper_metrics.h"
 #include "components/leveldb_proto/public/proto_database.h"
@@ -132,10 +132,9 @@ bool UpdateEntriesWithRemoveFilterFromTaskRunner(
 }
 
 void LoadKeysAndEntriesFromTaskRunner(LevelDB* database,
-                                      const KeyFilter& while_callback,
-                                      const KeyFilter& filter,
+                                      const KeyIteratorController& controller,
                                       const leveldb::ReadOptions& options,
-                                      const std::string& target_prefix,
+                                      const std::string& start_key,
                                       const std::string& client_id,
                                       bool* success,
                                       KeyValueMap* keys_entries) {
@@ -143,8 +142,8 @@ void LoadKeysAndEntriesFromTaskRunner(LevelDB* database,
   DCHECK(keys_entries);
   keys_entries->clear();
 
-  *success = database->LoadKeysAndEntriesWhile(filter, keys_entries, options,
-                                               target_prefix, while_callback);
+  *success = database->LoadKeysAndEntriesWhile(keys_entries, options, start_key,
+                                               controller);
 
   ProtoLevelDBWrapperMetrics::RecordLoadKeysAndEntries(client_id, success);
 }
@@ -204,8 +203,8 @@ void ProtoLevelDBWrapper::InitWithDatabase(
   DCHECK(database);
   db_ = database;
 
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(InitFromTaskRunner, base::Unretained(db_), database_dir,
                      options, destroy_on_corruption, metrics_id_),
       std::move(callback));
@@ -216,8 +215,8 @@ void ProtoLevelDBWrapper::UpdateEntries(
     std::unique_ptr<KeyVector> keys_to_remove,
     typename Callbacks::UpdateCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(UpdateEntriesFromTaskRunner, base::Unretained(db_),
                      std::move(entries_to_save), std::move(keys_to_remove),
                      metrics_id_),
@@ -239,8 +238,8 @@ void ProtoLevelDBWrapper::UpdateEntriesWithRemoveFilter(
     const std::string& target_prefix,
     Callbacks::UpdateCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(UpdateEntriesWithRemoveFilterFromTaskRunner,
                      base::Unretained(db_), std::move(entries_to_save),
                      delete_key_filter, target_prefix, metrics_id_),
@@ -318,10 +317,28 @@ void ProtoLevelDBWrapper::LoadKeysAndEntriesInRange(
 }
 
 void ProtoLevelDBWrapper::LoadKeysAndEntriesWhile(
+    const std::string& start_key,
+    const KeyIteratorController& controller,
+    Callbacks::LoadKeysAndEntriesCallback callback) {
+  LoadKeysAndEntriesWhile(controller, leveldb::ReadOptions(), start_key,
+                          std::move(callback));
+}
+
+void ProtoLevelDBWrapper::LoadKeysAndEntriesWhile(
     const KeyFilter& while_callback,
     const KeyFilter& filter,
     const leveldb::ReadOptions& options,
-    const std::string& target_prefix,
+    const std::string& start_key,
+    Callbacks::LoadKeysAndEntriesCallback callback) {
+  LoadKeysAndEntriesWhile(base::BindRepeating(LevelDB::ComputeIteratorAction,
+                                              while_callback, filter),
+                          options, start_key, std::move(callback));
+}
+
+void ProtoLevelDBWrapper::LoadKeysAndEntriesWhile(
+    const KeyIteratorController& controller,
+    const leveldb::ReadOptions& options,
+    const std::string& start_key,
     Callbacks::LoadKeysAndEntriesCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   bool* success = new bool(false);
@@ -332,8 +349,8 @@ void ProtoLevelDBWrapper::LoadKeysAndEntriesWhile(
   task_runner_->PostTaskAndReply(
       FROM_HERE,
       base::BindOnce(LoadKeysAndEntriesFromTaskRunner, base::Unretained(db_),
-                     while_callback, filter, options, target_prefix,
-                     metrics_id_, success, keys_entries_ptr),
+                     controller, options, start_key, metrics_id_, success,
+                     keys_entries_ptr),
       base::BindOnce(RunLoadKeysAndEntriesCallback, std::move(callback),
                      base::Owned(success), std::move(keys_entries)));
 }
@@ -365,9 +382,10 @@ void ProtoLevelDBWrapper::LoadKeys(
     typename Callbacks::LoadKeysCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   task_runner_->PostTask(
-      FROM_HERE, base::BindOnce(LoadKeysFromTaskRunner, base::Unretained(db_),
-                                target_prefix, metrics_id_, std::move(callback),
-                                base::SequencedTaskRunnerHandle::Get()));
+      FROM_HERE,
+      base::BindOnce(LoadKeysFromTaskRunner, base::Unretained(db_),
+                     target_prefix, metrics_id_, std::move(callback),
+                     base::SequencedTaskRunner::GetCurrentDefault()));
 }
 
 void ProtoLevelDBWrapper::RemoveKeys(const KeyFilter& filter,
@@ -378,15 +396,15 @@ void ProtoLevelDBWrapper::RemoveKeys(const KeyFilter& filter,
       FROM_HERE,
       base::BindOnce(RemoveKeysFromTaskRunner, base::Unretained(db_),
                      target_prefix, filter, metrics_id_, std::move(callback),
-                     base::SequencedTaskRunnerHandle::Get()));
+                     base::SequencedTaskRunner::GetCurrentDefault()));
 }
 
 void ProtoLevelDBWrapper::Destroy(Callbacks::DestroyCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(db_);
 
-  base::PostTaskAndReplyWithResult(
-      task_runner_.get(), FROM_HERE,
+  task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(DestroyFromTaskRunner, base::Unretained(db_), metrics_id_),
       std::move(callback));
 }
@@ -396,8 +414,8 @@ void ProtoLevelDBWrapper::Destroy(
     const std::string& client_id,
     const scoped_refptr<base::SequencedTaskRunner>& task_runner,
     Callbacks::DestroyCallback callback) {
-  base::PostTaskAndReplyWithResult(
-      task_runner.get(), FROM_HERE,
+  task_runner->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(DestroyWithDirectoryFromTaskRunner, db_dir, client_id),
       std::move(callback));
 }
@@ -408,7 +426,7 @@ void ProtoLevelDBWrapper::SetMetricsId(const std::string& id) {
 
 bool ProtoLevelDBWrapper::GetApproximateMemoryUse(uint64_t* approx_mem_use) {
   if (!db_)
-    return 0;
+    return false;
 
   return db_->GetApproximateMemoryUse(approx_mem_use);
 }

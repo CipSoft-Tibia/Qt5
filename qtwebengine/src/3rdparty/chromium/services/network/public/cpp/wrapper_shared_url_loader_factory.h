@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -52,7 +52,6 @@ class WrapperSharedURLLoaderFactoryBase
 
   void CreateLoaderAndStart(
       mojo::PendingReceiver<network::mojom::URLLoader> loader,
-      int32_t routing_id,
       int32_t request_id,
       uint32_t options,
       const network::ResourceRequest& request,
@@ -61,9 +60,9 @@ class WrapperSharedURLLoaderFactoryBase
       override {
     if (!factory_remote_)
       return;
-    factory_remote_->CreateLoaderAndStart(
-        std::move(loader), routing_id, request_id, options, request,
-        std::move(client), traffic_annotation);
+    factory_remote_->CreateLoaderAndStart(std::move(loader), request_id,
+                                          options, request, std::move(client),
+                                          traffic_annotation);
   }
 
   void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "texturehelper_p.h"
 #include "utils_p.h"
@@ -34,7 +8,7 @@
 #include <QtGui/QPainter>
 #include <QtCore/QTime>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 // Defined in shaderhelper.cpp
 extern void discardDebugMsgs(QtMsgType type, const QMessageLogContext &context, const QString &msg);
@@ -42,13 +16,12 @@ extern void discardDebugMsgs(QtMsgType type, const QMessageLogContext &context, 
 TextureHelper::TextureHelper()
 {
     initializeOpenGLFunctions();
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (!Utils::isOpenGLES()) {
         // Discard warnings about deprecated functions
         QtMessageHandler handler = qInstallMessageHandler(discardDebugMsgs);
 
-        m_openGlFunctions_2_1 =
-                QOpenGLContext::currentContext()->versionFunctions<QOpenGLFunctions_2_1>();
+        m_openGlFunctions_2_1 = new QOpenGLFunctions_2_1;
         if (m_openGlFunctions_2_1)
             m_openGlFunctions_2_1->initializeOpenGLFunctions();
 
@@ -63,6 +36,9 @@ TextureHelper::TextureHelper()
 
 TextureHelper::~TextureHelper()
 {
+#if !QT_CONFIG(opengles2)
+    delete m_openGlFunctions_2_1;
+#endif
 }
 
 GLuint TextureHelper::create2DTexture(const QImage &image, bool useTrilinearFiltering,
@@ -108,16 +84,16 @@ GLuint TextureHelper::create2DTexture(const QImage &image, bool useTrilinearFilt
     return textureId;
 }
 
-GLuint TextureHelper::create3DTexture(const QVector<uchar> *data, int width, int height, int depth,
+GLuint TextureHelper::create3DTexture(const QList<uchar> *data, int width, int height, int depth,
                                       QImage::Format dataFormat)
 {
     if (Utils::isOpenGLES() || !width || !height || !depth)
         return 0;
 
     GLuint textureId = 0;
-#if defined(QT_OPENGL_ES_2)
-    Q_UNUSED(dataFormat)
-    Q_UNUSED(data)
+#if QT_CONFIG(opengles2)
+    Q_UNUSED(dataFormat);
+    Q_UNUSED(data);
 #else
     glEnable(GL_TEXTURE_3D);
 
@@ -290,9 +266,9 @@ GLuint TextureHelper::createGradientTexture(const QLinearGradient &gradient)
 GLuint TextureHelper::createDepthTexture(const QSize &size, GLuint textureSize)
 {
     GLuint depthtextureid = 0;
-#if defined(QT_OPENGL_ES_2)
-    Q_UNUSED(size)
-    Q_UNUSED(textureSize)
+#if QT_CONFIG(opengles2)
+    Q_UNUSED(size);
+    Q_UNUSED(textureSize);
 #else
     if (!Utils::isOpenGLES()) {
         // Create depth texture for the shadow mapping
@@ -316,8 +292,8 @@ GLuint TextureHelper::createDepthTextureFrameBuffer(const QSize &size, GLuint &f
                                                     GLuint textureSize)
 {
     GLuint depthtextureid = createDepthTexture(size, textureSize);
-#if defined(QT_OPENGL_ES_2)
-    Q_UNUSED(frameBuffer)
+#if QT_CONFIG(opengles2)
+    Q_UNUSED(frameBuffer);
 #else
     if (!Utils::isOpenGLES()) {
         // Create frame buffer
@@ -328,7 +304,7 @@ GLuint TextureHelper::createDepthTextureFrameBuffer(const QSize &size, GLuint &f
         // Attach texture to depth attachment
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthtextureid, 0);
 
-        m_openGlFunctions_2_1->glDrawBuffer(GL_NONE);
+        m_openGlFunctions_2_1->glDrawBuffers(0, GL_NONE);
         m_openGlFunctions_2_1->glReadBuffer(GL_NONE);
 
         // Verify that the frame buffer is complete
@@ -402,7 +378,7 @@ void TextureHelper::convertToGLFormatHelper(QImage &dstImage, const QImage &srcI
         const uint *p = (const uint*) srcImage.scanLine(srcImage.height() - 1);
         uint *q = (uint*) dstImage.scanLine(0);
 
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
         if (texture_format == GL_BGRA) {
 #else
         if (texture_format == GL_BGRA8_EXT) {
@@ -457,7 +433,7 @@ void TextureHelper::convertToGLFormatHelper(QImage &dstImage, const QImage &srcI
 
 QRgb TextureHelper::qt_gl_convertToGLFormatHelper(QRgb src_pixel, GLenum texture_format)
 {
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (texture_format == GL_BGRA) {
 #else
     if (texture_format == GL_BGRA8_EXT) {
@@ -481,4 +457,4 @@ QRgb TextureHelper::qt_gl_convertToGLFormatHelper(QRgb src_pixel, GLenum texture
     }
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui>
 #include <QtWidgets>
 
@@ -70,15 +45,15 @@ public:
         vspacing = 10;
     }
 
-    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = 0,
-                            const QWidget * widget = 0 ) const;
+    virtual int pixelMetric(PixelMetric metric, const QStyleOption * option = nullptr,
+                            const QWidget * widget = nullptr ) const override;
 
     int hspacing;
     int vspacing;
 };
 
-int CustomLayoutStyle::pixelMetric(PixelMetric metric, const QStyleOption * option /*= 0*/,
-                                   const QWidget * widget /*= 0*/ ) const
+int CustomLayoutStyle::pixelMetric(PixelMetric metric, const QStyleOption * option /*= nullptr*/,
+                                   const QWidget * widget /*= nullptr*/ ) const
 {
     switch (metric) {
         case PM_LayoutLeftMargin:
@@ -141,7 +116,7 @@ void tst_QBoxLayout::insertLayout()
     QCOMPARE(dummyParentLayout->count(), 1);
 
     // add subLayout to another layout
-    QTest::ignoreMessage(QtWarningMsg, "QLayout::addChildLayout: layout \"\" already has a parent");
+    QTest::ignoreMessage(QtWarningMsg, "QLayout::addChildLayout: layout QHBoxLayout \"\" already has a parent");
     vbox->addLayout(subLayout);
     QCOMPARE((subLayout->parent() == vbox), (vbox->count() == 1));
 }
@@ -245,7 +220,7 @@ public:
     }
 
     virtual QRect subElementRect(SubElement sr, const QStyleOption *opt,
-                                const QWidget *widget) const
+                                const QWidget *widget) const override
     {
         QRect rect = opt->rect;
         switch (sr) {
@@ -411,14 +386,14 @@ class LayoutItem : public QLayoutItem
 public:
     LayoutItem(const Descr &descr) :m_descr(descr) {}
 
-    QSize sizeHint() const { return QSize(m_descr.sizeHint, 100); }
-    QSize minimumSize() const { return QSize(m_descr.minimumSize, 0); }
-    QSize maximumSize() const { return QSize(m_descr.maximumSize, QLAYOUTSIZE_MAX); }
-    Qt::Orientations expandingDirections() const
+    QSize sizeHint() const override { return QSize(m_descr.sizeHint, 100); }
+    QSize minimumSize() const override { return QSize(m_descr.minimumSize, 0); }
+    QSize maximumSize() const override { return QSize(m_descr.maximumSize, QLAYOUTSIZE_MAX); }
+    Qt::Orientations expandingDirections() const override
     { return m_descr.expanding ? Qt::Horizontal :  Qt::Orientations{}; }
-    void setGeometry(const QRect &r) { m_pos = r.x(); m_size = r.width();}
-    QRect geometry() const { return QRect(m_pos, 0, m_size, 100); }
-    bool isEmpty() const { return m_descr.empty; }
+    void setGeometry(const QRect &r) override { m_pos = r.x(); m_size = r.width();}
+    QRect geometry() const override { return QRect(m_pos, 0, m_size, 100); }
+    bool isEmpty() const override { return m_descr.empty; }
 
 private:
     Descr m_descr;
@@ -542,14 +517,14 @@ void tst_QBoxLayout::testLayoutEngine()
     QHBoxLayout box;
     box.setSpacing(spacing);
     int i;
-    for (i = 0; i < itemDescriptions.count(); ++i) {
+    for (i = 0; i < itemDescriptions.size(); ++i) {
          Descr descr = itemDescriptions.at(i);
          LayoutItem *li = new LayoutItem(descr);
          box.addItem(li);
          box.setStretch(i, descr.stretch);
     }
     box.setGeometry(QRect(0,0,size,100));
-    for (i = 0; i < expectedSizes.count(); ++i) {
+    for (i = 0; i < expectedSizes.size(); ++i) {
         int xSize = expectedSizes.at(i);
         int xPos = expectedPositions.at(i);
         QLayoutItem *item = box.itemAt(i);

@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-
+#include <QTest>
+#include <QSignalSpy>
 #include <QDial>
 
 class tst_QDial : public QObject
@@ -42,6 +17,10 @@ private slots:
     void valueChanged();
     void sliderMoved();
     void wrappingCheck();
+    void minEqualMaxValueOutsideRange();
+
+    void notchSize_data();
+    void notchSize();
 };
 
 // Testing get/set functions
@@ -74,14 +53,14 @@ void tst_QDial::valueChanged()
     dial.setMaximum(100);
     QSignalSpy spy(&dial, SIGNAL(valueChanged(int)));
     dial.setValue(50);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     spy.clear();
     dial.setValue(25);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     spy.clear();
     // repeat!
     dial.setValue(25);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 }
 
 void tst_QDial::sliderMoved()
@@ -97,7 +76,7 @@ void tst_QDial::sliderMoved()
 
     QPoint init(dial.width()/4, dial.height()/2);
 
-    QMouseEvent pressevent(QEvent::MouseButtonPress, init,
+    QMouseEvent pressevent(QEvent::MouseButtonPress, init, dial.mapToGlobal(init),
                            Qt::LeftButton, Qt::LeftButton, {});
     qApp->sendEvent(&dial, &pressevent);
 
@@ -107,27 +86,27 @@ void tst_QDial::sliderMoved()
 
     { //move on top of the slider
         init = QPoint(dial.width()/2, dial.height()/4);
-        QMouseEvent moveevent(QEvent::MouseMove, init,
+        QMouseEvent moveevent(QEvent::MouseMove, init, dial.mapToGlobal(init),
                               Qt::LeftButton, Qt::LeftButton, {});
         qApp->sendEvent(&dial, &moveevent);
-        QCOMPARE( sliderspy.count(), 1);
-        QCOMPARE( valuespy.count(), 0);
+        QCOMPARE( sliderspy.size(), 1);
+        QCOMPARE( valuespy.size(), 0);
     }
 
 
     { //move on the right of the slider
         init = QPoint(dial.width()*3/4, dial.height()/2);
-        QMouseEvent moveevent(QEvent::MouseMove, init,
+        QMouseEvent moveevent(QEvent::MouseMove, init, dial.mapToGlobal(init),
                               Qt::LeftButton, Qt::LeftButton, {});
         qApp->sendEvent(&dial, &moveevent);
-        QCOMPARE( sliderspy.count(), 2);
-        QCOMPARE( valuespy.count(), 0);
+        QCOMPARE( sliderspy.size(), 2);
+        QCOMPARE( valuespy.size(), 0);
     }
 
-    QMouseEvent releaseevent(QEvent::MouseButtonRelease, init,
+    QMouseEvent releaseevent(QEvent::MouseButtonRelease, init, dial.mapToGlobal(init),
                              Qt::LeftButton, Qt::LeftButton, {});
     qApp->sendEvent(&dial, &releaseevent);
-    QCOMPARE( valuespy.count(), 1); // valuechanged signal should be called at this point
+    QCOMPARE( valuespy.size(), 1); // valuechanged signal should be called at this point
 
 }
 
@@ -192,6 +171,43 @@ void tst_QDial::wrappingCheck()
         QTest::keyPress(&dial, Qt::Key_Down);
         QCOMPARE( dial.value(), -22);
     }
+}
+
+// QTBUG-104641
+void tst_QDial::minEqualMaxValueOutsideRange()
+{
+    QDial dial;
+    dial.setRange(30, 30);
+    dial.setWrapping(true);
+    dial.setValue(45);
+}
+
+/*
+    Verify that the notchSizes calculated don't change compared
+    to Qt 5.15 results for dial sizes at the edge values of the
+    algorithm.
+*/
+void tst_QDial::notchSize_data()
+{
+    QTest::addColumn<int>("diameter");
+    QTest::addColumn<int>("notchSize");
+
+    QTest::newRow("data0") << 50 << 4;
+    QTest::newRow("data1") << 80 << 4;
+    QTest::newRow("data2") << 95 << 4;
+    QTest::newRow("data3") << 110 << 4;
+    QTest::newRow("data4") << 152 << 2;
+    QTest::newRow("data5") << 210 << 2;
+    QTest::newRow("data6") << 228 << 1;
+}
+
+void tst_QDial::notchSize()
+{
+    QFETCH(int, diameter);
+    QFETCH(int, notchSize);
+    QDial dial;
+    dial.setFixedSize(QSize(diameter, diameter));
+    QCOMPARE(dial.notchSize(), notchSize);
 }
 
 QTEST_MAIN(tst_QDial)

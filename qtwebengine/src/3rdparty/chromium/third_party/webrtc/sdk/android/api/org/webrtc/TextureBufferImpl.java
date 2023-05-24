@@ -12,7 +12,7 @@ package org.webrtc;
 
 import android.graphics.Matrix;
 import android.os.Handler;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 
 /**
  * Android texture buffer that glues together the necessary information together with a generic
@@ -169,6 +169,7 @@ public class TextureBufferImpl implements VideoFrame.TextureBuffer {
    * existing buffer is unchanged. The given transform matrix is applied first when texture
    * coordinates are still in the unmodified [0, 1] range.
    */
+  @Override
   public TextureBufferImpl applyTransformMatrix(
       Matrix transformMatrix, int newWidth, int newHeight) {
     return applyTransformMatrix(transformMatrix, /* unscaledWidth= */ newWidth,

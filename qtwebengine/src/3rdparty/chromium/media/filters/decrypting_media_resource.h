@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,16 +7,13 @@
 
 #include <vector>
 
-#include "base/callback.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "media/base/media_resource.h"
 #include "media/base/pipeline.h"
-
-namespace base {
-class SingleThreadTaskRunner;
-}  // namespace base
 
 namespace media {
 
@@ -36,11 +33,14 @@ class MEDIA_EXPORT DecryptingMediaResource : public MediaResource {
  public:
   using InitCB = base::OnceCallback<void(bool success)>;
 
-  DecryptingMediaResource(
-      MediaResource* media_resource,
-      CdmContext* cdm_context,
-      MediaLog* media_log,
-      scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+  DecryptingMediaResource(MediaResource* media_resource,
+                          CdmContext* cdm_context,
+                          MediaLog* media_log,
+                          scoped_refptr<base::SequencedTaskRunner> task_runner);
+
+  DecryptingMediaResource(const DecryptingMediaResource&) = delete;
+  DecryptingMediaResource& operator=(const DecryptingMediaResource&) = delete;
+
   ~DecryptingMediaResource() override;
 
   // MediaResource implementation:
@@ -55,10 +55,10 @@ class MEDIA_EXPORT DecryptingMediaResource : public MediaResource {
  private:
   void OnDecryptingDemuxerInitialized(PipelineStatus status);
 
-  MediaResource* const media_resource_;
-  CdmContext* const cdm_context_;
-  MediaLog* const media_log_;
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+  const raw_ptr<MediaResource> media_resource_;
+  const raw_ptr<CdmContext> cdm_context_;
+  const raw_ptr<MediaLog> media_log_;
+  scoped_refptr<base::SequencedTaskRunner> task_runner_;
 
   // Number of DecryptingDemuxerStreams that have yet to be initialized.
   int num_dds_pending_init_ = 0;
@@ -74,8 +74,6 @@ class MEDIA_EXPORT DecryptingMediaResource : public MediaResource {
   // if one of the DecryptingDemuxerStreams failed to initialize correctly.
   InitCB init_cb_;
   base::WeakPtrFactory<DecryptingMediaResource> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DecryptingMediaResource);
 };
 
 }  // namespace media

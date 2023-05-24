@@ -18,7 +18,7 @@ import * as m from 'mithril';
 import {Actions} from '../common/actions';
 import {TrackState} from '../common/state';
 
-import {TRACK_SHELL_WIDTH} from './css_constants';
+import {SELECTION_FILL_COLOR, TRACK_SHELL_WIDTH} from './css_constants';
 import {PerfettoMouseEvent} from './events';
 import {globals} from './globals';
 import {drawGridLines} from './gridline_helper';
@@ -61,10 +61,9 @@ class TrackShell implements m.ClassComponent<TrackShellAttrs> {
     // The shell should be highlighted if the current search result is inside
     // this track.
     let highlightClass = '';
-    const searchIndex = globals.frontendLocalState.searchIndex;
+    const searchIndex = globals.state.searchIndex;
     if (searchIndex !== -1) {
-      const trackId = globals.currentSearchResults
-                          .trackIds[globals.frontendLocalState.searchIndex];
+      const trackId = globals.currentSearchResults.trackIds[searchIndex];
       if (trackId === attrs.trackState.id) {
         highlightClass = 'flash';
       }
@@ -83,13 +82,18 @@ class TrackShell implements m.ClassComponent<TrackShellAttrs> {
           ondragleave: this.ondragleave.bind(this),
           ondrop: this.ondrop.bind(this),
         },
-        m('h1',
-          {
-            title: attrs.trackState.name,
-          },
-          attrs.trackState.name),
+        m(
+            'h1',
+            {
+              title: attrs.trackState.name,
+            },
+            attrs.trackState.name,
+            ('namespace' in attrs.trackState.config) &&
+                m('span.chip', 'metric'),
+            ),
         m('.track-buttons',
           attrs.track.getTrackShellButtons(),
+          attrs.track.getContextMenu(),
           m(TrackButton, {
             action: () => {
               globals.dispatch(
@@ -98,6 +102,7 @@ class TrackShell implements m.ClassComponent<TrackShellAttrs> {
             i: isPinned(attrs.trackState.id) ? STAR : STAR_BORDER,
             tooltip: isPinned(attrs.trackState.id) ? 'Unpin' : 'Pin to top',
             showButton: isPinned(attrs.trackState.id),
+            fullHeight: true,
           }),
           globals.state.currentSelection !== null &&
                   globals.state.currentSelection.kind === 'AREA' ?
@@ -179,47 +184,53 @@ export class TrackContent implements m.ClassComponent<TrackContentAttrs> {
   private mouseDownY?: number;
   private selectionOccurred = false;
 
-  view({attrs}: m.CVnode<TrackContentAttrs>) {
-    return m('.track-content', {
-      onmousemove: (e: PerfettoMouseEvent) => {
-        attrs.track.onMouseMove({x: e.layerX - TRACK_SHELL_WIDTH, y: e.layerY});
-        globals.rafScheduler.scheduleRedraw();
-      },
-      onmouseout: () => {
-        attrs.track.onMouseOut();
-        globals.rafScheduler.scheduleRedraw();
-      },
-      onmousedown: (e: PerfettoMouseEvent) => {
-        this.mouseDownX = e.layerX;
-        this.mouseDownY = e.layerY;
-      },
-      onmouseup: (e: PerfettoMouseEvent) => {
-        if (this.mouseDownX === undefined || this.mouseDownY === undefined) {
-          return;
-        }
-        if (Math.abs(e.layerX - this.mouseDownX) > 1 ||
-            Math.abs(e.layerY - this.mouseDownY) > 1) {
-          this.selectionOccurred = true;
-        }
-        this.mouseDownX = undefined;
-        this.mouseDownY = undefined;
-      },
-      onclick: (e: PerfettoMouseEvent) => {
-        // This click event occurs after any selection mouse up/drag events
-        // so we have to look if the mouse moved during this click to know
-        // if a selection occurred.
-        if (this.selectionOccurred) {
-          this.selectionOccurred = false;
-          return;
-        }
-        // Returns true if something was selected, so stop propagation.
-        if (attrs.track.onMouseClick(
-                {x: e.layerX - TRACK_SHELL_WIDTH, y: e.layerY})) {
-          e.stopPropagation();
-        }
-        globals.rafScheduler.scheduleRedraw();
-      }
-    });
+  view(node: m.CVnode<TrackContentAttrs>) {
+    const attrs = node.attrs;
+    return m(
+        '.track-content',
+        {
+          onmousemove: (e: PerfettoMouseEvent) => {
+            attrs.track.onMouseMove(
+                {x: e.layerX - TRACK_SHELL_WIDTH, y: e.layerY});
+            globals.rafScheduler.scheduleRedraw();
+          },
+          onmouseout: () => {
+            attrs.track.onMouseOut();
+            globals.rafScheduler.scheduleRedraw();
+          },
+          onmousedown: (e: PerfettoMouseEvent) => {
+            this.mouseDownX = e.layerX;
+            this.mouseDownY = e.layerY;
+          },
+          onmouseup: (e: PerfettoMouseEvent) => {
+            if (this.mouseDownX === undefined ||
+                this.mouseDownY === undefined) {
+              return;
+            }
+            if (Math.abs(e.layerX - this.mouseDownX) > 1 ||
+                Math.abs(e.layerY - this.mouseDownY) > 1) {
+              this.selectionOccurred = true;
+            }
+            this.mouseDownX = undefined;
+            this.mouseDownY = undefined;
+          },
+          onclick: (e: PerfettoMouseEvent) => {
+            // This click event occurs after any selection mouse up/drag events
+            // so we have to look if the mouse moved during this click to know
+            // if a selection occurred.
+            if (this.selectionOccurred) {
+              this.selectionOccurred = false;
+              return;
+            }
+            // Returns true if something was selected, so stop propagation.
+            if (attrs.track.onMouseClick(
+                    {x: e.layerX - TRACK_SHELL_WIDTH, y: e.layerY})) {
+              e.stopPropagation();
+            }
+            globals.rafScheduler.scheduleRedraw();
+          },
+        },
+        node.children);
   }
 }
 
@@ -239,7 +250,7 @@ class TrackComponent implements m.ClassComponent<TrackComponentAttrs> {
         },
         [
           m(TrackShell, {track: attrs.track, trackState: attrs.trackState}),
-          m(TrackContent, {track: attrs.track})
+          m(TrackContent, {track: attrs.track}),
         ]);
   }
 
@@ -256,13 +267,18 @@ export interface TrackButtonAttrs {
   i: string;
   tooltip: string;
   showButton: boolean;
+  fullHeight?: boolean;
 }
 export class TrackButton implements m.ClassComponent<TrackButtonAttrs> {
   view({attrs}: m.CVnode<TrackButtonAttrs>) {
     return m(
         'i.material-icons.track-button',
         {
-          class: `${attrs.showButton ? 'show' : ''}`,
+          class: [
+            (attrs.showButton ? 'show' : ''),
+            (attrs.fullHeight ? 'full-height' : ''),
+          ].filter(Boolean)
+                     .join(' '),
           onclick: attrs.action,
           title: attrs.tooltip,
         },
@@ -276,27 +292,65 @@ interface TrackPanelAttrs {
 }
 
 export class TrackPanel extends Panel<TrackPanelAttrs> {
-  private track: Track;
-  private trackState: TrackState;
+  // TODO(hjd): It would be nicer if these could not be undefined here.
+  // We should implement a NullTrack which can be used if the trackState
+  // has disappeared.
+  private track: Track|undefined;
+  private trackState: TrackState|undefined;
+
   constructor(vnode: m.CVnode<TrackPanelAttrs>) {
     super();
-    this.trackState = globals.state.tracks[vnode.attrs.id];
-    const trackCreator = trackRegistry.get(this.trackState.kind);
-    this.track = trackCreator.create(this.trackState);
+    const trackId = vnode.attrs.id;
+    const trackState = globals.state.tracks[trackId];
+    if (trackState === undefined) {
+      return;
+    }
+    const engine = globals.engines.get(trackState.engineId);
+    if (engine === undefined) {
+      return;
+    }
+    const trackCreator = trackRegistry.get(trackState.kind);
+    this.track = trackCreator.create({trackId, engine});
+    this.trackState = trackState;
   }
 
   view() {
+    if (this.track === undefined || this.trackState === undefined) {
+      return m('div', 'No such track');
+    }
     return m(TrackComponent, {trackState: this.trackState, track: this.track});
+  }
+
+  oncreate() {
+    if (this.track !== undefined) {
+      this.track.onFullRedraw();
+    }
+  }
+
+  onupdate() {
+    if (this.track !== undefined) {
+      this.track.onFullRedraw();
+    }
+  }
+
+  onremove() {
+    if (this.track !== undefined) {
+      this.track.onDestroy();
+      this.track = undefined;
+    }
   }
 
   highlightIfTrackSelected(ctx: CanvasRenderingContext2D, size: PanelSize) {
     const localState = globals.frontendLocalState;
     const selection = globals.state.currentSelection;
-    if (!selection || selection.kind !== 'AREA') return;
+    const trackState = this.trackState;
+    if (!selection || selection.kind !== 'AREA' || trackState === undefined) {
+      return;
+    }
     const selectedArea = globals.state.areas[selection.areaId];
-    if (selectedArea.tracks.includes(this.trackState.id)) {
+    if (selectedArea.tracks.includes(trackState.id)) {
       const timeScale = localState.timeScale;
-      ctx.fillStyle = 'rgba(131, 152, 230, 0.3)';
+      ctx.fillStyle = SELECTION_FILL_COLOR;
       ctx.fillRect(
           timeScale.timeToPx(selectedArea.startSec) + TRACK_SHELL_WIDTH,
           0,
@@ -310,32 +364,32 @@ export class TrackPanel extends Panel<TrackPanelAttrs> {
 
     drawGridLines(
         ctx,
-        globals.frontendLocalState.timeScale,
-        globals.frontendLocalState.visibleWindowTime,
         size.width,
         size.height);
 
     ctx.translate(TRACK_SHELL_WIDTH, 0);
-    this.track.render(ctx);
+    if (this.track !== undefined) {
+      this.track.render(ctx);
+    }
     ctx.restore();
 
     this.highlightIfTrackSelected(ctx, size);
 
     const localState = globals.frontendLocalState;
     // Draw vertical line when hovering on the notes panel.
-    if (localState.hoveredNoteTimestamp !== -1) {
+    if (globals.state.hoveredNoteTimestamp !== -1) {
       drawVerticalLineAtTime(
           ctx,
           localState.timeScale,
-          localState.hoveredNoteTimestamp,
+          globals.state.hoveredNoteTimestamp,
           size.height,
           `#aaa`);
     }
-    if (localState.hoveredLogsTimestamp !== -1) {
+    if (globals.state.hoveredLogsTimestamp !== -1) {
       drawVerticalLineAtTime(
           ctx,
           localState.timeScale,
-          localState.hoveredLogsTimestamp,
+          globals.state.hoveredLogsTimestamp,
           size.height,
           `#344596`);
     }
@@ -388,6 +442,9 @@ export class TrackPanel extends Panel<TrackPanelAttrs> {
 
   getSliceRect(tStart: number, tDur: number, depth: number): SliceRect
       |undefined {
+    if (this.track === undefined) {
+      return undefined;
+    }
     return this.track.getSliceRect(tStart, tDur, depth);
   }
 }

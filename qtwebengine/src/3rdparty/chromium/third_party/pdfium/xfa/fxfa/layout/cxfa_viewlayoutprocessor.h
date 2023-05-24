@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,11 @@
 #include <iterator>
 #include <list>
 #include <map>
-#include <memory>
 #include <vector>
 
 #include "core/fxcrt/unowned_ptr.h"
 #include "fxjs/gc/heap.h"
-#include "third_party/base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/cppgc/prefinalizer.h"
@@ -23,6 +22,7 @@
 #include "xfa/fxfa/layout/cxfa_contentlayoutprocessor.h"
 
 class CXFA_LayoutItem;
+class CXFA_LayoutProcessor;
 class CXFA_Node;
 
 class CXFA_ViewLayoutProcessor
@@ -31,12 +31,16 @@ class CXFA_ViewLayoutProcessor
 
  public:
   struct BreakData {
+    CPPGC_STACK_ALLOCATED();  // Raw/Unowned pointers allowed.
+   public:
     CXFA_Node* pLeader;
     CXFA_Node* pTrailer;
     bool bCreatePage;
   };
 
   struct OverflowData {
+    CPPGC_STACK_ALLOCATED();  // Raw/Unowned pointers allowed.
+   public:
     CXFA_Node* pLeader;
     CXFA_Node* pTrailer;
   };
@@ -46,7 +50,7 @@ class CXFA_ViewLayoutProcessor
 
   void PreFinalize();
   void Trace(cppgc::Visitor* visitor) const;
-  cppgc::Heap* GetHeap() const { return m_pHeap.Get(); }
+  cppgc::Heap* GetHeap() const { return m_pHeap; }
 
   bool InitLayoutPage(CXFA_Node* pFormNode);
   bool PrepareFirstPage(CXFA_Node* pRootSubform);
@@ -60,12 +64,12 @@ class CXFA_ViewLayoutProcessor
   CXFA_ViewLayoutItem* GetPage(int32_t index) const;
   int32_t GetPageIndex(const CXFA_ViewLayoutItem* pPage) const;
   CXFA_ViewLayoutItem* GetRootLayoutItem() const {
-    return m_pPageSetRootLayoutItem.Get();
+    return m_pPageSetRootLayoutItem;
   }
-  Optional<BreakData> ProcessBreakBefore(const CXFA_Node* pBreakNode);
-  Optional<BreakData> ProcessBreakAfter(const CXFA_Node* pBreakNode);
-  Optional<OverflowData> ProcessOverflow(CXFA_Node* pFormNode,
-                                         bool bCreatePage);
+  absl::optional<BreakData> ProcessBreakBefore(const CXFA_Node* pBreakNode);
+  absl::optional<BreakData> ProcessBreakAfter(const CXFA_Node* pBreakNode);
+  absl::optional<OverflowData> ProcessOverflow(CXFA_Node* pFormNode,
+                                               bool bCreatePage);
   CXFA_Node* QueryOverflow(CXFA_Node* pFormNode);
   CXFA_Node* ProcessBookendLeader(const CXFA_Node* pBookendNode);
   CXFA_Node* ProcessBookendTrailer(const CXFA_Node* pBookendNode);
@@ -90,18 +94,16 @@ class CXFA_ViewLayoutProcessor
                            CXFA_LayoutProcessor* pLayoutProcessor);
 
   bool AppendNewPage(bool bFirstTemPage);
-  void ReorderPendingLayoutRecordToTail(CXFA_ViewRecord* pNewRecord,
-                                        CXFA_ViewRecord* pPrevRecord);
   void RemoveLayoutRecord(CXFA_ViewRecord* pNewRecord,
                           CXFA_ViewRecord* pPrevRecord);
   bool HasCurrentViewRecord() const {
     return m_CurrentViewRecordIter != m_ProposedViewRecords.end();
   }
   CXFA_ViewRecord* GetCurrentViewRecord() {
-    return m_CurrentViewRecordIter->Get();
+    return HasCurrentViewRecord() ? m_CurrentViewRecordIter->Get() : nullptr;
   }
   const CXFA_ViewRecord* GetCurrentViewRecord() const {
-    return m_CurrentViewRecordIter->Get();
+    return HasCurrentViewRecord() ? m_CurrentViewRecordIter->Get() : nullptr;
   }
   void ResetToFirstViewRecord() {
     m_CurrentViewRecordIter = m_ProposedViewRecords.begin();
@@ -130,8 +132,9 @@ class CXFA_ViewLayoutProcessor
                                            bool bLeader);
   CXFA_Node* ResolveBookendLeaderOrTrailer(const CXFA_Node* pBookendNode,
                                            bool bLeader);
-  Optional<BreakData> ProcessBreakBeforeOrAfter(const CXFA_Node* pBreakNode,
-                                                bool bBefore);
+  absl::optional<BreakData> ProcessBreakBeforeOrAfter(
+      const CXFA_Node* pBreakNode,
+      bool bBefore);
   BreakData ExecuteBreakBeforeOrAfter(const CXFA_Node* pCurNode, bool bBefore);
 
   int32_t CreateMinPageRecord(CXFA_Node* pPageArea,

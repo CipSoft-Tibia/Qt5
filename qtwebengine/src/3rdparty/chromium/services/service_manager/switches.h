@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,10 +13,6 @@ namespace switches {
 extern const char kEnableTracing[];
 extern const char kServiceRequestAttachmentName[];
 
-#if defined(TOOLKIT_QT)
-extern const char kApplicationName[];
-extern const char kCdmWidevinePath[];
-#endif
 }  // namespace switches
 }  // namespace service_manager
 

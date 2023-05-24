@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,7 +6,10 @@ import("//ios/build/config.gni")
 
 source_set("common") {
   sources = [
+    "annotations_utils.h",
+    "annotations_utils.mm",
     "crw_content_view.h",
+    "crw_input_view_provider.h",
     "crw_viewport_adjustment.h",
     "crw_viewport_adjustment_container.h",
     "crw_web_view_content_view.h",
@@ -41,6 +44,15 @@ source_set("features") {
     "features.h",
     "features.mm",
   ]
+  configs += [ "//build/config/compiler:enable_arc" ]
+}
+
+source_set("uikit") {
+  sources = [
+    "uikit_ui_util.h",
+    "uikit_ui_util.mm",
+  ]
+
   configs += [ "//build/config/compiler:enable_arc" ]
 }
 

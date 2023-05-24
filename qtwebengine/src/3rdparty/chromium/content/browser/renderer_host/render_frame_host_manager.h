@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <stdint.h>
 
-#include <list>
 #include <map>
 #include <memory>
 #include <set>
@@ -15,22 +14,35 @@
 #include <unordered_set>
 
 #include "base/containers/unique_ptr_adapters.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
-#include "content/browser/renderer_host/back_forward_cache_impl.h"
+#include "base/types/expected.h"
+#include "content/browser/renderer_host/browsing_context_group_swap.h"
+#include "content/browser/renderer_host/browsing_context_state.h"
+#include "content/browser/renderer_host/cross_origin_opener_policy_status.h"
+#include "content/browser/renderer_host/navigation_discard_reason.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/should_swap_browsing_instance.h"
+#include "content/browser/renderer_host/stored_page.h"
+#include "content/browser/site_instance_group.h"
 #include "content/browser/site_instance_impl.h"
+#include "content/browser/web_exposed_isolation_info.h"
 #include "content/common/content_export.h"
+#include "content/common/frame.mojom-forward.h"
 #include "content/public/browser/global_request_id.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/common/referrer.h"
-#include "services/network/public/mojom/content_security_policy.mojom-forward.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/mojom/frame/frame_owner_properties.mojom-forward.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom.h"
 #include "third_party/blink/public/mojom/security_context/insecure_request_policy.mojom-forward.h"
 #include "ui/base/page_transition_types.h"
 #include "url/origin.h"
+
+namespace blink {
+struct FramePolicy;
+}  // namespace blink
 
 namespace content {
 class FrameTree;
@@ -43,7 +55,8 @@ class RenderFrameHostManagerTest;
 class RenderFrameProxyHost;
 class RenderViewHost;
 class RenderViewHostImpl;
-class RenderWidgetHostView;
+class RenderWidgetHostViewBase;
+class RenderWidgetHostViewChildFrame;
 class TestWebContents;
 
 using PageBroadcastMethodCallback =
@@ -51,6 +64,21 @@ using PageBroadcastMethodCallback =
 
 using RemoteFramesBroadcastMethodCallback =
     base::RepeatingCallback<void(RenderFrameProxyHost*)>;
+
+// Reasons that `GetFrameHostForNavigation()` might fail.
+enum class GetFrameHostForNavigationFailed {
+  // Failed to reinitialize the main frame, for whatever reason.
+  // TODO(https://crbug.com/1400535): This adds a tremendous amount of failure
+  // plumbing *everywhere* and might be unnecessary.
+  kCouldNotReinitializeMainFrame,
+  // The speculative RenderFrameHost is pending commit and cannot be discarded.
+  // This blocks navigations that could reuse the current RenderFrameHost
+  // (because they cannot discard the theoretically-unnecessary speculative
+  // RenderFrameHost) and navigations that need a different speculative
+  // RenderFrameHost (because the pre-existing unsuitable speculative
+  // RenderFrameHost cannot be discarded).
+  kBlockedByPendingCommit,
+};
 
 // Manages RenderFrameHosts for a FrameTreeNode. It maintains a
 // current_frame_host() which is the content currently visible to the user. When
@@ -99,13 +127,8 @@ using RemoteFramesBroadcastMethodCallback =
 //   RenderFrameProxyHost, to be used (for example) if the user goes back. The
 //   process only stays live if another tab is using it, but if so, the existing
 //   frame relationships will be maintained.
-class CONTENT_EXPORT RenderFrameHostManager
-    : public SiteInstanceImpl::Observer {
+class CONTENT_EXPORT RenderFrameHostManager {
  public:
-  using RenderFrameProxyHostMap =
-      std::unordered_map<int32_t /* SiteInstance id */,
-                         std::unique_ptr<RenderFrameProxyHost>>;
-
   // Functions implemented by our owner that we need.
   //
   // TODO(brettw) Clean this up! These are all the functions in WebContentsImpl
@@ -124,47 +147,75 @@ class CONTENT_EXPORT RenderFrameHostManager
     // automatically called from LoadURL.
     virtual bool CreateRenderViewForRenderManager(
         RenderViewHost* render_view_host,
-        const base::Optional<base::UnguessableToken>& opener_frame_token,
-        int proxy_routing_id) = 0;
+        const absl::optional<blink::FrameToken>& opener_frame_token,
+        RenderFrameProxyHost* proxy_host) = 0;
     virtual void CreateRenderWidgetHostViewForRenderManager(
         RenderViewHost* render_view_host) = 0;
     virtual void BeforeUnloadFiredFromRenderManager(
         bool proceed,
-        const base::TimeTicks& proceed_time,
         bool* proceed_to_fire_unload) = 0;
-    virtual void RenderProcessGoneFromRenderManager(
-        RenderViewHost* render_view_host) = 0;
     virtual void CancelModalDialogsForRenderManager() = 0;
-    virtual void NotifySwappedFromRenderManager(RenderFrameHost* old_frame,
-                                                RenderFrameHost* new_frame,
-                                                bool is_main_frame) = 0;
+    virtual void NotifySwappedFromRenderManager(
+        RenderFrameHostImpl* old_frame,
+        RenderFrameHostImpl* new_frame) = 0;
+    // Notifies that we are swapping to a `new_frame` when there is no
+    // `old_frame` available from which to take fallback content.
+    // TODO(crbug.com/1072817): Remove this once CommitPending has more explicit
+    // shutdown, both for successful and failed navigations.
+    virtual void NotifySwappedFromRenderManagerWithoutFallbackContent(
+        RenderFrameHostImpl* new_frame) = 0;
     // TODO(nasko): This should be removed once extensions no longer use
     // NotificationService. See https://crbug.com/462682.
     virtual void NotifyMainFrameSwappedFromRenderManager(
-        RenderFrameHost* old_frame,
-        RenderFrameHost* new_frame) = 0;
-    virtual NavigationControllerImpl& GetControllerForRenderManager() = 0;
+        RenderFrameHostImpl* old_frame,
+        RenderFrameHostImpl* new_frame) = 0;
 
     // Returns true if the location bar should be focused by default rather than
     // the page contents. The view calls this function when the tab is focused
     // to see what it should do.
     virtual bool FocusLocationBarByDefault() = 0;
 
-    // Focuses the location bar.
-    virtual void SetFocusToLocationBar() = 0;
+    // If the delegate is an inner WebContents, reattach it to the outer
+    // WebContents.
+    virtual void ReattachOuterDelegateIfNeeded() = 0;
 
-    // Returns true if views created for this delegate should be created in a
-    // hidden state.
-    virtual bool IsHidden() = 0;
-
-    // If the delegate is an inner WebContents, this method returns the
-    // FrameTreeNode ID of the frame in the outer WebContents which hosts
-    // the inner WebContents. Returns FrameTreeNode::kFrameTreeNodeInvalidId
-    // if the delegate does not have an outer WebContents.
-    virtual int GetOuterDelegateFrameTreeNodeId() = 0;
+    // Called when a FrameTreeNode is destroyed.
+    virtual void OnFrameTreeNodeDestroyed(FrameTreeNode* node) = 0;
 
    protected:
     virtual ~Delegate() = default;
+  };
+
+  // Calling IsNavigationSameSite() many times is expensive
+  // (https://crbug.com/1380942). If kCacheIsNavigationSameSite is enabled,
+  // this struct will lazily cache the output of IsNavigationSameSite(). If
+  // there is no cached value, Get() will cache the output of
+  // IsNavigationSameSite(), and will return the cached value in subsequent
+  // calls. If kCacheIsNavigationSameSite is not enabled, Get() will always call
+  // IsNavigationSameSite(), no caching is done.
+  //
+  // This struct is used by passing it as a parameter throughout a callstack
+  // that contains IsNavigationSameSite(). It is only used for a given
+  // navigation event (for which IsNavigationSameSite() will not change), and
+  // should not be stored or used for other events in the same navigation
+  // (e.g., after redirects) or for other navigations.
+  struct IsSameSiteGetter {
+   public:
+    IsSameSiteGetter();
+    explicit IsSameSiteGetter(bool is_same_site);
+
+    IsSameSiteGetter(const IsSameSiteGetter&) = delete;
+
+    // Returns the (possibly cached) value of
+    // render_frame_host->IsNavigationSameSite(url_info). (For cached results,
+    // this includes DCHECKs that the value hasn't changed, so the optimization
+    // only reduces the number of calls in release builds without DCHECKs.)
+    bool Get(const RenderFrameHostImpl& render_frame_host,
+             const UrlInfo& url_info);
+
+   private:
+    absl::optional<bool> is_same_site_;
+    bool should_use_cached_value_;
   };
 
   // The delegate pointer must be non-null and is not owned by this class. It
@@ -172,34 +223,48 @@ class CONTENT_EXPORT RenderFrameHostManager
   //
   // You must call one of the Init*() methods before using this class.
   RenderFrameHostManager(FrameTreeNode* frame_tree_node, Delegate* delegate);
+
+  RenderFrameHostManager(const RenderFrameHostManager&) = delete;
+  RenderFrameHostManager& operator=(const RenderFrameHostManager&) = delete;
+
   ~RenderFrameHostManager();
 
   // Initialize this frame as the root of a new FrameTree.
-  void InitRoot(SiteInstance* site_instance, bool renderer_initiated_creation);
+  void InitRoot(SiteInstanceImpl* site_instance,
+                bool renderer_initiated_creation,
+                blink::FramePolicy initial_main_frame_policy,
+                const std::string& name,
+                const base::UnguessableToken& devtools_frame_token);
 
   // Initialize this frame as the child of another frame.
-  void InitChild(SiteInstance* site_instance,
+  void InitChild(SiteInstanceImpl* site_instance,
                  int32_t frame_routing_id,
-                 const base::UnguessableToken& frame_token);
+                 mojo::PendingAssociatedRemote<mojom::Frame> frame_remote,
+                 const blink::LocalFrameToken& frame_token,
+                 const blink::DocumentToken& document_token,
+                 const base::UnguessableToken& devtools_frame_token,
+                 blink::FramePolicy frame_policy,
+                 std::string frame_name,
+                 std::string frame_unique_name);
 
   // Returns the currently active RenderFrameHost.
   //
-  // This will be non-null between Init() and Shutdown(). You may want to null
-  // check it in many cases, however. Windows can send us messages during the
-  // destruction process after it has been shut down.
+  // This will be non-null between Init() and Shutdown(), but may be null
+  // briefly during shutdown, after RenderFrameHostManager's destructor
+  // clears `render_frame_host_`.  Hence, this does not need to be null-checked
+  // except for rare cases reachable during shutdown.  For example, observer
+  // methods like RenderProcessExited could be dispatched after this has
+  // already been cleared.
   RenderFrameHostImpl* current_frame_host() const {
     return render_frame_host_.get();
   }
 
-  // TODO(creis): Remove this when we no longer use RVH for navigation.
-  RenderViewHostImpl* current_host() const;
-
   // Returns the view associated with the current RenderViewHost, or null if
   // there is no current one.
-  RenderWidgetHostView* GetRenderWidgetHostView() const;
+  RenderWidgetHostViewBase* GetRenderWidgetHostView() const;
 
   // Returns whether this manager is a main frame and belongs to a FrameTreeNode
-  // that belongs to an inner WebContents.
+  // that belongs to an inner WebContents or inner FrameTree.
   bool IsMainFrameForInnerDelegate();
 
   // If this is a RenderFrameHostManager for a main frame, this method returns
@@ -217,6 +282,10 @@ class CONTENT_EXPORT RenderFrameHostManager
   // inner WebContents in the outer WebContents's SiteInstance. Returns nullptr
   // if this WebContents isn't part of inner/outer relationship.
   RenderFrameProxyHost* GetProxyToOuterDelegate();
+
+  // If this is a main frame for an inner delegate, return the
+  // GetProxyToOuterDelegate, otherwise return GetProxyToParent.
+  RenderFrameProxyHost* GetProxyToParentOrOuterDelegate();
 
   // If this is a RenderFrameHostManager for a main frame, removes the
   // FrameTreeNode in the outer WebContents that represents this FrameTreeNode.
@@ -240,15 +309,14 @@ class CONTENT_EXPORT RenderFrameHostManager
   void SetIsLoading(bool is_loading);
 
   // Confirms whether we should close the page. |proceed| indicates whether the
-  // user chose to proceed. |proceed_time| is the time when the request was
-  // allowed to proceed. This is called in one of the two *distinct* scenarios
-  // below:
+  // user chose to proceed. This is called in one of the two *distinct*
+  // scenarios below:
   //   1- The tab/window is closed after allowing the appropriate renderer to
   //      show the beforeunload prompt.
   //   2- The FrameTreeNode is being prepared for attaching an inner Delegate,
   //      in which case beforeunload is triggered in the current frame. This
   //      only happens for child frames.
-  void BeforeUnloadCompleted(bool proceed, const base::TimeTicks& proceed_time);
+  void BeforeUnloadCompleted(bool proceed);
 
   // Called when a renderer's frame navigates.
   void DidNavigateFrame(RenderFrameHostImpl* render_frame_host,
@@ -258,21 +326,32 @@ class CONTENT_EXPORT RenderFrameHostManager
                         const blink::FramePolicy& frame_policy);
 
   // Called when this frame's opener is changed to the frame specified by
-  // |opener_frame_token| in |source_site_instance|'s process.  This change
-  // could come from either the current RenderFrameHost or one of the
+  // |opener_frame_token| in |source_site_instance_group|'s process.  This
+  // change could come from either the current RenderFrameHost or one of the
   // proxies (e.g., window.open that targets a RemoteFrame by name).  The
   // updated opener will be forwarded to any other RenderFrameProxies and
   // RenderFrames for this FrameTreeNode.
   void DidChangeOpener(
-      const base::Optional<base::UnguessableToken>& opener_frame_token,
-      SiteInstance* source_site_instance);
+      const absl::optional<blink::LocalFrameToken>& opener_frame_token,
+      SiteInstanceGroup* source_site_instance_group);
 
-  // Creates and initializes a RenderFrameHost.
+  // Creates and initializes a RenderFrameHost. If |for_early_commit| is true
+  // then this RenderFrameHost and its RenderFrame will be prepared knowing that
+  // it will be committed immediately. If false the it will be committed later,
+  // following the usual navigation path. |browsing_context_state| is the
+  // BrowsingContextState that will be stored in the speculative
+  // RenderFrameHost.
   std::unique_ptr<RenderFrameHostImpl> CreateSpeculativeRenderFrame(
-      SiteInstance* instance);
+      SiteInstanceImpl* instance,
+      bool for_early_commit,
+      const scoped_refptr<BrowsingContextState>& browsing_context_state);
 
   // Helper method to create and initialize a RenderFrameProxyHost.
-  void CreateRenderFrameProxy(SiteInstance* instance);
+  // |browsing_context_state| is the BrowsingContextState in which the newly
+  // created RenderFrameProxyHost will be stored.
+  void CreateRenderFrameProxy(
+      SiteInstanceImpl* instance,
+      const scoped_refptr<BrowsingContextState>& browsing_context_state);
 
   // Creates proxies for a new child frame at FrameTreeNode |child| in all
   // SiteInstances for which the current frame has proxies.  This method is
@@ -280,36 +359,44 @@ class CONTENT_EXPORT RenderFrameHostManager
   // SiteInstance.
   void CreateProxiesForChildFrame(FrameTreeNode* child);
 
-  // Returns the RenderFrameProxyHost for the given SiteInstance, if any.
-  RenderFrameProxyHost* GetRenderFrameProxyHost(SiteInstance* instance) const;
-
   // If |render_frame_host| is on the pending deletion list, this deletes it.
   // Returns whether it was deleted.
   bool DeleteFromPendingList(RenderFrameHostImpl* render_frame_host);
 
-  // BackForwardCache:
+  // BackForwardCache/Prerender:
   // During a history navigation, unfreezes and swaps in a document from the
-  // BackForwardCache, making it active.
-  void RestoreFromBackForwardCache(
-      std::unique_ptr<BackForwardCacheImpl::Entry>);
+  // BackForwardCache, making it active. This mechanism is also used for
+  // activating prerender page.
+  void RestorePage(std::unique_ptr<StoredPage> stored_page);
 
-  // Deletes any proxy hosts associated with this node. Used during destruction
-  // of WebContentsImpl.
-  void ResetProxyHosts();
+  // Temporary method to allow reusing back-forward cache activation for
+  // prerender activation. Similar to RestoreFromBackForwardCache(), but cleans
+  // up the speculative RFH prior to activation.
+  // TODO(https://crbug.com/1190197). This method might not be needed if we do
+  // not create the speculative RFH in the first place for Prerender
+  // activations.
+  void ActivatePrerender(std::unique_ptr<StoredPage>);
 
   void ClearRFHsPendingShutdown();
   void ClearWebUIInstances();
 
+  // Returns true if the current, or speculative, RenderFrameHost has a commit
+  // pending for a cross-document navigation.
+  bool HasPendingCommitForCrossDocumentNavigation() const;
+
   // Returns the routing id for a RenderFrameHost or RenderFrameProxyHost
-  // that has the given SiteInstance and is associated with this
+  // that has the given SiteInstanceGroup and is associated with this
   // RenderFrameHostManager. Returns MSG_ROUTING_NONE if none is found.
-  int GetRoutingIdForSiteInstance(SiteInstance* site_instance);
+  int GetRoutingIdForSiteInstanceGroup(SiteInstanceGroup* site_instance_group);
 
   // Returns the frame token for a RenderFrameHost or RenderFrameProxyHost
-  // that has the given SiteInstance and is associated with this
-  // RenderFrameHostManager. Returns base::nullopt if none is found.
-  base::Optional<base::UnguessableToken> GetFrameTokenForSiteInstance(
-      SiteInstance* site_instance);
+  // that has the given SiteInstanceGroup and is associated with this
+  // RenderFrameHostManager. Returns absl::nullopt if none is found. Note that
+  // the FrameToken will internally be either a LocalFrameToken (if the frame is
+  // a RenderFrameHost in the given |site_instance_group|) or a RemoteFrameToken
+  // (if it is a RenderFrameProxyHost).
+  absl::optional<blink::FrameToken> GetFrameTokenForSiteInstanceGroup(
+      SiteInstanceGroup* site_instance_group);
 
   // Notifies the RenderFrameHostManager that a new NavigationRequest has been
   // created and set in the FrameTreeNode so that it can speculatively create a
@@ -317,44 +404,50 @@ class CONTENT_EXPORT RenderFrameHostManager
   void DidCreateNavigationRequest(NavigationRequest* request);
 
   // Called (possibly several times) during a navigation to select or create an
-  // appropriate RenderFrameHost for the provided URL. The returned pointer will
-  // be for the current or the speculative RenderFrameHost and the instance is
-  // owned by this manager.
-  RenderFrameHostImpl* GetFrameHostForNavigation(NavigationRequest* request);
+  // appropriate RenderFrameHost for the provided URL.
+  //
+  // On success, returns a non-null pointer to a RenderFrameHost to use for the
+  // navigation. The returned pointer always refers to either the current or the
+  // speculative RenderFrameHost owned by `this`.
+  //
+  // Otherwise, on failure, returns an enum value denoting the reason for
+  // failure.
+  //
+  // `reason` is an optional out-parameter that will be populated with
+  // engineer-readable information describing the reason for the method
+  // behavior.  The returned `reason` should fit into
+  // base::debug::CrashKeySize::Size256.
+  base::expected<RenderFrameHostImpl*, GetFrameHostForNavigationFailed>
+  GetFrameHostForNavigation(
+      NavigationRequest* request,
+      BrowsingContextGroupSwap* browsing_context_group_swap,
+      std::string* reason = nullptr);
 
-  // Clean up any state for any ongoing navigation.
-  void CleanUpNavigation();
+  // Discards `speculative_render_frame_host_` if it exists, even if there are
+  // NavigationRequests associated with it, including pending commit
+  // navigations.
+  // TODO(https://crbug.com/1220337): Don't allow this to be called when there
+  // are pending commit cross-document navigations except for FrameTreeNode
+  // detach or when the renderer process is gone, so that we don't have to
+  // "undo" the commit that already happens in the renderer.
+  void DiscardSpeculativeRFH(NavigationDiscardReason reason);
 
-  // Clears the speculative members, returning the RenderFrameHost to the caller
-  // for disposal.
-  std::unique_ptr<RenderFrameHostImpl> UnsetSpeculativeRenderFrameHost();
+  // Determines whether any active navigations are associated with
+  // `speculative_render_frame_host_` and if not, discards it.
+  void DiscardSpeculativeRFHIfUnused(NavigationDiscardReason reason);
 
-  // Notification methods to tell this RenderFrameHostManager that the frame it
-  // is responsible for has started or stopped loading a document.
-  void OnDidStartLoading();
-  void OnDidStopLoading();
+  // Clears the speculative RFH when a navigation is cancelled (for example, by
+  // being replaced by a new navigation), returning ownership of the
+  // `RenderFrameHost` to the caller for disposal.
+  std::unique_ptr<RenderFrameHostImpl> UnsetSpeculativeRenderFrameHost(
+      NavigationDiscardReason reason);
 
-  // OnDidUpdateName gets called when a frame changes its name - it gets the new
-  // |name| and the recalculated |unique_name| and replicates them into all
-  // frame proxies.
-  void OnDidUpdateName(const std::string& name, const std::string& unique_name);
-
-  // Sends the newly added Content Security Policy headers to all the proxies.
-  void OnDidAddContentSecurityPolicies(
-      std::vector<network::mojom::ContentSecurityPolicyHeaderPtr> headers);
-
-  // Resets Content Security Policy in all the proxies.
-  void OnDidResetContentSecurityPolicy();
-
-  // Sends updated enforcement of insecure request policy to all frame proxies
-  // when the frame changes its setting.
-  void OnEnforceInsecureRequestPolicy(
-      blink::mojom::InsecureRequestPolicy policy);
-
-  // Sends updated enforcement of upgrade insecure navigations set to all frame
-  // proxies when the frame changes its setting.
-  void OnEnforceInsecureNavigationsSet(
-      const std::vector<uint32_t>& insecure_navigations_set);
+  // Used for FrameTreeNode teardown. This releases any pending views from the
+  // speculative RFH (if any) to its respective RenderProcessHost before
+  // discarding it. Unlike `UnsetSpeculativeRenderFrameHost()`, this does not
+  // send any IPC to the renderer to delete the corresponding RenderFrame. The
+  // caller must ensure that the RenderFrame has been or will be cleaned up.
+  void DiscardSpeculativeRenderFrameHostForShutdown();
 
   // Called when the client changes whether the frame's owner element in the
   // embedder document should be collapsed, that is, remove from the layout as
@@ -369,22 +462,8 @@ class CONTENT_EXPORT RenderFrameHostManager
   void OnDidUpdateFrameOwnerProperties(
       const blink::mojom::FrameOwnerProperties& properties);
 
-  // Notify the proxies that the active sandbox flags or feature policy header
-  // on the frame have been changed during page load. Sandbox flags can change
-  // when set by a CSP header.
-  void OnDidSetFramePolicyHeaders();
-
-  // Send updated origin to all frame proxies when the frame navigates to a new
-  // origin.
-  void OnDidUpdateOrigin(const url::Origin& origin,
-                         bool is_potentially_trustworthy_unique_origin);
-
-  // Send updated ad frame type to all frame proxies at ready-to-commit time
-  // when the ad status gets updated.
-  void OnDidSetAdFrameType(blink::mojom::AdFrameType ad_frame_type);
-
   void EnsureRenderViewInitialized(RenderViewHostImpl* render_view_host,
-                                   SiteInstance* instance);
+                                   SiteInstanceGroup* group);
 
   // Creates RenderFrameProxies and inactive RenderViewHosts for this frame's
   // FrameTree and for its opener chain in the given SiteInstance. This allows
@@ -394,61 +473,45 @@ class CONTENT_EXPORT RenderFrameHostManager
   // subtree rooted at |skip_this_node| (e.g., if a node is being navigated, it
   // can be passed here to prevent proxies from being created for it, in
   // case it is in the same FrameTree as another node on its opener chain).
-  void CreateOpenerProxies(SiteInstance* instance,
-                           FrameTreeNode* skip_this_node);
+  // |browsing_context_state| is the BrowsingContextState that is used in the
+  // speculative RenderFrameHost for cross browsing-instance navigations.
+  void CreateOpenerProxies(
+      SiteInstanceImpl* instance,
+      FrameTreeNode* skip_this_node,
+      const scoped_refptr<BrowsingContextState>& browsing_context_state);
 
   // Ensure that this frame has proxies in all SiteInstances that can discover
   // this frame by name (e.g., via window.open("", "frame_name")).  See
   // https://crbug.com/511474.
-  void CreateProxiesForNewNamedFrame();
+  // |browsing_context_state| is the BrowsingContextState that is used in the
+  // speculative RenderFrameHost for cross browsing-instance navigations.
+  void CreateProxiesForNewNamedFrame(
+      const scoped_refptr<BrowsingContextState>& browsing_context_state);
 
-  // Returns a base::UnguessableToken for the current FrameTreeNode's opener
-  // node in the given SiteInstance.  May return a frame token of either a
-  // RenderFrameHost (if opener's current or pending RFH has SiteInstance
-  // |instance|) or a RenderFrameProxyHost.  Returns base::nullopt if there is
-  // no opener, or if the opener node doesn't have a proxy for |instance|.
-  base::Optional<base::UnguessableToken> GetOpenerFrameToken(
-      SiteInstance* instance);
-
-  // Called on the RFHM of the inner WebContents to create a
-  // RenderFrameProxyHost in its outer WebContents's SiteInstance,
-  // |outer_contents_site_instance|. The frame in outer WebContents that is
-  // hosting the inner WebContents is |render_frame_host|, and the frame will
-  // be swapped with the proxy. Note that this method must only be called for an
-  // OOPIF-based inner WebContents.
-  RenderFrameProxyHost* CreateOuterDelegateProxy(
-      SiteInstance* outer_contents_site_instance);
-
-  // Called on an inner WebContents that's being detached from its outer
-  // WebContents. This will delete the proxy in the
-  // |outer_contents_site_instance|.
-  void DeleteOuterDelegateProxy(SiteInstance* outer_contents_site_instance);
+  // Returns a blink::FrameToken for the current FrameTreeNode's opener
+  // node in the given SiteInstanceGroup.  May return a frame token of either a
+  // RenderFrameHost (if opener's current or pending RFH has SiteInstanceGroup
+  // |group|) or a RenderFrameProxyHost.  Returns absl::nullopt if there is
+  // no opener, or if the opener node doesn't have a proxy for |group|.
+  absl::optional<blink::FrameToken> GetOpenerFrameToken(
+      SiteInstanceGroup* group);
 
   // Tells the |render_frame_host|'s renderer that its RenderFrame is being
   // swapped for a frame in another process, and that it should create a
-  // RenderFrameProxy to replace it using the |proxy| RenderFrameProxyHost.
+  // `blink::RemoteFrame` to replace it using the |proxy| RenderFrameProxyHost.
   void SwapOuterDelegateFrame(RenderFrameHostImpl* render_frame_host,
                               RenderFrameProxyHost* proxy);
 
   // Sets the child RenderWidgetHostView for this frame, which must be part of
-  // an inner WebContents.
-  void SetRWHViewForInnerContents(RenderWidgetHostView* child_rwhv);
+  // an inner FrameTree.
+  void SetRWHViewForInnerFrameTree(RenderWidgetHostViewChildFrame* child_rwhv);
 
-  // Returns the number of RenderFrameProxyHosts for this frame.
-  size_t GetProxyCount();
-
-  // Sends an IPC message to every process in the FrameTree. This should only be
-  // called in the top-level RenderFrameHostManager.  |instance_to_skip|, if
-  // not null, specifies the SiteInstance to which the message should not be
-  // sent.
-  void SendPageMessage(IPC::Message* msg, SiteInstance* instance_to_skip);
-
-  // Executes a PageBroadcast Mojo method to every RenderView in the FrameTree.
-  // This should only be called in the top-level RenderFrameHostManager.
-  // The |callback| is called synchronously and the |instance_to_skip| won't
-  // be referenced after this method returns.
+  // Executes a PageBroadcast Mojo method to every `blink::WebView` in the
+  // FrameTree. This should only be called in the top-level
+  // RenderFrameHostManager. The `callback` is called synchronously and the
+  // `instance_to_skip` won't be referenced after this method returns.
   void ExecutePageBroadcastMethod(PageBroadcastMethodCallback callback,
-                                  SiteInstance* instance_to_skip = nullptr);
+                                  SiteInstanceImpl* instance_to_skip = nullptr);
 
   // Executes a RemoteMainFrame Mojo method to every instance in |proxy_hosts|.
   // This should only be called in the top-level RenderFrameHostManager.
@@ -456,22 +519,20 @@ class CONTENT_EXPORT RenderFrameHostManager
   // be referenced after this method returns.
   void ExecuteRemoteFramesBroadcastMethod(
       RemoteFramesBroadcastMethodCallback callback,
-      SiteInstance* instance_to_skip = nullptr);
+      SiteInstanceImpl* instance_to_skip = nullptr);
 
   // Returns a const reference to the map of proxy hosts. The keys are
-  // SiteInstance IDs, the values are RenderFrameProxyHosts.
-  const RenderFrameProxyHostMap& GetAllProxyHostsForTesting() const {
-    return proxy_hosts_;
+  // SiteInstanceGroup IDs, the values are RenderFrameProxyHosts.
+  const BrowsingContextState::RenderFrameProxyHostMap&
+  GetAllProxyHostsForTesting() const {
+    return render_frame_host_->browsing_context_state()->proxy_hosts();
   }
 
-  // SiteInstanceImpl::Observer
-  void ActiveFrameCountIsZero(SiteInstanceImpl* site_instance) override;
-  void RenderProcessGone(SiteInstanceImpl* site_instance,
-                         const ChildProcessTerminationInfo& info) override;
-
-  // Cancels and destroys the pending or speculative RenderFrameHost if they
-  // match the provided |render_frame_host|.
-  void CancelPendingIfNecessary(RenderFrameHostImpl* render_frame_host);
+  // Called when the render process is gone for
+  // `speculative_render_frame_host_`. Cancels the navigation and cleans up the
+  // speculative RenderFrameHost because there is no longer a render process for
+  // the navigation to commit into.
+  void CleanupSpeculativeRfhForRenderProcessGone();
 
   // Updates the user activation state in all proxies of this frame.  For
   // more details, see the comment on FrameTreeNode::user_activation_state_.
@@ -482,13 +543,12 @@ class CONTENT_EXPORT RenderFrameHostManager
       blink::mojom::UserActivationUpdateType update_type,
       blink::mojom::UserActivationNotificationType notification_type);
 
-  void OnSetHadStickyUserActivationBeforeNavigation(bool value);
-
   // Sets up the necessary state for a new RenderViewHost.  If |proxy| is not
-  // null, it creates a RenderFrameProxy in the target renderer process which is
-  // used to route IPC messages.  Returns early if the RenderViewHost has
-  // already been initialized for another RenderFrameHost.
-  bool InitRenderView(RenderViewHostImpl* render_view_host,
+  // null, it creates a `blink::RemoteFrame` in the target renderer process
+  // which is used to route IPC messages.  Returns early if the RenderViewHost
+  // has already been initialized for another RenderFrameHost.
+  bool InitRenderView(SiteInstanceGroup* site_instance_group,
+                      RenderViewHostImpl* render_view_host,
                       RenderFrameProxyHost* proxy);
 
   // Returns the SiteInstance that should be used to host the navigation handled
@@ -497,8 +557,28 @@ class CONTENT_EXPORT RenderFrameHostManager
   // initialized RenderProcessHost. It will only be initialized when
   // GetProcess() is called on the SiteInstance. In particular, calling this
   // function will never lead to a process being created for the navigation.
-  scoped_refptr<SiteInstance> GetSiteInstanceForNavigationRequest(
-      NavigationRequest* navigation_request);
+  //
+  // |is_same_site| is a struct to cache the output of IsNavigationSameSite()
+  // if/when it gets called. The value is cached only when
+  // kCacheIsNavigationSameSite is enabled. See IsSameSiteGetter for more
+  // details.
+  //
+  // |reason| is an optional out-parameter that will be populated with
+  // engineer-readable information describing the reason for the method
+  // behavior.  The returned |reason| should fit into
+  // base::debug::CrashKeySize::Size256.
+  scoped_refptr<SiteInstanceImpl> GetSiteInstanceForNavigationRequest(
+      NavigationRequest* navigation_request,
+      IsSameSiteGetter& is_same_site,
+      BrowsingContextGroupSwap* browsing_context_group_swap,
+      std::string* reason = nullptr);
+
+  // Calls GetSiteInstanceForNavigationRequest with an IsSameSiteGetter that
+  // does not have a cached value.
+  scoped_refptr<SiteInstanceImpl> GetSiteInstanceForNavigationRequest(
+      NavigationRequest* navigation_request,
+      BrowsingContextGroupSwap* browsing_context_group_swap,
+      std::string* reason = nullptr);
 
   // Helper to initialize the main RenderFrame if it's not initialized.
   // TODO(https://crbug.com/936696): Remove this. For now debug URLs and
@@ -524,12 +604,21 @@ class CONTENT_EXPORT RenderFrameHostManager
     attach_to_inner_delegate_state_ = AttachToInnerDelegateState::ATTACHED;
   }
 
-  // Computes the COOP/COEP information based on the |navigation_request|
-  // and current |frame_tree_node_| & |render_frame_host_| info.
-  void GetCoopCoepCrossOriginIsolationInfo(
-      NavigationRequest* navigation_request,
-      bool* is_coop_coep_cross_origin_isolated,
-      base::Optional<url::Origin>* coop_coep_cross_origin_isolated_origin);
+  Delegate* delegate() { return delegate_; }
+
+  // Collects the current page into StoredPage in preparation
+  // for it to be moved to another FrameTree for prerender activation. After
+  // this call, |current_frame_host_| will become null, which breaks many
+  // invariants in the code, so the caller is responsible for destroying the
+  // FrameTree immediately after this call.
+  std::unique_ptr<StoredPage> TakePrerenderedPage();
+
+  const blink::mojom::FrameReplicationState& current_replication_state() const {
+    return render_frame_host_->browsing_context_state()
+        ->current_replication_state();
+  }
+
+  base::WeakPtr<RenderFrameHostManager> GetWeakPtr();
 
  private:
   friend class NavigatorTest;
@@ -563,16 +652,15 @@ class CONTENT_EXPORT RenderFrameHostManager
   // It can point to an existing one or store the details needed to create a new
   // one.
   struct CONTENT_EXPORT SiteInstanceDescriptor {
-    explicit SiteInstanceDescriptor(content::SiteInstance* site_instance)
+    explicit SiteInstanceDescriptor(SiteInstanceImpl* site_instance)
         : existing_site_instance(site_instance),
           relation(SiteInstanceRelation::PREEXISTING) {}
 
     SiteInstanceDescriptor(UrlInfo dest_url_info,
-                           SiteInstanceRelation relation_to_current,
-                           bool is_coop_coep_cross_origin_isolated);
+                           SiteInstanceRelation relation_to_current);
 
     // Set with an existing SiteInstance to be reused.
-    content::SiteInstance* existing_site_instance;
+    raw_ptr<SiteInstanceImpl> existing_site_instance;
 
     // In case |existing_site_instance| is null, specify a destination URL.
     UrlInfo dest_url_info;
@@ -580,40 +668,25 @@ class CONTENT_EXPORT RenderFrameHostManager
     // Specifies how the new site is related to the current BrowsingInstance.
     // This is PREEXISTING iff |existing_site_instance| is defined.
     SiteInstanceRelation relation;
-
-    // A cross-origin isolated page has its top level frame
-    // cross-origin-opener-policy set to "same-origin" and
-    // cross-origin-embedder-policy set to "require-corp".
-    // This allows the use of more powerful features such as SharedArrayBuffer.
-    // A cross-origin isolated SiteInstance hosts such pages and should only
-    // live in cross-origin isolated BrowsingInstances.
-    bool is_coop_coep_cross_origin_isolated = false;
   };
 
-  // Create a RenderFrameProxyHost owned by this object.
-  RenderFrameProxyHost* CreateRenderFrameProxyHost(
-      SiteInstance* site_instance,
-      scoped_refptr<RenderViewHostImpl> rvh);
-
-  // Delete a RenderFrameProxyHost owned by this object.
-  void DeleteRenderFrameProxyHost(SiteInstance* site_instance);
-
-  // Returns true if for the navigation from |current_effective_url| to
-  // |destination_url_info|, a new SiteInstance and BrowsingInstance should be
-  // created (even if we are in a process model that doesn't usually swap).
-  // This forces a process swap and severs script connections with existing
-  // tabs.  Cases where this can happen include transitions between WebUI and
-  // regular web pages.
+  // Returns a BrowsingContextGroupSwap describing if we need to change
+  // BrowsingInstance for the navigation from `current_effective_url` to
+  // `destination_url_info`. This can happen for a variety of reasons, including
+  // differences in security level (WebUI pages to regular pages), COOP headers,
+  // or to accommodate for the BackForwardCache. The structure also contains
+  // extra information about the consequences of such a swap, including the need
+  // to clear proxies or the window's name.
   //
-  // |source_instance| is the SiteInstance of the frame that initiated the
-  // navigation. |current_instance| is the SiteInstance of the frame that is
-  // currently navigating. |destination_instance| is a predetermined
-  // SiteInstance that will be used for |destination_url| if not
+  // `source_instance` is the SiteInstance of the frame that initiated the
+  // navigation. `current_instance` is the SiteInstance of the frame that is
+  // currently navigating. `destination_instance` is a predetermined
+  // SiteInstance that will be used for `destination_url_info` if not
   // null - we will swap BrowsingInstances if it's in a different
   // BrowsingInstance than the current one.
   //
-  // If there is no current NavigationEntry, then |current_is_view_source_mode|
-  // should be the same as |dest_is_view_source_mode|.
+  // If there is no current NavigationEntry, then `current_is_view_source_mode`
+  // should be the same as `dest_is_view_source_mode`.
   //
   // UrlInfo uses the effective URL here, since that's what is used in the
   // SiteInstance's site and when we later call IsSameSite.  If there is no
@@ -622,37 +695,34 @@ class CONTENT_EXPORT RenderFrameHostManager
   // pass the effective URL for destination URL here and instead calculate the
   // destination's effective URL within the function because some methods called
   // in the function like IsNavigationSameSite expects a non-effective URL.
-  ShouldSwapBrowsingInstance ShouldSwapBrowsingInstancesForNavigation(
+  BrowsingContextGroupSwap ShouldSwapBrowsingInstancesForNavigation(
       const GURL& current_effective_url,
       bool current_is_view_source_mode,
       SiteInstanceImpl* source_instance,
       SiteInstanceImpl* current_instance,
-      SiteInstance* destination_instance,
+      SiteInstanceImpl* destination_instance,
       const UrlInfo& destination_url_info,
-      bool is_coop_coep_cross_origin_isolated,
-      const base::Optional<url::Origin>& coop_coep_cross_origin_isolated_origin,
       bool destination_is_view_source_mode,
       ui::PageTransition transition,
       bool is_failure,
       bool is_reload,
       bool is_same_document,
-      bool cross_origin_opener_policy_mismatch,
+      IsSameSiteGetter& is_same_site,
+      CoopSwapResult coop_swap_result,
       bool was_server_redirect,
-      bool should_replace_current_entry,
-      bool is_speculative);
+      bool should_replace_current_entry);
 
-  ShouldSwapBrowsingInstance ShouldProactivelySwapBrowsingInstance(
+  BrowsingContextGroupSwap ShouldProactivelySwapBrowsingInstance(
       const UrlInfo& destination_url_info,
-      bool is_coop_coep_cross_origin_isolated,
-      const base::Optional<url::Origin>& coop_coep_cross_origin_isolated_origin,
       bool is_reload,
+      IsSameSiteGetter& is_same_site,
       bool should_replace_current_entry);
 
   // Returns the SiteInstance to use for the navigation.
-  scoped_refptr<SiteInstance> GetSiteInstanceForNavigation(
+  //
+  // This is a helper function for GetSiteInstanceForNavigationRequest.
+  scoped_refptr<SiteInstanceImpl> GetSiteInstanceForNavigation(
       const UrlInfo& dest_url_info,
-      bool is_coop_coep_cross_origin_isolated,
-      const base::Optional<url::Origin>& coop_coep_cross_origin_isolated_origin,
       SiteInstanceImpl* source_instance,
       SiteInstanceImpl* dest_instance,
       SiteInstanceImpl* candidate_instance,
@@ -660,54 +730,53 @@ class CONTENT_EXPORT RenderFrameHostManager
       bool is_failure,
       bool is_reload,
       bool is_same_document,
+      IsSameSiteGetter& is_same_site,
       bool dest_is_restore,
       bool dest_is_view_source_mode,
       bool was_server_redirect,
-      bool cross_origin_opener_policy_mismatch,
+      CoopSwapResult coop_swap_result,
       bool should_replace_current_entry,
-      bool is_speculative,
-      bool* did_same_site_proactive_browsing_instance_swap);
+      bool force_new_browsing_instance,
+      BrowsingContextGroupSwap* browsing_context_group_swap,
+      std::string* reason);
 
   // Returns a descriptor of the appropriate SiteInstance object for the given
-  // |dest_url_info|, possibly reusing the current, source or destination
+  // `dest_url_info`, possibly reusing the current, source or destination
   // SiteInstance. The actual SiteInstance can then be obtained calling
   // ConvertToSiteInstance with the descriptor.
   //
-  // |is_coop_coep_cross_origin_isolated| should be true if the response for
-  // |dest_url| has set COOP and COEP headers to same-origin and require-corp
-  // respectively.
-  // if |is_coop_coep_cross_origin_isolated| is true,
-  // |coop_coep_cross_origin_isolated_origin| indicates the top level origin
-  // of the page.
-  //
-  // |source_instance| is the SiteInstance of the frame that initiated the
-  // navigation. |current_instance| is the SiteInstance of the frame that is
-  // currently navigating. |dest_instance| is a predetermined SiteInstance that
+  // `source_instance` is the SiteInstance of the frame that initiated the
+  // navigation. `current_instance` is the SiteInstance of the frame that is
+  // currently navigating. `dest_instance` is a predetermined SiteInstance that
   // will be used if not null.
   // For example, if you have a parent frame A, which has a child frame B, and
   // A is trying to change the src attribute of B, this will cause a navigation
   // where the source SiteInstance is A and B is the current SiteInstance.
   //
-  // |is_speculative| indicates that the SiteInstance is being computed for a
-  // speculative RenderFrameHost, which may change once response is received and
-  // a final RenderFrameHost/SiteInstance is computed. It is true at request
-  // start time, but false for redirects and at OnResponseStarted time.
-  //
   // This is a helper function for GetSiteInstanceForNavigation.
   SiteInstanceDescriptor DetermineSiteInstanceForURL(
       const UrlInfo& dest_url_info,
-      bool is_coop_coep_cross_origin_isolated,
-      const base::Optional<url::Origin>& coop_coep_cross_origin_isolated_origin,
-      SiteInstance* source_instance,
-      SiteInstance* current_instance,
-      SiteInstance* dest_instance,
+      SiteInstanceImpl* source_instance,
+      SiteInstanceImpl* current_instance,
+      SiteInstanceImpl* dest_instance,
       ui::PageTransition transition,
       bool is_failure,
+      IsSameSiteGetter& is_same_site,
       bool dest_is_restore,
       bool dest_is_view_source_mode,
-      bool force_browsing_instance_swap,
+      BrowsingContextGroupSwap browsing_context_group_swap,
       bool was_server_redirect,
-      bool is_speculative);
+      std::string* reason);
+
+  // Returns whether we can use the given `dest_instance` or if it is not
+  // suitable anymore.
+  //
+  // This is a helper function for GetSiteInstanceForNavigation.
+  bool CanUseDestinationInstance(const UrlInfo& dest_url_info,
+                                 SiteInstanceImpl* current_instance,
+                                 SiteInstanceImpl* dest_instance,
+                                 bool is_failure,
+                                 bool force_browsing_instance_swap);
 
   // Returns true if a navigation to |dest_url| that uses the specified
   // PageTransition in the current frame is allowed to swap BrowsingInstances.
@@ -730,40 +799,40 @@ class CONTENT_EXPORT RenderFrameHostManager
       ui::PageTransition transition,
       const GURL& dest_url);
 
-  // Returns true if we can use |source_instance| for |dest_url|.
-  bool CanUseSourceSiteInstance(const GURL& dest_url,
-                                SiteInstance* source_instance,
+  // Returns true if we can use `source_instance` for `dest_url_info`.
+  bool CanUseSourceSiteInstance(const UrlInfo& dest_url_info,
+                                SiteInstanceImpl* source_instance,
                                 bool was_server_redirect,
-                                bool is_failure,
-                                bool is_coop_coep_cross_origin_isolated,
-                                bool is_speculative);
+                                bool is_failure);
 
   // Converts a SiteInstanceDescriptor to the actual SiteInstance it describes.
   // If a |candidate_instance| is provided (is not nullptr) and it matches the
   // description, it is returned as is.
-  // |is_speculative| indicates whether we are computing a SiteInstance for a
-  // speculative RenderFrameHost or if have already received a response.
-  scoped_refptr<SiteInstance> ConvertToSiteInstance(
+  scoped_refptr<SiteInstanceImpl> ConvertToSiteInstance(
       const SiteInstanceDescriptor& descriptor,
-      SiteInstanceImpl* candidate_instance,
-      bool is_speculative);
+      SiteInstanceImpl* candidate_instance);
 
-  // Returns true if |candidate| is currently on the same web site as
-  // |dest_url_info|. This method is a special case for handling hosted apps in
-  // this object. Most code should call IsNavigationSameSite() on
-  // |candidate| instead of this method.
-  bool IsCandidateSameSite(
-      RenderFrameHostImpl* candidate,
-      const UrlInfo& dest_url_info,
-      bool is_coop_coep_cross_origin_isolated,
-      base::Optional<url::Origin> coop_coep_cross_origin_isolated_origin);
+  // Returns true if `candidate` is currently same site with `dest_url_info`.
+  // This method is a special case for handling hosted apps in this object. Most
+  // code should call IsNavigationSameSite() on `candidate` instead of this
+  // method.
+  bool IsCandidateSameSite(RenderFrameHostImpl* candidate,
+                           const UrlInfo& dest_url_info);
 
   // Ensure that we have created all needed proxies for a new RFH with
   // SiteInstance |new_instance|: (1) create swapped-out RVHs and proxies for
   // the new RFH's opener chain if we are staying in the same BrowsingInstance;
   // (2) Create proxies for the new RFH's SiteInstance in its own frame tree.
-  void CreateProxiesForNewRenderFrameHost(SiteInstance* old_instance,
-                                          SiteInstance* new_instance);
+  // |recovering_without_early_commit| is true if we are reviving a crashed
+  // render frame by creating a proxy and committing later rather than doing an
+  // immediate commit. |browsing_context_state| is the BrowsingContextState that
+  // is used in the speculative RenderFrameHost for cross browsing-instance
+  // navigations.
+  void CreateProxiesForNewRenderFrameHost(
+      SiteInstanceImpl* old_instance,
+      SiteInstanceImpl* new_instance,
+      bool recovering_without_early_commit,
+      const scoped_refptr<BrowsingContextState>& browsing_context_state);
 
   // Traverse the opener chain and populate |opener_frame_trees| with
   // all FrameTrees accessible by following frame openers of nodes in the
@@ -781,9 +850,13 @@ class CONTENT_EXPORT RenderFrameHostManager
   // SiteInstance for the current node's FrameTree.  Used as a helper function
   // in CreateOpenerProxies for creating proxies in each FrameTree on the
   // opener chain.  Don't create proxies for the subtree rooted at
-  // |skip_this_node|.
-  void CreateOpenerProxiesForFrameTree(SiteInstance* instance,
-                                       FrameTreeNode* skip_this_node);
+  // |skip_this_node|. |browsing_context_state| is the BrowsingContextState that
+  // is used in the speculative RenderFrameHost for cross browsing-instance
+  // navigations.
+  void CreateOpenerProxiesForFrameTree(
+      SiteInstanceImpl* instance,
+      FrameTreeNode* skip_this_node,
+      const scoped_refptr<BrowsingContextState>& browsing_context_state);
 
   // The different types of RenderFrameHost creation that can occur.
   // See CreateRenderFrameHost for how these influence creation.
@@ -799,62 +872,69 @@ class CONTENT_EXPORT RenderFrameHostManager
   // Creates a RenderFrameHost. This uses an existing a RenderViewHost in the
   // same SiteInstance if it exists or creates a new one (a new one will only be
   // created if this is a root or child local root).
+  // The `frame_routing_id` and `frame_remote` are both valid or not together,
+  // as they are valid when the renderer-side frame is already created.
   // TODO(https://crbug.com/1060082): Eliminate or rename
   // renderer_initiated_creation.
   std::unique_ptr<RenderFrameHostImpl> CreateRenderFrameHost(
       CreateFrameCase create_frame_case,
-      SiteInstance* site_instance,
+      SiteInstanceImpl* site_instance,
       int32_t frame_routing_id,
-      const base::UnguessableToken& frame_token,
-      bool renderer_initiated_creation);
+      mojo::PendingAssociatedRemote<mojom::Frame> frame_remote,
+      const blink::LocalFrameToken& frame_token,
+      const blink::DocumentToken& document_token,
+      base::UnguessableToken devtools_frame_token,
+      bool renderer_initiated_creation,
+      scoped_refptr<BrowsingContextState> browsing_context_state);
 
   // Create and initialize a speculative RenderFrameHost for an ongoing
-  // navigation. It might be destroyed and re-created later if the navigation
-  // is redirected to a different SiteInstance.
-  bool CreateSpeculativeRenderFrameHost(SiteInstance* old_instance,
-                                        SiteInstance* new_instance);
+  // navigation. It might be destroyed and re-created later if the navigation is
+  // redirected to a different SiteInstance. |recovering_without_early_commit|
+  // is true if we are reviving a crashed render frame by creating a proxy and
+  // committing later rather than doing an immediate commit.
+  bool CreateSpeculativeRenderFrameHost(SiteInstanceImpl* old_instance,
+                                        SiteInstanceImpl* new_instance,
+                                        bool recovering_without_early_commit);
 
   // Initialization for RenderFrameHost uses the same sequence as InitRenderView
   // above.
   bool InitRenderFrame(RenderFrameHostImpl* render_frame_host);
 
-  // Find the routing ID of the frame or proxy that this frame will replace or
-  // |MSG_ROUTING_NONE| if there is none. When initializing a new RenderFrame
-  // for |render_frame_host|, it may be replacing a RenderFrameProxy or another
-  // RenderFrame in the renderer or recovering from a crash. |existing_proxy| is
-  // the proxy for |this| in the destination renderer, nullptr if there is no
-  // proxy. |render_frame_host| is used only for sanity checking.
-  int GetReplacementRoutingId(RenderFrameProxyHost* existing_proxy,
-                              RenderFrameHostImpl* render_frame_host) const;
+  // Find the `blink::FrameToken` of the frame or proxy that this frame will
+  // replace or absl::nullopt if there is none. When initializing a new
+  // RenderFrame for `render_frame_host`, it may be replacing a RenderFrameProxy
+  // or another RenderFrame in the renderer or recovering from a crash.
+  // `existing_proxy` is the proxy for `this` in the destination renderer,
+  // nullptr if there is no proxy. `render_frame_host` is used only for sanity
+  // checking.
+  absl::optional<blink::FrameToken> GetReplacementFrameToken(
+      RenderFrameProxyHost* existing_proxy,
+      RenderFrameHostImpl* render_frame_host) const;
 
   // Helper to reinitialize the RenderFrame, RenderView, and the opener chain
   // for the provided |render_frame_host|.  Used when the |render_frame_host|
   // needs to be reused for a new navigation, but it is not live.
-  bool ReinitializeRenderFrame(RenderFrameHostImpl* render_frame_host);
+  bool ReinitializeMainRenderFrame(RenderFrameHostImpl* render_frame_host);
 
   // Sets the |pending_rfh| to be the active one. Called when the pending
   // RenderFrameHost commits.
   //
   // This function is also called when restoring an entry from BackForwardCache.
   // In that case, |pending_rfh| is the RenderFrameHost to be restored, and
-  // |pending_bfcache_entry| provides additional state to be restored, such as
+  // |pending_stored_page| provides additional state to be restored, such as
   // proxies.
   // |clear_proxies_on_commit| Indicates if the proxies and opener must be
   // removed during the commit. This can happen following some BrowsingInstance
   // swaps, such as those for COOP.
-  void CommitPending(
-      std::unique_ptr<RenderFrameHostImpl> pending_rfh,
-      std::unique_ptr<BackForwardCacheImpl::Entry> pending_bfcache_entry,
-      bool clear_proxies_on_commit);
+  void CommitPending(std::unique_ptr<RenderFrameHostImpl> pending_rfh,
+                     std::unique_ptr<StoredPage> pending_stored_page,
+                     bool clear_proxies_on_commit);
 
   // Helper to call CommitPending() in all necessary cases.
   void CommitPendingIfNecessary(RenderFrameHostImpl* render_frame_host,
                                 bool was_caused_by_user_gesture,
                                 bool is_same_document_navigation,
                                 bool clear_proxies_on_commit);
-
-  // Commits given frame policy when the renderer's frame navigates.
-  void CommitFramePolicy(const blink::FramePolicy& frame_policy);
 
   // Runs the unload handler in the old RenderFrameHost, after the new
   // RenderFrameHost has committed.  |old_render_frame_host| will either be
@@ -893,20 +973,36 @@ class CONTENT_EXPORT RenderFrameHostManager
   // for attaching the inner Delegate.
   void NotifyPrepareForInnerDelegateAttachComplete(bool success);
 
+  NavigationControllerImpl& GetNavigationController();
+
+  void PrepareForCollectingPage(
+      RenderFrameHostImpl* main_render_frame_host,
+      StoredPage::RenderViewHostImplSafeRefSet* render_view_hosts,
+      BrowsingContextState::RenderFrameProxyHostMap* proxy_hosts);
+
+  // Collects all of the page-related state currently owned by
+  // RenderFrameHostManager (including relevant RenderViewHosts and
+  // RenderFrameProxyHosts) into a StoredPage object to be
+  // stored in back-forward cache or to activate the prerenderer.
+  std::unique_ptr<StoredPage> CollectPage(
+      std::unique_ptr<RenderFrameHostImpl> main_render_frame_host);
+
+  // Update `render_frame_host`'s opener in the renderer process in response to
+  // the opener being modified (e.g., with window.open or being set to null) in
+  // another renderer process.
+  void UpdateOpener(RenderFrameHostImpl* render_frame_host);
+
   // For use in creating RenderFrameHosts.
-  FrameTreeNode* frame_tree_node_;
+  raw_ptr<FrameTreeNode> frame_tree_node_;
 
   // Our delegate, not owned by us. Guaranteed non-null.
-  Delegate* delegate_;
+  raw_ptr<Delegate> delegate_;
 
   // Our RenderFrameHost which is responsible for all communication with a child
   // RenderFrame instance.
   // For now, RenderFrameHost keeps a RenderViewHost in its SiteInstance alive.
   // Eventually, RenderViewHost will be replaced with a page context.
   std::unique_ptr<RenderFrameHostImpl> render_frame_host_;
-
-  // Proxy hosts, indexed by site instance ID.
-  RenderFrameProxyHostMap proxy_hosts_;
 
   // A set of RenderFrameHosts waiting to shut down after swapping out.
   using RFHPendingDeleteSet =
@@ -921,9 +1017,9 @@ class CONTENT_EXPORT RenderFrameHostManager
   // it.
   std::unique_ptr<RenderFrameHostImpl> speculative_render_frame_host_;
 
-  // After being set in RestoreFromBackForwardCache(), the bfcache entry is
-  // immediately consumed in CommitPending().
-  std::unique_ptr<BackForwardCacheImpl::Entry> bfcache_entry_to_restore_;
+  // After being set in RestoreFromBackForwardCache() or ActivatePrerenderer(),
+  // the stored page is immediately consumed in CommitPending().
+  std::unique_ptr<StoredPage> stored_page_to_restore_;
 
   // This callback is used when attaching an inner Delegate to |delegate_|
   // through |frame_tree_node_|.
@@ -933,8 +1029,6 @@ class CONTENT_EXPORT RenderFrameHostManager
       AttachToInnerDelegateState::NONE;
 
   base::WeakPtrFactory<RenderFrameHostManager> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(RenderFrameHostManager);
 };
 
 }  // namespace content

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "newform.h"
 #include "qdesigner_workbench.h"
@@ -36,12 +11,6 @@
 
 #include <QtDesigner/abstractformeditor.h>
 
-#include <QtCore/qdir.h>
-#include <QtCore/qfileinfo.h>
-#include <QtCore/qdebug.h>
-#include <QtCore/qdir.h>
-#include <QtCore/qtemporaryfile.h>
-
 #include <QtWidgets/qapplication.h>
 #include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qpushbutton.h>
@@ -51,7 +20,18 @@
 #include <QtWidgets/qframe.h>
 #include <QtWidgets/qmessagebox.h>
 
+#include <QtGui/qaction.h>
+#include <QtGui/qactiongroup.h>
+
+#include <QtCore/qdir.h>
+#include <QtCore/qfileinfo.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qdir.h>
+#include <QtCore/qtemporaryfile.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 NewForm::NewForm(QDesignerWorkbench *workbench, QWidget *parentWidget, const QString &fileName)
     : QDialog(parentWidget, Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowCloseButtonHint),
@@ -60,8 +40,7 @@ NewForm::NewForm(QDesignerWorkbench *workbench, QWidget *parentWidget, const QSt
       m_workbench(workbench),
       m_chkShowOnStartup(new QCheckBox(tr("Show this Dialog on Startup"))),
       m_createButton(new QPushButton(QApplication::translate("NewForm", "C&reate", nullptr))),
-      m_recentButton(new QPushButton(QApplication::translate("NewForm", "Recent", nullptr))),
-      m_buttonBox(nullptr)
+      m_recentButton(new QPushButton(QApplication::translate("NewForm", "Recent", nullptr)))
 {
     setWindowTitle(tr("New Form"));
     QDesignerSettings settings(m_workbench->core());
@@ -122,11 +101,8 @@ NewForm::~NewForm()
 void NewForm::recentFileChosen()
 {
     QAction *action = qobject_cast<QAction *>(sender());
-    if (!action)
-        return;
-    if (action->objectName() == QStringLiteral("__qt_action_clear_menu_"))
-        return;
-    close();
+    if (action && action->objectName() != "__qt_action_clear_menu_"_L1)
+        close();
 }
 
 void NewForm::slotCurrentTemplateChanged(bool templateSelected)
@@ -180,7 +156,7 @@ bool NewForm::openTemplate(QString *ptrToErrorMessage)
     QString tempPattern = QDir::tempPath();
     if (!tempPattern.endsWith(QDir::separator())) // platform-dependant
         tempPattern += QDir::separator();
-    tempPattern += QStringLiteral("XXXXXX.ui");
+    tempPattern += "XXXXXX.ui"_L1;
     QTemporaryFile tempFormFile(tempPattern);
 
     tempFormFile.setAutoRemove(true);

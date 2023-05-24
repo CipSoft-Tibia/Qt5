@@ -1,46 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcontiguouscache.h"
 #ifdef QT_QCONTIGUOUSCACHE_DEBUG
 #include <QDebug>
 #endif
+
+#include <QtCore/qmalloc.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -54,9 +20,9 @@ void QContiguousCacheData::dump() const
 }
 #endif
 
-QContiguousCacheData *QContiguousCacheData::allocateData(int size, int alignment)
+QContiguousCacheData *QContiguousCacheData::allocateData(qsizetype size, qsizetype alignment)
 {
-    return static_cast<QContiguousCacheData *>(qMallocAligned(size, alignment));
+    return static_cast<QContiguousCacheData *>(qMallocAligned(size_t(size), size_t(alignment)));
 }
 
 void QContiguousCacheData::freeData(QContiguousCacheData *data)
@@ -119,7 +85,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     See the \l{Contiguous Cache Example}{Contiguous Cache} example.
 */
 
-/*! \fn template<typename T> QContiguousCache<T>::QContiguousCache(int capacity)
+/*! \fn template<typename T> QContiguousCache<T>::QContiguousCache(qsizetype capacity)
 
     Constructs a cache with the given \a capacity.
 
@@ -224,7 +190,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa operator==()
 */
 
-/*! \fn template<typename T> int QContiguousCache<T>::capacity() const
+/*! \fn template<typename T> qsizetype QContiguousCache<T>::capacity() const
 
     Returns the number of items the cache can store before it is full.
     When a cache contains a number of items equal to its capacity, adding new
@@ -233,12 +199,12 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa setCapacity(), size()
 */
 
-/*! \fn template<typename T> int QContiguousCache<T>::count() const
+/*! \fn template<typename T> qsizetype QContiguousCache<T>::count() const
 
     Same as size().
 */
 
-/*! \fn template<typename T> int QContiguousCache<T>::size() const
+/*! \fn template<typename T> qsizetype QContiguousCache<T>::size() const
 
     Returns the number of items contained within the cache.
 
@@ -260,7 +226,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa size(), capacity()
 */
 
-/*! \fn template<typename T> int QContiguousCache<T>::available() const
+/*! \fn template<typename T> qsizetype QContiguousCache<T>::available() const
 
     Returns the number of items that can be added to the cache before it becomes full.
 
@@ -272,7 +238,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     Removes all items from the cache.  The capacity is unchanged.
 */
 
-/*! \fn template<typename T> void QContiguousCache<T>::setCapacity(int size)
+/*! \fn template<typename T> void QContiguousCache<T>::setCapacity(qsizetype size)
 
     Sets the capacity of the cache to the given \a size.  A cache can hold a
     number of items equal to its capacity.  When inserting, appending or prepending
@@ -285,7 +251,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa capacity(), isFull()
 */
 
-/*! \fn template<typename T> const T &QContiguousCache<T>::at(int i) const
+/*! \fn template<typename T> const T &QContiguousCache<T>::at(qsizetype i) const
 
     Returns the item at index position \a i in the cache.  \a i must
     be a valid index position in the cache (i.e, firstIndex() <= \a i <= lastIndex()).
@@ -299,7 +265,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa firstIndex(), lastIndex(), insert(), operator[]()
 */
 
-/*! \fn template<typename T> T &QContiguousCache<T>::operator[](int i)
+/*! \fn template<typename T> T &QContiguousCache<T>::operator[](qsizetype i)
 
     Returns the item at index position \a i as a modifiable reference. If
     the cache does not contain an item at the given index position \a i
@@ -314,7 +280,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa insert(), at()
 */
 
-/*! \fn template<typename T> const T &QContiguousCache<T>::operator[](int i) const
+/*! \fn template<typename T> const T &QContiguousCache<T>::operator[](qsizetype i) const
 
     \overload
 
@@ -337,7 +303,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa append(), insert(), isFull()
 */
 
-/*! \fn template<typename T> void QContiguousCache<T>::insert(int i, const T &value)
+/*! \fn template<typename T> void QContiguousCache<T>::insert(qsizetype i, const T &value)
 
     Inserts the \a value at the index position \a i.  If the cache already contains
     an item at \a i then that value is replaced.  If \a i is either one more than
@@ -357,14 +323,14 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa prepend(), append(), isFull(), firstIndex(), lastIndex()
 */
 
-/*! \fn template<typename T> bool QContiguousCache<T>::containsIndex(int i) const
+/*! \fn template<typename T> bool QContiguousCache<T>::containsIndex(qsizetype i) const
 
     Returns \c true if the cache's index range includes the given index \a i.
 
     \sa firstIndex(), lastIndex()
 */
 
-/*! \fn template<typename T> int QContiguousCache<T>::firstIndex() const
+/*! \fn template<typename T> qsizetype QContiguousCache<T>::firstIndex() const
 
     Returns the first valid index in the cache.  The index will be invalid if the
     cache is empty.
@@ -372,7 +338,7 @@ void QContiguousCacheData::freeData(QContiguousCacheData *data)
     \sa capacity(), size(), lastIndex()
 */
 
-/*! \fn template<typename T> int QContiguousCache<T>::lastIndex() const
+/*! \fn template<typename T> qsizetype QContiguousCache<T>::lastIndex() const
 
     Returns the last valid index in the cache.  The index will be invalid if the cache is empty.
 

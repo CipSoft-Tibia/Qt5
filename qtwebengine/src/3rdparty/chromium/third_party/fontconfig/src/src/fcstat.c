@@ -22,7 +22,9 @@
  */
 #include "fcint.h"
 #include "fcarch.h"
+#ifdef HAVE_DIRENT_H
 #include <dirent.h>
+#endif
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -384,7 +386,7 @@ FcFStatFs (int fd, FcStatFS *statb)
 #  endif
 #  if defined(HAVE_STRUCT_STATFS_F_FSTYPENAME)
 	p = buf.f_fstypename;
-#  elif defined(__linux__)
+#  elif defined(__linux__) || defined (__EMSCRIPTEN__)
 	switch (buf.f_type)
 	{
 	case 0x6969: /* nfs */

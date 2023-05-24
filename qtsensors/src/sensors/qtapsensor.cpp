@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSensors module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtapsensor.h"
 #include "qtapsensor_p.h"
@@ -49,6 +13,7 @@ IMPLEMENT_READING(QTapReading)
     \ingroup sensors_reading
     \inmodule QtSensors
     \since 5.1
+    \internal
 
     \brief The QTapReading class represents one reading from the
            tap sensor.
@@ -83,11 +48,17 @@ IMPLEMENT_READING(QTapReading)
     the detected axis. Previous versions of the API did not allow this. Applications that check
     for the _Pos and _Neg flags as values should be updated so they can work with all devices.
 
-    \oldcode
+    For example, if you have code like
+
+    \code
     if (reading->tapDirection() == QTapReading::X_Pos) {
         ...
     }
-    \newcode
+    \endcode
+
+    you can rewrite it as
+
+    \code
     if (reading->tapDirection()&QTapReading::X_Pos) {
         ...
     }
@@ -174,6 +145,7 @@ void QTapReading::setDoubleTap(bool doubleTap)
     \ingroup sensors_filter
     \inmodule QtSensors
     \since 5.1
+    \internal
 
     \brief The QTapFilter class is a convenience wrapper around QSensorFilter.
 
@@ -194,13 +166,14 @@ bool QTapFilter::filter(QSensorReading *reading)
     return filter(static_cast<QTapReading*>(reading));
 }
 
-char const * const QTapSensor::type("QTapSensor");
+char const * const QTapSensor::sensorType("QTapSensor");
 
 /*!
     \class QTapSensor
     \ingroup sensors_type
     \inmodule QtSensors
     \since 5.1
+    \internal
 
     \brief The QTapSensor class is a convenience wrapper around QSensor.
 
@@ -217,7 +190,7 @@ char const * const QTapSensor::type("QTapSensor");
     Construct the sensor as a child of \a parent.
 */
 QTapSensor::QTapSensor(QObject *parent)
-    : QSensor(QTapSensor::type, *new QTapSensorPrivate, parent)
+    : QSensor(QTapSensor::sensorType, *new QTapSensorPrivate, parent)
 {
 }
 

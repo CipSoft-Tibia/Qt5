@@ -18,16 +18,32 @@ export interface Typed {
   type: string;
 }
 
+// A type guard that can be used in order to be able to access the property of
+// an object in a checked manner.
+export function hasProperty<T extends object, P extends string>(
+    obj: T, prop: P): obj is T&{[prop in P]: unknown} {
+  return obj.hasOwnProperty(prop);
+}
+
+export function isTyped(obj: object): obj is Typed {
+  return obj.hasOwnProperty('type');
+}
+
 export interface ReadBuffersResponse extends
     Typed, perfetto.protos.IReadBuffersResponse {}
 export interface EnableTracingResponse extends
     Typed, perfetto.protos.IEnableTracingResponse {}
 export interface GetTraceStatsResponse extends
     Typed, perfetto.protos.IGetTraceStatsResponse {}
+export interface FreeBuffersResponse extends
+    Typed, perfetto.protos.IFreeBuffersResponse {}
 export interface GetCategoriesResponse extends Typed {}
+export interface DisableTracingResponse extends
+    Typed, perfetto.protos.IDisableTracingResponse {}
 
-export type ConsumerPortResponse = EnableTracingResponse|ReadBuffersResponse|
-    GetTraceStatsResponse|GetCategoriesResponse;
+export type ConsumerPortResponse =
+    EnableTracingResponse|ReadBuffersResponse|GetTraceStatsResponse|
+    GetCategoriesResponse|FreeBuffersResponse|DisableTracingResponse;
 
 export function isReadBuffersResponse(obj: Typed): obj is ReadBuffersResponse {
   return obj.type === 'ReadBuffersResponse';
@@ -43,7 +59,11 @@ export function isGetTraceStatsResponse(obj: Typed):
   return obj.type === 'GetTraceStatsResponse';
 }
 
-export function isGetCategoriesResponse(obj: Typed):
-    obj is GetCategoriesResponse {
-  return obj.type === 'GetCategoriesResponse';
+export function isFreeBuffersResponse(obj: Typed): obj is FreeBuffersResponse {
+  return obj.type === 'FreeBuffersResponse';
+}
+
+export function isDisableTracingResponse(obj: Typed):
+    obj is DisableTracingResponse {
+  return obj.type === 'DisableTracingResponse';
 }

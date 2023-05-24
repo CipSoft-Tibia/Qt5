@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -141,7 +141,8 @@ std::string BleScanParserImpl::ParseUuid(base::span<const uint8_t> bytes,
     return std::string();
   }
 
-  std::string uuid = base::HexEncode(bytes.data(), bytes.size());
+  std::vector<uint8_t> reversed(bytes.rbegin(), bytes.rend());
+  std::string uuid = base::HexEncode(reversed.data(), reversed.size());
 
   switch (format) {
     case UuidFormat::kFormat16Bit:

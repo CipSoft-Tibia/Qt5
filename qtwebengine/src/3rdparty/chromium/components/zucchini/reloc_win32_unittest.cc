@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,13 @@
 
 #include <stdint.h>
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "base/numerics/safe_conversions.h"
+#include "base/ranges/algorithm.h"
 #include "base/test/gtest_util.h"
 #include "components/zucchini/address_translator.h"
 #include "components/zucchini/algorithm.h"
@@ -191,8 +191,7 @@ TEST_F(RelocUtilsWin32Test, ReadWrite) {
       "00 10 04 00 10 00 00 00 C0 32 18 A3 F8 A7 FF 0F "
       "00 20 04 00 10 00 00 00 80 A0 65 31 F8 37 BC 3A");
   reloc_region_ = {0x600, reloc_data.size()};
-  std::copy(reloc_data.begin(), reloc_data.end(),
-            image_data.begin() + reloc_region_.lo());
+  base::ranges::copy(reloc_data, image_data.begin() + reloc_region_.lo());
   image_ = {image_data.data(), image_data.size()};
   offset_t image_size = base::checked_cast<offset_t>(image_.size());
 
@@ -219,7 +218,7 @@ TEST_F(RelocUtilsWin32Test, ReadWrite) {
 
   // Read all references and check.
   std::vector<Reference> refs;
-  for (base::Optional<Reference> ref = reader->GetNext(); ref.has_value();
+  for (absl::optional<Reference> ref = reader->GetNext(); ref.has_value();
        ref = reader->GetNext()) {
     refs.push_back(ref.value());
   }

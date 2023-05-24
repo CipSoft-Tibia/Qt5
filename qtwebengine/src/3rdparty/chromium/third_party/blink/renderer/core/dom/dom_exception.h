@@ -46,6 +46,7 @@ class CORE_EXPORT DOMException : public ScriptWrappable {
   // This constructor shouldn't be used except for V8ThrowDOMException. Note
   // that this constructor does not associate the stacktrace with the created
   // object.
+  // TODO(https://crbug.com/991544): Replace DOMException constructor calls.
   DOMException(DOMExceptionCode,
                const String& sanitized_message = String(),
                const String& unsanitized_message = String());
@@ -67,8 +68,8 @@ class CORE_EXPORT DOMException : public ScriptWrappable {
   // This is the message that's exposed to the console: if an unsanitized
   // message is present, we prefer it.
   String MessageForConsole() const {
-    return !unsanitized_message_.IsEmpty() ? unsanitized_message_
-                                           : sanitized_message_;
+    return !unsanitized_message_.empty() ? unsanitized_message_
+                                         : sanitized_message_;
   }
   String ToStringForConsole() const;
 

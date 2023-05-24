@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -51,12 +51,13 @@ ContentCapabilitiesHandler::~ContentCapabilitiesHandler() {
 }
 
 bool ContentCapabilitiesHandler::Parse(Extension* extension,
-                                       base::string16* error) {
+                                       std::u16string* error) {
   std::unique_ptr<ContentCapabilitiesInfo> info(new ContentCapabilitiesInfo);
 
-  const base::Value* value = NULL;
-  if (!extension->manifest()->Get(keys::kContentCapabilities, &value)) {
-    *error = base::ASCIIToUTF16(errors::kInvalidContentCapabilities);
+  const base::Value* value =
+      extension->manifest()->FindPath(keys::kContentCapabilities);
+  if (value == nullptr) {
+    *error = errors::kInvalidContentCapabilities;
     return false;
   }
 
@@ -120,11 +121,7 @@ bool ContentCapabilitiesHandler::Parse(Extension* extension,
 
 base::span<const char* const> ContentCapabilitiesHandler::Keys() const {
   static constexpr const char* kKeys[] = {keys::kContentCapabilities};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 }  // namespace extensions

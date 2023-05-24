@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,9 @@ namespace media {
 
 D3D11Texture2DMock::D3D11Texture2DMock() = default;
 D3D11Texture2DMock::~D3D11Texture2DMock() = default;
+
+D3D11MultithreadMock::D3D11MultithreadMock() = default;
+D3D11MultithreadMock::~D3D11MultithreadMock() = default;
 
 D3D11BufferMock::D3D11BufferMock() = default;
 D3D11BufferMock::~D3D11BufferMock() = default;
@@ -49,5 +52,8 @@ D3D11VideoProcessorEnumeratorMock::~D3D11VideoProcessorEnumeratorMock() =
 
 D3D11DeviceContextMock::D3D11DeviceContextMock() = default;
 D3D11DeviceContextMock::~D3D11DeviceContextMock() = default;
+
+D3D11FenceMock::D3D11FenceMock() = default;
+D3D11FenceMock::~D3D11FenceMock() = default;
 
 }  // namespace media

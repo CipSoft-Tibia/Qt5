@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,9 @@
 #include <stdint.h>
 #include <xf86drmMode.h>
 
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/observer_list.h"
-#include "base/time/time.h"
+#include "third_party/libdrm/src/include/drm/drm_fourcc.h"
+#include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "ui/gfx/swap_result.h"
 #include "ui/ozone/platform/drm/common/scoped_drm_types.h"
 #include "ui/ozone/platform/drm/gpu/drm_overlay_plane.h"
@@ -32,13 +31,18 @@ class CrtcController {
   CrtcController(const scoped_refptr<DrmDevice>& drm,
                  uint32_t crtc,
                  uint32_t connector);
+
+  CrtcController(const CrtcController&) = delete;
+  CrtcController& operator=(const CrtcController&) = delete;
+
   ~CrtcController();
 
   drmModeModeInfo mode() const { return state_.mode; }
   uint32_t crtc() const { return crtc_; }
   uint32_t connector() const { return connector_; }
   const scoped_refptr<DrmDevice>& drm() const { return drm_; }
-  bool is_disabled() const { return !state_.properties.active.value; }
+  bool is_enabled() const { return state_.properties.active.value; }
+  bool vrr_enabled() const { return state_.properties.vrr_enabled.value; }
 
   bool AssignOverlayPlanes(HardwareDisplayPlaneList* plane_list,
                            const DrmOverlayPlaneList& planes,
@@ -50,12 +54,15 @@ class CrtcController {
   // one way or another or maybe compressed. Except for generic
   // modifiers such as DRM_FORMAT_MOD_NONE (linear), the modifier
   // values are 64 bit values that we don't understand at this
-  // level. We pass the modifers to gbm_bo_create_with_modifiers() and
+  // level. We pass the modifiers to gbm_bo_create_with_modifiers() and
   // gbm will pick a modifier as it allocates the bo.
   std::vector<uint64_t> GetFormatModifiers(uint32_t fourcc_format);
 
   void SetCursor(uint32_t handle, const gfx::Size& size);
   void MoveCursor(const gfx::Point& location);
+
+  // Adds trace records to |context|.
+  void WriteIntoTrace(perfetto::TracedValue context) const;
 
  private:
   const scoped_refptr<DrmDevice> drm_;
@@ -66,8 +73,6 @@ class CrtcController {
   const uint32_t connector_;
 
   const HardwareDisplayPlaneManager::CrtcState& state_;
-
-  DISALLOW_COPY_AND_ASSIGN(CrtcController);
 };
 
 }  // namespace ui

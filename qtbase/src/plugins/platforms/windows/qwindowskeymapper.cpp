@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowskeymapper.h"
 #include "qwindowscontext.h"
@@ -49,8 +13,9 @@
 #include <private/qguiapplication_p.h>
 #include <private/qhighdpiscaling_p.h>
 #include <QtGui/qevent.h>
-#include <QtEventDispatcherSupport/private/qwindowsguieventdispatcher_p.h>
+#include <QtGui/private/qwindowsguieventdispatcher_p.h>
 #include <QtCore/private/qdebug_p.h>
+#include <QtCore/private/qtools_p.h>
 
 #if defined(WM_APPCOMMAND)
 #  ifndef FAPPCOMMAND_MOUSE
@@ -541,7 +506,7 @@ static const Qt::KeyboardModifiers ModsTbl[] = {
     Qt::NoModifier,                                             // Fall-back to raw Key_*
 };
 static const size_t NumMods = sizeof ModsTbl / sizeof *ModsTbl;
-Q_STATIC_ASSERT((NumMods == KeyboardLayoutItem::NumQtKeys));
+static_assert((NumMods == KeyboardLayoutItem::NumQtKeys));
 
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug d, const KeyboardLayoutItem &k)
@@ -635,8 +600,7 @@ static inline quint32 toKeyOrUnicode(quint32 vk, quint32 scancode, unsigned char
 
 static inline int asciiToKeycode(char a, int state)
 {
-    if (a >= 'a' && a <= 'z')
-        a = toupper(a);
+    a = QtMiscUtils::toAsciiUpper(a);
     if ((state & Qt::ControlModifier) != 0) {
         if (a >= 0 && a <= 31)              // Ctrl+@..Ctrl+A..CTRL+Z..Ctrl+_
             a += '@';                       // to @..A..Z.._
@@ -785,6 +749,27 @@ static inline QString messageKeyText(const MSG &msg)
     return ch.isNull() ? QString() : QString(ch);
 }
 
+[[nodiscard]] static inline int getTitleBarHeight(const HWND hwnd)
+{
+    const UINT dpi = GetDpiForWindow(hwnd);
+    const int captionHeight = GetSystemMetricsForDpi(SM_CYCAPTION, dpi);
+    if (IsZoomed(hwnd))
+        return captionHeight;
+    // The frame height should also be taken into account if the window
+    // is not maximized.
+    const int frameHeight = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi)
+                            + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+    return captionHeight + frameHeight;
+}
+
+[[nodiscard]] static inline bool isSystemMenuOffsetNeeded(const Qt::WindowFlags flags)
+{
+    static constexpr const Qt::WindowFlags titleBarHints =
+        Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowContextHelpButtonHint;
+    return (flags & Qt::WindowSystemMenuHint) && (flags & Qt::WindowTitleHint) && !(flags & titleBarHints)
+           && (flags & (Qt::FramelessWindowHint | Qt::CustomizeWindowHint));
+}
+
 static void showSystemMenu(QWindow* w)
 {
     QWindow *topLevel = QWindowsWindow::topLevelOf(w);
@@ -793,36 +778,44 @@ static void showSystemMenu(QWindow* w)
     if (!menu)
         return; // no menu for this window
 
-#define enabled (MF_BYCOMMAND | MF_ENABLED)
-#define disabled (MF_BYCOMMAND | MF_GRAYED)
+#define enabled (MF_BYCOMMAND | MFS_ENABLED)
+#define disabled (MF_BYCOMMAND | MFS_GRAYED)
 
-    EnableMenuItem(menu, SC_MINIMIZE, (topLevel->flags() & Qt::WindowMinimizeButtonHint)?enabled:disabled);
-    bool maximized = IsZoomed(topLevelHwnd);
+    EnableMenuItem(menu, SC_MINIMIZE, (topLevel->flags() & Qt::WindowMinimizeButtonHint) ? enabled : disabled);
+    const bool maximized = IsZoomed(topLevelHwnd);
 
-    EnableMenuItem(menu, SC_MAXIMIZE, ! (topLevel->flags() & Qt::WindowMaximizeButtonHint) || maximized?disabled:enabled);
-    EnableMenuItem(menu, SC_RESTORE, maximized?enabled:disabled);
+    EnableMenuItem(menu, SC_MAXIMIZE, !(topLevel->flags() & Qt::WindowMaximizeButtonHint) || maximized ? disabled : enabled);
 
     // We should _not_ check with the setFixedSize(x,y) case here, since Windows is not able to check
     // this and our menu here would be out-of-sync with the menu produced by mouse-click on the
     // System Menu, or right-click on the title bar.
-    EnableMenuItem(menu, SC_SIZE, (topLevel->flags() & Qt::MSWindowsFixedSizeDialogHint) || maximized?disabled:enabled);
-    EnableMenuItem(menu, SC_MOVE, maximized?disabled:enabled);
+    EnableMenuItem(menu, SC_SIZE, (topLevel->flags() & Qt::MSWindowsFixedSizeDialogHint) || maximized ? disabled : enabled);
+    EnableMenuItem(menu, SC_MOVE, maximized ? disabled : enabled);
     EnableMenuItem(menu, SC_CLOSE, enabled);
+    EnableMenuItem(menu, SC_RESTORE, maximized ? enabled : disabled);
+
+    // Highlight the first entry in the menu, this is what native Win32 applications usually do.
+    HiliteMenuItem(topLevelHwnd, menu, SC_RESTORE, MF_BYCOMMAND | MFS_HILITE);
+
     // Set bold on close menu item
-    MENUITEMINFO closeItem;
-    closeItem.cbSize = sizeof(MENUITEMINFO);
-    closeItem.fMask = MIIM_STATE;
-    closeItem.fState = MFS_DEFAULT;
-    SetMenuItemInfo(menu, SC_CLOSE, FALSE, &closeItem);
+    SetMenuDefaultItem(menu, SC_CLOSE, FALSE);
 
 #undef enabled
 #undef disabled
+
     const QPoint pos = QHighDpi::toNativePixels(topLevel->geometry().topLeft(), topLevel);
+    const int titleBarOffset = isSystemMenuOffsetNeeded(topLevel->flags()) ? getTitleBarHeight(topLevelHwnd) : 0;
     const int ret = TrackPopupMenuEx(menu,
-                               TPM_LEFTALIGN  | TPM_TOPALIGN | TPM_NONOTIFY | TPM_RETURNCMD,
-                               pos.x(), pos.y(),
+                               TPM_LEFTALIGN | TPM_TOPALIGN | TPM_NONOTIFY | TPM_RETURNCMD,
+                               pos.x(), pos.y() + titleBarOffset,
                                topLevelHwnd,
                                nullptr);
+
+    // Remove the highlight of the restore menu item, otherwise when the user right-clicks
+    // on the title bar, the popuped system menu will also highlight the restore item, which
+    // is not appropriate, it should only be highlighted if the menu is brought up by keyboard.
+    HiliteMenuItem(topLevelHwnd, menu, SC_RESTORE, MF_BYCOMMAND | MFS_UNHILITE);
+
     if (ret)
         qWindowsWndProc(topLevelHwnd, WM_SYSCOMMAND, WPARAM(ret), 0);
 }
@@ -908,7 +901,7 @@ bool QWindowsKeyMapper::translateMultimediaKeyEventInternal(QWindow *window, con
     // QTBUG-43343: Make sure to return false if Qt does not handle the key, otherwise,
     // the keys are not passed to the active media player.
 # if QT_CONFIG(shortcut)
-    const QKeySequence sequence(Qt::Modifier(state) + qtKey);
+    const QKeySequence sequence(Qt::Modifier(state) | Qt::Key(qtKey));
     return QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(sequence);
 # else
     return false;
@@ -984,7 +977,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
     // A multi-character key or a Input method character
     // not found by our look-ahead
     if (msgType == WM_CHAR || msgType == WM_IME_CHAR) {
-        sendExtendedPressRelease(receiver, 0, Qt::KeyboardModifier(state), scancode, vk_key, nModifiers, messageKeyText(msg), false);
+        sendExtendedPressRelease(receiver, 0, Qt::KeyboardModifier(state), scancode, 0, nModifiers, messageKeyText(msg), false);
         return true;
     }
 
@@ -1220,7 +1213,6 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
             switch (code) {
             case Qt::Key_Escape:
             case Qt::Key_Tab:
-            case Qt::Key_Enter:
             case Qt::Key_F4:
                 return false; // Send the event on to Windows
             case Qt::Key_Space:
@@ -1256,7 +1248,7 @@ bool QWindowsKeyMapper::translateKeyEventInternal(QWindow *window, MSG msg,
 #ifndef QT_NO_SHORTCUT
             // Is Qt interested in the context menu key?
             if (modifiers == Qt::SHIFT && code == Qt::Key_F10
-                && !QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(QKeySequence(Qt::SHIFT + Qt::Key_F10))) {
+                && !QGuiApplicationPrivate::instance()->shortcutMap.hasShortcutForKeySequence(QKeySequence(Qt::SHIFT | Qt::Key_F10))) {
                 return false;
             }
 #endif // !QT_NO_SHORTCUT
@@ -1377,17 +1369,17 @@ QList<int> QWindowsKeyMapper::possibleKeys(const QKeyEvent *e) const
     quint32 baseKey = kbItem.qtKey[0];
     Qt::KeyboardModifiers keyMods = e->modifiers();
     if (baseKey == Qt::Key_Return && (e->nativeModifiers() & ExtendedKey)) {
-        result << int(Qt::Key_Enter + keyMods);
+        result << (Qt::Key_Enter | keyMods).toCombined();
         return result;
     }
-    result << int(baseKey + keyMods); // The base key is _always_ valid, of course
+    result << int(baseKey) + int(keyMods); // The base key is _always_ valid, of course
 
     for (size_t i = 1; i < NumMods; ++i) {
         Qt::KeyboardModifiers neededMods = ModsTbl[i];
         quint32 key = kbItem.qtKey[i];
         if (key && key != baseKey && ((keyMods & neededMods) == neededMods)) {
             const Qt::KeyboardModifiers missingMods = keyMods & ~neededMods;
-            const int matchedKey = int(key) + missingMods;
+            const int matchedKey = int(key) + int(missingMods);
             const auto it =
                 std::find_if(result.begin(), result.end(),
                              [key] (int k) { return (k & ~Qt::KeyboardModifierMask) == key; });
@@ -1395,7 +1387,7 @@ QList<int> QWindowsKeyMapper::possibleKeys(const QKeyEvent *e) const
             // Shift+9 over Alt + Shift + 9) resulting in more missing modifiers.
             if (it == result.end())
                 result << matchedKey;
-            else if (missingMods > (*it & Qt::KeyboardModifierMask))
+            else if (missingMods > Qt::KeyboardModifiers(*it & Qt::KeyboardModifierMask))
                 *it = matchedKey;
         }
     }

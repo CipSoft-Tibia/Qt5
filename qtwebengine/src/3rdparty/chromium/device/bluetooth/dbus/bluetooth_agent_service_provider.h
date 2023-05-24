@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include <cstdint>
 #include <string>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "dbus/bus.h"
 #include "dbus/object_path.h"
 #include "device/bluetooth/bluetooth_export.h"
@@ -157,6 +156,10 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAgentServiceProvider {
     virtual void Cancel() = 0;
   };
 
+  BluetoothAgentServiceProvider(const BluetoothAgentServiceProvider&) = delete;
+  BluetoothAgentServiceProvider& operator=(
+      const BluetoothAgentServiceProvider&) = delete;
+
   virtual ~BluetoothAgentServiceProvider();
 
   // Creates the instance where |bus| is the D-Bus bus connection to export
@@ -170,9 +173,6 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAgentServiceProvider {
 
  protected:
   BluetoothAgentServiceProvider();
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(BluetoothAgentServiceProvider);
 };
 
 }  // namespace bluez

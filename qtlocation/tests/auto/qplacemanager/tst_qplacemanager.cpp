@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QMetaType>
 #include <QString>
 #include <QtTest/QtTest>
 
 #include <qgeoserviceprovider.h>
+#include <qplace.h>
 #include <qplacemanager.h>
+#include <qplacematchrequest.h>
+#include <qplacematchreply.h>
 
 
 #ifndef WAIT_UNTIL
@@ -84,7 +62,7 @@ void tst_QPlaceManager::initTestCase()
                                      + QStringLiteral("/../../../plugins"));
 #endif
 #endif
-    provider = 0;
+    provider = nullptr;
 
     QStringList providers = QGeoServiceProvider::availableServiceProviders();
     QVERIFY(providers.contains("qmlgeo.test.plugin"));
@@ -151,9 +129,9 @@ void tst_QPlaceManager::cleanupTestCase()
 bool tst_QPlaceManager::checkSignals(QPlaceReply *reply, QPlaceReply::Error expectedError)
 {
     QSignalSpy finishedSpy(reply, SIGNAL(finished()));
-    QSignalSpy errorSpy(reply, SIGNAL(error(QPlaceReply::Error,QString)));
+    QSignalSpy errorSpy(reply, SIGNAL(errorOccurred(QPlaceReply::Error,QString)));
     QSignalSpy managerFinishedSpy(placeManager, SIGNAL(finished(QPlaceReply*)));
-    QSignalSpy managerErrorSpy(placeManager,SIGNAL(error(QPlaceReply*,QPlaceReply::Error,QString)));
+    QSignalSpy managerErrorSpy(placeManager,SIGNAL(errorOccurred(QPlaceReply*,QPlaceReply::Error,QString)));
 
     if (expectedError != QPlaceReply::NoError) {
         //check that we get an error signal from the reply

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include "third_party/blink/renderer/core/css/css_property_value_set.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/editing/testing/editing_test_base.h"
+#include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/core/html/html_body_element.h"
 #include "third_party/blink/renderer/core/html/html_div_element.h"
 #include "third_party/blink/renderer/core/html/html_head_element.h"
@@ -33,6 +34,32 @@ TEST_F(EditingStyleTest, mergeInlineStyleOfElement) {
   EXPECT_EQ("var(---B)",
             editing_style->Style()->GetPropertyValue(AtomicString("--A")))
       << "Keep unresolved value on merging style";
+}
+
+// http://crbug.com/957952
+TEST_F(EditingStyleTest, RemoveStyleFromRulesAndContext_TextAlignEffective) {
+  // Note: <div>'s "text-align" is "start".
+  // For <p> with "text-align:start", it equivalents to "text-align:right"
+  SetBodyContent("<div><p dir=rtl id=target>");
+  Element& target = *GetElementById("target");
+  EditingStyle& style = *MakeGarbageCollected<EditingStyle>(
+      CSSPropertyID::kTextAlign, "left", SecureContextMode::kInsecureContext);
+  style.RemoveStyleFromRulesAndContext(&target, target.parentNode());
+
+  EXPECT_EQ(CSSValueID::kLeft, style.GetProperty(CSSPropertyID::kTextAlign));
+}
+
+// http://crbug.com/957952
+TEST_F(EditingStyleTest, RemoveStyleFromRulesAndContext_TextAlignRedundant) {
+  // Note: <div>'s "text-align" is "start".
+  // For <p> with "text-align:start", it equivalents to "text-align:right"
+  SetBodyContent("<div><p dir=rtl id=target>");
+  Element& target = *GetElementById("target");
+  EditingStyle& style = *MakeGarbageCollected<EditingStyle>(
+      CSSPropertyID::kTextAlign, "right", SecureContextMode::kInsecureContext);
+  style.RemoveStyleFromRulesAndContext(&target, target.parentNode());
+
+  EXPECT_EQ(CSSValueID::kInvalid, style.GetProperty(CSSPropertyID::kTextAlign));
 }
 
 }  // namespace blink

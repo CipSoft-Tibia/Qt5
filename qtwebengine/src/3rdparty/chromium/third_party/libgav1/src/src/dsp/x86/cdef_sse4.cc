@@ -15,7 +15,7 @@
 #include "src/dsp/cdef.h"
 #include "src/utils/cpu.h"
 
-#if LIBGAV1_ENABLE_SSE4_1
+#if LIBGAV1_TARGETING_SSE4_1
 
 #include <emmintrin.h>
 #include <tmmintrin.h>
@@ -241,8 +241,8 @@ LIBGAV1_ALWAYS_INLINE void AddPartial_D5_D7(__m128i* v_src, __m128i* partial_lo,
   *partial_hi = _mm_add_epi16(*partial_hi, _mm_srli_si128(v_pair_add[3], 10));
 }
 
-LIBGAV1_ALWAYS_INLINE void AddPartial(const uint8_t* src, ptrdiff_t stride,
-                                      __m128i* partial_lo,
+LIBGAV1_ALWAYS_INLINE void AddPartial(const uint8_t* LIBGAV1_RESTRICT src,
+                                      ptrdiff_t stride, __m128i* partial_lo,
                                       __m128i* partial_hi) {
   // 8x8 input
   // 00 01 02 03 04 05 06 07
@@ -349,8 +349,8 @@ inline uint32_t SumVector_S32(__m128i a) {
 inline uint32_t Cost0Or4(const __m128i a, const __m128i b,
                          const __m128i division_table[2]) {
   // Reverse and clear upper 2 bytes.
-  const __m128i reverser =
-      _mm_set_epi32(0x80800100, 0x03020504, 0x07060908, 0x0b0a0d0c);
+  const __m128i reverser = _mm_set_epi32(static_cast<int>(0x80800100),
+                                         0x03020504, 0x07060908, 0x0b0a0d0c);
   // 14 13 12 11 10 09 08 ZZ
   const __m128i b_reversed = _mm_shuffle_epi8(b, reverser);
   // 00 14 01 13 02 12 03 11
@@ -371,7 +371,8 @@ inline uint32_t CostOdd(const __m128i a, const __m128i b,
                         const __m128i division_table[2]) {
   // Reverse and clear upper 10 bytes.
   const __m128i reverser =
-      _mm_set_epi32(0x80808080, 0x80808080, 0x80800100, 0x03020504);
+      _mm_set_epi32(static_cast<int>(0x80808080), static_cast<int>(0x80808080),
+                    static_cast<int>(0x80800100), 0x03020504);
   // 10 09 08 ZZ ZZ ZZ ZZ ZZ
   const __m128i b_reversed = _mm_shuffle_epi8(b, reverser);
   // 00 10 01 09 02 08 03 ZZ
@@ -394,8 +395,10 @@ inline uint32_t SquareSum_S16(const __m128i a) {
   return SumVector_S32(square);
 }
 
-void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
-                          int* const direction, int* const variance) {
+void CdefDirection_SSE4_1(const void* LIBGAV1_RESTRICT const source,
+                          ptrdiff_t stride,
+                          uint8_t* LIBGAV1_RESTRICT const direction,
+                          int* LIBGAV1_RESTRICT const variance) {
   assert(direction != nullptr);
   assert(variance != nullptr);
   const auto* src = static_cast<const uint8_t*>(source);
@@ -414,8 +417,8 @@ void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
   cost[4] = Cost0Or4(partial_lo[4], partial_hi[4], division_table);
 
   const __m128i division_table_odd[2] = {
-      LoadUnaligned16(kCdefDivisionTableOddPadded),
-      LoadUnaligned16(kCdefDivisionTableOddPadded + 4)};
+      LoadAligned16(kCdefDivisionTableOddPadded),
+      LoadAligned16(kCdefDivisionTableOddPadded + 4)};
 
   cost[1] = CostOdd(partial_lo[1], partial_hi[1], division_table_odd);
   cost[3] = CostOdd(partial_lo[3], partial_hi[3], division_table_odd);
@@ -437,8 +440,9 @@ void CdefDirection_SSE4_1(const void* const source, ptrdiff_t stride,
 // CdefFilter
 
 // Load 4 vectors based on the given |direction|.
-inline void LoadDirection(const uint16_t* const src, const ptrdiff_t stride,
-                          __m128i* output, const int direction) {
+inline void LoadDirection(const uint16_t* LIBGAV1_RESTRICT const src,
+                          const ptrdiff_t stride, __m128i* output,
+                          const int direction) {
   // Each |direction| describes a different set of source values. Expand this
   // set by negating each set. For |direction| == 0 this gives a diagonal line
   // from top right to bottom left. The first value is y, the second x. Negative
@@ -462,8 +466,9 @@ inline void LoadDirection(const uint16_t* const src, const ptrdiff_t stride,
 
 // Load 4 vectors based on the given |direction|. Use when |block_width| == 4 to
 // do 2 rows at a time.
-void LoadDirection4(const uint16_t* const src, const ptrdiff_t stride,
-                    __m128i* output, const int direction) {
+void LoadDirection4(const uint16_t* LIBGAV1_RESTRICT const src,
+                    const ptrdiff_t stride, __m128i* output,
+                    const int direction) {
   const int y_0 = kCdefDirections[direction][0][0];
   const int x_0 = kCdefDirections[direction][0][1];
   const int y_1 = kCdefDirections[direction][1][0];
@@ -506,10 +511,11 @@ inline __m128i ApplyConstrainAndTap(const __m128i& pixel, const __m128i& val,
 }
 
 template <int width, bool enable_primary = true, bool enable_secondary = true>
-void CdefFilter_SSE4_1(const uint16_t* src, const ptrdiff_t src_stride,
-                       const int height, const int primary_strength,
-                       const int secondary_strength, const int damping,
-                       const int direction, void* dest,
+void CdefFilter_SSE4_1(const uint16_t* LIBGAV1_RESTRICT src,
+                       const ptrdiff_t src_stride, const int height,
+                       const int primary_strength, const int secondary_strength,
+                       const int damping, const int direction,
+                       void* LIBGAV1_RESTRICT dest,
                        const ptrdiff_t dst_stride) {
   static_assert(width == 8 || width == 4, "Invalid CDEF width.");
   static_assert(enable_primary || enable_secondary, "");
@@ -717,7 +723,7 @@ void CdefInit_SSE4_1() { low_bitdepth::Init8bpp(); }
 
 }  // namespace dsp
 }  // namespace libgav1
-#else  // !LIBGAV1_ENABLE_SSE4_1
+#else   // !LIBGAV1_TARGETING_SSE4_1
 namespace libgav1 {
 namespace dsp {
 
@@ -725,4 +731,4 @@ void CdefInit_SSE4_1() {}
 
 }  // namespace dsp
 }  // namespace libgav1
-#endif  // LIBGAV1_ENABLE_SSE4_1
+#endif  // LIBGAV1_TARGETING_SSE4_1

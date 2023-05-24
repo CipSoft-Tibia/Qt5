@@ -124,6 +124,12 @@ option(
 	value: true,
 	description: 'Weston shell UI: IVI (automotive)'
 )
+option(
+	'shell-kiosk',
+	type: 'boolean',
+	value: true,
+	description: 'Weston shell UI: kiosk (desktop apps)'
+)
 
 option(
 	'desktop-shell-client-default',
@@ -172,13 +178,6 @@ option(
 	description: 'List of accessory clients to build and install'
 )
 option(
-	'simple-dmabuf-drm',
-	type: 'array',
-	choices: [ 'auto', 'intel', 'freedreno', 'etnaviv' ],
-	value: [ 'intel', 'freedreno', 'etnaviv' ],
-	description: 'List of DRM drivers to be supported by weston-simple-dmabuf-drm'
-)
-option(
 	'demo-clients',
 	type: 'boolean',
 	value: true,
@@ -210,6 +209,12 @@ option(
 	type: 'boolean',
 	value: true,
 	description: 'Tests: output JUnit XML results'
+)
+option(
+	'test-gl-renderer',
+	type: 'boolean',
+	value: true,
+	description: 'Tests: allow running with GL-renderer'
 )
 option(
 	'doc',

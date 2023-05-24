@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "baritemmodelhandler_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
-
-static const int noRoleIndex = -1;
+QT_BEGIN_NAMESPACE
 
 BarItemModelHandler::BarItemModelHandler(QItemModelBarDataProxy *proxy, QObject *parent)
     : AbstractItemModelHandler(parent),
@@ -50,8 +22,7 @@ BarItemModelHandler::~BarItemModelHandler()
 }
 
 void BarItemModelHandler::handleDataChanged(const QModelIndex &topLeft,
-                                            const QModelIndex &bottomRight,
-                                            const QVector<int> &roles)
+                                            const QModelIndex &bottomRight, const QList<int> &roles)
 {
     // Do nothing if full reset already pending
     if (!m_fullReset) {
@@ -109,18 +80,18 @@ void BarItemModelHandler::resolveModel()
 
     // Value and rotation patterns can be reused on single item changes,
     // so store them to member variables.
-    QRegExp rowPattern(m_proxy->rowRolePattern());
-    QRegExp colPattern(m_proxy->columnRolePattern());
+    QRegularExpression rowPattern(m_proxy->rowRolePattern());
+    QRegularExpression colPattern(m_proxy->columnRolePattern());
     m_valuePattern = m_proxy->valueRolePattern();
     m_rotationPattern = m_proxy->rotationRolePattern();
     QString rowReplace = m_proxy->rowRoleReplace();
     QString colReplace = m_proxy->columnRoleReplace();
     m_valueReplace = m_proxy->valueRoleReplace();
     m_rotationReplace = m_proxy->rotationRoleReplace();
-    bool haveRowPattern = !rowPattern.isEmpty() && rowPattern.isValid();
-    bool haveColPattern = !colPattern.isEmpty() && colPattern.isValid();
-    m_haveValuePattern = !m_valuePattern.isEmpty() && m_valuePattern.isValid();
-    m_haveRotationPattern = !m_rotationPattern.isEmpty() && m_rotationPattern.isValid();
+    bool haveRowPattern = !rowPattern.namedCaptureGroups().isEmpty() && rowPattern.isValid();
+    bool haveColPattern = !colPattern.namedCaptureGroups().isEmpty() && colPattern.isValid();
+    m_haveValuePattern = !m_valuePattern.namedCaptureGroups().isEmpty() && m_valuePattern.isValid();
+    m_haveRotationPattern = !m_rotationPattern.namedCaptureGroups().isEmpty() && m_rotationPattern.isValid();
 
     QStringList rowLabels;
     QStringList columnLabels;
@@ -300,4 +271,4 @@ void BarItemModelHandler::resolveModel()
     m_proxy->resetArray(m_proxyArray, rowLabels, columnLabels);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

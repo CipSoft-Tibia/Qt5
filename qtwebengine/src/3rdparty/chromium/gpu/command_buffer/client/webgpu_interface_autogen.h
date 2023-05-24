@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,13 +13,15 @@
 #ifndef GPU_COMMAND_BUFFER_CLIENT_WEBGPU_INTERFACE_AUTOGEN_H_
 #define GPU_COMMAND_BUFFER_CLIENT_WEBGPU_INTERFACE_AUTOGEN_H_
 
-virtual void AssociateMailbox(GLuint64 device_client_id,
-                              GLuint device_generation,
-                              GLuint id,
-                              GLuint generation,
-                              GLuint usage,
-                              const GLbyte* mailbox) = 0;
-virtual void DissociateMailbox(GLuint64 device_client_id,
-                               GLuint texture_id,
+virtual void DissociateMailbox(GLuint texture_id,
                                GLuint texture_generation) = 0;
+virtual void DissociateMailboxForPresent(GLuint device_id,
+                                         GLuint device_generation,
+                                         GLuint texture_id,
+                                         GLuint texture_generation) = 0;
+virtual void SetWebGPUExecutionContextToken(uint32_t type,
+                                            uint32_t high_high,
+                                            uint32_t high_low,
+                                            uint32_t low_high,
+                                            uint32_t low_low) = 0;
 #endif  // GPU_COMMAND_BUFFER_CLIENT_WEBGPU_INTERFACE_AUTOGEN_H_

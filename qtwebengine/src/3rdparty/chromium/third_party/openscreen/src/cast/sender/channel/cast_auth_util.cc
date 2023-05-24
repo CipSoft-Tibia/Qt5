@@ -9,10 +9,13 @@
 #include <algorithm>
 #include <memory>
 
+#include "absl/strings/str_cat.h"
 #include "cast/common/certificate/cast_cert_validator.h"
-#include "cast/common/certificate/cast_cert_validator_internal.h"
 #include "cast/common/certificate/cast_crl.h"
+#include "cast/common/certificate/date_time.h"
 #include "cast/common/channel/proto/cast_channel.pb.h"
+#include "cast/common/public/parsed_certificate.h"
+#include "cast/common/public/trust_store.h"
 #include "platform/api/time.h"
 #include "platform/base/error.h"
 #include "util/osp_logging.h"
@@ -104,43 +107,56 @@ class CastNonce {
   std::chrono::seconds nonce_generation_time_;
 };
 
-// Maps Error::Code from certificate verification to Error.
-// If crl_required is set to false, all revocation related errors are ignored.
-Error MapToOpenscreenError(Error::Code error, bool crl_required) {
-  switch (error) {
+// Maps an error from certificate verification to an error reported to the
+// library client.  If crl_required is set to false, all revocation related
+// errors are ignored.
+//
+// TODO(https://issuetracker.google.com/issues/193164666): It would be simpler
+// to just pass the underlying verification error directly to the client.
+Error MapToOpenscreenError(Error verify_error, bool crl_required) {
+  switch (verify_error.code()) {
     case Error::Code::kErrCertsMissing:
       return Error(Error::Code::kCastV2PeerCertEmpty,
-                   "Failed to locate certificates.");
+                   absl::StrCat("Failed to locate certificates: ",
+                                verify_error.message()));
     case Error::Code::kErrCertsParse:
       return Error(Error::Code::kErrCertsParse,
-                   "Failed to parse certificates.");
+                   absl::StrCat("Failed to parse certificates: ",
+                                verify_error.message()));
     case Error::Code::kErrCertsDateInvalid:
-      return Error(Error::Code::kCastV2CertNotSignedByTrustedCa,
-                   "Failed date validity check.");
+      return Error(
+          Error::Code::kCastV2CertNotSignedByTrustedCa,
+          absl::StrCat("Failed date validity check: ", verify_error.message()));
     case Error::Code::kErrCertsVerifyGeneric:
-      return Error(Error::Code::kCastV2CertNotSignedByTrustedCa,
-                   "Failed with a generic certificate verification error.");
+      return Error(
+          Error::Code::kCastV2CertNotSignedByTrustedCa,
+          absl::StrCat("Failed with a generic certificate verification error: ",
+                       verify_error.message()));
     case Error::Code::kErrCertsRestrictions:
       return Error(Error::Code::kCastV2CertNotSignedByTrustedCa,
-                   "Failed certificate restrictions.");
+                   absl::StrCat("Failed certificate restrictions: ",
+                                verify_error.message()));
     case Error::Code::kErrCertsVerifyUntrustedCert:
       return Error(Error::Code::kCastV2CertNotSignedByTrustedCa,
-                   "Failed with untrusted certificate.");
+                   absl::StrCat("Failed with untrusted certificate: ",
+                                verify_error.message()));
     case Error::Code::kErrCrlInvalid:
       // This error is only encountered if |crl_required| is true.
       OSP_DCHECK(crl_required);
       return Error(Error::Code::kErrCrlInvalid,
-                   "Failed to provide a valid CRL.");
+                   absl::StrCat("Failed to provide a valid CRL: ",
+                                verify_error.message()));
     case Error::Code::kErrCertsRevoked:
       return Error(Error::Code::kErrCertsRevoked,
-                   "Failed certificate revocation check.");
+                   absl::StrCat("Failed certificate revocation check: ",
+                                verify_error.message()));
     case Error::Code::kNone:
       return Error::None();
     default:
       return Error(Error::Code::kCastV2CertNotSignedByTrustedCa,
-                   "Failed verifying cast device certificate.");
+                   absl::StrCat("Failed verifying cast device certificate: ",
+                                verify_error.message()));
   }
-  return Error::None();
 }
 
 Error VerifyAndMapDigestAlgorithm(HashAlgorithm response_digest_algorithm,
@@ -170,6 +186,21 @@ AuthContext AuthContext::Create() {
   return AuthContext(CastNonce::Get());
 }
 
+// static
+AuthContext AuthContext::CreateForTest(const std::string& nonce_data) {
+  std::string nonce;
+  if (nonce_data.empty()) {
+    nonce = std::string(kNonceSizeInBytes, '0');
+  } else {
+    while (nonce.size() < kNonceSizeInBytes) {
+      nonce += nonce_data;
+    }
+    nonce.erase(kNonceSizeInBytes);
+  }
+  OSP_DCHECK_EQ(nonce.size(), kNonceSizeInBytes);
+  return AuthContext(nonce);
+}
+
 AuthContext::AuthContext(const std::string& nonce) : nonce_(nonce) {}
 
 AuthContext::~AuthContext() {}
@@ -185,38 +216,38 @@ Error AuthContext::VerifySenderNonce(const std::string& nonce_response,
   return Error::None();
 }
 
-Error VerifyTLSCertificateValidity(X509* peer_cert,
+Error VerifyTLSCertificateValidity(const ParsedCertificate& peer_cert,
                                    std::chrono::seconds verification_time) {
   // Ensure the peer cert is valid and doesn't have an excessive remaining
   // lifetime. Although it is not verified as an X.509 certificate, the entire
   // structure is signed by the AuthResponse, so the validity field from X.509
   // is repurposed as this signature's expiration.
-  DateTime not_before;
-  DateTime not_after;
-  if (!GetCertValidTimeRange(peer_cert, &not_before, &not_after)) {
-    return Error(Error::Code::kErrCertsParse,
-                 PARSE_ERROR_PREFIX "Parsing validity fields failed.");
+  ErrorOr<DateTime> maybe_not_before = peer_cert.GetNotBeforeTime();
+  if (!maybe_not_before) {
+    return maybe_not_before.error();
   }
+  ErrorOr<DateTime> maybe_not_after = peer_cert.GetNotAfterTime();
+  if (!maybe_not_after) {
+    return maybe_not_after.error();
+  }
+  std::chrono::seconds not_before_seconds =
+      DateTimeToSeconds(maybe_not_before.value());
+  std::chrono::seconds not_after_seconds =
+      DateTimeToSeconds(maybe_not_after.value());
 
   std::chrono::seconds lifetime_limit =
       verification_time +
       std::chrono::hours(24 * kMaxSelfSignedCertLifetimeInDays);
-  DateTime verification_time_exploded = {};
-  DateTime lifetime_limit_exploded = {};
-  OSP_CHECK(DateTimeFromSeconds(verification_time.count(),
-                                &verification_time_exploded));
-  OSP_CHECK(
-      DateTimeFromSeconds(lifetime_limit.count(), &lifetime_limit_exploded));
-  if (verification_time_exploded < not_before) {
+  if (verification_time < not_before_seconds) {
     return Error(Error::Code::kCastV2TlsCertValidStartDateInFuture,
                  PARSE_ERROR_PREFIX
                  "Certificate's valid start date is in the future.");
   }
-  if (not_after < verification_time_exploded) {
+  if (not_after_seconds < verification_time) {
     return Error(Error::Code::kCastV2TlsCertExpired,
                  PARSE_ERROR_PREFIX "Certificate has expired.");
   }
-  if (lifetime_limit_exploded < not_after) {
+  if (lifetime_limit < not_after_seconds) {
     return Error(Error::Code::kCastV2TlsCertValidityPeriodTooLong,
                  PARSE_ERROR_PREFIX "Peer cert lifetime is too long.");
   }
@@ -234,7 +265,7 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsImpl(
 
 ErrorOr<CastDeviceCertPolicy> AuthenticateChallengeReplyImpl(
     const CastMessage& challenge_reply,
-    X509* peer_cert,
+    const ParsedCertificate& peer_cert,
     const AuthContext& auth_context,
     const CRLPolicy& crl_policy,
     TrustStore* cast_trust_store,
@@ -260,40 +291,37 @@ ErrorOr<CastDeviceCertPolicy> AuthenticateChallengeReplyImpl(
     return result;
   }
 
-  int cert_len = i2d_X509(peer_cert, nullptr);
-  if (cert_len <= 0) {
-    return Error(Error::Code::kErrCertsParse, "Serializing cert failed.");
-  }
   size_t nonce_response_size = nonce_response.size();
-  std::vector<uint8_t> nonce_plus_peer_cert_der(nonce_response_size + cert_len,
-                                                0);
-  std::copy(nonce_response.begin(), nonce_response.end(),
-            &nonce_plus_peer_cert_der[0]);
-  uint8_t* data = &nonce_plus_peer_cert_der[nonce_response_size];
-  if (!i2d_X509(peer_cert, &data)) {
-    return Error(Error::Code::kErrCertsParse, "Serializing cert failed.");
+  ErrorOr<std::vector<uint8_t>> nonce_plus_peer_cert_der =
+      peer_cert.SerializeToDER(nonce_response_size);
+  if (!nonce_plus_peer_cert_der) {
+    return nonce_plus_peer_cert_der.error();
   }
+  std::copy(nonce_response.begin(), nonce_response.end(),
+            &nonce_plus_peer_cert_der.value()[0]);
 
-  return VerifyCredentialsImpl(response, nonce_plus_peer_cert_der, crl_policy,
-                               cast_trust_store, crl_trust_store,
+  return VerifyCredentialsImpl(response, nonce_plus_peer_cert_der.value(),
+                               crl_policy, cast_trust_store, crl_trust_store,
                                verification_time, false);
 }
 
 ErrorOr<CastDeviceCertPolicy> AuthenticateChallengeReply(
     const CastMessage& challenge_reply,
-    X509* peer_cert,
-    const AuthContext& auth_context) {
+    const ParsedCertificate& peer_cert,
+    const AuthContext& auth_context,
+    TrustStore* cast_trust_store,
+    TrustStore* crl_trust_store) {
   DateTime now = {};
   OSP_CHECK(DateTimeFromSeconds(GetWallTimeSinceUnixEpoch().count(), &now));
   CRLPolicy policy = CRLPolicy::kCrlOptional;
-  return AuthenticateChallengeReplyImpl(
-      challenge_reply, peer_cert, auth_context, policy,
-      /* cast_trust_store */ nullptr, /* crl_trust_store */ nullptr, now);
+  return AuthenticateChallengeReplyImpl(challenge_reply, peer_cert,
+                                        auth_context, policy, cast_trust_store,
+                                        crl_trust_store, now);
 }
 
 ErrorOr<CastDeviceCertPolicy> AuthenticateChallengeReplyForTest(
     const CastMessage& challenge_reply,
-    X509* peer_cert,
+    const ParsedCertificate& peer_cert,
     const AuthContext& auth_context,
     CRLPolicy crl_policy,
     TrustStore* cast_trust_store,
@@ -333,9 +361,6 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsImpl(
     return Error(Error::Code::kCastV2SignatureEmpty, "Signature is empty.");
   }
 
-  // Verify the certificate
-  std::unique_ptr<CertVerificationContext> verification_context;
-
   // Build a single vector containing the certificate chain.
   std::vector<std::string> cert_chain;
   cert_chain.push_back(response.client_auth_certificate());
@@ -351,12 +376,13 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsImpl(
 
   // Perform certificate verification.
   CastDeviceCertPolicy device_policy;
+  std::unique_ptr<ParsedCertificate> target_cert;
   Error verify_result =
-      VerifyDeviceCert(cert_chain, verification_time, &verification_context,
+      VerifyDeviceCert(cert_chain, verification_time, &target_cert,
                        &device_policy, crl.get(), crl_policy, cast_trust_store);
 
   // Handle and report errors.
-  Error result = MapToOpenscreenError(verify_result.code(),
+  Error result = MapToOpenscreenError(verify_result,
                                       crl_policy == CRLPolicy::kCrlRequired);
   if (!result.ok()) {
     return result;
@@ -375,8 +401,7 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsImpl(
       static_cast<uint32_t>(response.signature().size())};
   ConstDataSpan siginput = {signature_input.data(),
                             static_cast<uint32_t>(signature_input.size())};
-  if (!verification_context->VerifySignatureOverData(signature, siginput,
-                                                     digest_algorithm)) {
+  if (!target_cert->VerifySignedData(digest_algorithm, siginput, signature)) {
     return Error(Error::Code::kCastV2SignedBlobsMismatch,
                  "Failed verifying signature over data.");
   }
@@ -387,14 +412,17 @@ ErrorOr<CastDeviceCertPolicy> VerifyCredentialsImpl(
 ErrorOr<CastDeviceCertPolicy> VerifyCredentials(
     const AuthResponse& response,
     const std::vector<uint8_t>& signature_input,
+    TrustStore* cast_trust_store,
+    TrustStore* crl_trust_store,
     bool enforce_revocation_checking,
     bool enforce_sha256_checking) {
   DateTime now = {};
   OSP_CHECK(DateTimeFromSeconds(GetWallTimeSinceUnixEpoch().count(), &now));
   CRLPolicy policy = (enforce_revocation_checking) ? CRLPolicy::kCrlRequired
                                                    : CRLPolicy::kCrlOptional;
-  return VerifyCredentialsImpl(response, signature_input, policy, nullptr,
-                               nullptr, now, enforce_sha256_checking);
+  return VerifyCredentialsImpl(response, signature_input, policy,
+                               cast_trust_store, crl_trust_store, now,
+                               enforce_sha256_checking);
 }
 
 ErrorOr<CastDeviceCertPolicy> VerifyCredentialsForTest(

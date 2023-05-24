@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <algorithm>
 
 #include "base/logging.h"
-#include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -19,7 +18,6 @@
 #include "ui/events/keycodes/keysym_to_unicode.h"
 #include "ui/events/keycodes/xkb_keysym.h"
 #include "ui/gfx/x/keysyms/keysyms.h"
-#include "ui/gfx/x/x11.h"
 #include "ui/gfx/x/xinput.h"
 #include "ui/gfx/x/xproto.h"
 #include "ui/gfx/x/xproto_types.h"
@@ -133,7 +131,7 @@ namespace {
 // Please refer to crbug.com/386066.
 //
 const struct MAP0 {
-  KeySym ch0;
+  uint32_t ch0;
   uint8_t vk;
   bool operator()(const MAP0& m1, const MAP0& m2) const {
     return m1.ch0 < m2.ch0;
@@ -193,7 +191,7 @@ const struct MAP0 {
 };
 
 const struct MAP1 {
-  KeySym ch0;
+  uint32_t ch0;
   unsigned sc;
   uint8_t vk;
   bool operator()(const MAP1& m1, const MAP1& m2) const {
@@ -382,9 +380,9 @@ const struct MAP1 {
 };
 
 const struct MAP2 {
-  KeySym ch0;
+  uint32_t ch0;
   unsigned sc;
-  KeySym ch1;
+  uint32_t ch1;
   uint8_t vk;
   bool operator()(const MAP2& m1, const MAP2& m2) const {
     if (m1.ch0 == m2.ch0 && m1.sc == m2.sc)
@@ -423,10 +421,10 @@ const struct MAP2 {
 };
 
 const struct MAP3 {
-  KeySym ch0;
+  uint32_t ch0;
   unsigned sc;
-  KeySym ch1;
-  KeySym ch2;
+  uint32_t ch1;
+  uint32_t ch2;
   uint8_t vk;
   bool operator()(const MAP3& m1, const MAP3& m2) const {
     if (m1.ch0 == m2.ch0 && m1.sc == m2.sc && m1.ch1 == m2.ch1)
@@ -545,10 +543,10 @@ KeyboardCode FindVK(const T_MAP& key, const T_MAP* map, size_t size) {
 // based on KeySym, and never fall back to MAP0~MAP3, since some layouts
 // generate them by applying the Control/AltGr modifier to some other key.
 // e.g. in de(neo), AltGr+V generates XK_Enter.
-bool IsTtyFunctionOrSpaceKey(KeySym keysym) {
-  KeySym keysyms[] = {XK_BackSpace, XK_Tab,    XK_Linefeed,    XK_Clear,
-                      XK_Return,    XK_Pause,  XK_Scroll_Lock, XK_Sys_Req,
-                      XK_Escape,    XK_Delete, XK_space};
+bool IsTtyFunctionOrSpaceKey(uint32_t keysym) {
+  uint32_t keysyms[] = {XK_BackSpace, XK_Tab,    XK_Linefeed,    XK_Clear,
+                        XK_Return,    XK_Pause,  XK_Scroll_Lock, XK_Sys_Req,
+                        XK_Escape,    XK_Delete, XK_space};
 
   for (unsigned long i : keysyms) {
     if (i == keysym)
@@ -557,9 +555,9 @@ bool IsTtyFunctionOrSpaceKey(KeySym keysym) {
   return false;
 }
 
-::KeySym TranslateKey(uint32_t keycode, uint32_t modifiers) {
-  auto* connection = x11::Connection::Get();
-  return static_cast<::KeySym>(connection->KeycodeToKeysym(keycode, modifiers));
+uint32_t TranslateKey(uint32_t keycode, uint32_t modifiers) {
+  return x11::Connection::Get()->KeycodeToKeysym(
+      static_cast<x11::KeyCode>(keycode), modifiers);
 }
 
 void GetKeycodeAndModifiers(const x11::Event& event,
@@ -649,30 +647,30 @@ KeyboardCode KeyboardCodeFromXKeyEvent(const x11::Event& xev) {
       !IsCursorKey(keysym) && !IsPFKey(keysym) && !IsFunctionKey(keysym) &&
       !IsModifierKey(keysym)) {
     MAP0 key0 = {keysym & 0xFFFF, 0};
-    keycode = FindVK(key0, map0, base::size(map0));
+    keycode = FindVK(key0, map0, std::size(map0));
     if (keycode != VKEY_UNKNOWN)
       return keycode;
 
     MAP1 key1 = {keysym & 0xFFFF, xkeycode, 0};
-    keycode = FindVK(key1, map1, base::size(map1));
+    keycode = FindVK(key1, map1, std::size(map1));
     if (keycode != VKEY_UNKNOWN)
       return keycode;
 
-    KeySym keysym_shift{};
+    uint32_t keysym_shift{};
     modifiers |= static_cast<int>(x11::KeyButMask::Shift);
     keysym_shift = TranslateKey(xkeycode, modifiers);
     MAP2 key2 = {keysym & 0xFFFF, xkeycode, keysym_shift & 0xFFFF, 0};
-    keycode = FindVK(key2, map2, base::size(map2));
+    keycode = FindVK(key2, map2, std::size(map2));
     if (keycode != VKEY_UNKNOWN)
       return keycode;
 
-    KeySym keysym_altgr{};
+    uint32_t keysym_altgr{};
     modifiers &= ~static_cast<int>(x11::KeyButMask::Shift);
     modifiers |= static_cast<int>(x11::KeyButMask::Mod1);
     keysym_altgr = TranslateKey(xkeycode, modifiers);
     MAP3 key3 = {keysym & 0xFFFF, xkeycode, keysym_shift & 0xFFFF,
                  keysym_altgr & 0xFFFF, 0};
-    keycode = FindVK(key3, map3, base::size(map3));
+    keycode = FindVK(key3, map3, std::size(map3));
     if (keycode != VKEY_UNKNOWN)
       return keycode;
 
@@ -681,9 +679,9 @@ KeyboardCode KeyboardCodeFromXKeyEvent(const x11::Event& xev) {
     // to just find VKEY with (ch0+sc+ch1). This is the best we could do.
     MAP3 key4 = {keysym & 0xFFFF, xkeycode, keysym_shift & 0xFFFF, 0, 0};
     const MAP3* p =
-        std::lower_bound(map3, map3 + base::size(map3), key4, MAP3());
-    if (p != map3 + base::size(map3) && p->ch0 == key4.ch0 &&
-        p->sc == key4.sc && p->ch1 == key4.ch1)
+        std::lower_bound(map3, map3 + std::size(map3), key4, MAP3());
+    if (p != map3 + std::size(map3) && p->ch0 == key4.ch0 && p->sc == key4.sc &&
+        p->ch1 == key4.ch1)
       return static_cast<KeyboardCode>(p->vk);
   }
 
@@ -999,7 +997,7 @@ uint16_t GetCharacterFromXEvent(const x11::Event& xev) {
   uint32_t xkeycode = 0;
   uint32_t modifiers = 0;
   GetKeycodeAndModifiers(xev, &xkeycode, &modifiers);
-  KeySym keysym = TranslateKey(xkeycode, modifiers);
+  uint32_t keysym = TranslateKey(xkeycode, modifiers);
   return GetUnicodeCharacterFromXKeySym(keysym);
 }
 
@@ -1017,8 +1015,8 @@ DomKey GetDomKeyFromXEvent(const x11::Event& xev) {
   // no keyboard combinations with ctrl key are mapped to printable character.
   // https://crbug.com/633838
   modifiers &= ~static_cast<int>(x11::KeyButMask::Control);
-  KeySym keysym = TranslateKey(xkeycode, modifiers);
-  base::char16 ch = GetUnicodeCharacterFromXKeySym(keysym);
+  uint32_t keysym = TranslateKey(xkeycode, modifiers);
+  char16_t ch = GetUnicodeCharacterFromXKeySym(keysym);
   return XKeySymToDomKey(keysym, ch);
 }
 
@@ -1168,7 +1166,7 @@ KeyboardCode DefaultKeyboardCodeFromHardwareKeycode(
       VKEY_COMPOSE,            // 0x87: KEY_COMPOSE          Menu
   };
 
-  if (hardware_code >= base::size(kHardwareKeycodeMap)) {
+  if (hardware_code >= std::size(kHardwareKeycodeMap)) {
     // Additional keycodes used by the Chrome OS top row special function keys.
     switch (hardware_code) {
       case 0xA6:  // KEY_BACK
@@ -1178,7 +1176,12 @@ KeyboardCode DefaultKeyboardCodeFromHardwareKeycode(
       case 0xB5:  // KEY_REFRESH
         return VKEY_BROWSER_REFRESH;
       case 0xD4:  // KEY_DASHBOARD
-        return VKEY_MEDIA_LAUNCH_APP2;
+        // This was changed from VKEY_MEDIA_LAUNCH_APP2 when the full screen
+        // key was moved to VKEY_ZOOM with crbug.com/1204710. In order to
+        // maintain existing behavior this was kept consistent but it
+        // seems like this should have been VKEY_MEDIA_LAUNCH_APP1 aka
+        // overview in the first place.
+        return VKEY_ZOOM;
       case 0xE8:  // KEY_BRIGHTNESSDOWN
         return VKEY_BRIGHTNESS_DOWN;
       case 0xE9:  // KEY_BRIGHTNESSUP
@@ -1484,9 +1487,8 @@ unsigned int XKeyCodeForWindowsKeyCode(ui::KeyboardCode key_code,
   // crbug.com/386066 and crbug.com/390263 are examples of problems
   // associated with this.
   //
-  auto keysym =
-      static_cast<x11::KeySym>(XKeysymForWindowsKeyCode(key_code, false));
-  return static_cast<unsigned int>(connection->KeysymToKeycode(keysym));
+  return static_cast<uint8_t>(
+      connection->KeysymToKeycode(XKeysymForWindowsKeyCode(key_code, false)));
 }
 
 }  // namespace ui

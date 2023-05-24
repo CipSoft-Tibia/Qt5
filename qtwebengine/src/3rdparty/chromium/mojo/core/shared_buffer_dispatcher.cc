@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -125,6 +125,7 @@ scoped_refptr<SharedBufferDispatcher> SharedBufferDispatcher::Deserialize(
     PlatformHandle* platform_handles,
     size_t num_platform_handles) {
   if (num_bytes != sizeof(SerializedState)) {
+    AssertNotExtractingHandlesFromMessage();
     LOG(ERROR) << "Invalid serialized shared buffer dispatcher (bad size)";
     return nullptr;
   }
@@ -132,16 +133,19 @@ scoped_refptr<SharedBufferDispatcher> SharedBufferDispatcher::Deserialize(
   const SerializedState* serialized_state =
       static_cast<const SerializedState*>(bytes);
   if (!serialized_state->num_bytes) {
+    AssertNotExtractingHandlesFromMessage();
     LOG(ERROR)
         << "Invalid serialized shared buffer dispatcher (invalid num_bytes)";
     return nullptr;
   }
 
-  if (num_ports)
+  if (num_ports) {
+    AssertNotExtractingHandlesFromMessage();
     return nullptr;
+  }
 
   PlatformHandle handles[2];
-#if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_MAC)
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_MAC)
   if (serialized_state->access_mode ==
       MOJO_PLATFORM_SHARED_MEMORY_REGION_ACCESS_MODE_WRITABLE) {
     if (num_platform_handles != 2)
@@ -152,13 +156,20 @@ scoped_refptr<SharedBufferDispatcher> SharedBufferDispatcher::Deserialize(
       return nullptr;
   }
 #else
-  if (num_platform_handles != 1)
+  if (num_platform_handles != 1) {
+    AssertNotExtractingHandlesFromMessage();
     return nullptr;
+  }
 #endif
   handles[0] = std::move(platform_handles[0]);
 
-  base::UnguessableToken guid = base::UnguessableToken::Deserialize(
-      serialized_state->guid_high, serialized_state->guid_low);
+  absl::optional<base::UnguessableToken> guid =
+      base::UnguessableToken::Deserialize(serialized_state->guid_high,
+                                          serialized_state->guid_low);
+  if (!guid.has_value()) {
+    AssertNotExtractingHandlesFromMessage();
+    return nullptr;
+  }
 
   base::subtle::PlatformSharedMemoryRegion::Mode mode;
   switch (serialized_state->access_mode) {
@@ -172,6 +183,7 @@ scoped_refptr<SharedBufferDispatcher> SharedBufferDispatcher::Deserialize(
       mode = base::subtle::PlatformSharedMemoryRegion::Mode::kUnsafe;
       break;
     default:
+      AssertNotExtractingHandlesFromMessage();
       LOG(ERROR) << "Invalid serialized shared buffer access mode.";
       return nullptr;
   }
@@ -179,8 +191,9 @@ scoped_refptr<SharedBufferDispatcher> SharedBufferDispatcher::Deserialize(
   auto region = base::subtle::PlatformSharedMemoryRegion::Take(
       CreateSharedMemoryRegionHandleFromPlatformHandles(std::move(handles[0]),
                                                         std::move(handles[1])),
-      mode, static_cast<size_t>(serialized_state->num_bytes), guid);
+      mode, static_cast<size_t>(serialized_state->num_bytes), guid.value());
   if (!region.IsValid()) {
+    AssertNotExtractingHandlesFromMessage();
     LOG(ERROR)
         << "Invalid serialized shared buffer dispatcher (invalid num_bytes?)";
     return nullptr;
@@ -250,10 +263,10 @@ MojoResult SharedBufferDispatcher::DuplicateBufferHandle(
     } else if (region_.GetMode() ==
                base::subtle::PlatformSharedMemoryRegion::Mode::kWritable) {
       auto handle = region_.PassPlatformHandle();
-#if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_MAC)
-      // On POSIX systems excluding Android, Fuchsia, and OSX, we explicitly
-      // wipe out the secondary (read-only) FD from the platform handle to
-      // repurpose it for exclusive unsafe usage.
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_APPLE)
+      // On POSIX systems excluding Android, Fuchsia, iOS, and macOS, we
+      // explicitly wipe out the secondary (read-only) FD from the platform
+      // handle to repurpose it for exclusive unsafe usage.
       handle.readonly_fd.reset();
 #endif
       region_ = base::subtle::PlatformSharedMemoryRegion::Take(
@@ -310,7 +323,7 @@ void SharedBufferDispatcher::StartSerialize(uint32_t* num_bytes,
   *num_bytes = sizeof(SerializedState);
   *num_ports = 0;
   *num_platform_handles = 1;
-#if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_MAC)
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_MAC)
   if (region_.GetMode() ==
       base::subtle::PlatformSharedMemoryRegion::Mode::kWritable) {
     *num_platform_handles = 2;
@@ -349,7 +362,7 @@ bool SharedBufferDispatcher::EndSerialize(void* destination,
   serialized_state->padding = 0;
 
   auto region = std::move(region_);
-#if defined(OS_POSIX) && !defined(OS_ANDROID) && !defined(OS_MAC)
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_MAC)
   if (region.GetMode() ==
       base::subtle::PlatformSharedMemoryRegion::Mode::kWritable) {
     PlatformHandle platform_handles[2];

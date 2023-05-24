@@ -24,7 +24,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -32,10 +32,13 @@
 
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
+#include "third_party/blink/renderer/core/editing/iterators/text_iterator.h"
+#include "third_party/blink/renderer/core/editing/text_offset_mapping.h"
 #include "third_party/blink/renderer/core/editing/text_segments.h"
 #include "third_party/blink/renderer/core/editing/visible_position.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+#include "third_party/blink/renderer/platform/text/character.h"
 #include "third_party/blink/renderer/platform/text/text_boundaries.h"
 #include "third_party/blink/renderer/platform/text/text_break_iterator.h"
 
@@ -46,11 +49,6 @@ namespace {
 // Helpers used during word movement
 static bool IsLineBreak(UChar ch) {
   return ch == kNewlineCharacter || ch == kCarriageReturnCharacter;
-}
-
-static bool IsWordBreak(UChar ch) {
-  return WTF::unicode::IsAlphanumeric(ch) || IsLineBreak(ch) ||
-         ch == kLowLineCharacter || WTF::unicode::IsPunct(ch);
 }
 
 PositionInFlatTree EndOfWordPositionInternal(const PositionInFlatTree& position,
@@ -92,6 +90,11 @@ PositionInFlatTree EndOfWordPositionInternal(const PositionInFlatTree& position,
   return TextSegments::FindBoundaryForward(position, &finder);
 }
 
+// IMPORTANT: If you update the logic of this algorithm, please also update the
+// one in `AbstractInlineTextBox::GetWordBoundariesForText`. The word offsets
+// computed over there needs to stay in sync with the ones computed here in
+// order for screen readers to announce the right words when using caret
+// navigation (ctrl + left/right arrow).
 PositionInFlatTree NextWordPositionInternal(
     const PositionInFlatTree& position,
     PlatformWordBehavior platform_word_behavior) {
@@ -127,17 +130,28 @@ PositionInFlatTree NextWordPositionInternal(
         // Move after line break
         if (IsLineBreak(text[runner]))
           return SkipWhitespaceIfNeeded(text, runner);
-        // Accumulate punctuation runs
+        // Accumulate punctuation/surrogate pair runs.
         if (static_cast<unsigned>(runner) < text.length() &&
-            WTF::unicode::IsPunct(text[runner])) {
+            (WTF::unicode::IsPunct(text[runner]) ||
+             U16_IS_SURROGATE(text[runner]))) {
           if (WTF::unicode::IsAlphanumeric(text[runner - 1]))
             return SkipWhitespaceIfNeeded(text, runner);
           continue;
         }
-        // We stop searching when the character preceding the break is
-        // alphanumeric or punctuations or underscore or linebreaks.
+        // We stop searching in the following conditions:
+        // 1. When the character preceding the break is
+        //    alphanumeric or punctuations or underscore or linebreaks.
+        // Only on Windows:
+        // 2. When the character preceding the break is a whitespace and
+        //    the character following it is an alphanumeric or punctuations
+        //    or underscore or linebreaks.
         if (static_cast<unsigned>(runner) < text.length() &&
             IsWordBreak(text[runner - 1]))
+          return SkipWhitespaceIfNeeded(text, runner);
+        else if (platform_word_behavior_ ==
+                     PlatformWordBehavior::kWordSkipSpaces &&
+                 static_cast<unsigned>(runner) < text.length() &&
+                 IsWhitespace(text[runner - 1]) && IsWordBreak(text[runner]))
           return SkipWhitespaceIfNeeded(text, runner);
       }
       if (text[text.length() - 1] != kNewlineCharacter)
@@ -197,9 +211,10 @@ PositionInFlatTree PreviousWordPositionInternal(
       int punct_runner = -1;
       for (int runner = it->preceding(offset); runner != kTextBreakDone;
            runner = it->preceding(runner)) {
-        // Accumulate punctuation runs
+        // Accumulate punctuation/surrogate pair runs.
         if (static_cast<unsigned>(runner) < text.length() &&
-            WTF::unicode::IsPunct(text[runner])) {
+            (WTF::unicode::IsPunct(text[runner]) ||
+             U16_IS_SURROGATE(text[runner]))) {
           if (WTF::unicode::IsAlphanumeric(text[runner - 1]))
             return Position::Before(runner);
           punct_runner = runner;
@@ -276,25 +291,14 @@ Position EndOfWordPosition(const Position& position, WordSide side) {
       EndOfWordPosition(ToPositionInFlatTree(position), side));
 }
 
-VisiblePosition EndOfWord(const VisiblePosition& position, WordSide side) {
-  return CreateVisiblePosition(
-      EndOfWordPosition(position.DeepEquivalent(), side),
-      TextAffinity::kUpstreamIfPossible);
-}
-
-VisiblePositionInFlatTree EndOfWord(const VisiblePositionInFlatTree& position,
-                                    WordSide side) {
-  return CreateVisiblePosition(
-      EndOfWordPosition(position.DeepEquivalent(), side),
-      TextAffinity::kUpstreamIfPossible);
-}
-
 // ----
 // TODO(editing-dev): Because of word boundary can not be an upstream position,
 // we should make this function to return |PositionInFlatTree|.
 PositionInFlatTreeWithAffinity NextWordPosition(
     const PositionInFlatTree& start,
     PlatformWordBehavior platform_word_behavior) {
+  if (start.IsNull())
+    return PositionInFlatTreeWithAffinity();
   const PositionInFlatTree next =
       NextWordPositionInternal(start, platform_word_behavior);
   // Note: The word boundary can not be upstream position.
@@ -315,6 +319,8 @@ PositionWithAffinity NextWordPosition(
 
 PositionInFlatTreeWithAffinity PreviousWordPosition(
     const PositionInFlatTree& start) {
+  if (start.IsNull())
+    return PositionInFlatTreeWithAffinity();
   const PositionInFlatTree prev = PreviousWordPositionInternal(start);
   return AdjustBackwardPositionToAvoidCrossingEditingBoundaries(
       PositionInFlatTreeWithAffinity(prev), start);
@@ -339,4 +345,38 @@ Position StartOfWordPosition(const Position& position, WordSide side) {
       StartOfWordPosition(ToPositionInFlatTree(position), side));
 }
 
+PositionInFlatTree MiddleOfWordPosition(const PositionInFlatTree& word_start,
+                                        const PositionInFlatTree& word_end) {
+  if (word_start >= word_end) {
+    return PositionInFlatTree(nullptr, 0);
+  }
+  unsigned middle =
+      TextIteratorAlgorithm<EditingInFlatTreeStrategy>::RangeLength(word_start,
+                                                                    word_end) /
+      2;
+  TextOffsetMapping::ForwardRange range =
+      TextOffsetMapping::ForwardRangeOf(word_start);
+  middle += TextOffsetMapping(*range.begin()).ComputeTextOffset(word_start);
+  for (auto inline_contents : range) {
+    const TextOffsetMapping mapping(inline_contents);
+    unsigned length = mapping.GetText().length();
+    if (middle < length) {
+      return mapping.GetPositionBefore(middle);
+    }
+    middle -= length;
+  }
+  NOTREACHED();
+  return PositionInFlatTree(nullptr, 0);
+}
+
+Position MiddleOfWordPosition(const Position& word_start,
+                              const Position& word_end) {
+  return ToPositionInDOMTree(MiddleOfWordPosition(
+      ToPositionInFlatTree(word_start), ToPositionInFlatTree(word_end)));
+}
+
+bool IsWordBreak(UChar ch) {
+  return (WTF::unicode::IsPrintableChar(ch) && !IsWhitespace(ch)) ||
+         U16_IS_SURROGATE(ch) || IsLineBreak(ch) || ch == kLowLineCharacter;
+}
 }  // namespace blink

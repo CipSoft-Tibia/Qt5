@@ -1,12 +1,12 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/linux/pkg_config.gni")
 import("//build/config/jumbo.gni")
+import("//build/config/linux/pkg_config.gni")
+import("//build/config/ozone.gni")
 import("//build/config/ui.gni")
 import("//ui/base/ui_features.gni")
-import("//ui/ozone/ozone.gni")
 
 if (use_xkbcommon) {
   pkg_config("xkbcommon") {
@@ -15,6 +15,8 @@ if (use_xkbcommon) {
 }
 
 jumbo_source_set("xkb") {
+  configs += [ ":xkbcommon" ]
+
   sources = [
     "keyboard_code_conversion_xkb.cc",
     "keyboard_code_conversion_xkb.h",
@@ -27,19 +29,18 @@ jumbo_source_set("xkb") {
     "//ui/gfx/x/keysyms",
   ]
 
-  if (use_xkbcommon) {
-    public_configs = [ ":xkbcommon" ]
-  }
-
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//ui/events:dom_keycode_converter",
   ]
 }
 
-if (use_x11 || ozone_platform_x11) {
+if (ozone_platform_x11) {
   jumbo_component("x11") {
     output_name = "keycodes_x11"
+
+    configs += [ ":xkbcommon" ]
 
     sources = [
       "keyboard_code_conversion_x.cc",

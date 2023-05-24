@@ -7,11 +7,11 @@
 namespace typed_array {
 const kBuiltinNameFrom: constexpr string = '%TypedArray%.from';
 
-type BuiltinsName extends int31 constexpr 'Builtins::Name';
+type BuiltinsName extends int31 constexpr 'Builtin';
 const kTypedArrayPrototypeValues: constexpr BuiltinsName
-    generates 'Builtins::kTypedArrayPrototypeValues';
+    generates 'Builtin::kTypedArrayPrototypeValues';
 const kArrayPrototypeValues: constexpr BuiltinsName
-    generates 'Builtins::kArrayPrototypeValues';
+    generates 'Builtin::kArrayPrototypeValues';
 
 extern builtin IterableToList(implicit context: Context)(JSAny, JSAny): JSArray;
 
@@ -90,7 +90,7 @@ TypedArrayFrom(js-implicit context: NativeContext, receiver: JSAny)(
         typeswitch (source) {
           case (sourceArray: JSArray): {
             // Check that the iterator function is exactly
-            // Builtins::kArrayPrototypeValues.
+            // Builtin::kArrayPrototypeValues.
             if (!TaggedEqual(
                     iteratorFn.shared_function_info.function_data,
                     SmiConstant(kArrayPrototypeValues))) {
@@ -104,11 +104,12 @@ TypedArrayFrom(js-implicit context: NativeContext, receiver: JSAny)(
             finalSource = source;
           }
           case (sourceTypedArray: JSTypedArray): {
-            const sourceBuffer = sourceTypedArray.buffer;
-            if (IsDetachedBuffer(sourceBuffer)) goto UseUserProvidedIterator;
+            finalLength =
+                LoadJSTypedArrayLengthAndCheckDetached(sourceTypedArray)
+                otherwise UseUserProvidedIterator;
 
             // Check that the iterator function is exactly
-            // Builtins::kTypedArrayPrototypeValues.
+            // Builtin::kTypedArrayPrototypeValues.
             if (!TaggedEqual(
                     iteratorFn.shared_function_info.function_data,
                     SmiConstant(kTypedArrayPrototypeValues)))
@@ -117,7 +118,6 @@ TypedArrayFrom(js-implicit context: NativeContext, receiver: JSAny)(
             // Source is a TypedArray with unmodified iterator behavior. Use the
             // source object directly, taking advantage of the special-case code
             // in TypedArrayCopyElements
-            finalLength = sourceTypedArray.length;
             finalSource = source;
           }
           case (Object): {
@@ -151,7 +151,9 @@ TypedArrayFrom(js-implicit context: NativeContext, receiver: JSAny)(
         ThrowRangeError(MessageTemplate::kInvalidTypedArrayLength, length);
       }
     } label IteratorNotCallable(_value: JSAny) deferred {
-      ThrowTypeError(MessageTemplate::kIteratorSymbolNonCallable);
+      ThrowTypeError(
+          MessageTemplate::kFirstArgumentIteratorSymbolNonCallable,
+          kBuiltinNameFrom);
     }
 
     const finalLengthNum = Convert<Number>(finalLength);

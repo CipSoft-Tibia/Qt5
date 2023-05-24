@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include "components/signin/ios/browser/active_state_manager.h"
 #include "ios/web/public/browser_state.h"
-#include "ios/web/public/test/fakes/test_browser_state.h"
+#include "ios/web/public/test/fakes/fake_browser_state.h"
 #include "ios/web/public/test/web_task_environment.h"
 #include "ios/web/public/test/web_test.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -57,7 +57,7 @@ TEST_F(ActiveStateManagerImplTest, ObserverMethod) {
   ActiveStateManager::FromBrowserState(GetBrowserState())->SetActive(false);
 
   ActiveStateManagerObserver observer;
-  web::TestBrowserState browser_state;
+  web::FakeBrowserState browser_state;
   ActiveStateManager* active_state_manager =
       ActiveStateManager::FromBrowserState(&browser_state);
 

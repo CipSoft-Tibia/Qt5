@@ -11,6 +11,38 @@
     <extra-po-header_comment># Freek de Kruijf &lt;freek@opensuse.org&gt;, 2014, 2018, 2020.</extra-po-header_comment>
     <extra-po-headers>Project-Id-Version,PO-Revision-Date,Last-Translator,Language-Team,Language,MIME-Version,Content-Type,Content-Transfer-Encoding,X-Qt-Contexts,Plural-Forms,X-Generator</extra-po-headers>
 <context>
+    <name>QQuickPlatformDialog</name>
+    <message>
+        <source>Dialog is an abstract base class</source>
+        <translation>Dialoog is een abstracte basisklasse</translation>
+    </message>
+    <message>
+        <source>Cannot create an instance of StandardButton</source>
+        <translation>Kan geen exemplaar van StandardButton aanmaken</translation>
+    </message>
+</context>
+<context>
+    <name>QtQuickControls2ImagineStylePlugin</name>
+    <message>
+        <source>Imagine is an attached property</source>
+        <translation>Imagine is een aangeplakte eigenschap</translation>
+    </message>
+</context>
+<context>
+    <name>QtQuickControls2MaterialStylePlugin</name>
+    <message>
+        <source>Material is an attached property</source>
+        <translation>Material is een aangeplakte eigenschap</translation>
+    </message>
+</context>
+<context>
+    <name>QtQuickControls2UniversalStylePlugin</name>
+    <message>
+        <source>Universal is an attached property</source>
+        <translation>Universal is een aangeplakte eigenschap</translation>
+    </message>
+</context>
+<context>
     <name>Object</name>
     <message>
         <source>Duplicate scoped enum name</source>

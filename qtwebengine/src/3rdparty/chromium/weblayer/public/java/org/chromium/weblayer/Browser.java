@@ -1,23 +1,21 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.weblayer;
 
 import android.os.RemoteException;
-import android.view.View;
-import android.webkit.ValueCallback;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.fragment.app.Fragment;
 
 import org.chromium.weblayer_private.interfaces.APICallException;
 import org.chromium.weblayer_private.interfaces.IBrowser;
 import org.chromium.weblayer_private.interfaces.IBrowserClient;
+import org.chromium.weblayer_private.interfaces.IBrowserFragment;
+import org.chromium.weblayer_private.interfaces.IMediaRouteDialogFragment;
 import org.chromium.weblayer_private.interfaces.IRemoteFragment;
 import org.chromium.weblayer_private.interfaces.ITab;
-import org.chromium.weblayer_private.interfaces.ObjectWrapper;
 import org.chromium.weblayer_private.interfaces.StrictModeWorkaround;
 
 import java.util.Set;
@@ -26,34 +24,73 @@ import java.util.Set;
  * Browser contains any number of Tabs, with one active Tab. The active Tab is visible to the user,
  * all other Tabs are hidden.
  *
- * By default Browser has a single active Tab.
+ * Newly created Browsers have a single active Tab.
+ *
+ * Browser provides for two distinct ways to save state, which impacts the state of the Browser at
+ * various points in the lifecycle.
+ *
+ * Asynchronously to the file system. This is used if a {@link persistenceId} was supplied when the
+ * Browser was created. The {@link persistenceId} uniquely identifies the Browser for saving the
+ * set of tabs and navigations. This is intended for long term persistence.
+ *
+ * For Browsers created with a {@link persistenceId}, restore happens asynchronously. As a result,
+ * the Browser will not have any tabs until restore completes (which may be after the Fragment has
+ * started).
+ *
+ * If a {@link persistenceId} is not supplied, then a minimal amount of state is saved to the
+ * fragment (instance state). During recreation, if instance state is available, the state is
+ * restored in {@link onStart}. Restore happens during start so that callbacks can be attached. As
+ *  a result of this, the Browser has no tabs until the Fragment is started.
  */
-public class Browser {
+class Browser {
     // Set to null once destroyed (or for tests).
     private IBrowser mImpl;
-    private BrowserFragment mFragment;
     private final ObserverList<TabListCallback> mTabListCallbacks;
-    private final UrlBarController mUrlBarController;
 
-    private final ObserverList<BrowserRestoreCallback> mBrowserRestoreCallbacks;
+    private final ObserverList<TabInitializationCallback> mTabInitializationCallbacks;
+
+    private static int sMaxNavigationsPerTabForInstanceState;
+
+    /**
+     * Sets the maximum number of navigations saved when persisting a Browsers instance state. The
+     * max applies to each Tab in the Browser. For example, if a value of 6 is supplied and the
+     * Browser has 4 tabs, then up to 24 navigation entries may be saved. The supplied value is
+     * a recommendation, for various reasons it may not be honored. A value of 0 results in
+     * using the default.
+     *
+     * @param value The maximum number of navigations to persist.
+     *
+     * @throws IllegalArgumentException If {@code value} is less than 0.
+     *
+     * @since 98
+     */
+    public static void setMaxNavigationsPerTabForInstanceState(int value) {
+        ThreadCheck.ensureOnUiThread();
+        if (value < 0) throw new IllegalArgumentException("Max must be >= 0");
+        sMaxNavigationsPerTabForInstanceState = value;
+    }
+
+    static int getMaxNavigationsPerTabForInstanceState() {
+        return sMaxNavigationsPerTabForInstanceState;
+    }
 
     // Constructor for test mocking.
     protected Browser() {
         mImpl = null;
         mTabListCallbacks = null;
-        mUrlBarController = null;
-        mBrowserRestoreCallbacks = null;
+        mTabInitializationCallbacks = null;
     }
 
-    Browser(IBrowser impl, BrowserFragment fragment) {
+    // Constructor for browserfragment to inject the {@code tabListCallback} on startup.
+    Browser(IBrowser impl) {
         mImpl = impl;
-        mFragment = fragment;
         mTabListCallbacks = new ObserverList<TabListCallback>();
-        mBrowserRestoreCallbacks = new ObserverList<BrowserRestoreCallback>();
+        mTabInitializationCallbacks = new ObserverList<TabInitializationCallback>();
+    }
 
+    void initializeState() {
         try {
             mImpl.setClient(new BrowserClientImpl());
-            mUrlBarController = new UrlBarController(mImpl.getUrlBarController());
         } catch (RemoteException e) {
             throw new APICallException(e);
         }
@@ -65,30 +102,44 @@ public class Browser {
         }
     }
 
+    IBrowser getIBrowser() {
+        return mImpl;
+    }
+
     /**
-     * Returns the Browser for the supplied Fragment; null if
-     * {@link fragment} was not created by WebLayer.
-     *
-     * @return the Browser
+     * Returns remote counterpart for the BrowserFragment: an {@link IBrowserFragment}.
      */
-    @Nullable
-    public static Browser fromFragment(@Nullable Fragment fragment) {
-        return fragment instanceof BrowserFragment ? ((BrowserFragment) fragment).getBrowser()
-                                                   : null;
+    IBrowserFragment connectFragment() {
+        try {
+            return mImpl.getBrowserFragmentImpl();
+        } catch (RemoteException e) {
+            throw new APICallException(e);
+        }
+    }
+
+    /**
+     * Returns the remote counterpart of MediaRouteDialogFragment.
+     */
+    /* package */ IMediaRouteDialogFragment createMediaRouteDialogFragment() {
+        try {
+            return mImpl.createMediaRouteDialogFragmentImpl();
+        } catch (RemoteException e) {
+            throw new APICallException(e);
+        }
+    }
+
+    /**
+     * Returns true if this Browser has been destroyed.
+     */
+    public boolean isDestroyed() {
+        ThreadCheck.ensureOnUiThread();
+        return mImpl == null;
     }
 
     // Called prior to notifying IBrowser of destroy().
     void prepareForDestroy() {
-        mFragment = null;
         for (TabListCallback callback : mTabListCallbacks) {
             callback.onWillDestroyBrowserAndAllTabs();
-        }
-
-        // See comment in Tab$TabClientImpl.onTabDestroyed for details on this.
-        if (WebLayer.getSupportedMajorVersionInternal() >= 87) return;
-
-        for (Tab tab : getTabs()) {
-            Tab.unregisterTab(tab);
         }
     }
 
@@ -169,6 +220,21 @@ public class Browser {
     }
 
     /**
+     * Returns a List of Tabs as saved in the native Browser.
+     *
+     * @return The Tabs.
+     */
+    @NonNull
+    private int[] getTabIds() {
+        ThreadCheck.ensureOnUiThread();
+        try {
+            return mImpl.getTabIds();
+        } catch (RemoteException e) {
+            throw new APICallException(e);
+        }
+    }
+
+    /**
      * Disposes a Tab. If {@link tab} is the active Tab, no Tab is made active. After this call
      *  {@link tab} should not be used.
      *
@@ -190,6 +256,47 @@ public class Browser {
         } catch (RemoteException e) {
             throw new APICallException(e);
         }
+    }
+
+    /**
+     * Navigates to the previous navigation across all tabs according to tabs in native Browser.
+     */
+    void tryNavigateBack(@NonNull Callback<Boolean> callback) {
+        Tab activeTab = getActiveTab();
+        if (activeTab == null) {
+            callback.onResult(false);
+            return;
+        }
+        if (activeTab.dismissTransientUi()) {
+            callback.onResult(true);
+            return;
+        }
+        NavigationController controller = activeTab.getNavigationController();
+        if (controller.canGoBack()) {
+            controller.goBack();
+            callback.onResult(true);
+            return;
+        }
+        int[] tabIds = getTabIds();
+        if (tabIds.length > 1) {
+            Tab previousTab = null;
+            int activeTabId = activeTab.getId();
+            int prevId = -1;
+            for (int id : tabIds) {
+                if (id == activeTabId) {
+                    previousTab = Tab.getTabById(prevId);
+                    break;
+                }
+                prevId = id;
+            }
+            if (previousTab != null) {
+                activeTab.dispatchBeforeUnloadAndClose();
+                setActiveTab(previousTab);
+                callback.onResult(true);
+                return;
+            }
+        }
+        callback.onResult(false);
     }
 
     /**
@@ -216,14 +323,9 @@ public class Browser {
      * Returns true if this Browser is in the process of restoring the previous state.
      *
      * @param True if restoring previous state.
-     *
-     * @since 87
      */
     public boolean isRestoringPreviousState() {
         ThreadCheck.ensureOnUiThread();
-        if (WebLayer.getSupportedMajorVersionInternal() < 87) {
-            throw new UnsupportedOperationException();
-        }
         throwIfDestroyed();
         try {
             return mImpl.isRestoringPreviousState();
@@ -233,115 +335,34 @@ public class Browser {
     }
 
     /**
-     * Adds a BrowserRestoreCallback.
+     * Adds a TabInitializationCallback.
      *
-     * @param callback The BrowserRestoreCallback.
-     *
-     * @since 87
+     * @param callback The TabInitializationCallback.
      */
-    public void registerBrowserRestoreCallback(@NonNull BrowserRestoreCallback callback) {
+    public void registerTabInitializationCallback(@NonNull TabInitializationCallback callback) {
         ThreadCheck.ensureOnUiThread();
-        if (WebLayer.getSupportedMajorVersionInternal() < 87) {
-            throw new UnsupportedOperationException();
-        }
         throwIfDestroyed();
-        mBrowserRestoreCallbacks.addObserver(callback);
+        mTabInitializationCallbacks.addObserver(callback);
     }
 
     /**
-     * Removes a BrowserRestoreCallback.
+     * Removes a TabInitializationCallback.
      *
-     * @param callback The BrowserRestoreCallback.
-     *
-     * @since 87
+     * @param callback The TabInitializationCallback.
      */
-    public void unregisterBrowserRestoreCallback(@NonNull BrowserRestoreCallback callback) {
-        ThreadCheck.ensureOnUiThread();
-        if (WebLayer.getSupportedMajorVersionInternal() < 87) {
-            throw new UnsupportedOperationException();
-        }
-        throwIfDestroyed();
-        mBrowserRestoreCallbacks.removeObserver(callback);
-    }
-
-    /**
-     * Sets the View shown at the top of the browser. A value of null removes the view. The
-     * top-view is typically used to show the uri. The top-view scrolls with the page.
-     *
-     * @param view The new top-view.
-     */
-    public void setTopView(@Nullable View view) {
+    public void unregisterTabInitializationCallback(@NonNull TabInitializationCallback callback) {
         ThreadCheck.ensureOnUiThread();
         throwIfDestroyed();
-        try {
-            mImpl.setTopView(ObjectWrapper.wrap(view));
-        } catch (RemoteException e) {
-            throw new APICallException(e);
-        }
-    }
-
-    /**
-     * Sets the View shown at the top of the browser. The top-view is typically used to show the
-     * uri. This method also allows you to control the scrolling behavior of the top-view by setting
-     * a minimum height it will scroll to, and pinning the top-view to the top of the web contents.
-     *
-     * @param view The new top-view, or null to remove the view.
-     * @param minHeight The minimum height in pixels that the top controls can scoll up to. A value
-     *        of 0 means the top-view should scroll entirely off screen.
-     * @param onlyExpandControlsAtPageTop Whether the top-view should only be expanded when the web
-     *        content is scrolled to the top. A true value makes the top-view behave as though it
-     *        were inserted into the top of the page content. If true, the top-view should NOT be
-     *        used to display the URL, as this will prevent it from expanding in security-sensitive
-     *        contexts where the URL should be visible to the user.
-     * @param animate Whether or not any height/visibility changes that result from this call
-     *        should be animated.
-     *
-     * @since 86
-     */
-    public void setTopView(@Nullable View view, int minHeight, boolean onlyExpandControlsAtPageTop,
-            boolean animate) {
-        ThreadCheck.ensureOnUiThread();
-        throwIfDestroyed();
-        if (WebLayer.getSupportedMajorVersionInternal() < 86) {
-            throw new UnsupportedOperationException();
-        }
-        try {
-            mImpl.setTopViewAndScrollingBehavior(
-                    ObjectWrapper.wrap(view), minHeight, onlyExpandControlsAtPageTop, animate);
-        } catch (RemoteException e) {
-            throw new APICallException(e);
-        }
-    }
-
-    /**
-     * Sets the View shown at the bottom of the browser. A value of null removes the view.
-     *
-     * @param view The new bottom-view.
-     *
-     * @since 84
-     */
-    public void setBottomView(@Nullable View view) {
-        ThreadCheck.ensureOnUiThread();
-        throwIfDestroyed();
-        try {
-            mImpl.setBottomView(ObjectWrapper.wrap(view));
-        } catch (RemoteException e) {
-            throw new APICallException(e);
-        }
+        mTabInitializationCallbacks.removeObserver(callback);
     }
 
     /**
      * Creates a new tab attached to this browser. This will call {@link TabListCallback#onTabAdded}
      * with the new tab.
-     *
-     * @since 85
      */
     public @NonNull Tab createTab() {
         ThreadCheck.ensureOnUiThread();
         throwIfDestroyed();
-        if (WebLayer.getSupportedMajorVersionInternal() < 85) {
-            throw new UnsupportedOperationException();
-        }
         try {
             ITab iTab = mImpl.createTab();
             Tab tab = Tab.getTabById(iTab.getId());
@@ -353,23 +374,25 @@ public class Browser {
     }
 
     /**
-     * Control support for embedding use cases such as animations. This should be enabled when the
-     * container view of the fragment is animated in any way, needs to be rotated or blended, or
-     * need to control z-order with other views or other BrowserFragmentImpls. Note embedder should
-     * keep WebLayer in the default non-embedding mode when user is interacting with the web
-     * content. Embedding mode does not support encrypted video.
+     * Controls how sites are themed when WebLayer is in dark mode. WebLayer considers itself to be
+     * in dark mode if the UI_MODE_NIGHT_YES flag of its Resources' Configuration's uiMode field is
+     * set, which is typically controlled with AppCompatDelegate#setDefaultNightMode. By default
+     * pages will only be rendered in dark mode if WebLayer is in dark mode and they provide a dark
+     * theme in CSS. See DarkModeStrategy for other possible configurations.
      *
-     * @param enable Whether to support embedding
-     * @param callback {@link Callback} to be called with a boolean indicating whether request
-     * succeeded. A request might fail if it is subsumed by a subsequent request, or if this object
-     * is destroyed.
+     * @see DarkModeStrategy
+     * @param strategy See {@link DarkModeStrategy}.
+     *
+     * @since 90
      */
-    public void setSupportsEmbedding(boolean enable, @NonNull Callback<Boolean> callback) {
+    public void setDarkModeStrategy(@DarkModeStrategy int strategy) {
         ThreadCheck.ensureOnUiThread();
+        if (WebLayer.getSupportedMajorVersionInternal() < 89) {
+            throw new UnsupportedOperationException();
+        }
         throwIfDestroyed();
         try {
-            mImpl.setSupportsEmbedding(
-                    enable, ObjectWrapper.wrap((ValueCallback<Boolean>) callback::onResult));
+            mImpl.setDarkModeStrategy(strategy);
         } catch (RemoteException e) {
             throw new APICallException(e);
         }
@@ -390,15 +413,12 @@ public class Browser {
         }
     }
 
-    /**
-     * Returns the UrlBarController.
-     * @since 82
-     */
-    @NonNull
-    public UrlBarController getUrlBarController() {
-        ThreadCheck.ensureOnUiThread();
-        throwIfDestroyed();
-        return mUrlBarController;
+    public void shutdown() {
+        try {
+            mImpl.shutdown();
+        } catch (RemoteException e) {
+            throw new APICallException(e);
+        }
     }
 
     private final class BrowserClientImpl extends IBrowserClient.Stub {
@@ -444,19 +464,18 @@ public class Browser {
             for (TabListCallback callback : mTabListCallbacks) {
                 callback.onTabRemoved(tab);
             }
-            tab.onRemovedFromBrowser();
         }
 
         @Override
         public IRemoteFragment createMediaRouteDialogFragment() {
             StrictModeWorkaround.apply();
-            return MediaRouteDialogFragment.create(mFragment);
+            return new MediaRouteDialogFragmentEventHandler().getRemoteFragment();
         }
 
         @Override
-        public void onRestoreCompleted() {
-            for (BrowserRestoreCallback callback : mBrowserRestoreCallbacks) {
-                callback.onRestoreCompleted();
+        public void onTabInitializationCompleted() {
+            for (TabInitializationCallback callback : mTabInitializationCallbacks) {
+                callback.onTabInitializationCompleted();
             }
         }
     }

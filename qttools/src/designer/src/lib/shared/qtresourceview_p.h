@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 //
 //  W A R N I N G
@@ -88,21 +63,9 @@ protected:
     bool event(QEvent *event) override;
 
 private:
-
     QScopedPointer<class QtResourceViewPrivate> d_ptr;
     Q_DECLARE_PRIVATE(QtResourceView)
     Q_DISABLE_COPY_MOVE(QtResourceView)
-    Q_PRIVATE_SLOT(d_func(), void slotResourceSetActivated(QtResourceSet *))
-    Q_PRIVATE_SLOT(d_func(), void slotCurrentPathChanged(QTreeWidgetItem *))
-    Q_PRIVATE_SLOT(d_func(), void slotCurrentResourceChanged(QListWidgetItem *))
-    Q_PRIVATE_SLOT(d_func(), void slotResourceActivated(QListWidgetItem *))
-    Q_PRIVATE_SLOT(d_func(), void slotEditResources())
-    Q_PRIVATE_SLOT(d_func(), void slotReloadResources())
-#if QT_CONFIG(clipboard)
-    Q_PRIVATE_SLOT(d_func(), void slotCopyResourcePath())
-#endif
-    Q_PRIVATE_SLOT(d_func(), void slotListWidgetContextMenuRequested(const QPoint &pos))
-    Q_PRIVATE_SLOT(d_func(), void slotFilterChanged(const QString &pattern))
 };
 
 class QDESIGNER_SHARED_EXPORT  QtResourceViewDialog : public QDialog
@@ -122,7 +85,6 @@ private:
     QScopedPointer<class QtResourceViewDialogPrivate> d_ptr;
     Q_DECLARE_PRIVATE(QtResourceViewDialog)
     Q_DISABLE_COPY_MOVE(QtResourceViewDialog)
-    Q_PRIVATE_SLOT(d_func(), void slotResourceSelected(const QString &))
 };
 
 QT_END_NAMESPACE

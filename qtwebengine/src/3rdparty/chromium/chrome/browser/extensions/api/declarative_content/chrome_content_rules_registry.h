@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,13 +14,11 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "chrome/browser/extensions/api/declarative_content/content_action.h"
 #include "chrome/browser/extensions/api/declarative_content/content_condition.h"
 #include "chrome/browser/extensions/api/declarative_content/content_predicate_evaluator.h"
-#include "content/public/browser/notification_observer.h"
-#include "content/public/browser/notification_registrar.h"
 #include "extensions/browser/api/declarative_content/content_rules_registry.h"
 #include "extensions/common/extension_id.h"
 
@@ -49,19 +47,21 @@ class Extension;
 // tabs.
 class ChromeContentRulesRegistry
     : public ContentRulesRegistry,
-      public content::NotificationObserver,
       public ContentPredicateEvaluator::Delegate {
  public:
-  using PredicateEvaluatorsFactory =
-      base::Callback<std::vector<std::unique_ptr<ContentPredicateEvaluator>>(
+  using PredicateEvaluatorsFactory = base::OnceCallback<
+      std::vector<std::unique_ptr<ContentPredicateEvaluator>>(
           ContentPredicateEvaluator::Delegate*)>;
 
   // For testing, |cache_delegate| can be NULL. In that case it constructs the
   // registry with storage functionality suspended.
-  ChromeContentRulesRegistry(
-      content::BrowserContext* browser_context,
-      RulesCacheDelegate* cache_delegate,
-      const PredicateEvaluatorsFactory& evaluators_factory);
+  ChromeContentRulesRegistry(content::BrowserContext* browser_context,
+                             RulesCacheDelegate* cache_delegate,
+                             PredicateEvaluatorsFactory evaluators_factory);
+
+  ChromeContentRulesRegistry(const ChromeContentRulesRegistry&) = delete;
+  ChromeContentRulesRegistry& operator=(const ChromeContentRulesRegistry&) =
+      delete;
 
   // ContentRulesRegistry:
   void MonitorWebContentsForRuleEvaluation(
@@ -69,7 +69,10 @@ class ChromeContentRulesRegistry
   void DidFinishNavigation(
       content::WebContents* tab,
       content::NavigationHandle* navigation_handle) override;
-
+  void WebContentsDestroyed(content::WebContents* contents) override;
+  void OnWatchedPageChanged(
+      content::WebContents* contents,
+      const std::vector<std::string>& css_selectors) override;
   // RulesRegistry:
   std::string AddRulesImpl(
       const std::string& extension_id,
@@ -78,11 +81,6 @@ class ChromeContentRulesRegistry
       const std::string& extension_id,
       const std::vector<std::string>& rule_identifiers) override;
   std::string RemoveAllRulesImpl(const std::string& extension_id) override;
-
-  // content::NotificationObserver:
-  void Observe(int type,
-               const content::NotificationSource& source,
-               const content::NotificationDetails& details) override;
 
   // DeclarativeContentConditionTrackerDelegate:
   void RequestEvaluation(content::WebContents* contents) override;
@@ -104,15 +102,16 @@ class ChromeContentRulesRegistry
                 std::vector<std::unique_ptr<const ContentCondition>> conditions,
                 std::vector<std::unique_ptr<const ContentAction>> actions,
                 int priority);
+
+    ContentRule(const ContentRule&) = delete;
+    ContentRule& operator=(const ContentRule&) = delete;
+
     ~ContentRule();
 
-    const Extension* extension;
+    raw_ptr<const Extension> extension;
     std::vector<std::unique_ptr<const ContentCondition>> conditions;
     std::vector<std::unique_ptr<const ContentAction>> actions;
     int priority;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(ContentRule);
   };
 
   // Specifies what to do with evaluation requests.
@@ -179,11 +178,6 @@ class ChromeContentRulesRegistry
   // Contains WebContents which require rule evaluation. Only used while
   // |evaluation_disposition_| is DEFER.
   std::set<content::WebContents*> evaluation_pending_;
-
-  // Manages our notification registrations.
-  content::NotificationRegistrar registrar_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromeContentRulesRegistry);
 };
 
 }  // namespace extensions

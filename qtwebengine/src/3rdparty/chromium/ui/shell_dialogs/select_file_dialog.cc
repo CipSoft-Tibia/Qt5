@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,20 +7,43 @@
 #include <stddef.h>
 #include <algorithm>
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/memory/ptr_util.h"
+#include "base/sequence_checker.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversion_utils.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/third_party/icu/icu_utf.h"
 #include "build/build_config.h"
 #include "ui/shell_dialogs/select_file_dialog_factory.h"
 #include "ui/shell_dialogs/select_file_policy.h"
 #include "ui/shell_dialogs/selected_file_info.h"
+#include "url/gurl.h"
 
 namespace {
 
 // Optional dialog factory. Leaked.
-ui::SelectFileDialogFactory* dialog_factory_ = NULL;
+ui::SelectFileDialogFactory* dialog_factory_ = nullptr;
+
+void TruncateStringToSize(base::FilePath::StringType* string, size_t size) {
+  if (string->size() <= size)
+    return;
+#if BUILDFLAG(IS_WIN)
+  const auto* c_str = base::as_u16cstr(string->c_str());
+  for (size_t i = 0; i < string->size(); ++i) {
+    base_icu::UChar32 codepoint;
+    size_t original_i = i;
+    if (!base::ReadUnicodeCharacter(c_str, size, &i, &codepoint) || i >= size) {
+      string->resize(original_i);
+      return;
+    }
+  }
+#else
+  base::TruncateUTF8ToByteSize(*string, size, string);
+#endif
+}
 
 }  // namespace
 
@@ -31,7 +54,7 @@ SelectFileDialog::FileTypeInfo::FileTypeInfo() = default;
 SelectFileDialog::FileTypeInfo::FileTypeInfo(const FileTypeInfo& other) =
     default;
 
-SelectFileDialog::FileTypeInfo::~FileTypeInfo() {}
+SelectFileDialog::FileTypeInfo::~FileTypeInfo() = default;
 
 void SelectFileDialog::Listener::FileSelectedWithExtraInfo(
     const ui::SelectedFileInfo& file,
@@ -85,24 +108,23 @@ base::FilePath SelectFileDialog::GetShortenedFilePath(
     max_extension_length =
         std::max(max_extension_length, kMaxNameLength - file_string.length());
   }
-  if (extension.length() > max_extension_length) {
-    // Take the first max_extension_length characters (this will be the
-    // leading '.' plus the next max_extension_length - 1).
-    extension.resize(max_extension_length);
-  }
-  file_string.resize(kMaxNameLength - extension.length());
+  // Take the first max_extension_length characters (this will be the
+  // leading '.' plus the next max_extension_length - 1).
+  TruncateStringToSize(&extension, max_extension_length);
+  TruncateStringToSize(&file_string, kMaxNameLength - extension.length());
   return path.DirName().Append(file_string).AddExtension(extension);
 }
 
 void SelectFileDialog::SelectFile(
     Type type,
-    const base::string16& title,
+    const std::u16string& title,
     const base::FilePath& default_path,
     const FileTypeInfo* file_types,
     int file_type_index,
     const base::FilePath::StringType& default_extension,
     gfx::NativeWindow owning_window,
-    void* params) {
+    void* params,
+    const GURL* caller) {
   DCHECK(listener_);
 
   if (select_file_policy_.get() &&
@@ -112,7 +134,7 @@ void SelectFileDialog::SelectFile(
     // Inform the listener that no file was selected.
     // Post a task rather than calling FileSelectionCanceled directly to ensure
     // that the listener is called asynchronously.
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(&SelectFileDialog::CancelFileSelection, this, params));
     return;
@@ -122,7 +144,7 @@ void SelectFileDialog::SelectFile(
 
   // Call the platform specific implementation of the file selection dialog.
   SelectFileImpl(type, title, path, file_types, file_type_index,
-                 default_extension, owning_window, params);
+                 default_extension, owning_window, params, caller);
 }
 
 bool SelectFileDialog::HasMultipleFileTypeChoices() {

@@ -1,109 +1,97 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/graphics/paint/paint_artifact.h"
 
-#include "cc/layers/layer.h"
-#include "cc/paint/display_item_list.h"
-#include "third_party/blink/renderer/platform/geometry/int_rect.h"
 #include "third_party/blink/renderer/platform/graphics/compositing/paint_chunks_to_cc_layer.h"
-#include "third_party/blink/renderer/platform/graphics/graphics_context.h"
-#include "third_party/blink/renderer/platform/graphics/paint/drawing_display_item.h"
-#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+#include "third_party/blink/renderer/platform/graphics/paint/paint_chunk_subset.h"
 
 namespace blink {
 
-PaintArtifact::PaintArtifact() : display_item_list_(0) {}
-
-PaintArtifact::PaintArtifact(DisplayItemList display_items,
-                             Vector<PaintChunk> chunks)
-    : display_item_list_(std::move(display_items)), chunks_(std::move(chunks)) {
-}
-
-PaintArtifact::~PaintArtifact() = default;
-
-scoped_refptr<PaintArtifact> PaintArtifact::Create(
-    DisplayItemList display_items,
-    Vector<PaintChunk> chunks) {
-  return base::AdoptRef(
-      new PaintArtifact(std::move(display_items), std::move(chunks)));
-}
-
-scoped_refptr<PaintArtifact> PaintArtifact::Empty() {
-  DEFINE_STATIC_REF(PaintArtifact, empty, base::AdoptRef(new PaintArtifact()));
-  return empty;
-}
-
 size_t PaintArtifact::ApproximateUnsharedMemoryUsage() const {
-  size_t total_size = sizeof(*this) + display_item_list_.MemoryUsageInBytes() +
-                      chunks_.capacity() * sizeof(chunks_[0]);
-  for (const auto& chunk : chunks_)
-    total_size += chunk.MemoryUsageInBytes();
+  size_t total_size = sizeof(*this) + display_item_list_.MemoryUsageInBytes() -
+                      sizeof(display_item_list_) + chunks_.CapacityInBytes();
+  for (const auto& chunk : chunks_) {
+    size_t chunk_size = chunk.MemoryUsageInBytes();
+    DCHECK_GE(chunk_size, sizeof(chunk));
+    total_size += chunk_size - sizeof(chunk);
+  }
   return total_size;
 }
 
-void PaintArtifact::Replay(GraphicsContext& graphics_context,
-                           const PropertyTreeState& replay_state,
-                           const IntPoint& offset) const {
-  Replay(*graphics_context.Canvas(), replay_state, offset);
+PaintRecord PaintArtifact::GetPaintRecord(const PropertyTreeState& replay_state,
+                                          const gfx::Rect* cull_rect) const {
+  return PaintChunksToCcLayer::Convert(PaintChunkSubset(this), replay_state,
+                                       cull_rect);
 }
 
-void PaintArtifact::Replay(cc::PaintCanvas& canvas,
-                           const PropertyTreeState& replay_state,
-                           const IntPoint& offset) const {
-  TRACE_EVENT0("blink,benchmark", "PaintArtifact::replay");
-  canvas.drawPicture(GetPaintRecord(replay_state, offset));
+void PaintArtifact::RecordDebugInfo(DisplayItemClientId client_id,
+                                    const String& name,
+                                    DOMNodeId owner_node_id) {
+  debug_info_.insert(client_id, ClientDebugInfo({name, owner_node_id}));
 }
 
-sk_sp<PaintRecord> PaintArtifact::GetPaintRecord(
-    const PropertyTreeState& replay_state,
-    const IntPoint& offset) const {
-  return PaintChunksToCcLayer::Convert(
-             PaintChunks(), replay_state,
-             gfx::Vector2dF(offset.X(), offset.Y()), GetDisplayItemList(),
-             cc::DisplayItemList::kToBeReleasedAsPaintOpBuffer)
-      ->ReleaseAsRecord();
+String PaintArtifact::ClientDebugName(DisplayItemClientId client_id) const {
+  auto iterator = debug_info_.find(client_id);
+  if (iterator == debug_info_.end())
+    return "";
+  return iterator->value.name;
 }
 
-// The heuristic for picking a checkerboarding color works as follows:
-//   - During paint, PaintChunker will look for background color display items,
-//     and annotates the chunk with the index of the display item that paints
-//     the largest area background color (ties are broken by selecting the
-//     display item that paints last).
-//   - After layer allocation, the paint chunks assigned to a layer are
-//     examined for a background color annotation. The chunk with the largest
-//     background color annotation is selected.
-//   - If the area of the selected background color is at least half the size
-//     of the layer, then it is set as the layer's background color.
-//   - The same color is used for the layer's safe opaque background color, but
-//     without the size requirement, as safe opaque background color should
-//     always get a value if possible.
-void PaintArtifact::UpdateBackgroundColor(
-    cc::Layer* layer,
-    const PaintChunkSubset& paint_chunks) const {
-  SkColor color = SK_ColorTRANSPARENT;
-  uint64_t area = 0;
-  for (const auto& chunk : paint_chunks) {
-    if (chunk.background_color != Color::kTransparent &&
-        chunk.background_color_area >= area) {
-      color = chunk.background_color.Rgb();
-      area = chunk.background_color_area;
-    }
+DOMNodeId PaintArtifact::ClientOwnerNodeId(
+    DisplayItemClientId client_id) const {
+  auto iterator = debug_info_.find(client_id);
+  if (iterator == debug_info_.end())
+    return kInvalidDOMNodeId;
+  return iterator->value.owner_node_id;
+}
+
+String PaintArtifact::IdAsString(const DisplayItem::Id& id) const {
+#if DCHECK_IS_ON()
+  String debug_name = ClientDebugName(id.client_id);
+  if (!debug_name.empty()) {
+    return String::Format(
+        "%p:%s:%s:%d", reinterpret_cast<void*>(id.client_id),
+        ClientDebugName(id.client_id).Utf8().c_str(),
+        DisplayItem::TypeAsDebugString(id.type).Utf8().c_str(), id.fragment);
   }
-
-  layer->SetSafeOpaqueBackgroundColor(color);
-
-  base::ClampedNumeric<uint64_t> layer_area = layer->bounds().width();
-  layer_area *= layer->bounds().height();
-  if (area < static_cast<uint64_t>(layer_area) / 2)
-    color = SK_ColorTRANSPARENT;
-  layer->SetBackgroundColor(color);
+#endif
+  return id.ToString();
 }
 
-void PaintArtifact::FinishCycle() {
-  for (auto& chunk : chunks_)
-    chunk.client_is_just_created = false;
+std::unique_ptr<JSONArray> PaintArtifact::ToJSON() const {
+  auto json = std::make_unique<JSONArray>();
+  AppendChunksAsJSON(0, chunks_.size(), *json, 0);
+  return json;
+}
+
+void PaintArtifact::AppendChunksAsJSON(wtf_size_t start_chunk_index,
+                                       wtf_size_t end_chunk_index,
+                                       JSONArray& json_array,
+                                       unsigned flags) const {
+  DCHECK_GT(end_chunk_index, start_chunk_index);
+  for (auto i = start_chunk_index; i < end_chunk_index; ++i) {
+    const auto& chunk = chunks_[i];
+    auto json_object = std::make_unique<JSONObject>();
+
+    json_object->SetString("chunk", ClientDebugName(chunk.id.client_id) + " " +
+                                        chunk.id.ToString(*this));
+    json_object->SetString("state", chunk.properties.ToString());
+    json_object->SetString("bounds", String(chunk.bounds.ToString()));
+#if DCHECK_IS_ON()
+    if (flags & DisplayItemList::kShowPaintRecords)
+      json_object->SetString("chunkData", chunk.ToString(*this));
+    json_object->SetArray("displayItems", DisplayItemList::DisplayItemsAsJSON(
+                                              *this, chunk.begin_index,
+                                              DisplayItemsInChunk(i), flags));
+#endif
+    json_array.PushObject(std::move(json_object));
+  }
+}
+
+std::ostream& operator<<(std::ostream& os, const PaintArtifact& artifact) {
+  return os << artifact.ToJSON()->ToPrettyJSONString().Utf8();
 }
 
 }  // namespace blink

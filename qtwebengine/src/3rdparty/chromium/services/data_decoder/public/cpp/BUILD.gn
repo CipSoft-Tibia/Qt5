@@ -1,7 +1,8 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//mojo/public/tools/bindings/mojom.gni")
 
 # This should be merged into the ":cpp" target below once that target is
@@ -22,28 +23,26 @@ component("service_provider") {
 }
 
 source_set("cpp") {
-  set_sources_assignment_filter([])
-
   public = [
     "data_decoder.h",
     "json_sanitizer.h",
-    "safe_xml_parser.h",
   ]
 
   sources = [
     "data_decoder.cc",
     "json_sanitizer.cc",
-    "safe_xml_parser.cc",
   ]
 
   configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   public_deps = [
+    ":safe_xml_parser",
     ":service_provider",
     "//base",
+    "//net",
     "//services/data_decoder/public/mojom",
   ]
-  deps = []
+  deps = [ "//build:blink_buildflags" ]
 
   if (is_android) {
     sources += [ "json_sanitizer_android.cc" ]
@@ -54,11 +53,11 @@ source_set("cpp") {
     sources += [ "json_sanitizer_non_android.cc" ]
   }
 
-  if (is_ios) {
+  if (!use_blink) {
     # NOTE: We depend on this target here for iOS only, to support in-process
     # use of the service. Non-test targets in this directory should otherwise
     # NEVER depend on this target.
-    deps = [ "//services/data_decoder:lib" ]
+    deps += [ "//services/data_decoder:lib" ]
   } else {
     public += [
       "decode_image.h",
@@ -72,6 +71,15 @@ source_set("cpp") {
   }
 
   defines = [ "IS_DATA_DECODER_PUBLIC_IMPL" ]
+}
+
+source_set("safe_xml_parser") {
+  public = [ "safe_xml_parser.h" ]
+
+  sources = [ "safe_xml_parser.cc" ]
+
+  public_deps = [ "//base" ]
+  deps = [ "//services/data_decoder/public/mojom:mojom_xml_parser" ]
 }
 
 source_set("test_support") {

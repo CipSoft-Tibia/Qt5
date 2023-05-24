@@ -1,42 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include <QtCore/qt_windows.h>
 #include "qwindowsdrag.h"
 #include "qwindowscontext.h"
 #include "qwindowsscreen.h"
@@ -45,7 +10,6 @@
 #endif
 #include "qwindowsintegration.h"
 #include "qwindowsdropdataobject.h"
-#include <QtCore/qt_windows.h>
 #include "qwindowswindow.h"
 #include "qwindowsmousehandler.h"
 #include "qwindowscursor.h"
@@ -217,8 +181,8 @@ public:
     void createCursors();
 
     // IDropSource methods
-    STDMETHOD(QueryContinueDrag)(BOOL fEscapePressed, DWORD grfKeyState);
-    STDMETHOD(GiveFeedback)(DWORD dwEffect);
+    STDMETHOD(QueryContinueDrag)(BOOL fEscapePressed, DWORD grfKeyState) override;
+    STDMETHOD(GiveFeedback)(DWORD dwEffect) override;
 
 private:
     struct CursorEntry {
@@ -384,7 +348,7 @@ QWindowsOleDropSource::QueryContinueDrag(BOOL fEscapePressed, DWORD grfKeyState)
     } else {
         if (buttons && !m_currentButtons) {
             m_currentButtons = buttons;
-        } else if (!(m_currentButtons & buttons)) { // Button changed: Complete Drop operation.
+        } else if (m_currentButtons != buttons) { // Button changed: Complete Drop operation.
             result = DRAGDROP_S_DROP;
         }
     }
@@ -420,7 +384,7 @@ QWindowsOleDropSource::QueryContinueDrag(BOOL fEscapePressed, DWORD grfKeyState)
 }
 
 /*!
-    \brief Give feedback: Change cursor accoding to action.
+    \brief Give feedback: Change cursor according to action.
 */
 
 QT_ENSURE_STACK_ALIGNED_FOR_SSE STDMETHODIMP
@@ -680,6 +644,86 @@ IDropTargetHelper* QWindowsDrag::dropHelper() {
     return m_cachedDropTargetHelper;
 }
 
+// Workaround for DoDragDrop() not working with touch/pen input, causing DnD to hang until the mouse is moved.
+// We process pointer messages for touch/pen and generate mouse input through SendInput() to trigger DoDragDrop()
+static HRESULT startDoDragDrop(LPDATAOBJECT pDataObj, LPDROPSOURCE pDropSource, DWORD dwOKEffects, LPDWORD pdwEffect)
+{
+    QWindow *underMouse = QWindowsContext::instance()->windowUnderMouse();
+    const bool hasMouseCapture = underMouse && static_cast<QWindowsWindow *>(underMouse->handle())->hasMouseCapture();
+    const HWND hwnd = hasMouseCapture ? reinterpret_cast<HWND>(underMouse->winId()) : ::GetFocus();
+    bool starting = false;
+
+    for (;;) {
+        MSG msg{};
+        if (::GetMessage(&msg, hwnd, 0, 0) > 0) {
+
+            if (msg.message == WM_MOUSEMOVE) {
+
+                // Only consider the first simulated event, or actual mouse messages.
+                if (!starting && (msg.wParam & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON | MK_XBUTTON1 | MK_XBUTTON2)) == 0)
+                    return E_FAIL;
+
+                return ::DoDragDrop(pDataObj, pDropSource, dwOKEffects, pdwEffect);
+            }
+
+            if (msg.message == WM_POINTERUPDATE) {
+
+                const quint32 pointerId = GET_POINTERID_WPARAM(msg.wParam);
+
+                POINTER_INFO pointerInfo{};
+                if (!GetPointerInfo(pointerId, &pointerInfo))
+                    return E_FAIL;
+
+                if (pointerInfo.pointerFlags & POINTER_FLAG_PRIMARY) {
+
+                    DWORD flags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | MOUSEEVENTF_MOVE;
+                    if (IS_POINTER_FIRSTBUTTON_WPARAM(msg.wParam))
+                        flags |= MOUSEEVENTF_LEFTDOWN;
+                    if (IS_POINTER_SECONDBUTTON_WPARAM(msg.wParam))
+                        flags |= MOUSEEVENTF_RIGHTDOWN;
+                    if (IS_POINTER_THIRDBUTTON_WPARAM(msg.wParam))
+                        flags |= MOUSEEVENTF_MIDDLEDOWN;
+
+                    if (!starting) {
+                        POINT pt{};
+                        if (::GetCursorPos(&pt)) {
+
+                            // Send mouse input that can generate a WM_MOUSEMOVE message.
+                            if ((flags & MOUSEEVENTF_LEFTDOWN || flags & MOUSEEVENTF_RIGHTDOWN || flags & MOUSEEVENTF_MIDDLEDOWN)
+                                && (pt.x != pointerInfo.ptPixelLocation.x || pt.y != pointerInfo.ptPixelLocation.y)) {
+
+                                const int origin_x = ::GetSystemMetrics(SM_XVIRTUALSCREEN);
+                                const int origin_y = ::GetSystemMetrics(SM_YVIRTUALSCREEN);
+                                const int virt_w = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+                                const int virt_h = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                                const int virt_x = pointerInfo.ptPixelLocation.x - origin_x;
+                                const int virt_y = pointerInfo.ptPixelLocation.y - origin_y;
+
+                                INPUT input{};
+                                input.type = INPUT_MOUSE;
+                                input.mi.dx = static_cast<DWORD>(virt_x * (65535.0 / virt_w));
+                                input.mi.dy = static_cast<DWORD>(virt_y * (65535.0 / virt_h));
+                                input.mi.dwFlags = flags;
+
+                                ::SendInput(1, &input, sizeof(input));
+                                starting = true;
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Handle other messages.
+                qWindowsWndProc(msg.hwnd, msg.message, msg.wParam, msg.lParam);
+
+                if (msg.message == WM_POINTERLEAVE)
+                    return E_FAIL;
+            }
+        } else {
+            return E_FAIL;
+        }
+    }
+}
+
 Qt::DropAction QWindowsDrag::drag(QDrag *drag)
 {
     // TODO: Accessibility handling?
@@ -697,7 +741,7 @@ Qt::DropAction QWindowsDrag::drag(QDrag *drag)
         << Qt::hex << int(possibleActions) << "effects=0x" << allowedEffects << Qt::dec;
     // Indicate message handlers we are in DoDragDrop() event loop.
     QWindowsDrag::m_dragging = true;
-    const HRESULT r = DoDragDrop(dropDataObject, windowDropSource, allowedEffects, &resultEffect);
+    const HRESULT r = startDoDragDrop(dropDataObject, windowDropSource, allowedEffects, &resultEffect);
     QWindowsDrag::m_dragging = false;
     const DWORD  reportedPerformedEffect = dropDataObject->reportedPerformedEffect();
     if (r == DRAGDROP_S_DROP) {

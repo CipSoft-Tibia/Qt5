@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QtTest/QtTest>
 #include <QtTest/qtestcase.h>
 #include <QtCore/QDebug>
@@ -81,13 +56,11 @@ void tst_HandshakeResponse::cleanup()
 void tst_HandshakeResponse::tst_date_response()
 {
     QWebSocketHandshakeRequest request(80, false);
-    QString buffer;
-    QTextStream input(&buffer);
-    input << QStringLiteral("GET / HTTP/1.1\r\nHost: example.com\r\nSec-WebSocket-Version: 13\r\n") +
-             QStringLiteral("Sec-WebSocket-Key: AVDFBDDFF\r\n") +
-             QStringLiteral("Upgrade: websocket\r\n") +
-             QStringLiteral("Connection: Upgrade\r\n\r\n");
-    request.readHandshake(input, 8 * 1024, 100);
+    QByteArray bytes = "GET / HTTP/1.1\r\nHost: example.com\r\nSec-WebSocket-Version: 13\r\n"
+                       "Sec-WebSocket-Key: AVDFBDDFF\r\n"
+                       "Upgrade: websocket\r\n"
+                       "Connection: Upgrade\r\n\r\n";
+    request.readHandshake(bytes, 8 * 1024);
 
     QWebSocketHandshakeResponse response(request, "example.com", true,
                                          QList<QWebSocketProtocol::Version>() << QWebSocketProtocol::Version13,

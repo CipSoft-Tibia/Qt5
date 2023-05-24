@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,8 +8,18 @@ if (is_android) {
   import("//third_party/protobuf/proto_library.gni")
 }
 
+source_set("features") {
+  deps = [ "//base" ]
+
+  sources = [
+    "features.cc",
+    "features.h",
+  ]
+}
+
 source_set("cc") {
   deps = [
+    ":features",
     "//base",
     "//cc",
     "//chrome/browser/image_decoder",
@@ -19,6 +29,7 @@ source_set("cc") {
     "//content/public/browser",
     "//media",
     "//mojo/public/cpp/bindings",
+    "//net",
     "//skia",
     "//ui/gfx",
   ]
@@ -44,10 +55,22 @@ source_set("unit_tests") {
 
   deps = [
     ":cc",
+    ":features",
     "//base",
+    "//base/test:test_support",
+    "//content/test:test_support",
+    "//net",
+    "//skia",
     "//testing/gmock",
     "//testing/gtest",
+    "//ui/gfx",
   ]
 
   sources = [ "scoped_ptr_expiring_cache_unittest.cc" ]
+
+  if (is_android) {
+    sources += [ "thumbnail_cache_unittest.cc" ]
+
+    deps += [ "//ui/android" ]
+  }
 }

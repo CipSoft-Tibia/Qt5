@@ -18,13 +18,18 @@
 #include <cstdint>
 
 #include "src/utils/common.h"
+#include "src/utils/constants.h"
 
-#if LIBGAV1_MAX_BITDEPTH != 8 && LIBGAV1_MAX_BITDEPTH != 10
-#error LIBGAV1_MAX_BITDEPTH must be 8 or 10
+#if LIBGAV1_MAX_BITDEPTH != 8 && LIBGAV1_MAX_BITDEPTH != 10 && \
+    LIBGAV1_MAX_BITDEPTH != 12
+#error LIBGAV1_MAX_BITDEPTH must be 8, 10 or 12
 #endif
 
 namespace libgav1 {
 namespace {
+
+// Import all the constants in the anonymous namespace.
+#include "src/quantizer_tables.inc"
 
 // Format the kDcLookup and kAcLookup arrays manually for easier comparison
 // with the Dc_Qlookup and Ac_Qlookup arrays in Section 7.12.2.
@@ -83,6 +88,43 @@ constexpr int16_t kDcLookup[][256] = {
     4737, 4929, 5130, 5347
   },
 #endif  // LIBGAV1_MAX_BITDEPTH >= 10
+#if LIBGAV1_MAX_BITDEPTH == 12
+  // Lookup table for 12 bit.
+  {
+    4, 12, 18, 25, 33, 41, 50, 60,
+    70, 80, 91, 103, 115, 127, 140, 153,
+    166, 180, 194, 208, 222, 237, 251, 266,
+    281, 296, 312, 327, 343, 358, 374, 390,
+    405, 421, 437, 453, 469, 484, 500, 516,
+    532, 548, 564, 580, 596, 611, 627, 643,
+    659, 674, 690, 706, 721, 737, 752, 768,
+    783, 798, 814, 829, 844, 859, 874, 889,
+    904, 919, 934, 949, 964, 978, 993, 1008,
+    1022, 1037, 1051, 1065, 1080, 1094, 1108, 1122,
+    1136, 1151, 1165, 1179, 1192, 1206, 1220, 1234,
+    1248, 1261, 1275, 1288, 1302, 1315, 1329, 1342,
+    1368, 1393, 1419, 1444, 1469, 1494, 1519, 1544,
+    1569, 1594, 1618, 1643, 1668, 1692, 1717, 1741,
+    1765, 1789, 1814, 1838, 1862, 1885, 1909, 1933,
+    1957, 1992, 2027, 2061, 2096, 2130, 2165, 2199,
+    2233, 2267, 2300, 2334, 2367, 2400, 2434, 2467,
+    2499, 2532, 2575, 2618, 2661, 2704, 2746, 2788,
+    2830, 2872, 2913, 2954, 2995, 3036, 3076, 3127,
+    3177, 3226, 3275, 3324, 3373, 3421, 3469, 3517,
+    3565, 3621, 3677, 3733, 3788, 3843, 3897, 3951,
+    4005, 4058, 4119, 4181, 4241, 4301, 4361, 4420,
+    4479, 4546, 4612, 4677, 4742, 4807, 4871, 4942,
+    5013, 5083, 5153, 5222, 5291, 5367, 5442, 5517,
+    5591, 5665, 5745, 5825, 5905, 5984, 6063, 6149,
+    6234, 6319, 6404, 6495, 6587, 6678, 6769, 6867,
+    6966, 7064, 7163, 7269, 7376, 7483, 7599, 7715,
+    7832, 7958, 8085, 8214, 8352, 8492, 8635, 8788,
+    8945, 9104, 9275, 9450, 9639, 9832, 10031, 10245,
+    10465, 10702, 10946, 11210, 11482, 11776, 12081, 12409,
+    12750, 13118, 13501, 13913, 14343, 14807, 15290, 15812,
+    16356, 16943, 17575, 18237, 18949, 19718, 20521, 21387
+  }
+#endif  // LIBGAV1_MAX_BITDEPTH == 12
 };
 
 constexpr int16_t kAcLookup[][256] = {
@@ -138,10 +180,138 @@ constexpr int16_t kAcLookup[][256] = {
     6900, 7036, 7172, 7312
   },
 #endif  // LIBGAV1_MAX_BITDEPTH >= 10
+#if LIBGAV1_MAX_BITDEPTH == 12
+  // Lookup table for 12 bit.
+  {
+    4, 13, 19, 27, 35, 44, 54, 64,
+    75, 87, 99, 112, 126, 139, 154, 168,
+    183, 199, 214, 230, 247, 263, 280, 297,
+    314, 331, 349, 366, 384, 402, 420, 438,
+    456, 475, 493, 511, 530, 548, 567, 586,
+    604, 623, 642, 660, 679, 698, 716, 735,
+    753, 772, 791, 809, 828, 846, 865, 884,
+    902, 920, 939, 957, 976, 994, 1012, 1030,
+    1049, 1067, 1085, 1103, 1121, 1139, 1157, 1175,
+    1193, 1211, 1229, 1246, 1264, 1282, 1299, 1317,
+    1335, 1352, 1370, 1387, 1405, 1422, 1440, 1457,
+    1474, 1491, 1509, 1526, 1543, 1560, 1577, 1595,
+    1627, 1660, 1693, 1725, 1758, 1791, 1824, 1856,
+    1889, 1922, 1954, 1987, 2020, 2052, 2085, 2118,
+    2150, 2183, 2216, 2248, 2281, 2313, 2346, 2378,
+    2411, 2459, 2508, 2556, 2605, 2653, 2701, 2750,
+    2798, 2847, 2895, 2943, 2992, 3040, 3088, 3137,
+    3185, 3234, 3298, 3362, 3426, 3491, 3555, 3619,
+    3684, 3748, 3812, 3876, 3941, 4005, 4069, 4149,
+    4230, 4310, 4390, 4470, 4550, 4631, 4711, 4791,
+    4871, 4967, 5064, 5160, 5256, 5352, 5448, 5544,
+    5641, 5737, 5849, 5961, 6073, 6185, 6297, 6410,
+    6522, 6650, 6778, 6906, 7034, 7162, 7290, 7435,
+    7579, 7723, 7867, 8011, 8155, 8315, 8475, 8635,
+    8795, 8956, 9132, 9308, 9484, 9660, 9836, 10028,
+    10220, 10412, 10604, 10812, 11020, 11228, 11437, 11661,
+    11885, 12109, 12333, 12573, 12813, 13053, 13309, 13565,
+    13821, 14093, 14365, 14637, 14925, 15213, 15502, 15806,
+    16110, 16414, 16734, 17054, 17390, 17726, 18062, 18414,
+    18766, 19134, 19502, 19886, 20270, 20670, 21070, 21486,
+    21902, 22334, 22766, 23214, 23662, 24126, 24590, 25070,
+    25551, 26047, 26559, 27071, 27599, 28143, 28687, 29247
+  }
+#endif  // LIBGAV1_MAX_BITDEPTH == 12
 };
 // clang-format on
 
+void Transpose(uint8_t* const dst, const uint8_t* const src, int src_width,
+               int src_height) {
+  const int dst_width = src_height;
+  const int dst_height = src_width;
+  Array2DView<const uint8_t> source(src_height, src_width, src);
+  Array2DView<uint8_t> dest(dst_height, dst_width, dst);
+  for (int y = 0; y < dst_height; ++y) {
+    for (int x = 0; x < dst_width; ++x) {
+      dest[y][x] = source[x][y];
+    }
+  }
+}
+
+// Copies the lower triangle and fills the upper triangle of |dst| using |src|
+// as the source.
+void FillUpperTriangle(uint8_t* dst, const uint8_t* src, int size) {
+  Array2DView<uint8_t> dest(size, size, dst);
+  int k = 0;
+  for (int y = 0; y < size; ++y) {
+    for (int x = 0; x <= y; ++x) {
+      dest[y][x] = dest[x][y] = src[k++];
+    }
+  }
+}
+
 }  // namespace
+
+bool InitializeQuantizerMatrix(QuantizerMatrix* quantizer_matrix_ptr) {
+  for (int level = 0; level < kNumQuantizerLevelsForQuantizerMatrix; ++level) {
+    for (int plane_type = kPlaneTypeY; plane_type < kNumPlaneTypes;
+         ++plane_type) {
+      auto& quantizer_matrix = (*quantizer_matrix_ptr)[level][plane_type];
+      // Notes about how these matrices are populated:
+      // * For square transforms, we store only the lower left triangle (it is
+      // symmetric about the main diagonal. So when populating the matrix, we
+      // will have to fill in the upper right triangle.
+      // * For rectangular transforms, the matrices are transposes when the
+      // width and height are reversed. So when populating we populate it with
+      // memcpy when w < h and populate it by transposing when w > h.
+      // * There is a special case for 16x16 where the matrix is the same as
+      // 32x32 with some offsets.
+      // * We use the "adjusted transform size" when using these matrices, so we
+      // won't have to populate them for transform sizes with one of the
+      // dimensions equal to 64.
+      for (int tx_size = 0; tx_size < kNumTransformSizes; ++tx_size) {
+        if (kTransformWidth[tx_size] == 64 || kTransformHeight[tx_size] == 64) {
+          continue;
+        }
+        const int size = kTransformWidth[tx_size] * kTransformHeight[tx_size];
+        if (!quantizer_matrix[tx_size].Resize(size)) {
+          return false;
+        }
+      }
+#define QUANTIZER_MEMCPY(W, H)                            \
+  memcpy(quantizer_matrix[kTransformSize##W##x##H].get(), \
+         kQuantizerMatrix##W##x##H[level][plane_type], (W) * (H))
+#define QUANTIZER_TRANSPOSE(W, H)                            \
+  Transpose(quantizer_matrix[kTransformSize##W##x##H].get(), \
+            kQuantizerMatrix##H##x##W[level][plane_type], H, W)
+#define QUANTIZER_FILL_UPPER_TRIANGLE(SIZE)                                \
+  FillUpperTriangle(quantizer_matrix[kTransformSize##SIZE##x##SIZE].get(), \
+                    kQuantizerMatrix##SIZE##x##SIZE[level][plane_type], SIZE)
+      QUANTIZER_FILL_UPPER_TRIANGLE(4);   // 4x4
+      QUANTIZER_MEMCPY(4, 8);             // 4x8
+      QUANTIZER_MEMCPY(4, 16);            // 4x16
+      QUANTIZER_TRANSPOSE(8, 4);          // 8x4
+      QUANTIZER_FILL_UPPER_TRIANGLE(8);   // 8x8
+      QUANTIZER_MEMCPY(8, 16);            // 8x16
+      QUANTIZER_MEMCPY(8, 32);            // 8x32
+      QUANTIZER_TRANSPOSE(16, 4);         // 16x4
+      QUANTIZER_TRANSPOSE(16, 8);         // 16x8
+      QUANTIZER_MEMCPY(16, 32);           // 16x32
+      QUANTIZER_TRANSPOSE(32, 8);         // 32x8
+      QUANTIZER_TRANSPOSE(32, 16);        // 32x16
+      QUANTIZER_FILL_UPPER_TRIANGLE(32);  // 32x32
+      // 16x16.
+      Array2DView<uint8_t> dst16x16(
+          16, 16, quantizer_matrix[kTransformSize16x16].get());
+      Array2DView<const uint8_t> src32x32(
+          32, 32, quantizer_matrix[kTransformSize32x32].get());
+      for (int y = 0; y < 16; ++y) {
+        for (int x = 0; x < 16; ++x) {
+          dst16x16[y][x] = src32x32[MultiplyBy2(y)][MultiplyBy2(x)];
+        }
+      }
+#undef QUANTIZER_FILL_UPPER_TRIANGLE
+#undef QUANTIZER_TRANSPOSE
+#undef QUANTIZER_MEMCPY
+    }
+  }
+  return true;
+}
 
 int GetQIndex(const Segmentation& segmentation, int index, int base_qindex) {
   if (segmentation.FeatureActive(index, kSegmentFeatureQuantizer)) {

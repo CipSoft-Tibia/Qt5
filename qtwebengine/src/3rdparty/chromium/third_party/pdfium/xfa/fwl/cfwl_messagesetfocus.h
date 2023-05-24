@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 
 class CFWL_MessageSetFocus final : public CFWL_Message {
  public:
-  CFWL_MessageSetFocus(CFWL_Widget* pSrcTarget, CFWL_Widget* pDstTarget);
+  explicit CFWL_MessageSetFocus(CFWL_Widget* pDstTarget);
   ~CFWL_MessageSetFocus() override;
 };
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbluetoothsocket.h"
 #include "qbluetoothsocket_dummy_p.h"
@@ -47,7 +11,7 @@ QT_BEGIN_NAMESPACE
 
 QBluetoothSocketPrivateDummy::QBluetoothSocketPrivateDummy()
 {
-    secFlags = QBluetooth::NoSecurity;
+    secFlags = QBluetooth::Security::NoSecurity;
 #ifndef QT_IOS_BLUETOOTH
     printDummyWarning();
 #endif
@@ -80,7 +44,7 @@ void QBluetoothSocketPrivateDummy::connectToService(
 
     qWarning() << "Using non-functional QBluetoothSocketPrivateDummy";
     errorString = QBluetoothSocket::tr("Socket type not supported");
-    q->setSocketError(QBluetoothSocket::UnsupportedProtocolError);
+    q->setSocketError(QBluetoothSocket::SocketError::UnsupportedProtocolError);
 }
 
 void QBluetoothSocketPrivateDummy::connectToService(
@@ -94,7 +58,7 @@ void QBluetoothSocketPrivateDummy::connectToService(
 
     qWarning() << "Using non-functional QBluetoothSocketPrivateDummy";
     errorString = QBluetoothSocket::tr("Socket type not supported");
-    q->setSocketError(QBluetoothSocket::UnsupportedProtocolError);
+    q->setSocketError(QBluetoothSocket::SocketError::UnsupportedProtocolError);
 }
 
 void QBluetoothSocketPrivateDummy::connectToService(
@@ -108,7 +72,7 @@ void QBluetoothSocketPrivateDummy::connectToService(
 
     qWarning() << "Using non-functional QBluetoothSocketPrivateDummy";
     errorString = QBluetoothSocket::tr("Socket type not supported");
-    q->setSocketError(QBluetoothSocket::UnsupportedProtocolError);
+    q->setSocketError(QBluetoothSocket::SocketError::UnsupportedProtocolError);
 }
 
 void QBluetoothSocketPrivateDummy::abort()
@@ -152,9 +116,9 @@ qint64 QBluetoothSocketPrivateDummy::writeData(const char *data, qint64 maxSize)
 
     Q_Q(QBluetoothSocket);
 
-    if (state != QBluetoothSocket::ConnectedState) {
+    if (state != QBluetoothSocket::SocketState::ConnectedState) {
         errorString = QBluetoothSocket::tr("Cannot write while not connected");
-        q->setSocketError(QBluetoothSocket::OperationError);
+        q->setSocketError(QBluetoothSocket::SocketError::OperationError);
         return -1;
     }
     return -1;
@@ -167,9 +131,9 @@ qint64 QBluetoothSocketPrivateDummy::readData(char *data, qint64 maxSize)
 
     Q_Q(QBluetoothSocket);
 
-    if (state != QBluetoothSocket::ConnectedState) {
+    if (state != QBluetoothSocket::SocketState::ConnectedState) {
         errorString = QBluetoothSocket::tr("Cannot read while not connected");
-        q->setSocketError(QBluetoothSocket::OperationError);
+        q->setSocketError(QBluetoothSocket::SocketError::OperationError);
         return -1;
     }
 
@@ -184,7 +148,7 @@ bool QBluetoothSocketPrivateDummy::setSocketDescriptor(int socketDescriptor, QBl
                                            QBluetoothSocket::SocketState socketState, QBluetoothSocket::OpenMode openMode)
 {
     Q_UNUSED(socketDescriptor);
-    Q_UNUSED(socketType)
+    Q_UNUSED(socketType);
     Q_UNUSED(socketState);
     Q_UNUSED(openMode);
     return false;

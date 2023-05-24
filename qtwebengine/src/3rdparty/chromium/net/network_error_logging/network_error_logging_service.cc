@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,23 +9,25 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/optional.h"
 #include "base/rand_util.h"
-#include "base/stl_util.h"
 #include "base/time/clock.h"
 #include "base/time/default_clock.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "net/base/features.h"
 #include "net/base/ip_address.h"
 #include "net/base/net_errors.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/base/url_util.h"
 #include "net/log/net_log.h"
 #include "net/reporting/reporting_service.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -126,12 +128,12 @@ const struct {
 void GetPhaseAndTypeFromNetError(Error error,
                                  std::string* phase_out,
                                  std::string* type_out) {
-  for (size_t i = 0; i < base::size(kErrorTypes); ++i) {
-    DCHECK(kErrorTypes[i].phase != nullptr);
-    DCHECK(kErrorTypes[i].type != nullptr);
-    if (kErrorTypes[i].error == error) {
-      *phase_out = kErrorTypes[i].phase;
-      *type_out = kErrorTypes[i].type;
+  for (const auto& error_type : kErrorTypes) {
+    DCHECK(error_type.phase != nullptr);
+    DCHECK(error_type.type != nullptr);
+    if (error_type.error == error) {
+      *phase_out = error_type.phase;
+      *type_out = error_type.type;
       return;
     }
   }
@@ -153,7 +155,7 @@ void RecordSignedExchangeRequestOutcome(
 class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
  public:
   explicit NetworkErrorLoggingServiceImpl(PersistentNelStore* store)
-      : store_(store), started_loading_policies_(false), initialized_(false) {
+      : store_(store) {
     if (!PoliciesArePersisted())
       initialized_ = true;
   }
@@ -165,7 +167,8 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
 
   // NetworkErrorLoggingService implementation:
 
-  void OnHeader(const url::Origin& origin,
+  void OnHeader(const NetworkAnonymizationKey& network_anonymization_key,
+                const url::Origin& origin,
                 const IPAddress& received_ip_address,
                 const std::string& value) override {
     // NEL is only available to secure origins, so don't permit insecure origins
@@ -178,6 +181,8 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     // task_backlog_, so the callback will not outlive |*this|.
     DoOrBacklogTask(base::BindOnce(
         &NetworkErrorLoggingServiceImpl::DoOnHeader, base::Unretained(this),
+        respect_network_anonymization_key_ ? network_anonymization_key
+                                           : NetworkAnonymizationKey(),
         origin, received_ip_address, value, header_received_time));
   }
 
@@ -187,6 +192,9 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
 
     if (!reporting_service_)
       return;
+
+    if (!respect_network_anonymization_key_)
+      details.network_anonymization_key = NetworkAnonymizationKey();
 
     base::Time request_received_time = clock_->Now();
     // base::Unretained is safe because the callback gets stored in
@@ -208,6 +216,9 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
       return;
     }
 
+    if (!respect_network_anonymization_key_)
+      details.network_anonymization_key = NetworkAnonymizationKey();
+
     base::Time request_received_time = clock_->Now();
     // base::Unretained is safe because the callback gets stored in
     // task_backlog_, so the callback will not outlive |*this|.
@@ -216,8 +227,9 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
         base::Unretained(this), std::move(details), request_received_time));
   }
 
-  void RemoveBrowsingData(const base::RepeatingCallback<bool(const GURL&)>&
-                              origin_filter) override {
+  void RemoveBrowsingData(
+      const base::RepeatingCallback<bool(const url::Origin&)>& origin_filter)
+      override {
     // base::Unretained is safe because the callback gets stored in
     // task_backlog_, so the callback will not outlive |*this|.
     DoOrBacklogTask(
@@ -234,36 +246,34 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   }
 
   base::Value StatusAsValue() const override {
-    base::Value dict(base::Value::Type::DICTIONARY);
-    std::vector<base::Value> policy_list;
+    base::Value::Dict dict;
+    base::Value::List policy_list;
     // We wanted sorted (or at least reproducible) output; luckily, policies_ is
     // a std::map, and therefore already sorted.
-    for (const auto& origin_and_policy : policies_) {
-      const auto& origin = origin_and_policy.first;
-      const auto& policy = origin_and_policy.second;
-      base::Value policy_dict(base::Value::Type::DICTIONARY);
-      policy_dict.SetKey("origin", base::Value(origin.Serialize()));
-      policy_dict.SetKey("includeSubdomains",
-                         base::Value(policy.include_subdomains));
-      policy_dict.SetKey("reportTo", base::Value(policy.report_to));
-      policy_dict.SetKey("expires",
-                         base::Value(NetLog::TimeToString(policy.expires)));
-      policy_dict.SetKey("successFraction",
-                         base::Value(policy.success_fraction));
-      policy_dict.SetKey("failureFraction",
-                         base::Value(policy.failure_fraction));
-      policy_list.push_back(std::move(policy_dict));
+    for (const auto& key_and_policy : policies_) {
+      const NelPolicyKey& key = key_and_policy.first;
+      const NelPolicy& policy = key_and_policy.second;
+      base::Value::Dict policy_dict;
+      policy_dict.Set("NetworkAnonymizationKey",
+                      key.network_anonymization_key.ToDebugString());
+      policy_dict.Set("origin", key.origin.Serialize());
+      policy_dict.Set("includeSubdomains", policy.include_subdomains);
+      policy_dict.Set("reportTo", policy.report_to);
+      policy_dict.Set("expires", NetLog::TimeToString(policy.expires));
+      policy_dict.Set("successFraction", policy.success_fraction);
+      policy_dict.Set("failureFraction", policy.failure_fraction);
+      policy_list.Append(std::move(policy_dict));
     }
-    dict.SetKey("originPolicies", base::Value(std::move(policy_list)));
-    return dict;
+    dict.Set("originPolicies", std::move(policy_list));
+    return base::Value(std::move(dict));
   }
 
-  std::set<url::Origin> GetPolicyOriginsForTesting() override {
-    std::set<url::Origin> origins;
+  std::set<NelPolicyKey> GetPolicyKeysForTesting() override {
+    std::set<NelPolicyKey> keys;
     for (const auto& entry : policies_) {
-      origins.insert(entry.first);
+      keys.insert(entry.first);
     }
-    return origins;
+    return keys;
   }
 
   NetworkErrorLoggingService::PersistentNelStore*
@@ -276,22 +286,27 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   }
 
  private:
-  // Map from origin to origin's (owned) policy.
-  // Would be unordered_map, but url::Origin has no hash.
-  using PolicyMap = std::map<url::Origin, NelPolicy>;
+  // Map from (NIK, origin) to owned policy.
+  using PolicyMap = std::map<NelPolicyKey, NelPolicy>;
 
   // Wildcard policies are policies for which the include_subdomains flag is
-  // set.
+  // true.
   //
-  // Wildcard policies are accessed by domain name, not full origin, so there
-  // can be multiple wildcard policies per domain name.
+  // Wildcard policies are accessed by domain name, not full origin. The key
+  // consists of the NetworkAnonymizationKey of the policy, plus a string which
+  // is the host part of the policy's origin.
   //
-  // This is a map from domain name to the set of pointers to wildcard policies
-  // in that domain.
+  // Looking up a wildcard policy for a domain yields the wildcard policy with
+  // the longest host part (most specific subdomain) that is a substring of the
+  // domain.
   //
-  // Policies in the map are unowned; they are pointers to the original in the
-  // PolicyMap.
-  using WildcardPolicyMap = std::map<std::string, std::set<const NelPolicy*>>;
+  // When multiple policies with the same (NIK, origin.host()) are present, they
+  // are all stored, the policy returned is not well defined.
+  //
+  // Policies in the map are unowned; they are pointers to the original in
+  // the PolicyMap.
+  using WildcardPolicyMap =
+      std::map<WildcardNelPolicyKey, std::set<const NelPolicy*>>;
 
   PolicyMap policies_;
   WildcardPolicyMap wildcard_policies_;
@@ -300,11 +315,11 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   // null. If |store_| is null, then NEL policies will be in-memory only.
   // The store is owned by the URLRequestContext because Reporting also needs
   // access to it.
-  PersistentNelStore* store_;
+  raw_ptr<PersistentNelStore> store_;
 
   // Set to true when we have told the store to load NEL policies. This is to
   // make sure we don't try to load policies multiple times.
-  bool started_loading_policies_;
+  bool started_loading_policies_ = false;
 
   // Set to true when the NEL service has been initialized. Before
   // initialization is complete, commands to the NEL service (i.e. public
@@ -313,10 +328,15 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
   // there is no PersistentNelStore. If there is a store, then initialization is
   // complete when the NEL policies have finished being loaded from the store
   // (either successfully or unsuccessfully).
-  bool initialized_;
+  bool initialized_ = false;
 
   // Backlog of tasks waiting on initialization.
   std::vector<base::OnceClosure> task_backlog_;
+
+  // Set based on features::kPartitionNelAndReportingByNetworkIsolationKey on
+  // construction.
+  bool respect_network_anonymization_key_ = base::FeatureList::IsEnabled(
+      features::kPartitionNelAndReportingByNetworkIsolationKey);
 
   base::WeakPtrFactory<NetworkErrorLoggingServiceImpl> weak_factory_{this};
 
@@ -348,14 +368,15 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     task_backlog_.clear();
   }
 
-  void DoOnHeader(const url::Origin& origin,
+  void DoOnHeader(const NetworkAnonymizationKey& network_anonymization_key,
+                  const url::Origin& origin,
                   const IPAddress& received_ip_address,
                   const std::string& value,
                   base::Time header_received_time) {
     DCHECK(initialized_);
 
     NelPolicy policy;
-    policy.origin = origin;
+    policy.key = NelPolicyKey(network_anonymization_key, origin);
     policy.received_ip_address = received_ip_address;
     policy.last_used = header_received_time;
 
@@ -365,14 +386,14 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     // Disallow eTLDs from setting include_subdomains policies.
     if (policy.include_subdomains &&
         registry_controlled_domains::GetRegistryLength(
-            policy.origin.GetURL(),
+            policy.key.origin.GetURL(),
             registry_controlled_domains::INCLUDE_UNKNOWN_REGISTRIES,
             registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES) == 0) {
       return;
     }
 
-    // If a policy for |origin| already existed, remove the old policy.
-    auto it = policies_.find(origin);
+    // If a policy for this NelPolicyKey already existed, remove the old policy.
+    auto it = policies_.find(policy.key);
     if (it != policies_.end())
       RemovePolicy(it);
 
@@ -382,7 +403,6 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     if (policy.expires.is_null())
       return;
 
-    DVLOG(1) << "Received NEL policy for " << origin;
     AddPolicy(std::move(policy));
 
     // Evict policies if the policy limit is exceeded.
@@ -398,8 +418,12 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     DCHECK(reporting_service_);
     DCHECK(initialized_);
 
+    if (!respect_network_anonymization_key_)
+      details.network_anonymization_key = NetworkAnonymizationKey();
+
     auto report_origin = url::Origin::Create(details.uri);
-    const NelPolicy* policy = FindPolicyForOrigin(report_origin);
+    const NelPolicy* policy =
+        FindPolicyForReport(details.network_anonymization_key, report_origin);
     if (!policy)
       return;
 
@@ -451,7 +475,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     }
 
     bool success = (type == OK) && !IsHttpError(details);
-    const base::Optional<double> sampling_fraction =
+    const absl::optional<double> sampling_fraction =
         SampleAndReturnFraction(*policy, success);
     if (!sampling_fraction.has_value())
       return;
@@ -460,8 +484,12 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
              << ", status=" << details.status_code
              << ", depth=" << details.reporting_upload_depth << ") for "
              << details.uri;
+
+    // A null reporting source token is used since this report is not associated
+    // with any particular document.
     reporting_service_->QueueReport(
-        details.uri, details.user_agent, policy->report_to, kReportType,
+        details.uri, absl::nullopt, details.network_anonymization_key,
+        details.user_agent, policy->report_to, kReportType,
         CreateReportBody(phase_string, type_string, sampling_fraction.value(),
                          details),
         details.reporting_upload_depth);
@@ -472,7 +500,8 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     DCHECK(reporting_service_);
 
     const auto report_origin = url::Origin::Create(details.outer_url);
-    const NelPolicy* policy = FindPolicyForOrigin(report_origin);
+    const NelPolicy* policy =
+        FindPolicyForReport(details.network_anonymization_key, report_origin);
     if (!policy) {
       RecordSignedExchangeRequestOutcome(
           RequestOutcome::kDiscardedNoOriginPolicy);
@@ -497,7 +526,7 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
           RequestOutcome::kDiscardedIPAddressMismatch);
       return;
     }
-    const base::Optional<double> sampling_fraction =
+    const absl::optional<double> sampling_fraction =
         SampleAndReturnFraction(*policy, details.success);
     if (!sampling_fraction.has_value()) {
       RecordSignedExchangeRequestOutcome(
@@ -505,20 +534,24 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
                           : RequestOutcome::kDiscardedUnsampledFailure);
       return;
     }
+
+    // A null reporting source token is used since this report is not associated
+    // with any particular document.
     reporting_service_->QueueReport(
-        details.outer_url, details.user_agent, policy->report_to, kReportType,
+        details.outer_url, absl::nullopt, details.network_anonymization_key,
+        details.user_agent, policy->report_to, kReportType,
         CreateSignedExchangeReportBody(details, sampling_fraction.value()),
         0 /* depth */);
     RecordSignedExchangeRequestOutcome(RequestOutcome::kQueued);
   }
 
   void DoRemoveBrowsingData(
-      const base::RepeatingCallback<bool(const GURL&)>& origin_filter) {
+      const base::RepeatingCallback<bool(const url::Origin&)>& origin_filter) {
     DCHECK(initialized_);
     for (auto it = policies_.begin(); it != policies_.end();) {
-      const url::Origin& origin = it->first;
+      const NelPolicyKey& key = it->first;
       // Remove policies matching the filter.
-      if (origin_filter.Run(origin.GetURL())) {
+      if (origin_filter.Run(key.origin)) {
         it = RemovePolicy(it);
       } else {
         ++it;
@@ -553,103 +586,96 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     if (json_value.size() > kMaxJsonSize)
       return false;
 
-    std::unique_ptr<base::Value> value = base::JSONReader::ReadDeprecated(
-        json_value, base::JSON_PARSE_RFC, kMaxJsonDepth);
+    absl::optional<base::Value> value =
+        base::JSONReader::Read(json_value, base::JSON_PARSE_RFC, kMaxJsonDepth);
     if (!value)
       return false;
 
-    const base::DictionaryValue* dict = nullptr;
-    if (!value->GetAsDictionary(&dict))
+    base::Value::Dict* dict = value->GetIfDict();
+    if (!dict)
       return false;
 
     // Max-Age property is missing or malformed.
-    if (!dict->HasKey(kMaxAgeKey))
-      return false;
-    int max_age_sec;
-    if (!dict->GetInteger(kMaxAgeKey, &max_age_sec))
-      return false;
+    int max_age_sec = dict->FindInt(kMaxAgeKey).value_or(-1);
     if (max_age_sec < 0)
       return false;
 
     // Report-To property is missing or malformed.
     std::string report_to;
     if (max_age_sec > 0) {
-      if (!dict->HasKey(kReportToKey))
+      std::string* maybe_report_to = dict->FindString(kReportToKey);
+      if (!maybe_report_to)
         return false;
-      if (!dict->GetString(kReportToKey, &report_to))
-        return false;
+      report_to = *maybe_report_to;
     }
 
-    bool include_subdomains = false;
     // include_subdomains is optional and defaults to false, so it's okay if
     // GetBoolean fails.
-    dict->GetBoolean(kIncludeSubdomainsKey, &include_subdomains);
+    bool include_subdomains =
+        dict->FindBool(kIncludeSubdomainsKey).value_or(false);
 
     // TODO(chlily): According to the spec we should restrict these sampling
     // fractions to [0.0, 1.0].
-    double success_fraction = 0.0;
     // success_fraction is optional and defaults to 0.0, so it's okay if
     // GetDouble fails.
-    dict->GetDouble(kSuccessFractionKey, &success_fraction);
+    double success_fraction =
+        dict->FindDouble(kSuccessFractionKey).value_or(0.0);
 
-    double failure_fraction = 1.0;
     // failure_fraction is optional and defaults to 1.0, so it's okay if
     // GetDouble fails.
-    dict->GetDouble(kFailureFractionKey, &failure_fraction);
+    double failure_fraction =
+        dict->FindDouble(kFailureFractionKey).value_or(1.0);
 
     policy_out->report_to = report_to;
     policy_out->include_subdomains = include_subdomains;
     policy_out->success_fraction = success_fraction;
     policy_out->failure_fraction = failure_fraction;
-    policy_out->expires = max_age_sec > 0
-                              ? now + base::TimeDelta::FromSeconds(max_age_sec)
-                              : base::Time();
+    policy_out->expires =
+        max_age_sec > 0 ? now + base::Seconds(max_age_sec) : base::Time();
     return true;
   }
 
-  const NelPolicy* FindPolicyForOrigin(const url::Origin& origin) const {
+  const NelPolicy* FindPolicyForReport(
+      const NetworkAnonymizationKey& network_anonymization_key,
+      const url::Origin& report_origin) const {
     DCHECK(initialized_);
 
-    auto it = policies_.find(origin);
+    auto it =
+        policies_.find(NelPolicyKey(network_anonymization_key, report_origin));
     if (it != policies_.end() && clock_->Now() < it->second.expires)
       return &it->second;
 
-    std::string domain = origin.host();
+    std::string domain = report_origin.host();
     const NelPolicy* wildcard_policy = nullptr;
     while (!wildcard_policy && !domain.empty()) {
-      wildcard_policy = FindWildcardPolicyForDomain(domain);
+      wildcard_policy = FindWildcardPolicy(network_anonymization_key, domain);
       domain = GetSuperdomain(domain);
     }
 
     return wildcard_policy;
   }
 
-  const NelPolicy* FindWildcardPolicyForDomain(
+  const NelPolicy* FindWildcardPolicy(
+      const NetworkAnonymizationKey& network_anonymization_key,
       const std::string& domain) const {
     DCHECK(!domain.empty());
 
-    auto it = wildcard_policies_.find(domain);
+    auto it = wildcard_policies_.find(
+        WildcardNelPolicyKey(network_anonymization_key, domain));
     if (it == wildcard_policies_.end())
       return nullptr;
 
     DCHECK(!it->second.empty());
 
-    // TODO(juliatuttle): Come up with a deterministic way to resolve these.
-    if (it->second.size() > 1) {
-      LOG(WARNING) << "Domain " << domain
-                   << " matches multiple origins with include_subdomains; "
-                   << "choosing one arbitrarily.";
-    }
-
-    for (auto jt = it->second.begin(); jt != it->second.end(); ++jt) {
-      if (clock_->Now() < (*jt)->expires)
-        return *jt;
+    for (const NelPolicy* policy : it->second) {
+      if (clock_->Now() < policy->expires)
+        return policy;
     }
 
     return nullptr;
   }
 
-  // There must be no pre-existing policy for |policy.origin|. Returns iterator
+  // There must be no pre-existing policy for |policy.key|. Returns iterator
   // to the inserted policy.
   PolicyMap::iterator AddPolicy(NelPolicy policy) {
     // If |initialized_| is false, then we are calling this from
@@ -659,24 +685,27 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
       store_->AddNelPolicy(policy);
 
     auto iter_and_result =
-        policies_.insert(std::make_pair(policy.origin, std::move(policy)));
-    DCHECK(iter_and_result.second);
+        policies_.insert(std::make_pair(policy.key, std::move(policy)));
+    // TODO(crbug.com/1326282): Change this to a DCHECK when we're sure the bug
+    // is fixed.
+    CHECK(iter_and_result.second);
 
     const NelPolicy& inserted_policy = iter_and_result.first->second;
-    MaybeAddWildcardPolicy(inserted_policy.origin, &inserted_policy);
+    MaybeAddWildcardPolicy(inserted_policy.key, &inserted_policy);
 
     return iter_and_result.first;
   }
 
-  void MaybeAddWildcardPolicy(const url::Origin& origin,
+  void MaybeAddWildcardPolicy(const NelPolicyKey& origin_key,
                               const NelPolicy* policy) {
     DCHECK(policy);
-    DCHECK_EQ(policy, &policies_[origin]);
+    DCHECK_EQ(policy, &policies_[origin_key]);
 
     if (!policy->include_subdomains)
       return;
 
-    auto inserted = wildcard_policies_[origin.host()].insert(policy);
+    WildcardNelPolicyKey wildcard_key(origin_key);
+    auto inserted = wildcard_policies_[wildcard_key].insert(policy);
     DCHECK(inserted.second);
   }
 
@@ -699,10 +728,11 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     if (!policy->include_subdomains)
       return;
 
-    const url::Origin& origin = policy->origin;
-    DCHECK_EQ(policy, &policies_[origin]);
+    const NelPolicyKey& origin_key = policy->key;
+    DCHECK_EQ(policy, &policies_[origin_key]);
 
-    auto wildcard_it = wildcard_policies_.find(origin.host());
+    auto wildcard_it =
+        wildcard_policies_.find(WildcardNelPolicyKey(origin_key));
     DCHECK(wildcard_it != wildcard_policies_.end());
 
     size_t erased = wildcard_it->second.erase(policy);
@@ -741,61 +771,62 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     RemovePolicy(stalest_it);
   }
 
-  std::unique_ptr<const base::Value> CreateReportBody(
-      const std::string& phase,
-      const std::string& type,
-      double sampling_fraction,
-      const RequestDetails& details) const {
-    auto body = std::make_unique<base::DictionaryValue>();
+  static base::Value::Dict CreateReportBody(const std::string& phase,
+                                            const std::string& type,
+                                            double sampling_fraction,
+                                            const RequestDetails& details) {
+    base::Value::Dict body;
 
-    body->SetString(kReferrerKey, details.referrer.spec());
-    body->SetDouble(kSamplingFractionKey, sampling_fraction);
-    body->SetString(kServerIpKey, details.server_ip.ToString());
-    body->SetString(kProtocolKey, details.protocol);
-    body->SetString(kMethodKey, details.method);
-    body->SetInteger(kStatusCodeKey, details.status_code);
-    body->SetInteger(kElapsedTimeKey, details.elapsed_time.InMilliseconds());
-    body->SetString(kPhaseKey, phase);
-    body->SetString(kTypeKey, type);
+    body.Set(kReferrerKey, details.referrer.spec());
+    body.Set(kSamplingFractionKey, sampling_fraction);
+    body.Set(kServerIpKey, details.server_ip.ToString());
+    body.Set(kProtocolKey, details.protocol);
+    body.Set(kMethodKey, details.method);
+    body.Set(kStatusCodeKey, details.status_code);
+    body.Set(kElapsedTimeKey,
+             static_cast<int>(details.elapsed_time.InMilliseconds()));
+    body.Set(kPhaseKey, phase);
+    body.Set(kTypeKey, type);
 
-    return std::move(body);
+    return body;
   }
 
-  std::unique_ptr<const base::Value> CreateSignedExchangeReportBody(
+  static base::Value::Dict CreateSignedExchangeReportBody(
       const SignedExchangeReportDetails& details,
-      double sampling_fraction) const {
-    auto body = std::make_unique<base::DictionaryValue>();
-    body->SetString(kPhaseKey, kSignedExchangePhaseValue);
-    body->SetString(kTypeKey, details.type);
-    body->SetDouble(kSamplingFractionKey, sampling_fraction);
-    body->SetString(kReferrerKey, details.referrer);
-    body->SetString(kServerIpKey, details.server_ip_address.ToString());
-    body->SetString(kProtocolKey, details.protocol);
-    body->SetString(kMethodKey, details.method);
-    body->SetInteger(kStatusCodeKey, details.status_code);
-    body->SetInteger(kElapsedTimeKey, details.elapsed_time.InMilliseconds());
+      double sampling_fraction) {
+    base::Value::Dict body;
+    body.Set(kPhaseKey, kSignedExchangePhaseValue);
+    body.Set(kTypeKey, details.type);
+    body.Set(kSamplingFractionKey, sampling_fraction);
+    body.Set(kReferrerKey, details.referrer);
+    body.Set(kServerIpKey, details.server_ip_address.ToString());
+    body.Set(kProtocolKey, details.protocol);
+    body.Set(kMethodKey, details.method);
+    body.Set(kStatusCodeKey, details.status_code);
+    body.Set(kElapsedTimeKey,
+             static_cast<int>(details.elapsed_time.InMilliseconds()));
 
-    auto sxg_body = std::make_unique<base::DictionaryValue>();
-    sxg_body->SetKey(kOuterUrlKey, base::Value(details.outer_url.spec()));
+    base::Value::Dict sxg_body;
+    sxg_body.Set(kOuterUrlKey, details.outer_url.spec());
     if (details.inner_url.is_valid())
-      sxg_body->SetKey(kInnerUrlKey, base::Value(details.inner_url.spec()));
+      sxg_body.Set(kInnerUrlKey, details.inner_url.spec());
 
-    base::Value cert_url_list = base::Value(base::Value::Type::LIST);
+    base::Value::List cert_url_list;
     if (details.cert_url.is_valid())
-      cert_url_list.Append(base::Value(details.cert_url.spec()));
-    sxg_body->SetKey(kCertUrlKey, std::move(cert_url_list));
-    body->SetDictionary(kSignedExchangeBodyKey, std::move(sxg_body));
+      cert_url_list.Append(details.cert_url.spec());
+    sxg_body.Set(kCertUrlKey, std::move(cert_url_list));
+    body.Set(kSignedExchangeBodyKey, std::move(sxg_body));
 
-    return std::move(body);
+    return body;
   }
 
   bool IsMismatchingSubdomainReport(const NelPolicy& policy,
                                     const url::Origin& report_origin) const {
-    return policy.include_subdomains && (policy.origin != report_origin);
+    return policy.include_subdomains && (policy.key.origin != report_origin);
   }
 
   // Returns a valid value of matching fraction iff the event should be sampled.
-  base::Optional<double> SampleAndReturnFraction(const NelPolicy& policy,
+  absl::optional<double> SampleAndReturnFraction(const NelPolicy& policy,
                                                  bool success) const {
     const double sampling_fraction =
         success ? policy.success_fraction : policy.failure_fraction;
@@ -803,12 +834,12 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
     // Sampling fractions are often either 0.0 or 1.0, so in those cases we
     // can avoid having to call RandDouble().
     if (sampling_fraction <= 0.0)
-      return base::nullopt;
+      return absl::nullopt;
     if (sampling_fraction >= 1.0)
       return sampling_fraction;
 
     if (base::RandDouble() >= sampling_fraction)
-      return base::nullopt;
+      return absl::nullopt;
     return sampling_fraction;
   }
 
@@ -841,7 +872,9 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
 
     // TODO(chlily): Toss any expired policies we encounter.
     for (NelPolicy& policy : loaded_policies) {
-      AddPolicy(std::move(policy));
+      if (policies_.find(policy.key) == policies_.end()) {
+        AddPolicy(std::move(policy));
+      }
     }
     initialized_ = true;
     ExecuteBacklog();
@@ -849,6 +882,60 @@ class NetworkErrorLoggingServiceImpl : public NetworkErrorLoggingService {
 };
 
 }  // namespace
+
+NetworkErrorLoggingService::NelPolicyKey::NelPolicyKey() = default;
+
+NetworkErrorLoggingService::NelPolicyKey::NelPolicyKey(
+    const NetworkAnonymizationKey& network_anonymization_key,
+    const url::Origin& origin)
+    : network_anonymization_key(network_anonymization_key), origin(origin) {}
+
+NetworkErrorLoggingService::NelPolicyKey::NelPolicyKey(
+    const NelPolicyKey& other) = default;
+
+bool NetworkErrorLoggingService::NelPolicyKey::operator<(
+    const NelPolicyKey& other) const {
+  return std::tie(network_anonymization_key, origin) <
+         std::tie(other.network_anonymization_key, other.origin);
+}
+
+bool NetworkErrorLoggingService::NelPolicyKey::operator==(
+    const NelPolicyKey& other) const {
+  return std::tie(network_anonymization_key, origin) ==
+         std::tie(other.network_anonymization_key, other.origin);
+}
+
+bool NetworkErrorLoggingService::NelPolicyKey::operator!=(
+    const NelPolicyKey& other) const {
+  return !(*this == other);
+}
+
+NetworkErrorLoggingService::NelPolicyKey::~NelPolicyKey() = default;
+
+NetworkErrorLoggingService::WildcardNelPolicyKey::WildcardNelPolicyKey() =
+    default;
+
+NetworkErrorLoggingService::WildcardNelPolicyKey::WildcardNelPolicyKey(
+    const NetworkAnonymizationKey& network_anonymization_key,
+    const std::string& domain)
+    : network_anonymization_key(network_anonymization_key), domain(domain) {}
+
+NetworkErrorLoggingService::WildcardNelPolicyKey::WildcardNelPolicyKey(
+    const NelPolicyKey& origin_key)
+    : WildcardNelPolicyKey(origin_key.network_anonymization_key,
+                           origin_key.origin.host()) {}
+
+NetworkErrorLoggingService::WildcardNelPolicyKey::WildcardNelPolicyKey(
+    const WildcardNelPolicyKey& other) = default;
+
+bool NetworkErrorLoggingService::WildcardNelPolicyKey::operator<(
+    const WildcardNelPolicyKey& other) const {
+  return std::tie(network_anonymization_key, domain) <
+         std::tie(other.network_anonymization_key, other.domain);
+}
+
+NetworkErrorLoggingService::WildcardNelPolicyKey::~WildcardNelPolicyKey() =
+    default;
 
 NetworkErrorLoggingService::NelPolicy::NelPolicy() = default;
 
@@ -938,9 +1025,10 @@ base::Value NetworkErrorLoggingService::StatusAsValue() const {
   return base::Value();
 }
 
-std::set<url::Origin> NetworkErrorLoggingService::GetPolicyOriginsForTesting() {
+std::set<NetworkErrorLoggingService::NelPolicyKey>
+NetworkErrorLoggingService::GetPolicyKeysForTesting() {
   NOTIMPLEMENTED();
-  return std::set<url::Origin>();
+  return std::set<NelPolicyKey>();
 }
 
 NetworkErrorLoggingService::PersistentNelStore*
@@ -955,8 +1043,6 @@ ReportingService* NetworkErrorLoggingService::GetReportingServiceForTesting() {
 }
 
 NetworkErrorLoggingService::NetworkErrorLoggingService()
-    : clock_(base::DefaultClock::GetInstance()),
-      reporting_service_(nullptr),
-      shut_down_(false) {}
+    : clock_(base::DefaultClock::GetInstance()) {}
 
 }  // namespace net

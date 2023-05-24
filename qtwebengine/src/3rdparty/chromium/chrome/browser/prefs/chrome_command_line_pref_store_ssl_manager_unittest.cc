@@ -1,10 +1,9 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
 #include "base/memory/ref_counted.h"
-#include "base/test/task_environment.h"
 #include "chrome/browser/prefs/chrome_command_line_pref_store.h"
 #include "chrome/browser/ssl/ssl_config_service_manager.h"
 #include "chrome/common/chrome_switches.h"
@@ -14,6 +13,9 @@
 #include "components/prefs/testing_pref_store.h"
 #include "components/sync_preferences/pref_service_mock_factory.h"
 #include "content/public/browser/network_service_instance.h"
+#include "content/public/test/browser_task_environment.h"
+#include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/network_service.mojom.h"
 #include "services/network/public/mojom/ssl_config.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -23,7 +25,7 @@ class CommandLinePrefStoreSSLManagerTest : public testing::Test {
   CommandLinePrefStoreSSLManagerTest() {}
 
  protected:
-  base::test::SingleThreadTaskEnvironment task_environment_;
+  content::BrowserTaskEnvironment task_environment_;
 };
 
 // Test that command-line settings for SSL versions are respected and that they
@@ -32,8 +34,8 @@ TEST_F(CommandLinePrefStoreSSLManagerTest, CommandLinePrefs) {
   scoped_refptr<TestingPrefStore> local_state_store(new TestingPrefStore());
 
   base::CommandLine command_line(base::CommandLine::NO_PROGRAM);
-  command_line.AppendSwitchASCII(switches::kSSLVersionMin, "tls1.1");
-  command_line.AppendSwitchASCII(switches::kSSLVersionMax, "tls1.2");
+  command_line.AppendSwitchASCII(switches::kSSLVersionMin, "tls1.2");
+  command_line.AppendSwitchASCII(switches::kSSLVersionMax, "tls1.3");
 
   sync_preferences::PrefServiceMockFactory factory;
   factory.set_user_prefs(local_state_store);
@@ -45,15 +47,14 @@ TEST_F(CommandLinePrefStoreSSLManagerTest, CommandLinePrefs) {
   network::mojom::NetworkContextParamsPtr context_params =
       network::mojom::NetworkContextParams::New();
   context_params->cert_verifier_params = content::GetCertVerifierParams(
-      network::mojom::CertVerifierCreationParams::New());
-  std::unique_ptr<SSLConfigServiceManager> config_manager(
-      SSLConfigServiceManager::CreateDefaultManager(local_state.get()));
-  config_manager->AddToNetworkContextParams(context_params.get());
+      cert_verifier::mojom::CertVerifierCreationParams::New());
+  SSLConfigServiceManager config_manager(local_state.get());
+  config_manager.AddToNetworkContextParams(context_params.get());
 
   // Command-line flags should be respected.
-  EXPECT_EQ(network::mojom::SSLVersion::kTLS11,
-            context_params->initial_ssl_config->version_min);
   EXPECT_EQ(network::mojom::SSLVersion::kTLS12,
+            context_params->initial_ssl_config->version_min);
+  EXPECT_EQ(network::mojom::SSLVersion::kTLS13,
             context_params->initial_ssl_config->version_max);
 
   // Explicitly double-check the settings are not in the preference store.

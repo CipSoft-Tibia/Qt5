@@ -13,14 +13,13 @@
 #import <objc/runtime.h>
 
 #include "rtc_base/numerics/safe_conversions.h"
-#include "rtc_base/ref_counted_object.h"
 
 namespace {
 // An implementation of EncodedImageBufferInterface that doesn't perform any copies.
 class ObjCEncodedImageBuffer : public webrtc::EncodedImageBufferInterface {
  public:
   static rtc::scoped_refptr<ObjCEncodedImageBuffer> Create(NSData *data) {
-    return new rtc::RefCountedObject<ObjCEncodedImageBuffer>(data);
+    return rtc::make_ref_counted<ObjCEncodedImageBuffer>(data);
   }
   const uint8_t *data() const override { return static_cast<const uint8_t *>(data_.bytes); }
   // TODO(bugs.webrtc.org/9378): delete this non-const data method.
@@ -92,7 +91,6 @@ class ObjCEncodedImageBuffer : public webrtc::EncodedImageBufferInterface {
     self.encodeFinishMs = encodedImage.timing_.encode_finish_ms;
     self.frameType = static_cast<RTCFrameType>(encodedImage._frameType);
     self.rotation = static_cast<RTCVideoRotation>(encodedImage.rotation_);
-    self.completeFrame = encodedImage._completeFrame;
     self.qp = @(encodedImage.qp_);
     self.contentType = (encodedImage.content_type_ == webrtc::VideoContentType::SCREENSHARE) ?
         RTCVideoContentTypeScreenshare :
@@ -121,7 +119,6 @@ class ObjCEncodedImageBuffer : public webrtc::EncodedImageBufferInterface {
   encodedImage.timing_.encode_finish_ms = self.encodeFinishMs;
   encodedImage._frameType = webrtc::VideoFrameType(self.frameType);
   encodedImage.rotation_ = webrtc::VideoRotation(self.rotation);
-  encodedImage._completeFrame = self.completeFrame;
   encodedImage.qp_ = self.qp ? self.qp.intValue : -1;
   encodedImage.content_type_ = (self.contentType == RTCVideoContentTypeScreenshare) ?
       webrtc::VideoContentType::SCREENSHARE :

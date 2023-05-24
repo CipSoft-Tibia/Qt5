@@ -1,6 +1,12 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import './strings.m.js';
+
+import {sendWithPromise} from 'chrome://resources/js/cr.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {$} from 'chrome://resources/js/util_ts.js';
 
 // Contents of lines that act as delimiters for multi-line values.
 const DELIM_START = '---------- START ----------';
@@ -9,12 +15,18 @@ const DELIM_END = '---------- END ----------';
 // Limit file size to 10 MiB to prevent hanging on accidental upload.
 const MAX_FILE_SIZE = 10485760;
 
+// <if expr="chromeos_ash">
+// Link to markdown doc with documentation for Chrome OS.
+const CROS_MD_DOC_URL =
+    'https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/debugd/docs/log_entries.md';
+// </if>
+
 function getValueDivForButton(button) {
-  return $(button.id.substr(0, button.id.length - 4));
+  return $('div-' + button.id.substr(4));
 }
 
 function getButtonForValueDiv(valueDiv) {
-  return $(valueDiv.id + '-btn');
+  return $('btn-' + valueDiv.id.substr(4));
 }
 
 function handleDragOver(e) {
@@ -39,7 +51,7 @@ function showError(fileName) {
  */
 function changeCollapsedStatus() {
   const valueDiv = getValueDivForButton(this);
-  if (valueDiv.parentNode.className == 'number-collapsed') {
+  if (valueDiv.parentNode.className === 'number-collapsed') {
     valueDiv.parentNode.className = 'number-expanded';
     this.textContent = loadTimeData.getString('collapseBtn');
   } else {
@@ -55,7 +67,7 @@ function collapseAll() {
   const valueDivs = document.getElementsByClassName('stat-value');
   for (let i = 0; i < valueDivs.length; i++) {
     const button = getButtonForValueDiv(valueDivs[i]);
-    if (button && button.className != 'button-hidden') {
+    if (button && button.className !== 'button-hidden') {
       button.textContent = loadTimeData.getString('expandBtn');
       valueDivs[i].parentNode.className = 'number-collapsed';
     }
@@ -69,7 +81,7 @@ function expandAll() {
   const valueDivs = document.getElementsByClassName('stat-value');
   for (let i = 0; i < valueDivs.length; i++) {
     const button = getButtonForValueDiv(valueDivs[i]);
-    if (button && button.className != 'button-hidden') {
+    if (button && button.className !== 'button-hidden') {
       button.textContent = loadTimeData.getString('collapseBtn');
       valueDivs[i].parentNode.className = 'number-expanded';
     }
@@ -100,6 +112,15 @@ function importLog(file) {
 }
 
 /**
+ * Replace characters that are invalid as part of an id for querySelector.
+ * @param {string} name
+ * @return {string} The sanitized name
+ */
+function getSanitizedName(name) {
+  return name.replace(/[^a-zA-Z0-9]/g, '-');
+}
+
+/**
  * For a particular log entry, create the DOM node representing it in the
  * log entry table.
  * @param{log} A dictionary with the keys statName and statValue
@@ -112,9 +133,24 @@ function createNodeForLogEntry(log) {
   nameCell.className = 'name';
   const nameDiv = document.createElement('div');
   nameDiv.className = 'stat-name';
+
+  // Add an anchor link that links to the log entry.
+  const anchor = document.createElement('a');
+  anchor.href = `#${log.statName}`;
+  anchor.className = 'anchor';
+  nameDiv.appendChild(anchor);
+
   const a = document.createElement('a');
   a.className = 'stat-name-link';
-  a.href = `#${log.statName}`;
+
+  // Let URL be anchor to the section of this page by default.
+  let urlPrefix = '';
+  // <if expr="chromeos_ash">
+  // Link to the markdown doc with documentation for the entry for Chrome OS
+  // instead.
+  urlPrefix = CROS_MD_DOC_URL;
+  // </if>
+  a.href = `${urlPrefix}#${log.statName}`;
   a.name = a.text = log.statName;
   nameDiv.appendChild(a);
   nameCell.appendChild(nameDiv);
@@ -123,7 +159,7 @@ function createNodeForLogEntry(log) {
   const buttonCell = document.createElement('td');
   buttonCell.className = 'button-cell';
   const button = document.createElement('button');
-  button.id = log.statName + '-value-btn';
+  button.id = 'btn-' + getSanitizedName(log.statName) + '-value';
   button.className = 'expand-status';
   button.onclick = changeCollapsedStatus;
   buttonCell.appendChild(button);
@@ -132,7 +168,7 @@ function createNodeForLogEntry(log) {
   const valueCell = document.createElement('td');
   const valueDiv = document.createElement('div');
   valueDiv.className = 'stat-value';
-  valueDiv.id = log.statName + '-value';
+  valueDiv.id = 'div-' + getSanitizedName(log.statName) + '-value';
   valueDiv.textContent = log.statValue;
   valueCell.appendChild(valueDiv);
   row.appendChild(valueCell);
@@ -169,9 +205,8 @@ function updateLogEntries(systemInfo) {
 }
 
 /**
- * Callback called by system_info_ui.cc when it has finished fetching
- * system info. The log entries are passed as a list of dictionaries containing
- * the keys statName and statValue.
+ * Callback called when system info has been fetched. The log entries are passed
+ * as a list of dictionaries containing the keys statName and statValue.
  * @param {systemInfo} The fetched log entries.
  */
 function returnSystemInfo(systemInfo) {
@@ -197,7 +232,7 @@ function parseSystemLog(text) {
 
     const delimiter = lines[i].indexOf('=');
     if (delimiter <= 0) {
-      if (i == lines.length - 1) {
+      if (i === lines.length - 1) {
         break;
       }
       // If '=' is missing here, format is wrong.
@@ -214,16 +249,16 @@ function parseSystemLog(text) {
     // Delimiters are based on kMultilineIndicatorString, kMultilineStartString,
     // and kMultilineEndString in components/feedback/feedback_data.cc.
     // If these change, we should check for both the old and new versions.
-    if (value == '<multiline>') {
+    if (value === '<multiline>') {
       // Skip start delimiter.
-      if (i == len - 1 || lines[++i].indexOf(DELIM_START) == -1) {
+      if (i === len - 1 || lines[++i].indexOf(DELIM_START) === -1) {
         return false;
       }
 
       ++i;
       value = '';
       // Append lines between start and end delimiters.
-      while (i < len && lines[i] != DELIM_END) {
+      while (i < len && lines[i] !== DELIM_END) {
         value += lines[i++] + '\n';
       }
 
@@ -243,7 +278,7 @@ function parseSystemLog(text) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  chrome.send('requestSystemInfo');
+  sendWithPromise('requestSystemInfo').then(returnSystemInfo);
 
   $('collapseAll').onclick = collapseAll;
   $('expandAll').onclick = expandAll;

@@ -11,7 +11,9 @@
 #include "src/inspector/protocol/Forward.h"
 #include "src/inspector/protocol/HeapProfiler.h"
 
-#include "include/v8.h"
+namespace v8 {
+class Isolate;
+}
 
 namespace v8_inspector {
 
@@ -25,6 +27,8 @@ class V8HeapProfilerAgentImpl : public protocol::HeapProfiler::Backend {
   V8HeapProfilerAgentImpl(V8InspectorSessionImpl*, protocol::FrontendChannel*,
                           protocol::DictionaryValue* state);
   ~V8HeapProfilerAgentImpl() override;
+  V8HeapProfilerAgentImpl(const V8HeapProfilerAgentImpl&) = delete;
+  V8HeapProfilerAgentImpl& operator=(const V8HeapProfilerAgentImpl&) = delete;
   void restore();
 
   void collectGarbage(
@@ -32,14 +36,17 @@ class V8HeapProfilerAgentImpl : public protocol::HeapProfiler::Backend {
 
   Response enable() override;
   Response startTrackingHeapObjects(Maybe<bool> trackAllocations) override;
-  Response stopTrackingHeapObjects(
-      Maybe<bool> reportProgress,
-      Maybe<bool> treatGlobalObjectsAsRoots) override;
+  Response stopTrackingHeapObjects(Maybe<bool> reportProgress,
+                                   Maybe<bool> treatGlobalObjectsAsRoots,
+                                   Maybe<bool> captureNumericValue,
+                                   Maybe<bool> exposeInternals) override;
 
   Response disable() override;
 
   Response takeHeapSnapshot(Maybe<bool> reportProgress,
-                            Maybe<bool> treatGlobalObjectsAsRoots) override;
+                            Maybe<bool> treatGlobalObjectsAsRoots,
+                            Maybe<bool> captureNumericValue,
+                            Maybe<bool> exposeInternals) override;
 
   Response getObjectByHeapObjectId(
       const String16& heapSnapshotObjectId, Maybe<String16> objectGroup,
@@ -49,7 +56,9 @@ class V8HeapProfilerAgentImpl : public protocol::HeapProfiler::Backend {
   Response getHeapObjectId(const String16& objectId,
                            String16* heapSnapshotObjectId) override;
 
-  Response startSampling(Maybe<double> samplingInterval) override;
+  Response startSampling(Maybe<double> samplingInterval,
+                         Maybe<bool> includeObjectsCollectedByMajorGC,
+                         Maybe<bool> includeObjectsCollectedByMinorGC) override;
   Response stopSampling(
       std::unique_ptr<protocol::HeapProfiler::SamplingHeapProfile>*) override;
   Response getSamplingProfile(
@@ -70,8 +79,6 @@ class V8HeapProfilerAgentImpl : public protocol::HeapProfiler::Backend {
   protocol::DictionaryValue* m_state;
   bool m_hasTimer;
   std::shared_ptr<AsyncGC> m_async_gc;
-
-  DISALLOW_COPY_AND_ASSIGN(V8HeapProfilerAgentImpl);
 };
 
 }  // namespace v8_inspector

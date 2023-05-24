@@ -1,4 +1,4 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,9 +19,6 @@ GetGLTextureClientGUIDForTracing(uint64_t context_group_tracing_id,
 GL_EXPORT base::trace_event::MemoryAllocatorDumpGuid
 GetGLRenderbufferGUIDForTracing(uint64_t context_group_tracing_id,
                                 uint32_t renderbuffer_id);
-
-GL_EXPORT base::trace_event::MemoryAllocatorDumpGuid
-GetGLTextureServiceGUIDForTracing(uint64_t texture_tracing_id);
 
 GL_EXPORT base::trace_event::MemoryAllocatorDumpGuid GetGLBufferGUIDForTracing(
     uint64_t context_group_tracing_id,

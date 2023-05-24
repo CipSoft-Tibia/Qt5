@@ -22,12 +22,6 @@
 #define IN_LIBEXSLT
 #include "libexslt/libexslt.h"
 
-#if defined(_WIN32) && !defined (__CYGWIN__) && (!__MINGW32__)
-#include <win32config.h>
-#else
-#include "config.h"
-#endif
-
 #if defined(HAVE_LOCALTIME_R) && defined(__GLIBC__)	/* _POSIX_SOURCE required by gnu libc */
 #ifndef _AIX51		/* but on AIX we're not using gnu libc */
 #define _POSIX_SOURCE
@@ -38,7 +32,6 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
-#include <libxslt/xsltconfig.h>
 #include <libxslt/xsltutils.h>
 #include <libxslt/xsltInternals.h>
 #include <libxslt/extensions.h>
@@ -47,13 +40,8 @@
 
 #include <string.h>
 #include <limits.h>
-
-#ifdef HAVE_ERRNO_H
 #include <errno.h>
-#endif
-#ifdef HAVE_MATH_H
 #include <math.h>
-#endif
 
 /* needed to get localtime_r on Solaris */
 #ifdef __sun
@@ -62,9 +50,7 @@
 #endif
 #endif
 
-#ifdef HAVE_TIME_H
 #include <time.h>
-#endif
 
 /*
  * types of date and/or time (from schema datatypes)
@@ -107,19 +93,6 @@ struct _exsltDateDurVal {
     double	sec;	/* sec stores min and hour also
 			   0 <= sec < SECS_PER_DAY */
 };
-
-/****************************************************************
- *								*
- *			Compat./Port. macros			*
- *								*
- ****************************************************************/
-
-#if defined(HAVE_TIME_H)					\
-    && (defined(HAVE_LOCALTIME) || defined(HAVE_LOCALTIME_R))	\
-    && (defined(HAVE_GMTIME) || defined(HAVE_GMTIME_R))		\
-    && defined(HAVE_TIME)
-#define WITH_TIME
-#endif
 
 /****************************************************************
  *								*
@@ -736,7 +709,6 @@ exsltDateFreeDuration (exsltDateDurValPtr duration) {
     xmlFree(duration);
 }
 
-#ifdef WITH_TIME
 /**
  * exsltDateCurrent:
  *
@@ -752,16 +724,13 @@ exsltDateCurrent (void)
     time_t secs;
     int local_s, gm_s;
     exsltDateValPtr ret;
-#ifdef HAVE_ERRNO_H
     char *source_date_epoch;
-#endif /* HAVE_ERRNO_H */
     int override = 0;
 
     ret = exsltDateCreateDate(XS_DATETIME);
     if (ret == NULL)
         return NULL;
 
-#ifdef HAVE_ERRNO_H
     /*
      * Allow the date and time to be set externally by an exported
      * environment variable to enable reproducible builds.
@@ -783,7 +752,6 @@ exsltDateCurrent (void)
 #endif
         }
     }
-#endif /* HAVE_ERRNO_H */
 
     if (override == 0) {
     /* get current time */
@@ -850,7 +818,6 @@ exsltDateCurrent (void)
 
     return ret;
 }
-#endif
 
 /**
  * exsltDateParse:
@@ -1030,6 +997,9 @@ exsltDateParseDuration (const xmlChar *duration)
 
     /* duration must start with 'P' (after sign) */
     if (*cur++ != 'P')
+	return NULL;
+
+    if (*cur == 0)
 	return NULL;
 
     dur = exsltDateCreateDuration();
@@ -1806,7 +1776,6 @@ static xmlChar *
 exsltDateDateTime (void)
 {
     xmlChar *ret = NULL;
-#ifdef WITH_TIME
     exsltDateValPtr cur;
 
     cur = exsltDateCurrent();
@@ -1814,7 +1783,6 @@ exsltDateDateTime (void)
 	ret = exsltDateFormatDateTime(cur);
 	exsltDateFreeDate(cur);
     }
-#endif
 
     return ret;
 }
@@ -1842,10 +1810,8 @@ exsltDateDate (const xmlChar *dateTime)
     xmlChar *ret = NULL;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return NULL;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -1886,10 +1852,8 @@ exsltDateTime (const xmlChar *dateTime)
     xmlChar *ret = NULL;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return NULL;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -1935,10 +1899,8 @@ exsltDateYear (const xmlChar *dateTime)
     double ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -1986,9 +1948,7 @@ exsltDateLeapYear (const xmlChar *dateTime)
     xmlXPathObjectPtr ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
-#endif
     } else {
 	dt = exsltDateParse(dateTime);
 	if ((dt != NULL) &&
@@ -2038,10 +1998,8 @@ exsltDateMonthInYear (const xmlChar *dateTime)
     double ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2187,10 +2145,8 @@ exsltDateWeekInYear (const xmlChar *dateTime)
     long diy, diw, year, ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2255,10 +2211,8 @@ exsltDateWeekInMonth (const xmlChar *dateTime)
     long fdiy, fdiw, ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2309,10 +2263,8 @@ exsltDateDayInYear (const xmlChar *dateTime)
     long ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2358,10 +2310,8 @@ exsltDateDayInMonth (const xmlChar *dateTime)
     double ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2406,10 +2356,8 @@ exsltDateDayOfWeekInMonth (const xmlChar *dateTime)
     long ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2455,10 +2403,8 @@ exsltDateDayInWeek (const xmlChar *dateTime)
     long diy, ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2586,10 +2532,8 @@ exsltDateHourInDay (const xmlChar *dateTime)
     double ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2632,10 +2576,8 @@ exsltDateMinuteInHour (const xmlChar *dateTime)
     double ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2680,10 +2622,8 @@ exsltDateSecondInMinute (const xmlChar *dateTime)
     double ret;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
 	dt = exsltDateParse(dateTime);
@@ -2954,10 +2894,8 @@ exsltDateSeconds (const xmlChar *dateTime)
     double ret = xmlXPathNAN;
 
     if (dateTime == NULL) {
-#ifdef WITH_TIME
 	dt = exsltDateCurrent();
 	if (dt == NULL)
-#endif
 	    return xmlXPathNAN;
     } else {
         dt = exsltDateParse(dateTime);
@@ -3114,7 +3052,7 @@ exsltDateDuration (const xmlChar *number)
         return NULL;
 
     days = floor(secs / SECS_PER_DAY);
-    if ((days <= LONG_MIN) || (days >= LONG_MAX))
+    if ((days <= (double)LONG_MIN) || (days >= (double)LONG_MAX))
         return NULL;
 
     dur = exsltDateCreateDuration();
@@ -3136,7 +3074,6 @@ exsltDateDuration (const xmlChar *number)
  *								*
  ****************************************************************/
 
-#ifdef WITH_TIME
 /**
  * exsltDateDateTimeFunction:
  * @ctxt: an XPath parser context
@@ -3160,7 +3097,6 @@ exsltDateDateTimeFunction (xmlXPathParserContextPtr ctxt, int nargs)
     else
         xmlXPathReturnString(ctxt, ret);
 }
-#endif
 
 /**
  * exsltDateDateFunction:
@@ -3773,11 +3709,9 @@ exsltDateRegister (void)
     xsltRegisterExtModuleFunction ((const xmlChar *) "date",
 				   (const xmlChar *) EXSLT_DATE_NAMESPACE,
 				   exsltDateDateFunction);
-#ifdef WITH_TIME
     xsltRegisterExtModuleFunction ((const xmlChar *) "date-time",
 				   (const xmlChar *) EXSLT_DATE_NAMESPACE,
 				   exsltDateDateTimeFunction);
-#endif
     xsltRegisterExtModuleFunction ((const xmlChar *) "day-abbreviation",
 				   (const xmlChar *) EXSLT_DATE_NAMESPACE,
 				   exsltDateDayAbbreviationFunction);
@@ -3868,12 +3802,10 @@ exsltDateXpathCtxtRegister (xmlXPathContextPtr ctxt, const xmlChar *prefix)
                                    (const xmlChar *) "date",
                                    (const xmlChar *) EXSLT_DATE_NAMESPACE,
                                    exsltDateDateFunction)
-#ifdef WITH_TIME
         && !xmlXPathRegisterFuncNS(ctxt,
                                    (const xmlChar *) "date-time",
                                    (const xmlChar *) EXSLT_DATE_NAMESPACE,
                                    exsltDateDateTimeFunction)
-#endif
         && !xmlXPathRegisterFuncNS(ctxt,
                                    (const xmlChar *) "day-abbreviation",
                                    (const xmlChar *) EXSLT_DATE_NAMESPACE,

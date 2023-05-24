@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFONTENGINE_P_H
 #define QFONTENGINE_P_H
@@ -176,8 +140,19 @@ public:
         SynthesizedStretch = 0x4
     };
     virtual int synthesized() const { return 0; }
-    virtual bool supportsSubPixelPositions() const { return false; }
-    virtual QFixed subPixelPositionForX(QFixed x) const;
+    inline bool supportsSubPixelPositions() const
+    {
+        return supportsHorizontalSubPixelPositions() || supportsVerticalSubPixelPositions();
+    }
+    virtual bool supportsHorizontalSubPixelPositions() const { return false; }
+    virtual bool supportsVerticalSubPixelPositions() const { return false; }
+    virtual QFixedPoint subPixelPositionFor(const QFixedPoint &position) const;
+    QFixed subPixelPositionForX(QFixed x) const
+    {
+        return subPixelPositionFor(QFixedPoint(x, 0)).x;
+    }
+
+    bool isColorFont() const { return glyphFormat == Format_ARGB; }
 
     virtual QFixed emSquareSize() const { return ascent(); }
 
@@ -201,30 +176,30 @@ public:
      */
     // ### Refactor this into a smaller and more flexible API.
     virtual QImage alphaMapForGlyph(glyph_t);
-    virtual QImage alphaMapForGlyph(glyph_t glyph, QFixed subPixelPosition);
+    virtual QImage alphaMapForGlyph(glyph_t glyph, const QFixedPoint &subPixelPosition);
     virtual QImage alphaMapForGlyph(glyph_t, const QTransform &t);
-    virtual QImage alphaMapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t);
-    virtual QImage alphaRGBMapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t);
-    virtual QImage bitmapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t, const QColor &color = QColor());
-    virtual Glyph *glyphData(glyph_t glyph, QFixed subPixelPosition, GlyphFormat neededFormat, const QTransform &t);
+    virtual QImage alphaMapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t);
+    virtual QImage alphaRGBMapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t);
+    virtual QImage bitmapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t, const QColor &color = QColor());
+    virtual Glyph *glyphData(glyph_t glyph, const QFixedPoint &subPixelPosition, GlyphFormat neededFormat, const QTransform &t);
     virtual bool hasInternalCaching() const { return false; }
 
-    virtual glyph_metrics_t alphaMapBoundingBox(glyph_t glyph, QFixed /*subPixelPosition*/, const QTransform &matrix, GlyphFormat /*format*/)
+    virtual glyph_metrics_t alphaMapBoundingBox(glyph_t glyph, const QFixedPoint &/*subPixelPosition*/, const QTransform &matrix, GlyphFormat /*format*/)
     {
         return boundingBox(glyph, matrix);
     }
 
     virtual void removeGlyphFromCache(glyph_t);
 
-    virtual glyph_metrics_t boundingBox(const QGlyphLayout &glyphs) = 0;
+    virtual glyph_metrics_t boundingBox(const QGlyphLayout &glyphs);
     virtual glyph_metrics_t boundingBox(glyph_t glyph) = 0;
     virtual glyph_metrics_t boundingBox(glyph_t glyph, const QTransform &matrix);
     glyph_metrics_t tightBoundingBox(const QGlyphLayout &glyphs);
 
-    virtual QFixed ascent() const = 0;
+    virtual QFixed ascent() const;
     virtual QFixed capHeight() const = 0;
-    virtual QFixed descent() const = 0;
-    virtual QFixed leading() const = 0;
+    virtual QFixed descent() const;
+    virtual QFixed leading() const;
     virtual QFixed xHeight() const;
     virtual QFixed averageCharWidth() const;
 
@@ -304,14 +279,11 @@ public:
         explicit Holder(void *p, qt_destroy_func_t d) : ptr(p), destroy_func(d) {}
         ~Holder() { if (ptr && destroy_func) destroy_func(ptr); }
         Holder(Holder &&other) noexcept
-            : ptr(other.ptr),
-              destroy_func(other.destroy_func)
+            : ptr(std::exchange(other.ptr, nullptr)),
+              destroy_func(std::exchange(other.destroy_func, nullptr))
         {
-            other.ptr = nullptr;
-            other.destroy_func = nullptr;
         }
-        Holder &operator=(Holder &&other) noexcept
-        { swap(other); return *this; }
+        QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(Holder)
 
         void swap(Holder &other) noexcept
         {
@@ -353,21 +325,28 @@ public:
             return left_right < other.left_right;
         }
     };
-    QVector<KernPair> kerning_pairs;
+    QList<KernPair> kerning_pairs;
     void loadKerningPairs(QFixed scalingFactor);
 
     GlyphFormat glyphFormat;
     int m_subPixelPositionCount; // Number of positions within a single pixel for this cache
 
-    inline QVariant userData() const { return m_userData; }
-
 protected:
     explicit QFontEngine(Type type);
 
-    QFixed lastRightBearing(const QGlyphLayout &glyphs, bool round = false);
+    QFixed firstLeftBearing(const QGlyphLayout &glyphs);
+    QFixed lastRightBearing(const QGlyphLayout &glyphs);
 
-    inline void setUserData(const QVariant &userData) { m_userData = userData; }
     QFixed calculatedCapHeight() const;
+
+    mutable QFixed m_ascent;
+    mutable QFixed m_descent;
+    mutable QFixed m_leading;
+    mutable bool m_heightMetricsQueried;
+
+    virtual void initializeHeightMetrics() const;
+    bool processHheaTable() const;
+    bool processOS2Table() const;
 
 private:
     struct GlyphCacheEntry {
@@ -384,11 +363,8 @@ private:
     mutable QHash<const void *, GlyphCaches> m_glyphCaches;
 
 private:
-    QVariant m_userData;
-
     mutable qreal m_minLeftBearing;
     mutable qreal m_minRightBearing;
-
 };
 Q_DECLARE_TYPEINFO(QFontEngine::KernPair, Q_PRIMITIVE_TYPE);
 
@@ -399,15 +375,10 @@ inline bool operator ==(const QFontEngine::FaceId &f1, const QFontEngine::FaceId
     return f1.index == f2.index && f1.encoding == f2.encoding && f1.filename == f2.filename && f1.uuid == f2.uuid;
 }
 
-inline uint qHash(const QFontEngine::FaceId &f, uint seed = 0)
+inline size_t qHash(const QFontEngine::FaceId &f, size_t seed = 0)
     noexcept(noexcept(qHash(f.filename)))
 {
-    QtPrivate::QHashCombine hash;
-    seed = hash(seed, f.filename);
-    seed = hash(seed, f.uuid);
-    seed = hash(seed, f.index);
-    seed = hash(seed, f.encoding);
-    return seed;
+    return qHashMulti(seed, f.filename, f.uuid, f.index, f.encoding);
 }
 
 
@@ -477,10 +448,10 @@ public:
     virtual QFixed xHeight() const override;
     virtual QFixed averageCharWidth() const override;
     virtual QImage alphaMapForGlyph(glyph_t) override;
-    virtual QImage alphaMapForGlyph(glyph_t glyph, QFixed subPixelPosition) override;
+    virtual QImage alphaMapForGlyph(glyph_t glyph, const QFixedPoint &subPixelPosition) override;
     virtual QImage alphaMapForGlyph(glyph_t, const QTransform &t) override;
-    virtual QImage alphaMapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t) override;
-    virtual QImage alphaRGBMapForGlyph(glyph_t, QFixed subPixelPosition, const QTransform &t) override;
+    virtual QImage alphaMapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t) override;
+    virtual QImage alphaRGBMapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t) override;
 
     virtual QFixed lineThickness() const override;
     virtual QFixed underlinePosition() const override;
@@ -510,7 +481,7 @@ protected:
     virtual QFontEngine *loadEngine(int at);
 
 private:
-    QVector<QFontEngine *> m_engines;
+    QList<QFontEngine *> m_engines;
     QStringList m_fallbackFamilies;
     const int m_script;
     bool m_fallbackFamiliesQueried;

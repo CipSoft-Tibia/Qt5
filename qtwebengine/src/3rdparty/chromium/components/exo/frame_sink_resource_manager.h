@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,28 +16,31 @@ namespace exo {
 // for implementing a frame sink.
 class FrameSinkResourceManager {
  public:
+  using ReleaseCallback = base::OnceCallback<void(viz::ReturnedResource)>;
+
   FrameSinkResourceManager();
+
+  FrameSinkResourceManager(const FrameSinkResourceManager&) = delete;
+  FrameSinkResourceManager& operator=(const FrameSinkResourceManager&) = delete;
+
   ~FrameSinkResourceManager();
 
   bool HasReleaseCallbackForResource(viz::ResourceId id);
-  void SetResourceReleaseCallback(viz::ResourceId id,
-                                  viz::ReleaseCallback callback);
-  int AllocateResourceId();
+  void SetResourceReleaseCallback(viz::ResourceId id, ReleaseCallback callback);
+  viz::ResourceId AllocateResourceId();
 
   bool HasNoCallbacks() const;
-  void ReclaimResource(const viz::ReturnedResource& resource);
+  void ReclaimResource(viz::ReturnedResource resource);
   void ClearAllCallbacks();
 
  private:
   // A collection of callbacks used to release resources.
   using ResourceReleaseCallbackMap =
-      base::flat_map<viz::ResourceId, viz::ReleaseCallback>;
+      base::flat_map<viz::ResourceId, ReleaseCallback>;
   ResourceReleaseCallbackMap release_callbacks_;
 
-  // The next resource id the buffer is attached to.
-  int next_resource_id_ = 1;
-
-  DISALLOW_COPY_AND_ASSIGN(FrameSinkResourceManager);
+  // The id generator for the buffer.
+  viz::ResourceIdGenerator id_generator_;
 };
 
 }  // namespace exo

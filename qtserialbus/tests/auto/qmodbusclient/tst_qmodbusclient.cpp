@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtSerialBus/qmodbusclient.h>
 #include <private/qmodbusclient_p.h>
@@ -84,7 +51,7 @@ private slots:
         TestClient client;
         QCOMPARE(client.timeout(), 1000); //default value test
 
-        QSignalSpy spy(&client, SIGNAL(timeoutChanged(int)));
+        QSignalSpy spy(&client, &TestClient::timeoutChanged);
         client.setTimeout(50);
         QCOMPARE(client.timeout(), 50);
         QCOMPARE(spy.isEmpty(), false); // we expect the signal
@@ -107,9 +74,10 @@ private slots:
         QCOMPARE(client.numberOfRetries(), 1);
     }
 
-    void testProcessReadWriteSingleMultipleCoilsResponse()
+    void testProcessReadCoilsResponse()
     {
         TestClient client;
+        const QList<quint16> values({ 1,0,1,1,0,0,1,1, 1,1,0,1,0,1,1,0, 1,0,1,0,0,0,0,0 });
 
         QModbusDataUnit unit(QModbusDataUnit::Coils, 100, 24);
         QModbusResponse response = QModbusResponse(QModbusResponse::ReadCoils,
@@ -117,21 +85,48 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 24u);
+        QCOMPARE(unit.valueCount(), 24);
         QCOMPARE(unit.startAddress(), 100);
-        QCOMPARE(unit.values(),
-            QVector<quint16>({ 1,0,1,1,0,0,1,1, 1,1,0,1,0,1,1,0, 1,0,1,0,0,0,0,0 }));
+        QCOMPARE(unit.values(), values);
         QCOMPARE(unit.registerType(), QModbusDataUnit::Coils);
 
-        unit = QModbusDataUnit();
-        response = QModbusResponse(QModbusResponse::WriteSingleCoil,
+        unit = {};
+        response = QModbusResponse(QModbusResponse::ReadCoils,
+            QByteArray::fromHex("03cd6b05"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), false);
+        QCOMPARE(unit.valueCount(), 24);
+        QCOMPARE(unit.startAddress(), -1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::Coils);
+
+        unit = {};
+        unit.setStartAddress(1);
+        response = QModbusResponse(QModbusResponse::ReadCoils,
+            QByteArray::fromHex("03cd6b05"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), true);
+        QCOMPARE(unit.valueCount(), 24);
+        QCOMPARE(unit.startAddress(), 1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::Coils);
+    }
+
+    void testProcessWriteSingleMultipleCoilsResponse()
+    {
+        TestClient client;
+
+        QModbusDataUnit unit;
+        QModbusResponse response = QModbusResponse(QModbusResponse::WriteSingleCoil,
             QByteArray::fromHex("00acff00"));
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 1u);
+        QCOMPARE(unit.valueCount(), 1);
         QCOMPARE(unit.startAddress(), 172);
-        QCOMPARE(unit.values(), QVector<quint16>() << Coil::On);
+        QCOMPARE(unit.values(), QList<quint16>() << Coil::On);
         QCOMPARE(unit.registerType(), QModbusDataUnit::Coils);
 
         unit = QModbusDataUnit();
@@ -140,45 +135,69 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 10u);
+        QCOMPARE(unit.valueCount(), 10);
         QCOMPARE(unit.startAddress(), 19);
-        QCOMPARE(unit.values(), QVector<quint16>());
+        QCOMPARE(unit.values(), QList<quint16>());
         QCOMPARE(unit.registerType(), QModbusDataUnit::Coils);
     }
 
     void testProcessReadDiscreteInputsResponse()
     {
         TestClient client;
+        const QList<quint16> values({ 0,0,1,1,0,1,0,1, 1,1,0,1,1,0,1,1, 1,0,1,0,1,1,0,0 });
 
         QModbusDataUnit unit(QModbusDataUnit::DiscreteInputs, 100, 24);
         QModbusResponse response = QModbusResponse(QModbusResponse::ReadDiscreteInputs,
-            QByteArray::fromHex("03cd6b05"));
+            QByteArray::fromHex("03acdb35"));
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 24u);
+        QCOMPARE(unit.valueCount(), 24);
         QCOMPARE(unit.startAddress(), 100);
-        QCOMPARE(unit.values(),
-            QVector<quint16>({ 1,0,1,1,0,0,1,1, 1,1,0,1,0,1,1,0, 1,0,1,0,0,0,0,0 }));
+        QCOMPARE(unit.values(), values);
         QCOMPARE(unit.registerType(), QModbusDataUnit::DiscreteInputs);
 
         response.setFunctionCode(QModbusPdu::FunctionCode(0x82));
         QCOMPARE(client.processResponse(response, &unit), false);
 
         response.setFunctionCode(QModbusResponse::ReadDiscreteInputs);
-        response.setData(QByteArray::fromHex("05"));
+        response.setData(QByteArray::fromHex("35"));
         QCOMPARE(client.processResponse(response, &unit), false);
 
-        response.setData(QByteArray::fromHex("03cd6b"));
+        response.setData(QByteArray::fromHex("03acdb"));
         QCOMPARE(client.processResponse(response, &unit), false);
 
-        response.setData(QByteArray::fromHex("03cd6b0517"));
+        response.setData(QByteArray::fromHex("03acdb3517"));
         QCOMPARE(client.processResponse(response, &unit), false);
+
+        unit = {};
+        response = QModbusResponse(QModbusResponse::ReadDiscreteInputs,
+            QByteArray::fromHex("03acdb35"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), false);
+        QCOMPARE(unit.valueCount(), 24);
+        QCOMPARE(unit.startAddress(), -1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::DiscreteInputs);
+
+        unit = {};
+        unit.setStartAddress(1);
+        response = QModbusResponse(QModbusResponse::ReadDiscreteInputs,
+            QByteArray::fromHex("03acdb35"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), true);
+        QCOMPARE(unit.valueCount(), 24);
+        QCOMPARE(unit.startAddress(), 1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::DiscreteInputs);
     }
 
     void testProcessReadHoldingRegistersResponse()
     {
         TestClient client;
+        const QList<quint16> values({ 52587, 1407 });
 
         QModbusDataUnit unit;
         unit.setStartAddress(100);
@@ -187,9 +206,9 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 2u);
+        QCOMPARE(unit.valueCount(), 2);
         QCOMPARE(unit.startAddress(), 100);
-        QCOMPARE(unit.values(), QVector<quint16>({ 52587, 1407 }));
+        QCOMPARE(unit.values(), values);
         QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
 
         response.setFunctionCode(QModbusPdu::FunctionCode(0x83));
@@ -204,11 +223,35 @@ private slots:
 
         response.setData(QByteArray::fromHex("04cd6b051755"));
         QCOMPARE(client.processResponse(response, &unit), false);
+
+        unit = {};
+        response = QModbusResponse(QModbusResponse::ReadHoldingRegisters,
+            QByteArray::fromHex("04cd6b057f"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), false);
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.startAddress(), -1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
+
+        unit = {};
+        unit.setStartAddress(1);
+        response = QModbusResponse(QModbusResponse::ReadHoldingRegisters,
+            QByteArray::fromHex("04cd6b057f"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), true);
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.startAddress(), 1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
     }
 
     void testProcessReadInputRegistersResponse()
     {
         TestClient client;
+        const QList<quint16> values({ 52587, 1407 });
 
         QModbusDataUnit unit;
         unit.setStartAddress(100);
@@ -217,9 +260,9 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 2u);
+        QCOMPARE(unit.valueCount(), 2);
         QCOMPARE(unit.startAddress(), 100);
-        QCOMPARE(unit.values(), QVector<quint16>({ 52587, 1407 }));
+        QCOMPARE(unit.values(), values);
         QCOMPARE(unit.registerType(), QModbusDataUnit::InputRegisters);
 
         response.setFunctionCode(QModbusPdu::FunctionCode(0x84));
@@ -234,6 +277,29 @@ private slots:
 
         response.setData(QByteArray::fromHex("04cd6b051755"));
         QCOMPARE(client.processResponse(response, &unit), false);
+
+        unit = {};
+        response = QModbusResponse(QModbusResponse::ReadInputRegisters,
+            QByteArray::fromHex("04cd6b057f"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), false);
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.startAddress(), -1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::InputRegisters);
+
+        unit = {};
+        unit.setStartAddress(1);
+        response = QModbusResponse(QModbusResponse::ReadInputRegisters,
+            QByteArray::fromHex("04cd6b057f"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), true);
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.startAddress(), 1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::InputRegisters);
     }
 
     void testProcessWriteSingleRegisterResponse()
@@ -246,9 +312,9 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 1u);
+        QCOMPARE(unit.valueCount(), 1);
         QCOMPARE(unit.startAddress(), 1229);
-        QCOMPARE(unit.values(), QVector<quint16>(1, 27397u));
+        QCOMPARE(unit.values(), QList<quint16>(1, 27397u));
         QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
 
         response.setFunctionCode(QModbusPdu::FunctionCode(0x86));
@@ -272,7 +338,7 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 123u);
+        QCOMPARE(unit.valueCount(), 123);
         QCOMPARE(unit.startAddress(), 973);
         QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
 
@@ -299,6 +365,7 @@ private slots:
     void testProcessReadWriteMultipleRegistersResponse()
     {
         TestClient client;
+        const QList<quint16> values({ 52587, 1407 });
 
         QModbusDataUnit unit;
         unit.setStartAddress(100);
@@ -307,8 +374,8 @@ private slots:
         QCOMPARE(client.processResponse(response, &unit), true);
 
         QCOMPARE(unit.isValid(), true);
-        QCOMPARE(unit.valueCount(), 2u);
-        QCOMPARE(unit.values(), QVector<quint16>({ 52587, 1407 }));
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.values(), values);
         QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
 
         response.setFunctionCode(QModbusPdu::FunctionCode(0x97));
@@ -323,6 +390,29 @@ private slots:
 
         response.setData(QByteArray::fromHex("04cd6b051755"));
         QCOMPARE(client.processResponse(response, &unit), false);
+
+        unit = {};
+        response = QModbusResponse(QModbusResponse::ReadWriteMultipleRegisters,
+            QByteArray::fromHex("04cd6b057f"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), false);
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.startAddress(), -1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
+
+        unit = {};
+        unit.setStartAddress(1);
+        response = QModbusResponse(QModbusResponse::ReadWriteMultipleRegisters,
+            QByteArray::fromHex("04cd6b057f"));
+        QCOMPARE(client.processResponse(response, &unit), true);
+
+        QCOMPARE(unit.isValid(), true);
+        QCOMPARE(unit.valueCount(), 2);
+        QCOMPARE(unit.startAddress(), 1);
+        QCOMPARE(unit.values(), values);
+        QCOMPARE(unit.registerType(), QModbusDataUnit::HoldingRegisters);
     }
 
     void testPrivateCreateReadRequest_data()
@@ -365,39 +455,40 @@ private slots:
     {
         QTest::addColumn<QModbusDataUnit::RegisterType>("rc");
         QTest::addColumn<int>("address");
-        QTest::addColumn<QVector<quint16>>("values");
+        QTest::addColumn<QList<quint16>>("values");
         QTest::addColumn<QModbusPdu::FunctionCode>("fc");
         QTest::addColumn<QByteArray>("data");
         QTest::addColumn<bool>("isValid");
 
-        QTest::newRow("QModbusDataUnit::Invalid") << QModbusDataUnit::Invalid << 19
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
-        QTest::newRow("QModbusDataUnit::DiscreteInputs") << QModbusDataUnit::DiscreteInputs << 19
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
-        QTest::newRow("QModbusDataUnit::InputRegisters") << QModbusDataUnit::InputRegisters << 19
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::Invalid") << QModbusDataUnit::Invalid << 19 << (QList<quint16> { 1 })
+                                                  << QModbusRequest::Invalid << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::DiscreteInputs")
+                << QModbusDataUnit::DiscreteInputs << 19 << (QList<quint16> { 1 }) << QModbusRequest::Invalid
+                << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::InputRegisters")
+                << QModbusDataUnit::InputRegisters << 19 << (QList<quint16> { 1 }) << QModbusRequest::Invalid
+                << QByteArray() << false;
 
-        QTest::newRow("QModbusDataUnit::Coils{Single}") << QModbusDataUnit::Coils << 172
-            << (QVector<quint16>() << 1) << QModbusRequest::WriteSingleCoil
-            << QByteArray::fromHex("00acff00") << true;
-        QTest::newRow("QModbusDataUnit::Coils{Multiple}") << QModbusDataUnit::Coils << 19
-            << (QVector<quint16>({ 1,0,1,1,0,0,1,1, 1,0 /* 6 times padding */ }))
-            << QModbusRequest::WriteMultipleCoils << QByteArray::fromHex("0013000a02cd01")
-            << true;
+        QTest::newRow("QModbusDataUnit::Coils{Single}")
+                << QModbusDataUnit::Coils << 172 << (QList<quint16> { 1 }) << QModbusRequest::WriteSingleCoil
+                << QByteArray::fromHex("00acff00") << true;
+        QTest::newRow("QModbusDataUnit::Coils{Multiple}")
+                << QModbusDataUnit::Coils << 19
+                << (QList<quint16> { 1,0,1,1,0,0,1,1, 1,0 /* 6 times padding */ })
+                << QModbusRequest::WriteMultipleCoils << QByteArray::fromHex("0013000a02cd01") << true;
         QTest::newRow("QModbusDataUnit::HoldingRegisters{Single}")
-            << QModbusDataUnit::HoldingRegisters << 1229 << (QVector<quint16>() << 27397u)
-            << QModbusRequest::WriteSingleRegister << QByteArray::fromHex("04cd6b05") << true;
+                << QModbusDataUnit::HoldingRegisters << 1229 << (QList<quint16> { 27397u })
+                << QModbusRequest::WriteSingleRegister << QByteArray::fromHex("04cd6b05") << true;
         QTest::newRow("QModbusDataUnit::HoldingRegisters{Multiple}")
-            << QModbusDataUnit::HoldingRegisters << 1 << (QVector<quint16>() << 27397u << 27397u)
-            << QModbusRequest::WriteMultipleRegisters << QByteArray::fromHex("00010002046b056b05")
-            << true;
+                << QModbusDataUnit::HoldingRegisters << 1 << (QList<quint16> { 27397u, 27397u })
+                << QModbusRequest::WriteMultipleRegisters << QByteArray::fromHex("00010002046b056b05") << true;
     }
 
     void testPrivateCreateWriteRequest()
     {
         QFETCH(QModbusDataUnit::RegisterType, rc);
         QFETCH(int, address);
-        QFETCH(QVector<quint16>, values);
+        QFETCH(QList<quint16>, values);
 
         TestClient client;
         QModbusDataUnit write(rc, address, values);
@@ -411,33 +502,35 @@ private slots:
     {
         QTest::addColumn<QModbusDataUnit::RegisterType>("rc");
         QTest::addColumn<int>("address");
-        QTest::addColumn<QVector<quint16>>("values");
+        QTest::addColumn<QList<quint16>>("values");
         QTest::addColumn<QModbusPdu::FunctionCode>("fc");
         QTest::addColumn<QByteArray>("data");
         QTest::addColumn<bool>("isValid");
 
-        QTest::newRow("QModbusDataUnit::Invalid") << QModbusDataUnit::Invalid << 19
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
-        QTest::newRow("QModbusDataUnit::Coils") << QModbusDataUnit::Invalid << 172
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
-        QTest::newRow("QModbusDataUnit::DiscreteInputs") << QModbusDataUnit::DiscreteInputs << 19
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
-        QTest::newRow("QModbusDataUnit::InputRegisters") << QModbusDataUnit::InputRegisters << 19
-            << (QVector<quint16>() << 1) << QModbusRequest::Invalid << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::Invalid") << QModbusDataUnit::Invalid << 19 << (QList<quint16> { 1 })
+                                                  << QModbusRequest::Invalid << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::Coils") << QModbusDataUnit::Invalid << 172 << (QList<quint16> { 1 })
+                                                << QModbusRequest::Invalid << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::DiscreteInputs")
+                << QModbusDataUnit::DiscreteInputs << 19 << (QList<quint16> { 1 }) << QModbusRequest::Invalid
+                << QByteArray() << false;
+        QTest::newRow("QModbusDataUnit::InputRegisters")
+                << QModbusDataUnit::InputRegisters << 19 << (QList<quint16> { 1 }) << QModbusRequest::Invalid
+                << QByteArray() << false;
         QTest::newRow("QModbusDataUnit::HoldingRegisters{Read|Write}")
-            << QModbusDataUnit::HoldingRegisters << 1 << (QVector<quint16>() << 27397u << 27397u)
-            << QModbusRequest::ReadWriteMultipleRegisters
-            << QByteArray::fromHex("0001000200010002046b056b05") << true;
+                << QModbusDataUnit::HoldingRegisters << 1 << (QList<quint16> { 27397u, 27397u })
+                << QModbusRequest::ReadWriteMultipleRegisters << QByteArray::fromHex("0001000200010002046b056b05")
+                << true;
     }
 
     void testPrivateCreateRWRequest()
     {
         QFETCH(QModbusDataUnit::RegisterType, rc);
         QFETCH(int, address);
-        QFETCH(QVector<quint16>, values);
+        QFETCH(QList<quint16>, values);
 
         TestClient client;
-        QModbusDataUnit read(rc, address, values.count());
+        QModbusDataUnit read(rc, address, values.size());
         QModbusDataUnit write(rc, address, values);
         QModbusRequest request = client.d_func()->createRWRequest(read, write);
         QTEST(request.functionCode(), "fc");

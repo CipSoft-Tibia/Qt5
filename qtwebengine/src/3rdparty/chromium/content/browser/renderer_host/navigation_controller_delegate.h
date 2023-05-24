@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,38 +7,27 @@
 
 #include <stdint.h>
 
-#include <string>
 #include "content/public/browser/invalidate_type.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_details.h"
-#include "third_party/blink/public/common/loader/previews_state.h"
 
 namespace content {
 
 struct LoadCommittedDetails;
-class FrameTree;
-class RenderViewHost;
 class WebContents;
 
 // Interface for objects embedding a NavigationController to provide the
 // functionality NavigationController needs.
-// TODO(nasko): This interface should exist for short amount of time, while
-// we transition navigation code from WebContents to Navigator.
 class NavigationControllerDelegate {
  public:
   virtual ~NavigationControllerDelegate() {}
 
-  // Duplicates of WebContents methods.
-  virtual RenderViewHost* GetRenderViewHost() = 0;
-  virtual const std::string& GetContentsMimeType() = 0;
-  virtual void NotifyNavigationStateChanged(InvalidateTypes changed_flags) = 0;
-  virtual void Stop() = 0;
-  virtual bool IsBeingDestroyed() = 0;
-  virtual bool CanOverscrollContent() const = 0;
+  virtual void NotifyNavigationStateChangedFromController(
+      InvalidateTypes changed_flags) = 0;
 
   // Methods from WebContentsImpl that NavigationControllerImpl needs to
-  // call.
-  virtual FrameTree* GetFrameTree() = 0;
+  // call. NavigationControllerImpl cannot call them directly because
+  // renderer_host/ cannot depend on WebContents.
   virtual void NotifyBeforeFormRepostWarningShow() = 0;
   virtual void NotifyNavigationEntryCommitted(
       const LoadCommittedDetails& load_details) = 0;
@@ -47,20 +36,15 @@ class NavigationControllerDelegate {
   virtual void NotifyNavigationListPruned(
       const PrunedDetails& pruned_details) = 0;
   virtual void NotifyNavigationEntriesDeleted() = 0;
-  virtual void SetHistoryOffsetAndLength(int history_offset,
-                                         int history_length) = 0;
   virtual void ActivateAndShowRepostFormWarningDialog() = 0;
-  virtual bool HasAccessedInitialDocument() = 0;
 
   // Returns whether URLs for aborted browser-initiated navigations should be
   // preserved in the omnibox.  Defaults to false.
   virtual bool ShouldPreserveAbortedURLs() = 0;
 
-  // This method is needed, since we are no longer guaranteed that the
-  // embedder for NavigationController will be a WebContents object.
-  virtual WebContents* GetWebContents() = 0;
-
-  virtual bool IsHidden() = 0;
+  // TODO(crbug.com/1225205): Remove this. It is a layering violation as
+  // renderer_host/ cannot depend on WebContents.
+  virtual WebContents* DeprecatedGetWebContents() = 0;
 
   virtual void UpdateOverridingUserAgent() = 0;
 };

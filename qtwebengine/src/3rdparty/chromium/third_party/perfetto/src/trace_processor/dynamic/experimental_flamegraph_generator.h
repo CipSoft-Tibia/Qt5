@@ -17,8 +17,8 @@
 #ifndef SRC_TRACE_PROCESSOR_DYNAMIC_EXPERIMENTAL_FLAMEGRAPH_GENERATOR_H_
 #define SRC_TRACE_PROCESSOR_DYNAMIC_EXPERIMENTAL_FLAMEGRAPH_GENERATOR_H_
 
-#include "src/trace_processor/sqlite/db_sqlite_table.h"
-
+#include "src/trace_processor/dynamic/dynamic_table_generator.h"
+#include "src/trace_processor/dynamic/flamegraph_construction_algorithms.h"
 #include "src/trace_processor/storage/trace_storage.h"
 
 namespace perfetto {
@@ -26,13 +26,16 @@ namespace trace_processor {
 
 class TraceProcessorContext;
 
-class ExperimentalFlamegraphGenerator
-    : public DbSqliteTable::DynamicTableGenerator {
+class ExperimentalFlamegraphGenerator : public DynamicTableGenerator {
  public:
+  enum class ProfileType { kGraph, kHeapProfile, kPerf };
+
   struct InputValues {
+    ProfileType profile_type;
     int64_t ts;
-    UniquePid upid;
-    std::string profile_type;
+    std::vector<TimeConstraints> time_constraints;
+    base::Optional<UniquePid> upid;
+    base::Optional<std::string> upid_group;
     std::string focus_str;
   };
 
@@ -42,9 +45,11 @@ class ExperimentalFlamegraphGenerator
   Table::Schema CreateSchema() override;
   std::string TableName() override;
   uint32_t EstimateRowCount() override;
-  util::Status ValidateConstraints(const QueryConstraints&) override;
-  std::unique_ptr<Table> ComputeTable(const std::vector<Constraint>& cs,
-                                      const std::vector<Order>& ob) override;
+  base::Status ValidateConstraints(const QueryConstraints&) override;
+  base::Status ComputeTable(const std::vector<Constraint>& cs,
+                            const std::vector<Order>& ob,
+                            const BitVector& cols_used,
+                            std::unique_ptr<Table>& table_return) override;
 
  private:
   TraceProcessorContext* context_ = nullptr;

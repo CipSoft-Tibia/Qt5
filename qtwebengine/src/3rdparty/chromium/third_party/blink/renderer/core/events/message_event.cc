@@ -29,12 +29,13 @@
 
 #include <memory>
 
-#include "third_party/blink/renderer/bindings/core/v8/v8_array_buffer.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_message_event_init.h"
 #include "third_party/blink/renderer/core/event_interface_names.h"
 #include "third_party/blink/renderer/core/frame/user_activation.h"
 #include "third_party/blink/renderer/core/html/portal/html_portal_element.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/bindings/to_v8.h"
+#include "third_party/blink/renderer/platform/bindings/v8_binding.h"
 
 namespace blink {
 
@@ -58,7 +59,7 @@ size_t MessageEvent::SizeOfExternalMemoryInBytes() {
       size_t result = 0;
       for (auto const& array_buffer :
            data_as_serialized_script_value_->ArrayBuffers()) {
-        result += array_buffer->ByteLengthAsSizeT();
+        result += array_buffer->ByteLength();
       }
 
       return result;
@@ -68,7 +69,7 @@ size_t MessageEvent::SizeOfExternalMemoryInBytes() {
     case kDataTypeBlob:
       return static_cast<size_t>(data_as_blob_->size());
     case kDataTypeArrayBuffer:
-      return data_as_array_buffer_->ByteLengthAsSizeT();
+      return data_as_array_buffer_->ByteLength();
   }
 }
 
@@ -155,12 +156,14 @@ MessageEvent::MessageEvent(scoped_refptr<SerializedScriptValue> data,
   RegisterAmountOfExternallyAllocatedMemory();
 }
 
-MessageEvent::MessageEvent(scoped_refptr<SerializedScriptValue> data,
-                           const String& origin,
-                           const String& last_event_id,
-                           EventTarget* source,
-                           Vector<MessagePortChannel> channels,
-                           UserActivation* user_activation)
+MessageEvent::MessageEvent(
+    scoped_refptr<SerializedScriptValue> data,
+    const String& origin,
+    const String& last_event_id,
+    EventTarget* source,
+    Vector<MessagePortChannel> channels,
+    UserActivation* user_activation,
+    mojom::blink::DelegatedCapability delegated_capability)
     : Event(event_type_names::kMessage, Bubbles::kNo, Cancelable::kNo),
       data_type_(kDataTypeSerializedScriptValue),
       data_as_serialized_script_value_(
@@ -169,7 +172,8 @@ MessageEvent::MessageEvent(scoped_refptr<SerializedScriptValue> data,
       last_event_id_(last_event_id),
       source_(source),
       channels_(std::move(channels)),
-      user_activation_(user_activation) {
+      user_activation_(user_activation),
+      delegated_capability_(delegated_capability) {
   DCHECK(IsValidSource(source_.Get()));
   RegisterAmountOfExternallyAllocatedMemory();
 }
@@ -240,7 +244,7 @@ void MessageEvent::initMessageEvent(const AtomicString& type,
   origin_ = origin;
   last_event_id_ = last_event_id;
   source_ = source;
-  if (ports.IsEmpty()) {
+  if (ports.empty()) {
     ports_ = nullptr;
   } else {
     ports_ = MakeGarbageCollected<MessagePortArray>();
@@ -249,15 +253,17 @@ void MessageEvent::initMessageEvent(const AtomicString& type,
   is_ports_dirty_ = true;
 }
 
-void MessageEvent::initMessageEvent(const AtomicString& type,
-                                    bool bubbles,
-                                    bool cancelable,
-                                    scoped_refptr<SerializedScriptValue> data,
-                                    const String& origin,
-                                    const String& last_event_id,
-                                    EventTarget* source,
-                                    MessagePortArray* ports,
-                                    UserActivation* user_activation) {
+void MessageEvent::initMessageEvent(
+    const AtomicString& type,
+    bool bubbles,
+    bool cancelable,
+    scoped_refptr<SerializedScriptValue> data,
+    const String& origin,
+    const String& last_event_id,
+    EventTarget* source,
+    MessagePortArray* ports,
+    UserActivation* user_activation,
+    mojom::blink::DelegatedCapability delegated_capability) {
   if (IsBeingDispatched())
     return;
 
@@ -273,6 +279,7 @@ void MessageEvent::initMessageEvent(const AtomicString& type,
   ports_ = ports;
   is_ports_dirty_ = true;
   user_activation_ = user_activation;
+  delegated_capability_ = delegated_capability;
   RegisterAmountOfExternallyAllocatedMemory();
 }
 
@@ -375,6 +382,12 @@ bool MessageEvent::IsLockedToAgentCluster() const {
     return false;
   }
   return data_as_serialized_script_value_->Value()->IsLockedToAgentCluster();
+}
+
+bool MessageEvent::CanDeserializeIn(ExecutionContext* execution_context) const {
+  return data_type_ != kDataTypeSerializedScriptValue ||
+         data_as_serialized_script_value_->Value()->CanDeserializeIn(
+             execution_context);
 }
 
 void MessageEvent::EntangleMessagePorts(ExecutionContext* context) {

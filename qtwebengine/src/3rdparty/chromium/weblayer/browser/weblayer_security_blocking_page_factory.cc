@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "weblayer/browser/weblayer_security_blocking_page_factory.h"
 
+#include "build/build_config.h"
 #include "components/captive_portal/core/buildflags.h"
 #include "components/security_interstitials/content/content_metrics_helper.h"
 #include "components/security_interstitials/content/insecure_form_blocking_page.h"
@@ -15,7 +16,7 @@
 #include "weblayer/browser/insecure_form_controller_client.h"
 #include "weblayer/browser/ssl_error_controller_client.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
@@ -26,7 +27,7 @@ namespace weblayer {
 
 namespace {
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 GURL GetCaptivePortalLoginPageUrlInternal() {
   // NOTE: This is taken from the default login URL in //chrome's
   // CaptivePortalHelper.java, which is used in the implementation referenced
@@ -40,7 +41,7 @@ void OpenLoginPage(content::WebContents* web_contents) {
   // Android implementation from //chrome's
   // ChromeSecurityBlockingPageFactory::OpenLoginPage(), from which this is
   // adapted.
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   content::OpenURLParams params(GetCaptivePortalLoginPageUrlInternal(),
                                 content::Referrer(),
                                 WindowOpenDisposition::NEW_FOREGROUND_TAB,
@@ -72,7 +73,7 @@ CreateMetricsHelperAndStartRecording(content::WebContents* web_contents,
 
 std::unique_ptr<security_interstitials::SettingsPageHelper>
 CreateSettingsPageHelper() {
-  // TODO(crbug.com/1080748): Set settings_page_helper once enhanced protection
+  // TODO(crbug.com/1078381): Set settings_page_helper once enhanced protection
   // is supported on weblayer.
   return nullptr;
 }
@@ -101,7 +102,9 @@ WebLayerSecurityBlockingPageFactory::CreateSSLPage(
   auto interstitial_page = std::make_unique<SSLBlockingPage>(
       web_contents, cert_error, ssl_info, request_url, options_mask,
       base::Time::NowFromSystemTime(), /*support_url=*/GURL(),
-      std::move(ssl_cert_reporter), overridable, std::move(controller_client));
+      std::move(ssl_cert_reporter), overridable,
+      /*can_show_enhanced_protection_message=*/false,
+      std::move(controller_client));
 
   return interstitial_page;
 }
@@ -122,8 +125,8 @@ WebLayerSecurityBlockingPageFactory::CreateCaptivePortalBlockingPage(
 
   auto interstitial_page = std::make_unique<CaptivePortalBlockingPage>(
       web_contents, request_url, login_url, std::move(ssl_cert_reporter),
-      ssl_info, std::move(controller_client),
-      base::BindRepeating(&OpenLoginPage));
+      /*can_show_enhanced_protection_message=*/false, ssl_info,
+      std::move(controller_client), base::BindRepeating(&OpenLoginPage));
 
   return interstitial_page;
 }
@@ -145,28 +148,9 @@ WebLayerSecurityBlockingPageFactory::CreateBadClockBlockingPage(
 
   auto interstitial_page = std::make_unique<BadClockBlockingPage>(
       web_contents, cert_error, ssl_info, request_url,
-      base::Time::NowFromSystemTime(), clock_state,
+      base::Time::NowFromSystemTime(),
+      /*can_show_enhanced_protection_message=*/false, clock_state,
       std::move(ssl_cert_reporter), std::move(controller_client));
-
-  return interstitial_page;
-}
-
-std::unique_ptr<LegacyTLSBlockingPage>
-WebLayerSecurityBlockingPageFactory::CreateLegacyTLSBlockingPage(
-    content::WebContents* web_contents,
-    int cert_error,
-    const GURL& request_url,
-    std::unique_ptr<SSLCertReporter> ssl_cert_reporter,
-    const net::SSLInfo& ssl_info) {
-  auto controller_client = std::make_unique<SSLErrorControllerClient>(
-      web_contents, cert_error, ssl_info, request_url,
-      CreateMetricsHelperAndStartRecording(web_contents, request_url,
-                                           "legacy_tls", false),
-      CreateSettingsPageHelper());
-
-  auto interstitial_page = std::make_unique<LegacyTLSBlockingPage>(
-      web_contents, cert_error, request_url, std::move(ssl_cert_reporter),
-      ssl_info, std::move(controller_client));
 
   return interstitial_page;
 }
@@ -187,8 +171,9 @@ WebLayerSecurityBlockingPageFactory::CreateMITMSoftwareBlockingPage(
 
   auto interstitial_page = std::make_unique<MITMSoftwareBlockingPage>(
       web_contents, cert_error, request_url, std::move(ssl_cert_reporter),
-      ssl_info, mitm_software_name, /*is_enterprise_managed=*/false,
-      std::move(controller_client));
+      /*can_show_enhanced_protection_message=*/false, ssl_info,
+      mitm_software_name,
+      /*is_enterprise_managed=*/false, std::move(controller_client));
 
   return interstitial_page;
 }
@@ -208,7 +193,8 @@ WebLayerSecurityBlockingPageFactory::CreateBlockedInterceptionBlockingPage(
 
   auto interstitial_page = std::make_unique<BlockedInterceptionBlockingPage>(
       web_contents, cert_error, request_url, std::move(ssl_cert_reporter),
-      ssl_info, std::move(controller_client));
+      /*can_show_enhanced_protection_message=*/false, ssl_info,
+      std::move(controller_client));
 
   return interstitial_page;
 }
@@ -225,7 +211,15 @@ WebLayerSecurityBlockingPageFactory::CreateInsecureFormBlockingPage(
   return page;
 }
 
-#if defined(OS_ANDROID)
+std::unique_ptr<security_interstitials::HttpsOnlyModeBlockingPage>
+WebLayerSecurityBlockingPageFactory::CreateHttpsOnlyModeBlockingPage(
+    content::WebContents* web_contents,
+    const GURL& request_url) {
+  // HTTPS-only mode is not implemented for weblayer.
+  return nullptr;
+}
+
+#if BUILDFLAG(IS_ANDROID)
 // static
 GURL WebLayerSecurityBlockingPageFactory::
     GetCaptivePortalLoginPageUrlForTesting() {

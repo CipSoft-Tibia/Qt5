@@ -1,6 +1,9 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/chromeos/ui_mode.gni")
+import("//build/config/features.gni")
 
 component("proxy_config") {
   sources = [
@@ -17,13 +20,12 @@ component("proxy_config") {
     "proxy_prefs.h",
   ]
 
-  configs += [ "//build/config/compiler:no_size_t_to_int_warning" ]
-
   defines = [ "PROXY_CONFIG_IMPLEMENTATION" ]
 
   deps = [
     "//base",
     "//components/prefs",
+    "//components/strings",
     "//net",
     "//url",
   ]
@@ -32,10 +34,22 @@ component("proxy_config") {
   # and disable include checking so GN doesn't complain about the missing
   # dependency (it still links OK). This cycle should be fixed and header
   # checking enabled.
-  if (is_chromeos) {
+  if (is_chromeos_ash) {
     check_includes = false
   } else {
     deps += [ "//components/pref_registry" ]
+  }
+
+  if (!is_ios && !is_qtwebengine) {
+    sources += [
+      "proxy_policy_handler.cc",
+      "proxy_policy_handler.h",
+    ]
+    deps += [
+      "//components/policy:generated",
+      "//components/policy/core/browser",
+      "//components/policy/core/common",
+    ]
   }
 }
 
@@ -50,10 +64,19 @@ source_set("unit_tests") {
     ":proxy_config",
     "//base",
     "//base/test:test_support",
+    "//components/policy:generated",
+    "//components/policy/core/browser",
+    "//components/policy/core/browser:test_support",
+    "//components/policy/core/common",
     "//components/prefs:test_support",
     "//net",
     "//net:test_support",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/abseil-cpp:absl",
   ]
+
+  if (!is_ios) {
+    sources += [ "proxy_policy_handler_unittest.cc" ]
+  }
 }

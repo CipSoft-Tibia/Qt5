@@ -24,7 +24,7 @@ namespace webrtc {
 namespace test {
 
 RandomWalkCrossTraffic::RandomWalkCrossTraffic(RandomWalkConfig config,
-                                               TrafficRoute* traffic_route)
+                                               CrossTrafficRoute* traffic_route)
     : config_(config),
       traffic_route_(traffic_route),
       random_(config_.random_seed) {
@@ -56,6 +56,10 @@ void RandomWalkCrossTraffic::Process(Timestamp at_time) {
   }
 }
 
+TimeDelta RandomWalkCrossTraffic::GetProcessInterval() const {
+  return config_.min_packet_interval;
+}
+
 DataRate RandomWalkCrossTraffic::TrafficRate() const {
   RTC_DCHECK_RUN_ON(&sequence_checker_);
   return config_.peak_rate * intensity_;
@@ -70,8 +74,9 @@ ColumnPrinter RandomWalkCrossTraffic::StatsPrinter() {
       32);
 }
 
-PulsedPeaksCrossTraffic::PulsedPeaksCrossTraffic(PulsedPeaksConfig config,
-                                                 TrafficRoute* traffic_route)
+PulsedPeaksCrossTraffic::PulsedPeaksCrossTraffic(
+    PulsedPeaksConfig config,
+    CrossTrafficRoute* traffic_route)
     : config_(config), traffic_route_(traffic_route) {
   sequence_checker_.Detach();
 }
@@ -100,6 +105,10 @@ void PulsedPeaksCrossTraffic::Process(Timestamp at_time) {
       last_send_time_ = at_time;
     }
   }
+}
+
+TimeDelta PulsedPeaksCrossTraffic::GetProcessInterval() const {
+  return config_.min_packet_interval;
 }
 
 DataRate PulsedPeaksCrossTraffic::TrafficRate() const {
@@ -134,7 +143,7 @@ TcpMessageRouteImpl::TcpMessageRouteImpl(Clock* clock,
 void TcpMessageRouteImpl::SendMessage(size_t size,
                                       std::function<void()> on_received) {
   task_queue_->PostTask(
-      ToQueuedTask([this, size, handler = std::move(on_received)] {
+      [this, size, handler = std::move(on_received)] {
         // If we are currently sending a message we won't reset the connection,
         // we'll act as if the messages are sent in the same TCP stream. This is
         // intended to simulate recreation of a TCP session for each message
@@ -159,7 +168,7 @@ void TcpMessageRouteImpl::SendMessage(size_t size,
         }
         messages_.emplace_back(message);
         SendPackets(clock_->CurrentTime());
-      }));
+      });
 }
 
 void TcpMessageRouteImpl::OnRequest(TcpPacket packet_info) {
@@ -222,11 +231,11 @@ void TcpMessageRouteImpl::SendPackets(Timestamp at_time) {
     pending_.pop_front();
     request_route_.SendPacket(send.fragment.size, send);
     in_flight_.insert({seq_num, send});
-    task_queue_->PostDelayedTask(ToQueuedTask([this, seq_num] {
-                                   HandlePacketTimeout(seq_num,
-                                                       clock_->CurrentTime());
-                                 }),
-                                 kPacketTimeout.ms());
+    task_queue_->PostDelayedTask(
+        [this, seq_num] {
+          HandlePacketTimeout(seq_num, clock_->CurrentTime());
+        },
+        kPacketTimeout);
   }
 }
 
@@ -240,21 +249,13 @@ void TcpMessageRouteImpl::HandlePacketTimeout(int seq_num, Timestamp at_time) {
   }
 }
 
-FakeTcpCrossTraffic::FakeTcpCrossTraffic(Clock* clock,
-                                         FakeTcpConfig config,
+FakeTcpCrossTraffic::FakeTcpCrossTraffic(FakeTcpConfig config,
                                          EmulatedRoute* send_route,
                                          EmulatedRoute* ret_route)
-    : clock_(clock), conf_(config), route_(this, send_route, ret_route) {}
+    : conf_(config), route_(this, send_route, ret_route) {}
 
-void FakeTcpCrossTraffic::Start(TaskQueueBase* task_queue) {
-  repeating_task_handle_ = RepeatingTaskHandle::Start(task_queue, [this] {
-    Process(clock_->CurrentTime());
-    return conf_.process_interval;
-  });
-}
-
-void FakeTcpCrossTraffic::Stop() {
-  repeating_task_handle_.Stop();
+TimeDelta FakeTcpCrossTraffic::GetProcessInterval() const {
+  return conf_.process_interval;
 }
 
 void FakeTcpCrossTraffic::Process(Timestamp at_time) {

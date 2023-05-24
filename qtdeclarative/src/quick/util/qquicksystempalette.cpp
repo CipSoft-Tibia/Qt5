@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquicksystempalette_p.h"
 
@@ -63,8 +27,8 @@ public:
     The SystemPalette type provides access to the Qt application
     palettes. This provides information about the standard colors used
     for application windows, buttons and other features. These colors
-    are grouped into three \e {color groups}: \c Active, \c Inactive,
-    and \c Disabled.  See the QPalette documentation for details about
+    are grouped into three \e {color groups}: \c active, \c inactive,
+    and \c disabled.  See the QPalette documentation for details about
     color groups and the properties provided by SystemPalette.
 
     This can be used to color items in a way that provides a more
@@ -84,10 +48,6 @@ QQuickSystemPalette::QQuickSystemPalette(QObject *parent)
     Q_D(QQuickSystemPalette);
     d->group = QPalette::Active;
     connect(qApp, SIGNAL(paletteChanged(QPalette)), this, SIGNAL(paletteChanged()));
-}
-
-QQuickSystemPalette::~QQuickSystemPalette()
-{
 }
 
 /*!
@@ -259,15 +219,25 @@ QColor QQuickSystemPalette::highlightedText() const
 }
 
 /*!
+    \qmlproperty color QtQuick::SystemPalette::placeholderText
+    The placeholder text color of the current color group.
+
+    \since 6.2
+    \sa QPalette::ColorRole
+*/
+QColor QQuickSystemPalette::placeholderText() const
+{
+    Q_D(const QQuickSystemPalette);
+    return QGuiApplication::palette().color(d->group, QPalette::PlaceholderText);
+}
+/*!
     \qmlproperty enumeration QtQuick::SystemPalette::colorGroup
 
     The color group of the palette. This can be one of:
 
-    \list
-    \li SystemPalette.Active (default)
-    \li SystemPalette.Inactive
-    \li SystemPalette.Disabled
-    \endlist
+    \value SystemPalette.Active     (default) QPalette::Active
+    \value SystemPalette.Inactive   QPalette::Inactive
+    \value SystemPalette.Disabled   QPalette::Disabled
 
     \sa QPalette::ColorGroup
 */

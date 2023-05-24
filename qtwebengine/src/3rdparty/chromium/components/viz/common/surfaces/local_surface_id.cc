@@ -1,13 +1,31 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/viz/common/surfaces/local_surface_id.h"
 
+#include <limits>
+
+#include "base/hash/hash.h"
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
 
 namespace viz {
+
+size_t LocalSurfaceId::hash() const {
+  DCHECK(is_valid()) << ToString();
+  return base::HashInts(
+      static_cast<uint64_t>(
+          base::HashInts(parent_sequence_number_, child_sequence_number_)),
+      static_cast<uint64_t>(base::UnguessableTokenHash()(embed_token_)));
+}
+
+size_t LocalSurfaceId::persistent_hash() const {
+  DCHECK(is_valid()) << ToString();
+  return base::PersistentHash(
+      base::StringPrintf("%s, %u, %u", embed_token_.ToString().c_str(),
+                         parent_sequence_number_, child_sequence_number_));
+}
 
 std::string LocalSurfaceId::ToString() const {
   std::string embed_token = VLOG_IS_ON(1)

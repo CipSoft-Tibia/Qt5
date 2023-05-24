@@ -1,8 +1,7 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import json
 import logging
 
 from blinkpy.tool.commands.rebaseline import AbstractRebaseliningCommand
@@ -23,6 +22,9 @@ class RebaselineTest(AbstractRebaseliningCommand):
             self.build_number_option,
             self.step_name_option,
             self.results_directory_option,
+            self.flag_specific_option,
+            self.resultDB_option,
+            self.fetch_url_option,
         ])
 
     def execute(self, options, args, tool):
@@ -31,10 +33,11 @@ class RebaselineTest(AbstractRebaseliningCommand):
 
     def _rebaseline_test_and_update_expectations(self, options):
         self._baseline_suffix_list = options.suffixes.split(',')
-
+        results_url = ''
+        suffix = ''
         if options.results_directory:
             results_url = 'file://' + options.results_directory
-        else:
+        elif not options.resultDB:
             results_url = self._tool.results_fetcher.results_url(
                 options.builder,
                 build_number=options.build_number,
@@ -43,10 +46,39 @@ class RebaselineTest(AbstractRebaseliningCommand):
         port_name = options.port_name or self._tool.builders.port_name_for_builder_name(
             options.builder)
         test_name = options.test
-        for suffix in self._baseline_suffix_list:
-            self._rebaseline_test(port_name, test_name, suffix, results_url)
+        if not options.resultDB:
+            for suffix in self._baseline_suffix_list:
+                self._rebaseline_test(port_name,
+                                      test_name,
+                                      suffix,
+                                      results_url,
+                                      options=options)
+        else:
+            self._baseline_fetch_url_list = options.fetch_url.split(',')
+            if not self._baseline_fetch_url_list:
+                _log.warning('No baseline fetch url found for test %s',
+                             test_name)
+            for artifact_fetch_url in self._baseline_fetch_url_list:
+                if 'actual_image' in artifact_fetch_url:
+                    suffix = 'png'
+                if 'actual_text' in artifact_fetch_url:
+                    suffix = 'txt'
+                if 'actual_audio' in artifact_fetch_url:
+                    suffix = 'wav'
+                self._rebaseline_test(port_name,
+                                      test_name,
+                                      suffix,
+                                      results_url,
+                                      artifact_fetch_url,
+                                      options=options)
 
-    def _rebaseline_test(self, port_name, test_name, suffix, results_url):
+    def _rebaseline_test(self,
+                         port_name,
+                         test_name,
+                         suffix,
+                         results_url,
+                         fetch_url_resultdb='',
+                         options=None):
         """Downloads a baseline file and saves it to the filesystem.
 
         Args:
@@ -56,13 +88,23 @@ class RebaselineTest(AbstractRebaseliningCommand):
             suffix: The baseline file extension (e.g. png); together with the
                 test name and results_url this determines what file to download.
             results_url: Base URL to download the actual result from.
+            options: (Optional, default to None) An object with the command line options.
         """
-        port = self._tool.port_factory.get(port_name)
+        port = self._tool.port_factory.get(port_name, options)
 
-        baseline_directory = port.baseline_version_dir()
+        # TODO(crbug.com/1154085): Undo this special case when we have WPT bots
+        # on more ports.
+        if options and options.flag_specific:
+            baseline_directory = port.baseline_flag_specific_dir()
+        else:
+            baseline_directory = port.baseline_version_dir()
 
-        source_baseline = '%s/%s' % (
-            results_url, self._file_name_for_actual_result(test_name, suffix))
+        if options and options.resultDB:
+            source_baseline = fetch_url_resultdb
+        else:
+            source_baseline = '%s/%s' % (results_url,
+                                         self._file_name_for_actual_result(
+                                             test_name, suffix))
         target_baseline = self._tool.filesystem.join(
             baseline_directory,
             self._file_name_for_expected_result(test_name, suffix))
@@ -70,13 +112,13 @@ class RebaselineTest(AbstractRebaseliningCommand):
         if suffix == 'png' and port.reference_files(test_name):
             _log.warning('Cannot rebaseline image result for reftest: %s',
                          test_name)
-            data = ''
+            data = b''
             # Still continue in case we can remove extra -expected.png.
         else:
             _log.debug('Retrieving source %s for target %s.', source_baseline,
                        target_baseline)
-            data = self._tool.web.get_binary(
-                source_baseline, return_none_on_404=True)
+            data = self._tool.web.get_binary(source_baseline,
+                                             return_none_on_404=True)
 
         if not data:
             # We don't just remove the file because the test may create empty
@@ -85,7 +127,7 @@ class RebaselineTest(AbstractRebaseliningCommand):
             _log.debug(
                 'Writing empty result %s which may be removed during optimization.',
                 target_baseline)
-            data = ''
+            data = b''
 
         filesystem = self._tool.filesystem
         filesystem.maybe_make_directory(filesystem.dirname(target_baseline))

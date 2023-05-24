@@ -1,50 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacecontactdetail_p.h"
 #include "qplacecontactdetail.h"
 
 QT_USE_NAMESPACE
 
-QPlaceContactDetailPrivate::QPlaceContactDetailPrivate(const QPlaceContactDetailPrivate &other)
-    : QSharedData(other),
-      label(other.label),
-      value(other.value)
-{
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceContactDetailPrivate)
 
 bool QPlaceContactDetailPrivate::operator== (const QPlaceContactDetailPrivate &other) const
 {
@@ -86,6 +48,34 @@ types if necessary.
 */
 
 /*!
+    \qmlvaluetype contactDetail
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-places
+    \ingroup qml-QtLocation5-places-data
+    \since QtLocation 5.5
+
+    \brief The contactDetail type holds a contact detail such as a phone number or a website
+           address.
+
+    The contactDetail provides a single detail on how one could contact a \l Place.  The
+    contactDetail consists of a \l {contactDetail::}{label}, which is a localized string
+    describing the contact method, and a \l {contactDetail::}{value} representing the actual
+    contact detail.
+
+    \section1 Examples
+
+    The following example demonstrates how to assign a single phone number to a place in JavaScript:
+    \snippet declarative/places.qml  ContactDetails write single
+
+    The following demonstrates how to assign multiple phone numbers to a place in JavaScript:
+    \snippet declarative/places.qml  ContactDetails write multiple
+
+    Note, due to limitations of the QQmlPropertyMap, it is not possible
+    to declaratively specify the contact details in QML, it can only be accomplished
+    via JavaScript.
+*/
+
+/*!
    \variable QPlaceContactDetail::Phone
    The constant to specify phone contact details
 */
@@ -120,23 +110,18 @@ QPlaceContactDetail::QPlaceContactDetail()
 /*!
     Destroys the contact detail.
 */
-QPlaceContactDetail::~QPlaceContactDetail()
-{
-}
+QPlaceContactDetail::~QPlaceContactDetail() = default;
 
 /*!
     Creates a copy of \a other.
 */
-QPlaceContactDetail::QPlaceContactDetail(const QPlaceContactDetail &other)
-    :d_ptr(other.d_ptr)
-{
-}
+QPlaceContactDetail::QPlaceContactDetail(const QPlaceContactDetail &other) noexcept = default;
 
 /*!
     Assigns \a other to this contact detail and returns a reference to this
     contact detail.
 */
-QPlaceContactDetail &QPlaceContactDetail::operator=(const QPlaceContactDetail &other)
+QPlaceContactDetail &QPlaceContactDetail::operator=(const QPlaceContactDetail &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -146,10 +131,12 @@ QPlaceContactDetail &QPlaceContactDetail::operator=(const QPlaceContactDetail &o
 }
 
 /*!
-    Returns true if \a other is equal to this contact detail, otherwise
-    returns false.
+    \fn bool QPlaceContactDetail::operator==(const QPlaceContactDetail &lhs, const QPlaceContactDetail &rhs) noexcept
+
+    Returns true if the contact detail \a lhs is equal to \a rhs,
+    otherwise returns false.
 */
-bool QPlaceContactDetail::operator== (const QPlaceContactDetail &other) const
+bool QPlaceContactDetail::isEqual(const QPlaceContactDetail &other) const noexcept
 {
     if (d_ptr == other.d_ptr)
         return true;
@@ -157,16 +144,25 @@ bool QPlaceContactDetail::operator== (const QPlaceContactDetail &other) const
 }
 
 /*!
-    Returns true if \a other is not equal to this contact detail,
+    \fn bool QPlaceContactDetail::operator!=(const QPlaceContactDetail &lhs, const QPlaceContactDetail &rhs) noexcept
+
+    Returns true if the contact detail \a lhs is not equal to \a rhs,
     otherwise returns false.
 */
-bool QPlaceContactDetail::operator!= (const QPlaceContactDetail &other) const
-{
-    return (!this->operator ==(other));
-}
 
 /*!
-    Returns a label describing the contact detail.
+    \qmlproperty string QtLocation::contactDetail::label
+
+    This property holds a label describing the contact detail.
+
+    The label can potentially be localized. The language is dependent on the entity that sets it,
+    typically this is the \l {Plugin}.  The \l {Plugin::locales} property defines
+    what language is used.
+*/
+
+/*!
+    \property QPlaceContactDetail::label
+    \brief a label describing the contact detail.
 
     The label can potentially be localized. The language is dependent on the entity that sets it,
     typically this is the manager from which the places are sourced.
@@ -177,25 +173,27 @@ QString QPlaceContactDetail::label() const
     return d_ptr->label;
 }
 
-/*!
-    Sets the \a label of the contact detail.
-*/
 void QPlaceContactDetail::setLabel(const QString &label)
 {
     d_ptr->label = label;
 }
 
 /*!
-    Returns the value of the contact detail.
+    \qmlproperty string QtLocation::contactDetail::value
+
+    This property holds the value of the contact detail which may be a phone number, an email
+    address, a website url and so on.
+*/
+
+/*!
+    \property QPlaceContactDetail::value
+    \brief the value of the contact detail.
 */
 QString QPlaceContactDetail::value() const
 {
     return d_ptr->value;
 }
 
-/*!
-    Sets the \a value of this contact detail.
-*/
 void QPlaceContactDetail::setValue(const QString &value)
 {
     d_ptr->value = value;
@@ -209,3 +207,5 @@ void QPlaceContactDetail::clear()
     d_ptr->label.clear();
     d_ptr->value.clear();
 }
+
+#include "moc_qplacecontactdetail.cpp"

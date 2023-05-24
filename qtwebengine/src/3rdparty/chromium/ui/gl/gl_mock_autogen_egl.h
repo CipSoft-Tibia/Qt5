@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -22,17 +22,27 @@ MOCK_METHOD5(ChooseConfig,
                         EGLint config_size,
                         EGLint* num_config));
 MOCK_METHOD4(
+    ClientWaitSync,
+    EGLint(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime timeout));
+MOCK_METHOD4(
     ClientWaitSyncKHR,
     EGLint(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags, EGLTimeKHR timeout));
 MOCK_METHOD3(CopyBuffers,
              EGLBoolean(EGLDisplay dpy,
                         EGLSurface surface,
                         EGLNativePixmapType target));
+MOCK_METHOD2(CopyMetalSharedEventANGLE, void*(EGLDisplay dpy, EGLSync sync));
 MOCK_METHOD4(CreateContext,
              EGLContext(EGLDisplay dpy,
                         EGLConfig config,
                         EGLContext share_context,
                         const EGLint* attrib_list));
+MOCK_METHOD5(CreateImage,
+             EGLImage(EGLDisplay dpy,
+                      EGLContext ctx,
+                      EGLenum target,
+                      EGLClientBuffer buffer,
+                      const EGLAttrib* attrib_list));
 MOCK_METHOD5(CreateImageKHR,
              EGLImageKHR(EGLDisplay dpy,
                          EGLContext ctx,
@@ -54,12 +64,26 @@ MOCK_METHOD4(CreatePixmapSurface,
                         EGLConfig config,
                         EGLNativePixmapType pixmap,
                         const EGLint* attrib_list));
+MOCK_METHOD4(CreatePlatformPixmapSurface,
+             EGLSurface(EGLDisplay dpy,
+                        EGLConfig config,
+                        void* native_pixmap,
+                        const EGLAttrib* attrib_list));
+MOCK_METHOD4(CreatePlatformWindowSurface,
+             EGLSurface(EGLDisplay dpy,
+                        EGLConfig config,
+                        void* native_window,
+                        const EGLAttrib* attrib_list));
 MOCK_METHOD2(CreateStreamKHR,
              EGLStreamKHR(EGLDisplay dpy, const EGLint* attrib_list));
 MOCK_METHOD3(CreateStreamProducerD3DTextureANGLE,
              EGLBoolean(EGLDisplay dpy,
                         EGLStreamKHR stream,
                         EGLAttrib* attrib_list));
+MOCK_METHOD3(CreateSync,
+             EGLSync(EGLDisplay dpy,
+                     EGLenum type,
+                     const EGLAttrib* attrib_list));
 MOCK_METHOD3(CreateSyncKHR,
              EGLSyncKHR(EGLDisplay dpy,
                         EGLenum type,
@@ -72,9 +96,11 @@ MOCK_METHOD4(CreateWindowSurface,
 MOCK_METHOD2(DebugMessageControlKHR,
              EGLint(EGLDEBUGPROCKHR callback, const EGLAttrib* attrib_list));
 MOCK_METHOD2(DestroyContext, EGLBoolean(EGLDisplay dpy, EGLContext ctx));
+MOCK_METHOD2(DestroyImage, EGLBoolean(EGLDisplay dpy, EGLImage image));
 MOCK_METHOD2(DestroyImageKHR, EGLBoolean(EGLDisplay dpy, EGLImageKHR image));
 MOCK_METHOD2(DestroyStreamKHR, EGLBoolean(EGLDisplay dpy, EGLStreamKHR stream));
 MOCK_METHOD2(DestroySurface, EGLBoolean(EGLDisplay dpy, EGLSurface surface));
+MOCK_METHOD2(DestroySync, EGLBoolean(EGLDisplay dpy, EGLSync sync));
 MOCK_METHOD2(DestroySyncKHR, EGLBoolean(EGLDisplay dpy, EGLSyncKHR sync));
 MOCK_METHOD2(DupNativeFenceFDANDROID, EGLint(EGLDisplay dpy, EGLSyncKHR sync));
 MOCK_METHOD5(ExportDMABUFImageMESA,
@@ -89,6 +115,11 @@ MOCK_METHOD5(ExportDMABUFImageQueryMESA,
                         int* fourcc,
                         int* num_planes,
                         EGLuint64KHR* modifiers));
+MOCK_METHOD4(ExportVkImageANGLE,
+             EGLBoolean(EGLDisplay dpy,
+                        EGLImageKHR image,
+                        void* vk_image,
+                        void* vk_image_create_info));
 MOCK_METHOD5(GetCompositorTimingANDROID,
              EGLBoolean(EGLDisplay dpy,
                         EGLSurface surface,
@@ -138,6 +169,11 @@ MOCK_METHOD3(GetPlatformDisplay,
                         const EGLAttrib* attrib_list));
 MOCK_METHOD1(GetProcAddress,
              __eglMustCastToProperFunctionPointerType(const char* procname));
+MOCK_METHOD4(GetSyncAttrib,
+             EGLBoolean(EGLDisplay dpy,
+                        EGLSync sync,
+                        EGLint attribute,
+                        EGLAttrib* value));
 MOCK_METHOD4(GetSyncAttribKHR,
              EGLBoolean(EGLDisplay dpy,
                         EGLSyncKHR sync,
@@ -180,6 +216,10 @@ MOCK_METHOD4(QueryContext,
                         EGLint attribute,
                         EGLint* value));
 MOCK_METHOD2(QueryDebugKHR, EGLBoolean(EGLint attribute, EGLAttrib* value));
+MOCK_METHOD3(QueryDeviceAttribEXT,
+             EGLBoolean(EGLDeviceEXT device,
+                        EGLint attribute,
+                        EGLAttrib* value));
 MOCK_METHOD3(QueryDevicesEXT,
              EGLBoolean(EGLint max_devices,
                         EGLDeviceEXT* devices,
@@ -188,6 +228,20 @@ MOCK_METHOD2(QueryDeviceStringEXT,
              const char*(EGLDeviceEXT device, EGLint name));
 MOCK_METHOD3(QueryDisplayAttribANGLE,
              EGLBoolean(EGLDisplay dpy, EGLint attribute, EGLAttrib* value));
+MOCK_METHOD3(QueryDisplayAttribEXT,
+             EGLBoolean(EGLDisplay dpy, EGLint attribute, EGLAttrib* value));
+MOCK_METHOD4(QueryDmaBufFormatsEXT,
+             EGLBoolean(EGLDisplay dpy,
+                        EGLint max_formats,
+                        EGLint* formats,
+                        EGLint* num_formats));
+MOCK_METHOD6(QueryDmaBufModifiersEXT,
+             EGLBoolean(EGLDisplay dpy,
+                        EGLint format,
+                        EGLint max_modifiers,
+                        EGLuint64KHR* modifiers,
+                        EGLBoolean* external_only,
+                        EGLint* num_modifiers));
 MOCK_METHOD4(QueryStreamKHR,
              EGLBoolean(EGLDisplay dpy,
                         EGLStreamKHR stream,
@@ -256,5 +310,7 @@ MOCK_METHOD1(Terminate, EGLBoolean(EGLDisplay dpy));
 MOCK_METHOD0(WaitClient, EGLBoolean());
 MOCK_METHOD0(WaitGL, EGLBoolean());
 MOCK_METHOD1(WaitNative, EGLBoolean(EGLint engine));
+MOCK_METHOD3(WaitSync, EGLint(EGLDisplay dpy, EGLSync sync, EGLint flags));
 MOCK_METHOD3(WaitSyncKHR,
              EGLint(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags));
+MOCK_METHOD1(WaitUntilWorkScheduledANGLE, void(EGLDisplay dpy));

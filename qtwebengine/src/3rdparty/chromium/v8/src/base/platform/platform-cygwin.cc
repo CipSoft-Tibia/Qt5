@@ -33,6 +33,7 @@ namespace {
 DWORD GetProtectionFromMemoryPermission(OS::MemoryPermission access) {
   switch (access) {
     case OS::MemoryPermission::kNoAccess:
+    case OS::MemoryPermission::kNoAccessWillJitLater:
       return PAGE_NOACCESS;
     case OS::MemoryPermission::kRead:
       return PAGE_READONLY;
@@ -117,7 +118,7 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
   if (base == aligned_base) return reinterpret_cast<void*>(base);
 
   // Otherwise, free it and try a larger allocation.
-  CHECK(Free(base, size));
+  Free(base, size);
 
   // Clear the hint. It's unlikely we can allocate at this address.
   hint = nullptr;
@@ -133,7 +134,7 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
 
     // Try to trim the allocation by freeing the padded allocation and then
     // calling VirtualAlloc at the aligned base.
-    CHECK(Free(base, padded_size));
+    Free(base, padded_size);
     aligned_base = RoundUp(base, alignment);
     base = reinterpret_cast<uint8_t*>(
         VirtualAlloc(aligned_base, size, flags, protect));
@@ -146,18 +147,18 @@ void* OS::Allocate(void* hint, size_t size, size_t alignment,
 }
 
 // static
-bool OS::Free(void* address, const size_t size) {
+void OS::Free(void* address, const size_t size) {
   DCHECK_EQ(0, static_cast<uintptr_t>(address) % AllocatePageSize());
   DCHECK_EQ(0, size % AllocatePageSize());
   USE(size);
-  return VirtualFree(address, 0, MEM_RELEASE) != 0;
+  CHECK_NE(0, VirtualFree(address, 0, MEM_RELEASE));
 }
 
 // static
-bool OS::Release(void* address, size_t size) {
+void OS::Release(void* address, size_t size) {
   DCHECK_EQ(0, reinterpret_cast<uintptr_t>(address) % CommitPageSize());
   DCHECK_EQ(0, size % CommitPageSize());
-  return VirtualFree(address, size, MEM_DECOMMIT) != 0;
+  CHECK_NE(0, VirtualFree(address, size, MEM_DECOMMIT));
 }
 
 // static
@@ -169,6 +170,11 @@ bool OS::SetPermissions(void* address, size_t size, MemoryPermission access) {
   }
   DWORD protect = GetProtectionFromMemoryPermission(access);
   return VirtualAlloc(address, size, MEM_COMMIT, protect) != nullptr;
+}
+
+// static
+bool OS::RecommitPages(void* address, size_t size, MemoryPermission access) {
+  return SetPermissions(address, size, access);
 }
 
 // static
@@ -269,6 +275,12 @@ void OS::SignalCodeMovingGC() {
 }
 
 void OS::AdjustSchedulingParams() {}
+
+std::vector<OS::MemoryRange> OS::GetFreeMemoryRangesWithin(
+    OS::Address boundary_start, OS::Address boundary_end, size_t minimum_size,
+    size_t alignment) {
+  return {};
+}
 
 }  // namespace base
 }  // namespace v8

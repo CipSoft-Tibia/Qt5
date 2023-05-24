@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "ui/display/types/display_configuration_params.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/display/types/native_display_delegate.h"
@@ -26,12 +25,18 @@ class DrmDisplayHost : public GpuThreadObserver {
   DrmDisplayHost(GpuThreadAdapter* sender,
                  std::unique_ptr<display::DisplaySnapshot> params,
                  bool is_dummy);
+
+  DrmDisplayHost(const DrmDisplayHost&) = delete;
+  DrmDisplayHost& operator=(const DrmDisplayHost&) = delete;
+
   ~DrmDisplayHost() override;
 
   display::DisplaySnapshot* snapshot() const { return snapshot_.get(); }
   bool is_dummy() const { return is_dummy_; }
 
   void UpdateDisplaySnapshot(std::unique_ptr<display::DisplaySnapshot> params);
+  void SetHdcpKeyProp(const std::string& key,
+                      display::SetHdcpKeyPropCallback callback);
   void GetHDCPState(display::GetHDCPStateCallback callback);
   void SetHDCPState(display::HDCPState state,
                     display::ContentProtectionMethod protection_method,
@@ -40,10 +45,12 @@ class DrmDisplayHost : public GpuThreadObserver {
   void SetGammaCorrection(
       const std::vector<display::GammaRampRGBEntry>& degamma_lut,
       const std::vector<display::GammaRampRGBEntry>& gamma_lut);
-  void SetPrivacyScreen(bool enabled);
+  void SetPrivacyScreen(bool enabled,
+                        display::SetPrivacyScreenCallback callback);
 
   // Called when the IPC from the GPU process arrives to answer the above
   // commands.
+  void OnHdcpKeyPropSetReceived(bool success);
   void OnHDCPStateReceived(bool status,
                            display::HDCPState state,
                            display::ContentProtectionMethod protection_method);
@@ -66,10 +73,9 @@ class DrmDisplayHost : public GpuThreadObserver {
   // synchronous and succeed.
   bool is_dummy_;
 
+  display::SetHdcpKeyPropCallback set_hdcp_key_prop_callback_;
   display::GetHDCPStateCallback get_hdcp_callback_;
   display::SetHDCPStateCallback set_hdcp_callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(DrmDisplayHost);
 };
 
 }  // namespace ui

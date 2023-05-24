@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,9 @@
 #include <utility>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/strings/stringprintf.h"
 #include "cc/animation/animation_id_provider.h"
 #include "cc/animation/keyframe_model.h"
-#include "ui/compositor/animation_metrics_recorder.h"
 #include "ui/compositor/float_animation_curve_adapter.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor/layer_animation_delegate.h"
@@ -31,6 +29,10 @@ class Pause : public LayerAnimationElement {
   Pause(AnimatableProperties properties, base::TimeDelta duration)
       : LayerAnimationElement(properties, duration) {
   }
+
+  Pause(const Pause&) = delete;
+  Pause& operator=(const Pause&) = delete;
+
   ~Pause() override {}
 
  private:
@@ -41,8 +43,6 @@ class Pause : public LayerAnimationElement {
   }
   void OnGetTarget(TargetValue* target) const override {}
   void OnAbort(LayerAnimationDelegate* delegate) override {}
-
-  DISALLOW_COPY_AND_ASSIGN(Pause);
 };
 
 // InterpolatedTransformTransition ---------------------------------------------
@@ -54,6 +54,12 @@ class InterpolatedTransformTransition : public LayerAnimationElement {
       base::TimeDelta duration)
       : LayerAnimationElement(TRANSFORM, duration),
         interpolated_transform_(std::move(interpolated_transform)) {}
+
+  InterpolatedTransformTransition(const InterpolatedTransformTransition&) =
+      delete;
+  InterpolatedTransformTransition& operator=(
+      const InterpolatedTransformTransition&) = delete;
+
   ~InterpolatedTransformTransition() override {}
 
  protected:
@@ -77,8 +83,6 @@ class InterpolatedTransformTransition : public LayerAnimationElement {
 
  private:
   std::unique_ptr<InterpolatedTransform> interpolated_transform_;
-
-  DISALLOW_COPY_AND_ASSIGN(InterpolatedTransformTransition);
 };
 
 // BoundsTransition ------------------------------------------------------------
@@ -89,6 +93,10 @@ class BoundsTransition : public LayerAnimationElement {
       : LayerAnimationElement(BOUNDS, duration),
         target_(target) {
   }
+
+  BoundsTransition(const BoundsTransition&) = delete;
+  BoundsTransition& operator=(const BoundsTransition&) = delete;
+
   ~BoundsTransition() override {}
 
  protected:
@@ -113,8 +121,6 @@ class BoundsTransition : public LayerAnimationElement {
  private:
   gfx::Rect start_;
   const gfx::Rect target_;
-
-  DISALLOW_COPY_AND_ASSIGN(BoundsTransition);
 };
 
 // VisibilityTransition --------------------------------------------------------
@@ -126,6 +132,10 @@ class VisibilityTransition : public LayerAnimationElement {
         start_(false),
         target_(target) {
   }
+
+  VisibilityTransition(const VisibilityTransition&) = delete;
+  VisibilityTransition& operator=(const VisibilityTransition&) = delete;
+
   ~VisibilityTransition() override {}
 
  protected:
@@ -149,8 +159,6 @@ class VisibilityTransition : public LayerAnimationElement {
  private:
   bool start_;
   const bool target_;
-
-  DISALLOW_COPY_AND_ASSIGN(VisibilityTransition);
 };
 
 // BrightnessTransition --------------------------------------------------------
@@ -162,6 +170,10 @@ class BrightnessTransition : public LayerAnimationElement {
         start_(0.0f),
         target_(target) {
   }
+
+  BrightnessTransition(const BrightnessTransition&) = delete;
+  BrightnessTransition& operator=(const BrightnessTransition&) = delete;
+
   ~BrightnessTransition() override {}
 
  protected:
@@ -186,8 +198,6 @@ class BrightnessTransition : public LayerAnimationElement {
  private:
   float start_;
   const float target_;
-
-  DISALLOW_COPY_AND_ASSIGN(BrightnessTransition);
 };
 
 // GrayscaleTransition ---------------------------------------------------------
@@ -199,6 +209,10 @@ class GrayscaleTransition : public LayerAnimationElement {
         start_(0.0f),
         target_(target) {
   }
+
+  GrayscaleTransition(const GrayscaleTransition&) = delete;
+  GrayscaleTransition& operator=(const GrayscaleTransition&) = delete;
+
   ~GrayscaleTransition() override {}
 
  protected:
@@ -223,8 +237,6 @@ class GrayscaleTransition : public LayerAnimationElement {
  private:
   float start_;
   const float target_;
-
-  DISALLOW_COPY_AND_ASSIGN(GrayscaleTransition);
 };
 
 // ColorTransition -------------------------------------------------------------
@@ -236,6 +248,10 @@ class ColorTransition : public LayerAnimationElement {
         start_(SK_ColorBLACK),
         target_(target) {
   }
+
+  ColorTransition(const ColorTransition&) = delete;
+  ColorTransition& operator=(const ColorTransition&) = delete;
+
   ~ColorTransition() override {}
 
  protected:
@@ -260,8 +276,6 @@ class ColorTransition : public LayerAnimationElement {
  private:
   SkColor start_;
   const SkColor target_;
-
-  DISALLOW_COPY_AND_ASSIGN(ColorTransition);
 };
 
 // ClipRectTransition ----------------------------------------------------------
@@ -270,6 +284,10 @@ class ClipRectTransition : public LayerAnimationElement {
  public:
   ClipRectTransition(const gfx::Rect& target, base::TimeDelta duration)
       : LayerAnimationElement(CLIP, duration), target_(target) {}
+
+  ClipRectTransition(const ClipRectTransition&) = delete;
+  ClipRectTransition& operator=(const ClipRectTransition&) = delete;
+
   ~ClipRectTransition() override {}
 
  protected:
@@ -294,8 +312,6 @@ class ClipRectTransition : public LayerAnimationElement {
  private:
   gfx::Rect start_;
   const gfx::Rect target_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClipRectTransition);
 };
 
 // RoundedCornersTransition ----------------------------------------------------
@@ -305,6 +321,10 @@ class RoundedCornersTransition : public LayerAnimationElement {
   RoundedCornersTransition(const gfx::RoundedCornersF& target,
                            base::TimeDelta duration)
       : LayerAnimationElement(ROUNDED_CORNERS, duration), target_(target) {}
+
+  RoundedCornersTransition(const RoundedCornersTransition&) = delete;
+  RoundedCornersTransition& operator=(const RoundedCornersTransition&) = delete;
+
   ~RoundedCornersTransition() override = default;
 
  protected:
@@ -337,8 +357,54 @@ class RoundedCornersTransition : public LayerAnimationElement {
  private:
   gfx::RoundedCornersF start_;
   gfx::RoundedCornersF target_;
+};
 
-  DISALLOW_COPY_AND_ASSIGN(RoundedCornersTransition);
+// GradientMaskTransition ----------------------------------------------------
+
+class GradientMaskTransition : public LayerAnimationElement {
+ public:
+  GradientMaskTransition(const gfx::LinearGradient& target,
+                         base::TimeDelta duration)
+      : LayerAnimationElement(GRADIENT_MASK, duration), target_(target) {}
+
+  GradientMaskTransition(const GradientMaskTransition&) = delete;
+  GradientMaskTransition& operator=(const GradientMaskTransition&) = delete;
+
+  ~GradientMaskTransition() override = default;
+
+ protected:
+  std::string DebugName() const override { return "GradientMaskTransition"; }
+  void OnStart(LayerAnimationDelegate* delegate) override {
+    start_ = delegate->GetGradientMaskForAnimation();
+  }
+
+  bool OnProgress(double t, LayerAnimationDelegate* delegate) override {
+    auto gradient_mask = gfx::LinearGradient(
+        gfx::Tween::FloatValueBetween(t, start_.angle(), target_.angle()));
+
+    DCHECK_EQ(start_.step_count(), target_.step_count());
+    for (auto i = 0; i < static_cast<int>(start_.step_count()); ++i) {
+      gradient_mask.AddStep(
+          gfx::Tween::FloatValueBetween(t, start_.steps()[i].fraction,
+                                        target_.steps()[i].fraction),
+          gfx::Tween::IntValueBetween(t, start_.steps()[i].alpha,
+                                      target_.steps()[i].alpha));
+    }
+
+    delegate->SetGradientMaskFromAnimation(
+        gradient_mask, PropertyChangeReason::FROM_ANIMATION);
+    return true;
+  }
+
+  void OnGetTarget(TargetValue* target) const override {
+    target->gradient_mask = target_;
+  }
+
+  void OnAbort(LayerAnimationDelegate* delegate) override {}
+
+ private:
+  gfx::LinearGradient start_;
+  const gfx::LinearGradient target_;
 };
 
 // ThreadedLayerAnimationElement -----------------------------------------------
@@ -349,6 +415,11 @@ class ThreadedLayerAnimationElement : public LayerAnimationElement {
                                 base::TimeDelta duration)
       : LayerAnimationElement(properties, duration) {
   }
+
+  ThreadedLayerAnimationElement(const ThreadedLayerAnimationElement&) = delete;
+  ThreadedLayerAnimationElement& operator=(
+      const ThreadedLayerAnimationElement&) = delete;
+
   ~ThreadedLayerAnimationElement() override {}
 
   bool IsThreaded(LayerAnimationDelegate* delegate) const override {
@@ -406,9 +477,6 @@ class ThreadedLayerAnimationElement : public LayerAnimationElement {
   virtual void OnEnd(LayerAnimationDelegate* delegate) = 0;
 
   virtual std::unique_ptr<cc::KeyframeModel> CreateCCKeyframeModel() = 0;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ThreadedLayerAnimationElement);
 };
 
 // ThreadedOpacityTransition ---------------------------------------------------
@@ -420,6 +488,11 @@ class ThreadedOpacityTransition : public ThreadedLayerAnimationElement {
         start_(0.0f),
         target_(target) {
   }
+
+  ThreadedOpacityTransition(const ThreadedOpacityTransition&) = delete;
+  ThreadedOpacityTransition& operator=(const ThreadedOpacityTransition&) =
+      delete;
+
   ~ThreadedOpacityTransition() override {}
 
  protected:
@@ -448,12 +521,15 @@ class ThreadedOpacityTransition : public ThreadedLayerAnimationElement {
   }
 
   std::unique_ptr<cc::KeyframeModel> CreateCCKeyframeModel() override {
-    std::unique_ptr<cc::AnimationCurve> animation_curve(
+    // Ensures that we don't remove and add a model with the same id in a single
+    // frame.
+    UpdateKeyframeModelId();
+    std::unique_ptr<gfx::AnimationCurve> animation_curve(
         new FloatAnimationCurveAdapter(tween_type(), start_, target_,
                                        duration()));
     std::unique_ptr<cc::KeyframeModel> keyframe_model(cc::KeyframeModel::Create(
         std::move(animation_curve), keyframe_model_id(), animation_group_id(),
-        cc::TargetProperty::OPACITY));
+        cc::KeyframeModel::TargetPropertyId(cc::TargetProperty::OPACITY)));
     return keyframe_model;
   }
 
@@ -475,8 +551,6 @@ class ThreadedOpacityTransition : public ThreadedLayerAnimationElement {
  private:
   float start_;
   const float target_;
-
-  DISALLOW_COPY_AND_ASSIGN(ThreadedOpacityTransition);
 };
 
 // ThreadedTransformTransition -------------------------------------------------
@@ -488,6 +562,11 @@ class ThreadedTransformTransition : public ThreadedLayerAnimationElement {
       : ThreadedLayerAnimationElement(TRANSFORM, duration),
         target_(target) {
   }
+
+  ThreadedTransformTransition(const ThreadedTransformTransition&) = delete;
+  ThreadedTransformTransition& operator=(const ThreadedTransformTransition&) =
+      delete;
+
   ~ThreadedTransformTransition() override {}
 
  protected:
@@ -518,12 +597,15 @@ class ThreadedTransformTransition : public ThreadedLayerAnimationElement {
   }
 
   std::unique_ptr<cc::KeyframeModel> CreateCCKeyframeModel() override {
-    std::unique_ptr<cc::AnimationCurve> animation_curve(
+    // Ensures that we don't remove and add a model with the same id in a single
+    // frame.
+    UpdateKeyframeModelId();
+    std::unique_ptr<gfx::AnimationCurve> animation_curve(
         new TransformAnimationCurveAdapter(tween_type(), start_, target_,
                                            duration()));
     std::unique_ptr<cc::KeyframeModel> keyframe_model(cc::KeyframeModel::Create(
         std::move(animation_curve), keyframe_model_id(), animation_group_id(),
-        cc::TargetProperty::TRANSFORM));
+        cc::KeyframeModel::TargetPropertyId(cc::TargetProperty::TRANSFORM)));
     return keyframe_model;
   }
 
@@ -534,8 +616,6 @@ class ThreadedTransformTransition : public ThreadedLayerAnimationElement {
  private:
   gfx::Transform start_;
   const gfx::Transform target_;
-
-  DISALLOW_COPY_AND_ASSIGN(ThreadedTransformTransition);
 };
 
 }  // namespace
@@ -562,7 +642,9 @@ LayerAnimationElement::TargetValue::TargetValue(
       color(delegate ? delegate->GetColorForAnimation() : SK_ColorTRANSPARENT),
       clip_rect(delegate ? delegate->GetClipRectForAnimation() : gfx::Rect()),
       rounded_corners(delegate ? delegate->GetRoundedCornersForAnimation()
-                               : gfx::RoundedCornersF()) {}
+                               : gfx::RoundedCornersF()),
+      gradient_mask(delegate ? delegate->GetGradientMaskForAnimation()
+                             : gfx::LinearGradient::GetEmpty()) {}
 
 // LayerAnimationElement -------------------------------------------------------
 
@@ -597,11 +679,6 @@ void LayerAnimationElement::Start(LayerAnimationDelegate* delegate,
   OnStart(delegate);
   RequestEffectiveStart(delegate);
   first_frame_ = false;
-
-  if (animation_metrics_recorder_ && delegate) {
-    animation_metrics_recorder_->OnAnimationStart(
-        delegate->GetFrameNumber(), effective_start_time_, duration_);
-  }
 }
 
 bool LayerAnimationElement::Progress(base::TimeTicks now,
@@ -621,7 +698,7 @@ bool LayerAnimationElement::Progress(base::TimeTicks now,
   }
 
   base::TimeDelta elapsed = now - effective_start_time_;
-  if ((duration_ > base::TimeDelta()) && (elapsed < duration_))
+  if ((duration_.is_positive()) && (elapsed < duration_))
     t = elapsed / duration_;
   base::WeakPtr<LayerAnimationElement> alive(weak_ptr_factory_.GetWeakPtr());
   need_draw = OnProgress(gfx::Tween::CalculateValue(tween_type_, t), delegate);
@@ -659,11 +736,6 @@ bool LayerAnimationElement::ProgressToEnd(LayerAnimationDelegate* delegate) {
   base::WeakPtr<LayerAnimationElement> alive(weak_ptr_factory_.GetWeakPtr());
   bool need_draw = OnProgress(1.0, delegate);
 
-  if (animation_metrics_recorder_ && delegate) {
-    animation_metrics_recorder_->OnAnimationEnd(delegate->GetFrameNumber(),
-                                                delegate->GetRefreshRate());
-  }
-
   if (!alive)
     return need_draw;
   last_progressed_fraction_ = 1.0;
@@ -673,27 +745,6 @@ bool LayerAnimationElement::ProgressToEnd(LayerAnimationDelegate* delegate) {
 
 void LayerAnimationElement::GetTargetValue(TargetValue* target) const {
   OnGetTarget(target);
-}
-
-void LayerAnimationElement::SetAnimationMetricsReporter(
-    AnimationMetricsReporter* reporter) {
-  if (reporter) {
-    animation_metrics_recorder_ =
-        std::make_unique<AnimationMetricsRecorder>(reporter);
-  } else {
-    animation_metrics_recorder_.reset();
-  }
-}
-
-void LayerAnimationElement::OnAnimatorAttached(
-    LayerAnimationDelegate* delegate) {
-  if (animation_metrics_recorder_)
-    animation_metrics_recorder_->OnAnimatorAttached(delegate->GetFrameNumber());
-}
-
-void LayerAnimationElement::OnAnimatorDetached() {
-  if (animation_metrics_recorder_)
-    animation_metrics_recorder_->OnAnimatorDetached();
 }
 
 bool LayerAnimationElement::IsThreaded(LayerAnimationDelegate* delegate) const {
@@ -719,6 +770,10 @@ std::string LayerAnimationElement::ToString() const {
       "last_progressed_fraction=%0.2f}",
       DebugName().c_str(), keyframe_model_id_, animation_group_id_,
       last_progressed_fraction_);
+}
+
+void LayerAnimationElement::UpdateKeyframeModelId() {
+  keyframe_model_id_ = cc::AnimationIdProvider::NextKeyframeModelId();
 }
 
 std::string LayerAnimationElement::DebugName() const {
@@ -782,6 +837,9 @@ std::string LayerAnimationElement::AnimatablePropertiesToString(
           break;
         case ROUNDED_CORNERS:
           str.append("ROUNDED_CORNERS");
+          break;
+        case GRADIENT_MASK:
+          str.append("GRADIENT_MASK");
           break;
         case SENTINEL:
           NOTREACHED();
@@ -878,6 +936,13 @@ LayerAnimationElement::CreateRoundedCornersElement(
     const gfx::RoundedCornersF& rounded_corners,
     base::TimeDelta duration) {
   return std::make_unique<RoundedCornersTransition>(rounded_corners, duration);
+}
+
+std::unique_ptr<LayerAnimationElement>
+LayerAnimationElement::CreateGradientMaskElement(
+    const gfx::LinearGradient& gradient_mask,
+    base::TimeDelta duration) {
+  return std::make_unique<GradientMaskTransition>(gradient_mask, duration);
 }
 
 }  // namespace ui

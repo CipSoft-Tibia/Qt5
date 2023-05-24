@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,12 +15,16 @@ class CFX_CodecMemory final : public Retainable {
  public:
   CONSTRUCT_VIA_MAKE_RETAIN;
 
-  pdfium::span<uint8_t> GetSpan() { return {buffer_.get(), size_}; }
-  uint8_t* GetBuffer() { return buffer_.get(); }
+  // Returns a span over the unconsumed contents of the buffer.
+  pdfium::span<uint8_t> GetUnconsumedSpan() {
+    return GetBufferSpan().subspan(pos_);
+  }
+
+  pdfium::span<uint8_t> GetBufferSpan() { return {buffer_.get(), size_}; }
   size_t GetSize() const { return size_; }
   size_t GetPosition() const { return pos_; }
   bool IsEOF() const { return pos_ >= size_; }
-  size_t ReadBlock(void* buffer, size_t size);
+  size_t ReadBlock(pdfium::span<uint8_t> buffer);
 
   // Sets the cursor position to |pos| if possible.
   bool Seek(size_t pos);

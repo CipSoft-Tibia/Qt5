@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qeasingcurve.h>
 
@@ -399,7 +374,7 @@ void tst_QEasingCurve::valueForProgress()
     // in theory the baseline should't have an error of more than 0.00005 due to how its rounded,
     // but due to FP imprecision, we have to adjust the error a bit more.
     const qreal errorBound = 0.00006;
-    for (int i = 0; i < at.count(); ++i) {
+    for (int i = 0; i < at.size(); ++i) {
         const qreal ex = expected.at(i);
         const qreal error = qAbs(ex - curve.valueForProgress(at.at(i)/qreal(100)));
         QVERIFY(error <= errorBound);
@@ -501,7 +476,7 @@ class tst_QEasingProperties : public QObject
     Q_OBJECT
     Q_PROPERTY(QEasingCurve easing READ easing WRITE setEasing)
 public:
-    tst_QEasingProperties(QObject *parent = 0) : QObject(parent) {}
+    tst_QEasingProperties(QObject *parent = nullptr) : QObject(parent) {}
 
     QEasingCurve easing() const { return e; }
     void setEasing(const QEasingCurve& value) { e = value; }
@@ -546,10 +521,9 @@ void tst_QEasingCurve::properties()
 
 void tst_QEasingCurve::metaTypes()
 {
-    QVERIFY(QMetaType::type("QEasingCurve") == QMetaType::QEasingCurve);
+    QVERIFY(QMetaType::fromName("QEasingCurve").id() == QMetaType::QEasingCurve);
 
-    QCOMPARE(QByteArray(QMetaType::typeName(QMetaType::QEasingCurve)),
-             QByteArray("QEasingCurve"));
+    QCOMPARE(QByteArray(QMetaType(QMetaType::QEasingCurve).name()), QByteArray("QEasingCurve"));
 
     QVERIFY(QMetaType::isRegistered(QMetaType::QEasingCurve));
 
@@ -602,16 +576,16 @@ static inline void setupBezierSpline(QEasingCurve *easingCurve, const QString &s
 {
     QStringList pointStr = string.split(QLatin1Char(' '));
 
-    QVector<QPointF> points;
+    QList<QPointF> points;
     foreach (const QString &str, pointStr) {
         QStringList coordStr = str.split(QLatin1Char(','));
         QPointF point(coordStr.first().toDouble(), coordStr.last().toDouble());
         points.append(point);
     }
 
-    QVERIFY(points.count() % 3 == 0);
+    QVERIFY(points.size() % 3 == 0);
 
-    for (int i = 0; i < points.count() / 3; i++) {
+    for (int i = 0; i < points.size() / 3; i++) {
         QPointF c1 = points.at(i * 3);
         QPointF c2 = points.at(i * 3 + 1);
         QPointF p1 = points.at(i * 3 + 2);
@@ -629,7 +603,7 @@ void tst_QEasingCurve::bezierSpline()
     setupBezierSpline(&bezierEasingCurve, definition);
 
     const qreal errorBound = 0.002;
-    for (int i = 0; i < at.count(); ++i) {
+    for (int i = 0; i < at.size(); ++i) {
         const qreal ex = expected.at(i);
         const qreal value = bezierEasingCurve.valueForProgress(at.at(i)/qreal(100));
         const qreal error = qAbs(ex - value);
@@ -672,7 +646,7 @@ static inline void setupTCBSpline(QEasingCurve *easingCurve, const QString &stri
 
     foreach (const QString &str, pointStr) {
         QStringList coordStr = str.split(QLatin1Char(','));
-        Q_ASSERT(coordStr.count() == 5);
+        Q_ASSERT(coordStr.size() == 5);
         QPointF point(coordStr.first().toDouble(), coordStr.at(1).toDouble());
         qreal t = coordStr.at(2).toDouble();
         qreal c = coordStr.at(3).toDouble();
@@ -691,7 +665,7 @@ void tst_QEasingCurve::tcbSpline()
     setupTCBSpline(&tcbEasingCurve, definition);
 
     const qreal errorBound = 0.002;
-    for (int i = 0; i < at.count(); ++i) {
+    for (int i = 0; i < at.size(); ++i) {
         const qreal ex = expected.at(i);
         const qreal value = tcbEasingCurve.valueForProgress(at.at(i)/qreal(100));
         const qreal error = qAbs(ex - value);

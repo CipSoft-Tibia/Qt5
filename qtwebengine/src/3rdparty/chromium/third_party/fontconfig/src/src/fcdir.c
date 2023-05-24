@@ -23,7 +23,10 @@
  */
 
 #include "fcint.h"
+
+#ifdef HAVE_DIRENT_H
 #include <dirent.h>
+#endif
 
 FcBool
 FcFileIsDir (const FcChar8 *file)
@@ -198,8 +201,9 @@ FcDirScanConfig (FcFontSet	*set,
     DIR			*d;
     struct dirent	*e;
     FcStrSet		*files;
-    FcChar8		*file;
+    FcChar8		*file_prefix = NULL, *s_dir = NULL;
     FcChar8		*base;
+    const FcChar8	*sysroot = FcConfigGetSysRoot (config);
     FcBool		ret = FcTrue;
     int			i;
 
@@ -209,21 +213,29 @@ FcDirScanConfig (FcFontSet	*set,
     if (!set && !dirs)
 	return FcTrue;
 
-    /* freed below */
-    file = (FcChar8 *) malloc (strlen ((char *) dir) + 1 + FC_MAX_FILE_LEN + 1);
-    if (!file) {
+    if (sysroot)
+	s_dir = FcStrBuildFilename (sysroot, dir, NULL);
+    else
+	s_dir = FcStrdup (dir);
+    if (!s_dir) {
 	ret = FcFalse;
 	goto bail;
     }
 
-    strcpy ((char *) file, (char *) dir);
-    strcat ((char *) file, "/");
-    base = file + strlen ((char *) file);
+    /* freed below */
+    file_prefix = (FcChar8 *) malloc (strlen ((char *) s_dir) + 1 + FC_MAX_FILE_LEN + 1);
+    if (!file_prefix) {
+	ret = FcFalse;
+	goto bail;
+    }
+    strcpy ((char *) file_prefix, (char *) s_dir);
+    strcat ((char *) file_prefix, FC_DIR_SEPARATOR_S);
+    base = file_prefix + strlen ((char *) file_prefix);
 
     if (FcDebug () & FC_DBG_SCAN)
-	printf ("\tScanning dir %s\n", dir);
+	printf ("\tScanning dir %s\n", s_dir);
 	
-    d = opendir ((char *) dir);
+    d = opendir ((char *) s_dir);
     if (!d)
     {
 	/* Don't complain about missing directories */
@@ -243,7 +255,7 @@ FcDirScanConfig (FcFontSet	*set,
 	if (e->d_name[0] != '.' && strlen (e->d_name) < FC_MAX_FILE_LEN)
 	{
 	    strcpy ((char *) base, (char *) e->d_name);
-	    if (!FcStrSetAdd (files, file)) {
+	    if (!FcStrSetAdd (files, file_prefix)) {
 		ret = FcFalse;
 		goto bail2;
 	    }
@@ -266,8 +278,10 @@ bail2:
 bail1:
     closedir (d);
 bail:
-    if (file)
-	free (file);
+    if (s_dir)
+	free (s_dir);
+    if (file_prefix)
+	free (file_prefix);
 
     return ret;
 }
@@ -336,7 +350,8 @@ FcDirCacheScan (const FcChar8 *dir, FcConfig *config)
     /*
      * Scan the dir
      */
-    if (!FcDirScanConfig (set, dirs, d, FcTrue, config))
+    /* Do not pass sysroot here. FcDirScanConfig() do take care of it */
+    if (!FcDirScanConfig (set, dirs, dir, FcTrue, config))
 	goto bail2;
 
     /*
@@ -401,7 +416,8 @@ FcDirCacheRescan (const FcChar8 *dir, FcConfig *config)
     /*
      * Scan the dir
      */
-    if (!FcDirScanConfig (NULL, dirs, d, FcTrue, config))
+    /* Do not pass sysroot here. FcDirScanConfig() do take care of it */
+    if (!FcDirScanConfig (NULL, dirs, dir, FcTrue, config))
 	goto bail1;
     /*
      * Rebuild the cache object

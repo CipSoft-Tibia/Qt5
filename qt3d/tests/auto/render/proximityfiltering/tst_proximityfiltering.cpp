@@ -1,38 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Paul Lemire
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Paul Lemire
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/qentity.h>
 #include <Qt3DCore/qtransform.h>
-#include <Qt3DRender/qgeometry.h>
+#include <Qt3DCore/qgeometry.h>
 #include <Qt3DRender/qgeometryrenderer.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 #include <Qt3DRender/private/nodemanagers_p.h>
 #include <Qt3DRender/private/managers_p.h>
 #include <Qt3DRender/private/entity_p.h>
@@ -53,13 +28,13 @@ Qt3DCore::QEntity *buildEntityAtDistance(float distance, Qt3DCore::QEntity *pare
     Qt3DCore::QEntity *entity = new Qt3DCore::QEntity(parent);
 
     // create geometry with a valid bounding volume - a single point is sufficient
-    auto geometry = new Qt3DRender::QGeometry;
-    auto vertexBuffer = new Qt3DRender::QBuffer(geometry);
+    auto geometry = new Qt3DCore::QGeometry;
+    auto vertexBuffer = new Qt3DCore::QBuffer(geometry);
 
-    auto positionAttribute = new Qt3DRender::QAttribute;
-    positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-    positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
-    positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+    auto positionAttribute = new Qt3DCore::QAttribute;
+    positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+    positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
+    positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
     positionAttribute->setVertexSize(3);
     positionAttribute->setByteStride(3 * sizeof(float));
     positionAttribute->setBuffer(vertexBuffer);
@@ -108,8 +83,8 @@ private Q_SLOTS:
 
         // THEN
         QCOMPARE(filterJob.hasProximityFilter(), false);
-        QCOMPARE(filterJob.filteredEntities().size(), 0);
-        QCOMPARE(filterJob.proximityFilterIds().size(), 0);
+        QCOMPARE(filterJob.filteredEntities().size(), 0U);
+        QCOMPARE(filterJob.proximityFilterIds().size(), 0U);
         QVERIFY(filterJob.manager() == nullptr);
     }
 
@@ -291,6 +266,7 @@ private Q_SLOTS:
 
         // GIVEN
         QScopedPointer<Qt3DRender::TestAspect> aspect(new Qt3DRender::TestAspect(entitySubtree));
+        aspect->registerTree(entitySubtree);
 
         // WHEN
         Qt3DRender::Render::Entity *backendRoot = aspect->nodeManagers()->renderNodesManager()->getOrCreateResource(entitySubtree->id());
@@ -308,6 +284,7 @@ private Q_SLOTS:
         Qt3DRender::Render::CalculateBoundingVolumeJob calcBVolume;
         calcBVolume.setManagers(aspect->nodeManagers());
         calcBVolume.setRoot(backendRoot);
+        calcBVolume.setFrontEndNodeManager(aspect.data());
         calcBVolume.run();
 
         Qt3DRender::Render::UpdateWorldBoundingVolumeJob updateWorldBVolume;
@@ -326,10 +303,10 @@ private Q_SLOTS:
         filterJob.run();
 
         // THEN
-        const QVector<Qt3DRender::Render::Entity *> filterEntities = filterJob.filteredEntities();
-        QCOMPARE(filterEntities.size(), expectedSelectedEntities.size());
+        const std::vector<Qt3DRender::Render::Entity *> &filterEntities = filterJob.filteredEntities();
+        QCOMPARE(filterEntities.size(), size_t(expectedSelectedEntities.size()));
 
-        for (auto i = 0, m = expectedSelectedEntities.size(); i < m; ++i)
+        for (int i = 0, m = expectedSelectedEntities.size(); i < m; ++i)
             QCOMPARE(filterEntities.at(i)->peerId(), expectedSelectedEntities.at(i));
     }
 };

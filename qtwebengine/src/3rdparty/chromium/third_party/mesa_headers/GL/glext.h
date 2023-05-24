@@ -5883,7 +5883,9 @@ extern "C" {
 #endif
 
 #ifndef GL_NV_multisample_coverage
+#ifndef GL_COVERAGE_SAMPLES_NV
 #define GL_COVERAGE_SAMPLES_NV            0x80A9
+#endif
 #define GL_COLOR_SAMPLES_NV               0x8E20
 #endif
 

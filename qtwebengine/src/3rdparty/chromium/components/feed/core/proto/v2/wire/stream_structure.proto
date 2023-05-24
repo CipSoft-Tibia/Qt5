@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,20 +6,12 @@ syntax = "proto2";
 
 package feedwire;
 
+import "components/feed/core/proto/v2/wire/xsurface_content.proto";
+
 option optimize_for = LITE_RUNTIME;
 
-// Top level feature which shows a stream of cards.  Provides any UI information
-// which may be needed in order to render the stream of cards.
-message Stream {
-}
-
-// Feature which represents a cluster in a Stream. May have a Card or Content
-// as children.
-// TODO Determine if Clusters can be removed.
-message Cluster {
-  // Empty for now as we don't support any custom information.
-}
-
+message Stream {}
+message Group {}
 message PrefetchMetadata {
   optional string uri = 1;
   optional string title = 2;
@@ -30,13 +22,13 @@ message PrefetchMetadata {
   optional string snippet = 7;
   optional string badge_id = 8;
 }
-
 message Content {
+  enum Alignment {
+    ALIGNMENT_UNSPECIFIED = 0;
+    DEFAULT = 1;
+    CENTER = 2;
+  }
   repeated PrefetchMetadata prefetch_metadata = 4;
+  optional Alignment alignment = 5;
   optional XSurfaceContent xsurface_content = 1000;
-}
-
-// Opaque data to for rendering a piece of content.
-message XSurfaceContent {
-  optional bytes xsurface_output = 1;
 }

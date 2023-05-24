@@ -15,13 +15,13 @@
 #include <memory>
 #include <vector>
 
+#include "api/sequence_checker.h"
 #include "api/test/network_emulation_manager.h"
 #include "api/test/time_controller.h"
 #include "rtc_base/ip_address.h"
 #include "rtc_base/network.h"
 #include "rtc_base/socket_server.h"
 #include "rtc_base/thread.h"
-#include "rtc_base/thread_checker.h"
 #include "test/network/network_emulation.h"
 
 namespace webrtc {
@@ -45,16 +45,21 @@ class EmulatedNetworkManager : public rtc::NetworkManagerBase,
   void StopUpdating() override;
 
   // We don't support any address interfaces in the network emulation framework.
-  void GetAnyAddressNetworks(NetworkList* networks) override {}
+  std::vector<const rtc::Network*> GetAnyAddressNetworks() override {
+    return {};
+  }
 
   // EmulatedNetworkManagerInterface API
   rtc::Thread* network_thread() override { return network_thread_.get(); }
   rtc::NetworkManager* network_manager() override { return this; }
+  rtc::PacketSocketFactory* packet_socket_factory() override {
+    return packet_socket_factory_.get();
+  }
   std::vector<EmulatedEndpoint*> endpoints() const override {
     return endpoints_container_->GetEndpoints();
   }
-  void GetStats(std::function<void(std::unique_ptr<EmulatedNetworkStats>)>
-                    stats_callback) const override;
+  void GetStats(
+      std::function<void(EmulatedNetworkStats)> stats_callback) const override;
 
  private:
   void UpdateNetworksOnce();
@@ -62,8 +67,12 @@ class EmulatedNetworkManager : public rtc::NetworkManagerBase,
 
   TaskQueueForTest* const task_queue_;
   const EndpointsContainer* const endpoints_container_;
+  // The `network_thread_` must outlive `packet_socket_factory_`, because they
+  // both refer to a socket server that is owned by `network_thread_`. Both
+  // pointers are assigned only in the constructor, but the way they are
+  // initialized unfortunately doesn't work with const std::unique_ptr<...>.
   std::unique_ptr<rtc::Thread> network_thread_;
-
+  std::unique_ptr<rtc::PacketSocketFactory> packet_socket_factory_;
   bool sent_first_update_ RTC_GUARDED_BY(network_thread_);
   int start_count_ RTC_GUARDED_BY(network_thread_);
 };

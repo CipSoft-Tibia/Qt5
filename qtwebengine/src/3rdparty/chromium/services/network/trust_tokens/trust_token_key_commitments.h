@@ -1,15 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_NETWORK_TRUST_TOKENS_TRUST_TOKEN_KEY_COMMITMENTS_H_
 #define SERVICES_NETWORK_TRUST_TOKENS_TRUST_TOKEN_KEY_COMMITMENTS_H_
 
-#include <map>
-#include <memory>
-
-#include "base/callback.h"
 #include "base/containers/flat_map.h"
+#include "base/functional/callback.h"
 #include "services/network/public/mojom/trust_tokens.mojom.h"
 #include "services/network/trust_tokens/suitable_trust_token_origin.h"
 #include "services/network/trust_tokens/trust_token_key_commitment_getter.h"
@@ -50,9 +47,8 @@ class TrustTokenKeyCommitments
   //
   // If |origin| is not suitable, or if no commitment result is found, returns
   // nullptr. Otherwise, returns the key commitment result stored for |origin|,
-  // with its verification keys filtered to contain at most
-  // |kMaximumConcurrentlyValidTrustTokenVerificationKeys| keys, none of
-  // which has yet expired.
+  // with its verification keys filtered to contain at most the maximum number
+  // of keys allowed for the protocol version, none of which has yet expired.
   //
   // If commitments for |origin| were passed both through a prior call to |Set|
   // and through the --additional-trust-token-key-commitments command-line

@@ -41,7 +41,7 @@ class LayoutTableRowDeathTest : public RenderingTest {
 
   void TearDown() override { row_->Destroy(); }
 
-  LayoutTableRow* row_;
+  Persistent<LayoutTableRow> row_;
 };
 
 TEST_F(LayoutTableRowDeathTest, CanSetRow) {
@@ -56,7 +56,7 @@ TEST_F(LayoutTableRowDeathTest, CanSetRowToMaxRowIndex) {
 }
 
 // Death tests don't work properly on Android.
-#if defined(GTEST_HAS_DEATH_TEST) && !defined(OS_ANDROID)
+#if defined(GTEST_HAS_DEATH_TEST) && !BUILDFLAG(IS_ANDROID)
 
 TEST_F(LayoutTableRowDeathTest, CrashIfRowOverflowOnSetting) {
   ASSERT_DEATH(row_->SetRowIndex(kMaxRowIndex + 1), "");
@@ -71,7 +71,7 @@ TEST_F(LayoutTableRowDeathTest, CrashIfSettingUnsetRowIndex) {
 class LayoutTableRowTest : public RenderingTest {
  protected:
   LayoutBox* GetRowByElementId(const char* id) {
-    return ToLayoutBox(GetLayoutObjectByElementId(id));
+    return GetLayoutBoxByElementId(id);
   }
 };
 
@@ -143,16 +143,16 @@ TEST_F(LayoutTableRowTest, VisualOverflow) {
   )HTML");
 
   auto* row1 = GetRowByElementId("row1");
-  EXPECT_EQ(LayoutRect(120, 0, 210, 320), row1->ContentsVisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 450, 320), row1->SelfVisualOverflowRect());
-
+  // TablesNG row geometry does not include border spacing. Legacy does.
+  // All row geometry expectations are different.
+  EXPECT_EQ(LayoutRect(0, 0, 320, 320), row1->ContentsVisualOverflowRect());
+  EXPECT_EQ(LayoutRect(0, 0, 430, 320), row1->SelfVisualOverflowRect());
   auto* row2 = GetRowByElementId("row2");
-  EXPECT_EQ(LayoutRect(0, -10, 440, 220), row2->ContentsVisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 450, 210), row2->SelfVisualOverflowRect());
-
+  EXPECT_EQ(LayoutRect(-10, -10, 440, 220), row2->ContentsVisualOverflowRect());
+  EXPECT_EQ(LayoutRect(0, 0, 430, 210), row2->SelfVisualOverflowRect());
   auto* row3 = GetRowByElementId("row3");
   EXPECT_EQ(LayoutRect(), row3->ContentsVisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 450, 100), row3->SelfVisualOverflowRect());
+  EXPECT_EQ(LayoutRect(0, 0, 430, 100), row3->SelfVisualOverflowRect());
 }
 
 TEST_F(LayoutTableRowTest, VisualOverflowWithCollapsedBorders) {
@@ -173,17 +173,16 @@ TEST_F(LayoutTableRowTest, VisualOverflowWithCollapsedBorders) {
 
   auto* row = GetRowByElementId("row");
 
-  // The row's self visual overflow covers the collapsed borders.
   LayoutRect expected_self_visual_overflow = row->BorderBoxRect();
-  expected_self_visual_overflow.ExpandEdges(LayoutUnit(1), LayoutUnit(8),
-                                            LayoutUnit(5), LayoutUnit(0));
+  // Row's visual overflow does not include collapsed borders.
+  // They are painted by the table.
   EXPECT_EQ(expected_self_visual_overflow, row->SelfVisualOverflowRect());
 
-  // The row's visual overflow covers self visual overflow and visual overflows
-  // of all cells.
   LayoutRect expected_visual_overflow = row->BorderBoxRect();
-  expected_visual_overflow.ExpandEdges(LayoutUnit(3), LayoutUnit(8),
-                                       LayoutUnit(5), LayoutUnit(3));
+  // Row's visual overflow does not include collapsed borders.
+  // It does include visual overflow of all cells.
+  expected_visual_overflow.ExpandEdges(LayoutUnit(3), LayoutUnit(0),
+                                       LayoutUnit(3), LayoutUnit(3));
   EXPECT_EQ(expected_visual_overflow, row->VisualOverflowRect());
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -124,8 +124,7 @@ void PepperWebSocketHost::DidReceiveArrayBuffer(
 
   // Send an IPC to transport received data.
   uint8_t* data = static_cast<uint8_t*>(binaryData.Data());
-  std::vector<uint8_t> array_message(data,
-                                     data + binaryData.ByteLengthAsSizeT());
+  std::vector<uint8_t> array_message(data, data + binaryData.ByteLength());
   host()->SendUnsolicitedReply(
       pp_resource(),
       PpapiPluginMsg_WebSocket_ReceiveBinaryReply(array_message));

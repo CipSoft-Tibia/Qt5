@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2015 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2015 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qconnectionfactories_p.h"
-#include "qconnectionfactories_p.h"
+#include "qremoteobjectpacket_p.h"
 
 // BEGIN: Backends
 #if defined(Q_OS_QNX)
@@ -92,108 +56,133 @@ inline bool fromDataStream(QDataStream &in, QRemoteObjectPacketTypeEnum &type, Q
 
 /*!
     All communication between nodes happens through some form of QIODevice with
-    an associated QDataStream to handle marshalling of Qt types. IoDeviceBase
+    an associated QDataStream to handle marshalling of Qt types. QtROIoDeviceBase
     is an abstract base class that provides a consistent interface to QtRO, yet
     can be extended to support different types of QIODevice.
  */
-IoDeviceBase::IoDeviceBase(QObject *parent)
-    : QObject(parent), m_isClosing(false), m_curReadSize(0)
-{
-    m_dataStream.setVersion(dataStreamVersion);
-}
+QtROIoDeviceBase::QtROIoDeviceBase(QObject *parent) : QObject(*new QtROIoDeviceBasePrivate, parent) { }
 
-IoDeviceBase::~IoDeviceBase()
+QtROIoDeviceBase::QtROIoDeviceBase(QtROIoDeviceBasePrivate &dptr, QObject *parent) : QObject(dptr, parent) { }
+
+QtROIoDeviceBase::~QtROIoDeviceBase()
 {
 }
 
-bool IoDeviceBase::read(QRemoteObjectPacketTypeEnum &type, QString &name)
+bool QtROIoDeviceBase::read(QRemoteObjectPacketTypeEnum &type, QString &name)
 {
-    qCDebug(QT_REMOTEOBJECT_IO) << deviceType() << "read()" << m_curReadSize << bytesAvailable();
+    Q_D(QtROIoDeviceBase);
+    qCDebug(QT_REMOTEOBJECT_IO) << deviceType() << "read()" << d->m_curReadSize << bytesAvailable();
 
-    if (m_curReadSize == 0) {
+    if (d->m_curReadSize == 0) {
         if (bytesAvailable() < static_cast<int>(sizeof(quint32)))
             return false;
 
-        m_dataStream >> m_curReadSize;
+        d->m_dataStream >> d->m_curReadSize;
     }
 
-    qCDebug(QT_REMOTEOBJECT_IO) << deviceType() << "read()-looking for map" << m_curReadSize << bytesAvailable();
+    qCDebug(QT_REMOTEOBJECT_IO) << deviceType() << "read()-looking for map" << d->m_curReadSize
+                                << bytesAvailable();
 
-    if (bytesAvailable() < m_curReadSize)
+    if (bytesAvailable() < d->m_curReadSize)
         return false;
 
-    m_curReadSize = 0;
-    return fromDataStream(m_dataStream, type, name);
+    d->m_curReadSize = 0;
+    return fromDataStream(d->m_dataStream, type, name);
 }
 
-void IoDeviceBase::write(const QByteArray &data)
+void QtROIoDeviceBase::write(const QByteArray &data)
 {
-    if (connection()->isOpen() && !m_isClosing)
+    Q_D(QtROIoDeviceBase);
+    if (connection()->isOpen() && !d->m_isClosing)
         connection()->write(data);
 }
 
-void IoDeviceBase::write(const QByteArray &data, qint64 size)
+void QtROIoDeviceBase::write(const QByteArray &data, qint64 size)
 {
-    if (connection()->isOpen() && !m_isClosing)
+    Q_D(QtROIoDeviceBase);
+    if (connection()->isOpen() && !d->m_isClosing)
         connection()->write(data.data(), size);
 }
 
-void IoDeviceBase::close()
+bool QtROIoDeviceBase::isOpen() const
 {
-    m_isClosing = true;
+    return !isClosing();
+}
+
+void QtROIoDeviceBase::close()
+{
+    Q_D(QtROIoDeviceBase);
+    d->m_isClosing = true;
     doClose();
 }
 
-qint64 IoDeviceBase::bytesAvailable() const
+qint64 QtROIoDeviceBase::bytesAvailable() const
 {
     return connection()->bytesAvailable();
 }
 
-void IoDeviceBase::initializeDataStream()
+void QtROIoDeviceBase::initializeDataStream()
 {
-    m_dataStream.setDevice(connection());
-    m_dataStream.resetStatus();
+    Q_D(QtROIoDeviceBase);
+    d->m_dataStream.setDevice(connection());
+    d->m_dataStream.resetStatus();
 }
 
-void IoDeviceBase::addSource(const QString &name)
+bool QtROIoDeviceBase::isClosing() const
 {
-    m_remoteObjects.insert(name);
+    Q_D(const QtROIoDeviceBase);
+    return d->m_isClosing;
 }
 
-void IoDeviceBase::removeSource(const QString &name)
+void QtROIoDeviceBase::addSource(const QString &name)
 {
-    m_remoteObjects.remove(name);
+    Q_D(QtROIoDeviceBase);
+    d->m_remoteObjects.insert(name);
 }
 
-QSet<QString> IoDeviceBase::remoteObjects() const
+void QtROIoDeviceBase::removeSource(const QString &name)
 {
-    return m_remoteObjects;
+    Q_D(QtROIoDeviceBase);
+    d->m_remoteObjects.remove(name);
 }
 
-ClientIoDevice::ClientIoDevice(QObject *parent) : IoDeviceBase(parent)
+QSet<QString> QtROIoDeviceBase::remoteObjects() const
+{
+    Q_D(const QtROIoDeviceBase);
+    return d->m_remoteObjects;
+}
+
+QtROClientIoDevice::QtROClientIoDevice(QObject *parent) : QtROIoDeviceBase(*new QtROClientIoDevicePrivate, parent)
 {
 }
 
-ClientIoDevice::~ClientIoDevice()
+QtROClientIoDevice::~QtROClientIoDevice()
 {
-    if (!m_isClosing)
+    if (!isClosing())
         close();
 }
 
-void ClientIoDevice::disconnectFromServer()
+void QtROClientIoDevice::disconnectFromServer()
 {
     doDisconnectFromServer();
     emit shouldReconnect(this);
 }
 
-QUrl ClientIoDevice::url() const
+QUrl QtROClientIoDevice::url() const
 {
-    return m_url;
+    Q_D(const QtROClientIoDevice);
+    return d->m_url;
 }
 
-QString ClientIoDevice::deviceType() const
+QString QtROClientIoDevice::deviceType() const
 {
-    return QStringLiteral("ClientIoDevice");
+    return QStringLiteral("QtROClientIoDevice");
+}
+
+void QtROClientIoDevice::setUrl(const QUrl &url)
+{
+    Q_D(QtROClientIoDevice);
+    d->m_url = url;
 }
 
 /*!
@@ -201,13 +190,13 @@ QString ClientIoDevice::deviceType() const
     problem is that they behave differently, so this class adds some
     consistency.
  */
-ServerIoDevice::ServerIoDevice(QObject *parent) : IoDeviceBase(parent)
+QtROServerIoDevice::QtROServerIoDevice(QObject *parent) : QtROIoDeviceBase(parent)
 {
 }
 
-QString ServerIoDevice::deviceType() const
+QString QtROServerIoDevice::deviceType() const
 {
-    return QStringLiteral("ServerIoDevice");
+    return QStringLiteral("QtROServerIoDevice");
 }
 
 QConnectionAbstractServer::QConnectionAbstractServer(QObject *parent)
@@ -219,46 +208,49 @@ QConnectionAbstractServer::~QConnectionAbstractServer()
 {
 }
 
-ServerIoDevice *QConnectionAbstractServer::nextPendingConnection()
+QtROServerIoDevice *QConnectionAbstractServer::nextPendingConnection()
 {
-    ServerIoDevice *iodevice = configureNewConnection();
+    QtROServerIoDevice *iodevice = configureNewConnection();
     iodevice->initializeDataStream();
     return iodevice;
 }
 
-ExternalIoDevice::ExternalIoDevice(QIODevice *device, QObject *parent)
-    : IoDeviceBase(parent)
-    , m_device(device)
+QtROExternalIoDevice::QtROExternalIoDevice(QIODevice *device, QObject *parent)
+    : QtROIoDeviceBase(*new QtROExternalIoDevicePrivate(device), parent)
 {
+    Q_D(QtROExternalIoDevice);
     initializeDataStream();
-    connect(m_device.data(), &QIODevice::aboutToClose, this, [this]() { this->m_isClosing = true; });
-    connect(m_device.data(), &QIODevice::readyRead, this, &ExternalIoDevice::readyRead);
+    connect(device, &QIODevice::aboutToClose, this, [d]() { d->m_isClosing = true; });
+    connect(device, &QIODevice::readyRead, this, &QtROExternalIoDevice::readyRead);
     auto meta = device->metaObject();
-    if (-1 != meta->indexOfSignal(SIGNAL(disconnected())))
-      connect(m_device.data(), SIGNAL(disconnected()), this, SIGNAL(disconnected()));
+    if (-1 != meta->indexOfSignal("disconnected()"))
+        connect(device, SIGNAL(disconnected()), this, SIGNAL(disconnected()));
 }
 
-QIODevice *ExternalIoDevice::connection() const
+QIODevice *QtROExternalIoDevice::connection() const
 {
-    return m_device;
+    Q_D(const QtROExternalIoDevice);
+    return d->m_device;
 }
 
-bool ExternalIoDevice::isOpen() const
+bool QtROExternalIoDevice::isOpen() const
 {
-    if (!m_device)
+    Q_D(const QtROExternalIoDevice);
+    if (!d->m_device)
         return false;
-    return m_device->isOpen() && IoDeviceBase::isOpen();
+    return d->m_device->isOpen() && QtROIoDeviceBase::isOpen();
 }
 
-void ExternalIoDevice::doClose()
+void QtROExternalIoDevice::doClose()
 {
+    Q_D(QtROExternalIoDevice);
     if (isOpen())
-        m_device->close();
+        d->m_device->close();
 }
 
-QString ExternalIoDevice::deviceType() const
+QString QtROExternalIoDevice::deviceType() const
 {
-    return QStringLiteral("ExternalIoDevice");
+    return QStringLiteral("QtROExternalIoDevice");
 }
 
 /*!
@@ -268,8 +260,11 @@ QString ExternalIoDevice::deviceType() const
 */
 QtROServerFactory::QtROServerFactory()
 {
-#if defined(Q_OS_QNX)
+#ifdef Q_OS_QNX
     registerType<QnxServerImpl>(QStringLiteral("qnx"));
+#endif
+#ifdef Q_OS_LINUX
+    registerType<AbstractLocalServerImpl>(QStringLiteral("localabstract"));
 #endif
     registerType<LocalServerImpl>(QStringLiteral("local"));
     registerType<TcpServerImpl>(QStringLiteral("tcp"));
@@ -287,8 +282,11 @@ QtROServerFactory *QtROServerFactory::instance()
 */
 QtROClientFactory::QtROClientFactory()
 {
-#if defined(Q_OS_QNX)
+#ifdef Q_OS_QNX
     registerType<QnxClientIo>(QStringLiteral("qnx"));
+#endif
+#ifdef Q_OS_LINUX
+    registerType<AbstractLocalClientIo>(QStringLiteral("localabstract"));
 #endif
     registerType<LocalClientIo>(QStringLiteral("local"));
     registerType<TcpClientIo>(QStringLiteral("tcp"));
@@ -352,5 +350,11 @@ QtROClientFactory *QtROClientFactory::instance()
 
     \sa {qRegisterRemoteObjectsServer}
 */
+
+QtROIoDeviceBasePrivate::QtROIoDeviceBasePrivate() : QObjectPrivate()
+{
+    m_dataStream.setVersion(dataStreamVersion);
+    m_dataStream.setByteOrder(QDataStream::LittleEndian);
+}
 
 QT_END_NAMESPACE

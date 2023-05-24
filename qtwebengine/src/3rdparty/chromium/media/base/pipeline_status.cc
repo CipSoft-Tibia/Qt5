@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,12 @@
 
 namespace media {
 
-std::string PipelineStatusToString(PipelineStatus status) {
+std::string PipelineStatusToString(const PipelineStatus& status) {
 #define STRINGIFY_STATUS_CASE(status) \
   case status:                        \
     return #status
 
-  switch (status) {
+  switch (status.code()) {
     STRINGIFY_STATUS_CASE(PIPELINE_OK);
     STRINGIFY_STATUS_CASE(PIPELINE_ERROR_NETWORK);
     STRINGIFY_STATUS_CASE(PIPELINE_ERROR_DECODE);
@@ -23,6 +23,8 @@ std::string PipelineStatusToString(PipelineStatus status) {
     STRINGIFY_STATUS_CASE(PIPELINE_ERROR_EXTERNAL_RENDERER_FAILED);
     STRINGIFY_STATUS_CASE(PIPELINE_ERROR_READ);
     STRINGIFY_STATUS_CASE(PIPELINE_ERROR_INVALID_STATE);
+    STRINGIFY_STATUS_CASE(PIPELINE_ERROR_HARDWARE_CONTEXT_RESET);
+    STRINGIFY_STATUS_CASE(PIPELINE_ERROR_DISCONNECTED);
     STRINGIFY_STATUS_CASE(DEMUXER_ERROR_COULD_NOT_OPEN);
     STRINGIFY_STATUS_CASE(DEMUXER_ERROR_COULD_NOT_PARSE);
     STRINGIFY_STATUS_CASE(DEMUXER_ERROR_NO_SUPPORTED_STREAMS);
@@ -40,7 +42,7 @@ std::string PipelineStatusToString(PipelineStatus status) {
   return "";
 }
 
-std::ostream& operator<<(std::ostream& out, PipelineStatus status) {
+std::ostream& operator<<(std::ostream& out, const PipelineStatus& status) {
   return out << PipelineStatusToString(status);
 }
 
@@ -63,33 +65,13 @@ bool operator==(const PipelineStatistics& first,
              second.video_keyframe_distance_average &&
          first.video_frame_duration_average ==
              second.video_frame_duration_average &&
-         first.video_decoder_info == second.video_decoder_info &&
-         first.audio_decoder_info == second.audio_decoder_info;
+         first.video_pipeline_info == second.video_pipeline_info &&
+         first.audio_pipeline_info == second.audio_pipeline_info;
 }
 
 bool operator!=(const PipelineStatistics& first,
                 const PipelineStatistics& second) {
   return !(first == second);
-}
-
-bool operator==(const PipelineDecoderInfo& first,
-                const PipelineDecoderInfo& second) {
-  return first.decoder_name == second.decoder_name &&
-         first.is_platform_decoder == second.is_platform_decoder &&
-         first.has_decrypting_demuxer_stream ==
-             second.has_decrypting_demuxer_stream;
-}
-
-bool operator!=(const PipelineDecoderInfo& first,
-                const PipelineDecoderInfo& second) {
-  return !(first == second);
-}
-
-std::ostream& operator<<(std::ostream& out, const PipelineDecoderInfo& info) {
-  return out << "{decoder_name:" << info.decoder_name << ","
-             << "is_platform_decoder:" << info.is_platform_decoder << ","
-             << "has_decrypting_demuxer_stream:"
-             << info.has_decrypting_demuxer_stream << "}";
 }
 
 }  // namespace media

@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
     \page model-view-programming.html
     \ingroup qt-basic-concepts
@@ -473,11 +449,13 @@
     \snippet simplemodel-use/main.cpp 0
 
     In this case, we start by setting up a default QFileSystemModel. We connect
-    it to a lambda, in which we will obtain a parent index using a specific
+    its signal \c directoryLoaded(QString) to a lambda, in which we will
+    obtain a parent index for the directory using a specific
     implementation of \l{QFileSystemModel::}{index()} provided by that model.
-    In the lambda, we count the number of rows in the model using the
-     \l{QFileSystemModel::}{rowCount()} function. Finally, we set the root path
-    of the QFileSystemModel so it starts loading data and triggers the lambda.
+
+    In the lambda, we determine the number of rows in the model using the
+     \l{QFileSystemModel::}{rowCount()} function.
+
 
     For simplicity, we are only interested in the items in the first column
     of the model. We examine each row in turn, obtaining a model index for
@@ -497,6 +475,9 @@
     \snippet simplemodel-use/main.cpp 2
     \codeline
     \snippet simplemodel-use/main.cpp 3
+
+    Finally, we set the root path of the QFileSystemModel so it starts
+    loading data and triggers the lambda.
 
     The above example demonstrates the basic principles used to retrieve
     data from a model:
@@ -708,9 +689,6 @@
     the editing process or by handling events directly.
     The first approach is covered later in this section, and it is also
     shown in the \l{Spin Box Delegate Example}{Spin Box Delegate} example.
-
-    The \l{Pixelator Example}{Pixelator} example shows how to create a
-    custom delegate that performs specialized rendering for a table view.
 
     \section2 Using an existing delegate
 
@@ -1837,8 +1815,6 @@
     Note that the model will typically need to provide implementations of the
     QAbstractItemModel::insertRows() and QAbstractItemModel::setData() functions.
 
-    \sa {itemviews/puzzle}{Item Views Puzzle Example}
-
     \section1 Proxy Models
 
     In the model/view framework, items of data supplied by a single model can be shared
@@ -2332,10 +2308,7 @@
     \section1 Related Examples
 
     \list
-    \li \l{itemviews/dirview}{Dir View}
     \li \l{itemviews/spinboxdelegate}{Spin Box Delegate}
-    \li \l{itemviews/pixelator}{Pixelator}
     \li \l{itemviews/simpletreemodel}{Simple Tree Model}
-    \li \l{itemviews/chart}{Chart}
     \endlist
 */

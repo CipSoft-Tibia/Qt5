@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,11 +26,11 @@ int LimitedOutputStream::StreamBuf::sync() {
     str("");
     return 0;
   }
-  os_ << str();
+  *os_ << str();
   str("");
   if (++counter_ >= limit_)
-    os_ << "(Additional output suppressed)\n";
-  os_.flush();
+    *os_ << "(Additional output suppressed)\n";
+  os_->flush();
   return 0;
 }
 

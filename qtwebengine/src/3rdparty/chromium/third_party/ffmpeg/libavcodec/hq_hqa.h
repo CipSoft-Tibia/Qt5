@@ -23,8 +23,9 @@
 
 #include <stdint.h>
 
+#include "libavutil/mem_internal.h"
+
 #include "avcodec.h"
-#include "bytestream.h"
 #include "hq_hqadsp.h"
 #include "vlc.h"
 
@@ -35,7 +36,6 @@
 typedef struct HQContext {
     AVCodecContext *avctx;
     HQDSPContext hqhqadsp;
-    GetByteContext gbc;
 
     VLC hq_ac_vlc;
     VLC hqa_cbp_vlc;

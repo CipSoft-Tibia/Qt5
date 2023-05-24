@@ -1,11 +1,10 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/history/core/browser/url_utils.h"
 
-#include <algorithm>
-
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "url/gurl.h"
 
@@ -41,7 +40,7 @@ bool CanonicalURLStringCompare(const std::string& s1, const std::string& s2) {
     ++ch2;
   }
   int pri_diff = GetURLCharPriority(*ch1) - GetURLCharPriority(*ch2);
-  // We want false to be returned if |pri_diff| > 0.
+  // We want false to be returned if `pri_diff` > 0.
   return (pri_diff != 0) ? pri_diff < 0 : *ch1 < *ch2;
 }
 
@@ -54,19 +53,19 @@ bool IsPathPrefix(const std::string& p1, const std::string& p2) {
   if (p1.length() > p2.length())
     return false;
   std::pair<std::string::const_iterator, std::string::const_iterator>
-      first_diff = std::mismatch(p1.begin(), p1.end(), p2.begin());
-  // Necessary condition: |p1| is a string prefix of |p2|.
+      first_diff = base::ranges::mismatch(p1, p2);
+  // Necessary condition: `p1` is a string prefix of `p2`.
   if (first_diff.first != p1.end())
-    return false;  // E.g.: (|p1| = "/test", |p2| = "/exam") => false.
+    return false;  // E.g.: (`p1` = "/test", `p2` = "/exam") => false.
 
-  // |p1| is string prefix.
+  // `p1` is string prefix.
   if (first_diff.second == p2.end())  // Is exact match?
     return true;  // E.g.: ("/test", "/test") => true.
-  // |p1| is strict string prefix, check full match of last path component.
+  // `p1` is strict string prefix, check full match of last path component.
   if (!p1.empty() && *p1.rbegin() == '/')  // Ends in '/'?
     return true;  // E.g.: ("/test/", "/test/stuff") => true.
 
-  // Finally, |p1| does not end in "/": check first extra character in |p2|.
+  // Finally, `p1` does not end in "/": check first extra character in `p2`.
   // E.g.: ("/test", "/test/stuff") => true; ("/test", "/testing") => false.
   return *(first_diff.second) == '/';
 }
@@ -79,10 +78,8 @@ GURL ToggleHTTPAndHTTPS(const GURL& url) {
     new_scheme = "http";
   else
     return GURL::EmptyGURL();
-  url::Component comp;
-  comp.len = static_cast<int>(new_scheme.length());
   GURL::Replacements replacement;
-  replacement.SetScheme(new_scheme.c_str(), comp);
+  replacement.SetSchemeStr(new_scheme);
   return url.ReplaceComponents(replacement);
 }
 

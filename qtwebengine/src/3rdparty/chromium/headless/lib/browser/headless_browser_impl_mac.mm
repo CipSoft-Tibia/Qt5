@@ -1,11 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "headless/lib/browser/headless_browser_impl.h"
 
 #import "base/mac/scoped_objc_class_swizzler.h"
+#include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "headless/lib/browser/headless_web_contents_impl.h"
@@ -34,9 +37,11 @@ namespace {
 // headless mode.
 class HeadlessPopUpMethods {
  public:
+  HeadlessPopUpMethods(const HeadlessPopUpMethods&) = delete;
+  HeadlessPopUpMethods& operator=(const HeadlessPopUpMethods&) = delete;
+
   static void Init() {
-    static base::NoDestructor<HeadlessPopUpMethods> swizzler;
-    ALLOW_UNUSED_LOCAL(swizzler);
+    [[maybe_unused]] static base::NoDestructor<HeadlessPopUpMethods> swizzler;
   }
 
  private:
@@ -51,8 +56,6 @@ class HeadlessPopUpMethods {
 
   base::mac::ScopedObjCClassSwizzler popup_perform_click_swizzler_;
   base::mac::ScopedObjCClassSwizzler popup_attach_swizzler_;
-
-  DISALLOW_COPY_AND_ASSIGN(HeadlessPopUpMethods);
 };
 
 NSString* const kActivityReason = @"Batch headless process";
@@ -65,6 +68,7 @@ const NSActivityOptions kActivityOptions =
 }  // namespace
 
 void HeadlessBrowserImpl::PlatformInitialize() {
+  screen_ = std::make_unique<display::ScopedNativeScreen>();
   HeadlessPopUpMethods::Init();
 }
 
@@ -87,15 +91,28 @@ void HeadlessBrowserImpl::PlatformInitializeWebContents(
 void HeadlessBrowserImpl::PlatformSetWebContentsBounds(
     HeadlessWebContentsImpl* web_contents,
     const gfx::Rect& bounds) {
-  NSView* web_view =
-      web_contents->web_contents()->GetNativeView().GetNativeNSView();
+  content::WebContents* content_web_contents = web_contents->web_contents();
+
+  NSView* web_view = content_web_contents->GetNativeView().GetNativeNSView();
   NSRect frame = gfx::ScreenRectToNSRect(bounds);
   [web_view setFrame:frame];
 
-  content::RenderWidgetHostView* host_view =
-      web_contents->web_contents()->GetRenderWidgetHostView();
-  if (host_view)
-    host_view->SetWindowFrameInScreen(bounds);
+  // Render widget host view is not ready at this point, so post a task to set
+  // bounds at later time.
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<content::WebContents> content_web_contents,
+             const gfx::Rect& bounds) {
+            if (content_web_contents) {
+              content::RenderWidgetHostView* host_view =
+                  content_web_contents->GetRenderWidgetHostView();
+              if (host_view) {
+                host_view->SetWindowFrameInScreen(bounds);
+              }
+            }
+          },
+          content_web_contents->GetWeakPtr(), bounds));
 }
 
 ui::Compositor* HeadlessBrowserImpl::PlatformGetCompositor(

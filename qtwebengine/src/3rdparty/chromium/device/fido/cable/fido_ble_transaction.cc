@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,10 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/device_event_log/device_event_log.h"
 #include "device/fido/cable/fido_ble_connection.h"
 #include "device/fido/fido_constants.h"
@@ -29,8 +29,8 @@ void FidoBleTransaction::WriteRequestFrame(FidoBleFrame request_frame,
   if (control_point_length_ < 3u) {
     FIDO_LOG(DEBUG) << "Control Point Length is too short: "
                     << control_point_length_;
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
-        FROM_HERE, base::BindOnce(std::move(callback), base::nullopt));
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), absl::nullopt));
     return;
   }
 
@@ -74,7 +74,7 @@ void FidoBleTransaction::OnRequestFragmentWritten(bool success) {
   has_pending_request_fragment_write_ = false;
   StopTimeout();
   if (!success) {
-    OnError(base::nullopt);
+    OnError(absl::nullopt);
     return;
   }
 
@@ -109,7 +109,7 @@ void FidoBleTransaction::OnResponseFragment(std::vector<uint8_t> data) {
     FidoBleFrameInitializationFragment fragment;
     if (!FidoBleFrameInitializationFragment::Parse(data, &fragment)) {
       FIDO_LOG(ERROR) << "Malformed Frame Initialization Fragment";
-      OnError(base::nullopt);
+      OnError(absl::nullopt);
       return;
     }
 
@@ -119,7 +119,7 @@ void FidoBleTransaction::OnResponseFragment(std::vector<uint8_t> data) {
     if (!FidoBleFrameContinuationFragment::Parse(data, &fragment) ||
         !response_frame_assembler_->AddFragment(fragment)) {
       FIDO_LOG(ERROR) << "Malformed Frame Continuation Fragment";
-      OnError(base::nullopt);
+      OnError(absl::nullopt);
       return;
     }
   }
@@ -172,7 +172,7 @@ void FidoBleTransaction::ProcessResponseFrame() {
   if (response_frame.command() == FidoBleDeviceCommand::kKeepAlive) {
     if (!response_frame.IsValid()) {
       FIDO_LOG(ERROR) << "Got invalid KeepAlive Command.";
-      OnError(base::nullopt);
+      OnError(absl::nullopt);
       return;
     }
 
@@ -186,7 +186,7 @@ void FidoBleTransaction::ProcessResponseFrame() {
   if (response_frame.command() == FidoBleDeviceCommand::kError) {
     if (!response_frame.IsValid()) {
       FIDO_LOG(ERROR) << "Got invald Error Command.";
-      OnError(base::nullopt);
+      OnError(absl::nullopt);
       return;
     }
 
@@ -198,20 +198,20 @@ void FidoBleTransaction::ProcessResponseFrame() {
 
   FIDO_LOG(ERROR) << "Got unexpected Command: "
                   << static_cast<int>(response_frame.command());
-  OnError(base::nullopt);
+  OnError(absl::nullopt);
 }
 
 void FidoBleTransaction::StartTimeout() {
   timer_.Start(FROM_HERE, kDeviceTimeout,
                base::BindOnce(&FidoBleTransaction::OnError,
-                              base::Unretained(this), base::nullopt));
+                              base::Unretained(this), absl::nullopt));
 }
 
 void FidoBleTransaction::StopTimeout() {
   timer_.Stop();
 }
 
-void FidoBleTransaction::OnError(base::Optional<FidoBleFrame> response_frame) {
+void FidoBleTransaction::OnError(absl::optional<FidoBleFrame> response_frame) {
   request_frame_.reset();
   request_cont_fragments_ = base::queue<FidoBleFrameContinuationFragment>();
   response_frame_assembler_.reset();

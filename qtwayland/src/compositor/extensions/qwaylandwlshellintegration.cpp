@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandwlshellintegration_p.h"
 
@@ -98,8 +72,8 @@ void WlShellIntegration::handleSetDefaultTopLevel()
 
 void WlShellIntegration::handleSetTransient(QWaylandSurface *parentSurface, const QPoint &relativeToParent, bool inactive)
 {
-    Q_UNUSED(parentSurface)
-    Q_UNUSED(relativeToParent)
+    Q_UNUSED(parentSurface);
+    Q_UNUSED(relativeToParent);
 
     // Take focus if the policy allows and it's not inactive
     if (m_shellSurface->shell()->focusPolicy() == QWaylandShell::AutomaticFocus && !inactive)
@@ -296,25 +270,25 @@ bool WlShellIntegration::filterMouseMoveEvent(QMouseEvent *event)
     if (grabberState == GrabberState::Resize) {
         Q_ASSERT(resizeState.seat == m_item->compositor()->seatFor(event));
         if (!resizeState.initialized) {
-            resizeState.initialMousePos = event->windowPos();
+            resizeState.initialMousePos = event->scenePosition();
             resizeState.initialized = true;
             return true;
         }
         float scaleFactor = m_item->view()->output()->scaleFactor();
-        QPointF delta = (event->windowPos() - resizeState.initialMousePos) / scaleFactor * devicePixelRatio();
+        QPointF delta = (event->scenePosition() - resizeState.initialMousePos) / scaleFactor * devicePixelRatio();
         QSize newSize = m_shellSurface->sizeForResize(resizeState.initialSize, delta, resizeState.resizeEdges);
         m_shellSurface->sendConfigure(newSize, resizeState.resizeEdges);
     } else if (grabberState == GrabberState::Move) {
         Q_ASSERT(moveState.seat == m_item->compositor()->seatFor(event));
         QQuickItem *moveItem = m_item->moveItem();
         if (!moveState.initialized) {
-            moveState.initialOffset = moveItem->mapFromItem(nullptr, event->windowPos());
+            moveState.initialOffset = moveItem->mapFromItem(nullptr, event->scenePosition());
             moveState.initialized = true;
             return true;
         }
         if (!moveItem->parentItem())
             return true;
-        QPointF parentPos = moveItem->parentItem()->mapFromItem(nullptr, event->windowPos());
+        QPointF parentPos = moveItem->parentItem()->mapFromItem(nullptr, event->scenePosition());
         moveItem->setPosition(parentPos - moveState.initialOffset);
     }
     return false;
@@ -333,3 +307,5 @@ bool WlShellIntegration::filterMouseReleaseEvent(QMouseEvent *event)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandwlshellintegration_p.cpp"

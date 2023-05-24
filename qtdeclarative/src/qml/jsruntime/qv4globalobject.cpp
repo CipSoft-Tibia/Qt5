@@ -1,64 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4globalobject_p.h"
-#include <private/qv4mm_p.h>
-#include "qv4value_p.h"
-#include "qv4context_p.h"
-#include "qv4function_p.h"
-#include "qv4debugging_p.h"
-#include "qv4profiling_p.h"
-#include "qv4script_p.h"
-#include "qv4scopedvalue_p.h"
-#include "qv4string_p.h"
-#include "qv4jscall_p.h"
 
-#include <private/qv4codegen_p.h>
 #include <private/qv4alloca_p.h>
-#include "private/qlocale_tools_p.h"
-#include "private/qtools_p.h"
-
-#include <QtCore/QDebug>
-#include <QtCore/QString>
-#include <iostream>
+#include <private/qv4codegen_p.h>
+#include <private/qv4context_p.h>
+#include <private/qv4function_p.h>
+#include <private/qv4mm_p.h>
+#include <private/qv4scopedvalue_p.h>
+#include <private/qv4script_p.h>
+#include <private/qv4stackframe_p.h>
+#include <private/qv4string_p.h>
+#include <private/qv4value_p.h>
 
 #include <wtf/MathExtras.h>
+
+#include <QtCore/private/qlocale_tools_p.h>
+#include <QtCore/private/qtools_p.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qstring.h>
+
+#include <iostream>
 
 using namespace QV4;
 using QtMiscUtils::toHexUpper;
@@ -68,7 +32,7 @@ static QString escape(const QString &input)
 {
     QString output;
     output.reserve(input.size() * 3);
-    const int length = input.length();
+    const int length = input.size();
     for (int i = 0; i < length; ++i) {
         ushort uc = input.at(i).unicode();
         if (uc < 0x100) {
@@ -80,13 +44,13 @@ static QString escape(const QString &input)
                 || (uc == 0x5F)) {
                 output.append(QChar(uc));
             } else {
-                output.append('%');
+                output.append(u'%');
                 output.append(QLatin1Char(toHexUpper(uc >> 4)));
                 output.append(QLatin1Char(toHexUpper(uc)));
             }
         } else {
-            output.append('%');
-            output.append('u');
+            output.append(u'%');
+            output.append(u'u');
             output.append(QLatin1Char(toHexUpper(uc >> 12)));
             output.append(QLatin1Char(toHexUpper(uc >> 8)));
             output.append(QLatin1Char(toHexUpper(uc >> 4)));
@@ -99,14 +63,14 @@ static QString escape(const QString &input)
 static QString unescape(const QString &input)
 {
     QString result;
-    result.reserve(input.length());
+    result.reserve(input.size());
     int i = 0;
-    const int length = input.length();
+    const int length = input.size();
     while (i < length) {
         QChar c = input.at(i++);
-        if ((c == '%') && (i + 1 < length)) {
+        if ((c == u'%') && (i + 1 < length)) {
             QChar a = input.at(i);
-            if ((a == 'u') && (i + 4 < length)) {
+            if ((a == u'u') && (i + 4 < length)) {
                 int d3 = fromHex(input.at(i+1).unicode());
                 int d2 = fromHex(input.at(i+2).unicode());
                 int d1 = fromHex(input.at(i+3).unicode());
@@ -122,7 +86,7 @@ static QString unescape(const QString &input)
                 int d1 = fromHex(a.unicode());
                 int d0 = fromHex(input.at(i+1).unicode());
                 if ((d1 != -1) && (d0 != -1)) {
-                    c = (d1 << 4) | d0;
+                    c = QChar((d1 << 4) | d0);
                     i += 2;
                 }
                 result.append(c);
@@ -149,7 +113,7 @@ static QString encode(const QString &input, const char *unescapedSet, bool *ok)
 {
     *ok = true;
     QString output;
-    const int length = input.length();
+    const int length = input.size();
     int i = 0;
     while (i < length) {
         const QChar c = input.at(i);
@@ -223,8 +187,8 @@ static QString decode(const QString &input, DecodeMode decodeMode, bool *ok)
 {
     *ok = true;
     QString output;
-    output.reserve(input.length());
-    const int length = input.length();
+    output.reserve(input.size());
+    const int length = input.size();
     int i = 0;
     const QChar percent = QLatin1Char('%');
     while (i < length) {
@@ -304,7 +268,7 @@ static QString decode(const QString &input, DecodeMode decodeMode, bool *ok)
                         ++r;
                     }
                     if (*r)
-                        output.append(input.midRef(start, i - start + 1));
+                        output.append(QStringView{input}.mid(start, i - start + 1));
                     else
                         output.append(QChar(b));
                 } else {
@@ -367,7 +331,7 @@ ReturnedValue EvalFunction::evalCall(const Value *, const Value *argv, int argc,
     Function *function = script.function();
     if (!function)
         return Encode::undefined();
-    function->isEval = true;
+    function->kind = Function::Eval;
 
     if (function->isStrict() || isStrict) {
         ScopedFunctionObject e(scope, FunctionObject::createScriptFunction(ctx, function));
@@ -417,7 +381,7 @@ ReturnedValue GlobalFunctions::method_parseInt(const FunctionObject *b, const Va
     CHECK_EXCEPTION();
 
     const QChar *pos = trimmed.constData();
-    const QChar *end = pos + trimmed.length();
+    const QChar *end = pos + trimmed.size();
 
     int sign = 1; // 3
     if (pos != end) {

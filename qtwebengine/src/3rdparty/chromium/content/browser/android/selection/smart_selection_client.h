@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,11 @@
 
 #include <jni.h>
 
+#include <string>
+
 #include "base/android/jni_weak_ref.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
 
 namespace content {
 
@@ -25,6 +26,10 @@ class SmartSelectionClient {
   SmartSelectionClient(JNIEnv* env,
                        const base::android::JavaRef<jobject>& obj,
                        WebContents* web_contents);
+
+  SmartSelectionClient(const SmartSelectionClient&) = delete;
+  SmartSelectionClient& operator=(const SmartSelectionClient&) = delete;
+
   ~SmartSelectionClient();
 
   // Sends asynchronius request to retrieve the text.
@@ -39,7 +44,7 @@ class SmartSelectionClient {
 
  private:
   void OnSurroundingTextReceived(int callback_data,
-                                 const base::string16& text,
+                                 const std::u16string& text,
                                  uint32_t start,
                                  uint32_t end);
 
@@ -48,11 +53,9 @@ class SmartSelectionClient {
 
   // WebContents is used to find the relevant RenderFrameHost that can send
   // the request for the text.
-  WebContents* web_contents_;
+  raw_ptr<WebContents> web_contents_;
 
   base::WeakPtrFactory<SmartSelectionClient> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(SmartSelectionClient);
 };
 
 }  // namespace content

@@ -1,16 +1,16 @@
 project('weston',
 	'c',
-	version: '6.0.91',
+	version: '9.0.0',
 	default_options: [
 		'warning_level=3',
 		'c_std=gnu99',
-		'b_lundef=false',
+		'b_lundef=true',
 	],
 	meson_version: '>= 0.47',
 	license: 'MIT/Expat',
 )
 
-libweston_major = 7
+libweston_major = 9
 
 # libweston_revision is manufactured to follow the autotools build's
 # library file naming, thanks to libtool
@@ -39,9 +39,10 @@ dir_module_libweston = join_paths(dir_lib, 'libweston-@0@'.format(libweston_majo
 dir_data_pc = join_paths(dir_data, 'pkgconfig')
 dir_lib_pc = join_paths(dir_lib, 'pkgconfig')
 dir_man = join_paths(dir_prefix, get_option('mandir'))
-dir_protocol_libweston = 'libweston/protocols'
+dir_protocol_libweston = join_paths('libweston-@0@'.format(libweston_major), 'protocols')
 
 public_inc = include_directories('include')
+common_inc = [ include_directories('.'), public_inc ]
 
 pkgconfig = import('pkgconfig')
 
@@ -57,6 +58,7 @@ cc = meson.get_compiler('c')
 
 global_args = []
 global_args_maybe = [
+	'-Wmissing-prototypes',
 	'-Wno-unused-parameter',
 	'-Wno-shift-negative-value', # required due to Pixman
 	'-Wno-missing-field-initializers',
@@ -77,7 +79,7 @@ elif cc.has_header_symbol('sys/mkdev.h', 'major')
 endif
 
 optional_libc_funcs = [
-	'mkostemp', 'strchrnul', 'initgroups', 'posix_fallocate'
+	'mkostemp', 'strchrnul', 'initgroups', 'posix_fallocate', 'memfd_create'
 ]
 foreach func : optional_libc_funcs
 	if cc.has_function(func)
@@ -98,6 +100,8 @@ env_modmap = ''
 
 config_h.set('_GNU_SOURCE', '1')
 config_h.set('_ALL_SOURCE', '1')
+config_h.set('EGL_NO_X11', '1')
+config_h.set('MESA_EGL_NO_X11_HEADERS', '1')
 
 config_h.set_quoted('PACKAGE_STRING', 'weston @0@'.format(version_weston))
 config_h.set_quoted('PACKAGE_VERSION', version_weston)
@@ -110,6 +114,8 @@ config_h.set_quoted('DATADIR', dir_data)
 config_h.set_quoted('LIBEXECDIR', dir_libexec)
 config_h.set_quoted('MODULEDIR', dir_module_weston)
 config_h.set_quoted('LIBWESTON_MODULEDIR', dir_module_libweston)
+
+config_h.set10('TEST_GL_RENDERER', get_option('test-gl-renderer'))
 
 backend_default = get_option('backend-default')
 if backend_default == 'auto'
@@ -131,14 +137,14 @@ if dep_xkbcommon.version().version_compare('>= 0.5.0')
 	config_h.set('HAVE_XKBCOMMON_COMPOSE', '1')
 endif
 
-dep_wayland_server = dependency('wayland-server', version: '>= 1.12.0')
-dep_wayland_client = dependency('wayland-client', version: '>= 1.12.0')
+dep_wayland_server = dependency('wayland-server', version: '>= 1.17.0')
+dep_wayland_client = dependency('wayland-client', version: '>= 1.17.0')
 dep_pixman = dependency('pixman-1', version: '>= 0.25.2')
 dep_libinput = dependency('libinput', version: '>= 0.8.0')
 dep_libevdev = dependency('libevdev')
 dep_libm = cc.find_library('m')
 dep_libdl = cc.find_library('dl')
-dep_libdrm = dependency('libdrm', version: '>= 2.4.68')
+dep_libdrm = dependency('libdrm', version: '>= 2.4.86')
 dep_libdrm_headers = dep_libdrm.partial_dependency(compile_args: true)
 dep_threads = dependency('threads')
 
@@ -152,6 +158,7 @@ subdir('compositor')
 subdir('desktop-shell')
 subdir('fullscreen-shell')
 subdir('ivi-shell')
+subdir('kiosk-shell')
 subdir('remoting')
 subdir('pipewire')
 subdir('clients')

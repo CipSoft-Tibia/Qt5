@@ -27,7 +27,7 @@
 #include "third_party/blink/renderer/core/svg/svg_path_query.h"
 #include "third_party/blink/renderer/core/svg/svg_path_utilities.h"
 #include "third_party/blink/renderer/core/svg/svg_point_tear_off.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -50,8 +50,7 @@ Path SVGPathElement::AttributePath() const {
 
 const StylePath* SVGPathElement::GetStylePath() const {
   if (const ComputedStyle* style = GetComputedStyle()) {
-    const StylePath* style_path = style->SvgStyle().D();
-    if (style_path)
+    if (const StylePath* style_path = style->D())
       return style_path;
     return StylePath::EmptyPath();
   }
@@ -82,6 +81,7 @@ SVGPointTearOff* SVGPathElement::getPointAtLength(
   GetDocument().UpdateStyleAndLayoutForNode(this,
                                             DocumentUpdateReason::kJavaScript);
 
+  EnsureComputedStyle();
   const SVGPathByteStream& byte_stream = PathByteStream();
   if (byte_stream.IsEmpty()) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
@@ -97,18 +97,20 @@ SVGPointTearOff* SVGPathElement::getPointAtLength(
     if (length > computed_length)
       length = computed_length;
   }
-  FloatPoint point = path_query.GetPointAtLength(length);
+  gfx::PointF point = path_query.GetPointAtLength(length);
   return SVGPointTearOff::CreateDetached(point);
 }
 
-void SVGPathElement::SvgAttributeChanged(const QualifiedName& attr_name) {
+void SVGPathElement::SvgAttributeChanged(
+    const SvgAttributeChangedParams& params) {
+  const QualifiedName& attr_name = params.name;
   if (attr_name == svg_names::kDAttr) {
     InvalidateMPathDependencies();
     GeometryPresentationAttributeChanged(attr_name);
     return;
   }
 
-  SVGGeometryElement::SvgAttributeChanged(attr_name);
+  SVGGeometryElement::SvgAttributeChanged(params);
 }
 
 void SVGPathElement::CollectStyleForPresentationAttribute(
@@ -153,9 +155,9 @@ void SVGPathElement::RemovedFrom(ContainerNode& root_parent) {
   InvalidateMPathDependencies();
 }
 
-FloatRect SVGPathElement::GetBBox() {
+gfx::RectF SVGPathElement::GetBBox() {
   // We want the exact bounds.
-  return SVGPathElement::AsPath().BoundingRect();
+  return SVGPathElement::AsPath().TightBoundingRect();
 }
 
 }  // namespace blink

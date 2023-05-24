@@ -26,9 +26,11 @@
 
 #include "third_party/blink/renderer/core/html/forms/html_option_element.h"
 
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_mutation_observer_init.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
 #include "third_party/blink/renderer/core/dom/mutation_observer.h"
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/dom/node_traversal.h"
@@ -37,6 +39,8 @@
 #include "third_party/blink/renderer/core/html/forms/html_data_list_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_opt_group_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
+#include "third_party/blink/renderer/core/html/forms/html_select_menu_element.h"
+#include "third_party/blink/renderer/core/html/html_slot_element.h"
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
@@ -99,7 +103,7 @@ HTMLOptionElement* HTMLOptionElement::CreateForJSConstructor(
   HTMLOptionElement* element =
       MakeGarbageCollected<HTMLOptionElement>(document);
   element->EnsureUserAgentShadowRoot();
-  if (!data.IsEmpty()) {
+  if (!data.empty()) {
     element->AppendChild(Text::Create(document, data), exception_state);
     if (exception_state.HadException())
       return nullptr;
@@ -123,6 +127,8 @@ bool HTMLOptionElement::SupportsFocus() const {
   HTMLSelectElement* select = OwnerSelectElement();
   if (select && select->UsesMenuList())
     return false;
+  if (is_descendant_of_select_menu_)
+    return !IsDisabledFormControl();
   return HTMLElement::SupportsFocus();
 }
 
@@ -139,18 +145,24 @@ String HTMLOptionElement::DisplayLabel() const {
   String text;
 
   // WinIE does not use the label attribute, so as a quirk, we ignore it.
-  if (!document.InQuirksMode())
-    text = FastGetAttribute(html_names::kLabelAttr);
+  String label_attr = String(FastGetAttribute(html_names::kLabelAttr))
+    .StripWhiteSpace(IsHTMLSpace<UChar>).SimplifyWhiteSpace(IsHTMLSpace<UChar>);
+  String inner_text = CollectOptionInnerText()
+    .StripWhiteSpace(IsHTMLSpace<UChar>).SimplifyWhiteSpace(IsHTMLSpace<UChar>);
+  if (!document.InQuirksMode()) {
+    text = label_attr;
+  } else if (!label_attr.empty() && label_attr != inner_text) {
+    UseCounter::Count(GetDocument(), WebFeature::kOptionLabelInQuirksMode);
+  }
 
   // FIXME: The following treats an element with the label attribute set to
   // the empty string the same as an element with no label attribute at all.
   // Is that correct? If it is, then should the label function work the same
   // way?
-  if (text.IsEmpty())
-    text = CollectOptionInnerText();
+  if (text.empty())
+    text = inner_text;
 
-  return text.StripWhiteSpace(IsHTMLSpace<UChar>)
-      .SimplifyWhiteSpace(IsHTMLSpace<UChar>);
+  return text;
 }
 
 String HTMLOptionElement::text() const {
@@ -173,7 +185,8 @@ void HTMLOptionElement::setText(const String& text) {
     select->setSelectedIndex(old_selected_index);
 }
 
-void HTMLOptionElement::AccessKeyAction(bool) {
+void HTMLOptionElement::AccessKeyAction(SimulatedClickCreationScope) {
+  // TODO(crbug.com/1176745): why creation_scope arg is not used at all?
   if (HTMLSelectElement* select = OwnerSelectElement())
     select->SelectOptionByAccessKey(this);
 }
@@ -206,8 +219,14 @@ void HTMLOptionElement::ParseAttribute(
     const AttributeModificationParams& params) {
   const QualifiedName& name = params.name;
   if (name == html_names::kValueAttr) {
-    if (HTMLDataListElement* data_list = OwnerDataListElement())
+    if (HTMLDataListElement* data_list = OwnerDataListElement()) {
       data_list->OptionElementChildrenChanged();
+    } else if (UNLIKELY(is_descendant_of_select_menu_)) {
+      if (HTMLSelectMenuElement* select_menu =
+              HTMLSelectMenuElement::OwnerSelectMenu(this)) {
+        select_menu->OptionElementValueChanged(*this);
+      }
+    }
   } else if (name == html_names::kDisabledAttr) {
     if (params.old_value.IsNull() != params.new_value.IsNull()) {
       PseudoStateChanged(CSSSelector::kPseudoDisabled);
@@ -250,8 +269,12 @@ void HTMLOptionElement::SetSelected(bool selected) {
 
   SetSelectedState(selected);
 
-  if (HTMLSelectElement* select = OwnerSelectElement())
+  if (HTMLSelectElement* select = OwnerSelectElement()) {
     select->OptionSelectionStateChanged(this, selected);
+  } else if (HTMLSelectMenuElement* select_menu =
+                 HTMLSelectMenuElement::OwnerSelectMenu(this)) {
+    select_menu->OptionSelectionStateChanged(this, selected);
+  }
 }
 
 bool HTMLOptionElement::selectedForBinding() const {
@@ -326,10 +349,14 @@ void HTMLOptionElement::ChildrenChanged(const ChildrenChange& change) {
 }
 
 void HTMLOptionElement::DidChangeTextContent() {
-  if (HTMLDataListElement* data_list = OwnerDataListElement())
+  if (HTMLDataListElement* data_list = OwnerDataListElement()) {
     data_list->OptionElementChildrenChanged();
-  else if (HTMLSelectElement* select = OwnerSelectElement())
+  } else if (HTMLSelectElement* select = OwnerSelectElement()) {
     select->OptionElementChildrenChanged(*this);
+  } else if (HTMLSelectMenuElement* select_menu =
+                 HTMLSelectMenuElement::OwnerSelectMenu(this)) {
+    select_menu->OptionElementChildrenChanged(*this);
+  }
   UpdateLabel();
 }
 
@@ -412,8 +439,45 @@ void HTMLOptionElement::DidAddUserAgentShadowRoot(ShadowRoot& root) {
 }
 
 void HTMLOptionElement::UpdateLabel() {
+  // For <selectmenu> the label should not replace descendants for the visual
+  // in order to allow to render arbitrary content.
+  if (is_descendant_of_select_menu_)
+    return;
+
   if (ShadowRoot* root = UserAgentShadowRoot())
     root->setTextContent(DisplayLabel());
+}
+
+void HTMLOptionElement::OptionInsertedIntoSelectMenuElement() {
+  DCHECK(RuntimeEnabledFeatures::HTMLSelectMenuElementEnabled());
+
+  if (is_descendant_of_select_menu_)
+    return;
+
+  ShadowRoot* root = UserAgentShadowRoot();
+  DCHECK(root);
+
+  is_descendant_of_select_menu_ = true;
+  // TODO(crbug.com/1196022) Refine the content that an option can render.
+  // Enable the option element to render arbitrary content.
+  root->RemoveChildren();
+  Document& document = GetDocument();
+  auto* default_slot = MakeGarbageCollected<HTMLSlotElement>(document);
+  root->AppendChild(default_slot);
+}
+
+void HTMLOptionElement::OptionRemovedFromSelectMenuElement() {
+  DCHECK(RuntimeEnabledFeatures::HTMLSelectMenuElementEnabled());
+
+  if (!is_descendant_of_select_menu_)
+    return;
+
+  ShadowRoot* root = UserAgentShadowRoot();
+  DCHECK(root);
+
+  is_descendant_of_select_menu_ = false;
+  root->RemoveChildren();
+  UpdateLabel();
 }
 
 bool HTMLOptionElement::SpatialNavigationFocused() const {

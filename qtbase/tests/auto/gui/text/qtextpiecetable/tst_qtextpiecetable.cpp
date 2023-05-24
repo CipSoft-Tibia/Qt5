@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QRandomGenerator>
 
 #define protected public
 
@@ -110,7 +86,7 @@ tst_QTextPieceTable::tst_QTextPieceTable()
 void tst_QTextPieceTable::init()
 {
     doc = new QTextDocument(0);
-    table = doc->docHandle();
+    table = QTextDocumentPrivate::get(doc);
     blockFormatIndex = table->formatCollection()->indexForFormat(QTextBlockFormat());
     charFormatIndex = table->formatCollection()->indexForFormat(QTextCharFormat());
 }
@@ -995,7 +971,7 @@ void tst_QTextPieceTable::checkFrames1()
     QVERIFY(root);
     QVERIFY(!root->parentFrame());
 
-    QCOMPARE(root->childFrames().count(), 1);
+    QCOMPARE(root->childFrames().size(), 1);
     QVERIFY(frame->format() == ffmt);
     QCOMPARE(frame->firstPosition(), 2);
     QCOMPARE(frame->lastPosition(), 4);
@@ -1003,10 +979,10 @@ void tst_QTextPieceTable::checkFrames1()
 
     QPointer<QTextFrame> frame2 = table->insertFrame(2, 3, ffmt);
 
-    QCOMPARE(root->childFrames().count(), 1);
+    QCOMPARE(root->childFrames().size(), 1);
     QCOMPARE(root->childFrames().at(0), frame.data());
-    QCOMPARE(frame->childFrames().count(), 1);
-    QCOMPARE(frame2->childFrames().count(), 0);
+    QCOMPARE(frame->childFrames().size(), 1);
+    QCOMPARE(frame2->childFrames().size(), 0);
     QCOMPARE(frame2->parentFrame(), frame.data());
     QCOMPARE(frame2->firstPosition(), 3);
     QCOMPARE(frame2->lastPosition(), 4);
@@ -1017,10 +993,10 @@ void tst_QTextPieceTable::checkFrames1()
 
     table->removeFrame(frame);
 
-    QCOMPARE(root->childFrames().count(), 1);
+    QCOMPARE(root->childFrames().size(), 1);
     QCOMPARE(root->childFrames().at(0), frame2.data());
     QVERIFY(!frame);
-    QCOMPARE(frame2->childFrames().count(), 0);
+    QCOMPARE(frame2->childFrames().size(), 0);
     QCOMPARE(frame2->parentFrame(), root);
     QCOMPARE(frame2->firstPosition(), 2);
     QCOMPARE(frame2->lastPosition(), 3);
@@ -1029,11 +1005,11 @@ void tst_QTextPieceTable::checkFrames1()
 
     frame = table->frameAt(2);
 
-    QCOMPARE(root->childFrames().count(), 1);
+    QCOMPARE(root->childFrames().size(), 1);
     QCOMPARE(root->childFrames().at(0), frame.data());
-    QCOMPARE(frame->childFrames().count(), 1);
+    QCOMPARE(frame->childFrames().size(), 1);
     QCOMPARE(frame->childFrames().at(0), frame2.data());
-    QCOMPARE(frame2->childFrames().count(), 0);
+    QCOMPARE(frame2->childFrames().size(), 0);
     QCOMPARE(frame2->parentFrame(), frame.data());
     QCOMPARE(frame2->firstPosition(), 3);
     QCOMPARE(frame2->lastPosition(), 4);
@@ -1043,9 +1019,9 @@ void tst_QTextPieceTable::checkFrames1()
 
     table->undo();
 
-    QCOMPARE(root->childFrames().count(), 1);
+    QCOMPARE(root->childFrames().size(), 1);
     QCOMPARE(root->childFrames().at(0), frame.data());
-    QCOMPARE(frame->childFrames().count(), 0);
+    QCOMPARE(frame->childFrames().size(), 0);
     QVERIFY(!frame2);
 
     QCOMPARE(frame->firstPosition(), 2);

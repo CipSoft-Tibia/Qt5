@@ -5,6 +5,8 @@
 #ifndef PLATFORM_IMPL_LOGGING_H_
 #define PLATFORM_IMPL_LOGGING_H_
 
+#include <string>
+
 #include "util/osp_logging.h"
 
 namespace openscreen {
@@ -21,6 +23,9 @@ void SetLogLevel(LogLevel level);
 
 // Returns the current global logging level.
 LogLevel GetLogLevel();
+
+// Log a trace message. Used by the text trace logging platform.
+void LogTraceMessage(const std::string& message);
 
 }  // namespace openscreen
 

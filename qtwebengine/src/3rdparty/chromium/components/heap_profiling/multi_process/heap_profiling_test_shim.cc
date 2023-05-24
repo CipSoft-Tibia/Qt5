@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,14 +21,12 @@ static jlong JNI_HeapProfilingTestShim_Init(JNIEnv* env,
 HeapProfilingTestShim::HeapProfilingTestShim(JNIEnv* env, jobject obj) {}
 HeapProfilingTestShim::~HeapProfilingTestShim() = default;
 
-void HeapProfilingTestShim::Destroy(JNIEnv* env,
-                                    const JavaParamRef<jobject>& obj) {
+void HeapProfilingTestShim::Destroy(JNIEnv* env) {
   delete this;
 }
 
 jboolean HeapProfilingTestShim::RunTestForMode(
     JNIEnv* env,
-    const base::android::JavaParamRef<jobject>& obj,
     const base::android::JavaParamRef<jstring>& mode,
     jboolean dynamically_start_profiling,
     const base::android::JavaParamRef<jstring>& stack_mode,

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickshortcut_p.h"
 
@@ -54,8 +18,9 @@
     \ingroup qtquick-input
     \brief Provides keyboard shortcuts.
 
-    The Shortcut type provides a way of handling keyboard shortcuts. The shortcut can
-    be set to one of the \l{QKeySequence::StandardKey}{standard keyboard shortcuts},
+    The Shortcut type lets you handle keyboard shortcuts. The shortcut can
+    be set to one of the
+    \l{QKeySequence::StandardKey}{standard keyboard shortcuts},
     or it can be described with a string containing a sequence of up to four key
     presses that are needed to \l{Shortcut::activated}{activate} the shortcut.
 
@@ -66,7 +31,7 @@
         property int currentIndex
 
         Shortcut {
-            sequence: StandardKey.NextChild
+            sequences: [StandardKey.NextChild]
             onActivated: view.currentIndex++
         }
     }
@@ -128,7 +93,7 @@ QT_BEGIN_NAMESPACE
 static QKeySequence valueToKeySequence(const QVariant &value, const QQuickShortcut *const shortcut)
 {
     if (value.userType() == QMetaType::Int) {
-        const QList<QKeySequence> s =
+        const QVector<QKeySequence> s =
                 QKeySequence::keyBindings(static_cast<QKeySequence::StandardKey>(value.toInt()));
         if (s.size() > 1) {
             const QString templateString = QString::fromUtf16(
@@ -183,6 +148,10 @@ QQuickShortcut::~QQuickShortcut()
     }
     \endqml
 
+    \note Given that standard keys can resolve to one shortcut on some
+    platforms, but multiple shortcuts on other platforms, we recommend always
+    using \l{Shortcut::}{sequences} for standard keys.
+
     \sa sequences
 */
 QVariant QQuickShortcut::sequence() const
@@ -230,10 +199,10 @@ QVariantList QQuickShortcut::sequences() const
 
 void QQuickShortcut::setSequences(const QVariantList &values)
 {
-    // convert QVariantList to QVector<Shortcut>
+    // convert QVariantList to QVector<QKeySequence>
     QVector<Shortcut> requestedShortcuts;
     for (const QVariant &v : values) {
-        const QList<QKeySequence> list = valueToKeySequences(v);
+        const QVector<QKeySequence> list = valueToKeySequences(v);
         for (const QKeySequence &s : list) {
             Shortcut sc;
             sc.userValue = v;
@@ -245,7 +214,7 @@ void QQuickShortcut::setSequences(const QVariantList &values)
     // if nothing has changed, just return:
     if (m_shortcuts.size() == requestedShortcuts.size()) {
         bool changed = false;
-        for (int i = 0; i < requestedShortcuts.count(); ++i) {
+        for (int i = 0; i < requestedShortcuts.size(); ++i) {
             const Shortcut &requestedShortcut = requestedShortcuts[i];
             const Shortcut &shortcut = m_shortcuts[i];
             if (!(requestedShortcut.userValue == shortcut.userValue
@@ -355,10 +324,11 @@ void QQuickShortcut::setAutoRepeat(bool repeat)
     This property holds the \l{Qt::ShortcutContext}{shortcut context}.
 
     Supported values are:
-    \list
-    \li \c Qt.WindowShortcut (default) - The shortcut is active when its parent item is in an active top-level window.
-    \li \c Qt.ApplicationShortcut - The shortcut is active when one of the application's windows are active.
-    \endlist
+
+    \value Qt.WindowShortcut
+        (default) The shortcut is active when its parent item is in an active top-level window.
+    \value Qt.ApplicationShortcut
+        The shortcut is active when one of the application's windows are active.
 
     \qml
     Shortcut {
@@ -409,7 +379,7 @@ bool QQuickShortcut::event(QEvent *event)
         QShortcutEvent *se = static_cast<QShortcutEvent *>(event);
         bool match = m_shortcut.matches(se);
         int i = 0;
-        while (!match && i < m_shortcuts.count())
+        while (!match && i < m_shortcuts.size())
             match |= m_shortcuts.at(i++).matches(se);
         if (match) {
             if (se->isAmbiguous())

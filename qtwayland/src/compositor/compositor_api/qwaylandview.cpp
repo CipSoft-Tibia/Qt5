@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Jolla Ltd, author: <giulio.camuffo@jollamobile.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Jolla Ltd, author: <giulio.camuffo@jollamobile.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandview.h"
 #include "qwaylandview_p.h"
@@ -110,7 +84,7 @@ QObject *QWaylandView::renderObject() const
 }
 
 /*!
- * \qmlproperty WaylandSurface QtWaylandCompositor::WaylandView::surface
+ * \qmlproperty WaylandSurface QtWayland.Compositor::WaylandView::surface
  *
  * This property holds the surface viewed by this WaylandView.
  */
@@ -169,7 +143,7 @@ void QWaylandView::setSurface(QWaylandSurface *newSurface)
 }
 
 /*!
- * \qmlproperty WaylandOutput QtWaylandCompositor::WaylandView::output
+ * \qmlproperty WaylandOutput QtWayland.Compositor::WaylandView::output
  *
  * This property holds the output on which this view displays its surface.
  */
@@ -284,7 +258,7 @@ QRegion QWaylandView::currentDamage()
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandView::bufferLocked
+ * \qmlproperty bool QtWayland.Compositor::WaylandView::bufferLocked
  *
  * This property holds whether the view's buffer is currently locked. When
  * the buffer is locked, advance() will not advance to the next buffer and
@@ -317,7 +291,7 @@ void QWaylandView::setBufferLocked(bool locked)
     emit bufferLockedChanged();
 }
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandView::allowDiscardFrontBuffer
+ * \qmlproperty bool QtWayland.Compositor::WaylandView::allowDiscardFrontBuffer
  *
  * By default, the view locks the current buffer until advance() is called. Set this property
  * to true to allow Qt to release the buffer when the primary view is no longer using it.
@@ -389,3 +363,5 @@ struct wl_resource *QWaylandView::surfaceResource() const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandview.cpp"

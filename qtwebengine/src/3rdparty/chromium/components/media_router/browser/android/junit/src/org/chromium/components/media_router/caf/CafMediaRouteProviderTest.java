@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,14 @@ package org.chromium.components.media_router.caf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,6 +30,7 @@ import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -122,6 +123,11 @@ public class CafMediaRouteProviderTest {
         doReturn(mRemoteMediaClient).when(mCastSession).getRemoteMediaClient();
     }
 
+    @After
+    public void tearDown() {
+        MediaRouterClient.setInstance(null);
+    }
+
     @Test
     public void testJoinRoute() {
         InOrder inOrder = inOrder(mManager);
@@ -134,7 +140,7 @@ public class CafMediaRouteProviderTest {
 
         // Regular case.
         mProvider.joinRoute("source-id-1", "presentation-id-1", "origin", 1, 1);
-        inOrder.verify(mManager, never()).onRouteRequestError(anyString(), anyInt());
+        inOrder.verify(mManager, never()).onJoinRouteRequestError(anyString(), anyInt());
         inOrder.verify(mManager).onRouteCreated(
                 anyString(), eq("sink-id"), eq(1), eq(mProvider), eq(false));
         assertEquals(mProvider.mRoutes.size(), 1);
@@ -149,7 +155,7 @@ public class CafMediaRouteProviderTest {
 
         mProvider.joinRoute("source-id-1", "presentation-id-1", "origin", 1, 1);
 
-        verifyRouteRequestError(inOrder, "Unsupported presentation URL", 1);
+        verifyJoinRouteRequestError(inOrder, "Unsupported presentation URL", 1);
         assertTrue(mProvider.mRoutes.isEmpty());
 
         // No client ID.
@@ -158,7 +164,7 @@ public class CafMediaRouteProviderTest {
 
         mProvider.joinRoute("source-id-1", "presentation-id-1", "origin", 1, 1);
 
-        verifyRouteRequestError(inOrder, "Unsupported presentation URL", 1);
+        verifyJoinRouteRequestError(inOrder, "Unsupported presentation URL", 1);
         assertTrue(mProvider.mRoutes.isEmpty());
 
         // No session.
@@ -167,7 +173,7 @@ public class CafMediaRouteProviderTest {
 
         mProvider.joinRoute("source-id-1", "presentation-id-1", "origin", 1, 1);
 
-        verifyRouteRequestError(inOrder, "No presentation", 1);
+        verifyJoinRouteRequestError(inOrder, "No presentation", 1);
         assertTrue(mProvider.mRoutes.isEmpty());
 
         // No matching route.
@@ -177,7 +183,7 @@ public class CafMediaRouteProviderTest {
 
         mProvider.joinRoute("source-id-1", "presentation-id-1", "origin", 1, 1);
 
-        verifyRouteRequestError(inOrder, "No matching route", 1);
+        verifyJoinRouteRequestError(inOrder, "No matching route", 1);
         assertTrue(mProvider.mRoutes.isEmpty());
     }
 
@@ -444,8 +450,8 @@ public class CafMediaRouteProviderTest {
         assertFalse(mProvider.canJoinExistingSession("auto-join", "origin-2", 1, mSource2));
     }
 
-    private void verifyRouteRequestError(InOrder inOrder, String error, int nativeRequestId) {
-        inOrder.verify(mManager).onRouteRequestError(error, nativeRequestId);
+    private void verifyJoinRouteRequestError(InOrder inOrder, String error, int nativeRequestId) {
+        inOrder.verify(mManager).onJoinRouteRequestError(error, nativeRequestId);
         inOrder.verify(mManager, never())
                 .onRouteCreated(anyString(), anyString(), anyInt(),
                         any(CafBaseMediaRouteProvider.class), anyBoolean());

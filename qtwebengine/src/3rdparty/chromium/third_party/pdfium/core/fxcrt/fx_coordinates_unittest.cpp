@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <limits>
 #include <vector>
 
+#include "core/fxcrt/fx_system.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -29,7 +30,7 @@ TEST(CFX_FloatRect, FromFXRect) {
 }
 
 TEST(CFX_FloatRect, GetBBox) {
-  CFX_FloatRect rect = CFX_FloatRect::GetBBox(nullptr, 0);
+  CFX_FloatRect rect = CFX_FloatRect::GetBBox({nullptr, 0});
   EXPECT_FLOAT_EQ(0.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(0.0f, rect.right);
@@ -37,12 +38,12 @@ TEST(CFX_FloatRect, GetBBox) {
 
   std::vector<CFX_PointF> data;
   data.emplace_back(0.0f, 0.0f);
-  rect = CFX_FloatRect::GetBBox(data.data(), 0);
+  rect = CFX_FloatRect::GetBBox(pdfium::make_span(data).first(0));
   EXPECT_FLOAT_EQ(0.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(0.0f, rect.right);
   EXPECT_FLOAT_EQ(0.0f, rect.top);
-  rect = CFX_FloatRect::GetBBox(data.data(), data.size());
+  rect = CFX_FloatRect::GetBBox(data);
   EXPECT_FLOAT_EQ(0.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(0.0f, rect.right);
@@ -50,34 +51,34 @@ TEST(CFX_FloatRect, GetBBox) {
 
   data.emplace_back(2.5f, 6.2f);
   data.emplace_back(1.5f, 6.2f);
-  rect = CFX_FloatRect::GetBBox(data.data(), 2);
+  rect = CFX_FloatRect::GetBBox(pdfium::make_span(data).first(2));
   EXPECT_FLOAT_EQ(0.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(2.5f, rect.right);
   EXPECT_FLOAT_EQ(6.2f, rect.top);
 
-  rect = CFX_FloatRect::GetBBox(data.data(), data.size());
+  rect = CFX_FloatRect::GetBBox(data);
   EXPECT_FLOAT_EQ(0.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(2.5f, rect.right);
   EXPECT_FLOAT_EQ(6.2f, rect.top);
 
   data.emplace_back(2.5f, 6.3f);
-  rect = CFX_FloatRect::GetBBox(data.data(), data.size());
+  rect = CFX_FloatRect::GetBBox(data);
   EXPECT_FLOAT_EQ(0.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(2.5f, rect.right);
   EXPECT_FLOAT_EQ(6.3f, rect.top);
 
   data.emplace_back(-3.0f, 6.3f);
-  rect = CFX_FloatRect::GetBBox(data.data(), data.size());
+  rect = CFX_FloatRect::GetBBox(data);
   EXPECT_FLOAT_EQ(-3.0f, rect.left);
   EXPECT_FLOAT_EQ(0.0f, rect.bottom);
   EXPECT_FLOAT_EQ(2.5f, rect.right);
   EXPECT_FLOAT_EQ(6.3f, rect.top);
 
   data.emplace_back(4.0f, -8.0f);
-  rect = CFX_FloatRect::GetBBox(data.data(), data.size());
+  rect = CFX_FloatRect::GetBBox(data);
   EXPECT_FLOAT_EQ(-3.0f, rect.left);
   EXPECT_FLOAT_EQ(-8.0f, rect.bottom);
   EXPECT_FLOAT_EQ(4.0f, rect.right);
@@ -457,11 +458,11 @@ TEST(CFX_Matrix, GetInverseCR714187) {
 #define EXPECT_NEAR_FIVE_PLACES(a, b) EXPECT_NEAR((a), (b), 1e-5)
 
 TEST(CFX_Matrix, ComposeTransformations) {
-  // sin(FX_PI/2) and cos(FX_PI/2) have a tiny error and are not exactly 1.0f
-  // and 0.0f. The rotation matrix is thus not perfect.
+  // sin(FXSYS_PI/2) and cos(FXSYS_PI/2) have a tiny error and are not
+  // exactly 1.0f and 0.0f. The rotation matrix is thus not perfect.
 
   CFX_Matrix rotate_90;
-  rotate_90.Rotate(FX_PI / 2);
+  rotate_90.Rotate(FXSYS_PI / 2);
   EXPECT_NEAR_FIVE_PLACES(0.0f, rotate_90.a);
   EXPECT_NEAR_FIVE_PLACES(1.0f, rotate_90.b);
   EXPECT_NEAR_FIVE_PLACES(-1.0f, rotate_90.c);
@@ -585,7 +586,7 @@ TEST(CFX_Matrix, ComposeTransformations) {
 
 TEST(CFX_Matrix, TransformRectForRectF) {
   CFX_Matrix rotate_90;
-  rotate_90.Rotate(FX_PI / 2);
+  rotate_90.Rotate(FXSYS_PI / 2);
 
   CFX_Matrix scale_5_13;
   scale_5_13.Scale(5, 13);
@@ -606,7 +607,7 @@ TEST(CFX_Matrix, TransformRectForRectF) {
 
 TEST(CFX_Matrix, TransformRectForFloatRect) {
   CFX_Matrix rotate_90;
-  rotate_90.Rotate(FX_PI / 2);
+  rotate_90.Rotate(FXSYS_PI / 2);
 
   CFX_Matrix scale_5_13;
   scale_5_13.Scale(5, 13);

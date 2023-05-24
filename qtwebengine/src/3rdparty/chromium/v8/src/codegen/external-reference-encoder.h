@@ -5,6 +5,8 @@
 #ifndef V8_CODEGEN_EXTERNAL_REFERENCE_ENCODER_H_
 #define V8_CODEGEN_EXTERNAL_REFERENCE_ENCODER_H_
 
+#include <vector>
+
 #include "src/base/bit-field.h"
 #include "src/common/globals.h"
 #include "src/utils/address-map.h"
@@ -34,6 +36,8 @@ class ExternalReferenceEncoder {
   };
 
   explicit ExternalReferenceEncoder(Isolate* isolate);
+  ExternalReferenceEncoder(const ExternalReferenceEncoder&) = delete;
+  ExternalReferenceEncoder& operator=(const ExternalReferenceEncoder&) = delete;
 #ifdef DEBUG
   ~ExternalReferenceEncoder();
 #endif  // DEBUG
@@ -50,8 +54,6 @@ class ExternalReferenceEncoder {
   std::vector<int> count_;
   const intptr_t* api_references_;
 #endif  // DEBUG
-
-  DISALLOW_COPY_AND_ASSIGN(ExternalReferenceEncoder);
 };
 
 }  // namespace internal

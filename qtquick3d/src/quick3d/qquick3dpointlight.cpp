@@ -1,36 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qquick3dpointlight_p.h"
 #include "qquick3dobject_p.h"
 
 #include <QtQuick3DRuntimeRender/private/qssgrenderlight_p.h>
+
+#include "qquick3dnode_p_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -48,9 +24,100 @@ QT_BEGIN_NAMESPACE
 
     By default, a point light intensity diminishes according to inverse-square-law. However, the fade-off
     (and range) can be controlled with the \l {constantFade}, \l {linearFade}, and
-    \l quadraticFade properties.
+    \l quadraticFade properties. Light attenuation is calculated using the formula:
+    \l {constantFade} + \c distance * (\l {linearFade} * 0.01) + \c distance^2 * (\l {quadraticFade} * 0.0001)
 
-    \sa AreaLight, DirectionalLight, SpotLight
+    \section2 A simple example: shading a sphere in three different ways
+
+    Take a scene containing a sphere in front of a scaled up rectangle in the
+    background. The default base color of the PrincipledMaterial of the
+    rectangle is white.
+
+    Without any lights and disabling light-related shading for the two meshes,
+    we get the following:
+
+    \qml
+    import QtQuick
+    import QtQuick3D
+    View3D {
+        anchors.fill: parent
+
+        PerspectiveCamera { z: 600 }
+
+        Model {
+            source: "#Rectangle"
+            scale: Qt.vector3d(10, 10, 10)
+            z: -100
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+            }
+        }
+
+        Model {
+            source: "#Sphere"
+            scale: Qt.vector3d(2, 2, 2)
+            materials: PrincipledMaterial {
+                lighting: PrincipledMaterial.NoLighting
+                baseColor: "#40c060"
+                roughness: 0.1
+            }
+        }
+    }
+    \endqml
+
+    \image pointlight-1.png
+
+    Adding a directional light, emitting down the Z axis by default, leads to the following:
+
+    \qml
+    import QtQuick
+    import QtQuick3D
+    View3D {
+        anchors.fill: parent
+
+        PerspectiveCamera { z: 600 }
+
+        DirectionalLight { }
+
+        Model {
+            source: "#Rectangle"
+            scale: Qt.vector3d(10, 10, 10)
+            z: -100
+            materials: PrincipledMaterial { }
+        }
+
+        Model {
+            source: "#Sphere"
+            scale: Qt.vector3d(2, 2, 2)
+            materials: PrincipledMaterial {
+                baseColor: "#40c060"
+                roughness: 0.1
+            }
+        }
+    }
+    \endqml
+
+    \image pointlight-2.png
+
+    What if we now replace DirectionalLight with:
+
+    \qml
+        PointLight {
+            z: 300
+        }
+    \endqml
+
+    The white colored PointLight here is moved on the Z axis so that it is
+    halfway between the camera and the center of the scene. Unlike
+    DirectionalLight, the rotation of the PointLight does not matter, whereas
+    its position is significant. The diminishing intensity is visible here,
+    especially on the rectangle mesh in the background.
+
+    \image pointlight-3.png
+
+    For more usage examples, see \l{Qt Quick 3D - Lights Example}.
+
+    \sa DirectionalLight, SpotLight
 */
 
 /*!
@@ -64,8 +131,9 @@ QT_BEGIN_NAMESPACE
     \qmlproperty real PointLight::linearFade
 
     This property increases the rate at which the lighting effect dims the light
-    in proportion to the distance to the light. The default value is 0.0 meaning the light doesn't
-    have linear fade.
+    in proportion to the distance to the light. The default value is \c 0.0, meaning the light doesn't
+    have linear fade. The value used here is multiplied by \c 0.01 before being used to
+    calculate light attenuation.
 */
 
 /*!
@@ -74,8 +142,12 @@ QT_BEGIN_NAMESPACE
     This property increases the rate at which the lighting effect dims the light
     in proportion to the inverse square law. The default value is 1.0 meaning the point light
     fade exactly follows the inverse square law i.e. when distance to an object doubles the
-    light intensity decreases to 1/4th.
+    light intensity decreases to 1/4th. The value used here is multiplied by \c 0.0001 before
+    being used to calculate light attenuation.
 */
+
+QQuick3DPointLight::QQuick3DPointLight(QQuick3DNode *parent)
+    : QQuick3DAbstractLight(*(new QQuick3DNodePrivate(QQuick3DNodePrivate::Type::PointLight)), parent) {}
 
 float QQuick3DPointLight::constantFade() const
 {
@@ -129,12 +201,10 @@ QSSGRenderGraphObject *QQuick3DPointLight::updateSpatialNode(QSSGRenderGraphObje
 {
     if (!node) {
         markAllDirty();
-        node = new QSSGRenderLight();
-        QSSGRenderLight *light = static_cast<QSSGRenderLight *>(node);
-        light->m_lightType = QSSGRenderLight::Type::Point;
+        node = new QSSGRenderLight(QSSGRenderLight::Type::PointLight);
     }
 
-    QQuick3DAbstractLight::updateSpatialNode(node);
+    QQuick3DAbstractLight::updateSpatialNode(node); // Marks the light node dirty if m_dirtyFlags != 0
 
     QSSGRenderLight *light = static_cast<QSSGRenderLight *>(node);
 

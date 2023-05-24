@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,8 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/containers/contains.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/stl_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "components/country_codes/country_codes.h"
@@ -106,7 +106,7 @@ TEST_F(TemplateURLPrepopulateDataTest, UniqueIDs) {
       'V'<<8|'N', 'V'<<8|'U', 'W'<<8|'F', 'W'<<8|'S', 'Y'<<8|'E',
       'Y'<<8|'T', 'Z'<<8|'A', 'Z'<<8|'M', 'Z'<<8|'W', -1 };
 
-  for (size_t i = 0; i < base::size(kCountryIds); ++i) {
+  for (size_t i = 0; i < std::size(kCountryIds); ++i) {
     prefs_.SetInteger(country_codes::kCountryIDAtInstall, kCountryIds[i]);
     std::vector<std::unique_ptr<TemplateURLData>> urls =
         TemplateURLPrepopulateData::GetPrepopulatedEngines(&prefs_, nullptr);
@@ -124,16 +124,16 @@ TEST_F(TemplateURLPrepopulateDataTest, UniqueIDs) {
 TEST_F(TemplateURLPrepopulateDataTest, ProvidersFromPrefs) {
   prefs_.SetUserPref(prefs::kSearchProviderOverridesVersion,
                      std::make_unique<base::Value>(1));
-  auto overrides = std::make_unique<base::ListValue>();
-  std::unique_ptr<base::DictionaryValue> entry(new base::DictionaryValue);
+  base::Value::List overrides;
+  base::Value::Dict entry;
   // Set only the minimal required settings for a search provider configuration.
-  entry->SetString("name", "foo");
-  entry->SetString("keyword", "fook");
-  entry->SetString("search_url", "http://foo.com/s?q={searchTerms}");
-  entry->SetString("favicon_url", "http://foi.com/favicon.ico");
-  entry->SetString("encoding", "UTF-8");
-  entry->SetInteger("id", 1001);
-  overrides->Append(entry->CreateDeepCopy());
+  entry.Set("name", "foo");
+  entry.Set("keyword", "fook");
+  entry.Set("search_url", "http://foo.com/s?q={searchTerms}");
+  entry.Set("favicon_url", "http://foi.com/favicon.ico");
+  entry.Set("encoding", "UTF-8");
+  entry.Set("id", 1001);
+  overrides.Append(entry.Clone());
   prefs_.SetUserPref(prefs::kSearchProviderOverrides, std::move(overrides));
 
   int version = TemplateURLPrepopulateData::GetDataVersion(&prefs_);
@@ -145,8 +145,8 @@ TEST_F(TemplateURLPrepopulateDataTest, ProvidersFromPrefs) {
                                                          &default_index);
 
   ASSERT_EQ(1u, t_urls.size());
-  EXPECT_EQ(ASCIIToUTF16("foo"), t_urls[0]->short_name());
-  EXPECT_EQ(ASCIIToUTF16("fook"), t_urls[0]->keyword());
+  EXPECT_EQ(u"foo", t_urls[0]->short_name());
+  EXPECT_EQ(u"fook", t_urls[0]->keyword());
   EXPECT_EQ("foo.com", GetHostFromTemplateURLData(*t_urls[0]));
   EXPECT_EQ("foi.com", t_urls[0]->favicon_url.host());
   EXPECT_EQ(1u, t_urls[0]->input_encodings.size());
@@ -158,19 +158,19 @@ TEST_F(TemplateURLPrepopulateDataTest, ProvidersFromPrefs) {
   EXPECT_TRUE(t_urls[0]->last_modified.is_null());
 
   // Test the optional settings too.
-  entry->SetString("suggest_url", "http://foo.com/suggest?q={searchTerms}");
-  auto alternate_urls = std::make_unique<base::ListValue>();
-  alternate_urls->AppendString("http://foo.com/alternate?q={searchTerms}");
-  entry->Set("alternate_urls", std::move(alternate_urls));
-  overrides = std::make_unique<base::ListValue>();
-  overrides->Append(entry->CreateDeepCopy());
+  entry.Set("suggest_url", "http://foo.com/suggest?q={searchTerms}");
+  base::Value::List alternate_urls;
+  alternate_urls.Append("http://foo.com/alternate?q={searchTerms}");
+  entry.Set("alternate_urls", std::move(alternate_urls));
+  overrides = base::Value::List();
+  overrides.Append(entry.Clone());
   prefs_.SetUserPref(prefs::kSearchProviderOverrides, std::move(overrides));
 
   t_urls = TemplateURLPrepopulateData::GetPrepopulatedEngines(
       &prefs_, &default_index);
   ASSERT_EQ(1u, t_urls.size());
-  EXPECT_EQ(ASCIIToUTF16("foo"), t_urls[0]->short_name());
-  EXPECT_EQ(ASCIIToUTF16("fook"), t_urls[0]->keyword());
+  EXPECT_EQ(u"foo", t_urls[0]->short_name());
+  EXPECT_EQ(u"fook", t_urls[0]->keyword());
   EXPECT_EQ("foo.com", GetHostFromTemplateURLData(*t_urls[0]));
   EXPECT_EQ("foi.com", t_urls[0]->favicon_url.host());
   EXPECT_EQ(1u, t_urls[0]->input_encodings.size());
@@ -183,18 +183,18 @@ TEST_F(TemplateURLPrepopulateDataTest, ProvidersFromPrefs) {
 
   // Test that subsequent providers are loaded even if an intermediate
   // provider has an incomplete configuration.
-  overrides = std::make_unique<base::ListValue>();
-  overrides->Append(entry->CreateDeepCopy());
-  entry->SetInteger("id", 1002);
-  entry->SetString("name", "bar");
-  entry->SetString("keyword", "bark");
-  entry->SetString("encoding", std::string());
-  overrides->Append(entry->CreateDeepCopy());
-  entry->SetInteger("id", 1003);
-  entry->SetString("name", "baz");
-  entry->SetString("keyword", "bazk");
-  entry->SetString("encoding", "UTF-8");
-  overrides->Append(entry->CreateDeepCopy());
+  overrides = base::Value::List();
+  overrides.Append(entry.Clone());
+  entry.Set("id", 1002);
+  entry.Set("name", "bar");
+  entry.Set("keyword", "bark");
+  entry.Set("encoding", std::string());
+  overrides.Append(entry.Clone());
+  entry.Set("id", 1003);
+  entry.Set("name", "baz");
+  entry.Set("keyword", "bazk");
+  entry.Set("encoding", "UTF-8");
+  overrides.Append(entry.Clone());
   prefs_.SetUserPref(prefs::kSearchProviderOverrides, std::move(overrides));
 
   t_urls =
@@ -206,16 +206,16 @@ TEST_F(TemplateURLPrepopulateDataTest, ProvidersFromPrefs) {
 TEST_F(TemplateURLPrepopulateDataTest, ClearProvidersFromPrefs) {
   prefs_.SetUserPref(prefs::kSearchProviderOverridesVersion,
                      std::make_unique<base::Value>(1));
-  auto overrides = std::make_unique<base::ListValue>();
-  std::unique_ptr<base::DictionaryValue> entry(new base::DictionaryValue);
+  base::Value::List overrides;
+  base::Value::Dict entry;
   // Set only the minimal required settings for a search provider configuration.
-  entry->SetString("name", "foo");
-  entry->SetString("keyword", "fook");
-  entry->SetString("search_url", "http://foo.com/s?q={searchTerms}");
-  entry->SetString("favicon_url", "http://foi.com/favicon.ico");
-  entry->SetString("encoding", "UTF-8");
-  entry->SetInteger("id", 1001);
-  overrides->Append(std::move(entry));
+  entry.Set("name", "foo");
+  entry.Set("keyword", "fook");
+  entry.Set("search_url", "http://foo.com/s?q={searchTerms}");
+  entry.Set("favicon_url", "http://foi.com/favicon.ico");
+  entry.Set("encoding", "UTF-8");
+  entry.Set("id", 1001);
+  overrides.Append(std::move(entry));
   prefs_.SetUserPref(prefs::kSearchProviderOverrides, std::move(overrides));
 
   int version = TemplateURLPrepopulateData::GetDataVersion(&prefs_);
@@ -233,14 +233,14 @@ TEST_F(TemplateURLPrepopulateDataTest, ClearProvidersFromPrefs) {
                                                          &default_index);
   ASSERT_FALSE(t_urls.empty());
   for (size_t i = 0; i < t_urls.size(); ++i) {
-    EXPECT_NE(ASCIIToUTF16("foo"), t_urls[i]->short_name());
-    EXPECT_NE(ASCIIToUTF16("fook"), t_urls[i]->keyword());
+    EXPECT_NE(u"foo", t_urls[i]->short_name());
+    EXPECT_NE(u"fook", t_urls[i]->keyword());
     EXPECT_NE("foi.com", t_urls[i]->favicon_url.host());
     EXPECT_NE("foo.com", GetHostFromTemplateURLData(*t_urls[i]));
     EXPECT_NE(1001, t_urls[i]->prepopulate_id);
   }
   // Ensures the default URL is Google and has the optional fields filled.
-  EXPECT_EQ(ASCIIToUTF16("Google"), t_urls[default_index]->short_name());
+  EXPECT_EQ(u"Google", t_urls[default_index]->short_name());
   EXPECT_FALSE(t_urls[default_index]->suggestions_url.empty());
   EXPECT_FALSE(t_urls[default_index]->image_url.empty());
   EXPECT_FALSE(t_urls[default_index]->contextual_search_url.empty());
@@ -274,7 +274,7 @@ TEST_F(TemplateURLPrepopulateDataTest, ProvidersFromPrepopulated) {
   }
 
   // Ensures the default URL is Google and has the optional fields filled.
-  EXPECT_EQ(ASCIIToUTF16("Google"), t_urls[default_index]->short_name());
+  EXPECT_EQ(u"Google", t_urls[default_index]->short_name());
   EXPECT_FALSE(t_urls[default_index]->suggestions_url.empty());
   EXPECT_FALSE(t_urls[default_index]->image_url.empty());
   EXPECT_FALSE(t_urls[default_index]->contextual_search_url.empty());
@@ -310,7 +310,7 @@ TEST_F(TemplateURLPrepopulateDataTest, GetEngineTypeAdvanced) {
     // Custom with a country TLD and almost no query params:
     "http://www.google.ru/search?q={searchTerms}"
   };
-  for (size_t i = 0; i < base::size(kGoogleURLs); ++i) {
+  for (size_t i = 0; i < std::size(kGoogleURLs); ++i) {
     EXPECT_EQ(SEARCH_ENGINE_GOOGLE, GetEngineType(kGoogleURLs[i]));
   }
 
@@ -322,7 +322,7 @@ TEST_F(TemplateURLPrepopulateDataTest, GetEngineTypeAdvanced) {
       // Aggressively match types by checking just TLD+1.
       "http://someothersite.yahoo.com/",
   };
-  for (size_t i = 0; i < base::size(kYahooURLs); ++i) {
+  for (size_t i = 0; i < std::size(kYahooURLs); ++i) {
     EXPECT_EQ(SEARCH_ENGINE_YAHOO, GetEngineType(kYahooURLs[i]));
   }
 
@@ -387,7 +387,7 @@ void CheckTemplateUrlRefIsCryptographic(const TemplateURLRef& url_ref) {
 
   // Double parentheses around the string16 constructor to prevent the compiler
   // from parsing it as a function declaration.
-  TemplateURLRef::SearchTermsArgs search_term_args((base::string16()));
+  TemplateURLRef::SearchTermsArgs search_term_args((std::u16string()));
   GURL url(url_ref.ReplaceSearchTerms(search_term_args, search_terms_data));
   EXPECT_TRUE(url.is_empty() || url.SchemeIsCryptographic()) << url;
 }

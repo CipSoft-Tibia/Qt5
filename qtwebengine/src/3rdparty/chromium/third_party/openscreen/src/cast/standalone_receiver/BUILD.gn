@@ -2,22 +2,36 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/external_libraries.gni")
 import("//build_overrides/build.gni")
+import("//cast/streaming/external_libraries.gni")
+
+visibility = [ "./*" ]
 
 # Define the executable target only when the build is configured to use the
 # standalone platform implementation; since this is itself a standalone
 # application.
+#
+# See [external_libraries.md](../../build/config/external_libraries.md) for more information.
 if (!build_with_chromium) {
+  shared_public = [ "cast_service.h" ]
+
   shared_sources = [
-    "cast_agent.cc",
-    "cast_agent.h",
+    "cast_service.cc",
+    "mirroring_application.cc",
+    "mirroring_application.h",
+    "simple_remoting_receiver.cc",
+    "simple_remoting_receiver.h",
     "streaming_playback_controller.cc",
     "streaming_playback_controller.h",
   ]
 
   shared_deps = [
+    "../../discovery:dnssd",
+    "../../discovery:public",
+    "../../platform:standalone_impl",
     "../common:public",
+    "../receiver:agent",
+    "../receiver:channel",
     "../streaming:receiver",
   ]
 
@@ -25,6 +39,8 @@ if (!build_with_chromium) {
 
   if (have_external_libs) {
     source_set("standalone_receiver_sdl") {
+      testonly = true
+      public = shared_public
       sources = shared_sources
       deps = shared_deps
 
@@ -49,6 +65,8 @@ if (!build_with_chromium) {
   }
 
   source_set("standalone_receiver_dummy") {
+    testonly = true
+    public = shared_public
     sources = shared_sources
     deps = shared_deps
 
@@ -58,23 +76,13 @@ if (!build_with_chromium) {
     ]
   }
 
-  source_set("e2e_tests") {
-    testonly = true
-
-    sources = [ "cast_agent_integration_tests.cc" ]
-
-    deps = [
-      ":standalone_receiver_dummy",
-      "../../third_party/boringssl",
-      "../../third_party/googletest:gtest",
-      "../receiver:channel",
-    ]
-  }
-
   executable("cast_receiver") {
+    testonly = true
+    visibility += [ "../..:gn_all" ]
     sources = [ "main.cc" ]
 
-    deps = [ "../receiver:channel" ]
+    deps = shared_deps + [ "../common:certificate_boringssl" ]
+    configs += [ "../common:certificate_config" ]
 
     if (have_external_libs) {
       deps += [ ":standalone_receiver_sdl" ]

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,22 +7,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/stl_util.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_number_conversions.h"
+#include "build/build_config.h"
 #include "gpu/command_buffer/common/gles2_cmd_format.h"
 #include "gpu/command_buffer/common/gles2_cmd_utils.h"
 #include "gpu/command_buffer/service/context_group.h"
 #include "gpu/command_buffer/service/context_state.h"
 #include "gpu/command_buffer/service/gl_surface_mock.h"
 #include "gpu/command_buffer/service/gles2_cmd_decoder.h"
-#include "gpu/command_buffer/service/image_manager.h"
 #include "gpu/command_buffer/service/mailbox_manager.h"
 #include "gpu/command_buffer/service/mocks.h"
 #include "gpu/command_buffer/service/program_manager.h"
 #include "gpu/command_buffer/service/test_helper.h"
-#include "gpu/command_buffer/service/validating_abstract_texture_impl.h"
 #include "gpu/config/gpu_switches.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gl/gl_image_stub.h"
@@ -31,6 +29,10 @@
 #include "ui/gl/gl_surface_stub.h"
 #include "ui/gl/gpu_timing_fake.h"
 #include "ui/gl/scoped_make_current.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "gpu/command_buffer/service/validating_abstract_texture_impl.h"
+#endif
 
 #if !defined(GL_DEPTH24_STENCIL8)
 #define GL_DEPTH24_STENCIL8 0x88F0
@@ -255,6 +257,7 @@ TEST_P(GLES2DecoderTest, IsTexture) {
   EXPECT_FALSE(DoIsTexture(client_texture_id_));
 }
 
+#if !BUILDFLAG(IS_ANDROID)
 TEST_P(GLES2DecoderTest, TestImageBindingForDecoderManagement) {
   const GLuint service_id = 123;
   EXPECT_CALL(*gl_, GenTextures(1, _))
@@ -269,15 +272,21 @@ TEST_P(GLES2DecoderTest, TestImageBindingForDecoderManagement) {
                                           0,                    /* border */
                                           GL_RGBA, GL_UNSIGNED_BYTE);
   scoped_refptr<gl::GLImage> image(new gl::GLImageStub);
-  abstract_texture->BindImage(image.get(), GetParam());
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  abstract_texture->SetUnboundImage(image.get());
+#else
+  abstract_texture->SetBoundImage(image.get());
+#endif
+
   auto* validating_texture =
       static_cast<ValidatingAbstractTextureImpl*>(abstract_texture.get());
   TextureRef* texture_ref = validating_texture->GetTextureRefForTesting();
-  Texture::ImageState state;
-  EXPECT_EQ(texture_ref->texture()->GetLevelImage(target, 0, &state),
-            image.get());
-  EXPECT_EQ(state, GetParam() ? Texture::ImageState::BOUND
-                              : Texture::ImageState::UNBOUND);
+  EXPECT_EQ(texture_ref->texture()->GetLevelImage(target, 0), image.get());
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  EXPECT_TRUE(texture_ref->texture()->HasUnboundLevelImage(target, 0));
+#endif
 
   EXPECT_CALL(*gl_, DeleteTextures(1, _)).Times(1).RetiresOnSaturation();
   abstract_texture.reset();
@@ -317,26 +326,29 @@ TEST_P(GLES2DecoderTest, CreateAbstractTexture) {
 
   // Attach an image and see if it works.
   scoped_refptr<gl::GLImage> image(new gl::GLImageStub);
-  abstract_texture->BindImage(image.get(), true);
-  EXPECT_EQ(abstract_texture->GetImage(), image.get());
+
+  // NOTE: For this test, it doesn't actually matter whether the image is
+  // client-managed or decoder-managed.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  abstract_texture->SetUnboundImage(image.get());
+#else
+  abstract_texture->SetBoundImage(image.get());
+#endif
+
+  EXPECT_EQ(abstract_texture->GetImageForTesting(), image.get());
   // Binding an image should make the texture renderable.
   EXPECT_EQ(texture->SafeToRenderFrom(), true);
   EXPECT_EQ(texture->GetLevelImage(target, 0), image.get());
 
   // Unbinding should make it not renderable.
-  abstract_texture->BindImage(nullptr, false);
-  EXPECT_EQ(texture->SafeToRenderFrom(), false);
-  EXPECT_EQ(abstract_texture->GetImage(), nullptr);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  abstract_texture->SetUnboundImage(nullptr);
+#else
+  abstract_texture->SetBoundImage(nullptr);
+#endif
 
-  // Attach a stream image, and verify that the image changes and the service_id
-  // matches the one we provide.
-  scoped_refptr<gl::GLImage> stream_image(new gl::GLImageStub);
-  const GLuint surface_texture_service_id = service_id + 1;
-  abstract_texture->BindStreamTextureImage(stream_image.get(),
-                                           surface_texture_service_id);
-  EXPECT_EQ(texture->SafeToRenderFrom(), true);
-  EXPECT_EQ(texture->GetLevelImage(target, 0), stream_image.get());
-  EXPECT_EQ(abstract_texture->service_id(), surface_texture_service_id);
+  EXPECT_EQ(texture->SafeToRenderFrom(), false);
+  EXPECT_EQ(abstract_texture->GetImageForTesting(), nullptr);
 
   // Deleting |abstract_texture| should delete the platform texture as well,
   // since we haven't make a copy of the TextureRef.  Also make sure that the
@@ -454,6 +466,7 @@ TEST_P(GLES2DecoderTest, TestAbstractTextureSetClearedWorks) {
   EXPECT_CALL(*gl_, DeleteTextures(1, _)).Times(1).RetiresOnSaturation();
   abstract_texture.reset();
 }
+#endif
 
 TEST_P(GLES3DecoderTest, GetInternalformativValidArgsSamples) {
   const GLint kNumSampleCounts = 8;
@@ -934,7 +947,7 @@ static void CheckBeginEndQueryBadMemoryFails(GLES2DecoderTestBase* test,
 }
 
 TEST_P(GLES2DecoderManualInitTest, BeginEndQueryEXTBadMemoryIdFails) {
-  for (size_t i = 0; i < base::size(kQueryTypes); ++i) {
+  for (size_t i = 0; i < std::size(kQueryTypes); ++i) {
     CheckBeginEndQueryBadMemoryFails(this, kNewClientId, kQueryTypes[i],
                                      kInvalidSharedMemoryId,
                                      kSharedMemoryOffset);
@@ -942,7 +955,7 @@ TEST_P(GLES2DecoderManualInitTest, BeginEndQueryEXTBadMemoryIdFails) {
 }
 
 TEST_P(GLES2DecoderManualInitTest, BeginEndQueryEXTBadMemoryOffsetFails) {
-  for (size_t i = 0; i < base::size(kQueryTypes); ++i) {
+  for (size_t i = 0; i < std::size(kQueryTypes); ++i) {
     // Out-of-bounds.
     CheckBeginEndQueryBadMemoryFails(this, kNewClientId, kQueryTypes[i],
                                      shared_memory_id_,
@@ -954,7 +967,7 @@ TEST_P(GLES2DecoderManualInitTest, BeginEndQueryEXTBadMemoryOffsetFails) {
 }
 
 TEST_P(GLES2DecoderManualInitTest, QueryReuseTest) {
-  for (size_t i = 0; i < base::size(kQueryTypes); ++i) {
+  for (size_t i = 0; i < std::size(kQueryTypes); ++i) {
     const QueryType& query_type = kQueryTypes[i];
 
     GLES2DecoderTestBase::InitState init;
@@ -1289,7 +1302,7 @@ TEST_P(GLES2DecoderTest, IsEnabledReturnsCachedValue) {
   static const GLenum kStates[] = {
       GL_DEPTH_TEST, GL_STENCIL_TEST,
   };
-  for (size_t ii = 0; ii < base::size(kStates); ++ii) {
+  for (size_t ii = 0; ii < std::size(kStates); ++ii) {
     cmds::Enable enable_cmd;
     GLenum state = kStates[ii];
     enable_cmd.Init(state);

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,18 +24,18 @@ enum UserActivationNotificationType {
   // An extension API caused the notification call through GuestView.
   kExtensionGuestView,
 
-  // An extension messaging API caused the notification call.  This enum value
-  // is deprecated by more specific enums kExtensionMessaging* below, we are
-  // preserving this enum value only for UMA consistency.
+  // An extension messaging API caused the notification call.  Deprecated,
+  // preserved only for UMA consistency.  See more specific enums below.
   kExtensionMessaging,
 
   // A media API caused the notification call.
   kMedia,
 
-  // An NFS API caused the notification call.
-  kNativeFileSystem,
+  // A File System Access API caused the notification call.
+  kFileSystemAccess,
 
-  // A plugin API caused the notification call.
+  // A plugin API caused the notification call.  Deprecated, preserved only for
+  // UMA consistency.
   kPlugin,
 
   // A test API caused the notification call.  This should not affect

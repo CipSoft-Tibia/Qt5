@@ -18,10 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-libdrm_exynos = shared_library(
+libdrm_exynos = library(
   'drm_exynos',
   [files('exynos_drm.c', 'exynos_fimg2d.c'), config_file],
   c_args : libdrm_c_args,
+  gnu_symbol_visibility : 'hidden',
   include_directories : [inc_root, inc_drm],
   link_with : libdrm,
   dependencies : [dep_pthread_stubs],
@@ -37,18 +38,24 @@ ext_libdrm_exynos = declare_dependency(
   include_directories : [inc_drm, include_directories('.')],
 )
 
+if meson.version().version_compare('>= 0.54.0')
+  meson.override_dependency('libdrm_exynos', ext_libdrm_exynos)
+endif
+
 pkg.generate(
+  libdrm_exynos,
   name : 'libdrm_exynos',
-  libraries : libdrm_exynos,
   subdirs : ['.', 'libdrm', 'exynos'],
   version : '0.7',
-  requires_private : 'libdrm',
   description : 'Userspace interface to exynos kernel DRM services',
 )
 
 test(
-  'exynos-symbol-check',
-  find_program('exynos-symbol-check'),
-  env : env_test,
-  args : libdrm_exynos,
+  'exynos-symbols-check',
+  symbols_check,
+  args : [
+    '--lib', libdrm_exynos,
+    '--symbols-file', files('exynos-symbols.txt'),
+    '--nm', prog_nm.path(),
+  ],
 )

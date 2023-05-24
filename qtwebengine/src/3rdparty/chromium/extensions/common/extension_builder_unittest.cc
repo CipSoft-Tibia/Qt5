@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,8 @@
 #include "extensions/common/manifest_handlers/background_info.h"
 #include "extensions/common/manifest_handlers/content_scripts_handler.h"
 #include "extensions/common/manifest_handlers/externally_connectable.h"
+#include "extensions/common/manifest_handlers/permissions_parser.h"
 #include "extensions/common/permissions/permissions_data.h"
-#include "extensions/common/scoped_worker_based_extensions_channel.h"
 #include "extensions/common/user_script.h"
 #include "extensions/common/value_builder.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -59,39 +59,59 @@ TEST(ExtensionBuilderTest, Permissions) {
   }
 }
 
+TEST(ExtensionBuilderTest, OptionalPermissions) {
+  {
+    scoped_refptr<const Extension> extension =
+        ExtensionBuilder("no optional permissions").Build();
+    EXPECT_TRUE(
+        PermissionsParser::GetOptionalPermissions(extension.get()).IsEmpty());
+  }
+  {
+    scoped_refptr<const Extension> extension =
+        ExtensionBuilder("permissions")
+            .AddOptionalPermission("storage")
+            .AddOptionalPermissions({"alarms", "idle"})
+            .Build();
+    EXPECT_TRUE(PermissionsParser::GetOptionalPermissions(extension.get())
+                    .HasAPIPermission("storage"));
+    EXPECT_TRUE(PermissionsParser::GetOptionalPermissions(extension.get())
+                    .HasAPIPermission("alarms"));
+    EXPECT_TRUE(PermissionsParser::GetOptionalPermissions(extension.get())
+                    .HasAPIPermission("idle"));
+  }
+}
+
 TEST(ExtensionBuilderTest, Actions) {
   {
     scoped_refptr<const Extension> extension =
         ExtensionBuilder("no action").Build();
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kPageAction));
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kBrowserAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kPageAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kBrowserAction));
   }
   {
     scoped_refptr<const Extension> extension =
         ExtensionBuilder("page action")
-            .SetAction(ExtensionBuilder::ActionType::PAGE_ACTION)
+            .SetAction(ActionInfo::TYPE_PAGE)
             .Build();
-    EXPECT_TRUE(extension->manifest()->HasKey(manifest_keys::kPageAction));
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kBrowserAction));
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kAction));
+    EXPECT_TRUE(extension->manifest()->FindKey(manifest_keys::kPageAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kBrowserAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kAction));
   }
   {
     scoped_refptr<const Extension> extension =
         ExtensionBuilder("browser action")
-            .SetAction(ExtensionBuilder::ActionType::BROWSER_ACTION)
+            .SetAction(ActionInfo::TYPE_BROWSER)
             .Build();
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kPageAction));
-    EXPECT_TRUE(extension->manifest()->HasKey(manifest_keys::kBrowserAction));
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kPageAction));
+    EXPECT_TRUE(extension->manifest()->FindKey(manifest_keys::kBrowserAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kAction));
   }
   {
     scoped_refptr<const Extension> extension =
-        ExtensionBuilder("action")
-            .SetAction(ExtensionBuilder::ActionType::ACTION)
-            .Build();
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kPageAction));
-    EXPECT_FALSE(extension->manifest()->HasKey(manifest_keys::kBrowserAction));
-    EXPECT_TRUE(extension->manifest()->HasKey(manifest_keys::kAction));
+        ExtensionBuilder("action").SetAction(ActionInfo::TYPE_ACTION).Build();
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kPageAction));
+    EXPECT_FALSE(extension->manifest()->FindKey(manifest_keys::kBrowserAction));
+    EXPECT_TRUE(extension->manifest()->FindKey(manifest_keys::kAction));
   }
 }
 
@@ -122,9 +142,6 @@ TEST(ExtensionBuilderTest, Background) {
     EXPECT_FALSE(BackgroundInfo::IsServiceWorkerBased(extension.get()));
   }
   {
-    // TODO(crbug.com/853378): Remove this when we open up support for
-    // service workers.
-    ScopedWorkerBasedExtensionsChannel current_channel_override;
     scoped_refptr<const Extension> extension =
         ExtensionBuilder("service worker")
             .SetBackgroundContext(
@@ -143,7 +160,7 @@ TEST(ExtensionBuilderTest, Background) {
 TEST(ExtensionBuilderTest, MergeManifest) {
   DictionaryBuilder connectable;
   connectable.Set("matches", ListBuilder().Append("*://example.com/*").Build());
-  std::unique_ptr<base::DictionaryValue> connectable_value =
+  base::Value::Dict connectable_value =
       DictionaryBuilder()
           .Set("externally_connectable", connectable.Build())
           .Build();

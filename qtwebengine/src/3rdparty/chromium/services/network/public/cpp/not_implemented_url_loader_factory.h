@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
+#include "services/network/public/cpp/self_deleting_url_loader_factory.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 
 namespace network {
@@ -16,15 +17,26 @@ namespace network {
 // A URLLoaderFactory which just fails to create a loader with
 // net::ERR_NOT_IMPLEMENTED.
 class COMPONENT_EXPORT(NETWORK_CPP) NotImplementedURLLoaderFactory final
-    : public network::mojom::URLLoaderFactory {
+    : public SelfDeletingURLLoaderFactory {
  public:
-  NotImplementedURLLoaderFactory();
+  // Returns mojo::PendingRemote to a newly constructed
+  // NotImplementedURLLoaderFactory.  The factory is self-owned - it will delete
+  // itself once there are no more receivers (including the receiver associated
+  // with the returned mojo::PendingRemote and the receivers bound by the Clone
+  // method).
+  static mojo::PendingRemote<network::mojom::URLLoaderFactory> Create();
+
+  NotImplementedURLLoaderFactory(const NotImplementedURLLoaderFactory&) =
+      delete;
+  NotImplementedURLLoaderFactory& operator=(
+      const NotImplementedURLLoaderFactory&) = delete;
+
   ~NotImplementedURLLoaderFactory() override;
 
+ private:
   // network::mojom::URLLoaderFactory implementation.
   void CreateLoaderAndStart(
       mojo::PendingReceiver<network::mojom::URLLoader> receiver,
-      int32_t routing_id,
       int32_t request_id,
       uint32_t options,
       const network::ResourceRequest& url_request,
@@ -32,13 +44,11 @@ class COMPONENT_EXPORT(NETWORK_CPP) NotImplementedURLLoaderFactory final
       const net::MutableNetworkTrafficAnnotationTag& traffic_annotation)
       override;
 
-  void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)
-      override;
-
- private:
-  mojo::ReceiverSet<network::mojom::URLLoaderFactory> receivers_;
-
-  DISALLOW_COPY_AND_ASSIGN(NotImplementedURLLoaderFactory);
+  // Constructs a NotImplementedURLLoaderFactory object that will self-delete
+  // once all receivers disconnect (including |factory_receiver| below as well
+  // as receivers that connect via the Clone method).
+  explicit NotImplementedURLLoaderFactory(
+      mojo::PendingReceiver<network::mojom::URLLoaderFactory> factory_receiver);
 };
 
 }  // namespace network

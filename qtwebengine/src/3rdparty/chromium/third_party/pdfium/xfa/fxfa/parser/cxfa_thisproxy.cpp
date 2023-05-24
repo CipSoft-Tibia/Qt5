@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,9 @@
 #include "fxjs/xfa/cjx_object.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
 #include "xfa/fxfa/parser/cxfa_node.h"
+#include "xfa/fxfa/parser/cxfa_script.h"
 
-CXFA_ThisProxy::CXFA_ThisProxy(CXFA_Node* pThisNode, CXFA_Node* pScriptNode)
+CXFA_ThisProxy::CXFA_ThisProxy(CXFA_Node* pThisNode, CXFA_Script* pScriptNode)
     : CXFA_Object(
           pThisNode->GetDocument(),
           XFA_ObjectType::ThisProxy,

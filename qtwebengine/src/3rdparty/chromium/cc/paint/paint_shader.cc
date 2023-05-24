@@ -1,13 +1,21 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/paint/paint_shader.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "base/atomic_sequence_num.h"
+#include "base/notreached.h"
+#include "base/numerics/checked_math.h"
+#include "base/types/optional_util.h"
+#include "cc/paint/image_provider.h"
 #include "cc/paint/paint_image_builder.h"
 #include "cc/paint/paint_op_writer.h"
 #include "cc/paint/paint_record.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
 #include "third_party/skia/include/core/SkPictureRecorder.h"
 #include "third_party/skia/include/effects/SkGradientShader.h"
 
@@ -15,7 +23,7 @@ namespace cc {
 namespace {
 base::AtomicSequenceNumber g_next_shader_id;
 
-sk_sp<SkPicture> ToSkPicture(sk_sp<PaintRecord> record,
+sk_sp<SkPicture> ToSkPicture(const PaintRecord& record,
                              const SkRect& bounds,
                              const gfx::SizeF* raster_scale,
                              ImageProvider* image_provider) {
@@ -25,41 +33,29 @@ sk_sp<SkPicture> ToSkPicture(sk_sp<PaintRecord> record,
   canvas->translate(-bounds.fLeft, -bounds.fTop);
   if (raster_scale)
     canvas->scale(raster_scale->width(), raster_scale->height());
-  record->Playback(canvas, PlaybackParams(image_provider));
+  record.Playback(canvas, PlaybackParams(image_provider));
   return recorder.finishRecordingAsPicture();
 }
 
-bool CompareMatrices(const SkMatrix& a,
-                     const SkMatrix& b,
-                     bool ignore_scaling_differences) {
-  if (!ignore_scaling_differences)
-    return PaintOp::AreSkMatricesEqual(a, b);
+bool CompareMatricesForTesting(const SkMatrix& a,  // IN-TEST
+                               const SkMatrix& b,
+                               bool ignore_scaling_differences) {
+  if (!ignore_scaling_differences) {
+    return a == b;
+  }
 
   SkSize scale;
   SkMatrix a_without_scale;
   SkMatrix b_without_scale;
 
   const bool decomposes = a.decomposeScale(&scale, &a_without_scale);
-  if (decomposes != b.decomposeScale(&scale, &b_without_scale))
+  if (decomposes != b.decomposeScale(&scale, &b_without_scale)) {
     return false;
-
-  if (!decomposes)
+  }
+  if (!decomposes) {
     return true;
-  return PaintOp::AreSkMatricesEqual(a_without_scale, b_without_scale);
-}
-
-SkRect AdjustForMaxTextureSize(SkRect tile, int max_texture_size) {
-  if (max_texture_size == 0)
-    return tile;
-
-  if (tile.width() < max_texture_size && tile.height() < max_texture_size)
-    return tile;
-
-  float down_scale = max_texture_size / std::max(tile.width(), tile.height());
-  tile = SkRect::MakeXYWH(tile.x(), tile.y(),
-                          SkScalarFloorToScalar(tile.width() * down_scale),
-                          SkScalarFloorToScalar(tile.height() * down_scale));
-  return tile;
+  }
+  return a_without_scale == b_without_scale;
 }
 
 }  // namespace
@@ -69,28 +65,30 @@ const PaintShader::RecordShaderId PaintShader::kInvalidRecordShaderId = -1;
 sk_sp<PaintShader> PaintShader::MakeEmpty() {
   sk_sp<PaintShader> shader(new PaintShader(Type::kEmpty));
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
-sk_sp<PaintShader> PaintShader::MakeColor(SkColor color) {
+sk_sp<PaintShader> PaintShader::MakeColor(SkColor4f color) {
   sk_sp<PaintShader> shader(new PaintShader(Type::kColor));
 
   // Just one color. Store it in the fallback color. Easy.
   shader->fallback_color_ = color;
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
-sk_sp<PaintShader> PaintShader::MakeLinearGradient(const SkPoint points[],
-                                                   const SkColor colors[],
-                                                   const SkScalar pos[],
-                                                   int count,
-                                                   SkTileMode mode,
-                                                   uint32_t flags,
-                                                   const SkMatrix* local_matrix,
-                                                   SkColor fallback_color) {
+sk_sp<PaintShader> PaintShader::MakeLinearGradient(
+    const SkPoint points[],
+    const SkColor4f colors[],
+    const SkScalar pos[],
+    int count,
+    SkTileMode mode,
+    SkGradientShader::Interpolation interpolation,
+    uint32_t flags,
+    const SkMatrix* local_matrix,
+    SkColor4f fallback_color) {
   sk_sp<PaintShader> shader(new PaintShader(Type::kLinearGradient));
 
   // There are always two points, the start and the end.
@@ -99,20 +97,23 @@ sk_sp<PaintShader> PaintShader::MakeLinearGradient(const SkPoint points[],
   shader->SetColorsAndPositions(colors, pos, count);
   shader->SetMatrixAndTiling(local_matrix, mode, mode);
   shader->SetFlagsAndFallback(flags, fallback_color);
+  shader->SetGradientInterpolation(interpolation);
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
-sk_sp<PaintShader> PaintShader::MakeRadialGradient(const SkPoint& center,
-                                                   SkScalar radius,
-                                                   const SkColor colors[],
-                                                   const SkScalar pos[],
-                                                   int count,
-                                                   SkTileMode mode,
-                                                   uint32_t flags,
-                                                   const SkMatrix* local_matrix,
-                                                   SkColor fallback_color) {
+sk_sp<PaintShader> PaintShader::MakeRadialGradient(
+    const SkPoint& center,
+    SkScalar radius,
+    const SkColor4f colors[],
+    const SkScalar pos[],
+    int count,
+    SkTileMode mode,
+    SkGradientShader::Interpolation interpolation,
+    uint32_t flags,
+    const SkMatrix* local_matrix,
+    SkColor4f fallback_color) {
   sk_sp<PaintShader> shader(new PaintShader(Type::kRadialGradient));
 
   shader->center_ = center;
@@ -120,8 +121,9 @@ sk_sp<PaintShader> PaintShader::MakeRadialGradient(const SkPoint& center,
   shader->SetColorsAndPositions(colors, pos, count);
   shader->SetMatrixAndTiling(local_matrix, mode, mode);
   shader->SetFlagsAndFallback(flags, fallback_color);
+  shader->SetGradientInterpolation(interpolation);
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
@@ -130,13 +132,14 @@ sk_sp<PaintShader> PaintShader::MakeTwoPointConicalGradient(
     SkScalar start_radius,
     const SkPoint& end,
     SkScalar end_radius,
-    const SkColor colors[],
+    const SkColor4f colors[],
     const SkScalar pos[],
     int count,
     SkTileMode mode,
+    SkGradientShader::Interpolation interpolation,
     uint32_t flags,
     const SkMatrix* local_matrix,
-    SkColor fallback_color) {
+    SkColor4f fallback_color) {
   sk_sp<PaintShader> shader(new PaintShader(Type::kTwoPointConicalGradient));
 
   shader->start_point_ = start;
@@ -146,22 +149,25 @@ sk_sp<PaintShader> PaintShader::MakeTwoPointConicalGradient(
   shader->SetColorsAndPositions(colors, pos, count);
   shader->SetMatrixAndTiling(local_matrix, mode, mode);
   shader->SetFlagsAndFallback(flags, fallback_color);
+  shader->SetGradientInterpolation(interpolation);
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
-sk_sp<PaintShader> PaintShader::MakeSweepGradient(SkScalar cx,
-                                                  SkScalar cy,
-                                                  const SkColor colors[],
-                                                  const SkScalar pos[],
-                                                  int color_count,
-                                                  SkTileMode mode,
-                                                  SkScalar start_degrees,
-                                                  SkScalar end_degrees,
-                                                  uint32_t flags,
-                                                  const SkMatrix* local_matrix,
-                                                  SkColor fallback_color) {
+sk_sp<PaintShader> PaintShader::MakeSweepGradient(
+    SkScalar cx,
+    SkScalar cy,
+    const SkColor4f colors[],
+    const SkScalar pos[],
+    int color_count,
+    SkTileMode mode,
+    SkScalar start_degrees,
+    SkScalar end_degrees,
+    SkGradientShader::Interpolation interpolation,
+    uint32_t flags,
+    const SkMatrix* local_matrix,
+    SkColor4f fallback_color) {
   sk_sp<PaintShader> shader(new PaintShader(Type::kSweepGradient));
 
   shader->center_ = SkPoint::Make(cx, cy);
@@ -170,8 +176,9 @@ sk_sp<PaintShader> PaintShader::MakeSweepGradient(SkScalar cx,
   shader->SetColorsAndPositions(colors, pos, color_count);
   shader->SetMatrixAndTiling(local_matrix, mode, mode);
   shader->SetFlagsAndFallback(flags, fallback_color);
+  shader->SetGradientInterpolation(interpolation);
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
@@ -189,12 +196,12 @@ sk_sp<PaintShader> PaintShader::MakeImage(const PaintImage& image,
     shader->tile_ = *tile_rect;
   }
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
 sk_sp<PaintShader> PaintShader::MakePaintRecord(
-    sk_sp<PaintRecord> record,
+    PaintRecord record,
     const SkRect& tile,
     SkTileMode tx,
     SkTileMode ty,
@@ -208,32 +215,41 @@ sk_sp<PaintShader> PaintShader::MakePaintRecord(
   shader->scaling_behavior_ = scaling_behavior;
   shader->SetMatrixAndTiling(local_matrix, tx, ty);
 
-  shader->CreateSkShader();
+  shader->ResolveSkObjects();
   return shader;
 }
 
 // static
 size_t PaintShader::GetSerializedSize(const PaintShader* shader) {
-  size_t bool_size = sizeof(bool);
-  if (!shader)
-    return bool_size;
+  if (!shader) {
+    return PaintOpWriter::SerializedSize<bool>();
+  }
 
-  return bool_size + sizeof(shader->shader_type_) + sizeof(shader->flags_) +
-         sizeof(shader->end_radius_) + sizeof(shader->start_radius_) +
-         sizeof(shader->tx_) + sizeof(shader->ty_) +
-         sizeof(shader->fallback_color_) + sizeof(shader->scaling_behavior_) +
-         bool_size + sizeof(*shader->local_matrix_) + sizeof(shader->center_) +
-         sizeof(shader->tile_) + sizeof(shader->start_point_) +
-         sizeof(shader->end_point_) + sizeof(shader->start_degrees_) +
-         sizeof(shader->end_degrees_) +
-         PaintOpWriter::GetImageSize(shader->image_) +
-         PaintOpWriter::GetImageSize(shader->image_) + bool_size +
-         sizeof(shader->id_) +
-         PaintOpWriter::GetRecordSize(shader->record_.get()) +
-         sizeof(shader->colors_.size()) +
-         shader->colors_.size() * sizeof(SkColor) +
-         sizeof(shader->positions_.size()) +
-         shader->positions_.size() * sizeof(SkScalar);
+  return (base::CheckedNumeric<size_t>(PaintOpWriter::SerializedSize<bool>()) +
+          PaintOpWriter::SerializedSize(shader->shader_type_) +
+          PaintOpWriter::SerializedSize(shader->flags_) +
+          PaintOpWriter::SerializedSize(shader->end_radius_) +
+          PaintOpWriter::SerializedSize(shader->start_radius_) +
+          PaintOpWriter::SerializedSize(shader->tx_) +
+          PaintOpWriter::SerializedSize(shader->ty_) +
+          PaintOpWriter::SerializedSize(shader->fallback_color_) +
+          PaintOpWriter::SerializedSize(shader->scaling_behavior_) +
+          PaintOpWriter::SerializedSize(shader->local_matrix_) +
+          PaintOpWriter::SerializedSize(shader->center_) +
+          PaintOpWriter::SerializedSize(shader->tile_) +
+          PaintOpWriter::SerializedSize(shader->start_point_) +
+          PaintOpWriter::SerializedSize(shader->end_point_) +
+          PaintOpWriter::SerializedSize(shader->start_degrees_) +
+          PaintOpWriter::SerializedSize(shader->end_degrees_) +
+          PaintOpWriter::SerializedSize(shader->gradient_interpolation_) +
+          PaintOpWriter::SerializedSize(shader->image_) +
+          PaintOpWriter::SerializedSize(shader->id_) +
+          PaintOpWriter::SerializedSize(shader->record_) +
+          PaintOpWriter::SerializedSizeOfElements(shader->colors_.data(),
+                                                  shader->colors_.size()) +
+          PaintOpWriter::SerializedSizeOfElements(shader->positions_.data(),
+                                                  shader->positions_.size()))
+      .ValueOrDie();
 }
 
 PaintShader::PaintShader(Type type) : shader_type_(type) {}
@@ -244,8 +260,9 @@ bool PaintShader::has_discardable_images() const {
          (record_ && record_->HasDiscardableImages());
 }
 
-bool PaintShader::GetRasterizationTileRect(const SkMatrix& ctm,
-                                           SkRect* tile_rect) const {
+bool PaintShader::GetClampedRasterizationTileRect(const SkMatrix& ctm,
+                                                  int max_texture_size,
+                                                  SkRect* tile_rect) const {
   DCHECK_EQ(shader_type_, Type::kPaintRecord);
 
   // If we are using a fixed scale, the record is rasterized with the original
@@ -259,34 +276,10 @@ bool PaintShader::GetRasterizationTileRect(const SkMatrix& ctm,
   if (local_matrix_.has_value())
     matrix.preConcat(local_matrix_.value());
 
-  SkSize scale;
-  if (!matrix.decomposeScale(&scale)) {
-    // Decomposition failed, use an approximation.
-    scale.set(SkScalarSqrt(matrix.getScaleX() * matrix.getScaleX() +
-                           matrix.getSkewX() * matrix.getSkewX()),
-              SkScalarSqrt(matrix.getScaleY() * matrix.getScaleY() +
-                           matrix.getSkewY() * matrix.getSkewY()));
-  }
-
-  SkScalar tile_area =
-      tile_.width() * tile_.height() * scale.width() * scale.height();
-
-  // Clamp the tile size to about 4M pixels.
-  // TODO(khushalsagar): We need to consider the max texture size as well.
-  static const SkScalar kMaxTileArea = 2048 * 2048;
-  if (tile_area > kMaxTileArea) {
-    SkScalar clamp_scale = SkScalarSqrt(kMaxTileArea / tile_area);
-    scale.set(clamp_scale, clamp_scale);
-  }
-
-  *tile_rect = SkRect::MakeXYWH(
-      tile_.fLeft * scale.width(), tile_.fTop * scale.height(),
-      SkScalarCeilToInt(SkScalarAbs(scale.width() * tile_.width())),
-      SkScalarCeilToInt(SkScalarAbs(scale.height() * tile_.height())));
-
+  *tile_rect =
+      PaintRecord::GetFixedScaleBounds(matrix, tile_, max_texture_size);
   if (tile_rect->isEmpty())
     return false;
-
   return true;
 }
 
@@ -315,9 +308,15 @@ sk_sp<PaintShader> PaintShader::CreateScaledPaintRecord(
   // Note that the scaling logic here is replicated from
   // SkPictureShader::refBitmapShader.
   SkRect tile_rect;
-  if (!GetRasterizationTileRect(ctm, &tile_rect))
+  if (!GetClampedRasterizationTileRect(ctm, max_texture_size, &tile_rect))
     return nullptr;
-  tile_rect = AdjustForMaxTextureSize(tile_rect, max_texture_size);
+
+  *raster_scale =
+      gfx::SizeF(SkIntToScalar(tile_rect.width()) / tile_.width(),
+                 SkIntToScalar(tile_rect.height()) / tile_.height());
+  SkMatrix local_matrix_with_inv_raster_scale = GetLocalMatrix();
+  local_matrix_with_inv_raster_scale.preScale(1 / raster_scale->width(),
+                                              1 / raster_scale->height());
 
   sk_sp<PaintShader> shader(new PaintShader(Type::kPaintRecord));
   shader->record_ = record_;
@@ -326,16 +325,7 @@ sk_sp<PaintShader> PaintShader::CreateScaledPaintRecord(
   // Use a fixed scale since we have already scaled the tile rect and fixed the
   // raster scale.
   shader->scaling_behavior_ = ScalingBehavior::kFixedScale;
-  shader->tx_ = tx_;
-  shader->ty_ = ty_;
-
-  *raster_scale =
-      gfx::SizeF(SkIntToScalar(tile_rect.width()) / tile_.width(),
-                 SkIntToScalar(tile_rect.height()) / tile_.height());
-  shader->local_matrix_ = GetLocalMatrix();
-  shader->local_matrix_->preScale(1 / raster_scale->width(),
-                                  1 / raster_scale->height());
-
+  shader->SetMatrixAndTiling(&local_matrix_with_inv_raster_scale, tx_, ty_);
   return shader;
 }
 
@@ -346,20 +336,20 @@ sk_sp<PaintShader> PaintShader::CreatePaintWorkletRecord(
 
   ImageProvider::ScopedResult result =
       image_provider->GetRasterContent(DrawImage(image_));
-  if (!result || !result.paint_record())
+  if (!result || !result.has_paint_record()) {
     return nullptr;
+  }
   SkMatrix local_matrix = GetLocalMatrix();
-  return PaintShader::MakePaintRecord(
-      sk_ref_sp<PaintRecord>(result.paint_record()), tile_, tx_, ty_,
-      &local_matrix);
+  return PaintShader::MakePaintRecord(result.ReleaseAsRecord(), tile_, tx_, ty_,
+                                      &local_matrix);
 }
 
 sk_sp<PaintShader> PaintShader::CreateDecodedImage(
     const SkMatrix& ctm,
-    SkFilterQuality quality,
+    PaintFlags::FilterQuality quality,
     ImageProvider* image_provider,
     uint32_t* transfer_cache_entry_id,
-    SkFilterQuality* raster_quality,
+    PaintFlags::FilterQuality* raster_quality,
     bool* needs_mips,
     gpu::Mailbox* mailbox) const {
   DCHECK_EQ(shader_type_, Type::kImage);
@@ -371,7 +361,8 @@ sk_sp<PaintShader> PaintShader::CreateDecodedImage(
   SkRect src_rect = SkRect::MakeIWH(image_.width(), image_.height());
   SkIRect int_src_rect;
   src_rect.roundOut(&int_src_rect);
-  DrawImage draw_image(image_, int_src_rect, quality, total_image_matrix);
+  DrawImage draw_image(image_, false, int_src_rect, quality,
+                       SkM44(total_image_matrix));
   auto decoded_draw_image = image_provider->GetRasterContent(draw_image);
   if (!decoded_draw_image)
     return nullptr;
@@ -412,94 +403,105 @@ sk_sp<PaintShader> PaintShader::CreateDecodedImage(
   return PaintShader::MakeImage(decoded_paint_image, tx_, ty_, &final_matrix);
 }
 
-sk_sp<SkShader> PaintShader::GetSkShader() const {
-  return cached_shader_;
-}
-
-void PaintShader::CreateSkShader(const gfx::SizeF* raster_scale,
-                                 ImageProvider* image_provider) {
-  DCHECK(!cached_shader_);
+sk_sp<SkShader> PaintShader::GetSkShader(
+    PaintFlags::FilterQuality quality) const {
+  SkSamplingOptions sampling(
+      PaintFlags::FilterQualityToSkSamplingOptions(quality));
 
   switch (shader_type_) {
     case Type::kEmpty:
-      cached_shader_ = SkShaders::Empty();
-      break;
+      return SkShaders::Empty();
     case Type::kColor:
       // This will be handled by the fallback check below.
       break;
     case Type::kLinearGradient: {
       SkPoint points[2] = {start_point_, end_point_};
-      cached_shader_ = SkGradientShader::MakeLinear(
-          points, colors_.data(),
+      return SkGradientShader::MakeLinear(
+          points, colors_.data(), nullptr /*sk_sp<SkColorSpace>*/,
           positions_.empty() ? nullptr : positions_.data(),
-          static_cast<int>(colors_.size()), tx_, flags_,
-          base::OptionalOrNullptr(local_matrix_));
-      break;
+          static_cast<int>(colors_.size()), tx_, gradient_interpolation_,
+          base::OptionalToPtr(local_matrix_));
     }
     case Type::kRadialGradient:
-      cached_shader_ = SkGradientShader::MakeRadial(
+      return SkGradientShader::MakeRadial(
           center_, start_radius_, colors_.data(),
+          nullptr /*sk_sp<SkColorSpace>*/,
           positions_.empty() ? nullptr : positions_.data(),
-          static_cast<int>(colors_.size()), tx_, flags_,
-          base::OptionalOrNullptr(local_matrix_));
-      break;
+          static_cast<int>(colors_.size()), tx_, gradient_interpolation_,
+          base::OptionalToPtr(local_matrix_));
     case Type::kTwoPointConicalGradient:
-      cached_shader_ = SkGradientShader::MakeTwoPointConical(
+      return SkGradientShader::MakeTwoPointConical(
           start_point_, start_radius_, end_point_, end_radius_, colors_.data(),
+          nullptr /*sk_sp<SkColorSpace>*/,
           positions_.empty() ? nullptr : positions_.data(),
-          static_cast<int>(colors_.size()), tx_, flags_,
-          base::OptionalOrNullptr(local_matrix_));
-      break;
+          static_cast<int>(colors_.size()), tx_, gradient_interpolation_,
+          base::OptionalToPtr(local_matrix_));
     case Type::kSweepGradient:
-      cached_shader_ = SkGradientShader::MakeSweep(
+      return SkGradientShader::MakeSweep(
           center_.x(), center_.y(), colors_.data(),
+          nullptr /*sk_sp<SkColorSpace>*/,
           positions_.empty() ? nullptr : positions_.data(),
           static_cast<int>(colors_.size()), tx_, start_degrees_, end_degrees_,
-          flags_, base::OptionalOrNullptr(local_matrix_));
-      break;
+          gradient_interpolation_, base::OptionalToPtr(local_matrix_));
     case Type::kImage:
-      if (image_ && !image_.IsPaintWorklet()) {
-        cached_shader_ = image_.GetSkImage()->makeShader(
-            tx_, ty_, base::OptionalOrNullptr(local_matrix_));
+      if (sk_cached_image_) {
+        return sk_cached_image_->makeShader(tx_, ty_, sampling,
+                                            base::OptionalToPtr(local_matrix_));
       }
       break;
-    case Type::kPaintRecord: {
-      // Create a recording at the desired scale if this record has images which
-      // have been decoded before raster.
-      auto picture = ToSkPicture(record_, tile_, raster_scale, image_provider);
-
-      switch (scaling_behavior_) {
-        // For raster scale, we create a picture shader directly.
-        case ScalingBehavior::kRasterAtScale:
-          cached_shader_ = picture->makeShader(
-              tx_, ty_, base::OptionalOrNullptr(local_matrix_), nullptr);
-          break;
-        // For fixed scale, we create an image shader with an image backed by
-        // the picture.
-        case ScalingBehavior::kFixedScale: {
-          auto image = SkImage::MakeFromPicture(
-              std::move(picture), SkISize::Make(tile_.width(), tile_.height()),
-              nullptr, nullptr, SkImage::BitDepth::kU8,
-              SkColorSpace::MakeSRGB());
-          cached_shader_ = image->makeShader(
-              tx_, ty_, base::OptionalOrNullptr(local_matrix_));
-          break;
+    case Type::kPaintRecord:
+      if (sk_cached_picture_) {
+        switch (scaling_behavior_) {
+          // For raster scale, we create a picture shader directly.
+          case ScalingBehavior::kRasterAtScale:
+            return sk_cached_picture_->makeShader(
+                tx_, ty_, sampling.filter, base::OptionalToPtr(local_matrix_),
+                nullptr);
+          // For fixed scale, we create an image shader with an image backed by
+          // the picture.
+          case ScalingBehavior::kFixedScale: {
+            auto image = SkImage::MakeFromPicture(
+                sk_cached_picture_,
+                SkISize::Make(tile_.width(), tile_.height()), nullptr, nullptr,
+                SkImage::BitDepth::kU8, SkColorSpace::MakeSRGB());
+            return image->makeShader(tx_, ty_, sampling,
+                                     base::OptionalToPtr(local_matrix_));
+          }
         }
+        break;
       }
       break;
-    }
     case Type::kShaderCount:
       NOTREACHED();
       break;
   }
 
-  // If we didn't create a shader for whatever reason, create a fallback color
-  // one.
-  if (!cached_shader_)
-    cached_shader_ = SkShaders::Color(fallback_color_);
+  // If we didn't create a shader for whatever reason, create a fallback
+  // color one.
+  return SkShaders::Color(fallback_color_.toSkColor());
 }
 
-void PaintShader::SetColorsAndPositions(const SkColor* colors,
+void PaintShader::ResolveSkObjects(const gfx::SizeF* raster_scale,
+                                   ImageProvider* image_provider) {
+  switch (shader_type_) {
+    case Type::kImage:
+      if (image_ && !image_.IsPaintWorklet()) {
+        sk_cached_image_ = image_.GetSkImage();
+      }
+      break;
+    case Type::kPaintRecord: {
+      // Create a recording at the desired scale if this record has images
+      // which have been decoded before raster.
+      sk_cached_picture_ =
+          ToSkPicture(*record_, tile_, raster_scale, image_provider);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void PaintShader::SetColorsAndPositions(const SkColor4f* colors,
                                         const SkScalar* positions,
                                         int count) {
 #if DCHECK_IS_ON()
@@ -515,27 +517,62 @@ void PaintShader::SetColorsAndPositions(const SkColor* colors,
 void PaintShader::SetMatrixAndTiling(const SkMatrix* matrix,
                                      SkTileMode tx,
                                      SkTileMode ty) {
-  if (matrix)
+  if (matrix) {
     local_matrix_ = *matrix;
+    // The matrix type is mutable and set lazily. Force it to be computed here
+    // to avoid a data race from the lazy computation happening on a worker
+    // thread.
+    local_matrix_->getType();
+  }
   tx_ = tx;
   ty_ = ty;
 }
 
-void PaintShader::SetFlagsAndFallback(uint32_t flags, SkColor fallback_color) {
+void PaintShader::SetFlagsAndFallback(uint32_t flags,
+                                      SkColor4f fallback_color) {
   flags_ = flags;
   fallback_color_ = fallback_color;
 }
 
 bool PaintShader::IsOpaque() const {
-  // TODO(enne): don't create a shader to answer this.
-  return GetSkShader()->isOpaque();
+  switch (shader_type_) {
+    case Type::kEmpty:
+      return false;
+    case Type::kColor:
+      // This will be handled by the fallback check below.
+      break;
+    case Type::kLinearGradient:  // fall-through
+    case Type::kRadialGradient:  // fall-through
+    case Type::kSweepGradient:
+      if (tx_ == SkTileMode::kDecal)
+        return false;
+      for (const auto& c : colors_)
+        if (!c.isOpaque())
+          return false;
+      return true;
+    case Type::kTwoPointConicalGradient:
+      // Because two-point-conical can sometimes ignore its tiling and not draw
+      // everywhere, we conservatively return false here. If we measure
+      // performance reasons to be more aggressive here, we can ask Skia to
+      // expose private functionality to compute this with having to actually
+      // instantiate a sk_shader object.
+      return false;
+    case Type::kImage:
+      if (tx_ == SkTileMode::kDecal || ty_ == SkTileMode::kDecal)
+        return false;
+      if (sk_cached_image_)
+        return sk_cached_image_->isOpaque();
+      return false;
+    case Type::kPaintRecord:
+      return false;
+    case Type::kShaderCount:
+      NOTREACHED();
+      break;
+  }
+  return fallback_color_.isOpaque();
 }
 
 bool PaintShader::IsValid() const {
-  // If we managed to create a shader already, then we should be valid.
-  if (cached_shader_)
-    return true;
-
   switch (shader_type_) {
     case Type::kEmpty:
     case Type::kColor:
@@ -545,7 +582,7 @@ bool PaintShader::IsValid() const {
           start_degrees_ >= end_degrees_) {
         return false;
       }
-      FALLTHROUGH;
+      [[fallthrough]];
     case Type::kLinearGradient:
     case Type::kRadialGradient:
     case Type::kTwoPointConicalGradient:
@@ -563,7 +600,7 @@ bool PaintShader::IsValid() const {
   return false;
 }
 
-bool PaintShader::operator==(const PaintShader& other) const {
+bool PaintShader::EqualsForTesting(const PaintShader& other) const {
   if (shader_type_ != other.shader_type_)
     return false;
 
@@ -576,23 +613,19 @@ bool PaintShader::operator==(const PaintShader& other) const {
   const SkMatrix& local_matrix = local_matrix_ ? *local_matrix_ : SkMatrix::I();
   const SkMatrix& other_local_matrix =
       other.local_matrix_ ? *other.local_matrix_ : SkMatrix::I();
-  if (!CompareMatrices(local_matrix, other_local_matrix,
-                       ignore_scaling_differences)) {
+  if (!CompareMatricesForTesting(local_matrix, other_local_matrix,  // IN-TEST
+                                 ignore_scaling_differences)) {
     return false;
   }
 
-  if (fallback_color_ != other.fallback_color_)
+  if (fallback_color_ != other.fallback_color_ || flags_ != other.flags_ ||
+      tx_ != other.tx_ || ty_ != other.ty_) {
     return false;
-  if (flags_ != other.flags_)
-    return false;
-  if (tx_ != other.tx_)
-    return false;
-  if (ty_ != other.ty_)
-    return false;
-
+  }
   if (!ignore_scaling_differences &&
-      scaling_behavior_ != other.scaling_behavior_)
+      scaling_behavior_ != other.scaling_behavior_) {
     return false;
+  }
 
   // Variables that only some shaders use.
   switch (shader_type_) {
@@ -600,31 +633,20 @@ bool PaintShader::operator==(const PaintShader& other) const {
     case Type::kColor:
       break;
     case Type::kSweepGradient:
-      if (!PaintOp::AreEqualEvenIfNaN(start_degrees_, other.start_degrees_))
+      if (start_degrees_ != other.start_degrees_ ||
+          end_degrees_ != other.end_degrees_) {
         return false;
-      if (!PaintOp::AreEqualEvenIfNaN(end_degrees_, other.end_degrees_))
-        return false;
-      FALLTHROUGH;
+      }
+      [[fallthrough]];
     case Type::kLinearGradient:
     case Type::kRadialGradient:
     case Type::kTwoPointConicalGradient:
-      if (!PaintOp::AreEqualEvenIfNaN(start_radius_, other.start_radius_))
+      if (start_radius_ != other.start_radius_ ||
+          end_radius_ != other.end_radius_ || center_ != other.center_ ||
+          start_point_ != other.start_point_ ||
+          end_point_ != other.end_point_ || colors_ != other.colors_ ||
+          positions_ != other.positions_) {
         return false;
-      if (!PaintOp::AreEqualEvenIfNaN(end_radius_, other.end_radius_))
-        return false;
-      if (!PaintOp::AreSkPointsEqual(center_, other.center_))
-        return false;
-      if (!PaintOp::AreSkPointsEqual(start_point_, other.start_point_))
-        return false;
-      if (!PaintOp::AreSkPointsEqual(end_point_, other.end_point_))
-        return false;
-      if (colors_ != other.colors_)
-        return false;
-      if (positions_.size() != other.positions_.size())
-        return false;
-      for (size_t i = 0; i < positions_.size(); ++i) {
-        if (!PaintOp::AreEqualEvenIfNaN(positions_[i], other.positions_[i]))
-          return false;
       }
       break;
     case Type::kImage:

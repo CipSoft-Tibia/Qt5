@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandxdgshellintegration_p.h"
 
@@ -75,45 +49,63 @@ bool XdgToplevelIntegration::eventFilter(QObject *object, QEvent *event)
     if (event->type() == QEvent::MouseMove) {
         QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
         return filterMouseMoveEvent(mouseEvent);
-    } else if (event->type() == QEvent::MouseButtonRelease) {
-        QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-        return filterMouseReleaseEvent(mouseEvent);
+    } else if (event->type() == QEvent::MouseButtonRelease || event->type() == QEvent::TouchEnd || event->type() == QEvent::TouchCancel) {
+        return filterPointerReleaseEvent();
+    } else if (event->type() == QEvent::TouchUpdate) {
+        QTouchEvent *touchEvent = static_cast<QTouchEvent *>(event);
+        return filterTouchUpdateEvent(touchEvent);
     }
     return QWaylandQuickShellIntegration::eventFilter(object, event);
 }
 
-bool XdgToplevelIntegration::filterMouseMoveEvent(QMouseEvent *event)
+bool XdgToplevelIntegration::filterPointerMoveEvent(const QPointF &scenePosition)
 {
     if (grabberState == GrabberState::Resize) {
-        Q_ASSERT(resizeState.seat == m_item->compositor()->seatFor(event));
         if (!resizeState.initialized) {
-            resizeState.initialMousePos = event->windowPos();
+            resizeState.initialMousePos = scenePosition;
             resizeState.initialized = true;
             return true;
         }
-        QPointF delta = m_item->mapToSurface(event->windowPos() - resizeState.initialMousePos);
+        QPointF delta = m_item->mapToSurface(scenePosition - resizeState.initialMousePos);
         QSize newSize = m_toplevel->sizeForResize(resizeState.initialWindowSize, delta, resizeState.resizeEdges);
         m_toplevel->sendResizing(newSize);
     } else if (grabberState == GrabberState::Move) {
-        Q_ASSERT(moveState.seat == m_item->compositor()->seatFor(event));
         QQuickItem *moveItem = m_item->moveItem();
         if (!moveState.initialized) {
-            moveState.initialOffset = moveItem->mapFromItem(nullptr, event->windowPos());
+            moveState.initialOffset = moveItem->mapFromItem(nullptr, scenePosition);
             moveState.initialized = true;
             return true;
         }
         if (!moveItem->parentItem())
             return true;
-        QPointF parentPos = moveItem->parentItem()->mapFromItem(nullptr, event->windowPos());
+        QPointF parentPos = moveItem->parentItem()->mapFromItem(nullptr, scenePosition);
         moveItem->setPosition(parentPos - moveState.initialOffset);
     }
     return false;
 }
 
-bool XdgToplevelIntegration::filterMouseReleaseEvent(QMouseEvent *event)
+bool XdgToplevelIntegration::filterTouchUpdateEvent(QTouchEvent *event)
 {
-    Q_UNUSED(event);
+    if (event->pointCount() == 0)
+        return false;
 
+    Q_ASSERT(grabberState != GrabberState::Move || moveState.seat == m_item->compositor()->seatFor(event));
+    Q_ASSERT(grabberState != GrabberState::Resize || resizeState.seat == m_item->compositor()->seatFor(event));
+
+    QEventPoint point = event->points().first();
+    return filterPointerMoveEvent(point.scenePosition());
+ }
+
+bool XdgToplevelIntegration::filterMouseMoveEvent(QMouseEvent *event)
+{
+    Q_ASSERT(grabberState != GrabberState::Move || moveState.seat == m_item->compositor()->seatFor(event));
+    Q_ASSERT(grabberState != GrabberState::Resize || resizeState.seat == m_item->compositor()->seatFor(event));
+
+    return filterPointerMoveEvent(event->scenePosition());
+}
+
+bool XdgToplevelIntegration::filterPointerReleaseEvent()
+{
     if (grabberState != GrabberState::Default) {
         grabberState = GrabberState::Default;
         return true;
@@ -144,7 +136,7 @@ void XdgToplevelIntegration::handleSetMaximized()
     if (!m_item->view()->isPrimary())
         return;
 
-    QVector<QWaylandXdgToplevel::State> states = m_toplevel->states();
+    QList<QWaylandXdgToplevel::State> states = m_toplevel->states();
 
     if (!states.contains(QWaylandXdgToplevel::State::FullscreenState) && !states.contains(QWaylandXdgToplevel::State::MaximizedState)) {
         windowedGeometry.initialWindowSize = m_xdgSurface->windowGeometry().size();
@@ -200,7 +192,7 @@ void XdgToplevelIntegration::handleSetFullscreen()
     if (!m_item->view()->isPrimary())
         return;
 
-    QVector<QWaylandXdgToplevel::State> states = m_toplevel->states();
+    QList<QWaylandXdgToplevel::State> states = m_toplevel->states();
 
     if (!states.contains(QWaylandXdgToplevel::State::FullscreenState) && !states.contains(QWaylandXdgToplevel::State::MaximizedState)) {
         windowedGeometry.initialWindowSize = m_xdgSurface->windowGeometry().size();
@@ -311,3 +303,5 @@ void XdgPopupIntegration::handleGeometryChanged()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandxdgshellintegration_p.cpp"

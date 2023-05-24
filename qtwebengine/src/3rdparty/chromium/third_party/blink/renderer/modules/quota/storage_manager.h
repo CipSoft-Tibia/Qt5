@@ -1,17 +1,17 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_QUOTA_STORAGE_MANAGER_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_QUOTA_STORAGE_MANAGER_H_
 
-#include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
 #include "third_party/blink/public/mojom/quota/quota_manager_host.mojom-blink.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
@@ -29,14 +29,13 @@ class StorageManager final : public EventTargetWithInlineData,
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  explicit StorageManager(ExecutionContext*,
-                          mojo::Remote<mojom::blink::QuotaManagerHost> backend);
+  explicit StorageManager(ExecutionContext*);
   ~StorageManager() override;
 
-  ScriptPromise persisted(ScriptState*);
-  ScriptPromise persist(ScriptState*);
+  ScriptPromise persisted(ScriptState*, ExceptionState&);
+  ScriptPromise persist(ScriptState*, ExceptionState&);
 
-  ScriptPromise estimate(ScriptState*);
+  ScriptPromise estimate(ScriptState*, ExceptionState&);
 
   void Trace(Visitor* visitor) const override;
 
@@ -72,12 +71,8 @@ class StorageManager final : public EventTargetWithInlineData,
   // provider, and returns it,
   mojom::blink::QuotaManagerHost* GetQuotaHost(ExecutionContext*);
 
-  HeapMojoRemote<mojom::blink::PermissionService,
-                 HeapMojoWrapperMode::kWithoutContextObserver>
-      permission_service_;
-  HeapMojoRemote<mojom::blink::QuotaManagerHost,
-                 HeapMojoWrapperMode::kWithoutContextObserver>
-      quota_host_;
+  HeapMojoRemote<mojom::blink::PermissionService> permission_service_;
+  HeapMojoRemote<mojom::blink::QuotaManagerHost> quota_host_;
 
   HeapMojoReceiver<mojom::blink::QuotaChangeListener, StorageManager>
       change_listener_receiver_;

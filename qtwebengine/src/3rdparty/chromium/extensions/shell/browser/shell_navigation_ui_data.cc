@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 namespace extensions {
 
-ShellNavigationUIData::ShellNavigationUIData() {}
+ShellNavigationUIData::ShellNavigationUIData() = default;
 
 ShellNavigationUIData::ShellNavigationUIData(
     content::NavigationHandle* navigation_handle) {
@@ -18,7 +18,7 @@ ShellNavigationUIData::ShellNavigationUIData(
       extension_misc::kUnknownWindowId);
 }
 
-ShellNavigationUIData::~ShellNavigationUIData() {}
+ShellNavigationUIData::~ShellNavigationUIData() = default;
 
 std::unique_ptr<content::NavigationUIData> ShellNavigationUIData::Clone() {
   std::unique_ptr<ShellNavigationUIData> copy =

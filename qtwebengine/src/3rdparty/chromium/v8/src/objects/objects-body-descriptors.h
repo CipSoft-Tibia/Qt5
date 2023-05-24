@@ -152,7 +152,11 @@ class FlexibleBodyDescriptor : public SuffixRangeBodyDescriptor<start_offset> {
   static inline int SizeOf(Map map, HeapObject object);
 };
 
-using StructBodyDescriptor = FlexibleBodyDescriptor<HeapObject::kHeaderSize>;
+// A forward-declacable descriptor body alias for most of the Struct successors.
+class StructBodyDescriptor
+    : public FlexibleBodyDescriptor<HeapObject::kHeaderSize> {
+ public:
+};
 
 // This class describes a body of an object in which all pointer fields are
 // located in the [start_offset, object_size) interval.
@@ -216,7 +220,7 @@ class SubclassBodyDescriptor final : public BodyDescriptorBase {
  public:
   // The parent must end be before the child's start offset, to make sure that
   // their slots are disjoint.
-  STATIC_ASSERT(ParentBodyDescriptor::kSize <=
+  static_assert(ParentBodyDescriptor::kSize <=
                 ChildBodyDescriptor::kStartOffset);
 
   static bool IsValidSlot(Map map, HeapObject obj, int offset) {

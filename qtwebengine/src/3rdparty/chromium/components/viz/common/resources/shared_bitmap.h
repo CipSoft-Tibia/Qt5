@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 #include "base/hash/hash.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/trace_event/memory_allocator_dump.h"
 #include "components/viz/common/resources/resource_format.h"
 #include "components/viz/common/viz_common_export.h"
@@ -28,21 +28,23 @@ struct SharedBitmapIdHash {
 // An object returned by the SharedBitmapGenerator that exposes the
 // pixels for a SharedBitmapId. They are exposed via a class so that
 // this object (or its subclass) can ensure the lifetime of the pixels
-// is not cut short. While this object is kept alive, the pixels should
+// is not cut short. While this object is kept alive, the pixels must
 // remain valid.
 class VIZ_COMMON_EXPORT SharedBitmap {
  public:
   static SharedBitmapId GenerateId();
 
   explicit SharedBitmap(uint8_t* pixels);
+
+  SharedBitmap(const SharedBitmap&) = delete;
+  SharedBitmap& operator=(const SharedBitmap&) = delete;
+
   virtual ~SharedBitmap();
 
   uint8_t* pixels() { return pixels_; }
 
- private:
-  uint8_t* pixels_;
-
-  DISALLOW_COPY_AND_ASSIGN(SharedBitmap);
+ protected:
+  raw_ptr<uint8_t> pixels_;
 };
 
 }  // namespace viz

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,115 +7,168 @@
 
 #include <memory>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/values.h"
+#include "build/build_config.h"
+#include "content/public/browser/global_routing_id.h"
 #include "printing/mojom/print.mojom.h"
 #include "printing/print_settings.h"
 #include "printing/printing_context.h"
 
-namespace base {
-class Location;
+namespace content {
+class WebContents;
 }
 
 namespace printing {
 
+class PrintJob;
 class PrintJobWorker;
+class PrinterQuery;
 
-// Query the printer for settings.
+using CreatePrinterQueryCallback =
+    base::RepeatingCallback<std::unique_ptr<PrinterQuery>(
+        content::GlobalRenderFrameHostId rfh_id)>;
+
+// Query the printer for settings. It initializes the PrintingContext, which can
+// be blocking and/or run a message loop, and eventually is transferred to a new
+// PrintJobWorker. All code in this class runs in the UI thread.
 class PrinterQuery {
  public:
-  // GetSettings() UI parameter.
-  enum class GetSettingsAskParam {
-    DEFAULTS,
-    ASK_USER,
-  };
+  using SettingsCallback =
+      base::OnceCallback<void(std::unique_ptr<PrintSettings>,
+                              mojom::ResultCode)>;
 
-  // Can only be called on the IO thread.
-  PrinterQuery(int render_process_id, int render_frame_id);
+  static std::unique_ptr<PrinterQuery> Create(
+      content::GlobalRenderFrameHostId rfh_id);
+
+  PrinterQuery(const PrinterQuery&) = delete;
+  PrinterQuery& operator=(const PrinterQuery&) = delete;
+
   virtual ~PrinterQuery();
 
-  // Detach the PrintJobWorker associated to this object. Virtual so that tests
-  // can override.
-  // Called on the UI thread.
-  // TODO(thestig): Do |worker_| and |callback_| need locks?
-  virtual std::unique_ptr<PrintJobWorker> DetachWorker();
+  // Creates a PrintJobWorker from this object's PrintingContext, transferring
+  // ownership. This instance becomes invalid after calling this function.
+  virtual std::unique_ptr<PrintJobWorker> TransferContextToNewWorker(
+      PrintJob* print_job);
 
   const PrintSettings& settings() const;
+
+  content::GlobalRenderFrameHostId rfh_id() const { return rfh_id_; }
 
   std::unique_ptr<PrintSettings> ExtractSettings();
 
   // Initializes the printing context. It is fine to call this function multiple
-  // times to reinitialize the settings. |web_contents_observer| can be queried
-  // to find the owner of the print setting dialog box. It is unused when
-  // |ask_for_user_settings| is DEFAULTS.
-  // Caller has to ensure that |this| is alive until |callback| is run.
-  void GetSettings(GetSettingsAskParam ask_user_for_settings,
-                   uint32_t expected_page_count,
-                   bool has_selection,
-                   mojom::MarginType margin_type,
-                   bool is_scripted,
-                   bool is_modifiable,
-                   base::OnceClosure callback);
-
-  // Updates the current settings with |new_settings| dictionary values.
-  // Caller has to ensure that |this| is alive until |callback| is run.
-  virtual void SetSettings(base::Value new_settings,
+  // times to reinitialize the settings.
+  // Caller has to ensure that `this` is alive until `callback` is run.
+  void GetDefaultSettings(base::OnceClosure callback,
+                          bool is_modifiable,
+                          bool want_pdf_settings);
+  void GetSettingsFromUser(uint32_t expected_page_count,
+                           bool has_selection,
+                           mojom::MarginType margin_type,
+                           bool is_scripted,
+                           bool is_modifiable,
                            base::OnceClosure callback);
 
-#if defined(OS_CHROMEOS)
-  // Updates the current settings with |new_settings|.
-  // Caller has to ensure that |this| is alive until |callback| is run.
+  // Updates the current settings with `new_settings` dictionary values.
+  // Caller has to ensure that `this` is alive until `callback` is run.
+  virtual void SetSettings(base::Value::Dict new_settings,
+                           base::OnceClosure callback);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Updates the current settings with `new_settings`.
+  // Caller has to ensure that `this` is alive until `callback` is run.
   void SetSettingsFromPOD(std::unique_ptr<PrintSettings> new_settings,
                           base::OnceClosure callback);
 #endif
 
-  // Stops the worker thread since the client is done with this object.
-  virtual void StopWorker();
-
   int cookie() const;
-  PrintingContext::Result last_status() const { return last_status_; }
+  mojom::ResultCode last_status() const { return last_status_; }
 
-  // Returns if a worker thread is still associated to this instance.
+  // Returns true if a PrintingContext is still associated to this instance.
   bool is_valid() const;
 
   // Posts the given task to be run.
   bool PostTask(const base::Location& from_here, base::OnceClosure task);
 
+  // Provide an override for generating worker threads in tests.
+  static void SetCreatePrinterQueryCallbackForTest(
+      CreatePrinterQueryCallback* callback);
+
  protected:
+  explicit PrinterQuery(content::GlobalRenderFrameHostId rfh_id);
+
+  // Returns the WebContents this work corresponds to.
+  content::WebContents* GetWebContents();
+
+  // Reports settings back to `callback`.
+  void InvokeSettingsCallback(SettingsCallback callback,
+                              mojom::ResultCode result);
+
   // Virtual so that tests can override.
   virtual void GetSettingsDone(base::OnceClosure callback,
+                               absl::optional<bool> maybe_is_modifiable,
                                std::unique_ptr<PrintSettings> new_settings,
-                               PrintingContext::Result result);
+                               mojom::ResultCode result);
 
-  void PostSettingsDoneToIO(base::OnceClosure callback,
-                            std::unique_ptr<PrintSettings> new_settings,
-                            PrintingContext::Result result);
+  void PostSettingsDone(base::OnceClosure callback,
+                        absl::optional<bool> maybe_is_modifiable,
+                        std::unique_ptr<PrintSettings> new_settings,
+                        mojom::ResultCode result);
 
   void SetSettingsForTest(std::unique_ptr<PrintSettings> settings);
 
- private:
-  // Lazy create the worker thread. There is one worker thread per print job.
-  void StartWorker();
+  // Asks the user for print settings.
+  // Required on Mac and Linux. Windows can display UI from non-main threads,
+  // but sticks with this for consistency.
+  virtual void GetSettingsWithUI(uint32_t document_page_count,
+                                 bool has_selection,
+                                 bool is_scripted,
+                                 SettingsCallback callback);
 
-  // Cache of the print context settings for access in the UI thread.
-  std::unique_ptr<PrintSettings> settings_;
+  // Initializes the print settings for PDF.
+  std::unique_ptr<PrintSettings> GetPdfSettings();
+
+  // Use the default settings. When using GTK+ or Mac, this can still end up
+  // displaying a dialog. So this needs to happen from the UI thread on these
+  // systems.
+  virtual void UseDefaultSettings(SettingsCallback callback);
+
+  // Called to update the print settings.
+  virtual void UpdatePrintSettings(base::Value::Dict new_settings,
+                                   SettingsCallback callback);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Called to update the print settings.
+  void UpdatePrintSettingsFromPOD(
+      std::unique_ptr<printing::PrintSettings> new_settings,
+      SettingsCallback callback);
+#endif
+
+  PrintingContext* printing_context() { return printing_context_.get(); }
+
+  // Printing context delegate.
+  std::unique_ptr<PrintingContext::Delegate> printing_context_delegate_;
+
+  // Information about the printer setting.
+  std::unique_ptr<PrintingContext> printing_context_;
+
+  const content::GlobalRenderFrameHostId rfh_id_;
 
   // Is the Print... dialog box currently shown.
   bool is_print_dialog_box_shown_ = false;
+
+ private:
+  // Cache of the print context settings.
+  std::unique_ptr<PrintSettings> settings_;
 
   // Cookie that make this instance unique.
   int cookie_;
 
   // Results from the last GetSettingsDone() callback.
-  PrintingContext::Result last_status_ = PrintingContext::FAILED;
+  mojom::ResultCode last_status_ = mojom::ResultCode::kFailed;
 
-  // All the UI is done in a worker thread because many Win32 print functions
-  // are blocking and enters a message loop without your consent. There is one
-  // worker thread per print job.
-  std::unique_ptr<PrintJobWorker> worker_;
-
-  DISALLOW_COPY_AND_ASSIGN(PrinterQuery);
+  base::WeakPtrFactory<PrinterQuery> weak_factory_{this};
 };
 
 }  // namespace printing

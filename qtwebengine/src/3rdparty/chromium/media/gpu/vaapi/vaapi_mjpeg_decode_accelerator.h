@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,28 +10,22 @@
 #include <memory>
 
 #include "base/containers/span.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/memory/shared_memory_mapping.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread.h"
 #include "components/chromeos_camera/mjpeg_decode_accelerator.h"
+#include "media/gpu/chromeos/image_processor_backend.h"
 #include "media/gpu/media_gpu_export.h"
 #include "media/gpu/vaapi/vaapi_jpeg_decoder.h"
 
 namespace base {
 class SingleThreadTaskRunner;
-}
-
-namespace gpu {
-class GpuMemoryBufferSupport;
+class SequencedTaskRunner;
 }
 
 namespace media {
-
 class BitstreamBuffer;
-class ScopedVAImage;
-class UnalignedSharedMemory;
-class VaapiWrapper;
 class VideoFrame;
 
 // Class to provide MJPEG decode acceleration for Intel systems with hardware
@@ -47,11 +41,17 @@ class MEDIA_GPU_EXPORT VaapiMjpegDecodeAccelerator
  public:
   VaapiMjpegDecodeAccelerator(
       const scoped_refptr<base::SingleThreadTaskRunner>& io_task_runner);
+
+  VaapiMjpegDecodeAccelerator(const VaapiMjpegDecodeAccelerator&) = delete;
+  VaapiMjpegDecodeAccelerator& operator=(const VaapiMjpegDecodeAccelerator&) =
+      delete;
+
   ~VaapiMjpegDecodeAccelerator() override;
 
   // chromeos_camera::MjpegDecodeAccelerator implementation.
-  bool Initialize(
-      chromeos_camera::MjpegDecodeAccelerator::Client* client) override;
+  void InitializeAsync(
+      chromeos_camera::MjpegDecodeAccelerator::Client* client,
+      chromeos_camera::MjpegDecodeAccelerator::InitCB init_cb) override;
   void Decode(BitstreamBuffer bitstream_buffer,
               scoped_refptr<VideoFrame> video_frame) override;
   void Decode(int32_t task_id,
@@ -62,6 +62,7 @@ class MEDIA_GPU_EXPORT VaapiMjpegDecodeAccelerator
   bool IsSupported() override;
 
  private:
+  class Decoder;
   // Notifies the client that an error has occurred and decoding cannot
   // continue. The client is notified on the |task_runner_|, i.e., the thread in
   // which |*this| was created.
@@ -71,59 +72,16 @@ class MEDIA_GPU_EXPORT VaapiMjpegDecodeAccelerator
   // |task_runner_|, i.e., the thread in which |*this| was created.
   void VideoFrameReady(int32_t task_id);
 
-  // Processes one decode request.
-  void DecodeFromShmTask(int32_t task_id,
-                         std::unique_ptr<UnalignedSharedMemory> shm,
-                         scoped_refptr<VideoFrame> dst_frame);
-  void DecodeFromDmaBufTask(int32_t task_id,
-                            base::ScopedFD src_dmabuf_fd,
-                            size_t src_size,
-                            off_t src_offset,
-                            scoped_refptr<VideoFrame> dst_frame);
-
-  // Decodes the JPEG in |src_image| into |dst_frame| and notifies the client
-  // when finished or when an error occurs.
-  void DecodeImpl(int32_t task_id,
-                  base::span<const uint8_t> src_image,
-                  scoped_refptr<VideoFrame> dst_frame);
-
-  // Puts contents of |surface| into given |video_frame| using VA-API Video
-  // Processing Pipeline (VPP), and passes the |input_buffer_id| of the
-  // resulting picture to client for output.
-  bool OutputPictureVppOnTaskRunner(const ScopedVASurface* surface,
-                                    int32_t input_buffer_id,
-                                    scoped_refptr<VideoFrame> video_frame);
-
-  // Puts contents of |image| into given |video_frame| using libyuv, and passes
-  // the |input_buffer_id| of the resulting picture to client for output.
-  bool OutputPictureLibYuvOnTaskRunner(std::unique_ptr<ScopedVAImage> image,
-                                       int32_t input_buffer_id,
-                                       scoped_refptr<VideoFrame> video_frame);
-
-  // ChildThread's task runner.
-  const scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
   // GPU IO task runner.
   const scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
 
   // The client of this class.
   chromeos_camera::MjpegDecodeAccelerator::Client* client_;
 
-  VaapiJpegDecoder decoder_;
+  std::unique_ptr<Decoder> decoder_;
 
-  // VaapiWrapper for VPP context. This is used to convert decoded data into
-  // client buffer.
-  scoped_refptr<VaapiWrapper> vpp_vaapi_wrapper_;
-
-  // For creating GpuMemoryBuffer from client DMA buffer that can be mapped for
-  // software access.
-  std::unique_ptr<gpu::GpuMemoryBufferSupport> gpu_memory_buffer_support_;
-
-  base::Thread decoder_thread_;
-  // Use this to post tasks to |decoder_thread_| instead of
-  // |decoder_thread_.task_runner()| because the latter will be NULL once
-  // |decoder_thread_.Stop()| returns.
-  scoped_refptr<base::SingleThreadTaskRunner> decoder_task_runner_;
+  // The task runner on which the functions of |decoder_| are executed.
+  scoped_refptr<base::SequencedTaskRunner> decoder_task_runner_;
 
   // WeakPtr factory for use in posting tasks from |decoder_task_runner_| back
   // to |task_runner_|.  Since |decoder_thread_| is a fully owned member of
@@ -131,8 +89,6 @@ class MEDIA_GPU_EXPORT VaapiMjpegDecodeAccelerator
   // posted from the |decoder_task_runner_| to |task_runner_| should use a
   // WeakPtr (obtained via weak_this_factory_.GetWeakPtr()).
   base::WeakPtrFactory<VaapiMjpegDecodeAccelerator> weak_this_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(VaapiMjpegDecodeAccelerator);
 };
 
 }  // namespace media

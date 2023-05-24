@@ -1,9 +1,14 @@
 # File System Access API
 
 This directory contains part of the browser side implementation of the
-native file system API.
+File System Access API.
 
-See https://wicg.github.io/file-system-access/ for the spec for this API.
+This specification for API is split across two repositories:
+- https://github.com/whatwg/fs/, which specifies features available within the
+  Origin Private File System, including the `SyncAccessHandle` API, and
+- https://wicg.github.io/file-system-access/, which additionally specifies
+  features allowing users to interact with their local file system, primarily
+  via the `show*Picker()` APIs.
 
 ## Related directories
 

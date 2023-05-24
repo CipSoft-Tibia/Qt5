@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,6 +26,14 @@ bool IsMouseOrTouchpadPresent() {
   for (const ui::InputDevice& device : device_data_manager->GetMouseDevices()) {
     if (device.enabled)
       return true;
+  }
+  // We didn't find a mouse then let's look if there is a pointing stick
+  // connected.
+  for (const ui::InputDevice& device :
+       device_data_manager->GetPointingStickDevices()) {
+    if (device.enabled) {
+      return true;
+    }
   }
   return false;
 }

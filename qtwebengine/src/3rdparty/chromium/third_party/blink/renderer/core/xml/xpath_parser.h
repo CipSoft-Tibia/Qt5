@@ -27,8 +27,6 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_XML_XPATH_PARSER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_XML_XPATH_PARSER_H_
 
-#include <memory>
-#include "base/macros.h"
 #include "third_party/blink/renderer/core/xml/xpath_predicate.h"
 #include "third_party/blink/renderer/core/xml/xpath_step.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -36,7 +34,7 @@
 namespace blink {
 
 class ExceptionState;
-class XPathNSResolver;
+class V8XPathNSResolver;
 
 namespace xpath {
 
@@ -66,15 +64,17 @@ class Parser {
 
  public:
   Parser();
+  Parser(const Parser&) = delete;
+  Parser& operator=(const Parser&) = delete;
   ~Parser();
 
-  XPathNSResolver* Resolver() const { return resolver_; }
+  V8XPathNSResolver* Resolver() const { return resolver_; }
   bool ExpandQName(const String& q_name,
                    AtomicString& local_name,
                    AtomicString& namespace_uri);
 
   Expression* ParseStatement(const String& statement,
-                             XPathNSResolver*,
+                             V8XPathNSResolver*,
                              ExceptionState&);
 
   static Parser* Current() { return current_parser_; }
@@ -109,13 +109,11 @@ class Parser {
   unsigned next_pos_;
   String data_;
   int last_token_type_;
-  XPathNSResolver* resolver_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(Parser);
+  V8XPathNSResolver* resolver_ = nullptr;
 };
 
 }  // namespace xpath
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_XML_XPATH_PARSER_H_

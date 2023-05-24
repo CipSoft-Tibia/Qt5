@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -54,12 +54,13 @@ std::tuple<unsigned, int> AudioDelayDSPKernel::ProcessARateVector(
   const int buffer_length = buffer_.size();
   const float* buffer = buffer_.Data();
 
-  const float sample_rate = this->SampleRate();
+  const float sample_rate = SampleRate();
   const float* delay_times = delay_times_.Data();
 
   int w_index = write_index_;
 
   const float32x4_t v_sample_rate = vdupq_n_f32(sample_rate);
+  const float32x4_t v_all_zeros = vdupq_n_f32(0);
 
   // The buffer length as a float and as an int so we don't need to constant
   // convert from one to the other.
@@ -87,7 +88,8 @@ std::tuple<unsigned, int> AudioDelayDSPKernel::ProcessARateVector(
   int k = 0;
 
   for (int n = 0; n < number_of_loops; ++n, k += 4) {
-    const float32x4_t v_delay_time = vld1q_f32(delay_times + k);
+    const float32x4_t v_delay_time = vmaxq_f32(vld1q_f32(delay_times + k),
+                                               v_all_zeros);
     const float32x4_t v_desired_delay_frames =
         vmulq_f32(v_delay_time, v_sample_rate);
 
@@ -100,7 +102,8 @@ std::tuple<unsigned, int> AudioDelayDSPKernel::ProcessARateVector(
         WrapPositionVector(v_read_position, v_buffer_length_float);
 
     // Get indices into the buffer for the samples we need for interpolation.
-    const int32x4_t v_read_index1 = vcvtq_s32_f32(v_read_position);
+    const int32x4_t v_read_index1 = WrapIndexVector(
+        vcvtq_s32_f32(v_read_position), v_buffer_length_int);
     const int32x4_t v_read_index2 = WrapIndexVector(
         vaddq_s32(v_read_index1, vdupq_n_s32(1)), v_buffer_length_int);
 

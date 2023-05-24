@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,6 +33,11 @@ class EVENTS_DEVICES_EXPORT DeviceHotplugEventObserver {
   // On a hotplug event this is called with the list of available mice. The set
   // of mice may not have changed.
   virtual void OnMouseDevicesUpdated(
+      const std::vector<InputDevice>& devices) = 0;
+
+  // On a hotplug event this is called with the list of available pointing
+  // sticks. The set of pointing sticks may not have changed.
+  virtual void OnPointingStickDevicesUpdated(
       const std::vector<InputDevice>& devices) = 0;
 
   // On a hotplug event this is called with the list of available touchpads. The

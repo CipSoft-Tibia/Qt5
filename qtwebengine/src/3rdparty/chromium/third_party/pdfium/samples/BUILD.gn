@@ -1,4 +1,4 @@
-# Copyright 2014 PDFium Authors. All rights reserved.
+# Copyright 2014 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,15 +13,10 @@ group("samples") {
 config("pdfium_samples_config") {
   cflags = []
   ldflags = []
-  defines = [
-    "PNG_PREFIX",
-    "PNG_USE_READ_MACROS",
-  ]
+  defines = []
   include_dirs = [ ".." ]
   if (pdf_use_skia) {
     defines += [ "PDF_ENABLE_SKIA" ]
-  } else if (pdf_use_skia_paths) {
-    defines += [ "PDF_ENABLE_SKIA_PATHS" ]
   }
   if (is_asan) {
     defines += [ "PDF_ENABLE_ASAN" ]
@@ -29,6 +24,9 @@ config("pdfium_samples_config") {
 
   if (enable_callgrind) {
     defines += [ "ENABLE_CALLGRIND" ]
+  }
+  if (build_with_chromium) {
+    defines += [ "BUILD_WITH_CHROMIUM" ]
   }
 }
 
@@ -65,7 +63,14 @@ executable("pdfium_test") {
     include_dirs = [ "//v8" ]
     configs += [ "//v8:external_startup_data" ]
   }
-  if (pdf_use_skia || pdf_use_skia_paths) {
+  if (pdf_use_skia) {
     deps += [ "//skia" ]
+    if (build_with_chromium) {
+      sources += [
+        "chromium_support/discardable_memory_allocator.cc",
+        "chromium_support/discardable_memory_allocator.h",
+      ]
+      deps += [ "//base/test:test_support" ]
+    }
   }
 }

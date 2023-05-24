@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,58 +7,58 @@
 
 #include "base/component_export.h"
 #include "base/feature_list.h"
-#include "base/metrics/field_trial_params.h"
 #include "build/build_config.h"
-
-namespace url {
-class Origin;
-}
+#include "build/chromeos_buildflags.h"
 
 namespace device {
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 // Controls whether on Windows, U2F/CTAP2 requests are forwarded to the
 // native WebAuthentication API, where available.
-COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthUseNativeWinApi;
-#endif  // defined(OS_WIN)
+COMPONENT_EXPORT(DEVICE_FIDO) BASE_DECLARE_FEATURE(kWebAuthUseNativeWinApi);
+#endif  // BUILDFLAG(IS_WIN)
 
-// Enable biometric enrollment in the security keys settings UI.
+// Support the caBLE extension in assertion requests from any origin.
 COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthBiometricEnrollment;
+BASE_DECLARE_FEATURE(kWebAuthCableExtensionAnywhere);
 
-// Enable using a phone as a generic security key.
-COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthPhoneSupport;
-
-// Enable WebAuthn GetAssertion calls in cross-origin iframes if allowed by
-// Feature Policy.
-COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthGetAssertionFeaturePolicy;
-
-#if defined(OS_CHROMEOS) || defined(OS_LINUX)
-// Use a low connection latency BLE mode when connecting to caBLE
-// authenticators.
-COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthCableLowLatency;
-#endif  // defined(OS_CHROMEOS) || defined(OS_LINUX)
-
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 // Enable a ChromeOS platform authenticator
 COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthCrosPlatformAuthenticator;
-#endif  // defined(OS_CHROMEOS)
+BASE_DECLARE_FEATURE(kWebAuthCrosPlatformAuthenticator);
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
+// Feature flag for the Google-internal
+// `WebAuthenticationAllowGoogleCorpRemoteRequestProxying` enterprise policy.
 COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::Feature kWebAuthAttestationBlockList;
-COMPONENT_EXPORT(DEVICE_FIDO)
-extern const base::FeatureParam<std::string> kWebAuthAttestationBlockedDomains;
+BASE_DECLARE_FEATURE(kWebAuthnGoogleCorpRemoteDesktopClientPrivilege);
 
-// DoesMatchWebAuthAttestationBlockedDomains returns true if the
-// |kWebAuthAttestationBlocked| feature is enabled and |origin| is listed
-// in |kWebAuthAttestationBlockedDomains|.
+// Enable some experimental UI changes
+COMPONENT_EXPORT(DEVICE_FIDO) BASE_DECLARE_FEATURE(kWebAuthPasskeysUI);
+
+// Don't send empty displayName values to security keys when creating
+// credentials.
+BASE_DECLARE_FEATURE(kWebAuthnNoEmptyDisplayNameCBOR);
+
+// Include an indication for non-discoverable makeCredential calls in caBLE QR
+// codes.
+BASE_DECLARE_FEATURE(kWebAuthnNonDiscoverableMakeCredentialQRFlag);
+
+// Allow WebAuthn for sites with TLS errors.
 COMPONENT_EXPORT(DEVICE_FIDO)
-bool DoesMatchWebAuthAttestationBlockedDomains(const url::Origin& origin);
+BASE_DECLARE_FEATURE(kDisableWebAuthnWithBrokenCerts);
+
+// Enable a special-case dialog for when there are no internal credentials.
+COMPONENT_EXPORT(DEVICE_FIDO)
+BASE_DECLARE_FEATURE(kWebAuthnNoPasskeysError);
+
+// Set credProtect=3 when rk=required and uv=preferred.
+COMPONENT_EXPORT(DEVICE_FIDO)
+BASE_DECLARE_FEATURE(kWebAuthnCredProtectThree);
+
+// Advertise support for the `prf` extension as a hybrid authenticator.
+COMPONENT_EXPORT(DEVICE_FIDO)
+BASE_DECLARE_FEATURE(kWebAuthnPRFAsAuthenticator);
 
 }  // namespace device
 

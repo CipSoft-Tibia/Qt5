@@ -1,12 +1,16 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_ACCESSIBILITY_AX_ACTION_DATA_H_
 #define UI_ACCESSIBILITY_AX_ACTION_DATA_H_
 
+#include <string>
+#include <utility>
+
+#include "ui/accessibility/ax_base_export.h"
 #include "ui/accessibility/ax_enums.mojom-forward.h"
-#include "ui/accessibility/ax_export.h"
+#include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/ax_tree_id.h"
 #include "ui/gfx/geometry/rect.h"
 
@@ -14,7 +18,7 @@ namespace ui {
 
 // A compact representation of an accessibility action and the arguments
 // associated with that action.
-struct AX_EXPORT AXActionData {
+struct AX_BASE_EXPORT AXActionData {
   AXActionData();
   AXActionData(const AXActionData& other);
   ~AXActionData();
@@ -58,16 +62,22 @@ struct AX_EXPORT AXActionData {
   int32_t end_index = -1;
 
   // For custom action.
-  int custom_action_id = -1;
+  AXNodeID custom_action_id = kInvalidAXNodeID;
 
   // The target rect for the action.
   gfx::Rect target_rect;
 
-  // The target point for the action.
+  // The target point for the action in screen coordinates.
   gfx::Point target_point;
 
   // The new value for a node, for the SET_VALUE action. UTF-8 encoded.
   std::string value;
+
+  // The row and column to move to. Used with the
+  // ax::mojom::Action::kScrollToPositionAtRowColumn action.
+  //
+  // Supported by Android.
+  std::pair<int, int> row_column;
 
   // The event to fire in response to a HIT_TEST action.
   ax::mojom::Event hit_test_event_to_fire;

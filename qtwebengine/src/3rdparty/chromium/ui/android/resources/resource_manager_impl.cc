@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@
 #include "base/android/jni_string.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/memory_usage_estimator.h"
 #include "base/trace_event/process_memory_dump.h"
@@ -27,6 +27,7 @@
 #include "ui/android/resources/ui_resource_provider.h"
 #include "ui/android/ui_android_jni_headers/ResourceManager_jni.h"
 #include "ui/android/window_android.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/gfx/android/java_bitmap.h"
 #include "ui/gfx/geometry/rect.h"
 
@@ -75,7 +76,7 @@ ResourceManagerImpl::ResourceManagerImpl(gfx::NativeWindow native_window)
   DCHECK(!java_obj_.is_null());
   base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
       this, "android::ResourceManagerImpl",
-      base::ThreadTaskRunnerHandle::Get());
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 }
 
 ResourceManagerImpl::~ResourceManagerImpl() {
@@ -118,6 +119,10 @@ Resource* ResourceManagerImpl::GetResource(AndroidResourceType res_type,
 }
 
 void ResourceManagerImpl::RemoveUnusedTints() {
+  if (base::FeatureList::IsEnabled(features::kKeepAndroidTintedResources)) {
+    return;
+  }
+
   // Iterate over the currently cached tints and remove ones that were not
   // used as defined in |used_tints|.
   for (auto it = tinted_resources_.cbegin(); it != tinted_resources_.cend();) {
@@ -129,6 +134,10 @@ void ResourceManagerImpl::RemoveUnusedTints() {
   }
 }
 
+void ResourceManagerImpl::MarkTintNonDiscardable(SkColor tint_color) {
+  used_tints_.insert(tint_color);
+}
+
 void ResourceManagerImpl::OnFrameUpdatesFinished() {
   RemoveUnusedTints();
   used_tints_.clear();
@@ -136,6 +145,13 @@ void ResourceManagerImpl::OnFrameUpdatesFinished() {
 
 Resource* ResourceManagerImpl::GetStaticResourceWithTint(int res_id,
                                                          SkColor tint_color) {
+  return GetStaticResourceWithTint(res_id, tint_color, false);
+}
+
+Resource* ResourceManagerImpl::GetStaticResourceWithTint(
+    int res_id,
+    SkColor tint_color,
+    bool preserve_color_alpha) {
   if (tinted_resources_.find(tint_color) == tinted_resources_.end()) {
     tinted_resources_[tint_color] = std::make_unique<ResourceMap>();
   }
@@ -162,13 +178,16 @@ Resource* ResourceManagerImpl::GetStaticResourceWithTint(int res_id,
   SkCanvas canvas(tinted_bitmap);
   canvas.clear(SK_ColorTRANSPARENT);
 
-  // Build a color filter to use on the base resource. This filter multiplies
-  // the RGB components by the components of the new color but retains the
-  // alpha of the original image.
+  // Build a color filter to use on the base resource. This filter ignores
+  // the original image's RGB components, instead using the components of the
+  // new color. The alpha of the original image will be conditionally preserved
+  // based on preserve_color_alpha.
+  float alpha_multiplier =
+      preserve_color_alpha ? SkColorGetA(tint_color) * (1.0f / 255) : 1;
   float color_matrix[20] = {0, 0, 0, 0, SkColorGetR(tint_color) * (1.0f / 255),
                             0, 0, 0, 0, SkColorGetG(tint_color) * (1.0f / 255),
                             0, 0, 0, 0, SkColorGetB(tint_color) * (1.0f / 255),
-                            0, 0, 0, 1, 0};
+                            0, 0, 0, alpha_multiplier, 0};
   SkPaint color_filter;
   color_filter.setColorFilter(SkColorFilters::Matrix(color_matrix));
 

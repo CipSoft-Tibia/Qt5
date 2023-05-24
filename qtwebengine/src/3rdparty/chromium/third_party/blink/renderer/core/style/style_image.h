@@ -26,13 +26,16 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
+
+namespace gfx {
+class SizeF;
+}
 
 namespace blink {
 
 class CSSValue;
-class FloatSize;
 class Image;
 class ImageResourceContent;
 class SVGImage;
@@ -50,6 +53,7 @@ class CORE_EXPORT StyleImage : public GarbageCollected<StyleImage> {
   virtual ~StyleImage() = default;
 
   bool operator==(const StyleImage& other) const { return IsEqual(other); }
+  bool operator!=(const StyleImage& other) const { return !(*this == other); }
 
   // Returns a CSSValue representing the origin <image> value. May not be the
   // actual CSSValue from which this StyleImage was originally created if the
@@ -69,11 +73,19 @@ class CORE_EXPORT StyleImage : public GarbageCollected<StyleImage> {
   // All underlying resources this <image> references has finished loading.
   virtual bool IsLoaded() const { return true; }
 
+  // At least one underlying resource is still loading.
+  virtual bool IsLoading() const { return false; }
+
   // Any underlying resources this <image> references failed to load.
   virtual bool ErrorOccurred() const { return false; }
 
+  // Is the <image> considered same-origin? Can only be called if IsLoaded()
+  // returns true. |failing_url| is set to the (potentially formatted) URL of
+  // the first non-same-origin <image>.
+  virtual bool IsAccessAllowed(String& failing_url) const = 0;
+
   // Determine the concrete object size of this <image>, scaled by multiplier,
-  // using the specified default object size. Return value as a FloatSize
+  // using the specified default object size. Return value as a gfx::SizeF
   // because we want integer sizes to remain integers when zoomed and then
   // unzoomed. That is, (size * multiplier) / multiplier == size.
   //
@@ -89,10 +101,9 @@ class CORE_EXPORT StyleImage : public GarbageCollected<StyleImage> {
   //
   // The size will respect the image orientation if requested and if the image
   // supports it.
-  virtual FloatSize ImageSize(const Document&,
-                              float multiplier,
-                              const FloatSize& default_object_size,
-                              RespectImageOrientationEnum) const = 0;
+  virtual gfx::SizeF ImageSize(float multiplier,
+                               const gfx::SizeF& default_object_size,
+                               RespectImageOrientationEnum) const = 0;
 
   // The <image> has intrinsic dimensions.
   //
@@ -113,10 +124,11 @@ class CORE_EXPORT StyleImage : public GarbageCollected<StyleImage> {
   // Note that the |target_size| is in the effective zoom level of the
   // computed style, i.e if the style has an effective zoom level of 1.0 the
   // |target_size| is not zoomed.
-  virtual scoped_refptr<Image> GetImage(const ImageResourceObserver&,
-                                        const Document&,
-                                        const ComputedStyle&,
-                                        const FloatSize& target_size) const = 0;
+  virtual scoped_refptr<Image> GetImage(
+      const ImageResourceObserver&,
+      const Document&,
+      const ComputedStyle&,
+      const gfx::SizeF& target_size) const = 0;
 
   // Opaque handle representing the underlying value of this <image>.
   virtual WrappedImagePtr Data() const = 0;
@@ -133,13 +145,22 @@ class CORE_EXPORT StyleImage : public GarbageCollected<StyleImage> {
   // underlying ImageResourceContent, or otherwise nullptr.
   virtual ImageResourceContent* CachedImage() const { return nullptr; }
 
+  // Correct the image orientation preference for potentially cross-origin
+  // content.
+  virtual RespectImageOrientationEnum ForceOrientationIfNecessary(
+      RespectImageOrientationEnum default_orientation) const {
+    return default_orientation;
+  }
+
   ALWAYS_INLINE bool IsImageResource() const { return is_image_resource_; }
   ALWAYS_INLINE bool IsPendingImage() const { return is_pending_image_; }
   ALWAYS_INLINE bool IsGeneratedImage() const { return is_generated_image_; }
+  ALWAYS_INLINE bool IsContentful() const { return !is_generated_image_; }
   ALWAYS_INLINE bool IsImageResourceSet() const {
     return is_image_resource_set_;
   }
   ALWAYS_INLINE bool IsPaintImage() const { return is_paint_image_; }
+  ALWAYS_INLINE bool IsCrossfadeImage() const { return is_crossfade_; }
 
   bool IsLazyloadPossiblyDeferred() const {
     return is_lazyload_possibly_deferred_;
@@ -153,22 +174,29 @@ class CORE_EXPORT StyleImage : public GarbageCollected<StyleImage> {
         is_pending_image_(false),
         is_generated_image_(false),
         is_image_resource_set_(false),
+        is_crossfade_(false),
         is_paint_image_(false),
         is_lazyload_possibly_deferred_(false) {}
   bool is_image_resource_ : 1;
   bool is_pending_image_ : 1;
   bool is_generated_image_ : 1;
   bool is_image_resource_set_ : 1;
+  bool is_crossfade_ : 1;
   bool is_paint_image_ : 1;
   bool is_lazyload_possibly_deferred_ : 1;
 
   virtual bool IsEqual(const StyleImage&) const = 0;
 
-  FloatSize ApplyZoom(const FloatSize&, float multiplier) const;
-  FloatSize ImageSizeForSVGImage(SVGImage*,
-                                 float multiplier,
-                                 const FloatSize& default_object_size) const;
+  static gfx::SizeF ApplyZoom(const gfx::SizeF&, float multiplier);
+  static gfx::SizeF ImageSizeForSVGImage(const SVGImage&,
+                                         float multiplier,
+                                         const gfx::SizeF& default_object_size);
+  static bool HasIntrinsicDimensionsForSVGImage(const SVGImage&);
 };
 
+inline bool EqualResolutions(const float res1, const float res2) {
+  return std::abs(res1 - res2) < std::numeric_limits<float>::epsilon();
+}
+
 }  // namespace blink
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_STYLE_IMAGE_H_

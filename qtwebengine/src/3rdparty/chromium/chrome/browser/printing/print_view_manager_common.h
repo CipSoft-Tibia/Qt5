@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,8 +33,8 @@ void StartBasicPrint(content::WebContents* contents);
 content::RenderFrameHost* GetFrameToPrint(content::WebContents* contents);
 
 // If we have a single full-page embedded mime handler view guest, print the
-// guest's WebContents instead.
-content::WebContents* GetWebContentsToUse(content::WebContents* contents);
+// guest view instead.
+content::RenderFrameHost* GetFullPagePlugin(content::WebContents* contents);
 
 }  // namespace printing
 

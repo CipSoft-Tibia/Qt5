@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,6 @@ interface IBrowserClient {
   void onActiveTabChanged(in int activeTabId) = 0;
   void onTabAdded(in ITab tab) = 1;
   void onTabRemoved(in int tabId) = 2;
-
-  // Added in 87.
   IRemoteFragment createMediaRouteDialogFragment() = 3;
-  void onRestoreCompleted() = 5;
+  void onTabInitializationCompleted() = 5;
 }

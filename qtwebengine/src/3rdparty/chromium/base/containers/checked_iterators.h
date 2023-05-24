@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,8 @@
 
 #include "base/check_op.h"
 #include "base/containers/util.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "build/build_config.h"
 
 namespace base {
 
@@ -22,82 +24,30 @@ class CheckedContiguousIterator {
   using pointer = T*;
   using reference = T&;
   using iterator_category = std::random_access_iterator_tag;
+#if defined(__cpp_lib_ranges)
+  using iterator_concept = std::contiguous_iterator_tag;
+#endif
 
   // Required for converting constructor below.
   template <typename U>
   friend class CheckedContiguousIterator;
 
+  // Required for certain libc++ algorithm optimizations that are not available
+  // for NaCl.
+  template <typename Ptr>
+  friend struct std::pointer_traits;
+
   constexpr CheckedContiguousIterator() = default;
-
-#if defined(_LIBCPP_VERSION)
-  // The following using declaration, single argument implicit constructor and
-  // friended `__unwrap_iter` overload are required to use an optimized code
-  // path when using a CheckedContiguousIterator with libc++ algorithms such as
-  // std::copy(first, last, result), std::copy_backward(first, last, result),
-  // std::move(first, last, result) and std::move_backward(first, last, result).
-  //
-  // Each of these algorithms dispatches to a std::memmove if this is safe to do
-  // so, i.e. when all of `first`, `last` and `result` are iterators over
-  // contiguous storage of the same type modulo const qualifiers.
-  //
-  // libc++ implements this for its contiguous iterators by invoking the
-  // unqualified __unwrap_iter, which returns the underlying pointer for
-  // iterators over std::vector and std::string, and returns the original
-  // iterator otherwise.
-  //
-  // Thus in order to opt into this optimization for CCI, we need to provide our
-  // own __unwrap_iter, returning the underlying raw pointer if it is safe to do
-  // so.
-  //
-  // Furthermore, considering that std::copy is implemented as follows, the
-  // return type of __unwrap_iter(CCI) needs to be convertible to CCI, which is
-  // why an appropriate implicit single argument constructor is provided for the
-  // optimized case:
-  //
-  //     template <class InIter, class OutIter>
-  //     OutIter copy(InIter first, InIter last, OutIter result) {
-  //       return __copy(__unwrap_iter(first), __unwrap_iter(last),
-  //                     __unwrap_iter(result));
-  //     }
-  //
-  //     Unoptimized __copy() signature:
-  //     template <class InIter, class OutIter>
-  //     OutIter __copy(InIter first, InIter last, OutIter result);
-  //
-  //     Optimized __copy() signature:
-  //     template <class T, class U>
-  //     U* __copy(T* first, T* last, U* result);
-  //
-  // Finally, this single argument constructor sets all internal fields to the
-  // passed in pointer. This allows the resulting CCI to be used in other
-  // optimized calls to std::copy (or std::move, std::copy_backward,
-  // std::move_backward). However, it should not be used otherwise, since
-  // invoking any of its public API will result in a CHECK failure. This also
-  // means that callers should never use the single argument constructor
-  // directly.
-  template <typename U>
-  using PtrIfSafeToMemmove = std::enable_if_t<
-      std::is_trivially_copy_assignable<std::remove_const_t<U>>::value,
-      U*>;
-
-  template <int&... ExplicitArgumentBarrier, typename U = T>
-  constexpr CheckedContiguousIterator(PtrIfSafeToMemmove<U> ptr)
-      : start_(ptr), current_(ptr), end_(ptr) {}
-
-  template <int&... ExplicitArgumentBarrier, typename U = T>
-  friend constexpr PtrIfSafeToMemmove<U> __unwrap_iter(
-      CheckedContiguousIterator iter) {
-    return iter.current_;
-  }
-#endif
 
   constexpr CheckedContiguousIterator(T* start, const T* end)
       : CheckedContiguousIterator(start, start, end) {}
+
   constexpr CheckedContiguousIterator(const T* start, T* current, const T* end)
       : start_(start), current_(current), end_(end) {
     CHECK_LE(start, current);
     CHECK_LE(current, end);
   }
+
   constexpr CheckedContiguousIterator(const CheckedContiguousIterator& other) =
       default;
 
@@ -198,6 +148,12 @@ class CheckedContiguousIterator {
     return it;
   }
 
+  constexpr friend CheckedContiguousIterator operator+(
+      difference_type lhs,
+      const CheckedContiguousIterator& rhs) {
+    return rhs + lhs;
+  }
+
   constexpr CheckedContiguousIterator& operator-=(difference_type rhs) {
     if (rhs < 0) {
       CHECK_LE(-rhs, end_ - current_);
@@ -237,10 +193,10 @@ class CheckedContiguousIterator {
     return current_[rhs];
   }
 
-  static bool IsRangeMoveSafe(const CheckedContiguousIterator& from_begin,
-                              const CheckedContiguousIterator& from_end,
-                              const CheckedContiguousIterator& to)
-      WARN_UNUSED_RESULT {
+  [[nodiscard]] static bool IsRangeMoveSafe(
+      const CheckedContiguousIterator& from_begin,
+      const CheckedContiguousIterator& from_end,
+      const CheckedContiguousIterator& to) {
     if (from_end < from_begin)
       return false;
     const auto from_begin_uintptr = get_uintptr(from_begin.current_);
@@ -259,14 +215,85 @@ class CheckedContiguousIterator {
     CHECK_EQ(end_, other.end_);
   }
 
-  const T* start_ = nullptr;
-  T* current_ = nullptr;
-  const T* end_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union, #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION const T* start_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union, #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION T* current_ = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union, #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION const T* end_ = nullptr;
 };
 
 template <typename T>
 using CheckedContiguousConstIterator = CheckedContiguousIterator<const T>;
 
 }  // namespace base
+
+// Specialize both std::__is_cpp17_contiguous_iterator and std::pointer_traits
+// for CCI in case we compile with libc++ outside of NaCl. The former is
+// required to enable certain algorithm optimizations (e.g. std::copy can be a
+// simple std::memmove under certain circumstances), and is a precursor to
+// C++20's std::contiguous_iterator concept [1]. Once we actually use C++20 it
+// will be enough to add `using iterator_concept = std::contiguous_iterator_tag`
+// to the iterator class [2], and we can get rid of this non-standard
+// specialization.
+//
+// The latter is required to obtain the underlying raw pointer without resulting
+// in CHECK failures. The important bit is the `to_address(pointer)` overload,
+// which is the standard blessed way to customize `std::to_address(pointer)` in
+// C++20 [3].
+//
+// [1] https://wg21.link/iterator.concept.contiguous
+// [2] https://wg21.link/std.iterator.tags
+// [3] https://wg21.link/pointer.traits.optmem
+
+#if defined(_LIBCPP_VERSION)
+
+// TODO(crbug.com/1284275): Remove when C++20 is on by default, as the use
+// of `iterator_concept` above should suffice.
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+// TODO(crbug.com/1449299): https://reviews.llvm.org/D150801 renamed this from
+// `__is_cpp17_contiguous_iterator` to `__libcpp_is_contiguous_iterator`. Clean
+// up the old spelling after libc++ rolls.
+template <typename T>
+struct __is_cpp17_contiguous_iterator;
+template <typename T>
+struct __is_cpp17_contiguous_iterator<::base::CheckedContiguousIterator<T>>
+    : true_type {};
+
+template <typename T>
+struct __libcpp_is_contiguous_iterator;
+template <typename T>
+struct __libcpp_is_contiguous_iterator<::base::CheckedContiguousIterator<T>>
+    : true_type {};
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif
+
+namespace std {
+
+template <typename T>
+struct pointer_traits<::base::CheckedContiguousIterator<T>> {
+  using pointer = ::base::CheckedContiguousIterator<T>;
+  using element_type = T;
+  using difference_type = ptrdiff_t;
+
+  template <typename U>
+  using rebind = ::base::CheckedContiguousIterator<U>;
+
+  static constexpr pointer pointer_to(element_type& r) noexcept {
+    return pointer(&r, &r);
+  }
+
+  static constexpr element_type* to_address(pointer p) noexcept {
+    return p.current_;
+  }
+};
+
+}  // namespace std
 
 #endif  // BASE_CONTAINERS_CHECKED_ITERATORS_H_

@@ -1,5 +1,4 @@
-
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -93,6 +92,12 @@ struct StructWithHoleV2 {
   int32 v1 = 1;
   int64 v2 = 2;
   int32 v3 = 3;
+};
+
+interface DefaultsSender {
+  SendBar(Bar bar);
+  SendFoo(Foo foo);
+  SendDefaultsTest(DefaultsTest defaults);
 };
 
 interface Service {

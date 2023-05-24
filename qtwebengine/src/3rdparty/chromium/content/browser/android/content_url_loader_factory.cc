@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,16 +9,15 @@
 #include <vector>
 
 #include "base/android/content_uri_utils.h"
-#include "base/bind.h"
+#include "base/command_line.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/macros.h"
-#include "base/strings/stringprintf.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
-#include "content/browser/web_package/web_bundle_utils.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/file_url_loader.h"
 #include "content/public/common/content_client.h"
@@ -111,12 +110,15 @@ class ContentURLLoader : public network::mojom::URLLoader {
                               std::move(client_remote));
   }
 
+  ContentURLLoader(const ContentURLLoader&) = delete;
+  ContentURLLoader& operator=(const ContentURLLoader&) = delete;
+
   // network::mojom::URLLoader:
   void FollowRedirect(
       const std::vector<std::string>& removed_headers,
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
-      const base::Optional<GURL>& new_url) override {}
+      const absl::optional<GURL>& new_url) override {}
   void SetPriority(net::RequestPriority priority,
                    int32_t intra_priority_value) override {}
   void PauseReadingBodyFromNet() override {}
@@ -177,9 +179,12 @@ class ContentURLLoader : public network::mojom::URLLoader {
                                  net::ERR_REQUEST_RANGE_NOT_SATISFIABLE);
     }
 
-    mojo::DataPipe pipe(kDefaultContentUrlPipeSize);
-    if (!pipe.consumer_handle.is_valid())
+    mojo::ScopedDataPipeProducerHandle producer_handle;
+    mojo::ScopedDataPipeConsumerHandle consumer_handle;
+    if (mojo::CreateDataPipe(kDefaultContentUrlPipeSize, producer_handle,
+                             consumer_handle) != MOJO_RESULT_OK) {
       return CompleteWithFailure(std::move(client), net::ERR_FAILED);
+    }
 
     base::File file = base::OpenContentUriForRead(path);
     if (!file.IsValid()) {
@@ -192,31 +197,6 @@ class ContentURLLoader : public network::mojom::URLLoader {
 
     // Set the mimetype of the response.
     GetMimeType(request, path, &head->mime_type);
-    if (head->mime_type.empty() ||
-        head->mime_type == "application/octet-stream") {
-      // When a Web Bundle file is downloaded with
-      // "content-type: application/webbundle;v=b1" header, Chrome saves it as
-      // "application/webbundle" MIME type. The MIME type is stored to Android's
-      // DownloadManager. If the file is opened from a URI which is under
-      // DownloadManager's control and the ContentProvider can get the MIME
-      // type, |head.mime_type| is set to "application/webbundle". But otherwise
-      // ContentResolver.getType() returns null or the default type
-      // [1]"application/octet-stream" even if the file extension is ".wbn".
-      // (eg: opening the file from "Internal Storage")
-      // This is because the Media type of Web Bundles isn't registered
-      // to the IANA registry (https://www.iana.org/assignments/media-types/),
-      // and it is not listed in the mime.types files [2][3] which was referd by
-      // MimeTypeMap.getMimeTypeFromExtension().
-      // So we set the MIME type if the file extension is ".wbn" by calling
-      // web_bundle_utils::GetWebBundleFileMimeTypeFromFile().
-      // [1]
-      // https://android.googlesource.com/platform/frameworks/base/+/1b817f6/core/java/android/content/ContentResolver.java#481
-      // [2] https://android.googlesource.com/platform/external/mime-support/
-      // [3]
-      // https://android.googlesource.com/platform/libcore/+/master/luni/src/main/java/libcore/net/android.mime.types
-      web_bundle_utils::GetWebBundleFileMimeTypeFromFile(path,
-                                                         &head->mime_type);
-    }
 
     if (!head->mime_type.empty()) {
       head->headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
@@ -224,8 +204,8 @@ class ContentURLLoader : public network::mojom::URLLoader {
                                head->mime_type);
     }
 
-    client->OnReceiveResponse(std::move(head));
-    client->OnStartLoadingResponseBody(std::move(pipe.consumer_handle));
+    client->OnReceiveResponse(std::move(head), std::move(consumer_handle),
+                              absl::nullopt);
     client_ = std::move(client);
 
     if (total_bytes_to_send == 0) {
@@ -241,8 +221,8 @@ class ContentURLLoader : public network::mojom::URLLoader {
     data_source->SetRange(first_byte_to_send,
                           first_byte_to_send + total_bytes_to_send);
 
-    data_producer_ = std::make_unique<mojo::DataPipeProducer>(
-        std::move(pipe.producer_handle));
+    data_producer_ =
+        std::make_unique<mojo::DataPipeProducer>(std::move(producer_handle));
     data_producer_->Write(std::move(data_source),
                           base::BindOnce(&ContentURLLoader::OnFileWritten,
                                          base::Unretained(this)));
@@ -290,8 +270,6 @@ class ContentURLLoader : public network::mojom::URLLoader {
   // It is used to set some of the URLLoaderCompletionStatus data passed back
   // to the URLLoaderClients (eg SimpleURLLoader).
   size_t total_bytes_written_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(ContentURLLoader);
 };
 
 }  // namespace
@@ -299,14 +277,13 @@ class ContentURLLoader : public network::mojom::URLLoader {
 ContentURLLoaderFactory::ContentURLLoaderFactory(
     scoped_refptr<base::SequencedTaskRunner> task_runner,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> factory_receiver)
-    : NonNetworkURLLoaderFactoryBase(std::move(factory_receiver)),
+    : network::SelfDeletingURLLoaderFactory(std::move(factory_receiver)),
       task_runner_(std::move(task_runner)) {}
 
 ContentURLLoaderFactory::~ContentURLLoaderFactory() = default;
 
 void ContentURLLoaderFactory::CreateLoaderAndStart(
     mojo::PendingReceiver<network::mojom::URLLoader> loader,
-    int32_t routing_id,
     int32_t request_id,
     uint32_t options,
     const network::ResourceRequest& request,
@@ -323,7 +300,8 @@ ContentURLLoaderFactory::Create() {
   mojo::PendingRemote<network::mojom::URLLoaderFactory> pending_remote;
 
   // The ContentURLLoaderFactory will delete itself when there are no more
-  // receivers - see the NonNetworkURLLoaderFactoryBase::OnDisconnect method.
+  // receivers - see the network::SelfDeletingURLLoaderFactory::OnDisconnect
+  // method.
   new ContentURLLoaderFactory(
       base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskPriority::BEST_EFFORT,

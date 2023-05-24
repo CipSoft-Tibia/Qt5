@@ -1,16 +1,17 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef COMPONENTS_AUTOFILL_CONTENT_BROWSER_AUTOFILL_DRIVER_IOS_H_
-#define COMPONENTS_AUTOFILL_CONTENT_BROWSER_AUTOFILL_DRIVER_IOS_H_
+#ifndef COMPONENTS_AUTOFILL_IOS_BROWSER_AUTOFILL_DRIVER_IOS_H_
+#define COMPONENTS_AUTOFILL_IOS_BROWSER_AUTOFILL_DRIVER_IOS_H_
 
 #include <string>
 
+#include "base/containers/flat_map.h"
 #include "components/autofill/core/browser/autofill_client.h"
-#include "components/autofill/core/browser/autofill_driver.h"
-#include "components/autofill/core/browser/autofill_external_delegate.h"
-#include "components/autofill/core/browser/autofill_manager.h"
+#include "components/autofill/core/browser/browser_autofill_manager.h"
+#include "ios/web/public/js_messaging/web_frame_user_data.h"
+#include "url/origin.h"
 
 namespace web {
 class WebFrame;
@@ -21,67 +22,93 @@ class WebState;
 
 namespace autofill {
 
-// Class that drives autofill flow on iOS. There is one instance per
-// WebContents.
-class AutofillDriverIOS : public AutofillDriver {
+class AutofillDriverIOSFactory;
+
+// AutofillDriverIOS drives the Autofill flow in the browser process based
+// on communication from JavaScript and from the external world.
+//
+// AutofillDriverIOS communicates with an AutofillDriverIOSBridge, which in
+// Chrome is implemented by AutofillAgent, and a BrowserAutofillManager.
+//
+// AutofillDriverIOS is associated with exactly one WebFrame and its lifecycle
+// is bound to that WebFrame.
+class AutofillDriverIOS : public AutofillDriver,
+                          public web::WebFrameUserData<AutofillDriverIOS> {
  public:
-  ~AutofillDriverIOS() override;
-
-  static void PrepareForWebStateWebFrameAndDelegate(
-      web::WebState* web_state,
-      AutofillClient* client,
-      id<AutofillDriverIOSBridge> bridge,
-      const std::string& app_locale,
-      AutofillManager::AutofillDownloadManagerState enable_download_manager);
-
+  // Returns the AutofillDriverIOS for `web_state` and `web_frame`. Creates the
+  // driver if necessary.
   static AutofillDriverIOS* FromWebStateAndWebFrame(web::WebState* web_state,
                                                     web::WebFrame* web_frame);
 
+  ~AutofillDriverIOS() override;
+
   // AutofillDriver:
-  bool IsIncognito() const override;
-  bool IsInMainFrame() const override;
+  bool IsInActiveFrame() const override;
+  bool IsInAnyMainFrame() const override;
+  bool IsPrerendering() const override;
   bool CanShowAutofillUi() const override;
   ui::AXTreeID GetAxTreeId() const override;
-  scoped_refptr<network::SharedURLLoaderFactory> GetURLLoaderFactory() override;
   bool RendererIsAvailable() override;
-  void SendFormDataToRenderer(int query_id,
-                              RendererFormDataAction action,
-                              const FormData& data) override;
-  void PropagateAutofillPredictions(
-      const std::vector<autofill::FormStructure*>& forms) override;
-  void HandleParsedForms(const std::vector<const FormData*>& forms) override;
+  std::vector<FieldGlobalId> FillOrPreviewForm(
+      mojom::RendererFormDataAction action,
+      const FormData& data,
+      const url::Origin& triggered_origin,
+      const base::flat_map<FieldGlobalId, ServerFieldType>& field_type_map)
+      override;
+  void HandleParsedForms(const std::vector<FormData>& forms) override;
   void SendAutofillTypePredictionsToRenderer(
       const std::vector<FormStructure*>& forms) override;
   void RendererShouldClearFilledSection() override;
   void RendererShouldClearPreviewedForm() override;
   void RendererShouldAcceptDataListSuggestion(
-      const base::string16& value) override;
+      const FieldGlobalId& field,
+      const std::u16string& value) override;
+  void SendFieldsEligibleForManualFillingToRenderer(
+      const std::vector<FieldGlobalId>& fields) override;
+  void SetShouldSuppressKeyboard(bool suppress) override;
+  void TriggerReparseInAllFrames(
+      base::OnceCallback<void(bool)> trigger_reparse_finished_callback)
+      override;
 
-  AutofillManager* autofill_manager() { return &autofill_manager_; }
+  AutofillClient* client() { return client_; }
 
-  void RendererShouldFillFieldWithValue(const base::string16& value) override;
+  void set_autofill_manager_for_testing(
+      std::unique_ptr<BrowserAutofillManager> browser_autofill_manager) {
+    browser_autofill_manager_ = std::move(browser_autofill_manager);
+  }
+
+  BrowserAutofillManager* autofill_manager() {
+    return browser_autofill_manager_.get();
+  }
+
+  void RendererShouldFillFieldWithValue(const FieldGlobalId& field,
+                                        const std::u16string& value) override;
   void RendererShouldPreviewFieldWithValue(
-      const base::string16& value) override;
+      const FieldGlobalId& field,
+      const std::u16string& value) override;
   void RendererShouldSetSuggestionAvailability(
+      const FieldGlobalId& field,
       const mojom::AutofillState state) override;
   void PopupHidden() override;
-  gfx::RectF TransformBoundingBoxToViewportCoordinates(
-      const gfx::RectF& bounding_box) override;
   net::IsolationInfo IsolationInfo() override;
 
   bool is_processed() const { return processed_; }
   void set_processed(bool processed) { processed_ = processed; }
-
- protected:
-  AutofillDriverIOS(
-      web::WebState* web_state,
-      web::WebFrame* web_frame,
-      AutofillClient* client,
-      id<AutofillDriverIOSBridge> bridge,
-      const std::string& app_locale,
-      AutofillManager::AutofillDownloadManagerState enable_download_manager);
+  web::WebFrame* web_frame();
 
  private:
+  friend AutofillDriverIOSFactory;
+
+  AutofillDriverIOS(web::WebState* web_state,
+                    web::WebFrame* web_frame,
+                    AutofillClient* client,
+                    id<AutofillDriverIOSBridge> bridge,
+                    const std::string& app_locale);
+
+  // Only used by the AutofillDriverIOSFactory.
+  // Other callers should use FromWebStateAndWebFrame() instead.
+  using web::WebFrameUserData<AutofillDriverIOS>::FromWebFrame;
+
   // The WebState with which this object is associated.
   web::WebState* web_state_ = nullptr;
 
@@ -96,13 +123,14 @@ class AutofillDriverIOS : public AutofillDriver {
   // been enabled and the forms have been extracted).
   bool processed_ = false;
 
-  // AutofillManager instance via which this object drives the shared Autofill
-  // code.
-  AutofillManager autofill_manager_;
-  // AutofillExternalDelegate instance that is passed to the AutofillManager.
-  AutofillExternalDelegate autofill_external_delegate_;
+  // The embedder's AutofillClient instance.
+  AutofillClient* client_;
+
+  // BrowserAutofillManager instance via which this object drives the shared
+  // Autofill code.
+  std::unique_ptr<BrowserAutofillManager> browser_autofill_manager_;
 };
 
 }  // namespace autofill
 
-#endif  // COMPONENTS_AUTOFILL_CONTENT_BROWSER_AUTOFILL_DRIVER_IOS_H_
+#endif  // COMPONENTS_AUTOFILL_IOS_BROWSER_AUTOFILL_DRIVER_IOS_H_

@@ -1,20 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_API_LINE_LAYOUT_ITEM_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_API_LINE_LAYOUT_ITEM_H_
 
-#include "third_party/blink/renderer/core/editing/position_with_affinity.h"
+#include "base/dcheck_is_on.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
-#include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
-#include "third_party/blink/renderer/core/layout/layout_text.h"
-#include "third_party/blink/renderer/core/layout/layout_text_fragment.h"
-#include "third_party/blink/renderer/core/paint/object_paint_invalidator.h"
-
-#include "third_party/blink/renderer/platform/geometry/layout_unit.h"
-#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "third_party/blink/renderer/platform/wtf/hash_table_deleted_value_type.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
 
 namespace blink {
 
@@ -22,12 +15,8 @@ class ComputedStyle;
 class Document;
 class HitTestRequest;
 class HitTestLocation;
-class LayoutObject;
 class LineLayoutBox;
 class LineLayoutAPIShim;
-
-static LayoutObject* const kHashTableDeletedValue =
-    reinterpret_cast<LayoutObject*>(-1);
 
 class LineLayoutItem {
   DISALLOW_NEW();
@@ -36,8 +25,10 @@ class LineLayoutItem {
   explicit LineLayoutItem(LayoutObject* layout_object)
       : layout_object_(layout_object) {}
 
-  explicit LineLayoutItem(WTF::HashTableDeletedValueType)
-      : layout_object_(kHashTableDeletedValue) {}
+  explicit LineLayoutItem(WTF::HashTableDeletedValueType) {
+    WTF::ConstructHashTraitsDeletedValue<HashTraits<decltype(layout_object_)>>(
+        layout_object_);
+  }
 
   LineLayoutItem(std::nullptr_t) : layout_object_(nullptr) {}
 
@@ -65,13 +56,7 @@ class LineLayoutItem {
 
   Node* NonPseudoNode() const { return layout_object_->NonPseudoNode(); }
 
-  Node* GetNodeForOwnerNodeId() const {
-    LayoutTextFragment* layout_text_fragment =
-        ToLayoutTextFragmentOrNull(layout_object_);
-    if (layout_text_fragment)
-      return layout_text_fragment->AssociatedTextNode();
-    return layout_object_->GetNode();
-  }
+  Node* GetNodeForOwnerNodeId() const;
 
   LineLayoutItem Parent() const {
     return LineLayoutItem(layout_object_->Parent());
@@ -116,13 +101,9 @@ class LineLayoutItem {
 
   const ComputedStyle& StyleRef() const { return layout_object_->StyleRef(); }
 
-  const ComputedStyle* Style(bool first_line) const {
-    return layout_object_->Style(first_line);
-  }
+  const ComputedStyle* Style(bool first_line) const;
 
-  const ComputedStyle& StyleRef(bool first_line) const {
-    return layout_object_->StyleRef(first_line);
-  }
+  const ComputedStyle& StyleRef(bool first_line) const;
 
   Document& GetDocument() const { return layout_object_->GetDocument(); }
 
@@ -213,9 +194,7 @@ class LineLayoutItem {
 
   bool IsText() const { return layout_object_->IsText(); }
 
-  bool IsEmptyText() const {
-    return IsText() && ToLayoutText(layout_object_)->GetText().IsEmpty();
-  }
+  bool IsEmptyText() const;
 
   bool HasLayer() const { return layout_object_->HasLayer(); }
 
@@ -230,9 +209,9 @@ class LineLayoutItem {
     layout_object_->SetAncestorLineBoxDirty();
   }
 
-  int CaretMinOffset() const { return layout_object_->CaretMinOffset(); }
-
-  int CaretMaxOffset() const { return layout_object_->CaretMaxOffset(); }
+  // TODO(yosin): We should not use |CaretMaxOffset()|, because this function
+  // may be used for creating invalid pointer, e.g. <hr>@1.
+  int CaretMaxOffset() const;
 
   bool HasFlippedBlocksWritingMode() const {
     return layout_object_->HasFlippedBlocksWritingMode();
@@ -253,7 +232,7 @@ class LineLayoutItem {
 
   // TODO(dgrogan/eae): Needed for Color::current. Can we move this somewhere?
   Color ResolveColor(const ComputedStyle& style_to_use,
-                     const CSSProperty& color_property) {
+                     const Longhand& color_property) {
     return layout_object_->ResolveColor(style_to_use, color_property);
   }
 
@@ -265,14 +244,14 @@ class LineLayoutItem {
 
   // TODO(dgrogan/eae): Can we change this to GlobalToLocal and vice versa
   // instead of having 4 methods? See localToAbsoluteQuad below.
-  PositionWithAffinity PositionForPoint(const PhysicalOffset& point) {
-    return layout_object_->PositionForPoint(point);
-  }
+  PositionWithAffinity PositionForPoint(const PhysicalOffset& point);
 
   PositionWithAffinity CreatePositionWithAffinity(int offset,
-                                                  TextAffinity affinity) {
-    return layout_object_->CreatePositionWithAffinity(offset, affinity);
-  }
+                                                  TextAffinity affinity) const;
+
+  PositionWithAffinity PositionAfterThis() const;
+
+  PositionWithAffinity PositionBeforeThis() const;
 
   LineLayoutItem PreviousInPreOrder(const LayoutObject* stay_within) const {
     return LineLayoutItem(layout_object_->PreviousInPreOrder(stay_within));
@@ -287,16 +266,15 @@ class LineLayoutItem {
   }
 
   bool IsHashTableDeletedValue() const {
-    return layout_object_ == kHashTableDeletedValue;
+    return WTF::IsHashTraitsDeletedValue<HashTraits<decltype(layout_object_)>>(
+        layout_object_);
   }
 
   void SetShouldDoFullPaintInvalidation() {
     layout_object_->SetShouldDoFullPaintInvalidation();
   }
 
-  void SlowSetPaintingLayerNeedsRepaint() {
-    ObjectPaintInvalidator(*layout_object_).SlowSetPaintingLayerNeedsRepaint();
-  }
+  void SlowSetPaintingLayerNeedsRepaint();
 
   void SetIsTruncated(bool set_truncation) {
     layout_object_->SetIsTruncated(set_truncation);
@@ -306,17 +284,7 @@ class LineLayoutItem {
 
   bool EverHadLayout() const { return layout_object_->EverHadLayout(); }
 
-  struct LineLayoutItemHash {
-    STATIC_ONLY(LineLayoutItemHash);
-    static unsigned GetHash(const LineLayoutItem& key) {
-      return WTF::PtrHash<LayoutObject>::GetHash(key.layout_object_);
-    }
-    static bool Equal(const LineLayoutItem& a, const LineLayoutItem& b) {
-      return WTF::PtrHash<LayoutObject>::Equal(a.layout_object_,
-                                               b.layout_object_);
-    }
-    static const bool safe_to_compare_to_empty_or_deleted = true;
-  };
+  unsigned GetHash() const { return WTF::GetHash(layout_object_); }
 
 #if DCHECK_IS_ON()
 
@@ -332,12 +300,11 @@ class LineLayoutItem {
 
 #endif
 
- protected:
   LayoutObject* GetLayoutObject() { return layout_object_; }
   const LayoutObject* GetLayoutObject() const { return layout_object_; }
 
  private:
-  LayoutObject* layout_object_;
+  WeakPersistent<LayoutObject> layout_object_;
 
   friend class LayoutBlockFlow;
   friend class LineLayoutAPIShim;
@@ -351,15 +318,8 @@ class LineLayoutItem {
 namespace WTF {
 
 template <>
-struct DefaultHash<blink::LineLayoutItem> {
-  using Hash = blink::LineLayoutItem::LineLayoutItemHash;
-};
-
-template <>
 struct HashTraits<blink::LineLayoutItem>
-    : SimpleClassHashTraits<blink::LineLayoutItem> {
-  STATIC_ONLY(HashTraits);
-};
+    : SimpleClassHashTraits<blink::LineLayoutItem> {};
 
 }  // namespace WTF
 

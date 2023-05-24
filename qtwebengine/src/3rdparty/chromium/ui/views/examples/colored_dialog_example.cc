@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,11 @@
 #include <utility>
 
 #include "base/containers/adapters.h"
+#include "base/memory/raw_ref.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/gfx/paint_vector_icon.h"
 #include "ui/gfx/vector_icon_types.h"
-#include "ui/native_theme/native_theme_color_id.h"
 #include "ui/views/controls/button/checkbox.h"
 #include "ui/views/controls/button/md_text_button.h"
 #include "ui/views/controls/label.h"
@@ -24,14 +24,14 @@
 #include "ui/views/vector_icons.h"
 #include "ui/views/widget/widget.h"
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
-class ThemeTrackingCheckbox : public views::Checkbox,
-                              public views::ButtonListener {
+class ThemeTrackingCheckbox : public views::Checkbox {
  public:
-  explicit ThemeTrackingCheckbox(const base::string16& label)
-      : Checkbox(label, this) {}
+  explicit ThemeTrackingCheckbox(const std::u16string& label)
+      : Checkbox(label,
+                 base::BindRepeating(&ThemeTrackingCheckbox::ButtonPressed,
+                                     base::Unretained(this))) {}
   ThemeTrackingCheckbox(const ThemeTrackingCheckbox&) = delete;
   ThemeTrackingCheckbox& operator=(const ThemeTrackingCheckbox&) = delete;
   ~ThemeTrackingCheckbox() override = default;
@@ -39,12 +39,10 @@ class ThemeTrackingCheckbox : public views::Checkbox,
   // views::Checkbox
   void OnThemeChanged() override {
     views::Checkbox::OnThemeChanged();
-
     SetChecked(GetNativeTheme()->ShouldUseDarkColors());
   }
 
-  // ButtonListener
-  void ButtonPressed(views::Button* sender, const ui::Event& event) override {
+  void ButtonPressed() {
     GetNativeTheme()->set_use_dark_colors(GetChecked());
     GetWidget()->ThemeChanged();
   }
@@ -52,10 +50,10 @@ class ThemeTrackingCheckbox : public views::Checkbox,
 
 class TextVectorImageButton : public views::MdTextButton {
  public:
-  TextVectorImageButton(ButtonListener* listener,
-                        const base::string16& text,
+  TextVectorImageButton(PressedCallback callback,
+                        const std::u16string& text,
                         const gfx::VectorIcon& icon)
-      : MdTextButton(listener, text), icon_(icon) {}
+      : MdTextButton(callback, text), icon_(icon) {}
   TextVectorImageButton(const TextVectorImageButton&) = delete;
   TextVectorImageButton& operator=(const TextVectorImageButton&) = delete;
   ~TextVectorImageButton() override = default;
@@ -66,11 +64,11 @@ class TextVectorImageButton : public views::MdTextButton {
     // Use the text color for the associated vector image.
     SetImageModel(
         views::Button::ButtonState::STATE_NORMAL,
-        ui::ImageModel::FromVectorIcon(icon_, label()->GetEnabledColor()));
+        ui::ImageModel::FromVectorIcon(*icon_, label()->GetEnabledColor()));
   }
 
  private:
-  const gfx::VectorIcon& icon_;
+  const raw_ref<const gfx::VectorIcon> icon_;
 };
 
 ColoredDialog::ColoredDialog(AcceptCallback accept_callback) {
@@ -85,7 +83,7 @@ ColoredDialog::ColoredDialog(AcceptCallback accept_callback) {
 
   SetLayoutManager(std::make_unique<views::FillLayout>());
   set_margins(views::LayoutProvider::Get()->GetDialogInsetsForContentType(
-      views::CONTROL, views::CONTROL));
+      views::DialogContentType::kControl, views::DialogContentType::kControl));
 
   textfield_ = AddChildView(std::make_unique<views::Textfield>());
   textfield_->SetPlaceholderText(
@@ -106,7 +104,7 @@ bool ColoredDialog::ShouldShowCloseButton() const {
 }
 
 void ColoredDialog::ContentsChanged(Textfield* sender,
-                                    const base::string16& new_contents) {
+                                    const std::u16string& new_contents) {
   SetButtonEnabled(ui::DIALOG_BUTTON_OK, !textfield_->GetText().empty());
   DialogModelChanged();
 }
@@ -125,18 +123,19 @@ ColoredDialogChooser::ColoredDialogChooser() {
       l10n_util::GetStringUTF16(IDS_COLORED_DIALOG_CHOOSER_CHECKBOX)));
 
   AddChildView(std::make_unique<TextVectorImageButton>(
-      this, l10n_util::GetStringUTF16(IDS_COLORED_DIALOG_CHOOSER_BUTTON),
+      base::BindRepeating(&ColoredDialogChooser::ButtonPressed,
+                          base::Unretained(this)),
+      l10n_util::GetStringUTF16(IDS_COLORED_DIALOG_CHOOSER_BUTTON),
       views::kInfoIcon));
 
   confirmation_label_ = AddChildView(
-      std::make_unique<views::Label>(base::string16(), style::CONTEXT_LABEL));
+      std::make_unique<views::Label>(std::u16string(), style::CONTEXT_LABEL));
   confirmation_label_->SetVisible(false);
 }
 
 ColoredDialogChooser::~ColoredDialogChooser() = default;
 
-void ColoredDialogChooser::ButtonPressed(Button* sender,
-                                         const ui::Event& event) {
+void ColoredDialogChooser::ButtonPressed() {
   // Create the colored dialog.
   views::Widget* widget = DialogDelegate::CreateDialogWidget(
       new ColoredDialog(base::BindOnce(&ColoredDialogChooser::OnFeedbackSubmit,
@@ -145,9 +144,8 @@ void ColoredDialogChooser::ButtonPressed(Button* sender,
   widget->Show();
 }
 
-void ColoredDialogChooser::OnFeedbackSubmit(base::string16 text) {
-  constexpr base::TimeDelta kConfirmationDuration =
-      base::TimeDelta::FromSeconds(3);
+void ColoredDialogChooser::OnFeedbackSubmit(std::u16string text) {
+  constexpr base::TimeDelta kConfirmationDuration = base::Seconds(3);
 
   confirmation_label_->SetText(l10n_util::GetStringFUTF16(
       IDS_COLORED_DIALOG_CHOOSER_CONFIRM_LABEL, text));
@@ -168,5 +166,4 @@ void ColoredDialogExample::CreateExampleView(views::View* container) {
   container->AddChildView(std::make_unique<ColoredDialogChooser>());
 }
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples

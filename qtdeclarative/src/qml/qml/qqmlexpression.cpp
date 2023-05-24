@@ -1,48 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlexpression.h"
 #include "qqmlexpression_p.h"
 
-#include "qqmlglobal_p.h"
 #include "qqmlengine_p.h"
-#include "qqmlcontext_p.h"
 #include "qqmlscriptstring_p.h"
 #include "qqmlbinding_p.h"
 #include <private/qqmlsourcecoordinate_p.h>
@@ -63,7 +25,8 @@ QQmlExpressionPrivate::~QQmlExpressionPrivate()
 {
 }
 
-void QQmlExpressionPrivate::init(QQmlContextData *ctxt, const QString &expr, QObject *me)
+void QQmlExpressionPrivate::init(const QQmlRefPointer<QQmlContextData> &ctxt, const QString &expr,
+                                 QObject *me)
 {
     expression = expr;
 
@@ -72,10 +35,11 @@ void QQmlExpressionPrivate::init(QQmlContextData *ctxt, const QString &expr, QOb
     expressionFunctionValid = false;
 }
 
-void QQmlExpressionPrivate::init(QQmlContextData *ctxt, QV4::Function *runtimeFunction, QObject *me)
+void QQmlExpressionPrivate::init(const QQmlRefPointer<QQmlContextData> &ctxt,
+                                 QV4::Function *runtimeFunction, QObject *me)
 {
     expressionFunctionValid = true;
-    QV4::ExecutionEngine *engine = ctxt->engine->handle();
+    QV4::ExecutionEngine *engine = ctxt->engine()->handle();
     QV4::Scope scope(engine);
     QV4::Scoped<QV4::QmlContext> qmlContext(scope, QV4::QmlContext::create(engine->rootContext(), ctxt, me));
     setupFunction(qmlContext, runtimeFunction);
@@ -141,23 +105,35 @@ QQmlExpression::QQmlExpression(const QQmlScriptString &script, QQmlContext *ctxt
         return;
 
     const QQmlScriptStringPrivate *scriptPrivate = script.d.data();
+    if (!scriptPrivate) {
+        // A null QQmlScriptStringPrivate is an empty expression without context.
+        // We may still want the explicitly passed context, though.
+        if (ctxt)
+            d->init(QQmlContextData::get(ctxt), QString(), scope);
+        return;
+    }
+
     if (!ctxt && (!scriptPrivate->context || !scriptPrivate->context->isValid()))
         return;
 
-    QQmlContextData *evalCtxtData = QQmlContextData::get(ctxt ? ctxt : scriptPrivate->context);
+    QQmlRefPointer<QQmlContextData> evalCtxtData
+            = QQmlContextData::get(ctxt ? ctxt : scriptPrivate->context);
     QObject *scopeObject = scope ? scope : scriptPrivate->scope;
     QV4::Function *runtimeFunction = nullptr;
 
     if (scriptPrivate->context) {
-        QQmlContextData *ctxtdata = QQmlContextData::get(scriptPrivate->context);
+        QQmlRefPointer<QQmlContextData> ctxtdata = QQmlContextData::get(scriptPrivate->context);
         QQmlEnginePrivate *engine = QQmlEnginePrivate::get(scriptPrivate->context->engine());
-        if (engine && ctxtdata && !ctxtdata->urlString().isEmpty() && ctxtdata->typeCompilationUnit) {
+        if (engine
+                && ctxtdata
+                && !ctxtdata->urlString().isEmpty()
+                && ctxtdata->typeCompilationUnit()) {
             d->url = ctxtdata->urlString();
             d->line = scriptPrivate->lineNumber;
             d->column = scriptPrivate->columnNumber;
 
             if (scriptPrivate->bindingId != QQmlBinding::Invalid)
-                runtimeFunction = ctxtdata->typeCompilationUnit->runtimeFunctions.at(scriptPrivate->bindingId);
+                runtimeFunction = ctxtdata->typeCompilationUnit()->runtimeFunctions.at(scriptPrivate->bindingId);
         }
     }
 
@@ -175,10 +151,8 @@ QQmlExpression::QQmlExpression(const QQmlScriptString &script, QQmlContext *ctxt
     If specified, the \a scope object's properties will also be in scope during
     the expression's execution.
 */
-QQmlExpression::QQmlExpression(QQmlContext *ctxt,
-                                               QObject *scope,
-                                               const QString &expression,
-                                               QObject *parent)
+QQmlExpression::QQmlExpression(QQmlContext *ctxt, QObject *scope, const QString &expression,
+                               QObject *parent)
 : QObject(*new QQmlExpressionPrivate, parent)
 {
     Q_D(QQmlExpression);
@@ -188,12 +162,10 @@ QQmlExpression::QQmlExpression(QQmlContext *ctxt,
 /*!
     \internal
 */
-QQmlExpression::QQmlExpression(QQmlContextData *ctxt, QObject *scope,
-                                               const QString &expression)
-: QObject(*new QQmlExpressionPrivate, nullptr)
+QQmlExpression::QQmlExpression(QQmlExpressionPrivate &dd, QObject *parent) : QObject(dd, parent)
 {
-    Q_D(QQmlExpression);
-    d->init(ctxt, expression, scope);
+//    Q_D(QQmlExpression);
+//    d->init(QQmlContextData::get(ctxt), expression, scope);
 }
 
 /*!
@@ -210,7 +182,7 @@ QQmlExpression::~QQmlExpression()
 QQmlEngine *QQmlExpression::engine() const
 {
     Q_D(const QQmlExpression);
-    return d->context()?d->context()->engine:nullptr;
+    return d->engine();
 }
 
 /*!
@@ -220,8 +192,7 @@ QQmlEngine *QQmlExpression::engine() const
 QQmlContext *QQmlExpression::context() const
 {
     Q_D(const QQmlExpression);
-    QQmlContextData *data = d->context();
-    return data?data->asQQmlContext():nullptr;
+    return d->publicContext();
 }
 
 /*!
@@ -265,7 +236,7 @@ QVariant QQmlExpressionPrivate::value(bool *isUndefined)
 {
     Q_Q(QQmlExpression);
 
-    if (!context() || !context()->isValid()) {
+    if (!hasValidContext()) {
         qWarning("QQmlExpression: Attempted to evaluate an expression in an invalid context");
         return QVariant();
     }
@@ -280,7 +251,7 @@ QVariant QQmlExpressionPrivate::value(bool *isUndefined)
         QV4::Scope scope(engine->handle());
         QV4::ScopedValue result(scope, v4value(isUndefined));
         if (!hasError())
-            rv = scope.engine->toVariant(result, -1);
+            rv = QV4::ExecutionEngine::toVariant(result, QMetaType {});
     }
 
     ep->dereferenceScarceResources(); // "release" scarce resources if top-level expression evaluation is complete.

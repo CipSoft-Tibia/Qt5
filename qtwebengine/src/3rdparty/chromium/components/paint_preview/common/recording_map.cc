@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,8 @@ namespace paint_preview {
 namespace {
 
 base::FilePath ToFilePath(base::StringPiece path_str) {
-#if defined(OS_WIN)
-  return base::FilePath(base::UTF8ToUTF16(path_str));
+#if BUILDFLAG(IS_WIN)
+  return base::FilePath(base::UTF8ToWide(path_str));
 #else
   return base::FilePath(path_str);
 #endif
@@ -61,9 +61,18 @@ RecordingMap RecordingMapFromPaintPreviewProto(const PaintPreviewProto& proto) {
   if (!root_frame_recording.IsValid())
     return {};
 
-  entries.emplace_back(base::UnguessableToken::Deserialize(
-                           proto.root_frame().embedding_token_high(),
-                           proto.root_frame().embedding_token_low()),
+  absl::optional<base::UnguessableToken> root_frame_embedding_token =
+      base::UnguessableToken::Deserialize(
+          proto.root_frame().embedding_token_high(),
+          proto.root_frame().embedding_token_low());
+  // TODO(https://crbug.com/1406995): Investigate whether a deserialization
+  // failure can actually occur here and if it can, add a comment discussing
+  // how this can happen.
+  if (!root_frame_embedding_token.has_value()) {
+    return {};
+  }
+
+  entries.emplace_back(root_frame_embedding_token.value(),
                        std::move(root_frame_recording));
 
   for (const auto& subframe : proto.subframes()) {
@@ -73,10 +82,18 @@ RecordingMap RecordingMapFromPaintPreviewProto(const PaintPreviewProto& proto) {
     if (!frame_recording.IsValid())
       continue;
 
-    entries.emplace_back(
+    absl::optional<base::UnguessableToken> subframe_embedding_token =
         base::UnguessableToken::Deserialize(subframe.embedding_token_high(),
-                                            subframe.embedding_token_low()),
-        std::move(frame_recording));
+                                            subframe.embedding_token_low());
+    // TODO(https://crbug.com/1406995): Investigate whether a deserialization
+    // failure can actually occur here and if it can, add a comment discussing
+    // how this can happen.
+    if (!subframe_embedding_token.has_value()) {
+      continue;
+    }
+
+    entries.emplace_back(subframe_embedding_token.value(),
+                         std::move(frame_recording));
   }
 
   return RecordingMap(std::move(entries));

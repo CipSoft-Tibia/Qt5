@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -82,6 +82,14 @@ public final class CrashReporterControllerImpl extends ICrashReporterController.
         AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> {
             TraceEvent.instant(TAG, "CrashReporterController: Begin uploading crash");
             File minidumpFile = getCrashFileManager().getCrashFileWithLocalId(localId);
+            if (minidumpFile == null) {
+                try {
+                    mClient.onCrashUploadFailed(localId, "invalid crash id");
+                } catch (RemoteException e) {
+                    throw new AndroidRuntimeException(e);
+                }
+                return;
+            }
             MinidumpUploader.Result result = new MinidumpUploader().upload(minidumpFile);
             if (result.isSuccess()) {
                 CrashFileManager.markUploadSuccess(minidumpFile);

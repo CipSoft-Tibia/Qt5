@@ -1,49 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeocameracapabilities_p.h"
 
 #include <QSharedData>
 #include <cmath>
 
-static const double invLog2 = 1.0 / std::log(2.0);
-
 static double zoomLevelTo256(double zoomLevelForTileSize, double tileSize)
 {
-    return std::log( std::pow(2.0, zoomLevelForTileSize) * tileSize / 256.0 ) * invLog2;
+    return std::log(std::pow(2.0, zoomLevelForTileSize) * tileSize / 256.0) * (1.0 / std::log(2.0));
 }
 
 QT_BEGIN_NAMESPACE
@@ -51,87 +16,29 @@ QT_BEGIN_NAMESPACE
 class QGeoCameraCapabilitiesPrivate : public QSharedData
 {
 public:
-    QGeoCameraCapabilitiesPrivate();
-    QGeoCameraCapabilitiesPrivate(const QGeoCameraCapabilitiesPrivate &other);
-    ~QGeoCameraCapabilitiesPrivate();
+    bool operator==(const QGeoCameraCapabilitiesPrivate &rhs) const noexcept;
 
-    QGeoCameraCapabilitiesPrivate &operator = (const QGeoCameraCapabilitiesPrivate &other);
-
-    bool operator == (const QGeoCameraCapabilitiesPrivate &rhs) const;
-
-    bool supportsBearing_;
-    bool supportsRolling_;
-    bool supportsTilting_;
+    bool supportsBearing_ = false;
+    bool supportsRolling_ = false;
+    bool supportsTilting_ = false;
 
     // this is mutable so that it can be set from accessor functions that are const
     // TODO: remove the mutable here
-    mutable bool valid_;
+    mutable bool valid_ = false;
 
-    double minZoom_;
-    double maxZoom_;
-    double minTilt_;
-    double maxTilt_;
-    int tileSize_;
-    double minimumFieldOfView_;
-    double maximumFieldOfView_;
-    bool overzoomEnabled_;
+    double minZoom_ = 0.0;
+    double maxZoom_ = 0.0;
+    double minTilt_ = 0.0;
+    double maxTilt_ = 0.0;
+    int tileSize_ = 256;
+    double minimumFieldOfView_ = 45.0; // Defaulting to a fixed FOV of 45 degrees.
+    double maximumFieldOfView_ = 45.0; // Too large FOVs cause the loading of too many tiles.
+    bool overzoomEnabled_ = false;
 };
 
-QGeoCameraCapabilitiesPrivate::QGeoCameraCapabilitiesPrivate()
-    : supportsBearing_(false),
-      supportsRolling_(false),
-      supportsTilting_(false),
-      valid_(false),
-      minZoom_(0.0),
-      maxZoom_(0.0),
-      minTilt_(0.0),
-      maxTilt_(0.0),
-      tileSize_(256),
-      minimumFieldOfView_(45.0),  // Defaulting to a fixed FOV of 45 degrees. Too large FOVs cause the loading of too many tiles
-      maximumFieldOfView_(45.0),
-      overzoomEnabled_(false) {}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QGeoCameraCapabilitiesPrivate)
 
-
-QGeoCameraCapabilitiesPrivate::QGeoCameraCapabilitiesPrivate(const QGeoCameraCapabilitiesPrivate &other)
-    : QSharedData(other),
-      supportsBearing_(other.supportsBearing_),
-      supportsRolling_(other.supportsRolling_),
-      supportsTilting_(other.supportsTilting_),
-      valid_(other.valid_),
-      minZoom_(other.minZoom_),
-      maxZoom_(other.maxZoom_),
-      minTilt_(other.minTilt_),
-      maxTilt_(other.maxTilt_),
-      tileSize_(other.tileSize_),
-      minimumFieldOfView_(other.minimumFieldOfView_),
-      maximumFieldOfView_(other.maximumFieldOfView_),
-      overzoomEnabled_(other.overzoomEnabled_){}
-
-
-QGeoCameraCapabilitiesPrivate::~QGeoCameraCapabilitiesPrivate() {}
-
-QGeoCameraCapabilitiesPrivate &QGeoCameraCapabilitiesPrivate::operator = (const QGeoCameraCapabilitiesPrivate &other)
-{
-    if (this == &other)
-        return *this;
-
-    supportsBearing_ = other.supportsBearing_;
-    supportsRolling_ = other.supportsRolling_;
-    supportsTilting_ = other.supportsTilting_;
-    valid_ = other.valid_;
-    minZoom_ = other.minZoom_;
-    maxZoom_ = other.maxZoom_;
-    minTilt_ = other.minTilt_;
-    maxTilt_ = other.maxTilt_;
-    tileSize_ = other.tileSize_;
-    minimumFieldOfView_ = other.minimumFieldOfView_;
-    maximumFieldOfView_ = other.maximumFieldOfView_;
-    overzoomEnabled_ = other.overzoomEnabled_;
-
-    return *this;
-}
-
-bool QGeoCameraCapabilitiesPrivate::operator == (const QGeoCameraCapabilitiesPrivate &rhs) const
+bool QGeoCameraCapabilitiesPrivate::operator==(const QGeoCameraCapabilitiesPrivate &rhs) const noexcept
 {
     return ((supportsBearing_ == rhs.supportsBearing_)
             && (supportsRolling_ == rhs.supportsRolling_)
@@ -164,6 +71,18 @@ bool QGeoCameraCapabilitiesPrivate::operator == (const QGeoCameraCapabilitiesPri
 */
 
 /*!
+    \qmlvaluetype cameraCapabilities
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-maps
+    \since QtLocation 5.10
+
+    \brief The cameraCapabilities type holds information about the camera capabilities for a specific map type.
+
+    This includes the map minimum and maximum zoom level, minimum and maximum tilt angle and
+    minimum and maximum field of view.
+*/
+
+/*!
     Constructs a camera capabilities object.
 */
 QGeoCameraCapabilities::QGeoCameraCapabilities()
@@ -172,19 +91,18 @@ QGeoCameraCapabilities::QGeoCameraCapabilities()
 /*!
     Constructs a camera capabilities object from the contents of \a other.
 */
-QGeoCameraCapabilities::QGeoCameraCapabilities(const QGeoCameraCapabilities &other)
-    : d(other.d) {}
+QGeoCameraCapabilities::QGeoCameraCapabilities(const QGeoCameraCapabilities &other) noexcept = default;
 
 /*!
     Destroys this camera capabilities object.
 */
-QGeoCameraCapabilities::~QGeoCameraCapabilities() {}
+QGeoCameraCapabilities::~QGeoCameraCapabilities() = default;
 
 /*!
     Assigns the contents of \a other to this camera capabilities object and
     returns a reference to this camera capabilities object.
 */
-QGeoCameraCapabilities &QGeoCameraCapabilities::operator = (const QGeoCameraCapabilities &other)
+QGeoCameraCapabilities &QGeoCameraCapabilities::operator=(const QGeoCameraCapabilities &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -193,14 +111,9 @@ QGeoCameraCapabilities &QGeoCameraCapabilities::operator = (const QGeoCameraCapa
     return *this;
 }
 
-bool QGeoCameraCapabilities::operator == (const QGeoCameraCapabilities &rhs) const
+bool QGeoCameraCapabilities::isEqual(const QGeoCameraCapabilities &other) const
 {
-    return (*(d.constData()) == *(rhs.d.constData()));
-}
-
-bool QGeoCameraCapabilities::operator != (const QGeoCameraCapabilities &other) const
-{
-    return !(operator==(other));
+    return (*(d.constData()) == *(other.d.constData()));
 }
 
 void QGeoCameraCapabilities::setTileSize(int tileSize)
@@ -227,7 +140,14 @@ bool QGeoCameraCapabilities::isValid() const
 }
 
 /*!
-    Sets the minimum zoom level supported by the associated plugin to \a maximumZoomLevel.
+    \qmlproperty qreal cameraCapabilities::minimumZoomLevel
+
+    This read-only property holds the minimum available zoom level with this map type.
+*/
+
+/*!
+    \property QGeoCameraCapabilities::minimumZoomLevel
+    \brief the minimum zoom level supported by the associated plugin.
 
     Larger values of the zoom level correspond to more detailed views of the
     map.
@@ -238,12 +158,6 @@ void QGeoCameraCapabilities::setMinimumZoomLevel(double minimumZoomLevel)
     d->valid_ = true;
 }
 
-/*!
-    Returns the minimum zoom level supported by the associated plugin.
-
-    Larger values of the zoom level correspond to more detailed views of the
-    map.
-*/
 double QGeoCameraCapabilities::minimumZoomLevel() const
 {
     return d->minZoom_;
@@ -257,7 +171,14 @@ double QGeoCameraCapabilities::minimumZoomLevelAt256() const
 }
 
 /*!
-    Sets the maximum zoom level supported by the associated plugin to \a maximumZoomLevel.
+    \qmlproperty qreal cameraCapabilities::maximumZoomLevel
+
+    This read-only property holds the maximum available zoom level with this map type.
+*/
+
+/*!
+    \property QGeoCameraCapabilities::maximumZoomLevel
+    \brief the maximum zoom level supported by the associated plugin.
 
     Larger values of the zoom level correspond to more detailed views of the
     map.
@@ -268,12 +189,6 @@ void QGeoCameraCapabilities::setMaximumZoomLevel(double maximumZoomLevel)
     d->valid_ = true;
 }
 
-/*!
-    Returns the maximum zoom level supported by the associated plugin.
-
-    Larger values of the zoom level correspond to more detailed views of the
-    map.
-*/
 double QGeoCameraCapabilities::maximumZoomLevel() const
 {
     return d->maxZoom_;
@@ -344,7 +259,14 @@ bool QGeoCameraCapabilities::supportsTilting() const
 }
 
 /*!
-    Sets the minimum tilt supported by the associated plugin to \a minimumTilt.
+    \qmlproperty qreal cameraCapabilities::minimumTilt
+
+    This read-only property holds the minimum available tilt with this map type.
+*/
+
+/*!
+    \property QGeoCameraCapabilities::minimumTilt
+    \brief the minimum tilt supported by the associated plugin.
 
     The value is in degrees where 0 is equivalent to 90 degrees between
     the line of view and earth's surface, that is, looking straight down to earth.
@@ -355,19 +277,20 @@ void QGeoCameraCapabilities::setMinimumTilt(double minimumTilt)
     d->valid_ = true;
 }
 
-/*!
-    Returns the minimum tilt supported by the associated plugin.
-
-    The value is in degrees where 0 is equivalent to 90 degrees between
-    the line of view and earth's surface, that is, looking straight down to earth.
-*/
 double QGeoCameraCapabilities::minimumTilt() const
 {
     return d->minTilt_;
 }
 
 /*!
-    Sets the maximum tilt supported by the associated plugin to \a maximumTilt.
+    \qmlproperty qreal cameraCapabilities::maximumTilt
+
+    This read-only property holds the maximum available tilt with this map type.
+*/
+
+/*!
+    \property QGeoCameraCapabilities::maximumTilt
+    \brief the maximum tilt supported by the associated plugin.
 
     The value is in degrees where 0 is equivalent to 90 degrees between
     the line of view and earth's surface, that is, looking straight down to earth.
@@ -378,19 +301,21 @@ void QGeoCameraCapabilities::setMaximumTilt(double maximumTilt)
     d->valid_ = true;
 }
 
-/*!
-    Returns the maximum tilt supported by the associated plugin.
-
-    The value is in degrees where 0 is equivalent to 90 degrees between
-    the line of view and earth's surface, that is, looking straight down to earth.
-*/
 double QGeoCameraCapabilities::maximumTilt() const
 {
     return d->maxTilt_;
 }
 
 /*!
-    Sets the minimum field of view supported by the associated plugin to \a minimumFieldOfView.
+    \qmlproperty qreal cameraCapabilities::minimumFieldOfView
+
+    This read-only property holds the minimum available field of view with this map type.
+*/
+
+/*!
+    \property QGeoCameraCapabilities::minimumFieldOfView
+    \brief the minimum field of view supported by the associated plugin.
+
     The value is in degrees and is clamped against a [1, 179] range.
 
     \since 5.9
@@ -401,19 +326,21 @@ void QGeoCameraCapabilities::setMinimumFieldOfView(double minimumFieldOfView)
     d->valid_ = true;
 }
 
-/*!
-    Returns the minimum field of view supported by the associated plugin.
-    The value is in degrees.
-
-    \since 5.9
-*/
 double QGeoCameraCapabilities::minimumFieldOfView() const
 {
     return d->minimumFieldOfView_;
 }
 
 /*!
-    Sets the maximum field of view supported by the associated plugin to \a maximumFieldOfView.
+    \qmlproperty qreal cameraCapabilities::maximumFieldOfView
+
+    This read-only property holds the maximum available field of view with this map type.
+*/
+
+/*!
+    \property QGeoCameraCapabilities::maximumFieldOfView
+    \brief the maximum field of view supported by the associated plugin.
+
     The value is in degrees and is clamped against a [1, 179] range.
 
     \since 5.9
@@ -424,12 +351,6 @@ void QGeoCameraCapabilities::setMaximumFieldOfView(double maximumFieldOfView)
     d->valid_ = true;
 }
 
-/*!
-    Returns the maximum field of view supported by the associated plugin.
-    The value is in degrees.
-
-    \since 5.9
-*/
 double QGeoCameraCapabilities::maximumFieldOfView() const
 {
     return d->maximumFieldOfView_;
@@ -466,3 +387,5 @@ bool QGeoCameraCapabilities::overzoomEnabled() const
 
 
 QT_END_NAMESPACE
+
+#include "moc_qgeocameracapabilities_p.cpp"

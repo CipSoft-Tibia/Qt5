@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /****************************************************************************
  **
@@ -71,13 +35,16 @@
  **
  ****************************************************************************/
 
+#include <AppKit/AppKit.h>
 
-#import "qcocoaapplicationdelegate.h"
+#include "qcocoaapplicationdelegate.h"
 #include "qcocoaintegration.h"
+#include "qcocoamenubar.h"
 #include "qcocoamenu.h"
 #include "qcocoamenuloader.h"
 #include "qcocoamenuitem.h"
 #include "qcocoansmenu.h"
+#include "qcocoahelpers.h"
 
 #if QT_CONFIG(sessionmanager)
 #  include "qcocoasessionmanager.h"
@@ -89,10 +56,6 @@
 #include <qguiapplication.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <qwindowdefs.h>
-
-QT_BEGIN_NAMESPACE
-Q_LOGGING_CATEGORY(lcQpaApplication, "qt.qpa.application");
-QT_END_NAMESPACE
 
 QT_USE_NAMESPACE
 
@@ -226,12 +189,31 @@ QT_USE_NAMESPACE
     inLaunch = false;
 
     if (qEnvironmentVariableIsEmpty("QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM")) {
-        // Move the application window to front to avoid launching behind the terminal.
-        // Ignoring other apps is necessary (we must ignore the terminal), but makes
-        // Qt apps play slightly less nice with other apps when lanching from Finder
-        // (See the activateIgnoringOtherApps docs.)
-        [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
+        auto frontmostApplication = NSWorkspace.sharedWorkspace.frontmostApplication;
+        auto currentApplication = NSRunningApplication.currentApplication;
+        if (frontmostApplication != currentApplication) {
+            // Move the application to front to avoid launching behind the terminal.
+            // Ignoring other apps is necessary (we must ignore the terminal), but makes
+            // Qt apps play slightly less nice with other apps when launching from Finder
+            // (see the activateIgnoringOtherApps docs). FIXME: Try to distinguish between
+            // being non-active here because another application stole activation in the
+            // time it took us to launch from Finder, and being non-active because we were
+            // launched from Terminal or something that doesn't activate us at all.
+            qCDebug(lcQpaApplication) << "Launched with" << frontmostApplication
+                << "as frontmost application. Activating" << currentApplication << "instead.";
+            [NSApplication.sharedApplication activateIgnoringOtherApps:YES];
+        }
+
+        // Qt windows are typically shown in main(), at which point the application
+        // is not active yet. When the application is activated, either externally
+        // or via the override above, it will only bring the main and key windows
+        // forward, which differs from the behavior if these windows had been shown
+        // once the application was already active. To work around this, we explicitly
+        // activate the current application again, bringing all windows to the front.
+        [currentApplication activateWithOptions:NSApplicationActivateAllWindows];
     }
+
+    QCocoaMenuBar::insertWindowMenu();
 }
 
 - (void)application:(NSApplication *)sender openFiles:(NSArray *)filenames
@@ -267,10 +249,25 @@ QT_USE_NAMESPACE
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification
 {
+    if (QCocoaWindow::s_applicationActivationObserver) {
+        [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:QCocoaWindow::s_applicationActivationObserver];
+        QCocoaWindow::s_applicationActivationObserver = nil;
+    }
+
     if ([reflectionDelegate respondsToSelector:_cmd])
         [reflectionDelegate applicationDidBecomeActive:notification];
 
     QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationActive);
+
+    if (QCocoaWindow::s_windowUnderMouse) {
+        QPointF windowPoint;
+        QPointF screenPoint;
+        QNSView *view = qnsview_cast(QCocoaWindow::s_windowUnderMouse->m_view);
+        [view convertFromScreen:[NSEvent mouseLocation] toWindowPoint:&windowPoint andScreenPoint:&screenPoint];
+        QWindow *windowUnderMouse = QCocoaWindow::s_windowUnderMouse->window();
+        qCInfo(lcQpaMouse) << "Application activated with mouse at" << windowPoint << "; sending" << QEvent::Enter << "to" << windowUnderMouse;
+        QWindowSystemInterface::handleEnterEvent(windowUnderMouse, windowPoint, screenPoint);
+    }
 }
 
 - (void)applicationDidResignActive:(NSNotification *)notification
@@ -279,6 +276,12 @@ QT_USE_NAMESPACE
         [reflectionDelegate applicationDidResignActive:notification];
 
     QWindowSystemInterface::handleApplicationStateChanged(Qt::ApplicationInactive);
+
+    if (QCocoaWindow::s_windowUnderMouse) {
+        QWindow *windowUnderMouse = QCocoaWindow::s_windowUnderMouse->window();
+        qCInfo(lcQpaMouse) << "Application deactivated; sending" << QEvent::Leave << "to" << windowUnderMouse;
+        QWindowSystemInterface::handleLeaveEvent(windowUnderMouse);
+    }
 }
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)theApplication hasVisibleWindows:(BOOL)flag
@@ -332,20 +335,48 @@ QT_USE_NAMESPACE
 {
     Q_UNUSED(replyEvent);
     NSString *urlString = [[event paramDescriptorForKeyword:keyDirectObject] stringValue];
-    QWindowSystemInterface::handleFileOpenEvent(QUrl(QString::fromNSString(urlString)));
+    // The string we get from the requesting application might not necessarily meet
+    // QUrl's requirement for a IDN-compliant host. So if we can't parse into a QUrl,
+    // then we pass the string on to the application as the name of a file (and
+    // QFileOpenEvent::file is not guaranteed to be the path to a local, open'able
+    // file anyway).
+    const QString qurlString = QString::fromNSString(urlString);
+    if (const QUrl url(qurlString); url.isValid())
+        QWindowSystemInterface::handleFileOpenEvent(url);
+    else
+        QWindowSystemInterface::handleFileOpenEvent(qurlString);
 }
+
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)application
+{
+    if (@available(macOS 12, *)) {
+        if ([reflectionDelegate respondsToSelector:_cmd])
+            return [reflectionDelegate applicationSupportsSecureRestorableState:application];
+    }
+
+    // We don't support or implement state restorations via the AppKit
+    // state restoration APIs, but if we did, we would/should support
+    // secure state restoration. This is the default for apps linked
+    // against the macOS 14 SDK, but as we target versions below that
+    // as well we need to return YES here explicitly to silence a runtime
+    // warning.
+    return YES;
+}
+
 @end
 
 @implementation QCocoaApplicationDelegate (Menus)
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item
 {
+    qCDebug(lcQpaMenus) << "Validating" << item << "for" << self;
+
     auto *nativeItem = qt_objc_cast<QCocoaNSMenuItem *>(item);
     if (!nativeItem)
         return item.enabled; // FIXME Test with with Qt as plugin or embedded QWindow.
 
     auto *platformItem = nativeItem.platformMenuItem;
-    if (!platformItem) // Try a bit harder with orphan menu itens
+    if (!platformItem) // Try a bit harder with orphan menu items
         return item.hasSubmenu || (item.enabled && (item.action != @selector(qt_itemFired:)));
 
     // Menu-holding items are always enabled, as it's conventional in Cocoa
@@ -361,6 +392,8 @@ QT_USE_NAMESPACE
 
 - (void)qt_itemFired:(QCocoaNSMenuItem *)item
 {
+    qCDebug(lcQpaMenus) << "Activating" << item;
+
     if (item.hasSubmenu)
         return;
 
@@ -373,7 +406,7 @@ QT_USE_NAMESPACE
         return;
 
     QScopedScopeLevelCounter scopeLevelCounter(QGuiApplicationPrivate::instance()->threadData.loadRelaxed());
-    QGuiApplicationPrivate::modifier_buttons = [QNSView convertKeyModifiers:[NSEvent modifierFlags]];
+    QGuiApplicationPrivate::modifier_buttons = QAppleKeyMapper::fromCocoaModifiers([NSEvent modifierFlags]);
 
     static QMetaMethod activatedSignal = QMetaMethod::fromSignal(&QCocoaMenuItem::activated);
     activatedSignal.invoke(platformItem, Qt::QueuedConnection);

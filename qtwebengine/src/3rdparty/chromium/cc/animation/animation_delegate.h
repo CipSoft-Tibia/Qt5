@@ -1,13 +1,16 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CC_ANIMATION_ANIMATION_DELEGATE_H_
 #define CC_ANIMATION_ANIMATION_DELEGATE_H_
 
+#include <memory>
+
 #include "base/time/time.h"
-#include "cc/animation/animation_curve.h"
-#include "cc/animation/keyframe_model.h"
+#include "cc/animation/animation_export.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/gfx/animation/keyframe/animation_curve.h"
 
 namespace cc {
 
@@ -28,9 +31,9 @@ class CC_ANIMATION_EXPORT AnimationDelegate {
       base::TimeTicks monotonic_time,
       int target_property,
       base::TimeTicks animation_start_time,
-      std::unique_ptr<AnimationCurve> curve) = 0;
+      std::unique_ptr<gfx::AnimationCurve> curve) = 0;
   virtual void NotifyLocalTimeUpdated(
-      base::Optional<base::TimeDelta> local_time) = 0;
+      absl::optional<base::TimeDelta> local_time) = 0;
 
  protected:
   virtual ~AnimationDelegate() {}

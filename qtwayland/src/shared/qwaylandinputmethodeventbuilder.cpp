@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandinputmethodeventbuilder_p.h"
 
@@ -47,8 +11,10 @@
 
 #ifdef QT_BUILD_WAYLANDCOMPOSITOR_LIB
 #include <QtWaylandCompositor/private/qwayland-server-text-input-unstable-v2.h>
+#include <QtWaylandCompositor/private/qwayland-server-text-input-unstable-v4-wip.h>
 #else
 #include <QtWaylandClient/private/qwayland-text-input-unstable-v2.h>
+#include <QtWaylandClient/private/qwayland-text-input-unstable-v4-wip.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -126,7 +92,7 @@ void QWaylandInputMethodEventBuilder::setPreeditCursor(int32_t index)
     m_preeditCursor = index;
 }
 
-QInputMethodEvent QWaylandInputMethodEventBuilder::buildCommit(const QString &text)
+QInputMethodEvent *QWaylandInputMethodEventBuilder::buildCommit(const QString &text)
 {
     QList<QInputMethodEvent::Attribute> attributes;
 
@@ -140,7 +106,7 @@ QInputMethodEvent QWaylandInputMethodEventBuilder::buildCommit(const QString &te
 
         const int absoluteOffset = absoluteCursor - cursor;
 
-        const int cursorAfterCommit = qMin(anchor, cursor) + replacement.first + text.length();
+        const int cursorAfterCommit = qMin(anchor, cursor) + replacement.first + text.size();
         surrounding.replace(qMin(anchor, cursor) + replacement.first,
                             qAbs(anchor - cursor) + replacement.second, text);
 
@@ -150,13 +116,13 @@ QInputMethodEvent QWaylandInputMethodEventBuilder::buildCommit(const QString &te
                                                           QVariant()));
     }
 
-    QInputMethodEvent event(QString(), attributes);
-    event.setCommitString(text, replacement.first, replacement.second);
+    QInputMethodEvent *event = new QInputMethodEvent(QString(), attributes);
+    event->setCommitString(text, replacement.first, replacement.second);
 
     return event;
 }
 
-QInputMethodEvent QWaylandInputMethodEventBuilder::buildPreedit(const QString &text)
+QInputMethodEvent *QWaylandInputMethodEventBuilder::buildPreedit(const QString &text)
 {
     QList<QInputMethodEvent::Attribute> attributes;
 
@@ -166,16 +132,16 @@ QInputMethodEvent QWaylandInputMethodEventBuilder::buildPreedit(const QString &t
         attributes.append(QInputMethodEvent::Attribute(QInputMethodEvent::Cursor, indexFromWayland(text, m_preeditCursor), 1, QVariant()));
     }
 
-    for (const QInputMethodEvent::Attribute &attr : qAsConst(m_preeditStyles)) {
+    for (const QInputMethodEvent::Attribute &attr : std::as_const(m_preeditStyles)) {
         int start = indexFromWayland(text, attr.start);
         int length = indexFromWayland(text, attr.start + attr.length) - start;
         attributes.append(QInputMethodEvent::Attribute(attr.type, start, length, attr.value));
     }
 
-    QInputMethodEvent event(text, attributes);
+    QInputMethodEvent *event = new QInputMethodEvent(text, attributes);
 
     const QPair<int, int> replacement = replacementForDeleteSurrounding();
-    event.setCommitString(QString(), replacement.first, replacement.second);
+    event->setCommitString(QString(), replacement.first, replacement.second);
 
     return event;
 }
@@ -203,68 +169,105 @@ QWaylandInputMethodContentType QWaylandInputMethodContentType::convert(Qt::Input
     uint32_t hint = ZWP_TEXT_INPUT_V2_CONTENT_HINT_NONE;
     uint32_t purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_NORMAL;
 
-    if (hints & Qt::ImhHiddenText) {
+    if (hints & Qt::ImhHiddenText)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_HIDDEN_TEXT;
-    }
-    if (hints & Qt::ImhSensitiveData) {
+    if (hints & Qt::ImhSensitiveData)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_SENSITIVE_DATA;
-    }
-    if ((hints & Qt::ImhNoAutoUppercase) == 0) {
+    if ((hints & Qt::ImhNoAutoUppercase) == 0)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_AUTO_CAPITALIZATION;
-    }
     if (hints & Qt::ImhPreferNumbers) {
         // Nothing yet
     }
-    if (hints & Qt::ImhPreferUppercase) {
+    if (hints & Qt::ImhPreferUppercase)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_UPPERCASE;
-    }
-    if (hints & Qt::ImhPreferLowercase) {
+    if (hints & Qt::ImhPreferLowercase)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_LOWERCASE;
-    }
     if ((hints & Qt::ImhNoPredictiveText) == 0) {
-        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_AUTO_COMPLETION | ZWP_TEXT_INPUT_V2_CONTENT_HINT_AUTO_CORRECTION;
+        hint |= (ZWP_TEXT_INPUT_V2_CONTENT_HINT_AUTO_COMPLETION
+                | ZWP_TEXT_INPUT_V2_CONTENT_HINT_AUTO_CORRECTION);
     }
 
-    if ((hints & Qt::ImhDate) && (hints & Qt::ImhTime) == 0) {
+    if ((hints & Qt::ImhDate) && (hints & Qt::ImhTime) == 0)
         purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_DATE;
-    } else if ((hints & Qt::ImhDate) && (hints & Qt::ImhTime)) {
+    else if ((hints & Qt::ImhDate) && (hints & Qt::ImhTime))
         purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_DATETIME;
-    } else if ((hints & Qt::ImhDate) == 0 && (hints & Qt::ImhTime)) {
+    else if ((hints & Qt::ImhDate) == 0 && (hints & Qt::ImhTime))
         purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_TIME;
-    }
 
-    if (hints & Qt::ImhPreferLatin) {
+    if (hints & Qt::ImhPreferLatin)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_LATIN;
-    }
-
-    if (hints & Qt::ImhMultiLine) {
+    if (hints & Qt::ImhMultiLine)
         hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_MULTILINE;
+    if (hints & Qt::ImhDigitsOnly)
+        purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_DIGITS;
+    if (hints & Qt::ImhFormattedNumbersOnly)
+        purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_NUMBER;
+    if (hints & Qt::ImhUppercaseOnly)
+        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_UPPERCASE;
+    if (hints & Qt::ImhLowercaseOnly)
+        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_LOWERCASE;
+    if (hints & Qt::ImhDialableCharactersOnly)
+        purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_PHONE;
+    if (hints & Qt::ImhEmailCharactersOnly)
+       purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_EMAIL;
+    if (hints & Qt::ImhUrlCharactersOnly)
+       purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_URL;
+    if (hints & Qt::ImhLatinOnly)
+        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_LATIN;
+
+    return QWaylandInputMethodContentType{hint, purpose};
+}
+
+QWaylandInputMethodContentType QWaylandInputMethodContentType::convertV4(Qt::InputMethodHints hints)
+{
+    uint32_t hint = ZWP_TEXT_INPUT_V4_CONTENT_HINT_NONE;
+    uint32_t purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_NORMAL;
+
+    if (hints & Qt::ImhHiddenText)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_HIDDEN_TEXT;
+    if (hints & Qt::ImhSensitiveData)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_SENSITIVE_DATA;
+    if ((hints & Qt::ImhNoAutoUppercase) == 0)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_AUTO_CAPITALIZATION;
+    if (hints & Qt::ImhPreferNumbers) {
+        // Nothing yet
+    }
+    if (hints & Qt::ImhPreferUppercase)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_UPPERCASE;
+    if (hints & Qt::ImhPreferLowercase)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_LOWERCASE;
+    if ((hints & Qt::ImhNoPredictiveText) == 0) {
+        hint |= (ZWP_TEXT_INPUT_V4_CONTENT_HINT_COMPLETION
+                | ZWP_TEXT_INPUT_V4_CONTENT_HINT_SPELLCHECK);
     }
 
-    if (hints & Qt::ImhDigitsOnly) {
-        purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_DIGITS;
-    }
-    if (hints & Qt::ImhFormattedNumbersOnly) {
-        purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_NUMBER;
-    }
-    if (hints & Qt::ImhUppercaseOnly) {
-        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_UPPERCASE;
-    }
-    if (hints & Qt::ImhLowercaseOnly) {
-        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_LOWERCASE;
-    }
-    if (hints & Qt::ImhDialableCharactersOnly) {
-        purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_PHONE;
-    }
-    if (hints & Qt::ImhEmailCharactersOnly) {
-       purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_EMAIL;
-    }
-    if (hints & Qt::ImhUrlCharactersOnly) {
-       purpose = ZWP_TEXT_INPUT_V2_CONTENT_PURPOSE_URL;
-    }
-    if (hints & Qt::ImhLatinOnly) {
-        hint |= ZWP_TEXT_INPUT_V2_CONTENT_HINT_LATIN;
-    }
+    if ((hints & Qt::ImhDate) && (hints & Qt::ImhTime) == 0)
+        purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_DATE;
+    else if ((hints & Qt::ImhDate) && (hints & Qt::ImhTime))
+        purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_DATETIME;
+    else if ((hints & Qt::ImhDate) == 0 && (hints & Qt::ImhTime))
+        purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_TIME;
+    if (hints & Qt::ImhPreferLatin)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_LATIN;
+    if (hints & Qt::ImhMultiLine)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_MULTILINE;
+    if (hints & Qt::ImhDigitsOnly)
+        purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_DIGITS;
+    if (hints & Qt::ImhFormattedNumbersOnly)
+        purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_NUMBER;
+    if (hints & Qt::ImhUppercaseOnly)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_UPPERCASE;
+    if (hints & Qt::ImhLowercaseOnly)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_LOWERCASE;
+    if (hints & Qt::ImhDialableCharactersOnly)
+        purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_PHONE;
+    if (hints & Qt::ImhEmailCharactersOnly)
+       purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_EMAIL;
+    if (hints & Qt::ImhUrlCharactersOnly)
+       purpose = ZWP_TEXT_INPUT_V4_CONTENT_PURPOSE_URL;
+    if (hints & Qt::ImhLatinOnly)
+        hint |= ZWP_TEXT_INPUT_V4_CONTENT_HINT_LATIN;
+
     return QWaylandInputMethodContentType{hint, purpose};
 }
 
@@ -274,17 +277,55 @@ int QWaylandInputMethodEventBuilder::indexFromWayland(const QString &text, int l
         return base;
 
     if (length < 0) {
-        const QByteArray &utf8 = text.leftRef(base).toUtf8();
-        return QString::fromUtf8(utf8.left(qMax(utf8.length() + length, 0))).length();
+        const QByteArray &utf8 = QStringView{text}.left(base).toUtf8();
+        return QString::fromUtf8(utf8.left(qMax(utf8.size() + length, 0))).size();
     } else {
-        const QByteArray &utf8 = text.midRef(base).toUtf8();
-        return QString::fromUtf8(utf8.left(length)).length() + base;
+        const QByteArray &utf8 = QStringView{text}.mid(base).toUtf8();
+        return QString::fromUtf8(utf8.left(length)).size() + base;
     }
+}
+
+int QWaylandInputMethodEventBuilder::trimmedIndexFromWayland(const QString &text, int length, int base)
+{
+    if (length == 0)
+        return base;
+
+    if (length < 0) {
+        const QByteArray &utf8 = QStringView{text}.left(base).toUtf8();
+        const int len = utf8.size();
+        const int start = len + length;
+        if (start <= 0)
+            return 0;
+
+        for (int i = 0; i < 4; i++) {
+            if (start + i >= len)
+                return base;
+
+            const unsigned char ch = utf8.at(start + i);
+            // check if current character is a utf8's initial character.
+            if (ch < 0x80 || ch > 0xbf)
+                return QString::fromUtf8(utf8.left(start + i)).size();
+        }
+    } else {
+        const QByteArray &utf8 = QStringView{text}.mid(base).toUtf8();
+        const int len = utf8.size();
+        const int start = length;
+        if (start >= len)
+            return base + QString::fromUtf8(utf8).size();
+
+        for (int i = 0; i < 4; i++) {
+            const unsigned char ch = utf8.at(start - i);
+            // check if current character is a utf8's initial character.
+            if (ch < 0x80 || ch > 0xbf)
+                return base + QString::fromUtf8(utf8.left(start - i)).size();
+        }
+    }
+    return -1;
 }
 
 int QWaylandInputMethodEventBuilder::indexToWayland(const QString &text, int length, int base)
 {
-    return text.midRef(base, length).toUtf8().size();
+    return QStringView{text}.mid(base, length).toUtf8().size();
 }
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,12 +17,11 @@
 
 class CPDFSDK_InteractiveForm;
 class CPDF_InteractiveForm;
-class CPDF_TextObject;
 struct CJS_DelayData;
 
 class CJS_Document final : public CJS_Object, public Observable {
  public:
-  static int GetObjDefnID();
+  static uint32_t GetObjDefnID();
   static void DefineJSObjects(CFXJS_Engine* pEngine);
 
   CJS_Document(v8::Local<v8::Object> pObject, CJS_Runtime* pRuntime);
@@ -112,7 +111,7 @@ class CJS_Document final : public CJS_Object, public Observable {
   JS_STATIC_METHOD(syncAnnotScan, CJS_Document)
 
  private:
-  static int ObjDefnID;
+  static uint32_t ObjDefnID;
   static const char kName[];
   static const JSPropertySpec PropertySpecs[];
   static const JSMethodSpec MethodSpecs[];
@@ -302,9 +301,6 @@ class CJS_Document final : public CJS_Object, public Observable {
                         const std::vector<v8::Local<v8::Value>>& params);
 
   CJS_Result getPropertyInternal(CJS_Runtime* pRuntime,
-                                 const ByteString& propName);
-  CJS_Result setPropertyInternal(CJS_Runtime* pRuntime,
-                                 v8::Local<v8::Value> vp,
                                  const ByteString& propName);
 
   CPDF_InteractiveForm* GetCoreInteractiveForm();

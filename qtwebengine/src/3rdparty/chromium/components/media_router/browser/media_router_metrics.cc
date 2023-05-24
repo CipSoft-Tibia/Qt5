@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,19 +6,49 @@
 
 #include <algorithm>
 
-#include "base/macros.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
 #include "base/time/default_clock.h"
+#include "components/media_router/common/media_route_provider_helper.h"
 #include "components/media_router/common/media_sink.h"
 #include "components/media_router/common/media_source.h"
+#include "components/media_router/common/mojom/media_router.mojom.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
 
 namespace media_router {
 
 namespace {
+
+constexpr char kHistogramProviderCreateRouteResult[] =
+    "MediaRouter.Provider.CreateRoute.Result";
+constexpr char kHistogramProviderJoinRouteResult[] =
+    "MediaRouter.Provider.JoinRoute.Result";
+constexpr char kHistogramProviderTerminateRouteResult[] =
+    "MediaRouter.Provider.TerminateRoute.Result";
+
+std::string GetHistogramNameForProvider(
+    const std::string& base_name,
+    absl::optional<mojom::MediaRouteProviderId> provider_id) {
+  if (!provider_id) {
+    return base_name;
+  }
+  switch (*provider_id) {
+    case mojom::MediaRouteProviderId::CAST:
+      return base_name + ".Cast";
+    case mojom::MediaRouteProviderId::DIAL:
+      return base_name + ".DIAL";
+    case mojom::MediaRouteProviderId::WIRED_DISPLAY:
+      return base_name + ".WiredDisplay";
+    case mojom::MediaRouteProviderId::ANDROID_CAF:
+      return base_name + ".AndroidCaf";
+    // The rest use the base histogram name.
+    case mojom::MediaRouteProviderId::TEST:
+      return base_name;
+  }
+}
 
 PresentationUrlType GetPresentationUrlType(const GURL& url) {
   if (url.SchemeIs(kDialPresentationUrlScheme))
@@ -47,10 +77,6 @@ MediaRouterMetrics::~MediaRouterMetrics() = default;
 // static
 const char MediaRouterMetrics::kHistogramCloseLatency[] =
     "MediaRouter.Ui.Action.CloseLatency";
-const char MediaRouterMetrics::kHistogramCloudPrefAtDialogOpen[] =
-    "MediaRouter.Cloud.PrefAtDialogOpen";
-const char MediaRouterMetrics::kHistogramCloudPrefAtInit[] =
-    "MediaRouter.Cloud.PrefAtInit";
 const char MediaRouterMetrics::kHistogramIconClickLocation[] =
     "MediaRouter.Icon.Click.Location";
 const char MediaRouterMetrics::kHistogramMediaRouterFileFormat[] =
@@ -61,8 +87,6 @@ const char MediaRouterMetrics::kHistogramMediaSinkType[] =
     "MediaRouter.Sink.SelectedType";
 const char MediaRouterMetrics::kHistogramPresentationUrlType[] =
     "MediaRouter.PresentationRequest.AvailabilityUrlType";
-const char MediaRouterMetrics::kHistogramRouteCreationOutcome[] =
-    "MediaRouter.Route.CreationOutcome";
 const char MediaRouterMetrics::kHistogramStartLocalLatency[] =
     "MediaRouter.Ui.Action.StartLocal.Latency";
 const char MediaRouterMetrics::kHistogramStartLocalPosition[] =
@@ -83,15 +107,27 @@ const char MediaRouterMetrics::kHistogramUiFirstAction[] =
     "MediaRouter.Ui.FirstAction";
 const char MediaRouterMetrics::kHistogramUiIconStateAtInit[] =
     "MediaRouter.Ui.IconStateAtInit";
+const char MediaRouterMetrics::kHistogramUiAndroidDialogType[] =
+    "MediaRouter.Ui.Android.DialogType";
+const char MediaRouterMetrics::kHistogramUiAndroidDialogAction[] =
+    "MediaRouter.Ui.Android.DialogAction";
+const char MediaRouterMetrics::kHistogramUserPromptWhenLaunchingCast[] =
+    "MediaRouter.Cast.UserPromptWhenLaunchingCast";
+const char MediaRouterMetrics::kHistogramPendingUserAuthLatency[] =
+    "MediaRouter.Cast.PendingUserAuthLatency";
 
 // static
-void MediaRouterMetrics::RecordMediaRouterDialogOrigin(
-    MediaRouterDialogOpenOrigin origin) {
-  DCHECK_LT(static_cast<int>(origin),
-            static_cast<int>(MediaRouterDialogOpenOrigin::TOTAL_COUNT));
+const base::TimeDelta MediaRouterMetrics::kDeviceCountMetricDelay =
+    base::Seconds(3);
+
+// static
+void MediaRouterMetrics::RecordMediaRouterDialogActivationLocation(
+    MediaRouterDialogActivationLocation activation_location) {
+  DCHECK_LT(static_cast<int>(activation_location),
+            static_cast<int>(MediaRouterDialogActivationLocation::TOTAL_COUNT));
   UMA_HISTOGRAM_ENUMERATION(
-      kHistogramIconClickLocation, static_cast<int>(origin),
-      static_cast<int>(MediaRouterDialogOpenOrigin::TOTAL_COUNT));
+      kHistogramIconClickLocation, static_cast<int>(activation_location),
+      static_cast<int>(MediaRouterDialogActivationLocation::TOTAL_COUNT));
 }
 
 // static
@@ -123,16 +159,6 @@ void MediaRouterMetrics::RecordMediaRouterInitialUserAction(
 }
 
 // static
-void MediaRouterMetrics::RecordRouteCreationOutcome(
-    MediaRouterRouteCreationOutcome outcome) {
-  DCHECK_LT(static_cast<int>(outcome),
-            static_cast<int>(MediaRouterRouteCreationOutcome::TOTAL_COUNT));
-  UMA_HISTOGRAM_ENUMERATION(
-      kHistogramRouteCreationOutcome, static_cast<int>(outcome),
-      static_cast<int>(MediaRouterRouteCreationOutcome::TOTAL_COUNT));
-}
-
-// static
 void MediaRouterMetrics::RecordMediaRouterFileFormat(
     const media::container_names::MediaContainerName format) {
   UMA_HISTOGRAM_ENUMERATION(kHistogramMediaRouterFileFormat, format,
@@ -155,6 +181,22 @@ void MediaRouterMetrics::RecordPresentationUrlType(const GURL& url) {
 void MediaRouterMetrics::RecordMediaSinkType(SinkIconType sink_icon_type) {
   UMA_HISTOGRAM_ENUMERATION(kHistogramMediaSinkType, sink_icon_type,
                             SinkIconType::TOTAL_COUNT);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaSinkTypeForGlobalMediaControls(
+    SinkIconType sink_icon_type) {
+  UMA_HISTOGRAM_ENUMERATION(
+      base::StrCat({kHistogramMediaSinkType, ".GlobalMediaControls"}),
+      sink_icon_type, SinkIconType::TOTAL_COUNT);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaSinkTypeForCastDialog(
+    SinkIconType sink_icon_type) {
+  UMA_HISTOGRAM_ENUMERATION(
+      base::StrCat({kHistogramMediaSinkType, ".CastHarmony"}), sink_icon_type,
+      SinkIconType::TOTAL_COUNT);
 }
 
 // static
@@ -203,13 +245,57 @@ void MediaRouterMetrics::RecordIconStateAtInit(bool is_pinned) {
 }
 
 // static
-void MediaRouterMetrics::RecordCloudPrefAtDialogOpen(bool enabled) {
-  base::UmaHistogramBoolean(kHistogramCloudPrefAtDialogOpen, enabled);
+void MediaRouterMetrics::RecordCreateRouteResultCode(
+    mojom::RouteRequestResultCode result_code,
+    absl::optional<mojom::MediaRouteProviderId> provider_id) {
+  base::UmaHistogramEnumeration(
+      GetHistogramNameForProvider(kHistogramProviderCreateRouteResult,
+                                  provider_id),
+      result_code);
 }
 
 // static
-void MediaRouterMetrics::RecordCloudPrefAtInit(bool enabled) {
-  base::UmaHistogramBoolean(kHistogramCloudPrefAtInit, enabled);
+void MediaRouterMetrics::RecordJoinRouteResultCode(
+    mojom::RouteRequestResultCode result_code,
+    absl::optional<mojom::MediaRouteProviderId> provider_id) {
+  base::UmaHistogramEnumeration(
+      GetHistogramNameForProvider(kHistogramProviderJoinRouteResult,
+                                  provider_id),
+      result_code);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaRouteProviderTerminateRoute(
+    mojom::RouteRequestResultCode result_code,
+    absl::optional<mojom::MediaRouteProviderId> provider_id) {
+  base::UmaHistogramEnumeration(
+      GetHistogramNameForProvider(kHistogramProviderTerminateRouteResult,
+                                  provider_id),
+      result_code);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaRouterAndroidDialogType(
+    MediaRouterAndroidDialogType type) {
+  base::UmaHistogramEnumeration(kHistogramUiAndroidDialogType, type);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaRouterAndroidDialogAction(
+    MediaRouterAndroidDialogAction action) {
+  base::UmaHistogramEnumeration(kHistogramUiAndroidDialogAction, action);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaRouterUserPromptWhenLaunchingCast(
+    MediaRouterUserPromptWhenLaunchingCast user_prompt) {
+  UMA_HISTOGRAM_ENUMERATION(kHistogramUserPromptWhenLaunchingCast, user_prompt);
+}
+
+// static
+void MediaRouterMetrics::RecordMediaRouterPendingUserAuthLatency(
+    const base::TimeDelta& delta) {
+  UMA_HISTOGRAM_TIMES(kHistogramPendingUserAuthLatency, delta);
 }
 
 }  // namespace media_router

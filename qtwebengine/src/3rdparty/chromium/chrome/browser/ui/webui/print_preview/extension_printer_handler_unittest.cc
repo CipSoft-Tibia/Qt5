@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,14 +11,13 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
 #include "base/containers/queue.h"
-#include "base/json/json_reader.h"
+#include "base/functional/bind.h"
 #include "base/json/json_string_value_serializer.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/run_loop.h"
-#include "base/strings/string16.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/values_test_util.h"
@@ -239,13 +238,13 @@ const char kPrintRequestSuccess[] = "OK";
 constexpr unsigned char kPrintData[] = "print data, PDF";
 constexpr size_t kPrintDataLength = sizeof(kPrintData);
 
-// Used as a callback to StartGetPrinters in tests.
-// Increases |*call_count| and records values returned by StartGetPrinters.
-void RecordPrinterList(size_t* call_count,
-                       std::unique_ptr<base::ListValue>* printers_out,
-                       const base::ListValue& printers) {
-  ++(*call_count);
-  printers_out->reset(printers.DeepCopy());
+// Used as a callback to StartGetPrinters() in tests.
+// Increases `call_count` and records values returned by StartGetPrinters().
+void RecordPrinterList(size_t& call_count,
+                       base::Value::List& printers_out,
+                       base::Value::List printers) {
+  ++call_count;
+  printers_out = std::move(printers);
 }
 
 // Used as a callback to StartGetPrinters in tests.
@@ -254,21 +253,17 @@ void RecordPrintersDone(bool* is_done_out) {
   *is_done_out = true;
 }
 
-// Used as a callback to StartGetCapability in tests.
-// Increases |*call_count| and records values returned by StartGetCapability.
-void RecordCapability(size_t* call_count,
-                      std::unique_ptr<base::DictionaryValue>* capability_out,
-                      base::Value capability) {
-  ++(*call_count);
-  const base::Value* capabilities = nullptr;
-  if (capability.is_dict()) {
-    capabilities = capability.FindKeyOfType(kSettingCapabilities,
-                                            base::Value::Type::DICTIONARY);
-  }
-  *capability_out =
-      capabilities ? base::DictionaryValue::From(
-                         std::make_unique<base::Value>(capabilities->Clone()))
-                   : nullptr;
+// Used as a callback to StartGetCapability() in tests.
+// Increases `call_count` and records values returned by StartGetCapability().
+void RecordCapability(size_t& call_count,
+                      base::Value::Dict& capability_out,
+                      base::Value::Dict capability) {
+  ++call_count;
+  base::Value::Dict* capabilities = capability.FindDict(kSettingCapabilities);
+  if (capabilities)
+    capability_out = std::move(*capabilities);
+  else
+    capability_out.clear();
 }
 
 // Used as a callback to StartPrint in tests.
@@ -287,33 +282,10 @@ void RecordPrintResult(size_t* call_count,
 // Used as a callback to StartGrantPrinterAccess in tests.
 // Increases |*call_count| and records the value returned.
 void RecordPrinterInfo(size_t* call_count,
-                       std::unique_ptr<base::DictionaryValue>* printer_info_out,
-                       const base::DictionaryValue& printer_info) {
+                       base::Value::Dict* printer_info_out,
+                       const base::Value::Dict& printer_info) {
   ++(*call_count);
-  printer_info_out->reset(printer_info.DeepCopy());
-}
-
-// Converts JSON string to base::ListValue object.
-// On failure, returns NULL and fills |*error| string.
-std::unique_ptr<base::ListValue> GetJSONAsListValue(const std::string& json,
-                                                    std::string* error) {
-  auto ret = base::ListValue::From(
-      JSONStringValueDeserializer(json).Deserialize(nullptr, error));
-  if (!ret)
-    *error = "Value is not a list.";
-  return ret;
-}
-
-// Converts JSON string to base::DictionaryValue object.
-// On failure, returns NULL and fills |*error| string.
-std::unique_ptr<base::DictionaryValue> GetJSONAsDictionaryValue(
-    const std::string& json,
-    std::string* error) {
-  auto ret = base::DictionaryValue::From(
-      JSONStringValueDeserializer(json).Deserialize(nullptr, error));
-  if (!ret)
-    *error = "Value is not a dictionary.";
-  return ret;
+  *printer_info_out = printer_info.Clone();
 }
 
 std::string RefCountedMemoryToString(
@@ -325,6 +297,10 @@ std::string RefCountedMemoryToString(
 class FakePwgRasterConverter : public PwgRasterConverter {
  public:
   FakePwgRasterConverter() {}
+
+  FakePwgRasterConverter(const FakePwgRasterConverter&) = delete;
+  FakePwgRasterConverter& operator=(const FakePwgRasterConverter&) = delete;
+
   ~FakePwgRasterConverter() override = default;
 
   // PwgRasterConverter implementation. It writes |data| to shared memory.
@@ -366,8 +342,6 @@ class FakePwgRasterConverter : public PwgRasterConverter {
   PdfRenderSettings conversion_settings_;
   PwgRasterSettings bitmap_settings_;
   bool fail_conversion_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(FakePwgRasterConverter);
 };
 
 // Information about received print requests.
@@ -382,6 +356,10 @@ struct PrintRequestInfo {
 class FakePrinterProviderAPI : public PrinterProviderAPI {
  public:
   FakePrinterProviderAPI() = default;
+
+  FakePrinterProviderAPI(const FakePrinterProviderAPI&) = delete;
+  FakePrinterProviderAPI& operator=(const FakePrinterProviderAPI&) = delete;
+
   ~FakePrinterProviderAPI() override = default;
 
   void DispatchGetPrintersRequested(
@@ -425,10 +403,9 @@ class FakePrinterProviderAPI : public PrinterProviderAPI {
     return nullptr;
   }
 
-  void TriggerNextGetPrintersCallback(const base::ListValue& printers,
-                                      bool done) {
+  void TriggerNextGetPrintersCallback(base::Value::List printers, bool done) {
     ASSERT_GT(pending_get_printers_count(), 0u);
-    pending_printers_callbacks_.front().Run(printers, done);
+    pending_printers_callbacks_.front().Run(std::move(printers), done);
     pending_printers_callbacks_.pop();
   }
 
@@ -436,10 +413,9 @@ class FakePrinterProviderAPI : public PrinterProviderAPI {
     return pending_capability_callbacks_.size();
   }
 
-  void TriggerNextGetCapabilityCallback(
-      const base::DictionaryValue& description) {
+  void TriggerNextGetCapabilityCallback(base::Value::Dict caps) {
     ASSERT_GT(pending_get_capability_count(), 0u);
-    std::move(pending_capability_callbacks_.front()).Run(description);
+    std::move(pending_capability_callbacks_.front()).Run(std::move(caps));
     pending_capability_callbacks_.pop();
   }
 
@@ -448,7 +424,7 @@ class FakePrinterProviderAPI : public PrinterProviderAPI {
   const PrinterProviderPrintJob* GetNextPendingPrintJob() const {
     EXPECT_GT(pending_print_count(), 0u);
     if (pending_print_count() == 0)
-      return NULL;
+      return nullptr;
     return &pending_print_requests_.front().job;
   }
 
@@ -465,10 +441,9 @@ class FakePrinterProviderAPI : public PrinterProviderAPI {
     return pending_usb_info_callbacks_.size();
   }
 
-  void TriggerNextUsbPrinterInfoCallback(
-      const base::DictionaryValue& printer_info) {
+  void TriggerNextUsbPrinterInfoCallback(base::Value::Dict printer_info) {
     ASSERT_GT(pending_usb_info_count(), 0u);
-    std::move(pending_usb_info_callbacks_.front()).Run(printer_info);
+    std::move(pending_usb_info_callbacks_.front()).Run(std::move(printer_info));
     pending_usb_info_callbacks_.pop();
   }
 
@@ -480,8 +455,6 @@ class FakePrinterProviderAPI : public PrinterProviderAPI {
   base::queue<PrintRequestInfo> pending_print_requests_;
   base::queue<PrinterProviderAPI::GetPrinterInfoCallback>
       pending_usb_info_callbacks_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakePrinterProviderAPI);
 };
 
 std::unique_ptr<KeyedService> BuildTestingPrinterProviderAPI(
@@ -494,6 +467,11 @@ std::unique_ptr<KeyedService> BuildTestingPrinterProviderAPI(
 class ExtensionPrinterHandlerTest : public testing::Test {
  public:
   ExtensionPrinterHandlerTest() = default;
+
+  ExtensionPrinterHandlerTest(const ExtensionPrinterHandlerTest&) = delete;
+  ExtensionPrinterHandlerTest& operator=(const ExtensionPrinterHandlerTest&) =
+      delete;
+
   ~ExtensionPrinterHandlerTest() override = default;
 
   void SetUp() override {
@@ -527,62 +505,59 @@ class ExtensionPrinterHandlerTest : public testing::Test {
   std::unique_ptr<ExtensionPrinterHandler> extension_printer_handler_;
 
   // Owned by |extension_printer_handler_|.
-  FakePwgRasterConverter* pwg_raster_converter_ = nullptr;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ExtensionPrinterHandlerTest);
+  raw_ptr<FakePwgRasterConverter> pwg_raster_converter_ = nullptr;
 };
 
 TEST_F(ExtensionPrinterHandlerTest, GetPrinters) {
   size_t call_count = 0;
-  std::unique_ptr<base::ListValue> printers;
+  base::Value::List printers;
   bool is_done = false;
-
   extension_printer_handler_->StartGetPrinters(
-      base::BindRepeating(&RecordPrinterList, &call_count, &printers),
+      base::BindRepeating(&RecordPrinterList, std::ref(call_count),
+                          std::ref(printers)),
       base::BindOnce(&RecordPrintersDone, &is_done));
 
-  EXPECT_FALSE(printers.get());
+  EXPECT_EQ(0u, call_count);
+  EXPECT_TRUE(printers.empty());
   FakePrinterProviderAPI* fake_api = GetPrinterProviderAPI();
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_get_printers_count());
 
-  std::string error;
-  std::unique_ptr<base::ListValue> original_printers(
-      GetJSONAsListValue(kPrinterDescriptionList, &error));
-  ASSERT_TRUE(original_printers) << "Failed to deserialize printers: " << error;
+  base::Value original_printers =
+      base::test::ParseJson(kPrinterDescriptionList);
+  ASSERT_TRUE(original_printers.is_list());
 
-  fake_api->TriggerNextGetPrintersCallback(*original_printers, true);
+  fake_api->TriggerNextGetPrintersCallback(original_printers.GetList().Clone(),
+                                           /*done=*/true);
 
   EXPECT_EQ(1u, call_count);
   EXPECT_TRUE(is_done);
-  ASSERT_TRUE(printers.get());
-  EXPECT_TRUE(printers->Equals(original_printers.get()))
-      << *printers << ", expected: " << *original_printers;
+  EXPECT_EQ(printers, original_printers.GetList());
 }
 
-TEST_F(ExtensionPrinterHandlerTest, GetPrinters_Reset) {
+TEST_F(ExtensionPrinterHandlerTest, GetPrintersReset) {
   size_t call_count = 0;
-  std::unique_ptr<base::ListValue> printers;
+  base::Value::List printers;
   bool is_done = false;
-
   extension_printer_handler_->StartGetPrinters(
-      base::BindRepeating(&RecordPrinterList, &call_count, &printers),
+      base::BindRepeating(&RecordPrinterList, std::ref(call_count),
+                          std::ref(printers)),
       base::BindOnce(&RecordPrintersDone, &is_done));
 
-  EXPECT_FALSE(printers.get());
+  EXPECT_EQ(0u, call_count);
+  EXPECT_TRUE(printers.empty());
   FakePrinterProviderAPI* fake_api = GetPrinterProviderAPI();
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_get_printers_count());
 
   extension_printer_handler_->Reset();
 
-  std::string error;
-  std::unique_ptr<base::ListValue> original_printers(
-      GetJSONAsListValue(kPrinterDescriptionList, &error));
-  ASSERT_TRUE(original_printers) << "Error deserializing printers: " << error;
+  base::Value original_printers =
+      base::test::ParseJson(kPrinterDescriptionList);
+  ASSERT_TRUE(original_printers.is_list());
 
-  fake_api->TriggerNextGetPrintersCallback(*original_printers, true);
+  fake_api->TriggerNextGetPrintersCallback(original_printers.GetList().Clone(),
+                                           /*done=*/true);
 
   EXPECT_EQ(0u, call_count);
 }
@@ -594,20 +569,23 @@ TEST_F(ExtensionPrinterHandlerTest, GetUsbPrinters) {
       fake_usb_manager_.CreateAndAddDevice(0, 1, "Google", "USB Printer", "");
   base::RunLoop().RunUntilIdle();
 
-  const Extension* extension_1 = env_.MakeExtension(
-      base::test::ParseJson(kExtension1), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  const Extension* extension_2 = env_.MakeExtension(
-      base::test::ParseJson(kExtension2), "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  const Extension* extension_1 =
+      env_.MakeExtension(base::test::ParseJsonDict(kExtension1),
+                         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  const Extension* extension_2 =
+      env_.MakeExtension(base::test::ParseJsonDict(kExtension2),
+                         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
   extensions::DevicePermissionsManager* permissions_manager =
       extensions::DevicePermissionsManager::Get(env_.profile());
   permissions_manager->AllowUsbDevice(extension_2->id(), *device0);
 
   size_t call_count = 0;
-  std::unique_ptr<base::ListValue> printers;
+  base::Value::List printers;
   bool is_done = false;
   extension_printer_handler_->StartGetPrinters(
-      base::BindRepeating(&RecordPrinterList, &call_count, &printers),
+      base::BindRepeating(&RecordPrinterList, std::ref(call_count),
+                          std::ref(printers)),
       base::BindOnce(&RecordPrintersDone, &is_done));
 
   base::RunLoop().RunUntilIdle();
@@ -618,9 +596,8 @@ TEST_F(ExtensionPrinterHandlerTest, GetUsbPrinters) {
 
   EXPECT_EQ(1u, call_count);
   EXPECT_FALSE(is_done);
-  EXPECT_TRUE(printers.get());
-  EXPECT_EQ(2u, printers->GetSize());
-  std::unique_ptr<base::DictionaryValue> extension_1_entry(
+  EXPECT_EQ(2u, printers.size());
+  base::Value::Dict extension_1_entry =
       DictionaryBuilder()
           .Set("id", base::StringPrintf("provisional-usb:%s:%s",
                                         extension_1->id().c_str(),
@@ -629,8 +606,8 @@ TEST_F(ExtensionPrinterHandlerTest, GetUsbPrinters) {
           .Set("extensionName", "Provider 1")
           .Set("extensionId", extension_1->id())
           .Set("provisional", true)
-          .Build());
-  std::unique_ptr<base::DictionaryValue> extension_2_entry(
+          .Build();
+  base::Value::Dict extension_2_entry =
       DictionaryBuilder()
           .Set("id", base::StringPrintf("provisional-usb:%s:%s",
                                         extension_2->id().c_str(),
@@ -639,23 +616,24 @@ TEST_F(ExtensionPrinterHandlerTest, GetUsbPrinters) {
           .Set("extensionName", "Provider 2")
           .Set("extensionId", extension_2->id())
           .Set("provisional", true)
-          .Build());
-  EXPECT_TRUE(printers->Find(*extension_1_entry) != printers->end());
-  EXPECT_TRUE(printers->Find(*extension_2_entry) != printers->end());
+          .Build();
+  EXPECT_TRUE(base::Contains(printers, extension_1_entry));
+  EXPECT_TRUE(base::Contains(printers, extension_2_entry));
 
-  fake_api->TriggerNextGetPrintersCallback(base::ListValue(), true);
+  fake_api->TriggerNextGetPrintersCallback(base::Value::List(), /*done=*/true);
 
   EXPECT_EQ(1u, call_count);  // No printers, so no calls. Call count stays 1.
   EXPECT_TRUE(is_done);       // Still calls done.
-  EXPECT_TRUE(printers.get());
+  EXPECT_EQ(2u, printers.size());
 }
 
 TEST_F(ExtensionPrinterHandlerTest, GetCapability) {
   size_t call_count = 0;
-  std::unique_ptr<base::DictionaryValue> capability;
+  base::Value::Dict capability;
 
   extension_printer_handler_->StartGetCapability(
-      kPrinterId, base::BindOnce(&RecordCapability, &call_count, &capability));
+      kPrinterId, base::BindOnce(&RecordCapability, std::ref(call_count),
+                                 std::ref(capability)));
 
   EXPECT_EQ(0u, call_count);
 
@@ -663,26 +641,39 @@ TEST_F(ExtensionPrinterHandlerTest, GetCapability) {
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_get_capability_count());
 
-  std::string error;
-  std::unique_ptr<base::DictionaryValue> original_capability(
-      GetJSONAsDictionaryValue(kPWGRasterOnlyPrinterSimpleDescription, &error));
-  ASSERT_TRUE(original_capability)
-      << "Error deserializing capability: " << error;
+  base::Value original_capability =
+      base::test::ParseJson(kPWGRasterOnlyPrinterSimpleDescription);
+  ASSERT_TRUE(original_capability.is_dict());
 
-  fake_api->TriggerNextGetCapabilityCallback(*original_capability);
+  // TODO(thestig): Consolidate constants used in this section.
+  base::Value::Dict original_capability_with_dpi_dict =
+      original_capability.GetDict().Clone();
+  base::Value::Dict* printer =
+      original_capability_with_dpi_dict.FindDict("printer");
+  ASSERT_TRUE(printer);
+  base::Value::Dict default_dpi_option;
+  default_dpi_option.Set("horizontal_dpi", kDefaultPdfDpi);
+  default_dpi_option.Set("vertical_dpi", kDefaultPdfDpi);
+  base::Value::List dpi_list;
+  dpi_list.Append(std::move(default_dpi_option));
+  base::Value::Dict dpi_dict;
+  dpi_dict.Set("option", std::move(dpi_list));
+  printer->Set("dpi", std::move(dpi_dict));
+
+  fake_api->TriggerNextGetCapabilityCallback(
+      std::move(original_capability).TakeDict());
 
   EXPECT_EQ(1u, call_count);
-  ASSERT_TRUE(capability.get());
-  EXPECT_TRUE(capability->Equals(original_capability.get()))
-      << *capability << ", expected: " << *original_capability;
+  EXPECT_EQ(capability, original_capability_with_dpi_dict);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, GetCapability_Reset) {
+TEST_F(ExtensionPrinterHandlerTest, GetCapabilityReset) {
   size_t call_count = 0;
-  std::unique_ptr<base::DictionaryValue> capability;
+  base::Value::Dict capability;
 
   extension_printer_handler_->StartGetCapability(
-      kPrinterId, base::BindOnce(&RecordCapability, &call_count, &capability));
+      kPrinterId, base::BindOnce(&RecordCapability, std::ref(call_count),
+                                 std::ref(capability)));
 
   EXPECT_EQ(0u, call_count);
 
@@ -692,28 +683,28 @@ TEST_F(ExtensionPrinterHandlerTest, GetCapability_Reset) {
 
   extension_printer_handler_->Reset();
 
-  std::string error;
-  std::unique_ptr<base::DictionaryValue> original_capability(
-      GetJSONAsDictionaryValue(kPWGRasterOnlyPrinterSimpleDescription, &error));
-  ASSERT_TRUE(original_capability)
-      << "Error deserializing capability: " << error;
+  base::Value original_capability =
+      base::test::ParseJson(kPWGRasterOnlyPrinterSimpleDescription);
+  ASSERT_TRUE(original_capability.is_dict());
 
-  fake_api->TriggerNextGetCapabilityCallback(*original_capability);
+  fake_api->TriggerNextGetCapabilityCallback(
+      original_capability.GetDict().Clone());
 
   EXPECT_EQ(0u, call_count);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pdf) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPdf) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data = base::MakeRefCounted<base::RefCountedStaticMemory>(
       kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kPdfSettings), print_data,
+      title, std::move(base::test::ParseJson(kPdfSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(0u, call_count);
@@ -726,7 +717,7 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pdf) {
 
   EXPECT_EQ(kPrinterId, print_job->printer_id);
   EXPECT_EQ(title, print_job->job_title);
-  EXPECT_EQ(*base::JSONReader::Read(kEmptyPrintTicket), print_job->ticket);
+  EXPECT_EQ(base::test::ParseJson(kEmptyPrintTicket), print_job->ticket);
   EXPECT_EQ(kContentTypePDF, print_job->content_type);
   ASSERT_TRUE(print_job->document_bytes);
   EXPECT_EQ(RefCountedMemoryToString(print_data),
@@ -739,17 +730,18 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pdf) {
   EXPECT_EQ(kPrintRequestSuccess, status);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pdf_Reset) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPdfReset) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kPdfSettings), print_data,
+      title, std::move(base::test::ParseJson(kPdfSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(0u, call_count);
@@ -764,17 +756,18 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pdf_Reset) {
   EXPECT_EQ(0u, call_count);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_All) {
+TEST_F(ExtensionPrinterHandlerTest, PrintAll) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kAllTypesSettings), print_data,
+      title, std::move(base::test::ParseJson(kAllTypesSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(0u, call_count);
@@ -788,7 +781,7 @@ TEST_F(ExtensionPrinterHandlerTest, Print_All) {
 
   EXPECT_EQ(kPrinterId, print_job->printer_id);
   EXPECT_EQ(title, print_job->job_title);
-  EXPECT_EQ(*base::JSONReader::Read(kEmptyPrintTicket), print_job->ticket);
+  EXPECT_EQ(base::test::ParseJson(kEmptyPrintTicket), print_job->ticket);
   EXPECT_EQ(kContentTypePDF, print_job->content_type);
   ASSERT_TRUE(print_job->document_bytes);
   EXPECT_EQ(RefCountedMemoryToString(print_data),
@@ -801,17 +794,18 @@ TEST_F(ExtensionPrinterHandlerTest, Print_All) {
   EXPECT_EQ(kPrintRequestSuccess, status);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pwg) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPwg) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kSimpleRasterSettings), print_data,
+      title, std::move(base::test::ParseJson(kSimpleRasterSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(0u, call_count);
@@ -822,6 +816,8 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg) {
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_print_count());
 
+  EXPECT_EQ(mojom::DuplexMode::kSimplex,
+            pwg_raster_converter_->bitmap_settings().duplex_mode);
   EXPECT_EQ(TRANSFORM_NORMAL,
             pwg_raster_converter_->bitmap_settings().odd_page_transform);
   EXPECT_FALSE(pwg_raster_converter_->bitmap_settings().rotate_all_pages);
@@ -841,7 +837,7 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg) {
 
   EXPECT_EQ(kPrinterId, print_job->printer_id);
   EXPECT_EQ(title, print_job->job_title);
-  EXPECT_EQ(*base::JSONReader::Read(kEmptyPrintTicket), print_job->ticket);
+  EXPECT_EQ(base::test::ParseJson(kEmptyPrintTicket), print_job->ticket);
   EXPECT_EQ(kContentTypePWG, print_job->content_type);
   ASSERT_TRUE(print_job->document_bytes);
   EXPECT_EQ(RefCountedMemoryToString(print_data),
@@ -854,17 +850,18 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg) {
   EXPECT_EQ(kPrintRequestSuccess, status);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_NonDefaultSettings) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPwgNonDefaultSettings) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kDuplexSettings), print_data,
+      title, std::move(base::test::ParseJson(kDuplexSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(0u, call_count);
@@ -875,6 +872,8 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_NonDefaultSettings) {
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_print_count());
 
+  EXPECT_EQ(mojom::DuplexMode::kLongEdge,
+            pwg_raster_converter_->bitmap_settings().duplex_mode);
   EXPECT_EQ(TRANSFORM_FLIP_VERTICAL,
             pwg_raster_converter_->bitmap_settings().odd_page_transform);
   EXPECT_TRUE(pwg_raster_converter_->bitmap_settings().rotate_all_pages);
@@ -894,7 +893,7 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_NonDefaultSettings) {
 
   EXPECT_EQ(kPrinterId, print_job->printer_id);
   EXPECT_EQ(title, print_job->job_title);
-  EXPECT_EQ(*base::JSONReader::Read(kPrintTicketWithDuplex), print_job->ticket);
+  EXPECT_EQ(base::test::ParseJson(kPrintTicketWithDuplex), print_job->ticket);
   EXPECT_EQ(kContentTypePWG, print_job->content_type);
   ASSERT_TRUE(print_job->document_bytes);
   EXPECT_EQ(RefCountedMemoryToString(print_data),
@@ -907,17 +906,18 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_NonDefaultSettings) {
   EXPECT_EQ(kPrintRequestSuccess, status);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_Reset) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPwgReset) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kSimpleRasterSettings), print_data,
+      title, std::move(base::test::ParseJson(kSimpleRasterSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(0u, call_count);
@@ -935,17 +935,18 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_Reset) {
   EXPECT_EQ(0u, call_count);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_InvalidTicket) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPwgInvalidTicket) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kInvalidSettings), print_data,
+      title, std::move(base::test::ParseJson(kInvalidSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(1u, call_count);
@@ -954,7 +955,7 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_InvalidTicket) {
   EXPECT_EQ("INVALID_TICKET", status);
 }
 
-TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_FailedConversion) {
+TEST_F(ExtensionPrinterHandlerTest, PrintPwgFailedConversion) {
   size_t call_count = 0;
   bool success = false;
   std::string status;
@@ -963,10 +964,11 @@ TEST_F(ExtensionPrinterHandlerTest, Print_Pwg_FailedConversion) {
 
   auto print_data =
       base::MakeRefCounted<base::RefCountedBytes>(kPrintData, kPrintDataLength);
-  base::string16 title = base::ASCIIToUTF16("Title");
+  std::u16string title = u"Title";
 
   extension_printer_handler_->StartPrint(
-      title, *base::JSONReader::Read(kSimpleRasterSettings), print_data,
+      title, std::move(base::test::ParseJson(kSimpleRasterSettings).GetDict()),
+      print_data,
       base::BindOnce(&RecordPrintResult, &call_count, &success, &status));
 
   EXPECT_EQ(1u, call_count);
@@ -981,7 +983,7 @@ TEST_F(ExtensionPrinterHandlerTest, GrantUsbPrinterAccess) {
   base::RunLoop().RunUntilIdle();
 
   size_t call_count = 0;
-  std::unique_ptr<base::DictionaryValue> printer_info;
+  base::Value::Dict printer_info;
 
   std::string printer_id = base::StringPrintf(
       "provisional-usb:fake extension id:%s", device->guid.c_str());
@@ -989,55 +991,53 @@ TEST_F(ExtensionPrinterHandlerTest, GrantUsbPrinterAccess) {
       printer_id,
       base::BindOnce(&RecordPrinterInfo, &call_count, &printer_info));
 
-  EXPECT_FALSE(printer_info.get());
+  EXPECT_TRUE(printer_info.empty());
   FakePrinterProviderAPI* fake_api = GetPrinterProviderAPI();
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_usb_info_count());
 
-  std::unique_ptr<base::DictionaryValue> original_printer_info(
-      DictionaryBuilder()
-          .Set("id", "printer1")
-          .Set("name", "Printer 1")
-          .Build());
+  base::Value::Dict original_printer_info = DictionaryBuilder()
+                                                .Set("id", "printer1")
+                                                .Set("name", "Printer 1")
+                                                .Build();
 
-  fake_api->TriggerNextUsbPrinterInfoCallback(*original_printer_info);
+  fake_api->TriggerNextUsbPrinterInfoCallback(original_printer_info.Clone());
 
   EXPECT_EQ(1u, call_count);
-  ASSERT_TRUE(printer_info.get());
-  EXPECT_TRUE(printer_info->Equals(original_printer_info.get()))
-      << *printer_info << ", expected: " << *original_printer_info;
+  EXPECT_FALSE(printer_info.empty());
+  EXPECT_EQ(printer_info, original_printer_info)
+      << printer_info << ", expected: " << original_printer_info;
 }
 
-TEST_F(ExtensionPrinterHandlerTest, GrantUsbPrinterAccess_Reset) {
+TEST_F(ExtensionPrinterHandlerTest, GrantUsbPrinterAccessReset) {
   UsbDeviceInfoPtr device =
       fake_usb_manager_.CreateAndAddDevice(0, 0, "Google", "USB Printer", "");
   base::RunLoop().RunUntilIdle();
 
   size_t call_count = 0;
-  std::unique_ptr<base::DictionaryValue> printer_info;
+  base::Value::Dict printer_info;
 
   extension_printer_handler_->StartGrantPrinterAccess(
       base::StringPrintf("provisional-usb:fake extension id:%s",
                          device->guid.c_str()),
       base::BindOnce(&RecordPrinterInfo, &call_count, &printer_info));
 
-  EXPECT_FALSE(printer_info.get());
+  EXPECT_TRUE(printer_info.empty());
   FakePrinterProviderAPI* fake_api = GetPrinterProviderAPI();
   ASSERT_TRUE(fake_api);
   ASSERT_EQ(1u, fake_api->pending_usb_info_count());
 
   extension_printer_handler_->Reset();
 
-  std::unique_ptr<base::DictionaryValue> original_printer_info(
-      DictionaryBuilder()
-          .Set("id", "printer1")
-          .Set("name", "Printer 1")
-          .Build());
+  base::Value::Dict original_printer_info = DictionaryBuilder()
+                                                .Set("id", "printer1")
+                                                .Set("name", "Printer 1")
+                                                .Build();
 
-  fake_api->TriggerNextUsbPrinterInfoCallback(*original_printer_info);
+  fake_api->TriggerNextUsbPrinterInfoCallback(std::move(original_printer_info));
 
   EXPECT_EQ(0u, call_count);
-  EXPECT_FALSE(printer_info.get());
+  EXPECT_TRUE(printer_info.empty());
 }
 
 }  // namespace printing

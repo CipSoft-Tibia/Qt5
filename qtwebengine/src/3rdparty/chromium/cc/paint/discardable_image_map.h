@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -70,7 +70,7 @@ class CC_PAINT_EXPORT DiscardableImageMap {
   }
 
   void Reset();
-  void Generate(const PaintOpBuffer* paint_op_buffer, const gfx::Rect& bounds);
+  void Generate(const PaintOpBuffer& paint_op_buffer, const gfx::Rect& bounds);
 
   // This should only be called once from the compositor thread at commit time.
   base::flat_map<PaintImage::Id, PaintImage::DecodingMode>

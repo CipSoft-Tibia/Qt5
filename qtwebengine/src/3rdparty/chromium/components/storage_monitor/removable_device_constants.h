@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 #define COMPONENTS_STORAGE_MONITOR_REMOVABLE_DEVICE_CONSTANTS_H_
 
 #include "base/files/file_path.h"
-#include "base/strings/string16.h"
 #include "build/build_config.h"
 
 namespace storage_monitor {
@@ -15,13 +14,13 @@ namespace storage_monitor {
 extern const char kFSUniqueIdPrefix[];
 extern const char kVendorModelSerialPrefix[];
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 extern const char kVendorModelVolumeStoragePrefix[];
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 // Windows portable device interface GUID constant.
-extern const base::char16 kWPDDevInterfaceGUID[];
+extern const wchar_t kWPDDevInterfaceGUID[];
 #endif
 
 extern const base::FilePath::CharType kDCIMDirectoryName[];

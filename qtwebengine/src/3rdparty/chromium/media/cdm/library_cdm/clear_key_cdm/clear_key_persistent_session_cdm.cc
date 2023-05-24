@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "media/base/cdm_promise.h"
 #include "media/cdm/json_web_key.h"
@@ -31,6 +30,12 @@ class NewPersistentSessionCdmPromise : public NewSessionCdmPromise {
                                  std::unique_ptr<NewSessionCdmPromise> promise)
       : session_created_cb_(std::move(session_created_cb)),
         promise_(std::move(promise)) {}
+
+  NewPersistentSessionCdmPromise(const NewPersistentSessionCdmPromise&) =
+      delete;
+  NewPersistentSessionCdmPromise& operator=(
+      const NewPersistentSessionCdmPromise&) = delete;
+
   ~NewPersistentSessionCdmPromise() override = default;
 
   // NewSessionCdmPromise implementation.
@@ -50,8 +55,6 @@ class NewPersistentSessionCdmPromise : public NewSessionCdmPromise {
  private:
   SessionCreatedCB session_created_cb_;
   std::unique_ptr<NewSessionCdmPromise> promise_;
-
-  DISALLOW_COPY_AND_ASSIGN(NewPersistentSessionCdmPromise);
 };
 
 // When a session has been loaded, we need to call FinishUpdate() to complete
@@ -64,6 +67,10 @@ class FinishLoadCdmPromise : public SimpleCdmPromise {
   FinishLoadCdmPromise(const std::string& session_id,
                        std::unique_ptr<NewSessionCdmPromise> promise)
       : session_id_(session_id), promise_(std::move(promise)) {}
+
+  FinishLoadCdmPromise(const FinishLoadCdmPromise&) = delete;
+  FinishLoadCdmPromise& operator=(const FinishLoadCdmPromise&) = delete;
+
   ~FinishLoadCdmPromise() override = default;
 
   // CdmSimplePromise implementation.
@@ -83,8 +90,6 @@ class FinishLoadCdmPromise : public SimpleCdmPromise {
  private:
   std::string session_id_;
   std::unique_ptr<NewSessionCdmPromise> promise_;
-
-  DISALLOW_COPY_AND_ASSIGN(FinishLoadCdmPromise);
 };
 
 }  // namespace
@@ -99,10 +104,10 @@ ClearKeyPersistentSessionCdm::ClearKeyPersistentSessionCdm(
       session_message_cb_(session_message_cb),
       session_closed_cb_(session_closed_cb) {
   cdm_ = base::MakeRefCounted<AesDecryptor>(
-      base::Bind(&ClearKeyPersistentSessionCdm::OnSessionMessage,
-                 weak_factory_.GetWeakPtr()),
-      base::Bind(&ClearKeyPersistentSessionCdm::OnSessionClosed,
-                 weak_factory_.GetWeakPtr()),
+      base::BindRepeating(&ClearKeyPersistentSessionCdm::OnSessionMessage,
+                          weak_factory_.GetWeakPtr()),
+      base::BindRepeating(&ClearKeyPersistentSessionCdm::OnSessionClosed,
+                          weak_factory_.GetWeakPtr()),
       session_keys_change_cb, session_expiration_update_cb);
 }
 
@@ -120,17 +125,14 @@ void ClearKeyPersistentSessionCdm::CreateSessionAndGenerateRequest(
     const std::vector<uint8_t>& init_data,
     std::unique_ptr<NewSessionCdmPromise> promise) {
   std::unique_ptr<NewSessionCdmPromise> new_promise;
-  // TODO(crbug.com/1102976) Add browser test for loading EME
-  // persistent-usage-record session
-  if (session_type == CdmSessionType::kTemporary ||
-      session_type == CdmSessionType::kPersistentUsageRecord) {
+  if (session_type == CdmSessionType::kTemporary) {
     new_promise = std::move(promise);
   } else {
     // Since it's a persistent session, we need to save the session ID after
     // it's been created.
     new_promise = std::make_unique<NewPersistentSessionCdmPromise>(
-        base::Bind(&ClearKeyPersistentSessionCdm::AddPersistentSession,
-                   weak_factory_.GetWeakPtr()),
+        base::BindOnce(&ClearKeyPersistentSessionCdm::AddPersistentSession,
+                       weak_factory_.GetWeakPtr()),
         std::move(promise));
   }
   cdm_->CreateSessionAndGenerateRequest(session_type, init_data_type, init_data,
@@ -301,33 +303,7 @@ void ClearKeyPersistentSessionCdm::RemoveSession(
   auto it = persistent_sessions_.find(session_id);
   if (it == persistent_sessions_.end()) {
     // Not a persistent session, so simply pass the request on.
-
-    // TODO(crbug.com/1102976) Add test for loading PUR session
-    // TODO(crbug.com/1107614) Move session message for persistent-license
-    // session to ClearKeyPersistentSessionCdm Query the record of key usage
-    // before calling remove as RemoveSession will delete the keys. Steps from
-    // https://w3c.github.io/encrypted-media/#remove. 4.4.1.2 Follow the steps
-    // for the value of this object's session type
-    //           "persistent-usage-record"
-    //              Let message be a message containing or reflecting this
-    //              object's record of key usage.
-    KeyIdList key_ids;
-    base::Time first_decryption_time;
-    base::Time latest_decryption_time;
-    bool is_persistent_usage_record_session = cdm_->GetRecordOfKeyUsage(
-        session_id, key_ids, first_decryption_time, latest_decryption_time);
     cdm_->RemoveSession(session_id, std::move(promise));
-
-    // Both times will be null if the session type is not PUR.
-    if (is_persistent_usage_record_session) {
-      std::vector<uint8_t> message = CreateLicenseReleaseMessage(
-          key_ids, first_decryption_time, latest_decryption_time);
-      // EME spec specifies that the message event should be fired before the
-      // promise is resolve but since this is only for testing we can leave this
-      // here.
-      session_message_cb_.Run(session_id, CdmMessageType::LICENSE_RELEASE,
-                              message);
-    }
     return;
   }
 
@@ -381,9 +357,10 @@ void ClearKeyPersistentSessionCdm::AddPersistentSession(
 }
 
 void ClearKeyPersistentSessionCdm::OnSessionClosed(
-    const std::string& session_id) {
+    const std::string& session_id,
+    CdmSessionClosedReason reason) {
   persistent_sessions_.erase(session_id);
-  session_closed_cb_.Run(session_id);
+  session_closed_cb_.Run(session_id, reason);
 }
 
 void ClearKeyPersistentSessionCdm::OnSessionMessage(

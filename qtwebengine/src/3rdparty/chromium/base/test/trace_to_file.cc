@@ -1,17 +1,17 @@
-// Copyright (c) 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/test/trace_to_file.h"
 
 #include "base/base_switches.h"
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/trace_buffer.h"
 #include "base/trace_event/trace_log.h"
 
@@ -66,11 +66,11 @@ void TraceToFile::WriteFileHeader() {
 
 void TraceToFile::AppendFileFooter() {
   const char str[] = "]}";
-  AppendToFile(path_, str, static_cast<int>(strlen(str)));
+  AppendToFile(path_, str);
 }
 
 void TraceToFile::TraceOutputCallback(const std::string& data) {
-  bool ret = AppendToFile(path_, data.c_str(), static_cast<int>(data.size()));
+  bool ret = AppendToFile(path_, data);
   DCHECK(ret);
 }
 
@@ -97,7 +97,7 @@ void TraceToFile::EndTracingIfNeeded() {
 
   // In tests we might not have a TaskEnvironment, create one if needed.
   std::unique_ptr<SingleThreadTaskEnvironment> task_environment;
-  if (!ThreadTaskRunnerHandle::IsSet())
+  if (!SingleThreadTaskRunner::HasCurrentDefault())
     task_environment = std::make_unique<SingleThreadTaskEnvironment>();
 
   RunLoop run_loop;

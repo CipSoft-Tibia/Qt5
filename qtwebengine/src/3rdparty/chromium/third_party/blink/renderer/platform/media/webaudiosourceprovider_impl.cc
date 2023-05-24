@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,14 @@
 #include <atomic>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback_forward.h"
 #include "base/check_op.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/thread_annotations.h"
+#include "media/base/audio_glitch_info.h"
 #include "media/base/audio_timestamp_helper.h"
 #include "media/base/bind_to_current_loop.h"
 #include "media/base/media_log.h"
@@ -23,35 +23,6 @@
 
 namespace blink {
 
-namespace {
-
-// Simple helper class for Try() locks.  Lock is Try()'d on construction and
-// must be checked via the locked() attribute.  If acquisition was successful
-// the lock will be released upon destruction.
-// TODO(dalecurtis): This should probably move to base/ if others start using
-// this pattern.
-class AutoTryLock {
- public:
-  explicit AutoTryLock(base::Lock& lock)
-      : lock_(lock), acquired_(lock_.Try()) {}
-
-  bool locked() const { return acquired_; }
-
-  ~AutoTryLock() {
-    if (acquired_) {
-      lock_.AssertAcquired();
-      lock_.Release();
-    }
-  }
-
- private:
-  base::Lock& lock_;
-  const bool acquired_;
-  DISALLOW_COPY_AND_ASSIGN(AutoTryLock);
-};
-
-}  // namespace
-
 // TeeFilter is a RenderCallback implementation that allows for a client to get
 // a copy of the data being rendered by the |renderer_| on Render(). This class
 // also holds on to the necessary audio parameters.
@@ -59,6 +30,8 @@ class WebAudioSourceProviderImpl::TeeFilter
     : public AudioRendererSink::RenderCallback {
  public:
   TeeFilter() : copy_required_(false) {}
+  TeeFilter(const TeeFilter&) = delete;
+  TeeFilter& operator=(const TeeFilter&) = delete;
   ~TeeFilter() override = default;
 
   void Initialize(AudioRendererSink::RenderCallback* renderer,
@@ -75,12 +48,13 @@ class WebAudioSourceProviderImpl::TeeFilter
   // get a copy of the rendered audio by SetCopyAudioCallback().
   int Render(base::TimeDelta delay,
              base::TimeTicks delay_timestamp,
-             int prior_frames_skipped,
+             const media::AudioGlitchInfo& glitch_info,
              media::AudioBus* audio_bus) override {
     DCHECK(initialized());
+    DCHECK_EQ(audio_bus->channels(), channels_);
 
-    const int num_rendered_frames = renderer_->Render(
-        delay, delay_timestamp, prior_frames_skipped, audio_bus);
+    const int num_rendered_frames =
+        renderer_->Render(delay, delay_timestamp, glitch_info, audio_bus);
 
     // Avoid taking the copy lock for the vast majority of cases.
     if (copy_required_) {
@@ -95,6 +69,9 @@ class WebAudioSourceProviderImpl::TeeFilter
           bus_copy->Zero();
         else
           audio_bus->CopyTo(bus_copy.get());
+
+        // TODO(fhernqvist): Propagate glitch info through here if the callback
+        // needs it.
         copy_audio_bus_callback_.Run(std::move(bus_copy),
                                      static_cast<uint32_t>(frames_delayed),
                                      sample_rate_);
@@ -137,18 +114,13 @@ class WebAudioSourceProviderImpl::TeeFilter
   std::atomic<bool> copy_required_;
   base::Lock copy_lock_;
   CopyAudioCB copy_audio_bus_callback_ GUARDED_BY(copy_lock_);
-
-  DISALLOW_COPY_AND_ASSIGN(TeeFilter);
 };
 
 WebAudioSourceProviderImpl::WebAudioSourceProviderImpl(
     scoped_refptr<media::SwitchableAudioRendererSink> sink,
     media::MediaLog* media_log,
     base::OnceClosure on_set_client_callback /* = base::OnceClosure()*/)
-    : volume_(1.0),
-      state_(kStopped),
-      client_(nullptr),
-      sink_(std::move(sink)),
+    : sink_(std::move(sink)),
       tee_filter_(new TeeFilter()),
       media_log_(media_log),
       on_set_client_callback_(std::move(on_set_client_callback)) {}
@@ -203,21 +175,20 @@ void WebAudioSourceProviderImpl::SetClient(
 
 void WebAudioSourceProviderImpl::ProvideInput(
     const WebVector<float*>& audio_data,
-    size_t number_of_frames) {
+    int number_of_frames) {
   if (!bus_wrapper_ ||
       static_cast<size_t>(bus_wrapper_->channels()) != audio_data.size()) {
     bus_wrapper_ =
         media::AudioBus::CreateWrapper(static_cast<int>(audio_data.size()));
   }
 
-  const int incoming_number_of_frames = static_cast<int>(number_of_frames);
-  bus_wrapper_->set_frames(incoming_number_of_frames);
+  bus_wrapper_->set_frames(number_of_frames);
   for (size_t i = 0; i < audio_data.size(); ++i)
     bus_wrapper_->SetChannelData(static_cast<int>(i), audio_data[i]);
 
   // Use a try lock to avoid contention in the real-time audio thread.
-  AutoTryLock auto_try_lock(sink_lock_);
-  if (!auto_try_lock.locked() || state_ != kPlaying) {
+  base::AutoTryLock auto_try_lock(sink_lock_);
+  if (!auto_try_lock.is_acquired() || state_ != kPlaying) {
     // Provide silence if we failed to acquire the lock or the source is not
     // running.
     bus_wrapper_->Zero();
@@ -225,9 +196,20 @@ void WebAudioSourceProviderImpl::ProvideInput(
   }
 
   DCHECK(client_);
-  DCHECK_EQ(tee_filter_->channels(), bus_wrapper_->channels());
+
+  // It may be the case that the given |audio_data| doesn't have the same number
+  // of channels as we were expecting, due to a race condition. In that case,
+  // simply output silence.
+  if (tee_filter_->channels() != bus_wrapper_->channels()) {
+    DVLOG(2) << "Outputting silence due to mismatched channel count";
+    bus_wrapper_->Zero();
+    return;
+  }
+
+  // TODO(fhernqvist): If we need glitches propagated through WebAudio, plumb
+  // them through here.
   const int frames = tee_filter_->Render(
-      base::TimeDelta(), base::TimeTicks::Now(), 0, bus_wrapper_.get());
+      base::TimeDelta(), base::TimeTicks::Now(), {}, bus_wrapper_.get());
 
   // Zero out frames after rendering for tainted origins.
   if (tee_filter_->is_tainted()) {
@@ -235,8 +217,8 @@ void WebAudioSourceProviderImpl::ProvideInput(
     return;
   }
 
-  if (frames < incoming_number_of_frames)
-    bus_wrapper_->ZeroFramesPartial(frames, incoming_number_of_frames - frames);
+  if (frames < number_of_frames)
+    bus_wrapper_->ZeroFramesPartial(frames, number_of_frames - frames);
 
   bus_wrapper_->Scale(volume_);
 }
@@ -319,8 +301,8 @@ void WebAudioSourceProviderImpl::GetOutputDeviceInfoAsync(
   // underlying audio renderer will prefer the media parameters. See
   // IsOptimizedForHardwareParameters() for more details.
   media::BindToCurrentLoop(
-      WTF::Bind(std::move(info_cb),
-                media::OutputDeviceInfo(media::OUTPUT_DEVICE_STATUS_OK)))
+      WTF::BindOnce(std::move(info_cb),
+                    media::OutputDeviceInfo(media::OUTPUT_DEVICE_STATUS_OK)))
       .Run();
 }
 
@@ -351,15 +333,21 @@ void WebAudioSourceProviderImpl::TaintOrigin() {
 void WebAudioSourceProviderImpl::SetCopyAudioCallback(CopyAudioCB callback) {
   DCHECK(!callback.is_null());
   tee_filter_->SetCopyAudioCallback(std::move(callback));
+  has_copy_audio_callback_ = true;
 }
 
 void WebAudioSourceProviderImpl::ClearCopyAudioCallback() {
   tee_filter_->SetCopyAudioCallback(CopyAudioCB());
+  has_copy_audio_callback_ = false;
 }
 
 int WebAudioSourceProviderImpl::RenderForTesting(media::AudioBus* audio_bus) {
-  return tee_filter_->Render(base::TimeDelta(), base::TimeTicks::Now(), 0,
+  return tee_filter_->Render(base::TimeDelta(), base::TimeTicks::Now(), {},
                              audio_bus);
+}
+
+bool WebAudioSourceProviderImpl::IsAudioBeingCaptured() const {
+  return has_copy_audio_callback_ || client_;
 }
 
 void WebAudioSourceProviderImpl::OnSetFormat() {

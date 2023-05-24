@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -28,7 +28,7 @@ TEST(MessagePortDescriptorTest, SerializationWorks) {
   // the custom StructTraits.
   MessagePortDescriptor port;
   mojo::test::SerializeAndDeserialize<mojom::blink::MessagePortDescriptor,
-                                      MessagePortDescriptor>(&port0, &port);
+                                      MessagePortDescriptor>(port0, port);
   EXPECT_TRUE(port0.IsDefault());
   EXPECT_TRUE(port.IsValid());
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcore_unix_p.h"
 
@@ -90,7 +54,7 @@ static inline void qt_poll_examine_ready_read(struct pollfd &pfd)
     int res;
     char data;
 
-    EINTR_LOOP(res, ::recv(pfd.fd, &data, sizeof(data), MSG_PEEK));
+    QT_EINTR_LOOP(res, ::recv(pfd.fd, &data, sizeof(data), MSG_PEEK));
     const int error = (res < 0) ? errno : 0;
 
     if (res == 0) {
@@ -145,7 +109,7 @@ static inline bool qt_poll_is_bad_fd(int fd)
 #endif
 
     int ret;
-    EINTR_LOOP(ret, fcntl(fd, F_GETFD));
+    QT_EINTR_LOOP(ret, fcntl(fd, F_GETFD));
     return (ret == -1 && errno == EBADF);
 }
 
@@ -177,7 +141,7 @@ int qt_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts)
     }
 
     fd_set read_fds, write_fds, except_fds;
-    struct timeval tv, *ptv = 0;
+    struct timeval tv, *ptv = nullptr;
 
     if (timeout_ts) {
         tv = timespecToTimeval(*timeout_ts);
@@ -191,6 +155,11 @@ int qt_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts)
 
         if (fds[i].fd < 0)
             continue;
+
+        if (fds[i].fd > FD_SETSIZE) {
+            errno = EINVAL;
+            return -1;
+        }
 
         if (fds[i].events & QT_POLL_EVENTS_MASK)
             continue;

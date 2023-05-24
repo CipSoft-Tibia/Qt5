@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest>
+#include <QTest>
 
 //
 // Note:
@@ -35,6 +10,10 @@
 // intentionally changed a private class, adjust the test here and bump
 // the TypeInformationVersion field in src/corelib/global/qhooks.cpp
 // in the same commit as the modification to the private class.
+//
+// Please also notify downstream users of the information checked here
+// such as Qt Creator developers, of such a change by putting them
+// on Cc: on the respective change on gerrit.
 //
 
 
@@ -64,7 +43,7 @@ size_t pmm_to_offsetof(T K:: *pmm)
 #else
     size_t ret;
 #endif
-    Q_STATIC_ASSERT(sizeof(ret) == sizeof(pmm));
+    static_assert(sizeof(ret) == sizeof(pmm));
     memcpy(&ret, &pmm, sizeof(ret));
     return ret;
 }
@@ -97,25 +76,36 @@ void tst_toolsupport::offsets_data()
     {
         QTestData &data = QTest::newRow("sizeof(QObjectData)")
                 << sizeof(QObjectData);
-        data << 28 << 48; // vptr + 3 ptr + 2 int + ptr
+        // Please heed the comment at the top of this file when changing this line:
+        data << 44 << 80; // vptr + 2 ptr + (2*ptr + int) + 2 int + ptr
+    }
+
+    {
+        QTestData &data = QTest::newRow("sizeof(QObjectPrivate::ExtraData)")
+                << sizeof(QObjectPrivate::ExtraData);
+        // Please heed the comment at the top of this file when changing this line:
+        data << 64 << 128; // 4 * QList + 1 * QString + ptr
     }
 
 #if RUN_MEMBER_OFFSET_TEST
     {
         QTestData &data = QTest::newRow("QObjectPrivate::extraData")
                 << pmm_to_offsetof(&QObjectPrivate::extraData);
-        data << 28 << 48;    // sizeof(QObjectData)
+        // Please heed the comment at the top of this file when changing this line:
+        data << 44 << 80;    // sizeof(QObjectData)
     }
 
     {
         QTestData &data = QTest::newRow("QFileInfoPrivate::fileEntry")
                 << pmm_to_offsetof(&QFileInfoPrivate::fileEntry);
+        // Please heed the comment at the top of this file when changing this line:
         data << 4 << 8;
     }
 
     {
         QTestData &data = QTest::newRow("QFileSystemEntry::filePath")
                 << pmm_to_offsetof(&QFileSystemEntry::m_filePath);
+        // Please heed the comment at the top of this file when changing this line:
         data << 0 << 0;
     }
 
@@ -123,17 +113,19 @@ void tst_toolsupport::offsets_data()
     {
         QTestData &data = QTest::newRow("QFilePrivate::fileName")
                 << pmm_to_offsetof(&QFilePrivate::fileName);
+        // Please heed the comment at the top of this file when changing one of these lines:
 #ifdef Q_PROCESSOR_X86
         // x86 32-bit has weird alignment rules. Refer to QtPrivate::AlignOf in
         // qglobal.h for more details.
-        data << 152 << 224;
+        data << 264 << 424;
 #else
-        data << 156 << 224;
+        data << 300 << 424;
 #endif
     }
 #endif
 
     {
+        // Please heed the comment at the top of this file when changing one of these lines:
         QTest::newRow("QDateTimePrivate::m_msecs")
             << pmm_to_offsetof(&QDateTimePrivate::m_msecs) << 8 << 8;
         QTest::newRow("QDateTimePrivate::m_status")

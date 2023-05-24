@@ -1,51 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Eurogiciel, author: <philippe.coval@eurogiciel.fr>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the config.tests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Eurogiciel, author: <philippe.coval@eurogiciel.fr>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandxdgshell_p.h"
+
+#include "qwaylandxdgexporterv2_p.h"
 
 #include <QtWaylandClient/private/qwaylanddisplay_p.h>
 #include <QtWaylandClient/private/qwaylandwindow_p.h>
 #include <QtWaylandClient/private/qwaylandinputdevice_p.h>
 #include <QtWaylandClient/private/qwaylandscreen_p.h>
+#include <QtWaylandClient/private/qwaylandcursor_p.h>
 #include <QtWaylandClient/private/qwaylandabstractdecoration_p.h>
 
+#include <QtGui/QGuiApplication>
 #include <QtGui/private/qwindow_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -78,7 +46,7 @@ QWaylandXdgSurface::Toplevel::~Toplevel()
 void QWaylandXdgSurface::Toplevel::applyConfigure()
 {
     if (!(m_applied.states & (Qt::WindowMaximized|Qt::WindowFullScreen)))
-        m_normalSize = m_xdgSurface->m_window->windowFrameGeometry().size();
+        m_normalSize = m_xdgSurface->m_window->windowContentGeometry().size();
 
     if ((m_pending.states & Qt::WindowActive) && !(m_applied.states & Qt::WindowActive)
         && !m_xdgSurface->m_window->display()->isKeyboardAvailable())
@@ -88,16 +56,40 @@ void QWaylandXdgSurface::Toplevel::applyConfigure()
         && !m_xdgSurface->m_window->display()->isKeyboardAvailable())
         m_xdgSurface->m_window->display()->handleWindowDeactivated(m_xdgSurface->m_window);
 
+    m_xdgSurface->m_window->handleToplevelWindowTilingStatesChanged(m_toplevelStates);
     m_xdgSurface->m_window->handleWindowStatesChanged(m_pending.states);
 
-    if (m_pending.size.isEmpty()) {
-        // An empty size in the configure means it's up to the client to choose the size
-        bool normalPending = !(m_pending.states & (Qt::WindowMaximized|Qt::WindowFullScreen));
-        if (normalPending && !m_normalSize.isEmpty())
-            m_xdgSurface->m_window->resizeFromApplyConfigure(m_normalSize);
+    // If the width or height is zero, the client should decide the size on its own.
+    QSize surfaceSize;
+
+    if (m_pending.size.width() > 0) {
+        surfaceSize.setWidth(m_pending.size.width());
     } else {
-        m_xdgSurface->m_window->resizeFromApplyConfigure(m_pending.size);
+        if (Q_UNLIKELY(m_pending.states & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
+            qCWarning(lcQpaWayland) << "Configure event with maximized or fullscreen state contains invalid width:" << m_pending.size.width();
+        } else {
+            int width = m_normalSize.width();
+            if (!m_pending.bounds.isEmpty())
+                width = std::min(width, m_pending.bounds.width());
+            surfaceSize.setWidth(width);
+        }
     }
+
+    if (m_pending.size.height() > 0) {
+        surfaceSize.setHeight(m_pending.size.height());
+    } else {
+        if (Q_UNLIKELY(m_pending.states & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
+            qCWarning(lcQpaWayland) << "Configure event with maximized or fullscreen state contains invalid height:" << m_pending.size.height();
+        } else {
+            int height = m_normalSize.height();
+            if (!m_pending.bounds.isEmpty())
+                height = std::min(height, m_pending.bounds.height());
+            surfaceSize.setHeight(height);
+        }
+    }
+
+    if (!surfaceSize.isEmpty())
+        m_xdgSurface->m_window->resizeFromApplyConfigure(surfaceSize.grownBy(m_xdgSurface->m_window->windowContentMargins()));
 
     m_applied = m_pending;
     qCDebug(lcQpaWayland) << "Applied pending xdg_toplevel configure event:" << m_applied.size << m_applied.states;
@@ -112,6 +104,11 @@ bool QWaylandXdgSurface::Toplevel::wantsDecorations()
     return !(m_pending.states & Qt::WindowFullScreen);
 }
 
+void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure_bounds(int32_t width, int32_t height)
+{
+    m_pending.bounds = QSize(width, height);
+}
+
 void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t height, wl_array *states)
 {
     m_pending.size = QSize(width, height);
@@ -120,6 +117,7 @@ void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t
     size_t numStates = states->size / sizeof(uint32_t);
 
     m_pending.states = Qt::WindowNoState;
+    m_toplevelStates = QWaylandWindow::WindowNoState;
 
     for (size_t i = 0; i < numStates; i++) {
         switch (xdgStates[i]) {
@@ -131,6 +129,18 @@ void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t
             break;
         case XDG_TOPLEVEL_STATE_FULLSCREEN:
             m_pending.states |= Qt::WindowFullScreen;
+            break;
+        case XDG_TOPLEVEL_STATE_TILED_LEFT:
+            m_toplevelStates |= QWaylandWindow::WindowTiledLeft;
+            break;
+        case XDG_TOPLEVEL_STATE_TILED_RIGHT:
+            m_toplevelStates |= QWaylandWindow::WindowTiledRight;
+            break;
+        case XDG_TOPLEVEL_STATE_TILED_TOP:
+            m_toplevelStates |= QWaylandWindow::WindowTiledTop;
+            break;
+        case XDG_TOPLEVEL_STATE_TILED_BOTTOM:
+            m_toplevelStates |= QWaylandWindow::WindowTiledBottom;
             break;
         default:
             break;
@@ -162,6 +172,15 @@ void QWaylandXdgSurface::Toplevel::requestWindowStates(Qt::WindowStates states)
     // Re-send what's different from the applied state
     Qt::WindowStates changedStates = m_applied.states ^ states;
 
+    // Minimized state is not reported by the protocol, so always send it
+    if (states & Qt::WindowMinimized) {
+        set_minimized();
+        m_xdgSurface->window()->handleWindowStatesChanged(states & ~Qt::WindowMinimized);
+        // The internal window state whilst minimized is not maximised or fullscreen, but we don't want to
+        // update the compositors cached version of this state
+        return;
+    }
+
     if (changedStates & Qt::WindowMaximized) {
         if (states & Qt::WindowMaximized)
             set_maximized();
@@ -179,11 +198,7 @@ void QWaylandXdgSurface::Toplevel::requestWindowStates(Qt::WindowStates states)
             unset_fullscreen();
     }
 
-    // Minimized state is not reported by the protocol, so always send it
-    if (states & Qt::WindowMinimized) {
-        set_minimized();
-        m_xdgSurface->window()->handleWindowStatesChanged(states & ~Qt::WindowMinimized);
-    }
+
 }
 
 QtWayland::xdg_toplevel::resize_edge QWaylandXdgSurface::Toplevel::convertToResizeEdges(Qt::Edges edges)
@@ -202,10 +217,8 @@ QWaylandXdgSurface::Popup::Popup(QWaylandXdgSurface *xdgSurface, QWaylandWindow 
     , m_parent(parent)
 {
 
-    init(xdgSurface->get_popup(m_parentXdgSurface ? m_parentXdgSurface->object() : nullptr, positioner->object()));
-    if (m_parent) {
-        m_parent->addChildPopup(m_xdgSurface->window());
-    }
+    init(xdgSurface->get_popup(m_parentXdgSurface ? m_parentXdgSurface->object() : nullptr,
+                               positioner->object()));
 }
 
 QWaylandXdgSurface::Popup::~Popup()
@@ -213,14 +226,7 @@ QWaylandXdgSurface::Popup::~Popup()
     if (isInitialized())
         destroy();
 
-    if (m_parent) {
-        m_parent->removeChildPopup(m_xdgSurface->window());
-    }
-
     if (m_grabbing) {
-        auto *shell = m_xdgSurface->m_shell;
-        Q_ASSERT(shell->m_topmostGrabbingPopup == this);
-        shell->m_topmostGrabbingPopup = m_parentXdgSurface ? m_parentXdgSurface->m_popup : nullptr;
         m_grabbing = false;
 
         // Synthesize Qt enter/leave events for popup
@@ -229,16 +235,38 @@ QWaylandXdgSurface::Popup::~Popup()
             leave = m_xdgSurface->window()->window();
         QWindowSystemInterface::handleLeaveEvent(leave);
 
-        if (QWindow *enter = QGuiApplication::topLevelAt(QCursor::pos()))
-            QWindowSystemInterface::handleEnterEvent(enter, enter->mapFromGlobal(QCursor::pos()), QCursor::pos());
+        if (QWindow *enter = QGuiApplication::topLevelAt(QCursor::pos())) {
+            const auto pos = m_xdgSurface->window()->display()->waylandCursor()->pos();
+            QWindowSystemInterface::handleEnterEvent(enter, enter->handle()->mapFromGlobal(pos), pos);
+        }
     }
+}
+
+void QWaylandXdgSurface::Popup::applyConfigure()
+{
+    if (m_pendingGeometry.isValid()) {
+        QRect geometryWithMargins = m_pendingGeometry.marginsAdded(m_xdgSurface->m_window->windowContentMargins());
+        QMargins parentMargins = m_parent->windowContentMargins() - m_parent->clientSideMargins();
+        QRect globalGeometry = geometryWithMargins.translated(m_parent->geometry().topLeft() + QPoint(parentMargins.left(), parentMargins.top()));
+        m_xdgSurface->setGeometryFromApplyConfigure(globalGeometry.topLeft(), globalGeometry.size());
+    }
+    resetConfiguration();
+}
+
+void QWaylandXdgSurface::Popup::resetConfiguration()
+{
+    m_pendingGeometry = QRect();
 }
 
 void QWaylandXdgSurface::Popup::grab(QWaylandInputDevice *seat, uint serial)
 {
-    m_xdgSurface->m_shell->m_topmostGrabbingPopup = this;
     xdg_popup::grab(seat->wl_seat(), serial);
     m_grabbing = true;
+}
+
+void QWaylandXdgSurface::Popup::xdg_popup_configure(int32_t x, int32_t y, int32_t width, int32_t height)
+{
+    m_pendingGeometry = QRect(x, y, width, height);
 }
 
 void QWaylandXdgSurface::Popup::xdg_popup_popup_done()
@@ -263,7 +291,7 @@ QWaylandXdgSurface::QWaylandXdgSurface(QWaylandXdgShell *shell, ::xdg_surface *s
     } else {
         setToplevel();
         if (transientParent) {
-            auto parentXdgSurface = static_cast<QWaylandXdgSurface *>(transientParent->shellSurface());
+            auto parentXdgSurface = qobject_cast<QWaylandXdgSurface *>(transientParent->shellSurface());
             if (parentXdgSurface)
                 m_toplevel->set_parent(parentXdgSurface->m_toplevel->object());
         }
@@ -323,6 +351,8 @@ void QWaylandXdgSurface::setAppId(const QString &appId)
 {
     if (m_toplevel)
         m_toplevel->set_app_id(appId);
+
+    m_appId = appId;
 }
 
 void QWaylandXdgSurface::setWindowFlags(Qt::WindowFlags flags)
@@ -353,6 +383,8 @@ void QWaylandXdgSurface::applyConfigure()
 
     if (m_toplevel)
         m_toplevel->applyConfigure();
+    if (m_popup)
+        m_popup->applyConfigure();
     m_appliedConfigureSerial = m_pendingConfigureSerial;
 
     m_configured = true;
@@ -367,9 +399,6 @@ bool QWaylandXdgSurface::wantsDecorations() const
 void QWaylandXdgSurface::propagateSizeHints()
 {
     setSizeHints();
-
-    if (m_toplevel && m_window)
-        m_window->commit();
 }
 
 void QWaylandXdgSurface::setWindowGeometry(const QRect &rect)
@@ -380,18 +409,47 @@ void QWaylandXdgSurface::setWindowGeometry(const QRect &rect)
 void QWaylandXdgSurface::setSizeHints()
 {
     if (m_toplevel && m_window) {
-        const int minWidth = qMax(0, m_window->windowMinimumSize().width());
-        const int minHeight = qMax(0, m_window->windowMinimumSize().height());
-        m_toplevel->set_min_size(minWidth, minHeight);
+        const QMargins margins = m_window->windowContentMargins() - m_window->clientSideMargins();
+        const QSize minSize = m_window->windowMinimumSize().shrunkBy(margins);
+        const QSize maxSize = m_window->windowMaximumSize().shrunkBy(margins);
+        const int minWidth = qMax(0, minSize.width());
+        const int minHeight = qMax(0, minSize.height());
+        int maxWidth = qMax(0, maxSize.width());
+        int maxHeight = qMax(0, maxSize.height());
 
-        int maxWidth = qMax(minWidth, m_window->windowMaximumSize().width());
+        // It will not change min/max sizes if invalid.
+        if (minWidth > maxWidth || minHeight > maxHeight)
+            return;
+
         if (maxWidth == QWINDOWSIZE_MAX)
             maxWidth = 0;
-        int maxHeight = qMax(minHeight, m_window->windowMaximumSize().height());
         if (maxHeight == QWINDOWSIZE_MAX)
             maxHeight = 0;
+
+        m_toplevel->set_min_size(minWidth, minHeight);
         m_toplevel->set_max_size(maxWidth, maxHeight);
     }
+}
+
+void *QWaylandXdgSurface::nativeResource(const QByteArray &resource)
+{
+    QByteArray lowerCaseResource = resource.toLower();
+    if (lowerCaseResource == "xdg_surface")
+        return object();
+    else if (lowerCaseResource == "xdg_toplevel" && m_toplevel)
+        return m_toplevel->object();
+    else if (lowerCaseResource == "xdg_popup" && m_popup)
+        return m_popup->object();
+    return nullptr;
+}
+
+std::any QWaylandXdgSurface::surfaceRole() const
+{
+    if (m_toplevel)
+        return m_toplevel->object();
+    if (m_popup)
+        return m_popup->object();
+    return {};
 }
 
 void QWaylandXdgSurface::requestWindowStates(Qt::WindowStates states)
@@ -412,18 +470,102 @@ void QWaylandXdgSurface::setPopup(QWaylandWindow *parent)
 {
     Q_ASSERT(!m_toplevel && !m_popup);
 
-    auto positioner = new QtWayland::xdg_positioner(m_shell->create_positioner());
+    auto positioner = new QtWayland::xdg_positioner(m_shell->m_xdgWmBase->create_positioner());
     // set_popup expects a position relative to the parent
-    QPoint transientPos = m_window->geometry().topLeft(); // this is absolute
-    transientPos -= parent->geometry().topLeft();
-    if (parent->decoration()) {
-        transientPos.setX(transientPos.x() + parent->decoration()->margins().left());
-        transientPos.setY(transientPos.y() + parent->decoration()->margins().top());
+    QRect windowGeometry = m_window->windowContentGeometry();
+    QMargins windowMargins = m_window->windowContentMargins() - m_window->clientSideMargins();
+    QMargins parentMargins = parent->windowContentMargins() - parent->clientSideMargins();
+
+    // These property overrides may be removed when public API becomes available
+    QRect placementAnchor = m_window->window()->property("_q_waylandPopupAnchorRect").toRect();
+    if (!placementAnchor.isValid()) {
+        placementAnchor = QRect(m_window->geometry().topLeft() - parent->geometry().topLeft(), QSize(1,1));
     }
-    positioner->set_anchor_rect(transientPos.x(), transientPos.y(), 1, 1);
-    positioner->set_anchor(QtWayland::xdg_positioner::anchor_top_left);
-    positioner->set_gravity(QtWayland::xdg_positioner::gravity_bottom_right);
-    positioner->set_size(m_window->geometry().width(), m_window->geometry().height());
+    placementAnchor.translate(windowMargins.left(), windowMargins.top());
+    placementAnchor.translate(-parentMargins.left(), -parentMargins.top());
+
+    uint32_t anchor = QtWayland::xdg_positioner::anchor_top_right;
+    const QVariant anchorVariant = m_window->window()->property("_q_waylandPopupAnchor");
+    if (anchorVariant.isValid()) {
+        switch (anchorVariant.value<Qt::Edges>()) {
+        case Qt::Edges():
+            anchor = QtWayland::xdg_positioner::anchor_none;
+            break;
+        case Qt::TopEdge:
+            anchor = QtWayland::xdg_positioner::anchor_top;
+            break;
+        case Qt::TopEdge | Qt::RightEdge:
+            anchor = QtWayland::xdg_positioner::anchor_top_right;
+            break;
+        case Qt::RightEdge:
+            anchor = QtWayland::xdg_positioner::anchor_right;
+            break;
+        case Qt::BottomEdge | Qt::RightEdge:
+            anchor = QtWayland::xdg_positioner::anchor_bottom_right;
+            break;
+        case Qt::BottomEdge:
+            anchor = QtWayland::xdg_positioner::anchor_bottom;
+            break;
+        case Qt::BottomEdge | Qt::LeftEdge:
+            anchor = QtWayland::xdg_positioner::anchor_bottom_left;
+            break;
+        case Qt::LeftEdge:
+            anchor = QtWayland::xdg_positioner::anchor_left;
+            break;
+        case Qt::TopEdge | Qt::LeftEdge:
+            anchor = QtWayland::xdg_positioner::anchor_top_left;
+            break;
+        }
+    }
+
+    uint32_t gravity = QtWayland::xdg_positioner::gravity_bottom_right;
+    const QVariant popupGravityVariant = m_window->window()->property("_q_waylandPopupGravity");
+    if (popupGravityVariant.isValid()) {
+        switch (popupGravityVariant.value<Qt::Edges>()) {
+        case Qt::Edges():
+            gravity = QtWayland::xdg_positioner::gravity_none;
+            break;
+        case Qt::TopEdge:
+            gravity = QtWayland::xdg_positioner::gravity_top;
+            break;
+        case Qt::TopEdge | Qt::RightEdge:
+            gravity = QtWayland::xdg_positioner::gravity_top_right;
+            break;
+        case Qt::RightEdge:
+            gravity = QtWayland::xdg_positioner::gravity_right;
+            break;
+        case Qt::BottomEdge | Qt::RightEdge:
+            gravity = QtWayland::xdg_positioner::gravity_bottom_right;
+            break;
+        case Qt::BottomEdge:
+            gravity = QtWayland::xdg_positioner::gravity_bottom;
+            break;
+        case Qt::BottomEdge | Qt::LeftEdge:
+            gravity = QtWayland::xdg_positioner::gravity_bottom_left;
+            break;
+        case Qt::LeftEdge:
+            gravity = QtWayland::xdg_positioner::gravity_left;
+            break;
+        case Qt::TopEdge | Qt::LeftEdge:
+            gravity = QtWayland::xdg_positioner::gravity_top_left;
+            break;
+        }
+    }
+
+    uint32_t constraintAdjustment = QtWayland::xdg_positioner::constraint_adjustment_slide_x | QtWayland::xdg_positioner::constraint_adjustment_slide_y;
+    const QVariant constraintAdjustmentVariant = m_window->window()->property("_q_waylandPopupConstraintAdjustment");
+    if (constraintAdjustmentVariant.isValid()) {
+        constraintAdjustment = constraintAdjustmentVariant.toUInt();
+    }
+
+    positioner->set_anchor_rect(placementAnchor.x(),
+                                placementAnchor.y(),
+                                placementAnchor.width(),
+                                placementAnchor.height());
+    positioner->set_anchor(anchor);
+    positioner->set_gravity(gravity);
+    positioner->set_size(windowGeometry.width(), windowGeometry.height());
+    positioner->set_constraint_adjustment(constraintAdjustment);
     m_popup = new Popup(this, parent, positioner);
     positioner->destroy();
 
@@ -432,20 +574,6 @@ void QWaylandXdgSurface::setPopup(QWaylandWindow *parent)
 
 void QWaylandXdgSurface::setGrabPopup(QWaylandWindow *parent, QWaylandInputDevice *device, int serial)
 {
-    auto parentXdgSurface = static_cast<QWaylandXdgSurface *>(parent->shellSurface());
-    auto *top = m_shell->m_topmostGrabbingPopup;
-
-    if (top && top->m_xdgSurface != parentXdgSurface) {
-        qCWarning(lcQpaWayland) << "setGrabPopup called with a parent," << parentXdgSurface
-                                << "which does not match the current topmost grabbing popup,"
-                                << top->m_xdgSurface << "According to the xdg-shell protocol, this"
-                                << "is not allowed. The wayland QPA plugin is currently handling"
-                                << "it by setting the parent to the topmost grabbing popup."
-                                << "Note, however, that this may cause positioning errors and"
-                                << "popups closing unxpectedly because xdg-shell mandate that child"
-                                << "popups close before parents";
-        parent = top->m_xdgSurface->m_window;
-    }
     setPopup(parent);
     m_popup->grab(device, serial);
 
@@ -463,8 +591,10 @@ void QWaylandXdgSurface::setGrabPopup(QWaylandWindow *parent, QWaylandInputDevic
     if (m_popup && m_popup->m_xdgSurface && m_popup->m_xdgSurface->window())
         enter = m_popup->m_xdgSurface->window()->window();
 
-    if (enter)
-        QWindowSystemInterface::handleEnterEvent(enter, enter->mapFromGlobal(QCursor::pos()), QCursor::pos());
+    if (enter) {
+        const auto pos = m_popup->m_xdgSurface->window()->display()->waylandCursor()->pos();
+        QWindowSystemInterface::handleEnterEvent(enter, enter->handle()->mapFromGlobal(pos), pos);
+    }
 }
 
 void QWaylandXdgSurface::xdg_surface_configure(uint32_t serial)
@@ -486,9 +616,105 @@ void QWaylandXdgSurface::xdg_surface_configure(uint32_t serial)
     }
 }
 
-QWaylandXdgShell::QWaylandXdgShell(QWaylandDisplay *display, uint32_t id, uint32_t availableVersion)
-    : QtWayland::xdg_wm_base(display->wl_registry(), id, qMin(availableVersion, 1u))
-    , m_display(display)
+bool QWaylandXdgSurface::requestActivate()
+{
+    if (auto *activation = m_shell->activation()) {
+        if (!m_activationToken.isEmpty()) {
+            activation->activate(m_activationToken, window()->wlSurface());
+            m_activationToken = {};
+            return true;
+        } else if (const auto token = qEnvironmentVariable("XDG_ACTIVATION_TOKEN"); !token.isEmpty()) {
+            activation->activate(token, window()->wlSurface());
+            qunsetenv("XDG_ACTIVATION_TOKEN");
+            return true;
+        } else {
+            const auto focusWindow = QGuiApplication::focusWindow();
+            // At least GNOME requires to request the token in order to get the
+            // focus stealing prevention indication, so requestXdgActivationToken call
+            // is still necessary in that case.
+            const auto wlWindow = focusWindow ? static_cast<QWaylandWindow*>(focusWindow->handle()) : m_window;
+
+            QString appId;
+            if (const auto xdgSurface = qobject_cast<QWaylandXdgSurface *>(wlWindow->shellSurface()))
+                appId = xdgSurface->m_appId;
+
+            if (const auto seat = wlWindow->display()->lastInputDevice()) {
+                const auto tokenProvider = activation->requestXdgActivationToken(
+                        wlWindow->display(), wlWindow->wlSurface(), seat->serial(), appId);
+                connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
+                        [this, tokenProvider](const QString &token) {
+                            m_shell->activation()->activate(token, window()->wlSurface());
+                            tokenProvider->deleteLater();
+                        });
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void QWaylandXdgSurface::requestXdgActivationToken(quint32 serial)
+{
+    if (auto *activation = m_shell->activation()) {
+        auto tokenProvider = activation->requestXdgActivationToken(
+                m_shell->m_display, m_window->wlSurface(), serial, m_appId);
+        connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
+                [this, tokenProvider](const QString &token) {
+                    Q_EMIT m_window->xdgActivationTokenCreated(token);
+                    tokenProvider->deleteLater();
+                });
+    } else {
+        QWaylandShellSurface::requestXdgActivationToken(serial);
+    }
+}
+
+void QWaylandXdgSurface::setXdgActivationToken(const QString &token)
+{
+    if (m_shell->activation()) {
+        m_activationToken = token;
+    } else {
+        qCWarning(lcQpaWayland) << "zxdg_activation_v1 not available";
+    }
+}
+
+void QWaylandXdgSurface::setAlertState(bool enabled)
+{
+    if (m_alertState == enabled)
+        return;
+
+    m_alertState = enabled;
+
+    if (!m_alertState)
+        return;
+
+    auto *activation = m_shell->activation();
+    if (!activation)
+        return;
+
+    const auto tokenProvider = activation->requestXdgActivationToken(
+            m_shell->m_display, m_window->wlSurface(), std::nullopt, m_appId);
+    connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
+            [this, tokenProvider](const QString &token) {
+                m_shell->activation()->activate(token, m_window->wlSurface());
+                tokenProvider->deleteLater();
+            });
+}
+
+QString QWaylandXdgSurface::externWindowHandle()
+{
+    if (!m_toplevel || !m_shell->exporter()) {
+        return QString();
+    }
+    if (!m_toplevel->m_exported) {
+        m_toplevel->m_exported.reset(m_shell->exporter()->exportToplevel(m_window->wlSurface()));
+        // handle events is sent immediately
+        m_shell->display()->forceRoundTrip();
+    }
+    return m_toplevel->m_exported->handle();
+}
+
+QWaylandXdgShell::QWaylandXdgShell(QWaylandDisplay *display, QtWayland::xdg_wm_base *xdgWmBase)
+    : m_display(display), m_xdgWmBase(xdgWmBase)
 {
     display->addRegistryListener(&QWaylandXdgShell::handleRegistryGlobal, this);
 }
@@ -496,17 +722,6 @@ QWaylandXdgShell::QWaylandXdgShell(QWaylandDisplay *display, uint32_t id, uint32
 QWaylandXdgShell::~QWaylandXdgShell()
 {
     m_display->removeListener(&QWaylandXdgShell::handleRegistryGlobal, this);
-    destroy();
-}
-
-QWaylandXdgSurface *QWaylandXdgShell::getXdgSurface(QWaylandWindow *window)
-{
-    return new QWaylandXdgSurface(this, get_xdg_surface(window->wlSurface()), window);
-}
-
-void QWaylandXdgShell::xdg_wm_base_ping(uint32_t serial)
-{
-    pong(serial);
 }
 
 void QWaylandXdgShell::handleRegistryGlobal(void *data, wl_registry *registry, uint id,
@@ -515,8 +730,18 @@ void QWaylandXdgShell::handleRegistryGlobal(void *data, wl_registry *registry, u
     QWaylandXdgShell *xdgShell = static_cast<QWaylandXdgShell *>(data);
     if (interface == QLatin1String(QWaylandXdgDecorationManagerV1::interface()->name))
         xdgShell->m_xdgDecorationManager.reset(new QWaylandXdgDecorationManagerV1(registry, id, version));
+
+    if (interface == QLatin1String(QWaylandXdgActivationV1::interface()->name)) {
+        xdgShell->m_xdgActivation.reset(new QWaylandXdgActivationV1(registry, id, version));
+    }
+
+    if (interface == QLatin1String(QWaylandXdgExporterV2::interface()->name)) {
+        xdgShell->m_xdgExporter.reset(new QWaylandXdgExporterV2(registry, id, version));
+    }
 }
 
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandxdgshell_p.cpp"

@@ -1,41 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qtimer.h>
@@ -44,8 +10,7 @@
 #include "qcocoacolordialoghelper.h"
 #include "qcocoahelpers.h"
 #include "qcocoaeventdispatcher.h"
-
-#import <AppKit/AppKit.h>
+#include "private/qcoregraphics_p.h"
 
 QT_USE_NAMESPACE
 
@@ -217,7 +182,17 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
     mDialogIsExecuting = false;
     mResultSet = false;
     mClosingDueToKnownButton = false;
-    [mColorPanel makeKeyAndOrderFront:mColorPanel];
+    // Make this an asynchronous call, so the panel is made key only
+    // in the next event loop run. This is to make sure that by
+    // the time the modal loop is run in runModalForWindow below,
+    // which internally also sets the panel to key window,
+    // the panel is not yet key, and the NSApp still has the right
+    // reference to the _previousKeyWindow. Otherwise both NSApp.key
+    // and NSApp._previousKeyWindow would wrongly point to the panel,
+    // loosing any reference to the window that was key before.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [mColorPanel makeKeyAndOrderFront:mColorPanel];
+    });
 }
 
 - (BOOL)runApplicationModalPanel
@@ -235,6 +210,11 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QNSColorPanelDelegate);
 
     [NSApp runModalForWindow:mColorPanel];
     mDialogIsExecuting = false;
+
+    // Wake up the event dispatcher so it can check whether the
+    // current event loop should continue spinning or not.
+    QCoreApplication::eventDispatcher()->wakeUp();
+
     return (mResultCode == NSModalResponseOK);
 }
 

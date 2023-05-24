@@ -1,15 +1,19 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "device/bluetooth/bluetooth_adapter_factory.h"
 #include "device/bluetooth/test/mock_bluetooth_adapter.h"
 #include "device/fido/authenticator_get_assertion_response.h"
@@ -21,29 +25,39 @@
 #include "device/fido/fido_parsing_utils.h"
 #include "device/fido/fido_test_data.h"
 #include "device/fido/fido_transport_protocol.h"
+#include "device/fido/fido_types.h"
 #include "device/fido/get_assertion_request_handler.h"
 #include "device/fido/hid/fake_hid_impl_for_testing.h"
 #include "device/fido/make_credential_task.h"
 #include "device/fido/mock_fido_device.h"
+#include "device/fido/public_key_credential_descriptor.h"
 #include "device/fido/test_callback_receiver.h"
 #include "device/fido/u2f_command_constructor.h"
 #include "device/fido/virtual_fido_device_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "device/fido/win/fake_webauthn_api.h"
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/dbus/u2f/u2f_client.h"
+#endif
 
 namespace device {
 
 namespace {
 
 constexpr uint8_t kBogusCredentialId[] = {0x01, 0x02, 0x03, 0x04};
+constexpr char kRequestTransportHistogram[] =
+    "WebAuthentication.GetAssertionRequestTransport";
+constexpr char kResponseTransportHistogram[] =
+    "WebAuthentication.GetAssertionResponseTransport";
 
 using TestGetAssertionRequestCallback = test::StatusAndValuesCallbackReceiver<
     GetAssertionStatus,
-    base::Optional<std::vector<AuthenticatorGetAssertionResponse>>,
+    absl::optional<std::vector<AuthenticatorGetAssertionResponse>>,
     const FidoAuthenticator*>;
 
 }  // namespace
@@ -54,13 +68,20 @@ using testing::_;
 // MockFidoDevices injected via a FakeFidoDiscoveryFactory.
 class FidoGetAssertionHandlerTest : public ::testing::Test {
  public:
-  FidoGetAssertionHandlerTest() {
-    mock_adapter_ =
-        base::MakeRefCounted<::testing::NiceMock<MockBluetoothAdapter>>();
-    bluetooth_config_ =
-        BluetoothAdapterFactory::Get()->InitGlobalValuesForTesting();
+  void SetUp() override {
     bluetooth_config_->SetLESupported(true);
     BluetoothAdapterFactory::SetAdapterForTesting(mock_adapter_);
+
+#if BUILDFLAG(IS_CHROMEOS)
+    chromeos::U2FClient::InitializeFake();
+#endif
+  }
+
+  void TearDown() override {
+#if BUILDFLAG(IS_CHROMEOS)
+    task_environment_.RunUntilIdle();
+    chromeos::U2FClient::Shutdown();
+#endif
   }
 
   void ForgeDiscoveries() {
@@ -107,13 +128,26 @@ class FidoGetAssertionHandlerTest : public ::testing::Test {
     return handler;
   }
 
+  std::unique_ptr<GetAssertionRequestHandler>
+  CreateGetAssertionHandlerWithRequestedTransports(
+      std::vector<std::vector<FidoTransportProtocol>> transports) {
+    CtapGetAssertionRequest request(test_data::kRelyingPartyId,
+                                    test_data::kClientDataJson);
+    for (uint8_t i = 0; i < transports.size(); ++i) {
+      request.allow_list.emplace_back(CredentialType::kPublicKey,
+                                      std::vector<uint8_t>{i});
+      request.allow_list.back().transports = transports[i];
+    }
+    return CreateGetAssertionHandlerWithRequest(std::move(request));
+  }
+
   void ExpectAllowedTransportsForRequestAre(
       GetAssertionRequestHandler* request_handler,
       base::flat_set<FidoTransportProtocol> transports) {
     using Transport = FidoTransportProtocol;
     if (base::Contains(transports, Transport::kUsbHumanInterfaceDevice))
       discovery()->WaitForCallToStartAndSimulateSuccess();
-    if (base::Contains(transports, Transport::kCloudAssistedBluetoothLowEnergy))
+    if (base::Contains(transports, Transport::kHybrid))
       cable_discovery()->WaitForCallToStartAndSimulateSuccess();
     if (base::Contains(transports, Transport::kNearFieldCommunication))
       nfc_discovery()->WaitForCallToStartAndSimulateSuccess();
@@ -125,8 +159,7 @@ class FidoGetAssertionHandlerTest : public ::testing::Test {
 
     if (!base::Contains(transports, Transport::kUsbHumanInterfaceDevice))
       EXPECT_FALSE(discovery()->is_start_requested());
-    if (!base::Contains(transports,
-                        Transport::kCloudAssistedBluetoothLowEnergy))
+    if (!base::Contains(transports, Transport::kHybrid))
       EXPECT_FALSE(cable_discovery()->is_start_requested());
     if (!base::Contains(transports, Transport::kNearFieldCommunication))
       EXPECT_FALSE(nfc_discovery()->is_start_requested());
@@ -141,11 +174,10 @@ class FidoGetAssertionHandlerTest : public ::testing::Test {
   void ExpectAllTransportsAreAllowedForRequest(
       GetAssertionRequestHandler* request_handler) {
     ExpectAllowedTransportsForRequestAre(
-        request_handler,
-        {FidoTransportProtocol::kUsbHumanInterfaceDevice,
-         FidoTransportProtocol::kInternal,
-         FidoTransportProtocol::kNearFieldCommunication,
-         FidoTransportProtocol::kCloudAssistedBluetoothLowEnergy});
+        request_handler, {FidoTransportProtocol::kUsbHumanInterfaceDevice,
+                          FidoTransportProtocol::kInternal,
+                          FidoTransportProtocol::kNearFieldCommunication,
+                          FidoTransportProtocol::kHybrid});
   }
 
   test::FakeFidoDiscovery* discovery() const { return discovery_; }
@@ -168,28 +200,92 @@ class FidoGetAssertionHandlerTest : public ::testing::Test {
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   std::unique_ptr<test::FakeFidoDiscoveryFactory> fake_discovery_factory_ =
       std::make_unique<test::FakeFidoDiscoveryFactory>();
-  test::FakeFidoDiscovery* discovery_;
-  test::FakeFidoDiscovery* cable_discovery_;
-  test::FakeFidoDiscovery* nfc_discovery_;
-  test::FakeFidoDiscovery* platform_discovery_;
-  scoped_refptr<::testing::NiceMock<MockBluetoothAdapter>> mock_adapter_;
+  raw_ptr<test::FakeFidoDiscovery> discovery_;
+  raw_ptr<test::FakeFidoDiscovery> cable_discovery_;
+  raw_ptr<test::FakeFidoDiscovery> nfc_discovery_;
+  raw_ptr<test::FakeFidoDiscovery> platform_discovery_;
+  scoped_refptr<::testing::NiceMock<MockBluetoothAdapter>> mock_adapter_ =
+      base::MakeRefCounted<::testing::NiceMock<MockBluetoothAdapter>>();
   TestGetAssertionRequestCallback get_assertion_cb_;
   base::flat_set<FidoTransportProtocol> supported_transports_ = {
       FidoTransportProtocol::kUsbHumanInterfaceDevice,
       FidoTransportProtocol::kInternal,
       FidoTransportProtocol::kNearFieldCommunication,
-      FidoTransportProtocol::kCloudAssistedBluetoothLowEnergy};
+      FidoTransportProtocol::kHybrid};
   std::unique_ptr<BluetoothAdapterFactory::GlobalValuesForTesting>
-      bluetooth_config_;
+      bluetooth_config_ =
+          BluetoothAdapterFactory::Get()->InitGlobalValuesForTesting();
+  FidoRequestHandlerBase::ScopedAlwaysAllowBLECalls always_allow_ble_calls_;
 };
 
 TEST_F(FidoGetAssertionHandlerTest, TransportAvailabilityInfo) {
-  auto request_handler =
-      CreateGetAssertionHandlerWithRequest(CtapGetAssertionRequest(
-          test_data::kRelyingPartyId, test_data::kClientDataJson));
-
-  EXPECT_EQ(FidoRequestHandlerBase::RequestType::kGetAssertion,
-            request_handler->transport_availability_info().request_type);
+  {
+    // Empty allow list.
+    auto request_handler = CreateGetAssertionHandlerWithRequestedTransports({});
+    EXPECT_EQ(FidoRequestType::kGetAssertion,
+              request_handler->transport_availability_info().request_type);
+    EXPECT_FALSE(request_handler->transport_availability_info()
+                     .transport_list_did_include_internal);
+    EXPECT_TRUE(
+        request_handler->transport_availability_info().has_empty_allow_list);
+    EXPECT_FALSE(request_handler->transport_availability_info()
+                     .is_only_hybrid_or_internal);
+  }
+  {
+    // Internal and a phone.
+    auto request_handler = CreateGetAssertionHandlerWithRequestedTransports(
+        {{FidoTransportProtocol::kInternal},
+         {FidoTransportProtocol::kInternal, FidoTransportProtocol::kHybrid}});
+    EXPECT_EQ(FidoRequestType::kGetAssertion,
+              request_handler->transport_availability_info().request_type);
+    EXPECT_TRUE(request_handler->transport_availability_info()
+                    .transport_list_did_include_internal);
+    EXPECT_FALSE(
+        request_handler->transport_availability_info().has_empty_allow_list);
+    EXPECT_TRUE(request_handler->transport_availability_info()
+                    .is_only_hybrid_or_internal);
+  }
+  {
+    // Internal, a phone, and USB.
+    auto request_handler = CreateGetAssertionHandlerWithRequestedTransports(
+        {{FidoTransportProtocol::kUsbHumanInterfaceDevice},
+         {FidoTransportProtocol::kInternal},
+         {FidoTransportProtocol::kInternal, FidoTransportProtocol::kHybrid}});
+    EXPECT_EQ(FidoRequestType::kGetAssertion,
+              request_handler->transport_availability_info().request_type);
+    EXPECT_TRUE(request_handler->transport_availability_info()
+                    .transport_list_did_include_internal);
+    EXPECT_FALSE(
+        request_handler->transport_availability_info().has_empty_allow_list);
+    EXPECT_FALSE(request_handler->transport_availability_info()
+                     .is_only_hybrid_or_internal);
+  }
+  {
+    // Only USB.
+    auto request_handler = CreateGetAssertionHandlerWithRequestedTransports(
+        {{FidoTransportProtocol::kUsbHumanInterfaceDevice}});
+    EXPECT_EQ(FidoRequestType::kGetAssertion,
+              request_handler->transport_availability_info().request_type);
+    EXPECT_FALSE(request_handler->transport_availability_info()
+                     .transport_list_did_include_internal);
+    EXPECT_FALSE(
+        request_handler->transport_availability_info().has_empty_allow_list);
+    EXPECT_FALSE(request_handler->transport_availability_info()
+                     .is_only_hybrid_or_internal);
+  }
+  {
+    // A phone and an unknown (empty) transport credential.
+    auto request_handler = CreateGetAssertionHandlerWithRequestedTransports(
+        {{}, {FidoTransportProtocol::kHybrid}});
+    EXPECT_EQ(FidoRequestType::kGetAssertion,
+              request_handler->transport_availability_info().request_type);
+    EXPECT_TRUE(request_handler->transport_availability_info()
+                    .transport_list_did_include_internal);
+    EXPECT_FALSE(
+        request_handler->transport_availability_info().has_empty_allow_list);
+    EXPECT_FALSE(request_handler->transport_availability_info()
+                     .is_only_hybrid_or_internal);
+  }
 }
 
 TEST_F(FidoGetAssertionHandlerTest, CtapRequestOnSingleDevice) {
@@ -331,9 +427,9 @@ TEST_F(FidoGetAssertionHandlerTest, ValidEmptyCredential) {
   EXPECT_EQ(GetAssertionStatus::kSuccess, get_assertion_callback().status());
   ASSERT_TRUE(response);
   ASSERT_EQ(1u, response->size());
-  EXPECT_TRUE(response.value()[0].credential());
+  EXPECT_TRUE(response.value()[0].credential);
   EXPECT_THAT(
-      response.value()[0].raw_credential_id(),
+      response.value()[0].credential->id,
       ::testing::ElementsAreArray(test_data::kTestGetAssertionCredentialId));
 }
 
@@ -358,8 +454,8 @@ TEST_F(FidoGetAssertionHandlerTest, TruncatedUTF8) {
   EXPECT_EQ(GetAssertionStatus::kSuccess, get_assertion_callback().status());
   ASSERT_TRUE(response);
   ASSERT_EQ(1u, response->size());
-  ASSERT_TRUE(response.value()[0].user_entity());
-  EXPECT_EQ(63u, response.value()[0].user_entity()->name->size());
+  ASSERT_TRUE(response.value()[0].user_entity);
+  EXPECT_EQ(63u, response.value()[0].user_entity->name->size());
 }
 
 TEST_F(FidoGetAssertionHandlerTest, TruncatedAndInvalidUTF8) {
@@ -475,7 +571,7 @@ TEST_F(FidoGetAssertionHandlerTest, SupportedTransportsAreOnlyNfc) {
 TEST_F(FidoGetAssertionHandlerTest,
        SupportedTransportsAreOnlyCableAndInternal) {
   const base::flat_set<FidoTransportProtocol> kCableAndInternal = {
-      FidoTransportProtocol::kCloudAssistedBluetoothLowEnergy,
+      FidoTransportProtocol::kHybrid,
       FidoTransportProtocol::kInternal,
   };
 
@@ -602,8 +698,7 @@ TEST_F(FidoGetAssertionHandlerTest,
   platform_device->SetDeviceTransport(FidoTransportProtocol::kInternal);
   platform_device->ExpectCtap2CommandAndRespondWithError(
       CtapRequestCommand::kAuthenticatorGetAssertion,
-      CtapDeviceResponseCode::kCtap2ErrOperationDenied,
-      base::TimeDelta::FromMicroseconds(10));
+      CtapDeviceResponseCode::kCtap2ErrOperationDenied, base::Microseconds(10));
   platform_discovery()->WaitForCallToStartAndSimulateSuccess();
   platform_discovery()->AddDevice(std::move(platform_device));
 
@@ -676,7 +771,7 @@ TEST_F(FidoGetAssertionHandlerTest, DeviceFailsImmediately) {
               ::testing::Invoke([this](FidoDevice::DeviceCallback& callback) {
                 std::vector<uint8_t> response = {static_cast<uint8_t>(
                     CtapDeviceResponseCode::kCtap2ErrInvalidCBOR)};
-                base::ThreadTaskRunnerHandle::Get()->PostTask(
+                base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
                     FROM_HERE,
                     base::BindOnce(std::move(callback), std::move(response)));
 
@@ -695,6 +790,33 @@ TEST_F(FidoGetAssertionHandlerTest, DeviceFailsImmediately) {
 
   get_assertion_callback().WaitForCallback();
   EXPECT_EQ(GetAssertionStatus::kSuccess, get_assertion_callback().status());
+}
+
+TEST_F(FidoGetAssertionHandlerTest, PinUvAuthTokenPreTouchFailure) {
+  VirtualCtap2Device::Config config;
+  config.ctap2_versions = {Ctap2Version::kCtap2_1};
+  config.pin_uv_auth_token_support = true;
+  config.internal_uv_support = true;
+  config.override_response_map[CtapRequestCommand::kAuthenticatorClientPin] =
+      CtapDeviceResponseCode::kCtap2ErrOther;
+  auto state = base::MakeRefCounted<VirtualFidoDevice::State>();
+  state->fingerprints_enrolled = true;
+
+  CtapGetAssertionRequest request(test_data::kRelyingPartyId,
+                                  test_data::kClientDataJson);
+  request.allow_list = {PublicKeyCredentialDescriptor(
+      CredentialType::kPublicKey,
+      fido_parsing_utils::Materialize(
+          test_data::kTestGetAssertionCredentialId))};
+  request.user_verification = UserVerificationRequirement::kRequired;
+  auto request_handler =
+      CreateGetAssertionHandlerWithRequest(std::move(request));
+  discovery()->WaitForCallToStartAndSimulateSuccess();
+  discovery()->AddDevice(std::make_unique<VirtualCtap2Device>(
+      std::move(state), std::move(config)));
+
+  task_environment_.FastForwardUntilNoTasksRemain();
+  EXPECT_FALSE(get_assertion_callback().was_called());
 }
 
 // Tests a scenario where authenticator of incorrect transport type was used to
@@ -736,44 +858,41 @@ TEST(GetAssertionRequestHandlerTest, IncorrectTransportType) {
   EXPECT_FALSE(cb.was_called());
 }
 
-#if defined(OS_WIN)
+TEST_F(FidoGetAssertionHandlerTest, ReportTransportMetric) {
+  base::HistogramTester histograms;
+  auto request_handler = CreateGetAssertionHandlerCtap();
 
-class TestObserver : public FidoRequestHandlerBase::Observer {
- public:
-  TestObserver() {}
-  ~TestObserver() override {}
+  auto device = MockFidoDevice::MakeCtapWithGetInfoExpectation();
+  device->ExpectCtap2CommandAndRespondWith(
+      CtapRequestCommand::kAuthenticatorGetAssertion,
+      test_data::kTestGetAssertionResponse);
+  discovery()->AddDevice(std::move(device));
 
-  void set_controls_dispatch(bool controls_dispatch) {
-    controls_dispatch_ = controls_dispatch;
-  }
+  auto nfc_device = MockFidoDevice::MakeCtapWithGetInfoExpectation();
+  nfc_device->SetDeviceTransport(
+      FidoTransportProtocol::kNearFieldCommunication);
+  nfc_device->ExpectCtap2CommandAndDoNotRespond(
+      CtapRequestCommand::kAuthenticatorGetAssertion);
+  EXPECT_CALL(*nfc_device, Cancel(_));
+  nfc_discovery()->AddDevice(std::move(nfc_device));
 
- private:
-  // FidoRequestHandlerBase::Observer:
-  void OnTransportAvailabilityEnumerated(
-      FidoRequestHandlerBase::TransportAvailabilityInfo data) override {}
-  bool EmbedderControlsAuthenticatorDispatch(
-      const FidoAuthenticator&) override {
-    return controls_dispatch_;
-  }
-  void BluetoothAdapterPowerChanged(bool is_powered_on) override {}
-  void FidoAuthenticatorAdded(const FidoAuthenticator& authenticator) override {
-  }
-  void FidoAuthenticatorRemoved(base::StringPiece device_id) override {}
-  bool SupportsPIN() const override { return false; }
-  void CollectPIN(
-      base::Optional<int> attempts,
-      base::OnceCallback<void(std::string)> provide_pin_cb) override {
-    NOTREACHED();
-  }
-  void StartBioEnrollment(base::OnceClosure next_callback) override {}
-  void OnSampleCollected(int bio_samples_remaining) override {}
-  void FinishCollectToken() override { NOTREACHED(); }
-  void OnRetryUserVerification(int attempts) override {}
-  void OnInternalUserVerificationLocked() override {}
-  void SetMightCreateResidentCredential(bool v) override {}
+  nfc_discovery()->WaitForCallToStartAndSimulateSuccess();
+  discovery()->WaitForCallToStartAndSimulateSuccess();
+  get_assertion_callback().WaitForCallback();
 
-  bool controls_dispatch_ = false;
-};
+  EXPECT_EQ(GetAssertionStatus::kSuccess, get_assertion_callback().status());
+  histograms.ExpectBucketCount(kRequestTransportHistogram,
+                               FidoTransportProtocol::kUsbHumanInterfaceDevice,
+                               1);
+  histograms.ExpectBucketCount(kRequestTransportHistogram,
+                               FidoTransportProtocol::kNearFieldCommunication,
+                               1);
+  histograms.ExpectUniqueSample(kResponseTransportHistogram,
+                                FidoTransportProtocol::kUsbHumanInterfaceDevice,
+                                1);
+}
+
+#if BUILDFLAG(IS_WIN)
 
 // Verify that the request handler instantiates a HID device backed
 // FidoDeviceAuthenticator or a WinNativeCrossPlatformAuthenticator, depending
@@ -784,6 +903,8 @@ TEST(GetAssertionRequestHandlerWinTest, TestWinUsbDiscovery) {
     SCOPED_TRACE(::testing::Message() << "enable_api=" << enable_api);
     FakeWinWebAuthnApi api;
     api.set_available(enable_api);
+    api.InjectNonDiscoverableCredential(
+        test_data::kTestGetAssertionCredentialId, test_data::kRelyingPartyId);
 
     // Simulate a connected HID device.
     ScopedFakeFidoHidManager fake_hid_manager;
@@ -792,32 +913,27 @@ TEST(GetAssertionRequestHandlerWinTest, TestWinUsbDiscovery) {
     TestGetAssertionRequestCallback cb;
     FidoDiscoveryFactory fido_discovery_factory;
     fido_discovery_factory.set_win_webauthn_api(&api);
+    CtapGetAssertionRequest request(test_data::kRelyingPartyId,
+                                    test_data::kClientDataJson);
+    request.allow_list = {PublicKeyCredentialDescriptor(
+        CredentialType::kPublicKey,
+        fido_parsing_utils::Materialize(
+            test_data::kTestGetAssertionCredentialId))};
     auto handler = std::make_unique<GetAssertionRequestHandler>(
         &fido_discovery_factory,
         base::flat_set<FidoTransportProtocol>(
             {FidoTransportProtocol::kUsbHumanInterfaceDevice}),
-        CtapGetAssertionRequest(test_data::kRelyingPartyId,
-                                test_data::kClientDataJson),
-        CtapGetAssertionOptions(),
+        std::move(request), CtapGetAssertionOptions(),
         /*allow_skipping_pin_touch=*/true, cb.callback());
-    // Register an observer that disables automatic dispatch. Dispatch to the
-    // (unimplemented) fake Windows API would immediately result in an invalid
-    // response.
-    TestObserver observer;
-    observer.set_controls_dispatch(true);
-    handler->set_observer(&observer);
-
     task_environment.RunUntilIdle();
 
-    ASSERT_FALSE(cb.was_called());
     EXPECT_EQ(handler->AuthenticatorsForTesting().size(), 1u);
-    EXPECT_EQ(handler->AuthenticatorsForTesting()
-                  .begin()
-                  ->second->IsWinNativeApiAuthenticator(),
+    EXPECT_EQ(handler->AuthenticatorsForTesting().begin()->second->GetType() ==
+                  FidoAuthenticator::Type::kWinNative,
               enable_api);
   }
 }
 
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
 }  // namespace device

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "hpacktable_p.h"
 
@@ -52,7 +16,7 @@ QT_BEGIN_NAMESPACE
 namespace HPack
 {
 
-HeaderSize entry_size(const QByteArray &name, const QByteArray &value)
+HeaderSize entry_size(QByteArrayView name, QByteArrayView value)
 {
     // 32 comes from HPACK:
     // "4.1 Calculating Table Size
@@ -62,8 +26,10 @@ HeaderSize entry_size(const QByteArray &name, const QByteArray &value)
     // for counting the number of references to the name and value would have
     // 32 octets of overhead."
 
-    const unsigned sum = unsigned(name.size() + value.size());
-    if (std::numeric_limits<unsigned>::max() - 32 < sum)
+    size_t sum;
+    if (qAddOverflow(size_t(name.size()), size_t(value.size()), &sum))
+        return HeaderSize();
+    if (sum > (std::numeric_limits<unsigned>::max() - 32))
         return HeaderSize();
     return HeaderSize(true, quint32(sum + 32));
 }
@@ -183,7 +149,8 @@ bool FieldLookupTable::prependField(const QByteArray &name, const QByteArray &va
 
     if (useIndex) {
         const auto result = searchIndex.insert(frontKey());
-        Q_UNUSED(result) Q_ASSERT(result.second);
+        Q_UNUSED(result);
+        Q_ASSERT(result.second);
     }
 
     return true;
@@ -198,7 +165,8 @@ void FieldLookupTable::evictEntry()
 
     if (useIndex) {
         const auto res = searchIndex.erase(backKey());
-        Q_UNUSED(res) Q_ASSERT(res == 1);
+        Q_UNUSED(res);
+        Q_ASSERT(res == 1);
     }
 
     const HeaderField &field = back();
@@ -380,8 +348,7 @@ quint32 FieldLookupTable::indexOfChunk(const Chunk *chunk) const
             return quint32(i);
     }
 
-    Q_UNREACHABLE();
-    return 0;
+    Q_UNREACHABLE_RETURN(0);
 }
 
 quint32 FieldLookupTable::keyToIndex(const SearchEntry &key) const

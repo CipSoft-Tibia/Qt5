@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QV4GC_H
 #define QV4GC_H
@@ -57,10 +21,6 @@
 #include <private/qv4object_p.h>
 #include <private/qv4mmdefs_p.h>
 #include <QVector>
-
-#define QV4_MM_MAXBLOCK_SHIFT "QV4_MM_MAXBLOCK_SHIFT"
-#define QV4_MM_MAX_CHUNK_SIZE "QV4_MM_MAX_CHUNK_SIZE"
-#define QV4_MM_STATS "QV4_MM_STATS"
 
 #define MM_DEBUG 0
 
@@ -103,7 +63,6 @@ struct BlockAllocator {
     void sweep();
     void freeAll();
     void resetBlackBits();
-    void collectGrayItems(MarkStack *markStack);
 
     // bump allocations
     HeapItem *nextFree = nullptr;
@@ -125,7 +84,6 @@ struct HugeItemAllocator {
     void sweep(ClassDestroyStatsCallback classCountPtr);
     void freeAll();
     void resetBlackBits();
-    void collectGrayItems(MarkStack *markStack);
 
     size_t usedMem() const {
         size_t used = 0;
@@ -156,13 +114,13 @@ public:
 
     // TODO: this is only for 64bit (and x86 with SSE/AVX), so exend it for other architectures to be slightly more efficient (meaning, align on 8-byte boundaries).
     // Note: all occurrences of "16" in alloc/dealloc are also due to the alignment.
-    Q_DECL_CONSTEXPR static inline std::size_t align(std::size_t size)
+    constexpr static inline std::size_t align(std::size_t size)
     { return (size + Chunk::SlotSize - 1) & ~(Chunk::SlotSize - 1); }
 
     template<typename ManagedType>
     inline typename ManagedType::Data *allocManaged(std::size_t size, Heap::InternalClass *ic)
     {
-        Q_STATIC_ASSERT(std::is_trivial< typename ManagedType::Data >::value);
+        Q_STATIC_ASSERT(std::is_trivial_v<typename ManagedType::Data>);
         size = align(size);
         typename ManagedType::Data *d = static_cast<typename ManagedType::Data *>(allocData(size));
         d->internalClass.set(engine, ic);
@@ -212,46 +170,46 @@ public:
     }
 
     template <typename ManagedType, typename Arg1>
-    typename ManagedType::Data *allocWithStringData(std::size_t unmanagedSize, Arg1 arg1)
+    typename ManagedType::Data *allocWithStringData(std::size_t unmanagedSize, Arg1 &&arg1)
     {
         typename ManagedType::Data *o = reinterpret_cast<typename ManagedType::Data *>(allocString(unmanagedSize));
         o->internalClass.set(engine, ManagedType::defaultInternalClass(engine));
         Q_ASSERT(o->internalClass && o->internalClass->vtable);
-        o->init(arg1);
+        o->init(std::forward<Arg1>(arg1));
         return o;
     }
 
     template <typename ObjectType, typename... Args>
-    typename ObjectType::Data *allocObject(Heap::InternalClass *ic, Args... args)
+    typename ObjectType::Data *allocObject(Heap::InternalClass *ic, Args&&... args)
     {
         typename ObjectType::Data *d = allocateObject<ObjectType>(ic);
-        d->init(args...);
+        d->init(std::forward<Args>(args)...);
         return d;
     }
 
     template <typename ObjectType, typename... Args>
-    typename ObjectType::Data *allocObject(InternalClass *ic, Args... args)
+    typename ObjectType::Data *allocObject(InternalClass *ic, Args&&... args)
     {
         typename ObjectType::Data *d = allocateObject<ObjectType>(ic);
-        d->init(args...);
+        d->init(std::forward<Args>(args)...);
         return d;
     }
 
     template <typename ObjectType, typename... Args>
-    typename ObjectType::Data *allocate(Args... args)
+    typename ObjectType::Data *allocate(Args&&... args)
     {
         Scope scope(engine);
         Scoped<ObjectType> t(scope, allocateObject<ObjectType>());
-        t->d_unchecked()->init(args...);
+        t->d_unchecked()->init(std::forward<Args>(args)...);
         return t->d();
     }
 
     template <typename ManagedType, typename... Args>
-    typename ManagedType::Data *alloc(Args... args)
+    typename ManagedType::Data *alloc(Args&&... args)
     {
         Scope scope(engine);
         Scoped<ManagedType> t(scope, allocManaged<ManagedType>(sizeof(typename ManagedType::Data)));
-        t->d_unchecked()->init(args...);
+        t->d_unchecked()->init(std::forward<Args>(args)...);
         return t->d();
     }
 

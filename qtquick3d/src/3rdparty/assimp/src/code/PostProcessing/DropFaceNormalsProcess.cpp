@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2019, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 
@@ -56,17 +56,11 @@ using namespace Assimp;
 
 // ------------------------------------------------------------------------------------------------
 // Constructor to be privately used by Importer
-DropFaceNormalsProcess::DropFaceNormalsProcess()
-{
-    // nothing to do here
-}
+DropFaceNormalsProcess::DropFaceNormalsProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-DropFaceNormalsProcess::~DropFaceNormalsProcess()
-{
-    // nothing to do here
-}
+DropFaceNormalsProcess::~DropFaceNormalsProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -98,12 +92,14 @@ void DropFaceNormalsProcess::Execute( aiScene* pScene) {
 
 // ------------------------------------------------------------------------------------------------
 // Executes the post processing step on the given imported data.
-bool DropFaceNormalsProcess::DropMeshFaceNormals (aiMesh* pMesh) {
-    if (NULL == pMesh->mNormals) {
+bool DropFaceNormalsProcess::DropMeshFaceNormals (aiMesh* mesh) {
+    ai_assert(nullptr != mesh);
+
+    if (nullptr == mesh->mNormals) {
         return false;
     }
-    
-    delete[] pMesh->mNormals;
-    pMesh->mNormals = nullptr;
+
+    delete[] mesh->mNormals;
+    mesh->mNormals = nullptr;
     return true;
 }

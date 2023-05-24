@@ -1,33 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QSize>
+#ifdef QVARIANT_H
+# error "This test requires qsize.h to not include qvariant.h"
+#endif
+
+// don't assume <type_traits>
+template <typename T, typename U>
+constexpr inline bool my_is_same_v = false;
+template <typename T>
+constexpr inline bool my_is_same_v<T, T> = true;
+
+#define CHECK(cvref) \
+    static_assert(my_is_same_v<decltype(get<0>(std::declval<QSize cvref >())), int cvref >); \
+    static_assert(my_is_same_v<decltype(get<1>(std::declval<QSize cvref >())), int cvref >)
+
+CHECK(&);
+CHECK(const &);
+CHECK(&&);
+CHECK(const &&);
+
+#undef CHECK
+
+#include <QTest>
 #include <qsize.h>
+
+#include <array>
 
 Q_DECLARE_METATYPE(QMargins)
 
@@ -47,8 +46,13 @@ private slots:
     void grownOrShrunkBy_data();
     void grownOrShrunkBy();
 
+    void toSizeF_data();
+    void toSizeF();
+
     void transpose_data();
     void transpose();
+
+    void structuredBinding();
 };
 
 // Testing get/set functions
@@ -230,6 +234,30 @@ void tst_QSize::grownOrShrunkBy()
     QCOMPARE(shrunk.grownBy(margins), input);
 }
 
+void tst_QSize::toSizeF_data()
+{
+    QTest::addColumn<QSize>("input");
+    QTest::addColumn<QSizeF>("result");
+
+    auto row = [](int w, int h) {
+        QTest::addRow("(%d, %d)", w, h) << QSize(w, h) << QSizeF(w, h);
+    };
+    constexpr std::array samples = {-1, 0, 1};
+    for (int w : samples) {
+        for (int h : samples) {
+            row(w, h);
+        }
+    }
+}
+
+void tst_QSize::toSizeF()
+{
+    QFETCH(const QSize, input);
+    QFETCH(const QSizeF, result);
+
+    QCOMPARE(input.toSizeF(), result);
+}
+
 void tst_QSize::transpose_data()
 {
     QTest::addColumn<QSize>("input1");
@@ -248,6 +276,27 @@ void tst_QSize::transpose()
     // transpose() works only inplace and does not return anything, so we must do the operation itself before the compare.
     input1.transpose();
     QCOMPARE(input1 , expected);
+}
+
+void tst_QSize::structuredBinding()
+{
+    {
+        QSize size(10, 20);
+        auto [width, height] = size;
+        QCOMPARE(width, 10);
+        QCOMPARE(height, 20);
+    }
+    {
+        QSize size(30, 40);
+        auto &[width, height] = size;
+        QCOMPARE(width, 30);
+        QCOMPARE(height, 40);
+
+        width = 100;
+        height = 200;
+        QCOMPARE(size.width(), 100);
+        QCOMPARE(size.height(), 200);
+    }
 }
 
 QTEST_APPLESS_MAIN(tst_QSize)

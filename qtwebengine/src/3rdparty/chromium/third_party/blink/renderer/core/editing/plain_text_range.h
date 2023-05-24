@@ -28,7 +28,6 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
 
@@ -46,6 +45,14 @@ class CORE_EXPORT PlainTextRange {
   PlainTextRange(const PlainTextRange&);
   explicit PlainTextRange(wtf_size_t location);
   PlainTextRange(wtf_size_t start, wtf_size_t end);
+
+  bool operator==(const PlainTextRange& other) const {
+    return start_ == other.start_ && end_ == other.end_;
+  }
+
+  bool operator!=(const PlainTextRange& other) const {
+    return !operator==(other);
+  }
 
   wtf_size_t End() const {
     DCHECK(IsNotNull());
@@ -80,6 +87,8 @@ class CORE_EXPORT PlainTextRange {
   const wtf_size_t start_;
   const wtf_size_t end_;
 };
+
+CORE_EXPORT std::ostream& operator<<(std::ostream&, const PlainTextRange&);
 
 }  // namespace blink
 

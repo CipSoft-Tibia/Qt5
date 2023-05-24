@@ -1,4 +1,4 @@
-// Copyright (c) 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,6 @@
 #include <set>
 #include <vector>
 
-#include "base/macros.h"
-#include "content/common/content_export.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "media/video/video_decode_accelerator.h"
 #include "ppapi/c/pp_codecs.h"
@@ -27,13 +25,16 @@ namespace content {
 class RendererPpapiHost;
 class VideoDecoderShim;
 
-class CONTENT_EXPORT PepperVideoDecoderHost
-    : public ppapi::host::ResourceHost,
-      public media::VideoDecodeAccelerator::Client {
+class PepperVideoDecoderHost : public ppapi::host::ResourceHost,
+                               public media::VideoDecodeAccelerator::Client {
  public:
   PepperVideoDecoderHost(RendererPpapiHost* host,
                          PP_Instance instance,
                          PP_Resource resource);
+
+  PepperVideoDecoderHost(const PepperVideoDecoderHost&) = delete;
+  PepperVideoDecoderHost& operator=(const PepperVideoDecoderHost&) = delete;
+
   ~PepperVideoDecoderHost() override;
 
  private:
@@ -133,6 +134,10 @@ class CONTENT_EXPORT PepperVideoDecoderHost
   bool software_fallback_allowed_ = false;
   bool software_fallback_used_ = false;
 
+  // Used to record UMA values.
+  bool legacy_hardware_video_decoder_path_initialized_ = false;
+  bool mojo_video_decoder_path_initialized_ = false;
+
   // Used for UMA stats; not frame-accurate.
   gfx::Size coded_size_;
 
@@ -169,8 +174,6 @@ class CONTENT_EXPORT PepperVideoDecoderHost
   ppapi::host::ReplyMessageContext reset_reply_context_;
 
   bool initialized_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(PepperVideoDecoderHost);
 };
 
 }  // namespace content

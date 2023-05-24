@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qvertexblendanimation.h"
 
@@ -51,7 +18,7 @@ namespace Qt3DAnimation {
 
     A Qt3DAnimation::QVertexBlendAnimation class implements vertex-blend morphing animation
     to a target \l {Qt3DRender::QGeometryRenderer}{QGeometryRenderer}. The QVertexBlendAnimation
-    sets the correct \l {Qt3DRender::QAttribute}{QAttributes} from the
+    sets the correct \l {Qt3DCore::QAttribute}{QAttributes} from the
     \l {Qt3DAnimation::QMorphTarget}{morph targets} to the target
     \l {Qt3DRender::QGeometryRenderer::geometry} {QGeometryRenderer::geometry} and calculates
     interpolator for the current position. Unlike with QMorphingAnimation, where the blending is
@@ -189,21 +156,21 @@ void QVertexBlendAnimationPrivate::updateAnimation(float position)
     base = m_morphTargets.at(target0);
     target = m_morphTargets.at(target1);
 
-    Qt3DRender::QGeometry *geometry = m_target->geometry();
+    Qt3DCore::QGeometry *geometry = m_target->geometry();
 
     // remove attributes from previous frame
     if (m_currentBase && m_currentTarget &&
         (base != m_currentBase || target != m_currentTarget)) {
-        const QVector<Qt3DRender::QAttribute *> baseAttributes = m_currentBase->attributeList();
-        const QVector<Qt3DRender::QAttribute *> targetAttributes = m_currentTarget->attributeList();
+        const QList<Qt3DCore::QAttribute *> baseAttributes = m_currentBase->attributeList();
+        const QList<Qt3DCore::QAttribute *> targetAttributes = m_currentTarget->attributeList();
         for (int i = 0; i < baseAttributes.size(); ++i) {
             geometry->removeAttribute(baseAttributes.at(i));
             geometry->removeAttribute(targetAttributes.at(i));
         }
     }
 
-    const QVector<Qt3DRender::QAttribute *> baseAttributes = base->attributeList();
-    const QVector<Qt3DRender::QAttribute *> targetAttributes = target->attributeList();
+    const QList<Qt3DCore::QAttribute *> baseAttributes = base->attributeList();
+    const QList<Qt3DCore::QAttribute *> targetAttributes = target->attributeList();
     const QStringList attributeNames = base->attributeNames();
 
     // add attributes from current frame to the geometry
@@ -239,7 +206,7 @@ QVertexBlendAnimation::QVertexBlendAnimation(QObject *parent)
                                                this, &QVertexBlendAnimation::updateAnimation);
 }
 
-QVector<float> QVertexBlendAnimation::targetPositions() const
+QList<float> QVertexBlendAnimation::targetPositions() const
 {
     Q_D(const QVertexBlendAnimation);
     return d->m_targetPositions;
@@ -266,7 +233,7 @@ QString QVertexBlendAnimation::targetName() const
 /*!
     Set morph \a targets to animation. Old targets are cleared.
 */
-void QVertexBlendAnimation::setMorphTargets(const QVector<Qt3DAnimation::QMorphTarget *> &targets)
+void QVertexBlendAnimation::setMorphTargets(const QList<Qt3DAnimation::QMorphTarget *> &targets)
 {
     Q_D(QVertexBlendAnimation);
     d->m_morphTargets = targets;
@@ -291,7 +258,7 @@ void QVertexBlendAnimation::removeMorphTarget(Qt3DAnimation::QMorphTarget *targe
     d->m_morphTargets.removeAll(target);
 }
 
-void QVertexBlendAnimation::setTargetPositions(const QVector<float> &targetPositions)
+void QVertexBlendAnimation::setTargetPositions(const QList<float> &targetPositions)
 {
     Q_D(QVertexBlendAnimation);
     if (d->m_targetPositions == targetPositions)
@@ -313,7 +280,7 @@ void QVertexBlendAnimation::setTarget(Qt3DRender::QGeometryRenderer *target)
 /*!
     Return morph target list.
 */
-QVector<Qt3DAnimation::QMorphTarget *> QVertexBlendAnimation::morphTargetList()
+QList<Qt3DAnimation::QMorphTarget *> QVertexBlendAnimation::morphTargetList()
 {
     Q_D(QVertexBlendAnimation);
     return d->m_morphTargets;
@@ -337,3 +304,5 @@ void QVertexBlendAnimation::updateAnimation(float position)
 } // Qt3DAnimation
 
 QT_END_NAMESPACE
+
+#include "moc_qvertexblendanimation.cpp"

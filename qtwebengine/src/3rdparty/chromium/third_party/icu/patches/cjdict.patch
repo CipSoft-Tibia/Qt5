@@ -1,8 +1,8 @@
 diff --git a/source/data/brkitr/dictionaries/cjdict.txt b/source/data/brkitr/dictionaries/cjdict.txt
-index 162ae53e..d1e3cf04 100644
+index 94a00bca..883fe51d 100644
 --- a/source/data/brkitr/dictionaries/cjdict.txt
 +++ b/source/data/brkitr/dictionaries/cjdict.txt
-@@ -36727,7 +36727,9 @@
+@@ -37200,7 +37200,9 @@
  七团	132
  七国	115
  七国山	141
@@ -12,7 +12,7 @@ index 162ae53e..d1e3cf04 100644
  七地	241
  七城	126
  七堂	136
-@@ -52356,6 +52358,9 @@
+@@ -52829,6 +52831,9 @@
  五大	86
  五大堂	131
  五大洲	113
@@ -22,7 +22,7 @@ index 162ae53e..d1e3cf04 100644
  五天	98
  五太子	150
  五夫	140
-@@ -163790,6 +163795,7 @@
+@@ -164268,6 +164273,7 @@
  春賀	137
  春路	96
  春輔	147
@@ -30,7 +30,7 @@ index 162ae53e..d1e3cf04 100644
  春近	126
  春近古市場	143
  春遠	126
-@@ -269553,6 +269559,7 @@
+@@ -270035,6 +270041,7 @@
  调情	101
  调戏	107
  调换	105

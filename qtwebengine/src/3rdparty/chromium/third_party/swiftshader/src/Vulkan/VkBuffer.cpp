@@ -13,10 +13,13 @@
 // limitations under the License.
 
 #include "VkBuffer.hpp"
+
 #include "VkConfig.hpp"
 #include "VkDeviceMemory.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <limits>
 
 namespace vk {
 
@@ -41,12 +44,17 @@ Buffer::Buffer(const VkBufferCreateInfo *pCreateInfo, void *mem)
 			const auto *externalInfo = reinterpret_cast<const VkExternalMemoryBufferCreateInfo *>(nextInfo);
 			supportedExternalMemoryHandleTypes = externalInfo->handleTypes;
 		}
+		else if(nextInfo->sType == VK_STRUCTURE_TYPE_BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO)
+		{
+			const auto *opaqueCaptureAddressInfo = reinterpret_cast<const VkBufferOpaqueCaptureAddressCreateInfo *>(nextInfo);
+			opaqueCaptureAddress = opaqueCaptureAddressInfo->opaqueCaptureAddress;
+		}
 	}
 }
 
 void Buffer::destroy(const VkAllocationCallbacks *pAllocator)
 {
-	vk::deallocate(queueFamilyIndices, pAllocator);
+	vk::freeHostMemory(queueFamilyIndices, pAllocator);
 }
 
 size_t Buffer::ComputeRequiredAllocationSize(const VkBufferCreateInfo *pCreateInfo)
@@ -54,29 +62,36 @@ size_t Buffer::ComputeRequiredAllocationSize(const VkBufferCreateInfo *pCreateIn
 	return (pCreateInfo->sharingMode == VK_SHARING_MODE_CONCURRENT) ? sizeof(uint32_t) * pCreateInfo->queueFamilyIndexCount : 0;
 }
 
-const VkMemoryRequirements Buffer::getMemoryRequirements() const
+const VkMemoryRequirements Buffer::GetMemoryRequirements(VkDeviceSize size, VkBufferUsageFlags usage)
 {
 	VkMemoryRequirements memoryRequirements = {};
+
+	memoryRequirements.size = size;
+	memoryRequirements.alignment = vk::MEMORY_REQUIREMENTS_OFFSET_ALIGNMENT;
+
 	if(usage & (VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT))
 	{
-		memoryRequirements.alignment = vk::MIN_TEXEL_BUFFER_OFFSET_ALIGNMENT;
+		memoryRequirements.alignment = std::max(memoryRequirements.alignment, vk::MIN_TEXEL_BUFFER_OFFSET_ALIGNMENT);
 	}
-	else if(usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+
+	if(usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
 	{
-		memoryRequirements.alignment = vk::MIN_STORAGE_BUFFER_OFFSET_ALIGNMENT;
+		memoryRequirements.alignment = std::max(memoryRequirements.alignment, vk::MIN_STORAGE_BUFFER_OFFSET_ALIGNMENT);
 	}
-	else if(usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
+
+	if(usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)
 	{
-		memoryRequirements.alignment = vk::MIN_UNIFORM_BUFFER_OFFSET_ALIGNMENT;
+		memoryRequirements.alignment = std::max(memoryRequirements.alignment, vk::MIN_UNIFORM_BUFFER_OFFSET_ALIGNMENT);
 	}
-	else
-	{
-		memoryRequirements.alignment = REQUIRED_MEMORY_ALIGNMENT;
-	}
+
 	memoryRequirements.memoryTypeBits = vk::MEMORY_TYPE_GENERIC_BIT;
-	memoryRequirements.size = size;  // TODO: also reserve space for a header containing
-	                                 // the size of the buffer (for robust buffer access)
+
 	return memoryRequirements;
+}
+
+const VkMemoryRequirements Buffer::getMemoryRequirements() const
+{
+	return GetMemoryRequirements(size, usage);
 }
 
 bool Buffer::canBindToMemory(DeviceMemory *pDeviceMemory) const
@@ -103,7 +118,7 @@ void Buffer::copyTo(void *dstMemory, VkDeviceSize pSize, VkDeviceSize pOffset) c
 	memcpy(dstMemory, getOffsetPointer(pOffset), pSize);
 }
 
-void Buffer::copyTo(Buffer *dstBuffer, const VkBufferCopy &pRegion) const
+void Buffer::copyTo(Buffer *dstBuffer, const VkBufferCopy2KHR &pRegion) const
 {
 	copyTo(dstBuffer->getOffsetPointer(pRegion.dstOffset), pRegion.size, pRegion.srcOffset);
 }
@@ -134,6 +149,11 @@ void Buffer::update(VkDeviceSize dstOffset, VkDeviceSize dataSize, const void *p
 void *Buffer::getOffsetPointer(VkDeviceSize offset) const
 {
 	return reinterpret_cast<uint8_t *>(memory) + offset;
+}
+
+uint64_t Buffer::getOpaqueCaptureAddress() const
+{
+	return (opaqueCaptureAddress != 0) ? opaqueCaptureAddress : static_cast<uint64_t>(reinterpret_cast<uintptr_t>(memory));
 }
 
 uint8_t *Buffer::end() const

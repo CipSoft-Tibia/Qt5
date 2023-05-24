@@ -1,16 +1,36 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gfx/gpu_memory_buffer.h"
 
+#include "base/logging.h"
+#include "build/build_config.h"
 #include "ui/gfx/generic_shared_memory_id.h"
+
+#if BUILDFLAG(IS_WIN)
+#include <windows.h>
+#include "base/win/scoped_handle.h"
+#endif
 
 namespace gfx {
 
+#if BUILDFLAG(IS_WIN)
+namespace {
+base::win::ScopedHandle CloneDXGIHandle(HANDLE handle) {
+  HANDLE target_handle = nullptr;
+  if (!::DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(),
+                         &target_handle, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+    DVLOG(1) << "Error duplicating GMB DXGI handle. error=" << GetLastError();
+  }
+  return base::win::ScopedHandle(target_handle);
+}
+}  // namespace
+#endif
+
 GpuMemoryBufferHandle::GpuMemoryBufferHandle() = default;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 GpuMemoryBufferHandle::GpuMemoryBufferHandle(
     base::android::ScopedHardwareBufferHandle handle)
     : type(GpuMemoryBufferType::ANDROID_HARDWARE_BUFFER),
@@ -34,18 +54,19 @@ GpuMemoryBufferHandle GpuMemoryBufferHandle::Clone() const {
   handle.region = region.Duplicate();
   handle.offset = offset;
   handle.stride = stride;
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
   handle.native_pixmap_handle = CloneHandleForIPC(native_pixmap_handle);
-#elif defined(OS_MAC)
-  handle.mach_port = mach_port;
-#elif defined(OS_WIN)
-  NOTIMPLEMENTED();
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_APPLE)
+  handle.io_surface = io_surface;
+#elif BUILDFLAG(IS_WIN)
+  handle.dxgi_handle = CloneDXGIHandle(dxgi_handle.Get());
+  handle.dxgi_token = dxgi_token;
+#elif BUILDFLAG(IS_ANDROID)
   NOTIMPLEMENTED();
 #endif
   return handle;
 }
 
-void GpuMemoryBuffer::SetColorSpace(const gfx::ColorSpace& color_space) {}
+void GpuMemoryBuffer::SetColorSpace(const ColorSpace& color_space) {}
 
 }  // namespace gfx

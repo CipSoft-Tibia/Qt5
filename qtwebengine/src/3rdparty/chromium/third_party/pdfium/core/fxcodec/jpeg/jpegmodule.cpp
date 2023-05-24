@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,25 +7,27 @@
 #include "core/fxcodec/jpeg/jpegmodule.h"
 
 #include <setjmp.h>
+#include <stdint.h>
+#include <string.h>
 
 #include <memory>
 #include <utility>
 
 #include "build/build_config.h"
 #include "core/fxcodec/cfx_codec_memory.h"
-#include "core/fxcodec/fx_codec.h"
 #include "core/fxcodec/jpeg/jpeg_common.h"
 #include "core/fxcodec/scanlinedecoder.h"
-#include "core/fxcrt/fx_memory_wrappers.h"
+#include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_safe_types.h"
 #include "core/fxge/dib/cfx_dibbase.h"
-#include "core/fxge/fx_dib.h"
-#include "third_party/base/logging.h"
-#include "third_party/base/optional.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/base/check.h"
+#include "third_party/base/notreached.h"
 
 static pdfium::span<const uint8_t> JpegScanSOI(
     pdfium::span<const uint8_t> src_span) {
-  ASSERT(!src_span.empty());
+  DCHECK(!src_span.empty());
 
   for (size_t offset = 0; offset < src_span.size() - 1; ++offset) {
     if (src_span[offset] == 0xff && src_span[offset + 1] == 0xd8)
@@ -48,22 +50,18 @@ static void src_skip_data(jpeg_decompress_struct* cinfo, long num) {
   cinfo->src->bytes_in_buffer -= num;
 }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 static void dest_do_nothing(j_compress_ptr cinfo) {}
 
 static boolean dest_empty(j_compress_ptr cinfo) {
   return false;
 }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
 }  // extern "C"
 
 static bool JpegLoadInfo(pdfium::span<const uint8_t> src_span,
-                         int* width,
-                         int* height,
-                         int* num_components,
-                         int* bits_per_components,
-                         bool* color_transform) {
+                         JpegModule::ImageInfo* pInfo) {
   src_span = JpegScanSOI(src_span);
   jpeg_decompress_struct cinfo;
   jpeg_error_mgr jerr;
@@ -98,12 +96,12 @@ static bool JpegLoadInfo(pdfium::span<const uint8_t> src_span,
     jpeg_destroy_decompress(&cinfo);
     return false;
   }
-  *width = cinfo.image_width;
-  *height = cinfo.image_height;
-  *num_components = cinfo.num_components;
-  *color_transform =
+  pInfo->width = cinfo.image_width;
+  pInfo->height = cinfo.image_height;
+  pInfo->num_components = cinfo.num_components;
+  pInfo->color_transform =
       cinfo.jpeg_color_space == JCS_YCbCr || cinfo.jpeg_color_space == JCS_YCCK;
-  *bits_per_components = cinfo.data_precision;
+  pInfo->bits_per_components = cinfo.data_precision;
   jpeg_destroy_decompress(&cinfo);
   return true;
 }
@@ -120,27 +118,17 @@ class JpegDecoder final : public ScanlineDecoder {
   ~JpegDecoder() override;
 
   bool Create(pdfium::span<const uint8_t> src_span,
-              int width,
-              int height,
+              uint32_t width,
+              uint32_t height,
               int nComps,
               bool ColorTransform);
 
   // ScanlineDecoder:
-  bool v_Rewind() override;
-  uint8_t* v_GetNextLine() override;
+  bool Rewind() override;
+  pdfium::span<uint8_t> GetNextLine() override;
   uint32_t GetSrcOffset() override;
 
   bool InitDecode(bool bAcceptKnownBadHeader);
-
-  jmp_buf m_JmpBuf;
-  jpeg_decompress_struct m_Cinfo;
-  jpeg_error_mgr m_Jerr;
-  jpeg_source_mgr m_Src;
-  pdfium::span<const uint8_t> m_SrcSpan;
-  std::unique_ptr<uint8_t, FxFreeDeleter> m_pScanlineBuf;
-  bool m_bInited = false;
-  bool m_bStarted = false;
-  bool m_bJpegTransform = false;
 
  private:
   void CalcPitch();
@@ -165,6 +153,15 @@ class JpegDecoder final : public ScanlineDecoder {
   // be this many bytes before that.
   static constexpr size_t kSofMarkerByteOffset = 5;
 
+  jmp_buf m_JmpBuf;
+  jpeg_decompress_struct m_Cinfo;
+  jpeg_error_mgr m_Jerr;
+  jpeg_source_mgr m_Src;
+  pdfium::span<const uint8_t> m_SrcSpan;
+  DataVector<uint8_t> m_ScanlineBuf;
+  bool m_bInited = false;
+  bool m_bStarted = false;
+  bool m_bJpegTransform = false;
   uint32_t m_nDefaultScaleDenom = 1;
 };
 
@@ -177,6 +174,9 @@ JpegDecoder::JpegDecoder() {
 JpegDecoder::~JpegDecoder() {
   if (m_bInited)
     jpeg_destroy_decompress(&m_Cinfo);
+
+  // Span in superclass can't outlive our buffer.
+  m_pLastScanline = pdfium::span<uint8_t>();
 }
 
 bool JpegDecoder::InitDecode(bool bAcceptKnownBadHeader) {
@@ -190,7 +190,7 @@ bool JpegDecoder::InitDecode(bool bAcceptKnownBadHeader) {
   m_bInited = true;
 
   if (setjmp(m_JmpBuf) == -1) {
-    Optional<size_t> known_bad_header_offset;
+    absl::optional<size_t> known_bad_header_offset;
     if (bAcceptKnownBadHeader) {
       for (size_t offset : kKnownBadHeaderWithInvalidHeightByteOffsetStarts) {
         if (HasKnownBadHeaderWithInvalidHeight(offset)) {
@@ -231,8 +231,8 @@ bool JpegDecoder::InitDecode(bool bAcceptKnownBadHeader) {
 }
 
 bool JpegDecoder::Create(pdfium::span<const uint8_t> src_span,
-                         int width,
-                         int height,
+                         uint32_t width,
+                         uint32_t height,
                          int nComps,
                          bool ColorTransform) {
   m_SrcSpan = JpegScanSOI(src_span);
@@ -260,18 +260,18 @@ bool JpegDecoder::Create(pdfium::span<const uint8_t> src_span,
   if (m_Cinfo.num_components < nComps)
     return false;
 
-  if (static_cast<int>(m_Cinfo.image_width) < width)
+  if (m_Cinfo.image_width < width)
     return false;
 
   CalcPitch();
-  m_pScanlineBuf.reset(FX_Alloc(uint8_t, m_Pitch));
+  m_ScanlineBuf = DataVector<uint8_t>(m_Pitch);
   m_nComps = m_Cinfo.num_components;
   m_bpc = 8;
   m_bStarted = false;
   return true;
 }
 
-bool JpegDecoder::v_Rewind() {
+bool JpegDecoder::Rewind() {
   if (m_bStarted) {
     jpeg_destroy_decompress(&m_Cinfo);
     if (!InitDecode(/*bAcceptKnownBadHeader=*/false)) {
@@ -296,13 +296,16 @@ bool JpegDecoder::v_Rewind() {
   return true;
 }
 
-uint8_t* JpegDecoder::v_GetNextLine() {
+pdfium::span<uint8_t> JpegDecoder::GetNextLine() {
   if (setjmp(m_JmpBuf) == -1)
-    return nullptr;
+    return pdfium::span<uint8_t>();
 
-  uint8_t* row_array[] = {m_pScanlineBuf.get()};
+  uint8_t* row_array[] = {m_ScanlineBuf.data()};
   int nlines = jpeg_read_scanlines(&m_Cinfo, row_array, 1);
-  return nlines > 0 ? m_pScanlineBuf.get() : nullptr;
+  if (nlines <= 0)
+    return pdfium::span<uint8_t>();
+
+  return m_ScanlineBuf;
 }
 
 uint32_t JpegDecoder::GetSrcOffset() {
@@ -358,7 +361,7 @@ bool JpegDecoder::IsSofSegment(size_t marker_offset) const {
 
 void JpegDecoder::PatchUpKnownBadHeaderWithInvalidHeight(
     size_t dimension_offset) {
-  ASSERT(m_SrcSpan.size() > dimension_offset + 1u);
+  DCHECK(m_SrcSpan.size() > dimension_offset + 1u);
   uint8_t* pData = GetWritableSrcData() + dimension_offset;
   pData[0] = (m_OrigHeight >> 8) & 0xff;
   pData[1] = m_OrigHeight & 0xff;
@@ -379,11 +382,11 @@ uint8_t* JpegDecoder::GetWritableSrcData() {
 // static
 std::unique_ptr<ScanlineDecoder> JpegModule::CreateDecoder(
     pdfium::span<const uint8_t> src_span,
-    int width,
-    int height,
+    uint32_t width,
+    uint32_t height,
     int nComps,
     bool ColorTransform) {
-  ASSERT(!src_span.empty());
+  DCHECK(!src_span.empty());
 
   auto pDecoder = std::make_unique<JpegDecoder>();
   if (!pDecoder->Create(src_span, width, height, nComps, ColorTransform))
@@ -393,17 +396,16 @@ std::unique_ptr<ScanlineDecoder> JpegModule::CreateDecoder(
 }
 
 // static
-Optional<JpegModule::JpegImageInfo> JpegModule::LoadInfo(
+absl::optional<JpegModule::ImageInfo> JpegModule::LoadInfo(
     pdfium::span<const uint8_t> src_span) {
-  JpegImageInfo info;
-  if (!JpegLoadInfo(src_span, &info.width, &info.height, &info.num_components,
-                    &info.bits_per_components, &info.color_transform)) {
-    return pdfium::nullopt;
-  }
+  ImageInfo info;
+  if (!JpegLoadInfo(src_span, &info))
+    return absl::nullopt;
+
   return info;
 }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 bool JpegModule::JpegEncode(const RetainPtr<CFX_DIBBase>& pSource,
                             uint8_t** dest_buf,
                             size_t* dest_size) {
@@ -419,7 +421,7 @@ bool JpegModule::JpegEncode(const RetainPtr<CFX_DIBBase>& pSource,
   cinfo.err = &jerr;
   jpeg_create_compress(&cinfo);
   int Bpp = pSource->GetBPP() / 8;
-  uint32_t nComponents = Bpp >= 3 ? (pSource->IsCmykImage() ? 4 : 3) : 1;
+  uint32_t nComponents = Bpp >= 3 ? 3 : 1;
   uint32_t pitch = pSource->GetPitch();
   uint32_t width = pdfium::base::checked_cast<uint32_t>(pSource->GetWidth());
   uint32_t height = pdfium::base::checked_cast<uint32_t>(pSource->GetHeight());
@@ -466,23 +468,25 @@ bool JpegModule::JpegEncode(const RetainPtr<CFX_DIBBase>& pSource,
   JSAMPROW row_pointer[1];
   JDIMENSION row;
   while (cinfo.next_scanline < cinfo.image_height) {
-    const uint8_t* src_scan = pSource->GetScanline(cinfo.next_scanline);
+    pdfium::span<const uint8_t> src_scan =
+        pSource->GetScanline(cinfo.next_scanline);
     if (nComponents > 1) {
       uint8_t* dest_scan = line_buf;
       if (nComponents == 3) {
         for (uint32_t i = 0; i < width; i++) {
-          ReverseCopy3Bytes(dest_scan, src_scan);
+          ReverseCopy3Bytes(dest_scan, src_scan.data());
           dest_scan += 3;
-          src_scan += Bpp;
+          src_scan = src_scan.subspan(Bpp);
         }
       } else {
         for (uint32_t i = 0; i < pitch; i++) {
-          *dest_scan++ = ~*src_scan++;
+          *dest_scan++ = ~src_scan.front();
+          src_scan = src_scan.subspan(1);
         }
       }
       row_pointer[0] = line_buf;
     } else {
-      row_pointer[0] = const_cast<uint8_t*>(src_scan);
+      row_pointer[0] = const_cast<uint8_t*>(src_scan.data());
     }
     row = cinfo.next_scanline;
     jpeg_write_scanlines(&cinfo, row_pointer, 1);
@@ -502,6 +506,6 @@ bool JpegModule::JpegEncode(const RetainPtr<CFX_DIBBase>& pSource,
 
   return true;
 }
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
 }  // namespace fxcodec

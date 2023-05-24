@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <iterator>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
+#include "device/bluetooth/bluetooth_adapter.h"
 #include "device/bluetooth/bluetooth_gatt_characteristic.h"
+#include "device/bluetooth/bluetooth_gatt_service.h"
 #include "device/bluetooth/dbus/bluetooth_gatt_attribute_value_delegate.h"
 #include "device/bluetooth/dbus/bluez_dbus_manager.h"
 #include "device/bluetooth/dbus/fake_bluetooth_gatt_manager_client.h"
@@ -116,8 +118,7 @@ void FakeBluetoothGattCharacteristicServiceProvider::SendValueChanged(
 
 void FakeBluetoothGattCharacteristicServiceProvider::GetValue(
     const dbus::ObjectPath& device_path,
-    device::BluetoothLocalGattService::Delegate::ValueCallback callback,
-    device::BluetoothLocalGattService::Delegate::ErrorCallback error_callback) {
+    device::BluetoothLocalGattService::Delegate::ValueCallback callback) {
   DVLOG(1) << "GATT characteristic value Get request: " << object_path_.value()
            << " UUID: " << uuid_;
   // Check if this characteristic is registered.
@@ -126,20 +127,23 @@ void FakeBluetoothGattCharacteristicServiceProvider::GetValue(
           bluez::BluezDBusManager::Get()->GetBluetoothGattManagerClient());
   if (!fake_bluetooth_gatt_manager_client->IsServiceRegistered(service_path_)) {
     DVLOG(1) << "GATT characteristic not registered.";
-    std::move(error_callback).Run();
+    std::move(callback).Run(
+        device::BluetoothGattService::GattErrorCode::kFailed,
+        /*value=*/std::vector<uint8_t>());
     return;
   }
 
   if (!CanRead(flags_)) {
     DVLOG(1) << "GATT characteristic not readable.";
-    std::move(error_callback).Run();
+    std::move(callback).Run(
+        device::BluetoothGattService::GattErrorCode::kFailed,
+        /*value=*/std::vector<uint8_t>());
     return;
   }
 
   // Pass on to the delegate.
   DCHECK(delegate_);
-  delegate_->GetValue(device_path, std::move(callback),
-                      std::move(error_callback));
+  delegate_->GetValue(device_path, std::move(callback));
 }
 
 void FakeBluetoothGattCharacteristicServiceProvider::SetValue(
@@ -203,6 +207,7 @@ void FakeBluetoothGattCharacteristicServiceProvider::PrepareSetValue(
 }
 
 bool FakeBluetoothGattCharacteristicServiceProvider::NotificationsChange(
+    const dbus::ObjectPath& device_path,
     bool start) {
   DVLOG(1) << "GATT characteristic value notification request: "
            << object_path_.value() << " UUID: " << uuid_ << " start=" << start;
@@ -222,10 +227,10 @@ bool FakeBluetoothGattCharacteristicServiceProvider::NotificationsChange(
 
   // Pass on to the delegate.
   DCHECK(delegate_);
-  start ? delegate_->StartNotifications(object_path_,
+  start ? delegate_->StartNotifications(device_path,
                                         device::BluetoothGattCharacteristic::
                                             NotificationType::kNotification)
-        : delegate_->StopNotifications(object_path_);
+        : delegate_->StopNotifications(device_path);
 
   return true;
 }

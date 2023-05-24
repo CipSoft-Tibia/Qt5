@@ -21,6 +21,8 @@
  */
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "encode.h"
 #include "internal.h"
 
 static av_cold int y41p_encode_init(AVCodecContext *avctx)
@@ -40,10 +42,11 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                              const AVFrame *pic, int *got_packet)
 {
     uint8_t *dst;
-    uint8_t *y, *u, *v;
+    const uint8_t *y, *u, *v;
     int i, j, ret;
 
-    if ((ret = ff_alloc_packet2(avctx, pkt, avctx->width * avctx->height * 1.5, 0)) < 0)
+    ret = ff_get_encode_buffer(avctx, pkt, avctx->width * avctx->height * 1.5, 0);
+    if (ret < 0)
         return ret;
 
     dst = pkt->data;
@@ -70,24 +73,18 @@ static int y41p_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     }
 
-    pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
     return 0;
 }
 
-static av_cold int y41p_encode_close(AVCodecContext *avctx)
-{
-    return 0;
-}
-
-AVCodec ff_y41p_encoder = {
-    .name         = "y41p",
-    .long_name    = NULL_IF_CONFIG_SMALL("Uncompressed YUV 4:1:1 12-bit"),
-    .type         = AVMEDIA_TYPE_VIDEO,
-    .id           = AV_CODEC_ID_Y41P,
+const FFCodec ff_y41p_encoder = {
+    .p.name       = "y41p",
+    CODEC_LONG_NAME("Uncompressed YUV 4:1:1 12-bit"),
+    .p.type       = AVMEDIA_TYPE_VIDEO,
+    .p.id         = AV_CODEC_ID_Y41P,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init         = y41p_encode_init,
-    .encode2      = y41p_encode_frame,
-    .close        = y41p_encode_close,
-    .pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,
+    FF_CODEC_ENCODE_CB(y41p_encode_frame),
+    .p.pix_fmts   = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV411P,
                                                  AV_PIX_FMT_NONE },
 };

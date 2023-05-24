@@ -1,17 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/captive_portal/content/captive_portal_service.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include <memory>
+
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/time/tick_clock.h"
 #include "build/build_config.h"
-#include "components/captive_portal/core/captive_portal_metrics.h"
 #include "components/captive_portal/core/captive_portal_types.h"
 #include "components/embedder_support/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -20,68 +21,11 @@
 #include "content/public/browser/storage_partition.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "base/win/windows_version.h"
 #endif
 
 namespace captive_portal {
-
-namespace {
-
-// Make sure this enum is in sync with CaptivePortalDetectionResult enum
-// in histograms.xml. This enum is append-only, don't modify existing values.
-enum CaptivePortalDetectionResult {
-  // There's a confirmed connection to the Internet.
-  DETECTION_RESULT_INTERNET_CONNECTED,
-  // Received a network or HTTP error, or a non-HTTP response.
-  DETECTION_RESULT_NO_RESPONSE,
-  // Encountered a captive portal with a non-HTTPS landing URL.
-  DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL,
-  // Received a network or HTTP error with an HTTPS landing URL.
-  DETECTION_RESULT_NO_RESPONSE_HTTPS_LANDING_URL,
-  // Encountered a captive portal with an HTTPS landing URL.
-  DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL_HTTPS_LANDING_URL,
-  // Received a network or HTTP error, or a non-HTTP response with IP address.
-  DETECTION_RESULT_NO_RESPONSE_IP_ADDRESS,
-  // Encountered a captive portal with a non-HTTPS, IP address landing URL.
-  DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL_IP_ADDRESS,
-  // Received a network or HTTP error with an HTTPS, IP address landing URL.
-  DETECTION_RESULT_NO_RESPONSE_HTTPS_LANDING_URL_IP_ADDRESS,
-  // Encountered a captive portal with an HTTPS, IP address landing URL.
-  DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL_HTTPS_LANDING_URL_IP_ADDRESS,
-  DETECTION_RESULT_COUNT
-};
-
-CaptivePortalDetectionResult GetHistogramEntryForDetectionResult(
-    const CaptivePortalDetector::Results& results) {
-  bool is_https = results.landing_url.SchemeIs("https");
-  bool is_ip = results.landing_url.HostIsIPAddress();
-  switch (results.result) {
-    case RESULT_INTERNET_CONNECTED:
-      return DETECTION_RESULT_INTERNET_CONNECTED;
-    case RESULT_NO_RESPONSE:
-      if (is_ip) {
-        return is_https
-                   ? DETECTION_RESULT_NO_RESPONSE_HTTPS_LANDING_URL_IP_ADDRESS
-                   : DETECTION_RESULT_NO_RESPONSE_IP_ADDRESS;
-      }
-      return is_https ? DETECTION_RESULT_NO_RESPONSE_HTTPS_LANDING_URL
-                      : DETECTION_RESULT_NO_RESPONSE;
-    case RESULT_BEHIND_CAPTIVE_PORTAL:
-      if (is_ip) {
-        return is_https
-                   ? DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL_HTTPS_LANDING_URL_IP_ADDRESS
-                   : DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL_IP_ADDRESS;
-      }
-      return is_https ? DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL_HTTPS_LANDING_URL
-                      : DETECTION_RESULT_BEHIND_CAPTIVE_PORTAL;
-    default:
-      NOTREACHED();
-      return DETECTION_RESULT_COUNT;
-  }
-}
-
-}  // namespace
 
 CaptivePortalService::TestingState CaptivePortalService::testing_state_ =
     NOT_TESTING;
@@ -128,9 +72,8 @@ CaptivePortalService::CaptivePortalService(
   if (loader_factory_for_testing) {
     loader_factory = loader_factory_for_testing;
   } else {
-    shared_url_loader_factory_ =
-        content::BrowserContext::GetDefaultStoragePartition(browser_context)
-            ->GetURLLoaderFactoryForBrowserProcess();
+    shared_url_loader_factory_ = browser_context->GetDefaultStoragePartition()
+                                     ->GetURLLoaderFactoryForBrowserProcess();
     loader_factory = shared_url_loader_factory_.get();
   }
   captive_portal_detector_ =
@@ -153,8 +96,7 @@ CaptivePortalService::~CaptivePortalService() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 }
 
-void CaptivePortalService::DetectCaptivePortal(
-    CaptivePortalProbeReason probe_reason) {
+void CaptivePortalService::DetectCaptivePortal() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   // Detection should be disabled only in tests.
@@ -172,11 +114,10 @@ void CaptivePortalService::DetectCaptivePortal(
   check_captive_portal_timer_.Start(
       FROM_HERE, time_until_next_check,
       base::BindOnce(&CaptivePortalService::DetectCaptivePortalInternal,
-                     base::Unretained(this), probe_reason));
+                     base::Unretained(this)));
 }
 
-void CaptivePortalService::DetectCaptivePortalInternal(
-    CaptivePortalProbeReason probe_reason) {
+void CaptivePortalService::DetectCaptivePortalInternal() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   DCHECK(state_ == STATE_TIMER_RUNNING || state_ == STATE_IDLE);
   DCHECK(!TimerRunning());
@@ -221,8 +162,6 @@ void CaptivePortalService::DetectCaptivePortalInternal(
           }
         })");
 
-  captive_portal::CaptivePortalMetrics::LogCaptivePortalProbeReason(
-      probe_reason);
   captive_portal_detector_->DetectCaptivePortal(
       test_url_,
       base::BindOnce(&CaptivePortalService::OnPortalDetectionCompleted,
@@ -240,11 +179,6 @@ void CaptivePortalService::OnPortalDetectionCompleted(
   CaptivePortalResult result = results.result;
   const base::TimeDelta& retry_after_delta = results.retry_after_delta;
   base::TimeTicks now = GetCurrentTimeTicks();
-
-  // Record histograms.
-  UMA_HISTOGRAM_ENUMERATION("CaptivePortal.DetectResult",
-                            GetHistogramEntryForDetectionResult(results),
-                            DETECTION_RESULT_COUNT);
 
   if (last_check_time_.is_null() || result != last_detection_result_) {
     // Reset the backoff entry both to update the default time and clear
@@ -297,8 +231,8 @@ void CaptivePortalService::ResetBackoffEntry(CaptivePortalResult result) {
         recheck_policy_.initial_backoff_no_portal_ms;
   }
 
-  backoff_entry_.reset(new net::BackoffEntry(&recheck_policy().backoff_policy,
-                                             tick_clock_for_testing_));
+  backoff_entry_ = std::make_unique<net::BackoffEntry>(
+      &recheck_policy().backoff_policy, tick_clock_for_testing_);
 }
 
 void CaptivePortalService::UpdateEnabledState() {
@@ -322,7 +256,7 @@ void CaptivePortalService::UpdateEnabledState() {
 
     // Since a captive portal request was queued or running, something may be
     // expecting to receive a captive portal result.
-    DetectCaptivePortal(CaptivePortalProbeReason::kUnspecified);
+    DetectCaptivePortal();
   }
 }
 

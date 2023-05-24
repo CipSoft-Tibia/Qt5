@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,18 +6,20 @@
 #define TESTING_FXGC_UNITTEST_H_
 
 #include "fxjs/gc/heap.h"
-#include "testing/fxv8_unittest.h"
+#include "testing/gtest/include/gtest/gtest.h"
 
-class FXGCUnitTest : public FXV8UnitTest {
+class FXGCUnitTest : public ::testing::Test {
  public:
   FXGCUnitTest();
   ~FXGCUnitTest() override;
 
-  // FXV8UnitTest:
+  // testing::Test:
   void SetUp() override;
   void TearDown() override;
 
   cppgc::Heap* heap() const { return heap_.get(); }
+  void ForceGCAndPump();
+  void Pump();
 
  private:
   FXGCScopedHeap heap_;

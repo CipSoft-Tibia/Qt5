@@ -1,38 +1,39 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//ios/web/js_compile.gni")
+import("//ios/web/public/js_messaging/optimize_js.gni")
 
 source_set("browser") {
   configs += [ "//build/config/compiler:enable_arc" ]
   sources = [
     "ios_translate_driver.h",
     "ios_translate_driver.mm",
-    "js_language_detection_manager.h",
-    "js_language_detection_manager.mm",
-    "js_translate_manager.h",
-    "js_translate_manager.mm",
-    "language_detection_controller.h",
-    "language_detection_controller.mm",
-    "string_clipping_util.cc",
-    "string_clipping_util.h",
+    "js_translate_web_frame_manager.h",
+    "js_translate_web_frame_manager.mm",
+    "js_translate_web_frame_manager_factory.h",
+    "js_translate_web_frame_manager_factory.mm",
+    "language_detection_model_service.h",
+    "language_detection_model_service.mm",
     "translate_controller.h",
     "translate_controller.mm",
+    "translate_java_script_feature.h",
+    "translate_java_script_feature.mm",
   ]
 
   deps = [
     ":injected_js",
     "//base",
+    "//components/keyed_service/core",
     "//components/language/ios/browser",
     "//components/prefs",
     "//components/translate/core/browser",
+    "//components/translate/core/browser:translate_model_service",
     "//components/translate/core/common",
     "//components/translate/core/language_detection",
     "//components/ukm/ios:ukm_url_recorder",
-    "//ios/web/common",
     "//ios/web/public",
-    "//ios/web/public/deprecated",
+    "//ios/web/public/annotations",
     "//ios/web/public/js_messaging",
     "//net",
     "//net/traffic_annotation:traffic_annotation",
@@ -42,11 +43,14 @@ source_set("browser") {
   ]
 }
 
-js_compile_checked("injected_js") {
+optimize_js("injected_js") {
   visibility = [ ":browser" ]
-  sources = [
-    "resources/language_detection.js",
-    "resources/translate_ios.js",
+  primary_script = "resources/translate_ios.js"
+  sources = [ "resources/translate_ios.js" ]
+
+  deps = [
+    "//ios/web/public/js_messaging:gcrweb",
+    "//ios/web/public/js_messaging:util_scripts",
   ]
 }
 
@@ -54,9 +58,8 @@ source_set("unit_tests") {
   configs += [ "//build/config/compiler:enable_arc" ]
   testonly = true
   sources = [
-    "js_translate_manager_unittest.mm",
-    "language_detection_controller_unittest.mm",
-    "string_clipping_util_unittest.cc",
+    "ios_translate_driver_unittest.mm",
+    "js_translate_web_frame_manager_unittest.mm",
     "translate_controller_unittest.mm",
   ]
 
@@ -64,16 +67,16 @@ source_set("unit_tests") {
     ":browser",
     "//base",
     "//base/test:test_support",
+    "//components/language/core/browser",
     "//components/language/ios/browser",
-    "//components/prefs:test_support",
     "//components/resources",
+    "//components/sync_preferences:test_support",
     "//components/translate/core/browser",
-    "//components/translate/core/common",
-    "//ios/web/public/deprecated:test_doubles",
+    "//components/translate/core/browser:test_support",
+    "//ios/web/public/js_messaging",
     "//ios/web/public/test",
-    "//net:net",
+    "//ios/web/public/test:test_fixture",
     "//testing/gtest",
-    "//third_party/ocmock",
     "//ui/base",
     "//url",
   ]

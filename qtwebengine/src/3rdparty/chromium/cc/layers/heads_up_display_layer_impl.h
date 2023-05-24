@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,12 +10,15 @@
 #include <vector>
 
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "cc/cc_export.h"
 #include "cc/layers/layer_impl.h"
+#include "cc/metrics/web_vital_metrics.h"
 #include "cc/resources/memory_history.h"
 #include "cc/resources/resource_pool.h"
 #include "cc/trees/debug_rect_history.h"
+#include "cc/trees/layer_tree_impl.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 
 class SkTypeface;
@@ -45,7 +48,8 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
 
   HeadsUpDisplayLayerImpl& operator=(const HeadsUpDisplayLayerImpl&) = delete;
 
-  std::unique_ptr<LayerImpl> CreateLayerImpl(LayerTreeImpl* tree_impl) override;
+  std::unique_ptr<LayerImpl> CreateLayerImpl(
+      LayerTreeImpl* tree_impl) const override;
 
   bool WillDraw(DrawMode draw_mode,
                 viz::ClientResourceProvider* resource_provider) override;
@@ -59,7 +63,7 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
 
   void ReleaseResources() override;
 
-  gfx::Rect GetEnclosingRectInTargetSpace() const override;
+  gfx::Rect GetEnclosingVisibleRectInTargetSpace() const override;
 
   bool IsAnimatingHUDContents() const {
     return paint_rects_fade_step_ > 0 || layout_shift_rects_fade_step_ > 0;
@@ -67,7 +71,9 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
 
   void SetHUDTypeface(sk_sp<SkTypeface> typeface);
   void SetLayoutShiftRects(const std::vector<gfx::Rect>& rects);
+  void ClearLayoutShiftRects();
   const std::vector<gfx::Rect>& LayoutShiftRects() const;
+  void SetWebVitalMetrics(std::unique_ptr<WebVitalMetrics> web_vital_metrics);
 
   // This evicts hud quad appended during render pass preparation.
   void EvictHudQuad(const viz::CompositorRenderPassList& list);
@@ -103,6 +109,10 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
   void DrawGraphLines(PaintCanvas* canvas,
                       PaintFlags* flags,
                       const SkRect& bounds) const;
+  // Draw a separator line at top of bounds.
+  void DrawSeparatorLine(PaintCanvas* canvas,
+                         PaintFlags* flags,
+                         const SkRect& bounds) const;
 
   SkRect DrawFrameThroughputDisplay(
       PaintCanvas* canvas,
@@ -120,16 +130,55 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
   void DrawDebugRect(PaintCanvas* canvas,
                      PaintFlags* flags,
                      const DebugRect& rect,
-                     SkColor stroke_color,
-                     SkColor fill_color,
+                     SkColor4f stroke_color,
+                     SkColor4f fill_color,
                      float stroke_width,
                      const std::string& label_text) const;
   void DrawDebugRects(PaintCanvas* canvas,
                       DebugRectHistory* debug_rect_history);
 
+  // This function draws a single web vital metric. If the metrics doesn't have
+  // a valid value, the value is set to -1. This function returns the height
+  // of the current draw so it can be used to calculate the top of the next
+  // draw.
+  int DrawSingleMetric(PaintCanvas* canvas,
+                       int left,
+                       int right,
+                       int top,
+                       std::string name,
+                       const WebVitalMetrics::MetricsInfo& info,
+                       bool has_value,
+                       double value) const;
+  SkRect DrawWebVitalMetrics(PaintCanvas* canvas,
+                             int left,
+                             int top,
+                             int width) const;
+
+  // This function draws a single smoothness related metric.
+  int DrawSinglePercentageMetric(PaintCanvas* canvas,
+                                 int left,
+                                 int right,
+                                 int top,
+                                 std::string name,
+                                 double value) const;
+  SkRect DrawSmoothnessMetrics(PaintCanvas* canvas,
+                               int left,
+                               int top,
+                               int width) const;
+
+  int bounds_width_in_dips() const {
+    // bounds() is specified in layout coordinates, which is painted dsf away
+    // from DIPs.
+    return bounds().width() / layer_tree_impl()->painted_device_scale_factor();
+  }
+
   ResourcePool::InUsePoolResource in_flight_resource_;
   std::unique_ptr<ResourcePool> pool_;
-  viz::DrawQuad* current_quad_ = nullptr;
+  // A reference to the DrawQuad that will be replaced by a quad containing the
+  // HUD's contents. The actual quad can't be created until UpdateHudTexture()
+  // which happens during draw, so we hold this reference to it when
+  // constructing the placeholder between these two steps in the draw process.
+  raw_ptr<viz::DrawQuad> placeholder_quad_ = nullptr;
   // Used for software raster when it will be uploaded to a texture.
   sk_sp<SkSurface> staging_surface_;
 
@@ -140,11 +189,15 @@ class CC_EXPORT HeadsUpDisplayLayerImpl : public LayerImpl {
   gfx::Size internal_content_bounds_;
 
   uint32_t throughput_value_ = 0.0f;
+  // Obtained from the current BeginFrameArgs.
+  absl::optional<base::TimeDelta> frame_interval_;
   MemoryHistory::Entry memory_entry_;
   int paint_rects_fade_step_ = 0;
   int layout_shift_rects_fade_step_ = 0;
   std::vector<DebugRect> paint_rects_;
   std::vector<DebugRect> layout_shift_debug_rects_;
+
+  std::unique_ptr<WebVitalMetrics> web_vital_metrics_;
 
   base::TimeTicks time_of_last_graph_update_;
 };

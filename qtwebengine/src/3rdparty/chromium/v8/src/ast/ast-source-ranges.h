@@ -27,7 +27,7 @@ struct SourceRange {
   }
 
   static constexpr int kFunctionLiteralSourcePosition = -2;
-  STATIC_ASSERT(kFunctionLiteralSourcePosition == kNoSourcePosition - 1);
+  static_assert(kFunctionLiteralSourcePosition == kNoSourcePosition - 1);
 
   // Source ranges associated with a function literal do not contain real
   // source positions; instead, they are created with special marker values.
@@ -47,6 +47,7 @@ struct SourceRange {
   V(Block)                       \
   V(CaseClause)                  \
   V(Conditional)                 \
+  V(Expression)                  \
   V(FunctionLiteral)             \
   V(IfStatement)                 \
   V(IterationStatement)          \
@@ -279,6 +280,24 @@ class NaryOperationSourceRanges final : public AstNodeSourceRanges {
 
  private:
   ZoneVector<SourceRange> ranges_;
+};
+
+class ExpressionSourceRanges final : public AstNodeSourceRanges {
+ public:
+  explicit ExpressionSourceRanges(const SourceRange& right_range)
+      : right_range_(right_range) {}
+
+  SourceRange GetRange(SourceRangeKind kind) override {
+    DCHECK(HasRange(kind));
+    return right_range_;
+  }
+
+  bool HasRange(SourceRangeKind kind) override {
+    return kind == SourceRangeKind::kRight;
+  }
+
+ private:
+  SourceRange right_range_;
 };
 
 class SuspendSourceRanges final : public ContinuationSourceRanges {

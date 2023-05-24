@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/strings/string16.h"
 
 namespace l10n_util {
 
@@ -23,7 +22,7 @@ COMPONENT_EXPORT(UI_BASE) int GetExtendedStyles();
 
 // TODO(xji):
 // This is a temporary name, it will eventually replace GetExtendedStyles
-COMPONENT_EXPORT(UI_BASE) int GetExtendedTooltipStyles();
+COMPONENT_EXPORT(UI_BASE) DWORD GetExtendedTooltipStyles();
 
 // Give an HWND, this function sets the WS_EX_LAYOUTRTL extended style for the
 // underlying window. When this style is set, the UI for the window is going to
@@ -41,7 +40,7 @@ COMPONENT_EXPORT(UI_BASE) void HWNDSetRTLLayout(HWND hwnd);
 // filled with the font family name and the size scaler.  The output
 // parameters are not modified if the return value is false.
 COMPONENT_EXPORT(UI_BASE)
-bool NeedOverrideDefaultUIFont(base::string16* override_font_family,
+bool NeedOverrideDefaultUIFont(std::wstring* override_font_family,
                                double* font_size_scaler);
 
 // Allow processes to override the configured locale with the user's Windows UI
@@ -52,6 +51,9 @@ COMPONENT_EXPORT(UI_BASE) void OverrideLocaleWithUILanguageList();
 // Retrieve the locale override, or an empty vector if the locale has not been
 // or failed to be overridden.
 COMPONENT_EXPORT(UI_BASE) const std::vector<std::string>& GetLocaleOverrides();
+
+// Pulls resource string from the string bundle and returns it.
+COMPONENT_EXPORT(UI_BASE) std::wstring GetWideString(int message_id);
 
 }  // namespace l10n_util
 

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,7 +33,8 @@ DevToolsAgentHost::List DevToolsManagerDelegate::RemoteDebuggingTargets() {
 }
 
 scoped_refptr<DevToolsAgentHost> DevToolsManagerDelegate::CreateNewTarget(
-    const GURL& url) {
+    const GURL& url,
+    bool for_tab) {
   return nullptr;
 }
 

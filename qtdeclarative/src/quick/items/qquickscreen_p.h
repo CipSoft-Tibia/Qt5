@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKSCREEN_P_H
 #define QQUICKSCREEN_P_H
@@ -51,10 +15,8 @@
 // We mean it.
 //
 
-#include <qqml.h>
-#include <QRect>
-#include <QSize>
-#include <private/qtquickglobal_p.h>
+#include <QtQml/qqml.h>
+#include <QtQuick/private/qtquickglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,22 +29,25 @@ class QScreen;
 class Q_QUICK_PRIVATE_EXPORT QQuickScreenInfo : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QString name READ name NOTIFY nameChanged)
-    Q_PROPERTY(QString manufacturer READ manufacturer NOTIFY manufacturerChanged REVISION 10)
-    Q_PROPERTY(QString model READ model NOTIFY modelChanged REVISION 10)
-    Q_PROPERTY(QString serialNumber READ serialNumber NOTIFY serialNumberChanged REVISION 10)
-    Q_PROPERTY(int width READ width NOTIFY widthChanged)
-    Q_PROPERTY(int height READ height NOTIFY heightChanged)
-    Q_PROPERTY(int desktopAvailableWidth READ desktopAvailableWidth NOTIFY desktopGeometryChanged)
-    Q_PROPERTY(int desktopAvailableHeight READ desktopAvailableHeight NOTIFY desktopGeometryChanged)
-    Q_PROPERTY(qreal logicalPixelDensity READ logicalPixelDensity NOTIFY logicalPixelDensityChanged)
-    Q_PROPERTY(qreal pixelDensity READ pixelDensity NOTIFY pixelDensityChanged)
-    Q_PROPERTY(qreal devicePixelRatio READ devicePixelRatio NOTIFY devicePixelRatioChanged)
-    Q_PROPERTY(Qt::ScreenOrientation primaryOrientation READ primaryOrientation NOTIFY primaryOrientationChanged)
-    Q_PROPERTY(Qt::ScreenOrientation orientation READ orientation NOTIFY orientationChanged)
+    Q_PROPERTY(QString name READ name NOTIFY nameChanged FINAL)
+    Q_PROPERTY(QString manufacturer READ manufacturer NOTIFY manufacturerChanged REVISION(2, 10) FINAL)
+    Q_PROPERTY(QString model READ model NOTIFY modelChanged REVISION(2, 10) FINAL)
+    Q_PROPERTY(QString serialNumber READ serialNumber NOTIFY serialNumberChanged REVISION(2, 10) FINAL)
+    Q_PROPERTY(int width READ width NOTIFY widthChanged FINAL)
+    Q_PROPERTY(int height READ height NOTIFY heightChanged FINAL)
+    Q_PROPERTY(int desktopAvailableWidth READ desktopAvailableWidth NOTIFY desktopGeometryChanged FINAL)
+    Q_PROPERTY(int desktopAvailableHeight READ desktopAvailableHeight NOTIFY desktopGeometryChanged FINAL)
+    Q_PROPERTY(qreal logicalPixelDensity READ logicalPixelDensity NOTIFY logicalPixelDensityChanged FINAL)
+    Q_PROPERTY(qreal pixelDensity READ pixelDensity NOTIFY pixelDensityChanged FINAL)
+    Q_PROPERTY(qreal devicePixelRatio READ devicePixelRatio NOTIFY devicePixelRatioChanged FINAL)
+    Q_PROPERTY(Qt::ScreenOrientation primaryOrientation READ primaryOrientation NOTIFY primaryOrientationChanged FINAL)
+    Q_PROPERTY(Qt::ScreenOrientation orientation READ orientation NOTIFY orientationChanged FINAL)
 
-    Q_PROPERTY(int virtualX READ virtualX NOTIFY virtualXChanged REVISION 3)
-    Q_PROPERTY(int virtualY READ virtualY NOTIFY virtualYChanged REVISION 3)
+    Q_PROPERTY(int virtualX READ virtualX NOTIFY virtualXChanged REVISION(2, 3) FINAL)
+    Q_PROPERTY(int virtualY READ virtualY NOTIFY virtualYChanged REVISION(2, 3) FINAL)
+    QML_NAMED_ELEMENT(ScreenInfo)
+    QML_ADDED_IN_VERSION(2, 3)
+    QML_UNCREATABLE("ScreenInfo can only be used via the attached property.")
 
 public:
     QQuickScreenInfo(QObject *parent = nullptr, QScreen *wrappedScreen = nullptr);
@@ -108,9 +73,9 @@ public:
 
 Q_SIGNALS:
     void nameChanged();
-    Q_REVISION(10) void manufacturerChanged();
-    Q_REVISION(10) void modelChanged();
-    Q_REVISION(10) void serialNumberChanged();
+    Q_REVISION(2, 10) void manufacturerChanged();
+    Q_REVISION(2, 10) void modelChanged();
+    Q_REVISION(2, 10) void serialNumberChanged();
     void widthChanged();
     void heightChanged();
     void desktopGeometryChanged();
@@ -119,8 +84,8 @@ Q_SIGNALS:
     void devicePixelRatioChanged();
     void primaryOrientationChanged();
     void orientationChanged();
-    Q_REVISION(3) void virtualXChanged();
-    Q_REVISION(3) void virtualYChanged();
+    Q_REVISION(2, 3) void virtualXChanged();
+    Q_REVISION(2, 3) void virtualYChanged();
 
 protected:
     QPointer<QScreen> m_screen;
@@ -129,22 +94,17 @@ protected:
 class Q_QUICK_PRIVATE_EXPORT QQuickScreenAttached : public QQuickScreenInfo
 {
     Q_OBJECT
-    Q_PROPERTY(Qt::ScreenOrientations orientationUpdateMask READ orientationUpdateMask
-               WRITE setOrientationUpdateMask NOTIFY orientationUpdateMaskChanged)
+
+    QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickScreenAttached(QObject* attachee);
-
-    Qt::ScreenOrientations orientationUpdateMask() const;
-    void setOrientationUpdateMask(Qt::ScreenOrientations mask);
 
     //Treats int as Qt::ScreenOrientation, due to QTBUG-20639
     Q_INVOKABLE int angleBetween(int a, int b);
 
     void windowChanged(QQuickWindow*);
-
-Q_SIGNALS:
-    void orientationUpdateMaskChanged();
 
 protected Q_SLOTS:
     void screenChanged(QScreen*);
@@ -152,14 +112,15 @@ protected Q_SLOTS:
 private:
     QQuickWindow* m_window = nullptr;
     QQuickItem* m_attachee;
-    Qt::ScreenOrientations m_updateMask;
-    bool m_updateMaskSet = false;
 };
 
 class Q_QUICK_PRIVATE_EXPORT QQuickScreen : public QObject
 {
     Q_OBJECT
     QML_ATTACHED(QQuickScreenAttached)
+    QML_NAMED_ELEMENT(Screen)
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_UNCREATABLE("Screen can only be used via the attached property.")
 
 public:
     static QQuickScreenAttached *qmlAttachedProperties(QObject *object){ return new QQuickScreenAttached(object); }

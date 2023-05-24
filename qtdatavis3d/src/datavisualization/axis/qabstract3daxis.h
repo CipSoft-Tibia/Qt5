@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QABSTRACT3DAXIS_H
 #define QABSTRACT3DAXIS_H
@@ -35,11 +9,11 @@
 #include <QtCore/QScopedPointer>
 #include <QtCore/QStringList>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QAbstract3DAxisPrivate;
 
-class QT_DATAVISUALIZATION_EXPORT QAbstract3DAxis : public QObject
+class Q_DATAVISUALIZATION_EXPORT QAbstract3DAxis : public QObject
 {
     Q_OBJECT
     Q_ENUMS(AxisOrientation)
@@ -51,9 +25,9 @@ class QT_DATAVISUALIZATION_EXPORT QAbstract3DAxis : public QObject
     Q_PROPERTY(float min READ min WRITE setMin NOTIFY minChanged)
     Q_PROPERTY(float max READ max WRITE setMax NOTIFY maxChanged)
     Q_PROPERTY(bool autoAdjustRange READ isAutoAdjustRange WRITE setAutoAdjustRange NOTIFY autoAdjustRangeChanged)
-    Q_PROPERTY(float labelAutoRotation READ labelAutoRotation WRITE setLabelAutoRotation NOTIFY labelAutoRotationChanged REVISION 1)
-    Q_PROPERTY(bool titleVisible READ isTitleVisible WRITE setTitleVisible NOTIFY titleVisibilityChanged REVISION 1)
-    Q_PROPERTY(bool titleFixed READ isTitleFixed WRITE setTitleFixed NOTIFY titleFixedChanged REVISION 1)
+    Q_PROPERTY(float labelAutoRotation READ labelAutoRotation WRITE setLabelAutoRotation NOTIFY labelAutoRotationChanged REVISION(1, 1))
+    Q_PROPERTY(bool titleVisible READ isTitleVisible WRITE setTitleVisible NOTIFY titleVisibilityChanged REVISION(1, 1))
+    Q_PROPERTY(bool titleFixed READ isTitleFixed WRITE setTitleFixed NOTIFY titleFixedChanged REVISION(1, 1))
 
 public:
     enum AxisOrientation {
@@ -112,9 +86,9 @@ Q_SIGNALS:
     void maxChanged(float value);
     void rangeChanged(float min, float max);
     void autoAdjustRangeChanged(bool autoAdjust);
-    Q_REVISION(1) void labelAutoRotationChanged(float angle);
-    Q_REVISION(1) void titleVisibilityChanged(bool visible);
-    Q_REVISION(1) void titleFixedChanged(bool fixed);
+    Q_REVISION(1, 1) void labelAutoRotationChanged(float angle);
+    Q_REVISION(1, 1) void titleVisibilityChanged(bool visible);
+    Q_REVISION(1, 1) void titleFixedChanged(bool fixed);
 
 protected:
     QScopedPointer<QAbstract3DAxisPrivate> d_ptr;
@@ -128,6 +102,6 @@ private:
     friend class QSurfaceDataProxyPrivate;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

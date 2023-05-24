@@ -14,6 +14,14 @@
 
 namespace openscreen {
 namespace internal {
+namespace {
+
+MATCHER_P(HasSameNameAndLocation, expected, "") {
+  return arg.name == expected.name && arg.file_name == expected.file_name &&
+         arg.line_number == expected.line_number;
+}
+
+}  // namespace
 
 using ::testing::_;
 using ::testing::DoAll;
@@ -31,8 +39,7 @@ TEST(TraceLoggingInternalTest, CreatingNoTraceObjectValid) {
 TEST(TraceLoggingInternalTest, TestMacroStyleInitializationTrue) {
   constexpr uint32_t delay_in_ms = 50;
   MockLoggingPlatform platform;
-  EXPECT_CALL(platform, LogTrace(_, _, _, _, _, _, _))
-      .Times(1)
+  EXPECT_CALL(platform, LogTrace(_, _))
       .WillOnce(DoAll(Invoke(ValidateTraceTimestampDiff<delay_in_ms>),
                       Invoke(ValidateTraceErrorCode<Error::Code::kNone>)));
 
@@ -52,7 +59,7 @@ TEST(TraceLoggingInternalTest, TestMacroStyleInitializationTrue) {
 
 TEST(TraceLoggingInternalTest, TestMacroStyleInitializationFalse) {
   MockLoggingPlatform platform;
-  EXPECT_CALL(platform, LogTrace(_, _, _, _, _, _, _)).Times(0);
+  EXPECT_CALL(platform, LogTrace(_, _)).Times(0);
 
   {
     auto ptr = TraceInstanceHelper<SynchronousTraceLogger>::Empty();
@@ -69,8 +76,13 @@ TEST(TraceLoggingInternalTest, TestMacroStyleInitializationFalse) {
 
 TEST(TraceLoggingInternalTest, ExpectParametersPassedToResult) {
   MockLoggingPlatform platform;
-  EXPECT_CALL(platform, LogTrace(testing::StrEq("Name"), line,
-                                 testing::StrEq(__FILE__), _, _, _, _))
+
+  TraceEvent expected;
+  expected.name = "Name";
+  expected.line_number = line;
+  expected.file_name = __FILE__;
+
+  EXPECT_CALL(platform, LogTrace(HasSameNameAndLocation(expected), _))
       .WillOnce(Invoke(ValidateTraceErrorCode<Error::Code::kNone>));
 
   { SynchronousTraceLogger{category, "Name", __FILE__, line}; }
@@ -78,9 +90,13 @@ TEST(TraceLoggingInternalTest, ExpectParametersPassedToResult) {
 
 TEST(TraceLoggingInternalTest, CheckTraceAsyncStartLogsCorrectly) {
   MockLoggingPlatform platform;
-  EXPECT_CALL(platform, LogAsyncStart(testing::StrEq("Name"), line,
-                                      testing::StrEq(__FILE__), _, _))
-      .Times(1);
+
+  TraceEvent expected;
+  expected.name = "Name";
+  expected.line_number = line;
+  expected.file_name = __FILE__;
+
+  EXPECT_CALL(platform, LogAsyncStart(HasSameNameAndLocation(expected)));
 
   { AsynchronousTraceLogger{category, "Name", __FILE__, line}; }
 }
@@ -95,7 +111,7 @@ TEST(TraceLoggingInternalTest, ValidateGettersValidOnEmptyStack) {
   EXPECT_EQ(ids.root, kEmptyTraceId);
 }
 
-TEST(TraceLoggingInternalTest, ValidateSetResultDoesntSegfaultOnEmptyStack) {
+TEST(TraceLoggingInternalTest, ValidateSetResultDoesNotSegfaultOnEmptyStack) {
   Error error = Error::Code::kNone;
   ScopedTraceOperation::set_result(error);
 

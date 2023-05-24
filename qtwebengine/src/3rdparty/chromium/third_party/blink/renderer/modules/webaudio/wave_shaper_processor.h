@@ -27,6 +27,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_WAVE_SHAPER_PROCESSOR_H_
 
 #include <memory>
+
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/core/typed_arrays/dom_typed_array.h"
 #include "third_party/blink/renderer/modules/webaudio/audio_node.h"
@@ -43,7 +44,9 @@ class WaveShaperProcessor final : public AudioDSPKernelProcessor {
  public:
   enum OverSampleType { kOverSampleNone, kOverSample2x, kOverSample4x };
 
-  WaveShaperProcessor(float sample_rate, unsigned number_of_channels);
+  WaveShaperProcessor(float sample_rate,
+                      unsigned number_of_channels,
+                      unsigned render_quantum_frames);
 
   ~WaveShaperProcessor() override;
 
@@ -63,7 +66,7 @@ class WaveShaperProcessor final : public AudioDSPKernelProcessor {
   // m_curve represents the non-linear shaping curve.
   std::unique_ptr<Vector<float>> curve_;
 
-  OverSampleType oversample_;
+  OverSampleType oversample_ = kOverSampleNone;
 };
 
 }  // namespace blink

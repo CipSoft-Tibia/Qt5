@@ -19,6 +19,7 @@
 #include <stdlib.h>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/tracing/core/data_source_config.h"
 #include "perfetto/tracing/core/trace_config.h"
 
@@ -31,7 +32,7 @@ using UnitMultipler = std::pair<const char*, uint64_t>;
 
 bool SplitValueAndUnit(const std::string& arg, ValueUnit* out) {
   char* end;
-  if (!arg.size())
+  if (arg.empty())
     return false;
   out->first = strtoull(arg.c_str(), &end, 10);
   if (end == arg.data())
@@ -68,12 +69,14 @@ bool ConvertValue(const std::string& arg,
 }
 
 bool ConvertTimeToMs(const std::string& arg, uint64_t* out) {
-  return ConvertValue(
-      arg,
-      {
-          {"ms", 1}, {"s", 1000}, {"m", 1000 * 60}, {"h", 1000 * 60 * 60},
-      },
-      out);
+  return ConvertValue(arg,
+                      {
+                          {"ms", 1},
+                          {"s", 1000},
+                          {"m", 1000 * 60},
+                          {"h", 1000 * 60 * 60},
+                      },
+                      out);
 }
 
 bool ConvertSizeToKb(const std::string& arg, uint64_t* out) {
@@ -116,10 +119,18 @@ bool CreateConfigFromOptions(const ConfigOptions& options,
   std::vector<std::string> atrace_apps = options.atrace_apps;
 
   for (const auto& category : options.categories) {
-    if (category.find("/") == std::string::npos) {
-      atrace_categories.push_back(category);
-    } else {
+    if (base::Contains(category, '/')) {
       ftrace_events.push_back(category);
+    } else {
+      atrace_categories.push_back(category);
+    }
+
+    // For the gfx category, also add the frame timeline data source
+    // as it's very useful for debugging gfx issues.
+    if (category == "gfx") {
+      auto* frame_timeline = config->add_data_sources();
+      frame_timeline->mutable_config()->set_name(
+          "android.surfaceflinger.frametimeline");
     }
   }
 
@@ -138,6 +149,7 @@ bool CreateConfigFromOptions(const ConfigOptions& options,
     ftrace_cfg.add_atrace_categories(cat);
   for (const auto& app : atrace_apps)
     ftrace_cfg.add_atrace_apps(app);
+  ftrace_cfg.set_symbolize_ksyms(true);
   ds_config->set_ftrace_config_raw(ftrace_cfg.SerializeAsString());
 
   auto* ps_config = config->add_data_sources()->mutable_config();

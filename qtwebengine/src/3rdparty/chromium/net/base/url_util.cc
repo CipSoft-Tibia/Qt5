@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,23 +6,30 @@
 
 #include "build/build_config.h"
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 #include <netinet/in.h>
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 #include <ws2tcpip.h>
 #endif
 
 #include "base/check_op.h"
+#include "base/containers/fixed_flat_set.h"
+#include "base/strings/escape.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "net/base/escape.h"
 #include "net/base/ip_address.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
+#include "url/scheme_host_port.h"
 #include "url/url_canon.h"
+#include "url/url_canon_internal.h"
 #include "url/url_canon_ip.h"
 #include "url/url_constants.h"
+#include "url/url_util.h"
 
 namespace net {
 
@@ -34,19 +41,20 @@ bool IsHostCharAlphanumeric(char c) {
   return ((c >= 'a') && (c <= 'z')) || ((c >= '0') && (c <= '9'));
 }
 
-bool IsNormalizedLocalhostTLD(const std::string& host) {
-  return base::EndsWith(host, ".localhost");
+bool IsNormalizedLocalhostTLD(base::StringPiece host) {
+  return base::EndsWith(host, ".localhost",
+                        base::CompareCase::INSENSITIVE_ASCII);
 }
 
 // Helper function used by GetIdentityFromURL. If |escaped_text| can be "safely
 // unescaped" to a valid UTF-8 string, return that string, as UTF-16. Otherwise,
 // convert it as-is to UTF-16. "Safely unescaped" is defined as having no
 // escaped character between '0x00' and '0x1F', inclusive.
-base::string16 UnescapeIdentityString(base::StringPiece escaped_text) {
+std::u16string UnescapeIdentityString(base::StringPiece escaped_text) {
   std::string unescaped_text;
   if (base::UnescapeBinaryURLComponentSafe(
           escaped_text, false /* fail_on_path_separators */, &unescaped_text)) {
-    base::string16 result;
+    std::u16string result;
     if (base::UTF8ToUTF16(unescaped_text.data(), unescaped_text.length(),
                           &result)) {
       return result;
@@ -58,50 +66,56 @@ base::string16 UnescapeIdentityString(base::StringPiece escaped_text) {
 }  // namespace
 
 GURL AppendQueryParameter(const GURL& url,
-                          const std::string& name,
-                          const std::string& value) {
+                          base::StringPiece name,
+                          base::StringPiece value) {
   std::string query(url.query());
 
   if (!query.empty())
     query += "&";
 
-  query += (EscapeQueryParamValue(name, true) + "=" +
-            EscapeQueryParamValue(value, true));
+  query += (base::EscapeQueryParamValue(name, true) + "=" +
+            base::EscapeQueryParamValue(value, true));
   GURL::Replacements replacements;
   replacements.SetQueryStr(query);
   return url.ReplaceComponents(replacements);
 }
 
 GURL AppendOrReplaceQueryParameter(const GURL& url,
-                                   const std::string& name,
-                                   const std::string& value) {
+                                   base::StringPiece name,
+                                   absl::optional<base::StringPiece> value) {
   bool replaced = false;
-  std::string param_name = EscapeQueryParamValue(name, true);
-  std::string param_value = EscapeQueryParamValue(value, true);
+  std::string param_name = base::EscapeQueryParamValue(name, true);
+  bool should_keep_param = value.has_value();
 
-  const std::string input = url.query();
+  std::string param_value;
+  if (should_keep_param)
+    param_value = base::EscapeQueryParamValue(value.value(), true);
+
+  const base::StringPiece input = url.query_piece();
   url::Component cursor(0, input.size());
   std::string output;
   url::Component key_range, value_range;
   while (url::ExtractQueryKeyValue(input.data(), &cursor, &key_range,
                                    &value_range)) {
-    const base::StringPiece key(
-        input.data() + key_range.begin, key_range.len);
+    const base::StringPiece key = input.substr(key_range.begin, key_range.len);
     std::string key_value_pair;
     // Check |replaced| as only the first pair should be replaced.
     if (!replaced && key == param_name) {
       replaced = true;
-      key_value_pair = (param_name + "=" + param_value);
+      if (!should_keep_param)
+        continue;
+
+      key_value_pair = param_name + "=" + param_value;
     } else {
-      key_value_pair.assign(input, key_range.begin,
-                            value_range.end() - key_range.begin);
+      key_value_pair = std::string(
+          input.substr(key_range.begin, value_range.end() - key_range.begin));
     }
     if (!output.empty())
       output += "&";
 
     output += key_value_pair;
   }
-  if (!replaced) {
+  if (!replaced && should_keep_param) {
     if (!output.empty())
       output += "&";
 
@@ -112,9 +126,14 @@ GURL AppendOrReplaceQueryParameter(const GURL& url,
   return url.ReplaceComponents(replacements);
 }
 
+GURL AppendOrReplaceRef(const GURL& url, const base::StringPiece& ref) {
+  GURL::Replacements replacements;
+  replacements.SetRefStr(ref);
+  return url.ReplaceComponents(replacements);
+}
+
 QueryIterator::QueryIterator(const GURL& url)
-    : url_(url),
-      at_end_(!url.is_valid()) {
+    : url_(url), at_end_(!url.is_valid()) {
   if (!at_end_) {
     query_ = url.parsed_for_possibly_invalid_spec().query;
     Advance();
@@ -123,27 +142,28 @@ QueryIterator::QueryIterator(const GURL& url)
 
 QueryIterator::~QueryIterator() = default;
 
-std::string QueryIterator::GetKey() const {
+base::StringPiece QueryIterator::GetKey() const {
   DCHECK(!at_end_);
   if (key_.is_nonempty())
-    return url_.spec().substr(key_.begin, key_.len);
-  return std::string();
+    return base::StringPiece(url_->spec()).substr(key_.begin, key_.len);
+  return base::StringPiece();
 }
 
-std::string QueryIterator::GetValue() const {
+base::StringPiece QueryIterator::GetValue() const {
   DCHECK(!at_end_);
   if (value_.is_nonempty())
-    return url_.spec().substr(value_.begin, value_.len);
-  return std::string();
+    return base::StringPiece(url_->spec()).substr(value_.begin, value_.len);
+  return base::StringPiece();
 }
 
 const std::string& QueryIterator::GetUnescapedValue() {
   DCHECK(!at_end_);
   if (value_.is_nonempty() && unescaped_value_.empty()) {
     unescaped_value_ = base::UnescapeURLComponent(
-        GetValue(), UnescapeRule::SPACES | UnescapeRule::PATH_SEPARATORS |
-                        UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS |
-                        UnescapeRule::REPLACE_PLUS_WITH_SPACE);
+        GetValue(),
+        base::UnescapeRule::SPACES | base::UnescapeRule::PATH_SEPARATORS |
+            base::UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS |
+            base::UnescapeRule::REPLACE_PLUS_WITH_SPACE);
   }
   return unescaped_value_;
 }
@@ -153,16 +173,16 @@ bool QueryIterator::IsAtEnd() const {
 }
 
 void QueryIterator::Advance() {
-  DCHECK (!at_end_);
+  DCHECK(!at_end_);
   key_.reset();
   value_.reset();
   unescaped_value_.clear();
   at_end_ =
-      !url::ExtractQueryKeyValue(url_.spec().c_str(), &query_, &key_, &value_);
+      !url::ExtractQueryKeyValue(url_->spec().c_str(), &query_, &key_, &value_);
 }
 
 bool GetValueForKeyInQuery(const GURL& url,
-                           const std::string& search_key,
+                           base::StringPiece search_key,
                            std::string* out_value) {
   for (QueryIterator it(url); !it.IsAtEnd(); it.Advance()) {
     if (it.GetKey() == search_key) {
@@ -191,7 +211,7 @@ bool ParseHostAndPort(base::StringPiece input, std::string* host, int* port) {
   if (username_component.is_valid() || password_component.is_valid())
     return false;
 
-  if (!hostname_component.is_nonempty())
+  if (hostname_component.is_empty())
     return false;  // Failed parsing.
 
   int parsed_port_number = -1;
@@ -230,7 +250,6 @@ bool ParseHostAndPort(base::StringPiece input, std::string* host, int* port) {
   return true;  // Success.
 }
 
-
 std::string GetHostAndPort(const GURL& url) {
   // For IPv6 literals, GURL::host() already includes the brackets so it is
   // safe to just append a colon.
@@ -246,13 +265,25 @@ std::string GetHostAndOptionalPort(const GURL& url) {
   return url.host();
 }
 
+NET_EXPORT std::string GetHostAndOptionalPort(
+    const url::SchemeHostPort& scheme_host_port) {
+  int default_port = url::DefaultPortForScheme(
+      scheme_host_port.scheme().data(),
+      static_cast<int>(scheme_host_port.scheme().length()));
+  if (default_port != scheme_host_port.port()) {
+    return base::StringPrintf("%s:%i", scheme_host_port.host().c_str(),
+                              scheme_host_port.port());
+  }
+  return scheme_host_port.host();
+}
+
 std::string TrimEndingDot(base::StringPiece host) {
   base::StringPiece host_trimmed = host;
   size_t len = host_trimmed.length();
   if (len > 1 && host_trimmed[len - 1] == '.') {
     host_trimmed.remove_suffix(1);
   }
-  return host_trimmed.as_string();
+  return std::string(host_trimmed);
 }
 
 std::string GetHostOrSpecFromURL(const GURL& url) {
@@ -263,7 +294,7 @@ std::string GetSuperdomain(base::StringPiece domain) {
   size_t dot_pos = domain.find('.');
   if (dot_pos == std::string::npos)
     return "";
-  return domain.substr(dot_pos + 1).as_string();
+  return std::string(domain.substr(dot_pos + 1));
 }
 
 bool IsSubdomainOf(base::StringPiece subdomain, base::StringPiece superdomain) {
@@ -286,6 +317,17 @@ std::string CanonicalizeHost(base::StringPiece host,
   const url::Component raw_host_component(0, static_cast<int>(host.length()));
   std::string canon_host;
   url::StdStringCanonOutput canon_host_output(&canon_host);
+  // A url::StdStringCanonOutput starts off with a zero length buffer. The
+  // first time through Grow() immediately resizes it to 32 bytes, incurring
+  // a malloc. With libcxx a 22 byte or smaller request can be accommodated
+  // within the std::string itself (i.e. no malloc occurs). Start the buffer
+  // off at the max size to avoid a malloc on short strings.
+  // NOTE: To ensure the final size is correctly reflected, it's necessary
+  // to call Complete() which will adjust the size to the actual bytes written.
+  // This is handled below for success cases, while failure cases discard all
+  // the output.
+  const int kCxxMaxStringBufferSizeWithoutMalloc = 22;
+  canon_host_output.Resize(kCxxMaxStringBufferSizeWithoutMalloc);
   url::CanonicalizeHostVerbose(host.data(), raw_host_component,
                                &canon_host_output, host_info);
 
@@ -302,15 +344,18 @@ std::string CanonicalizeHost(base::StringPiece host,
   return canon_host;
 }
 
-bool IsCanonicalizedHostCompliant(const std::string& host) {
-  if (host.empty())
+bool IsCanonicalizedHostCompliant(base::StringPiece host) {
+  if (host.empty() || host.size() > 254 ||
+      (host.back() != '.' && host.size() == 254)) {
     return false;
+  }
 
   bool in_component = false;
   bool most_recent_component_started_alphanumeric = false;
+  size_t label_size = 0;
 
-  for (std::string::const_iterator i(host.begin()); i != host.end(); ++i) {
-    const char c = *i;
+  for (char c : host) {
+    ++label_size;
     if (!in_component) {
       most_recent_component_started_alphanumeric = IsHostCharAlphanumeric(c);
       if (!most_recent_component_started_alphanumeric && (c != '-') &&
@@ -320,18 +365,30 @@ bool IsCanonicalizedHostCompliant(const std::string& host) {
       in_component = true;
     } else if (c == '.') {
       in_component = false;
+      if (label_size > 64 || label_size == 1) {
+        // Label should not be empty or longer than 63 characters (+1 for '.'
+        // character included in `label_size`).
+        return false;
+      } else {
+        label_size = 0;
+      }
     } else if (!IsHostCharAlphanumeric(c) && (c != '-') && (c != '_')) {
       return false;
     }
   }
 
+  // Check for too-long label when not ended with final '.'.
+  if (label_size > 63)
+    return false;
+
   return most_recent_component_started_alphanumeric;
 }
 
-bool IsHostnameNonUnique(const std::string& hostname) {
+bool IsHostnameNonUnique(base::StringPiece hostname) {
   // CanonicalizeHost requires surrounding brackets to parse an IPv6 address.
-  const std::string host_or_ip = hostname.find(':') != std::string::npos ?
-      "[" + hostname + "]" : hostname;
+  const std::string host_or_ip = hostname.find(':') != std::string::npos
+                                     ? base::StrCat({"[", hostname, "]"})
+                                     : std::string(hostname);
   url::CanonHostInfo host_info;
   std::string canonical_name = CanonicalizeHost(host_or_ip, &host_info);
 
@@ -380,7 +437,7 @@ bool HostStringIsLocalhost(base::StringPiece host) {
   IPAddress ip_address;
   if (ip_address.AssignFromIPLiteral(host))
     return ip_address.IsLoopback();
-  return IsLocalHostname(host, nullptr);
+  return IsLocalHostname(host);
 }
 
 GURL SimplifyUrlForRequest(const GURL& url) {
@@ -403,9 +460,23 @@ GURL ChangeWebSocketSchemeToHttpScheme(const GURL& url) {
   return url.ReplaceComponents(replace_scheme);
 }
 
+bool IsStandardSchemeWithNetworkHost(base::StringPiece scheme) {
+  // file scheme is special. Windows file share origins can have network hosts.
+  if (scheme == url::kFileScheme)
+    return true;
+
+  url::SchemeType scheme_type;
+  if (!url::GetStandardSchemeType(
+          scheme.data(), url::Component(0, scheme.length()), &scheme_type)) {
+    return false;
+  }
+  return scheme_type == url::SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION ||
+         scheme_type == url::SCHEME_WITH_HOST_AND_PORT;
+}
+
 void GetIdentityFromURL(const GURL& url,
-                        base::string16* username,
-                        base::string16* password) {
+                        std::u16string* username,
+                        std::u16string* password) {
   *username = UnescapeIdentityString(url.username());
   *password = UnescapeIdentityString(url.password());
 }
@@ -439,29 +510,34 @@ bool IsGoogleHost(base::StringPiece host) {
   return false;
 }
 
-bool IsTLS13ExperimentHost(base::StringPiece host) {
-  return host == "inbox.google.com" || host == "mail.google.com" ||
-         host == "gmail.com";
+bool IsGoogleHostWithAlpnH3(base::StringPiece host) {
+  return base::EqualsCaseInsensitiveASCII(host, "google.com") ||
+         base::EqualsCaseInsensitiveASCII(host, "www.google.com");
 }
 
-bool IsLocalHostname(base::StringPiece host, bool* is_local6) {
-  std::string normalized_host = base::ToLowerASCII(host);
+bool IsLocalHostname(base::StringPiece host) {
   // Remove any trailing '.'.
-  if (!normalized_host.empty() && *normalized_host.rbegin() == '.')
-    normalized_host.resize(normalized_host.size() - 1);
+  if (!host.empty() && *host.rbegin() == '.')
+    host.remove_suffix(1);
 
-  if (normalized_host == "localhost6" ||
-      normalized_host == "localhost6.localdomain6") {
-    if (is_local6)
-      *is_local6 = true;
-    return true;
+  return base::EqualsCaseInsensitiveASCII(host, "localhost") ||
+         IsNormalizedLocalhostTLD(host);
+}
+
+std::string UnescapePercentEncodedUrl(base::StringPiece input) {
+  std::string result(input);
+  // Replace any 0x2B (+) with 0x20 (SP).
+  for (char& c : result) {
+    if (c == '+') {
+      c = ' ';
+    }
   }
-
-  if (is_local6)
-    *is_local6 = false;
-  return normalized_host == "localhost" ||
-         normalized_host == "localhost.localdomain" ||
-         IsNormalizedLocalhostTLD(normalized_host);
+  // Run UTF-8 decoding without BOM on the percent-decoding.
+  url::RawCanonOutputT<char16_t> canon_output;
+  url::DecodeURLEscapeSequences(result.data(), result.size(),
+                                url::DecodeURLMode::kUTF8, &canon_output);
+  return base::UTF16ToUTF8(
+      base::StringPiece16(canon_output.data(), canon_output.length()));
 }
 
 }  // namespace net

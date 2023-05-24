@@ -1,14 +1,15 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "sandbox/policy/switches.h"
 
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "printing/buildflags/buildflags.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "base/command_line.h"
-#include "base/win/windows_version.h"
 #endif
 
 namespace sandbox {
@@ -27,24 +28,46 @@ const char kNetworkSandbox[] = "network";
 const char kPpapiSandbox[] = "ppapi";
 const char kUtilitySandbox[] = "utility";
 const char kCdmSandbox[] = "cdm";
+#if BUILDFLAG(ENABLE_PRINTING)
+const char kPrintBackendSandbox[] = "print_backend";
+#endif
 const char kPrintCompositorSandbox[] = "print_compositor";
 const char kAudioSandbox[] = "audio";
-const char kSharingServiceSandbox[] = "sharing_service";
+const char kServiceSandbox[] = "service";
+const char kServiceSandboxWithJit[] = "service_with_jit";
+#if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
+const char kScreenAISandbox[] = "screen_ai";
+#endif
 const char kSpeechRecognitionSandbox[] = "speech_recognition";
 const char kVideoCaptureSandbox[] = "video_capture";
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 const char kPdfConversionSandbox[] = "pdf_conversion";
-const char kProxyResolverSandbox[] = "proxy_resolver";
 const char kXrCompositingSandbox[] = "xr_compositing";
 const char kIconReaderSandbox[] = "icon_reader";
 const char kMediaFoundationCdmSandbox[] = "mf_cdm";
-#endif  // OS_WIN
+const char kWindowsSystemProxyResolverSandbox[] = "proxy_resolver_win";
+const char kFileUtilSandbox[] = "file_util";
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_MAC)
+const char kMirroringSandbox[] = "mirroring";
+#endif  // BUILDFLAG(IS_MAC)
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_ASH)
+const char kHardwareVideoDecodingSandbox[] = "hardware_video_decoding";
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_ASH)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+const char kHardwareVideoEncodingSandbox[] = "hardware_video_encoding";
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 const char kImeSandbox[] = "ime";
 const char kTtsSandbox[] = "tts";
-#endif  // OS_CHROMEOS
+#if BUILDFLAG(ENABLE_CROS_LIBASSISTANT)
+const char kLibassistantSandbox[] = "libassistant";
+#endif  // BUILDFLAG(ENABLE_CROS_LIBASSISTANT)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 // Flags owned by the service manager sandbox.
 
@@ -81,13 +104,13 @@ const char kGpuSandboxFailuresFatal[] = "gpu-sandbox-failures-fatal";
 // Meant to be used as a browser-level switch for testing purposes only.
 const char kNoSandbox[] = "no-sandbox";
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 // Instructs the zygote to launch without a sandbox. Processes forked from this
 // type of zygote will apply their own custom sandboxes later.
 const char kNoZygoteSandbox[] = "no-zygote-sandbox";
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 // Allows third party modules to inject by disabling the BINARY_SIGNATURE
 // mitigation policy on Win10+. Also has other effects in ELF.
 const char kAllowThirdPartyModules[] = "allow-third-party-modules";
@@ -95,18 +118,18 @@ const char kAllowThirdPartyModules[] = "allow-third-party-modules";
 // Add additional capabilities to the AppContainer sandbox on the GPU process.
 const char kAddGpuAppContainerCaps[] = "add-gpu-appcontainer-caps";
 
-// Disables the sandbox and gives the process elevated privileges.
-const char kNoSandboxAndElevatedPrivileges[] = "no-sandbox-and-elevated";
-
 // Add additional capabilities to the AppContainer sandbox used for XR
 // compositing.
 const char kAddXrAppContainerCaps[] = "add-xr-appcontainer-caps";
 #endif
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 // Cause the OS X sandbox write to syslog every time an access to a resource
 // is denied by the sandbox.
 const char kEnableSandboxLogging[] = "enable-sandbox-logging";
+
+// Disables Metal's shader cache, using the GPU sandbox to prevent access to it.
+const char kDisableMetalShaderCache[] = "disable-metal-shader-cache";
 #endif
 
 // Flags spied upon from other layers.
@@ -114,12 +137,11 @@ const char kProcessType[] = "type";
 const char kGpuProcess[] = "gpu-process";
 const char kNaClBrokerProcess[] = "nacl-broker";
 const char kNaClLoaderProcess[] = "nacl-loader";
-const char kPpapiBrokerProcess[] = "ppapi-broker";
 const char kPpapiPluginProcess[] = "ppapi";
 const char kRendererProcess[] = "renderer";
 const char kUtilityProcess[] = "utility";
-const char kCloudPrintServiceProcess[] = "service";
 const char kZygoteProcessType[] = "zygote";
+const char kRelauncherProcessType[] = "relauncher";
 
 }  // namespace switches
 }  // namespace policy

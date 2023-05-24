@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QGraphicsSceneEvent
@@ -287,6 +251,7 @@ public:
 
     QWidget *widget;
     QGraphicsSceneEvent *q_ptr;
+    quint64 timestamp = 0;
 };
 
 /*!
@@ -337,6 +302,26 @@ QWidget *QGraphicsSceneEvent::widget() const
 void QGraphicsSceneEvent::setWidget(QWidget *widget)
 {
     d_ptr->widget = widget;
+}
+
+/*!
+    \since 6.2
+
+    Returns the timestamp of the original event, or 0 if the
+    original event does not report a time stamp.
+*/
+quint64 QGraphicsSceneEvent::timestamp() const
+{
+    return d_ptr->timestamp;
+}
+/*!
+    \internal
+
+    Sets the timestamp for the event to \a ts.
+*/
+void QGraphicsSceneEvent::setTimestamp(quint64 ts)
+{
+    d_ptr->timestamp = ts;
 }
 
 class QGraphicsSceneMouseEventPrivate : public QGraphicsSceneEventPrivate
@@ -695,10 +680,13 @@ public:
     QPointF pos;
     QPointF scenePos;
     QPoint screenPos;
+    QPoint pixelDelta;
     Qt::MouseButtons buttons;
     Qt::KeyboardModifiers modifiers;
     int delta = 0;
     Qt::Orientation orientation = Qt::Horizontal;
+    Qt::ScrollPhase scrollPhase = Qt::NoScrollPhase;
+    bool inverted = false;
 };
 
 /*!
@@ -863,6 +851,73 @@ void QGraphicsSceneWheelEvent::setOrientation(Qt::Orientation orientation)
 {
     Q_D(QGraphicsSceneWheelEvent);
     d->orientation = orientation;
+}
+
+/*!
+    \since 6.2
+
+    Returns the scrolling phase of this wheel event.
+
+    \sa QWheelEvent::phase
+*/
+Qt::ScrollPhase QGraphicsSceneWheelEvent::phase() const
+{
+    Q_D(const QGraphicsSceneWheelEvent);
+    return d->scrollPhase;
+}
+
+/*!
+    \internal
+*/
+void QGraphicsSceneWheelEvent::setPhase(Qt::ScrollPhase scrollPhase)
+{
+    Q_D(QGraphicsSceneWheelEvent);
+    d->scrollPhase = scrollPhase;
+}
+
+/*!
+    \since 6.2
+
+    Returns the scrolling distance in pixels on screen. This value is
+    provided on platforms that support high-resolution pixel-based
+    delta values, such as \macos. The value should be used directly
+    to scroll content on screen.
+
+    \sa QWheelEvent::pixelDelta
+*/
+QPoint QGraphicsSceneWheelEvent::pixelDelta() const
+{
+    Q_D(const QGraphicsSceneWheelEvent);
+    return d->pixelDelta;
+}
+
+/*!
+    \internal
+*/
+void QGraphicsSceneWheelEvent::setPixelDelta(QPoint pixelDelta)
+{
+    Q_D(QGraphicsSceneWheelEvent);
+    d->pixelDelta = pixelDelta;
+}
+
+/*!
+    Returns whether the delta values delivered with the event are inverted.
+
+    \since 6.2
+*/
+bool QGraphicsSceneWheelEvent::isInverted() const
+{
+    Q_D(const QGraphicsSceneWheelEvent);
+    return d->inverted;
+}
+
+/*!
+    \internal
+*/
+void QGraphicsSceneWheelEvent::setInverted(bool inverted)
+{
+    Q_D(QGraphicsSceneWheelEvent);
+    d->inverted = inverted;
 }
 
 class QGraphicsSceneContextMenuEventPrivate : public QGraphicsSceneEventPrivate

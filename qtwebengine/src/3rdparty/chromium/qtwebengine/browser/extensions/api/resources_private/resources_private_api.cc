@@ -48,7 +48,10 @@
 #include <string>
 #include <utility>
 
+#include "pdf/buildflags.h"
+#if BUILDFLAG(ENABLE_PDF)
 #include "qtwebengine/browser/pdf/pdf_extension_util.h"
+#endif
 #include "qtwebengine/common/extensions/api/resources_private.h"
 
 namespace extensions {
@@ -62,26 +65,27 @@ ResourcesPrivateGetStringsFunction::~ResourcesPrivateGetStringsFunction() {}
 
 ExtensionFunction::ResponseAction ResourcesPrivateGetStringsFunction::Run() {
   std::unique_ptr<get_strings::Params> params(
-      get_strings::Params::Create(*args_));
-  auto dict = std::make_unique<base::DictionaryValue>();
+      get_strings::Params::Create(args()));
+  base::Value::Dict dict;
 
   api::resources_private::Component component = params->component;
 
   switch (component) {
     case api::resources_private::COMPONENT_IDENTITY:
       break;
+    case api::resources_private::COMPONENT_PDF:
 #if BUILDFLAG(ENABLE_PDF)
-    case api::resources_private::COMPONENT_PDF: {
-      pdf_extension_util::AddStrings(pdf_extension_util::PdfViewerContext::kPdfViewer, dict.get());
-      pdf_extension_util::AddAdditionalData(dict.get());
-    } break;
+      pdf_extension_util::AddStrings(pdf_extension_util::PdfViewerContext::kAll, &dict);
+      pdf_extension_util::AddAdditionalData(true, &dict);
+#else
+      NOTREACHED();
 #endif  // BUILDFLAG(ENABLE_PDF)
+      break;
     case api::resources_private::COMPONENT_NONE:
       NOTREACHED();
   }
 
-  return RespondNow(
-      OneArgument(std::move(dict)));
+  return RespondNow(WithArguments(std::move(dict)));
 }
 
 }  // namespace extensions

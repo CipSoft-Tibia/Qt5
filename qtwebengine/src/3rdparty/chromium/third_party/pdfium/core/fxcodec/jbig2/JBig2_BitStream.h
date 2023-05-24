@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 
 class CJBig2_BitStream {
  public:
-  CJBig2_BitStream(pdfium::span<const uint8_t> pSrcStream, uint32_t dwObjNum);
+  CJBig2_BitStream(pdfium::span<const uint8_t> pSrcStream, uint64_t key);
   CJBig2_BitStream(const CJBig2_BitStream&) = delete;
   CJBig2_BitStream& operator=(const CJBig2_BitStream&) = delete;
   ~CJBig2_BitStream();
@@ -35,11 +35,11 @@ class CJBig2_BitStream {
   uint32_t getBitPos() const;
   void setBitPos(uint32_t dwBitPos);
   const uint8_t* getBuf() const;
-  uint32_t getLength() const { return m_Span.size(); }
+  uint32_t getLength() const;
   const uint8_t* getPointer() const;
   void offset(uint32_t dwOffset);
   uint32_t getByteLeft() const;
-  uint32_t getObjNum() const;
+  uint64_t getKey() const { return m_Key; }
   bool IsInBounds() const;
 
  private:
@@ -49,7 +49,7 @@ class CJBig2_BitStream {
   const pdfium::span<const uint8_t> m_Span;
   uint32_t m_dwByteIdx = 0;
   uint32_t m_dwBitIdx = 0;
-  const uint32_t m_dwObjNum;
+  const uint64_t m_Key;
 };
 
 #endif  // CORE_FXCODEC_JBIG2_JBIG2_BITSTREAM_H_

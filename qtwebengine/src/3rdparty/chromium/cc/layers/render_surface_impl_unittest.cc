@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -119,7 +119,7 @@ TEST(RenderSurfaceLayerImplTest, AppendQuadsWithScaledMask) {
   // Mask layers don't use quad's mask functionality.
   EXPECT_EQ(gfx::RectF(), quad->mask_uv_rect);
   EXPECT_EQ(gfx::Vector2dF(2.f, 2.f), quad->filters_scale);
-  EXPECT_EQ(0u, quad->mask_resource_id());
+  EXPECT_EQ(viz::kInvalidResourceId, quad->mask_resource_id());
 }
 
 TEST(RenderSurfaceLayerImplTest, ResourcelessAppendQuadsSkipMask) {
@@ -129,7 +129,7 @@ TEST(RenderSurfaceLayerImplTest, ResourcelessAppendQuadsSkipMask) {
   const viz::CompositorRenderPassDrawQuad* quad =
       viz::CompositorRenderPassDrawQuad::MaterialCast(
           render_pass->quad_list.front());
-  EXPECT_EQ(0u, quad->mask_resource_id());
+  EXPECT_EQ(viz::kInvalidResourceId, quad->mask_resource_id());
 }
 
 TEST(RenderSurfaceLayerImplTest,

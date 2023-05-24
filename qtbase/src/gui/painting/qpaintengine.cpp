@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qpaintengine.h"
 #include "qpaintengine_p.h"
 #include "qpainter_p.h"
@@ -44,11 +8,15 @@
 #include <qdebug.h>
 #include <qmath.h>
 #include <qguiapplication.h>
-#include <private/qtextengine_p.h>
 #include <qvarlengtharray.h>
+#include <qpa/qplatformintegration.h>
+#include <qpa/qplatformpixmap.h>
 #include <private/qfontengine_p.h>
+#include <private/qguiapplication_p.h>
 #include <private/qpaintengineex_p.h>
+#include <private/qtextengine_p.h>
 
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -182,7 +150,7 @@ QFont QTextItem::font() const
   emulated results. Some features cannot be emulated: AlphaBlend and PorterDuff.
 
   \value AlphaBlend         The engine can alpha blend primitives.
-  \value Antialiasing       The engine can use antialising to improve the appearance
+  \value Antialiasing       The engine can use antialiasing to improve the appearance
                             of rendered primitives.
   \value BlendModes         The engine supports blending modes.
   \value BrushStroke        The engine supports drawing strokes that
@@ -375,7 +343,6 @@ void QPaintEngine::drawPolygon(const QPoint *points, int pointCount, PolygonDraw
     \value CoreGraphics \macos's Quartz2D (CoreGraphics)
     \value QuickDraw \macos's QuickDraw
     \value QWindowSystem Qt for Embedded Linux
-    \value PostScript (No longer supported)
     \value OpenGL
     \value Picture QPicture format
     \value SVG Scalable Vector Graphics XML format
@@ -447,7 +414,7 @@ void QPaintEngine::drawPoints(const QPointF *points, int pointCount)
     p->save();
 
     QTransform transform;
-    if (qt_pen_is_cosmetic(p->pen(), p->renderHints())) {
+    if (p->pen().isCosmetic()) {
         transform = p->transform();
         p->setTransform(QTransform());
     }
@@ -508,7 +475,7 @@ void QPaintEngine::drawEllipse(const QRectF &rect)
     if (hasFeature(PainterPaths)) {
         drawPath(path);
     } else {
-        QPolygonF polygon = path.toFillPolygon(QTransform());
+        QPolygonF polygon = path.toFillPolygon();
         drawPolygon(polygon.data(), polygon.size(), ConvexMode);
     }
 }
@@ -764,7 +731,7 @@ void QPaintEngine::drawTextItem(const QPointF &p, const QTextItem &textItem)
                                  bool((painter()->renderHints() & QPainter::TextAntialiasing)
                                       && !(painter()->font().styleStrategy() & QFont::NoAntialias)));
         for (int i = 0; i < ti.glyphs.numGlyphs; ++i) {
-            QImage glyph = ti.fontEngine->bitmapForGlyph(glyphs[i], QFixed(), QTransform());
+            QImage glyph = ti.fontEngine->bitmapForGlyph(glyphs[i], QFixedPoint(), QTransform());
             painter()->drawImage(positions[i].x.toReal(), positions[i].y.toReal(), glyph);
         }
         painter()->restore();
@@ -993,6 +960,43 @@ void QPaintEngine::setSystemRect(const QRect &rect)
 QRect QPaintEngine::systemRect() const
 {
     return d_func()->systemRect;
+}
+
+/*!
+    \internal
+
+    Creates a QPixmap optimized for this paint engine and device.
+*/
+QPixmap QPaintEngine::createPixmap(QSize size)
+{
+    if (Q_UNLIKELY(!qobject_cast<QGuiApplication *>(QCoreApplication::instance()))) {
+        qWarning("QPaintEngine::createPixmap: QPixmap cannot be created without a QGuiApplication");
+        return QPixmap();
+    }
+
+    std::unique_ptr<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
+    data->resize(size.width(), size.height());
+    return QPixmap(data.release());
+}
+
+/*!
+    \internal
+
+    Creates a QPixmap optimized for this paint engine and device.
+*/
+QPixmap QPaintEngine::createPixmapFromImage(QImage image, Qt::ImageConversionFlags flags)
+{
+    if (Q_UNLIKELY(!qobject_cast<QGuiApplication *>(QCoreApplication::instance()))) {
+        qWarning("QPaintEngine::createPixmapFromImage: QPixmap cannot be created without a QGuiApplication");
+        return QPixmap();
+    }
+
+    std::unique_ptr<QPlatformPixmap> data(QGuiApplicationPrivate::platformIntegration()->createPlatformPixmap(QPlatformPixmap::PixmapType));
+    if (image.isDetached())
+        data->fromImageInPlace(image, flags);
+    else
+        data->fromImage(image, flags);
+    return QPixmap(data.release());
 }
 
 QPaintEnginePrivate::~QPaintEnginePrivate()

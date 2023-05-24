@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<db:article xmlns:db="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink" version="5.2" xml:lang="en">
+<db:article xmlns:db="http://docbook.org/ns/docbook" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:its="http://www.w3.org/2005/11/its" version="5.2" xml:lang="en">
 <db:info>
 <db:title>Testing QDoc output from .qdoc files</db:title>
 <db:productname>OutputFromQDocFiles</db:productname>
+<db:edition>OutputFromQDocFiles - A test project for QDoc build artifacts</db:edition>
 <db:titleabbrev>A test project for QDoc build artifacts</db:titleabbrev>
+<db:extendedlink xlink:type="extended"><db:link xlink:to="qdoctests-qdocfileoutput-linking.xml" xlink:type="arc" xlink:arcrole="next" xlink:title="QDoc Linking Test"/></db:extendedlink>
 <db:abstract>
 <db:para>This is a simple page for testing purposes only.</db:para>
 </db:abstract>
@@ -63,5 +65,16 @@
 <db:para><db:link xlink:href="qdoctests-qdocfileoutput-linking.xml">Linking using a \keyword string</db:link></db:para>
 </db:listitem>
 </db:itemizedlist>
+</db:section>
+<db:section xml:id="qdoc-linking-test">
+<db:title>QDoc Linking Test</db:title>
+<db:para>This section title is overridden by another target which takes precedence.</db:para>
+</db:section>
+<db:section xml:id="linking-to-something-in-a-section-title">
+<db:title>Linking to <db:link xlink:href="qdoctests-qdocfileoutput.xml#further-information">something</db:link> in a section title</db:title>
+<db:para>This is allowed but a questionable practice.</db:para>
+<db:note>
+<db:para>You're looking at detailed information.</db:para>
+</db:note>
 </db:section>
 </db:article>

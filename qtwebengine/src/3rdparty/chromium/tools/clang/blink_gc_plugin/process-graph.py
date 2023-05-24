@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2014 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -364,6 +364,8 @@ def read_ignored_cycles():
 gc_bases = (
   'blink::GarbageCollected',
   'blink::GarbageCollectedMixin',
+  'cppgc::GarbageCollected',
+  'cppgc::GarbageCollectedMixin',
 )
 ref_bases = (
   'WTF::RefCounted',
@@ -418,7 +420,8 @@ def print_stats():
          % (
              stats['ref'] == 0 and stats['ref-mixins'] == 0 and "*" or " ",
              total == 0 and 100 or stats['mem'] * 100 / total,
-             node.name.replace('blink::', ''),
+             node.name.replace('blink::', '').replace(
+                 'cppgc::subtle::', '').replace('cppgc::', ''),
              stats['classes'],
              stats['mem'],
              stats['ref'],

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QML preview debug service.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlpreviewfileengine.h"
 #include "qqmlpreviewservice.h"
@@ -54,7 +18,7 @@ static bool isRelative(const QString &path)
         return true;
     if (path.at(0) == '/')
         return false;
-    if (path.at(0) == ':' && path.length() >= 2 && path.at(1) == '/')
+    if (path.at(0) == ':' && path.size() >= 2 && path.at(1) == '/')
         return false;
 #ifdef Q_OS_WIN
     if (path.length() >= 2 && path.at(1) == ':')
@@ -138,7 +102,8 @@ void QQmlPreviewFileEngine::setFileName(const QString &file)
     load();
 }
 
-bool QQmlPreviewFileEngine::open(QIODevice::OpenMode flags)
+bool QQmlPreviewFileEngine::open(QIODevice::OpenMode flags,
+                                 std::optional<QFile::Permissions> permissions)
 {
     switch (m_result) {
     case QQmlPreviewFileLoader::File:
@@ -146,10 +111,9 @@ bool QQmlPreviewFileEngine::open(QIODevice::OpenMode flags)
     case QQmlPreviewFileLoader::Directory:
         return false;
     case QQmlPreviewFileLoader::Fallback:
-        return m_fallback->open(flags);
+        return m_fallback->open(flags, permissions);
     default:
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 }
 
@@ -164,8 +128,7 @@ bool QQmlPreviewFileEngine::close()
     case QQmlPreviewFileLoader::Directory:
         return false;
     default:
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 }
 
@@ -304,9 +267,10 @@ bool QQmlPreviewFileEngine::link(const QString &newName)
     return m_fallback ? m_fallback->link(newName) : false;
 }
 
-bool QQmlPreviewFileEngine::mkdir(const QString &dirName, bool createParentDirectories) const
+bool QQmlPreviewFileEngine::mkdir(const QString &dirName, bool createParentDirectories,
+                                  std::optional<QFile::Permissions> permissions) const
 {
-    return m_fallback ? m_fallback->mkdir(dirName, createParentDirectories) : false;
+    return m_fallback ? m_fallback->mkdir(dirName, createParentDirectories, permissions) : false;
 }
 
 bool QQmlPreviewFileEngine::rmdir(const QString &dirName, bool recurseParentDirectories) const
@@ -327,8 +291,7 @@ bool QQmlPreviewFileEngine::setSize(qint64 size)
     case QQmlPreviewFileLoader::Directory:
         return false;
     default:
-        Q_UNREACHABLE();
-        return false;
+        Q_UNREACHABLE_RETURN(false);
     }
 }
 

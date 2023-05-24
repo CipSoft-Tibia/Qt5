@@ -1,46 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4regexpobject_p.h"
-#include "qv4objectproto_p.h"
 #include "qv4regexp_p.h"
-#include "qv4stringobject_p.h"
 #include <private/qv4mm_p.h>
 #include "qv4scopedvalue_p.h"
 #include "qv4jscall_p.h"
@@ -49,7 +11,6 @@
 #include "private/qlocale_tools_p.h"
 
 #include <QtCore/QDebug>
-#include <QtCore/qregexp.h>
 #if QT_CONFIG(regularexpression)
 #include <QtCore/qregularexpression.h>
 #endif
@@ -59,8 +20,6 @@
 #include <private/qv4alloca_p.h>
 
 QT_BEGIN_NAMESPACE
-
-Q_CORE_EXPORT QString qt_regexp_toCanonical(const QString &, QRegExp::PatternSyntax);
 
 using namespace QV4;
 
@@ -84,57 +43,40 @@ void Heap::RegExpObject::init(QV4::RegExp *value)
     o->initProperties();
 }
 
-// Converts a QRegExp to a JS RegExp.
-// The conversion is not 100% exact since ECMA regexp and QRegExp
-// have different semantics/flags, but we try to do our best.
-void Heap::RegExpObject::init(const QRegExp &re)
+static QString minimalPattern(const QString &pattern)
 {
-    Object::init();
-
-    // Convert the pattern to a ECMAScript pattern.
-    QString pattern = QT_PREPEND_NAMESPACE(qt_regexp_toCanonical)(re.pattern(), re.patternSyntax());
-    if (re.isMinimal()) {
-        QString ecmaPattern;
-        int len = pattern.length();
-        ecmaPattern.reserve(len);
-        int i = 0;
-        const QChar *wc = pattern.unicode();
-        bool inBracket = false;
-        while (i < len) {
-            QChar c = wc[i++];
-            ecmaPattern += c;
-            switch (c.unicode()) {
-            case '?':
-            case '+':
-            case '*':
-            case '}':
-                if (!inBracket)
-                    ecmaPattern += QLatin1Char('?');
-                break;
-            case '\\':
-                if (i < len)
-                    ecmaPattern += wc[i++];
-                break;
-            case '[':
-                inBracket = true;
-                break;
-            case ']':
-                inBracket = false;
-                break;
-            default:
-                break;
-            }
+    QString ecmaPattern;
+    int len = pattern.size();
+    ecmaPattern.reserve(len);
+    int i = 0;
+    const QChar *wc = pattern.unicode();
+    bool inBracket = false;
+    while (i < len) {
+        QChar c = wc[i++];
+        ecmaPattern += c;
+        switch (c.unicode()) {
+        case '?':
+        case '+':
+        case '*':
+        case '}':
+            if (!inBracket)
+                ecmaPattern += QLatin1Char('?');
+            break;
+        case '\\':
+            if (i < len)
+                ecmaPattern += wc[i++];
+            break;
+        case '[':
+            inBracket = true;
+            break;
+        case ']':
+            inBracket = false;
+            break;
+        default:
+            break;
         }
-        pattern = ecmaPattern;
     }
-
-    Scope scope(internalClass->engine);
-    Scoped<QV4::RegExpObject> o(scope, this);
-
-    uint flags = (re.caseSensitivity() == Qt::CaseInsensitive ? CompiledData::RegExp::RegExp_IgnoreCase : CompiledData::RegExp::RegExp_NoFlags);
-    o->d()->value.set(scope.engine, QV4::RegExp::create(scope.engine, pattern, flags));
-
-    o->initProperties();
+    return ecmaPattern;
 }
 
 #if QT_CONFIG(regularexpression)
@@ -148,10 +90,16 @@ void Heap::RegExpObject::init(const QRegularExpression &re)
     Scope scope(internalClass->engine);
     Scoped<QV4::RegExpObject> o(scope, this);
 
-    const uint flags = (re.patternOptions() & QRegularExpression::CaseInsensitiveOption)
-            ? CompiledData::RegExp::RegExp_IgnoreCase
-            : CompiledData::RegExp::RegExp_NoFlags;
-    o->d()->value.set(scope.engine, QV4::RegExp::create(scope.engine, re.pattern(), flags));
+    QRegularExpression::PatternOptions options = re.patternOptions();
+    uint flags = (options & QRegularExpression::CaseInsensitiveOption)
+                ? CompiledData::RegExp::RegExp_IgnoreCase
+                : CompiledData::RegExp::RegExp_NoFlags;
+    if (options & QRegularExpression::MultilineOption)
+        flags |= CompiledData::RegExp::RegExp_Multiline;
+    QString pattern = re.pattern();
+    if (options & QRegularExpression::InvertedGreedinessOption)
+        pattern = minimalPattern(pattern);
+    o->d()->value.set(scope.engine, QV4::RegExp::create(scope.engine, pattern, flags));
     o->initProperties();
 }
 #endif
@@ -163,26 +111,18 @@ void RegExpObject::initProperties()
     Q_ASSERT(value());
 }
 
-// Converts a JS RegExp to a QRegExp.
-// The conversion is not 100% exact since ECMA regexp and QRegExp
-// have different semantics/flags, but we try to do our best.
-QRegExp RegExpObject::toQRegExp() const
-{
-    Qt::CaseSensitivity caseSensitivity = (value()->flags & CompiledData::RegExp::RegExp_IgnoreCase) ? Qt::CaseInsensitive : Qt::CaseSensitive;
-    return QRegExp(*value()->pattern, caseSensitivity, QRegExp::RegExp2);
-}
-
 #if QT_CONFIG(regularexpression)
 // Converts a JS RegExp to a QRegularExpression.
 // The conversion is not 100% exact since ECMA regexp and QRegularExpression
 // have different semantics/flags, but we try to do our best.
 QRegularExpression RegExpObject::toQRegularExpression() const
 {
-    QRegularExpression::PatternOptions caseSensitivity
-            = (value()->flags & CompiledData::RegExp::RegExp_IgnoreCase)
-            ? QRegularExpression::CaseInsensitiveOption
-            : QRegularExpression::NoPatternOption;
-    return QRegularExpression(*value()->pattern, caseSensitivity);
+    QRegularExpression::PatternOptions options = QRegularExpression::NoPatternOption;
+    if (value()->flags & CompiledData::RegExp::RegExp_IgnoreCase)
+        options |= QRegularExpression::CaseInsensitiveOption;
+    if (value()->flags & CompiledData::RegExp::RegExp_Multiline)
+        options |= QRegularExpression::MultilineOption;
+    return QRegularExpression(*value()->pattern, options);
 }
 #endif
 
@@ -193,7 +133,7 @@ QString RegExpObject::toString() const
         p = QStringLiteral("(?:)");
     } else {
         // escape certain parts, see ch. 15.10.4
-        p.replace('/', QLatin1String("\\/"));
+        p.replace(u'/', QLatin1String("\\/"));
     }
     return p;
 }
@@ -204,7 +144,7 @@ ReturnedValue RegExpObject::builtinExec(ExecutionEngine *engine, const String *s
 
     Scope scope(engine);
     int offset = (global() || sticky()) ? lastIndex() : 0;
-    if (offset < 0 || offset > s.length()) {
+    if (offset < 0 || offset > s.size()) {
         setLastIndex(0);
         RETURN_RESULT(Encode::null());
     }
@@ -228,7 +168,7 @@ ReturnedValue RegExpObject::builtinExec(ExecutionEngine *engine, const String *s
     int len = value()->captureCount();
     array->arrayReserve(len);
     ScopedValue v(scope);
-    int strlen = s.length();
+    int strlen = s.size();
     for (int i = 0; i < len; ++i) {
         int start = matchOffsets[i * 2];
         int end = matchOffsets[i * 2 + 1];
@@ -290,7 +230,7 @@ uint parseFlags(Scope &scope, const QV4::Value *f)
         if (scope.hasException())
             return flags;
         QString str = s->toQString();
-        for (int i = 0; i < str.length(); ++i) {
+        for (int i = 0; i < str.size(); ++i) {
             if (str.at(i) == QLatin1Char('g') && !(flags & CompiledData::RegExp::RegExp_Global)) {
                 flags |= CompiledData::RegExp::RegExp_Global;
             } else if (str.at(i) == QLatin1Char('i') && !(flags & CompiledData::RegExp::RegExp_IgnoreCase)) {
@@ -440,7 +380,7 @@ ReturnedValue RegExpPrototype::execFirstMatch(const FunctionObject *b, const Val
     QString s = str->toQString();
 
     int offset = r->lastIndex();
-    if (offset < 0 || offset > s.length()) {
+    if (offset < 0 || offset > s.size()) {
         r->setLastIndex(0);
         RETURN_RESULT(Encode::null());
     }
@@ -500,7 +440,7 @@ ReturnedValue RegExpPrototype::method_exec(const FunctionObject *b, const Value 
     if (!r)
         return scope.engine->throwTypeError();
 
-    ScopedValue arg(scope, argc ? argv[0]: Value::undefinedValue());
+    ScopedValue arg(scope, argc ? argv[0] : Value::undefinedValue());
     ScopedString str(scope, arg->toString(scope.engine));
     if (scope.hasException())
         RETURN_UNDEFINED();
@@ -576,7 +516,7 @@ ReturnedValue RegExpPrototype::method_get_ignoreCase(const FunctionObject *f, co
 static int advanceStringIndex(int index, const QString &str, bool unicode)
 {
     if (unicode) {
-        if (index < str.length() - 1 &&
+        if (index < str.size() - 1 &&
             str.at(index).isHighSurrogate() &&
             str.at(index + 1).isLowSurrogate())
             ++index;
@@ -665,7 +605,7 @@ ReturnedValue RegExpPrototype::method_replace(const FunctionObject *f, const Val
     if (scope.hasException())
         return Encode::undefined();
 
-    int lengthS = s->toQString().length();
+    int lengthS = s->toQString().size();
 
     ScopedString replaceValue(scope);
     ScopedFunctionObject replaceFunction(scope, (argc > 1 ? argv[1] : Value::undefinedValue()));
@@ -717,7 +657,7 @@ ReturnedValue RegExpPrototype::method_replace(const FunctionObject *f, const Val
         if (scope.hasException())
             return Encode::undefined();
         QString m = matchString->toQString();
-        int matchLength = m.length();
+        int matchLength = m.size();
         v = resultObject->get(scope.engine->id_index());
         int position = v->toInt32();
         position = qMax(qMin(position, lengthS), 0);
@@ -726,18 +666,18 @@ ReturnedValue RegExpPrototype::method_replace(const FunctionObject *f, const Val
 
         int n = 1;
         Scope innerScope(scope.engine);
-        JSCallData cData(scope, nCaptures + 3);
+        JSCallArguments cData(scope, nCaptures + 3);
         while (n <= nCaptures) {
             v = resultObject->get(PropertyKey::fromArrayIndex(n));
             if (!v->isUndefined())
-                cData->args[n] = v->toString(scope.engine);
+                cData.args[n] = v->toString(scope.engine);
             ++n;
         }
         QString replacement;
         if (functionalReplace) {
-            cData->args[0] = matchString;
-            cData->args[nCaptures + 1] = Encode(position);
-            cData->args[nCaptures + 2] = s;
+            cData.args[0] = matchString;
+            cData.args[nCaptures + 1] = Encode(position);
+            cData.args[nCaptures + 2] = s;
             ScopedValue replValue(scope, replaceFunction->call(cData));
             if (scope.hasException())
                 return Encode::undefined();
@@ -748,12 +688,12 @@ ReturnedValue RegExpPrototype::method_replace(const FunctionObject *f, const Val
         if (scope.hasException())
             return Encode::undefined();
         if (position >= nextSourcePosition) {
-            accumulatedResult += s->toQString().midRef(nextSourcePosition, position - nextSourcePosition) + replacement;
+            accumulatedResult += QStringView{s->toQString()}.mid(nextSourcePosition, position - nextSourcePosition) + replacement;
             nextSourcePosition = position + matchLength;
         }
     }
     if (nextSourcePosition < lengthS) {
-        accumulatedResult += s->toQString().midRef(nextSourcePosition);
+        accumulatedResult += QStringView{s->toQString()}.mid(nextSourcePosition);
     }
     return scope.engine->newString(accumulatedResult)->asReturnedValue();
 }
@@ -844,7 +784,7 @@ ReturnedValue RegExpPrototype::method_split(const FunctionObject *f, const Value
         return A->asReturnedValue();
 
     QString S = s->toQString();
-    int size = S.length();
+    int size = S.size();
     if (size == 0) {
         ScopedValue z(scope, exec(scope.engine, splitter, s));
         if (z->isNull())

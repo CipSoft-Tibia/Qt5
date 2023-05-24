@@ -2,10 +2,10 @@ include(spectrum.pri)
 
 TEMPLATE = subdirs
 
-# Ensure that library is built before application
-CONFIG  += ordered
+SUBDIRS += 3rdparty/fftreal
 
-!contains(DEFINES, DISABLE_FFT): SUBDIRS += 3rdparty/fftreal
+app.file = app.pro
+app.depends = 3rdparty/fftreal
 SUBDIRS += app
 
 TARGET = spectrum

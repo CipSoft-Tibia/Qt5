@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include "base/files/file_util.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "extensions/common/error_utils.h"
@@ -74,14 +73,6 @@ bool ManifestURL::UpdatesFromGallery(const Extension* extension) {
 }
 
 // static
-bool  ManifestURL::UpdatesFromGallery(const base::DictionaryValue* manifest) {
-  std::string url;
-  if (!manifest->GetString(keys::kUpdateURL, &url))
-    return false;
-  return extension_urls::IsWebstoreUpdateUrl(GURL(url));
-}
-
-// static
 const GURL& ManifestURL::GetAboutPage(const Extension* extension) {
   return Get(extension, keys::kAboutPage);
 }
@@ -99,20 +90,20 @@ HomepageURLHandler::HomepageURLHandler() {
 HomepageURLHandler::~HomepageURLHandler() {
 }
 
-bool HomepageURLHandler::Parse(Extension* extension, base::string16* error) {
+bool HomepageURLHandler::Parse(Extension* extension, std::u16string* error) {
   std::unique_ptr<ManifestURL> manifest_url(new ManifestURL);
-  std::string homepage_url_str;
-  if (!extension->manifest()->GetString(keys::kHomepageURL,
-                                        &homepage_url_str)) {
+  const std::string* homepage_url_str =
+      extension->manifest()->FindStringPath(keys::kHomepageURL);
+  if (homepage_url_str == nullptr) {
     *error = ErrorUtils::FormatErrorMessageUTF16(errors::kInvalidHomepageURL,
                                                  std::string());
     return false;
   }
-  manifest_url->url_ = GURL(homepage_url_str);
+  manifest_url->url_ = GURL(*homepage_url_str);
   if (!manifest_url->url_.is_valid() ||
       !manifest_url->url_.SchemeIsHTTPOrHTTPS()) {
-    *error = ErrorUtils::FormatErrorMessageUTF16(
-        errors::kInvalidHomepageURL, homepage_url_str);
+    *error = ErrorUtils::FormatErrorMessageUTF16(errors::kInvalidHomepageURL,
+                                                 *homepage_url_str);
     return false;
   }
   extension->SetManifestData(keys::kHomepageURL, std::move(manifest_url));
@@ -121,11 +112,7 @@ bool HomepageURLHandler::Parse(Extension* extension, base::string16* error) {
 
 base::span<const char* const> HomepageURLHandler::Keys() const {
   static constexpr const char* kKeys[] = {keys::kHomepageURL};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 UpdateURLHandler::UpdateURLHandler() {
@@ -134,21 +121,22 @@ UpdateURLHandler::UpdateURLHandler() {
 UpdateURLHandler::~UpdateURLHandler() {
 }
 
-bool UpdateURLHandler::Parse(Extension* extension, base::string16* error) {
+bool UpdateURLHandler::Parse(Extension* extension, std::u16string* error) {
   std::unique_ptr<ManifestURL> manifest_url(new ManifestURL);
-  std::string tmp_update_url;
 
-  if (!extension->manifest()->GetString(keys::kUpdateURL, &tmp_update_url)) {
+  const std::string* tmp_update_url =
+      extension->manifest()->FindStringPath(keys::kUpdateURL);
+  if (tmp_update_url == nullptr) {
     *error = ErrorUtils::FormatErrorMessageUTF16(errors::kInvalidUpdateURL,
                                                  std::string());
     return false;
   }
 
-  manifest_url->url_ = GURL(tmp_update_url);
+  manifest_url->url_ = GURL(*tmp_update_url);
   if (!manifest_url->url_.is_valid() ||
       manifest_url->url_.has_ref()) {
-    *error = ErrorUtils::FormatErrorMessageUTF16(
-        errors::kInvalidUpdateURL, tmp_update_url);
+    *error = ErrorUtils::FormatErrorMessageUTF16(errors::kInvalidUpdateURL,
+                                                 *tmp_update_url);
     return false;
   }
 
@@ -158,11 +146,7 @@ bool UpdateURLHandler::Parse(Extension* extension, base::string16* error) {
 
 base::span<const char* const> UpdateURLHandler::Keys() const {
   static constexpr const char* kKeys[] = {keys::kUpdateURL};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 AboutPageHandler::AboutPageHandler() {
@@ -171,22 +155,23 @@ AboutPageHandler::AboutPageHandler() {
 AboutPageHandler::~AboutPageHandler() {
 }
 
-bool AboutPageHandler::Parse(Extension* extension, base::string16* error) {
+bool AboutPageHandler::Parse(Extension* extension, std::u16string* error) {
   std::unique_ptr<ManifestURL> manifest_url(new ManifestURL);
-  std::string about_str;
-  if (!extension->manifest()->GetString(keys::kAboutPage, &about_str)) {
-    *error = base::ASCIIToUTF16(errors::kInvalidAboutPage);
+  const std::string* about_str =
+      extension->manifest()->FindStringPath(keys::kAboutPage);
+  if (about_str == nullptr) {
+    *error = errors::kInvalidAboutPage;
     return false;
   }
 
-  GURL absolute(about_str);
+  GURL absolute(*about_str);
   if (absolute.is_valid()) {
-    *error = base::ASCIIToUTF16(errors::kInvalidAboutPageExpectRelativePath);
+    *error = errors::kInvalidAboutPageExpectRelativePath;
     return false;
   }
-  manifest_url->url_ = extension->GetResourceURL(about_str);
+  manifest_url->url_ = extension->GetResourceURL(*about_str);
   if (!manifest_url->url_.is_valid()) {
-    *error = base::ASCIIToUTF16(errors::kInvalidAboutPage);
+    *error = errors::kInvalidAboutPage;
     return false;
   }
   extension->SetManifestData(keys::kAboutPage, std::move(manifest_url));
@@ -214,11 +199,7 @@ bool AboutPageHandler::Validate(const Extension* extension,
 
 base::span<const char* const> AboutPageHandler::Keys() const {
   static constexpr const char* kKeys[] = {keys::kAboutPage};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 }  // namespace extensions

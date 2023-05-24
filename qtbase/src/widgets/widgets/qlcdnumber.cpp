@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlcdnumber.h"
 
@@ -52,7 +16,7 @@ public:
     void init();
     void internalSetString(const QString& s);
     void drawString(const QString& s, QPainter &, QBitArray * = nullptr, bool = true);
-    //void drawString(const QString &, QPainter &, QBitArray * = 0) const;
+    //void drawString(const QString &, QPainter &, QBitArray * = nullptr) const;
     void drawDigit(const QPoint &, QPainter &, int, char, char = ' ');
     void drawSegment(const QPoint &, char, QPainter &, int, bool = false);
 
@@ -105,7 +69,7 @@ public:
     Incidentally, QLCDNumber is the very oldest part of Qt, tracing
     its roots back to a BASIC program on the \l{Sinclair Spectrum}{Sinclair Spectrum}.
 
-    \sa QLabel, QFrame, {Digital Clock Example}, {Tetrix Example}
+    \sa QLabel, QFrame
 */
 
 /*!
@@ -179,25 +143,25 @@ static QString int2string(int num, int base, int ndigits, bool *oflow)
                 } while (n != 0);
                 len = ndigits - len;
                 if (len > 0)
-                    s += QString(len, QLatin1Char(' '));
-                s += QLatin1String(p);
+                    s += QString(len, u' ');
+                s += QLatin1StringView(p);
             }
             break;
     }
     if (negative) {
-        for (int i=0; i<(int)s.length(); i++) {
-            if (s[i] != QLatin1Char(' ')) {
+        for (int i=0; i<(int)s.size(); i++) {
+            if (s[i] != u' ') {
                 if (i != 0) {
-                    s[i-1] = QLatin1Char('-');
+                    s[i-1] = u'-';
                 } else {
-                    s.insert(0, QLatin1Char('-'));
+                    s.insert(0, u'-');
                 }
                 break;
             }
         }
     }
     if (oflow)
-        *oflow = (int)s.length() > ndigits;
+        *oflow = (int)s.size() > ndigits;
     return s;
 }
 
@@ -217,15 +181,15 @@ static QString double2string(double num, int base, int ndigits, bool *oflow)
         int nd = ndigits;
         do {
             s = QString::asprintf("%*.*g", ndigits, nd, num);
-            int i = s.indexOf(QLatin1Char('e'));
-            if (i > 0 && s[i+1]==QLatin1Char('+')) {
-                s[i] = QLatin1Char(' ');
-                s[i+1] = QLatin1Char('e');
+            qsizetype i = s.indexOf(u'e');
+            if (i > 0 && s[i+1]==u'+') {
+                s[i] = u' ';
+                s[i+1] = u'e';
             }
-        } while (nd-- && (int)s.length() > ndigits);
+        } while (nd-- && (int)s.size() > ndigits);
     }
     if (oflow)
-        *oflow = (int)s.length() > ndigits;
+        *oflow = (int)s.size() > ndigits;
     return s;
 }
 
@@ -408,9 +372,9 @@ void QLCDNumber::setDigitCount(int numDigits)
     }
     if (d->digitStr.isNull()) {                  // from constructor
         d->ndigits = numDigits;
-        d->digitStr.fill(QLatin1Char(' '), d->ndigits);
+        d->digitStr.fill(u' ', d->ndigits);
         d->points.fill(0, d->ndigits);
-        d->digitStr[d->ndigits - 1] = QLatin1Char('0'); // "0" is the default number
+        d->digitStr[d->ndigits - 1] = u'0'; // "0" is the default number
     } else {
         bool doDisplay = d->ndigits == 0;
         if (numDigits == d->ndigits)             // no change
@@ -420,7 +384,7 @@ void QLCDNumber::setDigitCount(int numDigits)
         if (numDigits > d->ndigits) {            // expand
             dif = numDigits - d->ndigits;
             QString buf;
-            buf.fill(QLatin1Char(' '), dif);
+            buf.fill(u' ', dif);
             d->digitStr.insert(0, buf);
             d->points.resize(numDigits);
             for (i=numDigits-1; i>=dif; i--)
@@ -432,7 +396,7 @@ void QLCDNumber::setDigitCount(int numDigits)
             d->digitStr = d->digitStr.right(numDigits);
             QBitArray tmpPoints = d->points;
             d->points.resize(numDigits);
-            for (i=0; i<(int)numDigits; i++)
+            for (i=0; i<numDigits; i++)
                 d->points.setBit(i, tmpPoints.testBit(i+dif));
         }
         d->ndigits = numDigits;
@@ -715,25 +679,25 @@ void QLCDNumberPrivate::internalSetString(const QString& s)
     Q_Q(QLCDNumber);
     QString buffer(ndigits, QChar());
     int i;
-    int len = s.length();
+    int len = s.size();
     QBitArray newPoints(ndigits);
 
     if (!smallPoint) {
         if (len == ndigits)
             buffer = s;
         else
-            buffer = s.right(ndigits).rightJustified(ndigits, QLatin1Char(' '));
+            buffer = s.right(ndigits).rightJustified(ndigits, u' ');
     } else {
         int  index = -1;
         bool lastWasPoint = true;
         newPoints.clearBit(0);
         for (i=0; i<len; i++) {
-            if (s[i] == QLatin1Char('.')) {
+            if (s[i] == u'.') {
                 if (lastWasPoint) {           // point already set for digit?
                     if (index == ndigits - 1) // no more digits
                         break;
                     index++;
-                    buffer[index] = QLatin1Char(' ');        // 2 points in a row, add space
+                    buffer[index] = u' ';        // 2 points in a row, add space
                 }
                 newPoints.setBit(index);        // set decimal point
                 lastWasPoint = true;
@@ -753,7 +717,7 @@ void QLCDNumberPrivate::internalSetString(const QString& s)
                                    newPoints.testBit(i));
             }
             for(i=0; i<ndigits-index-1; i++) {
-                buffer[i] = QLatin1Char(' ');
+                buffer[i] = u' ';
                 newPoints.clearBit(i);
             }
         }

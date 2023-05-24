@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -21,6 +21,8 @@ declare_args() {
   # installation location.
   windows_sdk_path = "C:\Program Files (x86)\Windows Kits\10"
 
+  windows_sdk_version = ""
+
   ninja_use_custom_environment_files = true
 }
 
@@ -28,11 +30,12 @@ if (visual_studio_path == "" && ninja_use_custom_environment_files) {
   toolchain_data =
       exec_script("../../vs_toolchain.py", [ "get_toolchain_dir" ], "scope")
   visual_studio_path = toolchain_data.vs_path
+  windows_sdk_version = toolchain_data.sdk_version
   windows_sdk_path = toolchain_data.sdk_path
   visual_studio_version = toolchain_data.vs_version
   wdk_path = toolchain_data.wdk_dir
   visual_studio_runtime_dirs = toolchain_data.runtime_dirs
-} else {
+} else if (!is_mingw && target_os != "android") {
   assert(visual_studio_version != "",
          "You must set the visual_studio_version if you set the path")
   if (ninja_use_custom_environment_files) {

@@ -1,62 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qsgabstractrenderer_p.h"
+#include "qsgabstractrenderer_p_p.h"
 
 QT_BEGIN_NAMESPACE
 
 /*!
     \class QSGAbstractRenderer
-    \brief QSGAbstractRenderer gives access to the scene graph nodes and rendering of a QSGEngine.
+    \brief QSGAbstractRenderer gives access to the scene graph nodes and rendering.
     \inmodule QtQuick
     \since 5.4
-
-    A QSGAbstractRenderer created by a QSGEngine allows you to set your QSGNode
-    tree through setRootNode() and control the rendering viewport through
-    setDeviceRect(), setViewportRect() and setProjectionMatrixToRect().
-    You can finally trigger the rendering to the desired framebuffer through
-    renderScene().
-
-    The QSGAbstractRenderer is only available when used with a QSGEngine
-    and isn't exposed when used internally by QQuickWindow.
-
-    \sa QSGEngine, QSGNode
+    \internal
  */
 
 /*!
@@ -89,17 +43,9 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
-    \fn void QSGAbstractRenderer::renderScene(GLuint fboId = 0)
+    \fn void QSGAbstractRenderer::renderScene()
 
-    Render the scene to the specified \a fboId
-
-    If \a fboId isn't specified, the scene graph will be rendered
-    to the default framebuffer. You will have to call
-    QOpenGLContext::swapBuffers() yourself afterward.
-
-    The framebuffer specified by \a fboId will be bound automatically.
-
-    \sa QOpenGLContext::swapBuffers(), QOpenGLFramebufferObject::handle()
+    Renders the scene.
  */
 
 /*!
@@ -247,15 +193,7 @@ QRect QSGAbstractRenderer::viewportRect() const
  */
 void QSGAbstractRenderer::setProjectionMatrixToRect(const QRectF &rect)
 {
-    QMatrix4x4 matrix;
-    matrix.ortho(rect.x(),
-                 rect.x() + rect.width(),
-                 rect.y() + rect.height(),
-                 rect.y(),
-                 1,
-                 -1);
-    setProjectionMatrix(matrix);
-    setProjectionMatrixWithNativeNDC(matrix);
+    setProjectionMatrixToRect(rect, {}, false);
 }
 
 /*!
@@ -271,24 +209,49 @@ void QSGAbstractRenderer::setProjectionMatrixToRect(const QRectF &rect)
  */
 void QSGAbstractRenderer::setProjectionMatrixToRect(const QRectF &rect, MatrixTransformFlags flags)
 {
+    setProjectionMatrixToRect(rect, flags, flags.testFlag(MatrixTransformFlipY));
+}
+
+/*!
+    Convenience method that calls setProjectionMatrix() with an
+    orthographic matrix generated from \a rect.
+
+    Set MatrixTransformFlipY in \a flags when the graphics API uses Y down in
+    its normalized device coordinate system (for example, Vulkan).
+
+    Convenience method that calls setProjectionMatrixWithNativeNDC() with an
+    orthographic matrix generated from \a rect.
+
+    Set true to \a nativeNDCFlipY to flip the Y axis relative to
+    projection matrix in its normalized device coordinate system.
+
+    \sa setProjectionMatrix(), projectionMatrix()
+    \sa setProjectionMatrixWithNativeNDC(), projectionMatrixWithNativeNDC()
+
+    \since 6.7
+ */
+void QSGAbstractRenderer::setProjectionMatrixToRect(const QRectF &rect, MatrixTransformFlags flags,
+                                                    bool nativeNDCFlipY)
+{
     const bool flipY = flags.testFlag(MatrixTransformFlipY);
+
+    const float left = rect.x();
+    const float right = rect.x() + rect.width();
+    float bottom = rect.y() + rect.height();
+    float top = rect.y();
+
+    if (flipY)
+        std::swap(top, bottom);
+
     QMatrix4x4 matrix;
-    matrix.ortho(rect.x(),
-                 rect.x() + rect.width(),
-                 flipY ? rect.y() : rect.y() + rect.height(),
-                 flipY ? rect.y() + rect.height() : rect.y(),
-                 1,
-                 -1);
+    matrix.ortho(left, right, bottom, top, 1, -1);
     setProjectionMatrix(matrix);
 
-    if (flipY) {
+    if (nativeNDCFlipY) {
+        std::swap(top, bottom);
+
         matrix.setToIdentity();
-        matrix.ortho(rect.x(),
-                     rect.x() + rect.width(),
-                     rect.y() + rect.height(),
-                     rect.y(),
-                     1,
-                     -1);
+        matrix.ortho(left, right, bottom, top, 1, -1);
     }
     setProjectionMatrixWithNativeNDC(matrix);
 }
@@ -386,6 +349,14 @@ QSGAbstractRenderer::ClearMode QSGAbstractRenderer::clearMode() const
     \internal
  */
 
+void QSGAbstractRenderer::prepareSceneInline()
+{
+}
+
+void QSGAbstractRenderer::renderSceneInline()
+{
+}
+
 QT_END_NAMESPACE
 
-#include "moc_qsgabstractrenderer.cpp"
+#include "moc_qsgabstractrenderer_p.cpp"

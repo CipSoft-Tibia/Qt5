@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4REGEXPOBJECT_H
 #define QV4REGEXPOBJECT_H
 
@@ -50,21 +14,13 @@
 // We mean it.
 //
 
-#include "qv4runtime_p.h"
-#include "qv4engine_p.h"
-#include "qv4context_p.h"
-#include "qv4functionobject_p.h"
-#include "qv4string_p.h"
-#include "qv4managed_p.h"
-#include "qv4property_p.h"
-#include "qv4objectiterator_p.h"
-#include "qv4regexp_p.h"
+#include <private/qv4context_p.h>
+#include <private/qv4engine_p.h>
+#include <private/qv4functionobject_p.h>
+#include <private/qv4managed_p.h>
 
-#include <QtCore/QString>
-#include <QtCore/QHash>
-#include <QtCore/QScopedPointer>
-#include <cstdio>
-#include <cassert>
+#include <QtCore/qhash.h>
+#include <QtCore/qstring.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -80,7 +36,6 @@ DECLARE_HEAP_OBJECT(RegExpObject, Object) {
 
     void init();
     void init(QV4::RegExp *value);
-    void init(const QRegExp &re);
 #if QT_CONFIG(regularexpression)
     void init(const QRegularExpression &re);
 #endif
@@ -93,7 +48,7 @@ DECLARE_HEAP_OBJECT(RegExpObject, Object) {
     Member(class, NoMark, int, lastMatchEnd)
 
 DECLARE_HEAP_OBJECT(RegExpCtor, FunctionObject) {
-    DECLARE_MARKOBJECTS(RegExpCtor);
+    DECLARE_MARKOBJECTS(RegExpCtor)
 
     void init(QV4::ExecutionContext *scope);
     void clearLastMatch();
@@ -140,7 +95,6 @@ struct Q_QML_PRIVATE_EXPORT RegExpObject: Object {
         return setProperty(Index_LastIndex, Value::fromInt32(index));
     }
 
-    QRegExp toQRegExp() const;
 #if QT_CONFIG(regularexpression)
     QRegularExpression toQRegularExpression() const;
 #endif
@@ -152,11 +106,19 @@ struct Q_QML_PRIVATE_EXPORT RegExpObject: Object {
         return s->toQString();
     }
 
-    Heap::RegExp *value() const { return d()->value; }
-    uint flags() const { return d()->value->flags; }
-    bool global() const { return d()->value->global(); }
-    bool sticky() const { return d()->value->sticky(); }
-    bool unicode() const { return d()->value->unicode(); }
+    // We cannot name Heap::RegExp here since we don't want to include qv4regexp_p.h but we still
+    // want to keep the methods inline. We shift the requirement to name the type to the caller by
+    // making it a template.
+    template<typename RegExp = Heap::RegExp>
+    RegExp *value() const { return d()->value; }
+    template<typename RegExp = Heap::RegExp>
+    uint flags() const { return value<RegExp>()->flags; }
+    template<typename RegExp = Heap::RegExp>
+    bool global() const { return value<RegExp>()->global(); }
+    template<typename RegExp = Heap::RegExp>
+    bool sticky() const { return value<RegExp>()->sticky(); }
+    template<typename RegExp = Heap::RegExp>
+    bool unicode() const { return value<RegExp>()->unicode(); }
 
     ReturnedValue builtinExec(ExecutionEngine *engine, const String *s);
 };

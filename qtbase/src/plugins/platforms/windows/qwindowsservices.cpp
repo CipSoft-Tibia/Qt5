@@ -1,43 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#define QT_NO_URL_CAST_FROM_STRING
 #include "qwindowsservices.h"
 #include <QtCore/qt_windows.h>
 
@@ -48,33 +11,87 @@
 #include <QtCore/qthread.h>
 
 #include <QtCore/private/qwinregistry_p.h>
+#include <QtCore/private/qfunctions_win_p.h>
 
 #include <shlobj.h>
+#include <shlwapi.h>
 #include <intshcut.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 enum { debug = 0 };
 
 class QWindowsShellExecuteThread : public QThread
 {
 public:
-    explicit QWindowsShellExecuteThread(const wchar_t *path) : m_path(path) { }
+    explicit QWindowsShellExecuteThread(const wchar_t *operation, const wchar_t *file,
+                                        const wchar_t *parameters)
+        : m_operation(operation)
+        , m_file(file)
+        , m_parameters(parameters) { }
 
     void run() override
     {
-        if (SUCCEEDED(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))) {
-            m_result = ShellExecute(nullptr, nullptr, m_path, nullptr, nullptr, SW_SHOWNORMAL);
-            CoUninitialize();
-        }
+        QComHelper comHelper;
+        if (comHelper.isValid())
+            m_result = ShellExecute(nullptr, m_operation, m_file, m_parameters, nullptr,
+                                    SW_SHOWNORMAL);
     }
 
     HINSTANCE result() const { return m_result; }
 
 private:
     HINSTANCE m_result = nullptr;
-    const wchar_t *m_path;
+    const wchar_t *m_operation;
+    const wchar_t *m_file;
+    const wchar_t *m_parameters;
 };
+
+static QString msgShellExecuteFailed(const QUrl &url, quintptr code)
+{
+    QString result;
+    QTextStream(&result) <<"ShellExecute '" <<  url.toString() << "' failed (error " << code << ").";
+    return result;
+}
+
+// Retrieve the web browser and open the URL. This should be used for URLs with
+// fragments which don't work when using ShellExecute() directly (QTBUG-14460,
+// QTBUG-55300).
+static bool openWebBrowser(const QUrl &url)
+{
+    WCHAR browserExecutable[MAX_PATH] = {};
+    const wchar_t operation[] = L"open";
+    DWORD browserExecutableSize = MAX_PATH;
+    if (FAILED(AssocQueryString(0, ASSOCSTR_EXECUTABLE, L"http", operation,
+                                browserExecutable, &browserExecutableSize))) {
+        return false;
+    }
+    QString browser = QString::fromWCharArray(browserExecutable, browserExecutableSize - 1);
+    // Workaround for "old" MS Edge entries. Instead of LaunchWinApp.exe we can just use msedge.exe
+    if (browser.contains("LaunchWinApp.exe"_L1, Qt::CaseInsensitive))
+        browser = "msedge.exe"_L1;
+    const QString urlS = url.toString(QUrl::FullyEncoded);
+
+    // Run ShellExecute() in a thread since it may spin the event loop.
+    // Prevent it from interfering with processing of posted events (QTBUG-85676).
+    QWindowsShellExecuteThread thread(operation,
+                                      reinterpret_cast<const wchar_t *>(browser.utf16()),
+                                      reinterpret_cast<const wchar_t *>(urlS.utf16()));
+    thread.start();
+    thread.wait();
+
+    const auto result = reinterpret_cast<quintptr>(thread.result());
+    if (debug)
+        qDebug() << __FUNCTION__ << urlS << QString::fromWCharArray(browserExecutable) << result;
+    // ShellExecute returns a value greater than 32 if successful
+    if (result <= 32) {
+        qWarning("%s", qPrintable(msgShellExecuteFailed(url, result)));
+        return false;
+    }
+    return true;
+}
 
 static inline bool shellExecute(const QUrl &url)
 {
@@ -85,7 +102,9 @@ static inline bool shellExecute(const QUrl &url)
 
     // Run ShellExecute() in a thread since it may spin the event loop.
     // Prevent it from interfering with processing of posted events (QTBUG-85676).
-    QWindowsShellExecuteThread thread(reinterpret_cast<const wchar_t *>(nativeFilePath.utf16()));
+    QWindowsShellExecuteThread thread(nullptr,
+                                      reinterpret_cast<const wchar_t *>(nativeFilePath.utf16()),
+                                      nullptr);
     thread.start();
     thread.wait();
 
@@ -93,7 +112,7 @@ static inline bool shellExecute(const QUrl &url)
 
     // ShellExecute returns a value greater than 32 if successful
     if (result <= 32) {
-        qWarning("ShellExecute '%ls' failed (error %zu).", qUtf16Printable(url.toString()), result);
+        qWarning("%s", qPrintable(msgShellExecuteFailed(url, result)));
         return false;
     }
     return true;
@@ -111,15 +130,15 @@ static inline QString mailCommand()
     // Check if user has set preference, otherwise use default.
     QString keyName = QWinRegistryKey(HKEY_CURRENT_USER, mailUserKey)
                       .stringValue( L"Progid");
-    const QLatin1String mailto = keyName.isEmpty() ? QLatin1String("mailto") : QLatin1String();
-    keyName += mailto + QLatin1String("\\Shell\\Open\\Command");
+    const auto mailto = keyName.isEmpty() ? "mailto"_L1 : QLatin1StringView();
+    keyName += mailto + "\\Shell\\Open\\Command"_L1;
     if (debug)
         qDebug() << __FUNCTION__ << "keyName=" << keyName;
     const QString command = QWinRegistryKey(HKEY_CLASSES_ROOT, keyName).stringValue(L"");
     // QTBUG-57816: As of Windows 10, if there is no mail client installed, an entry like
     // "rundll32.exe .. url.dll,MailToProtocolHandler %l" is returned. Launching it
     // silently fails or brings up a broken dialog after a long time, so exclude it and
-    // fall back to ShellExecute() which brings up the URL assocation dialog.
+    // fall back to ShellExecute() which brings up the URL association dialog.
     if (command.isEmpty() || command.contains(u",MailToProtocolHandler"))
         return QString();
     wchar_t expandedCommand[MAX_PATH] = {0};
@@ -135,6 +154,11 @@ static inline bool launchMail(const QUrl &url)
         qWarning("Cannot launch '%ls': There is no mail program installed.", qUtf16Printable(url.toString()));
         return false;
     }
+    // Fix mail launch if no param is expected in this command.
+    if (command.indexOf(QStringLiteral("%1")) < 0) {
+        qWarning() << "The mail command lacks the '%1' parameter.";
+        return false;
+    }
     //Make sure the path for the process is in quotes
     const QChar doubleQuote = u'"';
     if (!command.startsWith(doubleQuote)) {
@@ -146,7 +170,7 @@ static inline bool launchMail(const QUrl &url)
     }
     // Pass the url as the parameter. Should use QProcess::startDetached(),
     // but that cannot handle a Windows command line [yet].
-    command.replace(QLatin1String("%1"), url.toString(QUrl::FullyEncoded));
+    command.replace("%1"_L1, url.toString(QUrl::FullyEncoded));
     if (debug)
         qDebug() << __FUNCTION__ << "Launching" << command;
     //start the process
@@ -170,7 +194,8 @@ bool QWindowsServices::openUrl(const QUrl &url)
     const QString scheme = url.scheme();
     if (scheme == u"mailto" && launchMail(url))
         return true;
-    return shellExecute(url);
+    return url.isLocalFile() && url.hasFragment()
+        ? openWebBrowser(url) : shellExecute(url);
 }
 
 bool QWindowsServices::openDocument(const QUrl &url)

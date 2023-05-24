@@ -1,24 +1,29 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_NG_CONSTRAINT_SPACE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_NG_CONSTRAINT_SPACE_H_
 
-#include "base/optional.h"
+#include "base/check_op.h"
+#include "base/notreached.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_size.h"
+#include "third_party/blink/renderer/core/layout/min_max_sizes.h"
 #include "third_party/blink/renderer/core/layout/ng/exclusions/ng_exclusion_space.h"
 #include "third_party/blink/renderer/core/layout/ng/geometry/ng_bfc_offset.h"
 #include "third_party/blink/renderer/core/layout/ng/geometry/ng_margin_strut.h"
+#include "third_party/blink/renderer/core/layout/ng/grid/ng_grid_data.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_break_appeal.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_floats_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/table/ng_table_constraint_space_data.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/text/writing_mode.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -35,7 +40,7 @@ enum NGFragmentationType {
 
 // "adjoining" objects (either floats or inline-level OOF-positioned nodes) are
 // used to indicate that a particular node might need a relayout once its BFC
-// block-offset is resvoled. E.g. their position depends on the final BFC
+// block-offset is resolved. E.g. their position depends on the final BFC
 // block-offset being known.
 enum NGAdjoiningObjectTypeValue {
   kAdjoiningNone = 0b000,
@@ -46,40 +51,30 @@ enum NGAdjoiningObjectTypeValue {
 };
 typedef int NGAdjoiningObjectTypes;
 
-// Tables have two passes, a "measure" pass (for determining the table row
-// height), and a "layout" pass.
-// See: https://drafts.csswg.org/css-tables-3/#row-layout
-//
-// This enum is used for communicating to *direct* children of table cells,
-// which layout mode the table cell is in.
-enum class NGTableCellChildLayoutMode {
-  kNotTableCellChild,  // The node isn't a table cell child.
-  kMeasure,            // A table cell child, in the "measure" mode.
-  kMeasureRestricted,  // A table cell child, in the "restricted-measure" mode.
-  kLayout              // A table cell child, in the "layout" mode.
-};
-
-// Percentages are frequently the same as the available-size, zero, or
-// indefinite (thanks non-quirks mode)! This enum encodes this information.
-enum NGPercentageStorage {
-  kSameAsAvailable,
-  kZero,
-  kIndefinite,
-  kRareDataPercentage
-};
-
-// Some layout algorithms (flow, tables) calculate their alignment baseline
-// differently if they are within an atomic-inline context.
-//
-// Other more modern layout algorithms (flex, grid) however ignore this flag
-// and always calculate the alignment baseline in the same way (returning the
-// "first-line").
+// The last baseline algorithm for an inline-blocks are complex. Depending on
+// the layout algorithm type it'll select the first (table, flex, grid) or last
+// (block-like) as the last baseline.
 enum class NGBaselineAlgorithmType {
-  // Compute the baseline of the first line box.
-  kFirstLine,
-  // Compute the baseline(s) for when we are within an inline-block context. If
-  // the child is block-flow it will produce both the first, and last baselines.
+  // Compute the baselines normally.
+  kDefault,
+  // Compute the baseline(s) for when we are within an inline-block context.
+  // This will select the first/last baseline as the "last" baseline depending
+  // on the layout algorithm.
   kInlineBlock
+};
+
+// The behavior of the 'auto' keyword when used with a main-size.
+enum class NGAutoBehavior : uint8_t {
+  // We should shrink-to-fit within the available space.
+  kFitContent,
+  // We should stretch to the available space, but if there is an aspect-ratio
+  // with a definite size in the opposite axis, we should transfer the definite
+  // size through the aspect-ratio, and be the resulting size. This is a "weak"
+  // stretch constraint.
+  kStretchImplicit,
+  // We should *always* stretch to the available space, even if we have an
+  // aspect-ratio. This is a "strong" stretch constraint.
+  kStretchExplicit
 };
 
 // Some layout algorithms have multiple layout passes. Between passes they
@@ -93,12 +88,23 @@ enum class NGCacheSlot { kLayout, kMeasure };
 // The NGConstraintSpace represents a set of constraints and available space
 // which a layout algorithm may produce a NGFragment within.
 class CORE_EXPORT NGConstraintSpace final {
-  USING_FAST_MALLOC(NGConstraintSpace);
+  // Though some STACK_ALLOCATED classes, |NGContainerFragmentBuilder| and
+  // |NGLineBreaker|, have reference to it, DISALLOW_NEW is applied here for
+  // performance reason.
+  DISALLOW_NEW();
 
  public:
-  // To ensure that the bfc_offset_, rare_data_ union doesn't get polluted,
-  // always initialize the bfc_offset_.
-  NGConstraintSpace() : bfc_offset_() {}
+  // Percentages are frequently the same as the available-size, zero, or
+  // indefinite (thanks non-quirks mode)! This enum encodes this information.
+  enum NGPercentageStorage {
+    kSameAsAvailable,
+    kZero,
+    kIndefinite,
+    kRareDataPercentage
+  };
+
+  NGConstraintSpace()
+      : NGConstraintSpace({WritingMode::kHorizontalTb, TextDirection::kLtr}) {}
 
   NGConstraintSpace(const NGConstraintSpace& other)
       : available_size_(other.available_size_),
@@ -148,6 +154,13 @@ class CORE_EXPORT NGConstraintSpace final {
     return *this;
   }
 
+  NGConstraintSpace CloneWithoutFragmentation() const {
+    DCHECK(HasBlockFragmentation());
+    NGConstraintSpace copy = *this;
+    copy.DisableFurtherFragmentation();
+    return copy;
+  }
+
   ~NGConstraintSpace() {
     if (HasRareData())
       delete rare_data_;
@@ -187,7 +200,7 @@ class CORE_EXPORT NGConstraintSpace final {
         bitfields_.percentage_inline_storage)) {
       default:
         NOTREACHED();
-        U_FALLTHROUGH;
+        [[fallthrough]];
       case kSameAsAvailable:
         return available_size_.inline_size;
       case kZero:
@@ -205,7 +218,7 @@ class CORE_EXPORT NGConstraintSpace final {
         static_cast<NGPercentageStorage>(bitfields_.percentage_block_storage)) {
       default:
         NOTREACHED();
-        U_FALLTHROUGH;
+        [[fallthrough]];
       case kSameAsAvailable:
         return available_size_.block_size;
       case kZero:
@@ -264,9 +277,14 @@ class CORE_EXPORT NGConstraintSpace final {
     return LayoutUnit();
   }
 
+  absl::optional<MinMaxSizes> OverrideMinMaxBlockSizes() const {
+    return HasRareData() ? rare_data_->OverrideMinMaxBlockSizes()
+                         : absl::nullopt;
+  }
+
   // Inline/block target stretch size constraints.
   // See:
-  // https://mathml-refresh.github.io/mathml-core/#dfn-inline-stretch-size-constraint
+  // https://w3c.github.io/mathml-core/#dfn-inline-stretch-size-constraint
   LayoutUnit TargetStretchInlineSize() const {
     return HasRareData() ? rare_data_->TargetStretchInlineSize()
                          : kIndefiniteSize;
@@ -276,22 +294,14 @@ class CORE_EXPORT NGConstraintSpace final {
     return TargetStretchInlineSize() != kIndefiniteSize;
   }
 
-  LayoutUnit TargetStretchAscentSize() const {
-    return HasRareData() ? rare_data_->TargetStretchAscentSize()
-                         : kIndefiniteSize;
-  }
+  struct MathTargetStretchBlockSizes {
+    LayoutUnit ascent;
+    LayoutUnit descent;
+  };
 
-  bool HasTargetStretchAscentSize() const {
-    return TargetStretchAscentSize() != kIndefiniteSize;
-  }
-
-  LayoutUnit TargetStretchDescentSize() const {
-    return HasRareData() ? rare_data_->TargetStretchDescentSize()
-                         : kIndefiniteSize;
-  }
-
-  bool HasTargetStretchDescentSize() const {
-    return TargetStretchDescentSize() != kIndefiniteSize;
+  absl::optional<MathTargetStretchBlockSizes> TargetStretchBlockSizes() const {
+    return HasRareData() ? rare_data_->TargetStretchBlockSizes()
+                         : absl::nullopt;
   }
 
   // Return the borders which should be used for a table-cell.
@@ -303,21 +313,20 @@ class CORE_EXPORT NGConstraintSpace final {
     return HasRareData() ? rare_data_->TableCellColumnIndex() : 0;
   }
 
-  // Return the "intrinsic" padding for a table-cell.
-  NGBoxStrut TableCellIntrinsicPadding() const {
-    return HasRareData() ? rare_data_->TableCellIntrinsicPadding()
-                         : NGBoxStrut();
-  }
-
   // Return the baseline offset which the table-cell children should align
   // their baseline to.
-  base::Optional<LayoutUnit> TableCellAlignmentBaseline() const {
+  absl::optional<LayoutUnit> TableCellAlignmentBaseline() const {
     return HasRareData() ? rare_data_->TableCellAlignmentBaseline()
-                         : base::nullopt;
+                         : absl::nullopt;
   }
 
   bool IsTableCellHiddenForPaint() const {
     return HasRareData() ? rare_data_->IsTableCellHiddenForPaint() : false;
+  }
+
+  bool IsTableCellWithCollapsedBorders() const {
+    return HasRareData() ? rare_data_->IsTableCellWithCollapsedBorders()
+                         : false;
   }
 
   const NGTableConstraintSpaceData* TableData() const {
@@ -332,6 +341,20 @@ class CORE_EXPORT NGConstraintSpace final {
     return HasRareData() ? rare_data_->TableSectionIndex() : kNotFound;
   }
 
+  // Return any current page name, specified on an ancestor, or here.
+  const AtomicString PageName() const {
+    return HasRareData() ? rare_data_->page_name : AtomicString();
+  }
+
+  // If we're block-fragmented AND the fragmentainer block-size is known, return
+  // the total block-size of the fragmentainer that is to be created. This value
+  // is inherited by descendant constraint spaces, as long as we don't enter
+  // anything monolithic, or establish a nested fragmentation context. Note that
+  // the value returned here is the actual size that will be set on the physical
+  // fragment representing the fragmentainer, and 0 is an allowed value, even if
+  // the fragmentation spec requires us to fit at least 1px of content in each
+  // fragmentainer. See the utility function FragmentainerCapacity() for more
+  // details.
   LayoutUnit FragmentainerBlockSize() const {
     return HasRareData() ? rare_data_->fragmentainer_block_size
                          : kIndefiniteSize;
@@ -355,16 +378,43 @@ class CORE_EXPORT NGConstraintSpace final {
     return true;
   }
 
-  // Return the block-offset from the block-start of the fragmentainer
-  // relative to the block-start of the current block formatting context in
-  // the current fragmentainer. Note that if the current block formatting
-  // context starts in a previous fragmentainer, we'll return the block-offset
-  // relative to the current fragmentainer.
-  LayoutUnit FragmentainerOffsetAtBfc() const {
+  // Return the border edge block-offset from the block-start of the
+  // fragmentainer relative to the block-start of the current block in the
+  // current fragmentainer. Note that if the current block starts in a previous
+  // fragmentainer, we'll return the block-offset relative to the current
+  // fragmentainer.
+  LayoutUnit FragmentainerOffset() const {
     DCHECK(HasBlockFragmentation());
     if (HasRareData())
-      return rare_data_->fragmentainer_offset_at_bfc;
+      return rare_data_->fragmentainer_offset;
     return LayoutUnit();
+  }
+
+  // Return true if we're at the start of the fragmentainer. In most cases this
+  // will be equal to "FragmentainerOffset() <= LayoutUnit()", but not
+  // necessarily for floats, since float margins are unbreakable. If a node is
+  // at the start of the fragmentainer, and the node has an untruncated positive
+  // block-start margin, FragmentainerOffset() will be greater than zero. This
+  // normally means that the node *isn't* at the start of the fragmentainer, but
+  // for floats, this should still be considered to be at the start.
+  bool IsAtFragmentainerStart() const {
+    return HasRareData() && rare_data_->is_at_fragmentainer_start;
+  }
+
+  // Return true if the content will be repeated in the next fragmentainer.
+  // This is the case when an element is fixed positioned (printing only), or a
+  // repeatable table header / footer. Will return false even for repeatable
+  // content, if we can tell for sure that this is the last time that the node
+  // will repeat.
+  bool ShouldRepeat() const {
+    return HasRareData() && rare_data_->should_repeat;
+  }
+
+  // Return true if we're inside repeatable content inside block fragmentation,
+  // which is the case when an element is fixed positioned (printing only), or a
+  // repeatable table header / footer.
+  bool IsInsideRepeatableContent() const {
+    return HasRareData() && rare_data_->is_inside_repeatable_content;
   }
 
   // Whether the current constraint space is for the newly established
@@ -375,9 +425,6 @@ class CORE_EXPORT NGConstraintSpace final {
 
   // Whether the current node is a table-cell.
   bool IsTableCell() const { return bitfields_.is_table_cell; }
-
-  // True if node is either LayoutTableCell or LayoutNGTableCellLegacy
-  bool IsLegacyTableCell() const { return bitfields_.is_legacy_table_cell; }
 
   // Whether the table-cell fragment should be hidden (not painted) if it has
   // no children.
@@ -407,12 +454,6 @@ class CORE_EXPORT NGConstraintSpace final {
     return bitfields_.ancestor_has_clearance_past_adjoining_floats;
   }
 
-  // Returns if the parent layout needs the baseline from this layout.
-  //
-  // This bit is only used for skipping querying baseline information from
-  // legacy layout.
-  bool NeedsBaseline() const { return bitfields_.needs_baseline; }
-
   // How the baseline for the fragment should be calculated, see documentation
   // for |NGBaselineAlgorithmType|.
   NGBaselineAlgorithmType BaselineAlgorithmType() const {
@@ -436,14 +477,47 @@ class CORE_EXPORT NGConstraintSpace final {
 
   bool IsFixedBlockSize() const { return bitfields_.is_fixed_block_size; }
 
-  // Whether a fixed block-size should be considered indefinite.
-  bool IsFixedBlockSizeIndefinite() const {
-    return bitfields_.is_fixed_block_size_indefinite;
+  // The constraint space can have any of the combinations:
+  // (1) !IsFixedBlockSize && !IsInitialBlockSizeIndefinite -- default
+  // (2) !IsFixedBlockSize && IsInitialBlockSizeIndefinite -- Treat your height
+  //     as indefinite when calculating your intrinsic block size.
+  // (3) IsFixedBlockSize && !IsInitialBlockSizeIndefinite -- You must be this
+  //     size and your children can resolve % block size against it.
+  // (4) IsFixedBlockSize && IsInitialBlockSizeIndefinite -- You must be this
+  //     size but your children *cannot* resolve % block size against it.
+  //
+  // The layout machinery (CalculateChildPercentageSize,
+  // CalculateInitialFragmentGeometry, etc) handles all this, so individual
+  // layout implementations don't need to do anything special UNLESS they let
+  // specified block sizes influence the value passed to
+  // SetIntrinsicBlock(intrinsic_block_size). If that happens, they need to
+  // explicitly handle case 2 above.
+  bool IsInitialBlockSizeIndefinite() const {
+    return bitfields_.is_initial_block_size_indefinite;
   }
 
-  // Whether an auto inline-size should be interpreted as shrink-to-fit
-  // (ie. fit-content). This is used for inline-block, floats, etc.
-  bool IsShrinkToFit() const { return bitfields_.is_shrink_to_fit; }
+  // Returns the behavior of an 'auto' inline/block main-size.
+  NGAutoBehavior InlineAutoBehavior() const {
+    return static_cast<NGAutoBehavior>(bitfields_.inline_auto_behavior);
+  }
+  NGAutoBehavior BlockAutoBehavior() const {
+    return static_cast<NGAutoBehavior>(bitfields_.block_auto_behavior);
+  }
+  bool IsInlineAutoBehaviorStretch() const {
+    return InlineAutoBehavior() != NGAutoBehavior::kFitContent;
+  }
+  bool IsBlockAutoBehaviorStretch() const {
+    return BlockAutoBehavior() != NGAutoBehavior::kFitContent;
+  }
+
+  // If this is a child of a table-cell.
+  bool IsTableCellChild() const { return bitfields_.is_table_cell_child; }
+
+  // If we should apply the restricted block-size behavior. See where this is
+  // set within |NGBlockLayoutAlgorithm| for the conditions when this applies.
+  bool IsRestrictedBlockSizeTableCellChild() const {
+    return bitfields_.is_restricted_block_size_table_cell_child;
+  }
 
   bool IsPaintedAtomically() const { return bitfields_.is_painted_atomically; }
 
@@ -461,10 +535,36 @@ class CORE_EXPORT NGConstraintSpace final {
     return BlockFragmentationType() != kFragmentNone;
   }
 
+  // Return true if the node actually participates in block fragmentation, that
+  // was disabled due to clipped overflow.
+  bool IsBlockFragmentationForcedOff() const {
+    return HasRareData() && rare_data_->is_block_fragmentation_forced_off;
+  }
+
+  // Return true if the document is paginated (for printing).
+  bool IsPaginated() const {
+    // TODO(layout-dev): This will not work correctly if establishing a nested
+    // fragmentation context (e.g. multicol) when paginated.
+    return BlockFragmentationType() == kFragmentPage;
+  }
+
+  // Return true if we're not allowed to break until we have placed some
+  // content. This will prevent last-resort breaks when there's no container
+  // separation, and we'll instead overflow the fragmentainer.
+  bool RequiresContentBeforeBreaking() const {
+    return HasRareData() && rare_data_->requires_content_before_breaking;
+  }
+
   // Return true if there's an ancestor multicol container with balanced
-  // columns.
+  // columns that we might affect.
   bool IsInsideBalancedColumns() const {
     return HasRareData() && rare_data_->is_inside_balanced_columns;
+  }
+
+  // Return true if forced breaks inside should be ignored. This is needed by
+  // out-of-flow positioned elements during column balancing.
+  bool ShouldIgnoreForcedBreaks() const {
+    return HasRareData() && rare_data_->should_ignore_forced_breaks;
   }
 
   // Return true if we're participating in the same block formatting context as
@@ -473,20 +573,51 @@ class CORE_EXPORT NGConstraintSpace final {
     return HasRareData() && rare_data_->is_in_column_bfc;
   }
 
-  // Get the appeal of the best breakpoint found so far. When progressing
-  // through layout, we know that we don't need to consider less appealing
-  // breakpoints than this.
-  NGBreakAppeal EarlyBreakAppeal() const {
-    if (!HasRareData())
-      return kBreakAppealLastResort;
-    return static_cast<NGBreakAppeal>(rare_data_->early_break_appeal);
+  // True if there's a preceding break in the current fragmentainer (typically a
+  // break in a parallel flow, or we wouldn't attempt to keep laying out).
+  bool IsPastBreak() const {
+    return HasRareData() && rare_data_->is_past_break;
   }
 
-  // Returns if this node is a table cell child, and which table layout mode
-  // is occurring.
-  NGTableCellChildLayoutMode TableCellChildLayoutMode() const {
-    return static_cast<NGTableCellChildLayoutMode>(
-        bitfields_.table_cell_child_layout_mode);
+  // Return true if we would be at least our intrinsic block-size.
+  //
+  // During fragmentation we may have a stretch block-size (or similar) set,
+  // which is determined without considering fragmentation. Without this flag
+  // we may have content overflow which doesn't match web developers
+  // expectations.
+  // Grid (for example) will set this flag, and expand the row with this item in
+  // order to accommodate the overflow.
+  bool MinBlockSizeShouldEncompassIntrinsicSize() const {
+    return HasRareData() &&
+           rare_data_->min_block_size_should_encompass_intrinsic_size;
+  }
+
+  // Return the minimum break appeal allowed. This is used by multicol nested
+  // inside another fragmentation context, if we're at a column row when there's
+  // already content progress in the outer fragmentainer. The idea is that we
+  // might avoid imperfect breaks, if we push content to the next column row in
+  // the next outer fragmentainer (where there might be more space). In this
+  // mode we'll set a high break appeal before the first child inside a resumed
+  // container, so that any subsequent imperfect break will be weighed against
+  // this. When a minimum is set, the code needs to guarantee that there will be
+  // a column further ahead (in the next outer fragmentainer) where any break
+  // appeal will be allowed (as usual), or we might get stuck in an infinite
+  // loop, pushing the same content ahead of us, while creating columns with
+  // nothing in them.
+  NGBreakAppeal MinBreakAppeal() const {
+    if (!HasRareData())
+      return kBreakAppealLastResort;
+    return static_cast<NGBreakAppeal>(rare_data_->min_break_appeal);
+  }
+
+  // In some cases, we may want to calculate the intial-break-before and
+  // final-break-after values for a node outside of the normal fragmentation
+  // pass. For example, the break values of flex/grid items in a row are
+  // propagated to the row itself. Calculating the intial-break-before and
+  // final-break-after for these items can be used to determine the break
+  // appeal of a row before the full fragmentation layout pass is performed.
+  bool ShouldPropagateChildBreakValues() const {
+    return HasRareData() && rare_data_->propagate_child_break_values;
   }
 
   // Return true if the block size of the table-cell should be considered
@@ -542,16 +673,16 @@ class CORE_EXPORT NGConstraintSpace final {
   //
   // This value should be propagated to child layouts if the current layout
   // hasn't resolved its BFC offset yet.
-  base::Optional<LayoutUnit> ForcedBfcBlockOffset() const {
-    return HasRareData() ? base::pass_optional(rare_data_->ForcedBfcBlockOffset()) : base::nullopt;
+  absl::optional<LayoutUnit> ForcedBfcBlockOffset() const {
+    return HasRareData() ? rare_data_->ForcedBfcBlockOffset() : absl::nullopt;
   }
 
   // If present, this is a hint as to where place any adjoining objects. This
   // isn't necessarily the final position, just where they ended up in a
   // previous layout pass.
-  base::Optional<LayoutUnit> OptimisticBfcBlockOffset() const {
-    return HasRareData() ? base::pass_optional(rare_data_->OptimisticBfcBlockOffset())
-                         : base::nullopt;
+  absl::optional<LayoutUnit> OptimisticBfcBlockOffset() const {
+    return HasRareData() ? rare_data_->OptimisticBfcBlockOffset()
+                         : absl::nullopt;
   }
 
   // The "expected" BFC block-offset is:
@@ -603,8 +734,27 @@ class CORE_EXPORT NGConstraintSpace final {
     return HasRareData() ? rare_data_->ClearanceOffset() : LayoutUnit::Min();
   }
 
-  base::Optional<int> LinesUntilClamp() const {
-    return HasRareData() ? rare_data_->LinesUntilClamp() : base::nullopt;
+  // Return true if the BFC block-offset has been increased by the presence of
+  // floats (e.g. clearance).
+  bool IsPushedByFloats() const {
+    return HasRareData() && rare_data_->is_pushed_by_floats;
+  }
+
+  // Return true if this is participating within a -webkit-line-clamp context.
+  bool IsLineClampContext() const {
+    return HasRareData() && rare_data_->is_line_clamp_context;
+  }
+
+  absl::optional<int> LinesUntilClamp() const {
+    return HasRareData() ? rare_data_->LinesUntilClamp() : absl::nullopt;
+  }
+
+  const NGGridLayoutTrackCollection* SubgriddedColumns() const {
+    return HasRareData() ? rare_data_->SubgriddedColumns() : nullptr;
+  }
+
+  const NGGridLayoutTrackCollection* SubgriddedRows() const {
+    return HasRareData() ? rare_data_->SubgriddedRows() : nullptr;
   }
 
   // Return true if the two constraint spaces are similar enough that it *may*
@@ -628,10 +778,19 @@ class CORE_EXPORT NGConstraintSpace final {
     return other.rare_data_->IsInitialForMaySkipLayout();
   }
 
-  // Returns true if the size constraints (shrink-to-fit, fixed-inline-size)
-  // are equal.
-  bool AreSizeConstraintsEqual(const NGConstraintSpace& other) const {
-    return bitfields_.AreSizeConstraintsEqual(other.bitfields_);
+  // Returns true if the size constraints (stretch-block-size,
+  // fixed-inline-size) are equal.
+  bool AreInlineSizeConstraintsEqual(const NGConstraintSpace& other) const {
+    return bitfields_.AreInlineSizeConstraintsEqual(other.bitfields_);
+  }
+  bool AreBlockSizeConstraintsEqual(const NGConstraintSpace& other) const {
+    if (!bitfields_.AreBlockSizeConstraintsEqual(other.bitfields_))
+      return false;
+    if (!HasRareData() && !other.HasRareData())
+      return true;
+    return TableCellAlignmentBaseline() == other.TableCellAlignmentBaseline() &&
+           MinBlockSizeShouldEncompassIntrinsicSize() ==
+               other.MinBlockSizeShouldEncompassIntrinsicSize();
   }
 
   bool AreSizesEqual(const NGConstraintSpace& other) const {
@@ -677,6 +836,12 @@ class CORE_EXPORT NGConstraintSpace final {
     return true;
   }
 
+  void ReplaceTableRowData(const NGTableConstraintSpaceData& table_data,
+                           const wtf_size_t row_index) {
+    DCHECK(HasRareData());
+    rare_data_->ReplaceTableRowData(table_data, row_index);
+  }
+
   String ToString() const;
 
  private:
@@ -699,90 +864,127 @@ class CORE_EXPORT NGConstraintSpace final {
    public:
     // |RareData| unions different types of data which are mutually exclusive.
     // They fall into the following categories:
-    enum DataUnionType {
+    enum class DataUnionType {
       kNone,
       kBlockData,         // An inflow block which doesn't establish a new FC.
       kTableCellData,     // A table-cell (display: table-cell).
       kTableRowData,      // A table-row (display: table-row).
       kTableSectionData,  // A table-section (display: table-section).
       kCustomData,        // A custom layout (display: layout(foo)).
-      kStretchData        // The target inline/block stretch sizes for MathML.
+      kStretchData,       // The target inline/block stretch sizes for MathML.
+      kSubgridData        // A nested grid with subgridded columns/rows.
     };
 
     explicit RareData(const NGBfcOffset bfc_offset)
         : bfc_offset(bfc_offset),
-          data_union_type(static_cast<unsigned>(kNone)),
+          data_union_type(static_cast<unsigned>(DataUnionType::kNone)),
+          is_line_clamp_context(false),
+          is_pushed_by_floats(false),
           is_restricted_block_size_table_cell(false),
           hide_table_cell_if_empty(false),
           block_direction_fragmentation_type(
               static_cast<unsigned>(kFragmentNone)),
+          is_block_fragmentation_forced_off(false),
+          requires_content_before_breaking(false),
           is_inside_balanced_columns(false),
+          should_ignore_forced_breaks(false),
           is_in_column_bfc(false),
-          early_break_appeal(kBreakAppealLastResort) {}
+          is_past_break(false),
+          min_block_size_should_encompass_intrinsic_size(false),
+          has_override_min_max_block_sizes(false),
+          min_break_appeal(kBreakAppealLastResort),
+          propagate_child_break_values(false),
+          is_at_fragmentainer_start(false),
+          should_repeat(false),
+          is_inside_repeatable_content(false) {}
     RareData(const RareData& other)
         : percentage_resolution_size(other.percentage_resolution_size),
           replaced_percentage_resolution_block_size(
               other.replaced_percentage_resolution_block_size),
           block_start_annotation_space(other.block_start_annotation_space),
           bfc_offset(other.bfc_offset),
+          override_min_max_block_sizes(other.override_min_max_block_sizes),
+          page_name(other.page_name),
           fragmentainer_block_size(other.fragmentainer_block_size),
-          fragmentainer_offset_at_bfc(other.fragmentainer_offset_at_bfc),
+          fragmentainer_offset(other.fragmentainer_offset),
           data_union_type(other.data_union_type),
+          is_line_clamp_context(other.is_line_clamp_context),
+          is_pushed_by_floats(other.is_pushed_by_floats),
           is_restricted_block_size_table_cell(
               other.is_restricted_block_size_table_cell),
           hide_table_cell_if_empty(other.hide_table_cell_if_empty),
           block_direction_fragmentation_type(
               other.block_direction_fragmentation_type),
+          is_block_fragmentation_forced_off(
+              other.is_block_fragmentation_forced_off),
+          requires_content_before_breaking(
+              other.requires_content_before_breaking),
           is_inside_balanced_columns(other.is_inside_balanced_columns),
+          should_ignore_forced_breaks(other.should_ignore_forced_breaks),
           is_in_column_bfc(other.is_in_column_bfc),
-          early_break_appeal(other.early_break_appeal) {
-      switch (data_union_type) {
-        case kNone:
+          is_past_break(other.is_past_break),
+          min_block_size_should_encompass_intrinsic_size(
+              other.min_block_size_should_encompass_intrinsic_size),
+          has_override_min_max_block_sizes(
+              other.has_override_min_max_block_sizes),
+          min_break_appeal(other.min_break_appeal),
+          propagate_child_break_values(other.propagate_child_break_values),
+          is_at_fragmentainer_start(other.is_at_fragmentainer_start),
+          should_repeat(other.should_repeat),
+          is_inside_repeatable_content(other.is_inside_repeatable_content) {
+      switch (GetDataUnionType()) {
+        case DataUnionType::kNone:
           break;
-        case kBlockData:
+        case DataUnionType::kBlockData:
           new (&block_data_) BlockData(other.block_data_);
           break;
-        case kTableCellData:
+        case DataUnionType::kTableCellData:
           new (&table_cell_data_) TableCellData(other.table_cell_data_);
           break;
-        case kTableRowData:
+        case DataUnionType::kTableRowData:
           new (&table_row_data_) TableRowData(other.table_row_data_);
           break;
-        case kTableSectionData:
+        case DataUnionType::kTableSectionData:
           new (&table_section_data_)
               TableSectionData(other.table_section_data_);
           break;
-        case kCustomData:
+        case DataUnionType::kCustomData:
           new (&custom_data_) CustomData(other.custom_data_);
           break;
-        case kStretchData:
+        case DataUnionType::kStretchData:
           new (&stretch_data_) StretchData(other.stretch_data_);
+          break;
+        case DataUnionType::kSubgridData:
+          new (&subgrid_data_) SubgridData(other.subgrid_data_);
           break;
         default:
           NOTREACHED();
       }
     }
     ~RareData() {
-      switch (data_union_type) {
-        case kNone:
+      switch (GetDataUnionType()) {
+        case DataUnionType::kNone:
           break;
-        case kBlockData:
+        case DataUnionType::kBlockData:
           block_data_.~BlockData();
           break;
-        case kTableCellData:
+        case DataUnionType::kTableCellData:
           table_cell_data_.~TableCellData();
           break;
-        case kTableRowData:
+        case DataUnionType::kTableRowData:
           table_row_data_.~TableRowData();
           break;
-        case kTableSectionData:
+        case DataUnionType::kTableSectionData:
           table_section_data_.~TableSectionData();
           break;
-        case kCustomData:
+        case DataUnionType::kCustomData:
           custom_data_.~CustomData();
           break;
-        case kStretchData:
+        case DataUnionType::kStretchData:
           stretch_data_.~StretchData();
+          break;
+        case DataUnionType::kSubgridData:
+          subgrid_data_.~SubgridData();
           break;
         default:
           NOTREACHED();
@@ -790,34 +992,45 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     bool MaySkipLayout(const RareData& other) const {
-      if (fragmentainer_block_size != other.fragmentainer_block_size ||
-          fragmentainer_offset_at_bfc != other.fragmentainer_offset_at_bfc ||
-          data_union_type != other.data_union_type ||
+      if (data_union_type != other.data_union_type ||
+          is_line_clamp_context != other.is_line_clamp_context ||
+          is_pushed_by_floats != other.is_pushed_by_floats ||
           is_restricted_block_size_table_cell !=
               other.is_restricted_block_size_table_cell ||
           hide_table_cell_if_empty != other.hide_table_cell_if_empty ||
           block_direction_fragmentation_type !=
               other.block_direction_fragmentation_type ||
+          is_block_fragmentation_forced_off !=
+              other.is_block_fragmentation_forced_off ||
+          requires_content_before_breaking !=
+              other.requires_content_before_breaking ||
           is_inside_balanced_columns != other.is_inside_balanced_columns ||
+          should_ignore_forced_breaks != other.should_ignore_forced_breaks ||
           is_in_column_bfc != other.is_in_column_bfc ||
-          early_break_appeal != other.early_break_appeal)
+          is_past_break != other.is_past_break ||
+          min_break_appeal != other.min_break_appeal ||
+          propagate_child_break_values != other.propagate_child_break_values ||
+          should_repeat != other.should_repeat ||
+          is_inside_repeatable_content != other.is_inside_repeatable_content)
         return false;
 
-      switch (data_union_type) {
-        case kNone:
+      switch (GetDataUnionType()) {
+        case DataUnionType::kNone:
           return true;
-        case kBlockData:
+        case DataUnionType::kBlockData:
           return block_data_.MaySkipLayout(other.block_data_);
-        case kTableCellData:
+        case DataUnionType::kTableCellData:
           return table_cell_data_.MaySkipLayout(other.table_cell_data_);
-        case kTableRowData:
+        case DataUnionType::kTableRowData:
           return table_row_data_.MaySkipLayout(other.table_row_data_);
-        case kTableSectionData:
+        case DataUnionType::kTableSectionData:
           return table_section_data_.MaySkipLayout(other.table_section_data_);
-        case kCustomData:
+        case DataUnionType::kCustomData:
           return custom_data_.MaySkipLayout(other.custom_data_);
-        case kStretchData:
+        case DataUnionType::kStretchData:
           return stretch_data_.MaySkipLayout(other.stretch_data_);
+        case DataUnionType::kSubgridData:
+          return subgrid_data_.MaySkipLayout(other.subgrid_data_);
       }
       NOTREACHED();
       return false;
@@ -825,29 +1038,36 @@ class CORE_EXPORT NGConstraintSpace final {
 
     // Must be kept in sync with members checked within |MaySkipLayout|.
     bool IsInitialForMaySkipLayout() const {
-      if (fragmentainer_block_size != kIndefiniteSize ||
-          fragmentainer_offset_at_bfc || is_restricted_block_size_table_cell ||
+      if (page_name || fragmentainer_block_size != kIndefiniteSize ||
+          fragmentainer_offset || is_line_clamp_context ||
+          is_pushed_by_floats || is_restricted_block_size_table_cell ||
           hide_table_cell_if_empty ||
           block_direction_fragmentation_type != kFragmentNone ||
-          is_inside_balanced_columns || is_in_column_bfc ||
-          early_break_appeal != kBreakAppealLastResort)
+          is_block_fragmentation_forced_off ||
+          requires_content_before_breaking || is_inside_balanced_columns ||
+          should_ignore_forced_breaks || is_in_column_bfc || is_past_break ||
+          min_break_appeal != kBreakAppealLastResort ||
+          propagate_child_break_values || is_at_fragmentainer_start ||
+          should_repeat || is_inside_repeatable_content)
         return false;
 
-      switch (data_union_type) {
-        case kNone:
+      switch (GetDataUnionType()) {
+        case DataUnionType::kNone:
           return true;
-        case kBlockData:
+        case DataUnionType::kBlockData:
           return block_data_.IsInitialForMaySkipLayout();
-        case kTableCellData:
+        case DataUnionType::kTableCellData:
           return table_cell_data_.IsInitialForMaySkipLayout();
-        case kTableRowData:
+        case DataUnionType::kTableRowData:
           return table_row_data_.IsInitialForMaySkipLayout();
-        case kTableSectionData:
+        case DataUnionType::kTableSectionData:
           return table_section_data_.IsInitialForMaySkipLayout();
-        case kCustomData:
+        case DataUnionType::kCustomData:
           return custom_data_.IsInitialForMaySkipLayout();
-        case kStretchData:
+        case DataUnionType::kStretchData:
           return stretch_data_.IsInitialForMaySkipLayout();
+        case DataUnionType::kSubgridData:
+          return subgrid_data_.IsInitialForMaySkipLayout();
       }
       NOTREACHED();
       return false;
@@ -862,18 +1082,19 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     NGMarginStrut MarginStrut() const {
-      return data_union_type == kBlockData ? block_data_.margin_strut
-                                           : NGMarginStrut();
+      return GetDataUnionType() == DataUnionType::kBlockData
+                 ? block_data_.margin_strut
+                 : NGMarginStrut();
     }
 
     void SetMarginStrut(const NGMarginStrut& margin_strut) {
       EnsureBlockData()->margin_strut = margin_strut;
     }
 
-    base::Optional<LayoutUnit> OptimisticBfcBlockOffset() const {
-      return data_union_type == kBlockData
-                 ? base::pass_optional(block_data_.optimistic_bfc_block_offset)
-                 : base::nullopt;
+    absl::optional<LayoutUnit> OptimisticBfcBlockOffset() const {
+      return GetDataUnionType() == DataUnionType::kBlockData
+                 ? block_data_.optimistic_bfc_block_offset
+                 : absl::nullopt;
     }
 
     void SetOptimisticBfcBlockOffset(LayoutUnit optimistic_bfc_block_offset) {
@@ -881,10 +1102,10 @@ class CORE_EXPORT NGConstraintSpace final {
           optimistic_bfc_block_offset;
     }
 
-    base::Optional<LayoutUnit> ForcedBfcBlockOffset() const {
-      return data_union_type == kBlockData
-                 ? base::pass_optional(block_data_.forced_bfc_block_offset)
-                 : base::nullopt;
+    absl::optional<LayoutUnit> ForcedBfcBlockOffset() const {
+      return GetDataUnionType() == DataUnionType::kBlockData
+                 ? block_data_.forced_bfc_block_offset
+                 : absl::nullopt;
     }
 
     void SetForcedBfcBlockOffset(LayoutUnit forced_bfc_block_offset) {
@@ -892,17 +1113,35 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     LayoutUnit ClearanceOffset() const {
-      return data_union_type == kBlockData ? block_data_.clearance_offset
-                                           : LayoutUnit::Min();
+      return GetDataUnionType() == DataUnionType::kBlockData
+                 ? block_data_.clearance_offset
+                 : LayoutUnit::Min();
+    }
+
+    absl::optional<MinMaxSizes> OverrideMinMaxBlockSizes() const {
+      if (has_override_min_max_block_sizes)
+        return override_min_max_block_sizes;
+      return absl::nullopt;
+    }
+
+    void SetOverrideMinMaxBlockSizes(const MinMaxSizes& min_max_sizes) {
+      if (min_max_sizes.IsEmpty()) {
+        has_override_min_max_block_sizes = false;
+        return;
+      }
+      DCHECK_GE(min_max_sizes.max_size, min_max_sizes.min_size);
+      has_override_min_max_block_sizes = true;
+      override_min_max_block_sizes = min_max_sizes;
     }
 
     void SetClearanceOffset(LayoutUnit clearance_offset) {
       EnsureBlockData()->clearance_offset = clearance_offset;
     }
 
-    base::Optional<int> LinesUntilClamp() const {
-      return data_union_type == kBlockData ? block_data_.lines_until_clamp
-                                           : base::nullopt;
+    absl::optional<int> LinesUntilClamp() const {
+      return GetDataUnionType() == DataUnionType::kBlockData
+                 ? block_data_.lines_until_clamp
+                 : absl::nullopt;
     }
 
     void SetLinesUntilClamp(int value) {
@@ -910,7 +1149,7 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     NGBoxStrut TableCellBorders() const {
-      return data_union_type == kTableCellData
+      return GetDataUnionType() == DataUnionType::kTableCellData
                  ? table_cell_data_.table_cell_borders
                  : NGBoxStrut();
     }
@@ -919,26 +1158,8 @@ class CORE_EXPORT NGConstraintSpace final {
       EnsureTableCellData()->table_cell_borders = table_cell_borders;
     }
 
-    NGBoxStrut TableCellIntrinsicPadding() const {
-      return data_union_type == kTableCellData
-                 ? NGBoxStrut(
-                       LayoutUnit(), LayoutUnit(),
-                       table_cell_data_
-                           .table_cell_intrinsic_padding_block_start,
-                       table_cell_data_.table_cell_intrinsic_padding_block_end)
-                 : NGBoxStrut();
-    }
-
-    void SetTableCellIntrinsicPadding(
-        const NGBoxStrut& table_cell_intrinsic_padding) {
-      EnsureTableCellData()->table_cell_intrinsic_padding_block_start =
-          table_cell_intrinsic_padding.block_start;
-      EnsureTableCellData()->table_cell_intrinsic_padding_block_end =
-          table_cell_intrinsic_padding.block_end;
-    }
-
     wtf_size_t TableCellColumnIndex() const {
-      return data_union_type == kTableCellData
+      return GetDataUnionType() == DataUnionType::kTableCellData
                  ? table_cell_data_.table_cell_column_index
                  : 0;
     }
@@ -947,10 +1168,10 @@ class CORE_EXPORT NGConstraintSpace final {
       EnsureTableCellData()->table_cell_column_index = table_cell_column_index;
     }
 
-    base::Optional<LayoutUnit> TableCellAlignmentBaseline() const {
-      return data_union_type == kTableCellData
+    absl::optional<LayoutUnit> TableCellAlignmentBaseline() const {
+      return GetDataUnionType() == DataUnionType::kTableCellData
                  ? table_cell_data_.table_cell_alignment_baseline
-                 : base::nullopt;
+                 : absl::nullopt;
     }
 
     void SetTableCellAlignmentBaseline(
@@ -960,12 +1181,21 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     bool IsTableCellHiddenForPaint() const {
-      return data_union_type == kTableCellData &&
+      return GetDataUnionType() == DataUnionType::kTableCellData &&
              table_cell_data_.is_hidden_for_paint;
     }
 
     void SetIsTableCellHiddenForPaint(bool is_hidden_for_paint) {
       EnsureTableCellData()->is_hidden_for_paint = is_hidden_for_paint;
+    }
+
+    bool IsTableCellWithCollapsedBorders() const {
+      return GetDataUnionType() == DataUnionType::kTableCellData &&
+             table_cell_data_.has_collapsed_borders;
+    }
+
+    void SetIsTableCellWithCollapsedBorders(bool has_collapsed_borders) {
+      EnsureTableCellData()->has_collapsed_borders = has_collapsed_borders;
     }
 
     void SetTableRowData(
@@ -982,27 +1212,41 @@ class CORE_EXPORT NGConstraintSpace final {
       EnsureTableSectionData()->section_index = section_index;
     }
 
+    void ReplaceTableRowData(const NGTableConstraintSpaceData& table_data,
+                             wtf_size_t row_index) {
+      DCHECK_EQ(GetDataUnionType(), DataUnionType::kTableRowData);
+      DCHECK(
+          table_data.IsTableSpecificDataEqual(*(table_row_data_.table_data)));
+      DCHECK(table_data.MaySkipRowLayout(*table_row_data_.table_data, row_index,
+                                         table_row_data_.row_index));
+      table_row_data_.table_data = &table_data;
+      table_row_data_.row_index = row_index;
+    }
+
     const NGTableConstraintSpaceData* TableData() {
-      if (data_union_type == kTableRowData)
-        return EnsureTableRowData()->table_data.get();
-      if (data_union_type == kTableSectionData)
-        return EnsureTableSectionData()->table_data.get();
+      if (GetDataUnionType() == DataUnionType::kTableRowData)
+        return table_row_data_.table_data.get();
+      if (GetDataUnionType() == DataUnionType::kTableSectionData)
+        return table_section_data_.table_data.get();
       return nullptr;
     }
 
-    wtf_size_t TableRowIndex() {
-      return data_union_type == kTableRowData ? EnsureTableRowData()->row_index
-                                              : kNotFound;
+    wtf_size_t TableRowIndex() const {
+      return GetDataUnionType() == DataUnionType::kTableRowData
+                 ? table_row_data_.row_index
+                 : kNotFound;
     }
 
-    wtf_size_t TableSectionIndex() {
-      return data_union_type == kTableSectionData
-                 ? EnsureTableSectionData()->section_index
+    wtf_size_t TableSectionIndex() const {
+      return GetDataUnionType() == DataUnionType::kTableSectionData
+                 ? table_section_data_.section_index
                  : kNotFound;
     }
 
     SerializedScriptValue* CustomLayoutData() const {
-      return data_union_type == kCustomData ? custom_data_.data.get() : nullptr;
+      return GetDataUnionType() == DataUnionType::kCustomData
+                 ? custom_data_.data.get()
+                 : nullptr;
     }
 
     void SetCustomLayoutData(
@@ -1011,7 +1255,7 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     LayoutUnit TargetStretchInlineSize() const {
-      return data_union_type == kStretchData
+      return GetDataUnionType() == DataUnionType::kStretchData
                  ? stretch_data_.target_stretch_inline_size
                  : kIndefiniteSize;
     }
@@ -1021,45 +1265,77 @@ class CORE_EXPORT NGConstraintSpace final {
           target_stretch_inline_size;
     }
 
-    LayoutUnit TargetStretchAscentSize() const {
-      return data_union_type == kStretchData
-                 ? stretch_data_.target_stretch_ascent_size
-                 : kIndefiniteSize;
+    absl::optional<MathTargetStretchBlockSizes> TargetStretchBlockSizes()
+        const {
+      return GetDataUnionType() == DataUnionType::kStretchData
+                 ? stretch_data_.target_stretch_block_sizes
+                 : absl::nullopt;
     }
 
-    void SetTargetStretchAscentSize(LayoutUnit target_stretch_ascent_size) {
-      EnsureStretchData()->target_stretch_ascent_size =
-          target_stretch_ascent_size;
+    void SetTargetStretchBlockSizes(
+        MathTargetStretchBlockSizes target_stretch_block_sizes) {
+      EnsureStretchData()->target_stretch_block_sizes =
+          target_stretch_block_sizes;
     }
 
-    LayoutUnit TargetStretchDescentSize() const {
-      return data_union_type == kStretchData
-                 ? stretch_data_.target_stretch_descent_size
-                 : kIndefiniteSize;
+    const NGGridLayoutTrackCollection* SubgriddedColumns() const {
+      return GetDataUnionType() == DataUnionType::kSubgridData
+                 ? subgrid_data_.layout_data.columns()
+                 : nullptr;
     }
 
-    void SetTargetStretchDescentSize(LayoutUnit target_stretch_descent_size) {
-      EnsureStretchData()->target_stretch_descent_size =
-          target_stretch_descent_size;
+    void SetSubgriddedColumns(
+        std::unique_ptr<NGGridLayoutTrackCollection> columns) {
+      EnsureSubgridData()->layout_data.SetTrackCollection(std::move(columns));
+    }
+
+    const NGGridLayoutTrackCollection* SubgriddedRows() const {
+      return GetDataUnionType() == DataUnionType::kSubgridData
+                 ? subgrid_data_.layout_data.rows()
+                 : nullptr;
+    }
+
+    void SetSubgriddedRows(std::unique_ptr<NGGridLayoutTrackCollection> rows) {
+      EnsureSubgridData()->layout_data.SetTrackCollection(std::move(rows));
+    }
+
+    DataUnionType GetDataUnionType() const {
+      return static_cast<DataUnionType>(data_union_type);
     }
 
     LogicalSize percentage_resolution_size;
     LayoutUnit replaced_percentage_resolution_block_size;
     LayoutUnit block_start_annotation_space;
     NGBfcOffset bfc_offset;
+    MinMaxSizes override_min_max_block_sizes;
 
+    AtomicString page_name;
     LayoutUnit fragmentainer_block_size = kIndefiniteSize;
-    LayoutUnit fragmentainer_offset_at_bfc;
+    LayoutUnit fragmentainer_offset;
 
     unsigned data_union_type : 3;
+
+    unsigned is_line_clamp_context : 1;
+    unsigned is_pushed_by_floats : 1;
 
     unsigned is_restricted_block_size_table_cell : 1;
     unsigned hide_table_cell_if_empty : 1;
 
     unsigned block_direction_fragmentation_type : 2;
+    unsigned is_block_fragmentation_forced_off : 1;
+    unsigned requires_content_before_breaking : 1;
     unsigned is_inside_balanced_columns : 1;
+    unsigned should_ignore_forced_breaks : 1;
     unsigned is_in_column_bfc : 1;
-    unsigned early_break_appeal : 2;  // NGBreakAppeal
+    unsigned is_past_break : 1;
+    unsigned min_block_size_should_encompass_intrinsic_size : 1;
+    unsigned has_override_min_max_block_sizes : 1;
+    unsigned min_break_appeal : kNGBreakAppealBitsNeeded;
+    unsigned propagate_child_break_values : 1;
+    unsigned is_at_fragmentainer_start : 1;
+    unsigned should_repeat : 1;
+    unsigned is_inside_repeatable_content : 1;
+
    private:
     struct BlockData {
       bool MaySkipLayout(const BlockData& other) const {
@@ -1071,46 +1347,40 @@ class CORE_EXPORT NGConstraintSpace final {
       }
 
       NGMarginStrut margin_strut;
-      base::Optional<LayoutUnit> optimistic_bfc_block_offset;
-      base::Optional<LayoutUnit> forced_bfc_block_offset;
+      absl::optional<LayoutUnit> optimistic_bfc_block_offset;
+      absl::optional<LayoutUnit> forced_bfc_block_offset;
       LayoutUnit clearance_offset = LayoutUnit::Min();
-      base::Optional<int> lines_until_clamp;
+      absl::optional<int> lines_until_clamp;
     };
 
     struct TableCellData {
       bool MaySkipLayout(const TableCellData& other) const {
+        // NOTE: We don't compare |table_cell_alignment_baseline| as it is
+        // still possible to hit the cache if this differs.
         return table_cell_borders == other.table_cell_borders &&
-               table_cell_intrinsic_padding_block_start ==
-                   other.table_cell_intrinsic_padding_block_start &&
-               table_cell_intrinsic_padding_block_end ==
-                   other.table_cell_intrinsic_padding_block_end &&
-               table_cell_alignment_baseline ==
-                   other.table_cell_alignment_baseline &&
                table_cell_column_index == other.table_cell_column_index &&
-               is_hidden_for_paint == other.is_hidden_for_paint;
+               is_hidden_for_paint == other.is_hidden_for_paint &&
+               has_collapsed_borders == other.has_collapsed_borders;
       }
 
       bool IsInitialForMaySkipLayout() const {
         return table_cell_borders == NGBoxStrut() &&
-               table_cell_intrinsic_padding_block_start == LayoutUnit() &&
-               table_cell_intrinsic_padding_block_end == LayoutUnit() &&
-               table_cell_column_index == kNotFound &&
-               table_cell_alignment_baseline == base::nullopt &&
-               !is_hidden_for_paint;
+               table_cell_column_index == kNotFound && !is_hidden_for_paint &&
+               !has_collapsed_borders;
       }
 
       NGBoxStrut table_cell_borders;
-      LayoutUnit table_cell_intrinsic_padding_block_start;
-      LayoutUnit table_cell_intrinsic_padding_block_end;
       wtf_size_t table_cell_column_index = kNotFound;
-      base::Optional<LayoutUnit> table_cell_alignment_baseline;
+      absl::optional<LayoutUnit> table_cell_alignment_baseline;
       bool is_hidden_for_paint = false;
+      bool has_collapsed_borders = false;
     };
 
     struct TableRowData {
       bool MaySkipLayout(const TableRowData& other) const {
-        return table_data->EqualTableSpecificData(other.table_data.get()) &&
-               table_data->MaySkipRowLayout(other.table_data.get(), row_index);
+        return table_data->IsTableSpecificDataEqual(*other.table_data) &&
+               table_data->MaySkipRowLayout(*other.table_data, row_index,
+                                            other.row_index);
       }
       bool IsInitialForMaySkipLayout() const {
         return !table_data && row_index == kNotFound;
@@ -1122,9 +1392,9 @@ class CORE_EXPORT NGConstraintSpace final {
 
     struct TableSectionData {
       bool MaySkipLayout(const TableSectionData& other) const {
-        return table_data->EqualTableSpecificData(other.table_data.get()) &&
-               table_data->MaySkipSectionLayout(other.table_data.get(),
-                                                section_index);
+        return table_data->IsTableSpecificDataEqual(*other.table_data) &&
+               table_data->MaySkipSectionLayout(
+                   *other.table_data, section_index, other.section_index);
       }
       bool IsInitialForMaySkipLayout() const {
         return !table_data && section_index == kNotFound;
@@ -1147,73 +1417,105 @@ class CORE_EXPORT NGConstraintSpace final {
     struct StretchData {
       bool MaySkipLayout(const StretchData& other) const {
         return target_stretch_inline_size == other.target_stretch_inline_size &&
-               target_stretch_ascent_size == other.target_stretch_ascent_size &&
-               target_stretch_descent_size == other.target_stretch_descent_size;
+               target_stretch_block_sizes.has_value() ==
+                   other.target_stretch_block_sizes.has_value() &&
+               (!target_stretch_block_sizes ||
+                (target_stretch_block_sizes->ascent ==
+                     other.target_stretch_block_sizes->ascent &&
+                 target_stretch_block_sizes->descent ==
+                     other.target_stretch_block_sizes->descent));
       }
 
       bool IsInitialForMaySkipLayout() const {
         return target_stretch_inline_size == kIndefiniteSize &&
-               target_stretch_ascent_size == kIndefiniteSize &&
-               target_stretch_descent_size == kIndefiniteSize;
+               !target_stretch_block_sizes;
       }
 
       LayoutUnit target_stretch_inline_size = kIndefiniteSize;
-      LayoutUnit target_stretch_ascent_size = kIndefiniteSize;
-      LayoutUnit target_stretch_descent_size = kIndefiniteSize;
+      absl::optional<MathTargetStretchBlockSizes> target_stretch_block_sizes;
+    };
+
+    struct SubgridData {
+      bool MaySkipLayout(const SubgridData& other) const {
+        return layout_data == other.layout_data;
+      }
+
+      bool IsInitialForMaySkipLayout() const {
+        return layout_data == NGGridLayoutData();
+      }
+
+      NGGridLayoutData layout_data;
     };
 
     BlockData* EnsureBlockData() {
-      DCHECK(data_union_type == kNone || data_union_type == kBlockData);
-      if (data_union_type != kBlockData) {
-        data_union_type = kBlockData;
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kBlockData);
+      if (GetDataUnionType() != DataUnionType::kBlockData) {
+        data_union_type = static_cast<unsigned>(DataUnionType::kBlockData);
         new (&block_data_) BlockData();
       }
       return &block_data_;
     }
 
     TableCellData* EnsureTableCellData() {
-      DCHECK(data_union_type == kNone || data_union_type == kTableCellData);
-      if (data_union_type != kTableCellData) {
-        data_union_type = kTableCellData;
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kTableCellData);
+      if (GetDataUnionType() != DataUnionType::kTableCellData) {
+        data_union_type = static_cast<unsigned>(DataUnionType::kTableCellData);
         new (&table_cell_data_) TableCellData();
       }
       return &table_cell_data_;
     }
 
     TableRowData* EnsureTableRowData() {
-      DCHECK(data_union_type == kNone || data_union_type == kTableRowData);
-      if (data_union_type != kTableRowData) {
-        data_union_type = kTableRowData;
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kTableRowData);
+      if (GetDataUnionType() != DataUnionType::kTableRowData) {
+        data_union_type = static_cast<unsigned>(DataUnionType::kTableRowData);
         new (&table_row_data_) TableRowData();
       }
       return &table_row_data_;
     }
 
     TableSectionData* EnsureTableSectionData() {
-      DCHECK(data_union_type == kNone || data_union_type == kTableSectionData);
-      if (data_union_type != kTableSectionData) {
-        data_union_type = kTableSectionData;
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kTableSectionData);
+      if (GetDataUnionType() != DataUnionType::kTableSectionData) {
+        data_union_type =
+            static_cast<unsigned>(DataUnionType::kTableSectionData);
         new (&table_section_data_) TableSectionData();
       }
       return &table_section_data_;
     }
 
     CustomData* EnsureCustomData() {
-      DCHECK(data_union_type == kNone || data_union_type == kCustomData);
-      if (data_union_type != kCustomData) {
-        data_union_type = kCustomData;
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kCustomData);
+      if (GetDataUnionType() != DataUnionType::kCustomData) {
+        data_union_type = static_cast<unsigned>(DataUnionType::kCustomData);
         new (&custom_data_) CustomData();
       }
       return &custom_data_;
     }
 
     StretchData* EnsureStretchData() {
-      DCHECK(data_union_type == kNone || data_union_type == kStretchData);
-      if (data_union_type != kStretchData) {
-        data_union_type = kStretchData;
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kStretchData);
+      if (GetDataUnionType() != DataUnionType::kStretchData) {
+        data_union_type = static_cast<unsigned>(DataUnionType::kStretchData);
         new (&stretch_data_) StretchData();
       }
       return &stretch_data_;
+    }
+
+    SubgridData* EnsureSubgridData() {
+      DCHECK(GetDataUnionType() == DataUnionType::kNone ||
+             GetDataUnionType() == DataUnionType::kSubgridData);
+      if (GetDataUnionType() != DataUnionType::kSubgridData) {
+        data_union_type = static_cast<unsigned>(DataUnionType::kSubgridData);
+        new (&subgrid_data_) SubgridData();
+      }
+      return &subgrid_data_;
     }
 
     union {
@@ -1223,6 +1525,7 @@ class CORE_EXPORT NGConstraintSpace final {
       TableSectionData table_section_data_;
       CustomData custom_data_;
       StretchData stretch_data_;
+      SubgridData subgrid_data_;
     };
   };
 
@@ -1233,31 +1536,34 @@ class CORE_EXPORT NGConstraintSpace final {
     DISALLOW_NEW();
 
    public:
-    Bitfields() : Bitfields(WritingMode::kHorizontalTb) {}
+    Bitfields()
+        : Bitfields({WritingMode::kHorizontalTb, TextDirection::kLtr}) {}
 
-    explicit Bitfields(WritingMode writing_mode)
+    explicit Bitfields(WritingDirectionMode writing_direction)
         : has_rare_data(false),
           adjoining_object_types(static_cast<unsigned>(kAdjoiningNone)),
-          writing_mode(static_cast<unsigned>(writing_mode)),
-          direction(static_cast<unsigned>(TextDirection::kLtr)),
+          writing_mode(
+              static_cast<unsigned>(writing_direction.GetWritingMode())),
+          direction(static_cast<unsigned>(writing_direction.Direction())),
           is_table_cell(false),
-          is_legacy_table_cell(false),
           is_anonymous(false),
           is_new_formatting_context(false),
           is_orthogonal_writing_mode_root(false),
           is_painted_atomically(false),
           use_first_line_style(false),
           ancestor_has_clearance_past_adjoining_floats(false),
-          needs_baseline(false),
           baseline_algorithm_type(
-              static_cast<unsigned>(NGBaselineAlgorithmType::kFirstLine)),
+              static_cast<unsigned>(NGBaselineAlgorithmType::kDefault)),
           cache_slot(static_cast<unsigned>(NGCacheSlot::kLayout)),
-          is_shrink_to_fit(false),
+          inline_auto_behavior(
+              static_cast<unsigned>(NGAutoBehavior::kFitContent)),
+          block_auto_behavior(
+              static_cast<unsigned>(NGAutoBehavior::kFitContent)),
           is_fixed_inline_size(false),
           is_fixed_block_size(false),
-          is_fixed_block_size_indefinite(false),
-          table_cell_child_layout_mode(static_cast<unsigned>(
-              NGTableCellChildLayoutMode::kNotTableCellChild)),
+          is_initial_block_size_indefinite(false),
+          is_table_cell_child(false),
+          is_restricted_block_size_table_cell_child(false),
           percentage_inline_storage(kSameAsAvailable),
           percentage_block_storage(kSameAsAvailable),
           replaced_percentage_block_storage(kSameAsAvailable) {}
@@ -1267,7 +1573,6 @@ class CORE_EXPORT NGConstraintSpace final {
              writing_mode == other.writing_mode &&
              direction == other.direction &&
              is_table_cell == other.is_table_cell &&
-             is_legacy_table_cell == other.is_legacy_table_cell &&
              is_anonymous == other.is_anonymous &&
              is_new_formatting_context == other.is_new_formatting_context &&
              is_orthogonal_writing_mode_root ==
@@ -1276,17 +1581,21 @@ class CORE_EXPORT NGConstraintSpace final {
              use_first_line_style == other.use_first_line_style &&
              ancestor_has_clearance_past_adjoining_floats ==
                  other.ancestor_has_clearance_past_adjoining_floats &&
-             needs_baseline == other.needs_baseline &&
              baseline_algorithm_type == other.baseline_algorithm_type;
     }
 
-    bool AreSizeConstraintsEqual(const Bitfields& other) const {
-      return is_shrink_to_fit == other.is_shrink_to_fit &&
-             is_fixed_inline_size == other.is_fixed_inline_size &&
+    bool AreInlineSizeConstraintsEqual(const Bitfields& other) const {
+      return inline_auto_behavior == other.inline_auto_behavior &&
+             is_fixed_inline_size == other.is_fixed_inline_size;
+    }
+    bool AreBlockSizeConstraintsEqual(const Bitfields& other) const {
+      return block_auto_behavior == other.block_auto_behavior &&
              is_fixed_block_size == other.is_fixed_block_size &&
-             is_fixed_block_size_indefinite ==
-                 other.is_fixed_block_size_indefinite &&
-             table_cell_child_layout_mode == other.table_cell_child_layout_mode;
+             is_initial_block_size_indefinite ==
+                 other.is_initial_block_size_indefinite &&
+             is_table_cell_child == other.is_table_cell_child &&
+             is_restricted_block_size_table_cell_child ==
+                 other.is_restricted_block_size_table_cell_child;
     }
 
     unsigned has_rare_data : 1;
@@ -1295,7 +1604,6 @@ class CORE_EXPORT NGConstraintSpace final {
     unsigned direction : 1;
 
     unsigned is_table_cell : 1;
-    unsigned is_legacy_table_cell : 1;
 
     unsigned is_anonymous : 1;
     unsigned is_new_formatting_context : 1;
@@ -1305,25 +1613,30 @@ class CORE_EXPORT NGConstraintSpace final {
     unsigned use_first_line_style : 1;
     unsigned ancestor_has_clearance_past_adjoining_floats : 1;
 
-    unsigned needs_baseline : 1;
     unsigned baseline_algorithm_type : 1;
 
     unsigned cache_slot : 1;
 
     // Size constraints.
-    unsigned is_shrink_to_fit : 1;
+    unsigned inline_auto_behavior : 2;  // NGAutoBehavior
+    unsigned block_auto_behavior : 2;   // NGAutoBehavior
     unsigned is_fixed_inline_size : 1;
     unsigned is_fixed_block_size : 1;
-    unsigned is_fixed_block_size_indefinite : 1;
-    unsigned table_cell_child_layout_mode : 2;  // NGTableCellChildLayoutMode
+    unsigned is_initial_block_size_indefinite : 1;
+    unsigned is_table_cell_child : 1;
+    unsigned is_restricted_block_size_table_cell_child : 1;
 
     unsigned percentage_inline_storage : 2;           // NGPercentageStorage
     unsigned percentage_block_storage : 2;            // NGPercentageStorage
     unsigned replaced_percentage_block_storage : 2;   // NGPercentageStorage
   };
 
-  explicit NGConstraintSpace(WritingMode writing_mode)
-      : bfc_offset_(), bitfields_(writing_mode) {}
+  // To ensure that the bfc_offset_, rare_data_ union doesn't get polluted,
+  // always initialize the bfc_offset_.
+  explicit NGConstraintSpace(WritingDirectionMode writing_direction)
+      : available_size_(kIndefiniteSize, kIndefiniteSize),
+        bfc_offset_(),
+        bitfields_(writing_direction) {}
 
   inline bool HasRareData() const { return bitfields_.has_rare_data; }
 
@@ -1334,6 +1647,15 @@ class CORE_EXPORT NGConstraintSpace final {
     }
 
     return rare_data_;
+  }
+
+  void DisableFurtherFragmentation() {
+    if (!HasBlockFragmentation()) {
+      return;
+    }
+    DCHECK(rare_data_);
+    rare_data_->block_direction_fragmentation_type = kFragmentNone;
+    rare_data_->is_block_fragmentation_forced_off = true;
   }
 
   LogicalSize available_size_;

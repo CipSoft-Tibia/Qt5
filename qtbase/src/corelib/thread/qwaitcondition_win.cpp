@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaitcondition.h"
 #include "qdeadlinetimer.h"
@@ -45,7 +9,7 @@
 #include "qlist.h"
 #include "qalgorithms.h"
 
-#define Q_MUTEX_T void*
+#define Q_MUTEX_T void *
 #include <private/qmutex_p.h>
 #include <private/qreadwritelock_p.h>
 #include <qt_windows.h>
@@ -61,11 +25,7 @@ class QWaitConditionEvent
 public:
     inline QWaitConditionEvent() : priority(0), wokenUp(false)
     {
-#ifndef Q_OS_WINRT
         event = CreateEvent(NULL, TRUE, FALSE, NULL);
-#else
-        event = CreateEventEx(NULL, NULL, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
-#endif
     }
     inline ~QWaitConditionEvent() { CloseHandle(event); }
     int priority;
@@ -83,7 +43,7 @@ public:
     EventQueue freeQueue;
 
     QWaitConditionEvent *pre();
-    bool wait(QWaitConditionEvent *wce, unsigned long time);
+    bool wait(QWaitConditionEvent *wce, QDeadlineTimer deadline);
     void post(QWaitConditionEvent *wce, bool ret);
 };
 
@@ -91,10 +51,8 @@ QWaitConditionEvent *QWaitConditionPrivate::pre()
 {
     mtx.lock();
     QWaitConditionEvent *wce =
-        freeQueue.isEmpty() ? new QWaitConditionEvent : freeQueue.takeFirst();
-#ifndef Q_OS_WINRT
+            freeQueue.isEmpty() ? new QWaitConditionEvent : freeQueue.takeFirst();
     wce->priority = GetThreadPriority(GetCurrentThread());
-#endif
     wce->wokenUp = false;
 
     // insert 'wce' into the queue (sorted by priority)
@@ -110,18 +68,25 @@ QWaitConditionEvent *QWaitConditionPrivate::pre()
     return wce;
 }
 
-bool QWaitConditionPrivate::wait(QWaitConditionEvent *wce, unsigned long time)
+bool QWaitConditionPrivate::wait(QWaitConditionEvent *wce, QDeadlineTimer deadline)
 {
     // wait for the event
-    bool ret = false;
-    switch (WaitForSingleObjectEx(wce->event, time, FALSE)) {
-    default: break;
+    while (true) {
+        const DWORD timeout = deadline.isForever()
+                ? INFINITE
+                : DWORD(std::min(deadline.remainingTime(), qint64(INFINITE - 1)));
 
-    case WAIT_OBJECT_0:
-        ret = true;
-        break;
+        switch (WaitForSingleObjectEx(wce->event, timeout, FALSE)) {
+        case WAIT_OBJECT_0:
+            return true;
+        case WAIT_TIMEOUT:
+            if (deadline.hasExpired())
+                return false;
+            break;
+        default:
+            return false;
+        }
     }
-    return ret;
 }
 
 void QWaitConditionPrivate::post(QWaitConditionEvent *wce, bool ret)
@@ -165,17 +130,20 @@ QWaitCondition::~QWaitCondition()
 
 bool QWaitCondition::wait(QMutex *mutex, unsigned long time)
 {
+    if (time == std::numeric_limits<unsigned long>::max())
+        return wait(mutex, QDeadlineTimer(QDeadlineTimer::Forever));
+    return wait(mutex, QDeadlineTimer(time));
+}
+
+bool QWaitCondition::wait(QMutex *mutex, QDeadlineTimer deadline)
+{
     if (!mutex)
         return false;
-    if (mutex->isRecursive()) {
-        qWarning("QWaitCondition::wait: Cannot wait on recursive mutexes");
-        return false;
-    }
 
     QWaitConditionEvent *wce = d->pre();
     mutex->unlock();
 
-    bool returnValue = d->wait(wce, time);
+    bool returnValue = d->wait(wce, deadline);
 
     mutex->lock();
     d->post(wce, returnValue);
@@ -183,19 +151,23 @@ bool QWaitCondition::wait(QMutex *mutex, unsigned long time)
     return returnValue;
 }
 
-bool QWaitCondition::wait(QMutex *mutex, QDeadlineTimer deadline)
-{
-    return wait(mutex, deadline.remainingTime());
-}
-
 bool QWaitCondition::wait(QReadWriteLock *readWriteLock, unsigned long time)
 {
+    if (time == std::numeric_limits<unsigned long>::max())
+        return wait(readWriteLock, QDeadlineTimer(QDeadlineTimer::Forever));
+    return wait(readWriteLock, QDeadlineTimer(time));
+}
+
+bool QWaitCondition::wait(QReadWriteLock *readWriteLock, QDeadlineTimer deadline)
+{
+    using namespace QReadWriteLockStates;
+
     if (!readWriteLock)
         return false;
-    auto previousState = readWriteLock->stateForWaitCondition();
-    if (previousState == QReadWriteLock::Unlocked)
+    auto previousState = QReadWriteLockPrivate::stateForWaitCondition(readWriteLock);
+    if (previousState == Unlocked)
         return false;
-    if (previousState == QReadWriteLock::RecursivelyLocked) {
+    if (previousState == RecursivelyLocked) {
         qWarning("QWaitCondition: cannot wait on QReadWriteLocks with recursive lockForWrite()");
         return false;
     }
@@ -203,9 +175,9 @@ bool QWaitCondition::wait(QReadWriteLock *readWriteLock, unsigned long time)
     QWaitConditionEvent *wce = d->pre();
     readWriteLock->unlock();
 
-    bool returnValue = d->wait(wce, time);
+    bool returnValue = d->wait(wce, deadline);
 
-    if (previousState == QReadWriteLock::LockedForWrite)
+    if (previousState == LockedForWrite)
         readWriteLock->lockForWrite();
     else
         readWriteLock->lockForRead();
@@ -214,16 +186,11 @@ bool QWaitCondition::wait(QReadWriteLock *readWriteLock, unsigned long time)
     return returnValue;
 }
 
-bool QWaitCondition::wait(QReadWriteLock *readWriteLock, QDeadlineTimer deadline)
-{
-    return wait(readWriteLock, deadline.remainingTime());
-}
-
 void QWaitCondition::wakeOne()
 {
     // wake up the first waiting thread in the queue
     QMutexLocker locker(&d->mtx);
-    for (QWaitConditionEvent *current : qAsConst(d->queue)) {
+    for (QWaitConditionEvent *current : std::as_const(d->queue)) {
         if (current->wokenUp)
             continue;
         SetEvent(current->event);
@@ -236,7 +203,7 @@ void QWaitCondition::wakeAll()
 {
     // wake up the all threads in the queue
     QMutexLocker locker(&d->mtx);
-    for (QWaitConditionEvent *current : qAsConst(d->queue)) {
+    for (QWaitConditionEvent *current : std::as_const(d->queue)) {
         SetEvent(current->event);
         current->wokenUp = true;
     }

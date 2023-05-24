@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "components/dom_distiller/core/url_constants.h"
 #include "components/dom_distiller/core/url_utils.h"
 #include "net/base/url_util.h"
+#include "url/android/gurl_android.h"
 #include "url/gurl.h"
 
 using base::android::JavaParamRef;
@@ -39,20 +40,20 @@ ScopedJavaLocalRef<jstring> JNI_DomDistillerUrlUtils_GetDistillerViewUrlFromUrl(
   return base::android::ConvertUTF8ToJavaString(env, view_url.spec());
 }
 
-ScopedJavaLocalRef<jstring>
+ScopedJavaLocalRef<jobject>
 JNI_DomDistillerUrlUtils_GetOriginalUrlFromDistillerUrl(
     JNIEnv* env,
     const JavaParamRef<jstring>& j_url) {
   GURL url(base::android::ConvertJavaStringToUTF8(env, j_url));
   if (!url.is_valid())
-    return ScopedJavaLocalRef<jstring>();
+    return url::GURLAndroid::EmptyGURL(env);
 
   GURL original_url =
       dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(url);
   if (!original_url.is_valid())
-    return ScopedJavaLocalRef<jstring>();
+    return url::GURLAndroid::EmptyGURL(env);
 
-  return base::android::ConvertUTF8ToJavaString(env, original_url.spec());
+  return url::GURLAndroid::FromNativeGURL(env, original_url);
 }
 
 jboolean JNI_DomDistillerUrlUtils_IsDistilledPage(

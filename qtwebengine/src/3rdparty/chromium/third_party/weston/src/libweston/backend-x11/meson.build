@@ -16,7 +16,8 @@ if not dep_x11_xcb.found()
 endif
 
 deps_x11 = [
-	dep_libweston,
+	dep_libweston_private,
+	dep_libdrm_headers,
 	dep_x11_xcb,
 	dep_lib_cairo_shared,
 	dep_pixman,
@@ -46,7 +47,7 @@ endif
 plugin_x11 = shared_library(
 	'x11-backend',
 	srcs_x11,
-	include_directories: include_directories('../..', '../../shared'),
+	include_directories: common_inc,
 	dependencies: deps_x11,
 	name_prefix: '',
 	install: true,

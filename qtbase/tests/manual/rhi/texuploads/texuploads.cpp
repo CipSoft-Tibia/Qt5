@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "../shared/examplefw.h"
 #include "../shared/cube.h"
@@ -59,7 +12,7 @@ struct {
     QRhiSampler *sampler = nullptr;
     QRhiShaderResourceBindings *srb = nullptr;
     QRhiGraphicsPipeline *ps = nullptr;
-    QVector<QRhiResource *> releasePool;
+    QList<QRhiResource *> releasePool;
 
     float rotation = 0;
     QRhiResourceUpdateBatch *initialUpdates = nullptr;
@@ -76,16 +29,16 @@ void Window::customInit()
 {
     d.vbuf = m_r->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(cube));
     d.releasePool << d.vbuf;
-    d.vbuf->build();
+    d.vbuf->create();
 
     d.ubuf = m_r->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, 68);
     d.releasePool << d.ubuf;
-    d.ubuf->build();
+    d.ubuf->create();
 
     QImage baseImage(QLatin1String(":/qt256.png"));
     d.tex = m_r->newTexture(QRhiTexture::RGBA8, baseImage.size(), 1, QRhiTexture::UsedAsTransferSource);
     d.releasePool << d.tex;
-    d.tex->build();
+    d.tex->create();
 
     // As an alternative to what some of the other examples do, prepare an
     // update batch right here instead of relying on vbufReady and similar flags.
@@ -98,7 +51,7 @@ void Window::customInit()
     d.sampler = m_r->newSampler(QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None,
                                 QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge);
     d.releasePool << d.sampler;
-    d.sampler->build();
+    d.sampler->create();
 
     d.srb = m_r->newShaderResourceBindings();
     d.releasePool << d.srb;
@@ -106,7 +59,7 @@ void Window::customInit()
     d.bindings[0] = QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, d.ubuf);
     d.bindings[1] = QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, d.tex, d.sampler);
     d.srb->setBindings(d.bindings, d.bindings + 2);
-    d.srb->build();
+    d.srb->create();
 
     d.ps = m_r->newGraphicsPipeline();
     d.releasePool << d.ps;
@@ -144,7 +97,7 @@ void Window::customInit()
     d.ps->setShaderResourceBindings(d.srb);
     d.ps->setRenderPassDescriptor(m_rp);
 
-    d.ps->build();
+    d.ps->create();
 
     d.customImage = QImage(128, 64, QImage::Format_RGBA8888);
     d.customImage.fill(Qt::red);
@@ -197,7 +150,7 @@ void Window::customRender()
             const QSize sz = d.tex->pixelSize();
             d.newTex = m_r->newTexture(QRhiTexture::RGBA8, sz);
             d.releasePool << d.newTex;
-            d.newTex->build();
+            d.newTex->create();
 
             QImage empty(sz.width(), sz.height(), QImage::Format_RGBA8888);
             empty.fill(Qt::blue);
@@ -218,7 +171,7 @@ void Window::customRender()
             // "rebuild", whatever that means for a given backend. This srb is
             // already live as the ps in the setGraphicsPipeline references it,
             // but that's fine. Changes will be picked up automatically.
-            d.srb->build();
+            d.srb->create();
         }
 
         // Exercise simple, full texture copy.
@@ -241,7 +194,7 @@ void Window::customRender()
             if (nativeTexture.object) {
 #if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
                 if (graphicsApi == Metal) {
-                    qDebug() << "Metal texture: " << *(void**)nativeTexture.object;
+                    qDebug() << "Metal texture: " << nativeTexture.object;
                     // Now could cast to id<MTLTexture> and do something with
                     // it, keeping in mind that copy operations are only done
                     // in beginPass, while rendering into a texture may only
@@ -253,7 +206,7 @@ void Window::customRender()
 
                 d.importedTex = m_r->newTexture(QRhiTexture::RGBA8, d.tex->pixelSize());
                 d.releasePool << d.importedTex;
-                if (!d.importedTex->buildFrom(nativeTexture))
+                if (!d.importedTex->createFrom(nativeTexture))
                     qWarning("Texture import failed");
 
                 // now d.tex and d.importedTex use the same MTLTexture
@@ -262,7 +215,7 @@ void Window::customRender()
                 // switch to showing d.importedTex
                 d.bindings[1] = QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, d.importedTex, d.sampler);
                 d.srb->setBindings(d.bindings, d.bindings + 2);
-                d.srb->build();
+                d.srb->create();
             } else {
                 qWarning("Accessing native texture object is not supported");
             }
@@ -272,7 +225,7 @@ void Window::customRender()
         if (d.testStage == 7) {
             d.bindings[1] = QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, d.newTex, d.sampler);
             d.srb->setBindings(d.bindings, d.bindings + 2);
-            d.srb->build();
+            d.srb->create();
 
             const QSize sz(221, 139);
             QByteArray data;
@@ -302,7 +255,7 @@ void Window::customRender()
     cb->setShaderResources();
     const QRhiCommandBuffer::VertexInput vbufBindings[] = {
         { d.vbuf, 0 },
-        { d.vbuf, 36 * 3 * sizeof(float) }
+        { d.vbuf, quint32(36 * 3 * sizeof(float)) }
     };
     cb->setVertexInput(0, 2, vbufBindings);
     cb->draw(36);

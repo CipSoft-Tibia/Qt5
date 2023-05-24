@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 lo{
     AuxExemplarCharacters{"[\u200B ໐ ໑ ໒ ໓ ໔ ໕ ໖ ໗ ໘ ໙]"}
     Ellipsis{
@@ -118,6 +119,8 @@ lo{
             }
             patterns{
                 accountingFormat{"¤#,##0.00;¤-#,##0.00"}
+                accountingFormat%alphaNextToNumber{"¤ #,##0.00;¤ -#,##0.00"}
+                accountingFormat%noCurrency{"#,##0.00"}
                 currencyFormat{"¤#,##0.00;¤-#,##0.00"}
                 percentFormat{"#,##0%"}
                 scientificFormat{"#"}
@@ -201,6 +204,44 @@ lo{
                         other{"¤000 ລ້ານລ້ານ"}
                     }
                 }
+                currencyFormat%alphaNextToNumber{
+                    1000{
+                        other{"¤ 0 ພັນ"}
+                    }
+                    10000{
+                        other{"¤ 00 ພັນ"}
+                    }
+                    100000{
+                        other{"¤ 000 ພັນ"}
+                    }
+                    1000000{
+                        other{"¤ 0 ລ້ານ"}
+                    }
+                    10000000{
+                        other{"¤ 00 ລ້ານ"}
+                    }
+                    100000000{
+                        other{"¤ 000 ລ້ານ"}
+                    }
+                    1000000000{
+                        other{"¤ 0 ຕື້"}
+                    }
+                    10000000000{
+                        other{"¤ 00 ຕື້"}
+                    }
+                    100000000000{
+                        other{"¤ 000 ຕື້"}
+                    }
+                    1000000000000{
+                        other{"¤ 0 ລ້ານລ້ານ"}
+                    }
+                    10000000000000{
+                        other{"¤ 00 ລ້ານລ້ານ"}
+                    }
+                    100000000000000{
+                        other{"¤ 000 ລ້ານລ້ານ"}
+                    }
+                }
                 decimalFormat{
                     1000{
                         other{"0 ພັນ"}
@@ -249,12 +290,11 @@ lo{
                 nan{"ບໍ່​ແມ່ນ​ໂຕ​ເລກ"}
                 perMille{"‰"}
                 percentSign{"%"}
-                superscriptingExponent{"×"}
             }
         }
         minimalPairs{
             ordinal{
-                one{"ລ້ຽວຂວາທຳອິດ."}
+                one{"ລ້ຽວຂວາໂຕທີ {0}."}
                 other{"ລ້ຽວຂວາທີ {0}."}
             }
             plural{
@@ -263,8 +303,14 @@ lo{
         }
         native{"laoo"}
     }
-    Version{"37"}
     calendar{
+        buddhist{
+            eras{
+                abbreviated{
+                    "ພ.ສ.",
+                }
+            }
+        }
         chinese{
             DateTimePatterns{
                 "H ໂມງ m ນາທີ ss ວິນາທີ zzzz",
@@ -280,6 +326,16 @@ lo{
                 "{1} {0}",
                 "{1} {0}",
                 "{1} {0}",
+            }
+            DateTimeSkeletons{
+                "Hmsszzzz",
+                "Hmssz",
+                "Hmmss",
+                "Hmm",
+                "UMMMMEEEEdd",
+                "UMMMMd",
+                "UMMMd",
+                "yMd",
             }
             cyclicNameSets{
                 dayParts{
@@ -688,6 +744,16 @@ lo{
                 "{1}, {0}",
                 "{1}, {0}",
             }
+            DateTimeSkeletons{
+                "Hmsszzzz",
+                "Hmssz",
+                "Hmmss",
+                "Hmm",
+                "GyMMMMEEEEd",
+                "GyMMMMd",
+                "GyMMMd",
+                "GGGGGyMd",
+            }
             availableFormats{
                 Bh{"h B"}
                 Bhm{"h:mm B"}
@@ -704,6 +770,7 @@ lo{
                 GyMMM{"MMM y G"}
                 GyMMMEd{"E, MMM d, y G"}
                 GyMMMd{"G d MMM y"}
+                GyMd{"d/M/GGGGG y"}
                 H{"HH"}
                 Hm{"HH:mm"}
                 Hms{"HH:mm:ss"}
@@ -878,6 +945,16 @@ lo{
                 "{1}, {0}",
                 "{1}, {0}",
             }
+            DateTimeSkeletons{
+                "Hmsszzzz",
+                "Hmssz",
+                "Hmmss",
+                "Hmm",
+                "GyMMMMEEEEd",
+                "yMMMMd",
+                "yMMMd",
+                "yMd",
+            }
             appendItems{
                 Timezone{"{0} {1}"}
             }
@@ -897,6 +974,7 @@ lo{
                 GyMMM{"MMM, G y"}
                 GyMMMEd{"E d MMMM, G y"}
                 GyMMMd{"d MMMM, G y"}
+                GyMd{"d/M/GGGGG y"}
                 H{"HH"}
                 Hm{"HH:mm"}
                 Hms{"HH:mm:ss"}
@@ -1542,6 +1620,16 @@ lo{
                 "{1}, {0}",
                 "{1}, {0}",
             }
+            DateTimeSkeletons{
+                "Hmsszzzz",
+                "Hmssz",
+                "Hmmss",
+                "Hmm",
+                "yMMMMEEEEdd",
+                "yMMMMd",
+                "yMMMd",
+                "yMMdd",
+            }
             availableFormats{
                 H{"H"}
                 Hm{"H:mm"}
@@ -2088,7 +2176,7 @@ lo{
         sport{"ກິລາ"}
         symbols{"ສັນຍາລັກ"}
         technical_symbols{"ສັນຍາລັກທາງເຕັກນິກ"}
-        tone_marks{"ັວັນນະຍຸດ"}
+        tone_marks{"ວັນນະຍຸດ"}
         travel{"ທ່ອງທ່ຽວ"}
         travel_places{"ທ່ອງທ່ຽວ ແລະ ສະຖານທີ່ຕ່າງໆ"}
         upwards_arrows{"ລູກສອນຊີ້ຂຶ້ນເທິງ"}
@@ -2780,9 +2868,12 @@ lo{
             end{"{0}, {1}"}
             start{"{0}, {1}"}
         }
+        standard-narrow{
+            end{"{0}, {1}"}
+        }
         standard-short{
             2{"{0} ແລະ {1}"}
-            end{"{0}, {1}"}
+            end{"{0} ແລະ {1}"}
             middle{"{0}, {1}"}
             start{"{0}, {1}"}
         }
@@ -2809,5 +2900,60 @@ lo{
         UK{"ສະຫະລາດຊະອານາຈັກອັງກິດ"}
         US{"ສະຫະລັດອາເມລິກາ"}
         metric{"ເມທຣິກ"}
+    }
+    personNames{
+        nameOrderLocales{
+            givenFirst{
+                "und",
+                "lo",
+            }
+            surnameFirst{
+                "ko",
+                "vi",
+                "yue",
+                "zh",
+            }
+        }
+        namePattern{
+            givenFirst-long-addressing-formal{"{prefix}{surname}"}
+            givenFirst-long-addressing-informal{"{given-informal}"}
+            givenFirst-long-monogram-informal{"{given-informal-monogram-allCaps}{surname-monogram-allCaps}"}
+            givenFirst-long-referring-formal{"{suffix}{given}{given2}{surname}"}
+            givenFirst-long-referring-informal{"{given-informal}{surname}"}
+            givenFirst-medium-addressing-formal{"{prefix}{surname}"}
+            givenFirst-medium-addressing-informal{"{given-informal}"}
+            givenFirst-medium-monogram-formal{"{surname-monogram-allCaps}"}
+            givenFirst-medium-monogram-informal{"{given-informal-monogram-allCaps}"}
+            givenFirst-medium-referring-formal{"{suffix}{given}{given2-initial}{surname}"}
+            givenFirst-medium-referring-informal{"{given-informal}{surname}"}
+            givenFirst-short-addressing-formal{"{prefix}{surname}"}
+            givenFirst-short-addressing-informal{"{given-informal}"}
+            givenFirst-short-monogram-formal{"{surname-monogram-allCaps}"}
+            givenFirst-short-monogram-informal{"{given-informal-monogram-allCaps}"}
+            givenFirst-short-referring-formal{"{given-initial}{given2-initial}{surname}"}
+            givenFirst-short-referring-informal{"{given-informal}{surname-initial}"}
+            sorting-long-referring-formal{"{surname-core},{given}{given2}{surname-prefix}"}
+            sorting-long-referring-informal{"{surname},{given-informal}"}
+            sorting-medium-referring-formal{"{surname-core},{given}{given2-initial}{surname-prefix}"}
+            sorting-medium-referring-informal{"{surname},{given-informal}"}
+            sorting-short-referring-formal{"{surname-core},{given-initial}{given2-initial}{surname-prefix}"}
+            sorting-short-referring-informal{"{surname},{given-informal}"}
+            surnameFirst-long-addressing-formal{"{prefix}{surname}"}
+            surnameFirst-long-addressing-informal{"{given-informal}"}
+            surnameFirst-long-referring-formal{"{surname}{given}{given2}{suffix}"}
+            surnameFirst-long-referring-informal{"{surname}{given-informal}"}
+            surnameFirst-medium-addressing-formal{"{prefix}{surname}"}
+            surnameFirst-medium-addressing-informal{"{given-informal}"}
+            surnameFirst-medium-monogram-formal{"{surname-monogram-allCaps}"}
+            surnameFirst-medium-monogram-informal{"{given-informal-monogram-allCaps}"}
+            surnameFirst-medium-referring-formal{"{surname}{given}{given2-initial}{suffix}"}
+            surnameFirst-medium-referring-informal{"{surname}{given-informal}"}
+            surnameFirst-short-addressing-formal{"{prefix}{surname}"}
+            surnameFirst-short-addressing-informal{"{given-informal}"}
+            surnameFirst-short-monogram-formal{"{surname-monogram-allCaps}"}
+            surnameFirst-short-monogram-informal{"{given-informal-monogram-allCaps}"}
+            surnameFirst-short-referring-formal{"{surname}{given-initial}{given2-initial}"}
+            surnameFirst-short-referring-informal{"{surname}{given-initial}"}
+        }
     }
 }

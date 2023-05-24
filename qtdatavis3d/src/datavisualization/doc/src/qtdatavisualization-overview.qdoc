@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \title Qt Data Visualization Overview
     \page qtdatavisualization-overview.html
     \brief An overview of the Qt Data Visualization module.
+    \ingroup explanation
 
     The Qt Data Visualization module provides a way to develop rapidly
     responding, complex, and dynamic 3D visualization for analytical demanding
@@ -79,8 +56,8 @@
 
     \image q3dbars-minimal.png
 
-    For more information, see \l{How to construct a minimal Q3DBars graph},
-    \l {Bars Example}, and \l {Qt Quick 2 Bars Example}.
+    For more information, see \l{How to construct a minimal Q3DBars graph}, and
+    \l {Simple Bar Graph} examples.
 
     \section2 3D Scatter Graphs
 
@@ -92,8 +69,8 @@
 
     \image q3dscatter-minimal.png
 
-    For more information, see \l{How to construct a minimal Q3DScatter graph},
-    \l{Scatter Example}, and \l{Qt Quick 2 Scatter Example}.
+    For more information, see \l{How to construct a minimal Q3DScatter graph}, and
+    \l{Simple Scatter Graph} examples.
 
     \section2 3D Surface Graphs
 
@@ -105,9 +82,8 @@
 
     \image q3dsurface-minimal.png
 
-    For more information, see \l{How to construct a minimal Q3DSurface graph},
-    \l{Surface Example}, \l{Textured Surface Example}, \l{Qt Quick 2 Surface
-    Example}, and \l{Qt Quick 2 Surface Multiseries Example}.
+    For more information, see \l{How to construct a minimal Q3DSurface graph}, \l{Graph Gallery},
+    and \l{Surface Graph Gallery} examples.
 
     \section1 Using OpenGL for Rendering Data
 
@@ -138,7 +114,7 @@
     be partially transparent. Therefore, changing the rendering mode is a
     question of performance versus quality.
 
-    Qt Quick 2 uses a dedicated scenegraph for data rendering, and is therefore
+    Qt Quick uses a dedicated scenegraph for data rendering, and is therefore
     the best choice for data visualization.
 
     \section1 3D Axes
@@ -211,7 +187,7 @@
     If a graph displays the data from several data series, some settings can be
     specified separately for each series. For example, different gradients can
     be specified for different layers of the graph to make it look more
-    realistic. For an example, see \l{Qt Quick 2 Surface Multiseries Example}.
+    realistic. For an example, see \l{Surface Graph Gallery}.
 
     \section1 Customizing 3D Scenes
 
@@ -223,7 +199,7 @@
     position follows the camera automatically.
 
     The camera can be customized by specifying its preset position, rotation,
-    and zoom level. For an example, see \l{Qt Quick 2  Scatter Example}.
+    and zoom level. For an example, see \l{Simple Scatter Graph}.
 
     \section1 Customizing Items
 

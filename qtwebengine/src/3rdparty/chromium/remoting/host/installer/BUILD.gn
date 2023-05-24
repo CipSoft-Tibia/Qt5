@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,7 +10,7 @@ action("credits") {
   # compatibility w/ GYP, since the installer needs the file to
   # be at the same location.
   about_credits_file = "$root_build_dir/gen/remoting/CREDITS.txt"
-  script = "//tools/licenses.py"
+  script = "//tools/licenses/licenses.py"
   depfile = "$target_gen_dir/$target_name.d"
 
   inputs = [

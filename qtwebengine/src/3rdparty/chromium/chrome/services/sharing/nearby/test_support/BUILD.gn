@@ -1,6 +1,10 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/chromeos/ui_mode.gni")
+
+assert(is_chromeos_ash)
 
 source_set("test_support") {
   testonly = true
@@ -14,7 +18,7 @@ source_set("test_support") {
 
   deps = [
     "//base/test:test_support",
-    "//chrome/services/sharing/public/mojom",
+    "//chromeos/ash/services/nearby/public/mojom",
     "//testing/gmock",
     "//testing/gtest",
   ]

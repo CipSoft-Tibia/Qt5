@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -46,6 +46,6 @@ with open(alexa_out, 'w') as outfile, open(alexa10k_path, 'r') as infile:
   # Add some popular domains if they're missing.
   # TODO(jshin): Find a way to update the list. (crbug.com/722022)
   for domain in ["gmail.com", "hotmail.com", "360.cn", "ntd.tv", "onclkds.com",
-                 "uber.com", "lyft.com", "ok.ru", "stripe.com"]:
+                 "uber.com", "lyft.com", "ok.ru", "stripe.com", "ledger.com"]:
     if domain not in domains:
       outfile.write(domain + "\n")

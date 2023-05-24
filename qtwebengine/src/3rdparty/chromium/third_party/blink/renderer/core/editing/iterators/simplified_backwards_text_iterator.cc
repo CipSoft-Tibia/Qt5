@@ -27,6 +27,7 @@
 
 #include "third_party/blink/renderer/core/editing/iterators/simplified_backwards_text_iterator.h"
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/first_letter_pseudo_element.h"
 #include "third_party/blink/renderer/core/editing/editing_utilities.h"
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
@@ -51,13 +52,8 @@ static int CollapsedSpaceLength(LayoutText* layout_text, int text_end) {
 
 static int MaxOffsetIncludingCollapsedSpaces(const Node* node) {
   int offset = CaretMaxOffset(node);
-
-  if (node->GetLayoutObject() && node->GetLayoutObject()->IsText()) {
-    offset +=
-        CollapsedSpaceLength(ToLayoutText(node->GetLayoutObject()), offset) +
-        ToLayoutText(node->GetLayoutObject())->TextStartOffset();
-  }
-
+  if (auto* text = DynamicTo<LayoutText>(node->GetLayoutObject()))
+    offset += CollapsedSpaceLength(text, offset) + text->TextStartOffset();
   return offset;
 }
 
@@ -224,6 +220,10 @@ bool SimplifiedBackwardsTextIteratorAlgorithm<Strategy>::HandleTextNode() {
     return true;
 
   String text = layout_object->GetText();
+
+  if (behavior_.EmitsSpaceForNbsp())
+    text.Replace(kNoBreakSpaceCharacter, kSpaceCharacter);
+
   if (!layout_object->HasInlineFragments() && text.length() > 0)
     return true;
 
@@ -250,7 +250,7 @@ bool SimplifiedBackwardsTextIteratorAlgorithm<Strategy>::HandleTextNode() {
 template <typename Strategy>
 LayoutText* SimplifiedBackwardsTextIteratorAlgorithm<
     Strategy>::HandleFirstLetter(int& start_offset, int& offset_in_node) {
-  LayoutText* layout_object = ToLayoutText(node_->GetLayoutObject());
+  auto* layout_object = To<LayoutText>(node_->GetLayoutObject());
   start_offset = (node_ == start_node_) ? start_offset_ : 0;
 
   if (!layout_object->IsTextFragment()) {
@@ -258,7 +258,7 @@ LayoutText* SimplifiedBackwardsTextIteratorAlgorithm<
     return layout_object;
   }
 
-  LayoutTextFragment* fragment = ToLayoutTextFragment(layout_object);
+  auto* fragment = To<LayoutTextFragment>(layout_object);
   int offset_after_first_letter = fragment->Start();
   if (start_offset >= offset_after_first_letter) {
     // We'll stop in remaining part.
@@ -286,8 +286,8 @@ LayoutText* SimplifiedBackwardsTextIteratorAlgorithm<
       fragment->GetFirstLetterPseudoElement()->GetLayoutObject();
   DCHECK(pseudo_element_layout_object);
   DCHECK(pseudo_element_layout_object->SlowFirstChild());
-  LayoutText* first_letter_layout_object =
-      ToLayoutText(pseudo_element_layout_object->SlowFirstChild());
+  auto* first_letter_layout_object =
+      To<LayoutText>(pseudo_element_layout_object->SlowFirstChild());
 
   const int end_offset =
       end_node_ == node_ && end_offset_ < offset_after_first_letter
@@ -304,9 +304,9 @@ bool SimplifiedBackwardsTextIteratorAlgorithm<
     Strategy>::HandleReplacedElement() {
   // We want replaced elements to behave like punctuation for boundary
   // finding, and to simply take up space for the selection preservation
-  // code in moveParagraphs, so we use a comma. Unconditionally emit
-  // here because this iterator is only used for boundary finding.
-  text_state_.EmitChar16AsNode(',', *node_);
+  // code in moveParagraphs, so we use a comma.
+  if (behavior_.EmitsPunctuationForReplacedElements())
+    text_state_.EmitChar16AsNode(',', *node_);
   return true;
 }
 

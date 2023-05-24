@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,9 @@
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/paint_preview/common/file_utils.h"
+#include "components/paint_preview/common/proto_validator.h"
 #include "third_party/zlib/google/zip.h"
 
 namespace paint_preview {
@@ -22,11 +24,6 @@ namespace {
 
 constexpr char kProtoName[] = "proto.pb";
 constexpr char kZipExt[] = ".zip";
-
-bool CompareByLastModified(const base::FileEnumerator::FileInfo& a,
-                           const base::FileEnumerator::FileInfo& b) {
-  return a.GetLastModifiedTime() < b.GetLastModifiedTime();
-}
 
 }  // namespace
 
@@ -67,16 +64,16 @@ size_t FileManager::GetSizeOfArtifacts(const DirectoryKey& key) const {
   }
 }
 
-base::Optional<base::File::Info> FileManager::GetInfo(
+absl::optional<base::File::Info> FileManager::GetInfo(
     const DirectoryKey& key) const {
   DCHECK(io_task_runner_->RunsTasksInCurrentSequence());
   base::FilePath path;
   StorageType storage_type = GetPathForKey(key, &path);
   if (storage_type == FileManager::StorageType::kNone)
-    return base::nullopt;
+    return absl::nullopt;
   base::File::Info info;
   if (!base::GetFileInfo(path, &info))
-    return base::nullopt;
+    return absl::nullopt;
   return info;
 }
 
@@ -105,7 +102,7 @@ bool FileManager::CaptureExists(const DirectoryKey& key) const {
   }
 }
 
-base::Optional<base::FilePath> FileManager::CreateOrGetDirectory(
+absl::optional<base::FilePath> FileManager::CreateOrGetDirectory(
     const DirectoryKey& key,
     bool clear) const {
   DCHECK(io_task_runner_->RunsTasksInCurrentSequence());
@@ -123,7 +120,7 @@ base::Optional<base::FilePath> FileManager::CreateOrGetDirectory(
       }
       DVLOG(1) << "ERROR: failed to create directory: " << path
                << " with error code " << error;
-      return base::nullopt;
+      return absl::nullopt;
     }
     case kDirectory:
       return path;
@@ -133,17 +130,17 @@ base::Optional<base::FilePath> FileManager::CreateOrGetDirectory(
       if (!base::CreateDirectoryAndGetError(dst_path, &error)) {
         DVLOG(1) << "ERROR: failed to create directory: " << path
                  << " with error code " << error;
-        return base::nullopt;
+        return absl::nullopt;
       }
       if (!zip::Unzip(path, dst_path)) {
         DVLOG(1) << "ERROR: failed to unzip: " << path << " to " << dst_path;
-        return base::nullopt;
+        return absl::nullopt;
       }
       base::DeletePathRecursively(path);
       return dst_path;
     }
     default:
-      return base::nullopt;
+      return absl::nullopt;
   }
 }
 
@@ -209,11 +206,6 @@ bool FileManager::SerializePaintPreviewProto(const DirectoryKey& key,
           "Browser.PaintPreview.Capture.CompressedOnDiskSize",
           info->size / 1000);
     }
-  } else {
-    size_t size_bytes = base::ComputeDirectorySize(path.value());
-    base::UmaHistogramMemoryKB(
-        "Browser.PaintPreview.Capture.UncompressedOnDiskSize",
-        size_bytes / 1000);
   }
   return result;
 }
@@ -230,8 +222,9 @@ FileManager::DeserializePaintPreviewProto(const DirectoryKey& key) const {
     return std::make_pair(ProtoReadStatus::kNoProto, nullptr);
 
   auto proto = ReadProtoFromFile(path->AppendASCII(kProtoName));
-  if (proto == nullptr)
+  if (proto == nullptr || !PaintPreviewProtoValid(*proto)) {
     return std::make_pair(ProtoReadStatus::kDeserializationError, nullptr);
+  }
 
   return std::make_pair(ProtoReadStatus::kOk, std::move(proto));
 }
@@ -248,47 +241,6 @@ base::flat_set<DirectoryKey> FileManager::ListUsedKeys() const {
         DirectoryKey{name.BaseName().RemoveExtension().MaybeAsASCII()});
   }
   return base::flat_set<DirectoryKey>(std::move(keys));
-}
-
-std::vector<DirectoryKey> FileManager::GetOldestArtifactsForCleanup(
-    size_t max_size,
-    base::TimeDelta expiry_horizon) {
-  base::FileEnumerator file_enum(
-      root_directory_, false,
-      base::FileEnumerator::FILES | base::FileEnumerator::DIRECTORIES);
-  std::vector<base::FileEnumerator::FileInfo> file_infos;
-  for (base::FilePath name = file_enum.Next(); !name.empty();
-       name = file_enum.Next()) {
-    file_infos.push_back(file_enum.GetInfo());
-  }
-
-  std::sort(file_infos.begin(), file_infos.end(), CompareByLastModified);
-
-  // If the oldest file doesn't need to expire attempt to early exit.
-  base::Time expiry_threshold =
-      base::Time::NowFromSystemTime() - expiry_horizon;
-
-  size_t size = base::ComputeDirectorySize(root_directory_);
-  std::vector<DirectoryKey> keys_to_remove;
-  for (const auto& file_info : file_infos) {
-    // Stop when both the max size and expiry threshold requirements are met.
-    if (size <= max_size && file_info.GetLastModifiedTime() > expiry_threshold)
-      break;
-
-    size_t size_delta = file_info.GetSize();
-    // Computing a directory size is expensive. Most files should hopefully be
-    // compressed already.
-    if (file_info.IsDirectory()) {
-      base::FilePath full_path = root_directory_.Append(file_info.GetName());
-      size_delta = base::ComputeDirectorySize(full_path);
-    }
-
-    // Directory names should always be ASCII.
-    keys_to_remove.emplace_back(
-        file_info.GetName().RemoveExtension().MaybeAsASCII());
-    size -= size_delta;
-  }
-  return keys_to_remove;
 }
 
 FileManager::StorageType FileManager::GetPathForKey(

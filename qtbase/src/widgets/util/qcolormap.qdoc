@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \class QColormap
@@ -42,11 +18,11 @@
     \value Direct Pixel values are derived directly from the RGB
     values, also known as "True Color."
 
-    \value Indexed Pixel values represent indexes into a vector of
+    \value Indexed Pixel values represent indexes into a list of
     available colors, i.e. QColormap uses the index of the color that
     most closely matches an RGB value.
 
-    \value Gray Similar to \c Indexed, pixel values represent a vector
+    \value Gray Similar to \c Indexed, pixel values represent a list
     of available gray tones.  QColormap uses the index of the gray
     tone that most closely matches the computed gray tone of an RGB
     value.
@@ -113,11 +89,11 @@
 */
 
 /*!
-    \fn const QVector<QColor> QColormap::colormap() const
+    \fn const QList<QColor> QColormap::colormap() const
 
-    Returns a vector of colors which represents the devices colormap
+    Returns a list of colors which represents the devices colormap
     for \c Indexed and \c Gray modes.  This function returns an empty
-    vector for \c Direct mode.
+    list for \c Direct mode.
 
     \sa size()
 */

@@ -1,8 +1,10 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gl/android/scoped_java_surface.h"
+
+#include <utility>
 
 #include "base/check.h"
 #include "ui/gl/android/surface_texture.h"
@@ -12,14 +14,15 @@ using base::android::ScopedJavaLocalRef;
 
 namespace gl {
 
-ScopedJavaSurface::ScopedJavaSurface() {
-}
+ScopedJavaSurface::ScopedJavaSurface() = default;
+ScopedJavaSurface::ScopedJavaSurface(std::nullptr_t) {}
 
 ScopedJavaSurface::ScopedJavaSurface(
-    const base::android::JavaRef<jobject>& surface) {
+    const base::android::JavaRef<jobject>& surface,
+    bool auto_release)
+    : auto_release_(auto_release), j_surface_(surface) {
   JNIEnv* env = base::android::AttachCurrentThread();
   DCHECK(env->IsInstanceOf(surface.obj(), android_view_Surface_clazz(env)));
-  j_surface_.Reset(surface);
 }
 
 ScopedJavaSurface::ScopedJavaSurface(const SurfaceTexture* surface_texture) {
@@ -43,6 +46,10 @@ ScopedJavaSurface::~ScopedJavaSurface() {
   ReleaseSurfaceIfNeeded();
 }
 
+ScopedJavaSurface ScopedJavaSurface::CopyRetainOwnership() const {
+  return ScopedJavaSurface(j_surface_, /*auto_release=*/false);
+}
+
 void ScopedJavaSurface::ReleaseSurfaceIfNeeded() {
   if (auto_release_ && !j_surface_.is_null()) {
     JNIEnv* env = base::android::AttachCurrentThread();
@@ -51,11 +58,12 @@ void ScopedJavaSurface::ReleaseSurfaceIfNeeded() {
 }
 
 void ScopedJavaSurface::MoveFrom(ScopedJavaSurface& other) {
+  if (this == &other) {
+    return;
+  }
   ReleaseSurfaceIfNeeded();
-  JNIEnv* env = base::android::AttachCurrentThread();
-  j_surface_.Reset(env, other.j_surface_.Release());
+  j_surface_ = std::move(other.j_surface_);
   auto_release_ = other.auto_release_;
-  is_protected_ = other.is_protected_;
 }
 
 bool ScopedJavaSurface::IsEmpty() const {
@@ -65,17 +73,6 @@ bool ScopedJavaSurface::IsEmpty() const {
 bool ScopedJavaSurface::IsValid() const {
   JNIEnv* env = base::android::AttachCurrentThread();
   return !IsEmpty() && JNI_Surface::Java_Surface_isValidZ(env, j_surface_);
-}
-
-// static
-ScopedJavaSurface ScopedJavaSurface::AcquireExternalSurface(jobject surface) {
-  JNIEnv* env = base::android::AttachCurrentThread();
-  ScopedJavaLocalRef<jobject> surface_ref;
-  surface_ref.Reset(env, surface);
-  ScopedJavaSurface scoped_surface(surface_ref);
-  scoped_surface.auto_release_ = false;
-  scoped_surface.is_protected_ = true;
-  return scoped_surface;
 }
 
 }  // namespace gl

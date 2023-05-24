@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Imagination Technologies Limited, www.imgtec.com
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Imagination Technologies Limited, www.imgtec.com
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT_MIPS_ASM_DSP_H
 #define QT_MIPS_ASM_DSP_H
@@ -55,7 +19,7 @@
 #pragma qt_sync_stop_processing
 #endif
 
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
 #define zero $0
 #define AT   $1
 #define v0   $2
@@ -277,7 +241,7 @@ LEAF_MIPS32R2(symbol)                                   \
 
 /*
  * Saves set of registers on stack. Maximum number of registers that
- * can be saved on stack is limitted to 14 (a0-a3, v0-v1 and s0-s7).
+ * can be saved on stack is limited to 14 (a0-a3, v0-v1 and s0-s7).
  * Stack offset is number of bytes that are added to stack pointer (sp)
  * before registers are pushed in order to provide enough space on stack
  * (offset must be multiple of 4, and must be big enough, as described by
@@ -352,7 +316,7 @@ LEAF_MIPS32R2(symbol)                                   \
 
 /*
  * Restores set of registers from stack. Maximum number of registers that
- * can be restored from stack is limitted to 14 (a0-a3, v0-v1 and s0-s7).
+ * can be restored from stack is limited to 14 (a0-a3, v0-v1 and s0-s7).
  * Stack offset is number of bytes that are added to stack pointer (sp)
  * after registers are restored (offset must be multiple of 4, and must
  * be big enough, as described by CHECK_STACK_OFFSET macro). This macro is

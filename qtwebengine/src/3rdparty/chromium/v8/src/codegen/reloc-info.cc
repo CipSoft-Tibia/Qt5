@@ -4,6 +4,7 @@
 
 #include "src/codegen/reloc-info.h"
 
+#include "src/base/vlq.h"
 #include "src/codegen/assembler-inl.h"
 #include "src/codegen/code-reference.h"
 #include "src/codegen/external-reference-encoder.h"
@@ -11,7 +12,7 @@
 #include "src/deoptimizer/deoptimizer.h"
 #include "src/heap/heap-write-barrier-inl.h"
 #include "src/objects/code-inl.h"
-#include "src/snapshot/embedded/embedded-data.h"
+#include "src/snapshot/embedded/embedded-data-inl.h"
 
 namespace v8 {
 namespace internal {
@@ -56,11 +57,10 @@ const char* const RelocInfo::kFillerCommentString = "DEOPTIMIZATION PADDING";
 //  the following record in the usual way. The long pc jump record has variable
 //  length:
 //               pc-jump:        [PC_JUMP] 11
-//                               [7 bits data] 0
+//                               1 [7 bits data]
 //                                  ...
-//                               [7 bits data] 1
-//               (Bits 6..31 of pc delta, with leading zeroes
-//                dropped, and last non-zero chunk tagged with 1.)
+//                               0 [7 bits data]
+//               (Bits 6..31 of pc delta, encoded with VLQ.)
 
 const int kTagBits = 2;
 const int kTagMask = (1 << kTagBits) - 1;
@@ -75,12 +75,6 @@ const int kSmallPCDeltaBits = kBitsPerByte - kTagBits;
 const int kSmallPCDeltaMask = (1 << kSmallPCDeltaBits) - 1;
 const int RelocInfo::kMaxSmallPCDelta = kSmallPCDeltaMask;
 
-const int kChunkBits = 7;
-const int kChunkMask = (1 << kChunkBits) - 1;
-const int kLastChunkTagBits = 1;
-const int kLastChunkTagMask = 1;
-const int kLastChunkTag = 1;
-
 uint32_t RelocInfoWriter::WriteLongPCJump(uint32_t pc_delta) {
   // Return if the pc_delta can fit in kSmallPCDeltaBits bits.
   // Otherwise write a variable length PC jump for the bits that do
@@ -89,13 +83,12 @@ uint32_t RelocInfoWriter::WriteLongPCJump(uint32_t pc_delta) {
   WriteMode(RelocInfo::PC_JUMP);
   uint32_t pc_jump = pc_delta >> kSmallPCDeltaBits;
   DCHECK_GT(pc_jump, 0);
-  // Write kChunkBits size chunks of the pc_jump.
-  for (; pc_jump > 0; pc_jump = pc_jump >> kChunkBits) {
-    byte b = pc_jump & kChunkMask;
-    *--pos_ = b << kLastChunkTagBits;
-  }
-  // Tag the last chunk so it can be identified.
-  *pos_ = *pos_ | kLastChunkTag;
+  base::VLQEncodeUnsigned(
+      [this](byte byte) {
+        *--pos_ = byte;
+        return pos_;
+      },
+      pc_jump);
   // Return the remaining kSmallPCDeltaBits of the pc_delta.
   return pc_delta & kSmallPCDeltaMask;
 }
@@ -111,7 +104,7 @@ void RelocInfoWriter::WriteShortData(intptr_t data_delta) {
 }
 
 void RelocInfoWriter::WriteMode(RelocInfo::Mode rmode) {
-  STATIC_ASSERT(RelocInfo::NUMBER_OF_MODES <= (1 << kLongTagBits));
+  static_assert(RelocInfo::NUMBER_OF_MODES <= (1 << kLongTagBits));
   *--pos_ = static_cast<int>((rmode << kTagBits) | kDefaultTag);
 }
 
@@ -127,14 +120,6 @@ void RelocInfoWriter::WriteIntData(int number) {
     *--pos_ = static_cast<byte>(number);
     // Signed right shift is arithmetic shift.  Tested in test-utils.cc.
     number = number >> kBitsPerByte;
-  }
-}
-
-void RelocInfoWriter::WriteData(intptr_t data_delta) {
-  for (int i = 0; i < kIntptrSize; i++) {
-    *--pos_ = static_cast<byte>(data_delta);
-    // Signed right shift is arithmetic shift.  Tested in test-utils.cc.
-    data_delta = data_delta >> kBitsPerByte;
   }
 }
 
@@ -164,7 +149,8 @@ void RelocInfoWriter::Write(const RelocInfo* rinfo) {
       WriteShortData(rinfo->data());
     } else if (RelocInfo::IsConstPool(rmode) ||
                RelocInfo::IsVeneerPool(rmode) || RelocInfo::IsDeoptId(rmode) ||
-               RelocInfo::IsDeoptPosition(rmode)) {
+               RelocInfo::IsDeoptPosition(rmode) ||
+               RelocInfo::IsDeoptNodeId(rmode)) {
       WriteIntData(static_cast<int>(rinfo->data()));
     }
   }
@@ -205,14 +191,8 @@ void RelocIterator::AdvanceReadData() {
 
 void RelocIterator::AdvanceReadLongPCJump() {
   // Read the 32-kSmallPCDeltaBits most significant bits of the
-  // pc jump in kChunkBits bit chunks and shift them into place.
-  // Stop when the last chunk is encountered.
-  uint32_t pc_jump = 0;
-  for (int i = 0; i < kIntSize; i++) {
-    byte pc_jump_part = *--pos_;
-    pc_jump |= (pc_jump_part >> kLastChunkTagBits) << i * kChunkBits;
-    if ((pc_jump_part & kLastChunkTagMask) == 1) break;
-  }
+  // pc jump as a VLQ encoded integer.
+  uint32_t pc_jump = base::VLQDecodeUnsigned([this] { return *--pos_; });
   // The least significant kSmallPCDeltaBits bits will be added
   // later.
   rinfo_.pc_ += pc_jump << kSmallPCDeltaBits;
@@ -257,7 +237,8 @@ void RelocIterator::next() {
         } else if (RelocInfo::IsConstPool(rmode) ||
                    RelocInfo::IsVeneerPool(rmode) ||
                    RelocInfo::IsDeoptId(rmode) ||
-                   RelocInfo::IsDeoptPosition(rmode)) {
+                   RelocInfo::IsDeoptPosition(rmode) ||
+                   RelocInfo::IsDeoptNodeId(rmode)) {
           if (SetMode(rmode)) {
             AdvanceReadInt();
             return;
@@ -272,44 +253,51 @@ void RelocIterator::next() {
   done_ = true;
 }
 
-RelocIterator::RelocIterator(Code code, int mode_mask)
+RelocIterator::RelocIterator(InstructionStream code, int mode_mask)
     : RelocIterator(code, code.unchecked_relocation_info(), mode_mask) {}
 
-RelocIterator::RelocIterator(Code code, ByteArray relocation_info,
+RelocIterator::RelocIterator(Code code, int mode_mask)
+    : RelocIterator(code.instruction_stream(),
+                    code.instruction_stream().unchecked_relocation_info(),
+                    mode_mask) {}
+
+RelocIterator::RelocIterator(InstructionStream code, ByteArray relocation_info,
                              int mode_mask)
-    : RelocIterator(code, code.raw_instruction_start(), code.constant_pool(),
+    : RelocIterator(code, code.instruction_start(), code.constant_pool(),
                     relocation_info.GetDataEndAddress(),
                     relocation_info.GetDataStartAddress(), mode_mask) {}
 
 RelocIterator::RelocIterator(const CodeReference code_reference, int mode_mask)
-    : RelocIterator(Code(), code_reference.instruction_start(),
+    : RelocIterator(InstructionStream(), code_reference.instruction_start(),
                     code_reference.constant_pool(),
                     code_reference.relocation_end(),
                     code_reference.relocation_start(), mode_mask) {}
 
-RelocIterator::RelocIterator(EmbeddedData* embedded_data, Code code,
-                             int mode_mask)
-    : RelocIterator(
-          code, embedded_data->InstructionStartOfBuiltin(code.builtin_index()),
-          code.constant_pool(),
-          code.relocation_start() + code.relocation_size(),
-          code.relocation_start(), mode_mask) {}
+RelocIterator::RelocIterator(EmbeddedData* embedded_data,
+                             InstructionStream code, int mode_mask)
+    : RelocIterator(code,
+                    embedded_data->InstructionStartOfBuiltin(code.builtin_id()),
+                    code.constant_pool(),
+                    code.relocation_start() + code.relocation_size(),
+                    code.relocation_start(), mode_mask) {}
 
 RelocIterator::RelocIterator(const CodeDesc& desc, int mode_mask)
-    : RelocIterator(Code(), reinterpret_cast<Address>(desc.buffer), 0,
-                    desc.buffer + desc.buffer_size,
+    : RelocIterator(InstructionStream(), reinterpret_cast<Address>(desc.buffer),
+                    0, desc.buffer + desc.buffer_size,
                     desc.buffer + desc.buffer_size - desc.reloc_size,
                     mode_mask) {}
 
-RelocIterator::RelocIterator(Vector<byte> instructions,
-                             Vector<const byte> reloc_info, Address const_pool,
-                             int mode_mask)
-    : RelocIterator(Code(), reinterpret_cast<Address>(instructions.begin()),
-                    const_pool, reloc_info.begin() + reloc_info.size(),
-                    reloc_info.begin(), mode_mask) {}
+RelocIterator::RelocIterator(base::Vector<byte> instructions,
+                             base::Vector<const byte> reloc_info,
+                             Address const_pool, int mode_mask)
+    : RelocIterator(InstructionStream(),
+                    reinterpret_cast<Address>(instructions.begin()), const_pool,
+                    reloc_info.begin() + reloc_info.size(), reloc_info.begin(),
+                    mode_mask) {}
 
-RelocIterator::RelocIterator(Code host, Address pc, Address constant_pool,
-                             const byte* pos, const byte* end, int mode_mask)
+RelocIterator::RelocIterator(InstructionStream host, Address pc,
+                             Address constant_pool, const byte* pos,
+                             const byte* end, int mode_mask)
     : pos_(pos), end_(end), mode_mask_(mode_mask) {
   // Relocation info is read backwards.
   DCHECK_GE(pos_, end_);
@@ -328,9 +316,10 @@ bool RelocInfo::OffHeapTargetIsCodedSpecially() {
 #if defined(V8_TARGET_ARCH_ARM) || defined(V8_TARGET_ARCH_ARM64) || \
     defined(V8_TARGET_ARCH_X64)
   return false;
-#elif defined(V8_TARGET_ARCH_IA32) || defined(V8_TARGET_ARCH_MIPS) || \
-    defined(V8_TARGET_ARCH_MIPS64) || defined(V8_TARGET_ARCH_PPC) ||  \
-    defined(V8_TARGET_ARCH_PPC64) || defined(V8_TARGET_ARCH_S390)
+#elif defined(V8_TARGET_ARCH_IA32) || defined(V8_TARGET_ARCH_MIPS64) || \
+    defined(V8_TARGET_ARCH_PPC) || defined(V8_TARGET_ARCH_PPC64) ||     \
+    defined(V8_TARGET_ARCH_S390) || defined(V8_TARGET_ARCH_RISCV64) ||  \
+    defined(V8_TARGET_ARCH_LOONG64) || defined(V8_TARGET_ARCH_RISCV32)
   return true;
 #endif
 }
@@ -362,15 +351,23 @@ void RelocInfo::set_wasm_stub_call_address(Address address,
 void RelocInfo::set_target_address(Address target,
                                    WriteBarrierMode write_barrier_mode,
                                    ICacheFlushMode icache_flush_mode) {
-  DCHECK(IsCodeTargetMode(rmode_) || IsRuntimeEntry(rmode_) ||
+  DCHECK(IsCodeTargetMode(rmode_) || IsNearBuiltinEntry(rmode_) ||
          IsWasmCall(rmode_));
   Assembler::set_target_address_at(pc_, constant_pool_, target,
                                    icache_flush_mode);
-  if (write_barrier_mode == UPDATE_WRITE_BARRIER && !host().is_null() &&
-      IsCodeTargetMode(rmode_) && !FLAG_disable_write_barriers) {
-    Code target_code = Code::GetCodeFromTargetAddress(target);
-    WriteBarrier::Marking(host(), this, target_code);
+  if (!host().is_null() && IsCodeTargetMode(rmode_) &&
+      !v8_flags.disable_write_barriers) {
+    InstructionStream target_code =
+        InstructionStream::FromTargetAddress(target);
+    WriteBarrierForCode(host(), this, target_code, write_barrier_mode);
   }
+}
+
+void RelocInfo::set_off_heap_target_address(Address target,
+                                            ICacheFlushMode icache_flush_mode) {
+  DCHECK(IsCodeTargetMode(rmode_));
+  Assembler::set_target_address_at(pc_, constant_pool_, target,
+                                   icache_flush_mode);
 }
 
 bool RelocInfo::HasTargetAddressAddress() const {
@@ -380,13 +377,13 @@ bool RelocInfo::HasTargetAddressAddress() const {
   static constexpr int kTargetAddressAddressModeMask =
       ModeMask(CODE_TARGET) | ModeMask(FULL_EMBEDDED_OBJECT) |
       ModeMask(COMPRESSED_EMBEDDED_OBJECT) | ModeMask(EXTERNAL_REFERENCE) |
-      ModeMask(OFF_HEAP_TARGET) | ModeMask(RUNTIME_ENTRY) |
-      ModeMask(WASM_CALL) | ModeMask(WASM_STUB_CALL);
+      ModeMask(OFF_HEAP_TARGET) | ModeMask(WASM_CALL) |
+      ModeMask(WASM_STUB_CALL);
 #else
   static constexpr int kTargetAddressAddressModeMask =
       ModeMask(CODE_TARGET) | ModeMask(RELATIVE_CODE_TARGET) |
       ModeMask(FULL_EMBEDDED_OBJECT) | ModeMask(EXTERNAL_REFERENCE) |
-      ModeMask(OFF_HEAP_TARGET) | ModeMask(RUNTIME_ENTRY) | ModeMask(WASM_CALL);
+      ModeMask(OFF_HEAP_TARGET) | ModeMask(WASM_CALL);
 #endif
   return (ModeMask(rmode_) & kTargetAddressAddressModeMask) != 0;
 }
@@ -396,7 +393,7 @@ bool RelocInfo::RequiresRelocationAfterCodegen(const CodeDesc& desc) {
   return !it.done();
 }
 
-bool RelocInfo::RequiresRelocation(Code code) {
+bool RelocInfo::RequiresRelocation(InstructionStream code) {
   RelocIterator it(code, RelocInfo::kApplyMask);
   return !it.done();
 }
@@ -404,7 +401,7 @@ bool RelocInfo::RequiresRelocation(Code code) {
 #ifdef ENABLE_DISASSEMBLER
 const char* RelocInfo::RelocModeName(RelocInfo::Mode rmode) {
   switch (rmode) {
-    case NONE:
+    case NO_INFO:
       return "no reloc";
     case COMPRESSED_EMBEDDED_OBJECT:
       return "compressed embedded object";
@@ -414,8 +411,6 @@ const char* RelocInfo::RelocModeName(RelocInfo::Mode rmode) {
       return "code target";
     case RELATIVE_CODE_TARGET:
       return "relative code target";
-    case RUNTIME_ENTRY:
-      return "runtime entry";
     case EXTERNAL_REFERENCE:
       return "external reference";
     case INTERNAL_REFERENCE:
@@ -424,6 +419,8 @@ const char* RelocInfo::RelocModeName(RelocInfo::Mode rmode) {
       return "encoded internal reference";
     case OFF_HEAP_TARGET:
       return "off heap target";
+    case NEAR_BUILTIN_ENTRY:
+      return "near builtin entry";
     case DEOPT_SCRIPT_OFFSET:
       return "deopt script offset";
     case DEOPT_INLINING_ID:
@@ -432,6 +429,10 @@ const char* RelocInfo::RelocModeName(RelocInfo::Mode rmode) {
       return "deopt reason";
     case DEOPT_ID:
       return "deopt index";
+    case LITERAL_CONSTANT:
+      return "literal constant";
+    case DEOPT_NODE_ID:
+      return "deopt node id";
     case CONST_POOL:
       return "constant pool";
     case VENEER_POOL:
@@ -447,7 +448,7 @@ const char* RelocInfo::RelocModeName(RelocInfo::Mode rmode) {
   return "unknown relocation type";
 }
 
-void RelocInfo::Print(Isolate* isolate, std::ostream& os) {  // NOLINT
+void RelocInfo::Print(Isolate* isolate, std::ostream& os) {
   os << reinterpret_cast<const void*>(pc_) << "  " << RelocModeName(rmode_);
   if (rmode_ == DEOPT_SCRIPT_OFFSET || rmode_ == DEOPT_INLINING_ID) {
     os << "  (" << data() << ")";
@@ -455,9 +456,9 @@ void RelocInfo::Print(Isolate* isolate, std::ostream& os) {  // NOLINT
     os << "  ("
        << DeoptimizeReasonToString(static_cast<DeoptimizeReason>(data_)) << ")";
   } else if (rmode_ == FULL_EMBEDDED_OBJECT) {
-    os << "  (" << Brief(target_object()) << ")";
+    os << "  (" << Brief(target_object(isolate)) << ")";
   } else if (rmode_ == COMPRESSED_EMBEDDED_OBJECT) {
-    os << "  (" << Brief(target_object()) << " compressed)";
+    os << "  (" << Brief(target_object(isolate)) << " compressed)";
   } else if (rmode_ == EXTERNAL_REFERENCE) {
     if (isolate) {
       ExternalReferenceEncoder ref_encoder(isolate);
@@ -469,20 +470,13 @@ void RelocInfo::Print(Isolate* isolate, std::ostream& os) {  // NOLINT
        << ")";
   } else if (IsCodeTargetMode(rmode_)) {
     const Address code_target = target_address();
-    Code code = Code::GetCodeFromTargetAddress(code_target);
-    DCHECK(code.IsCode());
+    InstructionStream code = InstructionStream::FromTargetAddress(code_target);
+    DCHECK(code.IsInstructionStream());
     os << " (" << CodeKindToString(code.kind());
     if (Builtins::IsBuiltin(code)) {
-      os << " " << Builtins::name(code.builtin_index());
+      os << " " << Builtins::name(code.builtin_id());
     }
     os << ")  (" << reinterpret_cast<const void*>(target_address()) << ")";
-  } else if (IsRuntimeEntry(rmode_) && isolate->deoptimizer_data() != nullptr) {
-    // Deoptimization bailouts are stored as runtime entries.
-    DeoptimizeKind type;
-    if (Deoptimizer::IsDeoptimizationEntry(isolate, target_address(), &type)) {
-      os << "  (" << Deoptimizer::MessageFor(type, false)
-         << " deoptimization bailout)";
-    }
   } else if (IsConstPool(rmode_)) {
     os << " (size " << static_cast<int>(data_) << ")";
   }
@@ -495,8 +489,10 @@ void RelocInfo::Print(Isolate* isolate, std::ostream& os) {  // NOLINT
 void RelocInfo::Verify(Isolate* isolate) {
   switch (rmode_) {
     case COMPRESSED_EMBEDDED_OBJECT:
+      Object::VerifyPointer(isolate, target_object(isolate));
+      break;
     case FULL_EMBEDDED_OBJECT:
-      Object::VerifyPointer(isolate, target_object());
+      Object::VerifyAnyTagged(isolate, target_object(isolate));
       break;
     case CODE_TARGET:
     case RELATIVE_CODE_TARGET: {
@@ -504,38 +500,47 @@ void RelocInfo::Verify(Isolate* isolate) {
       Address addr = target_address();
       CHECK_NE(addr, kNullAddress);
       // Check that we can find the right code object.
-      Code code = Code::GetCodeFromTargetAddress(addr);
-      Object found = isolate->FindCodeObject(addr);
-      CHECK(found.IsCode());
-      CHECK(code.address() == HeapObject::cast(found).address());
+      InstructionStream code = InstructionStream::FromTargetAddress(addr);
+      Code lookup_result = isolate->heap()->FindCodeForInnerPointer(addr);
+      CHECK_EQ(code.address(), lookup_result.instruction_stream().address());
       break;
     }
     case INTERNAL_REFERENCE:
     case INTERNAL_REFERENCE_ENCODED: {
       Address target = target_internal_reference();
       Address pc = target_internal_reference_address();
-      Code code = Code::cast(isolate->FindCodeObject(pc));
-      CHECK(target >= code.InstructionStart());
-      CHECK(target <= code.InstructionEnd());
+      Code lookup_result = isolate->heap()->FindCodeForInnerPointer(pc);
+      InstructionStream code = lookup_result.instruction_stream();
+      CHECK(target >= code.instruction_start());
+      CHECK(target < code.instruction_end());
       break;
     }
     case OFF_HEAP_TARGET: {
       Address addr = target_off_heap_target();
       CHECK_NE(addr, kNullAddress);
-      CHECK(!InstructionStream::TryLookupCode(isolate, addr).is_null());
+      CHECK(Builtins::IsBuiltinId(
+          OffHeapInstructionStream::TryLookupCode(isolate, addr)));
       break;
     }
-    case RUNTIME_ENTRY:
+    case NEAR_BUILTIN_ENTRY: {
+      Address addr = target_address();
+      CHECK_NE(addr, kNullAddress);
+      CHECK(Builtins::IsBuiltinId(
+          OffHeapInstructionStream::TryLookupCode(isolate, addr)));
+      break;
+    }
     case EXTERNAL_REFERENCE:
     case DEOPT_SCRIPT_OFFSET:
     case DEOPT_INLINING_ID:
     case DEOPT_REASON:
     case DEOPT_ID:
+    case LITERAL_CONSTANT:
+    case DEOPT_NODE_ID:
     case CONST_POOL:
     case VENEER_POOL:
     case WASM_CALL:
     case WASM_STUB_CALL:
-    case NONE:
+    case NO_INFO:
       break;
     case NUMBER_OF_MODES:
     case PC_JUMP:

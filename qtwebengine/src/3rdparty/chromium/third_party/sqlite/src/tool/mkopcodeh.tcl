@@ -86,6 +86,7 @@ while {![eof $in]} {
     set in3($name) 0
     set out2($name) 0
     set out3($name) 0
+    set ncycle($name) 0
     for {set i 3} {$i<[llength $line]-1} {incr i} {
        switch [string trim [lindex $line $i] ,] {
          same {
@@ -107,6 +108,7 @@ while {![eof $in]} {
          in3   {set in3($name) 1}
          out2  {set out2($name) 1}
          out3  {set out3($name) 1}
+         ncycle {set ncycle($name) 1}
        }
     }
     if {$group($name)} {
@@ -140,12 +142,15 @@ foreach name {OP_Noop OP_Explain OP_Abortable} {
   set in3($name) 0
   set out2($name) 0
   set out3($name) 0
+  set ncycle($name) 0
   set op($name) -1
   set order($nOp) $name
   incr nOp
 }
 
-# The following are the opcodes that are processed by resolveP2Values()
+# The following are the opcodes that receive special processing in the
+# resolveP2Values() routine.  Update this list whenever new cases are
+# added to the pOp->opcode switch within resolveP2Values().
 #
 set rp2v_ops {
   OP_Transaction
@@ -156,14 +161,10 @@ set rp2v_ops {
   OP_JournalMode
   OP_VUpdate
   OP_VFilter
-  OP_Next
-  OP_NextIfOpen
-  OP_SorterNext
-  OP_Prev
-  OP_PrevIfOpen
+  OP_Init
 }
 
-# Assign small values to opcodes that are processed by resolveP2Values()
+# Assign the smallest values to opcodes that are processed by resolveP2Values()
 # to make code generation for the switch() statement smaller and faster.
 #
 set cnt -1
@@ -177,6 +178,7 @@ for {set i 0} {$i<$nOp} {incr i} {
     set def($cnt) $name
   }
 }
+set mxCase1 $cnt
 
 # Assign the next group of values to JUMP opcodes
 #
@@ -207,8 +209,9 @@ for {set i 0} {$i<$nOp} {incr i} {
 for {set g 0} {$g<$nGroup} {incr g} {
   set gLen [llength $groups($g)]
   set ok 0; set start -1
+  set seek $cnt
   while {!$ok} {
-    set seek $cnt; incr seek
+    incr seek
     while {[info exists used($seek)]} {incr seek}
     set ok 1; set start $seek
     for {set j 0} {$j<$gLen} {incr j} {
@@ -285,6 +288,7 @@ for {set i 0} {$i<=$max} {incr i} {
     if {$in3($name)}   {incr x 8}
     if {$out2($name)}  {incr x 16}
     if {$out3($name)}  {incr x 32}
+    if {$ncycle($name)}  {incr x 64}
   }
   set bv($i) $x
 }
@@ -299,6 +303,7 @@ puts "#define OPFLG_IN2         0x04  /* in2:   P2 is an input */"
 puts "#define OPFLG_IN3         0x08  /* in3:   P3 is an input */"
 puts "#define OPFLG_OUT2        0x10  /* out2:  P2 is an output */"
 puts "#define OPFLG_OUT3        0x20  /* out3:  P3 is an output */"
+puts "#define OPFLG_NCYCLE      0x40  /* ncycle:Cycles count against P1 */"
 puts "#define OPFLG_INITIALIZER \173\\"
 for {set i 0} {$i<=$max} {incr i} {
   if {$i%8==0} {
@@ -311,7 +316,7 @@ for {set i 0} {$i<=$max} {incr i} {
 }
 puts "\175"
 puts ""
-puts "/* The sqlite3P2Values() routine is able to run faster if it knows"
+puts "/* The resolve3P2Values() routine is able to run faster if it knows"
 puts "** the value of the largest JUMP opcode.  The smaller the maximum"
 puts "** JUMP opcode the better, so the mkopcodeh.tcl script that"
 puts "** generated this include file strives to group all JUMP opcodes"

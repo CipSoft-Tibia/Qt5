@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,15 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/single_thread_task_runner.h"
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
-#include "base/win/windows_version.h"
 
 namespace device {
 
@@ -40,6 +42,9 @@ static const LPCSTR kXInputGetStateExOrdinal = (LPCSTR)100;
 
 // Bitmask for the Guide button in XInputGamepadEx.wButtons.
 static const int kXInputGamepadGuide = 0x0400;
+
+constexpr base::FilePath::CharType kXInputDllFileName[] =
+    FILE_PATH_LITERAL("xinput1_4.dll");
 
 float NormalizeXInputAxis(SHORT value) {
   return ((value + 32768.f) / 32767.5f) - 1.f;
@@ -72,17 +77,6 @@ const wchar_t* GamepadSubTypeName(BYTE sub_type) {
   }
 }
 
-const base::FilePath::CharType* XInputDllFileName() {
-  // Xinput.h defines filename (XINPUT_DLL) on different Windows versions, but
-  // Xinput.h specifies it in build time. Approach here uses the same values
-  // and it is resolving dll filename based on Windows version it is running on.
-  if (base::win::GetVersion() >= base::win::Version::WIN8) {
-    // For Windows 8+, XINPUT_DLL is xinput1_4.dll.
-    return FILE_PATH_LITERAL("xinput1_4.dll");
-  }
-  return FILE_PATH_LITERAL("xinput9_1_0.dll");
-}
-
 }  // namespace
 
 XInputDataFetcherWin::XInputDataFetcherWin() : xinput_available_(false) {}
@@ -99,7 +93,7 @@ GamepadSource XInputDataFetcherWin::source() {
 }
 
 void XInputDataFetcherWin::OnAddedToProvider() {
-  xinput_dll_ = base::ScopedNativeLibrary(base::FilePath(XInputDllFileName()));
+  xinput_dll_ = base::ScopedNativeLibrary(base::FilePath(kXInputDllFileName));
   xinput_available_ = GetXInputDllFunctions();
 }
 
@@ -297,8 +291,6 @@ bool XInputDataFetcherWin::GetXInputDllFunctions() {
   xinput_get_state_ = nullptr;
   xinput_get_state_ex_ = nullptr;
   xinput_set_state_ = nullptr;
-  XInputEnableFunc xinput_enable = reinterpret_cast<XInputEnableFunc>(
-      xinput_dll_.GetFunctionPointer("XInputEnable"));
   xinput_get_capabilities_ = reinterpret_cast<XInputGetCapabilitiesFunc>(
       xinput_dll_.GetFunctionPointer("XInputGetCapabilities"));
   if (!xinput_get_capabilities_)
@@ -318,13 +310,94 @@ bool XInputDataFetcherWin::GetXInputDllFunctions() {
   xinput_set_state_ =
       reinterpret_cast<XInputHapticGamepadWin::XInputSetStateFunc>(
           xinput_dll_.GetFunctionPointer("XInputSetState"));
-  if (!xinput_set_state_)
-    return false;
-  if (xinput_enable) {
-    // XInputEnable is unavailable before Win8 and deprecated in Win10.
-    xinput_enable(true);
+  return !!xinput_set_state_;
+}
+
+// static
+void XInputDataFetcherWin::OverrideXInputGetCapabilitiesFuncForTesting(
+    XInputDataFetcherWin::XInputGetCapabilitiesFunctionCallback callback) {
+  GetXInputGetCapabilitiesFunctionCallback() = callback;
+}
+
+// static
+XInputDataFetcherWin::XInputGetCapabilitiesFunctionCallback&
+XInputDataFetcherWin::GetXInputGetCapabilitiesFunctionCallback() {
+  static base::NoDestructor<
+      XInputDataFetcherWin::XInputGetCapabilitiesFunctionCallback>
+      instance;
+  return *instance;
+}
+
+// static
+void XInputDataFetcherWin::OverrideXInputGetStateExFuncForTesting(
+    XInputDataFetcherWin::XInputGetStateExFunctionCallback callback) {
+  GetXInputGetStateExFunctionCallback() = callback;
+}
+
+// static
+XInputDataFetcherWin::XInputGetStateExFunctionCallback&
+XInputDataFetcherWin::GetXInputGetStateExFunctionCallback() {
+  static base::NoDestructor<
+      XInputDataFetcherWin::XInputGetStateExFunctionCallback>
+      instance;
+  return *instance;
+}
+
+bool XInputDataFetcherWin::GetXInputDllFunctionsForWgiDataFetcher() {
+  xinput_get_capabilities_ = nullptr;
+  if (GetXInputGetCapabilitiesFunctionCallback()) {
+    xinput_get_capabilities_ = GetXInputGetCapabilitiesFunctionCallback().Run();
+  } else {
+    xinput_get_capabilities_ = reinterpret_cast<XInputGetCapabilitiesFunc>(
+        xinput_dll_.GetFunctionPointer("XInputGetCapabilities"));
   }
-  return true;
+  if (!xinput_get_capabilities_)
+    return false;
+
+  // Get the undocumented XInputGetStateEx, which will allow access to the Guide
+  // button's state.
+  xinput_get_state_ex_ = nullptr;
+  if (GetXInputGetStateExFunctionCallback()) {
+    xinput_get_state_ex_ = GetXInputGetStateExFunctionCallback().Run();
+  } else {
+    xinput_get_state_ex_ = reinterpret_cast<XInputGetStateExFunc>(
+        ::GetProcAddress(xinput_dll_.get(), kXInputGetStateExOrdinal));
+  }
+  return !!xinput_get_state_ex_;
+}
+
+void XInputDataFetcherWin::InitializeForWgiDataFetcher() {
+  xinput_dll_ = base::ScopedNativeLibrary(base::FilePath(kXInputDllFileName));
+  xinput_available_ = GetXInputDllFunctionsForWgiDataFetcher();
+}
+
+bool XInputDataFetcherWin::IsAnyMetaButtonPressed() {
+  if (!xinput_available_)
+    return false;
+
+  for (size_t i = 0; i < XUSER_MAX_COUNT; ++i) {
+    // Check to see if the xinput device is connected.
+    XINPUT_CAPABILITIES caps;
+    DWORD res = xinput_get_capabilities_(i, XINPUT_FLAG_GAMEPAD, &caps);
+    // No device connected at i-index.
+    if (res != ERROR_SUCCESS)
+      continue;
+
+    XInputStateEx xinput_state;
+    memset(&xinput_state, 0, sizeof(XInputStateEx));
+    DWORD dwResult;
+    dwResult = xinput_get_state_ex_(i, &xinput_state);
+
+    if (dwResult != ERROR_SUCCESS)
+      continue;
+
+    // Check the nexus button state and report only the first press detected.
+    WORD xinput_buttons_state = xinput_state.Gamepad.wButtons;
+    if (xinput_buttons_state & kXInputGamepadGuide) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace device

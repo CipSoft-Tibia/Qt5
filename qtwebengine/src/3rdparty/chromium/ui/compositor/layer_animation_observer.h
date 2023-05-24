@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <map>
 #include <set>
 
-#include "base/compiler_specific.h"
+#include "base/memory/weak_ptr.h"
 #include "ui/compositor/compositor_export.h"
 #include "ui/compositor/layer_animation_element.h"
 
@@ -32,6 +32,10 @@ class COMPOSITOR_EXPORT LayerAnimationObserver  {
   // Called when the |sequence| ends. Not called if |sequence| is aborted.
   virtual void OnLayerAnimationEnded(
       LayerAnimationSequence* sequence) = 0;
+
+  // Called when a |sequence| repetition ends and will repeat. Not called if
+  // |sequence| is aborted.
+  virtual void OnLayerAnimationWillRepeat(LayerAnimationSequence* sequence) {}
 
   // Called if |sequence| is aborted for any reason. Should never do anything
   // that may cause another animation to be started.
@@ -162,18 +166,17 @@ class COMPOSITOR_EXPORT ImplicitAnimationObserver
   AnimationStatus AnimationStatusForProperty(
       LayerAnimationElement::AnimatableProperty property) const;
 
-  bool active_;
-
-  // Set to true in the destructor (if non-NULL). Used to detect deletion while
-  // calling out.
-  bool* destroyed_;
+  bool active_ = false;
 
   typedef std::map<LayerAnimationElement::AnimatableProperty,
                    AnimationStatus> PropertyAnimationStatusMap;
   PropertyAnimationStatusMap property_animation_status_;
 
   // True if OnLayerAnimationScheduled() has been called at least once.
-  bool first_sequence_scheduled_;
+  bool first_sequence_scheduled_ = false;
+
+  // For tracking whether this object has been destroyed. Must be last.
+  base::WeakPtrFactory<ImplicitAnimationObserver> weak_factory_{this};
 };
 
 }  // namespace ui

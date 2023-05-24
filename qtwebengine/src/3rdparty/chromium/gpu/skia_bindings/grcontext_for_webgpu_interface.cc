@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,12 +31,11 @@ GrContextForWebGPUInterface::GrContextForWebGPUInterface(
   options.fGlyphCacheTextureMaximumBytes = max_glyph_cache_texture_bytes;
   options.fAvoidStencilBuffers = capabilities.avoid_stencil_buffers;
   options.fAllowPathMaskCaching = false;
-  options.fSharpenMipmappedTextures = true;
   options.fShaderErrorHandler = this;
   options.fInternalMultisampleCount = 0;
-  // TODO(senorblanco): use an actual passed-in Device, rather than assuming
-  // device ID 1.  http://crbug.com/1078775
-  WGPUDevice device = webgpu->GetDevice(1);
+  // TODO(senorblanco): create an actual passed-in Device, rather than this
+  // default hacky one.  http://crbug.com/1078775
+  WGPUDevice device = webgpu->DeprecatedEnsureDefaultDeviceSync();
   wgpuDeviceSetUncapturedErrorCallback(device, PrintDeviceError, 0);
   gr_context_ = GrDirectContext::MakeDawn(device, options);
   if (gr_context_) {

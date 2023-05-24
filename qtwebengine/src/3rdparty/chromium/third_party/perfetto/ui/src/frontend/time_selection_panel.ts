@@ -19,7 +19,11 @@ import {TimeSpan} from '../common/time';
 
 import {TRACK_SHELL_WIDTH} from './css_constants';
 import {globals} from './globals';
-import {gridlines} from './gridline_helper';
+import {
+  TickGenerator,
+  TickType,
+  timeScaleForVisibleWindow,
+} from './gridline_helper';
 import {Panel, PanelSize} from './panel';
 
 export interface BBox {
@@ -120,13 +124,15 @@ export class TimeSelectionPanel extends Panel {
   }
 
   renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
-    const range = globals.frontendLocalState.visibleWindowTime;
-    const timeScale = globals.frontendLocalState.timeScale;
-
     ctx.fillStyle = '#999';
     ctx.fillRect(TRACK_SHELL_WIDTH - 2, 0, 2, size.height);
-    for (const xAndTime of gridlines(size.width, range, timeScale)) {
-      ctx.fillRect(xAndTime[0], 0, 1, size.height);
+    const scale = timeScaleForVisibleWindow(TRACK_SHELL_WIDTH, size.width);
+    if (scale.timeSpan.duration > 0 && scale.widthPx > 0) {
+      for (const {position, type} of new TickGenerator(scale)) {
+        if (type === TickType.MAJOR) {
+          ctx.fillRect(position, 0, 1, size.height);
+        }
+      }
     }
 
     const localArea = globals.frontendLocalState.selectedArea;
@@ -142,9 +148,8 @@ export class TimeSelectionPanel extends Panel {
       this.renderSpan(ctx, size, new TimeSpan(start, end));
     }
 
-    if (globals.frontendLocalState.hoveredLogsTimestamp !== -1) {
-      this.renderHover(
-          ctx, size, globals.frontendLocalState.hoveredLogsTimestamp);
+    if (globals.state.hoveredLogsTimestamp !== -1) {
+      this.renderHover(ctx, size, globals.state.hoveredLogsTimestamp);
     }
 
     for (const note of Object.values(globals.state.notes)) {
@@ -180,7 +185,7 @@ export class TimeSelectionPanel extends Panel {
           x: TRACK_SHELL_WIDTH + xLeft,
           y: 0,
           width: xRight - xLeft,
-          height: size.height
+          height: size.height,
         },
         this.bounds(size),
         label);
@@ -191,7 +196,7 @@ export class TimeSelectionPanel extends Panel {
       x: TRACK_SHELL_WIDTH,
       y: 0,
       width: size.width - TRACK_SHELL_WIDTH,
-      height: size.height
+      height: size.height,
     };
   }
 }

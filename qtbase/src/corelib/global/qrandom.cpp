@@ -1,60 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 Intel Corporation.
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // for rand_s
 #define _CRT_RAND_S
 
 #include "qrandom.h"
 #include "qrandom_p.h"
-#include <qobjectdefs.h>
+#include <qendian.h>
 #include <qmutex.h>
-#include <qthreadstorage.h>
+#include <qobjectdefs.h>
 
 #include <errno.h>
 
-#if !QT_CONFIG(getentropy) && (!defined(Q_OS_BSD4) || defined(__GLIBC__)) && !defined(Q_OS_WIN)
+#if QT_CONFIG(getauxval)
+#  include <sys/auxv.h>
+#endif
+
+#if QT_CONFIG(getentropy) && __has_include(<sys/random.h>)
+#  include <sys/random.h>
+#elif !QT_CONFIG(getentropy) && (!defined(Q_OS_BSD4) || defined(__GLIBC__)) && !defined(Q_OS_WIN)
 #  include "qdeadlinetimer.h"
 #  include "qhashfunctions.h"
-
-#  if QT_CONFIG(getauxval)
-#    include <sys/auxv.h>
-#  endif
 #endif // !QT_CONFIG(getentropy)
 
 #ifdef Q_OS_UNIX
@@ -70,10 +37,6 @@
 extern "C" {
 DECLSPEC_IMPORT BOOLEAN WINAPI SystemFunction036(PVOID RandomBuffer, ULONG RandomBufferLength);
 }
-#endif
-
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
-#  include <private/qjni_p.h>
 #endif
 
 // This file is too low-level for regular Q_ASSERT (the logging framework may
@@ -94,6 +57,10 @@ enum {
     // may be "overridden" by a member enum
     FillBufferNoexcept = true
 };
+
+#if defined(QT_BUILD_INTERNAL)
+QBasicAtomicInteger<uint> qt_randomdevice_control = Q_BASIC_ATOMIC_INITIALIZER(0U);
+#endif
 
 struct QRandomGenerator::SystemGenerator
 {
@@ -155,7 +122,7 @@ struct QRandomGenerator::SystemGenerator
             qt_safe_close(fd);
     }
 
-    Q_DECL_CONSTEXPR SystemGenerator() : fdp1 Q_BASIC_ATOMIC_INITIALIZER(0) {}
+    constexpr SystemGenerator() : fdp1 Q_BASIC_ATOMIC_INITIALIZER(0) {}
 
     qsizetype fillBuffer(void *buffer, qsizetype count)
     {
@@ -167,19 +134,13 @@ struct QRandomGenerator::SystemGenerator
         return qMax<qsizetype>(n, 0);        // ignore any errors
     }
 
-#elif defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-    qsizetype fillBuffer(void *buffer, qsizetype count) noexcept
+#elif defined(Q_OS_WIN)
+    static qsizetype fillBuffer(void *buffer, qsizetype count) noexcept
     {
         auto RtlGenRandom = SystemFunction036;
         return RtlGenRandom(buffer, ULONG(count)) ? count: 0;
     }
-#elif defined(Q_OS_WINRT)
-    qsizetype fillBuffer(void *, qsizetype) noexcept
-    {
-        // always use the fallback
-        return 0;
-    }
-#endif // Q_OS_WINRT
+#endif // Q_OS_WIN
 
     static SystemGenerator &self();
     typedef quint32 result_type;
@@ -187,9 +148,10 @@ struct QRandomGenerator::SystemGenerator
 
     // For std::mersenne_twister_engine implementations that use something
     // other than quint32 (unsigned int) to fill their buffers.
-    template <typename T> void generate(T *begin, T *end)
+    template<typename T>
+    void generate(T *begin, T *end)
     {
-        Q_STATIC_ASSERT(sizeof(T) >= sizeof(quint32));
+        static_assert(sizeof(T) >= sizeof(quint32));
         if (sizeof(T) == sizeof(quint32)) {
             // Microsoft Visual Studio uses unsigned long, but that's still 32-bit
             generate(reinterpret_cast<quint32 *>(begin), reinterpret_cast<quint32 *>(end));
@@ -231,10 +193,10 @@ static void fallback_fill(quint32 *ptr, qsizetype left) noexcept
     arc4random_buf(ptr, left * sizeof(*ptr));
 }
 #else
-static QBasicAtomicInteger<unsigned> seed = Q_BASIC_ATOMIC_INITIALIZER(0U);
+Q_CONSTINIT static QBasicAtomicInteger<unsigned> seed = Q_BASIC_ATOMIC_INITIALIZER(0U);
 static void fallback_update_seed(unsigned value)
 {
-    // Update the seed to be used for the fallback mechansim, if we need to.
+    // Update the seed to be used for the fallback mechanism, if we need to.
     // We can't use QtPrivate::QHashCombine here because that is not an atomic
     // operation. A simple XOR will have to do then.
     seed.fetchAndXorRelaxed(value);
@@ -355,32 +317,26 @@ struct QRandomGenerator::SystemAndGlobalGenerators
     //    the state in case another thread tries to lock the mutex. It's not
     //    a common scenario, but since sizeof(QRandomGenerator) >= 2560, the
     //    overhead is actually acceptable.
-    // 2) We use both Q_DECL_ALIGN and std::aligned_storage<..., 64> because
-    //    some implementations of std::aligned_storage can't align to more
-    //    than a primitive type's alignment.
+    // 2) We use both alignas(T) and alignas(64) because some implementations
+    //    can't align to more than a primitive type's alignment.
     // 3) We don't store the entire system QRandomGenerator, only the space
     //    used by the QRandomGenerator::type member. This is fine because we
     //    (ab)use the common initial sequence exclusion to aliasing rules.
     QBasicMutex globalPRNGMutex;
     struct ShortenedSystem { uint type; } system_;
     SystemGenerator sys;
-    Q_DECL_ALIGN(64) std::aligned_storage<sizeof(QRandomGenerator64), 64>::type global_;
+    alignas(64) struct {
+        alignas(QRandomGenerator64) uchar data[sizeof(QRandomGenerator64)];
+    } global_;
 
-#ifdef Q_COMPILER_CONSTEXPR
     constexpr SystemAndGlobalGenerators()
         : globalPRNGMutex{}, system_{0}, sys{}, global_{}
     {}
-#endif
 
     void confirmLiteral()
     {
-#if defined(Q_COMPILER_CONSTEXPR) && !defined(Q_CC_MSVC) && !defined(Q_OS_INTEGRITY)
-        // Currently fails to compile with MSVC 2017, saying QBasicMutex is not
-        // a literal type. Disassembly with MSVC 2013 and 2015 shows it is
-        // actually a literal; MSVC 2017 has a bug relating to this, so we're
-        // withhold judgement for now.  Integrity's compiler is unable to
-        // guarantee g's alignment for some reason.
-
+#if !defined(Q_OS_INTEGRITY)
+        // Integrity's compiler is unable to guarantee g's alignment for some reason.
         constexpr SystemAndGlobalGenerators g = {};
         Q_UNUSED(g);
 #endif
@@ -388,8 +344,8 @@ struct QRandomGenerator::SystemAndGlobalGenerators
 
     static SystemAndGlobalGenerators *self()
     {
-        static SystemAndGlobalGenerators g;
-        Q_STATIC_ASSERT(sizeof(g) > sizeof(QRandomGenerator64));
+        Q_CONSTINIT static SystemAndGlobalGenerators g;
+        static_assert(sizeof(g) > sizeof(QRandomGenerator64));
         return &g;
     }
 
@@ -419,7 +375,8 @@ struct QRandomGenerator::SystemAndGlobalGenerators
         new (&rng->storage.engine()) RandomEngine(self()->sys);
     }
 
-    struct PRNGLocker {
+    struct PRNGLocker
+    {
         const bool locked;
         PRNGLocker(const QRandomGenerator *that)
             : locked(that == globalNoInit())
@@ -600,7 +557,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
 
     \snippet code/src_corelib_global_qrandom.cpp 3
 
-    \sa QRandomGenerator64, qrand()
+    \sa QRandomGenerator64
  */
 
 /*!
@@ -680,7 +637,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
    position in the deterministic sequence as the \a other object was. Both
    objects will generate the same sequence from this point on.
 
-   For that reason, it is not adviseable to create a copy of
+   For that reason, it is not advisable to create a copy of
    QRandomGenerator::global(). If one needs an exclusive deterministic
    generator, consider instead using securelySeeded() to obtain a new object
    that shares no relationship with the QRandomGenerator::global().
@@ -690,18 +647,17 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
     \fn bool operator==(const QRandomGenerator &rng1, const QRandomGenerator &rng2)
     \relates QRandomGenerator
 
-    Returns true if the two the two engines \a rng1 and \a rng2 are at the same
+    Returns true if the two engines \a rng1 and \a rng2 are at the same
     state or if they are both reading from the operating system facilities,
     false otherwise.
 */
 
 /*!
-    \fn bool operator!=(const QRandomGenerator &rng1, const QRandomGenerator &rng2)
-    \relates QRandomGenerator
+    \fn bool QRandomGenerator::operator!=(const QRandomGenerator &rng1, const QRandomGenerator &rng2)
 
-    Returns true if the two the two engines \a rng1 and \a rng2 are at
+    Returns \c true if the two engines \a rng1 and \a rng2 are at
     different states or if one of them is reading from the operating system
-    facilities and the other is not, false otherwise.
+    facilities and the other is not, \c false otherwise.
 */
 
 /*!
@@ -795,7 +751,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
     \snippet code/src_corelib_global_qrandom.cpp 8
 
     If the range refers to contiguous memory (such as an array or the data from
-    a QVector), the fillRange() function may be used too.
+    a QList), the fillRange() function may be used too.
 
     \sa fillRange()
  */
@@ -816,7 +772,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
     efficient way to obtain more than one quantity at a time, as it reduces the
     number of calls into the Random Number Generator source.
 
-    For example, to fill a vector of 16 entries with random values, one may
+    For example, to fill a list of 16 entries with random values, one may
     write:
 
     \snippet code/src_corelib_global_qrandom.cpp 9
@@ -881,7 +837,8 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
     \a highest (exclusive). The same result may also be obtained by using
     \l{http://en.cppreference.com/w/cpp/numeric/random/uniform_int_distribution}{\c std::uniform_int_distribution}
     with parameters 0 and \c{highest - 1}. That class can also be used to obtain
-    quantities larger than 32 bits.
+    quantities larger than 32 bits; for 64 bits, the 64-bit bounded() overload
+    can be used too.
 
     For example, to obtain a value between 0 and 255 (inclusive), one would write:
 
@@ -905,6 +862,45 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
 
     Note that this function cannot be used to obtain values in the full 32-bit
     range of int. Instead, use generate() and cast to int.
+
+    \sa generate(), generate64(), generateDouble()
+ */
+
+/*!
+    \fn quint64 QRandomGenerator::bounded(quint64 highest)
+    \overload
+
+    Generates one random 64-bit quantity in the range between 0 (inclusive) and
+    \a highest (exclusive). The same result may also be obtained by using
+    \l{http://en.cppreference.com/w/cpp/numeric/random/uniform_int_distribution}{\c std::uniform_int_distribution<quint64>}
+    with parameters 0 and \c{highest - 1}.
+
+    Note that this function cannot be used to obtain values in the full 64-bit
+    range of \c{quint64}. Instead, use generate64().
+
+    \note This function is implemented as a loop, which depends on the random
+    value obtained. On the long run, on average it should loop just under 2
+    times, but if the random generator is defective, this function may take
+    considerably longer to execute.
+
+    \sa generate(), generate64(), generateDouble()
+ */
+
+/*!
+    \fn qint64 QRandomGenerator::bounded(qint64 highest)
+    \overload
+
+    Generates one random 64-bit quantity in the range between 0 (inclusive) and
+    \a highest (exclusive). \a highest must be positive.
+
+    Note that this function cannot be used to obtain values in the full 64-bit
+    range of \c{qint64}. Instead, use generate64() and cast to qint64 or instead
+    use the unsigned version of this function.
+
+    \note This function is implemented as a loop, which depends on the random
+    value obtained. On the long run, on average it should loop just under 2
+    times, but if the random generator is defective, this function may take
+    considerably longer to execute.
 
     \sa generate(), generate64(), generateDouble()
  */
@@ -945,6 +941,60 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
     range of int. Instead, use generate() and cast to int.
 
     \sa generate(), generate64(), generateDouble()
+ */
+
+/*!
+    \fn quint64 QRandomGenerator::bounded(quint64 lowest, quint64 highest)
+    \overload
+
+    Generates one random 64-bit quantity in the range between \a lowest
+    (inclusive) and \a highest (exclusive). The \a highest parameter must be
+    greater than \a lowest.
+
+    The same result may also be obtained by using
+    \l{http://en.cppreference.com/w/cpp/numeric/random/uniform_int_distribution}{\c std::uniform_int_distribution<quint64>}
+    with parameters \a lowest and \c{\a highest - 1}.
+
+    Note that this function cannot be used to obtain values in the full 64-bit
+    range of \c{quint64}. Instead, use generate64().
+
+    \note This function is implemented as a loop, which depends on the random
+    value obtained. On the long run, on average it should loop just under 2
+    times, but if the random generator is defective, this function may take
+    considerably longer to execute.
+
+    \sa generate(), generate64(), generateDouble()
+ */
+
+/*!
+    \fn qint64 QRandomGenerator::bounded(qint64 lowest, qint64 highest)
+    \overload
+
+    Generates one random 64-bit quantity in the range between \a lowest
+    (inclusive) and \a highest (exclusive), both of which may be negative, but
+    \a highest must be greater than \a lowest.
+
+    Note that this function cannot be used to obtain values in the full 64-bit
+    range of \c{qint64}. Instead, use generate64() and cast to qint64.
+
+    \note This function is implemented as a loop, which depends on the random
+    value obtained. On the long run, on average it should loop just under 2
+    times, but if the random generator is defective, this function may take
+    considerably longer to execute.
+
+    \sa generate(), generate64(), generateDouble()
+ */
+
+/*!
+    \fn qint64 QRandomGenerator::bounded(int lowest, qint64 highest)
+    \fn qint64 QRandomGenerator::bounded(qint64 lowest, int highest)
+    \fn quint64 QRandomGenerator::bounded(unsigned lowest, quint64 highest)
+    \fn quint64 QRandomGenerator::bounded(quint64 lowest, unsigned highest)
+    \overload
+
+    This function exists to help with overload resolution when the types of the
+    parameters don't exactly match. They will promote the smaller type to the
+    type of the larger one and call the correct overload.
  */
 
 /*!
@@ -1062,7 +1112,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
     \sa QRandomGenerator::generate(), QRandomGenerator::generate64()
  */
 
-Q_DECL_CONSTEXPR QRandomGenerator::Storage::Storage()
+constexpr QRandomGenerator::Storage::Storage()
     : dummy(0)
 {
     // nothing
@@ -1182,127 +1232,82 @@ bool operator==(const QRandomGenerator &rng1, const QRandomGenerator &rng2)
 /*!
     \internal
 
-    Fills the range pointed by \a buffer and \a bufferEnd with 32-bit random
-    values. The buffer must be correctly aligned.
+    Fills the range pointed by \a buffer with \a count 32-bit random values.
+    The buffer must be correctly aligned.
+
+    Returns the value of the first two 32-bit entries as a \c{quint64}.
  */
-void QRandomGenerator::_fillRange(void *buffer, void *bufferEnd)
+quint64 QRandomGenerator::_fillRange(void *buffer, qptrdiff count)
 {
     // Verify that the pointers are properly aligned for 32-bit
     Q_ASSERT(quintptr(buffer) % sizeof(quint32) == 0);
-    Q_ASSERT(quintptr(bufferEnd) % sizeof(quint32) == 0);
-    quint32 *begin = static_cast<quint32 *>(buffer);
-    quint32 *end = static_cast<quint32 *>(bufferEnd);
+    Q_ASSERT(count >= 0);
+    Q_ASSERT(buffer || count <= 2);
 
-    if (type == SystemRNG || Q_UNLIKELY(uint(qt_randomdevice_control.loadAcquire()) & (UseSystemRNG|SetRandomData)))
-        return SystemGenerator::self().generate(begin, end);
+    quint64 dummy;
+    quint32 *begin = static_cast<quint32 *>(buffer ? buffer : &dummy);
+    quint32 *end = begin + count;
 
-    SystemAndGlobalGenerators::PRNGLocker lock(this);
-    std::generate(begin, end, [this]() { return storage.engine()(); });
-}
-
-namespace {
-struct QRandEngine
-{
-    std::minstd_rand engine;
-    QRandEngine() : engine(1) {}
-
-    int generate()
-    {
-        std::minstd_rand::result_type v = engine();
-        if (std::numeric_limits<int>::max() != RAND_MAX)
-            v %= uint(RAND_MAX) + 1;
-
-        return int(v);
+    if (type == SystemRNG || Q_UNLIKELY(uint(qt_randomdevice_control.loadAcquire()) & (UseSystemRNG|SetRandomData))) {
+        SystemGenerator::self().generate(begin, end);
+    } else {
+        SystemAndGlobalGenerators::PRNGLocker lock(this);
+        std::generate(begin, end, [this]() { return storage.engine()(); });
     }
 
-    void seed(std::minstd_rand::result_type q)
-    {
-        engine.seed(q);
+    if (end - begin == 1)
+        return *begin;
+    return begin[0] | (quint64(begin[1]) << 32);
+}
+
+// helper function to call fillBuffer, since we need something to be
+// argument-dependent
+template <typename Generator, typename FillBufferType, typename T>
+static qsizetype callFillBuffer(FillBufferType f, T *v)
+{
+    if constexpr (std::is_member_function_pointer_v<FillBufferType>) {
+        // member function, need an object
+        return (Generator::self().*f)(v, sizeof(*v));
+    } else {
+        // static, call directly
+        return f(v, sizeof(*v));
     }
-};
 }
 
-#if defined(Q_OS_WIN)
-// On Windows srand() and rand() already use Thread-Local-Storage
-// to store the seed between calls
-static inline QRandEngine *randTLS()
-{
-    return nullptr;
-}
-#elif defined(Q_COMPILER_THREAD_LOCAL)
-static inline QRandEngine *randTLS()
-{
-    thread_local QRandEngine r;
-    return &r;
-}
-#else
-Q_GLOBAL_STATIC(QThreadStorage<QRandEngine>, g_randTLS)
-static inline QRandEngine *randTLS()
-{
-    auto tls = g_randTLS();
-    if (!tls)
-        return nullptr;
-    return &tls->localData();
+/*!
+    \internal
 
-}
+    Returns an initial random value (useful for QHash's global seed). This
+    function attempts to use OS-provided random values to avoid initializing
+    QRandomGenerator::system() and qsimd.cpp.
+
+    Note: on some systems, this functionn may rerturn the same value every time
+    it is called.
+ */
+QRandomGenerator::InitialRandomData qt_initial_random_value() noexcept
+{
+#if QT_CONFIG(getauxval) && defined(AT_RANDOM)
+    auto at_random_ptr = reinterpret_cast<size_t *>(getauxval(AT_RANDOM));
+    if (at_random_ptr)
+        return qFromUnaligned<QRandomGenerator::InitialRandomData>(at_random_ptr);
 #endif
 
-/*!
-    \relates <QtGlobal>
-    \deprecated
-    \since 4.2
+    // bypass the hardware RNG, which would mean initializing qsimd.cpp
 
-    Thread-safe version of the standard C++ \c srand() function.
+    QRandomGenerator::InitialRandomData v;
+    for (int attempts = 16; attempts; --attempts) {
+        using Generator = QRandomGenerator::SystemGenerator;
+        auto fillBuffer = &Generator::fillBuffer;
+        if (callFillBuffer<Generator>(fillBuffer, &v) != sizeof(v))
+            continue;
 
-    Sets the argument \a seed to be used to generate a new random number sequence of
-    pseudo random integers to be returned by qrand().
+        return v;
+    }
 
-    The sequence of random numbers generated is deterministic per thread. For example,
-    if two threads call qsrand(1) and subsequently call qrand(), the threads will get
-    the same random number sequence.
-
-    \note This function is deprecated. In new applications, use
-    QRandomGenerator instead.
-
-    \sa qrand(), QRandomGenerator
-*/
-void qsrand(uint seed)
-{
-    auto prng = randTLS();
-    if (prng)
-        prng->seed(seed);
-    else
-        srand(seed);
-}
-
-/*!
-    \relates <QtGlobal>
-    \deprecated
-    \since 4.2
-
-    Thread-safe version of the standard C++ \c rand() function.
-
-    Returns a value between 0 and \c RAND_MAX (defined in \c <cstdlib> and
-    \c <stdlib.h>), the next number in the current sequence of pseudo-random
-    integers.
-
-    Use \c qsrand() to initialize the pseudo-random number generator with a
-    seed value. Seeding must be performed at least once on each thread. If that
-    step is skipped, then the sequence will be pre-seeded with a constant
-    value.
-
-    \note This function is deprecated. In new applications, use
-    QRandomGenerator instead.
-
-    \sa qsrand(), QRandomGenerator
-*/
-int qrand()
-{
-    auto prng = randTLS();
-    if (prng)
-        return prng->generate();
-    else
-        return rand();
+    quint32 data[sizeof(v) / sizeof(quint32)];
+    fallback_fill(data, std::size(data));
+    memcpy(v.data, data, sizeof(v.data));
+    return v;
 }
 
 QT_END_NAMESPACE

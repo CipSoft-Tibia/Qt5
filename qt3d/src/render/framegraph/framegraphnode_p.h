@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_FRAMEGRAPHNODE_H
 #define QT3DRENDER_RENDER_FRAMEGRAPHNODE_H
@@ -58,7 +22,7 @@
 #include <Qt3DRender/private/managers_p.h>
 #include <Qt3DRender/private/nodemanagers_p.h>
 #include <qglobal.h>
-#include <QVector>
+#include <QList>
 
 // Windows had the smart idea of using a #define MemoryBarrier
 // https://msdn.microsoft.com/en-us/library/windows/desktop/ms684208(v=vs.85).aspx
@@ -115,10 +79,10 @@ public:
     void setParentId(Qt3DCore::QNodeId parentId);
 
     Qt3DCore::QNodeId parentId() const;
-    QVector<Qt3DCore::QNodeId> childrenIds() const;
+    QList<Qt3DCore::QNodeId> childrenIds() const;
 
     FrameGraphNode *parent() const;
-    QVector<FrameGraphNode *> children() const;
+    QList<FrameGraphNode *> children() const;
 
     void cleanup();
 
@@ -130,7 +94,7 @@ protected:
 private:
     FrameGraphNodeType m_nodeType;
     Qt3DCore::QNodeId m_parentId;
-    QVector<Qt3DCore::QNodeId> m_childrenIds;
+    QList<Qt3DCore::QNodeId> m_childrenIds;
     FrameGraphManager *m_manager;
 
     friend class FrameGraphVisitor;
@@ -146,9 +110,9 @@ public:
     {
     }
 
-    Qt3DCore::QBackendNode *create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const override
+    Qt3DCore::QBackendNode *create(Qt3DCore::QNodeId id) const override
     {
-        return createBackendFrameGraphNode(change);
+        return createBackendFrameGraphNode(id);
     }
 
     Qt3DCore::QBackendNode *get(Qt3DCore::QNodeId id) const override
@@ -162,16 +126,16 @@ public:
     }
 
 protected:
-    Backend *createBackendFrameGraphNode(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const
+    Backend *createBackendFrameGraphNode(const Qt3DCore::QNodeId &id) const
     {
-        if (!m_manager->containsNode(change->subjectId())) {
+        if (!m_manager->containsNode(id)) {
             Backend *backend = new Backend();
             backend->setFrameGraphManager(m_manager);
             backend->setRenderer(m_renderer);
-            m_manager->appendNode(change->subjectId(), backend);
+            m_manager->appendNode(id, backend);
             return backend;
         }
-        return static_cast<Backend *>(m_manager->lookupNode(change->subjectId()));
+        return static_cast<Backend *>(m_manager->lookupNode(id));
     }
 
 private:

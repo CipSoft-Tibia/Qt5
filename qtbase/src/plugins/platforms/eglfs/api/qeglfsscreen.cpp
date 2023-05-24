@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qtextstream.h>
 #include <QtGui/qwindow.h>
@@ -43,7 +7,7 @@
 #include <qpa/qwindowsysteminterface.h>
 #include <qpa/qplatformcursor.h>
 #ifndef QT_NO_OPENGL
-# include <QtPlatformCompositorSupport/private/qopenglcompositor_p.h>
+# include <QtOpenGL/private/qopenglcompositor_p.h>
 #endif
 
 #include "qeglfsscreen_p.h"
@@ -115,9 +79,9 @@ QDpi QEglFSScreen::logicalDpi() const
     return qt_egl_device_integration()->logicalDpi();
 }
 
-qreal QEglFSScreen::pixelDensity() const
+QDpi QEglFSScreen::logicalBaseDpi() const
 {
-    return qt_egl_device_integration()->pixelDensity();
+    return qt_egl_device_integration()->logicalBaseDpi();
 }
 
 Qt::ScreenOrientation QEglFSScreen::nativeOrientation() const
@@ -157,7 +121,7 @@ void QEglFSScreen::handleCursorMove(const QPoint &pos)
         return;
 
     // First window is always fullscreen.
-    if (windows.count() == 1) {
+    if (windows.size() == 1) {
         QWindow *window = windows[0]->sourceWindow();
         if (platformIntegration->pointerWindow() != window) {
             platformIntegration->setPointerWindow(window);
@@ -167,7 +131,7 @@ void QEglFSScreen::handleCursorMove(const QPoint &pos)
     }
 
     QWindow *enter = nullptr, *leave = nullptr;
-    for (int i = windows.count() - 1; i >= 0; --i) {
+    for (int i = windows.size() - 1; i >= 0; --i) {
         QWindow *window = windows[i]->sourceWindow();
         const QRect geom = window->geometry();
         if (geom.contains(pos)) {
@@ -201,7 +165,8 @@ QPixmap QEglFSScreen::grabWindow(WId wid, int x, int y, int width, int height) c
 
     QImage img;
 
-    if (static_cast<QEglFSWindow *>(windows.first()->sourceWindow()->handle())->isRaster()) {
+    QEglFSWindow *primaryWin = static_cast<QEglFSWindow *>(windows.first()->sourceWindow()->handle());
+    if (primaryWin->isRaster() || primaryWin->backingStore()) {
         // Request the compositor to render everything into an FBO and read it back. This
         // is of course slow, but it's safe and reliable. It will not include the mouse
         // cursor, which is a plus.
@@ -224,7 +189,7 @@ QPixmap QEglFSScreen::grabWindow(WId wid, int x, int y, int width, int height) c
         return QPixmap::fromImage(img).copy(x, y, width, height);
     }
 
-    foreach (QOpenGLCompositorWindow *w, windows) {
+    for (QOpenGLCompositorWindow *w : windows) {
         const QWindow *window = w->sourceWindow();
         if (window->winId() == wid) {
             const QRect geom = window->geometry();
@@ -245,6 +210,24 @@ QPixmap QEglFSScreen::grabWindow(WId wid, int x, int y, int width, int height) c
     Q_UNUSED(height);
 #endif
     return QPixmap();
+}
+
+QWindow *QEglFSScreen::topLevelAt(const QPoint &point) const
+{
+#ifndef QT_NO_OPENGL
+    QOpenGLCompositor *compositor = QOpenGLCompositor::instance();
+    const QList<QOpenGLCompositorWindow *> windows = compositor->windows();
+    const int windowCount = windows.size();
+
+    // Higher z-order is at the end of the list
+    for (int i = windowCount - 1; i >= 0; i--) {
+        QWindow *window = windows[i]->sourceWindow();
+        if (window->isVisible() && window->geometry().contains(point))
+            return window;
+    }
+#endif
+
+    return QPlatformScreen::topLevelAt(point);
 }
 
 QT_END_NAMESPACE

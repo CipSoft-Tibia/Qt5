@@ -44,12 +44,18 @@ StreamSocketPosix::StreamSocketPosix(SocketAddressPosix local_address,
       version_(local_address.version()),
       local_address_(local_address),
       remote_address_(remote_address),
-      state_(SocketState::kConnected) {
-  EnsureInitialized();
+      state_(TcpSocketState::kConnected) {
+  Initialize();
 }
 
+StreamSocketPosix::StreamSocketPosix(StreamSocketPosix&& other) noexcept =
+    default;
+StreamSocketPosix& StreamSocketPosix::operator=(StreamSocketPosix&& other) =
+    default;
+
 StreamSocketPosix::~StreamSocketPosix() {
-  if (state_ == SocketState::kConnected) {
+  if (handle_.fd != kUnsetHandleFd) {
+    OSP_DCHECK(state_ != TcpSocketState::kClosed);
     Close();
   }
 }
@@ -59,11 +65,11 @@ WeakPtr<StreamSocketPosix> StreamSocketPosix::GetWeakPtr() const {
 }
 
 ErrorOr<std::unique_ptr<StreamSocket>> StreamSocketPosix::Accept() {
-  if (!EnsureInitialized()) {
+  if (!EnsureInitializedAndOpen()) {
     return ReportSocketClosedError();
   }
 
-  if (!is_bound_) {
+  if (!is_bound_ || state_ != TcpSocketState::kListening) {
     return CloseOnError(Error::Code::kSocketInvalidState);
   }
 
@@ -95,7 +101,7 @@ Error StreamSocketPosix::Bind() {
     return CloseOnError(Error::Code::kSocketInvalidState);
   }
 
-  if (!EnsureInitialized()) {
+  if (!EnsureInitializedAndOpen()) {
     return ReportSocketClosedError();
   }
 
@@ -114,32 +120,25 @@ Error StreamSocketPosix::Bind() {
 }
 
 Error StreamSocketPosix::Close() {
-  if (!EnsureInitialized()) {
+  if (handle_.fd == kUnsetHandleFd) {
     return ReportSocketClosedError();
   }
 
-  if (state_ == SocketState::kClosed) {
-    last_error_code_ = Error::Code::kSocketInvalidState;
-    return Error::Code::kSocketInvalidState;
-  }
+  OSP_DCHECK(state_ != TcpSocketState::kClosed);
+  state_ = TcpSocketState::kClosed;
 
   const int file_descriptor_to_close = handle_.fd;
-  if (close(file_descriptor_to_close) != 0) {
-    last_error_code_ = Error::Code::kSocketInvalidState;
-    return Error::Code::kSocketInvalidState;
-  }
   handle_.fd = kUnsetHandleFd;
+  if (close(file_descriptor_to_close) != 0) {
+    return last_error_code_ = Error::Code::kSocketInvalidState;
+  }
 
   return Error::None();
 }
 
 Error StreamSocketPosix::Connect(const IPEndpoint& remote_endpoint) {
-  if (!EnsureInitialized()) {
+  if (!EnsureInitializedAndOpen()) {
     return ReportSocketClosedError();
-  }
-
-  if (!is_initialized_ && !is_bound_) {
-    return CloseOnError(Error::Code::kSocketInvalidState);
   }
 
   SocketAddressPosix address(remote_endpoint);
@@ -154,19 +153,20 @@ Error StreamSocketPosix::Connect(const IPEndpoint& remote_endpoint) {
       return CloseOnError(Error::Code::kSocketInvalidState);
     }
 
-    struct sockaddr_in6 address;
-    socklen_t size = sizeof(address);
-    if (getsockname(handle_.fd, reinterpret_cast<struct sockaddr*>(&address),
+    struct sockaddr_in6 address_in6;
+    socklen_t size = sizeof(address_in6);
+    if (getsockname(handle_.fd,
+                    reinterpret_cast<struct sockaddr*>(&address_in6),
                     &size) != 0) {
       return CloseOnError(Error::Code::kSocketConnectFailure);
     }
 
-    local_address_.emplace(reinterpret_cast<struct sockaddr&>(address));
+    local_address_.emplace(reinterpret_cast<struct sockaddr&>(address_in6));
     is_bound_ = true;
   }
 
   remote_address_ = remote_endpoint;
-  state_ = SocketState::kConnected;
+  state_ = TcpSocketState::kConnected;
   return Error::None();
 }
 
@@ -175,7 +175,8 @@ Error StreamSocketPosix::Listen() {
 }
 
 Error StreamSocketPosix::Listen(int max_backlog_size) {
-  if (!EnsureInitialized()) {
+  OSP_DCHECK(state_ == TcpSocketState::kNotConnected);
+  if (!EnsureInitializedAndOpen()) {
     return ReportSocketClosedError();
   }
 
@@ -184,11 +185,12 @@ Error StreamSocketPosix::Listen(int max_backlog_size) {
         Error(Error::Code::kSocketListenFailure, strerror(errno)));
   }
 
+  state_ = TcpSocketState::kListening;
   return Error::None();
 }
 
 absl::optional<IPEndpoint> StreamSocketPosix::remote_address() const {
-  if ((state_ != SocketState::kConnected) || !remote_address_) {
+  if ((state_ != TcpSocketState::kConnected) || !remote_address_) {
     return absl::nullopt;
   }
   return remote_address_.value();
@@ -201,7 +203,7 @@ absl::optional<IPEndpoint> StreamSocketPosix::local_address() const {
   return local_address_.value().endpoint();
 }
 
-SocketState StreamSocketPosix::state() const {
+TcpSocketState StreamSocketPosix::state() const {
   return state_;
 }
 
@@ -209,21 +211,18 @@ IPAddress::Version StreamSocketPosix::version() const {
   return version_;
 }
 
-bool StreamSocketPosix::EnsureInitialized() {
-  if (!is_initialized_ && (last_error_code_ == Error::Code::kNone)) {
+bool StreamSocketPosix::EnsureInitializedAndOpen() {
+  if (state_ == TcpSocketState::kNotConnected &&
+      (handle_.fd == kUnsetHandleFd) &&
+      (last_error_code_ == Error::Code::kNone)) {
     return Initialize() == Error::None();
   }
 
-  return handle_.fd != kUnsetHandleFd && is_initialized_;
+  return handle_.fd != kUnsetHandleFd;
 }
 
 Error StreamSocketPosix::Initialize() {
-  if (is_initialized_) {
-    return Error::Code::kItemAlreadyExists;
-  }
-
-  int fd = handle_.fd;
-  if (fd == kUnsetHandleFd) {
+  if (handle_.fd == kUnsetHandleFd) {
     int domain;
     switch (version_) {
       case IPAddress::Version::kV4:
@@ -234,37 +233,30 @@ Error StreamSocketPosix::Initialize() {
         break;
     }
 
-    fd = socket(domain, SOCK_STREAM, 0);
-    if (fd == kUnsetHandleFd) {
-      last_error_code_ = Error::Code::kSocketInvalidState;
-      return Error::Code::kSocketInvalidState;
+    handle_.fd = socket(domain, SOCK_STREAM, 0);
+    if (handle_.fd == kUnsetHandleFd) {
+      return last_error_code_ = Error::Code::kSocketInvalidState;
     }
   }
 
-  const int current_flags = fcntl(fd, F_GETFL, 0);
-  if (fcntl(fd, F_SETFL, current_flags | O_NONBLOCK) == -1) {
-    close(fd);
-    last_error_code_ = Error::Code::kSocketInvalidState;
-    return Error::Code::kSocketInvalidState;
+  const int current_flags = fcntl(handle_.fd, F_GETFL, 0);
+  if (fcntl(handle_.fd, F_SETFL, current_flags | O_NONBLOCK) == -1) {
+    return CloseOnError(Error::Code::kSocketInvalidState);
   }
 
-  handle_.fd = fd;
-  is_initialized_ = true;
-  // last_error_code_ should still be Error::None().
+  OSP_DCHECK_EQ(last_error_code_, Error::Code::kNone);
   return Error::None();
 }
 
 Error StreamSocketPosix::CloseOnError(Error error) {
   last_error_code_ = error.code();
   Close();
-  state_ = SocketState::kClosed;
   return error;
 }
 
 // If is_open is false, the socket has either not been initialized
 // or has been closed, either on purpose or due to error.
 Error StreamSocketPosix::ReportSocketClosedError() {
-  last_error_code_ = Error::Code::kSocketClosedFailure;
-  return Error::Code::kSocketClosedFailure;
+  return last_error_code_ = Error::Code::kSocketClosedFailure;
 }
 }  // namespace openscreen

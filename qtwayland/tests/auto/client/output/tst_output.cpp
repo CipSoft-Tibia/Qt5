@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mockcompositor.h"
 #include <QtGui/QScreen>
@@ -73,7 +48,7 @@ void tst_output::primaryScreen()
 
 void tst_output::secondaryHiDpiScreen()
 {
-    exec([=] {
+    exec([&] {
         OutputData d;
         d.position = {1920, 0}; // in global compositor space (not pixels)
         d.mode.resolution = {800, 640};
@@ -99,15 +74,15 @@ void tst_output::secondaryHiDpiScreen()
     QCOMPARE(screen->geometry(), QRect(QPoint(1920, 0), QSize(400, 320)));
     QCOMPARE(screen->virtualGeometry(), QRect(QPoint(0, 0), QSize(1920 + 800 / 2, 1080)));
 
-    exec([=] { remove(output(1)); });
+    exec([&] { remove(output(1)); });
 }
 
 // QTBUG-62044
 void tst_output::addScreenWithGeometryChange()
 {
-    const QPoint initialPosition = exec([=] { return output(0)->m_data.position; });
+    const QPoint initialPosition = exec([&] { return output(0)->m_data.position; });
 
-    exec([=] {
+    exec([&] {
         auto *oldOutput = output(0);
         auto *newOutput = add<Output>();
         newOutput->m_data.mode.resolution = {1280, 720};
@@ -123,7 +98,7 @@ void tst_output::addScreenWithGeometryChange()
     QTRY_COMPARE(QGuiApplication::primaryScreen()->geometry(), QRect(QPoint(1280, 0), QSize(1920, 1080)));
 
     // Remove the extra output and move the old one back
-    exec([=] {
+    exec([&] {
         remove(output(1));
         output()->m_data.position = initialPosition;
         output()->sendGeometry();
@@ -144,7 +119,7 @@ void tst_output::windowScreens()
     QScreen *primaryScreen = QGuiApplication::screens().first();
     QCOMPARE(window.screen(), primaryScreen);
 
-    exec([=] { add<Output>(); });
+    exec([&] { add<Output>(); });
 
     QTRY_COMPARE(QGuiApplication::screens().size(), 2);
     QScreen *secondaryScreen = QGuiApplication::screens().at(1);
@@ -153,19 +128,19 @@ void tst_output::windowScreens()
     window.setScreen(secondaryScreen);
     QCOMPARE(window.screen(), secondaryScreen);
 
-    exec([=] {
+    exec([&] {
         xdgToplevel()->surface()->sendEnter(output(0));
         xdgToplevel()->surface()->sendEnter(output(1));
     });
 
     QTRY_COMPARE(window.screen(), primaryScreen);
 
-    exec([=] {
+    exec([&] {
         xdgToplevel()->surface()->sendLeave(output(0));
     });
     QTRY_COMPARE(window.screen(), secondaryScreen);
 
-    exec([=] {
+    exec([&] {
         remove(output(1));
     });
     QTRY_COMPARE(QGuiApplication::screens().size(), 1);
@@ -211,7 +186,7 @@ void tst_output::removePrimaryScreen()
 // QTBUG-72828
 void tst_output::screenOrder()
 {
-    exec([=] {
+    exec([&] {
         add<Output>()->m_data.model = "Screen 1";
         add<Output>()->m_data.model = "Screen 2";
     });
@@ -222,7 +197,7 @@ void tst_output::screenOrder()
     QCOMPARE(screens[1]->model(), "Screen 1");
     QCOMPARE(screens[2]->model(), "Screen 2");
 
-    exec([=] {
+    exec([&] {
         remove(output(2));
         remove(output(1));
     });
@@ -240,8 +215,8 @@ void tst_output::removeAllScreens()
     const QString wlOutputPrimaryScreenModel = QGuiApplication::primaryScreen()->model();
 
     // Get screen info so we can restore it after
-    auto screenInfo = exec([=] { return output()->m_data; });
-    exec([=] { remove(output()); });
+    auto screenInfo = exec([&] { return output()->m_data; });
+    exec([&] { remove(output()); });
 
     // Make sure the wl_output is actually removed before we continue
     QTRY_VERIFY(!QGuiApplication::primaryScreen() || QGuiApplication::primaryScreen()->model() != wlOutputPrimaryScreenModel);
@@ -251,7 +226,7 @@ void tst_output::removeAllScreens()
     window2.resize(400, 320);
     window2.show();
 
-    exec([=] { add<Output>(screenInfo); });
+    exec([&] { add<Output>(screenInfo); });
 
     // Things should be back to normal
     QTRY_VERIFY(QGuiApplication::primaryScreen());

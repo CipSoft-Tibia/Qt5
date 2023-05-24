@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,13 +18,11 @@ UserActionsUI::UserActionsUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   // Set up the chrome://user-actions/ source.
   content::WebUIDataSource* html_source =
-      content::WebUIDataSource::Create(chrome::kChromeUIUserActionsHost);
+      content::WebUIDataSource::CreateAndAdd(Profile::FromWebUI(web_ui),
+                                             chrome::kChromeUIUserActionsHost);
   html_source->SetDefaultResource(IDR_USER_ACTIONS_HTML);
   html_source->AddResourcePath("user_actions.css", IDR_USER_ACTIONS_CSS);
   html_source->AddResourcePath("user_actions.js", IDR_USER_ACTIONS_JS);
-
-  Profile* profile = Profile::FromWebUI(web_ui);
-  content::WebUIDataSource::Add(profile, html_source);
 
   web_ui->AddMessageHandler(std::make_unique<UserActionsUIHandler>());
 }

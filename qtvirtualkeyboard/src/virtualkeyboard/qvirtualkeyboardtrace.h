@@ -1,45 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QVIRTUALKEYBOARDTRACE_H
 #define QVIRTUALKEYBOARDTRACE_H
 
-#include <QObject>
-#include <QVariant>
-#include <QPointF>
+#include <QtCore/QObject>
+#include <QtCore/QVariant>
+#include <QtCore/QPointF>
+#include <QtQml/qqml.h>
 #include <QtVirtualKeyboard/qvirtualkeyboard_global.h>
 
 QT_BEGIN_NAMESPACE
 
 class QVirtualKeyboardTracePrivate;
 
-class QVIRTUALKEYBOARD_EXPORT QVirtualKeyboardTrace : public QObject
+class Q_VIRTUALKEYBOARD_EXPORT QVirtualKeyboardTrace : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QVirtualKeyboardTrace)
@@ -49,6 +24,10 @@ class QVIRTUALKEYBOARD_EXPORT QVirtualKeyboardTrace : public QObject
     Q_PROPERTY(bool final READ isFinal WRITE setFinal NOTIFY finalChanged)
     Q_PROPERTY(bool canceled READ isCanceled WRITE setCanceled NOTIFY canceledChanged)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity NOTIFY opacityChanged)
+    QML_NAMED_ELEMENT(Trace)
+    QML_UNCREATABLE("Trace object is created by InputContext.inputEngine.traceBegin() function")
+    QML_ADDED_IN_VERSION(2, 0)
+
 public:
     explicit QVirtualKeyboardTrace(QObject *parent = nullptr);
     ~QVirtualKeyboardTrace();
@@ -75,6 +54,11 @@ public:
 
     qreal opacity() const;
     void setOpacity(qreal opacity);
+
+    Q_REVISION(6, 1) Q_INVOKABLE void startHideTimer(int delayMs);
+
+protected:
+    void timerEvent(QTimerEvent *event) override;
 
 Q_SIGNALS:
     void traceIdChanged(int traceId);

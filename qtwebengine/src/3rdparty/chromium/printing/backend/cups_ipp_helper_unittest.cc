@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,28 +9,47 @@
 #include <map>
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/test/metrics/histogram_tester.h"
-#include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
-#include "printing/backend/cups_printer.h"
+#include "printing/backend/mock_cups_printer.h"
+#include "printing/backend/print_backend_utils.h"
 #include "printing/mojom/print.mojom.h"
-#include "printing/printing_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace printing {
 
-class MockCupsOptionProvider : public CupsOptionProvider {
- public:
-  ~MockCupsOptionProvider() override {}
+using ::testing::Pointwise;
 
+// Matches the name field to a string.
+MATCHER(AdvancedCapabilityName, "") {
+  *result_listener << "Expected: " << std::get<1>(arg)
+                   << " vs Actual: " << std::get<0>(arg).name;
+  return std::get<0>(arg).name == std::get<1>(arg);
+}
+
+class MockCupsPrinterWithMarginsAndAttributes : public MockCupsPrinter {
+ public:
+  MockCupsPrinterWithMarginsAndAttributes() = default;
+  ~MockCupsPrinterWithMarginsAndAttributes() override = default;
+
+  // CupsPrinter:
+  CupsMediaMargins GetMediaMarginsByName(
+      const std::string& media_id) const override {
+    const auto margins = margins_.find(media_id);
+    return margins != margins_.end() ? margins->second : CupsMediaMargins();
+  }
+
+  // CupsOptionProvider:
   ipp_attribute_t* GetSupportedOptionValues(
       const char* option_name) const override {
     const auto attr = supported_attributes_.find(option_name);
     return attr != supported_attributes_.end() ? attr->second : nullptr;
   }
 
+  // CupsOptionProvider:
   std::vector<base::StringPiece> GetSupportedOptionValueStrings(
       const char* option_name) const override {
     ipp_attribute_t* attr = GetSupportedOptionValues(option_name);
@@ -51,16 +70,23 @@ class MockCupsOptionProvider : public CupsOptionProvider {
     return strings;
   }
 
+  // CupsOptionProvider:
   ipp_attribute_t* GetDefaultOptionValue(
       const char* option_name) const override {
     const auto attr = default_attributes_.find(option_name);
     return attr != default_attributes_.end() ? attr->second : nullptr;
   }
 
+  // CupsOptionProvider:
   bool CheckOptionSupported(const char* name,
                             const char* value) const override {
     NOTREACHED();
     return false;
+  }
+
+  void SetMediaMarginsByName(base::StringPiece media_id,
+                             const CupsMediaMargins& margins) {
+    margins_[media_id] = margins;
   }
 
   void SetSupportedOptions(base::StringPiece name, ipp_attribute_t* attribute) {
@@ -74,13 +100,14 @@ class MockCupsOptionProvider : public CupsOptionProvider {
  private:
   std::map<base::StringPiece, ipp_attribute_t*> supported_attributes_;
   std::map<base::StringPiece, ipp_attribute_t*> default_attributes_;
+  std::map<base::StringPiece, CupsMediaMargins> margins_;
 };
 
 class PrintBackendCupsIppHelperTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ipp_ = ippNew();
-    printer_ = std::make_unique<MockCupsOptionProvider>();
+    printer_ = std::make_unique<MockCupsPrinterWithMarginsAndAttributes>();
   }
 
   void TearDown() override {
@@ -88,8 +115,8 @@ class PrintBackendCupsIppHelperTest : public ::testing::Test {
     printer_.reset();
   }
 
-  ipp_t* ipp_;
-  std::unique_ptr<MockCupsOptionProvider> printer_;
+  raw_ptr<ipp_t> ipp_;
+  std::unique_ptr<MockCupsPrinterWithMarginsAndAttributes> printer_;
 };
 
 ipp_attribute_t* MakeInteger(ipp_t* ipp, int value) {
@@ -116,6 +143,14 @@ ipp_attribute_t* MakeStringCollection(ipp_t* ipp,
                                       const std::vector<const char*>& strings) {
   return ippAddStrings(ipp, IPP_TAG_PRINTER, IPP_TAG_KEYWORD, "TEST_DATA",
                        strings.size(), nullptr, strings.data());
+}
+
+TEST_F(PrintBackendCupsIppHelperTest, DefaultPaper) {
+  const CupsPrinter::CupsMediaMargins kMargins = {10, 10, 10, 10};
+  EXPECT_EQ(ParsePaper("", kMargins), DefaultPaper(*printer_));
+  printer_->SetOptionDefault("media", MakeString(ipp_, "iso_a4_210x297mm"));
+  printer_->SetMediaMarginsByName("iso_a4_210x297mm", kMargins);
+  EXPECT_EQ(ParsePaper("iso_a4_210x297mm", kMargins), DefaultPaper(*printer_));
 }
 
 TEST_F(PrintBackendCupsIppHelperTest, CopiesCapable) {
@@ -197,7 +232,7 @@ TEST_F(PrintBackendCupsIppHelperTest, A4PaperSupported) {
 
   PrinterSemanticCapsAndDefaults::Paper paper = caps.papers[0];
   // media display name localization is handled more fully in
-  // GetPrinterCapabilitiesOnBlockingTaskRunner().
+  // AssemblePrinterSettings().
   EXPECT_EQ("iso a4", paper.display_name);
   EXPECT_EQ("iso_a4_210x297mm", paper.vendor_id);
   EXPECT_EQ(210000, paper.size_um.width());
@@ -210,7 +245,7 @@ TEST_F(PrintBackendCupsIppHelperTest, LegalPaperDefault) {
   PrinterSemanticCapsAndDefaults caps;
   CapsAndDefaultsFromPrinter(*printer_, &caps);
   // media display name localization is handled more fully in
-  // GetPrinterCapabilitiesOnBlockingTaskRunner().
+  // AssemblePrinterSettings().
   EXPECT_EQ("na legal", caps.default_paper.display_name);
   EXPECT_EQ("na_legal_8.5x14in", caps.default_paper.vendor_id);
   EXPECT_EQ(215900, caps.default_paper.size_um.width());
@@ -284,7 +319,7 @@ TEST_F(PrintBackendCupsIppHelperTest, OmitPapersWithSpecialVendorIds) {
                          "iso b0")));
 }
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 TEST_F(PrintBackendCupsIppHelperTest, PinSupported) {
   printer_->SetSupportedOptions("job-password", MakeInteger(ipp_, 4));
   printer_->SetSupportedOptions("job-password-encryption",
@@ -326,8 +361,6 @@ TEST_F(PrintBackendCupsIppHelperTest, PinTooShort) {
 
 TEST_F(PrintBackendCupsIppHelperTest, AdvancedCaps) {
   base::HistogramTester histograms;
-  base::test::ScopedFeatureList features;
-  features.InitAndEnableFeature(printing::features::kAdvancedPpdAttributes);
 
   printer_->SetSupportedOptions(
       "job-creation-attributes",
@@ -344,7 +377,7 @@ TEST_F(PrintBackendCupsIppHelperTest, AdvancedCaps) {
   PrinterSemanticCapsAndDefaults caps;
   CapsAndDefaultsFromPrinter(*printer_, &caps);
 
-  EXPECT_EQ(6u, caps.advanced_capabilities.size());
+  ASSERT_EQ(6u, caps.advanced_capabilities.size());
   EXPECT_EQ("confirmation-sheet-print", caps.advanced_capabilities[0].name);
   EXPECT_EQ(AdvancedCapability::Type::kBoolean,
             caps.advanced_capabilities[0].type);
@@ -358,11 +391,32 @@ TEST_F(PrintBackendCupsIppHelperTest, AdvancedCaps) {
   EXPECT_EQ(AdvancedCapability::Type::kString,
             caps.advanced_capabilities[3].type);
   EXPECT_EQ("output-bin", caps.advanced_capabilities[4].name);
+  EXPECT_EQ(AdvancedCapability::Type::kString,
+            caps.advanced_capabilities[4].type);
   EXPECT_EQ(2u, caps.advanced_capabilities[4].values.size());
   EXPECT_EQ("print-quality", caps.advanced_capabilities[5].name);
+  EXPECT_EQ(AdvancedCapability::Type::kString,
+            caps.advanced_capabilities[5].type);
   EXPECT_EQ(3u, caps.advanced_capabilities[5].values.size());
   histograms.ExpectUniqueSample("Printing.CUPS.IppAttributesCount", 5, 1);
 }
-#endif  // defined(OS_CHROMEOS)
+
+TEST_F(PrintBackendCupsIppHelperTest, MediaSource) {
+  printer_->SetSupportedOptions(
+      "media-source",
+      MakeStringCollection(ipp_, {"top", "main", "auto", "tray-3", "tray-4"}));
+
+  PrinterSemanticCapsAndDefaults caps;
+  CapsAndDefaultsFromPrinter(*printer_, &caps);
+
+  ASSERT_EQ(1u, caps.advanced_capabilities.size());
+  const AdvancedCapability& cap = caps.advanced_capabilities[0];
+  EXPECT_EQ("media-source", cap.name);
+  EXPECT_EQ(AdvancedCapability::Type::kString, cap.type);
+  EXPECT_THAT(cap.values,
+              Pointwise(AdvancedCapabilityName(),
+                        {"top", "main", "auto", "tray-3", "tray-4"}));
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace printing

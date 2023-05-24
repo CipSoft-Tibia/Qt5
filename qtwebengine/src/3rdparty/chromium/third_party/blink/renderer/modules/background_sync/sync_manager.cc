@@ -1,20 +1,22 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/background_sync/sync_manager.h"
 
+#include "base/task/sequenced_task_runner.h"
 #include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/bindings/core/v8/callback_promise_adapter.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/modules/service_worker/service_worker_registration.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 
@@ -39,6 +41,14 @@ ScriptPromise SyncManager::registerFunction(ScriptState* script_state,
     return ScriptPromise();
   }
 
+  ExecutionContext* execution_context = ExecutionContext::From(script_state);
+  if (execution_context->IsInFencedFrame()) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kNotAllowedError,
+        "Background Sync is not allowed in fenced frames.");
+    return ScriptPromise();
+  }
+
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ScriptPromise promise = resolver->Promise();
 
@@ -48,20 +58,28 @@ ScriptPromise SyncManager::registerFunction(ScriptState* script_state,
 
   background_sync_service_->Register(
       std::move(sync_registration), registration_->RegistrationId(),
-      WTF::Bind(&SyncManager::RegisterCallback, WrapPersistent(this),
-                WrapPersistent(resolver)));
+      resolver->WrapCallbackInScriptScope(
+          WTF::BindOnce(&SyncManager::RegisterCallback, WrapPersistent(this))));
 
   return promise;
 }
 
 ScriptPromise SyncManager::getTags(ScriptState* script_state) {
+  ExecutionContext* execution_context = ExecutionContext::From(script_state);
+  if (execution_context->IsInFencedFrame()) {
+    return ScriptPromise::RejectWithDOMException(
+        script_state, MakeGarbageCollected<DOMException>(
+                          DOMExceptionCode::kNotAllowedError,
+                          "Background Sync is not allowed in fenced frames."));
+  }
+
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ScriptPromise promise = resolver->Promise();
 
   background_sync_service_->GetRegistrations(
       registration_->RegistrationId(),
-      WTF::Bind(&SyncManager::GetRegistrationsCallback,
-                WrapPersistent(resolver)));
+      resolver->WrapCallbackInScriptScope(
+          WTF::BindOnce(&SyncManager::GetRegistrationsCallback)));
 
   return promise;
 }
@@ -70,12 +88,13 @@ void SyncManager::RegisterCallback(
     ScriptPromiseResolver* resolver,
     mojom::blink::BackgroundSyncError error,
     mojom::blink::SyncRegistrationOptionsPtr options) {
+  DCHECK(resolver);
   // TODO(iclelland): Determine the correct error message to return in each case
   switch (error) {
     case mojom::blink::BackgroundSyncError::NONE:
       if (!options) {
         resolver->Resolve(v8::Null(resolver->GetScriptState()->GetIsolate()));
-        return;
+        break;
       }
       resolver->Resolve();
       // Let the service know that the registration promise is resolved so that
@@ -90,21 +109,25 @@ void SyncManager::RegisterCallback(
       NOTREACHED();
       break;
     case mojom::blink::BackgroundSyncError::STORAGE:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
+      resolver->Reject(V8ThrowDOMException::CreateOrDie(
+          resolver->GetScriptState()->GetIsolate(),
           DOMExceptionCode::kUnknownError, "Background Sync is disabled."));
       break;
     case mojom::blink::BackgroundSyncError::NOT_ALLOWED:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
+      resolver->Reject(V8ThrowDOMException::CreateOrDie(
+          resolver->GetScriptState()->GetIsolate(),
           DOMExceptionCode::kInvalidAccessError,
           "Attempted to register a sync event without a "
           "window or registration tag too long."));
       break;
     case mojom::blink::BackgroundSyncError::PERMISSION_DENIED:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
+      resolver->Reject(V8ThrowDOMException::CreateOrDie(
+          resolver->GetScriptState()->GetIsolate(),
           DOMExceptionCode::kNotAllowedError, "Permission denied."));
       break;
     case mojom::blink::BackgroundSyncError::NO_SERVICE_WORKER:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
+      resolver->Reject(V8ThrowDOMException::CreateOrDie(
+          resolver->GetScriptState()->GetIsolate(),
           DOMExceptionCode::kInvalidStateError,
           "Registration failed - no active Service Worker"));
       break;
@@ -116,6 +139,7 @@ void SyncManager::GetRegistrationsCallback(
     ScriptPromiseResolver* resolver,
     mojom::blink::BackgroundSyncError error,
     WTF::Vector<mojom::blink::SyncRegistrationOptionsPtr> registrations) {
+  DCHECK(resolver);
   // TODO(iclelland): Determine the correct error message to return in each case
   switch (error) {
     case mojom::blink::BackgroundSyncError::NONE: {
@@ -134,11 +158,13 @@ void SyncManager::GetRegistrationsCallback(
       NOTREACHED();
       break;
     case mojom::blink::BackgroundSyncError::STORAGE:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
+      resolver->Reject(V8ThrowDOMException::CreateOrDie(
+          resolver->GetScriptState()->GetIsolate(),
           DOMExceptionCode::kUnknownError, "Background Sync is disabled."));
       break;
     case mojom::blink::BackgroundSyncError::NO_SERVICE_WORKER:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
+      resolver->Reject(V8ThrowDOMException::CreateOrDie(
+          resolver->GetScriptState()->GetIsolate(),
           DOMExceptionCode::kUnknownError, "No service worker is active."));
       break;
   }

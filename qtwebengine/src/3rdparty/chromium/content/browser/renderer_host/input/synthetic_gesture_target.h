@@ -1,13 +1,12 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_RENDERER_HOST_INPUT_SYNTHETIC_GESTURE_TARGET_H_
 #define CONTENT_BROWSER_RENDERER_HOST_INPUT_SYNTHETIC_GESTURE_TARGET_H_
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/time/time.h"
-#include "content/common/content_export.h"
 #include "content/common/input/synthetic_gesture_params.h"
 
 namespace blink {
@@ -17,7 +16,7 @@ class WebInputEvent;
 namespace content {
 
 // Interface between the synthetic gesture controller and the RenderWidgetHost.
-class CONTENT_EXPORT SyntheticGestureTarget {
+class SyntheticGestureTarget {
  public:
   SyntheticGestureTarget() {}
   virtual ~SyntheticGestureTarget() {}
@@ -29,8 +28,8 @@ class CONTENT_EXPORT SyntheticGestureTarget {
       const blink::WebInputEvent& event) = 0;
 
   // Returns the default gesture source type for the target.
-  virtual SyntheticGestureParams::GestureSourceType
-      GetDefaultSyntheticGestureSourceType() const = 0;
+  virtual content::mojom::GestureSourceType
+  GetDefaultSyntheticGestureSourceType() const = 0;
 
   // After how much time of inaction does the target assume that a pointer has
   // stopped moving.
@@ -57,10 +56,9 @@ class CONTENT_EXPORT SyntheticGestureTarget {
   // resolving the given callback. This is used to ensure that all effects of a
   // gesture have been fully propagated through the system before performing
   // further actions.
-  virtual void WaitForTargetAck(
-      SyntheticGestureParams::GestureType type,
-      SyntheticGestureParams::GestureSourceType source,
-      base::OnceClosure callback) const = 0;
+  virtual void WaitForTargetAck(SyntheticGestureParams::GestureType type,
+                                content::mojom::GestureSourceType source,
+                                base::OnceClosure callback) const = 0;
 };
 
 }  // namespace content

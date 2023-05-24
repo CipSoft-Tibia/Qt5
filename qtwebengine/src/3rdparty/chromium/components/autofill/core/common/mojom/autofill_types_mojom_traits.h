@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,27 +11,56 @@
 #include <vector>
 
 #include "base/i18n/rtl.h"
-#include "base/strings/string16.h"
+#include "components/autofill/core/common/aliases.h"
 #include "components/autofill/core/common/form_data.h"
 #include "components/autofill/core/common/form_data_predictions.h"
-#include "components/autofill/core/common/form_field_data.h"
 #include "components/autofill/core/common/form_field_data_predictions.h"
 #include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
 #include "components/autofill/core/common/password_form_fill_data.h"
 #include "components/autofill/core/common/password_form_generation_data.h"
 #include "components/autofill/core/common/password_generation_util.h"
-#include "components/autofill/core/common/renderer_id.h"
+#include "components/autofill/core/common/unique_ids.h"
 #include "mojo/public/cpp/base/text_direction_mojom_traits.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
+#include "mojo/public/mojom/base/unguessable_token.mojom-shared.h"
 #include "ui/gfx/geometry/rect_f.h"
-#include "url/origin.h"
 
 namespace mojo {
 
 template <>
+struct StructTraits<autofill::mojom::FrameTokenDataView, autofill::FrameToken> {
+  static base::UnguessableToken token(const autofill::FrameToken& r) {
+    return absl::visit([](const auto& t) { return t.value(); }, r);
+  }
+
+  static bool is_local(const autofill::FrameToken& r) {
+    return absl::holds_alternative<autofill::LocalFrameToken>(r);
+  }
+
+  static bool Read(autofill::mojom::FrameTokenDataView data,
+                   autofill::FrameToken* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::FrameTokenWithPredecessorDataView,
+                    autofill::FrameTokenWithPredecessor> {
+  static autofill::FrameToken token(
+      const autofill::FrameTokenWithPredecessor& r) {
+    return r.token;
+  }
+
+  static int predecessor(const autofill::FrameTokenWithPredecessor& r) {
+    return r.predecessor;
+  }
+
+  static bool Read(autofill::mojom::FrameTokenWithPredecessorDataView data,
+                   autofill::FrameTokenWithPredecessor* out);
+};
+
+template <>
 struct StructTraits<autofill::mojom::FormRendererIdDataView,
                     autofill::FormRendererId> {
-  static uint32_t id(autofill::FormRendererId r) { return r.value(); }
+  static uint64_t id(autofill::FormRendererId r) { return r.value(); }
 
   static bool Read(autofill::mojom::FormRendererIdDataView data,
                    autofill::FormRendererId* out);
@@ -40,33 +69,143 @@ struct StructTraits<autofill::mojom::FormRendererIdDataView,
 template <>
 struct StructTraits<autofill::mojom::FieldRendererIdDataView,
                     autofill::FieldRendererId> {
-  static uint32_t id(autofill::FieldRendererId r) { return r.value(); }
+  static uint64_t id(autofill::FieldRendererId r) { return r.value(); }
 
   static bool Read(autofill::mojom::FieldRendererIdDataView data,
                    autofill::FieldRendererId* out);
 };
 
 template <>
+struct StructTraits<autofill::mojom::SelectOptionDataView,
+                    autofill::SelectOption> {
+  static const std::u16string& value(const autofill::SelectOption& r) {
+    return r.value;
+  }
+
+  static const std::u16string& content(const autofill::SelectOption& r) {
+    return r.content;
+  }
+
+  static bool Read(autofill::mojom::SelectOptionDataView data,
+                   autofill::SelectOption* out);
+};
+
+template <>
+struct UnionTraits<autofill::mojom::SectionValueDataView,
+                   autofill::Section::SectionValue> {
+  static autofill::mojom::SectionValueDataView::Tag GetTag(
+      const autofill::Section::SectionValue& r);
+
+  static bool default_section(const autofill::Section::SectionValue& r) {
+    DCHECK(absl::holds_alternative<autofill::Section::Default>(r));
+    return true;
+  }
+
+  static autofill::Section::Autocomplete autocomplete(
+      const autofill::Section::SectionValue& r) {
+    return absl::get<autofill::Section::Autocomplete>(r);
+  }
+
+  static autofill::Section::FieldIdentifier field_identifier(
+      const autofill::Section::SectionValue& r) {
+    return absl::get<autofill::Section::FieldIdentifier>(r);
+  }
+
+  static bool Read(autofill::mojom::SectionValueDataView data,
+                   autofill::Section::SectionValue* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::SectionAutocompleteDataView,
+                    autofill::Section::Autocomplete> {
+  static const std::string& section(const autofill::Section::Autocomplete& r) {
+    return r.section;
+  }
+
+  static autofill::mojom::HtmlFieldMode html_field_mode(
+      const autofill::Section::Autocomplete& r) {
+    return r.mode;
+  }
+
+  static bool Read(autofill::mojom::SectionAutocompleteDataView data,
+                   autofill::Section::Autocomplete* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::SectionFieldIdentifierDataView,
+                    autofill::Section::FieldIdentifier> {
+  static const std::string& field_name(
+      const autofill::Section::FieldIdentifier& r) {
+    return r.field_name;
+  }
+
+  static size_t local_frame_id(const autofill::Section::FieldIdentifier& r) {
+    return r.local_frame_id;
+  }
+
+  static autofill::FieldRendererId field_renderer_id(
+      const autofill::Section::FieldIdentifier& r) {
+    return r.field_renderer_id;
+  }
+
+  static bool Read(autofill::mojom::SectionFieldIdentifierDataView data,
+                   autofill::Section::FieldIdentifier* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::SectionDataView, autofill::Section> {
+  static const autofill::Section::SectionValue& value(
+      const autofill::Section& r) {
+    return r.value_;
+  }
+
+  static bool Read(autofill::mojom::SectionDataView data,
+                   autofill::Section* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::AutocompleteParsingResultDataView,
+                    autofill::AutocompleteParsingResult> {
+  static const std::string& section(
+      const autofill::AutocompleteParsingResult& r) {
+    return r.section;
+  }
+
+  static autofill::mojom::HtmlFieldMode mode(
+      const autofill::AutocompleteParsingResult& r) {
+    return r.mode;
+  }
+
+  static autofill::mojom::HtmlFieldType field_type(
+      const autofill::AutocompleteParsingResult& r) {
+    return r.field_type;
+  }
+
+  static bool Read(autofill::mojom::AutocompleteParsingResultDataView data,
+                   autofill::AutocompleteParsingResult* out);
+};
+
+template <>
 struct StructTraits<autofill::mojom::FormFieldDataDataView,
                     autofill::FormFieldData> {
-  static const base::string16& label(const autofill::FormFieldData& r) {
+  static const std::u16string& label(const autofill::FormFieldData& r) {
     return r.label;
   }
 
-  static const base::string16& name(const autofill::FormFieldData& r) {
+  static const std::u16string& name(const autofill::FormFieldData& r) {
     return r.name;
   }
 
-  static const base::string16& id_attribute(const autofill::FormFieldData& r) {
+  static const std::u16string& id_attribute(const autofill::FormFieldData& r) {
     return r.id_attribute;
   }
 
-  static const base::string16& name_attribute(
+  static const std::u16string& name_attribute(
       const autofill::FormFieldData& r) {
     return r.name_attribute;
   }
 
-  static const base::string16& value(const autofill::FormFieldData& r) {
+  static const std::u16string& value(const autofill::FormFieldData& r) {
     return r.value;
   }
 
@@ -80,19 +219,24 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.autocomplete_attribute;
   }
 
-  static const base::string16& placeholder(const autofill::FormFieldData& r) {
+  static const absl::optional<autofill::AutocompleteParsingResult>
+  parsed_autocomplete(const autofill::FormFieldData& r) {
+    return r.parsed_autocomplete;
+  }
+
+  static const std::u16string& placeholder(const autofill::FormFieldData& r) {
     return r.placeholder;
   }
 
-  static const base::string16& css_classes(const autofill::FormFieldData& r) {
+  static const std::u16string& css_classes(const autofill::FormFieldData& r) {
     return r.css_classes;
   }
 
-  static const base::string16& aria_label(const autofill::FormFieldData& r) {
+  static const std::u16string& aria_label(const autofill::FormFieldData& r) {
     return r.aria_label;
   }
 
-  static const base::string16& aria_description(
+  static const std::u16string& aria_description(
       const autofill::FormFieldData& r) {
     return r.aria_description;
   }
@@ -100,6 +244,11 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
   static autofill::FieldRendererId unique_renderer_id(
       const autofill::FormFieldData& r) {
     return r.unique_renderer_id;
+  }
+
+  static autofill::FormRendererId host_form_id(
+      const autofill::FormFieldData& r) {
+    return r.host_form_id;
   }
 
   static uint32_t properties_mask(const autofill::FormFieldData& r) {
@@ -118,7 +267,7 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.is_autofilled;
   }
 
-  static const std::string& section(const autofill::FormFieldData& r) {
+  static const autofill::Section& section(const autofill::FormFieldData& r) {
     return r.section;
   }
 
@@ -129,6 +278,10 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
 
   static bool is_focusable(const autofill::FormFieldData& r) {
     return r.is_focusable;
+  }
+
+  static bool is_visible(const autofill::FormFieldData& r) {
+    return r.is_visible;
   }
 
   static bool should_autocomplete(const autofill::FormFieldData& r) {
@@ -153,18 +306,13 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.is_readonly;
   }
 
-  static const base::string16& typed_value(const autofill::FormFieldData& r) {
-    return r.typed_value;
+  static const std::u16string& user_input(const autofill::FormFieldData& r) {
+    return r.user_input;
   }
 
-  static const std::vector<base::string16>& option_values(
+  static const std::vector<autofill::SelectOption>& options(
       const autofill::FormFieldData& r) {
-    return r.option_values;
-  }
-
-  static const std::vector<base::string16>& option_contents(
-      const autofill::FormFieldData& r) {
-    return r.option_contents;
+    return r.options;
   }
 
   static autofill::FormFieldData::LabelSource label_source(
@@ -176,24 +324,28 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.bounds;
   }
 
-  static const std::vector<base::string16>& datalist_values(
+  static const std::vector<std::u16string>& datalist_values(
       const autofill::FormFieldData& r) {
     return r.datalist_values;
   }
 
-  static const std::vector<base::string16>& datalist_labels(
+  static const std::vector<std::u16string>& datalist_labels(
       const autofill::FormFieldData& r) {
     return r.datalist_labels;
   }
 
   static bool Read(autofill::mojom::FormFieldDataDataView data,
                    autofill::FormFieldData* out);
+
+  static bool force_override(const autofill::FormFieldData& r) {
+    return r.force_override;
+  }
 };
 
 template <>
 struct StructTraits<autofill::mojom::ButtonTitleInfoDataView,
                     autofill::ButtonTitleInfo> {
-  static const base::string16& title(const autofill::ButtonTitleInfo& r) {
+  static const std::u16string& title(const autofill::ButtonTitleInfo& r) {
     return r.first;
   }
 
@@ -208,15 +360,15 @@ struct StructTraits<autofill::mojom::ButtonTitleInfoDataView,
 
 template <>
 struct StructTraits<autofill::mojom::FormDataDataView, autofill::FormData> {
-  static const base::string16& id_attribute(const autofill::FormData& r) {
+  static const std::u16string& id_attribute(const autofill::FormData& r) {
     return r.id_attribute;
   }
 
-  static const base::string16& name_attribute(const autofill::FormData& r) {
+  static const std::u16string& name_attribute(const autofill::FormData& r) {
     return r.name_attribute;
   }
 
-  static const base::string16& name(const autofill::FormData& r) {
+  static const std::u16string& name(const autofill::FormData& r) {
     return r.name;
   }
 
@@ -225,31 +377,22 @@ struct StructTraits<autofill::mojom::FormDataDataView, autofill::FormData> {
     return r.button_titles;
   }
 
-  static const GURL& url(const autofill::FormData& r) { return r.url; }
-
-  static const GURL& full_url(const autofill::FormData& r) {
-    return r.full_url;
-  }
-
   static const GURL& action(const autofill::FormData& r) { return r.action; }
 
   static bool is_action_empty(const autofill::FormData& r) {
     return r.is_action_empty;
   }
 
-  static const url::Origin& main_frame_origin(const autofill::FormData& r) {
-    return r.main_frame_origin;
-  }
-
   static bool is_form_tag(const autofill::FormData& r) { return r.is_form_tag; }
-
-  static bool is_formless_checkout(const autofill::FormData& r) {
-    return r.is_formless_checkout;
-  }
 
   static autofill::FormRendererId unique_renderer_id(
       const autofill::FormData& r) {
     return r.unique_renderer_id;
+  }
+
+  static const std::vector<autofill::FrameTokenWithPredecessor>& child_frames(
+      const autofill::FormData& r) {
+    return r.child_frames;
   }
 
   static autofill::mojom::SubmissionIndicatorEvent submission_event(
@@ -279,6 +422,11 @@ struct StructTraits<autofill::mojom::FormDataDataView, autofill::FormData> {
 template <>
 struct StructTraits<autofill::mojom::FormFieldDataPredictionsDataView,
                     autofill::FormFieldDataPredictions> {
+  static const std::string& host_form_signature(
+      const autofill::FormFieldDataPredictions& r) {
+    return r.host_form_signature;
+  }
+
   static const std::string& signature(
       const autofill::FormFieldDataPredictions& r) {
     return r.signature;
@@ -337,12 +485,12 @@ struct StructTraits<autofill::mojom::FormDataPredictionsDataView,
 template <>
 struct StructTraits<autofill::mojom::PasswordAndMetadataDataView,
                     autofill::PasswordAndMetadata> {
-  static const base::string16& username(
+  static const std::u16string& username(
       const autofill::PasswordAndMetadata& r) {
     return r.username;
   }
 
-  static const base::string16& password(
+  static const std::u16string& password(
       const autofill::PasswordAndMetadata& r) {
     return r.password;
   }
@@ -371,18 +519,14 @@ struct StructTraits<autofill::mojom::PasswordFormFillDataDataView,
     return r.url;
   }
 
-  static const GURL& action(const autofill::PasswordFormFillData& r) {
-    return r.action;
+  static const autofill::FieldRendererId& username_element_renderer_id(
+      const autofill::PasswordFormFillData& r) {
+    return r.username_element_renderer_id;
   }
 
-  static const autofill::FormFieldData& username_field(
+  static const autofill::FieldRendererId& password_element_renderer_id(
       const autofill::PasswordFormFillData& r) {
-    return r.username_field;
-  }
-
-  static const autofill::FormFieldData& password_field(
-      const autofill::PasswordFormFillData& r) {
-    return r.password_field;
+    return r.password_element_renderer_id;
   }
 
   static bool username_may_use_prefilled_placeholder(
@@ -390,13 +534,9 @@ struct StructTraits<autofill::mojom::PasswordFormFillDataDataView,
     return r.username_may_use_prefilled_placeholder;
   }
 
-  static const std::string& preferred_realm(
+  static const autofill::PasswordAndMetadata& preferred_login(
       const autofill::PasswordFormFillData& r) {
-    return r.preferred_realm;
-  }
-
-  static bool uses_account_store(const autofill::PasswordFormFillData& r) {
-    return r.uses_account_store;
+    return r.preferred_login;
   }
 
   static const autofill::PasswordFormFillData::LoginCollection&
@@ -442,9 +582,14 @@ struct StructTraits<autofill::mojom::PasswordGenerationUIDataDataView,
     return r.max_length;
   }
 
-  static const base::string16& generation_element(
+  static const std::u16string& generation_element(
       const autofill::password_generation::PasswordGenerationUIData& r) {
     return r.generation_element;
+  }
+
+  static const std::u16string& user_typed_password(
+      const autofill::password_generation::PasswordGenerationUIData& r) {
+    return r.user_typed_password;
   }
 
   static autofill::FieldRendererId generation_element_id(
@@ -497,6 +642,29 @@ struct StructTraits<autofill::mojom::ParsingResultDataView,
 
   static bool Read(autofill::mojom::ParsingResultDataView data,
                    autofill::ParsingResult* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::AutoselectFirstSuggestionDataView,
+                    autofill::AutoselectFirstSuggestion> {
+  static bool autoselect_first_suggestion(
+      autofill::AutoselectFirstSuggestion r) {
+    return r.value();
+  }
+
+  static bool Read(autofill::mojom::AutoselectFirstSuggestionDataView data,
+                   autofill::AutoselectFirstSuggestion* out);
+};
+
+template <>
+struct StructTraits<autofill::mojom::FormElementWasClickedDataView,
+                    autofill::FormElementWasClicked> {
+  static bool form_element_was_clicked(autofill::FormElementWasClicked r) {
+    return r.value();
+  }
+
+  static bool Read(autofill::mojom::FormElementWasClickedDataView data,
+                   autofill::FormElementWasClicked* out);
 };
 
 }  // namespace mojo

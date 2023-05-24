@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,8 @@
 #include <stdint.h>
 
 #include <string>
-#include <unordered_map>
 
 #include "base/base_export.h"
-#include "base/macros.h"
 
 namespace base {
 
@@ -45,6 +43,8 @@ class BASE_EXPORT TraceEventMemoryOverhead {
   };
 
   TraceEventMemoryOverhead();
+  TraceEventMemoryOverhead(const TraceEventMemoryOverhead&) = delete;
+  TraceEventMemoryOverhead& operator=(const TraceEventMemoryOverhead&) = delete;
   ~TraceEventMemoryOverhead();
 
   // Use this method to account the overhead of an object for which an estimate
@@ -86,8 +86,6 @@ class BASE_EXPORT TraceEventMemoryOverhead {
                    size_t count,
                    size_t allocated_size_in_bytes,
                    size_t resident_size_in_bytes);
-
-  DISALLOW_COPY_AND_ASSIGN(TraceEventMemoryOverhead);
 };
 
 }  // namespace trace_event

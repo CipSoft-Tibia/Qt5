@@ -21,12 +21,16 @@ class LocalLogger {
     return is_listening_to_code_events_;
   }
   void ScriptDetails(Script script);
-  void ScriptEvent(Logger::ScriptEventType type, int script_id);
+  void ScriptEvent(ScriptEventType type, int script_id);
   void CodeLinePosInfoRecordEvent(Address code_start,
-                                  ByteArray source_position_table);
+                                  ByteArray source_position_table,
+                                  JitCodeEvent::CodeType code_type);
+
+  void MapCreate(Map map);
+  void MapDetails(Map map);
 
  private:
-  Logger* logger_;
+  V8FileLogger* v8_file_logger_;
   bool is_logging_;
   bool is_listening_to_code_events_;
 };

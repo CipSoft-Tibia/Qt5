@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
 #include <QtQuick/qquickitem.h>
 #include <QtQuick3D/private/qquick3dtexture_p.h>
+#include <QtQuick3D/QQuick3DTextureData>
 #include <QtQuick3D/private/qquick3dviewport_p.h>
 #include <QtQuick3DRuntimeRender/private/qssgrenderimage_p.h>
 
@@ -49,8 +24,9 @@ private slots:
     void testSetSource();
     void testSetSourceItem();
     void testMappingAndTilingModes();
+    void testSamplerFilteringModes();
     void testTransformations();
-    void testFormat();
+    void testTextureData();
 };
 
 void tst_QQuick3DTexture::testSetSource()
@@ -64,18 +40,18 @@ void tst_QQuick3DTexture::testSetSource()
     QCOMPARE(node.get(), texture.updateSpatialNode(node.get()));
 
     QSignalSpy spy(&texture, SIGNAL(sourceChanged()));
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     const QUrl fileWithScheme {QString::fromLatin1("file:path/to/resource")};
     const QString expectedPath {QString::fromLatin1("path/to/resource")};
     texture.setSource(fileWithScheme);
     node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
-    QCOMPARE(expectedPath, node->m_imagePath);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(expectedPath, node->m_imagePath.path());
+    QCOMPARE(spy.size(), 1);
 
     // Same url again
     texture.setSource(fileWithScheme);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_QQuick3DTexture::testSetSourceItem()
@@ -88,16 +64,16 @@ void tst_QQuick3DTexture::testSetSourceItem()
 
     qRegisterMetaType<QQuickItem *>();
     QSignalSpy spy(&texture, SIGNAL(sourceItemChanged()));
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     QVERIFY(!texture.sourceItem());
     texture.setSourceItem(&item);
     QVERIFY(texture.sourceItem());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     // Same item again
     texture.setSourceItem(&item);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_QQuick3DTexture::testMappingAndTilingModes()
@@ -126,6 +102,34 @@ void tst_QQuick3DTexture::testMappingAndTilingModes()
         node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
         QCOMPARE(tilingMode, int(node->m_verticalTilingMode));
     }
+}
+
+void tst_QQuick3DTexture::testSamplerFilteringModes()
+{
+    Texture texture;
+    std::unique_ptr<QSSGRenderImage> node;
+
+    for (const auto filterMode : {QQuick3DTexture::None, QQuick3DTexture::Linear, QQuick3DTexture::Nearest}) {
+        texture.setMinFilter(filterMode);
+        node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
+        QCOMPARE(int(filterMode), int(node->m_minFilterType));
+
+        texture.setMagFilter(filterMode);
+        node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
+        QCOMPARE(int(filterMode), int(node->m_magFilterType));
+
+        texture.setMipFilter(filterMode);
+        node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
+        QCOMPARE(int(filterMode), int(node->m_mipFilterType));
+    }
+
+    // generate mipmaps
+    node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
+    QCOMPARE(node->m_generateMipmaps, false);
+
+    texture.setGenerateMipmaps(true);
+    node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
+    QCOMPARE(node->m_generateMipmaps, true);
 }
 
 void tst_QQuick3DTexture::testTransformations()
@@ -169,23 +173,32 @@ void tst_QQuick3DTexture::testTransformations()
     QCOMPARE(pivotV, node->m_pivot.y());
 }
 
-void tst_QQuick3DTexture::testFormat()
+void tst_QQuick3DTexture::testTextureData()
 {
     Texture texture;
+    QQuick3DTextureData textureData;
     std::unique_ptr<QSSGRenderImage> node;
 
-    // This test _also_ relies on two enums having the same values
-    // (QQ3DT::Format & QSSGRenderTextureFormat::Format).
-    auto metaEnum = QMetaEnum::fromType<QQuick3DTexture::Format>();
-    for (int i = 0; i < metaEnum.keyCount(); i++) {
-        const auto format = QQuick3DTexture::Format(metaEnum.value(i));
+    node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
+    QVERIFY(node);
 
-        texture.setFormat(format);
-        node.reset(static_cast<QSSGRenderImage *>(texture.updateSpatialNode(nullptr)));
-        QCOMPARE(int(format), int(node->m_format.format));
-    }
+    // check that we get the same node out when passing in the old one
+    QCOMPARE(node.get(), texture.updateSpatialNode(node.get()));
+
+    // No textureData by default
+    QSignalSpy spy(&texture, SIGNAL(textureDataChanged()));
+    QCOMPARE(spy.size(), 0);
+
+    // Set textureData
+    QVERIFY(!texture.textureData());
+    texture.setTextureData(&textureData);
+    QVERIFY(texture.textureData());
+    QCOMPARE(spy.size(), 1);
+
+    // Same textureData again
+    texture.setTextureData(&textureData);
+    QCOMPARE(spy.size(), 1);
 }
-
 
 QTEST_APPLESS_MAIN(tst_QQuick3DTexture)
 #include "tst_qquick3dtexture.moc"

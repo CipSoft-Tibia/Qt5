@@ -1,11 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_NETWORK_HINTS_BROWSER_SIMPLE_NETWORK_HINTS_HANDLER_IMPL_H_
 #define COMPONENTS_NETWORK_HINTS_BROWSER_SIMPLE_NETWORK_HINTS_HANDLER_IMPL_H_
 
-#include "base/macros.h"
 #include "components/network_hints/common/network_hints.mojom.h"
 
 namespace content {
@@ -19,6 +18,11 @@ namespace network_hints {
 class SimpleNetworkHintsHandlerImpl : public mojom::NetworkHintsHandler {
  public:
   SimpleNetworkHintsHandlerImpl(int render_process_id, int render_frame_id);
+
+  SimpleNetworkHintsHandlerImpl(const SimpleNetworkHintsHandlerImpl&) = delete;
+  SimpleNetworkHintsHandlerImpl& operator=(
+      const SimpleNetworkHintsHandlerImpl&) = delete;
+
   ~SimpleNetworkHintsHandlerImpl() override;
 
   static void Create(
@@ -26,14 +30,13 @@ class SimpleNetworkHintsHandlerImpl : public mojom::NetworkHintsHandler {
       mojo::PendingReceiver<mojom::NetworkHintsHandler> receiver);
 
   // mojom::NetworkHintsHandler methods:
-  void PrefetchDNS(const std::vector<std::string>& names) override;
-  void Preconnect(const GURL& url, bool allow_credentials) override;
+  void PrefetchDNS(const std::vector<url::SchemeHostPort>& urls) override;
+  void Preconnect(const url::SchemeHostPort& url,
+                  bool allow_credentials) override;
 
  private:
   const int render_process_id_;
   const int render_frame_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(SimpleNetworkHintsHandlerImpl);
 };
 
 }  // namespace network_hints

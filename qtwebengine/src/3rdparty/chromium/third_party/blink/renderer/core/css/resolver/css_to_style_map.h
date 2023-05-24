@@ -28,7 +28,7 @@
 #include "third_party/blink/renderer/core/animation/timing.h"
 #include "third_party/blink/renderer/core/css/css_property_names.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
-#include "third_party/blink/renderer/core/style/style_name_or_keyword.h"
+#include "third_party/blink/renderer/core/style/style_timeline.h"
 #include "third_party/blink/renderer/platform/animation/timing_function.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
@@ -66,18 +66,40 @@ class CSSToStyleMap {
                                FillLayer*,
                                const CSSValue&);
 
-  static double MapAnimationDelay(const CSSValue&);
-  static Timing::PlaybackDirection MapAnimationDirection(const CSSValue&);
-  static double MapAnimationDuration(const CSSValue&);
-  static Timing::FillMode MapAnimationFillMode(const CSSValue&);
-  static double MapAnimationIterationCount(const CSSValue&);
-  static AtomicString MapAnimationName(const CSSValue&);
-  static StyleNameOrKeyword MapAnimationTimeline(const CSSValue&);
-  static EAnimPlayState MapAnimationPlayState(const CSSValue&);
-  static CSSTransitionData::TransitionProperty MapAnimationProperty(
+  static Timing::Delay MapAnimationDelayStart(StyleResolverState&,
+                                              const CSSValue&);
+  static Timing::Delay MapAnimationDelayEnd(const CSSValue&);
+  static Timing::Delay MapAnimationDelayEnd(StyleResolverState&,
+                                            const CSSValue&);
+  static Timing::PlaybackDirection MapAnimationDirection(StyleResolverState&,
+                                                         const CSSValue&);
+  static absl::optional<double> MapAnimationDuration(StyleResolverState&,
+                                                     const CSSValue&);
+  static Timing::FillMode MapAnimationFillMode(StyleResolverState&,
+                                               const CSSValue&);
+  static double MapAnimationIterationCount(StyleResolverState&,
+                                           const CSSValue&);
+  static AtomicString MapAnimationName(StyleResolverState&, const CSSValue&);
+  static StyleTimeline MapAnimationTimeline(StyleResolverState&,
+                                            const CSSValue&);
+  static EAnimPlayState MapAnimationPlayState(StyleResolverState&,
+                                              const CSSValue&);
+  static absl::optional<TimelineOffset> MapAnimationRangeStart(
+      StyleResolverState&,
       const CSSValue&);
-
+  static absl::optional<TimelineOffset> MapAnimationRangeEnd(
+      StyleResolverState&,
+      const CSSValue&);
+  static EffectModel::CompositeOperation MapAnimationComposition(
+      StyleResolverState&,
+      const CSSValue&);
+  static CSSTransitionData::TransitionProperty MapAnimationProperty(
+      StyleResolverState&,
+      const CSSValue&);
   static scoped_refptr<TimingFunction> MapAnimationTimingFunction(
+      const CSSValue&);
+  static scoped_refptr<TimingFunction> MapAnimationTimingFunction(
+      StyleResolverState&,
       const CSSValue&);
 
   static void MapNinePieceImage(StyleResolverState&,
@@ -96,4 +118,4 @@ class CSSToStyleMap {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_RESOLVER_CSS_TO_STYLE_MAP_H_

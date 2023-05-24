@@ -18,11 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-libdrm_omap = shared_library(
+libdrm_omap = library(
   'drm_omap',
   [files('omap_drm.c'), config_file],
   include_directories : [inc_root, inc_drm],
   c_args : libdrm_c_args,
+  gnu_symbol_visibility : 'hidden',
   link_with : libdrm,
   dependencies : [dep_pthread_stubs, dep_atomic_ops],
   version : '1.0.0',
@@ -34,21 +35,27 @@ ext_libdrm_omap = declare_dependency(
   include_directories : [inc_drm, include_directories('.')],
 )
 
+if meson.version().version_compare('>= 0.54.0')
+  meson.override_dependency('libdrm_omap', ext_libdrm_omap)
+endif
+
 install_headers('omap_drmif.h', subdir : 'libdrm')
 install_headers('omap_drm.h', subdir : 'omap')
 
 pkg.generate(
+  libdrm_omap,
   name : 'libdrm_omap',
-  libraries : libdrm_omap,
   subdirs : ['.', 'libdrm', 'omap'],
   version : '0.6',
-  requires_private : 'libdrm',
   description : 'Userspace interface to omap kernel DRM services',
 )
 
 test(
-  'omap-symbol-check',
-  find_program('omap-symbol-check'),
-  env : env_test,
-  args : libdrm_omap,
+  'omap-symbols-check',
+  symbols_check,
+  args : [
+    '--lib', libdrm_omap,
+    '--symbols-file', files('omap-symbols.txt'),
+    '--nm', prog_nm.path(),
+  ],
 )

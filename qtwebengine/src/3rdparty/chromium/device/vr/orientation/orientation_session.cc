@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "device/vr/orientation/orientation_device.h"
 
 namespace device {
@@ -48,14 +48,15 @@ void VROrientationSession::GetEnvironmentIntegrationProvider(
         environment_provider) {
   // Environment integration is not supported. This call should not
   // be made on this device.
-  mojo::ReportBadMessage("Environment integration is not supported.");
+  magic_window_receiver_.ReportBadMessage(
+      "Environment integration is not supported.");
 }
 
 void VROrientationSession::SetInputSourceButtonListener(
     mojo::PendingAssociatedRemote<device::mojom::XRInputSourceButtonListener>) {
   // Input eventing is not supported. This call should not
   // be made on this device.
-  mojo::ReportBadMessage("Input eventing is not supported.");
+  magic_window_receiver_.ReportBadMessage("Input eventing is not supported.");
 }
 
 // XRSessionController

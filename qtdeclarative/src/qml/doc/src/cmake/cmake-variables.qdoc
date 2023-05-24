@@ -1,0 +1,32 @@
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+\page cmake-variable-qt-qml-output-directory.html
+\ingroup cmake-variables-qtqml
+
+\title QT_QML_OUTPUT_DIRECTORY
+
+\brief Base output directory below which QML modules will be created by default.
+
+The \l{qt6_add_qml_module}{qt6_add_qml_module()} command accepts an
+\c OUTPUT_DIRECTORY argument which specifies where the QML module's \c qmldir
+file, typeinfo file and plugin library will be created. When that argument is
+not used, the default value is based on the \c QT_QML_OUTPUT_DIRECTORY variable,
+if it is set. If \c QT_QML_OUTPUT_DIRECTORY is not set, the default value
+depends on the type of backing target (see the
+\l{qt6_add_qml_module#OUTPUT_DIRECTORY}{OUTPUT_DIRECTORY} documentation for
+details).
+
+When \c QT_QML_OUTPUT_DIRECTORY is set, the default output directory will be
+formed by appending the QML module's \e{target path} (which is based on the
+module URI) to \c QT_QML_OUTPUT_DIRECTORY.
+The \c QT_QML_OUTPUT_DIRECTORY will also be added to the import path of the
+\c qmllint and \c qmlcachegen tooling targets, allowing them to find other QML
+modules under the same base location. This allows the project to use a source
+directory structure that doesn't exactly match the URI structure of the QML
+modules, or to merge sets of QML modules under a common base point.
+
+*/
+
+

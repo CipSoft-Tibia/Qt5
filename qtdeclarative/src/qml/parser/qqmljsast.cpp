@@ -1,45 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include <QString>
+#include <QLocale>
 #include "qqmljsast_p.h"
 
 #include "qqmljsastvisitor_p.h"
+#include <qlocale.h>
+
+#include <algorithm>
+#include <array>
 
 QT_BEGIN_NAMESPACE
 
@@ -116,6 +86,44 @@ ExpressionNode *ExpressionNode::expressionCast()
     return this;
 }
 
+bool ExpressionNode::containsOptionalChain() const
+{
+    for (const Node *node = this;;) {
+        switch (node->kind) {
+        case Kind_FieldMemberExpression: {
+            const auto *fme = AST::cast<const FieldMemberExpression*>(node);
+            if (fme->isOptional)
+                return true;
+            node = fme->base;
+            break;
+        }
+        case Kind_ArrayMemberExpression: {
+            const auto *ame = AST::cast<const ArrayMemberExpression*>(node);
+            if (ame->isOptional)
+                return true;
+            node = ame->base;
+            break;
+        }
+        case Kind_CallExpression: {
+            const auto *ce = AST::cast<const CallExpression*>(node);
+            if (ce->isOptional)
+                return true;
+            node = ce->base;
+            break;
+        }
+        case Kind_NestedExpression: {
+            const auto *ne = AST::cast<const NestedExpression*>(node);
+            node = ne->expression;
+            break;
+        }
+        default:
+            // These unhandled nodes lead to invalid lvalues anyway, so they do not need to be handled here.
+            return false;
+        }
+    }
+    return false;
+}
+
 FormalParameterList *ExpressionNode::reparseAsFormalParameterList(MemoryPool *pool)
 {
     AST::ExpressionNode *expr = this;
@@ -155,6 +163,12 @@ FormalParameterList *ExpressionNode::reparseAsFormalParameterList(MemoryPool *po
 BinaryExpression *BinaryExpression::binaryExpressionCast()
 {
     return this;
+}
+
+void TypeExpression::accept0(BaseVisitor *visitor)
+{
+    visitor->visit(this);
+    visitor->endVisit(this);
 }
 
 Statement *Statement::statementCast()
@@ -1001,7 +1015,13 @@ BoundNames FormalParameterList::formals() const
                 // change the name of the earlier argument to enforce the lookup semantics from the spec
                 formals[duplicateIndex].id += QLatin1String("#") + QString::number(i);
             }
-            formals += {name, it->element->typeAnnotation};
+            formals += {
+                    name,
+                    it->element->typeAnnotation,
+                    it->element->isInjectedSignalParameter
+                        ? BoundName::Injected
+                        : BoundName::Declared
+            };
         }
         ++i;
     }
@@ -1029,17 +1049,10 @@ void FormalParameterList::accept0(BaseVisitor *visitor)
     }
 }
 
-FormalParameterList *FormalParameterList::finish(QQmlJS::MemoryPool *pool)
+FormalParameterList *FormalParameterList::finish(QQmlJS::MemoryPool *)
 {
     FormalParameterList *front = next;
     next = nullptr;
-
-    int i = 0;
-    for (const FormalParameterList *it = this; it; it = it->next) {
-        if (it->element && it->element->bindingIdentifier.isEmpty())
-            it->element->bindingIdentifier = pool->newString(QLatin1String("arg#") + QString::number(i));
-        ++i;
-    }
     return front;
 }
 
@@ -1291,17 +1304,7 @@ void Type::accept0(BaseVisitor *visitor)
 {
     if (visitor->visit(this)) {
         accept(typeId, visitor);
-        accept(typeArguments, visitor);
-    }
-
-    visitor->endVisit(this);
-}
-
-void TypeArgumentList::accept0(BaseVisitor *visitor)
-{
-    if (visitor->visit(this)) {
-        for (TypeArgumentList *it = this; it; it = it->next)
-            accept(it->typeId, visitor);
+        accept(typeArgument, visitor);
     }
 
     visitor->endVisit(this);
@@ -1325,6 +1328,15 @@ void UiImport::accept0(BaseVisitor *visitor)
 
     visitor->endVisit(this);
 }
+
+void UiPragmaValueList::accept0(BaseVisitor *visitor)
+{
+    if (visitor->visit(this)) {
+    }
+
+    visitor->endVisit(this);
+}
+
 
 void UiPragma::accept0(BaseVisitor *visitor)
 {
@@ -1404,7 +1416,8 @@ void PatternElement::boundNames(BoundNames *names)
         else if (PatternPropertyList *p = propertyList())
             p->boundNames(names);
     } else {
-        names->append({bindingIdentifier.toString(), typeAnnotation});
+        names->append({bindingIdentifier.toString(), typeAnnotation,
+                       isInjectedSignalParameter ? BoundName::Injected : BoundName::Declared});
     }
 }
 
@@ -1542,17 +1555,11 @@ QString Type::toString() const
 
 void Type::toString(QString *out) const
 {
-    for (QQmlJS::AST::UiQualifiedId *it = typeId; it; it = it->next) {
-        out->append(it->name);
+    typeId->toString(out);
 
-        if (it->next)
-            out->append(QLatin1Char('.'));
-    }
-
-    if (typeArguments) {
+    if (typeArgument) {
         out->append(QLatin1Char('<'));
-        if (auto subType = static_cast<TypeArgumentList*>(typeArguments)->typeId)
-            subType->toString(out);
+        typeArgument->toString(out);
         out->append(QLatin1Char('>'));
     };
 }
@@ -1593,6 +1600,20 @@ void UiAnnotation::accept0(BaseVisitor *visitor)
     }
 
     visitor->endVisit(this);
+}
+
+SourceLocation UiPropertyAttributes::firstSourceLocation() const
+{
+    std::array<const SourceLocation *, 4> tokens {&m_propertyToken, &m_defaultToken, &m_readonlyToken, &m_requiredToken};
+    const auto it = std::min_element(tokens.begin(), tokens.end(), compareLocationsByBegin<true>);
+    return **it;
+}
+
+SourceLocation UiPropertyAttributes::lastSourceLocation() const
+{
+    std::array<const SourceLocation *, 4> tokens {&m_propertyToken, &m_defaultToken, &m_readonlyToken, &m_requiredToken};
+    const auto it = std::max_element(tokens.begin(), tokens.end(), compareLocationsByBegin<false>);
+    return **it;
 }
 
 } } // namespace QQmlJS::AST

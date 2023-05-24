@@ -47,12 +47,12 @@
 
 #include <map>
 
-#include "base/macros.h"
 #include "base/memory/singleton.h"
 #include "base/memory/weak_ptr.h"
 #include "content/public/browser/media_stream_request.h"
 #include "extensions/browser/extension_function.h"
 #include "third_party/blink/public/common/mediastream/media_stream_request.h"
+#include "third_party/blink/public/mojom/mediastream/media_stream.mojom-shared.h"
 
 namespace content {
 class RenderFrameHost;
@@ -71,7 +71,7 @@ class WebrtcDesktopCapturePrivateChooseDesktopMediaFunction : public ExtensionFu
   void ProcessAccessRequestResponse(
       content::RenderFrameHost* const main_frame,
       const GURL &origin,
-      const blink::MediaStreamDevices& devices,
+      const blink::mojom::StreamDevicesSet& devicesSet,
       blink::mojom::MediaStreamRequestResult stream_request_result,
       std::unique_ptr<content::MediaStreamUI> stream_ui);
 
@@ -79,7 +79,6 @@ class WebrtcDesktopCapturePrivateChooseDesktopMediaFunction : public ExtensionFu
   ResponseAction Run() override;
 
   int request_id_;
-  base::WeakPtrFactory<WebrtcDesktopCapturePrivateChooseDesktopMediaFunction> weak_factory_{this};
 };
 
 class DesktopCaptureRequestsRegistry {
@@ -111,8 +110,6 @@ class DesktopCaptureRequestsRegistry {
       std::map<RequestId, WebrtcDesktopCapturePrivateChooseDesktopMediaFunction*>;
 
   RequestsMap requests_;
-
-  DISALLOW_COPY_AND_ASSIGN(DesktopCaptureRequestsRegistry);
 };
 
 }  // namespace extensions

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMIMEPROVIDER_P_H
 #define QMIMEPROVIDER_P_H
@@ -59,40 +23,53 @@ QT_REQUIRE_CONFIG(mimetype);
 #include "qmimeglobpattern_p.h"
 #include <QtCore/qdatetime.h>
 #include <QtCore/qset.h>
+#include <QtCore/qmap.h>
 
 QT_BEGIN_NAMESPACE
 
 class QMimeMagicRuleMatcher;
+class QMimeTypeXMLData;
+class QMimeProviderBase;
 
 class QMimeProviderBase
 {
+    Q_DISABLE_COPY(QMimeProviderBase)
+
 public:
     QMimeProviderBase(QMimeDatabasePrivate *db, const QString &directory);
     virtual ~QMimeProviderBase() {}
 
     virtual bool isValid() = 0;
     virtual bool isInternalDatabase() const = 0;
-    virtual QMimeType mimeTypeForName(const QString &name) = 0;
+    virtual bool knowsMimeType(const QString &name) = 0;
     virtual void addFileNameMatches(const QString &fileName, QMimeGlobMatchResult &result) = 0;
     virtual void addParents(const QString &mime, QStringList &result) = 0;
     virtual QString resolveAlias(const QString &name) = 0;
     virtual void addAliases(const QString &name, QStringList &result) = 0;
-    virtual void findByMagic(const QByteArray &data, int *accuracyPtr, QMimeType &candidate) = 0;
+    virtual void findByMagic(const QByteArray &data, int *accuracyPtr, QString *candidate) = 0;
     virtual void addAllMimeTypes(QList<QMimeType> &result) = 0;
-    virtual void loadIcon(QMimeTypePrivate &) {}
-    virtual void loadGenericIcon(QMimeTypePrivate &) {}
-    virtual void ensureLoaded() {}
+    virtual QMimeTypePrivate::LocaleHash localeComments(const QString &name) = 0;
+    virtual bool hasGlobDeleteAll(const QString &name) = 0;
+    virtual QStringList globPatterns(const QString &name) = 0;
+    virtual QString icon(const QString &name) = 0;
+    virtual QString genericIcon(const QString &name) = 0;
+    virtual void ensureLoaded() { }
 
     QString directory() const { return m_directory; }
 
+    QMimeProviderBase *overrideProvider() const;
+    void setOverrideProvider(QMimeProviderBase *provider);
+    bool isMimeTypeGlobsExcluded(const QString &name) const;
+
     QMimeDatabasePrivate *m_db;
     QString m_directory;
+    QMimeProviderBase *m_overrideProvider = nullptr; // more "local" than this one
 };
 
 /*
    Parses the files 'mime.cache' and 'types' on demand
  */
-class QMimeBinaryProvider : public QMimeProviderBase
+class QMimeBinaryProvider final : public QMimeProviderBase
 {
 public:
     QMimeBinaryProvider(QMimeDatabasePrivate *db, const QString &directory);
@@ -100,38 +77,54 @@ public:
 
     bool isValid() override;
     bool isInternalDatabase() const override;
-    QMimeType mimeTypeForName(const QString &name) override;
+    bool knowsMimeType(const QString &name) override;
     void addFileNameMatches(const QString &fileName, QMimeGlobMatchResult &result) override;
     void addParents(const QString &mime, QStringList &result) override;
     QString resolveAlias(const QString &name) override;
     void addAliases(const QString &name, QStringList &result) override;
-    void findByMagic(const QByteArray &data, int *accuracyPtr, QMimeType &candidate) override;
+    void findByMagic(const QByteArray &data, int *accuracyPtr, QString *candidate) override;
     void addAllMimeTypes(QList<QMimeType> &result) override;
-    static void loadMimeTypePrivate(QMimeTypePrivate &);
-    void loadIcon(QMimeTypePrivate &) override;
-    void loadGenericIcon(QMimeTypePrivate &) override;
+    QMimeTypePrivate::LocaleHash localeComments(const QString &name) override;
+    bool hasGlobDeleteAll(const QString &name) override;
+    QStringList globPatterns(const QString &name) override;
+    QString icon(const QString &name) override;
+    QString genericIcon(const QString &name) override;
     void ensureLoaded() override;
 
 private:
     struct CacheFile;
 
-    void matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int offset, const QString &fileName);
-    bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, int numEntries, int firstOffset, const QString &fileName, int charPos, bool caseSensitiveCheck);
-    bool matchMagicRule(CacheFile *cacheFile, int numMatchlets, int firstOffset, const QByteArray &data);
-    QLatin1String iconForMime(CacheFile *cacheFile, int posListOffset, const QByteArray &inputMime);
+    int matchGlobList(QMimeGlobMatchResult &result, CacheFile *cacheFile, int offset,
+                      const QString &fileName);
+    bool matchSuffixTree(QMimeGlobMatchResult &result, CacheFile *cacheFile, int numEntries,
+                         int firstOffset, const QString &fileName, qsizetype charPos,
+                         bool caseSensitiveCheck);
+    bool matchMagicRule(CacheFile *cacheFile, int numMatchlets, int firstOffset,
+                        const QByteArray &data);
+    QLatin1StringView iconForMime(CacheFile *cacheFile, int posListOffset, const QByteArray &inputMime);
     void loadMimeTypeList();
     bool checkCacheChanged();
 
-    CacheFile *m_cacheFile = nullptr;
+    std::unique_ptr<CacheFile> m_cacheFile;
     QStringList m_cacheFileNames;
     QSet<QString> m_mimetypeNames;
     bool m_mimetypeListLoaded;
+    struct MimeTypeExtra
+    {
+        QHash<QString, QString> localeComments;
+        QStringList globPatterns;
+        bool hasGlobDeleteAll = false;
+    };
+    using MimeTypeExtraMap = QMap<QString, MimeTypeExtra>;
+    MimeTypeExtraMap m_mimetypeExtra;
+
+    MimeTypeExtraMap::const_iterator loadMimeTypeExtra(const QString &mimeName);
 };
 
 /*
    Parses the raw XML files (slower)
  */
-class QMimeXMLProvider : public QMimeProviderBase
+class QMimeXMLProvider final : public QMimeProviderBase
 {
 public:
     enum InternalDatabaseEnum { InternalDatabase };
@@ -146,19 +139,24 @@ public:
 
     bool isValid() override;
     bool isInternalDatabase() const override;
-    QMimeType mimeTypeForName(const QString &name) override;
+    bool knowsMimeType(const QString &name) override;
     void addFileNameMatches(const QString &fileName, QMimeGlobMatchResult &result) override;
     void addParents(const QString &mime, QStringList &result) override;
     QString resolveAlias(const QString &name) override;
     void addAliases(const QString &name, QStringList &result) override;
-    void findByMagic(const QByteArray &data, int *accuracyPtr, QMimeType &candidate) override;
+    void findByMagic(const QByteArray &data, int *accuracyPtr, QString *candidate) override;
     void addAllMimeTypes(QList<QMimeType> &result) override;
     void ensureLoaded() override;
+    QMimeTypePrivate::LocaleHash localeComments(const QString &name) override;
+    bool hasGlobDeleteAll(const QString &name) override;
+    QStringList globPatterns(const QString &name) override;
+    QString icon(const QString &name) override;
+    QString genericIcon(const QString &name) override;
 
     bool load(const QString &fileName, QString *errorMessage);
 
     // Called by the mimetype xml parser
-    void addMimeType(const QMimeType &mt);
+    void addMimeType(const QMimeTypeXMLData &mt);
     void addGlobPattern(const QMimeGlobPattern &glob);
     void addParent(const QString &child, const QString &parent);
     void addAlias(const QString &alias, const QString &name);
@@ -168,7 +166,7 @@ private:
     void load(const QString &fileName);
     void load(const char *data, qsizetype len);
 
-    typedef QHash<QString, QMimeType> NameMimeTypeMap;
+    typedef QHash<QString, QMimeTypeXMLData> NameMimeTypeMap;
     NameMimeTypeMap m_nameMimeTypeMap;
 
     typedef QHash<QString, QString> AliasHash;

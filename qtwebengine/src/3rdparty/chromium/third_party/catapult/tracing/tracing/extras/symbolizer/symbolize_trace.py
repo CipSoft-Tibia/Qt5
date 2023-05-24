@@ -284,7 +284,6 @@ class NodeWrapper(object):
     'modified' flag.
 
   """
-  pass
 
 
 class MemoryMap(NodeWrapper):
@@ -341,7 +340,7 @@ class MemoryMap(NodeWrapper):
     def file_offset(self, value):
       self._file_offset = value
 
-    def __cmp__(self, other):
+    def compare(self, other): # pylint: disable=invalid-name
       if isinstance(other, type(self)):
         other_start_address = other._start_address
       elif isinstance(other, six.integer_types):
@@ -350,10 +349,31 @@ class MemoryMap(NodeWrapper):
         raise Exception('Cannot compare with %s' % type(other))
       if self._start_address < other_start_address:
         return -1
-      elif self._start_address > other_start_address:
+      if self._start_address > other_start_address:
         return 1
-      else:
-        return 0
+      return 0
+
+    if six.PY2:
+      def __cmp__(self, other):
+        return self.compare(other)
+    else:
+      def __eq__(self, other):
+        return self.compare(other) == 0
+
+      def __ne__(self, other):
+        return self.compare(other) != 0
+
+      def __lt__(self, other):
+        return self.compare(other) < 0
+
+      def __le__(self, other):
+        return self.compare(other) <= 0
+
+      def __gt__(self, other):
+        return self.compare(other) > 0
+
+      def __ge__(self, other):
+        return self.compare(other) >= 0
 
     def __repr__(self):
       return 'Region(0x{:X} - 0x{:X}, {})'.format(
@@ -369,7 +389,8 @@ class MemoryMap(NodeWrapper):
           file_offset)
       # Keep track of code-identifier when present.
       if 'ts' in region_node and 'sz' in region_node:
-        region._code_id = '%08X%X' % (int(region_node['ts'], 16), region.size)
+        region._code_id = '%08X%X' % (int(str(region_node['ts']), 16),
+                                      region.size)
       regions.append(region)
 
     regions.sort()
@@ -433,7 +454,7 @@ class MemoryMap(NodeWrapper):
     region_index = bisect.bisect_right(self._regions, address) - 1
     if region_index >= 0:
       region = self._regions[region_index]
-      if address >= region.start_address and address < region.end_address:
+      if region.start_address <= address < region.end_address:
         return region
     return None
 
@@ -948,6 +969,7 @@ class Trace(NodeWrapper):
     self._version = None
     self._is_chromium = True
     self._is_64bit = False
+    self._os_arch = None
     self._is_win = False
     self._is_mac = False
     self._is_linux = False
@@ -983,6 +1005,7 @@ class Trace(NodeWrapper):
       self._is_64bit = (
           re.search('x86_64', metadata['os-arch'], re.IGNORECASE) and
           not re.search('WOW64', metadata['user-agent'], re.IGNORECASE))
+      self._os_arch = metadata['os-arch']
 
     # Android traces produced via 'chrome://inspect/?tracing#devices' are
     # just list of events.
@@ -1093,6 +1116,10 @@ class Trace(NodeWrapper):
     return self._os
 
   @property
+  def os_arch(self):
+    return self._os_arch
+
+  @property
   def is_chromium(self):
     return self._is_chromium
 
@@ -1151,12 +1178,11 @@ class Trace(NodeWrapper):
     if self._heap_dump_version is None:
       self._heap_dump_version = version
       return version
-    elif self._heap_dump_version != version:
+    if self._heap_dump_version != version:
       raise Exception(
           ("Inconsistent trace file: first saw '{}' heap dump version, "
            "then '{}'.").format(self._heap_dump_version, version))
-    else:
-      return version
+    return version
 
 
 class SymbolizableFile(object):
@@ -1218,12 +1244,13 @@ def ResolveSymbolizableFiles(processes, trace_from_win, frame_as_object_type):
       continue
     ResolveSymbolizableFilesByNodes(
         symfile_by_path, process.memory_map,
-        process.stack_frame_map.frame_by_id.values(), trace_from_win)
+        list(process.stack_frame_map.frame_by_id.values()), trace_from_win)
 
     if frame_as_object_type:
-      ResolveSymbolizableFilesByNodes(symfile_by_path, process.memory_map,
-                                      process.type_name_map.type_by_id.values(),
-                                      trace_from_win)
+      ResolveSymbolizableFilesByNodes(
+        symfile_by_path, process.memory_map,
+        list(process.type_name_map.type_by_id.values()),
+        trace_from_win)
 
   return list(symfile_by_path.values())
 
@@ -1277,7 +1304,8 @@ class BreakpadSymbolsModule(object):
 class Symbolizer(object):
   """Encapsulates platform-specific symbolization logic."""
 
-  def __init__(self, addr2line_executable):
+  def __init__(self, addr2line_executable, os_arch):
+    self._os_arch = os_arch
     self.is_mac = sys.platform == 'darwin'
     self.is_win = sys.platform == 'win32'
     if self.is_mac:
@@ -1331,10 +1359,11 @@ class Symbolizer(object):
         for address in symfile.frames_by_address.keys():
           address_file.write('{:x} '.format(address + load_address))
 
-      cmd = [self.symbolizer_path, '-arch', 'x86_64', '-l',
+      architecture = 'arm64e' if self._os_arch == 'arm64' else 'x86_64'
+      cmd = [self.symbolizer_path, '-arch', architecture, '-l',
              '0x%x' % load_address, '-o', symfile.symbolizable_path,
              '-f', address_file_path]
-      output_array = subprocess.check_output(cmd).split('\n')
+      output_array = six.ensure_str(subprocess.check_output(cmd)).split('\n')
 
       for i, frames in enumerate(symfile.frames_by_address.values()):
         symbolized_name = self._matcher.Match(output_array[i])
@@ -1364,8 +1393,9 @@ class Symbolizer(object):
                             stderr=None)
     addrs = ["%x" % relative_pc for relative_pc in
              symfile.frames_by_address.keys()]
-    (stdout_data, _) = proc.communicate('\n'.join(addrs))
+    (stdout_data, _) = proc.communicate(six.ensure_binary('\n'.join(addrs)))
     # On windows, lines may contain '\r' character: e.g. "RtlUserThreadStart\r".
+    stdout_data = six.ensure_str(stdout_data)
     stdout_data.replace('\r', '')
     stdout_data = stdout_data.split('\n')
 
@@ -1438,11 +1468,11 @@ class Symbolizer(object):
     if self.is_win:
       extension = os.path.splitext(file_path)[1].lower()
       return extension in ['.dll', '.exe']
-    else:
-      result = subprocess.check_output(['file', '-0', file_path])
-      type_string = result[result.find('\0') + 1:]
-      return bool(re.match(r'.*(ELF|Mach-O) (32|64)-bit\b.*',
-                           type_string, re.DOTALL))
+    result = six.ensure_str(
+        subprocess.check_output(['file', '-0', file_path]))
+    type_string = result[result.find('\0') + 1:]
+    return bool(re.match(r'.*(ELF|Mach-O) (32|64)-bit\b.*',
+                          type_string, re.DOTALL))
 
 
 def SymbolizeFiles(symfiles, symbolizer):
@@ -1654,9 +1684,11 @@ def FetchAndExtractBreakpadSymbols(symbol_base_directory,
 
 def OpenTraceFile(file_path, mode):
   if file_path.endswith('.gz'):
-    return gzip.open(file_path, mode + 'b')
-  else:
-    return open(file_path, mode + 't')
+    if six.PY2:
+      return gzip.open(file_path, mode + 'b')
+    return gzip.open( # pylint: disable=unexpected-keyword-arg
+        file_path, mode + 't', encoding='utf-8', newline='')
+  return open(file_path, mode + 't')
 
 
 def FetchAndExtractSymbolsMac(symbol_base_directory, version,
@@ -1710,6 +1742,7 @@ def FetchAndExtractSymbolsWin(symbol_base_directory, version, is64bit,
         target = open(os.path.join(destination, filename), 'wb')
         with source, target:
           shutil.copyfileobj(source, target)
+    return True
 
   folder = "win64" if is64bit else "win"
   # Clang build (M61+)
@@ -1726,16 +1759,19 @@ def FetchAndExtractSymbolsWin(symbol_base_directory, version, is64bit,
     return True
 
   os.makedirs(symbol_sub_dir)
-  DownloadAndExtractZipFile(
+  if not DownloadAndExtractZipFile(
       os.path.join(symbol_base_directory,
                    "chrome-" + folder + "-" + version + "-syms.zip"),
       gcs_folder + "chrome-win32-syms.zip",
-      symbol_sub_dir)
-  DownloadAndExtractZipFile(
+      symbol_sub_dir):
+    return False
+
+  if not DownloadAndExtractZipFile(
       os.path.join(symbol_base_directory,
                    "chrome-" + folder + "-" + version + ".zip"),
       gcs_folder + "chrome-" + folder + folder_suffix + ".zip",
-      symbol_sub_dir)
+      symbol_sub_dir):
+    return False
 
   return True
 
@@ -1807,17 +1843,17 @@ def main(args):
   if options.frame_as_object_type and not options.is_cast:
     sys.exit("Frame-as-object-type is only supported for cast.")
 
-  symbolizer = Symbolizer(options.addr2line_executable)
-  if (symbolizer.symbolizer_path is None and
-      not options.use_breakpad_symbols):
-    sys.exit("Can't symbolize - no %s in PATH." % symbolizer.binary)
-
   trace_file_path = options.file
 
   print('Reading trace file...')
   with OpenTraceFile(trace_file_path, 'r') as trace_file:
     trace = Trace(json.load(trace_file), options.frame_as_object_type)
   print('Trace loaded for %s/%s' % (trace.os, trace.version))
+
+  symbolizer = Symbolizer(options.addr2line_executable, trace.os_arch)
+  if (symbolizer.symbolizer_path is None and
+      not options.use_breakpad_symbols):
+    sys.exit("Can't symbolize - no %s in PATH." % symbolizer.binary)
 
   trace.is_chromium = options.is_local_build
 

@@ -50,7 +50,6 @@ int32_t ConfigurableFrameSizeEncoder::Encode(
   auto buffer = EncodedImageBuffer::Create(current_frame_size_);
   memset(buffer->data(), 0, current_frame_size_);
   encodedImage.SetEncodedData(buffer);
-  encodedImage._completeFrame = true;
   encodedImage._encodedHeight = inputImage.height();
   encodedImage._encodedWidth = inputImage.width();
   encodedImage._frameType = VideoFrameType::kVideoFrameKey;
@@ -77,6 +76,10 @@ int32_t ConfigurableFrameSizeEncoder::Release() {
 
 void ConfigurableFrameSizeEncoder::SetRates(
     const RateControlParameters& parameters) {}
+
+VideoEncoder::EncoderInfo ConfigurableFrameSizeEncoder::GetEncoderInfo() const {
+  return EncoderInfo();
+}
 
 int32_t ConfigurableFrameSizeEncoder::SetFrameSize(size_t size) {
   current_frame_size_ = size;

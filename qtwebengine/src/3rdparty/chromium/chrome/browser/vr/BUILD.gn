@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -24,8 +24,6 @@ buildflag_header("vr_buildflags") {
 
 component("vr_ui") {
   sources = [
-    "animation.cc",
-    "animation.h",
     "databinding/binding.h",
     "databinding/binding_base.h",
     "databinding/vector_binding.h",
@@ -53,8 +51,6 @@ component("vr_ui") {
     "elements/indicator_spec.h",
     "elements/invisible_hit_target.cc",
     "elements/invisible_hit_target.h",
-    "elements/keyboard.cc",
-    "elements/keyboard.h",
     "elements/laser.cc",
     "elements/laser.h",
     "elements/linear_layout.cc",
@@ -143,14 +139,10 @@ component("vr_ui") {
     "skia_surface_provider_factory.h",
     "target_property.cc",
     "target_property.h",
-    "transition.cc",
-    "transition.h",
     "ui.cc",
     "ui.h",
     "ui_element_renderer.cc",
     "ui_element_renderer.h",
-    "ui_input_manager.cc",
-    "ui_input_manager.h",
     "ui_renderer.cc",
     "ui_renderer.h",
     "ui_scene.cc",
@@ -160,15 +152,9 @@ component("vr_ui") {
     "vr_ui_export.h",
   ]
 
-  sources += [
-    "ui_input_manager_for_testing.cc",
-    "ui_input_manager_for_testing.h",
-  ]
-
   deps = [
     ":vr_base",
     "//base",
-    "//cc/animation",
     "//chrome/app:generated_resources",
     "//chrome/app/vector_icons",
     "//chrome/browser/vr/vector_icons",
@@ -182,6 +168,7 @@ component("vr_ui") {
     "//media",
     "//net",
     "//skia",
+    "//ui/gfx/animation/keyframe",
   ]
 
   if (use_native_partitions) {
@@ -249,23 +236,21 @@ component("vr_common") {
 
   public_deps = [
     ":vr_base",
-    "//device/vr/public/mojom",
+    "//device/vr/public/mojom:isolated_xr_service",
   ]
 
   deps = [
     "//base",
-    "//cc/animation",
     "//cc/paint",
     "//chrome/common:constants",
     "//components/omnibox/browser",
     "//components/omnibox/browser",
-    "//components/rappor/public:public",
     "//components/ukm/content",
     "//content/public/browser",
     "//device/base",
-    "//device/vr",
+    "//device/vr:vr_util",
     "//device/vr/buildflags:buildflags",
-    "//device/vr/public/mojom",
+    "//device/vr/public/mojom:isolated_xr_service",
     "//media",
     "//net",
     "//services/audio/public/cpp",
@@ -320,8 +305,6 @@ component("vr_base") {
     "gl_texture_location.h",
     "input_event.cc",
     "input_event.h",
-    "keyboard_delegate.h",
-    "keyboard_ui_interface.h",
     "macros.h",
     "model/assets.cc",
     "model/assets.h",
@@ -366,11 +349,6 @@ component("vr_base") {
     "vr_geometry_util.h",
   ]
 
-  sources += [
-    "keyboard_delegate_for_testing.cc",
-    "keyboard_delegate_for_testing.h",
-  ]
-
   defines = [ "VR_BASE_IMPLEMENTATION" ]
 
   public_deps = [
@@ -386,12 +364,11 @@ component("vr_base") {
   deps = [
     "//base",
     "//chrome/app:generated_resources",
-    "//components/rappor:rappor",
     "//components/security_state/core",
     "//components/ukm/content",
     "//components/url_formatter",
     "//content/public/browser",
-    "//device/vr/public/mojom:mojom",
+    "//device/vr/public/mojom:isolated_xr_service",
     "//media",
     "//net",
     "//services/metrics/public/cpp:ukm_builders",
@@ -399,19 +376,17 @@ component("vr_base") {
   ]
 
   if (is_android) {
-    deps += [ "//chrome/android/features/vr:jni_headers" ]
+    deps += [ "//chrome/android/features/vr:split_jni_headers" ]
   }
 }
 
 test("vr_common_unittests") {
   sources = [
-    "animation_unittest.cc",
     "base_scheduler_delegate_unittest.cc",
     "browser_renderer_unittest.cc",
     "databinding/binding_unittest.cc",
     "databinding/vector_binding_unittest.cc",
     "elements/button_unittest.cc",
-    "elements/content_element_unittest.cc",
     "elements/disc_button_unittest.cc",
     "elements/linear_layout_unittest.cc",
     "elements/omnibox_formatting_unittest.cc",
@@ -424,7 +399,6 @@ test("vr_common_unittests") {
     "elements/scrollable_element_unittest.cc",
     "elements/shadow_unittest.cc",
     "elements/spinner_unittest.cc",
-    "elements/text_input_unittest.cc",
     "elements/text_unittest.cc",
     "elements/throbber_unittest.cc",
     "elements/transient_element_unittest.cc",
@@ -441,7 +415,6 @@ test("vr_common_unittests") {
     "test/run_all_unittests.cc",
     "test/ui_test.cc",
     "test/ui_test.h",
-    "ui_input_manager_unittest.cc",
     "ui_scene_unittest.cc",
     "ui_unittest.cc",
     "vr_geometry_util_unittest.cc",
@@ -457,6 +430,8 @@ test("vr_common_unittests") {
     "//mojo/public/cpp/bindings",
     "//services/network:test_support",
     "//testing/gmock",
+    "//ui/gfx:test_support",
+    "//ui/gfx/animation/keyframe",
     "//ui/gfx/geometry",
   ]
   if (is_android) {
@@ -467,25 +442,6 @@ test("vr_common_unittests") {
   }
   if (is_win) {
     configs += [ "//build/config/win:delayloads" ]
-  }
-}
-
-test("vr_pixeltests") {
-  testonly = true
-
-  sources = [
-    "test/run_all_pixeltests.cc",
-    "test/ui_pixel_test.cc",
-    "test/ui_pixel_test.h",
-    "ui_pixeltest.cc",
-  ]
-
-  deps = [
-    ":vr_gl_test_support",
-    ":vr_test_support",
-  ]
-  if (is_android) {
-    deps += [ "//ui/android:ui_java" ]
   }
 }
 
@@ -519,8 +475,6 @@ source_set("vr_test_support") {
     "test/mock_browser_ui_interface.h",
     "test/mock_content_input_delegate.cc",
     "test/mock_content_input_delegate.h",
-    "test/mock_keyboard_delegate.cc",
-    "test/mock_keyboard_delegate.h",
     "test/mock_render_text.cc",
     "test/mock_render_text.h",
     "test/mock_text_input_delegate.cc",
@@ -618,7 +572,6 @@ if (!is_android) {
     sources = [
       "test/mock_xr_device_hook_base.cc",
       "test/mock_xr_device_hook_base.h",
-      "test/multi_class_browser_test.h",
     ]
 
     deps = [
@@ -628,7 +581,7 @@ if (!is_android) {
       "//device/vr:vr",
       "//device/vr/buildflags:buildflags",
       "//device/vr/orientation",
-      "//device/vr/public/mojom",
+      "//device/vr/public/mojom:isolated_xr_service",
       "//device/vr/public/mojom:test_mojom",
     ]
 
@@ -654,13 +607,16 @@ if (!is_android) {
         "webxr_vr_permission_browser_test.cc",
         "webxr_vr_permission_request_browser_test.cc",
         "webxr_vr_pixel_browser_test.cc",
+        "webxr_vr_secondary_views_browser_test.cc",
         "webxr_vr_tab_browser_test.cc",
+        "webxr_vr_transition_browser_test.cc",
       ]
 
       deps += [
         ":vr_common",
         "//components/content_settings/core/browser",
         "//device/vr:directx_helpers",
+        "//device/vr:openxr_data",
       ]
 
       if (enable_openxr) {

@@ -1,11 +1,11 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Types for building models of metric description xml files.
 
 UMA uses several XML files to allow clients to describe the metrics that they
 collect, e.g.
-https://chromium.googlesource.com/chromium/src/+/master/tools/metrics/rappor/rappor.xml
+https://chromium.googlesource.com/chromium/src/+/main/tools/metrics/rappor/rappor.xml
 
 These types can be used to build models that describe the canonical formatted
 structure of these files, and the models can be used to extract the contents of
@@ -58,7 +58,7 @@ def PutCommentsInNode(doc, node, comments):
 
 
 def GetChildrenByTag(node, tag):
-  """Get all children of a particular tag type.
+  """Gets all children of a particular tag type.
 
   Args:
     node: The DOM node to write comments to.
@@ -67,6 +67,13 @@ def GetChildrenByTag(node, tag):
     A list of DOM nodes.
   """
   return [child for child in node.childNodes if child.nodeName == tag]
+
+
+def GetUnexpectedChildren(node, tags):
+  """Gets a set of unexpected children from |node|."""
+  # Ingore text and comment nodes.
+  return (set(child.nodeName for child in node.childNodes) - set(tags) - set(
+      ('#comment', '#text')))
 
 
 class NodeType(object):
@@ -198,6 +205,12 @@ class TextNodeType(NodeType):
     text = node.firstChild.nodeValue
     obj[TEXT_KEY] = '\n\n'.join(pretty_print_xml.SplitParagraphs(text))
 
+    # TextNode shouldn't have any child.
+    unexpected = GetUnexpectedChildren(node, set())
+    if unexpected:
+      raise ValueError("Unexpected children: %s in <%s> node" %
+                       (','.join(unexpected), self.tag))
+
     return obj
 
   def Marshall(self, doc, obj):
@@ -324,6 +337,12 @@ class ObjectNodeType(NodeType):
             child.node_type.Unmarshall(n) for n in nodes]
       elif nodes:
         obj[child.attr] = child.node_type.Unmarshall(nodes[0])
+
+    unexpected = GetUnexpectedChildren(
+        node, set([child.node_type.tag for child in self.children]))
+    if unexpected:
+      raise ValueError("Unexpected children: %s in <%s> node" %
+                       (','.join(unexpected), self.tag))
 
     return obj
 

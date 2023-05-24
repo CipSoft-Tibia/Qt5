@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QEASINGCURVE_H
 #define QEASINGCURVE_H
@@ -44,15 +8,10 @@
 
 QT_REQUIRE_CONFIG(easingcurve);
 
+#include <QtCore/qlist.h>
 #include <QtCore/qobjectdefs.h>
-#include <QtCore/qvector.h>
-#if QT_DEPRECATED_SINCE(5, 0)
-# include <QtCore/qlist.h>
-# include <QtCore/qpoint.h>
-#endif
 
 QT_BEGIN_NAMESPACE
-
 
 class QEasingCurvePrivate;
 class QPointF;
@@ -84,10 +43,9 @@ public:
     QEasingCurve &operator=(const QEasingCurve &other)
     { if ( this != &other ) { QEasingCurve copy(other); swap(copy); } return *this; }
     QEasingCurve(QEasingCurve &&other) noexcept : d_ptr(other.d_ptr) { other.d_ptr = nullptr; }
-    QEasingCurve &operator=(QEasingCurve &&other) noexcept
-    { qSwap(d_ptr, other.d_ptr); return *this; }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QEasingCurve)
 
-    void swap(QEasingCurve &other) noexcept { qSwap(d_ptr, other.d_ptr); }
+    void swap(QEasingCurve &other) noexcept { qt_ptr_swap(d_ptr, other.d_ptr); }
 
     bool operator==(const QEasingCurve &other) const;
     inline bool operator!=(const QEasingCurve &other) const
@@ -102,12 +60,9 @@ public:
     qreal overshoot() const;
     void setOvershoot(qreal overshoot);
 
-    void addCubicBezierSegment(const QPointF & c1, const QPointF & c2, const QPointF & endPoint);
+    void addCubicBezierSegment(const QPointF &c1, const QPointF &c2, const QPointF &endPoint);
     void addTCBSegment(const QPointF &nextPoint, qreal t, qreal c, qreal b);
-    QVector<QPointF> toCubicSpline() const;
-#if QT_DEPRECATED_SINCE(5, 0)
-    QT_DEPRECATED QList<QPointF> cubicBezierSpline() const { return toCubicSpline().toList(); }
-#endif
+    QList<QPointF> toCubicSpline() const;
 
     Type type() const;
     void setType(Type type);
@@ -116,13 +71,14 @@ public:
     EasingFunction customType() const;
 
     qreal valueForProgress(qreal progress) const;
+
 private:
     QEasingCurvePrivate *d_ptr;
 #ifndef QT_NO_DEBUG_STREAM
     friend Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QEasingCurve &item);
 #endif
 #ifndef QT_NO_DATASTREAM
-    friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QEasingCurve&);
+    friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QEasingCurve &);
     friend Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QEasingCurve &);
 #endif
 };
@@ -133,7 +89,7 @@ Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QEasingCurve &item);
 #endif
 
 #ifndef QT_NO_DATASTREAM
-Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QEasingCurve&);
+Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QEasingCurve &);
 Q_CORE_EXPORT QDataStream &operator>>(QDataStream &, QEasingCurve &);
 #endif
 

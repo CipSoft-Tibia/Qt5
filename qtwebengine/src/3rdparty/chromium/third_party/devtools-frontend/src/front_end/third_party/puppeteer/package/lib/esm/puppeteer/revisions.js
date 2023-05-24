@@ -13,7 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-export const PUPPETEER_REVISIONS = {
-    chromium: '782078',
+/**
+ * @internal
+ */
+export const PUPPETEER_REVISIONS = Object.freeze({
+    chromium: '1056772',
     firefox: 'latest',
-};
+});
+//# sourceMappingURL=revisions.js.map

@@ -1,10 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_WIDGET_DESKTOP_AURA_DESKTOP_SCREEN_WIN_H_
 #define UI_VIEWS_WIDGET_DESKTOP_AURA_DESKTOP_SCREEN_WIN_H_
 
+#include "base/memory/raw_ptr.h"
 #include "ui/display/win/screen_win.h"
 #include "ui/views/views_export.h"
 
@@ -21,8 +22,9 @@ class VIEWS_EXPORT DesktopScreenWin : public display::win::ScreenWin {
   // display::win::ScreenWin:
   HWND GetHWNDFromNativeWindow(gfx::NativeWindow window) const override;
   gfx::NativeWindow GetNativeWindowFromHWND(HWND hwnd) const override;
-
-  display::Screen* const old_screen_ = display::Screen::SetScreenInstance(this);
+  bool IsNativeWindowOccluded(gfx::NativeWindow window) const override;
+  absl::optional<bool> IsWindowOnCurrentVirtualDesktop(
+      gfx::NativeWindow window) const override;
 };
 
 }  // namespace views

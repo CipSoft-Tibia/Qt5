@@ -1,114 +1,60 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//third_party/closure_compiler/compile_js.gni")
-import("//tools/polymer/html_to_js.gni")
+import("//chrome/common/features.gni")
+import("//ui/webui/resources/tools/build_webui.gni")
+import("//ui/webui/webui_features.gni")
 
-js_type_check("closure_compile") {
-  uses_js_modules = true
-  deps = [
-    ":alert_indicator",
-    ":alert_indicators",
-    ":custom_element",
-    ":drag_manager",
-    ":tab",
-    ":tab_group",
-    ":tab_list",
-    ":tab_strip_embedder_proxy",
-    ":tab_swiper",
-    ":tabs_api_proxy",
+assert(enable_webui_tab_strip)
+
+build_webui("build") {
+  grd_prefix = "tab_strip"
+
+  static_files = [
+    "alert_indicators/picture_in_picture_alt.svg",
+    "alert_indicators/serial_port.svg",
+    "alert_indicators/tab_audio_muting_rounded.svg",
+    "alert_indicators/tab_audio_rounded.svg",
+    "alert_indicators/tab_bluetooth_connected.svg",
+    "alert_indicators/tab_hid_connected.svg",
+    "alert_indicators/tab_media_capturing_with_arrow.svg",
+    "alert_indicators/tab_media_recording.svg",
+    "alert_indicators/tab_usb_connected.svg",
+    "alert_indicators/vr_headset.svg",
+    "tab_strip.html",
   ]
-}
 
-js_library("alert_indicator") {
-  deps = [
-    ":custom_element",
-    ":tabs_api_proxy",
-    "//ui/webui/resources/js:load_time_data.m",
+  # Files holding a Polymer element definition and have an equivalent .html file.
+  web_component_files = [
+    "alert_indicator.ts",
+    "alert_indicators.ts",
+    "tab_group.ts",
+    "tab_list.ts",
+    "tab.ts",
   ]
-}
+  html_to_wrapper_template = "native"
 
-js_library("alert_indicators") {
-  deps = [
-    ":alert_indicator",
-    ":custom_element",
-    ":tabs_api_proxy",
+  non_web_component_files = [
+    "drag_manager.ts",
+    "tabs_api_proxy.ts",
+    "tab_swiper.ts",
   ]
-}
 
-js_library("custom_element") {
-}
-
-js_library("drag_manager") {
-  deps = [
-    ":tab",
-    ":tab_group",
-    ":tabs_api_proxy",
-    "//ui/webui/resources/js:assert.m",
-    "//ui/webui/resources/js:load_time_data.m",
+  mojo_files_deps = [
+    "//chrome/browser/ui/webui/tab_strip:mojo_bindings_ts__generator",
+    "//chrome/browser/ui/webui/tabs:mojo_bindings_ts__generator",
   ]
-}
-
-js_library("tabs_api_proxy") {
-  deps = [ "//ui/webui/resources/js:cr.m" ]
-  externs_list = [
-    "$externs_path/chrome_extensions.js",
-    "$externs_path/metrics_private.js",
+  mojo_files = [
+    "$root_gen_dir/chrome/browser/ui/webui/tab_strip/tab_strip.mojom-webui.ts",
+    "$root_gen_dir/chrome/browser/ui/webui/tabs/tabs.mojom-webui.ts",
   ]
-}
 
-js_library("tab") {
-  deps = [
-    ":alert_indicators",
-    ":custom_element",
-    ":tab_strip_embedder_proxy",
-    ":tab_swiper",
-    ":tabs_api_proxy",
-    "//ui/webui/resources/js:icon.m",
-    "//ui/webui/resources/js:load_time_data.m",
-    "//ui/webui/resources/js:util.m",
-  ]
-  externs_list = [ "$externs_path/metrics_private.js" ]
-}
-
-js_library("tab_group") {
-  deps = [
-    ":custom_element",
-    ":tab_strip_embedder_proxy",
-    ":tabs_api_proxy",
-    "//ui/webui/resources/js:load_time_data.m",
-  ]
-}
-
-js_library("tab_list") {
-  deps = [
-    ":custom_element",
-    ":drag_manager",
-    ":tab",
-    ":tab_group",
-    ":tab_strip_embedder_proxy",
-    ":tabs_api_proxy",
-    "//ui/webui/resources/js:cr.m",
-    "//ui/webui/resources/js:load_time_data.m",
-    "//ui/webui/resources/js:util.m",
-    "//ui/webui/resources/js/cr/ui:focus_outline_manager.m",
-  ]
-}
-
-js_library("tab_strip_embedder_proxy") {
-  deps = [ "//ui/webui/resources/js:cr.m" ]
-}
-
-js_library("tab_swiper") {
-}
-
-html_to_js("web_components") {
-  js_files = [
-    "alert_indicator.js",
-    "alert_indicators.js",
-    "tab_group.js",
-    "tab_list.js",
-    "tab.js",
+  ts_composite = true
+  ts_definitions = [ "//tools/typescript/definitions/metrics_private.d.ts" ]
+  ts_deps = [
+    "//ui/webui/resources/cr_components/color_change_listener:build_ts",
+    "//ui/webui/resources/js:build_ts",
+    "//ui/webui/resources/mojo:library",
   ]
 }

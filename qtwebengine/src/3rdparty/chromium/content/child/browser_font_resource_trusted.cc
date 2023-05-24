@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <stddef.h>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "cc/paint/paint_canvas.h"
@@ -19,21 +19,19 @@
 #include "ppapi/thunk/thunk.h"
 #include "skia/ext/platform_canvas.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
-#include "third_party/blink/public/platform/web_float_rect.h"
 #include "third_party/blink/public/platform/web_font.h"
 #include "third_party/blink/public/platform/web_font_description.h"
-#include "third_party/blink/public/platform/web_rect.h"
 #include "third_party/blink/public/platform/web_text_run.h"
 #include "third_party/icu/source/common/unicode/ubidi.h"
 #include "third_party/skia/include/core/SkRect.h"
+#include "ui/gfx/geometry/rect_f.h"
+#include "ui/gfx/ubidi_deleter.h"
 
 using ppapi::StringVar;
 using ppapi::thunk::EnterResourceNoLock;
 using ppapi::thunk::PPB_ImageData_API;
-using blink::WebFloatRect;
 using blink::WebFont;
 using blink::WebFontDescription;
-using blink::WebRect;
 using blink::WebTextRun;
 
 namespace content {
@@ -44,12 +42,12 @@ namespace {
 // undefined reference linker error.
 const char kCommonScript[] = "Zyyy";
 
-base::string16 GetFontFromMap(const blink::web_pref::ScriptFontFamilyMap& map,
+std::u16string GetFontFromMap(const blink::web_pref::ScriptFontFamilyMap& map,
                               const std::string& script) {
   blink::web_pref::ScriptFontFamilyMap::const_iterator it = map.find(script);
   if (it != map.end())
     return it->second;
-  return base::string16();
+  return std::u16string();
 }
 
 // Splits a PP_BrowserFont_Trusted_TextRun into a sequence or LTR and RTL
@@ -71,21 +69,21 @@ class TextRunCollection {
       override_run_ = WebTextRun(blink::WebString::FromUTF16(text_),
                                  PP_ToBool(run.rtl), true);
     } else {
-      bidi_ = ubidi_open();
+      bidi_ = std::unique_ptr<UBiDi, ui::gfx::UBiDiDeleter>(ubidi_open());
       UErrorCode uerror = U_ZERO_ERROR;
-      ubidi_setPara(bidi_, text_.data(), text_.size(), run.rtl, nullptr,
+      ubidi_setPara(bidi_.get(), text_.data(), text_.size(), run.rtl, nullptr,
                     &uerror);
       if (U_SUCCESS(uerror))
-        num_runs_ = ubidi_countRuns(bidi_, &uerror);
+        num_runs_ = ubidi_countRuns(bidi_.get(), &uerror);
     }
   }
 
-  ~TextRunCollection() {
-    if (bidi_)
-      ubidi_close(bidi_);
-  }
+  TextRunCollection(const TextRunCollection&) = delete;
+  TextRunCollection& operator=(const TextRunCollection&) = delete;
 
-  const base::string16& text() const { return text_; }
+  ~TextRunCollection() = default;
+
+  const std::u16string& text() const { return text_; }
   int num_runs() const { return num_runs_; }
 
   // Returns a WebTextRun with the info for the run at the given index.
@@ -93,9 +91,10 @@ class TextRunCollection {
   WebTextRun GetRunAt(int index, int32_t* run_start, int32_t* run_len) const {
     DCHECK(index < num_runs_);
     if (bidi_) {
-      bool run_rtl = !!ubidi_getVisualRun(bidi_, index, run_start, run_len);
+      bool run_rtl =
+          !!ubidi_getVisualRun(bidi_.get(), index, run_start, run_len);
       return WebTextRun(blink::WebString::FromUTF16(
-                            base::string16(&text_[*run_start], *run_len)),
+                            std::u16string(&text_[*run_start], *run_len)),
                         run_rtl, true);
     }
 
@@ -108,18 +107,16 @@ class TextRunCollection {
 
  private:
   // Will be null if we skipped autodetection.
-  UBiDi* bidi_;
+  std::unique_ptr<UBiDi, ui::gfx::UBiDiDeleter> bidi_;
 
   // Text of all the runs.
-  base::string16 text_;
+  std::u16string text_;
 
   int num_runs_;
 
   // When the content specifies override_direction (bidi_ is null) then this
   // will contain the single text run for WebKit.
   WebTextRun override_run_;
-
-  DISALLOW_COPY_AND_ASSIGN(TextRunCollection);
 };
 
 bool PPTextRunToWebTextRun(const PP_BrowserFont_Trusted_TextRun& text,
@@ -171,7 +168,7 @@ WebFontDescription PPFontDescToWebFontDesc(
   StringVar* face_name = StringVar::FromPPVar(font.face);  // Possibly null.
 
   WebFontDescription result;
-  base::string16 resolved_family;
+  std::u16string resolved_family;
   if (!face_name || face_name->value().empty()) {
     // Resolve the generic family.
     switch (font.family) {
@@ -398,10 +395,10 @@ int32_t BrowserFontResource_Trusted::PixelOffsetForCharacter(
       // 0 characters starting at the character in question, it would give us
       // a 0-width rect around the insertion point. But that will be on the
       // right side of the character for an RTL run, which would be wrong.
-      WebFloatRect rect = font_->SelectionRectForText(
+      gfx::RectF rect = font_->SelectionRectForText(
           run, gfx::PointF(), font_->Height(), char_offset - run_begin,
           char_offset - run_begin + 1);
-      return cur_pixel_offset + static_cast<int>(rect.x);
+      return cur_pixel_offset + static_cast<int>(rect.x());
     } else {
       // Character is past this run, account for the pixels and continue
       // looking.

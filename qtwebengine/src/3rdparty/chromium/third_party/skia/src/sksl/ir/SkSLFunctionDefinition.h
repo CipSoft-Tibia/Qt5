@@ -8,50 +8,80 @@
 #ifndef SKSL_FUNCTIONDEFINITION
 #define SKSL_FUNCTIONDEFINITION
 
-#include "src/sksl/ir/SkSLBlock.h"
+#include "include/private/SkSLIRNode.h"
+#include "include/private/SkSLProgramElement.h"
+#include "include/private/SkSLStatement.h"
+#include "include/sksl/SkSLPosition.h"
 #include "src/sksl/ir/SkSLFunctionDeclaration.h"
-#include "src/sksl/ir/SkSLProgramElement.h"
 
-#include <unordered_set>
+#include <memory>
+#include <string>
+#include <utility>
 
 namespace SkSL {
 
-struct ASTNode;
+class Context;
 
 /**
  * A function definition (a declaration plus an associated block of code).
  */
-struct FunctionDefinition : public ProgramElement {
-    static constexpr Kind kProgramElementKind = Kind::kFunction;
+class FunctionDefinition final : public ProgramElement {
+public:
+    inline static constexpr Kind kIRNodeKind = Kind::kFunction;
 
-    FunctionDefinition(int offset,
-                       const FunctionDeclaration& declaration,
-                       std::unique_ptr<Statement> body,
-                       std::unordered_set<const FunctionDeclaration*> referencedIntrinsics = {})
-        : INHERITED(offset, kProgramElementKind)
+    FunctionDefinition(Position pos, const FunctionDeclaration* declaration, bool builtin,
+                       std::unique_ptr<Statement> body)
+        : INHERITED(pos, kIRNodeKind)
         , fDeclaration(declaration)
-        , fBody(std::move(body))
-        , fReferencedIntrinsics(std::move(referencedIntrinsics)) {}
+        , fBuiltin(builtin)
+        , fBody(std::move(body)) {}
+
+    /**
+     * Coerces `return` statements to the return type of the function, and reports errors in the
+     * function that can't be detected at the individual statement level:
+     *     - `break` and `continue` statements must be in reasonable places.
+     *     - non-void functions are required to return a value on all paths.
+     *     - vertex main() functions don't allow early returns.
+     *
+     * This will return a FunctionDefinition even if an error is detected; this leads to better
+     * diagnostics overall. (Returning null here leads to spurious "function 'f()' was not defined"
+     * errors when trying to call a function with an error in it.)
+     */
+    static std::unique_ptr<FunctionDefinition> Convert(const Context& context,
+                                                       Position pos,
+                                                       const FunctionDeclaration& function,
+                                                       std::unique_ptr<Statement> body,
+                                                       bool builtin);
+
+    const FunctionDeclaration& declaration() const {
+        return *fDeclaration;
+    }
+
+    bool isBuiltin() const {
+        return fBuiltin;
+    }
+
+    std::unique_ptr<Statement>& body() {
+        return fBody;
+    }
+
+    const std::unique_ptr<Statement>& body() const {
+        return fBody;
+    }
 
     std::unique_ptr<ProgramElement> clone() const override {
-        return std::make_unique<FunctionDefinition>(fOffset, fDeclaration,
-                                                    fBody->clone(), fReferencedIntrinsics);
+        return std::make_unique<FunctionDefinition>(fPosition, &this->declaration(),
+                                                    /*builtin=*/false, this->body()->clone());
     }
 
-    String description() const override {
-        return fDeclaration.description() + " " + fBody->description();
+    std::string description() const override {
+        return this->declaration().description() + " " + this->body()->description();
     }
 
-    const FunctionDeclaration& fDeclaration;
+private:
+    const FunctionDeclaration* fDeclaration;
+    bool fBuiltin;
     std::unique_ptr<Statement> fBody;
-    // We track intrinsic functions we reference so that we can ensure that all of them end up
-    // copied into the final output.
-    std::unordered_set<const FunctionDeclaration*> fReferencedIntrinsics;
-    // This pointer may be null, and even when non-null is not guaranteed to remain valid for the
-    // entire lifespan of this object. The parse tree's lifespan is normally controlled by
-    // IRGenerator, so the IRGenerator being destroyed or being used to compile another file will
-    // invalidate this pointer.
-    const ASTNode* fSource = nullptr;
 
     using INHERITED = ProgramElement;
 };

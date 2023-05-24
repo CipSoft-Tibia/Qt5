@@ -1,35 +1,43 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_RESOURCE_IMAGE_RESOURCE_CONTENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_RESOURCE_IMAGE_RESOURCE_CONTENT_H_
 
-#include <memory>
+#include <cstddef>
+
 #include "base/auto_reset.h"
+#include "base/dcheck_is_on.h"
+#include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/loader/resource/image_resource_observer.h"
-#include "third_party/blink/renderer/platform/geometry/int_rect.h"
 #include "third_party/blink/renderer/platform/graphics/image.h"
 #include "third_party/blink/renderer/platform/graphics/image_observer.h"
-#include "third_party/blink/renderer/platform/graphics/image_orientation.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_counted_set.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/image-decoders/image_decoder.h"
-#include "third_party/blink/renderer/platform/loader/fetch/resource_error.h"
-#include "third_party/blink/renderer/platform/loader/fetch/resource_load_priority.h"
+#include "third_party/blink/renderer/platform/loader/fetch/media_timing.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_status.h"
-#include "third_party/blink/renderer/platform/weborigin/kurl.h"
-#include "third_party/blink/renderer/platform/wtf/hash_counted_set.h"
-#include "third_party/blink/renderer/platform/wtf/hash_map.h"
+#include "ui/gfx/geometry/size.h"
+
+namespace base {
+class TimeTicks;
+}
 
 namespace blink {
 
 class ExecutionContext;
 class FetchParameters;
 class ImageResourceInfo;
-class ImageResourceObserver;
+class KURL;
 class ResourceError;
 class ResourceFetcher;
 class ResourceResponse;
+class UseCounter;
+enum RespectImageOrientationEnum;
+struct ResourcePriority;
 
 // ImageResourceContent is a container that holds fetch result of
 // an ImageResource in a decoded form.
@@ -41,7 +49,8 @@ class ResourceResponse;
 // word 'observer' from ImageResource.
 class CORE_EXPORT ImageResourceContent final
     : public GarbageCollected<ImageResourceContent>,
-      public ImageObserver {
+      public ImageObserver,
+      public MediaTiming {
  public:
   // Used for loading.
   // Returned content will be associated immediately later with ImageResource.
@@ -60,25 +69,34 @@ class CORE_EXPORT ImageResourceContent final
   blink::Image* GetImage() const;
   bool HasImage() const { return image_.get(); }
 
-  // The device pixel ratio we got from the server for this image, or 1.0.
-  float DevicePixelRatioHeaderValue() const;
-  bool HasDevicePixelRatioHeaderValue() const;
+  // Returns true if enough of the image has been decoded to allow its size to
+  // be determined. If this returns true, so will HasImage().
+  bool IsSizeAvailable() const {
+    return size_available_ != Image::kSizeUnavailable;
+  }
 
   // Returns the intrinsic width and height of the image, or 0x0 if no image
-  // exists. If the image is a BitmapImage, then this corresponds to the
+  // exists. IsSizeAvailable() can be used to determine if the value returned is
+  // reliable. If the image is a BitmapImage, then this corresponds to the
   // physical pixel dimensions of the image. If the image is an SVGImage, this
   // does not quite return the intrinsic width/height, but rather a concrete
   // object size resolved using a default object size of 300x150.
   // TODO(fs): Make SVGImages return proper intrinsic width/height.
-  IntSize IntrinsicSize(
+  gfx::Size IntrinsicSize(
       RespectImageOrientationEnum should_respect_image_orientation) const;
 
   void AddObserver(ImageResourceObserver*);
   void RemoveObserver(ImageResourceObserver*);
+  void DidRemoveObserver();
 
-  bool IsSizeAvailable() const {
-    return size_available_ != Image::kSizeUnavailable;
-  }
+  // The device pixel ratio we got from the server for this image, or 1.0.
+  float DevicePixelRatioHeaderValue() const;
+  bool HasDevicePixelRatioHeaderValue() const;
+
+  // Correct the image orientation preference for potentially cross-origin
+  // content.
+  RespectImageOrientationEnum ForceOrientationIfNecessary(
+      RespectImageOrientationEnum default_orientation) const;
 
   void Trace(Visitor*) const override;
 
@@ -96,17 +114,34 @@ class CORE_EXPORT ImageResourceContent final
   // ImageResourceContent::GetContentStatus() can be different from
   // ImageResource::GetStatus(). Use ImageResourceContent::GetContentStatus().
   ResourceStatus GetContentStatus() const;
+  void SetIsSufficientContentLoadedForPaint() override;
+  bool IsSufficientContentLoadedForPaint() const override;
   bool IsLoaded() const;
   bool IsLoading() const;
   bool ErrorOccurred() const;
   bool LoadFailedOrCanceled() const;
+  bool IsAnimatedImage() const override;
+  bool IsPaintedFirstFrame() const override;
+  bool TimingAllowPassed() const override;
+  base::TimeTicks GetFirstVideoFrameTime() const override {
+    // This returns a null time, which is currently used to signal that this is
+    // an animated image, rather than a video, and we should use the
+    // ImagePaintTimingDetector to set the first frame time in the ImageRecord
+    // instead.
+    // TODO(iclelland): Find a better way to set this from IPTD and use it, to
+    // use this for images as well as videos.
+    return base::TimeTicks();
+  }
 
   // Redirecting methods to Resource.
-  const KURL& Url() const;
-  base::TimeTicks LoadResponseEnd() const;
-  bool IsAccessAllowed();
+  const KURL& Url() const override;
+  bool IsDataUrl() const override;
+  base::TimeTicks LoadStart() const override;
+  base::TimeTicks LoadEnd() const override;
+  AtomicString MediaType() const override;
+  bool IsAccessAllowed() const;
   const ResourceResponse& GetResponse() const;
-  base::Optional<ResourceError> GetResourceError() const;
+  absl::optional<ResourceError> GetResourceError() const;
   // DEPRECATED: ImageResourceContents consumers shouldn't need to worry about
   // whether the underlying Resource is being revalidated.
   bool IsCacheValidator() const;
@@ -148,11 +183,11 @@ class CORE_EXPORT ImageResourceContent final
     // Only occurs when UpdateImage or ClearAndUpdateImage is specified.
     kShouldDecodeError,
   };
-  WARN_UNUSED_RESULT UpdateImageResult UpdateImage(scoped_refptr<SharedBuffer>,
-                                                   ResourceStatus,
-                                                   UpdateImageOption,
-                                                   bool all_data_received,
-                                                   bool is_multipart);
+  [[nodiscard]] UpdateImageResult UpdateImage(scoped_refptr<SharedBuffer>,
+                                              ResourceStatus,
+                                              UpdateImageOption,
+                                              bool all_data_received,
+                                              bool is_multipart);
 
   void NotifyStartLoad();
   void DestroyDecodedData();
@@ -160,11 +195,15 @@ class CORE_EXPORT ImageResourceContent final
 
   void SetImageResourceInfo(ImageResourceInfo*);
 
-  ResourcePriority PriorityFromObservers() const;
+  // Returns priority information to be used for setting the Resource's
+  // priority. This is NOT the current Resource's priority.
+  std::pair<ResourcePriority, ResourcePriority> PriorityFromObservers() const;
+  // Returns the current Resource's priroity used by MediaTiming.
+  absl::optional<WebURLRequest::Priority> RequestPriority() const override;
   scoped_refptr<const SharedBuffer> ResourceBuffer() const;
   bool ShouldUpdateImageImmediately() const;
   bool HasObservers() const {
-    return !observers_.IsEmpty() || !finished_observers_.IsEmpty();
+    return !observers_.empty() || !finished_observers_.empty();
   }
   bool IsRefetchableDataFromDiskCache() const {
     return is_refetchable_data_from_disk_cache_;
@@ -172,16 +211,27 @@ class CORE_EXPORT ImageResourceContent final
 
   ImageDecoder::CompressionFormat GetCompressionFormat() const;
 
+  // Returns the number of bytes of image data which should be used for entropy
+  // calculations. Ideally this should exclude metadata from within the image
+  // file, but currently just returns the complete file size.
+  // TODO(iclelland): Eventually switch this, and related calculations, to bits
+  // rather than bytes.
+  uint64_t ContentSizeForEntropy() const override;
+
   // Returns true if the image content is well-compressed (and not full of
   // extraneous metadata). "well-compressed" is determined by comparing the
   // image's compression ratio against a specific value that is defined by an
-  // unoptimized image feature policy on |context|.
+  // unoptimized image policy on |context|.
   bool IsAcceptableCompressionRatio(ExecutionContext& context);
 
   void LoadDeferredImage(ResourceFetcher* fetcher);
 
   // Returns whether the resource request has been tagged as an ad.
   bool IsAdResource() const;
+
+  // Records the decoded image type in a UseCounter if the image is a
+  // BitmapImage. |use_counter| may be a null pointer.
+  void RecordDecodedImageType(UseCounter* use_counter);
 
  private:
   using CanDeferInvalidation = ImageResourceObserver::CanDeferInvalidation;
@@ -225,8 +275,8 @@ class CORE_EXPORT ImageResourceContent final
 
   scoped_refptr<blink::Image> image_;
 
-  HashCountedSet<ImageResourceObserver*> observers_;
-  HashCountedSet<ImageResourceObserver*> finished_observers_;
+  HeapHashCountedSet<WeakMember<ImageResourceObserver>> observers_;
+  HeapHashCountedSet<WeakMember<ImageResourceObserver>> finished_observers_;
 
 #if DCHECK_IS_ON()
   bool is_update_image_being_called_ = false;
@@ -235,4 +285,4 @@ class CORE_EXPORT ImageResourceContent final
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_RESOURCE_IMAGE_RESOURCE_CONTENT_H_

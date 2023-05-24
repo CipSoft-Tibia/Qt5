@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "net/base/completion_once_callback.h"
+#include "net/base/completion_repeating_callback.h"
 #include "net/base/load_states.h"
 #include "net/base/net_error_details.h"
 #include "net/base/net_export.h"
@@ -55,15 +56,12 @@ class NET_EXPORT_PRIVATE HttpTransaction {
   // authentication is required. We should notify this callback that a
   // connection was established, even though the stream might not be ready for
   // us to send data through it.
-  //
-  // TODO(crbug.com/591068): Allow ERR_IO_PENDING, add a new state machine state
-  // to wait on a callback (either passed to this callback or a new explicit
-  // method like ResumeNetworkStart()) to be called before continuing.
   using ConnectedCallback =
-      base::RepeatingCallback<int(const TransportInfo& info)>;
+      base::RepeatingCallback<int(const TransportInfo& info,
+                                  CompletionOnceCallback callback)>;
 
   // Stops any pending IO and destroys the transaction object.
-  virtual ~HttpTransaction() {}
+  virtual ~HttpTransaction() = default;
 
   // Starts the HTTP transaction (i.e., sends the HTTP request).
   //
@@ -200,12 +198,14 @@ class NET_EXPORT_PRIVATE HttpTransaction {
   virtual void SetConnectedCallback(const ConnectedCallback& callback) = 0;
 
   virtual void SetRequestHeadersCallback(RequestHeadersCallback callback) = 0;
+  virtual void SetEarlyResponseHeadersCallback(
+      ResponseHeadersCallback callback) = 0;
   virtual void SetResponseHeadersCallback(ResponseHeadersCallback callback) = 0;
 
   // Resumes the transaction after being deferred.
   virtual int ResumeNetworkStart() = 0;
 
-  virtual void GetConnectionAttempts(ConnectionAttempts* out) const = 0;
+  virtual ConnectionAttempts GetConnectionAttempts() const = 0;
 
   // Configures the transaction to close the network connection, if any, on
   // destruction. Intended for cases where keeping the socket alive may leak

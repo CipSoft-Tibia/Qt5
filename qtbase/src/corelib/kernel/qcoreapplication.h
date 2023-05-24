@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOREAPPLICATION_H
 #define QCOREAPPLICATION_H
@@ -43,11 +7,15 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qstring.h>
 #ifndef QT_NO_QOBJECT
-#include <QtCore/qobject.h>
 #include <QtCore/qcoreevent.h>
 #include <QtCore/qeventloop.h>
+#include <QtCore/qobject.h>
 #else
 #include <QtCore/qscopedpointer.h>
+#endif
+#include <QtCore/qnativeinterface.h>
+#ifndef QT_NO_DEBUGSTREAM
+#include <QtCore/qdebug.h>
 #endif
 
 #ifndef QT_NO_QOBJECT
@@ -60,12 +28,15 @@ QT_BEGIN_NAMESPACE
 
 
 class QCoreApplicationPrivate;
-class QTextCodec;
 class QTranslator;
 class QPostEventList;
-class QStringList;
 class QAbstractEventDispatcher;
 class QAbstractNativeEventFilter;
+class QEventLoopLocker;
+
+#if QT_CONFIG(permissions) || defined(Q_QDOC)
+class QPermission;
+#endif
 
 #define qApp QCoreApplication::instance()
 
@@ -76,14 +47,23 @@ class Q_CORE_EXPORT QCoreApplication
 {
 #ifndef QT_NO_QOBJECT
     Q_OBJECT
-    Q_PROPERTY(QString applicationName READ applicationName WRITE setApplicationName NOTIFY applicationNameChanged)
-    Q_PROPERTY(QString applicationVersion READ applicationVersion WRITE setApplicationVersion NOTIFY applicationVersionChanged)
-    Q_PROPERTY(QString organizationName READ organizationName WRITE setOrganizationName NOTIFY organizationNameChanged)
-    Q_PROPERTY(QString organizationDomain READ organizationDomain WRITE setOrganizationDomain NOTIFY organizationDomainChanged)
+    Q_PROPERTY(QString applicationName READ applicationName WRITE setApplicationName
+               NOTIFY applicationNameChanged)
+    Q_PROPERTY(QString applicationVersion READ applicationVersion WRITE setApplicationVersion
+               NOTIFY applicationVersionChanged)
+    Q_PROPERTY(QString organizationName READ organizationName WRITE setOrganizationName
+               NOTIFY organizationNameChanged)
+    Q_PROPERTY(QString organizationDomain READ organizationDomain WRITE setOrganizationDomain
+               NOTIFY organizationDomainChanged)
     Q_PROPERTY(bool quitLockEnabled READ isQuitLockEnabled WRITE setQuitLockEnabled)
 #endif
 
     Q_DECLARE_PRIVATE(QCoreApplication)
+    friend class QEventLoopLocker;
+#if QT_CONFIG(permissions)
+    using RequestPermissionPrototype = void(*)(QPermission);
+#endif
+
 public:
     enum { ApplicationFlags = QT_VERSION
     };
@@ -113,21 +93,17 @@ public:
     static void setSetuidAllowed(bool allow);
     static bool isSetuidAllowed();
 
-    static QCoreApplication *instance() { return self; }
+    static QCoreApplication *instance() noexcept { return self; }
 
 #ifndef QT_NO_QOBJECT
     static int exec();
     static void processEvents(QEventLoop::ProcessEventsFlags flags = QEventLoop::AllEvents);
     static void processEvents(QEventLoop::ProcessEventsFlags flags, int maxtime);
-    static void exit(int retcode=0);
 
     static bool sendEvent(QObject *receiver, QEvent *event);
     static void postEvent(QObject *receiver, QEvent *event, int priority = Qt::NormalEventPriority);
     static void sendPostedEvents(QObject *receiver = nullptr, int event_type = 0);
     static void removePostedEvents(QObject *receiver, int eventType = 0);
-#if QT_DEPRECATED_SINCE(5, 3)
-    QT_DEPRECATED static bool hasPendingEvents();
-#endif
     static QAbstractEventDispatcher *eventDispatcher();
     static void setEventDispatcher(QAbstractEventDispatcher *eventDispatcher);
 
@@ -140,6 +116,47 @@ public:
     static QString applicationDirPath();
     static QString applicationFilePath();
     static qint64 applicationPid() Q_DECL_CONST_FUNCTION;
+
+#if QT_CONFIG(permissions) || defined(Q_QDOC)
+    Qt::PermissionStatus checkPermission(const QPermission &permission);
+
+# ifdef Q_QDOC
+    template <typename Functor>
+    void requestPermission(const QPermission &permission, const QObject *context, Functor functor);
+# else
+    // requestPermission with context or receiver object; need to require here that receiver is the
+    // right type to avoid ambiguity with the private implementation function.
+    template <typename Functor,
+              std::enable_if_t<
+                    QtPrivate::AreFunctionsCompatible<RequestPermissionPrototype, Functor>::value,
+                    bool> = true>
+    void requestPermission(const QPermission &permission,
+                           const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *receiver,
+                           Functor &&func)
+    {
+        requestPermission(permission,
+                          QtPrivate::makeCallableObject<RequestPermissionPrototype>(std::forward<Functor>(func)),
+                          receiver);
+    }
+# endif // Q_QDOC
+
+    // requestPermission to a functor or function pointer (without context)
+    template <typename Functor,
+              std::enable_if_t<
+                    QtPrivate::AreFunctionsCompatible<RequestPermissionPrototype, Functor>::value,
+                    bool> = true>
+    void requestPermission(const QPermission &permission, Functor &&func)
+    {
+        requestPermission(permission, nullptr, std::forward<Functor>(func));
+    }
+
+private:
+    // ### Qt 7: rename to requestPermissionImpl to avoid ambiguity
+    void requestPermission(const QPermission &permission,
+        QtPrivate::QSlotObjectBase *slotObj, const QObject *context);
+public:
+
+#endif // QT_CONFIG(permission)
 
 #if QT_CONFIG(library)
     static void setLibraryPaths(const QStringList &);
@@ -157,18 +174,10 @@ public:
                              const char * key,
                              const char * disambiguation = nullptr,
                              int n = -1);
-#if QT_DEPRECATED_SINCE(5, 0)
-    enum Encoding { UnicodeUTF8, Latin1, DefaultCodec = UnicodeUTF8, CodecForTr = UnicodeUTF8 };
-    QT_DEPRECATED static inline QString translate(const char * context, const char * key,
-                             const char * disambiguation, Encoding, int n = -1)
-        { return translate(context, key, disambiguation, n); }
-#endif
+
+    QT_DECLARE_NATIVE_INTERFACE_ACCESSOR(QCoreApplication)
 
 #ifndef QT_NO_QOBJECT
-#  if QT_DEPRECATED_SINCE(5, 9)
-    QT_DEPRECATED static void flush();
-#  endif
-
     void installNativeEventFilter(QAbstractNativeEventFilter *filterObj);
     void removeNativeEventFilter(QAbstractNativeEventFilter *filterObj);
 
@@ -177,6 +186,7 @@ public:
 
 public Q_SLOTS:
     static void quit();
+    static void exit(int retcode = 0);
 
 Q_SIGNALS:
     void aboutToQuit(QPrivateSignal);
@@ -202,9 +212,6 @@ protected:
 private:
 #ifndef QT_NO_QOBJECT
     static bool sendSpontaneousEvent(QObject *receiver, QEvent *event);
-#  if QT_DEPRECATED_SINCE(5,6)
-    QT_DEPRECATED bool notifyInternal(QObject *receiver, QEvent *event); // ### Qt6 BIC: remove me
-#  endif
     static bool notifyInternal2(QObject *receiver, QEvent *);
     static bool forwardEvent(QObject *receiver, QEvent *event, QEvent *originatingEvent = nullptr);
 #endif
@@ -226,26 +233,16 @@ private:
 #ifndef QT_NO_QOBJECT
     friend class QEventDispatcherUNIXPrivate;
     friend class QCocoaEventDispatcherPrivate;
-    friend bool qt_sendSpontaneousEvent(QObject*, QEvent*);
+    friend bool qt_sendSpontaneousEvent(QObject *, QEvent *);
 #endif
     friend Q_CORE_EXPORT QString qAppName();
-    friend class QClassFactory;
     friend class QCommandLineParserPrivate;
 };
-
-#ifdef QT_NO_DEPRECATED
-#  define QT_DECLARE_DEPRECATED_TR_FUNCTIONS(context)
-#else
-#  define QT_DECLARE_DEPRECATED_TR_FUNCTIONS(context) \
-    QT_DEPRECATED static inline QString trUtf8(const char *sourceText, const char *disambiguation = nullptr, int n = -1) \
-        { return QCoreApplication::translate(#context, sourceText, disambiguation, n); }
-#endif
 
 #define Q_DECLARE_TR_FUNCTIONS(context) \
 public: \
     static inline QString tr(const char *sourceText, const char *disambiguation = nullptr, int n = -1) \
         { return QCoreApplication::translate(#context, sourceText, disambiguation, n); } \
-    QT_DECLARE_DEPRECATED_TR_FUNCTIONS(context) \
 private:
 
 typedef void (*QtStartUpFunction)();
@@ -270,5 +267,7 @@ Q_CORE_EXPORT QDebug operator<<(QDebug, const MSG &);
 #endif
 
 QT_END_NAMESPACE
+
+#include <QtCore/qcoreapplication_platform.h>
 
 #endif // QCOREAPPLICATION_H

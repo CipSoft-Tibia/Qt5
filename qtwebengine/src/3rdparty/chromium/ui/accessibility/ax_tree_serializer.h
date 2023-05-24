@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <unordered_map>
-#include <unordered_set>
+#include <ctime>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <set>
 #include <vector>
 
+#include "base/debug/crash_logging.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
+#include "base/timer/elapsed_timer.h"
+#include "ui/accessibility/ax_common.h"
 #include "ui/accessibility/ax_export.h"
 #include "ui/accessibility/ax_tree_source.h"
 #include "ui/accessibility/ax_tree_update.h"
@@ -56,11 +64,11 @@ struct ClientTreeNode;
 // because AXTreeSerializer always keeps track of what updates it's sent,
 // it will never send an invalid update and the client tree will not break,
 // it just may not contain all of the changes.
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
 class AXTreeSerializer {
  public:
-  explicit AXTreeSerializer(
-      AXTreeSource<AXSourceNode, AXNodeData, AXTreeData>* tree);
+  explicit AXTreeSerializer(AXTreeSource<AXSourceNode>* tree,
+                            bool crash_on_error = true);
   ~AXTreeSerializer();
 
   // Throw out the internal state that keeps track of the nodes the client
@@ -77,12 +85,23 @@ class AXTreeSerializer {
     max_node_count_ = max_node_count;
   }
 
+  // Sets the maximum amount of time to be spend serializing, or zero for
+  // no maximum. This is not a hard maximum - once it hits or
+  // exceeds this timeout it stops walking the children of nodes, but
+  // it may exceed this value a bit in order to create a consistent
+  // tree. This is only intended to be used for one-time tree snapshots.
+  void set_timeout(base::TimeDelta timeout) { timeout_ = timeout; }
+
   // Serialize all changes to |node| and append them to |out_update|.
   // Returns true on success. On failure, returns false and calls Reset();
   // this only happens when the source tree has a problem like duplicate
   // ids or changing during serialization.
-  bool SerializeChanges(AXSourceNode node,
-                        AXTreeUpdateBase<AXNodeData, AXTreeData>* out_update);
+  bool SerializeChanges(AXSourceNode node, AXTreeUpdate* out_update);
+
+  // Get incompletely serialized nodes. This will only be nonempty if either
+  // set_max_node_count or set_timeout were used. This is only valid after a
+  // call to SerializeChanges, and it's reset with each call.
+  std::vector<AXNodeID> GetIncompleteNodeIds();
 
   // Invalidate the subtree rooted at this node, ensuring that the whole
   // subtree is re-serialized the next time any of those nodes end up
@@ -105,8 +124,7 @@ class AXTreeSerializer {
   // state and then call ChangeTreeSourceForTesting and then SerializeChanges
   // to simulate the changes you'd get if a tree changed from the initial
   // state to the second tree's state.
-  void ChangeTreeSourceForTesting(
-      AXTreeSource<AXSourceNode, AXNodeData, AXTreeData>* new_tree);
+  void ChangeTreeSourceForTesting(AXTreeSource<AXSourceNode>* new_tree);
 
   // Returns the number of nodes in the client tree. After a serialization
   // operation this should be an accurate representation of the tree source
@@ -162,7 +180,7 @@ class AXTreeSerializer {
   bool AnyDescendantWasReparented(AXSourceNode node,
                                   AXSourceNode* out_lca);
 
-  ClientTreeNode* ClientTreeNodeById(int32_t id);
+  ClientTreeNode* ClientTreeNodeById(AXNodeID id);
 
   // Invalidate the subtree rooted at this node.
   void InvalidateClientSubtree(ClientTreeNode* client_node);
@@ -174,12 +192,7 @@ class AXTreeSerializer {
   void DeleteClientSubtree(ClientTreeNode* client_node);
 
   // Helper function, called recursively with each new node to serialize.
-  bool SerializeChangedNodes(
-      AXSourceNode node,
-      AXTreeUpdateBase<AXNodeData, AXTreeData>* out_update);
-
-  // Visit all of the descendants of |node| once.
-  void WalkAllDescendants(AXSourceNode node);
+  bool SerializeChangedNodes(AXSourceNode node, AXTreeUpdate* out_update);
 
   // Delete the entire client subtree but don't set the did_reset_ flag
   // like when Reset() is called.
@@ -188,25 +201,40 @@ class AXTreeSerializer {
   ClientTreeNode* GetClientTreeNodeParent(ClientTreeNode* obj);
 
   // The tree source.
-  AXTreeSource<AXSourceNode, AXNodeData, AXTreeData>* tree_;
+  raw_ptr<AXTreeSource<AXSourceNode>, DanglingUntriaged> tree_;
 
   // The tree data most recently sent to the client.
   AXTreeData client_tree_data_;
 
   // Our representation of the client tree.
-  ClientTreeNode* client_root_ = nullptr;
+  raw_ptr<ClientTreeNode, DanglingUntriaged> client_root_ = nullptr;
 
   // A map from IDs to nodes in the client tree.
-  std::unordered_map<int32_t, ClientTreeNode*> client_id_map_;
+  std::map<AXNodeID, ClientTreeNode*> client_id_map_;
 
   // The maximum number of nodes to serialize in a given call to
   // SerializeChanges, or 0 if there's no maximum.
   size_t max_node_count_ = 0;
 
+  // The maximum time to spend serializing before timing out, or 0
+  // if there's no maximum.
+  base::TimeDelta timeout_;
+
+  // The timer, which runs if there's a nonzero timeout and it hasn't
+  // yet expired. Once the timeout elapses, the timer is deleted.
+  std::unique_ptr<base::ElapsedTimer> timer_;
+
+  // The IDs of nodes that weren't able to be completely serialized due to
+  // max_node_count_ or timeout_.
+  std::vector<AXNodeID> incomplete_node_ids_;
+
   // Keeps track of if Reset() was called. If so, we need to always
   // explicitly set node_id_to_clear to ensure that the next serialized
   // tree is treated as a completely new tree and not a partial update.
   bool did_reset_ = false;
+
+  // Whether to crash the process on serialization error or not.
+  const bool crash_on_error_;
 };
 
 // In order to keep track of what nodes the client knows about, we keep a
@@ -215,72 +243,70 @@ class AXTreeSerializer {
 struct AX_EXPORT ClientTreeNode {
   ClientTreeNode();
   virtual ~ClientTreeNode();
-  int32_t id;
-  ClientTreeNode* parent;
+  AXNodeID id;
+  raw_ptr<ClientTreeNode, DanglingUntriaged> parent;
   std::vector<ClientTreeNode*> children;
   bool ignored;
   bool invalid;
 };
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::AXTreeSerializer(
-    AXTreeSource<AXSourceNode, AXNodeData, AXTreeData>* tree)
-    : tree_(tree) {}
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::AXTreeSerializer(
+    AXTreeSource<AXSourceNode>* tree,
+    bool crash_on_error)
+    : tree_(tree), crash_on_error_(crash_on_error) {}
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::~AXTreeSerializer() {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::~AXTreeSerializer() {
   // Clear |tree_| to prevent any additional calls to the tree source
   // during teardown.
+  // TODO(accessibility) How would that happen?
   tree_ = nullptr;
+  // Free up any resources allocated on the heap that are stored with raw_ptr.
   Reset();
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::Reset() {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::Reset() {
   InternalReset();
   did_reset_ = true;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::InternalReset() {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::InternalReset() {
   client_tree_data_ = AXTreeData();
 
   // Normally we use DeleteClientSubtree to remove nodes from the tree,
   // but Reset() needs to work even if the tree is in a broken state.
   // Instead, iterate over |client_id_map_| to ensure we clear all nodes and
   // start from scratch.
-  for (auto&& item : client_id_map_) {
-    if (tree_)
-      tree_->SerializerClearedNode(item.first);
+  for (auto&& item : client_id_map_)
     delete item.second;
-  }
   client_id_map_.clear();
   client_root_ = nullptr;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
-    ChangeTreeSourceForTesting(
-        AXTreeSource<AXSourceNode, AXNodeData, AXTreeData>* new_tree) {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::
+    ChangeTreeSourceForTesting(AXTreeSource<AXSourceNode>* new_tree) {
   tree_ = new_tree;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-size_t
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::ClientTreeNodeCount()
-    const {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+size_t AXTreeSerializer<AXSourceNode,
+                        AXSourceNodeVectorType>::ClientTreeNodeCount() const {
   return client_id_map_.size();
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
 AXSourceNode
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::LeastCommonAncestor(
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::LeastCommonAncestor(
     AXSourceNode node,
     ClientTreeNode* client_node) {
   if (!tree_->IsValid(node) || client_node == nullptr)
     return tree_->GetNull();
 
-  std::vector<AXSourceNode> ancestors;
+  AXSourceNodeVectorType ancestors;
   while (tree_->IsValid(node)) {
     ancestors.push_back(node);
     node = tree_->GetParent(node);
@@ -296,23 +322,21 @@ AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::LeastCommonAncestor(
   // client ancestor chain disagree. The last node before they disagree
   // is the LCA.
   AXSourceNode lca = tree_->GetNull();
-  int source_index = static_cast<int>(ancestors.size() - 1);
-  int client_index = static_cast<int>(client_ancestors.size() - 1);
-  while (source_index >= 0 && client_index >= 0) {
-    if (tree_->GetId(ancestors[source_index]) !=
-            client_ancestors[client_index]->id) {
+  for (size_t source_index = ancestors.size(),
+              client_index = client_ancestors.size();
+       source_index > 0 && client_index > 0; --source_index, --client_index) {
+    if (tree_->GetId(ancestors[(unsigned int)(source_index - 1)]) !=
+        client_ancestors[client_index - 1]->id) {
       return lca;
     }
-    lca = ancestors[source_index];
-    source_index--;
-    client_index--;
+    lca = ancestors[(unsigned int)(source_index - 1)];
   }
   return lca;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
 AXSourceNode
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::LeastCommonAncestor(
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::LeastCommonAncestor(
     AXSourceNode node) {
   // Walk up the tree until the source node's id also exists in the
   // client tree, whose parent is not invalid, then call LeastCommonAncestor
@@ -337,15 +361,20 @@ AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::LeastCommonAncestor(
   return LeastCommonAncestor(node, client_node);
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+bool AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::
     AnyDescendantWasReparented(AXSourceNode node, AXSourceNode* out_lca) {
   bool result = false;
   int id = tree_->GetId(node);
-  std::vector<AXSourceNode> children;
-  tree_->GetChildren(node, &children);
-  for (size_t i = 0; i < children.size(); ++i) {
-    AXSourceNode& child = children[i];
+  tree_->CacheChildrenIfNeeded(node);
+  auto num_children = tree_->GetChildCount(node);
+  for (size_t i = 0; i < num_children; ++i) {
+    AXSourceNode child = tree_->ChildAt(node, i);
+    if (!child) {
+      continue;
+    }
+
+    DCHECK(tree_->IsValid(child));
     int child_id = tree_->GetId(child);
     ClientTreeNode* client_child = ClientTreeNodeById(child_id);
     if (client_child) {
@@ -354,6 +383,7 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
         // If the client child has no parent, it must have been the
         // previous root node, so there is no LCA and we can exit early.
         *out_lca = tree_->GetNull();
+        tree_->ClearChildCache(node);
         return true;
       } else if (parent->id != id) {
         // If the client child's parent is not this node, update the LCA
@@ -365,9 +395,9 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
         // This child is already in the client tree and valid, we won't
         // recursively serialize it so we don't need to check this
         // subtree recursively for reparenting.
-        // However, if the child is ignored, the children may now be
+        // However, if the child is or was ignored, the children may now be
         // considered as reparented, so continue recursion in that case.
-        if (!client_child->ignored)
+        if (!client_child->ignored && !tree_->IsIgnored(child))
           continue;
       }
     }
@@ -376,46 +406,54 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
     if (AnyDescendantWasReparented(child, out_lca))
       result = true;
   }
+  tree_->ClearChildCache(node);
   return result;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
 ClientTreeNode*
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::ClientTreeNodeById(
-    int32_t id) {
-  std::unordered_map<int32_t, ClientTreeNode*>::iterator iter =
-      client_id_map_.find(id);
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::ClientTreeNodeById(
+    AXNodeID id) {
+  std::map<AXNodeID, ClientTreeNode*>::iterator iter = client_id_map_.find(id);
   if (iter != client_id_map_.end())
     return iter->second;
   return nullptr;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
 ClientTreeNode*
-AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::GetClientTreeNodeParent(
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::GetClientTreeNodeParent(
     ClientTreeNode* obj) {
   ClientTreeNode* parent = obj->parent;
-#if DCHECK_IS_ON()
   if (!parent)
     return nullptr;
-  DCHECK(ClientTreeNodeById(parent->id)) << "Parent not in id map.";
-#endif  // DCHECK_IS_ON()
+  if (!ClientTreeNodeById(parent->id)) {
+    std::ostringstream error;
+    error << "Child: " << tree_->GetDebugString(tree_->GetFromId(obj->id))
+          << "\nParent: "
+          << tree_->GetDebugString(tree_->GetFromId(parent->id));
+    static auto* missing_parent_err = base::debug::AllocateCrashKeyString(
+        "ax_ts_missing_parent_err", base::debug::CrashKeySize::Size256);
+    base::debug::SetCrashKeyString(missing_parent_err,
+                                   error.str().substr(0, 230));
+    if (crash_on_error_) {
+      CHECK(false) << error.str();
+    } else {
+      LOG(ERROR) << error.str();
+      // Different from other errors, not calling Reset() here to avoid breaking
+      // the internal state of this class.
+    }
+  }
   return parent;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::SerializeChanges(
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+bool AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::SerializeChanges(
     AXSourceNode node,
-    AXTreeUpdateBase<AXNodeData, AXTreeData>* out_update) {
-  // Send the tree data if it's changed since the last update, or if
-  // out_update->has_tree_data is already set to true.
-  AXTreeData new_tree_data;
-  if (tree_->GetTreeData(&new_tree_data) &&
-      (out_update->has_tree_data || new_tree_data != client_tree_data_)) {
-    out_update->has_tree_data = true;
-    out_update->tree_data = new_tree_data;
-    client_tree_data_ = new_tree_data;
-  }
+    AXTreeUpdate* out_update) {
+  if (!timeout_.is_zero())
+    timer_ = std::make_unique<base::ElapsedTimer>();
+  incomplete_node_ids_.clear();
 
   // If the node isn't in the client tree, we need to serialize starting
   // with the LCA.
@@ -441,6 +479,11 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::SerializeChanges(
       if (!tree_->IsValid(lca)) {
         // If there's no LCA, just tell the client to destroy the whole
         // tree and then we'll serialize everything from the new root.
+        // Cases where this occurs:
+        // - A new document is loaded (main or iframe)
+        // - document.body.innerHTML is changed
+        // - A modal <dialog> is opened
+        // - Full screen mode is toggled
         out_update->node_id_to_clear = client_root_->id;
         InternalReset();
       } else if (need_delete) {
@@ -459,12 +502,6 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::SerializeChanges(
   if (!tree_->IsValid(lca))
     lca = tree_->GetRoot();
 
-  // Work around flaky source trees where nodes don't figure out their
-  // correct parent/child relationships until you walk the whole tree once.
-  // Covered by this test in the content_browsertests suite:
-  //     DumpAccessibilityTreeTest.AccessibilityAriaOwns.
-  WalkAllDescendants(lca);
-
   if (!SerializeChangedNodes(lca, out_update))
     return false;
 
@@ -477,58 +514,91 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::SerializeChanges(
     did_reset_ = false;
   }
 
+  // Send the tree data if it's changed since the last update, or if
+  // out_update->has_tree_data is already set to true.
+  // Do this last, so that selection retrieval will cause recomputation of
+  // node inclusion before the the new tree structure has been updated in a
+  // top-down matter via SerializeChangedNodes().
+  AXTreeData new_tree_data;
+  if (tree_->GetTreeData(&new_tree_data) &&
+      (out_update->has_tree_data || new_tree_data != client_tree_data_)) {
+    out_update->has_tree_data = true;
+    out_update->tree_data = new_tree_data;
+    client_tree_data_ = new_tree_data;
+  }
+
   return true;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::InvalidateSubtree(
-    AXSourceNode node) {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+std::vector<AXNodeID>
+AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::GetIncompleteNodeIds() {
+  DCHECK(max_node_count_ > 0 || !timeout_.is_zero());
+  return incomplete_node_ids_;
+}
+
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::InvalidateSubtree(AXSourceNode node) {
   ClientTreeNode* client_node = ClientTreeNodeById(tree_->GetId(node));
   if (client_node)
     InvalidateClientSubtree(client_node);
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::IsInClientTree(
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+bool AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::IsInClientTree(
     AXSourceNode node) {
   ClientTreeNode* client_node = ClientTreeNodeById(tree_->GetId(node));
   return client_node ? !client_node->invalid : false;
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
-    InvalidateClientSubtree(ClientTreeNode* client_node) {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::InvalidateClientSubtree(
+    ClientTreeNode* client_node) {
+  // Return early if already marked invalid, in order to avoid duplicate work in
+  // subtree, as the only method that marks nodes invalid is this one.
+  if (client_node->invalid) {
+    return;
+  }
   client_node->invalid = true;
   for (size_t i = 0; i < client_node->children.size(); ++i)
     InvalidateClientSubtree(client_node->children[i]);
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
-    DeleteClientSubtree(ClientTreeNode* client_node) {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::DeleteClientSubtree(
+    ClientTreeNode* client_node) {
   if (client_node == client_root_) {
     Reset();  // Do not try to reuse a bad root later.
+    // A heuristic for this condition rather than an explicit Reset() from a
+    // caller makes it difficult to debug whether extra resets / lost virtual
+    // buffer positions are occurring because of this code. Therefore, a DCHECK
+    // has been added in order to debug if or when this condition may occur.
+#if defined(AX_FAIL_FAST_BUILD)
+    CHECK(!crash_on_error_)
+        << "Attempt to delete entire client subtree, including the root.";
+#else
+    DCHECK(!crash_on_error_)
+        << "Attempt to delete entire client subtree, including the root.";
+#endif
   } else {
     DeleteDescendants(client_node);
-    tree_->SerializerClearedNode(client_node->id);
     client_id_map_.erase(client_node->id);
     delete client_node;
   }
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::DeleteDescendants(
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+void AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::DeleteDescendants(
     ClientTreeNode* client_node) {
   for (size_t i = 0; i < client_node->children.size(); ++i)
     DeleteClientSubtree(client_node->children[i]);
   client_node->children.clear();
 }
 
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
-    SerializeChangedNodes(
-        AXSourceNode node,
-        AXTreeUpdateBase<AXNodeData, AXTreeData>* out_update) {
+template <typename AXSourceNode, typename AXSourceNodeVectorType>
+bool AXTreeSerializer<AXSourceNode, AXSourceNodeVectorType>::SerializeChangedNodes(
+    AXSourceNode node,
+    AXTreeUpdate* out_update) {
   // This method has three responsibilities:
   // 1. Serialize |node| into an AXNodeData, and append it to
   //    the AXTreeUpdate to be sent to the client.
@@ -539,13 +609,24 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
 
   // First, find the ClientTreeNode for this id in our data structure where
   // we keep track of what accessibility objects the client already knows
-  // about. If we don't find it, then this must be the new root of the
-  // accessibility tree.
+  // about.
+  // If we don't find it, then the intention may be to use it as the
+  // new root of the accessibility tree. A heuristic for this condition rather
+  // than an explicit Reset() from a caller makes it difficult to debug whether
+  // extra resets / lost virtual buffer positions are occurring because of this
+  // code. Therefore, a DCHECK has been added in order to debug if or when this
+  // condition may occur.
   int id = tree_->GetId(node);
   ClientTreeNode* client_node = ClientTreeNodeById(id);
   if (!client_node) {
-    if (client_root_)
+    if (client_root_) {
       Reset();
+#if defined(AX_FAIL_FAST_BUILD)
+      CHECK(!crash_on_error_) << "Missing client node for serialization.";
+#else
+      DCHECK(!crash_on_error_) << "Missing client node for serialization.";
+#endif
+    }
     client_root_ = new ClientTreeNode();
     client_node = client_root_;
     client_node->id = id;
@@ -553,9 +634,31 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
     client_id_map_[client_node->id] = client_node;
   }
 
+  DCHECK_EQ(tree_->GetId(tree_->GetRoot()), client_root_->id);
+
   // We're about to serialize it, so mark it as valid.
   client_node->invalid = false;
   client_node->ignored = tree_->IsIgnored(node);
+
+  // Terminate early if a maximum number of nodes is reached.
+  // the output tree is still consistent).
+  bool should_terminate_early = false;
+  if (max_node_count_ > 0 && out_update->nodes.size() >= max_node_count_)
+    should_terminate_early = true;
+
+  // Also terminate early if a timeout is reached.
+  if (!timeout_.is_zero()) {
+    if (timer_ && timer_->Elapsed() >= timeout_) {
+      // Terminate early and delete the timer so that we don't have to
+      // keep checking if we timed out.
+      should_terminate_early = true;
+      timer_.reset();
+    } else if (!timer_) {
+      // Already timed out; keep terminating early until the serialization
+      // is done.
+      should_terminate_early = true;
+    }
+  }
 
   // Iterate over the ids of the children of |node|.
   // Create a set of the child ids so we can quickly look
@@ -563,21 +666,23 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
   // If we've hit the maximum number of serialized nodes, pretend
   // this node has no children but keep going so that we get
   // consistent results.
-  std::unordered_set<int32_t> new_ignored_ids;
-  std::unordered_set<int32_t> new_child_ids;
-  std::vector<AXSourceNode> children;
-  if (max_node_count_ == 0 || out_update->nodes.size() < max_node_count_) {
-    tree_->GetChildren(node, &children);
-  } else if (max_node_count_ > 0) {
-    static bool logged_once = false;
-    if (!logged_once) {
-      LOG(WARNING) << "Warning: not serializing AX nodes after a max of "
-                   << max_node_count_;
-      logged_once = true;
-    }
+  std::set<AXNodeID> new_ignored_ids;
+  std::set<AXNodeID> new_child_ids;
+  size_t num_children = 0;
+  if (should_terminate_early) {
+    incomplete_node_ids_.push_back(id);
+  } else {
+    tree_->CacheChildrenIfNeeded(node);
+    num_children = tree_->GetChildCount(node);
   }
-  for (size_t i = 0; i < children.size(); ++i) {
-    AXSourceNode& child = children[i];
+  size_t actual_num_children = 0;
+  for (size_t i = 0; i < num_children; ++i) {
+    AXSourceNode child = tree_->ChildAt(node, i);
+    if (!child) {
+      continue;
+    }
+    actual_num_children++;
+
     int new_child_id = tree_->GetId(child);
     new_child_ids.insert(new_child_id);
     if (tree_->IsIgnored(child))
@@ -588,13 +693,25 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
 
     ClientTreeNode* client_child = ClientTreeNodeById(new_child_id);
     if (client_child && GetClientTreeNodeParent(client_child) != client_node) {
-      DVLOG(1) << "Illegal reparenting detected";
-#if defined(ADDRESS_SANITIZER)
-      // Wrapping this in ADDRESS_SANITIZER will cause it to run on
-      // clusterfuzz, which should help us narrow down the issue.
-      NOTREACHED() << "Illegal reparenting detected";
-#endif
-      Reset();
+      // This condition leads to performance problems. It will
+      // also reset virtual buffers, causing users to lose their place.
+      std::ostringstream error;
+      error << "Passed-in parent: "
+            << tree_->GetDebugString(tree_->GetFromId(client_node->id))
+            << "\nChild: " << tree_->GetDebugString(child)
+            << "\nChild's parent: "
+            << tree_->GetDebugString(
+                   tree_->GetFromId(client_child->parent->id));
+      static auto* reparent_err = base::debug::AllocateCrashKeyString(
+          "ax_ts_reparent_err", base::debug::CrashKeySize::Size256);
+      base::debug::SetCrashKeyString(reparent_err, error.str().substr(0, 230));
+      if (crash_on_error_) {
+        CHECK(false) << error.str();
+      } else {
+        LOG(ERROR) << error.str();
+        Reset();
+      }
+      tree_->ClearChildCache(node);
       return false;
     }
   }
@@ -605,7 +722,7 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
   // first in a separate pass so that nodes that are reparented
   // don't end up children of two different parents in the middle
   // of an update, which can lead to a double-free.
-  std::unordered_map<int32_t, ClientTreeNode*> client_child_id_map;
+  std::map<AXNodeID, ClientTreeNode*> client_child_id_map;
   std::vector<ClientTreeNode*> old_children;
   old_children.swap(client_node->children);
   for (size_t i = 0; i < old_children.size(); ++i) {
@@ -629,21 +746,45 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
     AXNodeData* serialized_node = &out_update->nodes[serialized_node_index];
 
     tree_->SerializeNode(node, serialized_node);
-    if (serialized_node->id == client_root_->id)
+    if (serialized_node->id == client_root_->id) {
       out_update->root_id = serialized_node->id;
+      CHECK(!client_root_->parent) << "The root cannot have a parent:";
+      // << "\n* Root: "
+      // << tree_->GetDebugString(tree_->GetFromId(out_update->root_id))
+      // << "\n* Root's parent: "
+      // << tree_->GetDebugString(tree_->GetFromId(client_root_->parent->id));
+
+    } else {
+      DCHECK(serialized_node->role != ax::mojom::Role::kRootWebArea)
+          << "A kRootWebArea role was used on an object that is not the root: "
+          << "\n* Actual root: " << tree_->GetDebugString(tree_->GetRoot())
+          << "\n* Illegal node with root web area role: "
+          << tree_->GetDebugString(tree_->GetFromId(serialized_node->id))
+          << "\n* Parent of illegal node: "
+          << (client_node->parent ? tree_->GetDebugString(tree_->GetFromId(
+                                        client_node->parent->id))
+                                  : "");
+    }
   }
 
   // Iterate over the children, serialize them, and update the ClientTreeNode
   // data structure to reflect the new tree.
-  std::vector<int32_t> actual_serialized_node_child_ids;
-  client_node->children.reserve(children.size());
-  for (size_t i = 0; i < children.size(); ++i) {
-    AXSourceNode& child = children[i];
+  std::vector<AXNodeID> actual_serialized_node_child_ids;
+  client_node->children.reserve(actual_num_children);
+  for (size_t i = 0; i < num_children; ++i) {
+    AXSourceNode child = tree_->ChildAt(node, i);
+    if (!child) {
+      continue;
+    }
+
     int child_id = tree_->GetId(child);
 
     // Skip if the child isn't valid.
-    if (!tree_->IsValid(child))
+    // TODO(accessibility) Turn into a DCHECK() once it's proven not to occur.
+    if (!tree_->IsValid(child)) {
+      NOTREACHED();
       continue;
+    }
 
     // Skip if the same child is included more than once.
     if (new_child_ids.find(child_id) == new_child_ids.end())
@@ -662,8 +803,10 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
       // Re-serialize it if the child is marked as invalid, otherwise
       // we don't have to because the client already has it.
       if (reused_child->invalid || ignored_state_changed) {
-        if (!SerializeChangedNodes(child, out_update))
+        if (!SerializeChangedNodes(child, out_update)) {
+          tree_->ClearChildCache(node);
           return false;
+        }
       }
     } else {
       ClientTreeNode* new_child = new ClientTreeNode();
@@ -672,11 +815,38 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
       new_child->ignored = tree_->IsIgnored(child);
       new_child->invalid = false;
       client_node->children.push_back(new_child);
-      client_id_map_[child_id] = new_child;
-      if (!SerializeChangedNodes(child, out_update))
+      if (ClientTreeNodeById(child_id)) {
+        // TODO(accessibility) Remove all cases where this occurs and re-add
+        // This condition leads to performance problems. It will
+        // also reset virtual buffers, causing users to lose their place.
+        std::ostringstream error;
+        error << "Child id " << child_id << " already in map."
+              << "\nChild: "
+              << tree_->GetDebugString(tree_->GetFromId(child_id))
+              << "\nWanted for parent " << tree_->GetDebugString(node)
+              << "\nAlready had parent "
+              << tree_->GetDebugString(tree_->GetFromId(
+                     ClientTreeNodeById(child_id)->parent->id));
+        static auto* dupe_id_err = base::debug::AllocateCrashKeyString(
+            "ax_ts_dupe_id_err", base::debug::CrashKeySize::Size256);
+        base::debug::SetCrashKeyString(dupe_id_err, error.str().substr(0, 230));
+        if (crash_on_error_) {
+          CHECK(false) << error.str();
+        } else {
+          LOG(ERROR) << error.str();
+          Reset();
+        }
+        tree_->ClearChildCache(node);
         return false;
+      }
+      client_id_map_[child_id] = new_child;
+      if (!SerializeChangedNodes(child, out_update)) {
+        tree_->ClearChildCache(node);
+        return false;
+      }
     }
   }
+  tree_->ClearChildCache(node);
 
   // Finally, update the child ids of this node to reflect the actual child
   // ids that were valid during serialization.
@@ -684,15 +854,6 @@ bool AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::
       actual_serialized_node_child_ids);
 
   return true;
-}
-
-template <typename AXSourceNode, typename AXNodeData, typename AXTreeData>
-void AXTreeSerializer<AXSourceNode, AXNodeData, AXTreeData>::WalkAllDescendants(
-    AXSourceNode node) {
-  std::vector<AXSourceNode> children;
-  tree_->GetChildren(node, &children);
-  for (size_t i = 0; i < children.size(); ++i)
-    WalkAllDescendants(children[i]);
 }
 
 }  // namespace ui

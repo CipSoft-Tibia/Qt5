@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -11,6 +11,8 @@ source_set("lib") {
     "mojo_proxy_resolver_v8_tracing_bindings.h",
     "pac_js_library.h",
     "proxy_host_resolver.h",
+    "proxy_host_resolver_cache.cc",
+    "proxy_host_resolver_cache.h",
     "proxy_resolver_factory_impl.cc",
     "proxy_resolver_factory_impl.h",
     "proxy_resolver_impl.cc",
@@ -30,7 +32,7 @@ source_set("lib") {
     "//base",
     "//gin",
     "//mojo/public/cpp/bindings",
-    "//services/service_manager",
+    "//tools/v8_context_snapshot:buildflags",
     "//url",
     "//v8",
   ]
@@ -52,6 +54,7 @@ source_set("tests") {
     "mock_proxy_host_resolver.cc",
     "mock_proxy_host_resolver.h",
     "mojo_proxy_resolver_v8_tracing_bindings_unittest.cc",
+    "proxy_host_resolver_cache_unittest.cc",
     "proxy_resolver_factory_impl_unittest.cc",
     "proxy_resolver_impl_unittest.cc",
     "proxy_resolver_v8_tracing_unittest.cc",
@@ -70,10 +73,6 @@ source_set("tests") {
 
   if (v8_use_external_startup_data) {
     deps += [ "//gin" ]
-  }
-
-  if (is_android) {
-    deps += [ "//v8:v8_external_startup_data_assets" ]
   }
 
   configs += [ "//v8:external_startup_data" ]

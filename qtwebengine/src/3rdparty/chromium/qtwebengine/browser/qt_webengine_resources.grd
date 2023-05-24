@@ -1,29 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <grit latest_public_release="0" current_release="1" output_all_resource_defines="false">
   <outputs>
-    <output filename="grit/qt_webengine_resources.h" type="rc_header">
+    <output filename="grit/qt_webengine_resources.h" type="rc_header" context="default_100_percent">
       <emit emit_type='prepend'></emit>
     </output>
-    <output filename="qt_webengine_resources.pak" type="data_package" />
+    <output filename="qt_webengine_resources.pak" type="data_package" context="default_100_percent"/>
   </outputs>
   <release seq="1">
     <includes>
-      <include name="IDR_ACCESSIBILITY_HTML" file="../../chrome/browser/resources/accessibility/accessibility.html" flattenhtml="true" allowexternalscript="true" compress="gzip" type="BINDATA" />
-      <include name="IDR_ACCESSIBILITY_CSS" file="../../chrome/browser/resources/accessibility/accessibility.css" compress="gzip" type="BINDATA" />
-      <include name="IDR_ACCESSIBILITY_JS" file="../../chrome/browser/resources/accessibility/accessibility.js" flattenhtml="true" compress="gzip" type="BINDATA" />
+      <include name="IDR_ACCESSIBILITY_HTML" file="../../chrome/browser/resources/accessibility/accessibility.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" />
+      <include name="IDR_ACCESSIBILITY_CSS" file="../../chrome/browser/resources/accessibility/accessibility.css" type="BINDATA" />
+      <include name="IDR_ACCESSIBILITY_JS" file="${root_gen_dir}/chrome/browser/resources/accessibility/tsc/accessibility.js" use_base_dir="false" type="BINDATA" />
       <if expr="not is_ios">
-        <include name="IDR_DEVTOOLS_DISCOVERY_PAGE_HTML" file="../../chrome/browser/devtools/frontend/devtools_discovery_page.html" type="BINDATA"/>
+        <include name="IDR_DEVTOOLS_DISCOVERY_PAGE_HTML" file="devtools_discovery_page.html" type="BINDATA"/>
       </if>
-      <if expr="enable_plugins">
+      <if expr="enable_pdf">
         <include name="IDR_PDF_MANIFEST" file="../../chrome/browser/resources/pdf/manifest.json" type="BINDATA" />
       </if>
       <if expr="is_android or is_linux">
-        <include name="IDR_SANDBOX_INTERNALS_HTML" file="../../chrome/browser/resources/sandbox_internals/sandbox_internals.html" flattenhtml="true" allowexternalscript="true" type="BINDATA" compress="gzip" />
-        <include name="IDR_SANDBOX_INTERNALS_JS" file="../../chrome/browser/resources/sandbox_internals/sandbox_internals.js" type="BINDATA" compress="gzip" />
+        <include name="IDR_SANDBOX_INTERNALS_HTML" file="../../chrome/browser/resources/sandbox_internals/sandbox_internals.html" preprocess="true" type="BINDATA" />
+        <include name="IDR_SANDBOX_INTERNALS_JS" file="${root_gen_dir}\chrome\browser\resources\sandbox_internals\tsc\sandbox_internals.js" use_base_dir="false" type="BINDATA" />
+
+      </if>
+      <if expr="is_win">
+        <include name="IDR_SANDBOX_INTERNALS_HTML" file="../../chrome/browser/resources/sandbox_internals/sandbox_internals.html" preprocess="true" type="BINDATA" />
+        <include name="IDR_SANDBOX_INTERNALS_JS" file="${root_gen_dir}\chrome\browser\resources\sandbox_internals\tsc\sandbox_internals_win.js" use_base_dir="false" type="BINDATA" />
       </if>
       <if expr="enable_hangout_services_extension">
         <include name="IDR_HANGOUT_SERVICES_MANIFEST" file="../../chrome/browser/resources/hangout_services/manifest.json" type="BINDATA" />
       </if>
+      <include name="IDR_VERSION_UI_QT_HTML" file="version_ui/qt_version.html" preprocess="true" type="BINDATA" />
+      <include name="IDR_VERSION_UI_QT_CSS" file="version_ui/qt_version.css" type="BINDATA" />
     </includes>
+    <structures fallback_to_low_resolution="true">
+      <structure type="chrome_scaled_image" name="IDR_QT_LOGO"  file="qt.png" />
+      <structure type="chrome_scaled_image" name="IDR_QTWEBENGINE_LOGO"  file="qtwebengine.png" />
+    </structures>
   </release>
 </grit>

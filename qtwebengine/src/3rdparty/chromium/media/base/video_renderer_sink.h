@@ -1,11 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_BASE_VIDEO_RENDERER_SINK_H_
 #define MEDIA_BASE_VIDEO_RENDERER_SINK_H_
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/time/time.h"
 #include "media/base/media_export.h"
 #include "media/base/video_frame.h"
@@ -19,6 +19,12 @@ class MEDIA_EXPORT VideoRendererSink {
  public:
   class RenderCallback {
    public:
+    enum class RenderingMode {
+      kNormal,      // Normal operation.
+      kStartup,     // Render() is requested during Start().
+      kBackground,  // Render() is being driven by background timer.
+    };
+
     // Returns a VideoFrame for rendering which should be displayed within the
     // presentation interval [|deadline_min|, |deadline_max|].  Returns NULL if
     // no frame or no new frame (since the last Render() call) is available for
@@ -31,7 +37,7 @@ class MEDIA_EXPORT VideoRendererSink {
     // Render() call may not be used.
     virtual scoped_refptr<VideoFrame> Render(base::TimeTicks deadline_min,
                                              base::TimeTicks deadline_max,
-                                             bool background_rendering) = 0;
+                                             RenderingMode rendering_mode) = 0;
 
     // Called by the sink when a VideoFrame previously returned via Render() was
     // not actually rendered.  Must be called before the next Render() call.

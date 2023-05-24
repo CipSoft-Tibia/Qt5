@@ -1,41 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qwidgetdump.h"
 
-#include <QWidget>
-#if QT_VERSION > 0x050000
-#  include <QtGui/QScreen>
-#  include <QtGui/QWindow>
-#endif
 #include <QApplication>
-#include <QtCore/QMetaObject>
+#include <QWidget>
+#include <QtGui/QScreen>
+#include <QtGui/QWindow>
+
 #include <QtCore/QDebug>
+#include <QtCore/QMetaObject>
 #include <QtCore/QTextStream>
 
 namespace QtDiag {
@@ -43,7 +17,7 @@ namespace QtDiag {
 static const char *qtWidgetClasses[] = {
     "QAbstractItemView", "QAbstractScrollArea", "QAbstractSlider", "QAbstractSpinBox",
     "QCalendarWidget", "QCheckBox", "QColorDialog", "QColumnView", "QComboBox",
-    "QCommandLinkButton", "QDateEdit", "QDateTimeEdit", "QDesktopWidget", "QDial",
+    "QCommandLinkButton", "QDateEdit", "QDateTimeEdit", "QDial",
     "QDialog", "QDialogButtonBox", "QDockWidget", "QDoubleSpinBox", "QErrorMessage",
     "QFileDialog", "QFontComboBox", "QFontDialog", "QFrame", "QGraphicsView",
     "QGroupBox", "QHeaderView", "QInputDialog", "QLCDNumber", "QLabel", "QLineEdit",
@@ -86,22 +60,22 @@ static void dumpWidgetRecursion(QTextStream &str, const QWidget *w,
     formatWidgetClass(str, w);
     str << ' ' << (w->isVisible() ? "[visible] " : "[hidden] ");
     if (const WId nativeWinId = w->internalWinId())
-        str << "[native: " << Qt::hex << Qt::showbase << nativeWinId << Qt::dec << Qt::noshowbase << "] ";
+        str << "[native: " << Qt::hex << Qt::showbase << nativeWinId << Qt::dec << Qt::noshowbase
+            << "] ";
     if (w->isWindow())
         str << "[top] ";
     str << (w->testAttribute(Qt::WA_Mapped) ? "[mapped] " : "[not mapped] ");
     if (w->testAttribute(Qt::WA_DontCreateNativeAncestors))
         str << "[NoNativeAncestors] ";
     if (const int states = w->windowState())
-        str << "windowState=" << Qt::hex << Qt::showbase << states << Qt::dec << Qt::noshowbase << ' ';
+        str << "windowState=" << Qt::hex << Qt::showbase << states << Qt::dec << Qt::noshowbase
+            << ' ';
     formatRect(str, w->geometry());
     if (w->isWindow()) {
         str << ' ' << w->logicalDpiX() << "DPI";
-#if QT_VERSION > 0x050600
-        const qreal dpr = w->devicePixelRatioF();
+        const qreal dpr = w->devicePixelRatio();
         if (!qFuzzyCompare(dpr, qreal(1)))
             str << " dpr=" << dpr;
-#endif // Qt 5.6
         const QRect normalGeometry = w->normalGeometry();
         if (normalGeometry.isValid() && !normalGeometry.isEmpty() && normalGeometry != w->geometry()) {
             str << " normal=";
@@ -128,13 +102,11 @@ static void dumpWidgetRecursion(QTextStream &str, const QWidget *w,
             str << "maximumSize=" << maximumSize.width() << 'x' << maximumSize.height() << ' ';
     }
     str << '\n';
-#if QT_VERSION > 0x050000
     if (const QWindow *win = w->windowHandle()) {
         indentStream(str, 2 * (1 + depth));
         formatWindow(str, win, options);
         str << '\n';
     }
-#endif // Qt 5
     for (const QObject *co : w->children()) {
         if (co->isWidgetType())
             dumpWidgetRecursion(str, static_cast<const QWidget *>(co), options, depth + 1);
@@ -151,16 +123,10 @@ void dumpAllWidgets(FormatWindowOptions options, const QWidget *root)
         topLevels.append(const_cast<QWidget *>(root));
     else
         topLevels = QApplication::topLevelWidgets();
-    for (QWidget *tw : qAsConst(topLevels))
+    for (QWidget *tw : std::as_const(topLevels))
         dumpWidgetRecursion(str, tw, options);
-#if QT_VERSION >= 0x050400
-    {
-        for (const QString &line : d.split(QLatin1Char('\n')))
-            qDebug().noquote() << line;
-    }
-#else
-    qDebug("%s", qPrintable(d));
-#endif
+    for (const QString &line : d.split(QLatin1Char('\n')))
+        qDebug().noquote() << line;
 }
 
 } // namespace QtDiag

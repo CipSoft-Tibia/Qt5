@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@ syntax = "proto3";
 option optimize_for = LITE_RUNTIME;
 
 package metrics_event;
+option go_package = "chromiumos/system_api/metrics_event_proto";
 
 // Content of signals emitted by Chrome (the ChromeEvent signal in the
 // MetricsEventService) and the anomaly_detector daemon (the AnomalyEvent

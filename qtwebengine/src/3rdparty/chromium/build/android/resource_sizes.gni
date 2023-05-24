@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -68,4 +68,27 @@ template("android_resource_sizes_test") {
       executable_args += [ "@WrappedPath(${_rebased_file_path})" ]
     }
   }
+}
+
+# Generates a "size config JSON file" to specify data to be passed from recipes
+# to Python scripts for binary size measurement on bots. All filenames are
+# relative to $root_build_dir. The resulting JSON file is written to
+# "$root_build_dir/config/${invoker.name}_size_config.json".
+#
+# Refer to tools/binary_size/generate_commit_size_analysis.py for JSON schema.
+#
+template("android_size_bot_config") {
+  _full_target_name = get_label_info(target_name, "label_no_toolchain")
+  _out_json = {
+    _HEADER = "Written by build target '${_full_target_name}'"
+    forward_variables_from(invoker,
+                           [
+                             "archive_files",
+                             "mapping_files",
+                             "to_resource_sizes_py",
+                             "supersize_input_file",
+                           ])
+  }
+  _output_json_path = "$root_build_dir/config/${invoker.name}_size_config.json"
+  write_file(_output_json_path, _out_json, "json")
 }

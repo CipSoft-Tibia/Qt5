@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,8 +17,10 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string json_data(reinterpret_cast<const char*>(data), size);
-  std::unique_ptr<base::Value> value =
-      base::JSONReader::ReadDeprecated(json_data);
+  absl::optional<base::Value> value = base::JSONReader::Read(json_data);
+  if (!value) {
+    return 0;
+  }
 
   base::CommandLine::Init(0, nullptr);
 
@@ -26,6 +28,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   log.DisableInTest();
   std::vector<payments::WebAppManifestSection> output;
   payments::PaymentManifestParser::ParseWebAppManifestIntoVector(
-      std::move(value), log, &output);
+      std::move(*value), log, &output);
   return 0;
 }

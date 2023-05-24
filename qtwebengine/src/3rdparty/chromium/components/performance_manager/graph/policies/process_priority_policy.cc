@@ -1,10 +1,10 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/performance_manager/graph/policies/process_priority_policy.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "components/performance_manager/public/render_process_host_proxy.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -104,7 +104,7 @@ void ProcessPriorityPolicy::ClearCallbackForTesting() {
 }
 
 void ProcessPriorityPolicy::OnPassedToGraph(Graph* graph) {
-  DCHECK(graph->IsEmpty());
+  DCHECK(graph->HasOnlySystemNode());
   graph->AddProcessNodeObserver(this);
 }
 

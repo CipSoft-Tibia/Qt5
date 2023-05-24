@@ -72,7 +72,7 @@ union gbm_bo_handle {
 /** Format of the allocated buffer */
 enum gbm_bo_format {
    /** RGB with 8 bits per channel in a 32 bit value */
-   GBM_BO_FORMAT_XRGB8888, 
+   GBM_BO_FORMAT_XRGB8888,
    /** ARGB with 8 bits per channel in a 32 bit value */
    GBM_BO_FORMAT_ARGB8888
 };
@@ -179,6 +179,8 @@ enum gbm_bo_format {
 #define GBM_FORMAT_NV16		__gbm_fourcc_code('N', 'V', '1', '6') /* 2x1 subsampled Cr:Cb plane */
 #define GBM_FORMAT_NV61		__gbm_fourcc_code('N', 'V', '6', '1') /* 2x1 subsampled Cb:Cr plane */
 
+#define GBM_FORMAT_P010		__gbm_fourcc_code('P', '0', '1', '0') /* 2x2 subsampled Cr:Cb plane */
+
 /*
  * 3 plane YCbCr
  * index 0: Y plane, [7:0] Y
@@ -280,6 +282,29 @@ enum gbm_bo_flags {
     * which would otherwise access the underlying buffer will fail.
     */
    GBM_TEST_ALLOC = (1 << 15),
+
+   /**
+    * The buffer will be used for front buffer rendering.  On some
+    * platforms this may (for example) disable framebuffer compression
+    * to avoid problems with compression flags data being out of sync
+    * with pixel data.
+    */
+   GBM_BO_USE_FRONT_RENDERING = (1 << 16),
+
+   /**
+    * (1 << 17) is reserved for RenderScript (deprecated in Android 12).
+    */
+
+   /**
+    * The buffer will be used as a shader storage or uniform buffer
+    * object.
+    */
+   GBM_BO_USE_GPU_DATA_BUFFER = (1 << 18),
+
+   /**
+    * The buffer will be used as a sensor direct report output.
+    */
+   GBM_BO_USE_SENSOR_DIRECT_DATA = (1 << 19),
 };
 
 int
@@ -373,6 +398,11 @@ enum gbm_bo_transfer_flags {
    GBM_BO_TRANSFER_READ_WRITE = (GBM_BO_TRANSFER_READ | GBM_BO_TRANSFER_WRITE),
 };
 
+void *
+gbm_bo_map(struct gbm_bo *bo,
+           uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+           uint32_t flags, uint32_t *stride, void **map_data);
+
 void
 gbm_bo_unmap(struct gbm_bo *bo, void *map_data);
 
@@ -414,6 +444,9 @@ gbm_bo_get_plane_count(struct gbm_bo *bo);
 
 union gbm_bo_handle
 gbm_bo_get_handle_for_plane(struct gbm_bo *bo, size_t plane);
+
+int
+gbm_bo_get_fd_for_plane(struct gbm_bo *bo, int plane);
 
 int
 gbm_bo_write(struct gbm_bo *bo, const void *buf, size_t count);
@@ -470,10 +503,6 @@ gbm_bo_get_plane_size(struct gbm_bo *bo, size_t plane);
 int
 gbm_bo_get_plane_fd(struct gbm_bo *bo, size_t plane);
 
-void *
-gbm_bo_map(struct gbm_bo *bo,
-           uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-           uint32_t flags, uint32_t *stride, void **map_data, size_t plane);
 void *
 gbm_bo_map2(struct gbm_bo *bo,
 	   uint32_t x, uint32_t y, uint32_t width, uint32_t height,

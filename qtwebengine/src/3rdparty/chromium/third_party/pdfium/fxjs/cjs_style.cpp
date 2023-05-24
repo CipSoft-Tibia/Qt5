@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@ const JSConstSpec CJS_Style::ConstSpecs[] = {
     {"st", JSConstSpec::String, 0, "star"},
     {"sq", JSConstSpec::String, 0, "square"}};
 
-int CJS_Style::ObjDefnID = -1;
+uint32_t CJS_Style::ObjDefnID = 0;
 
 // static
 void CJS_Style::DefineJSObjects(CFXJS_Engine* pEngine) {

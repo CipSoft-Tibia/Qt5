@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 nd{
     AuxExemplarCharacters{"[r]"}
     ExemplarCharacters{"[a b c d e f g h i j k l m n o p q s t u v w x y z]"}
@@ -12,7 +13,6 @@ nd{
             }
         }
     }
-    Version{"37"}
     calendar{
         generic{
             DateTimePatterns{
@@ -30,6 +30,16 @@ nd{
                 "{1} {0}",
                 "{1} {0}",
             }
+            DateTimeSkeletons{
+                "HHmmsszzzz",
+                "HHmmssz",
+                "HHmmss",
+                "HHmm",
+                "GyMMMMEEEEd",
+                "GyMMMMd",
+                "GyMMMd",
+                "GGGGGyMMdd",
+            }
             availableFormats{
                 Hm{"HH:mm"}
                 Hms{"HH:mm:ss"}
@@ -42,7 +52,7 @@ nd{
                 MMMd{"MMM d"}
                 Md{"M/d"}
                 d{"d"}
-                hm{"h:mm a"}
+                hm{"h:mm a"}
                 ms{"mm:ss"}
                 y{"y"}
                 yM{"M/y"}
@@ -70,6 +80,16 @@ nd{
                 "{1} {0}",
                 "{1} {0}",
             }
+            DateTimeSkeletons{
+                "HHmmsszzzz",
+                "HHmmssz",
+                "HHmmss",
+                "HHmm",
+                "yMMMMEEEEd",
+                "yMMMMd",
+                "yMMMd",
+                "yMMdd",
+            }
             availableFormats{
                 Hm{"HH:mm"}
                 Hms{"HH:mm:ss"}
@@ -82,7 +102,7 @@ nd{
                 MMMd{"MMM d"}
                 Md{"M/d"}
                 d{"d"}
-                hm{"h:mm a"}
+                hm{"h:mm a"}
                 ms{"mm:ss"}
                 y{"y"}
                 yM{"M/y"}

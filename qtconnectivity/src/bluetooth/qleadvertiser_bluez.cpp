@@ -1,43 +1,7 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qleadvertiser_p.h"
+#include "qleadvertiser_bluez_p.h"
 
 #include "bluez/bluez_data_p.h"
 #include "bluez/hcimanager_p.h"
@@ -50,6 +14,9 @@
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(QT_BT_BLUEZ)
+
+QLeAdvertiser::~QLeAdvertiser()
+    = default;
 
 struct AdvParams {
     quint16 minInterval;
@@ -73,31 +40,33 @@ struct WhiteListParams {
 };
 
 
-template<typename T> QByteArray byteArrayFromStruct(const T &data, int maxSize = -1)
+template <typename T>
+static QByteArray byteArrayFromStruct(const T &data)
 {
-    return QByteArray(reinterpret_cast<const char *>(&data), maxSize != -1 ? maxSize : sizeof data);
+    return QByteArray(reinterpret_cast<const char *>(&data), sizeof data);
 }
 
 QLeAdvertiserBluez::QLeAdvertiserBluez(const QLowEnergyAdvertisingParameters &params,
                                        const QLowEnergyAdvertisingData &advertisingData,
                                        const QLowEnergyAdvertisingData &scanResponseData,
-                                       HciManager &hciManager, QObject *parent)
+                                       std::shared_ptr<HciManager> hciManager, QObject *parent)
     : QLeAdvertiser(params, advertisingData, scanResponseData, parent), m_hciManager(hciManager)
 {
-    connect(&m_hciManager, &HciManager::commandCompleted, this,
+    Q_ASSERT(m_hciManager);
+    connect(m_hciManager.get(), &HciManager::commandCompleted, this,
             &QLeAdvertiserBluez::handleCommandCompleted);
 }
 
 QLeAdvertiserBluez::~QLeAdvertiserBluez()
 {
-    disconnect(&m_hciManager, &HciManager::commandCompleted, this,
+    disconnect(m_hciManager.get(), &HciManager::commandCompleted, this,
                &QLeAdvertiserBluez::handleCommandCompleted);
     doStopAdvertising();
 }
 
 void QLeAdvertiserBluez::doStartAdvertising()
 {
-    if (!m_hciManager.monitorEvent(HciManager::CommandCompleteEvent)) {
+    if (!m_hciManager->monitorEvent(HciManager::HciEvent::EVT_CMD_COMPLETE)) {
         handleError();
         return;
     }
@@ -117,7 +86,7 @@ void QLeAdvertiserBluez::doStopAdvertising()
     sendNextCommand();
 }
 
-void QLeAdvertiserBluez::queueCommand(OpCodeCommandField ocf, const QByteArray &data)
+void QLeAdvertiserBluez::queueCommand(QBluezConst::OpCodeCommandField ocf, const QByteArray &data)
 {
     m_pendingCommands << Command(ocf, data);
 }
@@ -129,7 +98,7 @@ void QLeAdvertiserBluez::sendNextCommand()
         return;
     }
     const Command &c = m_pendingCommands.first();
-    if (!m_hciManager.sendCommand(OgfLinkControl, c.ocf, c.data)) {
+    if (!m_hciManager->sendCommand(QBluezConst::OgfLinkControl, c.ocf, c.data)) {
         handleError();
         return;
     }
@@ -148,18 +117,19 @@ void QLeAdvertiserBluez::queueAdvertisingCommands()
 void QLeAdvertiserBluez::queueReadTxPowerLevelCommand()
 {
     // Spec v4.2, Vol 2, Part E, 7.8.6
-    queueCommand(OcfLeReadTxPowerLevel, QByteArray());
+    queueCommand(QBluezConst::OcfLeReadTxPowerLevel, QByteArray());
 }
 
 void QLeAdvertiserBluez::toggleAdvertising(bool enable)
 {
     // Spec v4.2, Vol 2, Part E, 7.8.9
-    queueCommand(OcfLeSetAdvEnable, QByteArray(1, enable));
+    queueCommand(QBluezConst::OcfLeSetAdvEnable, QByteArray(1, enable));
 }
 
 void QLeAdvertiserBluez::setAdvertisingParams()
 {
     // Spec v4.2, Vol 2, Part E, 7.8.5
+    // or Spec v5.3, Vol 4, Part E, 7.8.5
     AdvParams params;
     static_assert(sizeof params == 15, "unexpected struct size");
     using namespace std;
@@ -183,7 +153,7 @@ void QLeAdvertiserBluez::setAdvertisingParams()
 
     const QByteArray paramsData = byteArrayFromStruct(params);
     qCDebug(QT_BT_BLUEZ) << "advertising parameters:" << paramsData.toHex();
-    queueCommand(OcfLeSetAdvParams, paramsData);
+    queueCommand(QBluezConst::OcfLeSetAdvParams, paramsData);
 }
 
 static quint16 forceIntoRange(quint16 val, quint16 min, quint16 max)
@@ -240,59 +210,58 @@ template<> quint8 servicesType<quint32>(bool dataComplete)
 {
     return dataComplete ? 0x5 : 0x4;
 }
-template<> quint8 servicesType<quint128>(bool dataComplete)
+template<> quint8 servicesType<QUuid::Id128Bytes>(bool dataComplete)
 {
     return dataComplete ? 0x7 : 0x6;
 }
 
-template<typename T> static void addServicesData(AdvData &data, const QVector<T> &services)
+template<typename T>
+static void addServicesData(AdvData &data, const QList<T> &services)
 {
     if (services.isEmpty())
         return;
-    const int spaceAvailable = sizeof data.data - data.length;
-    const int maxServices = qMin<int>((spaceAvailable - 2) / sizeof(T), services.count());
+    constexpr auto sizeofT = static_cast<int>(sizeof(T)); // signed is more convenient
+    const qsizetype spaceAvailable = sizeof data.data - data.length;
+    // Determine how many services will be set, space may limit the number
+    const qsizetype maxServices = (std::min)((spaceAvailable - 2) / sizeofT, services.size());
     if (maxServices <= 0) {
         qCWarning(QT_BT_BLUEZ) << "services data does not fit into advertising data packet";
         return;
     }
-    const bool dataComplete = maxServices == services.count();
+    const bool dataComplete = maxServices == services.size();
     if (!dataComplete) {
-        qCWarning(QT_BT_BLUEZ) << "only" << maxServices << "out of" << services.count()
+        qCWarning(QT_BT_BLUEZ) << "only" << maxServices << "out of" << services.size()
                                << "services fit into the advertising data";
     }
-    data.data[data.length++] = 1 + maxServices * sizeof(T);
+    data.data[data.length++] = 1 + maxServices * sizeofT;
     data.data[data.length++] = servicesType<T>(dataComplete);
-    for (int i = 0; i < maxServices; ++i) {
-        putBtData(services.at(i), data.data + data.length);
-        data.length += sizeof(T);
+    for (qsizetype i = 0; i < maxServices; ++i) {
+        memcpy(data.data + data.length, &services.at(i), sizeofT);
+        data.length += sizeofT;
     }
 }
 
 void QLeAdvertiserBluez::setServicesData(const QLowEnergyAdvertisingData &src, AdvData &dest)
 {
-    QVector<quint16> services16;
-    QVector<quint32> services32;
-    QVector<quint128> services128;
+    QList<quint16> services16;
+    QList<quint32> services32;
+    QList<QUuid::Id128Bytes> services128;
     const QList<QBluetoothUuid> services = src.services();
     for (const QBluetoothUuid &service : services) {
         bool ok;
         const quint16 service16 = service.toUInt16(&ok);
         if (ok) {
-            services16 << service16;
+            services16 << qToLittleEndian(service16);
             continue;
         }
         const quint32 service32 = service.toUInt32(&ok);
         if (ok) {
-            services32 << service32;
+            services32 << qToLittleEndian(service32);
             continue;
         }
 
-        // QBluetoothUuid::toUInt128() is always Big-Endian
-        // convert it to host order
-        quint128 hostOrder;
-        quint128 qtUuidOrder = service.toUInt128();
-        ntoh128(&qtUuidOrder, &hostOrder);
-        services128 << hostOrder;
+        // QUuid::toBytes() is defaults to Big-Endian
+        services128 << service.toBytes(QSysInfo::LittleEndian);
     }
     addServicesData(dest, services16);
     addServicesData(dest, services32);
@@ -303,17 +272,19 @@ void QLeAdvertiserBluez::setManufacturerData(const QLowEnergyAdvertisingData &sr
 {
     if (src.manufacturerId() == QLowEnergyAdvertisingData::invalidManufacturerId())
         return;
-    if (dest.length >= sizeof dest.data - 1 - 1 - 2 - src.manufacturerData().count()) {
+
+    const QByteArray manufacturerData = src.manufacturerData();
+    if (dest.length >= sizeof dest.data - 1 - 1 - 2 - manufacturerData.size()) {
         qCWarning(QT_BT_BLUEZ) << "manufacturer data does not fit into advertising data packet";
         return;
     }
 
-    dest.data[dest.length++] = src.manufacturerData().count() + 1 + 2;
+    dest.data[dest.length++] = manufacturerData.size() + 1 + 2;
     dest.data[dest.length++] = 0xff;
     putBtData(src.manufacturerId(), dest.data + dest.length);
     dest.length += sizeof(quint16);
-    std::memcpy(dest.data + dest.length, src.manufacturerData(), src.manufacturerData().count());
-    dest.length += src.manufacturerData().count();
+    std::memcpy(dest.data + dest.length, manufacturerData.data(), manufacturerData.size());
+    dest.length += manufacturerData.size();
 }
 
 void QLeAdvertiserBluez::setLocalNameData(const QLowEnergyAdvertisingData &src, AdvData &dest)
@@ -326,8 +297,8 @@ void QLeAdvertiserBluez::setLocalNameData(const QLowEnergyAdvertisingData &src, 
     }
 
     const QByteArray localNameUtf8 = src.localName().toUtf8();
-    const int fullSize = localNameUtf8.count() + 1 + 1;
-    const int size = qMin<int>(fullSize, sizeof dest.data - dest.length);
+    const qsizetype fullSize = localNameUtf8.size() + 1 + 1;
+    const qsizetype size = (std::min)(fullSize, qsizetype(sizeof dest.data - dest.length));
     const bool isComplete = size == fullSize;
     dest.data[dest.length++] = size - 1;
     const int dataType = isComplete ? 0x9 : 0x8;
@@ -346,9 +317,9 @@ void QLeAdvertiserBluez::setData(bool isScanResponseData)
     const QLowEnergyAdvertisingData &sourceData = isScanResponseData
             ? scanResponseData() : advertisingData();
 
-    if (!sourceData.rawData().isEmpty()) {
-        theData.length = qMin<int>(sizeof theData.data, sourceData.rawData().count());
-        std::memcpy(theData.data, sourceData.rawData().constData(), theData.length);
+    if (const QByteArray rawData = sourceData.rawData(); !rawData.isEmpty()) {
+        theData.length = (std::min)(qsizetype(sizeof theData.data), rawData.size());
+        std::memcpy(theData.data, rawData.data(), theData.length);
     } else {
         if (sourceData.includePowerLevel())
             setPowerLevel(theData);
@@ -367,12 +338,12 @@ void QLeAdvertiserBluez::setData(bool isScanResponseData)
 
     if (!isScanResponseData) {
         qCDebug(QT_BT_BLUEZ) << "advertising data:" << dataToSend.toHex();
-        queueCommand(OcfLeSetAdvData, dataToSend);
+        queueCommand(QBluezConst::OcfLeSetAdvData, dataToSend);
     } else if ((parameters().mode() == QLowEnergyAdvertisingParameters::AdvScanInd
                || parameters().mode() == QLowEnergyAdvertisingParameters::AdvInd)
                && theData.length > 0) {
         qCDebug(QT_BT_BLUEZ) << "scan response data:" << dataToSend.toHex();
-        queueCommand(OcfLeSetScanResponseData, dataToSend);
+        queueCommand(QBluezConst::OcfLeSetScanResponseData, dataToSend);
     }
 }
 
@@ -393,7 +364,7 @@ void QLeAdvertiserBluez::setWhiteList()
     // Spec v4.2, Vol 2, Part E, 7.8.15-16
     if (parameters().filterPolicy() == QLowEnergyAdvertisingParameters::IgnoreWhiteList)
         return;
-    queueCommand(OcfLeClearWhiteList, QByteArray());
+    queueCommand(QBluezConst::OcfLeClearWhiteList, QByteArray());
     const QList<QLowEnergyAdvertisingParameters::AddressInfo> whiteListInfos
             = parameters().whiteList();
     for (const auto &addressInfo : whiteListInfos) {
@@ -401,7 +372,7 @@ void QLeAdvertiserBluez::setWhiteList()
         static_assert(sizeof commandParam == 7, "unexpected struct size");
         commandParam.addrType = addressInfo.type;
         convertAddress(addressInfo.address.toUInt64(), commandParam.addr.b);
-        queueCommand(OcfLeAddToWhiteList, byteArrayFromStruct(commandParam));
+        queueCommand(QBluezConst::OcfLeAddToWhiteList, byteArrayFromStruct(commandParam));
     }
 }
 
@@ -410,14 +381,16 @@ void QLeAdvertiserBluez::handleCommandCompleted(quint16 opCode, quint8 status,
 {
     if (m_pendingCommands.isEmpty())
         return;
-    const quint16 ocf = ocfFromOpCode(opCode);
+    const QBluezConst::OpCodeCommandField ocf = QBluezConst::OpCodeCommandField(ocfFromOpCode(opCode));
     const Command currentCmd = m_pendingCommands.first();
     if (currentCmd.ocf != ocf)
         return; // Not one of our commands.
     m_pendingCommands.takeFirst();
     if (status != 0) {
-        qCDebug(QT_BT_BLUEZ) << "command" << ocf << "failed with status" << status;
-        if (ocf == OcfLeSetAdvEnable && status == 0xc && currentCmd.data == QByteArray(1, '\0')) {
+        qCDebug(QT_BT_BLUEZ) << "command" << ocf
+                             << "failed with status" << (HciManager::HciError)status
+                             << "status code" << status;
+        if (ocf == QBluezConst::OcfLeSetAdvEnable && status == 0xc && currentCmd.data == QByteArray(1, '\0')) {
             // we ignore OcfLeSetAdvEnable if it tries to disable an active advertisement
             // it seems the platform often automatically turns off advertisements
             // subsequently the explicit stopAdvertisement call fails when re-issued
@@ -425,7 +398,7 @@ void QLeAdvertiserBluez::handleCommandCompleted(quint16 opCode, quint8 status,
             sendNextCommand();
             return;
         }
-        if (ocf == OcfLeReadTxPowerLevel) {
+        if (ocf == QBluezConst::OcfLeReadTxPowerLevel) {
             qCDebug(QT_BT_BLUEZ) << "reading power level failed, leaving it out of the "
                                     "advertising data";
             m_sendPowerLevel = false;
@@ -438,7 +411,7 @@ void QLeAdvertiserBluez::handleCommandCompleted(quint16 opCode, quint8 status,
     }
 
     switch (ocf) {
-    case OcfLeReadTxPowerLevel:
+    case QBluezConst::OcfLeReadTxPowerLevel:
         if (m_sendPowerLevel) {
             m_powerLevel = data.at(0);
             qCDebug(QT_BT_BLUEZ) << "TX power level is" << m_powerLevel;
@@ -460,3 +433,5 @@ void QLeAdvertiserBluez::handleError()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qleadvertiser_bluez_p.cpp"

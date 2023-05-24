@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,8 +30,10 @@ def GetBinaryPath():
     if nodejs:
       return nodejs
 
+  darwin_name = ('node-darwin-arm64' if platform.machine() == 'arm64' else
+                 'node-darwin-x64')
   return os_path.join(os_path.dirname(__file__), *{
-    'Darwin': ('mac', 'node-darwin-x64', 'bin', 'node'),
+    'Darwin': ('mac', darwin_name, 'bin', 'node'),
     'Linux': ('linux', 'node-linux-x64', 'bin', 'node'),
     'Windows': ('win', 'node.exe'),
   }[platform.system()])
@@ -40,22 +42,15 @@ def GetBinaryPath():
 def RunNode(cmd_parts, stdout=None):
   cmd = [GetBinaryPath()] + cmd_parts
   process = subprocess.Popen(
-      cmd, cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+      cmd, cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+      universal_newlines=True)
   stdout, stderr = process.communicate()
 
-  # TODO(crbug.com/1098074): Properly handle the returncode of
-  # process defined above. Right now, if the process would exit
-  # with a return code of non-zero, but the stderr is empty,
-  # we would still pass.
-  #
-  # However, we can't make this change here yet, as there are
-  # various presubmit scripts that rely on the runtime error
-  # and are unable to handle a `os.exit` call in this branch.
-  # These presubmit scripts need to spawn `subprocesses`
-  # themselves to handle the exitcode, before we can make the
-  # change here.
-  if stderr:
-    raise RuntimeError('%s failed: %s' % (cmd, stderr))
+  if process.returncode != 0:
+    # Handle cases where stderr is empty, even though the command failed, for
+    # example https://github.com/microsoft/TypeScript/issues/615
+    err = stderr if len(stderr) > 0 else stdout
+    raise RuntimeError('Command \'%s\' failed\n%s' % (' '.join(cmd), err))
 
   return stdout
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCALENDARWIDGET_H
 #define QCALENDARWIDGET_H
@@ -57,13 +21,15 @@ class Q_WIDGETS_EXPORT QCalendarWidget : public QWidget
     Q_OBJECT
     Q_ENUMS(Qt::DayOfWeek)
     Q_PROPERTY(QDate selectedDate READ selectedDate WRITE setSelectedDate)
-    Q_PROPERTY(QDate minimumDate READ minimumDate WRITE setMinimumDate)
-    Q_PROPERTY(QDate maximumDate READ maximumDate WRITE setMaximumDate)
+    Q_PROPERTY(QDate minimumDate READ minimumDate WRITE setMinimumDate RESET clearMinimumDate)
+    Q_PROPERTY(QDate maximumDate READ maximumDate WRITE setMaximumDate RESET clearMaximumDate)
     Q_PROPERTY(Qt::DayOfWeek firstDayOfWeek READ firstDayOfWeek WRITE setFirstDayOfWeek)
     Q_PROPERTY(bool gridVisible READ isGridVisible WRITE setGridVisible)
     Q_PROPERTY(SelectionMode selectionMode READ selectionMode WRITE setSelectionMode)
-    Q_PROPERTY(HorizontalHeaderFormat horizontalHeaderFormat READ horizontalHeaderFormat WRITE setHorizontalHeaderFormat)
-    Q_PROPERTY(VerticalHeaderFormat verticalHeaderFormat READ verticalHeaderFormat WRITE setVerticalHeaderFormat)
+    Q_PROPERTY(HorizontalHeaderFormat horizontalHeaderFormat READ horizontalHeaderFormat
+               WRITE setHorizontalHeaderFormat)
+    Q_PROPERTY(VerticalHeaderFormat verticalHeaderFormat READ verticalHeaderFormat
+               WRITE setVerticalHeaderFormat)
     Q_PROPERTY(bool navigationBarVisible READ isNavigationBarVisible WRITE setNavigationBarVisible)
     Q_PROPERTY(bool dateEditEnabled READ isDateEditEnabled WRITE setDateEditEnabled)
     Q_PROPERTY(int dateEditAcceptDelay READ dateEditAcceptDelay WRITE setDateEditAcceptDelay)
@@ -101,10 +67,12 @@ public:
     int monthShown() const;
 
     QDate minimumDate() const;
-    void setMinimumDate(const QDate &date);
+    void setMinimumDate(QDate date);
+    void clearMinimumDate();
 
     QDate maximumDate() const;
-    void setMaximumDate(const QDate &date);
+    void setMaximumDate(QDate date);
+    void clearMaximumDate();
 
     Qt::DayOfWeek firstDayOfWeek() const;
     void setFirstDayOfWeek(Qt::DayOfWeek dayOfWeek);
@@ -131,8 +99,8 @@ public:
     void setWeekdayTextFormat(Qt::DayOfWeek dayOfWeek, const QTextCharFormat &format);
 
     QMap<QDate, QTextCharFormat> dateTextFormat() const;
-    QTextCharFormat dateTextFormat(const QDate &date) const;
-    void setDateTextFormat(const QDate &date, const QTextCharFormat &format);
+    QTextCharFormat dateTextFormat(QDate date) const;
+    void setDateTextFormat(QDate date, const QTextCharFormat &format);
 
     bool isDateEditEnabled() const;
     void setDateEditEnabled(bool enable);
@@ -147,13 +115,13 @@ protected:
     void resizeEvent(QResizeEvent * event) override;
     void keyPressEvent(QKeyEvent * event) override;
 
-    virtual void paintCell(QPainter *painter, const QRect &rect, const QDate &date) const;
-    void updateCell(const QDate &date);
+    virtual void paintCell(QPainter *painter, const QRect &rect, QDate date) const;
+    void updateCell(QDate date);
     void updateCells();
 
 public Q_SLOTS:
-    void setSelectedDate(const QDate &date);
-    void setDateRange(const QDate &min, const QDate &max);
+    void setSelectedDate(QDate date);
+    void setDateRange(QDate min, QDate max);
     void setCurrentPage(int year, int month);
     void setGridVisible(bool show);
     void setNavigationBarVisible(bool visible);
@@ -166,17 +134,17 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void selectionChanged();
-    void clicked(const QDate &date);
-    void activated(const QDate &date);
+    void clicked(QDate date);
+    void activated(QDate date);
     void currentPageChanged(int year, int month);
 
 private:
     Q_DECLARE_PRIVATE(QCalendarWidget)
     Q_DISABLE_COPY(QCalendarWidget)
 
-    Q_PRIVATE_SLOT(d_func(), void _q_slotShowDate(const QDate &date))
-    Q_PRIVATE_SLOT(d_func(), void _q_slotChangeDate(const QDate &date))
-    Q_PRIVATE_SLOT(d_func(), void _q_slotChangeDate(const QDate &date, bool changeMonth))
+    Q_PRIVATE_SLOT(d_func(), void _q_slotShowDate(QDate date))
+    Q_PRIVATE_SLOT(d_func(), void _q_slotChangeDate(QDate date))
+    Q_PRIVATE_SLOT(d_func(), void _q_slotChangeDate(QDate date, bool changeMonth))
     Q_PRIVATE_SLOT(d_func(), void _q_editingFinished())
     Q_PRIVATE_SLOT(d_func(), void _q_prevMonthClicked())
     Q_PRIVATE_SLOT(d_func(), void _q_nextMonthClicked())

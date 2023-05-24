@@ -1,46 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbglxwindow.h"
 
 #include "qxcbscreen.h"
-#include <QtGlxSupport/private/qglxconvenience_p.h>
+#include <QtGui/private/qglxconvenience_p.h>
 #include <QDebug>
 
 QT_BEGIN_NAMESPACE
@@ -58,7 +22,7 @@ const xcb_visualtype_t *QXcbGlxWindow::createVisual()
 {
     QXcbScreen *scr = xcbScreen();
     if (!scr)
-        return nullptr;
+        return QXcbWindow::createVisual();
 
     qCDebug(lcQpaGl) << "Requested format before FBConfig/Visual selection:" << m_format;
 
@@ -71,10 +35,13 @@ const xcb_visualtype_t *QXcbGlxWindow::createVisual()
             flags |= QGLX_SUPPORTS_SRGB;
     }
 
+    const auto formatBackup = m_format;
     XVisualInfo *visualInfo = qglx_findVisualInfo(dpy, scr->screenNumber(), &m_format, GLX_WINDOW_BIT, flags);
     if (!visualInfo) {
-        qWarning() << "No XVisualInfo for format" << m_format;
-        return nullptr;
+        qCDebug(lcQpaGl) << "No XVisualInfo for format" << m_format;
+        // restore initial format before requesting it again
+        m_format = formatBackup;
+        return QXcbWindow::createVisual();
     }
     const xcb_visualtype_t *xcb_visualtype = scr->visualForId(visualInfo->visualid);
     XFree(visualInfo);

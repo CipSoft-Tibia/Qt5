@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,24 +7,28 @@
 #ifndef CORE_FPDFAPI_PAGE_CPDF_PAGEOBJECTHOLDER_H_
 #define CORE_FPDFAPI_PAGE_CPDF_PAGEOBJECTHOLDER_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <deque>
 #include <map>
 #include <memory>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "core/fpdfapi/page/cpdf_transparency.h"
+#include "core/fpdfapi/parser/cpdf_dictionary.h"
+#include "core/fxcrt/bytestring.h"
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxcrt/fx_string.h"
-#include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class CPDF_ContentParser;
-class CPDF_Dictionary;
 class CPDF_Document;
 class CPDF_PageObject;
-class CPDF_Stream;
 class PauseIndicatorIface;
 
 // These structs are used to keep track of resources that have already been
@@ -53,9 +57,9 @@ class CPDF_PageObjectHolder {
       std::deque<std::unique_ptr<CPDF_PageObject>>::const_iterator;
 
   CPDF_PageObjectHolder(CPDF_Document* pDoc,
-                        CPDF_Dictionary* pDict,
-                        CPDF_Dictionary* pPageResources,
-                        CPDF_Dictionary* pResources);
+                        RetainPtr<CPDF_Dictionary> pDict,
+                        RetainPtr<CPDF_Dictionary> pPageResources,
+                        RetainPtr<CPDF_Dictionary> pResources);
   virtual ~CPDF_PageObjectHolder();
 
   virtual bool IsPage() const;
@@ -64,13 +68,26 @@ class CPDF_PageObjectHolder {
   void ContinueParse(PauseIndicatorIface* pPause);
   ParseState GetParseState() const { return m_ParseState; }
 
-  CPDF_Document* GetDocument() const { return m_pDocument.Get(); }
-
-  CPDF_Dictionary* GetDict() const { return m_pDict.Get(); }
+  CPDF_Document* GetDocument() const { return m_pDocument; }
+  RetainPtr<const CPDF_Dictionary> GetDict() const { return m_pDict; }
+  RetainPtr<CPDF_Dictionary> GetMutableDict() { return m_pDict; }
+  RetainPtr<const CPDF_Dictionary> GetResources() const { return m_pResources; }
+  RetainPtr<CPDF_Dictionary> GetMutableResources() { return m_pResources; }
+  void SetResources(RetainPtr<CPDF_Dictionary> pDict) {
+    m_pResources = std::move(pDict);
+  }
+  RetainPtr<const CPDF_Dictionary> GetPageResources() const {
+    return m_pPageResources;
+  }
+  RetainPtr<CPDF_Dictionary> GetMutablePageResources() {
+    return m_pPageResources;
+  }
   size_t GetPageObjectCount() const { return m_PageObjectList.size(); }
   CPDF_PageObject* GetPageObjectByIndex(size_t index) const;
   void AppendPageObject(std::unique_ptr<CPDF_PageObject> pPageObj);
-  bool RemovePageObject(CPDF_PageObject* pPageObj);
+
+  // Remove `pPageObj` if present, and transfer ownership to the caller.
+  std::unique_ptr<CPDF_PageObject> RemovePageObject(CPDF_PageObject* pPageObj);
   bool ErasePageObjectAtIndex(size_t index);
 
   iterator begin() { return m_PageObjectList.begin(); }
@@ -96,14 +113,19 @@ class CPDF_PageObjectHolder {
   bool HasDirtyStreams() const { return !m_DirtyStreams.empty(); }
   std::set<int32_t> TakeDirtyStreams();
 
-  RetainPtr<CPDF_Dictionary> m_pPageResources;
-  RetainPtr<CPDF_Dictionary> m_pResources;
-  std::map<GraphicsData, ByteString> m_GraphicsMap;
-  std::map<FontData, ByteString> m_FontsMap;
+  absl::optional<ByteString> GraphicsMapSearch(const GraphicsData& gd);
+  void GraphicsMapInsert(const GraphicsData& gd, const ByteString& str);
+
+  absl::optional<ByteString> FontsMapSearch(const FontData& fd);
+  void FontsMapInsert(const FontData& fd, const ByteString& str);
 
  protected:
   void LoadTransparencyInfo();
 
+  RetainPtr<CPDF_Dictionary> m_pPageResources;
+  RetainPtr<CPDF_Dictionary> m_pResources;
+  std::map<GraphicsData, ByteString> m_GraphicsMap;
+  std::map<FontData, ByteString> m_FontsMap;
   CFX_FloatRect m_BBox;
   CPDF_Transparency m_Transparency;
 

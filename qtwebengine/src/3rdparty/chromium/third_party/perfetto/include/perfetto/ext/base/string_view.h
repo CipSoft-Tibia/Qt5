@@ -33,6 +33,8 @@ namespace base {
 // Strings are internally NOT null terminated.
 class StringView {
  public:
+  // Allow hashing with base::Hash.
+  static constexpr bool kHashable = true;
   static constexpr size_t npos = static_cast<size_t>(-1);
 
   StringView() : data_(nullptr), size_(0) {}
@@ -106,7 +108,7 @@ class StringView {
     return StringView(data_ + pos, rcount);
   }
 
-  bool CaseInsensitiveEq(const StringView& other) {
+  bool CaseInsensitiveEq(const StringView& other) const {
     if (size() != other.size())
       return false;
     if (size() == 0)
@@ -118,12 +120,33 @@ class StringView {
 #endif
   }
 
+  bool StartsWith(const StringView& other) const {
+    if (other.size() == 0)
+      return true;
+    if (size() == 0)
+      return false;
+    if (other.size() > size())
+      return false;
+    return memcmp(data(), other.data(), other.size()) == 0;
+  }
+
+  bool EndsWith(const StringView& other) const {
+    if (other.size() == 0)
+      return true;
+    if (size() == 0)
+      return false;
+    if (other.size() > size())
+      return false;
+    size_t off = size() - other.size();
+    return memcmp(data() + off, other.data(), other.size()) == 0;
+  }
+
   std::string ToStdString() const {
-    return data_ == nullptr ? "" : std::string(data_, size_);
+    return size_ == 0 ? "" : std::string(data_, size_);
   }
 
   uint64_t Hash() const {
-    base::Hash hasher;
+    base::Hasher hasher;
     hasher.Update(data_, size_);
     return hasher.digest();
   }
@@ -168,15 +191,11 @@ inline bool operator<=(const StringView& x, const StringView& y) {
 }  // namespace base
 }  // namespace perfetto
 
-namespace std {
-
 template <>
-struct hash<::perfetto::base::StringView> {
+struct std::hash<::perfetto::base::StringView> {
   size_t operator()(const ::perfetto::base::StringView& sv) const {
     return static_cast<size_t>(sv.Hash());
   }
 };
-
-}  // namespace std
 
 #endif  // INCLUDE_PERFETTO_EXT_BASE_STRING_VIEW_H_

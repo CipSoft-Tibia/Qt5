@@ -27,8 +27,9 @@ namespace dsp {
 namespace {
 
 template <int bitdepth, typename Pixel>
-void AverageBlend_C(const void* prediction_0, const void* prediction_1,
-                    const int width, const int height, void* const dest,
+void AverageBlend_C(const void* LIBGAV1_RESTRICT prediction_0,
+                    const void* LIBGAV1_RESTRICT prediction_1, const int width,
+                    const int height, void* const dest,
                     const ptrdiff_t dest_stride) {
   // 7.11.3.2 Rounding variables derivation process
   //   2 * FILTER_BITS(7) - (InterRound0(3|5) + InterRound1(7))
@@ -76,13 +77,26 @@ void Init10bpp() {
   Dsp* const dsp = dsp_internal::GetWritableDspTable(10);
   assert(dsp != nullptr);
 #if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
-#ifndef LIBGAV1_Dsp10bpp_AverageBlend
   dsp->average_blend = AverageBlend_C<10, uint16_t>;
-#endif
 #else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
   static_cast<void>(dsp);
 #ifndef LIBGAV1_Dsp10bpp_AverageBlend
   dsp->average_blend = AverageBlend_C<10, uint16_t>;
+#endif
+#endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+}
+#endif
+
+#if LIBGAV1_MAX_BITDEPTH == 12
+void Init12bpp() {
+  Dsp* const dsp = dsp_internal::GetWritableDspTable(12);
+  assert(dsp != nullptr);
+#if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  dsp->average_blend = AverageBlend_C<12, uint16_t>;
+#else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  static_cast<void>(dsp);
+#ifndef LIBGAV1_Dsp12bpp_AverageBlend
+  dsp->average_blend = AverageBlend_C<12, uint16_t>;
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
@@ -94,6 +108,9 @@ void AverageBlendInit_C() {
   Init8bpp();
 #if LIBGAV1_MAX_BITDEPTH >= 10
   Init10bpp();
+#endif
+#if LIBGAV1_MAX_BITDEPTH == 12
+  Init12bpp();
 #endif
 }
 

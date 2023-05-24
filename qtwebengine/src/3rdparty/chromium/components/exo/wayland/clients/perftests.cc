@@ -1,17 +1,32 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
 #include "base/strings/stringprintf.h"
+#include "base/test/scoped_feature_list.h"
 #include "components/exo/wayland/clients/blur.h"
 #include "components/exo/wayland/clients/simple.h"
 #include "components/exo/wayland/clients/test/wayland_client_test.h"
+#include "components/viz/common/features.h"
 #include "testing/perf/perf_result_reporter.h"
 
 namespace {
 
-using WaylandClientPerfTests = exo::WaylandClientTest;
+class WaylandClientPerfTests : public exo::WaylandClientTest {
+ public:
+  WaylandClientPerfTests();
+  ~WaylandClientPerfTests() override = default;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+WaylandClientPerfTests::WaylandClientPerfTests() {
+  // TODO(crbug.com/1399591): Figure out the missing/misordered
+  // PresentationFeedback when using this feature.
+  scoped_feature_list_.InitAndDisableFeature(features::kOnBeginFrameAcks);
+}
 
 constexpr char kMetricPrefixWaylandClient[] = "WaylandClient.";
 constexpr char kMetricFramerate[] = "framerate";
@@ -62,12 +77,14 @@ class WaylandClientBlurPerfTests
       public ::testing::WithParamInterface<double> {
  public:
   WaylandClientBlurPerfTests() = default;
+
+  WaylandClientBlurPerfTests(const WaylandClientBlurPerfTests&) = delete;
+  WaylandClientBlurPerfTests& operator=(const WaylandClientBlurPerfTests&) =
+      delete;
+
   ~WaylandClientBlurPerfTests() override = default;
 
   double max_sigma() const { return GetParam(); }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(WaylandClientBlurPerfTests);
 };
 
 INSTANTIATE_TEST_SUITE_P(All,

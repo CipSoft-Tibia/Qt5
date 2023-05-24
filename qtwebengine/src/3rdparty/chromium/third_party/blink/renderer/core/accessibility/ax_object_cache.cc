@@ -31,14 +31,12 @@
 #include <memory>
 
 #include "base/memory/ptr_util.h"
-#include "base/stl_util.h"
 #include "third_party/blink/public/web/web_ax_enums.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/node.h"
 #include "third_party/blink/renderer/core/html_element_type_helpers.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
-#include "third_party/blink/renderer/platform/wtf/text/string_hash.h"
+#include "third_party/blink/renderer/platform/wtf/text/case_folding_hash.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -51,16 +49,19 @@ void AXObjectCache::Init(AXObjectCacheCreateFunction function) {
   create_function_ = function;
 }
 
-AXObjectCache* AXObjectCache::Create(Document& document) {
+AXObjectCache* AXObjectCache::Create(Document& document,
+                                     const ui::AXMode& ax_mode) {
   DCHECK(create_function_);
-  return create_function_(document);
+  return create_function_(document, ax_mode);
 }
 
 namespace {
 
-typedef HashSet<String, CaseFoldingHash> ARIAWidgetSet;
+using ARIAWidgetSet = HashSet<String, CaseFoldingHashTraits<String>>;
 
-const char* g_aria_widgets[] = {
+const ARIAWidgetSet& ARIARoleWidgetSet() {
+  // clang-format off
+  DEFINE_STATIC_LOCAL(ARIAWidgetSet, widget_set, ({
     // From http://www.w3.org/TR/wai-aria/roles#widget_roles
     "alert", "alertdialog", "button", "checkbox", "dialog", "gridcell", "link",
     "log", "marquee", "menuitem", "menuitemcheckbox", "menuitemradio", "option",
@@ -69,24 +70,20 @@ const char* g_aria_widgets[] = {
     // Composite user interface widgets.
     // This list is also from the w3.org site referenced above.
     "combobox", "grid", "listbox", "menu", "menubar", "radiogroup", "tablist",
-    "tree", "treegrid"};
-
-static ARIAWidgetSet* CreateARIARoleWidgetSet() {
-  ARIAWidgetSet* widget_set = new HashSet<String, CaseFoldingHash>();
-  for (size_t i = 0; i < base::size(g_aria_widgets); ++i)
-    widget_set->insert(String(g_aria_widgets[i]));
+    "tree", "treegrid",
+  }));
+  // clang-format on
   return widget_set;
 }
 
 bool IncludesARIAWidgetRole(const String& role) {
-  static const HashSet<String, CaseFoldingHash>* role_set =
-      CreateARIARoleWidgetSet();
-
+  const ARIAWidgetSet& role_set = ARIARoleWidgetSet();
   Vector<String> role_vector;
   role.Split(' ', role_vector);
   for (const auto& child : role_vector) {
-    if (role_set->Contains(child))
+    if (role_set.Contains(child)) {
       return true;
+    }
   }
   return false;
 }
@@ -107,8 +104,7 @@ const char* g_aria_interactive_widget_attributes[] = {
 };
 
 bool HasInteractiveARIAAttribute(const Element& element) {
-  for (size_t i = 0; i < base::size(g_aria_interactive_widget_attributes);
-       ++i) {
+  for (size_t i = 0; i < std::size(g_aria_interactive_widget_attributes); ++i) {
     const char* attribute = g_aria_interactive_widget_attributes[i];
     if (element.hasAttribute(attribute)) {
       return true;
@@ -126,7 +122,7 @@ bool AXObjectCache::IsInsideFocusableElementOrARIAWidget(const Node& node) {
       if (element->IsFocusable())
         return true;
       String role = element->getAttribute("role");
-      if (!role.IsEmpty() && IncludesARIAWidgetRole(role))
+      if (!role.empty() && IncludesARIAWidgetRole(role))
         return true;
       if (HasInteractiveARIAAttribute(*element))
         return true;

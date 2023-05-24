@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ import java.lang.annotation.RetentionPolicy;
 @IntDef({LoadError.NO_ERROR, LoadError.HTTP_CLIENT_ERROR, LoadError.HTTP_SERVER_ERROR,
         LoadError.SSL_ERROR, LoadError.CONNECTIVITY_ERROR, LoadError.OTHER_ERROR})
 @Retention(RetentionPolicy.SOURCE)
-public @interface LoadError {
+@interface LoadError {
     /**
      * Navigation completed successfully.
      */
@@ -41,7 +41,15 @@ public @interface LoadError {
     int CONNECTIVITY_ERROR = org.chromium.weblayer_private.interfaces.LoadError.CONNECTIVITY_ERROR;
 
     /**
-     * An error not listed above occurred.
+     * An error not listed above or below occurred.
      */
     int OTHER_ERROR = org.chromium.weblayer_private.interfaces.LoadError.OTHER_ERROR;
+
+    /**
+     * Safe browsing error.
+     *
+     * @since 88
+     */
+    int SAFE_BROWSING_ERROR =
+            org.chromium.weblayer_private.interfaces.LoadError.SAFE_BROWSING_ERROR;
 }

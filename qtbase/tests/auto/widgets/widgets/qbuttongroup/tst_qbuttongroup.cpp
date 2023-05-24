@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-
+#include <QTest>
+#include <QSignalSpy>
 
 #include "qbuttongroup.h"
 #include <qaction.h>
@@ -44,6 +19,8 @@
 #include <qsettings.h>
 #endif
 
+#include <QtWidgets/private/qapplication_p.h>
+
 class SpecialRadioButton: public QRadioButton
 {
 public:
@@ -51,7 +28,7 @@ public:
     { }
 
 protected:
-    void focusInEvent(QFocusEvent *)
+    void focusInEvent(QFocusEvent *) override
     {
         QCoreApplication::postEvent(this, new QKeyEvent(QEvent::KeyPress,
                                                         Qt::Key_Down, Qt::NoModifier));
@@ -145,7 +122,7 @@ void tst_QButtonGroup::arrowKeyNavigation()
     layout.addWidget(&g2);
 
     dlg.show();
-    qApp->setActiveWindow(&dlg);
+    QApplicationPrivate::setActiveWindow(&dlg);
     QVERIFY(QTest::qWaitForWindowActive(&dlg));
 
     bt1.setFocus();
@@ -227,7 +204,7 @@ void tst_QButtonGroup::keyNavigationPushButtons()
     buttonGroup->addButton(pb3);
 
     dlg.show();
-    qApp->setActiveWindow(&dlg);
+    QApplicationPrivate::setActiveWindow(&dlg);
     if (!QTest::qWaitForWindowActive(&dlg))
         QSKIP("Window activation failed, skipping test");
 
@@ -374,17 +351,17 @@ void tst_QButtonGroup::testSignals()
     pb1.animateClick();
     QTestEventLoop::instance().enterLoop(1);
 
-    QCOMPARE(clickedSpy.count(), 1);
-    QCOMPARE(clickedIdSpy.count(), 1);
+    QCOMPARE(clickedSpy.size(), 1);
+    QCOMPARE(clickedIdSpy.size(), 1);
 
     int expectedId = -2;
 
     QCOMPARE(clickedIdSpy.takeFirst().at(0).toInt(), expectedId);
-    QCOMPARE(pressedSpy.count(), 1);
-    QCOMPARE(pressedIdSpy.count(), 1);
+    QCOMPARE(pressedSpy.size(), 1);
+    QCOMPARE(pressedIdSpy.size(), 1);
     QCOMPARE(pressedIdSpy.takeFirst().at(0).toInt(), expectedId);
-    QCOMPARE(releasedSpy.count(), 1);
-    QCOMPARE(releasedIdSpy.count(), 1);
+    QCOMPARE(releasedSpy.size(), 1);
+    QCOMPARE(releasedIdSpy.size(), 1);
     QCOMPARE(releasedIdSpy.takeFirst().at(0).toInt(), expectedId);
 
     clickedSpy.clear();
@@ -397,14 +374,14 @@ void tst_QButtonGroup::testSignals()
     pb2.animateClick();
     QTestEventLoop::instance().enterLoop(1);
 
-    QCOMPARE(clickedSpy.count(), 1);
-    QCOMPARE(clickedIdSpy.count(), 1);
+    QCOMPARE(clickedSpy.size(), 1);
+    QCOMPARE(clickedIdSpy.size(), 1);
     QCOMPARE(clickedIdSpy.takeFirst().at(0).toInt(), 23);
-    QCOMPARE(pressedSpy.count(), 1);
-    QCOMPARE(pressedIdSpy.count(), 1);
+    QCOMPARE(pressedSpy.size(), 1);
+    QCOMPARE(pressedIdSpy.size(), 1);
     QCOMPARE(pressedIdSpy.takeFirst().at(0).toInt(), 23);
-    QCOMPARE(releasedSpy.count(), 1);
-    QCOMPARE(releasedIdSpy.count(), 1);
+    QCOMPARE(releasedSpy.size(), 1);
+    QCOMPARE(releasedIdSpy.size(), 1);
     QCOMPARE(releasedIdSpy.takeFirst().at(0).toInt(), 23);
 
 
@@ -414,18 +391,18 @@ void tst_QButtonGroup::testSignals()
     pb1.setCheckable(true);
     pb2.setCheckable(true);
     pb1.toggle();
-    QCOMPARE(toggledSpy.count(), 1);
-    QCOMPARE(toggledIdSpy.count(), 1);
+    QCOMPARE(toggledSpy.size(), 1);
+    QCOMPARE(toggledIdSpy.size(), 1);
 
     pb2.toggle();
-    QCOMPARE(toggledSpy.count(), 3);     // equals 3 since pb1 and pb2 are both toggled
-    QCOMPARE(toggledIdSpy.count(), 3);
+    QCOMPARE(toggledSpy.size(), 3);     // equals 3 since pb1 and pb2 are both toggled
+    QCOMPARE(toggledIdSpy.size(), 3);
 
     pb1.setCheckable(false);
     pb2.setCheckable(false);
     pb1.toggle();
-    QCOMPARE(toggledSpy.count(), 3);
-    QCOMPARE(toggledIdSpy.count(), 3);
+    QCOMPARE(toggledSpy.size(), 3);
+    QCOMPARE(toggledIdSpy.size(), 3);
 }
 
 void tst_QButtonGroup::task106609()
@@ -457,18 +434,15 @@ void tst_QButtonGroup::task106609()
 
     qRegisterMetaType<QAbstractButton*>("QAbstractButton*");
     QSignalSpy spy1(buttons, SIGNAL(buttonClicked(QAbstractButton*)));
-    QSignalSpy spy2(buttons, SIGNAL(buttonClicked(int)));
 
-    QApplication::setActiveWindow(&dlg);
+    QApplicationPrivate::setActiveWindow(&dlg);
     QTRY_COMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&dlg));
 
     radio1->setFocus();
     radio1->setChecked(true);
     QTestEventLoop::instance().enterLoop(1);
 
-    //qDebug() << "int:" << spy2.count() << "QAbstractButton*:" << spy1.count();
-    QCOMPARE(spy2.count(), 2);
-    QCOMPARE(spy1.count(), 2);
+    QCOMPARE(spy1.size(), 2);
 }
 
 void tst_QButtonGroup::checkedButton()
@@ -512,11 +486,12 @@ public:
         : group(group)
         , deleteButton(deleteButton)
     {
-        connect(group, SIGNAL(buttonClicked(int)), SLOT(buttonClicked(int)));
+        connect(group, &QButtonGroup::buttonClicked,
+                this, &task209485_ButtonDeleter::buttonClicked);
     }
 
 private slots:
-    void buttonClicked(int)
+    void buttonClicked()
     {
         if (deleteButton)
             group->removeButton(group->buttons().first());
@@ -532,7 +507,7 @@ void tst_QButtonGroup::task209485_removeFromGroupInEventHandler_data()
     QTest::addColumn<bool>("deleteButton");
     QTest::addColumn<int>("signalCount");
     QTest::newRow("buttonPress 1") << true << 1;
-    QTest::newRow("buttonPress 2") << false << 2;
+    QTest::newRow("buttonPress 2") << false << 1;
 }
 
 void tst_QButtonGroup::task209485_removeFromGroupInEventHandler()
@@ -548,12 +523,11 @@ void tst_QButtonGroup::task209485_removeFromGroupInEventHandler()
     task209485_ButtonDeleter buttonDeleter(&group, deleteButton);
 
     QSignalSpy spy1(&group, SIGNAL(buttonClicked(QAbstractButton*)));
-    QSignalSpy spy2(&group, SIGNAL(buttonClicked(int)));
 
     // NOTE: Reintroducing the bug of this task will cause the following line to crash:
     QTest::mouseClick(button, Qt::LeftButton);
 
-    QCOMPARE(spy1.count() + spy2.count(), signalCount);
+    QCOMPARE(spy1.size(), signalCount);
 }
 
 void tst_QButtonGroup::autoIncrementId()

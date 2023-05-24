@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,19 +8,20 @@
 #include <memory>
 
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/input/web_coalesced_input_event.h"
 #include "third_party/blink/public/common/input/web_gesture_event.h"
 #include "third_party/blink/public/mojom/input/input_event_result.mojom-blink.h"
-#include "third_party/blink/public/platform/input/input_handler_proxy.h"
 #include "third_party/blink/public/platform/web_input_event_result.h"
 #include "third_party/blink/public/platform/web_touch_action.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
+#include "third_party/blink/renderer/platform/widget/input/input_handler_proxy.h"
 #include "ui/base/cursor/cursor.h"
 #include "ui/events/types/scroll_types.h"
 
 namespace cc {
 struct ElementId;
+class EventMetrics;
 struct OverscrollBehavior;
 }  // namespace cc
 
@@ -52,10 +53,13 @@ class PLATFORM_EXPORT WidgetBaseInputHandler {
       mojom::InputEventResultState ack_state,
       const ui::LatencyInfo& latency_info,
       std::unique_ptr<InputHandlerProxy::DidOverscrollParams>,
-      base::Optional<WebTouchAction>)>;
+      absl::optional<WebTouchAction>)>;
 
-  // Handle input events from the input event provider.
+  // Handle input events from the input event provider. `metrics` contains
+  // information used in reporting latency metrics in case the event causes
+  // any updates. `callback` will be called when the event is handled.
   void HandleInputEvent(const blink::WebCoalescedInputEvent& coalesced_event,
+                        std::unique_ptr<cc::EventMetrics> metrics,
                         HandledEventCallback callback);
 
   // Handle overscroll from Blink. Returns whether the should be sent to the
@@ -106,10 +110,16 @@ class PLATFORM_EXPORT WidgetBaseInputHandler {
   WebInputEventResult HandleTouchEvent(
       const WebCoalescedInputEvent& coalesced_event);
 
+  // Creates and handles scroll gestures based on parameters from
+  // `injected_scroll_params`. `input_event`, `original_latency_info`, and
+  // `original_metrics` are the original event causing gesture scrolls, its
+  // latency info, and its metrics, respectively, used in generating new
+  // gestures along with their latency info and metrics.
   void HandleInjectedScrollGestures(
-      std::vector<InjectScrollGestureParams> injected_scroll_params,
+      Vector<InjectScrollGestureParams> injected_scroll_params,
       const WebInputEvent& input_event,
-      const ui::LatencyInfo& original_latency_info);
+      const ui::LatencyInfo& original_latency_info,
+      const cc::EventMetrics* original_metrics);
 
   WidgetBase* widget_;
 
@@ -122,7 +132,7 @@ class PLATFORM_EXPORT WidgetBaseInputHandler {
 
   // We store the current cursor object so we can avoid spamming SetCursor
   // messages.
-  base::Optional<ui::Cursor> current_cursor_;
+  absl::optional<ui::Cursor> current_cursor_;
 
   // Indicates if the next sequence of Char events should be suppressed or not.
   bool suppress_next_char_events_ = false;

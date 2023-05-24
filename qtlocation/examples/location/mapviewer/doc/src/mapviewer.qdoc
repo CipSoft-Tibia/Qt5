@@ -1,34 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example mapviewer
     \title Map Viewer (QML)
     \ingroup qtlocation-examples
+    \examplecategory {Mobile}
+    \examplecategory {Positioning & Location}
 
     \brief The Map Viewer example shows how to display and interact with a map,
            search for an address, and find driving directions.
@@ -51,7 +29,7 @@
     \li Displaying a map
         \list
         \li \l{QtLocation::Map}{Map}
-        \li \l{QtLocation::MapGestureArea}{MapGestureArea}
+        \li \l{QtLocation::MapView}{MapView}
         \li \l[QML]{coordinate}
         \endlist
     \li Finding an address
@@ -69,13 +47,15 @@
 
     \section1 Displaying a Map
 
-    Drawing a map on-screen is accomplished using the Map type, as shown
+    Drawing a map on-screen is accomplished using the MapView type, as shown
     below.
 
     \snippet mapviewer/map/MapComponent.qml top
     \snippet mapviewer/map/MapComponent.qml coord
     \snippet mapviewer/map/MapComponent.qml end
 
+    The MapView consists of a \l {MapView::map}{map} and extends it for basic navigation
+    capabilities.
     In this example, we give the map an initial center \l [QML]{coordinate}
     with a set latitude and longitude. We also set the initial zoom level to 50% (halfway between
     the maximum and minimum).
@@ -94,9 +74,9 @@
 
     \snippet mapviewer/map/MapComponent.qml geocodeview
 
-    MapItemView uses an object called a "delegate" to act as a template for the
+    MapItemView uses an object called a \c{delegate} to act as a template for the
     items it creates. This can contain any map object desired, but in this case
-    we show a MapCircle:
+    we show a MapQuickItem that contains an image of a marker:
 
     \snippet mapviewer/map/MapComponent.qml pointdel0
     \snippet mapviewer/map/MapComponent.qml pointdel1
@@ -108,9 +88,9 @@
     To send a geocode request, first we create an \l [QML]{Address} object, and fill it
     in with the desired parameters.
 
-    \snippet mapviewer/mapviewer.qml geocode0
+    \snippet mapviewer/Main.qml geocode0
 
-    Then we set "geocodeModel.query" to the filled in \l [QML]{Address},
+    Then we set \c{geocodeModel.query} to the filled in \l [QML]{Address},
     and call update() on the GeocodeModel.
 
     \snippet mapviewer/map/MapComponent.qml geocode1
@@ -119,7 +99,7 @@
 
     Similar to the GeocodeModel, Qt Location also features the RouteModel type,
     which allows information about routes (for example driving directions) between two
-    or more points, to be received and used with a Map.
+    or more points, to be received and used with a \l{Map}.
 
     Here again, we instantiate the RouteModel as a property of our Map:
 
@@ -129,20 +109,18 @@
     we will use a MapItemView, to display the Routes as objects on the Map:
 
     \snippet mapviewer/map/MapComponent.qml routeview0
-    \snippet mapviewer/map/MapComponent.qml routeview1
 
     To act as a template for the objects we wish the view to create, we create
     a delegate component:
 
     \snippet mapviewer/map/MapComponent.qml routedelegate0
-    \snippet mapviewer/map/MapComponent.qml routedelegate1
 
     With the model, view and delegate now complete, the only missing component
     is some kind of control over the model to begin the Route request process.
     In the simplest case, we can fill out a Route request using two already
     available \l [QML]{coordinate}{coordinates}:
 
-    \snippet mapviewer/mapviewer.qml routecoordinate
+    \snippet mapviewer/Main.qml routecoordinate
 
     In the next snippet, we show how to set up the request object and instruct
     the model to update. We also instruct the map to center on the start

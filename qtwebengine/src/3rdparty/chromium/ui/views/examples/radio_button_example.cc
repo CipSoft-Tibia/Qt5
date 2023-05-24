@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 
 #include <memory>
 
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/views/controls/button/label_button.h"
@@ -22,8 +22,7 @@
 using l10n_util::GetStringUTF16;
 using l10n_util::GetStringUTF8;
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
 namespace {
 
@@ -51,23 +50,22 @@ void RadioButtonExample::CreateExampleView(View* container) {
             group)));
   }
 
-  select_ = container->AddChildView(std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_RADIO_BUTTON_SELECT_BUTTON_LABEL)));
-  status_ = container->AddChildView(std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_RADIO_BUTTON_STATUS_LABEL)));
+  container->AddChildView(std::make_unique<LabelButton>(
+      base::BindRepeating(&RadioButton::SetChecked,
+                          base::Unretained(radio_buttons_[2]), true),
+      GetStringUTF16(IDS_RADIO_BUTTON_SELECT_BUTTON_LABEL)));
+  container->AddChildView(std::make_unique<LabelButton>(
+      base::BindRepeating(&RadioButtonExample::StatusButtonPressed,
+                          base::Unretained(this)),
+      GetStringUTF16(IDS_RADIO_BUTTON_STATUS_LABEL)));
 }
 
-void RadioButtonExample::ButtonPressed(Button* sender, const ui::Event& event) {
-  if (sender == select_) {
-    radio_buttons_[2]->SetChecked(true);
-  } else if (sender == status_) {
-    // Show the state of radio buttons.
-    PrintStatus("Group: 1:%s, 2:%s, 3:%s",
-                BoolToOnOff(radio_buttons_[0]->GetChecked()),
-                BoolToOnOff(radio_buttons_[1]->GetChecked()),
-                BoolToOnOff(radio_buttons_[2]->GetChecked()));
-  }
+void RadioButtonExample::StatusButtonPressed() {
+  // Show the state of radio buttons.
+  PrintStatus("Group: 1:%s, 2:%s, 3:%s",
+              BoolToOnOff(radio_buttons_[0]->GetChecked()),
+              BoolToOnOff(radio_buttons_[1]->GetChecked()),
+              BoolToOnOff(radio_buttons_[2]->GetChecked()));
 }
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples

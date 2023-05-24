@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,9 @@
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
+#include "net/url_request/url_request_context_builder.h"
 #include "net/url_request/url_request_test_util.h"
+#include "services/network/public/cpp/cors/origin_access_list.h"
 #include "services/network/public/mojom/cors_origin_pattern.mojom.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
@@ -20,6 +22,7 @@ namespace {
 
 constexpr char kSecureSite[] = "https://site.tld";
 constexpr char kInsecureSite[] = "http://othersite.tld";
+constexpr char kPrivilegedInitiator[] = "https://chrome-extension.example.com";
 
 constexpr char kKnownSecChHeader[] = "Sec-CH-UA";
 constexpr char kKnownSecFetchSiteHeader[] = "Sec-Fetch-Site";
@@ -39,16 +42,20 @@ class SecHeaderHelpersTest : public PlatformTest {
  public:
   SecHeaderHelpersTest()
       : task_environment_(base::test::TaskEnvironment::MainThreadType::IO),
-        url_request_(context_.CreateRequest(GURL(kSecureSite),
-                                            net::DEFAULT_PRIORITY,
-                                            /*request_delegate=*/nullptr,
-                                            TRAFFIC_ANNOTATION_FOR_TESTS)) {}
+        context_(net::CreateTestURLRequestContextBuilder()->Build()),
+        url_request_(context_->CreateRequest(GURL(kSecureSite),
+                                             net::DEFAULT_PRIORITY,
+                                             /*delegate=*/nullptr,
+                                             TRAFFIC_ANNOTATION_FOR_TESTS)) {
+    url_request_->set_initiator(
+        url::Origin::Create(GURL(kPrivilegedInitiator)));
+  }
 
   net::URLRequest* url_request() const { return url_request_.get(); }
 
  private:
   base::test::TaskEnvironment task_environment_;
-  net::TestURLRequestContext context_;
+  std::unique_ptr<net::URLRequestContext> context_;
   std::unique_ptr<net::URLRequest> url_request_;
 };
 
@@ -164,14 +171,13 @@ TEST_F(SecHeaderHelpersTest, UnprivilegedRequestOnExtension) {
 
   network::mojom::URLLoaderFactoryParams params;
   params.unsafe_non_webby_initiator = true;
-  params.factory_bound_access_patterns =
-      network::mojom::CorsOriginAccessPatterns::New();
-  params.factory_bound_access_patterns->source_origin =
-      url::Origin::Create(url);
 
-  SetFetchMetadataHeaders(
-      current_url_request, network::mojom::RequestMode::kCors, false,
-      network::mojom::RequestDestination::kIframe, &url, params);
+  cors::OriginAccessList origin_access_list;  // empty in this test
+
+  SetFetchMetadataHeaders(current_url_request,
+                          network::mojom::RequestMode::kCors, false,
+                          network::mojom::RequestDestination::kIframe, &url,
+                          params, origin_access_list);
   ASSERT_EQ(3, static_cast<int>(current_url_request->extra_request_headers()
                                     .GetHeaderVector()
                                     .size()));
@@ -198,19 +204,21 @@ TEST_F(SecHeaderHelpersTest, PrivilegedRequestOnExtension) {
 
   network::mojom::URLLoaderFactoryParams params;
   params.unsafe_non_webby_initiator = true;
-  params.factory_bound_access_patterns =
-      network::mojom::CorsOriginAccessPatterns::New();
-  params.factory_bound_access_patterns->source_origin =
-      url::Origin::Create(url);
-  params.factory_bound_access_patterns->allow_patterns.push_back(
-      mojom::CorsOriginPattern::New(
-          url.scheme(), url.host(), 0,
-          mojom::CorsDomainMatchMode::kDisallowSubdomains,
-          mojom::CorsPortMatchMode::kAllowAnyPort,
-          mojom::CorsOriginAccessMatchPriority::kDefaultPriority));
-  SetFetchMetadataHeaders(
-      current_url_request, network::mojom::RequestMode::kCors, true,
-      network::mojom::RequestDestination::kEmbed, &url, params);
+
+  cors::OriginAccessList origin_access_list;
+  origin_access_list.AddAllowListEntryForOrigin(
+      url::Origin::Create(GURL(kPrivilegedInitiator)),  // source_origin
+      url.scheme(),                                     // protocol
+      url.host(),                                       // domain
+      0,                                                // port
+      mojom::CorsDomainMatchMode::kDisallowSubdomains,
+      mojom::CorsPortMatchMode::kAllowAnyPort,
+      mojom::CorsOriginAccessMatchPriority::kDefaultPriority);
+
+  SetFetchMetadataHeaders(current_url_request,
+                          network::mojom::RequestMode::kCors, true,
+                          network::mojom::RequestDestination::kEmbed, &url,
+                          params, origin_access_list);
 
   ASSERT_EQ(4, static_cast<int>(current_url_request->extra_request_headers()
                                     .GetHeaderVector()

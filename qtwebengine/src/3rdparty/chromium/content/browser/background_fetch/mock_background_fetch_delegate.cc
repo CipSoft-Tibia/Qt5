@@ -1,20 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_util.h"
-#include "base/threading/sequenced_task_runner_handle.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "content/browser/background_fetch/mock_background_fetch_delegate.h"
 #include "content/public/browser/background_fetch_description.h"
 #include "content/public/browser/background_fetch_response.h"
 #include "content/public/browser/browser_thread.h"
 #include "net/http/http_response_headers.h"
-#include "services/network/public/cpp/cors/cors.h"
+#include "services/network/public/cpp/header_util.h"
 
 namespace content {
 
@@ -25,7 +24,7 @@ MockBackgroundFetchDelegate::TestResponse::~TestResponse() = default;
 MockBackgroundFetchDelegate::TestResponseBuilder::TestResponseBuilder(
     int response_code)
     : response_(std::make_unique<TestResponse>()) {
-  response_->succeeded = network::cors::IsOkStatus(response_code);
+  response_->succeeded = network::IsSuccessfulStatus(response_code);
   response_->headers = base::MakeRefCounted<net::HttpResponseHeaders>(
       "HTTP/1.1 " + std::to_string(response_code));
 }
@@ -65,15 +64,6 @@ MockBackgroundFetchDelegate::MockBackgroundFetchDelegate() {}
 
 MockBackgroundFetchDelegate::~MockBackgroundFetchDelegate() {}
 
-void MockBackgroundFetchDelegate::GetPermissionForOrigin(
-    const url::Origin& origin,
-    const WebContents::Getter& wc_getter,
-    GetPermissionForOriginCallback callback) {
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
-      FROM_HERE,
-      base::BindOnce(std::move(callback), BackgroundFetchPermission::ALLOWED));
-}
-
 void MockBackgroundFetchDelegate::GetIconDisplaySize(
     GetIconDisplaySizeCallback callback) {}
 
@@ -88,6 +78,7 @@ void MockBackgroundFetchDelegate::DownloadUrl(
     const std::string& guid,
     const std::string& method,
     const GURL& url,
+    ::network::mojom::CredentialsMode credentials_mode,
     const net::NetworkTrafficAnnotationTag& traffic_annotation,
     const net::HttpRequestHeaders& headers,
     bool has_request_body) {
@@ -169,7 +160,7 @@ void MockBackgroundFetchDelegate::DownloadUrl(
                 std::make_unique<BackgroundFetchResponse>(
                     std::vector<GURL>({url}), test_response->headers),
                 base::Time::Now(), response_path,
-                /* blob_handle= */ base::nullopt, test_response->data.size())));
+                /* blob_handle= */ absl::nullopt, test_response->data.size())));
   } else {
     auto response = std::make_unique<BackgroundFetchResponse>(
         std::vector<GURL>({url}), test_response->headers);
@@ -197,8 +188,8 @@ void MockBackgroundFetchDelegate::MarkJobComplete(
 
 void MockBackgroundFetchDelegate::UpdateUI(
     const std::string& job_unique_id,
-    const base::Optional<std::string>& title,
-    const base::Optional<SkBitmap>& icon) {
+    const absl::optional<std::string>& title,
+    const absl::optional<SkBitmap>& icon) {
   job_id_to_client_map_[job_unique_id]->OnUIUpdated(job_unique_id);
 }
 
@@ -212,7 +203,7 @@ void MockBackgroundFetchDelegate::RegisterResponse(
 void MockBackgroundFetchDelegate::PostAbortCheckingTask(
     const std::string& job_unique_id,
     base::OnceCallback<void()> callback) {
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(&MockBackgroundFetchDelegate::RunAbortCheckingTask,
                      base::Unretained(this), job_unique_id,

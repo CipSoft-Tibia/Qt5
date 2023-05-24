@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -11,5 +11,5 @@ declare_args() {
   use_libjpeg_turbo = true
 
   use_qt_libjpeg = false
-  qt_libjpeg_includes = ""
+  qt_libjpeg_config = ""
 }

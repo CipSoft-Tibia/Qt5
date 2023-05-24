@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+from __future__ import absolute_import
 import os
 import shutil
 import sys
@@ -63,7 +64,7 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
       popen.return_value = p_mock
       p_mock.returncode = 1
       for stderr in communicate_strs:
-        p_mock.communicate.return_value = ('', stderr)
+        p_mock.communicate.return_value = ('', stderr.encode('utf-8'))
         self.assertRaises(error, cloud_storage._RunCommand, [])
 
   def testRunCommandCredentialsError(self):
@@ -73,7 +74,8 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
 
   def testRunCommandPermissionError(self):
     strs = ['status=403', 'status 403', '403 Forbidden']
-    self._AssertRunCommandRaisesError(strs, cloud_storage.PermissionError)
+    self._AssertRunCommandRaisesError(
+      strs, cloud_storage.CloudStoragePermissionError)
 
   def testRunCommandNotFoundError(self):
     strs = ['InvalidUriError', 'No such object', 'No URLs matched',
@@ -96,8 +98,8 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
       local_path = 'test-local-path.html'
       cloud_url = cloud_storage.Insert(cloud_storage.PUBLIC_BUCKET,
                                        remote_path, local_path)
-      self.assertEqual('https://console.developers.google.com/m/cloudstorage'
-                       '/b/chromium-telemetry/o/test-remote-path.html',
+      self.assertEqual('https://storage.cloud.google.com'
+                       '/chromium-telemetry/test-remote-path.html',
                        cloud_url)
     finally:
       cloud_storage._RunCommand = orig_run_command
@@ -110,8 +112,8 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
       local_path = 'test-local-path.html'
       cloud_filepath = cloud_storage.Upload(
           cloud_storage.PUBLIC_BUCKET, remote_path, local_path)
-      self.assertEqual('https://console.developers.google.com/m/cloudstorage'
-                       '/b/chromium-telemetry/o/test-remote-path.html',
+      self.assertEqual('https://storage.cloud.google.com'
+                       '/chromium-telemetry/test-remote-path.html',
                        cloud_filepath.view_url)
       self.assertEqual('gs://chromium-telemetry/test-remote-path.html',
                        cloud_filepath.fetch_url)
@@ -124,7 +126,7 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
     subprocess_mock.Popen.return_value = p_mock
     p_mock.communicate.return_value = (
         '',
-        'CommandException: One or more URLs matched no objects.\n')
+        b'CommandException: One or more URLs matched no objects.\n')
     p_mock.returncode_result = 1
     self.assertFalse(cloud_storage.Exists('fake bucket',
                                           'fake remote path'))
@@ -171,6 +173,24 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
       cloud_storage._RunCommand = orig_run_command
 
   @mock.patch('py_utils.cloud_storage._RunCommand')
+  def testListNoPrefix(self, mock_run_command):
+    mock_run_command.return_value = '\n'.join(['gs://bucket/foo-file.txt',
+                                               'gs://bucket/foo1/',
+                                               'gs://bucket/foo2/'])
+
+    self.assertEqual(cloud_storage.List('bucket'),
+                     ['/foo-file.txt', '/foo1/', '/foo2/'])
+
+  @mock.patch('py_utils.cloud_storage._RunCommand')
+  def testListWithPrefix(self, mock_run_command):
+    mock_run_command.return_value = '\n'.join(['gs://bucket/foo/foo-file.txt',
+                                               'gs://bucket/foo/foo1/',
+                                               'gs://bucket/foo/foo2/'])
+
+    self.assertEqual(cloud_storage.List('bucket', 'foo'),
+                     ['/foo/foo-file.txt', '/foo/foo1/', '/foo/foo2/'])
+
+  @mock.patch('py_utils.cloud_storage._RunCommand')
   def testListDirs(self, mock_run_command):
     mock_run_command.return_value = '\n'.join(['gs://bucket/foo-file.txt',
                                                '',
@@ -181,12 +201,54 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
     self.assertEqual(cloud_storage.ListDirs('bucket', 'foo*'),
                      ['/foo1/', '/foo2/'])
 
+  @mock.patch('py_utils.cloud_storage._RunCommand')
+  def testListFilesSortByName(self, mock_run_command):
+    mock_run_command.return_value = '\n'.join([
+        '  11  2022-01-01T16:05:16Z  gs://bucket/foo/c.txt',
+        '   5  2022-03-03T16:05:16Z  gs://bucket/foo/a.txt',
+        '',
+        '                            gs://bucket/foo/bar/',
+        '   1  2022-02-02T16:05:16Z  gs://bucket/foo/bar/b.txt',
+        'TOTAL: 3 objects, 17 bytes (17 B)',
+    ])
+
+    self.assertEqual(cloud_storage.ListFiles('bucket', 'foo/*', sort_by='name'),
+                     ['/foo/a.txt', '/foo/bar/b.txt', '/foo/c.txt'])
+
+  @mock.patch('py_utils.cloud_storage._RunCommand')
+  def testListFilesSortByTime(self, mock_run_command):
+    mock_run_command.return_value = '\n'.join([
+        '  11  2022-01-01T16:05:16Z  gs://bucket/foo/c.txt',
+        '   5  2022-03-03T16:05:16Z  gs://bucket/foo/a.txt',
+        '',
+        '                            gs://bucket/foo/bar/',
+        '   1  2022-02-02T16:05:16Z  gs://bucket/foo/bar/b.txt',
+        'TOTAL: 3 objects, 17 bytes (17 B)',
+    ])
+
+    self.assertEqual(cloud_storage.ListFiles('bucket', 'foo/*', sort_by='time'),
+                     ['/foo/c.txt', '/foo/bar/b.txt', '/foo/a.txt'])
+
+  @mock.patch('py_utils.cloud_storage._RunCommand')
+  def testListFilesSortBySize(self, mock_run_command):
+    mock_run_command.return_value = '\n'.join([
+        '  11  2022-01-01T16:05:16Z  gs://bucket/foo/c.txt',
+        '   5  2022-03-03T16:05:16Z  gs://bucket/foo/a.txt',
+        '',
+        '                            gs://bucket/foo/bar/',
+        '   1  2022-02-02T16:05:16Z  gs://bucket/foo/bar/b.txt',
+        'TOTAL: 3 objects, 17 bytes (17 B)',
+    ])
+
+    self.assertEqual(cloud_storage.ListFiles('bucket', 'foo/*', sort_by='size'),
+                     ['/foo/bar/b.txt', '/foo/a.txt', '/foo/c.txt'])
+
   @mock.patch('py_utils.cloud_storage.subprocess.Popen')
   def testSwarmingUsesExistingEnv(self, mock_popen):
     os.environ['SWARMING_HEADLESS'] = '1'
 
     mock_gsutil = mock_popen()
-    mock_gsutil.communicate = mock.MagicMock(return_value=('a', 'b'))
+    mock_gsutil.communicate = mock.MagicMock(return_value=(b'a', b'b'))
     mock_gsutil.returncode = None
 
     cloud_storage.Copy('bucket1', 'bucket2', 'remote_path1', 'remote_path2')
@@ -227,12 +289,12 @@ class CloudStorageFakeFsUnitTest(BaseFakeFsUnitTest):
 class GetIfChangedTests(BaseFakeFsUnitTest):
 
   def setUp(self):
-    super(GetIfChangedTests, self).setUp()
+    super().setUp()
     self._orig_read_hash = cloud_storage.ReadHash
     self._orig_calculate_hash = cloud_storage.CalculateHash
 
   def tearDown(self):
-    super(GetIfChangedTests, self).tearDown()
+    super().tearDown()
     cloud_storage.CalculateHash = self._orig_calculate_hash
     cloud_storage.ReadHash = self._orig_read_hash
 
@@ -411,4 +473,4 @@ class CloudStorageErrorHandlingTest(unittest.TestCase):
                           cloud_storage.CredentialsError)
     self.assertIsInstance(cloud_storage.GetErrorObjectForCloudStorageStderr(
         '403 Caller does not have storage.objects.list access to bucket '
-        'chrome-telemetry'), cloud_storage.PermissionError)
+        'chrome-telemetry'), cloud_storage.CloudStoragePermissionError)

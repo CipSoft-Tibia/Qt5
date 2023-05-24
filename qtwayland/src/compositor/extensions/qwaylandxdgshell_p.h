@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDXDGSHELL_P_H
 #define QWAYLANDXDGSHELL_P_H
@@ -53,7 +27,7 @@
 
 QT_BEGIN_NAMESPACE
 
-struct Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgPositionerData {
+struct Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgPositionerData {
     QSize size;
     QRect anchorRect;
     Qt::Edges anchorEdges = {};
@@ -66,7 +40,7 @@ struct Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgPositionerData {
     QPoint unconstrainedPosition() const;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgShellPrivate
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgShellPrivate
         : public QWaylandShellPrivate
         , public QtWaylandServer::xdg_wm_base
 {
@@ -91,7 +65,7 @@ protected:
     void xdg_wm_base_pong(Resource *resource, uint32_t serial) override;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgSurfacePrivate
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgSurfacePrivate
         : public QWaylandCompositorExtensionPrivate
         , public QtWaylandServer::xdg_surface
 {
@@ -125,18 +99,18 @@ private:
     void xdg_surface_set_window_geometry(Resource *resource, int32_t x, int32_t y, int32_t width, int32_t height) override;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgToplevelPrivate : public QObjectPrivate, public QtWaylandServer::xdg_toplevel
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgToplevelPrivate : public QObjectPrivate, public QtWaylandServer::xdg_toplevel
 {
     Q_DECLARE_PUBLIC(QWaylandXdgToplevel)
 public:
     struct ConfigureEvent {
         ConfigureEvent() = default;
-        ConfigureEvent(const QVector<QWaylandXdgToplevel::State>
+        ConfigureEvent(const QList<QWaylandXdgToplevel::State>
                        &incomingStates,
                        const QSize &incomingSize, uint incomingSerial)
         : states(incomingStates), size(incomingSize), serial(incomingSerial)
         { }
-        QVector<QWaylandXdgToplevel::State> states;
+        QList<QWaylandXdgToplevel::State> states;
         QSize size = {0, 0};
         uint serial = 0;
     };
@@ -183,7 +157,7 @@ public:
     static QWaylandSurfaceRole s_role;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgPopupPrivate : public QObjectPrivate, public QtWaylandServer::xdg_popup
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgPopupPrivate : public QObjectPrivate, public QtWaylandServer::xdg_popup
 {
     Q_DECLARE_PUBLIC(QWaylandXdgPopup)
 public:
@@ -216,7 +190,7 @@ private:
     QList<ConfigureEvent> m_pendingConfigures;
 };
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandXdgPositioner : public QtWaylandServer::xdg_positioner
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandXdgPositioner : public QtWaylandServer::xdg_positioner
 {
 public:
     QWaylandXdgPositioner(const QWaylandResource& resource);

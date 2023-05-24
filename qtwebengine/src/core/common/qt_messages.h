@@ -1,19 +1,16 @@
 // Copyright (c) 2012 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE.Chromium file.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 // Multiply-included file, no traditional include guard.
 
-#include "base/optional.h"
 #include "content/public/common/common_param_traits.h"
-#include "content/public/common/webplugininfo.h"
 #include "ipc/ipc_message_macros.h"
-#include "ppapi/buildflags/buildflags.h"
+#include "ipc/ipc_message_start.h"
+#include "url/gurl.h"
 
 #define IPC_MESSAGE_START QtMsgStart
 
 //-----------------------------------------------------------------------------
-// RenderView messages
 // These are messages sent from the browser to the renderer process.
 
 // Tells the renderer whether or not a storage access has been allowed.
@@ -22,13 +19,6 @@ IPC_MESSAGE_ROUTED2(QtWebEngineMsg_RequestStorageAccessAsyncResponse,
                     bool /* allowed */)
 
 //-----------------------------------------------------------------------------
-// WebContents messages
-// These are messages sent from the renderer back to the browser process.
-
-IPC_MESSAGE_ROUTED0(RenderViewObserverHostQt_DidFirstVisuallyNonEmptyLayout)
-
-//-----------------------------------------------------------------------------
-// Misc messages
 // These are messages sent from the renderer to the browser process.
 
 IPC_SYNC_MESSAGE_CONTROL4_1(QtWebEngineHostMsg_AllowStorageAccess,

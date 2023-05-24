@@ -1,38 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Thiago Macieira <thiago@kde.org>
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Thiago Macieira <thiago@kde.org>
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QThread>
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QReadWriteLock>
 
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY)
 #include <sys/resource.h>
 #endif
+
+#include <QtTest/private/qemulationdetector_p.h>
 
 class tst_QGlobalStatic : public QObject
 {
@@ -53,7 +31,7 @@ private Q_SLOTS:
 
 void tst_QGlobalStatic::initTestCase()
 {
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY)
     // The tests create a lot of threads, which require file descriptors. On systems like
     // OS X low defaults such as 256 as the limit for the number of simultaneously
     // open files is not sufficient.
@@ -145,7 +123,7 @@ void tst_QGlobalStatic::exception()
         exceptionCaught = true;
     }
     QVERIFY(exceptionCaught);
-    QCOMPARE(Q_QGS_throwingGS::guard.loadRelaxed(), 0);
+    QCOMPARE(QtGlobalStatic::Holder<Q_QGS_throwingGS>::guard.loadRelaxed(), 0);
     QVERIFY(!throwingGS.exists());
     QVERIFY(!throwingGS.isDestroyed());
 }
@@ -178,14 +156,17 @@ Q_GLOBAL_STATIC_WITH_ARGS(ThrowingType, threadStressTestGS, (threadStressTestCon
 
 void tst_QGlobalStatic::threadStressTest()
 {
+    if (QTestPrivate::isRunningArmOnX86())
+        QSKIP("Frequently hangs on QEMU, QTBUG-91423");
+
     class ThreadStressTestThread: public QThread
     {
     public:
         QReadWriteLock *lock;
-        void run()
+        void run() override
         {
             QReadLocker l(lock);
-            //usleep(qrand() * 200 / RAND_MAX);
+            //usleep(QRandomGenerator::global()->generate(200));
             // thundering herd
             try {
                 threadStressTestGS();
@@ -200,7 +181,13 @@ void tst_QGlobalStatic::threadStressTest()
     if (expectedConstructionCount <= 0)
         QSKIP("This test cannot be run more than once");
 
+#ifdef Q_OS_INTEGRITY
+    // OPEN_REALTIME_THREADS = 123 on current INTEGRITY environment
+    // if try to create more, app is halted
+    const int numThreads = 122;
+#else
     const int numThreads = 200;
+#endif
     ThreadStressTestThread threads[numThreads];
     QReadWriteLock lock;
     lock.lockForWrite();

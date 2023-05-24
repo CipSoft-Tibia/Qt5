@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbnativeinterface.h"
 
@@ -52,9 +16,6 @@
 
 #include <QtGui/qopenglcontext.h>
 #include <QtGui/qscreen.h>
-
-#include <QtPlatformHeaders/qxcbwindowfunctions.h>
-#include <QtPlatformHeaders/qxcbscreenfunctions.h>
 
 #include <stdio.h>
 
@@ -121,7 +82,7 @@ void *QXcbNativeInterface::nativeResourceForIntegration(const QByteArray &resour
     case RootWindow:
         result = rootWindow();
         break;
-    case Display:
+    case XDisplay:
         result = display();
         break;
     case AtspiBus:
@@ -158,7 +119,7 @@ void *QXcbNativeInterface::nativeResourceForScreen(const QByteArray &resourceStr
 
     const QXcbScreen *xcbScreen = static_cast<QXcbScreen *>(screen->handle());
     switch (resourceType(lowerCaseResource)) {
-    case Display:
+    case XDisplay:
 #if QT_CONFIG(xcb_xlib)
         result = xcbScreen->connection()->xlib_display();
 #endif
@@ -206,7 +167,7 @@ void *QXcbNativeInterface::nativeResourceForWindow(const QByteArray &resourceStr
         return result;
 
     switch (resourceType(lowerCaseResource)) {
-    case Display:
+    case XDisplay:
         result = displayForWindow(window);
         break;
     case Connection:
@@ -311,26 +272,8 @@ QPlatformNativeInterface::NativeResourceForBackingStoreFunction QXcbNativeInterf
 QFunctionPointer QXcbNativeInterface::platformFunction(const QByteArray &function) const
 {
     const QByteArray lowerCaseFunction = function.toLower();
-    QFunctionPointer func = handlerPlatformFunction(lowerCaseFunction);
-    if (func)
+    if (QFunctionPointer func = handlerPlatformFunction(lowerCaseFunction))
         return func;
-
-    //case sensitive
-    if (function == QXcbWindowFunctions::setWmWindowTypeIdentifier())
-        return QFunctionPointer(QXcbWindowFunctions::SetWmWindowType(QXcbWindow::setWmWindowTypeStatic));
-
-    if (function == QXcbWindowFunctions::setWmWindowRoleIdentifier())
-        return QFunctionPointer(QXcbWindowFunctions::SetWmWindowRole(QXcbWindow::setWmWindowRoleStatic));
-
-    if (function == QXcbWindowFunctions::setWmWindowIconTextIdentifier())
-        return QFunctionPointer(QXcbWindowFunctions::SetWmWindowIconText(QXcbWindow::setWindowIconTextStatic));
-
-    if (function == QXcbWindowFunctions::visualIdIdentifier()) {
-        return QFunctionPointer(QXcbWindowFunctions::VisualId(QXcbWindow::visualIdStatic));
-    }
-
-    if (function == QXcbScreenFunctions::virtualDesktopNumberIdentifier())
-        return QFunctionPointer(QXcbScreenFunctions::VirtualDesktopNumber(reinterpret_cast<void *>(QXcbScreen::virtualDesktopNumberStatic)));
 
     return nullptr;
 }
@@ -362,55 +305,54 @@ void *QXcbNativeInterface::getTimestamp(const QXcbScreen *screen)
 void *QXcbNativeInterface::startupId()
 {
     QXcbIntegration* integration = QXcbIntegration::instance();
-    QXcbConnection *defaultConnection = integration->defaultConnection();
-    if (defaultConnection)
-        return reinterpret_cast<void *>(const_cast<char *>(defaultConnection->startupId().constData()));
+    QXcbConnection *connection = integration->connection();
+    if (connection)
+        return reinterpret_cast<void *>(const_cast<char *>(connection->startupId().constData()));
     return nullptr;
 }
 
 void *QXcbNativeInterface::x11Screen()
 {
     QXcbIntegration *integration = QXcbIntegration::instance();
-    QXcbConnection *defaultConnection = integration->defaultConnection();
-    if (defaultConnection)
-        return reinterpret_cast<void *>(defaultConnection->primaryScreenNumber());
+    QXcbConnection *connection = integration->connection();
+    if (connection)
+        return reinterpret_cast<void *>(connection->primaryScreenNumber());
     return nullptr;
 }
 
 void *QXcbNativeInterface::rootWindow()
 {
     QXcbIntegration *integration = QXcbIntegration::instance();
-    QXcbConnection *defaultConnection = integration->defaultConnection();
-    if (defaultConnection)
-        return reinterpret_cast<void *>(defaultConnection->rootWindow());
+    QXcbConnection *connection = integration->connection();
+    if (connection)
+        return reinterpret_cast<void *>(connection->rootWindow());
     return nullptr;
 }
 
-void *QXcbNativeInterface::display()
+Display *QXcbNativeInterface::display() const
 {
 #if QT_CONFIG(xcb_xlib)
     QXcbIntegration *integration = QXcbIntegration::instance();
-    QXcbConnection *defaultConnection = integration->defaultConnection();
-    if (defaultConnection)
-        return defaultConnection->xlib_display();
+    if (QXcbConnection *connection = integration->connection())
+        return reinterpret_cast<Display *>(connection->xlib_display());
 #endif
     return nullptr;
 }
 
-void *QXcbNativeInterface::connection()
+xcb_connection_t *QXcbNativeInterface::connection() const
 {
     QXcbIntegration *integration = QXcbIntegration::instance();
-    return integration->defaultConnection()->xcb_connection();
+    return integration->connection()->xcb_connection();
 }
 
 void *QXcbNativeInterface::atspiBus()
 {
     QXcbIntegration *integration = static_cast<QXcbIntegration *>(QGuiApplicationPrivate::platformIntegration());
-    QXcbConnection *defaultConnection = integration->defaultConnection();
-    if (defaultConnection) {
-        auto atspiBusAtom = defaultConnection->atom(QXcbAtom::AT_SPI_BUS);
-        auto reply = Q_XCB_REPLY(xcb_get_property, defaultConnection->xcb_connection(),
-                                     false, defaultConnection->rootWindow(),
+    QXcbConnection *connection = integration->connection();
+    if (connection) {
+        auto atspiBusAtom = connection->atom(QXcbAtom::AtomAT_SPI_BUS);
+        auto reply = Q_XCB_REPLY(xcb_get_property, connection->xcb_connection(),
+                                     false, connection->rootWindow(),
                                      atspiBusAtom, XCB_ATOM_STRING, 0, 128);
         if (!reply)
             return nullptr;
@@ -440,29 +382,29 @@ void QXcbNativeInterface::setAppUserTime(QScreen* screen, xcb_timestamp_t time)
 qint32 QXcbNativeInterface::generatePeekerId()
 {
     QXcbIntegration *integration = QXcbIntegration::instance();
-    return integration->defaultConnection()->eventQueue()->generatePeekerId();
+    return integration->connection()->eventQueue()->generatePeekerId();
 }
 
 bool QXcbNativeInterface::removePeekerId(qint32 peekerId)
 {
     QXcbIntegration *integration = QXcbIntegration::instance();
-    return integration->defaultConnection()->eventQueue()->removePeekerId(peekerId);
+    return integration->connection()->eventQueue()->removePeekerId(peekerId);
 }
 
 bool QXcbNativeInterface::peekEventQueue(QXcbEventQueue::PeekerCallback peeker, void *peekerData,
                                          QXcbEventQueue::PeekOptions option, qint32 peekerId)
 {
     QXcbIntegration *integration = QXcbIntegration::instance();
-    return integration->defaultConnection()->eventQueue()->peekEventQueue(peeker, peekerData, option, peekerId);
+    return integration->connection()->eventQueue()->peekEventQueue(peeker, peekerData, option, peekerId);
 }
 
 void QXcbNativeInterface::setStartupId(const char *data)
 {
     QByteArray startupId(data);
     QXcbIntegration *integration = QXcbIntegration::instance();
-    QXcbConnection *defaultConnection = integration->defaultConnection();
-    if (defaultConnection)
-        defaultConnection->setStartupId(startupId);
+    QXcbConnection *connection = integration->connection();
+    if (connection)
+        connection->setStartupId(startupId);
 }
 
 QXcbScreen *QXcbNativeInterface::qPlatformScreenForWindow(QWindow *window)
@@ -635,7 +577,7 @@ static void dumpNativeWindowsRecursion(const QXcbConnection *connection, xcb_win
     const int oldFieldWidth = str.fieldWidth();
     const QChar oldPadChar =str.padChar();
     str.setFieldWidth(8);
-    str.setPadChar(QLatin1Char('0'));
+    str.setPadChar(u'0');
     str << Qt::hex << window;
     str.setFieldWidth(oldFieldWidth);
     str.setPadChar(oldPadChar);
@@ -671,7 +613,9 @@ QString QXcbNativeInterface::dumpConnectionNativeWindows(const QXcbConnection *c
 
 QString QXcbNativeInterface::dumpNativeWindows(WId root) const
 {
-    return dumpConnectionNativeWindows(QXcbIntegration::instance()->defaultConnection(), root);
+    return dumpConnectionNativeWindows(QXcbIntegration::instance()->connection(), root);
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qxcbnativeinterface.cpp"

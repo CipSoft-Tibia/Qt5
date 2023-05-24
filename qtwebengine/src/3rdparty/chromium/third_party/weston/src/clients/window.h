@@ -135,8 +135,6 @@ display_release_window_surface(struct display *display,
 
 #define SURFACE_HINT_RESIZE 0x10
 
-#define SURFACE_HINT_RGB565 0x100
-
 cairo_surface_t *
 display_create_surface(struct display *display,
 		       struct wl_surface *surface,
@@ -508,15 +506,6 @@ window_get_title(struct window *window);
 void
 window_set_text_cursor_position(struct window *window, int32_t x, int32_t y);
 
-enum preferred_format {
-	WINDOW_PREFERRED_FORMAT_NONE,
-	WINDOW_PREFERRED_FORMAT_RGB565
-};
-
-void
-window_set_preferred_format(struct window *window,
-			    enum preferred_format format);
-
 int
 widget_set_tooltip(struct widget *parent, char *entry, float x, float y);
 
@@ -612,6 +601,14 @@ void
 widget_schedule_redraw(struct widget *widget);
 void
 widget_set_use_cairo(struct widget *widget, int use_cairo);
+
+/*
+ * Sets the viewport destination for the widget's surface
+ * return 0 on success and -1 on failure. Set width and height to
+ * -1 to reset the viewport.
+ */
+int
+widget_set_viewport_destination(struct widget *widget, int width, int height);
 
 struct widget *
 window_frame_create(struct window *window, void *data);

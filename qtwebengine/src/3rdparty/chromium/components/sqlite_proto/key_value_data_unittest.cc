@@ -1,14 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/sqlite_proto/key_value_data.h"
 
 #include "base/memory/scoped_refptr.h"
-#include "base/strings/stringprintf.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/sqlite_proto/table_manager.h"
 #include "components/sqlite_proto/test_proto.pb.h"
 #include "sql/database.h"
@@ -44,7 +42,8 @@ class FakeKeyValueTable : public KeyValueTable<T> {
 
 class FakeTableManager : public TableManager {
  public:
-  FakeTableManager() : TableManager(base::ThreadTaskRunnerHandle::Get()) {}
+  FakeTableManager()
+      : TableManager(base::SingleThreadTaskRunner::GetCurrentDefault()) {}
   void ScheduleDBTask(const base::Location& from_here,
                       base::OnceCallback<void(sql::Database*)> task) override {
     GetTaskRunner()->PostTask(
@@ -61,7 +60,7 @@ class FakeTableManager : public TableManager {
   ~FakeTableManager() override = default;
 
   // TableManager
-  void CreateTablesIfNonExistent() override {}
+  void CreateOrClearTablesIfNecessary() override {}
   void LogDatabaseStats() override {}
 };
 
@@ -86,7 +85,7 @@ class KeyValueDataTest : public ::testing::Test {
  public:
   KeyValueDataTest()
       : manager_(base::MakeRefCounted<FakeTableManager>()),
-        data_(manager_, &table_, base::nullopt, base::TimeDelta()) {
+        data_(manager_, &table_, absl::nullopt, base::TimeDelta()) {
     // In these tests, we're using the current thread as the DB sequence.
     data_.InitializeOnDBSequence();
   }
@@ -190,7 +189,7 @@ TEST(KeyValueDataTestSize, PrunesOverlargeTable) {
   // Initialization: write a table of size 2 to |manager|'s backend.
   {
     KeyValueData<TestProto, TestProtoCompare> data(
-        manager, &table, /*max_num_entries=*/base::nullopt,
+        manager, &table, /*max_num_entries=*/absl::nullopt,
         /*flush_delay=*/base::TimeDelta());
     // In these tests, we're using the current thread as the DB sequence.
     data.InitializeOnDBSequence();
@@ -220,7 +219,7 @@ TEST(KeyValueDataTestSize, PrunesOverlargeTable) {
 
   {
     KeyValueData<TestProto, TestProtoCompare> data(
-        manager, &table, /*max_num_entries=*/base::nullopt,
+        manager, &table, /*max_num_entries=*/absl::nullopt,
         /*flush_delay=*/base::TimeDelta());
     // In these tests, we're using the current thread as the DB sequence.
     data.InitializeOnDBSequence();

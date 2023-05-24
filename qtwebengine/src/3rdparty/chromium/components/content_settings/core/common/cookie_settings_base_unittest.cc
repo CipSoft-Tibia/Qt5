@@ -1,13 +1,17 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/content_settings/core/common/cookie_settings_base.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/notreached.h"
+#include "base/test/scoped_feature_list.h"
+#include "net/base/features.h"
+#include "net/cookies/cookie_setting_override.h"
 #include "net/cookies/cookie_util.h"
+#include "net/cookies/site_for_cookies.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 
@@ -15,6 +19,10 @@ namespace content_settings {
 namespace {
 
 constexpr char kDomain[] = "foo.com";
+const GURL kURL = GURL(kDomain);
+const url::Origin kOrigin = url::Origin::Create(kURL);
+const net::SiteForCookies kSiteForCookies =
+    net::SiteForCookies::FromOrigin(kOrigin);
 
 using GetSettingCallback = base::RepeatingCallback<ContentSetting(const GURL&)>;
 
@@ -38,22 +46,23 @@ class CallbackCookieSettings : public CookieSettingsBase {
       : callback_(std::move(callback)) {}
 
   // CookieSettingsBase:
-  void GetCookieSettingInternal(const GURL& url,
-                                const GURL& first_party_url,
-                                bool is_third_party_request,
-                                content_settings::SettingSource* source,
-                                ContentSetting* cookie_setting) const override {
-    *cookie_setting = callback_.Run(url);
+  ContentSetting GetCookieSettingInternal(
+      const GURL& url,
+      const GURL& first_party_url,
+      bool is_third_party_request,
+      net::CookieSettingOverrides overrides,
+      content_settings::SettingSource* source) const override {
+    return callback_.Run(url);
   }
-  void GetSettingForLegacyCookieAccess(const std::string& cookie_domain,
-                                       ContentSetting* setting) const override {
+  ContentSetting GetSettingForLegacyCookieAccess(
+      const std::string& cookie_domain) const override {
     GURL cookie_domain_url =
         net::cookie_util::CookieOriginToURL(cookie_domain, false);
-    *setting = callback_.Run(cookie_domain_url);
+    return callback_.Run(cookie_domain_url);
   }
   bool ShouldIgnoreSameSiteRestrictions(
       const GURL& url,
-      const GURL& site_for_cookies) const override {
+      const net::SiteForCookies& site_for_cookies) const override {
     NOTREACHED();
     return false;
   }
@@ -139,19 +148,22 @@ TEST(CookieSettingsBaseTest, ShouldNotDeleteNoThirdPartyDomainMatch) {
 TEST(CookieSettingsBaseTest, CookieAccessNotAllowedWithBlockedSetting) {
   CallbackCookieSettings settings(
       base::BindRepeating([](const GURL&) { return CONTENT_SETTING_BLOCK; }));
-  EXPECT_FALSE(settings.IsCookieAccessAllowed(GURL(kDomain), GURL(kDomain)));
+  EXPECT_FALSE(settings.IsFullCookieAccessAllowed(
+      kURL, kSiteForCookies, kOrigin, net::CookieSettingOverrides()));
 }
 
 TEST(CookieSettingsBaseTest, CookieAccessAllowedWithAllowSetting) {
   CallbackCookieSettings settings(
       base::BindRepeating([](const GURL&) { return CONTENT_SETTING_ALLOW; }));
-  EXPECT_TRUE(settings.IsCookieAccessAllowed(GURL(kDomain), GURL(kDomain)));
+  EXPECT_TRUE(settings.IsFullCookieAccessAllowed(
+      kURL, kSiteForCookies, kOrigin, net::CookieSettingOverrides()));
 }
 
 TEST(CookieSettingsBaseTest, CookieAccessAllowedWithSessionOnlySetting) {
   CallbackCookieSettings settings(base::BindRepeating(
       [](const GURL&) { return CONTENT_SETTING_SESSION_ONLY; }));
-  EXPECT_TRUE(settings.IsCookieAccessAllowed(GURL(kDomain), GURL(kDomain)));
+  EXPECT_TRUE(settings.IsFullCookieAccessAllowed(
+      kURL, kSiteForCookies, kOrigin, net::CookieSettingOverrides()));
 }
 
 TEST(CookieSettingsBaseTest, LegacyCookieAccessSemantics) {
@@ -168,19 +180,19 @@ TEST(CookieSettingsBaseTest, LegacyCookieAccessSemantics) {
 TEST(CookieSettingsBaseTest, IsCookieSessionOnlyWithAllowSetting) {
   CallbackCookieSettings settings(
       base::BindRepeating([](const GURL&) { return CONTENT_SETTING_ALLOW; }));
-  EXPECT_FALSE(settings.IsCookieSessionOnly(GURL(kDomain)));
+  EXPECT_FALSE(settings.IsCookieSessionOnly(kURL));
 }
 
 TEST(CookieSettingsBaseTest, IsCookieSessionOnlyWithBlockSetting) {
   CallbackCookieSettings settings(
       base::BindRepeating([](const GURL&) { return CONTENT_SETTING_BLOCK; }));
-  EXPECT_FALSE(settings.IsCookieSessionOnly(GURL(kDomain)));
+  EXPECT_FALSE(settings.IsCookieSessionOnly(kURL));
 }
 
 TEST(CookieSettingsBaseTest, IsCookieSessionOnlySessionWithOnlySetting) {
   CallbackCookieSettings settings(base::BindRepeating(
       [](const GURL&) { return CONTENT_SETTING_SESSION_ONLY; }));
-  EXPECT_TRUE(settings.IsCookieSessionOnly(GURL(kDomain)));
+  EXPECT_TRUE(settings.IsCookieSessionOnly(kURL));
 }
 
 TEST(CookieSettingsBaseTest, IsValidSetting) {
@@ -209,6 +221,53 @@ TEST(CookieSettingsBaseTest, IsValidLegacyAccessSetting) {
   EXPECT_FALSE(CookieSettingsBase::IsValidSettingForLegacyAccess(
       CONTENT_SETTING_SESSION_ONLY));
 }
+
+class CookieSettingsBaseStorageAccessAPITest
+    : public testing::TestWithParam<std::tuple<bool, bool>> {
+ public:
+  CookieSettingsBaseStorageAccessAPITest() {
+    CookieSettingsBase::SetStorageAccessAPIGrantsUnpartitionedStorageForTesting(
+        PermissionGrantsUnpartitionedStorage());
+
+    std::vector<base::test::FeatureRefAndParams> enabled;
+    std::vector<base::test::FeatureRef> disabled;
+    if (IsStoragePartitioned()) {
+      enabled.push_back({net::features::kThirdPartyStoragePartitioning, {}});
+    } else {
+      disabled.push_back(net::features::kThirdPartyStoragePartitioning);
+    }
+    features_.InitWithFeaturesAndParameters(enabled, disabled);
+  }
+
+  bool PermissionGrantsUnpartitionedStorage() const {
+    return std::get<0>(GetParam());
+  }
+  bool IsStoragePartitioned() const { return std::get<1>(GetParam()); }
+
+ private:
+  base::test::ScopedFeatureList features_;
+};
+
+TEST_P(CookieSettingsBaseStorageAccessAPITest,
+       SettingOverridesForStorageAccessAPIs) {
+  CallbackCookieSettings settings(
+      base::BindRepeating([](const GURL&) { return CONTENT_SETTING_ALLOW; }));
+
+  net::CookieSettingOverrides overrides = settings.SettingOverridesForStorage();
+
+  EXPECT_EQ(
+      overrides.Has(net::CookieSettingOverride::kStorageAccessGrantEligible),
+      PermissionGrantsUnpartitionedStorage() || IsStoragePartitioned());
+  EXPECT_EQ(
+      overrides.Has(
+          net::CookieSettingOverride::kTopLevelStorageAccessGrantEligible),
+      IsStoragePartitioned());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    /* no prefix */,
+    CookieSettingsBaseStorageAccessAPITest,
+    testing::Combine(testing::Bool(), testing::Bool()));
 
 }  // namespace
 }  // namespace content_settings

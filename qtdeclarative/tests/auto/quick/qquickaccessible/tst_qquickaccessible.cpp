@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QtTest>
@@ -45,8 +20,12 @@
 #include <QtQuick/private/qquicklistview_p.h>
 #include <QtQuick/private/qquicktext_p.h>
 
-#include "../../shared/util.h"
-#include "../shared/visualtestutil.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/visualtestutils_p.h>
+
+#include <QQmlComponent>
+
+using namespace Qt::StringLiterals;
 
 #define EXPECT(cond) \
     do { \
@@ -67,9 +46,9 @@ public:
     virtual ~tst_QQuickAccessible();
 
 public slots:
-    void initTestCase();
+    void initTestCase() override;
     void cleanupTestCase();
-    void init();
+    void init() override;
     void cleanup();
 
 private slots:
@@ -77,6 +56,7 @@ private slots:
     void commonTests();
 
     void quickAttachedProperties();
+    void attachedWins();
     void basicPropertiesTest();
     void hitTest();
     void checkableTest();
@@ -84,6 +64,7 @@ private slots:
 };
 
 tst_QQuickAccessible::tst_QQuickAccessible()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 
 }
@@ -110,6 +91,7 @@ void tst_QQuickAccessible::cleanupTestCase()
 
 void tst_QQuickAccessible::init()
 {
+    QQmlDataTest::init();
     QTestAccessibility::clearEvents();
 }
 
@@ -117,11 +99,17 @@ void tst_QQuickAccessible::cleanup()
 {
     const EventList list = QTestAccessibility::events();
     if (!list.isEmpty()) {
-        qWarning("%d accessibility event(s) were not handled in testfunction '%s':", list.count(),
-                 QString(QTest::currentTestFunction()).toLatin1().constData());
-        for (int i = 0; i < list.count(); ++i)
-            qWarning(" %d: Object: %p Event: '%s' Child: %d", i + 1, list.at(i)->object(),
-                     qAccessibleEventString(list.at(i)->type()), list.at(i)->child());
+        qWarning().noquote() << list.size()
+                             << "accessibility event(s) were not handled in testfunction '"
+                             << QTest::currentTestFunction() << "':";
+        for (int i = 0; i < list.size(); ++i) {
+            auto object = list.at(i)->object();
+            QString objectInfo = object ? QDebug::toString(object)
+                                        : u"[deleted object]"_s;
+            qWarning().noquote() << " " << (i + 1) << objectInfo
+                       << "Event: '" << qAccessibleEventString(list.at(i)->type())
+                       << "' Child: " << list.at(i)->child();
+        }
     }
     QTestAccessibility::clearEvents();
 }
@@ -140,17 +128,17 @@ void tst_QQuickAccessible::commonTests()
 
     qDebug() << "testing" << accessibleRoleFileName;
 
-    QQuickView *view = new QQuickView();
+    auto view = std::make_unique<QQuickView>();
 //    view->setFixedSize(240,320);
     view->setSource(testFileUrl(accessibleRoleFileName));
     view->show();
 //    view->setFocus();
     QVERIFY(view->rootObject() != nullptr);
 
-    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(view);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(view.get());
     QVERIFY(iface);
 
-    delete view;
+    view.reset();
     QTestAccessibility::clearEvents();
 }
 
@@ -161,12 +149,11 @@ void tst_QQuickAccessible::quickAttachedProperties()
         QQmlComponent component(&engine);
         component.setData("import QtQuick 2.0\nItem {\n"
                                 "}", QUrl());
-        QObject *object = component.create();
+        auto object = std::unique_ptr<QObject>(component.create());
         QVERIFY(object != nullptr);
 
-        QObject *attachedObject = QQuickAccessibleAttached::attachedProperties(object);
+        QObject *attachedObject = QQuickAccessibleAttached::attachedProperties(object.get());
         QCOMPARE(attachedObject, static_cast<QObject*>(nullptr));
-        delete object;
     }
 
     // Attaching to non-item
@@ -195,23 +182,24 @@ void tst_QQuickAccessible::quickAttachedProperties()
         component.setData("import QtQuick 2.0\nItem {\n"
                                 "Accessible.role: Accessible.Button\n"
                                 "}", QUrl());
-        QObject *object = component.create();
+        auto object = std::unique_ptr<QObject>(component.create());
         QVERIFY(object != nullptr);
 
         const auto attachedObject = qobject_cast<QQuickAccessibleAttached*>(
-            QQuickAccessibleAttached::attachedProperties(object));
+            QQuickAccessibleAttached::attachedProperties(object.get()));
         QVERIFY(attachedObject);
         if (attachedObject) {
             QVariant p = attachedObject->property("role");
             QCOMPARE(p.isNull(), false);
             QCOMPARE(p.toInt(), int(QAccessible::PushButton));
             p = attachedObject->property("name");
-            QCOMPARE(p.isNull(), true);
+            QCOMPARE(p.typeId(), QMetaType::QString);
+            QVERIFY2(p.value<QString>().isEmpty(), QTest::toString(p));
             p = attachedObject->property("description");
-            QCOMPARE(p.isNull(), true);
+            QCOMPARE(p.typeId(), QMetaType::QString);
+            QVERIFY2(p.value<QString>().isEmpty(), QTest::toString(p));
             QCOMPARE(attachedObject->wasNameExplicitlySet(), false);
         }
-        delete object;
     }
 
     // Attached property
@@ -223,11 +211,11 @@ void tst_QQuickAccessible::quickAttachedProperties()
                                 "Accessible.name: \"Donald\"\n"
                                 "Accessible.description: \"Duck\"\n"
                                 "}", QUrl());
-        QObject *object = component.create();
+        auto object = std::unique_ptr<QObject>(component.create());
         QVERIFY(object != nullptr);
 
         const auto attachedObject = qobject_cast<QQuickAccessibleAttached*>(
-            QQuickAccessibleAttached::attachedProperties(object));
+            QQuickAccessibleAttached::attachedProperties(object.get()));
         QVERIFY(attachedObject);
         if (attachedObject) {
             QVariant p = attachedObject->property("role");
@@ -241,7 +229,6 @@ void tst_QQuickAccessible::quickAttachedProperties()
             QCOMPARE(p.toString(), QLatin1String("Duck"));
             QCOMPARE(attachedObject->wasNameExplicitlySet(), true);
         }
-        delete object;
     }
 
     // Check overriding of attached role for Text
@@ -253,10 +240,10 @@ void tst_QQuickAccessible::quickAttachedProperties()
                           "Accessible.name: \"TextButton\"\n"
                           "Accessible.description: \"Text Button\"\n"
                           "}", QUrl());
-        QObject *object = component.create();
+        auto object = std::unique_ptr<QObject>(component.create());
         QVERIFY(object != nullptr);
 
-        QObject *attachedObject = QQuickAccessibleAttached::attachedProperties(object);
+        QObject *attachedObject = QQuickAccessibleAttached::attachedProperties(object.get());
         QVERIFY(attachedObject);
         if (attachedObject) {
             QVariant p = attachedObject->property("role");
@@ -269,7 +256,6 @@ void tst_QQuickAccessible::quickAttachedProperties()
             QCOMPARE(p.isNull(), false);
             QCOMPARE(p.toString(), QLatin1String("Text Button"));
         }
-        delete object;
     }
     // Check overriding of attached role for Text
     {
@@ -285,13 +271,13 @@ void tst_QQuickAccessible::quickAttachedProperties()
                           "Accessible.description: \"Text Button\"\n"
                           "}\n"
                           "}", QUrl());
-        QObject *object = component.create();
+        auto object = std::unique_ptr<QObject>(component.create());
         QVERIFY(object != nullptr);
 
-        QQuickListView *listview = qobject_cast<QQuickListView *>(object);
+        QQuickListView *listview = qobject_cast<QQuickListView *>(object.get());
         QVERIFY(listview != nullptr);
         QQuickItem *contentItem = listview->contentItem();
-        QQuickText *childItem = QQuickVisualTestUtil::findItem<QQuickText>(contentItem, "acc_text");
+        QQuickText *childItem = QQuickVisualTestUtils::findItem<QQuickText>(contentItem, "acc_text");
         QVERIFY(childItem != nullptr);
 
         QObject *attachedObject = QQuickAccessibleAttached::attachedProperties(childItem);
@@ -307,7 +293,6 @@ void tst_QQuickAccessible::quickAttachedProperties()
             QCOMPARE(p.isNull(), false);
             QCOMPARE(p.toString(), QLatin1String("Text Button"));
         }
-        delete object;
     }
     // Check that a name can be implicitly set.
     {
@@ -319,11 +304,11 @@ void tst_QQuickAccessible::quickAttachedProperties()
                 Accessible.role: Accessible.Button
                 Accessible.description: "Text Button"
             })", QUrl());
-        QScopedPointer<QObject> object(component.create());
+        auto object = std::unique_ptr<QObject>(component.create());
         QVERIFY(object);
 
         const auto attachedObject = qobject_cast<QQuickAccessibleAttached*>(
-            QQuickAccessibleAttached::attachedProperties(object.data()));
+            QQuickAccessibleAttached::attachedProperties(object.get()));
         QVERIFY(attachedObject);
         QVERIFY(!attachedObject->wasNameExplicitlySet());
 
@@ -338,24 +323,49 @@ void tst_QQuickAccessible::quickAttachedProperties()
     QTestAccessibility::clearEvents();
 }
 
+// Verify that a role can be explicitly set, and that the values from the
+// attached object are used even if the item has a default role - QTBUG-110114
+void tst_QQuickAccessible::attachedWins()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData(R"(
+        import QtQuick
+        import QtQuick.Controls
+        Button {
+            text: "Button"
+            objectName: "button"
+            Accessible.role: Accessible.RadioButton
+            Accessible.description: "Radio Button"
+        })", QUrl());
+    auto button = std::unique_ptr<QObject>(component.create());
+    QVERIFY(button);
+
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(button.get());
+    QVERIFY(iface);
+
+    QCOMPARE(iface->role(), QAccessible::RadioButton);
+    QTestAccessibility::clearEvents();
+}
+
 
 void tst_QQuickAccessible::basicPropertiesTest()
 {
     QAccessibleInterface *app = QAccessible::queryAccessibleInterface(qApp);
     QCOMPARE(app->childCount(), 0);
 
-    QQuickView *window = new QQuickView();
+    auto window = std::make_unique<QQuickView>();
     window->setSource(testFileUrl("text.qml"));
     window->show();
     QCOMPARE(app->childCount(), 1);
 
-    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(window);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(window.get());
     QVERIFY(iface);
     QCOMPARE(iface->childCount(), 1);
 
     QAccessibleInterface *item = iface->child(0);
     QVERIFY(item);
-    QCOMPARE(item->childCount(), 5);
+    QCOMPARE(item->childCount(), 6);
     QCOMPARE(item->rect().size(), QSize(400, 400));
     QCOMPARE(item->role(), QAccessible::Client);
     QCOMPARE(iface->indexOfChild(item), 0);
@@ -381,8 +391,9 @@ void tst_QQuickAccessible::basicPropertiesTest()
     QCOMPARE(text2->rect().y(), item->rect().y() + 40);
     QCOMPARE(text2->role(), QAccessible::StaticText);
     QCOMPARE(item->indexOfChild(text2), 1);
-    QCOMPARE(text2->state().editable, 0u);
-    QCOMPARE(text2->state().readOnly, 1);
+    QVERIFY(!text2->state().editable);
+    QVERIFY(text2->state().readOnly);
+    QVERIFY(text2->state().focusable);
 
     QCOMPARE(iface->indexOfChild(text2), -1);
     QCOMPARE(text2->indexOfChild(item), -1);
@@ -392,10 +403,10 @@ void tst_QQuickAccessible::basicPropertiesTest()
     QVERIFY(textInput);
     QCOMPARE(textInput->childCount(), 0);
     QCOMPARE(textInput->role(), QAccessible::EditableText);
-    QCOMPARE(textInput->state().editable, 1);
-    QCOMPARE(textInput->state().readOnly, 0);
-    QCOMPARE(textInput->state().multiLine, 0);
-    QCOMPARE(textInput->state().focusable, 1);
+    QVERIFY(textInput->state().editable);
+    QVERIFY(!textInput->state().readOnly);
+    QVERIFY(!textInput->state().multiLine);
+    QVERIFY(textInput->state().focusable);
     QCOMPARE(textInput->text(QAccessible::Value), "A text input");
     auto textInterface = textInput->textInterface();
     QVERIFY(textInterface);
@@ -411,9 +422,9 @@ void tst_QQuickAccessible::basicPropertiesTest()
     QVERIFY(textEdit);
     QCOMPARE(textEdit->childCount(), 0);
     QCOMPARE(textEdit->role(), QAccessible::EditableText);
-    QCOMPARE(textEdit->state().editable, 1);
-    QCOMPARE(textEdit->state().readOnly, 0);
-    QCOMPARE(textEdit->state().focusable, 1);
+    QVERIFY(textEdit->state().editable);
+    QVERIFY(!textEdit->state().readOnly);
+    QVERIFY(textEdit->state().focusable);
     QCOMPARE(textEdit->text(QAccessible::Value), "A multi-line text edit\nTesting Accessibility.");
     auto textEditTextInterface = textEdit->textInterface();
     QVERIFY(textEditTextInterface);
@@ -423,7 +434,7 @@ void tst_QQuickAccessible::basicPropertiesTest()
     textEdit->setText(QAccessible::Value, newText);
     QCOMPARE(textEdit->text(QAccessible::Value), newText);
     QEXPECT_FAIL("", "multi line is not implemented", Continue);
-    QCOMPARE(textInput->state().multiLine, 1);
+    QVERIFY(textInput->state().multiLine);
 
     // Text "Hello 3"
     QAccessibleInterface *text3 = item->child(4);
@@ -432,24 +443,49 @@ void tst_QQuickAccessible::basicPropertiesTest()
     QCOMPARE(text3->text(QAccessible::Name), QLatin1String("Hello 3"));
     QCOMPARE(text3->role(), QAccessible::StaticText);
     QCOMPARE(item->indexOfChild(text3), 4);
-    QCOMPARE(text3->state().editable, 0);
-    QCOMPARE(text3->state().readOnly, 0);
+    QVERIFY(!text3->state().editable);
+    QVERIFY(!text3->state().readOnly);
     // test implicit state values due to role change
     QQuickAccessibleAttached *attached = QQuickAccessibleAttached::attachedProperties(text3->object());
     attached->setRole(QAccessible::StaticText);
     QCOMPARE(text3->role(), QAccessible::StaticText);
-    QCOMPARE(text3->state().readOnly, 1);
+    QVERIFY(text3->state().readOnly);
+
+    // Text "Rich text"
+    QAccessibleInterface *richText = item->child(5);
+    QVERIFY(text3);
+    QCOMPARE(richText->childCount(), 2);
+    QCOMPARE(richText->text(QAccessible::Name), QLatin1String("Rich text with links:\nWebsite or blog"));
+    QCOMPARE(richText->role(), QAccessible::StaticText);
+    QCOMPARE(item->indexOfChild(richText), 5);
+    QVERIFY(!richText->state().editable);
+    QVERIFY(!richText->state().readOnly);
+
+    // Check for hyperlink child nodes
+    for (int i = 0; i < richText->childCount(); ++i) {
+        static const char *linkUrls[2][2] = {
+            {"Website", "https://qt.io"},
+            {"blog", "https://qt.io/blog"}
+        };
+        QAccessibleInterface *link1 = richText->child(i);
+        QVERIFY(link1);
+        QCOMPARE(link1->role(), QAccessible::Link);
+        QAccessibleHyperlinkInterface *link = link1->hyperlinkInterface();
+        QVERIFY(link);
+        QCOMPARE(link->anchor(), QLatin1String(linkUrls[i][0]));
+        QCOMPARE(link->anchorTarget(), QLatin1String(linkUrls[i][1]));
+    }
 
     // see if implicit changes back
     attached->setRole(QAccessible::EditableText);
     QEXPECT_FAIL("", "EditableText does not implicitly set readOnly to false", Continue);
-    QCOMPARE(text3->state().readOnly, 0);
+    QVERIFY(!text3->state().readOnly);
     // explicitly set state
     attached->set_readOnly(false);
     attached->setRole(QAccessible::StaticText);
-    QCOMPARE(text3->state().readOnly, 0);
+    QVERIFY(!text3->state().readOnly);
 
-    delete window;
+    window.reset();
     QTestAccessibility::clearEvents();
 }
 
@@ -468,14 +504,15 @@ QAccessibleInterface *topLevelChildAt(QAccessibleInterface *iface, int x, int y)
 
 void tst_QQuickAccessible::hitTest()
 {
-    QQuickView *window = new QQuickView;
+    auto window = std::make_unique<QQuickView>();
     window->setSource(testFileUrl("hittest.qml"));
     window->show();
 
-    QAccessibleInterface *windowIface = QAccessible::queryAccessibleInterface(window);
+    QAccessibleInterface *windowIface = QAccessible::queryAccessibleInterface(window.get());
     QVERIFY(windowIface);
     QAccessibleInterface *rootItem = windowIface->child(0);
-    QRect rootRect = rootItem->rect();
+    // on Android the main window is always shown fullscreen
+    QRect rootRect = QRect(window->x(), window->y(), window->width(), window->height());
 
     // check the root item from app
     QAccessibleInterface *appIface = QAccessible::queryAccessibleInterface(qApp);
@@ -521,13 +558,13 @@ void tst_QQuickAccessible::hitTest()
         }
     }
 
-    delete window;
+    window.reset();
     QTestAccessibility::clearEvents();
 }
 
 void tst_QQuickAccessible::checkableTest()
 {
-    QScopedPointer<QQuickView> window(new QQuickView());
+    auto window = std::make_unique<QQuickView>();
     window->setSource(testFileUrl("checkbuttons.qml"));
     window->show();
 
@@ -540,7 +577,7 @@ void tst_QQuickAccessible::checkableTest()
     QAccessible::State activatedChange;
     activatedChange.active = true;
 
-    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(window.data());
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(window.get());
     QVERIFY(iface);
     QAccessibleInterface *root = iface->child(0);
 
@@ -604,7 +641,7 @@ void tst_QQuickAccessible::checkableTest()
 
 void tst_QQuickAccessible::ignoredTest()
 {
-    QScopedPointer<QQuickView> window(new QQuickView());
+    auto window = std::make_unique<QQuickView>();
     window->setSource(testFileUrl("ignored.qml"));
     window->show();
 
@@ -617,7 +654,7 @@ void tst_QQuickAccessible::ignoredTest()
     QAccessible::State activatedChange;
     activatedChange.active = true;
 
-    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(window.data());
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(window.get());
     QVERIFY(iface);
     QAccessibleInterface *rectangleA = iface->child(0);
 

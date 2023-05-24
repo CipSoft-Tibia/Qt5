@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGRENDERER_P_H
 #define QSGRENDERER_P_H
@@ -51,8 +15,7 @@
 // We mean it.
 //
 
-#include "qsgabstractrenderer.h"
-#include "qsgabstractrenderer_p.h"
+#include "qsgabstractrenderer_p_p.h"
 #include "qsgnode.h"
 #include "qsgmaterial.h"
 
@@ -60,7 +23,6 @@
 
 QT_BEGIN_NAMESPACE
 
-class QSGBindable;
 class QSGNodeUpdater;
 class QRhiRenderTarget;
 class QRhiCommandBuffer;
@@ -69,6 +31,29 @@ class QRhiResourceUpdateBatch;
 
 Q_QUICK_PRIVATE_EXPORT bool qsg_test_and_clear_fatal_render_error();
 Q_QUICK_PRIVATE_EXPORT void qsg_set_fatal_renderer_error();
+
+class Q_QUICK_PRIVATE_EXPORT QSGRenderTarget
+{
+public:
+    QSGRenderTarget() { }
+
+    QSGRenderTarget(QRhiRenderTarget *rt,
+                    QRhiRenderPassDescriptor *rpDesc,
+                    QRhiCommandBuffer *cb)
+        : rt(rt), rpDesc(rpDesc), cb(cb) { }
+
+    explicit QSGRenderTarget(QPaintDevice *paintDevice)
+        : paintDevice(paintDevice) { }
+
+    QRhiRenderTarget *rt = nullptr;
+    // Store the rp descriptor obj separately, it can (even if often it won't)
+    // be different from rt->renderPassDescriptor(); e.g. one user is the 2D
+    // integration in Quick 3D which will use a different, but compatible rp.
+    QRhiRenderPassDescriptor *rpDesc = nullptr;
+    QRhiCommandBuffer *cb = nullptr;
+
+    QPaintDevice *paintDevice = nullptr;
+};
 
 class Q_QUICK_PRIVATE_EXPORT QSGRenderer : public QSGAbstractRenderer
 {
@@ -88,33 +73,27 @@ public:
     QSGRenderContext *context() const { return m_context; }
 
     bool isMirrored() const;
-    void renderScene(const QSGBindable &bindable);
-    void renderScene(uint fboId = 0) override;
+    void renderScene() override;
+    void prepareSceneInline() override;
+    void renderSceneInline() override;
     void nodeChanged(QSGNode *node, QSGNode::DirtyState state) override;
 
     QSGNodeUpdater *nodeUpdater() const;
     void setNodeUpdater(QSGNodeUpdater *updater);
     inline QSGMaterialShader::RenderState state(QSGMaterialShader::RenderState::DirtyStates dirty) const;
-    inline QSGMaterialRhiShader::RenderState rhiState(QSGMaterialRhiShader::RenderState::DirtyStates dirty) const;
-    virtual void setCustomRenderMode(const QByteArray &) { }
-    virtual bool hasCustomRenderModeWithContinuousUpdate() const { return false; }
+    virtual void setVisualizationMode(const QByteArray &) { }
+    virtual bool hasVisualizationModeWithContinuousUpdate() const { return false; }
     virtual void releaseCachedResources() { }
 
     void clearChangedFlag() { m_changed_emitted = false; }
 
-    // Accessed by QSGMaterialRhiShader::RenderState.
+    // Accessed by QSGMaterialShader::RenderState.
     QByteArray *currentUniformData() const { return m_current_uniform_data; }
     QRhiResourceUpdateBatch *currentResourceUpdateBatch() const { return m_current_resource_update_batch; }
     QRhi *currentRhi() const { return m_rhi; }
 
-    void setRenderTarget(QRhiRenderTarget *rt) { m_rt = rt; }
-    QRhiRenderTarget *renderTarget() const { return m_rt; }
-
-    void setCommandBuffer(QRhiCommandBuffer *cb) { m_cb = cb; }
-    QRhiCommandBuffer *commandBuffer() const { return m_cb; }
-
-    void setRenderPassDescriptor(QRhiRenderPassDescriptor *rpDesc) { m_rp_desc = rpDesc; }
-    QRhiRenderPassDescriptor *renderPassDescriptor() const { return m_rp_desc; }
+    void setRenderTarget(const QSGRenderTarget &rt) { m_rt = rt; }
+    const QSGRenderTarget &renderTarget() const { return m_rt; }
 
     void setRenderPassRecordingCallbacks(QSGRenderContext::RenderPassCallback start,
                                          QSGRenderContext::RenderPassCallback end,
@@ -128,7 +107,8 @@ public:
 protected:
     virtual void render() = 0;
 
-    const QSGBindable *bindable() const { return m_bindable; }
+    virtual void prepareInline();
+    virtual void renderInline();
 
     virtual void preprocess();
 
@@ -147,9 +127,7 @@ protected:
     QByteArray *m_current_uniform_data;
     QRhiResourceUpdateBatch *m_current_resource_update_batch;
     QRhi *m_rhi;
-    QRhiRenderTarget *m_rt;
-    QRhiCommandBuffer *m_cb;
-    QRhiRenderPassDescriptor *m_rp_desc;
+    QSGRenderTarget m_rt;
     struct {
         QSGRenderContext::RenderPassCallback start = nullptr;
         QSGRenderContext::RenderPassCallback end = nullptr;
@@ -162,44 +140,14 @@ private:
     QSet<QSGNode *> m_nodes_to_preprocess;
     QSet<QSGNode *> m_nodes_dont_preprocess;
 
-    const QSGBindable *m_bindable;
-
     uint m_changed_emitted : 1;
     uint m_is_rendering : 1;
     uint m_is_preprocessing : 1;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QSGBindable
-{
-public:
-    virtual ~QSGBindable() { }
-    virtual void bind() const = 0;
-    virtual void clear(QSGAbstractRenderer::ClearMode mode) const;
-    virtual void reactivate() const;
-};
-#if QT_CONFIG(opengl)
-class QSGBindableFboId : public QSGBindable
-{
-public:
-    QSGBindableFboId(GLuint);
-    void bind() const override;
-private:
-    GLuint m_id;
-};
-#endif
-
-
 QSGMaterialShader::RenderState QSGRenderer::state(QSGMaterialShader::RenderState::DirtyStates dirty) const
 {
     QSGMaterialShader::RenderState s;
-    s.m_dirty = dirty;
-    s.m_data = this;
-    return s;
-}
-
-QSGMaterialRhiShader::RenderState QSGRenderer::rhiState(QSGMaterialRhiShader::RenderState::DirtyStates dirty) const
-{
-    QSGMaterialRhiShader::RenderState s;
     s.m_dirty = dirty;
     s.m_data = this;
     return s;
@@ -219,7 +167,9 @@ private:
     int m_indent = 0;
 };
 
-
+#ifndef QT_NO_DEBUG
+extern bool _q_sg_leak_check;
+#endif
 
 QT_END_NAMESPACE
 

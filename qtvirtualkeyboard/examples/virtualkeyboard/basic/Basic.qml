@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.10
-import QtQuick.Controls 2.3
-import QtQuick.VirtualKeyboard 2.1
+import QtQuick
+import QtQuick.Controls
+import QtQuick.VirtualKeyboard
 import "content"
 
 Rectangle {
@@ -37,7 +11,7 @@ Rectangle {
     height: 720
     color: "#F6F6F6"
 
-    // Only set with CONFIG+=disable-desktop.
+    // If enabled, prevents interaction with the text fields
     property bool handwritingInputPanelActive: false
 
     Flickable {
@@ -105,7 +79,7 @@ Rectangle {
                 }
                 TextField {
                     id: phoneNumberField
-                    validator: RegExpValidator { regExp: /^[0-9\+\-\#\*\ ]{6,}$/ }
+                    validator: RegularExpressionValidator { regularExpression: /^[0-9\+\-\#\*\ ]{6,}$/ }
                     width: parent.width
                     placeholderText: "Phone number field"
                     inputMethodHints: Qt.ImhDialableCharactersOnly
@@ -142,5 +116,10 @@ Rectangle {
     MouseArea {
         anchors.fill: parent
         visible: handwritingInputPanelActive
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Q"
+        onActivated: Qt.quit()
     }
 }

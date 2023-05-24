@@ -1,6 +1,12 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/features.gni")
+
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+}
 
 static_library("browser") {
   sources = [
@@ -38,7 +44,6 @@ static_library("browser") {
     "history_db_task.h",
     "history_service.cc",
     "history_service.h",
-    "history_service_observer.cc",
     "history_service_observer.h",
     "history_types.cc",
     "history_types.h",
@@ -49,18 +54,29 @@ static_library("browser") {
     "keyword_id.h",
     "keyword_search_term.cc",
     "keyword_search_term.h",
+    "keyword_search_term_util.cc",
+    "keyword_search_term_util.h",
     "page_usage_data.cc",
     "page_usage_data.h",
     "sync/delete_directive_handler.cc",
     "sync/delete_directive_handler.h",
+    "sync/history_backend_for_sync.h",
     "sync/history_delete_directives_model_type_controller.cc",
     "sync/history_delete_directives_model_type_controller.h",
-    "sync/typed_url_model_type_controller.cc",
-    "sync/typed_url_model_type_controller.h",
+    "sync/history_model_type_controller.cc",
+    "sync/history_model_type_controller.h",
+    "sync/history_model_type_controller_helper.cc",
+    "sync/history_model_type_controller_helper.h",
+    "sync/history_sync_bridge.cc",
+    "sync/history_sync_bridge.h",
+    "sync/history_sync_metadata_database.cc",
+    "sync/history_sync_metadata_database.h",
     "sync/typed_url_sync_bridge.cc",
     "sync/typed_url_sync_bridge.h",
     "sync/typed_url_sync_metadata_database.cc",
     "sync/typed_url_sync_metadata_database.h",
+    "sync/visit_id_remapper.cc",
+    "sync/visit_id_remapper.h",
     "top_sites.cc",
     "top_sites.h",
     "top_sites_backend.cc",
@@ -76,6 +92,8 @@ static_library("browser") {
     "url_row.h",
     "url_utils.cc",
     "url_utils.h",
+    "visit_annotations_database.cc",
+    "visit_annotations_database.h",
     "visit_database.cc",
     "visit_database.h",
     "visit_delegate.cc",
@@ -90,6 +108,7 @@ static_library("browser") {
   ]
 
   public_deps = [
+    "//components/sessions:session_id",
     "//components/sync/protocol",
     "//skia",
   ]
@@ -97,6 +116,7 @@ static_library("browser") {
   deps = [
     "//base",
     "//base:i18n",
+    "//components/crash/core/common:crash_key",
     "//components/database_utils",
     "//components/favicon/core:database",
     "//components/favicon_base",
@@ -105,6 +125,7 @@ static_library("browser") {
     "//components/keyed_service/core",
     "//components/prefs",
     "//components/query_parser",
+    "//components/search_engines",
     "//components/signin/public/identity_manager",
     "//components/sync",
     "//components/url_formatter",
@@ -119,6 +140,52 @@ static_library("browser") {
     "//ui/gfx",
     "//url",
   ]
+
+  if (is_qtwebengine) {
+    sources -= [
+      "browsing_history_service.cc",
+      "browsing_history_service.h",
+      "sync/delete_directive_handler.cc",
+      "sync/delete_directive_handler.h",
+      "sync/history_backend_for_sync.h",
+      "sync/history_delete_directives_model_type_controller.cc",
+      "sync/history_delete_directives_model_type_controller.h",
+      "sync/history_model_type_controller.cc",
+      "sync/history_model_type_controller.h",
+      "sync/history_model_type_controller_helper.cc",
+      "sync/history_model_type_controller_helper.h",
+      "sync/history_sync_bridge.cc",
+      "sync/history_sync_bridge.h",
+      "sync/history_sync_metadata_database.cc",
+      "sync/history_sync_metadata_database.h",
+      "sync/typed_url_sync_bridge.cc",
+      "sync/typed_url_sync_bridge.h",
+      "sync/typed_url_sync_metadata_database.cc",
+      "sync/typed_url_sync_metadata_database.h",
+      "sync/visit_id_remapper.cc",
+      "sync/visit_id_remapper.h",
+      "top_sites.cc",
+      "top_sites.h",
+      "top_sites_backend.cc",
+      "top_sites_backend.h",
+      "top_sites_database.cc",
+      "top_sites_database.h",
+      "top_sites_impl.cc",
+      "top_sites_impl.h",
+      "top_sites_observer.h",
+    ]
+
+    public_deps -= [
+      "//components/sync/protocol",
+    ]
+
+    deps -= [
+      "//components/google/core/common",
+      "//components/search_engines",
+      "//components/signin/public/identity_manager",
+      "//components/sync",
+    ]
+  }
 
   if (is_android) {
     sources += [
@@ -141,52 +208,14 @@ static_library("browser") {
       "android/visit_sql_handler.h",
     ]
   }
-
-  configs += [ "//build/config/compiler:no_size_t_to_int_warning" ]
 }
 
-bundle_data("unit_tests_bundle_data") {
-  visibility = [ ":unit_tests" ]
-  testonly = true
-  sources = [
-    "//components/test/data/history/Favicons.v3.sql",
-    "//components/test/data/history/Favicons.v4.sql",
-    "//components/test/data/history/Favicons.v5.sql",
-    "//components/test/data/history/Favicons.v6.sql",
-    "//components/test/data/history/Favicons.v7.sql",
-    "//components/test/data/history/Favicons.v8.sql",
-    "//components/test/data/history/HistoryNoDuration",
-    "//components/test/data/history/HistoryNoSource",
-    "//components/test/data/history/History_with_starred",
-    "//components/test/data/history/TopSites.v1.sql",
-    "//components/test/data/history/TopSites.v2.sql",
-    "//components/test/data/history/TopSites.v3.sql",
-    "//components/test/data/history/TopSites.v4.sql",
-    "//components/test/data/history/history.22.sql",
-    "//components/test/data/history/history.26.sql",
-    "//components/test/data/history/history.27.sql",
-    "//components/test/data/history/history.28.sql",
-    "//components/test/data/history/history.29.sql",
-    "//components/test/data/history/history.30.sql",
-    "//components/test/data/history/history.31.sql",
-    "//components/test/data/history/history.32.sql",
-    "//components/test/data/history/history.38.sql",
-    "//components/test/data/history/history.39.sql",
-    "//components/test/data/history/history.40.sql",
-    "//components/test/data/history/history.41.sql",
-    "//components/test/data/history/history.42.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.corrupt_meta.disable",
-    "//components/test/data/history/thumbnail_wild/Favicons.v2.init.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v3.init.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v4.init.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v5.icon_type.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v5.icon_type2.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v5.init.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v5.sizes.sql",
-    "//components/test/data/history/thumbnail_wild/Favicons.v6.init.sql",
-  ]
-  outputs = [ "{{bundle_resources_dir}}/" +
-              "{{source_root_relative_dir}}/{{source_file_part}}" ]
+if (is_ios) {
+  bundle_data_from_filelist("unit_tests_bundle_data") {
+    filelist_name = "unit_tests_bundle_data.filelist"
+    visibility = [ ":unit_tests" ]
+    testonly = true
+  }
 }
 
 source_set("unit_tests") {
@@ -203,19 +232,25 @@ source_set("unit_tests") {
     "history_service_unittest.cc",
     "history_types_unittest.cc",
     "sync/delete_directive_handler_unittest.cc",
+    "sync/history_sync_bridge_unittest.cc",
+    "sync/history_sync_metadata_database_unittest.cc",
+    "sync/test_history_backend_for_sync.cc",
+    "sync/test_history_backend_for_sync.h",
     "sync/typed_url_sync_bridge_unittest.cc",
     "sync/typed_url_sync_metadata_database_unittest.cc",
+    "sync/visit_id_remapper_unittest.cc",
     "top_sites_database_unittest.cc",
     "top_sites_impl_unittest.cc",
     "url_database_unittest.cc",
+    "url_row_unittest.cc",
     "url_utils_unittest.cc",
+    "visit_annotations_database_unittest.cc",
     "visit_database_unittest.cc",
     "visit_tracker_unittest.cc",
     "web_history_service_unittest.cc",
   ]
   deps = [
     ":browser",
-    ":unit_tests_bundle_data",
     "//base",
     "//base/test:test_support",
     "//components/favicon/core:database",
@@ -223,6 +258,7 @@ source_set("unit_tests") {
     "//components/history/core/common",
     "//components/history/core/test",
     "//components/prefs:test_support",
+    "//components/search_engines",
     "//components/sync:test_support",
     "//net:test_support",
     "//services/network:test_support",
@@ -235,6 +271,9 @@ source_set("unit_tests") {
     "//ui/gfx:test_support",
     "//url",
   ]
+  if (is_ios) {
+    deps += [ ":unit_tests_bundle_data" ]
+  }
   if (is_android) {
     sources += [ "android/android_history_types_unittest.cc" ]
   }

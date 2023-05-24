@@ -1,11 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_RENDERER_CONTEXT_MENU_RENDER_VIEW_CONTEXT_MENU_PROXY_H_
 #define COMPONENTS_RENDERER_CONTEXT_MENU_RENDER_VIEW_CONTEXT_MENU_PROXY_H_
 
-#include "base/strings/string16.h"
+#include <string>
+
 
 namespace content {
 class BrowserContext;
@@ -76,16 +77,16 @@ class MenuModel;
 class RenderViewContextMenuProxy {
  public:
   // Add a menu item to a context menu.
-  virtual void AddMenuItem(int command_id, const base::string16& title) = 0;
+  virtual void AddMenuItem(int command_id, const std::u16string& title) = 0;
   virtual void AddMenuItemWithIcon(int command_id,
-                                   const base::string16& title,
+                                   const std::u16string& title,
                                    const ui::ImageModel& icon) = 0;
-  virtual void AddCheckItem(int command_id, const base::string16& title) = 0;
+  virtual void AddCheckItem(int command_id, const std::u16string& title) = 0;
   virtual void AddSeparator() = 0;
 
   // Add a submenu item to a context menu.
   virtual void AddSubMenu(int command_id,
-                          const base::string16& label,
+                          const std::u16string& label,
                           ui::MenuModel* model) = 0;
   virtual void AddSubMenuWithStringIdAndIcon(int command_id,
                                              int message_id,
@@ -96,7 +97,7 @@ class RenderViewContextMenuProxy {
   virtual void UpdateMenuItem(int command_id,
                               bool enabled,
                               bool hidden,
-                              const base::string16& title) = 0;
+                              const std::u16string& title) = 0;
 
   // Update the icon of the specified context-menu item.
   virtual void UpdateMenuIcon(int command_id, const ui::ImageModel& icon) = 0;
@@ -107,11 +108,17 @@ class RenderViewContextMenuProxy {
   // Removes separators so that any adjacent duplicates are reduced to only 1.
   virtual void RemoveAdjacentSeparators() = 0;
 
+  // Removes separator (if any) before the specified context menu item.
+  virtual void RemoveSeparatorBeforeMenuItem(int command_id) = 0;
+
   // Add spell check service item to the context menu.
   virtual void AddSpellCheckServiceItem(bool is_checked) = 0;
 
   // Add accessibility labels service item to the context menu.
   virtual void AddAccessibilityLabelsServiceItem(bool is_checked) = 0;
+
+  // Add PDF OCR item to the context menu.
+  virtual void AddPdfOcrMenuItem(bool is_checked) = 0;
 
   // Retrieve the given associated objects with a context menu.
   virtual content::RenderViewHost* GetRenderViewHost() const = 0;

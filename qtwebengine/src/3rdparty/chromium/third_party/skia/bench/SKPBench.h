@@ -11,7 +11,7 @@
 #include "bench/Benchmark.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkPicture.h"
-#include "include/private/SkTDArray.h"
+#include "include/private/base/SkTDArray.h"
 
 class SkSurface;
 
@@ -29,6 +29,7 @@ public:
     }
 
     void getGpuStats(SkCanvas*, SkTArray<SkString>* keys, SkTArray<double>* values) override;
+    bool getDMSAAStats(GrRecordingContext*) override;
 
 protected:
     const char* onGetName() override;

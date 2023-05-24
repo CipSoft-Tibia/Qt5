@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "connectdialog_p.h"
 #include "signalslot_utils_p.h"
@@ -42,9 +17,11 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 static QString realClassName(QDesignerFormEditorInterface *core, QWidget *widget)
 {
-    QString class_name = QLatin1String(widget->metaObject()->className());
+    QString class_name = QLatin1StringView(widget->metaObject()->className());
     const QDesignerWidgetDataBaseInterface *wdb = core->widgetDataBase();
     const int idx = wdb->indexOfObject(widget);
     if (idx != -1)
@@ -54,7 +31,7 @@ static QString realClassName(QDesignerFormEditorInterface *core, QWidget *widget
 
 static QString widgetLabel(QDesignerFormEditorInterface *core, QWidget *widget)
 {
-    return QString::fromUtf8("%1 (%2)")
+    return "%1 (%2)"_L1
             .arg(qdesigner_internal::realObjectName(core, widget),
                  realClassName(core, widget));
 }
@@ -72,8 +49,6 @@ ConnectDialog::ConnectDialog(QDesignerFormWindowInterface *formWindow,
     m_formWindow(formWindow)
 {
     m_ui.setupUi(this);
-
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     connect(m_ui.signalList, &QListWidget::itemClicked,
             this, &ConnectDialog::selectSignal);
@@ -220,9 +195,7 @@ void ConnectDialog::populateSlotList(const QString &signal)
     QVariant variantFont = QVariant::fromValue(font);
 
     QListWidgetItem *curr = nullptr;
-    QMap<QString, QString>::ConstIterator itMember = memberToClassName.constBegin();
-    const QMap<QString, QString>::ConstIterator itMemberEnd = memberToClassName.constEnd();
-    while (itMember != itMemberEnd) {
+    for (auto itMember = memberToClassName.cbegin(), itMemberEnd = memberToClassName.cend(); itMember != itMemberEnd; ++itMember) {
         const QString member = itMember.key();
         QListWidgetItem *item = new QListWidgetItem(m_ui.slotList);
         item->setText(member);
@@ -235,7 +208,6 @@ void ConnectDialog::populateSlotList(const QString &signal)
             item->setData(Qt::FontRole, variantFont);
             item->setData(Qt::ForegroundRole, QColor(Qt::red));
         }
-        ++itMember;
     }
 
     if (curr)
@@ -262,9 +234,7 @@ void ConnectDialog::populateSignalList()
     QVariant variantFont = QVariant::fromValue(font);
 
     QListWidgetItem *curr = nullptr;
-    QMap<QString, QString>::ConstIterator itMember = memberToClassName.constBegin();
-    const QMap<QString, QString>::ConstIterator itMemberEnd = memberToClassName.constEnd();
-    while (itMember != itMemberEnd) {
+    for (auto itMember = memberToClassName.cbegin(), itMemberEnd = memberToClassName.cend(); itMember != itMemberEnd; ++itMember) {
         const QString member = itMember.key();
 
         QListWidgetItem *item = new QListWidgetItem(m_ui.signalList);
@@ -278,7 +248,6 @@ void ConnectDialog::populateSignalList()
             item->setData(Qt::FontRole, variantFont);
             item->setData(Qt::ForegroundRole, QColor(Qt::red));
         }
-        ++itMember;
     }
 
     if (curr) {
@@ -322,3 +291,6 @@ void ConnectDialog::editSignalsSlots(QWidget *w, WidgetMode mode, int signalSlot
 }
 
 QT_END_NAMESPACE
+
+#include "moc_connectdialog_p.cpp"
+

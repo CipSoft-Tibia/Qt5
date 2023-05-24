@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QGEOCAMERATILES_P_P_H
 #define QGEOCAMERATILES_P_P_H
 
@@ -48,15 +15,16 @@
 //
 
 #include "qgeocameratiles_p.h"
-#include <QtPositioning/private/qwebmercator_p.h>
-#include <QtPositioning/private/qdoublevector2d_p.h>
-#include <QtPositioning/private/qdoublevector3d_p.h>
 #include "qgeomaptype_p.h"
 #include "qgeocameradata_p.h"
 #include "qgeotilespec_p.h"
 
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qset.h>
+
+#include <QtPositioning/private/qwebmercator_p.h>
+#include <QtPositioning/private/qdoublevector2d_p.h>
+#include <QtPositioning/private/qdoublevector3d_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -73,7 +41,7 @@ struct Q_LOCATION_PRIVATE_EXPORT Frustum
     QDoubleVector3D bottomRightFar;
 };
 
-typedef QVector<QDoubleVector3D> PolygonVector;
+typedef QList<QDoubleVector3D> PolygonVector;
 
 class Q_LOCATION_PRIVATE_EXPORT QGeoCameraTilesPrivate
 {
@@ -99,10 +67,6 @@ public:
         QMap<int, QPair<int, int> > data;
     };
 
-    QGeoCameraTilesPrivate();
-    ~QGeoCameraTilesPrivate();
-
-
     void updateMetadata();
     void updateGeometry();
 
@@ -116,24 +80,24 @@ public:
     QSet<QGeoTileSpec> tilesFromPolygon(const PolygonVector &polygon) const;
 
     static QGeoCameraTilesPrivate *get(QGeoCameraTiles *o) {
-        return o->d_ptr.data();
+        return o->d_ptr.get();
     }
 
 public:
     QString m_pluginString;
     QGeoMapType m_mapType;
-    int m_mapVersion;
+    int m_mapVersion = -1;
     QGeoCameraData m_camera;
     QSize m_screenSize;
     QRectF m_visibleArea;
-    int m_tileSize;
+    int m_tileSize = 0;
     QSet<QGeoTileSpec> m_tiles;
 
-    int m_intZoomLevel;
-    int m_sideLength;
-    bool m_dirtyGeometry;
-    bool m_dirtyMetadata;
-    double m_viewExpansion;
+    int m_intZoomLevel = 0;
+    int m_sideLength = 0;
+    bool m_dirtyGeometry = false;
+    bool m_dirtyMetadata = false;
+    double m_viewExpansion = 1.0;
 
 #ifdef QT_LOCATION_DEBUG
     // updateGeometry

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de">
+<TS version="2.1" language="de_DE">
 <context>
     <name>AboutDialog</name>
     <message>
@@ -120,7 +120,7 @@ Es wird mit einer einfachen Universalform gearbeitet.</translation>
     </message>
     <message>
         <source>%1 (%2)</source>
-        <extracomment>&lt;language&gt; (&lt;country&gt;)</extracomment>
+        <extracomment>&lt;language&gt; (&lt;territory&gt;)</extracomment>
         <translation>%1 (%2)</translation>
     </message>
     <message>
@@ -161,33 +161,6 @@ Es wird mit einer einfachen Universalform gearbeitet.</translation>
     <message>
         <source>Unknown error</source>
         <translation>Unbekannter Fehler</translation>
-    </message>
-</context>
-<context>
-    <name>FMT</name>
-    <message>
-        <source>GNU Gettext localization files</source>
-        <translation>GNU-Gettext-Übersetzungsdateien</translation>
-    </message>
-    <message>
-        <source>GNU Gettext localization template files</source>
-        <translation>Vorlagen für GNU-Gettext-Übersetzungsdateien</translation>
-    </message>
-    <message>
-        <source>Compiled Qt translations</source>
-        <translation>Kompilierte Qt-Übersetzungen</translation>
-    </message>
-    <message>
-        <source>Qt Linguist &apos;Phrase Book&apos;</source>
-        <translation>Qt-Linguist-Wörterbuch</translation>
-    </message>
-    <message>
-        <source>Qt translation sources</source>
-        <translation>Qt-Übersetzungsdateien</translation>
-    </message>
-    <message>
-        <source>XLIFF localization files</source>
-        <translation>XLIFF-Übersetzungsdateien</translation>
     </message>
 </context>
 <context>
@@ -285,6 +258,26 @@ Es wird mit einer einfachen Universalform gearbeitet.</translation>
         <source>Regular &amp;expression</source>
         <translation>&amp;Regulärer Ausdruck</translation>
     </message>
+    <message>
+        <source>T&amp;ranslation status:</source>
+        <translation>Ü&amp;bersetzungsstatus:</translation>
+    </message>
+    <message>
+        <source>Lets you filter the search target by translation status</source>
+        <translation>Ermöglicht das Eingrenzen der Suche nach Übersetzungsstatus</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>Alle</translation>
+    </message>
+    <message>
+        <source>Finished</source>
+        <translation>Erledigt</translation>
+    </message>
+    <message>
+        <source>Unfinished</source>
+        <translation>Unerledigt</translation>
+    </message>
 </context>
 <context>
     <name>FormMultiWidget</name>
@@ -310,37 +303,6 @@ Es wird mit einer einfachen Universalform gearbeitet.</translation>
     <message>
         <source>Delete non-empty length variant?</source>
         <translation>Soll die ausgefüllte Längenvariante gelöscht werden?</translation>
-    </message>
-</context>
-<context>
-    <name>LRelease</name>
-    <message numerus="yes">
-        <source>Dropped %n message(s) which had no ID.</source>
-        <translation>
-            <numerusform>Es wurde ein Eintrag ohne Bezeichner gelöscht.</numerusform>
-            <numerusform>Es wurde %n Einträge ohne Bezeichner gelöscht.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>Excess context/disambiguation dropped from %n message(s).</source>
-        <translation>
-            <numerusform>Es wurde überflüssiger Kontext beziehungsweise überflüssige Infomation zur Unterscheidung bei einem Eintrag entfernt.</numerusform>
-            <numerusform>Es wurde überflüssiger Kontext beziehungsweise überflüssige Infomation zur Unterscheidung bei %n Einträgen entfernt.</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>    Generated %n translation(s) (%1 finished and %2 unfinished)</source>
-        <translation>
-            <numerusform>    Eine Übersetzung wurde erzeugt (%1 abgeschlossen und %2 nicht abgeschlossen)</numerusform>
-            <numerusform>    %n Übersetzungen wurden erzeugt (%1 abgeschlossen und %2 nicht abgeschlossen)</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>    Ignored %n untranslated source text(s)</source>
-        <translation>
-            <numerusform>    Ein nicht übersetzter Text wurde ignoriert</numerusform>
-            <numerusform>    %n nicht übersetzte Texte wurden ignoriert</numerusform>
-        </translation>
     </message>
 </context>
 <context>
@@ -1323,6 +1285,14 @@ Alle Dateien (*)</translation>
         <source>Mark this item as done.</source>
         <translation>Diesen Eintrag als erledigt markieren.</translation>
     </message>
+    <message>
+        <source>Find P&amp;revious</source>
+        <translation>&amp;Rückwärts suchen</translation>
+    </message>
+    <message>
+        <source>Shift+F3</source>
+        <translation>Shift+F3</translation>
+    </message>
 </context>
 <context>
     <name>MessageEditor</name>
@@ -1621,6 +1591,34 @@ Zeile: %2</translation>
         <source>Close</source>
         <translation>Schließen</translation>
     </message>
+    <message>
+        <source>Unfinished</source>
+        <translation>Unerledigt</translation>
+    </message>
+    <message>
+        <source>Total translatable messages:</source>
+        <translation>Gesamtzahl übersetzbarer Einträge:</translation>
+    </message>
+    <message>
+        <source>Total finished:</source>
+        <translation>Gesamtzahl der erledigten Einträge:</translation>
+    </message>
+    <message>
+        <source>Without warnings:</source>
+        <translation>Ohne Warnungen:</translation>
+    </message>
+    <message>
+        <source>With warnings:</source>
+        <translation>Mit Warnungen:</translation>
+    </message>
+    <message>
+        <source>Unfinished:</source>
+        <translation>Unerledigt:</translation>
+    </message>
+    <message>
+        <source>Total messages including obsolete:</source>
+        <translation>Gesamtzahl einschließlich als &apos;obsolet&apos; gekennzeichneter Einträge:</translation>
+    </message>
 </context>
 <context>
     <name>TranslateDialog</name>
@@ -1685,12 +1683,12 @@ Zeile: %2</translation>
     <name>TranslationSettingsDialog</name>
     <message>
         <source>%1 (%2)</source>
-        <extracomment>&lt;english&gt; (&lt;endonym&gt;) (language and country names)</extracomment>
+        <extracomment>&lt;english&gt; (&lt;endonym&gt;) (language names)</extracomment>
         <translation>%1 (%2)</translation>
     </message>
     <message>
-        <source>Any Country</source>
-        <translation>Land</translation>
+        <source>Any Territory</source>
+        <translation>Beliebiges Territorium</translation>
     </message>
     <message>
         <source>Settings for &apos;%1&apos; - Qt Linguist</source>

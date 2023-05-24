@@ -1,56 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qttoolbardialog.h"
 #include "ui_qttoolbardialog.h"
 
+#include <QtCore/QMap>
+#include <QtCore/QHash>
 #include <QtCore/QSet>
+#include <QtGui/QAction>
 #include <QtGui/QtEvents>
-#include <QtWidgets/QAction>
-#include <QtWidgets/QToolBar>
 #include <QtWidgets/QMainWindow>
-#include <QtWidgets/QHeaderView>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QToolBar>
 
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QtFullToolBarManagerPrivate;
 
@@ -86,7 +53,7 @@ public:
 
     void removeDefaultToolBar(QToolBar *toolBar);
     // NULL on action list means separator.
-    QMap<QToolBar *, QList<QAction *> > defaultToolBars() const;
+    QHash<QToolBar *, QList<QAction *>> defaultToolBars() const;
     bool isDefaultToolBar(QToolBar *toolBar) const;
 
     QToolBar *createToolBar(const QString &toolBarName);
@@ -94,10 +61,10 @@ public:
 
     QList<QAction *> actions(QToolBar *toolBar) const;
 
-    void setToolBars(const QMap<QToolBar *, QList<QAction *> > &actions);
+    void setToolBars(const QHash<QToolBar *, QList<QAction *>> &actions);
     void setToolBar(QToolBar *toolBar, const QList<QAction *> &actions);
 
-    QMap<QToolBar *, QList<QAction *> > toolBarsActions() const;
+    QHash<QToolBar *, QList<QAction *>> toolBarsActions() const;
     QByteArray saveState(int version = 0) const;
     bool restoreState(const QByteArray &state, int version = 0);
 
@@ -132,7 +99,7 @@ class QtFullToolBarManagerPrivate
 public:
 
     QToolBar *toolBarWidgetAction(QAction *action) const;
-    void removeWidgetActions(const QMap<QToolBar *, QList<QAction *> > &actions);
+    void removeWidgetActions(const QHash<QToolBar *, QList<QAction *>> &actions);
 
     enum {
         VersionMarker = 0xff,
@@ -147,17 +114,17 @@ public:
 
     QToolBar *toolBarByName(const QString &toolBarName) const;
 
-    QMap<QString, QList<QAction *> > categoryToActions;
-    QMap<QAction *, QString>         actionToCategory;
+    QHash<QString, QList<QAction *>> categoryToActions;
+    QHash<QAction *, QString>        actionToCategory;
 
     QSet<QAction *> allActions;
-    QMap<QAction *, QToolBar *> widgetActions;
+    QHash<QAction *, QToolBar *> widgetActions;
     QSet<QAction *> regularActions;
-    QMap<QAction *, QList<QToolBar *> > actionToToolBars;
+    QHash<QAction *, QList<QToolBar *>> actionToToolBars;
 
-    QMap<QToolBar *, QList<QAction *> > toolBars;
-    QMap<QToolBar *, QList<QAction *> > toolBarsWithSeparators;
-    QMap<QToolBar *, QList<QAction *> > defaultToolBars;
+    QHash<QToolBar *, QList<QAction *>> toolBars;
+    QHash<QToolBar *, QList<QAction *>> toolBarsWithSeparators;
+    QHash<QToolBar *, QList<QAction *>> defaultToolBars;
     QList<QToolBar *> customToolBars;
 
     QMainWindow *theMainWindow{nullptr};
@@ -170,7 +137,7 @@ QToolBar *QtFullToolBarManagerPrivate::toolBarWidgetAction(QAction *action) cons
     return 0;
 }
 
-void QtFullToolBarManagerPrivate::removeWidgetActions(const QMap<QToolBar *, QList<QAction *> >
+void QtFullToolBarManagerPrivate::removeWidgetActions(const QHash<QToolBar *, QList<QAction *>>
             &actions)
 {
     auto itToolBar = actions.constBegin();
@@ -193,7 +160,7 @@ void QtFullToolBarManagerPrivate::removeWidgetActions(const QMap<QToolBar *, QLi
 
         toolBars.insert(toolBar, newActions);
         toolBarsWithSeparators.insert(toolBar, newActionsWithSeparators);
-        for (QAction *oldAction : qAsConst(removedActions)) {
+        for (QAction *oldAction : std::as_const(removedActions)) {
             widgetActions.insert(oldAction, 0);
             actionToToolBars[oldAction].removeAll(toolBar);
         }
@@ -345,7 +312,7 @@ bool QtFullToolBarManagerPrivate::restoreState(QDataStream &stream) const
             q_ptr->setToolBar(toolBar, actions);
         }
     }
-    for (QToolBar *toolBar : qAsConst(oldCustomToolBars))
+    for (QToolBar *toolBar : std::as_const(oldCustomToolBars))
         q_ptr->deleteToolBar(toolBar);
     return true;
 }
@@ -462,10 +429,7 @@ QList<QAction *> QtFullToolBarManager::categoryActions(const QString &category) 
 
 QString QtFullToolBarManager::actionCategory(QAction *action) const
 {
-    QMap<QAction *, QString>::ConstIterator it = d_ptr->actionToCategory.find(action);
-    if (it != d_ptr->actionToCategory.constEnd())
-        return it.value();
-    return QString();
+    return d_ptr->actionToCategory.value(action, {});
 }
 
 void QtFullToolBarManager::addAction(QAction *action, const QString &category)
@@ -476,8 +440,7 @@ void QtFullToolBarManager::addAction(QAction *action, const QString &category)
         return;
     if (d_ptr->allActions.contains(action))
         return;
-    if (QLatin1String(action->metaObject()->className()) ==
-                QLatin1String("QToolBarWidgetAction"))
+    if (qstrcmp(action->metaObject()->className(), "QToolBarWidgetAction") == 0)
         d_ptr->widgetActions.insert(action, 0);
     else
         d_ptr->regularActions.insert(action);
@@ -582,7 +545,7 @@ void QtFullToolBarManager::removeDefaultToolBar(QToolBar *toolBar)
     }
 }
 
-QMap<QToolBar *, QList<QAction *> > QtFullToolBarManager::defaultToolBars() const
+QHash<QToolBar *, QList<QAction *>> QtFullToolBarManager::defaultToolBars() const
 {
     return d_ptr->defaultToolBars;
 }
@@ -600,7 +563,7 @@ QToolBar *QtFullToolBarManager::createToolBar(const QString &toolBarName)
         return 0;
     QToolBar *toolBar = new QToolBar(toolBarName, mainWindow());
     int i = 1;
-    const QString prefix = QLatin1String("_Custom_Toolbar_%1");
+    const QString prefix = "_Custom_Toolbar_%1"_L1;
     QString name = prefix.arg(i);
     while (d_ptr->toolBarByName(name))
         name = prefix.arg(++i);
@@ -632,7 +595,7 @@ QList<QAction *> QtFullToolBarManager::actions(QToolBar *toolBar) const
     return QList<QAction *>();
 }
 
-void QtFullToolBarManager::setToolBars(const QMap<QToolBar *, QList<QAction *> > &actions)
+void QtFullToolBarManager::setToolBars(const QHash<QToolBar *, QList<QAction *>> &actions)
 {
     auto it = actions.constBegin();
     while (it != actions.constEnd()) {
@@ -651,7 +614,7 @@ void QtFullToolBarManager::setToolBar(QToolBar *toolBar, const QList<QAction *> 
     if (actions == d_ptr->toolBars[toolBar])
         return;
 
-    QMap<QToolBar *, QList<QAction *> > toRemove;
+    QHash<QToolBar *, QList<QAction *>> toRemove;
 
     QList<QAction *> newActions;
     for (QAction *action : actions) {
@@ -681,8 +644,8 @@ void QtFullToolBarManager::setToolBar(QToolBar *toolBar, const QList<QAction *> 
     }
 
     QList<QAction *> newActionsWithSeparators;
-    for (QAction *action : qAsConst(newActions)) {
-        QAction *newAction = 0;
+    for (QAction *action : std::as_const(newActions)) {
+        QAction *newAction = nullptr;
         if (!action)
             newAction = toolBar->insertSeparator(0);
         if (d_ptr->allActions.contains(action)) {
@@ -696,7 +659,7 @@ void QtFullToolBarManager::setToolBar(QToolBar *toolBar, const QList<QAction *> 
     d_ptr->toolBarsWithSeparators.insert(toolBar, newActionsWithSeparators);
 }
 
-QMap<QToolBar *, QList<QAction *> > QtFullToolBarManager::toolBarsActions() const
+QHash<QToolBar *, QList<QAction *>> QtFullToolBarManager::toolBarsActions() const
 {
     return d_ptr->toolBars;
 }
@@ -994,8 +957,8 @@ public:
     void clearOld();
     void fillNew();
     QtFullToolBarManager *toolBarManager;
-    QMap<ToolBarItem *, QList<QAction *> > currentState;
-    QMap<QToolBar *, ToolBarItem *> toolBarItems;
+    QHash<ToolBarItem *, QList<QAction *>> currentState;
+    QHash<QToolBar *, ToolBarItem *> toolBarItems;
     QSet<ToolBarItem *> createdItems;
     QSet<ToolBarItem *> removedItems;
 
@@ -1003,20 +966,20 @@ public:
 
     // static
     QTreeWidgetItem *currentAction;
-    QMap<QAction *, QTreeWidgetItem *> actionToItem;
-    QMap<QTreeWidgetItem *, QAction *> itemToAction;
+    QHash<QAction *, QTreeWidgetItem *> actionToItem;
+    QHash<QTreeWidgetItem *, QAction *> itemToAction;
 
     // dynamic
     ToolBarItem *currentToolBar;
-    QMap<ToolBarItem *, QListWidgetItem *> toolBarToItem;
-    QMap<QListWidgetItem *, ToolBarItem *> itemToToolBar;
+    QHash<ToolBarItem *, QListWidgetItem *> toolBarToItem;
+    QHash<QListWidgetItem *, ToolBarItem *> itemToToolBar;
 
     // dynamic
-    QMap<QAction *, QListWidgetItem *> actionToCurrentItem;
-    QMap<QListWidgetItem *, QAction *> currentItemToAction;
+    QHash<QAction *, QListWidgetItem *> actionToCurrentItem;
+    QHash<QListWidgetItem *, QAction *> currentItemToAction;
 
-    QMap<QAction *, ToolBarItem *> widgetActionToToolBar;
-    QMap<ToolBarItem *, QSet<QAction *> > toolBarToWidgetActions;
+    QHash<QAction *, ToolBarItem *> widgetActionToToolBar;
+    QHash<ToolBarItem *, QSet<QAction *>> toolBarToWidgetActions;
 
     QString separatorText;
     Ui::QtToolBarDialog ui;
@@ -1074,8 +1037,8 @@ void QtToolBarDialogPrivate::clearOld()
     qDeleteAll(allToolBarItems);
     allToolBarItems.clear();
 
-    currentToolBar = 0;
-    currentAction = 0;
+    currentToolBar = nullptr;
+    currentAction = nullptr;
 }
 
 void QtToolBarDialogPrivate::fillNew()
@@ -1098,7 +1061,7 @@ void QtToolBarDialogPrivate::fillNew()
             item = new QTreeWidgetItem(categoryItem);
             item->setText(0, action->text());
             item->setIcon(0, action->icon());
-            item->setTextAlignment(0, Qt::AlignLeft | Qt::AlignVCenter | Qt::TextShowMnemonic);
+            item->setTextAlignment(0, Qt::Alignment(Qt::AlignLeft | Qt::AlignVCenter | Qt::TextShowMnemonic));
             actionToItem.insert(action, item);
             itemToAction.insert(item, action);
             if (toolBarManager->isWidgetAction(action)) {
@@ -1217,7 +1180,7 @@ void QtToolBarDialogPrivate::removeToolBar(ToolBarItem *item)
     int row = ui.toolBarList->row(i);
     const auto itToolBar = toolBarToWidgetActions.find(item);
     if (itToolBar != toolBarToWidgetActions.end()) {
-        for (QAction *action : qAsConst(itToolBar.value()))
+        for (QAction *action : std::as_const(itToolBar.value()))
             widgetActionToToolBar.insert(action, 0);
         toolBarToWidgetActions.erase(itToolBar);
     }
@@ -1261,7 +1224,7 @@ void QtToolBarDialogPrivate::defaultClicked()
 
         const auto tbwit = toolBarToWidgetActions.find(toolBarItem);
         if (tbwit != toolBarToWidgetActions.end()) {
-            for (QAction *action : qAsConst(tbwit.value()))
+            for (QAction *action : std::as_const(tbwit.value()))
                 widgetActionToToolBar.insert(action, 0);
             toolBarToWidgetActions.erase(tbwit);
         }
@@ -1411,7 +1374,7 @@ void QtToolBarDialogPrivate::rightClicked()
     QListWidgetItem *currentToolBarAction = ui.currentToolBarList->currentItem();
 
     QAction *action = itemToAction.value(currentAction);
-    QListWidgetItem *item = 0;
+    QListWidgetItem *item = nullptr;
     if (action) {
         if (currentState[currentToolBar].contains(action)) {
             item = actionToCurrentItem.value(action);
@@ -1424,7 +1387,7 @@ void QtToolBarDialogPrivate::rightClicked()
         } else {
             item = new QListWidgetItem(action->text());
             item->setIcon(action->icon());
-            item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter | Qt::TextShowMnemonic);
+            item->setTextAlignment(Qt::Alignment(Qt::AlignLeft | Qt::AlignVCenter | Qt::TextShowMnemonic));
             currentItemToAction.insert(item, action);
             actionToCurrentItem.insert(action, item);
             if (widgetActionToToolBar.contains(action)) {
@@ -1497,7 +1460,7 @@ void QtToolBarDialogPrivate::currentToolBarChanged(QListWidgetItem *current)
         return;
     }
     const auto actions = currentState.value(currentToolBar);
-    QListWidgetItem *first = 0;
+    QListWidgetItem *first = nullptr;
     for (QAction *action : actions) {
         QString actionName = separatorText;
         if (action)
@@ -1505,7 +1468,7 @@ void QtToolBarDialogPrivate::currentToolBarChanged(QListWidgetItem *current)
         QListWidgetItem *item = new QListWidgetItem(actionName, ui.currentToolBarList);
         if (action) {
             item->setIcon(action->icon());
-            item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter | Qt::TextShowMnemonic);
+            item->setTextAlignment(Qt::Alignment(Qt::AlignLeft | Qt::AlignVCenter | Qt::TextShowMnemonic));
             actionToCurrentItem.insert(action, item);
             if (widgetActionToToolBar.contains(action))
                 item->setData(Qt::ForegroundRole, QColor(Qt::blue));
@@ -1722,40 +1685,43 @@ QtToolBarDialog::QtToolBarDialog(QWidget *parent, Qt::WindowFlags flags)
     d_ptr->ui.actionTree->setRootIsDecorated(false);
     d_ptr->ui.actionTree->header()->hide();
 
-    d_ptr->ui.upButton->setIcon(QIcon(QLatin1String(":/qt-project.org/qttoolbardialog/images/up.png")));
-    d_ptr->ui.downButton->setIcon(QIcon(QLatin1String(":/qt-project.org/qttoolbardialog/images/down.png")));
-    d_ptr->ui.leftButton->setIcon(QIcon(QLatin1String(":/qt-project.org/qttoolbardialog/images/back.png")));
-    d_ptr->ui.rightButton->setIcon(QIcon(QLatin1String(":/qt-project.org/qttoolbardialog/images/forward.png")));
-    d_ptr->ui.newButton->setIcon(QIcon(QLatin1String(":/qt-project.org/qttoolbardialog/images/plus.png")));
-    d_ptr->ui.removeButton->setIcon(QIcon(QLatin1String(":/qt-project.org/qttoolbardialog/images/minus.png")));
+    d_ptr->ui.upButton->setIcon(QIcon(":/qt-project.org/qttoolbardialog/images/up.png"_L1));
+    d_ptr->ui.downButton->setIcon(QIcon(":/qt-project.org/qttoolbardialog/images/down.png"_L1));
+    d_ptr->ui.leftButton->setIcon(QIcon(":/qt-project.org/qttoolbardialog/images/back.png"_L1));
+    d_ptr->ui.rightButton->setIcon(QIcon(":/qt-project.org/qttoolbardialog/images/forward.png"_L1));
+    d_ptr->ui.newButton->setIcon(QIcon(":/qt-project.org/qttoolbardialog/images/plus.png"_L1));
+    d_ptr->ui.removeButton->setIcon(QIcon(":/qt-project.org/qttoolbardialog/images/minus.png"_L1));
 
-    connect(d_ptr->ui.newButton, SIGNAL(clicked()), this, SLOT(newClicked()));
-    connect(d_ptr->ui.removeButton, SIGNAL(clicked()), this, SLOT(removeClicked()));
-    connect(d_ptr->ui.renameButton, SIGNAL(clicked()), this, SLOT(renameClicked()));
-    connect(d_ptr->ui.upButton, SIGNAL(clicked()), this, SLOT(upClicked()));
-    connect(d_ptr->ui.downButton, SIGNAL(clicked()), this, SLOT(downClicked()));
-    connect(d_ptr->ui.leftButton, SIGNAL(clicked()), this, SLOT(leftClicked()));
-    connect(d_ptr->ui.rightButton, SIGNAL(clicked()), this, SLOT(rightClicked()));
+    connect(d_ptr->ui.newButton, &QAbstractButton::clicked, this, [this] { d_ptr->newClicked(); });
+    connect(d_ptr->ui.removeButton, &QAbstractButton::clicked, this, [this] { d_ptr->removeClicked(); });
+    connect(d_ptr->ui.renameButton, &QAbstractButton::clicked, this, [this] { d_ptr->renameClicked(); });
+    connect(d_ptr->ui.upButton, &QAbstractButton::clicked, this, [this] { d_ptr->upClicked(); });
+    connect(d_ptr->ui.downButton, &QAbstractButton::clicked, this, [this] { d_ptr->downClicked(); });
+    connect(d_ptr->ui.leftButton, &QAbstractButton::clicked, this, [this] { d_ptr->leftClicked(); });
+    connect(d_ptr->ui.rightButton, &QAbstractButton::clicked, this, [this] { d_ptr->rightClicked(); });
 
-    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::RestoreDefaults), SIGNAL(clicked()), this, SLOT(defaultClicked()));
-    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::Ok), SIGNAL(clicked()), this, SLOT(okClicked()));
-    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::Apply), SIGNAL(clicked()), this, SLOT(applyClicked()));
-    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::Cancel), SIGNAL(clicked()), this, SLOT(cancelClicked()));
+    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::RestoreDefaults),
+            &QAbstractButton::clicked, this, [this] { d_ptr->defaultClicked(); });
+    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::Ok),
+            &QAbstractButton::clicked, this, [this] { d_ptr->okClicked(); });
+    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::Apply),
+            &QAbstractButton::clicked, this, [this] { d_ptr->applyClicked(); });
+    connect(d_ptr->ui.buttonBox->button(QDialogButtonBox::Cancel),
+            &QAbstractButton::clicked, this, [this] { d_ptr->cancelClicked(); });
 
-    connect(d_ptr->ui.actionTree, SIGNAL(currentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)),
-                    this, SLOT(currentActionChanged(QTreeWidgetItem*)));
-    connect(d_ptr->ui.toolBarList, SIGNAL(currentItemChanged(QListWidgetItem*,QListWidgetItem*)),
-                    this, SLOT(currentToolBarChanged(QListWidgetItem*)));
-    connect(d_ptr->ui.currentToolBarList,
-                    SIGNAL(currentItemChanged(QListWidgetItem*,QListWidgetItem*)),
-                    this, SLOT(currentToolBarActionChanged(QListWidgetItem*)));
+    connect(d_ptr->ui.actionTree, &QTreeWidget::currentItemChanged,
+            this, [this](QTreeWidgetItem *current) { d_ptr->currentActionChanged(current); });
+    connect(d_ptr->ui.currentToolBarList, &QListWidget::currentItemChanged,
+            this, [this](QListWidgetItem *current) { d_ptr->currentToolBarActionChanged(current); });
+    connect(d_ptr->ui.toolBarList, &QListWidget::currentItemChanged,
+            this, [this](QListWidgetItem *current) { d_ptr->currentToolBarChanged(current); });
 
-    connect(d_ptr->ui.actionTree, SIGNAL(itemDoubleClicked(QTreeWidgetItem*,int)),
-                    this, SLOT(rightClicked()));
-    connect(d_ptr->ui.currentToolBarList, SIGNAL(itemDoubleClicked(QListWidgetItem*)),
-                    this, SLOT(leftClicked()));
-    connect(d_ptr->ui.toolBarList, SIGNAL(itemChanged(QListWidgetItem*)),
-                    this, SLOT(toolBarRenamed(QListWidgetItem*)));
+    connect(d_ptr->ui.actionTree, &QTreeWidget::itemDoubleClicked,
+            this, [this] { d_ptr->rightClicked(); });
+    connect(d_ptr->ui.currentToolBarList, &QListWidget::itemDoubleClicked,
+            this, [this] { d_ptr->leftClicked(); });
+    connect(d_ptr->ui.toolBarList, &QListWidget::itemChanged,
+            this, [this](QListWidgetItem *current) { d_ptr->toolBarRenamed(current); });
 }
 
 /*!

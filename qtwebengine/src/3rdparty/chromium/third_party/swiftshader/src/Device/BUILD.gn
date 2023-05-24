@@ -70,9 +70,11 @@ swiftshader_source_set("Device") {
 
   defines = [
      "SWIFTSHADER_ENABLE_ASTC",  # TODO(b/150130101)
+     "SWIFTSHADER_LEGACY_PRECISION=true",  # TODO(b/226657516)
   ]
 
   deps = [
+    "../../third_party/SPIRV-Tools:spvtools_headers",
     "../../third_party/marl:Marl_headers",
     "../Pipeline:Pipeline_headers",
     "../System:System_headers",

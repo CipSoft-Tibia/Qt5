@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,6 +25,12 @@ void SetIsolatedWorldInfo(int32_t world_id, const WebIsolatedWorldInfo& info) {
                                                     info.human_readable_name);
   IsolatedWorldCSP::Get().SetContentSecurityPolicy(
       world_id, info.content_security_policy, security_origin);
+}
+
+bool IsEqualOrExceedEmbedderWorldIdLimit(int world_id) {
+  if (world_id >= IsolatedWorldId::kEmbedderWorldIdLimit)
+    return true;
+  return false;
 }
 
 WebString GetIsolatedWorldStableId(v8::Local<v8::Context> context) {

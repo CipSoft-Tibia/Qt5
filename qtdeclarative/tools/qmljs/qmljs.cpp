@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the V4VM module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "private/qv4object_p.h"
 #include "private/qv4runtime_p.h"
@@ -119,13 +94,15 @@ int main(int argc, char *argv[])
 
     QV4::GlobalExtensions::init(vm.globalObject, QJSEngine::ConsoleExtension | QJSEngine::GarbageCollectionExtension);
 
-    for (const QString &fn : qAsConst(args)) {
+    for (const QString &fn : std::as_const(args)) {
         QV4::ScopedValue result(scope);
         if (runAsModule) {
-            auto moduleUnit = vm.loadModule(QUrl::fromLocalFile(QFileInfo(fn).absoluteFilePath()));
-            if (moduleUnit) {
-                if (moduleUnit->instantiate(&vm))
-                    moduleUnit->evaluate();
+            auto module = vm.loadModule(QUrl::fromLocalFile(QFileInfo(fn).absoluteFilePath()));
+            if (module.compiled) {
+                if (module.compiled->instantiate(&vm))
+                    module.compiled->evaluate();
+            } else if (module.native) {
+                // Nothing to do. Native modules have no global code.
             } else {
                 vm.throwError(QStringLiteral("Could not load module file"));
             }
@@ -148,14 +125,14 @@ int main(int argc, char *argv[])
             }
             if (!script) {
                 QByteArray ba = file.readAll();
-                const QString code = QString::fromUtf8(ba.constData(), ba.length());
+                const QString code = QString::fromUtf8(ba.constData(), ba.size());
                 file.close();
 
                 script.reset(new QV4::Script(ctx, QV4::Compiler::ContextType::Global, code, fn));
                 script->parseAsBinding = runAsQml;
                 script->parse();
             }
-            if (!scope.engine->hasException) {
+            if (!scope.hasException()) {
                 const auto unit = script->compilationUnit;
                 if (cache && unit && !(unit->unitData()->flags & QV4::CompiledData::Unit::StaticData)) {
                     if (unit->unitData()->sourceTimeStamp == 0) {
@@ -171,7 +148,7 @@ int main(int argc, char *argv[])
 //                std::cout << t.elapsed() << " ms. elapsed" << std::endl;
             }
         }
-        if (scope.engine->hasException) {
+        if (scope.hasException()) {
             QV4::StackTrace trace;
             QV4::ScopedValue ex(scope, scope.engine->catchException(&trace));
             showException(ctx, ex, trace);

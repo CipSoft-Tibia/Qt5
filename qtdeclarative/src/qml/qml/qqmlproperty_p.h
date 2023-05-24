@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLPROPERTY_P_H
 #define QQMLPROPERTY_P_H
@@ -52,14 +16,15 @@
 //
 
 #include "qqmlproperty.h"
-#include "qqmlengine.h"
 
 #include <private/qobject_p.h>
-#include <private/qtqmlglobal_p.h>
-#include <private/qqmlrefcount_p.h>
-#include <private/qqmlcontext_p.h>
-#include <private/qqmlboundsignalexpressionpointer_p.h>
+#include <private/qqmlcontextdata_p.h>
 #include <private/qqmlpropertydata_p.h>
+#include <private/qqmlpropertyindex_p.h>
+#include <private/qqmlrefcount_p.h>
+#include <private/qtqmlglobal_p.h>
+
+#include <QtQml/qqmlengine.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,50 +32,80 @@ class QQmlContext;
 class QQmlEnginePrivate;
 class QQmlJavaScriptExpression;
 class QQmlMetaObject;
+class QQmlAbstractBinding;
+class QQmlBoundSignalExpression;
 
-class Q_QML_PRIVATE_EXPORT QQmlPropertyPrivate : public QQmlRefCount
+class Q_QML_PRIVATE_EXPORT QQmlPropertyPrivate : public QQmlRefCounted<QQmlPropertyPrivate>
 {
 public:
-    QQmlGuardedContextData context;
+    enum class InitFlag {
+        None        = 0x0,
+        AllowId     = 0x1,
+        AllowSignal = 0x2
+    };
+    Q_DECLARE_FLAGS(InitFlags, InitFlag);
+
+    QQmlRefPointer<QQmlContextData> context;
     QPointer<QQmlEngine> engine;
     QPointer<QObject> object;
 
     QQmlPropertyData core;
     QQmlPropertyData valueTypeData;
 
-    bool isNameCached:1;
     QString nameCache;
 
-    QQmlPropertyPrivate();
+    // ### Qt7: Get rid of this.
+    static bool resolveUrlsOnAssignment();
+
+    QQmlPropertyPrivate() {}
 
     QQmlPropertyIndex encodedIndex() const
     { return encodedIndex(core, valueTypeData); }
     static QQmlPropertyIndex encodedIndex(const QQmlPropertyData &core, const QQmlPropertyData &valueTypeData)
     { return QQmlPropertyIndex(core.coreIndex(), valueTypeData.coreIndex()); }
 
-    inline QQmlContextData *effectiveContext() const;
+    QQmlRefPointer<QQmlContextData> effectiveContext() const;
 
-    void initProperty(QObject *obj, const QString &name);
+    void initProperty(QObject *obj, const QString &name, InitFlags flags = InitFlag::None);
     void initDefault(QObject *obj);
 
     bool isValueType() const;
-    int propertyType() const;
+    QMetaType propertyType() const;
     QQmlProperty::Type type() const;
     QQmlProperty::PropertyTypeCategory propertyTypeCategory() const;
 
     QVariant readValueProperty();
     bool writeValueProperty(const QVariant &, QQmlPropertyData::WriteFlags);
 
-    static QQmlMetaObject rawMetaObjectForType(QQmlEnginePrivate *, int);
+    static QQmlMetaObject rawMetaObjectForType(QMetaType metaType);
     static bool writeEnumProperty(const QMetaProperty &prop, int idx, QObject *object,
                                   const QVariant &value, int flags);
     static bool writeValueProperty(QObject *,
                                    const QQmlPropertyData &, const QQmlPropertyData &valueTypeData,
-                                   const QVariant &, QQmlContextData *,
+                                   const QVariant &, const QQmlRefPointer<QQmlContextData> &,
+                                   QQmlPropertyData::WriteFlags flags = {});
+    static bool resetValueProperty(QObject *,
+                                   const QQmlPropertyData &, const QQmlPropertyData &valueTypeData,
+                                   const QQmlRefPointer<QQmlContextData> &,
                                    QQmlPropertyData::WriteFlags flags = {});
     static bool write(QObject *, const QQmlPropertyData &, const QVariant &,
-                      QQmlContextData *, QQmlPropertyData::WriteFlags flags = {});
+                      const QQmlRefPointer<QQmlContextData> &,
+                      QQmlPropertyData::WriteFlags flags = {});
+    static bool reset(QObject *, const QQmlPropertyData &,
+                      QQmlPropertyData::WriteFlags flags = {});
     static void findAliasTarget(QObject *, QQmlPropertyIndex, QObject **, QQmlPropertyIndex *);
+
+    struct ResolvedAlias
+    {
+        QObject *targetObject;
+        QQmlPropertyIndex targetIndex;
+    };
+    /*!
+        \internal
+        Given an alias property specified by \a baseObject and \a baseIndex, this function
+        computes the alias target.
+     */
+    static ResolvedAlias findAliasTarget(QObject *baseObject, QQmlPropertyIndex baseIndex);
 
     enum BindingFlag {
         None = 0,
@@ -126,7 +121,8 @@ public:
     static void removeBinding(QQmlAbstractBinding *b);
     static QQmlAbstractBinding *binding(QObject *, QQmlPropertyIndex index);
 
-    static QQmlProperty restore(QObject *, const QQmlPropertyData &, const QQmlPropertyData *, QQmlContextData *);
+    static QQmlProperty restore(QObject *, const QQmlPropertyData &, const QQmlPropertyData *,
+                                const QQmlRefPointer<QQmlContextData> &);
 
     int signalIndex() const;
 
@@ -141,17 +137,24 @@ public:
     static bool write(const QQmlProperty &that, const QVariant &, QQmlPropertyData::WriteFlags);
     static QQmlPropertyIndex propertyIndex(const QQmlProperty &that);
     static QMetaMethod findSignalByName(const QMetaObject *mo, const QByteArray &);
+    static QMetaProperty findPropertyByName(const QMetaObject *mo, const QByteArray &);
     static bool connect(const QObject *sender, int signal_index,
                         const QObject *receiver, int method_index,
                         int type = 0, int *types = nullptr);
     static void flushSignal(const QObject *sender, int signal_index);
 
-    static QVariant resolvedUrlSequence(const QVariant &value, QQmlContextData *context);
-    static QQmlProperty create(QObject *target, const QString &propertyName, QQmlContextData *context);
+    static QList<QUrl> urlSequence(const QVariant &value);
+    static QList<QUrl> urlSequence(
+            const QVariant &value, const QQmlRefPointer<QQmlContextData> &ctxt);
+    static QQmlProperty create(
+            QObject *target, const QString &propertyName,
+            const QQmlRefPointer<QQmlContextData> &context,
+            QQmlPropertyPrivate::InitFlags flags);
 
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QQmlPropertyPrivate::BindingFlags)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QQmlPropertyPrivate::InitFlags);
 
 QT_END_NAMESPACE
 

@@ -42,12 +42,13 @@ div_table_ssse3: dw 840, 840, 420, 420, 280, 280, 210, 210
                  dw 168, 168, 140, 140, 120, 120, 105, 105
                  dw 420, 420, 210, 210, 140, 140, 105, 105
                  dw 105, 105, 105, 105, 105, 105, 105, 105
-shufw_6543210x:  db 12, 13, 10, 11,  8,  9,  6,  7,  4,  5,  2,  3,  0,  1, 14, 15
-shufb_lohi:      db  0,  8,  1,  9,  2, 10,  3, 11,  4, 12,  5, 13,  6, 14,  7, 15
-pw_8: times 8 dw 8
-pw_128: times 8 dw 128
-pw_256: times 8 dw 256
-pw_2048: times 8 dw 2048
+const shufw_6543210x, \
+            db 12, 13, 10, 11,  8,  9,  6,  7,  4,  5,  2,  3,  0,  1, 14, 15
+shufb_lohi: db  0,  8,  1,  9,  2, 10,  3, 11,  4, 12,  5, 13,  6, 14,  7, 15
+pw_8:      times 8 dw 8
+pw_128:    times 8 dw 128
+pw_256:    times 8 dw 256
+pw_2048:   times 8 dw 2048
 pw_0x7FFF: times 8 dw 0x7FFF
 pw_0x8000: times 8 dw 0x8000
 tap_table: ; masks for 8-bit shift emulation
@@ -249,20 +250,22 @@ SECTION .text
 
 %macro CDEF_FILTER 2 ; w, h
  %if ARCH_X86_64
-cglobal cdef_filter_%1x%2, 4, 9, 16, 3 * 16 + (%2+4)*32, \
-                           dst, stride, left, top, pri, sec, edge, stride3, dst4
+cglobal cdef_filter_%1x%2_8bpc, 5, 9, 16, 3 * 16 + (%2+4)*32, \
+                                dst, stride, left, top, bot, pri, dst4, edge, \
+                                stride3
   %define px rsp+3*16+2*32
   %define base 0
  %else
-cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
-                           dst, stride, left, edge, stride3
+cglobal cdef_filter_%1x%2_8bpc, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
+                                dst, stride, left, edge, stride3
     %define       topq  r2
+    %define       botq  r2
     %define      dst4q  r2
     LEA             r5, tap_table
   %define px esp+7*16+2*32
   %define base r5-tap_table
  %endif
-    mov          edged, r8m
+    mov          edged, r9m
  %if cpuflag(sse4)
    %define OUT_OF_BOUNDS_MEM [base+pw_0x8000]
  %else
@@ -441,24 +444,19 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
 .left_done:
 
     ; bottom
- %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, dst8, dummy, pri, sec, edge, stride3
- %else
-    DEFINE_ARGS dst, stride, dst8, edge, stride3
- %endif
+    movifnidn     botq, r4mp
     test         edgeb, 8 ; have_bottom
     jz .no_bottom
-    lea          dst8q, [dstq+%2*strideq]
     test         edgeb, 1 ; have_left
     jz .bottom_no_left
     test         edgeb, 2 ; have_right
     jz .bottom_no_right
  %if %1 == 4
-    PMOVZXBW        m0, [dst8q-(%1/2)]
-    PMOVZXBW        m1, [dst8q+strideq-(%1/2)]
+    PMOVZXBW        m0, [botq+strideq*0-(%1/2)]
+    PMOVZXBW        m1, [botq+strideq*1-(%1/2)]
  %else
-    movu            m0, [dst8q-4]
-    movu            m1, [dst8q+strideq-4]
+    movu            m0, [botq+strideq*0-4]
+    movu            m1, [botq+strideq*1-4]
     punpckhbw       m2, m0, m7
     punpcklbw       m0, m7
     punpckhbw       m3, m1, m7
@@ -471,13 +469,13 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     jmp .bottom_done
 .bottom_no_right:
  %if %1 == 4
-    PMOVZXBW        m0, [dst8q-4]
-    PMOVZXBW        m1, [dst8q+strideq-4]
+    PMOVZXBW        m0, [botq+strideq*0-4]
+    PMOVZXBW        m1, [botq+strideq*1-4]
     movu [px+32*(%2+0)-8], m0
     movu [px+32*(%2+1)-8], m1
  %else
-    movu            m0, [dst8q-8]
-    movu            m1, [dst8q+strideq-8]
+    movu            m0, [botq+strideq*0-8]
+    movu            m1, [botq+strideq*1-8]
     punpckhbw       m2, m0, m7
     punpcklbw       m0, m7
     punpckhbw       m3, m1, m7
@@ -495,11 +493,11 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     test         edgeb, 2 ; have_right
     jz .bottom_no_left_right
  %if %1 == 4
-    PMOVZXBW        m0, [dst8q]
-    PMOVZXBW        m1, [dst8q+strideq]
+    PMOVZXBW        m0, [botq+strideq*0]
+    PMOVZXBW        m1, [botq+strideq*1]
  %else
-    movu            m0, [dst8q]
-    movu            m1, [dst8q+strideq]
+    movu            m0, [botq+strideq*0]
+    movu            m1, [botq+strideq*1]
     punpckhbw       m2, m0, m7
     punpcklbw       m0, m7
     punpckhbw       m3, m1, m7
@@ -513,8 +511,8 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     movd [px+32*(%2+1)- 4], m6
     jmp .bottom_done
 .bottom_no_left_right:
-    PMOVZXBW        m0, [dst8q+strideq*0], %1 == 4
-    PMOVZXBW        m1, [dst8q+strideq*1], %1 == 4
+    PMOVZXBW        m0, [botq+strideq*0], %1 == 4
+    PMOVZXBW        m1, [botq+strideq*1], %1 == 4
     mova [px+32*(%2+0)+ 0], m0
     mova [px+32*(%2+1)+ 0], m1
     movd [px+32*(%2+0)+%1*2], m6
@@ -533,7 +531,7 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
 
     ; actual filter
  %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, pridmp, damping, pri, sec
+    DEFINE_ARGS dst, stride, _, pridmp, damping, pri, sec
     mova           m13, [shufb_lohi]
  %if cpuflag(ssse3)
     mova           m15, [pw_2048]
@@ -554,18 +552,18 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     %xdefine       m15  [base+pw_8]
  %endif
  %endif
-    movifnidn     prid, r4m
-    movifnidn     secd, r5m
-    mov       dampingd, r7m
+    movifnidn     prid, r5m
+    movifnidn     secd, r6m
+    mov       dampingd, r8m
     movif32 [esp+0x3C], r1d
     test          prid, prid
     jz .sec_only
-    movd            m1, prim
+    movd            m1, r5m
     bsr        pridmpd, prid
     test          secd, secd
     jz .pri_only
-    movd           m10, r5m
-    bsr           secd, secd
+    movd           m10, r6m
+    tzcnt         secd, secd
     and           prid, 1
     sub        pridmpd, dampingd
     sub           secd, dampingd
@@ -574,17 +572,16 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     neg        pridmpd
     cmovs      pridmpd, dampingd
     neg           secd
-    cmovs         secd, dampingd
     PSHUFB_0        m1, m7
     PSHUFB_0       m10, m7
  %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, pridmp, tap, pri, sec
+    DEFINE_ARGS dst, stride, _, pridmp, tap, pri, sec
     lea           tapq, [tap_table]
     MOVDDUP        m11, [tapq+pridmpq*8] ; pri_shift_mask
     MOVDDUP        m12, [tapq+secq*8]    ; sec_shift_mask
     mov     [rsp+0x00], pridmpq          ; pri_shift
     mov     [rsp+0x10], secq             ; sec_shift
-    DEFINE_ARGS dst, stride, dir, tap, pri, stk, k, off, h
+    DEFINE_ARGS dst, stride, h, dir, tap, pri, stk, k, off
  %else
     MOVDDUP         m2, [tapq+pridmpq*8]
     MOVDDUP         m3, [tapq+secq*8]
@@ -601,7 +598,7 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     mova    [esp+0x20], m1
     mova    [esp+0x50], m10
  %endif
-    mov           dird, r6m
+    mov           dird, r7m
     lea           stkq, [px]
     lea           priq, [tapq+8*8+priq*8] ; pri_taps
     mov             hd, %1*%2/8
@@ -643,7 +640,7 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
 
 .pri_only:
 %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, pridmp, damping, pri, tap, zero
+    DEFINE_ARGS dst, stride, zero, pridmp, damping, pri, tap
     lea           tapq, [tap_table]
  %else
     DEFINE_ARGS dst, pridmp, zero, damping, pri, tap
@@ -657,12 +654,12 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     MOVDDUP         m7, [tapq+dampingq*8]
     mov     [rsp+0x00], dampingq
  %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, dir, stk, pri, tap, k, off, h
+    DEFINE_ARGS dst, stride, h, dir, stk, pri, tap, k, off
  %else
     mov     [rsp+0x04], zerod
     DEFINE_ARGS dst, stride, dir, stk, pri, tap, h
  %endif
-    mov           dird, r6m
+    mov           dird, r7m
     lea           stkq, [px]
     lea           priq, [tapq+8*8+priq*8]
     mov             hd, %1*%2/8
@@ -691,13 +688,13 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
 
 .sec_only:
 %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, dir, damping, tap, sec, zero
+    DEFINE_ARGS dst, stride, zero, dir, damping, tap, sec
 %else
     DEFINE_ARGS dst, stride, sec, damping, dir, tap, zero
 %endif
-    movd            m1, r5m
-    bsr           secd, secd
-    mov           dird, r6m
+    movd            m1, r6m
+    tzcnt         secd, secd
+    mov           dird, r7m
     xor          zerod, zerod
     sub       dampingd, secd
     cmovs     dampingd, zerod
@@ -711,7 +708,7 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
     MOVDDUP         m7, [tapq+dampingq*8]
     lea           dirq, [tapq+dirq*2]
  %if ARCH_X86_64
-    DEFINE_ARGS dst, stride, dir, stk, tap, off, k, h
+    DEFINE_ARGS dst, stride, h, dir, stk, tap, off, k
  %else
     DEFINE_ARGS dst, stride, off, stk, dir, tap, h
  %endif
@@ -758,27 +755,26 @@ cglobal cdef_filter_%1x%2, 2, 7, 8, - 7 * 16 - (%2+4)*32, \
 
 %macro CDEF_DIR 0
  %if ARCH_X86_64
-cglobal cdef_dir, 3, 5, 16, 32, src, stride, var, stride3
-    lea       stride3q, [strideq*3]
+cglobal cdef_dir_8bpc, 3, 7, 16, src, stride, var
+    lea             r6, [strideq*3]
     movq            m1, [srcq+strideq*0]
     movhps          m1, [srcq+strideq*1]
     movq            m3, [srcq+strideq*2]
-    movhps          m3, [srcq+stride3q]
+    movhps          m3, [srcq+r6       ]
     lea           srcq, [srcq+strideq*4]
     movq            m5, [srcq+strideq*0]
     movhps          m5, [srcq+strideq*1]
     movq            m7, [srcq+strideq*2]
-    movhps          m7, [srcq+stride3q]
+    movhps          m7, [srcq+r6       ]
 
     pxor            m8, m8
-    psadbw          m0, m1, m8
+    psadbw          m9, m1, m8
     psadbw          m2, m3, m8
     psadbw          m4, m5, m8
     psadbw          m6, m7, m8
-    packssdw        m0, m2
+    packssdw        m9, m2
     packssdw        m4, m6
-    packssdw        m0, m4
-    SWAP            m0, m9
+    packssdw        m9, m4
 
     punpcklbw       m0, m1, m8
     punpckhbw       m1, m8
@@ -788,7 +784,7 @@ cglobal cdef_dir, 3, 5, 16, 32, src, stride, var, stride3
     punpckhbw       m5, m8
     punpcklbw       m6, m7, m8
     punpckhbw       m7, m8
-
+cglobal_label .main
     mova            m8, [pw_128]
     psubw           m0, m8
     psubw           m1, m8
@@ -1018,19 +1014,25 @@ cglobal cdef_dir, 3, 5, 16, 32, src, stride, var, stride3
     punpckldq       m4, m6
     psubd           m2, m0, m1
     psubd           m3, m0, m4
-    mova    [rsp+0x00], m2                  ; emulate ymm in stack
-    mova    [rsp+0x10], m3
+%if WIN64
+    WIN64_RESTORE_XMM
+    %define tmp rsp+stack_offset+8
+%else
+    %define tmp rsp-40
+%endif
+    mova    [tmp+0x00], m2                  ; emulate ymm in stack
+    mova    [tmp+0x10], m3
     pcmpeqd         m1, m0                  ; compute best cost mask
     pcmpeqd         m4, m0
     packssdw        m4, m1
     pmovmskb       eax, m4                  ; get byte-idx from mask
     tzcnt          eax, eax
-    mov            r1d, [rsp+rax*2]         ; get idx^4 complement from emulated ymm
+    mov            r1d, [tmp+rax*2]         ; get idx^4 complement from emulated ymm
     shr            eax, 1                   ; get direction by converting byte-idx to word-idx
     shr            r1d, 10
     mov         [varq], r1d
  %else
-cglobal cdef_dir, 2, 4, 8, 96, src, stride, var, stride3
+cglobal cdef_dir_8bpc, 2, 4, 8, 96, src, stride, var, stride3
 %define base r2-shufw_6543210x
     LEA             r2, shufw_6543210x
     pxor            m0, m0
@@ -1063,19 +1065,19 @@ cglobal cdef_dir, 2, 4, 8, 96, src, stride, var, stride3
     movq            m7, [srcq+strideq*2]
     movhps          m7, [srcq+stride3q]
     psadbw          m3, m5, m0
-    psadbw          m0, m7, m0
+    psadbw          m0, m7
     packssdw        m3, m0
     pxor            m0, m0
-    packssdw        m2, m3
     punpcklbw       m4, m5, m0
     punpckhbw       m5, m0
     punpcklbw       m6, m7, m0
     punpckhbw       m7, m0
+cglobal_label .main
     psubw           m4, m1
     psubw           m5, m1
     psubw           m6, m1
     psubw           m7, m1
-
+    packssdw        m2, m3
     psllw           m1, 3
     psubw           m2, m1                  ; partial_sum_hv[0]
     pmaddwd         m2, m2

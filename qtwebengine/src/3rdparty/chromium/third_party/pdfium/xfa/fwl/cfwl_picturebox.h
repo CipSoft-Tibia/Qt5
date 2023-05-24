@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,6 @@
 
 #include "xfa/fwl/cfwl_widget.h"
 
-class CFX_DIBitmap;
-class CFWL_Widget;
-
 class CFWL_PictureBox final : public CFWL_Widget {
  public:
   CONSTRUCT_VIA_MAKE_GARBAGE_COLLECTED;
@@ -20,8 +17,9 @@ class CFWL_PictureBox final : public CFWL_Widget {
   // CFWL_Widget
   FWL_Type GetClassID() const override;
   void Update() override;
-  void DrawWidget(CXFA_Graphics* pGraphics, const CFX_Matrix& matrix) override;
-  void OnDrawWidget(CXFA_Graphics* pGraphics,
+  void DrawWidget(CFGAS_GEGraphics* pGraphics,
+                  const CFX_Matrix& matrix) override;
+  void OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                     const CFX_Matrix& matrix) override;
 
  private:

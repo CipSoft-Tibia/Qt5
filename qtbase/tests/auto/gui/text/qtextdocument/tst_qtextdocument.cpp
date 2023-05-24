@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-
+#include <QTest>
+#include <QSignalSpy>
 
 #include <qtextdocument.h>
 #include <qdebug.h>
@@ -40,7 +15,6 @@
 #include <qtexttable.h>
 #include <qabstracttextdocumentlayout.h>
 #include <qtextlist.h>
-#include <qtextcodec.h>
 #include <qguiapplication.h>
 #include <qurl.h>
 #include <qpainter.h>
@@ -70,8 +44,6 @@ private slots:
     void find_data();
     void find();
     void find2();
-    void findWithRegExp_data();
-    void findWithRegExp();
     void findWithRegularExpression_data();
     void findWithRegularExpression();
     void findMultiple();
@@ -99,6 +71,7 @@ private slots:
     void toHtml2();
 
     void setFragmentMarkersInHtmlExport();
+    void setMediaRule();
 
     void toHtmlBodyBgColor();
     void toHtmlBodyBgColorRgba();
@@ -106,6 +79,7 @@ private slots:
     void toHtmlRootFrameProperties();
     void toHtmlLineHeightProperties();
     void toHtmlDefaultFontSpacingProperties();
+    void toHtmlTextDecorationUnderline();
     void capitalizationHtmlInExport();
     void wordspacingHtmlExport();
 
@@ -113,8 +87,6 @@ private slots:
     void cursorPositionChangedOnSetText();
 
     void textFrameIterator();
-
-    void codecForHtml();
 
     void markContentsDirty();
 
@@ -128,7 +100,10 @@ private slots:
     void clonePreservesIndentWidth();
     void clonePreservesFormatsWhenEmpty();
     void blockCount();
+
     void defaultStyleSheet();
+    void defaultTableStyle_data();
+    void defaultTableStyle();
 
     void resolvedFontInEmptyFormat();
 
@@ -197,8 +172,16 @@ private slots:
     void clearUndoRedoStacks();
     void mergeFontFamilies();
 
+    void resourceProvider();
+
     void contentsChangeIndices_data();
     void contentsChangeIndices();
+
+    void insertHtmlWithComments_data();
+    void insertHtmlWithComments();
+
+    void delayedLayout();
+    void undoContentChangeIndices();
 
 private:
     void backgroundImage_checkExpectedHtml(const QTextDocument &doc);
@@ -217,13 +200,13 @@ class MyAbstractTextDocumentLayout : public QAbstractTextDocumentLayout
 {
 public:
     MyAbstractTextDocumentLayout(QTextDocument *doc) : QAbstractTextDocumentLayout(doc) {}
-    void draw(QPainter *, const PaintContext &) {}
-    int hitTest(const QPointF &, Qt::HitTestAccuracy) const { return 0; }
-    int pageCount() const { return 0; }
-    QSizeF documentSize() const { return QSizeF(); }
-    QRectF frameBoundingRect(QTextFrame *) const { return QRectF(); }
-    QRectF blockBoundingRect(const QTextBlock &) const { return QRectF(); }
-    void documentChanged(int, int, int) {}
+    void draw(QPainter *, const PaintContext &) override {}
+    int hitTest(const QPointF &, Qt::HitTestAccuracy) const override { return 0; }
+    int pageCount() const override { return 0; }
+    QSizeF documentSize() const override { return QSizeF(); }
+    QRectF frameBoundingRect(QTextFrame *) const override { return QRectF(); }
+    QRectF blockBoundingRect(const QTextBlock &) const override { return QRectF(); }
+    void documentChanged(int, int, int) override {}
 };
 
 QString tst_QTextDocument::cssFontSizeString(const QFont &font)
@@ -248,9 +231,9 @@ void tst_QTextDocument::writeActualAndExpected(const char *testTag, const QStrin
         out.close();
     }
 #else
-    Q_UNUSED(testTag)
-    Q_UNUSED(actual)
-    Q_UNUSED(expected)
+    Q_UNUSED(testTag);
+    Q_UNUSED(actual);
+    Q_UNUSED(expected);
 #endif
 }
 
@@ -289,15 +272,17 @@ void tst_QTextDocument::init()
 
     htmlHead = QString("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" "
             "\"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-            "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
+            "<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\n"
             "p, li { white-space: pre-wrap; }\n"
+            "hr { height: 1px; border-width: 0; }\n"
+            "li.unchecked::marker { content: \"\\2610\"; }\n"
+            "li.checked::marker { content: \"\\2612\"; }\n"
             "</style></head>"
             "<body style=\" font-family:'%1'; font-size:%2; font-weight:%3; font-style:%4;\">\n");
-    htmlHead = htmlHead
-                .arg(defaultFont.family())
-                .arg(cssFontSizeString(defaultFont))
-                .arg(defaultFont.weight() * 8)
-                .arg((defaultFont.italic() ? "italic" : "normal"));
+    htmlHead = htmlHead.arg(defaultFont.family())
+                       .arg(cssFontSizeString(defaultFont))
+                       .arg(defaultFont.weight())
+                       .arg((defaultFont.italic() ? "italic" : "normal"));
 
     htmlTail = QString("</body></html>");
 }
@@ -384,39 +369,8 @@ void tst_QTextDocument::find()
     }
 
     //search using a regular expression
-    QRegExp expr(needle);
-    expr.setPatternSyntax(QRegExp::FixedString);
+    QRegularExpression expr(QRegularExpression::escape(needle));
     QTextDocument::FindFlags flg(flags);
-    expr.setCaseSensitivity((flg & QTextDocument::FindCaseSensitively) ? Qt::CaseSensitive : Qt::CaseInsensitive);
-    cursor = doc->find(expr, from, flg);
-
-    if (anchor != -1) {
-        QCOMPARE(cursor.anchor(), anchor);
-        QCOMPARE(cursor.position(), position);
-    } else {
-        QVERIFY(cursor.isNull());
-    }
-}
-
-void tst_QTextDocument::findWithRegExp_data()
-{
-    buildRegExpData();
-}
-
-void tst_QTextDocument::findWithRegExp()
-{
-    QFETCH(QString, haystack);
-    QFETCH(QString, needle);
-    QFETCH(int, flags);
-    QFETCH(int, from);
-    QFETCH(int, anchor);
-    QFETCH(int, position);
-
-    cursor.insertText(haystack);
-    //search using a regular expression
-    QRegExp expr(needle);
-    QTextDocument::FindFlags flg(flags);
-    expr.setCaseSensitivity((flg & QTextDocument::FindCaseSensitively) ? Qt::CaseSensitive : Qt::CaseInsensitive);
     cursor = doc->find(expr, from, flg);
 
     if (anchor != -1) {
@@ -486,26 +440,6 @@ void tst_QTextDocument::findMultiple()
     QCOMPARE(cursor.selectionStart(), text.indexOf("bar"));
     QCOMPARE(cursor.selectionEnd(), cursor.selectionStart() + 3);
 
-
-    QRegExp expr("bar");
-    expr.setPatternSyntax(QRegExp::FixedString);
-
-    cursor.movePosition(QTextCursor::End);
-    cursor = doc->find(expr, cursor, QTextDocument::FindBackward);
-    QCOMPARE(cursor.selectionStart(), text.lastIndexOf("bar"));
-    QCOMPARE(cursor.selectionEnd(), cursor.selectionStart() + 3);
-    cursor = doc->find(expr, cursor, QTextDocument::FindBackward);
-    QCOMPARE(cursor.selectionStart(), text.indexOf("bar"));
-    QCOMPARE(cursor.selectionEnd(), cursor.selectionStart() + 3);
-
-    cursor.movePosition(QTextCursor::Start);
-    cursor = doc->find(expr, cursor);
-    QCOMPARE(cursor.selectionStart(), text.indexOf("bar"));
-    QCOMPARE(cursor.selectionEnd(), cursor.selectionStart() + 3);
-    cursor = doc->find(expr, cursor);
-    QCOMPARE(cursor.selectionStart(), text.lastIndexOf("bar"));
-    QCOMPARE(cursor.selectionEnd(), cursor.selectionStart() + 3);
-
     QRegularExpression regularExpression("bar");
 
     cursor.movePosition(QTextCursor::End);
@@ -532,17 +466,17 @@ void tst_QTextDocument::basicIsModifiedChecks()
     QVERIFY(!doc->isModified());
     cursor.insertText("Hello World");
     QVERIFY(doc->isModified());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(spy.takeFirst().at(0).toBool());
 
     doc->undo();
     QVERIFY(!doc->isModified());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(!spy.takeFirst().at(0).toBool());
 
     doc->redo();
     QVERIFY(doc->isModified());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(spy.takeFirst().at(0).toBool());
 }
 
@@ -633,16 +567,16 @@ void tst_QTextDocument::noundo_basicIsModifiedChecks()
     QVERIFY(!doc->isModified());
     cursor.insertText("Hello World");
     QVERIFY(doc->isModified());
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QVERIFY(spy.takeFirst().at(0).toBool());
 
     doc->undo();
     QVERIFY(doc->isModified());
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     doc->redo();
     QVERIFY(doc->isModified());
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 }
 
 void tst_QTextDocument::task240325()
@@ -662,9 +596,6 @@ void tst_QTextDocument::task240325()
     QCOMPARE(doc->blockCount(), 1);
     for (QTextBlock block = doc->begin() ; block!=doc->end() ; block = block.next()) {
         QTextLayout *layout = block.layout();
-#ifdef Q_OS_ANDROID
-        QEXPECT_FAIL("", "QTBUG-69242", Abort);
-#endif
         QCOMPARE(layout->lineCount(), 4);
 
         for (int lineIdx=0;lineIdx<layout->lineCount();++lineIdx) {
@@ -866,7 +797,7 @@ void tst_QTextDocument::toHtml_data()
         CREATE_DOC_AND_CURSOR();
 
         QTextCharFormat fmt;
-        fmt.setFontFamily("Times");
+        fmt.setFontFamilies({QLatin1String("Times")});
         cursor.insertText("Blah", fmt);
 
         QTest::newRow("font-family") << QTextDocumentFragment(&doc)
@@ -877,7 +808,7 @@ void tst_QTextDocument::toHtml_data()
         CREATE_DOC_AND_CURSOR();
 
         QTextCharFormat fmt;
-        fmt.setFontFamily("Foo's Family");
+        fmt.setFontFamilies({QLatin1String("Foo's Family")});
         cursor.insertText("Blah", fmt);
 
         QTest::newRow("font-family-with-quotes1") << QTextDocumentFragment(&doc)
@@ -888,7 +819,7 @@ void tst_QTextDocument::toHtml_data()
         CREATE_DOC_AND_CURSOR();
 
         QTextCharFormat fmt;
-        fmt.setFontFamily("Foo\"s Family");
+        fmt.setFontFamilies({QLatin1String("Foo\"s Family")});
         cursor.insertText("Blah", fmt);
 
         QTest::newRow("font-family-with-quotes2") << QTextDocumentFragment(&doc)
@@ -899,7 +830,6 @@ void tst_QTextDocument::toHtml_data()
         CREATE_DOC_AND_CURSOR();
 
         QTextCharFormat fmt;
-        fmt.setFontFamily("Times");
         fmt.setFontFamilies(QStringList{ "Times", "serif" });
         cursor.insertText("Blah", fmt);
 
@@ -1058,7 +988,7 @@ void tst_QTextDocument::toHtml_data()
         CREATE_DOC_AND_CURSOR();
 
         QTextCharFormat fmt;
-        fmt.setFontWeight(40);
+        fmt.setFontWeight(320);
         cursor.insertText("Blah", fmt);
 
         QTest::newRow("font-weight") << QTextDocumentFragment(&doc)
@@ -1327,7 +1257,7 @@ void tst_QTextDocument::toHtml_data()
         CREATE_DOC_AND_CURSOR();
 
         QTextTableFormat fmt;
-        QVector<QTextLength> widths;
+        QList<QTextLength> widths;
         widths.append(QTextLength());
         widths.append(QTextLength(QTextLength::PercentageLength, 30));
         widths.append(QTextLength(QTextLength::FixedLength, 40));
@@ -1444,7 +1374,7 @@ void tst_QTextDocument::toHtml_data()
         QTest::newRow("lists") << QTextDocumentFragment(&doc)
                           <<
                              QString("EMPTYBLOCK") +
-                             QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\"><li DEFAULTBLOCKSTYLE>Blubb</li>\n<li DEFAULTBLOCKSTYLE>Blah</li></ul>");
+                             QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\">\n<li DEFAULTBLOCKSTYLE>Blubb</li>\n<li DEFAULTBLOCKSTYLE>Blah</li></ul>");
     }
 
     {
@@ -1467,7 +1397,7 @@ void tst_QTextDocument::toHtml_data()
         QTest::newRow("charfmt-for-list-item") << QTextDocumentFragment(&doc)
                           <<
                              QString("EMPTYBLOCK") +
-                             QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\"><li DEFAULTBLOCKSTYLE>Blubb</li>\n<li style=\" color:#0000ff;\" DEFAULTBLOCKSTYLE><span style=\" color:#ff0000;\">Blah</span></li></ul>");
+                             QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\">\n<li DEFAULTBLOCKSTYLE>Blubb</li>\n<li style=\" color:#0000ff;\" DEFAULTBLOCKSTYLE><span style=\" color:#ff0000;\">Blah</span></li></ul>");
     }
 
     {
@@ -1497,7 +1427,7 @@ void tst_QTextDocument::toHtml_data()
         QTest::newRow("list-indent") << QTextDocumentFragment(&doc)
                                   <<
                                     QString("EMPTYBLOCK") +
-                                    QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 4;\"><li DEFAULTBLOCKSTYLE>Blah</li></ul>");
+                                    QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 4;\">\n<li DEFAULTBLOCKSTYLE>Blah</li></ul>");
     }
 
     {
@@ -1556,7 +1486,19 @@ void tst_QTextDocument::toHtml_data()
         QTest::newRow("horizontal-ruler-with-width") << QTextDocumentFragment::fromHtml("<hr width=\"50%\"/>")
                                                   <<
                                                       QString("EMPTYBLOCK") +
-                                                      QString("<hr width=\"50%\"/>");
+                                                      QString("<hr width=\"50%\" />");
+    }
+    {
+        QTest::newRow("horizontal-ruler-with-color") << QTextDocumentFragment::fromHtml("<hr style=\"background-color:green;\"/>")
+                                                     <<
+                                                        QString("EMPTYBLOCK") +
+                                                        QString("<hr style=\"background-color:#008000;\"/>");
+    }
+    {
+        QTest::newRow("horizontal-ruler-with-width-and-color") << QTextDocumentFragment::fromHtml("<hr width=\"50%\" style=\"background-color:green;\"/>")
+                                                     <<
+                                                        QString("EMPTYBLOCK") +
+                                                        QString("<hr width=\"50%\" style=\"background-color:#008000;\"/>");
     }
     {
         CREATE_DOC_AND_CURSOR();
@@ -1600,7 +1542,7 @@ void tst_QTextDocument::toHtml_data()
         QTextTable *table = cursor.insertTable(2, 2);
         table->mergeCells(0, 0, 1, 2);
         QTextTableFormat fmt = table->format();
-        QVector<QTextLength> widths;
+        QList<QTextLength> widths;
         widths.append(QTextLength(QTextLength::FixedLength, 20));
         widths.append(QTextLength(QTextLength::FixedLength, 40));
         fmt.setColumnWidthConstraints(widths);
@@ -1773,7 +1715,7 @@ void tst_QTextDocument::toHtml_data()
 
         QTest::newRow("list-ul-margin") << QTextDocumentFragment(&doc)
                                         << QString("EMPTYBLOCK") +
-                                           QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\"><li DEFAULTBLOCKSTYLE>Blah</li></ul>");
+                                           QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\">\n<li DEFAULTBLOCKSTYLE>Blah</li></ul>");
     }
     {
         CREATE_DOC_AND_CURSOR();
@@ -1783,12 +1725,12 @@ void tst_QTextDocument::toHtml_data()
         cursor.insertHtml(listHtml);
 
         QTest::newRow("nested-lists-one") << QTextDocumentFragment(&doc)
-            << QString("<ul DEFAULTULSTYLE 1;\"><li style=\" margin-top:12px; margin-bottom:0px; "
+            << QString("<ul DEFAULTULSTYLE 1;\">\n<li style=\" margin-top:12px; margin-bottom:0px; "
                        "margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">"
-                       "item-1</li>\n<li DEFAULTBLOCKSTYLE>item-2\n<ul DEFAULTULSTYLE 2;\"><li "
+                       "item-1</li>\n<li DEFAULTBLOCKSTYLE>item-2\n<ul DEFAULTULSTYLE 2;\">\n<li "
                        "DEFAULTBLOCKSTYLE>item-2.1</li>\n<li DEFAULTBLOCKSTYLE>item-2.2\n<ul "
-                       "DEFAULTULSTYLE 3;\"><li DEFAULTBLOCKSTYLE>item-2.2.1</li></ul></li>\n"
-                       "<li DEFAULTBLOCKSTYLE>item-2.3\n<ul DEFAULTULSTYLE 3;\"><li DEFAULTBLOCKSTYLE>"
+                       "DEFAULTULSTYLE 3;\">\n<li DEFAULTBLOCKSTYLE>item-2.2.1</li></ul></li>\n"
+                       "<li DEFAULTBLOCKSTYLE>item-2.3\n<ul DEFAULTULSTYLE 3;\">\n<li DEFAULTBLOCKSTYLE>"
                        "item-2.3.1</li></ul></li></ul></li>\n<li DEFAULTLASTLISTYLE>item-3</li></ul>");
     }
     {
@@ -1797,9 +1739,9 @@ void tst_QTextDocument::toHtml_data()
         cursor.insertHtml(listHtml);
 
         QTest::newRow("nested-lists-two") << QTextDocumentFragment(&doc)
-            << QString("<ul DEFAULTULSTYLE 1;\"><li style=\" margin-top:12px; margin-bottom:0px; "
+            << QString("<ul DEFAULTULSTYLE 1;\">\n<li style=\" margin-top:12px; margin-bottom:0px; "
                        "margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">"
-                       "item-1</li>\n<li DEFAULTLASTLISTYLE>item-2\n<ul DEFAULTULSTYLE 2;\"><li "
+                       "item-1</li>\n<li DEFAULTLASTLISTYLE>item-2\n<ul DEFAULTULSTYLE 2;\">\n<li "
                        "DEFAULTBLOCKSTYLE>item-2.1</li></ul></li></ul>");
     }
     {
@@ -1809,9 +1751,9 @@ void tst_QTextDocument::toHtml_data()
         cursor.insertHtml(listHtml);
 
         QTest::newRow("nested-lists-three") << QTextDocumentFragment(&doc)
-            << QString("<ul DEFAULTULSTYLE 1;\"><li style=\" margin-top:12px; margin-bottom:0px; "
+            << QString("<ul DEFAULTULSTYLE 1;\">\n<li style=\" margin-top:12px; margin-bottom:0px; "
                        "margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">"
-                       "item-1</li>\n<li DEFAULTLASTLISTYLE>item-2\n<ul DEFAULTULSTYLE 2;\"><li "
+                       "item-1</li>\n<li DEFAULTLASTLISTYLE>item-2\n<ul DEFAULTULSTYLE 2;\">\n<li "
                        "DEFAULTBLOCKSTYLE>item-2.1</li>\n<li DEFAULTBLOCKSTYLE>item-2.2</li></ul>"
                        "</li></ul>");
     }
@@ -1822,11 +1764,38 @@ void tst_QTextDocument::toHtml_data()
         cursor.insertHtml(listHtml);
 
         QTest::newRow("not-nested-list") << QTextDocumentFragment(&doc)
-            << QString("<ul DEFAULTULSTYLE 1;\"><li style=\" margin-top:12px; margin-bottom:0px; "
+            << QString("<ul DEFAULTULSTYLE 1;\">\n<li style=\" margin-top:12px; margin-bottom:0px; "
                        "margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">"
-                       "item-1.1</li>\n<li DEFAULTBLOCKSTYLE>item-1.2</li></ul>\n<ul DEFAULTULSTYLE 1;\">"
+                       "item-1.1</li>\n<li DEFAULTBLOCKSTYLE>item-1.2</li></ul>\n<ul DEFAULTULSTYLE 1;\">\n"
                        "<li style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; "
                        "margin-right:0px; -qt-block-indent:0; text-indent:0px;\">item-2.1</li></ul>");
+    }
+    {
+        CREATE_DOC_AND_CURSOR();
+        const QString listHtml = "<ul><li>bullet</li><li class=\"unchecked\">unchecked item</li><li class=\"checked\">checked item</li></ul>";
+        cursor.insertHtml(listHtml);
+
+        QTest::newRow("list with and without checkboxes") << QTextDocumentFragment(&doc)
+            << QString("<ul style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\">\n"
+                       "<li style=\" margin-top:12px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">bullet</li>\n"
+                       "<li class=\"unchecked\" style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">unchecked item</li>\n"
+                       "<li class=\"checked\" style=\" margin-top:0px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">checked item</li></ul>");
+    }
+
+    {
+        CREATE_DOC_AND_CURSOR();
+
+        QTextListFormat fmt;
+        fmt.setStyle(QTextListFormat::ListDecimal);
+        fmt.setStart(4);
+        cursor.insertList(fmt);
+        cursor.insertText("Blah");
+        cursor.insertBlock();
+        cursor.insertText("Bleh");
+
+        QTest::newRow("ordered list with start") << QTextDocumentFragment(&doc)
+            << QString("EMPTYBLOCK") +
+               QString("<ol start=\"4\" style=\"margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px; -qt-list-indent: 1;\">\n<li style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</li>\n<li style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Bleh</li></ol>");
     }
 }
 
@@ -1858,12 +1827,10 @@ void tst_QTextDocument::toHtml()
     QCOMPARE(output, expectedOutput);
 
     QDomDocument document;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QEXPECT_FAIL("charfmt-for-list-item",
                  "The attribute \"style\" is redefined in the generated HTML, which is not valid "
                  "according to XML standard. The new QDomDocument implementation follows the XML "
                  "standard.", Continue);
-#endif
     QVERIFY2(document.setContent(output), "Output was not valid XML");
 }
 
@@ -1925,7 +1892,7 @@ void tst_QTextDocument::setFragmentMarkersInHtmlExport()
         QTextDocumentFragment fragment(cursor);
 
         QString expected = htmlHead;
-        expected.replace(QRegExp("<body.*>"), QString("<body>"));
+        expected.replace(QRegularExpression("<body.*>"), QString("<body>"));
         expected += QString("<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><!--StartFragment-->Test<span style=\" color:#00ff00;\">Blah</span><!--EndFragment--></p>") + htmlTail;
         QCOMPARE(fragment.toHtml(), expected);
     }
@@ -1945,9 +1912,42 @@ void tst_QTextDocument::setFragmentMarkersInHtmlExport()
         QTextDocumentFragment fragment(cursor);
 
         QString expected = htmlHead;
-        expected.replace(QRegExp("<body.*>"), QString("<body>"));
+        expected.replace(QRegularExpression("<body.*>"), QString("<body>"));
         expected += QString("<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><!--StartFragment-->Test<!--EndFragment--></p>") + htmlTail;
         QCOMPARE(fragment.toHtml(), expected);
+    }
+}
+
+void tst_QTextDocument::setMediaRule()
+{
+    {
+        CREATE_DOC_AND_CURSOR();
+        doc.setDefaultStyleSheet("@media screen { p { background:#000000 } } @media print { p { background:#ffffff } }");
+        doc.setHtml("<p>Hello World</p>");
+
+        QString expected = htmlHead;
+        expected += QString("<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; background-color:#000000;\"><span style=\" background-color:#000000;\">Hello World</span></p>") + htmlTail;
+        QCOMPARE(doc.toHtml(), expected);
+    }
+    {
+        CREATE_DOC_AND_CURSOR();
+        doc.setDefaultStyleSheet("@media screen { p { background:#000000 } } @media print { p { background:#ffffff } }");
+        doc.setMetaInformation(QTextDocument::CssMedia, "screen");
+        doc.setHtml("<p>Hello World</p>");
+
+        QString expected = htmlHead;
+        expected += QString("<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; background-color:#000000;\"><span style=\" background-color:#000000;\">Hello World</span></p>") + htmlTail;
+        QCOMPARE(doc.toHtml(), expected);
+    }
+    {
+        CREATE_DOC_AND_CURSOR();
+        doc.setDefaultStyleSheet("@media screen { p { background:#000000 } } @media print { p { background:#ffffff } }");
+        doc.setMetaInformation(QTextDocument::CssMedia, "print");
+        doc.setHtml("<p>Hello World</p>");
+
+        QString expected = htmlHead;
+        expected += QString("<p style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px; background-color:#ffffff;\"><span style=\" background-color:#ffffff;\">Hello World</span></p>") + htmlTail;
+        QCOMPARE(doc.toHtml(), expected);
     }
 }
 
@@ -1961,21 +1961,12 @@ void tst_QTextDocument::toHtmlBodyBgColor()
     fmt.setBackground(QColor("#0000ff"));
     doc.rootFrame()->setFrameFormat(fmt);
 
-    QString expectedHtml("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" "
-            "\"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-            "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-            "p, li { white-space: pre-wrap; }\n"
-            "</style></head>"
-            "<body style=\" font-family:'%1'; font-size:%2; font-weight:%3; font-style:%4;\""
-            " bgcolor=\"#0000ff\">\n"
-            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
-            "</body></html>");
+    QString expectedHtml = htmlHead;
+    expectedHtml.insert(htmlHead.size() - 2, " bgcolor=\"#0000ff\"");
+    expectedHtml += "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
+             + htmlTail;
 
-    expectedHtml = expectedHtml
-                    .arg(defaultFont.family())
-                    .arg(cssFontSizeString(defaultFont))
-                    .arg(defaultFont.weight() * 8)
-                    .arg((defaultFont.italic() ? "italic" : "normal"));
+    writeActualAndExpected(QTest::currentDataTag(), doc.toHtml(), expectedHtml);
 
     QCOMPARE(doc.toHtml(), expectedHtml);
 }
@@ -1990,20 +1981,12 @@ void tst_QTextDocument::toHtmlBodyBgColorRgba()
     fmt.setBackground(QColor(255, 0, 0, 51));
     doc.rootFrame()->setFrameFormat(fmt);
 
-    QString expectedHtml("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" "
-            "\"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-            "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-            "p, li { white-space: pre-wrap; }\n"
-            "</style></head>"
-            "<body style=\" font-family:'%1'; font-size:%2; font-weight:%3; font-style:%4;\""
-            " bgcolor=\"rgba(255,0,0,0.2)\">\n"
-            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
-            "</body></html>");
+    QString expectedHtml = htmlHead;
+    expectedHtml.insert(htmlHead.size() - 2, " bgcolor=\"rgba(255,0,0,0.2)\"");
+    expectedHtml += "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
+             + htmlTail;
 
-    expectedHtml = expectedHtml.arg(defaultFont.family())
-                    .arg(cssFontSizeString(defaultFont))
-                    .arg(defaultFont.weight() * 8)
-                    .arg((defaultFont.italic() ? "italic" : "normal"));
+    writeActualAndExpected(QTest::currentDataTag(), doc.toHtml(), expectedHtml);
 
     QCOMPARE(doc.toHtml(), expectedHtml);
 }
@@ -2018,21 +2001,12 @@ void tst_QTextDocument::toHtmlBodyBgColorTransparent()
     fmt.setBackground(QColor(255, 0, 0, 0));
     doc.rootFrame()->setFrameFormat(fmt);
 
-    QString expectedHtml("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" "
-            "\"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-            "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-            "p, li { white-space: pre-wrap; }\n"
-            "</style></head>"
-            "<body style=\" font-family:'%1'; font-size:%2; font-weight:%3; font-style:%4;\""
-            " bgcolor=\"transparent\">\n"
-            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
-            "</body></html>");
+    QString expectedHtml = htmlHead;
+    expectedHtml.insert(htmlHead.size() - 2, " bgcolor=\"transparent\"");
+    expectedHtml += "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
+             + htmlTail;
 
-    expectedHtml = expectedHtml
-                    .arg(defaultFont.family())
-                    .arg(cssFontSizeString(defaultFont))
-                    .arg(defaultFont.weight() * 8)
-                    .arg((defaultFont.italic() ? "italic" : "normal"));
+    writeActualAndExpected(QTest::currentDataTag(), doc.toHtml(), expectedHtml);
 
     QCOMPARE(doc.toHtml(), expectedHtml);
 }
@@ -2093,21 +2067,51 @@ void tst_QTextDocument::toHtmlDefaultFontSpacingProperties()
     fnt.setWordSpacing(15);
     doc.setDefaultFont(fnt);
 
-    QString expectedOutput = QString("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" "
-                                     "\"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-                                     "<html><head><meta name=\"qrichtext\" content=\"1\" />"
-                                     "<style type=\"text/css\">\n"
-                                     "p, li { white-space: pre-wrap; }\n"
-                                     "</style></head>"
-                                     "<body style=\" font-family:'%1'; font-size:%2; "
-                                     "font-weight:%3; font-style:%4; letter-spacing:13px; "
-                                     "word-spacing:15px;\">\n"
-                                     "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
-                                     "</body></html>");
-    expectedOutput = expectedOutput.arg(defaultFont.family())
-                                   .arg(cssFontSizeString(defaultFont))
-                                   .arg(defaultFont.weight() * 8)
-                                   .arg((defaultFont.italic() ? "italic" : "normal"));
+    QString expectedOutput = htmlHead;
+    expectedOutput.insert(htmlHead.size() - 3, " letter-spacing:13px; word-spacing:15px;");
+    expectedOutput +=
+            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
+            + htmlTail;
+
+    writeActualAndExpected(QTest::currentTestFunction(), doc.toHtml(), expectedOutput);
+
+    QCOMPARE(doc.toHtml(), expectedOutput);
+}
+
+void tst_QTextDocument::toHtmlTextDecorationUnderline()
+{
+    CREATE_DOC_AND_CURSOR();
+
+    cursor.insertText("Some text");
+    QFont fnt = doc.defaultFont();
+    fnt.setUnderline(true);
+    doc.setDefaultFont(fnt);
+
+    QString expectedOutput = htmlHead;
+    expectedOutput.insert(htmlHead.size() - 3, " text-decoration: underline;");
+    expectedOutput +=
+            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Some text</p>"
+            + htmlTail;
+
+    writeActualAndExpected("toHtmlTextDecorationUnderline1", doc.toHtml(), expectedOutput);
+
+    QCOMPARE(doc.toHtml(), expectedOutput);
+
+    QTextCharFormat format;
+    format.setFontUnderline(false);
+    cursor.select(QTextCursor::Document);
+    cursor.mergeCharFormat(format);
+
+    expectedOutput = htmlHead;
+    expectedOutput.insert(htmlHead.size() - 3, " text-decoration: underline;");
+    expectedOutput +=
+            "<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; "
+            "margin-right:0px; -qt-block-indent:0; text-indent:0px;\">"
+            "<span style=\" text-decoration:none;\">Some text</span></p>"
+            + htmlTail;
+
+    writeActualAndExpected("toHtmlTextDecorationUnderline2", doc.toHtml(), expectedOutput);
+
     QCOMPARE(doc.toHtml(), expectedOutput);
 }
 
@@ -2115,8 +2119,9 @@ void tst_QTextDocument::capitalizationHtmlInExport()
 {
     doc->setPlainText("Test");
 
-    QRegExp re(".*span style=\"(.*)\">Test.*");
-    QVERIFY(re.exactMatch(doc->toHtml()) == false); // no span
+    QRegularExpression re(".*span style=\"(.*)\">Test.*");
+    QCOMPARE(re.captureCount(), 1);
+    QVERIFY(!re.match(doc->toHtml()).hasMatch()); // no span
 
     QTextCursor cursor(doc);
     cursor.setPosition(4, QTextCursor::KeepAnchor);
@@ -2125,23 +2130,23 @@ void tst_QTextDocument::capitalizationHtmlInExport()
     cursor.mergeCharFormat(cf);
 
     const QString smallcaps = doc->toHtml();
-    QVERIFY(re.exactMatch(doc->toHtml()));
-    QCOMPARE(re.captureCount(), 1);
-    QCOMPARE(re.cap(1).trimmed(), QString("font-variant:small-caps;"));
+    auto match = re.match(doc->toHtml());
+    QVERIFY(match.hasMatch());
+    QCOMPARE(match.captured(1).trimmed(), QString("font-variant:small-caps;"));
 
     cf.setFontCapitalization(QFont::AllUppercase);
     cursor.mergeCharFormat(cf);
     const QString uppercase = doc->toHtml();
-    QVERIFY(re.exactMatch(doc->toHtml()));
-    QCOMPARE(re.captureCount(), 1);
-    QCOMPARE(re.cap(1).trimmed(), QString("text-transform:uppercase;"));
+    match = re.match(doc->toHtml());
+    QVERIFY(match.hasMatch());
+    QCOMPARE(match.captured(1).trimmed(), QString("text-transform:uppercase;"));
 
     cf.setFontCapitalization(QFont::AllLowercase);
     cursor.mergeCharFormat(cf);
     const QString lowercase = doc->toHtml();
-    QVERIFY(re.exactMatch(doc->toHtml()));
-    QCOMPARE(re.captureCount(), 1);
-    QCOMPARE(re.cap(1).trimmed(), QString("text-transform:lowercase;"));
+    match = re.match(doc->toHtml());
+    QVERIFY(match.hasMatch());
+    QCOMPARE(match.captured(1).trimmed(), QString("text-transform:lowercase;"));
 
     doc->setHtml(smallcaps);
     cursor.setPosition(1);
@@ -2156,8 +2161,9 @@ void tst_QTextDocument::wordspacingHtmlExport()
 {
     doc->setPlainText("Test");
 
-    QRegExp re(".*span style=\"(.*)\">Test.*");
-    QVERIFY(re.exactMatch(doc->toHtml()) == false); // no span
+    QRegularExpression re(".*span style=\"(.*)\">Test.*");
+    QCOMPARE(re.captureCount(), 1);
+    QVERIFY(!re.match(doc->toHtml()).hasMatch()); // no span
 
     QTextCursor cursor(doc);
     cursor.setPosition(4, QTextCursor::KeepAnchor);
@@ -2165,16 +2171,16 @@ void tst_QTextDocument::wordspacingHtmlExport()
     cf.setFontWordSpacing(4);
     cursor.mergeCharFormat(cf);
 
-    QVERIFY(re.exactMatch(doc->toHtml()));
-    QCOMPARE(re.captureCount(), 1);
-    QCOMPARE(re.cap(1).trimmed(), QString("word-spacing:4px;"));
+    auto match = re.match(doc->toHtml());
+    QVERIFY(match.hasMatch());
+    QCOMPARE(match.captured(1).trimmed(), QString("word-spacing:4px;"));
 
     cf.setFontWordSpacing(-8.5);
     cursor.mergeCharFormat(cf);
 
-    QVERIFY(re.exactMatch(doc->toHtml()));
-    QCOMPARE(re.captureCount(), 1);
-    QCOMPARE(re.cap(1).trimmed(), QString("word-spacing:-8.5px;"));
+    match = re.match(doc->toHtml());
+    QVERIFY(match.hasMatch());
+    QCOMPARE(match.captured(1).trimmed(), QString("word-spacing:-8.5px;"));
 }
 
 class CursorPosSignalSpy : public QObject
@@ -2257,14 +2263,6 @@ void tst_QTextDocument::textFrameIterator()
     QCOMPARE(frameCount, 1);
 }
 
-void tst_QTextDocument::codecForHtml()
-{
-    const QByteArray header("<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html;charset=utf-16\">");
-    QTextCodec *c = Qt::codecForHtml(header);
-    QVERIFY(c);
-    QCOMPARE(c->name(), QByteArray("UTF-16"));
-}
-
 class TestSyntaxHighlighter : public QObject
 {
     Q_OBJECT
@@ -2337,14 +2335,18 @@ void tst_QTextDocument::clonePreservesMetaInformation()
 {
     const QString title("Foobar");
     const QString url("about:blank");
+    const QString media("print");
     doc->setHtml("<html><head><title>" + title + "</title></head><body>Hrm</body></html>");
     doc->setMetaInformation(QTextDocument::DocumentUrl, url);
+    doc->setMetaInformation(QTextDocument::CssMedia, media);
     QCOMPARE(doc->metaInformation(QTextDocument::DocumentTitle), title);
     QCOMPARE(doc->metaInformation(QTextDocument::DocumentUrl), url);
+    QCOMPARE(doc->metaInformation(QTextDocument::CssMedia), media);
 
     QTextDocument *clone = doc->clone();
     QCOMPARE(clone->metaInformation(QTextDocument::DocumentTitle), title);
     QCOMPARE(clone->metaInformation(QTextDocument::DocumentUrl), url);
+    QCOMPARE(clone->metaInformation(QTextDocument::CssMedia), media);
     delete clone;
 }
 
@@ -2466,6 +2468,7 @@ void tst_QTextDocument::clonePreservesFormatsWhenEmpty()
     QCOMPARE(cloneCursor.blockCharFormat().fontWeight(), charFormat.fontWeight());
     QCOMPARE(cloneCursor.blockFormat().alignment(), blockFormat.alignment());
     QCOMPARE(cloneCursor.blockFormat().indent(), blockFormat.indent());
+    delete clone;
 }
 
 void tst_QTextDocument::blockCount()
@@ -2508,7 +2511,7 @@ public:
     bool hasResourceCached();
 
 protected:
-    virtual QVariant loadResource(int type, const QUrl &name);
+    virtual QVariant loadResource(int type, const QUrl &name) override;
 
 private:
     QUrl url;
@@ -2658,6 +2661,127 @@ void tst_QTextDocument::defaultStyleSheet()
     QVERIFY(fmt.background().color() != QColor("green"));
 }
 
+void tst_QTextDocument::defaultTableStyle_data()
+{
+    QTest::addColumn<QString>("css");
+    QTest::addColumn<QString>("html");
+    QTest::addColumn<QList<QBrush>>("borderBrushes");
+
+    const QString htmlHeader(R"(
+        <tr>
+            <th>1</th> <th>2</th>
+        </tr>
+    )");
+
+    const QString htmlCells(R"(
+        <tr>
+            <td>A</td> <td>B</td>
+        </tr>
+    )");
+
+    const QString cssEachSide = R"({
+        border-top-color: red;
+        border-bottom-color: blue;
+        border-left-color: green;
+        border-right-color: yellow;
+    })";
+    const QString cssOneColor = R"({ border-color: red; })";
+    const QString cssFourColors = R"({ border-color: red blue green yellow; })";
+
+    QTest::addRow("td, each side") << QString("td ") + cssEachSide
+        << htmlCells
+        << QList<QBrush>{Qt::red, Qt::blue, QColor("green"), Qt::yellow};
+
+    QTest::addRow("th, each side") << QString("th ") + cssEachSide
+        << htmlHeader
+        << QList<QBrush>{Qt::red, Qt::blue, QColor("green"), Qt::yellow};
+
+    QTest::addRow("th+td, each side") << QString("th %1 td %1").arg(cssEachSide)
+        << htmlHeader + htmlCells
+        << QList<QBrush>{Qt::red, Qt::blue, QColor("green"), Qt::yellow};
+
+    QTest::addRow("td, one color") << QString("td ") + cssOneColor
+        << htmlCells
+        << QList<QBrush>{Qt::red, Qt::red, Qt::red, Qt::red};
+
+    QTest::addRow("th, one color") << QString("th ") + cssOneColor
+        << htmlHeader
+        << QList<QBrush>{Qt::red, Qt::red, Qt::red, Qt::red};
+
+    QTest::addRow("th+td, one color") << QString("th %1 td %1").arg(cssOneColor)
+        << htmlHeader + htmlCells
+        << QList<QBrush>{Qt::red, Qt::red, Qt::red, Qt::red};
+
+    // css order is top, right, bottom, left
+    QTest::addRow("td, four colors") << QString("td ") + cssFourColors
+        << htmlCells
+        << QList<QBrush>{Qt::red, QColor("green"), Qt::yellow, Qt::blue};
+
+}
+
+void tst_QTextDocument::defaultTableStyle()
+{
+    QFETCH(QString, css);
+    QFETCH(QString, html);
+    QFETCH(QList<QBrush>, borderBrushes);
+
+    CREATE_DOC_AND_CURSOR();
+    doc.setDefaultStyleSheet(css);
+    doc.setHtml(QString("<html><body><table>%1</table></body></html>").arg(html));
+
+    const QTextFrame *frame = doc.rootFrame();
+    const QTextTable *table = nullptr;
+    for (auto it = frame->begin(); !table && !it.atEnd(); ++it)
+        table = qobject_cast<const QTextTable*>(it.currentFrame());
+    QVERIFY(table);
+
+    const QList<QTextFormat::Property> brushProperties = {
+        QTextFormat::TableCellTopBorderBrush,
+        QTextFormat::TableCellBottomBorderBrush,
+        QTextFormat::TableCellLeftBorderBrush,
+        QTextFormat::TableCellRightBorderBrush
+    };
+
+    for (int row = 0; row < table->rows(); ++row) {
+        for (int column = 0; column < table->columns(); ++column) {
+            auto cellDetails = qScopeGuard([&]{
+                qWarning("Failure was in cell %d/%d", row, column);
+            });
+            const QTextTableCell cell = table->cellAt(row, column);
+            const QTextTableCellFormat cellFormat = cell.format().toTableCellFormat();
+            QList<QBrush> brushes;
+            for (const auto side : brushProperties) {
+                QVariant sideProperty = cellFormat.property(side);
+                QVERIFY(sideProperty.isValid());
+                QVERIFY(sideProperty.typeId() == qMetaTypeId<QBrush>());
+                brushes << sideProperty.value<QBrush>();
+            }
+            auto errorDetails = qScopeGuard([&]{
+                if (brushes.size() != borderBrushes.size()) {
+                    qWarning("Different count: %lld vs %lld", brushes.size(), borderBrushes.size());
+                    return;
+                }
+                for (int i = 0; i < brushes.size(); ++i) {
+                    QString side;
+                    QDebug(&side) << QTextFormat::Property(QTextFormat::TableCellTopBorderBrush + i);
+                    QString actual;
+                    QDebug(&actual) << brushes.at(i);
+                    QString expected;
+                    QDebug(&expected) << borderBrushes.at(i);
+                    if (expected != actual) {
+                        qWarning("\n  %s:\n\tActual:  %s\n\tExpected:%s", qPrintable(side),
+                                qPrintable(actual), qPrintable(expected));
+                    }
+                }
+            });
+            QVERIFY2(borderBrushes == brushes, // QCOMPARE doesn't generate helpful output anyway
+                     qPrintable(QString("for cell %1/%2").arg(row).arg(column)));
+            errorDetails.dismiss();
+            cellDetails.dismiss();
+        }
+    }
+}
+
 void tst_QTextDocument::maximumBlockCount()
 {
     QCOMPARE(doc->maximumBlockCount(), 0);
@@ -2736,10 +2860,11 @@ void tst_QTextDocument::html_defaultFont()
     doc->setDefaultFont(f);
     doc->setPlainText("Test");
 
-    QString bodyPart = QString::fromLatin1("<body style=\" font-family:'%1'; font-size:%2; font-weight:%3; font-style:italic;\">")
-                       .arg(f.family())
-                       .arg(cssFontSizeString(f))
-                       .arg(f.weight() * 8);
+    QString bodyPart = QString::fromLatin1("<body style=\" font-family:'%1'; font-size:%2; "
+                                           "font-weight:%3; font-style:italic;\">")
+                               .arg(f.family())
+                               .arg(cssFontSizeString(f))
+                               .arg(f.weight());
 
     QString html = doc->toHtml();
     if (!html.contains(bodyPart)) {
@@ -2760,13 +2885,13 @@ void tst_QTextDocument::blockCountChanged()
     doc->setPlainText("Foo");
 
     QCOMPARE(doc->blockCount(), 1);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     spy.clear();
 
     doc->setPlainText("Foo\nBar");
     QCOMPARE(doc->blockCount(), 2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).value(0).toInt(), 2);
 
     spy.clear();
@@ -2774,16 +2899,16 @@ void tst_QTextDocument::blockCountChanged()
     cursor.movePosition(QTextCursor::End);
     cursor.insertText("Blahblah");
 
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     cursor.insertBlock();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).value(0).toInt(), 3);
 
     spy.clear();
     doc->undo();
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(spy.at(0).value(0).toInt(), 2);
 }
 
@@ -2870,22 +2995,11 @@ const QString backgroundImage_html("<body><table><tr><td background=\"foo.png\">
 
 void tst_QTextDocument::backgroundImage_checkExpectedHtml(const QTextDocument &doc)
 {
-    QString expectedHtml("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" "
-            "\"http://www.w3.org/TR/REC-html40/strict.dtd\">\n"
-            "<html><head><meta name=\"qrichtext\" content=\"1\" /><style type=\"text/css\">\n"
-            "p, li { white-space: pre-wrap; }\n"
-            "</style></head>"
-            "<body style=\" font-family:'%1'; font-size:%2; font-weight:%3; font-style:%4;\">\n"
+    QString expectedHtml = htmlHead +
             "<table border=\"0\" style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px;\" cellspacing=\"2\" cellpadding=\"0\">"
             "\n<tr>\n<td background=\"foo.png\">"
             "\n<p style=\" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">Blah</p>"
-            "</td></tr></table></body></html>");
-
-    expectedHtml = expectedHtml
-                    .arg(defaultFont.family())
-                    .arg(cssFontSizeString(defaultFont))
-                    .arg(defaultFont.weight() * 8)
-                    .arg((defaultFont.italic() ? "italic" : "normal"));
+            "</td></tr></table>" + htmlTail;
 
     writeActualAndExpected(QTest::currentTestFunction(), doc.toHtml(), expectedHtml);
 
@@ -2973,12 +3087,12 @@ void tst_QTextDocument::characterAt()
     QString text("12345\n67890");
     cursor.insertText(text);
     int length = doc.characterCount();
-    QCOMPARE(length, text.length() + 1);
+    QCOMPARE(length, text.size() + 1);
     QCOMPARE(doc.characterAt(length-1), QChar(QChar::ParagraphSeparator));
     QCOMPARE(doc.characterAt(-1), QChar());
     QCOMPARE(doc.characterAt(length), QChar());
     QCOMPARE(doc.characterAt(length + 1), QChar());
-    for (int i = 0; i < text.length(); ++i) {
+    for (int i = 0; i < text.size(); ++i) {
         QChar c = text.at(i);
         if (c == QLatin1Char('\n'))
             c = QChar(QChar::ParagraphSeparator);
@@ -3058,11 +3172,11 @@ void tst_QTextDocument::testUndoCommandAdded()
     QVERIFY(spy.isEmpty());
 
     cursor.insertText("a");
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     cursor.insertText("b"); // should be merged
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     cursor.insertText("c"); // should be merged
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QCOMPARE(doc->toPlainText(), QString("abc"));
     doc->undo();
     QCOMPARE(doc->toPlainText(), QString(""));
@@ -3070,11 +3184,11 @@ void tst_QTextDocument::testUndoCommandAdded()
     doc->clear();
     spy.clear();
     cursor.insertText("aaa");
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     spy.clear();
     cursor.insertText("aaaa\nbcd");
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     spy.clear();
     cursor.beginEditBlock();
@@ -3084,11 +3198,11 @@ void tst_QTextDocument::testUndoCommandAdded()
     cursor.insertText("\nccc");
     QVERIFY(spy.isEmpty());
     cursor.endEditBlock();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     spy.clear();
     cursor.insertBlock();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     spy.clear();
     cursor.setPosition(5);
@@ -3100,18 +3214,18 @@ void tst_QTextDocument::testUndoCommandAdded()
     QTextCharFormat cf;
     cf.setFontItalic(true);
     cursor.mergeCharFormat(cf);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     spy.clear();
     doc->undo();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     doc->undo();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     spy.clear();
     doc->redo();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     doc->redo();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 }
 
 void tst_QTextDocument::testUndoBlocks()
@@ -3309,7 +3423,7 @@ class BaseDocument : public QTextDocument
 public:
     QUrl loadedResource() const { return resourceUrl; }
 
-    QVariant loadResource(int type, const QUrl &name)
+    QVariant loadResource(int type, const QUrl &name) override
     {
         resourceUrl = name;
         return QTextDocument::loadResource(type, name);
@@ -3664,7 +3778,7 @@ void tst_QTextDocument::fontTagFace()
         td.setHtml("<html><body><font face='Times'>Foobar</font></body></html>");
         QTextFragment fragment = td.begin().begin().fragment();
         QTextCharFormat format = fragment.charFormat();
-        QCOMPARE(format.fontFamily(), QLatin1String("Times"));
+        QCOMPARE(format.fontFamilies().toStringList().value(0, QString()), QLatin1String("Times"));
     }
 
     {
@@ -3672,7 +3786,7 @@ void tst_QTextDocument::fontTagFace()
         td.setHtml("<html><body><font face='Times, serif'>Foobar</font></body></html>");
         QTextFragment fragment = td.begin().begin().fragment();
         QTextCharFormat format = fragment.charFormat();
-        QCOMPARE(format.fontFamily(), QLatin1String("Times"));
+        QCOMPARE(format.fontFamilies().toStringList().value(0, QString()), QLatin1String("Times"));
         QStringList expectedFamilies = { QLatin1String("Times"), QLatin1String("serif") };
         QCOMPARE(format.fontFamilies().toStringList(), expectedFamilies);
     }
@@ -3687,20 +3801,20 @@ void tst_QTextDocument::mergeFontFamilies()
                    "</body></html>"));
 
     QTextCharFormat newFormat;
-    newFormat.setFontFamily(QLatin1String("Jokerman"));
+    newFormat.setFontFamilies({QLatin1String("Jokerman")});
 
     QTextCursor cursor = QTextCursor(&td);
     cursor.setPosition(0);
-    cursor.setPosition(QByteArray("Hello World").length(), QTextCursor::KeepAnchor);
+    cursor.setPosition(QByteArray("Hello World").size(), QTextCursor::KeepAnchor);
     cursor.mergeCharFormat(newFormat);
 
-    QVERIFY(td.toHtml().contains(QLatin1String("font-family:'MS Shell Dlg 2','Jokerman';")));
+    QVERIFY(td.toHtml().contains(QLatin1String("font-family:'Jokerman';")));
 
     QTextCharFormat newFormatFamilies;
     newFormatFamilies.setFontFamilies({ QLatin1String("Arial"), QLatin1String("Helvetica") });
     cursor.mergeCharFormat(newFormatFamilies);
 
-    QVERIFY(td.toHtml().contains(QLatin1String("font-family:'Arial','Helvetica','Jokerman'")));
+    QVERIFY(td.toHtml().contains(QLatin1String("font-family:'Arial','Helvetica'")));
 
     newFormatFamilies.setFontFamilies({ QLatin1String("Arial"), QLatin1String("Jokerman"), QLatin1String("Helvetica") });
     cursor.mergeCharFormat(newFormatFamilies);
@@ -3718,6 +3832,41 @@ void tst_QTextDocument::clearUndoRedoStacks()
     QVERIFY(!doc.isUndoAvailable());
 }
 
+void tst_QTextDocument::resourceProvider()
+{
+
+    int providerCalled = 0;
+    QUrl providerUrl;
+    auto provider = [&](const QUrl &url){
+        providerUrl = url;
+        ++providerCalled;
+        return QVariant(42);
+    };
+    const QUrl url("test://img");
+    const QString html = QLatin1String("<img src='%1'/>").arg(url.toString());
+
+    QTextDocument doc;
+    QVERIFY(!doc.resourceProvider());
+    doc.setResourceProvider(provider);
+    QVERIFY(doc.resourceProvider());
+
+    doc.setHtml(html);
+    const QVariant res = doc.resource(QTextDocument::UserResource, url);
+    QVERIFY(res.isValid());
+    QCOMPARE(providerUrl, url);
+    QCOMPARE(providerCalled, 1);
+
+    QVERIFY(!QTextDocument::defaultResourceProvider());
+    QTextDocument::setDefaultResourceProvider(provider);
+    QVERIFY(QTextDocument::defaultResourceProvider());
+
+    QTextDocument doc2;
+    QVERIFY(!doc2.resourceProvider());
+    doc2.setHtml(html);
+    QVariant res2 = doc2.resource(QTextDocument::UserResource, url);
+    QCOMPARE(res2, res);
+    QCOMPARE(providerCalled, 2);
+}
 
 void tst_QTextDocument::contentsChangeIndices_data()
 {
@@ -3775,6 +3924,119 @@ void tst_QTextDocument::contentsChangeIndices()
     QCOMPARE(changeAdded - changeRemoved, 1);
 }
 
+void tst_QTextDocument::insertHtmlWithComments_data()
+{
+    QTest::addColumn<QString>("html");
+    QTest::addColumn<QStringList>("expectedBlocks");
+
+    QTest::newRow("commentless") << "<p>first</p><p>second</p><p>third</p>"
+                                 << QStringList { "first", "second", "third" };
+    QTest::newRow("normal") << "<p>first</p><!--<p>second</p>--><p>third</p>"
+                            << QStringList { "first", "third" };
+    QTest::newRow("nonClosing") << "<p>first</p><!--<p>second</p><p>third</p>"
+                                << QStringList { "first" };
+    QTest::newRow("immediatelyClosing") << "<p>first</p><!----><p>second</p><p>third</p>"
+                                        << QStringList { "first", "second", "third" };
+    QTest::newRow("fake") << "<p>first</p><!-<p>second</p><p>third</p>"
+                          << QStringList { "first", "second", "third" };
+    QTest::newRow("endingNonExistant") << "<p>first</p>--><p>second</p><p>third</p>"
+                                       << QStringList { "first", "-->", "second", "third" };
+}
+
+void tst_QTextDocument::insertHtmlWithComments()
+{
+    QFETCH(QString, html);
+    QFETCH(QStringList, expectedBlocks);
+
+    QTextDocument doc;
+    doc.setHtml(html);
+
+    QCOMPARE(doc.blockCount(), expectedBlocks.size());
+
+    QStringList blockContent;
+    auto currentBlock = doc.begin();
+    while (currentBlock != doc.end()) {
+        blockContent.append(currentBlock.text());
+        currentBlock = currentBlock.next();
+    }
+
+    QCOMPARE(blockContent, expectedBlocks);
+}
+
+void tst_QTextDocument::delayedLayout()
+{
+    QTextDocument doc;
+    doc.setHtml("<html>Foobar</html>");
+    QCOMPARE(doc.blockCount(), 1);
+
+    doc.setLayoutEnabled(false);
+
+    // Force creation of a layout
+    QVERIFY(doc.documentLayout());
+
+    QTextBlock block = doc.begin();
+    QTextLayout *layout = block.layout();
+    QCOMPARE(layout->lineCount(), 0); // layout didn't happen yet
+
+    doc.setLayoutEnabled(true);
+    QCOMPARE(layout->lineCount(), 1); // layout happened
+}
+
+void tst_QTextDocument::undoContentChangeIndices() // QTBUG-113865
+{
+    QTextDocument doc;
+    QTestDocumentLayout *layout = new QTestDocumentLayout(&doc);
+    QString content = QString("<html><body>"
+                              "<ul><li>Undo</li></ul>"
+                              "<ul><li>operation</li></ul>"
+                              "<ul><li>of</li></ul>"
+                              "<ul><li>unnumbered</li></ul>"
+                              "<ul><li>lists</li></ul>"
+                              "<ul><li>shows</li></ul>"
+                              "<ul><li>invalid</li></ul>"
+                              "<ul><li>content</li></ul>"
+                              "<ul><li>indices</li></ul>"
+                              "</body></html>");
+    doc.setDocumentLayout(layout);
+    doc.setHtml(content);
+
+    // Select the entire document content
+    QTextCursor cursor(&doc);
+    cursor.select(QTextCursor::Document);
+    cursor.removeSelectedText();
+
+    // Undo above operation
+    doc.undo();
+
+    // Move the cursor to the end
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertHtml(content);
+
+    // Select the whole document and remove the content
+    cursor.select(QTextCursor::Document);
+    cursor.removeSelectedText();
+
+    int documentLength = 0;
+    int changeRemoved = 0;
+    int changeAdded = 0;
+    int changePos = 0;
+    connect(&doc, &QTextDocument::contentsChange, this, [&](int pos, int removed, int added){
+        documentLength = doc.characterCount();
+        changeRemoved = removed;
+        changeAdded = added;
+        changePos = pos;
+    });
+
+    // Undo above operation
+    doc.undo();
+
+    const int changeEnd = changeAdded + changeRemoved;
+
+    QVERIFY(documentLength > 0);
+    QCOMPARE(changePos, 0);
+    QVERIFY(changeRemoved >= 0);
+    QVERIFY(documentLength >= changeEnd);
+}
 
 QTEST_MAIN(tst_QTextDocument)
 #include "tst_qtextdocument.moc"

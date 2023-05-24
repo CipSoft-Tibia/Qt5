@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 #if defined(USE_SYSTEM_LIBOPENJPEG2)
 #include <openjpeg.h>
 #else
-#include "third_party/libopenjpeg20/openjpeg.h"
+#include "third_party/libopenjpeg/openjpeg.h"
 #endif
 
 namespace fxcodec {

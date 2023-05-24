@@ -1,12 +1,12 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_RENDERER_HOST_INPUT_SYNTHETIC_GESTURE_TARGET_BASE_H_
 #define CONTENT_BROWSER_RENDERER_HOST_INPUT_SYNTHETIC_GESTURE_TARGET_BASE_H_
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
 #include "content/browser/renderer_host/input/synthetic_gesture_target.h"
 #include "ui/gfx/geometry/point_f.h"
@@ -29,6 +29,11 @@ class RenderWidgetHostImpl;
 class SyntheticGestureTargetBase : public SyntheticGestureTarget {
  public:
   explicit SyntheticGestureTargetBase(RenderWidgetHostImpl* host);
+
+  SyntheticGestureTargetBase(const SyntheticGestureTargetBase&) = delete;
+  SyntheticGestureTargetBase& operator=(const SyntheticGestureTargetBase&) =
+      delete;
+
   ~SyntheticGestureTargetBase() override;
 
   virtual void DispatchWebTouchEventToPlatform(
@@ -57,7 +62,7 @@ class SyntheticGestureTargetBase : public SyntheticGestureTarget {
   int GetMouseWheelMinimumGranularity() const override;
 
   void WaitForTargetAck(SyntheticGestureParams::GestureType type,
-                        SyntheticGestureParams::GestureSourceType source,
+                        content::mojom::GestureSourceType source,
                         base::OnceClosure callback) const override;
 
  protected:
@@ -66,9 +71,7 @@ class SyntheticGestureTargetBase : public SyntheticGestureTarget {
  private:
   bool PointIsWithinContents(gfx::PointF point) const;
 
-  RenderWidgetHostImpl* host_;
-
-  DISALLOW_COPY_AND_ASSIGN(SyntheticGestureTargetBase);
+  raw_ptr<RenderWidgetHostImpl> host_;
 };
 
 }  // namespace content

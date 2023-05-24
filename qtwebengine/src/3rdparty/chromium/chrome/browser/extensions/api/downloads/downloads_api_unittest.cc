@@ -1,11 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/downloads/downloads_api.h"
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include <memory>
+
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/download/download_core_service_impl.h"
 #include "chrome/browser/download/download_history.h"
@@ -27,6 +30,10 @@ class TestDownloadCoreService : public DownloadCoreServiceImpl {
  public:
   explicit TestDownloadCoreService(Profile* profile)
       : DownloadCoreServiceImpl(profile), profile_(profile) {}
+
+  TestDownloadCoreService(const TestDownloadCoreService&) = delete;
+  TestDownloadCoreService& operator=(const TestDownloadCoreService&) = delete;
+
   ~TestDownloadCoreService() override {}
 
   void Shutdown() override {
@@ -45,8 +52,8 @@ class TestDownloadCoreService : public DownloadCoreServiceImpl {
 
   ExtensionDownloadsEventRouter* GetExtensionEventRouter() override {
     if (!router_.get()) {
-      router_.reset(new ExtensionDownloadsEventRouter(
-          profile_, content::BrowserContext::GetDownloadManager(profile_)));
+      router_ = std::make_unique<ExtensionDownloadsEventRouter>(
+          profile_, profile_->GetDownloadManager());
     }
     return router_.get();
   }
@@ -54,9 +61,7 @@ class TestDownloadCoreService : public DownloadCoreServiceImpl {
  private:
   std::unique_ptr<DownloadHistory> download_history_;
   std::unique_ptr<ExtensionDownloadsEventRouter> router_;
-  Profile* profile_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestDownloadCoreService);
+  raw_ptr<Profile> profile_;
 };
 
 }  // namespace
@@ -64,11 +69,15 @@ class TestDownloadCoreService : public DownloadCoreServiceImpl {
 class DownloadsApiUnitTest : public ExtensionApiUnittest {
  public:
   DownloadsApiUnitTest() {}
+
+  DownloadsApiUnitTest(const DownloadsApiUnitTest&) = delete;
+  DownloadsApiUnitTest& operator=(const DownloadsApiUnitTest&) = delete;
+
   ~DownloadsApiUnitTest() override {}
   void SetUp() override {
     ExtensionApiUnittest::SetUp();
 
-    manager_.reset(new testing::StrictMock<MockDownloadManager>());
+    manager_ = std::make_unique<testing::StrictMock<MockDownloadManager>>();
     EXPECT_CALL(*manager_, IsManagerInitialized());
     EXPECT_CALL(*manager_, AddObserver(testing::_))
         .WillOnce(testing::SaveArg<0>(&download_history_manager_observer_));
@@ -108,9 +117,10 @@ class DownloadsApiUnitTest : public ExtensionApiUnittest {
       content::BrowserContext* browser_context);
 
   std::unique_ptr<MockDownloadManager> manager_;
-  content::DownloadManager::Observer* download_history_manager_observer_;
-
-  DISALLOW_COPY_AND_ASSIGN(DownloadsApiUnitTest);
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #addr-of
+  RAW_PTR_EXCLUSION content::DownloadManager::Observer*
+      download_history_manager_observer_;
 };
 
 // static

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTREEWIDGET_P_H
 #define QTREEWIDGET_P_H
@@ -99,9 +63,7 @@ public:
 
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex &index, const QVariant &value, int role) override;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool clearItemData(const QModelIndex &index) override;
-#endif
     QMap<int, QVariant> itemData(const QModelIndex &index) const override;
 
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
@@ -141,7 +103,7 @@ public:
 
 protected:
     QTreeModel(QTreeModelPrivate &, QTreeWidget *parent = nullptr);
-    void emitDataChanged(QTreeWidgetItem *item, int column, const QVector<int> &roles);
+    void emitDataChanged(QTreeWidgetItem *item, int column, const QList<int> &roles);
     void beginInsertItems(QTreeWidgetItem *parent, int row, int count);
     void endInsertItems();
     void beginRemoveItems(QTreeWidgetItem *parent, int row, int count);
@@ -157,7 +119,7 @@ private:
     QList<QTreeWidgetItemIterator*> iterators;
 
     mutable QBasicTimer sortPendingTimer;
-    mutable bool skipPendingSort; //while doing internal operation we don't care about sorting
+    mutable bool skipPendingSort = false; // no sorting during internal operations
     bool inline executePendingSort() const;
 
     bool isChanging() const;
@@ -169,9 +131,9 @@ public:
     {
         const QTreeModel * const model;
         const bool previous;
-        SkipSorting(const QTreeModel *m) : model(m), previous(model->skipPendingSort)
-        { model->skipPendingSort = true; }
-        ~SkipSorting() { model->skipPendingSort = previous; }
+        SkipSorting(const QTreeModel *m) : model(m), previous(model ? model->skipPendingSort : false)
+        { if (model) model->skipPendingSort = true; }
+        ~SkipSorting() { if (model) model->skipPendingSort = previous; }
     };
     friend struct SkipSorting;
 };
@@ -183,6 +145,7 @@ QT_END_INCLUDE_NAMESPACE
 class QTreeModelPrivate : public QAbstractItemModelPrivate
 {
     Q_DECLARE_PUBLIC(QTreeModel)
+    void executePendingOperations() const override;
 };
 
 class QTreeWidgetItemPrivate

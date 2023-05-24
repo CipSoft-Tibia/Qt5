@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef BRUSHPROPERTYMANAGER_H
 #define BRUSHPROPERTYMANAGER_H
 
-#include <QtCore/qmap.h>
+#include <QtCore/qhash.h>
 #include <QtGui/qbrush.h>
 #include <QtGui/qicon.h>
 
@@ -46,11 +21,11 @@ namespace qdesigner_internal {
 // BrushPropertyManager: A mixin for DesignerPropertyManager that manages brush properties.
 
 class BrushPropertyManager {
-    BrushPropertyManager(const BrushPropertyManager&);
-    BrushPropertyManager &operator=(const BrushPropertyManager&);
-
 public:
+    Q_DISABLE_COPY_MOVE(BrushPropertyManager);
+
     BrushPropertyManager();
+    ~BrushPropertyManager();
 
     void initializeProperty(QtVariantPropertyManager *vm, QtProperty *property, int enumTypeId);
     bool uninitializeProperty(QtProperty *property);
@@ -71,17 +46,15 @@ private:
     static Qt::BrushStyle brushStyleIndexToStyle(int brushStyleIndex);
     static QString brushStyleIndexToString(int brushStyleIndex);
 
-    typedef QMap<int, QIcon> EnumIndexIconMap;
-    static const EnumIndexIconMap &brushStyleIcons();
+    static const QMap<int, QIcon> &brushStyleIcons();
 
-    typedef QMap<QtProperty *, QtProperty *> PropertyToPropertyMap;
+    using PropertyToPropertyMap = QHash<QtProperty *, QtProperty *>;
     PropertyToPropertyMap m_brushPropertyToStyleSubProperty;
     PropertyToPropertyMap m_brushPropertyToColorSubProperty;
     PropertyToPropertyMap m_brushStyleSubPropertyToProperty;
     PropertyToPropertyMap m_brushColorSubPropertyToProperty;
 
-    typedef QMap<QtProperty *, QBrush> PropertyBrushMap;
-    PropertyBrushMap m_brushValues;
+    QHash<QtProperty *, QBrush> m_brushValues;
 };
 
 }

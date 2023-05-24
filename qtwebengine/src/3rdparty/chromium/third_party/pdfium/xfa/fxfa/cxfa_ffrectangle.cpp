@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ CXFA_FFRectangle::CXFA_FFRectangle(CXFA_Node* pNode) : CXFA_FFWidget(pNode) {}
 
 CXFA_FFRectangle::~CXFA_FFRectangle() = default;
 
-void CXFA_FFRectangle::RenderWidget(CXFA_Graphics* pGS,
+void CXFA_FFRectangle::RenderWidget(CFGAS_GEGraphics* pGS,
                                     const CFX_Matrix& matrix,
                                     HighlightOption highlight) {
   if (!HasVisibleStatus())

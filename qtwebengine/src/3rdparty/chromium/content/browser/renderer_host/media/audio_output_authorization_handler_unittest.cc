@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,10 @@
 
 #include "content/browser/renderer_host/media/audio_output_authorization_handler.h"
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/mock_callback.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -27,6 +28,7 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
+using blink::mojom::MediaDeviceType;
 using ::testing::_;
 
 namespace content {
@@ -73,6 +75,11 @@ class AudioOutputAuthorizationHandlerTest : public RenderViewHostTestHarness {
         switches::kUseFakeDeviceForMediaStream);
   }
 
+  AudioOutputAuthorizationHandlerTest(
+      const AudioOutputAuthorizationHandlerTest&) = delete;
+  AudioOutputAuthorizationHandlerTest& operator=(
+      const AudioOutputAuthorizationHandlerTest&) = delete;
+
   ~AudioOutputAuthorizationHandlerTest() override {
     audio_manager_->Shutdown();
   }
@@ -90,8 +97,8 @@ class AudioOutputAuthorizationHandlerTest : public RenderViewHostTestHarness {
         std::make_unique<media::TestAudioThread>(true), &log_factory_);
     audio_system_ =
         std::make_unique<media::AudioSystemImpl>(audio_manager_.get());
-    media_stream_manager_ = std::make_unique<MediaStreamManager>(
-        audio_system_.get(), audio_manager_->GetTaskRunner());
+    media_stream_manager_ =
+        std::make_unique<MediaStreamManager>(audio_system_.get());
 
     // Make sure everything is done initializing:
     SyncWithAllThreads();
@@ -149,21 +156,21 @@ class AudioOutputAuthorizationHandlerTest : public RenderViewHostTestHarness {
   void GetRawNondefaultIdOnIOThread(std::string* out) {
     DCHECK_CURRENTLY_ON(BrowserThread::IO);
     MediaDevicesManager::BoolDeviceTypes devices_to_enumerate;
-    devices_to_enumerate[blink::MEDIA_DEVICE_TYPE_AUDIO_OUTPUT] = true;
+    devices_to_enumerate[static_cast<size_t>(
+        MediaDeviceType::MEDIA_AUDIO_OUTPUT)] = true;
 
     media_stream_manager_->media_devices_manager()->EnumerateDevices(
         devices_to_enumerate,
         base::BindOnce(
             [](std::string* out, const MediaDeviceEnumeration& result) {
               // Index 0 is default, so use 1.
-              CHECK(
-                  result[blink::MediaDeviceType::MEDIA_DEVICE_TYPE_AUDIO_OUTPUT]
-                      .size() > 1)
+              CHECK(result[static_cast<size_t>(
+                               MediaDeviceType::MEDIA_AUDIO_OUTPUT)]
+                        .size() > 1)
                   << "Expected to have a nondefault device.";
-              *out =
-                  result[blink::MediaDeviceType::MEDIA_DEVICE_TYPE_AUDIO_OUTPUT]
-                        [1]
-                            .device_id;
+              *out = result[static_cast<size_t>(
+                  MediaDeviceType::MEDIA_AUDIO_OUTPUT)][1]
+                         .device_id;
             },
             base::Unretained(out)));
   }
@@ -172,8 +179,6 @@ class AudioOutputAuthorizationHandlerTest : public RenderViewHostTestHarness {
   std::unique_ptr<media::AudioManager> audio_manager_;
   std::unique_ptr<media::AudioSystem> audio_system_;
   std::unique_ptr<MediaStreamManager> media_stream_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(AudioOutputAuthorizationHandlerTest);
 };
 
 TEST_F(AudioOutputAuthorizationHandlerTest, DoNothing) {}

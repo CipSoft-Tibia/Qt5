@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "parser.h"
 #include "utils.h"
@@ -39,36 +14,73 @@ Symbol::LexemStore Symbol::lexemStore;
 
 static const char *error_msg = nullptr;
 
-#ifdef Q_CC_MSVC
-#define ErrorFormatString "%s(%d): "
-#else
-#define ErrorFormatString "%s:%d: "
-#endif
+/*! \internal
+    Base implementation for printing diagnostic messages.
 
-void Parser::error(int rollback) {
-    index -= rollback;
-    error();
+    For example:
+        "/path/to/file:line:column: error: %s\n"
+        '%s' is replaced by \a msg. (Currently "column" is always 1).
+
+    If sym.lineNum is -1, the line and column parts aren't printed:
+        "/path/to/file: error: %s\n"
+
+    \a formatStringSuffix specifies the type of the message e.g.:
+        "error: %s\n"
+        "warning: %s\n"
+        "note: %s\n"
+        "Parse error at %s\n" (from defaultErrorMsg())
+*/
+void Parser::printMsg(QByteArrayView formatStringSuffix, QByteArrayView msg, const Symbol &sym)
+{
+    if (sym.lineNum != -1) {
+#ifdef Q_CC_MSVC
+        QByteArray formatString = "%s(%d:%d): " + formatStringSuffix;
+#else
+        QByteArray formatString = "%s:%d:%d: " + formatStringSuffix;
+#endif
+        fprintf(stderr, formatString.constData(),
+                currentFilenames.top().constData(), sym.lineNum, 1, msg.data());
+    } else {
+        QByteArray formatString = "%s: " + formatStringSuffix;
+        fprintf(stderr, formatString.constData(),
+                currentFilenames.top().constData(), msg.data());
+    }
 }
-void Parser::error(const char *msg) {
-    if (msg || error_msg)
-        fprintf(stderr, ErrorFormatString "Error: %s\n",
-                 currentFilenames.top().constData(), symbol().lineNum, msg?msg:error_msg);
+
+void Parser::defaultErrorMsg(const Symbol &sym)
+{
+    if (sym.lineNum != -1)
+        printMsg("error: Parse error at \"%s\"\n", sym.lexem().data(), sym);
     else
-        fprintf(stderr, ErrorFormatString "Parse error at \"%s\"\n",
-                 currentFilenames.top().constData(), symbol().lineNum, symbol().lexem().data());
+        printMsg("error: could not parse file\n", "", sym);
+}
+
+void Parser::error(const Symbol &sym)
+{
+    defaultErrorMsg(sym);
+    exit(EXIT_FAILURE);
+}
+
+void Parser::error(const char *msg)
+{
+    if (msg || error_msg)
+        printMsg("error: %s\n",
+                 msg ? msg : error_msg,
+                 index > 0 ? symbol() : Symbol{});
+    else
+        defaultErrorMsg(symbol());
+
     exit(EXIT_FAILURE);
 }
 
 void Parser::warning(const char *msg) {
     if (displayWarnings && msg)
-        fprintf(stderr, ErrorFormatString "Warning: %s\n",
-                currentFilenames.top().constData(), qMax(0, index > 0 ? symbol().lineNum : 0), msg);
+        printMsg("warning: %s\n", msg, index > 0 ? symbol() : Symbol{});
 }
 
 void Parser::note(const char *msg) {
     if (displayNotes && msg)
-        fprintf(stderr, ErrorFormatString "Note: %s\n",
-                currentFilenames.top().constData(), qMax(0, index > 0 ? symbol().lineNum : 0), msg);
+        printMsg("note: %s\n", msg, index > 0 ? symbol() : Symbol{});
 }
 
 QT_END_NAMESPACE

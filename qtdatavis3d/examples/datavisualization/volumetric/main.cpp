@@ -1,48 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "volumetric.h"
 
-#include <QtWidgets/QApplication>
-#include <QtWidgets/QWidget>
-#include <QtWidgets/QHBoxLayout>
-#include <QtWidgets/QVBoxLayout>
-#include <QtWidgets/QRadioButton>
-#include <QtWidgets/QSlider>
-#include <QtWidgets/QCheckBox>
-#include <QtWidgets/QLabel>
-#include <QtWidgets/QGroupBox>
-#include <QtWidgets/QMessageBox>
-#include <QtGui/QScreen>
+#include <QtWidgets/qapplication.h>
+#include <QtWidgets/qwidget.h>
+#include <QtWidgets/qboxlayout.h>
+#include <QtWidgets/qradiobutton.h>
+#include <QtWidgets/qslider.h>
+#include <QtWidgets/qcheckbox.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qgroupbox.h>
+#include <QtWidgets/qmessagebox.h>
+#include <QtGui/qscreen.h>
 
 int main(int argc, char **argv)
 {
+    qputenv("QSG_RHI_BACKEND", "opengl");
     QApplication app(argc, argv);
     Q3DScatter *graph = new Q3DScatter();
     QWidget *container = QWidget::createWindowContainer(graph);
@@ -55,7 +29,7 @@ int main(int argc, char **argv)
     }
 
     QSize screenSize = graph->screen()->size();
-    container->setMinimumSize(QSize(screenSize.width() / 3, screenSize.height() / 3));
+    container->setMinimumSize(QSize(screenSize.width() / 3, screenSize.height() / 2));
     container->setMaximumSize(screenSize);
     container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     container->setFocusPolicy(Qt::StrongFocus);
@@ -68,7 +42,7 @@ int main(int argc, char **argv)
     hLayout->addLayout(vLayout);
     hLayout->addLayout(vLayout2);
 
-    widget->setWindowTitle(QStringLiteral("Volumetric object example - 3D terrain"));
+    widget->setWindowTitle(QStringLiteral("Volumetric Rendering - 3D Terrain"));
 
     QCheckBox *sliceXCheckBox = new QCheckBox(widget);
     sliceXCheckBox->setText(QStringLiteral("Slice volume on X axis"));
@@ -104,7 +78,7 @@ int main(int argc, char **argv)
     QGroupBox *textureDetailGroupBox = new QGroupBox(QStringLiteral("Texture detail"));
 
     QRadioButton *lowDetailRB = new QRadioButton(widget);
-    lowDetailRB->setText(QStringLiteral("Low (128x64x128)"));
+    lowDetailRB->setText(QStringLiteral("Low (256x128x256)"));
     lowDetailRB->setChecked(true);
 
     QRadioButton *mediumDetailRB = new QRadioButton(widget);

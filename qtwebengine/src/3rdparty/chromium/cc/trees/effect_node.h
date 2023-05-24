@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,16 @@
 #include "cc/cc_export.h"
 #include "cc/paint/element_id.h"
 #include "cc/paint/filter_operations.h"
+#include "cc/view_transition/view_transition_element_id.h"
+#include "components/viz/common/surfaces/subtree_capture_id.h"
+#include "components/viz/common/view_transition_element_resource_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkBlendMode.h"
+#include "ui/gfx/geometry/mask_filter_info.h"
 #include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/geometry/rrect_f.h"
+#include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/size_f.h"
-#include "ui/gfx/rrect_f.h"
 
 namespace base {
 namespace trace_event {
@@ -43,6 +49,9 @@ enum class RenderSurfaceReason : uint8_t {
   kCache,
   kCopyRequest,
   kMirrored,
+  kSubtreeIsBeingCaptured,
+  kViewTransitionParticipant,
+  kGradientMask,
   // This must be the last value because it's used in tracing code to know the
   // number of reasons.
   kTest,
@@ -72,7 +81,7 @@ struct CC_EXPORT EffectNode {
 
   FilterOperations filters;
   FilterOperations backdrop_filters;
-  base::Optional<gfx::RRectF> backdrop_filter_bounds;
+  absl::optional<gfx::RRectF> backdrop_filter_bounds;
   float backdrop_filter_quality;
   gfx::PointF filters_origin;
 
@@ -80,13 +89,17 @@ struct CC_EXPORT EffectNode {
   // image.
   ElementId backdrop_mask_element_id;
 
-  // Bounds of rounded corner rrect in the space of the transform node
-  // associated with this effect node.
-  gfx::RRectF rounded_corner_bounds;
+  // The mask filter information applied to this effect node. The coordinates of
+  // in the mask info is in the space of the transform node associated with this
+  // effect node.
+  gfx::MaskFilterInfo mask_filter_info;
 
   SkBlendMode blend_mode;
 
   gfx::Vector2dF surface_contents_scale;
+
+  viz::SubtreeCaptureId subtree_capture_id;
+  gfx::Size subtree_size;
 
   bool cache_render_surface : 1;
   bool has_copy_request : 1;
@@ -152,6 +165,15 @@ struct CC_EXPORT EffectNode {
   int target_id;
   int closest_ancestor_with_cached_render_surface_id;
   int closest_ancestor_with_copy_request_id;
+  int closest_ancestor_being_captured_id;
+  int closest_ancestor_with_shared_element_id;
+
+  // Represents a DOM element id for the view transition API.
+  ViewTransitionElementId view_transition_shared_element_id;
+
+  // Represents a resource id for a resource cached or generated in the Viz
+  // process.
+  viz::ViewTransitionElementResourceId view_transition_element_resource_id;
 
   bool HasRenderSurface() const {
     return render_surface_reason != RenderSurfaceReason::kNone;

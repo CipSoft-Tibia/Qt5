@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,20 +17,20 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
-#include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/widestring.h"
 #include "fxjs/cfx_v8.h"
 #include "fxjs/ijs_runtime.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-forward.h"
+#include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-persistent-handle.h"
+#include "v8/include/v8-template.h"
 
 class CFXJS_ObjDefinition;
 class CJS_Object;
 class V8TemplateMap;
-
-// CFXJS_ENGINE places no restrictions on this class; it merely passes it
-// on to caller-provided methods.
-class IJS_EventContext;  // A description of the event that caused JS execution.
 
 enum FXJSOBJTYPE {
   FXJSOBJTYPE_DYNAMIC = 0,  // Created by native method and returned to JS.
@@ -51,16 +51,22 @@ class FXJS_PerIsolateData {
   static void SetUp(v8::Isolate* pIsolate);
   static FXJS_PerIsolateData* Get(v8::Isolate* pIsolate);
 
-  int MaxObjDefinitionID() const;
-  CFXJS_ObjDefinition* ObjDefinitionForID(int id) const;
-  int AssignIDForObjDefinition(std::unique_ptr<CFXJS_ObjDefinition> pDefn);
+  uint32_t CurrentMaxObjDefinitionID() const;
+  CFXJS_ObjDefinition* ObjDefinitionForID(uint32_t id) const;
+  uint32_t AssignIDForObjDefinition(std::unique_ptr<CFXJS_ObjDefinition> pDefn);
+  V8TemplateMap* GetDynamicObjsMap() { return m_pDynamicObjsMap.get(); }
+  ExtensionIface* GetExtension() { return m_pExtension.get(); }
+  void SetExtension(std::unique_ptr<ExtensionIface> extension) {
+    m_pExtension = std::move(extension);
+  }
 
+ private:
+  explicit FXJS_PerIsolateData(v8::Isolate* pIsolate);
+
+  const wchar_t* const m_Tag;  // Raw, always a literal.
   std::vector<std::unique_ptr<CFXJS_ObjDefinition>> m_ObjectDefnArray;
   std::unique_ptr<V8TemplateMap> m_pDynamicObjsMap;
-  std::unique_ptr<ExtensionIface> m_pFXJSERuntimeData;
-
- protected:
-  explicit FXJS_PerIsolateData(v8::Isolate* pIsolate);
+  std::unique_ptr<ExtensionIface> m_pExtension;
 };
 
 void FXJS_Initialize(unsigned int embedderDataSlot, v8::Isolate* pIsolate);
@@ -79,35 +85,39 @@ class CFXJS_Engine : public CFX_V8 {
   explicit CFXJS_Engine(v8::Isolate* pIsolate);
   ~CFXJS_Engine() override;
 
-  using Constructor =
-      std::function<void(CFXJS_Engine* pEngine, v8::Local<v8::Object> obj)>;
+  using Constructor = std::function<void(CFXJS_Engine* pEngine,
+                                         v8::Local<v8::Object> obj,
+                                         v8::Local<v8::Object> proxy)>;
   using Destructor = std::function<void(v8::Local<v8::Object> obj)>;
 
-  static int GetObjDefnID(v8::Local<v8::Object> pObj);
-  static CJS_Object* GetObjectPrivate(v8::Local<v8::Object> pObj);
+  static uint32_t GetObjDefnID(v8::Local<v8::Object> pObj);
+  static CJS_Object* GetObjectPrivate(v8::Isolate* pIsolate,
+                                      v8::Local<v8::Object> pObj);
   static void SetObjectPrivate(v8::Local<v8::Object> pObj,
                                std::unique_ptr<CJS_Object> p);
   static void FreeObjectPrivate(v8::Local<v8::Object> pObj);
 
-  // Always returns a valid, newly-created objDefnID.
-  int DefineObj(const char* sObjName,
-                FXJSOBJTYPE eObjType,
-                Constructor pConstructor,
-                Destructor pDestructor);
+  // Always returns a valid (i.e. non-zero), newly-created objDefnID.
+  uint32_t DefineObj(const char* sObjName,
+                     FXJSOBJTYPE eObjType,
+                     Constructor pConstructor,
+                     Destructor pDestructor);
 
-  void DefineObjMethod(int nObjDefnID,
+  void DefineObjMethod(uint32_t nObjDefnID,
                        const char* sMethodName,
                        v8::FunctionCallback pMethodCall);
-  void DefineObjProperty(int nObjDefnID,
+  void DefineObjProperty(uint32_t nObjDefnID,
                          const char* sPropName,
                          v8::AccessorGetterCallback pPropGet,
                          v8::AccessorSetterCallback pPropPut);
-  void DefineObjAllProperties(int nObjDefnID,
-                              v8::GenericNamedPropertyQueryCallback pPropQurey,
-                              v8::GenericNamedPropertyGetterCallback pPropGet,
-                              v8::GenericNamedPropertySetterCallback pPropPut,
-                              v8::GenericNamedPropertyDeleterCallback pPropDel);
-  void DefineObjConst(int nObjDefnID,
+  void DefineObjAllProperties(
+      uint32_t nObjDefnID,
+      v8::GenericNamedPropertyQueryCallback pPropQurey,
+      v8::GenericNamedPropertyGetterCallback pPropGet,
+      v8::GenericNamedPropertySetterCallback pPropPut,
+      v8::GenericNamedPropertyDeleterCallback pPropDel,
+      v8::GenericNamedPropertyEnumeratorCallback pPropEnum);
+  void DefineObjConst(uint32_t nObjDefnID,
                       const char* sConstName,
                       v8::Local<v8::Value> pDefault);
   void DefineGlobalMethod(const char* sMethodName,
@@ -120,10 +130,11 @@ class CFXJS_Engine : public CFX_V8 {
   void ReleaseEngine();
 
   // Called after FXJS_InitializeEngine call made.
-  Optional<IJS_Runtime::JS_Error> Execute(const WideString& script);
+  absl::optional<IJS_Runtime::JS_Error> Execute(const WideString& script);
 
   v8::Local<v8::Object> GetThisObj();
-  v8::Local<v8::Object> NewFXJSBoundObject(int nObjDefnID, FXJSOBJTYPE type);
+  v8::Local<v8::Object> NewFXJSBoundObject(uint32_t nObjDefnID,
+                                           FXJSOBJTYPE type);
   void Error(const WideString& message);
 
   v8::Local<v8::Context> GetV8Context();

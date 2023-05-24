@@ -1,9 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# Copyright 2013 The Chromium Authors. All rights reserved.
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
 """Instruments classes and jar files.
 
 This script corresponds to the 'jacoco_instr' action in the Java build process.
@@ -13,14 +12,11 @@ jacococli.jar.
 
 """
 
-from __future__ import print_function
-
 import argparse
 import json
 import os
 import shutil
 import sys
-import tempfile
 import zipfile
 
 from util import build_utils
@@ -49,9 +45,9 @@ def _AddArguments(parser):
       help='File to create with the list of source directories '
       'and input path.')
   parser.add_argument(
-      '--java-sources-file',
+      '--target-sources-file',
       required=True,
-      help='File containing newline-separated .java paths')
+      help='File containing newline-separated .java and .kt paths')
   parser.add_argument(
       '--jacococli-jar', required=True, help='Path to jacococli.jar.')
   parser.add_argument(
@@ -101,10 +97,12 @@ def _CreateSourcesJsonFile(source_dirs, input_path, sources_json_file,
   data = {}
   data['source_dirs'] = relative_sources
   data['input_path'] = []
+  data['output_dir'] = src_root
   if input_path:
     data['input_path'].append(os.path.abspath(input_path))
   with open(sources_json_file, 'w') as f:
     json.dump(data, f)
+  return 0
 
 
 def _GetAffectedClasses(jar_file, source_files):
@@ -133,7 +131,8 @@ def _GetAffectedClasses(jar_file, source_files):
     if index == -1:
       index = member.find('.class')
     for source_file in source_files:
-      if source_file.endswith(member[:index] + '.java'):
+      if source_file.endswith(
+          (member[:index] + '.java', member[:index] + '.kt')):
         affected_classes.append(member)
         is_affected = True
         break
@@ -195,8 +194,8 @@ def _RunInstrumentCommand(parser):
   args = parser.parse_args()
 
   source_files = []
-  if args.java_sources_file:
-    source_files.extend(build_utils.ReadSourcesList(args.java_sources_file))
+  if args.target_sources_file:
+    source_files.extend(build_utils.ReadSourcesList(args.target_sources_file))
 
   with build_utils.TempDir() as temp_dir:
     instrument_cmd = build_utils.JavaCmd() + [
@@ -218,9 +217,8 @@ def _RunInstrumentCommand(parser):
         _CreateSourcesJsonFile([], None, args.sources_json_file,
                                build_utils.DIR_SOURCE_ROOT)
         return 0
-      else:
-        _InstrumentClassFiles(instrument_cmd, args.input_path, args.output_path,
-                              temp_dir, affected_source_files)
+      _InstrumentClassFiles(instrument_cmd, args.input_path, args.output_path,
+                            temp_dir, affected_source_files)
 
   source_dirs = _GetSourceDirsFromSourceFiles(source_files)
   # TODO(GYP): In GN, we are passed the list of sources, detecting source

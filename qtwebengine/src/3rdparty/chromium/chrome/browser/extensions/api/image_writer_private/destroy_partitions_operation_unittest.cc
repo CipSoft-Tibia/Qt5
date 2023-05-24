@@ -1,12 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/image_writer_private/destroy_partitions_operation.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "build/build_config.h"
-#include "chrome/browser/extensions/api/image_writer_private/error_messages.h"
+#include "build/chromeos_buildflags.h"
+#include "chrome/browser/extensions/api/image_writer_private/error_constants.h"
 #include "chrome/browser/extensions/api/image_writer_private/test_utils.h"
 #include "chrome/test/base/testing_profile.h"
 
@@ -25,7 +26,7 @@ TEST_F(ImageWriterDestroyPartitionsOperationTest, EndToEnd) {
   TestingProfile profile;
   MockOperationManager manager(&profile);
 
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
   auto set_up_utility_client_progress_simulation =
       [](FakeImageWriterClient* client) {
         std::vector<int> progress_list{0, 50, 100};

@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
@@ -18,7 +18,6 @@ For example, to generate the patches file for origin/merge-m68:
 find_patches.py origin/merge-m68 > patches.68
 """
 
-from __future__ import print_function
 import collections
 import os
 import re
@@ -43,7 +42,7 @@ def run(command):
   Returns:
     stdout as a a string.
   """
-  return subprocess.Popen(command, stdout=subprocess.PIPE).communicate()[0]
+  return subprocess.Popen(command, stdout=subprocess.PIPE).communicate()[0].decode()
 
 
 class PatchInfo:
@@ -246,7 +245,7 @@ def write_patches_file(origin_branch, output_file):
       file=output_file)
   print("\n", file=output_file)
   wd = os.getcwd()
-  for sha1, date in sorted(sha1_to_date.iteritems(), key=lambda (k, v): v):
+  for sha1, date in sorted(sha1_to_date.items(), key=lambda kv: kv[1]):
     print(
         "------------------------------------------------------------------",
         file=output_file)

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/input/web_keyboard_event.h"
-#include "third_party/blink/renderer/core/exported/web_remote_frame_impl.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/visual_viewport.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
+#include "third_party/blink/renderer/core/frame/web_remote_frame_impl.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
 #include "third_party/blink/renderer/core/page/spatial_navigation_controller.h"
@@ -71,10 +71,6 @@ class SpatialNavigationTest : public RenderingTest {
               LeftSideOfVisualViewport());
   }
 
-  void UpdateAllLifecyclePhases(LocalFrameView* frame_view) {
-    frame_view->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
-  }
-
   void AssertNormalizedHeight(Element* e, int line_height, bool will_shrink) {
     PhysicalRect search_origin =
         SearchOrigin(RootViewport(e->GetDocument().GetFrame()), e,
@@ -128,7 +124,7 @@ TEST_F(SpatialNavigationTest, RootFramesVisualViewport) {
   // Test RootViewport with a pinched viewport.
   VisualViewport& visual_viewport = GetFrame().GetPage()->GetVisualViewport();
   visual_viewport.SetScale(2);
-  visual_viewport.SetLocation(FloatPoint(200, 200));
+  visual_viewport.SetLocation(gfx::PointF(200, 200));
 
   LocalFrameView* root_frame_view = GetFrame().LocalFrameRoot().View();
   const PhysicalRect roots_visible_doc_rect(
@@ -168,7 +164,7 @@ TEST_F(SpatialNavigationTest, FindContainerWhenEnclosingContainerIsIframe) {
       "<!DOCTYPE html>"
       "<a>link</a>");
 
-  UpdateAllLifecyclePhases(ChildDocument().View());
+  UpdateAllLifecyclePhasesForTest();
   Element* iframe = GetDocument().QuerySelector("iframe");
   Element* link = ChildDocument().QuerySelector("a");
   Node* enclosing_container = ScrollableAreaOrDocumentOf(link);
@@ -204,12 +200,11 @@ TEST_F(SpatialNavigationTest,
   Node* enclosing_container = ScrollableAreaOrDocumentOf(content);
 
   // TODO(crbug.com/889840):
-  // VisibleBoundsInVisualViewport does not (yet) take div-clipping into
+  // VisibleBoundsInLocalRoot does not (yet) take div-clipping into
   // account. The node is off screen, but nevertheless VBIVV returns a non-
-  // empty rect. If you fix VisibleBoundsInVisualViewport, change to
+  // empty rect. If you fix VisibleBoundsInLocalRoot, change to
   // EXPECT_TRUE here and stop using LayoutObject in IsOffscreen().
-  EXPECT_FALSE(
-      content->VisibleBoundsInVisualViewport().IsEmpty());  // EXPECT_TRUE.
+  EXPECT_FALSE(content->VisibleBoundsInLocalRoot().IsEmpty());  // EXPECT_TRUE.
 
   EXPECT_TRUE(IsOffscreen(content));
   EXPECT_FALSE(IsOffscreen(container));
@@ -373,11 +368,11 @@ TEST_F(SpatialNavigationTest, StartAtContainersEdge) {
   const PhysicalRect container_box = NodeRectInRootFrame(container);
 
   // TODO(crbug.com/889840):
-  // VisibleBoundsInVisualViewport does not (yet) take div-clipping into
+  // VisibleBoundsInLocalRoot does not (yet) take div-clipping into
   // account. The node is off screen, but nevertheless VBIVV returns a non-
-  // empty rect. If you fix VisibleBoundsInVisualViewport, change to
+  // empty rect. If you fix VisibleBoundsInLocalRoot, change to
   // EXPECT_TRUE here and stop using LayoutObject in IsOffscreen().
-  EXPECT_FALSE(b->VisibleBoundsInVisualViewport().IsEmpty());  // EXPECT_TRUE.
+  EXPECT_FALSE(b->VisibleBoundsInLocalRoot().IsEmpty());  // EXPECT_TRUE.
   EXPECT_TRUE(IsOffscreen(b));
 
   // Go down.
@@ -528,7 +523,7 @@ TEST_F(SpatialNavigationTest,
       "<!DOCTYPE html>"
       "<a id='link'>link</a>");
 
-  UpdateAllLifecyclePhases(ChildDocument().View());
+  UpdateAllLifecyclePhasesForTest();
   Element* link = ChildDocument().QuerySelector("a");
   Element* iframe = GetDocument().QuerySelector("iframe");
 
@@ -564,19 +559,18 @@ TEST_F(SpatialNavigationTest, DivsCanClipIframes) {
       "<!DOCTYPE html>"
       "<a>link</a>");
 
-  UpdateAllLifecyclePhases(ChildDocument().View());
+  UpdateAllLifecyclePhasesForTest();
   Element* div = GetDocument().QuerySelector("div");
   Element* iframe = GetDocument().QuerySelector("iframe");
   Element* link = ChildDocument().QuerySelector("a");
   EXPECT_FALSE(IsOffscreen(div));
 
   // TODO(crbug.com/889840):
-  // VisibleBoundsInVisualViewport does not (yet) take div-clipping into
+  // VisibleBoundsInLocalRoot does not (yet) take div-clipping into
   // account. The node is off screen, but nevertheless VBIVV returns a non-
-  // empty rect. If you fix VisibleBoundsInVisualViewport, change to
+  // empty rect. If you fix VisibleBoundsInLocalRoot, change to
   // EXPECT_TRUE here and stop using LayoutObject in IsOffscreen().
-  EXPECT_FALSE(
-      iframe->VisibleBoundsInVisualViewport().IsEmpty());  // EXPECT_TRUE.
+  EXPECT_FALSE(iframe->VisibleBoundsInLocalRoot().IsEmpty());  // EXPECT_TRUE.
 
   // The <iframe> is not displayed in the visual viewport because it is clipped
   // by the div. In other words, it is being offscreen. And so is also its
@@ -607,7 +601,7 @@ TEST_F(SpatialNavigationTest, PartiallyVisibleIFrame) {
       "</style>"
       "<a id='child'>link</a>");
 
-  UpdateAllLifecyclePhases(ChildDocument().View());
+  UpdateAllLifecyclePhasesForTest();
   Element* child_element = ChildDocument().getElementById("child");
   Node* enclosing_container = ScrollableAreaOrDocumentOf(child_element);
   EXPECT_EQ(enclosing_container, ChildDocument());
@@ -658,7 +652,7 @@ TEST_F(SpatialNavigationTest, BottomOfPinchedViewport) {
   // Now, test SearchOrigin with a pinched viewport.
   VisualViewport& visual_viewport = GetFrame().GetPage()->GetVisualViewport();
   visual_viewport.SetScale(2);
-  visual_viewport.SetLocation(FloatPoint(200, 200));
+  visual_viewport.SetLocation(gfx::PointF(200, 200));
   origin = SearchOrigin(RootViewport(&GetFrame()), nullptr,
                         SpatialNavigationDirection::kUp);
   EXPECT_EQ(origin.Height(), 0);
@@ -1107,7 +1101,7 @@ TEST_F(SpatialNavigationTest, TopOfPinchedViewport) {
   // Now, test SearchOrigin with a pinched viewport.
   VisualViewport& visual_viewport = GetFrame().GetPage()->GetVisualViewport();
   visual_viewport.SetScale(2);
-  visual_viewport.SetLocation(FloatPoint(200, 200));
+  visual_viewport.SetLocation(gfx::PointF(200, 200));
   origin = SearchOrigin(RootViewport(&GetFrame()), nullptr,
                         SpatialNavigationDirection::kDown);
   EXPECT_EQ(origin.Height(), 0);
@@ -1128,16 +1122,16 @@ TEST_F(SpatialNavigationTest, HasRemoteFrame) {
                                      "<iframe id='iframe'></iframe>",
                                      base_url);
 
-  webview->ResizeWithBrowserControls(IntSize(400, 400), 50, 0, false);
-  UpdateAllLifecyclePhases(webview->MainFrameImpl()->GetFrame()->View());
+  webview->ResizeWithBrowserControls(gfx::Size(400, 400), 50, 0, false);
+  UpdateAllLifecyclePhasesForTest();
 
   Element* iframe =
       webview->MainFrameImpl()->GetFrame()->GetDocument()->getElementById(
           "iframe");
   EXPECT_FALSE(HasRemoteFrame(iframe));
 
-  webview->MainFrameImpl()->FirstChild()->Swap(
-      frame_test_helpers::CreateRemote());
+  frame_test_helpers::SwapRemoteFrame(webview->MainFrameImpl()->FirstChild(),
+                                      frame_test_helpers::CreateRemote());
   EXPECT_TRUE(HasRemoteFrame(iframe));
 }
 
@@ -1230,7 +1224,7 @@ TEST_F(FocuslessSpatialNavigationSimTest, OpenSelectPopup) {
   if (!RuntimeEnabledFeatures::PagePopupEnabled())
     return;
 
-  WebView().MainFrameWidget()->Resize(WebSize(800, 600));
+  WebView().MainFrameViewWidget()->Resize(gfx::Size(800, 600));
   WebView().MainFrameWidget()->SetFocus(true);
   WebView().SetIsActive(true);
 

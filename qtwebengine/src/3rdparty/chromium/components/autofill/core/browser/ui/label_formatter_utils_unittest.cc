@@ -1,11 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/autofill/core/browser/ui/label_formatter_utils.h"
 
+#include <string>
+
 #include "base/guid.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/autofill/core/browser/autofill_test_utils.h"
@@ -227,22 +228,18 @@ TEST(LabelFormatterUtilsTest,
 TEST(LabelFormatterUtilsTest, GetLabelName) {
   AutofillProfile profile =
       AutofillProfile(base::GenerateGUID(), test::kEmptyOrigin);
-  profile.SetInfo(NAME_FULL, base::ASCIIToUTF16("Maria Margaretha Kirch"),
-                  "de");
+  profile.SetInfo(NAME_FULL, u"Maria Margaretha Kirch", "de");
   profile.FinalizeAfterImport();
 
-  EXPECT_EQ(base::ASCIIToUTF16("Maria Margaretha Kirch"),
+  EXPECT_EQ(u"Maria Margaretha Kirch",
             GetLabelName({NAME_SUFFIX, NAME_FULL}, profile, "de"));
-  EXPECT_EQ(base::ASCIIToUTF16("Maria Kirch"),
+  EXPECT_EQ(u"Maria Kirch",
             GetLabelName({NAME_SUFFIX, NAME_FIRST, NAME_LAST}, profile, "de"));
-  EXPECT_EQ(base::ASCIIToUTF16("Maria"),
-            GetLabelName({NAME_SUFFIX, NAME_FIRST}, profile, "de"));
-  EXPECT_EQ(base::ASCIIToUTF16("Kirch"),
-            GetLabelName({NAME_SUFFIX, NAME_LAST}, profile, "de"));
-  EXPECT_EQ(base::ASCIIToUTF16("Margaretha"),
-            GetLabelName({NAME_MIDDLE}, profile, "de"));
-  EXPECT_EQ(base::string16(), GetLabelName({EMPTY_TYPE}, profile, "de"));
-  EXPECT_EQ(base::string16(), GetLabelName({}, profile, "de"));
+  EXPECT_EQ(u"Maria", GetLabelName({NAME_SUFFIX, NAME_FIRST}, profile, "de"));
+  EXPECT_EQ(u"Kirch", GetLabelName({NAME_SUFFIX, NAME_LAST}, profile, "de"));
+  EXPECT_EQ(u"Margaretha", GetLabelName({NAME_MIDDLE}, profile, "de"));
+  EXPECT_EQ(std::u16string(), GetLabelName({EMPTY_TYPE}, profile, "de"));
+  EXPECT_EQ(std::u16string(), GetLabelName({}, profile, "de"));
 }
 
 }  // namespace

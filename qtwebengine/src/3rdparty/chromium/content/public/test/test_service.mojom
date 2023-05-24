@@ -1,10 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 module content.mojom;
 
+import "mojo/public/mojom/base/file.mojom";
 import "mojo/public/mojom/base/shared_memory.mojom";
+
+const string kTestPipeKey = "content_test_pipe";
 
 interface TestService {
   // Doesn't actually do anything, just responds.
@@ -42,6 +45,23 @@ interface TestService {
   CreateUnsafeSharedMemoryRegion(string message)
       => (mojo_base.mojom.UnsafeSharedMemoryRegion? region);
 
+  // Accepts a shared memory region and copies its contents into a new shared
+  // memory region which is sent back to the caller. This exercises platform
+  // handle transmission in both directions.
+  CloneSharedMemoryContents(mojo_base.mojom.ReadOnlySharedMemoryRegion region)
+      => (mojo_base.mojom.UnsafeSharedMemoryRegion new_region);
+
   // Returns the result of sandbox::policy::Sandbox::IsProcessSandboxed().
   IsProcessSandboxed() => (bool is_sandboxed);
+
+  // Returns the value of PseudonymizeString for the given string.
+  PseudonymizeString(string value) => (uint32 result);
+
+  // Pass a writeable file handle. This is used to test that the file cannot be
+  // passed if it can be opened with EXECUTE. See https://crbug.com/1335974.
+  PassWriteableFile(mojo_base.mojom.File file) => ();
+
+  // Writes to the pipe that should be stored in base::FileDescriptorStore with
+  // the key kTestPipeKey.
+  WriteToPreloadedPipe();
 };

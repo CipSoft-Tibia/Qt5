@@ -48,7 +48,7 @@ drm_plane_state_alloc(struct drm_output_state *state_output,
 	state->output_state = state_output;
 	state->plane = plane;
 	state->in_fence_fd = -1;
-	pixman_region32_init(&state->damage);
+	state->zpos = DRM_PLANE_ZPOS_INVALID_PLANE;
 
 	/* Here we only add the plane state to the desired link, and not
 	 * set the member. Having an output pointer set means that the
@@ -80,7 +80,16 @@ drm_plane_state_free(struct drm_plane_state *state, bool force)
 	wl_list_init(&state->link);
 	state->output_state = NULL;
 	state->in_fence_fd = -1;
-	pixman_region32_fini(&state->damage);
+	state->zpos = DRM_PLANE_ZPOS_INVALID_PLANE;
+
+	/* Once the damage blob has been submitted, it is refcounted internally
+	 * by the kernel, which means we can safely discard it.
+	 */
+	if (state->damage_blob_id != 0) {
+		drmModeDestroyPropertyBlob(state->plane->backend->drm.fd,
+					   state->damage_blob_id);
+		state->damage_blob_id = 0;
+	}
 
 	if (force || state != state->plane->state_cur) {
 		drm_fb_unref(state->fb);
@@ -97,12 +106,16 @@ struct drm_plane_state *
 drm_plane_state_duplicate(struct drm_output_state *state_output,
 			  struct drm_plane_state *src)
 {
-	struct drm_plane_state *dst = malloc(sizeof(*dst));
+	struct drm_plane_state *dst = zalloc(sizeof(*dst));
 	struct drm_plane_state *old, *tmp;
 
 	assert(src);
 	assert(dst);
 	*dst = *src;
+	/* We don't want to copy this, because damage is transient, and only
+	 * lasts for the duration of a single repaint.
+	 */
+	dst->damage_blob_id = 0;
 	wl_list_init(&dst->link);
 
 	wl_list_for_each_safe(old, tmp, &state_output->plane_list, link) {
@@ -118,7 +131,6 @@ drm_plane_state_duplicate(struct drm_output_state *state_output,
 	if (src->fb)
 		dst->fb = drm_fb_ref(src->fb);
 	dst->output_state = state_output;
-	pixman_region32_init(&dst->damage);
 	dst->complete = false;
 
 	return dst;
@@ -163,7 +175,7 @@ drm_plane_state_put_back(struct drm_plane_state *state)
  */
 bool
 drm_plane_state_coords_for_view(struct drm_plane_state *state,
-				struct weston_view *ev)
+				struct weston_view *ev, uint64_t zpos)
 {
 	struct drm_output *output = state->output;
 	struct weston_buffer *buffer = ev->surface->buffer_ref.buffer;
@@ -243,7 +255,25 @@ drm_plane_state_coords_for_view(struct drm_plane_state *state,
 	if (state->src_h > (uint32_t) ((buffer->height << 16) - state->src_y))
 		state->src_h = (buffer->height << 16) - state->src_y;
 
+	/* apply zpos if available */
+	state->zpos = zpos;
+
 	return true;
+}
+
+/**
+ * Reset the current state of a DRM plane
+ *
+ * The current state will be freed and replaced by a pristine state.
+ *
+ * @param plane The plane to reset the current state of
+ */
+void
+drm_plane_reset_state(struct drm_plane *plane)
+{
+	drm_plane_state_free(plane->state_cur, true);
+	plane->state_cur = drm_plane_state_alloc(NULL, plane);
+	plane->state_cur->complete = true;
 }
 
 /**
@@ -293,6 +323,7 @@ drm_output_state_alloc(struct drm_output *output,
 	assert(state);
 	state->output = output;
 	state->dpms = WESTON_DPMS_OFF;
+	state->protection = WESTON_HDCP_DISABLE;
 	state->pending_state = pending_state;
 	if (pending_state)
 		wl_list_insert(&pending_state->output_list, &state->link);

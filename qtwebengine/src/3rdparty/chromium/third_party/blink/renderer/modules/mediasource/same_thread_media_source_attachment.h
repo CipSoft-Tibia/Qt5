@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,13 @@
 
 #include <memory>
 
-#include "base/util/type_safety/pass_key.h"
+#include "base/types/pass_key.h"
 #include "third_party/blink/public/platform/web_time_range.h"
+#include "third_party/blink/renderer/core/html/track/audio_track.h"
+#include "third_party/blink/renderer/core/html/track/audio_track_list.h"
+#include "third_party/blink/renderer/core/html/track/video_track.h"
+#include "third_party/blink/renderer/core/html/track/video_track_list.h"
+#include "third_party/blink/renderer/modules/mediasource/attachment_creation_pass_key_provider.h"
 #include "third_party/blink/renderer/modules/mediasource/media_source.h"
 #include "third_party/blink/renderer/modules/mediasource/media_source_attachment_supplement.h"
 #include "third_party/blink/renderer/modules/mediasource/url_media_source.h"
@@ -20,17 +25,38 @@ namespace blink {
 class SameThreadMediaSourceAttachment final
     : public MediaSourceAttachmentSupplement {
  public:
-  // The only intended caller of this constructor is
-  // URLMediaSource::createObjectUrl, made more clear by using the PassKey. The
-  // raw pointer is then adopted into a scoped_refptr in
-  // MediaSourceRegistryImpl::RegisterURL.
+  // The only intended callers of this constructor are restricted to those able
+  // to obtain an AttachmentCreationPasskeyProvider's pass key. This method is
+  // expected to only be called in window/main thread context. The raw pointer
+  // is then adopted into a scoped_refptr by the caller (e.g.,
+  // URLMediaSource::createObjectUrl will lead to
+  // MediaSourceRegistryImpl::RegisterURL doing this scoped_refptr adoption).
+  // TODO(crbug.com/506273): For main-thread MediaSource's MediaSourceHandle
+  // usage via srcObject, MediaSource::handle() may also call this.
   SameThreadMediaSourceAttachment(MediaSource* media_source,
-                                  util::PassKey<URLMediaSource>);
+                                  AttachmentCreationPassKeyProvider::PassKey);
+
+  SameThreadMediaSourceAttachment(const SameThreadMediaSourceAttachment&) =
+      delete;
+  SameThreadMediaSourceAttachment& operator=(
+      const SameThreadMediaSourceAttachment&) = delete;
 
   // MediaSourceAttachmentSupplement
   void NotifyDurationChanged(MediaSourceTracer* tracer, double duration) final;
-  double GetRecentMediaTime(MediaSourceTracer* tracer) final;
+  base::TimeDelta GetRecentMediaTime(MediaSourceTracer* tracer) final;
   bool GetElementError(MediaSourceTracer* tracer) final;
+  AudioTrackList* CreateAudioTrackList(MediaSourceTracer* tracer) final;
+  VideoTrackList* CreateVideoTrackList(MediaSourceTracer* tracer) final;
+  void AddAudioTrackToMediaElement(MediaSourceTracer* tracer,
+                                   AudioTrack* track) final;
+  void AddVideoTrackToMediaElement(MediaSourceTracer* tracer,
+                                   VideoTrack* track) final;
+  void RemoveAudioTracksFromMediaElement(MediaSourceTracer* tracer,
+                                         Vector<String> audio_ids,
+                                         bool enqueue_change_event) final;
+  void RemoveVideoTracksFromMediaElement(MediaSourceTracer* tracer,
+                                         Vector<String> video_ids,
+                                         bool enqueue_change_event) final;
   void OnMediaSourceContextDestroyed() final;
 
   // MediaSourceAttachment
@@ -69,8 +95,6 @@ class SameThreadMediaSourceAttachment final
   bool element_has_error_;               // See OnElementError().
   bool element_context_destroyed_;       // See OnElementContextDestroyed().
   bool media_source_context_destroyed_;  // See OnMediaSourceContextDestroyed().
-
-  DISALLOW_COPY_AND_ASSIGN(SameThreadMediaSourceAttachment);
 };
 
 }  // namespace blink

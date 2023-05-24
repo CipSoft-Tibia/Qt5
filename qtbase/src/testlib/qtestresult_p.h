@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTESTRESULT_P_H
 #define QTESTRESULT_P_H
@@ -52,11 +16,11 @@
 //
 
 #include <QtTest/qttestglobal.h>
+#include <QtCore/qstringfwd.h>
+#include <QtCore/qxpfunctional.h>
+#include <QtCore/private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
-
-class QLatin1String;
-class QStringView;
 
 class QTestResultPrivate;
 class QTestData;
@@ -77,7 +41,10 @@ public:
     static void reset();
     static void setBlacklistCurrentTest(bool b);
 
-    static void addFailure(const char *message, const char *file, int line);
+    static void addFailure(const char *message, const char *file = nullptr, int line = 0);
+    // ### TODO: Remove this overload when deprecated QTest::compare_overload
+    // is removed. Can't declare it deprecated, because it will unconditionally
+    // provide warnings.
     static bool compare(bool success, const char *failureMsg,
                         char *val1, char *val2,
                         const char *actual, const char *expected,
@@ -94,6 +61,12 @@ public:
                         int val1, int val2,
                         const char *actual, const char *expected,
                         const char *file, int line);
+#if QT_POINTER_SIZE == 8
+    static bool compare(bool success, const char *failureMsg,
+                        qsizetype val1, qsizetype val2,
+                        const char *actual, const char *expected,
+                        const char *file, int line);
+#endif
     static bool compare(bool success, const char *failureMsg,
                         unsigned val1, unsigned val2,
                         const char *actual, const char *expected,
@@ -103,12 +76,15 @@ public:
                         const char *actual, const char *expected,
                         const char *file, int line);
     static bool compare(bool success, const char *failureMsg,
-                        const QLatin1String &val1, QStringView val2,
+                        const QLatin1StringView &val1, QStringView val2,
                         const char *actual, const char *expected,
                         const char *file, int line);
     static bool compare(bool success, const char *failureMsg,
-                        QStringView val1, const QLatin1String &val2,
+                        QStringView val1, const QLatin1StringView &val2,
                         const char *actual, const char *expected,
+                        const char *file, int line);
+    static bool compare(bool success, const char *failureMsg,
+                        const char *actual, const char *expeceted,
                         const char *file, int line);
     static void setCurrentGlobalTestData(QTestData *data);
     static void setCurrentTestData(QTestData *data);
@@ -117,6 +93,7 @@ public:
     static void addSkip(const char *message, const char *file, int line);
     static bool expectFail(const char *dataIndex, const char *comment,
                            QTest::TestFailMode mode, const char *file, int line);
+    static void fail(const char *message, const char *file, int line);
     static bool verify(bool statement, const char *statementStr, const char *extraInfo,
                        const char *file, int line);
     static void setSkipCurrentTest(bool value);
@@ -124,6 +101,12 @@ public:
 
     static void setCurrentAppName(const char *appName);
     static const char *currentAppName();
+
+    static bool reportResult(bool success, qxp::function_ref<const char *()> lhs,
+                             qxp::function_ref<const char *()> rhs,
+                             const char *lhsExpr, const char *rhsExpr,
+                             QTest::ComparisonOperation op, const char *file, int line,
+                             const char *failureMessage = nullptr);
 
 private:
     Q_DISABLE_COPY(QTestResult)

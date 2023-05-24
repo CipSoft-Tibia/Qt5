@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "media/base/audio_bus.h"
 #include "media/base/media_export.h"
 
@@ -22,11 +21,19 @@ class MEDIA_EXPORT AudioFifo {
  public:
   // Creates a new AudioFifo and allocates |channels| of length |frames|.
   AudioFifo(int channels, int frames);
+
+  AudioFifo(const AudioFifo&) = delete;
+  AudioFifo& operator=(const AudioFifo&) = delete;
+
   virtual ~AudioFifo();
 
-  // Pushes all audio channel data from |source| to the FIFO.
+  // Pushes all audio channel data from `source` to the FIFO.
   // Push() will crash if the allocated space is insufficient.
   void Push(const AudioBus* source);
+
+  // Pushes the number of `source_size` of frames in all audio channel data from
+  // `source` to the FIFO.
+  void Push(const AudioBus* source, int source_size);
 
   // Consumes |frames_to_consume| audio frames from the FIFO and copies
   // them to |destination| starting at position |start_frame|.
@@ -60,8 +67,6 @@ class MEDIA_EXPORT AudioFifo {
 
   // Current write position.
   int write_pos_;
-
-  DISALLOW_COPY_AND_ASSIGN(AudioFifo);
 };
 
 }  // namespace media

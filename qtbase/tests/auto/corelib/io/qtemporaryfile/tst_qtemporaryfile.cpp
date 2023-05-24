@@ -1,47 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qcoreapplication.h>
-#include <qstring.h>
-#include <qtemporarydir.h>
-#include <qtemporaryfile.h>
 #include <qfile.h>
 #include <qdatetime.h>
 #include <qdir.h>
 #include <qset.h>
-#include <qtextcodec.h>
+#include <qstandardpaths.h>
+#include <qstring.h>
+#include <qtemporarydir.h>
+#include <qtemporaryfile.h>
 
 #include <QtTest/private/qtesthelpers_p.h>
 
 #if defined(Q_OS_WIN)
-# include <windows.h>
+# include <shlwapi.h>
+# include <qt_windows.h>
 #endif
 #if defined(Q_OS_UNIX)
 # include <sys/types.h>
@@ -50,6 +26,17 @@
 # include <fcntl.h>             // open(2)
 # include <unistd.h>            // close(2)
 #endif
+
+#ifdef Q_OS_ANDROID
+#include <QDirIterator>
+#include <QStandardPaths>
+#endif
+
+#ifdef Q_OS_INTEGRITY
+#include "qplatformdefs.h"
+#endif
+
+using namespace Qt::StringLiterals;
 
 class tst_QTemporaryFile : public QObject
 {
@@ -77,6 +64,7 @@ private slots:
     void stressTest();
     void rename();
     void renameFdLeak();
+    void moveToTrash();
     void reOpenThroughQFile();
     void keepOpenMode();
     void resetTemplateAfterError();
@@ -94,6 +82,9 @@ private:
 
 void tst_QTemporaryFile::initTestCase()
 {
+    QStandardPaths::setTestModeEnabled(true);
+    QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
+
     QVERIFY2(m_temporaryDir.isValid(), qPrintable(m_temporaryDir.errorString()));
     m_previousCurrent = QDir::currentPath();
     QVERIFY(QDir::setCurrent(m_temporaryDir.path()));
@@ -102,15 +93,15 @@ void tst_QTemporaryFile::initTestCase()
     QVERIFY(QDir("test-XXXXXX").exists() || QDir().mkdir("test-XXXXXX"));
     QCoreApplication::setApplicationName("tst_qtemporaryfile");
 
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
     QString sourceDir(":/android_testdata/");
     QDirIterator it(sourceDir, QDirIterator::Subdirectories);
     while (it.hasNext()) {
-        it.next();
-
-        QFileInfo sourceFileInfo = it.fileInfo();
+        QFileInfo sourceFileInfo = it.nextFileInfo();
         if (!sourceFileInfo.isDir()) {
-            QFileInfo destinationFileInfo(QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/') + sourceFileInfo.filePath().mid(sourceDir.length()));
+            QFileInfo destinationFileInfo(
+                QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QLatin1Char('/')
+                + sourceFileInfo.filePath().mid(sourceDir.length()));
 
             if (!destinationFileInfo.exists()) {
                 QVERIFY(QDir().mkpath(destinationFileInfo.path()));
@@ -202,6 +193,32 @@ void tst_QTemporaryFile::fileTemplate_data()
         prefix = "qt_" + hanTestText();
         QTest::newRow("Chinese characters") << (prefix + "XXXXXX") << prefix << QString() << QString();
     }
+
+#ifdef Q_OS_WIN
+    auto tmp = QDir::toNativeSeparators(QDir::tempPath());
+    if (PathGetDriveNumber((const wchar_t *) tmp.utf16()) < 0)
+        return; // skip if we have no drive letter
+
+    tmp.data()[1] = u'$';
+    const auto tmpPath = tmp + uR"(\QTBUG-74291.XXXXXX.tmpFile)"_s;
+
+    QTest::newRow("UNC-backslash")
+            << uR"(\\localhost\)"_s + tmpPath << "QTBUG-74291."
+            << ".tmpFile"
+            << "";
+    QTest::newRow("UNC-prefix")
+            << uR"(\\?\UNC\localhost\)"_s + tmpPath << "QTBUG-74291."
+            << ".tmpFile"
+            << "";
+    QTest::newRow("UNC-slash")
+            << u"//localhost/"_s + QDir::fromNativeSeparators(tmpPath) << "QTBUG-74291."
+            << ".tmpFile"
+            << "";
+    QTest::newRow("UNC-prefix-slash")
+            << uR"(//?/UNC/localhost/)"_s + QDir::fromNativeSeparators(tmpPath) << "QTBUG-74291."
+            << ".tmpFile"
+            << "";
+#endif
 }
 
 void tst_QTemporaryFile::fileTemplate()
@@ -218,11 +235,11 @@ void tst_QTemporaryFile::fileTemplate()
     QVERIFY2(file.open(), qPrintable(file.errorString()));
 
     QString fileName = QFileInfo(file).fileName();
-    if (prefix.length())
-        QCOMPARE(fileName.left(prefix.length()), prefix);
+    if (prefix.size())
+        QCOMPARE(fileName.left(prefix.size()), prefix);
 
-    if (suffix.length())
-        QCOMPARE(fileName.right(suffix.length()), suffix);
+    if (suffix.size())
+        QCOMPARE(fileName.right(suffix.size()), suffix);
 }
 
 
@@ -351,7 +368,7 @@ void tst_QTemporaryFile::nonWritableCurrentDir()
 
     ChdirOnReturn cor(QDir::currentPath());
 
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
     QDir::setCurrent("/data");
 #else
     QDir::setCurrent("/home");
@@ -505,7 +522,7 @@ void tst_QTemporaryFile::resize()
 
 void tst_QTemporaryFile::openOnRootDrives()
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     unsigned int lastErrorMode = SetErrorMode(SEM_FAILCRITICALERRORS);
 #endif
     // If it's possible to create a file in the root directory, it
@@ -522,7 +539,7 @@ void tst_QTemporaryFile::openOnRootDrives()
             QCOMPARE(fi.absoluteDir(), driveInfo.filePath());
         }
     }
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     SetErrorMode(lastErrorMode);
 #endif
 }
@@ -573,7 +590,7 @@ void tst_QTemporaryFile::rename()
 void tst_QTemporaryFile::renameFdLeak()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_ANDROID)
-    const QByteArray sourceFile = QFile::encodeName(QFINDTESTDATA(__FILE__));
+    const QByteArray sourceFile = QFile::encodeName(QFINDTESTDATA("CMakeLists.txt"));
     QVERIFY(!sourceFile.isEmpty());
     // Test this on Unix only
 
@@ -607,6 +624,55 @@ void tst_QTemporaryFile::renameFdLeak()
     // check if QTemporaryFile closed the file
     QVERIFY(::close(fd) == -1 && errno == EBADF);
 #endif
+}
+
+void tst_QTemporaryFile::moveToTrash()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This platform doesn't implement a trash bin");
+#endif
+#ifdef Q_OS_WIN
+    // QTemporaryFile won't really close the file with close(), so this is
+    // expected to fail with a sharing violation error.
+    constexpr bool expectSuccess = false;
+#else
+    constexpr bool expectSuccess = true;
+#endif
+    const QByteArrayView contents = "Hello, World\n";
+
+    QTemporaryFile f(QDir::homePath() + "/tst_qtemporaryfile.moveToTrash.XXXXXX");
+    QString origFileName;
+    auto cleanup = qScopeGuard([&] {
+        if (!origFileName.isEmpty())
+            QFile::remove(origFileName);
+        if (QString fn = f.fileName(); !fn.isEmpty() && fn != origFileName)
+            QFile::remove(fn);
+    });
+
+    if (!f.open())
+        QSKIP("Failed to create temporary file");
+    f.write(contents.data(), contents.size());
+
+    // we need an actual file name:
+    // 1) so we can delete it in the clean-up guard in case we fail to trash
+    // 2) so that the file exists on Linux in the first place (no sense in
+    //    trashing an unnamed file)
+    origFileName = f.fileName();
+
+    if (expectSuccess) {
+        QVERIFY2(f.moveToTrash(), qPrintable(f.errorString()));
+        QCOMPARE_NE(f.fileName(), origFileName);        // must have changed!
+        QCOMPARE_NE(f.fileName(), QString());
+        QVERIFY(!QFile::exists(origFileName));
+        QVERIFY(QFile::exists(f.fileName()));
+        QCOMPARE(QFileInfo(f.fileName()).size(), contents.size());
+    } else {
+        QVERIFY(!f.moveToTrash());
+        QCOMPARE(f.fileName(), origFileName);           // mustn't have changed!
+        QCOMPARE_NE(f.error(), QFile::NoError);
+        QCOMPARE_NE(f.errorString(), "Unknown error");
+        QVERIFY(QFile::exists(origFileName));
+    }
 }
 
 void tst_QTemporaryFile::reOpenThroughQFile()
@@ -777,8 +843,9 @@ void tst_QTemporaryFile::createNativeFile_data()
     QTest::addColumn<bool>("valid");
     QTest::addColumn<QByteArray>("content");
 
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
-    const QString nativeFilePath = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/resources/test.txt");
+#ifdef Q_OS_ANDROID
+    const QString nativeFilePath = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                                   + QStringLiteral("/resources/test.txt");
 #else
     const QString nativeFilePath = QFINDTESTDATA("resources/test.txt");
 #endif

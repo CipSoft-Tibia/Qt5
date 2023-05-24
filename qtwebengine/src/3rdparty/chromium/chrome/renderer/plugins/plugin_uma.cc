@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <cstring>
 
 #include "base/metrics/histogram_macros.h"
-#include "base/stl_util.h"
+#include "base/notreached.h"
 #include "base/strings/string_util.h"
 #include "content/public/common/content_constants.h"
 
@@ -30,8 +30,6 @@ const char* const kRealPlayerExtensions[] = {".ra",  ".ram", ".rm",
 
 const char* const kQuickTimeExtensions[] = {".moov", ".mov", ".qif",
                                             ".qt",   ".qti", ".qtif"};
-
-const char* const kShockwaveFlashExtensions[] = {".spl", ".swf"};
 
 }  // namespace.
 
@@ -125,27 +123,21 @@ PluginUMAReporter::PluginType PluginUMAReporter::SrcToPluginType(
   std::string file_extension;
   ExtractFileExtension(src, &file_extension);
   if (CStringArrayContainsCString(kWindowsMediaPlayerExtensions,
-                                  base::size(kWindowsMediaPlayerExtensions),
+                                  std::size(kWindowsMediaPlayerExtensions),
                                   file_extension.c_str())) {
     return WINDOWS_MEDIA_PLAYER;
   }
 
   if (CStringArrayContainsCString(kQuickTimeExtensions,
-                                  base::size(kQuickTimeExtensions),
+                                  std::size(kQuickTimeExtensions),
                                   file_extension.c_str())) {
     return QUICKTIME;
   }
 
   if (CStringArrayContainsCString(kRealPlayerExtensions,
-                                  base::size(kRealPlayerExtensions),
+                                  std::size(kRealPlayerExtensions),
                                   file_extension.c_str())) {
     return REALPLAYER;
-  }
-
-  if (CStringArrayContainsCString(kShockwaveFlashExtensions,
-                                  base::size(kShockwaveFlashExtensions),
-                                  file_extension.c_str())) {
-    return SHOCKWAVE_FLASH;
   }
 
   return UNSUPPORTED_EXTENSION;
@@ -172,11 +164,6 @@ PluginUMAReporter::PluginType PluginUMAReporter::MimeTypeToPluginType(
 
   if (mime_type == content::kBrowserPluginMimeType)
     return BROWSER_PLUGIN;
-
-  if (mime_type == content::kFlashPluginSwfMimeType ||
-      mime_type == content::kFlashPluginSplMimeType) {
-    return SHOCKWAVE_FLASH;
-  }
 
   return UNSUPPORTED_MIMETYPE;
 }

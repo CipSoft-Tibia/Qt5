@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeocodereply_nokia.h"
 #include "qgeocodejsonparser.h"
@@ -61,9 +28,10 @@ QGeoCodeReplyNokia::QGeoCodeReplyNokia(QNetworkReply *reply, int limit, int offs
     }
     qRegisterMetaType<QList<QGeoLocation> >();
 
-    connect(reply, SIGNAL(finished()), this, SLOT(networkFinished()));
-    connect(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)),
-            this, SLOT(networkError(QNetworkReply::NetworkError)));
+    connect(reply, &QNetworkReply::finished,
+            this, &QGeoCodeReplyNokia::networkFinished);
+    connect(reply, &QNetworkReply::errorOccurred,
+            this, &QGeoCodeReplyNokia::networkError);
     connect(this, &QGeoCodeReply::aborted, reply, &QNetworkReply::abort);
     connect(this, &QGeoCodeReply::aborted, [this](){ m_parsing = false; });
     connect(this, &QObject::destroyed, reply, &QObject::deleteLater);
@@ -89,9 +57,8 @@ void QGeoCodeReplyNokia::networkFinished()
     QGeoCodeJsonParser *parser = new QGeoCodeJsonParser; // QRunnable, autoDelete = true.
     if (m_manualBoundsRequired)
         parser->setBounds(viewport());
-    connect(parser, SIGNAL(results(QList<QGeoLocation>)),
-            this, SLOT(appendResults(QList<QGeoLocation>)));
-    connect(parser, SIGNAL(error(QString)), this, SLOT(parseError(QString)));
+    connect(parser, &QGeoCodeJsonParser::results, this, &QGeoCodeReplyNokia::appendResults);
+    connect(parser, &QGeoCodeJsonParser::errorOccurred, this, &QGeoCodeReplyNokia::parseError);
 
     m_parsing = true;
     parser->parse(reply->readAll());

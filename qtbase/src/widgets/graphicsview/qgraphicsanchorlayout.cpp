@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QGraphicsAnchorLayout
@@ -234,12 +198,12 @@ QGraphicsAnchorLayout::~QGraphicsAnchorLayout()
         }
     }
 
-    d->removeCenterConstraints(this, QGraphicsAnchorLayoutPrivate::Horizontal);
-    d->removeCenterConstraints(this, QGraphicsAnchorLayoutPrivate::Vertical);
+    d->removeCenterConstraints(this, Qt::Horizontal);
+    d->removeCenterConstraints(this, Qt::Vertical);
     d->deleteLayoutEdges();
 
-    Q_ASSERT(d->itemCenterConstraints[0].isEmpty());
-    Q_ASSERT(d->itemCenterConstraints[1].isEmpty());
+    Q_ASSERT(d->itemCenterConstraints[Qt::Horizontal].isEmpty());
+    Q_ASSERT(d->itemCenterConstraints[Qt::Vertical].isEmpty());
     Q_ASSERT(d->items.isEmpty());
     Q_ASSERT(d->m_vertexList.isEmpty());
 }
@@ -372,7 +336,7 @@ void QGraphicsAnchorLayout::setHorizontalSpacing(qreal spacing)
 {
     Q_D(QGraphicsAnchorLayout);
 
-    d->spacings[0] = spacing;
+    d->spacings[Qt::Horizontal] = spacing;
     invalidate();
 }
 
@@ -385,7 +349,7 @@ void QGraphicsAnchorLayout::setVerticalSpacing(qreal spacing)
 {
     Q_D(QGraphicsAnchorLayout);
 
-    d->spacings[1] = spacing;
+    d->spacings[Qt::Vertical] = spacing;
     invalidate();
 }
 
@@ -404,7 +368,7 @@ void QGraphicsAnchorLayout::setSpacing(qreal spacing)
 {
     Q_D(QGraphicsAnchorLayout);
 
-    d->spacings[0] = d->spacings[1] = spacing;
+    d->spacings = {spacing, spacing};
     invalidate();
 }
 
@@ -438,8 +402,8 @@ void QGraphicsAnchorLayout::setGeometry(const QRectF &geom)
     Q_D(QGraphicsAnchorLayout);
 
     QGraphicsLayout::setGeometry(geom);
-    d->calculateVertexPositions(QGraphicsAnchorLayoutPrivate::Horizontal);
-    d->calculateVertexPositions(QGraphicsAnchorLayoutPrivate::Vertical);
+    d->calculateVertexPositions(Qt::Horizontal);
+    d->calculateVertexPositions(Qt::Vertical);
     d->setItemsGeometries(geom);
 }
 
@@ -460,8 +424,8 @@ void QGraphicsAnchorLayout::removeAt(int index)
         return;
 
     // Removing an item affects both horizontal and vertical graphs
-    d->removeCenterConstraints(item, QGraphicsAnchorLayoutPrivate::Horizontal);
-    d->removeCenterConstraints(item, QGraphicsAnchorLayoutPrivate::Vertical);
+    d->removeCenterConstraints(item, Qt::Horizontal);
+    d->removeCenterConstraints(item, Qt::Vertical);
     d->removeAnchors(item);
     d->items.remove(index);
 
@@ -518,9 +482,8 @@ QSizeF QGraphicsAnchorLayout::sizeHint(Qt::SizeHint which, const QSizeF &constra
     const_cast<QGraphicsAnchorLayoutPrivate *>(d)->calculateGraphs();
 
     // ### apply constraint!
-    QSizeF engineSizeHint(
-        d->sizeHints[QGraphicsAnchorLayoutPrivate::Horizontal][which],
-        d->sizeHints[QGraphicsAnchorLayoutPrivate::Vertical][which]);
+    QSizeF engineSizeHint{d->sizeHints[Qt::Horizontal][which],
+                          d->sizeHints[Qt::Vertical][which]};
 
     qreal left, top, right, bottom;
     getContentsMargins(&left, &top, &right, &bottom);

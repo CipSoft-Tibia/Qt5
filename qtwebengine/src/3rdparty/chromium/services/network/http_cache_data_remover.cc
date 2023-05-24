@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,17 @@
 #include <set>
 #include <string>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/http/http_cache.h"
+#include "net/http/http_network_session.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
+#include "services/network/public/mojom/clear_data_filter.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "url/gurl.h"
 
 namespace network {
@@ -84,7 +87,7 @@ std::unique_ptr<HttpCacheDataRemover> HttpCacheDataRemover::CreateAndStart(
   if (!http_cache) {
     // Some contexts might not have a cache, in which case we are done.
     // Notify by posting a task to avoid reentrency.
-    base::SequencedTaskRunnerHandle::Get()->PostTask(
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(&HttpCacheDataRemover::ClearHttpCacheDone,
                        remover->weak_factory_.GetWeakPtr(), net::OK));
@@ -114,7 +117,7 @@ void HttpCacheDataRemover::CacheRetrieved(int rv) {
   // |backend_| can be null if it cannot be initialized.
   if (rv != net::OK || !backend_) {
     backend_ = nullptr;
-    base::SequencedTaskRunnerHandle::Get()->PostTask(
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&HttpCacheDataRemover::ClearHttpCacheDone,
                                   weak_factory_.GetWeakPtr(), rv));
     return;
@@ -139,7 +142,7 @@ void HttpCacheDataRemover::CacheRetrieved(int rv) {
   }
   if (rv != net::ERR_IO_PENDING) {
     // Notify by posting a task to avoid reentrency.
-    base::SequencedTaskRunnerHandle::Get()->PostTask(
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&HttpCacheDataRemover::ClearHttpCacheDone,
                                   weak_factory_.GetWeakPtr(), rv));
   }

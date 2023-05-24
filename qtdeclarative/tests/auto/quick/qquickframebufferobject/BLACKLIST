@@ -1,4 +1,3 @@
-# QTBUG-65614
-b2qt
+# QTBUG-102721
 [testThatStuffWorks]
-b2qt
+android

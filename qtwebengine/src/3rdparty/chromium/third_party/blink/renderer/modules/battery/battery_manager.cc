@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,23 +9,55 @@
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/modules/battery/battery_dispatcher.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 
 namespace blink {
 
-BatteryManager* BatteryManager::Create(ExecutionContext* context) {
-  BatteryManager* battery_manager =
-      MakeGarbageCollected<BatteryManager>(context);
-  battery_manager->UpdateStateIfNeeded();
-  return battery_manager;
+const char BatteryManager::kSupplementName[] = "BatteryManager";
+
+// static
+ScriptPromise BatteryManager::getBattery(ScriptState* script_state,
+                                         Navigator& navigator) {
+  if (!navigator.DomWindow())
+    return ScriptPromise();
+
+  // Check to see if this request would be blocked according to the Battery
+  // Status API specification.
+  LocalDOMWindow* window = navigator.DomWindow();
+  // TODO(crbug.com/1007264, crbug.com/1290231): remove fenced frame specific
+  // code when permission policy implements the battery status API support.
+  if (window->GetFrame()->IsInFencedFrameTree()) {
+    return ScriptPromise::RejectWithDOMException(
+        script_state,
+        DOMException::Create(
+            "getBattery is not allowed in a fenced frame tree.",
+            DOMException::GetErrorName(DOMExceptionCode::kNotAllowedError)));
+  }
+  window->GetFrame()->CountUseIfFeatureWouldBeBlockedByPermissionsPolicy(
+      WebFeature::kBatteryStatusCrossOrigin,
+      WebFeature::kBatteryStatusSameOriginABA);
+
+  auto* supplement = Supplement<Navigator>::From<BatteryManager>(navigator);
+  if (!supplement) {
+    supplement = MakeGarbageCollected<BatteryManager>(navigator);
+    ProvideTo(navigator, supplement);
+  }
+  return supplement->StartRequest(script_state);
 }
 
 BatteryManager::~BatteryManager() = default;
 
-BatteryManager::BatteryManager(ExecutionContext* context)
-    : ExecutionContextLifecycleStateObserver(context),
-      PlatformEventController(*To<LocalDOMWindow>(context)) {}
+BatteryManager::BatteryManager(Navigator& navigator)
+    : Supplement<Navigator>(navigator),
+      ExecutionContextLifecycleStateObserver(navigator.DomWindow()),
+      PlatformEventController(*navigator.DomWindow()),
+      battery_dispatcher_(
+          MakeGarbageCollected<BatteryDispatcher>(navigator.DomWindow())) {
+  UpdateStateIfNeeded();
+}
 
 ScriptPromise BatteryManager::StartRequest(ScriptState* script_state) {
   if (!battery_property_) {
@@ -49,11 +81,11 @@ bool BatteryManager::charging() {
 }
 
 double BatteryManager::chargingTime() {
-  return battery_status_.charging_time();
+  return battery_status_.charging_time().InSecondsF();
 }
 
 double BatteryManager::dischargingTime() {
-  return battery_status_.discharging_time();
+  return battery_status_.discharging_time().InSecondsF();
 }
 
 double BatteryManager::level() {
@@ -64,7 +96,7 @@ void BatteryManager::DidUpdateData() {
   DCHECK(battery_property_);
 
   BatteryStatus old_status = battery_status_;
-  battery_status_ = *BatteryDispatcher::Instance().LatestData();
+  battery_status_ = *battery_dispatcher_->LatestData();
 
   if (battery_property_->GetState() == BatteryProperty::kPending) {
     battery_property_->Resolve(this);
@@ -88,15 +120,15 @@ void BatteryManager::DidUpdateData() {
 }
 
 void BatteryManager::RegisterWithDispatcher() {
-  BatteryDispatcher::Instance().AddController(this, GetFrame());
+  battery_dispatcher_->AddController(this, DomWindow());
 }
 
 void BatteryManager::UnregisterWithDispatcher() {
-  BatteryDispatcher::Instance().RemoveController(this);
+  battery_dispatcher_->RemoveController(this);
 }
 
 bool BatteryManager::HasLastData() {
-  return BatteryDispatcher::Instance().LatestData();
+  return battery_dispatcher_->LatestData();
 }
 
 void BatteryManager::ContextLifecycleStateChanged(
@@ -126,6 +158,8 @@ bool BatteryManager::HasPendingActivity() const {
 
 void BatteryManager::Trace(Visitor* visitor) const {
   visitor->Trace(battery_property_);
+  visitor->Trace(battery_dispatcher_);
+  Supplement<Navigator>::Trace(visitor);
   PlatformEventController::Trace(visitor);
   EventTargetWithInlineData::Trace(visitor);
   ExecutionContextLifecycleStateObserver::Trace(visitor);

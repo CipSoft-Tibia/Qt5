@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qglobal.h>
 #include <qguiapplication.h>
@@ -54,7 +18,7 @@
 // m_currentMenu points to the currently visible menu.
 // Only one menu will be visible at a time, and if a second menu
 // is shown on top of a first, the first one will be told to hide.
-QIOSMenu *QIOSMenu::m_currentMenu = 0;
+QIOSMenu *QIOSMenu::m_currentMenu = nullptr;
 
 // -------------------------------------------------------------------------
 
@@ -441,7 +405,7 @@ void QIOSMenu::dismiss()
         break;
     }
 
-    m_currentMenu = 0;
+    m_currentMenu = nullptr;
     m_visible = false;
 }
 
@@ -458,13 +422,13 @@ void QIOSMenu::toggleShowUsingUIMenuController(bool show)
         Q_ASSERT(m_menuController);
         [[UIMenuController sharedMenuController] setMenuVisible:NO animated:YES];
         [m_menuController release];
-        m_menuController = 0;
+        m_menuController = nullptr;
     }
 }
 
 void QIOSMenu::toggleShowUsingUIPickerView(bool show)
 {
-    static QObject *focusObjectWithPickerView = 0;
+    static QObject *focusObjectWithPickerView = nullptr;
 
     if (show) {
         Q_ASSERT(!m_pickerView);
@@ -477,12 +441,12 @@ void QIOSMenu::toggleShowUsingUIPickerView(bool show)
     } else {
         Q_ASSERT(focusObjectWithPickerView);
         focusObjectWithPickerView->removeEventFilter(this);
-        focusObjectWithPickerView = 0;
+        focusObjectWithPickerView = nullptr;
 
         Q_ASSERT(m_pickerView);
         [m_pickerView listenForKeyboardWillHideNotification:NO];
         [m_pickerView release];
-        m_pickerView = 0;
+        m_pickerView = nullptr;
 
         qApp->inputMethod()->update(Qt::ImEnabled | Qt::ImPlatformData);
     }
@@ -527,7 +491,7 @@ QIOSMenuItemList QIOSMenu::filterFirstResponderActions(const QIOSMenuItemList &m
     // In case of QIOSTextResponder, edit actions will be converted to key events that ends up
     // triggering the shortcuts of the filtered menu items.
     QIOSMenuItemList filteredMenuItems;
-    UIResponder *responder = [UIResponder currentFirstResponder];
+    UIResponder *responder = [UIResponder qt_currentFirstResponder];
 
     for (int i = 0; i < menuItems.count(); ++i) {
         QIOSMenuItem *menuItem = menuItems.at(i);
@@ -538,8 +502,8 @@ QIOSMenuItemList QIOSMenu::filterFirstResponderActions(const QIOSMenuItemList &m
                 || (shortcut == QKeySequence::Paste && [responder canPerformAction:@selector(paste:) withSender:nil])
                 || (shortcut == QKeySequence::Delete && [responder canPerformAction:@selector(delete:) withSender:nil])
                 || (shortcut == QKeySequence::SelectAll && [responder canPerformAction:@selector(selectAll:) withSender:nil])
-                || (shortcut == QKeySequence::Undo && [responder canPerformAction:@selector(undo:) withSender:nil])
-                || (shortcut == QKeySequence::Redo && [responder canPerformAction:@selector(redo:) withSender:nil])
+                || (shortcut == QKeySequence::Undo && [responder canPerformAction:@selector(undo) withSender:nil])
+                || (shortcut == QKeySequence::Redo && [responder canPerformAction:@selector(redo) withSender:nil])
                 || (shortcut == QKeySequence::Bold && [responder canPerformAction:@selector(toggleBoldface:) withSender:nil])
                 || (shortcut == QKeySequence::Italic && [responder canPerformAction:@selector(toggleItalics:) withSender:nil])
                 || (shortcut == QKeySequence::Underline && [responder canPerformAction:@selector(toggleUnderline:) withSender:nil])) {

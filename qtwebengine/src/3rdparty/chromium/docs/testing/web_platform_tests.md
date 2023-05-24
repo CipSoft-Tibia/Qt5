@@ -74,13 +74,13 @@ allowed in WPT for this purpose. Please reach out to
 ecosystem-infra@chromium.org before following the process below for adding a new
 test-only API:
 
- 1. Create a full list of `*.mojom.js` files that you need, including all
-    dependencies. `mojo_bindings.js` loads dependencies recursively by default,
+ 1. Create a full list of `*.mojom.m.js` files that you need, including all
+    dependencies. Generated modules load dependencies recursively by default,
     so you can check the network panel of DevTools to see the full list of
     dependencies it loads.
  2. Check [FILES.cfg](../../chrome/tools/build/linux/FILES.cfg) and add any
-    missing `*.mojom.js` files to the `mojojs.zip` archive. Globs are supported
-    in `filename`. Do not copy Mojom bindings into WPT.
+    missing `*.mojom.m.js` files to the `mojojs.zip` archive. Globs are
+    supported in `filename`. Do not copy Mojom bindings into WPT.
  3. Meanwhile in Chromium, you can create a helper for your WPT tests to do
     browser-specific setup using
     [test-only-api.js](../../third_party/blink/web_tests/external/wpt/resources/test-only-api.js).
@@ -129,18 +129,19 @@ later adding an OWNERS file upstream also works.
 It is sometimes desirable to write WPT tests that either test Chromium-specific
 behaviors, or that cannot yet be upstreamed to WPT (e.g. because the spec is
 very nascent). For these cases, we maintain a separate directory,
-[wpt_internal](../third_party/blink/web_tests/wpt_internal) that runs under the
+[wpt_internal](../../third_party/blink/web_tests/wpt_internal) that runs under the
 WPT testing infrastructure (e.g. uses wptserve, etc), but which is not
 upstreamed to WPT.
 
 Please see the `wpt_internal`
-[README](../third_party/blink/web_tests/wpt_internal/README) for more details.
+[README](../../third_party/blink/web_tests/wpt_internal/README.md) for more details.
 
 **Note**: A significant downside of `wpt_internal` is that your tests may be
 broken by upstream changes to the resources scripts (e.g. `testharness.js`), as
 `wpt_internal` does not use the forked version of `testharness.js` used by all
-other non-`external/wpt` tests. Use of [WPT-NOTIFY](#wpt_notify) is recommended
-to ensure you are notified of breakages.
+other non-`external/wpt` tests. Use of [new failure
+notifications](#new-failure-notifications) is recommended to ensure you are
+notified of breakages.
 
 ## Running tests
 
@@ -200,28 +201,33 @@ For maintainers:
 -   If the importer starts misbehaving, it can be disabled by landing a
     [CL to skip the update step](https://crrev.com/c/1961906/).
 
-### WPT-NOTIFY
+### New failure notifications
 
 Test owners can elect to have the importer automatically file bugs against a
 component when imported changes introduce failures. This includes new tests that
 fail in Chromium, as well as new failures introduced to an existing test. To
-opt-in to this functionality, create an `OWNERS` file in the appropriate
-`external/wpt/` subdirectory that contains the `WPT-NOTIFY` tag. For example,
-`external/wpt/css/css-grid/OWNERS` looks like:
+opt-in to this functionality, create an `DIR_METADATA` file in the appropriate
+`external/wpt/` subdirectory that contains at least `wpt.notify` and
+`monorail.component` fields. For example, `external/wpt/css/css-grid/DIR_METADATA`
+looks like:
 
 ```
-# TEAM: layout-dev@chromium.org
-# COMPONENT: Blink>Layout>Grid
-# WPT-NOTIFY: true
+monorail {
+  component: "Blink>Layout>Grid"
+}
+team_email: "layout-dev@chromium.org"
+wpt {
+  notify: YES
+}
 ```
 
 When a test under `external/wpt/css/css-grid/` newly fails in a WPT import, the
 importer will automatically file a bug against the Blink>Layout>Grid component
-in [crbug.com][https://crbug.com], with details of which test failed and the
+in [crbug.com](https://crbug.com), with details of which test failed and the
 output.
 
-Note that we are considering making WPT-NOTIFY opt-out instead of opt-in: see
-https://crbug.com/845232
+Note that we are considering making the notifications opt-out instead of
+opt-in: see https://crbug.com/845232
 
 ### Skipped tests (and how to re-enable them)
 
@@ -309,7 +315,39 @@ resolve the conflict.
 
 ## Notes for WPT infra maintainers
 
-### Manual import
+### Importer
+
+#### Rubber-Stamper bot
+
+To allow the importer to land CLs without human intervention, it utilizes the
+[Rubber-Stamper
+bot](https://chromium.googlesource.com/infra/infra/+/refs/heads/main/go/src/infra/appengine/rubber-stamper/README.md)
+to approve import CLs.
+
+Adding the Rubber-Stamper as a reviewer is one of the last steps the importer
+takes, once tests have been rebaselined and the CQ passes. If the Rubber-Stamper
+cannot approve a CL, it will leave a comment on the CL explaining why - this
+will also cause the importer to go red.
+
+![Rubber-Stamber bot rejecting a CL](images/wpt_import_rubber_stamper_reject.png)
+
+There are two possibilities when the Rubber-Stamper rejects an import: either it
+is a valid rejection, because the import changes code files (`.py`, `.bat`,
+`.sh`), or it is invalid and we're missing an allowlist rule for a file the
+importer is allowed to modify.
+
+For valid rejections, it is the job of the rotation sheriff to land the CL
+manually. You need to un-abandon the import, `CR+1` it yourself, and `CQ+2` it.
+If you don't have permission to do that (e.g. are not a committer), contact
+ecosystem-infra@chromium.org.
+
+For invalid rejections, message ecosystem-infra@chromium.org or add an exception
+rule yourself. [This is an example
+CL](https://chrome-internal-review.googlesource.com/c/infradata/config/+/3608170)
+that adds an exception rule. (Note that you need internal access to access this
+repository).
+
+#### Manual import
 
 To pull the latest versions of the tests that are currently being imported, you
 can also directly invoke the
@@ -349,3 +387,64 @@ unauthenticated requests, so it is recommended that you let `wpt-export` and
        and `GH_TOKEN`, the access token you have just generated. After that,
        pass `--credentials-json <path-to-json>` to `wpt-export` and
        `wpt-import`.
+
+### Debugging failed web platform tests
+
+This section explains the way to debug web platform tests.
+Please build `blink_tests` before running commands below.
+It is explained in [Running Web Tests](./web_tests.md#running-web-tests).
+
+#### Running test(s)
+
+The way to run web tests is explained in [Running the
+Tests](./web_tests.md#running-the-tests).
+
+Assume that you are writing the test named `wpt_internal/fake/foobar.html`.
+You may want to run only the tests and you do not want to run all tests under
+`wpt_internal/fake`.  The following command narrows down the test to only
+`wpt_internal/fake/foobar.html`.
+
+```bash
+third_party/blink/tools/run_web_tests.py -t Default \
+third_party/blink/web_tests/wpt_internal/fake/foobar.html
+```
+
+#### Logging
+
+During the debug, you may want to log what happens during the test.
+You can use `console.log` in JavaScript to log arbitrary strings.
+
+```
+e.g.
+console.log('fake has been executed.');
+console.log('foo=' + foo);
+```
+
+Logs are written under `$root_build_dir/layout-test-results`.
+If you have tested `wpt_internal/fake/foobar.html`, the log will be stored in
+`$root_build_dir/layout-test-results/wpt_internal/fake/foobar-stderr.txt`.
+You can change output directory with `--results-directory=<output directory>`.
+
+#### Checking HTTP servers
+
+For some test cases, you may use .headers file to set arbitrary HTTP headers.
+To verify what is set to headers, you can run an HTTP server used for WPT
+by yourself. The following command starts the HTTP server for you:
+
+```bash
+third_party/blink/tools/run_blink_wptserve.py
+```
+
+To see headers returned by the server, you can use `curl -v`.
+`curl` will show headers in stderr. You may want to use `|& less` to
+see output if it is too long.
+
+```bash
+curl -v http://localhost:8081/wpt_internal/fake/foobar.html |& less
+```
+
+#### Debugging with a debugger
+
+You are able to debug the inside of Chromium with a debugger for particular
+WPT tests. Refer to [Running web tests using the content shell](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/testing/web_tests_in_content_shell.md)
+for details.

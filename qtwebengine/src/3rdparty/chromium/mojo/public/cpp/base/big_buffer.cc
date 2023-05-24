@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,21 +6,13 @@
 
 #include "base/check.h"
 #include "base/notreached.h"
+#include "base/ranges/algorithm.h"
 
 namespace mojo_base {
 
-namespace {
-
-// In the case of shared memory allocation failure, we still attempt to fall
-// back onto inline bytes unless the buffer size exceeds a very large threshold,
-// given by this constant.
-constexpr size_t kMaxFallbackInlineBytes = 127 * 1024 * 1024;
-
-}  // namespace
-
 namespace internal {
 
-BigBufferSharedMemoryRegion::BigBufferSharedMemoryRegion() = default;
+BigBufferSharedMemoryRegion::BigBufferSharedMemoryRegion() : size_(0) {}
 
 BigBufferSharedMemoryRegion::BigBufferSharedMemoryRegion(
     mojo::ScopedSharedBufferHandle buffer_handle,
@@ -50,7 +42,7 @@ namespace {
 void TryCreateSharedMemory(
     size_t size,
     BigBuffer::StorageType* storage_type,
-    base::Optional<internal::BigBufferSharedMemoryRegion>* shared_memory) {
+    absl::optional<internal::BigBufferSharedMemoryRegion>* shared_memory) {
   if (size > BigBuffer::kMaxInlineBytes) {
     auto buffer = mojo::SharedBufferHandle::Create(size);
     if (buffer.is_valid()) {
@@ -61,21 +53,10 @@ void TryCreateSharedMemory(
         return;
       }
     }
-
-    if (size > kMaxFallbackInlineBytes) {
-      // The data is too large to even bother with inline fallback, so we
-      // instead produce an invalid buffer. This will always fail validation on
-      // the receiving end.
-      *storage_type = BigBuffer::StorageType::kInvalidBuffer;
-
-      // TODO(crbug.com/1076341): Remove this temporary CHECK to investigate
-      // some bad IPC reports likely caused by this path.
-      CHECK(false);
-      return;
-    }
   }
 
-  // We can use inline memory.
+  // We can use inline memory, either because the data was small or shared
+  // memory allocation failed.
   *storage_type = BigBuffer::StorageType::kBytes;
 }
 
@@ -174,8 +155,7 @@ BigBufferView::BigBufferView(base::span<const uint8_t> bytes) {
   TryCreateSharedMemory(bytes.size(), &storage_type_, &shared_memory_);
   if (storage_type_ == BigBuffer::StorageType::kSharedMemory) {
     DCHECK(shared_memory_->memory());
-    std::copy(bytes.begin(), bytes.end(),
-              static_cast<uint8_t*>(shared_memory_->memory()));
+    base::ranges::copy(bytes, static_cast<uint8_t*>(shared_memory_->memory()));
     return;
   }
   if (storage_type_ == BigBuffer::StorageType::kBytes) {
@@ -224,7 +204,7 @@ BigBuffer BigBufferView::ToBigBuffer(BigBufferView view) {
   if (view.storage_type_ == BigBuffer::StorageType::kBytes) {
     buffer.bytes_ = std::make_unique<uint8_t[]>(view.bytes_.size());
     buffer.bytes_size_ = view.bytes_.size();
-    std::copy(view.bytes_.begin(), view.bytes_.end(), buffer.bytes_.get());
+    base::ranges::copy(view.bytes_, buffer.bytes_.get());
   } else if (view.storage_type_ == BigBuffer::StorageType::kSharedMemory) {
     buffer.shared_memory_ = std::move(*view.shared_memory_);
   }

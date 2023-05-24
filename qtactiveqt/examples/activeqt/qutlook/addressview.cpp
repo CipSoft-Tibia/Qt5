@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 //! [0]
 #include "addressview.h"
@@ -70,7 +23,7 @@ public:
 
 private:
     Outlook::Application outlook;
-    Outlook::Items * contactItems;
+    Outlook::Items *folderItems = nullptr;
 
     mutable QHash<QModelIndex, QStringList> cache;
 };
@@ -83,10 +36,10 @@ AddressBookModel::AddressBookModel(AddressView *parent)
         Outlook::NameSpace session(outlook.Session());
         session.Logon();
         Outlook::MAPIFolder *folder = session.GetDefaultFolder(Outlook::olFolderContacts);
-        contactItems = new Outlook::Items(folder->Items());
-        connect(contactItems, SIGNAL(ItemAdd(IDispatch*)), parent, SLOT(updateOutlook()));
-        connect(contactItems, SIGNAL(ItemChange(IDispatch*)), parent, SLOT(updateOutlook()));
-        connect(contactItems, SIGNAL(ItemRemove()), parent, SLOT(updateOutlook()));
+        folderItems = new Outlook::Items(folder->Items());
+        connect(folderItems, SIGNAL(ItemAdd(IDispatch*)), parent, SLOT(updateOutlook()));
+        connect(folderItems, SIGNAL(ItemChange(IDispatch*)), parent, SLOT(updateOutlook()));
+        connect(folderItems, SIGNAL(ItemRemove()), parent, SLOT(updateOutlook()));
 
         delete folder;
     }
@@ -95,7 +48,7 @@ AddressBookModel::AddressBookModel(AddressView *parent)
 //! [1] //! [2]
 AddressBookModel::~AddressBookModel()
 {
-    delete contactItems;
+    delete folderItems;
 
     if (!outlook.isNull())
         Outlook::NameSpace(outlook.Session()).Logoff();
@@ -104,7 +57,7 @@ AddressBookModel::~AddressBookModel()
 //! [2] //! [3]
 int AddressBookModel::rowCount(const QModelIndex &) const
 {
-    return contactItems ? contactItems->Count() : 0;
+    return folderItems ? folderItems->Count() : 0;
 }
 
 int AddressBookModel::columnCount(const QModelIndex & /*parent*/) const
@@ -144,12 +97,15 @@ QVariant AddressBookModel::data(const QModelIndex &index, int role) const
     if (cache.contains(index)) {
         data = cache.value(index);
     } else {
-        Outlook::ContactItem contact(contactItems->Item(index.row() + 1));
-        data << contact.FirstName() << contact.LastName() << contact.HomeAddress() << contact.Email1Address();
+        Outlook::ContactItem contact(folderItems->Item(index.row() + 1));
+
+        if (contact.Class() == Outlook::OlObjectClass::olContact)
+            data << contact.FirstName() << contact.LastName() << contact.HomeAddress() << contact.Email1Address();
+
         cache.insert(index, data);
     }
 
-    if (index.column() < data.count())
+    if (index.column() < data.size())
         return data.at(index.column());
 
     return QVariant();
@@ -158,7 +114,10 @@ QVariant AddressBookModel::data(const QModelIndex &index, int role) const
 //! [5] //! [6]
 void AddressBookModel::changeItem(const QModelIndex &index, const QString &firstName, const QString &lastName, const QString &address, const QString &email)
 {
-    Outlook::ContactItem item(contactItems->Item(index.row() + 1));
+    Outlook::ContactItem item(folderItems->Item(index.row() + 1));
+
+    if (item.Class() != Outlook::OlObjectClass::olContact)
+        return; // Not a contact
 
     item.SetFirstName(firstName);
     item.SetLastName(lastName);

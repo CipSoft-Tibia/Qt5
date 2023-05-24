@@ -1,28 +1,26 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_PUBLIC_BROWSER_BROWSER_CHILD_PROCESS_HOST_H_
 #define CONTENT_PUBLIC_BROWSER_BROWSER_CHILD_PROCESS_HOST_H_
 
-#include <map>
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
 #include "base/environment.h"
+#include "base/functional/callback.h"
 #include "base/process/kill.h"
 #include "base/process/process.h"
-#include "base/strings/string16.h"
 #include "build/build_config.h"
 #include "content/common/content_export.h"
+#include "content/public/browser/child_process_host.h"
 #include "content/public/browser/child_process_termination_info.h"
-#include "content/public/common/child_process_host.h"
 #include "content/public/common/process_type.h"
 #include "ipc/ipc_sender.h"
 #include "mojo/public/cpp/bindings/generic_pending_receiver.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "base/process/port_provider_mac.h"
 #endif
 
@@ -62,16 +60,6 @@ class CONTENT_EXPORT BrowserChildProcessHost : public IPC::Sender {
       std::unique_ptr<base::CommandLine> cmd_line,
       bool terminate_on_shutdown) = 0;
 
-  // Same as above, but the process is launched with preloaded files from
-  // |files_to_preload| opened by the browser and passed as corresponding file
-  // descriptors in the child process. |files_to_preload| is currently ignored
-  // on platforms other than Linux and Android.
-  virtual void LaunchWithPreloadedFiles(
-      std::unique_ptr<SandboxedProcessLauncherDelegate> delegate,
-      std::unique_ptr<base::CommandLine> cmd_line,
-      std::map<std::string, base::FilePath> files_to_preload,
-      bool terminate_on_shutdown) = 0;
-
   virtual const ChildProcessData& GetData() = 0;
 
   // Returns the ChildProcessHost object used by this object.
@@ -88,7 +76,7 @@ class CONTENT_EXPORT BrowserChildProcessHost : public IPC::Sender {
   TakeMetricsAllocator() = 0;
 
   // Sets the user-visible name of the process.
-  virtual void SetName(const base::string16& name) = 0;
+  virtual void SetName(const std::u16string& name) = 0;
 
   // Sets the name of the process used for metrics reporting.
   virtual void SetMetricsName(const std::string& metrics_name) = 0;
@@ -99,7 +87,7 @@ class CONTENT_EXPORT BrowserChildProcessHost : public IPC::Sender {
   // call this method so that the process is associated with this object.
   virtual void SetProcess(base::Process process) = 0;
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   // Returns a PortProvider used to get the task port for child processes.
   static base::PortProvider* GetPortProvider();
 #endif

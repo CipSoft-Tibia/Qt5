@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,15 +19,23 @@ namespace blink {
 class CORE_EXPORT HTMLParserMetrics {
  public:
   HTMLParserMetrics(int64_t source_id, ukm::UkmRecorder*);
+  HTMLParserMetrics(const HTMLParserMetrics&) = delete;
+  HTMLParserMetrics& operator=(const HTMLParserMetrics&) = delete;
   ~HTMLParserMetrics() = default;
 
   void AddChunk(base::TimeDelta elapsed_time, unsigned tokens_parsed);
 
   void AddYieldInterval(base::TimeDelta elapsed_time);
 
+  void AddInput(unsigned length);
+
   void ReportMetricsAtParseEnd();
 
+  unsigned chunk_count() const { return chunk_count_; }
+
  private:
+  void ReportUMAs();
+
   // UKM System data.
   const int64_t source_id_;
   ukm::UkmRecorder* const recorder_;
@@ -48,7 +56,9 @@ class CORE_EXPORT HTMLParserMetrics {
   base::TimeDelta min_yield_interval_ = base::TimeDelta::Max();
   base::TimeDelta max_yield_interval_;  // Constructed with 0 value
 
-  DISALLOW_COPY_AND_ASSIGN(HTMLParserMetrics);
+  // Track total number of characters parsed in one instantiation of the
+  // parser.
+  unsigned input_character_count_ = 0;
 };
 
 }  // namespace blink

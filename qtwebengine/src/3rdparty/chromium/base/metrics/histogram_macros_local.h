@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,10 @@
 #include "base/metrics/histogram.h"
 #include "base/metrics/histogram_macros_internal.h"
 #include "base/time/time.h"
+
+#ifndef CR_EXPAND_ARG
+#define CR_EXPAND_ARG(x) x
+#endif
 
 // TODO(rkaplow): Migrate all LOCAL_* usage within Chromium to include this
 // file instead of the histogram_macros.h file.
@@ -20,8 +24,8 @@
 #define LOCAL_HISTOGRAM_ENUMERATION(name, ...)                          \
   CR_EXPAND_ARG(INTERNAL_UMA_HISTOGRAM_ENUMERATION_GET_MACRO(           \
       __VA_ARGS__, INTERNAL_UMA_HISTOGRAM_ENUMERATION_SPECIFY_BOUNDARY, \
-      INTERNAL_UMA_HISTOGRAM_ENUMERATION_DEDUCE_BOUNDARY)(              \
-      name, __VA_ARGS__, base::HistogramBase::kNoFlags))
+      INTERNAL_UMA_HISTOGRAM_ENUMERATION_DEDUCE_BOUNDARY)               \
+  (name, __VA_ARGS__, base::HistogramBase::kNoFlags))
 
 #define LOCAL_HISTOGRAM_BOOLEAN(name, sample)                                  \
     STATIC_HISTOGRAM_POINTER_BLOCK(name, AddBoolean(sample),                   \
@@ -59,9 +63,9 @@
 //
 // For usage details, see the equivalents in histogram_macros.h.
 
-#define LOCAL_HISTOGRAM_TIMES(name, sample) LOCAL_HISTOGRAM_CUSTOM_TIMES(      \
-    name, sample, base::TimeDelta::FromMilliseconds(1),                        \
-    base::TimeDelta::FromSeconds(10), 50)
+#define LOCAL_HISTOGRAM_TIMES(name, sample)                         \
+  LOCAL_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(1), \
+                               base::Seconds(10), 50)
 
 #define LOCAL_HISTOGRAM_CUSTOM_TIMES(name, sample, min, max, bucket_count) \
   STATIC_HISTOGRAM_POINTER_BLOCK(                                          \
@@ -69,6 +73,12 @@
       base::Histogram::FactoryTimeGet(name, min, max, bucket_count,        \
                                       base::HistogramBase::kNoFlags))
 
+#define LOCAL_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(name, sample, min, max, \
+                                                  bucket_count)           \
+  STATIC_HISTOGRAM_POINTER_BLOCK(                                         \
+      name, AddTimeMicrosecondsGranularity(sample),                       \
+      base::Histogram::FactoryMicrosecondsTimeGet(                        \
+          name, min, max, bucket_count, base::HistogramBase::kNoFlags))
 //------------------------------------------------------------------------------
 // Memory histograms.
 //

@@ -17,11 +17,12 @@
 #include "src/traced/service/builtin_producer.h"
 
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "perfetto/base/build_config.h"
 #include "perfetto/base/logging.h"
+#include "perfetto/base/proc_utils.h"
 #include "perfetto/ext/base/metatrace.h"
+#include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/base/weak_ptr.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
 #include "perfetto/ext/tracing/core/trace_writer.h"
@@ -29,6 +30,11 @@
 #include "perfetto/tracing/core/data_source_config.h"
 #include "perfetto/tracing/core/data_source_descriptor.h"
 #include "src/tracing/core/metatrace_writer.h"
+
+// This translation unit is only ever used in Android in-tree builds.
+// These producers are here  to dynamically start heapprofd and other services
+// via sysprops when a trace that requests them is active. That can only happen
+// in in-tree builds of Android.
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 #include <sys/system_properties.h>
@@ -40,9 +46,11 @@ namespace {
 
 constexpr char kHeapprofdDataSourceName[] = "android.heapprofd";
 constexpr char kJavaHprofDataSourceName[] = "android.java_hprof";
+constexpr char kJavaHprofOomDataSourceName[] = "android.java_hprof.oom";
 constexpr char kTracedPerfDataSourceName[] = "linux.perf";
 constexpr char kLazyHeapprofdPropertyName[] = "traced.lazy.heapprofd";
 constexpr char kLazyTracedPerfPropertyName[] = "traced.lazy.traced_perf";
+constexpr char kJavaHprofOomActivePropertyName[] = "traced.oome_heap_session.count";
 
 }  // namespace
 
@@ -58,14 +66,24 @@ BuiltinProducer::~BuiltinProducer() {
     SetAndroidProperty(kLazyHeapprofdPropertyName, "");
   if (!lazy_traced_perf_.instance_ids.empty())
     SetAndroidProperty(kLazyTracedPerfPropertyName, "");
+  if (!java_hprof_oome_instances_.empty())
+    SetAndroidProperty(kJavaHprofOomActivePropertyName, "");
 }
 
 void BuiltinProducer::ConnectInProcess(TracingService* svc) {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+  // TODO(primiano): ConnectProducer should take a base::PlatformProcessId not
+  // pid_t, as they are different on Windows. But that is a larger refactoring
+  // and not worth given this is the only use case where it clashes.
+  const pid_t cur_proc_id = 0;
+#else
+  const pid_t cur_proc_id = base::GetProcessId();
+#endif
   endpoint_ = svc->ConnectProducer(
-      this, geteuid(), "traced",
+      this, base::GetCurrentUserId(), cur_proc_id, "traced",
       /*shared_memory_size_hint_bytes=*/16 * 1024, /*in_process=*/true,
       TracingService::ProducerSMBScrapingMode::kDisabled,
-      /*shmem_page_size_hint_bytes=*/4096);
+      /*shared_memory_page_size_hint_bytes=*/4096);
 }
 
 void BuiltinProducer::OnConnect() {
@@ -88,6 +106,11 @@ void BuiltinProducer::OnConnect() {
     lazy_traced_perf_dsd.set_name(kTracedPerfDataSourceName);
     endpoint_->RegisterDataSource(lazy_traced_perf_dsd);
   }
+  {
+    DataSourceDescriptor java_hprof_oome_dsd;
+    java_hprof_oome_dsd.set_name(kJavaHprofOomDataSourceName);
+    endpoint_->RegisterDataSource(java_hprof_oome_dsd);
+  }
 }
 
 void BuiltinProducer::SetupDataSource(DataSourceInstanceID ds_id,
@@ -104,6 +127,13 @@ void BuiltinProducer::SetupDataSource(DataSourceInstanceID ds_id,
     SetAndroidProperty(kLazyTracedPerfPropertyName, "1");
     lazy_traced_perf_.generation++;
     lazy_traced_perf_.instance_ids.emplace(ds_id);
+    return;
+  }
+
+  if (ds_config.name() == kJavaHprofOomDataSourceName) {
+    java_hprof_oome_instances_.emplace(ds_id);
+    SetAndroidProperty(kJavaHprofOomActivePropertyName,
+                       std::to_string(java_hprof_oome_instances_.size()));
     return;
   }
 }
@@ -138,6 +168,13 @@ void BuiltinProducer::StopDataSource(DataSourceInstanceID ds_id) {
 
   MaybeInitiateLazyStop(ds_id, &lazy_heapprofd_, kLazyHeapprofdPropertyName);
   MaybeInitiateLazyStop(ds_id, &lazy_traced_perf_, kLazyTracedPerfPropertyName);
+
+  auto oome_it = java_hprof_oome_instances_.find(ds_id);
+  if (oome_it != java_hprof_oome_instances_.end()) {
+    java_hprof_oome_instances_.erase(oome_it);
+    SetAndroidProperty(kJavaHprofOomActivePropertyName,
+                       std::to_string(java_hprof_oome_instances_.size()));
+  }
 }
 
 void BuiltinProducer::MaybeInitiateLazyStop(DataSourceInstanceID ds_id,

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,15 @@
 
 #include <memory>
 
-#include "base/callback.h"
 #include "base/containers/queue.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "content/browser/renderer_host/input/touch_emulator_client.h"
-#include "content/common/cursors/webcursor.h"
+#include "content/common/content_export.h"
 #include "third_party/blink/public/common/input/web_touch_event.h"
 #include "third_party/blink/public/mojom/input/input_event_result.mojom-shared.h"
+#include "ui/base/cursor/cursor.h"
 #include "ui/events/gesture_detection/filtered_gesture_provider.h"
 #include "ui/events/gesture_detection/gesture_provider_config_helper.h"
 #include "ui/gfx/geometry/size_f.h"
@@ -41,6 +43,10 @@ class CONTENT_EXPORT TouchEmulator : public ui::GestureProviderClient {
   };
 
   TouchEmulator(TouchEmulatorClient* client, float device_scale_factor);
+
+  TouchEmulator(const TouchEmulator&) = delete;
+  TouchEmulator& operator=(const TouchEmulator&) = delete;
+
   ~TouchEmulator() override;
 
   void Enable(Mode mode, ui::GestureProviderConfigType config_type);
@@ -98,10 +104,8 @@ class CONTENT_EXPORT TouchEmulator : public ui::GestureProviderClient {
   void OnGestureEvent(const ui::GestureEventData& gesture) override;
   bool RequiresDoubleTapGestureEvents() const override;
 
-  // Returns cursor size in DIP.
-  gfx::SizeF InitCursorFromResource(
-      WebCursor* cursor, float scale, int resource_id);
-  bool InitCursors(float device_scale_factor, bool force);
+  ui::Cursor InitCursorFromResource(int resource_id);
+  void InitCursors();
   void ResetState();
   void UpdateCursor();
   bool UpdateShiftPressed(bool shift_pressed);
@@ -130,7 +134,7 @@ class CONTENT_EXPORT TouchEmulator : public ui::GestureProviderClient {
   // Called when ack for injected touch has been received.
   void OnInjectedTouchCompleted();
 
-  TouchEmulatorClient* const client_;
+  const raw_ptr<TouchEmulatorClient> client_;
 
   // Emulator is enabled iff gesture provider is created.
   // Disabled emulator does only process touch acks left from previous
@@ -140,13 +144,13 @@ class CONTENT_EXPORT TouchEmulator : public ui::GestureProviderClient {
   Mode mode_;
   bool double_tap_enabled_;
 
-  bool use_2x_cursors_;
   // While emulation is on, default cursor is touch. Pressing shift changes
   // cursor to the pinch one.
-  WebCursor pointer_cursor_;
-  WebCursor touch_cursor_;
-  WebCursor pinch_cursor_;
+  ui::Cursor touch_cursor_;
+  ui::Cursor pinch_cursor_;
   gfx::SizeF cursor_size_;
+
+  float cursor_scale_factor_ = 0;
 
   // These are used to drop extra mouse move events coming too quickly, so
   // we don't handle too much touches in gesture provider.
@@ -160,7 +164,7 @@ class CONTENT_EXPORT TouchEmulator : public ui::GestureProviderClient {
   blink::WebTouchEvent touch_event_;
   int emulated_stream_active_sequence_count_;
   int native_stream_active_sequence_count_;
-  RenderWidgetHostViewBase* last_emulated_start_target_;
+  raw_ptr<RenderWidgetHostViewBase> last_emulated_start_target_;
   // TODO(einbinder): this relies on synchronous tap gesture generation and does
   // not work for any other gestures. We should switch to callbacks which go
   // through touches and gestures once that's available.
@@ -177,8 +181,6 @@ class CONTENT_EXPORT TouchEmulator : public ui::GestureProviderClient {
   bool pinch_gesture_active_;
 
   base::queue<base::OnceClosure> injected_touch_completion_callbacks_;
-
-  DISALLOW_COPY_AND_ASSIGN(TouchEmulator);
 };
 
 }  // namespace content

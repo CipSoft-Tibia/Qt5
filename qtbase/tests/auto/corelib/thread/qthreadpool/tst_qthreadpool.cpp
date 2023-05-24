@@ -1,33 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-#include <QtTest/QtTest>
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
+#include <QTest>
+#include <QSemaphore>
+
 #include <qelapsedtimer.h>
+#include <qrunnable.h>
 #include <qthreadpool.h>
 #include <qstring.h>
 #include <qmutex.h>
@@ -36,6 +15,8 @@
 #include <unistd.h>
 #endif
 
+using namespace std::chrono_literals;
+
 typedef void (*FunctionPointer)();
 
 class FunctionPointerTask : public QRunnable
@@ -43,7 +24,7 @@ class FunctionPointerTask : public QRunnable
 public:
     FunctionPointerTask(FunctionPointer function)
     :function(function) {}
-    void run() { function(); }
+    void run() override { function(); }
 private:
     FunctionPointer function;
 };
@@ -65,6 +46,7 @@ public:
 private slots:
     void runFunction();
     void runFunction2();
+    void runFunction3();
     void createThreadRunFunction();
     void runMultiple();
     void waitcomplete();
@@ -72,6 +54,7 @@ private slots:
     void singleton();
     void destruction();
     void threadRecycling();
+    void threadPriority();
     void expiryTimeout();
     void expiryTimeoutRace();
 #ifndef QT_NO_EXCEPTIONS
@@ -85,6 +68,8 @@ private slots:
     void releaseThread_data();
     void releaseThread();
     void reserveAndStart();
+    void reserveAndStart2();
+    void releaseAndBlock();
     void start();
     void tryStart();
     void tryStartPeakThreadCount();
@@ -94,9 +79,6 @@ private slots:
     void waitForDone();
     void clear();
     void clearWithAutoDelete();
-#if QT_DEPRECATED_SINCE(5, 9)
-    void cancel();
-#endif
     void tryTake();
     void waitForDoneTimeout();
     void destroyingWaitsForTasksToFinish();
@@ -105,13 +87,14 @@ private slots:
     void takeAllAndIncreaseMaxThreadCount();
     void waitForDoneAfterTake();
     void threadReuse();
+    void nullFunctions();
 
 private:
     QMutex m_functionTestMutex;
 };
 
 
-QMutex *tst_QThreadPool::functionTestMutex = 0;
+QMutex *tst_QThreadPool::functionTestMutex = nullptr;
 
 tst_QThreadPool::tst_QThreadPool()
 {
@@ -120,10 +103,10 @@ tst_QThreadPool::tst_QThreadPool()
 
 tst_QThreadPool::~tst_QThreadPool()
 {
-    tst_QThreadPool::functionTestMutex = 0;
+    tst_QThreadPool::functionTestMutex = nullptr;
 }
 
-int testFunctionCount;
+static int testFunctionCount;
 
 void sleepTestFunction()
 {
@@ -158,10 +141,25 @@ void noSleepTestFunctionMutex()
     tst_QThreadPool::functionTestMutex->unlock();
 }
 
+constexpr int DefaultWaitForDoneTimeout = 1 * 60 * 1000; // 1min
+// Using qFatal instead of QVERIFY to force exit if threads are still running after timeout.
+// Otherwise, QCoreApplication will still wait for the stale threads and never exit the test.
+#define WAIT_FOR_DONE(manager) \
+    if ((manager).waitForDone(DefaultWaitForDoneTimeout)) {} else \
+        qFatal("waitForDone returned false. Aborting to stop background threads.")
+
+// uses explicit timeout in dtor's waitForDone() to avoid tests hanging overly long
+class TestThreadPool : public QThreadPool
+{
+public:
+    using QThreadPool::QThreadPool;
+    ~TestThreadPool() { WAIT_FOR_DONE(*this); }
+};
+
 void tst_QThreadPool::runFunction()
 {
     {
-        QThreadPool manager;
+        TestThreadPool manager;
         testFunctionCount = 0;
         manager.start(noSleepTestFunction);
     }
@@ -172,16 +170,33 @@ void tst_QThreadPool::runFunction2()
 {
     int localCount = 0;
     {
-        QThreadPool manager;
+        TestThreadPool manager;
         manager.start([&]() { ++localCount; });
     }
     QCOMPARE(localCount, 1);
 }
 
+struct DeleteCheck
+{
+    static bool s_deleted;
+    ~DeleteCheck() { s_deleted = true; }
+};
+bool DeleteCheck::s_deleted = false;
+
+void tst_QThreadPool::runFunction3()
+{
+    std::unique_ptr<DeleteCheck> ptr(new DeleteCheck);
+    {
+        TestThreadPool manager;
+        manager.start([my_ptr = std::move(ptr)]() { });
+    }
+    QVERIFY(DeleteCheck::s_deleted);
+}
+
 void tst_QThreadPool::createThreadRunFunction()
 {
     {
-        QThreadPool manager;
+        TestThreadPool manager;
         testFunctionCount = 0;
         manager.start(noSleepTestFunction);
     }
@@ -194,7 +209,7 @@ void tst_QThreadPool::runMultiple()
     const int runs = 10;
 
     {
-        QThreadPool manager;
+        TestThreadPool manager;
         testFunctionCount = 0;
         for (int i = 0; i < runs; ++i) {
             manager.start(sleepTestFunctionMutex);
@@ -203,7 +218,7 @@ void tst_QThreadPool::runMultiple()
     QCOMPARE(testFunctionCount, runs);
 
     {
-        QThreadPool manager;
+        TestThreadPool manager;
         testFunctionCount = 0;
         for (int i = 0; i < runs; ++i) {
             manager.start(noSleepTestFunctionMutex);
@@ -212,7 +227,7 @@ void tst_QThreadPool::runMultiple()
     QCOMPARE(testFunctionCount, runs);
 
     {
-        QThreadPool manager;
+        TestThreadPool manager;
         for (int i = 0; i < 500; ++i)
             manager.start(emptyFunct);
     }
@@ -223,17 +238,18 @@ void tst_QThreadPool::waitcomplete()
     testFunctionCount = 0;
     const int runs = 500;
     for (int i = 0; i < 500; ++i) {
+        // TestThreadPool pool; // no, we're checking ~QThreadPool()'s waitForDone()
         QThreadPool pool;
         pool.start(noSleepTestFunction);
     }
     QCOMPARE(testFunctionCount, runs);
 }
 
-QAtomicInt ran; // bool
+static QAtomicInt ran; // bool
 class TestTask : public QRunnable
 {
 public:
-    void run()
+    void run() override
     {
         ran.storeRelaxed(true);
     }
@@ -241,7 +257,7 @@ public:
 
 void tst_QThreadPool::runTask()
 {
-    QThreadPool manager;
+    TestThreadPool manager;
     ran.storeRelaxed(false);
     manager.start(new TestTask());
     QTRY_VERIFY(ran.loadRelaxed());
@@ -257,11 +273,11 @@ void tst_QThreadPool::singleton()
     QTRY_VERIFY(ran.loadRelaxed());
 }
 
-QAtomicInt *value = 0;
+static QAtomicInt *value = nullptr;
 class IntAccessor : public QRunnable
 {
 public:
-    void run()
+    void run() override
     {
         for (int i = 0; i < 100; ++i) {
             value->ref();
@@ -282,16 +298,16 @@ void tst_QThreadPool::destruction()
     threadManager->start(new IntAccessor());
     delete threadManager;
     delete value;
-    value = 0;
+    value = nullptr;
 }
 
-QSemaphore threadRecyclingSemaphore;
-QThread *recycledThread = 0;
+static QSemaphore threadRecyclingSemaphore;
+static QThread *recycledThread = nullptr;
 
 class ThreadRecorderTask : public QRunnable
 {
 public:
-    void run()
+    void run() override
     {
         recycledThread = QThread::currentThread();
         threadRecyclingSemaphore.release();
@@ -303,7 +319,7 @@ public:
 */
 void tst_QThreadPool::threadRecycling()
 {
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
 
     threadPool.start(new ThreadRecorderTask());
     threadRecyclingSemaphore.acquire();
@@ -324,6 +340,25 @@ void tst_QThreadPool::threadRecycling()
     QCOMPARE(thread2, thread3);
 }
 
+/*
+    Test that the thread priority from the thread created by the pool matches
+    the one configured on the pool.
+*/
+void tst_QThreadPool::threadPriority()
+{
+    QThread::Priority priority = QThread::HighPriority;
+    TestThreadPool threadPool;
+    threadPool.setThreadPriority(priority);
+
+    threadPool.start(new ThreadRecorderTask());
+    threadRecyclingSemaphore.acquire();
+    QThread *thread = recycledThread;
+
+    QTest::qSleep(100);
+
+    QCOMPARE(thread->priority(), priority);
+}
+
 class ExpiryTimeoutTask : public QRunnable
 {
 public:
@@ -332,12 +367,12 @@ public:
     QSemaphore semaphore;
 
     ExpiryTimeoutTask()
-        : thread(0), runCount(0)
+        : thread(nullptr), runCount(0)
     {
         setAutoDelete(false);
     }
 
-    void run()
+    void run() override
     {
         thread = QThread::currentThread();
         runCount.ref();
@@ -349,7 +384,7 @@ void tst_QThreadPool::expiryTimeout()
 {
     ExpiryTimeoutTask task;
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(1);
 
     int expiryTimeout = threadPool.expiryTimeout();
@@ -388,13 +423,13 @@ void tst_QThreadPool::expiryTimeoutRace() // QTBUG-3786
 #endif
     ExpiryTimeoutTask task;
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(1);
     threadPool.setExpiryTimeout(50);
     const int numTasks = 20;
     for (int i = 0; i < numTasks; ++i) {
         threadPool.start(&task);
-        QThread::msleep(50); // exactly the same as the expiry timeout
+        QThread::sleep(50ms); // exactly the same as the expiry timeout
     }
     QVERIFY(task.semaphore.tryAcquire(numTasks, 10000));
     QCOMPARE(task.runCount.loadRelaxed(), numTasks);
@@ -405,7 +440,7 @@ void tst_QThreadPool::expiryTimeoutRace() // QTBUG-3786
 class ExceptionTask : public QRunnable
 {
 public:
-    void run()
+    void run() override
     {
         throw new int;
     }
@@ -415,7 +450,7 @@ void tst_QThreadPool::exceptions()
 {
     ExceptionTask task;
     {
-        QThreadPool threadPool;
+        TestThreadPool threadPool;
 //  Uncomment this for a nice crash.
 //        threadPool.start(&task);
     }
@@ -444,6 +479,9 @@ void tst_QThreadPool::setMaxThreadCount()
     QFETCH(int, limit);
     QThreadPool *threadPool = QThreadPool::globalInstance();
     int savedLimit = threadPool->maxThreadCount();
+    auto restoreThreadCount = qScopeGuard([=]{
+        threadPool->setMaxThreadCount(savedLimit);
+    });
 
     // maxThreadCount() should always return the previous argument to
     // setMaxThreadCount(), regardless of input
@@ -456,7 +494,7 @@ void tst_QThreadPool::setMaxThreadCount()
 
     // setting the limit on children should have no effect on the parent
     {
-        QThreadPool threadPool2(threadPool);
+        TestThreadPool threadPool2(threadPool);
         savedLimit = threadPool2.maxThreadCount();
 
         // maxThreadCount() should always return the previous argument to
@@ -479,65 +517,64 @@ void tst_QThreadPool::setMaxThreadCountStartsAndStopsThreads()
 
         WaitingTask() { setAutoDelete(false); }
 
-        void run()
+        void run() override
         {
             waitForStarted.release();
             waitToFinish.acquire();
         }
     };
 
-    QThreadPool threadPool;
-    threadPool.setMaxThreadCount(1);
+    TestThreadPool threadPool;
+    threadPool.setMaxThreadCount(-1);   // docs say we'll always start at least one
 
-    WaitingTask *task = new WaitingTask;
-    threadPool.start(task);
-    QVERIFY(task->waitForStarted.tryAcquire(1, 1000));
+    WaitingTask task;
+    threadPool.start(&task);
+    QVERIFY(task.waitForStarted.tryAcquire(1, 1000));
 
     // thread limit is 1, cannot start more tasks
-    threadPool.start(task);
-    QVERIFY(!task->waitForStarted.tryAcquire(1, 1000));
+    threadPool.start(&task);
+    QVERIFY(!task.waitForStarted.tryAcquire(1, 1000));
 
     // increasing the limit by 1 should start the task immediately
     threadPool.setMaxThreadCount(2);
-    QVERIFY(task->waitForStarted.tryAcquire(1, 1000));
+    QVERIFY(task.waitForStarted.tryAcquire(1, 1000));
 
     // ... but we still cannot start more tasks
-    threadPool.start(task);
-    QVERIFY(!task->waitForStarted.tryAcquire(1, 1000));
+    threadPool.start(&task);
+    QVERIFY(!task.waitForStarted.tryAcquire(1, 1000));
 
     // increasing the limit should be able to start more than one at a time
-    threadPool.start(task);
+    threadPool.start(&task);
     threadPool.setMaxThreadCount(4);
-    QVERIFY(task->waitForStarted.tryAcquire(2, 1000));
+    QVERIFY(task.waitForStarted.tryAcquire(2, 1000));
 
     // ... but we still cannot start more tasks
-    threadPool.start(task);
-    threadPool.start(task);
-    QVERIFY(!task->waitForStarted.tryAcquire(2, 1000));
+    threadPool.start(&task);
+    threadPool.start(&task);
+    QVERIFY(!task.waitForStarted.tryAcquire(2, 1000));
 
     // decreasing the thread limit should cause the active thread count to go down
     threadPool.setMaxThreadCount(2);
     QCOMPARE(threadPool.activeThreadCount(), 4);
-    task->waitToFinish.release(2);
+    task.waitToFinish.release(2);
     QTest::qWait(1000);
     QCOMPARE(threadPool.activeThreadCount(), 2);
 
     // ... and we still cannot start more tasks
-    threadPool.start(task);
-    threadPool.start(task);
-    QVERIFY(!task->waitForStarted.tryAcquire(2, 1000));
+    threadPool.start(&task);
+    threadPool.start(&task);
+    QVERIFY(!task.waitForStarted.tryAcquire(2, 1000));
 
     // start all remaining tasks
-    threadPool.start(task);
-    threadPool.start(task);
-    threadPool.start(task);
-    threadPool.start(task);
+    threadPool.start(&task);
+    threadPool.start(&task);
+    threadPool.start(&task);
+    threadPool.start(&task);
     threadPool.setMaxThreadCount(8);
-    QVERIFY(task->waitForStarted.tryAcquire(6, 1000));
+    QVERIFY(task.waitForStarted.tryAcquire(6, 1000));
 
-    task->waitToFinish.release(10);
+    task.waitToFinish.release(10);
     threadPool.waitForDone();
-    delete task;
 }
 
 void tst_QThreadPool::reserveThread_data()
@@ -549,7 +586,11 @@ void tst_QThreadPool::reserveThread()
 {
     QFETCH(int, limit);
     QThreadPool *threadpool = QThreadPool::globalInstance();
-    int savedLimit = threadpool->maxThreadCount();
+    const int savedLimit = threadpool->maxThreadCount();
+    auto restoreThreadCount = qScopeGuard([=]{
+        threadpool->setMaxThreadCount(savedLimit);
+    });
+
     threadpool->setMaxThreadCount(limit);
 
     // reserve up to the limit
@@ -571,7 +612,7 @@ void tst_QThreadPool::reserveThread()
 
     // reserving threads in children should not effect the parent
     {
-        QThreadPool threadpool2(threadpool);
+        TestThreadPool threadpool2(threadpool);
         threadpool2.setMaxThreadCount(limit);
 
         // reserve up to the limit
@@ -598,9 +639,6 @@ void tst_QThreadPool::reserveThread()
         while (threadpool2.activeThreadCount() > 0)
             threadpool2.releaseThread();
     }
-
-    // reset limit on global QThreadPool
-    threadpool->setMaxThreadCount(savedLimit);
 }
 
 void tst_QThreadPool::releaseThread_data()
@@ -612,7 +650,10 @@ void tst_QThreadPool::releaseThread()
 {
     QFETCH(int, limit);
     QThreadPool *threadpool = QThreadPool::globalInstance();
-    int savedLimit = threadpool->maxThreadCount();
+    const int savedLimit = threadpool->maxThreadCount();
+    auto restoreThreadCount = qScopeGuard([=]{
+        threadpool->setMaxThreadCount(savedLimit);
+    });
     threadpool->setMaxThreadCount(limit);
 
     // reserve up to the limit
@@ -635,7 +676,7 @@ void tst_QThreadPool::releaseThread()
 
     // releasing threads in children should not effect the parent
     {
-        QThreadPool threadpool2(threadpool);
+        TestThreadPool threadpool2(threadpool);
         threadpool2.setMaxThreadCount(limit);
 
         // reserve up to the limit
@@ -660,9 +701,6 @@ void tst_QThreadPool::releaseThread()
         QCOMPARE(threadpool2.activeThreadCount(), 0);
         QCOMPARE(threadpool->activeThreadCount(), 0);
     }
-
-    // reset limit on global QThreadPool
-    threadpool->setMaxThreadCount(savedLimit);
 }
 
 void tst_QThreadPool::reserveAndStart() // QTBUG-21051
@@ -676,7 +714,7 @@ void tst_QThreadPool::reserveAndStart() // QTBUG-21051
 
         WaitingTask() { setAutoDelete(false); }
 
-        void run()
+        void run() override
         {
             count.ref();
             waitForStarted.release();
@@ -687,6 +725,10 @@ void tst_QThreadPool::reserveAndStart() // QTBUG-21051
     // Set up
     QThreadPool *threadpool = QThreadPool::globalInstance();
     int savedLimit = threadpool->maxThreadCount();
+    auto restoreThreadCount = qScopeGuard([=]{
+        threadpool->setMaxThreadCount(savedLimit);
+    });
+
     threadpool->setMaxThreadCount(1);
     QCOMPARE(threadpool->activeThreadCount(), 0);
 
@@ -694,40 +736,137 @@ void tst_QThreadPool::reserveAndStart() // QTBUG-21051
     threadpool->reserveThread();
     QCOMPARE(threadpool->activeThreadCount(), 1);
 
-    // start a task, to get a running thread
-    WaitingTask *task = new WaitingTask;
-    threadpool->start(task);
+    // start a task, to get a running thread, works since one thread is always allowed
+    WaitingTask task;
+    threadpool->start(&task);
     QCOMPARE(threadpool->activeThreadCount(), 2);
-    task->waitForStarted.acquire();
-    task->waitBeforeDone.release();
-    QTRY_COMPARE(task->count.loadRelaxed(), 1);
-    QTRY_COMPARE(threadpool->activeThreadCount(), 1);
-
-    // now the thread is waiting, but tryStart() will fail since activeThreadCount() >= maxThreadCount()
-    QVERIFY(!threadpool->tryStart(task));
-    QTRY_COMPARE(threadpool->activeThreadCount(), 1);
-
-    // start() will therefore do a failing tryStart(), followed by enqueueTask()
-    // which will actually wake up the waiting thread.
-    threadpool->start(task);
+    // tryStart() will fail since activeThreadCount() >= maxThreadCount() and one thread is already running
+    QVERIFY(!threadpool->tryStart(&task));
     QTRY_COMPARE(threadpool->activeThreadCount(), 2);
-    task->waitForStarted.acquire();
-    task->waitBeforeDone.release();
-    QTRY_COMPARE(task->count.loadRelaxed(), 2);
+    task.waitForStarted.acquire();
+    task.waitBeforeDone.release();
+    QTRY_COMPARE(task.count.loadRelaxed(), 1);
     QTRY_COMPARE(threadpool->activeThreadCount(), 1);
 
+    // start() will wake up the waiting thread.
+    threadpool->start(&task);
+    QTRY_COMPARE(threadpool->activeThreadCount(), 2);
+    QTRY_COMPARE(task.count.loadRelaxed(), 2);
+    WaitingTask task2;
+    // startOnReservedThread() will try to take the reserved task, but end up waiting instead
+    threadpool->startOnReservedThread(&task2);
+    QTRY_COMPARE(threadpool->activeThreadCount(), 1);
+    task.waitForStarted.acquire();
+    task.waitBeforeDone.release();
+    QTRY_COMPARE(threadpool->activeThreadCount(), 1);
+    task2.waitForStarted.acquire();
+    task2.waitBeforeDone.release();
+
+    QTRY_COMPARE(threadpool->activeThreadCount(), 0);
+}
+
+void tst_QThreadPool::reserveAndStart2()
+{
+    class WaitingTask : public QRunnable
+    {
+    public:
+        QSemaphore waitBeforeDone;
+
+        WaitingTask() { setAutoDelete(false); }
+
+        void run() override
+        {
+            waitBeforeDone.acquire();
+        }
+    };
+
+    // Set up
+    QThreadPool *threadpool = QThreadPool::globalInstance();
+    int savedLimit = threadpool->maxThreadCount();
+    auto restoreThreadCount = qScopeGuard([=]{
+        threadpool->setMaxThreadCount(savedLimit);
+    });
+    threadpool->setMaxThreadCount(2);
+
+    // reserve
+    threadpool->reserveThread();
+
+    // start two task, to get a running thread and one queued
+    WaitingTask task1, task2, task3;
+    threadpool->start(&task1);
+    // one running thread, one reserved:
+    QCOMPARE(threadpool->activeThreadCount(), 2);
+    // task2 starts queued
+    threadpool->start(&task2);
+    QCOMPARE(threadpool->activeThreadCount(), 2);
+    // startOnReservedThread() will take the reserved thread however, bypassing the queue
+    threadpool->startOnReservedThread(&task3);
+    // two running threads, none reserved:
+    QCOMPARE(threadpool->activeThreadCount(), 2);
+    task3.waitBeforeDone.release();
+    // task3 can finish even if all other tasks are blocking
+    // then task2 will use the previously reserved thread
+    task2.waitBeforeDone.release();
+    QTRY_COMPARE(threadpool->activeThreadCount(), 1);
+    task1.waitBeforeDone.release();
+    QTRY_COMPARE(threadpool->activeThreadCount(), 0);
+}
+
+void tst_QThreadPool::releaseAndBlock()
+{
+    class WaitingTask : public QRunnable
+    {
+    public:
+        QSemaphore waitBeforeDone;
+
+        WaitingTask() { setAutoDelete(false); }
+
+        void run() override
+        {
+            waitBeforeDone.acquire();
+        }
+    };
+
+    // Set up
+    QThreadPool *threadpool = QThreadPool::globalInstance();
+    const int savedLimit = threadpool->maxThreadCount();
+    auto restoreThreadCount = qScopeGuard([=]{
+        threadpool->setMaxThreadCount(savedLimit);
+    });
+
+    threadpool->setMaxThreadCount(1);
+    QCOMPARE(threadpool->activeThreadCount(), 0);
+
+    // start a task, to get a running thread, works since one thread is always allowed
+    WaitingTask task1, task2;
+    threadpool->start(&task1);
+    QCOMPARE(threadpool->activeThreadCount(), 1);
+
+    // tryStart() will fail since activeThreadCount() >= maxThreadCount() and one thread is already running
+    QVERIFY(!threadpool->tryStart(&task2));
+    QCOMPARE(threadpool->activeThreadCount(), 1);
+
+    // Use release without reserve to account for the blocking thread.
     threadpool->releaseThread();
     QTRY_COMPARE(threadpool->activeThreadCount(), 0);
 
-    delete task;
+    // Now we can start task2
+    QVERIFY(threadpool->tryStart(&task2));
+    QCOMPARE(threadpool->activeThreadCount(), 1);
+    task2.waitBeforeDone.release();
+    QTRY_COMPARE(threadpool->activeThreadCount(), 0);
 
-    threadpool->setMaxThreadCount(savedLimit);
+    threadpool->reserveThread();
+    QCOMPARE(threadpool->activeThreadCount(), 1);
+    task1.waitBeforeDone.release();
+    QTRY_COMPARE(threadpool->activeThreadCount(), 0);
 }
 
-QAtomicInt count;
+static QAtomicInt count;
 class CountingRunnable : public QRunnable
 {
-    public: void run()
+public:
+    void run() override
     {
         count.ref();
     }
@@ -738,7 +877,7 @@ void tst_QThreadPool::start()
     const int runs = 1000;
     count.storeRelaxed(0);
     {
-        QThreadPool threadPool;
+        TestThreadPool threadPool;
         for (int i = 0; i< runs; ++i) {
             threadPool.start(new CountingRunnable());
         }
@@ -755,7 +894,7 @@ void tst_QThreadPool::tryStart()
 
         WaitingTask() { setAutoDelete(false); }
 
-        void run()
+        void run() override
         {
             semaphore.acquire();
             count.ref();
@@ -765,19 +904,19 @@ void tst_QThreadPool::tryStart()
     count.storeRelaxed(0);
 
     WaitingTask task;
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     for (int i = 0; i < threadPool.maxThreadCount(); ++i) {
         threadPool.start(&task);
     }
     QVERIFY(!threadPool.tryStart(&task));
     task.semaphore.release(threadPool.maxThreadCount());
-    threadPool.waitForDone();
+    WAIT_FOR_DONE(threadPool);
     QCOMPARE(count.loadRelaxed(), threadPool.maxThreadCount());
 }
 
-QMutex mutex;
-QAtomicInt activeThreads;
-QAtomicInt peakActiveThreads;
+static QMutex mutex;
+static QAtomicInt activeThreads;
+static QAtomicInt peakActiveThreads;
 void tst_QThreadPool::tryStartPeakThreadCount()
 {
     class CounterTask : public QRunnable
@@ -785,7 +924,7 @@ void tst_QThreadPool::tryStartPeakThreadCount()
     public:
         CounterTask() { setAutoDelete(false); }
 
-        void run()
+        void run() override
         {
             {
                 QMutexLocker lock(&mutex);
@@ -802,7 +941,7 @@ void tst_QThreadPool::tryStartPeakThreadCount()
     };
 
     CounterTask task;
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
 
     for (int i = 0; i < 4*QThread::idealThreadCount(); ++i) {
         if (threadPool.tryStart(&task) == false)
@@ -824,14 +963,14 @@ void tst_QThreadPool::tryStartCount()
     public:
         SleeperTask() { setAutoDelete(false); }
 
-        void run()
+        void run() override
         {
             QTest::qWait(50);
         }
     };
 
     SleeperTask task;
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     const int runs = 5;
 
     for (int i = 0; i < runs; ++i) {
@@ -859,7 +998,7 @@ void tst_QThreadPool::priorityStart()
     public:
         QSemaphore &sem;
         Holder(QSemaphore &sem) : sem(sem) {}
-        void run()
+        void run() override
         {
             sem.acquire();
         }
@@ -869,9 +1008,9 @@ void tst_QThreadPool::priorityStart()
     public:
         QAtomicPointer<QRunnable> &ptr;
         Runner(QAtomicPointer<QRunnable> &ptr) : ptr(ptr) {}
-        void run()
+        void run() override
         {
-            ptr.testAndSetRelaxed(0, this);
+            ptr.testAndSetRelaxed(nullptr, this);
         }
     };
 
@@ -879,7 +1018,7 @@ void tst_QThreadPool::priorityStart()
     QSemaphore sem;
     QAtomicPointer<QRunnable> firstStarted;
     QRunnable *expected;
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(1); // start only one thread at a time
 
     // queue the holder first
@@ -891,7 +1030,7 @@ void tst_QThreadPool::priorityStart()
     threadPool.start(expected = new Runner(firstStarted), 1); // priority 1
 
     sem.release();
-    QVERIFY(threadPool.waitForDone());
+    WAIT_FOR_DONE(threadPool);
     QCOMPARE(firstStarted.loadRelaxed(), expected);
 }
 
@@ -899,8 +1038,9 @@ void tst_QThreadPool::waitForDone()
 {
     QElapsedTimer total, pass;
     total.start();
+    pass.start();
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     while (total.elapsed() < 10000) {
         int runs;
         count.storeRelaxed(runs = 0);
@@ -909,7 +1049,7 @@ void tst_QThreadPool::waitForDone()
             threadPool.start(new CountingRunnable());
             ++runs;
         }
-        threadPool.waitForDone();
+        WAIT_FOR_DONE(threadPool);
         QCOMPARE(count.loadRelaxed(), runs);
 
         count.storeRelaxed(runs = 0);
@@ -919,7 +1059,7 @@ void tst_QThreadPool::waitForDone()
             threadPool.start(new CountingRunnable());
             runs += 2;
         }
-        threadPool.waitForDone();
+        WAIT_FOR_DONE(threadPool);
         QCOMPARE(count.loadRelaxed(), runs);
     }
 }
@@ -933,7 +1073,7 @@ void tst_QThreadPool::waitForDoneTimeout()
       QMutex &mutex;
       explicit BlockedTask(QMutex &m) : mutex(m) {}
 
-      void run()
+      void run() override
         {
           mutex.lock();
           mutex.unlock();
@@ -941,7 +1081,7 @@ void tst_QThreadPool::waitForDoneTimeout()
         }
     };
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
 
     mutex.lock();
     threadPool.start(new BlockedTask(mutex));
@@ -958,14 +1098,14 @@ void tst_QThreadPool::clear()
         public:
             QSemaphore & sem;
             BlockingRunnable(QSemaphore & sem) : sem(sem){}
-            void run()
+            void run() override
             {
                 sem.acquire();
                 count.ref();
             }
     };
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(10);
     int runs = 2 * threadPool.maxThreadCount();
     count.storeRelaxed(0);
@@ -974,7 +1114,7 @@ void tst_QThreadPool::clear()
     }
     threadPool.clear();
     sem.release(threadPool.maxThreadCount());
-    threadPool.waitForDone();
+    WAIT_FOR_DONE(threadPool);
     QCOMPARE(count.loadRelaxed(), threadPool.maxThreadCount());
 }
 
@@ -984,10 +1124,10 @@ void tst_QThreadPool::clearWithAutoDelete()
     {
     public:
         MyRunnable() {}
-        void run() override { QThread::usleep(30); }
+        void run() override { QThread::sleep(30us); }
     };
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(4);
     const int loopCount = 20;
     const int batchSize = 500;
@@ -1000,82 +1140,7 @@ void tst_QThreadPool::clearWithAutoDelete()
             threadPool.start(runnable);
         }
     }
-    QVERIFY(threadPool.waitForDone());
 }
-
-#if QT_DEPRECATED_SINCE(5, 9)
-void tst_QThreadPool::cancel()
-{
-    QSemaphore sem(0);
-    QSemaphore startedThreads(0);
-
-    class BlockingRunnable : public QRunnable
-    {
-    public:
-        QSemaphore & sem;
-        QSemaphore &startedThreads;
-        QAtomicInt &dtorCounter;
-        QAtomicInt &runCounter;
-        int dummy;
-
-        explicit BlockingRunnable(QSemaphore &s, QSemaphore &started, QAtomicInt &c, QAtomicInt &r)
-            : sem(s), startedThreads(started), dtorCounter(c), runCounter(r){}
-
-        ~BlockingRunnable()
-        {
-            dtorCounter.fetchAndAddRelaxed(1);
-        }
-
-        void run()
-        {
-            startedThreads.release();
-            runCounter.fetchAndAddRelaxed(1);
-            sem.acquire();
-            count.ref();
-        }
-    };
-
-    enum {
-        MaxThreadCount = 3,
-        OverProvisioning = 2,
-        runs = MaxThreadCount * OverProvisioning
-    };
-
-    QThreadPool threadPool;
-    threadPool.setMaxThreadCount(MaxThreadCount);
-    BlockingRunnable *runnables[runs];
-
-    // ensure that the QThreadPool doesn't deadlock if any of the checks fail
-    // and cause an early return:
-    const QSemaphoreReleaser semReleaser(sem, runs);
-
-    count.storeRelaxed(0);
-    QAtomicInt dtorCounter = 0;
-    QAtomicInt runCounter = 0;
-    for (int i = 0; i < runs; i++) {
-        runnables[i] = new BlockingRunnable(sem, startedThreads, dtorCounter, runCounter);
-        runnables[i]->setAutoDelete(i != 0 && i != (runs-1)); //one which will run and one which will not
-        threadPool.cancel(runnables[i]); //verify NOOP for jobs not in the queue
-        threadPool.start(runnables[i]);
-    }
-    // wait for all worker threads to have started up:
-    QVERIFY(startedThreads.tryAcquire(MaxThreadCount, 60*1000 /* 1min */));
-
-    for (int i = 0; i < runs; i++) {
-        threadPool.cancel(runnables[i]);
-    }
-    runnables[0]->dummy = 0; //valgrind will catch this if cancel() is crazy enough to delete currently running jobs
-    runnables[runs-1]->dummy = 0;
-    QCOMPARE(dtorCounter.loadRelaxed(), runs - threadPool.maxThreadCount() - 1);
-    sem.release(threadPool.maxThreadCount());
-    threadPool.waitForDone();
-    QCOMPARE(runCounter.loadRelaxed(), threadPool.maxThreadCount());
-    QCOMPARE(count.loadRelaxed(), threadPool.maxThreadCount());
-    QCOMPARE(dtorCounter.loadRelaxed(), runs - 2);
-    delete runnables[0]; //if the pool deletes them then we'll get double-free crash
-    delete runnables[runs-1];
-}
-#endif
 
 void tst_QThreadPool::tryTake()
 {
@@ -1094,7 +1159,7 @@ void tst_QThreadPool::tryTake()
         explicit BlockingRunnable(QSemaphore &s, QSemaphore &started, QAtomicInt &c, QAtomicInt &r)
             : sem(s), startedThreads(started), dtorCounter(c), runCounter(r) {}
 
-        ~BlockingRunnable()
+        ~BlockingRunnable() override
         {
             dtorCounter.fetchAndAddRelaxed(1);
         }
@@ -1114,7 +1179,7 @@ void tst_QThreadPool::tryTake()
         Runs = MaxThreadCount * OverProvisioning
     };
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(MaxThreadCount);
     BlockingRunnable *runnables[Runs];
 
@@ -1146,7 +1211,7 @@ void tst_QThreadPool::tryTake()
     runnables[0]->dummy = 0; // valgrind will catch this if tryTake() is crazy enough to delete currently running jobs
     QCOMPARE(dtorCounter.loadRelaxed(), int(Runs - MaxThreadCount));
     sem.release(MaxThreadCount);
-    threadPool.waitForDone();
+    WAIT_FOR_DONE(threadPool);
     QCOMPARE(runCounter.loadRelaxed(), int(MaxThreadCount));
     QCOMPARE(count.loadRelaxed(), int(MaxThreadCount));
     QCOMPARE(dtorCounter.loadRelaxed(), int(Runs - 1));
@@ -1157,12 +1222,13 @@ void tst_QThreadPool::destroyingWaitsForTasksToFinish()
 {
     QElapsedTimer total, pass;
     total.start();
+    pass.start();
 
     while (total.elapsed() < 10000) {
         int runs;
         count.storeRelaxed(runs = 0);
         {
-            QThreadPool threadPool;
+            TestThreadPool threadPool;
             pass.restart();
             while (pass.elapsed() < 100) {
                 threadPool.start(new CountingRunnable());
@@ -1173,7 +1239,7 @@ void tst_QThreadPool::destroyingWaitsForTasksToFinish()
 
         count.storeRelaxed(runs = 0);
         {
-            QThreadPool threadPool;
+            TestThreadPool threadPool;
             pass.restart();
             while (pass.elapsed() < 100) {
                 threadPool.start(new CountingRunnable());
@@ -1209,16 +1275,16 @@ void tst_QThreadPool::stackSize()
 
         }
 
-        void run()
+        void run() override
         {
             *stackSize = QThread::currentThread()->stackSize();
         }
     };
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setStackSize(targetStackSize);
     threadPool.start(new StackSizeChecker(&threadStackSize));
-    QVERIFY(threadPool.waitForDone(30000)); // 30s timeout
+    WAIT_FOR_DONE(threadPool);
     QCOMPARE(threadStackSize, targetStackSize);
 }
 
@@ -1240,7 +1306,7 @@ void tst_QThreadPool::stressTest()
             semaphore.acquire();
         }
 
-        void run()
+        void run() override
         {
             semaphore.release();
         }
@@ -1266,7 +1332,8 @@ void tst_QThreadPool::takeAllAndIncreaseMaxThreadCount() {
             setAutoDelete(false);
         }
 
-        void run() {
+        void run() override
+        {
             m_mainBarrier->release();
             m_threadBarrier->acquire();
         }
@@ -1278,24 +1345,24 @@ void tst_QThreadPool::takeAllAndIncreaseMaxThreadCount() {
     QSemaphore mainBarrier;
     QSemaphore taskBarrier;
 
-    QThreadPool threadPool;
+    TestThreadPool threadPool;
     threadPool.setMaxThreadCount(1);
 
-    Task *task1 = new Task(&mainBarrier, &taskBarrier);
-    Task *task2 = new Task(&mainBarrier, &taskBarrier);
-    Task *task3 = new Task(&mainBarrier, &taskBarrier);
+    Task task1(&mainBarrier, &taskBarrier);
+    Task task2(&mainBarrier, &taskBarrier);
+    Task task3(&mainBarrier, &taskBarrier);
 
-    threadPool.start(task1);
-    threadPool.start(task2);
-    threadPool.start(task3);
+    threadPool.start(&task1);
+    threadPool.start(&task2);
+    threadPool.start(&task3);
 
     mainBarrier.acquire(1);
 
     QCOMPARE(threadPool.activeThreadCount(), 1);
 
-    QVERIFY(!threadPool.tryTake(task1));
-    QVERIFY(threadPool.tryTake(task2));
-    QVERIFY(threadPool.tryTake(task3));
+    QVERIFY(!threadPool.tryTake(&task1));
+    QVERIFY(threadPool.tryTake(&task2));
+    QVERIFY(threadPool.tryTake(&task3));
 
     // A bad queue implementation can segfault here because two consecutive items in the queue
     // have been taken
@@ -1309,13 +1376,9 @@ void tst_QThreadPool::takeAllAndIncreaseMaxThreadCount() {
 
     taskBarrier.release(1);
 
-    threadPool.waitForDone();
+    WAIT_FOR_DONE(threadPool);
 
     QCOMPARE(threadPool.activeThreadCount(), 0);
-
-    delete task1;
-    delete task2;
-    delete task3;
 }
 
 void tst_QThreadPool::waitForDoneAfterTake()
@@ -1328,7 +1391,7 @@ void tst_QThreadPool::waitForDoneAfterTake()
             , m_threadBarrier(threadBarrier)
         {}
 
-        void run()
+        void run() override
         {
             m_mainBarrier->release();
             m_threadBarrier->acquire();
@@ -1346,7 +1409,7 @@ void tst_QThreadPool::waitForDoneAfterTake()
     // Blocks the tasks from completing their run function
     QSemaphore threadBarrier;
 
-    QThreadPool manager;
+    TestThreadPool manager;
     manager.setMaxThreadCount(threadCount);
 
     // Fill all the threads with runnables that wait for the threadBarrier
@@ -1361,10 +1424,9 @@ void tst_QThreadPool::waitForDoneAfterTake()
     // This sets the queue elements to nullptr in QThreadPool and we want to test that
     // the threads keep going through the queue after encountering a nullptr.
     for (int i = 0; i < threadCount; i++) {
-        QRunnable *runnable = createTask(emptyFunct);
-        manager.start(runnable);
-        QVERIFY(manager.tryTake(runnable));
-        delete runnable;
+        QScopedPointer<QRunnable> runnable(createTask(emptyFunct));
+        manager.start(runnable.get());
+        QVERIFY(manager.tryTake(runnable.get()));
     }
 
     // Add another runnable that will not be removed
@@ -1378,12 +1440,6 @@ void tst_QThreadPool::waitForDoneAfterTake()
 
     // Release runnables that are waiting and expect all runnables to complete
     threadBarrier.release(threadCount);
-
-    // Using qFatal instead of QVERIFY to force exit if threads are still running after timeout.
-    // Otherwise, QCoreApplication will still wait for the stale threads and never exit the test.
-    if (!manager.waitForDone(5 * 60 * 1000))
-        qFatal("waitForDone returned false. Aborting to stop background threads.");
-
 }
 
 /*
@@ -1393,7 +1449,7 @@ void tst_QThreadPool::waitForDoneAfterTake()
 */
 void tst_QThreadPool::threadReuse()
 {
-    QThreadPool manager;
+    TestThreadPool manager;
     manager.setExpiryTimeout(-1);
     manager.setMaxThreadCount(1);
 
@@ -1407,6 +1463,31 @@ void tst_QThreadPool::threadReuse()
         manager.releaseThread();
         QVERIFY(sem.tryAcquire(2, timeoutMs));
         manager.reserveThread();
+    }
+}
+
+void tst_QThreadPool::nullFunctions()
+{
+    const auto expectWarning = [] {
+            QTest::ignoreMessage(QtMsgType::QtWarningMsg,
+                                 "Trying to create null QRunnable. This may stop working.");
+        };
+    // Note this is not necessarily testing intended behavior, only undocumented behavior.
+    // If this is changed it should be noted in Behavioral Changes.
+    FunctionPointer nullFunction = nullptr;
+    std::function<void()> nullStdFunction(nullptr);
+    {
+        TestThreadPool manager;
+        // should not crash:
+        expectWarning();
+        manager.start(nullFunction);
+        expectWarning();
+        manager.start(nullStdFunction);
+        // should fail (and not leak):
+        expectWarning();
+        QVERIFY(!manager.tryStart(nullStdFunction));
+        expectWarning();
+        QVERIFY(!manager.tryStart(nullFunction));
     }
 }
 

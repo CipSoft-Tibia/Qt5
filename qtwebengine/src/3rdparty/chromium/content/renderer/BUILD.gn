@@ -1,23 +1,18 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/chromecast_build.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/ui.gni")
 import("//content/common/features.gni")
 import("//media/media_options.gni")
 import("//ppapi/buildflags/buildflags.gni")
+import("//testing/libfuzzer/fuzzer_test.gni")
 import("//third_party/webrtc/webrtc.gni")
 import("//tools/ipc_fuzzer/ipc_fuzzer.gni")
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 if (is_component_build) {
   link_target_type = "jumbo_source_set"
@@ -34,6 +29,7 @@ target(link_target_type, "renderer") {
     "//content/app:*",
     "//content/public/renderer:renderer_sources",
     "//content/renderer:audio_decoder_fuzzer",
+    "//content/renderer:content_security_policy_util_fuzzer",
   ]
 
   sources = [
@@ -45,102 +41,42 @@ target(link_target_type, "renderer") {
     "accessibility/ax_image_annotator.h",
     "accessibility/ax_image_stopwords.cc",
     "accessibility/ax_image_stopwords.h",
+    "accessibility/ax_tree_snapshotter_impl.cc",
+    "accessibility/ax_tree_snapshotter_impl.h",
     "accessibility/blink_ax_action_target.cc",
     "accessibility/blink_ax_action_target.h",
-    "accessibility/blink_ax_tree_source.cc",
-    "accessibility/blink_ax_tree_source.h",
     "accessibility/render_accessibility_impl.cc",
     "accessibility/render_accessibility_impl.h",
     "accessibility/render_accessibility_manager.cc",
     "accessibility/render_accessibility_manager.h",
     "agent_scheduling_group.cc",
     "agent_scheduling_group.h",
-    "android/synchronous_layer_tree_frame_sink_impl.cc",
-    "android/synchronous_layer_tree_frame_sink_impl.h",
     "browser_exposed_renderer_interfaces.cc",
     "browser_exposed_renderer_interfaces.h",
-    "categorized_worker_pool.cc",
-    "categorized_worker_pool.h",
-    "child_frame_compositing_helper.cc",
-    "child_frame_compositing_helper.h",
-    "child_frame_compositor.h",
-    "compositor/compositor_dependencies.h",
     "content_security_policy_util.cc",
     "content_security_policy_util.h",
-    "context_menu_params_builder.cc",
-    "context_menu_params_builder.h",
-    "crash_helpers.cc",
-    "crash_helpers.h",
     "discardable_memory_utils.cc",
     "discardable_memory_utils.h",
+    "document_state.cc",
+    "document_state.h",
     "dom_automation_controller.cc",
     "dom_automation_controller.h",
     "effective_connection_type_helper.cc",
     "effective_connection_type_helper.h",
-    "frame_blame_context.cc",
-    "frame_blame_context.h",
     "frame_owner_properties_converter.cc",
     "frame_owner_properties_converter.h",
     "gpu_benchmarking_extension.cc",
     "gpu_benchmarking_extension.h",
-    "history_entry.cc",
-    "history_entry.h",
-    "history_serialization.cc",
-    "history_serialization.h",
-    "impression_conversions.cc",
-    "impression_conversions.h",
     "in_process_renderer_thread.cc",
     "in_process_renderer_thread.h",
-    "internal_document_state_data.cc",
-    "internal_document_state_data.h",
-    "java/gin_java_bridge_dispatcher.cc",
-    "java/gin_java_bridge_dispatcher.h",
-    "java/gin_java_bridge_object.cc",
-    "java/gin_java_bridge_object.h",
-    "java/gin_java_bridge_value_converter.cc",
-    "java/gin_java_bridge_value_converter.h",
-    "java/gin_java_function_invocation_helper.cc",
-    "java/gin_java_function_invocation_helper.h",
-    "loader/child_url_loader_factory_bundle.cc",
-    "loader/child_url_loader_factory_bundle.h",
-    "loader/navigation_body_loader.cc",
-    "loader/navigation_body_loader.h",
-    "loader/request_extra_data.cc",
-    "loader/request_extra_data.h",
-    "loader/resource_dispatcher.cc",
-    "loader/resource_dispatcher.h",
-    "loader/resource_load_stats.cc",
-    "loader/resource_load_stats.h",
-    "loader/sync_load_context.cc",
-    "loader/sync_load_context.h",
-    "loader/sync_load_response.cc",
-    "loader/sync_load_response.h",
-    "loader/tracked_child_url_loader_factory_bundle.cc",
-    "loader/tracked_child_url_loader_factory_bundle.h",
-    "loader/url_loader_client_impl.cc",
-    "loader/url_loader_client_impl.h",
-    "loader/web_url_loader_impl.cc",
-    "loader/web_url_loader_impl.h",
-    "loader/web_url_request_util.cc",
-    "loader/web_url_request_util.h",
-    "loader/web_worker_fetch_context_impl.cc",
-    "loader/web_worker_fetch_context_impl.h",
-    "media/android/flinging_renderer_client.cc",
-    "media/android/flinging_renderer_client.h",
-    "media/android/flinging_renderer_client_factory.cc",
-    "media/android/flinging_renderer_client_factory.h",
-    "media/android/media_player_renderer_client.cc",
-    "media/android/media_player_renderer_client.h",
-    "media/android/media_player_renderer_client_factory.cc",
-    "media/android/media_player_renderer_client_factory.h",
-    "media/android/stream_texture_factory.cc",
-    "media/android/stream_texture_factory.h",
-    "media/android/stream_texture_wrapper_impl.cc",
-    "media/android/stream_texture_wrapper_impl.h",
     "media/audio_decoder.cc",
     "media/audio_decoder.h",
     "media/batching_media_log.cc",
     "media/batching_media_log.h",
+    "media/codec_factory.cc",
+    "media/codec_factory.h",
+    "media/codec_factory_mojo.cc",
+    "media/codec_factory_mojo.h",
     "media/gpu/gpu_video_accelerator_factories_impl.cc",
     "media/gpu/gpu_video_accelerator_factories_impl.h",
     "media/inspector_media_event_handler.cc",
@@ -151,8 +87,6 @@ target(link_target_type, "renderer") {
     "media/media_interface_factory.h",
     "media/media_permission_dispatcher.cc",
     "media/media_permission_dispatcher.h",
-    "media/power_status_helper_impl.cc",
-    "media/power_status_helper_impl.h",
     "media/render_media_client.cc",
     "media/render_media_client.h",
     "media/render_media_event_handler.cc",
@@ -161,65 +95,38 @@ target(link_target_type, "renderer") {
     "media/renderer_webaudiodevice_impl.h",
     "media/renderer_webmediaplayer_delegate.cc",
     "media/renderer_webmediaplayer_delegate.h",
-    "menu_item_builder.cc",
-    "menu_item_builder.h",
     "mhtml_handle_writer.cc",
     "mhtml_handle_writer.h",
     "mojo/blink_interface_registry_impl.cc",
     "mojo/blink_interface_registry_impl.h",
-    "mouse_lock_dispatcher.cc",
-    "mouse_lock_dispatcher.h",
     "navigation_client.cc",
     "navigation_client.h",
     "navigation_state.cc",
     "navigation_state.h",
     "net_info_helper.cc",
     "net_info_helper.h",
-    "peripheral_content_heuristic.cc",
-    "peripheral_content_heuristic.h",
+    "policy_container_util.cc",
+    "policy_container_util.h",
     "render_frame_impl.cc",
     "render_frame_impl.h",
-    "render_frame_metadata_observer_impl.cc",
-    "render_frame_metadata_observer_impl.h",
-    "render_frame_proxy.cc",
-    "render_frame_proxy.h",
     "render_process.cc",
     "render_process.h",
     "render_process_impl.cc",
     "render_process_impl.h",
     "render_thread_impl.cc",
     "render_thread_impl.h",
-    "render_view_impl.cc",
-    "render_view_impl.h",
-    "render_view_linux.cc",
-    "render_view_win.cc",
-    "render_widget.cc",
-    "render_widget.h",
-    "render_widget_delegate.h",
-    "render_widget_mouse_lock_dispatcher.cc",
-    "render_widget_mouse_lock_dispatcher.h",
     "renderer_blink_platform_impl.cc",
     "renderer_blink_platform_impl.h",
     "renderer_main.cc",
     "renderer_main_platform_delegate.h",
-    "renderer_main_platform_delegate_android.cc",
-    "renderer_main_platform_delegate_linux.cc",
-    "renderer_main_platform_delegate_mac.mm",
-    "renderer_main_platform_delegate_win.cc",
     "sad_plugin.cc",
     "sad_plugin.h",
-    "seccomp_sandbox_status_android.cc",
-    "seccomp_sandbox_status_android.h",
     "service_worker/controller_service_worker_connector.cc",
     "service_worker/controller_service_worker_connector.h",
     "service_worker/embedded_worker_instance_client_impl.cc",
     "service_worker/embedded_worker_instance_client_impl.h",
-    "service_worker/navigation_preload_request.cc",
-    "service_worker/navigation_preload_request.h",
     "service_worker/service_worker_context_client.cc",
     "service_worker/service_worker_context_client.h",
-    "service_worker/service_worker_fetch_context_impl.cc",
-    "service_worker/service_worker_fetch_context_impl.h",
     "service_worker/service_worker_network_provider_for_frame.cc",
     "service_worker/service_worker_network_provider_for_frame.h",
     "service_worker/service_worker_provider_context.cc",
@@ -234,14 +141,6 @@ target(link_target_type, "renderer") {
     "skia_benchmarking_extension.h",
     "stats_collection_controller.cc",
     "stats_collection_controller.h",
-    "storage_util.cc",
-    "storage_util.h",
-    "stream_texture_host_android.cc",
-    "stream_texture_host_android.h",
-    "theme_helper_mac.h",
-    "theme_helper_mac.mm",
-    "top_level_blame_context.cc",
-    "top_level_blame_context.h",
     "v8_value_converter_impl.cc",
     "v8_value_converter_impl.h",
     "variations_render_thread_observer.cc",
@@ -264,6 +163,60 @@ target(link_target_type, "renderer") {
     "worker/worker_thread_registry.h",
   ]
 
+  if (is_android) {
+    sources += [
+      "java/gin_java_bridge_dispatcher.cc",
+      "java/gin_java_bridge_dispatcher.h",
+      "java/gin_java_bridge_object.cc",
+      "java/gin_java_bridge_object.h",
+      "java/gin_java_bridge_value_converter.cc",
+      "java/gin_java_bridge_value_converter.h",
+      "java/gin_java_function_invocation_helper.cc",
+      "java/gin_java_function_invocation_helper.h",
+      "media/android/flinging_renderer_client.cc",
+      "media/android/flinging_renderer_client.h",
+      "media/android/flinging_renderer_client_factory.cc",
+      "media/android/flinging_renderer_client_factory.h",
+      "media/android/media_player_renderer_client.cc",
+      "media/android/media_player_renderer_client.h",
+      "media/android/media_player_renderer_client_factory.cc",
+      "media/android/media_player_renderer_client_factory.h",
+      "media/android/stream_texture_factory.cc",
+      "media/android/stream_texture_factory.h",
+      "media/android/stream_texture_wrapper_impl.cc",
+      "media/android/stream_texture_wrapper_impl.h",
+      "renderer_main_platform_delegate_android.cc",
+      "seccomp_sandbox_status_android.cc",
+      "seccomp_sandbox_status_android.h",
+      "stream_texture_host_android.cc",
+      "stream_texture_host_android.h",
+    ]
+  }
+
+  if (is_linux || is_chromeos) {
+    sources += [
+      "renderer_main_platform_delegate_linux.cc",
+      "renderer_thread_type_handler.cc",
+      "renderer_thread_type_handler.h",
+    ]
+  }
+
+  if (is_mac) {
+    sources += [
+      "renderer_main_platform_delegate_mac.mm",
+      "theme_helper_mac.h",
+      "theme_helper_mac.mm",
+    ]
+  }
+
+  if (is_ios) {
+    sources += [ "renderer_main_platform_delegate_ios.mm" ]
+  }
+
+  if (is_win) {
+    sources += [ "renderer_main_platform_delegate_win.cc" ]
+  }
+
   if (enable_cast_renderer) {
     sources += [
       "media/cast_renderer_client_factory.cc",
@@ -271,10 +224,7 @@ target(link_target_type, "renderer") {
     ]
   }
 
-  configs += [
-    "//content:content_implementation",
-    "//build/config/compiler:no_size_t_to_int_warning",
-  ]
+  configs += [ "//content:content_implementation" ]
   defines = []
 
   public_deps = [
@@ -287,6 +237,7 @@ target(link_target_type, "renderer") {
     "//base",
     "//base:i18n",
     "//build:chromecast_buildflags",
+    "//build:chromeos_buildflags",
     "//cc",
     "//cc/animation",
     "//cc/mojo_embedder",
@@ -305,10 +256,12 @@ target(link_target_type, "renderer") {
     "//content/child",
     "//content/common",
     "//content/common:buildflags",
+    "//content/common:main_frame_counter",
     "//content/gpu:gpu_sources",
     "//content/public/child:child_sources",
-    "//content/public/common:service_names",
-    "//crypto:platform",
+    "//content/services/auction_worklet:auction_worklet",
+    "//content/services/shared_storage_worklet",
+    "//crypto",
     "//device/base/synchronization",
     "//device/gamepad/public/cpp:shared_with_blink",
     "//device/gamepad/public/mojom",
@@ -319,7 +272,6 @@ target(link_target_type, "renderer") {
     "//gpu/command_buffer/client:webgpu_interface",
     "//media",
     "//media:media_buildflags",
-    "//media/blink",
     "//media/capture",
     "//media/gpu",
     "//media/gpu/ipc/client",
@@ -344,6 +296,7 @@ target(link_target_type, "renderer") {
     "//services/metrics/public/cpp:metrics_cpp",
     "//services/metrics/public/cpp:ukm_builders",
     "//services/network:network_service",
+    "//services/network/public/mojom",
     "//services/service_manager/public/cpp",
     "//services/service_manager/public/mojom",
     "//services/tracing/public/cpp",
@@ -353,7 +306,8 @@ target(link_target_type, "renderer") {
     "//third_party/blink/public:blink",
     "//third_party/blink/public:buildflags",
     "//third_party/blink/public/common",
-    "//third_party/blink/public/strings:strings_grit",
+    "//third_party/blink/public/platform/media",
+    "//third_party/blink/public/strings:accessibility_strings",
     "//third_party/boringssl",
     "//third_party/icu",
     "//third_party/libyuv",
@@ -362,7 +316,6 @@ target(link_target_type, "renderer") {
     "//ui/accessibility",
     "//ui/base",
     "//ui/base/clipboard",
-    "//ui/base/cursor:cursor_base",
     "//ui/base/dragdrop/mojom:mojom_shared",
     "//ui/base/ime",
     "//ui/display",
@@ -380,30 +333,14 @@ target(link_target_type, "renderer") {
   allow_circular_includes_from = []
 
   if (is_android) {
-    set_sources_assignment_filter([])
-    sources += [
-      # Add back the Linux file which Android shares.
-      "render_view_linux.cc",
-    ]
-    set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
-
     deps += [
+      "//components/power_scheduler",
+
       # Used by Android WebView only.
       "//components/viz/service",
       "//third_party/android_ndk:cpu_features",
       "//third_party/ashmem",
       "//third_party/libphonenumber",
-    ]
-  } else {
-    sources -= [
-      "java/gin_java_bridge_dispatcher.cc",
-      "java/gin_java_bridge_dispatcher.h",
-      "java/gin_java_bridge_object.cc",
-      "java/gin_java_bridge_object.h",
-      "java/gin_java_bridge_value_converter.cc",
-      "java/gin_java_bridge_value_converter.h",
-      "java/gin_java_function_invocation_helper.cc",
-      "java/gin_java_function_invocation_helper.h",
     ]
   }
 
@@ -413,28 +350,44 @@ target(link_target_type, "renderer") {
 
   if (is_fuchsia) {
     sources += [
-      "media/fuchsia_renderer_factory.cc",
-      "media/fuchsia_renderer_factory.h",
-      "render_view_fuchsia.cc",
+      "media/codec_factory_fuchsia.cc",
+      "media/codec_factory_fuchsia.h",
       "renderer_main_platform_delegate_fuchsia.cc",
     ]
+    public_deps += [ "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.mediacodec:fuchsia.mediacodec_hlcpp" ]
 
     deps += [
-      "//media/fuchsia/audio",
-      "//media/fuchsia/cdm/client",
-      "//media/fuchsia/mojom",
+      "//media/fuchsia/video",
       "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
     ]
   }
 
-  if (enable_media_remoting || is_chromecast) {
+  if (enable_cast_receiver) {
+    deps += [
+      "//components/cast_streaming/public",
+      "//components/cast_streaming/renderer:resource_provider",
+      "//components/cast_streaming/renderer:wrapping_renderer_factory_selector",
+    ]
+  }
+
+  # TODO(crbug.com/1293520): Remove this dependency on cast devices.
+  if (enable_media_remoting || is_castos || is_cast_android) {
     deps += [ "//media/mojo/mojom:remoting" ]
 
     if (enable_media_remoting) {
       deps += [ "//media/remoting:remoting_sender" ]
     }
 
-    if (is_chromecast) {
+    if (is_castos || is_cast_android) {
+      if (enable_cast_audio_renderer) {
+        sources += [
+          "media/cast_renderer_factory.cc",
+          "media/cast_renderer_factory.h",
+        ]
+
+        deps += [ "//chromecast/media/audio:audio_renderer" ]
+      }
+
       deps += [
         "//media/remoting:remoting_constants",
         "//media/remoting:remoting_renderer",
@@ -442,7 +395,7 @@ target(link_target_type, "renderer") {
     }
   }
 
-  if (enable_plugins && enable_webrtc) {
+  if (enable_ppapi && enable_webrtc) {
     sources += [
       "pepper/pepper_media_stream_audio_track_host.cc",
       "pepper/pepper_media_stream_audio_track_host.h",
@@ -453,7 +406,7 @@ target(link_target_type, "renderer") {
     ]
   }
 
-  if (enable_plugins) {
+  if (enable_ppapi) {
     sources += [
       "pepper/audio_helper.cc",
       "pepper/audio_helper.h",
@@ -461,8 +414,6 @@ target(link_target_type, "renderer") {
       "pepper/content_renderer_pepper_host_factory.h",
       "pepper/event_conversion.cc",
       "pepper/event_conversion.h",
-      "pepper/fullscreen_container.h",
-      "pepper/gfx_conversion.h",
       "pepper/host_array_buffer_var.cc",
       "pepper/host_array_buffer_var.h",
       "pepper/host_dispatcher_wrapper.cc",
@@ -477,14 +428,10 @@ target(link_target_type, "renderer") {
       "pepper/message_channel.h",
       "pepper/pepper_audio_controller.cc",
       "pepper/pepper_audio_controller.h",
-      "pepper/pepper_audio_encoder_host.cc",
-      "pepper/pepper_audio_encoder_host.h",
       "pepper/pepper_audio_input_host.cc",
       "pepper/pepper_audio_input_host.h",
       "pepper/pepper_audio_output_host.cc",
       "pepper/pepper_audio_output_host.h",
-      "pepper/pepper_broker.cc",
-      "pepper/pepper_broker.h",
       "pepper/pepper_browser_connection.cc",
       "pepper/pepper_browser_connection.h",
       "pepper/pepper_camera_device_host.cc",
@@ -537,24 +484,16 @@ target(link_target_type, "renderer") {
       "pepper/pepper_webplugin_impl.h",
       "pepper/pepper_websocket_host.cc",
       "pepper/pepper_websocket_host.h",
-      "pepper/plugin_instance_throttler_impl.cc",
-      "pepper/plugin_instance_throttler_impl.h",
       "pepper/plugin_module.cc",
       "pepper/plugin_module.h",
       "pepper/plugin_object.cc",
       "pepper/plugin_object.h",
-      "pepper/plugin_power_saver_helper.cc",
-      "pepper/plugin_power_saver_helper.h",
       "pepper/ppapi_preferences_builder.cc",
       "pepper/ppapi_preferences_builder.h",
       "pepper/ppb_audio_impl.cc",
       "pepper/ppb_audio_impl.h",
-      "pepper/ppb_broker_impl.cc",
-      "pepper/ppb_broker_impl.h",
       "pepper/ppb_buffer_impl.cc",
       "pepper/ppb_buffer_impl.h",
-      "pepper/ppb_flash_message_loop_impl.cc",
-      "pepper/ppb_flash_message_loop_impl.h",
       "pepper/ppb_graphics_3d_impl.cc",
       "pepper/ppb_graphics_3d_impl.h",
       "pepper/ppb_image_data_impl.cc",
@@ -584,8 +523,6 @@ target(link_target_type, "renderer") {
       "pepper/video_decoder_shim.h",
       "pepper/video_encoder_shim.cc",
       "pepper/video_encoder_shim.h",
-      "render_widget_fullscreen_pepper.cc",
-      "render_widget_fullscreen_pepper.h",
     ]
 
     deps += [
@@ -596,8 +533,23 @@ target(link_target_type, "renderer") {
       "//printing/mojom",
       "//third_party/libvpx",
       "//third_party/opus",
-      "//ui/base/cursor:cursor_base",
+      "//ui/base/cursor",
       "//ui/base/cursor/mojom:cursor_type",
+    ]
+  }
+
+  if (is_win) {
+    sources += [
+      "media/win/dcomp_texture_factory.cc",
+      "media/win/dcomp_texture_factory.h",
+      "media/win/dcomp_texture_host.cc",
+      "media/win/dcomp_texture_host.h",
+      "media/win/dcomp_texture_wrapper_impl.cc",
+      "media/win/dcomp_texture_wrapper_impl.h",
+      "media/win/overlay_state_observer_impl.cc",
+      "media/win/overlay_state_observer_impl.h",
+      "media/win/overlay_state_service_provider.cc",
+      "media/win/overlay_state_service_provider.h",
     ]
   }
 
@@ -606,16 +558,13 @@ target(link_target_type, "renderer") {
   }
 
   if (is_chromeos) {
-    sources += [
-      "performance_manager/mechanisms/userspace_swap_renderer_initialization_impl.cc",
-      "performance_manager/mechanisms/userspace_swap_renderer_initialization_impl.h",
-    ]
-    deps += [
-      "//chromeos:chromeos_export",
-      "//chromeos/memory/userspace_swap",
-      "//chromeos/memory/userspace_swap:mojom",
-      "//chromeos/system:system",
-    ]
+    deps += [ "//chromeos/system:system" ]
+  }
+  if (is_chromeos_ash) {
+    deps += [ "//chromeos:chromeos_export" ]
+    if (target_cpu == "x64") {
+      deps += [ "//chromeos/ash/components/memory/userspace_swap" ]
+    }
   }
 
   if (use_ozone) {
@@ -631,7 +580,7 @@ target(link_target_type, "renderer") {
 group("for_content_tests") {
   visibility = [
     "//content/test/*",
-    "//content/web_test:web_test_renderer",
+    "//content/web_test:web_test_renderer_public_deps",
   ]
 
   if (!is_component_build) {
@@ -647,4 +596,19 @@ fuzzer_test("audio_decoder_fuzzer") {
     "//content/test:test_support",
   ]
   seed_corpus = "//media/test/data"
+}
+
+fuzzer_test("content_security_policy_util_fuzzer") {
+  sources = [ "content_security_policy_util_fuzzer.cc" ]
+  deps = [
+    "//base",
+    "//content/public/renderer:renderer_sources",
+    "//content/renderer:renderer",
+    "//content/test:test_support",
+    "//services/network:network_service",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+  ]
+  dict = "//testing/libfuzzer/fuzzers/dicts/content_security_policy.dict"
+  seed_corpus = "//testing/libfuzzer/fuzzers/content_security_policy_corpus"
 }

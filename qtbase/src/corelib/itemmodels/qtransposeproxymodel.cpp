@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Luca Beldi <v.ronin@yahoo.it>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Luca Beldi <v.ronin@yahoo.it>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtransposeproxymodel.h"
 #include <private/qtransposeproxymodel_p.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qsize.h>
+#include <QtCore/qmap.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -49,9 +14,8 @@ QModelIndex QTransposeProxyModelPrivate::uncheckedMapToSource(const QModelIndex 
 {
     if (!model || !proxyIndex.isValid())
         return QModelIndex();
-    if (proxyIndex.internalPointer())
-        return model->createIndex(proxyIndex.column(), proxyIndex.row(), proxyIndex.internalPointer());
-    return model->index(proxyIndex.column(), proxyIndex.row());
+    Q_Q(const QTransposeProxyModel);
+    return q->createSourceIndex(proxyIndex.column(), proxyIndex.row(), proxyIndex.internalPointer());
 }
 
 QModelIndex QTransposeProxyModelPrivate::uncheckedMapFromSource(const QModelIndex &sourceIndex) const
@@ -65,9 +29,10 @@ QModelIndex QTransposeProxyModelPrivate::uncheckedMapFromSource(const QModelInde
 void QTransposeProxyModelPrivate::onLayoutChanged(const QList<QPersistentModelIndex> &parents, QAbstractItemModel::LayoutChangeHint hint)
 {
     Q_Q(QTransposeProxyModel);
+    Q_ASSERT(layoutChangeProxyIndexes.size() == layoutChangePersistentIndexes.size());
     QModelIndexList toList;
     toList.reserve(layoutChangePersistentIndexes.size());
-    for (const QPersistentModelIndex &persistIdx : qAsConst(layoutChangePersistentIndexes))
+    for (const QPersistentModelIndex &persistIdx : std::as_const(layoutChangePersistentIndexes))
         toList << q->mapFromSource(persistIdx);
     q->changePersistentIndexList(layoutChangeProxyIndexes, toList);
     layoutChangeProxyIndexes.clear();
@@ -84,9 +49,26 @@ void QTransposeProxyModelPrivate::onLayoutChanged(const QList<QPersistentModelIn
     emit q->layoutChanged(proxyParents, proxyHint);
 }
 
-void QTransposeProxyModelPrivate::onLayoutAboutToBeChanged(const QList<QPersistentModelIndex> &parents, QAbstractItemModel::LayoutChangeHint hint)
+void QTransposeProxyModelPrivate::onLayoutAboutToBeChanged(const QList<QPersistentModelIndex> &sourceParents, QAbstractItemModel::LayoutChangeHint hint)
 {
     Q_Q(QTransposeProxyModel);
+    QList<QPersistentModelIndex> proxyParents;
+    proxyParents.reserve(sourceParents.size());
+    for (const QPersistentModelIndex &parent : sourceParents) {
+        if (!parent.isValid()) {
+            proxyParents << QPersistentModelIndex();
+            continue;
+        }
+        const QModelIndex mappedParent = q->mapFromSource(parent);
+        Q_ASSERT(mappedParent.isValid());
+        proxyParents << mappedParent;
+    }
+    QAbstractItemModel::LayoutChangeHint proxyHint = QAbstractItemModel::NoLayoutChangeHint;
+    if (hint == QAbstractItemModel::VerticalSortHint)
+        proxyHint = QAbstractItemModel::HorizontalSortHint;
+    else if (hint == QAbstractItemModel::HorizontalSortHint)
+        proxyHint = QAbstractItemModel::VerticalSortHint;
+    emit q->layoutAboutToBeChanged(proxyParents, proxyHint);
     const QModelIndexList proxyPersistentIndexes = q->persistentIndexList();
     layoutChangeProxyIndexes.clear();
     layoutChangePersistentIndexes.clear();
@@ -99,19 +81,10 @@ void QTransposeProxyModelPrivate::onLayoutAboutToBeChanged(const QList<QPersiste
         Q_ASSERT(srcPersistentIndex.isValid());
         layoutChangePersistentIndexes << srcPersistentIndex;
     }
-    QList<QPersistentModelIndex> proxyParents;
-    proxyParents.reserve(parents.size());
-    for (auto& srcParent : parents)
-        proxyParents << q->mapFromSource(srcParent);
-    QAbstractItemModel::LayoutChangeHint proxyHint = QAbstractItemModel::NoLayoutChangeHint;
-    if (hint == QAbstractItemModel::VerticalSortHint)
-        proxyHint = QAbstractItemModel::HorizontalSortHint;
-    else if (hint == QAbstractItemModel::HorizontalSortHint)
-        proxyHint = QAbstractItemModel::VerticalSortHint;
-    emit q->layoutAboutToBeChanged(proxyParents, proxyHint);
 }
 
-void QTransposeProxyModelPrivate::onDataChanged(const QModelIndex& topLeft, const QModelIndex& bottomRight, const QVector<int>& roles)
+void QTransposeProxyModelPrivate::onDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                                                const QList<int> &roles)
 {
     Q_Q(QTransposeProxyModel);
     emit q->dataChanged(q->mapFromSource(topLeft), q->mapFromSource(bottomRight), roles);
@@ -162,6 +135,7 @@ void QTransposeProxyModelPrivate::onRowsAboutToBeMoved(const QModelIndex &source
 /*!
     \since 5.13
     \class QTransposeProxyModel
+    \inmodule QtCore
     \brief This proxy transposes the source model.
 
     This model will make the rows of the source model become columns of the proxy model and vice-versa.
@@ -198,14 +172,14 @@ void QTransposeProxyModel::setSourceModel(QAbstractItemModel* newSourceModel)
         return;
     beginResetModel();
     if (d->model) {
-        for (const QMetaObject::Connection& discIter : qAsConst(d->sourceConnections))
+        for (const QMetaObject::Connection& discIter : std::as_const(d->sourceConnections))
             disconnect(discIter);
     }
     d->sourceConnections.clear();
     QAbstractProxyModel::setSourceModel(newSourceModel);
     if (d->model) {
         using namespace std::placeholders;
-        d->sourceConnections = QVector<QMetaObject::Connection>{
+        d->sourceConnections = QList<QMetaObject::Connection>{
             connect(d->model, &QAbstractItemModel::modelAboutToBeReset, this, &QTransposeProxyModel::beginResetModel),
             connect(d->model, &QAbstractItemModel::modelReset, this, &QTransposeProxyModel::endResetModel),
             connect(d->model, &QAbstractItemModel::dataChanged, this, std::bind(&QTransposeProxyModelPrivate::onDataChanged, d, _1, _2, _3)),
@@ -439,8 +413,8 @@ bool QTransposeProxyModel::moveColumns(const QModelIndex &sourceParent, int sour
 */
 void QTransposeProxyModel::sort(int column, Qt::SortOrder order)
 {
-    Q_UNUSED(column)
-    Q_UNUSED(order)
+    Q_UNUSED(column);
+    Q_UNUSED(order);
     return;
 }
 

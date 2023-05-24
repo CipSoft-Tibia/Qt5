@@ -8,6 +8,7 @@
 #include "src/base/optional.h"
 #include "src/codegen/code-stub-assembler.h"
 #include "src/common/message-template.h"
+#include "src/regexp/regexp.h"
 
 namespace v8 {
 namespace internal {
@@ -20,15 +21,14 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
   TNode<Smi> SmiZero();
   TNode<IntPtrT> IntPtrZero();
 
-  TNode<RawPtrT> LoadCodeObjectEntry(TNode<Code> code);
-
-  // Allocate a RegExpResult with the given length (the number of captures,
-  // including the match itself), index (the index where the match starts),
-  // and input string.
+  // Allocate either a JSRegExpResult or a JSRegExpResultWithIndices (depending
+  // on has_indices) with the given length (the number of captures, including
+  // the match itself), index (the index where the match starts), and input
+  // string.
   TNode<JSRegExpResult> AllocateRegExpResult(
       TNode<Context> context, TNode<Smi> length, TNode<Smi> index,
       TNode<String> input, TNode<JSRegExp> regexp, TNode<Number> last_index,
-      TNode<FixedArray>* elements_out = nullptr);
+      TNode<BoolT> has_indices, TNode<FixedArray>* elements_out = nullptr);
 
   TNode<Object> FastLoadLastIndexBeforeSmiCheck(TNode<JSRegExp> regexp);
   TNode<Smi> FastLoadLastIndex(TNode<JSRegExp> regexp) {
@@ -50,11 +50,10 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
                          TVariable<RawPtrT>* var_string_end);
 
   // Low level logic around the actual call into pattern matching code.
-  TNode<HeapObject> RegExpExecInternal(TNode<Context> context,
-                                       TNode<JSRegExp> regexp,
-                                       TNode<String> string,
-                                       TNode<Number> last_index,
-                                       TNode<RegExpMatchInfo> match_info);
+  TNode<HeapObject> RegExpExecInternal(
+      TNode<Context> context, TNode<JSRegExp> regexp, TNode<String> string,
+      TNode<Number> last_index, TNode<RegExpMatchInfo> match_info,
+      RegExp::ExecQuirks exec_quirks = RegExp::ExecQuirks::kNone);
 
   TNode<JSRegExpResult> ConstructNewResultFromMatchInfo(
       TNode<Context> context, TNode<JSRegExp> regexp,
@@ -97,6 +96,14 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
       base::Optional<DescriptorIndexNameValue> additional_property_to_check,
       Label* if_isunmodified, Label* if_ismodified);
 
+  void BranchIfFastRegExpForSearch(TNode<Context> context,
+                                   TNode<HeapObject> object,
+                                   Label* if_isunmodified,
+                                   Label* if_ismodified);
+  void BranchIfFastRegExpForMatch(TNode<Context> context,
+                                  TNode<HeapObject> object,
+                                  Label* if_isunmodified, Label* if_ismodified);
+
   // Strict: Does not tolerate any changes to the prototype map.
   // Permissive: Allows changes to the prototype map except for the exec
   //             property.
@@ -128,6 +135,9 @@ class RegExpBuiltinsAssembler : public CodeStubAssembler {
   }
   TNode<BoolT> FastFlagGetterUnicode(TNode<JSRegExp> regexp) {
     return FastFlagGetter(regexp, JSRegExp::kUnicode);
+  }
+  TNode<BoolT> FastFlagGetterUnicodeSets(TNode<JSRegExp> regexp) {
+    return FastFlagGetter(regexp, JSRegExp::kUnicodeSets);
   }
   TNode<BoolT> SlowFlagGetter(TNode<Context> context, TNode<Object> regexp,
                               JSRegExp::Flag flag);

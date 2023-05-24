@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,10 @@
 #include <stdint.h>
 #include <string>
 
+#include "base/time/time.h"
 #include "media/base/container_names.h"
 #include "media/base/pipeline_status.h"
+#include "media/base/renderer_factory_selector.h"
 #include "media/base/timestamp_constants.h"
 #include "media/learning/common/learning_session.h"
 #include "media/learning/common/value.h"
@@ -18,6 +20,7 @@
 #include "media/mojo/services/video_decode_perf_history.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace media {
@@ -44,13 +47,20 @@ class MEDIA_MOJO_EXPORT MediaMetricsProvider
   using GetRecordAggregateWatchTimeCallback =
       base::RepeatingCallback<RecordAggregateWatchTimeCallback(void)>;
 
+  using IsShuttingDownCallback = base::RepeatingCallback<bool(void)>;
+
   MediaMetricsProvider(BrowsingMode is_incognito,
                        FrameStatus is_top_frame,
                        ukm::SourceId source_id,
                        learning::FeatureValue origin,
                        VideoDecodePerfHistory::SaveCallback save_cb,
                        GetLearningSessionCallback learning_session_cb,
-                       RecordAggregateWatchTimeCallback record_playback_cb);
+                       RecordAggregateWatchTimeCallback record_playback_cb,
+                       IsShuttingDownCallback is_shutting_down_cb);
+
+  MediaMetricsProvider(const MediaMetricsProvider&) = delete;
+  MediaMetricsProvider& operator=(const MediaMetricsProvider&) = delete;
+
   ~MediaMetricsProvider() override;
 
   // Callback for retrieving a ukm::SourceId.
@@ -67,24 +77,20 @@ class MEDIA_MOJO_EXPORT MediaMetricsProvider
 
   // Creates a MediaMetricsProvider, |perf_history| may be nullptr if perf
   // history database recording is disabled.
-  //
-  // |get_source_id_cb| and |get_origin_cb| may not be run after this function
-  // returns.  The intention is that they'll be run to produce the constructor
-  // arguments for MediaMetricsProvider synchronously.  They should not be
-  // copied or moved for later.
   static void Create(
       BrowsingMode is_incognito,
       FrameStatus is_top_frame,
-      GetSourceIdCallback get_source_id_cb,
-      GetOriginCallback get_origin_cb,
+      ukm::SourceId source_id,
+      learning::FeatureValue origin,
       VideoDecodePerfHistory::SaveCallback save_cb,
       GetLearningSessionCallback learning_session_cb,
       GetRecordAggregateWatchTimeCallback get_record_playback_cb,
+      IsShuttingDownCallback is_shutting_down_cb,
       mojo::PendingReceiver<mojom::MediaMetricsProvider> receiver);
 
  private:
   struct PipelineInfo {
-    PipelineInfo(bool is_incognito);
+    explicit PipelineInfo(bool is_incognito);
     ~PipelineInfo();
     bool is_incognito;
     bool has_ever_played = false;
@@ -93,19 +99,31 @@ class MEDIA_MOJO_EXPORT MediaMetricsProvider
     bool has_video = false;
     bool is_eme = false;
     bool video_decoder_changed = false;
-    AudioCodec audio_codec;
-    VideoCodec video_codec;
-    PipelineDecoderInfo video_pipeline_info;
-    PipelineDecoderInfo audio_pipeline_info;
-    PipelineStatus last_pipeline_status = PIPELINE_OK;
+    AudioCodec audio_codec = AudioCodec::kUnknown;
+    VideoCodec video_codec = VideoCodec::kUnknown;
+    VideoPipelineInfo video_pipeline_info;
+    AudioPipelineInfo audio_pipeline_info;
+    PipelineStatusCodes last_pipeline_status = PIPELINE_OK;
+  };
+
+  struct MediaInfo {
+    const bool is_mse;
+    const mojom::MediaURLScheme url_scheme;
+    const mojom::MediaStreamType media_stream_type;
   };
 
   // mojom::MediaMetricsProvider implementation:
-  void Initialize(bool is_mse, mojom::MediaURLScheme url_scheme) override;
-  void OnError(PipelineStatus status) override;
-  void SetAudioPipelineInfo(const PipelineDecoderInfo& info) override;
+  void Initialize(bool is_mse,
+                  mojom::MediaURLScheme url_scheme,
+                  mojom::MediaStreamType media_stream_type) override;
+  void OnError(const PipelineStatus& status) override;
+  void OnFallback(const PipelineStatus& status) override;
+  void SetAudioPipelineInfo(const AudioPipelineInfo& info) override;
   void SetContainerName(
       container_names::MediaContainerName container_name) override;
+  void SetRendererType(RendererType renderer_type) override;
+  void SetKeySystem(const std::string& key_system) override;
+  void SetIsHardwareSecure() override;
   void SetHasAudio(AudioCodec audio_codec) override;
   void SetHasPlayed() override;
   void SetHasVideo(VideoCodec video_codec) override;
@@ -114,7 +132,7 @@ class MEDIA_MOJO_EXPORT MediaMetricsProvider
   void SetTimeToMetadata(base::TimeDelta elapsed) override;
   void SetTimeToFirstFrame(base::TimeDelta elapsed) override;
   void SetTimeToPlayReady(base::TimeDelta elapsed) override;
-  void SetVideoPipelineInfo(const PipelineDecoderInfo& info) override;
+  void SetVideoPipelineInfo(const VideoPipelineInfo& info) override;
 
   void AcquireWatchTimeRecorder(
       mojom::PlaybackPropertiesPtr properties,
@@ -131,6 +149,8 @@ class MEDIA_MOJO_EXPORT MediaMetricsProvider
   void ReportPipelineUMA();
   std::string GetUMANameForAVStream(const PipelineInfo& player_info);
 
+  bool IsInitialized() const;
+
   // Session unique ID which maps to a given WebMediaPlayerImpl instances. Used
   // to coordinate multiply logged events with a singly logged metric.
   const uint64_t player_id_;
@@ -144,22 +164,23 @@ class MEDIA_MOJO_EXPORT MediaMetricsProvider
   const VideoDecodePerfHistory::SaveCallback save_cb_;
   const GetLearningSessionCallback learning_session_cb_;
   const RecordAggregateWatchTimeCallback record_playback_cb_;
+  const IsShuttingDownCallback is_shutting_down_cb_;
 
   // UMA pipeline packaged data
   PipelineInfo uma_info_;
 
-  // The values below are only set if |initialized_| is true.
-  bool initialized_ = false;
-  bool is_mse_;
-  mojom::MediaURLScheme url_scheme_;
+  // The values below are only set if `Initialize` has been called.
+  absl::optional<MediaInfo> media_info_;
+
+  RendererType renderer_type_ = RendererType::kRendererImpl;
+  std::string key_system_;
+  bool is_hardware_secure_ = false;
 
   base::TimeDelta time_to_metadata_ = kNoTimestamp;
   base::TimeDelta time_to_first_frame_ = kNoTimestamp;
   base::TimeDelta time_to_play_ready_ = kNoTimestamp;
 
-  base::Optional<container_names::MediaContainerName> container_name_;
-
-  DISALLOW_COPY_AND_ASSIGN(MediaMetricsProvider);
+  absl::optional<container_names::MediaContainerName> container_name_;
 };
 
 }  // namespace media

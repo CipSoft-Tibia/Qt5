@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "default_extensionfactory.h"
 #include "qextensionmanager.h"
@@ -78,7 +53,7 @@ QT_BEGIN_NAMESPACE
     For a complete example using the QExtensionFactory class, see the
     \l {taskmenuextension}{Task Menu Extension example}. The
     example shows how to create a custom widget plugin for Qt
-    Designer, and how to to use the QDesignerTaskMenuExtension class
+    Designer, and how to use the QDesignerTaskMenuExtension class
     to add custom items to Qt Designer's task menu.
 
     \sa QExtensionManager, QAbstractExtensionFactory
@@ -102,9 +77,9 @@ QObject *QExtensionFactory::extension(QObject *object, const QString &iid) const
 {
     if (!object)
         return nullptr;
-    const IdObjectKey key = qMakePair(iid, object);
+    const auto key = qMakePair(iid, object);
 
-    ExtensionMap::iterator it = m_extensions.find(key);
+    auto it = m_extensions.find(key);
     if (it == m_extensions.end()) {
         if (QObject *ext = createExtension(object, iid, const_cast<QExtensionFactory*>(this))) {
             connect(ext, &QObject::destroyed, this, &QExtensionFactory::objectDestroyed);

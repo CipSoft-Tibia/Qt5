@@ -1,10 +1,12 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "core/fxge/dib/cfx_imagerenderer.h"
+
+#include <math.h>
 
 #include <memory>
 
@@ -44,18 +46,18 @@ CFX_ImageRenderer::CFX_ImageRenderer(const RetainPtr<CFX_DIBitmap>& pDevice,
       int dest_height = image_rect.Height();
       FX_RECT bitmap_clip = m_ClipBox;
       bitmap_clip.Offset(-image_rect.left, -image_rect.top);
-      bitmap_clip = FXDIB_SwapClipBox(bitmap_clip, dest_width, dest_height,
-                                      m_Matrix.c > 0, m_Matrix.b < 0);
+      bitmap_clip = bitmap_clip.SwappedClipBox(dest_width, dest_height,
+                                               m_Matrix.c > 0, m_Matrix.b < 0);
       m_Composer.Compose(pDevice, pClipRgn, bitmap_alpha, mask_color, m_ClipBox,
                          true, m_Matrix.c > 0, m_Matrix.b < 0, m_bRgbByteOrder,
                          BlendMode::kNormal);
       m_Stretcher = std::make_unique<CFX_ImageStretcher>(
           &m_Composer, pSource, dest_height, dest_width, bitmap_clip, options);
       if (m_Stretcher->Start())
-        m_Status = 1;
+        m_State = State::kStretching;
       return;
     }
-    m_Status = 2;
+    m_State = State::kTransforming;
     m_pTransformer = std::make_unique<CFX_ImageTransformer>(
         pSource, m_Matrix, options, &m_ClipBox);
     return;
@@ -76,7 +78,7 @@ CFX_ImageRenderer::CFX_ImageRenderer(const RetainPtr<CFX_DIBitmap>& pDevice,
   bitmap_clip.Offset(-image_rect.left, -image_rect.top);
   m_Composer.Compose(pDevice, pClipRgn, bitmap_alpha, mask_color, m_ClipBox,
                      false, false, false, m_bRgbByteOrder, BlendMode::kNormal);
-  m_Status = 1;
+  m_State = State::kStretching;
   m_Stretcher = std::make_unique<CFX_ImageStretcher>(
       &m_Composer, pSource, dest_width, dest_height, bitmap_clip, options);
   m_Stretcher->Start();
@@ -85,31 +87,31 @@ CFX_ImageRenderer::CFX_ImageRenderer(const RetainPtr<CFX_DIBitmap>& pDevice,
 CFX_ImageRenderer::~CFX_ImageRenderer() = default;
 
 bool CFX_ImageRenderer::Continue(PauseIndicatorIface* pPause) {
-  if (m_Status == 1)
+  if (m_State == State::kStretching)
     return m_Stretcher->Continue(pPause);
-  if (m_Status != 2)
+  if (m_State != State::kTransforming)
     return false;
   if (m_pTransformer->Continue(pPause))
     return true;
 
   RetainPtr<CFX_DIBitmap> pBitmap = m_pTransformer->DetachBitmap();
-  if (!pBitmap || !pBitmap->GetBuffer())
+  if (!pBitmap || pBitmap->GetBuffer().empty())
     return false;
 
-  if (pBitmap->IsAlphaMask()) {
+  if (pBitmap->IsMaskFormat()) {
     if (m_BitmapAlpha != 255)
       m_MaskColor = FXARGB_MUL_ALPHA(m_MaskColor, m_BitmapAlpha);
-    m_pDevice->CompositeMask(
-        m_pTransformer->result().left, m_pTransformer->result().top,
-        pBitmap->GetWidth(), pBitmap->GetHeight(), pBitmap, m_MaskColor, 0, 0,
-        BlendMode::kNormal, m_pClipRgn.Get(), m_bRgbByteOrder);
+    m_pDevice->CompositeMask(m_pTransformer->result().left,
+                             m_pTransformer->result().top, pBitmap->GetWidth(),
+                             pBitmap->GetHeight(), pBitmap, m_MaskColor, 0, 0,
+                             BlendMode::kNormal, m_pClipRgn, m_bRgbByteOrder);
   } else {
     if (m_BitmapAlpha != 255)
       pBitmap->MultiplyAlpha(m_BitmapAlpha);
     m_pDevice->CompositeBitmap(
         m_pTransformer->result().left, m_pTransformer->result().top,
         pBitmap->GetWidth(), pBitmap->GetHeight(), pBitmap, 0, 0,
-        BlendMode::kNormal, m_pClipRgn.Get(), m_bRgbByteOrder);
+        BlendMode::kNormal, m_pClipRgn, m_bRgbByteOrder);
   }
   return false;
 }

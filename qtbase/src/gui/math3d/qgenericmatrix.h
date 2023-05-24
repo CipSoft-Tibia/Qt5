@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGENERICMATRIX_H
 #define QGENERICMATRIX_H
@@ -64,7 +28,7 @@ public:
 
     void fill(T value);
 
-    Q_REQUIRED_RESULT QGenericMatrix<M, N, T> transposed() const;
+    [[nodiscard]] QGenericMatrix<M, N, T> transposed() const;
 
     QGenericMatrix<N, M, T>& operator+=(const QGenericMatrix<N, M, T>& other);
     QGenericMatrix<N, M, T>& operator-=(const QGenericMatrix<N, M, T>& other);
@@ -79,7 +43,6 @@ public:
     const T *data() const { return *m; }
     const T *constData() const { return *m; }
 
-#if !defined(Q_NO_TEMPLATE_FRIENDS)
     template<int NN, int MM, typename TT>
     friend QGenericMatrix<NN, MM, TT> operator+(const QGenericMatrix<NN, MM, TT>& m1, const QGenericMatrix<NN, MM, TT>& m2);
     template<int NN, int MM, typename TT>
@@ -96,24 +59,15 @@ public:
     friend QGenericMatrix<NN, MM, TT> operator/(const QGenericMatrix<NN, MM, TT>& matrix, TT divisor);
 
 private:
-#endif
     T m[N][M];    // Column-major order to match OpenGL.
 
-#if !defined(Q_NO_TEMPLATE_FRIENDS)
     template <int NN, int MM, typename TT>
     friend class QGenericMatrix;
-#endif
 };
 template <int N, int M, typename T>
 class QTypeInfo<QGenericMatrix<N, M, T> >
     : public QTypeInfoMerger<QGenericMatrix<N, M, T>, T>
 {
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-public:
-    enum {
-        isStatic = true,
-    }; // at least Q_RELOCATABLE_TYPE, for BC during Qt 5
-#endif
 };
 
 template <int N, int M, typename T>
@@ -220,9 +174,7 @@ Q_OUTOFLINE_TEMPLATE QGenericMatrix<N, M, T>& QGenericMatrix<N, M, T>::operator*
 }
 
 QT_WARNING_PUSH
-QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
-QT_WARNING_DISABLE_GCC("-Wfloat-equal")
-QT_WARNING_DISABLE_INTEL(1572)
+QT_WARNING_DISABLE_FLOAT_COMPARE
 
 template <int N, int M, typename T>
 Q_OUTOFLINE_TEMPLATE bool QGenericMatrix<N, M, T>::operator==(const QGenericMatrix<N, M, T>& other) const
@@ -352,7 +304,7 @@ QDebug operator<<(QDebug dbg, const QGenericMatrix<N, M, T> &m)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace() << "QGenericMatrix<" << N << ", " << M
-        << ", " << QTypeInfo<T>::name()
+        << ", " << QMetaType::fromType<T>().name()
         << ">(" << Qt::endl << qSetFieldWidth(10);
     for (int row = 0; row < M; ++row) {
         for (int col = 0; col < N; ++col)
@@ -393,13 +345,13 @@ QDataStream &operator>>(QDataStream &stream, QGenericMatrix<N, M, T> &matrix)
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QMatrix2x2)
-Q_DECLARE_METATYPE(QMatrix2x3)
-Q_DECLARE_METATYPE(QMatrix2x4)
-Q_DECLARE_METATYPE(QMatrix3x2)
-Q_DECLARE_METATYPE(QMatrix3x3)
-Q_DECLARE_METATYPE(QMatrix3x4)
-Q_DECLARE_METATYPE(QMatrix4x2)
-Q_DECLARE_METATYPE(QMatrix4x3)
+QT_DECL_METATYPE_EXTERN(QMatrix2x2, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix2x3, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix2x4, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix3x2, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix3x3, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix3x4, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix4x2, Q_GUI_EXPORT)
+QT_DECL_METATYPE_EXTERN(QMatrix4x3, Q_GUI_EXPORT)
 
 #endif

@@ -1,21 +1,26 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_BASE_CDM_CONTEXT_H_
 #define MEDIA_BASE_CDM_CONTEXT_H_
 
-#include "base/callback.h"
-#include "base/macros.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/unguessable_token.h"
 #include "build/build_config.h"
 #include "media/base/media_export.h"
 #include "media/media_buildflags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-#if defined(OS_WIN)
-#include <wrl/client.h>
-struct IMFCdmProxy;
+#if BUILDFLAG(IS_WIN)
+#include "media/base/win/media_foundation_cdm_proxy.h"
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+namespace chromeos {
+class ChromeOsCdmContext;
+}
 #endif
 
 namespace media {
@@ -24,7 +29,7 @@ class CallbackRegistration;
 class Decryptor;
 class MediaCryptoContext;
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
 class FuchsiaCdmContext;
 #endif
 
@@ -49,11 +54,14 @@ class MEDIA_EXPORT CdmContext {
 
     // A hardware reset happened. Some hardware context, e.g. hardware decoder
     // context may be lost.
-    kHardwareContextLost,
+    kHardwareContextReset,
   };
 
   // Callback to notify the occurrence of an Event.
   using EventCB = base::RepeatingCallback<void(Event)>;
+
+  CdmContext(const CdmContext&) = delete;
+  CdmContext& operator=(const CdmContext&) = delete;
 
   virtual ~CdmContext();
 
@@ -69,8 +77,9 @@ class MEDIA_EXPORT CdmContext {
   // CallbackRegistration object can be destructed on any thread.
   // - Thread Model: Can be called on any thread. The registered callback will
   // always be called on the thread where RegisterEventCB() is called.
-  // - TODO(xhwang): Not using base::CallbackList because it is not thread-
-  // safe. Consider refactoring base::CallbackList to avoid code duplication.
+  // - TODO(xhwang): Not using base::RepeatingCallbackList because it is not
+  // thread- safe. Consider refactoring base::RepeatingCallbackList to avoid
+  // code duplication.
   virtual std::unique_ptr<CallbackRegistration> RegisterEventCB(
       EventCB event_cb);
 
@@ -79,47 +88,44 @@ class MEDIA_EXPORT CdmContext {
   // occurs implicitly along with decoding).
   virtual Decryptor* GetDecryptor();
 
-  // Returns whether the CDM requires Media Foundation-based media Renderer.
-  // Should only return true on Windows.
-  virtual bool RequiresMediaFoundationRenderer();
-
   // Returns an ID that can be used to find a remote CDM, in which case this CDM
-  // serves as a proxy to the remote one. Returns base::nullopt when remote CDM
+  // serves as a proxy to the remote one. Returns absl::nullopt when remote CDM
   // is not supported (e.g. this CDM is a local CDM).
-  virtual base::Optional<base::UnguessableToken> GetCdmId() const;
+  virtual absl::optional<base::UnguessableToken> GetCdmId() const;
 
   static std::string CdmIdToString(const base::UnguessableToken* cdm_id);
 
-#if defined(OS_WIN)
-  using GetMediaFoundationCdmProxyCB =
-      base::OnceCallback<void(Microsoft::WRL::ComPtr<IMFCdmProxy>)>;
-  // This allows a CdmContext to expose an IMFTrustedInput instance for use in
-  // a Media Foundation rendering pipeline. This method is asynchronous because
-  // the underlying MF-based CDM might not have a native session created yet.
-  // When the return value is true, the callback might also not be invoked
-  // if the application has never caused the MF-based CDM to create its
-  // native session.
-  // NOTE: the callback should always be fired asynchronously.
-  virtual bool GetMediaFoundationCdmProxy(
-      GetMediaFoundationCdmProxyCB get_mf_cdm_proxy_cb);
+#if BUILDFLAG(IS_WIN)
+  // Returns whether the CDM requires Media Foundation-based media Renderer.
+  // This is separate from GetMediaFoundationCdmProxy() since it needs to be
+  // a sync call called in the render process to setup the media pipeline.
+  virtual bool RequiresMediaFoundationRenderer();
+
+  // Returns a MediaFoundationCdmProxy to expose an IMFTrustedInput instance for
+  // use in a Media Foundation rendering pipeline. Returns nullptr if the CDM is
+  // in an invalid state or if MediaFoundationCdmProxy is not available.
+  virtual scoped_refptr<MediaFoundationCdmProxy> GetMediaFoundationCdmProxy();
 #endif
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Returns a MediaCryptoContext that can be used by MediaCodec based decoders.
   virtual MediaCryptoContext* GetMediaCryptoContext();
 #endif
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   // Returns FuchsiaCdmContext interface when the context is backed by Fuchsia
   // CDM. Otherwise returns nullptr.
   virtual FuchsiaCdmContext* GetFuchsiaCdmContext();
 #endif
 
+#if BUILDFLAG(IS_CHROMEOS)
+  // Returns a ChromeOsCdmContext interface when the context is backed by the
+  // ChromeOS CdmFactoryDaemon. Otherwise return nullptr.
+  virtual chromeos::ChromeOsCdmContext* GetChromeOsCdmContext();
+#endif
+
  protected:
   CdmContext();
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(CdmContext);
 };
 
 // A reference holder to make sure the CdmContext is always valid as long as

@@ -26,9 +26,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_RESOURCE_CSS_STYLE_SHEET_RESOURCE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_RESOURCE_CSS_STYLE_SHEET_RESOURCE_H_
 
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/loader/resource/text_resource.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/text_resource_decoder_options.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
 
@@ -82,11 +83,11 @@ class CORE_EXPORT CSSStyleSheetResource final : public TextResource {
   };
 
   bool CanUseSheet(const CSSParserContext*, MIMETypeCheck) const;
-  void NotifyFinished() override;
 
   void SetParsedStyleSheetCache(StyleSheetContents*);
   void SetDecodedSheetText(const String&);
 
+  void NotifyFinished() override;
   void DestroyDecodedDataIfPossible() override;
   void DestroyDecodedDataForFailedRevalidation() override;
   void UpdateDecodedSize();
@@ -98,8 +99,13 @@ class CORE_EXPORT CSSStyleSheetResource final : public TextResource {
   Member<StyleSheetContents> parsed_style_sheet_cache_;
 };
 
-DEFINE_RESOURCE_TYPE_CASTS(CSSStyleSheet);
+template <>
+struct DowncastTraits<CSSStyleSheetResource> {
+  static bool AllowFrom(const Resource& resource) {
+    return resource.GetType() == ResourceType::kCSSStyleSheet;
+  }
+};
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_RESOURCE_CSS_STYLE_SHEET_RESOURCE_H_

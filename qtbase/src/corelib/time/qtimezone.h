@@ -1,53 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2013 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTIMEZONE_H
 #define QTIMEZONE_H
 
-#include <QtCore/qshareddata.h>
-#include <QtCore/qlocale.h>
 #include <QtCore/qdatetime.h>
+#include <QtCore/qlocale.h>
+#include <QtCore/qswap.h>
+#include <QtCore/qtclasshelpermacros.h>
 
-QT_REQUIRE_CONFIG(timezone);
+#include <chrono>
 
-#if (defined(Q_OS_DARWIN) || defined(Q_QDOC)) && !defined(QT_NO_SYSTEMLOCALE)
+#if QT_CONFIG(timezone) && (defined(Q_OS_DARWIN) || defined(Q_QDOC)) && !defined(QT_NO_SYSTEMLOCALE)
 Q_FORWARD_DECLARE_CF_TYPE(CFTimeZone);
 Q_FORWARD_DECLARE_OBJC_CLASS(NSTimeZone);
 #endif
@@ -58,14 +23,123 @@ class QTimeZonePrivate;
 
 class Q_CORE_EXPORT QTimeZone
 {
-public:
-    // Sane UTC offsets range from -14 to +14 hours:
-    enum {
-        // No known zone > 12 hrs West of Greenwich (Baker Island, USA)
-        MinUtcOffsetSecs = -14 * 3600,
-        // No known zone > 14 hrs East of Greenwich (Kiritimati, Christmas Island, Kiribati)
-        MaxUtcOffsetSecs = +14 * 3600
+    struct ShortData
+    {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        quintptr mode : 2;
+#endif
+        qintptr offset : sizeof(void *) * 8 - 2;
+
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
+        quintptr mode : 2;
+#endif
+
+        // mode is a cycled Qt::TimeSpec, (int(spec) + 1) % 4, so that zero
+        // (lowest bits of a pointer) matches spec being Qt::TimeZone, for which
+        // Data holds a QTZP pointer instead of ShortData.
+        // Passing Qt::TimeZone gets the equivalent of a null QTZP; it is not short.
+        constexpr ShortData(Qt::TimeSpec spec, int secondsAhead = 0)
+#if Q_BYTE_ORDER == Q_BIG_ENDIAN
+            : offset(spec == Qt::OffsetFromUTC ? secondsAhead : 0),
+              mode((int(spec) + 1) & 3)
+#else
+            : mode((int(spec) + 1) & 3),
+              offset(spec == Qt::OffsetFromUTC ? secondsAhead : 0)
+#endif
+        {
+        }
+        friend constexpr bool operator==(const ShortData &lhs, const ShortData &rhs)
+        { return lhs.mode == rhs.mode && lhs.offset == rhs.offset; }
+        constexpr Qt::TimeSpec spec() const { return Qt::TimeSpec((mode + 3) & 3); }
     };
+
+    union Data
+    {
+        Data() noexcept;
+        Data(ShortData sd) : s(sd) {}
+        Data(const Data &other) noexcept;
+        Data(Data &&other) noexcept : d(std::exchange(other.d, nullptr)) {}
+        Data &operator=(const Data &other) noexcept;
+        Data &operator=(Data &&other) noexcept { swap(other); return *this; }
+        ~Data();
+
+        void swap(Data &other) noexcept { qt_ptr_swap(d, other.d); }
+        // isShort() is equivalent to s.spec() != Qt::TimeZone
+        bool isShort() const { return s.mode; } // a.k.a. quintptr(d) & 3
+
+        // Typse must support: out << wrap("C-strings");
+        template <typename Stream, typename Wrap>
+        void serialize(Stream &out, const Wrap &wrap) const;
+
+        Data(QTimeZonePrivate *dptr) noexcept;
+        Data &operator=(QTimeZonePrivate *dptr) noexcept;
+        const QTimeZonePrivate *operator->() const { Q_ASSERT(!isShort()); return d; }
+        QTimeZonePrivate *operator->() { Q_ASSERT(!isShort()); return d; }
+
+        QTimeZonePrivate *d = nullptr;
+        ShortData s;
+    };
+    QTimeZone(ShortData sd) : d(sd) {}
+
+public:
+    // Sane UTC offsets range from -16 to +16 hours:
+    static constexpr int MinUtcOffsetSecs = -16 * 3600;
+    // No known modern zone > 12 hrs West of Greenwich.
+    // Until 1844, Asia/Manila (in The Philippines) was at 15:56 West.
+    static constexpr int MaxUtcOffsetSecs = +16 * 3600;
+    // No known modern zone > 14 hrs East of Greenwich.
+    // Until 1867, America/Metlakatla (in Alaska) was at 15:13:42 East.
+
+    enum Initialization { LocalTime, UTC };
+
+    QTimeZone() noexcept;
+    Q_IMPLICIT QTimeZone(Initialization spec) noexcept
+        : d(ShortData(spec == UTC ? Qt::UTC : Qt::LocalTime)) {}
+
+#if QT_CONFIG(timezone)
+    explicit QTimeZone(int offsetSeconds);
+    explicit QTimeZone(const QByteArray &ianaId);
+    QTimeZone(const QByteArray &zoneId, int offsetSeconds, const QString &name,
+              const QString &abbreviation, QLocale::Territory territory = QLocale::AnyTerritory,
+              const QString &comment = QString());
+#endif // timezone backends
+
+    QTimeZone(const QTimeZone &other) noexcept;
+    QTimeZone(QTimeZone &&other) noexcept : d(std::move(other.d)) {}
+    ~QTimeZone();
+
+    QTimeZone &operator=(const QTimeZone &other);
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QTimeZone)
+
+    void swap(QTimeZone &other) noexcept
+    { d.swap(other.d); }
+
+    bool operator==(const QTimeZone &other) const;
+    bool operator!=(const QTimeZone &other) const;
+
+    bool isValid() const;
+
+    static QTimeZone fromDurationAheadOfUtc(std::chrono::seconds offset)
+    {
+        return QTimeZone((offset.count() >= MinUtcOffsetSecs && offset.count() <= MaxUtcOffsetSecs)
+                         ? ShortData(offset.count() ? Qt::OffsetFromUTC : Qt::UTC,
+                                     int(offset.count()))
+                         : ShortData(Qt::TimeZone));
+    }
+    static QTimeZone fromSecondsAheadOfUtc(int offset)
+    {
+        return fromDurationAheadOfUtc(std::chrono::seconds{offset});;
+    }
+    constexpr Qt::TimeSpec timeSpec() const noexcept { return d.s.spec(); }
+    constexpr int fixedSecondsAheadOfUtc() const noexcept
+    { return timeSpec() == Qt::OffsetFromUTC ? int(d.s.offset) : 0; }
+
+    static constexpr bool isUtcOrFixedOffset(Qt::TimeSpec spec) noexcept
+    { return spec == Qt::UTC || spec == Qt::OffsetFromUTC; }
+    constexpr bool isUtcOrFixedOffset() const noexcept { return isUtcOrFixedOffset(timeSpec()); }
+
+#if QT_CONFIG(timezone)
+    QTimeZone asBackendZone() const;
 
     enum TimeType {
         StandardTime = 0,
@@ -87,30 +161,14 @@ public:
         int standardTimeOffset;
         int daylightTimeOffset;
     };
-    typedef QVector<OffsetData> OffsetDataList;
-
-    QTimeZone() noexcept;
-    explicit QTimeZone(const QByteArray &ianaId);
-    explicit QTimeZone(int offsetSeconds);
-    /*implicit*/ QTimeZone(const QByteArray &zoneId, int offsetSeconds, const QString &name,
-              const QString &abbreviation, QLocale::Country country = QLocale::AnyCountry,
-              const QString &comment = QString());
-    QTimeZone(const QTimeZone &other);
-    ~QTimeZone();
-
-    QTimeZone &operator=(const QTimeZone &other);
-    QTimeZone &operator=(QTimeZone &&other) noexcept { swap(other); return *this; }
-
-    void swap(QTimeZone &other) noexcept
-    { d.swap(other.d); }
-
-    bool operator==(const QTimeZone &other) const;
-    bool operator!=(const QTimeZone &other) const;
-
-    bool isValid() const;
+    typedef QList<OffsetData> OffsetDataList;
 
     QByteArray id() const;
+    QLocale::Territory territory() const;
+#  if QT_DEPRECATED_SINCE(6, 6)
+    QT_DEPRECATED_VERSION_X_6_6("Use territory() instead")
     QLocale::Country country() const;
+#  endif
     QString comment() const;
 
     QString displayName(const QDateTime &atDateTime,
@@ -142,36 +200,52 @@ public:
     static bool isTimeZoneIdAvailable(const QByteArray &ianaId);
 
     static QList<QByteArray> availableTimeZoneIds();
-    static QList<QByteArray> availableTimeZoneIds(QLocale::Country country);
+    static QList<QByteArray> availableTimeZoneIds(QLocale::Territory territory);
     static QList<QByteArray> availableTimeZoneIds(int offsetSeconds);
 
     static QByteArray ianaIdToWindowsId(const QByteArray &ianaId);
     static QByteArray windowsIdToDefaultIanaId(const QByteArray &windowsId);
     static QByteArray windowsIdToDefaultIanaId(const QByteArray &windowsId,
-                                                QLocale::Country country);
+                                               QLocale::Territory territory);
     static QList<QByteArray> windowsIdToIanaIds(const QByteArray &windowsId);
     static QList<QByteArray> windowsIdToIanaIds(const QByteArray &windowsId,
-                                                 QLocale::Country country);
+                                                QLocale::Territory territory);
 
-#if (defined(Q_OS_DARWIN) || defined(Q_QDOC)) && !defined(QT_NO_SYSTEMLOCALE)
+#  if (defined(Q_OS_DARWIN) || defined(Q_QDOC)) && !defined(QT_NO_SYSTEMLOCALE)
     static QTimeZone fromCFTimeZone(CFTimeZoneRef timeZone);
     CFTimeZoneRef toCFTimeZone() const Q_DECL_CF_RETURNS_RETAINED;
     static QTimeZone fromNSTimeZone(const NSTimeZone *timeZone);
     NSTimeZone *toNSTimeZone() const Q_DECL_NS_RETURNS_AUTORELEASED;
-#endif
+#  endif
 
+#  if __cpp_lib_chrono >= 201907L || defined(Q_QDOC)
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS
+    static QTimeZone fromStdTimeZonePtr(const std::chrono::time_zone *timeZone)
+    {
+        if (!timeZone)
+            return QTimeZone();
+        const std::string_view timeZoneName = timeZone->name();
+        return QTimeZone(QByteArrayView(timeZoneName).toByteArray());
+    }
+#  endif
+#endif // feature timezone
 private:
-    QTimeZone(QTimeZonePrivate &dd);
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &ds, const QTimeZone &tz);
 #endif
+#ifndef QT_NO_DEBUG_STREAM
+    friend Q_CORE_EXPORT QDebug operator<<(QDebug dbg, const QTimeZone &tz);
+#endif
+    QTimeZone(QTimeZonePrivate &dd);
     friend class QTimeZonePrivate;
     friend class QDateTime;
     friend class QDateTimePrivate;
-    QSharedDataPointer<QTimeZonePrivate> d;
+    Data d;
 };
 
-Q_DECLARE_TYPEINFO(QTimeZone::OffsetData, Q_MOVABLE_TYPE);
+#if QT_CONFIG(timezone)
+Q_DECLARE_TYPEINFO(QTimeZone::OffsetData, Q_RELOCATABLE_TYPE);
+#endif
 Q_DECLARE_SHARED(QTimeZone)
 
 #ifndef QT_NO_DATASTREAM
@@ -181,6 +255,20 @@ Q_CORE_EXPORT QDataStream &operator>>(QDataStream &ds, QTimeZone &tz);
 
 #ifndef QT_NO_DEBUG_STREAM
 Q_CORE_EXPORT QDebug operator<<(QDebug dbg, const QTimeZone &tz);
+#endif
+
+#if QT_CONFIG(timezone) && __cpp_lib_chrono >= 201907L
+// zoned_time
+template <typename> // QT_POST_CXX17_API_IN_EXPORTED_CLASS
+inline QDateTime QDateTime::fromStdZonedTime(const std::chrono::zoned_time<
+                                                std::chrono::milliseconds,
+                                                const std::chrono::time_zone *
+                                             > &time)
+{
+    const auto sysTime = time.get_sys_time();
+    const QTimeZone timeZone = QTimeZone::fromStdTimeZonePtr(time.get_time_zone());
+    return fromMSecsSinceEpoch(sysTime.time_since_epoch().count(), timeZone);
+}
 #endif
 
 QT_END_NAMESPACE

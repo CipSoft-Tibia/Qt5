@@ -1,0 +1,26 @@
+From 0cce3d57750d397a40652b6d8df0239bb0c463a9 Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Tue, 25 May 2021 12:30:17 +0200
+Subject: [PATCH] glslang: Fix build on INTEGRITY
+
+Change-Id: I096ebc2d11f285376fca340ad2ec389f9da6e74b
+---
+ src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp b/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+index 3f029f0..b3d1e43 100644
+--- a/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
++++ b/src/3rdparty/glslang/glslang/OSDependent/Unix/ossource.cpp
+@@ -46,7 +46,7 @@
+ #include <cstdio>
+ #include <sys/time.h>
+ 
+-#if !defined(__Fuchsia__)
++#if !defined(__Fuchsia__) && !defined(__ghs__)
+ #include <sys/resource.h>
+ #endif
+ 
+-- 
+2.23.0.windows.1
+

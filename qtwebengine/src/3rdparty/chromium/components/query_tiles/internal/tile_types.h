@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_QUERY_TILES_INTERNAL_TILE_TYPES_H_
 #define COMPONENTS_QUERY_TILES_INTERNAL_TILE_TYPES_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 
 // Please keep the same order as QueryTilesRequestStatus enum in
 // tools/metrics/histograms/enums.xml.

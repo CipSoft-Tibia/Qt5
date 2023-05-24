@@ -1,14 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/renderer/bindings/api_event_listeners.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include <functional>
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/test/mock_callback.h"
+#include "base/test/values_test_util.h"
 #include "base/values.h"
 #include "extensions/common/event_filter.h"
+#include "extensions/common/mojom/event_dispatcher.mojom.h"
 #include "extensions/renderer/bindings/api_binding_test.h"
 #include "extensions/renderer/bindings/api_binding_test_util.h"
 #include "extensions/renderer/bindings/api_binding_types.h"
@@ -160,9 +165,10 @@ TEST_F(APIEventListenersTest, UnfilteredListenersIgnoreFilteringInfo) {
   std::string error;
   v8::Local<v8::Object> filter;
   EXPECT_TRUE(listeners.AddListener(function, filter, context, &error));
-  EventFilteringInfo filtering_info;
-  filtering_info.url = GURL("http://example.com/foo");
-  EXPECT_THAT(listeners.GetListeners(&filtering_info, context),
+  mojom::EventFilteringInfoPtr filtering_info =
+      mojom::EventFilteringInfo::New();
+  filtering_info->url = GURL("http://example.com/foo");
+  EXPECT_THAT(listeners.GetListeners(std::move(filtering_info), context),
               testing::UnorderedElementsAre(function));
 }
 
@@ -241,16 +247,15 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
   v8::Local<v8::Object> empty_filter;
   std::string error;
 
+  const base::Value::Dict empty_dict;
   // Register function_a with no filter; this is equivalent to registering for
   // all events. The callback should be triggered since this is a 0 -> 1
   // transition.
-  // Note that we don't test the passed filter here. This is mostly because it's
-  // a pain to match against a DictionaryValue (which doesn't have an
-  // operator==).
   EXPECT_CALL(handler, Run(kEvent,
                            binding::EventListenersChanged::
                                kFirstListenerWithFilterForContextOwnerAdded,
-                           testing::NotNull(), true, context));
+                           testing::Pointee(testing::Eq(std::cref(empty_dict))),
+                           true, context));
   EXPECT_TRUE(listeners.AddListener(function_a, empty_filter, context, &error));
   ::testing::Mock::VerifyAndClearExpectations(&handler);
 
@@ -268,9 +273,9 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
 
   // Since function_a has no filter, associating a specific url should still
   // return function_a.
-  EventFilteringInfo filtering_info_match;
+  mojom::EventFilteringInfo filtering_info_match;
   filtering_info_match.url = GURL("http://example.com/foo");
-  EXPECT_THAT(listeners.GetListeners(&filtering_info_match, context),
+  EXPECT_THAT(listeners.GetListeners(filtering_info_match.Clone(), context),
               testing::UnorderedElementsAre(function_a));
 
   // Trying to add function_a again should have no effect.
@@ -292,6 +297,8 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
   // Register function_b with a filter for pathContains: 'foo'. Unlike
   // unfiltered listeners, this *should* trigger the callback, since there is
   // no other listener registered with this same filter.
+  const base::Value::Dict expected_dict =
+      base::test::ParseJsonDict(R"({"url": [{"pathContains": "foo"}]})");
   v8::Local<v8::Object> path_filter;
   {
     v8::Local<v8::Value> val =
@@ -299,10 +306,12 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
     ASSERT_TRUE(val->IsObject());
     path_filter = val.As<v8::Object>();
   }
-  EXPECT_CALL(handler, Run(kEvent,
-                           binding::EventListenersChanged::
-                               kFirstListenerWithFilterForContextOwnerAdded,
-                           testing::NotNull(), true, context));
+  EXPECT_CALL(handler,
+              Run(kEvent,
+                  binding::EventListenersChanged::
+                      kFirstListenerWithFilterForContextOwnerAdded,
+                  testing::Pointee(testing::Eq(std::cref(expected_dict))), true,
+                  context));
   EXPECT_TRUE(listeners.AddListener(function_b, path_filter, context, &error));
   ::testing::Mock::VerifyAndClearExpectations(&handler);
 
@@ -318,12 +327,12 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
   EXPECT_THAT(listeners.GetListeners(nullptr, context),
               testing::UnorderedElementsAre(function_a));
   // function_b should be included for matching urls...
-  EXPECT_THAT(listeners.GetListeners(&filtering_info_match, context),
+  EXPECT_THAT(listeners.GetListeners(filtering_info_match.Clone(), context),
               testing::UnorderedElementsAre(function_a, function_b));
   // ... but not urls that don't match.
-  EventFilteringInfo filtering_info_no_match;
+  mojom::EventFilteringInfo filtering_info_no_match;
   filtering_info_no_match.url = GURL("http://example.com/bar");
-  EXPECT_THAT(listeners.GetListeners(&filtering_info_no_match, context),
+  EXPECT_THAT(listeners.GetListeners(filtering_info_no_match.Clone(), context),
               testing::UnorderedElementsAre(function_a));
 
   // Remove function_a. Since filtered listeners notify whenever there's a
@@ -332,7 +341,8 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
   EXPECT_CALL(handler, Run(kEvent,
                            binding::EventListenersChanged::
                                kLastListenerWithFilterForContextOwnerRemoved,
-                           testing::NotNull(), true, context));
+                           testing::Pointee(testing::Eq(std::cref(empty_dict))),
+                           true, context));
   listeners.RemoveListener(function_a, context);
   ::testing::Mock::VerifyAndClearExpectations(&handler);
   EXPECT_FALSE(listeners.HasListener(function_a));
@@ -343,22 +353,25 @@ TEST_F(APIEventListenersTest, FilteredListeners) {
   // function_b should be the only listener remaining, so we shouldn't find
   // any listeners for events without matching filters.
   EXPECT_TRUE(listeners.GetListeners(nullptr, context).empty());
-  EXPECT_THAT(listeners.GetListeners(&filtering_info_match, context),
+  EXPECT_THAT(listeners.GetListeners(filtering_info_match.Clone(), context),
               testing::UnorderedElementsAre(function_b));
   EXPECT_TRUE(
-      listeners.GetListeners(&filtering_info_no_match, context).empty());
+      listeners.GetListeners(filtering_info_no_match.Clone(), context).empty());
 
   // Remove function_b. No listeners should remain.
-  EXPECT_CALL(handler, Run(kEvent,
-                           binding::EventListenersChanged::
-                               kLastListenerWithFilterForContextOwnerRemoved,
-                           testing::NotNull(), true, context));
+  EXPECT_CALL(handler,
+              Run(kEvent,
+                  binding::EventListenersChanged::
+                      kLastListenerWithFilterForContextOwnerRemoved,
+                  testing::Pointee(testing::Eq(std::cref(expected_dict))), true,
+                  context));
   listeners.RemoveListener(function_b, context);
   ::testing::Mock::VerifyAndClearExpectations(&handler);
   EXPECT_FALSE(listeners.HasListener(function_b));
   EXPECT_EQ(0u, listeners.GetNumListeners());
   EXPECT_TRUE(listeners.GetListeners(nullptr, context).empty());
-  EXPECT_TRUE(listeners.GetListeners(&filtering_info_match, context).empty());
+  EXPECT_TRUE(
+      listeners.GetListeners(filtering_info_match.Clone(), context).empty());
   EXPECT_EQ(
       0, tracker.event_filter_for_testing()->GetMatcherCountForEventForTesting(
              kEvent));
@@ -404,10 +417,11 @@ TEST_F(APIEventListenersTest,
       3, tracker.event_filter_for_testing()->GetMatcherCountForEventForTesting(
              kEvent));
 
-  EventFilteringInfo filtering_info_match;
-  filtering_info_match.url = GURL("http://example.com/foo");
+  mojom::EventFilteringInfoPtr filtering_info_match =
+      mojom::EventFilteringInfo::New();
+  filtering_info_match->url = GURL("http://example.com/foo");
   EXPECT_THAT(
-      listeners.GetListeners(&filtering_info_match, context),
+      listeners.GetListeners(std::move(filtering_info_match), context),
       testing::UnorderedElementsAre(function_a, function_b, function_c));
 
   listeners.RemoveListener(function_c, context);

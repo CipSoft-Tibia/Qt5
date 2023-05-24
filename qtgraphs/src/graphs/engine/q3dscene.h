@@ -1,0 +1,94 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#ifndef Q3DSCENE_H
+#define Q3DSCENE_H
+
+#include <QtGraphs/qgraphsglobal.h>
+#include <QtGraphs/q3dcamera.h>
+#include <QtGraphs/q3dlight.h>
+#include <QtCore/QObject>
+#include <QtCore/QRect>
+
+QT_BEGIN_NAMESPACE
+
+class Q3DScenePrivate;
+
+class Q_GRAPHS_EXPORT Q3DScene : public QObject
+{
+    Q_OBJECT
+    Q_DECLARE_PRIVATE(Q3DScene)
+    Q_PROPERTY(QRect viewport READ viewport NOTIFY viewportChanged)
+    Q_PROPERTY(QRect primarySubViewport READ primarySubViewport WRITE setPrimarySubViewport NOTIFY primarySubViewportChanged)
+    Q_PROPERTY(QRect secondarySubViewport READ secondarySubViewport WRITE setSecondarySubViewport NOTIFY secondarySubViewportChanged)
+    Q_PROPERTY(QPoint selectionQueryPosition READ selectionQueryPosition WRITE setSelectionQueryPosition NOTIFY selectionQueryPositionChanged)
+    Q_PROPERTY(bool secondarySubviewOnTop READ isSecondarySubviewOnTop  WRITE setSecondarySubviewOnTop  NOTIFY secondarySubviewOnTopChanged)
+    Q_PROPERTY(bool slicingActive READ isSlicingActive WRITE setSlicingActive NOTIFY slicingActiveChanged)
+    Q_PROPERTY(Q3DCamera* activeCamera READ activeCamera WRITE setActiveCamera NOTIFY activeCameraChanged)
+    Q_PROPERTY(Q3DLight* activeLight READ activeLight WRITE setActiveLight NOTIFY activeLightChanged)
+    Q_PROPERTY(float devicePixelRatio READ devicePixelRatio WRITE setDevicePixelRatio NOTIFY devicePixelRatioChanged)
+    Q_PROPERTY(QPoint graphPositionQuery READ graphPositionQuery WRITE setGraphPositionQuery NOTIFY graphPositionQueryChanged)
+
+public:
+    explicit Q3DScene(QObject *parent = nullptr);
+    virtual ~Q3DScene();
+
+    QRect viewport() const;
+
+    QRect primarySubViewport() const;
+    void setPrimarySubViewport(const QRect &primarySubViewport);
+    bool isPointInPrimarySubView(const QPoint &point);
+
+    QRect secondarySubViewport() const;
+    void setSecondarySubViewport(const QRect &secondarySubViewport);
+    bool isPointInSecondarySubView(const QPoint &point);
+
+    void setSelectionQueryPosition(const QPoint &point);
+    QPoint selectionQueryPosition() const;
+    static QPoint invalidSelectionPoint();
+
+    void setGraphPositionQuery(const QPoint &point);
+    QPoint graphPositionQuery() const;
+
+    void setSlicingActive(bool isSlicing);
+    bool isSlicingActive() const;
+
+    void setSecondarySubviewOnTop(bool isSecondaryOnTop);
+    bool isSecondarySubviewOnTop() const;
+
+    Q3DCamera *activeCamera() const;
+    void setActiveCamera(Q3DCamera *camera);
+
+    Q3DLight *activeLight() const;
+    void setActiveLight(Q3DLight *light);
+
+    float devicePixelRatio() const;
+    void setDevicePixelRatio(float pixelRatio);
+
+Q_SIGNALS:
+    void viewportChanged(const QRect &viewport);
+    void primarySubViewportChanged(const QRect &subViewport);
+    void secondarySubViewportChanged(const QRect &subViewport);
+    void secondarySubviewOnTopChanged(bool isSecondaryOnTop);
+    void slicingActiveChanged(bool isSlicingActive);
+    void activeCameraChanged(Q3DCamera *camera);
+    void activeLightChanged(Q3DLight *light);
+    void devicePixelRatioChanged(float pixelRatio);
+    void selectionQueryPositionChanged(const QPoint &position);
+    void graphPositionQueryChanged(const QPoint &position);
+
+protected:
+    QScopedPointer<Q3DScenePrivate> d_ptr;
+
+private:
+    Q_DISABLE_COPY(Q3DScene)
+
+    friend class QAbstract3DGraph;
+    friend class Abstract3DController;
+    friend class Q3DObject;
+    friend class QQuickGraphsItem;
+};
+
+QT_END_NAMESPACE
+
+#endif

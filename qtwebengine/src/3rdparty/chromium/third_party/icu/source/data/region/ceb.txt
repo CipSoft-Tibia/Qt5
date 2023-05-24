@@ -1,8 +1,9 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 ceb{
     Countries{
-        001{"Kalibutan"}
+        001{"kalibutan"}
         002{"Africa"}
         003{"North America"}
         005{"South America"}
@@ -13,7 +14,7 @@ ceb{
         015{"Northern Africa"}
         017{"Middle Africa"}
         018{"Southern Africa"}
-        019{"Mga Amerika"}
+        019{"Americas"}
         021{"Northern America"}
         029{"Caribbean"}
         030{"Eastern Asia"}
@@ -24,7 +25,7 @@ ceb{
         054{"Melanesia"}
         057{"Micronesian Region"}
         061{"Polynesia"}
-        142{"Asya"}
+        142{"Asia"}
         143{"Central Asia"}
         145{"Western Asia"}
         150{"Europe"}
@@ -81,7 +82,7 @@ ceb{
         CK{"Cook Islands"}
         CL{"Chile"}
         CM{"Cameroon"}
-        CN{"Tsina"}
+        CN{"China"}
         CO{"Colombia"}
         CP{"Clipperton Island"}
         CR{"Costa Rica"}
@@ -91,7 +92,7 @@ ceb{
         CX{"Christmas Island"}
         CY{"Cyprus"}
         CZ{"Czechia"}
-        DE{"Alemanya"}
+        DE{"Germany"}
         DG{"Diego Garcia"}
         DJ{"Djibouti"}
         DK{"Denmark"}
@@ -104,7 +105,7 @@ ceb{
         EG{"Egypt"}
         EH{"Western Sahara"}
         ER{"Eritrea"}
-        ES{"Spain"}
+        ES{"Espanya"}
         ET{"Ethiopia"}
         EU{"European Union"}
         EZ{"Eurozone"}
@@ -113,7 +114,7 @@ ceb{
         FK{"Falkland Islands (Islas Malvinas)"}
         FM{"Micronesia"}
         FO{"Faroe Islands"}
-        FR{"Pransya"}
+        FR{"France"}
         GA{"Gabon"}
         GB{"United Kingdom"}
         GD{"Grenada"}
@@ -274,7 +275,7 @@ ceb{
         UA{"Ukraine"}
         UG{"Uganda"}
         UM{"U.S. Outlying Islands"}
-        UN{"United Nations"}
+        UN{"Hiniusang Kanasoran"}
         US{"Estados Unidos"}
         UY{"Uruguay"}
         UZ{"Uzbekistan"}
@@ -303,11 +304,11 @@ ceb{
     }
     Countries%variant{
         CD{"Congo (DRC)"}
-        CG{"Congo (Republic)"}
+        CG{"Congo (Republika)"}
         CI{"Ivory Coast"}
         CZ{"Czech Republic"}
+        NZ{"Aotearoa New Zealand"}
         SZ{"Swaziland"}
         TL{"East Timor"}
     }
-    Version{"37"}
 }

@@ -1,5 +1,17 @@
 {
     "options": {
+        "designStudioWorkarounds": {
+            "name": "Design Studio Compatibility Mode",
+            "description": "Enable options that are needed to create Design Studio compatible components.",
+            "value": false,
+            "type": "Boolean"
+        },
+        "expandValueComponents": {
+            "name": "Expand value components",
+            "description": "When enabled value types like vector3d and quaternion will be expanded.",
+            "value": false,
+            "type": "Boolean"
+        },
         "calculateTangentSpace": {
             "name": "Calculate Tangent Space",
             "description": "Calculates the tangents and bitangents for the imported meshes.",
@@ -34,12 +46,6 @@
             "name": "Pre-transform Vertices",
             "description": "Removes the node graph and pre-transforms all vertices with the local transformation matrices of their nodes.",
             "value": false,
-            "type": "Boolean"
-        },
-        "limitBoneWeights": {
-            "name": "Limit Bone Weights",
-            "description": "Limits the number of bones simultaneously affecting a single vertex to a maximum value (4).",
-            "value": true,
             "type": "Boolean"
         },
         "improveCacheLocality": {
@@ -93,6 +99,12 @@
         "optimizeGraph": {
             "name": "Optimize Graph",
             "description": "A postprocessing step to optimize the scene hierarchy.",
+            "value": false,
+            "type": "Boolean"
+        },
+        "useFloatJointIndices": {
+            "name": "Use Float Joint Indices",
+            "description": "Stores joint indices as floating point numbers for GLES 2.0.",
             "value": false,
             "type": "Boolean"
         },
@@ -168,6 +180,82 @@
             "description": "Set whether the fbx importer will preserve pivot points (as extra nodes)",
             "value": false,
             "type": "Boolean"
+        },
+        "generateMipMaps": {
+            "name": "Generate Mip Maps",
+            "description": "Force all imported texture components to generate mip maps for mip map texture filtering",
+            "value": true,
+            "type": "Boolean"
+        },
+        "useBinaryKeyframes": {
+            "name": "Use Binary Keyframes",
+            "description": "Record keyframe data as binary files",
+            "value": true,
+            "type": "Boolean"
+        },
+        "generateLightmapUV": {
+            "name": "Generate Lightmap UVs",
+            "description": "Unwrap mesh to generate lightmap UV channel",
+            "value": false,
+            "type": "Boolean"
+        },
+        "lightmapBaseResolution": {
+            "name": "Lightmap Base Resolution",
+            "description": "Approx. size (width and height) which lightmap images should target.",
+            "value": 1024,
+            "type": "Real",
+            "conditions": [
+                {
+                    "mode": "Equals",
+                    "property": "generateLightmapUV",
+                    "value": true
+                }
+            ]
+        },
+        "generateMeshLevelsOfDetail": {
+            "name": "Generate Mesh Levels of Detail",
+            "description": "When possible, create mesh Levels of Detail by automatically simplifying the source mesh",
+            "value": false,
+            "type": "Boolean"
+        },
+        "recalculateLodNormals": {
+            "name": "Recalculate Normals for Generated Mesh LODs",
+            "description": "Calculate new normals when necessary for Generated Mesh Levels of detail",
+            "value": true,
+            "type": "Boolean",
+            "conditions": [
+                {
+                    "mode": "Equals",
+                    "property": "generateMeshLevelsOfDetail",
+                    "value": true
+                }
+            ]
+        },
+        "recalculateLodNormalsMergeAngle": {
+            "name": "Merge Angle for Mesh LODs",
+            "description": "Maximum angle in degrees to consider for normal smoothing/merging",
+            "value": 60.0,
+            "type": "Real",
+            "conditions": [
+                {
+                    "mode": "Equals",
+                    "property": "recalculateLodNormals",
+                    "value": true
+                }
+            ]
+        },
+        "recalculateLodNormalsSplitAngle": {
+            "name": "Split Angle for Mesh LODs",
+            "description": "Maximum angle in degrees to consider for normal spliting, which creates new vertex data",
+            "value": 25.0,
+            "type": "Real",
+            "conditions": [
+                {
+                    "mode": "Equals",
+                    "property": "recalculateLodNormals",
+                    "value": true
+                }
+            ]
         }
     },
     "groups": {
@@ -176,6 +264,22 @@
             "items": [
                 "globalScale",
                 "globalScaleValue"
+            ]
+        },
+        "generateLightmapUV": {
+            "name": "Lightmap",
+            "items": [
+                "generateLightmapUV",
+                "lightmapBaseResolution"
+            ]
+        },
+        "generateMeshLevelsOfDetail": {
+            "name": "Level of Detail",
+            "items": [
+                "generateMeshLevelsOfDetail",
+                "recalculateLodNormals",
+                "recalculateLodNormalsMergeAngle",
+                "recalculateLodNormalsSplitAngle"
             ]
         },
         "removeComponents": {

@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,6 +27,10 @@ IOBuffer::IOBuffer() : data_(nullptr) {}
 IOBuffer::IOBuffer(size_t buffer_size) {
   AssertValidBufferSize(buffer_size);
   data_ = new char[buffer_size];
+#if BUILDFLAG(IS_IOS)
+  // TODO(crbug.com/1335423): Investigating crashes on iOS.
+  CHECK(data_);
+#endif  // BUILDFLAG(IS_IOS)
 }
 
 IOBuffer::IOBuffer(char* data)
@@ -34,8 +38,7 @@ IOBuffer::IOBuffer(char* data)
 }
 
 IOBuffer::~IOBuffer() {
-  delete[] data_;
-  data_ = nullptr;
+  data_.ClearAndDeleteArray();
 }
 
 IOBufferWithSize::IOBufferWithSize(size_t size) : IOBuffer(size), size_(size) {
@@ -69,12 +72,12 @@ StringIOBuffer::~StringIOBuffer() {
 }
 
 DrainableIOBuffer::DrainableIOBuffer(scoped_refptr<IOBuffer> base, int size)
-    : IOBuffer(base->data()), base_(std::move(base)), size_(size), used_(0) {
+    : IOBuffer(base->data()), base_(std::move(base)), size_(size) {
   AssertValidBufferSize(size);
 }
 
 DrainableIOBuffer::DrainableIOBuffer(scoped_refptr<IOBuffer> base, size_t size)
-    : IOBuffer(base->data()), base_(std::move(base)), size_(size), used_(0) {
+    : IOBuffer(base->data()), base_(std::move(base)), size_(size) {
   AssertValidBufferSize(size);
 }
 
@@ -103,16 +106,15 @@ DrainableIOBuffer::~DrainableIOBuffer() {
   data_ = nullptr;
 }
 
-GrowableIOBuffer::GrowableIOBuffer()
-    : IOBuffer(),
-      capacity_(0),
-      offset_(0) {
-}
+GrowableIOBuffer::GrowableIOBuffer() = default;
 
 void GrowableIOBuffer::SetCapacity(int capacity) {
   DCHECK_GE(capacity, 0);
+  // this will get reset in `set_offset`.
+  data_ = nullptr;
   // realloc will crash if it fails.
   real_data_.reset(static_cast<char*>(realloc(real_data_.release(), capacity)));
+
   capacity_ = capacity;
   if (offset_ > capacity)
     set_offset(capacity);

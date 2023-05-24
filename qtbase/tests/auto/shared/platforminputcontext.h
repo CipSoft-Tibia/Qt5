@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qpa/qplatforminputcontext.h>
 
@@ -42,14 +17,14 @@ public:
         m_lastQueries(Qt::ImhNone),
         m_action(QInputMethod::Click),
         m_cursorPosition(0),
-        m_lastEventType(QEvent::None),
         m_setFocusObjectCallCount(0)
     {}
 
-    virtual QRectF keyboardRect() const { return m_keyboardRect; }
-    virtual bool isAnimating() const { return m_animating; }
-    virtual void reset() { m_resetCallCount++; }
-    virtual void commit() {
+    virtual QRectF keyboardRect() const override { return m_keyboardRect; }
+    virtual bool isAnimating() const override { return m_animating; }
+    virtual void reset() override { m_resetCallCount++; }
+    virtual void commit() override
+    {
         m_commitCallCount++;
         if (m_commitString.isEmpty())
             return;
@@ -65,43 +40,39 @@ public:
         m_commitString = commitString;
     }
 
-    virtual void update(Qt::InputMethodQueries queries)
+    virtual void update(Qt::InputMethodQueries queries) override
     {
         m_updateCallCount++;
         m_lastQueries = queries;
     }
-    virtual void invokeAction(QInputMethod::Action action, int cursorPosition)
+    virtual void invokeAction(QInputMethod::Action action, int cursorPosition) override
     {
         m_action = action;
         m_cursorPosition = cursorPosition;
     }
-    virtual bool filterEvent(const QEvent *event)
-    {
-        m_lastEventType = event->type(); return false;
-    }
-    virtual void showInputPanel()
+    virtual void showInputPanel() override
     {
         m_visible = true;
     }
-    virtual void hideInputPanel()
+    virtual void hideInputPanel() override
     {
         m_visible = false;
     }
-    virtual bool isInputPanelVisible() const
+    virtual bool isInputPanelVisible() const override
     {
         return m_visible;
     }
-    virtual QLocale locale() const
+    virtual QLocale locale() const override
     {
         m_localeCallCount++;
         return QLocale::c();
     }
-    virtual Qt::LayoutDirection inputDirection() const
+    virtual Qt::LayoutDirection inputDirection() const override
     {
         m_inputDirectionCallCount++;
         return Qt::LeftToRight;
     }
-    virtual void setFocusObject(QObject *object)
+    virtual void setFocusObject(QObject *object) override
     {
         Q_UNUSED(object);
         m_setFocusObjectCallCount++;
@@ -118,7 +89,6 @@ public:
     Qt::InputMethodQueries m_lastQueries;
     QInputMethod::Action m_action;
     int m_cursorPosition;
-    int m_lastEventType;
     QRectF m_keyboardRect;
     int m_setFocusObjectCallCount;
 };

@@ -1,4 +1,4 @@
-// Copyright (c) 2006-2010 The Chromium Authors. All rights reserved.
+// Copyright 2006-2010 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 // for the sandboxed process. For more details see:
 // http://dev.chromium.org/developers/design-documents/sandbox .
 
-#ifndef SANDBOX_SRC_INTERCEPTION_INTERNAL_H_
-#define SANDBOX_SRC_INTERCEPTION_INTERNAL_H_
+#ifndef SANDBOX_WIN_SRC_INTERCEPTION_INTERNAL_H_
+#define SANDBOX_WIN_SRC_INTERCEPTION_INTERNAL_H_
 
 #include <stddef.h>
 
@@ -40,7 +40,7 @@ struct FunctionInfo {
 struct DllPatchInfo {
   size_t record_bytes;  // rounded to sizeof(size_t) bytes
   size_t offset_to_functions;
-  int num_functions;
+  size_t num_functions;
   bool unload_module;
   wchar_t dll_name[1];  // placeholder for null terminated name
   // FunctionInfo function_info[] // followed by the functions to intercept
@@ -48,7 +48,7 @@ struct DllPatchInfo {
 
 // All interceptions:
 struct SharedMemory {
-  int num_intercepted_dlls;
+  size_t num_intercepted_dlls;
   void* interceptor_base;
   DllPatchInfo dll_list[1];  // placeholder for the list of dlls
 };
@@ -74,4 +74,4 @@ struct DllInterceptionData {
 
 }  // namespace sandbox
 
-#endif  // SANDBOX_SRC_INTERCEPTION_INTERNAL_H_
+#endif  // SANDBOX_WIN_SRC_INTERCEPTION_INTERNAL_H_

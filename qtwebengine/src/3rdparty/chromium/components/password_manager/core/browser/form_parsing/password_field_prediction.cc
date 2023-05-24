@@ -1,12 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/form_parsing/password_field_prediction.h"
 
+#include "base/feature_list.h"
+#include "build/build_config.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/common/form_data.h"
 #include "components/autofill/core/common/signatures.h"
+#include "components/password_manager/core/common/password_manager_features.h"
 
 using autofill::AutofillField;
 using autofill::FieldSignature;
@@ -19,21 +22,23 @@ namespace password_manager {
 namespace {
 
 ServerFieldType GetServerType(const AutofillField& field) {
-  // The main server predictions is in |field.server_type()| but the server can
-  // send additional predictions in |field.server_predictions()|. This function
+  // The main server predictions is in `field.server_type()` but the server can
+  // send additional predictions in `field.server_predictions()`. This function
   // chooses relevant for Password Manager predictions.
 
   // 1. If there is cvc prediction returns it.
   for (const auto& predictions : field.server_predictions()) {
-    if (predictions.type() == autofill::CREDIT_CARD_VERIFICATION_CODE)
-      return ServerFieldType(predictions.type());
+    if (predictions.type() == autofill::CREDIT_CARD_VERIFICATION_CODE) {
+      return autofill::CREDIT_CARD_VERIFICATION_CODE;
+    }
   }
 
   // 2. If there is password related prediction returns it.
   for (const auto& predictions : field.server_predictions()) {
-    ServerFieldType type = ServerFieldType(predictions.type());
-    if (DeriveFromServerFieldType(type) != CredentialFieldType::kNone)
+    auto type = static_cast<ServerFieldType>(predictions.type());
+    if (DeriveFromServerFieldType(type) != CredentialFieldType::kNone) {
       return type;
+    }
   }
 
   // 3. Returns the main prediction.
@@ -112,9 +117,6 @@ FormPredictions ConvertToFormPredictions(int driver_id,
     field_predictions.back().type = server_type;
     field_predictions.back().may_use_prefilled_placeholder =
         field->may_use_prefilled_placeholder();
-#if defined(OS_IOS)
-    field_predictions.back().unique_id = field->unique_id;
-#endif
   }
 
   FormPredictions predictions;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmlglobals_p.h"
 #include "qscxmlinvokableservice_p.h"
@@ -158,8 +122,8 @@ QScxmlInvokableServicePrivate::QScxmlInvokableServicePrivate(QScxmlStateMachine 
 
 QScxmlInvokableServiceFactoryPrivate::QScxmlInvokableServiceFactoryPrivate(
         const QScxmlExecutableContent::InvokeInfo &invokeInfo,
-        const QVector<QScxmlExecutableContent::StringId> &namelist,
-        const QVector<QScxmlExecutableContent::ParameterInfo> &parameters)
+        const QList<QScxmlExecutableContent::StringId> &namelist,
+        const QList<QScxmlExecutableContent::ParameterInfo> &parameters)
     : invokeInfo(invokeInfo)
     , names(namelist)
     , parameters(parameters)
@@ -168,8 +132,8 @@ QScxmlInvokableServiceFactoryPrivate::QScxmlInvokableServiceFactoryPrivate(
 QScxmlStaticScxmlServiceFactoryPrivate::QScxmlStaticScxmlServiceFactoryPrivate(
         const QMetaObject *metaObject,
         const QScxmlExecutableContent::InvokeInfo &invokeInfo,
-        const QVector<QScxmlExecutableContent::StringId> &names,
-        const QVector<QScxmlExecutableContent::ParameterInfo> &parameters)
+        const QList<QScxmlExecutableContent::StringId> &names,
+        const QList<QScxmlExecutableContent::ParameterInfo> &parameters)
     : QScxmlInvokableServiceFactoryPrivate(invokeInfo, names, parameters), metaObject(metaObject)
 {
 }
@@ -188,8 +152,8 @@ QScxmlStateMachine *QScxmlInvokableService::parentStateMachine() const
 
 QScxmlInvokableServiceFactory::QScxmlInvokableServiceFactory(
         const QScxmlExecutableContent::InvokeInfo &invokeInfo,
-        const QVector<QScxmlExecutableContent::StringId> &names,
-        const QVector<QScxmlExecutableContent::ParameterInfo> &parameters,
+        const QList<QScxmlExecutableContent::StringId> &names,
+        const QList<QScxmlExecutableContent::ParameterInfo> &parameters,
         QObject *parent)
     : QObject(*(new QScxmlInvokableServiceFactoryPrivate(invokeInfo, names, parameters)), parent)
 {}
@@ -200,14 +164,14 @@ const QScxmlExecutableContent::InvokeInfo &QScxmlInvokableServiceFactory::invoke
     return d->invokeInfo;
 }
 
-const QVector<QScxmlExecutableContent::ParameterInfo> &
+const QList<QScxmlExecutableContent::ParameterInfo> &
 QScxmlInvokableServiceFactory::parameters() const
 {
     Q_D(const QScxmlInvokableServiceFactory);
     return d->parameters;
 }
 
-const QVector<QScxmlExecutableContent::StringId> &QScxmlInvokableServiceFactory::names() const
+const QList<QScxmlExecutableContent::StringId> &QScxmlInvokableServiceFactory::names() const
 {
     Q_D(const QScxmlInvokableServiceFactory);
     return d->names;
@@ -259,8 +223,8 @@ QString QScxmlInvokableServicePrivate::calculateId(
 
 QVariantMap QScxmlInvokableServicePrivate::calculateData(
         QScxmlStateMachine *parent,
-        const QVector<QScxmlExecutableContent::ParameterInfo> &parameters,
-        const QVector<QScxmlExecutableContent::StringId> &names,
+        const QList<QScxmlExecutableContent::ParameterInfo> &parameters,
+        const QList<QScxmlExecutableContent::StringId> &names,
         bool *ok) const
 {
     Q_ASSERT(ok);
@@ -404,8 +368,8 @@ QScxmlStateMachine *QScxmlScxmlService::stateMachine() const
  */
 QScxmlDynamicScxmlServiceFactory::QScxmlDynamicScxmlServiceFactory(
         const QScxmlExecutableContent::InvokeInfo &invokeInfo,
-        const QVector<QScxmlExecutableContent::StringId> &names,
-        const QVector<QScxmlExecutableContent::ParameterInfo> &parameters,
+        const QList<QScxmlExecutableContent::StringId> &names,
+        const QList<QScxmlExecutableContent::ParameterInfo> &parameters,
         QObject *parent)
     : QScxmlInvokableServiceFactory(invokeInfo, names, parameters, parent)
 {}
@@ -427,8 +391,8 @@ QScxmlInvokableService *QScxmlDynamicScxmlServiceFactory::invoke(
 QScxmlStaticScxmlServiceFactory::QScxmlStaticScxmlServiceFactory(
         const QMetaObject *metaObject,
         const QScxmlExecutableContent::InvokeInfo &invokeInfo,
-        const QVector<QScxmlExecutableContent::StringId> &nameList,
-        const QVector<QScxmlExecutableContent::ParameterInfo> &parameters,
+        const QList<QScxmlExecutableContent::StringId> &nameList,
+        const QList<QScxmlExecutableContent::ParameterInfo> &parameters,
         QObject *parent)
     : QScxmlInvokableServiceFactory(*(new QScxmlStaticScxmlServiceFactoryPrivate(
                                       metaObject, invokeInfo, nameList, parameters)), parent)

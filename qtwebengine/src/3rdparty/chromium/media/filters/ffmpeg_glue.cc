@@ -1,11 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/filters/ffmpeg_glue.h"
 
 #include "base/check_op.h"
-#include "base/macros.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "media/base/container_names.h"
@@ -58,10 +57,6 @@ static int64_t AVIOSeekOperation(void* opaque, int64_t offset, int whence) {
   return new_offset;
 }
 
-void FFmpegGlue::InitializeFFmpeg() {
-  av_register_all();
-}
-
 static void LogContainer(bool is_local_file,
                          container_names::MediaContainerName container) {
   base::UmaHistogramSparse("Media.DetectedContainer", container);
@@ -70,8 +65,6 @@ static void LogContainer(bool is_local_file,
 }
 
 FFmpegGlue::FFmpegGlue(FFmpegURLProtocol* protocol) {
-  InitializeFFmpeg();
-
   // Initialize an AVIOContext using our custom read and seek operations.  Don't
   // keep pointers to the buffer since FFmpeg may reallocate it on the fly.  It
   // will be cleaned up
@@ -94,9 +87,6 @@ FFmpegGlue::FFmpegGlue(FFmpegURLProtocol* protocol) {
 
   // Enable fast, but inaccurate seeks for MP3.
   format_context_->flags |= AVFMT_FLAG_FAST_SEEK;
-
-  // Ensures we can read out various metadata bits like vp8 alpha.
-  format_context_->flags |= AVFMT_FLAG_KEEP_SIDE_DATA;
 
   // Ensures format parsing errors will bail out. From an audit on 11/2017, all
   // instances were real failures. Solves bugs like http://crbug.com/710791.

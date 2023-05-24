@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -12,7 +12,7 @@ def root_permissions():
     Noop on a non-main branch, since Swarming pools are owned by the primary
     Chromium project defined on the main branch.
     """
-    if not branches.matches(branches.MAIN_ONLY):
+    if not branches.matches(branches.selector.MAIN):
         return
 
     # Allow admins to cancel any task, delete bots, etc. in any Chromium pool.
@@ -29,7 +29,7 @@ def root_permissions():
         groups = "all",
     )
 
-def pool_realm(*, name, groups = None, users = None, projects = None):
+def pool_realm(*, name, extends = None, groups = None, users = None, projects = None):
     """Declares a realm with permissions for a Swarming pool.
 
     `groups`, `users` and `projects` define who has "swarming.poolUser" role
@@ -41,13 +41,14 @@ def pool_realm(*, name, groups = None, users = None, projects = None):
     Pools are owned by the main Chromium project and it makes sense to defined
     them only on the main branch. This declaration is noop on a non-main branch.
     """
-    if not branches.matches(branches.MAIN_ONLY):
+    if not branches.matches(branches.selector.MAIN):
         return
     if not name.startswith("pools/"):
         fail("By convention Swarming pool realm name should start with pools/")
 
     luci.realm(
         name = name,
+        extends = extends,
         bindings = [
             luci.binding(
                 roles = "role/swarming.poolUser",
@@ -89,7 +90,7 @@ def task_triggerers(*, builder_realm, pool_realm, users = None, groups = None):
     """
 
     # Permission to submit tasks to Swarming at all.
-    if branches.matches(branches.MAIN_ONLY):
+    if branches.matches(branches.selector.MAIN):
         luci.binding(
             realm = pool_realm,
             roles = "role/swarming.poolUser",

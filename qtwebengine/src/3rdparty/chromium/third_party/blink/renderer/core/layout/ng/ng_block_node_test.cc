@@ -1,16 +1,17 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/layout/ng/ng_block_node.h"
 
 #include "third_party/blink/renderer/core/layout/min_max_sizes.h"
-#include "third_party/blink/renderer/core/layout/ng/ng_layout_test.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_constraint_space_builder.h"
+#include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 
 namespace blink {
 namespace {
 
-using NGBlockNodeForTest = NGLayoutTest;
+using NGBlockNodeForTest = RenderingTest;
 
 TEST_F(NGBlockNodeForTest, IsFloatingForOutOfFlowFloating) {
   SetBodyInnerHTML(R"HTML(
@@ -23,7 +24,7 @@ TEST_F(NGBlockNodeForTest, IsFloatingForOutOfFlowFloating) {
     </style>
     <div id=container></div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   EXPECT_FALSE(container.IsFloating());
 }
 
@@ -32,7 +33,7 @@ TEST_F(NGBlockNodeForTest, ChildInlineAndBlock) {
     <!DOCTYPE html>
     <div id=container>Hello!<div></div></div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsBlock());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -46,7 +47,7 @@ TEST_F(NGBlockNodeForTest, ChildBlockAndInline) {
     <!DOCTYPE html>
     <div id=container><div></div>Hello!</div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsBlock());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -63,7 +64,7 @@ TEST_F(NGBlockNodeForTest, ChildFloatBeforeBlock) {
     </style>
     <div id=container><float></float><div></div></div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsBlock());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -80,7 +81,7 @@ TEST_F(NGBlockNodeForTest, ChildFloatBeforeInline) {
     </style>
     <div id=container><float></float>Hello!</div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsInline());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -95,7 +96,7 @@ TEST_F(NGBlockNodeForTest, ChildFloatAfterInline) {
     </style>
     <div id=container>Hello<float></float></div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsInline());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -110,7 +111,7 @@ TEST_F(NGBlockNodeForTest, ChildFloatOnly) {
     </style>
     <div id=container><float></float></div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsBlock());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -127,7 +128,7 @@ TEST_F(NGBlockNodeForTest, ChildFloatWithSpaces) {
       <float></float>
     </div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsBlock());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -142,7 +143,7 @@ TEST_F(NGBlockNodeForTest, ChildOofBeforeInline) {
     </style>
     <div id=container><oof></oof>Hello!</div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsInline());
   NGLayoutInputNode child2 = child1.NextSibling();
@@ -157,32 +158,11 @@ TEST_F(NGBlockNodeForTest, ChildOofAfterInline) {
     </style>
     <div id=container>Hello!<oof></oof></div>
   )HTML");
-  NGBlockNode container(ToLayoutBox(GetLayoutObjectByElementId("container")));
+  NGBlockNode container(GetLayoutBoxByElementId("container"));
   NGLayoutInputNode child1 = container.FirstChild();
   EXPECT_TRUE(child1 && child1.IsInline());
   NGLayoutInputNode child2 = child1.NextSibling();
   EXPECT_EQ(child2, nullptr);
-}
-
-TEST_F(NGBlockNodeForTest, MinAndMaxContent) {
-  SetBodyInnerHTML(R"HTML(
-    <div id="box" >
-      <div id="first_child" style="width:30px">
-      </div>
-    </div>
-  )HTML");
-  const int kWidth = 30;
-
-  NGBlockNode box(ToLayoutBox(GetLayoutObjectByElementId("box")));
-  MinMaxSizes sizes =
-      box.ComputeMinMaxSizes(
-             WritingMode::kHorizontalTb,
-             MinMaxSizesInput(
-                 /* percentage_resolution_block_size */ LayoutUnit(),
-                 MinMaxSizesType::kContent))
-          .sizes;
-  EXPECT_EQ(LayoutUnit(kWidth), sizes.min_size);
-  EXPECT_EQ(LayoutUnit(kWidth), sizes.max_size);
 }
 
 // crbug.com/1107291
@@ -198,15 +178,18 @@ TEST_F(NGBlockNodeForTest, MinContentForControls) {
   const char* ids[] = {"box1", "box2", "box3"};
   constexpr int kExpectedMinWidth = 4;
 
+  // The space doesn't matter for this test.
+  const auto space = NGConstraintSpaceBuilder(
+                         WritingMode::kHorizontalTb,
+                         {WritingMode::kHorizontalTb, TextDirection::kLtr},
+                         /* is_new_fc */ true)
+                         .ToConstraintSpace();
+
   for (const auto* id : ids) {
-    NGBlockNode box(ToLayoutBox(GetLayoutObjectByElementId(id)));
-    MinMaxSizes sizes =
-        box.ComputeMinMaxSizes(
-               WritingMode::kHorizontalTb,
-               MinMaxSizesInput(
-                   /* percentage_resolution_block_size */ LayoutUnit(-1),
-                   MinMaxSizesType::kContent))
-            .sizes;
+    NGBlockNode box(GetLayoutBoxByElementId(id));
+    MinMaxSizes sizes = box.ComputeMinMaxSizes(WritingMode::kHorizontalTb,
+                                               MinMaxSizesType::kContent, space)
+                            .sizes;
     EXPECT_EQ(LayoutUnit(kExpectedMinWidth), sizes.min_size);
   }
 }

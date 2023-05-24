@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 #include "chrome/common/importer/imported_bookmark_entry.h"
 #include "chrome/common/importer/importer_autofill_form_data_entry.h"
 #include "chrome/common/importer/importer_bridge.h"
-#include "components/autofill/core/common/password_form.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
 class MockImporterBridge : public ImporterBridge {
@@ -20,21 +19,21 @@ class MockImporterBridge : public ImporterBridge {
 
   MOCK_METHOD2(AddBookmarks,
                void(const std::vector<ImportedBookmarkEntry>&,
-                    const base::string16&));
+                    const std::u16string&));
   MOCK_METHOD1(AddHomePage, void(const GURL&));
   MOCK_METHOD1(SetFavicons, void(const favicon_base::FaviconUsageDataList&));
   MOCK_METHOD2(SetHistoryItems,
                void(const std::vector<ImporterURLRow>&, importer::VisitSource));
   MOCK_METHOD2(SetKeywords,
                void(const std::vector<importer::SearchEngineInfo>&, bool));
-  MOCK_METHOD1(SetPasswordForm, void(const autofill::PasswordForm&));
+  MOCK_METHOD1(SetPasswordForm, void(const importer::ImportedPasswordForm&));
   MOCK_METHOD1(SetAutofillFormData,
                void(const std::vector<ImporterAutofillFormDataEntry>&));
   MOCK_METHOD0(NotifyStarted, void());
   MOCK_METHOD1(NotifyItemStarted, void(importer::ImportItem));
   MOCK_METHOD1(NotifyItemEnded, void(importer::ImportItem));
   MOCK_METHOD0(NotifyEnded, void());
-  MOCK_METHOD1(GetLocalizedString, base::string16(int));
+  MOCK_METHOD1(GetLocalizedString, std::u16string(int));
 
  private:
   ~MockImporterBridge() override;

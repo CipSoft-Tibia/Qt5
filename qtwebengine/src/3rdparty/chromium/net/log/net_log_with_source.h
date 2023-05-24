@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef NET_LOG_NET_LOG_WITH_SOURCE_H_
 #define NET_LOG_NET_LOG_WITH_SOURCE_H_
 
+#include "base/memory/raw_ptr.h"
 #include "net/base/net_export.h"
 #include "net/log/net_log.h"
 #include "net/log/net_log_event_type.h"
@@ -119,9 +120,23 @@ class NET_EXPORT NetLogWithSource {
   bool IsCapturing() const { return non_null_net_log_->IsCapturing(); }
 
   // Helper to create a NetLogWithSource given a NetLog and a NetLogSourceType.
-  // Takes care of creating a unique source ID, and handles
-  //  the case of NULL net_log.
+  // Takes care of creating a unique source ID, and handles the case of NULL
+  // net_log.
   static NetLogWithSource Make(NetLog* net_log, NetLogSourceType source_type);
+
+  // Helper to create a NetLogWithSource given a NetLogSourceType.
+  // Equivalent to calling Make(NetLog*, NetLogSourceType) with NetLog::Get()
+  static NetLogWithSource Make(NetLogSourceType source_type);
+
+  // Creates a NetLogWithSource with an already initialized NetLogSource. If
+  // |net_log| is null or |source| is not valid, creates an unbound
+  // NetLogWithSource.
+  static NetLogWithSource Make(NetLog* net_log, const NetLogSource& source);
+
+  // Creates a NetLogWithSource with an already initialized NetLogSource.
+  // Equivalent to calling Make(NetLog*, NetLogSource&) with NetLog::Get().
+  // If |source| is not valid, creates an unbound NetLogWithSource.
+  static NetLogWithSource Make(const NetLogSource& source);
 
   const NetLogSource& source() const { return source_; }
 
@@ -145,7 +160,7 @@ class NET_EXPORT NetLogWithSource {
   // As an optimization, both types internally store a non-null NetLog*. This
   // way no null checks are needed before dispatching to the (possibly dummy)
   // NetLog
-  NetLog* non_null_net_log_;
+  raw_ptr<NetLog> non_null_net_log_;
 };
 
 }  // namespace net

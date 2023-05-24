@@ -1,47 +1,72 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef NET_BASE_NETWORK_INTERFACES_FUCHSIA_H_
 #define NET_BASE_NETWORK_INTERFACES_FUCHSIA_H_
 
-#include <vector>
+#include <fuchsia/net/interfaces/cpp/fidl.h>
+#include <stdint.h>
 
 #include "net/base/network_change_notifier.h"
+#include "net/base/network_interfaces.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-namespace fuchsia {
-namespace net {
-class IpAddress;
-}
-namespace netstack {
-class NetInterface;
-}  // namespace netstack
-}  // namespace fuchsia
+namespace net::internal {
 
-namespace net {
+// Move-only wrapper for fuchsia::net::interface::Properties that guarantees
+// that its inner |properties_| are valid and complete properties as reported by
+// |VerifyCompleteInterfaceProperties|.
+class InterfaceProperties final {
+ public:
+  using InterfaceId = uint64_t;
 
-class IPAddress;
-struct NetworkInterface;
+  // Creates an |InterfaceProperties| if |properties| are valid complete
+  // properties as reported by |VerifyCompleteInterfaceProperties|.
+  static absl::optional<InterfaceProperties> VerifyAndCreate(
+      fuchsia::net::interfaces::Properties properties);
+  InterfaceProperties(InterfaceProperties&& interface);
+  InterfaceProperties& operator=(InterfaceProperties&& interface);
+  ~InterfaceProperties();
 
-namespace internal {
+  // Updates this instance with the values set in |properties|.
+  // Fields not set in |properties| retain their previous values.
+  // Returns false if the |properties| has a missing or mismatched |id| field,
+  // or if any field set in |properties| has an invalid value (e.g. addresses of
+  // unknown types).
+  bool Update(fuchsia::net::interfaces::Properties properties);
+
+  // Appends the NetworkInterfaces for this interface to |interfaces|.
+  void AppendNetworkInterfaces(NetworkInterfaceList* interfaces) const;
+
+  // Returns true if the interface is online and it has either an IPv4 default
+  // route and a non-link-local address, or an IPv6 default route and a global
+  // address.
+  bool IsPubliclyRoutable() const;
+
+  bool HasAddresses() const { return !properties_.addresses().empty(); }
+  InterfaceId id() const { return properties_.id(); }
+  bool online() const { return properties_.online(); }
+  const fuchsia::net::interfaces::DeviceClass& device_class() const {
+    return properties_.device_class();
+  }
+
+ private:
+  explicit InterfaceProperties(fuchsia::net::interfaces::Properties properties);
+
+  fuchsia::net::interfaces::Properties properties_;
+};
 
 // Returns the //net ConnectionType for the supplied netstack interface
-// description. Returns ConnectionType::CONNECTION_NONE if the interface is not
-// "up".
+// description. Returns CONNECTION_NONE for loopback interfaces.
 NetworkChangeNotifier::ConnectionType ConvertConnectionType(
-    const fuchsia::netstack::NetInterface& iface);
+    const fuchsia::net::interfaces::DeviceClass& device_class);
 
-// Converts a Fuchsia Netstack NetInterface object to NetworkInterface objects.
-// Interfaces with more than one IPv6 address will yield multiple
-// NetworkInterface objects, with friendly names to distinguish the different
-// IPs (e.g. "wlan" with three IPv6 IPs yields wlan-0, wlan-1, wlan-2).
-std::vector<NetworkInterface> NetInterfaceToNetworkInterfaces(
-    const fuchsia::netstack::NetInterface& iface_in);
+// Validates that |properties| contains all the required fields, returning
+// |true| if so.
+bool VerifyCompleteInterfaceProperties(
+    const fuchsia::net::interfaces::Properties& properties);
 
-// Converts a Fuchsia IPv4/IPv6 address to a Chromium IPAddress.
-IPAddress FuchsiaIpAddressToIPAddress(const fuchsia::net::IpAddress& addr);
-
-}  // namespace internal
-}  // namespace net
+}  // namespace net::internal
 
 #endif  // NET_BASE_NETWORK_INTERFACES_FUCHSIA_H_

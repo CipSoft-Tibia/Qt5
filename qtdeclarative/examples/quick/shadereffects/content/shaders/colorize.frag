@@ -1,12 +1,23 @@
-uniform sampler2D source;
-uniform lowp vec4 tint;
-uniform lowp float qt_Opacity;
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-varying highp vec2 qt_TexCoord0;
+#version 440
 
-void main() {
-    lowp vec4 c = texture2D(source, qt_TexCoord0);
-    lowp float lo = min(min(c.x, c.y), c.z);
-    lowp float hi = max(max(c.x, c.y), c.z);
-    gl_FragColor = qt_Opacity * vec4(mix(vec3(lo), vec3(hi), tint.xyz), c.w);
+layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 0) out vec4 fragColor;
+
+layout(binding = 1) uniform sampler2D source;
+
+layout(std140, binding = 0) uniform buf {
+    mat4 qt_Matrix;
+    float qt_Opacity;
+    vec4 tint;
+} ubuf;
+
+void main()
+{
+    vec4 c = texture(source, qt_TexCoord0);
+    float lo = min(min(c.x, c.y), c.z);
+    float hi = max(max(c.x, c.y), c.z);
+    fragColor = ubuf.qt_Opacity * vec4(mix(vec3(lo), vec3(hi), ubuf.tint.xyz), c.w);
 }

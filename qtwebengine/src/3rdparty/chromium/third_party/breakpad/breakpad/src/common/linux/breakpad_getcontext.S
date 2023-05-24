@@ -1,5 +1,4 @@
-// Copyright (c) 2012, Google Inc.
-// All rights reserved.
+// Copyright 2012 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -90,6 +89,47 @@ breakpad_getcontext:
 
 #elif defined(__aarch64__)
 
+#if defined(__ARM_FEATURE_PAC_DEFAULT) && __ARM_FEATURE_PAC_DEFAULT
+    // ENABLE_PAUTH must be defined to 1 since this value will be used in
+    // bitwise-shift later!
+    #define ENABLE_PAUTH 1
+
+    #if ((__ARM_FEATURE_PAC_DEFAULT&((1<<0)|(1<<1)))==0)
+        #error Pointer authentication defines no valid key!
+    #endif
+#else
+    #define ENABLE_PAUTH 0
+#endif
+
+#if defined(__ARM_FEATURE_BTI_DEFAULT) && (__ARM_FEATURE_BTI_DEFAULT==1)
+    // ENABLE_BTI must be defined to 1 since this value will be used in
+    // bitwise-shift later!
+    #define ENABLE_BTI 1
+#else
+    #define ENABLE_BTI 0
+#endif
+
+
+// Although Pointer Authentication and Branch Target Instructions are technically
+// seperate features they work together, i.e. the paciasp and pacibsp instructions
+// serve as BTI landing pads.
+// Therefore PA-instructions are enabled when PA _or_ BTI is enabled!
+#if ENABLE_PAUTH || ENABLE_BTI
+    // See section "Pointer Authentication" of
+    // https://developer.arm.com/documentation/101028/0012/5--Feature-test-macros
+    // for details how to interpret __ARM_FEATURE_PAC_DEFAULT
+    #if (__ARM_FEATURE_PAC_DEFAULT & (1<<0))
+        #define PAUTH_SIGN_SP paciasp
+        #define PAUTH_AUTH_SP autiasp
+    #else
+        #define PAUTH_SIGN_SP pacibsp
+        #define PAUTH_AUTH_SP autibsp
+    #endif
+#else
+    #define PAUTH_SIGN_SP
+    #define PAUTH_AUTH_SP
+#endif
+
 #define  _NSIG                       64
 #define  __NR_rt_sigprocmask         135
 
@@ -100,6 +140,8 @@ breakpad_getcontext:
   .align 4
   .cfi_startproc
 breakpad_getcontext:
+
+  PAUTH_SIGN_SP
 
   /* The saved context will return to the getcontext() call point
      with a return value of 0 */
@@ -170,6 +212,9 @@ breakpad_getcontext:
 
   /* Return x0 for success */
   mov     x0, 0
+
+  PAUTH_AUTH_SP
+
   ret
 
   .cfi_endproc
@@ -481,6 +526,120 @@ breakpad_getcontext:
   .cfi_endproc
   .size breakpad_getcontext, . - breakpad_getcontext
 
+#elif defined(__riscv)
+
+# define SIG_BLOCK                     0
+# define _NSIG8                        8
+# define __NR_rt_sigprocmask         135
+
+  .text
+  .globl breakpad_getcontext
+  .type breakpad_getcontext, @function
+  .align 0
+  .cfi_startproc
+breakpad_getcontext:
+  REG_S ra,  MCONTEXT_GREGS_PC(a0)
+  REG_S ra,  MCONTEXT_GREGS_RA(a0)
+  REG_S sp,  MCONTEXT_GREGS_SP(a0)
+  REG_S gp,  MCONTEXT_GREGS_SP(a0)
+  REG_S tp,  MCONTEXT_GREGS_TP(a0)
+  REG_S t0,  MCONTEXT_GREGS_T0(a0)
+  REG_S t1,  MCONTEXT_GREGS_T1(a0)
+  REG_S t2,  MCONTEXT_GREGS_T2(a0)
+  REG_S s0,  MCONTEXT_GREGS_S0(a0)
+  REG_S s1,  MCONTEXT_GREGS_S1(a0)
+  REG_S a0,  MCONTEXT_GREGS_A0(a0)
+  REG_S a1,  MCONTEXT_GREGS_A1(a0)
+  REG_S a2,  MCONTEXT_GREGS_A2(a0)
+  REG_S a3,  MCONTEXT_GREGS_A3(a0)
+  REG_S a4,  MCONTEXT_GREGS_A4(a0)
+  REG_S a5,  MCONTEXT_GREGS_A5(a0)
+  REG_S a6,  MCONTEXT_GREGS_A6(a0)
+  REG_S a7,  MCONTEXT_GREGS_A7(a0)
+  REG_S s2,  MCONTEXT_GREGS_S2(a0)
+  REG_S s3,  MCONTEXT_GREGS_S3(a0)
+  REG_S s4,  MCONTEXT_GREGS_S4(a0)
+  REG_S s5,  MCONTEXT_GREGS_S5(a0)
+  REG_S s6,  MCONTEXT_GREGS_S6(a0)
+  REG_S s7,  MCONTEXT_GREGS_S7(a0)
+  REG_S s8,  MCONTEXT_GREGS_S8(a0)
+  REG_S s9,  MCONTEXT_GREGS_S9(a0)
+  REG_S s10, MCONTEXT_GREGS_S10(a0)
+  REG_S s11, MCONTEXT_GREGS_S11(a0)
+  REG_S t3,  MCONTEXT_GREGS_T3(a0)
+  REG_S t4,  MCONTEXT_GREGS_T4(a0)
+  REG_S t5,  MCONTEXT_GREGS_T5(a0)
+  REG_S t6 , MCONTEXT_GREGS_T6(a0)
+# ifndef __riscv_float_abi_soft
+  frsr a1
+
+  FREG_S ft0,  MCONTEXT_FPREGS_FT0(a0)
+  FREG_S ft1,  MCONTEXT_FPREGS_FT1(a0)
+  FREG_S ft2,  MCONTEXT_FPREGS_FT2(a0)
+  FREG_S ft3,  MCONTEXT_FPREGS_FT3(a0)
+  FREG_S ft4,  MCONTEXT_FPREGS_FT4(a0)
+  FREG_S ft5,  MCONTEXT_FPREGS_FT5(a0)
+  FREG_S ft6,  MCONTEXT_FPREGS_FT6(a0)
+  FREG_S ft7,  MCONTEXT_FPREGS_FT7(a0)
+  FREG_S fs0,  MCONTEXT_FPREGS_FS0(a0)
+  FREG_S fs1,  MCONTEXT_FPREGS_FS1(a0)
+  FREG_S fa0,  MCONTEXT_FPREGS_FA0(a0)
+  FREG_S fa1,  MCONTEXT_FPREGS_FA1(a0)
+  FREG_S fa2,  MCONTEXT_FPREGS_FA2(a0)
+  FREG_S fa3,  MCONTEXT_FPREGS_FA3(a0)
+  FREG_S fa4,  MCONTEXT_FPREGS_FA4(a0)
+  FREG_S fa5,  MCONTEXT_FPREGS_FA5(a0)
+  FREG_S fa6,  MCONTEXT_FPREGS_FA6(a0)
+  FREG_S fa7,  MCONTEXT_FPREGS_FA7(a0)
+  FREG_S fs2,  MCONTEXT_FPREGS_FS2(a0)
+  FREG_S fs3,  MCONTEXT_FPREGS_FS3(a0)
+  FREG_S fs4,  MCONTEXT_FPREGS_FS4(a0)
+  FREG_S fs5,  MCONTEXT_FPREGS_FS5(a0)
+  FREG_S fs6,  MCONTEXT_FPREGS_FS6(a0)
+  FREG_S fs7,  MCONTEXT_FPREGS_FS7(a0)
+  FREG_S fs8,  MCONTEXT_FPREGS_FS8(a0)
+  FREG_S fs9,  MCONTEXT_FPREGS_FS9(a0)
+  FREG_S fs10, MCONTEXT_FPREGS_FS10(a0)
+  FREG_S fs11, MCONTEXT_FPREGS_FS11(a0)
+  FREG_S ft8,  MCONTEXT_FPREGS_FT8(a0)
+  FREG_S ft9,  MCONTEXT_FPREGS_FT9(a0)
+  FREG_S ft10, MCONTEXT_FPREGS_FT10(a0)
+  FREG_S ft11, MCONTEXT_FPREGS_FT11(a0)
+
+  sw a1, MCONTEXT_FPC_CSR(a0)
+# endif // __riscv_float_abi_soft
+  mv a1, zero
+  add a2, a0, UCONTEXT_SIGMASK_OFFSET
+  li a3, _NSIG8
+  mv a0, zero
+  li a7, __NR_rt_sigprocmask
+  ecall
+  mv a0, zero
+  ret
+
+  .cfi_endproc
+  .size breakpad_getcontext, . - breakpad_getcontext
+
 #else
-#error "This file has not been ported for your CPU!"
+# error "This file has not been ported for your CPU!"
+#endif
+
+#if defined(__aarch64__)
+// ENABLE_PAUTH and ENABLE_BTI would be enabled at the definition
+//  of AArch64 specific breakpad_getcontext function
+#if ENABLE_PAUTH || ENABLE_BTI
+// for further information on the .note.gnu.property section see
+// https://github.com/ARM-software/abi-aa/blob/main/aaelf64/aaelf64.rst#program-property
+.pushsection .note.gnu.property, "a";
+    .balign 8
+    .long 4
+    .long 0x10
+    .long 0x5
+    .asciz "GNU"
+    .long 0xc0000000 /* GNU_PROPERTY_AARCH64_FEATURE_1_AND */
+    .long 4
+    .long ((ENABLE_PAUTH)<<1) | ((ENABLE_BTI)<<0) /* PAuth and BTI */
+    .long 0
+.popsection
+#endif
 #endif

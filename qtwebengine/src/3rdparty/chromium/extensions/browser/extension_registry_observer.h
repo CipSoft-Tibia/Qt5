@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -48,7 +48,7 @@ enum class UnloadedExtensionReason;
 // want to see "what are the enabled extensions".
 class ExtensionRegistryObserver {
  public:
-  virtual ~ExtensionRegistryObserver() {}
+  virtual ~ExtensionRegistryObserver() = default;
 
   // Called after an extension is loaded. The extension will exclusively exist
   // in the enabled_extensions set of ExtensionRegistry.
@@ -99,6 +99,11 @@ class ExtensionRegistryObserver {
   virtual void OnExtensionUninstalled(content::BrowserContext* browser_context,
                                       const Extension* extension,
                                       UninstallReason reason) {}
+
+  // Called after the uninstallation of an extension is denied.
+  virtual void OnExtensionUninstallationDenied(
+      content::BrowserContext* browser_context,
+      const Extension* extension) {}
 
   // Notifies observers that the observed object is going away.
   virtual void OnShutdown(ExtensionRegistry* registry) {}

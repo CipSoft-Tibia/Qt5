@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,13 @@
 #include <limits>
 
 #include "base/compiler_specific.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/numerics/safe_math.h"
 #include "base/pickle.h"
+#include "base/strings/stringprintf.h"
 
 namespace base {
 
@@ -38,7 +40,7 @@ class SampleCountPickleIterator : public SampleCountIterator {
            HistogramBase::Count* count) const override;
 
  private:
-  PickleIterator* const iter_;
+  const raw_ptr<PickleIterator> iter_;
 
   HistogramBase::Sample min_;
   int64_t max_;
@@ -185,6 +187,11 @@ HistogramSamples::HistogramSamples(uint64_t id, Metadata* meta)
     meta_->id = id;
 }
 
+HistogramSamples::HistogramSamples(uint64_t id, std::unique_ptr<Metadata> meta)
+    : HistogramSamples(id, meta.get()) {
+  meta_owned_ = std::move(meta);
+}
+
 // This mustn't do anything with |meta_|. It was passed to the ctor and may
 // be invalid by the time this dtor gets called.
 HistogramSamples::~HistogramSamples() = default;
@@ -261,6 +268,102 @@ void HistogramSamples::RecordNegativeSample(NegativeSampleReason reason,
                               1 << 30, 100);
   UmaHistogramSparse("UMA.NegativeSamples.Histogram",
                      static_cast<int32_t>(id()));
+}
+
+base::Value::Dict HistogramSamples::ToGraphDict(StringPiece histogram_name,
+                                                int32_t flags) const {
+  base::Value::Dict dict;
+  dict.Set("name", histogram_name);
+  dict.Set("header", GetAsciiHeader(histogram_name, flags));
+  dict.Set("body", GetAsciiBody());
+  return dict;
+}
+
+std::string HistogramSamples::GetAsciiHeader(StringPiece histogram_name,
+                                             int32_t flags) const {
+  std::string output;
+  StringAppendF(&output, "Histogram: %.*s recorded %d samples",
+                static_cast<int>(histogram_name.size()), histogram_name.data(),
+                TotalCount());
+  if (flags)
+    StringAppendF(&output, " (flags = 0x%x)", flags);
+  return output;
+}
+
+std::string HistogramSamples::GetAsciiBody() const {
+  HistogramBase::Count total_count = TotalCount();
+  double scaled_total_count = total_count / 100.0;
+
+  // Determine how wide the largest bucket range is (how many digits to print),
+  // so that we'll be able to right-align starts for the graphical bars.
+  // Determine which bucket has the largest sample count so that we can
+  // normalize the graphical bar-width relative to that sample count.
+  HistogramBase::Count largest_count = 0;
+  HistogramBase::Sample largest_sample = 0;
+  std::unique_ptr<SampleCountIterator> it = Iterator();
+  while (!it->Done()) {
+    HistogramBase::Sample min;
+    int64_t max;
+    HistogramBase::Count count;
+    it->Get(&min, &max, &count);
+    if (min > largest_sample)
+      largest_sample = min;
+    if (count > largest_count)
+      largest_count = count;
+    it->Next();
+  }
+  // Scale histogram bucket counts to take at most 72 characters.
+  // Note: Keep in sync w/ kLineLength sample_vector.cc
+  const double kLineLength = 72;
+  double scaling_factor = 1;
+  if (largest_count > kLineLength)
+    scaling_factor = kLineLength / largest_count;
+  size_t print_width = GetSimpleAsciiBucketRange(largest_sample).size() + 1;
+
+  // iterate over each item and display them
+  it = Iterator();
+  std::string output;
+  while (!it->Done()) {
+    HistogramBase::Sample min;
+    int64_t max;
+    HistogramBase::Count count;
+    it->Get(&min, &max, &count);
+
+    // value is min, so display it
+    std::string range = GetSimpleAsciiBucketRange(min);
+    output.append(range);
+    for (size_t j = 0; range.size() + j < print_width + 1; ++j)
+      output.push_back(' ');
+    HistogramBase::Count current_size = round(count * scaling_factor);
+    WriteAsciiBucketGraph(current_size, kLineLength, &output);
+    WriteAsciiBucketValue(count, scaled_total_count, &output);
+    StringAppendF(&output, "\n");
+    it->Next();
+  }
+  return output;
+}
+
+void HistogramSamples::WriteAsciiBucketGraph(double x_count,
+                                             int line_length,
+                                             std::string* output) const {
+  int x_remainder = line_length - x_count;
+
+  while (0 < x_count--)
+    output->append("-");
+  output->append("O");
+  while (0 < x_remainder--)
+    output->append(" ");
+}
+
+void HistogramSamples::WriteAsciiBucketValue(HistogramBase::Count current,
+                                             double scaled_sum,
+                                             std::string* output) const {
+  StringAppendF(output, " (%d = %3.1f%%)", current, current / scaled_sum);
+}
+
+const std::string HistogramSamples::GetSimpleAsciiBucketRange(
+    HistogramBase::Sample sample) const {
+  return StringPrintf("%d", sample);
 }
 
 SampleCountIterator::~SampleCountIterator() = default;

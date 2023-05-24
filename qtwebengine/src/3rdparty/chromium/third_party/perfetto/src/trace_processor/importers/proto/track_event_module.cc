@@ -16,9 +16,10 @@
 #include "src/trace_processor/importers/proto/track_event_module.h"
 
 #include "perfetto/base/build_config.h"
+#include "perfetto/base/logging.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
-#include "src/trace_processor/timestamped_trace_piece.h"
+#include "src/trace_processor/importers/proto/track_event_tracker.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 
 #include "protos/perfetto/config/data_source_config.pbzero.h"
@@ -31,7 +32,10 @@ namespace trace_processor {
 using perfetto::protos::pbzero::TracePacket;
 
 TrackEventModule::TrackEventModule(TraceProcessorContext* context)
-    : tokenizer_(context), parser_(context) {
+    : track_event_tracker_(new TrackEventTracker(context)),
+      tokenizer_(context, track_event_tracker_.get()),
+      parser_(context, track_event_tracker_.get()) {
+  RegisterForField(TracePacket::kTrackEventRangeOfInterestFieldNumber, context);
   RegisterForField(TracePacket::kTrackEventFieldNumber, context);
   RegisterForField(TracePacket::kTrackDescriptorFieldNumber, context);
   RegisterForField(TracePacket::kThreadDescriptorFieldNumber, context);
@@ -47,6 +51,9 @@ ModuleResult TrackEventModule::TokenizePacket(
     PacketSequenceState* state,
     uint32_t field_id) {
   switch (field_id) {
+    case TracePacket::kTrackEventRangeOfInterestFieldNumber:
+      return tokenizer_.TokenizeRangeOfInterestPacket(state, decoder,
+                                                      packet_timestamp);
     case TracePacket::kTrackDescriptorFieldNumber:
       return tokenizer_.TokenizeTrackDescriptorPacket(state, decoder,
                                                       packet_timestamp);
@@ -61,30 +68,45 @@ ModuleResult TrackEventModule::TokenizePacket(
   return ModuleResult::Ignored();
 }
 
-void TrackEventModule::ParsePacket(const TracePacket::Decoder& decoder,
-                                   const TimestampedTracePiece& ttp,
-                                   uint32_t field_id) {
+void TrackEventModule::ParseTrackEventData(const TracePacket::Decoder& decoder,
+                                           int64_t ts,
+                                           const TrackEventData& data) {
+  parser_.ParseTrackEvent(ts, &data, decoder.track_event(),
+                          decoder.trusted_packet_sequence_id());
+}
+
+void TrackEventModule::ParseTracePacketData(const TracePacket::Decoder& decoder,
+                                            int64_t ts,
+                                            const TracePacketData&,
+                                            uint32_t field_id) {
   switch (field_id) {
     case TracePacket::kTrackDescriptorFieldNumber:
-      PERFETTO_DCHECK(ttp.type == TimestampedTracePiece::Type::kTracePacket);
-      parser_.ParseTrackDescriptor(decoder.track_descriptor());
-      break;
-    case TracePacket::kTrackEventFieldNumber:
-      PERFETTO_DCHECK(ttp.type == TimestampedTracePiece::Type::kTrackEvent);
-      parser_.ParseTrackEvent(ttp.timestamp, ttp.track_event_data.get(),
-                              decoder.track_event());
+      parser_.ParseTrackDescriptor(ts, decoder.track_descriptor(),
+                                   decoder.trusted_packet_sequence_id());
       break;
     case TracePacket::kProcessDescriptorFieldNumber:
       // TODO(eseckler): Remove once Chrome has switched to TrackDescriptors.
-      PERFETTO_DCHECK(ttp.type == TimestampedTracePiece::Type::kTracePacket);
-      parser_.ParseProcessDescriptor(decoder.process_descriptor());
+      parser_.ParseProcessDescriptor(ts, decoder.process_descriptor());
       break;
     case TracePacket::kThreadDescriptorFieldNumber:
       // TODO(eseckler): Remove once Chrome has switched to TrackDescriptors.
-      PERFETTO_DCHECK(ttp.type == TimestampedTracePiece::Type::kTracePacket);
       parser_.ParseThreadDescriptor(decoder.thread_descriptor());
       break;
+    case TracePacket::kTrackEventFieldNumber:
+      PERFETTO_DFATAL("Wrong TracePacket number");
   }
+}
+
+void TrackEventModule::OnIncrementalStateCleared(uint32_t packet_sequence_id) {
+  track_event_tracker_->OnIncrementalStateCleared(packet_sequence_id);
+}
+
+void TrackEventModule::OnFirstPacketOnSequence(uint32_t packet_sequence_id) {
+  track_event_tracker_->OnFirstPacketOnSequence(packet_sequence_id);
+}
+
+void TrackEventModule::NotifyEndOfFile() {
+  parser_.NotifyEndOfFile();
 }
 
 }  // namespace trace_processor

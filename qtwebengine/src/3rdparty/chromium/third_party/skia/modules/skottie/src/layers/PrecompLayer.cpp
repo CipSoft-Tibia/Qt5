@@ -7,6 +7,7 @@
 
 #include "modules/skottie/src/SkottiePriv.h"
 
+#include "include/core/SkCanvas.h"
 #include "modules/skottie/include/ExternalLayer.h"
 #include "modules/skottie/src/Composition.h"
 #include "modules/skottie/src/SkottieJson.h"
@@ -14,7 +15,7 @@
 #include "modules/skottie/src/animator/Animator.h"
 #include "modules/sksg/include/SkSGRenderNode.h"
 #include "modules/sksg/include/SkSGScene.h"
-#include "src/core/SkTLazy.h"
+#include "src/base/SkTLazy.h"
 #include "src/utils/SkJSON.h"
 
 namespace skottie {
@@ -188,6 +189,7 @@ sk_sp<sksg::RenderNode> AnimationBuilder::attachPrecompLayer(const skjson::Objec
     if (!precomp_layer) {
         const ScopedAssetRef precomp_asset(this, jlayer);
         if (precomp_asset) {
+            AutoPropertyTracker apt(this, *precomp_asset, PropertyObserver::NodeType::COMPOSITION);
             precomp_layer =
                 CompositionBuilder(*this, layer_info->fSize, *precomp_asset).build(*this);
         }

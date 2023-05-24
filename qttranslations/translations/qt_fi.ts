@@ -3,7 +3,6 @@
 <TS version="2.0" language="fi">
     <dependencies>
         <dependency catalog="qtbase_fi"/>
-        <dependency catalog="qtscript_fi"/>
         <dependency catalog="qtmultimedia_fi"/>
     </dependencies>
 </TS>

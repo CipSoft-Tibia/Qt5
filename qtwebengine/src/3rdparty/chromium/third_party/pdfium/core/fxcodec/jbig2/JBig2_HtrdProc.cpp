@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,7 +42,7 @@ std::unique_ptr<CJBig2_Image> CJBig2_HTRDProc::DecodeArith(
   GRD.GBW = HGW;
   GRD.GBH = HGH;
   GRD.GBTEMPLATE = HTEMPLATE;
-  GRD.TPGDON = 0;
+  GRD.TPGDON = false;
   GRD.USESKIP = HENABLESKIP;
   GRD.SKIP = HSKIP.get();
   if (HTEMPLATE <= 1)
@@ -70,7 +70,7 @@ std::unique_ptr<CJBig2_Image> CJBig2_HTRDProc::DecodeArith(
     state.pPause = nullptr;
     FXCODEC_STATUS status = GRD.StartDecodeArith(&state);
     state.pPause = pPause;
-    while (status == FXCODEC_STATUS_DECODE_TOBECONTINUE)
+    while (status == FXCODEC_STATUS::kDecodeToBeContinued)
       status = GRD.ContinueDecode(&state);
     if (!pImage)
       return nullptr;

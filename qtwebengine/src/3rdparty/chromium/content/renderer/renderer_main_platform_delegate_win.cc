@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,13 @@
 #include <dwrite.h>
 
 #include <memory>
+#include <string>
 
 #include "base/command_line.h"
-#include "base/strings/string16.h"
 #include "base/win/win_util.h"
 #include "base/win/windows_version.h"
 #include "content/child/dwrite_font_proxy/dwrite_font_proxy_init_impl_win.h"
 #include "content/child/font_warmup_win.h"
-#include "content/public/common/injection_test_win.h"
 #include "content/public/renderer/render_thread.h"
 #include "content/renderer/render_thread_impl.h"
 #include "sandbox/policy/switches.h"
@@ -36,7 +35,7 @@ RendererMainPlatformDelegate::~RendererMainPlatformDelegate() {
 }
 
 void RendererMainPlatformDelegate::PlatformInitialize() {
-  const base::CommandLine& command_line = parameters_.command_line;
+  const base::CommandLine& command_line = *parameters_.command_line;
 
   // Be mindful of what resources you acquire here. They can be used by
   // malicious code if the renderer gets compromised.

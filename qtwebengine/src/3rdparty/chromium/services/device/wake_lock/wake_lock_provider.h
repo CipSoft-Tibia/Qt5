@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,16 +9,13 @@
 #include <memory>
 #include <string>
 
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "services/device/public/mojom/wake_lock_context.mojom.h"
 #include "services/device/public/mojom/wake_lock_provider.mojom.h"
 #include "services/device/wake_lock/wake_lock.h"
-#include "services/device/wake_lock/wake_lock_context.h"
-#include "ui/gfx/native_widget_types.h"
 
 namespace device {
 
@@ -28,6 +25,10 @@ class WakeLockProvider : public mojom::WakeLockProvider,
  public:
   WakeLockProvider(scoped_refptr<base::SingleThreadTaskRunner> file_task_runner,
                    const WakeLockContextCallback& native_view_getter);
+
+  WakeLockProvider(const WakeLockProvider&) = delete;
+  WakeLockProvider& operator=(const WakeLockProvider&) = delete;
+
   ~WakeLockProvider() override;
 
   // Adds this receiver to |receiverss_|.
@@ -71,8 +72,6 @@ class WakeLockProvider : public mojom::WakeLockProvider,
   // Stores wake lock count and observers associated with each wake lock type.
   std::map<mojom::WakeLockType, std::unique_ptr<WakeLockDataPerType>>
       wake_lock_store_;
-
-  DISALLOW_COPY_AND_ASSIGN(WakeLockProvider);
 };  // namespace device
 
 }  // namespace device

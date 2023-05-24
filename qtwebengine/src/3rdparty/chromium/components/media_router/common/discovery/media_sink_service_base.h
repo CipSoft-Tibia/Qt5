@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -53,6 +53,10 @@ class MediaSinkServiceBase {
   // |callback|: Callback to inform the MediaRouter extension of discovered
   // sinks updates. Other uses should implement Observer::OnSinksDiscovered().
   explicit MediaSinkServiceBase(const OnSinksDiscoveredCallback& callback);
+
+  MediaSinkServiceBase(const MediaSinkServiceBase&) = delete;
+  MediaSinkServiceBase& operator=(const MediaSinkServiceBase&) = delete;
+
   virtual ~MediaSinkServiceBase();
 
   // Adds |observer| to observe |this| for sink updates.
@@ -61,9 +65,8 @@ class MediaSinkServiceBase {
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
 
-  // Overridden by subclass to initiate action triggered by user gesture, e.g.
-  // start one-off round of discovery.
-  virtual void OnUserGesture() {}
+  // Starts a new round of the discovery process as soon as possible.
+  virtual void DiscoverSinksNow() {}
 
   // Adds or updates, or removes a sink.
   // Notifies |observers_| that the sink has been added, updated, or removed.
@@ -79,6 +82,7 @@ class MediaSinkServiceBase {
   const MediaSinkInternal* GetSinkByRoute(const MediaRoute& route) const;
 
   void SetTimerForTest(std::unique_ptr<base::OneShotTimer> timer);
+  void AddSinkForTest(const MediaSinkInternal& sink);
 
  protected:
   // Called when |discovery_timer_| expires. Informs subclass to report device
@@ -127,7 +131,6 @@ class MediaSinkServiceBase {
   base::flat_map<MediaSink::Id, MediaSinkInternal> previous_sinks_;
 
   SEQUENCE_CHECKER(sequence_checker_);
-  DISALLOW_COPY_AND_ASSIGN(MediaSinkServiceBase);
 };
 
 }  // namespace media_router

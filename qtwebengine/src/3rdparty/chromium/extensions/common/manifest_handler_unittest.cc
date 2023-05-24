@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "base/files/file_path.h"
-#include "base/stl_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_builder.h"
@@ -76,7 +76,7 @@ class ManifestHandlerTest : public testing::Test {
                      [](const std::string& s) { return s.c_str(); });
     }
 
-    bool Parse(Extension* extension, base::string16* error) override {
+    bool Parse(Extension* extension, std::u16string* error) override {
       watcher_->Record(name_);
       return true;
     }
@@ -90,7 +90,7 @@ class ManifestHandlerTest : public testing::Test {
     std::vector<std::string> keys_;
     std::vector<const char*> keys_ptrs_;
     std::vector<std::string> prereqs_;
-    ParsingWatcher* watcher_;
+    raw_ptr<ParsingWatcher> watcher_;
 
     base::span<const char* const> Keys() const override { return keys_ptrs_; }
   };
@@ -103,7 +103,7 @@ class ManifestHandlerTest : public testing::Test {
                                ParsingWatcher* watcher)
         : TestManifestHandler(name, keys, prereqs, watcher) {
     }
-    bool Parse(Extension* extension, base::string16* error) override {
+    bool Parse(Extension* extension, std::u16string* error) override {
       *error = base::ASCIIToUTF16(name_);
       return false;
     }
@@ -134,7 +134,7 @@ class ManifestHandlerTest : public testing::Test {
                      [](const std::string& s) { return s.c_str(); });
     }
 
-    bool Parse(Extension* extension, base::string16* error) override {
+    bool Parse(Extension* extension, std::u16string* error) override {
       return true;
     }
 
@@ -213,19 +213,18 @@ TEST_F(ManifestHandlerTest, FailingHandlers) {
   ScopedTestingManifestHandlerRegistry scoped_registry;
   // Can't use ExtensionBuilder, because this extension will fail to
   // be parsed.
-  std::unique_ptr<base::DictionaryValue> manifest_a(
-      DictionaryBuilder()
-          .Set("name", "no name")
-          .Set("version", "0")
-          .Set("manifest_version", 2)
-          .Set("a", 1)
-          .Build());
+  base::Value::Dict manifest_a(DictionaryBuilder()
+                                   .Set("name", "no name")
+                                   .Set("version", "0")
+                                   .Set("manifest_version", 2)
+                                   .Set("a", 1)
+                                   .Build());
 
   // Succeeds when "a" is not recognized.
   std::string error;
-  scoped_refptr<Extension> extension =
-      Extension::Create(base::FilePath(), Manifest::INVALID_LOCATION,
-                        *manifest_a, Extension::NO_FLAGS, &error);
+  scoped_refptr<Extension> extension = Extension::Create(
+      base::FilePath(), mojom::ManifestLocation::kInvalidLocation, manifest_a,
+      Extension::NO_FLAGS, &error);
   EXPECT_TRUE(extension.get());
 
   // Register a handler for "a" that fails.
@@ -235,12 +234,9 @@ TEST_F(ManifestHandlerTest, FailingHandlers) {
       "A", SingleKey("a"), std::vector<std::string>(), &watcher));
   ManifestHandler::FinalizeRegistration();
 
-  extension = Extension::Create(
-      base::FilePath(),
-      Manifest::INVALID_LOCATION,
-      *manifest_a,
-      Extension::NO_FLAGS,
-      &error);
+  extension = Extension::Create(base::FilePath(),
+                                mojom::ManifestLocation::kInvalidLocation,
+                                manifest_a, Extension::NO_FLAGS, &error);
   EXPECT_FALSE(extension.get());
   EXPECT_EQ("A", error);
 }

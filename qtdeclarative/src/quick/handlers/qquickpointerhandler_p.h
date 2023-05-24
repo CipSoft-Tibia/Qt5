@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKPOINTERHANDLER_H
 #define QQUICKPOINTERHANDLER_H
@@ -51,34 +15,44 @@
 // We mean it.
 //
 
-#include <QtQuick/private/qquickevents_p_p.h>
-#include <QtQuick/private/qquickitem_p.h>
+#include <QtCore/QObject>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qtconfigmacros.h>
+#include <QtGui/qeventpoint.h>
+#include <QtGui/qpointingdevice.h>
+#include <QtQml/QQmlParserStatus>
+#include <QtQml/qqmlregistration.h>
+#include <QtQuick/qtquickglobal.h>
+#include <QtQuick/private/qtquickexports_p.h>
 
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_LOGGING_CATEGORY(lcPointerHandlerDispatch)
 
+class QQuickItem;
 class QQuickPointerHandlerPrivate;
+class QPointerEvent;
 
 class Q_QUICK_PRIVATE_EXPORT QQuickPointerHandler : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
 
-    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged)
-    Q_PROPERTY(bool active READ active NOTIFY activeChanged)
-    Q_PROPERTY(QQuickItem * target READ target WRITE setTarget NOTIFY targetChanged)
-    Q_PROPERTY(QQuickItem * parent READ parentItem CONSTANT)
-    Q_PROPERTY(GrabPermissions grabPermissions READ grabPermissions WRITE setGrabPermissions NOTIFY grabPermissionChanged)
-    Q_PROPERTY(qreal margin READ margin WRITE setMargin NOTIFY marginChanged)
-    Q_PROPERTY(int dragThreshold READ dragThreshold WRITE setDragThreshold RESET resetDragThreshold NOTIFY dragThresholdChanged REVISION 15)
+    Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
+    Q_PROPERTY(bool active READ active NOTIFY activeChanged FINAL)
+    Q_PROPERTY(QQuickItem * target READ target WRITE setTarget NOTIFY targetChanged FINAL)
+    Q_PROPERTY(QQuickItem * parent READ parentItem WRITE setParentItem NOTIFY parentChanged FINAL)
+    Q_PROPERTY(GrabPermissions grabPermissions READ grabPermissions WRITE setGrabPermissions NOTIFY grabPermissionChanged FINAL)
+    Q_PROPERTY(qreal margin READ margin WRITE setMargin NOTIFY marginChanged FINAL)
+    Q_PROPERTY(int dragThreshold READ dragThreshold WRITE setDragThreshold RESET resetDragThreshold NOTIFY dragThresholdChanged REVISION(2, 15) FINAL)
 #if QT_CONFIG(cursor)
-    Q_PROPERTY(Qt::CursorShape cursorShape READ cursorShape WRITE setCursorShape RESET resetCursorShape NOTIFY cursorShapeChanged REVISION 15)
+    Q_PROPERTY(Qt::CursorShape cursorShape READ cursorShape WRITE setCursorShape RESET resetCursorShape NOTIFY cursorShapeChanged REVISION(2, 15) FINAL)
 #endif
 
+    Q_CLASSINFO("ParentProperty", "parent")
     QML_NAMED_ELEMENT(PointerHandler)
     QML_UNCREATABLE("PointerHandler is an abstract base class.")
-    QML_ADDED_IN_MINOR_VERSION(12)
+    QML_ADDED_IN_VERSION(2, 12)
 
 public:
     explicit QQuickPointerHandler(QQuickItem *parent = nullptr);
@@ -109,8 +83,9 @@ public:
     void setTarget(QQuickItem *target);
 
     QQuickItem * parentItem() const;
+    void setParentItem(QQuickItem *p);
 
-    void handlePointerEvent(QQuickPointerEvent *event);
+    void handlePointerEvent(QPointerEvent *event);
 
     GrabPermissions grabPermissions() const;
     void setGrabPermissions(GrabPermissions grabPermissions);
@@ -134,37 +109,41 @@ Q_SIGNALS:
     void activeChanged();
     void targetChanged();
     void marginChanged();
-    Q_REVISION(15) void dragThresholdChanged();
-    void grabChanged(QQuickEventPoint::GrabTransition transition, QQuickEventPoint *point);
+    Q_REVISION(2, 15) void dragThresholdChanged();
+    void grabChanged(QPointingDevice::GrabTransition transition, QEventPoint point);
     void grabPermissionChanged();
-    void canceled(QQuickEventPoint *point);
+    void canceled(QEventPoint point);
 #if QT_CONFIG(cursor)
-    Q_REVISION(15) void cursorShapeChanged();
+    Q_REVISION(2, 15) void cursorShapeChanged();
 #endif
+    Q_REVISION(6, 3) void parentChanged();
 
 protected:
     QQuickPointerHandler(QQuickPointerHandlerPrivate &dd, QQuickItem *parent);
 
     void classBegin() override;
     void componentComplete() override;
+    bool event(QEvent *) override;
 
-    QQuickPointerEvent *currentEvent();
-    virtual bool wantsPointerEvent(QQuickPointerEvent *event);
-    virtual bool wantsEventPoint(QQuickEventPoint *point);
-    virtual void handlePointerEventImpl(QQuickPointerEvent *event);
+    QPointerEvent *currentEvent();
+    virtual bool wantsPointerEvent(QPointerEvent *event);
+    virtual bool wantsEventPoint(const QPointerEvent *event, const QEventPoint &point);
+    virtual void handlePointerEventImpl(QPointerEvent *event);
     void setActive(bool active);
     virtual void onTargetChanged(QQuickItem *oldTarget) { Q_UNUSED(oldTarget); }
     virtual void onActiveChanged() { }
-    virtual void onGrabChanged(QQuickPointerHandler *grabber, QQuickEventPoint::GrabTransition transition, QQuickEventPoint *point);
-    virtual bool canGrab(QQuickEventPoint *point);
-    virtual bool approveGrabTransition(QQuickEventPoint *point, QObject *proposedGrabber);
-    void setPassiveGrab(QQuickEventPoint *point, bool grab = true);
-    bool setExclusiveGrab(QQuickEventPoint *point, bool grab = true);
-    void cancelAllGrabs(QQuickEventPoint *point);
-    QPointF eventPos(const QQuickEventPoint *point) const;
-    bool parentContains(const QQuickEventPoint *point) const;
+    virtual void onGrabChanged(QQuickPointerHandler *grabber, QPointingDevice::GrabTransition transition,
+                               QPointerEvent *event, QEventPoint &point);
+    virtual bool canGrab(QPointerEvent *event, const QEventPoint &point);
+    virtual bool approveGrabTransition(QPointerEvent *event, const QEventPoint &point, QObject *proposedGrabber);
+    void setPassiveGrab(QPointerEvent *event, const QEventPoint &point, bool grab = true);
+    bool setExclusiveGrab(QPointerEvent *ev, const QEventPoint &point, bool grab = true);
+    void cancelAllGrabs(QPointerEvent *event, QEventPoint &point);
+    QPointF eventPos(const QEventPoint &point) const;
+    bool parentContains(const QEventPoint &point) const;
+    bool parentContains(const QPointF &scenePosition) const;
 
-    friend class QQuickEventPoint;
+    friend class QQuickDeliveryAgentPrivate;
     friend class QQuickItemPrivate;
     friend class QQuickWindowPrivate;
 
@@ -174,7 +153,5 @@ protected:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QQuickPointerHandler::GrabPermissions)
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickPointerHandler)
 
 #endif // QQUICKPOINTERHANDLER_H

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,15 @@
 #include <memory>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "ui/gfx/animation/animation_delegate.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/message_center/message_center.h"
 #include "ui/message_center/message_center_export.h"
 #include "ui/message_center/message_center_observer.h"
+#include "ui/message_center/notification_view_controller.h"
+#include "ui/message_center/views/message_view.h"
 #include "ui/views/widget/widget.h"
 
 namespace gfx {
@@ -33,9 +37,13 @@ class PopupAlignmentDelegate;
 // screen. Manages animation state and updates these popup widgets.
 class MESSAGE_CENTER_EXPORT MessagePopupCollection
     : public MessageCenterObserver,
+      public NotificationViewController,
       public gfx::AnimationDelegate {
  public:
   MessagePopupCollection();
+  MessagePopupCollection(const MessagePopupCollection& other) = delete;
+  MessagePopupCollection& operator=(const MessagePopupCollection& other) =
+      delete;
   ~MessagePopupCollection() override;
 
   // Update popups based on current |state_|.
@@ -50,6 +58,17 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
 
   // Notify the popup is closed. Called from MessagePopupView.
   virtual void NotifyPopupClosed(MessagePopupView* popup);
+
+  // NotificationViewController:
+  void AnimateResize() override;
+  MessageView* GetMessageViewForNotificationId(
+      const std::string& notification_id) override;
+  void ConvertNotificationViewToGroupedNotificationView(
+      const std::string& ungrouped_notification_id,
+      const std::string& new_grouped_notification_id) override;
+  void ConvertGroupedNotificationViewToNotificationView(
+      const std::string& grouped_notification_id,
+      const std::string& new_single_notification_id) override;
 
   // MessageCenterObserver:
   void OnNotificationAdded(const std::string& notification_id) override;
@@ -122,8 +141,15 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
   // Called with |notification_id| when a popup is marked to be removed.
   virtual void NotifyPopupRemoved(const std::string& notification_id) {}
 
-  // virtual for testing.
+  // Called when popup animation is started/finished.
+  virtual void AnimationStarted() {}
+  virtual void AnimationFinished() {}
+
+  // TODO(crbug/1241602): std::unique_ptr can be used here and multiple other
+  // places.
   virtual MessagePopupView* CreatePopup(const Notification& notification);
+
+  // virtual for testing.
   virtual void RestartPopupTimers();
   virtual void PausePopupTimers();
 
@@ -176,7 +202,7 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
     bool is_animating = false;
 
     // Unowned.
-    MessagePopupView* popup = nullptr;
+    raw_ptr<MessagePopupView, DanglingUntriaged> popup = nullptr;
   };
 
   // Transition from animation state (FADE_IN, FADE_OUT, and MOVE_DOWN) to
@@ -218,12 +244,6 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
   // Returns true if the edge is outside work area.
   bool IsNextEdgeOutsideWorkArea(const PopupItem& item) const;
 
-  // Implements hot mode. The purpose of hot mode is to allow a user to
-  // continually close many notifications by mouse without moving it. Similar
-  // functionality is also implemented in browser tab strips.
-  void StartHotMode();
-  void ResetHotMode();
-
   void CloseAnimatingPopups();
   bool CloseTransparentPopups();
   void ClosePopupsOutsideWorkArea();
@@ -248,12 +268,16 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
 
   // Return true if any popup is hovered by mouse.
   bool IsAnyPopupHovered() const;
-  // Return true if any popup is activated.
-  bool IsAnyPopupActive() const;
+  // Return true if any popup is focused.
+  bool IsAnyPopupFocused() const;
 
   // Returns the popup which is visually |index_from_top|-th from the top.
   // When |inverse_| is false, it's same as popup_items_[i].
   PopupItem* GetPopupItem(size_t index_from_top);
+
+  // Reset |recently_closed_by_user_| to false. Used by
+  // |recently_closed_by_user_timer_|
+  void ResetRecentlyClosedByUser();
 
   // Animation state. See the comment of State.
   State state_ = State::IDLE;
@@ -277,19 +301,6 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
   // IDLE state.
   bool resize_requested_ = false;
 
-  // Hot mode related variables. See StartHotMode() and ResetHotMode().
-
-  // True if the close button of the popup at |hot_index_| is hot.
-  bool is_hot_ = false;
-
-  // An index in |popup_items_|. Only valid if |is_hot_| is true.
-  size_t hot_index_ = 0;
-
-  // Fixed Y coordinate of the popup at |hot_index_|. While |is_hot_| is true,
-  // CalculateBounds() always lays out popups in a way the top of the popup at
-  // |hot_index_| is aligned to |hot_top_|. Only valid if |is_hot_| is true.
-  int hot_top_ = 0;
-
   // Invert ordering of notification popups i.e. showing the latest notification
   // at the top. It changes the state transition like this:
   // Normal:
@@ -300,9 +311,10 @@ class MESSAGE_CENTER_EXPORT MessagePopupCollection
   //   * a notification comes out: FADE_OUT
   bool inverse_ = false;
 
-  base::WeakPtrFactory<MessagePopupCollection> weak_ptr_factory_{this};
+  base::ScopedObservation<MessageCenter, MessageCenterObserver>
+      message_center_observation_{this};
 
-  DISALLOW_COPY_AND_ASSIGN(MessagePopupCollection);
+  base::WeakPtrFactory<MessagePopupCollection> weak_ptr_factory_{this};
 };
 
 }  // namespace message_center

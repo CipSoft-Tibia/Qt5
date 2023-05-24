@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2017 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,32 +13,9 @@ const char kSmbProviderServicePath[] = "/org/chromium/SmbProvider";
 const char kSmbProviderServiceName[] = "org.chromium.SmbProvider";
 
 // Methods
-const char kMountMethod[] = "Mount";
-const char kUnmountMethod[] = "Unmount";
-const char kReadDirectoryMethod[] = "ReadDirectory";
-const char kGetMetadataEntryMethod[] = "GetMetadataEntry";
-const char kOpenFileMethod[] = "OpenFile";
-const char kCloseFileMethod[] = "CloseFile";
-const char kReadFileMethod[] = "ReadFile";
-const char kDeleteEntryMethod[] = "DeleteEntry";
-const char kCreateFileMethod[] = "CreateFile";
-const char kTruncateMethod[] = "Truncate";
-const char kWriteFileMethod[] = "WriteFile";
-const char kCreateDirectoryMethod[] = "CreateDirectory";
-const char kMoveEntryMethod[] = "MoveEntry";
-const char kCopyEntryMethod[] = "CopyEntry";
-const char kGetDeleteListMethod[] = "GetDeleteList";
 const char kGetSharesMethod[] = "GetShares";
-const char kRemountMethod[] = "Remount";
 const char kSetupKerberosMethod[] = "SetupKerberos";
 const char kParseNetBiosPacketMethod[] = "ParseNetBiosPacket";
-const char kStartCopyMethod[] = "StartCopy";
-const char kContinueCopyMethod[] = "ContinueCopy";
-const char kStartReadDirectoryMethod[] = "StartReadDirectory";
-const char kContinueReadDirectoryMethod[] = "ContinueReadDirectory";
-const char kUpdateMountCredentialsMethod[] = "UpdateMountCredentials";
-const char kPremountMethod[] = "Premount";
-const char kUpdateSharePathMethod[] = "UpdateSharePath";
 
 }  // namespace smbprovider
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTDOCUMENT_P_H
 #define QTEXTDOCUMENT_P_H
@@ -52,21 +16,25 @@
 //
 
 #include <QtGui/private/qtguiglobal_p.h>
-#include "QtCore/qstring.h"
-#include "QtCore/qvector.h"
-#include "QtCore/qlist.h"
-#include "private/qobject_p.h"
-#include "private/qfragmentmap_p.h"
-#include "QtGui/qtextlayout.h"
-#include "QtGui/qtextoption.h"
-#include "private/qtextformat_p.h"
-#include "QtGui/qtextdocument.h"
-#include "QtGui/qtextobject.h"
 #include "QtGui/qtextcursor.h"
+#include "QtGui/qtextdocument.h"
+#include "QtGui/qtextlayout.h"
+#include "QtGui/qtextobject.h"
+#include "QtGui/qtextoption.h"
+
+#include "QtCore/qlist.h"
 #include "QtCore/qmap.h"
-#include "QtCore/qvariant.h"
+#include "QtCore/qset.h"
+#include "QtCore/qstring.h"
 #include "QtCore/qurl.h"
+#include "QtCore/qvariant.h"
+
+#if QT_CONFIG(cssparser)
 #include "private/qcssparser_p.h"
+#endif
+#include "private/qfragmentmap_p.h"
+#include "private/qobject_p.h"
+#include "private/qtextformat_p.h"
 
 // #define QT_QMAP_DEBUG
 
@@ -84,8 +52,8 @@ class QAbstractTextDocumentLayout;
 class QTextDocument;
 class QTextFrame;
 
-#define QTextBeginningOfFrame QChar(0xfdd0)
-#define QTextEndOfFrame QChar(0xfdd1)
+#define QTextBeginningOfFrame QChar(u'\xfdd0')
+#define QTextEndOfFrame QChar(u'\xfdd1')
 
 class QTextFragmentData : public QFragment<>
 {
@@ -277,8 +245,8 @@ private:
 public:
     void documentChange(int from, int length);
 
-    inline void addCursor(QTextCursorPrivate *c) { cursors.insert(c); }
-    inline void removeCursor(QTextCursorPrivate *c) { cursors.remove(c); }
+    void addCursor(QTextCursorPrivate *c);
+    void removeCursor(QTextCursorPrivate *c);
 
     QTextFrame *frameAt(int pos) const;
     QTextFrame *rootFrame() const;
@@ -295,6 +263,38 @@ public:
 
     bool ensureMaximumBlockCount();
 
+    static inline const QTextDocumentPrivate *get(const QTextDocument *document)
+    {
+        return document->d_func();
+    }
+
+    static inline QTextDocumentPrivate *get(QTextDocument *document)
+    {
+        return document->d_func();
+    }
+
+    static inline QTextDocumentPrivate *get(QTextBlock &block)
+    {
+        return block.p;
+    }
+
+    static inline const QTextDocumentPrivate *get(const QTextBlock &block)
+    {
+        return block.p;
+    }
+
+    static inline QTextDocumentPrivate *get(QTextObject *object)
+    {
+        return get(object->document());
+    }
+
+    static inline const QTextDocumentPrivate *get(const QTextObject *object)
+    {
+        return get(object->document());
+    }
+
+    bool canLayout() const { return layoutEnabled && !pageSize.isNull(); }
+
 private:
     QTextDocumentPrivate(const QTextDocumentPrivate& m);
     QTextDocumentPrivate& operator= (const QTextDocumentPrivate& m);
@@ -308,7 +308,7 @@ private:
     QString text;
     uint unreachableCharacterCount;
 
-    QVector<QTextUndoCommand> undoStack;
+    QList<QTextUndoCommand> undoStack;
     bool undoEnabled;
     int undoState;
     int revision;
@@ -334,12 +334,14 @@ private:
     QMap<int, QTextObject *> objects;
     QMap<QUrl, QVariant> resources;
     QMap<QUrl, QVariant> cachedResources;
+    QTextDocument::ResourceProvider resourceProvider;
     QString defaultStyleSheet;
 
     int lastBlockCount;
 
 public:
     bool inContentsChange;
+    bool layoutEnabled = true;
     QTextOption defaultTextOption;
     Qt::CursorMoveStyle defaultCursorMoveStyle;
 #ifndef QT_NO_CSSPARSER
@@ -351,6 +353,7 @@ public:
     QSizeF pageSize;
     QString title;
     QString url;
+    QString cssMedia;
     qreal indentWidth;
     qreal documentMargin;
     QUrl baseUrl;
@@ -373,7 +376,7 @@ public:
         ExportFragment
     };
 
-    QString toHtml(const QByteArray &encoding, ExportMode mode = ExportEntireDocument);
+    QString toHtml(ExportMode mode = ExportEntireDocument);
 
 private:
     enum StyleMode { EmitStyleTag, OmitStyleTag };

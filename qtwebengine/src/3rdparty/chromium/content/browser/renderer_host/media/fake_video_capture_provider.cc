@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "content/browser/renderer_host/media/fake_video_capture_provider.h"
+
 #include <memory>
 
-#include "content/browser/renderer_host/media/fake_video_capture_provider.h"
 #include "content/browser/renderer_host/media/fake_video_capture_device_launcher.h"
 #include "media/capture/video/fake_video_capture_device_factory.h"
 
@@ -17,7 +18,9 @@ FakeVideoCaptureProvider::~FakeVideoCaptureProvider() = default;
 
 void FakeVideoCaptureProvider::GetDeviceInfosAsync(
     GetDeviceInfosCallback result_callback) {
-  system_.GetDeviceInfosAsync(std::move(result_callback));
+  system_.GetDeviceInfosAsync(
+      base::BindOnce(std::move(result_callback),
+                     media::mojom::DeviceEnumerationResult::kSuccess));
 }
 
 std::unique_ptr<VideoCaptureDeviceLauncher>

@@ -10,8 +10,8 @@
 #include "src/base/macros.h"
 #include "src/base/platform/mutex.h"
 #include "src/common/globals.h"
+#include "src/heap/base/active-system-pages.h"
 #include "src/heap/basic-memory-chunk.h"
-#include "src/heap/heap.h"
 #include "src/heap/invalidated-slots.h"
 #include "src/heap/list.h"
 #include "src/heap/marking.h"
@@ -23,6 +23,7 @@ namespace internal {
 
 class CodeObjectRegistry;
 class FreeListCategory;
+class Space;
 
 // MemoryChunk represents a memory region owned by a specific space.
 // It is divided into the header and the body. Chunk start is always
@@ -49,8 +50,9 @@ class MemoryChunk : public BasicMemoryChunk {
   // Page size in bytes.  This must be a multiple of the OS page size.
   static const int kPageSize = 1 << kPageSizeBits;
 
-  // Maximum number of nested code memory modification scopes.
-  static const int kMaxWriteUnprotectCounter = 3;
+  MemoryChunk(Heap* heap, BaseSpace* space, size_t size, Address area_start,
+              Address area_end, VirtualMemory reservation,
+              Executability executable, PageSize page_size);
 
   // Only works if the pointer is in the first kPageSize of the MemoryChunk.
   static MemoryChunk* FromAddress(Address a) {
@@ -59,7 +61,6 @@ class MemoryChunk : public BasicMemoryChunk {
 
   // Only works if the object is in the first kPageSize of the MemoryChunk.
   static MemoryChunk* FromHeapObject(HeapObject o) {
-    DCHECK(!V8_ENABLE_THIRD_PARTY_HEAP_BOOL);
     return cast(BasicMemoryChunk::FromHeapObject(o));
   }
 
@@ -94,7 +95,7 @@ class MemoryChunk : public BasicMemoryChunk {
     return static_cast<ConcurrentSweepingState>(concurrent_sweeping_.load());
   }
 
-  bool SweepingDone() {
+  bool SweepingDone() const {
     return concurrent_sweeping_ == ConcurrentSweepingState::kDone;
   }
 
@@ -109,13 +110,6 @@ class MemoryChunk : public BasicMemoryChunk {
     if (access_mode == AccessMode::ATOMIC)
       return base::AsAtomicPointer::Acquire_Load(&slot_set_[type]);
     return slot_set_[type];
-  }
-
-  template <AccessMode access_mode = AccessMode::ATOMIC>
-  SlotSet* sweeping_slot_set() {
-    if (access_mode == AccessMode::ATOMIC)
-      return base::AsAtomicPointer::Acquire_Load(&sweeping_slot_set_);
-    return sweeping_slot_set_;
   }
 
   template <RememberedSetType type, AccessMode access_mode = AccessMode::ATOMIC>
@@ -134,7 +128,7 @@ class MemoryChunk : public BasicMemoryChunk {
   template <RememberedSetType type>
   void ReleaseSlotSet();
   void ReleaseSlotSet(SlotSet** slot_set);
-  void ReleaseSweepingSlotSet();
+
   template <RememberedSetType type>
   TypedSlotSet* AllocateTypedSlotSet();
   // Not safe to be called concurrently.
@@ -146,8 +140,11 @@ class MemoryChunk : public BasicMemoryChunk {
   template <RememberedSetType type>
   void ReleaseInvalidatedSlots();
   template <RememberedSetType type>
-  V8_EXPORT_PRIVATE void RegisterObjectWithInvalidatedSlots(HeapObject object);
-  void InvalidateRecordedSlots(HeapObject object);
+  V8_EXPORT_PRIVATE void RegisterObjectWithInvalidatedSlots(HeapObject object,
+                                                            int new_size);
+  template <RememberedSetType type>
+  V8_EXPORT_PRIVATE void UpdateInvalidatedObjectSize(HeapObject object,
+                                                     int new_size);
   template <RememberedSetType type>
   bool RegisteredObjectWithInvalidatedSlots(HeapObject object);
   template <RememberedSetType type>
@@ -155,30 +152,18 @@ class MemoryChunk : public BasicMemoryChunk {
     return invalidated_slots_[type];
   }
 
-  void AllocateYoungGenerationBitmap();
-  void ReleaseYoungGenerationBitmap();
+  bool HasRecordedSlots() const;
+  bool HasRecordedOldToNewSlots() const;
 
   int FreeListsLength();
 
   // Approximate amount of physical memory committed for this chunk.
-  V8_EXPORT_PRIVATE size_t CommittedPhysicalMemory();
+  V8_EXPORT_PRIVATE size_t CommittedPhysicalMemory() const;
 
-  size_t ProgressBar() {
-    DCHECK(IsFlagSet<AccessMode::ATOMIC>(HAS_PROGRESS_BAR));
-    return progress_bar_.load(std::memory_order_acquire);
+  class ProgressBar& ProgressBar() {
+    return progress_bar_;
   }
-
-  bool TrySetProgressBar(size_t old_value, size_t new_value) {
-    DCHECK(IsFlagSet<AccessMode::ATOMIC>(HAS_PROGRESS_BAR));
-    return progress_bar_.compare_exchange_strong(old_value, new_value,
-                                                 std::memory_order_acq_rel);
-  }
-
-  void ResetProgressBar() {
-    if (IsFlagSet(MemoryChunk::HAS_PROGRESS_BAR)) {
-      progress_bar_.store(0, std::memory_order_release);
-    }
-  }
+  const class ProgressBar& ProgressBar() const { return progress_bar_; }
 
   inline void IncrementExternalBackingStoreBytes(ExternalBackingStoreType type,
                                                  size_t amount);
@@ -186,7 +171,7 @@ class MemoryChunk : public BasicMemoryChunk {
   inline void DecrementExternalBackingStoreBytes(ExternalBackingStoreType type,
                                                  size_t amount);
 
-  size_t ExternalBackingStoreBytes(ExternalBackingStoreType type) {
+  size_t ExternalBackingStoreBytes(ExternalBackingStoreType type) const {
     return external_backing_store_bytes_[type];
   }
 
@@ -202,17 +187,20 @@ class MemoryChunk : public BasicMemoryChunk {
   // MemoryChunk::synchronized_heap() to simulate the barrier.
   void InitializationMemoryFence();
 
+  static PageAllocator::Permission GetCodeModificationPermission() {
+    DCHECK(!V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT);
+    // On MacOS on ARM64 RWX permissions are allowed to be set only when
+    // fast W^X is enabled (see V8_HEAP_USE_PTHREAD_JIT_WRITE_PROTECT).
+    return !V8_HAS_PTHREAD_JIT_WRITE_PROTECT && v8_flags.write_code_using_rwx
+               ? PageAllocator::kReadWriteExecute
+               : PageAllocator::kReadWrite;
+  }
+
   V8_EXPORT_PRIVATE void SetReadable();
   V8_EXPORT_PRIVATE void SetReadAndExecutable();
-  V8_EXPORT_PRIVATE void SetReadAndWritable();
 
-  void SetDefaultCodePermissions() {
-    if (FLAG_jitless) {
-      SetReadable();
-    } else {
-      SetReadAndExecutable();
-    }
-  }
+  V8_EXPORT_PRIVATE void SetCodeModificationPermissions();
+  V8_EXPORT_PRIVATE void SetDefaultCodePermissions();
 
   heap::ListNode<MemoryChunk>& list_node() { return list_node_; }
   const heap::ListNode<MemoryChunk>& list_node() const { return list_node_; }
@@ -227,14 +215,19 @@ class MemoryChunk : public BasicMemoryChunk {
   // read-only space chunks.
   void ReleaseAllocatedMemoryNeededForWritableChunk();
 
-#ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
+#ifdef V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
   ObjectStartBitmap* object_start_bitmap() { return &object_start_bitmap_; }
-#endif
+
+  const ObjectStartBitmap* object_start_bitmap() const {
+    return &object_start_bitmap_;
+  }
+#endif  // V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
+
+  void MarkWasUsedForAllocation() { was_used_for_allocation_ = true; }
+  void ClearWasUsedForAllocation() { was_used_for_allocation_ = false; }
+  bool WasUsedForAllocation() const { return was_used_for_allocation_; }
 
  protected:
-  static MemoryChunk* Initialize(BasicMemoryChunk* basic_chunk, Heap* heap,
-                                 Executability executable);
-
   // Release all memory allocated by the chunk. Should be called when memory
   // chunk is about to be freed.
   void ReleaseAllAllocatedMemory();
@@ -244,22 +237,27 @@ class MemoryChunk : public BasicMemoryChunk {
   void DecrementWriteUnprotectCounterAndMaybeSetPermissions(
       PageAllocator::Permission permission);
 
-  template <AccessMode mode>
-  ConcurrentBitmap<mode>* young_generation_bitmap() const {
-    return reinterpret_cast<ConcurrentBitmap<mode>*>(young_generation_bitmap_);
-  }
 #ifdef DEBUG
   static void ValidateOffsets(MemoryChunk* chunk);
 #endif
+
+  template <RememberedSetType type, AccessMode access_mode = AccessMode::ATOMIC>
+  void set_slot_set(SlotSet* slot_set) {
+    if (access_mode == AccessMode::ATOMIC) {
+      base::AsAtomicPointer::Release_Store(&slot_set_[type], slot_set);
+      return;
+    }
+    slot_set_[type] = slot_set;
+  }
 
   // A single slot set for small pages (of size kPageSize) or an array of slot
   // set for large pages. In the latter case the number of entries in the array
   // is ceil(size() / kPageSize).
   SlotSet* slot_set_[NUMBER_OF_REMEMBERED_SET_TYPES];
 
-  // Used by the incremental marker to keep track of the scanning progress in
-  // large objects that have a progress bar and are scanned in increments.
-  std::atomic<size_t> progress_bar_;
+  // Used by the marker to keep track of the scanning progress in large objects
+  // that have a progress bar and are scanned in increments.
+  class ProgressBar progress_bar_;
 
   // Count of bytes marked black on page.
   std::atomic<intptr_t> live_byte_count_;
@@ -267,7 +265,6 @@ class MemoryChunk : public BasicMemoryChunk {
   // A single slot set for small pages (of size kPageSize) or an array of slot
   // set for large pages. In the latter case the number of entries in the array
   // is ceil(size() / kPageSize).
-  SlotSet* sweeping_slot_set_;
   TypedSlotSet* typed_slot_set_[NUMBER_OF_REMEMBERED_SET_TYPES];
   InvalidatedSlots* invalidated_slots_[NUMBER_OF_REMEMBERED_SET_TYPES];
 
@@ -282,8 +279,6 @@ class MemoryChunk : public BasicMemoryChunk {
   // counter is decremented when a component resets to read+executable.
   // If Value() == 0 => The memory is read and executable.
   // If Value() >= 1 => The Memory is read and writable (and maybe executable).
-  // The maximum value is limited by {kMaxWriteUnprotectCounter} to prevent
-  // excessive nesting of scopes.
   // All executable MemoryChunks are allocated rw based on the assumption that
   // they will be used immediately for an allocation. They are initialized
   // with the number of open CodeSpaceMemoryModificationScopes. The caller
@@ -298,27 +293,30 @@ class MemoryChunk : public BasicMemoryChunk {
 
   FreeListCategory** categories_;
 
-  std::atomic<intptr_t> young_generation_live_byte_count_;
-  Bitmap* young_generation_bitmap_;
-
   CodeObjectRegistry* code_object_registry_;
 
   PossiblyEmptyBuckets possibly_empty_buckets_;
 
-#ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
+  ActiveSystemPages* active_system_pages_;
+
+#ifdef V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
   ObjectStartBitmap object_start_bitmap_;
-#endif
+#endif  // V8_ENABLE_INNER_POINTER_RESOLUTION_OSB
+
+  // Marks a chunk that was used for allocation since it was last swept. Used
+  // only for new space pages.
+  size_t was_used_for_allocation_ = false;
 
  private:
   friend class ConcurrentMarkingState;
-  friend class MajorMarkingState;
-  friend class MajorAtomicMarkingState;
-  friend class MajorNonAtomicMarkingState;
+  friend class MarkingState;
+  friend class AtomicMarkingState;
+  friend class NonAtomicMarkingState;
   friend class MemoryAllocator;
   friend class MemoryChunkValidator;
-  friend class MinorMarkingState;
-  friend class MinorNonAtomicMarkingState;
   friend class PagedSpace;
+  template <RememberedSetType>
+  friend class RememberedSet;
 };
 
 }  // namespace internal

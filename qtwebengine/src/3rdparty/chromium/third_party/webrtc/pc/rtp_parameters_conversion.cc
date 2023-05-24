@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <set>
 #include <string>
-#include <unordered_map>
+#include <type_traits>
 #include <utility>
 
 #include "api/array_view.h"
@@ -76,8 +76,7 @@ RTCErrorOr<cricket::FeedbackParam> ToCricketFeedbackParam(
       }
       return cricket::FeedbackParam(cricket::kRtcpFbParamTransportCc);
   }
-  // Not reached; avoids compile warning.
-  FATAL();
+  RTC_CHECK_NOTREACHED();
 }
 
 template <typename C>
@@ -309,7 +308,18 @@ void ToRtpCodecCapabilityTypeSpecific<cricket::AudioCodec>(
 template <>
 void ToRtpCodecCapabilityTypeSpecific<cricket::VideoCodec>(
     const cricket::VideoCodec& cricket_codec,
-    RtpCodecCapability* codec) {}
+    RtpCodecCapability* codec) {
+  if (cricket_codec.scalability_modes.empty() ||
+      (cricket_codec.scalability_modes.size() == 1 &&
+       cricket_codec.scalability_modes[0] == ScalabilityMode::kL1T1)) {
+    // https://w3c.github.io/webrtc-svc/#dom-rtcrtpcodeccapability-scalabilitymodes
+    // If a codec does not support encoding of scalability modes other than
+    // "L1T1", then the scalabilityModes member is not provided.
+    return;
+  }
+
+  codec->scalability_modes = cricket_codec.scalability_modes;
+}
 
 template <typename C>
 RtpCodecCapability ToRtpCodecCapability(const C& cricket_codec) {

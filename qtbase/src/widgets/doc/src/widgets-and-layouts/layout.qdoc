@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
     \page layout.html
     \title Layout Management
@@ -287,8 +263,8 @@
     \section1 How to Write A Custom Layout Manager
 
     An alternative to manual layout is to write your own layout manager by
-    subclassing QLayout. The \l{layouts/borderlayout}{Border Layout} and
-    \l{layouts/flowlayout}{Flow Layout} examples show how to do this.
+    subclassing QLayout. The
+    \l{layouts/flowlayout}{Flow Layout} example shows how to do this.
 
     Here we present an example in detail. The \c CardLayout class is inspired
     by the Java layout manager of the same name. It lays out the items (widgets
@@ -299,7 +275,7 @@
     \list
         \li  A data structure to store the items handled by the layout. Each
             item is a \l{QLayoutItem}{QLayoutItem}. We will use a
-            QVector in this example.
+            QList in this example.
         \li  \l{QLayout::}{addItem()}, how to add items to the layout.
         \li  \l{QLayout::}{setGeometry()}, how to perform the layout.
         \li  \l{QLayout::}{sizeHint()}, the preferred size of the layout.

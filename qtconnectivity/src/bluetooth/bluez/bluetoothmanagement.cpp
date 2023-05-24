@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qsocketnotifier.h>
@@ -56,10 +20,6 @@
 QT_BEGIN_NAMESPACE
 
 // Packet data structures for Mgmt API bluez.git/doc/mgmt-api.txt
-
-enum class EventCode {
-    DeviceFound =       0x0012,
-};
 
 struct MgmtHdr {
     quint16 cmdCode;
@@ -125,11 +85,6 @@ struct capData {
 #endif
 
 const int msecInADay = 1000*60*60*24;
-
-inline uint qHash(const QBluetoothAddress& address)
-{
-    return qHash(address.toUInt64());
-}
 
 static int sysCallCapGet(capHdr *header, capData *data)
 {
@@ -210,7 +165,7 @@ BluetoothManagement *BluetoothManagement::instance()
 void BluetoothManagement::_q_readNotifier()
 {
     char *dst = buffer.reserve(QPRIVATELINEARBUFFER_BUFFERSIZE);
-    int readCount = ::read(fd, dst, QPRIVATELINEARBUFFER_BUFFERSIZE);
+    const auto readCount = ::read(fd, dst, QPRIVATELINEARBUFFER_BUFFERSIZE);
     buffer.chop(QPRIVATELINEARBUFFER_BUFFERSIZE - (readCount < 0 ? 0 : readCount));
     if (readCount < 0) {
         qCWarning(QT_BT_BLUEZ, "Management Control read error %s", qPrintable(qt_error_string(errno)));
@@ -218,24 +173,24 @@ void BluetoothManagement::_q_readNotifier()
     }
 
     // do we have at least one complete mgmt header?
-    if ((uint)buffer.size() < sizeof(MgmtHdr))
+    if (size_t(buffer.size()) < sizeof(MgmtHdr))
         return;
 
     QByteArray data = buffer.readAll();
 
     while (true) {
-        if ((uint)data.size() < sizeof(MgmtHdr))
+        if (size_t(data.size()) < sizeof(MgmtHdr))
             break;
 
         const MgmtHdr *hdr = reinterpret_cast<const MgmtHdr*>(data.constData());
-        const int nextPackageSize = qFromLittleEndian(hdr->length) + sizeof(MgmtHdr);
-        const int remainingPackageSize = data.length() - nextPackageSize;
+        const auto nextPackageSize = qsizetype(qFromLittleEndian(hdr->length) + sizeof(MgmtHdr));
+        const qsizetype remainingPackageSize = data.size() - nextPackageSize;
 
-        if (data.length() < nextPackageSize)
+        if (data.size() < nextPackageSize)
             break; // not a complete event header -> wait for next notifier
 
         switch (static_cast<EventCode>(qFromLittleEndian(hdr->cmdCode))) {
-        case EventCode::DeviceFound:
+        case EventCode::DeviceFoundEvent:
         {
             const MgmtEventDeviceFound *event = reinterpret_cast<const MgmtEventDeviceFound*>
                                                    (data.constData() + sizeof(MgmtHdr));
@@ -255,11 +210,11 @@ void BluetoothManagement::_q_readNotifier()
         }
         default:
             qCDebug(QT_BT_BLUEZ) << "BluetoothManagement: Ignored event:"
-                                 << hex << qFromLittleEndian(hdr->cmdCode);
+                                 << Qt::hex << (EventCode)qFromLittleEndian(hdr->cmdCode);
             break;
         }
 
-        if (data.length() > nextPackageSize)
+        if (data.size() > nextPackageSize)
             data = data.right(remainingPackageSize);
         else
             data.clear();
@@ -313,3 +268,5 @@ bool BluetoothManagement::isMonitoringEnabled() const
 
 
 QT_END_NAMESPACE
+
+#include "moc_bluetoothmanagement_p.cpp"

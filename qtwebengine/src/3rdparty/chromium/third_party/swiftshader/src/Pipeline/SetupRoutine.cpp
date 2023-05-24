@@ -13,13 +13,14 @@
 // limitations under the License.
 
 #include "SetupRoutine.hpp"
-#include <Device/Vertex.hpp>
 
 #include "Constants.hpp"
 #include "Device/Polygon.hpp"
 #include "Device/Primitive.hpp"
 #include "Device/Renderer.hpp"
+#include "Device/Vertex.hpp"
 #include "Reactor/Reactor.hpp"
+#include "Vulkan/VkDevice.hpp"
 
 namespace sw {
 
@@ -36,12 +37,13 @@ void SetupRoutine::generate()
 {
 	SetupFunction function;
 	{
-		Pointer<Byte> primitive(function.Arg<0>());
-		Pointer<Byte> tri(function.Arg<1>());
-		Pointer<Byte> polygon(function.Arg<2>());
-		Pointer<Byte> data(function.Arg<3>());
+		Pointer<Byte> device(function.Arg<0>());
+		Pointer<Byte> primitive(function.Arg<1>());
+		Pointer<Byte> tri(function.Arg<2>());
+		Pointer<Byte> polygon(function.Arg<3>());
+		Pointer<Byte> data(function.Arg<4>());
 
-		Pointer<Byte> constants = *Pointer<Pointer<Byte> >(data + OFFSET(DrawData, constants));
+		Pointer<Byte> constants = device + OFFSET(vk::Device, constants);
 
 		const bool point = state.isDrawPoint;
 		const bool line = state.isDrawLine;
@@ -81,18 +83,13 @@ void SetupRoutine::generate()
 
 			Float A = (y0 - y2) * x1 + (y2 - y1) * x0 + (y1 - y0) * x2;  // Area
 
-			If(A == 0.0f)
-			{
-				Return(0);
-			}
-
 			Int w0w1w2 = *Pointer<Int>(v0 + OFFSET(Vertex, w)) ^
 			             *Pointer<Int>(v1 + OFFSET(Vertex, w)) ^
 			             *Pointer<Int>(v2 + OFFSET(Vertex, w));
 
 			A = IfThenElse(w0w1w2 < 0, -A, A);
 
-			Bool frontFacing = (state.frontFace == VK_FRONT_FACE_COUNTER_CLOCKWISE) ? A > 0.0f : A < 0.0f;
+			Bool frontFacing = (state.frontFace == VK_FRONT_FACE_COUNTER_CLOCKWISE) ? (A >= 0.0f) : (A <= 0.0f);
 
 			if(state.cullMode & VK_CULL_MODE_FRONT_BIT)
 			{
@@ -168,8 +165,8 @@ void SetupRoutine::generate()
 
 		if(state.enableMultiSampling)
 		{
-			yMin = (yMin + Constants::yMinMultiSampleOffset) >> subPixB;
-			yMax = (yMax + Constants::yMaxMultiSampleOffset) >> subPixB;
+			yMin = (yMin + yMinMultiSampleOffset) >> subPixB;
+			yMax = (yMax + yMaxMultiSampleOffset) >> subPixB;
 		}
 		else
 		{
@@ -317,20 +314,16 @@ void SetupRoutine::generate()
 		Int Y1 = *Pointer<Int>(v1 + OFFSET(Vertex, projected.y));
 		Int Y2 = *Pointer<Int>(v2 + OFFSET(Vertex, projected.y));
 
-		if(point)
-		{
-			*Pointer<Float>(primitive + OFFSET(Primitive, pointCoordX)) = Float(1.0f / subPixF) * Float(X0);
-			*Pointer<Float>(primitive + OFFSET(Primitive, pointCoordY)) = Float(1.0f / subPixF) * Float(Y0);
-		}
-
 		if(line)
 		{
 			X2 = X1 + Y1 - Y0;
 			Y2 = Y1 + X0 - X1;
 		}
 
-		Float dx = Float(X0) * (1.0f / subPixF);
-		Float dy = Float(Y0) * (1.0f / subPixF);
+		Float x0 = Float(X0) * (1.0f / subPixF);
+		Float y0 = Float(Y0) * (1.0f / subPixF);
+		*Pointer<Float>(primitive + OFFSET(Primitive, x0)) = x0;
+		*Pointer<Float>(primitive + OFFSET(Primitive, y0)) = y0;
 
 		X1 -= X0;
 		Y1 -= Y0;
@@ -345,12 +338,6 @@ void SetupRoutine::generate()
 		Float y2 = w2 * (1.0f / subPixF) * Float(Y2);
 
 		Float a = x1 * y2 - x2 * y1;
-
-		Float4 xQuad = Float4(0, 1, 0, 1) - Float4(dx);
-		Float4 yQuad = Float4(0, 0, 1, 1) - Float4(dy);
-
-		*Pointer<Float4>(primitive + OFFSET(Primitive, xQuad), 16) = xQuad;
-		*Pointer<Float4>(primitive + OFFSET(Primitive, yQuad), 16) = yQuad;
 
 		Float4 M[3];
 
@@ -385,13 +372,9 @@ void SetupRoutine::generate()
 		{
 			Float4 ABC = M[0] + M[1] + M[2];
 
-			Float4 A = ABC.x;
-			Float4 B = ABC.y;
-			Float4 C = ABC.z;
-
-			*Pointer<Float4>(primitive + OFFSET(Primitive, w.A), 16) = A;
-			*Pointer<Float4>(primitive + OFFSET(Primitive, w.B), 16) = B;
-			*Pointer<Float4>(primitive + OFFSET(Primitive, w.C), 16) = C;
+			*Pointer<Float>(primitive + OFFSET(Primitive, w.A)) = ABC.x;
+			*Pointer<Float>(primitive + OFFSET(Primitive, w.B)) = ABC.y;
+			*Pointer<Float>(primitive + OFFSET(Primitive, w.C)) = ABC.z;
 		}
 
 		if(state.interpolateZ)
@@ -403,9 +386,9 @@ void SetupRoutine::generate()
 			z1 -= z0;
 			z2 -= z0;
 
-			Float4 A;
-			Float4 B;
-			Float4 C;
+			Float A;
+			Float B;
+			Float C;
 
 			if(!point)
 			{
@@ -416,52 +399,93 @@ void SetupRoutine::generate()
 
 				Float D = *Pointer<Float>(data + OFFSET(DrawData, depthRange)) / (x1 * y2 - x2 * y1);
 
-				Float a = (y2 * z1 - y1 * z2) * D;
-				Float b = (x1 * z2 - x2 * z1) * D;
-
-				A = Float4(a);
-				B = Float4(b);
+				A = (y2 * z1 - y1 * z2) * D;
+				B = (x1 * z2 - x2 * z1) * D;
 			}
 			else
 			{
-				A = Float4(0, 0, 0, 0);
-				B = Float4(0, 0, 0, 0);
+				A = 0.0f;
+				B = 0.0f;
 			}
 
-			*Pointer<Float4>(primitive + OFFSET(Primitive, z.A), 16) = A;
-			*Pointer<Float4>(primitive + OFFSET(Primitive, z.B), 16) = B;
+			C = z0 * *Pointer<Float>(data + OFFSET(DrawData, depthRange)) + *Pointer<Float>(data + OFFSET(DrawData, depthNear));
 
-			Float c = z0;
+			*Pointer<Float>(primitive + OFFSET(Primitive, z.A)) = A;
+			*Pointer<Float>(primitive + OFFSET(Primitive, z.B)) = B;
+			*Pointer<Float>(primitive + OFFSET(Primitive, z.C)) = C;
+
+			Float bias = 0.0f;
+
+			if(state.applyConstantDepthBias)
+			{
+				Float r;  // Minimum resolvable difference
+
+				if(state.fixedPointDepthBuffer)
+				{
+					// TODO(b/139341727): Pre-multiply the constant depth bias factor by the minimum
+					// resolvable difference.
+
+					// TODO(b/139341727): When there's a fixed-point depth buffer and no depth bias clamp,
+					// the constant depth bias factor could be added to 'depthNear', eliminating the per-
+					// polygon addition.
+
+					r = *Pointer<Float>(data + OFFSET(DrawData, minimumResolvableDepthDifference));
+				}
+				else  // Floating-point depth buffer
+				{
+					// "For floating-point depth buffers, there is no single minimum resolvable difference.
+					//  In this case, the minimum resolvable difference for a given polygon is dependent on
+					//  the maximum exponent, e, in the range of z values spanned by the primitive. If n is
+					//  the number of bits in the floating-point mantissa, the minimum resolvable difference,
+					//  r, for the given primitive is defined as r = 2^(e-n)."
+
+					Float Z0 = C;
+					Float Z1 = z1 * *Pointer<Float>(data + OFFSET(DrawData, depthRange)) + *Pointer<Float>(data + OFFSET(DrawData, depthNear));
+					Float Z2 = z2 * *Pointer<Float>(data + OFFSET(DrawData, depthRange)) + *Pointer<Float>(data + OFFSET(DrawData, depthNear));
+
+					Int e0 = As<Int>(Z0) & 0x7F800000;
+					Int e1 = As<Int>(Z1) & 0x7F800000;
+					Int e2 = As<Int>(Z2) & 0x7F800000;
+
+					Int e = Max(Max(e0, e1), e2);
+
+					r = As<Float>(e) * Float(1.0f / (1 << 23));
+				}
+
+				bias = r * *Pointer<Float>(data + OFFSET(DrawData, constantDepthBias));
+			}
 
 			if(state.applySlopeDepthBias)
 			{
-				Float bias = Max(Abs(Float(A.x)), Abs(Float(B.x)));
-				bias *= *Pointer<Float>(data + OFFSET(DrawData, slopeDepthBias));
+				Float m = Max(Abs(A), Abs(B));
 
-				c += bias;
+				bias += m * *Pointer<Float>(data + OFFSET(DrawData, slopeDepthBias));  // TODO(b/155302798): Optimize 0 += x;
 			}
 
-			C = Float4(c * *Pointer<Float>(data + OFFSET(DrawData, depthRange)) + *Pointer<Float>(data + OFFSET(DrawData, depthNear)));
-
-			if(state.applyDepthBiasClamp)
+			if(state.applyConstantDepthBias || state.applySlopeDepthBias)
 			{
-				Float clamp = *Pointer<Float>(data + OFFSET(DrawData, depthBiasClamp));
-				Float4 clamp4 = Float4(clamp);
-				C = IfThenElse(clamp > 0.0f, Min(clamp4, C), Max(clamp4, C));
-			}
+				if(state.applyDepthBiasClamp)
+				{
+					Float clamp = *Pointer<Float>(data + OFFSET(DrawData, depthBiasClamp));
 
-			*Pointer<Float4>(primitive + OFFSET(Primitive, z.C), 16) = C;
+					bias = IfThenElse(clamp > 0.0f, Min(bias, clamp), Max(bias, clamp));
+				}
+
+				*Pointer<Float>(primitive + OFFSET(Primitive, zBias)) = bias;
+			}
 		}
 
-		for(int interpolant = 0; interpolant < MAX_INTERFACE_COMPONENTS; interpolant++)
+		int packedInterpolant = 0;
+		for(int interfaceInterpolant = 0; interfaceInterpolant < MAX_INTERFACE_COMPONENTS; interfaceInterpolant++)
 		{
-			if(state.gradient[interpolant].Type != SpirvShader::ATTRIBTYPE_UNUSED)
+			if(state.gradient[interfaceInterpolant].Type != SpirvShader::ATTRIBTYPE_UNUSED)
 			{
 				setupGradient(primitive, tri, w012, M, v0, v1, v2,
-				              OFFSET(Vertex, v[interpolant]),
-				              OFFSET(Primitive, V[interpolant]),
-				              state.gradient[interpolant].Flat,
-				              !state.gradient[interpolant].NoPerspective);
+				              OFFSET(Vertex, v[interfaceInterpolant]),
+				              OFFSET(Primitive, V[packedInterpolant]),
+				              state.gradient[interfaceInterpolant].Flat,
+				              !state.gradient[interfaceInterpolant].NoPerspective);
+				packedInterpolant++;
 			}
 		}
 
@@ -506,24 +530,20 @@ void SetupRoutine::setupGradient(Pointer<Byte> &primitive, Pointer<Byte> &triang
 		Float4 B = i.yyyy * m[1];
 		Float4 C = i.zzzz * m[2];
 
-		C = A + B + C;
+		Float4 P = A + B + C;
 
-		A = C.xxxx;
-		B = C.yyyy;
-		C = C.zzzz;
-
-		*Pointer<Float4>(primitive + planeEquation + 0, 16) = A;
-		*Pointer<Float4>(primitive + planeEquation + 16, 16) = B;
-		*Pointer<Float4>(primitive + planeEquation + 32, 16) = C;
+		*Pointer<Float>(primitive + planeEquation + 0) = P.x;
+		*Pointer<Float>(primitive + planeEquation + 4) = P.y;
+		*Pointer<Float>(primitive + planeEquation + 8) = P.z;
 	}
 	else
 	{
 		int leadingVertex = OFFSET(Triangle, v0);
 		Float C = *Pointer<Float>(triangle + leadingVertex + attribute);
 
-		*Pointer<Float4>(primitive + planeEquation + 0, 16) = Float4(0, 0, 0, 0);
-		*Pointer<Float4>(primitive + planeEquation + 16, 16) = Float4(0, 0, 0, 0);
-		*Pointer<Float4>(primitive + planeEquation + 32, 16) = Float4(C);
+		*Pointer<Float>(primitive + planeEquation + 0) = 0;
+		*Pointer<Float>(primitive + planeEquation + 4) = 0;
+		*Pointer<Float>(primitive + planeEquation + 8) = C;
 	}
 }
 
@@ -541,10 +561,12 @@ void SetupRoutine::edge(Pointer<Byte> &primitive, Pointer<Byte> &data, const Int
 		constexpr int subPixB = vk::SUBPIXEL_PRECISION_BITS;
 		constexpr int subPixM = vk::SUBPIXEL_PRECISION_MASK;
 
-		Int y1 = Max((Y1 + subPixM) >> subPixB, *Pointer<Int>(data + OFFSET(DrawData, scissorY0)));
-		Int y2 = Min((Y2 + subPixM) >> subPixB, *Pointer<Int>(data + OFFSET(DrawData, scissorY1)));
+		Int y1 = (Y1 + subPixM) >> subPixB;
+		Int y2 = (Y2 + subPixM) >> subPixB;
+		Int yMin = Max(y1, *Pointer<Int>(data + OFFSET(DrawData, scissorY0)));
+		Int yMax = Min(y2, *Pointer<Int>(data + OFFSET(DrawData, scissorY1)));
 
-		If(y1 < y2)
+		If(yMin < yMax)
 		{
 			Int xMin = *Pointer<Int>(data + OFFSET(DrawData, scissorX0));
 			Int xMax = *Pointer<Int>(data + OFFSET(DrawData, scissorX1));
@@ -578,7 +600,10 @@ void SetupRoutine::edge(Pointer<Byte> &primitive, Pointer<Byte> &data, const Int
 
 			Do
 			{
-				*Pointer<Short>(edge + y * sizeof(Primitive::Span)) = Short(Clamp(x, xMin, xMax));
+				If(y >= yMin)
+				{
+					*Pointer<Short>(edge + y * sizeof(Primitive::Span)) = Short(Clamp(x, xMin, xMax));
+				}
 
 				x += Q;
 				d += R;
@@ -590,7 +615,7 @@ void SetupRoutine::edge(Pointer<Byte> &primitive, Pointer<Byte> &data, const Int
 
 				y++;
 			}
-			Until(y >= y2);
+			Until(y >= yMax);
 		}
 	}
 }

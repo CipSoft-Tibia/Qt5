@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,12 @@
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/bindings/core/v8/module_record.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_source_code.h"
-#include "third_party/blink/renderer/bindings/core/v8/source_location.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_gc_controller.h"
 #include "third_party/blink/renderer/bindings/core/v8/worker_or_worklet_script_controller.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/core/script/js_module_script.h"
 #include "third_party/blink/renderer/core/script/script.h"
+#include "third_party/blink/renderer/core/testing/module_test_base.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/core/workers/parent_execution_context_task_runners.h"
 #include "third_party/blink/renderer/core/workers/worker_backing_thread.h"
@@ -24,6 +24,7 @@
 #include "third_party/blink/renderer/core/workers/worklet_thread_holder.h"
 #include "third_party/blink/renderer/modules/animationworklet/animation_worklet_proxy_client.h"
 #include "third_party/blink/renderer/modules/worklet/worklet_thread_test_common.h"
+#include "third_party/blink/renderer/platform/bindings/source_location.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
@@ -41,12 +42,19 @@ class TestAnimationWorkletProxyClient : public AnimationWorkletProxyClient {
 
 }  // namespace
 
-class AnimationAndPaintWorkletThreadTest : public PageTestBase {
+class AnimationAndPaintWorkletThreadTest : public PageTestBase,
+                                           public ModuleTestBase {
  public:
   void SetUp() override {
-    PageTestBase::SetUp(IntSize());
+    ModuleTestBase::SetUp();
+    PageTestBase::SetUp(gfx::Size());
     NavigateTo(KURL("https://example.com/"));
     reporting_proxy_ = std::make_unique<WorkerReportingProxy>();
+  }
+
+  void TearDown() override {
+    PageTestBase::TearDown();
+    ModuleTestBase::TearDown();
   }
 
   // Attempts to run some simple script for |thread|.
@@ -73,17 +81,17 @@ class AnimationAndPaintWorkletThreadTest : public PageTestBase {
     EXPECT_TRUE(script_state);
     ScriptState::Scope scope(script_state);
     const KURL js_url("https://example.com/foo.js");
-    v8::Local<v8::Module> module = ModuleRecord::Compile(
-        script_state->GetIsolate(), "var counter = 0; ++counter;", js_url,
-        js_url, ScriptFetchOptions(), TextPosition::MinimumPosition(),
-        ASSERT_NO_EXCEPTION);
+    v8::Local<v8::Module> module = ModuleTestBase::CompileModule(
+        script_state, "var counter = 0; ++counter;", js_url);
     EXPECT_FALSE(module.IsEmpty());
     ScriptValue exception =
         ModuleRecord::Instantiate(script_state, module, js_url);
     EXPECT_TRUE(exception.IsEmpty());
-    EXPECT_EQ(
-        ModuleRecord::Evaluate(script_state, module, js_url).GetResultType(),
-        ScriptEvaluationResult::ResultType::kSuccess);
+    ScriptEvaluationResult result =
+        JSModuleScript::CreateForTest(Modulator::From(script_state), module,
+                                      js_url)
+            ->RunScriptOnScriptStateAndReturnValue(script_state);
+    EXPECT_FALSE(GetResult(script_state, std::move(result)).IsEmpty());
     wait_event->Signal();
   }
 };

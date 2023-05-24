@@ -1,10 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/nearby_internals/nearby_internals_http_handler.h"
 
-#include "base/bind.h"
+#include <utility>
+
+#include "base/functional/bind.h"
 #include "base/json/json_writer.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -32,7 +34,7 @@ enum class Rpc {
 // chrome/browser/resources/nearby_internals/types.js.
 enum class Direction { kRequest = 0, kResponse = 1 };
 
-std::string FormatAsJSON(const base::Value& value) {
+std::string FormatAsJSON(const base::Value::Dict& value) {
   std::string json;
   base::JSONWriter::WriteWithOptions(
       value, base::JSONWriter::OPTIONS_PRETTY_PRINT, &json);
@@ -54,14 +56,14 @@ const char kHttpMessageDirectionKey[] = "direction";
 
 // Converts a RPC request/response to a raw dictionary value used as a
 // JSON argument to JavaScript functions.
-base::Value HttpMessageToDictionary(const base::Value& message,
-                                    Direction dir,
-                                    Rpc rpc) {
-  base::Value dictionary(base::Value::Type::DICTIONARY);
-  dictionary.SetStringKey(kHttpMessageBodyKey, FormatAsJSON(message));
-  dictionary.SetKey(kHttpMessageTimeKey, GetJavascriptTimestamp());
-  dictionary.SetIntKey(kHttpMessageRpcKey, static_cast<int>(rpc));
-  dictionary.SetIntKey(kHttpMessageDirectionKey, static_cast<int>(dir));
+base::Value::Dict HttpMessageToDictionary(const base::Value::Dict& message,
+                                          Direction dir,
+                                          Rpc rpc) {
+  base::Value::Dict dictionary;
+  dictionary.Set(kHttpMessageBodyKey, FormatAsJSON(message));
+  dictionary.Set(kHttpMessageTimeKey, GetJavascriptTimestamp());
+  dictionary.Set(kHttpMessageRpcKey, static_cast<int>(rpc));
+  dictionary.Set(kHttpMessageDirectionKey, static_cast<int>(dir));
   return dictionary;
 }
 
@@ -96,22 +98,22 @@ void NearbyInternalsHttpHandler::OnJavascriptAllowed() {
   NearbySharingService* service_ =
       NearbySharingServiceFactory::GetForBrowserContext(context_);
   if (service_) {
-    observer_.Add(service_->GetHttpNotifier());
+    observation_.Observe(service_->GetHttpNotifier());
   } else {
     NS_LOG(ERROR) << "No NearbyShareService instance to call.";
   }
 }
 
 void NearbyInternalsHttpHandler::OnJavascriptDisallowed() {
-  observer_.RemoveAll();
+  observation_.Reset();
 }
 
 void NearbyInternalsHttpHandler::InitializeContents(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   AllowJavascript();
 }
 
-void NearbyInternalsHttpHandler::UpdateDevice(const base::ListValue* args) {
+void NearbyInternalsHttpHandler::UpdateDevice(const base::Value::List& args) {
   NearbySharingService* service_ =
       NearbySharingServiceFactory::GetForBrowserContext(context_);
   if (service_) {
@@ -122,7 +124,7 @@ void NearbyInternalsHttpHandler::UpdateDevice(const base::ListValue* args) {
 }
 
 void NearbyInternalsHttpHandler::ListPublicCertificates(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   NearbySharingService* service_ =
       NearbySharingServiceFactory::GetForBrowserContext(context_);
   if (service_) {
@@ -133,7 +135,7 @@ void NearbyInternalsHttpHandler::ListPublicCertificates(
 }
 
 void NearbyInternalsHttpHandler::ListContactPeople(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   NearbySharingService* service_ =
       NearbySharingServiceFactory::GetForBrowserContext(context_);
   if (service_) {

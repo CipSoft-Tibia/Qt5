@@ -15,8 +15,6 @@ std::ostream& operator<<(std::ostream& os, BinaryOperationHint hint) {
       return os << "SignedSmall";
     case BinaryOperationHint::kSignedSmallInputs:
       return os << "SignedSmallInputs";
-    case BinaryOperationHint::kSigned32:
-      return os << "Signed32";
     case BinaryOperationHint::kNumber:
       return os << "Number";
     case BinaryOperationHint::kNumberOrOddball:
@@ -25,6 +23,8 @@ std::ostream& operator<<(std::ostream& os, BinaryOperationHint hint) {
       return os << "String";
     case BinaryOperationHint::kBigInt:
       return os << "BigInt";
+    case BinaryOperationHint::kBigInt64:
+      return os << "BigInt64";
     case BinaryOperationHint::kAny:
       return os << "Any";
   }
@@ -51,6 +51,8 @@ std::ostream& operator<<(std::ostream& os, CompareOperationHint hint) {
       return os << "Symbol";
     case CompareOperationHint::kBigInt:
       return os << "BigInt";
+    case CompareOperationHint::kBigInt64:
+      return os << "BigInt64";
     case CompareOperationHint::kReceiver:
       return os << "Receiver";
     case CompareOperationHint::kReceiverOrNullOrUndefined:

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgcontextplugin_p.h"
 #include <QtQuick/private/qsgcontext_p.h>
@@ -45,9 +9,7 @@
 
 // Built-in adaptations
 #include <QtQuick/private/qsgsoftwareadaptation_p.h>
-#if QT_CONFIG(opengl)
 #include <QtQuick/private/qsgdefaultcontext_p.h>
-#endif
 
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/qpa/qplatformintegration.h>
@@ -117,9 +79,9 @@ QSGAdaptationBackendData *contextFactory()
         backendData->tried = true;
 
         const QStringList args = QGuiApplication::arguments();
-        QString requestedBackend = backendData->quickWindowBackendRequest; // empty or set via QQuickWindow::setBackend()
+        QString requestedBackend = backendData->quickWindowBackendRequest; // empty or set via QQuickWindow::setSceneGraphBackend()
 
-        for (int index = 0; index < args.count(); ++index) {
+        for (int index = 0; index < args.size(); ++index) {
             if (args.at(index).startsWith(QLatin1String("--device="))) {
                 requestedBackend = args.at(index).mid(9);
                 break;
@@ -135,18 +97,39 @@ QSGAdaptationBackendData *contextFactory()
         if (requestedBackend.isEmpty())
             requestedBackend = qEnvironmentVariable("QT_QUICK_BACKEND");
 
-        // If this platform does not support OpenGL, and no backend has been set
-        // default to the software renderer
-        if (requestedBackend.isEmpty()
-            && !QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::OpenGL)) {
-            requestedBackend = QString::fromLocal8Bit("software");
+        // If this platform does not support OpenGL, Vulkan, D3D11, or Metal, and no
+        // backend has been set, default to the software renderer. We rely on the
+        // static, build time flags only. This is to prevent the inevitable confusion
+        // caused by run time hocus pocus. If one wants to use the software backend
+        // in a GL or Vulkan capable Qt build (or on Windows or Apple platforms), it
+        // has to be requested explicitly.
+#if !QT_CONFIG(opengl) && !QT_CONFIG(vulkan) && !defined(Q_OS_WIN) && !defined(Q_OS_MACOS) && !defined(Q_OS_IOS)
+        if (requestedBackend.isEmpty())
+            requestedBackend = QLatin1String("software");
+#endif
+
+        // As an exception to the above, play nice with platform plugins like
+        // vnc or linuxfb: Trying to initialize a QRhi is futile on these, and
+        // Qt 5 had an explicit fallback to the software backend, based on the
+        // OpenGL capability. Replicate that behavior using the new
+        // RhiBasedRendering capability flag, which, on certain platforms,
+        // indicates that we should not even bother trying to initialize a QRhi
+        // as no 3D API can be expected work.
+        if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RhiBasedRendering)) {
+            if (requestedBackend.isEmpty())
+                requestedBackend = QLatin1String("software");
         }
+
+        // This is handy if some of the logic above goes wrong and we select
+        // e.g. the software backend when it is not desired.
+        if (requestedBackend == QLatin1String("rhi"))
+            requestedBackend.clear(); // empty = no custom backend to load
 
         if (!requestedBackend.isEmpty()) {
             qCDebug(QSG_LOG_INFO, "Loading backend %s", qUtf8Printable(requestedBackend));
 
             // First look for a built-in adaptation.
-            for (QSGContextFactoryInterface *builtInBackend : qAsConst(backendData->builtIns)) {
+            for (QSGContextFactoryInterface *builtInBackend : std::as_const(backendData->builtIns)) {
                 if (builtInBackend->keys().contains(requestedBackend)) {
                     backendData->factory = builtInBackend;
                     backendData->name = requestedBackend;
@@ -169,7 +152,7 @@ QSGAdaptationBackendData *contextFactory()
                     qWarning("Could not create scene graph context for backend '%s'"
                              " - check that plugins are installed correctly in %s",
                              qPrintable(requestedBackend),
-                             qPrintable(QLibraryInfo::location(QLibraryInfo::PluginsPath)));
+                             qPrintable(QLibraryInfo::path(QLibraryInfo::PluginsPath)));
                 }
             }
 #endif // library
@@ -192,11 +175,7 @@ QSGContext *QSGContext::createDefaultContext()
     QSGAdaptationBackendData *backendData = contextFactory();
     if (backendData->factory)
         return backendData->factory->create(backendData->name);
-#if QT_CONFIG(opengl)
     return new QSGDefaultContext();
-#else
-    return nullptr;
-#endif
 }
 
 

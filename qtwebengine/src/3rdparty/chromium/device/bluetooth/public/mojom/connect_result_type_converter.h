@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef DEVICE_BLUETOOTH_CONNECT_RESULT_TYPE_CONVERTER_H_
-#define DEVICE_BLUETOOTH_CONNECT_RESULT_TYPE_CONVERTER_H_
+#ifndef DEVICE_BLUETOOTH_PUBLIC_MOJOM_CONNECT_RESULT_TYPE_CONVERTER_H_
+#define DEVICE_BLUETOOTH_PUBLIC_MOJOM_CONNECT_RESULT_TYPE_CONVERTER_H_
 
+#include "base/notreached.h"
 #include "device/bluetooth/bluetooth_device.h"
 #include "device/bluetooth/public/mojom/adapter.mojom.h"
 #include "mojo/public/cpp/bindings/type_converter.h"
@@ -36,6 +37,19 @@ struct TypeConverter<bluetooth::mojom::ConnectResult,
         return bluetooth::mojom::ConnectResult::UNKNOWN;
       case device::BluetoothDevice::ConnectErrorCode::ERROR_UNSUPPORTED_DEVICE:
         return bluetooth::mojom::ConnectResult::UNSUPPORTED_DEVICE;
+      case device::BluetoothDevice::ConnectErrorCode::ERROR_DEVICE_NOT_READY:
+        return bluetooth::mojom::ConnectResult::NOT_READY;
+      case device::BluetoothDevice::ConnectErrorCode::ERROR_ALREADY_CONNECTED:
+        return bluetooth::mojom::ConnectResult::ALREADY_CONNECTED;
+      case device::BluetoothDevice::ConnectErrorCode::
+          ERROR_DEVICE_ALREADY_EXISTS:
+        return bluetooth::mojom::ConnectResult::ALREADY_EXISTS;
+      case device::BluetoothDevice::ConnectErrorCode::ERROR_DEVICE_UNCONNECTED:
+        return bluetooth::mojom::ConnectResult::NOT_CONNECTED;
+      case device::BluetoothDevice::ConnectErrorCode::ERROR_DOES_NOT_EXIST:
+        return bluetooth::mojom::ConnectResult::DOES_NOT_EXIST;
+      case device::BluetoothDevice::ConnectErrorCode::ERROR_INVALID_ARGS:
+        return bluetooth::mojom::ConnectResult::INVALID_ARGS;
       case device::BluetoothDevice::ConnectErrorCode::NUM_CONNECT_ERROR_CODES:
         NOTREACHED();
         return bluetooth::mojom::ConnectResult::FAILED;
@@ -46,4 +60,4 @@ struct TypeConverter<bluetooth::mojom::ConnectResult,
 };
 }  // namespace mojo
 
-#endif  // DEVICE_BLUETOOTH_CONNECT_RESULT_TYPE_CONVERTER_H_
+#endif  // DEVICE_BLUETOOTH_PUBLIC_MOJOM_CONNECT_RESULT_TYPE_CONVERTER_H_

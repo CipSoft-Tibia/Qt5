@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/splinechartitem_p.h>
 #include <private/qsplineseries_p.h>
@@ -35,7 +9,7 @@
 #include <QtGui/QPainter>
 #include <QtWidgets/QGraphicsSceneMouseEvent>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 SplineChartItem::SplineChartItem(QSplineSeries *series, QGraphicsItem *item)
     : XYChart(series,item),
@@ -43,6 +17,7 @@ SplineChartItem::SplineChartItem(QSplineSeries *series, QGraphicsItem *item)
       m_pointsVisible(false),
       m_animation(0),
       m_pointLabelsVisible(false),
+      m_markerSize(series->markerSize()),
       m_pointLabelsFormat(series->pointLabelsFormat()),
       m_pointLabelsFont(series->pointLabelsFont()),
       m_pointLabelsColor(series->pointLabelsColor()),
@@ -52,17 +27,31 @@ SplineChartItem::SplineChartItem(QSplineSeries *series, QGraphicsItem *item)
     setAcceptHoverEvents(true);
     setFlag(QGraphicsItem::ItemIsSelectable);
     setZValue(ChartPresenter::SplineChartZValue);
-    QObject::connect(m_series->d_func(), SIGNAL(updated()), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(visibleChanged()), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(opacityChanged()), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsFormatChanged(QString)),
-                     this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsVisibilityChanged(bool)),
-                     this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsFontChanged(QFont)), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsColorChanged(QColor)), this, SLOT(handleUpdated()));
-    QObject::connect(series, SIGNAL(pointLabelsClippingChanged(bool)), this, SLOT(handleUpdated()));
-    handleUpdated();
+    connect(m_series->d_func(), &QXYSeriesPrivate::seriesUpdated,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::lightMarkerChanged, this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::selectedLightMarkerChanged, this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::markerSizeChanged, this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::visibleChanged, this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::opacityChanged, this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsFormatChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsVisibilityChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsFontChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsColorChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QXYSeries::pointLabelsClippingChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QSplineSeries::selectedColorChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QLineSeries::selectedPointsChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+    connect(series, &QSplineSeries::pointsConfigurationChanged,
+            this, &SplineChartItem::handleSeriesUpdated);
+
+    handleSeriesUpdated();
 }
 
 QRectF SplineChartItem::boundingRect() const
@@ -86,20 +75,21 @@ ChartAnimation *SplineChartItem::animation() const
     return m_animation;
 }
 
-void SplineChartItem::setControlGeometryPoints(QVector<QPointF>& points)
+void SplineChartItem::setControlGeometryPoints(const QList<QPointF> &points)
 {
     m_controlPoints = points;
 }
 
-QVector<QPointF> SplineChartItem::controlGeometryPoints() const
+QList<QPointF> SplineChartItem::controlGeometryPoints() const
 {
     return m_controlPoints;
 }
 
-void SplineChartItem::updateChart(QVector<QPointF> &oldPoints, QVector<QPointF> &newPoints, int index)
+void SplineChartItem::updateChart(const QList<QPointF> &oldPoints, const QList<QPointF> &newPoints,
+                                  int index)
 {
-    QVector<QPointF> controlPoints;
-    if (newPoints.count() >= 2)
+    QList<QPointF> controlPoints;
+    if (newPoints.size() >= 2)
         controlPoints = calculateControlPoints(newPoints);
 
     if (m_animation)
@@ -117,8 +107,8 @@ void SplineChartItem::updateChart(QVector<QPointF> &oldPoints, QVector<QPointF> 
 
 void SplineChartItem::updateGeometry()
 {
-    const QVector<QPointF> &points = m_points;
-    const QVector<QPointF> &controlPoints = m_controlPoints;
+    const QList<QPointF> &points = m_points;
+    const QList<QPointF> &controlPoints = m_controlPoints;
 
     if ((points.size() < 2) || (controlPoints.size() < 2)) {
         prepareGeometryChange();
@@ -127,7 +117,7 @@ void SplineChartItem::updateGeometry()
         return;
     }
 
-    Q_ASSERT(points.count() * 2 - 2 == controlPoints.count());
+    Q_ASSERT(points.size() * 2 - 2 == controlPoints.size());
 
     QPainterPath splinePath;
     QPainterPath fullPath;
@@ -303,6 +293,22 @@ void SplineChartItem::updateGeometry()
     // Only zoom in if the bounding rects of the path fit inside int limits. QWidget::update() uses
     // a region that has to be compatible with QRect.
     QPainterPath checkShapePath = stroker.createStroke(fullPath);
+
+    // For mouse interactivity, we have to add the rects *after* the 'createStroke',
+    // as we don't need the outline - we need it filled up.
+    if (!m_series->lightMarker().isNull() || (!m_series->selectedLightMarker().isNull()
+                                                 && !m_series->selectedPoints().isEmpty())) {
+        // +1, +2: a margin to guarantee we cover all of the pixmap
+        qreal markerHalfSize = (m_series->markerSize() / 2.0) + 1;
+        qreal markerSize = m_series->markerSize() + 2;
+
+        for (const auto &point : std::as_const(points)) {
+            checkShapePath.addRect(point.x() - markerHalfSize,
+                                   point.y() - markerHalfSize,
+                                   markerSize, markerSize);
+        }
+    }
+
     if (checkShapePath.boundingRect().height() <= INT_MAX
             && checkShapePath.boundingRect().width() <= INT_MAX
             && splinePath.boundingRect().height() <= INT_MAX
@@ -319,12 +325,12 @@ void SplineChartItem::updateGeometry()
 /*!
   Calculates control points which are needed by QPainterPath.cubicTo function to draw the cubic Bezier cureve between two points.
   */
-QVector<QPointF> SplineChartItem::calculateControlPoints(const QVector<QPointF> &points)
+QList<QPointF> SplineChartItem::calculateControlPoints(const QList<QPointF> &points)
 {
-    QVector<QPointF> controlPoints;
-    controlPoints.resize(points.count() * 2 - 2);
+    QList<QPointF> controlPoints;
+    controlPoints.resize(points.size() * 2 - 2);
 
-    int n = points.count() - 1;
+    int n = points.size() - 1;
 
     if (n == 1) {
         //for n==1
@@ -347,27 +353,26 @@ QVector<QPointF> SplineChartItem::calculateControlPoints(const QVector<QPointF> 
     //  |   0   0   0   0   0   0   0   0   ... 1   4   1   |   |   P1_(n-1)|   |   4 * P(n-2) + 2 * P(n-1) |
     //  |   0   0   0   0   0   0   0   0   ... 0   2   7   |   |   P1_n    |   |   8 * P(n-1) + Pn         |
     //
-    QVector<qreal> vector;
-    vector.resize(n);
+    QList<qreal> list;
+    list.resize(n);
 
-    vector[0] = points[0].x() + 2 * points[1].x();
-
-
-    for (int i = 1; i < n - 1; ++i)
-        vector[i] = 4 * points[i].x() + 2 * points[i + 1].x();
-
-    vector[n - 1] = (8 * points[n - 1].x() + points[n].x()) / 2.0;
-
-    QVector<qreal> xControl = firstControlPoints(vector);
-
-    vector[0] = points[0].y() + 2 * points[1].y();
+    list[0] = points[0].x() + 2 * points[1].x();
 
     for (int i = 1; i < n - 1; ++i)
-        vector[i] = 4 * points[i].y() + 2 * points[i + 1].y();
+        list[i] = 4 * points[i].x() + 2 * points[i + 1].x();
 
-    vector[n - 1] = (8 * points[n - 1].y() + points[n].y()) / 2.0;
+    list[n - 1] = (8 * points[n - 1].x() + points[n].x()) / 2.0;
 
-    QVector<qreal> yControl = firstControlPoints(vector);
+    const QList<qreal> xControl = firstControlPoints(list);
+
+    list[0] = points[0].y() + 2 * points[1].y();
+
+    for (int i = 1; i < n - 1; ++i)
+        list[i] = 4 * points[i].y() + 2 * points[i + 1].y();
+
+    list[n - 1] = (8 * points[n - 1].y() + points[n].y()) / 2.0;
+
+    const QList<qreal> yControl = firstControlPoints(list);
 
     for (int i = 0, j = 0; i < n; ++i, ++j) {
 
@@ -387,15 +392,15 @@ QVector<QPointF> SplineChartItem::calculateControlPoints(const QVector<QPointF> 
     return controlPoints;
 }
 
-QVector<qreal> SplineChartItem::firstControlPoints(const QVector<qreal>& vector)
+QList<qreal> SplineChartItem::firstControlPoints(const QList<qreal> &list)
 {
-    QVector<qreal> result;
+    QList<qreal> result;
 
-    int count = vector.count();
+    int count = list.size();
     result.resize(count);
-    result[0] = vector[0] / 2.0;
+    result[0] = list[0] / 2.0;
 
-    QVector<qreal> temp;
+    QList<qreal> temp;
     temp.resize(count);
     temp[0] = 0;
 
@@ -404,7 +409,7 @@ QVector<qreal> SplineChartItem::firstControlPoints(const QVector<qreal>& vector)
     for (int i = 1; i < count; i++) {
         temp[i] = 1 / b;
         b = (i < count - 1 ? 4.0 : 3.5) - temp[i];
-        result[i] = (vector[i] - result[i - 1]) / b;
+        result[i] = (list[i] - result[i - 1]) / b;
     }
 
     for (int i = 1; i < count; i++)
@@ -415,7 +420,7 @@ QVector<qreal> SplineChartItem::firstControlPoints(const QVector<qreal>& vector)
 
 //handlers
 
-void SplineChartItem::handleUpdated()
+void SplineChartItem::handleSeriesUpdated()
 {
     setVisible(m_series->isVisible());
     setOpacity(m_series->opacity());
@@ -425,8 +430,11 @@ void SplineChartItem::handleUpdated()
     m_pointPen.setWidthF(2 * m_pointPen.width());
     m_pointLabelsFormat = m_series->pointLabelsFormat();
     m_pointLabelsVisible = m_series->pointLabelsVisible();
+    m_markerSize = m_series->markerSize();
     m_pointLabelsFont = m_series->pointLabelsFont();
     m_pointLabelsColor = m_series->pointLabelsColor();
+    m_selectedPoints = m_series->selectedPoints();
+    m_selectedColor = m_series->selectedColor();
     bool labelClippingChanged = m_pointLabelsClipping != m_series->pointLabelsClipping();
     m_pointLabelsClipping = m_series->pointLabelsClipping();
     // Update whole chart in case label clipping changed as labels can be outside series area
@@ -440,8 +448,8 @@ void SplineChartItem::handleUpdated()
 
 void SplineChartItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(widget)
-    Q_UNUSED(option)
+    Q_UNUSED(widget);
+    Q_UNUSED(option);
 
     QRectF clipRect = QRectF(QPointF(0, 0), domain()->size());
 
@@ -450,7 +458,7 @@ void SplineChartItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
     painter->setBrush(Qt::NoBrush);
 
     if (m_series->chart()->chartType() == QChart::ChartTypePolar) {
-        qreal halfWidth = domain()->size().width() / 2.0;
+        qreal halfWidth = domain()->size().width() / 2.;
         QRectF clipRectLeft = QRectF(0, 0, halfWidth, domain()->size().height());
         QRectF clipRectRight = QRectF(halfWidth, 0, halfWidth, domain()->size().height());
         QRegion fullPolarClipRegion(clipRect.toRect(), QRegion::Ellipse);
@@ -465,14 +473,49 @@ void SplineChartItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
         painter->setClipRect(clipRect);
     }
 
+    if (m_series->bestFitLineVisible())
+        m_series->d_func()->drawBestFitLine(painter, clipRect);
+
     painter->drawPath(m_path);
 
-    if (m_pointsVisible) {
-        painter->setPen(m_pointPen);
-        if (m_series->chart()->chartType() == QChart::ChartTypePolar)
-            painter->drawPoints(m_visiblePoints);
-        else
-            painter->drawPoints(geometryPoints());
+    int pointLabelsOffset = m_linePen.width() / 2;
+
+    // Draw markers if a marker or marker for selected points only has been
+    // set (set to QImage() to disable)
+    if (!m_series->lightMarker().isNull() || (!m_series->selectedLightMarker().isNull()
+                                           && !m_series->selectedPoints().isEmpty())) {
+        const QImage &marker = m_series->lightMarker();
+        const QImage &selectedMarker = m_series->selectedLightMarker();
+        qreal markerHalfSize = m_markerSize / 2.0;
+        pointLabelsOffset = markerHalfSize;
+
+        for (int i = 0; i < m_points.size(); ++i) {
+            // Documentation of light markers says that points visibility and
+            // light markers are independent features. Therefore m_pointsVisible
+            // is not used here as light markers are drawn if lightMarker is not null.
+            // However points visibility configuration can be still used here.
+            bool drawPoint = !m_series->lightMarker().isNull();
+            if (m_pointsConfiguration.contains(i)) {
+                const auto &conf = m_pointsConfiguration[i];
+
+                if (conf.contains(QXYSeries::PointConfiguration::Visibility)) {
+                    drawPoint = m_pointsConfiguration[i][QXYSeries::PointConfiguration::Visibility]
+                                        .toBool();
+                }
+            }
+
+            bool drawSelectedPoint = false;
+            if (m_series->isPointSelected(i)) {
+                drawPoint = true;
+                drawSelectedPoint = !selectedMarker.isNull();
+            }
+            if (drawPoint) {
+                const QRectF rect(m_points[i].x() - markerHalfSize,
+                                  m_points[i].y() - markerHalfSize,
+                                  m_markerSize, m_markerSize);
+                painter->drawImage(rect, drawSelectedPoint ? selectedMarker : marker);
+            }
+        }
     }
 
     if (m_pointLabelsVisible) {
@@ -480,15 +523,79 @@ void SplineChartItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *o
             painter->setClipping(true);
         else
             painter->setClipping(false);
-        m_series->d_func()->drawSeriesPointLabels(painter, m_points, m_linePen.width() / 2);
+        m_series->d_func()->drawSeriesPointLabels(painter, m_points, pointLabelsOffset);
     }
 
+    painter->setPen(m_pointPen);
+    if (m_series->chart()->chartType() == QChart::ChartTypePolar && m_pointsVisible) {
+        painter->drawPoints(m_visiblePoints);
+    } else {
+        const bool simpleDraw = m_selectedPoints.isEmpty() && m_pointsConfiguration.isEmpty();
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(m_linePen.color());
+        painter->setClipping(true);
+
+        if (m_pointsVisible && simpleDraw && m_series->lightMarker().isNull()) {
+            for (int i = 0; i < m_points.size(); ++i)
+                painter->drawEllipse(m_points.at(i), m_markerSize, m_markerSize);
+        } else if (!simpleDraw) {
+            qreal ptSize = m_markerSize;
+            for (int i = 0; i < m_points.size(); ++i) {
+                if (clipRect.contains(m_points.at(i))) {
+                    painter->save();
+                    ptSize = m_markerSize;
+                    bool drawPoint = m_pointsVisible && m_series->lightMarker().isNull();
+                    if (m_pointsConfiguration.contains(i)) {
+                        const auto &conf = m_pointsConfiguration[i];
+                        if (conf.contains(QXYSeries::PointConfiguration::Visibility)) {
+                            drawPoint =
+                                    m_pointsConfiguration[i][QXYSeries::PointConfiguration::Visibility]
+                                    .toBool();
+                        }
+
+                        if (drawPoint) {
+                            if (conf.contains(QXYSeries::PointConfiguration::Size)) {
+                                ptSize = m_pointsConfiguration[i][QXYSeries::PointConfiguration::Size]
+                                        .toReal();
+                            }
+
+                            if (conf.contains(QXYSeries::PointConfiguration::Color)) {
+                                painter->setBrush(
+                                            m_pointsConfiguration[i][QXYSeries::PointConfiguration::Color]
+                                        .value<QColor>());
+                            }
+                        }
+                    }
+
+                    if (m_series->isPointSelected(i)) {
+                        // Selected points are drawn regardless of m_pointsVisible settings and
+                        // custom point configuration. However, they are not drawn if light markers
+                        // are used. The reason of this is to avoid displaying selected point
+                        // over selected light marker.
+                        drawPoint = m_series->selectedLightMarker().isNull();
+                        ptSize = ptSize * 1.5;
+                        if (m_selectedColor.isValid())
+                            painter->setBrush(m_selectedColor);
+                    }
+
+                    if (drawPoint)
+                        painter->drawEllipse(m_points.at(i), ptSize, ptSize);
+                    painter->restore();
+                }
+            }
+        }
+    }
     painter->restore();
 }
 
 void SplineChartItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    emit XYChart::pressed(domain()->calculateDomainPoint(event->pos()));
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x()))
+        emit XYChart::pressed(matchedP);
+    else
+        emit XYChart::pressed(domain()->calculateDomainPoint(event->pos()));
+
     m_lastMousePos = event->pos();
     m_mousePressed = true;
     QGraphicsItem::mousePressEvent(event);
@@ -496,31 +603,53 @@ void SplineChartItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
 void SplineChartItem::hoverEnterEvent(QGraphicsSceneHoverEvent *event)
 {
-    emit XYChart::hovered(domain()->calculateDomainPoint(event->pos()), true);
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x()))
+        emit XYChart::hovered(matchedP, true);
+    else
+        emit XYChart::hovered(domain()->calculateDomainPoint(event->pos()), true);
+
     QGraphicsItem::hoverEnterEvent(event);
 }
 
 void SplineChartItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
 {
-    emit XYChart::hovered(domain()->calculateDomainPoint(event->pos()), false);
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x()))
+        emit XYChart::hovered(matchedP, false);
+    else
+        emit XYChart::hovered(domain()->calculateDomainPoint(event->pos()), false);
+
     QGraphicsItem::hoverLeaveEvent(event);
 }
 
 void SplineChartItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    emit XYChart::released(domain()->calculateDomainPoint(m_lastMousePos));
+    QPointF result;
+    QPointF matchedP = matchForLightMarker(m_lastMousePos);
+    if (!qIsNaN(matchedP.x()))
+        result = matchedP;
+    else
+        result = domain()->calculateDomainPoint(m_lastMousePos);
+
+    emit XYChart::released(result);
     if (m_mousePressed)
-        emit XYChart::clicked(domain()->calculateDomainPoint(m_lastMousePos));
+        emit XYChart::clicked(result);
     m_mousePressed = false;
     QGraphicsItem::mouseReleaseEvent(event);
 }
 
 void SplineChartItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 {
-    emit XYChart::doubleClicked(domain()->calculateDomainPoint(m_lastMousePos));
+    QPointF matchedP = matchForLightMarker(event->pos());
+    if (!qIsNaN(matchedP.x()))
+        emit XYChart::doubleClicked(matchedP);
+    else
+        emit XYChart::doubleClicked(domain()->calculateDomainPoint(m_lastMousePos));
+
     QGraphicsItem::mouseDoubleClickEvent(event);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_splinechartitem_p.cpp"

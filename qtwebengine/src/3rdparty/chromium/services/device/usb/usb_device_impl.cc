@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,12 @@
 
 #include <algorithm>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/posix/eintr_wrapper.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/scoped_blocking_call.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "components/device_event_log/device_event_log.h"
 #include "services/device/usb/usb_context.h"
@@ -37,9 +35,9 @@ UsbDeviceImpl::UsbDeviceImpl(ScopedLibusbDeviceRef platform_device,
                 descriptor.idVendor,
                 descriptor.idProduct,
                 descriptor.bcdDevice,
-                base::string16(),
-                base::string16(),
-                base::string16(),
+                std::u16string(),
+                std::u16string(),
+                std::u16string(),
                 libusb_get_bus_number(platform_device.get()),
                 libusb_get_port_number(platform_device.get())),
       platform_device_(std::move(platform_device)) {
@@ -60,7 +58,8 @@ void UsbDeviceImpl::Open(OpenCallback callback) {
   blocking_task_runner->PostTask(
       FROM_HERE,
       base::BindOnce(&UsbDeviceImpl::OpenOnBlockingThread, this,
-                     std::move(callback), base::ThreadTaskRunnerHandle::Get(),
+                     std::move(callback),
+                     base::SingleThreadTaskRunner::GetCurrentDefault(),
                      blocking_task_runner));
 }
 
@@ -78,14 +77,17 @@ void UsbDeviceImpl::ReadAllConfigurations() {
         continue;
       }
 
-      if (!usb_descriptor.Parse(base::make_span(buffer, rv)))
+      if (!usb_descriptor.Parse(
+              base::make_span(buffer, static_cast<size_t>(rv)))) {
         USB_LOG(EVENT) << "Config descriptor index " << i << " was corrupt.";
+      }
       free(buffer);
-
-      // Update the configurations.
-      device_info_->configurations =
-          std::move(usb_descriptor.device_info->configurations);
     }
+
+    // The only populated field in |usb_descriptor| is the parsed configuration
+    // descriptor info.
+    device_info_->configurations =
+        std::move(usb_descriptor.device_info->configurations);
   } else {
     USB_LOG(EVENT) << "Failed to get device descriptor: "
                    << ConvertPlatformUsbErrorToString(rv);

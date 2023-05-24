@@ -113,6 +113,38 @@ this document.
 
 ---
 
+### Proxy
+
+Hooking into runtime-level object meta-operations.
+
+**Usage Example:**
+
+```js
+const keyTracker = new Proxy({}, {
+  keysCreated: 0,
+
+  get (receiver, key) {
+    if (key in receiver) {
+      console.log('key already exists');
+    } else {
+      ++this.keysCreated;
+      console.log(this.keysCreated + ' keys created!');
+      receiver[key] = true;
+    }
+  },
+});
+
+keyTracker.key1;  // '1 keys created!'
+keyTracker.key1;  // 'key already exists'
+keyTracker.key2;  // '2 keys created!'
+```
+
+**Documentation:** [link](https://tc39.github.io/ecma262/#sec-proxy-object-internal-methods-and-internal-slots)
+
+**Discussion Notes / Link to Thread:** [link](https://groups.google.com/a/chromium.org/g/chromium-dev/c/-vdPXELXCx4/m/gXfP5vpVBwAJ)
+
+---
+
 ### Classes
 
 OOP-style and boilerplate-free class syntax, including inheritance, `super()`,
@@ -878,38 +910,6 @@ new UInt8ClampedArray();
 
 ---
 
-### Proxy
-
-Hooking into runtime-level object meta-operations.
-
-**Usage Example:**
-
-```js
-const keyTracker = new Proxy({}, {
-  keysCreated: 0,
-
-  get (receiver, key) {
-    if (key in receiver) {
-      console.log('key already exists');
-    } else {
-      ++this.keysCreated;
-      console.log(this.keysCreated + ' keys created!');
-      receiver[key] = true;
-    }
-  },
-});
-
-keyTracker.key1;  // '1 keys created!'
-keyTracker.key1;  // 'key already exists'
-keyTracker.key2;  // '2 keys created!'
-```
-
-**Documentation:** [link](https://tc39.github.io/ecma262/#sec-proxy-object-internal-methods-and-internal-slots)
-
-**Discussion Notes / Link to Thread:**
-
----
-
 ### Reflection
 
 Make calls corresponding to the object meta-operations.
@@ -1097,3 +1097,28 @@ console.log(Object.entries(object2)[1]);
 **Discussion Notes / Link to Thread:**
 
 ---
+
+# ES2020 Support in Chromium
+
+## Allowed features
+
+### Optional Chaining (?.)
+
+The optional chaining operator makes it easy to chain multiple functions /
+property accesses that may return null or undefined.
+
+**Usage Example:**
+
+```js
+// Before:
+const currentKeyboard = keyboards.getCurrentKeyboard();
+const keys = currentKeyboard && currentKeyboard.getKeys();
+const enterKey = keys && keys.getEnterKey();
+
+// After:
+const enterKey = keyboards.getCurrentKeyboard()?.getKeys()?.getEnterKey();
+```
+
+**Documentation:** [link](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Optional_chaining)
+
+**Discussion Notes / Link to Thread:** [link](https://groups.google.com/a/chromium.org/g/chromium-dev/c/DHLSm05HHlo)

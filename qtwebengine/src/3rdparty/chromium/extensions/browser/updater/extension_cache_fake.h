@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <set>
 #include <string>
 
-#include "base/macros.h"
 #include "extensions/browser/updater/extension_cache.h"
 
 namespace extensions {
@@ -18,6 +17,10 @@ namespace extensions {
 class ExtensionCacheFake : public ExtensionCache {
  public:
   ExtensionCacheFake();
+
+  ExtensionCacheFake(const ExtensionCacheFake&) = delete;
+  ExtensionCacheFake& operator=(const ExtensionCacheFake&) = delete;
+
   ~ExtensionCacheFake() override;
 
   // Implementation of ExtensionCache.
@@ -33,6 +36,9 @@ class ExtensionCacheFake : public ExtensionCache {
                     const base::FilePath& file_path,
                     const std::string& version,
                     PutExtensionCallback callback) override;
+  bool OnInstallFailed(const std::string& id,
+                       const std::string& hash,
+                       const CrxInstallError& error) override;
 
  private:
   typedef std::map<std::string, std::pair<std::string, base::FilePath>> Map;
@@ -41,8 +47,6 @@ class ExtensionCacheFake : public ExtensionCache {
 
   // Map of know extensions.
   Map cache_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExtensionCacheFake);
 };
 
 }  // namespace extensions

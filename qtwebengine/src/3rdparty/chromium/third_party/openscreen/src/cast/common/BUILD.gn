@@ -6,20 +6,45 @@ import("//build_overrides/build.gni")
 import("//third_party/protobuf/proto_library.gni")
 import("../../testing/libfuzzer/fuzzer_test.gni")
 
+visibility = [ "./*" ]
+
+# TODO(jophba): remove if checks once Chrome uses the cast.gni file
+if (!build_with_chromium) {
+  import("../../build/config/cast.gni")
+}
+
+config("certificate_config") {
+  visibility += [
+    "../standalone_receiver:cast_receiver",
+    "../standalone_sender:cast_sender",
+  ]
+  defines = []
+
+  if (!build_with_chromium) {
+    if (cast_allow_developer_certificate) {
+      defines += [ "CAST_ALLOW_DEVELOPER_CERTIFICATE" ]
+    }
+  }
+}
+
 source_set("certificate") {
+  visibility += [
+    "../*",
+    "../..:gn_all",
+  ]
+  public = [
+    "certificate/cast_cert_validator.h",
+    "certificate/cast_crl.h",
+    "certificate/date_time.h",
+  ]
   sources = [
     "certificate/cast_cert_validator.cc",
-    "certificate/cast_cert_validator.h",
-    "certificate/cast_cert_validator_internal.cc",
-    "certificate/cast_cert_validator_internal.h",
     "certificate/cast_crl.cc",
-    "certificate/cast_crl.h",
-    "certificate/cast_trust_store.cc",
-    "certificate/cast_trust_store.h",
-    "certificate/types.cc",
-    "certificate/types.h",
+    "certificate/date_time.cc",
   ]
-  public_deps = [ "../../third_party/boringssl" ]
+  public_deps = [ ":public" ]
+
+  configs += [ ":certificate_config" ]
 
   deps = [
     "../../platform",
@@ -27,58 +52,115 @@ source_set("certificate") {
     "../../util",
     "certificate/proto:certificate_proto",
   ]
+  friend = [
+    ":test_helpers",
+    ":unittests",
+  ]
+}
+
+source_set("certificate_boringssl") {
+  # Used in Chromium by fuzz tests in
+  # //components/media_router/common/providers/cast/channel. We don't
+  # use [ "*" ] here to prevent accidental usage of boringssl in Chromium.
+  visibility += [
+    "../..:openscreen_unittests",
+    "../standalone_receiver:cast_receiver",
+    "../standalone_sender:cast_sender",
+    "../test:*",
+    "//components/media_router/common/providers/cast/channel:openscreen_cast_auth_util_fuzzer",
+  ]
+  public = []
+  sources = [
+    "certificate/boringssl_parsed_certificate.cc",
+    "certificate/boringssl_parsed_certificate.h",
+    "certificate/boringssl_trust_store.cc",
+    "certificate/boringssl_trust_store.h",
+    "certificate/boringssl_util.cc",
+    "certificate/boringssl_util.h",
+  ]
+
+  public_deps = [
+    ":public",
+    "../../third_party/boringssl",
+  ]
+
+  deps = [
+    ":certificate",
+    "../../third_party/abseil",
+    "../../util",
+  ]
 }
 
 source_set("channel") {
+  # Used in Chromium by //components/media_router/common/providers/cast/channel.
+  #
+  # TODO(https://issuetracker.google.com/issues/244211254): Move
+  # message_framer.h to public/
+  visibility += [ "*" ]
+  public = [
+    "channel/cast_socket_message_port.h",
+    "channel/connection_namespace_handler.h",
+    "channel/message_framer.h",
+    "channel/message_util.h",
+    "channel/virtual_connection.h",
+    "channel/virtual_connection_router.h",
+  ]
   sources = [
     "channel/cast_socket.cc",
     "channel/cast_socket_message_port.cc",
-    "channel/cast_socket_message_port.h",
     "channel/connection_namespace_handler.cc",
-    "channel/connection_namespace_handler.h",
     "channel/message_framer.cc",
-    "channel/message_framer.h",
     "channel/message_util.cc",
-    "channel/message_util.h",
     "channel/namespace_router.cc",
     "channel/namespace_router.h",
-    "channel/virtual_connection.h",
-    "channel/virtual_connection_manager.cc",
-    "channel/virtual_connection_manager.h",
     "channel/virtual_connection_router.cc",
-    "channel/virtual_connection_router.h",
-    "public/cast_socket.h",
   ]
 
   deps = [ "certificate/proto:certificate_proto" ]
 
   public_deps = [
+    ":public",
     "../../platform",
     "../../third_party/abseil",
     "../../util",
     "channel/proto:channel_proto",
   ]
+
+  friend = [
+    ":test_helpers",
+    ":unittests",
+  ]
 }
 
 source_set("public") {
-  sources = [
+  visibility += [ "*" ]
+  public = [
+    "public/cast_socket.h",
+    "public/cast_streaming_app_ids.h",
+    "public/certificate_types.h",
     "public/message_port.h",
-    "public/service_info.cc",
-    "public/service_info.h",
+    "public/parsed_certificate.h",
+    "public/receiver_info.h",
+    "public/trust_store.h",
+  ]
+  sources = [
+    "public/cast_streaming_app_ids.cc",
+    "public/receiver_info.cc",
   ]
 
-  deps = [
-    "../../discovery:dnssd",
+  public_deps = [
     "../../discovery:public",
     "../../platform",
     "../../third_party/abseil",
+    "../../util",
   ]
 }
 
 if (!build_with_chromium) {
   source_set("discovery_e2e_test") {
+    visibility += [ "../..:e2e_tests_all" ]
     testonly = true
-
+    public = []
     if (!is_mac) {
       sources = [ "discovery/e2e_test/tests.cc" ]
     }
@@ -87,6 +169,8 @@ if (!build_with_chromium) {
       ":public",
       "../../discovery:dnssd",
       "../../discovery:public",
+      "../../platform:standalone_impl",
+      "../../testing/util",
       "../../third_party/googletest:gtest",
     ]
   }
@@ -95,12 +179,16 @@ if (!build_with_chromium) {
 source_set("test_helpers") {
   testonly = true
 
-  sources = [
-    "certificate/testing/test_helpers.cc",
+  # Used in Chromium for //components/media_router/common/providers/cast/channel unittests.
+  visibility += [ "*" ]
+  public = [
     "certificate/testing/test_helpers.h",
     "channel/testing/fake_cast_socket.h",
-    "channel/testing/mock_cast_message_handler.h",
     "channel/testing/mock_socket_error_handler.h",
+  ]
+  sources = [
+    "certificate/testing/test_helpers.cc",
+    "channel/testing/mock_cast_message_handler.h",
     "public/testing/discovery_utils.cc",
     "public/testing/discovery_utils.h",
   ]
@@ -108,6 +196,7 @@ source_set("test_helpers") {
     ":certificate",
     ":channel",
     ":public",
+    "../../discovery:public",
     "../../platform:test",
     "../../testing/util",
     "../../third_party/abseil",
@@ -119,10 +208,13 @@ source_set("test_helpers") {
     "../../platform",
     "../../platform:test",
   ]
+  friend = [ ":unittests" ]
 }
 
 source_set("unittests") {
   testonly = true
+  visibility += [ "../..:openscreen_unittests_all" ]
+  public = []
   sources = [
     "certificate/cast_cert_validator_unittest.cc",
     "certificate/cast_crl_unittest.cc",
@@ -130,9 +222,9 @@ source_set("unittests") {
     "channel/connection_namespace_handler_unittest.cc",
     "channel/message_framer_unittest.cc",
     "channel/namespace_router_unittest.cc",
-    "channel/virtual_connection_manager_unittest.cc",
     "channel/virtual_connection_router_unittest.cc",
-    "public/service_info_unittest.cc",
+    "public/cast_streaming_app_ids_unittest.cc",
+    "public/receiver_info_unittest.cc",
   ]
 
   deps = [

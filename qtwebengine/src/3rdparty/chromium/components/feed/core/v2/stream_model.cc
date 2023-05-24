@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,23 @@
 #include <sstream>
 #include <utility>
 
+#include "base/base64.h"
 #include "base/check.h"
+#include "base/check_op.h"
 #include "base/json/string_escape.h"
+#include "base/observer_list.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/feed/core/proto/v2/store.pb.h"
 #include "components/feed/core/proto/v2/wire/content_id.pb.h"
+#include "components/feed/core/v2/feedstore_util.h"
+#include "components/feed/core/v2/proto_util.h"
 #include "components/feed/core/v2/protocol_translator.h"
+#include "components/feed/core/v2/types.h"
 
 namespace feed {
 namespace {
+using Context = StreamModel::Context;
 using UiUpdate = StreamModel::UiUpdate;
 using StoreUpdate = StreamModel::StoreUpdate;
 
@@ -28,8 +35,28 @@ bool HasClearAll(const std::vector<feedstore::StreamStructure>& structures) {
   }
   return false;
 }
+
+void MergeSharedStateIds(const feedstore::StreamData& model_data,
+                         feedstore::StreamData& update_request_data) {
+  for (const auto& content_id : model_data.shared_state_ids()) {
+    bool found = false;
+    for (const auto& update_request_content_id :
+         update_request_data.shared_state_ids()) {
+      if (Equal(update_request_content_id, content_id)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      *update_request_data.add_shared_state_ids() = content_id;
+    }
+  }
+}
+
 }  // namespace
 
+Context::Context() = default;
+Context::~Context() = default;
 UiUpdate::UiUpdate() = default;
 UiUpdate::~UiUpdate() = default;
 UiUpdate::UiUpdate(const UiUpdate&) = default;
@@ -39,13 +66,21 @@ StoreUpdate::~StoreUpdate() = default;
 StoreUpdate::StoreUpdate(StoreUpdate&&) = default;
 StoreUpdate& StoreUpdate::operator=(StoreUpdate&&) = default;
 
-StreamModel::StreamModel() = default;
+StreamModel::StreamModel(Context* context,
+                         const LoggingParameters& logging_parameters)
+    : logging_parameters_(logging_parameters),
+      content_map_(&(context->revision_generator)) {}
+
 StreamModel::~StreamModel() = default;
 
 void StreamModel::SetStoreObserver(StoreObserver* store_observer) {
   DCHECK(!store_observer || !store_observer_)
       << "Attempting to set store_observer multiple times";
   store_observer_ = store_observer;
+}
+
+void StreamModel::SetStreamType(const StreamType& stream_type) {
+  stream_type_ = stream_type;
 }
 
 void StreamModel::AddObserver(Observer* observer) {
@@ -60,6 +95,12 @@ const feedstore::Content* StreamModel::FindContent(
     ContentRevision revision) const {
   return GetFinalFeatureTree()->FindContent(revision);
 }
+
+feedwire::ContentId StreamModel::FindContentId(ContentRevision revision) const {
+  const feedstore::Content* content = FindContent(revision);
+  return content ? content->content_id() : feedwire::ContentId();
+}
+
 const std::string* StreamModel::FindSharedStateData(
     const std::string& id) const {
   auto iter = shared_states_.find(id);
@@ -105,9 +146,16 @@ void StreamModel::Update(
       //    Save the new stream data with the next sequence number.
       if (has_clear_all) {
         next_structure_sequence_number_ = 0;
+      } else {
+        MergeSharedStateIds(stream_data_, update_request->stream_data);
       }
+      // Never allow overwriting the root event ID.
+      update_request->stream_data.set_root_event_id(
+          stream_data_.root_event_id());
+
       // Note: We might be overwriting some shared-states unnecessarily.
       StoreUpdate store_update;
+      store_update.stream_type = stream_type_;
       store_update.overwrite_stream_data = has_clear_all;
       store_update.update_request =
           std::make_unique<StreamModelUpdateRequest>(*update_request);
@@ -117,7 +165,6 @@ void StreamModel::Update(
     }
   }
 
-  // Update non-tree data.
   stream_data_ = update_request->stream_data;
 
   if (has_clear_all) {
@@ -169,6 +216,7 @@ void StreamModel::ExecuteOperations(
 
   if (store_observer_) {
     StoreUpdate store_update;
+    store_update.stream_type = stream_type_;
     store_update.operations = std::move(operations);
     store_update.sequence_number = next_structure_sequence_number_++;
     store_observer_->OnStoreChange(std::move(store_update));
@@ -228,6 +276,10 @@ void StreamModel::UpdateFlattenedTree() {
     observer.OnUiUpdate(update);
 }
 
+bool StreamModel::HasVisibleContent() {
+  return !content_list_.empty();
+}
+
 stream_model::FeatureTree* StreamModel::GetFinalFeatureTree() {
   return feature_tree_after_changes_ ? feature_tree_after_changes_.get()
                                      : &base_feature_tree_;
@@ -240,9 +292,41 @@ const std::string& StreamModel::GetNextPageToken() const {
   return stream_data_.next_page_token();
 }
 
+base::Time StreamModel::GetLastAddedTime() const {
+  return feedstore::GetLastAddedTime(stream_data_);
+}
+ContentHashSet StreamModel::GetContentIds() const {
+  return feedstore::GetContentIds(stream_data_);
+}
+
+ContentStats StreamModel::GetContentStats() const {
+  ContentStats stats;
+  for (auto content_revision : content_list_) {
+    const feedstore::Content* content = FindContent(content_revision);
+    if (content) {
+      stats.total_content_frame_size_bytes += content->frame().size();
+      stats.card_count++;
+    }
+  }
+
+  for (auto& entry : shared_states_) {
+    stats.shared_state_size += entry.second.data.size();
+  }
+  return stats;
+}
+
+const std::string& StreamModel::GetRootEventId() const {
+  return stream_data_.root_event_id();
+}
+
 std::string StreamModel::DumpStateForTesting() {
   std::stringstream ss;
   ss << "StreamModel{\n";
+  {
+    std::string base64_root_id;
+    base::Base64Encode(GetRootEventId(), &base64_root_id);
+    ss << "root_event_id=" << base64_root_id << "'\n";
+  }
   ss << "next_page_token='" << GetNextPageToken() << "'\n";
   for (auto& entry : shared_states_) {
     ss << "shared_state[" << entry.first

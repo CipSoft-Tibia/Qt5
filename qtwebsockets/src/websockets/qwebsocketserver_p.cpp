@@ -1,66 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebsocketserver.h"
 #include "qwebsocketserver_p.h"
-#ifndef QT_NO_SSL
-#include "qsslserver_p.h"
-#endif
 #include "qwebsocketprotocol.h"
 #include "qwebsockethandshakerequest_p.h"
 #include "qwebsockethandshakeresponse_p.h"
 #include "qwebsocket.h"
 #include "qwebsocket_p.h"
 #include "qwebsocketcorsauthenticator.h"
+#include <limits>
 
+#ifndef QT_NO_SSL
+#include "QtNetwork/QSslServer"
+#endif
 #include <QtCore/QTimer>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
 #include <QtNetwork/QNetworkProxy>
 
 QT_BEGIN_NAMESPACE
-
-//both constants are taken from the default settings of Apache
-//see: http://httpd.apache.org/docs/2.2/mod/core.html#limitrequestfieldsize and
-//http://httpd.apache.org/docs/2.2/mod/core.html#limitrequestfields
-const int MAX_HEADERLINE_LENGTH = 8 * 1024; //maximum length of a http request header line
-const int MAX_HEADERLINES = 100;            //maximum number of http request header lines
 
 /*!
     \internal
@@ -87,26 +46,53 @@ void QWebSocketServerPrivate::init()
     if (m_secureMode == NonSecureMode) {
         m_pTcpServer = new QTcpServer(q);
         if (Q_LIKELY(m_pTcpServer))
-            QObjectPrivate::connect(m_pTcpServer, &QTcpServer::newConnection,
-                                    this, &QWebSocketServerPrivate::onNewConnection);
+            QObjectPrivate::connect(m_pTcpServer, &QTcpServer::pendingConnectionAvailable, this,
+                                    &QWebSocketServerPrivate::onNewConnection);
         else
             qFatal("Could not allocate memory for tcp server.");
     } else {
 #ifndef QT_NO_SSL
         QSslServer *pSslServer = new QSslServer(q);
         m_pTcpServer = pSslServer;
+        // Update the QSslServer with the timeout we have:
+        setHandshakeTimeout(m_handshakeTimeout);
         if (Q_LIKELY(m_pTcpServer)) {
-            QObjectPrivate::connect(pSslServer, &QSslServer::newEncryptedConnection,
-                                    this, &QWebSocketServerPrivate::onNewConnection,
+            QObjectPrivate::connect(pSslServer, &QTcpServer::pendingConnectionAvailable, this,
+                                    &QWebSocketServerPrivate::onNewConnection,
                                     Qt::QueuedConnection);
-            QObjectPrivate::connect(pSslServer, &QSslServer::startedEncryptionHandshake,
-                                    this, &QWebSocketServerPrivate::startHandshakeTimeout);
             QObject::connect(pSslServer, &QSslServer::peerVerifyError,
-                             q, &QWebSocketServer::peerVerifyError);
+                             [q](QSslSocket *socket, const QSslError &error) {
+                                    Q_UNUSED(socket);
+                                    Q_EMIT q->peerVerifyError(error);
+                             });
             QObject::connect(pSslServer, &QSslServer::sslErrors,
-                             q, &QWebSocketServer::sslErrors);
+                             [q](QSslSocket *socket, const QList<QSslError> &errors) {
+                                    Q_UNUSED(socket);
+                                    Q_EMIT q->sslErrors(errors);
+                             });
             QObject::connect(pSslServer, &QSslServer::preSharedKeyAuthenticationRequired,
-                             q, &QWebSocketServer::preSharedKeyAuthenticationRequired);
+                             [q](QSslSocket *socket,
+                                 QSslPreSharedKeyAuthenticator *authenticator) {
+                                    Q_UNUSED(socket);
+                                    Q_EMIT q->preSharedKeyAuthenticationRequired(authenticator);
+                             });
+            QObject::connect(pSslServer, &QSslServer::alertSent,
+                             [q](QSslSocket *socket, QSsl::AlertLevel level,
+                                 QSsl::AlertType type, const QString &description) {
+                                    Q_UNUSED(socket);
+                                    Q_EMIT q->alertSent(level, type, description);
+                                 });
+            QObject::connect(pSslServer, &QSslServer::alertReceived,
+                             [q](QSslSocket *socket, QSsl::AlertLevel level,
+                                 QSsl::AlertType type, const QString &description) {
+                                    Q_UNUSED(socket);
+                                    Q_EMIT q->alertReceived(level, type, description);
+                                 });
+            QObject::connect(pSslServer, &QSslServer::handshakeInterruptedOnError,
+                             [q](QSslSocket *socket, const QSslError &error) {
+                                    Q_UNUSED(socket);
+                                    Q_EMIT q->handshakeInterruptedOnError(error);
+                                });
         }
 #else
         qFatal("SSL not supported on this platform.");
@@ -288,6 +274,24 @@ void QWebSocketServerPrivate::setMaxPendingConnections(int numConnections)
 /*!
     \internal
  */
+void QWebSocketServerPrivate::setHandshakeTimeout(int msec)
+{
+#if QT_CONFIG(ssl)
+    if (auto *server = qobject_cast<QSslServer *>(m_pTcpServer)) {
+        int timeout = msec;
+        // Since QSslServer doesn't deal with negative numbers we set a very
+        // large one instead to keep some level of compatibility:
+        if (timeout < 0)
+            timeout = std::numeric_limits<int>::max();
+        server->setHandshakeTimeout(timeout);
+    }
+#endif
+    m_handshakeTimeout = msec;
+}
+
+/*!
+    \internal
+ */
 bool QWebSocketServerPrivate::setSocketDescriptor(qintptr socketDescriptor)
 {
     return m_pTcpServer->setSocketDescriptor(socketDescriptor);
@@ -314,10 +318,17 @@ QList<QWebSocketProtocol::Version> QWebSocketServerPrivate::supportedVersions() 
 /*!
     \internal
  */
-QStringList QWebSocketServerPrivate::supportedProtocols() const
+void QWebSocketServerPrivate::setSupportedSubprotocols(const QStringList &protocols)
 {
-    QStringList supportedProtocols;
-    return supportedProtocols;	//no protocols are currently supported
+    m_supportedSubprotocols = protocols;
+}
+
+/*!
+    \internal
+ */
+QStringList QWebSocketServerPrivate::supportedSubprotocols() const
+{
+    return m_supportedSubprotocols;
 }
 
 /*!
@@ -387,8 +398,8 @@ void QWebSocketServerPrivate::onNewConnection()
 {
     while (m_pTcpServer->hasPendingConnections()) {
         QTcpSocket *pTcpSocket = m_pTcpServer->nextPendingConnection();
-        if (Q_LIKELY(pTcpSocket) && m_secureMode == NonSecureMode)
-            startHandshakeTimeout(pTcpSocket);
+        Q_ASSERT(pTcpSocket);
+        startHandshakeTimeout(pTcpSocket);
         handleConnection(pTcpSocket);
     }
 }
@@ -438,7 +449,8 @@ void QWebSocketServerPrivate::handshakeReceived()
     if (endOfHeaderIndex < 0) {
         //then we don't have our header complete yet
         //check that no one is trying to exhaust our virtual memory
-        const qint64 maxHeaderLength = MAX_HEADERLINE_LENGTH * MAX_HEADERLINES + endOfHeaderMarker.size();
+        const qint64 maxHeaderLength = QWebSocketPrivate::MAX_HEADERLINE_LENGTH
+            * QWebSocketPrivate::MAX_HEADERLINES + endOfHeaderMarker.size();
         if (Q_UNLIKELY(byteAvailable > maxHeaderLength)) {
             pTcpSocket->close();
             setError(QWebSocketProtocol::CloseCodeTooMuchData,
@@ -453,7 +465,7 @@ void QWebSocketServerPrivate::handshakeReceived()
     bool success = false;
     bool isSecure = (m_secureMode == SecureMode);
 
-    if (Q_UNLIKELY(m_pendingConnections.length() >= maxPendingConnections())) {
+    if (Q_UNLIKELY(m_pendingConnections.size() >= maxPendingConnections())) {
         pTcpSocket->close();
         setError(QWebSocketProtocol::CloseCodeAbnormalDisconnection,
                  QWebSocketServer::tr("Too many pending connections."));
@@ -473,8 +485,7 @@ void QWebSocketServerPrivate::handshakeReceived()
     }
 
     QWebSocketHandshakeRequest request(pTcpSocket->peerPort(), isSecure);
-    QTextStream textStream(header, QIODevice::ReadOnly);
-    request.readHandshake(textStream, MAX_HEADERLINE_LENGTH, MAX_HEADERLINES);
+    request.readHandshake(header, QWebSocketPrivate::MAX_HEADERLINE_LENGTH);
 
     if (request.isValid()) {
         QWebSocketCorsAuthenticator corsAuthenticator(request.origin());
@@ -484,7 +495,7 @@ void QWebSocketServerPrivate::handshakeReceived()
                                              m_serverName,
                                              corsAuthenticator.allowed(),
                                              supportedVersions(),
-                                             supportedProtocols(),
+                                             supportedSubprotocols(),
                                              supportedExtensions());
 
         if (Q_LIKELY(response.isValid())) {

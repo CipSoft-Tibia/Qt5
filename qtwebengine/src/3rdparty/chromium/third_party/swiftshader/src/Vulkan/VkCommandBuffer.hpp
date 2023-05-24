@@ -17,8 +17,8 @@
 
 #include "VkConfig.hpp"
 #include "VkDescriptorSet.hpp"
-#include "VkObject.hpp"
-#include "Device/Context.hpp"
+#include "VkPipeline.hpp"
+#include "System/Synchronization.hpp"
 
 #include <memory>
 #include <vector>
@@ -27,15 +27,10 @@ namespace sw {
 
 class Context;
 class Renderer;
-class TaskEvents;
 
 }  // namespace sw
 
 namespace vk {
-
-namespace dbg {
-class File;
-}  // namespace dbg
 
 class Device;
 class Buffer;
@@ -46,6 +41,43 @@ class Pipeline;
 class PipelineLayout;
 class QueryPool;
 class RenderPass;
+
+struct DynamicRendering
+{
+	DynamicRendering(const VkRenderingInfo *pRenderingInfo);
+
+	void getAttachments(Attachments *attachments) const;
+	VkRect2D getRenderArea() const { return renderArea; }
+	uint32_t getLayerCount() const { return layerCount; }
+	uint32_t getViewMask() const { return viewMask; }
+	uint32_t getColorAttachmentCount() const { return colorAttachmentCount; }
+	const VkRenderingAttachmentInfo *getColorAttachment(uint32_t i) const
+	{
+		return (i < colorAttachmentCount) ? &(colorAttachments[i]) : nullptr;
+	}
+	const VkRenderingAttachmentInfo &getDepthAttachment() const
+	{
+		return depthAttachment;
+	}
+	const VkRenderingAttachmentInfo &getStencilAttachment() const
+	{
+		return stencilAttachment;
+	}
+	bool suspend() const { return flags & VK_RENDERING_SUSPENDING_BIT; }
+	bool resume() const { return flags & VK_RENDERING_RESUMING_BIT; }
+
+private:
+	VkRect2D renderArea = {};
+	uint32_t layerCount = 0;
+	uint32_t viewMask = 0;
+	uint32_t colorAttachmentCount = 0;
+	VkRenderingAttachmentInfo colorAttachments[sw::MAX_COLOR_BUFFERS] = { {} };
+	bool hasDepthAttachment = false;
+	VkRenderingAttachmentInfo depthAttachment = {};
+	bool hasStencilAttachment = false;
+	VkRenderingAttachmentInfo stencilAttachment = {};
+	VkRenderingFlags flags = VkRenderingFlags(0);
+};
 
 class CommandBuffer
 {
@@ -66,23 +98,23 @@ public:
 	void nextSubpass(VkSubpassContents contents);
 	void endRenderPass();
 	void executeCommands(uint32_t commandBufferCount, const VkCommandBuffer *pCommandBuffers);
+	void beginRendering(const VkRenderingInfo *pRenderingInfo);
+	void endRendering();
 
 	void setDeviceMask(uint32_t deviceMask);
 	void dispatchBase(uint32_t baseGroupX, uint32_t baseGroupY, uint32_t baseGroupZ,
 	                  uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 
-	void pipelineBarrier(VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags,
-	                     uint32_t memoryBarrierCount, const VkMemoryBarrier *pMemoryBarriers,
-	                     uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier *pBufferMemoryBarriers,
-	                     uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier *pImageMemoryBarriers);
+	void pipelineBarrier(const VkDependencyInfo &pDependencyInfo);
 	void bindPipeline(VkPipelineBindPoint pipelineBindPoint, Pipeline *pipeline);
 	void bindVertexBuffers(uint32_t firstBinding, uint32_t bindingCount,
-	                       const VkBuffer *pBuffers, const VkDeviceSize *pOffsets);
+	                       const VkBuffer *pBuffers, const VkDeviceSize *pOffsets,
+	                       const VkDeviceSize *pSizes, const VkDeviceSize *pStrides);
 
 	void beginQuery(QueryPool *queryPool, uint32_t query, VkQueryControlFlags flags);
 	void endQuery(QueryPool *queryPool, uint32_t query);
 	void resetQueryPool(QueryPool *queryPool, uint32_t firstQuery, uint32_t queryCount);
-	void writeTimestamp(VkPipelineStageFlagBits pipelineStage, QueryPool *queryPool, uint32_t query);
+	void writeTimestamp(VkPipelineStageFlags2 pipelineStage, QueryPool *queryPool, uint32_t query);
 	void copyQueryPoolResults(const QueryPool *queryPool, uint32_t firstQuery, uint32_t queryCount,
 	                          Buffer *dstBuffer, VkDeviceSize dstOffset, VkDeviceSize stride, VkQueryResultFlags flags);
 	void pushConstants(PipelineLayout *layout, VkShaderStageFlags stageFlags,
@@ -97,21 +129,31 @@ public:
 	void setStencilCompareMask(VkStencilFaceFlags faceMask, uint32_t compareMask);
 	void setStencilWriteMask(VkStencilFaceFlags faceMask, uint32_t writeMask);
 	void setStencilReference(VkStencilFaceFlags faceMask, uint32_t reference);
+	void setCullMode(VkCullModeFlags cullMode);
+	void setDepthBoundsTestEnable(VkBool32 depthBoundsTestEnable);
+	void setDepthCompareOp(VkCompareOp depthCompareOp);
+	void setDepthTestEnable(VkBool32 depthTestEnable);
+	void setDepthWriteEnable(VkBool32 depthWriteEnable);
+	void setFrontFace(VkFrontFace frontFace);
+	void setPrimitiveTopology(VkPrimitiveTopology primitiveTopology);
+	void setScissorWithCount(uint32_t scissorCount, const VkRect2D *pScissors);
+	void setStencilOp(VkStencilFaceFlags faceMask, VkStencilOp failOp, VkStencilOp passOp, VkStencilOp depthFailOp, VkCompareOp compareOp);
+	void setStencilTestEnable(VkBool32 stencilTestEnable);
+	void setViewportWithCount(uint32_t viewportCount, const VkViewport *pViewports);
+	void setRasterizerDiscardEnable(VkBool32 rasterizerDiscardEnable);
+	void setDepthBiasEnable(VkBool32 depthBiasEnable);
+	void setPrimitiveRestartEnable(VkBool32 primitiveRestartEnable);
 	void bindDescriptorSets(VkPipelineBindPoint pipelineBindPoint, const PipelineLayout *layout,
 	                        uint32_t firstSet, uint32_t descriptorSetCount, const VkDescriptorSet *pDescriptorSets,
 	                        uint32_t dynamicOffsetCount, const uint32_t *pDynamicOffsets);
 	void bindIndexBuffer(Buffer *buffer, VkDeviceSize offset, VkIndexType indexType);
 	void dispatch(uint32_t groupCountX, uint32_t groupCountY, uint32_t groupCountZ);
 	void dispatchIndirect(Buffer *buffer, VkDeviceSize offset);
-	void copyBuffer(const Buffer *srcBuffer, Buffer *dstBuffer, uint32_t regionCount, const VkBufferCopy *pRegions);
-	void copyImage(const Image *srcImage, VkImageLayout srcImageLayout, Image *dstImage, VkImageLayout dstImageLayout,
-	               uint32_t regionCount, const VkImageCopy *pRegions);
-	void blitImage(const Image *srcImage, VkImageLayout srcImageLayout, Image *dstImage, VkImageLayout dstImageLayout,
-	               uint32_t regionCount, const VkImageBlit *pRegions, VkFilter filter);
-	void copyBufferToImage(Buffer *srcBuffer, Image *dstImage, VkImageLayout dstImageLayout,
-	                       uint32_t regionCount, const VkBufferImageCopy *pRegions);
-	void copyImageToBuffer(Image *srcImage, VkImageLayout srcImageLayout, Buffer *dstBuffer,
-	                       uint32_t regionCount, const VkBufferImageCopy *pRegions);
+	void copyBuffer(const VkCopyBufferInfo2 &copyBufferInfo);
+	void copyImage(const VkCopyImageInfo2 &copyImageInfo);
+	void blitImage(const VkBlitImageInfo2 &blitImageInfo);
+	void copyBufferToImage(const VkCopyBufferToImageInfo2 &copyBufferToImageInfo);
+	void copyImageToBuffer(const VkCopyImageToBufferInfo2 &copyImageToBufferInfo);
 	void updateBuffer(Buffer *dstBuffer, VkDeviceSize dstOffset, VkDeviceSize dataSize, const void *pData);
 	void fillBuffer(Buffer *dstBuffer, VkDeviceSize dstOffset, VkDeviceSize size, uint32_t data);
 	void clearColorImage(Image *image, VkImageLayout imageLayout, const VkClearColorValue *pColor,
@@ -120,14 +162,10 @@ public:
 	                            uint32_t rangeCount, const VkImageSubresourceRange *pRanges);
 	void clearAttachments(uint32_t attachmentCount, const VkClearAttachment *pAttachments,
 	                      uint32_t rectCount, const VkClearRect *pRects);
-	void resolveImage(const Image *srcImage, VkImageLayout srcImageLayout, Image *dstImage, VkImageLayout dstImageLayout,
-	                  uint32_t regionCount, const VkImageResolve *pRegions);
-	void setEvent(Event *event, VkPipelineStageFlags stageMask);
-	void resetEvent(Event *event, VkPipelineStageFlags stageMask);
-	void waitEvents(uint32_t eventCount, const VkEvent *pEvents, VkPipelineStageFlags srcStageMask,
-	                VkPipelineStageFlags dstStageMask, uint32_t memoryBarrierCount, const VkMemoryBarrier *pMemoryBarriers,
-	                uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier *pBufferMemoryBarriers,
-	                uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier *pImageMemoryBarriers);
+	void resolveImage(const VkResolveImageInfo2 &resolveImageInfo);
+	void setEvent(Event *event, const VkDependencyInfo &pDependencyInfo);
+	void resetEvent(Event *event, VkPipelineStageFlags2 stageMask);
+	void waitEvents(uint32_t eventCount, const VkEvent *pEvents, const VkDependencyInfo &pDependencyInfo);
 
 	void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
 	void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance);
@@ -150,54 +188,47 @@ public:
 		};
 
 		sw::Renderer *renderer = nullptr;
-		sw::TaskEvents *events = nullptr;
+		sw::CountedEvent *events = nullptr;
 		RenderPass *renderPass = nullptr;
 		Framebuffer *renderPassFramebuffer = nullptr;
-		std::array<PipelineState, vk::VK_PIPELINE_BIND_POINT_RANGE_SIZE> pipelineState;
+		DynamicRendering *dynamicRendering = nullptr;
 
-		struct DynamicState
-		{
-			VkViewport viewport;
-			VkRect2D scissor;
-			sw::float4 blendConstants;
-			float depthBiasConstantFactor = 0.0f;
-			float depthBiasClamp = 0.0f;
-			float depthBiasSlopeFactor = 0.0f;
-			float minDepthBounds = 0.0f;
-			float maxDepthBounds = 0.0f;
+		// VK_PIPELINE_BIND_POINT_GRAPHICS = 0
+		// VK_PIPELINE_BIND_POINT_COMPUTE = 1
+		std::array<PipelineState, 2> pipelineState;
 
-			uint32_t compareMask[2] = { 0 };
-			uint32_t writeMask[2] = { 0 };
-			uint32_t reference[2] = { 0 };
-		};
-		DynamicState dynamicState;
+		vk::DynamicState dynamicState;
 
-		sw::PushConstantStorage pushConstants;
+		vk::Pipeline::PushConstantStorage pushConstants;
 
-		struct VertexInputBinding
-		{
-			Buffer *buffer;
-			VkDeviceSize offset;
-		};
 		VertexInputBinding vertexInputBindings[MAX_VERTEX_INPUT_BINDINGS] = {};
 		VertexInputBinding indexBufferBinding;
 		VkIndexType indexType;
 
 		uint32_t subpassIndex = 0;
 
-		void bindAttachments(sw::Context &context);
-		void bindVertexInputs(sw::Context &context, int firstInstance);
+		void bindAttachments(Attachments *attachments);
+
+		VkRect2D getRenderArea() const;
+		uint32_t getLayerMask() const;
+		uint32_t viewCount() const;
 	};
 
 	void submit(CommandBuffer::ExecutionState &executionState);
 	void submitSecondary(CommandBuffer::ExecutionState &executionState) const;
 
-	class Command;
+	class Command
+	{
+	public:
+		virtual void execute(ExecutionState &executionState) = 0;
+		virtual std::string description() = 0;
+		virtual ~Command() {}
+	};
 
 private:
 	void resetState();
 	template<typename T, typename... Args>
-	void addCommand(Args &&... args);
+	void addCommand(Args &&...args);
 
 	enum State
 	{
@@ -213,11 +244,7 @@ private:
 	VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 
 	// FIXME (b/119409619): replace this vector by an allocator so we can control all memory allocations
-	std::vector<std::unique_ptr<Command>> *commands;
-
-#ifdef ENABLE_VK_DEBUGGER
-	std::shared_ptr<vk::dbg::File> debuggerFile;
-#endif  // ENABLE_VK_DEBUGGER
+	std::vector<std::unique_ptr<Command>> commands;
 };
 
 using DispatchableCommandBuffer = DispatchableObject<CommandBuffer, VkCommandBuffer>;

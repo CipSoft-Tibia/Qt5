@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the lottie-qt module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "bmround_p.h"
 
@@ -42,10 +16,10 @@ BMRound::BMRound(const BMRound &other)
     m_radius = other.m_radius;
 }
 
-BMRound::BMRound(const QJsonObject &definition, BMBase *parent)
+BMRound::BMRound(const QJsonObject &definition, const QVersionNumber &version, BMBase *parent)
 {
     setParent(parent);
-    construct(definition);
+    construct(definition, version);
 }
 
 BMBase *BMRound::clone() const
@@ -53,7 +27,7 @@ BMBase *BMRound::clone() const
     return new BMRound(*this);
 }
 
-void BMRound::construct(const QJsonObject &definition)
+void BMRound::construct(const QJsonObject &definition, const QVersionNumber &version)
 {
     BMBase::parse(definition);
     if (m_hidden)
@@ -63,11 +37,11 @@ void BMRound::construct(const QJsonObject &definition)
 
     QJsonObject position = definition.value(QLatin1String("p")).toObject();
     position = resolveExpression(position);
-    m_position.construct(position);
+    m_position.construct(position, version);
 
     QJsonObject radius = definition.value(QLatin1String("r")).toObject();
     radius = resolveExpression(radius);
-    m_radius.construct(radius);
+    m_radius.construct(radius, version);
 }
 
 void BMRound::updateProperties(int frame)

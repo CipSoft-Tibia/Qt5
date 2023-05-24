@@ -10,16 +10,107 @@
 
 #include "pc/srtp_session.h"
 
+#include <string.h>
+
+#include <iomanip>
+#include <string>
+
 #include "absl/base/attributes.h"
-#include "media/base/rtp_utils.h"
+#include "absl/base/const_init.h"
+#include "absl/strings/string_view.h"
+#include "api/array_view.h"
+#include "api/field_trials_view.h"
+#include "modules/rtp_rtcp/source/rtp_util.h"
 #include "pc/external_hmac.h"
+#include "rtc_base/byte_order.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/ssl_stream_adapter.h"
+#include "rtc_base/string_encode.h"
+#include "rtc_base/thread_annotations.h"
+#include "rtc_base/time_utils.h"
 #include "system_wrappers/include/metrics.h"
 #include "third_party/libsrtp/include/srtp.h"
 #include "third_party/libsrtp/include/srtp_priv.h"
 
 namespace cricket {
+
+namespace {
+class LibSrtpInitializer {
+ public:
+  // Returns singleton instance of this class. Instance created on first use,
+  // and never destroyed.
+  static LibSrtpInitializer& Get() {
+    static LibSrtpInitializer* const instance = new LibSrtpInitializer();
+    return *instance;
+  }
+  void ProhibitLibsrtpInitialization();
+
+  // These methods are responsible for initializing libsrtp (if the usage count
+  // is incremented from 0 to 1) or deinitializing it (when decremented from 1
+  // to 0).
+  //
+  // Returns true if successful (will always be successful if already inited).
+  bool IncrementLibsrtpUsageCountAndMaybeInit(
+      srtp_event_handler_func_t* handler);
+  void DecrementLibsrtpUsageCountAndMaybeDeinit();
+
+ private:
+  LibSrtpInitializer() = default;
+
+  webrtc::Mutex mutex_;
+  int usage_count_ RTC_GUARDED_BY(mutex_) = 0;
+};
+
+void LibSrtpInitializer::ProhibitLibsrtpInitialization() {
+  webrtc::MutexLock lock(&mutex_);
+  ++usage_count_;
+}
+
+bool LibSrtpInitializer::IncrementLibsrtpUsageCountAndMaybeInit(
+    srtp_event_handler_func_t* handler) {
+  webrtc::MutexLock lock(&mutex_);
+
+  RTC_DCHECK_GE(usage_count_, 0);
+  if (usage_count_ == 0) {
+    int err;
+    err = srtp_init();
+    if (err != srtp_err_status_ok) {
+      RTC_LOG(LS_ERROR) << "Failed to init SRTP, err=" << err;
+      return false;
+    }
+
+    err = srtp_install_event_handler(handler);
+    if (err != srtp_err_status_ok) {
+      RTC_LOG(LS_ERROR) << "Failed to install SRTP event handler, err=" << err;
+      return false;
+    }
+
+    err = external_crypto_init();
+    if (err != srtp_err_status_ok) {
+      RTC_LOG(LS_ERROR) << "Failed to initialize fake auth, err=" << err;
+      return false;
+    }
+  }
+  ++usage_count_;
+  return true;
+}
+
+void LibSrtpInitializer::DecrementLibsrtpUsageCountAndMaybeDeinit() {
+  webrtc::MutexLock lock(&mutex_);
+
+  RTC_DCHECK_GE(usage_count_, 1);
+  if (--usage_count_ == 0) {
+    int err = srtp_shutdown();
+    if (err) {
+      RTC_LOG(LS_ERROR) << "srtp_shutdown failed. err=" << err;
+    }
+  }
+}
+
+}  // namespace
+
+using ::webrtc::ParseRtpSequenceNumber;
 
 // One more than the maximum libsrtp error code. Required by
 // RTC_HISTOGRAM_ENUMERATION. Keep this in sync with srtp_error_status_t defined
@@ -28,13 +119,17 @@ constexpr int kSrtpErrorCodeBoundary = 28;
 
 SrtpSession::SrtpSession() {}
 
+SrtpSession::SrtpSession(const webrtc::FieldTrialsView& field_trials) {
+  dump_plain_rtp_ = field_trials.IsEnabled("WebRTC-Debugging-RtpDump");
+}
+
 SrtpSession::~SrtpSession() {
   if (session_) {
     srtp_set_user_data(session_, nullptr);
     srtp_dealloc(session_);
   }
   if (inited_) {
-    DecrementLibsrtpUsageCountAndMaybeDeinit();
+    LibSrtpInitializer::Get().DecrementLibsrtpUsageCountAndMaybeDeinit();
   }
 }
 
@@ -73,17 +168,24 @@ bool SrtpSession::ProtectRtp(void* p, int in_len, int max_len, int* out_len) {
     return false;
   }
 
+  // Note: the need_len differs from the libsrtp recommendatіon to ensure
+  // SRTP_MAX_TRAILER_LEN bytes of free space after the data. WebRTC
+  // never includes a MKI, therefore the amount of bytes added by the
+  // srtp_protect call is known in advance and depends on the cipher suite.
   int need_len = in_len + rtp_auth_tag_len_;  // NOLINT
   if (max_len < need_len) {
     RTC_LOG(LS_WARNING) << "Failed to protect SRTP packet: The buffer length "
                         << max_len << " is less than the needed " << need_len;
     return false;
   }
+  if (dump_plain_rtp_) {
+    DumpPacket(p, in_len, /*outbound=*/true);
+  }
 
   *out_len = in_len;
   int err = srtp_protect(session_, p, out_len);
-  int seq_num;
-  GetRtpSeqNum(p, in_len, &seq_num);
+  int seq_num = ParseRtpSequenceNumber(
+      rtc::MakeArrayView(reinterpret_cast<const uint8_t*>(p), in_len));
   if (err != srtp_err_status_ok) {
     RTC_LOG(LS_WARNING) << "Failed to protect SRTP packet, seqnum=" << seq_num
                         << ", err=" << err
@@ -112,11 +214,18 @@ bool SrtpSession::ProtectRtcp(void* p, int in_len, int max_len, int* out_len) {
     return false;
   }
 
+  // Note: the need_len differs from the libsrtp recommendatіon to ensure
+  // SRTP_MAX_TRAILER_LEN bytes of free space after the data. WebRTC
+  // never includes a MKI, therefore the amount of bytes added by the
+  // srtp_protect_rtp call is known in advance and depends on the cipher suite.
   int need_len = in_len + sizeof(uint32_t) + rtcp_auth_tag_len_;  // NOLINT
   if (max_len < need_len) {
     RTC_LOG(LS_WARNING) << "Failed to protect SRTCP packet: The buffer length "
                         << max_len << " is less than the needed " << need_len;
     return false;
+  }
+  if (dump_plain_rtp_) {
+    DumpPacket(p, in_len, /*outbound=*/true);
   }
 
   *out_len = in_len;
@@ -151,6 +260,9 @@ bool SrtpSession::UnprotectRtp(void* p, int in_len, int* out_len) {
                               static_cast<int>(err), kSrtpErrorCodeBoundary);
     return false;
   }
+  if (dump_plain_rtp_) {
+    DumpPacket(p, *out_len, /*outbound=*/false);
+  }
   return true;
 }
 
@@ -168,6 +280,9 @@ bool SrtpSession::UnprotectRtcp(void* p, int in_len, int* out_len) {
     RTC_HISTOGRAM_ENUMERATION("WebRTC.PeerConnection.SrtcpUnprotectError",
                               static_cast<int>(err), kSrtpErrorCodeBoundary);
     return false;
+  }
+  if (dump_plain_rtp_) {
+    DumpPacket(p, *out_len, /*outbound=*/false);
   }
   return true;
 }
@@ -242,42 +357,18 @@ bool SrtpSession::DoSetKey(int type,
 
   srtp_policy_t policy;
   memset(&policy, 0, sizeof(policy));
-  if (cs == rtc::SRTP_AES128_CM_SHA1_80) {
-    srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtp);
-    srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp);
-  } else if (cs == rtc::SRTP_AES128_CM_SHA1_32) {
-    // RTP HMAC is shortened to 32 bits, but RTCP remains 80 bits.
-    srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy.rtp);
-    srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp);
-  } else if (cs == rtc::SRTP_AEAD_AES_128_GCM) {
-    srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtp);
-    srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtcp);
-  } else if (cs == rtc::SRTP_AEAD_AES_256_GCM) {
-    srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy.rtp);
-    srtp_crypto_policy_set_aes_gcm_256_16_auth(&policy.rtcp);
-  } else {
-    RTC_LOG(LS_WARNING) << "Failed to " << (session_ ? "update" : "create")
-                        << " SRTP session: unsupported cipher_suite " << cs;
+  if (!(srtp_crypto_policy_set_from_profile_for_rtp(
+            &policy.rtp, (srtp_profile_t)cs) == srtp_err_status_ok &&
+        srtp_crypto_policy_set_from_profile_for_rtcp(
+            &policy.rtcp, (srtp_profile_t)cs) == srtp_err_status_ok)) {
+    RTC_LOG(LS_ERROR) << "Failed to " << (session_ ? "update" : "create")
+                      << " SRTP session: unsupported cipher_suite " << cs;
     return false;
   }
 
-  int expected_key_len;
-  int expected_salt_len;
-  if (!rtc::GetSrtpKeyAndSaltLengths(cs, &expected_key_len,
-                                     &expected_salt_len)) {
-    // This should never happen.
-    RTC_NOTREACHED();
-    RTC_LOG(LS_WARNING)
-        << "Failed to " << (session_ ? "update" : "create")
-        << " SRTP session: unsupported cipher_suite without length information"
-        << cs;
-    return false;
-  }
-
-  if (!key ||
-      len != static_cast<size_t>(expected_key_len + expected_salt_len)) {
-    RTC_LOG(LS_WARNING) << "Failed to " << (session_ ? "update" : "create")
-                        << " SRTP session: invalid key";
+  if (!key || len != static_cast<size_t>(policy.rtp.cipher_key_len)) {
+    RTC_LOG(LS_ERROR) << "Failed to " << (session_ ? "update" : "create")
+                      << " SRTP session: invalid key";
     return false;
   }
 
@@ -339,7 +430,8 @@ bool SrtpSession::SetKey(int type,
 
   // This is the first time we need to actually interact with libsrtp, so
   // initialize it if needed.
-  if (IncrementLibsrtpUsageCountAndMaybeInit()) {
+  if (LibSrtpInitializer::Get().IncrementLibsrtpUsageCountAndMaybeInit(
+          &SrtpSession::HandleEventThunk)) {
     inited_ = true;
   } else {
     return false;
@@ -362,54 +454,8 @@ bool SrtpSession::UpdateKey(int type,
   return DoSetKey(type, cs, key, len, extension_ids);
 }
 
-ABSL_CONST_INIT int g_libsrtp_usage_count = 0;
-ABSL_CONST_INIT webrtc::GlobalMutex g_libsrtp_lock(absl::kConstInit);
-
 void ProhibitLibsrtpInitialization() {
-  webrtc::GlobalMutexLock ls(&g_libsrtp_lock);
-  ++g_libsrtp_usage_count;
-}
-
-// static
-bool SrtpSession::IncrementLibsrtpUsageCountAndMaybeInit() {
-  webrtc::GlobalMutexLock ls(&g_libsrtp_lock);
-
-  RTC_DCHECK_GE(g_libsrtp_usage_count, 0);
-  if (g_libsrtp_usage_count == 0) {
-    int err;
-    err = srtp_init();
-    if (err != srtp_err_status_ok) {
-      RTC_LOG(LS_ERROR) << "Failed to init SRTP, err=" << err;
-      return false;
-    }
-
-    err = srtp_install_event_handler(&SrtpSession::HandleEventThunk);
-    if (err != srtp_err_status_ok) {
-      RTC_LOG(LS_ERROR) << "Failed to install SRTP event handler, err=" << err;
-      return false;
-    }
-
-    err = external_crypto_init();
-    if (err != srtp_err_status_ok) {
-      RTC_LOG(LS_ERROR) << "Failed to initialize fake auth, err=" << err;
-      return false;
-    }
-  }
-  ++g_libsrtp_usage_count;
-  return true;
-}
-
-// static
-void SrtpSession::DecrementLibsrtpUsageCountAndMaybeDeinit() {
-  webrtc::GlobalMutexLock ls(&g_libsrtp_lock);
-
-  RTC_DCHECK_GE(g_libsrtp_usage_count, 1);
-  if (--g_libsrtp_usage_count == 0) {
-    int err = srtp_shutdown();
-    if (err) {
-      RTC_LOG(LS_ERROR) << "srtp_shutdown failed. err=" << err;
-    }
-  }
+  LibSrtpInitializer::Get().ProhibitLibsrtpInitialization();
 }
 
 void SrtpSession::HandleEvent(const srtp_event_data_t* ev) {
@@ -442,6 +488,31 @@ void SrtpSession::HandleEventThunk(srtp_event_data_t* ev) {
   if (session) {
     session->HandleEvent(ev);
   }
+}
+
+// Logs the unencrypted packet in text2pcap format. This can then be
+// extracted by searching for RTP_DUMP
+//   grep RTP_DUMP chrome_debug.log > in.txt
+// and converted to pcap using
+//   text2pcap -D -u 1000,2000 -t %H:%M:%S. in.txt out.pcap
+// The resulting file can be replayed using the WebRTC video_replay tool and
+// be inspected in Wireshark using the RTP, VP8 and H264 dissectors.
+void SrtpSession::DumpPacket(const void* buf, int len, bool outbound) {
+  int64_t time_of_day = rtc::TimeUTCMillis() % (24 * 3600 * 1000);
+  int64_t hours = time_of_day / (3600 * 1000);
+  int64_t minutes = (time_of_day / (60 * 1000)) % 60;
+  int64_t seconds = (time_of_day / 1000) % 60;
+  int64_t millis = time_of_day % 1000;
+  RTC_LOG(LS_VERBOSE) << "\n"
+                      << (outbound ? "O" : "I") << " " << std::setfill('0')
+                      << std::setw(2) << hours << ":" << std::setfill('0')
+                      << std::setw(2) << minutes << ":" << std::setfill('0')
+                      << std::setw(2) << seconds << "." << std::setfill('0')
+                      << std::setw(3) << millis << " "
+                      << "000000 "
+                      << rtc::hex_encode_with_delimiter(
+                             absl::string_view((const char*)buf, len), ' ')
+                      << " # RTP_DUMP";
 }
 
 }  // namespace cricket

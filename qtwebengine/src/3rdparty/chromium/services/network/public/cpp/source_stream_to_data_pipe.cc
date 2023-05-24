@@ -1,10 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/public/cpp/source_stream_to_data_pipe.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/numerics/checked_math.h"
+#include "base/task/sequenced_task_runner.h"
 #include "net/filter/source_stream.h"
 
 namespace network {
@@ -16,7 +18,7 @@ SourceStreamToDataPipe::SourceStreamToDataPipe(
       dest_(std::move(dest)),
       writable_handle_watcher_(FROM_HERE,
                                mojo::SimpleWatcher::ArmingPolicy::MANUAL,
-                               base::SequencedTaskRunnerHandle::Get()) {
+                               base::SequencedTaskRunner::GetCurrentDefault()) {
   writable_handle_watcher_.Watch(
       dest_.get(), MOJO_HANDLE_SIGNAL_WRITABLE,
       base::BindRepeating(&SourceStreamToDataPipe::OnDataPipeWritable,
@@ -53,9 +55,9 @@ void SourceStreamToDataPipe::ReadMore() {
 
   scoped_refptr<net::IOBuffer> buffer(
       new network::NetToMojoIOBuffer(pending_write_.get()));
-  int result = source_->Read(
-      buffer.get(), base::checked_cast<int>(num_bytes),
-      base::BindOnce(&SourceStreamToDataPipe::DidRead, base::Unretained(this)));
+  int result = source_->Read(buffer.get(), base::checked_cast<int>(num_bytes),
+                             base::BindOnce(&SourceStreamToDataPipe::DidRead,
+                                            weak_factory_.GetWeakPtr()));
 
   if (result != net::ERR_IO_PENDING)
     DidRead(result);
@@ -81,7 +83,7 @@ void SourceStreamToDataPipe::DidRead(int result) {
 
   pending_write_ = nullptr;
 
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&SourceStreamToDataPipe::ReadMore,
                                 weak_factory_.GetWeakPtr()));
 }

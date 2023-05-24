@@ -1,22 +1,24 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/signin/public/base/signin_pref_names.h"
 
+#include "build/chromeos_buildflags.h"
+
 namespace prefs {
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 // A boolean pref - should unauthenticated user should be logged out
 // automatically. Default value is false.
 const char kForceLogoutUnauthenticatedUserEnabled[] =
     "profile.force_logout_unauthenticated_user_enabled";
-#endif
 
 // An integer property indicating the state of account id migration from
 // email to gaia id for the the profile.  See account_tracker_service.h
 // for possible values.
 const char kAccountIdMigrationState[] = "account_id_migration_state";
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 // Name of the preference property that persists the account information
 // tracked by this signin.
@@ -47,19 +49,23 @@ const char kGoogleServicesAccountId[] = "google.services.account_id";
 const char kGoogleServicesConsentedToSync[] =
     "google.services.consented_to_sync";
 
-// The profile's hosted domain; empty if unset; kNoHostedDomainFound if there
-// is none.
-const char kGoogleServicesHostedDomain[] = "google.services.hosted_domain";
-
 // Similar to kGoogleServicesLastUsername, this is the corresponding version of
 // kGoogleServicesAccountId that is not cleared on signout.
-const char kGoogleServicesLastAccountId[] = "google.services.last_account_id";
+// DEPRECATED: this preference is deprecated and is always empty. It will be
+// removed once all users are migrated to `kGoogleServicesLastGaiaId`.
+const char kGoogleServicesLastAccountIdDeprecated[] =
+    "google.services.last_account_id";
+
+// Similar to `kGoogleServicesLastUsername` that is not cleared on signout. Note
+// this is always a Gaia ID, as opposed to `kGoogleServicesAccountId` which may
+// be an email.
+const char kGoogleServicesLastGaiaId[] = "google.services.last_gaia_id";
 
 // String the identifies the last user that logged into sync and other
 // google services. This value is not cleared on signout.
 // This pref remains in order to pre-fill the sign in page when reconnecting a
 // profile, but programmatic checks to see if a given account is the same as the
-// last account should use kGoogleServicesLastAccountId instead.
+// last account should use `kGoogleServicesLastGaiaId` instead.
 const char kGoogleServicesLastUsername[] = "google.services.last_username";
 
 // Device id scoped to single signin. This device id will be regenerated if user
@@ -87,21 +93,12 @@ const char kSignedInWithCredentialProvider[] =
 // Boolean which stores if the user is allowed to signin to chrome.
 const char kSigninAllowed[] = "signin.allowed";
 
-// True if the token service has been prepared for Dice migration.
-const char kTokenServiceDiceCompatible[] = "token_service.dice_compatible";
-
-// Boolean which stores if the ProfileOAuth2TokenService should ignore secondary
-// accounts.
-const char kTokenServiceExcludeAllSecondaryAccounts[] =
-    "token_service.exclude_all_secondary_accounts";
-
-// List that identifies the account id that should be ignored by the token
-// service.
-const char kTokenServiceExcludedSecondaryAccounts[] =
-    "token_service.excluded_secondary_accounts";
-
 // Contains last |ListAccounts| data which corresponds to Gaia cookies.
 const char kGaiaCookieLastListAccountsData[] =
     "gaia_cookie.last_list_accounts_data";
+
+// List of patterns to determine the account visibility.
+const char kRestrictAccountsToPatterns[] =
+    "signin.restrict_accounts_to_patterns";
 
 }  // namespace prefs

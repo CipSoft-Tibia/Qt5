@@ -10,24 +10,22 @@ const ruleMessages = require('./utils/ruleMessages');
 const rules = require('./rules');
 const standalone = require('./standalone');
 const validateOptions = require('./utils/validateOptions');
+const resolveConfig = require('./resolveConfig');
 
-/**
- * TODO TYPES change any to appropriated options
- * @type {import('postcss').Plugin<any> & Partial<import('stylelint').StylelintPublicAPI>}
- */
-const api = postcssPlugin;
+/** @type {import('stylelint').PublicApi} */
+const stylelint = Object.assign(postcssPlugin, {
+	lint: standalone,
+	rules,
+	formatters,
+	createPlugin,
+	resolveConfig,
+	createLinter: createStylelint,
+	utils: {
+		report,
+		ruleMessages,
+		validateOptions,
+		checkAgainstRule,
+	},
+});
 
-api.utils = {
-	report,
-	ruleMessages,
-	validateOptions,
-	checkAgainstRule,
-};
-
-api.lint = standalone;
-api.rules = rules;
-api.formatters = formatters;
-api.createPlugin = createPlugin;
-api.createLinter = createStylelint;
-
-module.exports = api;
+module.exports = stylelint;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowsdirect2dpaintengine.h"
 #include "qwindowsdirect2dplatformpixmap.h"
@@ -45,8 +9,7 @@
 #include "qwindowsdirect2dbitmap.h"
 #include "qwindowsdirect2ddevicecontext.h"
 
-#include <QtFontDatabaseSupport/private/qwindowsfontdatabase_p.h>
-#include <QtFontDatabaseSupport/private/qwindowsfontengine_p.h>
+#include <QtGui/private/qwindowsfontdatabase_p.h>
 #include "qwindowsintegration.h"
 
 #include <QtCore/qmath.h>
@@ -125,9 +88,9 @@ static inline D2D1_MATRIX_3X2_F transformFromLine(const QLineF &line, qreal penW
 static void adjustLine(QPointF *p1, QPointF *p2);
 static bool isLinePositivelySloped(const QPointF &p1, const QPointF &p2);
 
-static QVector<D2D1_GRADIENT_STOP> qGradientStopsToD2DStops(const QGradientStops &qstops)
+static QList<D2D1_GRADIENT_STOP> qGradientStopsToD2DStops(const QGradientStops &qstops)
 {
-    QVector<D2D1_GRADIENT_STOP> stops(qstops.count());
+    QList<D2D1_GRADIENT_STOP> stops(qstops.count());
     for (int i = 0, count =  stops.size(); i < count; ++i) {
         stops[i].position = FLOAT(qstops.at(i).first);
         stops[i].color = to_d2d_color_f(qstops.at(i).second);
@@ -547,7 +510,7 @@ public:
 
         if (newPen.widthF() == 0)
             props.transformType = D2D1_STROKE_TRANSFORM_TYPE_HAIRLINE;
-        else if (qt_pen_is_cosmetic(newPen, q->state()->renderHints))
+        else if (newPen.isCosmetic())
             props.transformType = D2D1_STROKE_TRANSFORM_TYPE_FIXED;
         else
             props.transformType = D2D1_STROKE_TRANSFORM_TYPE_NORMAL;
@@ -573,8 +536,8 @@ public:
         HRESULT hr;
 
         if (props.dashStyle == D2D1_DASH_STYLE_CUSTOM) {
-            QVector<qreal> dashes = newPen.dashPattern();
-            QVector<FLOAT> converted(dashes.size());
+            QList<qreal> dashes = newPen.dashPattern();
+            QList<FLOAT> converted(dashes.size());
             qreal penWidth = pen.qpen.widthF();
             qreal brushWidth = 0;
             for (int i = 0; i < dashes.size(); i++) {
@@ -697,7 +660,7 @@ public:
                 linearGradientBrushProperties.startPoint = to_d2d_point_2f(qlinear->start());
                 linearGradientBrushProperties.endPoint = to_d2d_point_2f(qlinear->finalStop());
 
-                const QVector<D2D1_GRADIENT_STOP> stops = qGradientStopsToD2DStops(qlinear->stops());
+                const QList<D2D1_GRADIENT_STOP> stops = qGradientStopsToD2DStops(qlinear->stops());
 
                 hr = dc()->CreateGradientStopCollection(stops.constData(),
                                                         UINT32(stops.size()),
@@ -737,7 +700,7 @@ public:
                 radialGradientBrushProperties.radiusX = FLOAT(qradial->radius());
                 radialGradientBrushProperties.radiusY = FLOAT(qradial->radius());
 
-                const QVector<D2D1_GRADIENT_STOP> stops = qGradientStopsToD2DStops(qradial->stops());
+                const QList<D2D1_GRADIENT_STOP> stops = qGradientStopsToD2DStops(qradial->stops());
 
                 hr = dc()->CreateGradientStopCollection(stops.constData(), stops.size(), &gradientStopCollection);
                 if (FAILED(hr)) {
@@ -941,16 +904,10 @@ public:
     {
         Q_Q(QWindowsDirect2DPaintEngine);
 
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
         // Default path (no optimization)
         if (!(path.shape() == QVectorPath::LinesHint || path.shape() == QVectorPath::PolygonHint)
                 || !pen.dashBrush
-#if QT_DEPRECATED_SINCE(5, 14)
-                || q->state()->renderHints.testFlag(QPainter::HighQualityAntialiasing)
-#endif
                 || q->state()->renderHints.testFlag(QPainter::Antialiasing)) {
-QT_WARNING_POP
             ComPtr<ID2D1Geometry> geometry = vectorPathToID2D1PathGeometry(path);
             if (!geometry) {
                 qWarning("%s: Could not convert path to d2d geometry", __FUNCTION__);
@@ -1043,10 +1000,10 @@ QT_WARNING_POP
         // Get substitute name
         static const char keyC[] = "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows NT\\CurrentVersion\\FontSubstitutes";
         const QString familyName = QString::fromWCharArray(lf.lfFaceName);
-        const QString nameSubstitute = QSettings(QLatin1String(keyC), QSettings::NativeFormat).value(familyName, familyName).toString();
+        const QString nameSubstitute = QSettings(QLatin1StringView(keyC), QSettings::NativeFormat).value(familyName, familyName).toString();
         if (nameSubstitute != familyName) {
             const int nameSubstituteLength = qMin(nameSubstitute.length(), LF_FACESIZE - 1);
-            memcpy(lf.lfFaceName, nameSubstitute.utf16(), size_t(nameSubstituteLength) * sizeof(wchar_t));
+            memcpy(lf.lfFaceName, nameSubstitute.data(), size_t(nameSubstituteLength) * sizeof(wchar_t));
             lf.lfFaceName[nameSubstituteLength] = 0;
         }
 
@@ -1694,7 +1651,7 @@ void QWindowsDirect2DPaintEngine::rasterFill(const QVectorPath &path, const QBru
         p.setPen(state()->pen);
 
         auto *extended = static_cast<QPaintEngineEx *>(engine);
-        for (const QPainterClipInfo &info : qAsConst(state()->clipInfo)) {
+        for (const QPainterClipInfo &info : std::as_const(state()->clipInfo)) {
             extended->state()->matrix = info.matrix;
             extended->transformChanged();
 

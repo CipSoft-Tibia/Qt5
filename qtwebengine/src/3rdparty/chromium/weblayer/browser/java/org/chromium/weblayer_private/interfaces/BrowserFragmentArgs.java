@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,7 @@ public interface BrowserFragmentArgs {
     String PERSISTENCE_ID = "persistence_id";
     /**
      * A boolean value indicating whether the profile is incognito.
-     *
-     * @since 87
      */
     String IS_INCOGNITO = "is_incognito";
+    String USE_VIEW_MODEL = "use_view_model";
 }

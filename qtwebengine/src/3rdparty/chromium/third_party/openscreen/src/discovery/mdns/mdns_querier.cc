@@ -4,7 +4,11 @@
 
 #include "discovery/mdns/mdns_querier.h"
 
+#include <algorithm>
+#include <array>
+#include <bitset>
 #include <memory>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -13,12 +17,14 @@
 #include "discovery/mdns/mdns_random.h"
 #include "discovery/mdns/mdns_receiver.h"
 #include "discovery/mdns/mdns_sender.h"
+#include "discovery/mdns/public/mdns_constants.h"
+#include "util/std_util.h"
 
 namespace openscreen {
 namespace discovery {
 namespace {
 
-const std::vector<DnsType> kTranslatedNsecAnyQueryTypes = {
+constexpr std::array<DnsType, 5> kTranslatedNsecAnyQueryTypes = {
     DnsType::kA, DnsType::kPTR, DnsType::kTXT, DnsType::kAAAA, DnsType::kSRV};
 
 bool IsNegativeResponseFor(const MdnsRecord& record, DnsType type) {
@@ -31,16 +37,179 @@ bool IsNegativeResponseFor(const MdnsRecord& record, DnsType type) {
   // RFC 6762 section 6.1, the NSEC bit must NOT be set in the received NSEC
   // record to indicate this is an mDNS NSEC record rather than a traditional
   // DNS NSEC record.
-  if (std::find(nsec.types().begin(), nsec.types().end(), DnsType::kNSEC) !=
-      nsec.types().end()) {
+  if (Contains(nsec.types(), DnsType::kNSEC)) {
     return false;
   }
 
-  return std::find_if(nsec.types().begin(), nsec.types().end(),
-                      [type](DnsType stored_type) {
-                        return stored_type == type ||
-                               stored_type == DnsType::kANY;
-                      }) != nsec.types().end();
+  return ContainsIf(nsec.types(), [type](DnsType stored_type) {
+    return stored_type == type || stored_type == DnsType::kANY;
+  });
+}
+
+struct HashDnsType {
+  inline size_t operator()(DnsType type) const {
+    return static_cast<size_t>(type);
+  }
+};
+
+// Helper used for sorting MDNS records. This function guarantees the following:
+// - All MdnsRecords with the same name appear adjacent to each-other.
+// - An NSEC record with a given name appears before all other records with the
+//   same name.
+bool CompareRecordByNameAndType(const MdnsRecord& first,
+                                const MdnsRecord& second) {
+  if (first.name() != second.name()) {
+    return first.name() < second.name();
+  }
+
+  if ((first.dns_type() == DnsType::kNSEC) !=
+      (second.dns_type() == DnsType::kNSEC)) {
+    return first.dns_type() == DnsType::kNSEC;
+  }
+
+  return first < second;
+}
+
+class DnsTypeBitSet {
+ public:
+  // Returns whether any types are currently stored in this data structure.
+  bool IsEmpty() { return !elements_.any(); }
+
+  // Attempts to insert the given type into this data structure. Returns
+  // true iff the type was not already present.
+  bool Insert(DnsType type) {
+    uint16_t bit = (type == DnsType::kANY) ? 0 : static_cast<uint16_t>(type);
+    bool was_set = elements_.test(bit);
+    elements_.set(bit);
+    return !was_set;
+  }
+
+  // Iterates over all members of the provided container, inserting each
+  // DnsType contained within to this instance. Returns true iff any element
+  // inserted was not already present in this instance.
+  template <typename Container>
+  bool Insert(const Container& container) {
+    bool has_element_been_inserted = false;
+    for (DnsType type : container) {
+      has_element_been_inserted |= Insert(type);
+    }
+    return has_element_been_inserted;
+  }
+
+  // Attempts to remove the given type from this data structure. Returns true
+  // iff the type was present prior to this call.
+  bool Remove(DnsType type) {
+    if (IsEmpty()) {
+      return false;
+    } else if (type == DnsType::kANY) {
+      elements_.reset();
+      return true;
+    }
+
+    uint16_t bit = static_cast<uint16_t>(type);
+    bool was_set = elements_.test(bit);
+    elements_.reset(bit);
+    return was_set;
+  }
+
+  // Returns the DnsTypes currently stored in this data structure.
+  std::vector<DnsType> GetTypes() const {
+    if (elements_.test(0)) {
+      return {DnsType::kANY};
+    }
+
+    std::vector<DnsType> types;
+    for (DnsType type : kSupportedDnsTypes) {
+      if (type == DnsType::kANY) {
+        continue;
+      }
+
+      uint16_t cast_int = static_cast<uint16_t>(type);
+      if (elements_.test(cast_int)) {
+        types.push_back(type);
+      }
+    }
+    return types;
+  }
+
+ private:
+  std::bitset<64> elements_;
+};
+
+// Modifies |records| such that no NSEC record signifies the nonexistance of a
+// record which is also present in the same message. Order of the input vector
+// is NOT preserved.
+// NOTE: |records| is not of type MdnsRecord::ConstRef because the members must
+// be modified.
+// TODO(b/170353378): Break this logic into a separate processing module between
+// the MdnsReader and the MdnsQuerier.
+void RemoveInvalidNsecFlags(std::vector<MdnsRecord>* records) {
+  // Sort the records so NSEC records are first so that only one iteration
+  // through all records is needed.
+  std::sort(records->begin(), records->end(), CompareRecordByNameAndType);
+
+  // The set of NSEC records that need to be removed from |records|. This can't
+  // be done as part of the below loop because it would invalidate the iterator
+  // that's still being used.
+  std::vector<std::vector<MdnsRecord>::iterator> nsecs_to_delete;
+
+  // Process all elements.
+  for (auto it = records->begin(); it != records->end();) {
+    if (it->dns_type() != DnsType::kNSEC) {
+      it++;
+      continue;
+    }
+
+    // Track whether the current NSEC record in the input vector has been
+    // modified by some step of this algorithm, be that merging with another
+    // record, removing a DnsType, or any other modification.
+    bool has_changed = false;
+
+    // The types for the new record to create, if |has_changed|.
+    const NsecRecordRdata& nsec_rdata = absl::get<NsecRecordRdata>(it->rdata());
+    DnsTypeBitSet types;
+    for (DnsType type : nsec_rdata.types()) {
+      types.Insert(type);
+    }
+    auto nsec = it;
+    it++;
+
+    // Combine multiple NSECs to simplify the following code. This probably
+    // won't happen, but the RFC doesn't exclude the possibility, so account for
+    // it. Define the TTL of this new NSEC record created by this merge process
+    // to be the minimum of all merged NSEC records.
+    std::chrono::seconds new_ttl = nsec->ttl();
+    while (it != records->end() && it->name() == nsec->name() &&
+           it->dns_type() == DnsType::kNSEC) {
+      has_changed |=
+          types.Insert(absl::get<NsecRecordRdata>(it->rdata()).types());
+      new_ttl = std::min(new_ttl, it->ttl());
+      it = records->erase(it);
+    }
+
+    // Remove any types associated with a known record type.
+    for (; it != records->end() && it->name() == nsec->name(); it++) {
+      OSP_DCHECK(it->dns_type() != DnsType::kNSEC);
+      has_changed |= types.Remove(it->dns_type());
+    }
+
+    // Modify the stored NSEC record, if needed.
+    if (has_changed && types.IsEmpty()) {
+      nsecs_to_delete.push_back(nsec);
+    } else if (has_changed) {
+      NsecRecordRdata new_rdata(nsec_rdata.next_domain_name(),
+                                types.GetTypes());
+      *nsec = MdnsRecord(nsec->name(), nsec->dns_type(), nsec->dns_class(),
+                         nsec->record_type(), new_ttl, std::move(new_rdata));
+    }
+  }
+
+  // Erase invalid NSEC records. Go backwards to avoid invalidating the
+  // remaining iterators.
+  for (auto erase_it = nsecs_to_delete.rbegin();
+       erase_it != nsecs_to_delete.rend(); erase_it++) {
+    records->erase(*erase_it);
+  }
 }
 
 }  // namespace
@@ -164,8 +333,8 @@ const MdnsRecordTracker& MdnsQuerier::RecordTrackerLruCache::StartTracking(
     MdnsRecord record,
     DnsType dns_type) {
   auto expiration_callback = [this](const MdnsRecordTracker* tracker,
-                                    const MdnsRecord& record) {
-    querier_->OnRecordExpired(tracker, record);
+                                    const MdnsRecord& r) {
+    querier_->OnRecordExpired(tracker, r);
   };
 
   while (lru_order_.size() >=
@@ -369,15 +538,14 @@ void MdnsQuerier::OnMessageReceived(const MdnsMessage& message) {
             << message.additional_records().size()
             << " additional records. Processing...";
 
+  std::vector<MdnsRecord> records_to_process;
+
   // Add any records that are relevant for this querier.
   bool found_relevant_records = false;
-  int processed_count = 0;
   for (const MdnsRecord& record : message.answers()) {
     if (ShouldAnswerRecordBeProcessed(record)) {
-      ProcessRecord(record);
-      OSP_DVLOG << "\tProcessing answer record (" << record.ToString() << ")";
+      records_to_process.push_back(record);
       found_relevant_records = true;
-      processed_count++;
     }
   }
 
@@ -386,14 +554,19 @@ void MdnsQuerier::OnMessageReceived(const MdnsMessage& message) {
   // individual records relevant to this querier to update the cache.
   for (const MdnsRecord& record : message.additional_records()) {
     if (found_relevant_records || ShouldAnswerRecordBeProcessed(record)) {
-      OSP_DVLOG << "\tProcessing additional record (" << record.ToString()
-                << ")";
-      ProcessRecord(record);
-      processed_count++;
+      records_to_process.push_back(record);
     }
   }
 
-  OSP_DVLOG << "\tmDNS Response processed (" << processed_count
+  // Drop NSEC records associated with a non-NSEC record of the same type.
+  RemoveInvalidNsecFlags(&records_to_process);
+
+  // Process all remaining records.
+  for (const MdnsRecord& record_to_process : records_to_process) {
+    ProcessRecord(record_to_process);
+  }
+
+  OSP_DVLOG << "\tmDNS Response processed (" << records_to_process.size()
             << " records accepted)!";
 
   // TODO(crbug.com/openscreen/83): Check authority records.
@@ -469,21 +642,26 @@ void MdnsQuerier::ProcessRecord(const MdnsRecord& record) {
   // NSEC records this will be all records which the record dictates the
   // nonexistence of.
   std::vector<DnsType> types;
-  const std::vector<DnsType>* types_ptr = &types;
+  size_t types_count = 0;
+  const DnsType* types_ptr = nullptr;
   if (record.dns_type() == DnsType::kNSEC) {
     const auto& nsec_rdata = absl::get<NsecRecordRdata>(record.rdata());
-    if (std::find(nsec_rdata.types().begin(), nsec_rdata.types().end(),
-                  DnsType::kANY) != nsec_rdata.types().end()) {
-      types_ptr = &kTranslatedNsecAnyQueryTypes;
+    if (Contains(nsec_rdata.types(), DnsType::kANY)) {
+      types_ptr = kTranslatedNsecAnyQueryTypes.data();
+      types_count = kTranslatedNsecAnyQueryTypes.size();
     } else {
-      types_ptr = &nsec_rdata.types();
+      types_ptr = nsec_rdata.types().data();
+      types_count = nsec_rdata.types().size();
     }
   } else {
     types.push_back(record.dns_type());
+    types_ptr = types.data();
+    types_count = types.size();
   }
 
   // Apply the update for each type that the record is associated with.
-  for (DnsType dns_type : *types_ptr) {
+  for (size_t i = 0; i < types_count; ++i) {
+    DnsType dns_type = types_ptr[i];
     switch (record.record_type()) {
       case RecordType::kShared: {
         ProcessSharedRecord(record, dns_type);
@@ -567,7 +745,7 @@ void MdnsQuerier::ProcessSinglyTrackedUniqueRecord(
 
   auto on_rdata_change = [this, r = std::move(record_for_callback),
                           existed_previously,
-                          will_exist](const MdnsRecordTracker& tracker) {
+                          will_exist](const MdnsRecordTracker& t) {
     // If RDATA on the record is different, notify that the record has
     // been updated.
     if (existed_previously && will_exist) {
@@ -639,10 +817,10 @@ void MdnsQuerier::ProcessCallbacks(const MdnsRecord& record,
 }
 
 void MdnsQuerier::AddQuestion(const MdnsQuestion& question) {
-  auto tracker = std::make_unique<MdnsQuestionTracker>(
+  auto question_tracker = std::make_unique<MdnsQuestionTracker>(
       question, sender_, task_runner_, now_function_, random_delay_, config_);
-  MdnsQuestionTracker* ptr = tracker.get();
-  questions_.emplace(question.name(), std::move(tracker));
+  MdnsQuestionTracker* ptr = question_tracker.get();
+  questions_.emplace(question.name(), std::move(question_tracker));
 
   // Let all records associated with this question know that there is a new
   // query that can be used for their refresh.

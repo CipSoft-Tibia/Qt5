@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 # GRD samples exceed the 80 character limit.
 # pylint: disable-msg=C6310
 
-from __future__ import print_function
 
 import os
 import sys
@@ -44,8 +43,8 @@ class RcHeaderFormatterUnittest(unittest.TestCase):
           <structure type="version" name="VS_VERSION_INFO" file="rc_files/version.rc" />
         </structures>''')
     output = self.FormatAll(grd)
-    self.failUnless(output.count('IDS_GREETING10000'))
-    self.failUnless(output.count('ID_LOGO300'))
+    self.assertTrue(output.count('IDS_GREETING10000'))
+    self.assertTrue(output.count('ID_LOGO300'))
 
   def testOnlyDefineResourcesThatSatisfyOutputCondition(self):
     grd = util.ParseGrdForUnittest('''
@@ -76,10 +75,10 @@ class RcHeaderFormatterUnittest(unittest.TestCase):
           </message>
        </messages>''')
     output = self.FormatAll(grd)
-    self.failUnless(output.count('IDS_FIRSTPRESENTSTRING10000'))
-    self.failIf(output.count('IDS_MISSINGSTRING'))
-    self.failUnless(output.count('IDS_LANGUAGESPECIFICSTRING10002'))
-    self.failUnless(output.count('IDS_THIRDPRESENTSTRING10003'))
+    self.assertTrue(output.count('IDS_FIRSTPRESENTSTRING10000'))
+    self.assertFalse(output.count('IDS_MISSINGSTRING'))
+    self.assertTrue(output.count('IDS_LANGUAGESPECIFICSTRING10002'))
+    self.assertTrue(output.count('IDS_THIRDPRESENTSTRING10003'))
 
   def testEmit(self):
     grd = util.ParseGrdForUnittest('''

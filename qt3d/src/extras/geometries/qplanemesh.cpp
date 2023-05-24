@@ -1,45 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplanemesh.h"
 
-#include <Qt3DExtras/qplanegeometry.h>
+#include <Qt3DExtras/qplanegeometryview.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -81,7 +45,7 @@ namespace  Qt3DExtras {
 
 /*!
  * \class Qt3DExtras::QPlaneMesh
-   \ingroup qt3d-extras-geometries
+ * \ingroup qt3d-extras-geometries
  * \inheaderfile Qt3DExtras/QPlaneMesh
  * \inmodule Qt3DExtras
  *
@@ -94,14 +58,14 @@ namespace  Qt3DExtras {
  * Constructs a new QPlaneMesh with \a parent.
  */
 QPlaneMesh::QPlaneMesh(QNode *parent)
-    : QGeometryRenderer(parent)
+    : Qt3DRender::QGeometryRenderer(parent)
 {
-    QPlaneGeometry *geometry = new QPlaneGeometry(this);
-    QObject::connect(geometry, &QPlaneGeometry::widthChanged, this, &QPlaneMesh::widthChanged);
-    QObject::connect(geometry, &QPlaneGeometry::heightChanged, this, &QPlaneMesh::heightChanged);
-    QObject::connect(geometry, &QPlaneGeometry::resolutionChanged, this, &QPlaneMesh::meshResolutionChanged);
-    QObject::connect(geometry, &QPlaneGeometry::mirroredChanged, this, &QPlaneMesh::mirroredChanged);
-    QGeometryRenderer::setGeometry(geometry);
+    QPlaneGeometryView *geometry = new QPlaneGeometryView(this);
+    QObject::connect(geometry, &QPlaneGeometryView::widthChanged, this, &QPlaneMesh::widthChanged);
+    QObject::connect(geometry, &QPlaneGeometryView::heightChanged, this, &QPlaneMesh::heightChanged);
+    QObject::connect(geometry, &QPlaneGeometryView::meshResolutionChanged, this, &QPlaneMesh::meshResolutionChanged);
+    QObject::connect(geometry, &QPlaneGeometryView::mirroredChanged, this, &QPlaneMesh::mirroredChanged);
+    setView(geometry);
 }
 
 /*! \internal */
@@ -111,7 +75,7 @@ QPlaneMesh::~QPlaneMesh()
 
 void QPlaneMesh::setWidth(float width)
 {
-    static_cast<QPlaneGeometry *>(geometry())->setWidth(width);
+    static_cast<QPlaneGeometryView *>(view())->setWidth(width);
 }
 
 /*!
@@ -121,12 +85,12 @@ void QPlaneMesh::setWidth(float width)
  */
 float QPlaneMesh::width() const
 {
-    return static_cast<QPlaneGeometry *>(geometry())->width();
+    return static_cast<QPlaneGeometryView *>(view())->width();
 }
 
 void QPlaneMesh::setHeight(float height)
 {
-    static_cast<QPlaneGeometry *>(geometry())->setHeight(height);
+    static_cast<QPlaneGeometryView *>(view())->setHeight(height);
 }
 
 /*!
@@ -136,12 +100,12 @@ void QPlaneMesh::setHeight(float height)
  */
 float QPlaneMesh::height() const
 {
-    return static_cast<QPlaneGeometry *>(geometry())->height();
+    return static_cast<QPlaneGeometryView *>(view())->height();
 }
 
 void QPlaneMesh::setMeshResolution(const QSize &resolution)
 {
-    static_cast<QPlaneGeometry *>(geometry())->setResolution(resolution);
+    static_cast<QPlaneGeometryView *>(view())->setMeshResolution(resolution);
 }
 
 /*!
@@ -153,12 +117,12 @@ void QPlaneMesh::setMeshResolution(const QSize &resolution)
  */
 QSize QPlaneMesh::meshResolution() const
 {
-    return static_cast<QPlaneGeometry *>(geometry())->resolution();
+    return static_cast<QPlaneGeometryView *>(view())->meshResolution();
 }
 
 void QPlaneMesh::setMirrored(bool mirrored)
 {
-    static_cast<QPlaneGeometry *>(geometry())->setMirrored(mirrored);
+    static_cast<QPlaneGeometryView *>(view())->setMirrored(mirrored);
 }
 
 /*!
@@ -169,9 +133,11 @@ void QPlaneMesh::setMirrored(bool mirrored)
  */
 bool QPlaneMesh::mirrored() const
 {
-    return static_cast<QPlaneGeometry *>(geometry())->mirrored();
+    return static_cast<QPlaneGeometryView *>(view())->mirrored();
 }
 
 } // namespace  Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qplanemesh.cpp"

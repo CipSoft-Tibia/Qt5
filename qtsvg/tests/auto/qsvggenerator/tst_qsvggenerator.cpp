@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QtTest>
@@ -50,6 +25,8 @@ public:
 private slots:
     void construction();
     void fileName();
+    void escapesTitle();
+    void escapesDescription();
     void outputDevice();
     void sizeAndViewBox();
     void metric();
@@ -142,6 +119,66 @@ void tst_QSvgGenerator::fileName()
     painter.end();
 
     checkFile(fileName);
+}
+
+void tst_QSvgGenerator::escapesTitle()
+{
+    QByteArray byteArray;
+    QBuffer buffer(&byteArray);
+
+    const QString titleThatNeedsToBeEscaped("<malicious>\"title\" 'oh no'");
+
+    {
+        QSvgGenerator generator;
+
+        generator.setOutputDevice(&buffer);
+        generator.setTitle(titleThatNeedsToBeEscaped);
+
+        QPainter painter(&generator);
+        painter.end();
+    }
+
+    QDomDocument generated;
+    generated.setContent(byteArray);
+
+    const auto titleElements = generated.documentElement().elementsByTagName("title");
+
+    QCOMPARE(1, titleElements.size());
+
+    const auto theOnlyTitleElement = titleElements.at(0);
+
+    QCOMPARE(1, theOnlyTitleElement.childNodes().size());
+    QCOMPARE(titleThatNeedsToBeEscaped, theOnlyTitleElement.firstChild().nodeValue());
+}
+
+void tst_QSvgGenerator::escapesDescription()
+{
+    QByteArray byteArray;
+    QBuffer buffer(&byteArray);
+
+    const QString descriptionThatNeedsToBeEscaped("<evil>\"description\" 'whoopsie!'");
+
+    {
+        QSvgGenerator generator;
+
+        generator.setOutputDevice(&buffer);
+        generator.setDescription(descriptionThatNeedsToBeEscaped);
+
+        QPainter painter(&generator);
+        painter.end();
+    }
+
+    QDomDocument generated;
+    generated.setContent(byteArray);
+
+    const auto descriptionElements = generated.documentElement().elementsByTagName("desc");
+
+    QCOMPARE(1, descriptionElements.size());
+
+    const auto theOnlyDescriptionElement = descriptionElements.at(0);
+
+    QCOMPARE(1, theOnlyDescriptionElement.childNodes().size());
+    QCOMPARE(descriptionThatNeedsToBeEscaped, theOnlyDescriptionElement.firstChild().nodeValue());
 }
 
 void tst_QSvgGenerator::outputDevice()
@@ -270,7 +307,7 @@ void tst_QSvgGenerator::radialGradient()
     generator.setFileName(fileName);
     QCOMPARE(generator.fileName(), fileName);
 
-    QRadialGradient gradient(QPointF(0.5, 0.5), 0.5, QPointF(0.5, 0.5));
+    QRadialGradient gradient(QPointF(0.5, 0.5), 0.5, QPointF(0.5, 0.5), 0);
     gradient.setInterpolationMode(QGradient::ComponentInterpolation);
     gradient.setColorAt(0, Qt::red);
     gradient.setColorAt(1, Qt::blue);
@@ -279,7 +316,7 @@ void tst_QSvgGenerator::radialGradient()
     QPainter painter(&generator);
     painter.fillRect(0, 0, 100, 100, gradient);
 
-    gradient = QRadialGradient(QPointF(150, 50), 50, QPointF(150, 50));
+    gradient = QRadialGradient(QPointF(150, 50), 50, QPointF(150, 50), 0);
     gradient.setInterpolationMode(QGradient::ComponentInterpolation);
     gradient.setColorAt(0, Qt::red);
     gradient.setColorAt(1, Qt::blue);
@@ -291,8 +328,6 @@ void tst_QSvgGenerator::radialGradient()
 
 void tst_QSvgGenerator::fileEncoding()
 {
-    QTextCodec::setCodecForLocale(QTextCodec::codecForName("ISO-8859-1"));
-
     QByteArray byteArray;
     QBuffer buffer(&byteArray);
 
@@ -300,7 +335,7 @@ void tst_QSvgGenerator::fileEncoding()
     generator.setOutputDevice(&buffer);
 
     static const QChar unicode[] = { 'f', 'o', 'o',
-            0x00F8, 'b', 'a', 'r'};
+            u'\u00F8', 'b', 'a', 'r'};
 
     int size = sizeof(unicode) / sizeof(QChar);
     QString unicodeString = QString::fromRawData(unicode, size);

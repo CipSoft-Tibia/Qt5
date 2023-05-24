@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,7 +17,7 @@
 #include "third_party/blink/renderer/platform/fonts/shaping/caching_word_shape_iterator.h"
 #include "third_party/blink/renderer/platform/fonts/shaping/harfbuzz_shaper.h"
 #include "third_party/blink/renderer/platform/fonts/text_run_paint_info.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/language.h"
 #include "third_party/blink/renderer/platform/testing/font_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
@@ -34,14 +34,13 @@ TSAN_TEST(FontObjectThreadedTest, GetFontDefinition) {
   RunOnThreads([]() {
     auto* style =
         MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLStandardMode);
-    CSSParser::ParseValue(style, CSSPropertyID::kFont, "15px Ahem", true,
-                          SecureContextMode::kInsecureContext);
+    CSSParser::ParseValue(style, CSSPropertyID::kFont, "15px Ahem", true);
 
     FontDescription desc = FontStyleResolver::ComputeFont(*style, nullptr);
 
     EXPECT_EQ(desc.SpecifiedSize(), 15);
     EXPECT_EQ(desc.ComputedSize(), 15);
-    EXPECT_EQ(desc.Family().Family(), "Ahem");
+    EXPECT_EQ(desc.Family().FamilyName(), "Ahem");
   });
 }
 
@@ -50,9 +49,10 @@ TSAN_TEST(FontObjectThreadedTest, GetDefaultFontData) {
   num_threads_ = 5;
   RunOnThreads([]() {
     for (FontDescription::GenericFamilyType family_type :
-         {FontDescription::kStandardFamily, FontDescription::kSerifFamily,
-          FontDescription::kSansSerifFamily, FontDescription::kMonospaceFamily,
-          FontDescription::kCursiveFamily, FontDescription::kFantasyFamily}) {
+         {FontDescription::kStandardFamily, FontDescription::kWebkitBodyFamily,
+          FontDescription::kSerifFamily, FontDescription::kSansSerifFamily,
+          FontDescription::kMonospaceFamily, FontDescription::kCursiveFamily,
+          FontDescription::kFantasyFamily}) {
       FontDescription font_description;
       font_description.SetComputedSize(12.0);
       font_description.SetLocale(LayoutLocale::Get("en"));
@@ -84,14 +84,12 @@ TSAN_TEST(FontObjectThreadedTest, TextIntercepts) {
     TextRun ahem_above_below_baseline(ahem_above_below_baseline_string, 9);
     TextRunPaintInfo text_run_paint_info(ahem_above_below_baseline);
     cc::PaintFlags default_paint;
-    float device_scale_factor = 1;
     std::tuple<float, float> below_baseline_bounds = std::make_tuple(2, 4);
     Vector<Font::TextIntercept> text_intercepts;
 
     // 4 intercept ranges for below baseline p glyphs in the test string
-    font.GetTextIntercepts(text_run_paint_info, device_scale_factor,
-                           default_paint, below_baseline_bounds,
-                           text_intercepts);
+    font.GetTextIntercepts(text_run_paint_info, default_paint,
+                           below_baseline_bounds, text_intercepts);
     EXPECT_EQ(text_intercepts.size(), 4u);
     for (auto text_intercept : text_intercepts) {
       EXPECT_GT(text_intercept.end_, text_intercept.begin_);
@@ -99,9 +97,8 @@ TSAN_TEST(FontObjectThreadedTest, TextIntercepts) {
 
     std::tuple<float, float> above_baseline_bounds = std::make_tuple(-4, -2);
     // 5 intercept ranges for the above baseline E ACUTE glyphs
-    font.GetTextIntercepts(text_run_paint_info, device_scale_factor,
-                           default_paint, above_baseline_bounds,
-                           text_intercepts);
+    font.GetTextIntercepts(text_run_paint_info, default_paint,
+                           above_baseline_bounds, text_intercepts);
     EXPECT_EQ(text_intercepts.size(), 5u);
     for (auto text_intercept : text_intercepts) {
       EXPECT_GT(text_intercept.end_, text_intercept.begin_);

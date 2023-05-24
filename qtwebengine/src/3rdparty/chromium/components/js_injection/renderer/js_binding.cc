@@ -1,24 +1,33 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/js_injection/renderer/js_binding.h"
 
+#include <string>
 #include <vector>
 
+#include "base/containers/contains.h"
+#include "base/functional/overloaded.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
+#include "components/js_injection/common/interfaces.mojom-forward.h"
 #include "components/js_injection/renderer/js_communication.h"
 #include "content/public/renderer/render_frame.h"
 #include "gin/data_object_builder.h"
 #include "gin/handle.h"
 #include "gin/object_template_builder.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/messaging/message_port_channel.h"
+#include "third_party/blink/public/common/messaging/string_message_codec.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/web/blink.h"
 #include "third_party/blink/public/web/web_frame.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_message_port_converter.h"
+#include "v8-local-handle.h"
+#include "v8-value.h"
 #include "v8/include/v8.h"
 
 namespace {
@@ -33,10 +42,10 @@ namespace js_injection {
 gin::WrapperInfo JsBinding::kWrapperInfo = {gin::kEmbedderNativeGin};
 
 // static
-std::unique_ptr<JsBinding> JsBinding::Install(
+base::WeakPtr<JsBinding> JsBinding::Install(
     content::RenderFrame* render_frame,
-    const base::string16& js_object_name,
-    JsCommunication* js_java_configurator) {
+    const std::u16string& js_object_name,
+    base::WeakPtr<JsCommunication> js_communication) {
   CHECK(!js_object_name.empty())
       << "JavaScript wrapper name shouldn't be empty";
 
@@ -48,12 +57,15 @@ std::unique_ptr<JsBinding> JsBinding::Install(
     return nullptr;
 
   v8::Context::Scope context_scope(context);
-  std::unique_ptr<JsBinding> js_binding(
-      new JsBinding(render_frame, js_object_name, js_java_configurator));
-  gin::Handle<JsBinding> bindings =
-      gin::CreateHandle(isolate, js_binding.get());
-  if (bindings.IsEmpty())
+  // The call to CreateHandle() takes ownership of `js_binding` (but only on
+  // success).
+  JsBinding* js_binding =
+      new JsBinding(render_frame, js_object_name, js_communication);
+  gin::Handle<JsBinding> bindings = gin::CreateHandle(isolate, js_binding);
+  if (bindings.IsEmpty()) {
+    delete js_binding;
     return nullptr;
+  }
 
   v8::Local<v8::Object> global = context->Global();
   global
@@ -62,17 +74,17 @@ std::unique_ptr<JsBinding> JsBinding::Install(
                            bindings.ToV8())
       .Check();
 
-  return js_binding;
+  return js_binding->weak_ptr_factory_.GetWeakPtr();
 }
 
 JsBinding::JsBinding(content::RenderFrame* render_frame,
-                     const base::string16& js_object_name,
-                     JsCommunication* js_java_configurator)
+                     const std::u16string& js_object_name,
+                     base::WeakPtr<JsCommunication> js_communication)
     : render_frame_(render_frame),
       js_object_name_(js_object_name),
-      js_java_configurator_(js_java_configurator) {
+      js_communication_(js_communication) {
   mojom::JsToBrowserMessaging* js_to_java_messaging =
-      js_java_configurator_->GetJsToJavaMessage(js_object_name_);
+      js_communication_->GetJsToJavaMessage(js_object_name_);
   if (js_to_java_messaging) {
     js_to_java_messaging->SetBrowserToJsMessaging(
         receiver_.BindNewEndpointAndPassRemote());
@@ -81,7 +93,11 @@ JsBinding::JsBinding(content::RenderFrame* render_frame,
 
 JsBinding::~JsBinding() = default;
 
-void JsBinding::OnPostMessage(const base::string16& message) {
+void JsBinding::OnPostMessage(blink::WebMessagePayload message) {
+  // If `js_communication_` is null, this object will soon be destroyed.
+  if (!js_communication_)
+    return;
+
   v8::Isolate* isolate = blink::MainThreadIsolate();
   v8::HandleScope handle_scope(isolate);
 
@@ -99,22 +115,48 @@ void JsBinding::OnPostMessage(const base::string16& message) {
   v8::TryCatch try_catch(isolate);
   try_catch.SetVerbose(true);
 
+  v8::Local<v8::Value> v8_message = absl::visit(
+      base::Overloaded{
+          [isolate](std::u16string& string_value) -> v8::Local<v8::Value> {
+            return gin::ConvertToV8(isolate, std::move(string_value));
+          },
+          [isolate](std::unique_ptr<blink::WebMessageArrayBufferPayload>&
+                        array_buffer_value) -> v8::Local<v8::Value> {
+            auto backing_store = v8::ArrayBuffer::NewBackingStore(
+                isolate, array_buffer_value->GetLength());
+            CHECK(backing_store->ByteLength() ==
+                  array_buffer_value->GetLength());
+            array_buffer_value->CopyInto(
+                base::make_span(static_cast<uint8_t*>(backing_store->Data()),
+                                backing_store->ByteLength()));
+            return v8::ArrayBuffer::New(isolate, std::move(backing_store));
+          }},
+      message);
+
   // Simulate MessageEvent's data property. See
   // https://html.spec.whatwg.org/multipage/comms.html#messageevent
   v8::Local<v8::Object> event =
-      gin::DataObjectBuilder(isolate).Set("data", message).Build();
+      gin::DataObjectBuilder(isolate).Set("data", v8_message).Build();
   v8::Local<v8::Value> argv[] = {event};
 
   v8::Local<v8::Object> self = GetWrapper(isolate).ToLocalChecked();
   v8::Local<v8::Function> on_message = GetOnMessage(isolate);
   if (!on_message.IsEmpty()) {
-    web_frame->RequestExecuteV8Function(context, on_message, self, 1, argv,
-                                        nullptr);
+    web_frame->RequestExecuteV8Function(context, on_message, self, 1, argv, {});
   }
 
+  // Copy the listeners so that if the listener modifies the list in some way
+  // there isn't a UAF.
+  std::vector<v8::Local<v8::Function>> listeners_copy;
+  listeners_copy.reserve(listeners_.size());
   for (const auto& listener : listeners_) {
-    web_frame->RequestExecuteV8Function(context, listener.Get(isolate), self, 1,
-                                        argv, nullptr);
+    listeners_copy.push_back(listener.Get(isolate));
+  }
+  for (const auto& listener : listeners_copy) {
+    // Ensure the listener is still registered.
+    if (base::Contains(listeners_, listener)) {
+      web_frame->RequestExecuteV8Function(context, listener, self, 1, argv, {});
+    }
   }
 }
 
@@ -134,7 +176,7 @@ gin::ObjectTemplateBuilder JsBinding::GetObjectTemplateBuilder(
 }
 
 void JsBinding::PostMessage(gin::Arguments* args) {
-  base::string16 message;
+  std::u16string message;
   if (!args->GetNext(&message)) {
     args->ThrowError();
     return;
@@ -150,7 +192,7 @@ void JsBinding::PostMessage(gin::Arguments* args) {
   }
 
   for (auto& obj : objs) {
-    base::Optional<blink::MessagePortChannel> port =
+    absl::optional<blink::MessagePortChannel> port =
         blink::WebMessagePortConverter::DisentangleAndExtractMessagePortChannel(
             args->isolate(), obj);
     // If the port is null we should throw an exception.
@@ -162,10 +204,11 @@ void JsBinding::PostMessage(gin::Arguments* args) {
   }
 
   mojom::JsToBrowserMessaging* js_to_java_messaging =
-      js_java_configurator_->GetJsToJavaMessage(js_object_name_);
+      js_communication_ ? js_communication_->GetJsToJavaMessage(js_object_name_)
+                        : nullptr;
   if (js_to_java_messaging) {
     js_to_java_messaging->PostMessage(
-        message, blink::MessagePortChannel::ReleaseHandles(ports));
+        std::move(message), blink::MessagePortChannel::ReleaseHandles(ports));
   }
 }
 
@@ -225,7 +268,7 @@ void JsBinding::RemoveEventListener(gin::Arguments* args) {
     return;
   }
 
-  auto iter = std::find(listeners_.begin(), listeners_.end(), listener);
+  auto iter = base::ranges::find(listeners_, listener);
   if (iter == listeners_.end())
     return;
 

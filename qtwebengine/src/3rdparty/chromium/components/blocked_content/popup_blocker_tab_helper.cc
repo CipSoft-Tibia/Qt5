@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 
 #include "base/metrics/histogram_macros.h"
 #include "build/build_config.h"
+#include "components/back_forward_cache/back_forward_cache_disable.h"
 #include "components/blocked_content/list_item_position.h"
 #include "components/blocked_content/popup_navigation_delegate.h"
 #include "components/blocked_content/popup_tracker.h"
@@ -40,7 +41,8 @@ struct PopupBlockerTabHelper::BlockedRequest {
 };
 
 PopupBlockerTabHelper::PopupBlockerTabHelper(content::WebContents* web_contents)
-    : content::WebContentsObserver(web_contents) {
+    : content::WebContentsObserver(web_contents),
+      content::WebContentsUserData<PopupBlockerTabHelper>(*web_contents) {
   blocked_content::SafeBrowsingTriggeredPopupBlocker::MaybeCreate(web_contents);
 }
 
@@ -51,7 +53,7 @@ void PopupBlockerTabHelper::DidFinishNavigation(
   // Clear all page actions, blocked content notifications and browser actions
   // for this tab, unless this is an same-document navigation. Also only
   // consider main frame navigations that successfully committed.
-  if (!navigation_handle->IsInMainFrame() ||
+  if (!navigation_handle->IsInPrimaryMainFrame() ||
       !navigation_handle->HasCommitted() ||
       navigation_handle->IsSameDocument()) {
     return;
@@ -65,18 +67,16 @@ void PopupBlockerTabHelper::DidFinishNavigation(
     // With back-forward cache we can restore the page, but |blocked_popups_|
     // are lost here and can't be restored at the moment.
     // Disable bfcache here to avoid potential loss of the page state.
-    web_contents()
-        ->GetController()
-        .GetBackForwardCache()
-        .DisableForRenderFrameHost(
-            navigation_handle->GetPreviousRenderFrameHostId(),
-            "PopupBlockerTabHelper");
+    content::BackForwardCache::DisableForRenderFrameHost(
+        navigation_handle->GetPreviousRenderFrameHostId(),
+        back_forward_cache::DisabledReason(
+            back_forward_cache::DisabledReasonId::kPopupBlockerTabHelper));
   }
 }
 
 void PopupBlockerTabHelper::HidePopupNotification() {
   auto* pscs = content_settings::PageSpecificContentSettings::GetForFrame(
-      web_contents()->GetMainFrame());
+      web_contents()->GetPrimaryMainFrame());
   if (pscs)
     pscs->ClearPopupsBlocked();
 }
@@ -96,7 +96,7 @@ void PopupBlockerTabHelper::AddBlockedPopup(
 
   auto* content_settings =
       content_settings::PageSpecificContentSettings::GetForFrame(
-          web_contents()->GetMainFrame());
+          web_contents()->GetPrimaryMainFrame());
   if (content_settings) {
     content_settings->OnContentBlocked(ContentSettingsType::POPUPS);
   }
@@ -123,7 +123,7 @@ void PopupBlockerTabHelper::ShowBlockedPopup(
 
   BlockedRequest* popup = it->second.get();
 
-  base::Optional<WindowOpenDisposition> updated_disposition;
+  absl::optional<WindowOpenDisposition> updated_disposition;
   if (disposition != WindowOpenDisposition::CURRENT_TAB)
     updated_disposition = disposition;
 
@@ -154,6 +154,13 @@ void PopupBlockerTabHelper::ShowBlockedPopup(
     HidePopupNotification();
 }
 
+void PopupBlockerTabHelper::ShowAllBlockedPopups() {
+  PopupIdMap blocked_popups = GetBlockedPopupRequests();
+  for (const auto& elem : blocked_popups) {
+    ShowBlockedPopup(elem.first, WindowOpenDisposition::CURRENT_TAB);
+  }
+}
+
 size_t PopupBlockerTabHelper::GetBlockedPopupsCount() const {
   return blocked_popups_.size();
 }
@@ -172,6 +179,6 @@ void PopupBlockerTabHelper::LogAction(Action action) {
   UMA_HISTOGRAM_ENUMERATION("ContentSettings.Popups.BlockerActions", action);
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(PopupBlockerTabHelper)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(PopupBlockerTabHelper);
 
 }  // namespace blocked_content

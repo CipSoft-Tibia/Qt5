@@ -1,46 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QNAMESPACE_H
 #define QNAMESPACE_H
 
+#if 0
+#pragma qt_class(Qt)
+#endif
+
 #include <QtCore/qglobal.h>
+#include <QtCore/qtmetamacros.h>
 
 #if defined(__OBJC__) && !defined(__cplusplus)
 #  warning "File built in Objective-C mode (.m), but using Qt requires Objective-C++ (.mm)"
@@ -48,29 +18,10 @@
 
 QT_BEGIN_NAMESPACE
 
-#if !defined(Q_QDOC) && !defined(Q_MOC_RUN)
 struct QMetaObject;
-const QMetaObject *qt_getQtMetaObject() noexcept; // defined in qobject.h (which can't be included here)
-#define QT_Q_ENUM(ENUM) \
-    inline const QMetaObject *qt_getEnumMetaObject(ENUM) noexcept { return qt_getQtMetaObject(); } \
-    inline Q_DECL_CONSTEXPR const char *qt_getEnumName(ENUM) noexcept { return #ENUM; }
-#define QT_Q_FLAG(ENUM) QT_Q_ENUM(ENUM)
-#else
-#define QT_Q_ENUM Q_ENUM
-#define QT_Q_FLAG Q_FLAG
-#endif
 
-#ifndef Q_MOC_RUN
-namespace
-#else
-class Q_CORE_EXPORT
-#endif
-Qt {
-
-#if defined(Q_MOC_RUN)
-    Q_OBJECT
-public:
-#endif
+namespace Qt {
+    Q_NAMESPACE_EXPORT(Q_CORE_EXPORT)
 
     enum GlobalColor {
         color0,
@@ -95,32 +46,10 @@ public:
         transparent
     };
 
-    enum KeyboardModifier {
-        NoModifier           = 0x00000000,
-        ShiftModifier        = 0x02000000,
-        ControlModifier      = 0x04000000,
-        AltModifier          = 0x08000000,
-        MetaModifier         = 0x10000000,
-        KeypadModifier       = 0x20000000,
-        GroupSwitchModifier  = 0x40000000,
-        // Do not extend the mask to include 0x01000000
-        KeyboardModifierMask = 0xfe000000
-    };
-    Q_DECLARE_FLAGS(KeyboardModifiers, KeyboardModifier)
-    Q_DECLARE_OPERATORS_FOR_FLAGS(KeyboardModifiers)
-
-    //shorter names for shortcuts
-    // The use of all-caps identifiers has the potential for clashing with
-    // user-defined or third-party macros. More so when the identifiers are not
-    // "namespace"-prefixed. This is considered bad practice and is why
-    // KeypadModifier was not added to the Modifier enum.
-    enum Modifier {
-        META          = Qt::MetaModifier,
-        SHIFT         = Qt::ShiftModifier,
-        CTRL          = Qt::ControlModifier,
-        ALT           = Qt::AltModifier,
-        MODIFIER_MASK = KeyboardModifierMask,
-        UNICODE_ACCEL = 0x00000000
+    enum class ColorScheme {
+        Unknown,
+        Light,
+        Dark,
     };
 
     enum MouseButton {
@@ -128,9 +57,6 @@ public:
         LeftButton       = 0x00000001,
         RightButton      = 0x00000002,
         MiddleButton     = 0x00000004,
-#if QT_DEPRECATED_SINCE(5, 15) // commented as such since 4.7.0
-        MidButton Q_DECL_ENUMERATOR_DEPRECATED_X("MidButton is deprecated. Use MiddleButton instead") = MiddleButton,
-#endif
         BackButton       = 0x00000008,
         XButton1         = BackButton,
         ExtraButton1     = XButton1,
@@ -255,11 +181,8 @@ public:
         // Ensures that the longest variant is always used when computing the
         // size of a multi-variant string.
         TextLongestVariant = 0x80000
-
-#if QT_DEPRECATED_SINCE(5, 11) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        , TextBypassShaping = 0x100000
-#endif
     };
+    Q_DECLARE_MIXED_ENUM_OPERATORS_SYMMETRIC(int, AlignmentFlag, TextFlag)
 
     enum TextElideMode {
         ElideLeft,
@@ -267,6 +190,7 @@ public:
         ElideMiddle,
         ElideNone
     };
+    Q_DECLARE_MIXED_ENUM_OPERATORS_SYMMETRIC(int, TextElideMode, TextFlag)
 
     enum WhiteSpaceMode {
         WhiteSpaceNormal,
@@ -358,22 +282,15 @@ public:
         WA_Disabled = 0,
         WA_UnderMouse = 1,
         WA_MouseTracking = 2,
-#if QT_DEPRECATED_SINCE(5, 15) // commented as such since 4.5.1
-        WA_ContentsPropagated Q_DECL_ENUMERATOR_DEPRECATED = 3,
-#endif
+        // Formerly, 3 was WA_ContentsPropagated.
         WA_OpaquePaintEvent = 4,
-#if QT_DEPRECATED_SINCE(5, 14)
-        WA_NoBackground Q_DECL_ENUMERATOR_DEPRECATED = WA_OpaquePaintEvent,
-#endif
         WA_StaticContents = 5,
         WA_LaidOut = 7,
         WA_PaintOnScreen = 8,
         WA_NoSystemBackground = 9,
         WA_UpdatesDisabled = 10,
         WA_Mapped = 11,
-#if QT_DEPRECATED_SINCE(5, 14)
-        WA_MacNoClickThrough Q_DECL_ENUMERATOR_DEPRECATED = 12,
-#endif
+        // Formerly, 12 was WA_MacNoClickThrough.
         WA_InputMethodEnabled = 14,
         WA_WState_Visible = 15,
         WA_WState_Hidden = 16,
@@ -391,10 +308,7 @@ public:
         WA_Moved = 43,
         WA_PendingUpdate = 44,
         WA_InvalidSize = 45,
-#if QT_DEPRECATED_SINCE(5, 14)
-        WA_MacBrushedMetal Q_DECL_ENUMERATOR_DEPRECATED = 46,
-        WA_MacMetalStyle Q_DECL_ENUMERATOR_DEPRECATED = 46,
-#endif
+        // Formerly 46 was WA_MacBrushedMetal and WA_MacMetalStyle.
         WA_CustomWhatsThis = 47,
         WA_LayoutOnEntireRect = 48,
         WA_OutsideWSRange = 49,
@@ -415,15 +329,12 @@ public:
         WA_WState_Reparented = 63,
         WA_WState_ConfigPending = 64,
         WA_WState_Polished = 66,
-#if QT_DEPRECATED_SINCE(5, 15) // commented as such in 4.5.1
-        WA_WState_DND Q_DECL_ENUMERATOR_DEPRECATED = 67,
-#endif
+        // Formerly, 67 was WA_WState_DND.
         WA_WState_OwnSizePolicy = 68,
         WA_WState_ExplicitShowHide = 69,
 
         WA_ShowModal = 70, // ## deprecated since since 4.5.1 but still in use :-(
         WA_MouseNoMask = 71,
-        WA_GroupLeader = 72, // ## deprecated since since 4.5.1 but still in use :-(
         WA_NoMousePropagation = 73, // for now, might go away.
         WA_Hover = 74,
         WA_InputMethodTransparent = 75, // Don't reset IM when user clicks on this (for virtual keyboards on embedded)
@@ -433,9 +344,6 @@ public:
 
         WA_AcceptDrops = 78,
         WA_DropSiteRegistered = 79, // internal
-#if QT_DEPRECATED_SINCE(5, 15) // commented as such since 4.5.1
-        WA_ForceAcceptDrops Q_DECL_ENUMERATOR_DEPRECATED_X("WA_ForceAcceptDrops is deprecated. Use WA_DropSiteRegistered instead") = WA_DropSiteRegistered,
-#endif
 
         WA_WindowPropagation = 80,
 
@@ -455,9 +363,7 @@ public:
 
         WA_LayoutUsesWidgetRect = 92,
         WA_StyledBackground = 93, // internal
-#if QT_DEPRECATED_SINCE(5, 14)
-        WA_MSWindowsUseDirect3D Q_DECL_ENUMERATOR_DEPRECATED = 94,
-#endif
+        // Formerly, 94 was WA_MSWindowsUseDirect3D.
         WA_CanHostQMdiSubWindowTitleBar = 95, // Internal
 
         WA_MacAlwaysShowToolWindow = 96, // Mac only
@@ -471,7 +377,7 @@ public:
         WA_NativeWindow = 100,
         WA_DontCreateNativeAncestors = 101,
 
-        WA_MacVariableSize = 102,    // Mac only
+        // Formerly WA_MacVariableSize = 102,    // Mac only
 
         WA_DontShowOnScreen = 103,
 
@@ -489,9 +395,7 @@ public:
         WA_X11NetWmWindowTypeNotification = 114,
         WA_X11NetWmWindowTypeCombo = 115,
         WA_X11NetWmWindowTypeDND = 116,
-#if QT_DEPRECATED_SINCE(5, 14)
-        WA_MacFrameworkScaled Q_DECL_ENUMERATOR_DEPRECATED = 117,
-#endif
+        // Formerly, 117 was WA_MacFrameworkScaled.
         WA_SetWindowModality = 118,
         WA_WState_WindowOpacitySet = 119, // internal
         WA_TranslucentBackground = 120,
@@ -501,7 +405,7 @@ public:
         WA_TouchPadAcceptSingleTouchEvents = 123,
 
         WA_X11DoNotAcceptFocus = 126,
-        WA_MacNoShadow = 127,
+        // Formerly, 127 was WA_MacNoShadow
 
         WA_AlwaysStackOnTop = 128,
 
@@ -517,35 +421,38 @@ public:
 
     enum ApplicationAttribute
     {
-        AA_ImmediateWidgetCreation = 0,
-#if QT_DEPRECATED_SINCE(5, 14)
-        AA_MSWindowsUseDirect3DByDefault Q_DECL_ENUMERATOR_DEPRECATED = 1,
-#endif
+        // AA_ImmediateWidgetCreation = 0,
+        // AA_MSWindowsUseDirect3DByDefault = 1,
         AA_DontShowIconsInMenus = 2,
         AA_NativeWindows = 3,
         AA_DontCreateNativeWidgetSiblings = 4,
         AA_PluginApplication = 5,
-#if QT_DEPRECATED_SINCE(5, 13) // ### Qt 6: remove me
-        AA_MacPluginApplication Q_DECL_ENUMERATOR_DEPRECATED = AA_PluginApplication,
-#endif
         AA_DontUseNativeMenuBar = 6,
         AA_MacDontSwapCtrlAndMeta = 7,
         AA_Use96Dpi = 8,
         AA_DisableNativeVirtualKeyboard = 9,
-#if QT_DEPRECATED_SINCE(5, 14)
-        AA_X11InitThreads Q_DECL_ENUMERATOR_DEPRECATED = 10,
-#endif
+        // AA_X11InitThreads = 10,
         AA_SynthesizeTouchForUnhandledMouseEvents = 11,
         AA_SynthesizeMouseForUnhandledTouchEvents = 12,
-        AA_UseHighDpiPixmaps = 13,
+#if QT_DEPRECATED_SINCE(6, 0)
+        AA_UseHighDpiPixmaps Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "High-DPI pixmaps are always enabled. " \
+            "This attribute no longer has any effect.") = 13,
+#endif
         AA_ForceRasterWidgets = 14,
         AA_UseDesktopOpenGL = 15,
         AA_UseOpenGLES = 16,
         AA_UseSoftwareOpenGL = 17,
         AA_ShareOpenGLContexts = 18,
         AA_SetPalette = 19,
-        AA_EnableHighDpiScaling = 20,
-        AA_DisableHighDpiScaling = 21,
+#if QT_DEPRECATED_SINCE(6, 0)
+        AA_EnableHighDpiScaling Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "High-DPI scaling is always enabled. " \
+            "This attribute no longer has any effect.") = 20,
+        AA_DisableHighDpiScaling Q_DECL_ENUMERATOR_DEPRECATED_X(
+            "High-DPI scaling is always enabled. " \
+            "This attribute no longer has any effect.") = 21,
+#endif
         AA_UseStyleSheetPropagationInWidgetStyles = 22,
         AA_DontUseNativeDialogs = 23,
         AA_SynthesizeMouseForUnhandledTabletEvents = 24,
@@ -554,7 +461,7 @@ public:
         AA_DisableShaderDiskCache = 27,
         AA_DontShowShortcutsInContextMenus = 28,
         AA_CompressTabletEvents = 29,
-        AA_DisableWindowContextHelpButton = 30, // ### Qt 6: remove me
+        // AA_DisableWindowContextHelpButton = 30,
         AA_DisableSessionManager = 31,
 
         // Add new attributes before this line
@@ -601,77 +508,8 @@ public:
     };
 
     enum Key {
-        Key_Escape = 0x01000000,                // misc keys
-        Key_Tab = 0x01000001,
-        Key_Backtab = 0x01000002,
-        Key_Backspace = 0x01000003,
-        Key_Return = 0x01000004,
-        Key_Enter = 0x01000005,
-        Key_Insert = 0x01000006,
-        Key_Delete = 0x01000007,
-        Key_Pause = 0x01000008,
-        Key_Print = 0x01000009,               // print screen
-        Key_SysReq = 0x0100000a,
-        Key_Clear = 0x0100000b,
-        Key_Home = 0x01000010,                // cursor movement
-        Key_End = 0x01000011,
-        Key_Left = 0x01000012,
-        Key_Up = 0x01000013,
-        Key_Right = 0x01000014,
-        Key_Down = 0x01000015,
-        Key_PageUp = 0x01000016,
-        Key_PageDown = 0x01000017,
-        Key_Shift = 0x01000020,                // modifiers
-        Key_Control = 0x01000021,
-        Key_Meta = 0x01000022,
-        Key_Alt = 0x01000023,
-        Key_CapsLock = 0x01000024,
-        Key_NumLock = 0x01000025,
-        Key_ScrollLock = 0x01000026,
-        Key_F1 = 0x01000030,                // function keys
-        Key_F2 = 0x01000031,
-        Key_F3 = 0x01000032,
-        Key_F4 = 0x01000033,
-        Key_F5 = 0x01000034,
-        Key_F6 = 0x01000035,
-        Key_F7 = 0x01000036,
-        Key_F8 = 0x01000037,
-        Key_F9 = 0x01000038,
-        Key_F10 = 0x01000039,
-        Key_F11 = 0x0100003a,
-        Key_F12 = 0x0100003b,
-        Key_F13 = 0x0100003c,
-        Key_F14 = 0x0100003d,
-        Key_F15 = 0x0100003e,
-        Key_F16 = 0x0100003f,
-        Key_F17 = 0x01000040,
-        Key_F18 = 0x01000041,
-        Key_F19 = 0x01000042,
-        Key_F20 = 0x01000043,
-        Key_F21 = 0x01000044,
-        Key_F22 = 0x01000045,
-        Key_F23 = 0x01000046,
-        Key_F24 = 0x01000047,
-        Key_F25 = 0x01000048,                // F25 .. F35 only on X11
-        Key_F26 = 0x01000049,
-        Key_F27 = 0x0100004a,
-        Key_F28 = 0x0100004b,
-        Key_F29 = 0x0100004c,
-        Key_F30 = 0x0100004d,
-        Key_F31 = 0x0100004e,
-        Key_F32 = 0x0100004f,
-        Key_F33 = 0x01000050,
-        Key_F34 = 0x01000051,
-        Key_F35 = 0x01000052,
-        Key_Super_L = 0x01000053,                 // extra keys
-        Key_Super_R = 0x01000054,
-        Key_Menu = 0x01000055,
-        Key_Hyper_L = 0x01000056,
-        Key_Hyper_R = 0x01000057,
-        Key_Help = 0x01000058,
-        Key_Direction_L = 0x01000059,
-        Key_Direction_R = 0x01000060,
-        Key_Space = 0x20,                // 7 bit printable ASCII
+        // Unicode Basic Latin block (0x00-0x7f)
+        Key_Space = 0x20,
         Key_Any = Key_Space,
         Key_Exclam = 0x21,
         Key_QuoteDbl = 0x22,
@@ -742,6 +580,7 @@ public:
         Key_BraceRight = 0x7d,
         Key_AsciiTilde = 0x7e,
 
+        // Unicode Latin-1 Supplement block (0x80-0xff)
         Key_nobreakspace = 0x0a0,
         Key_exclamdown = 0x0a1,
         Key_cent = 0x0a2,
@@ -808,6 +647,84 @@ public:
         Key_ssharp = 0x0df,
         Key_division = 0x0f7,
         Key_ydiaeresis = 0x0ff,
+
+        // The rest of the Unicode values are skipped here,
+        // so that we can represent them along with Qt::Keys
+        // in the same data type. The maximum Unicode value
+        // is 0x0010ffff, so we start our custom keys at
+        // 0x01000000 to not clash with the Unicode values,
+        // but still give plenty of room to grow.
+
+        Key_Escape = 0x01000000,                // misc keys
+        Key_Tab = 0x01000001,
+        Key_Backtab = 0x01000002,
+        Key_Backspace = 0x01000003,
+        Key_Return = 0x01000004,
+        Key_Enter = 0x01000005,
+        Key_Insert = 0x01000006,
+        Key_Delete = 0x01000007,
+        Key_Pause = 0x01000008,
+        Key_Print = 0x01000009,               // print screen
+        Key_SysReq = 0x0100000a,
+        Key_Clear = 0x0100000b,
+        Key_Home = 0x01000010,                // cursor movement
+        Key_End = 0x01000011,
+        Key_Left = 0x01000012,
+        Key_Up = 0x01000013,
+        Key_Right = 0x01000014,
+        Key_Down = 0x01000015,
+        Key_PageUp = 0x01000016,
+        Key_PageDown = 0x01000017,
+        Key_Shift = 0x01000020,                // modifiers
+        Key_Control = 0x01000021,
+        Key_Meta = 0x01000022,
+        Key_Alt = 0x01000023,
+        Key_CapsLock = 0x01000024,
+        Key_NumLock = 0x01000025,
+        Key_ScrollLock = 0x01000026,
+        Key_F1 = 0x01000030,                // function keys
+        Key_F2 = 0x01000031,
+        Key_F3 = 0x01000032,
+        Key_F4 = 0x01000033,
+        Key_F5 = 0x01000034,
+        Key_F6 = 0x01000035,
+        Key_F7 = 0x01000036,
+        Key_F8 = 0x01000037,
+        Key_F9 = 0x01000038,
+        Key_F10 = 0x01000039,
+        Key_F11 = 0x0100003a,
+        Key_F12 = 0x0100003b,
+        Key_F13 = 0x0100003c,
+        Key_F14 = 0x0100003d,
+        Key_F15 = 0x0100003e,
+        Key_F16 = 0x0100003f,
+        Key_F17 = 0x01000040,
+        Key_F18 = 0x01000041,
+        Key_F19 = 0x01000042,
+        Key_F20 = 0x01000043,
+        Key_F21 = 0x01000044,
+        Key_F22 = 0x01000045,
+        Key_F23 = 0x01000046,
+        Key_F24 = 0x01000047,
+        Key_F25 = 0x01000048,                // F25 .. F35 only on X11
+        Key_F26 = 0x01000049,
+        Key_F27 = 0x0100004a,
+        Key_F28 = 0x0100004b,
+        Key_F29 = 0x0100004c,
+        Key_F30 = 0x0100004d,
+        Key_F31 = 0x0100004e,
+        Key_F32 = 0x0100004f,
+        Key_F33 = 0x01000050,
+        Key_F34 = 0x01000051,
+        Key_F35 = 0x01000052,
+        Key_Super_L = 0x01000053,                 // extra keys
+        Key_Super_R = 0x01000054,
+        Key_Menu = 0x01000055,
+        Key_Hyper_L = 0x01000056,
+        Key_Hyper_R = 0x01000057,
+        Key_Help = 0x01000058,
+        Key_Direction_L = 0x01000059,
+        Key_Direction_R = 0x01000060,
 
         // International input method support (X keycode - 0xEE00, the
         // definition follows Qt/Embedded 2.3.7) Only interesting if
@@ -938,8 +855,8 @@ public:
         Key_MediaPrevious  = 0x01000082,
         Key_MediaNext  = 0x01000083,
         Key_MediaRecord = 0x01000084,
-        Key_MediaPause = 0x1000085,
-        Key_MediaTogglePlayPause = 0x1000086,
+        Key_MediaPause = 0x01000085,
+        Key_MediaTogglePlayPause = 0x01000086,
         Key_HomePage  = 0x01000090,
         Key_Favorites  = 0x01000091,
         Key_Search  = 0x01000092,
@@ -1056,6 +973,7 @@ public:
         Key_Suspend = 0x0100010c,
         Key_ContrastAdjust = 0x0100010d,
 
+        // We can remove these two for Qt 7:
         Key_LaunchG  = 0x0100010e,
         Key_LaunchH  = 0x0100010f,
 
@@ -1120,8 +1038,41 @@ public:
         Key_Camera = 0x01100020,
         Key_CameraFocus = 0x01100021,
 
+        // WARNING: Do not add any keys in the range 0x01200000 to 0xffffffff,
+        // as those bits are reserved for the Qt::KeyboardModifier enum below.
+
         Key_unknown = 0x01ffffff
     };
+
+    enum KeyboardModifier {
+        NoModifier           = 0x00000000,
+        ShiftModifier        = 0x02000000,
+        ControlModifier      = 0x04000000,
+        AltModifier          = 0x08000000,
+        MetaModifier         = 0x10000000,
+        KeypadModifier       = 0x20000000,
+        GroupSwitchModifier  = 0x40000000,
+        // Do not extend the mask to include 0x01000000
+        KeyboardModifierMask = 0xfe000000
+    };
+    Q_DECLARE_FLAGS(KeyboardModifiers, KeyboardModifier)
+    Q_DECLARE_OPERATORS_FOR_FLAGS(KeyboardModifiers)
+
+    //shorter names for shortcuts
+    // The use of all-caps identifiers has the potential for clashing with
+    // user-defined or third-party macros. More so when the identifiers are not
+    // "namespace"-prefixed. This is considered bad practice and is why
+    // KeypadModifier was not added to the Modifier enum.
+    // ### Qt 7: consider deprecating in favor of KeyboardModifier.
+    enum Modifier {
+        META          = Qt::MetaModifier,
+        SHIFT         = Qt::ShiftModifier,
+        CTRL          = Qt::ControlModifier,
+        ALT           = Qt::AltModifier,
+        MODIFIER_MASK = KeyboardModifierMask,
+    };
+    Q_DECLARE_FLAGS(Modifiers, Modifier)
+    Q_DECLARE_OPERATORS_FOR_FLAGS(Modifiers)
 
     enum ArrowType {
         NoArrow,
@@ -1275,15 +1226,6 @@ public:
     enum DateFormat {
         TextDate,      // default Qt
         ISODate,       // ISO 8601
-#if QT_DEPRECATED_SINCE(5, 15)
-        SystemLocaleDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale"),
-        LocalDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale") = 2, // i.e. SystemLocaleDate
-        LocaleDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale"),
-        SystemLocaleShortDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale"),
-        SystemLocaleLongDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale"),
-        DefaultLocaleShortDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale"),
-        DefaultLocaleLongDate Q_DECL_ENUMERATOR_DEPRECATED_X("Use QLocale"),
-#endif
         RFC2822Date = 8, // RFC 2822 (+ 850 and 1036 during parsing)
         ISODateWithMs
     };
@@ -1338,7 +1280,8 @@ public:
         DirectConnection,
         QueuedConnection,
         BlockingQueuedConnection,
-        UniqueConnection =  0x80
+        UniqueConnection =  0x80,
+        SingleShotConnection = 0x100,
     };
 
     enum ShortcutContext {
@@ -1411,9 +1354,6 @@ public:
     enum InputMethodQuery {
         ImEnabled = 0x1,
         ImCursorRectangle = 0x2,
-#if QT_DEPRECATED_SINCE(5, 14)
-        ImMicroFocus Q_DECL_ENUMERATOR_DEPRECATED = 0x2,
-#endif
         ImFont = 0x4,
         ImCursorPosition = 0x8,
         ImSurroundingText = 0x10,
@@ -1430,6 +1370,7 @@ public:
         ImAnchorRectangle = 0x4000,
         ImInputItemClipRectangle = 0x8000,
 
+        ImReadOnly = 0x10000,
         ImPlatformData = 0x80000000,
         ImQueryInput = ImCursorRectangle | ImCursorPosition | ImSurroundingText |
                        ImCurrentSelection | ImAnchorRectangle | ImAnchorPosition,
@@ -1495,6 +1436,7 @@ public:
     enum LayoutDirection {
         LeftToRight,
         RightToLeft,
+        // ### Qt 7: make auto the first one (with value 0)
         LayoutDirectionAuto
     };
 
@@ -1542,10 +1484,6 @@ public:
         TextAlignmentRole = 7,
         BackgroundRole = 8,
         ForegroundRole = 9,
-#if QT_DEPRECATED_SINCE(5, 13) // ### Qt 6: remove me
-        BackgroundColorRole Q_DECL_ENUMERATOR_DEPRECATED = BackgroundRole,
-        TextColorRole Q_DECL_ENUMERATOR_DEPRECATED = ForegroundRole,
-#endif
         CheckStateRole = 10,
         // Accessibility
         AccessibleTextRole = 11,
@@ -1572,9 +1510,6 @@ public:
         ItemIsUserCheckable = 16,
         ItemIsEnabled = 32,
         ItemIsAutoTristate = 64,
-#if QT_DEPRECATED_SINCE(5, 6)
-        ItemIsTristate = ItemIsAutoTristate,
-#endif
         ItemNeverHasChildren = 128,
         ItemIsUserTristate = 256
     };
@@ -1586,12 +1521,10 @@ public:
         MatchContains = 1,
         MatchStartsWith = 2,
         MatchEndsWith = 3,
-#if QT_DEPRECATED_SINCE(5, 15)
-        MatchRegExp Q_DECL_ENUMERATOR_DEPRECATED_X("MatchRegExp is deprecated. Use MatchRegularExpression instead") = 4,
-#endif
+        MatchRegularExpression = 4,
         MatchWildcard = 5,
         MatchFixedString = 8,
-        MatchRegularExpression = 9,
+        MatchTypeMask = 0x0F,
         MatchCaseSensitive = 16,
         MatchWrap = 32,
         MatchRecursive = 64
@@ -1600,9 +1533,6 @@ public:
     Q_DECLARE_OPERATORS_FOR_FLAGS(MatchFlags)
 
     typedef void * HANDLE;
-#if QT_DEPRECATED_SINCE(5, 0)
-    typedef WindowFlags WFlags;
-#endif
 
     enum WindowModality {
         NonModal,
@@ -1651,16 +1581,15 @@ public:
         TitleBarArea    // For move
     };
 
-#if defined(Q_COMPILER_CONSTEXPR)
     enum class Initialization {
         Uninitialized
     };
-    static constexpr Q_DECL_UNUSED Initialization Uninitialized = Initialization::Uninitialized;
-#else
-    enum Initialization {
-        Uninitialized
+    inline constexpr Initialization Uninitialized = Initialization::Uninitialized;
+
+    struct Disambiguated_t {
+        explicit Disambiguated_t() = default;
     };
-#endif
+    inline constexpr Disambiguated_t Disambiguated{};
 
     enum CoordinateSystem {
         DeviceCoordinates,
@@ -1668,6 +1597,7 @@ public:
     };
 
     enum TouchPointState {
+        TouchPointUnknownState = 0x00,
         TouchPointPressed    = 0x01,
         TouchPointMoved      = 0x02,
         TouchPointStationary = 0x04,
@@ -1757,6 +1687,7 @@ public:
     };
 
     enum MouseEventFlag {
+        NoMouseEventFlag = 0x00,
         MouseEventCreatedDoubleClick = 0x01,
         MouseEventFlagMask = 0xFF
     };
@@ -1777,106 +1708,111 @@ public:
         PassThrough
     };
 
+    enum class PermissionStatus {
+        Undetermined,
+        Granted,
+        Denied,
+    };
+
     // QTBUG-48701
     enum ReturnByValueConstant { ReturnByValue }; // ### Qt 7: Remove me
 
 #ifndef Q_QDOC
-    // NOTE: Generally, do not add QT_Q_ENUM if a corresponding Q_Q_FLAG exists.
-    QT_Q_ENUM(ScrollBarPolicy)
-    QT_Q_ENUM(FocusPolicy)
-    QT_Q_ENUM(ContextMenuPolicy)
-    QT_Q_ENUM(ArrowType)
-    QT_Q_ENUM(ToolButtonStyle)
-    QT_Q_ENUM(PenStyle)
-    QT_Q_ENUM(PenCapStyle)
-    QT_Q_ENUM(PenJoinStyle)
-    QT_Q_ENUM(BrushStyle)
-    QT_Q_ENUM(FillRule)
-    QT_Q_ENUM(MaskMode)
-    QT_Q_ENUM(BGMode)
-    QT_Q_ENUM(ClipOperation)
-    QT_Q_ENUM(SizeMode)
-    QT_Q_ENUM(Axis)
-    QT_Q_ENUM(Corner)
-    QT_Q_ENUM(Edge)
-    QT_Q_ENUM(LayoutDirection)
-    QT_Q_ENUM(SizeHint)
-    QT_Q_ENUM(Orientation)
-    QT_Q_ENUM(DropAction)
-    QT_Q_FLAG(Alignment)
-    QT_Q_ENUM(TextFlag)
-    QT_Q_FLAG(Orientations)
-    QT_Q_FLAG(SplitBehavior)
-    QT_Q_FLAG(DropActions)
-    QT_Q_FLAG(Edges)
-    QT_Q_FLAG(DockWidgetAreas)
-    QT_Q_FLAG(ToolBarAreas)
-    QT_Q_ENUM(DockWidgetArea)
-    QT_Q_ENUM(ToolBarArea)
-    QT_Q_ENUM(TextFormat)
-    QT_Q_ENUM(TextElideMode)
-    QT_Q_ENUM(DateFormat)
-    QT_Q_ENUM(TimeSpec)
-    QT_Q_ENUM(DayOfWeek)
-    QT_Q_ENUM(CursorShape)
-    QT_Q_ENUM(GlobalColor)
-    QT_Q_ENUM(AspectRatioMode)
-    QT_Q_ENUM(TransformationMode)
-    QT_Q_FLAG(ImageConversionFlags)
-    QT_Q_ENUM(Key)
-    QT_Q_ENUM(ShortcutContext)
-    QT_Q_ENUM(TextInteractionFlag)
-    QT_Q_FLAG(TextInteractionFlags)
-    QT_Q_ENUM(ItemSelectionMode)
-    QT_Q_ENUM(ItemSelectionOperation)
-    QT_Q_FLAG(ItemFlags)
-    QT_Q_ENUM(CheckState)
-    QT_Q_ENUM(ItemDataRole)
-    QT_Q_ENUM(SortOrder)
-    QT_Q_ENUM(CaseSensitivity)
-    QT_Q_FLAG(MatchFlags)
-    QT_Q_FLAG(KeyboardModifiers)
-    QT_Q_FLAG(MouseButtons)
-    QT_Q_ENUM(WindowType)
-    QT_Q_ENUM(WindowState)
-    QT_Q_ENUM(WindowModality)
-    QT_Q_ENUM(WidgetAttribute)
-    QT_Q_ENUM(ApplicationAttribute)
-    QT_Q_FLAG(WindowFlags)
-    QT_Q_FLAG(WindowStates)
-    QT_Q_ENUM(FocusReason)
-    QT_Q_ENUM(InputMethodHint)
-    QT_Q_ENUM(InputMethodQuery)
-    QT_Q_FLAG(InputMethodHints)
-    QT_Q_ENUM(EnterKeyType)
-    QT_Q_FLAG(InputMethodQueries)
-    QT_Q_FLAG(TouchPointStates)
-    QT_Q_ENUM(ScreenOrientation)
-    QT_Q_FLAG(ScreenOrientations)
-    QT_Q_ENUM(ConnectionType)
-    QT_Q_ENUM(ApplicationState)
+    // NOTE: Generally, do not add Q_ENUM_NS if a corresponding Q_FLAG_NS exists.
+    Q_ENUM_NS(ScrollBarPolicy)
+    Q_ENUM_NS(FocusPolicy)
+    Q_ENUM_NS(ContextMenuPolicy)
+    Q_ENUM_NS(ArrowType)
+    Q_ENUM_NS(ToolButtonStyle)
+    Q_ENUM_NS(PenStyle)
+    Q_ENUM_NS(PenCapStyle)
+    Q_ENUM_NS(PenJoinStyle)
+    Q_ENUM_NS(BrushStyle)
+    Q_ENUM_NS(FillRule)
+    Q_ENUM_NS(MaskMode)
+    Q_ENUM_NS(BGMode)
+    Q_ENUM_NS(ClipOperation)
+    Q_ENUM_NS(SizeMode)
+    Q_ENUM_NS(Axis)
+    Q_ENUM_NS(Corner)
+    Q_ENUM_NS(Edge)
+    Q_ENUM_NS(LayoutDirection)
+    Q_ENUM_NS(SizeHint)
+    Q_ENUM_NS(Orientation)
+    Q_ENUM_NS(DropAction)
+    Q_FLAG_NS(Alignment)
+    Q_ENUM_NS(TextFlag)
+    Q_FLAG_NS(Orientations)
+    Q_FLAG_NS(SplitBehavior)
+    Q_FLAG_NS(DropActions)
+    Q_FLAG_NS(Edges)
+    Q_FLAG_NS(DockWidgetAreas)
+    Q_FLAG_NS(ToolBarAreas)
+    Q_ENUM_NS(DockWidgetArea)
+    Q_ENUM_NS(ToolBarArea)
+    Q_ENUM_NS(TextFormat)
+    Q_ENUM_NS(TextElideMode)
+    Q_ENUM_NS(DateFormat)
+    Q_ENUM_NS(TimeSpec)
+    Q_ENUM_NS(DayOfWeek)
+    Q_ENUM_NS(CursorShape)
+    Q_ENUM_NS(GlobalColor)
+    Q_ENUM_NS(ColorScheme)
+    Q_ENUM_NS(AspectRatioMode)
+    Q_ENUM_NS(TransformationMode)
+    Q_FLAG_NS(ImageConversionFlags)
+    Q_ENUM_NS(Key)
+    Q_ENUM_NS(ShortcutContext)
+    Q_ENUM_NS(TextInteractionFlag)
+    Q_FLAG_NS(TextInteractionFlags)
+    Q_ENUM_NS(ItemSelectionMode)
+    Q_ENUM_NS(ItemSelectionOperation)
+    Q_FLAG_NS(ItemFlags)
+    Q_ENUM_NS(CheckState)
+    Q_ENUM_NS(ItemDataRole)
+    Q_ENUM_NS(SortOrder)
+    Q_ENUM_NS(CaseSensitivity)
+    Q_FLAG_NS(MatchFlags)
+    Q_ENUM_NS(Modifier)
+    Q_FLAG_NS(Modifiers)
+    Q_ENUM_NS(KeyboardModifier)
+    Q_FLAG_NS(KeyboardModifiers)
+    Q_FLAG_NS(MouseButtons)
+    Q_ENUM_NS(WindowType)
+    Q_ENUM_NS(WindowState)
+    Q_ENUM_NS(WindowModality)
+    Q_ENUM_NS(WidgetAttribute)
+    Q_ENUM_NS(ApplicationAttribute)
+    Q_FLAG_NS(WindowFlags)
+    Q_FLAG_NS(WindowStates)
+    Q_ENUM_NS(FocusReason)
+    Q_ENUM_NS(InputMethodHint)
+    Q_ENUM_NS(InputMethodQuery)
+    Q_FLAG_NS(InputMethodHints)
+    Q_ENUM_NS(EnterKeyType)
+    Q_FLAG_NS(InputMethodQueries)
+    Q_FLAG_NS(TouchPointStates)
+    Q_ENUM_NS(ScreenOrientation)
+    Q_FLAG_NS(ScreenOrientations)
+    Q_ENUM_NS(ConnectionType)
+    Q_ENUM_NS(ApplicationState)
 #ifndef QT_NO_GESTURES
-    QT_Q_ENUM(GestureState)
-    QT_Q_ENUM(GestureType)
-    QT_Q_ENUM(NativeGestureType)
+    Q_ENUM_NS(GestureState)
+    Q_ENUM_NS(GestureType)
+    Q_ENUM_NS(NativeGestureType)
 #endif
-    QT_Q_ENUM(CursorMoveStyle)
-    QT_Q_ENUM(TimerType)
-    QT_Q_ENUM(ScrollPhase)
-    QT_Q_ENUM(MouseEventSource)
-    QT_Q_FLAG(MouseEventFlags)
-    QT_Q_ENUM(ChecksumType)
-    QT_Q_ENUM(HighDpiScaleFactorRoundingPolicy)
-    QT_Q_ENUM(TabFocusBehavior)
+    Q_ENUM_NS(CursorMoveStyle)
+    Q_ENUM_NS(TimerType)
+    Q_ENUM_NS(ScrollPhase)
+    Q_ENUM_NS(MouseEventSource)
+    Q_FLAG_NS(MouseEventFlags)
+    Q_ENUM_NS(ChecksumType)
+    Q_ENUM_NS(HighDpiScaleFactorRoundingPolicy)
+    Q_ENUM_NS(TabFocusBehavior)
+    Q_ENUM_NS(PermissionStatus)
 #endif // Q_DOC
 
 }
-#ifdef Q_MOC_RUN
- ;
-#endif
-
-#undef QT_Q_ENUM
-#undef QT_Q_FLAG
 
 typedef bool (*qInternalCallback)(void **);
 
@@ -1892,7 +1828,6 @@ public:
         Pbuffer       = 0x06,    // GL pbuffer
         FramebufferObject = 0x07, // GL framebuffer object
         CustomRaster  = 0x08,
-        MacQuartz     = 0x09,
         PaintBuffer   = 0x0a,
         OpenGL        = 0x0b
     };
@@ -1918,6 +1853,158 @@ public:
     static bool unregisterCallback(Callback, qInternalCallback);
     static bool activateCallbacks(Callback, void **);
 };
+
+class QKeyCombination
+{
+    int combination;
+
+public:
+    constexpr Q_IMPLICIT QKeyCombination(Qt::Key key = Qt::Key_unknown) noexcept
+        : combination(int(key))
+    {}
+
+    constexpr explicit QKeyCombination(Qt::Modifiers modifiers, Qt::Key key = Qt::Key_unknown) noexcept
+        : combination(modifiers.toInt() | int(key))
+    {}
+
+    constexpr explicit QKeyCombination(Qt::KeyboardModifiers modifiers, Qt::Key key = Qt::Key_unknown) noexcept
+        : combination(modifiers.toInt() | int(key))
+    {}
+
+    constexpr Qt::KeyboardModifiers keyboardModifiers() const noexcept
+    {
+        return Qt::KeyboardModifiers(combination & Qt::KeyboardModifierMask);
+    }
+
+    constexpr Qt::Key key() const noexcept
+    {
+        return Qt::Key(combination & ~int(Qt::KeyboardModifierMask));
+    }
+
+    static constexpr QKeyCombination fromCombined(int combined)
+    {
+        QKeyCombination result;
+        result.combination = combined;
+        return result;
+    }
+
+    constexpr int toCombined() const noexcept
+    {
+        return combination;
+    }
+
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED_VERSION_X(6, 0, "Use QKeyCombination instead of int")
+    constexpr Q_IMPLICIT operator int() const noexcept
+    {
+        return combination;
+    }
+#endif
+
+    friend constexpr bool operator==(QKeyCombination lhs, QKeyCombination rhs) noexcept
+    {
+        return lhs.combination == rhs.combination;
+    }
+
+    friend constexpr bool operator!=(QKeyCombination lhs, QKeyCombination rhs) noexcept
+    {
+        return lhs.combination != rhs.combination;
+    }
+
+    bool operator<(QKeyCombination) const = delete;
+};
+
+Q_DECLARE_TYPEINFO(QKeyCombination, Q_RELOCATABLE_TYPE);
+
+constexpr QKeyCombination operator|(Qt::Modifier modifier, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+constexpr QKeyCombination operator|(Qt::Modifiers modifiers, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+constexpr QKeyCombination operator|(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+constexpr QKeyCombination operator|(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+constexpr QKeyCombination operator|(Qt::Key key, Qt::Modifier modifier) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+constexpr QKeyCombination operator|(Qt::Key key, Qt::Modifiers modifiers) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+constexpr QKeyCombination operator|(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+constexpr QKeyCombination operator|(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+#if QT_DEPRECATED_SINCE(6, 0)
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::Modifier modifier, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::Modifiers modifiers, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::Key key, Qt::Modifier modifier) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::Key key, Qt::Modifiers modifiers) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
+{
+    return QKeyCombination(modifier, key);
+}
+
+QT_DEPRECATED_VERSION_X(6, 0, "Use operator| instead")
+constexpr QKeyCombination operator+(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
+{
+    return QKeyCombination(modifiers, key);
+}
+#endif
 
 QT_END_NAMESPACE
 

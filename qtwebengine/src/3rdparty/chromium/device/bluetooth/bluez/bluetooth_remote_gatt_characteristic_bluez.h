@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,8 +14,8 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "dbus/object_path.h"
 #include "device/bluetooth/bluetooth_remote_gatt_characteristic.h"
@@ -44,6 +44,11 @@ class BluetoothRemoteGattCharacteristicBlueZ
       public BluetoothGattDescriptorClient::Observer,
       public device::BluetoothRemoteGattCharacteristic {
  public:
+  BluetoothRemoteGattCharacteristicBlueZ(
+      const BluetoothRemoteGattCharacteristicBlueZ&) = delete;
+  BluetoothRemoteGattCharacteristicBlueZ& operator=(
+      const BluetoothRemoteGattCharacteristicBlueZ&) = delete;
+
   // device::BluetoothGattCharacteristic overrides.
   ~BluetoothRemoteGattCharacteristicBlueZ() override;
   device::BluetoothUUID GetUUID() const override;
@@ -54,8 +59,7 @@ class BluetoothRemoteGattCharacteristicBlueZ
   const std::vector<uint8_t>& GetValue() const override;
   device::BluetoothRemoteGattService* GetService() const override;
   bool IsNotifying() const override;
-  void ReadRemoteCharacteristic(ValueCallback callback,
-                                ErrorCallback error_callback) override;
+  void ReadRemoteCharacteristic(ValueCallback callback) override;
   void WriteRemoteCharacteristic(const std::vector<uint8_t>& value,
                                  WriteType write_type,
                                  base::OnceClosure callback,
@@ -64,14 +68,14 @@ class BluetoothRemoteGattCharacteristicBlueZ
       const std::vector<uint8_t>& value,
       base::OnceClosure callback,
       ErrorCallback error_callback) override;
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   void PrepareWriteRemoteCharacteristic(const std::vector<uint8_t>& value,
                                         base::OnceClosure callback,
                                         ErrorCallback error_callback) override;
-#endif
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
  protected:
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
   void SubscribeToNotifications(
       device::BluetoothRemoteGattDescriptor* ccc_descriptor,
       NotificationType notification_type,
@@ -82,7 +86,7 @@ class BluetoothRemoteGattCharacteristicBlueZ
       device::BluetoothRemoteGattDescriptor* ccc_descriptor,
       base::OnceClosure callback,
       ErrorCallback error_callback) override;
-#endif
+#endif  // BUILDFLAG(IS_CHROMEOS)
   void UnsubscribeFromNotifications(
       device::BluetoothRemoteGattDescriptor* ccc_descriptor,
       base::OnceClosure callback,
@@ -123,7 +127,7 @@ class BluetoothRemoteGattCharacteristicBlueZ
 
   // Called by dbus:: on unsuccessful completion of a request to read
   // the characteristic value.
-  void OnReadError(ErrorCallback error_callback,
+  void OnReadError(ValueCallback callback,
                    const std::string& error_name,
                    const std::string& error_message);
 
@@ -137,7 +141,7 @@ class BluetoothRemoteGattCharacteristicBlueZ
   bool has_notify_session_;
 
   // The GATT service this GATT characteristic belongs to.
-  BluetoothRemoteGattServiceBlueZ* service_;
+  raw_ptr<BluetoothRemoteGattServiceBlueZ> service_;
 
   // Number of gatt read requests in progress.
   int num_of_characteristic_value_read_in_progress_;
@@ -146,8 +150,6 @@ class BluetoothRemoteGattCharacteristicBlueZ
   // invalidate its weak pointers before any other members are destroyed.
   base::WeakPtrFactory<BluetoothRemoteGattCharacteristicBlueZ>
       weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(BluetoothRemoteGattCharacteristicBlueZ);
 };
 
 }  // namespace bluez

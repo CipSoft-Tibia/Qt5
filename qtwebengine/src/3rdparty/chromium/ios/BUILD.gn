@@ -1,9 +1,10 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 assert(!is_component_build, "component build is unsupported on iOS")
 
+import("//build/config/cronet/config.gni")
 import("//build/config/gclient_args.gni")
 import("//build/config/ios/ios_sdk.gni")
 import("//ios/features.gni")
@@ -16,15 +17,12 @@ group("all") {
   testonly = true
   if (is_cronet_build) {
     deps = [ "//components/cronet/ios:cronet_package_ios" ]
-  } else {
-    assert(xcode_version_int >= 1000, "Xcode 10 is required.")
-
+  } else if (is_webkit_only_build) {
+    deps = [ "//ios/third_party/webkit" ]
+  } else if (ios_build_chrome) {
     deps = [
       # List all the targets that need to be built on iOS by default.
       "//ios/chrome/app:chrome",
-      "//ios/chrome/content_widget_extension",
-      "//ios/chrome/search_widget_extension",
-      "//ios/chrome/share_extension",
       "//ios/showcase",
       "//ios/web/shell:ios_web_shell",
       "//ios/web_view/shell:ios_web_view_shell",

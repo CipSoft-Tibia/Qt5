@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,11 @@
 #define CHROME_BROWSER_UI_WEBUI_WELCOME_BOOKMARK_ITEM_H_
 
 #include <stddef.h>
-#include <string>
-#include <vector>
 
-namespace base {
-class ListValue;
-}  // namespace base
+#include <string>
+
+#include "base/containers/span.h"
+#include "base/values.h"
 
 namespace welcome {
 
@@ -23,11 +22,8 @@ struct BookmarkItem {
   const int icon;  // Corresponds with resource ID, used for bookmark cache.
 };
 
-base::ListValue BookmarkItemsToListValue(const BookmarkItem items[],
-                                         size_t count);
-
-base::ListValue BookmarkItemsToListValue(
-    const std::vector<BookmarkItem>& items);
+base::Value::List BookmarkItemsToListValue(
+    base::span<const BookmarkItem> items);
 
 }  // namespace welcome
 

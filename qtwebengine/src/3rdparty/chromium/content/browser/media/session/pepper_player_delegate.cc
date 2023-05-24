@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include "base/command_line.h"
 #include "content/browser/media/session/pepper_playback_observer.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
-#include "content/common/frame_messages.h"
+#include "content/browser/renderer_host/render_frame_host_impl_ppapi_support.h"
 #include "media/base/media_switches.h"
 #include "services/media_session/public/cpp/media_position.h"
 
@@ -21,9 +21,13 @@ const double kDuckVolume = 0.2f;
 
 const int PepperPlayerDelegate::kPlayerId = 0;
 
-PepperPlayerDelegate::PepperPlayerDelegate(RenderFrameHost* render_frame_host,
-                                           int32_t pp_instance)
-    : render_frame_host_(render_frame_host), pp_instance_(pp_instance) {}
+PepperPlayerDelegate::PepperPlayerDelegate(
+    RenderFrameHost* render_frame_host,
+    int32_t pp_instance,
+    media::MediaContentType media_content_type)
+    : render_frame_host_(render_frame_host),
+      pp_instance_(pp_instance),
+      media_content_type_(media_content_type) {}
 
 PepperPlayerDelegate::~PepperPlayerDelegate() = default;
 
@@ -54,6 +58,10 @@ void PepperPlayerDelegate::OnSeekBackward(int player_id,
   // Cannot seek pepper player. Do nothing.
 }
 
+void PepperPlayerDelegate::OnSeekTo(int player_id, base::TimeDelta seek_time) {
+  // Cannot seek pepper player. Do nothing.
+}
+
 void PepperPlayerDelegate::OnSetVolumeMultiplier(int player_id,
                                                  double volume_multiplier) {
   if (!base::FeatureList::IsEnabled(media::kAudioFocusDuckFlash))
@@ -77,11 +85,13 @@ void PepperPlayerDelegate::OnSetAudioSinkId(int player_id,
   NOTREACHED();
 }
 
-base::Optional<media_session::MediaPosition> PepperPlayerDelegate::GetPosition(
+void PepperPlayerDelegate::OnSetMute(int player_id, bool mute) {}
+
+absl::optional<media_session::MediaPosition> PepperPlayerDelegate::GetPosition(
     int player_id) const {
   // Pepper does not support position data.
   DCHECK_EQ(player_id, kPlayerId);
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 bool PepperPlayerDelegate::IsPictureInPictureAvailable(int player_id) const {
@@ -94,8 +104,14 @@ RenderFrameHost* PepperPlayerDelegate::render_frame_host() const {
 }
 
 void PepperPlayerDelegate::SetVolume(int player_id, double volume) {
-  render_frame_host_->Send(new FrameMsg_SetPepperVolume(
-      render_frame_host_->GetRoutingID(), pp_instance_, volume));
+  static_cast<RenderFrameHostImpl*>(render_frame_host_)
+      ->GetPpapiSupport()
+      .SetVolume(pp_instance_, volume);
+}
+
+bool PepperPlayerDelegate::HasAudio(int player_id) const {
+  // We don't actually know whether a pepper player has both audio/video.
+  return true;
 }
 
 bool PepperPlayerDelegate::HasVideo(int player_id) const {
@@ -111,6 +127,10 @@ std::string PepperPlayerDelegate::GetAudioOutputSinkId(int player_id) const {
 bool PepperPlayerDelegate::SupportsAudioOutputDeviceSwitching(
     int player_id) const {
   return false;
+}
+
+media::MediaContentType PepperPlayerDelegate::GetMediaContentType() const {
+  return media_content_type_;
 }
 
 }  // namespace content

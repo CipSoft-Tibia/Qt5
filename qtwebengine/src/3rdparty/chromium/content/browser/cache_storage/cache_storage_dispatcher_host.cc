@@ -1,17 +1,24 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/cache_storage/cache_storage_dispatcher_host.h"
 
-#include "base/bind.h"
+#include <string>
+
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/strings/string16.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
+#include "cache_storage_histogram_utils.h"
+#include "components/services/storage/public/cpp/buckets/bucket_locator.h"
 #include "content/browser/cache_storage/cache_storage.h"
 #include "content/browser/cache_storage/cache_storage_cache.h"
 #include "content/browser/cache_storage/cache_storage_context_impl.h"
@@ -19,15 +26,17 @@
 #include "content/browser/cache_storage/cache_storage_manager.h"
 #include "content/browser/cache_storage/cache_storage_trace_utils.h"
 #include "content/common/background_fetch/background_fetch_types.h"
-#include "content/public/common/content_features.h"
 #include "mojo/public/cpp/bindings/message.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
 #include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/cross_origin_embedder_policy.h"
 #include "services/network/public/cpp/cross_origin_resource_policy.h"
+#include "services/network/public/cpp/is_potentially_trustworthy.h"
 #include "services/network/public/mojom/cross_origin_embedder_policy.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
-#include "third_party/blink/public/common/loader/network_utils.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
+#include "third_party/blink/public/mojom/blob/blob.mojom.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -45,8 +54,9 @@ using network::mojom::RequestMode;
 
 // TODO(lucmult): Check this before binding.
 bool OriginCanAccessCacheStorage(const url::Origin& origin) {
+  // TODO(https://crbug.com/1158302): Use IsOriginPotentiallyTrustworthy?
   return !origin.opaque() &&
-         blink::network_utils::IsOriginSecure(origin.GetURL());
+         network::IsUrlPotentiallyTrustworthy(origin.GetURL());
 }
 
 // Verifies that the BatchOperation list conforms to the constraints imposed
@@ -57,11 +67,13 @@ bool ValidBatchOperations(
   // At least one operation is required.
   if (batch_operations.empty())
     return false;
+
   blink::mojom::OperationType type = batch_operations[0]->operation_type;
   // We must have a defined operation type.  All other enum values allowed
   // by the mojo validator are permitted here.
   if (type == blink::mojom::OperationType::kUndefined)
     return false;
+
   // Delete operations should only be sent one at a time.
   if (type == blink::mojom::OperationType::kDelete &&
       batch_operations.size() > 1) {
@@ -69,8 +81,9 @@ bool ValidBatchOperations(
   }
   // All operations in the list must be the same.
   for (const auto& op : batch_operations) {
-    if (op->operation_type != type)
+    if (op->operation_type != type) {
       return false;
+    }
   }
   return true;
 }
@@ -89,7 +102,7 @@ blink::mojom::MatchResultPtr EagerlyReadResponseBody(
 
   mojo::ScopedDataPipeProducerHandle producer_handle;
   mojo::ScopedDataPipeConsumerHandle consumer_handle;
-  MojoResult rv = CreateDataPipe(&options, &producer_handle, &consumer_handle);
+  MojoResult rv = CreateDataPipe(&options, producer_handle, consumer_handle);
   if (rv != MOJO_RESULT_OK)
     return blink::mojom::MatchResult::NewResponse(std::move(response));
 
@@ -135,7 +148,7 @@ bool ResponseBlockedByCrossOriginResourcePolicy(
   if (response->response_type != FetchResponseType::kOpaque)
     return false;
 
-  base::Optional<std::string> corp_header_value;
+  absl::optional<std::string> corp_header_value;
   auto corp_header =
       response->headers.find(network::CrossOriginResourcePolicy::kHeaderName);
   if (corp_header != response->headers.end())
@@ -144,8 +157,9 @@ bool ResponseBlockedByCrossOriginResourcePolicy(
   return CrossOriginResourcePolicy::IsBlockedByHeaderValue(
              response->url_list.back(), response->url_list.front(),
              document_origin, corp_header_value, RequestMode::kNoCors,
-             document_origin, network::mojom::RequestDestination::kEmpty,
-             document_coep, coep_reporter ? coep_reporter.get() : nullptr)
+             network::mojom::RequestDestination::kEmpty,
+             response->request_include_credentials, document_coep,
+             coep_reporter ? coep_reporter.get() : nullptr)
       .has_value();
 }
 
@@ -159,15 +173,24 @@ class CacheStorageDispatcherHost::CacheImpl
     : public blink::mojom::CacheStorageCache {
  public:
   explicit CacheImpl(
+      CacheStorageDispatcherHost* host,
       CacheStorageCacheHandle cache_handle,
-      const url::Origin& origin,
+      const blink::StorageKey& storage_key,
       const CrossOriginEmbedderPolicy& cross_origin_embedder_policy,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
-          coep_reporter)
-      : cache_handle_(std::move(cache_handle)),
-        origin_(origin),
+          coep_reporter,
+      storage::mojom::CacheStorageOwner owner)
+      : host_(host),
+        cache_handle_(std::move(cache_handle)),
+        storage_key_(storage_key),
         cross_origin_embedder_policy_(cross_origin_embedder_policy),
-        coep_reporter_(std::move(coep_reporter)) {}
+        coep_reporter_(std::move(coep_reporter)),
+        owner_(owner) {
+    DCHECK(host_);
+  }
+
+  CacheImpl(const CacheImpl&) = delete;
+  CacheImpl& operator=(const CacheImpl&) = delete;
 
   ~CacheImpl() override { DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_); }
 
@@ -175,6 +198,7 @@ class CacheStorageDispatcherHost::CacheImpl
   void Match(blink::mojom::FetchAPIRequestPtr request,
              blink::mojom::CacheQueryOptionsPtr match_options,
              bool in_related_fetch_event,
+             bool in_range_fetch_event,
              int64_t trace_id,
              MatchCallback callback) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -194,7 +218,7 @@ class CacheStorageDispatcherHost::CacheImpl
     auto cb = base::BindOnce(
         [](base::WeakPtr<CacheImpl> self, base::TimeTicks start_time,
            bool ignore_search, bool in_related_fetch_event,
-           bool cache_initialized, int64_t trace_id,
+           bool in_range_fetch_event, bool cache_initialized, int64_t trace_id,
            blink::mojom::CacheStorageCache::MatchCallback callback,
            blink::mojom::CacheStorageError error,
            blink::mojom::FetchAPIResponsePtr response) {
@@ -236,7 +260,7 @@ class CacheStorageDispatcherHost::CacheImpl
           // against the requesting document's origin and
           // Cross-Origin-Embedder-Policy (COEP).
           if (ResponseBlockedByCrossOriginResourcePolicy(
-                  response.get(), self->origin_,
+                  response.get(), self->storage_key_.origin(),
                   self->cross_origin_embedder_policy_, self->coep_reporter_)) {
             std::move(callback).Run(blink::mojom::MatchResult::NewStatus(
                 CacheStorageError::kErrorCrossOriginResourcePolicy));
@@ -253,7 +277,7 @@ class CacheStorageDispatcherHost::CacheImpl
               CacheStorageTracedValue(response));
 
           blink::mojom::MatchResultPtr result;
-          if (in_related_fetch_event) {
+          if (in_related_fetch_event && !in_range_fetch_event) {
             result = EagerlyReadResponseBody(std::move(response));
           } else {
             result =
@@ -262,8 +286,8 @@ class CacheStorageDispatcherHost::CacheImpl
           std::move(callback).Run(std::move(result));
         },
         weak_factory_.GetWeakPtr(), base::TimeTicks::Now(),
-        match_options->ignore_search, in_related_fetch_event, cache_initialized,
-        trace_id, std::move(callback));
+        match_options->ignore_search, in_related_fetch_event,
+        in_range_fetch_event, cache_initialized, trace_id, std::move(callback));
 
     if (!cache) {
       std::move(cb).Run(CacheStorageError::kErrorNotFound, nullptr);
@@ -320,7 +344,7 @@ class CacheStorageDispatcherHost::CacheImpl
           // Cross-Origin-Embedder-Policy (COEP).
           for (const auto& response : responses) {
             if (ResponseBlockedByCrossOriginResourcePolicy(
-                    response.get(), self->origin_,
+                    response.get(), self->storage_key_.origin(),
                     self->cross_origin_embedder_policy_,
                     self->coep_reporter_)) {
               std::move(callback).Run(blink::mojom::MatchAllResult::NewStatus(
@@ -350,6 +374,90 @@ class CacheStorageDispatcherHost::CacheImpl
 
     cache->MatchAll(std::move(request), std::move(match_options), trace_id,
                     std::move(cb));
+  }
+
+  void GetAllMatchedEntries(blink::mojom::FetchAPIRequestPtr request,
+                            blink::mojom::CacheQueryOptionsPtr match_options,
+                            int64_t trace_id,
+                            GetAllMatchedEntriesCallback callback) override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+    if (owner_ != storage::mojom::CacheStorageOwner::kBackgroundFetch) {
+      host_->cache_receivers_.ReportBadMessage("CSDH_BAD_OWNER");
+      return;
+    }
+
+    TRACE_EVENT_WITH_FLOW2(
+        "CacheStorage",
+        "CacheStorageDispatchHost::CacheImpl::GetAllMatchedEntries",
+        TRACE_ID_GLOBAL(trace_id),
+        TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT, "request",
+        CacheStorageTracedValue(request), "options",
+        CacheStorageTracedValue(match_options));
+
+    auto cb = base::BindOnce(
+        [](base::WeakPtr<CacheImpl> self, base::TimeTicks start_time,
+           int64_t trace_id, GetAllMatchedEntriesCallback callback,
+           blink::mojom::CacheStorageError error,
+           std::vector<blink::mojom::CacheEntryPtr> entries) {
+          if (!self)
+            return;
+          base::TimeDelta elapsed = base::TimeTicks::Now() - start_time;
+
+          UmaHistogramLongTimes(
+              "ServiceWorkerCache.Cache.Browser.GetAllMatchedEntries", elapsed);
+          if (error != CacheStorageError::kSuccess &&
+              error != CacheStorageError::kErrorNotFound) {
+            TRACE_EVENT_WITH_FLOW1(
+                "CacheStorage",
+                "CacheStorageDispatchHost::CacheImpl::GetAllMatchedEntries::"
+                "Callback",
+                TRACE_ID_GLOBAL(trace_id),
+                TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT, "status",
+                CacheStorageTracedValue(error));
+            std::move(callback).Run(
+                blink::mojom::GetAllMatchedEntriesResult::NewStatus(error));
+            return;
+          }
+
+          // Enforce the Cross-Origin-Resource-Policy (CORP) of the response
+          // against the requesting document's origin and
+          // Cross-Origin-Embedder-Policy (COEP).
+          for (const auto& entry : entries) {
+            if (ResponseBlockedByCrossOriginResourcePolicy(
+                    entry->response.get(), self->storage_key_.origin(),
+                    self->cross_origin_embedder_policy_,
+                    self->coep_reporter_)) {
+              std::move(callback).Run(
+                  blink::mojom::GetAllMatchedEntriesResult::NewStatus(
+                      CacheStorageError::kErrorCrossOriginResourcePolicy));
+              return;
+            }
+          }
+
+          TRACE_EVENT_WITH_FLOW1(
+              "CacheStorage",
+              "CacheStorageDispatchHost::CacheImpl::GetAllMatchedEntries::"
+              "Callback",
+              TRACE_ID_GLOBAL(trace_id),
+              TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT, "entries",
+              CacheStorageTracedValue(entries));
+          std::move(callback).Run(
+              blink::mojom::GetAllMatchedEntriesResult::NewEntries(
+                  std::move(entries)));
+        },
+        weak_factory_.GetWeakPtr(), base::TimeTicks::Now(), trace_id,
+        std::move(callback));
+
+    content::CacheStorageCache* cache = cache_handle_.value();
+    if (!cache) {
+      std::move(cb).Run(CacheStorageError::kErrorNotFound,
+                        std::vector<blink::mojom::CacheEntryPtr>());
+      return;
+    }
+
+    cache->GetAllMatchedEntries(std::move(request), std::move(match_options),
+                                trace_id, std::move(cb));
   }
 
   void Keys(blink::mojom::FetchAPIRequestPtr request,
@@ -421,7 +529,7 @@ class CacheStorageDispatcherHost::CacheImpl
         CacheStorageTracedValue(batch_operations));
 
     if (!ValidBatchOperations(batch_operations)) {
-      mojo::ReportBadMessage("CSDH_UNEXPECTED_OPERATION");
+      host_->cache_receivers_.ReportBadMessage("CSDH_UNEXPECTED_OPERATION");
       return;
     }
 
@@ -464,7 +572,7 @@ class CacheStorageDispatcherHost::CacheImpl
     content::CacheStorageCache* cache = cache_handle_.value();
     if (!cache) {
       std::move(cb).Run(CacheStorageVerboseError::New(
-          CacheStorageError::kErrorNotFound, base::nullopt));
+          CacheStorageError::kErrorNotFound, absl::nullopt));
       return;
     }
 
@@ -474,18 +582,48 @@ class CacheStorageDispatcherHost::CacheImpl
             [](mojo::ReportBadMessageCallback bad_message_callback) {
               std::move(bad_message_callback).Run("CSDH_UNEXPECTED_OPERATION");
             },
-            mojo::GetBadMessageCallback()));
+            host_->cache_receivers_.GetBadMessageCallback()));
   }
 
+  void WriteSideData(const GURL& url,
+                     base::Time expected_response_time,
+                     mojo_base::BigBuffer data,
+                     int64_t trace_id,
+                     WriteSideDataCallback callback) override {
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+    TRACE_EVENT_WITH_FLOW1("CacheStorage",
+                           "CacheStorageDispatchHost::CacheImpl::WriteSideData",
+                           TRACE_ID_GLOBAL(trace_id),
+                           TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT,
+                           "url", url.spec());
+
+    content::CacheStorageCache* cache = cache_handle_.value();
+    if (!cache) {
+      std::move(callback).Run(CacheStorageError::kErrorNotFound);
+      return;
+    }
+
+    scoped_refptr<net::IOBuffer> buf =
+        base::MakeRefCounted<net::IOBuffer>(data.size());
+    if (data.size())
+      memcpy(buf->data(), data.data(), data.size());
+
+    cache->WriteSideData(std::move(callback), url, expected_response_time,
+                         trace_id, std::move(buf), data.size());
+  }
+
+  // Owns this.
+  const raw_ptr<CacheStorageDispatcherHost> host_;
+
   CacheStorageCacheHandle cache_handle_;
-  const url::Origin origin_;
+  const blink::StorageKey storage_key_;
   const CrossOriginEmbedderPolicy cross_origin_embedder_policy_;
   mojo::Remote<network::mojom::CrossOriginEmbedderPolicyReporter>
       coep_reporter_;
+  const storage::mojom::CacheStorageOwner owner_;
   SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<CacheImpl> weak_factory_{this};
-  DISALLOW_COPY_AND_ASSIGN(CacheImpl);
 };
 
 // Implements the mojom interface CacheStorage. It's owned by the
@@ -496,16 +634,18 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
     : public blink::mojom::CacheStorage {
  public:
   CacheStorageImpl(
-      CacheStorageDispatcherHost* owner,
-      const url::Origin& origin,
+      CacheStorageDispatcherHost* host,
+      const absl::optional<storage::BucketLocator>& bucket,
       bool incognito,
       const CrossOriginEmbedderPolicy& cross_origin_embedder_policy,
       mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
-          coep_reporter)
-      : owner_(owner),
-        origin_(origin),
+          coep_reporter,
+      storage::mojom::CacheStorageOwner owner)
+      : host_(host),
+        bucket_(bucket),
         cross_origin_embedder_policy_(cross_origin_embedder_policy),
-        coep_reporter_(std::move(coep_reporter)) {
+        coep_reporter_(std::move(coep_reporter)),
+        owner_(owner) {
     // Eagerly initialize the backend when the mojo connection is bound.
     //
     // Note, we only do this for non-incognito mode.  The memory cache mode
@@ -513,12 +653,17 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
     // initialize it here.  Also, eagerly initializing memory cache mode does
     // not really provide any performance benefit.
     if (!incognito) {
-      content::CacheStorage* cache_storage = GetOrCreateCacheStorage();
-      if (cache_storage) {
-        cache_storage->Init();
-      }
+      GetOrCreateCacheStorage(
+          base::BindOnce([](content::CacheStorage* cache_storage) {
+            if (cache_storage) {
+              cache_storage->Init();
+            }
+          }));
     }
   }
+
+  CacheStorageImpl(const CacheStorageImpl&) = delete;
+  CacheStorageImpl& operator=(const CacheStorageImpl&) = delete;
 
   ~CacheStorageImpl() override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -537,7 +682,7 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
         [](base::TimeTicks start_time, int64_t trace_id,
            blink::mojom::CacheStorage::KeysCallback callback,
            std::vector<std::string> cache_names) {
-          std::vector<base::string16> string16s;
+          std::vector<std::u16string> string16s;
           for (const auto& name : cache_names) {
             string16s.push_back(base::UTF8ToUTF16(name));
           }
@@ -554,16 +699,26 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
         },
         base::TimeTicks::Now(), trace_id, std::move(callback));
 
-    content::CacheStorage* cache_storage = GetOrCreateCacheStorage();
-    if (!cache_storage) {
+    // Return error if failed to retrieve bucket from QuotaManager.
+    if (!bucket_.has_value()) {
       std::move(cb).Run(std::vector<std::string>());
       return;
     }
 
-    cache_storage->EnumerateCaches(trace_id, std::move(cb));
+    GetOrCreateCacheStorage(base::BindOnce(
+        [](int64_t trace_id, content::CacheStorage::EnumerateCachesCallback cb,
+           content::CacheStorage* cache_storage) {
+          if (!cache_storage) {
+            std::move(cb).Run(std::vector<std::string>());
+            return;
+          }
+
+          cache_storage->EnumerateCaches(trace_id, std::move(cb));
+        },
+        trace_id, std::move(cb)));
   }
 
-  void Delete(const base::string16& cache_name,
+  void Delete(const std::u16string& cache_name,
               int64_t trace_id,
               blink::mojom::CacheStorage::DeleteCallback callback) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -591,16 +746,29 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
         },
         base::TimeTicks::Now(), trace_id, std::move(callback));
 
-    content::CacheStorage* cache_storage = GetOrCreateCacheStorage();
-    if (!cache_storage) {
-      std::move(cb).Run(MakeErrorStorage(ErrorStorageType::kStorageHandleNull));
+    // Return error if failed to retrieve bucket from QuotaManager.
+    if (!bucket_.has_value()) {
+      std::move(cb).Run(
+          MakeErrorStorage(ErrorStorageType::kDefaultBucketError));
       return;
     }
 
-    cache_storage->DoomCache(utf8_cache_name, trace_id, std::move(cb));
+    GetOrCreateCacheStorage(base::BindOnce(
+        [](std::string utf8_cache_name, int64_t trace_id,
+           content::CacheStorage::ErrorCallback cb,
+           content::CacheStorage* cache_storage) {
+          if (!cache_storage) {
+            std::move(cb).Run(
+                MakeErrorStorage(ErrorStorageType::kStorageHandleNull));
+            return;
+          }
+
+          cache_storage->DoomCache(utf8_cache_name, trace_id, std::move(cb));
+        },
+        std::move(utf8_cache_name), trace_id, std::move(cb)));
   }
 
-  void Has(const base::string16& cache_name,
+  void Has(const std::u16string& cache_name,
            int64_t trace_id,
            blink::mojom::CacheStorage::HasCallback callback) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -615,7 +783,7 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
         [](base::TimeTicks start_time, int64_t trace_id,
            blink::mojom::CacheStorage::HasCallback callback, bool has_cache,
            CacheStorageError error) {
-          if (!has_cache)
+          if (!has_cache && error == CacheStorageError::kSuccess)
             error = CacheStorageError::kErrorNotFound;
           TRACE_EVENT_WITH_FLOW1(
               "CacheStorage",
@@ -630,19 +798,34 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
         },
         base::TimeTicks::Now(), trace_id, std::move(callback));
 
-    content::CacheStorage* cache_storage = GetOrCreateCacheStorage();
-    if (!cache_storage) {
-      std::move(cb).Run(/* has_cache = */ false,
-                        MakeErrorStorage(ErrorStorageType::kStorageHandleNull));
+    // Return error if failed to retrieve bucket from QuotaManager.
+    if (!bucket_.has_value()) {
+      std::move(cb).Run(
+          /*has_cache=*/false,
+          MakeErrorStorage(ErrorStorageType::kDefaultBucketError));
       return;
     }
 
-    cache_storage->HasCache(utf8_cache_name, trace_id, std::move(cb));
+    GetOrCreateCacheStorage(base::BindOnce(
+        [](std::string utf8_cache_name, int64_t trace_id,
+           content::CacheStorage::BoolAndErrorCallback cb,
+           content::CacheStorage* cache_storage) {
+          if (!cache_storage) {
+            std::move(cb).Run(
+                /* has_cache = */ false,
+                MakeErrorStorage(ErrorStorageType::kStorageHandleNull));
+            return;
+          }
+
+          cache_storage->HasCache(utf8_cache_name, trace_id, std::move(cb));
+        },
+        std::move(utf8_cache_name), trace_id, std::move(cb)));
   }
 
   void Match(blink::mojom::FetchAPIRequestPtr request,
              blink::mojom::MultiCacheQueryOptionsPtr match_options,
              bool in_related_fetch_event,
+             bool in_range_fetch_event,
              int64_t trace_id,
              blink::mojom::CacheStorage::MatchCallback callback) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -655,7 +838,8 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
 
     auto cb = BindOnce(
         [](base::WeakPtr<CacheStorageImpl> self, base::TimeTicks start_time,
-           bool match_all_caches, bool in_related_fetch_event, int64_t trace_id,
+           bool match_all_caches, bool in_related_fetch_event,
+           bool in_range_fetch_event, int64_t trace_id,
            blink::mojom::CacheStorage::MatchCallback callback,
            CacheStorageError error,
            blink::mojom::FetchAPIResponsePtr response) {
@@ -683,6 +867,8 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
                 blink::mojom::MatchResult::NewStatus(error));
             return;
           }
+          DCHECK(self->bucket_.has_value());
+
           TRACE_EVENT_WITH_FLOW1(
               "CacheStorage",
               "CacheStorageDispatchHost::CacheStorageImpl::Match::Callback",
@@ -694,7 +880,7 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
           // against the requesting document's origin and
           // Cross-Origin-Embedder-Policy (COEP).
           if (ResponseBlockedByCrossOriginResourcePolicy(
-                  response.get(), self->origin_,
+                  response.get(), self->bucket_->storage_key.origin(),
                   self->cross_origin_embedder_policy_, self->coep_reporter_)) {
             std::move(callback).Run(blink::mojom::MatchResult::NewStatus(
                 CacheStorageError::kErrorCrossOriginResourcePolicy));
@@ -702,7 +888,7 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
           }
 
           blink::mojom::MatchResultPtr result;
-          if (in_related_fetch_event) {
+          if (in_related_fetch_event && !in_range_fetch_event) {
             result = EagerlyReadResponseBody(std::move(response));
           } else {
             result =
@@ -711,33 +897,49 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
           std::move(callback).Run(std::move(result));
         },
         weak_factory_.GetWeakPtr(), base::TimeTicks::Now(),
-        !match_options->cache_name, in_related_fetch_event, trace_id,
-        std::move(callback));
+        !match_options->cache_name, in_related_fetch_event,
+        in_range_fetch_event, trace_id, std::move(callback));
 
-    content::CacheStorage* cache_storage = GetOrCreateCacheStorage();
-    if (!cache_storage) {
-      std::move(cb).Run(CacheStorageError::kErrorNotFound, nullptr);
+    // Return error if failed to retrieve bucket from QuotaManager.
+    if (!bucket_.has_value()) {
+      std::move(cb).Run(MakeErrorStorage(ErrorStorageType::kDefaultBucketError),
+                        nullptr);
       return;
     }
 
-    CacheStorageSchedulerPriority priority =
-        CacheStorageSchedulerPriority::kNormal;
-    if (in_related_fetch_event)
-      priority = CacheStorageSchedulerPriority::kHigh;
+    GetOrCreateCacheStorage(base::BindOnce(
+        [](blink::mojom::FetchAPIRequestPtr request,
+           blink::mojom::MultiCacheQueryOptionsPtr match_options,
+           bool in_related_fetch_event, int64_t trace_id,
+           content::CacheStorageCache::ResponseCallback cb,
+           content::CacheStorage* cache_storage) {
+          if (!cache_storage) {
+            std::move(cb).Run(CacheStorageError::kErrorNotFound, nullptr);
+            return;
+          }
 
-    if (!match_options->cache_name) {
-      cache_storage->MatchAllCaches(std::move(request),
+          CacheStorageSchedulerPriority priority =
+              CacheStorageSchedulerPriority::kNormal;
+          if (in_related_fetch_event)
+            priority = CacheStorageSchedulerPriority::kHigh;
+
+          if (!match_options->cache_name) {
+            cache_storage->MatchAllCaches(
+                std::move(request), std::move(match_options->query_options),
+                priority, trace_id, std::move(cb));
+            return;
+          }
+          std::string cache_name =
+              base::UTF16ToUTF8(*match_options->cache_name);
+          cache_storage->MatchCache(std::move(cache_name), std::move(request),
                                     std::move(match_options->query_options),
                                     priority, trace_id, std::move(cb));
-      return;
-    }
-    std::string cache_name = base::UTF16ToUTF8(*match_options->cache_name);
-    cache_storage->MatchCache(std::move(cache_name), std::move(request),
-                              std::move(match_options->query_options), priority,
-                              trace_id, std::move(cb));
+        },
+        std::move(request), std::move(match_options), in_related_fetch_event,
+        trace_id, std::move(cb)));
   }
 
-  void Open(const base::string16& cache_name,
+  void Open(const std::u16string& cache_name,
             int64_t trace_id,
             blink::mojom::CacheStorage::OpenCallback callback) override {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -747,7 +949,6 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
                            TRACE_ID_GLOBAL(trace_id),
                            TRACE_EVENT_FLAG_FLOW_IN | TRACE_EVENT_FLAG_FLOW_OUT,
                            "cache_name", utf8_cache_name);
-    content::CacheStorage* cache_storage = GetOrCreateCacheStorage();
     auto cb = base::BindOnce(
         [](base::WeakPtr<CacheStorageImpl> self, base::TimeTicks start_time,
            int64_t trace_id, blink::mojom::CacheStorage::OpenCallback callback,
@@ -770,6 +971,7 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
             std::move(callback).Run(blink::mojom::OpenResult::NewStatus(error));
             return;
           }
+          DCHECK(self->bucket_.has_value());
 
           mojo::PendingAssociatedRemote<blink::mojom::CacheStorageCache>
               pending_remote;
@@ -780,9 +982,10 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
                 coep_reporter.InitWithNewPipeAndPassReceiver());
           }
           auto cache_impl = std::make_unique<CacheImpl>(
-              std::move(cache_handle), self->origin_,
-              self->cross_origin_embedder_policy_, std::move(coep_reporter));
-          self->owner_->AddCacheReceiver(
+              self->host_, std::move(cache_handle), self->bucket_->storage_key,
+              self->cross_origin_embedder_policy_, std::move(coep_reporter),
+              self->owner_);
+          self->host_->AddCacheReceiver(
               std::move(cache_impl),
               pending_remote.InitWithNewEndpointAndPassReceiver());
 
@@ -792,64 +995,142 @@ class CacheStorageDispatcherHost::CacheStorageImpl final
         weak_factory_.GetWeakPtr(), base::TimeTicks::Now(), trace_id,
         std::move(callback));
 
-    if (!cache_storage) {
-      std::move(cb).Run(CacheStorageCacheHandle(),
-                        MakeErrorStorage(ErrorStorageType::kStorageHandleNull));
+    // Return error if failed to retrieve bucket from QuotaManager.
+    if (!bucket_.has_value()) {
+      std::move(cb).Run(
+          CacheStorageCacheHandle(),
+          MakeErrorStorage(ErrorStorageType::kDefaultBucketError));
       return;
     }
 
-    cache_storage->OpenCache(utf8_cache_name, trace_id, std::move(cb));
+    GetOrCreateCacheStorage(base::BindOnce(
+        [](std::string utf8_cache_name, int64_t trace_id,
+           content::CacheStorage::CacheAndErrorCallback cb,
+           content::CacheStorage* cache_storage) {
+          if (!cache_storage) {
+            std::move(cb).Run(
+                CacheStorageCacheHandle(),
+                MakeErrorStorage(ErrorStorageType::kStorageHandleNull));
+            return;
+          }
+          cache_storage->OpenCache(utf8_cache_name, trace_id, std::move(cb));
+        },
+        std::move(utf8_cache_name), trace_id, std::move(cb)));
   }
 
  private:
+  void UpdateOrCreateBucketCallback(
+      base::OnceCallback<void(content::CacheStorage*)> callback,
+      storage::QuotaErrorOr<storage::BucketInfo> result) {
+    if (result.ok()) {
+      bucket_ = result->ToBucketLocator();
+    } else {
+      bucket_ = absl::nullopt;
+      std::move(callback).Run(nullptr);
+      return;
+    }
+    cache_storage_handle_ = host_->OpenCacheStorage(bucket_.value(), owner_);
+    std::move(callback).Run(cache_storage_handle_.value());
+  }
   // Helper method that returns the current CacheStorageHandle value.  If the
   // handle is closed, then it attempts to open a new CacheStorageHandle
   // automatically.  This automatic open is necessary to re-attach to the
   // backend after the browser storage has been wiped.
-  content::CacheStorage* GetOrCreateCacheStorage() {
+  void GetOrCreateCacheStorage(
+      base::OnceCallback<void(content::CacheStorage*)> callback) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-    DCHECK(owner_);
-    if (!cache_storage_handle_.value())
-      cache_storage_handle_ = owner_->OpenCacheStorage(origin_);
-    return cache_storage_handle_.value();
+    DCHECK(host_);
+    if (!bucket_) {
+      std::move(callback).Run(nullptr);
+      return;
+    }
+
+    // If the stored bucket locator is out-of-date, request a new one
+    // asynchronously. The `CacheStorageManager` stores all Cache Storage
+    // instances in a map keyed on the bucket locator and owner, but issues can
+    // arise if the map gets populated with two Cache Storage instances
+    // corresponding to the same storage key and owner (specifically for
+    // first-party contexts). This scenario could occur if we don't invalidate
+    // old bucket locators here. If a `CacheStorageImpl` instance created before
+    // bucket deletion uses a bucket locator with the old bucket ID and a
+    // `CacheStorageImpl` instance created after bucket deletion uses a bucket
+    // locator with a new bucket ID, both could eventually call into
+    // `CacheStorageManager::OpenCacheStorage()`, causing two entries in the
+    // map to be created for the same storage key. For more details, see the
+    // comments above the `CacheStorageManager::CacheStoragePathIsUnique()`
+    // check in `CacheStorageManager::OpenCacheStorage()`.
+    if (host_->WasNotifiedOfBucketDataDeletion(*bucket_)) {
+      if (bucket_->is_default) {
+        host_->UpdateOrCreateDefaultBucket(
+            bucket_->storage_key,
+            base::BindOnce(&CacheStorageImpl::UpdateOrCreateBucketCallback,
+                           weak_factory_.GetWeakPtr(), std::move(callback)));
+      } else {
+        // Don't recreate non-default buckets. If the bucket and its cache data
+        // has been deleted, this cache essentially stops working.
+        std::move(callback).Run(nullptr);
+      }
+      return;
+    }
+
+    if (!cache_storage_handle_.value()) {
+      cache_storage_handle_ = host_->OpenCacheStorage(bucket_.value(), owner_);
+    }
+    std::move(callback).Run(cache_storage_handle_.value());
   }
 
   // Owns this.
-  CacheStorageDispatcherHost* const owner_;
+  const raw_ptr<CacheStorageDispatcherHost> host_;
 
-  const url::Origin origin_;
+  // absl::nullopt when bucket retrieval has failed.
+  absl::optional<storage::BucketLocator> bucket_;
   const CrossOriginEmbedderPolicy cross_origin_embedder_policy_;
   mojo::Remote<network::mojom::CrossOriginEmbedderPolicyReporter>
       coep_reporter_;
+  const storage::mojom::CacheStorageOwner owner_;
   CacheStorageHandle cache_storage_handle_;
 
   SEQUENCE_CHECKER(sequence_checker_);
   base::WeakPtrFactory<CacheStorageImpl> weak_factory_{this};
-  DISALLOW_COPY_AND_ASSIGN(CacheStorageImpl);
 };
 
-CacheStorageDispatcherHost::CacheStorageDispatcherHost() = default;
-
-CacheStorageDispatcherHost::~CacheStorageDispatcherHost() {
+CacheStorageDispatcherHost::CacheStorageDispatcherHost(
+    CacheStorageContextImpl* context,
+    scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy)
+    : context_(context), quota_manager_proxy_(std::move(quota_manager_proxy)) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
-void CacheStorageDispatcherHost::Init(CacheStorageContextImpl* context) {
+CacheStorageDispatcherHost::~CacheStorageDispatcherHost() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  context_ = context;
 }
 
 void CacheStorageDispatcherHost::AddReceiver(
     const CrossOriginEmbedderPolicy& cross_origin_embedder_policy,
     mojo::PendingRemote<network::mojom::CrossOriginEmbedderPolicyReporter>
         coep_reporter,
-    const url::Origin& origin,
+    const blink::StorageKey& storage_key,
+    const absl::optional<storage::BucketLocator>& bucket,
+    storage::mojom::CacheStorageOwner owner,
     mojo::PendingReceiver<blink::mojom::CacheStorage> receiver) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (bucket.has_value()) {
+    DCHECK_EQ(bucket->storage_key, storage_key);
+    if (WasNotifiedOfBucketDataDeletion(bucket.value())) {
+      // The list of deleted buckets gets added to each time
+      // `CacheStorageManager::DeleteBucketData()` is called, but it's not
+      // guaranteed that this means the bucket was actually deleted. To avoid
+      // a bucket being mistakenly considered deleted forever, treat a
+      // call to `CacheStorageDispatcherHost::AddReceiver` with a given bucket
+      // locator to be a signal that the corresponding bucket has not actually
+      // been deleted.
+      deleted_buckets_.erase(bucket.value());
+    }
+  }
   bool incognito = context_ ? context_->is_incognito() : false;
-  auto impl = std::make_unique<CacheStorageImpl>(this, origin, incognito,
-                                                 cross_origin_embedder_policy,
-                                                 std::move(coep_reporter));
+  auto impl = std::make_unique<CacheStorageImpl>(
+      this, bucket, incognito, cross_origin_embedder_policy,
+      std::move(coep_reporter), owner);
   receivers_.Add(std::move(impl), std::move(receiver));
 }
 
@@ -861,16 +1142,40 @@ void CacheStorageDispatcherHost::AddCacheReceiver(
 }
 
 CacheStorageHandle CacheStorageDispatcherHost::OpenCacheStorage(
-    const url::Origin& origin) {
+    const storage::BucketLocator& bucket_locator,
+    storage::mojom::CacheStorageOwner owner) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  if (!context_ || !OriginCanAccessCacheStorage(origin))
+  const blink::StorageKey storage_key = bucket_locator.storage_key;
+  if (!context_ || !OriginCanAccessCacheStorage(storage_key.origin()))
     return CacheStorageHandle();
 
-  scoped_refptr<CacheStorageManager> manager = context_->CacheManager();
+  scoped_refptr<CacheStorageManager> manager = context_->cache_manager();
   if (!manager)
     return CacheStorageHandle();
 
-  return manager->OpenCacheStorage(origin, CacheStorageOwner::kCacheAPI);
+  return manager->OpenCacheStorage(bucket_locator, owner);
+}
+
+void CacheStorageDispatcherHost::UpdateOrCreateDefaultBucket(
+    const blink::StorageKey& storage_key,
+    base::OnceCallback<void(storage::QuotaErrorOr<storage::BucketInfo>)>
+        callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  quota_manager_proxy_->UpdateOrCreateBucket(
+      storage::BucketInitParams::ForDefaultBucket(storage_key),
+      base::SequencedTaskRunner::GetCurrentDefault(), std::move(callback));
+}
+
+bool CacheStorageDispatcherHost::WasNotifiedOfBucketDataDeletion(
+    const storage::BucketLocator& bucket_locator) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return deleted_buckets_.find(bucket_locator) != deleted_buckets_.end();
+}
+
+void CacheStorageDispatcherHost::NotifyBucketDataDeleted(
+    const storage::BucketLocator& bucket_locator) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  deleted_buckets_.insert(bucket_locator);
 }
 
 }  // namespace content

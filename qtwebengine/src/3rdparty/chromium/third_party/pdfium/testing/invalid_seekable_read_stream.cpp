@@ -1,4 +1,4 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,8 @@ InvalidSeekableReadStream::InvalidSeekableReadStream(FX_FILESIZE data_size)
 
 InvalidSeekableReadStream::~InvalidSeekableReadStream() = default;
 
-bool InvalidSeekableReadStream::ReadBlockAtOffset(void* buffer,
-                                                  FX_FILESIZE offset,
-                                                  size_t size) {
+bool InvalidSeekableReadStream::ReadBlockAtOffset(pdfium::span<uint8_t> buffer,
+                                                  FX_FILESIZE offset) {
   return false;
 }
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qxcbatom.h"
 
 #include <QtCore/qglobal.h>
@@ -89,6 +53,8 @@ static const char *xcb_atomnames = {
     "_QT_INPUT_ENCODING\0"
 
     "_QT_CLOSE_CONNECTION\0"
+
+    "_QT_GET_TIMESTAMP\0"
 
     "_MOTIF_WM_HINTS\0"
 
@@ -145,11 +111,13 @@ static const char *xcb_atomnames = {
     "_NET_WM_WINDOW_TYPE_NORMAL\0"
     "_KDE_NET_WM_WINDOW_TYPE_OVERRIDE\0"
 
+    "_KDE_NET_WM_DESKTOP_FILE\0"
     "_KDE_NET_WM_FRAME_STRUT\0"
     "_NET_FRAME_EXTENTS\0"
 
     "_NET_STARTUP_INFO\0"
     "_NET_STARTUP_INFO_BEGIN\0"
+    "_NET_STARTUP_ID\0"
 
     "_NET_SUPPORTING_WM_CHECK\0"
 
@@ -229,11 +197,13 @@ static const char *xcb_atomnames = {
     "_COMPIZ_DECOR_REQUEST\0"
     "_COMPIZ_DECOR_DELETE_PIXMAP\0"
     "_COMPIZ_TOOLKIT_ACTION\0"
+    "_GTK_APPLICATION_ID\0"
     "_GTK_LOAD_ICONTHEMES\0"
     "AT_SPI_BUS\0"
     "EDID\0"
     "EDID_DATA\0"
     "XFree86_DDC_EDID1_RAWDATA\0"
+    "_ICC_PROFILE\0"
     // \0\0 terminates loop.
 };
 
@@ -247,29 +217,25 @@ void QXcbAtom::initialize(xcb_connection_t *connection)
 }
 
 void QXcbAtom::initializeAllAtoms(xcb_connection_t *connection) {
-    const char *names[QXcbAtom::NAtoms];
-    const char *ptr = xcb_atomnames;
-
+    const char *name = xcb_atomnames;
+    size_t name_len;
     int i = 0;
-    while (*ptr) {
-        names[i++] = ptr;
-        while (*ptr)
-            ++ptr;
-        ++ptr;
+    xcb_intern_atom_cookie_t cookies[QXcbAtom::NAtoms];
+
+    while ((name_len = strlen(name)) != 0) {
+        cookies[i] = xcb_intern_atom(connection, false, name_len, name);
+        ++i;
+        name += name_len + 1; // jump over the \0
     }
 
     Q_ASSERT(i == QXcbAtom::NAtoms);
 
-    xcb_intern_atom_cookie_t cookies[QXcbAtom::NAtoms];
-
-    Q_ASSERT(i == QXcbAtom::NAtoms);
-    for (i = 0; i < QXcbAtom::NAtoms; ++i)
-        cookies[i] = xcb_intern_atom(connection, false, strlen(names[i]), names[i]);
-
     for (i = 0; i < QXcbAtom::NAtoms; ++i) {
         xcb_intern_atom_reply_t *reply = xcb_intern_atom_reply(connection, cookies[i], nullptr);
-        m_allAtoms[i] = reply->atom;
-        free(reply);
+        if (reply) {
+            m_allAtoms[i] = reply->atom;
+            free(reply);
+        }
     }
 }
 

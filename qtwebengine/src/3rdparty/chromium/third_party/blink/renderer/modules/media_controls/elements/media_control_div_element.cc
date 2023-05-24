@@ -1,12 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/media_controls/elements/media_control_div_element.h"
 
-#include "third_party/blink/public/platform/web_size.h"
 #include "third_party/blink/renderer/modules/media_controls/elements/media_control_elements_helper.h"
 #include "third_party/blink/renderer/modules/media_controls/media_controls_impl.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace blink {
 
@@ -27,8 +27,8 @@ bool MediaControlDivElement::IsMediaControlElement() const {
   return true;
 }
 
-WebSize MediaControlDivElement::GetSizeOrDefault() const {
-  return MediaControlElementsHelper::GetSizeOrDefault(*this, WebSize(0, 0));
+gfx::Size MediaControlDivElement::GetSizeOrDefault() const {
+  return MediaControlElementsHelper::GetSizeOrDefault(*this, gfx::Size());
 }
 
 bool MediaControlDivElement::IsDisabled() const {

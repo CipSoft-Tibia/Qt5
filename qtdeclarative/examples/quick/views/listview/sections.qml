@@ -1,58 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 // This example shows how a ListView can be separated into sections using
 // the ListView.section attached property.
 
-import QtQuick 2.0
-import "content"
+import QtQuick
+import QtQuick.Controls
 
 Rectangle {
     id: container
@@ -61,21 +14,67 @@ Rectangle {
 
     ListModel {
         id: animalsModel
-        ListElement { name: "Ant"; size: "Tiny" }
-        ListElement { name: "Flea"; size: "Tiny" }
-        ListElement { name: "Parrot"; size: "Small" }
-        ListElement { name: "Guinea pig"; size: "Small" }
-        ListElement { name: "Rat"; size: "Small" }
-        ListElement { name: "Butterfly"; size: "Small" }
-        ListElement { name: "Dog"; size: "Medium" }
-        ListElement { name: "Cat"; size: "Medium" }
-        ListElement { name: "Pony"; size: "Medium" }
-        ListElement { name: "Koala"; size: "Medium" }
-        ListElement { name: "Horse"; size: "Large" }
-        ListElement { name: "Tiger"; size: "Large" }
-        ListElement { name: "Giraffe"; size: "Large" }
-        ListElement { name: "Elephant"; size: "Huge" }
-        ListElement { name: "Whale"; size: "Huge" }
+
+        ListElement {
+            name: "Ant"
+            size: "Tiny"
+        }
+        ListElement {
+            name: "Flea"
+            size: "Tiny"
+        }
+        ListElement {
+            name: "Parrot"
+            size: "Small"
+        }
+        ListElement {
+            name: "Guinea pig"
+            size: "Small"
+        }
+        ListElement {
+            name: "Rat"
+            size: "Small"
+        }
+        ListElement {
+            name: "Butterfly"
+            size: "Small"
+        }
+        ListElement {
+            name: "Dog"
+            size: "Medium"
+        }
+        ListElement {
+            name: "Cat"
+            size: "Medium"
+        }
+        ListElement {
+            name: "Pony"
+            size: "Medium"
+        }
+        ListElement {
+            name: "Koala"
+            size: "Medium"
+        }
+        ListElement {
+            name: "Horse"
+            size: "Large"
+        }
+        ListElement {
+            name: "Tiger"
+            size: "Large"
+        }
+        ListElement {
+            name: "Giraffe"
+            size: "Large"
+        }
+        ListElement {
+            name: "Elephant"
+            size: "Huge"
+        }
+        ListElement {
+            name: "Whale"
+            size: "Huge"
+        }
     }
 
 //! [0]
@@ -83,7 +82,7 @@ Rectangle {
     Component {
         id: sectionHeading
         Rectangle {
-            width: container.width
+            width: ListView.view.width
             height: childrenRect.height
             color: "lightsteelblue"
 
@@ -105,6 +104,7 @@ Rectangle {
         model: animalsModel
         delegate: Text {
             required property string name
+
             text: name
             font.pixelSize: 18
         }
@@ -120,19 +120,23 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 1
         spacing: 1
-        ToggleButton {
-            label: "CurrentLabelAtStart"
-            onToggled: {
-                if (active)
+
+        CheckBox {
+            id: labelAtStartCheckBox
+            text: qsTr("CurrentLabelAtStart")
+            onClicked: {
+                if (checked)
                     view.section.labelPositioning |= ViewSection.CurrentLabelAtStart
                 else
                     view.section.labelPositioning &= ~ViewSection.CurrentLabelAtStart
             }
         }
-        ToggleButton {
-            label: "NextLabelAtEnd"
-            onToggled: {
-                if (active)
+
+        CheckBox {
+            id: labelAtEndCheckBox
+            text: qsTr("NextLabelAtEnd")
+            onClicked: {
+                if (checked)
                     view.section.labelPositioning |= ViewSection.NextLabelAtEnd
                 else
                     view.section.labelPositioning &= ~ViewSection.NextLabelAtEnd

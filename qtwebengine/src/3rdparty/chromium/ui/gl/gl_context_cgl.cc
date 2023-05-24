@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,10 @@
 #include <sstream>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
-#include "base/single_thread_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "ui/gl/dual_gpu_state_mac.h"
 #include "ui/gl/gl_bindings.h"
@@ -24,7 +23,6 @@
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/gpu_switching_manager.h"
 #include "ui/gl/scoped_cgl.h"
-#include "ui/gl/yuv_to_rgb_converter.h"
 
 namespace gl {
 
@@ -34,9 +32,9 @@ bool g_support_renderer_switching;
 
 }  // namespace
 
-static CGLPixelFormatObj GetPixelFormat(const int core_profile = 0) {
+static CGLPixelFormatObj GetPixelFormat() {
   static CGLPixelFormatObj format;
-  if (format && core_profile == 0)
+  if (format)
     return format;
   std::vector<CGLPixelFormatAttribute> attribs;
   // If the system supports dual gpus then allow offline renderers for every
@@ -45,17 +43,9 @@ static CGLPixelFormatObj GetPixelFormat(const int core_profile = 0) {
     attribs.push_back(kCGLPFAAllowOfflineRenderers);
     g_support_renderer_switching = true;
   }
-  if (GetGLImplementation() == kGLImplementationAppleGL) {
-    attribs.push_back(kCGLPFARendererID);
-    attribs.push_back((CGLPixelFormatAttribute) kCGLRendererGenericFloatID);
-    g_support_renderer_switching = false;
-  }
   if (GetGLImplementation() == kGLImplementationDesktopGLCoreProfile) {
-    // These constants don't exist in the 10.6 SDK against which
-    // Chromium currently compiles.
-    const int kOpenGLProfile = 99;
-    attribs.push_back(static_cast<CGLPixelFormatAttribute>(kOpenGLProfile));
-    attribs.push_back(static_cast<CGLPixelFormatAttribute>(core_profile));
+    attribs.push_back(kCGLPFAOpenGLProfile);
+    attribs.push_back((CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core);
   }
 
   attribs.push_back((CGLPixelFormatAttribute) 0);
@@ -75,13 +65,13 @@ static CGLPixelFormatObj GetPixelFormat(const int core_profile = 0) {
   return format;
 }
 
-GLContextCGL::GLContextCGL(GLShareGroup* share_group, int core_profile_number)
-    : GLContextReal(share_group)
-    , core_profile_number_(core_profile_number) {}
+GLContextCGL::GLContextCGL(GLShareGroup* share_group)
+    : GLContextReal(share_group) {}
 
 bool GLContextCGL::Initialize(GLSurface* compatible_surface,
                               const GLContextAttribs& attribs) {
   DCHECK(compatible_surface);
+  DCHECK(share_group());
 
   // webgl_compatibility_context and disabling bind_generates_resource are not
   // supported.
@@ -89,12 +79,9 @@ bool GLContextCGL::Initialize(GLSurface* compatible_surface,
          attribs.bind_generates_resource);
 
   GpuPreference gpu_preference =
-      GLContext::AdjustGpuPreference(attribs.gpu_preference);
+      GLSurface::AdjustGpuPreference(attribs.gpu_preference);
 
-  GLContextCGL* share_context = share_group() ?
-      static_cast<GLContextCGL*>(share_group()->GetContext()) : nullptr;
-
-  CGLPixelFormatObj format = GetPixelFormat(core_profile_number_);
+  CGLPixelFormatObj format = GetPixelFormat();
   if (!format)
     return false;
 
@@ -110,9 +97,7 @@ bool GLContextCGL::Initialize(GLSurface* compatible_surface,
   }
 
   CGLError res = CGLCreateContext(
-      format,
-      share_context ?
-          static_cast<CGLContextObj>(share_context->GetHandle()) : nullptr,
+      format, static_cast<CGLContextObj>(share_group()->GetHandle()),
       reinterpret_cast<CGLContextObj*>(&context_));
   if (res != kCGLNoError) {
     LOG(ERROR) << "Error creating context.";
@@ -130,7 +115,7 @@ bool GLContextCGL::Initialize(GLSurface* compatible_surface,
 }
 
 void GLContextCGL::Destroy() {
-  if (!yuv_to_rgb_converters_.empty() || HasBackpressureFences()) {
+  if (HasBackpressureFences()) {
     // If this context is not current, bind this context's API so that the YUV
     // converter and GLFences can safely destruct
     GLContext* current_context = GetRealCurrent();
@@ -140,7 +125,6 @@ void GLContextCGL::Destroy() {
 
     ScopedCGLSetCurrentContext scoped_set_current(
         static_cast<CGLContextObj>(context_));
-    yuv_to_rgb_converters_.clear();
     DestroyBackpressureFences();
 
     // Rebind the current context's API if needed.
@@ -198,16 +182,6 @@ bool GLContextCGL::ForceGpuSwitchIfNeeded() {
     }
   }
   return true;
-}
-
-YUVToRGBConverter* GLContextCGL::GetYUVToRGBConverter(
-    const gfx::ColorSpace& color_space) {
-  std::unique_ptr<YUVToRGBConverter>& yuv_to_rgb_converter =
-      yuv_to_rgb_converters_[color_space];
-  if (!yuv_to_rgb_converter)
-    yuv_to_rgb_converter =
-        std::make_unique<YUVToRGBConverter>(*GetVersionInfo(), color_space);
-  return yuv_to_rgb_converter.get();
 }
 
 bool GLContextCGL::MakeCurrentImpl(GLSurface* surface) {

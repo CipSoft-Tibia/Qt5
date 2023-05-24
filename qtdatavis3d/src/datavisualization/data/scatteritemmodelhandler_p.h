@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -43,7 +17,7 @@
 #include "abstractitemmodelhandler_p.h"
 #include "qitemmodelscatterdataproxy_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class ScatterItemModelHandler : public AbstractItemModelHandler
 {
@@ -53,13 +27,13 @@ public:
     virtual ~ScatterItemModelHandler();
 
 public Q_SLOTS:
-    virtual void handleDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
-                                   const QVector<int> &roles = QVector<int> ());
-    virtual void handleRowsInserted(const QModelIndex &parent, int start, int end);
-    virtual void handleRowsRemoved(const QModelIndex &parent, int start, int end);
+    void handleDataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight,
+                           const QList<int> &roles = QList<int>()) override;
+    void handleRowsInserted(const QModelIndex &parent, int start, int end) override;
+    void handleRowsRemoved(const QModelIndex &parent, int start, int end) override;
 
 protected:
-    void virtual resolveModel();
+    void resolveModel() override;
 
 private:
     void modelPosToScatterItem(int modelRow, int modelColumn, QScatterDataItem &item);
@@ -70,10 +44,10 @@ private:
     int m_yPosRole;
     int m_zPosRole;
     int m_rotationRole;
-    QRegExp m_xPosPattern;
-    QRegExp m_yPosPattern;
-    QRegExp m_zPosPattern;
-    QRegExp m_rotationPattern;
+    QRegularExpression m_xPosPattern;
+    QRegularExpression m_yPosPattern;
+    QRegularExpression m_zPosPattern;
+    QRegularExpression m_rotationPattern;
     QString m_xPosReplace;
     QString m_yPosReplace;
     QString m_zPosReplace;
@@ -84,6 +58,6 @@ private:
     bool m_haveRotationPattern;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

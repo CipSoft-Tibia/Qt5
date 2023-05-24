@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,18 @@
 #include <memory>
 
 #include "base/gtest_prod_util.h"
-#include "base/scoped_observer.h"
+#include "base/scoped_observation.h"
 #include "build/build_config.h"
 #include "components/metrics/metrics_provider.h"
 #include "components/metrics/stability_metrics_helper.h"
 #include "content/public/browser/browser_child_process_observer.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
+#include "content/public/browser/render_process_host_creation_observer.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "components/crash/content/browser/crash_metrics_reporter_android.h"
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
 class PrefService;
 
@@ -31,9 +32,10 @@ class ExtensionsHelper;
 class ContentStabilityMetricsProvider
     : public MetricsProvider,
       public content::BrowserChildProcessObserver,
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
       public crash_reporter::CrashMetricsReporter::Observer,
 #endif
+      public content::RenderProcessHostCreationObserver,
       public content::NotificationObserver {
  public:
   // |extensions_helper| is used to determine if a process corresponds to an
@@ -48,12 +50,17 @@ class ContentStabilityMetricsProvider
       const ContentStabilityMetricsProvider&) = delete;
   ~ContentStabilityMetricsProvider() override;
 
-  // MetricsDataProvider:
+  // MetricsProvider:
   void OnRecordingEnabled() override;
   void OnRecordingDisabled() override;
+#if BUILDFLAG(IS_ANDROID)
+  // A couple Local-State-pref-based stability counts are retained for Android
+  // WebView. Other platforms, including Android Chrome and WebLayer, should use
+  // Stability.Counts2 as the source of truth for these counts.
   void ProvideStabilityMetrics(
       SystemProfileProto* system_profile_proto) override;
   void ClearSavedStabilityMetrics() override;
+#endif  // BUILDFLAG(IS_ANDROID)
 
  private:
   FRIEND_TEST_ALL_PREFIXES(ContentStabilityMetricsProviderTest,
@@ -64,6 +71,9 @@ class ContentStabilityMetricsProvider
                            NotificationObserver);
   FRIEND_TEST_ALL_PREFIXES(ContentStabilityMetricsProviderTest,
                            ExtensionsNotificationObserver);
+
+  // content::RenderProcessHostCreationObserver:
+  void OnRenderProcessHostCreated(content::RenderProcessHost* host) override;
 
   // content::NotificationObserver:
   void Observe(int type,
@@ -76,18 +86,21 @@ class ContentStabilityMetricsProvider
       const content::ChildProcessTerminationInfo& info) override;
   void BrowserChildProcessLaunchedAndConnected(
       const content::ChildProcessData& data) override;
+  void BrowserChildProcessLaunchFailed(
+      const content::ChildProcessData& data,
+      const content::ChildProcessTerminationInfo& info) override;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // crash_reporter::CrashMetricsReporter::Observer:
   void OnCrashDumpProcessed(
       int rph_id,
       const crash_reporter::CrashMetricsReporter::ReportedCrashTypeSet&
           reported_counts) override;
 
-  ScopedObserver<crash_reporter::CrashMetricsReporter,
-                 crash_reporter::CrashMetricsReporter::Observer>
-      scoped_observer_;
-#endif  // defined(OS_ANDROID)
+  base::ScopedObservation<crash_reporter::CrashMetricsReporter,
+                          crash_reporter::CrashMetricsReporter::Observer>
+      scoped_observation_{this};
+#endif  // BUILDFLAG(IS_ANDROID)
 
   StabilityMetricsHelper helper_;
 

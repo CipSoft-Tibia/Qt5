@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,9 @@
 #include <string>
 
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "content/public/browser/browser_thread.h"
 
@@ -20,6 +22,7 @@ class BrowserContext;
 
 namespace extensions {
 
+class ExtensionRegistry;
 class RulesRegistry;
 
 // RulesCacheDelegate implements the part of the RulesRegistry which works on
@@ -65,7 +68,7 @@ class RulesCacheDelegate {
   // Initialize the storage functionality.
   void Init(RulesRegistry* registry);
 
-  void UpdateRules(const std::string& extension_id, base::Value value);
+  void UpdateRules(const std::string& extension_id, base::Value::List value);
 
   // Indicates whether or not this registry has any registered rules cached.
   bool HasRules() const;
@@ -101,7 +104,7 @@ class RulesCacheDelegate {
   // Read/write a list of rules serialized to Values.
   void ReadFromStorage(const std::string& extension_id);
   void ReadFromStorageCallback(const std::string& extension_id,
-                               std::unique_ptr<base::Value> value);
+                               absl::optional<base::Value> value);
 
   // Check the preferences whether the extension with |extension_id| has some
   // rules stored on disk. If this information is not in the preferences, true
@@ -111,7 +114,7 @@ class RulesCacheDelegate {
   void SetDeclarativeRulesStored(const std::string& extension_id,
                                  bool rules_stored);
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
 
   // Indicates whether the ruleset is non-empty. Valid for both |kEphemeral| and
   // |kPersistent| cache types.
@@ -142,6 +145,8 @@ class RulesCacheDelegate {
   bool notified_registry_;
 
   base::ObserverList<Observer>::Unchecked observers_;
+
+  raw_ptr<const ExtensionRegistry> extension_registry_ = nullptr;
 
   // Use this factory to generate weak pointers bound to the UI thread.
   base::WeakPtrFactory<RulesCacheDelegate> weak_ptr_factory_{this};

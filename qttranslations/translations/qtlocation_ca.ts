@@ -1530,7 +1530,7 @@ Visiteu https://www.mapbox.com</translation>
     </message>
     <message>
         <source>Amenity</source>
-        <translation>Amenitat</translation>
+        <translation>Servei</translation>
     </message>
     <message>
         <source>Building</source>

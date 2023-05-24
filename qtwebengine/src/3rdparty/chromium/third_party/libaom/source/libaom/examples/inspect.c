@@ -267,7 +267,7 @@ struct parm_offset {
   char offset;
 };
 struct parm_offset parm_offsets[] = {
-  { "blockSize", offsetof(insp_mi_data, sb_type) },
+  { "blockSize", offsetof(insp_mi_data, bsize) },
   { "transformSize", offsetof(insp_mi_data, tx_size) },
   { "transformType", offsetof(insp_mi_data, tx_type) },
   { "dualFilterType", offsetof(insp_mi_data, dual_filter_type) },
@@ -623,11 +623,15 @@ void inspect(void *pbi, void *data) {
   // We allocate enough space and hope we don't write out of bounds. Totally
   // unsafe but this speeds things up, especially when compiled to Javascript.
   char *buffer = aom_malloc(MAX_BUFFER);
+  if (!buffer) {
+    fprintf(stderr, "Error allocating inspect info buffer\n");
+    abort();
+  }
   char *buf = buffer;
   buf += put_str(buf, "{\n");
   if (layers & BLOCK_SIZE_LAYER) {
     buf += put_block_info(buf, block_size_map, "blockSize",
-                          offsetof(insp_mi_data, sb_type), 0);
+                          offsetof(insp_mi_data, bsize), 0);
   }
   if (layers & TRANSFORM_SIZE_LAYER) {
     buf += put_block_info(buf, tx_size_map, "transformSize",

@@ -9,6 +9,7 @@
 #include <chrono>
 #include <functional>
 #include <initializer_list>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,14 +58,13 @@ class DomainName {
   template <typename IteratorType>
   DomainName(IteratorType first, IteratorType last) {
     ErrorOr<DomainName> domain = TryCreate(first, last);
-    OSP_DCHECK(domain.is_value());
     *this = std::move(domain.value());
   }
   explicit DomainName(std::vector<std::string> labels);
   explicit DomainName(const std::vector<absl::string_view>& labels);
   explicit DomainName(std::initializer_list<absl::string_view> labels);
   DomainName(const DomainName& other);
-  DomainName(DomainName&& other);
+  DomainName(DomainName&& other) noexcept;
 
   DomainName& operator=(const DomainName& rhs);
   DomainName& operator=(DomainName&& rhs);
@@ -74,8 +74,6 @@ class DomainName {
   bool operator>=(const DomainName& rhs) const;
   bool operator==(const DomainName& rhs) const;
   bool operator!=(const DomainName& rhs) const;
-
-  std::string ToString() const;
 
   // Returns the maximum space that the domain name could take up in its
   // on-the-wire format. This is an upper bound based on the length of the
@@ -101,6 +99,9 @@ class DomainName {
   // max_wire_size_ starts at 1 for the terminating character length.
   size_t max_wire_size_ = 1;
   std::vector<std::string> labels_;
+
+  friend std::ostream& operator<<(std::ostream& os,
+                                  const DomainName& domain_name);
 };
 
 // Parsed representation of the extra data in a record. Does not include
@@ -114,7 +115,7 @@ class RawRecordRdata {
   explicit RawRecordRdata(std::vector<uint8_t> rdata);
   RawRecordRdata(const uint8_t* begin, size_t size);
   RawRecordRdata(const RawRecordRdata& other);
-  RawRecordRdata(RawRecordRdata&& other);
+  RawRecordRdata(RawRecordRdata&& other) noexcept;
 
   RawRecordRdata& operator=(const RawRecordRdata& rhs);
   RawRecordRdata& operator=(RawRecordRdata&& rhs);
@@ -147,7 +148,7 @@ class SrvRecordRdata {
                  uint16_t port,
                  DomainName target);
   SrvRecordRdata(const SrvRecordRdata& other);
-  SrvRecordRdata(SrvRecordRdata&& other);
+  SrvRecordRdata(SrvRecordRdata&& other) noexcept;
 
   SrvRecordRdata& operator=(const SrvRecordRdata& rhs);
   SrvRecordRdata& operator=(SrvRecordRdata&& rhs);
@@ -181,7 +182,7 @@ class ARecordRdata {
   explicit ARecordRdata(IPAddress ipv4_address,
                         NetworkInterfaceIndex interface_index = 0);
   ARecordRdata(const ARecordRdata& other);
-  ARecordRdata(ARecordRdata&& other);
+  ARecordRdata(ARecordRdata&& other) noexcept;
 
   ARecordRdata& operator=(const ARecordRdata& rhs);
   ARecordRdata& operator=(ARecordRdata&& rhs);
@@ -211,7 +212,7 @@ class AAAARecordRdata {
   explicit AAAARecordRdata(IPAddress ipv6_address,
                            NetworkInterfaceIndex interface_index = 0);
   AAAARecordRdata(const AAAARecordRdata& other);
-  AAAARecordRdata(AAAARecordRdata&& other);
+  AAAARecordRdata(AAAARecordRdata&& other) noexcept;
 
   AAAARecordRdata& operator=(const AAAARecordRdata& rhs);
   AAAARecordRdata& operator=(AAAARecordRdata&& rhs);
@@ -241,7 +242,7 @@ class PtrRecordRdata {
   PtrRecordRdata();
   explicit PtrRecordRdata(DomainName ptr_domain);
   PtrRecordRdata(const PtrRecordRdata& other);
-  PtrRecordRdata(PtrRecordRdata&& other);
+  PtrRecordRdata(PtrRecordRdata&& other) noexcept;
 
   PtrRecordRdata& operator=(const PtrRecordRdata& rhs);
   PtrRecordRdata& operator=(PtrRecordRdata&& rhs);
@@ -275,7 +276,7 @@ class TxtRecordRdata {
   TxtRecordRdata();
   explicit TxtRecordRdata(std::vector<Entry> texts);
   TxtRecordRdata(const TxtRecordRdata& other);
-  TxtRecordRdata(TxtRecordRdata&& other);
+  TxtRecordRdata(TxtRecordRdata&& other) noexcept;
 
   TxtRecordRdata& operator=(const TxtRecordRdata& rhs);
   TxtRecordRdata& operator=(TxtRecordRdata&& rhs);
@@ -336,7 +337,7 @@ class NsecRecordRdata {
                         std::vector<DnsType>{types...}) {}
   NsecRecordRdata(DomainName next_domain_name, std::vector<DnsType> types);
   NsecRecordRdata(const NsecRecordRdata& other);
-  NsecRecordRdata(NsecRecordRdata&& other);
+  NsecRecordRdata(NsecRecordRdata&& other) noexcept;
 
   NsecRecordRdata& operator=(const NsecRecordRdata& rhs);
   NsecRecordRdata& operator=(NsecRecordRdata&& rhs);
@@ -400,7 +401,7 @@ class OptRecordRdata {
       : OptRecordRdata(std::vector<Option>{std::move(types)...}) {}
   explicit OptRecordRdata(std::vector<Option> options);
   OptRecordRdata(const OptRecordRdata& other);
-  OptRecordRdata(OptRecordRdata&& other);
+  OptRecordRdata(OptRecordRdata&& other) noexcept;
 
   OptRecordRdata& operator=(const OptRecordRdata& rhs);
   OptRecordRdata& operator=(OptRecordRdata&& rhs);
@@ -465,7 +466,7 @@ class MdnsRecord {
              std::chrono::seconds ttl,
              Rdata rdata);
   MdnsRecord(const MdnsRecord& other);
-  MdnsRecord(MdnsRecord&& other);
+  MdnsRecord(MdnsRecord&& other) noexcept;
 
   MdnsRecord& operator=(const MdnsRecord& rhs);
   MdnsRecord& operator=(MdnsRecord&& rhs);
@@ -476,6 +477,9 @@ class MdnsRecord {
   bool operator<=(const MdnsRecord& other) const;
   bool operator>=(const MdnsRecord& other) const;
 
+  // While not being "equivalent", a record could be said to be an update of
+  // a different record if it is the same, excepting TTL.
+  bool IsReannouncementOf(const MdnsRecord& other) const;
   size_t MaxWireSize() const;
   const DomainName& name() const { return name_; }
   DnsType dns_type() const { return dns_type_; }
@@ -491,8 +495,6 @@ class MdnsRecord {
                       record.ttl_.count(), record.rdata_);
   }
 
-  std::string ToString() const;
-
  private:
   static bool IsValidConfig(const DomainName& name,
                             DnsType dns_type,
@@ -507,6 +509,10 @@ class MdnsRecord {
   // Default-constructed Rdata contains default-constructed RawRecordRdata
   // as it is the first alternative type and it is default-constructible.
   Rdata rdata_;
+
+#ifdef _DEBUG
+  friend std::ostream& operator<<(std::ostream&, const MdnsRecord& mdns_record);
+#endif
 };
 
 // Creates an A or AAAA record as appropriate for the provided parameters.

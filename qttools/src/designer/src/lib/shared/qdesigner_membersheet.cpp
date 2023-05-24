@@ -1,62 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_membersheet_p.h"
+#include "qdesigner_propertysheet_p.h"
 
 #include <QtDesigner/abstractformeditor.h>
 #include <abstractintrospection_p.h>
 
 #include <QtWidgets/qwidget.h>
+
 QT_BEGIN_NAMESPACE
 
-static QList<QByteArray> stringListToByteArray(const QStringList &l)
+using namespace Qt::StringLiterals;
+
+static QByteArrayList stringListToByteArray(const QStringList &l)
 {
-    if (l.isEmpty())
-        return QList<QByteArray>();
-    QList<QByteArray> rc;
-    const QStringList::const_iterator cend = l.constEnd();
-    for (QStringList::const_iterator it = l.constBegin(); it != cend; ++it)
-        rc += it->toUtf8();
+    QByteArrayList rc;
+    for (const auto &s : l)
+        rc += s.toUtf8();
     return rc;
-}
-
-// Find the form editor in the hierarchy.
-// We know that the parent of the sheet is the extension manager
-// whose parent is the core.
-
-static QDesignerFormEditorInterface *formEditorForObject(QObject *o) {
-    do {
-        if (QDesignerFormEditorInterface* core = qobject_cast<QDesignerFormEditorInterface*>(o))
-            return core;
-        o = o->parent();
-    } while(o);
-    Q_ASSERT(o);
-    return nullptr;
 }
 
 // ------------ QDesignerMemberSheetPrivate
@@ -73,25 +35,22 @@ public:
         bool visible{true};
     };
 
-    using InfoHash = QHash<int, Info>;
-
     Info &ensureInfo(int index);
 
-    InfoHash m_info;
+    QHash<int, Info> m_info;
 };
 
 QDesignerMemberSheetPrivate::QDesignerMemberSheetPrivate(QObject *object, QObject *sheetParent) :
-    m_core(formEditorForObject(sheetParent)),
+    m_core(QDesignerPropertySheet::formEditorForObject(sheetParent)),
     m_meta(m_core->introspection()->metaObject(object))
 {
 }
 
 QDesignerMemberSheetPrivate::Info &QDesignerMemberSheetPrivate::ensureInfo(int index)
 {
-    InfoHash::iterator it = m_info.find(index);
-    if (it == m_info.end()) {
+    auto it = m_info.find(index);
+    if (it == m_info.end())
         it = m_info.insert(index, Info());
-    }
     return it.value();
 }
 
@@ -183,7 +142,7 @@ bool QDesignerMemberSheet::isSlot(int index) const
 
 bool QDesignerMemberSheet::inheritedFromWidget(int index) const
 {
-    return declaredInClass(index) == QStringLiteral("QWidget") || declaredInClass(index) == QStringLiteral("QObject");
+    return declaredInClass(index) == "QWidget"_L1 || declaredInClass(index) == "QObject"_L1;
 }
 
 
@@ -202,24 +161,24 @@ bool QDesignerMemberSheet::signalMatchesSlot(const QString &signal, const QStrin
     bool result = true;
 
     do {
-        int signal_idx = signal.indexOf(QLatin1Char('('));
-        int slot_idx = slot.indexOf(QLatin1Char('('));
+        qsizetype signal_idx = signal.indexOf(u'(');
+        qsizetype slot_idx = slot.indexOf(u'(');
         if (signal_idx == -1 || slot_idx == -1)
             break;
 
         ++signal_idx; ++slot_idx;
 
-        if (slot.at(slot_idx) == QLatin1Char(')'))
+        if (slot.at(slot_idx) == u')')
             break;
 
         while (signal_idx < signal.size() && slot_idx < slot.size()) {
             const QChar signal_c = signal.at(signal_idx);
             const QChar slot_c = slot.at(slot_idx);
 
-            if (signal_c == QLatin1Char(',') && slot_c == QLatin1Char(')'))
+            if (signal_c == u',' && slot_c == u')')
                 break;
 
-            if (signal_c == QLatin1Char(')') && slot_c == QLatin1Char(')'))
+            if (signal_c == u')' && slot_c == u')')
                 break;
 
             if (signal_c != slot_c) {

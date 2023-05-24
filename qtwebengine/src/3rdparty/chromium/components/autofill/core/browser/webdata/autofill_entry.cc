@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,11 +13,9 @@ namespace autofill {
 
 AutofillKey::AutofillKey() {}
 
-AutofillKey::AutofillKey(const base::string16& name,
-                         const base::string16& value)
-    : name_(name),
-      value_(value) {
-}
+AutofillKey::AutofillKey(const std::u16string& name,
+                         const std::u16string& value)
+    : name_(name), value_(value) {}
 
 AutofillKey::AutofillKey(const std::string& name,
                          const std::string& value)

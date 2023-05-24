@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -45,12 +19,12 @@
 #include "abstract3drenderer_p.h"
 #include "surfaceseriesrendercache_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class ShaderHelper;
 class Q3DScene;
 
-class QT_DATAVISUALIZATION_EXPORT Surface3DRenderer : public Abstract3DRenderer
+class Q_DATAVISUALIZATION_EXPORT Surface3DRenderer : public Abstract3DRenderer
 {
     Q_OBJECT
 
@@ -92,34 +66,34 @@ public:
     explicit Surface3DRenderer(Surface3DController *controller);
     ~Surface3DRenderer();
 
-    void updateData();
-    void updateSeries(const QList<QAbstract3DSeries *> &seriesList);
-    void updateSurfaceTextures(QVector<QSurface3DSeries *> seriesList);
-    SeriesRenderCache *createNewCache(QAbstract3DSeries *series);
-    void cleanCache(SeriesRenderCache *cache);
-    void updateSelectionMode(QAbstract3DGraph::SelectionFlags mode);
-    void updateRows(const QVector<Surface3DController::ChangeRow> &rows);
-    void updateItems(const QVector<Surface3DController::ChangeItem> &points);
-    void updateScene(Q3DScene *scene);
+    void updateData() override;
+    void updateSeries(const QList<QAbstract3DSeries *> &seriesList) override;
+    void updateSurfaceTextures(QList<QSurface3DSeries *> seriesList);
+    SeriesRenderCache *createNewCache(QAbstract3DSeries *series) override;
+    void cleanCache(SeriesRenderCache *cache) override;
+    void updateSelectionMode(QAbstract3DGraph::SelectionFlags mode) override;
+    void updateRows(const QList<Surface3DController::ChangeRow> &rows);
+    void updateItems(const QList<Surface3DController::ChangeItem> &points);
+    void updateScene(Q3DScene *scene) override;
     void updateSlicingActive(bool isSlicing);
     void updateSelectedPoint(const QPoint &position, QSurface3DSeries *series);
     void updateFlipHorizontalGrid(bool flip);
     inline QPoint clickedPosition() const { return m_clickedPosition; }
     void resetClickedStatus();
-    QVector3D convertPositionToTranslation(const QVector3D &position, bool isAbsolute);
+    QVector3D convertPositionToTranslation(const QVector3D &position, bool isAbsolute) override;
     void updateAxisLabels(QAbstract3DAxis::AxisOrientation orientation,
-                          const QStringList &labels);
+                          const QStringList &labels) override;
     void updateAxisTitleVisibility(QAbstract3DAxis::AxisOrientation orientation,
-                                   bool visible);
-    void updateMargin(float margin);
+                                   bool visible) override;
+    void updateMargin(float margin) override;
 
-    void render(GLuint defaultFboHandle = 0);
+    void render(GLuint defaultFboHandle = 0) override;
 
 protected:
-    void contextCleanup();
-    void initializeOpenGL();
-    virtual void fixCameraTarget(QVector3D &target);
-    virtual void getVisibleItemBounds(QVector3D &minBounds, QVector3D &maxBounds);
+    void contextCleanup() override;
+    void initializeOpenGL() override;
+    virtual void fixCameraTarget(QVector3D &target) override;
+    virtual void getVisibleItemBounds(QVector3D &minBounds, QVector3D &maxBounds) override;
 
 Q_SIGNALS:
     void flatShadingSupportedChanged(bool supported);
@@ -132,9 +106,9 @@ private:
     void findMatchingRow(float z, int &sample, int direction, QSurfaceDataArray &dataArray);
     void findMatchingColumn(float x, int &sample, int direction, QSurfaceDataArray &dataArray);
     void updateSliceObject(SurfaceSeriesRenderCache *cache, const QPoint &point);
-    void updateShadowQuality(QAbstract3DGraph::ShadowQuality quality);
-    void updateTextures();
-    void initShaders(const QString &vertexShader, const QString &fragmentShader);
+    void updateShadowQuality(QAbstract3DGraph::ShadowQuality quality) override;
+    void updateTextures() override;
+    void initShaders(const QString &vertexShader, const QString &fragmentShader) override;
     QRect calculateSampleRect(const QSurfaceDataArray &array);
     void loadBackgroundMesh();
 
@@ -144,10 +118,10 @@ private:
                     const QMatrix4x4 &viewMatrix, const QMatrix4x4 &projectionMatrix);
 
     void calculateSceneScalingFactors();
-    void initBackgroundShaders(const QString &vertexShader, const QString &fragmentShader);
+    void initBackgroundShaders(const QString &vertexShader, const QString &fragmentShader) override;
     void initSelectionShaders();
     void initSurfaceShaders();
-    void initSelectionBuffer();
+    void initSelectionBuffer() override;
     void initDepthShader();
     void updateSelectionTextures();
     void createSelectionTexture(SurfaceSeriesRenderCache *cache, uint &lastSelectionId);
@@ -156,7 +130,7 @@ private:
     void surfacePointSelected(const QPoint &point);
     void updateSelectionPoint(SurfaceSeriesRenderCache *cache, const QPoint &point, bool label);
     QPoint selectionIdToSurfacePoint(uint id);
-    void updateDepthBuffer();
+    void updateDepthBuffer() override;
     void emitSelectedPointChanged(QPoint position);
 
     Q_DISABLE_COPY(Surface3DRenderer)
@@ -164,6 +138,6 @@ private:
     friend class SurfaceObject;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

@@ -1,54 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlconnections_p.h"
 
+#include <private/qqmlboundsignal_p.h>
+#include <private/qqmlcontext_p.h>
 #include <private/qqmlexpression_p.h>
 #include <private/qqmlproperty_p.h>
-#include <private/qqmlboundsignal_p.h>
-#include <qqmlcontext.h>
-#include <private/qqmlcontext_p.h>
 #include <private/qqmlvmemetaobject_p.h>
-#include <qqmlinfo.h>
+#include <private/qv4jscall_p.h>
+#include <private/qv4qobjectwrapper_p.h>
 
-#include <QtCore/qloggingcategory.h>
+#include <QtQml/qqmlcontext.h>
+#include <QtQml/qqmlinfo.h>
+
 #include <QtCore/qdebug.h>
+#include <QtCore/qloggingcategory.h>
 #include <QtCore/qstringlist.h>
 
 #include <private/qobject_p.h>
@@ -57,18 +24,116 @@ QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcQmlConnections, "qt.qml.connections")
 
+// This is the equivalent of QQmlBoundSignal for C++ methods as as slots.
+// If a type derived from QQmlConnnections is compiled using qmltc, the
+// JavaScript functions it contains are turned into C++ methods and we cannot
+// use QQmlBoundSignal to connect to those.
+struct QQmlConnectionSlotDispatcher : public QtPrivate::QSlotObjectBase
+{
+    QV4::ExecutionEngine *v4 = nullptr;
+    QObject *receiver = nullptr;
+
+    // Signals rarely have more than one argument.
+    QQmlMetaObject::ArgTypeStorage<2> signalMetaTypes;
+    QQmlMetaObject::ArgTypeStorage<2> slotMetaTypes;
+
+    QMetaObject::Connection connection;
+
+    int slotIndex = -1;
+    bool enabled = true;
+
+    QQmlConnectionSlotDispatcher(
+            QV4::ExecutionEngine *v4, QObject *sender, int signalIndex,
+            QObject *receiver, int slotIndex, bool enabled)
+        : QtPrivate::QSlotObjectBase(&impl)
+        , v4(v4)
+        , receiver(receiver)
+        , slotIndex(slotIndex)
+        , enabled(enabled)
+    {
+        QMetaMethod signal = sender->metaObject()->method(signalIndex);
+        QQmlMetaObject::methodReturnAndParameterTypes(signal, &signalMetaTypes, nullptr);
+
+        QMetaMethod slot = receiver->metaObject()->method(slotIndex);
+        QQmlMetaObject::methodReturnAndParameterTypes(slot, &slotMetaTypes, nullptr);
+    }
+
+    template<typename ArgTypeStorage>
+    struct TypedFunction
+    {
+        Q_DISABLE_COPY_MOVE(TypedFunction)
+    public:
+        TypedFunction(const ArgTypeStorage *storage) : storage(storage) {}
+
+        QMetaType returnMetaType() const { return storage->at(0); }
+        qsizetype parameterCount() const { return storage->size() - 1; }
+        QMetaType parameterMetaType(qsizetype i) const { return storage->at(i + 1); }
+
+    private:
+        const ArgTypeStorage *storage;
+    };
+
+    static void impl(int which, QSlotObjectBase *base, QObject *, void **metaArgs, bool *ret)
+    {
+        switch (which) {
+        case Destroy: {
+            delete static_cast<QQmlConnectionSlotDispatcher *>(base);
+            break;
+        }
+        case Call: {
+            QQmlConnectionSlotDispatcher *self = static_cast<QQmlConnectionSlotDispatcher *>(base);
+            QV4::ExecutionEngine *v4 = self->v4;
+            if (!v4)
+                break;
+
+            if (!self->enabled)
+                break;
+
+            TypedFunction typedFunction(&self->slotMetaTypes);
+            QV4::coerceAndCall(
+                    v4, &typedFunction, metaArgs,
+                    self->signalMetaTypes.data(), self->signalMetaTypes.size() - 1,
+                    [&](void **argv, int) {
+                        self->receiver->metaObject()->metacall(
+                                self->receiver, QMetaObject::InvokeMetaMethod,
+                                self->slotIndex, argv);
+                    });
+
+            if (v4->hasException) {
+                QQmlError error = v4->catchExceptionAsQmlError();
+                if (QQmlEngine *qmlEngine = v4->qmlEngine()) {
+                    QQmlEnginePrivate::get(qmlEngine)->warning(error);
+                } else {
+                    QMessageLogger(
+                            qPrintable(error.url().toString()), error.line(), nullptr)
+                                    .warning().noquote()
+                            << error.toString();
+                }
+            }
+            break;
+        }
+        case Compare:
+            // We're not implementing the Compare protocol here. It's insane.
+            // QQmlConnectionSlotDispatcher compares false to anything. We use
+            // the regular QObject::disconnect with QMetaObject::Connection.
+            *ret = false;
+            break;
+        case NumOperations:
+            break;
+        }
+    };
+};
+
 class QQmlConnectionsPrivate : public QObjectPrivate
 {
 public:
-    QQmlConnectionsPrivate() : target(nullptr), enabled(true), targetSet(false), ignoreUnknownSignals(false), componentcomplete(true) {}
+    QList<QBiPointer<QQmlBoundSignal, QQmlConnectionSlotDispatcher>> boundsignals;
+    QQmlGuard<QObject> target;
 
-    QList<QQmlBoundSignal*> boundsignals;
-    QObject *target;
-
-    bool enabled;
-    bool targetSet;
-    bool ignoreUnknownSignals;
-    bool componentcomplete;
+    bool enabled = true;
+    bool targetSet = false;
+    bool ignoreUnknownSignals = false;
+    bool componentcomplete = true;
 
     QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
     QList<const QV4::CompiledData::Binding *> bindings;
@@ -88,7 +153,7 @@ public:
 
     \qml
     MouseArea {
-        onClicked: { foo(parameters) }
+        onClicked: (mouse)=> { foo(mouse) }
     }
     \endqml
 
@@ -130,6 +195,12 @@ public:
     }
     \endqml
 
+    \note For backwards compatibility you can also specify the signal handlers
+    without \c{function}, like you would specify them directly in the target
+    object. This is not recommended. If you specify one signal handler this way,
+    then all signal handlers specified as \c{function} in the same Connections
+    object are ignored.
+
     \sa {Qt QML}
 */
 QQmlConnections::QQmlConnections(QObject *parent) :
@@ -139,10 +210,22 @@ QQmlConnections::QQmlConnections(QObject *parent) :
 
 QQmlConnections::~QQmlConnections()
 {
+    Q_D(QQmlConnections);
+
+    // The slot dispatchers hold cyclic references to their connections. Clear them.
+    for (const auto &bound : std::as_const(d->boundsignals)) {
+        if (QQmlConnectionSlotDispatcher *dispatcher = bound.isT2() ? bound.asT2() : nullptr) {
+            // No need to explicitly disconnect anymore since 'this' is the receiver.
+            // But to be safe, explicitly break any cyclic references between the connection
+            // and the slot object.
+            dispatcher->connection = {};
+            dispatcher->destroyIfLastRef();
+        }
+    }
 }
 
 /*!
-    \qmlproperty Object QtQml::Connections::target
+    \qmlproperty QtObject QtQml::Connections::target
     This property holds the object that sends the signal.
 
     If this property is not set, the \c target defaults to the parent of the Connection.
@@ -153,7 +236,7 @@ QQmlConnections::~QQmlConnections()
 QObject *QQmlConnections::target() const
 {
     Q_D(const QQmlConnections);
-    return d->targetSet ? d->target : parent();
+    return d->targetSet ? d->target.data() : parent();
 }
 
 class QQmlBoundSignalDeleter : public QObject
@@ -172,13 +255,19 @@ void QQmlConnections::setTarget(QObject *obj)
     if (d->targetSet && d->target == obj)
         return;
     d->targetSet = true; // even if setting to 0, it is *set*
-    for (QQmlBoundSignal *s : qAsConst(d->boundsignals)) {
+    for (const auto &bound : std::as_const(d->boundsignals)) {
         // It is possible that target is being changed due to one of our signal
         // handlers -> use deleteLater().
-        if (s->isNotifying())
-            (new QQmlBoundSignalDeleter(s))->deleteLater();
-        else
-            delete s;
+        if (QQmlBoundSignal *signal = bound.isT1() ? bound.asT1() : nullptr) {
+            if (signal->isNotifying())
+                (new QQmlBoundSignalDeleter(signal))->deleteLater();
+            else
+                delete signal;
+        } else {
+            QQmlConnectionSlotDispatcher *dispatcher = bound.asT2();
+            QObject::disconnect(std::exchange(dispatcher->connection, {}));
+            dispatcher->destroyIfLastRef();
+        }
     }
     d->boundsignals.clear();
     d->target = obj;
@@ -208,8 +297,12 @@ void QQmlConnections::setEnabled(bool enabled)
 
     d->enabled = enabled;
 
-    for (QQmlBoundSignal *s : qAsConst(d->boundsignals))
-        s->setEnabled(d->enabled);
+    for (const auto &bound : std::as_const(d->boundsignals)) {
+        if (QQmlBoundSignal *signal = bound.isT1() ? bound.asT1() : nullptr)
+            signal->setEnabled(d->enabled);
+        else
+            bound.asT2()->enabled = enabled;
+    }
 
     emit enabledChanged();
 }
@@ -237,27 +330,31 @@ void QQmlConnections::setIgnoreUnknownSignals(bool ignore)
 
 void QQmlConnectionsParser::verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &props)
 {
-    for (int ii = 0; ii < props.count(); ++ii) {
+    for (int ii = 0; ii < props.size(); ++ii) {
         const QV4::CompiledData::Binding *binding = props.at(ii);
         const QString &propName = compilationUnit->stringAt(binding->propertyNameIndex);
 
-        const bool thirdCharacterIsValid = (propName.length() >= 2) && (propName.at(2).isUpper() || propName.at(2) == '_');
+        const bool thirdCharacterIsValid = (propName.size() >= 2)
+                && (propName.at(2).isUpper() || propName.at(2) == u'_');
         if (!propName.startsWith(QLatin1String("on")) || !thirdCharacterIsValid) {
             error(props.at(ii), QQmlConnections::tr("Cannot assign to non-existent property \"%1\"").arg(propName));
             return;
         }
 
-        if (binding->type >= QV4::CompiledData::Binding::Type_Object) {
+        if (binding->type() == QV4::CompiledData::Binding::Type_Script)
+            continue;
+
+        if (binding->type() >= QV4::CompiledData::Binding::Type_Object) {
             const QV4::CompiledData::Object *target = compilationUnit->objectAt(binding->value.objectIndex);
             if (!compilationUnit->stringAt(target->inheritedTypeNameIndex).isEmpty())
                 error(binding, QQmlConnections::tr("Connections: nested objects not allowed"));
             else
                 error(binding, QQmlConnections::tr("Connections: syntax error"));
             return;
-        } if (binding->type != QV4::CompiledData::Binding::Type_Script) {
-            error(binding, QQmlConnections::tr("Connections: script expected"));
-            return;
         }
+
+        error(binding, QQmlConnections::tr("Connections: script expected"));
+        return;
     }
 }
 
@@ -278,12 +375,10 @@ void QQmlConnections::connectSignals()
     if (d->bindings.isEmpty()) {
         connectSignalsToMethods();
     } else {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
         if (lcQmlConnections().isWarningEnabled()) {
             qmlWarning(this) << tr("Implicitly defined onFoo properties in Connections are deprecated. "
                                     "Use this syntax instead: function onFoo(<arguments>) { ... }");
         }
-#endif
         connectSignalsToBindings();
     }
 }
@@ -297,48 +392,56 @@ void QQmlConnections::connectSignalsToMethods()
     if (!ddata)
         return;
 
-    QV4::ExecutionEngine *engine = ddata->context->engine->handle();
+    QV4::ExecutionEngine *engine = ddata->context->engine()->handle();
 
-    QQmlContextData *ctxtdata = ddata->outerContext;
+    QQmlRefPointer<QQmlContextData> ctxtdata = ddata->outerContext;
     for (int i = ddata->propertyCache->methodOffset(),
              end = ddata->propertyCache->methodOffset() + ddata->propertyCache->methodCount();
          i < end;
          ++i) {
 
-        QQmlPropertyData *handler = ddata->propertyCache->method(i);
-        if (!handler || !handler->isVMEFunction())
+        const QQmlPropertyData *handler = ddata->propertyCache->method(i);
+        if (!handler)
             continue;
 
         const QString propName = handler->name(this);
 
         QQmlProperty prop(target, propName);
         if (prop.isValid() && (prop.type() & QQmlProperty::SignalProperty)) {
-            int signalIndex = QQmlPropertyPrivate::get(prop)->signalIndex();
-            auto *signal = new QQmlBoundSignal(target, signalIndex, this, qmlEngine(this));
-            signal->setEnabled(d->enabled);
-
             QV4::Scope scope(engine);
             QV4::ScopedContext global(scope, engine->rootContext());
 
-            QQmlVMEMetaObject *vmeMetaObject = QQmlVMEMetaObject::get(this);
-            Q_ASSERT(vmeMetaObject); // the fact we found the property above should guarentee this
+            if (QQmlVMEMetaObject *vmeMetaObject = QQmlVMEMetaObject::get(this)) {
+                int signalIndex = QQmlPropertyPrivate::get(prop)->signalIndex();
+                auto *signal = new QQmlBoundSignal(target, signalIndex, this, qmlEngine(this));
+                signal->setEnabled(d->enabled);
 
-            QV4::ScopedFunctionObject method(scope, vmeMetaObject->vmeMethod(handler->coreIndex()));
+                QV4::ScopedFunctionObject method(
+                        scope, vmeMetaObject->vmeMethod(handler->coreIndex()));
 
-            QQmlBoundSignalExpression *expression =
-                    ctxtdata ? new QQmlBoundSignalExpression(
-                                       target, signalIndex, ctxtdata, this,
-                                       method->as<QV4::FunctionObject>()->function())
-                             : nullptr;
+                QQmlBoundSignalExpression *expression = ctxtdata
+                        ? new QQmlBoundSignalExpression(
+                                target, signalIndex, ctxtdata, this,
+                                method->as<QV4::FunctionObject>()->function())
+                        : nullptr;
 
-            signal->takeExpression(expression);
-            d->boundsignals += signal;
+                signal->takeExpression(expression);
+                d->boundsignals += signal;
+            } else {
+                QQmlConnectionSlotDispatcher *slot = new QQmlConnectionSlotDispatcher(
+                        scope.engine, target, prop.index(),
+                        this, handler->coreIndex(), d->enabled);
+                slot->connection = QObjectPrivate::connect(
+                        target, prop.index(), slot, Qt::AutoConnection);
+                slot->ref();
+                d->boundsignals += slot;
+            }
         } else if (!d->ignoreUnknownSignals
-                   && propName.startsWith(QLatin1String("on")) && propName.length() > 2
+                   && propName.startsWith(QLatin1String("on")) && propName.size() > 2
                    && propName.at(2).isUpper()) {
             qmlWarning(this) << tr("Detected function \"%1\" in Connections element. "
                                    "This is probably intended to be a signal handler but no "
-                                   "signal of the \"%2\" target matches the name.").arg(propName).arg(target->metaObject()->className());
+                                   "signal of the target matches the name.").arg(propName);
         }
     }
 }
@@ -349,10 +452,10 @@ void QQmlConnections::connectSignalsToBindings()
     Q_D(QQmlConnections);
     QObject *target = this->target();
     QQmlData *ddata = QQmlData::get(this);
-    QQmlContextData *ctxtdata = ddata ? ddata->outerContext : nullptr;
+    QQmlRefPointer<QQmlContextData> ctxtdata = ddata ? ddata->outerContext : nullptr;
 
-    for (const QV4::CompiledData::Binding *binding : qAsConst(d->bindings)) {
-        Q_ASSERT(binding->type == QV4::CompiledData::Binding::Type_Script);
+    for (const QV4::CompiledData::Binding *binding : std::as_const(d->bindings)) {
+        Q_ASSERT(binding->type() == QV4::CompiledData::Binding::Type_Script);
         QString propName = d->compilationUnit->stringAt(binding->propertyNameIndex);
 
         QQmlProperty prop(target, propName);

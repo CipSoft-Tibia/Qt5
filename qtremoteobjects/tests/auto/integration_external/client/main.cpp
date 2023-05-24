@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rep_MyInterface_replica.h"
 
@@ -54,7 +29,7 @@ private Q_SLOTS:
                 qDebug() << "SocketError" << error;
                 delete socket;
             });
-            socket->connectToHost(url.host(), url.port());
+            socket->connectToHost(url.host(), quint16(url.port()));
         };
         m_repNode.registerExternalSchema(QStringLiteral("exttcp"), setupTcp);
         QVERIFY(m_repNode.waitForRegistry(3000));
@@ -74,7 +49,7 @@ private Q_SLOTS:
         QSignalSpy spy(m_rep.data(), &MyInterfaceReplica::enum1Changed);
         QVERIFY(advanceSpy.wait());
 
-        QCOMPARE(spy.count(), 2);
+        QCOMPARE(spy.size(), 2);
         // END: Testing
 
         reply = m_rep->stop();
@@ -125,9 +100,9 @@ private Q_SLOTS:
             QCOMPARE(paramNames.at(0), QByteArrayLiteral("enumSignalParam"));
             QCOMPARE(paramNames.at(1), QByteArrayLiteral("signalParam2"));
             QCOMPARE(paramNames.at(2), QByteArrayLiteral("__repc_variable_1"));
-            QCOMPARE(simm.parameterType(0), QMetaType::type("MyInterfaceReplica::Enum1"));
-            QCOMPARE(simm.parameterType(1), int(QMetaType::Bool));
-            QCOMPARE(simm.parameterType(2), int(QMetaType::QString));
+            QCOMPARE(simm.parameterMetaType(0), QMetaType::fromType<MyInterfaceReplica::Enum1>());
+            QCOMPARE(simm.parameterMetaType(1), QMetaType::fromType<bool>());
+            QCOMPARE(simm.parameterMetaType(2), QMetaType::fromType<QString>());
         }
 
         int slotIdx = mo->indexOfSlot("testEnumParamsInSlots(MyInterfaceReplica::Enum1,bool,int)");
@@ -142,9 +117,9 @@ private Q_SLOTS:
             QCOMPARE(paramNames.at(2), QByteArrayLiteral("__repc_variable_1"));
         }
 
-        int enumVal = 0;
+        MyInterfaceReplica::Enum1 enumVal = {};
         mo->invokeMethod(rep.data(), "testEnumParamsInSlots",
-                                    QGenericArgument("MyInterfaceReplica::Enum1", &enumVal),
+                                    Q_ARG(MyInterfaceReplica::Enum1, enumVal),
                                     Q_ARG(bool, true), Q_ARG(int, 1234));
 
         int enumIdx = mo->indexOfProperty("enum1");
@@ -177,14 +152,13 @@ private Q_SLOTS:
         QSignalSpy stateSpy(m_rep.data(), &MyInterfaceReplica::stateChanged);
         QVERIFY(reply.waitForFinished());
 
-        QVERIFY(stateSpy.wait());
-        QVERIFY(m_rep->state() == QRemoteObjectReplica::Suspect);
+        QTRY_COMPARE(stateSpy.size(), 1);
+        QCOMPARE(m_rep->state(), QRemoteObjectReplica::Suspect);
 
-        stateSpy.clear();
-        QVERIFY(stateSpy.wait());
-        QVERIFY(m_rep->state() == QRemoteObjectReplica::Valid);
+        QTRY_COMPARE(stateSpy.size(), 2);
+        QCOMPARE(m_rep->state(), QRemoteObjectReplica::Valid);
         // Make sure we updated to the correct enum1 value
-        QVERIFY(m_rep->enum1() == MyInterfaceReplica::First);
+        QCOMPARE(m_rep->enum1(), MyInterfaceReplica::First);
     }
 
     void cleanupTestCase()

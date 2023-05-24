@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtTest/QTest>
 #include <Qt3DRender/qshaderimage.h>
@@ -43,9 +7,7 @@
 #include <Qt3DRender/private/qshaderimage_p.h>
 #include <QObject>
 #include <QSignalSpy>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
-#include <Qt3DCore/qnodecreatedchange.h>
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class tst_QShaderImage : public QObject
 {
@@ -87,7 +49,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.texture(), &newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -95,7 +57,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(shaderImage.texture(), &newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -106,7 +68,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.layered(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -114,7 +76,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(shaderImage.layered(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -125,7 +87,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.mipLevel(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -133,7 +95,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(shaderImage.mipLevel(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -144,7 +106,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.layer(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -152,7 +114,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(shaderImage.layer(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -163,7 +125,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.access(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -171,7 +133,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(shaderImage.access(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
         {
             // WHEN
@@ -182,7 +144,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.format(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -190,77 +152,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(shaderImage.format(), newValue);
-            QCOMPARE(spy.count(), 0);
-        }
-    }
-
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DRender::QShaderImage shaderImage;
-        Qt3DRender::QTexture2D t;
-
-        shaderImage.setTexture(&t);
-        shaderImage.setLayered(true);
-        shaderImage.setMipLevel(883);
-        shaderImage.setLayer(1584);
-        shaderImage.setAccess(Qt3DRender::QShaderImage::WriteOnly);
-        shaderImage.setFormat(Qt3DRender::QShaderImage::R32F);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&shaderImage);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            // ShaderImage + Texture creation
-            QCOMPARE(creationChanges.size(), 2);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QShaderImageData>>(creationChanges.first());
-            const Qt3DRender::QShaderImageData cloneData = creationChangeData->data;
-
-            QCOMPARE(shaderImage.texture()->id(), cloneData.textureId);
-            QCOMPARE(shaderImage.layered(), cloneData.layered);
-            QCOMPARE(shaderImage.mipLevel(), cloneData.mipLevel);
-            QCOMPARE(shaderImage.layer(), cloneData.layer);
-            QCOMPARE(shaderImage.access(), cloneData.access);
-            QCOMPARE(shaderImage.format(), cloneData.format);
-            QCOMPARE(shaderImage.id(), creationChangeData->subjectId());
-            QCOMPARE(shaderImage.isEnabled(), true);
-            QCOMPARE(shaderImage.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(shaderImage.metaObject(), creationChangeData->metaObject());
-        }
-
-        // WHEN
-        shaderImage.setEnabled(false);
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&shaderImage);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            // ShaderImage + Texture creation
-            QCOMPARE(creationChanges.size(), 2);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QShaderImageData>>(creationChanges.first());
-            const Qt3DRender::QShaderImageData cloneData = creationChangeData->data;
-
-            QCOMPARE(shaderImage.texture()->id(), cloneData.textureId);
-            QCOMPARE(shaderImage.layered(), cloneData.layered);
-            QCOMPARE(shaderImage.mipLevel(), cloneData.mipLevel);
-            QCOMPARE(shaderImage.layer(), cloneData.layer);
-            QCOMPARE(shaderImage.access(), cloneData.access);
-            QCOMPARE(shaderImage.format(), cloneData.format);
-            QCOMPARE(shaderImage.id(), creationChangeData->subjectId());
-            QCOMPARE(shaderImage.isEnabled(), false);
-            QCOMPARE(shaderImage.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(shaderImage.metaObject(), creationChangeData->metaObject());
+            QCOMPARE(spy.size(), 0);
         }
     }
 
@@ -278,11 +170,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &shaderImage);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &shaderImage);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -291,8 +182,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -310,11 +200,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &shaderImage);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &shaderImage);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -323,8 +212,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -342,11 +230,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &shaderImage);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &shaderImage);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -355,8 +242,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -374,11 +260,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &shaderImage);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &shaderImage);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -387,8 +272,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -406,11 +290,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &shaderImage);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &shaderImage);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -419,8 +302,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -438,11 +320,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &shaderImage);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &shaderImage);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -451,8 +332,7 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }
@@ -471,13 +351,13 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(shaderImage.texture(), &tex);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
         }
         // THEN
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QVERIFY(shaderImage.texture() == nullptr);
     }
 

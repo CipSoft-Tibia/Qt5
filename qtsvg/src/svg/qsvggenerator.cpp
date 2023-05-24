@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsvggenerator.h"
 
@@ -48,7 +12,6 @@
 #include "private/qdrawhelper_p.h"
 
 #include "qfile.h"
-#include "qtextcodec.h"
 #include "qtextstream.h"
 #include "qbuffer.h"
 #include "qmath.h"
@@ -56,6 +19,8 @@
 #include "qtransform.h"
 
 #include "qdebug.h"
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -73,7 +38,7 @@ static void translate_color(const QColor &color, QString *color_string,
     *opacity_string = QString::number(color.alphaF());
 }
 
-static void translate_dashPattern(const QVector<qreal> &pattern, qreal width, QString *pattern_string)
+static void translate_dashPattern(const QList<qreal> &pattern, qreal width, QString *pattern_string)
 {
     Q_ASSERT(pattern_string);
 
@@ -87,11 +52,12 @@ static void translate_dashPattern(const QVector<qreal> &pattern, qreal width, QS
 class QSvgPaintEnginePrivate : public QPaintEnginePrivate
 {
 public:
-    QSvgPaintEnginePrivate()
+    explicit QSvgPaintEnginePrivate(QSvgGenerator::SvgVersion version)
+        : svgVersion(version)
     {
         size = QSize();
         viewBox = QRectF();
-        outputDevice = 0;
+        outputDevice = nullptr;
         resolution = 72;
 
         attributes.document_title = QLatin1String("Qt SVG Document");
@@ -105,6 +71,7 @@ public:
         numGradients = 0;
     }
 
+    QSvgGenerator::SvgVersion svgVersion;
     QSize size;
     QRectF viewBox;
     QIODevice *outputDevice;
@@ -144,6 +111,21 @@ public:
         QString dashPattern, dashOffset;
         QString fill, fillOpacity;
     } attributes;
+
+    QString generateClipPathName() {
+        ++numClipPaths;
+        currentClipPathName = QStringLiteral("clipPath%1").arg(numClipPaths);
+        return currentClipPathName;
+    }
+
+    std::optional<QPainterPath> clipPath;
+    bool clipEnabled = false;
+    bool isClippingEffective() const {
+        return clipEnabled && clipPath.has_value();
+    }
+    QString currentClipPathName;
+    int numClipPaths = 0;
+    bool hasEmittedClipGroup = false;
 };
 
 static inline QPaintEngine::PaintEngineFeatures svgEngineFeatures()
@@ -162,8 +144,8 @@ class QSvgPaintEngine : public QPaintEngine
     Q_DECLARE_PRIVATE(QSvgPaintEngine)
 public:
 
-    QSvgPaintEngine()
-        : QPaintEngine(*new QSvgPaintEnginePrivate,
+    explicit QSvgPaintEngine(QSvgGenerator::SvgVersion version)
+        : QPaintEngine(*new QSvgPaintEnginePrivate(version),
                        svgEngineFeatures())
     {
     }
@@ -172,6 +154,7 @@ public:
     bool end() override;
 
     void updateState(const QPaintEngineState &state) override;
+    void updateClipState(const QPaintEngineState &state);
     void popGroup();
 
     void drawEllipse(const QRectF &r) override;
@@ -213,11 +196,13 @@ public:
         d_func()->outputDevice = device;
     }
 
-    int resolution() { return d_func()->resolution; }
+    int resolution() const { return d_func()->resolution; }
     void setResolution(int resolution) {
         Q_ASSERT(!isActive());
         d_func()->resolution = resolution;
     }
+
+    QSvgGenerator::SvgVersion svgVersion() const { return d_func()->svgVersion; }
 
     QString savePatternMask(Qt::BrushStyle style)
     {
@@ -239,7 +224,7 @@ public:
 
     QString savePatternBrush(const QString &color, const QBrush &brush)
     {
-        QString patternId = QString(QStringLiteral("fillpattern%1_")).arg(brush.style()) + color.midRef(1);
+        QString patternId = QString(QStringLiteral("fillpattern%1_")).arg(brush.style()) + QStringView{color}.mid(1);
         if (!d_func()->savedPatternBrushes.contains(patternId)) {
             QString maskId = savePatternMask(brush.style());
             QString geo(QStringLiteral("x=\"0\" y=\"0\" width=\"8\" height=\"8\""));
@@ -324,7 +309,7 @@ public:
             }
         }
 
-        for (const QGradientStop &stop : qAsConst(stops)) {
+        for (const QGradientStop &stop : std::as_const(stops)) {
             const QString color = stop.second.name(QColor::HexRgb);
             str << QLatin1String("    <stop offset=\"")<< stop.first << QLatin1String("\" ")
                 << QLatin1String("stop-color=\"") << color << QLatin1String("\" ")
@@ -522,22 +507,7 @@ public:
         else
             d->attributes.font_size = QString::number(d->font.pixelSize());
 
-        int svgWeight = d->font.weight();
-        switch (svgWeight) {
-        case QFont::Light:
-            svgWeight = 100;
-            break;
-        case QFont::Normal:
-            svgWeight = 400;
-            break;
-        case QFont::Bold:
-            svgWeight = 700;
-            break;
-        default:
-            svgWeight *= 10;
-        }
-
-        d->attributes.font_weight = QString::number(svgWeight);
+        d->attributes.font_weight = QString::number(d->font.weight());
         d->attributes.font_family = d->font.family();
         d->attributes.font_style = d->font.italic() ? QLatin1String("italic") : QLatin1String("normal");
 
@@ -590,21 +560,39 @@ public:
     it is necessary to use the QPainter::begin() and \l{QPainter::}{end()} to
     explicitly begin and end painting on the device.
 
-    The \l{SVG Generator Example} shows how the same painting commands can be used
-    for painting a widget and writing an SVG file.
-
     \sa QSvgRenderer, QSvgWidget, {Qt SVG C++ Classes}
 */
 
 /*!
-    Constructs a new generator.
+    \enum QSvgGenerator::SvgVersion
+    \since 6.5
+
+    This enumeration describes the version of the SVG output of the
+    generator.
+
+    \value SvgTiny12 The generated document follows the SVG Tiny 1.2 specification.
+    \value Svg11 The generated document follows the SVG 1.1 specification.
 */
-QSvgGenerator::QSvgGenerator()
+
+/*!
+    Constructs a new generator using the SVG Tiny 1.2 profile.
+*/
+QSvgGenerator::QSvgGenerator() // ### Qt 7: inline
+    : QSvgGenerator(SvgVersion::SvgTiny12)
+{
+}
+
+/*!
+    \since 6.5
+
+    Constructs a new generator that uses the SVG version \a version.
+*/
+QSvgGenerator::QSvgGenerator(SvgVersion version)
     : d_ptr(new QSvgGeneratorPrivate)
 {
     Q_D(QSvgGenerator);
 
-    d->engine = new QSvgPaintEngine;
+    d->engine = new QSvgPaintEngine(version);
     d->owns_iodevice = false;
 }
 
@@ -819,6 +807,18 @@ void QSvgGenerator::setResolution(int dpi)
 }
 
 /*!
+    \since 6.5
+
+    Returns the version of the SVG document that this generator is
+    producing.
+*/
+QSvgGenerator::SvgVersion QSvgGenerator::svgVersion() const
+{
+    Q_D(const QSvgGenerator);
+    return d->engine->svgVersion();
+}
+
+/*!
     Returns the paint engine used to render graphics to be converted to SVG
     format information.
 */
@@ -907,15 +907,23 @@ bool QSvgPaintEngine::begin(QPaintDevice *)
     }
 
     *d->stream << " xmlns=\"http://www.w3.org/2000/svg\""
-                  " xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
-                  " version=\"1.2\" baseProfile=\"tiny\">" << Qt::endl;
+                  " xmlns:xlink=\"http://www.w3.org/1999/xlink\"";
+    switch (d->svgVersion) {
+    case QSvgGenerator::SvgVersion::SvgTiny12:
+        *d->stream << " version=\"1.2\" baseProfile=\"tiny\">";
+        break;
+    case QSvgGenerator::SvgVersion::Svg11:
+        *d->stream << " version=\"1.1\">";
+        break;
+    }
+    *d->stream << Qt::endl;
 
     if (!d->attributes.document_title.isEmpty()) {
-        *d->stream << "<title>" << d->attributes.document_title << "</title>" << Qt::endl;
+        *d->stream << "<title>" << d->attributes.document_title.toHtmlEscaped() << "</title>" << Qt::endl;
     }
 
     if (!d->attributes.document_description.isEmpty()) {
-        *d->stream << "<desc>" << d->attributes.document_description << "</desc>" << Qt::endl;
+        *d->stream << "<desc>" << d->attributes.document_description.toHtmlEscaped() << "</desc>" << Qt::endl;
     }
 
     d->stream->setString(&d->defs);
@@ -938,13 +946,12 @@ bool QSvgPaintEngine::end()
     *d->stream << "</defs>\n";
 
     d->stream->setDevice(d->outputDevice);
-#ifndef QT_NO_TEXTCODEC
-    d->stream->setCodec(QTextCodec::codecForName("UTF-8"));
-#endif
 
     *d->stream << d->header;
     *d->stream << d->defs;
     *d->stream << d->body;
+    if (d->hasEmittedClipGroup)
+        *d->stream << "</g>";
     if (d->afterFirstUpdate)
         *d->stream << "</g>" << Qt::endl; // close the updateState
 
@@ -970,12 +977,19 @@ void QSvgPaintEngine::drawImage(const QRectF &r, const QImage &image,
 
     Q_UNUSED(sr);
     Q_UNUSED(flags);
+    QString quality;
+    if (state->renderHints() & QPainter::SmoothPixmapTransform) {
+        quality = QLatin1String("optimizeQuality");
+    } else {
+        quality = QLatin1String("optimizeSpeed");
+    }
     stream() << "<image ";
     stream() << "x=\""<<r.x()<<"\" "
                 "y=\""<<r.y()<<"\" "
                 "width=\""<<r.width()<<"\" "
                 "height=\""<<r.height()<<"\" "
-                "preserveAspectRatio=\"none\" ";
+                "preserveAspectRatio=\"none\" "
+                "image-rendering=\""<<quality<<"\" ";
 
     QByteArray data;
     QBuffer buffer(&data);
@@ -990,47 +1004,83 @@ void QSvgPaintEngine::drawImage(const QRectF &r, const QImage &image,
 void QSvgPaintEngine::updateState(const QPaintEngineState &state)
 {
     Q_D(QSvgPaintEngine);
-    QPaintEngine::DirtyFlags flags = state.state();
-
     // always stream full gstate, which is not required, but...
-    flags |= QPaintEngine::AllDirty;
 
     // close old state and start a new one...
+    if (d->hasEmittedClipGroup)
+        *d->stream << "</g>\n";
     if (d->afterFirstUpdate)
         *d->stream << "</g>\n\n";
 
+    updateClipState(state);
+
+    if (d->isClippingEffective()) {
+        *d->stream << QStringLiteral("<g clip-path=\"url(#%1)\">").arg(d->currentClipPathName);
+        d->hasEmittedClipGroup = true;
+    } else {
+        d->hasEmittedClipGroup = false;
+    }
+
     *d->stream << "<g ";
 
-    if (flags & QPaintEngine::DirtyBrush) {
-        qbrushToSvg(state.brush());
-    }
+    qbrushToSvg(state.brush());
+    qpenToSvg(state.pen());
 
-    if (flags & QPaintEngine::DirtyPen) {
-        qpenToSvg(state.pen());
-    }
+    d->matrix = state.transform();
+    *d->stream << "transform=\"matrix(" << d->matrix.m11() << ','
+               << d->matrix.m12() << ','
+               << d->matrix.m21() << ',' << d->matrix.m22() << ','
+               << d->matrix.dx() << ',' << d->matrix.dy()
+               << ")\""
+               << Qt::endl;
 
-    if (flags & QPaintEngine::DirtyTransform) {
-        d->matrix = state.transform();
-        *d->stream << "transform=\"matrix(" << d->matrix.m11() << ','
-                   << d->matrix.m12() << ','
-                   << d->matrix.m21() << ',' << d->matrix.m22() << ','
-                   << d->matrix.dx() << ',' << d->matrix.dy()
-                   << ")\""
-                   << Qt::endl;
-    }
+    qfontToSvg(state.font());
 
-    if (flags & QPaintEngine::DirtyFont) {
-        qfontToSvg(state.font());
-    }
-
-    if (flags & QPaintEngine::DirtyOpacity) {
-        if (!qFuzzyIsNull(state.opacity() - 1))
-            stream() << "opacity=\""<<state.opacity()<<"\" ";
-    }
+    if (!qFuzzyIsNull(state.opacity() - 1))
+        stream() << "opacity=\""<<state.opacity()<<"\" ";
 
     *d->stream << '>' << Qt::endl;
 
     d->afterFirstUpdate = true;
+}
+
+void QSvgPaintEngine::updateClipState(const QPaintEngineState &state)
+{
+    Q_D(QSvgPaintEngine);
+    switch (d->svgVersion) {
+    case QSvgGenerator::SvgVersion::SvgTiny12:
+        // no clip handling in Tiny 1.2
+        return;
+    case QSvgGenerator::SvgVersion::Svg11:
+        break;
+    }
+
+    const QPaintEngine::DirtyFlags flags = state.state();
+
+    const bool clippingChanged = flags.testAnyFlags(DirtyClipPath | DirtyClipRegion);
+    if (clippingChanged) {
+        switch (state.clipOperation()) {
+        case Qt::NoClip:
+            d->clipEnabled = false;
+            d->clipPath.reset();
+            break;
+        case Qt::ReplaceClip:
+        case Qt::IntersectClip:
+            d->clipPath = painter()->transform().map(painter()->clipPath());
+            break;
+        }
+    }
+
+    if (flags & DirtyClipEnabled)
+        d->clipEnabled = state.isClipEnabled();
+
+    if (d->isClippingEffective() && clippingChanged) {
+        d->stream->setString(&d->defs);
+        *d->stream << QLatin1String("<clipPath id=\"%1\">\n").arg(d->generateClipPathName());
+        drawPath(*d->clipPath);
+        *d->stream << "</clipPath>\n";
+        d->stream->setString(&d->body);
+    }
 }
 
 void QSvgPaintEngine::drawEllipse(const QRectF &r)

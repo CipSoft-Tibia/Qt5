@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "deviceprofiledialog.h"
 #include "ui_deviceprofiledialog.h"
@@ -44,11 +19,13 @@
 
 QT_BEGIN_NAMESPACE
 
-static const char *profileExtensionC = "qdp";
+using namespace Qt::StringLiterals;
+
+static const char profileExtensionC[] = "qdp";
 
 static inline QString fileFilter()
 {
-    return qdesigner_internal::DeviceProfileDialog::tr("Device Profiles (*.%1)").arg(QLatin1String(profileExtensionC));
+    return qdesigner_internal::DeviceProfileDialog::tr("Device Profiles (*.%1)").arg(QLatin1StringView(profileExtensionC));
 }
 
 // Populate a combo with a sequence of integers, also set them as data.
@@ -84,9 +61,8 @@ DeviceProfileDialog::DeviceProfileDialog(QDesignerDialogGuiInterface *dlgGui, QW
     // Styles
     const QStringList styles = QStyleFactory::keys();
     m_ui->m_styleCombo->addItem(tr("Default"), QVariant(QString()));
-    const QStringList::const_iterator cend = styles.constEnd();
-    for (QStringList::const_iterator it = styles.constBegin(); it != cend; ++it)
-         m_ui->m_styleCombo->addItem(*it, *it);
+    for (const auto &s : styles)
+         m_ui->m_styleCombo->addItem(s, s);
 
     connect(m_ui->m_nameLineEdit, &QLineEdit::textChanged, this, &DeviceProfileDialog::nameChanged);
     connect(m_ui->buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -156,10 +132,8 @@ void DeviceProfileDialog::save()
     QString fn = m_dlgGui->getSaveFileName(this, tr("Save Profile"), QString(), fileFilter());
     if (fn.isEmpty())
         return;
-    if (QFileInfo(fn).completeSuffix().isEmpty()) {
-        fn += QLatin1Char('.');
-        fn += QLatin1String(profileExtensionC);
-    }
+    if (QFileInfo(fn).completeSuffix().isEmpty())
+        fn += u'.' + QLatin1StringView(profileExtensionC);
 
     QFile file(fn);
     if (!file.open(QIODevice::WriteOnly|QIODevice::Text)) {

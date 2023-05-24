@@ -1,45 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "testtypes.h"
 
 #include <private/qv4qmlcontext_p.h>
 
 static QObject *myTypeObjectSingleton(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     return new MyTypeObject();
 }
 
 static QJSValue myQJSValueQObjectSingleton(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
+    Q_UNUSED(engine);
 
     QJSValue value = scriptEngine->newQObject(new MyTypeObject());
     return value;
@@ -47,8 +22,9 @@ static QJSValue myQJSValueQObjectSingleton(QQmlEngine *engine, QJSEngine *script
 
 void registerTypes()
 {
-    qmlRegisterInterface<MyInterface>("MyInterface");
+    qmlRegisterInterface<MyInterface>("MyInterface", 1);
     qmlRegisterType<MyQmlObject>("Test",1,0,"MyQmlObject");
+    qmlRegisterType<MyQmlObjectWithAttachedCounter>("Test", 1, 0, "MyQmlObjectWithAttachedCounter");
     qmlRegisterType<MyTypeObject>("Test",1,0,"MyTypeObject");
     qmlRegisterType<MyContainer>("Test",1,0,"MyContainer");
     qmlRegisterType<MyPropertyValueSource>("Test",1,0,"MyPropertyValueSource");
@@ -116,12 +92,80 @@ void registerTypes()
 
     qmlRegisterType<MyArrayBufferTestClass>("Test", 1, 0, "MyArrayBufferTestClass");
 
+    qmlRegisterTypesAndRevisions<EnumPropsManyUnderlyingTypes>("Test", 1);
+
     qmlRegisterType<LazyDeferredSubObject>("Test", 1, 0, "LazyDeferredSubObject");
     qmlRegisterType<DeferredProperties>("Test", 1, 0, "DeferredProperties");
+    qmlRegisterType<ImmediateProperties>("Test", 1, 0, "ImmediateProperties");
 
     qmlRegisterTypesAndRevisions<Extended, Foreign, ForeignExtended>("Test", 1);
     qmlRegisterTypesAndRevisions<BareSingleton>("Test", 1);
     qmlRegisterTypesAndRevisions<UncreatableSingleton>("Test", 1);
+
+    // Metatype/namespace variation one: Register namespace first
+
+    // The holder type
+    qmlRegisterTypesAndRevisions<ObjectTypeHoldingValueTypeForeign1>("Test", 1);
+
+    {
+        // A metatype for the namespace to hold the enums
+        Q_CONSTINIT static auto metaType = QQmlPrivate::metaTypeForNamespace(
+                    [](const QtPrivate::QMetaTypeInterface *) {
+            return &ValueTypeWithEnum1::staticMetaObject;
+        }, "ValueTypeWithEnum1");
+        QMetaType(&metaType).id();
+    }
+
+    // The namespace to hold the enums
+    qmlRegisterNamespaceAndRevisions(&ValueTypeWithEnum1::staticMetaObject, "Test", 1, nullptr,
+                                     &ValueTypeWithEnumForeignNamespace1::staticMetaObject);
+
+    // The value type
+    qmlRegisterTypesAndRevisions<ValueTypeWithEnumForeign1>("Test", 1);
+
+
+    // Metatype/namespace variation two: Register namespace last
+
+    // The holder type
+    qmlRegisterTypesAndRevisions<ObjectTypeHoldingValueTypeForeign2>("Test", 1);
+
+    // The value type
+    qmlRegisterTypesAndRevisions<ValueTypeWithEnumForeign2>("Test", 1);
+
+    {
+        // A metatype for the namespace to hold the enums
+        Q_CONSTINIT static auto metaType = QQmlPrivate::metaTypeForNamespace(
+                    [](const QtPrivate::QMetaTypeInterface *) {
+            return &ValueTypeWithEnum2::staticMetaObject;
+        }, "ValueTypeWithEnum2");
+        QMetaType(&metaType).id();
+    }
+
+    // The namespace to hold the enums
+    qmlRegisterNamespaceAndRevisions(&ValueTypeWithEnum2::staticMetaObject, "Test", 1, nullptr,
+                                     &ValueTypeWithEnumForeignNamespace2::staticMetaObject);
+
+    qmlRegisterTypesAndRevisions<Large>("Test", 1);
+    qmlRegisterTypesAndRevisions<Foo>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<BaseValueType>("ValueTypes", 1);
+    qmlRegisterTypesAndRevisions<DerivedValueType>("ValueTypes", 1);
+    qmlRegisterTypesAndRevisions<GetterObject>("Test", 1);
+
+    qmlRegisterNamespaceAndRevisions(&TypedEnums::staticMetaObject, "TypedEnums", 1);
+    qmlRegisterTypesAndRevisions<ObjectWithEnums>("TypedEnums", 1);
+    qmlRegisterTypesAndRevisions<GadgetWithEnums>("TypedEnums", 1);
+
+    QMetaType::registerConverter<UnregisteredValueDerivedType, UnregisteredValueBaseType>();
+    qmlRegisterTypesAndRevisions<UnregisteredValueTypeHandler>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<Greeter>("QmlOtherThis", 1);
+    qmlRegisterTypesAndRevisions<BirthdayParty>("People", 1);
+    qmlRegisterTypesAndRevisions<AttachedInCtor>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<ByteArrayReceiver>("Test", 1);
+
+    qmlRegisterTypesAndRevisions<Counter>("Test", 1);
 }
 
 QVariant myCustomVariantTypeConverter(const QString &data)
@@ -149,7 +193,7 @@ void CustomBinding::componentComplete()
 
         int bindingId = binding->value.compiledScriptIndex;
 
-        QQmlContextData *context = QQmlContextData::get(qmlContext(this));
+        QQmlRefPointer<QQmlContextData> context = QQmlContextData::get(qmlContext(this));
 
         QQmlProperty property(m_target, name, qmlContext(this));
         QV4::Scope scope(qmlEngine(this)->handle());
@@ -163,7 +207,7 @@ void CustomBinding::componentComplete()
 
 void EnumSupportingCustomParser::verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &bindings)
 {
-    if (bindings.count() != 1) {
+    if (bindings.size() != 1) {
         error(bindings.first(), QStringLiteral("Custom parser invoked incorrectly for unit test"));
         return;
     }
@@ -174,7 +218,7 @@ void EnumSupportingCustomParser::verifyBindings(const QQmlRefPointer<QV4::Execut
         return;
     }
 
-    if (binding->type != QV4::CompiledData::Binding::Type_Script) {
+    if (binding->type() != QV4::CompiledData::Binding::Type_Script) {
         error(binding, QStringLiteral("Custom parser invoked with the wrong property value. Expected script that evaluates to enum"));
         return;
     }
@@ -195,7 +239,7 @@ void SimpleObjectCustomParser::applyBindings(QObject *object, const QQmlRefPoint
 {
     SimpleObjectWithCustomParser *o = qobject_cast<SimpleObjectWithCustomParser*>(object);
     Q_ASSERT(o);
-    o->setCustomBindingsCount(bindings.count());
+    o->setCustomBindingsCount(bindings.size());
 }
 
 
@@ -214,6 +258,8 @@ bool MyQmlObject::event(QEvent *event)
         m_childAddedEventCount++;
     return QObject::event(event);
 }
+
+int MyQmlObjectWithAttachedCounter::attachedCount = 0;
 
 UncreatableSingleton *UncreatableSingleton::instance()
 {

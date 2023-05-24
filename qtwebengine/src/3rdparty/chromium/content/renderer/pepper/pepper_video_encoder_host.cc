@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,20 +6,24 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/numerics/safe_math.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "content/common/pepper_file_util.h"
 #include "content/public/common/gpu_stream_constants.h"
+#include "content/public/renderer/ppapi_gfx_conversion.h"
 #include "content/public/renderer/renderer_ppapi_host.h"
-#include "content/renderer/pepper/gfx_conversion.h"
 #include "content/renderer/pepper/host_globals.h"
 #include "content/renderer/pepper/video_encoder_shim.h"
 #include "content/renderer/render_thread_impl.h"
 #include "gpu/command_buffer/common/context_creation_attribs.h"
 #include "gpu/ipc/client/command_buffer_proxy_impl.h"
+#include "media/base/bitrate.h"
+#include "media/base/bitstream_buffer.h"
+#include "media/base/media_log.h"
+#include "media/base/video_frame.h"
+#include "media/video/video_encode_accelerator.h"
 #include "ppapi/c/pp_codecs.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/c/pp_graphics_3d.h"
@@ -275,7 +279,8 @@ int32_t PepperVideoEncoderHost::OnHostMsgInitialize(
 
   initialize_reply_context_ = context->MakeReplyMessageContext();
   const media::VideoEncodeAccelerator::Config config(
-      media_input_format_, input_size, media_profile, initial_bitrate);
+      media_input_format_, input_size, media_profile,
+      media::Bitrate::ConstantBitrate(initial_bitrate));
   if (encoder_->Initialize(config, this))
     return PP_OK_COMPLETIONPENDING;
 
@@ -335,7 +340,8 @@ int32_t PepperVideoEncoderHost::OnHostMsgRequestEncodingParametersChange(
   if (encoder_last_error_)
     return encoder_last_error_;
 
-  encoder_->RequestEncodingParametersChange(bitrate, framerate);
+  encoder_->RequestEncodingParametersChange(
+      media::Bitrate::ConstantBitrate(bitrate), framerate);
 
   return PP_OK;
 }

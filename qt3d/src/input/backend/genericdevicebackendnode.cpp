@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "genericdevicebackendnode_p.h"
 
@@ -72,9 +36,9 @@ void GenericDeviceBackendNode::syncFromFrontEnd(const Qt3DCore::QNode *frontEnd,
 
     {
         const QMutexLocker lock(&m_mutex);
-        for (const auto &val: qAsConst(d->m_pendingAxisEvents))
+        for (const auto &val: std::as_const(d->m_pendingAxisEvents))
             m_axesValues[val.first] = val.second;
-        for (const auto &val: qAsConst(d->m_pendingButtonsEvents))
+        for (const auto &val: std::as_const(d->m_pendingButtonsEvents))
             m_buttonsValues[val.first] = val.second;
 
         d->m_pendingAxisEvents.clear();
@@ -108,11 +72,11 @@ GenericDeviceBackendFunctor::GenericDeviceBackendFunctor(QInputAspect *inputaspe
 {
 }
 
-Qt3DCore::QBackendNode *GenericDeviceBackendFunctor::create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const
+Qt3DCore::QBackendNode *GenericDeviceBackendFunctor::create(Qt3DCore::QNodeId id) const
 {
-    GenericDeviceBackendNode *backendNode = m_handler->genericDeviceBackendNodeManager()->getOrCreateResource(change->subjectId());
+    GenericDeviceBackendNode *backendNode = m_handler->genericDeviceBackendNodeManager()->getOrCreateResource(id);
     backendNode->setInputAspect(m_inputAspect);
-    m_handler->appendGenericDevice(m_handler->genericDeviceBackendNodeManager()->lookupHandle(change->subjectId()));
+    m_handler->appendGenericDevice(m_handler->genericDeviceBackendNodeManager()->lookupHandle(id));
     return backendNode;
 }
 

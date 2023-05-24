@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 BogDan Vatra <bogdan@kde.org>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QDebug>
 #include <QTime>
@@ -55,10 +19,11 @@
 #include <android/native_window_jni.h>
 #include <qguiapplication.h>
 
+#include <QtCore/QJniObject>
+#include <QtCore/QJniEnvironment>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QWindow>
 #include <QtGui/private/qwindow_p.h>
-
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -87,11 +52,21 @@ private:
 # define PROFILE_SCOPE
 #endif
 
-QAndroidPlatformScreen::QAndroidPlatformScreen()
+Q_DECLARE_JNI_CLASS(Display, "android/view/Display")
+Q_DECLARE_JNI_CLASS(DisplayMetrics, "android/util/DisplayMetrics")
+Q_DECLARE_JNI_CLASS(Resources, "android/content/res/Resources")
+Q_DECLARE_JNI_CLASS(Size, "android/util/Size")
+Q_DECLARE_JNI_CLASS(QtNative, "org/qtproject/qt/android/QtNative")
+
+Q_DECLARE_JNI_TYPE(DisplayMode, "Landroid/view/Display$Mode;")
+
+QAndroidPlatformScreen::QAndroidPlatformScreen(const QJniObject &displayObject)
     : QObject(), QPlatformScreen()
 {
-    m_availableGeometry = QRect(0, 0, QAndroidPlatformIntegration::m_defaultGeometryWidth, QAndroidPlatformIntegration::m_defaultGeometryHeight);
-    m_size = QSize(QAndroidPlatformIntegration::m_defaultScreenWidth, QAndroidPlatformIntegration::m_defaultScreenHeight);
+    m_availableGeometry = QAndroidPlatformIntegration::m_defaultAvailableGeometry;
+    m_size = QAndroidPlatformIntegration::m_defaultScreenSize;
+    m_physicalSize = QAndroidPlatformIntegration::m_defaultPhysicalSize;
+
     // Raster only apps should set QT_ANDROID_RASTER_IMAGE_DEPTH to 16
     // is way much faster than 32
     if (qEnvironmentVariableIntValue("QT_ANDROID_RASTER_IMAGE_DEPTH") == 16) {
@@ -101,15 +76,64 @@ QAndroidPlatformScreen::QAndroidPlatformScreen()
         m_format = QImage::Format_ARGB32_Premultiplied;
         m_depth = 32;
     }
-    m_physicalSize.setHeight(QAndroidPlatformIntegration::m_defaultPhysicalSizeHeight);
-    m_physicalSize.setWidth(QAndroidPlatformIntegration::m_defaultPhysicalSizeWidth);
-    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &QAndroidPlatformScreen::applicationStateChanged);
+
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this,
+            &QAndroidPlatformScreen::applicationStateChanged);
+
+    if (!displayObject.isValid())
+        return;
+
+    m_name = displayObject.callObjectMethod<jstring>("getName").toString();
+    m_refreshRate = displayObject.callMethod<jfloat>("getRefreshRate");
+    m_displayId = displayObject.callMethod<jint>("getDisplayId");
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const auto displayContext = context.callMethod<QtJniTypes::Context>("createDisplayContext",
+                                                displayObject.object<QtJniTypes::Display>());
+
+    const auto sizeObj = QJniObject::callStaticMethod<QtJniTypes::Size>(
+                                                QtJniTypes::className<QtJniTypes::QtNative>(),
+                                                "getDisplaySize",
+                                                displayContext.object<QtJniTypes::Context>(),
+                                                displayObject.object<QtJniTypes::Display>());
+    m_size = QSize(sizeObj.callMethod<int>("getWidth"), sizeObj.callMethod<int>("getHeight"));
+
+    const auto resources = displayContext.callMethod<QtJniTypes::Resources>("getResources");
+    const auto metrics = resources.callMethod<QtJniTypes::DisplayMetrics>("getDisplayMetrics");
+    const float xdpi = metrics.getField<float>("xdpi");
+    const float ydpi = metrics.getField<float>("ydpi");
+
+    // Potentially densityDpi could be used instead of xpdi/ydpi to do the calculation,
+    // but the results are not consistent with devices specs.
+    // (https://issuetracker.google.com/issues/194120500)
+    m_physicalSize.setWidth(qRound(m_size.width() / xdpi * 25.4));
+    m_physicalSize.setHeight(qRound(m_size.height() / ydpi * 25.4));
+
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 23) {
+        const QJniObject currentMode = displayObject.callObjectMethod<QtJniTypes::DisplayMode>("getMode");
+        m_currentMode = currentMode.callMethod<jint>("getModeId");
+
+        const QJniObject supportedModes = displayObject.callObjectMethod<QtJniTypes::DisplayMode[]>(
+            "getSupportedModes");
+        const auto modeArray = jobjectArray(supportedModes.object());
+
+        QJniEnvironment env;
+        const auto size = env->GetArrayLength(modeArray);
+        for (jsize i = 0; i < size; ++i) {
+            const auto mode = QJniObject::fromLocalRef(env->GetObjectArrayElement(modeArray, i));
+            m_modes << QPlatformScreen::Mode {
+                .size = QSize { mode.callMethod<jint>("getPhysicalWidth"),
+                                mode.callMethod<jint>("getPhysicalHeight") },
+                .refreshRate = mode.callMethod<jfloat>("getRefreshRate")
+            };
+        }
+    }
 }
 
 QAndroidPlatformScreen::~QAndroidPlatformScreen()
 {
-    if (m_id != -1) {
-        QtAndroid::destroySurface(m_id);
+    if (m_surfaceId != -1) {
+        QtAndroid::destroySurface(m_surfaceId);
         m_surfaceWaitCondition.wakeOne();
         releaseSurface();
     }
@@ -151,7 +175,9 @@ void QAndroidPlatformScreen::addWindow(QAndroidPlatformWindow *window)
     if (window->parent() && window->isRaster())
         return;
 
-    Q_ASSERT(!m_windowStack.contains(window));
+    if (m_windowStack.contains(window))
+        return;
+
     m_windowStack.prepend(window);
     if (window->isRaster()) {
         m_rasterSurfaces.ref();
@@ -159,7 +185,7 @@ void QAndroidPlatformScreen::addWindow(QAndroidPlatformWindow *window)
     }
 
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleWindowActivated(w, Qt::ActiveWindowFocusReason);
     topWindowChanged(w);
 }
 
@@ -168,10 +194,10 @@ void QAndroidPlatformScreen::removeWindow(QAndroidPlatformWindow *window)
     if (window->parent() && window->isRaster())
         return;
 
-
-    Q_ASSERT(m_windowStack.contains(window));
     m_windowStack.removeOne(window);
-    Q_ASSERT(!m_windowStack.contains(window));
+
+    if (m_windowStack.contains(window))
+        qWarning() << "Failed to remove window";
 
     if (window->isRaster()) {
         m_rasterSurfaces.deref();
@@ -179,7 +205,7 @@ void QAndroidPlatformScreen::removeWindow(QAndroidPlatformWindow *window)
     }
 
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleWindowActivated(w, Qt::ActiveWindowFocusReason);
     topWindowChanged(w);
 }
 
@@ -196,7 +222,7 @@ void QAndroidPlatformScreen::raise(QAndroidPlatformWindow *window)
         setDirty(window->geometry());
     }
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleWindowActivated(w, Qt::ActiveWindowFocusReason);
     topWindowChanged(w);
 }
 
@@ -213,7 +239,7 @@ void QAndroidPlatformScreen::lower(QAndroidPlatformWindow *window)
         setDirty(window->geometry());
     }
     QWindow *w = topWindow();
-    QWindowSystemInterface::handleWindowActivated(w);
+    QWindowSystemInterface::handleWindowActivated(w, Qt::ActiveWindowFocusReason);
     topWindowChanged(w);
 }
 
@@ -243,6 +269,42 @@ void QAndroidPlatformScreen::setSize(const QSize &size)
     QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(), availableGeometry());
 }
 
+void QAndroidPlatformScreen::setSizeParameters(const QSize &physicalSize, const QSize &size,
+                                               const QRect &availableGeometry)
+{
+    // The goal of this method is to set all geometry-related parameters
+    // at the same time and generate only one screen geometry change event.
+    m_physicalSize = physicalSize;
+    m_size = size;
+    // If available geometry has changed, the event will be handled in
+    // setAvailableGeometry. Otherwise we need to explicitly handle it to
+    // retain the behavior, because setSize() does the handling unconditionally.
+    if (m_availableGeometry != availableGeometry) {
+        setAvailableGeometry(availableGeometry);
+    } else {
+        QWindowSystemInterface::handleScreenGeometryChange(QPlatformScreen::screen(), geometry(),
+                                                           this->availableGeometry());
+    }
+}
+
+int QAndroidPlatformScreen::displayId() const
+{
+    return m_displayId;
+}
+
+void QAndroidPlatformScreen::setRefreshRate(qreal refreshRate)
+{
+    if (refreshRate == m_refreshRate)
+        return;
+    m_refreshRate = refreshRate;
+    QWindowSystemInterface::handleScreenRefreshRateChange(QPlatformScreen::screen(), refreshRate);
+}
+
+void QAndroidPlatformScreen::setOrientation(Qt::ScreenOrientation orientation)
+{
+    QWindowSystemInterface::handleScreenOrientationChange(QPlatformScreen::screen(), orientation);
+}
+
 void QAndroidPlatformScreen::setAvailableGeometry(const QRect &rect)
 {
     QMutexLocker lock(&m_surfaceMutex);
@@ -267,21 +329,21 @@ void QAndroidPlatformScreen::setAvailableGeometry(const QRect &rect)
         }
     }
 
-    if (m_id != -1) {
+    if (m_surfaceId != -1) {
         releaseSurface();
-        QtAndroid::setSurfaceGeometry(m_id, rect);
+        QtAndroid::setSurfaceGeometry(m_surfaceId, rect);
     }
 }
 
 void QAndroidPlatformScreen::applicationStateChanged(Qt::ApplicationState state)
 {
-    for (QAndroidPlatformWindow *w : qAsConst(m_windowStack))
+    for (QAndroidPlatformWindow *w : std::as_const(m_windowStack))
         w->applicationStateChanged(state);
 
     if (state <=  Qt::ApplicationHidden) {
         lockSurface();
-        QtAndroid::destroySurface(m_id);
-        m_id = -1;
+        QtAndroid::destroySurface(m_surfaceId);
+        m_surfaceId = -1;
         releaseSurface();
         unlockSurface();
     }
@@ -294,7 +356,7 @@ void QAndroidPlatformScreen::topWindowChanged(QWindow *w)
     if (w != 0) {
         QAndroidPlatformWindow *platformWindow = static_cast<QAndroidPlatformWindow *>(w->handle());
         if (platformWindow != 0)
-            platformWindow->updateStatusBarVisibility();
+            platformWindow->updateSystemUiVisibility();
     }
 }
 
@@ -312,29 +374,27 @@ void QAndroidPlatformScreen::doRedraw(QImage* screenGrabImage)
     if (m_dirtyRect.isEmpty())
         return;
 
-    // Stop if there are no visible raster windows. If we only have RasterGLSurface
-    // windows that have renderToTexture children (i.e. they need the OpenGL path) then
-    // we do not need an overlay surface.
+    // Stop if there are no visible raster windows
     bool hasVisibleRasterWindows = false;
-    for (QAndroidPlatformWindow *window : qAsConst(m_windowStack)) {
-        if (window->window()->isVisible() && window->isRaster() && !qt_window_private(window->window())->compositing) {
+    for (QAndroidPlatformWindow *window : std::as_const(m_windowStack)) {
+        if (window->window()->isVisible() && window->isRaster()) {
             hasVisibleRasterWindows = true;
             break;
         }
     }
     if (!hasVisibleRasterWindows) {
         lockSurface();
-        if (m_id != -1) {
-            QtAndroid::destroySurface(m_id);
+        if (m_surfaceId != -1) {
+            QtAndroid::destroySurface(m_surfaceId);
             releaseSurface();
-            m_id = -1;
+            m_surfaceId = -1;
         }
         unlockSurface();
         return;
     }
     QMutexLocker lock(&m_surfaceMutex);
-    if (m_id == -1 && m_rasterSurfaces) {
-        m_id = QtAndroid::createSurface(this, m_availableGeometry, true, m_depth);
+    if (m_surfaceId == -1 && m_rasterSurfaces) {
+        m_surfaceId = QtAndroid::createSurface(this, geometry(), true, m_depth);
         AndroidDeadlockProtector protector;
         if (!protector.acquire())
             return;
@@ -371,10 +431,8 @@ void QAndroidPlatformScreen::doRedraw(QImage* screenGrabImage)
     compositePainter.setCompositionMode(QPainter::CompositionMode_Source);
 
     QRegion visibleRegion(m_dirtyRect);
-    for (QAndroidPlatformWindow *window : qAsConst(m_windowStack)) {
-        if (!window->window()->isVisible()
-                || qt_window_private(window->window())->compositing
-                || !window->isRaster())
+    for (QAndroidPlatformWindow *window : std::as_const(m_windowStack)) {
+        if (!window->window()->isVisible() || !window->isRaster())
             continue;
 
         for (const QRect &rect : std::vector<QRect>(visibleRegion.begin(), visibleRegion.end())) {
@@ -429,7 +487,7 @@ static const int androidLogicalDpi = 72;
 
 QDpi QAndroidPlatformScreen::logicalDpi() const
 {
-    qreal lDpi = QtAndroid::scaledDensity() * androidLogicalDpi;
+    qreal lDpi = QtAndroid::pixelDensity() * androidLogicalDpi;
     return QDpi(lDpi, lDpi);
 }
 

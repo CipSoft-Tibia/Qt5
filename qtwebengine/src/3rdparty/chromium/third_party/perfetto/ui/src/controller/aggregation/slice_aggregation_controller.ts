@@ -18,36 +18,42 @@ import {Area, Sorting} from '../../common/state';
 import {toNs} from '../../common/time';
 import {
   ASYNC_SLICE_TRACK_KIND,
-  Config as AsyncSliceConfig
-} from '../../tracks/async_slices/common';
+  Config as AsyncSliceConfig,
+} from '../../tracks/async_slices';
 import {
   Config as SliceConfig,
-  SLICE_TRACK_KIND
-} from '../../tracks/chrome_slices/common';
+  SLICE_TRACK_KIND,
+} from '../../tracks/chrome_slices';
 import {globals} from '../globals';
 
 import {AggregationController} from './aggregation_controller';
+
+export function getSelectedTrackIds(area: Area): number[] {
+  const selectedTrackIds = [];
+  for (const trackId of area.tracks) {
+    const track = globals.state.tracks[trackId];
+    // Track will be undefined for track groups.
+    if (track !== undefined) {
+      if (track.kind === SLICE_TRACK_KIND) {
+        selectedTrackIds.push((track.config as SliceConfig).trackId);
+      }
+      if (track.kind === ASYNC_SLICE_TRACK_KIND) {
+        const config = track.config as AsyncSliceConfig;
+        for (const id of config.trackIds) {
+          selectedTrackIds.push(id);
+        }
+      }
+    }
+  }
+  return selectedTrackIds;
+}
 
 export class SliceAggregationController extends AggregationController {
   async createAggregateView(engine: Engine, area: Area) {
     await engine.query(`drop view if exists ${this.kind};`);
 
-    const selectedTrackIds = [];
-    for (const trackId of area.tracks) {
-      const track = globals.state.tracks[trackId];
-      // Track will be undefined for track groups.
-      if (track !== undefined) {
-        if (track.kind === SLICE_TRACK_KIND) {
-          selectedTrackIds.push((track.config as SliceConfig).trackId);
-        }
-        if (track.kind === ASYNC_SLICE_TRACK_KIND) {
-          const config = track.config as AsyncSliceConfig;
-          for (const id of config.trackIds) {
-            selectedTrackIds.push(id);
-          }
-        }
-      }
-    }
+    const selectedTrackIds = getSelectedTrackIds(area);
+
     if (selectedTrackIds.length === 0) return false;
 
     const query = `create view ${this.kind} as
@@ -80,7 +86,7 @@ export class SliceAggregationController extends AggregationController {
       {
         title: 'Name',
         kind: 'STRING',
-        columnConstructor: Uint16Array,
+        columnConstructor: Uint32Array,
         columnId: 'name',
       },
       {
@@ -88,21 +94,21 @@ export class SliceAggregationController extends AggregationController {
         kind: 'TIMESTAMP_NS',
         columnConstructor: Float64Array,
         columnId: 'total_dur',
-        sum: true
+        sum: true,
       },
       {
         title: 'Avg Wall duration (ms)',
         kind: 'TIMESTAMP_NS',
         columnConstructor: Float64Array,
-        columnId: 'avg_dur'
+        columnId: 'avg_dur',
       },
       {
         title: 'Occurrences',
         kind: 'NUMBER',
-        columnConstructor: Uint16Array,
+        columnConstructor: Uint32Array,
         columnId: 'occurrences',
-        sum: true
-      }
+        sum: true,
+      },
     ];
   }
 }

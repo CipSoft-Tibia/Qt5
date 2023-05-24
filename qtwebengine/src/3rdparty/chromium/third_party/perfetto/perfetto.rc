@@ -19,7 +19,7 @@ service traced /system/bin/traced
     socket traced_producer stream 0666 root root
     user nobody
     group nobody
-    writepid /dev/cpuset/system-background/tasks
+    task_profiles ServiceCapacityLow
 
 service traced_probes /system/bin/traced_probes
     class late_start
@@ -27,8 +27,8 @@ service traced_probes /system/bin/traced_probes
     user nobody
     # Despite the "log" group below, traced_probes is allowed to read log
     # only on userdebug/eng via selinux (see traced_probes.te).
-    group nobody readproc log
-    writepid /dev/cpuset/system-background/tasks
+    group nobody readproc log readtracefs
+    task_profiles ServiceCapacityLow
     # Clean up procfs configuration even if traced_probes crashes
     # unexpectedly.
     onrestart exec_background - nobody shell -- /system/bin/traced_probes --cleanup-after-crash
@@ -50,11 +50,17 @@ on property:persist.traced.enable=1 && property:debug.atrace.user_initiated=""
 on property:persist.traced.enable=1
     # Trace files need to be:
     # - Written by either uid:shell or uid:statsd.
-    # - Read by shell and dropbox (dropbox is part of system_server).
-    # When written to dropbox, they are persistet in the perfetto-traces folder
-    # only for the time it takes to make a dropbox call, and unlinked
-    # immediately in any case.
+    # - Read by shell and incidentd.
     mkdir /data/misc/perfetto-traces 0773 root shell
+
+    # Traces in this directory are only accessed by dumpstate (read+unlink) and
+    # by the bug reporting UI (ls+getattr).
+    mkdir /data/misc/perfetto-traces/bugreport 0773 root shell
+
+    # This directory allows shell to save configs file in a place where the
+    # perfetto cmdline client can read then. /data/local/tmp/ isn't safe because
+    # too many other domains can write into that. See b/170404111.
+    mkdir /data/misc/perfetto-configs 0775 root shell
 
     start traced
     start traced_probes
@@ -66,3 +72,52 @@ on property:persist.traced.enable=0
 # Reset the Perfetto guard rail state on boot:
 on post-fs-data
     rm /data/misc/perfetto-traces/.guardraildata
+
+#############################################################################
+#  mm_events - Arms a perfetto trace config that is triggered
+#              on memory pressure (kmem_activity trigger)
+#############################################################################
+
+service mm_events /system/bin/mm_events
+    class late_start
+    disabled
+    oneshot
+    user nobody
+    group nobody
+
+on property:persist.mm_events.enabled=true && property:persist.traced.enable=1
+    restart mm_events   # Restart to reset backoff interval
+
+on property:persist.mm_events.enabled=false
+    stop mm_events
+
+#############################################################################
+#  perfetto_trace_on_boot - Starts a perfetto trace on boot
+#############################################################################
+#
+# There are two separate actions (a trigger action and a start action) to make
+# sure that perfetto_trace_on_boot is started only once on boot (otherwise,
+# whenever persist.debug.perfetto.boottrace=1 is set, perfetto_trace_on_boot
+# would start immediately).
+#
+# persist.debug.perfetto.boottrace=1 can be manually set after boot (to record
+# a trace on the next reboot) and we don't want to immediately start a trace
+# when setting the debug property. So we turn "ro.persistent_properties.ready"
+# into a trigger, and then check whether we should start tracing when the
+# trigger fires.
+on perfetto_maybe_trace_on_boot && property:persist.debug.perfetto.boottrace=1 && property:persist.traced.enable=1
+    setprop persist.debug.perfetto.boottrace ""
+    rm /data/misc/perfetto-traces/boottrace.perfetto-trace
+    # Set by traced after listen()ing on the consumer socket. Without this,
+    # perfetto could try to connect to traced before traced is ready to listen.
+    wait_for_prop sys.trace.traced_started 1
+    start perfetto_trace_on_boot
+
+on property:ro.persistent_properties.ready=true
+    trigger perfetto_maybe_trace_on_boot
+
+service perfetto_trace_on_boot /system/bin/perfetto -c /data/misc/perfetto-configs/boottrace.pbtxt --txt -o /data/misc/perfetto-traces/boottrace.perfetto-trace
+    disabled
+    oneshot
+    user shell
+    group nobody

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <string>
 
-#include "base/bind.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/base/load_flags.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "ui/gfx/image/image.h"
@@ -65,7 +65,7 @@ void ImageFetcherImpl::FetchImageAndData(
     // later.
     if (image_data_callback) {
       if (!request->image_data.empty()) {
-        base::ThreadTaskRunnerHandle::Get()->PostTask(
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
             FROM_HERE,
             base::BindOnce(&ImageFetcherImpl::RunImageDataCallback,
                            weak_ptr_factory_.GetWeakPtr(),
@@ -103,7 +103,7 @@ void ImageFetcherImpl::OnImageURLFetched(const GURL& image_url,
   request->image_data = image_data;
   request->request_metadata = metadata;
   image_decoder_->DecodeImage(
-      image_data, params.frame_size(),
+      image_data, params.frame_size(), params.data_decoder(),
       base::BindOnce(&ImageFetcherImpl::OnImageDecoded,
                      weak_ptr_factory_.GetWeakPtr(), image_url, metadata));
 }

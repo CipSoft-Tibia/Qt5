@@ -23,7 +23,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SVG_SVG_FE_DIFFUSE_LIGHTING_ELEMENT_H_
 
 #include "third_party/blink/renderer/core/svg/svg_filter_primitive_standard_attributes.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -51,7 +51,7 @@ class SVGFEDiffuseLightingElement final
 
  private:
   bool SetFilterEffectAttribute(FilterEffect*, const QualifiedName&) override;
-  void SvgAttributeChanged(const QualifiedName&) override;
+  void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
   FilterEffect* Build(SVGFilterBuilder*, Filter*) override;
   bool TaintsOrigin() const override;
 

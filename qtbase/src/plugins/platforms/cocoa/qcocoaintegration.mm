@@ -1,41 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+#include <AppKit/AppKit.h>
 
 #include "qcocoaintegration.h"
 
@@ -55,27 +21,27 @@
 #if QT_CONFIG(sessionmanager)
 #  include "qcocoasessionmanager.h"
 #endif
+#include "qcocoawindowmanager.h"
 
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qplatformaccessibility.h>
 #include <qpa/qplatforminputcontextfactory_p.h>
 #include <qpa/qplatformoffscreensurface.h>
 #include <QtCore/qcoreapplication.h>
+#include <QtGui/qpointingdevice.h>
 
-#include <QtPlatformHeaders/qcocoanativecontext.h>
-
+#include <QtCore/private/qcore_mac_p.h>
 #include <QtGui/private/qcoregraphics_p.h>
-
-#include <QtFontDatabaseSupport/private/qfontengine_coretext_p.h>
-
-#ifdef QT_WIDGETS_LIB
-#include <QtWidgets/qtwidgetsglobal.h>
-#if QT_CONFIG(filedialog)
-#include "qcocoafiledialoghelper.h"
+#include <QtGui/private/qmacmimeregistry_p.h>
+#ifndef QT_NO_OPENGL
+#  include <QtGui/private/qopenglcontext_p.h>
 #endif
-#endif
+#include <QtGui/private/qrhibackingstore_p.h>
+#include <QtGui/private/qfontengine_coretext_p.h>
 
 #include <IOKit/graphics/IOGraphicsLib.h>
+
+#include <inttypes.h>
 
 static void initResources()
 {
@@ -83,6 +49,8 @@ static void initResources()
 }
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcQpa, "qt.qpa", QtWarningMsg);
 
@@ -118,7 +86,7 @@ static QCocoaIntegration::Options parseOptions(const QStringList &paramList)
     QCocoaIntegration::Options options;
     for (const QString &param : paramList) {
 #ifndef QT_NO_FREETYPE
-        if (param == QLatin1String("fontengine=freetype"))
+        if (param == "fontengine=freetype"_L1)
             options |= QCocoaIntegration::UseFreeTypeFontEngine;
         else
 #endif
@@ -132,7 +100,7 @@ QCocoaIntegration *QCocoaIntegration::mInstance = nullptr;
 QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
     : mOptions(parseOptions(paramList))
     , mFontDb(nullptr)
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     , mAccessibility(new QCocoaAccessibility)
 #endif
 #ifndef QT_NO_CLIPBOARD
@@ -141,7 +109,7 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
     , mCocoaDrag(new QCocoaDrag)
     , mNativeInterface(new QCocoaNativeInterface)
     , mServices(new QCocoaServices)
-    , mKeyboardMapper(new QCocoaKeyMapper)
+    , mKeyboardMapper(new QAppleKeyMapper)
 {
     logVersionInformation();
 
@@ -168,24 +136,13 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
 
     if (qEnvironmentVariableIsEmpty("QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM")) {
         // Applications launched from plain executables (without an app
-        // bundle) are "background" applications that does not take keybaord
+        // bundle) are "background" applications that does not take keyboard
         // focus or have a dock icon or task switcher entry. Qt Gui apps generally
         // wants to be foreground applications so change the process type. (But
         // see the function implementation for exceptions.)
         qt_mac_transformProccessToForegroundApplication();
-
-        // Move the application window to front to make it take focus, also when launching
-        // from the terminal. On 10.12+ this call has been moved to applicationDidFinishLauching
-        // to work around issues with loss of focus at startup.
-        if (QOperatingSystemVersion::current() < QOperatingSystemVersion::MacOSSierra) {
-            // Ignoring other apps is necessary (we must ignore the terminal), but makes
-            // Qt apps play slightly less nice with other apps when lanching from Finder
-            // (See the activateIgnoringOtherApps docs.)
-            [cocoaApplication activateIgnoringOtherApps : YES];
-        }
     }
 
-    // ### For AA_MacPluginApplication we don't want to load the menu nib.
     // Qt 4 also does not set the application delegate, so that behavior
     // is matched here.
     if (!QCoreApplication::testAttribute(Qt::AA_PluginApplication)) {
@@ -202,9 +159,11 @@ QCocoaIntegration::QCocoaIntegration(const QStringList &paramList)
 
     QCocoaScreen::initializeScreens();
 
-    QMacInternalPasteboardMime::initializeMimeTypes();
+    QMacMimeRegistry::initializeMimeTypes();
     QCocoaMimeTypes::initializeMimeTypes();
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
+    QWindowSystemInterface::registerInputDevice(new QInputDevice(QString("keyboard"), 0,
+                                                                 QInputDevice::DeviceType::Keyboard, QString(), this));
 
     connect(qGuiApp, &QGuiApplication::focusWindowChanged,
         this, &QCocoaIntegration::focusWindowChanged);
@@ -230,12 +189,10 @@ QCocoaIntegration::~QCocoaIntegration()
     // Deleting the clipboard integration flushes promised pastes using
     // the mime converters - the ordering here is important.
     delete mCocoaClipboard;
-    QMacInternalPasteboardMime::destroyMimeTypes();
+    QMacMimeRegistry::destroyMimeTypes();
 #endif
 
     QCocoaScreen::cleanupScreens();
-
-    clearToolbars();
 }
 
 QCocoaIntegration *QCocoaIntegration::instance()
@@ -263,8 +220,8 @@ bool QCocoaIntegration::hasCapability(QPlatformIntegration::Capability cap) cons
         // AppKit expects rendering to happen on the main thread, and we can
         // easily end up in situations where rendering on secondary threads
         // will result in visual artifacts, bugs, or even deadlocks, when
-        // building with SDK 10.14 or higher which enbles view layer-backing.
-        return QMacVersion::buildSDK() < QOperatingSystemVersion(QOperatingSystemVersion::MacOSMojave);
+        // layer-backed.
+        return false;
     case OpenGL:
     case BufferQueueingOpenGL:
 #endif
@@ -314,6 +271,19 @@ QPlatformOpenGLContext *QCocoaIntegration::createPlatformOpenGLContext(QOpenGLCo
 {
     return new QCocoaGLContext(context);
 }
+
+QOpenGLContext *QCocoaIntegration::createOpenGLContext(NSOpenGLContext *nativeContext, QOpenGLContext *shareContext) const
+{
+    if (!nativeContext)
+        return nullptr;
+
+    auto *context = new QOpenGLContext;
+    context->setShareContext(shareContext);
+    auto *contextPrivate = QOpenGLContextPrivate::get(context);
+    contextPrivate->adopt(new QCocoaGLContext(nativeContext));
+    return context;
+}
+
 #endif
 
 QPlatformBackingStore *QCocoaIntegration::createPlatformBackingStore(QWindow *window) const
@@ -324,10 +294,27 @@ QPlatformBackingStore *QCocoaIntegration::createPlatformBackingStore(QWindow *wi
         return nullptr;
     }
 
-    if (platformWindow->view().layer)
+    switch (window->surfaceType()) {
+    case QSurface::RasterSurface:
         return new QCALayerBackingStore(window);
-    else
-        return new QNSWindowBackingStore(window);
+    case QSurface::MetalSurface:
+    case QSurface::OpenGLSurface:
+    case QSurface::VulkanSurface:
+        // If the window is a widget window, we know that the QWidgetRepaintManager
+        // will explicitly use rhiFlush() for the window owning the backingstore,
+        // and any child window with the same surface format. This means we can
+        // safely return a QCALayerBackingStore here, to ensure that any plain
+        // flush() for child windows that don't have a matching surface format
+        // will still work, by setting the layer's contents property.
+        if (window->inherits("QWidgetWindow"))
+            return new QCALayerBackingStore(window);
+
+        // Otherwise we return a QRhiBackingStore, that implements flush() in
+        // terms of rhiFlush().
+        return new QRhiBackingStore(window);
+    default:
+        return nullptr;
+    }
 }
 
 QAbstractEventDispatcher *QCocoaIntegration::createEventDispatcher() const
@@ -363,7 +350,7 @@ QPlatformInputContext *QCocoaIntegration::inputContext() const
     return mInputContext.data();
 }
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 QCocoaAccessibility *QCocoaIntegration::accessibility() const
 {
     return mAccessibility.data();
@@ -384,12 +371,12 @@ QCocoaDrag *QCocoaIntegration::drag() const
 
 QStringList QCocoaIntegration::themeNames() const
 {
-    return QStringList(QLatin1String(QCocoaTheme::name));
+    return QStringList(QLatin1StringView(QCocoaTheme::name));
 }
 
 QPlatformTheme *QCocoaIntegration::createPlatformTheme(const QString &name) const
 {
-    if (name == QLatin1String(QCocoaTheme::name))
+    if (name == QLatin1StringView(QCocoaTheme::name))
         return new QCocoaTheme;
     return QPlatformIntegration::createPlatformTheme(name);
 }
@@ -406,6 +393,8 @@ QVariant QCocoaIntegration::styleHint(StyleHint hint) const
         return QCoreTextFontEngine::fontSmoothingGamma();
     case ShowShortcutsInContextMenus:
         return QVariant(false);
+    case ReplayMousePressOutsidePopup:
+        return QVariant(false);
     default: break;
     }
 
@@ -414,60 +403,12 @@ QVariant QCocoaIntegration::styleHint(StyleHint hint) const
 
 Qt::KeyboardModifiers QCocoaIntegration::queryKeyboardModifiers() const
 {
-    return QCocoaKeyMapper::queryKeyboardModifiers();
+    return QAppleKeyMapper::queryKeyboardModifiers();
 }
 
 QList<int> QCocoaIntegration::possibleKeys(const QKeyEvent *event) const
 {
     return mKeyboardMapper->possibleKeys(event);
-}
-
-void QCocoaIntegration::setToolbar(QWindow *window, NSToolbar *toolbar)
-{
-    if (NSToolbar *prevToolbar = mToolbars.value(window))
-        [prevToolbar release];
-
-    [toolbar retain];
-    mToolbars.insert(window, toolbar);
-}
-
-NSToolbar *QCocoaIntegration::toolbar(QWindow *window) const
-{
-    return mToolbars.value(window);
-}
-
-void QCocoaIntegration::clearToolbars()
-{
-    QHash<QWindow *, NSToolbar *>::const_iterator it = mToolbars.constBegin();
-    while (it != mToolbars.constEnd()) {
-        [it.value() release];
-        ++it;
-    }
-    mToolbars.clear();
-}
-
-void QCocoaIntegration::pushPopupWindow(QCocoaWindow *window)
-{
-    m_popupWindowStack.append(window);
-}
-
-QCocoaWindow *QCocoaIntegration::popPopupWindow()
-{
-    if (m_popupWindowStack.isEmpty())
-        return nullptr;
-    return m_popupWindowStack.takeLast();
-}
-
-QCocoaWindow *QCocoaIntegration::activePopupWindow() const
-{
-    if (m_popupWindowStack.isEmpty())
-        return nullptr;
-    return m_popupWindowStack.front();
-}
-
-QList<QCocoaWindow *> *QCocoaIntegration::popupWindowStack()
-{
-    return &m_popupWindowStack;
 }
 
 void QCocoaIntegration::setApplicationIcon(const QIcon &icon) const
@@ -477,22 +418,20 @@ void QCocoaIntegration::setApplicationIcon(const QIcon &icon) const
     NSApp.applicationIconImage = [NSImage imageFromQIcon:icon withSize:fallbackSize];
 }
 
+void QCocoaIntegration::setApplicationBadge(qint64 number)
+{
+    NSApp.dockTile.badgeLabel = number ? [NSString stringWithFormat:@"%" PRId64, number] : nil;
+}
+
 void QCocoaIntegration::beep() const
 {
     NSBeep();
 }
 
-void QCocoaIntegration::closePopups(QWindow *forWindow)
+void QCocoaIntegration::quit() const
 {
-    for (auto it = m_popupWindowStack.begin(); it != m_popupWindowStack.end();) {
-        auto *popup = *it;
-        if (!forWindow || popup->window()->transientParent() == forWindow) {
-            it = m_popupWindowStack.erase(it);
-            QWindowSystemInterface::handleCloseEvent<QWindowSystemInterface::SynchronousDelivery>(popup->window());
-        } else {
-            ++it;
-        }
-    }
+    qCDebug(lcQpaApplication) << "Terminating application";
+    [NSApp terminate:nil];
 }
 
 void QCocoaIntegration::focusWindowChanged(QWindow *focusWindow)
@@ -522,6 +461,6 @@ void QCocoaIntegration::focusWindowChanged(QWindow *focusWindow)
     setApplicationIcon(focusWindow->icon());
 }
 
-#include "moc_qcocoaintegration.cpp"
-
 QT_END_NAMESPACE
+
+#include "moc_qcocoaintegration.cpp"

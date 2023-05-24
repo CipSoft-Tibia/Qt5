@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,8 +22,8 @@ class MODULES_EXPORT MediaControlDivElement : public HTMLDivElement,
   void MaybeRecordDisplayed() final;
 
   // Get the size of the element in pixels or the default if we cannot get the
-  // size because the element has not been layed out yet.
-  WebSize GetSizeOrDefault() const override;
+  // size because the element has not been laid out yet.
+  gfx::Size GetSizeOrDefault() const override;
 
   bool IsDisabled() const override;
 

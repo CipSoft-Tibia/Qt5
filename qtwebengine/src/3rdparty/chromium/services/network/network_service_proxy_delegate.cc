@@ -1,8 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/network_service_proxy_delegate.h"
+#include "base/functional/bind.h"
+#include "base/memory/scoped_refptr.h"
 #include "net/base/url_util.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_util.h"
@@ -96,13 +98,24 @@ void MergeRequestHeaders(net::HttpRequestHeaders* out,
 NetworkServiceProxyDelegate::NetworkServiceProxyDelegate(
     mojom::CustomProxyConfigPtr initial_config,
     mojo::PendingReceiver<mojom::CustomProxyConfigClient>
-        config_client_receiver)
+        config_client_receiver,
+    mojo::PendingRemote<mojom::CustomProxyConnectionObserver> observer_remote)
     : proxy_config_(std::move(initial_config)),
       receiver_(this, std::move(config_client_receiver)) {
   // Make sure there is always a valid proxy config so we don't need to null
   // check it.
-  if (!proxy_config_)
+  if (!proxy_config_) {
     proxy_config_ = mojom::CustomProxyConfig::New();
+  }
+
+  // |observer_remote| is an optional param for the NetworkContext.
+  if (observer_remote) {
+    observer_.Bind(std::move(observer_remote));
+    // Unretained is safe since |observer_| is owned by |this|.
+    observer_.set_disconnect_handler(
+        base::BindOnce(&NetworkServiceProxyDelegate::OnObserverDisconnect,
+                       base::Unretained(this)));
+  }
 }
 
 NetworkServiceProxyDelegate::~NetworkServiceProxyDelegate() {}
@@ -112,19 +125,28 @@ void NetworkServiceProxyDelegate::OnResolveProxy(
     const std::string& method,
     const net::ProxyRetryInfoMap& proxy_retry_info,
     net::ProxyInfo* result) {
-  if (!EligibleForProxy(*result, method))
+  if (!EligibleForProxy(*result, method)) {
     return;
+  }
 
   net::ProxyInfo proxy_info;
   if (ApplyProxyConfigToProxyInfo(proxy_config_->rules, proxy_retry_info, url,
                                   &proxy_info)) {
     DCHECK(!proxy_info.is_empty() && !proxy_info.is_direct());
+    if (proxy_config_->should_replace_direct &&
+        !proxy_config_->should_override_existing_config) {
+      MergeProxyRules(result->proxy_list(), proxy_info);
+    }
     result->OverrideProxyList(proxy_info.proxy_list());
   }
 }
 
 void NetworkServiceProxyDelegate::OnFallback(const net::ProxyServer& bad_proxy,
-                                             int net_error) {}
+                                             int net_error) {
+  if (observer_) {
+    observer_->OnFallback(bad_proxy, net_error);
+  }
+}
 
 void NetworkServiceProxyDelegate::OnBeforeTunnelRequest(
     const net::ProxyServer& proxy_server,
@@ -136,13 +158,21 @@ void NetworkServiceProxyDelegate::OnBeforeTunnelRequest(
 net::Error NetworkServiceProxyDelegate::OnTunnelHeadersReceived(
     const net::ProxyServer& proxy_server,
     const net::HttpResponseHeaders& response_headers) {
+  if (observer_) {
+    // Copy the response headers since mojo expects a ref counted object.
+    observer_->OnTunnelHeadersReceived(
+        proxy_server, base::MakeRefCounted<net::HttpResponseHeaders>(
+                          response_headers.raw_headers()));
+  }
   return net::OK;
 }
 
 void NetworkServiceProxyDelegate::OnCustomProxyConfigUpdated(
-    mojom::CustomProxyConfigPtr proxy_config) {
+    mojom::CustomProxyConfigPtr proxy_config,
+    OnCustomProxyConfigUpdatedCallback callback) {
   DCHECK(IsValidCustomProxyConfig(*proxy_config));
   proxy_config_ = std::move(proxy_config);
+  std::move(callback).Run();
 }
 
 void NetworkServiceProxyDelegate::MarkProxiesAsBad(
@@ -193,8 +223,11 @@ bool NetworkServiceProxyDelegate::EligibleForProxy(
     const std::string& method) const {
   bool has_existing_config =
       !proxy_info.is_direct() || proxy_info.proxy_list().size() > 1u;
-  if (!proxy_config_->should_override_existing_config && has_existing_config)
+
+  if (!proxy_config_->should_override_existing_config && has_existing_config &&
+      !proxy_config_->should_replace_direct) {
     return false;
+  }
 
   if (!proxy_config_->allow_non_idempotent_methods &&
       !net::HttpUtil::IsMethodIdempotent(method)) {
@@ -202,6 +235,29 @@ bool NetworkServiceProxyDelegate::EligibleForProxy(
   }
 
   return true;
+}
+
+void NetworkServiceProxyDelegate::MergeProxyRules(
+    const net::ProxyList& existing_proxy_list,
+    net::ProxyInfo& proxy_info) const {
+  net::ProxyList custom_proxy_list = proxy_info.proxy_list();
+  net::ProxyList merged_proxy_list;
+  for (const auto& existing_proxy : existing_proxy_list.GetAll()) {
+    if (existing_proxy.is_direct()) {
+      // Replace direct option with all proxies in the custom proxy list
+      for (const auto& custom_proxy : custom_proxy_list.GetAll()) {
+        merged_proxy_list.AddProxyServer(custom_proxy);
+      }
+    } else {
+      merged_proxy_list.AddProxyServer(existing_proxy);
+    }
+  }
+
+  proxy_info.OverrideProxyList(merged_proxy_list);
+}
+
+void NetworkServiceProxyDelegate::OnObserverDisconnect() {
+  observer_.reset();
 }
 
 }  // namespace network

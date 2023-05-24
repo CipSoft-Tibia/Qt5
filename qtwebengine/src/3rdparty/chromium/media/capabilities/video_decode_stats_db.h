@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
 #include "base/check.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "media/base/media_export.h"
 #include "media/base/video_codecs.h"
 #include "ui/gfx/geometry/size.h"
@@ -59,6 +58,7 @@ class MEDIA_EXPORT VideoDecodeStatsDB {
                      uint64_t frames_dropped,
                      uint64_t frames_power_efficient);
     DecodeStatsEntry(const DecodeStatsEntry& entry);
+    DecodeStatsEntry& operator=(const DecodeStatsEntry& entry);
 
     // Add stats from |right| to |this| entry.
     DecodeStatsEntry& operator+=(const DecodeStatsEntry& right);
@@ -72,7 +72,7 @@ class MEDIA_EXPORT VideoDecodeStatsDB {
     uint64_t frames_power_efficient;
   };
 
-  virtual ~VideoDecodeStatsDB();
+  virtual ~VideoDecodeStatsDB() = default;
 
   // Run asynchronous initialization of database. Initialization must complete
   // before calling other APIs. Initialization must be RE-RUN after calling
@@ -101,22 +101,6 @@ class MEDIA_EXPORT VideoDecodeStatsDB {
 
   // Clear all statistics from the DB.
   virtual void ClearStats(base::OnceClosure clear_done_cb) = 0;
-
-  // Tracking down root cause of crash probable UAF (https://crbug/865321).
-  // We will CHECK if a |dependent_db_| is found to be set during destruction.
-  // Dependent DB should always be destroyed and unhooked before |this|.
-  void set_dependent_db(VideoDecodeStatsDB* dependent) {
-    // One of these should be non-null.
-    CHECK(!dependent_db_ || !dependent);
-    // They shouldn't already match.
-    CHECK(dependent_db_ != dependent);
-
-    dependent_db_ = dependent;
-  }
-
- private:
-  // See set_dependent_db().
-  VideoDecodeStatsDB* dependent_db_ = nullptr;
 };
 
 MEDIA_EXPORT bool operator==(const VideoDecodeStatsDB::VideoDescKey& x,

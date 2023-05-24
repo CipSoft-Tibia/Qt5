@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKLOADER_P_H
 #define QQUICKLOADER_P_H
@@ -56,18 +20,20 @@
 QT_BEGIN_NAMESPACE
 
 class QQuickLoaderPrivate;
-class Q_AUTOTEST_EXPORT QQuickLoader : public QQuickImplicitSizeItem
+class QQmlV4Function;
+class Q_QUICK_PRIVATE_EXPORT QQuickLoader : public QQuickImplicitSizeItem
 {
     Q_OBJECT
 
-    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged)
-    Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged)
-    Q_PROPERTY(QQmlComponent *sourceComponent READ sourceComponent WRITE setSourceComponent RESET resetSourceComponent NOTIFY sourceComponentChanged)
-    Q_PROPERTY(QObject *item READ item NOTIFY itemChanged)
-    Q_PROPERTY(Status status READ status NOTIFY statusChanged)
-    Q_PROPERTY(qreal progress READ progress NOTIFY progressChanged)
-    Q_PROPERTY(bool asynchronous READ asynchronous WRITE setAsynchronous NOTIFY asynchronousChanged)
+    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged FINAL)
+    Q_PROPERTY(QUrl source READ source WRITE setSourceWithoutResolve NOTIFY sourceChanged FINAL)
+    Q_PROPERTY(QQmlComponent *sourceComponent READ sourceComponent WRITE setSourceComponent RESET resetSourceComponent NOTIFY sourceComponentChanged FINAL)
+    Q_PROPERTY(QObject *item READ item NOTIFY itemChanged FINAL)
+    Q_PROPERTY(Status status READ status NOTIFY statusChanged FINAL)
+    Q_PROPERTY(qreal progress READ progress NOTIFY progressChanged FINAL)
+    Q_PROPERTY(bool asynchronous READ asynchronous WRITE setAsynchronous NOTIFY asynchronousChanged FINAL)
     QML_NAMED_ELEMENT(Loader)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickLoader(QQuickItem *parent = nullptr);
@@ -76,10 +42,11 @@ public:
     bool active() const;
     void setActive(bool newVal);
 
-    Q_INVOKABLE void setSource(QQmlV4Function *);
+    Q_INVOKABLE void setSource(const QUrl &source, QJSValue initialProperties);
+    Q_INVOKABLE void setSource(const QUrl &source);
 
     QUrl source() const;
-    void setSource(const QUrl &);
+    void setSourceWithoutResolve(const QUrl &source);
 
     QQmlComponent *sourceComponent() const;
     void setSourceComponent(QQmlComponent *);
@@ -106,11 +73,12 @@ Q_SIGNALS:
     void asynchronousChanged();
 
 protected:
-    void geometryChanged(const QRectF &newGeometry, const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
     void componentComplete() override;
     void itemChange(ItemChange change, const ItemChangeData &value) override;
 
 private:
+    QUrl setSourceUrlHelper(const QUrl &unresolvedUrl);
     void setSource(const QUrl &sourceUrl, bool needsClear);
     void loadFromSource();
     void loadFromSourceComponent();

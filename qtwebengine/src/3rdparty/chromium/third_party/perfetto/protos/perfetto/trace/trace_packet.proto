@@ -19,10 +19,15 @@ syntax = "proto2";
 import "protos/perfetto/common/trace_stats.proto";
 import "protos/perfetto/config/trace_config.proto";
 import "protos/perfetto/trace/extension_descriptor.proto";
+import "protos/perfetto/trace/android/android_game_intervention_list.proto";
 import "protos/perfetto/trace/android/android_log.proto";
+import "protos/perfetto/trace/android/android_system_property.proto";
+import "protos/perfetto/trace/android/camera_event.proto";
+import "protos/perfetto/trace/android/frame_timeline_event.proto";
 import "protos/perfetto/trace/android/gpu_mem_event.proto";
 import "protos/perfetto/trace/android/graphics_frame_event.proto";
 import "protos/perfetto/trace/android/initial_display_state.proto";
+import "protos/perfetto/trace/android/network_trace.proto";
 import "protos/perfetto/trace/android/packages_list.proto";
 import "protos/perfetto/trace/chrome/chrome_benchmark_metadata.proto";
 import "protos/perfetto/trace/chrome/chrome_metadata.proto";
@@ -40,8 +45,11 @@ import "protos/perfetto/trace/interned_data/interned_data.proto";
 import "protos/perfetto/trace/memory_graph.proto";
 import "protos/perfetto/trace/perfetto/perfetto_metatrace.proto";
 import "protos/perfetto/trace/perfetto/tracing_service_event.proto";
+import "protos/perfetto/trace/power/android_energy_estimation_breakdown.proto";
+import "protos/perfetto/trace/power/android_entity_state_residency.proto";
 import "protos/perfetto/trace/power/battery_counters.proto";
 import "protos/perfetto/trace/power/power_rails.proto";
+import "protos/perfetto/trace/statsd/statsd_atom.proto";
 import "protos/perfetto/trace/profiling/deobfuscation.proto";
 import "protos/perfetto/trace/profiling/heap_graph.proto";
 import "protos/perfetto/trace/profiling/profile_common.proto";
@@ -54,15 +62,19 @@ import "protos/perfetto/trace/system_info.proto";
 import "protos/perfetto/trace/system_info/cpu_info.proto";
 import "protos/perfetto/trace/trace_packet_defaults.proto";
 import "protos/perfetto/trace/track_event/process_descriptor.proto";
+import "protos/perfetto/trace/track_event/range_of_interest.proto";
 import "protos/perfetto/trace/track_event/thread_descriptor.proto";
 import "protos/perfetto/trace/track_event/track_descriptor.proto";
 import "protos/perfetto/trace/track_event/track_event.proto";
+import "protos/perfetto/trace/translation/translation_table.proto";
+import "protos/perfetto/trace/trace_uuid.proto";
 import "protos/perfetto/trace/trigger.proto";
 import "protos/perfetto/trace/test_event.proto";
+import "protos/perfetto/trace/ui_state.proto";
 
 package perfetto.protos;
 
-// TracePacket is the root object of a Perfeto trace.
+// TracePacket is the root object of a Perfetto trace.
 // A Perfetto trace is a linear sequence of TracePacket(s).
 //
 // The tracing service guarantees that all TracePacket(s) written by a given
@@ -81,8 +93,8 @@ package perfetto.protos;
 //
 // See the [Buffers and Dataflow](/docs/concepts/buffers.md) doc for details.
 //
-// Next reserved id: 13 (up to 15).
-// Next id: 74.
+// Next reserved id: 14 (up to 15).
+// Next id: 92.
 message TracePacket {
   // The timestamp of the TracePacket.
   // By default this timestamps refers to the trace clock (CLOCK_BOOTTIME on
@@ -111,10 +123,13 @@ message TracePacket {
     // IDs up to 15 are reserved. They take only one byte to encode their
     // preamble so should be used for frequent events.
 
+    TraceUuid trace_uuid = 89;
     TraceConfig trace_config = 33;
     FtraceStats ftrace_stats = 34;
     TraceStats trace_stats = 35;
     ProfilePacket profile_packet = 37;
+    StreamingAllocation streaming_allocation = 74;
+    StreamingFree streaming_free = 75;
     BatteryCounters battery = 38;
     PowerRails power_rails = 40;
     AndroidLogPacket android_log = 39;
@@ -139,6 +154,16 @@ message TracePacket {
     InitialDisplayState initial_display_state = 70;
     GpuMemTotalEvent gpu_mem_total_event = 71;
     MemoryTrackerSnapshot memory_tracker_snapshot = 73;
+    FrameTimelineEvent frame_timeline_event = 76;
+    AndroidEnergyEstimationBreakdown android_energy_estimation_breakdown = 77;
+    UiState ui_state = 78;
+    AndroidCameraFrameEvent android_camera_frame_event = 80;
+    AndroidCameraSessionStats android_camera_session_stats = 81;
+    TranslationTable translation_table = 82;
+    AndroidGameInterventionList android_game_intervention_list = 83;
+    StatsdAtom statsd_atom = 84;
+    AndroidSystemProperty android_system_property = 86;
+    EntityStateResidency entity_state_residency = 91;
 
     // Only used in profile packets.
     ProfiledFrameSymbols profiled_frame_symbols = 55;
@@ -175,6 +200,13 @@ message TracePacket {
     // even if the extension proto is not checked in the Perfetto repo.
     ExtensionDescriptor extension_descriptor = 72;
 
+    // Represents a single packet sent or received by the network.
+    NetworkPacketEvent network_packet = 88;
+
+    // The "range of interest" for track events. See the message definition
+    // comments for more details.
+    TrackEventRangeOfInterest track_event_range_of_interest = 90;
+
     // This field is only used for testing.
     // In previous versions of this proto this field had the id 268435455
     // This caused many problems:
@@ -198,6 +230,10 @@ message TracePacket {
   oneof optional_trusted_packet_sequence_id {
     uint32 trusted_packet_sequence_id = 10;
   }
+
+  // Trusted process id of the producer which generated this packet, written by
+  // the service.
+  optional int32 trusted_pid = 79;
 
   // Incrementally emitted interned data, valid only on the packet's sequence
   // (packets with the same |trusted_packet_sequence_id|). The writer will
@@ -259,4 +295,19 @@ message TracePacket {
   // data) on the sequence should be considered invalid up until the next packet
   // with SEQ_INCREMENTAL_STATE_CLEARED set.
   optional bool previous_packet_dropped = 42;
+
+  // Flag set by a producer (starting from SDK v29) if, for the current packet
+  // sequence (see |trusted_packet_sequence_id|), this is the first packet.
+  //
+  // This flag can be used for distinguishing the two situations when
+  // processing the trace:
+  // 1. There are no prior events for the sequence because of data loss, e.g.
+  //    due to ring buffer wrapping.
+  // 2. There are no prior events for the sequence because it didn't start
+  //    before this packet (= there's definitely no preceeding data loss).
+  //
+  // Given that older SDK versions do not support this flag, this flag not
+  // being present for a particular sequence does not necessarily imply data
+  // loss.
+  optional bool first_packet_on_sequence = 87;
 }

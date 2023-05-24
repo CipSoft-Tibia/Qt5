@@ -1,37 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qtouch3dinputhandler_p.h"
 #include <QtCore/QTimer>
 #include <QtCore/qmath.h>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 static const float maxTapAndHoldJitter = 20.0f;
 static const int maxPinchJitter = 10;
@@ -41,7 +15,7 @@ static const int maxSelectionJitter = 10;
 static const int maxSelectionJitter = 5;
 #endif
 static const int tapAndHoldTime = 250;
-static const float rotationSpeed = 200.0f;
+static const float t3ihRotationSpeed = 200.0f;
 static const float touchZoomDrift = 0.02f;
 
 /*!
@@ -119,15 +93,15 @@ QTouch3DInputHandler::~QTouch3DInputHandler()
 void QTouch3DInputHandler::touchEvent(QTouchEvent *event)
 {
     QList<QTouchEvent::TouchPoint> points;
-    points = event->touchPoints();
+    points = event->points();
 
-    if (!scene()->isSlicingActive() && points.count() == 2) {
+    if (!scene()->isSlicingActive() && points.size() == 2) {
         d_ptr->m_holdTimer->stop();
-        QPointF distance = points.at(0).pos() - points.at(1).pos();
-        QPoint midPoint = ((points.at(0).pos() + points.at(1).pos()) / 2.0).toPoint();
+        QPointF distance = points.at(0).position() - points.at(1).position();
+        QPoint midPoint = ((points.at(0).position() + points.at(1).position()) / 2.0).toPoint();
         d_ptr->handlePinchZoom(distance.manhattanLength(), midPoint);
-    } else if (points.count() == 1) {
-        QPointF pointerPos = points.at(0).pos();
+    } else if (points.size() == 1) {
+        QPointF pointerPos = points.at(0).position();
         if (event->type() == QEvent::TouchBegin) {
             // Flush input state
             d_ptr->m_inputState = QAbstract3DInputHandlerPrivate::InputStateNone;
@@ -265,9 +239,9 @@ void QTouch3DInputHandlerPrivate::handleRotation(const QPointF &position)
         float yRotation = camera->yRotation();
         QPointF inputPos = q_ptr->inputPosition();
         float mouseMoveX = float(inputPos.x() - position.x())
-                / (scene->viewport().width() / rotationSpeed);
+                / (scene->viewport().width() / t3ihRotationSpeed);
         float mouseMoveY = float(inputPos.y() - position.y())
-                / (scene->viewport().height() / rotationSpeed);
+                / (scene->viewport().height() / t3ihRotationSpeed);
         xRotation -= mouseMoveX;
         yRotation -= mouseMoveY;
         camera->setXRotation(xRotation);
@@ -278,4 +252,4 @@ void QTouch3DInputHandlerPrivate::handleRotation(const QPointF &position)
     }
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

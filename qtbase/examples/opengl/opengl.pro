@@ -1,20 +1,13 @@
 TEMPLATE      = subdirs
 
-SUBDIRS = hellowindow \
-          paintedwindow \
-          qopenglwindow
+SUBDIRS = openglwindow \
+          hellogles3
 
 qtHaveModule(widgets) {
     SUBDIRS += contextinfo \
-               threadedqopenglwidget \
                2dpainting \
                hellogl2 \
-               qopenglwidget \
                cube \
                textures \
-               hellogles3 \
-               computegles31
+               stereoqopenglwidget
 }
-
-EXAMPLE_FILES += \
-    legacy

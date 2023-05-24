@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -45,11 +19,13 @@
 #include <QtCharts/private/qchartglobal_p.h>
 #include <QtCore/QDebug>
 
+#include <memory>
+
 QT_BEGIN_NAMESPACE
 class QGraphicsItem;
 QT_END_NAMESPACE
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class ChartPresenter;
 class AbstractDomain;
@@ -68,7 +44,8 @@ public:
 public:
     Qt::Alignment alignment() const { return m_alignment; }
     Qt::Orientation orientation() const { return m_orientation; }
-    void setAlignment( Qt::Alignment alignment);
+    void setAlignment(Qt::Alignment alignment);
+    void setLabelsTruncated(bool labelsTruncated);
 
     virtual void initializeDomain(AbstractDomain *domain) = 0;
     virtual void initializeGraphics(QGraphicsItem *parent) = 0;
@@ -86,7 +63,7 @@ public:
     virtual qreal min() = 0;
     virtual qreal max() = 0;
 
-    ChartAxisElement *axisItem() { return m_item.data(); }
+    ChartAxisElement *axisItem() { return m_item.get(); }
 
 public Q_SLOTS:
     void handleRangeChanged(qreal min, qreal max);
@@ -97,7 +74,7 @@ Q_SIGNALS:
 protected:
     QAbstractAxis *q_ptr;
     QChart *m_chart = nullptr;
-    QScopedPointer<ChartAxisElement> m_item;
+    std::unique_ptr<ChartAxisElement> m_item;
 
 private:
     QList<QAbstractSeries*> m_series;
@@ -122,6 +99,9 @@ private:
     QFont m_labelsFont;
     int m_labelsAngle = 0;
 
+    bool m_labelsTruncated = false;
+    bool m_truncateLabels = true;
+
     bool m_titleVisible = true;
     QBrush m_titleBrush;
     QFont m_titleFont;
@@ -136,11 +116,13 @@ private:
 
     bool m_reverse = false;
 
+    Q_DECLARE_PUBLIC(QAbstractAxis);
     friend class QAbstractAxis;
+    friend class QColorAxisPrivate;
     friend class ChartDataSet;
     friend class ChartPresenter;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif

@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,15 @@
 #ifndef CORE_FXGE_CFX_GEMODULE_H_
 #define CORE_FXGE_CFX_GEMODULE_H_
 
+#include <stdint.h>
+
 #include <memory>
+
+#include "build/build_config.h"
+
+#if BUILDFLAG(IS_APPLE)
+#include "third_party/base/span.h"
+#endif
 
 class CFX_FontCache;
 class CFX_FontMgr;
@@ -18,11 +26,14 @@ class CFX_GEModule {
   class PlatformIface {
    public:
     static std::unique_ptr<PlatformIface> Create();
-    virtual ~PlatformIface() {}
+    virtual ~PlatformIface() = default;
 
     virtual void Init() = 0;
     virtual std::unique_ptr<SystemFontInfoIface>
     CreateDefaultSystemFontInfo() = 0;
+#if BUILDFLAG(IS_APPLE)
+    virtual void* CreatePlatformFont(pdfium::span<const uint8_t> font_span) = 0;
+#endif
   };
 
   static void Create(const char** pUserFontPaths);

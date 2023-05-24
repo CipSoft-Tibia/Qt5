@@ -1,24 +1,27 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <iostream>
-
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "base/at_exit.h"
 #include "base/command_line.h"
 #include "base/files/file_util.h"
 #include "base/logging.h"
 #include "base/path_service.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
 #include "crypto/openssl_util.h"
 #include "net/tools/transport_security_state_generator/input_file_parsers.h"
 #include "net/tools/transport_security_state_generator/pinsets.h"
 #include "net/tools/transport_security_state_generator/preloaded_state_generator.h"
 #include "net/tools/transport_security_state_generator/transport_security_state_entry.h"
+#include "third_party/zlib/zlib.h"
 
 using net::transport_security_state::TransportSecurityStateEntries;
 using net::transport_security_state::Pinsets;
@@ -28,8 +31,9 @@ namespace {
 
 // Print the command line help.
 void PrintHelp() {
-  std::cout << "transport_security_state_generator <json-file> <pins-file>"
-            << " <template-file> <output-file> [--v=1]" << std::endl;
+  std::cout << "transport_security_state_generator <hsts-json-file>"
+            << " <pins-json-file> <pins-file> <template-file> <output-file>"
+            << " [--v=1]" << std::endl;
 }
 
 // Checks if there are pins with the same name or the same hash.
@@ -124,27 +128,14 @@ bool CheckDuplicateEntries(const TransportSecurityStateEntries& entries) {
 // Checks for entries which have no effect.
 bool CheckNoopEntries(const TransportSecurityStateEntries& entries) {
   for (const auto& entry : entries) {
-    if (!entry->force_https && entry->pinset.empty() && !entry->expect_ct) {
+    if (!entry->force_https && entry->pinset.empty()) {
       if (entry->hostname == "learn.doubleclick.net") {
         // This entry is deliberately used as an exclusion.
         continue;
       }
 
       LOG(ERROR) << "Entry for " << entry->hostname
-                 << " has no mode, no pins and is not expect-CT";
-      return false;
-    }
-  }
-  return true;
-}
-
-// Checks all entries for incorrect usage of the includeSubdomains flags.
-bool CheckSubdomainsFlags(const TransportSecurityStateEntries& entries) {
-  for (const auto& entry : entries) {
-    if (entry->include_subdomains && entry->hpkp_include_subdomains) {
-      LOG(ERROR) << "Entry for " << entry->hostname
-                 << " sets include_subdomains_for_pinning but also sets "
-                    "include_subdomains, which implies it";
+                 << " has no mode and no pins";
       return false;
     }
   }
@@ -200,6 +191,7 @@ bool CheckHostnames(const TransportSecurityStateEntries& entries) {
 int main(int argc, char* argv[]) {
   crypto::EnsureOpenSSLInit();
 
+  base::AtExitManager at_exit_manager;
   base::CommandLine::Init(argc, argv);
   const base::CommandLine& command_line =
       *base::CommandLine::ForCurrentProcess();
@@ -209,34 +201,68 @@ int main(int argc, char* argv[]) {
       logging::LOG_TO_SYSTEM_DEBUG_LOG | logging::LOG_TO_STDERR;
   logging::InitLogging(settings);
 
-#if defined(OS_WIN)
-  std::vector<std::string> args;
-  base::CommandLine::StringVector wide_args = command_line.GetArgs();
-  for (const auto& arg : wide_args) {
-    args.push_back(base::UTF16ToUTF8(arg));
-  }
-#else
   base::CommandLine::StringVector args = command_line.GetArgs();
-#endif
-  if (args.size() < 4U) {
+  if (args.size() < 5U) {
     PrintHelp();
     return 1;
   }
 
-  base::FilePath json_filepath = base::FilePath::FromUTF8Unsafe(argv[1]);
-  if (!base::PathExists(json_filepath)) {
-    LOG(ERROR) << "Input JSON file doesn't exist.";
+  base::FilePath hsts_json_filepath = base::FilePath(args[0]);
+  if (!base::PathExists(hsts_json_filepath)) {
+    LOG(ERROR) << "Input HSTS JSON file doesn't exist.";
     return 1;
   }
-  json_filepath = base::MakeAbsoluteFilePath(json_filepath);
+  hsts_json_filepath = base::MakeAbsoluteFilePath(hsts_json_filepath);
 
-  std::string json_input;
-  if (!base::ReadFileToString(json_filepath, &json_input)) {
-    LOG(ERROR) << "Could not read input JSON file.";
+  std::string hsts_json_input;
+  if (!base::ReadFileToString(hsts_json_filepath, &hsts_json_input)) {
+    LOG(ERROR) << "Could not read input HSTS JSON file.";
+    return 1;
+  }
+//   if (json_filepath ends with .gz) {
+  do {
+    z_stream zs;
+    memset(&zs, 0, sizeof(z_stream));
+
+    if (inflateInit2(&zs, 15 + 32) != Z_OK) {
+      LOG(ERROR) << "Inflate failed to initialize.";
+      return 1;
+    }
+    zs.next_in = (Bytef*)hsts_json_input.data();
+    zs.avail_in = hsts_json_input.size();
+
+    std::string out;
+    int ret = Z_OK;
+    char buffer[32768];
+    while (ret == Z_OK) {
+        zs.next_out = (Bytef*)buffer;
+        zs.avail_out = sizeof(buffer);
+        ret = inflate(&zs, 0);
+        if (zs.total_out > out.size())
+            out.append(buffer, zs.total_out - out.size());
+    }
+    inflateEnd(&zs);
+    if (ret != Z_STREAM_END) {
+      LOG(ERROR) << "Inflate failed.";
+      break; // Assume uncompressed?
+    }
+    hsts_json_input = out;
+  } while(false);
+
+  base::FilePath pins_json_filepath = base::FilePath(args[1]);
+  if (!base::PathExists(pins_json_filepath)) {
+    LOG(ERROR) << "Input pins JSON file doesn't exist.";
+    return 1;
+  }
+  pins_json_filepath = base::MakeAbsoluteFilePath(pins_json_filepath);
+
+  std::string pins_json_input;
+  if (!base::ReadFileToString(pins_json_filepath, &pins_json_input)) {
+    LOG(ERROR) << "Could not read input pins JSON file.";
     return 1;
   }
 
-  base::FilePath pins_filepath = base::FilePath::FromUTF8Unsafe(argv[2]);
+  base::FilePath pins_filepath = base::FilePath(args[2]);
   if (!base::PathExists(pins_filepath)) {
     LOG(ERROR) << "Input pins file doesn't exist.";
     return 1;
@@ -251,21 +277,22 @@ int main(int argc, char* argv[]) {
 
   TransportSecurityStateEntries entries;
   Pinsets pinsets;
+  base::Time timestamp;
 
-  if (!ParseCertificatesFile(certs_input, &pinsets) ||
-      !ParseJSON(json_input, &entries, &pinsets)) {
+  if (!ParseCertificatesFile(certs_input, &pinsets, &timestamp) ||
+      !ParseJSON(hsts_json_input, pins_json_input, &entries, &pinsets)) {
     LOG(ERROR) << "Error while parsing the input files.";
     return 1;
   }
 
   if (!CheckDuplicateEntries(entries) || !CheckNoopEntries(entries) ||
-      !CheckSubdomainsFlags(entries) || !CheckForDuplicatePins(pinsets) ||
-      !CheckCertificatesInPinsets(pinsets) || !CheckHostnames(entries)) {
+      !CheckForDuplicatePins(pinsets) || !CheckCertificatesInPinsets(pinsets) ||
+      !CheckHostnames(entries)) {
     LOG(ERROR) << "Checks failed. Aborting.";
     return 1;
   }
 
-  base::FilePath template_path = base::FilePath::FromUTF8Unsafe(argv[3]);
+  base::FilePath template_path = base::FilePath(args[3]);
   if (!base::PathExists(template_path)) {
     LOG(ERROR) << "Template file doesn't exist.";
     return 1;
@@ -280,14 +307,14 @@ int main(int argc, char* argv[]) {
 
   std::string output;
   PreloadedStateGenerator generator;
-  output = generator.Generate(preload_template, entries, pinsets);
+  output = generator.Generate(preload_template, entries, pinsets, timestamp);
   if (output.empty()) {
     LOG(ERROR) << "Trie generation failed.";
     return 1;
   }
 
   base::FilePath output_path;
-  output_path = base::FilePath::FromUTF8Unsafe(argv[4]);
+  output_path = base::FilePath(args[4]);
 
   if (base::WriteFile(output_path, output.c_str(),
                       static_cast<uint32_t>(output.size())) <= 0) {

@@ -6,6 +6,7 @@
 
 #ifdef DRV_ROCKCHIP
 
+#include <drm_fourcc.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <rockchip_drm.h>
@@ -14,9 +15,13 @@
 #include <sys/mman.h>
 #include <xf86drm.h>
 
+#include "drv_helpers.h"
 #include "drv_priv.h"
-#include "helpers.h"
 #include "util.h"
+
+#define DRM_FORMAT_MOD_ROCKCHIP_AFBC                                                               \
+	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 | AFBC_FORMAT_MOD_SPARSE |        \
+				AFBC_FORMAT_MOD_YTR)
 
 struct rockchip_private_map_data {
 	void *cached_addr;
@@ -30,7 +35,8 @@ static const uint32_t scanout_render_formats[] = { DRM_FORMAT_ABGR8888, DRM_FORM
 static const uint32_t texture_only_formats[] = { DRM_FORMAT_NV12, DRM_FORMAT_YVU420,
 						 DRM_FORMAT_YVU420_ANDROID };
 
-static int afbc_bo_from_format(struct bo *bo, uint32_t width, uint32_t height, uint32_t format)
+static int afbc_bo_from_format(struct bo *bo, uint32_t width, uint32_t height, uint32_t format,
+			       uint64_t modifier)
 {
 	/* We've restricted ourselves to four bytes per pixel. */
 	const uint32_t pixel_size = 4;
@@ -69,7 +75,7 @@ static int afbc_bo_from_format(struct bo *bo, uint32_t width, uint32_t height, u
 
 	bo->meta.total_size = total_size;
 
-	bo->meta.format_modifiers[0] = DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC;
+	bo->meta.format_modifier = modifier;
 
 	return 0;
 }
@@ -88,24 +94,21 @@ static int rockchip_init(struct driver *drv)
 	drv_add_combinations(drv, texture_only_formats, ARRAY_SIZE(texture_only_formats), &metadata,
 			     BO_USE_TEXTURE_MASK);
 
-	/*
-	 * Chrome uses DMA-buf mmap to write to YV12 buffers, which are then accessed by the
-	 * Video Encoder Accelerator (VEA). It could also support NV12 potentially in the future.
-	 */
-	drv_modify_combination(drv, DRM_FORMAT_YVU420, &metadata, BO_USE_HW_VIDEO_ENCODER);
+	/* NV12 format for camera, display, decoding and encoding. */
 	/* Camera ISP supports only NV12 output. */
 	drv_modify_combination(drv, DRM_FORMAT_NV12, &metadata,
-			       BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE | BO_USE_HW_VIDEO_DECODER |
-				   BO_USE_HW_VIDEO_ENCODER | BO_USE_SCANOUT);
+			       BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE | BO_USE_SCANOUT |
+				   BO_USE_HW_VIDEO_DECODER | BO_USE_HW_VIDEO_ENCODER);
 
 	drv_modify_linear_combinations(drv);
 	/*
 	 * R8 format is used for Android's HAL_PIXEL_FORMAT_BLOB and is used for JPEG snapshots
-	 * from camera.
+	 * from camera and input/output from hardware decoder/encoder.
 	 */
 	drv_add_combination(drv, DRM_FORMAT_R8, &metadata,
 			    BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE | BO_USE_SW_MASK |
-				BO_USE_LINEAR | BO_USE_PROTECTED);
+				BO_USE_LINEAR | BO_USE_HW_VIDEO_DECODER | BO_USE_HW_VIDEO_ENCODER |
+				BO_USE_GPU_DATA_BUFFER | BO_USE_SENSOR_DIRECT_DATA);
 
 	return 0;
 }
@@ -116,7 +119,15 @@ static int rockchip_bo_create_with_modifiers(struct bo *bo, uint32_t width, uint
 {
 	int ret;
 	size_t plane;
-	struct drm_rockchip_gem_create gem_create;
+	struct drm_rockchip_gem_create gem_create = { 0 };
+	uint64_t afbc_modifier;
+
+	if (drv_has_modifier(modifiers, count, DRM_FORMAT_MOD_ROCKCHIP_AFBC))
+		afbc_modifier = DRM_FORMAT_MOD_ROCKCHIP_AFBC;
+	else if (drv_has_modifier(modifiers, count, DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC))
+		afbc_modifier = DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC;
+	else
+		afbc_modifier = 0;
 
 	if (format == DRM_FORMAT_NV12) {
 		uint32_t w_mbs = DIV_ROUND_UP(width, 16);
@@ -131,16 +142,15 @@ static int rockchip_bo_create_with_modifiers(struct bo *bo, uint32_t width, uint
 		 * driver to store motion vectors.
 		 */
 		bo->meta.total_size += w_mbs * h_mbs * 128;
-	} else if (width <= 2560 &&
-		   drv_has_modifier(modifiers, count, DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC)) {
+	} else if (width <= 2560 && afbc_modifier && bo->drv->compression) {
 		/* If the caller has decided they can use AFBC, always
 		 * pick that */
-		afbc_bo_from_format(bo, width, height, format);
+		afbc_bo_from_format(bo, width, height, format, afbc_modifier);
 	} else {
 		if (!drv_has_modifier(modifiers, count, DRM_FORMAT_MOD_LINEAR)) {
 			errno = EINVAL;
-			drv_log("no usable modifier found\n");
-			return -1;
+			drv_loge("no usable modifier found\n");
+			return -errno;
 		}
 
 		uint32_t stride;
@@ -159,14 +169,12 @@ static int rockchip_bo_create_with_modifiers(struct bo *bo, uint32_t width, uint
 		drv_bo_from_format(bo, stride, height, format);
 	}
 
-	memset(&gem_create, 0, sizeof(gem_create));
 	gem_create.size = bo->meta.total_size;
-
 	ret = drmIoctl(bo->drv->fd, DRM_IOCTL_ROCKCHIP_GEM_CREATE, &gem_create);
 
 	if (ret) {
-		drv_log("DRM_IOCTL_ROCKCHIP_GEM_CREATE failed (size=%" PRIu64 ")\n",
-			gem_create.size);
+		drv_loge("DRM_IOCTL_ROCKCHIP_GEM_CREATE failed (size=%" PRIu64 ")\n",
+			 gem_create.size);
 		return -errno;
 	}
 
@@ -187,37 +195,51 @@ static int rockchip_bo_create(struct bo *bo, uint32_t width, uint32_t height, ui
 static void *rockchip_bo_map(struct bo *bo, struct vma *vma, size_t plane, uint32_t map_flags)
 {
 	int ret;
-	struct drm_rockchip_gem_map_off gem_map;
 	struct rockchip_private_map_data *priv;
+	struct drm_rockchip_gem_map_off gem_map = { 0 };
+	void *addr = NULL;
 
 	/* We can only map buffers created with SW access flags, which should
 	 * have no modifiers (ie, not AFBC). */
-	if (bo->meta.format_modifiers[0] == DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC)
+	if (bo->meta.format_modifier == DRM_FORMAT_MOD_CHROMEOS_ROCKCHIP_AFBC ||
+	    bo->meta.format_modifier == DRM_FORMAT_MOD_ROCKCHIP_AFBC)
 		return MAP_FAILED;
 
-	memset(&gem_map, 0, sizeof(gem_map));
 	gem_map.handle = bo->handles[0].u32;
-
 	ret = drmIoctl(bo->drv->fd, DRM_IOCTL_ROCKCHIP_GEM_MAP_OFFSET, &gem_map);
 	if (ret) {
-		drv_log("DRM_IOCTL_ROCKCHIP_GEM_MAP_OFFSET failed\n");
+		drv_loge("DRM_IOCTL_ROCKCHIP_GEM_MAP_OFFSET failed\n");
 		return MAP_FAILED;
 	}
 
-	void *addr = mmap(0, bo->meta.total_size, drv_get_prot(map_flags), MAP_SHARED, bo->drv->fd,
-			  gem_map.offset);
+	addr = mmap(0, bo->meta.total_size, drv_get_prot(map_flags), MAP_SHARED, bo->drv->fd,
+		    gem_map.offset);
+	if (addr == MAP_FAILED)
+		return MAP_FAILED;
 
 	vma->length = bo->meta.total_size;
 
 	if (bo->meta.use_flags & BO_USE_RENDERSCRIPT) {
 		priv = calloc(1, sizeof(*priv));
+		if (!priv)
+			goto out_unmap_addr;
+
 		priv->cached_addr = calloc(1, bo->meta.total_size);
+		if (!priv->cached_addr)
+			goto out_free_priv;
+
 		priv->gem_addr = addr;
 		vma->priv = priv;
 		addr = priv->cached_addr;
 	}
 
 	return addr;
+
+out_free_priv:
+	free(priv);
+out_unmap_addr:
+	munmap(addr, bo->meta.total_size);
+	return MAP_FAILED;
 }
 
 static int rockchip_bo_unmap(struct bo *bo, struct vma *vma)
@@ -252,22 +274,6 @@ static int rockchip_bo_flush(struct bo *bo, struct mapping *mapping)
 	return 0;
 }
 
-static uint32_t rockchip_resolve_format(struct driver *drv, uint32_t format, uint64_t use_flags)
-{
-	switch (format) {
-	case DRM_FORMAT_FLEX_IMPLEMENTATION_DEFINED:
-		/* Camera subsystem requires NV12. */
-		if (use_flags & (BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE))
-			return DRM_FORMAT_NV12;
-		/*HACK: See b/28671744 */
-		return DRM_FORMAT_XBGR8888;
-	case DRM_FORMAT_FLEX_YCbCr_420_888:
-		return DRM_FORMAT_NV12;
-	default:
-		return format;
-	}
-}
-
 const struct backend backend_rockchip = {
 	.name = "rockchip",
 	.init = rockchip_init,
@@ -279,7 +285,7 @@ const struct backend backend_rockchip = {
 	.bo_unmap = rockchip_bo_unmap,
 	.bo_invalidate = rockchip_bo_invalidate,
 	.bo_flush = rockchip_bo_flush,
-	.resolve_format = rockchip_resolve_format,
+	.resolve_format_and_use_flags = drv_resolve_format_and_use_flags_helper,
 };
 
 #endif

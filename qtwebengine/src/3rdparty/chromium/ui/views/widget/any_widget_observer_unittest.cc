@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/test/bind_test_util.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/views/test/native_widget_factory.h"
 #include "ui/views/test/widget_test.h"
@@ -95,7 +95,7 @@ TEST_F(NamedWidgetShownWaiterTest, ShownAfterWait) {
                                        "TestWidget");
 
   WidgetAutoclosePtr w0(CreateNamedWidget("TestWidget"));
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce([](views::Widget* widget) { widget->Show(); },
                                 base::Unretained(w0.get())));
   EXPECT_EQ(waiter.WaitIfNeededAndGet(), w0.get());
@@ -106,6 +106,14 @@ TEST_F(NamedWidgetShownWaiterTest, ShownBeforeWait) {
                                        "TestWidget");
   WidgetAutoclosePtr w0(CreateNamedWidget("TestWidget"));
   w0->Show();
+  EXPECT_EQ(waiter.WaitIfNeededAndGet(), w0.get());
+}
+
+TEST_F(NamedWidgetShownWaiterTest, ShownInactive) {
+  views::NamedWidgetShownWaiter waiter(views::test::AnyWidgetTestPasskey{},
+                                       "TestWidget");
+  WidgetAutoclosePtr w0(CreateNamedWidget("TestWidget"));
+  w0->ShowInactive();
   EXPECT_EQ(waiter.WaitIfNeededAndGet(), w0.get());
 }
 

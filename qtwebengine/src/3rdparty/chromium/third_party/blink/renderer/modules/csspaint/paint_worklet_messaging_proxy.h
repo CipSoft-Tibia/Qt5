@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,15 +20,14 @@ class WorkerThread;
 class PaintWorkletMessagingProxy final : public ThreadedWorkletMessagingProxy {
  public:
   explicit PaintWorkletMessagingProxy(ExecutionContext*);
+  ~PaintWorkletMessagingProxy() override;
 
   void Trace(Visitor*) const override;
 
  private:
-  ~PaintWorkletMessagingProxy() override;
-
   std::unique_ptr<WorkerThread> CreateWorkerThread() override;
 };
 
 }  // namespace blink
 
-#endif  // THIRD_PARTY_BLINK_RENDERER_MODULES_CSSPAINT_OFF_THREAD_PAINT_WORKLET_MESSAGING_PROXY_H_
+#endif  // THIRD_PARTY_BLINK_RENDERER_MODULES_CSSPAINT_PAINT_WORKLET_MESSAGING_PROXY_H_

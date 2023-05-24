@@ -9,6 +9,8 @@
 namespace openscreen {
 namespace cast {
 
+ReceiverSocketFactory::Client::~Client() = default;
+
 ReceiverSocketFactory::ReceiverSocketFactory(Client* client,
                                              CastSocket::Client* socket_client)
     : client_(client), socket_client_(socket_client) {
@@ -32,13 +34,12 @@ void ReceiverSocketFactory::OnConnected(
     TlsConnectionFactory* factory,
     std::vector<uint8_t> der_x509_peer_cert,
     std::unique_ptr<TlsConnection> connection) {
-  OSP_NOTREACHED() << "This factory is accept-only.";
+  OSP_LOG_FATAL << "This factory is accept-only";
 }
 
 void ReceiverSocketFactory::OnConnectionFailed(
     TlsConnectionFactory* factory,
     const IPEndpoint& remote_address) {
-  OSP_DVLOG << "Receiving connection from endpoint failed: " << remote_address;
   client_->OnError(this, Error(Error::Code::kConnectionFailed,
                                "Accepting connection failed."));
 }

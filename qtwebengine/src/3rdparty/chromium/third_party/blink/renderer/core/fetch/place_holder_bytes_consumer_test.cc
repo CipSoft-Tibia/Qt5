@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -70,7 +70,7 @@ TEST_F(PlaceHolderBytesConsumerTest, Update) {
 TEST_F(PlaceHolderBytesConsumerTest, DrainAsDataPipe) {
   mojo::ScopedDataPipeConsumerHandle consumer_end;
   mojo::ScopedDataPipeProducerHandle producer_end;
-  auto result = mojo::CreateDataPipe(nullptr, &producer_end, &consumer_end);
+  auto result = mojo::CreateDataPipe(nullptr, producer_end, consumer_end);
 
   ASSERT_EQ(result, MOJO_RESULT_OK);
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -127,11 +127,11 @@ TEST_F(BrowserActionManifestTest,
           }
         }
       })");
-  base::string16 error = ErrorUtils::FormatErrorMessageUTF16(
-      errors::kInvalidIconPath, "19");
-  LoadAndExpectError(
-      ManifestData(std::move(manifest_value), "Invalid default icon"),
-      errors::kInvalidIconPath);
+  ASSERT_TRUE(manifest_value.is_dict());
+  std::u16string error =
+      ErrorUtils::FormatErrorMessageUTF16(errors::kInvalidIconPath, "19");
+  LoadAndExpectError(ManifestData(std::move(manifest_value).TakeDict()),
+                     errors::kInvalidIconPath);
 }
 
 }  // namespace

@@ -103,15 +103,6 @@ struct RTPHeaderExtension {
                              (1 << kAbsSendTimeFraction));
   }
 
-  TimeDelta GetAbsoluteSendTimeDelta(uint32_t previous_sendtime) const {
-    RTC_DCHECK(hasAbsoluteSendTime);
-    RTC_DCHECK(absoluteSendTime < (1ul << 24));
-    RTC_DCHECK(previous_sendtime < (1ul << 24));
-    int32_t delta =
-        static_cast<int32_t>((absoluteSendTime - previous_sendtime) << 8) >> 8;
-    return TimeDelta::Micros((delta * 1000000ll) / (1 << kAbsSendTimeFraction));
-  }
-
   bool hasTransmissionTimeOffset;
   int32_t transmissionTimeOffset;
   bool hasAbsoluteSendTime;
@@ -144,13 +135,12 @@ struct RTPHeaderExtension {
   VideoPlayoutDelay playout_delay;
 
   // For identification of a stream when ssrc is not signaled. See
-  // https://tools.ietf.org/html/draft-ietf-avtext-rid-09
-  // TODO(danilchap): Update url from draft to release version.
+  // https://tools.ietf.org/html/rfc8852
   std::string stream_id;
   std::string repaired_stream_id;
 
   // For identifying the media section used to interpret this RTP packet. See
-  // https://tools.ietf.org/html/draft-ietf-mmusic-sdp-bundle-negotiation-38
+  // https://tools.ietf.org/html/rfc8843
   std::string mid;
 
   absl::optional<ColorSpace> color_space;
@@ -158,7 +148,7 @@ struct RTPHeaderExtension {
 
 enum { kRtpCsrcSize = 15 };  // RFC 3550 page 13
 
-struct RTPHeader {
+struct RTC_EXPORT RTPHeader {
   RTPHeader();
   RTPHeader(const RTPHeader& other);
   RTPHeader& operator=(const RTPHeader& other);

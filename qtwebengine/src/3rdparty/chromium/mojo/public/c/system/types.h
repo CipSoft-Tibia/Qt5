@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ typedef int64_t MojoTimeTicks;
 // |MojoHandle|: Handles to Mojo objects.
 //   |MOJO_HANDLE_INVALID| - A value that is never a valid handle.
 
-typedef uint32_t MojoHandle;
+typedef uintptr_t MojoHandle;
 
 #ifdef __cplusplus
 const MojoHandle MOJO_HANDLE_INVALID = 0;
@@ -122,18 +122,6 @@ const MojoResult MOJO_RESULT_SHOULD_WAIT = 17;
 #define MOJO_RESULT_DATA_LOSS ((MojoResult)15)
 #define MOJO_RESULT_BUSY ((MojoResult)16)
 #define MOJO_RESULT_SHOULD_WAIT ((MojoResult)17)
-#endif
-
-// |MojoDeadline|: Used to specify deadlines (timeouts), in microseconds (except
-// for |MOJO_DEADLINE_INDEFINITE|).
-//   |MOJO_DEADLINE_INDEFINITE| - Used to indicate "forever".
-
-typedef uint64_t MojoDeadline;
-
-#ifdef __cplusplus
-const MojoDeadline MOJO_DEADLINE_INDEFINITE = static_cast<MojoDeadline>(-1);
-#else
-#define MOJO_DEADLINE_INDEFINITE ((MojoDeadline)-1)
 #endif
 
 // Flags passed to |MojoInitialize()| via |MojoInitializeOptions|.

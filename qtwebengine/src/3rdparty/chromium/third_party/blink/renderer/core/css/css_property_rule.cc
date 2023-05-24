@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -46,7 +46,7 @@ String CSSPropertyRule::cssText() const {
     builder.Append("; ");
   }
   builder.Append("}");
-  return builder.ToString();
+  return builder.ReleaseString();
 }
 
 void CSSPropertyRule::Reattach(StyleRuleBase* rule) {
@@ -59,8 +59,9 @@ String CSSPropertyRule::name() const {
 }
 
 String CSSPropertyRule::syntax() const {
-  if (const CSSValue* syntax = property_rule_->GetSyntax())
+  if (const CSSValue* syntax = property_rule_->GetSyntax()) {
     return To<CSSStringValue>(*syntax).Value();
+  }
   return g_null_atom;
 }
 
@@ -80,8 +81,9 @@ bool CSSPropertyRule::inherits() const {
 }
 
 String CSSPropertyRule::initialValue() const {
-  if (const CSSValue* initial = property_rule_->GetInitialValue())
+  if (const CSSValue* initial = property_rule_->GetInitialValue()) {
     return initial->CssText();
+  }
   return g_null_atom;
 }
 

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandiviapplication.h"
 #include "qwaylandiviapplication_p.h"
@@ -39,8 +13,8 @@ QT_BEGIN_NAMESPACE
 
 /*!
  * \qmltype IviApplication
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandIviApplication
+ * \inqmlmodule QtWayland.Compositor.IviApplication
  * \since 5.8
  * \brief Provides a shell extension for embedded-style user interfaces.
  *
@@ -54,8 +28,8 @@ QT_BEGIN_NAMESPACE
  * an instance of the IviApplication component and add it to the list of extensions
  * supported by the compositor:
  *
- * \qml \QtMinorVersion
- * import QtWayland.Compositor 1.\1
+ * \qml
+ * import QtWayland.Compositor.IviApplication
  *
  * WaylandCompositor {
  *     IviApplication {
@@ -132,7 +106,7 @@ QByteArray QWaylandIviApplication::interfaceName()
 }
 
 /*!
- * \qmlsignal void QtWaylandCompositor::IviApplication::iviSurfaceRequested(WaylandSurface surface, int iviId, WaylandResource resource)
+ * \qmlsignal void IviApplication::iviSurfaceRequested(WaylandSurface surface, int iviId, WaylandResource resource)
  *
  * This signal is emitted when the client has requested an \c ivi_surface to be associated
  * with \a surface, which is identified by \a iviId. The handler for this signal is
@@ -151,7 +125,7 @@ QByteArray QWaylandIviApplication::interfaceName()
  */
 
 /*!
- * \qmlsignal void QtWaylandCompositor::IviApplication::iviSurfaceCreated(IviSurface *iviSurface)
+ * \qmlsignal void IviApplication::iviSurfaceCreated(IviSurface *iviSurface)
  *
  * This signal is emitted when an IviSurface has been created. The supplied \a iviSurface is
  * most commonly used to instantiate a ShellSurfaceItem.
@@ -204,3 +178,5 @@ void QWaylandIviApplicationPrivate::ivi_application_surface_create(QtWaylandServ
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandiviapplication.cpp"

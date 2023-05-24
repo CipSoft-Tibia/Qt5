@@ -19,11 +19,8 @@
 *   for running the data building tools.
 *
 */
-#include "unicode/utypes.h"
-#include "unicode/udata.h"
-#include "unicode/uversion.h"
-#include "ucmndata.h"
 
+#include "ucmndata.h"
 
 extern "C" U_EXPORT const ICU_Data_Header U_ICUDATA_ENTRY_POINT = {
     {            /* DataHeader */

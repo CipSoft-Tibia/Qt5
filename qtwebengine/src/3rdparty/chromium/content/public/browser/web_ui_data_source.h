@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,17 +11,23 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/strings/string16.h"
+#include "base/containers/span.h"
+#include "base/functional/callback.h"
 #include "base/strings/string_piece.h"
+#include "base/values.h"
 #include "content/common/content_export.h"
 #include "services/network/public/mojom/content_security_policy.mojom-forward.h"
+#include "ui/base/webui/web_ui_util.h"
 #include "url/gurl.h"
 
 namespace base {
-class DictionaryValue;
 class RefCountedMemory;
 }  // namespace base
+
+namespace webui {
+struct LocalizedString;
+struct ResourcePath;
+}  // namespace webui
 
 namespace content {
 class BrowserContext;
@@ -32,6 +38,15 @@ class WebUIDataSource {
  public:
   virtual ~WebUIDataSource() {}
 
+  // Calls `Create()` and `Add()` to internalize ownership of the
+  // WebUIDataSource instance. Callers just get a raw pointer, which they don't
+  // own. Prefer `CreateAndAdd` in new code.
+  CONTENT_EXPORT static WebUIDataSource* CreateAndAdd(
+      BrowserContext* browser_context,
+      const std::string& source_name);
+
+  // Creates a WebUIDataSource instance. Caller takes ownership of returned
+  // pointer. Prefer `CreateAndAdd()` when possible.
   CONTENT_EXPORT static WebUIDataSource* Create(const std::string& source_name);
 
   // Adds a WebUI data source to |browser_context|. TODO(dbeam): update this API
@@ -41,14 +56,13 @@ class WebUIDataSource {
   CONTENT_EXPORT static void Add(BrowserContext* browser_context,
                                  WebUIDataSource* source);
 
-  CONTENT_EXPORT static void Update(
-      BrowserContext* browser_context,
-      const std::string& source_name,
-      std::unique_ptr<base::DictionaryValue> update);
+  CONTENT_EXPORT static void Update(BrowserContext* browser_context,
+                                    const std::string& source_name,
+                                    const base::Value::Dict& update);
 
   // Adds a string keyed to its name to our dictionary.
   virtual void AddString(base::StringPiece name,
-                         const base::string16& value) = 0;
+                         const std::u16string& value) = 0;
 
   // Adds a string keyed to its name to our dictionary.
   virtual void AddString(base::StringPiece name, const std::string& value) = 0;
@@ -57,9 +71,14 @@ class WebUIDataSource {
   // dictionary.
   virtual void AddLocalizedString(base::StringPiece name, int ids) = 0;
 
-  // Add strings from |localized_strings| to our dictionary.
+  // Calls AddLocalizedString() in a for-loop for |strings|. Reduces code size
+  // vs. reimplementing the same for-loop.
   virtual void AddLocalizedStrings(
-      const base::DictionaryValue& localized_strings) = 0;
+      base::span<const webui::LocalizedString> strings) = 0;
+
+  // Add strings from `localized_strings` to our dictionary.
+  virtual void AddLocalizedStrings(
+      const base::Value::Dict& localized_strings) = 0;
 
   // Adds a boolean keyed to its name to our dictionary.
   virtual void AddBoolean(base::StringPiece name, bool value) = 0;
@@ -78,6 +97,11 @@ class WebUIDataSource {
 
   // Adds a mapping between a path name and a resource to return.
   virtual void AddResourcePath(base::StringPiece path, int resource_id) = 0;
+
+  // Calls AddResourcePath() in a for-loop for |paths|. Reduces code size vs.
+  // reimplementing the same for-loop.
+  virtual void AddResourcePaths(
+      base::span<const webui::ResourcePath> paths) = 0;
 
   // Sets the resource to returned when no other paths match.
   virtual void SetDefaultResource(int resource_id) = 0;
@@ -120,6 +144,11 @@ class WebUIDataSource {
   virtual void OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName directive,
       const std::string& value) = 0;
+
+  // Adds cross origin opener, embedder, and resource policy headers.
+  virtual void OverrideCrossOriginOpenerPolicy(const std::string& value) = 0;
+  virtual void OverrideCrossOriginEmbedderPolicy(const std::string& value) = 0;
+  virtual void OverrideCrossOriginResourcePolicy(const std::string& value) = 0;
 
   // Removes directives related to Trusted Types from the CSP header.
   virtual void DisableTrustedTypesCSP() = 0;

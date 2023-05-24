@@ -1,11 +1,13 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_BROWSER_APP_WINDOW_APP_DELEGATE_H_
 #define EXTENSIONS_BROWSER_APP_WINDOW_APP_DELEGATE_H_
 
-#include "base/callback_forward.h"
+#include <memory>
+
+#include "base/functional/callback_forward.h"
 #include "content/public/browser/media_stream_request.h"
 #include "third_party/blink/public/common/mediastream/media_stream_request.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -14,16 +16,15 @@
 namespace blink {
 namespace mojom {
 class FileChooserParams;
+class WindowFeatures;
 }
 }  // namespace blink
 
 namespace content {
 enum class PictureInPictureResult;
 class BrowserContext;
-class ColorChooser;
 class FileSelectListener;
 class RenderFrameHost;
-class RenderViewHost;
 class WebContents;
 struct OpenURLParams;
 }
@@ -31,10 +32,6 @@ struct OpenURLParams;
 namespace gfx {
 class Rect;
 class Size;
-}
-
-namespace viz {
-class SurfaceId;
 }
 
 namespace extensions {
@@ -49,7 +46,7 @@ class AppDelegate {
 
   // General initialization.
   virtual void InitWebContents(content::WebContents* web_contents) = 0;
-  virtual void RenderViewCreated(content::RenderViewHost* render_view_host) = 0;
+  virtual void RenderFrameCreated(content::RenderFrameHost* frame_host) = 0;
 
   // Resizes WebContents.
   virtual void ResizeWebContents(content::WebContents* web_contents,
@@ -65,13 +62,10 @@ class AppDelegate {
       std::unique_ptr<content::WebContents> new_contents,
       const GURL& target_url,
       WindowOpenDisposition disposition,
-      const gfx::Rect& initial_rect,
+      const blink::mojom::WindowFeatures& window_features,
       bool user_gesture) = 0;
 
   // Feature support.
-  virtual content::ColorChooser* ShowColorChooser(
-      content::WebContents* web_contents,
-      SkColor initial_color) = 0;
   virtual void RunFileChooser(
       content::RenderFrameHost* render_frame_host,
       scoped_refptr<content::FileSelectListener> listener,
@@ -109,9 +103,7 @@ class AppDelegate {
   // entering Picture-in-Picture.
   // Returns the result of the enter request.
   virtual content::PictureInPictureResult EnterPictureInPicture(
-      content::WebContents* web_contents,
-      const viz::SurfaceId& surface_id,
-      const gfx::Size& natural_size) = 0;
+      content::WebContents* web_contents) = 0;
 
   // Updates the Picture-in-Picture controller with a signal that
   // Picture-in-Picture mode has ended.

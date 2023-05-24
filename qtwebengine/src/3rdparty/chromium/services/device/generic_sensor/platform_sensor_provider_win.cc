@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,12 @@
 
 #include <iomanip>
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "base/threading/thread.h"
+#include "services/device/generic_sensor/gravity_fusion_algorithm_using_accelerometer.h"
 #include "services/device/generic_sensor/linear_acceleration_fusion_algorithm_using_accelerometer.h"
 #include "services/device/generic_sensor/orientation_euler_angles_fusion_algorithm_using_quaternion.h"
 #include "services/device/generic_sensor/platform_sensor_fusion.h"
@@ -86,7 +86,7 @@ void PlatformSensorProviderWin::OnInitSensorManager(
   }
 
   switch (type) {
-    // Fusion sensor.
+    // Fusion sensors.
     case mojom::SensorType::LINEAR_ACCELERATION: {
       auto linear_acceleration_fusion_algorithm = std::make_unique<
           LinearAccelerationFusionAlgorithmUsingAccelerometer>();
@@ -97,11 +97,21 @@ void PlatformSensorProviderWin::OnInitSensorManager(
           std::move(callback));
       break;
     }
+    case mojom::SensorType::GRAVITY: {
+      auto gravity_fusion_algorithm =
+          std::make_unique<GravityFusionAlgorithmUsingAccelerometer>();
+      // If this PlatformSensorFusion object is successfully initialized,
+      // |callback| will be run with a reference to this object.
+      PlatformSensorFusion::Create(reading_buffer, this,
+                                   std::move(gravity_fusion_algorithm),
+                                   std::move(callback));
+      break;
+    }
 
     // Try to create low-level sensors by default.
     default: {
-      base::PostTaskAndReplyWithResult(
-          com_sta_task_runner_.get(), FROM_HERE,
+      com_sta_task_runner_->PostTaskAndReplyWithResult(
+          FROM_HERE,
           base::BindOnce(&PlatformSensorProviderWin::CreateSensorReader,
                          base::Unretained(this), type),
           base::BindOnce(&PlatformSensorProviderWin::SensorReaderCreated,

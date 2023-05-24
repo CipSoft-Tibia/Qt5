@@ -12,13 +12,8 @@
     <title>@APPNAME@</title>
     <style>
       /* Make the html body cover the entire (visual) viewport with no scroll bars. */
-      html, body { padding: 0; margin: 0; overflow:hidden; height: 100vh }
-      /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
-      canvas { border: 0px none; background-color: white; height:100%; width:100%;  }
-      /* The contenteditable property is set to true for the canvas in order to support
-         clipboard events. Hide the resulting focus frame and set the cursor back to
-         the default cursor. */
-      canvas { outline: 0px solid transparent; caret-color: transparent; cursor:default }
+      html, body { padding: 0; margin: 0; overflow: hidden; height: 100% }
+      #screen { width: 100%; height: 100%; }
     </style>
   </head>
   <body onload="init()">
@@ -30,43 +25,50 @@
         <noscript>JavaScript is disabled. Please enable JavaScript to use this application.</noscript>
       </center>
     </figure>
-    <canvas id="qtcanvas" oncontextmenu="event.preventDefault()" contenteditable="true"></canvas>
+    <div id="screen"></div>
 
-    <script type='text/javascript'>
-        function init() {
-          var spinner = document.querySelector('#qtspinner');
-          var canvas = document.querySelector('#qtcanvas');
-          var status = document.querySelector('#qtstatus')
+    <script type="text/javascript">
+        async function init()
+        {
+            const spinner = document.querySelector('#qtspinner');
+            const screen = document.querySelector('#screen');
+            const status = document.querySelector('#qtstatus');
 
-          var qtLoader = QtLoader({
-              canvasElements : [canvas],
-              showLoader: function(loaderStatus) {
-                  spinner.style.display = 'block';
-                  canvas.style.display = 'none';
-                  status.innerHTML = loaderStatus + "...";
-              },
-              showError: function(errorText) {
-                  status.innerHTML = errorText;
-                  spinner.style.display = 'block';
-                  canvas.style.display = 'none';
-              },
-              showExit: function() {
-                  status.innerHTML = "Application exit";
-                  if (qtLoader.exitCode !== undefined)
-                      status.innerHTML += " with code " + qtLoader.exitCode;
-                  if (qtLoader.exitText !== undefined)
-                      status.innerHTML += " (" + qtLoader.exitText + ")";
-                  spinner.style.display = 'block';
-                  canvas.style.display = 'none';
-              },
-              showCanvas: function() {
-                  spinner.style.display = 'none';
-                  canvas.style.display = 'block';
-              },
-          });
-          qtLoader.loadEmscriptenModule("@APPNAME@");
-      }
+            const showUi = (ui) => {
+                [spinner, screen].forEach(element => element.style.display = 'none');
+                if (screen === ui)
+                    screen.style.position = 'default';
+                ui.style.display = 'block';
+            }
+
+            try {
+                showUi(spinner);
+                status.innerHTML = 'Loading...';
+
+                const instance = await qtLoad({
+                    qt: {
+                        onLoaded: () => showUi(screen),
+                        onExit: exitData =>
+                        {
+                            status.innerHTML = 'Application exit';
+                            status.innerHTML +=
+                                exitData.code !== undefined ? ` with code ${exitData.code}` : '';
+                            status.innerHTML +=
+                                exitData.text !== undefined ? ` (${exitData.text})` : '';
+                            showUi(spinner);
+                        },
+                        entryFunction: window.createQtAppInstance,
+                        containerElements: [screen],
+                        @PRELOAD@
+                    }
+                });
+            } catch (e) {
+                console.error(e);
+                console.error(e.stack);
+            }
+        }
     </script>
+    <script src="@APPNAME@.js"></script>
     <script type="text/javascript" src="qtloader.js"></script>
   </body>
 </html>

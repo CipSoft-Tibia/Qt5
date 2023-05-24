@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -17,6 +16,11 @@ namespace proxy_resolver {
 class MojoProxyResolverV8TracingBindingsTest : public testing::Test {
  public:
   MojoProxyResolverV8TracingBindingsTest() = default;
+
+  MojoProxyResolverV8TracingBindingsTest(
+      const MojoProxyResolverV8TracingBindingsTest&) = delete;
+  MojoProxyResolverV8TracingBindingsTest& operator=(
+      const MojoProxyResolverV8TracingBindingsTest&) = delete;
 
   void Alert(const std::string& message) { alerts_.push_back(message); }
 
@@ -27,7 +31,7 @@ class MojoProxyResolverV8TracingBindingsTest : public testing::Test {
   void ResolveDns(
       const std::string& hostname,
       net::ProxyResolveDnsOperation operation,
-      const net::NetworkIsolationKey& network_isolation_key,
+      const net::NetworkAnonymizationKey& network_anonymization_key,
       mojo::PendingRemote<mojom::HostResolverRequestClient> client) {}
 
  protected:
@@ -36,14 +40,11 @@ class MojoProxyResolverV8TracingBindingsTest : public testing::Test {
 
   std::vector<std::string> alerts_;
   std::vector<std::pair<int, std::string>> errors_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MojoProxyResolverV8TracingBindingsTest);
 };
 
 TEST_F(MojoProxyResolverV8TracingBindingsTest, Basic) {
-  bindings_.Alert(base::ASCIIToUTF16("alert"));
-  bindings_.OnError(-1, base::ASCIIToUTF16("error"));
+  bindings_.Alert(u"alert");
+  bindings_.OnError(-1, u"error");
 
   EXPECT_TRUE(bindings_.GetHostResolver());
   EXPECT_FALSE(bindings_.GetNetLogWithSource().net_log());

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,8 @@
 
 #include "build/build_config.h"
 #include "components/autofill/core/browser/field_types.h"
-#include "components/autofill/core/common/renderer_id.h"
 #include "components/autofill/core/common/signatures.h"
+#include "components/autofill/core/common/unique_ids.h"
 
 namespace autofill {
 class FormStructure;
@@ -34,11 +34,7 @@ CredentialFieldType DeriveFromServerFieldType(autofill::ServerFieldType type);
 
 // Contains server predictions for a field.
 struct PasswordFieldPrediction {
-  // Field identifier generated in Blink on non-iOS platforms.
   autofill::FieldRendererId renderer_id;
-#if defined(OS_IOS)
-  base::string16 unique_id;
-#endif
   autofill::FieldSignature signature;
   autofill::ServerFieldType type;
   bool may_use_prefilled_placeholder = false;

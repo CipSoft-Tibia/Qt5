@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 #
 # Copyright 2019 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
@@ -8,10 +8,22 @@ Update manually maintained dependencies from Chromium.
 """
 
 import argparse
+import enum
 import os
 import shutil
 import subprocess
 import sys
+
+
+def node_path(options):
+    try:
+        old_sys_path = sys.path[:]
+        sys.path.append(
+            os.path.join(options.devtools_dir, 'third_party', 'node'))
+        import node
+    finally:
+        sys.path = old_sys_path
+    return node.GetBinaryPath()
 
 # Files whose location within devtools-frontend matches the upstream location.
 FILES = [
@@ -19,6 +31,7 @@ FILES = [
     'third_party/blink/renderer/core/css/css_properties.json5',
     'third_party/blink/renderer/core/html/aria_properties.json5',
     'third_party/blink/public/devtools_protocol/browser_protocol.pdl',
+    'third_party/blink/renderer/core/frame/deprecation/deprecation.json5',
 ]
 
 # Files whose location within devtools-frontend differs from the upstream location.
@@ -37,8 +50,23 @@ for f in FILES:
     FILE_MAPPINGS[f] = f
 
 
+class ReferenceMode(enum.Enum):
+    Tot = 'tot'
+    WorkingTree = 'working-tree'
+
+    def __str__(self):
+        return self.value
+
+
 def parse_options(cli_args):
     parser = argparse.ArgumentParser(description='Roll dependencies from Chromium.')
+    parser.add_argument(
+        '--ref',
+        type=ReferenceMode,
+        choices=list(ReferenceMode),
+        help='Defaults to tot. '
+        'If tot, fetch origin/main of Chromium repository and use it. '
+        'If working-tree, use working tree as is.')
     parser.add_argument('chromium_dir', help='path to chromium/src directory')
     parser.add_argument('devtools_dir',
                         help='path to devtools/devtools-frontend directory')
@@ -46,7 +74,8 @@ def parse_options(cli_args):
 
 def update(options):
     subprocess.check_call(['git', 'fetch', 'origin'], cwd=options.chromium_dir)
-    subprocess.check_call(['git', 'checkout', 'origin/master'], cwd=options.chromium_dir)
+    subprocess.check_call(['git', 'checkout', 'origin/main'],
+                          cwd=options.chromium_dir)
     subprocess.check_call(['gclient', 'sync'], cwd=options.chromium_dir)
 
 def copy_files(options):
@@ -58,7 +87,30 @@ def copy_files(options):
                     os.path.join(options.devtools_dir, to_path))
 
 
+def generate_signatures(options):
+    print(
+        'generating JavaScript native functions signatures from .idl and typescript definitions'
+    )
+    subprocess.check_call([
+        node_path(options),
+        os.path.join(options.devtools_dir, 'scripts', 'javascript_natives',
+                     'index.js'), options.chromium_dir, options.devtools_dir
+    ])
+
+
+def generate_dom_pinned_properties(options):
+    print('generating DOM pinned properties dataset from .idl definitions')
+    subprocess.check_call([
+        node_path(options),
+        os.path.join(options.devtools_dir, 'scripts', 'webidl-properties',
+                     'index.js'), options.devtools_dir
+    ])
+
+
 if __name__ == '__main__':
     OPTIONS = parse_options(sys.argv[1:])
-    update(OPTIONS)
+    if OPTIONS.ref == ReferenceMode.Tot:
+        update(OPTIONS)
     copy_files(OPTIONS)
+    generate_signatures(OPTIONS)
+    generate_dom_pinned_properties(OPTIONS)

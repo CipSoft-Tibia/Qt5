@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,12 @@
 #include <memory>
 
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "gpu/command_buffer/common/command_buffer_id.h"
 #include "gpu/command_buffer/common/constants.h"
 #include "gpu/command_buffer/service/abstract_texture.h"
 #include "gpu/command_buffer/service/sequence_id.h"
-#include "gpu/ipc/common/gpu_messages.h"
 #include "media/gpu/android/mock_abstract_texture.h"
 #include "media/gpu/test/fake_command_buffer_helper.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -29,7 +28,7 @@ using testing::Return;
 class TexturePoolTest : public testing::Test {
  public:
   void SetUp() override {
-    task_runner_ = base::ThreadTaskRunnerHandle::Get();
+    task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
     helper_ = base::MakeRefCounted<FakeCommandBufferHelper>(task_runner_);
     texture_pool_ = new TexturePool(helper_);
     // Random sync token that HasData().

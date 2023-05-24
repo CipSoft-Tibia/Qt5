@@ -1,21 +1,22 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/web_test/browser/web_test_devtools_bindings.h"
+#include "base/memory/raw_ptr.h"
 
 #include <memory>
 
-#include "base/bind_helpers.h"
 #include "base/command_line.h"
+#include "base/functional/callback_helpers.h"
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/shell/browser/shell.h"
+#include "content/shell/common/shell_switches.h"
 #include "content/web_test/browser/web_test_control_host.h"
 #include "content/web_test/common/web_test_switches.h"
 #include "net/base/filename_util.h"
@@ -43,16 +44,18 @@ class WebTestDevToolsBindings::SecondaryObserver : public WebContentsObserver {
       : WebContentsObserver(bindings->inspected_contents()),
         bindings_(bindings) {}
 
+  SecondaryObserver(const SecondaryObserver&) = delete;
+  SecondaryObserver& operator=(const SecondaryObserver&) = delete;
+
   // WebContentsObserver implementation.
-  void DocumentAvailableInMainFrame() override {
+  void PrimaryMainDocumentElementAvailable() override {
     if (bindings_)
       bindings_->NavigateDevToolsFrontend();
     bindings_ = nullptr;
   }
 
  private:
-  WebTestDevToolsBindings* bindings_;
-  DISALLOW_COPY_AND_ASSIGN(SecondaryObserver);
+  raw_ptr<WebTestDevToolsBindings> bindings_;
 };
 
 // static.
@@ -68,7 +71,7 @@ GURL WebTestDevToolsBindings::MapTestURLIfNeeded(const GURL& test_url,
     NOTREACHED();
     return GURL();
   }
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   // On Mac, the executable is in
   // out/Release/Content Shell.app/Contents/MacOS/Content Shell.
   // We need to go up 3 directories to get to out/Release.
@@ -78,13 +81,18 @@ GURL WebTestDevToolsBindings::MapTestURLIfNeeded(const GURL& test_url,
   bool is_debug_dev_tools = base::CommandLine::ForCurrentProcess()->HasSwitch(
       switches::kDebugDevTools);
   // The test runner hosts DevTools resources at this path.
-  std::string url_string = "http://localhost:8000/inspector-sources/";
-  if (is_debug_dev_tools)
-    url_string += "debug/";
+  // To reduce timeouts, we need to load DevTools resources from the same
+  // origin as the `test_url_string`.
+  CHECK_NE(test_url_string.find("127.0.0.1:8000"), std::string::npos);
+  std::string url_string = "http://127.0.0.1:8000/inspector-sources/";
   url_string += "integration_test_runner.html?experiments=true";
   if (is_debug_dev_tools)
     url_string += "&debugFrontend=true";
   url_string += "&test=" + test_url_string;
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kContentShellDevToolsTabTarget)) {
+    url_string += "&targetType=tab";
+  }
   return GURL(url_string);
 }
 
@@ -112,7 +120,7 @@ WebTestDevToolsBindings::WebTestDevToolsBindings(
 
 WebTestDevToolsBindings::~WebTestDevToolsBindings() {}
 
-void WebTestDevToolsBindings::DocumentAvailableInMainFrame() {
+void WebTestDevToolsBindings::PrimaryMainDocumentElementAvailable() {
   ShellDevToolsBindings::Attach();
 }
 

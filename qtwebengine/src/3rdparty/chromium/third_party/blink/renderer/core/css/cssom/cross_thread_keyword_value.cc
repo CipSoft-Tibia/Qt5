@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,20 +9,20 @@
 namespace blink {
 
 CSSStyleValue* CrossThreadKeywordValue::ToCSSStyleValue() {
-  return CSSKeywordValue::Create(std::move(keyword_value_.IsolatedCopy()));
+  return CSSKeywordValue::Create(keyword_value_);
 }
 
 bool CrossThreadKeywordValue::operator==(
     const CrossThreadStyleValue& other) const {
-  if (auto* o = DynamicTo<CrossThreadKeywordValue>(other))
+  if (auto* o = DynamicTo<CrossThreadKeywordValue>(other)) {
     return keyword_value_ == o->keyword_value_;
+  }
   return false;
 }
 
 std::unique_ptr<CrossThreadStyleValue> CrossThreadKeywordValue::IsolatedCopy()
     const {
-  return std::make_unique<CrossThreadKeywordValue>(
-      keyword_value_.IsolatedCopy());
+  return std::make_unique<CrossThreadKeywordValue>(keyword_value_);
 }
 
 }  // namespace blink

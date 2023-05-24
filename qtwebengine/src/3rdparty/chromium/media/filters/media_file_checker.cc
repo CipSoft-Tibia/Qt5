@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/time/time.h"
 #include "media/ffmpeg/ffmpeg_common.h"
 #include "media/ffmpeg/ffmpeg_decoding_loop.h"
@@ -47,7 +47,7 @@ bool MediaFileChecker::Start(base::TimeDelta check_time) {
 
   bool read_ok = true;
   media::BlockingUrlProtocol protocol(
-      &source, base::Bind(&OnMediaFileCheckerError, &read_ok));
+      &source, base::BindRepeating(&OnMediaFileCheckerError, &read_ok));
   media::FFmpegGlue glue(&protocol);
   AVFormatContext* format_context = glue.format_context();
 
@@ -68,7 +68,7 @@ bool MediaFileChecker::Start(base::TimeDelta check_time) {
       auto context = AVStreamToAVCodecContext(format_context->streams[i]);
       if (!context)
         continue;
-      AVCodec* codec = avcodec_find_decoder(cp->codec_id);
+      const AVCodec* codec = avcodec_find_decoder(cp->codec_id);
       if (codec && avcodec_open2(context.get(), codec, nullptr) >= 0) {
         auto loop = std::make_unique<FFmpegDecodingLoop>(context.get());
         stream_contexts[i] = {std::move(context), std::move(loop)};
@@ -86,8 +86,7 @@ bool MediaFileChecker::Start(base::TimeDelta check_time) {
   auto do_nothing_cb = base::BindRepeating([](AVFrame*) { return true; });
   const base::TimeTicks deadline =
       base::TimeTicks::Now() +
-      std::min(check_time,
-               base::TimeDelta::FromSeconds(kMaxCheckTimeInSeconds));
+      std::min(check_time, base::Seconds(kMaxCheckTimeInSeconds));
   do {
     result = av_read_frame(glue.format_context(), &packet);
     if (result < 0)

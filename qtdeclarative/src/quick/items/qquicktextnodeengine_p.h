@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qlist.h>
 #include <QtCore/qvarlengtharray.h>
@@ -98,7 +62,7 @@ public:
         }
 
         BinaryTreeNode(const QGlyphRun &g, SelectionState selState, const QRectF &brect,
-                       const Decorations &decs, const QColor &c, const QColor &bc,
+                       const Decorations &decs, const QColor &c, const QColor &bc, const QColor &dc,
                        const QPointF &pos, qreal a);
 
         QGlyphRun glyphRun;
@@ -108,6 +72,7 @@ public:
         Decorations decorations;
         QColor color;
         QColor backgroundColor;
+        QColor decorationColor;
         QPointF position;
         QImage image;
         qreal ascent;
@@ -121,7 +86,7 @@ public:
         { insert(binaryTree, BinaryTreeNode(rect, image, selectionState, ascent)); }
 
         static void insert(QVarLengthArray<BinaryTreeNode, 16> *binaryTree, const QGlyphRun &glyphRun, SelectionState selectionState,
-                           Decorations decorations, const QColor &textColor, const QColor &backgroundColor, const QPointF &position);
+                           Decorations decorations, const QColor &textColor, const QColor &backgroundColor, const QColor &underlineColor, const QPointF &position);
         static void insert(QVarLengthArray<BinaryTreeNode, 16> *binaryTree, const BinaryTreeNode &binaryTreeNode);
         static void inOrder(const QVarLengthArray<BinaryTreeNode, 16> &binaryTree, QVarLengthArray<int> *sortedIndexes, int currentIndex = 0);
     };
@@ -151,7 +116,8 @@ public:
     {}
 
     bool hasContents() const { return m_hasContents; }
-    void addTextBlock(QTextDocument *, const QTextBlock &, const QPointF &position, const QColor &textColor, const QColor& anchorColor, int selectionStart, int selectionEnd);
+    void addTextBlock(QTextDocument *, const QTextBlock &, const QPointF &position, const QColor &textColor,
+                      const QColor& anchorColor, int selectionStart, int selectionEnd, const QRectF &viewport = QRectF());
     QTextLine currentLine() const { return m_currentLine; }
 
     void setCurrentLine(const QTextLine &currentLine)
@@ -186,7 +152,7 @@ public:
     void addSelectedGlyphs(const QGlyphRun &glyphRun);
     void addUnselectedGlyphs(const QGlyphRun &glyphRun);
     void addGlyphsInRange(int rangeStart, int rangeEnd,
-                          const QColor &color, const QColor &backgroundColor,
+                          const QColor &color, const QColor &backgroundColor, const QColor &underlineColor,
                           int selectionStart, int selectionEnd);
     void addGlyphsForRanges(const QVarLengthArray<QTextLayout::FormatRange> &ranges,
                             int start, int end,
@@ -251,6 +217,7 @@ private:
     QColor m_selectionColor;
     QColor m_textColor;
     QColor m_backgroundColor;
+    QColor m_decorationColor;
     QColor m_selectedTextColor;
     QColor m_anchorColor;
     QPointF m_position;

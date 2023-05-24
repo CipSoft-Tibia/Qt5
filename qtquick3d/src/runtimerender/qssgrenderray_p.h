@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_RAY_H
 #define QSSG_RENDER_RAY_H
@@ -42,13 +16,14 @@
 // We mean it.
 //
 
-#include <QtQuick3DUtils/private/qssgoption_p.h>
 #include <QtQuick3DUtils/private/qssgbounds3_p.h>
 #include <QtQuick3DUtils/private/qssgplane_p.h>
 
 #include <QtGui/QVector2D>
 #include <QtGui/QVector3D>
 #include <QtGui/QMatrix4x4>
+
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 struct QSSGMeshBVHNode;
@@ -71,7 +46,7 @@ struct Q_AUTOTEST_EXPORT QSSGRenderRay
     {
     }
     // If we are parallel, then no intersection of course.
-    static QSSGOption<QVector3D> intersect(const QSSGPlane &inPlane, const QSSGRenderRay &ray);
+    static std::optional<QVector3D> intersect(const QSSGPlane &inPlane, const QSSGRenderRay &ray);
 
     // Perform an intersection aslo returning Barycentric Coordinates
     static bool triangleIntersect(const QSSGRenderRay &ray,
@@ -79,7 +54,8 @@ struct Q_AUTOTEST_EXPORT QSSGRenderRay
                                   const QVector3D &v1,
                                   const QVector3D &v2,
                                   float &u,
-                                  float &v);
+                                  float &v,
+                                  QVector3D &normal);
 
     struct IntersectionResult
     {
@@ -87,12 +63,20 @@ struct Q_AUTOTEST_EXPORT QSSGRenderRay
         float rayLengthSquared = 0.; // Length of the ray in world coordinates for the hit.
         QVector2D relXY; // UV coords for further mouse picking against a offscreen-rendered object.
         QVector3D scenePosition;
+        QVector3D localPosition;
+        QVector3D faceNormal;
         IntersectionResult() = default;
-        inline constexpr IntersectionResult(float rl, const QVector2D &relxy, const QVector3D &scenePosition)
+        inline constexpr IntersectionResult(float rl,
+                                            const QVector2D &relxy,
+                                            const QVector3D &scenePosition,
+                                            const QVector3D &localPosition,
+                                            const QVector3D &normal)
             : intersects(true)
             , rayLengthSquared(rl)
             , relXY(relxy)
             , scenePosition(scenePosition)
+            , localPosition(localPosition)
+            , faceNormal(normal)
         {}
     };
 
@@ -130,11 +114,6 @@ struct Q_AUTOTEST_EXPORT QSSGRenderRay
     static HitResult intersectWithAABBv2(const RayData &data,
                                          const QSSGBounds3 &bounds);
 
-    static IntersectionResult intersectWithAABB(const QMatrix4x4 &inGlobalTransform,
-                                                const QSSGBounds3 &inBounds,
-                                                const QSSGRenderRay &ray,
-                                                bool inForceIntersect = false);
-
     static void intersectWithBVH(const RayData &data,
                                         const QSSGMeshBVHNode *bvh,
                                         const QSSGRenderMesh *mesh,
@@ -146,11 +125,11 @@ struct Q_AUTOTEST_EXPORT QSSGRenderRay
                                                                  int triangleOffset,
                                                                  int triangleCount);
 
-    QSSGOption<QVector2D> relative(const QMatrix4x4 &inGlobalTransform,
+    std::optional<QVector2D> relative(const QMatrix4x4 &inGlobalTransform,
                                         const QSSGBounds3 &inBounds,
                                         QSSGRenderBasisPlanes inPlane) const;
 
-    QSSGOption<QVector2D> relativeXY(const QMatrix4x4 &inGlobalTransform, const QSSGBounds3 &inBounds) const
+    std::optional<QVector2D> relativeXY(const QMatrix4x4 &inGlobalTransform, const QSSGBounds3 &inBounds) const
     {
         return relative(inGlobalTransform, inBounds, QSSGRenderBasisPlanes::XY);
     }

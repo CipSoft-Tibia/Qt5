@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,25 +6,25 @@
 
 #include "xfa/fxfa/cxfa_ffline.h"
 
+#include "third_party/base/notreached.h"
+#include "xfa/fgas/graphics/cfgas_gecolor.h"
+#include "xfa/fgas/graphics/cfgas_gegraphics.h"
+#include "xfa/fgas/graphics/cfgas_gepath.h"
 #include "xfa/fxfa/parser/cxfa_edge.h"
 #include "xfa/fxfa/parser/cxfa_line.h"
 #include "xfa/fxfa/parser/cxfa_value.h"
-#include "xfa/fxgraphics/cxfa_gecolor.h"
-#include "xfa/fxgraphics/cxfa_gepath.h"
-#include "xfa/fxgraphics/cxfa_graphics.h"
 
 namespace {
 
 CFX_GraphStateData::LineCap LineCapToFXGE(XFA_AttributeValue iLineCap) {
   switch (iLineCap) {
     case XFA_AttributeValue::Round:
-      return CFX_GraphStateData::LineCapRound;
+      return CFX_GraphStateData::LineCap::kRound;
     case XFA_AttributeValue::Butt:
-      return CFX_GraphStateData::LineCapButt;
+      return CFX_GraphStateData::LineCap::kButt;
     default:
-      break;
+      return CFX_GraphStateData::LineCap::kSquare;
   }
-  return CFX_GraphStateData::LineCapSquare;
 }
 
 }  // namespace
@@ -82,7 +82,7 @@ void CXFA_FFLine::GetRectFromHand(CFX_RectF& rect,
   }
 }
 
-void CXFA_FFLine::RenderWidget(CXFA_Graphics* pGS,
+void CXFA_FFLine::RenderWidget(CFGAS_GEGraphics* pGS,
                                const CFX_Matrix& matrix,
                                HighlightOption highlight) {
   if (!HasVisibleStatus())
@@ -119,7 +119,7 @@ void CXFA_FFLine::RenderWidget(CXFA_Graphics* pGS,
 
   GetRectFromHand(rtLine, line ? line->GetHand() : XFA_AttributeValue::Left,
                   fLineWidth);
-  CXFA_GEPath linePath;
+  CFGAS_GEPath linePath;
   if (line && line->GetSlope() && rtLine.right() > 0.0f &&
       rtLine.bottom() > 0.0f) {
     linePath.AddLine(rtLine.TopRight(), rtLine.BottomLeft());
@@ -127,13 +127,12 @@ void CXFA_FFLine::RenderWidget(CXFA_Graphics* pGS,
     linePath.AddLine(rtLine.TopLeft(), rtLine.BottomRight());
   }
 
-  pGS->SaveGraphState();
+  CFGAS_GEGraphics::StateRestorer restorer(pGS);
   pGS->SetLineWidth(fLineWidth);
   pGS->EnableActOnDash();
   XFA_StrokeTypeSetLineDash(pGS, iStrokeType, iCap);
 
-  pGS->SetStrokeColor(CXFA_GEColor(lineColor));
+  pGS->SetStrokeColor(CFGAS_GEColor(lineColor));
   pGS->SetLineCap(LineCapToFXGE(iCap));
-  pGS->StrokePath(&linePath, &mtRotate);
-  pGS->RestoreGraphState();
+  pGS->StrokePath(linePath, mtRotate);
 }

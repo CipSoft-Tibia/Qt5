@@ -1,10 +1,12 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/permissions/permissions_api_helpers.h"
 
 #include <stddef.h>
+
+#include <memory>
 
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
@@ -17,6 +19,7 @@
 #include "extensions/common/permissions/permissions_info.h"
 #include "extensions/common/permissions/usb_device_permission.h"
 #include "extensions/common/url_pattern_set.h"
+#include "extensions/common/user_script.h"
 
 namespace extensions {
 
@@ -43,9 +46,9 @@ std::unique_ptr<APIPermission> UnpackPermissionWithArguments(
     base::StringPiece permission_arg,
     const std::string& permission_str,
     std::string* error) {
-  std::unique_ptr<base::Value> permission_json =
-      base::JSONReader::ReadDeprecated(permission_arg);
-  if (!permission_json.get()) {
+  absl::optional<base::Value> permission_json =
+      base::JSONReader::Read(permission_arg);
+  if (!permission_json) {
     *error = ErrorUtils::FormatErrorMessage(kInvalidParameter, permission_str);
     return nullptr;
   }
@@ -55,7 +58,8 @@ std::unique_ptr<APIPermission> UnpackPermissionWithArguments(
   // Explicitly check the permissions that accept arguments until
   // https://crbug.com/162042 is fixed.
   const APIPermissionInfo* usb_device_permission_info =
-      PermissionsInfo::GetInstance()->GetByID(APIPermission::kUsbDevice);
+      PermissionsInfo::GetInstance()->GetByID(
+          mojom::APIPermissionID::kUsbDevice);
   if (permission_name == usb_device_permission_info->name()) {
     permission =
         std::make_unique<UsbDevicePermission>(usb_device_permission_info);
@@ -65,7 +69,7 @@ std::unique_ptr<APIPermission> UnpackPermissionWithArguments(
   }
 
   CHECK(permission);
-  if (!permission->FromValue(permission_json.get(), nullptr, nullptr)) {
+  if (!permission->FromValue(&permission_json.value(), nullptr, nullptr)) {
     *error = ErrorUtils::FormatErrorMessage(kInvalidParameter, permission_str);
     return nullptr;
   }
@@ -233,7 +237,7 @@ UnpackPermissionSetResult::~UnpackPermissionSetResult() = default;
 std::unique_ptr<Permissions> PackPermissionSet(const PermissionSet& set) {
   std::unique_ptr<Permissions> permissions(new Permissions());
 
-  permissions->permissions.reset(new std::vector<std::string>());
+  permissions->permissions.emplace();
   for (const APIPermission* api : set.apis()) {
     std::unique_ptr<base::Value> value(api->ToValue());
     if (!value) {
@@ -249,7 +253,7 @@ std::unique_ptr<Permissions> PackPermissionSet(const PermissionSet& set) {
   // TODO(rpaquay): We currently don't expose manifest permissions
   // to apps/extensions via the permissions API.
 
-  permissions->origins.reset(new std::vector<std::string>());
+  permissions->origins.emplace();
   for (const URLPattern& pattern : set.effective_hosts())
     permissions->origins->push_back(pattern.GetAsString());
 

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,13 @@
 
 #include <stddef.h>
 
-#include "base/single_thread_task_runner.h"
+#include <limits>
+#include <vector>
+
+#include "base/memory/raw_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/test_mock_time_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/time/time.h"
 #include "components/viz/client/client_resource_provider.h"
 #include "components/viz/common/resources/resource_sizes.h"
 #include "components/viz/common/resources/returned_resource.h"
@@ -27,7 +31,7 @@ class ResourcePoolTest : public testing::Test {
     context_support_ = context_support.get();
     context_provider_ =
         viz::TestContextProvider::Create(std::move(context_support));
-    context_provider_->BindToCurrentThread();
+    context_provider_->BindToCurrentSequence();
     resource_provider_ = std::make_unique<viz::ClientResourceProvider>();
     test_task_runner_ = base::MakeRefCounted<base::TestMockTimeTaskRunner>();
     resource_pool_ = std::make_unique<ResourcePool>(
@@ -58,7 +62,7 @@ class ResourcePoolTest : public testing::Test {
 
   void SetBackingOnResource(const ResourcePool::InUsePoolResource& resource) {
     auto backing = std::make_unique<StubGpuBacking>();
-    backing->mailbox = gpu::Mailbox::Generate();
+    backing->mailbox = gpu::Mailbox::GenerateForSharedImage();
     backing->mailbox_sync_token.Set(
         gpu::GPU_IO, gpu::CommandBufferId::FromUnsafeValue(1), 1);
     resource.set_gpu_backing(std::move(backing));
@@ -70,7 +74,7 @@ class ResourcePoolTest : public testing::Test {
   }
 
   viz::TestSharedBitmapManager shared_bitmap_manager_;
-  MockContextSupport* context_support_;
+  raw_ptr<MockContextSupport> context_support_;
   scoped_refptr<viz::TestContextProvider> context_provider_;
   std::unique_ptr<viz::ClientResourceProvider> resource_provider_;
   scoped_refptr<base::TestMockTimeTaskRunner> test_task_runner_;
@@ -164,6 +168,7 @@ TEST_F(ResourcePoolTest, AccountingSingleResource) {
       viz::ResourceSizes::UncheckedSizeInBytes<size_t>(size, format);
   ResourcePool::InUsePoolResource resource =
       resource_pool_->AcquireResource(size, format, color_space);
+  SetBackingOnResource(resource);
 
   EXPECT_EQ(resource_bytes, resource_pool_->GetTotalMemoryUsageForTesting());
   EXPECT_EQ(resource_bytes, resource_pool_->memory_usage_bytes());
@@ -251,7 +256,7 @@ TEST_F(ResourcePoolTest, LostResource) {
       viz::TransferableResource::ReturnResources(transferable_resources);
   ASSERT_EQ(1u, returned_resources.size());
   returned_resources[0].lost = true;
-  resource_provider_->ReceiveReturnsFromParent(returned_resources);
+  resource_provider_->ReceiveReturnsFromParent(std::move(returned_resources));
 
   EXPECT_EQ(1u, resource_pool_->GetTotalResourceCountForTesting());
   resource_pool_->ReleaseResource(std::move(resource));
@@ -270,10 +275,11 @@ TEST_F(ResourcePoolTest, BusyResourcesNotFreed) {
 
   ResourcePool::InUsePoolResource resource =
       resource_pool_->AcquireResource(size, format, color_space);
+  SetBackingOnResource(resource);
+
   EXPECT_EQ(40000u, resource_pool_->GetTotalMemoryUsageForTesting());
   EXPECT_EQ(1u, resource_pool_->resource_count());
 
-  SetBackingOnResource(resource);
   EXPECT_TRUE(resource_pool_->PrepareForExport(resource));
 
   std::vector<viz::TransferableResource> transfers;
@@ -283,7 +289,7 @@ TEST_F(ResourcePoolTest, BusyResourcesNotFreed) {
 
   resource_pool_->ReleaseResource(std::move(resource));
   EXPECT_EQ(40000u, resource_pool_->GetTotalMemoryUsageForTesting());
-  EXPECT_EQ(0u, resource_pool_->memory_usage_bytes());
+  EXPECT_EQ(40000u, resource_pool_->memory_usage_bytes());
   EXPECT_EQ(1u, resource_pool_->GetBusyResourceCountForTesting());
 
   // Wait for our resource pool to evict resources. Wait 10x the expiration
@@ -293,8 +299,14 @@ TEST_F(ResourcePoolTest, BusyResourcesNotFreed) {
   // Busy resources are still held, since they may be in flight to the display
   // compositor and should not be freed.
   EXPECT_EQ(40000u, resource_pool_->GetTotalMemoryUsageForTesting());
-  EXPECT_EQ(0u, resource_pool_->memory_usage_bytes());
+  EXPECT_EQ(40000u, resource_pool_->memory_usage_bytes());
   EXPECT_EQ(1u, resource_pool_->GetBusyResourceCountForTesting());
+
+  resource_provider_->ReleaseAllExportedResources(/*lose=*/false);
+
+  EXPECT_EQ(40000u, resource_pool_->GetTotalMemoryUsageForTesting());
+  EXPECT_EQ(0u, resource_pool_->memory_usage_bytes());
+  EXPECT_EQ(0u, resource_pool_->GetBusyResourceCountForTesting());
 }
 
 TEST_F(ResourcePoolTest, UnusedResourcesEventuallyFreed) {
@@ -309,13 +321,13 @@ TEST_F(ResourcePoolTest, UnusedResourcesEventuallyFreed) {
 
   ResourcePool::InUsePoolResource resource =
       resource_pool_->AcquireResource(size, format, color_space);
+  SetBackingOnResource(resource);
   EXPECT_EQ(40000u, resource_pool_->GetTotalMemoryUsageForTesting());
   EXPECT_EQ(1u, resource_pool_->GetTotalResourceCountForTesting());
   EXPECT_EQ(1u, resource_pool_->resource_count());
   EXPECT_EQ(0u, resource_pool_->GetBusyResourceCountForTesting());
 
   // Export the resource to the display compositor.
-  SetBackingOnResource(resource);
   EXPECT_TRUE(resource_pool_->PrepareForExport(resource));
   std::vector<viz::TransferableResource> transfers;
   resource_provider_->PrepareSendToParent(
@@ -714,8 +726,10 @@ TEST_F(ResourcePoolTest, MetadataSentToDisplayCompositor) {
   EXPECT_EQ(transfer[0].mailbox_holder.mailbox, mailbox);
   EXPECT_EQ(transfer[0].mailbox_holder.sync_token, sync_token);
   EXPECT_EQ(transfer[0].mailbox_holder.texture_target, target);
-  EXPECT_EQ(transfer[0].format, format);
-  EXPECT_TRUE(transfer[0].read_lock_fences_enabled);
+  EXPECT_EQ(transfer[0].format.resource_format(), format);
+  EXPECT_EQ(
+      transfer[0].synchronization_type,
+      viz::TransferableResource::SynchronizationType::kGpuCommandsCompleted);
   EXPECT_TRUE(transfer[0].is_overlay_candidate);
 
   resource_pool_->ReleaseResource(std::move(resource));

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmacgesturerecognizer_p.h"
 #include "qgesture.h"
@@ -67,7 +31,7 @@ QMacSwipeGestureRecognizer::recognize(QGesture *gesture, QObject *obj, QEvent *e
             case Qt::SwipeNativeGesture: {
                 QSwipeGesture *g = static_cast<QSwipeGesture *>(gesture);
                 g->setSwipeAngle(ev->value());
-                g->setHotSpot(ev->screenPos());
+                g->setHotSpot(ev->globalPosition());
                 return QGestureRecognizer::FinishGesture | QGestureRecognizer::ConsumeEventHint;
                 break; }
             default:
@@ -105,11 +69,11 @@ QMacPinchGestureRecognizer::recognize(QGesture *gesture, QObject *obj, QEvent *e
         switch (ev->gestureType()) {
         case Qt::BeginNativeGesture:
             reset(gesture);
-            g->setStartCenterPoint(static_cast<QWidget*>(obj)->mapFromGlobal(ev->screenPos().toPoint()));
+            g->setStartCenterPoint(static_cast<QWidget*>(obj)->mapFromGlobal(ev->globalPosition().toPoint()));
             g->setCenterPoint(g->startCenterPoint());
             g->setChangeFlags(QPinchGesture::CenterPointChanged);
             g->setTotalChangeFlags(g->totalChangeFlags() | g->changeFlags());
-            g->setHotSpot(ev->screenPos());
+            g->setHotSpot(ev->globalPosition());
             return QGestureRecognizer::MayBeGesture | QGestureRecognizer::ConsumeEventHint;
         case Qt::RotateNativeGesture:
             g->setLastScaleFactor(g->scaleFactor());
@@ -117,7 +81,7 @@ QMacPinchGestureRecognizer::recognize(QGesture *gesture, QObject *obj, QEvent *e
             g->setRotationAngle(g->rotationAngle() + ev->value());
             g->setChangeFlags(QPinchGesture::RotationAngleChanged);
             g->setTotalChangeFlags(g->totalChangeFlags() | g->changeFlags());
-            g->setHotSpot(ev->screenPos());
+            g->setHotSpot(ev->globalPosition());
             return QGestureRecognizer::TriggerGesture | QGestureRecognizer::ConsumeEventHint;
         case Qt::ZoomNativeGesture:
             g->setLastScaleFactor(g->scaleFactor());
@@ -126,7 +90,7 @@ QMacPinchGestureRecognizer::recognize(QGesture *gesture, QObject *obj, QEvent *e
             g->setTotalScaleFactor(g->totalScaleFactor() * g->scaleFactor());
             g->setChangeFlags(QPinchGesture::ScaleFactorChanged);
             g->setTotalChangeFlags(g->totalChangeFlags() | g->changeFlags());
-            g->setHotSpot(ev->screenPos());
+            g->setHotSpot(ev->globalPosition());
             return QGestureRecognizer::TriggerGesture | QGestureRecognizer::ConsumeEventHint;
         case Qt::SmartZoomNativeGesture:
             g->setLastScaleFactor(g->scaleFactor());
@@ -134,7 +98,7 @@ QMacPinchGestureRecognizer::recognize(QGesture *gesture, QObject *obj, QEvent *e
             g->setScaleFactor(ev->value() ? 1.7f : 1.0f);
             g->setChangeFlags(QPinchGesture::ScaleFactorChanged);
             g->setTotalChangeFlags(g->totalChangeFlags() | g->changeFlags());
-            g->setHotSpot(ev->screenPos());
+            g->setHotSpot(ev->globalPosition());
             return QGestureRecognizer::TriggerGesture | QGestureRecognizer::ConsumeEventHint;
         case Qt::EndNativeGesture:
             return QGestureRecognizer::FinishGesture | QGestureRecognizer::ConsumeEventHint;
@@ -179,7 +143,7 @@ QGesture *QMacPanGestureRecognizer::create(QObject *target)
         w->setAttribute(Qt::WA_TouchPadAcceptSingleTouchEvents);
         return new QPanGesture;
     }
-    return 0;
+    return nullptr;
 }
 
 void QMacPanGestureRecognizer::timerEvent(QTimerEvent *ev)
@@ -203,7 +167,7 @@ QMacPanGestureRecognizer::recognize(QGesture *gesture, QObject *target, QEvent *
     switch (event->type()) {
     case QEvent::TouchBegin: {
         const QTouchEvent *ev = static_cast<const QTouchEvent*>(event);
-        if (ev->touchPoints().size() == 1) {
+        if (ev->points().size() == 1) {
             reset(gesture);
             _startPos = QCursor::pos();
             _target = target;
@@ -217,7 +181,7 @@ QMacPanGestureRecognizer::recognize(QGesture *gesture, QObject *target, QEvent *
             break;
 
         const QTouchEvent *ev = static_cast<const QTouchEvent*>(event);
-        if (ev->touchPoints().size() == 1)
+        if (ev->points().size() == 1)
             return QGestureRecognizer::FinishGesture;
         break;}
     case QEvent::TouchUpdate: {
@@ -225,7 +189,7 @@ QMacPanGestureRecognizer::recognize(QGesture *gesture, QObject *target, QEvent *
             break;
 
         const QTouchEvent *ev = static_cast<const QTouchEvent*>(event);
-        if (ev->touchPoints().size() == 1) {
+        if (ev->points().size() == 1) {
             if (_panTimer.isActive()) {
                 // INVARIANT: Still in maybeGesture. Check if the user
                 // moved his finger so much that it makes sense to cancel the pan:

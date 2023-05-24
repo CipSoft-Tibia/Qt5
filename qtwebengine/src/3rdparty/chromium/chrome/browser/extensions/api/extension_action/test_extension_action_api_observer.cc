@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@ namespace extensions {
 TestExtensionActionAPIObserver::TestExtensionActionAPIObserver(
     content::BrowserContext* context,
     const ExtensionId& extension_id)
-    : extension_id_(extension_id), scoped_observer_(this) {
-  scoped_observer_.Add(ExtensionActionAPI::Get(context));
+    : extension_id_(extension_id) {
+  scoped_observation_.Observe(ExtensionActionAPI::Get(context));
 }
 
 TestExtensionActionAPIObserver::TestExtensionActionAPIObserver(

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object_cache_impl.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "ui/accessibility/ax_mode.h"
 
 namespace blink {
 
@@ -20,16 +20,12 @@ AccessibilityTest::AccessibilityTest(LocalFrameClient* local_frame_client)
 
 void AccessibilityTest::SetUp() {
   RenderingTest::SetUp();
-  RuntimeEnabledFeatures::SetAccessibilityExposeHTMLElementEnabled(true);
-  RuntimeEnabledFeatures::
-      SetAccessibilityUseAXPositionForDocumentMarkersEnabled(true);
-  ax_context_ = std::make_unique<AXContext>(GetDocument());
+  ax_context_ = std::make_unique<AXContext>(GetDocument(), ui::kAXModeComplete);
 }
 
 AXObjectCacheImpl& AccessibilityTest::GetAXObjectCache() const {
   DCHECK(GetDocument().View());
-  GetDocument().View()->UpdateLifecycleToCompositingCleanPlusScrolling(
-      DocumentUpdateReason::kAccessibility);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
   auto* ax_object_cache =
       To<AXObjectCacheImpl>(GetDocument().ExistingAXObjectCache());
   DCHECK(ax_object_cache);

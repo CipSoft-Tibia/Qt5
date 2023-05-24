@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@ package org.chromium.shape_detection;
 import androidx.test.filters.SmallTest;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -17,6 +18,7 @@ import org.chromium.base.test.params.ParameterProvider;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
 import org.chromium.base.test.util.Batch;
+import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.shape_detection.mojom.BarcodeDetection;
 import org.chromium.shape_detection.mojom.BarcodeDetectionProvider;
@@ -35,8 +37,11 @@ import java.util.concurrent.TimeUnit;
 @RunWith(ParameterizedRunner.class)
 @Batch(Batch.UNIT_TESTS)
 @UseRunnerDelegate(BaseJUnit4RunnerDelegate.class)
+@DisabledTest(message = "https://crbug.com/1153716")
 public class BarcodeDetectionImplTest {
-    private static final org.chromium.skia.mojom.Bitmap QR_CODE_BITMAP =
+    private static final float BOUNDS_TOLERANCE = 4.0f;
+
+    private static final org.chromium.skia.mojom.BitmapN32 QR_CODE_BITMAP =
             TestUtils.mojoBitmapFromFile("qr_code.png");
 
     private static final int[] SUPPORTED_FORMATS = {BarcodeFormat.AZTEC, BarcodeFormat.CODE_128,
@@ -49,7 +54,7 @@ public class BarcodeDetectionImplTest {
 
         final ArrayBlockingQueue<int[]> queue = new ArrayBlockingQueue<>(13);
         provider.enumerateSupportedFormats(
-                new BarcodeDetectionProvider.EnumerateSupportedFormatsResponse() {
+                new BarcodeDetectionProvider.EnumerateSupportedFormats_Response() {
                     @Override
                     public void call(int[] results) {
                         queue.add(results);
@@ -65,13 +70,13 @@ public class BarcodeDetectionImplTest {
         return toReturn;
     }
 
-    private static BarcodeDetectionResult[] detect(org.chromium.skia.mojom.Bitmap mojoBitmap) {
+    private static BarcodeDetectionResult[] detect(org.chromium.skia.mojom.BitmapN32 mojoBitmap) {
         BarcodeDetectorOptions options = new BarcodeDetectorOptions();
         return detectWithOptions(mojoBitmap, options);
     }
 
     private static BarcodeDetectionResult[] detectWithHint(
-            org.chromium.skia.mojom.Bitmap mojoBitmap, int format) {
+            org.chromium.skia.mojom.BitmapN32 mojoBitmap, int format) {
         Assert.assertTrue(BarcodeFormat.isKnownValue(format));
         BarcodeDetectorOptions options = new BarcodeDetectorOptions();
         options.formats = new int[] {format};
@@ -79,11 +84,11 @@ public class BarcodeDetectionImplTest {
     }
 
     private static BarcodeDetectionResult[] detectWithOptions(
-            org.chromium.skia.mojom.Bitmap mojoBitmap, BarcodeDetectorOptions options) {
+            org.chromium.skia.mojom.BitmapN32 mojoBitmap, BarcodeDetectorOptions options) {
         BarcodeDetection detector = new BarcodeDetectionImpl(options);
 
         final ArrayBlockingQueue<BarcodeDetectionResult[]> queue = new ArrayBlockingQueue<>(1);
-        detector.detect(mojoBitmap, new BarcodeDetection.DetectResponse() {
+        detector.detect(mojoBitmap, new BarcodeDetection.Detect_Response() {
             @Override
             public void call(BarcodeDetectionResult[] results) {
                 queue.add(results);
@@ -99,22 +104,25 @@ public class BarcodeDetectionImplTest {
         return toReturn;
     }
 
+    @Before
+    public void setUp() {
+        TestUtils.waitForVisionLibraryReady();
+    }
+
     @Test
     @SmallTest
     @Feature({"ShapeDetection"})
     public void testEnumerateSupportedFormats() {
-        if (!TestUtils.IS_GMS_CORE_SUPPORTED) {
-            return;
-        }
         int[] results = enumerateSupportedFormats();
         Assert.assertArrayEquals(SUPPORTED_FORMATS, results);
     }
 
     public static class BarcodeExampleParams implements ParameterProvider {
         private static List<ParameterSet> sBarcodeExampleParams = Arrays.asList(
-                new ParameterSet()
-                        .value("aztec.png", BarcodeFormat.AZTEC, "Chromium", 11, 11, 61, 61)
-                        .name("AZTEC"),
+                // TODO(https://crbug.com/1153716): AZTEC format is failing.
+                // new ParameterSet()
+                //         .value("aztec.png", BarcodeFormat.AZTEC, "Chromium", 11, 11, 61, 61)
+                //         .name("AZTEC"),
                 new ParameterSet()
                         .value("codabar.png", BarcodeFormat.CODABAR, "A6.2831853B", 24, 24, 448, 95)
                         .name("CODABAR"),
@@ -166,17 +174,14 @@ public class BarcodeDetectionImplTest {
     @Feature({"ShapeDetection"})
     public void testDetectBarcodeWithHint(String inputFile, int format, String value, float x,
             float y, float width, float height) {
-        if (!TestUtils.IS_GMS_CORE_SUPPORTED) {
-            return;
-        }
-        org.chromium.skia.mojom.Bitmap bitmap = TestUtils.mojoBitmapFromFile(inputFile);
+        org.chromium.skia.mojom.BitmapN32 bitmap = TestUtils.mojoBitmapFromFile(inputFile);
         BarcodeDetectionResult[] results = detectWithHint(bitmap, format);
         Assert.assertEquals(1, results.length);
         Assert.assertEquals(value, results[0].rawValue);
-        Assert.assertEquals(x, results[0].boundingBox.x, 0.0);
-        Assert.assertEquals(y, results[0].boundingBox.y, 0.0);
-        Assert.assertEquals(width, results[0].boundingBox.width, 0.0);
-        Assert.assertEquals(height, results[0].boundingBox.height, 0.0);
+        Assert.assertEquals(x, results[0].boundingBox.x, BOUNDS_TOLERANCE);
+        Assert.assertEquals(y, results[0].boundingBox.y, BOUNDS_TOLERANCE);
+        Assert.assertEquals(width, results[0].boundingBox.width, BOUNDS_TOLERANCE);
+        Assert.assertEquals(height, results[0].boundingBox.height, BOUNDS_TOLERANCE);
         Assert.assertEquals(format, results[0].format);
     }
 
@@ -186,17 +191,14 @@ public class BarcodeDetectionImplTest {
     @Feature({"ShapeDetection"})
     public void testDetectBarcodeWithoutHint(String inputFile, int format, String value, float x,
             float y, float width, float height) {
-        if (!TestUtils.IS_GMS_CORE_SUPPORTED) {
-            return;
-        }
-        org.chromium.skia.mojom.Bitmap bitmap = TestUtils.mojoBitmapFromFile(inputFile);
+        org.chromium.skia.mojom.BitmapN32 bitmap = TestUtils.mojoBitmapFromFile(inputFile);
         BarcodeDetectionResult[] results = detect(bitmap);
         Assert.assertEquals(1, results.length);
         Assert.assertEquals(value, results[0].rawValue);
-        Assert.assertEquals(x, results[0].boundingBox.x, 0.0);
-        Assert.assertEquals(y, results[0].boundingBox.y, 0.0);
-        Assert.assertEquals(width, results[0].boundingBox.width, 0.0);
-        Assert.assertEquals(height, results[0].boundingBox.height, 0.0);
+        Assert.assertEquals(x, results[0].boundingBox.x, BOUNDS_TOLERANCE);
+        Assert.assertEquals(y, results[0].boundingBox.y, BOUNDS_TOLERANCE);
+        Assert.assertEquals(width, results[0].boundingBox.width, BOUNDS_TOLERANCE);
+        Assert.assertEquals(height, results[0].boundingBox.height, BOUNDS_TOLERANCE);
         Assert.assertEquals(format, results[0].format);
     }
 
@@ -204,9 +206,6 @@ public class BarcodeDetectionImplTest {
     @SmallTest
     @Feature({"ShapeDetection"})
     public void testTryDetectQrCodeWithAztecHint() {
-        if (!TestUtils.IS_GMS_CORE_SUPPORTED) {
-            return;
-        }
         BarcodeDetectionResult[] results = detectWithHint(QR_CODE_BITMAP, BarcodeFormat.AZTEC);
         Assert.assertEquals(0, results.length);
     }

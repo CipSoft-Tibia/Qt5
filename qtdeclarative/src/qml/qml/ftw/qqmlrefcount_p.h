@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLREFCOUNT_P_H
 #define QQMLREFCOUNT_P_H
@@ -57,6 +21,8 @@
 
 QT_BEGIN_NAMESPACE
 
+template <typename T>
+class QQmlRefCounted;
 
 class Q_QML_PRIVATE_EXPORT QQmlRefCount
 {
@@ -67,11 +33,19 @@ public:
     inline void release() const;
     inline int count() const;
 
-protected:
+private:
     inline virtual ~QQmlRefCount();
+    template <typename T> friend class QQmlRefCounted;
 
 private:
     mutable QAtomicInt refCount;
+};
+
+template <typename T>
+class QQmlRefCounted : public QQmlRefCount
+{
+protected:
+    ~QQmlRefCounted() = default;
 };
 
 template<class T>
@@ -82,11 +56,13 @@ public:
         AddRef,
         Adopt
     };
-    inline QQmlRefPointer();
-    inline QQmlRefPointer(T *, Mode m = AddRef);
-    inline QQmlRefPointer(const QQmlRefPointer<T> &);
-    inline QQmlRefPointer(QQmlRefPointer<T> &&);
+    Q_NODISCARD_CTOR inline QQmlRefPointer();
+    Q_NODISCARD_CTOR inline QQmlRefPointer(T *, Mode m = AddRef);
+    Q_NODISCARD_CTOR inline QQmlRefPointer(const QQmlRefPointer &);
+    Q_NODISCARD_CTOR inline QQmlRefPointer(QQmlRefPointer &&);
     inline ~QQmlRefPointer();
+
+    void swap(QQmlRefPointer &other) noexcept { qt_ptr_swap(o, other.o); }
 
     inline QQmlRefPointer<T> &operator=(const QQmlRefPointer<T> &o);
     inline QQmlRefPointer<T> &operator=(QQmlRefPointer<T> &&o);
@@ -102,9 +78,41 @@ public:
 
     inline T* take() { T *res = o; o = nullptr; return res; }
 
+    friend bool operator==(const QQmlRefPointer &a, const QQmlRefPointer &b) { return a.o == b.o; }
+    friend bool operator!=(const QQmlRefPointer &a, const QQmlRefPointer &b) { return !(a == b); }
+
+    void reset(T *t = nullptr)
+    {
+        if (t == o)
+            return;
+        if (o)
+            o->release();
+        if (t)
+            t->addref();
+        o = t;
+    }
+
 private:
     T *o;
 };
+
+namespace QQml {
+/*!
+    \internal
+    Creates a QQmlRefPointer which takes ownership of a newly constructed T.
+    T must derive from QQmlRefCounted<T> (as we rely on an initial refcount of _1_).
+    T will be constructed by forwarding \a args to its constructor.
+ */
+template <typename T, typename ...Args>
+QQmlRefPointer<T> makeRefPointer(Args&&... args)
+{
+    static_assert(std::is_base_of_v<QQmlRefCount, T>);
+    return QQmlRefPointer<T>(new T(std::forward<Args>(args)...), QQmlRefPointer<T>::Adopt);
+}
+}
+
+template <typename T>
+Q_DECLARE_TYPEINFO_BODY(QQmlRefPointer<T>, Q_RELOCATABLE_TYPE);
 
 QQmlRefCount::QQmlRefCount()
 : refCount(1)
@@ -170,8 +178,12 @@ QQmlRefPointer<T>::~QQmlRefPointer()
 template<class T>
 QQmlRefPointer<T> &QQmlRefPointer<T>::operator=(const QQmlRefPointer<T> &other)
 {
-    if (other.o) other.o->addref();
-    if (o) o->release();
+    if (o == other.o)
+        return *this;
+    if (other.o)
+        other.o->addref();
+    if (o)
+        o->release();
     o = other.o;
     return *this;
 }
@@ -180,7 +192,7 @@ template <class T>
 QQmlRefPointer<T> &QQmlRefPointer<T>::operator=(QQmlRefPointer<T> &&other)
 {
     QQmlRefPointer<T> m(std::move(other));
-    qSwap(o, m.o);
+    swap(m);
     return *this;
 }
 

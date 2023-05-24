@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,8 @@
 
 #include <iterator>
 #include <utility>
+
+#include "base/memory/raw_ref.h"
 
 namespace base {
 
@@ -24,11 +26,15 @@ class ReversedAdapter {
   ReversedAdapter(const ReversedAdapter& ra) : t_(ra.t_) {}
   ReversedAdapter& operator=(const ReversedAdapter&) = delete;
 
-  Iterator begin() const { return std::rbegin(t_); }
-  Iterator end() const { return std::rend(t_); }
+  Iterator begin() const { return std::rbegin(*t_); }
+  Iterator end() const { return std::rend(*t_); }
 
  private:
-  T& t_;
+  // `ReversedAdapter` and therefore `t_` are only used inside for loops. The
+  // container being iterated over should be the one holding a raw_ref/raw_ptr
+  // ideally. This member's type was rewritten into `const raw_ref` since it
+  // didn't hurt binary size at the time of the rewrite.
+  const raw_ref<T> t_;
 };
 
 }  // namespace internal

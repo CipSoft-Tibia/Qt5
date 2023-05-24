@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qaccessible.h"
 
@@ -59,6 +23,8 @@
 #include <private/qfactoryloader_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
 
@@ -163,7 +129,6 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value hasPopup                The object opens a popup.
     \value hotTracked              The object's appearance is sensitive to the mouse cursor position.
     \value invalid                 The object is no longer valid (because it has been deleted).
-    \value invalidEntry            Input validation current input invalid.
     \value invisible               The object is not visible to the user.
     \value linked                  The object is linked to another object, e.g. a hyperlink.
     \value marqueed                The object displays scrolling contents, e.g. a log view.
@@ -253,7 +218,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value ObjectHide                       An object is hidden; for example, with QWidget::hide().
                                             Any children the object that is hidden has do not send
                                             this event. It is not sent when an object is hidden as
-                                            it is being obcured by others.
+                                            it is being obscured by others.
     \value ObjectReorder                    A layout or item view  has added, removed, or moved an
                                             object (Qt does not use this event).
     \value ObjectShow                       An object is displayed; for example, with
@@ -310,7 +275,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value AlertMessage     An object that is used to alert the user.
     \value Animation        An object that displays an animation.
     \value Application      The application's main window.
-    \value Assistant        An object that provids interactive help.
+    \value Assistant        An object that provides interactive help.
     \value Border           An object that represents a border.
     \value ButtonDropDown   A button that drops down a list of items.
     \value ButtonDropGrid   A button that drops down a grid.
@@ -389,14 +354,29 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \enum QAccessible::RelationFlag
 
     This enum type defines bit flags that can be combined to indicate
-    the relationship between two accessible objects.
+    the relationship between two accessible objects. It is used by
+    the relations() function, which returns a list of all the related
+    interfaces of the calling object, together with the relations
+    for each object.
 
-    \value Label            The first object is the label of the second object.
-    \value Labelled         The first object is labelled by the second object.
-    \value Controller       The first object controls the second object.
-    \value Controlled       The first object is controlled by the second object.
-    \value AllRelations     Used as a mask to specify that we are interesting in information
-                            about all relations
+    Each entry in the list is a QPair where the \c second member stores
+    the relation type(s) between the \c returned object represented by the
+    \c first member and the \c origin (the caller) interface/object.
+
+    In the table below, the \c returned object refers to the object in
+    the returned list, and the \c origin object is the one represented
+    by the calling interface.
+
+    \value Label                        The \c returned object is the label for the \c origin object.
+    \value Labelled                     The \c returned object is labelled by the \c origin object.
+    \value Controller                   The \c returned object controls the \c origin object.
+    \value Controlled                   The \c returned object is controlled by the \c origin object.
+    \value [since 6.6] DescriptionFor   The \c returned object provides a description for the \c origin object.
+    \value [since 6.6] Described        The \c returned object is described by the \c origin object.
+    \value [since 6.6] FlowsFrom        Content logically flows from the \c returned object to the \c origin object.
+    \value [since 6.6] FlowsTo          Content logically flows to the \c returned object from the \c origin object.
+    \value AllRelations                 Used as a mask to specify that we are interesting in information
+                                        about all relations
 
     Implementations of relations() return a combination of these flags.
     Some values are mutually exclusive.
@@ -449,11 +429,13 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \omitvalue ImageInterface       \omit For objects that represent an image. This interface is generally less important. \endomit
     \value TableInterface           For lists, tables and trees.
     \value TableCellInterface       For cells in a TableInterface object.
+    \value HyperlinkInterface       For hyperlink nodes (usually embedded as children of text nodes)
+    \value [since 6.5] SelectionInterface For non-text objects that support selection of child objects.
 
-    \sa QAccessibleInterface::interface_cast(), QAccessibleTextInterface, QAccessibleValueInterface, QAccessibleActionInterface, QAccessibleTableInterface, QAccessibleTableCellInterface
+    \sa QAccessibleInterface::interface_cast(), QAccessibleTextInterface, QAccessibleValueInterface, QAccessibleActionInterface, QAccessibleTableInterface, QAccessibleTableCellInterface, QAccessibleSelectionInterface
 */
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
 
 /*!
     Destroys the QAccessibleInterface.
@@ -470,8 +452,8 @@ QAccessibleInterface::~QAccessibleInterface()
 
 
 /* accessible widgets plugin discovery stuff */
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-    (QAccessibleFactoryInterface_iid, QLatin1String("/accessible")))
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, acLoader,
+    (QAccessibleFactoryInterface_iid, "/accessible"_L1))
 typedef QHash<QString, QAccessiblePlugin*> QAccessiblePluginsHash;
 Q_GLOBAL_STATIC(QAccessiblePluginsHash, qAccessiblePlugins)
 
@@ -620,7 +602,6 @@ QAccessible::RootObjectHandler QAccessible::installRootObjectHandler(RootObjectH
 
 QAccessible::ActivationObserver::~ActivationObserver()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -676,7 +657,7 @@ QAccessibleInterface *QAccessible::queryAccessibleInterface(QObject *object)
     if (!object)
         return nullptr;
 
-    if (Id id = QAccessibleCache::instance()->objectToId.value(object))
+    if (Id id = QAccessibleCache::instance()->idForObject(object))
         return QAccessibleCache::instance()->interfaceForId(id);
 
     // Create a QAccessibleInterface for the object class. Start by the most
@@ -702,14 +683,14 @@ QAccessibleInterface *QAccessible::queryAccessibleInterface(QObject *object)
         mo = mo->superClass();
     };
     while (mo) {
-        const QString cn = QLatin1String(mo->className());
+        const QString cn = QLatin1StringView(mo->className());
 
         // Check if the class has a InterfaceFactory installed.
-        for (int i = qAccessibleFactories()->count(); i > 0; --i) {
+        for (int i = qAccessibleFactories()->size(); i > 0; --i) {
             InterfaceFactory factory = qAccessibleFactories()->at(i - 1);
             if (QAccessibleInterface *iface = factory(cn, object)) {
                 QAccessibleCache::instance()->insert(object, iface);
-                Q_ASSERT(QAccessibleCache::instance()->objectToId.contains(object));
+                Q_ASSERT(QAccessibleCache::instance()->containsObject(object));
                 return iface;
             }
         }
@@ -717,9 +698,9 @@ QAccessibleInterface *QAccessible::queryAccessibleInterface(QObject *object)
         // no entry in the cache try to create it using the plugin loader.
         if (!qAccessiblePlugins()->contains(cn)) {
             QAccessiblePlugin *factory = nullptr; // 0 means "no plugin found". This is cached as well.
-            const int index = loader()->indexOf(cn);
+            const int index = acLoader()->indexOf(cn);
             if (index != -1)
-                factory = qobject_cast<QAccessiblePlugin *>(loader()->instance(index));
+                factory = qobject_cast<QAccessiblePlugin *>(acLoader()->instance(index));
             qAccessiblePlugins()->insert(cn, factory);
         }
 
@@ -728,9 +709,9 @@ QAccessibleInterface *QAccessible::queryAccessibleInterface(QObject *object)
         QAccessiblePlugin *factory = qAccessiblePlugins()->value(cn);
         if (factory) {
             QAccessibleInterface *result = factory->create(cn, object);
-            if (result) {   // Need this condition because of QDesktopScreenWidget
+            if (result) {
                 QAccessibleCache::instance()->insert(object, result);
-                Q_ASSERT(QAccessibleCache::instance()->objectToId.contains(object));
+                Q_ASSERT(QAccessibleCache::instance()->containsObject(object));
             }
             return result;
         }
@@ -740,7 +721,7 @@ QAccessibleInterface *QAccessible::queryAccessibleInterface(QObject *object)
     if (object == qApp) {
         QAccessibleInterface *appInterface = new QAccessibleApplication;
         QAccessibleCache::instance()->insert(object, appInterface);
-        Q_ASSERT(QAccessibleCache::instance()->objectToId.contains(qApp));
+        Q_ASSERT(QAccessibleCache::instance()->containsObject(qApp));
         return appInterface;
     }
 
@@ -822,7 +803,7 @@ bool QAccessible::isActive()
 */
 void QAccessible::setActive(bool active)
 {
-    for (int i = 0; i < qAccessibleActivationObservers()->count() ;++i)
+    for (int i = 0; i < qAccessibleActivationObservers()->size() ;++i)
         qAccessibleActivationObservers()->at(i)->accessibilityActiveChanged(active);
 }
 
@@ -885,25 +866,16 @@ void QAccessible::updateAccessibility(QAccessibleEvent *event)
             if (iface->tableInterface())
                 iface->tableInterface()->modelChange(static_cast<QAccessibleTableModelChangeEvent*>(event));
         }
+    }
 
-        if (updateHandler) {
-            updateHandler(event);
-            return;
-        }
+    if (updateHandler) {
+        updateHandler(event);
+        return;
     }
 
     if (QPlatformAccessibility *pfAccessibility = platformAccessibility())
         pfAccessibility->notifyAccessibilityUpdate(event);
 }
-
-#if QT_DEPRECATED_SINCE(5, 0)
-/*!
-    \obsolete
-    \fn void QAccessible::updateAccessibility(QObject *object, int child, Event reason);
-
-    \brief Use QAccessible::updateAccessibility(QAccessibleEvent*) instead.
-*/
-#endif
 
 /*!
     \internal
@@ -1115,15 +1087,16 @@ QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &
     relations, unless they are handled in a specific way such as in tree views.
     It will typically return the labelled-by and label relations.
 
-    It is possible to filter the relations by using \a match.
+    It is possible to filter the relations by using the optional parameter \a match.
     It should never return itself.
 
     \sa parent(), child()
 */
-QVector<QPair<QAccessibleInterface*, QAccessible::Relation> >
-QAccessibleInterface::relations(QAccessible::Relation /*match = QAccessible::AllRelations*/) const
+QList<QPair<QAccessibleInterface*, QAccessible::Relation>>
+QAccessibleInterface::relations(QAccessible::Relation match) const
 {
-    return QVector<QPair<QAccessibleInterface*, QAccessible::Relation> >();
+    Q_UNUSED(match);
+    return { };
 }
 
 /*!
@@ -1143,7 +1116,7 @@ QAccessibleInterface *QAccessibleInterface::focusChild() const
     If there are no children at this position this function returns \nullptr.
     The returned accessible must be a child, but not necessarily a direct child.
 
-    This function is only relyable for visible objects (invisible
+    This function is only reliable for visible objects (invisible
     object might not be laid out correctly).
 
     All visual objects provide this information.
@@ -1316,6 +1289,11 @@ QColor QAccessibleInterface::backgroundColor() const
 */
 
 /*!
+    \fn QAccessibleSelectionInterface *QAccessibleInterface::selectionInterface()
+    \since 6.5
+*/
+
+/*!
     \class QAccessibleEvent
     \ingroup accessibility
     \inmodule QtGui
@@ -1354,7 +1332,6 @@ QColor QAccessibleInterface::backgroundColor() const
 */
 QAccessibleEvent::~QAccessibleEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 /*! \fn QAccessible::Event QAccessibleEvent::type() const
@@ -1434,7 +1411,6 @@ QAccessible::Id QAccessibleEvent::uniqueId() const
 */
 QAccessibleValueChangeEvent::~QAccessibleValueChangeEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -1478,7 +1454,6 @@ QAccessibleValueChangeEvent::~QAccessibleValueChangeEvent()
 */
 QAccessibleStateChangeEvent::~QAccessibleStateChangeEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -1558,7 +1533,6 @@ QAccessibleStateChangeEvent::~QAccessibleStateChangeEvent()
 */
 QAccessibleTableModelChangeEvent::~QAccessibleTableModelChangeEvent()
 {
-    // must be empty until ### Qt 6
 }
 /*!
     \class QAccessibleTextCursorEvent
@@ -1587,7 +1561,6 @@ QAccessibleTableModelChangeEvent::~QAccessibleTableModelChangeEvent()
 */
 QAccessibleTextCursorEvent::~QAccessibleTextCursorEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 
@@ -1628,7 +1601,6 @@ QAccessibleTextCursorEvent::~QAccessibleTextCursorEvent()
 */
 QAccessibleTextInsertEvent::~QAccessibleTextInsertEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 
@@ -1671,7 +1643,6 @@ QAccessibleTextInsertEvent::~QAccessibleTextInsertEvent()
 */
 QAccessibleTextRemoveEvent::~QAccessibleTextRemoveEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -1733,7 +1704,6 @@ QAccessibleTextRemoveEvent::~QAccessibleTextRemoveEvent()
 */
 QAccessibleTextUpdateEvent::~QAccessibleTextUpdateEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 
@@ -1768,7 +1738,6 @@ QAccessibleTextUpdateEvent::~QAccessibleTextUpdateEvent()
 */
 QAccessibleTextSelectionEvent::~QAccessibleTextSelectionEvent()
 {
-    // must be empty until ### Qt 6
 }
 
 
@@ -1858,12 +1827,6 @@ const char *qAccessibleEventString(QAccessible::Event event)
     return QAccessible::staticMetaObject.enumerator(eventEnum).valueToKey(event);
 }
 
-/*! \internal */
-bool operator==(const QAccessible::State &first, const QAccessible::State &second)
-{
-    return memcmp(&first, &second, sizeof(QAccessible::State)) == 0;
-}
-
 #ifndef QT_NO_DEBUG_STREAM
 /*! \internal */
 Q_GUI_EXPORT QDebug operator<<(QDebug d, const QAccessibleInterface *iface)
@@ -1886,16 +1849,16 @@ Q_GUI_EXPORT QDebug operator<<(QDebug d, const QAccessibleInterface *iface)
         QStringList stateStrings;
         QAccessible::State st = iface->state();
         if (st.focusable)
-            stateStrings << QLatin1String("focusable");
+            stateStrings << u"focusable"_s;
         if (st.focused)
-            stateStrings << QLatin1String("focused");
+            stateStrings << u"focused"_s;
         if (st.selected)
-            stateStrings << QLatin1String("selected");
+            stateStrings << u"selected"_s;
         if (st.invisible)
-            stateStrings << QLatin1String("invisible");
+            stateStrings << u"invisible"_s;
 
         if (!stateStrings.isEmpty())
-            d << stateStrings.join(QLatin1Char('|'));
+            d << stateStrings.join(u'|');
 
         if (!st.invisible)
             d << "rect=" << iface->rect();
@@ -1993,7 +1956,6 @@ QDebug operator<<(QDebug d, const QAccessibleEvent &ev)
 */
 QAccessibleTextInterface::~QAccessibleTextInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -2067,7 +2029,7 @@ static QString textLineBoundary(int beforeAtAfter, const QString &text, int offs
 {
     Q_ASSERT(beforeAtAfter >= -1 && beforeAtAfter <= 1);
     Q_ASSERT(*startOffset == -1 && *endOffset == -1);
-    int length = text.length();
+    int length = text.size();
     Q_ASSERT(offset >= 0 && offset <= length);
 
     // move offset into the right range (if asking for line before or after
@@ -2116,10 +2078,10 @@ QString QAccessibleTextInterface::textBeforeOffset(int offset, QAccessible::Text
     const QString txt = text(0, characterCount());
 
     if (offset == -1)
-        offset = txt.length();
+        offset = txt.size();
 
     *startOffset = *endOffset = -1;
-    if (txt.isEmpty() || offset <= 0 || offset > txt.length())
+    if (txt.isEmpty() || offset <= 0 || offset > txt.size())
         return QString();
 
     // type initialized just to silence a compiler warning [-Werror=maybe-uninitialized]
@@ -2190,10 +2152,10 @@ QString QAccessibleTextInterface::textAfterOffset(int offset, QAccessible::TextB
     const QString txt = text(0, characterCount());
 
     if (offset == -1)
-        offset = txt.length();
+        offset = txt.size();
 
     *startOffset = *endOffset = -1;
-    if (txt.isEmpty() || offset < 0 || offset >= txt.length())
+    if (txt.isEmpty() || offset < 0 || offset >= txt.size())
         return QString();
 
     // type initialized just to silence a compiler warning [-Werror=maybe-uninitialized]
@@ -2228,20 +2190,20 @@ QString QAccessibleTextInterface::textAfterOffset(int offset, QAccessible::TextB
         int toNext = boundary.toNextBoundary();
         if ((boundary.boundaryReasons() & (QTextBoundaryFinder::StartOfItem | QTextBoundaryFinder::EndOfItem)))
             break;
-        if (toNext < 0 || toNext >= txt.length())
+        if (toNext < 0 || toNext >= txt.size())
             break; // not found, the boundary might not exist
     }
-    Q_ASSERT(boundary.position() <= txt.length());
+    Q_ASSERT(boundary.position() <= txt.size());
     *startOffset = boundary.position();
 
     while (true) {
         int toNext = boundary.toNextBoundary();
         if ((boundary.boundaryReasons() & (QTextBoundaryFinder::StartOfItem | QTextBoundaryFinder::EndOfItem)))
             break;
-        if (toNext < 0 || toNext >= txt.length())
+        if (toNext < 0 || toNext >= txt.size())
             break; // not found, the boundary might not exist
     }
-    Q_ASSERT(boundary.position() <= txt.length());
+    Q_ASSERT(boundary.position() <= txt.size());
     *endOffset = boundary.position();
 
     if ((*startOffset == -1) || (*endOffset == -1) || (*startOffset == *endOffset)) {
@@ -2275,13 +2237,13 @@ QString QAccessibleTextInterface::textAtOffset(int offset, QAccessible::TextBoun
     const QString txt = text(0, characterCount());
 
     if (offset == -1)
-        offset = txt.length();
+        offset = txt.size();
 
     *startOffset = *endOffset = -1;
-    if (txt.isEmpty() || offset < 0 || offset > txt.length())
+    if (txt.isEmpty() || offset < 0 || offset > txt.size())
         return QString();
 
-    if (offset == txt.length() && boundaryType == QAccessible::CharBoundary)
+    if (offset == txt.size() && boundaryType == QAccessible::CharBoundary)
         return QString();
 
     // type initialized just to silence a compiler warning [-Werror=maybe-uninitialized]
@@ -2302,7 +2264,7 @@ QString QAccessibleTextInterface::textAtOffset(int offset, QAccessible::TextBoun
         return textLineBoundary(0, txt, offset, startOffset, endOffset);
     case QAccessible::NoBoundary:
         *startOffset = 0;
-        *endOffset = txt.length();
+        *endOffset = txt.size();
         return txt;
     default:
         Q_UNREACHABLE();
@@ -2320,11 +2282,11 @@ QString QAccessibleTextInterface::textAtOffset(int offset, QAccessible::TextBoun
     Q_ASSERT(boundary.position() >= 0);
     *startOffset = boundary.position();
 
-    while (boundary.toNextBoundary() < txt.length()) {
+    while (boundary.toNextBoundary() < txt.size()) {
         if ((boundary.boundaryReasons() & (QTextBoundaryFinder::StartOfItem | QTextBoundaryFinder::EndOfItem)))
             break;
     }
-    Q_ASSERT(boundary.position() <= txt.length());
+    Q_ASSERT(boundary.position() <= txt.size());
     *endOffset = boundary.position();
 
     return txt.mid(*startOffset, *endOffset - *startOffset);
@@ -2382,7 +2344,6 @@ QString QAccessibleTextInterface::textAtOffset(int offset, QAccessible::TextBoun
 */
 QAccessibleEditableTextInterface::~QAccessibleEditableTextInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -2427,7 +2388,6 @@ QAccessibleEditableTextInterface::~QAccessibleEditableTextInterface()
 */
 QAccessibleValueInterface::~QAccessibleValueInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -2464,8 +2424,8 @@ QAccessibleValueInterface::~QAccessibleValueInterface()
     \fn QVariant QAccessibleValueInterface::minimumStepSize() const
 
     Returns the minimum step size for the accessible.
-    This is the smalles increment that makes sense when changing the value.
-    When programatically changing the value it should always be a multiple
+    This is the smallest increment that makes sense when changing the value.
+    When programmatically changing the value it should always be a multiple
     of the minimum step size.
 
     Some tools use this value even when the setCurrentValue does not
@@ -2491,7 +2451,6 @@ QAccessibleValueInterface::~QAccessibleValueInterface()
 */
 QAccessibleImageInterface::~QAccessibleImageInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -2511,7 +2470,6 @@ QAccessibleImageInterface::~QAccessibleImageInterface()
 */
 QAccessibleTableCellInterface::~QAccessibleTableCellInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -2565,6 +2523,7 @@ QAccessibleTableCellInterface::~QAccessibleTableCellInterface()
 
 /*!
     \class QAccessibleTableInterface
+    \inmodule QtGui
     \ingroup accessibility
 
     \brief The QAccessibleTableInterface class implements support for
@@ -2579,7 +2538,6 @@ QAccessibleTableCellInterface::~QAccessibleTableCellInterface()
 */
 QAccessibleTableInterface::~QAccessibleTableInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -2651,7 +2609,7 @@ QAccessibleTableInterface::~QAccessibleTableInterface()
 /*!
     \fn virtual QList<int> QAccessibleTableInterface::selectedRows() const
 
-    Returns the list of currently selected columns.
+    Returns the list of currently selected rows.
 */
 
 /*!
@@ -2712,6 +2670,7 @@ QAccessibleTableInterface::~QAccessibleTableInterface()
 
 /*!
     \class QAccessibleActionInterface
+    \inmodule QtGui
     \ingroup accessibility
 
     \brief The QAccessibleActionInterface class implements support for
@@ -2736,7 +2695,7 @@ QAccessibleTableInterface::~QAccessibleTableInterface()
     \row    \li \l toggleAction()   \li toggles the item (checkbox, radio button, switch, ...)
     \row    \li \l decreaseAction() \li decrease the value of the accessible (e.g. spinbox)
     \row    \li \l increaseAction() \li increase the value of the accessible (e.g. spinbox)
-    \row    \li \l pressAction()    \li press or click or activate the accessible (should correspont to clicking the object with the mouse)
+    \row    \li \l pressAction()    \li press or click or activate the accessible (should correspond to clicking the object with the mouse)
     \row    \li \l setFocusAction() \li set the focus to this accessible
     \row    \li \l showMenuAction() \li show a context menu, corresponds to right-clicks
     \endtable
@@ -2755,7 +2714,6 @@ QAccessibleTableInterface::~QAccessibleTableInterface()
 */
 QAccessibleActionInterface::~QAccessibleActionInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -3004,13 +2962,160 @@ QString QAccessibleActionInterface::nextPageAction()
     return accessibleActionStrings()->nextPageAction;
 }
 
+
+/*!
+    \since 6.5
+    \class QAccessibleSelectionInterface
+    \inmodule QtGui
+    \ingroup accessibility
+    \preliminary
+
+    \brief The QAccessibleSelectionInterface class implements support for
+    selection handling.
+
+    It provides methods for both, retrieving the current selection
+    as well as modifying the selection.
+
+    Only selections of direct children are supported.
+*/
+
+/*!
+
+    Destroys the QAccessibleSelectionInterface.
+*/
+QAccessibleSelectionInterface::~QAccessibleSelectionInterface()
+{
+}
+
+/*!
+    \fn virtual int QAccessibleSelectionInterface::selectedItemCount() const
+
+    Returns the total number of selected accessible items.
+*/
+
+/*!
+    \fn virtual QList<QAccessibleInterface *> QAccessibleSelectionInterface::selectedItems() const
+
+    Returns the list of selected accessible items.
+*/
+
+/*!
+    Returns the selected accessible item at index \a selectionIndex in the selection.
+
+    Note that the index refers to the n-th selected accessible item (i.e. the index in the current selection),
+    which generally differs from the index that would be passed to \l QAccessibleInterface::child()
+    in order to retrieve the same item.
+
+    The default implementation uses \a selectionIndex to retrieve the item from the list
+    of selected items retrieved by \l QAccessibleSelectionInterface::selectedItems().
+
+    In particular for implementations dealing with many selected items, reimplementing
+    this method in a more efficient way may be desirable for performance reasons.
+*/
+QAccessibleInterface* QAccessibleSelectionInterface::selectedItem(int selectionIndex) const
+{
+    QList<QAccessibleInterface*> items = selectedItems();
+    if (selectionIndex < 0 || selectionIndex > items.length() -1) {
+        qCWarning(lcAccessibilityCore) << "Selection index" << selectionIndex << "out of range.";
+        return nullptr;
+    }
+
+    return items.at(selectionIndex);
+}
+
+/*!
+    Returns whether \a childItem is part of the current selection.
+
+    The default implementation checks whether \a childItem is contained
+    in the list of items retrieved by \l QAccessibleSelectionInterface::selectedItems.
+*/
+bool QAccessibleSelectionInterface::isSelected(QAccessibleInterface *childItem) const
+{
+    return selectedItems().contains(childItem);
+}
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::select(QAccessibleInterface *childItem)
+
+    Adds \a childItem to the selection.
+    Returns whether \a childItem has actually been added to the selection.
+
+    For implementations that only allow single selections,
+    this may replace the current selection.
+*/
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::unselect(QAccessibleInterface *childItem)
+
+    Removes \a childItem from the selection.
+
+    Returns whether the accessible item has actually been removed from the selection.
+*/
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::selectAll()
+
+    Selects all accessible child items.
+
+    Returns whether all accessible child items have actually been added to the selection.
+*/
+
+/*!
+    \fn virtual bool QAccessibleSelectionInterface::clear()
+
+    Unselects all accessible child items.
+
+    Returns whether all accessible child items have actually been removed from the selection,
+    i.e. whether the selection is empty after this method has been called.
+*/
+
+
 /*! \internal */
 QString qAccessibleLocalizedActionDescription(const QString &actionName)
 {
     return accessibleActionStrings()->localizedDescription(actionName);
 }
 
-#endif // QT_NO_ACCESSIBILITY
+/*!
+    \internal
+    \fn QString QAccessibleHyperlinkInterface::anchor() const
+
+    The logical/human readable name of the hyperlink
+*/
+
+/*!
+    \internal
+    \fn QString QAccessibleHyperlinkInterface::anchorTarget() const
+
+    The target url of the hyperlink
+*/
+
+/*!
+    \internal
+    \fn int QAccessibleHyperlinkInterface::startIndex() const
+
+    Returns the start index that will refer to the first character in the text where the hyperlink
+    begins. The index corresponds to the index that the QAccessibleTextInterface needs in order
+    to find the start of the hyperlink.
+
+*/
+
+/*!
+    \internal
+    \fn int QAccessibleHyperlinkInterface::endIndex() const
+
+    Returns the end index that will refer to the first character in the text where the hyperlink
+    begins. The index corresponds to the index that the QAccessibleTextInterface needs in order
+    to find the end of the hyperlink.
+*/
+
+QAccessibleHyperlinkInterface::~QAccessibleHyperlinkInterface()
+{
+
+}
+
+#endif // QT_CONFIG(accessibility)
 
 QT_END_NAMESPACE
 
+#include "moc_qaccessible_base.cpp"

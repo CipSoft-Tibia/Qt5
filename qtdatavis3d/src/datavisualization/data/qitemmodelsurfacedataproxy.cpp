@@ -1,36 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qitemmodelsurfacedataproxy_p.h"
 #include "surfaceitemmodelhandler_p.h"
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 /*!
  * \class QItemModelSurfaceDataProxy
@@ -82,12 +56,12 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * If the fields of the model do not contain the data in the exact format you need, you can specify
  * a search pattern regular expression and a replace rule for each role to get the value in a
  * format you need. For more information how the replace using regular expressions works, see
- * QString::replace(const QRegExp &rx, const QString &after) function documentation. Note that
+ * QString::replace(const QRegularExpression &rx, const QString &after) function documentation. Note that
  * using regular expressions has an impact on the performance, so it's more efficient to utilize
  * item models where doing search and replace is not necessary to get the desired values.
  *
  * For example about using the search patterns in conjunction with the roles, see
- * ItemModelBarDataProxy usage in \l{Qt Quick 2 Bars Example}.
+ * ItemModelBarDataProxy usage in \l{Simple Bar Graph} example.
  *
  * \sa {Qt Data Visualization Data Handling}
  */
@@ -251,7 +225,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The replace content to be used in conjunction with rowRolePattern.
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa rowRole, rowRolePattern
@@ -263,7 +237,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The replace content to be used in conjunction with columnRolePattern.
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa columnRole, columnRolePattern
@@ -275,7 +249,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The replace content to be used in conjunction with xPosRolePattern.
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa xPosRole, xPosRolePattern
@@ -287,7 +261,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The replace content to be used in conjunction with yPosRolePattern.
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa yPosRole, yPosRolePattern
@@ -299,7 +273,7 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * The replace content to be used in conjunction with zPosRolePattern.
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa zPosRole, zPosRolePattern
@@ -770,7 +744,7 @@ int QItemModelSurfaceDataProxy::columnCategoryIndex(const QString &category)
  *
  * \sa rowRole, rowRoleReplace
  */
-void QItemModelSurfaceDataProxy::setRowRolePattern(const QRegExp &pattern)
+void QItemModelSurfaceDataProxy::setRowRolePattern(const QRegularExpression &pattern)
 {
     if (dptr()->m_rowRolePattern != pattern) {
         dptr()->m_rowRolePattern = pattern;
@@ -778,7 +752,7 @@ void QItemModelSurfaceDataProxy::setRowRolePattern(const QRegExp &pattern)
     }
 }
 
-QRegExp QItemModelSurfaceDataProxy::rowRolePattern() const
+QRegularExpression QItemModelSurfaceDataProxy::rowRolePattern() const
 {
     return dptrc()->m_rowRolePattern;
 }
@@ -795,7 +769,7 @@ QRegExp QItemModelSurfaceDataProxy::rowRolePattern() const
  *
  * \sa columnRole, columnRoleReplace
  */
-void QItemModelSurfaceDataProxy::setColumnRolePattern(const QRegExp &pattern)
+void QItemModelSurfaceDataProxy::setColumnRolePattern(const QRegularExpression &pattern)
 {
     if (dptr()->m_columnRolePattern != pattern) {
         dptr()->m_columnRolePattern = pattern;
@@ -803,7 +777,7 @@ void QItemModelSurfaceDataProxy::setColumnRolePattern(const QRegExp &pattern)
     }
 }
 
-QRegExp QItemModelSurfaceDataProxy::columnRolePattern() const
+QRegularExpression QItemModelSurfaceDataProxy::columnRolePattern() const
 {
     return dptrc()->m_columnRolePattern;
 }
@@ -820,7 +794,7 @@ QRegExp QItemModelSurfaceDataProxy::columnRolePattern() const
  *
  * \sa xPosRole, xPosRoleReplace
  */
-void QItemModelSurfaceDataProxy::setXPosRolePattern(const QRegExp &pattern)
+void QItemModelSurfaceDataProxy::setXPosRolePattern(const QRegularExpression &pattern)
 {
     if (dptr()->m_xPosRolePattern != pattern) {
         dptr()->m_xPosRolePattern = pattern;
@@ -828,7 +802,7 @@ void QItemModelSurfaceDataProxy::setXPosRolePattern(const QRegExp &pattern)
     }
 }
 
-QRegExp QItemModelSurfaceDataProxy::xPosRolePattern() const
+QRegularExpression QItemModelSurfaceDataProxy::xPosRolePattern() const
 {
     return dptrc()->m_xPosRolePattern;
 }
@@ -845,7 +819,7 @@ QRegExp QItemModelSurfaceDataProxy::xPosRolePattern() const
  *
  * \sa yPosRole, yPosRoleReplace
  */
-void QItemModelSurfaceDataProxy::setYPosRolePattern(const QRegExp &pattern)
+void QItemModelSurfaceDataProxy::setYPosRolePattern(const QRegularExpression &pattern)
 {
     if (dptr()->m_yPosRolePattern != pattern) {
         dptr()->m_yPosRolePattern = pattern;
@@ -853,7 +827,7 @@ void QItemModelSurfaceDataProxy::setYPosRolePattern(const QRegExp &pattern)
     }
 }
 
-QRegExp QItemModelSurfaceDataProxy::yPosRolePattern() const
+QRegularExpression QItemModelSurfaceDataProxy::yPosRolePattern() const
 {
     return dptrc()->m_yPosRolePattern;
 }
@@ -870,7 +844,7 @@ QRegExp QItemModelSurfaceDataProxy::yPosRolePattern() const
  *
  * \sa zPosRole, zPosRoleReplace
  */
-void QItemModelSurfaceDataProxy::setZPosRolePattern(const QRegExp &pattern)
+void QItemModelSurfaceDataProxy::setZPosRolePattern(const QRegularExpression &pattern)
 {
     if (dptr()->m_zPosRolePattern != pattern) {
         dptr()->m_zPosRolePattern = pattern;
@@ -878,7 +852,7 @@ void QItemModelSurfaceDataProxy::setZPosRolePattern(const QRegExp &pattern)
     }
 }
 
-QRegExp QItemModelSurfaceDataProxy::zPosRolePattern() const
+QRegularExpression QItemModelSurfaceDataProxy::zPosRolePattern() const
 {
     return dptrc()->m_zPosRolePattern;
 }
@@ -890,7 +864,7 @@ QRegExp QItemModelSurfaceDataProxy::zPosRolePattern() const
  * pattern.
  *
  * Defaults to an empty string. For more information on how the search and replace using regular
- * expressions works, see QString::replace(const QRegExp &rx, const QString &after)
+ * expressions works, see QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa rowRole, rowRolePattern
@@ -916,7 +890,7 @@ QString QItemModelSurfaceDataProxy::rowRoleReplace() const
  *
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa columnRole, columnRolePattern
@@ -942,7 +916,7 @@ QString QItemModelSurfaceDataProxy::columnRoleReplace() const
  *
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa xPosRole, xPosRolePattern
@@ -968,7 +942,7 @@ QString QItemModelSurfaceDataProxy::xPosRoleReplace() const
  *
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa yPosRole, yPosRolePattern
@@ -994,7 +968,7 @@ QString QItemModelSurfaceDataProxy::yPosRoleReplace() const
  *
  * Defaults to an empty string. For more information on how the search and
  * replace using regular expressions works, see the
- * QString::replace(const QRegExp &rx, const QString &after)
+ * QString::replace(const QRegularExpression &rx, const QString &after)
  * function documentation.
  *
  * \sa zPosRole, zPosRolePattern
@@ -1124,4 +1098,4 @@ void QItemModelSurfaceDataProxyPrivate::connectItemModelHandler()
                      m_itemModelHandler, &AbstractItemModelHandler::handleMappingChanged);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

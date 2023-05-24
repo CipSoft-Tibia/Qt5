@@ -1,19 +1,19 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/pepper/pepper_audio_encoder_host.h"
 
 #include <stddef.h>
+
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/unsafe_shared_memory_region.h"
-#include "base/stl_util.h"
+#include "base/task/bind_post_task.h"
 #include "content/public/renderer/renderer_ppapi_host.h"
 #include "content/renderer/pepper/host_globals.h"
 #include "content/renderer/render_thread_impl.h"
-#include "media/base/bind_to_current_loop.h"
 #include "ppapi/c/pp_codecs.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/host/dispatch_host_message.h"
@@ -56,6 +56,10 @@ class PepperAudioEncoderHost::AudioEncoderImpl {
   using BitstreamBufferReadyCB = base::OnceCallback<void(int32_t size)>;
 
   AudioEncoderImpl();
+
+  AudioEncoderImpl(const AudioEncoderImpl&) = delete;
+  AudioEncoderImpl& operator=(const AudioEncoderImpl&) = delete;
+
   ~AudioEncoderImpl();
 
   // Used on the renderer thread.
@@ -78,8 +82,6 @@ class PepperAudioEncoderHost::AudioEncoderImpl {
   // Initialization parameters, only valid if |encoder_memory_| is not
   // nullptr.
   ppapi::proxy::PPB_AudioEncodeParameters parameters_;
-
-  DISALLOW_COPY_AND_ASSIGN(AudioEncoderImpl);
 };
 
 PepperAudioEncoderHost::AudioEncoderImpl::AudioEncoderImpl()
@@ -93,7 +95,7 @@ PepperAudioEncoderHost::AudioEncoderImpl::GetSupportedProfiles() {
   std::vector<PP_AudioProfileDescription> profiles;
   static const uint32_t sampling_rates[] = {8000, 12000, 16000, 24000, 48000};
 
-  for (uint32_t i = 0; i < base::size(sampling_rates); ++i) {
+  for (uint32_t i = 0; i < std::size(sampling_rates); ++i) {
     PP_AudioProfileDescription profile;
     profile.profile = PP_AUDIOPROFILE_OPUS;
     profile.max_channels = 2;
@@ -438,7 +440,7 @@ void PepperAudioEncoderHost::DoEncode() {
                      static_cast<uint8_t*>(bitstream_buffer->bitstream.data),
                      bitstream_buffer_manager_->buffer_size() -
                          sizeof(ppapi::MediaStreamBuffer::Bitstream),
-                     media::BindToCurrentLoop(base::BindOnce(
+                     base::BindPostTaskToCurrentDefault(base::BindOnce(
                          &PepperAudioEncoderHost::BitstreamBufferReady,
                          weak_ptr_factory_.GetWeakPtr(), audio_buffer_id,
                          bitstream_buffer_id))));

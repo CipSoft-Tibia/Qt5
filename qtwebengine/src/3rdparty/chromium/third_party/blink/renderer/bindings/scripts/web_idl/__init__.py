@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -35,6 +35,7 @@ def _setup_sys_path():
 _setup_sys_path()
 
 from . import file_io
+from .argument import Argument
 from .ast_group import AstGroup
 from .attribute import Attribute
 from .callback_function import CallbackFunction
@@ -63,8 +64,10 @@ from .interface import LegacyWindowAlias
 from .interface import Maplike
 from .interface import Setlike
 from .interface import Stringifier
+from .interface import SyncIterator
 from .literal_constant import LiteralConstant
 from .namespace import Namespace
+from .observable_array import ObservableArray
 from .operation import Operation
 from .operation import OperationGroup
 from .runtime_enabled_features import RuntimeEnabledFeatures

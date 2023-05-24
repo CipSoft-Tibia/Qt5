@@ -1,43 +1,8 @@
 #! /bin/sh
-#############################################################################
-##
-## Copyright (C) 2017 André Klitzing
-## Contact: https://www.qt.io/licensing/
-##
-## This file is the build configuration utility of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 3 as published by the Free Software
-## Foundation and appearing in the file LICENSE.LGPL3 included in the
-## packaging of this file. Please review the following information to
-## ensure the GNU Lesser General Public License version 3 requirements
-## will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 2.0 or (at your option) the GNU General
-## Public license version 3 or any later version approved by the KDE Free
-## Qt Foundation. The licenses are as published by the Free Software
-## Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-2.0.html and
-## https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
 
+# Copyright (C) 2017 André Klitzing
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+#
 # This is a small script to copy the required files from a zlib tarball
 # into 3rdparty/zlib/
 
@@ -46,8 +11,9 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
-ZLIB_DIR=$1
-TARGET_DIR=$2
+# Name the arguments, omitting trailing slashes as we'll add where needed.
+ZLIB_DIR="${1%/}"
+TARGET_DIR="${2%/}"
 
 if [ ! -d "$ZLIB_DIR" -o ! -r "$ZLIB_DIR" -o ! -d "$TARGET_DIR" -o ! -w "$TARGET_DIR" ]; then
     echo "Either the zlib source dir or the target dir do not exist,"
@@ -71,7 +37,7 @@ copy_file() {
     fi
 
     mkdir -p "$TARGET_DIR/$(dirname "$SOURCE_FILE")"
-    cp "$ZLIB_DIR/$SOURCE_FILE" "$TARGET_DIR/$DEST_FILE"
+    cp -v "$ZLIB_DIR/$SOURCE_FILE" "$TARGET_DIR/$DEST_FILE"
 }
 
 FILES="
@@ -110,3 +76,18 @@ FILES="
 for i in $FILES; do
     copy_file "$i" "src/$i"
 done
+
+cat << EOF
+
+Please do not forget to patch qtpatches.diff
+The usual routine after this script is:
+  1. Create commit to clean staging
+  2. Apply qtpatches.diff with:
+       patch -p1 < qtpatches.diff
+  3. Update the version in: ChangeLog and src/zlib.h
+  4. Validate all changes and create new qtpatches.diff with:
+       git diff --relative > qtpatches.diff
+  5. Add changed files and amend the commit with these files.
+
+If you want to revert the diff use: patch -p1 -Ri qtpatches.diff
+EOF

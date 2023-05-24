@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 
 #include "base/mac/mac_util.h"
 #import "base/mac/scoped_nsobject.h"
-#include "base/macros.h"
 #import "testing/gtest_mac.h"
 #import "ui/base/cocoa/views_hostable.h"
 #include "ui/views/controls/native/native_view_host.h"
@@ -36,6 +35,9 @@ class TestViewsHostable : public ui::ViewsHostableView {
       gfx::NativeViewAccessible parent_accessibility_element) override {
     parent_accessibility_element_ = parent_accessibility_element;
   }
+  gfx::NativeViewAccessible ViewsHostableGetParentAccessible() override {
+    return parent_accessibility_element_;
+  }
   gfx::NativeViewAccessible ViewsHostableGetAccessibilityElement() override {
     return nil;
   }
@@ -55,6 +57,9 @@ namespace views {
 class NativeViewHostMacTest : public test::NativeViewHostTestBase {
  public:
   NativeViewHostMacTest() = default;
+
+  NativeViewHostMacTest(const NativeViewHostMacTest&) = delete;
+  NativeViewHostMacTest& operator=(const NativeViewHostMacTest&) = delete;
 
   // testing::Test:
   void TearDown() override {
@@ -85,9 +90,6 @@ class NativeViewHostMacTest : public test::NativeViewHostTestBase {
 
  protected:
   base::scoped_nsobject<NSView> native_view_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(NativeViewHostMacTest);
 };
 
 // Test destroying the top level widget before destroying the NativeViewHost.

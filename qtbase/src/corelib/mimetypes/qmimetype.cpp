@@ -1,50 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmimetype.h"
 
 #include "qmimetype_p.h"
 #include "qmimedatabase_p.h"
-#include "qmimeprovider_p.h"
-
-#include "qmimeglobpattern_p.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QLocale>
@@ -54,32 +15,7 @@
 
 QT_BEGIN_NAMESPACE
 
-QMimeTypePrivate::QMimeTypePrivate()
-    : loaded(false), fromCache(false)
-{}
-
-QMimeTypePrivate::QMimeTypePrivate(const QMimeType &other)
-      : loaded(other.d->loaded),
-        name(other.d->name),
-        localeComments(other.d->localeComments),
-        genericIconName(other.d->genericIconName),
-        iconName(other.d->iconName),
-        globPatterns(other.d->globPatterns)
-{}
-
-void QMimeTypePrivate::clear()
-{
-    name.clear();
-    localeComments.clear();
-    genericIconName.clear();
-    iconName.clear();
-    globPatterns.clear();
-}
-
-void QMimeTypePrivate::addGlobPattern(const QString &pattern)
-{
-    globPatterns.append(pattern);
-}
+using namespace Qt::StringLiterals;
 
 /*!
     \class QMimeType
@@ -104,7 +40,7 @@ void QMimeTypePrivate::addGlobPattern(const QString &pattern)
     MIME types can inherit from each other: for instance a C source file is
     a specific type of plain text file, so text/x-csrc inherits text/plain.
 
-    \sa QMimeDatabase, {MIME Type Browser Example}
+    \sa QMimeDatabase, {MIME Type Browser}
  */
 
 /*!
@@ -192,7 +128,7 @@ bool QMimeType::operator==(const QMimeType &other) const
     Returns the hash value for \a key, using
     \a seed to seed the calculation.
  */
-uint qHash(const QMimeType &key, uint seed) noexcept
+size_t qHash(const QMimeType &key, size_t seed) noexcept
 {
     return qHash(key.d->name, seed);
 }
@@ -253,24 +189,40 @@ QString QMimeType::name() const
  */
 QString QMimeType::comment() const
 {
-    QMimeDatabasePrivate::instance()->loadMimeTypePrivate(const_cast<QMimeTypePrivate&>(*d));
+    const auto localeComments = QMimeDatabasePrivate::instance()->localeComments(d->name);
 
-    QStringList languageList;
-    languageList << QLocale().name();
-    languageList << QLocale().uiLanguages();
-    languageList << QLatin1String("default"); // use the default locale if possible.
-    for (const QString &language : qAsConst(languageList)) {
-        const QString lang = language == QLatin1String("C") ? QLatin1String("en_US") : language;
-        const QString comm = d->localeComments.value(lang);
+    QStringList languageList = QLocale().uiLanguages();
+    qsizetype defaultIndex = languageList.indexOf(u"en-US"_s);
+
+    // Include the default locale as fall-back.
+    if (defaultIndex >= 0) {
+        // en_US is generally the default, and may be omitted from the
+        // overtly-named locales in the MIME type's data (QTBUG-105007).
+        ++defaultIndex; // Skip over en-US.
+        // That's typically followed by en-Latn-US and en (in that order):
+        if (defaultIndex < languageList.size() && languageList.at(defaultIndex) == u"en-Latn-US")
+            ++defaultIndex;
+        if (defaultIndex < languageList.size() && languageList.at(defaultIndex) == u"en")
+            ++defaultIndex;
+    } else {
+        // Absent en-US, just append it:
+        defaultIndex = languageList.size();
+    }
+    languageList.insert(defaultIndex, u"default"_s);
+
+    for (const QString &language : std::as_const(languageList)) {
+            // uiLanguages() uses '-' as separator, MIME database uses '_'
+        const QString lang
+            = language == "C"_L1 ? u"en_US"_s : QString(language).replace(u'-', u'_');
+        QString comm = localeComments.value(lang);
         if (!comm.isEmpty())
             return comm;
-        const int pos = lang.indexOf(QLatin1Char('_'));
-        if (pos != -1) {
-            // "pt_BR" not found? try just "pt"
-            const QString shortLang = lang.left(pos);
-            const QString commShort = d->localeComments.value(shortLang);
-            if (!commShort.isEmpty())
-                return commShort;
+        const qsizetype cut = lang.indexOf(u'_');
+        // If "de_CH" is missing, check for "de" (and similar):
+        if (cut != -1) {
+            comm = localeComments.value(lang.left(cut));
+            if (!comm.isEmpty())
+                return comm;
         }
     }
 
@@ -294,28 +246,28 @@ QString QMimeType::comment() const
  */
 QString QMimeType::genericIconName() const
 {
-    QMimeDatabasePrivate::instance()->loadGenericIcon(const_cast<QMimeTypePrivate&>(*d));
-    if (d->genericIconName.isEmpty()) {
+    QString genericIconName = QMimeDatabasePrivate::instance()->genericIcon(d->name);
+    if (genericIconName.isEmpty()) {
         // From the spec:
         // If the generic icon name is empty (not specified by the mimetype definition)
         // then the mimetype is used to generate the generic icon by using the top-level
         // media type (e.g.  "video" in "video/ogg") and appending "-x-generic"
         // (i.e. "video-x-generic" in the previous example).
         const QString group = name();
-        QStringRef groupRef(&group);
-        const int slashindex = groupRef.indexOf(QLatin1Char('/'));
+        QStringView groupRef(group);
+        const qsizetype slashindex = groupRef.indexOf(u'/');
         if (slashindex != -1)
             groupRef = groupRef.left(slashindex);
-        return groupRef + QLatin1String("-x-generic");
+        return groupRef + "-x-generic"_L1;
     }
-    return d->genericIconName;
+    return genericIconName;
 }
 
 static QString make_default_icon_name_from_mimetype_name(QString iconName)
 {
-    const int slashindex = iconName.indexOf(QLatin1Char('/'));
+    const qsizetype slashindex = iconName.indexOf(u'/');
     if (slashindex != -1)
-        iconName[slashindex] = QLatin1Char('-');
+        iconName[slashindex] = u'-';
     return iconName;
 }
 
@@ -330,11 +282,11 @@ static QString make_default_icon_name_from_mimetype_name(QString iconName)
  */
 QString QMimeType::iconName() const
 {
-    QMimeDatabasePrivate::instance()->loadIcon(const_cast<QMimeTypePrivate&>(*d));
-    if (d->iconName.isEmpty()) {
+    QString iconName = QMimeDatabasePrivate::instance()->icon(d->name);
+    if (iconName.isEmpty()) {
         return make_default_icon_name_from_mimetype_name(name());
     }
-    return d->iconName;
+    return iconName;
 }
 
 /*!
@@ -346,8 +298,7 @@ QString QMimeType::iconName() const
  */
 QStringList QMimeType::globPatterns() const
 {
-    QMimeDatabasePrivate::instance()->loadMimeTypePrivate(const_cast<QMimeTypePrivate&>(*d));
-    return d->globPatterns;
+    return QMimeDatabasePrivate::instance()->globPatterns(d->name);
 }
 
 /*!
@@ -376,14 +327,17 @@ QStringList QMimeType::parentMimeTypes() const
 static void collectParentMimeTypes(const QString &mime, QStringList &allParents)
 {
     const QStringList parents = QMimeDatabasePrivate::instance()->mimeParents(mime);
+    QStringList newParents;
     for (const QString &parent : parents) {
         // I would use QSet, but since order matters I better not
-        if (!allParents.contains(parent))
+        if (!allParents.contains(parent)) {
             allParents.append(parent);
+            newParents.append(parent);
+        }
     }
     // We want a breadth-first search, so that the least-specific parent (octet-stream) is last
     // This means iterating twice, unfortunately.
-    for (const QString &parent : parents)
+    for (const QString &parent : newParents)
         collectParentMimeTypes(parent, allParents);
 }
 
@@ -441,14 +395,15 @@ QStringList QMimeType::aliases() const
  */
 QStringList QMimeType::suffixes() const
 {
-    QMimeDatabasePrivate::instance()->loadMimeTypePrivate(const_cast<QMimeTypePrivate&>(*d));
+    const QStringList patterns = globPatterns();
 
     QStringList result;
-    for (const QString &pattern : qAsConst(d->globPatterns)) {
+    result.reserve(patterns.size());
+    for (const QString &pattern : patterns) {
         // Not a simple suffix if it looks like: README or *. or *.* or *.JP*G or *.JP?
-        if (pattern.startsWith(QLatin1String("*.")) &&
-            pattern.length() > 2 &&
-            pattern.indexOf(QLatin1Char('*'), 2) < 0 && pattern.indexOf(QLatin1Char('?'), 2) < 0) {
+        if (pattern.startsWith("*."_L1) &&
+            pattern.size() > 2 &&
+            pattern.indexOf(u'*', 2) < 0 && pattern.indexOf(u'?', 2) < 0) {
             const QString suffix = pattern.mid(2);
             result.append(suffix);
         }
@@ -484,17 +439,17 @@ QString QMimeType::preferredSuffix() const
 */
 QString QMimeType::filterString() const
 {
-    QMimeDatabasePrivate::instance()->loadMimeTypePrivate(const_cast<QMimeTypePrivate&>(*d));
+    const QStringList patterns = globPatterns();
     QString filter;
 
-    if (!d->globPatterns.empty()) {
-        filter += comment() + QLatin1String(" (");
-        for (int i = 0; i < d->globPatterns.size(); ++i) {
+    if (!patterns.empty()) {
+        filter += comment() + " ("_L1;
+        for (int i = 0; i < patterns.size(); ++i) {
             if (i != 0)
-                filter += QLatin1Char(' ');
-            filter += d->globPatterns.at(i);
+                filter += u' ';
+            filter += patterns.at(i);
         }
-        filter +=  QLatin1Char(')');
+        filter +=  u')';
     }
 
     return filter;
@@ -529,3 +484,5 @@ QDebug operator<<(QDebug debug, const QMimeType &mime)
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qmimetype.cpp"

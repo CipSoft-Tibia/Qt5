@@ -48,9 +48,19 @@ public:
 		return subpassCount;
 	}
 
-	VkSubpassDescription const &getSubpass(uint32_t subpassIndex) const
+	const VkSubpassDescription &getSubpass(uint32_t subpassIndex) const
 	{
 		return subpasses[subpassIndex];
+	}
+
+	bool hasDepthStencilResolve() const
+	{
+		return subpassDepthStencilResolves != nullptr;
+	}
+
+	VkSubpassDescriptionDepthStencilResolve getSubpassDepthStencilResolve(uint32_t subpassIndex) const
+	{
+		return subpassDepthStencilResolves[subpassIndex];
 	}
 
 	uint32_t getDependencyCount() const
@@ -70,7 +80,7 @@ public:
 
 	uint32_t getViewMask(uint32_t subpassIndex) const
 	{
-		return viewMasks ? viewMasks[subpassIndex] : 1;
+		return viewMasks ? viewMasks[subpassIndex] : 0;
 	}
 
 	bool isMultiView() const
@@ -88,6 +98,7 @@ private:
 	VkAttachmentDescription *attachments = nullptr;
 	uint32_t subpassCount = 0;
 	VkSubpassDescription *subpasses = nullptr;
+	VkSubpassDescriptionDepthStencilResolve *subpassDepthStencilResolves = nullptr;
 	uint32_t dependencyCount = 0;
 	VkSubpassDependency *dependencies = nullptr;
 	int *attachmentFirstUse = nullptr;
@@ -96,7 +107,7 @@ private:
 
 	void MarkFirstUse(int attachment, int subpass);
 	template<class T>
-	void init(const T *pCreateInfo, void *mem);
+	void init(const T *pCreateInfo, void **mem);
 };
 
 static inline RenderPass *Cast(VkRenderPass object)

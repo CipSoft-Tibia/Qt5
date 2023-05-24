@@ -1,61 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-import QtQml 2.14 // workaround for QTBUG-82873
-import QtQuick 2.14
-import QtQuick.Controls 2.14
-import QtQuick.Layouts 1.14
-import QtQuick.Pdf 5.15
-import QtQuick.Shapes 1.14
-import QtQuick.Window 2.14
-import Qt.labs.animation 1.0
-import Qt.labs.platform 1.1 as Platform
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Dialogs
+import QtQuick.Layouts
+import QtQuick.Pdf
 
 ApplicationWindow {
     id: root
@@ -64,7 +13,7 @@ ApplicationWindow {
     color: "lightgrey"
     title: document.title
     visible: true
-    property string source // for main.cpp
+    required property url source // for main.cpp
     property real scaleStep: Math.sqrt(2)
 
     header: ToolBar {
@@ -74,7 +23,7 @@ ApplicationWindow {
             ToolButton {
                 action: Action {
                     shortcut: StandardKey.Open
-                    icon.source: "resources/document-open.svg"
+                    icon.source: "qrc:/pdfviewer/resources/document-open.svg"
                     onTriggered: fileDialog.open()
                 }
             }
@@ -82,7 +31,7 @@ ApplicationWindow {
                 action: Action {
                     shortcut: StandardKey.ZoomIn
                     enabled: view.sourceSize.width < 10000
-                    icon.source: "resources/zoom-in.svg"
+                    icon.source: "qrc:/pdfviewer/resources/zoom-in.svg"
                     onTriggered: view.renderScale *= root.scaleStep
                 }
             }
@@ -90,46 +39,46 @@ ApplicationWindow {
                 action: Action {
                     shortcut: StandardKey.ZoomOut
                     enabled: view.sourceSize.width > 50
-                    icon.source: "resources/zoom-out.svg"
+                    icon.source: "qrc:/pdfviewer/resources/zoom-out.svg"
                     onTriggered: view.renderScale /= root.scaleStep
                 }
             }
             ToolButton {
                 action: Action {
-                    icon.source: "resources/zoom-fit-width.svg"
+                    icon.source: "qrc:/pdfviewer/resources/zoom-fit-width.svg"
                     onTriggered: view.scaleToWidth(root.contentItem.width, root.contentItem.height)
                 }
             }
             ToolButton {
                 action: Action {
-                    icon.source: "resources/zoom-fit-best.svg"
+                    icon.source: "qrc:/pdfviewer/resources/zoom-fit-best.svg"
                     onTriggered: view.scaleToPage(root.contentItem.width, root.contentItem.height)
                 }
             }
             ToolButton {
                 action: Action {
                     shortcut: "Ctrl+0"
-                    icon.source: "resources/zoom-original.svg"
+                    icon.source: "qrc:/pdfviewer/resources/zoom-original.svg"
                     onTriggered: view.resetScale()
                 }
             }
             ToolButton {
                 action: Action {
                     shortcut: "Ctrl+L"
-                    icon.source: "resources/rotate-left.svg"
+                    icon.source: "qrc:/pdfviewer/resources/rotate-left.svg"
                     onTriggered: view.pageRotation -= 90
                 }
             }
             ToolButton {
                 action: Action {
                     shortcut: "Ctrl+R"
-                    icon.source: "resources/rotate-right.svg"
+                    icon.source: "qrc:/pdfviewer/resources/rotate-right.svg"
                     onTriggered: view.pageRotation += 90
                 }
             }
             ToolButton {
                 action: Action {
-                    icon.source: "resources/go-previous-view-page.svg"
+                    icon.source: "qrc:/pdfviewer/resources/go-previous-view-page.svg"
                     enabled: view.backEnabled
                     onTriggered: view.back()
                 }
@@ -155,7 +104,7 @@ ApplicationWindow {
             }
             ToolButton {
                 action: Action {
-                    icon.source: "resources/go-next-view-page.svg"
+                    icon.source: "qrc:/pdfviewer/resources/go-next-view-page.svg"
                     enabled: view.forwardEnabled
                     onTriggered: view.forward()
                 }
@@ -166,21 +115,24 @@ ApplicationWindow {
             ToolButton {
                 action: Action {
                     shortcut: StandardKey.SelectAll
-                    icon.source: "resources/edit-select-all.svg"
+                    icon.source: "qrc:/pdfviewer/resources/edit-select-all.svg"
                     onTriggered: view.selectAll()
                 }
             }
             ToolButton {
                 action: Action {
                     shortcut: StandardKey.Copy
-                    icon.source: "resources/edit-copy.svg"
+                    icon.source: "qrc:/pdfviewer/resources/edit-copy.svg"
                     enabled: view.selectedText !== ""
                     onTriggered: view.copySelectionToClipboard()
                 }
             }
             Shortcut {
                 sequence: StandardKey.Find
-                onActivated: searchField.forceActiveFocus()
+                onActivated: {
+                    searchField.forceActiveFocus()
+                    searchField.selectAll()
+                }
             }
             Shortcut {
                 sequence: StandardKey.Quit
@@ -189,23 +141,44 @@ ApplicationWindow {
         }
     }
 
-    Platform.FileDialog {
+    FileDialog {
         id: fileDialog
         title: "Open a PDF file"
         nameFilters: [ "PDF files (*.pdf)" ]
-        onAccepted: document.source = file
+        onAccepted: document.source = selectedFile
     }
 
     Dialog {
-        id: errorDialog
-        title: "Error loading " + document.source
-        standardButtons: Dialog.Ok
+        id: passwordDialog
+        title: "Password"
+        standardButtons: Dialog.Ok | Dialog.Cancel
         modal: true
         closePolicy: Popup.CloseOnEscape
         anchors.centerIn: parent
         width: 300
 
-        Label {
+        contentItem: TextField {
+            id: passwordField
+            placeholderText: qsTr("Please provide the password")
+            echoMode: TextInput.Password
+            width: parent.width
+            onAccepted: passwordDialog.accept()
+        }
+        onOpened: function() { passwordField.forceActiveFocus() }
+        onAccepted: document.password = passwordField.text
+    }
+
+    Dialog {
+        id: errorDialog
+        title: "Error loading " + document.source
+        standardButtons: Dialog.Close
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        anchors.centerIn: parent
+        width: 300
+        visible: document.status === PdfDocument.Error
+
+        contentItem: Label {
             id: errorField
             text: document.error
         }
@@ -218,7 +191,7 @@ ApplicationWindow {
         document: PdfDocument {
             id: document
             source: Qt.resolvedUrl(root.source)
-            onStatusChanged: if (status === PdfDocument.Error) errorDialog.open()
+            onPasswordRequired: passwordDialog.open()
         }
         searchString: searchField.text
     }
@@ -237,17 +210,23 @@ ApplicationWindow {
             anchors.fill: parent
             anchors.margins: 2
             model: view.searchModel
+            currentIndex: view.searchModel.currentResult
             ScrollBar.vertical: ScrollBar { }
             delegate: ItemDelegate {
+                id: resultDelegate
+                required property int index
+                required property int page
+                required property string contextBefore
+                required property string contextAfter
                 width: parent ? parent.width : 0
                 RowLayout {
                     anchors.fill: parent
                     spacing: 0
                     Label {
-                        text: "Page " + (page + 1) + ": "
+                        text: "Page " + (resultDelegate.page + 1) + ": "
                     }
                     Label {
-                        text: contextBefore
+                        text: resultDelegate.contextBefore
                         elide: Text.ElideLeft
                         horizontalAlignment: Text.AlignRight
                         Layout.fillWidth: true
@@ -259,18 +238,14 @@ ApplicationWindow {
                         width: implicitWidth
                     }
                     Label {
-                        text: contextAfter
+                        text: resultDelegate.contextAfter
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                         Layout.preferredWidth: parent.width / 2
                     }
                 }
                 highlighted: ListView.isCurrentItem
-                onClicked: {
-                    searchResultsList.currentIndex = index
-                    view.goToLocation(page, location, 0)
-                    view.searchModel.currentResult = indexOnPage
-                }
+                onClicked: view.searchModel.currentResult = resultDelegate.index
             }
         }
     }
@@ -282,7 +257,7 @@ ApplicationWindow {
             anchors.fill: parent
             ToolButton {
                 action: Action {
-                    icon.source: "resources/go-up-search.svg"
+                    icon.source: "qrc:/pdfviewer/resources/go-up-search.svg"
                     shortcut: StandardKey.FindPrevious
                     onTriggered: view.searchBack()
                 }
@@ -299,7 +274,7 @@ ApplicationWindow {
                 onAccepted: searchDrawer.open()
                 Image {
                     visible: searchField.text !== ""
-                    source: "resources/edit-clear.svg"
+                    source: "qrc:/pdfviewer/resources/edit-clear.svg"
                     anchors {
                         right: parent.right
                         top: parent.top
@@ -314,7 +289,7 @@ ApplicationWindow {
             }
             ToolButton {
                 action: Action {
-                    icon.source: "resources/go-down-search.svg"
+                    icon.source: "qrc:/pdfviewer/resources/go-down-search.svg"
                     shortcut: StandardKey.FindNext
                     onTriggered: view.searchForward()
                 }

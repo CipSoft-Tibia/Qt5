@@ -1,19 +1,15 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Base types for nodes in a GRIT resource tree.
 '''
 
-from __future__ import print_function
-
 import ast
 import os
 import struct
 import sys
 from xml.sax import saxutils
-
-import six
 
 from grit import constants
 from grit import clique
@@ -23,7 +19,7 @@ from grit.node import brotli_util
 import grit.format.gzip_string
 
 
-class Node(object):
+class Node:
   '''An item in the tree that has children.'''
 
   # Valid content types that can be returned by _ContentType()
@@ -33,6 +29,10 @@ class Node(object):
 
   # Types of files to be compressed by default.
   _COMPRESS_BY_DEFAULT_EXTENSIONS = ('.js', '.html', '.css', '.svg')
+
+  # Types of files to disallow compressing, as it provides no benefit, and can
+  # potentially even make the file larger.
+  _COMPRESS_DISALLOWED_EXTENSIONS = ('.png', '.jpg')
 
   # Default nodes to not allowlist skipped
   _allowlist_marked_as_skip = False
@@ -49,7 +49,7 @@ class Node(object):
     self.mixed_content = []   # A list of u'' and/or child elements (this
     # duplicates 'children' but
     # is needed to preserve markup-type content).
-    self.name = u''           # The name of this element
+    self.name = ''           # The name of this element
     self.attrs = {}           # The set of attributes (keys to values)
     self.parent = None        # Our parent unless we are the root element.
     self.uberclique = None    # Allows overriding uberclique for parts of tree
@@ -63,7 +63,7 @@ class Node(object):
 
   def __exit__(self, exc_type, exc_value, traceback):
     if exc_type is not None:
-      print(u'Error processing node %s: %s' % (six.text_type(self), exc_value))
+      print('Error processing node %s: %s' % (str(self), exc_value))
 
   def __iter__(self):
     '''A preorder iteration through the tree that this node is the root of.'''
@@ -74,8 +74,7 @@ class Node(object):
     any child nodes.'''
     yield self
     for child in self.children:
-      for iterchild in child.Preorder():
-        yield iterchild
+      yield from child.Preorder()
 
   def ActiveChildren(self):
     '''Returns the children of this node that should be included in the current
@@ -87,8 +86,7 @@ class Node(object):
     the current configuration, in preorder.'''
     yield self
     for child in self.ActiveChildren():
-      for descendant in child.ActiveDescendants():
-        yield descendant
+      yield from child.ActiveDescendants()
 
   def GetRoot(self):
     '''Returns the root Node in the tree this Node belongs to.'''
@@ -116,7 +114,7 @@ class Node(object):
       name: u'elementname'
       parent: grit.node.base.Node or subclass or None
     '''
-    assert isinstance(name, six.string_types)
+    assert isinstance(name, str)
     assert not parent or isinstance(parent, Node)
     self.name = name
     self.parent = parent
@@ -159,7 +157,7 @@ class Node(object):
     Return:
       None
     '''
-    assert isinstance(content, six.string_types)
+    assert isinstance(content, str)
     if self._ContentType() != self._CONTENT_TYPE_NONE:
       self.mixed_content.append(content)
     elif content.strip() != '':
@@ -176,8 +174,8 @@ class Node(object):
     Return:
       None
     '''
-    assert isinstance(attrib, six.string_types)
-    assert isinstance(value, six.string_types)
+    assert isinstance(attrib, str)
+    assert isinstance(value, str)
     if self._IsValidAttribute(attrib, value):
       self.attrs[attrib] = value
     else:
@@ -188,34 +186,32 @@ class Node(object):
 
     # TODO(joi) Rewrite this, it's extremely ugly!
     if len(self.mixed_content):
-      if isinstance(self.mixed_content[0], six.string_types):
+      if isinstance(self.mixed_content[0], str):
         # Remove leading and trailing chunks of pure whitespace.
-        while (len(self.mixed_content) and
-               isinstance(self.mixed_content[0], six.string_types) and
-               self.mixed_content[0].strip() == ''):
+        while (len(self.mixed_content)
+               and isinstance(self.mixed_content[0], str)
+               and self.mixed_content[0].strip() == ''):
           self.mixed_content = self.mixed_content[1:]
         # Strip leading and trailing whitespace from mixed content chunks
         # at front and back.
-        if (len(self.mixed_content) and
-            isinstance(self.mixed_content[0], six.string_types)):
+        if (len(self.mixed_content) and isinstance(self.mixed_content[0], str)):
           self.mixed_content[0] = self.mixed_content[0].lstrip()
         # Remove leading and trailing ''' (used to demarcate whitespace)
-        if (len(self.mixed_content) and
-            isinstance(self.mixed_content[0], six.string_types)):
+        if (len(self.mixed_content) and isinstance(self.mixed_content[0], str)):
           if self.mixed_content[0].startswith("'''"):
             self.mixed_content[0] = self.mixed_content[0][3:]
     if len(self.mixed_content):
-      if isinstance(self.mixed_content[-1], six.string_types):
+      if isinstance(self.mixed_content[-1], str):
         # Same stuff all over again for the tail end.
-        while (len(self.mixed_content) and
-               isinstance(self.mixed_content[-1], six.string_types) and
-               self.mixed_content[-1].strip() == ''):
+        while (len(self.mixed_content)
+               and isinstance(self.mixed_content[-1], str)
+               and self.mixed_content[-1].strip() == ''):
           self.mixed_content = self.mixed_content[:-1]
-        if (len(self.mixed_content) and
-            isinstance(self.mixed_content[-1], six.string_types)):
+        if (len(self.mixed_content)
+            and isinstance(self.mixed_content[-1], str)):
           self.mixed_content[-1] = self.mixed_content[-1].rstrip()
-        if (len(self.mixed_content) and
-            isinstance(self.mixed_content[-1], six.string_types)):
+        if (len(self.mixed_content)
+            and isinstance(self.mixed_content[-1], str)):
           if self.mixed_content[-1].endswith("'''"):
             self.mixed_content[-1] = self.mixed_content[-1][:-3]
 
@@ -244,79 +240,85 @@ class Node(object):
       if not defattr in self.attrs:
         self.attrs[defattr] = self.DefaultAttributes()[defattr]
 
+    # Check that |file| does not point to a TypeScript (.ts) file, as those
+    # files should not be included in the final build.
+    if self.attrs.get('file'):
+      assert not self.attrs.get('file').endswith('.ts'), (
+          'TypeScript files should not be added to Grit: Found \'%s\'' %
+          self.attrs.get('file'))
+
   def GetCdata(self):
     '''Returns all CDATA of this element, concatenated into a single
     string.  Note that this ignores any elements embedded in CDATA.'''
-    return ''.join([c for c in self.mixed_content
-                    if isinstance(c, six.string_types)])
+    return ''.join([c for c in self.mixed_content if isinstance(c, str)])
 
   def __str__(self):
     '''Returns this node and all nodes below it as an XML document in a Unicode
     string.'''
-    header = u'<?xml version="1.0" encoding="UTF-8"?>\n'
+    header = '<?xml version="1.0" encoding="UTF-8"?>\n'
     return header + self.FormatXml()
 
   # Some Python 2 glue.
   __unicode__ = __str__
 
-  def FormatXml(self, indent = u'', one_line = False):
+  def FormatXml(self, indent = '', one_line = False):
     '''Returns this node and all nodes below it as an XML
     element in a Unicode string.  This differs from __unicode__ in that it does
     not include the <?xml> stuff at the top of the string.  If one_line is true,
     children and CDATA are layed out in a way that preserves internal
     whitespace.
     '''
-    assert isinstance(indent, six.string_types)
+    assert isinstance(indent, str)
 
     content_one_line = (one_line or
                         self._ContentType() == self._CONTENT_TYPE_MIXED)
     inside_content = self.ContentsAsXml(indent, content_one_line)
 
     # Then the attributes for this node.
-    attribs = u''
+    attribs = ''
     default_attribs = self.DefaultAttributes()
     for attrib, value in sorted(self.attrs.items()):
       # Only print an attribute if it is other than the default value.
       if attrib not in default_attribs or value != default_attribs[attrib]:
-        attribs += u' %s=%s' % (attrib, saxutils.quoteattr(value))
+        attribs += ' %s=%s' % (attrib, saxutils.quoteattr(value))
 
     # Finally build the XML for our node and return it
     if len(inside_content) > 0:
       if one_line:
-        return u'<%s%s>%s</%s>' % (self.name, attribs, inside_content,
+        return '<%s%s>%s</%s>' % (self.name, attribs, inside_content,
                                    self.name)
       elif content_one_line:
-        return u'%s<%s%s>\n%s  %s\n%s</%s>' % (
+        return '%s<%s%s>\n%s  %s\n%s</%s>' % (
           indent, self.name, attribs,
           indent, inside_content,
           indent, self.name)
       else:
-        return u'%s<%s%s>\n%s\n%s</%s>' % (
+        return '%s<%s%s>\n%s\n%s</%s>' % (
           indent, self.name, attribs,
           inside_content,
           indent, self.name)
     else:
-      return u'%s<%s%s />' % (indent, self.name, attribs)
+      return '%s<%s%s />' % (indent, self.name, attribs)
 
   def ContentsAsXml(self, indent, one_line):
     '''Returns the contents of this node (CDATA and child elements) in XML
     format.  If 'one_line' is true, the content will be laid out on one line.'''
-    assert isinstance(indent, six.string_types)
+    assert isinstance(indent, str)
 
     # Build the contents of the element.
     inside_parts = []
     last_item = None
     for mixed_item in self.mixed_content:
       if isinstance(mixed_item, Node):
-        inside_parts.append(mixed_item.FormatXml(indent + u'  ', one_line))
+        inside_parts.append(mixed_item.FormatXml(indent + '  ', one_line))
         if not one_line:
-          inside_parts.append(u'\n')
+          inside_parts.append('\n')
       else:
         message = mixed_item
         # If this is the first item and it starts with whitespace, we add
         # the ''' delimiter.
         if not last_item and message.lstrip() != message:
-          message = u"'''" + message
+          message = "'''" + message
         inside_parts.append(util.EncodeCdata(message))
       last_item = mixed_item
 
@@ -327,11 +329,10 @@ class Node(object):
 
     # If the last item is a string (not a node) and ends with whitespace,
     # we need to add the ''' delimiter.
-    if (isinstance(last_item, six.string_types) and
-        last_item.rstrip() != last_item):
-      inside_parts[-1] = inside_parts[-1] + u"'''"
+    if (isinstance(last_item, str) and last_item.rstrip() != last_item):
+      inside_parts[-1] = inside_parts[-1] + "'''"
 
-    return u''.join(inside_parts)
+    return ''.join(inside_parts)
 
   def SubstituteMessages(self, substituter):
     '''Applies substitutions to all messages in the tree.
@@ -468,6 +469,16 @@ class Node(object):
   @classmethod
   def EvaluateExpression(cls, expr, defs, target_platform, extra_variables={}):
     '''Worker for EvaluateCondition (below) and conditions in XTB files.'''
+
+    if target_platform == 'chromeos':
+      assert defs.get('chromeos_ash', False) != defs.get(
+          'chromeos_lacros',
+          False), 'The chromeos target must be either ash or lacros'
+    else:
+      assert not defs.get('chromeos_ash', False) and not defs.get(
+          'chromeos_lacros',
+          False), 'Non-chromeos targets cannot be ash or lacros'
+
     if expr in cls.eval_expr_cache:
       code, variables_in_expr = cls.eval_expr_cache[expr]
     else:
@@ -487,7 +498,9 @@ class Node(object):
         value = defs
 
       elif name == 'is_linux':
-        value = target_platform.startswith('linux')
+        value = target_platform == 'linux'
+      elif name == 'is_chromeos':
+        value = target_platform == 'chromeos'
       elif name == 'is_macosx':
         value = target_platform == 'darwin'
       elif name == 'is_win':
@@ -496,11 +509,13 @@ class Node(object):
         value = target_platform == 'android'
       elif name == 'is_ios':
         value = target_platform == 'ios'
+      elif name == 'is_fuchsia':
+        value = target_platform == 'fuchsia'
       elif name == 'is_bsd':
         value = 'bsd' in target_platform
       elif name == 'is_posix':
-        value = (target_platform in ('darwin', 'linux2', 'linux3', 'sunos5',
-                                     'android', 'ios')
+        value = (target_platform in ('linux', 'darwin', 'sunos5', 'android',
+                                     'ios', 'chromeos')
                  or 'bsd' in target_platform)
 
       elif name == 'pp_ifdef':
@@ -517,8 +532,9 @@ class Node(object):
       elif name in extra_variables:
         value = extra_variables[name]
       else:
-        # Undefined variables default to False.
-        value = False
+        # Undefined variables are disallowed. All variables appearing in
+        # <if expr> conditions need to be defined.
+        assert False, 'undefined Grit variable found: ' + name
 
       variable_map[name] = value
 
@@ -536,7 +552,7 @@ class Node(object):
       - 'context' is the current output context
            (the 'context' attribute of the <output> element).
       - 'defs' is a map of C preprocessor-style symbol names to their values.
-      - 'os' is the current platform (likely 'linux2', 'win32' or 'darwin').
+      - 'os' is the current platform (likely 'linux', 'win32' or 'darwin').
       - 'pp_ifdef(symbol)' is a shorthand for "symbol in defs".
       - 'pp_if(symbol)' is a shorthand for "symbol in defs and defs[symbol]".
       - 'is_linux', 'is_macosx', 'is_win', 'is_posix' are true if 'os'
@@ -629,6 +645,10 @@ class Node(object):
     '''
 
     compress = self.attrs.get('compress')
+    assert not (
+        compress != 'default' and compress != 'false' and
+        self.attrs.get('file').endswith(self._COMPRESS_DISALLOWED_EXTENSIONS)
+    ), 'Disallowed |compress| attribute found for %s' % self.attrs.get('name')
 
     # Compress JS, HTML, CSS and SVG files by default (gzip), unless |compress|
     # is explicitly specified.
@@ -637,10 +657,8 @@ class Node(object):
                                self._COMPRESS_BY_DEFAULT_EXTENSIONS))
 
     if compress == 'gzip' or compress_by_default:
-      # We only use rsyncable compression on Linux.
-      # We exclude ChromeOS since ChromeOS bots are Linux based but do not have
-      # the --rsyncable option built in for gzip. See crbug.com/617950.
-      if sys.platform == 'linux2' and 'chromeos' not in self.GetRoot().defines:
+      # We only use rsyncable compression for platforms built on Linux.
+      if sys.platform == 'linux':
         return grit.format.gzip_string.GzipStringRsyncable(data)
       return grit.format.gzip_string.GzipString(data)
 

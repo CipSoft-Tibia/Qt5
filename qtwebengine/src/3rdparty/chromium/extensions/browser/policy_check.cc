@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,19 +14,19 @@ PolicyCheck::PolicyCheck(content::BrowserContext* context,
                          scoped_refptr<const Extension> extension)
     : PreloadCheck(extension), context_(context) {}
 
-PolicyCheck::~PolicyCheck() {}
+PolicyCheck::~PolicyCheck() = default;
 
 void PolicyCheck::Start(ResultCallback callback) {
   Errors errors;
   if (!ExtensionSystem::Get(context_)->management_policy()->UserMayInstall(
           extension(), &error_)) {
     DCHECK(!error_.empty());
-    errors.insert(DISALLOWED_BY_POLICY);
+    errors.insert(Error::kDisallowedByPolicy);
   }
   std::move(callback).Run(errors);
 }
 
-base::string16 PolicyCheck::GetErrorMessage() const {
+std::u16string PolicyCheck::GetErrorMessage() const {
   return error_;
 }
 

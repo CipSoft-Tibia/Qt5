@@ -1,39 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example threads/semaphores
-    \title Semaphores Example
-    \brief Demonstrates multi-thread programming using Qt.
+    \examplecategory {Data Processing & I/O}
+    \title Producer and Consumer using Semaphores
     \ingroup qtconcurrent-mtexamples
 
-    \brief The Semaphores example shows how to use QSemaphore to control
-    access to a circular buffer shared by a producer thread and a
-    consumer thread.
+    \brief The Producer and Consumer using Semaphores example shows how
+    to use QSemaphore to control access to a circular buffer shared
+    by a producer thread and a consumer thread.
 
     The producer writes data to the buffer until it reaches the end
     of the buffer, at which point it restarts from the beginning,
@@ -54,7 +30,7 @@
 
     An alternative to using QSemaphore to solve the producer-consumer
     problem is to use QWaitCondition and QMutex. This is what the
-    \l{Wait Conditions Example} does.
+    \l{Producer and Consumer using Wait Conditions} example does.
 
     \section1 Global Variables
 
@@ -63,7 +39,7 @@
 
     \snippet threads/semaphores/semaphores.cpp 0
 
-    \c DataSize is the amout of data that the producer will generate.
+    \c DataSize is the amount of data that the producer will generate.
     To keep the example as simple as possible, we make it a constant.
     \c BufferSize is the size of the circular buffer. It is less than
     \c DataSize, meaning that at some point the producer will reach

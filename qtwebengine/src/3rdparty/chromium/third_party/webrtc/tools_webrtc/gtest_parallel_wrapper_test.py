@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 
 # Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
 #
@@ -27,7 +27,6 @@ def TemporaryDirectory():
 
 
 class GtestParallelWrapperHelpersTest(unittest.TestCase):
-
   def testGetWorkersAsIs(self):
     # pylint: disable=protected-access
     self.assertEqual(gtest_parallel_wrapper._ParseWorkersOption('12'), 12)
@@ -40,12 +39,11 @@ class GtestParallelWrapperHelpersTest(unittest.TestCase):
   def testGetHalfWorkers(self):
     expected = max(multiprocessing.cpu_count() // 2, 1)
     # pylint: disable=protected-access
-    self.assertEqual(
-        gtest_parallel_wrapper._ParseWorkersOption('0.5x'), expected)
+    self.assertEqual(gtest_parallel_wrapper._ParseWorkersOption('0.5x'),
+                     expected)
 
 
 class GtestParallelWrapperTest(unittest.TestCase):
-
   @classmethod
   def _Expected(cls, gtest_parallel_args):
     return ['--shard_index=0', '--shard_count=1'] + gtest_parallel_args
@@ -110,6 +108,12 @@ class GtestParallelWrapperTest(unittest.TestCase):
     self.assertEqual(result.output_dir, '/tmp/foo')
     self.assertEqual(result.test_artifacts_dir, None)
 
+  def testJsonTestResults(self):
+    result = gtest_parallel_wrapper.ParseArgs(
+        ['--isolated-script-test-output', '/tmp/foo', 'exec'])
+    expected = self._Expected(['--dump_json_test_results=/tmp/foo', 'exec'])
+    self.assertEqual(result.gtest_parallel_args, expected)
+
   def testShortArg(self):
     result = gtest_parallel_wrapper.ParseArgs(['-d', '/tmp/foo', 'exec'])
     expected = self._Expected(['--output_dir=/tmp/foo', 'exec'])
@@ -133,15 +137,16 @@ class GtestParallelWrapperTest(unittest.TestCase):
       result = gtest_parallel_wrapper.ParseArgs([
           'some_test', '--some_flag=some_value', '--another_flag',
           '--output_dir=' + output_dir, '--store-test-artifacts',
+          '--isolated-script-test-output=SOME_DIR',
           '--isolated-script-test-perf-output=SOME_OTHER_DIR', '--foo=bar',
           '--baz'
       ])
       expected_artifacts_dir = os.path.join(output_dir, 'test_artifacts')
       expected = self._Expected([
-          '--output_dir=' + output_dir,
+          '--output_dir=' + output_dir, '--dump_json_test_results=SOME_DIR',
           'some_test', '--', '--test_artifacts_dir=' + expected_artifacts_dir,
           '--some_flag=some_value', '--another_flag',
-          '--isolated_script_test_perf_output=SOME_OTHER_DIR', '--foo=bar',
+          '--isolated-script-test-perf-output=SOME_OTHER_DIR', '--foo=bar',
           '--baz'
       ])
       self.assertEqual(result.gtest_parallel_args, expected)

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfsfileengine_p.h"
 #include "qfsfileengine_iterator_p.h"
@@ -54,11 +18,13 @@
 #endif
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_DARWIN)
 # include <private/qcore_mac_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifdef Q_OS_WIN
 #  ifndef S_ISREG
@@ -85,7 +51,7 @@ typedef unsigned int UnsignedIOType;
 #else
 typedef ssize_t SignedIOType;
 typedef size_t UnsignedIOType;
-Q_STATIC_ASSERT_X(sizeof(SignedIOType) == sizeof(UnsignedIOType),
+static_assert(sizeof(SignedIOType) == sizeof(UnsignedIOType),
                   "Unsupported: read/write return a type with different size as the len parameter");
 #endif
 
@@ -173,14 +139,14 @@ ProcessOpenModeResult processOpenModeFlags(QIODevice::OpenMode openMode)
     result.ok = false;
     if ((openMode & QFile::NewOnly) && (openMode & QFile::ExistingOnly)) {
         qWarning("NewOnly and ExistingOnly are mutually exclusive");
-        result.error = QLatin1String("NewOnly and ExistingOnly are mutually exclusive");
+        result.error = "NewOnly and ExistingOnly are mutually exclusive"_L1;
         return result;
     }
 
     if ((openMode & QFile::ExistingOnly) && !(openMode & (QFile::ReadOnly | QFile::WriteOnly))) {
         qWarning("ExistingOnly must be specified alongside ReadOnly, WriteOnly, or ReadWrite");
-        result.error = QLatin1String(
-                    "ExistingOnly must be specified alongside ReadOnly, WriteOnly, or ReadWrite");
+        result.error =
+                    "ExistingOnly must be specified alongside ReadOnly, WriteOnly, or ReadWrite"_L1;
         return result;
     }
 
@@ -226,7 +192,8 @@ void QFSFileEngine::setFileName(const QString &file)
 /*!
     \reimp
 */
-bool QFSFileEngine::open(QIODevice::OpenMode openMode)
+bool QFSFileEngine::open(QIODevice::OpenMode openMode,
+                         std::optional<QFile::Permissions> permissions)
 {
     Q_ASSERT_X(openMode & QIODevice::Unbuffered, "QFSFileEngine::open",
                "QFSFileEngine no longer supports buffered mode; upper layer must buffer");
@@ -234,7 +201,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode)
     Q_D(QFSFileEngine);
     if (d->fileEntry.isEmpty()) {
         qWarning("QFSFileEngine::open: No file name specified");
-        setError(QFile::OpenError, QLatin1String("No file name specified"));
+        setError(QFile::OpenError, "No file name specified"_L1);
         return false;
     }
 
@@ -250,7 +217,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode)
     d->fh = nullptr;
     d->fd = -1;
 
-    return d->nativeOpen(d->openMode);
+    return d->nativeOpen(d->openMode, permissions);
 }
 
 /*!
@@ -277,7 +244,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode, FILE *fh, QFile::FileHand
 
     d->openMode = res.openMode;
     d->lastFlushFailed = false;
-    d->closeFileHandle = (handleFlags & QFile::AutoCloseHandle);
+    d->closeFileHandle = handleFlags.testAnyFlag(QFile::AutoCloseHandle);
     d->fileEntry.clear();
     d->tried_stat = 0;
     d->fd = -1;
@@ -339,7 +306,7 @@ bool QFSFileEngine::open(QIODevice::OpenMode openMode, int fd, QFile::FileHandle
 
     d->openMode = res.openMode;
     d->lastFlushFailed = false;
-    d->closeFileHandle = (handleFlags & QFile::AutoCloseHandle);
+    d->closeFileHandle = handleFlags.testAnyFlag(QFile::AutoCloseHandle);
     d->fileEntry.clear();
     d->fh = nullptr;
     d->fd = -1;
@@ -361,7 +328,7 @@ bool QFSFileEnginePrivate::openFd(QIODevice::OpenMode openMode, int fd)
 
     // Seek to the end when in Append mode.
     if (openMode & QFile::Append) {
-        int ret;
+        QT_OFF_T ret;
         do {
             ret = QT_LSEEK(fd, 0, SEEK_END);
         } while (ret == -1 && errno == EINTR);
@@ -501,7 +468,7 @@ void QFSFileEnginePrivate::unmapAll()
 {
     if (!maps.isEmpty()) {
         const QList<uchar*> keys = maps.keys(); // Make a copy since unmap() modifies the map.
-        for (int i = 0; i < keys.count(); ++i)
+        for (int i = 0; i < keys.size(); ++i)
             unmap(keys.at(i));
     }
 }
@@ -981,7 +948,10 @@ QString QFSFileEngine::tempPath()
   Creates a link from the file currently specified by fileName() to
   \a newName. What a link is depends on the underlying filesystem
   (be it a shortcut on Windows or a symbolic link on Unix). Returns
-  true if successful; otherwise returns \c false.
+  \c true if successful; otherwise returns \c false.
+
+  \note On Windows \a newName is expected to end with .lnk as the filename
+  extension.
 */
 
 
@@ -1054,9 +1024,11 @@ bool QFSFileEngine::renameOverwrite(const QString &newName)
 /*!
   \reimp
 */
-bool QFSFileEngine::mkdir(const QString &name, bool createParentDirectories) const
+bool QFSFileEngine::mkdir(const QString &name, bool createParentDirectories,
+                          std::optional<QFile::Permissions> permissions) const
 {
-    return QFileSystemEngine::createDirectory(QFileSystemEntry(name), createParentDirectories);
+    return QFileSystemEngine::createDirectory(QFileSystemEntry(name), createParentDirectories,
+                                              permissions);
 }
 
 /*!

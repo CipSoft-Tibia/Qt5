@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@ AccessRateLimiter::AccessRateLimiter(size_t max_num_accesses,
       counter_(recharge_period * max_num_accesses),
       tick_clock_(tick_clock) {}
 
-AccessRateLimiter::~AccessRateLimiter() {}
+AccessRateLimiter::~AccessRateLimiter() = default;
 
 bool AccessRateLimiter::AttemptAccess() {
   // If recharge period is 0, access is unlimited.

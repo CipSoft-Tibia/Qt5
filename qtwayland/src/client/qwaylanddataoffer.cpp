@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylanddataoffer_p.h"
 #include "qwaylanddatadevicemanager_p.h"
@@ -54,6 +18,60 @@ namespace QtWaylandClient {
 static QString utf8Text()
 {
     return QStringLiteral("text/plain;charset=utf-8");
+}
+
+static QString uriList()
+{
+    return QStringLiteral("text/uri-list");
+}
+
+static QString mozUrl()
+{
+    return QStringLiteral("text/x-moz-url");
+}
+
+static QByteArray convertData(const QString &originalMime, const QString &newMime, const QByteArray &data)
+{
+    if (originalMime == newMime)
+        return data;
+
+    // Convert text/x-moz-url, which is an UTF-16 string of
+    // URL and page title pairs, all separated by line breaks, to text/uri-list.
+    // see also qtbase/src/plugins/platforms/xcb/qxcbmime.cpp
+    if (originalMime == uriList() && newMime == mozUrl()) {
+        if (data.size() > 1) {
+            const quint8 byte0 = data.at(0);
+            const quint8 byte1 = data.at(1);
+
+            if ((byte0 == 0xff && byte1 == 0xfe) || (byte0 == 0xfe && byte1 == 0xff)
+                || (byte0 != 0 && byte1 == 0) || (byte0 == 0 && byte1 != 0)) {
+                QByteArray converted;
+                const QString str = QString::fromUtf16(
+                      reinterpret_cast<const char16_t *>(data.constData()), data.size() / 2);
+                if (!str.isNull()) {
+                    const auto urls = QStringView{str}.split(u'\n');
+                    // Only the URL is interesting, skip the page title.
+                    for (int i = 0; i < urls.size(); i += 2) {
+                        const QUrl url(urls.at(i).trimmed().toString());
+                        if (url.isValid()) {
+                            converted += url.toEncoded();
+                            converted += "\r\n";
+                        }
+                    }
+                }
+                return converted;
+            // 8 byte encoding, remove a possible 0 at the end.
+            } else {
+                QByteArray converted = data;
+                if (converted.endsWith('\0'))
+                    converted.chop(1);
+                converted += "\r\n";
+                return converted;
+            }
+        }
+    }
+
+    return data;
 }
 
 QWaylandDataOffer::QWaylandDataOffer(QWaylandDisplay *display, struct ::wl_data_offer *offer)
@@ -84,7 +102,7 @@ QMimeData *QWaylandDataOffer::mimeData()
 
 Qt::DropActions QWaylandDataOffer::supportedActions() const
 {
-    if (wl_data_offer_get_version(const_cast<::wl_data_offer*>(object())) < 3) {
+    if (version() < 3) {
         return Qt::MoveAction | Qt::CopyAction;
     }
 
@@ -129,8 +147,11 @@ QWaylandMimeData::~QWaylandMimeData()
 
 void QWaylandMimeData::appendFormat(const QString &mimeType)
 {
-    m_types << mimeType;
-    m_data.remove(mimeType); // Clear previous contents
+    // "DELETE" is a potential leftover from XdndActionMode sent by e.g. Firefox, ignore it.
+    if (mimeType != QLatin1String("DELETE")) {
+        m_types << mimeType;
+        m_data.remove(mimeType); // Clear previous contents
+    }
 }
 
 bool QWaylandMimeData::hasFormat_sys(const QString &mimeType) const
@@ -141,6 +162,9 @@ bool QWaylandMimeData::hasFormat_sys(const QString &mimeType) const
     if (mimeType == QStringLiteral("text/plain") && m_types.contains(utf8Text()))
         return true;
 
+    if (mimeType == uriList() && m_types.contains(mozUrl()))
+        return true;
+
     return false;
 }
 
@@ -149,18 +173,21 @@ QStringList QWaylandMimeData::formats_sys() const
     return m_types;
 }
 
-QVariant QWaylandMimeData::retrieveData_sys(const QString &mimeType, QVariant::Type type) const
+QVariant QWaylandMimeData::retrieveData_sys(const QString &mimeType, QMetaType type) const
 {
     Q_UNUSED(type);
 
-    if (m_data.contains(mimeType))
-        return m_data.value(mimeType);
+    auto it = m_data.constFind(mimeType);
+    if (it != m_data.constEnd())
+        return *it;
 
     QString mime = mimeType;
 
     if (!m_types.contains(mimeType)) {
         if (mimeType == QStringLiteral("text/plain") && m_types.contains(utf8Text()))
             mime = utf8Text();
+        else if (mimeType == uriList() && m_types.contains(mozUrl()))
+            mime = mozUrl();
         else
             return QVariant();
     }
@@ -182,6 +209,9 @@ QVariant QWaylandMimeData::retrieveData_sys(const QString &mimeType, QVariant::T
     }
 
     close(pipefd[0]);
+
+    content = convertData(mimeType, mime, content);
+
     m_data.insert(mimeType, content);
     return content;
 }

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <stdio.h>
 #include <string.h>
 #include <qbytearray.h>
@@ -216,7 +191,9 @@ static const Keyword keywords[] = {
     { "Q_NAMESPACE", "Q_NAMESPACE_TOKEN" },
     { "Q_NAMESPACE_EXPORT", "Q_NAMESPACE_EXPORT_TOKEN" },
     { "Q_GADGET", "Q_GADGET_TOKEN" },
+    { "Q_GADGET_EXPORT", "Q_GADGET_EXPORT_TOKEN" },
     { "Q_PROPERTY", "Q_PROPERTY_TOKEN" },
+    { "QT_ANONYMOUS_PROPERTY", "QT_ANONYMOUS_PROPERTY_TOKEN" },
     { "Q_PLUGIN_METADATA", "Q_PLUGIN_METADATA_TOKEN" },
     { "Q_ENUMS", "Q_ENUMS_TOKEN" },
     { "Q_ENUM", "Q_ENUM_TOKEN" },
@@ -242,7 +219,9 @@ static const Keyword keywords[] = {
     { "Q_SLOT", "Q_SLOT_TOKEN" },
     { "Q_SCRIPTABLE", "Q_SCRIPTABLE_TOKEN" },
     { "Q_PRIVATE_PROPERTY", "Q_PRIVATE_PROPERTY_TOKEN" },
+    { "QT_ANONYMOUS_PRIVATE_PROPERTY", "QT_ANONYMOUS_PRIVATE_PROPERTY_TOKEN" },
     { "Q_REVISION", "Q_REVISION_TOKEN" },
+    { "Q_MOC_INCLUDE", "Q_MOC_INCLUDE_TOKEN" },
     { "\n", "NEWLINE" },
     { "\"", "QUOTE" },
     { "\'", "SINGLEQUOTE" },
@@ -300,7 +279,7 @@ struct State
 
 void newState(QList<State> &states, const char *token, const char *lexem, bool pre)
 {
-    const char * ident = 0;
+    const char *ident = nullptr;
     if (is_ident_start(*lexem))
         ident = pre?"PP_CHARACTER" : "CHARACTER";
     else if (*lexem == '#')
@@ -310,7 +289,7 @@ void newState(QList<State> &states, const char *token, const char *lexem, bool p
     while (*lexem) {
         int next = states[state].next[(int)*lexem];
         if (!next) {
-            const char * t = 0;
+            const char *t = nullptr;
             if (ident)
                 t = ident;
             else
@@ -323,7 +302,7 @@ void newState(QList<State> &states, const char *token, const char *lexem, bool p
         state = next;
         ++lexem;
         if (ident && !is_ident_char(*lexem))
-            ident = 0;
+            ident = nullptr;
     }
     states[state].token = token;
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 // NOTE: The format of types has changed. 'FooType' is now
 //   'chrome.management.FooType'.
 // Please run the closure compiler before committing changes.
-// See https://chromium.googlesource.com/chromium/src/+/master/docs/closure_compilation.md
-
-/** @fileoverview Externs generated from namespace: management */
+// See https://chromium.googlesource.com/chromium/src/+/main/docs/closure_compilation.md
 
 /**
- * @const
+ * @fileoverview Externs generated from namespace: management
+ * @externs
  */
+
+/** @const */
 chrome.management = {};
 
 /**
@@ -103,6 +104,15 @@ chrome.management.ExtensionInstallType = {
 chrome.management.ExtensionInfo;
 
 /**
+ * Options for how to handle the extension's uninstallation.
+ * @typedef {{
+ *   showConfirmDialog: (boolean|undefined)
+ * }}
+ * @see https://developer.chrome.com/extensions/management#type-UninstallOptions
+ */
+chrome.management.UninstallOptions;
+
+/**
  * Returns a list of information about installed extensions and apps.
  * @param {function(!Array<!chrome.management.ExtensionInfo>): void=} callback
  * @see https://developer.chrome.com/extensions/management#method-getAll
@@ -160,12 +170,14 @@ chrome.management.getPermissionWarningsByManifest = function(manifestStr, callba
 chrome.management.setEnabled = function(id, enabled, callback) {};
 
 /**
- * Uninstalls a currently installed app or extension.
+ * Uninstalls a currently installed app or extension. Note: This function does
+ * not work in managed environments when the user is not allowed to uninstall
+ * the specified extension/app. If the uninstall fails (e.g. the user cancels
+ * the dialog) the promise will be rejected or the callback will be called with
+ * $(ref:runtime.lastError) set.
  * @param {string} id This should be the id from an item of
  *     $(ref:management.ExtensionInfo).
- * @param {{
- *   showConfirmDialog: (boolean|undefined)
- * }=} options
+ * @param {!chrome.management.UninstallOptions=} options
  * @param {function(): void=} callback
  * @see https://developer.chrome.com/extensions/management#method-uninstall
  */
@@ -173,10 +185,10 @@ chrome.management.uninstall = function(id, options, callback) {};
 
 /**
  * Uninstalls the calling extension. Note: This function can be used without
- * requesting the 'management' permission in the manifest.
- * @param {{
- *   showConfirmDialog: (boolean|undefined)
- * }=} options
+ * requesting the 'management' permission in the manifest. This function does
+ * not work in managed environments when the user is not allowed to uninstall
+ * the specified extension/app.
+ * @param {!chrome.management.UninstallOptions=} options
  * @param {function(): void=} callback
  * @see https://developer.chrome.com/extensions/management#method-uninstallSelf
  */

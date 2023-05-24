@@ -1,11 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/network/public/cpp/content_security_policy/csp_context.h"
-#include "services/network/public/cpp/content_security_policy/content_security_policy.h"
 
-#include "url/origin.h"
+#include "base/containers/contains.h"
+#include "services/network/public/cpp/content_security_policy/content_security_policy.h"
+#include "url/url_util.h"
 
 namespace network {
 
@@ -32,19 +33,24 @@ bool ShouldCheckPolicy(const mojom::ContentSecurityPolicyPtr& policy,
 CSPContext::CSPContext() = default;
 CSPContext::~CSPContext() = default;
 
-bool CSPContext::IsAllowedByCsp(mojom::CSPDirectiveName directive_name,
-                                const GURL& url,
-                                bool has_followed_redirect,
-                                bool is_response_check,
-                                const mojom::SourceLocationPtr& source_location,
-                                CheckCSPDisposition check_csp_disposition,
-                                bool is_form_submission) {
+bool CSPContext::IsAllowedByCsp(
+    const std::vector<mojom::ContentSecurityPolicyPtr>& policies,
+    mojom::CSPDirectiveName directive_name,
+    const GURL& url,
+    const GURL& url_before_redirects,
+    bool has_followed_redirect,
+    bool is_response_check,
+    const mojom::SourceLocationPtr& source_location,
+    CheckCSPDisposition check_csp_disposition,
+    bool is_form_submission,
+    bool is_opaque_fenced_frame) {
   bool allow = true;
-  for (const auto& policy : policies_) {
+  for (const auto& policy : policies) {
     if (ShouldCheckPolicy(policy, check_csp_disposition)) {
       allow &= CheckContentSecurityPolicy(
-          policy, directive_name, url, has_followed_redirect, is_response_check,
-          this, source_location, is_form_submission);
+          policy, directive_name, url, url_before_redirects,
+          has_followed_redirect, is_response_check, this, source_location,
+          is_form_submission, is_opaque_fenced_frame);
     }
   }
 
@@ -53,38 +59,19 @@ bool CSPContext::IsAllowedByCsp(mojom::CSPDirectiveName directive_name,
   return allow;
 }
 
-void CSPContext::SetSelf(const url::Origin& origin) {
-  self_source_.reset();
-
-  // When the origin is unique, no URL should match with 'self'. That's why
-  // |self_source_| stays undefined here.
-  if (origin.opaque())
-    return;
-
-  if (origin.scheme() == url::kFileScheme) {
-    self_source_ = mojom::CSPSource::New(
-        url::kFileScheme, "", url::PORT_UNSPECIFIED, "", false, false);
-    return;
-  }
-
-  self_source_ = mojom::CSPSource::New(
-      origin.scheme(), origin.host(),
-      origin.port() == 0 ? url::PORT_UNSPECIFIED : origin.port(), "", false,
-      false);
-
-  DCHECK_NE("", self_source_->scheme);
-}
-
-void CSPContext::SetSelf(mojom::CSPSourcePtr self_source) {
-  self_source_ = std::move(self_source);
-}
-
 bool CSPContext::SchemeShouldBypassCSP(const base::StringPiece& scheme) {
-  return false;
+  // Blink uses its SchemeRegistry to check if a scheme should be bypassed.
+  // It can't be used on the browser process. It is used for two things:
+  // 1) Bypassing the "chrome-extension" scheme when chrome is built with the
+  //    extensions support.
+  // 2) Bypassing arbitrary scheme for testing purpose only in blink and in V8.
+  // TODO(arthursonzogni): url::GetBypassingCSPScheme() is used instead of the
+  // blink::SchemeRegistry. It contains 1) but not 2).
+  const auto& bypassing_schemes = url::GetCSPBypassingSchemes();
+  return base::Contains(bypassing_schemes, scheme);
 }
 
 void CSPContext::SanitizeDataForUseInCspViolation(
-    bool has_followed_redirect,
     mojom::CSPDirectiveName directive,
     GURL* blocked_url,
     network::mojom::SourceLocation* source_location) const {}

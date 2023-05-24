@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,6 +7,7 @@ import("//build/config/arm.gni")
 import("//build/config/features.gni")
 import("//build/config/jumbo.gni")
 import("//build/config/linux/pkg_config.gni")
+import("//build/config/ozone.gni")
 import("//build/config/ui.gni")
 import("//media/media_options.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
@@ -22,10 +23,19 @@ jumbo_source_set("base") {
   visibility = media_subcomponent_deps
   visibility += [ "//media" ]
 
+  if (!enable_library_cdms) {
+    # cdm_type_conversion is not part of media_subcomponent_deps.
+    visibility += [ "//media/cdm:cdm_type_conversion" ]
+  }
+
   # TODO(dalecurtis): Replace this with empty targets on non-mac so
   # we can just include //media/base/mac in media_subcomponent_deps.
   if (is_apple) {
     visibility += [ "//media/base/mac" ]
+  }
+
+  if (is_win) {
+    visibility += [ "//media/base/win:color_space_util_win" ]
   }
 
   if (is_android) {
@@ -62,12 +72,15 @@ jumbo_source_set("base") {
     "audio_encoder.h",
     "audio_fifo.cc",
     "audio_fifo.h",
+    "audio_glitch_info.cc",
+    "audio_glitch_info.h",
     "audio_hash.cc",
     "audio_hash.h",
     "audio_power_monitor.cc",
     "audio_power_monitor.h",
     "audio_processing.cc",
     "audio_processing.h",
+    "audio_processor_controls.h",
     "audio_pull_fifo.cc",
     "audio_pull_fifo.h",
     "audio_push_fifo.cc",
@@ -89,6 +102,8 @@ jumbo_source_set("base") {
     "bit_reader.h",
     "bit_reader_core.cc",
     "bit_reader_core.h",
+    "bitrate.cc",
+    "bitrate.h",
     "bitstream_buffer.cc",
     "bitstream_buffer.h",
     "buffering_state.cc",
@@ -97,8 +112,10 @@ jumbo_source_set("base") {
     "byte_queue.h",
     "callback_holder.h",
     "callback_registry.h",
+    "callback_timeout_helpers.h",
     "cdm_callback_promise.cc",
     "cdm_callback_promise.h",
+    "cdm_config.cc",
     "cdm_config.h",
     "cdm_context.cc",
     "cdm_context.h",
@@ -124,12 +141,14 @@ jumbo_source_set("base") {
     "container_names.h",
     "content_decryption_module.cc",
     "content_decryption_module.h",
+    "converting_audio_fifo.cc",
+    "converting_audio_fifo.h",
+    "crc_16.h",
+    "cross_origin_data_source.h",
     "data_buffer.cc",
     "data_buffer.h",
     "data_source.cc",
     "data_source.h",
-    "decode_status.cc",
-    "decode_status.h",
     "decoder.cc",
     "decoder.h",
     "decoder_buffer.cc",
@@ -138,6 +157,8 @@ jumbo_source_set("base") {
     "decoder_buffer_queue.h",
     "decoder_factory.cc",
     "decoder_factory.h",
+    "decoder_status.cc",
+    "decoder_status.h",
     "decrypt_config.cc",
     "decrypt_config.h",
     "decryptor.cc",
@@ -150,24 +171,23 @@ jumbo_source_set("base") {
     "djb2.cc",
     "djb2.h",
     "eme_constants.h",
+    "encoder_status.h",
     "encryption_pattern.cc",
     "encryption_pattern.h",
     "encryption_scheme.cc",
     "encryption_scheme.h",
     "fake_audio_worker.cc",
     "fake_audio_worker.h",
-    "fallback_video_decoder.cc",
-    "fallback_video_decoder.h",
     "feedback_signal_accumulator.h",
     "flinging_controller.h",
     "format_utils.cc",
     "format_utils.h",
     "frame_rate_estimator.cc",
     "frame_rate_estimator.h",
+    "key_system_info.cc",
+    "key_system_info.h",
     "key_system_names.cc",
     "key_system_names.h",
-    "key_system_properties.cc",
-    "key_system_properties.h",
     "key_systems.cc",
     "key_systems.h",
     "localized_strings.cc",
@@ -197,6 +217,8 @@ jumbo_source_set("base") {
     "media_observer.h",
     "media_permission.cc",
     "media_permission.h",
+    "media_player_logging_id.cc",
+    "media_player_logging_id.h",
     "media_resource.cc",
     "media_resource.h",
     "media_serializers.h",
@@ -230,6 +252,8 @@ jumbo_source_set("base") {
     "multi_channel_resampler.h",
     "null_video_sink.cc",
     "null_video_sink.h",
+    "offloading_audio_encoder.cc",
+    "offloading_audio_encoder.h",
     "output_device_info.cc",
     "output_device_info.h",
     "overlay_info.cc",
@@ -273,8 +297,6 @@ jumbo_source_set("base") {
     "sinc_resampler.h",
     "status.cc",
     "status.h",
-    "status_codes.cc",
-    "status_codes.h",
     "stream_parser.cc",
     "stream_parser.h",
     "stream_parser_buffer.cc",
@@ -283,6 +305,10 @@ jumbo_source_set("base") {
     "subsample_entry.h",
     "supported_types.cc",
     "supported_types.h",
+    "supported_video_decoder_config.cc",
+    "supported_video_decoder_config.h",
+    "svc_scalability_mode.cc",
+    "svc_scalability_mode.h",
     "text_cue.cc",
     "text_cue.h",
     "text_ranges.cc",
@@ -298,11 +324,11 @@ jumbo_source_set("base") {
     "timestamp_constants.h",
     "tuneable.cc",
     "tuneable.h",
-    "unaligned_shared_memory.cc",
-    "unaligned_shared_memory.h",
     "use_after_free_checker.h",
     "user_input_monitor.cc",
     "user_input_monitor.h",
+    "video_aspect_ratio.cc",
+    "video_aspect_ratio.h",
     "video_bitrate_allocation.cc",
     "video_bitrate_allocation.h",
     "video_codecs.cc",
@@ -317,8 +343,6 @@ jumbo_source_set("base") {
     "video_encoder.h",
     "video_frame.cc",
     "video_frame.h",
-    "video_frame_feedback.cc",
-    "video_frame_feedback.h",
     "video_frame_layout.cc",
     "video_frame_layout.h",
     "video_frame_metadata.cc",
@@ -331,8 +355,6 @@ jumbo_source_set("base") {
     "video_thumbnail_decoder.h",
     "video_transformation.cc",
     "video_transformation.h",
-    "video_types.cc",
-    "video_types.h",
     "video_util.cc",
     "video_util.h",
     "wait_and_replace_sync_token_client.cc",
@@ -350,29 +372,34 @@ jumbo_source_set("base") {
     ":video_facing",
     "//media:media_buildflags",
     "//media:shared_memory_support",
+    "//media/gpu:buildflags",
     "//ui/gfx:color_space",
     "//ui/gl",
   ]
   deps = [
+    "//base",
     "//base/allocator:buildflags",
-    "//base/util/values:values_util",
+    "//build:chromeos_buildflags",
     "//components/system_media_controls/linux/buildflags",
     "//gpu/command_buffer/client:interface_base",
+    "//gpu/command_buffer/client:raster_interface",
     "//gpu/command_buffer/common",
     "//gpu/ipc/common:common",
+    "//media/cdm:clear_key_cdm_common",
+    "//net",
+    "//skia",
     "//third_party/libyuv",
     "//third_party/widevine/cdm:headers",
     "//ui/display:display",
+    "//ui/events:events",
     "//ui/events:events_base",
+    "//ui/events:keyboard_hook",
     "//url:url",
   ]
 
   libs = []
   configs += [
     "//build/config:precompiled_headers",
-
-    # TODO(crbug.com/167187): Fix size_t to int truncations.
-    "//build/config/compiler:no_size_t_to_int_warning",
 
     "//media:subcomponent_config",
   ]
@@ -384,18 +411,16 @@ jumbo_source_set("base") {
     ]
   }
 
+  if (is_chromeos_ash) {
+    deps += [ "//ash/constants" ]
+  }
+
   if (media_use_libvpx) {
     deps += [ "//third_party/libvpx" ]
   }
 
-  if (use_x11) {
+  if (is_linux && !is_castos) {
     sources += [ "user_input_monitor_linux.cc" ]
-    deps += [
-      "//ui/base:features",
-      "//ui/events:events_base",
-      "//ui/events/devices/x11",
-      "//ui/gfx/x",
-    ]
   } else if (is_mac) {
     sources += [ "user_input_monitor_mac.cc" ]
     frameworks = [
@@ -409,12 +434,8 @@ jumbo_source_set("base") {
   } else {
     defines += [ "DISABLE_USER_INPUT_MONITOR" ]
   }
-
-  if (is_linux || is_chromeos || is_win) {
-    sources += [
-      "keyboard_event_counter.cc",
-      "keyboard_event_counter.h",
-    ]
+  if (use_ozone) {
+    deps += [ "//ui/ozone" ]
   }
 
   # Note: should also work on is_posix || is_fuchsia
@@ -426,13 +447,21 @@ jumbo_source_set("base") {
   }
 
   if (is_win) {
-    public_deps += [ "//media/base/win:mf_cdm_proxy" ]
+    public_deps += [
+      "//media/base/win:dcomp_texture_wrapper",
+      "//media/base/win:mf_cdm_proxy",
+      "//media/base/win:overlay_state_observer_subscription",
+    ]
+    sources += [
+      "win/mf_feature_checks.cc",
+      "win/mf_feature_checks.h",
+    ]
   }
 
-  if (is_chromecast || is_fuchsia) {
-    sources += [ "demuxer_memory_limit_low.cc" ]
-  } else if (is_android) {
+  if (is_android) {
     sources += [ "demuxer_memory_limit_android.cc" ]
+  } else if (is_castos) {
+    sources += [ "demuxer_memory_limit_cast.cc" ]
   } else {
     sources += [ "demuxer_memory_limit_default.cc" ]
   }
@@ -457,6 +486,7 @@ source_set("video_facing") {
 if (is_android) {
   java_cpp_enum("java_enums") {
     sources = [
+      "audio_parameters.h",
       "container_names.h",
       "encryption_scheme.h",
       "video_codecs.h",
@@ -473,6 +503,7 @@ static_library("test_support") {
     "//media/base/android:test_support",
     "//media/filters:test_support",
     "//media/formats:test_support",
+    "//media/renderers:test_support",
     "//media/video:test_support",
   ]
   testonly = true
@@ -497,6 +528,8 @@ static_library("test_support") {
     "mock_filters.h",
     "mock_media_log.cc",
     "mock_media_log.h",
+    "mock_video_renderer_sink.cc",
+    "mock_video_renderer_sink.h",
     "test_data_util.cc",
     "test_data_util.h",
     "test_helpers.cc",
@@ -513,6 +546,7 @@ static_library("test_support") {
   deps = [
     "//base",
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//testing/gmock",
     "//ui/gfx:test_support",
     "//url",
@@ -534,6 +568,7 @@ source_set("unit_tests") {
     "audio_converter_unittest.cc",
     "audio_discard_helper_unittest.cc",
     "audio_fifo_unittest.cc",
+    "audio_glitch_info_unittest.cc",
     "audio_hash_unittest.cc",
     "audio_latency_unittest.cc",
     "audio_parameters_unittest.cc",
@@ -546,13 +581,16 @@ source_set("unit_tests") {
     "audio_sample_types_unittest.cc",
     "audio_shifter_unittest.cc",
     "audio_timestamp_helper_unittest.cc",
-    "bind_to_current_loop_unittest.cc",
     "bit_reader_unittest.cc",
+    "bitrate_unittest.cc",
     "callback_holder_unittest.cc",
     "callback_registry_unittest.cc",
+    "callback_timeout_helpers_unittest.cc",
     "channel_mixer_unittest.cc",
     "channel_mixing_matrix_unittest.cc",
     "container_names_unittest.cc",
+    "converting_audio_fifo_unittest.cc",
+    "crc_16_unittest.cc",
     "data_buffer_unittest.cc",
     "decoder_buffer_queue_unittest.cc",
     "decoder_buffer_unittest.cc",
@@ -560,7 +598,6 @@ source_set("unit_tests") {
     "djb2_unittest.cc",
     "fake_audio_worker_unittest.cc",
     "fake_demuxer_stream_unittest.cc",
-    "fallback_video_decoder_unittest.cc",
     "feedback_signal_accumulator_unittest.cc",
     "frame_rate_estimator_unittest.cc",
     "key_systems_unittest.cc",
@@ -571,6 +608,7 @@ source_set("unit_tests") {
     "moving_average_unittest.cc",
     "multi_channel_resampler_unittest.cc",
     "null_video_sink_unittest.cc",
+    "offloading_audio_encoder_unittest.cc",
     "pipeline_impl_unittest.cc",
     "ranges_unittest.cc",
     "reentrancy_checker_unittest.cc",
@@ -583,13 +621,14 @@ source_set("unit_tests") {
     "stream_parser_unittest.cc",
     "subsample_entry_unittest.cc",
     "supported_types_unittest.cc",
+    "supported_video_decoder_config_unittest.cc",
     "text_ranges_unittest.cc",
     "text_renderer_unittest.cc",
     "time_delta_interpolator_unittest.cc",
     "tuneable_unittest.cc",
-    "unaligned_shared_memory_unittest.cc",
     "user_input_monitor_unittest.cc",
     "vector_math_unittest.cc",
+    "video_aspect_ratio_unittest.cc",
     "video_bitrate_allocation_unittest.cc",
     "video_codecs_unittest.cc",
     "video_color_space_unittest.cc",
@@ -598,20 +637,19 @@ source_set("unit_tests") {
     "video_frame_pool_unittest.cc",
     "video_frame_unittest.cc",
     "video_thumbnail_decoder_unittest.cc",
+    "video_transformation_unittest.cc",
     "video_types_unittest.cc",
     "video_util_unittest.cc",
     "wall_clock_time_source_unittest.cc",
   ]
-  configs += [
-    # TODO(crbug.com/167187): Fix size_t to int truncations.
-    "//build/config/compiler:no_size_t_to_int_warning",
-    "//media:media_config",
-  ]
+  configs += [ "//media:media_config" ]
   deps = [
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//components/viz/common",
     "//gpu/command_buffer/common",
     "//media:test_support",
+    "//net",
     "//testing/gmock",
     "//testing/gtest",
     "//third_party/libyuv",
@@ -619,20 +657,24 @@ source_set("unit_tests") {
     "//ui/gfx",
   ]
 
-  if (is_apple) {
+  if (is_mac) {
     deps += [ "//media/base/mac:unit_tests" ]
   }
 
-  if (is_linux || is_chromeos || is_win) {
-    sources += [ "keyboard_event_counter_unittest.cc" ]
-  }
   if (is_win) {
     sources += [ "win/dxgi_device_scope_handle_unittest.cc" ]
-    deps += [ "//media/base/win:media_foundation_util" ]
+    deps += [
+      "//media/base/win:media_foundation_util",
+      "//ui/events:test_support",
+    ]
     libs = [
       "d3d11.lib",
       "mfplat.lib",
     ]
+  }
+
+  if (is_castos) {
+    sources += [ "demuxer_memory_limit_cast_unittest.cc" ]
   }
 }
 
@@ -645,11 +687,7 @@ source_set("perftests") {
     "sinc_resampler_perftest.cc",
     "vector_math_perftest.cc",
   ]
-  configs += [
-    # TODO(crbug.com/167187): Fix size_t to int truncations.
-    "//build/config/compiler:no_size_t_to_int_warning",
-    "//media:media_config",
-  ]
+  configs += [ "//media:media_config" ]
   deps = [
     "//base",
     "//base/test:test_support",

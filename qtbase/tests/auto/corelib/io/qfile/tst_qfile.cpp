@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2021 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#define _CRT_SECURE_NO_WARNINGS 1
+
+#include <QTest>
+#include <QScopedValueRollback>
 #include <qplatformdefs.h>
 
 #include <QCoreApplication>
@@ -35,13 +13,23 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QOperatingSystemVersion>
+#include <QRandomGenerator>
+#include <QStorageInfo>
+#include <QScopeGuard>
+#include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 
 #include <private/qabstractfileengine_p.h>
 #include <private/qfsfileengine_p.h>
 #include <private/qfilesystemengine_p.h>
 
-#include "emulationdetector.h"
+#ifdef Q_OS_WIN
+#include <QtCore/private/qfunctions_win_p.h>
+#endif
+
+#include <QtTest/private/qemulationdetector_p.h>
 
 #ifdef Q_OS_WIN
 QT_BEGIN_NAMESPACE
@@ -60,8 +48,9 @@ QT_END_NAMESPACE
 #else
 # include <sys/types.h>
 # include <unistd.h>
+# include <private/qcore_unix_p.h>
 #endif
-#ifdef Q_OS_MAC
+#ifdef Q_OS_DARWIN
 # include <sys/mount.h>
 #elif defined(Q_OS_LINUX)
 # include <sys/vfs.h>
@@ -91,9 +80,7 @@ QT_END_NAMESPACE
 #  undef fileno
 #endif
 
-#if defined(Q_OS_WIN)
-#include "../../../network-settings.h"
-#endif
+#include "../../../../shared/filesystem.h"
 
 #ifndef STDIN_FILENO
 #define STDIN_FILENO 0
@@ -110,6 +97,8 @@ QT_END_NAMESPACE
 #ifndef QT_OPEN_BINARY
 #define QT_OPEN_BINARY 0
 #endif
+
+using namespace Qt::StringLiterals;
 
 Q_DECLARE_METATYPE(QFile::FileError)
 
@@ -175,6 +164,8 @@ private slots:
     void ungetChar();
     void createFile();
     void createFileNewOnly();
+    void createFilePermissions_data();
+    void createFilePermissions();
     void openFileExistingOnly();
     void append();
     void permissions_data();
@@ -182,26 +173,28 @@ private slots:
 #ifdef Q_OS_WIN
     void permissionsNtfs_data();
     void permissionsNtfs();
+#if QT_DEPRECATED_SINCE(6,6)
+    void deprecatedNtfsPermissionCheck();
 #endif
+#endif
+    void setPermissions_data();
     void setPermissions();
     void copy();
     void copyAfterFail();
     void copyRemovesTemporaryFile() const;
     void copyShouldntOverwrite();
     void copyFallback();
-#ifndef Q_OS_WINRT
     void link();
     void linkToDir();
     void absolutePathLinkToRelativePath();
     void readBrokenLink();
-#endif
     void readTextFile_data();
     void readTextFile();
     void readTextFile2();
     void writeTextFile_data();
     void writeTextFile();
     /* void largeFileSupport(); */
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     void largeUncFileSupport();
 #endif
     void flush();
@@ -232,6 +225,14 @@ private slots:
     void writeToReadOnlyFile();
 #if defined(Q_OS_LINUX) || defined(Q_OS_AIX) || defined(Q_OS_FREEBSD) || defined(Q_OS_NETBSD)
     void virtualFile();
+#endif
+#ifdef Q_OS_UNIX
+    void unixPipe_data();
+    void unixPipe();
+    void unixFifo_data() { unixPipe_data(); }
+    void unixFifo();
+    void socketPair_data() { unixPipe_data(); }
+    void socketPair();
 #endif
     void textFile();
     void rename_data();
@@ -281,6 +282,12 @@ private slots:
 
     void moveToTrash_data();
     void moveToTrash();
+    void moveToTrashDuplicateName();
+    void moveToTrashOpenFile_data();
+    void moveToTrashOpenFile();
+    void moveToTrashXdgSafety();
+
+    void stdfilesystem();
 
 private:
 #ifdef BUILTIN_TESTDATA
@@ -424,6 +431,8 @@ void tst_QFile::cleanup()
 
 tst_QFile::tst_QFile() : m_oldDir(QDir::currentPath())
 {
+    QStandardPaths::setTestModeEnabled(true);
+    QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation));
 }
 
 static QByteArray msgOpenFailed(QIODevice::OpenMode om, const QFile &file)
@@ -548,8 +557,8 @@ void tst_QFile::exists()
     file.remove();
     QVERIFY(!file.exists());
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-    const QString uncPath = "//" + QtNetworkSettings::winServerName() + "/testshare/readme.txt";
+#if defined(Q_OS_WIN)
+    const QString uncPath = "//" + QTest::uncServerName() + "/testshare/readme.txt";
     QFile unc(uncPath);
     QVERIFY2(unc.exists(), msgFileDoesNotExist(uncPath).constData());
 #endif
@@ -604,7 +613,7 @@ void tst_QFile::open_data()
                                    << int(QIODevice::ReadOnly)
                                    << false
                                    << QFile::OpenError;
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     //opening devices requires administrative privileges (and elevation).
     HANDLE hTest = CreateFile(_T("\\\\.\\PhysicalDrive0"), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
     if (hTest != INVALID_HANDLE_VALUE) {
@@ -615,7 +624,7 @@ void tst_QFile::open_data()
         QTest::newRow("//./PhysicalDrive0") << QString("//./PhysicalDrive0") << int(QIODevice::ReadOnly)
                                             << false << QFile::OpenError;
     }
-    QTest::newRow("uncFile") << "//" + QtNetworkSettings::winServerName() + "/testshare/test.pri" << int(QIODevice::ReadOnly)
+    QTest::newRow("uncFile") << "//" + QTest::uncServerName() + "/testshare/test.pri" << int(QIODevice::ReadOnly)
                              << true << QFile::NoError;
 #endif
 }
@@ -635,7 +644,7 @@ void tst_QFile::open()
         QSKIP("Running this test as root doesn't make sense");
 #endif
 
-#if defined(Q_OS_WIN32) || defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN32)
     QEXPECT_FAIL("noreadfile", "Windows does not currently support non-readable files.", Abort);
 #endif
     if (filename.isEmpty())
@@ -687,9 +696,9 @@ void tst_QFile::size_data()
     QTest::addColumn<qint64>("size");
 
     QTest::newRow( "exist01" ) << m_testFile << (qint64)245;
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     // Only test UNC on Windows./
-    QTest::newRow("unc") << "//" + QString(QtNetworkSettings::winServerName() + "/testshare/test.pri") << (qint64)34;
+    QTest::newRow("unc") << "//" + QString(QTest::uncServerName() + "/testshare/test.pri") << (qint64)34;
 #endif
 }
 
@@ -987,7 +996,6 @@ void tst_QFile::readAllStdin()
     process.start(m_stdinProcess, QStringList(QStringLiteral("all")));
     QVERIFY2(process.waitForStarted(), qPrintable(process.errorString()));
     for (int i = 0; i < 5; ++i) {
-        QTest::qWait(1000);
         process.write(lotsOfData);
         while (process.bytesToWrite() > 0)
             QVERIFY(process.waitForBytesWritten());
@@ -1022,7 +1030,6 @@ void tst_QFile::readLineStdin()
                       QIODevice::Text | QIODevice::ReadWrite);
         QVERIFY2(process.waitForStarted(), qPrintable(process.errorString()));
         for (int i = 0; i < 5; ++i) {
-            QTest::qWait(1000);
             process.write(lotsOfData);
             while (process.bytesToWrite() > 0)
                 QVERIFY(process.waitForBytesWritten());
@@ -1171,7 +1178,7 @@ void tst_QFile::ungetChar()
     QCOMPARE(buf[2], '4');
 }
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
 QString driveLetters()
 {
     wchar_t volumeName[MAX_PATH];
@@ -1208,9 +1215,7 @@ void tst_QFile::invalidFile_data()
 #if !defined(Q_OS_WIN)
     QTest::newRow( "x11" ) << QString( "qwe//" );
 #else
-#if !defined(Q_OS_WINRT)
     QTest::newRow( "colon2" ) << invalidDriveLetter() + QString::fromLatin1(":ail:invalid");
-#endif
     QTest::newRow( "colon3" ) << QString( ":failinvalid" );
     QTest::newRow( "forwardslash" ) << QString( "fail/invalid" );
     QTest::newRow( "asterisk" ) << QString( "fail*invalid" );
@@ -1254,6 +1259,55 @@ void tst_QFile::createFileNewOnly()
     QVERIFY(!f.open(QIODevice::NewOnly));
     QVERIFY(QFile::exists("createme.txt"));
     QFile::remove("createme.txt");
+}
+
+void tst_QFile::createFilePermissions_data()
+{
+    QTest::addColumn<QFile::Permissions>("permissions");
+
+    for (int u = 0; u < 8; ++u) {
+        for (int g = 0; g < 8; ++g) {
+            for (int o = 0; o < 8; ++o) {
+                auto permissions = QFileDevice::Permissions::fromInt((u << 12) | (g << 4) | o);
+                QTest::addRow("%04x", permissions.toInt()) << permissions;
+            }
+        }
+    }
+}
+
+void tst_QFile::createFilePermissions()
+{
+    QFETCH(QFile::Permissions, permissions);
+
+#ifdef Q_OS_WIN
+    QNtfsPermissionCheckGuard permissionGuard;
+#endif
+#ifdef Q_OS_UNIX
+    auto restoreMask = qScopeGuard([oldMask = umask(0)] { umask(oldMask); });
+#endif
+
+    const QFile::Permissions setPermissions = {
+        QFile::ReadOther, QFile::WriteOther, QFile::ExeOther,
+        QFile::ReadGroup, QFile::WriteGroup, QFile::ExeGroup,
+        QFile::ReadOwner, QFile::WriteOwner, QFile::ExeOwner
+    };
+
+    const QString fileName = u"createme.txt"_s;
+
+    QFile::remove(fileName);
+    QVERIFY(!QFile::exists(fileName));
+
+    QFile f(fileName);
+    auto removeFile = qScopeGuard([&f] {
+        f.close();
+        f.remove();
+    });
+    QVERIFY2(f.open(QIODevice::WriteOnly, permissions), msgOpenFailed(f).constData());
+
+    QVERIFY(QFile::exists(fileName));
+
+    auto actualPermissions = QFileInfo(fileName).permissions();
+    QCOMPARE(actualPermissions & setPermissions, permissions);
 }
 
 void tst_QFile::openFileExistingOnly()
@@ -1349,8 +1403,8 @@ void tst_QFile::permissions()
         QFile::remove(file);
     }
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
-    if (qt_ntfs_permission_lookup)
+#if defined(Q_OS_WIN)
+    if (qAreNtfsPermissionChecksEnabled())
         QEXPECT_FAIL("readonly", "QTBUG-25630", Abort);
 #endif
 #ifdef Q_OS_UNIX
@@ -1372,27 +1426,61 @@ void tst_QFile::permissionsNtfs_data()
 
 void tst_QFile::permissionsNtfs()
 {
-    QScopedValueRollback<int> ntfsMode(qt_ntfs_permission_lookup);
-    qt_ntfs_permission_lookup++;
+    QNtfsPermissionCheckGuard permissionGuard;
     permissions();
 }
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+#if QT_DEPRECATED_SINCE(6,6)
+void tst_QFile::deprecatedNtfsPermissionCheck()
+{
+    QScopedValueRollback<int> guard(qt_ntfs_permission_lookup);
+
+    QCOMPARE(qAreNtfsPermissionChecksEnabled(), false);
+    qt_ntfs_permission_lookup++;
+    QCOMPARE(qAreNtfsPermissionChecksEnabled(), true);
+    qt_ntfs_permission_lookup--;
+    QCOMPARE(qAreNtfsPermissionChecksEnabled(), false);
+}
 #endif
+QT_WARNING_POP
+
+#endif
+
+void tst_QFile::setPermissions_data()
+{
+    QTest::addColumn<bool>("opened");
+    QTest::newRow("closed") << false;       // chmod()
+    QTest::newRow("opened") << true;        // fchmod()
+}
 
 void tst_QFile::setPermissions()
 {
-    if ( QFile::exists( "createme.txt" ) )
-        QFile::remove( "createme.txt" );
+#ifdef Q_OS_UNIX
+    if (::getuid() == 0)
+        QSKIP("Running this test as root doesn't make sense");
+#endif
+    QFETCH(bool, opened);
+
+    auto remove = []() { QFile::remove("createme.txt"); };
+    auto guard = qScopeGuard(remove);
+    remove();
     QVERIFY( !QFile::exists( "createme.txt" ) );
 
     QFile f("createme.txt");
     QVERIFY2(f.open(QIODevice::WriteOnly | QIODevice::Truncate), msgOpenFailed(f).constData());
     f.putChar('a');
-    f.close();
+    if (!opened)
+        f.close();
 
     QFile::Permissions perms(QFile::WriteUser | QFile::ReadUser);
+    QVERIFY(f.setPermissions(QFile::ReadUser));
+    QVERIFY((f.permissions() & perms) == QFile::ReadUser);
     QVERIFY(f.setPermissions(perms));
     QVERIFY((f.permissions() & perms) == perms);
 
+    // we should end the test with the file in writeable state
 }
 
 void tst_QFile::copy()
@@ -1495,19 +1583,14 @@ void tst_QFile::copyFallback()
 #include <shlobj.h>
 #endif
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
 static QString getWorkingDirectoryForLink(const QString &linkFileName)
 {
-    bool neededCoInit = false;
     QString ret;
 
+    QComHelper comHelper;
     IShellLink *psl;
     HRESULT hres = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLink, (void **)&psl);
-    if (hres == CO_E_NOTINITIALIZED) { // COM was not initialized
-        neededCoInit = true;
-        CoInitialize(NULL);
-        hres = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLink, (void **)&psl);
-    }
 
     if (SUCCEEDED(hres)) {    // Get pointer to the IPersistFile interface.
         IPersistFile *ppf;
@@ -1526,15 +1609,10 @@ static QString getWorkingDirectoryForLink(const QString &linkFileName)
         psl->Release();
     }
 
-    if (neededCoInit) {
-        CoUninitialize();
-    }
-
     return ret;
 }
 #endif
 
-#ifndef Q_OS_WINRT
 void tst_QFile::link()
 {
     QFile::remove("myLink.lnk");
@@ -1609,7 +1687,6 @@ void tst_QFile::readBrokenLink()
     QVERIFY(QFile::link("ole/..", "myLink2.lnk"));
     QCOMPARE(QFileInfo("myLink2.lnk").symLinkTarget(), QDir::currentPath());
 }
-#endif // Q_OS_WINRT
 
 void tst_QFile::readTextFile_data()
 {
@@ -1694,7 +1771,7 @@ void tst_QFile::writeTextFile()
     QCOMPARE(file.readAll(), out);
 }
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
 // Helper for executing QFile::open() with warning in QTRY_VERIFY(), which evaluates the condition
 // multiple times
 static bool qFileOpen(QFile &file, QIODevice::OpenMode ioFlags)
@@ -1730,7 +1807,7 @@ void tst_QFile::largeUncFileSupport()
     qint64 size = Q_INT64_C(8589934592);
     qint64 dataOffset = Q_INT64_C(8589914592);
     QByteArray knownData("LargeFile content at offset 8589914592");
-    QString largeFile("//" + QtNetworkSettings::winServerName() + "/testsharelargefile/file.bin");
+    QString largeFile("//" + QTest::uncServerName() + "/testsharelargefile/file.bin");
     const QByteArray largeFileEncoded = QFile::encodeName(largeFile);
 
     {
@@ -1763,7 +1840,7 @@ void tst_QFile::largeUncFileSupport()
         // Retry in case of sharing violation
         QTRY_VERIFY(fOpen(largeFileEncoded, "rb", &fhF));
         StdioFileGuard fh(fhF);
-        int fd = int(_fileno(fh));
+        int fd = int(QT_FILENO(fh));
         QFile file;
         QVERIFY(file.open(fd, QIODevice::ReadOnly));
         QCOMPARE(file.size(), size);
@@ -1829,9 +1906,18 @@ void tst_QFile::bufferedRead()
 #ifdef Q_OS_UNIX
 void tst_QFile::isSequential()
 {
-    QFile zero("/dev/null");
+    QFile zero("/dev/zero");
     QVERIFY2(zero.open(QFile::ReadOnly), msgOpenFailed(zero).constData());
     QVERIFY(zero.isSequential());
+
+    QFile null("/dev/null");
+    QVERIFY(null.open(QFile::ReadOnly));
+    QVERIFY(null.isSequential());
+
+    // /dev/tty will fail to open if we don't have a controlling TTY
+    QFile tty("/dev/tty");
+    if (tty.open(QFile::ReadOnly))
+        QVERIFY(tty.isSequential());
 }
 #endif
 
@@ -2104,16 +2190,12 @@ void tst_QFile::i18nFileName()
      {
         QFile file(fileName);
         QVERIFY2(file.open(QFile::WriteOnly | QFile::Text), msgOpenFailed(file).constData());
-        QTextStream ts(&file);
-        ts.setCodec("UTF-8");
-        ts << fileName << Qt::endl;
+        file.write(fileName.toUtf8());
      }
      {
         QFile file(fileName);
         QVERIFY2(file.open(QFile::ReadOnly | QFile::Text), msgOpenFailed(file).constData());
-        QTextStream ts(&file);
-        ts.setCodec("UTF-8");
-        QString line = ts.readLine();
+        QString line = QString::fromUtf8(file.readAll());
         QCOMPARE(line, fileName);
      }
 }
@@ -2155,23 +2237,19 @@ void tst_QFile::longFileName()
     {
         QFile file(fileName);
         QVERIFY2(file.open(QFile::WriteOnly | QFile::Text), msgOpenFailed(file).constData());
-        QTextStream ts(&file);
-        ts << fileName << Qt::endl;
+        file.write(fileName.toUtf8());
     }
     {
         QFile file(fileName);
         QVERIFY2(file.open(QFile::ReadOnly | QFile::Text), msgOpenFailed(file).constData());
-        QTextStream ts(&file);
-        QString line = ts.readLine();
-        QCOMPARE(line, fileName);
+        QString line = QString::fromUtf8(file.readAll());
     }
     QString newName = fileName + QLatin1Char('1');
     {
         QVERIFY(QFile::copy(fileName, newName));
         QFile file(newName);
         QVERIFY2(file.open(QFile::ReadOnly | QFile::Text), msgOpenFailed(file).constData());
-        QTextStream ts(&file);
-        QString line = ts.readLine();
+        QString line = QString::fromUtf8(file.readAll());
         QCOMPARE(line, fileName);
 
     }
@@ -2180,8 +2258,7 @@ void tst_QFile::longFileName()
         QVERIFY(QFile::rename(fileName, newName));
         QFile file(newName);
         QVERIFY2(file.open(QFile::ReadOnly | QFile::Text), msgOpenFailed(file).constData());
-        QTextStream ts(&file);
-        QString line = ts.readLine();
+        QString line = QString::fromUtf8(file.readAll());
         QCOMPARE(line, fileName);
     }
     QVERIFY2(QFile::exists(newName), msgFileDoesNotExist(newName).constData());
@@ -2192,36 +2269,10 @@ class MyEngine : public QAbstractFileEngine
 {
 public:
     MyEngine(int n) { number = n; }
-    virtual ~MyEngine() {}
 
-    void setFileName(const QString &) {}
-    bool open(QIODevice::OpenMode) { return false; }
-    bool close() { return false; }
-    bool flush() { return false; }
-    qint64 size() const { return 123 + number; }
-    qint64 at() const { return -1; }
-    bool seek(qint64) { return false; }
-    bool isSequential() const { return false; }
-    qint64 read(char *, qint64) { return -1; }
-    qint64 write(const char *, qint64) { return -1; }
-    bool remove() { return false; }
-    bool copy(const QString &) { return false; }
-    bool rename(const QString &) { return false; }
-    bool link(const QString &) { return false; }
-    bool mkdir(const QString &, bool) const { return false; }
-    bool rmdir(const QString &, bool) const { return false; }
-    bool setSize(qint64) { return false; }
-    QStringList entryList(QDir::Filters, const QStringList &) const { return QStringList(); }
-    bool caseSensitive() const { return false; }
-    bool isRelativePath() const { return false; }
-    FileFlags fileFlags(FileFlags) const { return { }; }
-    bool chmod(uint) { return false; }
-    QString fileName(FileName) const { return name; }
-    uint ownerId(FileOwner) const { return 0; }
-    QString owner(FileOwner) const { return QString(); }
-    QDateTime fileTime(FileTime) const { return QDateTime(); }
-    bool setFileTime(const QDateTime &newDate, FileTime time)
-    { Q_UNUSED(newDate) Q_UNUSED(time) return false; }
+    qint64 size() const override { return 123 + number; }
+    QStringList entryList(QDir::Filters, const QStringList &) const override { return QStringList(); }
+    QString fileName(FileName) const override { return name; }
 
 private:
     int number;
@@ -2231,7 +2282,7 @@ private:
 class MyHandler : public QAbstractFileEngineHandler
 {
 public:
-    inline QAbstractFileEngine *create(const QString &) const
+    inline QAbstractFileEngine *create(const QString &) const override
     {
         return new MyEngine(1);
     }
@@ -2240,7 +2291,7 @@ public:
 class MyHandler2 : public QAbstractFileEngineHandler
 {
 public:
-    inline QAbstractFileEngine *create(const QString &) const
+    inline QAbstractFileEngine *create(const QString &) const override
     {
         return new MyEngine(2);
     }
@@ -2271,7 +2322,7 @@ void tst_QFile::fileEngineHandler()
 class MyRecursiveHandler : public QAbstractFileEngineHandler
 {
 public:
-    inline QAbstractFileEngine *create(const QString &fileName) const
+    inline QAbstractFileEngine *create(const QString &fileName) const override
     {
         if (fileName.startsWith(":!")) {
             QDir dir;
@@ -2434,10 +2485,10 @@ void tst_QFile::writeLargeDataBlock_data()
     QTest::newRow("localfile-Fd")     << "./largeblockfile.txt" << (int)OpenFd;
     QTest::newRow("localfile-Stream") << "./largeblockfile.txt" << (int)OpenStream;
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT) && !defined(QT_NO_NETWORK)
+#if defined(Q_OS_WIN) && !defined(QT_NO_NETWORK)
     // Some semi-randomness to avoid collisions.
     QTest::newRow("unc file")
-        << QString("//" + QtNetworkSettings::winServerName() + "/TESTSHAREWRITABLE/largefile-%1-%2.txt")
+        << QString("//" + QTest::uncServerName() + "/TESTSHAREWRITABLE/largefile-%1-%2.txt")
         .arg(QHostInfo::localHostName())
         .arg(QTime::currentTime().msec()) << (int)OpenQFile;
 #endif
@@ -2553,10 +2604,10 @@ void tst_QFile::virtualFile()
     // open the file
     QFile f(fname);
     QVERIFY2(f.open(QIODevice::ReadOnly), msgOpenFailed(f).constData());
-    if (EmulationDetector::isRunningArmOnX86())
+    if (QTestPrivate::isRunningArmOnX86())
         QEXPECT_FAIL("","QEMU does not read /proc/self/maps size correctly", Continue);
     QCOMPARE(f.size(), Q_INT64_C(0));
-    if (EmulationDetector::isRunningArmOnX86())
+    if (QTestPrivate::isRunningArmOnX86())
         QEXPECT_FAIL("","QEMU does not read /proc/self/maps size correctly", Continue);
     QVERIFY(f.atEnd());
 
@@ -2577,6 +2628,123 @@ void tst_QFile::virtualFile()
     // seeking
     QVERIFY(f.seek(1));
     QCOMPARE(f.pos(), Q_INT64_C(1));
+}
+#endif // defined(Q_OS_LINUX) || defined(Q_OS_AIX) || defined(Q_OS_FREEBSD) || defined(Q_OS_NETBSD)
+
+#ifdef Q_OS_UNIX
+static void unixPipe_helper(int pipes[2])
+{
+    // start a thread and wait for it to write a first byte
+    static constexpr int Timeout = 1000;
+    QScopedPointer<QThread> thr(QThread::create([fd = pipes[1]]() {
+        char c = 1;
+        qt_safe_write(fd, &c, 1);
+        QTest::qSleep(Timeout);
+        c = 2;
+        qt_safe_write(fd, &c, 1);
+    }));
+
+    thr->start();
+
+    // synchronize with the thread having started
+    char c = 0;
+    QVERIFY2(qt_safe_read(pipes[0], &c, 1) == 1, qPrintable(qt_error_string()));
+    QCOMPARE(c, '\1');
+
+    QFETCH(bool, useStdio);
+    QFile f;
+    if (useStdio) {
+        FILE *fh = fdopen(pipes[0], "rb");
+        QVERIFY(f.open(fh, QIODevice::ReadOnly | QIODevice::Unbuffered, QFileDevice::AutoCloseHandle));
+        pipes[0] = -1;      // QFile fclose()s the FILE* and that close()s the fd
+    } else {
+        QVERIFY(f.open(pipes[0], QIODevice::ReadOnly | QIODevice::Unbuffered));
+    }
+
+    // this ought to block
+    c = 0;
+    QCOMPARE(f.read(&c, 1), 1);
+    QCOMPARE(c, '\2');
+
+    thr->wait();
+}
+
+void tst_QFile::unixPipe_data()
+{
+    QTest::addColumn<bool>("useStdio");
+    QTest::newRow("no-stdio") << false;
+    QTest::newRow("with-stdio") << true;
+}
+
+void tst_QFile::unixPipe()
+{
+    int pipes[2] = { -1, -1 };
+    QVERIFY2(pipe(pipes) == 0, qPrintable(qt_error_string()));
+    unixPipe_helper(pipes);
+    if (pipes[0] != -1)
+        qt_safe_close(pipes[0]);
+    qt_safe_close(pipes[1]);
+}
+
+void tst_QFile::unixFifo()
+{
+    QByteArray fifopath = []() -> QByteArray {
+        QByteArray dir = qgetenv("XDG_RUNTIME_DIR");
+        if (dir.isEmpty())
+            dir = QFile::encodeName(QDir::tempPath());
+
+        // try to create a FIFO
+        for (int attempts = 10; attempts; --attempts) {
+            QByteArray fifopath = dir + "/tst_qfile_fifo." +
+                    QByteArray::number(QRandomGenerator::global()->generate());
+            int ret = mkfifo(fifopath, 0600);
+            if (ret == 0)
+                return fifopath;
+        }
+
+        qWarning("Failed to create a FIFO at %s; last error was %s",
+                 dir.constData(), strerror(errno));
+        return {};
+    }();
+    if (fifopath.isEmpty())
+        return;
+
+    auto removeFifo = qScopeGuard([&fifopath] { unlink(fifopath); });
+
+    // with a FIFO, the two open() system calls synchronize
+    QScopedPointer<QThread> thr(QThread::create([&fifopath]() {
+        int fd = qt_safe_open(fifopath, O_WRONLY);
+        QTest::qSleep(500);
+        char c = 2;
+        qt_safe_write(fd, &c, 1);
+        qt_safe_close(fd);
+    }));
+    thr->start();
+
+    QFETCH(bool, useStdio);
+    QFile f;
+    if (useStdio) {
+        FILE *fh = fopen(fifopath, "rb");
+        QVERIFY(f.open(fh, QIODevice::ReadOnly | QIODevice::Unbuffered, QFileDevice::AutoCloseHandle));
+    } else {
+        f.setFileName(QFile::decodeName(fifopath));
+        QVERIFY(f.open(QIODevice::ReadOnly | QIODevice::Unbuffered));
+    }
+
+    char c = 0;
+    QCOMPARE(f.read(&c, 1), 1);         // this ought to block
+    QCOMPARE(c, '\2');
+    thr->wait();
+}
+
+void tst_QFile::socketPair()
+{
+    int pipes[2] = { -1, -1 };
+    QVERIFY2(socketpair(AF_UNIX, SOCK_STREAM, 0, pipes) == 0, qPrintable(qt_error_string()));
+    unixPipe_helper(pipes);
+    if (pipes[0] != -1)
+        qt_safe_close(pipes[0]);
+    qt_safe_close(pipes[1]);
 }
 #endif
 
@@ -2685,7 +2853,7 @@ void tst_QFile::renameWithAtEndSpecialFile() const
     class PeculiarAtEnd : public QFile
     {
     public:
-        virtual bool atEnd() const
+        virtual bool atEnd() const override
         {
             return true;
         }
@@ -2794,9 +2962,9 @@ void tst_QFile::appendAndRead()
 
 void tst_QFile::miscWithUncPathAsCurrentDir()
 {
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     QString current = QDir::currentPath();
-    const QString path = QLatin1String("//") + QtNetworkSettings::winServerName()
+    const QString path = QLatin1String("//") + QTest::uncServerName()
         + QLatin1String("/testshare");
     QVERIFY2(QDir::setCurrent(path), qPrintable(QDir::toNativeSeparators(path)));
     QFile file("test.pri");
@@ -2824,13 +2992,16 @@ void tst_QFile::handle()
     QVERIFY(fd > 2);
     QCOMPARE(int(file.handle()), fd);
     char c = '\0';
-    const auto readResult = QT_READ(int(file.handle()), &c, 1);
-    QCOMPARE(readResult, static_cast<decltype(readResult)>(1));
+    {
+        const auto readResult = QT_READ(int(file.handle()), &c, 1);
+        decltype(readResult) expected = 1;
+        QCOMPARE(readResult, expected);
+    }
     QCOMPARE(c, '/');
 
     // test if the QFile and the handle remain in sync
     QVERIFY(file.getChar(&c));
-    QCOMPARE(c, '*');
+    QCOMPARE(c, '/');
 
     // same, but read from QFile first now
     file.close();
@@ -2845,15 +3016,15 @@ void tst_QFile::handle()
     QCOMPARE(QT_READ(fd, &c, 1), 1);
 #endif
 
-    QCOMPARE(c, '*');
+    QCOMPARE(c, '/');
 
     //test round trip of adopted stdio file handle
     QFile file2;
     StdioFileGuard fp(fopen(qPrintable(m_testSourceFile), "r"));
     QVERIFY(fp);
     file2.open(fp, QIODevice::ReadOnly);
-    QCOMPARE(int(file2.handle()), int(fileno(fp)));
-    QCOMPARE(int(file2.handle()), int(fileno(fp)));
+    QCOMPARE(int(file2.handle()), int(QT_FILENO(fp)));
+    QCOMPARE(int(file2.handle()), int(QT_FILENO(fp)));
     fp.close();
 
     //test round trip of adopted posix file handle
@@ -2883,12 +3054,8 @@ void tst_QFile::nativeHandleLeaks()
     }
 
 #ifdef Q_OS_WIN
-# ifndef Q_OS_WINRT
     handle1 = ::CreateFileA("qt_file.tmp", GENERIC_READ, 0, NULL,
             OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-# else
-    handle1 = ::CreateFile2(L"qt_file.tmp", GENERIC_READ, 0, OPEN_ALWAYS, NULL);
-# endif
     QVERIFY( INVALID_HANDLE_VALUE != handle1 );
     QVERIFY( ::CloseHandle(handle1) );
 #endif
@@ -2902,12 +3069,8 @@ void tst_QFile::nativeHandleLeaks()
     }
 
 #ifdef Q_OS_WIN
-# ifndef Q_OS_WINRT
     handle2 = ::CreateFileA("qt_file.tmp", GENERIC_READ, 0, NULL,
             OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-# else
-    handle2 = ::CreateFile2(L"qt_file.tmp", GENERIC_READ, 0, OPEN_ALWAYS, NULL);
-# endif
     QVERIFY( INVALID_HANDLE_VALUE != handle2 );
     QVERIFY( ::CloseHandle(handle2) );
 #endif
@@ -3180,13 +3343,15 @@ void tst_QFile::mapResource_data()
 
     QString validFile = ":/tst_qfileinfo/resources/file1.ext1";
     QString invalidFile = ":/tst_qfileinfo/resources/filefoo.ext1";
+    const char modes[] = "invalid";
 
     for (int i = 0; i < 2; ++i) {
         QString file = (i == 0) ? validFile : invalidFile;
-        QTest::newRow("0, 0") << 0 << 0 << QFile::UnspecifiedError << file;
-        QTest::newRow("0, BIG") << 0 << 4096 << QFile::UnspecifiedError << file;
-        QTest::newRow("-1, 0") << -1 << 0 << QFile::UnspecifiedError << file;
-        QTest::newRow("0, -1") << 0 << -1 << QFile::UnspecifiedError << file;
+        const char *mode = i == 0 ? modes + 2 : modes;
+        QTest::addRow("0, 0 (%s)", mode) << 0 << 0 << QFile::UnspecifiedError << file;
+        QTest::addRow("0, BIG (%s)", mode) << 0 << 4096 << QFile::UnspecifiedError << file;
+        QTest::addRow("-1, 0 (%s)", mode) << -1 << 0 << QFile::UnspecifiedError << file;
+        QTest::addRow("0, -1 (%s)", mode) << 0 << -1 << QFile::UnspecifiedError << file;
     }
 
     QTest::newRow("0, 1") << 0 << 1 << QFile::NoError << validFile;
@@ -3204,7 +3369,7 @@ void tst_QFile::mapResource()
     QCOMPARE(file.error(), error);
     QVERIFY((error == QFile::NoError) ? (memory != 0) : (memory == 0));
     if (error == QFile::NoError)
-        QCOMPARE(QString(memory[0]), QString::number(offset + 1));
+        QCOMPARE(QString(QChar(memory[0])), QString::number(offset + 1));
     QVERIFY(file.unmap(memory));
 }
 
@@ -3502,7 +3667,7 @@ void tst_QFile::caseSensitivity()
 {
 #if defined(Q_OS_WIN)
     const bool caseSensitive = false;
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_DARWIN)
      const bool caseSensitive = pathconf(QDir::currentPath().toLatin1().constData(), _PC_CASE_SENSITIVE);
 #else
     const bool caseSensitive = true;
@@ -3683,13 +3848,13 @@ void tst_QFile::moveToTrash_data()
 
     // success cases
     {
-        QTemporaryFile temp;
+        QTemporaryFile temp(QDir::tempPath() + "/tst_qfile-moveToTrash-XXXXXX");
         if (!temp.open())
             QSKIP("Failed to create temporary file!");
         QTest::newRow("temporary file") << temp.fileName() << true << true;
     }
     {
-        QTemporaryDir tempDir;
+        QTemporaryDir tempDir(QDir::tempPath() + "/tst_qfile-moveToTrash-XXXXXX");
         if (!tempDir.isValid())
             QSKIP("Failed to create temporary directory!");
         tempDir.setAutoRemove(false);
@@ -3698,11 +3863,11 @@ void tst_QFile::moveToTrash_data()
             << true << true;
     }
     {
-        QTemporaryDir homeDir(QDir::homePath() + QLatin1String("/XXXXXX"));
+        QTemporaryDir homeDir(QDir::homePath() + QLatin1String("/tst_qfile.moveToTrash-XXXXXX"));
         if (!homeDir.isValid())
             QSKIP("Failed to create temporary directory in $HOME!");
         QTemporaryFile homeFile(homeDir.path()
-                              + QLatin1String("/tst_qfile-XXXXXX"));
+                              + QLatin1String("/tst_qfile-moveToTrash-XXXXX"));
         if (!homeFile.open())
             QSKIP("Failed to create temporary file in $HOME");
         homeDir.setAutoRemove(false);
@@ -3714,7 +3879,7 @@ void tst_QFile::moveToTrash_data()
             << homeDir.path() + QLatin1Char('/')
             << true << true;
     }
-    QTest::newRow("relative") << QStringLiteral("tst_qfile_moveToTrash.tmp") << true << true;
+    QTest::newRow("relative") << QStringLiteral("tst_qfile-moveToTrash.tmp") << true << true;
 
     // failure cases
     QTest::newRow("root") << QDir::rootPath() << false << false;
@@ -3723,13 +3888,12 @@ void tst_QFile::moveToTrash_data()
 
 void tst_QFile::moveToTrash()
 {
+#if defined(Q_OS_ANDROID) or defined(Q_OS_WEBOS)
+    QSKIP("This platform doesn't implement a trash bin");
+#endif
     QFETCH(QString, source);
     QFETCH(bool, create);
     QFETCH(bool, result);
-
-#if defined(Q_OS_WINRT)
-    QSKIP("WinRT does not have a trash", SkipAll);
-#endif
 
     auto ensureFile = [](const QString &source, bool create) {
         if (QFileInfo::exists(source) || !create)
@@ -3757,6 +3921,7 @@ void tst_QFile::moveToTrash()
     };
 
     ensureFile(source, create);
+    if (!QFileInfo::exists(source) && create) return;
 
     /* This test makes assumptions about the file system layout
        which might be wrong - moveToTrash may fail if the file lives
@@ -3804,6 +3969,7 @@ void tst_QFile::moveToTrash()
     // static version
     {
         ensureFile(source, create);
+        if (!QFileInfo::exists(source) && create) return;
         QString pathInTrash;
         const bool success = QFile::moveToTrash(source, &pathInTrash);
         QCOMPARE(success, result);
@@ -3820,6 +3986,261 @@ void tst_QFile::moveToTrash()
             }
         }
     }
+}
+
+void tst_QFile::moveToTrashDuplicateName()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This platform doesn't implement a trash bin");
+#endif
+    QString origFileName = []() {
+        QTemporaryFile temp(QDir::homePath() + "/tst_qfile.moveToTrashOpenFile.XXXXXX");
+        temp.setAutoRemove(false);
+        if (!temp.open())
+            qWarning("Failed to create temporary file: %ls", qUtf16Printable(temp.errorString()));
+        return temp.fileName();
+    }();
+
+    QFile f1(origFileName);
+    QFile f2(origFileName);
+    [&] {
+        QByteArrayView message1 = "Hello, World\n";
+        QVERIFY2(f1.open(QIODevice::ReadWrite | QIODevice::Unbuffered), qPrintable(f1.errorString()));
+        f1.write(message1.data(), message1.size());
+        QVERIFY2(f1.moveToTrash(), qPrintable(f1.errorString()));
+
+        QByteArrayView message2 = "Good morning, Vietnam!\n";
+        QVERIFY2(f2.open(QIODevice::ReadWrite | QIODevice::Unbuffered | QIODevice::NewOnly),
+                 qPrintable(f2.errorString()));
+        f2.write(message2.data(), message2.size());
+        QVERIFY2(f2.moveToTrash(), qPrintable(f2.errorString()));
+
+        QCOMPARE_NE(f1.fileName(), f2.fileName());
+    }();
+    f1.remove();
+    if (!f2.fileName().isEmpty())
+        f2.remove();
+    QFile::remove(origFileName);
+}
+
+void tst_QFile::moveToTrashOpenFile_data()
+{
+    QTest::addColumn<bool>("useStatic");
+    QTest::addColumn<bool>("success");
+
+    // QFile::moveToTrash() non-static member closes the file before trashing,
+    // so this must always succeed.
+    QTest::newRow("member") << false << true;
+
+    // QFile::moveToTrash() static member cannot close the file because it
+    // operates on another QFile, so this operation will fail on OSes that do
+    // not permit deleting open files.
+    QTest::newRow("static") << true
+#ifdef Q_OS_WIN
+                            << false;
+#else
+                            << true;
+#endif
+}
+
+void tst_QFile::moveToTrashOpenFile()
+{
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This platform doesn't implement a trash bin");
+#endif
+    QFETCH(bool, useStatic);
+    QFETCH(bool, success);
+    const QByteArrayView contents = "Hello, World\n";
+
+    QString newFileName, origFileName;
+    auto cleanup = qScopeGuard([&] {
+        if (!origFileName.isEmpty())
+            QFile::remove(origFileName);
+        if (!newFileName.isEmpty() && newFileName != origFileName)
+            QFile::remove(newFileName);
+    });
+
+    origFileName = []() {
+        QTemporaryFile temp(QDir::homePath() + "/tst_qfile.moveToTrashOpenFile.XXXXXX");
+        temp.setAutoRemove(false);
+        if (!temp.open())
+            qWarning("Failed to create temporary file: %ls", qUtf16Printable(temp.errorString()));
+        return temp.fileName();
+    }();
+
+    QFile f;
+    f.setFileName(origFileName);
+    QVERIFY2(f.open(QIODevice::ReadWrite | QIODevice::Unbuffered), qPrintable(f.errorString()));
+    f.write(contents.data(), contents.size());
+
+    QString errorString;
+    auto doMoveToTrash = [&](QFile *f) {
+        if (!f->moveToTrash())
+            errorString = f->errorString();
+        newFileName = f->fileName();
+    };
+    if (useStatic) {
+        // it's the same as the static QFile::moveToTrash(), but gives us
+        // the error string
+        QFile other(origFileName);
+        doMoveToTrash(&other);
+    } else {
+        doMoveToTrash(&f);
+    }
+    QCOMPARE_NE(f.fileName(), QString());
+
+    if (success) {
+        QCOMPARE(errorString, QString());
+        QCOMPARE_NE(newFileName, origFileName);         // must have changed!
+        QVERIFY(!QFile::exists(origFileName));
+        QVERIFY(QFile::exists(newFileName));
+        QCOMPARE(QFileInfo(newFileName).size(), contents.size());
+    } else {
+        QCOMPARE_NE(errorString, QString());
+        QCOMPARE(newFileName, origFileName);            // mustn't have changed!
+        QVERIFY(QFile::exists(origFileName));
+        QCOMPARE(QFileInfo(origFileName).size(), contents.size());
+    }
+}
+
+void tst_QFile::moveToTrashXdgSafety()
+{
+#if defined(Q_OS_WIN) || defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID) || defined(Q_OS_WEBOS)
+    QSKIP("This test is specific to XDG Unix systems");
+#else
+    QDir(m_temporaryDir.path()).mkdir("emptydir");
+
+    // See if we can find a writable volume to conduct our tests on
+    QString volumeRoot;
+    QStorageInfo homeVolume(QDir::homePath());
+    auto isVolumeSuitable = [this](const QString &rootPath) {
+        return QFile::link(m_temporaryDir.path() + "/emptydir", rootPath + "/.Trash");
+    };
+    for (const QStorageInfo &volume : QStorageInfo::mountedVolumes()) {
+        if (volume.isRoot())
+            continue;
+        if (volume == homeVolume)
+            continue;
+
+        if (isVolumeSuitable(volume.rootPath())) {
+            volumeRoot = volume.rootPath();
+            break;
+        }
+    }
+
+#  ifdef Q_OS_LINUX
+    // fallback to /dev/shm, which is usually a tmpfs but is ignored by
+    // QStorageInfo as a virtual filesystem
+    if (volumeRoot.isEmpty() && isVolumeSuitable("/dev/shm"))
+        volumeRoot = "/dev/shm";
+#  endif
+
+    if (volumeRoot.isEmpty())
+        QSKIP("Could not find any suitable volume to run this test with");
+
+    QDir genericTrashDir = volumeRoot + "/.Trash";
+    auto cleanup = qScopeGuard([&] {
+        if (QFileInfo(genericTrashDir.path()).isDir())
+            genericTrashDir.removeRecursively();
+        else
+            QFile::remove(genericTrashDir.path());
+    });
+
+    QString testFileName = volumeRoot + "/tst_qfile.moveToTrashSafety." + QString::number(getpid());
+    auto tryTrashing = [&] {
+        static int counter = 0;
+        QFile f(testFileName + u'.' + QString::number(counter++));
+        if (!f.open(QIODevice::ReadWrite | QIODevice::Truncate)) {
+            qWarning("Failed to create temporary file: %ls", qUtf16Printable(f.errorString()));
+            return false;
+        }
+        bool ok = f.moveToTrash();
+        f.remove();
+        f.close();
+        return ok;
+    };
+
+    QTest::ignoreMessage(QtCriticalMsg,
+                         "Warning: '" + QFile::encodeName(genericTrashDir.absolutePath())
+                         + "' is a symlink to '" + QFile::encodeName(m_temporaryDir.path())
+                         + "/emptydir'");
+    QVERIFY(tryTrashing());
+    QVERIFY(genericTrashDir.entryList(QDir::NoDotAndDotDot).isEmpty());
+
+    QFile::remove(genericTrashDir.path());
+    genericTrashDir.mkpath(".");
+    QTest::ignoreMessage(QtCriticalMsg, "Warning: '" + QFile::encodeName(genericTrashDir.absolutePath())
+                         + "' doesn't have sticky bit set!");
+    QVERIFY(tryTrashing());
+    QVERIFY(genericTrashDir.entryList(QDir::NoDotAndDotDot).isEmpty());
+#endif
+}
+
+void tst_QFile::stdfilesystem()
+{
+#if QT_CONFIG(cxx17_filesystem)
+    namespace fs = std::filesystem;
+    auto toFSPath = [](const QFile &file) { return fs::path(file.fileName().toStdU16String()); };
+    fs::path path { "./path" };
+    QFile file(path);
+    QCOMPARE(toFSPath(file), path);
+
+    QCOMPARE(path, file.filesystemFileName());
+
+    {
+        QFile parentedFile(path, this);
+        QCOMPARE(file.fileName(), parentedFile.fileName());
+        QCOMPARE(parentedFile.parent(), this);
+    }
+
+    path = path / "filename";
+    file.setFileName(path);
+    QCOMPARE(toFSPath(file), path);
+
+    path = "test-file";
+    file.setFileName(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.close();
+
+    path = "tile-fest";
+    QVERIFY(file.rename(path));
+    QVERIFY(fs::exists(path));
+#ifdef Q_OS_WIN
+    fs::path linkfile { "test-link.lnk" };
+#else
+    fs::path linkfile { "test-link" };
+#endif
+    QVERIFY(file.link(linkfile));
+    QVERIFY(fs::exists(linkfile));
+    QVERIFY(QFile::remove(linkfile));
+    QVERIFY(QFile::link(file.filesystemFileName(), linkfile));
+    QVERIFY(fs::exists(linkfile));
+    QCOMPARE(QFileInfo(QFile::filesystemSymLinkTarget(linkfile)),
+             QFileInfo(file.filesystemFileName()));
+    QCOMPARE(QFileInfo(QFile(linkfile).filesystemSymLinkTarget()),
+             QFileInfo(file.filesystemFileName()));
+
+    fs::path copyfile { "copy-file" };
+    QVERIFY(file.copy(copyfile));
+    QVERIFY(fs::exists(copyfile));
+    QVERIFY(QFile::remove(copyfile));
+    QVERIFY(QFile::copy(file.filesystemFileName(), copyfile));
+    QVERIFY(fs::exists(copyfile));
+
+    QFileDevice::Permissions p = QFile::permissions(path);
+    QVERIFY(p.testFlag(QFile::WriteUser) || p.testFlag(QFile::WriteOwner)); // some we know for sure
+    if (p.testFlag(QFile::ReadUser))
+        p.setFlag(QFile::ReadUser, false);
+    else if (p.testFlag(QFile::ReadOwner))
+        p.setFlag(QFile::ReadOwner, false);
+    QVERIFY(QFile::setPermissions(path, p));
+
+    path = "test-exists";
+    fs::create_directory(path);
+    QVERIFY(QFile::exists(path) == fs::exists(path));
+#else
+    QSKIP("Not supported");
+#endif
 }
 
 QTEST_MAIN(tst_QFile)

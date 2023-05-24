@@ -1,19 +1,19 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/sync_sessions/local_session_event_handler_impl.h"
 
+#include <map>
 #include <utility>
 #include <vector>
 
 #include "base/strings/stringprintf.h"
-#include "base/test/scoped_feature_list.h"
 #include "components/sessions/core/serialized_navigation_entry.h"
 #include "components/sessions/core/serialized_navigation_entry_test_helper.h"
 #include "components/sync/base/time.h"
-#include "components/sync/model/sync_change.h"
-#include "components/sync/protocol/sync.pb.h"
+#include "components/sync/protocol/session_specifics.pb.h"
+#include "components/sync/protocol/sync_enums.pb.h"
 #include "components/sync_sessions/mock_sync_sessions_client.h"
 #include "components/sync_sessions/synced_session_tracker.h"
 #include "components/sync_sessions/test_matchers.h"
@@ -26,15 +26,13 @@ namespace {
 
 using sessions::SerializedNavigationEntry;
 using sessions::SerializedNavigationEntryTestHelper;
+using testing::_;
 using testing::ByMove;
-using testing::Eq;
 using testing::IsEmpty;
 using testing::NiceMock;
 using testing::Pointee;
 using testing::Return;
-using testing::SizeIs;
 using testing::StrictMock;
-using testing::_;
 
 const char kFoo1[] = "http://foo1/";
 const char kBar1[] = "http://bar1/";
@@ -56,25 +54,56 @@ const int kTabId1 = 1000004;
 const int kTabId2 = 1000005;
 const int kTabId3 = 1000006;
 
+sync_pb::SessionSpecifics MakeSessionTabSpecifics(int window_id,
+                                                  int tab_id,
+                                                  int tab_node_id) {
+  sync_pb::SessionSpecifics session_tab;
+  session_tab.set_session_tag(kSessionTag);
+  session_tab.set_tab_node_id(tab_node_id);
+  session_tab.mutable_tab()->set_window_id(window_id);
+  session_tab.mutable_tab()->set_tab_id(tab_id);
+  return session_tab;
+}
+
+sync_pb::SessionSpecifics MakeSessionHeaderSpecifics(
+    const std::map<int, std::vector<int>>& window_id_to_tabs) {
+  sync_pb::SessionSpecifics session_header;
+  session_header.set_session_tag(kSessionTag);
+  for (const auto& [window_id, tabs] : window_id_to_tabs) {
+    sync_pb::SessionWindow* mutable_window =
+        session_header.mutable_header()->add_window();
+    mutable_window->set_window_id(window_id);
+    for (int tab_id : tabs) {
+      mutable_window->add_tab(tab_id);
+    }
+  }
+  return session_header;
+}
+
 class MockWriteBatch : public LocalSessionEventHandlerImpl::WriteBatch {
  public:
-  MockWriteBatch() {}
-  ~MockWriteBatch() override {}
-
-  MOCK_METHOD1(Delete, void(int tab_node_id));
-  MOCK_METHOD1(Put, void(std::unique_ptr<sync_pb::SessionSpecifics> specifics));
-  MOCK_METHOD0(Commit, void());
+  MockWriteBatch() = default;
+  ~MockWriteBatch() override = default;
+  MOCK_METHOD(void, Delete, (int tab_node_id), (override));
+  MOCK_METHOD(void,
+              Put,
+              (std::unique_ptr<sync_pb::SessionSpecifics> specifics),
+              (override));
+  MOCK_METHOD(void, Commit, (), (override));
 };
 
 class MockDelegate : public LocalSessionEventHandlerImpl::Delegate {
  public:
-  ~MockDelegate() override {}
-
-  MOCK_METHOD0(CreateLocalSessionWriteBatch,
-               std::unique_ptr<LocalSessionEventHandlerImpl::WriteBatch>());
-  MOCK_METHOD1(IsTabNodeUnsynced, bool(int tab_node_id));
-  MOCK_METHOD2(TrackLocalNavigationId,
-               void(base::Time timestamp, int unique_id));
+  ~MockDelegate() override = default;
+  MOCK_METHOD(std::unique_ptr<LocalSessionEventHandlerImpl::WriteBatch>,
+              CreateLocalSessionWriteBatch,
+              (),
+              (override));
+  MOCK_METHOD(bool, IsTabNodeUnsynced, (int tab_node_id), (override));
+  MOCK_METHOD(void,
+              TrackLocalNavigationId,
+              (base::Time timestamp, int unique_id),
+              (override));
 };
 
 class LocalSessionEventHandlerImplTest : public testing::Test {
@@ -88,7 +117,8 @@ class LocalSessionEventHandlerImplTest : public testing::Test {
             Return(ByMove(std::make_unique<NiceMock<MockWriteBatch>>())));
 
     session_tracker_.InitLocalSession(kSessionTag, kSessionName,
-                                      sync_pb::SyncEnums_DeviceType_TYPE_PHONE);
+                                      sync_pb::SyncEnums_DeviceType_TYPE_PHONE,
+                                      syncer::DeviceInfo::FormFactor::kPhone);
   }
 
   void InitHandler() {
@@ -99,8 +129,8 @@ class LocalSessionEventHandlerImplTest : public testing::Test {
 
   TestSyncedWindowDelegate* AddWindow(
       int window_id,
-      sync_pb::SessionWindow_BrowserType type =
-          sync_pb::SessionWindow_BrowserType_TYPE_TABBED) {
+      sync_pb::SyncEnums_BrowserType type =
+          sync_pb::SyncEnums_BrowserType_TYPE_TABBED) {
     return window_getter_.AddWindow(type,
                                     SessionID::FromSerializedValue(window_id));
   }
@@ -176,6 +206,28 @@ TEST_F(LocalSessionEventHandlerImplTest, GetTabSpecificsFromDelegate) {
   EXPECT_EQ("in", session_tab.navigation(2).page_language());
 }
 
+// Verifies SessionTab.browser_type is set correctly.
+TEST_F(LocalSessionEventHandlerImplTest, BrowserTypeInTabSpecifics) {
+  // Create two windows with different browser types.
+  AddWindow(kWindowId1, sync_pb::SyncEnums_BrowserType_TYPE_TABBED);
+  TestSyncedTabDelegate* tab1 = AddTabWithTime(kWindowId1, kFoo1, kTime1);
+  tab1->Navigate(kBar1, kTime2);
+  AddWindow(kWindowId2, sync_pb::SyncEnums_BrowserType_TYPE_CUSTOM_TAB);
+  TestSyncedTabDelegate* tab2 = AddTabWithTime(kWindowId2, kFoo1, kTime1);
+  tab2->Navigate(kBar1, kTime2);
+  InitHandler();
+
+  // Verify the browser types are propagated to the SessionTab.
+  const sync_pb::SessionTab session_tab1 =
+      handler_->GetTabSpecificsFromDelegateForTest(*tab1);
+  EXPECT_EQ(sync_pb::SyncEnums_BrowserType_TYPE_TABBED,
+            session_tab1.browser_type());
+  const sync_pb::SessionTab session_tab2 =
+      handler_->GetTabSpecificsFromDelegateForTest(*tab2);
+  EXPECT_EQ(sync_pb::SyncEnums_BrowserType_TYPE_CUSTOM_TAB,
+            session_tab2.browser_type());
+}
+
 // Ensure the current_navigation_index gets set properly when the navigation
 // stack gets trucated to +/- 6 entries.
 TEST_F(LocalSessionEventHandlerImplTest,
@@ -220,8 +272,8 @@ TEST_F(LocalSessionEventHandlerImplTest,
   ASSERT_EQ(3, session_tab.navigation_size());
 }
 
-// Tests that for supervised users blocked navigations are recorded and marked
-// as such, while regular navigations are marked as allowed.
+// Tests that for child account users blocked navigations are recorded and
+// marked as such, while regular navigations are marked as allowed.
 TEST_F(LocalSessionEventHandlerImplTest, BlockedNavigations) {
   AddWindow(kWindowId1);
   TestSyncedTabDelegate* tab = AddTabWithTime(kWindowId1, kFoo1, kTime1);
@@ -241,7 +293,7 @@ TEST_F(LocalSessionEventHandlerImplTest, BlockedNavigations) {
   blocked_navigations.push_back(std::move(entry2));
   blocked_navigations.push_back(std::move(entry3));
 
-  tab->set_is_supervised(true);
+  tab->set_has_child_account(true);
   tab->set_blocked_navigations(blocked_navigations);
 
   InitHandler();
@@ -282,7 +334,7 @@ TEST_F(LocalSessionEventHandlerImplTest, AssociateWindowsAndTabsIfEmpty) {
   auto mock_batch = std::make_unique<StrictMock<MockWriteBatch>>();
   EXPECT_CALL(*mock_batch,
               Put(Pointee(MatchesHeader(kSessionTag, /*window_ids=*/IsEmpty(),
-                                        /*tabs_ids=*/IsEmpty()))));
+                                        /*tab_ids=*/IsEmpty()))));
   EXPECT_CALL(*mock_batch, Commit());
   EXPECT_CALL(mock_delegate_, CreateLocalSessionWriteBatch())
       .WillOnce(Return(ByMove(std::move(mock_batch))));
@@ -331,25 +383,18 @@ TEST_F(LocalSessionEventHandlerImplTest, DontUpdateWindowIdForPlaceholderTab) {
   const int kPlaceholderTabNodeId = 2;
 
   // The tracker is initially restored from persisted state, containing a
-  // regular tab and a placeholder tab. This mimics
-  // SessionsSyncManager::InitFromSyncModel().
-  sync_pb::SessionSpecifics regular_tab;
-  regular_tab.set_session_tag(kSessionTag);
-  regular_tab.set_tab_node_id(kRegularTabNodeId);
-  regular_tab.mutable_tab()->set_window_id(kWindowId1);
-  regular_tab.mutable_tab()->set_tab_id(kTabId1);
+  // regular tab and a placeholder tab.
+  const sync_pb::SessionSpecifics kRegularTab =
+      MakeSessionTabSpecifics(kWindowId1, kTabId1, kRegularTabNodeId);
   session_tracker_.ReassociateLocalTab(kRegularTabNodeId,
                                        SessionID::FromSerializedValue(kTabId1));
-  UpdateTrackerWithSpecifics(regular_tab, base::Time::Now(), &session_tracker_);
+  UpdateTrackerWithSpecifics(kRegularTab, base::Time::Now(), &session_tracker_);
 
-  sync_pb::SessionSpecifics placeholder_tab;
-  placeholder_tab.set_session_tag(kSessionTag);
-  placeholder_tab.set_tab_node_id(kPlaceholderTabNodeId);
-  placeholder_tab.mutable_tab()->set_window_id(kWindowId1);
-  placeholder_tab.mutable_tab()->set_tab_id(kTabId2);
+  const sync_pb::SessionSpecifics kPlaceholderTab =
+      MakeSessionTabSpecifics(kWindowId1, kTabId2, kPlaceholderTabNodeId);
   session_tracker_.ReassociateLocalTab(kPlaceholderTabNodeId,
                                        SessionID::FromSerializedValue(kTabId2));
-  UpdateTrackerWithSpecifics(placeholder_tab, base::Time::Now(),
+  UpdateTrackerWithSpecifics(kPlaceholderTab, base::Time::Now(),
                              &session_tracker_);
 
   // Mimic the header being restored from peristence too.
@@ -470,41 +515,30 @@ TEST_F(LocalSessionEventHandlerImplTest, AssociateCustomTab) {
   const int kCustomTabNodeId = 2;
 
   // The tracker is initially restored from persisted state, containing a
-  // regular tab and a custom tab. This mimics
-  // SessionsSyncManager::InitFromSyncModel().
-  sync_pb::SessionSpecifics regular_tab;
-  regular_tab.set_session_tag(kSessionTag);
-  regular_tab.set_tab_node_id(kRegularTabNodeId);
-  regular_tab.mutable_tab()->set_window_id(kWindowId1);
-  regular_tab.mutable_tab()->set_tab_id(kTabId1);
+  // regular tab and a custom tab.
+  const sync_pb::SessionSpecifics kRegularTab =
+      MakeSessionTabSpecifics(kWindowId1, kTabId1, kRegularTabNodeId);
   session_tracker_.ReassociateLocalTab(kRegularTabNodeId,
                                        SessionID::FromSerializedValue(kTabId1));
-  UpdateTrackerWithSpecifics(regular_tab, base::Time::Now(), &session_tracker_);
+  UpdateTrackerWithSpecifics(kRegularTab, base::Time::Now(), &session_tracker_);
 
-  sync_pb::SessionSpecifics custom_tab;
-  custom_tab.set_session_tag(kSessionTag);
-  custom_tab.set_tab_node_id(kCustomTabNodeId);
-  custom_tab.mutable_tab()->set_window_id(kWindowId2);
-  custom_tab.mutable_tab()->set_tab_id(kTabId2);
+  const sync_pb::SessionSpecifics kCustomTab =
+      MakeSessionTabSpecifics(kWindowId2, kTabId2, kCustomTabNodeId);
   session_tracker_.ReassociateLocalTab(kCustomTabNodeId,
                                        SessionID::FromSerializedValue(kTabId2));
-  UpdateTrackerWithSpecifics(custom_tab, base::Time::Now(), &session_tracker_);
+  UpdateTrackerWithSpecifics(kCustomTab, base::Time::Now(), &session_tracker_);
 
-  sync_pb::SessionSpecifics header;
-  header.set_session_tag(kSessionTag);
-  header.mutable_header()->add_window()->set_window_id(kWindowId1);
-  header.mutable_header()->mutable_window(0)->add_tab(kTabId1);
-  header.mutable_header()->add_window()->set_window_id(kWindowId2);
-  header.mutable_header()->mutable_window(1)->add_tab(kTabId2);
-  UpdateTrackerWithSpecifics(header, base::Time::Now(), &session_tracker_);
+  const std::map<int, std::vector<int>> kInitialSession = {
+      {kWindowId1, std::vector<int>{kTabId1}},
+      {kWindowId2, std::vector<int>{kTabId2}}};
+  UpdateTrackerWithSpecifics(MakeSessionHeaderSpecifics(kInitialSession),
+                             base::Time::Now(), &session_tracker_);
 
   ASSERT_THAT(session_tracker_.LookupSession(kSessionTag),
-              MatchesSyncedSession(kSessionTag,
-                                   {{kWindowId1, std::vector<int>{kTabId1}},
-                                    {kWindowId2, std::vector<int>{kTabId2}}}));
+              MatchesSyncedSession(kSessionTag, kInitialSession));
 
   // In the current session, all we have is a custom tab.
-  AddWindow(kWindowId3, sync_pb::SessionWindow_BrowserType_TYPE_CUSTOM_TAB);
+  AddWindow(kWindowId3, sync_pb::SyncEnums_BrowserType_TYPE_CUSTOM_TAB);
   AddTab(kWindowId3, kFoo1, kTabId2);
 
   auto mock_batch = std::make_unique<StrictMock<MockWriteBatch>>();
@@ -585,49 +619,7 @@ TEST_F(LocalSessionEventHandlerImplTest, PropagateNewTab) {
   AddTab(kWindowId1, kBar1, kTabId2);
 }
 
-TEST_F(LocalSessionEventHandlerImplTest,
-       PropagateClosedTabWithoutDeferredRecyclingNorImmediateDeletion) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitWithFeatures(
-      /*enabled_features=*/{},
-      /*disabled_features=*/{kDeferRecyclingOfSyncTabNodesIfUnsynced,
-                             kTabNodePoolImmediateDeletion});
-
-  AddWindow(kWindowId1);
-  AddTab(kWindowId1, kFoo1, kTabId1);
-  TestSyncedTabDelegate* tab2 = AddTab(kWindowId1, kBar1, kTabId2);
-
-  InitHandler();
-
-  // Closing a tab (later below) is expected to verify if the sync entity is
-  // unsynced.
-  EXPECT_CALL(mock_delegate_, IsTabNodeUnsynced(/*tab_node_id=*/0));
-
-  // Closing a tab is expected to update the header and the remaining tab (this
-  // test issues a navigation for it, but it would have been updated anyway).
-  auto mock_batch = std::make_unique<StrictMock<MockWriteBatch>>();
-  EXPECT_CALL(
-      *mock_batch,
-      Put(Pointee(MatchesHeader(kSessionTag, {kWindowId1}, {kTabId2}))));
-  EXPECT_CALL(*mock_batch,
-              Put(Pointee(MatchesTab(kSessionTag, kWindowId1, kTabId2,
-                                     /*tab_node_id=*/1, /*urls=*/{kBar1}))));
-  EXPECT_CALL(*mock_batch, Commit());
-  EXPECT_CALL(mock_delegate_, CreateLocalSessionWriteBatch())
-      .WillOnce(Return(ByMove(std::move(mock_batch))));
-
-  // Close tab and force reassociation.
-  window_getter_.CloseTab(SessionID::FromSerializedValue(kTabId1));
-  handler_->OnLocalTabModified(tab2);
-}
-
 TEST_F(LocalSessionEventHandlerImplTest, PropagateClosedTab) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitWithFeatures(
-      /*enabled_features=*/{kDeferRecyclingOfSyncTabNodesIfUnsynced,
-                            kTabNodePoolImmediateDeletion},
-      /*disabled_features=*/{});
-
   // We start with three tabs.
   AddWindow(kWindowId1);
   AddTab(kWindowId1, kFoo1, kTabId1);
@@ -688,7 +680,7 @@ TEST_F(LocalSessionEventHandlerImplTest, PropagateNewCustomTab) {
       .WillOnce(Return(ByMove(std::move(tab_create_mock_batch))))
       .WillOnce(Return(ByMove(std::move(navigation_mock_batch))));
 
-  AddWindow(kWindowId1, sync_pb::SessionWindow_BrowserType_TYPE_CUSTOM_TAB);
+  AddWindow(kWindowId1, sync_pb::SyncEnums_BrowserType_TYPE_CUSTOM_TAB);
   AddTab(kWindowId1, kFoo1, kTabId1);
 }
 
@@ -733,41 +725,31 @@ TEST_F(LocalSessionEventHandlerImplTest,
 
   // The tracker is initially restored from persisted state, containing two
   // custom tabs.
-  sync_pb::SessionSpecifics custom_tab1;
-  custom_tab1.set_session_tag(kSessionTag);
-  custom_tab1.set_tab_node_id(kTabNodeId1);
-  custom_tab1.mutable_tab()->set_window_id(kWindowId1);
-  custom_tab1.mutable_tab()->set_tab_id(kTabId1);
+  const sync_pb::SessionSpecifics custom_tab1 =
+      MakeSessionTabSpecifics(kWindowId1, kTabId1, kTabNodeId1);
   session_tracker_.ReassociateLocalTab(kTabNodeId1,
                                        SessionID::FromSerializedValue(kTabId1));
   UpdateTrackerWithSpecifics(custom_tab1, base::Time::Now(), &session_tracker_);
 
-  sync_pb::SessionSpecifics custom_tab2;
-  custom_tab2.set_session_tag(kSessionTag);
-  custom_tab2.set_tab_node_id(kTabNodeId2);
-  custom_tab2.mutable_tab()->set_window_id(kWindowId2);
-  custom_tab2.mutable_tab()->set_tab_id(kTabId2);
+  const sync_pb::SessionSpecifics custom_tab2 =
+      MakeSessionTabSpecifics(kWindowId2, kTabId2, kTabNodeId2);
   session_tracker_.ReassociateLocalTab(kTabNodeId2,
                                        SessionID::FromSerializedValue(kTabId2));
   UpdateTrackerWithSpecifics(custom_tab2, base::Time::Now(), &session_tracker_);
 
-  sync_pb::SessionSpecifics header;
-  header.set_session_tag(kSessionTag);
-  header.mutable_header()->add_window()->set_window_id(kWindowId1);
-  header.mutable_header()->mutable_window(0)->add_tab(kTabId1);
-  header.mutable_header()->add_window()->set_window_id(kWindowId2);
-  header.mutable_header()->mutable_window(1)->add_tab(kTabId2);
-  UpdateTrackerWithSpecifics(header, base::Time::Now(), &session_tracker_);
+  const std::map<int, std::vector<int>> initial_session = {
+      {kWindowId1, std::vector<int>{kTabId1}},
+      {kWindowId2, std::vector<int>{kTabId2}}};
+  UpdateTrackerWithSpecifics(MakeSessionHeaderSpecifics(initial_session),
+                             base::Time::Now(), &session_tracker_);
 
   ASSERT_THAT(session_tracker_.LookupSession(kSessionTag),
-              MatchesSyncedSession(kSessionTag,
-                                   {{kWindowId1, std::vector<int>{kTabId1}},
-                                    {kWindowId2, std::vector<int>{kTabId2}}}));
+              MatchesSyncedSession(kSessionTag, initial_session));
 
-  AddWindow(kWindowId1, sync_pb::SessionWindow_BrowserType_TYPE_CUSTOM_TAB);
+  AddWindow(kWindowId1, sync_pb::SyncEnums_BrowserType_TYPE_CUSTOM_TAB);
   TestSyncedTabDelegate* tab1 = AddTab(kWindowId1, kFoo1, kTabId1);
 
-  AddWindow(kWindowId2, sync_pb::SessionWindow_BrowserType_TYPE_CUSTOM_TAB);
+  AddWindow(kWindowId2, sync_pb::SyncEnums_BrowserType_TYPE_CUSTOM_TAB);
   AddTab(kWindowId2, kBar1, kTabId2);
 
   InitHandler();
@@ -788,6 +770,54 @@ TEST_F(LocalSessionEventHandlerImplTest,
       .WillOnce(Return(ByMove(std::move(update_mock_batch))));
 
   tab1->Navigate(kBaz1);
+}
+
+TEST_F(LocalSessionEventHandlerImplTest, ShouldRemoveAllTabsOnEmptyWindow) {
+  const int kRegularTabNodeId = 1;
+  const int kCustomTabNodeId = 2;
+
+  // The tracker is initially restored from persisted state, containing a
+  // regular tab and a custom tab.
+  const sync_pb::SessionSpecifics kRegularTab =
+      MakeSessionTabSpecifics(kWindowId1, kTabId1, kRegularTabNodeId);
+  session_tracker_.ReassociateLocalTab(kRegularTabNodeId,
+                                       SessionID::FromSerializedValue(kTabId1));
+  UpdateTrackerWithSpecifics(kRegularTab, base::Time::Now(), &session_tracker_);
+
+  const sync_pb::SessionSpecifics kCustomTab =
+      MakeSessionTabSpecifics(kWindowId2, kTabId2, kCustomTabNodeId);
+  session_tracker_.ReassociateLocalTab(kCustomTabNodeId,
+                                       SessionID::FromSerializedValue(kTabId2));
+  UpdateTrackerWithSpecifics(kCustomTab, base::Time::Now(), &session_tracker_);
+
+  const std::map<int, std::vector<int>> kInitialSession = {
+      {kWindowId1, std::vector<int>{kTabId1}},
+      {kWindowId2, std::vector<int>{kTabId2}}};
+  UpdateTrackerWithSpecifics(MakeSessionHeaderSpecifics(kInitialSession),
+                             base::Time::Now(), &session_tracker_);
+
+  ASSERT_THAT(session_tracker_.LookupSession(kSessionTag),
+              MatchesSyncedSession(kSessionTag, kInitialSession));
+
+  // Add a new window without any tabs. It covers these possible cases:
+  // 1. The state is recovered from the persistent storage and the browser has
+  // been opened without restored tabs.
+  // 2. This is the result of closing all tabs (normally on Android where the
+  // window isn't closed when all tabs are closed).
+  AddWindow(kWindowId3, sync_pb::SyncEnums_BrowserType_TYPE_TABBED);
+
+  auto mock_batch = std::make_unique<StrictMock<MockWriteBatch>>();
+  EXPECT_CALL(*mock_batch, Put(Pointee(MatchesHeader(kSessionTag, {}, {}))));
+  EXPECT_CALL(*mock_batch, Delete(/*tab_node_id=*/kRegularTabNodeId));
+  EXPECT_CALL(*mock_batch, Delete(/*tab_node_id=*/kCustomTabNodeId));
+  EXPECT_CALL(*mock_batch, Commit());
+
+  EXPECT_CALL(mock_delegate_, CreateLocalSessionWriteBatch())
+      .WillOnce(Return(ByMove(std::move(mock_batch))));
+
+  InitHandler();
+  EXPECT_THAT(session_tracker_.LookupSession(kSessionTag),
+              MatchesSyncedSession(kSessionTag, {}));
 }
 
 }  // namespace

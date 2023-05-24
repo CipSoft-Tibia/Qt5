@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandquickitem.h"
 #include "qwaylandquickitem_p.h"
 #include "qwaylandquicksurface.h"
 #include "qwaylandinputmethodcontrol.h"
 #include "qwaylandtextinput.h"
+#if QT_WAYLAND_TEXT_INPUT_V4_WIP
+#include "qwaylandtextinputv4.h"
+#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
+#include "qwaylandqttextinputmethod.h"
 #include "qwaylandquickoutput.h"
 #include <QtWaylandCompositor/qwaylandcompositor.h>
 #include <QtWaylandCompositor/qwaylandseat.h>
@@ -43,7 +21,7 @@
 #include <QtWaylandCompositor/private/qwaylandsurface_p.h>
 
 #if QT_CONFIG(opengl)
-#  include <QtGui/QOpenGLTexture>
+#  include <QtOpenGL/QOpenGLTexture>
 #  include <QtGui/QOpenGLFunctions>
 #endif
 
@@ -53,12 +31,18 @@
 
 #include <QtQuick/QSGSimpleTextureNode>
 #include <QtQuick/QQuickWindow>
+#include <QtQuick/qsgtexture.h>
 
+#include <QtCore/QFile>
 #include <QtCore/QMutexLocker>
 #include <QtCore/QMutex>
 
 #include <wayland-server-core.h>
 #include <QThread>
+
+#if QT_CONFIG(opengl)
+#include <QtGui/private/qshaderdescription_p.h>
+#endif
 
 #ifndef GL_TEXTURE_EXTERNAL_OES
 #define GL_TEXTURE_EXTERNAL_OES 0x8D65
@@ -81,8 +65,8 @@ static const struct {
 
     // BufferFormatEgl_RGB
     {
-        ":/qt-project.org/wayland/compositor/shaders/surface.vert",
-        ":/qt-project.org/wayland/compositor/shaders/surface_rgbx.frag",
+        ":/qt-project.org/wayland/compositor/shaders/surface.vert.qsb",
+        ":/qt-project.org/wayland/compositor/shaders/surface_rgbx.frag.qsb",
         GL_TEXTURE_2D, 1, true,
         QSGMaterial::Blending,
         {}
@@ -90,8 +74,8 @@ static const struct {
 
     // BufferFormatEgl_RGBA
     {
-        ":/qt-project.org/wayland/compositor/shaders/surface.vert",
-        ":/qt-project.org/wayland/compositor/shaders/surface_rgba.frag",
+        ":/qt-project.org/wayland/compositor/shaders/surface.vert.qsb",
+        ":/qt-project.org/wayland/compositor/shaders/surface_rgba.frag.qsb",
         GL_TEXTURE_2D, 1, true,
         QSGMaterial::Blending,
         {}
@@ -99,7 +83,7 @@ static const struct {
 
     // BufferFormatEgl_EXTERNAL_OES
     {
-        ":/qt-project.org/wayland/compositor/shaders/surface.vert",
+        ":/qt-project.org/wayland/compositor/shaders/surface.vert.qsb",
         ":/qt-project.org/wayland/compositor/shaders/surface_oes_external.frag",
         GL_TEXTURE_EXTERNAL_OES, 1, false,
         QSGMaterial::Blending,
@@ -108,8 +92,8 @@ static const struct {
 
     // BufferFormatEgl_Y_U_V
     {
-        ":/qt-project.org/wayland/compositor/shaders/surface.vert",
-        ":/qt-project.org/wayland/compositor/shaders/surface_y_u_v.frag",
+        ":/qt-project.org/wayland/compositor/shaders/surface.vert.qsb",
+        ":/qt-project.org/wayland/compositor/shaders/surface_y_u_v.frag.qsb",
         GL_TEXTURE_2D, 3, false,
         QSGMaterial::Blending,
         {}
@@ -117,8 +101,8 @@ static const struct {
 
     // BufferFormatEgl_Y_UV
     {
-        ":/qt-project.org/wayland/compositor/shaders/surface.vert",
-        ":/qt-project.org/wayland/compositor/shaders/surface_y_uv.frag",
+        ":/qt-project.org/wayland/compositor/shaders/surface.vert.qsb",
+        ":/qt-project.org/wayland/compositor/shaders/surface_y_uv.frag.qsb",
         GL_TEXTURE_2D, 2, false,
         QSGMaterial::Blending,
         {}
@@ -126,8 +110,8 @@ static const struct {
 
     // BufferFormatEgl_Y_XUXV
     {
-        ":/qt-project.org/wayland/compositor/shaders/surface.vert",
-        ":/qt-project.org/wayland/compositor/shaders/surface_y_xuxv.frag",
+        ":/qt-project.org/wayland/compositor/shaders/surface.vert.qsb",
+        ":/qt-project.org/wayland/compositor/shaders/surface_y_xuxv.frag.qsb",
         GL_TEXTURE_2D, 2, false,
         QSGMaterial::Blending,
         {}
@@ -135,61 +119,155 @@ static const struct {
 };
 
 QWaylandBufferMaterialShader::QWaylandBufferMaterialShader(QWaylandBufferRef::BufferFormatEgl format)
-    : m_format(format)
 {
-    setShaderSourceFile(QOpenGLShader::Vertex, QString::fromLatin1(bufferTypes[format].vertexShaderSourceFile));
-    setShaderSourceFile(QOpenGLShader::Fragment, QString::fromLatin1(bufferTypes[format].fragmentShaderSourceFile));
+    Q_UNUSED(format);
+    setShaderFileName(VertexStage, QString::fromLatin1(bufferTypes[format].vertexShaderSourceFile));
+    auto fragmentShaderSourceFile = QString::fromLatin1(bufferTypes[format].fragmentShaderSourceFile);
+
+    if (format == QWaylandBufferRef::BufferFormatEgl_EXTERNAL_OES)
+        setupExternalOESShader(fragmentShaderSourceFile);
+    else
+        setShaderFileName(FragmentStage, fragmentShaderSourceFile);
 }
 
-void QWaylandBufferMaterialShader::updateState(const QSGMaterialShader::RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect)
+void QWaylandBufferMaterialShader::setupExternalOESShader(const QString &shaderFilename)
 {
-    QSGMaterialShader::updateState(state, newEffect, oldEffect);
+#if QT_CONFIG(opengl)
+    QFile shaderFile(shaderFilename);
+    if (!shaderFile.open(QIODevice::ReadOnly)) {
+        qCWarning(qLcWaylandCompositor) << "Cannot find external OES shader file:" << shaderFilename;
+        return;
+    }
+    QByteArray FS = shaderFile.readAll();
 
-    QWaylandBufferMaterial *material = static_cast<QWaylandBufferMaterial *>(newEffect);
-    material->bind();
+    static const char *FS_GLES_PREAMBLE =
+        "#extension GL_OES_EGL_image_external : require\n"
+        "precision highp float;\n";
+    static const char *FS_GL_PREAMBLE =
+            "#version 120\n"
+            "#extension GL_OES_EGL_image_external : require\n";
+    QByteArray fsGLES = FS_GLES_PREAMBLE + FS;
+    QByteArray fsGL = FS_GL_PREAMBLE + FS;
 
-    if (state.isMatrixDirty())
-        program()->setUniformValue(m_id_matrix, state.combinedMatrix());
+    QShaderDescription desc;
+    QShaderDescriptionPrivate *descData = QShaderDescriptionPrivate::get(&desc);
 
-    if (state.isOpacityDirty())
-        program()->setUniformValue(m_id_opacity, state.opacity());
+    QShaderDescription::InOutVariable texCoordInput;
+    texCoordInput.name = "v_texcoord";
+    texCoordInput.type = QShaderDescription::Vec2;
+    texCoordInput.location = 0;
+
+    descData->inVars = { texCoordInput };
+
+    QShaderDescription::InOutVariable fragColorOutput;
+    texCoordInput.name = "gl_FragColor";
+    texCoordInput.type = QShaderDescription::Vec4;
+    texCoordInput.location = 0;
+
+    descData->outVars = { fragColorOutput };
+
+    QShaderDescription::BlockVariable matrixBlockVar;
+    matrixBlockVar.name = "qt_Matrix";
+    matrixBlockVar.type = QShaderDescription::Mat4;
+    matrixBlockVar.offset = 0;
+    matrixBlockVar.size = 64;
+
+    QShaderDescription::BlockVariable opacityBlockVar;
+    opacityBlockVar.name = "qt_Opacity";
+    opacityBlockVar.type = QShaderDescription::Float;
+    opacityBlockVar.offset = 64;
+    opacityBlockVar.size = 4;
+
+    QShaderDescription::UniformBlock ubufStruct;
+    ubufStruct.blockName = "buf";
+    ubufStruct.structName = "ubuf";
+    ubufStruct.size = 64 + 4;
+    ubufStruct.binding = 0;
+    ubufStruct.members = { matrixBlockVar, opacityBlockVar };
+
+    descData->uniformBlocks = { ubufStruct };
+
+    QShaderDescription::InOutVariable samplerTex0;
+    samplerTex0.name = "tex0";
+    samplerTex0.type = QShaderDescription::SamplerExternalOES;
+    samplerTex0.binding = 1;
+
+    descData->combinedImageSamplers = { samplerTex0 };
+
+    QShader shaderPack;
+    shaderPack.setStage(QShader::FragmentStage);
+    shaderPack.setDescription(desc);
+    shaderPack.setShader(QShaderKey(QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs)), QShaderCode(fsGLES));
+    shaderPack.setShader(QShaderKey(QShader::GlslShader, QShaderVersion(120)), QShaderCode(fsGL));
+
+    setShader(FragmentStage, shaderPack);
+#else
+    Q_UNUSED(shaderFilename);
+#endif
 }
 
-const char * const *QWaylandBufferMaterialShader::attributeNames() const
+bool QWaylandBufferMaterialShader::updateUniformData(RenderState &state, QSGMaterial *, QSGMaterial *)
 {
-    static char const *const attr[] = { "qt_VertexPosition", "qt_VertexTexCoord", nullptr };
-    return attr;
-}
+    bool changed = false;
+    QByteArray *buf = state.uniformData();
+    Q_ASSERT(buf->size() >= 68);
 
-void QWaylandBufferMaterialShader::initialize()
-{
-    QSGMaterialShader::initialize();
-
-    m_id_matrix = program()->uniformLocation("qt_Matrix");
-    m_id_opacity = program()->uniformLocation("qt_Opacity");
-
-    for (int i = 0; i < bufferTypes[m_format].planeCount; i++) {
-        m_id_tex << program()->uniformLocation("tex" + QByteArray::number(i));
-        program()->setUniformValue(m_id_tex[i], i);
+    if (state.isMatrixDirty()) {
+        const QMatrix4x4 m = state.combinedMatrix();
+        memcpy(buf->data(), m.constData(), 64);
+        changed = true;
     }
 
-    Q_ASSERT(m_id_tex.size() == bufferTypes[m_format].planeCount);
+    if (state.isOpacityDirty()) {
+        const float opacity = state.opacity();
+        memcpy(buf->data() + 64, &opacity, 4);
+        changed = true;
+    }
+
+    return changed;
+}
+
+void QWaylandBufferMaterialShader::updateSampledImage(RenderState &state, int binding, QSGTexture **texture,
+                                                      QSGMaterial *newMaterial, QSGMaterial *)
+{
+    Q_UNUSED(state);
+
+    QWaylandBufferMaterial *material = static_cast<QWaylandBufferMaterial *>(newMaterial);
+    switch (binding) {
+    case 1:
+        *texture = material->m_scenegraphTextures.at(0);
+        break;
+    case 2:
+        *texture = material->m_scenegraphTextures.at(1);
+        break;
+    case 3:
+        *texture = material->m_scenegraphTextures.at(2);
+        break;
+    default:
+        return;
+    }
+
+    // This is for the shared memory case, and is a no-op for others,
+    // this is where the upload from the QImage happens when not yet done.
+    // ### or is this too late? (if buffer.image() disappears in the meantime then this is the wrong...)
+    if (*texture)
+        (*texture)->commitTextureOperations(state.rhi(), state.resourceUpdateBatch());
 }
 
 QWaylandBufferMaterial::QWaylandBufferMaterial(QWaylandBufferRef::BufferFormatEgl format)
     : m_format(format)
 {
-    QOpenGLFunctions *gl = QOpenGLContext::currentContext()->functions();
-
-    gl->glBindTexture(bufferTypes[m_format].textureTarget, 0);
     setFlag(bufferTypes[m_format].materialFlags);
 }
 
 QWaylandBufferMaterial::~QWaylandBufferMaterial()
 {
+    qDeleteAll(m_scenegraphTextures);
 }
 
-void QWaylandBufferMaterial::setTextureForPlane(int plane, QOpenGLTexture *texture)
+void QWaylandBufferMaterial::setTextureForPlane(int plane,
+                                                QOpenGLTexture *texture,
+                                                QSGTexture *scenegraphTexture)
 {
     if (plane < 0 || plane >= bufferTypes[m_format].planeCount) {
         qWarning("plane index is out of range");
@@ -201,10 +279,15 @@ void QWaylandBufferMaterial::setTextureForPlane(int plane, QOpenGLTexture *textu
 
     ensureTextures(plane - 1);
 
-    if (m_textures.size() <= plane)
+    if (m_textures.size() <= plane) {
         m_textures << texture;
-    else
+        m_scenegraphTextures << scenegraphTexture;
+    } else {
+        delete m_scenegraphTextures[plane];
+
         m_textures[plane] = texture;
+        m_scenegraphTextures[plane] = scenegraphTexture;
+    }
 }
 
 void QWaylandBufferMaterial::bind()
@@ -231,8 +314,9 @@ QSGMaterialType *QWaylandBufferMaterial::type() const
     return const_cast<QSGMaterialType *>(&bufferTypes[m_format].materialType);
 }
 
-QSGMaterialShader *QWaylandBufferMaterial::createShader() const
+QSGMaterialShader *QWaylandBufferMaterial::createShader(QSGRendererInterface::RenderMode renderMode) const
 {
+    Q_UNUSED(renderMode);
     return new QWaylandBufferMaterialShader(m_format);
 }
 
@@ -251,16 +335,36 @@ void QWaylandBufferMaterial::ensureTextures(int count)
 {
     for (int plane = m_textures.size(); plane < count; plane++) {
         m_textures << nullptr;
+        m_scenegraphTextures << nullptr;
     }
 }
 
 void QWaylandBufferMaterial::setBufferRef(QWaylandQuickItem *surfaceItem, const QWaylandBufferRef &ref)
 {
-    Q_UNUSED(surfaceItem);
     m_bufferRef = ref;
-    for (int plane = 0; plane < bufferTypes[ref.bufferFormatEgl()].planeCount; plane++)
-        if (auto texture = ref.toOpenGLTexture(plane))
-            setTextureForPlane(plane, texture);
+    for (int plane = 0; plane < bufferTypes[ref.bufferFormatEgl()].planeCount; plane++) {
+        if (auto texture = ref.toOpenGLTexture(plane)) {
+            QQuickWindow::CreateTextureOptions opt;
+            QWaylandQuickSurface *waylandSurface = qobject_cast<QWaylandQuickSurface *>(surfaceItem->surface());
+            if (waylandSurface != nullptr && waylandSurface->useTextureAlpha() && !waylandSurface->isOpaque())
+                opt |= QQuickWindow::TextureHasAlphaChannel;
+            QSGTexture *scenegraphTexture;
+            if (ref.bufferFormatEgl() == QWaylandBufferRef::BufferFormatEgl_EXTERNAL_OES) {
+                scenegraphTexture = QNativeInterface::QSGOpenGLTexture::fromNativeExternalOES(texture->textureId(),
+                                                                                              surfaceItem->window(),
+                                                                                              ref.size(),
+                                                                                              opt);
+            } else {
+                scenegraphTexture = QNativeInterface::QSGOpenGLTexture::fromNative(texture->textureId(),
+                                                                                   surfaceItem->window(),
+                                                                                   ref.size(),
+                                                                                   opt);
+            }
+            scenegraphTexture->setFiltering(surfaceItem->smooth() ? QSGTexture::Linear : QSGTexture::Nearest);
+            setTextureForPlane(plane, texture, scenegraphTexture);
+        }
+    }
+
     bind();
 }
 #endif // QT_CONFIG(opengl)
@@ -276,8 +380,7 @@ public:
 
     ~QWaylandSurfaceTextureProvider() override
     {
-        if (m_sgTex)
-            m_sgTex->deleteLater();
+        delete m_sgTex;
     }
 
     void setBufferRef(QWaylandQuickItem *surfaceItem, const QWaylandBufferRef &buffer)
@@ -289,22 +392,18 @@ public:
         if (m_ref.hasBuffer()) {
             if (buffer.isSharedMemory()) {
                 m_sgTex = surfaceItem->window()->createTextureFromImage(buffer.image());
-#if QT_CONFIG(opengl)
-                if (m_sgTex)
-                    m_sgTex->bind();
-#endif
             } else {
 #if QT_CONFIG(opengl)
                 QQuickWindow::CreateTextureOptions opt;
                 QWaylandQuickSurface *surface = qobject_cast<QWaylandQuickSurface *>(surfaceItem->surface());
-                if (surface && surface->useTextureAlpha()) {
+                if (surface && surface->useTextureAlpha()  && !surface->isOpaque()) {
                     opt |= QQuickWindow::TextureHasAlphaChannel;
                 }
 
                 auto texture = buffer.toOpenGLTexture();
                 GLuint textureId = texture->textureId();
                 auto size = surface->bufferSize();
-                m_sgTex = surfaceItem->window()->createTextureFromNativeObject(QQuickWindow::NativeObjectTexture, &textureId, 0, size, opt);
+                m_sgTex = QNativeInterface::QSGOpenGLTexture::fromNative(textureId, surfaceItem->window(), size, opt);
 #else
                 qCWarning(qLcWaylandCompositor) << "Without OpenGL support only shared memory textures are supported";
 #endif
@@ -354,9 +453,8 @@ private:
  * Constructs a QWaylandQuickItem with the given \a parent.
  */
 QWaylandQuickItem::QWaylandQuickItem(QQuickItem *parent)
-    : QQuickItem(*new QWaylandQuickItemPrivate(), parent)
+    : QWaylandQuickItem(*new QWaylandQuickItemPrivate(), parent)
 {
-    d_func()->init();
 }
 
 /*!
@@ -366,6 +464,7 @@ QWaylandQuickItem::QWaylandQuickItem(QWaylandQuickItemPrivate &dd, QQuickItem *p
     : QQuickItem(dd, parent)
 {
     d_func()->init();
+    connect(this, &QQuickItem::activeFocusChanged, this, &QWaylandQuickItem::updateFocus);
 }
 
 /*!
@@ -375,13 +474,16 @@ QWaylandQuickItem::~QWaylandQuickItem()
 {
     Q_D(QWaylandQuickItem);
     disconnect(this, &QQuickItem::windowChanged, this, &QWaylandQuickItem::updateWindow);
+    disconnect(this, &QQuickItem::activeFocusChanged, this, &QWaylandQuickItem::updateFocus);
     QMutexLocker locker(d->mutex);
-    if (d->provider)
+    if (d->provider) {
+        disconnect(d->texProviderConnection);
         d->provider->deleteLater();
+    }
 }
 
 /*!
- * \qmlproperty WaylandCompositor QtWaylandCompositor::WaylandQuickItem::compositor
+ * \qmlproperty WaylandCompositor QtWayland.Compositor::WaylandQuickItem::compositor
  *
  * This property holds the compositor for the surface rendered by this WaylandQuickItem.
  */
@@ -407,7 +509,7 @@ QWaylandView *QWaylandQuickItem::view() const
 }
 
 /*!
- * \qmlproperty WaylandSurface QtWaylandCompositor::WaylandQuickItem::surface
+ * \qmlproperty WaylandSurface QtWayland.Compositor::WaylandQuickItem::surface
  *
  * This property holds the surface rendered by this WaylandQuickItem.
  */
@@ -435,11 +537,13 @@ void QWaylandQuickItem::setSurface(QWaylandSurface *surface)
         emit compositorChanged();
     if (oldSurf != surface)
         emit surfaceChanged();
+
+    updateFocus();
     update();
 }
 
 /*!
- * \qmlproperty enum QtWaylandCompositor::WaylandQuickItem::origin
+ * \qmlproperty enum QtWayland.Compositor::WaylandQuickItem::origin
  *
  * This property holds the origin of the QWaylandQuickItem.
  */
@@ -485,7 +589,7 @@ void QWaylandQuickItem::mousePressEvent(QMouseEvent *event)
         return;
     }
 
-    if (!inputRegionContains(event->localPos())) {
+    if (!inputRegionContains(event->position())) {
         event->ignore();
         return;
     }
@@ -495,9 +599,9 @@ void QWaylandQuickItem::mousePressEvent(QMouseEvent *event)
     if (d->focusOnClick)
         takeFocus(seat);
 
-    seat->sendMouseMoveEvent(d->view.data(), mapToSurface(event->localPos()), event->windowPos());
+    seat->sendMouseMoveEvent(d->view.data(), mapToSurface(event->position()), event->scenePosition());
     seat->sendMousePressEvent(event->button());
-    d->hoverPos = event->localPos();
+    d->hoverPos = event->position();
 }
 
 /*!
@@ -512,21 +616,21 @@ void QWaylandQuickItem::mouseMoveEvent(QMouseEvent *event)
         if (d->isDragging) {
             QWaylandQuickOutput *currentOutput = qobject_cast<QWaylandQuickOutput *>(view()->output());
             //TODO: also check if dragging onto other outputs
-            QWaylandQuickItem *targetItem = qobject_cast<QWaylandQuickItem *>(currentOutput->pickClickableItem(mapToScene(event->localPos())));
+            QWaylandQuickItem *targetItem = qobject_cast<QWaylandQuickItem *>(currentOutput->pickClickableItem(mapToScene(event->position())));
             QWaylandSurface *targetSurface = targetItem ? targetItem->surface() : nullptr;
             if (targetSurface) {
-                QPointF position = mapToItem(targetItem, event->localPos());
+                QPointF position = mapToItem(targetItem, event->position());
                 QPointF surfacePosition = targetItem->mapToSurface(position);
                 seat->drag()->dragMove(targetSurface, surfacePosition);
             }
         } else
 #endif // QT_CONFIG(draganddrop)
         {
-            seat->sendMouseMoveEvent(d->view.data(), mapToSurface(event->localPos()), event->windowPos());
-            d->hoverPos = event->localPos();
+            seat->sendMouseMoveEvent(d->view.data(), mapToSurface(event->position()), event->scenePosition());
+            d->hoverPos = event->position();
         }
     } else {
-        emit mouseMove(event->windowPos());
+        emit mouseMove(event->scenePosition());
         event->ignore();
     }
 }
@@ -560,14 +664,14 @@ void QWaylandQuickItem::mouseReleaseEvent(QMouseEvent *event)
 void QWaylandQuickItem::hoverEnterEvent(QHoverEvent *event)
 {
     Q_D(QWaylandQuickItem);
-    if (!inputRegionContains(event->posF())) {
+    if (!inputRegionContains(event->position())) {
         event->ignore();
         return;
     }
     if (d->shouldSendInputEvents()) {
         QWaylandSeat *seat = compositor()->seatFor(event);
-        seat->sendMouseMoveEvent(d->view.data(), event->posF(), mapToScene(event->posF()));
-        d->hoverPos = event->posF();
+        seat->sendMouseMoveEvent(d->view.data(), event->position(), mapToScene(event->position()));
+        d->hoverPos = event->position();
     } else {
         event->ignore();
     }
@@ -580,16 +684,16 @@ void QWaylandQuickItem::hoverMoveEvent(QHoverEvent *event)
 {
     Q_D(QWaylandQuickItem);
     if (surface()) {
-        if (!inputRegionContains(event->posF())) {
+        if (!inputRegionContains(event->position())) {
             event->ignore();
             return;
         }
     }
     if (d->shouldSendInputEvents()) {
         QWaylandSeat *seat = compositor()->seatFor(event);
-        if (event->posF() != d->hoverPos) {
-            seat->sendMouseMoveEvent(d->view.data(), mapToSurface(event->posF()), mapToScene(event->posF()));
-            d->hoverPos = event->posF();
+        if (event->position() != d->hoverPos) {
+            seat->sendMouseMoveEvent(d->view.data(), mapToSurface(event->position()), mapToScene(event->position()));
+            d->hoverPos = event->position();
         }
     } else {
         event->ignore();
@@ -658,7 +762,7 @@ void QWaylandQuickItem::keyPressEvent(QKeyEvent *event)
 void QWaylandQuickItem::keyReleaseEvent(QKeyEvent *event)
 {
     Q_D(QWaylandQuickItem);
-    if (d->shouldSendInputEvents() && hasFocus()) {
+    if (d->shouldSendInputEvents()) {
         QWaylandSeat *seat = compositor()->seatFor(event);
         seat->sendFullKeyEvent(event);
     } else {
@@ -676,9 +780,9 @@ void QWaylandQuickItem::touchEvent(QTouchEvent *event)
         QWaylandSeat *seat = compositor()->seatFor(event);
 
         QPointF pointPos;
-        const QList<QTouchEvent::TouchPoint> &points = event->touchPoints();
+        const QList<QTouchEvent::TouchPoint> &points = event->points();
         if (!points.isEmpty())
-            pointPos = points.at(0).pos();
+            pointPos = points.at(0).position();
 
         if (event->type() == QEvent::TouchBegin && !inputRegionContains(pointPos)) {
             event->ignore();
@@ -753,6 +857,10 @@ void QWaylandQuickItem::handleSubsurfaceAdded(QWaylandSurface *childSurface)
     } else {
         bool success = QMetaObject::invokeMethod(d->subsurfaceHandler, "handleSubsurfaceAdded", Q_ARG(QWaylandSurface *, childSurface));
         if (!success)
+            success = QMetaObject::invokeMethod(d->subsurfaceHandler, "handleSubsurfaceAdded",
+                                                Q_ARG(QVariant, QVariant::fromValue(childSurface)));
+
+        if (!success)
             qWarning("QWaylandQuickItem: subsurfaceHandler does not implement handleSubsurfaceAdded()");
     }
 }
@@ -791,8 +899,15 @@ void QWaylandQuickItem::handlePlaceBelow(QWaylandSurface *referenceSurface)
     }
 }
 
+void QWaylandQuickItem::updateFocus()
+{
+    Q_D(const QWaylandQuickItem);
+    if (hasActiveFocus() && compositor())
+        compositor()->defaultSeat()->setKeyboardFocus(d->view->surface());
+}
+
 /*!
-  \qmlproperty object QtWaylandCompositor::WaylandQuickItem::subsurfaceHandler
+  \qmlproperty object QtWayland.Compositor::WaylandQuickItem::subsurfaceHandler
 
   This property provides a way to override the default subsurface behavior.
 
@@ -804,8 +919,9 @@ void QWaylandQuickItem::handlePlaceBelow(QWaylandSurface *referenceSurface)
   \code
   ShellSurfaceItem {
       subsurfaceHandler: QtObject {
-      function handleSubsurfaceAdded(child) {
-        //create custom surface item, and connect the subsurfacePositionChanged signal
+          function handleSubsurfaceAdded(child) {
+            // create custom surface item, and connect the subsurfacePositionChanged signal
+          }
       }
   }
   \endcode
@@ -830,6 +946,11 @@ void QWaylandQuickItem::setSubsurfaceHandler(QObject *handler)
 }
 
 /*!
+ * \qmlproperty WaylandOutput QtWayland.Compositor::WaylandQuickItem::output
+ *
+ * This property holds the output on which this item is displayed.
+ */
+/*!
  * \property QWaylandQuickItem::output
  *
  * This property holds the output on which this item is displayed.
@@ -847,7 +968,7 @@ void QWaylandQuickItem::setOutput(QWaylandOutput *output)
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandQuickItem::bufferLocked
+ * \qmlproperty bool QtWayland.Compositor::WaylandQuickItem::bufferLocked
  *
  * This property holds whether the item's buffer is currently locked. As long as
  * the buffer is locked, it will not be released and returned to the client.
@@ -872,6 +993,10 @@ void QWaylandQuickItem::setBufferLocked(bool locked)
 {
     Q_D(QWaylandQuickItem);
     d->view->setBufferLocked(locked);
+
+    // Apply the latest surface size
+    if (!locked)
+        updateSize();
 }
 
 /*!
@@ -981,7 +1106,7 @@ void QWaylandQuickItem::takeFocus(QWaylandSeat *device)
 {
     forceActiveFocus();
 
-    if (!surface())
+    if (!surface() || !surface()->client())
         return;
 
     QWaylandSeat *target = device;
@@ -989,9 +1114,29 @@ void QWaylandQuickItem::takeFocus(QWaylandSeat *device)
         target = compositor()->defaultSeat();
     }
     target->setKeyboardFocus(surface());
-    QWaylandTextInput *textInput = QWaylandTextInput::findIn(target);
-    if (textInput)
-        textInput->setFocus(surface());
+
+    qCDebug(qLcWaylandCompositorInputMethods) << Q_FUNC_INFO << " surface:" << surface()
+        << ", client:" << surface()->client()
+        << ", textinputprotocol:" << (int)(surface()->client()->textInputProtocols());
+    if (surface()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV2)) {
+        QWaylandTextInput *textInput = QWaylandTextInput::findIn(target);
+        if (textInput)
+            textInput->setFocus(surface());
+    }
+
+#if QT_WAYLAND_TEXT_INPUT_V4_WIP
+    if (surface()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::TextInputV4)) {
+        QWaylandTextInputV4 *textInputV4 = QWaylandTextInputV4::findIn(target);
+        if (textInputV4)
+            textInputV4->setFocus(surface());
+    }
+#endif // QT_WAYLAND_TEXT_INPUT_V4_WIP
+
+    if (surface()->client()->textInputProtocols().testFlag(QWaylandClient::TextInputProtocol::QtTextInputMethodV1)) {
+        QWaylandQtTextInputMethod *textInputMethod = QWaylandQtTextInputMethod::findIn(target);
+        if (textInputMethod)
+            textInputMethod->setFocus(surface());
+    }
 }
 
 /*!
@@ -1024,17 +1169,21 @@ void QWaylandQuickItem::updateSize()
 {
     Q_D(QWaylandQuickItem);
 
+    // No resize if buffer is locked
+    if (isBufferLocked()) {
+        qWarning() << "No update on item size as the buffer is currently locked";
+        return;
+    }
+
     QSize size(0, 0);
     if (surface())
         size = surface()->destinationSize() * d->scaleFactor();
 
     setImplicitSize(size.width(), size.height());
-    if (d->sizeFollowsSurface)
-        setSize(size);
 }
 
 /*!
- * \qmlproperty bool QtWaylandCompositor::WaylandQuickItem::focusOnClick
+ * \qmlproperty bool QtWayland.Compositor::WaylandQuickItem::focusOnClick
  *
  * This property specifies whether the WaylandQuickItem should take focus when
  * it is clicked or touched.
@@ -1075,16 +1224,6 @@ bool QWaylandQuickItem::inputRegionContains(const QPointF &localPosition) const
     if (QWaylandSurface *s = surface())
         return s->inputRegionContains(mapToSurface(localPosition));
     return false;
-}
-
-// Qt 6: Remove the non-const version
-/*!
- * Returns \c true if the input region of this item's surface contains the
- * position given by \a localPosition.
- */
-bool QWaylandQuickItem::inputRegionContains(const QPointF &localPosition)
-{
-    return const_cast<const QWaylandQuickItem *>(this)->inputRegionContains(localPosition);
 }
 
 /*!
@@ -1138,41 +1277,6 @@ QPointF QWaylandQuickItem::mapFromSurface(const QPointF &point) const
     return QPointF(point.x() * xScale, point.y() * yScale);
 }
 
-/*!
- * \qmlproperty bool QtWaylandCompositor::WaylandQuickItem::sizeFollowsSurface
- *
- * This property specifies whether the size of the item should always match
- * the size of its surface.
- *
- * The default is \c true.
- */
-
-/*!
- * \property QWaylandQuickItem::sizeFollowsSurface
- *
- * This property specifies whether the size of the item should always match
- * the size of its surface.
- *
- * The default is \c true.
- */
-bool QWaylandQuickItem::sizeFollowsSurface() const
-{
-    Q_D(const QWaylandQuickItem);
-    return d->sizeFollowsSurface;
-}
-
-//TODO: sizeFollowsSurface became obsolete when we added an implementation for
-//implicit size. The property is here for compatibility reasons only and should
-//be removed or at least default to false in Qt 6.
-void QWaylandQuickItem::setSizeFollowsSurface(bool sizeFollowsSurface)
-{
-    Q_D(QWaylandQuickItem);
-    if (d->sizeFollowsSurface == sizeFollowsSurface)
-        return;
-    d->sizeFollowsSurface = sizeFollowsSurface;
-    emit sizeFollowsSurfaceChanged();
-}
-
 #if QT_CONFIG(im)
 QVariant QWaylandQuickItem::inputMethodQuery(Qt::InputMethodQuery query) const
 {
@@ -1194,7 +1298,7 @@ QVariant QWaylandQuickItem::inputMethodQuery(Qt::InputMethodQuery query, QVarian
 #endif
 
 /*!
-    \qmlproperty bool QtWaylandCompositor::WaylandQuickItem::paintEnabled
+    \qmlproperty bool QtWayland.Compositor::WaylandQuickItem::paintEnabled
 
     Returns true if the item is hidden, though the texture
     is still updated. As opposed to hiding the item by
@@ -1210,7 +1314,7 @@ QVariant QWaylandQuickItem::inputMethodQuery(Qt::InputMethodQuery query, QVarian
     setting \l{QQuickItem::}{visible} to \c false, setting this property to \c false
     will not prevent mouse or keyboard input from reaching item.
 */
-bool QWaylandQuickItem::paintEnabled() const
+bool QWaylandQuickItem::isPaintEnabled() const
 {
     Q_D(const QWaylandQuickItem);
     return d->paintEnabled;
@@ -1229,7 +1333,7 @@ void QWaylandQuickItem::setPaintEnabled(bool enabled)
 }
 
 /*!
-    \qmlproperty  bool QtWaylandCompositor::WaylandQuickItem::touchEventsEnabled
+    \qmlproperty  bool QtWayland.Compositor::WaylandQuickItem::touchEventsEnabled
 
     This property holds \c true if touch events are forwarded to the client
     surface, \c false otherwise.
@@ -1275,15 +1379,15 @@ void QWaylandQuickItem::updateWindow()
     if (d->connectedWindow) {
         connect(d->connectedWindow, &QQuickWindow::beforeSynchronizing, this, &QWaylandQuickItem::beforeSync, Qt::DirectConnection);
         connect(d->connectedWindow, &QQuickWindow::screenChanged, this, &QWaylandQuickItem::updateSize); // new screen may have new dpr
-    }
 
-    if (compositor() && d->connectedWindow) {
-        QWaylandOutput *output = compositor()->outputFor(d->connectedWindow);
-        Q_ASSERT(output);
-        d->view->setOutput(output);
-    }
+        if (compositor()) {
+            QWaylandOutput *output = compositor()->outputFor(d->connectedWindow);
+            Q_ASSERT(output);
+            d->view->setOutput(output);
+        }
 
-    updateSize(); // because scaleFactor depends on devicePixelRatio, which may be different for the new window
+        updateSize(); // because scaleFactor depends on devicePixelRatio, which may be different for the new window
+    }
 }
 
 void QWaylandQuickItem::updateOutput()
@@ -1324,7 +1428,7 @@ void QWaylandQuickItem::updateInputMethod(Qt::InputMethodQueries queries)
 #endif
 
 /*!
- * \qmlsignal void QtWaylandCompositor::WaylandQuickItem::surfaceDestroyed()
+ * \qmlsignal void QtWayland.Compositor::WaylandQuickItem::surfaceDestroyed()
  *
  * This signal is emitted when the client has destroyed the \c wl_surface associated
  * with the WaylandQuickItem. The handler for this signal is expected to either destroy the
@@ -1355,7 +1459,7 @@ QSGNode *QWaylandQuickItem::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeDat
     d->lastMatrix = data->transformNode->combinedMatrix();
     const bool bufferHasContent = d->view->currentBuffer().hasContent();
 
-    if (d->view->isBufferLocked() && !bufferHasContent && d->paintEnabled)
+    if (d->view->isBufferLocked() && d->paintEnabled)
         return oldNode;
 
     if (!bufferHasContent || !d->paintEnabled || !surface()) {
@@ -1373,16 +1477,42 @@ QSGNode *QWaylandQuickItem::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeDat
             || bufferTypes[ref.bufferFormatEgl()].canProvideTexture
 #endif
     ) {
+#if QT_CONFIG(opengl)
+        if (oldNode && !d->paintByProvider) {
+            // Need to re-create a node
+            delete oldNode;
+            oldNode = nullptr;
+        }
+        d->paintByProvider = true;
+#endif
         // This case could covered by the more general path below, but this is more efficient (especially when using ShaderEffect items).
         QSGSimpleTextureNode *node = static_cast<QSGSimpleTextureNode *>(oldNode);
 
         if (!node) {
             node = new QSGSimpleTextureNode();
+            if (smooth())
+                node->setFiltering(QSGTexture::Linear);
             d->newTexture = true;
         }
 
-        if (!d->provider)
+        if (!d->provider) {
             d->provider = new QWaylandSurfaceTextureProvider();
+            if (compositor()) {
+                d->texProviderConnection =
+                    QObject::connect(
+                            compositor(),
+                            &QObject::destroyed,
+                            this,
+                            [this](QObject*) {
+                                    auto *itemPriv = QWaylandQuickItemPrivate::get(this);
+                                    if (itemPriv->provider) {
+                                        itemPriv->provider->deleteLater();
+                                        itemPriv->provider = nullptr;
+                                    }
+                                    disconnect(itemPriv->texProviderConnection); }
+                    );
+            }
+        }
 
         if (d->newTexture) {
             d->newTexture = false;
@@ -1402,6 +1532,13 @@ QSGNode *QWaylandQuickItem::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeDat
 
 #if QT_CONFIG(opengl)
     Q_ASSERT(!d->provider);
+
+    if (oldNode && d->paintByProvider) {
+        // Need to re-create a node
+        delete oldNode;
+        oldNode = nullptr;
+    }
+    d->paintByProvider = false;
 
     QSGGeometryNode *node = static_cast<QSGGeometryNode *>(oldNode);
 
@@ -1477,20 +1614,34 @@ void QWaylandQuickItem::setInputEventsEnabled(bool enabled)
 
 void QWaylandQuickItem::lower()
 {
-    QQuickItem *parent = parentItem();
+    Q_D(QWaylandQuickItem);
+    d->lower();
+}
+
+void QWaylandQuickItemPrivate::lower()
+{
+    Q_Q(QWaylandQuickItem);
+    QQuickItem *parent = q->parentItem();
     Q_ASSERT(parent);
-    QQuickItem *bottom = parent->childItems().first();
-    if (this != bottom)
-        stackBefore(bottom);
+    QQuickItem *bottom = parent->childItems().constFirst();
+    if (q != bottom)
+        q->stackBefore(bottom);
 }
 
 void QWaylandQuickItem::raise()
 {
-    QQuickItem *parent = parentItem();
+    Q_D(QWaylandQuickItem);
+    d->raise();
+}
+
+void QWaylandQuickItemPrivate::raise()
+{
+    Q_Q(QWaylandQuickItem);
+    QQuickItem *parent = q->parentItem();
     Q_ASSERT(parent);
-    QQuickItem *top = parent->childItems().last();
-    if (this != top)
-        stackAfter(top);
+    QQuickItem *top = parent->childItems().constLast();
+    if (q != top)
+        q->stackAfter(top);
 }
 
 void QWaylandQuickItem::sendMouseMoveEvent(const QPointF &position, QWaylandSeat *seat)
@@ -1620,3 +1771,5 @@ void QWaylandQuickItemPrivate::placeBelowParent()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandquickitem.cpp"

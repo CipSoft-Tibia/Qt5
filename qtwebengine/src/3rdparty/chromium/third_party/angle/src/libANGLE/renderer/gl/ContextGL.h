@@ -179,6 +179,11 @@ class ContextGL : public ContextImpl
                                            const GLsizei *counts,
                                            const GLsizei *instanceCounts,
                                            GLsizei drawcount) override;
+    angle::Result multiDrawArraysIndirect(const gl::Context *context,
+                                          gl::PrimitiveMode mode,
+                                          const void *indirect,
+                                          GLsizei drawcount,
+                                          GLsizei stride) override;
     angle::Result multiDrawElements(const gl::Context *context,
                                     gl::PrimitiveMode mode,
                                     const GLsizei *counts,
@@ -192,6 +197,12 @@ class ContextGL : public ContextImpl
                                              const GLvoid *const *indices,
                                              const GLsizei *instanceCounts,
                                              GLsizei drawcount) override;
+    angle::Result multiDrawElementsIndirect(const gl::Context *context,
+                                            gl::PrimitiveMode mode,
+                                            gl::DrawElementsType type,
+                                            const void *indirect,
+                                            GLsizei drawcount,
+                                            GLsizei stride) override;
     angle::Result multiDrawArraysInstancedBaseInstance(const gl::Context *context,
                                                        gl::PrimitiveMode mode,
                                                        const GLint *firsts,
@@ -212,10 +223,6 @@ class ContextGL : public ContextImpl
     // Device loss
     gl::GraphicsResetStatus getResetStatus() override;
 
-    // Vendor and description strings.
-    std::string getVendorString() const override;
-    std::string getRendererDescription() const override;
-
     // EXT_debug_marker
     angle::Result insertEventMarker(GLsizei length, const char *marker) override;
     angle::Result pushGroupMarker(GLsizei length, const char *marker) override;
@@ -231,7 +238,8 @@ class ContextGL : public ContextImpl
     // State sync with dirty bits.
     angle::Result syncState(const gl::Context *context,
                             const gl::State::DirtyBits &dirtyBits,
-                            const gl::State::DirtyBits &bitMask) override;
+                            const gl::State::DirtyBits &bitMask,
+                            gl::Command command) override;
 
     // Disjoint timer queries
     GLint getGPUDisjoint() override;
@@ -239,12 +247,14 @@ class ContextGL : public ContextImpl
 
     // Context switching
     angle::Result onMakeCurrent(const gl::Context *context) override;
+    angle::Result onUnMakeCurrent(const gl::Context *context) override;
 
     // Caps queries
     gl::Caps getNativeCaps() const override;
     const gl::TextureCapsMap &getNativeTextureCaps() const override;
     const gl::Extensions &getNativeExtensions() const override;
     const gl::Limitations &getNativeLimitations() const override;
+    const ShPixelLocalStorageOptions &getNativePixelLocalStorageOptions() const override;
 
     // Handle helpers
     ANGLE_INLINE const FunctionsGL *getFunctions() const { return mRenderer->getFunctions(); }
@@ -263,6 +273,8 @@ class ContextGL : public ContextImpl
     angle::Result memoryBarrier(const gl::Context *context, GLbitfield barriers) override;
     angle::Result memoryBarrierByRegion(const gl::Context *context, GLbitfield barriers) override;
 
+    void framebufferFetchBarrier() override;
+
     void setMaxShaderCompilerThreads(GLuint count) override;
 
     void invalidateTexture(gl::TextureType target) override;
@@ -271,6 +283,18 @@ class ContextGL : public ContextImpl
 
     void setNeedsFlushBeforeDeleteTextures();
     void flushIfNecessaryBeforeDeleteTextures();
+
+    void markWorkSubmitted();
+
+    const gl::Debug &getDebug() const { return mState.getDebug(); }
+
+    angle::Result drawPixelLocalStorageEXTEnable(gl::Context *,
+                                                 GLsizei n,
+                                                 const gl::PixelLocalStoragePlane[],
+                                                 const GLenum loadops[]) override;
+    angle::Result drawPixelLocalStorageEXTDisable(gl::Context *,
+                                                  const gl::PixelLocalStoragePlane[],
+                                                  const GLenum storeops[]) override;
 
   private:
     angle::Result setDrawArraysState(const gl::Context *context,
@@ -288,6 +312,10 @@ class ContextGL : public ContextImpl
     gl::AttributesMask updateAttributesForBaseInstance(const gl::Program *program,
                                                        GLuint baseInstance);
     void resetUpdatedAttributes(gl::AttributesMask attribMask);
+
+    // Resets draw state prior to drawing load/store operations for EXT_shader_pixel_local_storage,
+    // in order to guarantee every pixel gets updated.
+    void resetDrawStateForPixelLocalStorageEXT(const gl::Context *context);
 
   protected:
     std::shared_ptr<RendererGL> mRenderer;

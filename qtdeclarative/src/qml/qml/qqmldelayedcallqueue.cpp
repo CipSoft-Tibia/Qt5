@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldelayedcallqueue_p.h"
 #include <private/qqmlengine_p.h>
@@ -67,16 +31,16 @@ void QQmlDelayedCallQueue::DelayedFunctionCall::execute(QV4::ExecutionEngine *en
         const QV4::FunctionObject *callback = m_function.as<QV4::FunctionObject>();
         Q_ASSERT(callback);
         const int argCount = array ? array->getLength() : 0;
-        QV4::JSCallData jsCallData(scope, argCount);
-        *jsCallData->thisObject = QV4::Encode::undefined();
+        QV4::JSCallArguments jsCallData(scope, argCount);
+        *jsCallData.thisObject = QV4::Encode::undefined();
 
         for (int i = 0; i < argCount; i++) {
-            jsCallData->args[i] = array->get(i);
+            jsCallData.args[i] = array->get(i);
         }
 
         callback->call(jsCallData);
 
-        if (scope.engine->hasException) {
+        if (scope.hasException()) {
             QQmlError error = scope.engine->catchExceptionAsQmlError();
             error.setDescription(error.description() + QLatin1String(" (exception occurred during delayed function evaluation)"));
             QQmlEnginePrivate::warning(QQmlEnginePrivate::get(scope.engine->qmlEngine()), error);
@@ -106,25 +70,28 @@ void QQmlDelayedCallQueue::init(QV4::ExecutionEngine* engine)
     m_tickedMethod = metaObject.method(methodIndex);
 }
 
-QV4::ReturnedValue QQmlDelayedCallQueue::addUniquelyAndExecuteLater(const QV4::FunctionObject *b, const QV4::Value *, const QV4::Value *argv, int argc)
+QV4::ReturnedValue QQmlDelayedCallQueue::addUniquelyAndExecuteLater(QV4::ExecutionEngine *engine, QQmlV4Function *args)
 {
-    QV4::Scope scope(b);
-    if (argc == 0)
+    QQmlDelayedCallQueue *self = engine->delayedCallQueue();
+
+    QV4::Scope scope(engine);
+    if (args->length() == 0)
         THROW_GENERIC_ERROR("Qt.callLater: no arguments given");
 
-    const QV4::FunctionObject *func = argv[0].as<QV4::FunctionObject>();
+    QV4::ScopedValue firstArgument(scope, (*args)[0]);
+
+    const QV4::FunctionObject *func = firstArgument->as<QV4::FunctionObject>();
 
     if (!func)
         THROW_GENERIC_ERROR("Qt.callLater: first argument not a function or signal");
 
     QPair<QObject *, int> functionData = QV4::QObjectMethod::extractQtMethod(func);
-    QV4::ReturnedValue arg0 = argc ? argv[0].asReturnedValue() : QV4::Encode::undefined();
 
     QVector<DelayedFunctionCall>::Iterator iter;
     if (functionData.second != -1) {
         // This is a QObject function wrapper
-        iter = m_delayedFunctionCalls.begin();
-        while (iter != m_delayedFunctionCalls.end()) {
+        iter = self->m_delayedFunctionCalls.begin();
+        while (iter != self->m_delayedFunctionCalls.end()) {
             DelayedFunctionCall& dfc = *iter;
             QPair<QObject *, int> storedFunctionData = QV4::QObjectMethod::extractQtMethod(dfc.m_function.as<QV4::FunctionObject>());
             if (storedFunctionData == functionData) {
@@ -134,26 +101,26 @@ QV4::ReturnedValue QQmlDelayedCallQueue::addUniquelyAndExecuteLater(const QV4::F
         }
     } else {
         // This is a JavaScript function (dynamic slot on VMEMO)
-        iter = m_delayedFunctionCalls.begin();
-        while (iter != m_delayedFunctionCalls.end()) {
+        iter = self->m_delayedFunctionCalls.begin();
+        while (iter != self->m_delayedFunctionCalls.end()) {
             DelayedFunctionCall& dfc = *iter;
-            if (arg0 == dfc.m_function.value()) {
+            if (firstArgument->asReturnedValue() == dfc.m_function.value()) {
                 break; // Already stored!
             }
             ++iter;
         }
     }
 
-    const bool functionAlreadyStored = (iter != m_delayedFunctionCalls.end());
+    const bool functionAlreadyStored = (iter != self->m_delayedFunctionCalls.end());
     if (functionAlreadyStored) {
         DelayedFunctionCall dfc = *iter;
-        m_delayedFunctionCalls.erase(iter);
-        m_delayedFunctionCalls.append(dfc);
+        self->m_delayedFunctionCalls.erase(iter);
+        self->m_delayedFunctionCalls.append(dfc);
     } else {
-        m_delayedFunctionCalls.append(QV4::PersistentValue(m_engine, arg0));
+        self->m_delayedFunctionCalls.append(QV4::PersistentValue(engine, firstArgument));
     }
 
-    DelayedFunctionCall& dfc = m_delayedFunctionCalls.last();
+    DelayedFunctionCall& dfc = self->m_delayedFunctionCalls.last();
     if (dfc.m_objectGuard.isNull()) {
         if (functionData.second != -1) {
             // if it's a qobject function wrapper, guard against qobject deletion
@@ -166,18 +133,18 @@ QV4::ReturnedValue QQmlDelayedCallQueue::addUniquelyAndExecuteLater(const QV4::F
             dfc.m_guarded = true;
         }
     }
-    storeAnyArguments(dfc, argv, argc, 1, m_engine);
+    self->storeAnyArguments(dfc, args, 1, engine);
 
-    if (!m_callbackOutstanding) {
-        m_tickedMethod.invoke(this, Qt::QueuedConnection);
-        m_callbackOutstanding = true;
+    if (!self->m_callbackOutstanding) {
+        self->m_tickedMethod.invoke(self, Qt::QueuedConnection);
+        self->m_callbackOutstanding = true;
     }
     return QV4::Encode::undefined();
 }
 
-void QQmlDelayedCallQueue::storeAnyArguments(DelayedFunctionCall &dfc, const QV4::Value *argv, int argc, int offset, QV4::ExecutionEngine *engine)
+void QQmlDelayedCallQueue::storeAnyArguments(DelayedFunctionCall &dfc, QQmlV4Function *args, int offset, QV4::ExecutionEngine *engine)
 {
-    const int length = argc - offset;
+    const int length = args->length() - offset;
     if (length == 0) {
         dfc.m_args.clear();
         return;
@@ -185,8 +152,8 @@ void QQmlDelayedCallQueue::storeAnyArguments(DelayedFunctionCall &dfc, const QV4
     QV4::Scope scope(engine);
     QV4::ScopedArrayObject array(scope, engine->newArrayObject(length));
     uint i = 0;
-    for (int j = offset, ej = argc; j < ej; ++i, ++j)
-        array->put(i, argv[j]);
+    for (int j = offset, ej = args->length(); j < ej; ++i, ++j)
+        array->put(i, (*args)[j]);
     dfc.m_args.set(engine, array);
 }
 

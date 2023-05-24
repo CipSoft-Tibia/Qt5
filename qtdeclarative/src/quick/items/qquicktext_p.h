@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKTEXT_P_H
 #define QQUICKTEXT_P_H
@@ -52,6 +16,7 @@
 //
 
 #include "qquickimplicitsizeitem_p.h"
+#include "qquicktextinterface_p.h"
 #include <private/qtquickglobal_p.h>
 #include <QtGui/qtextoption.h>
 
@@ -59,48 +24,51 @@ QT_BEGIN_NAMESPACE
 
 class QQuickTextPrivate;
 class QQuickTextLine;
-class Q_QUICK_PRIVATE_EXPORT QQuickText : public QQuickImplicitSizeItem
+class Q_QUICK_PRIVATE_EXPORT QQuickText : public QQuickImplicitSizeItem, public QQuickTextInterface
 {
     Q_OBJECT
+    Q_INTERFACES(QQuickTextInterface)
 
     Q_PROPERTY(QString text READ text WRITE setText NOTIFY textChanged)
     Q_PROPERTY(QFont font READ font WRITE setFont NOTIFY fontChanged)
-    Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged)
-    Q_PROPERTY(QColor linkColor READ linkColor WRITE setLinkColor NOTIFY linkColorChanged)
-    Q_PROPERTY(TextStyle style READ style WRITE setStyle NOTIFY styleChanged)
-    Q_PROPERTY(QColor styleColor READ styleColor WRITE setStyleColor NOTIFY styleColorChanged)
-    Q_PROPERTY(HAlignment horizontalAlignment READ hAlign WRITE setHAlign RESET resetHAlign NOTIFY horizontalAlignmentChanged)
-    Q_PROPERTY(HAlignment effectiveHorizontalAlignment READ effectiveHAlign NOTIFY effectiveHorizontalAlignmentChanged)
-    Q_PROPERTY(VAlignment verticalAlignment READ vAlign WRITE setVAlign NOTIFY verticalAlignmentChanged)
-    Q_PROPERTY(WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged)
-    Q_PROPERTY(int lineCount READ lineCount NOTIFY lineCountChanged)
-    Q_PROPERTY(bool truncated READ truncated NOTIFY truncatedChanged)
-    Q_PROPERTY(int maximumLineCount READ maximumLineCount WRITE setMaximumLineCount NOTIFY maximumLineCountChanged RESET resetMaximumLineCount)
+    Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged FINAL)
+    Q_PROPERTY(QColor linkColor READ linkColor WRITE setLinkColor NOTIFY linkColorChanged FINAL)
+    Q_PROPERTY(TextStyle style READ style WRITE setStyle NOTIFY styleChanged FINAL)
+    Q_PROPERTY(QColor styleColor READ styleColor WRITE setStyleColor NOTIFY styleColorChanged FINAL)
+    Q_PROPERTY(HAlignment horizontalAlignment READ hAlign WRITE setHAlign RESET resetHAlign NOTIFY horizontalAlignmentChanged FINAL)
+    Q_PROPERTY(HAlignment effectiveHorizontalAlignment READ effectiveHAlign NOTIFY effectiveHorizontalAlignmentChanged FINAL)
+    Q_PROPERTY(VAlignment verticalAlignment READ vAlign WRITE setVAlign NOTIFY verticalAlignmentChanged FINAL)
+    Q_PROPERTY(WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged FINAL)
+    Q_PROPERTY(int lineCount READ lineCount NOTIFY lineCountChanged FINAL)
+    Q_PROPERTY(bool truncated READ truncated NOTIFY truncatedChanged FINAL)
+    Q_PROPERTY(int maximumLineCount READ maximumLineCount WRITE setMaximumLineCount NOTIFY maximumLineCountChanged RESET resetMaximumLineCount FINAL)
 
-    Q_PROPERTY(TextFormat textFormat READ textFormat WRITE setTextFormat NOTIFY textFormatChanged)
-    Q_PROPERTY(TextElideMode elide READ elideMode WRITE setElideMode NOTIFY elideModeChanged) //### elideMode?
-    Q_PROPERTY(qreal contentWidth READ contentWidth NOTIFY contentWidthChanged)
-    Q_PROPERTY(qreal contentHeight READ contentHeight NOTIFY contentHeightChanged)
-    Q_PROPERTY(qreal paintedWidth READ contentWidth NOTIFY contentWidthChanged)  // Compatibility
-    Q_PROPERTY(qreal paintedHeight READ contentHeight NOTIFY contentHeightChanged)
-    Q_PROPERTY(qreal lineHeight READ lineHeight WRITE setLineHeight NOTIFY lineHeightChanged)
-    Q_PROPERTY(LineHeightMode lineHeightMode READ lineHeightMode WRITE setLineHeightMode NOTIFY lineHeightModeChanged)
-    Q_PROPERTY(QUrl baseUrl READ baseUrl WRITE setBaseUrl RESET resetBaseUrl NOTIFY baseUrlChanged)
-    Q_PROPERTY(int minimumPixelSize READ minimumPixelSize WRITE setMinimumPixelSize NOTIFY minimumPixelSizeChanged)
-    Q_PROPERTY(int minimumPointSize READ minimumPointSize WRITE setMinimumPointSize NOTIFY minimumPointSizeChanged)
-    Q_PROPERTY(FontSizeMode fontSizeMode READ fontSizeMode WRITE setFontSizeMode NOTIFY fontSizeModeChanged)
-    Q_PROPERTY(RenderType renderType READ renderType WRITE setRenderType NOTIFY renderTypeChanged)
-    Q_PROPERTY(QString hoveredLink READ hoveredLink NOTIFY linkHovered REVISION 2)
+    Q_PROPERTY(TextFormat textFormat READ textFormat WRITE setTextFormat NOTIFY textFormatChanged FINAL)
+    Q_PROPERTY(TextElideMode elide READ elideMode WRITE setElideMode NOTIFY elideModeChanged FINAL) //### elideMode?
+    Q_PROPERTY(qreal contentWidth READ contentWidth NOTIFY contentWidthChanged FINAL)
+    Q_PROPERTY(qreal contentHeight READ contentHeight NOTIFY contentHeightChanged FINAL)
+    Q_PROPERTY(qreal paintedWidth READ contentWidth NOTIFY contentWidthChanged FINAL)  // Compatibility
+    Q_PROPERTY(qreal paintedHeight READ contentHeight NOTIFY contentHeightChanged FINAL)
+    Q_PROPERTY(qreal lineHeight READ lineHeight WRITE setLineHeight NOTIFY lineHeightChanged FINAL)
+    Q_PROPERTY(LineHeightMode lineHeightMode READ lineHeightMode WRITE setLineHeightMode NOTIFY lineHeightModeChanged FINAL)
+    Q_PROPERTY(QUrl baseUrl READ baseUrl WRITE setBaseUrl RESET resetBaseUrl NOTIFY baseUrlChanged FINAL)
+    Q_PROPERTY(int minimumPixelSize READ minimumPixelSize WRITE setMinimumPixelSize NOTIFY minimumPixelSizeChanged FINAL)
+    Q_PROPERTY(int minimumPointSize READ minimumPointSize WRITE setMinimumPointSize NOTIFY minimumPointSizeChanged FINAL)
+    Q_PROPERTY(FontSizeMode fontSizeMode READ fontSizeMode WRITE setFontSizeMode NOTIFY fontSizeModeChanged FINAL)
+    Q_PROPERTY(RenderType renderType READ renderType WRITE setRenderType NOTIFY renderTypeChanged FINAL)
+    Q_PROPERTY(QString hoveredLink READ hoveredLink NOTIFY linkHovered REVISION(2, 2) FINAL)
+    Q_PROPERTY(int renderTypeQuality READ renderTypeQuality WRITE setRenderTypeQuality NOTIFY renderTypeQualityChanged REVISION(6, 0) FINAL)
 
-    Q_PROPERTY(qreal padding READ padding WRITE setPadding RESET resetPadding NOTIFY paddingChanged REVISION 6)
-    Q_PROPERTY(qreal topPadding READ topPadding WRITE setTopPadding RESET resetTopPadding NOTIFY topPaddingChanged REVISION 6)
-    Q_PROPERTY(qreal leftPadding READ leftPadding WRITE setLeftPadding RESET resetLeftPadding NOTIFY leftPaddingChanged REVISION 6)
-    Q_PROPERTY(qreal rightPadding READ rightPadding WRITE setRightPadding RESET resetRightPadding NOTIFY rightPaddingChanged REVISION 6)
-    Q_PROPERTY(qreal bottomPadding READ bottomPadding WRITE setBottomPadding RESET resetBottomPadding NOTIFY bottomPaddingChanged REVISION 6)
+    Q_PROPERTY(qreal padding READ padding WRITE setPadding RESET resetPadding NOTIFY paddingChanged REVISION(2, 6) FINAL)
+    Q_PROPERTY(qreal topPadding READ topPadding WRITE setTopPadding RESET resetTopPadding NOTIFY topPaddingChanged REVISION(2, 6) FINAL)
+    Q_PROPERTY(qreal leftPadding READ leftPadding WRITE setLeftPadding RESET resetLeftPadding NOTIFY leftPaddingChanged REVISION(2, 6) FINAL)
+    Q_PROPERTY(qreal rightPadding READ rightPadding WRITE setRightPadding RESET resetRightPadding NOTIFY rightPaddingChanged REVISION(2, 6) FINAL)
+    Q_PROPERTY(qreal bottomPadding READ bottomPadding WRITE setBottomPadding RESET resetBottomPadding NOTIFY bottomPaddingChanged REVISION(2, 6) FINAL)
 
-    Q_PROPERTY(QJSValue fontInfo READ fontInfo NOTIFY fontInfoChanged REVISION 9)
-    Q_PROPERTY(QSizeF advance READ advance NOTIFY contentSizeChanged REVISION 10)
+    Q_PROPERTY(QJSValue fontInfo READ fontInfo NOTIFY fontInfoChanged REVISION(2, 9) FINAL)
+    Q_PROPERTY(QSizeF advance READ advance NOTIFY contentSizeChanged REVISION(2, 10) FINAL)
     QML_NAMED_ELEMENT(Text)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickText(QQuickItem *parent=nullptr);
@@ -144,6 +112,14 @@ public:
                       NativeRendering
                     };
     Q_ENUM(RenderType)
+
+    enum RenderTypeQuality { DefaultRenderTypeQuality = -1,
+                             LowRenderTypeQuality = 26,
+                             NormalRenderTypeQuality = 52,
+                             HighRenderTypeQuality = 104,
+                             VeryHighRenderTypeQuality = 208
+                           };
+    Q_ENUM(RenderTypeQuality)
 
     enum LineHeightMode { ProportionalHeight, FixedHeight };
     Q_ENUM(LineHeightMode)
@@ -229,14 +205,17 @@ public:
     Q_INVOKABLE void doLayout();
 #endif
 #endif
-    Q_REVISION(9) Q_INVOKABLE void forceLayout();
+    Q_REVISION(2, 9) Q_INVOKABLE void forceLayout();
 
     RenderType renderType() const;
     void setRenderType(RenderType renderType);
 
+    int renderTypeQuality() const;
+    void setRenderTypeQuality(int renderTypeQuality);
+
     QString hoveredLink() const;
 
-    Q_REVISION(3) Q_INVOKABLE QString linkAt(qreal x, qreal y) const;
+    Q_REVISION(2, 3) Q_INVOKABLE QString linkAt(qreal x, qreal y) const;
 
     qreal padding() const;
     void setPadding(qreal padding);
@@ -261,10 +240,12 @@ public:
     QJSValue fontInfo() const;
     QSizeF advance() const;
 
+    void invalidate() override;
+
 Q_SIGNALS:
     void textChanged(const QString &text);
     void linkActivated(const QString &link);
-    Q_REVISION(2) void linkHovered(const QString &link);
+    Q_REVISION(2, 2) void linkHovered(const QString &link);
     void fontChanged(const QFont &font);
     void colorChanged();
     void linkColorChanged();
@@ -279,7 +260,7 @@ Q_SIGNALS:
     void textFormatChanged(QQuickText::TextFormat textFormat);
     void elideModeChanged(QQuickText::TextElideMode mode);
     void contentSizeChanged();
-    // The next two signals should be marked as Q_REVISION(12). See QTBUG-71247
+    // The next two signals should be marked as Q_REVISION(2, 12). See QTBUG-71247
     void contentWidthChanged(qreal contentWidth);
     void contentHeightChanged(qreal contentHeight);
 
@@ -292,12 +273,13 @@ Q_SIGNALS:
     void lineLaidOut(QQuickTextLine *line);
     void baseUrlChanged();
     void renderTypeChanged();
-    Q_REVISION(6) void paddingChanged();
-    Q_REVISION(6) void topPaddingChanged();
-    Q_REVISION(6) void leftPaddingChanged();
-    Q_REVISION(6) void rightPaddingChanged();
-    Q_REVISION(6) void bottomPaddingChanged();
-    Q_REVISION(9) void fontInfoChanged();
+    Q_REVISION(2, 6) void paddingChanged();
+    Q_REVISION(2, 6) void topPaddingChanged();
+    Q_REVISION(2, 6) void leftPaddingChanged();
+    Q_REVISION(2, 6) void rightPaddingChanged();
+    Q_REVISION(2, 6) void bottomPaddingChanged();
+    Q_REVISION(2, 9) void fontInfoChanged();
+    Q_REVISION(6, 0) void renderTypeQualityChanged();
 
 protected:
     QQuickText(QQuickTextPrivate &dd, QQuickItem *parent = nullptr);
@@ -305,8 +287,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void itemChange(ItemChange change, const ItemChangeData &value) override;
-    void geometryChanged(const QRectF &newGeometry,
-                                 const QRectF &oldGeometry) override;
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
     QSGNode *updatePaintNode(QSGNode *, UpdatePaintNodeData *) override;
 
     void updatePolish() override;
@@ -326,18 +307,21 @@ private:
     Q_DECLARE_PRIVATE(QQuickText)
 };
 
+Q_DECLARE_MIXED_ENUM_OPERATORS_SYMMETRIC(int, QQuickText::HAlignment, QQuickText::VAlignment)
+
 class QTextLine;
-class QQuickTextLine : public QObject
+class Q_QUICK_PRIVATE_EXPORT QQuickTextLine : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(int number READ number)
-    Q_PROPERTY(qreal width READ width WRITE setWidth)
-    Q_PROPERTY(qreal height READ height WRITE setHeight)
-    Q_PROPERTY(qreal x READ x WRITE setX)
-    Q_PROPERTY(qreal y READ y WRITE setY)
-    Q_PROPERTY(qreal implicitWidth READ implicitWidth REVISION 15)
-    Q_PROPERTY(bool isLast READ isLast REVISION 15)
+    Q_PROPERTY(int number READ number FINAL)
+    Q_PROPERTY(qreal width READ width WRITE setWidth FINAL)
+    Q_PROPERTY(qreal height READ height WRITE setHeight FINAL)
+    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
+    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
+    Q_PROPERTY(qreal implicitWidth READ implicitWidth REVISION(2, 15) FINAL)
+    Q_PROPERTY(bool isLast READ isLast REVISION(2, 15) FINAL)
     QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickTextLine();

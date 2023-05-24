@@ -21,11 +21,13 @@
 #ifndef AVFORMAT_MXF_H
 #define AVFORMAT_MXF_H
 
-#include "avformat.h"
-#include "libavcodec/avcodec.h"
 #include <stdint.h>
+#include "libavutil/log.h"
+#include "libavutil/pixfmt.h"
+#include "libavutil/rational.h"
+#include "libavutil/uuid.h"
 
-typedef uint8_t UID[16];
+typedef AVUUID UID;
 
 enum MXFMetadataSetType {
     AnyType,
@@ -49,6 +51,10 @@ enum MXFMetadataSetType {
     TaggedValue,
     TapeDescriptor,
     AVCSubDescriptor,
+    AudioChannelLabelSubDescriptor,
+    SoundfieldGroupLabelSubDescriptor,
+    GroupOfSoundfieldGroupsLabelSubDescriptor,
+    FFV1SubDescriptor,
 };
 
 enum MXFFrameLayout {
@@ -75,8 +81,25 @@ typedef enum {
     NormalWrap = 0,
     D10D11Wrap,
     RawAWrap,
-    RawVWrap
+    RawVWrap,
+    J2KWrap
 } MXFWrappingIndicatorType;
+
+typedef struct MXFLocalTagPair {
+    int local_tag;
+    UID uid;
+} MXFLocalTagPair;
+
+extern const uint8_t ff_mxf_random_index_pack_key[16];
+
+#define FF_MXF_MasteringDisplay_PREFIX                  0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x0e,0x04,0x20,0x04,0x01,0x01
+#define FF_MXF_MasteringDisplayPrimaries                { FF_MXF_MasteringDisplay_PREFIX,0x01,0x00,0x00 }
+#define FF_MXF_MasteringDisplayWhitePointChromaticity   { FF_MXF_MasteringDisplay_PREFIX,0x02,0x00,0x00 }
+#define FF_MXF_MasteringDisplayMaximumLuminance         { FF_MXF_MasteringDisplay_PREFIX,0x03,0x00,0x00 }
+#define FF_MXF_MasteringDisplayMinimumLuminance         { FF_MXF_MasteringDisplay_PREFIX,0x04,0x00,0x00 }
+
+#define FF_MXF_MASTERING_CHROMA_DEN 50000
+#define FF_MXF_MASTERING_LUMA_DEN   10000
 
 typedef struct MXFCodecUL {
     UID uid;

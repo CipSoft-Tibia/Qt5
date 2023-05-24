@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,40 +12,69 @@
 #include <string>
 
 #include "base/base_export.h"
-#include "base/callback_forward.h"
-#include "base/files/file_path.h"
+#include "base/functional/callback_forward.h"
 #include "base/gtest_prod_util.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
+
+#if BUILDFLAG(IS_MAC)
+#include "base/feature_list.h"
+#endif
 
 namespace base {
+
+#if BUILDFLAG(IS_MAC)
+// When enabled, NumberOfProcessors() returns the number of physical processors
+// instead of the number of logical processors if CPU security mitigations are
+// enabled for the current process.
+BASE_EXPORT BASE_DECLARE_FEATURE(kNumberOfCoresWithCpuSecurityMitigation);
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+// Strings for environment variables.
+BASE_EXPORT extern const char kLsbReleaseKey[];
+BASE_EXPORT extern const char kLsbReleaseTimeKey[];
+#endif
 
 namespace debug {
 FORWARD_DECLARE_TEST(SystemMetricsTest, ParseMeminfo);
 }
 
+class FilePath;
 struct SystemMemoryInfoKB;
 
 class BASE_EXPORT SysInfo {
  public:
-  // Return the number of logical processors/cores on the current machine.
+  // Returns the number of processors/cores available for the current
+  // application. This is typically the number of logical cores installed on the
+  // system, but could instead be the number of physical cores when
+  // SetIsCpuSecurityMitigationsEnabled() has been invoked to indicate that CPU
+  // security mitigations are enabled on Mac.
   static int NumberOfProcessors();
 
+  // Returns the number of the most efficient logical processors for the current
+  // application. This is typically e-cores on Intel hybrid architecture, or
+  // LITTLE cores on ARM bit.LITTLE architecture.
+  // Returns 0 on symmetric architecture or when it failed to recognize.
+  // This function will cache the result value in its implementation.
+  static int NumberOfEfficientProcessors();
+
   // Return the number of bytes of physical memory on the current machine.
-  static int64_t AmountOfPhysicalMemory();
+  // If low-end device mode is manually enabled via command line flag, this
+  // will return the lesser of the actual physical memory, or 512MB.
+  static uint64_t AmountOfPhysicalMemory();
 
   // Return the number of bytes of current available physical memory on the
   // machine.
   // (The amount of memory that can be allocated without any significant
   // impact on the system. It can lead to freeing inactive file-backed
   // and/or speculative file-backed memory).
-  static int64_t AmountOfAvailablePhysicalMemory();
+  static uint64_t AmountOfAvailablePhysicalMemory();
 
   // Return the number of bytes of virtual memory of this process. A return
   // value of zero means that there is no limit on the available virtual
   // memory.
-  static int64_t AmountOfVirtualMemory();
+  static uint64_t AmountOfVirtualMemory();
 
   // Return the number of megabytes of physical memory on the current machine.
   static int AmountOfPhysicalMemoryMB() {
@@ -66,29 +95,25 @@ class BASE_EXPORT SysInfo {
   // on failure.
   static int64_t AmountOfTotalDiskSpace(const FilePath& path);
 
+#if BUILDFLAG(IS_FUCHSIA)
+  // Sets the total amount of disk space to report under the specified |path|.
+  // If |bytes| is -ve then any existing entry for |path| is removed.
+  static void SetAmountOfTotalDiskSpace(const FilePath& path, int64_t bytes);
+#endif
+
   // Returns system uptime.
   static TimeDelta Uptime();
 
   // Returns a descriptive string for the current machine model or an empty
   // string if the machine model is unknown or an error occurred.
   // e.g. "MacPro1,1" on Mac, "iPhone9,3" on iOS or "Nexus 5" on Android. Only
-  // implemented on OS X, iOS, Android and Chrome OS. This returns an empty
-  // string on other platforms.
+  // implemented on OS X, iOS, Android, Chrome OS and Windows. This returns an
+  // empty string on other platforms.
   static std::string HardwareModelName();
 
   struct HardwareInfo {
     std::string manufacturer;
     std::string model;
-    // On Windows, this is the BIOS serial number. Unsupported platforms will be
-    // set to an empty string.
-    // Note: validate any new usage with the privacy team.
-    // TODO(crbug.com/907518): Implement support on other platforms.
-    std::string serial_number;
-
-    bool operator==(const HardwareInfo& rhs) const {
-      return manufacturer == rhs.manufacturer && model == rhs.model &&
-             serial_number == rhs.serial_number;
-    }
   };
   // Returns via |callback| a struct containing descriptive UTF-8 strings for
   // the current machine manufacturer and model, or empty strings if the
@@ -118,6 +143,13 @@ class BASE_EXPORT SysInfo {
   //      whereas a x86-64 kernel on the same CPU will return "x86_64"
   static std::string OperatingSystemArchitecture();
 
+  // Returns the architecture of the running process, which might be different
+  // than the architecture returned by OperatingSystemArchitecture() (e.g.
+  // macOS Rosetta, a 32-bit binary on a 64-bit OS, etc).
+  // Will return one of: "x86", "x86_64", "ARM", "ARM_64", or an empty string if
+  // none of the above.
+  static std::string ProcessCPUArchitecture();
+
   // Avoid using this. Use base/cpu.h to get information about the CPU instead.
   // http://crbug.com/148884
   // Returns the CPU model name of the system. If it can not be figured out,
@@ -128,7 +160,7 @@ class BASE_EXPORT SysInfo {
   // allocate.
   static size_t VMAllocationGranularity();
 
-#if defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
+#if BUILDFLAG(IS_CHROMEOS)
   // Set |value| and return true if LsbRelease contains information about |key|.
   static bool GetLsbReleaseValue(const std::string& key, std::string* value);
 
@@ -155,9 +187,14 @@ class BASE_EXPORT SysInfo {
   // Returns true when actually running in a Chrome OS environment.
   static bool IsRunningOnChromeOS();
 
-  // Test method to force re-parsing of lsb-release.
+  // Overrides |lsb_release| and |lsb_release_time|. Overrides cannot be nested.
+  // Call ResetChromeOSVersionInfoForTest() to restore the previous values.
+  // Prefer base::test::ScopedChromeOSVersionInfo to calling this function.
   static void SetChromeOSVersionInfoForTest(const std::string& lsb_release,
                                             const Time& lsb_release_time);
+
+  // Undoes the function above.
+  static void ResetChromeOSVersionInfoForTest();
 
   // Returns the kernel version of the host operating system.
   static std::string KernelVersion();
@@ -165,9 +202,9 @@ class BASE_EXPORT SysInfo {
   // Crashes if running on Chrome OS non-test image. Use only for really
   // sensitive and risky use cases.
   static void CrashIfChromeOSNonTestImage();
-#endif  // defined(OS_CHROMEOS) || BUILDFLAG(IS_LACROS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Returns the Android build's codename.
   static std::string GetAndroidBuildCodename();
 
@@ -179,16 +216,16 @@ class BASE_EXPORT SysInfo {
 
   static int DalvikHeapSizeMB();
   static int DalvikHeapGrowthLimitMB();
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // Returns the iOS build number string which is normally an alphanumeric
   // string like 12E456. This build number can differentiate between different
   // versions of iOS that may have the same major/minor/bugfix version numbers.
   // For example, iOS beta releases have the same version number but different
   // build number strings.
   static std::string GetIOSBuildNumber();
-#endif  // defined(OS_IOS)
+#endif  // BUILDFLAG(IS_IOS)
 
   // Returns true for low-end devices that may require extreme tradeoffs,
   // including user-visible changes, for acceptable performance.
@@ -199,21 +236,29 @@ class BASE_EXPORT SysInfo {
   //   true when memory <= 512MB on Android N and earlier.
   // This is not the same as "low-memory" and will be false on a large number of
   // <=1GB pre-O Android devices. See: |detectLowEndDevice| in SysUtils.java.
-  // On Desktop this returns true when memory <= 512MB.
+  // On Desktop this returns true when memory <= 2GB.
   static bool IsLowEndDevice();
+
+#if BUILDFLAG(IS_MAC)
+  // Sets whether CPU security mitigations are enabled for the current process.
+  // This is used to control the behavior of NumberOfProcessors(), see comment
+  // on that method.
+  static void SetIsCpuSecurityMitigationsEnabled(bool is_enabled);
+#endif
 
  private:
   FRIEND_TEST_ALL_PREFIXES(SysInfoTest, AmountOfAvailablePhysicalMemory);
   FRIEND_TEST_ALL_PREFIXES(debug::SystemMetricsTest, ParseMeminfo);
 
-  static int64_t AmountOfPhysicalMemoryImpl();
-  static int64_t AmountOfAvailablePhysicalMemoryImpl();
+  static int NumberOfEfficientProcessorsImpl();
+  static uint64_t AmountOfPhysicalMemoryImpl();
+  static uint64_t AmountOfAvailablePhysicalMemoryImpl();
   static bool IsLowEndDeviceImpl();
   static HardwareInfo GetHardwareInfoSync();
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID) || \
-    defined(OS_AIX)
-  static int64_t AmountOfAvailablePhysicalMemory(
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID) || \
+    BUILDFLAG(IS_AIX)
+  static uint64_t AmountOfAvailablePhysicalMemory(
       const SystemMemoryInfoKB& meminfo);
 #endif
 };

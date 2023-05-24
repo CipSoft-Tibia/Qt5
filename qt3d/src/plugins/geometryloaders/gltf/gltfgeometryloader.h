@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef GLTFGEOMETRYLOADER_H
 #define GLTFGEOMETRYLOADER_H
@@ -51,15 +15,20 @@
 // We mean it.
 //
 
+#include <QtCore/QHash>
 #include <QtCore/QJsonDocument>
 
 #include <Qt3DRender/private/qgeometryloaderinterface_p.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 
 #include <private/qlocale_tools_p.h>
 
 QT_BEGIN_NAMESPACE
+
+namespace Qt3DCore {
+class QGeometry;
+}
 
 namespace Qt3DRender {
 
@@ -77,7 +46,6 @@ class QRenderState;
 class QTechnique;
 class QParameter;
 class QGeometryRenderer;
-class QGeometry;
 
 class GLTFGeometryLoader : public QGeometryLoaderInterface
 {
@@ -111,7 +79,7 @@ class GLTFGeometryLoader : public QGeometryLoaderInterface
 
         QString bufferViewName;
         int bufferViewIndex;
-        QAttribute::VertexBaseType type;
+        Qt3DCore::QAttribute::VertexBaseType type;
         uint dataSize;
         int count;
         int offset;
@@ -122,13 +90,13 @@ class GLTFGeometryLoader : public QGeometryLoaderInterface
     {
         QHash<QString, AccessorData> m_accessorDict;
         QHash<QString, BufferData> m_bufferDatas;
-        QHash<QString, Qt3DRender::QBuffer*> m_buffers;
+        QHash<QString, Qt3DCore::QBuffer*> m_buffers;
     };
 
     struct Gltf2
     {
         QVector<BufferData> m_bufferDatas;
-        QVector<Qt3DRender::QBuffer*> m_buffers;
+        QVector<Qt3DCore::QBuffer*> m_buffers;
         QVector<AccessorData> m_accessors;
     };
 
@@ -137,7 +105,7 @@ public:
     GLTFGeometryLoader();
     ~GLTFGeometryLoader();
 
-    QGeometry *geometry() const final;
+    Qt3DCore::QGeometry *geometry() const final;
 
     bool load(QIODevice *ioDev, const QString &subMesh = QString()) final;
 
@@ -170,7 +138,7 @@ protected:
 
     QByteArray resolveLocalData(const QString &path) const;
 
-    static QAttribute::VertexBaseType accessorTypeFromJSON(int componentType);
+    static Qt3DCore::QAttribute::VertexBaseType accessorTypeFromJSON(int componentType);
     static uint accessorDataSizeFromJson(const QString &type);
 
 private:
@@ -181,7 +149,7 @@ private:
     Gltf1 m_gltf1;
     Gltf2 m_gltf2;
 
-    QGeometry *m_geometry;
+    Qt3DCore::QGeometry *m_geometry;
 };
 
 } // namespace Qt3DRender

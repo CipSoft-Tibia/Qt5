@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <memory>
 #include <utility>
 
-#include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/unowned_ptr.h"
+#include "third_party/base/check.h"
 
 namespace fxcrt {
 
@@ -22,7 +22,7 @@ class MaybeOwned {
  public:
   MaybeOwned() = default;
   explicit MaybeOwned(T* ptr) : m_pObj(ptr) {}
-  explicit MaybeOwned(const UnownedPtr<T>& ptr) : m_pObj(ptr.Get()) {}
+  explicit MaybeOwned(const UnownedPtr<T>& ptr) : m_pObj(ptr) {}
   explicit MaybeOwned(std::unique_ptr<T, D> ptr)
       : m_pOwnedObj(std::move(ptr)), m_pObj(m_pOwnedObj.get()) {}
 
@@ -46,18 +46,18 @@ class MaybeOwned {
       Reset();
   }
 
-  T* Get() const { return m_pObj.Get(); }
+  T* Get() const { return m_pObj; }
   bool IsOwned() const { return !!m_pOwnedObj; }
 
   // Downgrades to unowned, caller takes ownership.
   std::unique_ptr<T, D> Release() {
-    ASSERT(IsOwned());
+    DCHECK(IsOwned());
     return std::move(m_pOwnedObj);
   }
 
   // Downgrades to empty, caller takes ownership.
   std::unique_ptr<T, D> ReleaseAndClear() {
-    ASSERT(IsOwned());
+    DCHECK(IsOwned());
     m_pObj = nullptr;
     return std::move(m_pOwnedObj);
   }
@@ -74,7 +74,7 @@ class MaybeOwned {
     return *this;
   }
   MaybeOwned& operator=(const UnownedPtr<T>& ptr) {
-    Reset(ptr.Get());
+    Reset(ptr);
     return *this;
   }
   MaybeOwned& operator=(std::unique_ptr<T, D> ptr) {
@@ -96,7 +96,7 @@ class MaybeOwned {
 
   explicit operator bool() const { return !!m_pObj; }
   T& operator*() const { return *m_pObj; }
-  T* operator->() const { return m_pObj.Get(); }
+  T* operator->() const { return m_pObj; }
 
  private:
   std::unique_ptr<T, D> m_pOwnedObj;

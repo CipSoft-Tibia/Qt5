@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include "base/containers/span.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/string_piece.h"
+#include "base/template_util.h"
 #include "third_party/blink/public/common/privacy_budget/identifiability_internal_templates.h"
 #include "third_party/blink/public/common/privacy_budget/identifiability_metrics.h"
 
@@ -109,7 +110,7 @@ class IdentifiableToken {
 
   // Integers, big and small. Includes char.
   template <typename T,
-            typename U = internal::remove_cvref_t<T>,
+            typename U = base::remove_cvref_t<T>,
             typename std::enable_if_t<std::is_integral<U>::value>* = nullptr>
   constexpr IdentifiableToken(T in)  // NOLINT(google-explicit-constructor)
       : value_(base::IsValueInRangeForNumericType<TokenType, U>(in)
@@ -118,7 +119,8 @@ class IdentifiableToken {
 
   // Enums. Punt to the underlying type.
   template <typename T,
-            typename = std::enable_if_t<std::is_enum<T>::value>,
+            // Set dummy type before U to avoid GCC compile errors
+            typename std::enable_if_t<std::is_enum<T>::value>* = nullptr,
             typename U = typename std::underlying_type<T>::type>
   constexpr IdentifiableToken(T in)  // NOLINT(google-explicit-constructor)
       : IdentifiableToken(static_cast<U>(in)) {}
@@ -134,7 +136,7 @@ class IdentifiableToken {
   // resulting digest to be useless.
   template <
       typename T,
-      typename U = internal::remove_cvref_t<T>,
+      typename U = base::remove_cvref_t<T>,
       typename std::enable_if_t<std::is_floating_point<U>::value>* = nullptr>
   constexpr IdentifiableToken(T in)  // NOLINT(google-explicit-constructor)
       : value_(internal::DigestOfObjectRepresentation<double>(
@@ -158,7 +160,7 @@ class IdentifiableToken {
   // Span of known trivial types except for BytesSpan, which is the base case.
   template <typename T,
             size_t Extent,
-            typename U = internal::remove_cvref_t<T>,
+            typename U = base::remove_cvref_t<T>,
             typename std::enable_if_t<
                 std::is_arithmetic<U>::value &&
                 !std::is_same<ByteSpan::element_type, T>::value>* = nullptr>

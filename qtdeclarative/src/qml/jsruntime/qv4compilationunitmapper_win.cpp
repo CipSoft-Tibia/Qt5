@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4compilationunitmapper_p.h"
 
@@ -56,16 +20,10 @@ CompiledData::Unit *CompilationUnitMapper::open(const QString &cacheFileName, co
     // ### TODO: fix up file encoding/normalization/unc handling once QFileSystemEntry
     // is exported from QtCore.
     HANDLE handle =
-#if defined(Q_OS_WINRT)
-        CreateFile2(reinterpret_cast<const wchar_t*>(cacheFileName.constData()),
-                   GENERIC_READ | GENERIC_EXECUTE, FILE_SHARE_READ,
-                   OPEN_EXISTING, nullptr);
-#else
         CreateFile(reinterpret_cast<const wchar_t*>(cacheFileName.constData()),
                    GENERIC_READ | GENERIC_EXECUTE, FILE_SHARE_READ,
                    nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
                    nullptr);
-#endif
     if (handle == INVALID_HANDLE_VALUE) {
         *errorString = qt_error_string(GetLastError());
         return nullptr;
@@ -91,6 +49,23 @@ CompiledData::Unit *CompilationUnitMapper::open(const QString &cacheFileName, co
         return nullptr;
 
     // Data structure and qt version matched, so now we can access the rest of the file safely.
+
+    /* Error out early on file corruption. We assume we can read header.unitSize bytes
+       later (even before verifying the checksum), potentially causing out-of-bound
+       reads
+       Also, no need to wait until checksum verification if we know beforehand
+       that the cached unit is bogus
+    */
+    LARGE_INTEGER fileSize;
+    if (!GetFileSizeEx(handle, &fileSize)) {
+        *errorString = QStringLiteral("Could not determine file size");
+        return nullptr;
+    }
+    if (header.unitSize != fileSize.QuadPart) {
+        *errorString = QStringLiteral("Potential file corruption, file too small");
+        return nullptr;
+    }
+
 
     HANDLE fileMappingHandle = CreateFileMapping(handle, 0, PAGE_READONLY, 0, 0, 0);
     if (!fileMappingHandle) {

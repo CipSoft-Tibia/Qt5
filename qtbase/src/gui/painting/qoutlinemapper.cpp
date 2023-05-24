@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qoutlinemapper_p.h"
 
@@ -71,6 +35,24 @@ static const QRectF boundingRect(const QPointF *points, int pointCount)
             maxy = e->y();
     }
     return QRectF(QPointF(minx, miny), QPointF(maxx, maxy));
+}
+
+void QOutlineMapper::setClipRect(QRect clipRect)
+{
+    auto limitCoords = [](QRect r) {
+        const QRect limitRect(QPoint(-QT_RASTER_COORD_LIMIT, -QT_RASTER_COORD_LIMIT),
+                              QPoint(QT_RASTER_COORD_LIMIT, QT_RASTER_COORD_LIMIT));
+        r &= limitRect;
+        r.setWidth(qMin(r.width(), QT_RASTER_COORD_LIMIT));
+        r.setHeight(qMin(r.height(), QT_RASTER_COORD_LIMIT));
+        return r;
+    };
+
+    if (clipRect != m_clip_rect) {
+        m_clip_rect = limitCoords(clipRect);
+        const int mw = 64; // margin width. No need to trigger clipping for slight overshooting
+        m_clip_trigger_rect = QRectF(limitCoords(m_clip_rect.adjusted(-mw, -mw, mw, mw)));
+    }
 }
 
 void QOutlineMapper::curveTo(const QPointF &cp1, const QPointF &cp2, const QPointF &ep) {
@@ -236,16 +218,8 @@ void QOutlineMapper::endOutline()
            m_clip_rect.x(), m_clip_rect.y(), m_clip_rect.width(), m_clip_rect.height());
 #endif
 
-
-    // Check for out of dev bounds...
-    const bool do_clip = !m_in_clip_elements && ((controlPointRect.left() < -QT_RASTER_COORD_LIMIT
-                          || controlPointRect.right() > QT_RASTER_COORD_LIMIT
-                          || controlPointRect.top() < -QT_RASTER_COORD_LIMIT
-                          || controlPointRect.bottom() > QT_RASTER_COORD_LIMIT
-                          || controlPointRect.width() > QT_RASTER_COORD_LIMIT
-                          || controlPointRect.height() > QT_RASTER_COORD_LIMIT));
-
-    if (do_clip) {
+    // Avoid rasterizing outside cliprect: faster, and ensures coords < QT_RASTER_COORD_LIMIT
+    if (!m_in_clip_elements && !m_clip_trigger_rect.contains(controlPointRect)) {
         clipElements(elements, elementTypes(), m_elements.size());
     } else {
         convertElements(elements, elementTypes(), m_elements.size());
@@ -354,7 +328,7 @@ void QOutlineMapper::clipElements(const QPointF *elements,
                                     int element_count)
 {
     // We could save a bit of time by actually implementing them fully
-    // instead of going through convenience functionallity, but since
+    // instead of going through convenience functionality, but since
     // this part of code hardly every used, it shouldn't matter.
 
     QScopedValueRollback<bool> in_clip_elements(m_in_clip_elements, true);

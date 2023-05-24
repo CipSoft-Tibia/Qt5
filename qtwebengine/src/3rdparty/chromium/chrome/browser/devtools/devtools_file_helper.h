@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,13 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
 #include "chrome/browser/devtools/devtools_file_watcher.h"
+#if !defined(TOOLKIT_QT)
 #include "chrome/browser/platform_util.h"
+#endif  // !defined(TOOLKIT_QT)
 #include "components/prefs/pref_change_registrar.h"
 
 class Profile;
@@ -62,14 +62,16 @@ class DevToolsFileHelper {
 
   DevToolsFileHelper(content::WebContents* web_contents, Profile* profile,
                      Delegate* delegate);
+
+  DevToolsFileHelper(const DevToolsFileHelper&) = delete;
+  DevToolsFileHelper& operator=(const DevToolsFileHelper&) = delete;
+
   ~DevToolsFileHelper();
 
-  typedef base::Callback<void(const std::string&)> SaveCallback;
-  typedef base::Callback<void()> CancelCallback;
-  typedef base::Callback<void(void)> AppendCallback;
-  typedef base::Callback<void(const base::string16&,
-                              const base::Callback<void(bool)>&)>
-      ShowInfoBarCallback;
+  using SaveCallback = base::OnceCallback<void(const std::string&)>;
+  using ShowInfoBarCallback =
+      base::RepeatingCallback<void(const std::u16string&,
+                                   base::OnceCallback<void(bool)>)>;
 
   // Saves |content| to the file and associates its path with given |url|.
   // If client is calling this method with given |url| for the first time
@@ -77,8 +79,8 @@ class DevToolsFileHelper {
   void Save(const std::string& url,
             const std::string& content,
             bool save_as,
-            const SaveCallback& saveCallback,
-            const CancelCallback& cancelCallback);
+            SaveCallback saveCallback,
+            base::OnceClosure cancelCallback);
 
   // Append |content| to the file that has been associated with given |url|.
   // The |url| can be associated with a file via calling Save method.
@@ -86,7 +88,7 @@ class DevToolsFileHelper {
   // Append method does nothing.
   void Append(const std::string& url,
               const std::string& content,
-              const AppendCallback& callback);
+              base::OnceClosure callback);
 
   // Shows infobar by means of |show_info_bar_callback| to let the user
   // decide whether to grant security permissions or not.
@@ -123,14 +125,18 @@ class DevToolsFileHelper {
   bool IsFileSystemAdded(const std::string& file_system_path);
 
   // Opens and reveals file in OS's default file manager.
+#if !defined(TOOLKIT_QT)
   void ShowItemInFolder(const std::string& file_system_path);
 
+#endif  // !defined(TOOLKIT_QT)
  private:
+#if !defined(TOOLKIT_QT)
   void OnOpenItemComplete(const base::FilePath& path,
                           platform_util::OpenOperationResult result);
+#endif  // !defined(TOOLKIT_QT)
   void SaveAsFileSelected(const std::string& url,
                           const std::string& content,
-                          const SaveCallback& callback,
+                          SaveCallback callback,
                           const base::FilePath& path);
   void InnerAddFileSystem(const ShowInfoBarCallback& show_info_bar_callback,
                           const std::string& type,
@@ -139,7 +145,7 @@ class DevToolsFileHelper {
                                   const base::FilePath& path,
                                   bool allowed);
   void FailedToAddFileSystem(const std::string& error);
-  void FileSystemPathsSettingChanged();
+  void FileSystemPathsSettingChangedOnUI();
   void FilePathsChanged(const std::vector<std::string>& changed_paths,
                         const std::vector<std::string>& added_paths,
                         const std::vector<std::string>& removed_paths);
@@ -156,7 +162,6 @@ class DevToolsFileHelper {
       file_watcher_;
   scoped_refptr<base::SequencedTaskRunner> file_task_runner_;
   base::WeakPtrFactory<DevToolsFileHelper> weak_factory_{this};
-  DISALLOW_COPY_AND_ASSIGN(DevToolsFileHelper);
 };
 
 #endif  // CHROME_BROWSER_DEVTOOLS_DEVTOOLS_FILE_HELPER_H_

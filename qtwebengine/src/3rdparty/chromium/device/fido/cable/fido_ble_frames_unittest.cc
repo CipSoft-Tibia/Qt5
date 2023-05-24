@@ -1,12 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/fido/cable/fido_ble_frames.h"
 
-#include <algorithm>
 #include <vector>
 
+#include "base/ranges/algorithm.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -39,9 +39,7 @@ TEST(FidoBleFramesTest, InitializationFragment) {
       FidoBleFrameInitializationFragment::Parse(buffer, &parsed_fragment));
 
   EXPECT_EQ(kDataLength, parsed_fragment.data_length());
-  EXPECT_TRUE(std::equal(data.begin(), data.end(),
-                         parsed_fragment.fragment().begin(),
-                         parsed_fragment.fragment().end()));
+  EXPECT_TRUE(base::ranges::equal(data, parsed_fragment.fragment()));
   EXPECT_EQ(FidoBleDeviceCommand::kMsg, parsed_fragment.command());
 }
 
@@ -61,9 +59,7 @@ TEST(FidoBleFramesTest, ContinuationFragment) {
   ASSERT_TRUE(
       FidoBleFrameContinuationFragment::Parse(buffer, &parsed_fragment));
 
-  EXPECT_TRUE(std::equal(data.begin(), data.end(),
-                         parsed_fragment.fragment().begin(),
-                         parsed_fragment.fragment().end()));
+  EXPECT_TRUE(base::ranges::equal(data, parsed_fragment.fragment()));
   EXPECT_EQ(kSequence, parsed_fragment.sequence());
 }
 

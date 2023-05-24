@@ -1,41 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2022 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFACTORYLOADER_P_H
 #define QFACTORYLOADER_P_H
@@ -54,20 +19,43 @@
 #include "QtCore/qglobal.h"
 #ifndef QT_NO_QOBJECT
 
-#include "QtCore/qobject.h"
-#include "QtCore/qstringlist.h"
+#include "QtCore/private/qplugin_p.h"
+#include "QtCore/qcbormap.h"
 #include "QtCore/qcborvalue.h"
-#include "QtCore/qjsonobject.h"
-#include "QtCore/qjsondocument.h"
 #include "QtCore/qmap.h"
-#include "QtCore/qendian.h"
-#if QT_CONFIG(library)
-#include "private/qlibrary_p.h"
-#endif
+#include "QtCore/qobject.h"
+#include "QtCore/qplugin.h"
 
 QT_BEGIN_NAMESPACE
 
-QJsonDocument qJsonFromRawLibraryMetaData(const char *raw, qsizetype size, QString *errMsg);
+class QJsonObject;
+class QLibraryPrivate;
+
+class QPluginParsedMetaData
+{
+    QCborValue data;
+    bool setError(const QString &errorString) Q_DECL_COLD_FUNCTION
+    {
+        data = errorString;
+        return false;
+    }
+public:
+    QPluginParsedMetaData() = default;
+    QPluginParsedMetaData(QByteArrayView input)     { parse(input); }
+
+    bool isError() const                            { return !data.isMap(); }
+    QString errorString() const                     { return data.toString(); }
+
+    bool parse(QByteArrayView input);
+    bool parse(QPluginMetaData metaData)
+    { return parse(QByteArrayView(reinterpret_cast<const char *>(metaData.data), metaData.size)); }
+
+    QJsonObject toJson() const;     // only for QLibrary & QPluginLoader
+
+    // if data is not a map, toMap() returns empty, so shall these functions
+    QCborMap toCbor() const                         { return data.toMap(); }
+    QCborValue value(QtPluginMetaDataKeys k) const  { return data[int(k)]; }
+};
 
 class QFactoryLoaderPrivate;
 class Q_CORE_EXPORT QFactoryLoader : public QObject
@@ -86,15 +74,18 @@ public:
     void update();
     static void refreshAll();
 
-#if defined(Q_OS_UNIX) && !defined (Q_OS_MAC)
+#if defined(Q_OS_UNIX) && !defined (Q_OS_DARWIN)
     QLibraryPrivate *library(const QString &key) const;
-#endif // Q_OS_UNIX && !Q_OS_MAC
+#endif // Q_OS_UNIX && !Q_OS_DARWIN
 #endif // QT_CONFIG(library)
 
+    void setExtraSearchPath(const QString &path);
     QMultiMap<int, QString> keyMap() const;
     int indexOf(const QString &needle) const;
 
-    QList<QJsonObject> metaData() const;
+    using MetaDataList = QList<QPluginParsedMetaData>;
+
+    MetaDataList metaData() const;
     QObject *instance(int index) const;
 };
 

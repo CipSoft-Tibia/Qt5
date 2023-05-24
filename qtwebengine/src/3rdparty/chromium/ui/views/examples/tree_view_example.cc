@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,7 +29,7 @@ class ExampleTreeViewDrawingProvider : public views::TreeViewDrawingProvider {
   ExampleTreeViewDrawingProvider() = default;
   ~ExampleTreeViewDrawingProvider() override = default;
 
-  base::string16 GetAuxiliaryTextForNode(views::TreeView* tree_view,
+  std::u16string GetAuxiliaryTextForNode(views::TreeView* tree_view,
                                          ui::TreeModelNode* node) override {
     if (tree_view->GetSelectedNode() == node)
       return GetStringUTF16(IDS_TREE_VIEW_SELECTED_LABEL);
@@ -45,8 +45,7 @@ class ExampleTreeViewDrawingProvider : public views::TreeViewDrawingProvider {
 
 }  // namespace
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
 TreeViewExample::TreeViewExample()
     : ExampleBase(GetStringUTF8(IDS_TREE_VIEW_SELECT_LABEL).c_str()),
@@ -95,16 +94,18 @@ void TreeViewExample::CreateExampleView(View* container) {
   tree_view->SetDrawingProvider(
       std::make_unique<ExampleTreeViewDrawingProvider>());
   auto add = std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_TREE_VIEW_ADD_BUTTON_LABEL));
-  add->SetFocusForPlatform();
+      base::BindRepeating(&TreeViewExample::AddNewNode, base::Unretained(this)),
+      GetStringUTF16(IDS_TREE_VIEW_ADD_BUTTON_LABEL));
   add->SetRequestFocusOnPress(true);
   auto remove = std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_TREE_VIEW_REMOVE_BUTTON_LABEL));
-  remove->SetFocusForPlatform();
+      base::BindRepeating(&TreeViewExample::RemoveSelectedNode,
+                          base::Unretained(this)),
+      GetStringUTF16(IDS_TREE_VIEW_REMOVE_BUTTON_LABEL));
   remove->SetRequestFocusOnPress(true);
   auto change_title = std::make_unique<LabelButton>(
-      this, GetStringUTF16(IDS_TREE_VIEW_CHANGE_TITLE_LABEL));
-  change_title->SetFocusForPlatform();
+      base::BindRepeating(&TreeViewExample::SetSelectedNodeTitle,
+                          base::Unretained(this)),
+      GetStringUTF16(IDS_TREE_VIEW_CHANGE_TITLE_LABEL));
   change_title->SetRequestFocusOnPress(true);
 
   container->SetLayoutManager(std::make_unique<views::FlexLayout>())
@@ -142,26 +143,24 @@ void TreeViewExample::AddNewNode() {
   tree_view_->SetSelectedNode(new_node);
 }
 
+void TreeViewExample::RemoveSelectedNode() {
+  auto* selected_node = static_cast<NodeType*>(tree_view_->GetSelectedNode());
+  DCHECK(selected_node);
+  DCHECK_NE(model_.GetRoot(), selected_node);
+  model_.Remove(selected_node->parent(), selected_node);
+}
+
+void TreeViewExample::SetSelectedNodeTitle() {
+  auto* selected_node = static_cast<NodeType*>(tree_view_->GetSelectedNode());
+  DCHECK(selected_node);
+  model_.SetTitle(
+      selected_node,
+      selected_node->GetTitle() + GetStringUTF16(IDS_TREE_VIEW_NEW_NODE_LABEL));
+}
+
 bool TreeViewExample::IsCommandIdEnabled(int command_id) {
   return command_id != ID_REMOVE ||
          tree_view_->GetSelectedNode() != model_.GetRoot();
-}
-
-void TreeViewExample::ButtonPressed(Button* sender, const ui::Event& event) {
-  NodeType* selected_node =
-      static_cast<NodeType*>(tree_view_->GetSelectedNode());
-  if (sender == add_) {
-    AddNewNode();
-  } else if (sender == remove_) {
-    DCHECK(selected_node);
-    DCHECK_NE(model_.GetRoot(), selected_node);
-    model_.Remove(selected_node->parent(), selected_node);
-  } else if (sender == change_title_) {
-    DCHECK(selected_node);
-    model_.SetTitle(selected_node,
-                    selected_node->GetTitle() +
-                        GetStringUTF16(IDS_TREE_VIEW_NEW_NODE_LABEL));
-  }
 }
 
 void TreeViewExample::OnTreeViewSelectionChanged(TreeView* tree_view) {
@@ -219,9 +218,8 @@ void TreeViewExample::ExecuteCommand(int command_id, int event_flags) {
       AddNewNode();
       break;
     default:
-      NOTREACHED();
+      NOTREACHED_NORETURN();
   }
 }
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples

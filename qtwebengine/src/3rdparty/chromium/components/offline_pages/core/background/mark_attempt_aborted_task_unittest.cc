@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,9 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/test/test_mock_time_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/offline_pages/core/background/change_requests_state_task.h"
 #include "components/offline_pages/core/background/mark_attempt_started_task.h"
 #include "components/offline_pages/core/background/request_queue_store.h"
@@ -21,16 +20,11 @@
 
 namespace offline_pages {
 namespace {
+
 const int64_t kRequestId1 = 42;
 const int64_t kRequestId2 = 44;
 
 const ClientId kClientId1("download", "1234");
-
-// TODO(https://crbug.com/1042727): Fix test GURL scoping and remove this getter
-// function.
-GURL Url1() {
-  return GURL("http://example.com");
-}
 
 class MarkAttemptAbortedTaskTest : public RequestQueueTaskTestBase {
  public:
@@ -53,8 +47,8 @@ class MarkAttemptAbortedTaskTest : public RequestQueueTaskTestBase {
 
 void MarkAttemptAbortedTaskTest::AddItemToStore(RequestQueueStore* store) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request_1(kRequestId1, Url1(), kClientId1, creation_time,
-                            true);
+  SavePageRequest request_1(kRequestId1, GURL("http://example.com"), kClientId1,
+                            creation_time, true);
   store->AddRequest(request_1, RequestQueue::AddOptions(),
                     base::BindOnce(&MarkAttemptAbortedTaskTest::AddRequestDone,
                                    base::Unretained(this)));

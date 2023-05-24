@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QFont>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -39,6 +14,10 @@
 #include <QWizard>
 #include <QTreeWidget>
 #include <QScreen>
+#include <QSignalSpy>
+#include <QOperatingSystemVersion>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 Q_DECLARE_METATYPE(QWizard::WizardButton);
 
@@ -87,6 +66,7 @@ private slots:
     void sideWidget();
     void objectNames_data();
     void objectNames();
+    void changePages();
 
     // task-specific tests below me:
     void task177716_disableCommitButton();
@@ -96,8 +76,9 @@ private slots:
     void task248107_backButton();
     void task255350_fieldObjectDestroyed();
     void taskQTBUG_25691_fieldObjectDestroyed2();
+#if QT_CONFIG(shortcut)
     void taskQTBUG_46894_nextButtonShortcut();
-
+#endif
     /*
         Things that could be added:
 
@@ -371,11 +352,11 @@ void tst_QWizard::setButton()
     QVERIFY(qobject_cast<QCheckBox *>(wizard.button(QWizard::CustomButton2)));
     QVERIFY(qobject_cast<QPushButton *>(wizard.button(QWizard::CustomButton1)));
 
-    QVERIFY(toolButton != 0);
+    QVERIFY(toolButton != nullptr);
 
     // resetting the same button does nothing
     wizard.setButton(QWizard::NextButton, toolButton);
-    QVERIFY(toolButton != 0);
+    QVERIFY(toolButton != nullptr);
 
     // revert to default button
     wizard.setButton(QWizard::NextButton, 0);
@@ -417,7 +398,7 @@ void tst_QWizard::setPixmap()
     QVERIFY(wizard.pixmap(QWizard::BannerPixmap).isNull());
     QVERIFY(wizard.pixmap(QWizard::LogoPixmap).isNull());
     QVERIFY(wizard.pixmap(QWizard::WatermarkPixmap).isNull());
-    if (QOperatingSystemVersion::current() <= QOperatingSystemVersion::MacOSHighSierra)
+    if (QOperatingSystemVersion::currentType() == QOperatingSystemVersion::MacOS)
         QVERIFY(!wizard.pixmap(QWizard::BackgroundPixmap).isNull());
     else
         QVERIFY(wizard.pixmap(QWizard::BackgroundPixmap).isNull());
@@ -425,7 +406,7 @@ void tst_QWizard::setPixmap()
     QVERIFY(page->pixmap(QWizard::BannerPixmap).isNull());
     QVERIFY(page->pixmap(QWizard::LogoPixmap).isNull());
     QVERIFY(page->pixmap(QWizard::WatermarkPixmap).isNull());
-    if (QOperatingSystemVersion::current() <= QOperatingSystemVersion::MacOSHighSierra)
+    if (QOperatingSystemVersion::currentType() == QOperatingSystemVersion::MacOS)
         QVERIFY(!wizard.pixmap(QWizard::BackgroundPixmap).isNull());
     else
         QVERIFY(page->pixmap(QWizard::BackgroundPixmap).isNull());
@@ -469,8 +450,8 @@ public:
     }
 
     void registerField(const QString &name, QWidget *widget,
-                       const char *property = 0,
-                       const char *changedSignal = 0)
+                       const char *property = nullptr,
+                       const char *changedSignal = nullptr)
         { QWizardPage::registerField(name, widget, property, changedSignal); }
 
     QLineEdit *edit1;
@@ -543,7 +524,7 @@ void tst_QWizard::addPage()
         QCOMPARE(wizard.addPage(pages[i]), i);
         QCOMPARE(pages[i]->window(), (QWidget *)&wizard);
         QCOMPARE(wizard.startId(), 0);
-        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.size(), 1);
         QList<QVariant> arguments = spy.takeFirst();
         QCOMPARE(arguments.at(0).toInt(), i);
     }
@@ -556,37 +537,37 @@ void tst_QWizard::addPage()
     QVERIFY(!wizard.page(N + 1));
 
     wizard.setPage(N + 50, new QWizardPage);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QList<QVariant> arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), N + 50);
     wizard.setPage(-3000, new QWizardPage);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), -3000);
 
     QWizardPage *pageX = new QWizardPage;
     QCOMPARE(wizard.addPage(pageX), N + 51);
     QCOMPARE(wizard.page(N + 51), pageX);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), N + 51);
 
     QCOMPARE(wizard.addPage(new QWizardPage), N + 52);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), N + 52);
 
     QTest::ignoreMessage(QtWarningMsg,"QWizard::setPage: Cannot insert null page");
     wizard.addPage(0); // generates a warning
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     delete parent;
 }
 
 #define CHECK_VISITED(wizard, list) \
     do { \
-        QList<int> myList = list; \
+        const QList<int> myList = list; \
         QCOMPARE((wizard).visitedIds(), myList); \
-        Q_FOREACH(int id, myList) \
+        for (int id : myList) \
             QVERIFY((wizard).hasVisitedPage(id)); \
     } while (0)
 
@@ -605,7 +586,7 @@ void tst_QWizard::setPage()
     page = new QWizardPage(parent);
     QTest::ignoreMessage(QtWarningMsg,"QWizard::setPage: Cannot insert page with ID -1");
     wizard.setPage(-1, page);   // gives a warning and does nothing
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     QVERIFY(!wizard.page(-2));
     QVERIFY(!wizard.page(-1));
     QVERIFY(!wizard.page(0));
@@ -617,7 +598,7 @@ void tst_QWizard::setPage()
 
     page = new QWizardPage(parent);
     wizard.setPage(0, page);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QList<QVariant> arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 0);
     QCOMPARE(page->window(), (QWidget *)&wizard);
@@ -630,7 +611,7 @@ void tst_QWizard::setPage()
 
     page = new QWizardPage(parent);
     wizard.setPage(-2, page);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), -2);
     QCOMPARE(page->window(), (QWidget *)&wizard);
@@ -651,7 +632,7 @@ void tst_QWizard::setPage()
 
     page = new QWizardPage(parent);
     wizard.setPage(2, page);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 2);
     QCOMPARE(wizard.page(2), page);
@@ -670,7 +651,7 @@ void tst_QWizard::setPage()
 
     page = new QWizardPage(parent);
     wizard.setPage(-3, page);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), -3);
     QCOMPARE(wizard.page(-3), page);
@@ -741,7 +722,7 @@ void tst_QWizard::setPage()
         QCOMPARE(wizard.nextId(), -2);
         CHECK_VISITED(wizard, QList<int>() << -3);
     }
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     delete parent;
 }
 
@@ -820,9 +801,9 @@ struct MyPage2 : public QWizardPage
 public:
     MyPage2() : init(0), cleanup(0), validate(0) {}
 
-    void initializePage() { ++init; QWizardPage::initializePage(); }
-    void cleanupPage() { ++cleanup; QWizardPage::cleanupPage(); }
-    bool validatePage() { ++validate; return QWizardPage::validatePage(); }
+    void initializePage() override { ++init; QWizardPage::initializePage(); }
+    void cleanupPage() override { ++cleanup; QWizardPage::cleanupPage(); }
+    bool validatePage() override { ++validate; return QWizardPage::validatePage(); }
 
     bool sanityCheck(int init, int cleanup)
     {
@@ -999,7 +980,7 @@ void tst_QWizard::setOption_IgnoreSubTitles()
     // Check that subtitles are shown when they should (i.e.,
     // they're set and IgnoreSubTitles is off).
 
-    qApp->setActiveWindow(0); // ensure no focus rectangle around cancel button
+    QApplicationPrivate::setActiveWindow(0); // ensure no focus rectangle around cancel button
     QImage i11 = grabWidget(&wizard1);
     QImage i21 = grabWidget(&wizard2);
     QVERIFY(i11 != i21);
@@ -1591,13 +1572,13 @@ protected:
 
 class SetPage : public Operation
 {
-    void apply(QWizard *wizard) const
+    void apply(QWizard *wizard) const override
     {
         wizard->restart();
         for (int j = 0; j < page; ++j)
             wizard->next();
     }
-    QString describe() const { return QLatin1String("set page ") + QString::number(page); }
+    QString describe() const override { return QLatin1String("set page ") + QString::number(page); }
     int page;
 public:
     static QSharedPointer<SetPage> create(int page)
@@ -1610,8 +1591,8 @@ public:
 
 class SetStyle : public Operation
 {
-    void apply(QWizard *wizard) const { wizard->setWizardStyle(style); }
-    QString describe() const { return QLatin1String("set style ") + QString::number(style); }
+    void apply(QWizard *wizard) const override { wizard->setWizardStyle(style); }
+    QString describe() const override { return QLatin1String("set style ") + QString::number(style); }
     QWizard::WizardStyle style;
 public:
     static QSharedPointer<SetStyle> create(QWizard::WizardStyle style)
@@ -1624,8 +1605,8 @@ public:
 
 class SetOption : public Operation
 {
-    void apply(QWizard *wizard) const { wizard->setOption(option, on); }
-    QString describe() const;
+    void apply(QWizard *wizard) const override { wizard->setOption(option, on); }
+    QString describe() const override;
     QWizard::WizardOption option;
     bool on;
 public:
@@ -1661,7 +1642,7 @@ class OptionInfo
 
         for (int i = 0; i < 2; ++i) {
             QMap<QWizard::WizardOption, QSharedPointer<Operation> > operations_;
-            foreach (QWizard::WizardOption option, tags.keys())
+            for (const auto &[option, _] : std::as_const(tags).asKeyValueRange())
                 operations_[option] = SetOption::create(option, i == 1);
             operations << operations_;
         }
@@ -1689,7 +1670,7 @@ QString SetOption::describe() const
         + QLatin1Char(on ? '1' : '0');
 }
 
-Q_DECLARE_METATYPE(QVector<QSharedPointer<Operation> >)
+Q_DECLARE_METATYPE(QList<QSharedPointer<Operation>>)
 
 class TestGroup
 {
@@ -1706,7 +1687,7 @@ public:
         combinations.clear();
     }
 
-    QVector<QSharedPointer<Operation> > &add()
+    QList<QSharedPointer<Operation>> &add()
     {
         combinations.resize(combinations.size() + 1);
         return combinations.last();
@@ -1714,7 +1695,7 @@ public:
 
     void createTestRows()
     {
-        for (int i = 0; i < combinations.count(); ++i) {
+        for (int i = 0; i < combinations.size(); ++i) {
             QTest::newRow((name.toLatin1() + ", row " + QByteArray::number(i)).constData())
                 << (i == 0) << (type == Equality) << combinations.at(i);
             ++nRows_;
@@ -1727,7 +1708,7 @@ private:
     QString name;
     Type type;
     int nRows_;
-    QVector<QVector<QSharedPointer<Operation> > > combinations;
+    QList<QList<QSharedPointer<Operation>>> combinations;
 };
 
 class IntroPage : public QWizardPage
@@ -1804,16 +1785,16 @@ public:
 
     ~TestWizard()
     {
-        foreach (int id, pageIds) {
+        for (int id : std::as_const(pageIds)) {
             QWizardPage *page_to_delete = page(id);
             removePage(id);
             delete page_to_delete;
         }
     }
 
-    void applyOperations(const QVector<QSharedPointer<Operation> > &operations)
+    void applyOperations(const QList<QSharedPointer<Operation>> &operations)
     {
-        foreach (const QSharedPointer<Operation> &op, operations) {
+        for (const QSharedPointer<Operation> &op : operations) {
             if (op) {
                 op->apply(this);
                 opsDescr += QLatin1Char('(') + op->describe() + QLatin1String(") ");
@@ -1833,24 +1814,31 @@ public:
 class CombinationsTestData
 {
     TestGroup testGroup;
-    QVector<QSharedPointer<Operation> > pageOps;
-    QVector<QSharedPointer<Operation> > styleOps;
-    QMap<bool, QVector<QSharedPointer<Operation> > > setAllOptions;
+    const QSharedPointer<Operation> pageOps[3] = {
+        SetPage::create(0),
+        SetPage::create(1),
+        SetPage::create(2),
+    };
+    const QSharedPointer<Operation> styleOps[3] = {
+        SetStyle::create(QWizard::ClassicStyle),
+        SetStyle::create(QWizard::ModernStyle),
+        SetStyle::create(QWizard::MacStyle),
+    };
+    QMap<bool, QList<QSharedPointer<Operation>>> setAllOptions;
+
 public:
     CombinationsTestData()
     {
         QTest::addColumn<bool>("ref");
         QTest::addColumn<bool>("testEquality");
-        QTest::addColumn<QVector<QSharedPointer<Operation> > >("operations");
-        pageOps << SetPage::create(0) << SetPage::create(1) << SetPage::create(2);
-        styleOps << SetStyle::create(QWizard::ClassicStyle) << SetStyle::create(QWizard::ModernStyle)
-                 << SetStyle::create(QWizard::MacStyle);
-#define SETPAGE(page) pageOps.at(page)
-#define SETSTYLE(style) styleOps.at(style)
+        QTest::addColumn<QList<QSharedPointer<Operation>>>("operations");
+#define SETPAGE(page) pageOps[page]
+#define SETSTYLE(style) styleOps[style]
 #define OPT(option, on) OptionInfo::instance().operation(option, on)
 #define CLROPT(option) OPT(option, false)
 #define SETOPT(option) OPT(option, true)
-        foreach (QWizard::WizardOption option, OptionInfo::instance().options()) {
+        const auto options = OptionInfo::instance().options();
+        for (QWizard::WizardOption option : options) {
             setAllOptions[false] << CLROPT(option);
             setAllOptions[true]  << SETOPT(option);
         }
@@ -1907,7 +1895,7 @@ public:
         testGroup.createTestRows();
 
         for (int i = 0; i < 2; ++i) {
-            QVector<QSharedPointer<Operation> > setOptions = setAllOptions.value(i == 1);
+            QList<QSharedPointer<Operation>> setOptions = setAllOptions.value(i == 1);
 
             testGroup.reset("testAll 3.1");
             testGroup.add() << setOptions;
@@ -1924,20 +1912,21 @@ public:
             testGroup.createTestRows();
         }
 
-        foreach (const QSharedPointer<Operation> &pageOp, pageOps) {
+        for (const QSharedPointer<Operation> &pageOp : pageOps) {
             testGroup.reset("testAll 4.1");
             testGroup.add() << pageOp;
             testGroup.add() << pageOp << pageOp;
             testGroup.createTestRows();
 
             for (int i = 0; i < 2; ++i) {
-                QVector<QSharedPointer<Operation> > optionOps = setAllOptions.value(i == 1);
+                QList<QSharedPointer<Operation>> optionOps = setAllOptions.value(i == 1);
                 testGroup.reset("testAll 4.2");
                 testGroup.add() << optionOps << pageOp;
                 testGroup.add() << pageOp << optionOps;
                 testGroup.createTestRows();
 
-                foreach (QWizard::WizardOption option, OptionInfo::instance().options()) {
+                const auto options = OptionInfo::instance().options();
+                for (QWizard::WizardOption option : options) {
                     QSharedPointer<Operation> optionOp = OPT(option, i == 1);
                     testGroup.reset("testAll 4.3");
                     testGroup.add() << optionOp << pageOp;
@@ -1947,20 +1936,21 @@ public:
             }
         }
 
-        foreach (const QSharedPointer<Operation> &styleOp, styleOps) {
+        for (const QSharedPointer<Operation> &styleOp : styleOps) {
             testGroup.reset("testAll 5.1");
             testGroup.add() << styleOp;
             testGroup.add() << styleOp << styleOp;
             testGroup.createTestRows();
 
             for (int i = 0; i < 2; ++i) {
-                QVector<QSharedPointer<Operation> > optionOps = setAllOptions.value(i == 1);
+                QList<QSharedPointer<Operation>> optionOps = setAllOptions.value(i == 1);
                 testGroup.reset("testAll 5.2");
                 testGroup.add() << optionOps << styleOp;
                 testGroup.add() << styleOp << optionOps;
                 testGroup.createTestRows();
 
-                foreach (QWizard::WizardOption option, OptionInfo::instance().options()) {
+                const auto options = OptionInfo::instance().options();
+                for (QWizard::WizardOption option : options) {
                     QSharedPointer<Operation> optionOp = OPT(option, i == 1);
                     testGroup.reset("testAll 5.3");
                     testGroup.add() << optionOp << styleOp;
@@ -1970,8 +1960,8 @@ public:
             }
         }
 
-        foreach (const QSharedPointer<Operation> &pageOp, pageOps) {
-            foreach (const QSharedPointer<Operation> &styleOp, styleOps) {
+        for (const QSharedPointer<Operation> &pageOp : pageOps) {
+            for (const QSharedPointer<Operation> &styleOp : styleOps) {
 
                 testGroup.reset("testAll 6.1");
                 testGroup.add() << pageOp;
@@ -1989,7 +1979,7 @@ public:
                 testGroup.createTestRows();
 
                 for (int i = 0; i < 2; ++i) {
-                    QVector<QSharedPointer<Operation> > optionOps = setAllOptions.value(i == 1);
+                    QList<QSharedPointer<Operation>> optionOps = setAllOptions.value(i == 1);
                     testGroup.reset("testAll 6.4");
                     testGroup.add() << optionOps << pageOp << styleOp;
                     testGroup.add() << pageOp << optionOps << styleOp;
@@ -1999,7 +1989,8 @@ public:
                     testGroup.add() << styleOp << pageOp << optionOps;
                     testGroup.createTestRows();
 
-                    foreach (QWizard::WizardOption option, OptionInfo::instance().options()) {
+                    const auto options = OptionInfo::instance().options();
+                    for (QWizard::WizardOption option : options) {
                         QSharedPointer<Operation> optionOp = OPT(option, i == 1);
                         testGroup.reset("testAll 6.5");
                         testGroup.add() << optionOp << pageOp << styleOp;
@@ -2062,7 +2053,7 @@ void tst_QWizard::combinations()
 {
     QFETCH(bool, ref);
     QFETCH(bool, testEquality);
-    QFETCH(QVector<QSharedPointer<Operation> >, operations);
+    QFETCH(const QList<QSharedPointer<Operation>>, operations);
 
     TestWizard wizard;
 #if !defined(QT_NO_STYLE_WINDOWSVISTA)
@@ -2115,8 +2106,8 @@ class WizardPage : public QWizardPage
 {
     Q_OBJECT
     bool shown_;
-    void showEvent(QShowEvent *) { shown_ = true; }
-    void hideEvent(QHideEvent *) { shown_ = false; }
+    void showEvent(QShowEvent *) override { shown_ = true; }
+    void hideEvent(QHideEvent *) override { shown_ = false; }
 public:
     WizardPage() : shown_(false) {}
     bool shown() const { return shown_; }
@@ -2131,7 +2122,7 @@ public:
     QList<WizardPage *> shown() const
     {
         QList<WizardPage *> result;
-        foreach (WizardPage *page, pages)
+        for (WizardPage *page : pages)
             if (page->shown())
                 result << page;
         return result;
@@ -2149,19 +2140,19 @@ void tst_QWizard::showCurrentPageOnly()
 
     wizard.show();
 
-    QCOMPARE(pages.shown().count(), 1);
+    QCOMPARE(pages.shown().size(), 1);
     QCOMPARE(pages.shown().first(), pages.all().first());
 
     const int steps = 2;
     for (int i = 0; i < steps; ++i)
         wizard.next();
 
-    QCOMPARE(pages.shown().count(), 1);
+    QCOMPARE(pages.shown().size(), 1);
     QCOMPARE(pages.shown().first(), pages.all().at(steps));
 
     wizard.restart();
 
-    QCOMPARE(pages.shown().count(), 1);
+    QCOMPARE(pages.shown().size(), 1);
     QCOMPARE(pages.shown().first(), pages.all().first());
 }
 
@@ -2293,36 +2284,36 @@ void tst_QWizard::removePage()
     wizard.restart();
     QCOMPARE(wizard.pageIds().size(), 4);
     QCOMPARE(wizard.visitedIds().size(), 1);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     // Removing a non-existent page
     wizard.removePage(4);
     QCOMPARE(wizard.pageIds().size(), 4);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     // Removing and then reinserting a page
     QCOMPARE(wizard.pageIds().size(), 4);
     QVERIFY(wizard.pageIds().contains(2));
     wizard.removePage(2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QList<QVariant> arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 2);
     QCOMPARE(wizard.pageIds().size(), 3);
     QVERIFY(!wizard.pageIds().contains(2));
     wizard.setPage(2, page2);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     QCOMPARE(wizard.pageIds().size(), 4);
     QVERIFY(wizard.pageIds().contains(2));
 
     // Removing the same page twice
     wizard.removePage(2); // restore
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 2);
     QCOMPARE(wizard.pageIds().size(), 3);
     QVERIFY(!wizard.pageIds().contains(2));
     wizard.removePage(2);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     QCOMPARE(wizard.pageIds().size(), 3);
     QVERIFY(!wizard.pageIds().contains(2));
 
@@ -2332,9 +2323,9 @@ void tst_QWizard::removePage()
     wizard.next();
     QCOMPARE(wizard.visitedIds().size(), 2);
     QCOMPARE(wizard.currentPage(), page1);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     wizard.removePage(2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 2);
     QCOMPARE(wizard.visitedIds().size(), 2);
@@ -2345,11 +2336,11 @@ void tst_QWizard::removePage()
     wizard.setPage(2, page2); // restore
     wizard.restart();
     wizard.next();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     QCOMPARE(wizard.visitedIds().size(), 2);
     QCOMPARE(wizard.currentPage(), page1);
     wizard.removePage(0);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 0);
     QCOMPARE(wizard.visitedIds().size(), 1);
@@ -2361,11 +2352,11 @@ void tst_QWizard::removePage()
     wizard.setPage(0, page0); // restore
     wizard.restart();
     wizard.next();
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
     QCOMPARE(wizard.visitedIds().size(), 2);
     QCOMPARE(wizard.currentPage(), page1);
     wizard.removePage(1);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 1);
     QCOMPARE(wizard.visitedIds().size(), 1);
@@ -2375,7 +2366,7 @@ void tst_QWizard::removePage()
 
     // Remove the current page which is the first (and only) one in the history
     wizard.removePage(0);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 0);
     QCOMPARE(wizard.visitedIds().size(), 1);
@@ -2385,7 +2376,7 @@ void tst_QWizard::removePage()
     QCOMPARE(wizard.currentPage(), page2);
     //
     wizard.removePage(2);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 2);
     QCOMPARE(wizard.visitedIds().size(), 1);
@@ -2395,7 +2386,7 @@ void tst_QWizard::removePage()
     QCOMPARE(wizard.currentPage(), page3);
     //
     wizard.removePage(3);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), 3);
     QVERIFY(wizard.visitedIds().empty());
@@ -2407,7 +2398,7 @@ void tst_QWizard::sideWidget()
 {
     QWizard wizard;
 
-    wizard.setSideWidget(0);
+    wizard.setSideWidget(nullptr);
     QVERIFY(!wizard.sideWidget());
     QScopedPointer<QWidget> w1(new QWidget(&wizard));
     wizard.setSideWidget(w1.data());
@@ -2415,11 +2406,11 @@ void tst_QWizard::sideWidget()
     QWidget *w2 = new QWidget(&wizard);
     wizard.setSideWidget(w2);
     QCOMPARE(wizard.sideWidget(), w2);
-    QVERIFY(w1->parent() != 0);
+    QVERIFY(w1->parent() != nullptr);
     QCOMPARE(w1->window(), static_cast<QWidget *>(&wizard));
     QCOMPARE(w2->window(), static_cast<QWidget *>(&wizard));
-    w1->setParent(0);
-    wizard.setSideWidget(0);
+    w1->setParent(nullptr);
+    wizard.setSideWidget(nullptr);
     QVERIFY(!wizard.sideWidget());
 }
 
@@ -2496,7 +2487,7 @@ void tst_QWizard::task177716_disableCommitButton()
 class WizardPage_task183550 : public QWizardPage
 {
 public:
-    WizardPage_task183550(QWidget *parent = 0)
+    WizardPage_task183550(QWidget *parent = nullptr)
         : QWizardPage(parent)
         , treeWidget(new QTreeWidget)
         , verticalPolicy(QSizePolicy::MinimumExpanding) {}
@@ -2509,7 +2500,7 @@ private:
     QTreeWidget *treeWidget;
     QSizePolicy::Policy verticalPolicy;
 
-    void initializePage()
+    void initializePage() override
     {
         if (layout())
             delete layout();
@@ -2583,7 +2574,8 @@ void tst_QWizard::task161658_alignments()
     wizard.show();
     QVERIFY(QTest::qWaitForWindowExposed(&wizard));
 
-    foreach (QLabel *subtitleLabel, wizard.findChildren<QLabel *>()) {
+    const auto subtitleLabels = wizard.findChildren<QLabel *>();
+    for (QLabel *subtitleLabel : subtitleLabels) {
         if (subtitleLabel->text().startsWith("SUBTITLE#")) {
             QCOMPARE(lineEdit1.mapToGlobal(lineEdit1.contentsRect().bottomRight()).x(),
                      subtitleLabel->mapToGlobal(subtitleLabel->contentsRect().bottomRight()).x());
@@ -2595,9 +2587,6 @@ void tst_QWizard::task161658_alignments()
 
 void tst_QWizard::task177022_setFixedSize()
 {
-#ifdef Q_OS_WINRT
-    QSKIP("Widgets cannot have a fixed size on WinRT.");
-#endif
     int width = 300;
     int height = 200;
     QWizard wiz;
@@ -2703,6 +2692,8 @@ void tst_QWizard::taskQTBUG_25691_fieldObjectDestroyed2()
     ::taskQTBUG_25691_fieldObjectDestroyed2();
 }
 
+#if QT_CONFIG(shortcut)
+
 void tst_QWizard::taskQTBUG_46894_nextButtonShortcut()
 {
     for (int i = 0; i < QWizard::NStyles; ++i) {
@@ -2716,6 +2707,47 @@ void tst_QWizard::taskQTBUG_46894_nextButtonShortcut()
                  QKeySequence::mnemonic(wizard.button(QWizard::NextButton)->text()));
     }
 }
+
+/* setCurrentId(int) method was added in QTBUG99488 */
+void tst_QWizard::changePages()
+{
+    QWizard wizard;
+
+    QList<QWizardPage*> pages;
+    for (int i = 0; i < 4; ++i) {
+        QWizardPage *page = new QWizardPage;
+        wizard.addPage(page);
+        pages.append(page);
+    }
+
+    wizard.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&wizard));
+
+    // Verify default page
+    QCOMPARE(wizard.currentPage(), pages.at(0));
+
+    wizard.next();
+    QVERIFY(wizard.currentId() == 1);
+    wizard.back();
+    QVERIFY(wizard.currentId() == 0);
+
+    // Test illegal page
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg, "QWizard::setCurrentId: No such page: 5");
+    wizard.setCurrentId(5);
+    QCOMPARE(wizard.currentId(), 0);
+
+    for (int i = 0; i < 4; ++i) {
+        wizard.setCurrentId(i);
+        QCOMPARE(wizard.currentPage(), pages.at(i));
+    }
+
+    for (int i = 3; i >= 0; --i) {
+        wizard.setCurrentId(i);
+        QCOMPARE(wizard.currentPage(), pages.at(i));
+    }
+}
+
+#endif // QT_CONFIG(shortcut)
 
 QTEST_MAIN(tst_QWizard)
 #include "tst_qwizard.moc"

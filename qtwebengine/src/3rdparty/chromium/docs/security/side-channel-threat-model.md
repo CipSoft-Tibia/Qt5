@@ -3,7 +3,7 @@
 Contributors: awhalley, creis, dcheng, jschuh, jyasskin, lukasza, mkwst, nasko,
 palmer, tsepez. Patches and corrections welcome!
 
-Last Updated: 29 May 2018
+Last Updated: 27 April 2021
 
 [TOC]
 
@@ -134,7 +134,7 @@ timeframe.)
 ##### Incompleteness of CORB
 
 Site Isolation depends on [cross-origin read
-blocking](https://chromium.googlesource.com/chromium/src/+/master/content/browser/loader/cross_origin_read_blocking_explainer.md)
+blocking](https://chromium.googlesource.com/chromium/src/+/main/content/browser/loader/cross_origin_read_blocking_explainer.md)
 (CORB; formerly known as cross-site document blocking or XSDB) to prevent a
 malicious website from pulling in sensitive cross-origin data. Otherwise, an
 attacker could use markup like `<img src="http://example.com/secret.json">` to
@@ -208,11 +208,7 @@ tracked this as [Issue
 ###### Flash
 
 Click To Play greatly reduces the risk that Flash-borne Spectre (and other)
-exploits will be effective at scale.  Additionally, the enterprise policies
-[PluginsBlockedForUrls](https://cloud.google.com/docs/chrome-enterprise/policies/?policy=PluginsBlockedForUrls)
-and
-[PluginsAllowedForUrls](https://cloud.google.com/docs/chrome-enterprise/policies/?policy=PluginsAllowedForUrls)
-can be combined to restrict Flash to specific websites.
+exploits will be effective at scale.
 Even so,
 [we might want to consider teaching CORB about Flash flavour of CORS](https://crbug.com/816318).
 
@@ -327,7 +323,7 @@ we don’t expect that we can get much long-term defensive value from doing so,
 for several reasons:
 
 * There are [many explicit and implicit clocks in the
-  platform](https://bugs.chromium.org/p/chromium/issues/detail?id=798795)
+  platform](https://gruss.cc/files/fantastictimers.pdf)
 * It is not always possible to coarsen or jitter them enough to slow or stop
   exploitation…
 * …while also maintaining web platform compatibility and utility

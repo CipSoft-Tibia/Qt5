@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@ AudioMutingSession::AudioMutingSession(const base::UnguessableToken& group_id)
 
 AudioMutingSession::~AudioMutingSession() = default;
 
-void AudioMutingSession::Connect(audio::mojom::StreamFactory* factory) {
+void AudioMutingSession::Connect(media::mojom::AudioStreamFactory* factory) {
   if (muter_)
     muter_.reset();
 

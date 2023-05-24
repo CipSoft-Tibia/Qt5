@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <string>
 
 #include "base/base64.h"
-#include "base/metrics/field_trial.h"
+#include "base/containers/contains.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "components/variations/entropy_provider.h"
@@ -15,50 +15,10 @@
 #include "components/variations/proto/study.pb.h"
 #include "components/variations/variations.mojom.h"
 #include "components/variations/variations_associated_data.h"
+#include "components/variations/variations_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace variations {
-
-namespace {
-
-// Decodes the variations header and extracts the variation ids.
-bool ExtractVariationIds(const std::string& variations,
-                         std::set<VariationID>* variation_ids,
-                         std::set<VariationID>* trigger_ids) {
-  std::string serialized_proto;
-  if (!base::Base64Decode(variations, &serialized_proto))
-    return false;
-  ClientVariations proto;
-  if (!proto.ParseFromString(serialized_proto))
-    return false;
-  for (int i = 0; i < proto.variation_id_size(); ++i)
-    variation_ids->insert(proto.variation_id(i));
-  for (int i = 0; i < proto.trigger_variation_id_size(); ++i)
-    trigger_ids->insert(proto.trigger_variation_id(i));
-  return true;
-}
-
-scoped_refptr<base::FieldTrial> CreateTrialAndAssociateId(
-    const std::string& trial_name,
-    const std::string& default_group_name,
-    IDCollectionKey key,
-    VariationID id) {
-  AssociateGoogleVariationID(key, trial_name, default_group_name, id);
-  scoped_refptr<base::FieldTrial> trial(
-      base::FieldTrialList::CreateFieldTrial(trial_name, default_group_name));
-  EXPECT_TRUE(trial);
-
-  if (trial) {
-    // Ensure the trial is registered under the correct key so we can look it
-    // up.
-    trial->group();
-  }
-
-  return trial;
-}
-
-}  // namespace
-
 class VariationsIdsProviderTest : public ::testing::Test {
  public:
   VariationsIdsProviderTest() {}
@@ -71,7 +31,8 @@ class VariationsIdsProviderTest : public ::testing::Test {
 };
 
 TEST_F(VariationsIdsProviderTest, ForceVariationIds_Valid) {
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
 
   // Valid experiment ids.
   EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::SUCCESS,
@@ -82,7 +43,6 @@ TEST_F(VariationsIdsProviderTest, ForceVariationIds_Valid) {
   EXPECT_FALSE(headers->headers_map.empty());
   const std::string variations =
       headers->headers_map.at(variations::mojom::GoogleWebVisibility::ANY);
-
   std::set<VariationID> variation_ids;
   std::set<VariationID> trigger_ids;
   ASSERT_TRUE(ExtractVariationIds(variations, &variation_ids, &trigger_ids));
@@ -93,7 +53,8 @@ TEST_F(VariationsIdsProviderTest, ForceVariationIds_Valid) {
 }
 
 TEST_F(VariationsIdsProviderTest, ForceVariationIds_ValidCommandLine) {
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
 
   // Valid experiment ids.
   EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::SUCCESS,
@@ -115,7 +76,8 @@ TEST_F(VariationsIdsProviderTest, ForceVariationIds_ValidCommandLine) {
 }
 
 TEST_F(VariationsIdsProviderTest, ForceVariationIds_Invalid) {
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
 
   // Invalid experiment ids.
   EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::INVALID_VECTOR_ENTRY,
@@ -134,10 +96,29 @@ TEST_F(VariationsIdsProviderTest, ForceVariationIds_Invalid) {
             provider.ForceVariationIds({"12", "50"}, "tabc456"));
   provider.InitVariationIDsCacheIfNeeded();
   EXPECT_TRUE(provider.GetClientDataHeaders(/*is_signed_in=*/false).is_null());
+
+  // Duplicate experiment ids.
+  EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::INVALID_VECTOR_ENTRY,
+            provider.ForceVariationIds({"1", "2", "t1"}, ""));
+  provider.InitVariationIDsCacheIfNeeded();
+  EXPECT_TRUE(provider.GetClientDataHeaders(/*is_signed_in=*/false).is_null());
+
+  // Duplicate command-line ids.
+  EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::INVALID_SWITCH_ENTRY,
+            provider.ForceVariationIds({}, "t10,11,10"));
+  provider.InitVariationIDsCacheIfNeeded();
+  EXPECT_TRUE(provider.GetClientDataHeaders(/*is_signed_in=*/false).is_null());
+
+  // Duplicate experiment and command-line ids.
+  EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::INVALID_SWITCH_ENTRY,
+            provider.ForceVariationIds({"20", "t21"}, "21"));
+  provider.InitVariationIDsCacheIfNeeded();
+  EXPECT_TRUE(provider.GetClientDataHeaders(/*is_signed_in=*/false).is_null());
 }
 
 TEST_F(VariationsIdsProviderTest, ForceDisableVariationIds_ValidCommandLine) {
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
 
   // Valid experiment ids.
   EXPECT_EQ(VariationsIdsProvider::ForceIdsResult::SUCCESS,
@@ -164,7 +145,8 @@ TEST_F(VariationsIdsProviderTest, ForceDisableVariationIds_ValidCommandLine) {
 }
 
 TEST_F(VariationsIdsProviderTest, ForceDisableVariationIds_Invalid) {
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
 
   // Invalid command-line ids.
   EXPECT_FALSE(provider.ForceDisableVariationIds("abc"));
@@ -173,8 +155,86 @@ TEST_F(VariationsIdsProviderTest, ForceDisableVariationIds_Invalid) {
   EXPECT_TRUE(provider.GetClientDataHeaders(/*is_signed_in=*/false).is_null());
 }
 
+TEST_F(VariationsIdsProviderTest, LowEntropySourceValue_Valid) {
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
+
+  absl::optional<int> valid_low_entropy_source_value = 5;
+  provider.SetLowEntropySourceValue(valid_low_entropy_source_value);
+  provider.InitVariationIDsCacheIfNeeded();
+  variations::mojom::VariationsHeadersPtr headers =
+      provider.GetClientDataHeaders(/*is_signed_in=*/false);
+  EXPECT_FALSE(headers->headers_map.empty());
+
+  const std::string variations_header_first_party = headers->headers_map.at(
+      variations::mojom::GoogleWebVisibility::FIRST_PARTY);
+  const std::string variations_header_any_context =
+      headers->headers_map.at(variations::mojom::GoogleWebVisibility::ANY);
+
+  std::set<VariationID> variation_ids_first_party;
+  std::set<VariationID> trigger_ids_first_party;
+  ASSERT_TRUE(ExtractVariationIds(variations_header_first_party,
+                                  &variation_ids_first_party,
+                                  &trigger_ids_first_party));
+  std::set<VariationID> variation_ids_any_context;
+  std::set<VariationID> trigger_ids_any_context;
+  ASSERT_TRUE(ExtractVariationIds(variations_header_any_context,
+                                  &variation_ids_any_context,
+                                  &trigger_ids_any_context));
+
+  // 3320983 is the offset value of kLowEntropySourceVariationIdRangeMin + 5.
+  EXPECT_TRUE(base::Contains(variation_ids_first_party, 3320983));
+  EXPECT_TRUE(base::Contains(variation_ids_any_context, 3320983));
+}
+
+TEST_F(VariationsIdsProviderTest, LowEntropySourceValue_Null) {
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
+
+  absl::optional<int> null_low_entropy_source_value = absl::nullopt;
+  provider.SetLowEntropySourceValue(null_low_entropy_source_value);
+
+  // Valid experiment ids.
+  CreateTrialAndAssociateId("t1", "g1", GOOGLE_WEB_PROPERTIES_ANY_CONTEXT, 12);
+  CreateTrialAndAssociateId("t2", "g2", GOOGLE_WEB_PROPERTIES_ANY_CONTEXT, 456);
+  provider.InitVariationIDsCacheIfNeeded();
+  variations::mojom::VariationsHeadersPtr headers =
+      provider.GetClientDataHeaders(/*is_signed_in=*/false);
+  EXPECT_FALSE(headers->headers_map.empty());
+
+  const std::string variations_header_first_party = headers->headers_map.at(
+      variations::mojom::GoogleWebVisibility::FIRST_PARTY);
+  const std::string variations_header_any_context =
+      headers->headers_map.at(variations::mojom::GoogleWebVisibility::ANY);
+
+  std::set<VariationID> variation_ids_first_party;
+  std::set<VariationID> trigger_ids_first_party;
+  ASSERT_TRUE(ExtractVariationIds(variations_header_first_party,
+                                  &variation_ids_first_party,
+                                  &trigger_ids_first_party));
+  std::set<VariationID> variation_ids_any_context;
+  std::set<VariationID> trigger_ids_any_context;
+  ASSERT_TRUE(ExtractVariationIds(variations_header_any_context,
+                                  &variation_ids_any_context,
+                                  &trigger_ids_any_context));
+
+  // We test to make sure that only two valid variation IDs are present and that
+  // the low entropy source value is not added to the sets.
+  EXPECT_TRUE(base::Contains(variation_ids_first_party, 12));
+  EXPECT_TRUE(base::Contains(variation_ids_first_party, 456));
+  EXPECT_FALSE(base::Contains(variation_ids_first_party, 3320983));
+  EXPECT_TRUE(base::Contains(variation_ids_any_context, 12));
+  EXPECT_TRUE(base::Contains(variation_ids_any_context, 456));
+  EXPECT_FALSE(base::Contains(variation_ids_any_context, 3320983));
+
+  // Check to make sure that no other variation IDs are present.
+  EXPECT_EQ(2U, variation_ids_first_party.size());
+  EXPECT_EQ(2U, variation_ids_any_context.size());
+}
+
 TEST_F(VariationsIdsProviderTest, OnFieldTrialGroupFinalized) {
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
   provider.InitVariationIDsCacheIfNeeded();
 
   const std::string default_name = "default";
@@ -191,7 +251,7 @@ TEST_F(VariationsIdsProviderTest, OnFieldTrialGroupFinalized) {
   ASSERT_EQ(default_name, trial_3->group_name());
 
   scoped_refptr<base::FieldTrial> trial_4(CreateTrialAndAssociateId(
-      "t4", default_name, GOOGLE_WEB_PROPERTIES_TRIGGER_ANY_CONTEXT, 44));
+      "t4", default_name, GOOGLE_WEB_PROPERTIES_TRIGGER_FIRST_PARTY, 44));
   ASSERT_EQ(default_name, trial_4->group_name());
 
   scoped_refptr<base::FieldTrial> trial_5(CreateTrialAndAssociateId(
@@ -206,37 +266,76 @@ TEST_F(VariationsIdsProviderTest, OnFieldTrialGroupFinalized) {
   {
     variations::mojom::VariationsHeadersPtr headers =
         provider.GetClientDataHeaders(/*is_signed_in=*/false);
-    const std::string variations =
+    const std::string variations_header_first_party = headers->headers_map.at(
+        variations::mojom::GoogleWebVisibility::FIRST_PARTY);
+    const std::string variations_header_any_context =
         headers->headers_map.at(variations::mojom::GoogleWebVisibility::ANY);
 
-    std::set<VariationID> variation_ids;
-    std::set<VariationID> trigger_ids;
-    ASSERT_TRUE(ExtractVariationIds(variations, &variation_ids, &trigger_ids));
-    EXPECT_EQ(2U, variation_ids.size());
-    EXPECT_TRUE(variation_ids.find(11) != variation_ids.end());
-    EXPECT_TRUE(variation_ids.find(22) != variation_ids.end());
-    EXPECT_EQ(2U, trigger_ids.size());
-    EXPECT_TRUE(trigger_ids.find(33) != trigger_ids.end());
-    EXPECT_TRUE(trigger_ids.find(44) != trigger_ids.end());
+    std::set<VariationID> ids_first_party;
+    std::set<VariationID> trigger_ids_first_party;
+    ASSERT_TRUE(ExtractVariationIds(variations_header_first_party,
+                                    &ids_first_party,
+                                    &trigger_ids_first_party));
+    std::set<VariationID> ids_any_context;
+    std::set<VariationID> trigger_ids_any_context;
+    ASSERT_TRUE(ExtractVariationIds(variations_header_any_context,
+                                    &ids_any_context,
+                                    &trigger_ids_any_context));
+
+    EXPECT_EQ(2U, ids_first_party.size());
+    EXPECT_TRUE(base::Contains(ids_first_party, 11));
+    EXPECT_TRUE(base::Contains(ids_first_party, 22));
+    EXPECT_EQ(2U, trigger_ids_first_party.size());
+    EXPECT_TRUE(base::Contains(trigger_ids_first_party, 33));
+    EXPECT_TRUE(base::Contains(trigger_ids_first_party, 44));
+
+    // IDs associated with FIRST_PARTY ID CollectionKeys should be excluded from
+    // the variations header that may be sent in third-party contexts.
+    EXPECT_EQ(1U, ids_any_context.size());
+    EXPECT_TRUE(base::Contains(ids_any_context, 11));
+    // Note '22' is omitted.
+    EXPECT_EQ(1U, trigger_ids_any_context.size());
+    EXPECT_TRUE(base::Contains(trigger_ids_any_context, 33));
+    // Note '44' is omitted.
   }
 
   // Now, get signed-in ids.
   {
     variations::mojom::VariationsHeadersPtr headers =
         provider.GetClientDataHeaders(/*is_signed_in=*/true);
-    const std::string variations =
+    const std::string variations_header_first_party = headers->headers_map.at(
+        variations::mojom::GoogleWebVisibility::FIRST_PARTY);
+    const std::string variations_header_any_context =
         headers->headers_map.at(variations::mojom::GoogleWebVisibility::ANY);
 
-    std::set<VariationID> variation_ids;
-    std::set<VariationID> trigger_ids;
-    ASSERT_TRUE(ExtractVariationIds(variations, &variation_ids, &trigger_ids));
-    EXPECT_EQ(3U, variation_ids.size());
-    EXPECT_TRUE(variation_ids.find(11) != variation_ids.end());
-    EXPECT_TRUE(variation_ids.find(22) != variation_ids.end());
-    EXPECT_TRUE(variation_ids.find(55) != variation_ids.end());
-    EXPECT_EQ(2U, trigger_ids.size());
-    EXPECT_TRUE(trigger_ids.find(33) != trigger_ids.end());
-    EXPECT_TRUE(trigger_ids.find(44) != trigger_ids.end());
+    std::set<VariationID> ids_first_party;
+    std::set<VariationID> trigger_ids_first_party;
+    ASSERT_TRUE(ExtractVariationIds(variations_header_first_party,
+                                    &ids_first_party,
+                                    &trigger_ids_first_party));
+    std::set<VariationID> ids_any_context;
+    std::set<VariationID> trigger_ids_any_context;
+    ASSERT_TRUE(ExtractVariationIds(variations_header_any_context,
+                                    &ids_any_context,
+                                    &trigger_ids_any_context));
+
+    EXPECT_EQ(3U, ids_first_party.size());
+    EXPECT_TRUE(base::Contains(ids_first_party, 11));
+    EXPECT_TRUE(base::Contains(ids_first_party, 22));
+    EXPECT_TRUE(base::Contains(ids_any_context, 55));
+    EXPECT_EQ(2U, trigger_ids_first_party.size());
+    EXPECT_TRUE(base::Contains(trigger_ids_first_party, 33));
+    EXPECT_TRUE(base::Contains(trigger_ids_first_party, 44));
+
+    // IDs associated with FIRST_PARTY ID CollectionKeys should be excluded from
+    // the variations header that may be sent in third-party contexts.
+    EXPECT_EQ(2U, ids_any_context.size());
+    EXPECT_TRUE(base::Contains(ids_any_context, 11));
+    // Note '22' is omitted.
+    EXPECT_TRUE(base::Contains(ids_any_context, 55));
+    EXPECT_EQ(1U, trigger_ids_any_context.size());
+    EXPECT_TRUE(base::Contains(trigger_ids_any_context, 33));
+    // Note '44' is omitted.
   }
 }
 
@@ -253,7 +352,8 @@ TEST_F(VariationsIdsProviderTest, GetGoogleAppVariationsString) {
   // GOOGLE_APP ids should be included.
   CreateTrialAndAssociateId("t6", "g6", GOOGLE_APP, 126);
 
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
   provider.ForceVariationIds({"100", "200"}, "");
   EXPECT_EQ(" 126 ", provider.GetGoogleAppVariationsString());
 }
@@ -275,7 +375,8 @@ TEST_F(VariationsIdsProviderTest, GetVariationsString) {
   // GOOGLE_APP ids shouldn't be included.
   CreateTrialAndAssociateId("t6", "g6", GOOGLE_APP, 126);
 
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
   provider.ForceVariationIds({"100", "200"}, "");
   EXPECT_EQ(" 100 123 124 200 ", provider.GetVariationsString());
 }
@@ -290,7 +391,8 @@ TEST_F(VariationsIdsProviderTest, GetVariationsVector) {
   CreateTrialAndAssociateId("t6", "g6", GOOGLE_WEB_PROPERTIES_SIGNED_IN, 125);
   CreateTrialAndAssociateId("t7", "g7", GOOGLE_APP, 126);
 
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
   provider.ForceVariationIds({"100", "200", "t101"}, "");
 
   EXPECT_EQ((std::vector<VariationID>{100, 121, 200}),
@@ -328,7 +430,8 @@ TEST_F(VariationsIdsProviderTest, GetVariationsVectorForWebPropertiesKeys) {
   // GOOGLE_APP ids shouldn't be included.
   CreateTrialAndAssociateId("t6", "g6", GOOGLE_APP, 126);
 
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
   provider.ForceVariationIds({"100", "t101"}, "");
   EXPECT_EQ((std::vector<VariationID>{100, 101, 121, 122, 123, 124, 125}),
             provider.GetVariationsVectorForWebPropertiesKeys());
@@ -344,7 +447,8 @@ TEST_F(VariationsIdsProviderTest, GetVariationsVectorImpl) {
   CreateTrialAndAssociateId("t5", "g5", GOOGLE_WEB_PROPERTIES_SIGNED_IN, 125);
   CreateTrialAndAssociateId("t6", "g6", GOOGLE_APP, 125);  // Duplicate.
 
-  VariationsIdsProvider provider;
+  VariationsIdsProvider provider(
+      VariationsIdsProvider::Mode::kUseSignedInState);
   provider.ForceVariationIds({"100", "200", "t101"}, "");
 
   EXPECT_EQ(

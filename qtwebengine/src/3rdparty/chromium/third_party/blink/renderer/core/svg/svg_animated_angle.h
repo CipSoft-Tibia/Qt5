@@ -34,7 +34,7 @@
 #include "third_party/blink/renderer/core/svg/svg_angle_tear_off.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_enumeration.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -55,7 +55,6 @@ class SVGAnimatedAngle final : public ScriptWrappable,
   void SynchronizeAttribute() override;
 
   void SetAnimatedValue(SVGPropertyBase*) override;
-  void AnimationEnded() override;
 
   void Trace(Visitor*) const override;
 

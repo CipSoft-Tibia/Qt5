@@ -3,6 +3,7 @@
 
 #include "tools/skottie_ios_app/SkiaContext.h"
 
+#include "include/core/SkColorSpace.h"
 #include "include/core/SkSurface.h"
 #include "include/core/SkTime.h"
 #include "include/gpu/GrBackendSurface.h"
@@ -25,7 +26,7 @@ static void configure_glkview_for_skia(GLKView* view) {
 static sk_sp<SkSurface> make_gl_surface(GrDirectContext* dContext, int width, int height) {
     static constexpr int kStencilBits = 8;
     static constexpr int kSampleCount = 1;
-    static const SkSurfaceProps surfaceProps = SkSurfaceProps::kLegacyFontHost_InitType;
+    static const SkSurfaceProps surfaceProps;
     if (!dContext || width <= 0 || height <= 0) {
         return nullptr;
     }

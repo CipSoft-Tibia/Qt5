@@ -1,5 +1,4 @@
-import QtQuick 2.0
-import QtQuick.Window 2.1
+import QtQuick
 
 Item {
     width: 400
@@ -19,7 +18,7 @@ Item {
                 color: "red"
                 title: "red"
                 flags: Qt.Dialog
-                onVisibilityChanged: console.log("visibility " + visibility)
+                onVisibilityChanged: (visibility) => console.log("visibility " + visibility)
                 onVisibleChanged: console.log("visible " + visible)
             }
         }

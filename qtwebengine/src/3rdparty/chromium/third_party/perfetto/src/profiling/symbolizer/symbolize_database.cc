@@ -21,14 +21,15 @@
 #include <vector>
 
 #include "perfetto/base/logging.h"
-#include "perfetto/ext/base/string_splitter.h"
-
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/protozero/scattered_heap_buffer.h"
 #include "perfetto/trace_processor/trace_processor.h"
 
 #include "protos/perfetto/trace/profiling/profile_common.pbzero.h"
 #include "protos/perfetto/trace/trace.pbzero.h"
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
+
+#include "src/trace_processor/util/stack_traces_util.h"
 
 namespace perfetto {
 namespace profiling {
@@ -37,13 +38,23 @@ namespace {
 using trace_processor::Iterator;
 
 constexpr const char* kQueryUnsymbolized =
-    "select spm.name, spm.build_id, spf.rel_pc "
+    "select spm.name, spm.build_id, spf.rel_pc, spm.load_bias "
     "from stack_profile_frame spf "
     "join stack_profile_mapping spm "
     "on spf.mapping = spm.id "
     "where spm.build_id != '' and spf.symbol_set_id IS NULL";
 
 using NameAndBuildIdPair = std::pair<std::string, std::string>;
+
+struct UnsymbolizedMapping {
+  std::string name;
+  std::string build_id;
+  uint64_t load_bias;
+  bool operator<(const UnsymbolizedMapping& o) const {
+    return std::tie(name, build_id, load_bias) <
+           std::tie(o.name, o.build_id, o.load_bias);
+  }
+};
 
 std::string FromHex(const char* str, size_t size) {
   if (size % 2) {
@@ -71,15 +82,28 @@ std::string FromHex(const std::string& str) {
   return FromHex(str.c_str(), str.size());
 }
 
-std::map<NameAndBuildIdPair, std::vector<uint64_t>> GetUnsymbolizedFrames(
-    trace_processor::TraceProcessor* tp) {
-  std::map<std::pair<std::string, std::string>, std::vector<uint64_t>> res;
+std::map<UnsymbolizedMapping, std::vector<uint64_t>> GetUnsymbolizedFrames(
+    trace_processor::TraceProcessor* tp,
+    bool convert_build_id_to_bytes) {
+  std::map<UnsymbolizedMapping, std::vector<uint64_t>> res;
   Iterator it = tp->ExecuteQuery(kQueryUnsymbolized);
   while (it.Next()) {
-    auto name_and_buildid =
-        std::make_pair(it.Get(0).AsString(), FromHex(it.Get(1).AsString()));
+    int64_t load_bias = it.Get(3).AsLong();
+    PERFETTO_CHECK(load_bias >= 0);
+    std::string build_id;
+    // TODO(b/148109467): Remove workaround once all active Chrome versions
+    // write raw bytes instead of a string as build_id.
+    std::string raw_build_id = it.Get(1).AsString();
+    if (convert_build_id_to_bytes &&
+        !trace_processor::util::IsHexModuleId(base::StringView(raw_build_id))) {
+      build_id = FromHex(raw_build_id);
+    } else {
+      build_id = raw_build_id;
+    }
+    UnsymbolizedMapping unsymbolized_mapping{it.Get(0).AsString(), build_id,
+                                             static_cast<uint64_t>(load_bias)};
     int64_t rel_pc = it.Get(2).AsLong();
-    res[name_and_buildid].emplace_back(rel_pc);
+    res[unsymbolized_mapping].emplace_back(rel_pc);
   }
   if (!it.Status().ok()) {
     PERFETTO_DFATAL_OR_ELOG("Invalid iterator: %s",
@@ -94,20 +118,22 @@ void SymbolizeDatabase(trace_processor::TraceProcessor* tp,
                        Symbolizer* symbolizer,
                        std::function<void(const std::string&)> callback) {
   PERFETTO_CHECK(symbolizer);
-  auto unsymbolized = GetUnsymbolizedFrames(tp);
+  auto unsymbolized =
+      GetUnsymbolizedFrames(tp, symbolizer->BuildIdNeedsHexConversion());
   for (auto it = unsymbolized.cbegin(); it != unsymbolized.cend(); ++it) {
-    const auto& name_and_buildid = it->first;
+    const auto& unsymbolized_mapping = it->first;
     const std::vector<uint64_t>& rel_pcs = it->second;
-    auto res = symbolizer->Symbolize(name_and_buildid.first,
-                                     name_and_buildid.second, rel_pcs);
+    auto res = symbolizer->Symbolize(unsymbolized_mapping.name,
+                                     unsymbolized_mapping.build_id,
+                                     unsymbolized_mapping.load_bias, rel_pcs);
     if (res.empty())
       continue;
 
     protozero::HeapBuffered<perfetto::protos::pbzero::Trace> trace;
     auto* packet = trace->add_packet();
     auto* module_symbols = packet->set_module_symbols();
-    module_symbols->set_path(name_and_buildid.first);
-    module_symbols->set_build_id(name_and_buildid.second);
+    module_symbols->set_path(unsymbolized_mapping.name);
+    module_symbols->set_build_id(unsymbolized_mapping.build_id);
     PERFETTO_DCHECK(res.size() == rel_pcs.size());
     for (size_t i = 0; i < res.size(); ++i) {
       auto* address_symbols = module_symbols->add_address_symbols();
@@ -124,13 +150,10 @@ void SymbolizeDatabase(trace_processor::TraceProcessor* tp,
 }
 
 std::vector<std::string> GetPerfettoBinaryPath() {
-  std::vector<std::string> roots;
   const char* root = getenv("PERFETTO_BINARY_PATH");
-  if (root != nullptr) {
-    for (base::StringSplitter sp(std::string(root), ':'); sp.Next();)
-      roots.emplace_back(sp.cur_token(), sp.cur_token_size());
-  }
-  return roots;
+  if (root != nullptr)
+    return base::SplitString(root, ":");
+  return {};
 }
 
 }  // namespace profiling

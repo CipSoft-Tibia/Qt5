@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/windows_version.h"
@@ -18,7 +18,7 @@
 #include "skia/ext/platform_canvas.h"
 #include "skia/ext/skia_utils_win.h"
 #include "ui/gfx/gdi_util.h"
-#include "ui/gfx/skia_util.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/win/hwnd_util.h"
 #include "ui/gl/vsync_provider_win.h"
 
@@ -106,8 +106,11 @@ void SoftwareOutputDeviceWinDirect::EndPaintDelegated(
   if (!canvas_)
     return;
 
-  HDC dib_dc = skia::GetNativeDrawingContext(canvas_.get());
   HDC hdc = ::GetDC(hwnd());
+  if (!hdc)
+    return;
+
+  HDC dib_dc = skia::GetNativeDrawingContext(canvas_.get());
   RECT src_rect = damage_rect.ToRECT();
   skia::CopyHDC(dib_dc, hdc, damage_rect.x(), damage_rect.y(),
                 canvas_->imageInfo().isOpaque(), src_rect,
@@ -135,7 +138,8 @@ SoftwareOutputDeviceWinProxy::SoftwareOutputDeviceWinProxy(
 SoftwareOutputDeviceWinProxy::~SoftwareOutputDeviceWinProxy() = default;
 
 void SoftwareOutputDeviceWinProxy::OnSwapBuffers(
-    SwapBuffersCallback swap_ack_callback) {
+    SwapBuffersCallback swap_ack_callback,
+    gfx::FrameData data) {
   DCHECK(swap_ack_callback_.is_null());
 
   // We aren't waiting on DrawAck() and can immediately run the callback.

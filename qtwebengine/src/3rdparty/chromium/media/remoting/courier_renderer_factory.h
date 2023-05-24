@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_REMOTING_COURIER_RENDERER_FACTORY_H_
 #define MEDIA_REMOTING_COURIER_RENDERER_FACTORY_H_
 
+#include "base/task/sequenced_task_runner.h"
 #include "media/base/renderer_factory.h"
 #include "media/remoting/renderer_controller.h"
 
@@ -16,10 +17,14 @@ class CourierRendererFactory : public RendererFactory {
  public:
   explicit CourierRendererFactory(
       std::unique_ptr<RendererController> controller);
+
+  CourierRendererFactory(const CourierRendererFactory&) = delete;
+  CourierRendererFactory& operator=(const CourierRendererFactory&) = delete;
+
   ~CourierRendererFactory() override;
 
   std::unique_ptr<Renderer> CreateRenderer(
-      const scoped_refptr<base::SingleThreadTaskRunner>& media_task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& media_task_runner,
       const scoped_refptr<base::TaskRunner>& worker_task_runner,
       AudioRendererSink* audio_renderer_sink,
       VideoRendererSink* video_renderer_sink,
@@ -33,8 +38,6 @@ class CourierRendererFactory : public RendererFactory {
 
  private:
   const std::unique_ptr<RendererController> controller_;
-
-  DISALLOW_COPY_AND_ASSIGN(CourierRendererFactory);
 };
 
 }  // namespace remoting

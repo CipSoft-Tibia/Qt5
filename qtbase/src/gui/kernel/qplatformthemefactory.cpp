@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qpa/qplatformthemefactory_p.h>
 #include <qpa/qplatformthemeplugin.h>
@@ -44,33 +8,26 @@
 #include "qmutex.h"
 
 #include "qguiapplication.h"
+#include "qplatformtheme.h"
+#include "qplatformtheme_p.h"
 #include "qdebug.h"
 
 QT_BEGIN_NAMESPACE
 
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
-    (QPlatformThemeFactoryInterface_iid, QLatin1String("/platformthemes"), Qt::CaseInsensitive))
+using namespace Qt::StringLiterals;
 
-#if QT_CONFIG(library)
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, directLoader,
-                          (QPlatformThemeFactoryInterface_iid, QLatin1String(""), Qt::CaseInsensitive))
-#endif
+Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, ptLoader,
+    (QPlatformThemeFactoryInterface_iid, "/platformthemes"_L1, Qt::CaseInsensitive))
 
 QPlatformTheme *QPlatformThemeFactory::create(const QString& key, const QString &platformPluginPath)
 {
-    QStringList paramList = key.split(QLatin1Char(':'));
+    QStringList paramList = key.split(u':');
     const QString platform = paramList.takeFirst().toLower();
-#if QT_CONFIG(library)
-    // Try loading the plugin from platformPluginPath first:
-    if (!platformPluginPath.isEmpty()) {
-        QCoreApplication::addLibraryPath(platformPluginPath);
-        if (QPlatformTheme *ret = qLoadPlugin<QPlatformTheme, QPlatformThemePlugin>(directLoader(), platform, paramList))
-            return ret;
-    }
-#else
-    Q_UNUSED(platformPluginPath);
-#endif
-    return qLoadPlugin<QPlatformTheme, QPlatformThemePlugin>(loader(), platform, paramList);
+    ptLoader->setExtraSearchPath(platformPluginPath);
+    QPlatformTheme *theme = qLoadPlugin<QPlatformTheme, QPlatformThemePlugin>(ptLoader(), platform, paramList);
+    if (theme)
+        theme->d_func()->name = key;
+    return theme;
 }
 
 /*!
@@ -81,26 +38,8 @@ QPlatformTheme *QPlatformThemeFactory::create(const QString& key, const QString 
 */
 QStringList QPlatformThemeFactory::keys(const QString &platformPluginPath)
 {
-    QStringList list;
-
-#if QT_CONFIG(library)
-    if (!platformPluginPath.isEmpty()) {
-        QCoreApplication::addLibraryPath(platformPluginPath);
-        list += directLoader()->keyMap().values();
-        if (!list.isEmpty()) {
-            const QString postFix = QLatin1String(" (from ")
-                    + QDir::toNativeSeparators(platformPluginPath)
-                    + QLatin1Char(')');
-            const QStringList::iterator end = list.end();
-            for (QStringList::iterator it = list.begin(); it != end; ++it)
-                (*it).append(postFix);
-        }
-    }
-#else
-    Q_UNUSED(platformPluginPath);
-#endif
-    list += loader()->keyMap().values();
-    return list;
+    ptLoader->setExtraSearchPath(platformPluginPath);
+    return ptLoader->keyMap().values();
 }
 
 QT_END_NAMESPACE

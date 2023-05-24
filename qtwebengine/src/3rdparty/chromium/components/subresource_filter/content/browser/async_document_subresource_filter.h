@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,16 +6,17 @@
 #define COMPONENTS_SUBRESOURCE_FILTER_CONTENT_BROWSER_ASYNC_DOCUMENT_SUBRESOURCE_FILTER_H_
 
 #include <memory>
+#include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/sequence_checker.h"
-#include "base/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/subresource_filter/content/browser/verified_ruleset_dealer.h"
 #include "components/subresource_filter/core/common/document_subresource_filter.h"
 #include "components/subresource_filter/core/common/load_policy.h"
 #include "components/subresource_filter/core/mojom/subresource_filter.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -46,6 +47,8 @@ mojom::ActivationState ComputeActivationState(
 class AsyncDocumentSubresourceFilter {
  public:
   using LoadPolicyCallback = base::OnceCallback<void(LoadPolicy)>;
+  using MultiLoadPolicyCallback =
+      base::OnceCallback<void(std::vector<LoadPolicy>)>;
 
   class Core;
 
@@ -70,6 +73,9 @@ class AsyncDocumentSubresourceFilter {
                          url::Origin parent_document_origin,
                          mojom::ActivationState parent_activation_state);
 
+    InitializationParams(const InitializationParams&) = delete;
+    InitializationParams& operator=(const InitializationParams&) = delete;
+
     ~InitializationParams();
 
     InitializationParams(InitializationParams&& other);
@@ -80,9 +86,6 @@ class AsyncDocumentSubresourceFilter {
     GURL document_url;
     url::Origin parent_document_origin;
     mojom::ActivationState parent_activation_state;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(InitializationParams);
   };
 
   // Creates a Core and initializes it asynchronously on a |task_runner| using
@@ -126,6 +129,11 @@ class AsyncDocumentSubresourceFilter {
       const url::Origin& inherited_document_origin,
       const mojom::ActivationState& activation_state);
 
+  AsyncDocumentSubresourceFilter(const AsyncDocumentSubresourceFilter&) =
+      delete;
+  AsyncDocumentSubresourceFilter& operator=(
+      const AsyncDocumentSubresourceFilter&) = delete;
+
   ~AsyncDocumentSubresourceFilter();
 
   // Computes LoadPolicy on a |task_runner| and returns it back to the calling
@@ -133,6 +141,13 @@ class AsyncDocumentSubresourceFilter {
   // malformed, then a LoadPolicy::Allow is returned.
   void GetLoadPolicyForSubdocument(const GURL& subdocument_url,
                                    LoadPolicyCallback result_callback);
+
+  // Computes LoadPolicy for each URL in `urls` and returns the vector of
+  // policies back to the calling thread via `result_callback`. If
+  // MemoryMappedRuleset is not present or malformed, then
+  // LoadPolicy::Allow is returned for each of these URLs.
+  void GetLoadPolicyForSubdocumentURLs(const std::vector<GURL>& urls,
+                                       MultiLoadPolicyCallback result_callback);
 
   // Invokes |first_disallowed_load_callback|, if necessary, and posts a task to
   // call DocumentSubresourceFilter::reportDisallowedCallback() on the
@@ -170,17 +185,15 @@ class AsyncDocumentSubresourceFilter {
       mojom::ActivationState activation_state);
 
   // Note: Raw pointer, |core_| already holds a reference to |task_runner_|.
-  base::SequencedTaskRunner* task_runner_;
+  raw_ptr<base::SequencedTaskRunner> task_runner_;
   std::unique_ptr<Core, base::OnTaskRunnerDeleter> core_;
   base::OnceClosure first_disallowed_load_callback_;
 
-  base::Optional<mojom::ActivationState> activation_state_;
+  absl::optional<mojom::ActivationState> activation_state_;
 
-  base::SequenceChecker sequence_checker_;
+  SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<AsyncDocumentSubresourceFilter> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(AsyncDocumentSubresourceFilter);
 };
 
 // Holds a DocumentSubresourceFilter that is created in a deferred manner in
@@ -188,14 +201,20 @@ class AsyncDocumentSubresourceFilter {
 class AsyncDocumentSubresourceFilter::Core {
  public:
   Core();
+
+  Core(const Core&) = delete;
+  Core& operator=(const Core&) = delete;
+
   ~Core();
 
   // Can return nullptr even after initialization in case MemoryMappedRuleset
   // was not present, or was malformed during it.
   DocumentSubresourceFilter* filter() {
-    DCHECK(sequence_checker_.CalledOnValidSequence());
+    DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     return filter_ ? &filter_.value() : nullptr;
   }
+
+  std::vector<LoadPolicy> GetLoadPolicies(const std::vector<GURL>& urls);
 
  private:
   friend class AsyncDocumentSubresourceFilter;
@@ -215,10 +234,8 @@ class AsyncDocumentSubresourceFilter::Core {
                                 const url::Origin& document_origin,
                                 VerifiedRuleset* verified_ruleset);
 
-  base::Optional<DocumentSubresourceFilter> filter_;
-  base::SequenceChecker sequence_checker_;
-
-  DISALLOW_COPY_AND_ASSIGN(Core);
+  absl::optional<DocumentSubresourceFilter> filter_;
+  SEQUENCE_CHECKER(sequence_checker_);
 };
 
 }  // namespace subresource_filter

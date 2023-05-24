@@ -1,37 +1,14 @@
 /*
-*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the autotests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************
+
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 */
 
 /********************************************************************************
 ** Form generated from reading UI file 'newactiondialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -40,6 +17,7 @@
 #define NEWACTIONDIALOG_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -76,46 +54,46 @@ public:
     void setupUi(QDialog *qdesigner_internal__NewActionDialog)
     {
         if (qdesigner_internal__NewActionDialog->objectName().isEmpty())
-            qdesigner_internal__NewActionDialog->setObjectName(QString::fromUtf8("qdesigner_internal__NewActionDialog"));
+            qdesigner_internal__NewActionDialog->setObjectName("qdesigner_internal__NewActionDialog");
         qdesigner_internal__NewActionDialog->resize(363, 156);
         verticalLayout = new QVBoxLayout(qdesigner_internal__NewActionDialog);
-        verticalLayout->setObjectName(QString::fromUtf8("verticalLayout"));
+        verticalLayout->setObjectName("verticalLayout");
         formLayout = new QFormLayout();
-        formLayout->setObjectName(QString::fromUtf8("formLayout"));
+        formLayout->setObjectName("formLayout");
         label = new QLabel(qdesigner_internal__NewActionDialog);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
 
         formLayout->setWidget(0, QFormLayout::LabelRole, label);
 
         editActionText = new QLineEdit(qdesigner_internal__NewActionDialog);
-        editActionText->setObjectName(QString::fromUtf8("editActionText"));
+        editActionText->setObjectName("editActionText");
         editActionText->setMinimumSize(QSize(255, 0));
 
         formLayout->setWidget(0, QFormLayout::FieldRole, editActionText);
 
         label_3 = new QLabel(qdesigner_internal__NewActionDialog);
-        label_3->setObjectName(QString::fromUtf8("label_3"));
+        label_3->setObjectName("label_3");
 
         formLayout->setWidget(1, QFormLayout::LabelRole, label_3);
 
         editObjectName = new QLineEdit(qdesigner_internal__NewActionDialog);
-        editObjectName->setObjectName(QString::fromUtf8("editObjectName"));
+        editObjectName->setObjectName("editObjectName");
 
         formLayout->setWidget(1, QFormLayout::FieldRole, editObjectName);
 
         label_2 = new QLabel(qdesigner_internal__NewActionDialog);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
 
         formLayout->setWidget(2, QFormLayout::LabelRole, label_2);
 
         horizontalLayout = new QHBoxLayout();
-        horizontalLayout->setObjectName(QString::fromUtf8("horizontalLayout"));
+        horizontalLayout->setObjectName("horizontalLayout");
         iconSelector = new qdesigner_internal::IconSelector(qdesigner_internal__NewActionDialog);
-        iconSelector->setObjectName(QString::fromUtf8("iconSelector"));
+        iconSelector->setObjectName("iconSelector");
 
         horizontalLayout->addWidget(iconSelector);
 
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(spacerItem);
 
@@ -125,19 +103,19 @@ public:
 
         verticalLayout->addLayout(formLayout);
 
-        verticalSpacer = new QSpacerItem(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        verticalSpacer = new QSpacerItem(0, 0, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         verticalLayout->addItem(verticalSpacer);
 
         line = new QFrame(qdesigner_internal__NewActionDialog);
-        line->setObjectName(QString::fromUtf8("line"));
+        line->setObjectName("line");
         line->setFrameShape(QFrame::HLine);
         line->setFrameShadow(QFrame::Sunken);
 
         verticalLayout->addWidget(line);
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__NewActionDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
 
@@ -151,8 +129,8 @@ public:
         QWidget::setTabOrder(editActionText, editObjectName);
 
         retranslateUi(qdesigner_internal__NewActionDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), qdesigner_internal__NewActionDialog, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), qdesigner_internal__NewActionDialog, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, qdesigner_internal__NewActionDialog, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, qdesigner_internal__NewActionDialog, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(qdesigner_internal__NewActionDialog);
     } // setupUi

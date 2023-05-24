@@ -1,10 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/paint/image_provider.h"
 
+#include <utility>
+
 #include "cc/paint/paint_record.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace cc {
 
@@ -13,7 +16,7 @@ ImageProvider::ScopedResult::ScopedResult() = default;
 ImageProvider::ScopedResult::ScopedResult(DecodedDrawImage image)
     : image_(std::move(image)) {}
 
-ImageProvider::ScopedResult::ScopedResult(sk_sp<PaintRecord> record)
+ImageProvider::ScopedResult::ScopedResult(absl::optional<PaintRecord> record)
     : record_(std::move(record)) {}
 
 ImageProvider::ScopedResult::ScopedResult(DecodedDrawImage image,

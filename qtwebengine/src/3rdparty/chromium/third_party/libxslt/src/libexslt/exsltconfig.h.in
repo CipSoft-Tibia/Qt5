@@ -18,7 +18,7 @@ extern "C" {
  *
  * the version string like "1.2.3"
  */
-#define LIBEXSLT_DOTTED_VERSION "@VERSION@"
+#define LIBEXSLT_DOTTED_VERSION "@LIBEXSLT_VERSION@"
 
 /**
  * LIBEXSLT_VERSION:
@@ -37,7 +37,7 @@ extern "C" {
 /**
  * LIBEXSLT_VERSION_EXTRA:
  *
- * extra version information, used to show a CVS compilation
+ * extra version information, used to show a Git commit description
  */
 #define	LIBEXSLT_VERSION_EXTRA "@LIBEXSLT_VERSION_EXTRA@"
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -51,17 +15,18 @@
 #ifndef WEB_CONTENTS_ADAPTER_H
 #define WEB_CONTENTS_ADAPTER_H
 
-#include "qtwebenginecoreglobal_p.h"
-#include "web_contents_adapter_client.h"
-#include <memory>
+#include <QtCore/QSharedPointer>
+#include <QtCore/QString>
+#include <QtCore/QUrl>
+#include <QtCore/QPointer>
 #include <QtGui/qtgui-config.h>
+#include <QtWebEngineCore/private/qtwebenginecoreglobal_p.h>
+#include <QtWebEngineCore/qwebenginecontextmenurequest.h>
 #include <QtWebEngineCore/qwebenginehttprequest.h>
 
-#include <QScopedPointer>
-#include <QSharedPointer>
-#include <QString>
-#include <QUrl>
-#include <QPointer>
+#include "web_contents_adapter_client.h"
+
+#include <memory>
 
 namespace blink {
 namespace web_pref {
@@ -71,7 +36,6 @@ struct WebPreferences;
 
 namespace content {
 class WebContents;
-struct OpenURLParams;
 class SiteInstance;
 }
 
@@ -82,7 +46,7 @@ class QDragMoveEvent;
 class QDropEvent;
 class QMimeData;
 class QPageLayout;
-class QString;
+class QPageRanges;
 class QTemporaryDir;
 class QWebChannel;
 class QWebEngineUrlRequestInterceptor;
@@ -91,13 +55,10 @@ QT_END_NAMESPACE
 namespace QtWebEngineCore {
 
 class DevToolsFrontendQt;
-class FaviconManager;
 class FindTextHelper;
-class MessagePassingInterface;
 class ProfileQt;
 class WebEnginePageHost;
 class WebChannelIPCTransportHost;
-class WebEngineContext;
 
 class Q_WEBENGINECORE_PRIVATE_EXPORT WebContentsAdapter : public QEnableSharedFromThis<WebContentsAdapter> {
 public:
@@ -137,6 +98,7 @@ public:
     QString pageTitle() const;
     QString selectedText() const;
     QUrl iconUrl() const;
+    QIcon icon() const;
 
     void undo();
     void redo();
@@ -197,6 +159,7 @@ public:
     void openDevToolsFrontend(QSharedPointer<WebContentsAdapter> devtoolsFrontend);
     void closeDevToolsFrontend();
     void devToolsFrontendDestroyed(DevToolsFrontendQt *frontend);
+    QString devToolsId();
 
     void grantMediaAccessPermission(const QUrl &securityOrigin, WebContentsAdapterClient::MediaRequestFlags flags);
     void grantMouseLockPermission(const QUrl &securityOrigin, bool granted);
@@ -210,8 +173,8 @@ public:
 #if QT_CONFIG(webengine_webchannel)
     QWebChannel *webChannel() const;
     void setWebChannel(QWebChannel *, uint worldId);
+    WebChannelIPCTransportHost *webChannelTransport() { return m_webChannelTransport.get(); }
 #endif
-    FaviconManager *faviconManager();
     FindTextHelper *findTextHelper();
 
     QPointF lastScrollOffset() const;
@@ -226,8 +189,8 @@ public:
     void endDragging(QDropEvent *e, const QPointF &screenPos);
     void leaveDrag();
 #endif // QT_CONFIG(draganddrop)
-    void printToPDF(const QPageLayout&, const QString&);
-    quint64 printToPDFCallbackResult(const QPageLayout &,
+    void printToPDF(const QPageLayout&, const QPageRanges &, const QString&);
+    quint64 printToPDFCallbackResult(const QPageLayout &, const QPageRanges &,
                                      bool colorMode = true,
                                      bool useCustomMargins = true);
 
@@ -238,6 +201,8 @@ public:
     bool isFindTextInProgress() const;
     bool hasFocusedFrame() const;
     void resetSelection();
+    void resetTouchSelectionController();
+    void changeTextDirection(bool leftToRight);
 
     // meant to be used within WebEngineCore only
     void initialize(content::SiteInstance *site);

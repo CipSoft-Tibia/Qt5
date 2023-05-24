@@ -31,10 +31,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_TIMELINE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_TIMELINE_H_
 
-#include <memory>
 #include "base/memory/scoped_refptr.h"
+#include "base/time/time.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/core/animation/animation_timeline.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/platform/timer.h"
 
@@ -70,20 +71,20 @@ class CORE_EXPORT DocumentTimeline : public AnimationTimeline {
   void ScheduleNextService() override;
 
   bool IsActive() const override;
-  base::Optional<base::TimeDelta> InitialStartTimeForAnimations() override;
-  bool HasPendingUpdates() const {
-    return !animations_needing_update_.IsEmpty();
-  }
+  absl::optional<base::TimeDelta> InitialStartTimeForAnimations() override;
+  bool HasPendingUpdates() const { return !animations_needing_update_.empty(); }
 
   // The zero time of DocumentTimeline is computed by adding a separate
   // |origin_time_| from DocumentTimelineOptions.
-  // https://drafts.csswg.org/web-animations/#origin-time
-  base::TimeTicks ZeroTime();
-  double ZeroTimeInSeconds() override {
-    return ZeroTime().since_origin().InSecondsF();
+  // https://w3.org/TR/web-animations-1/#origin-time
+  // TODO(crbug.com/1162960) Convert DocumentTimeline::zero_time_ from
+  // base::TimeTicks to AnimationTimeDelta
+  base::TimeTicks CalculateZeroTime();
+  AnimationTimeDelta ZeroTime() override {
+    return AnimationTimeDelta(CalculateZeroTime().since_origin());
   }
 
-  void PauseAnimationsForTesting(double);
+  void PauseAnimationsForTesting(AnimationTimeDelta);
 
   void InvalidateKeyframeEffects(const TreeScope&);
 
@@ -93,7 +94,7 @@ class CORE_EXPORT DocumentTimeline : public AnimationTimeline {
   void ResetForTesting();
   void SetTimingForTesting(PlatformTiming* timing);
 
-  CompositorAnimationTimeline* EnsureCompositorTimeline() override;
+  cc::AnimationTimeline* EnsureCompositorTimeline() override;
 
   void Trace(Visitor*) const override;
 
@@ -103,12 +104,13 @@ class CORE_EXPORT DocumentTimeline : public AnimationTimeline {
  private:
   // Origin time for the timeline relative to the time origin of the document.
   // Provided when the timeline is constructed. See
-  // https://drafts.csswg.org/web-animations/#dom-documenttimelineoptions-origintime.
+  // https://w3.org/TR/web-animations-1/#dom-documenttimelineoptions-origintime.
   base::TimeDelta origin_time_;
   // The origin time. This is computed by adding |origin_time_| to the time
   // origin of the document.
+  // TODO(crbug.com/1162960) Convert DocumentTimeline::zero_time_ from
+  // base::TimeTicks to AnimationTimeDelta
   base::TimeTicks zero_time_;
-  bool zero_time_initialized_;
 
   double playback_rate_;
 
@@ -117,9 +119,11 @@ class CORE_EXPORT DocumentTimeline : public AnimationTimeline {
 
   Member<PlatformTiming> timing_;
 
+  bool zero_time_initialized_;
+
   class DocumentTimelineTiming final : public PlatformTiming {
    public:
-    DocumentTimelineTiming(DocumentTimeline* timeline)
+    explicit DocumentTimelineTiming(DocumentTimeline* timeline)
         : timeline_(timeline),
           timer_(timeline->GetDocument()->GetTaskRunner(
                      TaskType::kInternalDefault),
@@ -136,7 +140,7 @@ class CORE_EXPORT DocumentTimeline : public AnimationTimeline {
 
    private:
     Member<DocumentTimeline> timeline_;
-    TaskRunnerTimer<DocumentTimelineTiming> timer_;
+    HeapTaskRunnerTimer<DocumentTimelineTiming> timer_;
   };
 
   friend class AnimationDocumentTimelineTest;
@@ -151,4 +155,4 @@ struct DowncastTraits<DocumentTimeline> {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_TIMELINE_H_

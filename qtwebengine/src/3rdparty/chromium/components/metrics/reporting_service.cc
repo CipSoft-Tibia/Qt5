@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,18 @@
 
 #include "components/metrics/reporting_service.h"
 
+#include <cstdio>
+#include <memory>
+
 #include "base/base64.h"
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/logging.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/metrics/data_use_tracker.h"
 #include "components/metrics/log_store.h"
+#include "components/metrics/metrics_features.h"
 #include "components/metrics/metrics_log_uploader.h"
 #include "components/metrics/metrics_service_client.h"
 #include "components/metrics/metrics_upload_scheduler.h"
@@ -27,9 +31,12 @@ void ReportingService::RegisterPrefs(PrefRegistrySimple* registry) {
 
 ReportingService::ReportingService(MetricsServiceClient* client,
                                    PrefService* local_state,
-                                   size_t max_retransmit_size)
+                                   size_t max_retransmit_size,
+                                   MetricsLogsEventManager* logs_event_manager)
     : client_(client),
+      local_state_(local_state),
       max_retransmit_size_(max_retransmit_size),
+      logs_event_manager_(logs_event_manager),
       reporting_active_(false),
       log_upload_in_progress_(false),
       data_use_tracker_(DataUseTracker::Create(local_state)) {
@@ -49,8 +56,8 @@ void ReportingService::Initialize() {
   base::RepeatingClosure send_next_log_callback = base::BindRepeating(
       &ReportingService::SendNextLog, self_ptr_factory_.GetWeakPtr());
   bool fast_startup_for_testing = client_->ShouldStartUpFastForTesting();
-  upload_scheduler_.reset(new MetricsUploadScheduler(send_next_log_callback,
-                                                     fast_startup_for_testing));
+  upload_scheduler_ = std::make_unique<MetricsUploadScheduler>(
+      send_next_log_callback, fast_startup_for_testing);
 }
 
 void ReportingService::Start() {
@@ -114,10 +121,29 @@ void ReportingService::SendNextLog() {
     log_store()->StageNextLog();
   }
 
+  // Check whether the log should be uploaded based on user id. If it should not
+  // be sent, then discard the log from the store and notify the scheduler.
+  auto staged_user_id = log_store()->staged_log_user_id();
+  if (staged_user_id.has_value() &&
+      !client_->ShouldUploadMetricsForUserId(staged_user_id.value())) {
+    // Remove the log and update list to disk.
+    log_store()->DiscardStagedLog();
+    log_store()->TrimAndPersistUnsentLogs(/*overwrite_in_memory_store=*/true);
+
+    // Notify the scheduler that the next log should be uploaded. If there are
+    // no more logs, then stop the scheduler.
+    if (!log_store()->has_unsent_logs()) {
+      DVLOG(1) << "Stopping upload_scheduler_.";
+      upload_scheduler_->Stop();
+    }
+    upload_scheduler_->UploadFinished(true);
+    return;
+  }
+
   // Proceed to stage the log for upload if log size satisfies cellular log
   // upload constrains.
   bool upload_canceled = false;
-  bool is_cellular_logic = client_->IsUMACellularUploadLogicEnabled();
+  bool is_cellular_logic = client_->IsOnCellularConnection();
   if (is_cellular_logic && data_use_tracker_ &&
       !data_use_tracker_->ShouldUploadLogOnCellular(
           log_store()->staged_log().size())) {
@@ -155,6 +181,12 @@ void ReportingService::SendStagedLog() {
                       log_store()->staged_log_hash().size());
   std::string signature;
   base::Base64Encode(log_store()->staged_log_signature(), &signature);
+
+  if (logs_event_manager_) {
+    logs_event_manager_->NotifyLogEvent(
+        MetricsLogsEventManager::LogEvent::kLogUploading,
+        log_store()->staged_log_hash());
+  }
   log_uploader_->UploadLog(log_store()->staged_log(), hash, signature,
                            reporting_info_);
 }
@@ -181,9 +213,11 @@ void ReportingService::OnLogUploadComplete(int response_code,
   if (log_store()->has_staged_log()) {
     // Provide boolean for error recovery (allow us to ignore response_code).
     bool discard_log = false;
-    const size_t log_size = log_store()->staged_log().length();
+    const std::string& staged_log = log_store()->staged_log();
+    const size_t log_size = staged_log.length();
     if (upload_succeeded) {
-      LogSuccess(log_size);
+      LogSuccessLogSize(log_size);
+      LogSuccessMetadata(staged_log);
     } else if (log_size > max_retransmit_size_) {
       LogLargeRejection(log_size);
       discard_log = true;
@@ -192,13 +226,37 @@ void ReportingService::OnLogUploadComplete(int response_code,
       discard_log = true;
     }
 
+    if (!upload_succeeded && !discard_log && logs_event_manager_) {
+      // The log failed to upload and we did not discard it. We will try to
+      // retransmit.
+      logs_event_manager_->NotifyLogEvent(
+          MetricsLogsEventManager::LogEvent::kLogStaged,
+          log_store()->staged_log_hash(),
+          "Failed to upload. Staged again for retransmission.");
+    }
+
     if (upload_succeeded || discard_log) {
       if (upload_succeeded)
         log_store()->MarkStagedLogAsSent();
 
       log_store()->DiscardStagedLog();
       // Store the updated list to disk now that the removed log is uploaded.
-      log_store()->TrimAndPersistUnsentLogs();
+      log_store()->TrimAndPersistUnsentLogs(/*overwrite_in_memory_store=*/true);
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+      // If Chrome is in the background, flush the discarded and trimmed logs
+      // from |local_state_| immediately because the process may be killed at
+      // any time from now without persisting the changes. Otherwise, we may end
+      // up re-uploading the same log in a future session. We do not do this if
+      // Chrome is in the foreground because of the assumption that
+      // |local_state_| will be flushed when convenient, and we do not want to
+      // do more work than necessary on the main thread while Chrome is visible.
+      if (base::FeatureList::IsEnabled(
+              features::kReportingServiceFlushPrefsOnUploadInBackground) &&
+          !is_in_foreground_) {
+        local_state_->CommitPendingWrite();
+      }
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
     }
   }
 

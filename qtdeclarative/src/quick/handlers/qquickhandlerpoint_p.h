@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKHANDLERPOINT_H
 #define QQUICKHANDLERPOINT_H
@@ -60,19 +24,21 @@ class QQuickSinglePointHandler;
 
 class Q_QUICK_PRIVATE_EXPORT QQuickHandlerPoint {
     Q_GADGET
-    Q_PROPERTY(int id READ id)
-    Q_PROPERTY(QPointingDeviceUniqueId uniqueId READ uniqueId)
-    Q_PROPERTY(QPointF position READ position)
-    Q_PROPERTY(QPointF scenePosition READ scenePosition)
-    Q_PROPERTY(QPointF pressPosition READ pressPosition)
-    Q_PROPERTY(QPointF scenePressPosition READ scenePressPosition)
-    Q_PROPERTY(QPointF sceneGrabPosition READ sceneGrabPosition)
-    Q_PROPERTY(Qt::MouseButtons pressedButtons READ pressedButtons)
-    Q_PROPERTY(Qt::KeyboardModifiers modifiers READ modifiers)
-    Q_PROPERTY(QVector2D velocity READ velocity)
-    Q_PROPERTY(qreal rotation READ rotation)
-    Q_PROPERTY(qreal pressure READ pressure)
-    Q_PROPERTY(QSizeF ellipseDiameters READ ellipseDiameters)
+    Q_PROPERTY(int id READ id FINAL)
+    Q_PROPERTY(QPointingDeviceUniqueId uniqueId READ uniqueId FINAL)
+    Q_PROPERTY(QPointF position READ position FINAL)
+    Q_PROPERTY(QPointF scenePosition READ scenePosition FINAL)
+    Q_PROPERTY(QPointF pressPosition READ pressPosition FINAL)
+    Q_PROPERTY(QPointF scenePressPosition READ scenePressPosition FINAL)
+    Q_PROPERTY(QPointF sceneGrabPosition READ sceneGrabPosition FINAL)
+    Q_PROPERTY(Qt::MouseButtons pressedButtons READ pressedButtons FINAL)
+    Q_PROPERTY(Qt::KeyboardModifiers modifiers READ modifiers FINAL)
+    Q_PROPERTY(QVector2D velocity READ velocity FINAL)
+    Q_PROPERTY(qreal rotation READ rotation FINAL)
+    Q_PROPERTY(qreal pressure READ pressure FINAL)
+    Q_PROPERTY(QSizeF ellipseDiameters READ ellipseDiameters FINAL)
+    Q_PROPERTY(QPointingDevice *device READ device FINAL)
+    QML_ANONYMOUS
 
 public:
     QQuickHandlerPoint();
@@ -90,14 +56,17 @@ public:
     qreal pressure() const { return m_pressure; }
     QSizeF ellipseDiameters() const { return m_ellipseDiameters; }
     QPointingDeviceUniqueId uniqueId() const { return m_uniqueId; }
+    // non-const only because of QML engine limitations (similar to QTBUG-61749)
+    QPointingDevice *device() const { return const_cast<QPointingDevice *>(m_device); }
     void localize(QQuickItem *item);
 
     void reset();
-    void reset(const QQuickEventPoint *point);
+    void reset(const QPointerEvent *event, const QEventPoint &point);
     void reset(const QVector<QQuickHandlerPoint> &points);
 
 private:
-    int m_id = 0;
+    int m_id = -1;
+    const QPointingDevice *m_device = QPointingDevice::primaryPointingDevice();
     QPointingDeviceUniqueId m_uniqueId;
     Qt::MouseButtons m_pressedButtons = Qt::NoButton;
     Qt::KeyboardModifiers m_pressedModifiers = Qt::NoModifier;
@@ -115,7 +84,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-QML_DECLARE_TYPE(QQuickHandlerPoint)
 
 #endif // QQUICKHANDLERPOINT_H

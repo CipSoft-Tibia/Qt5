@@ -4,10 +4,10 @@
 
 #include <functional>  // std::function
 #include <queue>
+#include "include/core/SkSpan.h"
 #include "modules/skparagraph/include/TextStyle.h"
 #include "modules/skparagraph/src/ParagraphImpl.h"
 #include "modules/skparagraph/src/Run.h"
-#include "src/core/SkSpan.h"
 
 namespace skia {
 namespace textlayout {
@@ -18,6 +18,8 @@ public:
     explicit OneLineShaper(ParagraphImpl* paragraph)
         : fParagraph(paragraph)
         , fHeight(0.0f)
+        , fUseHalfLeading(false)
+        , fBaselineShift(0.0f)
         , fAdvance(SkPoint::Make(0.0f, 0.0f))
         , fUnresolvedGlyphs(0)
         , fUniqueRunId(paragraph->fRuns.size()){ }
@@ -69,7 +71,7 @@ private:
 #ifdef SK_DEBUG
     void printState();
 #endif
-    void finish(TextRange text, SkScalar height, SkScalar& advanceX);
+    void finish(const Block& block, SkScalar height, SkScalar& advanceX);
 
     void beginLine() override {}
     void runInfo(const RunInfo&) override {}
@@ -81,6 +83,8 @@ private:
                                            info,
                                            fCurrentText.start,
                                            fHeight,
+                                           fUseHalfLeading,
+                                           fBaselineShift,
                                            ++fUniqueRunId,
                                            fAdvance.fX);
         return fCurrentRun->newRunBuffer();
@@ -101,6 +105,8 @@ private:
     ParagraphImpl* fParagraph;
     TextRange fCurrentText;
     SkScalar fHeight;
+    bool fUseHalfLeading;
+    SkScalar fBaselineShift;
     SkVector fAdvance;
     size_t fUnresolvedGlyphs;
     size_t fUniqueRunId;

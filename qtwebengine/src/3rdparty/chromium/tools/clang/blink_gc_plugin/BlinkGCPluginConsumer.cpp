@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include "CheckDispatchVisitor.h"
 #include "CheckFieldsVisitor.h"
 #include "CheckFinalizerVisitor.h"
+#include "CheckForbiddenFieldsVisitor.h"
 #include "CheckGCRootsVisitor.h"
 #include "CheckTraceVisitor.h"
 #include "CollectVisitor.h"
@@ -86,10 +87,16 @@ BlinkGCPluginConsumer::BlinkGCPluginConsumer(
       json_(0) {
   // Only check structures in the blink and WebKit namespaces.
   options_.checked_namespaces.insert("blink");
+  options_.checked_namespaces.insert("cppgc");
 
   // Ignore GC implementation files.
-  options_.ignored_directories.push_back("/heap/");
-  options_.allowed_directories.push_back("/test/");
+  options_.ignored_directories.push_back(
+      "third_party/blink/renderer/platform/heap/");
+  options_.ignored_directories.push_back("v8/src/heap/cppgc/");
+  options_.ignored_directories.push_back("v8/src/heap/cppgc-js/");
+
+  options_.allowed_directories.push_back(
+      "third_party/blink/renderer/platform/heap/test/");
 }
 
 void BlinkGCPluginConsumer::HandleTranslationUnit(ASTContext& context) {
@@ -104,18 +111,14 @@ void BlinkGCPluginConsumer::HandleTranslationUnit(ASTContext& context) {
 
   if (options_.dump_graph) {
     std::error_code err;
-    // TODO: Make createDefaultOutputFile or a shorter createOutputFile work.
+    SmallString<128> OutputFile(instance_.getFrontendOpts().OutputFile);
+    llvm::sys::path::replace_extension(OutputFile, "graph.json");
     json_ = JsonWriter::from(instance_.createOutputFile(
-        "",                                      // OutputPath
-        err,                                     // Errors
+        OutputFile,                              // OutputPath
         true,                                    // Binary
         true,                                    // RemoveFileOnSignal
-        instance_.getFrontendOpts().OutputFile,  // BaseInput
-        "graph.json",                            // Extension
         false,                                   // UseTemporary
-        false,                                   // CreateMissingDirectories
-        0,                                       // ResultPathName
-        0));                                     // TempPathName
+        false));                                 // CreateMissingDirectories
     if (!err && json_) {
       json_->OpenList();
     } else {
@@ -138,7 +141,7 @@ void BlinkGCPluginConsumer::HandleTranslationUnit(ASTContext& context) {
     json_ = 0;
   }
 
-  FindBadPatterns(context, reporter_);
+  FindBadPatterns(context, reporter_, options_);
 }
 
 void BlinkGCPluginConsumer::ParseFunctionTemplates(TranslationUnitDecl* decl) {
@@ -251,15 +254,27 @@ void BlinkGCPluginConsumer::CheckClass(RecordInfo* info) {
     if (!info->IsGCMixin()) {
       CheckLeftMostDerived(info);
       CheckDispatch(info);
-      if (CXXMethodDecl* newop = info->DeclaresNewOperator())
-        if (!Config::IsIgnoreAnnotated(newop))
+      if (CXXMethodDecl* newop = info->DeclaresNewOperator()) {
+        if (!info->IsStackAllocated() &&
+            !Config::IsGCBase(newop->getParent()->getName()) &&
+            !Config::IsIgnoreAnnotated(newop)) {
           reporter_.ClassOverridesNew(info, newop);
+        }
+      }
     }
 
     {
-      CheckGCRootsVisitor visitor;
+      CheckGCRootsVisitor visitor(options_);
       if (visitor.ContainsGCRoots(info))
         reporter_.ClassContainsGCRoots(info, visitor.gc_roots());
+    }
+
+    if (options_.enable_forbidden_fields_check) {
+      CheckForbiddenFieldsVisitor visitor(options_);
+      if (visitor.ContainsForbiddenFields(info)) {
+        reporter_.ClassContainsForbiddenFields(info,
+                                               visitor.forbidden_fields());
+      }
     }
 
     if (info->NeedsFinalization())
@@ -562,17 +577,12 @@ void BlinkGCPluginConsumer::DumpClass(RecordInfo* info) {
       // The liveness kind of a path from the point to this value
       // is given by the innermost place that is non-strong.
       Edge::LivenessKind kind = Edge::kStrong;
-      if (Config::IsIgnoreCycleAnnotated(point_->field())) {
-        kind = Edge::kWeak;
-      } else {
-        for (Context::iterator it = context().begin();
-             it != context().end();
-             ++it) {
-          Edge::LivenessKind pointer_kind = (*it)->Kind();
-          if (pointer_kind != Edge::kStrong) {
-            kind = pointer_kind;
-            break;
-          }
+      for (Context::iterator it = context().begin(); it != context().end();
+           ++it) {
+        Edge::LivenessKind pointer_kind = (*it)->Kind();
+        if (pointer_kind != Edge::kStrong) {
+          kind = pointer_kind;
+          break;
         }
       }
       DumpEdge(

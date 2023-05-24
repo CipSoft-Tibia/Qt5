@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 #define UI_GL_ANDROID_SCOPED_JAVA_SURFACE_H_
 
 #include <jni.h>
+#include <cstddef>
 
 #include "base/android/scoped_java_ref.h"
-#include "base/macros.h"
 #include "ui/gl/gl_export.h"
 
 namespace gl {
@@ -21,9 +21,11 @@ class SurfaceTexture;
 class GL_EXPORT ScopedJavaSurface {
  public:
   ScopedJavaSurface();
+  ScopedJavaSurface(std::nullptr_t);
 
   // Wraps an existing Java Surface object in a ScopedJavaSurface.
-  explicit ScopedJavaSurface(const base::android::JavaRef<jobject>& surface);
+  ScopedJavaSurface(const base::android::JavaRef<jobject>& surface,
+                    bool auto_release);
 
   // Creates a Java Surface from a SurfaceTexture and wraps it in a
   // ScopedJavaSurface.
@@ -34,21 +36,20 @@ class GL_EXPORT ScopedJavaSurface {
   ScopedJavaSurface(ScopedJavaSurface&& rvalue);
   ScopedJavaSurface& operator=(ScopedJavaSurface&& rhs);
 
-  // Creates a ScopedJavaSurface that is owned externally, i.e.,
-  // someone else is responsible to call Surface.release().
-  static ScopedJavaSurface AcquireExternalSurface(jobject surface);
+  ScopedJavaSurface(const ScopedJavaSurface&) = delete;
+  ScopedJavaSurface& operator=(const ScopedJavaSurface&) = delete;
 
   ~ScopedJavaSurface();
+
+  // Make a copy that does not retain ownership. Client is responsible for not
+  // using the copy after this is destroyed.
+  ScopedJavaSurface CopyRetainOwnership() const;
 
   // Checks whether the surface is an empty one.
   bool IsEmpty() const;
 
   // Checks whether this object references a valid surface.
   bool IsValid() const;
-
-  // Checks whether the surface is hardware protected so that no readback is
-  // possible.
-  bool is_protected() const { return is_protected_; }
 
   const base::android::JavaRef<jobject>& j_surface() const {
     return j_surface_;
@@ -60,11 +61,8 @@ class GL_EXPORT ScopedJavaSurface {
   void ReleaseSurfaceIfNeeded();
 
   bool auto_release_ = true;
-  bool is_protected_ = false;
 
   base::android::ScopedJavaGlobalRef<jobject> j_surface_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScopedJavaSurface);
 };
 
 }  // namespace gl

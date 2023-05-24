@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import android.accounts.Account;
@@ -49,7 +49,6 @@ import org.robolectric.annotation.Implementation;
 import org.robolectric.annotation.Implements;
 import org.robolectric.shadows.ShadowAccountManager;
 import org.robolectric.shadows.ShadowApplication;
-import org.robolectric.shadows.multidex.ShadowMultiDex;
 
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.test.BaseRobolectricTestRunner;
@@ -65,8 +64,7 @@ import java.util.List;
  */
 @RunWith(BaseRobolectricTestRunner.class)
 @Config(manifest = Config.NONE,
-        shadows = {HttpNegotiateAuthenticatorTest.ExtendedShadowAccountManager.class,
-                ShadowMultiDex.class})
+        shadows = {HttpNegotiateAuthenticatorTest.ExtendedShadowAccountManager.class})
 public class HttpNegotiateAuthenticatorTest {
     /**
      * User the AccountManager to inject a mock instance.
@@ -218,7 +216,7 @@ public class HttpNegotiateAuthenticatorTest {
         b.putParcelable(AccountManager.KEY_INTENT, new Intent());
 
         authenticator.new GetTokenCallback(requestData).run(makeFuture(b));
-        verifyZeroInteractions(sMockAccountManager);
+        verifyNoMoreInteractions(sMockAccountManager);
 
         // Verify that the broadcast receiver is registered
         Intent intent = new Intent(AccountManager.LOGIN_ACCOUNTS_CHANGED_ACTION);

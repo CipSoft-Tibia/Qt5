@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 
@@ -43,7 +7,9 @@
 
 #include "qwizard_win_p.h"
 #include <private/qapplication_p.h>
-#include <qpa/qplatformnativeinterface.h>
+#include <private/qwindowsfontdatabasebase_p.h>
+#include <qpa/qplatformwindow.h>
+#include <qpa/qplatformwindow_p.h>
 #include "qwizard.h"
 #include "qpaintengine.h"
 #include "qapplication.h"
@@ -52,12 +18,13 @@
 #include <QtCore/QDebug>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QWindow>
-#include <QtWidgets/QDesktopWidget>
+#include <QtGui/private/qhighdpiscaling_p.h>
 
 #include <uxtheme.h>
 #include <vssym32.h>
 #include <dwmapi.h>
 
+// ### move to qmargins.h
 Q_DECLARE_METATYPE(QMargins)
 
 #ifndef WM_DWMCOMPOSITIONCHANGED
@@ -66,9 +33,7 @@ Q_DECLARE_METATYPE(QMargins)
 
 QT_BEGIN_NAMESPACE
 
-int QVistaHelper::instanceCount = 0;
-int QVistaHelper::m_devicePixelRatio = 1;
-QVistaHelper::VistaState QVistaHelper::cachedVistaState = QVistaHelper::Dirty;
+qreal QVistaHelper::m_devicePixelRatio = 1.0;
 
 /******************************************************************************
 ** QVistaBackButton
@@ -92,7 +57,7 @@ QSize QVistaBackButton::sizeHint() const
     return QSize(width, height);
 }
 
-void QVistaBackButton::enterEvent(QEvent *event)
+void QVistaBackButton::enterEvent(QEnterEvent *event)
 {
     if (isEnabled())
         update();
@@ -117,7 +82,7 @@ void QVistaBackButton::paintEvent(QPaintEvent *)
     RECT clipRect;
     int xoffset = origin.x() + QWidget::mapToParent(r.topLeft()).x() - 1;
     int yoffset = origin.y() + QWidget::mapToParent(r.topLeft()).y() - 1;
-    const int dpr = devicePixelRatio();
+    const qreal dpr = devicePixelRatio();
     const QRect rDp = QRect(r.topLeft() * dpr, r.size() * dpr);
     const int xoffsetDp = xoffset * dpr;
     const int yoffsetDp = yoffset * dpr;
@@ -151,21 +116,19 @@ QVistaHelper::QVistaHelper(QWizard *wizard)
     , backButton_(0)
 {
     QVistaHelper::m_devicePixelRatio = wizard->devicePixelRatio();
-    if (instanceCount++ == 0)
-        cachedVistaState = Dirty;
+
     backButton_ = new QVistaBackButton(wizard);
     backButton_->hide();
 
     iconSpacing = QStyleHelper::dpiScaled(7, wizard);
 }
 
-QVistaHelper::~QVistaHelper()
-{
-    --instanceCount;
-}
+QVistaHelper::~QVistaHelper() = default;
 
 void QVistaHelper::updateCustomMargins(bool vistaMargins)
 {
+    using namespace QNativeInterface::Private;
+
     if (QWindow *window = wizard->windowHandle()) {
         // Reduce top frame to zero since we paint it ourselves. Use
         // device pixel to avoid rounding errors.
@@ -176,31 +139,9 @@ void QVistaHelper::updateCustomMargins(bool vistaMargins)
         // The dynamic property takes effect when creating the platform window.
         window->setProperty("_q_windowsCustomMargins", customMarginsV);
         // If a platform window exists, change via native interface.
-        if (QPlatformWindow *platformWindow = window->handle()) {
-            QGuiApplication::platformNativeInterface()->
-                setWindowProperty(platformWindow, QStringLiteral("WindowsCustomMargins"),
-                                  customMarginsV);
-        }
+        if (auto platformWindow = dynamic_cast<QWindowsWindow *>(window->handle()))
+            platformWindow->setCustomMargins(customMarginsDp);
     }
-}
-
-bool QVistaHelper::isCompositionEnabled()
-{
-    BOOL bEnabled;
-    return SUCCEEDED(DwmIsCompositionEnabled(&bEnabled)) && bEnabled;
-}
-
-bool QVistaHelper::isThemeActive()
-{
-    return IsThemeActive();
-}
-
-QVistaHelper::VistaState QVistaHelper::vistaState()
-{
-    if (instanceCount == 0 || cachedVistaState == Dirty)
-        cachedVistaState =
-            isCompositionEnabled() ? VistaAero : isThemeActive() ? VistaBasic : Classic;
-    return cachedVistaState;
 }
 
 void QVistaHelper::disconnectBackButton()
@@ -223,18 +164,16 @@ QColor QVistaHelper::basicWindowFrameColor()
 
 bool QVistaHelper::setDWMTitleBar(TitleBarChangeType type)
 {
-    bool value = false;
-    if (vistaState() == VistaAero) {
-        MARGINS mar = {0, 0, 0, 0};
-        if (type == NormalTitleBar)
-            mar.cyTopHeight = 0;
-        else
-            mar.cyTopHeight = (titleBarSize() + topOffset(wizard)) * QVistaHelper::m_devicePixelRatio;
-        if (const HWND wizardHandle = wizardHWND())
-            if (SUCCEEDED(DwmExtendFrameIntoClientArea(wizardHandle, &mar)))
-                value = true;
+    MARGINS mar = {0, 0, 0, 0};
+    if (type == NormalTitleBar)
+        mar.cyTopHeight = 0;
+    else
+        mar.cyTopHeight = (titleBarSize() + topOffset(wizard)) * QVistaHelper::m_devicePixelRatio;
+    if (const HWND wizardHandle = wizardHWND()) {
+        if (SUCCEEDED(DwmExtendFrameIntoClientArea(wizardHandle, &mar)))
+            return true;
     }
-    return value;
+    return false;
 }
 
 Q_GUI_EXPORT HICON qt_pixmapToWinHICON(const QPixmap &);
@@ -259,11 +198,8 @@ static bool getCaptionQFont(int dpi, QFont *result)
         return false;
     // Call into QWindowsNativeInterface to convert the LOGFONT into a QFont.
     const LOGFONT logFont = getCaptionLogFont(hTheme);
-    QPlatformNativeInterface *ni = QGuiApplication::platformNativeInterface();
-    return ni && QMetaObject::invokeMethod(ni, "logFontToQFont", Qt::DirectConnection,
-                                           Q_RETURN_ARG(QFont, *result),
-                                           Q_ARG(const void*, &logFont),
-                                           Q_ARG(int, dpi));
+    *result = QWindowsFontDatabaseBase::LOGFONT_to_QFont(logFont, dpi);
+    return true;
 }
 
 void QVistaHelper::drawTitleBar(QPainter *painter)
@@ -273,7 +209,7 @@ void QVistaHelper::drawTitleBar(QPainter *painter)
     const bool isWindow = wizard->isWindow();
     const HDC hdc = QVistaHelper::backingStoreDC(wizard, &origin);
 
-    if (vistaState() == VistaAero && isWindow)
+    if (isWindow)
         drawBlackRect(QRect(0, 0, wizard->width(),
                             titleBarSize() + topOffset(wizard)), hdc);
     // The button is positioned in QWizardPrivate::handleAeroStyleChange(),
@@ -288,15 +224,9 @@ void QVistaHelper::drawTitleBar(QPainter *painter)
         font = QApplication::font("QMdiSubWindowTitleBar");
     const QFontMetrics fontMetrics(font);
     const QRect brect = fontMetrics.boundingRect(text);
-    int textHeight = brect.height();
-    int textWidth = brect.width();
-    int glowOffset = 0;
-
-    if (vistaState() == VistaAero) {
-        glowOffset = glowSize(wizard);
-        textHeight += 2 * glowOffset;
-        textWidth += 2 * glowOffset;
-    }
+    const int glowOffset = glowSize(wizard);
+    int textHeight = brect.height() + 2 * glowOffset;
+    int textWidth = brect.width() + 2 * glowOffset;
 
     const int titleLeft = (wizard->layoutDirection() == Qt::LeftToRight
                            ? titleOffset() - glowOffset
@@ -339,11 +269,7 @@ void QVistaHelper::setTitleBarIconAndCaptionVisible(bool visible)
         SetWindowThemeAttribute(handle, WTA_NONCLIENT, &opt, sizeof(WTA_OPTIONS));
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QVistaHelper::winEvent(MSG* msg, qintptr *result)
-#else
-bool QVistaHelper::winEvent(MSG* msg, long* result)
-#endif
 {
     switch (msg->message) {
     case WM_NCHITTEST: {
@@ -405,17 +331,10 @@ void QVistaHelper::mouseEvent(QEvent *event)
     }
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QVistaHelper::handleWinEvent(MSG *message, qintptr *result)
-#else
-bool QVistaHelper::handleWinEvent(MSG *message, long *result)
-#endif
 {
-    if (message->message == WM_THEMECHANGED || message->message == WM_DWMCOMPOSITIONCHANGED)
-        cachedVistaState = Dirty;
-
     bool status = false;
-    if (wizard->wizardStyle() == QWizard::AeroStyle && vistaState() == VistaAero) {
+    if (wizard->wizardStyle() == QWizard::AeroStyle) {
         status = winEvent(message, result);
         if (message->message == WM_NCPAINT)
             wizard->update();
@@ -428,8 +347,6 @@ void QVistaHelper::resizeEvent(QResizeEvent * event)
     Q_UNUSED(event);
     rtTop = QRect (0, 0, wizard->width(), frameSize());
     int height = captionSize() + topOffset(wizard);
-    if (vistaState() == VistaBasic)
-        height -= titleBarSize();
     rtTitle = QRect (0, frameSize(), wizard->width(), height);
 }
 
@@ -468,7 +385,7 @@ void QVistaHelper::mouseMoveEvent(QMouseEvent *event)
         }
         wizard->setGeometry(rect);
 
-    } else if (vistaState() == VistaAero) {
+    } else {
         setMouseCursor(event->pos());
     }
     event->ignore();
@@ -486,11 +403,10 @@ void QVistaHelper::mousePressEvent(QMouseEvent *event)
     if (rtTitle.contains(event->pos())) {
         change = movePosition;
     } else if (rtTop.contains(event->pos()))
-        change = (vistaState() == VistaAero) ? resizeTop : movePosition;
+        change = resizeTop;
 
     if (change != noChange) {
-        if (vistaState() == VistaAero)
-            setMouseCursor(event->pos());
+        setMouseCursor(event->pos());
         pressed = true;
         pressedPos = event->pos();
     } else {
@@ -504,10 +420,15 @@ void QVistaHelper::mouseReleaseEvent(QMouseEvent *event)
     if (pressed) {
         pressed = false;
         wizard->releaseMouse();
-        if (vistaState() == VistaAero)
-            setMouseCursor(event->pos());
+        setMouseCursor(event->pos());
     }
     event->ignore();
+}
+
+static inline LPARAM pointToLParam(const QPointF &p, const QWidget *w)
+{
+    const auto point = QHighDpi::toNativePixels(p, w->screen()).toPoint();
+    return MAKELPARAM(point.x(), point.y());
 }
 
 bool QVistaHelper::eventFilter(QObject *obj, QEvent *event)
@@ -517,15 +438,11 @@ bool QVistaHelper::eventFilter(QObject *obj, QEvent *event)
 
     if (event->type() == QEvent::MouseMove) {
         QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         qintptr result;
-#else
-        long result;
-#endif
         MSG msg;
         msg.message = WM_NCHITTEST;
         msg.wParam  = 0;
-        msg.lParam = MAKELPARAM(mouseEvent->globalX(), mouseEvent->globalY());
+        msg.lParam = pointToLParam(mouseEvent->globalPosition(), wizard);
         msg.hwnd = wizardHWND();
         winEvent(&msg, &result);
         msg.wParam = result;
@@ -535,15 +452,11 @@ bool QVistaHelper::eventFilter(QObject *obj, QEvent *event)
         QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
 
         if (mouseEvent->button() == Qt::LeftButton) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             qintptr result;
-#else
-            long result;
-#endif
             MSG msg;
             msg.message = WM_NCHITTEST;
             msg.wParam  = 0;
-            msg.lParam = MAKELPARAM(mouseEvent->globalX(), mouseEvent->globalY());
+            msg.lParam = pointToLParam(mouseEvent->globalPosition(), wizard);
             msg.hwnd = wizardHWND();
             winEvent(&msg, &result);
             msg.wParam = result;
@@ -554,15 +467,11 @@ bool QVistaHelper::eventFilter(QObject *obj, QEvent *event)
         QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
 
         if (mouseEvent->button() == Qt::LeftButton) {
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
             qintptr result;
-#else
-            long result;
-#endif
             MSG msg;
             msg.message = WM_NCHITTEST;
             msg.wParam  = 0;
-            msg.lParam = MAKELPARAM(mouseEvent->globalX(), mouseEvent->globalY());
+            msg.lParam = pointToLParam(mouseEvent->globalPosition(), wizard);
             msg.hwnd = wizardHWND();
             winEvent(&msg, &result);
             msg.wParam = result;
@@ -599,112 +508,88 @@ HWND QVistaHelper::wizardHWND() const
     return 0;
 }
 
-bool QVistaHelper::drawTitleText(QPainter *painter, const QString &text, const QRect &rect, HDC hdc)
+void QVistaHelper::drawTitleText(QPainter *painter, const QString &text, const QRect &rect, HDC hdc)
 {
-    bool value = false;
-    if (vistaState() == VistaAero) {
-        const QRect rectDp = QRect(rect.topLeft() * QVistaHelper::m_devicePixelRatio,
+    Q_UNUSED(painter);
+
+    const QRect rectDp = QRect(rect.topLeft() * QVistaHelper::m_devicePixelRatio,
+                               rect.size() * QVistaHelper::m_devicePixelRatio);
+    const HANDLE hTheme = OpenThemeData(GetDesktopWindow(), L"WINDOW");
+    if (!hTheme)
+        return;
+    // Set up a memory DC and bitmap that we'll draw into
+    HDC dcMem;
+    HBITMAP bmp;
+    BITMAPINFO dib;
+    ZeroMemory(&dib, sizeof(dib));
+    dcMem = CreateCompatibleDC(hdc);
+
+    dib.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    dib.bmiHeader.biWidth = rectDp.width();
+    dib.bmiHeader.biHeight = -rectDp.height();
+    dib.bmiHeader.biPlanes = 1;
+    dib.bmiHeader.biBitCount = 32;
+    dib.bmiHeader.biCompression = BI_RGB;
+
+    bmp = CreateDIBSection(hdc, &dib, DIB_RGB_COLORS, NULL, NULL, 0);
+
+    // Set up the DC
+    const LOGFONT captionLogFont = getCaptionLogFont(hTheme);
+    const HFONT hCaptionFont = CreateFontIndirect(&captionLogFont);
+    auto hOldBmp = reinterpret_cast<HBITMAP>(SelectObject(dcMem, (HGDIOBJ) bmp));
+    auto hOldFont = reinterpret_cast<HFONT>(SelectObject(dcMem, (HGDIOBJ) hCaptionFont));
+
+    // Draw the text!
+    DTTOPTS dto;
+    memset(&dto, 0, sizeof(dto));
+    dto.dwSize = sizeof(dto);
+    const UINT uFormat = DT_SINGLELINE|DT_CENTER|DT_VCENTER|DT_NOPREFIX;
+    RECT rctext ={0,0, rectDp.width(), rectDp.height()};
+
+    dto.dwFlags = DTT_COMPOSITED|DTT_GLOWSIZE;
+    dto.iGlowSize = glowSize(wizard);
+
+    DrawThemeTextEx(hTheme, dcMem, 0, 0, reinterpret_cast<LPCWSTR>(text.utf16()), -1, uFormat, &rctext, &dto );
+    BitBlt(hdc, rectDp.left(), rectDp.top(), rectDp.width(), rectDp.height(), dcMem, 0, 0, SRCCOPY);
+    SelectObject(dcMem, (HGDIOBJ) hOldBmp);
+    SelectObject(dcMem, (HGDIOBJ) hOldFont);
+    DeleteObject(bmp);
+    DeleteObject(hCaptionFont);
+    DeleteDC(dcMem);
+    //ReleaseDC(hwnd, hdc);
+}
+
+void QVistaHelper::drawBlackRect(const QRect &rect, HDC hdc)
+{
+    // Set up a memory DC and bitmap that we'll draw into
+    const QRect rectDp = QRect(rect.topLeft() * QVistaHelper::m_devicePixelRatio,
                                    rect.size() * QVistaHelper::m_devicePixelRatio);
-        const HANDLE hTheme = OpenThemeData(GetDesktopWindow(), L"WINDOW");
-        if (!hTheme) return false;
-        // Set up a memory DC and bitmap that we'll draw into
-        HDC dcMem;
-        HBITMAP bmp;
-        BITMAPINFO dib;
-        ZeroMemory(&dib, sizeof(dib));
-        dcMem = CreateCompatibleDC(hdc);
+    HDC dcMem;
+    HBITMAP bmp;
+    BITMAPINFO dib;
+    ZeroMemory(&dib, sizeof(dib));
+    dcMem = CreateCompatibleDC(hdc);
 
-        dib.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        dib.bmiHeader.biWidth = rectDp.width();
-        dib.bmiHeader.biHeight = -rectDp.height();
-        dib.bmiHeader.biPlanes = 1;
-        dib.bmiHeader.biBitCount = 32;
-        dib.bmiHeader.biCompression = BI_RGB;
+    dib.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    dib.bmiHeader.biWidth = rectDp.width();
+    dib.bmiHeader.biHeight = -rectDp.height();
+    dib.bmiHeader.biPlanes = 1;
+    dib.bmiHeader.biBitCount = 32;
+    dib.bmiHeader.biCompression = BI_RGB;
 
-        bmp = CreateDIBSection(hdc, &dib, DIB_RGB_COLORS, NULL, NULL, 0);
+    bmp = CreateDIBSection(hdc, &dib, DIB_RGB_COLORS, NULL, NULL, 0);
+    auto hOldBmp = reinterpret_cast<HBITMAP>(SelectObject(dcMem, (HGDIOBJ) bmp));
 
-        // Set up the DC
-        const LOGFONT captionLogFont = getCaptionLogFont(hTheme);
-        const HFONT hCaptionFont = CreateFontIndirect(&captionLogFont);
-        auto hOldBmp = reinterpret_cast<HBITMAP>(SelectObject(dcMem, (HGDIOBJ) bmp));
-        auto hOldFont = reinterpret_cast<HFONT>(SelectObject(dcMem, (HGDIOBJ) hCaptionFont));
+    BitBlt(hdc, rectDp.left(), rectDp.top(), rectDp.width(), rectDp.height(), dcMem, 0, 0, SRCCOPY);
+    SelectObject(dcMem, (HGDIOBJ) hOldBmp);
 
-        // Draw the text!
-        DTTOPTS dto;
-        memset(&dto, 0, sizeof(dto));
-        dto.dwSize = sizeof(dto);
-        const UINT uFormat = DT_SINGLELINE|DT_CENTER|DT_VCENTER|DT_NOPREFIX;
-        RECT rctext ={0,0, rectDp.width(), rectDp.height()};
-
-        dto.dwFlags = DTT_COMPOSITED|DTT_GLOWSIZE;
-        dto.iGlowSize = glowSize(wizard);
-
-        DrawThemeTextEx(hTheme, dcMem, 0, 0, reinterpret_cast<LPCWSTR>(text.utf16()), -1, uFormat, &rctext, &dto );
-        BitBlt(hdc, rectDp.left(), rectDp.top(), rectDp.width(), rectDp.height(), dcMem, 0, 0, SRCCOPY);
-        SelectObject(dcMem, (HGDIOBJ) hOldBmp);
-        SelectObject(dcMem, (HGDIOBJ) hOldFont);
-        DeleteObject(bmp);
-        DeleteObject(hCaptionFont);
-        DeleteDC(dcMem);
-        //ReleaseDC(hwnd, hdc);
-    } else if (vistaState() == VistaBasic) {
-        painter->drawText(rect, text);
-    }
-    return value;
+    DeleteObject(bmp);
+    DeleteDC(dcMem);
 }
-
-bool QVistaHelper::drawBlackRect(const QRect &rect, HDC hdc)
-{
-    bool value = false;
-    if (vistaState() == VistaAero) {
-        // Set up a memory DC and bitmap that we'll draw into
-        const QRect rectDp = QRect(rect.topLeft() * QVistaHelper::m_devicePixelRatio,
-                                   rect.size() * QVistaHelper::m_devicePixelRatio);
-        HDC dcMem;
-        HBITMAP bmp;
-        BITMAPINFO dib;
-        ZeroMemory(&dib, sizeof(dib));
-        dcMem = CreateCompatibleDC(hdc);
-
-        dib.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        dib.bmiHeader.biWidth = rectDp.width();
-        dib.bmiHeader.biHeight = -rectDp.height();
-        dib.bmiHeader.biPlanes = 1;
-        dib.bmiHeader.biBitCount = 32;
-        dib.bmiHeader.biCompression = BI_RGB;
-
-        bmp = CreateDIBSection(hdc, &dib, DIB_RGB_COLORS, NULL, NULL, 0);
-        auto hOldBmp = reinterpret_cast<HBITMAP>(SelectObject(dcMem, (HGDIOBJ) bmp));
-
-        BitBlt(hdc, rectDp.left(), rectDp.top(), rectDp.width(), rectDp.height(), dcMem, 0, 0, SRCCOPY);
-        SelectObject(dcMem, (HGDIOBJ) hOldBmp);
-
-        DeleteObject(bmp);
-        DeleteDC(dcMem);
-    }
-    return value;
-}
-
-#ifndef Q_CC_MSVC
-static inline int getWindowBottomMargin()
-{
-    return GetSystemMetrics(SM_CYSIZEFRAME);
-}
-#else
-// QTBUG-36192, GetSystemMetrics(SM_CYSIZEFRAME) returns bogus values
-// for MSVC2012 which leads to the custom margin having no effect since
-// that only works when removing the entire margin.
-static inline int getWindowBottomMargin()
-{
-    RECT rect = {0, 0, 0, 0};
-    AdjustWindowRectEx(&rect, WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_THICKFRAME | WS_DLGFRAME, FALSE, 0);
-    return qAbs(rect.bottom);
-}
-#endif // Q_CC_MSVC
 
 int QVistaHelper::frameSizeDp()
 {
-    return getWindowBottomMargin();
+    return GetSystemMetrics(SM_CXSIZEFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
 }
 
 int QVistaHelper::captionSizeDp()
@@ -730,11 +615,7 @@ int QVistaHelper::glowSize(const QPaintDevice *device)
 
 int QVistaHelper::topOffset(const QPaintDevice *device)
 {
-    if (vistaState() != VistaAero)
-        return titleBarSize() + 3;
-    static const int aeroOffset =
-        QOperatingSystemVersion::current() < QOperatingSystemVersion::Windows8 ?
-        QStyleHelper::dpiScaled(4, device) : QStyleHelper::dpiScaled(13, device);
+    static const int aeroOffset = QStyleHelper::dpiScaled(13, device);
     return aeroOffset + titleBarSize();
 }
 

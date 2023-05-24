@@ -1,13 +1,13 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/api/system_network/system_network_api.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/network_service_instance.h"
+#include "extensions/common/api/system_network.h"
 #include "services/network/public/mojom/network_service.mojom.h"
 
 namespace {
@@ -16,16 +16,7 @@ const char kNetworkListError[] = "Network lookup failed or unsupported";
 
 }  // namespace
 
-namespace extensions {
-namespace api {
-
-SystemNetworkGetNetworkInterfacesFunction::
-    SystemNetworkGetNetworkInterfacesFunction() {
-}
-
-SystemNetworkGetNetworkInterfacesFunction::
-    ~SystemNetworkGetNetworkInterfacesFunction() {
-}
+namespace extensions::api {
 
 ExtensionFunction::ResponseAction
 SystemNetworkGetNetworkInterfacesFunction::Run() {
@@ -39,7 +30,7 @@ SystemNetworkGetNetworkInterfacesFunction::Run() {
 }
 
 void SystemNetworkGetNetworkInterfacesFunction::SendResponseOnUIThread(
-    const base::Optional<net::NetworkInterfaceList>& interface_list) {
+    const absl::optional<net::NetworkInterfaceList>& interface_list) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   if (!interface_list.has_value()) {
     Respond(Error(kNetworkListError));
@@ -60,5 +51,4 @@ void SystemNetworkGetNetworkInterfacesFunction::SendResponseOnUIThread(
       api::system_network::GetNetworkInterfaces::Results::Create(create_arg)));
 }
 
-}  // namespace api
-}  // namespace extensions
+}  // namespace extensions::api

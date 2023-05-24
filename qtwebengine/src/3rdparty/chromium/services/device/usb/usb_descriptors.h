@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,12 @@
 
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/memory/ref_counted.h"
-#include "base/strings/string16.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "base/memory/scoped_refptr.h"
 #include "services/device/public/mojom/usb_device.mojom.h"
 
 namespace device {
@@ -27,8 +28,12 @@ struct CombinedInterfaceInfo {
 
   bool IsValid() const;
 
-  const mojom::UsbInterfaceInfo* interface = nullptr;
-  const mojom::UsbAlternateInterfaceInfo* alternate = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION const mojom::UsbInterfaceInfo* interface = nullptr;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #constexpr-ctor-field-initializer
+  RAW_PTR_EXCLUSION const mojom::UsbAlternateInterfaceInfo* alternate = nullptr;
 };
 
 struct UsbDeviceDescriptor {
@@ -55,12 +60,12 @@ void ReadUsbDescriptors(
     base::OnceCallback<void(std::unique_ptr<UsbDeviceDescriptor>)> callback);
 
 bool ParseUsbStringDescriptor(const std::vector<uint8_t>& descriptor,
-                              base::string16* output);
+                              std::u16string* output);
 
 void ReadUsbStringDescriptors(
     scoped_refptr<UsbDeviceHandle> device_handle,
-    std::unique_ptr<std::map<uint8_t, base::string16>> index_map,
-    base::OnceCallback<void(std::unique_ptr<std::map<uint8_t, base::string16>>)>
+    std::unique_ptr<std::map<uint8_t, std::u16string>> index_map,
+    base::OnceCallback<void(std::unique_ptr<std::map<uint8_t, std::u16string>>)>
         callback);
 
 mojom::UsbEndpointInfoPtr BuildUsbEndpointInfoPtr(const uint8_t* data);

@@ -1,49 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSemaphore>
 #include <qcoreapplication.h>
 #include <qreadwritelock.h>
 #include <qelapsedtimer.h>
 #include <qmutex.h>
 #include <qthread.h>
 #include <qwaitcondition.h>
+#include <private/qemulationdetector_p.h>
+#include <private/qvolatile_p.h>
 
 #ifdef Q_OS_UNIX
 #include <unistd.h>
-#endif
-#if defined(Q_OS_WIN)
-#  include <qt_windows.h>
-#  ifndef Q_OS_WINRT
-#    define sleep(X) Sleep(X)
-#  else
-#    define sleep(X) WaitForSingleObjectEx(GetCurrentThread(), X, FALSE);
-#  endif
 #endif
 
 //on solaris, threads that loop on the release bool variable
@@ -55,6 +25,8 @@
 #endif
 
 #include <stdio.h>
+
+using namespace std::chrono_literals;
 
 class tst_QReadWriteLock : public QObject
 {
@@ -188,10 +160,10 @@ void tst_QReadWriteLock::readWriteLockUnlockLoop()
 
 }
 
-QAtomicInt lockCount(0);
-QReadWriteLock readWriteLock;
-QSemaphore testsTurn;
-QSemaphore threadsTurn;
+static QAtomicInt lockCount(0);
+static QReadWriteLock readWriteLock;
+static QSemaphore testsTurn;
+static QSemaphore threadsTurn;
 
 
 void tst_QReadWriteLock::tryReadLock()
@@ -218,7 +190,7 @@ void tst_QReadWriteLock::tryReadLock()
         class Thread : public QThread
         {
         public:
-            void run()
+            void run() override
             {
                 testsTurn.release();
 
@@ -335,7 +307,7 @@ void tst_QReadWriteLock::tryWriteLock()
         {
         public:
             Thread() : failureCount(0) { }
-            void run()
+            void run() override
             {
                 testsTurn.release();
 
@@ -407,8 +379,8 @@ void tst_QReadWriteLock::tryWriteLock()
     }
 }
 
-bool threadDone;
-QAtomicInt release;
+static bool threadDone;
+static QAtomicInt release;
 
 /*
     write-lock
@@ -420,7 +392,7 @@ class WriteLockThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     inline WriteLockThread(QReadWriteLock &l) : testRwlock(l) { }
-    void run()
+    void run() override
     {
         testRwlock.lockForWrite();
         testRwlock.unlock();
@@ -438,7 +410,7 @@ class ReadLockThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     inline ReadLockThread(QReadWriteLock &l) : testRwlock(l) { }
-    void run()
+    void run() override
     {
         testRwlock.lockForRead();
         testRwlock.unlock();
@@ -455,7 +427,7 @@ class WriteLockReleasableThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     inline WriteLockReleasableThread(QReadWriteLock &l) : testRwlock(l) { }
-    void run()
+    void run() override
     {
         testRwlock.lockForWrite();
         while (release.loadRelaxed() == false) {
@@ -475,7 +447,7 @@ class ReadLockReleasableThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     inline ReadLockReleasableThread(QReadWriteLock &l) : testRwlock(l) { }
-    void run()
+    void run() override
     {
         testRwlock.lockForRead();
         while (release.loadRelaxed() == false) {
@@ -498,8 +470,8 @@ class ReadLockLoopThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     int runTime;
-    int holdTime;
-    int waitTime;
+    std::chrono::milliseconds holdTime;
+    std::chrono::milliseconds waitTime;
     bool print;
     QElapsedTimer t;
     inline ReadLockLoopThread(QReadWriteLock &l, int runTime, int holdTime=0, int waitTime=0, bool print=false)
@@ -509,15 +481,15 @@ public:
     ,waitTime(waitTime)
     ,print(print)
     { }
-    void run()
+    void run() override
     {
         t.start();
         while (t.elapsed()<runTime)  {
             testRwlock.lockForRead();
             if(print) printf("reading\n");
-            if (holdTime) msleep(holdTime);
+            if (holdTime > 0ms) sleep(holdTime);
             testRwlock.unlock();
-            if (waitTime) msleep(waitTime);
+            if (waitTime > 0ms) sleep(waitTime);
         }
     }
 };
@@ -534,8 +506,8 @@ class WriteLockLoopThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     int runTime;
-    int holdTime;
-    int waitTime;
+    std::chrono::milliseconds holdTime;
+    std::chrono::milliseconds waitTime;
     bool print;
     QElapsedTimer t;
     inline WriteLockLoopThread(QReadWriteLock &l, int runTime, int holdTime=0, int waitTime=0, bool print=false)
@@ -545,20 +517,20 @@ public:
     ,waitTime(waitTime)
     ,print(print)
     { }
-    void run()
+    void run() override
     {
         t.start();
         while (t.elapsed() < runTime)  {
             testRwlock.lockForWrite();
             if (print) printf(".");
-            if (holdTime) msleep(holdTime);
+            if (holdTime > 0ms) sleep(holdTime);
             testRwlock.unlock();
-            if (waitTime) msleep(waitTime);
+            if (waitTime > 0ms) sleep(waitTime);
         }
     }
 };
 
-volatile int count=0;
+static volatile int count = 0;
 
 /*
     for(runTime msecs)
@@ -573,7 +545,7 @@ class WriteLockCountThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     int runTime;
-    int waitTime;
+    std::chrono::milliseconds waitTime;
     int maxval;
     QElapsedTimer t;
     inline WriteLockCountThread(QReadWriteLock &l, int runTime, int waitTime, int maxval)
@@ -582,7 +554,7 @@ public:
     ,waitTime(waitTime)
     ,maxval(maxval)
     { }
-    void run()
+    void run() override
     {
         t.start();
         while (t.elapsed() < runTime)  {
@@ -590,15 +562,11 @@ public:
             if(count)
                 qFatal("Non-zero count at start of write! (%d)",count );
 //            printf(".");
-            int i;
-            for(i=0; i<maxval; ++i) {
-                volatile int lc=count;
-                ++lc;
-                count=lc;
-            }
+            for (int i = 0; i < maxval; ++i)
+                QtPrivate::volatilePreIncrement(count);
             count=0;
             testRwlock.unlock();
-            msleep(waitTime);
+            sleep(waitTime);
         }
     }
 };
@@ -615,14 +583,14 @@ class ReadLockCountThread : public QThread
 public:
     QReadWriteLock &testRwlock;
     int runTime;
-    int waitTime;
+    std::chrono::milliseconds waitTime;
     QElapsedTimer t;
     inline ReadLockCountThread(QReadWriteLock &l, int runTime, int waitTime)
     :testRwlock(l)
     ,runTime(runTime)
     ,waitTime(waitTime)
     { }
-    void run()
+    void run() override
     {
         t.start();
         while (t.elapsed() < runTime)  {
@@ -630,7 +598,7 @@ public:
             if(count)
                 qFatal("Non-zero count at Read! (%d)",count );
             testRwlock.unlock();
-            msleep(waitTime);
+            sleep(waitTime);
         }
     }
 };
@@ -647,7 +615,7 @@ void tst_QReadWriteLock::readLockBlockRelease()
     threadDone=false;
     ReadLockThread rlt(testLock);
     rlt.start();
-    sleep(1);
+    QThread::sleep(1s);
     testLock.unlock();
     rlt.wait();
     QVERIFY(threadDone);
@@ -664,7 +632,7 @@ void tst_QReadWriteLock::writeLockBlockRelease()
     threadDone=false;
     WriteLockThread wlt(testLock);
     wlt.start();
-    sleep(1);
+    QThread::sleep(1s);
     testLock.unlock();
     wlt.wait();
     QVERIFY(threadDone);
@@ -683,10 +651,10 @@ void tst_QReadWriteLock::multipleReadersBlockRelease()
     ReadLockReleasableThread rlt2(testLock);
     rlt1.start();
     rlt2.start();
-    sleep(1);
+    QThread::sleep(1s);
     WriteLockThread wlt(testLock);
     wlt.start();
-    sleep(1);
+    QThread::sleep(1s);
     release.storeRelaxed(true);
     wlt.wait();
     rlt1.wait();
@@ -699,27 +667,29 @@ void tst_QReadWriteLock::multipleReadersBlockRelease()
 */
 void tst_QReadWriteLock::multipleReadersLoop()
 {
-    int time=500;
-    int hold=250;
-    int wait=0;
+    if (QTestPrivate::isRunningArmOnX86())
+        QSKIP("Flaky on QEMU, QTBUG-96103");
+
+    constexpr int time = 500;
+    constexpr int hold = 250;
+    constexpr int wait = 0;
 #if defined (Q_OS_HPUX)
-    const int numthreads=50;
+    constexpr int NumThreads = 50;
 #elif defined(Q_OS_VXWORKS)
-    const int numthreads=40;
+    constexpr int NumThreads = 40;
 #else
-    const int numthreads=75;
+    constexpr int NumThreads = 75;
 #endif
     QReadWriteLock testLock;
-    ReadLockLoopThread *threads[numthreads];
-    int i;
-    for (i=0; i<numthreads; ++i)
-        threads[i] = new ReadLockLoopThread(testLock, time, hold, wait);
-    for (i=0; i<numthreads; ++i)
-        threads[i]->start();
-    for (i=0; i<numthreads; ++i)
-        threads[i]->wait();
-    for (i=0; i<numthreads; ++i)
-        delete threads[i];
+    ReadLockLoopThread *threads[NumThreads];
+    for (auto &thread : threads)
+        thread = new ReadLockLoopThread(testLock, time, hold, wait);
+    for (auto thread : threads)
+        thread->start();
+    for (auto thread : threads)
+        thread->wait();
+    for (auto thread : threads)
+        delete thread;
 }
 
 /*
@@ -727,21 +697,20 @@ void tst_QReadWriteLock::multipleReadersLoop()
 */
 void tst_QReadWriteLock::multipleWritersLoop()
 {
-        int time=500;
-        int wait=0;
-        int hold=0;
-        const int numthreads=50;
-        QReadWriteLock testLock;
-        WriteLockLoopThread *threads[numthreads];
-        int i;
-        for (i=0; i<numthreads; ++i)
-            threads[i] = new WriteLockLoopThread(testLock, time, hold, wait);
-        for (i=0; i<numthreads; ++i)
-            threads[i]->start();
-        for (i=0; i<numthreads; ++i)
-            threads[i]->wait();
-        for (i=0; i<numthreads; ++i)
-            delete threads[i];
+    constexpr int time = 500;
+    constexpr int wait = 0;
+    constexpr int hold = 0;
+    constexpr int numthreads = 50;
+    QReadWriteLock testLock;
+    WriteLockLoopThread *threads[numthreads];
+    for (auto &thread : threads)
+        thread = new WriteLockLoopThread(testLock, time, hold, wait);
+    for (auto thread : threads)
+        thread->start();
+    for (auto thread : threads)
+        thread->wait();
+    for (auto thread : threads)
+        delete thread;
 }
 
 /*
@@ -749,40 +718,36 @@ void tst_QReadWriteLock::multipleWritersLoop()
 */
 void tst_QReadWriteLock::multipleReadersWritersLoop()
 {
-        //int time=INT_MAX;
-        int time=10000;
-        int readerThreads=20;
-        int readerWait=0;
-        int readerHold=1;
+    constexpr int time = 10000; // INT_MAX
+    constexpr int readerThreads = 20;
+    constexpr int readerWait = 0;
+    constexpr int readerHold = 1;
 
-        int writerThreads=2;
-        int writerWait=500;
-        int writerHold=50;
+    constexpr int writerThreads = 2;
+    constexpr int writerWait = 500;
+    constexpr int writerHold = 50;
 
-        QReadWriteLock testLock;
-        ReadLockLoopThread  *readers[1024];
-        WriteLockLoopThread *writers[1024];
-        int i;
+    QReadWriteLock testLock;
+    ReadLockLoopThread  *readers[readerThreads];
+    WriteLockLoopThread *writers[writerThreads];
 
-        for (i=0; i<readerThreads; ++i)
-            readers[i] = new ReadLockLoopThread(testLock, time, readerHold, readerWait, false);
-        for (i=0; i<writerThreads; ++i)
-            writers[i] = new WriteLockLoopThread(testLock, time, writerHold, writerWait, false);
+    for (auto &thread : readers)
+        thread = new ReadLockLoopThread(testLock, time, readerHold, readerWait, false);
+    for (auto &thread : writers)
+        thread = new WriteLockLoopThread(testLock, time, writerHold, writerWait, false);
+    for (auto thread : readers)
+        thread->start(QThread::NormalPriority);
+    for (auto thread : writers)
+        thread->start(QThread::IdlePriority);
 
-        for (i=0; i<readerThreads; ++i)
-            readers[i]->start(QThread::NormalPriority);
-        for (i=0; i<writerThreads; ++i)
-            writers[i]->start(QThread::IdlePriority);
-
-        for (i=0; i<readerThreads; ++i)
-            readers[i]->wait();
-        for (i=0; i<writerThreads; ++i)
-            writers[i]->wait();
-
-        for (i=0; i<readerThreads; ++i)
-            delete readers[i];
-        for (i=0; i<writerThreads; ++i)
-            delete writers[i];
+    for (auto thread : readers)
+        thread->wait();
+    for (auto thread : writers)
+        thread->wait();
+    for (auto thread : readers)
+        delete thread;
+    for (auto thread : writers)
+        delete thread;
 }
 
 /*
@@ -791,39 +756,35 @@ void tst_QReadWriteLock::multipleReadersWritersLoop()
 */
 void tst_QReadWriteLock::countingTest()
 {
-        //int time=INT_MAX;
-        int time=10000;
-        int readerThreads=20;
-        int readerWait=1;
+    constexpr int time = 10000; // INT_MAX
+    constexpr int readerThreads = 20;
+    constexpr int readerWait = 1;
 
-        int writerThreads=3;
-        int writerWait=150;
-        int maxval=10000;
+    constexpr int writerThreads = 3;
+    constexpr int writerWait = 150;
+    constexpr int maxval = 10000;
 
-        QReadWriteLock testLock;
-        ReadLockCountThread  *readers[1024];
-        WriteLockCountThread *writers[1024];
-        int i;
+    QReadWriteLock testLock;
+    ReadLockCountThread  *readers[readerThreads];
+    WriteLockCountThread *writers[writerThreads];
 
-        for (i=0; i<readerThreads; ++i)
-            readers[i] = new ReadLockCountThread(testLock, time,  readerWait);
-        for (i=0; i<writerThreads; ++i)
-            writers[i] = new WriteLockCountThread(testLock, time,  writerWait, maxval);
+    for (auto &thread : readers)
+        thread = new ReadLockCountThread(testLock, time,  readerWait);
+    for (auto &thread : writers)
+        thread = new WriteLockCountThread(testLock, time,  writerWait, maxval);
+    for (auto thread : readers)
+        thread->start(QThread::NormalPriority);
+    for (auto thread : writers)
+        thread->start(QThread::LowestPriority);
 
-        for (i=0; i<readerThreads; ++i)
-            readers[i]->start(QThread::NormalPriority);
-        for (i=0; i<writerThreads; ++i)
-            writers[i]->start(QThread::LowestPriority);
-
-        for (i=0; i<readerThreads; ++i)
-            readers[i]->wait();
-        for (i=0; i<writerThreads; ++i)
-            writers[i]->wait();
-
-        for (i=0; i<readerThreads; ++i)
-            delete readers[i];
-        for (i=0; i<writerThreads; ++i)
-            delete writers[i];
+    for (auto thread : readers)
+        thread->wait();
+    for (auto thread : writers)
+        thread->wait();
+    for (auto thread : readers)
+        delete thread;
+    for (auto thread : writers)
+        delete thread;
 }
 
 void tst_QReadWriteLock::limitedReaders()
@@ -849,7 +810,7 @@ class DeleteOnUnlockThread : public QThread
 public:
     DeleteOnUnlockThread(QReadWriteLock **lock, QWaitCondition *startup, QMutex *waitMutex)
     :m_lock(lock), m_startup(startup), m_waitMutex(waitMutex) {}
-    void run()
+    void run() override
     {
         m_waitMutex->lock();
         m_startup->wakeAll();
@@ -868,7 +829,7 @@ private:
 
 void tst_QReadWriteLock::deleteOnUnlock()
 {
-    QReadWriteLock *lock = 0;
+    QReadWriteLock *lock = nullptr;
     QWaitCondition startup;
     QMutex waitMutex;
 
@@ -947,7 +908,7 @@ void tst_QReadWriteLock::recursiveReadLock()
         QReadWriteLock *lock;
         bool tryLockForWriteResult;
 
-        void run()
+        void run() override
         {
             testsTurn.release();
 
@@ -1042,7 +1003,7 @@ void tst_QReadWriteLock::recursiveWriteLock()
         QReadWriteLock *lock;
         bool tryLockForReadResult;
 
-        void run()
+        void run() override
         {
             testsTurn.release();
 

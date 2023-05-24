@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qbuttongroup_p.h"
 
@@ -50,7 +14,7 @@ void QButtonGroupPrivate::detectCheckedButton()
     checkedButton = nullptr;
     if (exclusive)
         return;
-    for (int i = 0; i < buttonList.count(); i++) {
+    for (int i = 0; i < buttonList.size(); i++) {
         if (buttonList.at(i) != previous && buttonList.at(i)->isChecked()) {
             checkedButton = buttonList.at(i);
             return;
@@ -93,8 +57,8 @@ void QButtonGroupPrivate::detectCheckedButton()
     In addition, QButtonGroup can map between integers and buttons.
     You can assign an integer id to a button with setId(), and
     retrieve it with id(). The id of the currently checked button is
-    available with checkedId(), and there is an overloaded signal
-    buttonClicked() which emits the id of the button. The id \c {-1}
+    available with checkedId(), and there is a signal
+    idClicked() that emits the id of the button. The id \c {-1}
     is reserved by QButtonGroup to mean "no such button". The purpose
     of the mapping mechanism is to simplify the representation of enum
     values in a user interface.
@@ -118,7 +82,7 @@ QButtonGroup::QButtonGroup(QObject *parent)
 QButtonGroup::~QButtonGroup()
 {
     Q_D(QButtonGroup);
-    for (int i = 0; i < d->buttonList.count(); ++i)
+    for (int i = 0; i < d->buttonList.size(); ++i)
         d->buttonList.at(i)->d_func()->group = nullptr;
 }
 
@@ -163,16 +127,6 @@ void QButtonGroup::setExclusive(bool exclusive)
 */
 
 /*!
-    \fn void QButtonGroup::buttonClicked(int id)
-    \obsolete
-
-    This signal is emitted when a button with the given \a id is
-    clicked.
-
-    \sa checkedButton(), QAbstractButton::clicked()
-*/
-
-/*!
     \fn void QButtonGroup::idClicked(int id)
     \since 5.15
 
@@ -187,17 +141,6 @@ void QButtonGroup::setExclusive(bool exclusive)
     \since 4.2
 
     This signal is emitted when the given \a button is pressed down.
-
-    \sa QAbstractButton::pressed()
-*/
-
-/*!
-    \fn void QButtonGroup::buttonPressed(int id)
-    \since 4.2
-    \obsolete
-
-    This signal is emitted when a button with the given \a id is
-    pressed down.
 
     \sa QAbstractButton::pressed()
 */
@@ -222,17 +165,6 @@ void QButtonGroup::setExclusive(bool exclusive)
 */
 
 /*!
-    \fn void QButtonGroup::buttonReleased(int id)
-    \since 4.2
-    \obsolete
-
-    This signal is emitted when a button with the given \a id is
-    released.
-
-    \sa QAbstractButton::released()
-*/
-
-/*!
     \fn void QButtonGroup::idReleased(int id)
     \since 5.15
 
@@ -247,17 +179,6 @@ void QButtonGroup::setExclusive(bool exclusive)
     \since 5.2
 
     This signal is emitted when the given \a button is toggled.
-    \a checked is true if the button is checked, or false if the button is unchecked.
-
-    \sa QAbstractButton::toggled()
-*/
-
-/*!
-    \fn void QButtonGroup::buttonToggled(int id, bool checked)
-    \since 5.2
-    \obsolete
-
-    This signal is emitted when a button with the given \a id is toggled.
     \a checked is true if the button is checked, or false if the button is unchecked.
 
     \sa QAbstractButton::toggled()

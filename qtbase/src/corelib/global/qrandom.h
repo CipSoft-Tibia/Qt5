@@ -1,46 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QRANDOM_H
 #define QRANDOM_H
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qalgorithms.h>
 #include <algorithm>    // for std::generate
 #include <random>       // for std::mt19937
 
@@ -83,16 +47,12 @@ public:
 
     quint32 generate()
     {
-        quint32 ret;
-        fillRange(&ret, 1);
-        return ret;
+        return quint32(_fillRange(nullptr, 1));
     }
 
     quint64 generate64()
     {
-        quint32 buf[2];
-        fillRange(buf);
-        return buf[0] | (quint64(buf[1]) << 32);
+        return _fillRange(nullptr, sizeof(quint64) / sizeof(quint32));
     }
 
     double generateDouble()
@@ -139,16 +99,54 @@ public:
         return bounded(highest - lowest) + lowest;
     }
 
+    quint64 bounded(quint64 highest);
+
+    quint64 bounded(quint64 lowest, quint64 highest)
+    {
+        Q_ASSERT(highest > lowest);
+        return bounded(highest - lowest) + lowest;
+    }
+
+    qint64 bounded(qint64 highest)
+    {
+        Q_ASSERT(highest > 0);
+        return qint64(bounded(quint64(0), quint64(highest)));
+    }
+
+    qint64 bounded(qint64 lowest, qint64 highest)
+    {
+        return bounded(highest - lowest) + lowest;
+    }
+
+    // these functions here only to help with ambiguous overloads
+    qint64 bounded(int lowest, qint64 highest)
+    {
+        return bounded(qint64(lowest), qint64(highest));
+    }
+    qint64 bounded(qint64 lowest, int highest)
+    {
+        return bounded(qint64(lowest), qint64(highest));
+    }
+
+    quint64 bounded(unsigned lowest, quint64 highest)
+    {
+        return bounded(quint64(lowest), quint64(highest));
+    }
+    quint64 bounded(quint64 lowest, unsigned highest)
+    {
+        return bounded(quint64(lowest), quint64(highest));
+    }
+
     template <typename UInt, IfValidUInt<UInt> = true>
     void fillRange(UInt *buffer, qsizetype count)
     {
-        _fillRange(buffer, buffer + count);
+        _fillRange(buffer, count * sizeof(UInt) / sizeof(quint32));
     }
 
     template <typename UInt, size_t N, IfValidUInt<UInt> = true>
     void fillRange(UInt (&buffer)[N])
     {
-        _fillRange(buffer, buffer + N);
+        _fillRange(buffer, N * sizeof(UInt) / sizeof(quint32));
     }
 
     // API like std::seed_seq
@@ -160,7 +158,7 @@ public:
 
     void generate(quint32 *begin, quint32 *end)
     {
-        _fillRange(begin, end);
+        _fillRange(begin, end - begin);
     }
 
     // API like std:: random engines
@@ -169,8 +167,8 @@ public:
     void seed(quint32 s = 1) { *this = { s }; }
     void seed(std::seed_seq &sseq) noexcept { *this = { sseq }; }
     Q_CORE_EXPORT void discard(unsigned long long z);
-    static Q_DECL_CONSTEXPR result_type min() { return std::numeric_limits<result_type>::min(); }
-    static Q_DECL_CONSTEXPR result_type max() { return std::numeric_limits<result_type>::max(); }
+    static constexpr result_type min() { return (std::numeric_limits<result_type>::min)(); }
+    static constexpr result_type max() { return (std::numeric_limits<result_type>::max)(); }
 
     static inline Q_DECL_CONST_FUNCTION QRandomGenerator *system();
     static inline Q_DECL_CONST_FUNCTION QRandomGenerator *global();
@@ -181,8 +179,12 @@ protected:
     QRandomGenerator(System);
 
 private:
-    Q_CORE_EXPORT void _fillRange(void *buffer, void *bufferEnd);
+    Q_CORE_EXPORT quint64 _fillRange(void *buffer, qptrdiff count);
 
+    struct InitialRandomData {
+        quintptr data[16 / sizeof(quintptr)];
+    };
+    friend InitialRandomData qt_initial_random_value() noexcept;
     friend class QRandomGenerator64;
     struct SystemGenerator;
     struct SystemAndGlobalGenerators;
@@ -191,19 +193,13 @@ private:
 
     union Storage {
         uint dummy;
-#ifdef Q_COMPILER_UNRESTRICTED_UNIONS
         RandomEngine twister;
         RandomEngine &engine() { return twister; }
         const RandomEngine &engine() const { return twister; }
-#else
-        std::aligned_storage<sizeof(RandomEngine), Q_ALIGNOF(RandomEngine)>::type buffer;
-        RandomEngine &engine() { return reinterpret_cast<RandomEngine &>(buffer); }
-        const RandomEngine &engine() const { return reinterpret_cast<const RandomEngine &>(buffer); }
-#endif
 
-        Q_STATIC_ASSERT_X(std::is_trivially_destructible<RandomEngine>::value,
+        static_assert(std::is_trivially_destructible<RandomEngine>::value,
                           "std::mersenne_twister not trivially destructible as expected");
-        Q_DECL_CONSTEXPR Storage();
+        constexpr Storage();
     };
     uint type;
     Storage storage;
@@ -245,13 +241,31 @@ public:
         QRandomGenerator::discard(z * 2);
     }
 
-    static Q_DECL_CONSTEXPR result_type min() { return std::numeric_limits<result_type>::min(); }
-    static Q_DECL_CONSTEXPR result_type max() { return std::numeric_limits<result_type>::max(); }
+    static constexpr result_type min() { return (std::numeric_limits<result_type>::min)(); }
+    static constexpr result_type max() { return (std::numeric_limits<result_type>::max)(); }
     static Q_DECL_CONST_FUNCTION Q_CORE_EXPORT QRandomGenerator64 *system();
     static Q_DECL_CONST_FUNCTION Q_CORE_EXPORT QRandomGenerator64 *global();
     static Q_CORE_EXPORT QRandomGenerator64 securelySeeded();
 #endif // Q_QDOC
 };
+
+inline quint64 QRandomGenerator::bounded(quint64 highest)
+{
+    // Implement an algorithm similar to libc++'s uniform_int_distribution:
+    // loop around getting a random number, mask off any bits that "highest"
+    // will never need, then check if it's higher than "highest". The number of
+    // times the loop will run is unbounded but the probability of terminating
+    // is better than 1/2 on each iteration. Therefore, the average loop count
+    // should be less than 2.
+
+    const int width = qCountLeadingZeroBits(highest - 1);
+    const quint64 mask = (quint64(1) << (std::numeric_limits<quint64>::digits - width)) - 1;
+    quint64 v;
+    do {
+        v = generate64() & mask;
+    } while (v >= highest);
+    return v;
+}
 
 inline QRandomGenerator *QRandomGenerator::system()
 {

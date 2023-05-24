@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@ class ExecutionContext;
 class LocalDOMWindow;
 class ScriptValue;
 class SecurityOrigin;
-class WindowPostMessageOptions;
+class PostMessageOptions;
 
 class CORE_EXPORT PortalHost : public EventTargetWithInlineData,
                                public Supplement<LocalDOMWindow> {
@@ -44,12 +44,7 @@ class CORE_EXPORT PortalHost : public EventTargetWithInlineData,
   // idl implementation
   void postMessage(ScriptState* script_state,
                    const ScriptValue& message,
-                   const String& target_origin,
-                   HeapVector<ScriptValue>& transfer,
-                   ExceptionState& exception_state);
-  void postMessage(ScriptState* script_state,
-                   const ScriptValue& message,
-                   const WindowPostMessageOptions* options,
+                   const PostMessageOptions* options,
                    ExceptionState& exception_state);
   EventListener* onmessage();
   void setOnmessage(EventListener* listener);

@@ -10,9 +10,9 @@
 #include <string>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "cast/standalone_receiver/avcodec_glue.h"
 #include "cast/streaming/frame_id.h"
+#include "platform/base/span.h"
 
 namespace openscreen {
 namespace cast {
@@ -28,8 +28,8 @@ class Decoder {
     ~Buffer();
 
     void Resize(int new_size);
-    absl::Span<const uint8_t> GetSpan() const;
-    absl::Span<uint8_t> GetSpan();
+    ByteView AsByteView() const;
+    ByteBuffer AsByteBuffer();
 
    private:
     std::vector<uint8_t> buffer_;
@@ -38,7 +38,6 @@ class Decoder {
   // Interface for receiving decoded frames and/or errors.
   class Client {
    public:
-    virtual ~Client();
 
     virtual void OnFrameDecoded(FrameId frame_id, const AVFrame& frame) = 0;
     virtual void OnDecodeError(FrameId frame_id, std::string message) = 0;
@@ -46,6 +45,7 @@ class Decoder {
 
    protected:
     Client();
+    virtual ~Client();
   };
 
   // |codec_name| should be the codec_name field from an OFFER message.
@@ -80,7 +80,7 @@ class Decoder {
   void OnError(const char* what, int av_errnum, FrameId frame_id);
 
   const std::string codec_name_;
-  AVCodec* codec_ = nullptr;
+  const AVCodec* codec_ = nullptr;
   AVCodecParserContextUniquePtr parser_;
   AVCodecContextUniquePtr context_;
   AVPacketUniquePtr packet_;

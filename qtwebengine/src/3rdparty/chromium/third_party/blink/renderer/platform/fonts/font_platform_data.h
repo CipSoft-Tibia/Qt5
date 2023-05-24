@@ -37,20 +37,22 @@
 #include "third_party/blink/public/platform/web_font_render_style.h"
 #include "third_party/blink/renderer/platform/fonts/font_description.h"
 #include "third_party/blink/renderer/platform/fonts/font_orientation.h"
+#include "third_party/blink/renderer/platform/fonts/resolved_font_features.h"
 #include "third_party/blink/renderer/platform/fonts/small_caps_iterator.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/hash_table_deleted_value_type.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_impl.h"
+#include "third_party/blink/renderer/platform/wtf/threading.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/skia/include/core/SkFont.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/core/SkTypeface.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 typedef const struct __CTFont* CTFontRef;
-#endif  // defined(OS_MAC)
+#endif  // BUILDFLAG(IS_MAC)
 
 class SkFont;
 class SkTypeface;
@@ -60,6 +62,7 @@ namespace blink {
 
 class Font;
 class HarfBuzzFace;
+class OpenTypeVerticalData;
 
 class PLATFORM_EXPORT FontPlatformData {
   USING_FAST_MALLOC(FontPlatformData);
@@ -73,20 +76,18 @@ class PLATFORM_EXPORT FontPlatformData {
   FontPlatformData(WTF::HashTableDeletedValueType);
   FontPlatformData();
   FontPlatformData(const FontPlatformData&);
-  FontPlatformData(float size,
-                   bool synthetic_bold,
-                   bool synthetic_italic,
-                   FontOrientation = FontOrientation::kHorizontal);
   FontPlatformData(const FontPlatformData& src, float text_size);
   FontPlatformData(const sk_sp<SkTypeface>,
                    const std::string& name,
                    float text_size,
                    bool synthetic_bold,
                    bool synthetic_italic,
+                   TextRenderingMode text_rendering,
+                   ResolvedFontFeatures resolved_font_features,
                    FontOrientation = FontOrientation::kHorizontal);
   ~FontPlatformData();
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   // Returns nullptr for FreeType backed SkTypefaces, compare
   // FontCustomPlatformData, which are used for variable fonts on Mac OS
   // <10.12. It should not return nullptr otherwise. So it allows distinguishing
@@ -106,6 +107,9 @@ class PLATFORM_EXPORT FontPlatformData {
   unsigned GetHash() const;
 
   FontOrientation Orientation() const { return orientation_; }
+  const ResolvedFontFeatures& ResolvedFeatures() const {
+    return resolved_font_features_;
+  }
   bool IsVerticalAnyUpright() const {
     return blink::IsVerticalAnyUpright(orientation_);
   }
@@ -122,18 +126,19 @@ class PLATFORM_EXPORT FontPlatformData {
     avoid_embedded_bitmaps_ = embedded_bitmaps;
   }
   bool operator==(const FontPlatformData&) const;
-  const FontPlatformData& operator=(const FontPlatformData&);
+  bool operator!=(const FontPlatformData& a) const { return !operator==(a); }
+  FontPlatformData& operator=(const FontPlatformData&) = delete;
 
   bool IsHashTableDeletedValue() const { return is_hash_table_deleted_value_; }
   bool FontContainsCharacter(UChar32 character);
 
-#if !defined(OS_WIN) && !defined(OS_MAC)
+#if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC)
   const WebFontRenderStyle& GetFontRenderStyle() const { return style_; }
 #endif
 
-  void SetupSkFont(SkFont*,
-                   float device_scale_factor = 1,
-                   const Font* = nullptr) const;
+  SkFont CreateSkFont(const FontDescription* = nullptr) const;
+
+  scoped_refptr<OpenTypeVerticalData> CreateVerticalData() const;
 
   // Computes a digest from the typeface. The digest only depends on the
   // underlying font itself, and does not vary by the style (size, weight,
@@ -149,38 +154,41 @@ class PLATFORM_EXPORT FontPlatformData {
   String GetPostScriptName() const;
 
  private:
-#if !defined(OS_WIN) && !defined(OS_MAC)
+#if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC)
   WebFontRenderStyle QuerySystemRenderStyle(const std::string& family,
                                             float text_size,
-                                            SkFontStyle);
+                                            SkFontStyle,
+                                            TextRenderingMode text_rendering);
 #endif
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // TODO(https://crbug.com/808221): Remove and use QuerySystemRenderStyle()
   // instead.
   WebFontRenderStyle QuerySystemForRenderStyle();
 #endif
 
-  sk_sp<SkTypeface> typeface_;
-#if !defined(OS_WIN) && !defined(OS_MAC)
+  const sk_sp<SkTypeface> typeface_;
+#if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC)
   std::string family_;
 #endif
 
  public:
-  float text_size_;
-  bool synthetic_bold_;
-  bool synthetic_italic_;
-  bool avoid_embedded_bitmaps_;
-  FontOrientation orientation_;
+  float text_size_ = 0;
+  bool synthetic_bold_ = false;
+  bool synthetic_italic_ = false;
+  bool avoid_embedded_bitmaps_ = false;
+  TextRenderingMode text_rendering_ = TextRenderingMode::kAutoTextRendering;
+  FontOrientation orientation_ = FontOrientation::kHorizontal;
+  ResolvedFontFeatures resolved_font_features_;
 
  private:
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
   WebFontRenderStyle style_;
 #endif
 
   mutable scoped_refptr<HarfBuzzFace> harfbuzz_face_;
-  bool is_hash_table_deleted_value_;
+  bool is_hash_table_deleted_value_ = false;
 };
 
 }  // namespace blink
 
-#endif  // ifdef FontPlatformData_h
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_FONTS_FONT_PLATFORM_DATA_H_

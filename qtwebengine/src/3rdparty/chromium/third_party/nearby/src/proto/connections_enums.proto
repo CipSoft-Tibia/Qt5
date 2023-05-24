@@ -42,6 +42,9 @@ enum EventType {
 
   // Corresponds to the end of a StrategySession.
   STOP_STRATEGY_SESSION = 5;
+
+  // Logs when the error happen.
+  ERROR_CODE = 6;
 }
 
 // The strategy used for a session of Nearby.Connections.
@@ -63,9 +66,10 @@ enum SessionRole {
   DISCOVERER = 2;
 }
 
+// LINT.IfChange
 enum Medium {
   UNKNOWN_MEDIUM = 0;
-  MDNS = 1;
+  MDNS = 1 [deprecated = true];
   BLUETOOTH = 2;
   WIFI_HOTSPOT = 3;
   BLE = 4;
@@ -74,6 +78,42 @@ enum Medium {
   NFC = 7;
   WIFI_DIRECT = 8;
   WEB_RTC = 9;
+  BLE_L2CAP = 10;
+  USB = 11;
+}
+// LINT.ThenChange(
+//     //depot/google3/java/com/google/android/gmscore/integ/client/nearby/src/com/google/android/gms/nearby/connection/Medium.java,
+//     //depot/google3/java/com/google/android/gms/nearby/internal/connection/api.proto,
+//     //depot/google3/third_party/nearby/connections/implementation/proto/offline_wire_formats.proto
+//     //depot/google3/wireless/android/stats/platform/westworld/public/protos/enums/android/nearby/connections/enums.proto
+// )
+
+// The medium technologies used during the sharing.
+enum ConnectionTechnology {
+  CONNECTION_TECHNOLOGY_UNKNOWN_TECHNOLOGY = 0;
+  CONNECTION_TECHNOLOGY_BLE_GATT = 1;
+  CONNECTION_TECHNOLOGY_BLE_L2CAP = 2;
+  CONNECTION_TECHNOLOGY_HOTSPOT_DIRECT = 3;
+  CONNECTION_TECHNOLOGY_HOTSPOT_LOCALONLY = 4;
+  CONNECTION_TECHNOLOGY_HOTSPOT_SOFTAP = 5;
+  CONNECTION_TECHNOLOGY_WEBRTC_WIFI = 6;
+  CONNECTION_TECHNOLOGY_WEBRTC_MOBILE = 7;
+  CONNECTION_TECHNOLOGY_WEBRTC_ETHERNET = 8;
+  CONNECTION_TECHNOLOGY_WEBRTC_VPN = 9;
+  CONNECTION_TECHNOLOGY_WEBRTC_LOOPBACK = 10;
+  CONNECTION_TECHNOLOGY_WEBRTC_ADAPTER_TYPE_ANY = 11;
+}
+
+// The WiFi band or cellular band used during the sharing.
+enum ConnectionBand {
+  CONNECTION_BAND_UNKNOWN_BAND = 0;
+  CONNECTION_BAND_WIFI_BAND_2GHZ = 1;
+  CONNECTION_BAND_WIFI_BAND_5GHZ = 2;
+  CONNECTION_BAND_WIFI_BAND_6GHZ = 3;
+  CONNECTION_BAND_CELLULAR_BAND_2G = 4;
+  CONNECTION_BAND_CELLULAR_BAND_3G = 5;
+  CONNECTION_BAND_CELLULAR_BAND_4G = 6;
+  CONNECTION_BAND_CELLULAR_BAND_5G = 7;
 }
 
 // The result of a ConnectionRequest.
@@ -98,12 +138,16 @@ enum ConnectionAttemptResult {
   RESULT_CANCELLED = 3;
 }
 
+// LINT.IfChange
 // Whether this device is attempting an incoming or outgoing connection.
 enum ConnectionAttemptDirection {
   UNKNOWN_CONNECTION_ATTEMPT_DIRECTION = 0;
   INCOMING = 1;
   OUTGOING = 2;
 }
+// LINT.ThenChange(
+//     //depot/google3/wireless/android/stats/platform/westworld/public/protos/enums/android/nearby/connections/enums.proto
+// )
 
 // Whether this is an initial or upgrade connection attempt.
 enum ConnectionAttemptType {
@@ -158,9 +202,24 @@ enum PayloadStatus {
 
   // The payload was canceled by the remote endpoint.
   REMOTE_CANCELLATION = 8;
+
+  // The connection not encrypted yet.
+  ENDPOINT_UNENCRYPTED = 9;
 }
 
-// next_id: 17
+// The bandwidth of the mediums.
+enum Bandwidth {
+  BANDWIDTH_UNKNOWN = 0;
+  /** 2.4 GHz band */
+  BANDWIDTH_24_GHZ = 1;
+  /** 5 GHz band */
+  BANDWIDTH_5_GHZ = 2;
+  /** 6 GHz band */
+  BANDWIDTH_6_GHZ = 3;
+}
+
+// LINT.IfChange
+// next_id: 20
 // Result of an upgrade attempt.
 enum BandwidthUpgradeResult {
   UNKNOWN_BANDWIDTH_UPGRADE_RESULT = 0;
@@ -189,9 +248,6 @@ enum BandwidthUpgradeResult {
   // record analytics (e.g. the client disconnected).
   UNFINISHED_ERROR = 10;
 
-  // TODO(b/151833661): add a REMOTE_ERROR when we implement a cancellation
-  // message, for the case when the remote endpoint had an error on their end.
-
   // Error during setting up Bluetooth.
   BLUETOOTH_MEDIUM_ERROR = 11;
 
@@ -209,8 +265,21 @@ enum BandwidthUpgradeResult {
 
   // Error during setting up WebRTC.
   WEB_RTC_MEDIUM_ERROR = 16;
-}
 
+  // When the remote endpoint had an error on their end.
+  RESULT_REMOTE_ERROR = 17;
+
+  // The attempt was never made because a precondition check failed.
+  ATTEMPT_SKIPPED = 18;
+
+  // When the remote endpoint fails to connect
+  REMOTE_CONNECTION_ERROR = 19;
+}
+// LINT.ThenChange(
+//     //depot/google3/wireless/android/stats/platform/westworld/public/protos/enums/android/nearby/connections/enums.proto
+// )
+
+// LINT.IfChange
 // next_id: 35
 // The stage at which an error occurred.
 enum BandwidthUpgradeErrorStage {
@@ -230,6 +299,8 @@ enum BandwidthUpgradeErrorStage {
   UPGRADE_UNFINISHED = 7;
   // Upgrade successfully
   UPGRADE_SUCCESS = 8;
+  // Upgrade cancel
+  UPGRADE_CANCEL = 9;
 
   // Medium-specific stages.
   // TODO(xlythe) Make sure each stage maps to one, and only one, possible
@@ -297,3 +368,45 @@ enum BandwidthUpgradeErrorStage {
   // On the incoming side, listening for incoming WebRTC connections.
   WEB_RTC_LISTEN_INCOMING = 34;
 }
+// LINT.ThenChange(
+//     //depot/google3/wireless/android/stats/platform/westworld/public/protos/enums/android/nearby/connections/enums.proto
+// )
+
+// The device sources of the clearcut log.
+enum LogSource {
+  UNSPECIFIED_SOURCE = 0;
+
+  // Represents the devices in Nearby labs.
+  LAB_DEVICES = 1;
+  // Represents the devices tested by Nearby engs, in the long term can include
+  // any devices with newest feature flags.
+  INTERNAL_DEVICES = 2;
+  // Represents the devices testing our in-development features before they're
+  // released to the greater public.
+  BETA_TESTER_DEVICES = 3;
+  // Represents the OEM partners (like Samsung) that we're working with to
+  // verify functionality on their devices.
+  OEM_DEVICES = 4;
+  // Represents the device for debugging.
+  DEBUG_DEVICES = 5;
+}
+
+// LINT.IfChange
+enum PowerLevel {
+  // Set ultra low power for the related medium operations.
+  ULTRA_LOW_POWER = -1;
+
+  UNSPECIFIED = 0;
+
+  // Set low power for the related medium operations.
+  LOW_POWER = 1;
+
+  // Set balance power for the related medium operations.
+  BALANCED_POWER = 2;
+
+  // Set high power for the related medium operations.
+  HIGH_POWER = 3;
+}
+// LINT.ThenChange(
+//     //depot/google3/java/com/google/android/gmscore/integ/client/nearby/src/com/google/android/gms/nearby/connection/PowerLevel.java
+// )

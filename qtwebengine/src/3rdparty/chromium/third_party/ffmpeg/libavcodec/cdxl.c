@@ -25,12 +25,14 @@
  * @author Paul B Mahol
  */
 
+// #define UNCHECKED_BITSTREAM_READER 1  // Chromium: Required for security.
+
 #include "libavutil/intreadwrite.h"
-#include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
 
 #define BIT_PLANAR   0x00
 #define CHUNKY       0x20
@@ -41,6 +43,7 @@
 typedef struct CDXLVideoContext {
     AVCodecContext *avctx;
     int            bpp;
+    int            type;
     int            format;
     int            padded_bits;
     const uint8_t  *palette;
@@ -63,14 +66,19 @@ static av_cold int cdxl_decode_init(AVCodecContext *avctx)
 
 static void import_palette(CDXLVideoContext *c, uint32_t *new_palette)
 {
-    int i;
-
-    for (i = 0; i < c->palette_size / 2; i++) {
-        unsigned rgb = AV_RB16(&c->palette[i * 2]);
-        unsigned r   = ((rgb >> 8) & 0xF) * 0x11;
-        unsigned g   = ((rgb >> 4) & 0xF) * 0x11;
-        unsigned b   =  (rgb       & 0xF) * 0x11;
-        AV_WN32(&new_palette[i], (0xFFU << 24) | (r << 16) | (g << 8) | b);
+    if (c->type == 1) {
+        for (int i = 0; i < c->palette_size / 2; i++) {
+            unsigned rgb = AV_RB16(&c->palette[i * 2]);
+            unsigned r   = ((rgb >> 8) & 0xF) * 0x11;
+            unsigned g   = ((rgb >> 4) & 0xF) * 0x11;
+            unsigned b   =  (rgb       & 0xF) * 0x11;
+            AV_WN32(&new_palette[i], (0xFFU << 24) | (r << 16) | (g << 8) | b);
+        }
+    } else {
+        for (int i = 0; i < c->palette_size / 3; i++) {
+            unsigned rgb = AV_RB24(&c->palette[i * 3]);
+            AV_WN32(&new_palette[i], (0xFFU << 24) | rgb);
+        }
     }
 }
 
@@ -234,16 +242,16 @@ static void cdxl_decode_ham8(CDXLVideoContext *c, AVFrame *frame)
     }
 }
 
-static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
+static int cdxl_decode_frame(AVCodecContext *avctx, AVFrame *p,
                              int *got_frame, AVPacket *pkt)
 {
     CDXLVideoContext *c = avctx->priv_data;
-    AVFrame * const p = data;
     int ret, w, h, encoding, aligned_width, buf_size = pkt->size;
     const uint8_t *buf = pkt->data;
 
     if (buf_size < 32)
         return AVERROR_INVALIDDATA;
+    c->type         = buf[0];
     encoding        = buf[1] & 7;
     c->format       = buf[1] & 0xE0;
     w               = AV_RB16(&buf[14]);
@@ -254,7 +262,11 @@ static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
     c->video        = c->palette + c->palette_size;
     c->video_size   = buf_size - c->palette_size - 32;
 
-    if (c->palette_size > 512)
+    if (c->type > 1)
+        return AVERROR_INVALIDDATA;
+    if (c->type == 1 && c->palette_size > 512)
+        return AVERROR_INVALIDDATA;
+    if (c->type == 0 && c->palette_size > 768)
         return AVERROR_INVALIDDATA;
     if (buf_size < c->palette_size + 32)
         return AVERROR_INVALIDDATA;
@@ -293,6 +305,7 @@ static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
         return ret;
     p->pict_type = AV_PICTURE_TYPE_I;
+    p->key_frame = 1;
 
     if (encoding) {
         av_fast_padded_malloc(&c->new_video, &c->new_video_size,
@@ -322,14 +335,14 @@ static av_cold int cdxl_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_cdxl_decoder = {
-    .name           = "cdxl",
-    .long_name      = NULL_IF_CONFIG_SMALL("Commodore CDXL video"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_CDXL,
+const FFCodec ff_cdxl_decoder = {
+    .p.name         = "cdxl",
+    CODEC_LONG_NAME("Commodore CDXL video"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_CDXL,
     .priv_data_size = sizeof(CDXLVideoContext),
     .init           = cdxl_decode_init,
     .close          = cdxl_decode_end,
-    .decode         = cdxl_decode_frame,
-    .capabilities   = AV_CODEC_CAP_DR1,
+    FF_CODEC_DECODE_CB(cdxl_decode_frame),
+    .p.capabilities = AV_CODEC_CAP_DR1,
 };

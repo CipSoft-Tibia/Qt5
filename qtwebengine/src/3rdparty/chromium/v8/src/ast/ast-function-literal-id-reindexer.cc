@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #include "src/ast/ast-function-literal-id-reindexer.h"
-#include "src/objects/objects-inl.h"
 
 #include "src/ast/ast.h"
 
@@ -40,8 +39,8 @@ void AstFunctionLiteralIdReindexer::VisitClassLiteral(ClassLiteral* expr) {
     Visit(expr->extends());
   }
   Visit(expr->constructor());
-  if (expr->static_fields_initializer() != nullptr) {
-    Visit(expr->static_fields_initializer());
+  if (expr->static_initializer() != nullptr) {
+    Visit(expr->static_initializer());
   }
   if (expr->instance_members_initializer_function() != nullptr) {
     Visit(expr->instance_members_initializer_function());

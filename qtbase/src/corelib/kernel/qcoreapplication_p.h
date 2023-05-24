@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOREAPPLICATION_P_H
 #define QCOREAPPLICATION_P_H
@@ -55,6 +19,7 @@
 #if QT_CONFIG(commandlineparser)
 #include "QtCore/qcommandlineoption.h"
 #endif
+#include "QtCore/qreadwritelock.h"
 #include "QtCore/qtranslator.h"
 #if QT_CONFIG(settings)
 #include "QtCore/qsettings.h"
@@ -74,6 +39,10 @@ typedef QList<QTranslator*> QTranslatorList;
 
 class QAbstractEventDispatcher;
 
+#ifndef QT_NO_QOBJECT
+class QEvent;
+#endif
+
 class Q_CORE_EXPORT QCoreApplicationPrivate
 #ifndef QT_NO_QOBJECT
     : public QObjectPrivate
@@ -87,7 +56,7 @@ public:
         Gui
     };
 
-    QCoreApplicationPrivate(int &aargc,  char **aargv, uint flags);
+    QCoreApplicationPrivate(int &aargc,  char **aargv);
 
     // If not inheriting from QObjectPrivate: force this class to be polymorphic
 #ifdef QT_NO_QOBJECT
@@ -104,6 +73,7 @@ public:
     static QString infoDictionaryStringProperty(const QString &propertyName);
 #endif
 
+    void initConsole();
     static void initLocale();
 
     static bool checkInstance(const char *method);
@@ -116,7 +86,7 @@ public:
     bool sendThroughApplicationEventFilters(QObject *, QEvent *);
     static bool sendThroughObjectEventFilters(QObject *, QEvent *);
     static bool notify_helper(QObject *, QEvent *);
-    static inline void setEventSpontaneous(QEvent *e, bool spontaneous) { e->spont = spontaneous; }
+    static inline void setEventSpontaneous(QEvent *e, bool spontaneous) { e->m_spont = spontaneous; }
 
     virtual void createEventDispatcher();
     virtual void eventDispatcherReady();
@@ -128,10 +98,9 @@ public:
     QAtomicInt quitLockRef;
     void ref();
     void deref();
-    virtual bool shouldQuit() {
-      return true;
-    }
-    void maybeQuit();
+    virtual bool canQuitAutomatically();
+    void quitAutomatically();
+    virtual void quit();
 
     static QBasicAtomicPointer<QThread> theMainThread;
     static QThread *mainThread();
@@ -154,9 +123,10 @@ public:
 
     int &argc;
     char **argv;
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
     int origArgc;
     char **origArgv; // store unmodified arguments for QCoreApplication::arguments()
+    bool consoleAllocated = false;
 #endif
     void appendApplicationPathToLibraryPaths(void);
 
@@ -188,11 +158,10 @@ public:
     static bool setuidAllowed;
     static uint attribs;
     static inline bool testAttribute(uint flag) { return attribs & (1 << flag); }
-    static int app_compile_version;
 
     void processCommandLineArguments();
     QString qmljs_debug_arguments; // a string containing arguments for js/qml debugging.
-    inline QString qmljsDebugArgumentsString() { return qmljs_debug_arguments; }
+    inline QString qmljsDebugArgumentsString() const { return qmljs_debug_arguments; }
 
 #ifdef QT_NO_QOBJECT
     QCoreApplication *q_ptr;

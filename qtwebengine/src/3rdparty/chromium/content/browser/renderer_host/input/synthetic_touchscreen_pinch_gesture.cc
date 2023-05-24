@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,13 +20,15 @@ SyntheticTouchscreenPinchGesture::SyntheticTouchscreenPinchGesture(
       start_y_0_(0.0f),
       start_y_1_(0.0f),
       max_pointer_delta_0_(0.0f),
-      gesture_source_type_(SyntheticGestureParams::DEFAULT_INPUT),
+      gesture_source_type_(content::mojom::GestureSourceType::kDefaultInput),
       state_(SETUP) {
   DCHECK_GT(params_.scale_factor, 0.0f);
-  if (params_.gesture_source_type != SyntheticGestureParams::TOUCH_INPUT) {
+  if (params_.gesture_source_type !=
+      content::mojom::GestureSourceType::kTouchInput) {
     DCHECK_EQ(params_.gesture_source_type,
-              SyntheticGestureParams::DEFAULT_INPUT);
-    params_.gesture_source_type = SyntheticGestureParams::TOUCH_INPUT;
+              content::mojom::GestureSourceType::kDefaultInput);
+    params_.gesture_source_type =
+        content::mojom::GestureSourceType::kTouchInput;
   }
 }
 
@@ -35,23 +37,28 @@ SyntheticTouchscreenPinchGesture::~SyntheticTouchscreenPinchGesture() {}
 SyntheticGesture::Result SyntheticTouchscreenPinchGesture::ForwardInputEvents(
     const base::TimeTicks& timestamp,
     SyntheticGestureTarget* target) {
+  DCHECK(dispatching_controller_);
   if (state_ == SETUP) {
     gesture_source_type_ = params_.gesture_source_type;
-    if (gesture_source_type_ == SyntheticGestureParams::DEFAULT_INPUT)
+    if (gesture_source_type_ ==
+        content::mojom::GestureSourceType::kDefaultInput)
       gesture_source_type_ = target->GetDefaultSyntheticGestureSourceType();
 
     state_ = STARTED;
     start_time_ = timestamp;
   }
 
-  DCHECK_NE(gesture_source_type_, SyntheticGestureParams::DEFAULT_INPUT);
+  DCHECK_NE(gesture_source_type_,
+            content::mojom::GestureSourceType::kDefaultInput);
 
   if (!synthetic_pointer_driver_)
-    synthetic_pointer_driver_ =
-        SyntheticPointerDriver::Create(gesture_source_type_);
+    synthetic_pointer_driver_ = SyntheticPointerDriver::Create(
+        gesture_source_type_, params_.from_devtools_debugger);
 
-  if (gesture_source_type_ == SyntheticGestureParams::TOUCH_INPUT) {
+  if (gesture_source_type_ == content::mojom::GestureSourceType::kTouchInput) {
     ForwardTouchInputEvents(timestamp, target);
+    // A pinch gesture cannot cause `this` to be destroyed.
+    DCHECK(dispatching_controller_);
   } else {
     return SyntheticGesture::GESTURE_SOURCE_TYPE_NOT_IMPLEMENTED;
   }
@@ -155,8 +162,7 @@ void SyntheticTouchscreenPinchGesture::SetupCoordinatesAndStopTime(
       1e6 * (static_cast<double>(std::abs(2 * max_pointer_delta_0_)) /
              params_.relative_pointer_speed_in_pixels_s));
   DCHECK_GT(total_duration_in_us, 0);
-  stop_time_ =
-      start_time_ + base::TimeDelta::FromMicroseconds(total_duration_in_us);
+  stop_time_ = start_time_ + base::Microseconds(total_duration_in_us);
 }
 
 float SyntheticTouchscreenPinchGesture::GetDeltaForPointer0AtTime(

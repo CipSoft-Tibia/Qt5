@@ -1,47 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Teo Mrnjavac <teo@kde.org>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Teo Mrnjavac <teo@kde.org>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qxcbsessionmanager.h"
 
 #ifndef QT_NO_SESSIONMANAGER
 
+#include <QtCore/qvarlengtharray.h>
 #include <qpa/qwindowsysteminterface.h>
 
 #include <qguiapplication.h>
@@ -53,6 +18,8 @@
 #include <errno.h> // ERANGE
 
 #include <cerrno> // ERANGE
+
+using namespace Qt::StringLiterals;
 
 class QSmSocketReceiver : public QObject
 {
@@ -134,19 +101,19 @@ static void sm_setProperty(const QString &name, const QString &value)
 {
     QByteArray v = value.toUtf8();
     SmPropValue prop;
-    prop.length = v.length();
+    prop.length = v.size();
     prop.value = (SmPointer) const_cast<char *>(v.constData());
     sm_setProperty(name.toLatin1().data(), SmARRAY8, 1, &prop);
 }
 
 static void sm_setProperty(const QString &name, const QStringList &value)
 {
-    SmPropValue *prop = new SmPropValue[value.count()];
+    SmPropValue *prop = new SmPropValue[value.size()];
     int count = 0;
     QList<QByteArray> vl;
     vl.reserve(value.size());
     for (QStringList::ConstIterator it = value.begin(); it != value.end(); ++it) {
-      prop[count].length = (*it).length();
+      prop[count].length = (*it).size();
       vl.append((*it).toUtf8());
       prop[count].value = (char*)vl.constLast().data();
       ++count;
@@ -193,7 +160,7 @@ static void sm_performSaveYourself(QXcbSessionManager *sm)
     timeval tv;
     gettimeofday(&tv, nullptr);
     sm->setSessionKey(QString::number(qulonglong(tv.tv_sec)) +
-                      QLatin1Char('_') +
+                      u'_' +
                       QString::number(qulonglong(tv.tv_usec)));
 
     QStringList arguments = QCoreApplication::arguments();
@@ -227,12 +194,11 @@ static void sm_performSaveYourself(QXcbSessionManager *sm)
 
     // generate a restart and discard command that makes sense
     QStringList restart;
-    restart  << argument0 << QLatin1String("-session")
-             << sm->sessionId() + QLatin1Char('_') + sm->sessionKey();
+    restart << argument0 << "-session"_L1 << sm->sessionId() + u'_' + sm->sessionKey();
 
-    QFileInfo fi = QCoreApplication::applicationFilePath();
+    QFileInfo fi(QCoreApplication::applicationFilePath());
     if (qAppName().compare(fi.fileName(), Qt::CaseInsensitive) != 0)
-        restart << QLatin1String("-name") << qAppName();
+        restart << "-name"_L1 << qAppName();
     sm->setRestartCommand(restart);
     QStringList discard;
     sm->setDiscardCommand(discard);
@@ -242,7 +208,7 @@ static void sm_performSaveYourself(QXcbSessionManager *sm)
         sm->appCommitData();
         if (sm_isshutdown && sm_cancel)
             break; // we cancelled the shutdown, no need to save state
-    // fall through
+    Q_FALLTHROUGH();
     case SmSaveLocal:
         sm->appSaveState();
         break;

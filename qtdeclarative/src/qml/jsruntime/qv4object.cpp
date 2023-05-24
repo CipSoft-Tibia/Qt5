@@ -1,77 +1,83 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4object_p.h"
-#include "qv4objectproto_p.h"
-#include "qv4stringobject_p.h"
-#include "qv4argumentsobject_p.h"
+
+#include <private/qv4argumentsobject_p.h>
+#include <private/qv4identifiertable_p.h>
+#include <private/qv4jscall_p.h>
+#include <private/qv4lookup_p.h>
+#include <private/qv4memberdata_p.h>
 #include <private/qv4mm_p.h>
-#include "qv4lookup_p.h"
-#include "qv4scopedvalue_p.h"
-#include "qv4memberdata_p.h"
-#include "qv4objectiterator_p.h"
-#include "qv4identifier_p.h"
-#include "qv4string_p.h"
-#include "qv4identifiertable_p.h"
-#include "qv4jscall_p.h"
-#include "qv4symbol_p.h"
-#include "qv4proxy_p.h"
+#include <private/qv4proxy_p.h>
+#include <private/qv4scopedvalue_p.h>
+#include <private/qv4stackframe_p.h>
+#include <private/qv4stringobject_p.h>
+#include <private/qv4symbol_p.h>
+
+#include <QtCore/qloggingcategory.h>
 
 #include <stdint.h>
 
 using namespace QV4;
 
+Q_LOGGING_CATEGORY(lcJavaScriptGlobals, "qt.qml.js.globals")
+
 DEFINE_OBJECT_VTABLE(Object);
 
 void Object::setInternalClass(Heap::InternalClass *ic)
 {
-    d()->internalClass.set(engine(), ic);
-    if (ic->isUsedAsProto)
-        ic->updateProtoUsage(d());
     Q_ASSERT(ic && ic->vtable);
-    uint nInline = d()->vtable()->nInlineProperties;
-    if (ic->size <= nInline)
-        return;
-    bool hasMD = d()->memberData != nullptr;
-    uint requiredSize = ic->size - nInline;
-    if (!(hasMD && requiredSize) || (hasMD && d()->memberData->values.size < requiredSize))
-        d()->memberData.set(ic->engine, MemberData::allocate(ic->engine, requiredSize, d()->memberData));
+    Heap::Object *p = d();
+
+    if (ic->numRedundantTransitions < p->internalClass.get()->numRedundantTransitions) {
+        // IC was rebuilt. The indices are different now. We need to move everything.
+
+        Scope scope(engine());
+
+        // We allocate before setting the new IC. Protect it from GC.
+        Scoped<InternalClass> newIC(scope, ic);
+
+        // Pick the members of the old IC that are still valid in the new IC.
+        // Order them by index in memberData (or inline data).
+        Scoped<MemberData> newMembers(scope, MemberData::allocate(scope.engine, ic->size));
+        for (uint i = 0; i < ic->size; ++i) {
+            // Note that some members might have been deleted. The key may be invalid.
+            const PropertyKey key = ic->nameMap.at(i);
+            newMembers->set(scope.engine, i, key.isValid() ? get(key) : Encode::undefined());
+        }
+
+        p->internalClass.set(scope.engine, ic);
+        const uint nInline = p->vtable()->nInlineProperties;
+
+        if (ic->size > nInline)
+            p->memberData.set(scope.engine, MemberData::allocate(ic->engine, ic->size - nInline));
+        else
+            p->memberData.set(scope.engine, nullptr);
+
+        const auto &memberValues = newMembers->d()->values;
+        for (uint i = 0; i < ic->size; ++i)
+            setProperty(i, memberValues[i]);
+    } else {
+        // The old indices are still the same. No need to move any values.
+        // We may need to re-allocate, though.
+
+        p->internalClass.set(ic->engine, ic);
+        const uint nInline = p->vtable()->nInlineProperties;
+        if (ic->size > nInline) {
+            const uint requiredSize = ic->size - nInline;
+            if ((p->memberData ? p->memberData->values.size : 0) < requiredSize) {
+                p->memberData.set(ic->engine, MemberData::allocate(
+                                      ic->engine, requiredSize, p->memberData));
+            }
+        }
+    }
+
+    // Before the engine is done initializing, we cannot have any lookups.
+    // Therefore, there is no point in updating the proto IDs.
+    if (ic->engine->isInitialized && ic->isUsedAsProto())
+        ic->updateProtoUsage(p);
+
 }
 
 void Object::getProperty(const InternalClassEntry &entry, Property *p) const
@@ -102,9 +108,9 @@ ReturnedValue Object::getValueAccessor(const Value *thisObject, const Value &v, 
         return Encode::undefined();
 
     Scope scope(f->engine());
-    JSCallData jsCallData(scope);
+    JSCallArguments jsCallData(scope);
     if (thisObject)
-        *jsCallData->thisObject = *thisObject;
+        *jsCallData.thisObject = *thisObject;
     return checkedResult(scope.engine, f->call(jsCallData));
 }
 
@@ -119,9 +125,9 @@ bool Object::putValue(uint memberIndex, PropertyAttributes attrs, const Value &v
         if (set) {
             Scope scope(ic->engine);
             ScopedFunctionObject setter(scope, set);
-            JSCallData jsCallData(scope, 1);
-            jsCallData->args[0] = value;
-            *jsCallData->thisObject = this;
+            JSCallArguments jsCallData(scope, 1);
+            jsCallData.args[0] = value;
+            *jsCallData.thisObject = this;
             setter->call(jsCallData);
             return !ic->engine->hasException;
         }
@@ -176,8 +182,8 @@ void Object::defineAccessorProperty(StringOrSymbol *name, VTable::Call getter, V
     QV4::Scope scope(v4);
     ScopedProperty p(scope);
     QString n = name->toQString();
-    if (n.at(0) == QLatin1Char('@'))
-        n = QChar::fromLatin1('[') + n.midRef(1) + QChar::fromLatin1(']');
+    if (!n.isEmpty() && n.at(0) == QLatin1Char('@'))
+        n = QChar::fromLatin1('[') + QStringView{n}.mid(1) + QChar::fromLatin1(']');
     if (getter) {
         ScopedString getName(scope, v4->newString(QString::fromLatin1("get ") + n));
         p->setGetter(ScopedFunctionObject(scope, FunctionObject::createBuiltinFunction(v4, getName, getter, 0)));
@@ -460,7 +466,7 @@ ReturnedValue Object::internalGet(PropertyKey id, const Value *receiver, bool *h
 bool Object::internalPut(PropertyKey id, const Value &value, Value *receiver)
 {
     Scope scope(this);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return false;
 
     Object *r = receiver->objectValue();
@@ -519,11 +525,11 @@ bool Object::internalPut(PropertyKey id, const Value &value, Value *receiver)
         ScopedFunctionObject setter(scope, p->setter());
         if (!setter)
             return false;
-        JSCallData jsCallData(scope, 1);
-        jsCallData->args[0] = value;
-        *jsCallData->thisObject = *receiver;
+        JSCallArguments jsCallData(scope, 1);
+        jsCallData.args[0] = value;
+        *jsCallData.thisObject = *receiver;
         setter->call(jsCallData);
-        return !scope.engine->hasException;
+        return !scope.hasException();
     }
 
     // Data property
@@ -566,7 +572,7 @@ bool Object::internalDeleteProperty(PropertyKey id)
     if (id.isArrayIndex()) {
         uint index = id.asArrayIndex();
         Scope scope(engine());
-        if (scope.engine->hasException)
+        if (scope.hasException())
             return false;
 
         Scoped<ArrayData> ad(scope, arrayData());
@@ -735,6 +741,9 @@ ReturnedValue Object::virtualInstanceOf(const Object *typeObject, const Value &v
 
 ReturnedValue Object::virtualResolveLookupGetter(const Object *object, ExecutionEngine *engine, Lookup *lookup)
 {
+    // Otherwise we cannot trust the protoIds
+    Q_ASSERT(engine->isInitialized);
+
     Heap::Object *obj = object->d();
     PropertyKey name = engine->identifierTable->asPropertyKey(engine->currentStackFrame->v4Function->compilationUnit->runtimeStrings[lookup->nameIndex]);
     if (name.isArrayIndex()) {
@@ -770,6 +779,9 @@ ReturnedValue Object::virtualResolveLookupGetter(const Object *object, Execution
 
 bool Object::virtualResolveLookupSetter(Object *object, ExecutionEngine *engine, Lookup *lookup, const Value &value)
 {
+    // Otherwise we cannot trust the protoIds
+    Q_ASSERT(engine->isInitialized);
+
     Scope scope(engine);
     ScopedString name(scope, scope.engine->currentStackFrame->v4Function->compilationUnit->runtimeStrings[lookup->nameIndex]);
 
@@ -820,6 +832,31 @@ bool Object::virtualResolveLookupSetter(Object *object, ExecutionEngine *engine,
     lookup->insertionLookup.offset = idx.index;
     lookup->setter = Lookup::setterInsert;
     return true;
+}
+
+/*!
+ * \internal
+ *
+ * This method is modeled after \l{QMetaObject::metacall}. It takes a JavaScript
+ * \a object and performs \a call on it, using \a index as identifier for the
+ * property/method/etc to be used and \a a as arguments. Like
+ * \l{QMetaObject::metacall} this method is overly generic in order to reduce the
+ * API surface. On a plain Object it does nothing and returns 0. Specific
+ * objects can override it and do some meaningful work. If the metacall succeeds
+ * they should return a non-0 value. Otherwise they should return 0.
+ *
+ * Most prominently, \l QMetaObject::ReadProperty and \l QMetaObject::WriteProperty
+ * calls can be used to manipulate properties of QObjects and Q_GADGETs wrapped
+ * by QV4::QObjectWrapper, QV4::QQmlTypeWrapper and QV4::QQmlValueTypeWrapper.
+ * They can also be used to manipulate elements in QV4::Sequence.
+ */
+int Object::virtualMetacall(Object *object, QMetaObject::Call call, int index, void **a)
+{
+    Q_UNUSED(object);
+    Q_UNUSED(call);
+    Q_UNUSED(index);
+    Q_UNUSED(a);
+    return 0;
 }
 
 ReturnedValue Object::checkedInstanceOf(ExecutionEngine *engine, const FunctionObject *f, const Value &var)
@@ -939,11 +976,28 @@ bool Object::virtualDefineOwnProperty(Managed *m, PropertyKey id, const Property
         return o->internalDefineOwnProperty(scope.engine, index, nullptr, p, attrs);
     }
 
-    auto memberIndex = o->internalClass()->find(id);
+    Scoped<InternalClass> ic(scope, o->internalClass());
+    auto memberIndex = ic->d()->find(id);
 
     if (!memberIndex.isValid()) {
         if (!o->isExtensible())
             return false;
+
+        // If the IC is locked, you're not allowed to shadow any unconfigurable properties.
+        if (ic->d()->isLocked()) {
+            while (Heap::Object *prototype = ic->d()->prototype) {
+                ic = prototype->internalClass;
+                const auto entry = ic->d()->find(id);
+                if (entry.isValid()) {
+                    if (entry.attributes.isConfigurable())
+                        break;
+                    qCWarning(lcJavaScriptGlobals).noquote()
+                            << QStringLiteral("You cannot shadow the locked property "
+                                              "'%1' in QML.").arg(id.toQString());
+                    return false;
+                }
+            }
+        }
 
         Scoped<StringOrSymbol> name(scope, id.asStringOrSymbol());
         ScopedProperty pd(scope);
@@ -958,7 +1012,7 @@ bool Object::virtualDefineOwnProperty(Managed *m, PropertyKey id, const Property
 
 bool Object::virtualIsExtensible(const Managed *m)
 {
-    return m->d()->internalClass->extensible;
+    return m->d()->internalClass->isExtensible();
 }
 
 bool Object::virtualPreventExtensions(Managed *m)
@@ -978,11 +1032,12 @@ bool Object::virtualSetPrototypeOf(Managed *m, const Object *proto)
 {
     Q_ASSERT(m->isObject());
     Object *o = static_cast<Object *>(m);
-    Heap::Object *current = o->internalClass()->prototype;
+    Heap::InternalClass *ic = o->internalClass();
+    Heap::Object *current = ic->prototype;
     Heap::Object *protod = proto ? proto->d() : nullptr;
     if (current == protod)
         return true;
-    if (!o->internalClass()->extensible)
+    if (!ic->isExtensible() || ic->isLocked())
         return false;
     Heap::Object *p = protod;
     while (p) {
@@ -992,7 +1047,7 @@ bool Object::virtualSetPrototypeOf(Managed *m, const Object *proto)
             break;
         p = p->prototype();
     }
-    o->setInternalClass(o->internalClass()->changePrototype(protod));
+    o->setInternalClass(ic->changePrototype(protod));
     return true;
 }
 
@@ -1013,6 +1068,8 @@ bool Object::setArrayLength(uint newLen)
     } else {
         if (newLen >= 0x100000)
             initSparseArray();
+        else
+            ArrayData::realloc(this, arrayType(), newLen, false);
     }
     setArrayLengthUnchecked(newLen);
     return ok;
@@ -1103,7 +1160,7 @@ void Heap::ArrayObject::init(const QStringList &list)
     // The result is a new Array object with length equal to the length
     // of the QStringList, and the elements being the QStringList's
     // elements converted to JS Strings.
-    int len = list.count();
+    int len = list.size();
     a->arrayReserve(len);
     ScopedValue v(scope);
     for (int ii = 0; ii < len; ++ii)

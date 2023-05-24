@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ CFPF_SkiaDeviceModule* CFPF_GetSkiaDeviceModule() {
   return gs_pPFModule;
 }
 
-CFPF_SkiaDeviceModule::CFPF_SkiaDeviceModule() {}
+CFPF_SkiaDeviceModule::CFPF_SkiaDeviceModule() = default;
 
 CFPF_SkiaDeviceModule::~CFPF_SkiaDeviceModule() = default;
 

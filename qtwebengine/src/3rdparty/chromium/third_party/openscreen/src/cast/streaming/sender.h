@@ -158,6 +158,13 @@ class Sender final : public SenderPacketRouter::Sender,
   // frame ID be used.
   FrameId GetNextFrameId() const;
 
+  // Get the current round trip time, defined as the total time between when the
+  // sender report is sent and the receiver report is received. This value is
+  // updated with each receiver report using a weighted moving average of 1/8
+  // for the new value and 7/8 for the previous value. Will be set to
+  // Clock::duration::zero() if no reports have been received yet.
+  Clock::duration GetCurrentRoundTripTime() const;
+
   // Enqueues the given |frame| for sending as soon as possible. Returns OK if
   // the frame is accepted, and some time later Observer::OnFrameCanceled() will
   // be called once it is no longer in-flight.
@@ -167,6 +174,10 @@ class Sender final : public SenderPacketRouter::Sender,
   // |reference_time| fields must be monotonically increasing relative to the
   // prior frame; and the frame's |data| pointer must be set.
   [[nodiscard]] EnqueueFrameResult EnqueueFrame(const EncodedFrame& frame);
+
+  // Causes all pending operations to discard data when they are processed
+  // later.
+  void CancelInFlightData();
 
  private:
   // Tracking/Storage for frames that are ready-to-send, and until they are
@@ -236,9 +247,12 @@ class Sender final : public SenderPacketRouter::Sender,
   // result if kick-starting is not needed.
   ChosenPacketAndWhen ChooseKickstartPacket();
 
-  // Cancels the given frame once it is known to have been fully received (i.e.,
-  // based on the ACK feedback from the Receiver in a RTCP packet). This clears
-  // the corresponding entry in |pending_frames_| and notifies the Observer.
+  // Cancels sending (or resending) the given frame once it is known to have
+  // been cancelled by the sender fully received (e.g., based on the ACK
+  // feedback from the Receiver in a RTCP packet, or the receiver checkpoint
+  // frame). This clears the corresponding entry in |pending_frames_| and
+  // notifies the Observer. NOTE: every frame_id ends up being "cancelled" at
+  // least once.
   void CancelPendingFrame(FrameId frame_id);
 
   // Inline helper to return the slot that would contain the tracking info for

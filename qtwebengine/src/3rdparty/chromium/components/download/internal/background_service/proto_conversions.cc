@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "components/download/internal/background_service/proto_conversions.h"
 #include "net/http/http_request_headers.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 
 namespace download {
 
@@ -72,6 +73,10 @@ protodb::DownloadClient ProtoConversions::DownloadClientToProto(
       return protodb::DownloadClient::MOUNTAIN_INTERNAL;
     case DownloadClient::PLUGIN_VM_IMAGE:
       return protodb::DownloadClient::PLUGIN_VM_IMAGE;
+    case DownloadClient::OPTIMIZATION_GUIDE_PREDICTION_MODELS:
+      return protodb::DownloadClient::OPTIMIZATION_GUIDE_PREDICTION_MODELS;
+    case DownloadClient::BRUSCHETTA:
+      return protodb::DownloadClient::BRUSCHETTA;
     case DownloadClient::BOUNDARY:
       return protodb::DownloadClient::BOUNDARY;
   }
@@ -101,6 +106,10 @@ DownloadClient ProtoConversions::DownloadClientFromProto(
       return DownloadClient::MOUNTAIN_INTERNAL;
     case protodb::DownloadClient::PLUGIN_VM_IMAGE:
       return DownloadClient::PLUGIN_VM_IMAGE;
+    case protodb::DownloadClient::OPTIMIZATION_GUIDE_PREDICTION_MODELS:
+      return DownloadClient::OPTIMIZATION_GUIDE_PREDICTION_MODELS;
+    case protodb::DownloadClient::BRUSCHETTA:
+      return DownloadClient::BRUSCHETTA;
     case protodb::DownloadClient::BOUNDARY:
       return DownloadClient::BOUNDARY;
   }
@@ -246,6 +255,14 @@ RequestParams ProtoConversions::RequestParamsFromProto(
   request_params.method = proto.method();
   request_params.fetch_error_body = proto.fetch_error_body();
   request_params.require_safety_checks = proto.require_safety_checks();
+  if (proto.has_credentials_mode()) {
+    request_params.credentials_mode =
+        static_cast<::network::mojom::CredentialsMode>(
+            proto.credentials_mode());
+  } else {
+    request_params.credentials_mode =
+        ::network::mojom::CredentialsMode::kInclude;
+  }
 
   for (int i = 0; i < proto.headers_size(); i++) {
     protodb::RequestHeader header = proto.headers(i);
@@ -261,14 +278,14 @@ void ProtoConversions::RequestParamsToProto(const RequestParams& request_params,
   proto->set_method(request_params.method);
   proto->set_fetch_error_body(request_params.fetch_error_body);
   proto->set_require_safety_checks(request_params.require_safety_checks);
+  proto->set_credentials_mode(
+      static_cast<int32_t>(request_params.credentials_mode));
 
-  int i = 0;
   net::HttpRequestHeaders::Iterator iter(request_params.request_headers);
   while (iter.GetNext()) {
     protodb::RequestHeader* header = proto->add_headers();
     header->set_key(iter.name());
     header->set_value(iter.value());
-    i++;
   }
 }
 
@@ -304,6 +321,10 @@ Entry ProtoConversions::EntryFromProto(const protodb::Entry& proto) {
   entry.did_received_response = proto.did_received_response();
   entry.require_response_headers = proto.require_response_headers();
 
+  for (const auto& kv : proto.custom_data()) {
+    entry.custom_data[kv.key()] = kv.value();
+  }
+
   return entry;
 }
 
@@ -332,6 +353,11 @@ protodb::Entry ProtoConversions::EntryToProto(const Entry& entry) {
     proto.set_response_headers(entry.response_headers->raw_headers());
   proto.set_did_received_response(entry.did_received_response);
   proto.set_require_response_headers(entry.require_response_headers);
+  for (const auto& kv : entry.custom_data) {
+    auto* custom_data_proto = proto.add_custom_data();
+    custom_data_proto->set_key(kv.first);
+    custom_data_proto->set_value(kv.second);
+  }
 
   return proto;
 }

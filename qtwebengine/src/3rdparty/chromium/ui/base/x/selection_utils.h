@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 
 #include "base/component_export.h"
 #include "base/memory/ref_counted_memory.h"
-#include "ui/gfx/x/x11.h"
+#include "ui/gfx/x/xproto.h"
 
 namespace ui {
 class SelectionData;
@@ -28,9 +28,9 @@ void GetAtomIntersection(const std::vector<x11::Atom>& desired,
                          const std::vector<x11::Atom>& offered,
                          std::vector<x11::Atom>* output);
 
-// Takes the raw bytes of the base::string16 and copies them into |bytes|.
+// Takes the raw bytes of the std::u16string and copies them into |bytes|.
 COMPONENT_EXPORT(UI_BASE_X)
-void AddString16ToVector(const base::string16& str,
+void AddString16ToVector(const std::u16string& str,
                          std::vector<unsigned char>* bytes);
 
 // Tokenizes and parses the Selection Data as if it is a URI List.
@@ -42,7 +42,7 @@ std::string RefCountedMemoryToString(
     const scoped_refptr<base::RefCountedMemory>& memory);
 
 COMPONENT_EXPORT(UI_BASE_X)
-base::string16 RefCountedMemoryToString16(
+std::u16string RefCountedMemoryToString16(
     const scoped_refptr<base::RefCountedMemory>& memory);
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -106,11 +106,14 @@ class COMPONENT_EXPORT(UI_BASE_X) SelectionData {
 
   // If |type_| is the HTML type, returns the data as a string16. This detects
   // guesses the character encoding of the source.
-  base::string16 GetHtml() const;
+  std::u16string GetHtml() const;
 
   // Assigns the raw data to the string.
   void AssignTo(std::string* result) const;
-  void AssignTo(base::string16* result) const;
+  void AssignTo(std::u16string* result) const;
+
+  // Transfers ownership of |memory_| to the caller.
+  scoped_refptr<base::RefCountedBytes> TakeBytes();
 
  private:
   x11::Atom type_;

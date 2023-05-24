@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGEOMANEUVER_P_H
 #define QGEOMANEUVER_P_H
@@ -57,91 +24,47 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_LOCATION_PRIVATE_EXPORT QGeoManeuverPrivate : public QSharedData
+class QGeoManeuverPrivate : public QSharedData
 {
 public:
-    QGeoManeuverPrivate();
-    QGeoManeuverPrivate(const QGeoManeuverPrivate &other);
-    virtual ~QGeoManeuverPrivate();
-    virtual QGeoManeuverPrivate *clone() = 0;
+    bool equals(const QGeoManeuverPrivate &other) const;
 
-    bool operator== (const QGeoManeuverPrivate &other) const;
+    bool valid() const;
+    void setValid(bool valid);
 
-    virtual bool valid() const;
-    virtual void setValid(bool valid);
+    QString id() const;
+    void setId(const QString &id);
 
-    virtual QString id() const;
-    virtual void setId(const QString id);
+    QGeoCoordinate position() const;
+    void setPosition(const QGeoCoordinate &position);
 
-    virtual QGeoCoordinate position() const;
-    virtual void setPosition(const QGeoCoordinate &position);
+    QString text() const;
+    void setText(const QString &text);
 
-    virtual QString text() const;
-    virtual void setText(const QString &text);
+    QGeoManeuver::InstructionDirection direction() const;
+    void setDirection(QGeoManeuver::InstructionDirection direction);
 
-    virtual QGeoManeuver::InstructionDirection direction() const;
-    virtual void setDirection(QGeoManeuver::InstructionDirection direction);
+    int timeToNextInstruction() const;
+    void setTimeToNextInstruction(int timeToNextInstruction);
 
-    virtual int timeToNextInstruction() const;
-    virtual void setTimeToNextInstruction(int timeToNextInstruction);
+    qreal distanceToNextInstruction() const;
+    void setDistanceToNextInstruction(qreal distanceToNextInstruction);
 
-    virtual qreal distanceToNextInstruction() const;
-    virtual void setDistanceToNextInstruction(qreal distanceToNextInstruction);
+    QGeoCoordinate waypoint() const;
+    void setWaypoint(const QGeoCoordinate &waypoint);
 
-    virtual QGeoCoordinate waypoint() const;
-    virtual void setWaypoint(const QGeoCoordinate &waypoint);
+    QVariantMap extendedAttributes() const;
+    void setExtendedAttributes(const QVariantMap &extendedAttributes);
 
-    virtual QVariantMap extendedAttributes() const;
-    virtual void setExtendedAttributes(const QVariantMap &extendedAttributes);
-
-protected:
-    virtual bool equals(const QGeoManeuverPrivate &other) const;
-};
-
-class Q_LOCATION_PRIVATE_EXPORT QGeoManeuverPrivateDefault : public QGeoManeuverPrivate
-{
-public:
-    QGeoManeuverPrivateDefault();
-    QGeoManeuverPrivateDefault(const QGeoManeuverPrivateDefault &other);
-    ~QGeoManeuverPrivateDefault();
-    virtual QGeoManeuverPrivate *clone() override;
-
-    virtual bool valid() const override;
-    virtual void setValid(bool valid) override;
-
-    virtual QString id() const override;
-    virtual void setId(const QString id) override;
-
-    virtual QGeoCoordinate position() const override;
-    virtual void setPosition(const QGeoCoordinate &position) override;
-
-    virtual QString text() const override;
-    virtual void setText(const QString &text) override;
-
-    virtual QGeoManeuver::InstructionDirection direction() const override;
-    virtual void setDirection(QGeoManeuver::InstructionDirection direction) override;
-
-    virtual int timeToNextInstruction() const override;
-    virtual void setTimeToNextInstruction(int timeToNextInstruction) override;
-
-    virtual qreal distanceToNextInstruction() const override;
-    virtual void setDistanceToNextInstruction(qreal distanceToNextInstruction) override;
-
-    virtual QGeoCoordinate waypoint() const override;
-    virtual void setWaypoint(const QGeoCoordinate &waypoint) override;
-
-    virtual QVariantMap extendedAttributes() const override;
-    virtual void setExtendedAttributes(const QVariantMap &extendedAttributes) override;
-
-    bool m_valid;
     QString m_id;
     QGeoCoordinate m_position;
     QString m_text;
-    QGeoManeuver::InstructionDirection m_direction;
-    int m_timeToNextInstruction;
-    qreal m_distanceToNextInstruction;
     QGeoCoordinate m_waypoint;
     QVariantMap m_extendedAttributes;
+    qreal m_distanceToNextInstruction = 0.0;
+    QGeoManeuver::InstructionDirection m_direction = QGeoManeuver::NoDirection;
+    int m_timeToNextInstruction = 0;
+    bool m_valid = false;
 };
 
 QT_END_NAMESPACE

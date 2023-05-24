@@ -1,16 +1,16 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/widget/input/scroll_predictor.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/test/scoped_feature_list.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
-#include "third_party/blink/public/platform/input/predictor_factory.h"
 #include "third_party/blink/renderer/platform/widget/input/prediction/filter_factory.h"
+#include "third_party/blink/renderer/platform/widget/input/prediction/predictor_factory.h"
 #include "ui/base/prediction/empty_filter.h"
 #include "ui/base/prediction/empty_predictor.h"
 #include "ui/base/prediction/kalman_predictor.h"
@@ -29,6 +29,8 @@ constexpr double kEpsilon = 0.001;
 class ScrollPredictorTest : public testing::Test {
  public:
   ScrollPredictorTest() {}
+  ScrollPredictorTest(const ScrollPredictorTest&) = delete;
+  ScrollPredictorTest& operator=(const ScrollPredictorTest&) = delete;
 
   void SetUp() override {
     original_events_.clear();
@@ -50,7 +52,7 @@ class ScrollPredictorTest : public testing::Test {
     auto gesture = std::make_unique<WebGestureEvent>(
         WebInputEvent::Type::kGestureScrollUpdate, WebInputEvent::kNoModifiers,
         WebInputEvent::GetStaticTimeStampForTests() +
-            base::TimeDelta::FromMillisecondsD(time_delta_in_milliseconds),
+            base::Milliseconds(time_delta_in_milliseconds),
         WebGestureDevice::kTouchscreen);
     gesture->data.scroll_update.delta_x = delta_x;
     gesture->data.scroll_update.delta_y = delta_y;
@@ -58,7 +60,7 @@ class ScrollPredictorTest : public testing::Test {
 
     original_events_.emplace_back(std::make_unique<WebCoalescedInputEvent>(
                                       gesture->Clone(), ui::LatencyInfo()),
-                                  base::NullCallback());
+                                  nullptr, base::NullCallback());
 
     return gesture;
   }
@@ -77,27 +79,30 @@ class ScrollPredictorTest : public testing::Test {
   }
 
   void HandleResampleScrollEvents(std::unique_ptr<WebInputEvent>& event,
-                                  double time_delta_in_milliseconds = 0) {
-    std::unique_ptr<EventWithCallback> event_with_callback =
-        std::make_unique<EventWithCallback>(
-            std::make_unique<WebCoalescedInputEvent>(std::move(event),
-                                                     ui::LatencyInfo()),
-            base::TimeTicks(), base::NullCallback());
+                                  double time_delta_in_milliseconds = 0,
+                                  double display_refresh_rate = 30) {
+    auto event_with_callback = std::make_unique<EventWithCallback>(
+        std::make_unique<WebCoalescedInputEvent>(std::move(event),
+                                                 ui::LatencyInfo()),
+        base::TimeTicks(), base::NullCallback(), nullptr);
     event_with_callback->original_events() = std::move(original_events_);
 
+    base::TimeDelta frame_interval = base::Seconds(1.0f / display_refresh_rate);
     event_with_callback = scroll_predictor_->ResampleScrollEvents(
         std::move(event_with_callback),
         WebInputEvent::GetStaticTimeStampForTests() +
-            base::TimeDelta::FromMillisecondsD(time_delta_in_milliseconds));
+            base::Milliseconds(time_delta_in_milliseconds),
+        frame_interval);
 
     event = event_with_callback->event().Clone();
   }
 
   std::unique_ptr<ui::InputPredictor::InputData> PredictionAvailable(
       double time_delta_in_milliseconds = 0) {
-    return scroll_predictor_->predictor_->GeneratePrediction(
-        WebInputEvent::GetStaticTimeStampForTests() +
-        base::TimeDelta::FromMillisecondsD(time_delta_in_milliseconds));
+    base::TimeTicks frame_time = WebInputEvent::GetStaticTimeStampForTests() +
+                                 base::Milliseconds(time_delta_in_milliseconds);
+    // Tests with 60Hz.
+    return scroll_predictor_->predictor_->GeneratePrediction(frame_time);
   }
 
   gfx::PointF GetLastAccumulatedDelta() {
@@ -141,13 +146,13 @@ class ScrollPredictorTest : public testing::Test {
       const std::string& filter_type) {
     base::FieldTrialParams pred_field_params;
     pred_field_params["predictor"] = predictor_type;
-    base::test::ScopedFeatureList::FeatureAndParams prediction_params = {
-        pred_feature, pred_field_params};
+    base::test::FeatureRefAndParams prediction_params = {pred_feature,
+                                                         pred_field_params};
 
     base::FieldTrialParams filter_field_params;
     filter_field_params["filter"] = filter_type;
-    base::test::ScopedFeatureList::FeatureAndParams filter_params = {
-        filter_feature, filter_field_params};
+    base::test::FeatureRefAndParams filter_params = {filter_feature,
+                                                     filter_field_params};
 
     scoped_feature_list_.Reset();
     scoped_feature_list_.InitWithFeaturesAndParameters(
@@ -169,13 +174,34 @@ class ScrollPredictorTest : public testing::Test {
     EXPECT_EQ(expected_type, scroll_predictor_->filter_->GetName());
   }
 
+  void InitLinearResamplingTest(bool use_frames_based_experimental_prediction) {
+    base::FieldTrialParams params;
+    params["filter"] = ::features::kPredictorNameLinearResampling;
+    base::test::FeatureRefAndParams prediction_params = {
+        features::kResamplingScrollEvents, params};
+
+    base::FieldTrialParams prediction_type_params;
+    prediction_type_params["mode"] =
+        use_frames_based_experimental_prediction
+            ? ::features::kPredictionTypeFramesBased
+            : ::features::kPredictionTypeTimeBased;
+    base::test::FeatureRefAndParams experimental_prediction_params = {
+        ::features::kResamplingScrollEventsExperimentalPrediction,
+        prediction_type_params};
+
+    scoped_feature_list_.Reset();
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {prediction_params, experimental_prediction_params}, {});
+    scroll_predictor_ = std::make_unique<ScrollPredictor>();
+
+    VerifyPredictorType(::features::kPredictorNameLinearResampling);
+  }
+
  protected:
   EventWithCallback::OriginalEventList original_events_;
   std::unique_ptr<ScrollPredictor> scroll_predictor_;
 
   base::test::ScopedFeatureList scoped_feature_list_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScrollPredictorTest);
 };
 
 TEST_F(ScrollPredictorTest, ScrollResamplingStates) {
@@ -332,7 +358,7 @@ TEST_F(ScrollPredictorTest, LSQPredictorTest) {
                      ->data.scroll_update.delta_y);
   EXPECT_EQ(
       WebInputEvent::GetStaticTimeStampForTests() +
-          base::TimeDelta::FromMillisecondsD(8 /* ms */),
+          base::Milliseconds(8 /* ms */),
       static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
 
   // Send 2nd GSU, no prediction available, event aligned at original timestamp.
@@ -342,7 +368,7 @@ TEST_F(ScrollPredictorTest, LSQPredictorTest) {
                      ->data.scroll_update.delta_y);
   EXPECT_EQ(
       WebInputEvent::GetStaticTimeStampForTests() +
-          base::TimeDelta::FromMillisecondsD(16 /* ms */),
+          base::Milliseconds(16 /* ms */),
       static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
   EXPECT_FALSE(PredictionAvailable(24 /* ms */));
 
@@ -354,7 +380,7 @@ TEST_F(ScrollPredictorTest, LSQPredictorTest) {
                      ->data.scroll_update.delta_y);
   EXPECT_EQ(
       WebInputEvent::GetStaticTimeStampForTests() +
-          base::TimeDelta::FromMillisecondsD(32 /* ms */),
+          base::Milliseconds(32 /* ms */),
       static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
   auto result = PredictionAvailable(32 /* ms */);
   EXPECT_TRUE(result);
@@ -366,11 +392,65 @@ TEST_F(ScrollPredictorTest, LSQPredictorTest) {
                      ->data.scroll_update.delta_y);
   EXPECT_EQ(
       WebInputEvent::GetStaticTimeStampForTests() +
-          base::TimeDelta::FromMillisecondsD(40 /* ms */),
+          base::Milliseconds(40 /* ms */),
       static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
   result = PredictionAvailable(40 /* ms */);
   EXPECT_TRUE(result);
   EXPECT_EQ(-150, result->pos.y());
+}
+
+TEST_F(ScrollPredictorTest, LinearResamplingPredictorTest) {
+  // Test kResamplingScrollEventsExperimentalLatencyFixed
+  InitLinearResamplingTest(false);
+  SendGestureScrollBegin();
+
+  // Send 1st GSU, no prediction available.
+  std::unique_ptr<WebInputEvent> gesture_update =
+      CreateGestureScrollUpdate(0, 10, 10 /* ms */);
+  HandleResampleScrollEvents(gesture_update, 10 /* ms */, 30 /* Hz */);
+  EXPECT_EQ(10, static_cast<const WebGestureEvent*>(gesture_update.get())
+                    ->data.scroll_update.delta_y);
+  EXPECT_EQ(
+      WebInputEvent::GetStaticTimeStampForTests() +
+          base::Milliseconds(10 /* ms */),
+      static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
+
+  // Prediction using fixed +3.3ms latency.
+  gesture_update = CreateGestureScrollUpdate(0, 10, 20 /* ms */);
+  HandleResampleScrollEvents(gesture_update, 20 /* ms */, 30 /* Hz */);
+  ASSERT_FLOAT_EQ(10 + 3.3,
+                  static_cast<const WebGestureEvent*>(gesture_update.get())
+                      ->data.scroll_update.delta_y);
+  EXPECT_EQ(
+      WebInputEvent::GetStaticTimeStampForTests() +
+          base::Milliseconds(23.3 /* ms */),
+      static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
+
+  // Test kResamplingScrollEventsExperimentalLatencyVariable
+  InitLinearResamplingTest(true);
+  SendGestureScrollBegin();
+
+  // Send 1st GSU, no prediction available.
+  gesture_update = CreateGestureScrollUpdate(0, 10, 10 /* ms */);
+  HandleResampleScrollEvents(gesture_update, 10 /* ms */, 60 /* Hz */);
+  EXPECT_EQ(10, static_cast<const WebGestureEvent*>(gesture_update.get())
+                    ->data.scroll_update.delta_y);
+  EXPECT_EQ(
+      WebInputEvent::GetStaticTimeStampForTests() +
+          base::Milliseconds(10 /* ms */),
+      static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
+
+  // Prediction at 60Hz: uses experimental latency of 0.5 * 1/60 seconds.
+  // Remember linear resampling has its -5 built-in latency.
+  gesture_update = CreateGestureScrollUpdate(0, 10, 20 /* ms */);
+  HandleResampleScrollEvents(gesture_update, 20 /* ms */, 60 /* Hz */);
+  ASSERT_FLOAT_EQ(10 - 5 + 8.333,
+                  static_cast<const WebGestureEvent*>(gesture_update.get())
+                      ->data.scroll_update.delta_y);
+  EXPECT_EQ(
+      WebInputEvent::GetStaticTimeStampForTests() +
+          base::Milliseconds(10 + 10 - 5 + 8.333 /* ms */),
+      static_cast<const WebGestureEvent*>(gesture_update.get())->TimeStamp());
 }
 
 TEST_F(ScrollPredictorTest, ScrollPredictorNotChangeScrollDirection) {

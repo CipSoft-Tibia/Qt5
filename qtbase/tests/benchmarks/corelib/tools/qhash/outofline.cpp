@@ -1,38 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include "main.h"
+#include "tst_bench_qhash.h"
 
 QT_BEGIN_NAMESPACE
 
-uint qHash(const Qt4String &str)
+size_t qHash(const Qt4String &str)
 {
-    int n = str.length();
+    qsizetype n = str.size();
     const QChar *p = str.unicode();
     uint h = 0;
 
@@ -44,11 +19,11 @@ uint qHash(const Qt4String &str)
     return h;
 }
 
-uint qHash(const Qt50String &key, uint seed)
+size_t qHash(const Qt50String &key, size_t seed)
 {
     const QChar *p = key.unicode();
-    int len = key.size();
-    uint h = seed;
+    qsizetype len = key.size();
+    size_t h = seed;
     for (int i = 0; i < len; ++i)
         h = 31 * h + p[i].unicode();
     return h;
@@ -65,10 +40,10 @@ uint qHash(const Qt50String &key, uint seed)
 // Still, we can avoid writing the multiplication as "(h << 5) - h"
 // -- the compiler will turn it into a shift and an addition anyway
 // (for instance, gcc 4.4 does that even at -O0).
-uint qHash(const JavaString &str)
+size_t qHash(const JavaString &str)
 {
-    const unsigned short *p = (unsigned short *)str.constData();
-    const int len = str.size();
+    const auto *p = reinterpret_cast<const char16_t *>(str.constData());
+    const qsizetype len = str.size();
 
     uint h = 0;
 

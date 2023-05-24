@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,13 +19,6 @@ LogicalOffset PhysicalOffset::ConvertToLogical(
     PhysicalSize inner_size) const {
   return WritingModeConverter(writing_direction, outer_size)
       .ToLogical(*this, inner_size);
-}
-
-LogicalOffset PhysicalOffset::ConvertToLogical(WritingMode writing_mode,
-                                               TextDirection direction,
-                                               PhysicalSize outer_size,
-                                               PhysicalSize inner_size) const {
-  return ConvertToLogical({writing_mode, direction}, outer_size, inner_size);
 }
 
 String PhysicalOffset::ToString() const {

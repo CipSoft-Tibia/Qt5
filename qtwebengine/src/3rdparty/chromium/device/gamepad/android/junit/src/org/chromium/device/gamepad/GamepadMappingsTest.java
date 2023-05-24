@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -49,7 +49,7 @@ public class GamepadMappingsTest {
      * Set bits indicate that we don't expect the axis at mMappedAxes[index] to be mapped.
      */
     private BitSet mUnmappedAxes = new BitSet(CanonicalAxisIndex.COUNT);
-    private float[] mMappedButtons = new float[CanonicalButtonIndex.COUNT];
+    private float[] mMappedButtons = new float[CanonicalButtonIndex.COUNT + 2];
     private float[] mMappedAxes = new float[CanonicalAxisIndex.COUNT];
     private float[] mRawButtons = new float[GamepadDevice.MAX_RAW_BUTTON_VALUES];
     private float[] mRawAxes = new float[GamepadDevice.MAX_RAW_AXIS_VALUES];
@@ -371,9 +371,8 @@ public class GamepadMappingsTest {
                     MotionEvent.AXIS_RX, MotionEvent.AXIS_RY, MotionEvent.AXIS_RZ,
                     MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y};
         }
-        GamepadMappings mappings =
-                GamepadMappings.getMappings(GamepadMappings.PS_DUALSHOCK_4_PRODUCT_ID,
-                        GamepadMappings.PS_DUALSHOCK_4_VENDOR_ID, axes);
+        GamepadMappings mappings = GamepadMappings.getMappings(
+                GamepadMappings.SONY_VENDOR_ID, GamepadMappings.PS_DUALSHOCK_4_PRODUCT_ID, axes);
         mappings.mapToStandardGamepad(mMappedAxes, mMappedButtons, mRawAxes, mRawButtons);
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -435,9 +434,8 @@ public class GamepadMappingsTest {
         int[] axes = new int[] {MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_Z,
                 MotionEvent.AXIS_RZ, MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_RTRIGGER,
                 MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y};
-        GamepadMappings mappings =
-                GamepadMappings.getMappings(GamepadMappings.XBOX_ONE_S_2016_FIRMWARE_PRODUCT_ID,
-                        GamepadMappings.XBOX_ONE_S_2016_FIRMWARE_VENDOR_ID, axes);
+        GamepadMappings mappings = GamepadMappings.getMappings(GamepadMappings.MICROSOFT_VENDOR_ID,
+                GamepadMappings.XBOX_ONE_S_2016_FIRMWARE_PRODUCT_ID, axes);
         mappings.mapToStandardGamepad(mMappedAxes, mMappedButtons, mRawAxes, mRawButtons);
 
         Assert.assertEquals(mMappedButtons[CanonicalButtonIndex.PRIMARY],
@@ -489,7 +487,7 @@ public class GamepadMappingsTest {
                 MotionEvent.AXIS_RZ, MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_RTRIGGER,
                 MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y};
         GamepadMappings deviceIdMappings = GamepadMappings.getMappings(
-                XBOX_ONE_S_PRODUCT_ID, GamepadMappings.XBOX_ONE_S_2016_FIRMWARE_VENDOR_ID, axes);
+                GamepadMappings.MICROSOFT_VENDOR_ID, XBOX_ONE_S_PRODUCT_ID, axes);
         Assert.assertNull(deviceIdMappings);
 
         GamepadMappings deviceNameMappings = GamepadMappings.getMappings(XBOX_WIRELESS_DEVICE_NAME);
@@ -507,9 +505,8 @@ public class GamepadMappingsTest {
                 MotionEvent.AXIS_HAT_X,
                 MotionEvent.AXIS_HAT_Y,
         };
-        GamepadMappings mappings =
-                GamepadMappings.getMappings(GamepadMappings.SNAKEBYTE_IDROIDCON_PRODUCT_ID,
-                        GamepadMappings.BROADCOM_VENDOR_ID, axes);
+        GamepadMappings mappings = GamepadMappings.getMappings(GamepadMappings.BROADCOM_VENDOR_ID,
+                GamepadMappings.SNAKEBYTE_IDROIDCON_PRODUCT_ID, axes);
         mappings.mapToStandardGamepad(mMappedAxes, mMappedButtons, mRawAxes, mRawButtons);
 
         expectNoMetaButton(mappings);
@@ -540,9 +537,8 @@ public class GamepadMappingsTest {
                 MotionEvent.AXIS_HAT_X,
                 MotionEvent.AXIS_HAT_Y,
         };
-        GamepadMappings mappings =
-                GamepadMappings.getMappings(GamepadMappings.SNAKEBYTE_IDROIDCON_PRODUCT_ID,
-                        GamepadMappings.BROADCOM_VENDOR_ID, axes);
+        GamepadMappings mappings = GamepadMappings.getMappings(GamepadMappings.BROADCOM_VENDOR_ID,
+                GamepadMappings.SNAKEBYTE_IDROIDCON_PRODUCT_ID, axes);
         mappings.mapToStandardGamepad(mMappedAxes, mMappedButtons, mRawAxes, mRawButtons);
 
         expectNoMetaButton(mappings);
@@ -560,6 +556,43 @@ public class GamepadMappingsTest {
                 mMappedButtons[CanonicalButtonIndex.LEFT_TRIGGER], 0.0, ERROR_TOLERANCE);
         Assert.assertEquals(mMappedButtons[CanonicalButtonIndex.RIGHT_TRIGGER],
                 -mRawAxes[MotionEvent.AXIS_Z], ERROR_TOLERANCE);
+
+        assertMapping(mappings);
+    }
+
+    @Test
+    @Feature({"Gamepad"})
+    public void testStadiaControllerMappings() {
+        int[] axes = {
+                MotionEvent.AXIS_X,
+                MotionEvent.AXIS_Y,
+                MotionEvent.AXIS_Z,
+                MotionEvent.AXIS_RZ,
+                MotionEvent.AXIS_HAT_X,
+                MotionEvent.AXIS_HAT_Y,
+                MotionEvent.AXIS_GAS,
+                MotionEvent.AXIS_BRAKE,
+        };
+        GamepadMappings mappings = GamepadMappings.getMappings(GamepadMappings.GOOGLE_VENDOR_ID,
+                GamepadMappings.STADIA_CONTROLLER_PRODUCT_ID, axes);
+        mappings.mapToStandardGamepad(mMappedAxes, mMappedButtons, mRawAxes, mRawButtons);
+
+        assertMappedCommonXYABButtons();
+        assertMappedTriggerButtonsToTopShoulder();
+        assertMappedPedalAxesToBottomShoulder();
+        assertMappedCommonStartSelectMetaButtons();
+        assertMappedCommonThumbstickButtons();
+        assertMappedHatAxisToDpadButtons();
+        assertMappedXYAxes();
+        assertMappedZAndRZAxesToRightStick();
+
+        // The Assistant and Capture buttons should be mapped after the last
+        // Standard Gamepad button index.
+        Assert.assertEquals(mappings.getButtonsLength(), CanonicalButtonIndex.COUNT + 2);
+        Assert.assertEquals(mMappedButtons[CanonicalButtonIndex.COUNT],
+                mRawButtons[KeyEvent.KEYCODE_BUTTON_1], ERROR_TOLERANCE);
+        Assert.assertEquals(mMappedButtons[CanonicalButtonIndex.COUNT + 1],
+                mRawButtons[KeyEvent.KEYCODE_BUTTON_2], ERROR_TOLERANCE);
 
         assertMapping(mappings);
     }

@@ -1,47 +1,53 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/accessibility/views_ax_tree_manager.h"
 
-#include <string>
-
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/notreached.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
+#include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_enums.mojom.h"
-#include "ui/accessibility/ax_tree_manager_map.h"
 #include "ui/accessibility/ax_tree_source_checker.h"
 #include "ui/accessibility/ax_tree_update.h"
 #include "ui/views/accessibility/ax_aura_obj_wrapper.h"
+#include "ui/views/accessibility/widget_ax_tree_id_map.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget.h"
 
 namespace views {
 
 ViewsAXTreeManager::ViewsAXTreeManager(Widget* widget)
-    : widget_(widget),
+    : ui::AXTreeManager(std::make_unique<ui::AXTree>()),
+      widget_(widget),
       tree_source_(cache_.GetOrCreate(widget),
                    ui::AXTreeID::CreateNewAXTreeID(),
                    &cache_),
-      tree_serializer_(&tree_source_),
-      event_generator_(&ax_tree_) {
+      tree_serializer_(&tree_source_) {
   DCHECK(widget);
-  ui::AXTreeManagerMap::GetInstance().AddTreeManager(GetTreeID(), this);
-  views_event_observer_.Add(AXEventManager::Get());
-  View* root_view = widget->GetRootView();
-  if (root_view)
-    root_view->NotifyAccessibilityEvent(ax::mojom::Event::kLoadComplete, true);
+  views::WidgetAXTreeIDMap::GetInstance().AddWidget(tree_source_.tree_id(),
+                                                    widget);
+  views_event_observer_.Observe(AXEventManager::Get());
+  widget_observer_.Observe(widget);
+
+  // Load complete can't be fired synchronously here. The act of firing the
+  // event will call |View::GetViewAccessibility|, which (if fired
+  // synchronously) will create *another* |ViewsAXTreeManager| for the same
+  // widget, since the wrapper that created this |ViewsAXTreeManager| hasn't
+  // been added to the cache yet.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&ViewsAXTreeManager::FireLoadComplete,
+                                weak_factory_.GetWeakPtr()));
 }
 
 ViewsAXTreeManager::~ViewsAXTreeManager() {
-  event_generator_.ReleaseTree();
-  views_event_observer_.RemoveAll();
-  ui::AXTreeManagerMap::GetInstance().RemoveTreeManager(GetTreeID());
+  views_event_observer_.Reset();
+  widget_observer_.Reset();
 }
 
 void ViewsAXTreeManager::SetGeneratedEventCallbackForTesting(
@@ -53,21 +59,12 @@ void ViewsAXTreeManager::UnsetGeneratedEventCallbackForTesting() {
   generated_event_callback_for_testing_.Reset();
 }
 
-ui::AXNode* ViewsAXTreeManager::GetNodeFromTree(
-    const ui::AXTreeID tree_id,
-    const ui::AXNode::AXID node_id) const {
-  const ui::AXTreeManager* manager =
-      ui::AXTreeManagerMap::GetInstance().GetManager(tree_id);
-  return manager ? manager->GetNodeFromTree(node_id) : nullptr;
-}
+ui::AXNode* ViewsAXTreeManager::GetNode(
+    const ui::AXNodeID node_id) const {
+  if (!widget_ || !widget_->GetRootView() || !ax_tree_)
+    return nullptr;
 
-ui::AXNode* ViewsAXTreeManager::GetNodeFromTree(
-    const ui::AXNode::AXID node_id) const {
-  return ax_tree_.GetFromId(node_id);
-}
-
-ui::AXTreeID ViewsAXTreeManager::GetTreeID() const {
-  return ax_tree_.GetAXTreeID();
+  return ax_tree_->GetFromId(node_id);
 }
 
 ui::AXTreeID ViewsAXTreeManager::GetParentTreeID() const {
@@ -76,11 +73,7 @@ ui::AXTreeID ViewsAXTreeManager::GetParentTreeID() const {
   return ui::AXTreeIDUnknown();
 }
 
-ui::AXNode* ViewsAXTreeManager::GetRootAsAXNode() const {
-  return ax_tree_.root();
-}
-
-ui::AXNode* ViewsAXTreeManager::GetParentNodeFromParentTreeAsAXNode() const {
+ui::AXNode* ViewsAXTreeManager::GetParentNodeFromParentTree() const {
   // TODO(nektar): Implement stiching of AXTrees, e.g. a dialog to the main
   // window.
   return nullptr;
@@ -96,16 +89,31 @@ void ViewsAXTreeManager::OnViewEvent(View* view, ax::mojom::Event event) {
   if (waiting_to_serialize_)
     return;
   waiting_to_serialize_ = true;
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&ViewsAXTreeManager::SerializeTreeUpdates,
                                 weak_factory_.GetWeakPtr()));
 }
 
+void ViewsAXTreeManager::OnWidgetDestroyed(Widget* widget) {
+  // If a widget becomes disconnected from its root view, we shouldn't keep it
+  // in the map or attempt any operations on it.
+  if (widget->is_top_level() || !widget->GetRootView())
+    views::WidgetAXTreeIDMap::GetInstance().RemoveWidget(widget);
+
+  widget_ = nullptr;
+}
+
 void ViewsAXTreeManager::PerformAction(const ui::AXActionData& data) {
+  if (!widget_ || !widget_->GetRootView())
+    return;
+
   tree_source_.HandleAccessibleAction(data);
 }
 
 void ViewsAXTreeManager::SerializeTreeUpdates() {
+  if (!widget_ || !widget_->GetRootView())
+    return;
+
   // Better to set this flag to false early in case this method, or any method
   // it calls, causes an event to get fired.
   waiting_to_serialize_ = false;
@@ -116,19 +124,19 @@ void ViewsAXTreeManager::SerializeTreeUpdates() {
     modified_nodes_.insert(focused_wrapper->GetUniqueId());
 
   std::vector<ui::AXTreeUpdate> updates;
-  for (const ui::AXNode::AXID node_id : modified_nodes_) {
+  for (const ui::AXNodeID node_id : modified_nodes_) {
     AXAuraObjWrapper* wrapper = cache_.Get(node_id);
     if (!wrapper)
       continue;
 
     ui::AXTreeUpdate update;
+    // TODO(pbos): Consider rewriting this as a CHECK now that this is fatally
+    // aborting.
     if (!tree_serializer_.SerializeChanges(wrapper, &update)) {
       std::string error;
-      ui::AXTreeSourceChecker<AXAuraObjWrapper*, ui::AXNodeData, ui::AXTreeData>
-          checker(&tree_source_);
+      ui::AXTreeSourceChecker<AXAuraObjWrapper*> checker(&tree_source_);
       checker.CheckAndGetErrorString(&error);
-      NOTREACHED() << error << '\n' << update.ToString();
-      return;
+      NOTREACHED_NORETURN() << error << '\n' << update.ToString();
     }
 
     updates.push_back(update);
@@ -139,27 +147,35 @@ void ViewsAXTreeManager::SerializeTreeUpdates() {
 
 void ViewsAXTreeManager::UnserializeTreeUpdates(
     const std::vector<ui::AXTreeUpdate>& updates) {
+  if (!widget_ || !widget_->GetRootView() || !ax_tree_)
+    return;
+
   for (const ui::AXTreeUpdate& update : updates) {
-    if (!ax_tree_.Unserialize(update)) {
-      NOTREACHED() << ax_tree_.error();
-      return;
-    }
+    CHECK(ax_tree_->Unserialize(update)) << ax_tree_->error();
   }
 
   // Unserializing the updates into our AXTree should have prompted our
   // AXEventGenerator to generate events based on the updates.
   for (const ui::AXEventGenerator::TargetedEvent& targeted_event :
        event_generator_) {
-    FireGeneratedEvent(targeted_event.event_params.event, *targeted_event.node);
+    if (ui::AXNode* node = ax_tree_->GetFromId(targeted_event.node_id))
+      FireGeneratedEvent(targeted_event.event_params.event, node);
   }
   event_generator_.ClearEvents();
 }
 
-void ViewsAXTreeManager::FireGeneratedEvent(
-    const ui::AXEventGenerator::Event& event,
-    const ui::AXNode& node) const {
+void ViewsAXTreeManager::FireLoadComplete() {
+  DCHECK(widget_.get());
+
+  View* root_view = widget_->GetRootView();
+  if (root_view)
+    root_view->NotifyAccessibilityEvent(ax::mojom::Event::kLoadComplete, true);
+}
+
+void ViewsAXTreeManager::FireGeneratedEvent(ui::AXEventGenerator::Event event,
+                                            const ui::AXNode* node) {
   if (!generated_event_callback_for_testing_.is_null())
-    generated_event_callback_for_testing_.Run(widget_, event, node.id());
+    generated_event_callback_for_testing_.Run(widget_.get(), event, node->id());
   // TODO(nektar): Implement this other than "for testing".
 }
 

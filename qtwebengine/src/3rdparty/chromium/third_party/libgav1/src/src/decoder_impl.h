@@ -32,6 +32,7 @@
 #include "src/gav1/decoder_settings.h"
 #include "src/gav1/status_code.h"
 #include "src/obu_parser.h"
+#include "src/quantizer.h"
 #include "src/residual_buffer_pool.h"
 #include "src/symbol_decoder_context.h"
 #include "src/tile.h"
@@ -140,8 +141,9 @@ class DecoderImpl : public Allocable {
                           int64_t user_private_data, void* buffer_private_data);
   StatusCode DequeueFrame(const DecoderBuffer** out_ptr);
   static constexpr int GetMaxBitdepth() {
-    static_assert(LIBGAV1_MAX_BITDEPTH == 8 || LIBGAV1_MAX_BITDEPTH == 10,
-                  "LIBGAV1_MAX_BITDEPTH must be 8 or 10.");
+    static_assert(LIBGAV1_MAX_BITDEPTH == 8 || LIBGAV1_MAX_BITDEPTH == 10 ||
+                      LIBGAV1_MAX_BITDEPTH == 12,
+                  "LIBGAV1_MAX_BITDEPTH must be 8, 10 or 12.");
     return LIBGAV1_MAX_BITDEPTH;
   }
 
@@ -210,6 +212,14 @@ class DecoderImpl : public Allocable {
     return failure_status_ != kStatusOk;
   }
 
+  // Initializes the |quantizer_matrix_| if necessary and sets
+  // |quantizer_matrix_initialized_| to true.
+  bool MaybeInitializeQuantizerMatrix(const ObuFrameHeader& frame_header);
+
+  // Allocates and generates the |wedge_masks_| if necessary and sets
+  // |wedge_masks_initialized_| to true.
+  bool MaybeInitializeWedgeMasks(FrameType frame_type);
+
   // Elements in this queue cannot be moved with std::move since the
   // |EncodedFrame.temporal_unit| stores a pointer to elements in this queue.
   Queue<TemporalUnit> temporal_units_;
@@ -228,6 +238,9 @@ class DecoderImpl : public Allocable {
 
   BufferPool buffer_pool_;
   WedgeMaskArray wedge_masks_;
+  bool wedge_masks_initialized_ = false;
+  QuantizerMatrix quantizer_matrix_;
+  bool quantizer_matrix_initialized_ = false;
   FrameScratchBufferPool frame_scratch_buffer_pool_;
 
   // Used to synchronize the accesses into |temporal_units_| in order to update

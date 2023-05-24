@@ -1,3 +1,6 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
 #version 440
 
 #if defined(TABLE)
@@ -6,7 +9,7 @@ layout(location = 0) in vec2 tt;
 
 #if defined(SPRITE)
 layout(location = 1) in vec4 fTexS;
-#elif defined(DEFORM)
+#elif !defined(POINT)
 layout(location = 1) in vec2 fTex;
 #endif
 
@@ -23,6 +26,7 @@ layout(std140, binding = 0) uniform buf {
     float opacity;
     float entry;
     float timestamp;
+    float dpr;
     float sizetable[64];
     float opacitytable[64];
 } ubuf;
@@ -45,11 +49,11 @@ void main()
               * fColor
               * texture(colortable, tt)
               * ubuf.opacity;
-#elif defined(DEFORM)
+#elif !defined(POINT)
     fragColor = texture(_qt_texture, fTex) * fColor * ubuf.opacity;
 #elif defined(COLOR)
     fragColor = texture(_qt_texture, gl_PointCoord) * fColor * ubuf.opacity;
-#else
+#else // simple point
     fragColor = texture(_qt_texture, gl_PointCoord) * fFade * ubuf.opacity;
 #endif
 }

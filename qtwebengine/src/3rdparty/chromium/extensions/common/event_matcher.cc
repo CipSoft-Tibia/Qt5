@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/callback.h"
-#include "extensions/common/event_filtering_info.h"
+#include "base/functional/callback.h"
+#include "extensions/common/mojom/event_dispatcher.mojom.h"
 
 namespace {
 const char kUrlFiltersKey[] = "url";
@@ -18,7 +18,7 @@ namespace extensions {
 
 const char kEventFilterServiceTypeKey[] = "serviceType";
 
-EventMatcher::EventMatcher(std::unique_ptr<base::DictionaryValue> filter,
+EventMatcher::EventMatcher(std::unique_ptr<base::Value::Dict> filter,
                            int routing_id)
     : filter_(std::move(filter)), routing_id_(routing_id) {}
 
@@ -26,9 +26,9 @@ EventMatcher::~EventMatcher() {
 }
 
 bool EventMatcher::MatchNonURLCriteria(
-    const EventFilteringInfo& event_info) const {
-  if (event_info.instance_id) {
-    return *event_info.instance_id == GetInstanceID();
+    const mojom::EventFilteringInfo& event_info) const {
+  if (event_info.has_instance_id) {
+    return event_info.instance_id == GetInstanceID();
   }
 
   if (event_info.window_type) {
@@ -43,12 +43,12 @@ bool EventMatcher::MatchNonURLCriteria(
     return false;
   }
 
-  if (event_info.window_exposed_by_default) {
+  if (event_info.has_window_exposed_by_default) {
     // An event with a |window_exposed_by_default| set is only
     // relevant to the listener if no window type filter is set.
     if (HasWindowTypes())
       return false;
-    return *event_info.window_exposed_by_default;
+    return event_info.window_exposed_by_default;
   }
 
   const std::string& service_type_filter = GetServiceTypeFilter();
@@ -58,18 +58,17 @@ bool EventMatcher::MatchNonURLCriteria(
 }
 
 int EventMatcher::GetURLFilterCount() const {
-  base::ListValue* url_filters = nullptr;
-  if (filter_->GetList(kUrlFiltersKey, &url_filters))
-    return url_filters->GetSize();
+  base::Value::List* url_filters = filter_->FindList(kUrlFiltersKey);
+  if (url_filters)
+    return url_filters->size();
   return 0;
 }
 
-bool EventMatcher::GetURLFilter(int i, base::DictionaryValue** url_filter_out) {
-  base::ListValue* url_filters = nullptr;
-  if (filter_->GetList(kUrlFiltersKey, &url_filters)) {
-    return url_filters->GetDictionary(i, url_filter_out);
-  }
-  return false;
+const base::Value::Dict* EventMatcher::GetURLFilter(int i) {
+  base::Value::List* url_filters = filter_->FindList(kUrlFiltersKey);
+  if (url_filters)
+    return (*url_filters)[i].GetIfDict();
+  return nullptr;
 }
 
 bool EventMatcher::HasURLFilters() const {
@@ -78,27 +77,33 @@ bool EventMatcher::HasURLFilters() const {
 
 std::string EventMatcher::GetServiceTypeFilter() const {
   std::string service_type_filter;
-  filter_->GetStringASCII(kEventFilterServiceTypeKey, &service_type_filter);
+  if (const std::string* ptr =
+          filter_->FindString(kEventFilterServiceTypeKey)) {
+    if (base::IsStringASCII(*ptr))
+      service_type_filter = *ptr;
+  }
   return service_type_filter;
 }
 
 int EventMatcher::GetInstanceID() const {
-  int instance_id = 0;
-  filter_->GetInteger("instanceId", &instance_id);
-  return instance_id;
+  return filter_->FindInt("instanceId").value_or(0);
 }
 
 int EventMatcher::GetWindowTypeCount() const {
-  base::ListValue* window_type_filters = nullptr;
-  if (filter_->GetList(kWindowTypesKey, &window_type_filters))
-    return window_type_filters->GetSize();
+  base::Value::List* window_type_filters = filter_->FindList(kWindowTypesKey);
+  if (window_type_filters)
+    return window_type_filters->size();
   return 0;
 }
 
 bool EventMatcher::GetWindowType(int i, std::string* window_type_out) const {
-  base::ListValue* window_types = nullptr;
-  if (filter_->GetList(kWindowTypesKey, &window_types)) {
-    return window_types->GetString(i, window_type_out);
+  base::Value::List* window_types = filter_->FindList(kWindowTypesKey);
+  if (window_types) {
+    if (i >= 0 && static_cast<size_t>(i) < window_types->size() &&
+        (*window_types)[i].is_string()) {
+      *window_type_out = (*window_types)[i].GetString();
+      return true;
+    }
   }
   return false;
 }

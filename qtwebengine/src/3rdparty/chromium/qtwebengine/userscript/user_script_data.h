@@ -41,7 +41,7 @@
 #define USER_SCRIPT_DATA_H
 
 #include <string>
-#include "ipc/ipc_message_utils.h"
+#include <vector>
 #include "url/gurl.h"
 
 namespace QtWebEngineCore {

@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 
 #include "qcommandlinkbutton.h"
@@ -54,12 +29,13 @@ private slots:
 
     void getSetCheck();
     void pressed();
+#if QT_CONFIG(shortcut)
     void setAccel();
+#endif
     void isCheckable();
     void setDown();
     void popupCrash();
     void isChecked();
-    void animateClick();
     void toggle();
     void clicked();
     void toggled();
@@ -136,8 +112,10 @@ void tst_QCommandLinkButton::init()
     testWidget->setText("Test");
     testWidget->setDescription("Description text.");
     testWidget->setEnabled( true );
+#if QT_CONFIG(shortcut)
     QKeySequence seq;
     testWidget->setShortcut( seq );
+#endif
 
     resetCounters();
 }
@@ -345,6 +323,8 @@ void tst_QCommandLinkButton::toggled()
     QVERIFY( click_count == 1 );
 }
 
+#if QT_CONFIG(shortcut)
+
 /*
     If we press an accelerator key we ONLY get a pressed signal and
     NOT a released or clicked signal.
@@ -353,7 +333,7 @@ void tst_QCommandLinkButton::toggled()
 void tst_QCommandLinkButton::setAccel()
 {
     testWidget->setText("&AccelTest");
-    QKeySequence seq( Qt::ALT + Qt::Key_A );
+    QKeySequence seq( Qt::ALT | Qt::Key_A );
     testWidget->setShortcut( seq );
 
     // The shortcut will not be activated unless the button is in a active
@@ -373,19 +353,7 @@ void tst_QCommandLinkButton::setAccel()
     QTest::qWait(200);
 }
 
-void tst_QCommandLinkButton::animateClick()
-{
-    QVERIFY( !testWidget->isDown() );
-    testWidget->animateClick();
-    QVERIFY( testWidget->isDown() );
-    QTest::qWait( 200 );
-    QVERIFY( !testWidget->isDown() );
-
-    QVERIFY( click_count == 1 );
-    QVERIFY( press_count == 1 );
-    QVERIFY( release_count == 1 );
-    QVERIFY( toggle_count == 0 );
-}
+#endif // QT_CONFIG(shortcut)
 
 void tst_QCommandLinkButton::clicked()
 {

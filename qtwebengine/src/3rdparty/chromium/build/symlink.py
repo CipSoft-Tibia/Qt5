@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,15 +7,14 @@ description = """
 Make a symlink and optionally touch a file (to handle dependencies).
 """
 usage = "%prog [options] source[ source ...] linkname"
-epilog = """
-A sym link to source is created at linkname. If multiple sources are specfied,
+epilog = """\
+A symlink to source is created at linkname. If multiple sources are specified,
 then linkname is assumed to be a directory, and will contain all the links to
 the sources (basenames identical to their source).
 
 On Windows, this will use hard links (mklink /H) to avoid requiring elevation.
 This means that if the original is deleted and replaced, the link will still
-have the old contents. This is not expected to interfere with the Chromium
-build.
+have the old contents.
 """
 
 import errno
@@ -84,7 +83,8 @@ def Main(argv):
 
 
   if options.touch:
-    with open(options.touch, 'w') as f:
+    os.makedirs(os.path.dirname(options.touch), exist_ok=True)
+    with open(options.touch, 'w'):
       pass
 
 

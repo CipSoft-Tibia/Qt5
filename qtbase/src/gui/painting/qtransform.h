@@ -1,46 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QTRANSFORM_H
 #define QTRANSFORM_H
 
 #include <QtGui/qtguiglobal.h>
-#include <QtGui/qmatrix.h>
 #include <QtGui/qpolygon.h>
 #include <QtGui/qregion.h>
 #include <QtGui/qwindowdefs.h>
@@ -65,29 +28,27 @@ public:
         TxProject   = 0x10
     };
 
-    inline explicit QTransform(Qt::Initialization) : affine(Qt::Uninitialized) {}
-    QTransform();
+    inline explicit QTransform(Qt::Initialization) {}
+    inline QTransform()
+        : m_matrix{ {1, 0, 0}, {0, 1, 0}, {0, 0, 1} }
+        , m_type(TxNone)
+        , m_dirty(TxNone) {}
     QTransform(qreal h11, qreal h12, qreal h13,
                qreal h21, qreal h22, qreal h23,
-               qreal h31, qreal h32, qreal h33 = 1.0);
+               qreal h31, qreal h32, qreal h33)
+        : m_matrix{ {h11, h12, h13}, {h21, h22, h23}, {h31, h32, h33} }
+        , m_type(TxNone)
+        , m_dirty(TxProject) {}
     QTransform(qreal h11, qreal h12, qreal h21,
-               qreal h22, qreal dx, qreal dy);
-#if QT_DEPRECATED_SINCE(5, 15)
-    explicit QTransform(const QMatrix &mtx);
-#endif // QT_DEPRECATED_SINCE(5, 15)
+               qreal h22, qreal dx, qreal dy)
+        : m_matrix{ {h11, h12, 0}, {h21, h22, 0}, {dx, dy, 1} }
+        , m_type(TxNone)
+        , m_dirty(TxShear) {}
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    // ### Qt 6: remove; the compiler-generated ones are fine!
-    QTransform &operator=(QTransform &&other) noexcept // = default
-    { memcpy(static_cast<void *>(this), static_cast<void *>(&other), sizeof(QTransform)); return *this; }
-    QTransform &operator=(const QTransform &) noexcept; // = default
-    QTransform(QTransform &&other) noexcept // = default
-        : affine(Qt::Uninitialized)
-    { memcpy(static_cast<void *>(this), static_cast<void *>(&other), sizeof(QTransform)); }
-    QTransform(const QTransform &other) noexcept // = default
-        : affine(Qt::Uninitialized)
-    { memcpy(static_cast<void *>(this), static_cast<const void *>(&other), sizeof(QTransform)); }
-#endif
+    QTransform &operator=(QTransform &&other) noexcept = default;
+    QTransform &operator=(const QTransform &) noexcept = default;
+    QTransform(QTransform &&other) noexcept = default;
+    QTransform(const QTransform &other) noexcept = default;
 
     bool isAffine() const;
     bool isIdentity() const;
@@ -99,10 +60,6 @@ public:
     TransformationType type() const;
 
     inline qreal determinant() const;
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use determinant() instead")
-    qreal det() const;
-#endif
 
     qreal m11() const;
     qreal m12() const;
@@ -120,15 +77,24 @@ public:
                    qreal m21, qreal m22, qreal m23,
                    qreal m31, qreal m32, qreal m33);
 
-    Q_REQUIRED_RESULT QTransform inverted(bool *invertible = nullptr) const;
-    Q_REQUIRED_RESULT QTransform adjoint() const;
-    Q_REQUIRED_RESULT QTransform transposed() const;
+    [[nodiscard]] QTransform inverted(bool *invertible = nullptr) const;
+    [[nodiscard]] QTransform adjoint() const;
+    [[nodiscard]] QTransform transposed() const;
 
     QTransform &translate(qreal dx, qreal dy);
     QTransform &scale(qreal sx, qreal sy);
     QTransform &shear(qreal sh, qreal sv);
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    QTransform &rotate(qreal a, Qt::Axis axis, qreal distanceToPlane);
+    // ### Qt7: Remove
     QTransform &rotate(qreal a, Qt::Axis axis = Qt::ZAxis);
+    QTransform &rotateRadians(qreal a, Qt::Axis axis, qreal distanceToPlane);
+    // ### Qt7: Remove
     QTransform &rotateRadians(qreal a, Qt::Axis axis = Qt::ZAxis);
+#else
+    QTransform &rotate(qreal a, Qt::Axis axis = Qt::ZAxis, qreal distanceToPlane = 1024.0f);
+    QTransform &rotateRadians(qreal a, Qt::Axis axis = Qt::ZAxis, qreal distanceToPlane = 1024.0f);
+#endif
 
     static bool squareToQuad(const QPolygonF &square, QTransform &result);
     static bool quadToSquare(const QPolygonF &quad, QTransform &result);
@@ -159,10 +125,6 @@ public:
     void map(int x, int y, int *tx, int *ty) const;
     void map(qreal x, qreal y, qreal *tx, qreal *ty) const;
 
-#if QT_DEPRECATED_SINCE(5, 15)
-    const QMatrix &toAffine() const;
-#endif // QT_DEPRECATED_SINCE(5, 15)
-
     QTransform &operator*=(qreal div);
     QTransform &operator/=(qreal div);
     QTransform &operator+=(qreal div);
@@ -172,44 +134,25 @@ public:
     static QTransform fromScale(qreal dx, qreal dy);
 
 private:
-    inline QTransform(qreal h11, qreal h12, qreal h13,
-                      qreal h21, qreal h22, qreal h23,
-                      qreal h31, qreal h32, qreal h33, bool)
-        : affine(h11, h12, h21, h22, h31, h32, true)
-        , m_13(h13), m_23(h23), m_33(h33)
-        , m_type(TxNone)
-        , m_dirty(TxProject)
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        , d(nullptr)
-#endif
-    {
-    }
-    inline QTransform(bool)
-        : affine(true)
-        , m_13(0), m_23(0), m_33(1)
-        , m_type(TxNone)
-        , m_dirty(TxNone)
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-        , d(nullptr)
-#endif
-    {
-    }
+    struct Affine {
+             qreal (& m_matrix)[3][3];
+        };
+
+public:
+    auto asAffineMatrix() { return Affine { m_matrix }; }
+    friend Q_GUI_EXPORT QDataStream &operator>>(QDataStream &s, Affine &m);
+    friend Q_GUI_EXPORT QDataStream &operator<<(QDataStream &s, const Affine &m);
+
+private:
     inline TransformationType inline_type() const;
-    QMatrix affine;
-    qreal   m_13;
-    qreal   m_23;
-    qreal   m_33;
+    qreal m_matrix[3][3];
 
     mutable uint m_type : 5;
     mutable uint m_dirty : 5;
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    class Private;
-    Private *d;
-#endif
 };
-Q_DECLARE_TYPEINFO(QTransform, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTransform, Q_RELOCATABLE_TYPE);
 
-Q_GUI_EXPORT Q_DECL_CONST_FUNCTION uint qHash(const QTransform &key, uint seed = 0) noexcept;
+Q_GUI_EXPORT Q_DECL_CONST_FUNCTION size_t qHash(const QTransform &key, size_t seed = 0) noexcept;
 
 /******* inlines *****/
 inline QTransform::TransformationType QTransform::inline_type() const
@@ -249,78 +192,71 @@ inline bool QTransform::isTranslating() const
 
 inline qreal QTransform::determinant() const
 {
-    return affine._m11*(m_33*affine._m22-affine._dy*m_23) -
-        affine._m21*(m_33*affine._m12-affine._dy*m_13)+affine._dx*(m_23*affine._m12-affine._m22*m_13);
+    return m_matrix[0][0] * (m_matrix[2][2] * m_matrix[1][1] - m_matrix[2][1] * m_matrix[1][2]) -
+           m_matrix[1][0] * (m_matrix[2][2] * m_matrix[0][1] - m_matrix[2][1] * m_matrix[0][2]) +
+           m_matrix[2][0] * (m_matrix[1][2] * m_matrix[0][1] - m_matrix[1][1] * m_matrix[0][2]);
 }
-#if QT_DEPRECATED_SINCE(5, 13)
-inline qreal QTransform::det() const
-{
-    return determinant();
-}
-#endif
 inline qreal QTransform::m11() const
 {
-    return affine._m11;
+    return m_matrix[0][0];
 }
 inline qreal QTransform::m12() const
 {
-    return affine._m12;
+    return m_matrix[0][1];
 }
 inline qreal QTransform::m13() const
 {
-    return m_13;
+    return m_matrix[0][2];
 }
 inline qreal QTransform::m21() const
 {
-    return affine._m21;
+    return m_matrix[1][0];
 }
 inline qreal QTransform::m22() const
 {
-    return affine._m22;
+    return m_matrix[1][1];
 }
 inline qreal QTransform::m23() const
 {
-    return m_23;
+    return m_matrix[1][2];
 }
 inline qreal QTransform::m31() const
 {
-    return affine._dx;
+    return m_matrix[2][0];
 }
 inline qreal QTransform::m32() const
 {
-    return affine._dy;
+    return m_matrix[2][1];
 }
 inline qreal QTransform::m33() const
 {
-    return m_33;
+    return m_matrix[2][2];
 }
 inline qreal QTransform::dx() const
 {
-    return affine._dx;
+    return m_matrix[2][0];
 }
 inline qreal QTransform::dy() const
 {
-    return affine._dy;
+    return m_matrix[2][1];
 }
 
 QT_WARNING_PUSH
-QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
-QT_WARNING_DISABLE_GCC("-Wfloat-equal")
-QT_WARNING_DISABLE_INTEL(1572)
+QT_WARNING_DISABLE_FLOAT_COMPARE
 
 inline QTransform &QTransform::operator*=(qreal num)
 {
     if (num == 1.)
         return *this;
-    affine._m11 *= num;
-    affine._m12 *= num;
-    m_13        *= num;
-    affine._m21 *= num;
-    affine._m22 *= num;
-    m_23        *= num;
-    affine._dx  *= num;
-    affine._dy  *= num;
-    m_33        *= num;
+    m_matrix[0][0] *= num;
+    m_matrix[0][1] *= num;
+    m_matrix[0][2] *= num;
+    m_matrix[1][0] *= num;
+    m_matrix[1][1] *= num;
+    m_matrix[1][2] *= num;
+    m_matrix[2][0] *= num;
+    m_matrix[2][1] *= num;
+    m_matrix[2][2] *= num;
     if (m_dirty < TxScale)
         m_dirty = TxScale;
     return *this;
@@ -336,15 +272,15 @@ inline QTransform &QTransform::operator+=(qreal num)
 {
     if (num == 0)
         return *this;
-    affine._m11 += num;
-    affine._m12 += num;
-    m_13        += num;
-    affine._m21 += num;
-    affine._m22 += num;
-    m_23        += num;
-    affine._dx  += num;
-    affine._dy  += num;
-    m_33        += num;
+    m_matrix[0][0] += num;
+    m_matrix[0][1] += num;
+    m_matrix[0][2] += num;
+    m_matrix[1][0] += num;
+    m_matrix[1][1] += num;
+    m_matrix[1][2] += num;
+    m_matrix[2][0] += num;
+    m_matrix[2][1] += num;
+    m_matrix[2][2] += num;
     m_dirty     = TxProject;
     return *this;
 }
@@ -352,15 +288,15 @@ inline QTransform &QTransform::operator-=(qreal num)
 {
     if (num == 0)
         return *this;
-    affine._m11 -= num;
-    affine._m12 -= num;
-    m_13        -= num;
-    affine._m21 -= num;
-    affine._m22 -= num;
-    m_23        -= num;
-    affine._dx  -= num;
-    affine._dy  -= num;
-    m_33        -= num;
+    m_matrix[0][0] -= num;
+    m_matrix[0][1] -= num;
+    m_matrix[0][2] -= num;
+    m_matrix[1][0] -= num;
+    m_matrix[1][1] -= num;
+    m_matrix[1][2] -= num;
+    m_matrix[2][0] -= num;
+    m_matrix[2][1] -= num;
+    m_matrix[2][2] -= num;
     m_dirty     = TxProject;
     return *this;
 }

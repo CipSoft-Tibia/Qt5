@@ -26,137 +26,154 @@
 #include "third_party/blink/renderer/core/css/css_image_set_value.h"
 
 #include <algorithm>
+
 #include "third_party/blink/public/common/loader/referrer_utils.h"
+#include "third_party/blink/renderer/core/css/css_gradient_value.h"
 #include "third_party/blink/renderer/core/css/css_image_value.h"
+#include "third_party/blink/renderer/core/css/css_numeric_literal_value.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/loader/resource/image_resource_content.h"
-#include "third_party/blink/renderer/core/style/style_fetched_image_set.h"
+#include "third_party/blink/renderer/core/style/style_generated_image.h"
+#include "third_party/blink/renderer/core/style/style_image_set.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_initiator_type_names.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_parameters.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
+#include "third_party/blink/renderer/platform/weborigin/referrer.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
 
-CSSImageSetValue::CSSImageSetValue(CSSParserMode parser_mode)
-    : CSSValueList(kImageSetClass, kCommaSeparator),
-      cached_scale_factor_(1),
-      parser_mode_(parser_mode) {}
+CSSImageSetValue::CSSImageSetValue()
+    : CSSValueList(kImageSetClass, kCommaSeparator) {}
 
 CSSImageSetValue::~CSSImageSetValue() = default;
 
-void CSSImageSetValue::FillImageSet() {
-  wtf_size_t length = this->length();
-  wtf_size_t i = 0;
-  while (i < length) {
-    const auto& image_value = To<CSSImageValue>(Item(i));
-    String image_url = image_value.Url();
+const CSSImageSetValue::ImageSetOption& CSSImageSetValue::GetBestOption(
+    const float device_scale_factor) {
+  // This method is implementing the selection logic described in the
+  // "CSS Images Module Level 4" spec:
+  // https://w3c.github.io/csswg-drafts/css-images-4/#image-set-notation
+  //
+  // Spec definition of image-set-option selection algorithm:
+  //
+  // "An image-set() function contains a list of one or more
+  // <image-set-option>s, and must select only one of them
+  // to determine what image it will represent:
+  //
+  //   1. First, remove any <image-set-option>s from the list that specify an
+  //      unknown or unsupported MIME type in their type() value.
+  //   2. Second, remove any <image-set-option>s from the list that have the
+  //      same <resolution> as a previous option in the list.
+  //   3. Finally, among the remaining <image-set-option>s, make a UA-specific
+  //      choice of which to load, based on whatever criteria deemed relevant
+  //      (such as the resolution of the display, connection speed, etc).
+  //   4. The image-set() function then represents the <image> of the chosen
+  //      <image-set-option>."
 
-    ++i;
-    SECURITY_DCHECK(i < length);
-    const CSSValue& scale_factor_value = Item(i);
-    float scale_factor =
-        To<CSSPrimitiveValue>(scale_factor_value).GetFloatValue();
+  if (options_.empty()) {
+    for (wtf_size_t i = 0, length = this->length(); i < length; ++i) {
+      auto image_index = i;
 
-    ImageWithScale image;
-    image.image_url = image_url;
-    image.referrer.referrer = image_value.GetReferrer().referrer;
-    image.referrer.referrer_policy = image_value.GetReferrer().referrer_policy;
-    image.scale_factor = scale_factor;
+      ++i;
+      SECURITY_DCHECK(i < length);
+      float resolution = To<CSSPrimitiveValue>(Item(i)).ComputeDotsPerPixel();
 
-    // Only set for the first image as all images in a set should have identical
-    // is_ad_related bits.
-    if (!images_in_set_.size())
-      is_ad_related_ = image_value.GetIsAdRelated();
-    DCHECK_EQ(is_ad_related_, image_value.GetIsAdRelated());
-    images_in_set_.push_back(image);
-    ++i;
+      options_.push_back(ImageSetOption{image_index, resolution});
+    }
+
+    std::stable_sort(
+        options_.begin(), options_.end(),
+        [](const ImageSetOption& left, const ImageSetOption& right) {
+          return left.resolution < right.resolution;
+        });
   }
 
-  // Sort the images so that they are stored in order from lowest resolution to
-  // highest.
-  std::sort(images_in_set_.begin(), images_in_set_.end(),
-            CSSImageSetValue::CompareByScaleFactor);
-}
-
-CSSImageSetValue::ImageWithScale CSSImageSetValue::BestImageForScaleFactor(
-    float scale_factor) {
-  ImageWithScale image;
-  wtf_size_t number_of_images = images_in_set_.size();
-  for (wtf_size_t i = 0; i < number_of_images; ++i) {
-    image = images_in_set_.at(i);
-    if (image.scale_factor >= scale_factor)
+  for (const auto& image : options_) {
+    if (image.resolution >= device_scale_factor) {
       return image;
+    }
   }
-  return image;
+
+  DCHECK(!options_.empty());
+
+  return options_.back();
 }
 
-bool CSSImageSetValue::IsCachePending(float device_scale_factor) const {
-  return !cached_image_ || device_scale_factor != cached_scale_factor_;
+bool CSSImageSetValue::IsCachePending(const float device_scale_factor) const {
+  return !cached_image_ ||
+         !EqualResolutions(device_scale_factor, cached_device_scale_factor_);
 }
 
-StyleImage* CSSImageSetValue::CachedImage(float device_scale_factor) const {
+StyleImage* CSSImageSetValue::CachedImage(
+    const float device_scale_factor) const {
   DCHECK(!IsCachePending(device_scale_factor));
   return cached_image_.Get();
 }
 
 StyleImage* CSSImageSetValue::CacheImage(
     const Document& document,
-    float device_scale_factor,
-    FetchParameters::ImageRequestBehavior image_request_behavior,
-    CrossOriginAttributeValue cross_origin) {
-  if (!images_in_set_.size())
-    FillImageSet();
-
+    const float device_scale_factor,
+    const FetchParameters::ImageRequestBehavior image_request_behavior,
+    const CrossOriginAttributeValue cross_origin,
+    const CSSToLengthConversionData::ContainerSizes& container_sizes) {
   if (IsCachePending(device_scale_factor)) {
-    // FIXME: In the future, we want to take much more than deviceScaleFactor
-    // into acount here. All forms of scale should be included:
-    // Page::PageScaleFactor(), LocalFrame::PageZoomFactor(), and any CSS
-    // transforms. https://bugs.webkit.org/show_bug.cgi?id=81698
-    ImageWithScale image = BestImageForScaleFactor(device_scale_factor);
-    ResourceRequest resource_request(document.CompleteURL(image.image_url));
-    resource_request.SetReferrerPolicy(
-        ReferrerUtils::MojoReferrerPolicyResolveDefault(
-            image.referrer.referrer_policy));
-    resource_request.SetReferrerString(image.referrer.referrer);
-    if (is_ad_related_)
-      resource_request.SetIsAdResource();
-    ResourceLoaderOptions options(
-        document.GetExecutionContext()->GetCurrentWorld());
-    options.initiator_info.name = parser_mode_ == kUASheetMode
-                                      ? fetch_initiator_type_names::kUacss
-                                      : fetch_initiator_type_names::kCSS;
-    options.initiator_info.referrer = image.referrer.referrer;
-    FetchParameters params(std::move(resource_request), options);
+    StyleImage* style_image =
+        GetImageToCache(device_scale_factor, document, image_request_behavior,
+                        cross_origin, container_sizes);
 
-    if (cross_origin != kCrossOriginAttributeNotSet) {
-      params.SetCrossOriginAccessControl(
-          document.GetExecutionContext()->GetSecurityOrigin(), cross_origin);
-    }
+    cached_image_ = MakeGarbageCollected<StyleImageSet>(style_image, this);
 
-    cached_image_ = MakeGarbageCollected<StyleFetchedImageSet>(
-        ImageResourceContent::Fetch(params, document.Fetcher()),
-        image.scale_factor, this, params.Url());
-    cached_scale_factor_ = device_scale_factor;
+    cached_device_scale_factor_ = device_scale_factor;
   }
 
   return cached_image_.Get();
 }
 
+StyleImage* CSSImageSetValue::GetImageToCache(
+    const float device_scale_factor,
+    const Document& document,
+    const FetchParameters::ImageRequestBehavior image_request_behavior,
+    const CrossOriginAttributeValue cross_origin,
+    const CSSToLengthConversionData::ContainerSizes& container_sizes) {
+  const ImageSetOption& best_option = GetBestOption(device_scale_factor);
+
+  const CSSValue& image_value = Item(best_option.index);
+
+  if (auto* image =
+          const_cast<CSSImageValue*>(DynamicTo<CSSImageValue>(image_value))) {
+    return image->CacheImage(document, image_request_behavior, cross_origin,
+                             best_option.resolution);
+  }
+
+  if (!RuntimeEnabledFeatures::CSSImageSetEnabled()) {
+    return nullptr;
+  }
+
+  if (auto* gradient = DynamicTo<cssvalue::CSSGradientValue>(image_value)) {
+    return MakeGarbageCollected<StyleGeneratedImage>(*gradient,
+                                                     container_sizes);
+  }
+
+  return nullptr;
+}
+
 String CSSImageSetValue::CustomCSSText() const {
   StringBuilder result;
-  result.Append("-webkit-image-set(");
 
-  wtf_size_t length = this->length();
-  wtf_size_t i = 0;
-  while (i < length) {
-    if (i > 0)
+  if (!RuntimeEnabledFeatures::CSSImageSetEnabled()) {
+    result.Append("-webkit-");
+  }
+
+  result.Append("image-set(");
+
+  for (wtf_size_t i = 0, length = this->length(); i < length; ++i) {
+    if (i > 0) {
       result.Append(", ");
+    }
 
     const CSSValue& image_value = Item(i);
     result.Append(image_value.CssText());
@@ -164,25 +181,21 @@ String CSSImageSetValue::CustomCSSText() const {
 
     ++i;
     SECURITY_DCHECK(i < length);
-    const CSSValue& scale_factor_value = Item(i);
-    result.Append(scale_factor_value.CssText());
-    // FIXME: Eventually the scale factor should contain it's own unit
-    // http://wkb.ug/100120.
-    // For now 'x' is hard-coded in the parser, so we hard-code it here too.
-    result.Append('x');
-
-    ++i;
+    const CSSValue& resolution_value = Item(i);
+    result.Append(resolution_value.CssText());
   }
 
   result.Append(')');
-  return result.ToString();
+  return result.ReleaseString();
 }
 
 bool CSSImageSetValue::HasFailedOrCanceledSubresources() const {
-  if (!cached_image_)
+  if (!cached_image_) {
     return false;
-  if (ImageResourceContent* cached_content = cached_image_->CachedImage())
+  }
+  if (ImageResourceContent* cached_content = cached_image_->CachedImage()) {
     return cached_content->LoadFailedOrCanceled();
+  }
   return true;
 }
 
@@ -191,13 +204,41 @@ void CSSImageSetValue::TraceAfterDispatch(blink::Visitor* visitor) const {
   CSSValueList::TraceAfterDispatch(visitor);
 }
 
-CSSImageSetValue* CSSImageSetValue::ValueWithURLsMadeAbsolute() {
-  auto* value = MakeGarbageCollected<CSSImageSetValue>(parser_mode_);
+CSSImageSetValue* CSSImageSetValue::ComputedCSSValue(
+    const ComputedStyle& style,
+    const bool allow_visited_style) const {
+  auto* value = MakeGarbageCollected<CSSImageSetValue>();
+
   for (auto& item : *this) {
-    auto* image_value = DynamicTo<CSSImageValue>(item.Get());
-    image_value ? value->Append(*image_value->ValueWithURLMadeAbsolute())
-                : value->Append(*item);
+    value->Append(
+        *ComputedCSSValueForOption(item.Get(), style, allow_visited_style));
   }
+
+  return value;
+}
+
+const CSSValue* CSSImageSetValue::ComputedCSSValueForOption(
+    const CSSValue* value,
+    const ComputedStyle& style,
+    const bool allow_visited_style) const {
+  if (auto* image = DynamicTo<CSSImageValue>(value)) {
+    return image->ComputedCSSValue();
+  }
+
+  if (RuntimeEnabledFeatures::CSSImageSetEnabled()) {
+    if (auto* resolution = DynamicTo<CSSNumericLiteralValue>(value);
+        resolution && resolution->IsResolution() &&
+        resolution->GetType() != CSSPrimitiveValue::UnitType::kDotsPerPixel) {
+      return CSSNumericLiteralValue::Create(
+          resolution->ComputeDotsPerPixel(),
+          CSSPrimitiveValue::UnitType::kDotsPerPixel);
+    }
+
+    if (auto* gradient = DynamicTo<cssvalue::CSSGradientValue>(value)) {
+      return gradient->ComputedCSSValue(style, allow_visited_style);
+    }
+  }
+
   return value;
 }
 

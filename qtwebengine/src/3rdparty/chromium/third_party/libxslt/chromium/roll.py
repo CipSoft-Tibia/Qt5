@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,8 +30,8 @@ import tempfile
 # 2. On Linux:
 #    a. sudo apt-get install libicu-dev
 #    b. git clone https://gitlab.gnome.org/GNOME/libxslt.git somewhere
-# 3. On Mac, install these MacPorts:
-#    autoconf automake libtool pkgconfig icu
+# 3. On Mac, install these packages with brew:
+#      autoconf automake libtool pkgconfig icu4c
 #
 # Procedure:
 #
@@ -65,7 +65,7 @@ import tempfile
 #       git cl try-results; etc.
 
 PATCHES = [
-    'get-file-attributes-a.patch',
+    'remove-label.patch',
     'xslt-locale.patch',
 ]
 
@@ -268,12 +268,18 @@ def prepare_libxslt_distribution(src_path, libxslt_repo_path, temp_dir):
 
     with WorkingDir(libxslt_repo_path):
         commit = subprocess.check_output(
-            ['git', 'log', '-n', '1', '--pretty=format:%H', 'HEAD'])
+            ['git', 'log', '-n', '1', '--pretty=format:%H', 'HEAD']).decode('ascii')
         subprocess.check_call(
             'git archive HEAD | tar -x -C "%s"' % temp_src_path,
             shell=True)
     with WorkingDir(temp_src_path):
         os.remove('.gitignore')
+        for patch in PATCHES:
+            print('applying %s' % patch)
+            subprocess.check_call(
+                'patch -p1 --fuzz=0 < %s' % os.path.join(
+                    src_path, THIRD_PARTY_LIBXSLT_SRC, '..', 'chromium', patch),
+                shell=True)
     with WorkingDir(temp_config_path):
         subprocess.check_call(['../src/autogen.sh'] + XSLT_CONFIGURE_OPTIONS +
                               libxml_path_option(src_path))
@@ -282,8 +288,8 @@ def prepare_libxslt_distribution(src_path, libxslt_repo_path, temp_dir):
         # Work out what it is called
         tar_file = subprocess.check_output(
             '''awk '/PACKAGE =/ {p=$3} /VERSION =/ {v=$3} '''
-            '''END {printf("%s-%s.tar.gz", p, v)}' Makefile''',
-            shell=True)
+            '''END {printf("%s-%s.tar.xz", p, v)}' Makefile''',
+            shell=True).decode('ascii')
         return commit, os.path.abspath(tar_file)
 
 
@@ -303,7 +309,7 @@ def roll_libxslt_linux(src_path, repo_path):
             # Export the libxslt distribution to the Chromium tree
             with WorkingDir(THIRD_PARTY_LIBXSLT_SRC):
                 subprocess.check_call(
-                    'tar xzf %s --strip-components=1' % tar_file,
+                    'tar xJf %s --strip-components=1' % tar_file,
                     shell=True)
         finally:
             shutil.rmtree(temp_dir)
@@ -313,11 +319,6 @@ def roll_libxslt_linux(src_path, repo_path):
             sed_in_place('../README.chromium',
                          's/Version: .*$/Version: %s/' % commit)
             check_copying()
-
-            for patch in PATCHES:
-                subprocess.check_call(
-                    'cat ../chromium/%s | patch -p1 --fuzz=0' % patch,
-                    shell=True)
 
             with WorkingDir('../linux'):
                 subprocess.check_call(['../src/configure'] +
@@ -373,7 +374,7 @@ def roll_libxslt_mac(src_path):
 
 def check_clean(path):
     with WorkingDir(path):
-        status = subprocess.check_output(['git', 'status', '-s'])
+        status = subprocess.check_output(['git', 'status', '-s']).decode('ascii')
         if len(status) > 0:
             raise Exception('repository at %s is not clean' % path)
 

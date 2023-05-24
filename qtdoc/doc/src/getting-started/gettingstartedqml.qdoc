@@ -1,37 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example tutorials/alarms
     \title Getting Started Programming with Qt Quick
+    \examplecategory {Application Examples}
     \brief A tutorial for Qt Quick based on an alarms application.
+    \meta {tag} {tutorial,quick}
 
     This tutorial shows how to develop a simple alarm application as
-    an introduction to Qt Quick and Qt Quick Controls2.
+    an introduction to Qt Quick and Qt Quick Controls.
 
     This application is similar to the alarm application usually
     found on an Android phone. Its features let you enter, edit,
@@ -53,8 +31,8 @@
     \image addalarms.png "Add alarms"
 
     The source files are located in the qtdoc repository.
-    You can either fetch the Qt 5 sources from the Qt Project,
-    or install them as part of Qt 5. The application is also available
+    You can either fetch the Qt sources from the Qt Project,
+    or install them as part of Qt. The application is also available
     in the example list of Qt Creator's Welcome mode.
 
     \section1 Creating the Alarms Project
@@ -65,6 +43,9 @@
     The latter two files are included with the source code for this
     tutorial.
 
+    \note The UI text in Qt Creator and the contents of the generated files
+    depend on the Qt Creator version that you use.
+
     \section1 Qt Creator
 
     Setting up a new project in Qt Creator is aided by a wizard that
@@ -73,12 +54,12 @@
     type of project and creates the project for you.
 
     To create the Alarms project, select \uicontrol{File} >
-    \uicontrol{New File or Project} > \uicontrol{Application} >
-    \uicontrol{Qt Quick Application - Empty} > \uicontrol{Choose}.
-    Type "alarms" in the \b{Name} field, and follow the instructions
+    \uicontrol{New Project} > \uicontrol{Application (Qt)} >
+    \uicontrol{Qt Quick Application} > \uicontrol{Choose}.
+    Type \e alarms in the \uicontrol{Name} field, and follow the instructions
     of the wizard.
 
-    \image alarms2.png "Qt Creator New File or Project dialog"
+    \image alarms2.png "Qt Creator New Project dialog"
 
     \image alarms3.png "Project Location"
 
@@ -90,15 +71,16 @@
             \li Source file
             \li Purpose
         \row
-            \li alarms.pro
+            \li CMakeLists.txt
             \li The project file
         \row
             \li main.cpp
             \li The main C++ code file for the application.
-        \row
-            \li qml.qrc
-            \li The resource file, which contains the names of the
-            source files, except main.cpp and the project file.
+       \row
+           \li main.qml
+           \li The main QML code file for the application. We will instantiate
+               our custom QML types (\c AlarmDialog, \c AlarmModel,
+               \c AlarmDelegate, and \c TumblerDelegate) in this file.
     \endtable
 
     The wizard generates the code in the main.cpp file below.
@@ -119,10 +101,6 @@
            \li \c qtquickcontrols2.conf
            \li Selects the \c Material style with the \c Dark theme.
        \row
-           \li \c main.qml
-           \li The QML code that links AlarmDialog.qml, AlarmModel.qml,
-               AlarmDelegate.qml and TumblerDelegate.qml
-       \row
            \li \c AlarmDialog.qml
            \li Defines the dialog for adding new alarms.
        \row
@@ -133,7 +111,11 @@
            \li Defines the ListModel used for storing the alarms' data.
        \row
            \li \c TumblerDelegate.qml
-           \li Defines the graphical layout of the Tumblers
+           \li Defines the graphical layout of the Tumblers.
+        \row
+            \li \c qml.qrc
+            \li The resource file, which contains the names of the
+                source files, except main.cpp and the project file.
     \endtable
 
 
@@ -274,9 +256,8 @@
 
     The app has no code for adding sound or vibration to the alarm, nor does
     it store the alarms in any format or database. Maybe it could be an
-    interesting coding project to add those features. Adding sound to this
-    program can be realized with \l{Qt Multimedia QML Types}. Storing the data
+    interesting coding project to add those features. Storing the data
     could be done quickly and easily in \l{JSON Support in Qt}{JSON format}.
 
-    \sa {Qt Multimedia QML Types}, {JSON Support in Qt}
+    \sa {JSON Support in Qt}
 */

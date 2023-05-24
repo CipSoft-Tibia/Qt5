@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Gunnar Sletta <gunnar@sletta.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKANIMATORJOB_P_H
 #define QQUICKANIMATORJOB_P_H
@@ -68,8 +32,6 @@ class QQuickItem;
 class QQuickAbstractAnimation;
 
 class QQuickAnimatorController;
-class QQuickAnimatorProxyJobPrivate;
-class QQuickOpenGLShaderEffectNode;
 
 class QSGOpacityNode;
 
@@ -78,7 +40,7 @@ class Q_QUICK_PRIVATE_EXPORT QQuickAnimatorProxyJob : public QObject, public QAb
     Q_OBJECT
 
 public:
-    QQuickAnimatorProxyJob(QAbstractAnimationJob *job, QObject *item);
+    QQuickAnimatorProxyJob(QAbstractAnimationJob *job, QQuickAbstractAnimation *animation);
     ~QQuickAnimatorProxyJob();
 
     int duration() const override { return m_duration; }
@@ -102,7 +64,6 @@ private:
     static QObject *findAnimationContext(QQuickAbstractAnimation *);
 
     QPointer<QQuickAnimatorController> m_controller;
-    QQuickAbstractAnimation *m_animation;
     QSharedPointer<QAbstractAnimationJob> m_job;
     int m_duration;
 
@@ -122,10 +83,16 @@ public:
     virtual void setTarget(QQuickItem *target);
     QQuickItem *target() const { return m_target; }
 
-    void setFrom(qreal from) { m_from = from; }
+    void setFrom(qreal from) {
+        m_from = from;
+        boundValue();
+    }
     qreal from() const { return m_from; }
 
-    void setTo(qreal to) { m_to = to; }
+    void setTo(qreal to) {
+        m_to = to;
+        boundValue();
+    }
     qreal to() const { return m_to; }
 
     void setDuration(int duration) { m_duration = duration; }
@@ -171,6 +138,7 @@ protected:
     void debugAnimation(QDebug d) const override;
 
     qreal progress(int time) const;
+    void boundValue();
 
     QPointer<QQuickItem> m_target;
     QQuickAnimatorController *m_controller;
@@ -290,7 +258,10 @@ public:
 private:
     QSGOpacityNode *m_opacityNode;
 };
-#if QT_CONFIG(opengl)
+
+#if QT_CONFIG(quick_shadereffect)
+class QQuickShaderEffect;
+
 class Q_QUICK_PRIVATE_EXPORT QQuickUniformAnimatorJob : public QQuickAnimatorJob
 {
 public:
@@ -301,19 +272,15 @@ public:
     void setUniform(const QByteArray &uniform) { m_uniform = uniform; }
     QByteArray uniform() const { return m_uniform; }
 
-    void postSync() override;
-
     void updateCurrentTime(int time) override;
     void writeBack() override;
+    void postSync() override;
 
     void invalidate() override;
 
 private:
     QByteArray m_uniform;
-    QQuickOpenGLShaderEffectNode *m_node;
-
-    int m_uniformIndex : 8;
-    int m_uniformType : 8;
+    QPointer<QQuickShaderEffect> m_effect;
 };
 #endif
 

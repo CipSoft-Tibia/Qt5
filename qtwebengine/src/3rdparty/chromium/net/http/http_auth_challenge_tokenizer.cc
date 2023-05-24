@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/strings/string_piece.h"
 #include "base/strings/string_tokenizer.h"
+#include "base/strings/string_util.h"
 
 namespace net {
 
@@ -51,8 +52,8 @@ void HttpAuthChallengeTokenizer::Init(std::string::const_iterator begin,
   }
 
   // Save the scheme's position.
-  lower_case_scheme_ =
-      base::ToLowerASCII(base::StringPiece(tok.token_begin(), tok.token_end()));
+  lower_case_scheme_ = base::ToLowerASCII(
+      base::MakeStringPiece(tok.token_begin(), tok.token_end()));
 
   params_begin_ = tok.token_end();
   params_end_ = end;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpenginecore.h"
 #include "qhelpengine_p.h"
@@ -81,7 +45,7 @@ bool QHelpEngineCorePrivate::setup()
 
     const QVariant readOnlyVariant = q->property("_q_readonly");
     const bool readOnly = readOnlyVariant.isValid()
-            ? readOnlyVariant.toBool() : false;
+            ? readOnlyVariant.toBool() : q->isReadOnly();
     collectionHandler->setReadOnly(readOnly);
     const bool opened = collectionHandler->openCollectionFile();
     if (opened)
@@ -113,7 +77,7 @@ void QHelpEngineCorePrivate::errorReceived(const QString &msg)
     The core help engine can be used to perform different tasks.
     By calling documentsForIdentifier() the engine returns
     URLs specifying the file locations inside the help system. The
-    actual file data can then be retrived by calling fileData().
+    actual file data can then be retrieved by calling fileData().
 
     The help engine can contain any number of custom filters.
     The management of the filters, including adding new filters,
@@ -125,6 +89,18 @@ void QHelpEngineCorePrivate::errorReceived(const QString &msg)
     deprecated since Qt 5.13. Call setUsesFilterEngine() with \c true to
     enable the new functionality.
 
+    The core help engine has two modes:
+    \list
+        \li Read-only mode, where the help collection file is not changed
+            unless explicitly requested. This also works if the
+            collection file is in a read-only location,
+            and is the default.
+        \li Fully writable mode, which requires the help collection
+            file to be writable.
+    \endlist
+    The mode can be changed by calling setReadOnly() method, prior to
+    calling setupData().
+
     The help engine also offers the possibility to set and read values
     in a persistent way comparable to ini files or Windows registry
     entries. For more information see setValue() or value().
@@ -132,13 +108,6 @@ void QHelpEngineCorePrivate::errorReceived(const QString &msg)
     This class does not offer any GUI components or functionality for
     indices or contents. If you need one of those use QHelpEngine
     instead.
-
-    When creating a custom help viewer the viewer can be
-    configured by writing a custom collection file which could contain various
-    keywords to be used to configure the help engine. These keywords and values
-    and their meaning can be found in the help information for
-    \l{assistant-custom-help-viewer.html#creating-a-custom-help-collection-file}
-    {creating a custom help collection file} for Assistant.
 */
 
 /*!
@@ -155,12 +124,12 @@ void QHelpEngineCorePrivate::errorReceived(const QString &msg)
 
 /*!
     \fn void QHelpEngineCore::readersAboutToBeInvalidated()
-    \obsolete
+    \deprecated
 */
 
 /*!
     \fn void QHelpEngineCore::currentFilterChanged(const QString &newFilter)
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::filterActivated() should be used instead.
 
@@ -232,6 +201,31 @@ void QHelpEngineCore::setCollectionFile(const QString &fileName)
     }
     d->init(fileName, this);
     d->needsSetup = true;
+}
+
+/*!
+    \property QHelpEngineCore::readOnly
+    \brief whether the help engine is read-only.
+    \since 6.0
+
+    In read-only mode, the user can use the help engine
+    with a collection file installed in a read-only location.
+    In this case, some functionality won't be accessible,
+    like registering additional documentation, filter editing,
+    or any action that would require changes to the
+    collection file. Setting it to \c false enables the full
+    functionality of the help engine.
+
+    By default, this property is \c true.
+*/
+bool QHelpEngineCore::isReadOnly() const
+{
+    return d->readOnly;
+}
+
+void QHelpEngineCore::setReadOnly(bool enable)
+{
+    d->readOnly = enable;
 }
 
 /*!
@@ -371,7 +365,7 @@ QStringList QHelpEngineCore::registeredDocumentations() const
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::filters() should be used instead.
 
@@ -387,7 +381,7 @@ QStringList QHelpEngineCore::customFilters() const
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::setFilterData() should be used instead.
 
@@ -407,7 +401,7 @@ bool QHelpEngineCore::addCustomFilter(const QString &filterName,
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::removeFilter() should be used instead.
 
@@ -424,7 +418,7 @@ bool QHelpEngineCore::removeCustomFilter(const QString &filterName)
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::availableComponents() should be used instead.
 
@@ -438,7 +432,7 @@ QStringList QHelpEngineCore::filterAttributes() const
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::filterData() should be used instead.
 
@@ -453,7 +447,7 @@ QStringList QHelpEngineCore::filterAttributes(const QString &filterName) const
 }
 
 /*!
-    \obsolete
+    \deprecated
     \property QHelpEngineCore::currentFilter
     \brief the name of the custom filter currently applied.
     \since 4.5
@@ -495,7 +489,7 @@ void QHelpEngineCore::setCurrentFilter(const QString &filterName)
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     QHelpFilterEngine::filterData() should be used instead.
 
@@ -512,7 +506,7 @@ QList<QStringList> QHelpEngineCore::filterAttributeSets(const QString &namespace
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     files() should be used instead.
 
@@ -611,30 +605,6 @@ QByteArray QHelpEngineCore::fileData(const QUrl &url) const
     return d->collectionHandler->fileData(url);
 }
 
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \obsolete
-
-    Use documentsForIdentifier() instead.
-
-    Returns a map of the documents found for the \a id. The map contains the
-    document titles and their URLs. The returned map contents depend on
-    the current filter, and therefore only the identifiers registered for
-    the current filter will be returned.
-*/
-QMap<QString, QUrl> QHelpEngineCore::linksForIdentifier(const QString &id) const
-{
-    if (!d->setup())
-        return QMap<QString, QUrl>();
-
-    if (d->usesFilterEngine)
-        return d->collectionHandler->linksForIdentifier(id, d->filterEngine->activeFilter());
-
-    // obsolete
-    return d->collectionHandler->linksForIdentifier(id, filterAttributes(d->currentFilter));
-}
-#endif
-
 /*!
     \since 5.15
 
@@ -667,30 +637,6 @@ QList<QHelpLink> QHelpEngineCore::documentsForIdentifier(const QString &id, cons
 
     return d->collectionHandler->documentsForIdentifier(id, filterAttributes(filterName));
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-    \obsolete
-
-    Use documentsForKeyword() instead.
-
-    Returns a map of all the documents found for the \a keyword. The map
-    contains the document titles and URLs. The returned map contents depend
-    on the current filter, and therefore only the keywords registered for
-    the current filter will be returned.
-*/
-QMap<QString, QUrl> QHelpEngineCore::linksForKeyword(const QString &keyword) const
-{
-    if (!d->setup())
-        return QMap<QString, QUrl>();
-
-    if (d->usesFilterEngine)
-        return d->collectionHandler->linksForKeyword(keyword, d->filterEngine->activeFilter());
-
-    // obsolete
-    return d->collectionHandler->linksForKeyword(keyword, filterAttributes(d->currentFilter));
-}
-#endif
 
 /*!
     \since 5.15

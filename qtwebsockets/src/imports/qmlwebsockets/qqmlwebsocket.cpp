@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebSockets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Kurt Pattyn <pattyn.kurt@gmail.com>.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \qmltype WebSocket
@@ -55,7 +19,19 @@
   \qmlproperty QUrl WebSocket::url
   Server url to connect to. The url must have one of 2 schemes: \e ws:// or \e wss://.
   When not supplied, then \e ws:// is used.
-  */
+*/
+
+/*!
+  \qmlproperty QStringList WebSocket::requestedSubprotocols
+  \since 6.4
+  The list of WebSocket subprotocols to send in the WebSocket handshake.
+*/
+
+/*!
+  \qmlproperty QString WebSocket::negotiatedSubprotocol
+  \since 6.4
+  The WebSocket subprotocol that has been negotiated with the server.
+*/
 
 /*!
   \qmlproperty Status WebSocket::status
@@ -69,33 +45,33 @@
   \li WebSocket.Closed
   \li WebSocket.Error
   \endlist
-  */
+*/
 
 /*!
   \qmlproperty QString WebSocket::errorString
   Contains a description of the last error that occurred. When no error occurrred,
   this string is empty.
-  */
+*/
 
 /*!
   \qmlproperty bool WebSocket::active
   When set to true, a connection is made to the server with the given url.
   When set to false, the connection is closed.
   The default value is false.
-  */
+*/
 
 /*!
   \qmlsignal WebSocket::textMessageReceived(QString message)
   This signal is emitted when a text message is received.
   \a message contains the bytes received.
-  */
+*/
 
 /*!
   \qmlsignal WebSocket::binaryMessageReceived(QString message)
   \since 5.8
   This signal is emitted when a binary message is received.
   \a message contains the bytes received.
-  */
+*/
 
 /*!
   \qmlsignal WebSocket::statusChanged(Status status)
@@ -103,21 +79,22 @@
   The \a status argument provides the current status.
 
   \sa {QtWebSockets::}{WebSocket::status}
-  */
+*/
 
 /*!
   \qmlmethod void WebSocket::sendTextMessage(string message)
   Sends \a message to the server.
-  */
+*/
 
 /*!
   \qmlmethod void WebSocket::sendBinaryMessage(ArrayBuffer message)
   \since 5.8
   Sends the parameter \a message to the server.
-  */
+*/
 
 #include "qqmlwebsocket.h"
 #include <QtWebSockets/QWebSocket>
+#include <QtWebSockets/QWebSocketHandshakeOptions>
 
 QT_BEGIN_NAMESPACE
 
@@ -136,6 +113,7 @@ QQmlWebSocket::QQmlWebSocket(QWebSocket *socket, QObject *parent) :
     QObject(parent),
     m_status(Closed),
     m_url(socket->requestUrl()),
+    m_requestedProtocols(socket->handshakeOptions().subprotocols()),
     m_isActive(true),
     m_componentCompleted(true),
     m_errorString(socket->errorString())
@@ -168,6 +146,20 @@ qint64 QQmlWebSocket::sendBinaryMessage(const QByteArray &message)
     return m_webSocket->sendBinaryMessage(message);
 }
 
+QStringList QQmlWebSocket::requestedSubprotocols() const
+{
+    return m_requestedProtocols;
+}
+
+void QQmlWebSocket::setRequestedSubprotocols(const QStringList &requestedSubprotocols)
+{
+    if (m_requestedProtocols == requestedSubprotocols)
+        return;
+
+    m_requestedProtocols = requestedSubprotocols;
+    emit requestedSubprotocolsChanged();
+}
+
 QUrl QQmlWebSocket::url() const
 {
     return m_url;
@@ -184,6 +176,11 @@ void QQmlWebSocket::setUrl(const QUrl &url)
     m_url = url;
     Q_EMIT urlChanged();
     open();
+}
+
+QString QQmlWebSocket::negotiatedSubprotocol() const
+{
+    return m_negotiatedProtocol;
 }
 
 QQmlWebSocket::Status QQmlWebSocket::status() const
@@ -217,13 +214,12 @@ void QQmlWebSocket::setSocket(QWebSocket *socket)
     m_webSocket.reset(socket);
     if (m_webSocket) {
         // explicit ownership via QScopedPointer
-        m_webSocket->setParent(Q_NULLPTR);
+        m_webSocket->setParent(nullptr);
         connect(m_webSocket.data(), &QWebSocket::textMessageReceived,
                 this, &QQmlWebSocket::textMessageReceived);
         connect(m_webSocket.data(), &QWebSocket::binaryMessageReceived,
                 this, &QQmlWebSocket::binaryMessageReceived);
-        typedef void (QWebSocket::* ErrorSignal)(QAbstractSocket::SocketError);
-        connect(m_webSocket.data(), static_cast<ErrorSignal>(&QWebSocket::error),
+        connect(m_webSocket.data(), &QWebSocket::errorOccurred,
                 this, &QQmlWebSocket::onError);
         connect(m_webSocket.data(), &QWebSocket::stateChanged,
                 this, &QQmlWebSocket::onStateChanged);
@@ -232,7 +228,7 @@ void QQmlWebSocket::setSocket(QWebSocket *socket)
 
 void QQmlWebSocket::onError(QAbstractSocket::SocketError error)
 {
-    Q_UNUSED(error)
+    Q_UNUSED(error);
     setErrorString(m_webSocket->errorString());
     setStatus(Error);
 }
@@ -281,6 +277,12 @@ void QQmlWebSocket::setStatus(QQmlWebSocket::Status status)
         setErrorString();
     }
     Q_EMIT statusChanged(m_status);
+
+    const auto protocol = m_status == Open && m_webSocket ? m_webSocket->subprotocol() : QString();
+    if (m_negotiatedProtocol != protocol) {
+        m_negotiatedProtocol = protocol;
+        Q_EMIT negotiatedSubprotocolChanged();
+    }
 }
 
 void QQmlWebSocket::setActive(bool active)
@@ -308,7 +310,9 @@ bool QQmlWebSocket::isActive() const
 void QQmlWebSocket::open()
 {
     if (m_componentCompleted && m_isActive && m_url.isValid() && Q_LIKELY(m_webSocket)) {
-        m_webSocket->open(m_url);
+        QWebSocketHandshakeOptions opt;
+        opt.setSubprotocols(m_requestedProtocols);
+        m_webSocket->open(m_url, opt);
     }
 }
 

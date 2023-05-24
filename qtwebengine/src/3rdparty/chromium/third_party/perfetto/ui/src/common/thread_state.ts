@@ -21,19 +21,22 @@ const states: {[key: string]: string} = {
   'X': 'Exit (Dead)',
   'Z': 'Exit (Zombie)',
   'x': 'Task Dead',
-  'I': 'Task Dead',
+  'I': 'Idle',
   'K': 'Wake Kill',
   'W': 'Waking',
   'P': 'Parked',
   'N': 'No Load',
-  '+': '(Preempted)'
+  '+': '(Preempted)',
 };
 
 export function translateState(
-    state: string|undefined, ioWait: boolean|undefined = undefined) {
+    state: string|undefined|null, ioWait: boolean|undefined = undefined) {
   if (state === undefined) return '';
   if (state === 'Running') {
     return state;
+  }
+  if (state === null) {
+    return 'Unknown';
   }
   let result = states[state[0]];
   if (ioWait === true) {

@@ -25,12 +25,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/editing/commands/style_commands.h"
 
+#include "mojo/public/mojom/base/text_direction.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/css_computed_style_declaration.h"
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_property_value_set.h"
@@ -47,7 +48,7 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/html/html_font_element.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -107,8 +108,8 @@ bool StyleCommands::ExecuteApplyStyle(LocalFrame& frame,
   DCHECK(frame.GetDocument());
   auto* const style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLQuirksMode);
-  style->SetProperty(property_id, property_value, /* important */ false,
-                     frame.DomWindow()->GetSecureContextMode());
+  style->ParseAndSetProperty(property_id, property_value, /* important */ false,
+                             frame.DomWindow()->GetSecureContextMode());
   return ApplyCommandToFrame(frame, source, input_type, style);
 }
 
@@ -119,7 +120,7 @@ bool StyleCommands::ExecuteApplyStyle(LocalFrame& frame,
                                       CSSValueID property_value) {
   auto* const style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLQuirksMode);
-  style->SetProperty(property_id, property_value);
+  style->SetLonghandProperty(property_id, property_value);
   return ApplyCommandToFrame(frame, source, input_type, style);
 }
 
@@ -175,8 +176,8 @@ bool StyleCommands::ExecuteMakeTextWritingDirectionLeftToRight(
     const String&) {
   auto* const style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLQuirksMode);
-  style->SetProperty(CSSPropertyID::kUnicodeBidi, CSSValueID::kIsolate);
-  style->SetProperty(CSSPropertyID::kDirection, CSSValueID::kLtr);
+  style->SetLonghandProperty(CSSPropertyID::kUnicodeBidi, CSSValueID::kIsolate);
+  style->SetLonghandProperty(CSSPropertyID::kDirection, CSSValueID::kLtr);
   ApplyStyle(frame, style, InputEvent::InputType::kFormatSetBlockTextDirection);
   return true;
 }
@@ -187,7 +188,7 @@ bool StyleCommands::ExecuteMakeTextWritingDirectionNatural(LocalFrame& frame,
                                                            const String&) {
   auto* const style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLQuirksMode);
-  style->SetProperty(CSSPropertyID::kUnicodeBidi, CSSValueID::kNormal);
+  style->SetLonghandProperty(CSSPropertyID::kUnicodeBidi, CSSValueID::kNormal);
   ApplyStyle(frame, style, InputEvent::InputType::kFormatSetBlockTextDirection);
   return true;
 }
@@ -199,8 +200,8 @@ bool StyleCommands::ExecuteMakeTextWritingDirectionRightToLeft(
     const String&) {
   auto* const style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLQuirksMode);
-  style->SetProperty(CSSPropertyID::kUnicodeBidi, CSSValueID::kIsolate);
-  style->SetProperty(CSSPropertyID::kDirection, CSSValueID::kRtl);
+  style->SetLonghandProperty(CSSPropertyID::kUnicodeBidi, CSSValueID::kIsolate);
+  style->SetLonghandProperty(CSSPropertyID::kDirection, CSSValueID::kRtl);
   ApplyStyle(frame, style, InputEvent::InputType::kFormatSetBlockTextDirection);
   return true;
 }
@@ -322,8 +323,9 @@ bool StyleCommands::ExecuteToggleStyleInList(LocalFrame& frame,
   // We should have setPropertyCSSValue.
   auto* const new_mutable_style =
       MakeGarbageCollected<MutableCSSPropertyValueSet>(kHTMLQuirksMode);
-  new_mutable_style->SetProperty(property_id, new_style, /* important */ false,
-                                 frame.DomWindow()->GetSecureContextMode());
+  new_mutable_style->ParseAndSetProperty(
+      property_id, new_style, /* important */ false,
+      frame.DomWindow()->GetSecureContextMode());
   return ApplyCommandToFrame(frame, source, input_type, new_mutable_style);
 }
 

@@ -1,15 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/offline_pages/core/background/request_queue_task_test_base.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 
 namespace offline_pages {
 
 RequestQueueTaskTestBase::RequestQueueTaskTestBase()
     : task_runner_(new base::TestMockTimeTaskRunner),
-      task_runner_handle_(task_runner_) {}
+      task_runner_current_default_handle_(task_runner_) {}
 
 RequestQueueTaskTestBase::~RequestQueueTaskTestBase() = default;
 

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
 #include "base/containers/flat_set.h"
+#include "base/functional/callback_forward.h"
 #include "base/time/time.h"
 
 namespace base {
@@ -25,6 +25,7 @@ class GURL;
 namespace weblayer {
 class CookieManager;
 class DownloadDelegate;
+class GoogleAccountAccessTokenFetchDelegate;
 class PrerenderController;
 
 // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.weblayer_private
@@ -73,6 +74,11 @@ class Profile {
 
   // Sets the DownloadDelegate. If none is set, downloads will be dropped.
   virtual void SetDownloadDelegate(DownloadDelegate* delegate) = 0;
+
+  // Sets the delegate for access token fetches. If none is set, the browser
+  // will not be able to fetch access tokens.
+  virtual void SetGoogleAccountAccessTokenFetchDelegate(
+      GoogleAccountAccessTokenFetchDelegate* delegate) = 0;
 
   // Gets the cookie manager for this profile.
   virtual CookieManager* GetCookieManager() = 0;

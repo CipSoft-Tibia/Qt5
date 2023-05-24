@@ -1,46 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlextensionplugin.h"
 #include "qqmlextensionplugin_p.h"
 
 QT_BEGIN_NAMESPACE
+
+/*!
+    \since 5.0
+    \inmodule QtQml
+    \class QQmlExtensionPlugin
+    \brief The QQmlExtensionPlugin class provides an abstract base for custom QML extension plugins
+           with custom type registration functions.
+
+    \ingroup plugins
+
+    \note If you need to write a plugin manually (which is rare) you should always use
+    \l{QQmlEngineExtensionPlugin}. QQmlExtensionPlugin only provides the registerTypes() and
+    unregisterTypes() functions in addition. You should not use them, but rather declare your
+    types with \l{QML_ELEMENT} and friends and have the build system take care of the registration.
+*/
 
 /*!
     \since 5.14
@@ -61,7 +40,6 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \fn void QQmlExtensionPlugin::registerTypes(const char *uri)
-    \internal
 
     Registers the QML types in the given \a uri. Subclasses should implement
     this to call qmlRegisterType() for all types which are provided by the extension
@@ -75,7 +53,11 @@ QT_BEGIN_NAMESPACE
     \internal
 */
 QQmlExtensionPlugin::QQmlExtensionPlugin(QObject *parent)
+#if QT_DEPRECATED_SINCE(6, 3)
     : QObject(*(new QQmlExtensionPluginPrivate), parent)
+#else
+    : QObject(parent)
+#endif
 {
 }
 
@@ -102,24 +84,47 @@ QQmlExtensionPlugin::~QQmlExtensionPlugin() = default;
  */
 QQmlEngineExtensionPlugin::~QQmlEngineExtensionPlugin() = default;
 
+#if QT_DEPRECATED_SINCE(6, 3)
 /*!
     \since 5.1
     \internal
+    \deprecated [6.3] This is unnecessary and doesn't work for optional plugins
     \brief Returns the URL of the directory from which the extension is loaded.
 
     This is useful when the plugin also needs to load QML files or other
     assets from the same directory.
+
+    \note You should not need this function. Other files that are part of the
+          module's public interface should be specified accordingly in the build
+          system and qmldir file. The build system makes sure that they end up
+          both in the final module directory, and in the resource file system.
+          You can use the copy from the resource file system in the plugin.
+          Non-QML/JS files private to the plugin can be added to the resource
+          file system manually. However, consider moving all such functionality
+          out of the plugin and making the plugin optional.
 */
 QUrl QQmlExtensionPlugin::baseUrl() const
 {
     Q_D(const QQmlExtensionPlugin);
     return d->baseUrl;
 }
+#endif
 
 /*!
-    \internal
-*/
+  \since 6.0
 
+  Override this method to unregister types manually registered in registerTypes.
+*/
+void QQmlExtensionPlugin::unregisterTypes()
+{
+
+}
+
+/*!
+    Initializes the extension from the \a uri using the \a engine. Here an application
+    plugin might, for example, expose some data or objects to QML,
+    as context properties on the engine's root context.
+ */
 void QQmlExtensionPlugin::initializeEngine(QQmlEngine *engine, const char *uri)
 {
     Q_UNUSED(engine);
@@ -153,6 +158,30 @@ void QQmlEngineExtensionPlugin::initializeEngine(QQmlEngine *engine, const char 
   \class QQmlEngineExtensionInterface
   \internal
   \inmodule QtQml
+*/
+
+
+/*!
+    \macro Q_IMPORT_QML_PLUGIN(PluginName)
+    \since 6.2
+    \relates QQmlEngineExtensionPlugin
+
+    Ensures the plugin whose metadata-declaring plugin extension class is named
+    \a PluginName is linked into static builds. For the modules created using
+    \l qt_add_qml_module, the default plugin extension class name is computed
+    from the QML module URI by replacing dots with underscores, unless the
+    \c CLASS_NAME argument is specified.
+
+    For example:
+    \badcode
+        qt_add_qml_module(myplugin
+            # The plugin extension class name in this case is my_Company_QmlComponents.
+            URI my.Company.QmlComponents
+            ...
+        )
+    \endcode
+
+    \sa Q_IMPORT_PLUGIN
 */
 
 QT_END_NAMESPACE

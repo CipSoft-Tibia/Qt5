@@ -25,11 +25,14 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_DOM_EVENTS_EVENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_DOM_EVENTS_EVENT_H_
 
+#include "base/check_op.h"
+#include "base/time/time.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/events/event_dispatch_result.h"
-#include "third_party/blink/renderer/core/probe/async_task_id.h"
+#include "third_party/blink/renderer/core/probe/async_task_context.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 namespace blink {
@@ -39,6 +42,7 @@ class EventDispatcher;
 class EventInit;
 class EventPath;
 class EventTarget;
+class Node;
 class ScriptState;
 class ScriptValue;
 
@@ -56,7 +60,7 @@ class CORE_EXPORT Event : public ScriptWrappable {
     kNo,
   };
 
-  enum PhaseType {
+  enum class PhaseType {
     kNone = 0,
     kCapturingPhase = 1,
     kAtTarget = 2,
@@ -153,19 +157,19 @@ class CORE_EXPORT Event : public ScriptWrappable {
 
   void SetRelatedTargetIfExists(EventTarget* related_target);
 
-  uint8_t eventPhase() const { return event_phase_; }
-  void SetEventPhase(uint8_t event_phase) { event_phase_ = event_phase; }
+  PhaseType eventPhase() const { return event_phase_; }
+  void SetEventPhase(PhaseType event_phase) { event_phase_ = event_phase; }
 
   void SetFireOnlyCaptureListenersAtTarget(
       bool fire_only_capture_listeners_at_target) {
-    DCHECK_EQ(event_phase_, kAtTarget);
+    DCHECK_EQ(event_phase_, PhaseType::kAtTarget);
     fire_only_capture_listeners_at_target_ =
         fire_only_capture_listeners_at_target;
   }
 
   void SetFireOnlyNonCaptureListenersAtTarget(
       bool fire_only_non_capture_listeners_at_target) {
-    DCHECK_EQ(event_phase_, kAtTarget);
+    DCHECK_EQ(event_phase_, PhaseType::kAtTarget);
     fire_only_non_capture_listeners_at_target_ =
         fire_only_non_capture_listeners_at_target;
   }
@@ -180,7 +184,6 @@ class CORE_EXPORT Event : public ScriptWrappable {
   bool bubbles() const { return bubbles_; }
   bool cancelable() const { return cancelable_; }
   bool composed() const { return composed_; }
-  bool IsScopedInV0() const;
 
   // Event creation timestamp in milliseconds. It returns a DOMHighResTimeStamp
   // using the platform timestamp (see |platform_time_stamp_|).
@@ -217,6 +220,7 @@ class CORE_EXPORT Event : public ScriptWrappable {
   virtual bool IsGestureEvent() const;
   virtual bool IsWheelEvent() const;
   virtual bool IsPointerEvent() const;
+  virtual bool IsHighlightPointerEvent() const;
   virtual bool IsInputEvent() const;
   virtual bool IsCompositionEvent() const;
 
@@ -253,7 +257,7 @@ class CORE_EXPORT Event : public ScriptWrappable {
   const Event* UnderlyingEvent() const { return underlying_event_.Get(); }
   void SetUnderlyingEvent(const Event*);
 
-  bool HasEventPath() { return event_path_; }
+  bool HasEventPath() const { return event_path_; }
   EventPath& GetEventPath() const {
     DCHECK(event_path_);
     return *event_path_;
@@ -263,7 +267,7 @@ class CORE_EXPORT Event : public ScriptWrappable {
   ScriptValue path(ScriptState*) const;
   HeapVector<Member<EventTarget>> composedPath(ScriptState*) const;
 
-  bool IsBeingDispatched() const { return eventPhase(); }
+  bool IsBeingDispatched() const { return eventPhase() != PhaseType::kNone; }
 
   // Events that must not leak across isolated world, similar to how
   // ErrorEvent behaves, can override this method.
@@ -306,7 +310,7 @@ class CORE_EXPORT Event : public ScriptWrappable {
 
   virtual DispatchEventResult DispatchEvent(EventDispatcher&);
 
-  probe::AsyncTaskId* async_task_id() { return &async_task_id_; }
+  probe::AsyncTaskContext* async_task_context() { return &async_task_context_; }
 
   void Trace(Visitor*) const override;
 
@@ -327,7 +331,6 @@ class CORE_EXPORT Event : public ScriptWrappable {
   unsigned bubbles_ : 1;
   unsigned cancelable_ : 1;
   unsigned composed_ : 1;
-  unsigned is_event_type_scoped_in_v0_ : 1;
 
   unsigned propagation_stopped_ : 1;
   unsigned immediate_propagation_stopped_ : 1;
@@ -351,8 +354,8 @@ class CORE_EXPORT Event : public ScriptWrappable {
   unsigned copy_event_path_from_underlying_event_ : 1;
 
   PassiveMode handling_passive_;
-  uint8_t event_phase_;
-  probe::AsyncTaskId async_task_id_;
+  PhaseType event_phase_;
+  probe::AsyncTaskContext async_task_context_;
 
   Member<EventTarget> current_target_;
   Member<EventTarget> target_;

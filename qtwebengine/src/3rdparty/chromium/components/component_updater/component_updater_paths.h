@@ -1,15 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_COMPONENT_UPDATER_COMPONENT_UPDATER_PATHS_H_
 #define COMPONENTS_COMPONENT_UPDATER_COMPONENT_UPDATER_PATHS_H_
 
-#include "base/files/file_path.h"
-
 namespace component_updater {
-
-extern const base::FilePath::CharType kSupervisedUserWhitelistDirName[];
 
 enum {
   PATH_START = 10000,
@@ -31,7 +27,6 @@ enum {
   DIR_COMPONENT_CLD2,              // The Compact Language Detector.
   DIR_RECOVERY_BASE,               // The Recovery.
   DIR_SWIFT_SHADER,                // The SwiftShader.
-  DIR_SUPERVISED_USER_ALLOWLISTS,  // The Supervised user allowlists.
   PATH_END
 };
 

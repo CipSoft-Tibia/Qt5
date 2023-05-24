@@ -27,10 +27,9 @@ namespace blink {
 
 class HTMLBDIElement final : public HTMLElement {
  public:
-  inline explicit HTMLBDIElement(Document& document)
-      : HTMLElement(html_names::kBdiTag, document) {}
+  explicit HTMLBDIElement(Document& document);
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_HTML_HTML_BDI_ELEMENT_H_

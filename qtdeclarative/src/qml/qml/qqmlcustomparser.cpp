@@ -1,42 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qml/qqmlpropertyvalidator_p.h"
 #include "qqmlcustomparser_p.h"
 
 #include <private/qv4compileddata_p.h>
@@ -102,18 +67,12 @@ void QQmlCustomParser::clearErrors()
 void QQmlCustomParser::error(const QV4::CompiledData::Location &location, const QString &description)
 {
     QQmlError error;
-    error.setLine(qmlConvertSourceCoordinate<quint32, int>(location.line));
-    error.setColumn(qmlConvertSourceCoordinate<quint32, int>(location.column));
+    error.setLine(qmlConvertSourceCoordinate<quint32, int>(location.line()));
+    error.setColumn(qmlConvertSourceCoordinate<quint32, int>(location.column()));
     error.setDescription(description);
 
     exceptions << error;
 }
-
-struct StaticQtMetaObject : public QObject
-{
-    static const QMetaObject *get()
-        { return &staticQtMetaObject; }
-};
 
 /*!
     If \a script is a simple enumeration expression (eg. Text.AlignLeft),
@@ -123,7 +82,7 @@ struct StaticQtMetaObject : public QObject
 
     A valid \a ok must be provided, or the function will assert.
 */
-int QQmlCustomParser::evaluateEnum(const QByteArray& script, bool *ok) const
+int QQmlCustomParser::evaluateEnum(const QString &script, bool *ok) const
 {
     Q_ASSERT_X(ok, "QQmlCustomParser::evaluateEnum", "ok must not be a null pointer");
     *ok = false;
@@ -133,15 +92,15 @@ int QQmlCustomParser::evaluateEnum(const QByteArray& script, bool *ok) const
     // * <TypeName>.<ScopedEnumName>.<EnumValue>
 
     auto nextDot = [&](int dot) {
-        const int nextDot = script.indexOf('.', dot + 1);
-        return (nextDot == script.length() - 1) ? -1 : nextDot;
+        const int nextDot = script.indexOf(u'.', dot + 1);
+        return (nextDot == script.size() - 1) ? -1 : nextDot;
     };
 
     int dot = nextDot(-1);
     if (dot == -1)
         return -1;
 
-    QString scope = QString::fromUtf8(script.left(dot));
+    const QString scope = script.left(dot);
 
     if (scope != QLatin1String("Qt")) {
         if (imports.isNull())
@@ -150,23 +109,35 @@ int QQmlCustomParser::evaluateEnum(const QByteArray& script, bool *ok) const
 
         if (imports.isT1()) {
             QQmlImportNamespace *ns = nullptr;
-            if (!imports.asT1()->resolveType(scope, &type, nullptr, nullptr, &ns))
+
+            // Pass &recursionDetected to resolveType because that implicitly allows recursion.
+            // This way we can find the QQmlType of the document we're currently validating.
+            bool recursionDetected = false;
+
+            if (!imports.asT1()->resolveType(
+                        scope, &type, nullptr, &ns, nullptr,
+                        QQmlType::AnyRegistrationType, &recursionDetected)) {
                 return -1;
+            }
+
             if (!type.isValid() && ns != nullptr) {
                 dot = nextDot(dot);
-                if (dot == -1 || !imports.asT1()->resolveType(QString::fromUtf8(script.left(dot)),
-                                                              &type, nullptr, nullptr, nullptr)) {
+                if (dot == -1 || !imports.asT1()->resolveType(
+                            script.left(dot), &type, nullptr, nullptr, nullptr,
+                            QQmlType::AnyRegistrationType, &recursionDetected)) {
                     return -1;
                 }
             }
         } else {
-            QQmlTypeNameCache::Result result = imports.asT2()->query(scope);
+            // Allow recursion so that we can find enums from the same document.
+            const QQmlTypeNameCache::Result result
+                    = imports.asT2()->query<QQmlImport::AllowRecursion>(scope);
             if (result.isValid()) {
                 type = result.type;
             } else if (result.importNamespace) {
                 dot = nextDot(dot);
                 if (dot != -1)
-                    type = imports.asT2()->query(QString::fromUtf8(script.left(dot))).type;
+                    type = imports.asT2()->query<QQmlImport::AllowRecursion>(script.left(dot)).type;
             }
         }
 
@@ -175,19 +146,44 @@ int QQmlCustomParser::evaluateEnum(const QByteArray& script, bool *ok) const
 
         const int dot2 = nextDot(dot);
         const bool dot2Valid = (dot2 != -1);
-        QByteArray enumValue = script.mid(dot2Valid ? dot2 + 1 : dot + 1);
-        QByteArray scopedEnumName = (dot2Valid ? script.mid(dot + 1, dot2 - dot - 1) : QByteArray());
+        const QString enumValue = script.mid(dot2Valid ? dot2 + 1 : dot + 1);
+        const QString scopedEnumName = dot2Valid ? script.mid(dot + 1, dot2 - dot - 1) : QString();
+
+        // If we're currently validating the same document, we won't be able to find its enums using
+        // the QQmlType. However, we do have the property cache already, and that one contains the
+        // enums.
+        const QUrl documentUrl = validator ? validator->documentSourceUrl() : QUrl();
+        if (documentUrl.isValid() && documentUrl == type.sourceUrl()) {
+            Q_ASSERT(validator);
+            const QQmlPropertyCache::ConstPtr rootCache = validator->rootPropertyCache();
+            const int count = rootCache->qmlEnumCount();
+            for (int ii = 0; ii < count; ++ii) {
+                const QQmlEnumData *enumData = rootCache->qmlEnum(ii);
+                if (!scopedEnumName.isEmpty() && scopedEnumName != enumData->name)
+                    continue;
+
+                for (int jj = 0; jj < enumData->values.size(); ++jj) {
+                    const QQmlEnumValue value = enumData->values.at(jj);
+                    if (value.namedValue == enumValue) {
+                        *ok = true;
+                        return value.value;
+                    }
+                }
+            }
+            return -1;
+        }
+
         if (!scopedEnumName.isEmpty())
             return type.scopedEnumValue(engine, scopedEnumName, enumValue, ok);
         else
-            return type.enumValue(engine, QHashedCStringRef(enumValue.constData(), enumValue.length()), ok);
+            return type.enumValue(engine, enumValue, ok);
     }
 
-    QByteArray enumValue = script.mid(dot + 1);
-    const QMetaObject *mo = StaticQtMetaObject::get();
+    const QString enumValue = script.mid(dot + 1);
+    const QMetaObject *mo = &Qt::staticMetaObject;
     int i = mo->enumeratorCount();
     while (i--) {
-        int v = mo->enumerator(i).keyToValue(enumValue.constData(), ok);
+        int v = mo->enumerator(i).keyToValue(enumValue.toUtf8().constData(), ok);
         if (*ok)
             return v;
     }

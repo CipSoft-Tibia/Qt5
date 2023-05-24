@@ -1,32 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
+#include <QTimer>
+
 #include <Qt3DCore/QAbstractAspect>
 #include <Qt3DCore/qaspectengine.h>
 #include <Qt3DCore/qentity.h>
@@ -62,22 +39,22 @@ private:
         qDebug() << Q_FUNC_INFO;
     }
 
-    QVector<QAspectJobPtr> jobsToExecute(qint64) override \
+    std::vector<QAspectJobPtr> jobsToExecute(qint64) override \
     {
         if (m_rootEntityId)
             qDebug() << Q_FUNC_INFO << m_rootEntityId;
-        return QVector<QAspectJobPtr>();
+        return {};
     }
 
     QNodeId m_rootEntityId;
 };
 
-#define FAKE_ASPECT(ClassName) \
+#define FAKE_ASPECT(ClassName, dependAspects) \
 class ClassName : public QAbstractAspect \
 { \
     Q_OBJECT \
 public: \
-    explicit ClassName(QObject *parent = 0) \
+    explicit ClassName(QObject *parent = nullptr) \
         : QAbstractAspect(parent) {} \
     \
 private: \
@@ -85,9 +62,9 @@ private: \
     void onEngineStartup() override {} \
     void onEngineShutdown() override {} \
     \
-    QVector<QAspectJobPtr> jobsToExecute(qint64) override \
+    std::vector<QAspectJobPtr> jobsToExecute(qint64) override \
     { \
-        return QVector<QAspectJobPtr>(); \
+        return std::vector<QAspectJobPtr>(); \
     } \
     \
     QVariant executeCommand(const QStringList &args) override \
@@ -100,14 +77,17 @@ private: \
         \
         return QVariant(); \
     } \
+    QStringList dependencies() const override { return dependAspects; } \
 };
 
-FAKE_ASPECT(FakeAspect)
-FAKE_ASPECT(FakeAspect2)
-FAKE_ASPECT(FakeAspect3)
+FAKE_ASPECT(FakeAspect, {})
+FAKE_ASPECT(FakeAspect2, {})
+FAKE_ASPECT(FakeAspect3, {})
+FAKE_ASPECT(FakeAspectDependent, {QLatin1String("fake")})
 
 QT3D_REGISTER_ASPECT("fake", FakeAspect)
 QT3D_REGISTER_ASPECT("otherfake", FakeAspect2)
+QT3D_REGISTER_ASPECT("dependfake", FakeAspectDependent)
 
 
 class tst_QAspectEngine : public QObject
@@ -344,6 +324,23 @@ private Q_SLOTS:
 
         // THEN
         QVERIFY(!output.isValid());
+    }
+
+    void shouldRegisterDependentAspects()
+    {
+        // GIVEN
+        QAspectEngine engine;
+
+        // THEN
+        QVERIFY(engine.aspects().isEmpty());
+
+        // WHEN
+        engine.registerAspect("dependfake");
+
+        // THEN
+        QCOMPARE(engine.aspects().size(), 2);
+        QVERIFY(qobject_cast<FakeAspect*>(engine.aspects().at(0)));
+        QVERIFY(qobject_cast<FakeAspectDependent*>(engine.aspects().at(1)));
     }
 };
 

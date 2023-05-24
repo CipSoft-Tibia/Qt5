@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,12 @@
 
 #include <jni.h>
 #include <stdint.h>
-#include <vector>
 
 #include "base/android/jni_android.h"
 #include "base/android/jni_array.h"
 #include "base/android/jni_string.h"
 #include "base/android/jni_weak_ref.h"
+#include "base/time/time.h"
 #include "components/variations/jni/VariationsSeedBridge_jni.h"
 
 using base::android::AttachCurrentThread;
@@ -41,7 +41,7 @@ std::unique_ptr<variations::SeedResponse> GetVariationsFirstRunSeed() {
   }
   seed->signature = ConvertJavaStringToUTF8(j_seed_signature);
   seed->country = ConvertJavaStringToUTF8(j_seed_country);
-  seed->date = static_cast<long>(j_response_date);
+  seed->date = base::Time::FromJavaTime(static_cast<long>(j_response_date));
   seed->is_gzip_compressed = static_cast<bool>(j_is_gzip_compressed);
   return seed;
 }

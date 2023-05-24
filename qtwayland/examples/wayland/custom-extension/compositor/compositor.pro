@@ -2,6 +2,10 @@ QT += core gui qml
 
 QT += waylandcompositor
 
+CONFIG += qmltypes
+QML_IMPORT_NAME = io.qt.examples.customextension
+QML_IMPORT_MAJOR_VERSION = 1
+
 CONFIG += wayland-scanner
 CONFIG += c++11
 SOURCES += \
@@ -10,7 +14,7 @@ SOURCES += \
 
 OTHER_FILES = \
     qml/main.qml \
-    qml/Screen.qml \
+    qml/CompositorScreen.qml \
     images/background.jpg
 
 WAYLANDSERVERSOURCES += \
@@ -18,7 +22,7 @@ WAYLANDSERVERSOURCES += \
 
 RESOURCES += compositor.qrc
 
-TARGET = custom-compositor
+TARGET = custom-extension-compositor
 
 HEADERS += \
     customextension.h

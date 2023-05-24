@@ -30,11 +30,11 @@
 namespace perfetto {
 namespace {
 
+using ::testing::_;
 using ::testing::Eq;
 using ::testing::InvokeWithoutArgs;
 using ::testing::IsNull;
 using ::testing::Pointee;
-using ::testing::_;
 
 class TestInodeFileDataSource : public InodeFileDataSource {
  public:
@@ -101,7 +101,7 @@ TEST_F(InodeFileDataSourceTest, TestFileSystemScan) {
 
   auto done = task_runner_.CreateCheckpoint("done");
   InodeMapValue value(
-      protos::pbzero::InodeFileMap_Entry_Type_FILE,
+      protos::pbzero::InodeFileMap::Entry::Type::FILE,
       {base::GetTestDataPath("src/traced/probes/filesystem/testdata/file2")});
   EXPECT_CALL(*data_source, FillInodeEntry(_, buf.st_ino, Eq(value)))
       .WillOnce(InvokeWithoutArgs(done));
@@ -128,12 +128,12 @@ TEST_F(InodeFileDataSourceTest, TestStaticMap) {
             &buf) != -1);
 
   InodeMapValue value(
-      protos::pbzero::InodeFileMap_Entry_Type_FILE,
+      protos::pbzero::InodeFileMap::Entry::Type::FILE,
       {base::GetTestDataPath("src/traced/probes/filesystem/testdata/file2")});
   EXPECT_CALL(*data_source, FillInodeEntry(_, buf.st_ino, Eq(value)));
 
   data_source->OnInodes({{buf.st_ino, buf.st_dev}});
-  // Expect that the found inode is not added the the LRU cache.
+  // Expect that the found inode is not added the LRU cache.
   EXPECT_THAT(cache_.Get(std::make_pair(buf.st_dev, buf.st_ino)), IsNull());
 }
 
@@ -151,7 +151,7 @@ TEST_F(InodeFileDataSourceTest, TestCache) {
             &buf) != -1);
 
   InodeMapValue value(
-      protos::pbzero::InodeFileMap_Entry_Type_FILE,
+      protos::pbzero::InodeFileMap::Entry::Type::FILE,
       {base::GetTestDataPath("src/traced/probes/filesystem/testdata/file2")});
   cache_.Insert(std::make_pair(buf.st_dev, buf.st_ino), value);
 

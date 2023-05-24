@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,17 +9,23 @@
 
 namespace autofill {
 
-enum FormType : int {
-  UNKNOWN_FORM_TYPE,
-  ADDRESS_FORM,
-  CREDIT_CARD_FORM,
-  PASSWORD_FORM
+class FormStructure;
+
+enum class FormType : int {
+  kUnknownFormType,
+  kAddressForm,
+  kCreditCardForm,
+  kPasswordForm,
+  kMaxValue = kPasswordForm
 };
 
-class FormTypes {
- public:
-  static FormType FieldTypeGroupToFormType(FieldTypeGroup field_type_group);
-};
+// Returns true if the form contains fields that represent the card number and
+// the card expiration date.
+bool FormHasAllCreditCardFields(const FormStructure& form_structure);
+
+FormType FieldTypeGroupToFormType(FieldTypeGroup field_type_group);
+
+base::StringPiece FormTypeToStringPiece(FormType form_type);
 
 }  // namespace autofill
 

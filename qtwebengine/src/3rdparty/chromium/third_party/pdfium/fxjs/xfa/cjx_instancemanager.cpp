@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,18 @@
 #include <algorithm>
 #include <vector>
 
+#include "fxjs/fxv8.h"
 #include "fxjs/js_resources.h"
 #include "fxjs/xfa/cfxjse_engine.h"
-#include "fxjs/xfa/cfxjse_value.h"
+#include "third_party/base/notreached.h"
+#include "v8/include/v8-object.h"
+#include "v8/include/v8-primitive.h"
 #include "xfa/fxfa/cxfa_ffdoc.h"
 #include "xfa/fxfa/cxfa_ffnotify.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
 #include "xfa/fxfa/parser/cxfa_instancemanager.h"
 #include "xfa/fxfa/parser/cxfa_occur.h"
+#include "xfa/fxfa/parser/cxfa_subform.h"
 
 const CJX_MethodSpec CJX_InstanceManager::MethodSpecs[] = {
     {"addInstance", addInstance_static},
@@ -36,17 +40,18 @@ bool CJX_InstanceManager::DynamicTypeIs(TypeTag eType) const {
   return eType == static_type__ || ParentType__::DynamicTypeIs(eType);
 }
 
-int32_t CJX_InstanceManager::SetInstances(int32_t iDesired) {
+int32_t CJX_InstanceManager::SetInstances(v8::Isolate* pIsolate,
+                                          int32_t iDesired) {
   CXFA_Occur* occur = GetXFANode()->GetOccurIfExists();
   int32_t iMin = occur ? occur->GetMin() : CXFA_Occur::kDefaultMin;
   if (iDesired < iMin) {
-    ThrowTooManyOccurancesException(L"min");
+    ThrowTooManyOccurrencesException(pIsolate, L"min");
     return 1;
   }
 
   int32_t iMax = occur ? occur->GetMax() : CXFA_Occur::kDefaultMax;
   if (iMax >= 0 && iDesired > iMax) {
-    ThrowTooManyOccurancesException(L"max");
+    ThrowTooManyOccurrencesException(pIsolate, L"max");
     return 2;
   }
 
@@ -61,13 +66,13 @@ int32_t CJX_InstanceManager::SetInstances(int32_t iDesired) {
             ? wsInstManagerName
             : wsInstManagerName.Last(wsInstManagerName.GetLength() - 1));
     uint32_t dInstanceNameHash =
-        FX_HashCode_GetW(wsInstanceName.AsStringView(), false);
+        FX_HashCode_GetW(wsInstanceName.AsStringView());
     CXFA_Node* pPrevSibling = iDesired == 0
                                   ? GetXFANode()
                                   : GetXFANode()->GetItemIfExists(iDesired - 1);
     if (!pPrevSibling) {
       // TODO(dsinclair): Better error?
-      ThrowIndexOutOfBoundsException();
+      ThrowIndexOutOfBoundsException(pIsolate);
       return 0;
     }
 
@@ -102,15 +107,16 @@ int32_t CJX_InstanceManager::SetInstances(int32_t iDesired) {
       pNotify->RunNodeInitialize(pNewInstance);
     }
   }
-  GetDocument()->GetLayoutProcessor()->AddChangedContainer(
-      ToNode(GetDocument()->GetXFAObject(XFA_HASHCODE_Form)));
+  GetDocument()->GetLayoutProcessor()->SetHasChangedContainer();
   return 0;
 }
 
-int32_t CJX_InstanceManager::MoveInstance(int32_t iTo, int32_t iFrom) {
+int32_t CJX_InstanceManager::MoveInstance(v8::Isolate* pIsolate,
+                                          int32_t iTo,
+                                          int32_t iFrom) {
   int32_t iCount = GetXFANode()->GetCount();
   if (iFrom > iCount || iTo > iCount - 1) {
-    ThrowIndexOutOfBoundsException();
+    ThrowIndexOutOfBoundsException(pIsolate);
     return 1;
   }
   if (iFrom < 0 || iTo < 0 || iFrom == iTo)
@@ -118,21 +124,20 @@ int32_t CJX_InstanceManager::MoveInstance(int32_t iTo, int32_t iFrom) {
 
   CXFA_Node* pMoveInstance = GetXFANode()->GetItemIfExists(iFrom);
   if (!pMoveInstance) {
-    ThrowIndexOutOfBoundsException();
+    ThrowIndexOutOfBoundsException(pIsolate);
     return 1;
   }
 
   GetXFANode()->RemoveItem(pMoveInstance, false);
   GetXFANode()->InsertItem(pMoveInstance, iTo, iCount - 1, true);
-  GetDocument()->GetLayoutProcessor()->AddChangedContainer(
-      ToNode(GetDocument()->GetXFAObject(XFA_HASHCODE_Form)));
+  GetDocument()->GetLayoutProcessor()->SetHasChangedContainer();
   return 0;
 }
 
 CJS_Result CJX_InstanceManager::moveInstance(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CXFA_Document* doc = static_cast<CFXJSE_Engine*>(runtime)->GetDocument();
+  CXFA_Document* doc = runtime->GetDocument();
   if (doc->GetFormType() != FormType::kXFAFull)
     return CJS_Result::Failure(JSMessage::kNotSupportedError);
 
@@ -141,29 +146,28 @@ CJS_Result CJX_InstanceManager::moveInstance(
 
   int32_t iFrom = runtime->ToInt32(params[0]);
   int32_t iTo = runtime->ToInt32(params[1]);
-  MoveInstance(iTo, iFrom);
+  MoveInstance(runtime->GetIsolate(), iTo, iFrom);
 
   CXFA_FFNotify* pNotify = GetDocument()->GetNotify();
   if (!pNotify)
     return CJS_Result::Success();
 
-  CXFA_Node* pToInstance = GetXFANode()->GetItemIfExists(iTo);
-  if (pToInstance && pToInstance->GetElementType() == XFA_Element::Subform)
+  CXFA_Node* pXFA = GetXFANode();
+  auto* pToInstance = CXFA_Subform::FromNode(pXFA->GetItemIfExists(iTo));
+  if (pToInstance)
     pNotify->RunSubformIndexChange(pToInstance);
 
-  CXFA_Node* pFromInstance = GetXFANode()->GetItemIfExists(iFrom);
-  if (pFromInstance &&
-      pFromInstance->GetElementType() == XFA_Element::Subform) {
+  auto* pFromInstance = CXFA_Subform::FromNode(pXFA->GetItemIfExists(iFrom));
+  if (pFromInstance)
     pNotify->RunSubformIndexChange(pFromInstance);
-  }
 
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_InstanceManager::removeInstance(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CXFA_Document* doc = static_cast<CFXJSE_Engine*>(runtime)->GetDocument();
+  CXFA_Document* doc = runtime->GetDocument();
   if (doc->GetFormType() != FormType::kXFAFull)
     return CJS_Result::Failure(JSMessage::kNotSupportedError);
 
@@ -178,7 +182,7 @@ CJS_Result CJX_InstanceManager::removeInstance(
   CXFA_Occur* occur = GetXFANode()->GetOccurIfExists();
   int32_t iMin = occur ? occur->GetMin() : CXFA_Occur::kDefaultMin;
   if (iCount - 1 < iMin)
-    return CJS_Result::Failure(JSMessage::kTooManyOccurances);
+    return CJS_Result::Failure(JSMessage::kTooManyOccurrences);
 
   CXFA_Node* pRemoveInstance = GetXFANode()->GetItemIfExists(iIndex);
   if (!pRemoveInstance)
@@ -188,37 +192,35 @@ CJS_Result CJX_InstanceManager::removeInstance(
 
   CXFA_FFNotify* pNotify = GetDocument()->GetNotify();
   if (pNotify) {
+    CXFA_Node* pXFA = GetXFANode();
     for (int32_t i = iIndex; i < iCount - 1; i++) {
-      CXFA_Node* pSubformInstance = GetXFANode()->GetItemIfExists(i);
-      if (pSubformInstance &&
-          pSubformInstance->GetElementType() == XFA_Element::Subform) {
+      auto* pSubformInstance = CXFA_Subform::FromNode(pXFA->GetItemIfExists(i));
+      if (pSubformInstance)
         pNotify->RunSubformIndexChange(pSubformInstance);
-      }
     }
   }
-  GetDocument()->GetLayoutProcessor()->AddChangedContainer(
-      ToNode(GetDocument()->GetXFAObject(XFA_HASHCODE_Form)));
+  GetDocument()->GetLayoutProcessor()->SetHasChangedContainer();
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_InstanceManager::setInstances(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CXFA_Document* doc = static_cast<CFXJSE_Engine*>(runtime)->GetDocument();
+  CXFA_Document* doc = runtime->GetDocument();
   if (doc->GetFormType() != FormType::kXFAFull)
     return CJS_Result::Failure(JSMessage::kNotSupportedError);
 
   if (params.size() != 1)
     return CJS_Result::Failure(JSMessage::kParamError);
 
-  SetInstances(runtime->ToInt32(params[0]));
+  SetInstances(runtime->GetIsolate(), runtime->ToInt32(params[0]));
   return CJS_Result::Success();
 }
 
 CJS_Result CJX_InstanceManager::addInstance(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CXFA_Document* doc = static_cast<CFXJSE_Engine*>(runtime)->GetDocument();
+  CXFA_Document* doc = runtime->GetDocument();
   if (doc->GetFormType() != FormType::kXFAFull)
     return CJS_Result::Failure(JSMessage::kNotSupportedError);
 
@@ -233,7 +235,7 @@ CJS_Result CJX_InstanceManager::addInstance(
   CXFA_Occur* occur = GetXFANode()->GetOccurIfExists();
   int32_t iMax = occur ? occur->GetMax() : CXFA_Occur::kDefaultMax;
   if (iMax >= 0 && iCount >= iMax)
-    return CJS_Result::Failure(JSMessage::kTooManyOccurances);
+    return CJS_Result::Failure(JSMessage::kTooManyOccurrences);
 
   CXFA_Node* pNewInstance = GetXFANode()->CreateInstanceIfPossible(fFlags);
   if (!pNewInstance)
@@ -244,22 +246,18 @@ CJS_Result CJX_InstanceManager::addInstance(
   CXFA_FFNotify* pNotify = GetDocument()->GetNotify();
   if (pNotify) {
     pNotify->RunNodeInitialize(pNewInstance);
-    GetDocument()->GetLayoutProcessor()->AddChangedContainer(
-        ToNode(GetDocument()->GetXFAObject(XFA_HASHCODE_Form)));
+    GetDocument()->GetLayoutProcessor()->SetHasChangedContainer();
   }
 
-  CFXJSE_Value* value =
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
-          pNewInstance);
-
   return CJS_Result::Success(
-      value->DirectGetValue().Get(runtime->GetIsolate()));
+      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
+          pNewInstance));
 }
 
 CJS_Result CJX_InstanceManager::insertInstance(
-    CFX_V8* runtime,
+    CFXJSE_Engine* runtime,
     const std::vector<v8::Local<v8::Value>>& params) {
-  CXFA_Document* doc = static_cast<CFXJSE_Engine*>(runtime)->GetDocument();
+  CXFA_Document* doc = runtime->GetDocument();
   if (doc->GetFormType() != FormType::kXFAFull)
     return CJS_Result::Failure(JSMessage::kNotSupportedError);
 
@@ -289,46 +287,47 @@ CJS_Result CJX_InstanceManager::insertInstance(
   CXFA_FFNotify* pNotify = GetDocument()->GetNotify();
   if (pNotify) {
     pNotify->RunNodeInitialize(pNewInstance);
-    GetDocument()->GetLayoutProcessor()->AddChangedContainer(
-        ToNode(GetDocument()->GetXFAObject(XFA_HASHCODE_Form)));
+    GetDocument()->GetLayoutProcessor()->SetHasChangedContainer();
   }
-
-  CFXJSE_Value* value =
-      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
-          pNewInstance);
 
   return CJS_Result::Success(
-      value->DirectGetValue().Get(runtime->GetIsolate()));
+      GetDocument()->GetScriptContext()->GetOrCreateJSBindingFromMap(
+          pNewInstance));
 }
 
-void CJX_InstanceManager::max(CFXJSE_Value* pValue,
+void CJX_InstanceManager::max(v8::Isolate* pIsolate,
+                              v8::Local<v8::Value>* pValue,
                               bool bSetting,
                               XFA_Attribute eAttribute) {
   if (bSetting) {
-    ThrowInvalidPropertyException();
+    ThrowInvalidPropertyException(pIsolate);
     return;
   }
   CXFA_Occur* occur = GetXFANode()->GetOccurIfExists();
-  pValue->SetInteger(occur ? occur->GetMax() : CXFA_Occur::kDefaultMax);
+  *pValue = fxv8::NewNumberHelper(
+      pIsolate, occur ? occur->GetMax() : CXFA_Occur::kDefaultMax);
 }
 
-void CJX_InstanceManager::min(CFXJSE_Value* pValue,
+void CJX_InstanceManager::min(v8::Isolate* pIsolate,
+                              v8::Local<v8::Value>* pValue,
                               bool bSetting,
                               XFA_Attribute eAttribute) {
   if (bSetting) {
-    ThrowInvalidPropertyException();
+    ThrowInvalidPropertyException(pIsolate);
     return;
   }
   CXFA_Occur* occur = GetXFANode()->GetOccurIfExists();
-  pValue->SetInteger(occur ? occur->GetMin() : CXFA_Occur::kDefaultMin);
+  *pValue = fxv8::NewNumberHelper(
+      pIsolate, occur ? occur->GetMin() : CXFA_Occur::kDefaultMin);
 }
 
-void CJX_InstanceManager::count(CFXJSE_Value* pValue,
+void CJX_InstanceManager::count(v8::Isolate* pIsolate,
+                                v8::Local<v8::Value>* pValue,
                                 bool bSetting,
                                 XFA_Attribute eAttribute) {
   if (bSetting) {
-    SetInstances(pValue->ToInteger());
+    SetInstances(pIsolate, fxv8::ReentrantToInt32Helper(pIsolate, *pValue));
     return;
   }
-  pValue->SetInteger(GetXFANode()->GetCount());
+  *pValue = fxv8::NewNumberHelper(pIsolate, GetXFANode()->GetCount());
 }

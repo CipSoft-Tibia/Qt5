@@ -1,30 +1,46 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TEXT_PAINTER_BASE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TEXT_PAINTER_BASE_H_
 
+#include "cc/paint/paint_flags.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
+#include "third_party/blink/renderer/core/paint/applied_decoration_painter.h"
+#include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/text_decoration_info.h"
 #include "third_party/blink/renderer/core/paint/text_paint_style.h"
 #include "third_party/blink/renderer/core/style/applied_text_decoration.h"
 #include "third_party/blink/renderer/core/style/text_decoration_thickness.h"
 #include "third_party/blink/renderer/platform/fonts/font.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
+#include "third_party/blink/renderer/platform/graphics/draw_looper_builder.h"
+#include "third_party/blink/renderer/platform/graphics/graphics_context_state_saver.h"
 #include "third_party/blink/renderer/platform/transforms/affine_transform.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 namespace blink {
 
+struct AutoDarkMode;
 class ComputedStyle;
 class Document;
 class GraphicsContext;
-class GraphicsContextStateSaver;
-class TextDecorationOffsetBase;
-struct PaintInfo;
+class NGInlinePaintContext;
+class Node;
+
+namespace {
+
+// We usually use the text decoration thickness to determine how far
+// ink-skipped text decorations should be away from the glyph
+// contours. Cap this at 5 CSS px in each direction when thickness
+// growths larger than that. A value of 13 closely matches FireFox'
+// implementation.
+constexpr float kDecorationClipMaxDilation = 13;
+
+}  // anonymous namespace
 
 // Base class for text painting. Has no dependencies on the layout tree and thus
 // provides functionality and definitions that can be shared between both legacy
@@ -37,34 +53,26 @@ class CORE_EXPORT TextPainterBase {
                   const Font&,
                   const PhysicalOffset& text_origin,
                   const PhysicalRect& text_frame_rect,
+                  NGInlinePaintContext* inline_context,
                   bool horizontal);
   ~TextPainterBase();
 
-  virtual void ClipDecorationsStripe(float upper,
-                                     float stripe_width,
-                                     float dilation) = 0;
+  const NGInlinePaintContext* InlineContext() const { return inline_context_; }
 
   void SetEmphasisMark(const AtomicString&, TextEmphasisPosition);
   void SetEllipsisOffset(int offset) { ellipsis_offset_ = offset; }
 
+  enum ShadowMode { kBothShadowsAndTextProper, kShadowsOnly, kTextProperOnly };
   static void UpdateGraphicsContext(GraphicsContext&,
                                     const TextPaintStyle&,
-                                    bool horizontal,
-                                    GraphicsContextStateSaver&);
-
-  void PaintDecorationsExceptLineThrough(const TextDecorationOffsetBase&,
-                                         TextDecorationInfo&,
-                                         const PaintInfo&,
-                                         const Vector<AppliedTextDecoration>&,
-                                         const TextPaintStyle& text_style,
-                                         bool* has_line_through_decoration);
-  void PaintDecorationsOnlyLineThrough(TextDecorationInfo&,
-                                       const PaintInfo&,
-                                       const Vector<AppliedTextDecoration>&,
-                                       const TextPaintStyle&);
-  void PaintDecorationUnderOrOverLine(GraphicsContext&,
-                                      TextDecorationInfo&,
-                                      TextDecoration line);
+                                    GraphicsContextStateSaver&,
+                                    ShadowMode = kBothShadowsAndTextProper);
+  static sk_sp<SkDrawLooper> CreateDrawLooper(
+      const ShadowList* shadow_list,
+      DrawLooperBuilder::ShadowAlphaMode,
+      const Color& current_color,
+      mojom::blink::ColorScheme color_scheme,
+      ShadowMode = kBothShadowsAndTextProper);
 
   static Color TextColorForWhiteBackground(Color);
   static TextPaintStyle TextPaintingStyle(const Document&,
@@ -74,18 +82,18 @@ class CORE_EXPORT TextPainterBase {
       const Document&,
       const ComputedStyle&,
       Node*,
-      bool have_selection,
       const PaintInfo&,
       const TextPaintStyle& text_style);
 
   enum RotationDirection { kCounterclockwise, kClockwise };
   static AffineTransform Rotation(const PhysicalRect& box_rect,
                                   RotationDirection);
+  static AffineTransform Rotation(const PhysicalRect& box_rect, WritingMode);
 
  protected:
   void UpdateGraphicsContext(const TextPaintStyle& style,
                              GraphicsContextStateSaver& saver) {
-    UpdateGraphicsContext(graphics_context_, style, horizontal_, saver);
+    UpdateGraphicsContext(graphics_context_, style, saver);
   }
   void DecorationsStripeIntercepts(
       float upper,
@@ -93,17 +101,33 @@ class CORE_EXPORT TextPainterBase {
       float dilation,
       const Vector<Font::TextIntercept>& text_intercepts);
 
+  void PaintDecorationsOnlyLineThrough(TextDecorationInfo&,
+                                       const PaintInfo&,
+                                       const TextPaintStyle&,
+                                       const cc::PaintFlags* flags = nullptr);
+
+  // Paints emphasis mark as for ideographic full stop character. Callers of
+  // this function should rotate canvas to paint emphasis mark at left/right
+  // side instead of top/bottom side.
+  // |emphasis_mark_font| is used for painting emphasis mark because |font_|
+  // may be compressed font (width variants).
+  // TODO(yosin): Once legacy inline layout gone, we should move this function
+  // to |NGTextCombinePainter|.
+  void PaintEmphasisMarkForCombinedText(const TextPaintStyle& text_style,
+                                        const Font& emphasis_mark_font,
+                                        const AutoDarkMode& auto_dark_mode);
+
   enum PaintInternalStep { kPaintText, kPaintEmphasisMark };
 
+  NGInlinePaintContext* inline_context_ = nullptr;
   GraphicsContext& graphics_context_;
   const Font& font_;
-  PhysicalOffset text_origin_;
-  PhysicalRect text_frame_rect_;
-  bool horizontal_;
-  bool has_combined_text_;
+  const PhysicalOffset text_origin_;
+  const PhysicalRect text_frame_rect_;
   AtomicString emphasis_mark_;
-  int emphasis_mark_offset_;
-  int ellipsis_offset_;
+  int emphasis_mark_offset_ = 0;
+  int ellipsis_offset_ = 0;
+  const bool horizontal_;
 };
 
 inline AffineTransform TextPainterBase::Rotation(
@@ -129,6 +153,13 @@ inline AffineTransform TextPainterBase::Rotation(
                                box_rect.Y() - box_rect.X())
              : AffineTransform(0, -1, 1, 0, box_rect.X() - box_rect.Y(),
                                box_rect.X() + box_rect.Bottom());
+}
+
+inline AffineTransform TextPainterBase::Rotation(const PhysicalRect& box_rect,
+                                                 WritingMode writing_mode) {
+  return Rotation(box_rect, writing_mode != WritingMode::kSidewaysLr
+                                ? TextPainterBase::kClockwise
+                                : TextPainterBase::kCounterclockwise);
 }
 
 }  // namespace blink

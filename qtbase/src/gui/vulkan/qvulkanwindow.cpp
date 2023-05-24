@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qvulkanwindow_p.h"
 #include "qvulkanfunctions.h"
@@ -47,7 +11,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcGuiVk, "qt.vulkan")
+Q_DECLARE_LOGGING_CATEGORY(lcGuiVk)
 
 /*!
   \class QVulkanWindow
@@ -195,6 +159,32 @@ Q_LOGGING_CATEGORY(lcGuiVk, "qt.vulkan")
   \note QVulkanWindow does not expose device layers since this functionality
   has been deprecated since version 1.0.13 of the Vulkan API.
 
+  \section1 Layers, device features, and extensions
+
+  To enable instance layers, call QVulkanInstance::setLayers() before creating
+  the QVulkanInstance. To query what instance layer are available, call
+  QVulkanInstance::supportedLayers().
+
+  To enable device extensions, call setDeviceExtensions() early on when setting
+  up the QVulkanWindow. To query what device extensions are available, call
+  supportedDeviceExtensions().
+
+  Specifying an unsupported layer or extension is handled gracefully: this will
+  not fail instance or device creation, but the layer or extension request is
+  rather ignored.
+
+  When it comes to device features, QVulkanWindow enables all Vulkan 1.0
+  features that are reported as supported from vkGetPhysicalDeviceFeatures().
+  As an exception to this rule, \c robustBufferAccess is never enabled. Use the
+  callback mechanism described below, if enabling that feature is desired.
+
+  Just enabling the 1.0 core features is not always sufficient, and therefore
+  full control over the VkPhysicalDeviceFeatures used for device creation is
+  possible too by registering a callback function with
+  setEnabledFeaturesModifier(). When set, the callback function is invoked,
+  letting it alter the VkPhysicalDeviceFeatures, instead of enabling only the
+  1.0 core features.
+
   \sa QVulkanInstance, QWindow
  */
 
@@ -284,7 +274,7 @@ QVulkanWindow::Flags QVulkanWindow::flags() const
 
    \note This function can be called before making the window visible.
  */
-QVector<VkPhysicalDeviceProperties> QVulkanWindow::availablePhysicalDevices()
+QList<VkPhysicalDeviceProperties> QVulkanWindow::availablePhysicalDevices()
 {
     Q_D(QVulkanWindow);
     if (!d->physDevs.isEmpty() && !d->physDevProps.isEmpty())
@@ -308,7 +298,7 @@ QVector<VkPhysicalDeviceProperties> QVulkanWindow::availablePhysicalDevices()
     if (!count)
         return d->physDevProps;
 
-    QVector<VkPhysicalDevice> devs(count);
+    QList<VkPhysicalDevice> devs(count);
     err = f->vkEnumeratePhysicalDevices(inst->vkInstance(), &count, devs.data());
     if (err != VK_SUCCESS) {
         qWarning("QVulkanWindow: Failed to enumerate physical devices: %d", err);
@@ -345,7 +335,7 @@ void QVulkanWindow::setPhysicalDeviceIndex(int idx)
         qWarning("QVulkanWindow: Attempted to set physical device when already initialized");
         return;
     }
-    const int count = availablePhysicalDevices().count();
+    const int count = availablePhysicalDevices().size();
     if (idx < 0 || idx >= count) {
         qWarning("QVulkanWindow: Invalid physical device index %d (total physical devices: %d)", idx, count);
         return;
@@ -378,7 +368,7 @@ QVulkanInfoVector<QVulkanExtension> QVulkanWindow::supportedDeviceExtensions()
     uint32_t count = 0;
     VkResult err = f->vkEnumerateDeviceExtensionProperties(physDev, nullptr, &count, nullptr);
     if (err == VK_SUCCESS) {
-        QVector<VkExtensionProperties> extProps(count);
+        QList<VkExtensionProperties> extProps(count);
         err = f->vkEnumerateDeviceExtensionProperties(physDev, nullptr, &count, extProps.data());
         if (err == VK_SUCCESS) {
             QVulkanInfoVector<QVulkanExtension> exts;
@@ -445,7 +435,7 @@ void QVulkanWindow::setDeviceExtensions(const QByteArrayList &extensions)
 
     \sa colorFormat()
  */
-void QVulkanWindow::setPreferredColorFormats(const QVector<VkFormat> &formats)
+void QVulkanWindow::setPreferredColorFormats(const QList<VkFormat> &formats)
 {
     Q_D(QVulkanWindow);
     if (d->status != QVulkanWindowPrivate::StatusUninitialized) {
@@ -458,7 +448,7 @@ void QVulkanWindow::setPreferredColorFormats(const QVector<VkFormat> &formats)
 static struct {
     VkSampleCountFlagBits mask;
     int count;
-} qvk_sampleCounts[] = {
+} q_vk_sampleCounts[] = {
     // keep this sorted by 'count'
     { VK_SAMPLE_COUNT_1_BIT, 1 },
     { VK_SAMPLE_COUNT_2_BIT, 2 },
@@ -471,7 +461,7 @@ static struct {
 
 /*!
     Returns the set of supported sample counts when using the physical device
-    selected by setPhysicalDeviceIndex(), as a sorted vector.
+    selected by setPhysicalDeviceIndex(), as a sorted list.
 
     By default QVulkanWindow uses a sample count of 1. By calling setSampleCount()
     with a different value (2, 4, 8, ...) from the set returned by this
@@ -481,10 +471,10 @@ static struct {
 
     \sa setSampleCount()
  */
-QVector<int> QVulkanWindow::supportedSampleCounts()
+QList<int> QVulkanWindow::supportedSampleCounts()
 {
     Q_D(const QVulkanWindow);
-    QVector<int> result;
+    QList<int> result;
 
     availablePhysicalDevices();
 
@@ -498,7 +488,7 @@ QVector<int> QVulkanWindow::supportedSampleCounts()
     VkSampleCountFlags depth = limits->framebufferDepthSampleCounts;
     VkSampleCountFlags stencil = limits->framebufferStencilSampleCounts;
 
-    for (const auto &qvk_sampleCount : qvk_sampleCounts) {
+    for (const auto &qvk_sampleCount : q_vk_sampleCounts) {
         if ((color & qvk_sampleCount.mask)
                 && (depth & qvk_sampleCount.mask)
                 && (stencil & qvk_sampleCount.mask))
@@ -547,7 +537,7 @@ void QVulkanWindow::setSampleCount(int sampleCount)
         return;
     }
 
-    for (const auto &qvk_sampleCount : qvk_sampleCounts) {
+    for (const auto &qvk_sampleCount : q_vk_sampleCounts) {
         if (qvk_sampleCount.count == sampleCount) {
             d->sampleCount = qvk_sampleCount.mask;
             return;
@@ -591,7 +581,7 @@ void QVulkanWindowPrivate::init()
         return;
     }
 
-    if (physDevIndex < 0 || physDevIndex >= physDevs.count()) {
+    if (physDevIndex < 0 || physDevIndex >= physDevs.size()) {
         qWarning("QVulkanWindow: Invalid physical device index; defaulting to 0");
         physDevIndex = 0;
     }
@@ -606,11 +596,11 @@ void QVulkanWindowPrivate::init()
 
     uint32_t queueCount = 0;
     f->vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueCount, nullptr);
-    QVector<VkQueueFamilyProperties> queueFamilyProps(queueCount);
+    QList<VkQueueFamilyProperties> queueFamilyProps(queueCount);
     f->vkGetPhysicalDeviceQueueFamilyProperties(physDev, &queueCount, queueFamilyProps.data());
     gfxQueueFamilyIdx = uint32_t(-1);
     presQueueFamilyIdx = uint32_t(-1);
-    for (int i = 0; i < queueFamilyProps.count(); ++i) {
+    for (int i = 0; i < queueFamilyProps.size(); ++i) {
         const bool supportsPresent = inst->supportsPresent(physDev, i, q);
         qCDebug(lcGuiVk, "queue family %d: flags=0x%x count=%d supportsPresent=%d", i,
                 queueFamilyProps[i].queueFlags, queueFamilyProps[i].queueCount, supportsPresent);
@@ -623,7 +613,7 @@ void QVulkanWindowPrivate::init()
         presQueueFamilyIdx = gfxQueueFamilyIdx;
     } else {
         qCDebug(lcGuiVk, "No queue with graphics+present; trying separate queues");
-        for (int i = 0; i < queueFamilyProps.count(); ++i) {
+        for (int i = 0; i < queueFamilyProps.size(); ++i) {
             if (gfxQueueFamilyIdx == uint32_t(-1) && (queueFamilyProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT))
                 gfxQueueFamilyIdx = i;
             if (presQueueFamilyIdx == uint32_t(-1) && inst->supportsPresent(physDev, i, q))
@@ -647,7 +637,7 @@ void QVulkanWindowPrivate::init()
 #endif
     qCDebug(lcGuiVk, "Using queue families: graphics = %u present = %u", gfxQueueFamilyIdx, presQueueFamilyIdx);
 
-    QVector<VkDeviceQueueCreateInfo> queueInfo;
+    QList<VkDeviceQueueCreateInfo> queueInfo;
     queueInfo.reserve(2);
     const float prio[] = { 0 };
     VkDeviceQueueCreateInfo addQueueInfo;
@@ -667,7 +657,7 @@ void QVulkanWindowPrivate::init()
         queueCreateInfoModifier(queueFamilyProps.constData(), queueCount, queueInfo);
         bool foundGfxQueue = false;
         bool foundPresQueue = false;
-        for (const VkDeviceQueueCreateInfo& createInfo : qAsConst(queueInfo)) {
+        for (const VkDeviceQueueCreateInfo& createInfo : std::as_const(queueInfo)) {
             foundGfxQueue |= createInfo.queueFamilyIndex == gfxQueueFamilyIdx;
             foundPresQueue |= createInfo.queueFamilyIndex == presQueueFamilyIdx;
         }
@@ -685,7 +675,7 @@ void QVulkanWindowPrivate::init()
 
     // Filter out unsupported extensions in order to keep symmetry
     // with how QVulkanInstance behaves. Add the swapchain extension.
-    QVector<const char *> devExts;
+    QList<const char *> devExts;
     QVulkanInfoVector<QVulkanExtension> supportedExtensions = q->supportedDeviceExtensions();
     QByteArrayList reqExts = requestedDevExtensions;
     reqExts.append("VK_KHR_swapchain");
@@ -709,8 +699,20 @@ void QVulkanWindowPrivate::init()
     devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     devInfo.queueCreateInfoCount = queueInfo.size();
     devInfo.pQueueCreateInfos = queueInfo.constData();
-    devInfo.enabledExtensionCount = devExts.count();
+    devInfo.enabledExtensionCount = devExts.size();
     devInfo.ppEnabledExtensionNames = devExts.constData();
+
+    VkPhysicalDeviceFeatures features;
+    memset(&features, 0, sizeof(features));
+    if (enabledFeaturesModifier) {
+        enabledFeaturesModifier(features);
+    } else {
+        // Enable all supported 1.0 core features, except ones that likely
+        // involve a performance penalty.
+        f->vkGetPhysicalDeviceFeatures(physDev, &features);
+        features.robustBufferAccess = VK_FALSE;
+    }
+    devInfo.pEnabledFeatures = &features;
 
     // Device layers are not supported by QVulkanWindow since that's an already deprecated
     // API. However, have a workaround for systems with older API and layers (f.ex. L4T
@@ -722,17 +724,17 @@ void QVulkanWindowPrivate::init()
         && VK_VERSION_PATCH(apiVersion) <= 13)
     {
         // Make standard validation work at least.
-        const QByteArray stdValName = QByteArrayLiteral("VK_LAYER_LUNARG_standard_validation");
+        const QByteArray stdValName = QByteArrayLiteral("VK_LAYER_KHRONOS_validation");
         const char *stdValNamePtr = stdValName.constData();
         if (inst->layers().contains(stdValName)) {
             uint32_t count = 0;
             VkResult err = f->vkEnumerateDeviceLayerProperties(physDev, &count, nullptr);
             if (err == VK_SUCCESS) {
-                QVector<VkLayerProperties> layerProps(count);
+                QList<VkLayerProperties> layerProps(count);
                 err = f->vkEnumerateDeviceLayerProperties(physDev, &count, layerProps.data());
                 if (err == VK_SUCCESS) {
                     for (const VkLayerProperties &prop : layerProps) {
-                        if (!strncmp(prop.layerName, stdValNamePtr, stdValName.count())) {
+                        if (!strncmp(prop.layerName, stdValNamePtr, stdValName.size())) {
                             devInfo.enabledLayerCount = 1;
                             devInfo.ppEnabledLayerNames = &stdValNamePtr;
                             break;
@@ -840,7 +842,7 @@ void QVulkanWindowPrivate::init()
 
     uint32_t formatCount = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physDev, surface, &formatCount, nullptr);
-    QVector<VkSurfaceFormatKHR> formats(formatCount);
+    QList<VkSurfaceFormatKHR> formats(formatCount);
     if (formatCount)
         vkGetPhysicalDeviceSurfaceFormatsKHR(physDev, surface, &formatCount, formats.data());
 
@@ -855,7 +857,7 @@ void QVulkanWindowPrivate::init()
 
     // Try to honor the user request.
     if (!formats.isEmpty() && !requestedColorFormats.isEmpty()) {
-        for (VkFormat reqFmt : qAsConst(requestedColorFormats)) {
+        for (VkFormat reqFmt : std::as_const(requestedColorFormats)) {
             auto r = std::find_if(formats.cbegin(), formats.cend(),
                                   [reqFmt](const VkSurfaceFormatKHR &sfmt) { return sfmt.format == reqFmt; });
             if (r != formats.cend()) {
@@ -1330,6 +1332,7 @@ bool QVulkanWindowPrivate::createTransientImage(VkFormat format,
     VkMemoryRequirements memReq;
     VkResult err;
 
+    Q_ASSERT(count > 0);
     for (int i = 0; i < count; ++i) {
         VkImageCreateInfo imgInfo;
         memset(&imgInfo, 0, sizeof(imgInfo));
@@ -1581,8 +1584,8 @@ bool QVulkanWindow::event(QEvent *e)
 /*!
     \typedef QVulkanWindow::QueueCreateInfoModifier
 
-    A function function that is called during graphics initialization to add
-    additAional queues that should be created.
+    A function that is called during graphics initialization to add
+    additional queues that should be created.
 
     Set if the renderer needs additional queues besides the default graphics
     queue (e.g. a transfer queue).
@@ -1590,17 +1593,17 @@ bool QVulkanWindow::event(QEvent *e)
     the additional queues.
     The renderer can subsequently request the actual queue in initResources().
 
-    Note when requesting additional graphics queues: Qt itself always requests
-    a graphics queue, you'll need to search queueCreateInfo for the appropriate
+    \note When requesting additional graphics queues, Qt itself always requests
+    a graphics queue. You'll need to search queueCreateInfo for the appropriate
     entry and manipulate it to obtain the additional queue.
 
     \sa setQueueCreateInfoModifier()
  */
 
 /*!
-    Set a queue create info modification function.
+    Sets the queue create info modification function \a modifier.
 
-    \sa queueCreateInfoModifier()
+    \sa QueueCreateInfoModifier
 
     \since 5.15
  */
@@ -1610,6 +1613,44 @@ void QVulkanWindow::setQueueCreateInfoModifier(const QueueCreateInfoModifier &mo
     d->queueCreateInfoModifier = modifier;
 }
 
+/*!
+    \typedef QVulkanWindow::EnabledFeaturesModifier
+
+    A function that is called during graphics initialization to alter the
+    VkPhysicalDeviceFeatures that is passed in when creating a Vulkan device
+    object.
+
+    By default QVulkanWindow enables all Vulkan 1.0 core features that the
+    physical device reports as supported, with certain exceptions. In
+    praticular, \c robustBufferAccess is always disabled in order to avoid
+    unexpected performance hits.
+
+    This however is not always sufficient when working with Vulkan 1.1 or 1.2
+    features and extensions. Hence this callback mechanism.
+
+    The VkPhysicalDeviceFeatures reference passed in is all zeroed out at the
+    point when the function is invoked. It is up to the function to change
+    members to true, or set up \c pNext chains as it sees fit.
+
+    \note When setting up \c pNext chains, make sure the referenced objects
+    have a long enough lifetime, for example by storing them as member
+    variables in the QVulkanWindow subclass.
+
+    \sa setEnabledFeaturesModifier()
+ */
+
+/*!
+    Sets the enabled device features modification function \a modifier.
+
+    \sa EnabledFeaturesModifier
+
+    \since 6.4
+ */
+void QVulkanWindow::setEnabledFeaturesModifier(const EnabledFeaturesModifier &modifier)
+{
+    Q_D(QVulkanWindow);
+    d->enabledFeaturesModifier = modifier;
+}
 
 /*!
     Returns true if this window has successfully initialized all Vulkan
@@ -1748,7 +1789,7 @@ void QVulkanWindowRenderer::releaseResources()
 }
 
 /*!
-    \fn QVulkanWindowRenderer::startNextFrame()
+    \fn void QVulkanWindowRenderer::startNextFrame()
 
     This virtual function is called when the draw calls for the next frame are
     to be added to the command buffer.
@@ -1811,13 +1852,26 @@ void QVulkanWindowRenderer::logicalDeviceLost()
 {
 }
 
+QSize QVulkanWindowPrivate::surfacePixelSize() const
+{
+    Q_Q(const QVulkanWindow);
+    VkSurfaceCapabilitiesKHR surfaceCaps = {};
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physDevs.at(physDevIndex), surface, &surfaceCaps);
+    VkExtent2D bufferSize = surfaceCaps.currentExtent;
+    if (bufferSize.width == uint32_t(-1)) {
+        Q_ASSERT(bufferSize.height == uint32_t(-1));
+        return q->size() * q->devicePixelRatio();
+    }
+    return QSize(int(bufferSize.width), int(bufferSize.height));
+}
+
 void QVulkanWindowPrivate::beginFrame()
 {
     if (!swapChain || framePending)
         return;
 
     Q_Q(QVulkanWindow);
-    if (q->size() * q->devicePixelRatio() != swapChainImageSize) {
+    if (swapChainImageSize != surfacePixelSize()) {
         recreateSwapChain();
         if (!swapChain)
             return;
@@ -1886,7 +1940,7 @@ void QVulkanWindowPrivate::beginFrame()
     }
 
     if (frameGrabbing)
-        frameGrabTargetImage = QImage(swapChainImageSize, QImage::Format_RGBA8888);
+        frameGrabTargetImage = QImage(swapChainImageSize, QImage::Format_RGBA8888); // the format is as documented
 
     if (renderer) {
         framePending = true;
@@ -2020,7 +2074,7 @@ void QVulkanWindowPrivate::endFrame()
     // order to circumvent driver frame callbacks
     inst->presentAboutToBeQueued(q);
 
-    err = vkQueuePresentKHR(gfxQueue, &presInfo);
+    err = vkQueuePresentKHR(presQueue, &presInfo);
     if (err != VK_SUCCESS) {
         if (err == VK_ERROR_OUT_OF_DATE_KHR) {
             recreateSwapChain();
@@ -2232,7 +2286,7 @@ void QVulkanWindowPrivate::finishBlockingReadback()
 VkPhysicalDevice QVulkanWindow::physicalDevice() const
 {
     Q_D(const QVulkanWindow);
-    if (d->physDevIndex < d->physDevs.count())
+    if (d->physDevIndex < d->physDevs.size())
         return d->physDevs[d->physDevIndex];
     qWarning("QVulkanWindow: Physical device not available");
     return VK_NULL_HANDLE;
@@ -2248,7 +2302,7 @@ VkPhysicalDevice QVulkanWindow::physicalDevice() const
 const VkPhysicalDeviceProperties *QVulkanWindow::physicalDeviceProperties() const
 {
     Q_D(const QVulkanWindow);
-    if (d->physDevIndex < d->physDevProps.count())
+    if (d->physDevIndex < d->physDevProps.size())
         return &d->physDevProps[d->physDevIndex];
     qWarning("QVulkanWindow: Physical device properties not available");
     return nullptr;
@@ -2401,6 +2455,19 @@ VkFormat QVulkanWindow::depthStencilFormat() const
 
     This usually matches the size of the window, but may also differ in case
     \c vkGetPhysicalDeviceSurfaceCapabilitiesKHR reports a fixed size.
+
+    In addition, it has been observed on some platforms that the
+    Vulkan-reported surface size is different with high DPI scaling active,
+    meaning the QWindow-reported
+    \l{QWindow::}{size()} multiplied with the \l{QWindow::}{devicePixelRatio()}
+    was 1 pixel less or more when compared to the value returned from here,
+    presumably due to differences in rounding. Rendering code should be aware
+    of this, and any related rendering logic must be based in the value returned
+    from here, never on the QWindow-reported size. Regardless of which pixel size
+    is correct in theory, Vulkan rendering must only ever rely on the Vulkan
+    API-reported surface size. Otherwise validation errors may occur, e.g. when
+    setting the viewport, because the application-provided values may become
+    out-of-bounds from Vulkan's perspective.
 
     \note Calling this function is only valid from the invocation of
     QVulkanWindowRenderer::initSwapChainResources() up until
@@ -2673,6 +2740,12 @@ bool QVulkanWindow::supportsGrab() const
     incomplete image, that has the correct size but not the content yet. The
     content will be delivered via the frameGrabbed() signal in the latter case.
 
+    The returned QImage always has a format of QImage::Format_RGBA8888. If the
+    colorFormat() is \c VK_FORMAT_B8G8R8A8_UNORM, the red and blue channels are
+    swapped automatically since this format is commonly used as the default
+    choice for swapchain color buffers. With any other color buffer format,
+    there is no conversion performed by this function.
+
     \note This function should not be called when a frame is in progress
     (that is, frameReady() has not yet been called back by the application).
 
@@ -2700,6 +2773,9 @@ QImage QVulkanWindow::grab()
 
     d->frameGrabbing = true;
     d->beginFrame();
+
+    if (d->colorFormat == VK_FORMAT_B8G8R8A8_UNORM)
+        d->frameGrabTargetImage = std::move(d->frameGrabTargetImage).rgbSwapped();
 
     return d->frameGrabTargetImage;
 }
@@ -2729,3 +2805,5 @@ QMatrix4x4 QVulkanWindow::clipCorrectionMatrix()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qvulkanwindow.cpp"

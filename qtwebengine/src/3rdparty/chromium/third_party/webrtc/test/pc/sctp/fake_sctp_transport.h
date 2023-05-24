@@ -13,6 +13,7 @@
 
 #include <memory>
 
+#include "api/transport/sctp_transport_factory_interface.h"
 #include "media/sctp/sctp_transport_internal.h"
 
 // Used for tests in this file to verify that PeerConnection responds to signals
@@ -20,6 +21,8 @@
 // local/remote ports.
 class FakeSctpTransport : public cricket::SctpTransportInternal {
  public:
+  void SetOnConnectedCallback(std::function<void()> callback) override {}
+  void SetDataChannelSink(webrtc::DataChannelSink* sink) override {}
   void SetDtlsTransport(rtc::PacketTransportInternal* transport) override {}
   bool Start(int local_port, int remote_port, int max_message_size) override {
     local_port_.emplace(local_port);
@@ -29,7 +32,8 @@ class FakeSctpTransport : public cricket::SctpTransportInternal {
   }
   bool OpenStream(int sid) override { return true; }
   bool ResetStream(int sid) override { return true; }
-  bool SendData(const cricket::SendDataParams& params,
+  bool SendData(int sid,
+                const webrtc::SendDataParams& params,
                 const rtc::CopyOnWriteBuffer& payload,
                 cricket::SendDataResult* result = nullptr) override {
     return true;
@@ -40,8 +44,14 @@ class FakeSctpTransport : public cricket::SctpTransportInternal {
   int max_message_size() const { return max_message_size_; }
   absl::optional<int> max_outbound_streams() const { return absl::nullopt; }
   absl::optional<int> max_inbound_streams() const { return absl::nullopt; }
-  int local_port() const { return *local_port_; }
-  int remote_port() const { return *remote_port_; }
+  int local_port() const {
+    RTC_DCHECK(local_port_);
+    return *local_port_;
+  }
+  int remote_port() const {
+    RTC_DCHECK(remote_port_);
+    return *remote_port_;
+  }
 
  private:
   absl::optional<int> local_port_;

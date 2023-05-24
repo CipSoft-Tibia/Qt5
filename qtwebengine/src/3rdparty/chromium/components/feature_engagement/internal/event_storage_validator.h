@@ -1,13 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_FEATURE_ENGAGEMENT_INTERNAL_EVENT_STORAGE_VALIDATOR_H_
 #define COMPONENTS_FEATURE_ENGAGEMENT_INTERNAL_EVENT_STORAGE_VALIDATOR_H_
 
-#include <string>
+#include <stdint.h>
 
-#include "base/macros.h"
+#include <string>
 
 namespace feature_engagement {
 
@@ -15,6 +15,9 @@ namespace feature_engagement {
 // event, and checks if all conditions are met for storing it.
 class EventStorageValidator {
  public:
+  EventStorageValidator(const EventStorageValidator&) = delete;
+  EventStorageValidator& operator=(const EventStorageValidator&) = delete;
+
   virtual ~EventStorageValidator() = default;
 
   // Returns true iff new events of this type should be stored.
@@ -30,9 +33,6 @@ class EventStorageValidator {
 
  protected:
   EventStorageValidator() = default;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(EventStorageValidator);
 };
 
 }  // namespace feature_engagement

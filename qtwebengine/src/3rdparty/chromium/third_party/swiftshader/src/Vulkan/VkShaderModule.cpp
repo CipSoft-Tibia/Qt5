@@ -20,29 +20,36 @@
 
 namespace vk {
 
-std::atomic<uint32_t> ShaderModule::serialCounter(1);  // Start at 1, 0 is invalid shader.
-
 ShaderModule::ShaderModule(const VkShaderModuleCreateInfo *pCreateInfo, void *mem)
-    : serialID(nextSerialID())
-    , code(reinterpret_cast<uint32_t *>(mem))
+    : binary(pCreateInfo->pCode, pCreateInfo->codeSize / sizeof(uint32_t))
 {
-	memcpy(code, pCreateInfo->pCode, pCreateInfo->codeSize);
-	wordCount = static_cast<uint32_t>(pCreateInfo->codeSize / sizeof(uint32_t));
-
 #if !defined(NDEBUG) || defined(DCHECK_ALWAYS_ON)
-	spvtools::SpirvTools spirvTools(SPV_ENV_VULKAN_1_1);
-	ASSERT(spirvTools.Validate(getCode()));  // The SPIR-V code passed to vkCreateShaderModule must be valid (b/158228522)
-#endif
-}
+	spvtools::SpirvTools spirvTools(SPIRV_VERSION);
+	spirvTools.SetMessageConsumer([](spv_message_level_t level, const char *source, const spv_position_t &position, const char *message) {
+		switch(level)
+		{
+		case SPV_MSG_FATAL: sw::warn("SPIR-V FATAL: %d:%d %s\n", int(position.line), int(position.column), message);
+		case SPV_MSG_INTERNAL_ERROR: sw::warn("SPIR-V INTERNAL_ERROR: %d:%d %s\n", int(position.line), int(position.column), message);
+		case SPV_MSG_ERROR: sw::warn("SPIR-V ERROR: %d:%d %s\n", int(position.line), int(position.column), message);
+		case SPV_MSG_WARNING: sw::warn("SPIR-V WARNING: %d:%d %s\n", int(position.line), int(position.column), message);
+		case SPV_MSG_INFO: sw::trace("SPIR-V INFO: %d:%d %s\n", int(position.line), int(position.column), message);
+		case SPV_MSG_DEBUG: sw::trace("SPIR-V DEBUG: %d:%d %s\n", int(position.line), int(position.column), message);
+		default: sw::trace("SPIR-V MESSAGE: %d:%d %s\n", int(position.line), int(position.column), message);
+		}
+	});
 
-void ShaderModule::destroy(const VkAllocationCallbacks *pAllocator)
-{
-	vk::deallocate(code, pAllocator);
+	spvtools::ValidatorOptions validatorOptions = {};
+	validatorOptions.SetScalarBlockLayout(true);            // VK_EXT_scalar_block_layout
+	validatorOptions.SetUniformBufferStandardLayout(true);  // VK_KHR_uniform_buffer_standard_layout
+	validatorOptions.SetAllowLocalSizeId(true);             // VK_KHR_maintenance4
+
+	ASSERT(spirvTools.Validate(binary.data(), binary.size(), validatorOptions));  // The SPIR-V code passed to vkCreateShaderModule must be valid (b/158228522)
+#endif
 }
 
 size_t ShaderModule::ComputeRequiredAllocationSize(const VkShaderModuleCreateInfo *pCreateInfo)
 {
-	return pCreateInfo->codeSize;
+	return 0;
 }
 
 }  // namespace vk

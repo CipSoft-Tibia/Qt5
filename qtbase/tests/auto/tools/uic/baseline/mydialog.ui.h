@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'mydialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -28,7 +28,7 @@ public:
     void setupUi(QDialog *MyDialog)
     {
         if (MyDialog->objectName().isEmpty())
-            MyDialog->setObjectName(QString::fromUtf8("MyDialog"));
+            MyDialog->setObjectName("MyDialog");
         MyDialog->resize(401, 70);
         vboxLayout = new QVBoxLayout(MyDialog);
 #ifndef Q_OS_MAC
@@ -37,14 +37,14 @@ public:
 #ifndef Q_OS_MAC
         vboxLayout->setContentsMargins(9, 9, 9, 9);
 #endif
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         aLabel = new QLabel(MyDialog);
-        aLabel->setObjectName(QString::fromUtf8("aLabel"));
+        aLabel->setObjectName("aLabel");
 
         vboxLayout->addWidget(aLabel);
 
         aButton = new QPushButton(MyDialog);
-        aButton->setObjectName(QString::fromUtf8("aButton"));
+        aButton->setObjectName("aButton");
 
         vboxLayout->addWidget(aButton);
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,17 +9,16 @@
 #include <stdint.h>
 
 #include <memory>
+#include <string>
 
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
 #include "services/device/geolocation/wifi_data_provider.h"
 #include "services/device/geolocation/wifi_polling_policy.h"
 
 namespace device {
 
 // Converts a MAC address stored as an array of uint8_t to a string.
-base::string16 MacAddressAsString16(const uint8_t mac_as_int[6]);
+std::u16string MacAddressAsString16(const uint8_t mac_as_int[6]);
 
 // Base class to promote code sharing between platform specific wifi data
 // providers. It's optional for specific platforms to derive this, but if they
@@ -38,6 +37,9 @@ class WifiDataProviderCommon : public WifiDataProvider {
   };
 
   WifiDataProviderCommon();
+
+  WifiDataProviderCommon(const WifiDataProviderCommon&) = delete;
+  WifiDataProviderCommon& operator=(const WifiDataProviderCommon&) = delete;
 
   // WifiDataProvider implementation
   void StartDataProvider() override;
@@ -74,8 +76,6 @@ class WifiDataProviderCommon : public WifiDataProvider {
 
   // Holder for delayed tasks; takes care of cleanup.
   base::WeakPtrFactory<WifiDataProviderCommon> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(WifiDataProviderCommon);
 };
 
 }  // namespace device

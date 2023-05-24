@@ -1,10 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gtk/settings_provider_gtk.h"
 
 #include "base/strings/string_split.h"
+#include "gtk_compat.h"
+#include "ui/gtk/gtk_compat.h"
 #include "ui/gtk/gtk_ui.h"
 #include "ui/gtk/gtk_util.h"
 
@@ -13,39 +15,33 @@ namespace gtk {
 namespace {
 
 std::string GetDecorationLayoutFromGtkWindow() {
-#if GTK_CHECK_VERSION(3, 90, 0)
-  NOTREACHED();
-  static const char kDefaultGtkLayout[] = "menu:minimize,maximize,close";
-  return kDefaultGtkLayout;
-#else
-  static ScopedStyleContext context;
-  if (!context) {
-    context = GetStyleContextFromCss("");
-    gtk_style_context_add_class(context, "csd");
-  }
+  DCHECK(!GtkCheckVersion(4));
+
+  GtkCssContext context = GetStyleContextFromCss("");
+  gtk_style_context_add_class(context, "csd");
 
   gchar* layout_c = nullptr;
-  gtk_style_context_get_style(context, "decoration-button-layout", &layout_c,
-                              nullptr);
+  GtkStyleContextGetStyle(context, "decoration-button-layout", &layout_c,
+                          nullptr);
   DCHECK(layout_c);
   std::string layout(layout_c);
   g_free(layout_c);
   return layout;
-#endif
 }
 
 void ParseActionString(const std::string& value,
                        GtkUi::WindowFrameAction* action) {
-  if (value == "none")
-    *action = views::LinuxUI::WindowFrameAction::kNone;
-  else if (value == "lower")
-    *action = views::LinuxUI::WindowFrameAction::kLower;
-  else if (value == "minimize")
-    *action = views::LinuxUI::WindowFrameAction::kMinimize;
-  else if (value == "toggle-maximize")
-    *action = views::LinuxUI::WindowFrameAction::kToggleMaximize;
-  else if (value == "menu")
-    *action = views::LinuxUI::WindowFrameAction::kMenu;
+  if (value == "none") {
+    *action = ui::LinuxUi::WindowFrameAction::kNone;
+  } else if (value == "lower") {
+    *action = ui::LinuxUi::WindowFrameAction::kLower;
+  } else if (value == "minimize") {
+    *action = ui::LinuxUi::WindowFrameAction::kMinimize;
+  } else if (value == "toggle-maximize") {
+    *action = ui::LinuxUi::WindowFrameAction::kToggleMaximize;
+  } else if (value == "menu") {
+    *action = ui::LinuxUi::WindowFrameAction::kMenu;
+  }
 }
 
 }  // namespace
@@ -53,8 +49,8 @@ void ParseActionString(const std::string& value,
 SettingsProviderGtk::FrameActionSettingWatcher::FrameActionSettingWatcher(
     SettingsProviderGtk* settings_provider,
     const std::string& setting_name,
-    views::LinuxUI::WindowFrameActionSource action_type,
-    views::LinuxUI::WindowFrameAction default_action)
+    ui::LinuxUi::WindowFrameActionSource action_type,
+    ui::LinuxUi::WindowFrameAction default_action)
     : settings_provider_(settings_provider),
       setting_name_(setting_name),
       action_type_(action_type),
@@ -68,8 +64,9 @@ SettingsProviderGtk::FrameActionSettingWatcher::FrameActionSettingWatcher(
 }
 
 SettingsProviderGtk::FrameActionSettingWatcher::~FrameActionSettingWatcher() {
-  if (signal_id_)
+  if (signal_id_) {
     g_signal_handler_disconnect(gtk_settings_get_default(), signal_id_);
+  }
 }
 
 void SettingsProviderGtk::FrameActionSettingWatcher::OnSettingChanged(
@@ -86,35 +83,27 @@ SettingsProviderGtk::SettingsProviderGtk(GtkUi* delegate)
     : delegate_(delegate), signal_id_decoration_layout_(0) {
   DCHECK(delegate_);
   GtkSettings* settings = gtk_settings_get_default();
-  if (GtkCheckVersion(3, 14)) {
-    signal_id_decoration_layout_ = g_signal_connect(
-        settings, "notify::gtk-decoration-layout",
-        G_CALLBACK(OnDecorationButtonLayoutChangedThunk), this);
-    DCHECK(signal_id_decoration_layout_);
-    OnDecorationButtonLayoutChanged(settings, nullptr);
+  signal_id_decoration_layout_ =
+      g_signal_connect(settings, "notify::gtk-decoration-layout",
+                       G_CALLBACK(OnDecorationButtonLayoutChangedThunk), this);
+  DCHECK(signal_id_decoration_layout_);
+  OnDecorationButtonLayoutChanged(settings, nullptr);
 
-    frame_action_setting_watchers_.push_back(
-        std::make_unique<FrameActionSettingWatcher>(
-            this, "gtk-titlebar-middle-click",
-            views::LinuxUI::WindowFrameActionSource::kMiddleClick,
-            views::LinuxUI::WindowFrameAction::kNone));
-    frame_action_setting_watchers_.push_back(
-        std::make_unique<FrameActionSettingWatcher>(
-            this, "gtk-titlebar-double-click",
-            views::LinuxUI::WindowFrameActionSource::kDoubleClick,
-            views::LinuxUI::WindowFrameAction::kToggleMaximize));
-    frame_action_setting_watchers_.push_back(
-        std::make_unique<FrameActionSettingWatcher>(
-            this, "gtk-titlebar-right-click",
-            views::LinuxUI::WindowFrameActionSource::kRightClick,
-            views::LinuxUI::WindowFrameAction::kMenu));
-  } else {
-    signal_id_decoration_layout_ =
-        g_signal_connect_after(settings, "notify::gtk-theme-name",
-                               G_CALLBACK(OnThemeChangedThunk), this);
-    DCHECK(signal_id_decoration_layout_);
-    OnThemeChanged(settings, nullptr);
-  }
+  frame_action_setting_watchers_.push_back(
+      std::make_unique<FrameActionSettingWatcher>(
+          this, "gtk-titlebar-middle-click",
+          ui::LinuxUi::WindowFrameActionSource::kMiddleClick,
+          ui::LinuxUi::WindowFrameAction::kNone));
+  frame_action_setting_watchers_.push_back(
+      std::make_unique<FrameActionSettingWatcher>(
+          this, "gtk-titlebar-double-click",
+          ui::LinuxUi::WindowFrameActionSource::kDoubleClick,
+          ui::LinuxUi::WindowFrameAction::kToggleMaximize));
+  frame_action_setting_watchers_.push_back(
+      std::make_unique<FrameActionSettingWatcher>(
+          this, "gtk-titlebar-right-click",
+          ui::LinuxUi::WindowFrameActionSource::kRightClick,
+          ui::LinuxUi::WindowFrameAction::kMenu));
 }
 
 SettingsProviderGtk::~SettingsProviderGtk() {

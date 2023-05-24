@@ -12,12 +12,15 @@
 #define P2P_BASE_PORT_INTERFACE_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "api/candidate.h"
 #include "p2p/base/transport_description.h"
 #include "rtc_base/async_packet_socket.h"
+#include "rtc_base/callback_list.h"
 #include "rtc_base/socket_address.h"
 
 namespace rtc {
@@ -47,7 +50,7 @@ class PortInterface {
   virtual ~PortInterface();
 
   virtual const std::string& Type() const = 0;
-  virtual rtc::Network* Network() const = 0;
+  virtual const rtc::Network* Network() const = 0;
 
   // Methods to set/get ICE role and tiebreaker values.
   virtual void SetIceRole(IceRole role) = 0;
@@ -58,7 +61,7 @@ class PortInterface {
 
   virtual bool SharedSocket() const = 0;
 
-  virtual bool SupportsProtocol(const std::string& protocol) const = 0;
+  virtual bool SupportsProtocol(absl::string_view protocol) const = 0;
 
   // PrepareAddress will attempt to get an address for this port that other
   // clients can send to.  It may take some time before the address is ready.
@@ -105,14 +108,15 @@ class PortInterface {
 
   // Sends a response message (normal or error) to the given request.  One of
   // these methods should be called as a response to SignalUnknownAddress.
-  virtual void SendBindingErrorResponse(StunMessage* request,
+  virtual void SendBindingErrorResponse(StunMessage* message,
                                         const rtc::SocketAddress& addr,
                                         int error_code,
-                                        const std::string& reason) = 0;
+                                        absl::string_view reason) = 0;
 
   // Signaled when this port decides to delete itself because it no longer has
   // any usefulness.
-  sigslot::signal1<PortInterface*> SignalDestroyed;
+  virtual void SubscribePortDestroyed(
+      std::function<void(PortInterface*)> callback) = 0;
 
   // Signaled when Port discovers ice role conflict with the peer.
   sigslot::signal1<PortInterface*> SignalRoleConflict;

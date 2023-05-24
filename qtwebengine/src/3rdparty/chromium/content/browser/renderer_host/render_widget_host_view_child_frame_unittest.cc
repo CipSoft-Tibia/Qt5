@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,42 +6,44 @@
 
 #include <stdint.h>
 
+#include <memory>
 #include <tuple>
 #include <utility>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/test/scoped_feature_list.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/task_environment.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "build/build_config.h"
 #include "components/viz/common/surfaces/parent_local_surface_id_allocator.h"
 #include "components/viz/test/begin_frame_args_test.h"
 #include "components/viz/test/fake_external_begin_frame_source.h"
 #include "content/browser/compositor/test/test_image_transport_factory.h"
 #include "content/browser/gpu/compositor_util.h"
-#include "content/browser/renderer_host/agent_scheduling_group_host.h"
-#include "content/browser/renderer_host/frame_connector_delegate.h"
+#include "content/browser/renderer_host/cross_process_frame_connector.h"
 #include "content/browser/renderer_host/frame_token_message_queue.h"
+#include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/render_widget_host_delegate.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
-#include "content/common/view_messages.h"
-#include "content/common/widget_messages.h"
+#include "content/browser/site_instance_group.h"
 #include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/site_instance.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_task_environment.h"
+#include "content/public/test/fake_frame_widget.h"
 #include "content/public/test/mock_render_process_host.h"
 #include "content/public/test/test_browser_context.h"
 #include "content/test/mock_render_widget_host_delegate.h"
 #include "content/test/mock_widget.h"
 #include "content/test/test_render_view_host.h"
+#include "content/test/test_render_widget_host.h"
+#include "content/test/test_web_contents.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/frame/frame_visual_properties.h"
 #include "third_party/blink/public/common/input/synthetic_web_input_event_builders.h"
-#include "third_party/blink/public/platform/viewport_intersection_state.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/compositor/compositor.h"
 
@@ -50,24 +52,29 @@ namespace {
 
 const viz::LocalSurfaceId kArbitraryLocalSurfaceId(
     1,
-    base::UnguessableToken::Deserialize(2, 3));
+    base::UnguessableToken::CreateForTesting(2, 3));
+
+blink::mojom::ScrollResultDataPtr MakeDefaultScrollResultData() {
+  return blink::mojom::ScrollResultData::New(
+      absl::optional<::gfx::PointF>(::gfx::PointF(0, 100)));
+}
 
 }  // namespace
 
-class MockFrameConnectorDelegate : public FrameConnectorDelegate {
+class MockFrameConnector : public CrossProcessFrameConnector {
  public:
-  MockFrameConnectorDelegate(bool use_zoom_for_device_scale_factor)
-      : FrameConnectorDelegate(use_zoom_for_device_scale_factor) {}
-  ~MockFrameConnectorDelegate() override {}
+  explicit MockFrameConnector() : CrossProcessFrameConnector(nullptr) {}
+  ~MockFrameConnector() override = default;
 
   void FirstSurfaceActivation(const viz::SurfaceInfo& surface_info) override {
     last_surface_info_ = surface_info;
   }
 
-  void SetViewportIntersection(const blink::WebRect& viewport_intersection,
-                               const blink::WebRect& main_frame_intersection,
-                               const blink::WebRect& compositor_visible_rect,
-                               blink::FrameOcclusionState occlusion_state) {
+  void SetViewportIntersection(
+      const gfx::Rect& viewport_intersection,
+      const gfx::Rect& main_frame_intersection,
+      const gfx::Rect& compositor_visible_rect,
+      blink::mojom::FrameOcclusionState occlusion_state) {
     intersection_state_.viewport_intersection = viewport_intersection;
     intersection_state_.main_frame_intersection = main_frame_intersection;
     intersection_state_.compositor_visible_rect = compositor_visible_rect;
@@ -104,70 +111,72 @@ class RenderWidgetHostViewChildFrameTest : public testing::Test {
   RenderWidgetHostViewChildFrameTest() {}
 
   void SetUp() override {
-    SetUpEnvironment(false /* use_zoom_for_device_scale_factor */);
-  }
-
-  void SetUpEnvironment(bool use_zoom_for_device_scale_factor) {
-    browser_context_.reset(new TestBrowserContext);
+    browser_context_ = std::make_unique<TestBrowserContext>();
 
 // ImageTransportFactory doesn't exist on Android.
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
     ImageTransportFactory::SetFactory(
         std::make_unique<TestImageTransportFactory>());
 #endif
 
-    auto* process_host = new MockRenderProcessHost(browser_context_.get());
+    process_host_ =
+        std::make_unique<MockRenderProcessHost>(browser_context_.get());
+    site_instance_group_ = base::WrapRefCounted(new SiteInstanceGroup(
+        SiteInstanceImpl::NextBrowsingInstanceId(), process_host_.get()));
+    int32_t routing_id = process_host_->GetNextRoutingID();
+    sink_ = &process_host_->sink();
 
-    agent_scheduling_group_host_ =
-        std::make_unique<AgentSchedulingGroupHost>(*process_host);
-    int32_t routing_id = process_host->GetNextRoutingID();
-    sink_ = &process_host->sink();
+    web_contents_ = TestWebContents::Create(
+        browser_context_.get(),
+        SiteInstanceImpl::Create(browser_context_.get()));
 
-    widget_host_ = new RenderWidgetHostImpl(
-        &delegate_, *agent_scheduling_group_host_, routing_id,
-        /*hidden=*/false, std::make_unique<FrameTokenMessageQueue>());
+    widget_host_ = RenderWidgetHostImpl::Create(
+        /*frame_tree=*/&web_contents_->GetPrimaryFrameTree(), &delegate_,
+        site_instance_group_->GetSafeRef(), routing_id,
+        /*hidden=*/false, /*renderer_initiated_creation=*/false,
+        std::make_unique<FrameTokenMessageQueue>());
 
-    mojo::AssociatedRemote<blink::mojom::WidgetHost> blink_widget_host;
     widget_host_->BindWidgetInterfaces(
-        blink_widget_host.BindNewEndpointAndPassDedicatedReceiver(),
+        mojo::AssociatedRemote<blink::mojom::WidgetHost>()
+            .BindNewEndpointAndPassDedicatedReceiver(),
         widget_.GetNewRemote());
-
-    mojo::AssociatedRemote<blink::mojom::FrameWidgetHost> frame_widget_host;
-    mojo::AssociatedRemote<blink::mojom::FrameWidget> frame_widget;
-    auto frame_widget_receiver =
-        frame_widget.BindNewEndpointAndPassDedicatedReceiver();
     widget_host_->BindFrameWidgetInterfaces(
-        frame_widget_host.BindNewEndpointAndPassDedicatedReceiver(),
-        frame_widget.Unbind());
+        mojo::AssociatedRemote<blink::mojom::FrameWidgetHost>()
+            .BindNewEndpointAndPassDedicatedReceiver(),
+        TestRenderWidgetHost::CreateStubFrameWidgetRemote());
 
-    blink::ScreenInfo screen_info;
+    display::ScreenInfo screen_info;
     screen_info.rect = gfx::Rect(1, 2, 3, 4);
-    view_ = RenderWidgetHostViewChildFrame::Create(widget_host_, screen_info);
+    display::ScreenInfos screen_infos(screen_info);
+    view_ = RenderWidgetHostViewChildFrame::Create(widget_host_.get(),
+                                                   screen_infos);
     // Test we get the expected ScreenInfo before the FrameDelegate is set.
-    blink::ScreenInfo actual_screen_info;
-    view_->GetScreenInfo(&actual_screen_info);
-    EXPECT_EQ(screen_info, actual_screen_info);
+    EXPECT_EQ(screen_info, view_->GetScreenInfo());
+    EXPECT_EQ(screen_infos, view_->GetScreenInfos());
 
-    test_frame_connector_ =
-        new MockFrameConnectorDelegate(use_zoom_for_device_scale_factor);
+    test_frame_connector_ = new MockFrameConnector();
     test_frame_connector_->SetView(view_);
-    view_->SetFrameConnectorDelegate(test_frame_connector_);
+    view_->SetFrameConnector(test_frame_connector_);
   }
 
   void TearDown() override {
     sink_ = nullptr;
     if (view_)
       view_->Destroy();
-    delete widget_host_;
-    agent_scheduling_group_host_ = nullptr;
+    widget_host_.reset();
+    web_contents_.reset();
+    site_instance_group_.reset();
+    process_host_->Cleanup();
     delete test_frame_connector_;
+
+    process_host_.reset();
 
     browser_context_.reset();
 
-    base::ThreadTaskRunnerHandle::Get()->DeleteSoon(FROM_HERE,
-                                                    browser_context_.release());
+    base::SingleThreadTaskRunner::GetCurrentDefault()->DeleteSoon(
+        FROM_HERE, browser_context_.release());
     base::RunLoop().RunUntilIdle();
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
     ImageTransportFactory::Terminate();
 #endif
   }
@@ -184,39 +193,45 @@ class RenderWidgetHostViewChildFrameTest : public testing::Test {
   BrowserTaskEnvironment task_environment_;
 
   std::unique_ptr<BrowserContext> browser_context_;
-  std::unique_ptr<AgentSchedulingGroupHost> agent_scheduling_group_host_;
-  IPC::TestSink* sink_ = nullptr;
+  std::unique_ptr<MockRenderProcessHost> process_host_;
+  scoped_refptr<SiteInstanceGroup> site_instance_group_;
+  std::unique_ptr<WebContentsImpl> web_contents_;
+  raw_ptr<IPC::TestSink> sink_ = nullptr;
   MockRenderWidgetHostDelegate delegate_;
   MockWidget widget_;
 
   // Tests should set these to NULL if they've already triggered their
   // destruction.
-  RenderWidgetHostImpl* widget_host_;
-  RenderWidgetHostViewChildFrame* view_;
-  MockFrameConnectorDelegate* test_frame_connector_;
+  std::unique_ptr<RenderWidgetHostImpl> widget_host_;
+  raw_ptr<RenderWidgetHostViewChildFrame> view_;
+  raw_ptr<MockFrameConnector> test_frame_connector_;
 };
 
 TEST_F(RenderWidgetHostViewChildFrameTest, VisibilityTest) {
   // Calling show and hide also needs to be propagated to child frame by the
   // |frame_connector_| which itself requires a |frame_proxy_in_parent_renderer|
-  // (set to nullptr for MockFrameConnectorDelegate). To avoid crashing the test
+  // (set to nullptr for MockFrameConnector). To avoid crashing the test
   // |frame_connector_| is to set to nullptr.
-  view_->SetFrameConnectorDelegate(nullptr);
+  view_->SetFrameConnector(nullptr);
 
   view_->Show();
   ASSERT_TRUE(view_->IsShowing());
 
   view_->Hide();
   ASSERT_FALSE(view_->IsShowing());
+
+  // Restore the MockFrameConnector to avoid a crash during destruction.
+  view_->SetFrameConnector(test_frame_connector_);
 }
 
 // Tests that the viewport intersection rect is dispatched to the RenderWidget
 // whenever screen rects are updated.
 TEST_F(RenderWidgetHostViewChildFrameTest, ViewportIntersectionUpdated) {
-  blink::WebRect intersection_rect(5, 5, 100, 80);
-  blink::WebRect main_frame_intersection(5, 10, 200, 200);
-  blink::FrameOcclusionState occlusion_state =
-      blink::FrameOcclusionState::kPossiblyOccluded;
+  gfx::Rect intersection_rect(5, 5, 100, 80);
+  gfx::Rect main_frame_intersection(5, 10, 200, 200);
+  blink::mojom::FrameOcclusionState occlusion_state =
+      blink::mojom::FrameOcclusionState::kPossiblyOccluded;
+
   test_frame_connector_->SetViewportIntersection(
       intersection_rect, main_frame_intersection, intersection_rect,
       occlusion_state);
@@ -225,56 +240,50 @@ TEST_F(RenderWidgetHostViewChildFrameTest, ViewportIntersectionUpdated) {
       static_cast<MockRenderProcessHost*>(widget_host_->GetProcess());
   process->Init();
 
-  widget_host_->Init();
+  mojo::AssociatedRemote<blink::mojom::FrameWidgetHost> blink_frame_widget_host;
+  auto blink_frame_widget_host_receiver =
+      blink_frame_widget_host.BindNewEndpointAndPassDedicatedReceiver();
+  mojo::AssociatedRemote<blink::mojom::FrameWidget> blink_frame_widget;
+  auto blink_frame_widget_receiver =
+      blink_frame_widget.BindNewEndpointAndPassDedicatedReceiver();
+  widget_host_->BindFrameWidgetInterfaces(
+      std::move(blink_frame_widget_host_receiver), blink_frame_widget.Unbind());
+  FakeFrameWidget fake_frame_widget(std::move(blink_frame_widget_receiver));
 
-  const IPC::Message* intersection_update =
-      process->sink().GetUniqueMessageMatching(
-          WidgetMsg_SetViewportIntersection::ID);
-  ASSERT_TRUE(intersection_update);
-  std::tuple<blink::ViewportIntersectionState> intersection_state;
+  widget_host_->RendererWidgetCreated(/*for_frame_widget=*/true);
+  base::RunLoop().RunUntilIdle();
+  widget_.ClearScreenRects();
+  base::RunLoop().RunUntilIdle();
 
-  WidgetMsg_SetViewportIntersection::Read(intersection_update,
-                                          &intersection_state);
-  EXPECT_EQ(intersection_rect,
-            std::get<0>(intersection_state).viewport_intersection);
-  EXPECT_EQ(main_frame_intersection,
-            std::get<0>(intersection_state).main_frame_intersection);
-  EXPECT_EQ(intersection_rect,
-            std::get<0>(intersection_state).compositor_visible_rect);
-  EXPECT_EQ(occlusion_state, std::get<0>(intersection_state).occlusion_state);
+  auto& intersection_state = fake_frame_widget.GetIntersectionState();
+  EXPECT_EQ(gfx::Rect(intersection_rect),
+            intersection_state->viewport_intersection);
+  EXPECT_EQ(gfx::Rect(main_frame_intersection),
+            intersection_state->main_frame_intersection);
+  EXPECT_EQ(gfx::Rect(intersection_rect),
+            intersection_state->compositor_visible_rect);
+  EXPECT_EQ(static_cast<blink::mojom::FrameOcclusionState>(occlusion_state),
+            intersection_state->occlusion_state);
 }
 
-class RenderWidgetHostViewChildFrameZoomForDSFTest
-    : public RenderWidgetHostViewChildFrameTest {
- public:
-  RenderWidgetHostViewChildFrameZoomForDSFTest() {}
-
-  void SetUp() override {
-    SetUpEnvironment(true /* use_zoom_for_device_scale_factor */);
-  }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(RenderWidgetHostViewChildFrameZoomForDSFTest);
-};
-
 // Tests that moving the child around does not affect the physical backing size.
-TEST_F(RenderWidgetHostViewChildFrameZoomForDSFTest,
-       CompositorViewportPixelSize) {
-  blink::ScreenInfo screen_info;
+TEST_F(RenderWidgetHostViewChildFrameTest, CompositorViewportPixelSize) {
+  display::ScreenInfo screen_info;
   screen_info.device_scale_factor = 2.0f;
-  test_frame_connector_->SetScreenInfoForTesting(screen_info);
+
+  blink::FrameVisualProperties visual_properties;
+  visual_properties.screen_infos = display::ScreenInfos(screen_info);
+  test_frame_connector_->SynchronizeVisualProperties(visual_properties, false);
 
   gfx::Size local_frame_size(1276, 410);
   test_frame_connector_->SetLocalFrameSize(local_frame_size);
   EXPECT_EQ(local_frame_size, view_->GetCompositorViewportPixelSize());
 
-  gfx::Rect screen_space_rect(local_frame_size);
-  screen_space_rect.set_origin(gfx::Point(230, 263));
-  test_frame_connector_->SetScreenSpaceRect(screen_space_rect);
+  gfx::Rect rect_in_parent_view(local_frame_size);
+  rect_in_parent_view.set_origin(gfx::Point(230, 263));
+  test_frame_connector_->SetRectInParentView(rect_in_parent_view);
   EXPECT_EQ(local_frame_size, view_->GetCompositorViewportPixelSize());
   EXPECT_EQ(gfx::Point(115, 131), view_->GetViewBounds().origin());
-  EXPECT_EQ(gfx::Point(230, 263),
-            test_frame_connector_->screen_space_rect_in_pixels().origin());
 }
 
 // Tests that SynchronizeVisualProperties is called only once and all the
@@ -285,16 +294,17 @@ TEST_F(RenderWidgetHostViewChildFrameTest,
       static_cast<MockRenderProcessHost*>(widget_host_->GetProcess());
   process->Init();
 
-  widget_host_->Init();
+  widget_host_->RendererWidgetCreated(/*for_frame_widget=*/true);
 
   constexpr gfx::Rect compositor_viewport_pixel_rect(100, 100);
-  constexpr gfx::Rect screen_space_rect(compositor_viewport_pixel_rect);
+  constexpr gfx::Rect rect_in_local_root(compositor_viewport_pixel_rect);
   viz::ParentLocalSurfaceIdAllocator allocator;
   allocator.GenerateId();
   viz::LocalSurfaceId local_surface_id = allocator.GetCurrentLocalSurfaceId();
 
   blink::FrameVisualProperties visual_properties;
-  visual_properties.screen_space_rect = screen_space_rect;
+  visual_properties.screen_infos = display::ScreenInfos(display::ScreenInfo());
+  visual_properties.rect_in_local_root = rect_in_local_root;
   visual_properties.compositor_viewport = compositor_viewport_pixel_rect;
   visual_properties.local_frame_size = compositor_viewport_pixel_rect.size();
   visual_properties.capture_sequence_number = 123u;
@@ -314,7 +324,7 @@ TEST_F(RenderWidgetHostViewChildFrameTest,
 
     EXPECT_EQ(compositor_viewport_pixel_rect,
               sent_visual_properties.compositor_viewport_pixel_rect);
-    EXPECT_EQ(screen_space_rect.size(), sent_visual_properties.new_size);
+    EXPECT_EQ(rect_in_local_root.size(), sent_visual_properties.new_size);
     EXPECT_EQ(local_surface_id, sent_visual_properties.local_surface_id);
     EXPECT_EQ(123u, sent_visual_properties.capture_sequence_number);
     EXPECT_EQ(1u, sent_visual_properties.root_widget_window_segments.size());
@@ -337,16 +347,19 @@ TEST_F(RenderWidgetHostViewChildFrameTest, UncomsumedGestureScrollBubbled) {
           blink::WebInputEvent::Type::kGestureScrollEnd,
           blink::WebGestureDevice::kTouchscreen);
 
-  view_->GestureEventAck(
-      scroll_begin, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_begin,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollBegin,
             test_frame_connector_->GetAndResetLastBubbledEventType());
-  view_->GestureEventAck(
-      scroll_update, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_update,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollUpdate,
             test_frame_connector_->GetAndResetLastBubbledEventType());
   view_->GestureEventAck(scroll_end,
-                         blink::mojom::InputEventResultState::kIgnored);
+                         blink::mojom::InputEventResultState::kIgnored,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollEnd,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 }
@@ -366,23 +379,27 @@ TEST_F(RenderWidgetHostViewChildFrameTest, ConsumedGestureScrollNotBubbled) {
           blink::WebGestureDevice::kTouchscreen);
 
   view_->GestureEventAck(scroll_begin,
-                         blink::mojom::InputEventResultState::kConsumed);
+                         blink::mojom::InputEventResultState::kConsumed,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kUndefined,
             test_frame_connector_->GetAndResetLastBubbledEventType());
   view_->GestureEventAck(scroll_update,
-                         blink::mojom::InputEventResultState::kConsumed);
+                         blink::mojom::InputEventResultState::kConsumed,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kUndefined,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 
   // Scrolling in a child my reach its extent and no longer be consumed, however
   // scrolling is latched to the child so we do not bubble the update.
-  view_->GestureEventAck(
-      scroll_update, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_update,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kUndefined,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 
   view_->GestureEventAck(scroll_end,
-                         blink::mojom::InputEventResultState::kIgnored);
+                         blink::mojom::InputEventResultState::kIgnored,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kUndefined,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 }
@@ -404,35 +421,41 @@ TEST_F(RenderWidgetHostViewChildFrameTest,
 
   test_frame_connector_->SetCanBubble(false);
 
-  view_->GestureEventAck(
-      scroll_begin, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_begin,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollBegin,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 
   // The GSB was rejected, so the child view must not attempt to bubble the
   // remaining events of the scroll sequence.
-  view_->GestureEventAck(
-      scroll_update, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_update,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kUndefined,
             test_frame_connector_->GetAndResetLastBubbledEventType());
   view_->GestureEventAck(scroll_end,
-                         blink::mojom::InputEventResultState::kIgnored);
+                         blink::mojom::InputEventResultState::kIgnored,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kUndefined,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 
   test_frame_connector_->SetCanBubble(true);
 
   // When we have a new scroll gesture, the view may try bubbling again.
-  view_->GestureEventAck(
-      scroll_begin, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_begin,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollBegin,
             test_frame_connector_->GetAndResetLastBubbledEventType());
-  view_->GestureEventAck(
-      scroll_update, blink::mojom::InputEventResultState::kNoConsumerExists);
+  view_->GestureEventAck(scroll_update,
+                         blink::mojom::InputEventResultState::kNoConsumerExists,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollUpdate,
             test_frame_connector_->GetAndResetLastBubbledEventType());
   view_->GestureEventAck(scroll_end,
-                         blink::mojom::InputEventResultState::kIgnored);
+                         blink::mojom::InputEventResultState::kIgnored,
+                         MakeDefaultScrollResultData());
   EXPECT_EQ(blink::WebInputEvent::Type::kGestureScrollEnd,
             test_frame_connector_->GetAndResetLastBubbledEventType());
 }

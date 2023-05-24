@@ -7,7 +7,6 @@
 
 #include <string>
 
-#include "base/macros.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_export.h"
@@ -34,8 +33,6 @@ class GL_EXPORT GLContextWGL : public GLContextReal {
   void Destroy();
 
   HGLRC context_;
-
-  DISALLOW_COPY_AND_ASSIGN(GLContextWGL);
 };
 
 }  // namespace gl

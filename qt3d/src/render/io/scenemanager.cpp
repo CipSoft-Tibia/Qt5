@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "scenemanager_p.h"
+#include <Qt3DCore/private/vector_helper_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -72,16 +37,15 @@ void SceneManager::addSceneData(const QUrl &source,
 
     // We cannot run two jobs that use the same scene loader plugin
     // in two different threads at the same time
-    if (!m_pendingJobs.isEmpty())
-        newJob->addDependency(m_pendingJobs.last());
+    if (!m_pendingJobs.empty())
+        newJob->addDependency(m_pendingJobs.back());
 
     m_pendingJobs.push_back(newJob);
 }
 
-QVector<LoadSceneJobPtr> SceneManager::takePendingSceneLoaderJobs()
+std::vector<LoadSceneJobPtr> SceneManager::takePendingSceneLoaderJobs()
 {
-    // Explicitly use std::move to clear the m_pendingJobs vector
-    return std::move(m_pendingJobs);
+    return Qt3DCore::moveAndClear(m_pendingJobs);
 }
 
 void SceneManager::startSceneDownload(const QUrl &source, Qt3DCore::QNodeId sceneUuid)
@@ -89,7 +53,7 @@ void SceneManager::startSceneDownload(const QUrl &source, Qt3DCore::QNodeId scen
     if (!m_service)
         return;
     SceneDownloaderPtr request = SceneDownloaderPtr::create(source, sceneUuid, this);
-    m_pendingDownloads << request;
+    m_pendingDownloads.push_back(request);
     m_service->submitRequest(request);
 }
 

@@ -1,10 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/input/main_thread_scrolling_reason.h"
 
-#include "base/stl_util.h"
+#include "base/containers/cxx20_erase.h"
 #include "base/strings/string_util.h"
 #include "base/trace_event/traced_value.h"
 
@@ -32,16 +32,10 @@ void MainThreadScrollingReason::AddToTracedValue(
 
   if (reasons & kHasBackgroundAttachmentFixedObjects)
     traced_value.AppendString("Has background-attachment:fixed");
-  if (reasons & kHasNonLayerViewportConstrainedObjects)
-    traced_value.AppendString("Has non-layer viewport-constrained objects");
   if (reasons & kThreadedScrollingDisabled)
     traced_value.AppendString("Threaded scrolling is disabled");
   if (reasons & kScrollbarScrolling)
     traced_value.AppendString("Scrollbar scrolling");
-  if (reasons & kFrameOverlay)
-    traced_value.AppendString("Frame overlay");
-  if (reasons & kHandlingScrollFromMainThread)
-    traced_value.AppendString("Handling scroll from main thread");
   if (reasons & kNotOpaqueForTextAndLCDText)
     traced_value.AppendString("Not opaque for text and LCD text");
   if (reasons & kCantPaintScrollingBackgroundAndLCDText)
@@ -56,18 +50,26 @@ void MainThreadScrollingReason::AddToTracedValue(
     traced_value.AppendString("No scrolling layer");
   if (reasons & kNotScrollable)
     traced_value.AppendString("Not scrollable");
-  if (reasons & kContinuingMainThreadScroll)
-    traced_value.AppendString("Continuing main thread scroll");
   if (reasons & kNonInvertibleTransform)
     traced_value.AppendString("Non-invertible transform");
-  if (reasons & kPageBasedScrolling)
-    traced_value.AppendString("Page-based scrolling");
   if (reasons & kWheelEventHandlerRegion)
     traced_value.AppendString("Wheel event handler region");
   if (reasons & kTouchEventHandlerRegion)
     traced_value.AppendString("Touch event handler region");
 
   traced_value.EndArray();
+}
+
+int MainThreadScrollingReason::BucketIndexForTesting(uint32_t reason) {
+  // These two values are already bucket indices.
+  DCHECK_NE(reason, kNotScrollingOnMain);
+  DCHECK_NE(reason, kScrollingOnMainForAnyReason);
+
+  int index = 0;
+  while (reason >>= 1)
+    ++index;
+  DCHECK_NE(index, 0);
+  return index;
 }
 
 }  // namespace cc

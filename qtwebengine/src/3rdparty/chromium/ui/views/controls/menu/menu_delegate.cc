@@ -1,9 +1,12 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/controls/menu/menu_delegate.h"
 
+#include "base/functional/callback_helpers.h"
+#include "base/notreached.h"
+#include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
 #include "ui/events/event.h"
 #include "ui/views/controls/menu/menu_config.h"
 
@@ -15,16 +18,22 @@ bool MenuDelegate::IsItemChecked(int id) const {
   return false;
 }
 
-base::string16 MenuDelegate::GetLabel(int id) const {
-  return base::string16();
+std::u16string MenuDelegate::GetLabel(int id) const {
+  return std::u16string();
 }
 
-void MenuDelegate::GetLabelStyle(int id, LabelStyle* style) const {}
+const gfx::FontList* MenuDelegate::GetLabelFontList(int id) const {
+  return nullptr;
+}
 
-base::string16 MenuDelegate::GetTooltipText(
+absl::optional<SkColor> MenuDelegate::GetLabelColor(int id) const {
+  return absl::nullopt;
+}
+
+std::u16string MenuDelegate::GetTooltipText(
     int id,
     const gfx::Point& screen_loc) const {
-  return base::string16();
+  return std::u16string();
 }
 
 bool MenuDelegate::GetAccelerator(int id, ui::Accelerator* accelerator) const {
@@ -50,7 +59,7 @@ bool MenuDelegate::IsCommandVisible(int id) const {
   return true;
 }
 
-bool MenuDelegate::GetContextualLabel(int id, base::string16* out) const {
+bool MenuDelegate::GetContextualLabel(int id, std::u16string* out) const {
   return false;
 }
 
@@ -90,18 +99,20 @@ bool MenuDelegate::AreDropTypesRequired(MenuItemView* menu) {
   return false;
 }
 
-int MenuDelegate::GetDropOperation(MenuItemView* item,
-                                   const ui::DropTargetEvent& event,
-                                   DropPosition* position) {
-  NOTREACHED() << "If you override CanDrop, you need to override this too";
-  return ui::DragDropTypes::DRAG_NONE;
+ui::mojom::DragOperation MenuDelegate::GetDropOperation(
+    MenuItemView* item,
+    const ui::DropTargetEvent& event,
+    DropPosition* position) {
+  NOTREACHED_NORETURN()
+      << "If you override CanDrop, you must override this too";
 }
 
-int MenuDelegate::OnPerformDrop(MenuItemView* menu,
-                                DropPosition position,
-                                const ui::DropTargetEvent& event) {
-  NOTREACHED() << "If you override CanDrop, you need to override this too";
-  return ui::DragDropTypes::DRAG_NONE;
+views::View::DropCallback MenuDelegate::GetDropCallback(
+    MenuItemView* menu,
+    DropPosition position,
+    const ui::DropTargetEvent& event) {
+  NOTREACHED_NORETURN()
+      << "If you override CanDrop, you must override this too";
 }
 
 bool MenuDelegate::CanDrag(MenuItemView* menu) {
@@ -109,12 +120,13 @@ bool MenuDelegate::CanDrag(MenuItemView* menu) {
 }
 
 void MenuDelegate::WriteDragData(MenuItemView* sender, OSExchangeData* data) {
-  NOTREACHED() << "If you override CanDrag, you must override this too.";
+  NOTREACHED_NORETURN()
+      << "If you override CanDrag, you must override this too.";
 }
 
 int MenuDelegate::GetDragOperations(MenuItemView* sender) {
-  NOTREACHED() << "If you override CanDrag, you must override this too.";
-  return 0;
+  NOTREACHED_NORETURN()
+      << "If you override CanDrag, you must override this too.";
 }
 
 bool MenuDelegate::ShouldCloseOnDragComplete() {
@@ -138,18 +150,6 @@ int MenuDelegate::GetMaxWidthForMenu(MenuItemView* menu) {
 void MenuDelegate::WillShowMenu(MenuItemView* menu) {}
 
 void MenuDelegate::WillHideMenu(MenuItemView* menu) {}
-
-void MenuDelegate::GetHorizontalIconMargins(int command_id,
-                                            int icon_size,
-                                            int* left_margin,
-                                            int* right_margin) const {
-  *left_margin = 0;
-  *right_margin = 0;
-}
-
-bool MenuDelegate::ShouldReserveSpaceForSubmenuIndicator() const {
-  return true;
-}
 
 bool MenuDelegate::ShouldTryPositioningBesideAnchor() const {
   return true;

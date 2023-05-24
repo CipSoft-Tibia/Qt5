@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
 #include <QtDataVisualization/QValue3DAxis>
-
-using namespace QtDataVisualization;
 
 class tst_axis: public QObject
 {
@@ -90,7 +62,7 @@ void tst_axis::initialProperties()
     // Common (from QAbstract3DAxis)
     QCOMPARE(m_axis->isAutoAdjustRange(), true);
     QCOMPARE(m_axis->labelAutoRotation(), 0.0f);
-    QCOMPARE(m_axis->labels().length(), 6);
+    QCOMPARE(m_axis->labels().size(), 6);
     QCOMPARE(m_axis->labels().at(0), QString("0.00"));
     QCOMPARE(m_axis->labels().at(1), QString("2.00"));
     QCOMPARE(m_axis->labels().at(2), QString("4.00"));
@@ -131,7 +103,7 @@ void tst_axis::initializeProperties()
 
     QCOMPARE(m_axis->isAutoAdjustRange(), false);
     QCOMPARE(m_axis->labelAutoRotation(), 15.0f);
-    QCOMPARE(m_axis->labels().length(), 3);
+    QCOMPARE(m_axis->labels().size(), 3);
     QCOMPARE(m_axis->labels().at(0), QString("5m"));
     QCOMPARE(m_axis->labels().at(1), QString("15m"));
     QCOMPARE(m_axis->labels().at(2), QString("25m"));

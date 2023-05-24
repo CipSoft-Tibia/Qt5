@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,14 @@
 
 #include <string>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
-#include "base/scoped_observer.h"
-#include "chrome/common/extensions/command.h"
+#include "base/scoped_observation.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/common/api/extension_action/action_info.h"
+#include "extensions/common/command.h"
 #include "extensions/common/extension.h"
 
 class Profile;
@@ -91,6 +91,10 @@ class CommandService : public BrowserContextKeyedAPI,
 
   // Constructs a CommandService object for the given profile.
   explicit CommandService(content::BrowserContext* context);
+
+  CommandService(const CommandService&) = delete;
+  CommandService& operator=(const CommandService&) = delete;
+
   ~CommandService() override;
 
   // BrowserContextKeyedAPI implementation.
@@ -163,6 +167,14 @@ class CommandService : public BrowserContextKeyedAPI,
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
 
+  // Retrieves an extension with `extension_id` if it is enabled or disabled.
+  const Extension* GetExtensionInEnabledOrDisabledExtensions(
+      const ExtensionId& extension_id) const;
+
+  // True if we are upgrading the extension from MV2->MV3.
+  bool IsUpgradeFromMV2ToMV3(const Extension* extension,
+                             const std::string& existing_command_name) const;
+
   void UpdateKeybindingsForTest(const Extension* extension) {
     UpdateKeybindings(extension);
   }
@@ -193,7 +205,9 @@ class CommandService : public BrowserContextKeyedAPI,
   void UpdateKeybindings(const Extension* extension);
 
   // On update, removes keybindings that the extension previously suggested but
-  // now no longer does, as long as the user has not modified them.
+  // now no longer does, as long as the user has not modified them. If a user
+  // has modified an action command, transfer it to the new action command if
+  // we're upgrading (MV2->MV3) before relinquishing.
   void RemoveRelinquishedKeybindings(const Extension* extension);
 
   // Assigns keybindings that the extension suggests, as long as they are not
@@ -219,14 +233,12 @@ class CommandService : public BrowserContextKeyedAPI,
                                      const std::string& command_name);
 
   // A weak pointer to the profile we are associated with. Not owned by us.
-  Profile* profile_;
+  raw_ptr<Profile> profile_;
 
-  ScopedObserver<ExtensionRegistry, ExtensionRegistryObserver>
-      extension_registry_observer_{this};
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      extension_registry_observation_{this};
 
   base::ObserverList<Observer>::Unchecked observers_;
-
-  DISALLOW_COPY_AND_ASSIGN(CommandService);
 };
 
 template <>

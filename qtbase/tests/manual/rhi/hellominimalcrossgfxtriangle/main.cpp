@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 // This is a compact, minimal demo of deciding the backend at runtime while
 // using the exact same shaders and rendering code without any branching
@@ -67,6 +20,8 @@ QString graphicsApiName(QRhi::Implementation graphicsApi)
         return QLatin1String("Vulkan");
     case QRhi::D3D11:
         return QLatin1String("Direct3D 11");
+    case QRhi::D3D12:
+        return QLatin1String("Direct3D 12");
     case QRhi::Metal:
         return QLatin1String("Metal");
     default:
@@ -77,7 +32,6 @@ QString graphicsApiName(QRhi::Implementation graphicsApi)
 
 int main(int argc, char **argv)
 {
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QGuiApplication app(argc, argv);
 
     QRhi::Implementation graphicsApi;
@@ -99,8 +53,10 @@ int main(int argc, char **argv)
     cmdLineParser.addOption(glOption);
     QCommandLineOption vkOption({ "v", "vulkan" }, QLatin1String("Vulkan"));
     cmdLineParser.addOption(vkOption);
-    QCommandLineOption d3dOption({ "d", "d3d11" }, QLatin1String("Direct3D 11"));
-    cmdLineParser.addOption(d3dOption);
+    QCommandLineOption d3d11Option({ "d", "d3d11" }, QLatin1String("Direct3D 11"));
+    cmdLineParser.addOption(d3d11Option);
+    QCommandLineOption d3d12Option({ "D", "d3d12" }, QLatin1String("Direct3D 12"));
+    cmdLineParser.addOption(d3d12Option);
     QCommandLineOption mtlOption({ "m", "metal" }, QLatin1String("Metal"));
     cmdLineParser.addOption(mtlOption);
 
@@ -111,8 +67,10 @@ int main(int argc, char **argv)
         graphicsApi = QRhi::OpenGLES2;
     if (cmdLineParser.isSet(vkOption))
         graphicsApi = QRhi::Vulkan;
-    if (cmdLineParser.isSet(d3dOption))
+    if (cmdLineParser.isSet(d3d11Option))
         graphicsApi = QRhi::D3D11;
+    if (cmdLineParser.isSet(d3d12Option))
+        graphicsApi = QRhi::D3D12;
     if (cmdLineParser.isSet(mtlOption))
         graphicsApi = QRhi::Metal;
 
@@ -127,19 +85,8 @@ int main(int argc, char **argv)
 #if QT_CONFIG(vulkan)
     QVulkanInstance inst;
     if (graphicsApi == QRhi::Vulkan) {
-#ifndef Q_OS_ANDROID
-        inst.setLayers({ "VK_LAYER_LUNARG_standard_validation" });
-#else
-        inst.setLayers({
-                "VK_LAYER_GOOGLE_threading",
-                "VK_LAYER_LUNARG_parameter_validation",
-                "VK_LAYER_LUNARG_object_tracker",
-                "VK_LAYER_LUNARG_core_validation",
-                "VK_LAYER_LUNARG_image",
-                "VK_LAYER_LUNARG_swapchain",
-                "VK_LAYER_GOOGLE_unique_objects"});
-#endif
-        inst.setExtensions({ "VK_KHR_get_physical_device_properties2" });
+        inst.setLayers({ "VK_LAYER_KHRONOS_validation" });
+        inst.setExtensions(QRhiVulkanInitParams::preferredInstanceExtensions());
         if (!inst.create()) {
             qWarning("Failed to create Vulkan instance, switching to OpenGL");
             graphicsApi = QRhi::OpenGLES2;

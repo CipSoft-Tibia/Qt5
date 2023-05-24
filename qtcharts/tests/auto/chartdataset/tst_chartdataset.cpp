@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QtCharts/qabstractaxis.h>
@@ -33,7 +7,7 @@
 #include <QtCharts/qlogvalueaxis.h>
 #include <QtCharts/qbarcategoryaxis.h>
 #include <QtCharts/qcategoryaxis.h>
-#ifndef QT_QREAL_IS_FLOAT
+#if QT_CONFIG(charts_datetime_axis)
 #include <QtCharts/qdatetimeaxis.h>
 #endif
 #include <QtCharts/qlineseries.h>
@@ -48,7 +22,7 @@
 #include <private/abstractdomain_p.h>
 #include <tst_definitions.h>
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 Q_DECLARE_METATYPE(AbstractDomain *)
 Q_DECLARE_METATYPE(QAbstractAxis *)
@@ -172,11 +146,11 @@ void tst_ChartDataSet::addSeries()
 
     m_dataset->addSeries(series);
 
-    QCOMPARE(m_dataset->series().count(),1);
-    TRY_COMPARE(spy0.count(), 0);
-    TRY_COMPARE(spy1.count(), 0);
-    TRY_COMPARE(spy2.count(), 1);
-    TRY_COMPARE(spy3.count(), 0);
+    QCOMPARE(m_dataset->series().size(),1);
+    TRY_COMPARE(spy0.size(), 0);
+    TRY_COMPARE(spy1.size(), 0);
+    TRY_COMPARE(spy2.size(), 1);
+    TRY_COMPARE(spy3.size(), 0);
 }
 
 void tst_ChartDataSet::removeSeries_data()
@@ -197,11 +171,11 @@ void tst_ChartDataSet::removeSeries()
 
     m_dataset->removeSeries(series);
 
-    QCOMPARE(m_dataset->series().count(),0);
-    TRY_COMPARE(spy0.count(), 0);
-    TRY_COMPARE(spy1.count(), 0);
-    TRY_COMPARE(spy2.count(), 0);
-    TRY_COMPARE(spy3.count(), 1);
+    QCOMPARE(m_dataset->series().size(),0);
+    TRY_COMPARE(spy0.size(), 0);
+    TRY_COMPARE(spy1.size(), 0);
+    TRY_COMPARE(spy2.size(), 0);
+    TRY_COMPARE(spy3.size(), 1);
 
     delete series;
 }
@@ -213,7 +187,7 @@ void tst_ChartDataSet::addAxis_data()
     QAbstractAxis* logvalue = new QLogValueAxis(this);
     QAbstractAxis* category = new QCategoryAxis(this);
     QAbstractAxis* barcategory = new QBarCategoryAxis(this);
-#ifndef QT_QREAL_IS_FLOAT
+#if QT_CONFIG(charts_datetime_axis)
     QAbstractAxis* datetime = new QDateTimeAxis(this);
 #endif
 
@@ -221,7 +195,7 @@ void tst_ChartDataSet::addAxis_data()
     QTest::newRow("logvalue") << logvalue;
     QTest::newRow("category") << category;
     QTest::newRow("barcategory") << barcategory;
-#ifndef QT_QREAL_IS_FLOAT
+#if QT_CONFIG(charts_datetime_axis)
     QTest::newRow("datetime") << datetime;
 #endif
 }
@@ -238,11 +212,11 @@ void tst_ChartDataSet::addAxis()
 
     m_dataset->addAxis(axis,Qt::AlignBottom);
 
-    QCOMPARE(m_dataset->axes().count(),1);
-    TRY_COMPARE(spy0.count(), 1);
-    TRY_COMPARE(spy1.count(), 0);
-    TRY_COMPARE(spy2.count(), 0);
-    TRY_COMPARE(spy3.count(), 0);
+    QCOMPARE(m_dataset->axes().size(),1);
+    TRY_COMPARE(spy0.size(), 1);
+    TRY_COMPARE(spy1.size(), 0);
+    TRY_COMPARE(spy2.size(), 0);
+    TRY_COMPARE(spy3.size(), 0);
 }
 
 void tst_ChartDataSet::removeAxis_data()
@@ -263,12 +237,12 @@ void tst_ChartDataSet::removeAxis()
 
     m_dataset->removeAxis(axis);
 
-    QCOMPARE(m_dataset->axes().count(),0);
-    QCOMPARE(m_dataset->series().count(),0);
-    TRY_COMPARE(spy0.count(), 0);
-    TRY_COMPARE(spy1.count(), 1);
-    TRY_COMPARE(spy2.count(), 0);
-    TRY_COMPARE(spy3.count(), 0);
+    QCOMPARE(m_dataset->axes().size(),0);
+    QCOMPARE(m_dataset->series().size(),0);
+    TRY_COMPARE(spy0.size(), 0);
+    TRY_COMPARE(spy1.size(), 1);
+    TRY_COMPARE(spy2.size(), 0);
+    TRY_COMPARE(spy3.size(), 0);
 
     delete axis;
 }
@@ -320,13 +294,13 @@ void tst_ChartDataSet::attachAxis()
     QFETCH(QAbstractAxis*, attachAxis);
     QFETCH(bool, success);
 
-    Q_ASSERT(series.count() == axis.count());
-    Q_ASSERT(series.count() == alignment.count());
+    Q_ASSERT(series.size() == axis.size());
+    Q_ASSERT(series.size() == alignment.size());
 
     QVERIFY(m_dataset->series().isEmpty());
     QVERIFY(m_dataset->axes().isEmpty());
 
-    for(int i = 0 ; i < series.count() ; i++){
+    for(int i = 0 ; i < series.size() ; i++){
         if(series[i]) m_dataset->addSeries(series[i]);
         if(axis[i]) m_dataset->addAxis(axis[i],alignment[i]);
         if(series[i] && axis[i]) m_dataset->attachAxis(series[i],axis[i]);
@@ -368,12 +342,12 @@ void tst_ChartDataSet::detachAxis()
     QFETCH(QAbstractAxis*, detachAxis);
     QFETCH(bool, success);
 
-    Q_ASSERT(series.count() == axis.count());
+    Q_ASSERT(series.size() == axis.size());
 
     QVERIFY(m_dataset->series().isEmpty());
     QVERIFY(m_dataset->axes().isEmpty());
 
-    for(int i = 0; i < series.count(); i++) {
+    for(int i = 0; i < series.size(); i++) {
         if(series[i]) m_dataset->addSeries(series[i]);
         if(axis[i]) m_dataset->addAxis(axis[i],Qt::AlignBottom);
         if(series[i] && axis[i]) m_dataset->attachAxis(series[i],axis[i]);

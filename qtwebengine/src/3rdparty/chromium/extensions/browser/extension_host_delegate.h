@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,13 +18,8 @@ class RenderFrameHost;
 class WebContents;
 }
 
-namespace gfx {
-class Rect;
-class Size;
-}  // namespace gfx
-
-namespace viz {
-class SurfaceId;
+namespace blink::mojom {
+class WindowFeatures;
 }
 
 namespace extensions {
@@ -42,8 +37,8 @@ class ExtensionHostDelegate {
   // implementation may wish to add preference observers to |web_contents|.
   virtual void OnExtensionHostCreated(content::WebContents* web_contents) = 0;
 
-  // Called after |host| creates a RenderView for an extension.
-  virtual void OnRenderViewCreatedForBackgroundPage(ExtensionHost* host) = 0;
+  // Called after |host| creates the renderer main frame for an extension.
+  virtual void OnMainFrameCreatedForBackgroundPage(ExtensionHost* host) = 0;
 
   // Returns the embedder's JavaScriptDialogManager or NULL if the embedder
   // does not support JavaScript dialogs.
@@ -54,7 +49,7 @@ class ExtensionHostDelegate {
   virtual void CreateTab(std::unique_ptr<content::WebContents> web_contents,
                          const std::string& extension_id,
                          WindowOpenDisposition disposition,
-                         const gfx::Rect& initial_rect,
+                         const blink::mojom::WindowFeatures& window_features,
                          bool user_gesture) = 0;
 
   // Requests access to an audio or video media stream. Invokes |callback|
@@ -78,9 +73,7 @@ class ExtensionHostDelegate {
   // entering Picture-in-Picture.
   // Returns the result of the enter request.
   virtual content::PictureInPictureResult EnterPictureInPicture(
-      content::WebContents* web_contents,
-      const viz::SurfaceId& surface_id,
-      const gfx::Size& natural_size) = 0;
+      content::WebContents* web_contents) = 0;
 
   // Updates the Picture-in-Picture controller with a signal that
   // Picture-in-Picture mode has ended.

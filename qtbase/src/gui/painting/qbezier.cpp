@@ -1,49 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbezier_p.h"
 #include <qdebug.h>
 #include <qline.h>
-#include <qpolygon.h>
-#include <qvector.h>
-#include <qlist.h>
 #include <qmath.h>
+#include <qpolygon.h>
 
 #include <private/qnumeric_p.h>
 
@@ -219,15 +181,17 @@ static ShiftResult good_offset(const QBezier *b1, const QBezier *b2, qreal offse
     const qreal o2 = offset*offset;
     const qreal max_dist_line = threshold*offset*offset;
     const qreal max_dist_normal = threshold*offset;
-    const qreal spacing = qreal(0.25);
-    for (qreal i = spacing; i < qreal(0.99); i += spacing) {
-        QPointF p1 = b1->pointAt(i);
-        QPointF p2 = b2->pointAt(i);
+    const int divisions = 4;
+    const qreal spacing = qreal(1.0) / divisions;
+    qreal t = spacing;
+    for (int i = 1; i < divisions; ++i, t += spacing) {
+        QPointF p1 = b1->pointAt(t);
+        QPointF p2 = b2->pointAt(t);
         qreal d = (p1.x() - p2.x())*(p1.x() - p2.x()) + (p1.y() - p2.y())*(p1.y() - p2.y());
         if (qAbs(d - o2) > max_dist_line)
             return Split;
 
-        QPointF normalPoint = b1->normalVector(i);
+        QPointF normalPoint = b1->normalVector(t);
         qreal l = qAbs(normalPoint.x()) + qAbs(normalPoint.y());
         if (l != qreal(0.0)) {
             d = qAbs( normalPoint.x()*(p1.y() - p2.y()) - normalPoint.y()*(p1.x() - p2.x()) ) / l;
@@ -237,6 +201,8 @@ static ShiftResult good_offset(const QBezier *b1, const QBezier *b2, qreal offse
     }
     return Ok;
 }
+
+QT_WARNING_DISABLE_FLOAT_COMPARE
 
 static ShiftResult shift(const QBezier *orig, QBezier *shifted, qreal offset, qreal threshold)
 {
@@ -473,7 +439,7 @@ void QBezier::addIfClose(qreal *length, qreal error) const
 
     chord = QLineF(QPointF(x1, y1),QPointF(x4, y4)).length();
 
-    if((len-chord) > error) {
+    if ((len-chord) > error) {
         const auto halves = split();                  /* split in two */
         halves.first.addIfClose(length, error);       /* try left side */
         halves.second.addIfClose(length, error);      /* try right side */

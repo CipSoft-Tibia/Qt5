@@ -37,6 +37,22 @@ module.exports.isComment = function isComment(node) {
 
 /**
  * @param {Node} node
+ * @returns {node is import('postcss').Declaration}
+ */
+module.exports.isDeclaration = function isDeclaration(node) {
+	return node.type === 'decl';
+};
+
+/**
+ * @param {import('postcss-value-parser').Node} node
+ * @returns {node is import('postcss-value-parser').FunctionNode}
+ */
+module.exports.isValueFunction = function isValueFunction(node) {
+	return node.type === 'function';
+};
+
+/**
+ * @param {Node} node
  * @returns {node is (Node & {source: NodeSource})}
  */
 module.exports.hasSource = function hasSource(node) {

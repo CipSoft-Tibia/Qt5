@@ -85,10 +85,17 @@ LayoutCustomScrollbarPart* LayoutCustomScrollbarPart::CreateAnonymous(
     CustomScrollbar* scrollbar,
     ScrollbarPart part) {
   LayoutCustomScrollbarPart* layout_object =
-      new LayoutCustomScrollbarPart(scrollable_area, scrollbar, part);
+      MakeGarbageCollected<LayoutCustomScrollbarPart>(scrollable_area,
+                                                      scrollbar, part);
   RecordScrollbarPartStats(*document, part);
   layout_object->SetDocumentForAnonymous(document);
   return layout_object;
+}
+
+void LayoutCustomScrollbarPart::Trace(Visitor* visitor) const {
+  visitor->Trace(scrollable_area_);
+  visitor->Trace(scrollbar_);
+  LayoutReplaced::Trace(visitor);
 }
 
 // TODO(crbug.com/1020913): Support subpixel layout of scrollbars and remove
@@ -97,10 +104,10 @@ int LayoutCustomScrollbarPart::ComputeSize(SizeType size_type,
                                            const Length& length,
                                            int container_size) const {
   NOT_DESTROYED();
-  if (!length.IsIntrinsicOrAuto() || (size_type == kMinSize && length.IsAuto()))
+  if (length.IsSpecified() || (size_type == kMinSize && length.IsAuto()))
     return MinimumValueForLength(length, LayoutUnit(container_size)).ToInt();
   return CustomScrollbarTheme::GetCustomScrollbarTheme()->ScrollbarThickness(
-      scrollbar_->ScaleFromDIP());
+      scrollbar_->ScaleFromDIP(), StyleRef().ScrollbarWidth());
 }
 
 int LayoutCustomScrollbarPart::ComputeWidth(int container_width) const {
@@ -149,11 +156,26 @@ int LayoutCustomScrollbarPart::ComputeLength() const {
   NOT_DESTROYED();
   DCHECK_NE(kScrollbarBGPart, part_);
 
-  IntRect visible_content_rect =
+  gfx::Rect visible_content_rect =
       scrollbar_->GetScrollableArea()->VisibleContentRect(kIncludeScrollbars);
   if (scrollbar_->Orientation() == kHorizontalScrollbar)
-    return ComputeWidth(visible_content_rect.Width());
-  return ComputeHeight(visible_content_rect.Height());
+    return ComputeWidth(visible_content_rect.width());
+  return ComputeHeight(visible_content_rect.height());
+}
+
+void LayoutCustomScrollbarPart::SetOverriddenFrameRect(const LayoutRect& rect) {
+  NOT_DESTROYED();
+  overridden_rect_ = rect;
+}
+
+LayoutPoint LayoutCustomScrollbarPart::Location() const {
+  NOT_DESTROYED();
+  return overridden_rect_.Location();
+}
+
+LayoutSize LayoutCustomScrollbarPart::Size() const {
+  NOT_DESTROYED();
+  return overridden_rect_.Size();
 }
 
 static LayoutUnit ComputeMargin(const Length& style_margin) {
@@ -202,15 +224,18 @@ void LayoutCustomScrollbarPart::StyleDidChange(StyleDifference diff,
                                                const ComputedStyle* old_style) {
   NOT_DESTROYED();
   LayoutReplaced::StyleDidChange(diff, old_style);
-  if (old_style && (diff.NeedsPaintInvalidation() || diff.NeedsLayout()))
+  if (old_style &&
+      (diff.NeedsNormalPaintInvalidation() || diff.NeedsLayout())) {
     SetNeedsPaintInvalidation();
+  }
   RecordPercentLengthStats();
 }
 
 void LayoutCustomScrollbarPart::RecordPercentLengthStats() const {
   NOT_DESTROYED();
-  if (!scrollbar_)
+  if (!scrollbar_) {
     return;
+  }
 
   auto feature = part_ == kScrollbarBGPart
                      ? WebFeature::kCustomScrollbarPercentThickness

@@ -31,13 +31,13 @@
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/modules/storage/cached_storage_area.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
 class ExceptionState;
-class LocalFrame;
+class LocalDOMWindow;
 
 class StorageArea final : public ScriptWrappable,
                           public ExecutionContextClient,
@@ -47,17 +47,17 @@ class StorageArea final : public ScriptWrappable,
  public:
   enum class StorageType { kLocalStorage, kSessionStorage };
 
-  static StorageArea* Create(LocalFrame*,
+  static StorageArea* Create(LocalDOMWindow*,
                              scoped_refptr<CachedStorageArea>,
                              StorageType);
 
   // This storage area doesn't enqueue any events. This avoids duplicate event
   // dispatch when an inspector agent is present.
-  static StorageArea* CreateForInspectorAgent(LocalFrame*,
+  static StorageArea* CreateForInspectorAgent(LocalDOMWindow*,
                                               scoped_refptr<CachedStorageArea>,
                                               StorageType);
 
-  StorageArea(LocalFrame*,
+  StorageArea(LocalDOMWindow*,
               scoped_refptr<CachedStorageArea>,
               StorageType,
               bool should_enqueue_events);
@@ -90,9 +90,14 @@ class StorageArea final : public ScriptWrappable,
       const char* name,
       WebScopedVirtualTimePauser::VirtualTaskDuration duration) override;
 
+  LocalDOMWindow* GetDOMWindow() override;
+
  private:
   void RecordModificationInMetrics();
-  const scoped_refptr<CachedStorageArea> cached_area_;
+
+  void OnDocumentActivatedForPrerendering();
+
+  scoped_refptr<CachedStorageArea> cached_area_;
   StorageType storage_type_;
   const bool should_enqueue_events_;
 

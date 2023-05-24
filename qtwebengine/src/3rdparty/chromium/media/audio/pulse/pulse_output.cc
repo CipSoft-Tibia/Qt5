@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <stdint.h>
 
 #include "base/compiler_specific.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "media/audio/audio_device_description.h"
 #include "media/audio/audio_manager_base.h"
@@ -49,7 +49,7 @@ PulseAudioOutputStream::PulseAudioOutputStream(
     AudioManagerBase* manager,
     AudioManager::LogCallback log_callback)
     : params_(AudioParameters(params.format(),
-                              params.channel_layout(),
+                              params.channel_layout_config(),
                               params.sample_rate(),
                               params.frames_per_buffer())),
       device_id_(device_id),
@@ -169,7 +169,7 @@ void PulseAudioOutputStream::FulfillWriteRequest(size_t requested_bytes) {
 
     size_t unwritten_frames_in_bus = audio_bus_->frames();
     size_t frames_filled = source_callback_->OnMoreData(
-        pulse::GetHardwareLatency(pa_stream_), base::TimeTicks::Now(), 0,
+        pulse::GetHardwareLatency(pa_stream_), base::TimeTicks::Now(), {},
         audio_bus_.get());
 
     // Zero any unfilled data so it plays back as silence.
@@ -258,7 +258,7 @@ void PulseAudioOutputStream::Stop() {
 
   // Set |source_callback_| to nullptr so all FulfillWriteRequest() calls which
   // may occur while waiting on the flush and cork exit immediately.
-  auto* callback = source_callback_;
+  auto* callback = source_callback_.get();
   source_callback_ = nullptr;
 
   // Flush the stream prior to cork, doing so after will cause hangs.  Write

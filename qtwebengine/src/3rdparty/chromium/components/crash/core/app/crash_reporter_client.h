@@ -1,16 +1,17 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_CRASH_CORE_APP_CRASH_REPORTER_CLIENT_H_
 #define COMPONENTS_CRASH_CORE_APP_CRASH_REPORTER_CLIENT_H_
 
+#include <stdint.h>
+
 #include <string>
 
-#include "base/strings/string16.h"
 #include "build/build_config.h"
 
-#if !defined(OS_WIN)
+#if !BUILDFLAG(IS_WIN)
 namespace base {
 class FilePath;
 }
@@ -36,7 +37,7 @@ class CrashReporterClient {
   CrashReporterClient();
   virtual ~CrashReporterClient();
 
-#if !defined(OS_APPLE) && !defined(OS_WIN) && !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_ANDROID)
   // Sets the crash reporting client ID, a unique identifier for the client
   // that is sending crash reports. After it is set, it should not be changed.
   // |client_guid| may either be a full GUID or a GUID that was already stripped
@@ -47,30 +48,30 @@ class CrashReporterClient {
   virtual void SetCrashReporterClientIdFromGUID(const std::string& client_guid);
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Returns true if the pipe name to connect to breakpad should be computed and
   // stored in the process's environment block. By default, returns true for the
   // "browser" process.
-  virtual bool ShouldCreatePipeName(const base::string16& process_type);
+  virtual bool ShouldCreatePipeName(const std::wstring& process_type);
 
   // Returns true if an alternative location to store the minidump files was
   // specified. Returns true if |crash_dir| was set.
-  virtual bool GetAlternativeCrashDumpLocation(base::string16* crash_dir);
+  virtual bool GetAlternativeCrashDumpLocation(std::wstring* crash_dir);
 
   // Returns a textual description of the product type and version to include
   // in the crash report.
-  virtual void GetProductNameAndVersion(const base::string16& exe_path,
-                                        base::string16* product_name,
-                                        base::string16* version,
-                                        base::string16* special_build,
-                                        base::string16* channel_name);
+  virtual void GetProductNameAndVersion(const std::wstring& exe_path,
+                                        std::wstring* product_name,
+                                        std::wstring* version,
+                                        std::wstring* special_build,
+                                        std::wstring* channel_name);
 
   // Returns true if a restart dialog should be displayed. In that case,
   // |message| and |title| are set to a message to display in a dialog box with
   // the given title before restarting, and |is_rtl_locale| indicates whether
   // to display the text as RTL.
-  virtual bool ShouldShowRestartDialog(base::string16* title,
-                                       base::string16* message,
+  virtual bool ShouldShowRestartDialog(std::wstring* title,
+                                       std::wstring* message,
                                        bool* is_rtl_locale);
 
   // Returns true if it is ok to restart the application. Invoked right before
@@ -80,15 +81,22 @@ class CrashReporterClient {
   // Returns true if the running binary is a per-user installation.
   virtual bool GetIsPerUserInstall();
 
-  // Returns true if larger crash dumps should be dumped.
-  virtual bool GetShouldDumpLargerDumps();
-
   // Returns the result code to return when breakpad failed to respawn a
   // crashed process.
   virtual int GetResultCodeRespawnFailed();
+
+  // Returns the fully-qualified path for a registered out of process exception
+  // helper module. The module is optional. Return an empty string to indicate
+  // that no module should be registered.
+  virtual std::wstring GetWerRuntimeExceptionModule();
 #endif
 
-#if defined(OS_POSIX) && !defined(OS_MAC)
+#if BUILDFLAG(IS_WIN) || (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC))
+  // Returns true if larger crash dumps should be dumped.
+  virtual bool GetShouldDumpLargerDumps();
+#endif
+
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
   // Returns a textual description of the product type and version to include
   // in the crash report. Neither out parameter should be set to NULL.
   // TODO(jperaza): Remove the 2-parameter overload of this method once all
@@ -111,21 +119,21 @@ class CrashReporterClient {
 #endif
 
   // The location where minidump files should be written. Returns true if
-  // |crash_dir| was set. Windows has to use base::string16 because this code
+  // |crash_dir| was set. Windows has to use std::wstring because this code
   // needs to work in chrome_elf, where only kernel32.dll is allowed, and
   // base::FilePath and its dependencies pull in other DLLs.
-#if defined(OS_WIN)
-  virtual bool GetCrashDumpLocation(base::string16* crash_dir);
+#if BUILDFLAG(IS_WIN)
+  virtual bool GetCrashDumpLocation(std::wstring* crash_dir);
 #else
   virtual bool GetCrashDumpLocation(base::FilePath* crash_dir);
 #endif
 
   // The location where metrics files should be written. Returns true if
-  // |metrics_dir| was set. Windows has to use base::string16 because this code
+  // |metrics_dir| was set. Windows has to use std::wstring because this code
   // needs to work in chrome_elf, where only kernel32.dll is allowed, and
   // base::FilePath and its dependencies pull in other DLLs.
-#if defined(OS_WIN)
-  virtual bool GetCrashMetricsLocation(base::string16* metrics_dir);
+#if BUILDFLAG(IS_WIN)
+  virtual bool GetCrashMetricsLocation(std::wstring* metrics_dir);
 #else
   virtual bool GetCrashMetricsLocation(base::FilePath* metrics_dir);
 #endif
@@ -145,7 +153,7 @@ class CrashReporterClient {
   // that case, |breakpad_enabled| is set to the value enforced by policies.
   virtual bool ReportingIsEnforcedByPolicy(bool* breakpad_enabled);
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Used by WebView to sample crashes without generating the unwanted dumps. If
   // the returned value is less than 100, crash dumping will be sampled to that
   // percentage.
@@ -170,7 +178,7 @@ class CrashReporterClient {
   virtual bool ShouldWriteMinidumpToLog();
 #endif
 
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   // Configures sanitization of crash dumps.
   // |allowed_annotations| is a nullptr terminated array of NUL-terminated
   // strings of allowed annotation names or nullptr if all annotations are

@@ -1,20 +1,30 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/webaudio/audio_basic_processor_handler.h"
+
 #include <memory>
+
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/testing/dummy_page_holder.h"
 #include "third_party/blink/renderer/modules/webaudio/offline_audio_context.h"
 #include "third_party/blink/renderer/platform/audio/audio_processor.h"
 
 namespace blink {
 
+namespace {
+
+// Rendering size for these tests.  This is the WebAudio default rendering size.
+constexpr unsigned kRenderQuantumFrames = 128;
+
+}  // namespace
+
 class MockAudioProcessor final : public AudioProcessor {
  public:
-  MockAudioProcessor() : AudioProcessor(48000, 2) {}
+  MockAudioProcessor() : AudioProcessor(48000, 2, kRenderQuantumFrames) {}
   void Initialize() override { initialized_ = true; }
   void Uninitialize() override { initialized_ = false; }
   void Process(const AudioBus*, AudioBus*, uint32_t) override {}
@@ -45,7 +55,7 @@ class MockProcessorHandler final : public AudioBasicProcessorHandler {
 
 class MockProcessorNode final : public AudioNode {
  public:
-  MockProcessorNode(BaseAudioContext& context) : AudioNode(context) {
+  explicit MockProcessorNode(BaseAudioContext& context) : AudioNode(context) {
     SetHandler(MockProcessorHandler::Create(*this, 48000));
   }
   void ReportDidCreate() final {}

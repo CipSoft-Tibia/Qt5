@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -57,12 +57,17 @@ class SimCanvas : public SkCanvas {
   void onDrawPath(const SkPath&, const SkPaint&) override;
 
   // Image
-  void onDrawImage(const SkImage*, SkScalar, SkScalar, const SkPaint*) override;
-  void onDrawImageRect(const SkImage*,
-                       const SkRect* src,
-                       const SkRect& dst,
-                       const SkPaint*,
-                       SrcRectConstraint) override;
+  void onDrawImage2(const SkImage*,
+                    SkScalar,
+                    SkScalar,
+                    const SkSamplingOptions&,
+                    const SkPaint*) override;
+  void onDrawImageRect2(const SkImage*,
+                        const SkRect& src,
+                        const SkRect& dst,
+                        const SkSamplingOptions&,
+                        const SkPaint*,
+                        SrcRectConstraint) override;
 
   // Text
   void onDrawTextBlob(const SkTextBlob*,
@@ -77,4 +82,4 @@ class SimCanvas : public SkCanvas {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_TESTING_SIM_SIM_CANVAS_H_

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquicktimeline_p_p.h"
 
@@ -48,6 +12,7 @@
 #include <QEasingCurve>
 #include <QTime>
 #include <QtCore/private/qnumeric_p.h>
+#include <QHash>
 
 #include <algorithm>
 
@@ -72,13 +37,13 @@ struct QQuickTimeLinePrivate
 
     struct Op {
         enum Type {
-            Pause,
-            Set,
-            Move,
-            MoveBy,
-            Accel,
+            Pause, // Pauses any value updates
+            Set, // Instantly changes the value to a target value
+            Move, // Moves towards a target value over time
+            MoveBy, // Same as Move, but target value is now an offset from the starting value
+            Accel, // Moves towards a target value over time with a constant acceleration
             AccelDistance,
-            Execute
+            Execute // Calls back a function
         };
         Op() {}
         Op(Type t, int l, qreal v, qreal v2, int o,
@@ -157,9 +122,11 @@ void QQuickTimeLinePrivate::add(QQuickTimeLineObject &g, const Op &o)
     if (!iter->ops.isEmpty() &&
        o.type == Op::Pause &&
        iter->ops.constLast().type == Op::Pause) {
+        // If the last operation was a pause, and we're adding another, simply prolong it.
         iter->ops.last().length += o.length;
         iter->length += o.length;
     } else {
+        // Add to the list of operations
         iter->ops.append(o);
         iter->length += o.length;
     }
@@ -777,6 +744,7 @@ int QQuickTimeLinePrivate::advance(int t)
                     tl.base = v->value();
 
                 if ((tl.consumedOpLength + advanceTime) == op.length) {
+                    // Finishing operation, the timeline value will be the operation's target value.
                     if (op.type == Op::Execute) {
                         updates << qMakePair(op.order, Update(op.event));
                     } else {
@@ -789,6 +757,8 @@ int QQuickTimeLinePrivate::advance(int t)
                     tl.consumedOpLength = 0;
                     tl.ops.removeFirst();
                 } else {
+                    // Partially finished operation, the timeline value will be between the base
+                    // value and the target value, depending on progress and type of operation.
                     tl.consumedOpLength += advanceTime;
                     bool changed = false;
                     qreal val = value(op, tl.consumedOpLength, tl.base, &changed);
@@ -821,7 +791,7 @@ int QQuickTimeLinePrivate::advance(int t)
 
         std::sort(updates.begin(), updates.end());
         updateQueue = &updates;
-        for (int ii = 0; ii < updates.count(); ++ii) {
+        for (int ii = 0; ii < updates.size(); ++ii) {
             const Update &v = updates.at(ii).second;
             if (v.g) {
                 v.g->setValue(v.v);
@@ -871,7 +841,7 @@ void QQuickTimeLine::remove(QQuickTimeLineObject *v)
     }
 
     if (d->updateQueue) {
-        for (int ii = 0; ii < d->updateQueue->count(); ++ii) {
+        for (int ii = 0; ii < d->updateQueue->size(); ++ii) {
             if (d->updateQueue->at(ii).second.g == v ||
                d->updateQueue->at(ii).second.e.callbackObject() == v) {
                 d->updateQueue->removeAt(ii);
@@ -957,3 +927,5 @@ QQuickTimeLineObject *QQuickTimeLineCallback::callbackObject() const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qquicktimeline_p_p.cpp"

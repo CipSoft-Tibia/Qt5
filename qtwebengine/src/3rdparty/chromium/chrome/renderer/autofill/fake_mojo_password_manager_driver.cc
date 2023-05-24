@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,8 +30,7 @@ void FakeMojoPasswordManagerDriver::PasswordFormsParsed(
 }
 
 void FakeMojoPasswordManagerDriver::PasswordFormsRendered(
-    const std::vector<autofill::FormData>& visible_forms_data,
-    bool did_stop_loading) {
+    const std::vector<autofill::FormData>& visible_forms_data) {
   called_password_forms_rendered_ = true;
   form_data_rendered_ = visible_forms_data;
 }
@@ -42,9 +41,9 @@ void FakeMojoPasswordManagerDriver::PasswordFormSubmitted(
   form_data_submitted_ = form_data;
 }
 
-void FakeMojoPasswordManagerDriver::SameDocumentNavigation(
+void FakeMojoPasswordManagerDriver::DynamicFormSubmission(
     autofill::mojom::SubmissionIndicatorEvent submission_indication_event) {
-  called_same_document_navigation_ = true;
+  called_dynamic_form_submission_ = true;
   form_data_maybe_submitted_->submission_event = submission_indication_event;
 }
 
@@ -59,7 +58,8 @@ void FakeMojoPasswordManagerDriver::UserModifiedPasswordField() {
 
 void FakeMojoPasswordManagerDriver::UserModifiedNonPasswordField(
     autofill::FieldRendererId renderer_id,
-    const base::string16& value) {}
+    const std::u16string& field_name,
+    const std::u16string& value) {}
 
 void FakeMojoPasswordManagerDriver::CheckSafeBrowsingReputation(
     const GURL& form_action,
@@ -74,6 +74,8 @@ void FakeMojoPasswordManagerDriver::InformAboutUserInput(
 }
 
 void FakeMojoPasswordManagerDriver::FocusedInputChanged(
+    autofill::FieldRendererId focused_field_id,
     autofill::mojom::FocusedFieldType focused_field_type) {
+  last_focused_field_id_ = focused_field_id;
   last_focused_field_type_ = focused_field_type;
 }

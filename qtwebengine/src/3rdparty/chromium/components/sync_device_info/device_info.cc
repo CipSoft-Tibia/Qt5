@@ -1,10 +1,13 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/sync_device_info/device_info.h"
 
-#include "base/values.h"
+#include <utility>
+
+#include "components/sync/protocol/device_info_specifics.pb.h"
+#include "components/sync/protocol/sync_enums.pb.h"
 
 namespace syncer {
 
@@ -37,36 +40,65 @@ bool DeviceInfo::SharingInfo::operator==(const SharingInfo& other) const {
          enabled_features == other.enabled_features;
 }
 
-DeviceInfo::DeviceInfo(const std::string& guid,
-                       const std::string& client_name,
-                       const std::string& chrome_version,
-                       const std::string& sync_user_agent,
-                       const sync_pb::SyncEnums::DeviceType device_type,
-                       const std::string& signin_scoped_device_id,
-                       const std::string& manufacturer_name,
-                       const std::string& model_name,
-                       base::Time last_updated_timestamp,
-                       base::TimeDelta pulse_interval,
-                       bool send_tab_to_self_receiving_enabled,
-                       const base::Optional<SharingInfo>& sharing_info,
-                       const std::string& fcm_registration_token,
-                       const ModelTypeSet& interested_data_types)
+DeviceInfo::PhoneAsASecurityKeyInfo::PhoneAsASecurityKeyInfo() = default;
+DeviceInfo::PhoneAsASecurityKeyInfo::PhoneAsASecurityKeyInfo(
+    const DeviceInfo::PhoneAsASecurityKeyInfo& other) = default;
+DeviceInfo::PhoneAsASecurityKeyInfo::PhoneAsASecurityKeyInfo(
+    DeviceInfo::PhoneAsASecurityKeyInfo&& other) = default;
+DeviceInfo::PhoneAsASecurityKeyInfo&
+DeviceInfo::PhoneAsASecurityKeyInfo::operator=(
+    const DeviceInfo::PhoneAsASecurityKeyInfo& other) = default;
+DeviceInfo::PhoneAsASecurityKeyInfo::~PhoneAsASecurityKeyInfo() = default;
+
+bool DeviceInfo::PhoneAsASecurityKeyInfo::NonRotatingFieldsEqual(
+    const PhoneAsASecurityKeyInfo& other) const {
+  // secret and id are deliberately not tested. This is because their values are
+  // based on the current time, but they should not cause an upload of the
+  // local device's DeviceInfo.
+  return tunnel_server_domain == other.tunnel_server_domain &&
+         contact_id == other.contact_id &&
+         peer_public_key_x962 == other.peer_public_key_x962;
+}
+
+DeviceInfo::DeviceInfo(
+    const std::string& guid,
+    const std::string& client_name,
+    const std::string& chrome_version,
+    const std::string& sync_user_agent,
+    const sync_pb::SyncEnums::DeviceType device_type,
+    const OsType os_type,
+    const FormFactor form_factor,
+    const std::string& signin_scoped_device_id,
+    const std::string& manufacturer_name,
+    const std::string& model_name,
+    const std::string& full_hardware_class,
+    base::Time last_updated_timestamp,
+    base::TimeDelta pulse_interval,
+    bool send_tab_to_self_receiving_enabled,
+    const absl::optional<SharingInfo>& sharing_info,
+    const absl::optional<PhoneAsASecurityKeyInfo>& paask_info,
+    const std::string& fcm_registration_token,
+    const ModelTypeSet& interested_data_types)
     : guid_(guid),
       client_name_(client_name),
       chrome_version_(chrome_version),
       sync_user_agent_(sync_user_agent),
       device_type_(device_type),
+      os_type_(os_type),
+      form_factor_(form_factor),
       signin_scoped_device_id_(signin_scoped_device_id),
       manufacturer_name_(manufacturer_name),
       model_name_(model_name),
+      full_hardware_class_(full_hardware_class),
       last_updated_timestamp_(last_updated_timestamp),
       pulse_interval_(pulse_interval),
       send_tab_to_self_receiving_enabled_(send_tab_to_self_receiving_enabled),
       sharing_info_(sharing_info),
+      paask_info_(paask_info),
       fcm_registration_token_(fcm_registration_token),
       interested_data_types_(interested_data_types) {}
 
-DeviceInfo::~DeviceInfo() {}
+DeviceInfo::~DeviceInfo() = default;
 
 const std::string& DeviceInfo::guid() const {
   return guid_;
@@ -92,6 +124,14 @@ sync_pb::SyncEnums::DeviceType DeviceInfo::device_type() const {
   return device_type_;
 }
 
+DeviceInfo::OsType DeviceInfo::os_type() const {
+  return os_type_;
+}
+
+DeviceInfo::FormFactor DeviceInfo::form_factor() const {
+  return form_factor_;
+}
+
 const std::string& DeviceInfo::signin_scoped_device_id() const {
   return signin_scoped_device_id_;
 }
@@ -102,6 +142,10 @@ const std::string& DeviceInfo::manufacturer_name() const {
 
 const std::string& DeviceInfo::model_name() const {
   return model_name_;
+}
+
+const std::string& DeviceInfo::full_hardware_class() const {
+  return full_hardware_class_;
 }
 
 base::Time DeviceInfo::last_updated_timestamp() const {
@@ -116,45 +160,14 @@ bool DeviceInfo::send_tab_to_self_receiving_enabled() const {
   return send_tab_to_self_receiving_enabled_;
 }
 
-const base::Optional<DeviceInfo::SharingInfo>& DeviceInfo::sharing_info()
+const absl::optional<DeviceInfo::SharingInfo>& DeviceInfo::sharing_info()
     const {
   return sharing_info_;
 }
 
-std::string DeviceInfo::GetOSString() const {
-  switch (device_type_) {
-    case sync_pb::SyncEnums_DeviceType_TYPE_WIN:
-      return "win";
-    case sync_pb::SyncEnums_DeviceType_TYPE_MAC:
-      return "mac";
-    case sync_pb::SyncEnums_DeviceType_TYPE_LINUX:
-      return "linux";
-    case sync_pb::SyncEnums_DeviceType_TYPE_CROS:
-      return "chrome_os";
-    case sync_pb::SyncEnums_DeviceType_TYPE_PHONE:
-    case sync_pb::SyncEnums_DeviceType_TYPE_TABLET:
-      // TODO(lipalani): crbug.com/170375. Add support for ios
-      // phones and tablets.
-      return "android";
-    default:
-      return "unknown";
-  }
-}
-
-std::string DeviceInfo::GetDeviceTypeString() const {
-  switch (device_type_) {
-    case sync_pb::SyncEnums_DeviceType_TYPE_WIN:
-    case sync_pb::SyncEnums_DeviceType_TYPE_MAC:
-    case sync_pb::SyncEnums_DeviceType_TYPE_LINUX:
-    case sync_pb::SyncEnums_DeviceType_TYPE_CROS:
-      return "desktop_or_laptop";
-    case sync_pb::SyncEnums_DeviceType_TYPE_PHONE:
-      return "phone";
-    case sync_pb::SyncEnums_DeviceType_TYPE_TABLET:
-      return "tablet";
-    default:
-      return "unknown";
-  }
+const absl::optional<DeviceInfo::PhoneAsASecurityKeyInfo>&
+DeviceInfo::paask_info() const {
+  return paask_info_;
 }
 
 const std::string& DeviceInfo::fcm_registration_token() const {
@@ -165,38 +178,13 @@ const ModelTypeSet& DeviceInfo::interested_data_types() const {
   return interested_data_types_;
 }
 
-bool DeviceInfo::Equals(const DeviceInfo& other) const {
-  return this->guid() == other.guid() &&
-         this->client_name() == other.client_name() &&
-         this->chrome_version() == other.chrome_version() &&
-         this->sync_user_agent() == other.sync_user_agent() &&
-         this->device_type() == other.device_type() &&
-         this->signin_scoped_device_id() == other.signin_scoped_device_id() &&
-         this->manufacturer_name() == other.manufacturer_name() &&
-         this->model_name() == other.model_name() &&
-         this->send_tab_to_self_receiving_enabled() ==
-             other.send_tab_to_self_receiving_enabled() &&
-         this->sharing_info() == other.sharing_info() &&
-         this->fcm_registration_token() == other.fcm_registration_token() &&
-         this->interested_data_types() == other.interested_data_types();
-}
-
-std::unique_ptr<base::DictionaryValue> DeviceInfo::ToValue() const {
-  std::unique_ptr<base::DictionaryValue> value(new base::DictionaryValue());
-  value->SetString("name", client_name_);
-  value->SetString("id", public_id_);
-  value->SetString("os", GetOSString());
-  value->SetString("type", GetDeviceTypeString());
-  value->SetString("chromeVersion", chrome_version_);
-  value->SetInteger("lastUpdatedTimestamp", last_updated_timestamp().ToTimeT());
-  value->SetBoolean("sendTabToSelfReceivingEnabled",
-                    send_tab_to_self_receiving_enabled());
-  value->SetBoolean("hasSharingInfo", sharing_info().has_value());
-  return value;
-}
-
 void DeviceInfo::set_public_id(const std::string& id) {
   public_id_ = id;
+}
+
+void DeviceInfo::set_full_hardware_class(
+    const std::string& full_hardware_class) {
+  full_hardware_class_ = full_hardware_class;
 }
 
 void DeviceInfo::set_send_tab_to_self_receiving_enabled(bool new_value) {
@@ -204,8 +192,12 @@ void DeviceInfo::set_send_tab_to_self_receiving_enabled(bool new_value) {
 }
 
 void DeviceInfo::set_sharing_info(
-    const base::Optional<SharingInfo>& sharing_info) {
+    const absl::optional<SharingInfo>& sharing_info) {
   sharing_info_ = sharing_info;
+}
+
+void DeviceInfo::set_paask_info(PhoneAsASecurityKeyInfo&& paask_info) {
+  paask_info_.emplace(std::forward<PhoneAsASecurityKeyInfo>(paask_info));
 }
 
 void DeviceInfo::set_client_name(const std::string& client_name) {

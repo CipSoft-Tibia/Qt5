@@ -1,13 +1,14 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stddef.h>
 
+#include <atomic>
 #include <vector>
 
-#include "base/stl_util.h"
-#include "base/strings/utf_string_conversions.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/run_loop.h"
 #include "components/storage_monitor/storage_monitor.h"
 #include "components/storage_monitor/test_storage_monitor.h"
 #include "extensions/browser/api/system_storage/storage_api_test_util.h"
@@ -36,6 +37,15 @@ class TestStorageInfoProvider : public extensions::StorageInfoProvider {
   TestStorageInfoProvider(const struct TestStorageUnitInfo* testing_data,
                           size_t n);
 
+  void set_expected_call_count(int count) { expected_call_count_ = count; }
+
+  void WaitForCallbacks() {
+    DCHECK(expected_call_count_);
+    if (callback_count_ != expected_call_count_) {
+      run_loop_.Run();
+    }
+  }
+
  private:
   ~TestStorageInfoProvider() override;
 
@@ -44,6 +54,14 @@ class TestStorageInfoProvider : public extensions::StorageInfoProvider {
       const std::string& transient_id) override;
 
   std::vector<struct TestStorageUnitInfo> testing_data_;
+
+  // Read on the IO thread, written from another thread.
+  std::atomic<int> callback_count_{0};
+
+  // Assumed to be read-only once the test starts.
+  int expected_call_count_ = 0;
+
+  base::RunLoop run_loop_;
 };
 
 TestStorageInfoProvider::TestStorageInfoProvider(
@@ -52,25 +70,28 @@ TestStorageInfoProvider::TestStorageInfoProvider(
     : testing_data_(testing_data, testing_data + n) {
 }
 
-TestStorageInfoProvider::~TestStorageInfoProvider() {
-}
+TestStorageInfoProvider::~TestStorageInfoProvider() = default;
 
 double TestStorageInfoProvider::GetStorageFreeSpaceFromTransientIdAsync(
     const std::string& transient_id) {
+  double result = -1;
   std::string device_id =
       StorageMonitor::GetInstance()->GetDeviceIdForTransientId(transient_id);
-  for (size_t i = 0; i < testing_data_.size(); ++i) {
-    if (testing_data_[i].device_id == device_id) {
-      return static_cast<double>(testing_data_[i].available_capacity);
+  for (const auto& info : testing_data_) {
+    if (info.device_id == device_id) {
+      result = static_cast<double>(info.available_capacity);
+      break;
     }
   }
-  return -1;
+  if (++callback_count_ == expected_call_count_)
+    run_loop_.QuitWhenIdle();
+  return result;
 }
 
 class SystemStorageApiTest : public extensions::ShellApiTest {
  public:
-  SystemStorageApiTest() {}
-  ~SystemStorageApiTest() override {}
+  SystemStorageApiTest() = default;
+  ~SystemStorageApiTest() override = default;
 
   void SetUpOnMainThread() override {
     ShellApiTest::SetUpOnMainThread();
@@ -78,8 +99,8 @@ class SystemStorageApiTest : public extensions::ShellApiTest {
   }
 
   void SetUpAllMockStorageDevices() {
-    for (size_t i = 0; i < base::size(kTestingData); ++i) {
-      AttachRemovableStorage(kTestingData[i]);
+    for (const auto& entry : kTestingData) {
+      AttachRemovableStorage(entry);
     }
   }
 
@@ -97,27 +118,31 @@ class SystemStorageApiTest : public extensions::ShellApiTest {
 
 IN_PROC_BROWSER_TEST_F(SystemStorageApiTest, Storage) {
   SetUpAllMockStorageDevices();
-  TestStorageInfoProvider* provider =
-      new TestStorageInfoProvider(kTestingData, base::size(kTestingData));
+  auto provider = base::MakeRefCounted<TestStorageInfoProvider>(
+      kTestingData, std::size(kTestingData));
   extensions::StorageInfoProvider::InitializeForTesting(provider);
   std::vector<std::unique_ptr<ExtensionTestMessageListener>>
       device_ids_listeners;
-  for (size_t i = 0; i < base::size(kTestingData); ++i) {
+  for (const auto& entry : kTestingData) {
     device_ids_listeners.push_back(
         std::make_unique<ExtensionTestMessageListener>(
             StorageMonitor::GetInstance()->GetTransientIdForDeviceId(
-                kTestingData[i].device_id),
-            false));
+                entry.device_id)));
   }
+  // Set the number of expected callbacks into the StorageInfoProvider.
+  provider->set_expected_call_count(device_ids_listeners.size());
   ASSERT_TRUE(RunAppTest("system/storage")) << message_;
-  for (size_t i = 0; i < device_ids_listeners.size(); ++i)
-    EXPECT_TRUE(device_ids_listeners[i]->WaitUntilSatisfied());
+  for (const auto& listener : device_ids_listeners)
+    EXPECT_TRUE(listener->WaitUntilSatisfied());
+  // Wait for the callbacks to complete so they don't run during
+  // teardown.
+  provider->WaitForCallbacks();
 }
 
 IN_PROC_BROWSER_TEST_F(SystemStorageApiTest, StorageAttachment) {
   extensions::ResultCatcher catcher;
-  ExtensionTestMessageListener attach_listener("attach", false);
-  ExtensionTestMessageListener detach_listener("detach", false);
+  ExtensionTestMessageListener attach_listener("attach");
+  ExtensionTestMessageListener detach_listener("detach");
 
   EXPECT_TRUE(LoadApp("system/storage_attachment"));
   // Simulate triggering onAttached event.
@@ -129,7 +154,7 @@ IN_PROC_BROWSER_TEST_F(SystemStorageApiTest, StorageAttachment) {
       StorageMonitor::GetInstance()->GetTransientIdForDeviceId(
           kRemovableStorageData.device_id);
   ExtensionTestMessageListener detach_device_id_listener(
-      removable_storage_transient_id, false);
+      removable_storage_transient_id);
 
   // Simulate triggering onDetached event.
   ASSERT_TRUE(detach_listener.WaitUntilSatisfied());

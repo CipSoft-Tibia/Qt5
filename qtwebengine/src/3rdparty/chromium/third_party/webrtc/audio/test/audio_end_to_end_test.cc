@@ -29,11 +29,7 @@ constexpr int kSampleRate = 48000;
 }  // namespace
 
 AudioEndToEndTest::AudioEndToEndTest()
-    : EndToEndTest(CallTest::kDefaultTimeoutMs) {}
-
-BuiltInNetworkBehaviorConfig AudioEndToEndTest::GetNetworkPipeConfig() const {
-  return BuiltInNetworkBehaviorConfig();
-}
+    : EndToEndTest(CallTest::kDefaultTimeout) {}
 
 size_t AudioEndToEndTest::GetNumVideoStreams() const {
   return 0;
@@ -63,40 +59,21 @@ void AudioEndToEndTest::OnFakeAudioDevicesCreated(
   send_audio_device_ = send_audio_device;
 }
 
-std::unique_ptr<test::PacketTransport> AudioEndToEndTest::CreateSendTransport(
-    TaskQueueBase* task_queue,
-    Call* sender_call) {
-  return std::make_unique<test::PacketTransport>(
-      task_queue, sender_call, this, test::PacketTransport::kSender,
-      test::CallTest::payload_type_map_,
-      std::make_unique<FakeNetworkPipe>(
-          Clock::GetRealTimeClock(),
-          std::make_unique<SimulatedNetwork>(GetNetworkPipeConfig())));
-}
-
-std::unique_ptr<test::PacketTransport>
-AudioEndToEndTest::CreateReceiveTransport(TaskQueueBase* task_queue) {
-  return std::make_unique<test::PacketTransport>(
-      task_queue, nullptr, this, test::PacketTransport::kReceiver,
-      test::CallTest::payload_type_map_,
-      std::make_unique<FakeNetworkPipe>(
-          Clock::GetRealTimeClock(),
-          std::make_unique<SimulatedNetwork>(GetNetworkPipeConfig())));
-}
-
 void AudioEndToEndTest::ModifyAudioConfigs(
     AudioSendStream::Config* send_config,
-    std::vector<AudioReceiveStream::Config>* receive_configs) {
+    std::vector<AudioReceiveStreamInterface::Config>* receive_configs) {
   // Large bitrate by default.
   const webrtc::SdpAudioFormat kDefaultFormat("opus", 48000, 2,
                                               {{"stereo", "1"}});
   send_config->send_codec_spec = AudioSendStream::Config::SendCodecSpec(
       test::CallTest::kAudioSendPayloadType, kDefaultFormat);
+  send_config->min_bitrate_bps = 32000;
+  send_config->max_bitrate_bps = 32000;
 }
 
 void AudioEndToEndTest::OnAudioStreamsCreated(
     AudioSendStream* send_stream,
-    const std::vector<AudioReceiveStream*>& receive_streams) {
+    const std::vector<AudioReceiveStreamInterface*>& receive_streams) {
   ASSERT_NE(nullptr, send_stream);
   ASSERT_EQ(1u, receive_streams.size());
   ASSERT_NE(nullptr, receive_streams[0]);
@@ -108,7 +85,7 @@ void AudioEndToEndTest::PerformTest() {
   // Wait until the input audio file is done...
   send_audio_device_->WaitForRecordingEnd();
   // and some extra time to account for network delay.
-  SleepMs(GetNetworkPipeConfig().queue_delay_ms + kExtraRecordTimeMs);
+  SleepMs(GetSendTransportConfig().queue_delay_ms + kExtraRecordTimeMs);
 }
 }  // namespace test
 }  // namespace webrtc

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qxcbkeyboard.h"
 #include "qxcbwindow.h"
 #include "qxcbscreen.h"
@@ -223,7 +187,7 @@ struct xkb_keymap *QXcbKeyboard::keymapFromCore(const KeysymModifierMap &keysymM
 
     // Generate mapping between symbolic names and keysyms
     {
-        QVector<xcb_keysym_t> xkeymap;
+        QList<xcb_keysym_t> xkeymap;
         int keysymsPerKeycode = 0;
         {
             int keycodeCount = maxKeycode - minKeycode + 1;
@@ -257,7 +221,7 @@ struct xkb_keymap *QXcbKeyboard::keymapFromCore(const KeysymModifierMap &keysymM
             const int maxGroup1 = 4; // We only support 4 shift states anyway
             const int maxGroup2 = 2; // Only 3rd and 4th keysym are group 2
             xcb_keysym_t symbolsGroup1[maxGroup1];
-            xcb_keysym_t symbolsGroup2[maxGroup2];
+            xcb_keysym_t symbolsGroup2[maxGroup2] = { XKB_KEY_NoSymbol, XKB_KEY_NoSymbol };
             for (int i = 0; i < maxGroup1 + maxGroup2; i++) {
                 xcb_keysym_t sym = i < keysymsPerKeycode ? codeMap[i] : XKB_KEY_NoSymbol;
                 if (mapGroup2ToLevel3) {
@@ -441,7 +405,7 @@ static xkb_layout_index_t lockedGroup(quint16 state)
 
 void QXcbKeyboard::updateXKBStateFromCore(quint16 state)
 {
-    if (m_config && !connection()->hasXKB()) {
+    if (m_config) {
         struct xkb_state *xkbState = m_xkbState.get();
         xkb_mod_mask_t modsDepressed = xkb_state_serialize_mods(xkbState, XKB_STATE_MODS_DEPRESSED);
         xkb_mod_mask_t modsLatched = xkb_state_serialize_mods(xkbState, XKB_STATE_MODS_LATCHED);
@@ -463,7 +427,7 @@ void QXcbKeyboard::updateXKBStateFromCore(quint16 state)
 
 void QXcbKeyboard::updateXKBStateFromXI(void *modInfo, void *groupInfo)
 {
-    if (m_config && !connection()->hasXKB()) {
+    if (m_config) {
         auto *mods = static_cast<xcb_input_modifier_info_t *>(modInfo);
         auto *group = static_cast<xcb_input_group_info_t *>(groupInfo);
         const xkb_state_component changedComponents

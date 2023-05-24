@@ -14,6 +14,8 @@ srcs_toytoolkit = [
 	pointer_constraints_unstable_v1_protocol_c,
 	ivi_application_client_protocol_h,
 	ivi_application_protocol_c,
+	viewporter_client_protocol_h,
+	viewporter_protocol_c,
 ]
 deps_toytoolkit = [
 	dep_wayland_client,
@@ -25,7 +27,7 @@ deps_toytoolkit = [
 lib_toytoolkit = static_library(
 	'toytoolkit',
 	srcs_toytoolkit,
-	include_directories: include_directories('..', '../shared'),
+	include_directories: common_inc,
 	dependencies: deps_toytoolkit,
 	install: false,
 )
@@ -56,8 +58,10 @@ simple_clients = [
 			linux_dmabuf_unstable_v1_protocol_c,
 			linux_explicit_synchronization_unstable_v1_client_protocol_h,
 			linux_explicit_synchronization_unstable_v1_protocol_c,
-			xdg_shell_unstable_v6_client_protocol_h,
-			xdg_shell_unstable_v6_protocol_c,
+			xdg_shell_client_protocol_h,
+			xdg_shell_protocol_c,
+			weston_direct_display_client_protocol_h,
+			weston_direct_display_protocol_c,
 			fullscreen_shell_unstable_v1_client_protocol_h,
 			fullscreen_shell_unstable_v1_protocol_c,
 		],
@@ -66,7 +70,8 @@ simple_clients = [
 			dep_libdrm,
 			dep_libm
 		],
-		'deps': [ 'egl', 'glesv2', 'gbm' ]
+		'deps': [ 'egl', 'glesv2', 'gbm' ],
+		'options': [ 'renderer-gl' ]
 	},
 	{
 		'name': 'dmabuf-v4l',
@@ -76,6 +81,8 @@ simple_clients = [
 			linux_dmabuf_unstable_v1_protocol_c,
 			xdg_shell_client_protocol_h,
 			xdg_shell_protocol_c,
+			weston_direct_display_client_protocol_h,
+			weston_direct_display_protocol_c,
 			fullscreen_shell_unstable_v1_client_protocol_h,
 			fullscreen_shell_unstable_v1_protocol_c,
 		],
@@ -91,7 +98,8 @@ simple_clients = [
 			ivi_application_protocol_c,
 		],
 		'dep_objs': [ dep_wayland_client, dep_libshared, dep_libm ],
-		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ]
+		'deps': [ 'egl', 'wayland-egl', 'glesv2', 'wayland-cursor' ],
+		'options': [ 'renderer-gl' ]
 	},
 	# weston-simple-im is handled specially separately due to install_dir and odd window.h usage
 	{
@@ -130,9 +138,15 @@ foreach t : simple_clients
 			t_deps += dep
 		endforeach
 
+		foreach optname : t.get('options', [])
+			if not get_option(optname)
+				error('@0@ requires option @1@ which is not enabled. If you rather not build this, drop "@2@" from simple-clients option.'.format(t_name, optname, t.get('name')))
+			endif
+		endforeach
+
 		executable(
 			t_name, t.get('sources'),
-			include_directories: [ include_directories('..'), public_inc ],
+			include_directories: common_inc,
 			dependencies: t_deps,
 			install: true
 		)
@@ -146,7 +160,7 @@ if simple_build_all or simple_clients_enabled.contains('im')
 			input_method_unstable_v1_client_protocol_h,
 			input_method_unstable_v1_protocol_c,
 		],
-		include_directories: include_directories('..'),
+		include_directories: common_inc,
 		dependencies: [
 			dep_libshared,
 			dep_wayland_client,
@@ -163,11 +177,8 @@ tools_enabled = get_option('tools')
 tools_list = [
 	{
 		'name': 'calibrator',
-		'sources': [
-			'calibrator.c',
-			'../shared/matrix.c',
-		],
-		'deps': [ dep_toytoolkit ],
+		'sources': [ 'calibrator.c' ],
+		'deps': [ dep_toytoolkit, dep_matrix_c ],
 	},
 	{
 		'name': 'debug',
@@ -202,11 +213,10 @@ tools_list = [
 		'name': 'touch-calibrator',
 		'sources': [
 			'touch-calibrator.c',
-			'../shared/matrix.c',
 			weston_touch_calibration_client_protocol_h,
 			weston_touch_calibration_protocol_c,
 		],
-		'deps': [ dep_toytoolkit ],
+		'deps': [ dep_toytoolkit, dep_matrix_c ],
 	},
 ]
 
@@ -215,7 +225,7 @@ foreach t : tools_list
 		executable(
 			'weston-@0@'.format(t.get('name')),
 			t.get('sources'),
-			include_directories: [ include_directories('..', '../shared'), public_inc ],
+			include_directories: common_inc,
 			dependencies: t.get('deps', []),
 			install: true
 		)
@@ -262,6 +272,8 @@ demo_clients = [
 		'add_sources': [
 			presentation_time_client_protocol_h,
 			presentation_time_protocol_c,
+			xdg_shell_client_protocol_h,
+			xdg_shell_protocol_c,
 		]
 	},
 	{ 'basename': 'resizor' },
@@ -296,54 +308,11 @@ if get_option('demo-clients')
 
 		executable(
 			t_name, t_srcs,
-			include_directories: include_directories('..', '../shared'),
+			include_directories: common_inc,
 			dependencies: t_deps,
 			install: true
 		)
 	endforeach
-endif
-
-simple_dmabuf_drm_opts = get_option('simple-dmabuf-drm')
-simple_dmabuf_drm_deps = []
-foreach driver : [ 'etnaviv', 'intel', 'freedreno' ]
-	if simple_dmabuf_drm_opts.contains(driver)
-		required = true
-		enabled = true
-	elif simple_dmabuf_drm_opts.contains('auto')
-		required = get_option('auto_features').enabled()
-		enabled = not get_option('auto_features').disabled()
-	else
-		enabled = false
-	endif
-
-	if enabled
-		dep = dependency('libdrm_' + driver, required: false)
-		if dep.found()
-			simple_dmabuf_drm_deps += dep
-			config_h.set('HAVE_LIBDRM_' + driver.to_upper(), 1)
-		elif required
-			error('simple-dmabuf-drm is configured to use @0@ but it was not found. Or, you can remove @1@ from \'-Dsimple-dmabuf-drm\' list.'.format('libdrm_' + driver, driver))
-		endif
-	endif
-endforeach
-if simple_dmabuf_drm_deps.length() > 0
-	executable(
-		'weston-simple-dmabuf-drm',
-		'simple-dmabuf-drm.c',
-		xdg_shell_client_protocol_h,
-		xdg_shell_protocol_c,
-		fullscreen_shell_unstable_v1_client_protocol_h,
-		fullscreen_shell_unstable_v1_protocol_c,
-		linux_dmabuf_unstable_v1_client_protocol_h,
-		linux_dmabuf_unstable_v1_protocol_c,
-		include_directories: [ include_directories('..'), public_inc ],
-		dependencies: [
-			dep_wayland_client,
-			dep_libdrm,
-			simple_dmabuf_drm_deps
-		],
-		install: true
-	)
 endif
 
 if get_option('shell-desktop')
@@ -354,7 +323,7 @@ if get_option('shell-desktop')
 		text_input_unstable_v1_protocol_c,
 		input_method_unstable_v1_client_protocol_h,
 		input_method_unstable_v1_protocol_c,
-		include_directories: include_directories('..'),
+		include_directories: common_inc,
 		dependencies: dep_toytoolkit,
 		install_dir: get_option('libexecdir'),
 		install: true
@@ -366,7 +335,7 @@ if get_option('shell-desktop')
 		'screenshot.c',
 		weston_screenshooter_client_protocol_h,
 		weston_screenshooter_protocol_c,
-		include_directories: include_directories('..'),
+		include_directories: common_inc,
 		dependencies: dep_toytoolkit,
 		install_dir: get_option('bindir'),
 		install: true
@@ -378,7 +347,7 @@ if get_option('shell-desktop')
 		'desktop-shell.c',
 		weston_desktop_shell_client_protocol_h,
 		weston_desktop_shell_protocol_c,
-		include_directories: include_directories('..'),
+		include_directories: common_inc,
 		dependencies: dep_toytoolkit,
 		install_dir: get_option('libexecdir'),
 		install: true
@@ -395,7 +364,7 @@ if get_option('shell-ivi')
 		ivi_hmi_controller_protocol_c,
 		ivi_application_client_protocol_h,
 		ivi_application_protocol_c,
-		include_directories: include_directories('..'),
+		include_directories: common_inc,
 		dependencies: dep_toytoolkit,
 		install: true,
 		install_dir: get_option('libexecdir')

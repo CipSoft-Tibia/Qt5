@@ -6,27 +6,30 @@
  */
 
 #include "bench/Benchmark.h"
-#include "include/private/GrTypesPriv.h"
-#include "include/utils/SkRandom.h"
-#include "src/gpu/GrMemoryPool.h"
+#include "src/base/SkRandom.h"
+#include "src/gpu/ganesh/GrMemoryPool.h"
 
 #include <type_traits>
 
 namespace {
 
 // sizeof is a multiple of GrMemoryPool::kAlignment for 4, 8, or 16 byte alignment
-using Aligned = std::aligned_storage<32, GrMemoryPool::kAlignment>::type;
+struct alignas(GrMemoryPool::kAlignment) Aligned {
+    char buf[32];
+};
 static_assert(sizeof(Aligned) == 32);
 static_assert(sizeof(Aligned) % GrMemoryPool::kAlignment == 0);
 
 // sizeof is not a multiple of GrMemoryPool::kAlignment (will not be a multiple of max_align_t
 // if it's 4, 8, or 16, as desired).
-using Unaligned = std::aligned_storage<30, 2>::type;
+struct alignas(2) Unaligned {
+    char buf[30];
+};
 static_assert(sizeof(Unaligned) == 30);
 static_assert(sizeof(Unaligned) % GrMemoryPool::kAlignment != 0);
 
 // When max_align_t == 16, 8, or 4 the padded Unaligned will also be 32
-static_assert(GrAlignTo(sizeof(Unaligned), GrMemoryPool::kAlignment) == sizeof(Aligned));
+static_assert(SkAlignTo(sizeof(Unaligned), GrMemoryPool::kAlignment) == sizeof(Aligned));
 
 // All benchmarks create and delete the same number of objects. The key difference is the order
 // of operations, the size of the objects being allocated, and the size of the pool.

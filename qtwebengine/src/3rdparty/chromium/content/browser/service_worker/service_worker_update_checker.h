@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,13 @@
 #include <memory>
 #include <vector>
 
-#include "base/callback.h"
-#include "content/browser/service_worker/service_worker_database.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
+#include "content/browser/renderer_host/policy_container_host.h"
 #include "content/browser/service_worker/service_worker_single_script_update_checker.h"
 #include "content/browser/service_worker/service_worker_updated_script_loader.h"
+#include "content/common/content_export.h"
 
 namespace network {
 class SharedURLLoaderFactory;
@@ -23,8 +26,6 @@ namespace content {
 class ServiceWorkerContextCore;
 class ServiceWorkerVersion;
 
-// Used only when ServiceWorkerImportedScriptUpdateCheck is enabled.
-//
 // This is responsible for byte-for-byte update checking. Mostly corresponding
 // to step 1-9 in [[Update]] in the spec, but this stops to fetch scripts after
 // any changes found.
@@ -74,23 +75,38 @@ class CONTENT_EXPORT ServiceWorkerUpdateChecker {
   //    Some script changed, update is needed. |failure_info| is nullptr.
   // 3. ServiceWorkerSingleScriptUpdateChecker::Result::kFailed
   //    The update check failed, detailed error info is in |failure_info|.
+  //
+  // |updated_sha256_script_checksums| contains the pair of updated hash string
+  // and its script url. It's normally empty, except for the case when
+  // |main_script_sha256_checksum_| has a value, and the update check finished
+  // with kIdentical.
   using UpdateStatusCallback = base::OnceCallback<void(
       ServiceWorkerSingleScriptUpdateChecker::Result result,
       std::unique_ptr<ServiceWorkerSingleScriptUpdateChecker::FailureInfo>
-          failure_info)>;
+          failure_info,
+      const std::map<GURL, std::string>& updated_sha256_script_checksums)>;
+
+  ServiceWorkerUpdateChecker() = delete;
 
   ServiceWorkerUpdateChecker(
       std::vector<storage::mojom::ServiceWorkerResourceRecordPtr>
           scripts_to_compare,
       const GURL& main_script_url,
       int64_t main_script_resource_id,
+      const absl::optional<std::string>& main_script_sha256_checksum,
       scoped_refptr<ServiceWorkerVersion> version_to_update,
       scoped_refptr<network::SharedURLLoaderFactory> loader_factory,
       bool force_bypass_cache,
+      blink::mojom::ScriptType worker_script_type,
       blink::mojom::ServiceWorkerUpdateViaCache update_via_cache,
       base::TimeDelta time_since_last_check,
       ServiceWorkerContextCore* context,
       blink::mojom::FetchClientSettingsObjectPtr fetch_client_settings_object);
+
+  ServiceWorkerUpdateChecker(const ServiceWorkerUpdateChecker&) = delete;
+  ServiceWorkerUpdateChecker& operator=(const ServiceWorkerUpdateChecker&) =
+      delete;
+
   ~ServiceWorkerUpdateChecker();
 
   // |callback| is always triggered when the update check finishes.
@@ -107,12 +123,13 @@ class CONTENT_EXPORT ServiceWorkerUpdateChecker {
       std::unique_ptr<ServiceWorkerSingleScriptUpdateChecker::FailureInfo>
           failure_info,
       std::unique_ptr<ServiceWorkerSingleScriptUpdateChecker::PausedState>
-          paused_state);
+          paused_state,
+      const absl::optional<std::string>& sha256_checksum);
 
   const GURL& updated_script_url() const { return updated_script_url_; }
   bool network_accessed() const { return network_accessed_; }
-  network::CrossOriginEmbedderPolicy cross_origin_embedder_policy() const {
-    return cross_origin_embedder_policy_;
+  const scoped_refptr<PolicyContainerHost> policy_container_host() const {
+    return policy_container_host_;
   }
 
  private:
@@ -120,12 +137,10 @@ class CONTENT_EXPORT ServiceWorkerUpdateChecker {
   void OnResourceIdAssignedForOneScriptCheck(const GURL& url,
                                              const int64_t resource_id,
                                              const int64_t new_resource_id);
-  void DidSetUpOnUI(net::HttpRequestHeaders header,
-                    ServiceWorkerUpdatedScriptLoader::BrowserContextGetter
-                        browser_context_getter);
 
   const GURL main_script_url_;
   const int64_t main_script_resource_id_;
+  const absl::optional<std::string> main_script_sha256_checksum_;
 
   std::vector<storage::mojom::ServiceWorkerResourceRecordPtr>
       scripts_to_compare_;
@@ -146,30 +161,27 @@ class CONTENT_EXPORT ServiceWorkerUpdateChecker {
   scoped_refptr<network::SharedURLLoaderFactory> loader_factory_;
 
   const bool force_bypass_cache_;
+  const blink::mojom::ScriptType worker_script_type_;
   const blink::mojom::ServiceWorkerUpdateViaCache update_via_cache_;
   const base::TimeDelta time_since_last_check_;
-
-  // Headers that need to be added to network requests for update checking.
-  net::HttpRequestHeaders default_headers_;
-
-  ServiceWorkerUpdatedScriptLoader::BrowserContextGetter
-      browser_context_getter_;
 
   // True if any at least one of the scripts is fetched by network.
   bool network_accessed_ = false;
 
-  // The Cross-Origin-Embedder-Policy header for the updated main script.
-  network::CrossOriginEmbedderPolicy cross_origin_embedder_policy_;
+  // Contains the pair of updated hash string and its script url.
+  // This manages newly calculated checksum strings so that we store them on
+  // memory and database.
+  std::map<GURL, std::string> updated_sha256_script_checksums_;
+
+  scoped_refptr<PolicyContainerHost> policy_container_host_;
 
   // |context_| outlives |this| because it owns |this| through
   // ServiceWorkerJobCoordinator and ServiceWorkerRegisterJob.
-  ServiceWorkerContextCore* const context_;
+  const raw_ptr<ServiceWorkerContextCore> context_;
 
   blink::mojom::FetchClientSettingsObjectPtr fetch_client_settings_object_;
 
   base::WeakPtrFactory<ServiceWorkerUpdateChecker> weak_factory_{this};
-
-  DISALLOW_IMPLICIT_CONSTRUCTORS(ServiceWorkerUpdateChecker);
 };
 
 }  // namespace content

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,7 @@ SelectionForUndoStep SelectionForUndoStep::From(
   result.extent_ = selection.Extent();
   result.affinity_ = selection.Affinity();
   result.is_base_first_ = selection.IsBaseFirst();
+  result.root_editable_element_ = RootEditableElementOf(result.base_);
   return result;
 }
 
@@ -81,6 +82,7 @@ bool SelectionForUndoStep::IsValidFor(const Document& document) const {
 void SelectionForUndoStep::Trace(Visitor* visitor) const {
   visitor->Trace(base_);
   visitor->Trace(extent_);
+  visitor->Trace(root_editable_element_);
 }
 
 // ---

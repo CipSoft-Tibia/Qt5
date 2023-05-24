@@ -1,12 +1,14 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_EVENT_HANDLER_REGISTRY_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_EVENT_HANDLER_REGISTRY_H_
 
+#include "base/dcheck_is_on.h"
 #include "third_party/blink/renderer/core/core_export.h"  // TODO(sashab): Remove this.
 #include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/platform/heap/forward.h"
 #include "third_party/blink/renderer/platform/wtf/hash_counted_set.h"
 
 namespace blink {
@@ -96,7 +98,7 @@ class CORE_EXPORT EventHandlerRegistry final
 
   // Returns true if the operation actually added a new target or completely
   // removed an existing one.
-  bool UpdateEventHandlerTargets(ChangeOperation,
+  void UpdateEventHandlerTargets(ChangeOperation,
                                  EventHandlerClass,
                                  EventTarget*);
 
@@ -107,11 +109,6 @@ class CORE_EXPORT EventHandlerRegistry final
   void NotifyHandlersChanged(EventTarget*,
                              EventHandlerClass,
                              bool has_active_handlers);
-
-  // Called to notify clients whenever a single event handler target is
-  // registered or unregistered. If several handlers are registered for the
-  // same target, only the first registration will trigger this notification.
-  void NotifyDidAddOrRemoveEventHandlerTarget(LocalFrame*, EventHandlerClass);
 
   // Record a change operation to a given event handler class and notify any
   // parent registry and other clients accordingly.

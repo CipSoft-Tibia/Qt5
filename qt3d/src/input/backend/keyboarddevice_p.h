@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DINPUT_INPUT_KEYBOARDDEVICE_P_H
 #define QT3DINPUT_INPUT_KEYBOARDDEVICE_P_H
@@ -81,7 +45,7 @@ public:
     float axisValue(int axisIdentifier) const override;
     bool isButtonPressed(int buttonIdentifier) const override;
 
-    void updateKeyEvents(const QList<QT_PREPEND_NAMESPACE(QKeyEvent)> &events);
+    void updateKeyEvent(QT_PREPEND_NAMESPACE(QKeyEvent) *event);
 
     inline Qt3DCore::QNodeId currentFocusItem() const { return m_currentFocusItem; }
     inline Qt3DCore::QNodeId lastKeyboardInputRequester() const { return m_lastRequester; }
@@ -90,7 +54,7 @@ private:
     void setButtonValue(int key, bool value);
 
     InputHandler *m_inputHandler;
-    QVector<Qt3DCore::QNodeId> m_keyboardInputs;
+    QList<Qt3DCore::QNodeId> m_keyboardInputs;
     Qt3DCore::QNodeId m_lastRequester;
     Qt3DCore::QNodeId m_currentFocusItem;
 
@@ -265,7 +229,7 @@ class KeyboardDeviceFunctor : public Qt3DCore::QBackendNodeMapper
 public:
     explicit KeyboardDeviceFunctor(QInputAspect *inputaspect, InputHandler *handler);
 
-    Qt3DCore::QBackendNode *create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const override;
+    Qt3DCore::QBackendNode *create(Qt3DCore::QNodeId id) const override;
     Qt3DCore::QBackendNode *get(Qt3DCore::QNodeId id) const override;
     void destroy(Qt3DCore::QNodeId id) const override;
 

@@ -7,7 +7,7 @@
 
 #include "include/core/SkRect.h"
 
-#include "include/private/SkMalloc.h"
+#include "include/private/base/SkDebug.h"
 #include "src/core/SkRectPriv.h"
 
 bool SkIRect::intersect(const SkIRect& a, const SkIRect& b) {
@@ -52,7 +52,7 @@ void SkRect::toQuad(SkPoint quad[4]) const {
     quad[3].set(fLeft, fBottom);
 }
 
-#include "include/private/SkNx.h"
+#include "src/base/SkVx.h"
 
 bool SkRect::setBoundsCheck(const SkPoint pts[], int count) {
     SkASSERT((pts && count > 0) || count == 0);
@@ -62,29 +62,28 @@ bool SkRect::setBoundsCheck(const SkPoint pts[], int count) {
         return true;
     }
 
-    Sk4s min, max;
+    skvx::float4 min, max;
     if (count & 1) {
-        min = max = Sk4s(pts->fX, pts->fY,
-                         pts->fX, pts->fY);
+        min = max = skvx::float2::Load(pts).xyxy();
         pts   += 1;
         count -= 1;
     } else {
-        min = max = Sk4s::Load(pts);
+        min = max = skvx::float4::Load(pts);
         pts   += 2;
         count -= 2;
     }
 
-    Sk4s accum = min * 0;
+    skvx::float4 accum = min * 0;
     while (count) {
-        Sk4s xy = Sk4s::Load(pts);
+        skvx::float4 xy = skvx::float4::Load(pts);
         accum = accum * xy;
-        min = Sk4s::Min(min, xy);
-        max = Sk4s::Max(max, xy);
+        min = skvx::min(min, xy);
+        max = skvx::max(max, xy);
         pts   += 2;
         count -= 2;
     }
 
-    bool all_finite = (accum * 0 == 0).allTrue();
+    const bool all_finite = all(accum * 0 == 0);
     if (all_finite) {
         this->setLTRB(std::min(min[0], min[2]), std::min(min[1], min[3]),
                       std::max(max[0], max[2]), std::max(max[1], max[3]));
@@ -170,11 +169,9 @@ void SkRect::dump(bool asHex) const {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename R, typename C>
+template<typename R>
 static bool subtract(const R& a, const R& b, R* out) {
-    static constexpr C kZero = C(0);
-
-    if (!R::Intersects(a, b)) {
+    if (a.isEmpty() || b.isEmpty() || !R::Intersects(a, b)) {
         // Either already empty, or subtracting the empty rect, or there's no intersection, so
         // in all cases the answer is A.
         *out = a;
@@ -188,33 +185,36 @@ static bool subtract(const R& a, const R& b, R* out) {
     // 2. Right part of A:  (B.right, A.top,    A.right, A.bottom)
     // 3. Top part of A:    (A.left,  A.top,    A.right, B.top)
     // 4. Bottom part of A: (A.left,  B.bottom, A.right, A.bottom)
-
-    C height = a.height();
-    C width = a.width();
-
-    // Compute the areas of the 4 rects described above. Depending on how B intersects A, there
-    // will be 1 to 4 positive areas:
+    //
+    // Depending on how B intersects A, there will be 1 to 4 positive areas:
     //  - 4 occur when A contains B
     //  - 3 occur when B intersects a single edge
     //  - 2 occur when B intersects at a corner, or spans two opposing edges
     //  - 1 occurs when B spans two opposing edges and contains a 3rd, resulting in an exact rect
     //  - 0 occurs when B contains A, resulting in the empty rect
-    C leftArea = kZero, rightArea = kZero, topArea = kZero, bottomArea = kZero;
+    //
+    // Compute the relative areas of the 4 rects described above. Since each subrectangle shares
+    // either the width or height of A, we only have to divide by the other dimension, which avoids
+    // overflow on int32 types, and even if the float relative areas overflow to infinity, the
+    // comparisons work out correctly and (one of) the infinitely large subrects will be chosen.
+    float aHeight = (float) a.height();
+    float aWidth = (float) a.width();
+    float leftArea = 0.f, rightArea = 0.f, topArea = 0.f, bottomArea = 0.f;
     int positiveCount = 0;
     if (b.fLeft > a.fLeft) {
-        leftArea = (b.fLeft - a.fLeft) * height;
+        leftArea = (b.fLeft - a.fLeft) / aWidth;
         positiveCount++;
     }
     if (a.fRight > b.fRight) {
-        rightArea = (a.fRight - b.fRight) * height;
+        rightArea = (a.fRight - b.fRight) / aWidth;
         positiveCount++;
     }
     if (b.fTop > a.fTop) {
-        topArea = (b.fTop - a.fTop) * width;
+        topArea = (b.fTop - a.fTop) / aHeight;
         positiveCount++;
     }
     if (a.fBottom > b.fBottom) {
-        bottomArea = (a.fBottom - b.fBottom) * width;
+        bottomArea = (a.fBottom - b.fBottom) / aHeight;
         positiveCount++;
     }
 
@@ -236,7 +236,7 @@ static bool subtract(const R& a, const R& b, R* out) {
         out->fBottom = b.fTop;
     } else {
         // Bottom chunk of A, so the new top edge is B's bottom edge
-        SkASSERT(bottomArea > kZero);
+        SkASSERT(bottomArea > 0.f);
         out->fTop = b.fBottom;
     }
 
@@ -246,9 +246,9 @@ static bool subtract(const R& a, const R& b, R* out) {
 }
 
 bool SkRectPriv::Subtract(const SkRect& a, const SkRect& b, SkRect* out) {
-    return subtract<SkRect, SkScalar>(a, b, out);
+    return subtract<SkRect>(a, b, out);
 }
 
 bool SkRectPriv::Subtract(const SkIRect& a, const SkIRect& b, SkIRect* out) {
-    return subtract<SkIRect, int>(a, b, out);
+    return subtract<SkIRect>(a, b, out);
 }

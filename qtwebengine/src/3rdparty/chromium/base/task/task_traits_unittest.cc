@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,8 +31,7 @@ TEST(TaskTraitsTest, TaskPriority) {
 }
 
 TEST(TaskTraitsTest, TaskShutdownBehavior) {
-  constexpr TaskTraits traits = {ThreadPool(),
-                                 TaskShutdownBehavior::BLOCK_SHUTDOWN};
+  constexpr TaskTraits traits = {TaskShutdownBehavior::BLOCK_SHUTDOWN};
   EXPECT_EQ(TaskPriority::USER_BLOCKING, traits.priority());
   EXPECT_TRUE(traits.shutdown_behavior_set_explicitly());
   EXPECT_EQ(TaskShutdownBehavior::BLOCK_SHUTDOWN, traits.shutdown_behavior());

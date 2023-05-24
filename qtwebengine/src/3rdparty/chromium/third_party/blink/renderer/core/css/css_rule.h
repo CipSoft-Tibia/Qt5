@@ -24,8 +24,12 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_RULE_H_
 
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/css/media_query_set_owner.h"
+#include "third_party/blink/renderer/core/frame/web_feature_forward.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -34,7 +38,10 @@ class CSSParserContext;
 class CSSRuleList;
 class CSSStyleSheet;
 class StyleRuleBase;
+class MediaQuerySetOwner;
 enum class SecureContextMode;
+class ExecutionContext;
+class ExceptionState;
 
 class CORE_EXPORT CSSRule : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
@@ -53,7 +60,9 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
     kKeyframesRule = 7,
     kKeyframeRule = 8,
     kNamespaceRule = 10,
+    kCounterStyleRule = 11,
     kSupportsRule = 12,
+    kFontFeatureValuesRule = 14,
     kViewportRule = 15,
     // CSSOM constants are deprecated [1], and there will be no new
     // web-exposed values.
@@ -62,7 +71,14 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
 
     // Values for internal use, not web-exposed:
     kPropertyRule = 16,
-    kScrollTimelineRule = 17,
+    kContainerRule = 17,
+    kLayerBlockRule = 18,
+    kLayerStatementRule = 19,
+    kFontPaletteValuesRule = 20,
+    kScopeRule = 21,
+    kPositionFallbackRule = 22,
+    kTryRule = 23,
+    kFontFeatureRule = 24,
   };
 
   virtual Type GetType() const = 0;
@@ -77,6 +93,7 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
   virtual void Reattach(StyleRuleBase*) = 0;
 
   virtual CSSRuleList* cssRules() const { return nullptr; }
+  virtual MediaQuerySetOwner* GetMediaQuerySetOwner() { return nullptr; }
 
   void SetParentStyleSheet(CSSStyleSheet*);
 
@@ -85,8 +102,9 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
   void Trace(Visitor*) const override;
 
   CSSStyleSheet* parentStyleSheet() const {
-    if (parent_is_rule_)
+    if (parent_is_rule_) {
       return parent_ ? ParentAsCSSRule()->parentStyleSheet() : nullptr;
+    }
     return ParentAsCSSStyleSheet();
   }
 
@@ -98,7 +116,7 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
   void setCSSText(const String&) {}
 
  protected:
-  CSSRule(CSSStyleSheet* parent);
+  explicit CSSRule(CSSStyleSheet* parent);
 
   bool HasCachedSelectorText() const { return has_cached_selector_text_; }
   void SetHasCachedSelectorText(bool has_cached_selector_text) const {
@@ -106,6 +124,8 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
   }
 
   const CSSParserContext* ParserContext(SecureContextMode) const;
+
+  void CountUse(WebFeature) const;
 
  private:
   bool VerifyParentIsCSSRule() const;
@@ -129,6 +149,14 @@ class CORE_EXPORT CSSRule : public ScriptWrappable {
   // descendants of ScriptWrappable). This field should only be accessed
   // via the getters above (ParentAsCSSRule and ParentAsCSSStyleSheet).
   Member<ScriptWrappable> parent_;
+
+  friend StyleRuleBase* ParseRuleForInsert(
+      const ExecutionContext* execution_context,
+      const String& rule_string,
+      unsigned index,
+      size_t num_child_rules,
+      CSSRule& parent_rule,
+      ExceptionState& exception_state);
 };
 
 }  // namespace blink

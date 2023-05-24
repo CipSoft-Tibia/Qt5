@@ -1,52 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwin10helpers.h"
 
 #include <QtCore/qdebug.h>
-#include <QtCore/qoperatingsystemversion.h>
-#include <QtCore/private/qsystemlibrary_p.h>
+#include <winstring.h>
+#include <roapi.h>
 
 #if defined(Q_CC_MINGW) || defined(Q_CC_CLANG)
 #  define HAS_UI_VIEW_SETTINGS_INTEROP
 // Present from MSVC2015 + SDK 10 onwards
-#elif (!defined(Q_CC_MSVC) || _MSC_VER >= 1900) && NTDDI_VERSION >= 0xa000000
+#elif (!defined(Q_CC_MSVC) || _MSC_VER >= 1900) && WINVER >= 0x0A00
 #  define HAS_UI_VIEW_SETTINGS_INTEROP
 #  define HAS_UI_VIEW_SETTINGS
 #endif
@@ -96,56 +60,23 @@ public:
 
 QT_BEGIN_NAMESPACE
 
-// Starting from Windows 10
-struct QWindowsComBaseDLL
-{
-    bool init();
-    bool isValid() const
-    {
-        return roGetActivationFactory != nullptr && windowsCreateStringReference != nullptr;
-    }
-
-    typedef HRESULT (WINAPI *RoGetActivationFactory)(HSTRING, REFIID, void **);
-    typedef HRESULT (WINAPI *WindowsCreateStringReference)(PCWSTR, UINT32, HSTRING_HEADER *, HSTRING *);
-
-    RoGetActivationFactory roGetActivationFactory = nullptr;
-    WindowsCreateStringReference windowsCreateStringReference = nullptr;
-};
-
-static QWindowsComBaseDLL baseComDll;
-
-bool QWindowsComBaseDLL::init()
-{
-    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10 && !isValid()) {
-        QSystemLibrary library(QStringLiteral("combase"));
-        roGetActivationFactory =
-            reinterpret_cast<RoGetActivationFactory>(library.resolve("RoGetActivationFactory"));
-        windowsCreateStringReference =
-            reinterpret_cast<WindowsCreateStringReference>(library.resolve("WindowsCreateStringReference"));
-    }
-    return isValid();
-}
-
 // Return tablet mode, note: Does not work for GetDesktopWindow().
 bool qt_windowsIsTabletMode(HWND hwnd)
 {
     bool result = false;
 
-    if (!baseComDll.init())
-        return false;
-
     const wchar_t uiViewSettingsId[] = L"Windows.UI.ViewManagement.UIViewSettings";
     HSTRING_HEADER uiViewSettingsIdRefHeader;
     HSTRING uiViewSettingsIdHs = nullptr;
     const auto uiViewSettingsIdLen = UINT32(sizeof(uiViewSettingsId) / sizeof(uiViewSettingsId[0]) - 1);
-    if (FAILED(baseComDll.windowsCreateStringReference(uiViewSettingsId, uiViewSettingsIdLen, &uiViewSettingsIdRefHeader, &uiViewSettingsIdHs)))
+    if (FAILED(WindowsCreateStringReference(uiViewSettingsId, uiViewSettingsIdLen, &uiViewSettingsIdRefHeader, &uiViewSettingsIdHs)))
         return false;
 
     IUIViewSettingsInterop *uiViewSettingsInterop = nullptr;
     // __uuidof(IUIViewSettingsInterop);
     const GUID uiViewSettingsInteropRefId = {0x3694dbf9, 0x8f68, 0x44be,{0x8f, 0xf5, 0x19, 0x5c, 0x98, 0xed, 0xe8, 0xa6}};
 
-    HRESULT hr = baseComDll.roGetActivationFactory(uiViewSettingsIdHs, uiViewSettingsInteropRefId,
+    HRESULT hr = RoGetActivationFactory(uiViewSettingsIdHs, uiViewSettingsInteropRefId,
                                                    reinterpret_cast<void **>(&uiViewSettingsInterop));
     if (FAILED(hr))
         return false;

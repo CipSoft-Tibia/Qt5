@@ -86,25 +86,56 @@ Affects:
     include/ilog2.h
 
 ------------------------------------------------------------------
-commit 2326c263ecb55e2fb0747def58855198bdd0fbc4
-Author: H. Peter Anvin (Intel) <hpa@zytor.com>
-Date:   Mon Jul 6 21:46:43 2020 -0700
+commit 3dc3d47978ef567966cb21a7b6d617fb688e6029
+Author: Byoungchan Lee <daniel.l@hpcnt.com>
+Date:   Tue Jul 27 05:09:09 2021 +0900
 
-    BR 3392692: outcoff: allow user to reduce the default alignment
+    Emit the LC_BUILD_VERSION load command when creating a mach object.
 
-    NASM would incorrectly only allow for the alignment to be increased,
-    even when overridden by the user. Allow the user to specify any
-    alignment value and have it override the partition type default.
+    LC_BUILD_VERSION contains the min OS version on which this binary
+    was built to run for its platform in mach object. It is required for
+    targets like iOS Catalyst.
 
-    The user can increade their own alignment value specification later,
-    of course, and the sectalign directive will present a floor for either
-    kind of specification.
+    Also, emit the __LLVM segment, __asm section to tell the Apple
+    toolchain that this object is from assembler and has no bitcode.
+    This trick is used in Kotlin/Native, Rust, Flutter, Golang and yasm.
 
-    Reported-by: Dale Curtis <dalecurtis@chromium.org>
-    Signed-off-by: H. Peter Anvin (Intel) <hpa@zytor.com>
+    Bug: 1145197, webrtc:11516
+    Change-Id: I6859cc171f80d1aa86d9d7187c2f8ceac7b8c4f3
 
 Affects:
-    doc/nasmdoc.src
-    output/outcoff.c
-    output/pecoff.h
+    asm/nasm.c
+    output/macho.h
+    output/outmacho.c
+
+------------------------------------------------------------------
+commit 9215e8e1d0fe474ffd3e16c1a07a0f97089e6224
+Author: Nico Weber <thakis@chromium.org>
+Date:   Mon Oct 18 15:16:22 2021 -0400
+
+    nasm: Cherry-pick -Wbitwise-instead-of-logical fix
+
+    This cherry-picks https://github.com/netwide-assembler/nasm/pull/17
+
+    Bug: chromium:1255745
+    Change-Id: I230b9ab9fd0a8baa1cdc8dd6e62cdc069cb14070
+
+Affects:
+    asm/preproc.c
+
+------------------------------------------------------------------
+commit bc848980247d61c9fd60ff9560f718ca01d45ea2
+Author: Avi Drissman <avi@chromium.org>
+Date:   Tue Jan 24 14:59:30 2023 -0500
+
+    Update version requirements for the Mac
+
+    Only require major + minor for the Mac pre macOS 11, otherwise only
+    a major version is fine.
+
+    Bug: chromium:1409095
+    Change-Id: Iafe0d19d567bd8dcf846b1d9cdcd6b5e324dbb1a
+
+Affects:
+    output/outmacho.c
 

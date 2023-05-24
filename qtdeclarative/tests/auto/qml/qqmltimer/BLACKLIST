@@ -1,0 +1,17 @@
+[restartWhenEventPosted]
+msvc-2019
+
+[triggeredOnStart]
+macos ci
+
+[triggeredOnStartRepeat]
+macos ci
+
+[notRepeatingStart]
+macos ci
+
+[repeat]
+macos ci arm
+
+[changeDuration]
+macos ci arm

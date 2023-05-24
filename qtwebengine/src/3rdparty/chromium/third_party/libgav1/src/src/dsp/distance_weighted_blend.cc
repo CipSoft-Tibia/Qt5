@@ -27,10 +27,12 @@ namespace dsp {
 namespace {
 
 template <int bitdepth, typename Pixel>
-void DistanceWeightedBlend_C(const void* prediction_0, const void* prediction_1,
+void DistanceWeightedBlend_C(const void* LIBGAV1_RESTRICT prediction_0,
+                             const void* LIBGAV1_RESTRICT prediction_1,
                              const uint8_t weight_0, const uint8_t weight_1,
                              const int width, const int height,
-                             void* const dest, const ptrdiff_t dest_stride) {
+                             void* LIBGAV1_RESTRICT const dest,
+                             const ptrdiff_t dest_stride) {
   // 7.11.3.2 Rounding variables derivation process
   //   2 * FILTER_BITS(7) - (InterRound0(3|5) + InterRound1(7))
   constexpr int inter_post_round_bits = (bitdepth == 12) ? 2 : 4;
@@ -86,7 +88,22 @@ void Init10bpp() {
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
+#endif  // LIBGAV1_MAX_BITDEPTH >= 10
+
+#if LIBGAV1_MAX_BITDEPTH == 12
+void Init12bpp() {
+  Dsp* const dsp = dsp_internal::GetWritableDspTable(12);
+  assert(dsp != nullptr);
+#if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  dsp->distance_weighted_blend = DistanceWeightedBlend_C<12, uint16_t>;
+#else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  static_cast<void>(dsp);
+#ifndef LIBGAV1_Dsp12bpp_DistanceWeightedBlend
+  dsp->distance_weighted_blend = DistanceWeightedBlend_C<12, uint16_t>;
 #endif
+#endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+}
+#endif  // LIBGAV1_MAX_BITDEPTH == 12
 
 }  // namespace
 
@@ -94,6 +111,9 @@ void DistanceWeightedBlendInit_C() {
   Init8bpp();
 #if LIBGAV1_MAX_BITDEPTH >= 10
   Init10bpp();
+#endif
+#if LIBGAV1_MAX_BITDEPTH == 12
+  Init12bpp();
 #endif
 }
 

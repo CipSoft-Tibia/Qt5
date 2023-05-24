@@ -55,7 +55,7 @@ PeerScenario::PeerScenario(
     std::unique_ptr<LogWriterFactoryInterface> log_writer_manager,
     TimeMode mode)
     : log_writer_manager_(std::move(log_writer_manager)),
-      net_(mode),
+      net_(mode, EmulatedNetworkStatsGatheringMode::kDefault),
       signaling_thread_(net_.time_controller()->GetMainThread()) {}
 
 PeerScenarioClient* PeerScenario::CreateClient(
@@ -77,8 +77,8 @@ SignalingRoute PeerScenario::ConnectSignaling(
     PeerScenarioClient* callee,
     std::vector<EmulatedNetworkNode*> send_link,
     std::vector<EmulatedNetworkNode*> ret_link) {
-  return SignalingRoute(caller, callee, net_.CreateTrafficRoute(send_link),
-                        net_.CreateTrafficRoute(ret_link));
+  return SignalingRoute(caller, callee, net_.CreateCrossTrafficRoute(send_link),
+                        net_.CreateCrossTrafficRoute(ret_link));
 }
 
 void PeerScenario::SimpleConnection(

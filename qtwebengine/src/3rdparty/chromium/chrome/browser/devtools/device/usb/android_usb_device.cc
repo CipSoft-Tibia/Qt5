@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,15 @@
 
 #include "base/barrier_closure.h"
 #include "base/base64.h"
-#include "base/bind.h"
+#include "base/containers/contains.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/functional/bind.h"
 #include "base/lazy_instance.h"
 #include "base/memory/ref_counted_memory.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/devtools/device/usb/android_rsa.h"
 #include "chrome/browser/devtools/device/usb/android_usb_socket.h"
 #include "crypto/rsa_private_key.h"
@@ -83,7 +84,7 @@ void DumpMessage(bool outgoing, const uint8_t* data, size_t length) {
 #endif  // 0
 }
 
-void OnProbeFinished(const AndroidUsbDevicesCallback& callback,
+void OnProbeFinished(AndroidUsbDevicesCallback callback,
                      AndroidUsbDevices* new_devices) {
   std::unique_ptr<AndroidUsbDevices> devices(new_devices);
 
@@ -94,7 +95,7 @@ void OnProbeFinished(const AndroidUsbDevicesCallback& callback,
 
   // Return all claimed devices.
   AndroidUsbDevices result(g_devices.Get().begin(), g_devices.Get().end());
-  callback.Run(result);
+  std::move(callback).Run(result);
 }
 
 void OnDeviceClosed(const std::string& guid,
@@ -115,8 +116,8 @@ void CreateDeviceOnInterfaceClaimed(
     AndroidDeviceInfo android_device_info,
     mojo::Remote<device::mojom::UsbDevice> device,
     const base::RepeatingClosure& barrier,
-    bool success) {
-  if (success) {
+    device::mojom::UsbClaimInterfaceResult result) {
+  if (result == device::mojom::UsbClaimInterfaceResult::kSuccess) {
     devices->push_back(
         new AndroidUsbDevice(rsa_key, android_device_info, std::move(device)));
     barrier.Run();
@@ -140,11 +141,12 @@ void OnDeviceOpened(AndroidUsbDevices* devices,
                     AndroidDeviceInfo android_device_info,
                     mojo::Remote<device::mojom::UsbDevice> device,
                     const base::RepeatingClosure& barrier,
-                    device::mojom::UsbOpenDeviceError error) {
-  // For UsbOpenDeviceError::OK and UsbOpenDeviceError::ALREADY_OPEN we all try
-  // to claim the interface because the device may be opened by other modules or
-  // extensions for different interface.
-  if (error != device::mojom::UsbOpenDeviceError::ACCESS_DENIED) {
+                    device::mojom::UsbOpenDeviceResultPtr result) {
+  // If the error is UsbOpenDeviceError::ALREADY_OPEN we all try to claim the
+  // interface because the device may be opened by other modules or extensions
+  // for different interface.
+  if (result->is_success() ||
+      result->get_error() == device::mojom::UsbOpenDeviceError::ALREADY_OPEN) {
     DCHECK(device);
     auto* device_raw = device.get();
     device_raw->ClaimInterface(
@@ -158,13 +160,13 @@ void OnDeviceOpened(AndroidUsbDevices* devices,
 }
 
 void OpenAndroidDevices(crypto::RSAPrivateKey* rsa_key,
-                        const AndroidUsbDevicesCallback& callback,
+                        AndroidUsbDevicesCallback callback,
                         std::vector<AndroidDeviceInfo> device_info_list) {
   // Add new devices.
   AndroidUsbDevices* devices = new AndroidUsbDevices();
-  base::RepeatingClosure barrier =
-      base::BarrierClosure(device_info_list.size(),
-                           base::BindOnce(&OnProbeFinished, callback, devices));
+  base::RepeatingClosure barrier = base::BarrierClosure(
+      device_info_list.size(),
+      base::BindOnce(&OnProbeFinished, std::move(callback), devices));
 
   for (const auto& device_info : device_info_list) {
     if (base::Contains(g_open_devices.Get(), device_info.guid)) {
@@ -196,9 +198,9 @@ AdbMessage::~AdbMessage() {}
 
 // static
 void AndroidUsbDevice::Enumerate(crypto::RSAPrivateKey* rsa_key,
-                                 const AndroidUsbDevicesCallback& callback) {
+                                 AndroidUsbDevicesCallback callback) {
   UsbDeviceManagerHelper::GetInstance()->GetAndroidDevices(
-      base::BindOnce(&OpenAndroidDevices, rsa_key, callback));
+      base::BindOnce(&OpenAndroidDevices, rsa_key, std::move(callback)));
 }
 
 AndroidUsbDevice::AndroidUsbDevice(
@@ -219,7 +221,7 @@ AndroidUsbDevice::AndroidUsbDevice(
 void AndroidUsbDevice::InitOnCallerThread() {
   if (task_runner_)
     return;
-  task_runner_ = base::ThreadTaskRunnerHandle::Get();
+  task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
   Queue(std::make_unique<AdbMessage>(AdbMessage::kCommandCNXN, kVersion,
                                      kMaxPayload, kHostConnectMessage));
   ReadHeader();
@@ -232,7 +234,7 @@ net::StreamSocket* AndroidUsbDevice::CreateSocket(const std::string& command) {
   uint32_t socket_id = ++last_socket_id_;
   sockets_[socket_id] = new AndroidUsbSocket(
       this, socket_id, command,
-      base::Bind(&AndroidUsbDevice::SocketDeleted, this, socket_id));
+      base::BindOnce(&AndroidUsbDevice::SocketDeleted, this, socket_id));
   return sockets_[socket_id];
 }
 
@@ -333,7 +335,7 @@ void AndroidUsbDevice::ReadHeader() {
 }
 
 void AndroidUsbDevice::ParseHeader(UsbTransferStatus status,
-                                   const std::vector<uint8_t>& buffer) {
+                                   base::span<const uint8_t> buffer) {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   if (status == UsbTransferStatus::TIMEOUT) {
@@ -382,14 +384,14 @@ void AndroidUsbDevice::ReadBody(std::unique_ptr<AdbMessage> message,
   device_->GenericTransferIn(
       android_device_info_.inbound_address, data_length, kUsbTimeout,
       base::BindOnce(&AndroidUsbDevice::ParseBody, weak_factory_.GetWeakPtr(),
-                     base::Passed(&message), data_length, data_check));
+                     std::move(message), data_length, data_check));
 }
 
 void AndroidUsbDevice::ParseBody(std::unique_ptr<AdbMessage> message,
                                  uint32_t data_length,
                                  uint32_t data_check,
                                  UsbTransferStatus status,
-                                 const std::vector<uint8_t>& buffer) {
+                                 base::span<const uint8_t> buffer) {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   if (status == UsbTransferStatus::TIMEOUT) {
@@ -476,7 +478,7 @@ void AndroidUsbDevice::Terminate() {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   // Remove this AndroidUsbDevice from |g_devices|.
-  auto it = std::find(g_devices.Get().begin(), g_devices.Get().end(), this);
+  auto it = base::ranges::find(g_devices.Get(), this);
   if (it != g_devices.Get().end())
     g_devices.Get().erase(it);
 
@@ -495,8 +497,9 @@ void AndroidUsbDevice::Terminate() {
 
   // Iterate over copy.
   AndroidUsbSockets sockets(sockets_);
-  for (auto it = sockets.begin(); it != sockets.end(); ++it) {
-    it->second->Terminated(true);
+  for (auto socket_it = sockets.begin(); socket_it != sockets.end();
+       ++socket_it) {
+    socket_it->second->Terminated(true);
   }
   DCHECK(sockets_.empty());
 

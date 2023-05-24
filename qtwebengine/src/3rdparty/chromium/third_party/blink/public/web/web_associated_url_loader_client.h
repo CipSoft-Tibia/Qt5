@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,6 @@ class WebAssociatedURLLoaderClient {
   virtual void DidReceiveResponse(const WebURLResponse&) {}
   virtual void DidDownloadData(uint64_t data_length) {}
   virtual void DidReceiveData(const char* data, int data_length) {}
-  virtual void DidReceiveCachedMetadata(const char* data, int data_length) {}
   virtual void DidFinishLoading() {}
   virtual void DidFail(const WebURLError&) {}
 
@@ -32,4 +31,4 @@ class WebAssociatedURLLoaderClient {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_ASSOCIATED_URL_LOADER_CLIENT_H_

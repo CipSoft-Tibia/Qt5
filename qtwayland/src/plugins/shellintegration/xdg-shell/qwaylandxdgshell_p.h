@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Eurogiciel, author: <philippe.coval@eurogiciel.fr>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the config.tests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Eurogiciel, author: <philippe.coval@eurogiciel.fr>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDXDGSHELL_H
 #define QWAYLANDXDGSHELL_H
@@ -55,9 +19,11 @@
 #include "qwayland-xdg-shell.h"
 
 #include "qwaylandxdgdecorationv1_p.h"
+#include "qwaylandxdgactivationv1_p.h"
 
 #include <QtWaylandClient/qtwaylandclientglobal.h>
 #include <QtWaylandClient/private/qwaylandshellsurface_p.h>
+#include <QtWaylandClient/private/qwaylandwindow_p.h>
 
 #include <QtCore/QSize>
 #include <QtGui/QRegion>
@@ -69,11 +35,12 @@ class QWindow;
 namespace QtWaylandClient {
 
 class QWaylandDisplay;
-class QWaylandWindow;
 class QWaylandInputDevice;
 class QWaylandXdgShell;
+class QWaylandXdgExportedV2;
+class QWaylandXdgExporterV2;
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandXdgSurface : public QWaylandShellSurface, public QtWayland::xdg_surface
+class Q_WAYLANDCLIENT_EXPORT QWaylandXdgSurface : public QWaylandShellSurface, public QtWayland::xdg_surface
 {
     Q_OBJECT
 public:
@@ -94,8 +61,18 @@ public:
     bool wantsDecorations() const override;
     void propagateSizeHints() override;
     void setWindowGeometry(const QRect &rect) override;
+    bool requestActivate() override;
+    void setXdgActivationToken(const QString &token) override;
+    void requestXdgActivationToken(quint32 serial) override;
+    void setAlertState(bool enabled) override;
+    bool isAlertState() const override { return m_alertState; }
+    QString externWindowHandle() override;
 
     void setSizeHints();
+
+    void *nativeResource(const QByteArray &resource);
+
+    std::any surfaceRole() const override;
 
 protected:
     void requestWindowStates(Qt::WindowStates states) override;
@@ -113,6 +90,7 @@ private:
 
         void xdg_toplevel_configure(int32_t width, int32_t height, wl_array *states) override;
         void xdg_toplevel_close() override;
+        void xdg_toplevel_configure_bounds(int32_t width, int32_t height) override;
 
         void requestWindowFlags(Qt::WindowFlags flags);
         void requestWindowStates(Qt::WindowStates states);
@@ -120,13 +98,16 @@ private:
         static resize_edge convertToResizeEdges(Qt::Edges edges);
 
         struct {
+            QSize bounds = {0, 0};
             QSize size = {0, 0};
             Qt::WindowStates states = Qt::WindowNoState;
         }  m_pending, m_applied;
+        QWaylandWindow::ToplevelWindowTilingStates m_toplevelStates = QWaylandWindow::WindowNoState;
         QSize m_normalSize;
 
         QWaylandXdgSurface *m_xdgSurface = nullptr;
         QWaylandXdgToplevelDecorationV1 *m_decoration = nullptr;
+        QScopedPointer<QWaylandXdgExportedV2> m_exported;
     };
 
     class Popup : public QtWayland::xdg_popup {
@@ -134,13 +115,19 @@ private:
         Popup(QWaylandXdgSurface *xdgSurface, QWaylandWindow *parent, QtWayland::xdg_positioner *positioner);
         ~Popup() override;
 
+        void applyConfigure();
+        void resetConfiguration();
+
         void grab(QWaylandInputDevice *seat, uint serial);
+        void xdg_popup_configure(int32_t x, int32_t y, int32_t width, int32_t height) override;
         void xdg_popup_popup_done() override;
 
         QWaylandXdgSurface *m_xdgSurface = nullptr;
         QWaylandXdgSurface *m_parentXdgSurface = nullptr;
         QWaylandWindow *m_parent = nullptr;
         bool m_grabbing = false;
+
+        QRect m_pendingGeometry;
     };
 
     void setToplevel();
@@ -155,29 +142,35 @@ private:
     QRegion m_exposeRegion;
     uint m_pendingConfigureSerial = 0;
     uint m_appliedConfigureSerial = 0;
+    QString m_activationToken;
+    QString m_appId;
+    bool m_alertState = false;
 
     friend class QWaylandXdgShell;
 };
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandXdgShell : public QtWayland::xdg_wm_base
+class Q_WAYLANDCLIENT_EXPORT QWaylandXdgShell
 {
 public:
-    QWaylandXdgShell(QWaylandDisplay *display, uint32_t id, uint32_t availableVersion);
-    ~QWaylandXdgShell() override;
+    QWaylandXdgShell(QWaylandDisplay *display, QtWayland::xdg_wm_base *xdg_wm_base);
+    ~QWaylandXdgShell();
+
+    QWaylandDisplay *display() const { return m_display; }
 
     QWaylandXdgDecorationManagerV1 *decorationManager() { return m_xdgDecorationManager.data(); }
+    QWaylandXdgActivationV1 *activation() const { return m_xdgActivation.data(); }
+    QWaylandXdgExporterV2 *exporter() const { return m_xdgExporter.data(); }
     QWaylandXdgSurface *getXdgSurface(QWaylandWindow *window);
-
-protected:
-    void xdg_wm_base_ping(uint32_t serial) override;
 
 private:
     static void handleRegistryGlobal(void *data, ::wl_registry *registry, uint id,
                                      const QString &interface, uint version);
 
     QWaylandDisplay *m_display = nullptr;
+    QtWayland::xdg_wm_base *m_xdgWmBase = nullptr;
     QScopedPointer<QWaylandXdgDecorationManagerV1> m_xdgDecorationManager;
-    QWaylandXdgSurface::Popup *m_topmostGrabbingPopup = nullptr;
+    QScopedPointer<QWaylandXdgActivationV1> m_xdgActivation;
+    QScopedPointer<QWaylandXdgExporterV2> m_xdgExporter;
 
     friend class QWaylandXdgSurface;
 };

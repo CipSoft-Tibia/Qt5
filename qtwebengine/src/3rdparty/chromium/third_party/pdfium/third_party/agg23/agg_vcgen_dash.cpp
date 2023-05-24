@@ -18,9 +18,14 @@
 //
 //----------------------------------------------------------------------------
 
+#include <cmath>
+
 #include "agg_shorten_path.h"
 #include "agg_vcgen_dash.h"
+#include "third_party/base/check_op.h"
 
+namespace pdfium
+{
 namespace agg
 {
 vcgen_dash::vcgen_dash() :
@@ -58,6 +63,8 @@ void vcgen_dash::dash_start(float ds)
 }
 void vcgen_dash::calc_dash_start(float ds)
 {
+    DCHECK_GT(m_total_dash_len, 0);
+    ds -= floor(ds / m_total_dash_len) * m_total_dash_len;
     m_curr_dash = 0;
     m_curr_dash_start = 0;
     while(ds > 0) {
@@ -175,3 +182,4 @@ unsigned vcgen_dash::vertex(float* x, float* y)
     return path_cmd_stop;
 }
 }
+}  // namespace pdfium

@@ -1,57 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtWidgets>
 
 #include "mainwindow.h"
-#include "xmlwriter.h"
 
 MainWindow::MainWindow()
 {
@@ -83,7 +35,7 @@ MainWindow::MainWindow()
 //! [2]
     QTextTableFormat tableFormat;
     tableFormat.setBackground(QColor("#e0e0e0"));
-    QVector<QTextLength> constraints;
+    QList<QTextLength> constraints;
     constraints << QTextLength(QTextLength::PercentageLength, 16);
     constraints << QTextLength(QTextLength::PercentageLength, 28);
     constraints << QTextLength(QTextLength::PercentageLength, 28);
@@ -132,9 +84,9 @@ MainWindow::MainWindow()
     }
 //! [8]
 
-    connect(saveAction, &QAction:triggered, this, &MainWindow::saveFile);
-    connect(quitAction, &QAction:triggered, this, &MainWindow::close);
-    connect(showTableAction, &QAction:triggered, this, &MainWindow::showTable);
+    connect(saveAction, &QAction::triggered, this, &MainWindow::saveFile);
+    connect(quitAction, &QAction::triggered, this, &MainWindow::close);
+    connect(showTableAction, &QAction::triggered, this, &MainWindow::showTable);
 
     setCentralWidget(editor);
     setWindowTitle(tr("Text Document Tables"));
@@ -194,21 +146,35 @@ void MainWindow::showTable()
     tableWidget->show();
 }
 
-bool MainWindow::writeXml(const QString &fileName)
+void MainWindow::processFrame(QTextFrame *)
 {
-    XmlWriter documentWriter(editor->document());
+}
 
-    QDomDocument *domDocument = documentWriter.toXml();
-    QFile file(fileName);
+void MainWindow::processBlock(QTextBlock)
+{
+}
 
-    if (file.open(QFile::WriteOnly)) {
-        QTextStream textStream(&file);
-        textStream.setCodec(QTextCodec::codecForName("UTF-8"));
+void MainWindow::processTable(QTextTable *table)
+{
+    QTextFrame *frame = qobject_cast<QTextFrame *>(table);
+//! [13]
+    QTextFrame::iterator it;
+    for (it = frame->begin(); !(it.atEnd()); ++it) {
 
-        textStream << domDocument->toString(1).toUtf8();
-        file.close();
-        return true;
+        QTextFrame *childFrame = it.currentFrame();
+        QTextBlock childBlock = it.currentBlock();
+
+        if (childFrame) {
+            QTextTable *childTable = qobject_cast<QTextTable*>(childFrame);
+
+            if (childTable)
+                processTable(childTable);
+            else
+                processFrame(childFrame);
+
+        } else if (childBlock.isValid()) {
+            processBlock(childBlock);
+        }
     }
-    else
-        return false;
+//! [13]
 }

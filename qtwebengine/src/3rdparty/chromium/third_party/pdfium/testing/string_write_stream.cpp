@@ -1,8 +1,9 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "testing/string_write_stream.h"
+
 #include "core/fxcrt/bytestring.h"
 #include "core/fxcrt/widestring.h"
 
@@ -10,23 +11,7 @@ StringWriteStream::StringWriteStream() = default;
 
 StringWriteStream::~StringWriteStream() = default;
 
-FX_FILESIZE StringWriteStream::GetSize() {
-  return stream_.tellp();
-}
-
-bool StringWriteStream::Flush() {
-  return true;
-}
-
-bool StringWriteStream::WriteBlockAtOffset(const void* pData,
-                                           FX_FILESIZE offset,
-                                           size_t size) {
-  ASSERT(offset == 0);
-  stream_.write(static_cast<const char*>(pData), size);
-  return true;
-}
-
-bool StringWriteStream::WriteString(ByteStringView str) {
-  stream_.write(str.unterminated_c_str(), str.GetLength());
+bool StringWriteStream::WriteBlock(pdfium::span<const uint8_t> buffer) {
+  stream_.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
   return true;
 }

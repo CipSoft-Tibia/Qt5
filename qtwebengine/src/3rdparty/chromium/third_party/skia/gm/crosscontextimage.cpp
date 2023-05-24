@@ -9,7 +9,6 @@
 #include "include/core/SkBitmap.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkData.h"
-#include "include/core/SkFilterQuality.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPixmap.h"
@@ -21,10 +20,7 @@
 #include "include/gpu/GrRecordingContext.h"
 #include "tools/Resources.h"
 
-class GrContext;
-class GrRenderTargetContext;
-
-DEF_SIMPLE_GPU_GM_CAN_FAIL(cross_context_image, context, rtc, canvas, errorMsg,
+DEF_SIMPLE_GPU_GM_CAN_FAIL(cross_context_image, rContext, canvas, errorMsg,
                            3 * 256 + 40, 256 + 128 + 30) {
     sk_sp<SkData> encodedData = GetResourceAsData("images/mandrill_256.png");
     if (!encodedData) {
@@ -32,7 +28,7 @@ DEF_SIMPLE_GPU_GM_CAN_FAIL(cross_context_image, context, rtc, canvas, errorMsg,
         return skiagm::DrawResult::kFail;
     }
 
-    auto dContext = context->asDirectContext();
+    auto dContext = rContext->asDirectContext();
     if (!dContext) {
         *errorMsg = "CrossContext image creation requires a direct context.";
         return skiagm::DrawResult::kSkip;
@@ -51,7 +47,7 @@ DEF_SIMPLE_GPU_GM_CAN_FAIL(cross_context_image, context, rtc, canvas, errorMsg,
 
     canvas->translate(10, 10);
 
-    for (size_t i = 0; i < SK_ARRAY_COUNT(images); ++i) {
+    for (size_t i = 0; i < std::size(images); ++i) {
         canvas->save();
 
         canvas->drawImage(images[i], 0, 0);
@@ -61,9 +57,9 @@ DEF_SIMPLE_GPU_GM_CAN_FAIL(cross_context_image, context, rtc, canvas, errorMsg,
                           0, 0);
         canvas->translate(128, 0);
 
-        SkPaint paint;
-        paint.setFilterQuality(kMedium_SkFilterQuality);
-        canvas->drawImageRect(images[i], SkRect::MakeWH(128, 128), &paint);
+        canvas->drawImageRect(images[i], SkRect::MakeWH(128, 128),
+                              SkSamplingOptions(SkFilterMode::kLinear,
+                                                SkMipmapMode::kLinear));
 
         canvas->restore();
         canvas->translate(256 + 10, 0);

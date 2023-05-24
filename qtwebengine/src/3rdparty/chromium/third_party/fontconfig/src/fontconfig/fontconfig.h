@@ -52,8 +52,8 @@ typedef int		FcBool;
  */
 
 #define FC_MAJOR	2
-#define FC_MINOR	13
-#define FC_REVISION	91
+#define FC_MINOR	14
+#define FC_REVISION	2
 
 #define FC_VERSION	((FC_MAJOR * 10000) + (FC_MINOR * 100) + (FC_REVISION))
 
@@ -67,7 +67,7 @@ typedef int		FcBool;
  * it means multiple copies of the font information.
  */
 
-#define FC_CACHE_VERSION_NUMBER	7
+#define FC_CACHE_VERSION_NUMBER	9
 #define _FC_STRINGIFY_(s)    	#s
 #define _FC_STRINGIFY(s)    	_FC_STRINGIFY_(s)
 #define FC_CACHE_VERSION    	_FC_STRINGIFY(FC_CACHE_VERSION_NUMBER)
@@ -127,6 +127,8 @@ typedef int		FcBool;
 #define FC_HASH		    "hash"		/* String (deprecated) */
 #define FC_POSTSCRIPT_NAME  "postscriptname"	/* String */
 #define FC_FONT_HAS_HINT    "fonthashint"	/* Bool - true if font has hinting */
+#define FC_ORDER	    "order"		/* Integer */
+#define FC_DESKTOP_NAME     "desktop"		/* String */
 
 #define FC_CACHE_SUFFIX		    ".cache-" FC_CACHE_VERSION
 #define FC_DIR_CACHE_FILE	    "fonts.cache-" FC_CACHE_VERSION
@@ -284,7 +286,7 @@ typedef struct _FcObjectSet {
     int		sobject;
     const char	**objects;
 } FcObjectSet;
-    
+
 typedef enum _FcMatchKind {
     FcMatchPattern, FcMatchFont, FcMatchScan,
     FcMatchKindEnd,
@@ -399,7 +401,7 @@ FcConfigGetFilename (FcConfig      *config,
 
 FcPublic FcChar8 *
 FcConfigFilename (const FcChar8 *url);
-    
+
 FcPublic FcConfig *
 FcConfigCreate (void);
 
@@ -417,7 +419,7 @@ FcConfigGetCurrent (void);
 
 FcPublic FcBool
 FcConfigUptoDate (FcConfig *config);
-    
+
 FcPublic FcBool
 FcConfigBuildFonts (FcConfig *config);
 
@@ -547,12 +549,12 @@ FcCharSetIsSubset (const FcCharSet *a, const FcCharSet *b);
 #define FC_CHARSET_DONE	((FcChar32) -1)
 
 FcPublic FcChar32
-FcCharSetFirstPage (const FcCharSet *a, 
+FcCharSetFirstPage (const FcCharSet *a,
 		    FcChar32	    map[FC_CHARSET_MAP_SIZE],
 		    FcChar32	    *next);
 
 FcPublic FcChar32
-FcCharSetNextPage (const FcCharSet  *a, 
+FcCharSetNextPage (const FcCharSet  *a,
 		   FcChar32	    map[FC_CHARSET_MAP_SIZE],
 		   FcChar32	    *next);
 
@@ -608,7 +610,7 @@ FcDirCacheLoad (const FcChar8 *dir, FcConfig *config, FcChar8 **cache_file);
 
 FcPublic FcCache *
 FcDirCacheRescan (const FcChar8 *dir, FcConfig *config);
-    
+
 FcPublic FcCache *
 FcDirCacheRead (const FcChar8 *dir, FcBool force, FcConfig *config);
 
@@ -771,7 +773,7 @@ FcFontSetMatch (FcConfig    *config,
 
 FcPublic FcPattern *
 FcFontMatch (FcConfig	*config,
-	     FcPattern	*p, 
+	     FcPattern	*p,
 	     FcResult	*result);
 
 FcPublic FcPattern *
@@ -841,6 +843,9 @@ FcNameUnregisterConstants (const FcConstant *consts, int nconsts);
 FcPublic const FcConstant *
 FcNameGetConstant (const FcChar8 *string);
 
+FcPublic const FcConstant *
+FcNameGetConstantFor (const FcChar8 *string, const char *object);
+
 FcPublic FcBool
 FcNameConstant (const FcChar8 *string, int *result);
 
@@ -889,10 +894,10 @@ FcPatternHash (const FcPattern *p);
 
 FcPublic FcBool
 FcPatternAdd (FcPattern *p, const char *object, FcValue value, FcBool append);
-    
+
 FcPublic FcBool
 FcPatternAddWeak (FcPattern *p, const char *object, FcValue value, FcBool append);
-    
+
 FcPublic FcResult
 FcPatternGet (const FcPattern *p, const char *object, int id, FcValue *v);
 
@@ -955,7 +960,7 @@ FcPatternGetRange (const FcPattern *p, const char *object, int id, FcRange **r);
 
 FcPublic FcPattern *
 FcPatternVaBuild (FcPattern *p, va_list va);
-    
+
 FcPublic FcPattern *
 FcPatternBuild (FcPattern *p, ...) FC_ATTRIBUTE_SENTINEL(0);
 
@@ -1024,10 +1029,10 @@ FcStrCopy (const FcChar8 *s);
 
 FcPublic FcChar8 *
 FcStrCopyFilename (const FcChar8 *s);
-    
+
 FcPublic FcChar8 *
 FcStrPlus (const FcChar8 *s1, const FcChar8 *s2);
-    
+
 FcPublic void
 FcStrFree (FcChar8 *s);
 
@@ -1144,7 +1149,7 @@ _FCFUNCPROTOEND
  * Deprecated functions are placed here to help users fix their code without
  * digging through documentation
  */
- 
+
 #define FcConfigGetRescanInverval   FcConfigGetRescanInverval_REPLACE_BY_FcConfigGetRescanInterval
 #define FcConfigSetRescanInverval   FcConfigSetRescanInverval_REPLACE_BY_FcConfigSetRescanInterval
 

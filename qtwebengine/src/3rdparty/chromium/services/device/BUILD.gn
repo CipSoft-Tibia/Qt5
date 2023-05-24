@@ -1,20 +1,19 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//testing/test.gni")
+
+if (is_chromeos) {
+  import("//chromeos/components/sensors/buildflags.gni")
+}
 
 if (is_android) {
   import("//build/config/android/rules.gni")
 }
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 is_serial_enabled_platform =
     is_win || ((is_linux || is_chromeos) && use_udev) || is_mac
@@ -38,6 +37,8 @@ source_set("lib") {
   deps = [
     ":binder_overrides",
     "//build:chromeos_buildflags",
+    "//services/device/compute_pressure",
+    "//services/device/device_posture",
     "//services/device/fingerprint",
     "//services/device/generic_sensor",
     "//services/device/geolocation",
@@ -70,22 +71,23 @@ source_set("lib") {
     ]
   }
 
-  if (is_chromeos && use_dbus) {
-    deps += [
-      "//services/device/bluetooth:bluetooth_system",
-      "//services/device/media_transfer_protocol",
-    ]
+  if (is_chromeos_ash && use_dbus) {
+    deps += [ "//services/device/media_transfer_protocol" ]
   }
 
   if (is_serial_enabled_platform) {
     deps += [ "//services/device/serial" ]
   }
 
-  if (chromeos_is_browser_only) {
+  if (is_chromeos_lacros) {
     deps += [
       "//chromeos/crosapi/mojom",
       "//chromeos/lacros",
     ]
+  }
+
+  if (is_serial_enabled_platform) {
+    defines = [ "IS_SERIAL_ENABLED_PLATFORM" ]
   }
 }
 
@@ -109,8 +111,6 @@ component("binder_overrides") {
   defines = [ "IS_DEVICE_SERVICE_BINDER_OVERRIDES_IMPL" ]
 }
 
-is_linux_without_udev = (is_linux || is_chromeos) && !use_udev
-
 source_set("perftests") {
   testonly = true
 
@@ -131,26 +131,28 @@ source_set("tests") {
   testonly = true
 
   sources = [
-    "battery/battery_status_manager_win_unittest.cc",
     "battery/battery_status_service_unittest.cc",
+    "compute_pressure/platform_collector_unittest.cc",
+    "compute_pressure/pressure_manager_impl_unittest.cc",
+    "compute_pressure/pressure_test_support.cc",
+    "compute_pressure/pressure_test_support.h",
     "generic_sensor/absolute_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_magnetometer_unittest.cc",
     "generic_sensor/fake_platform_sensor_and_provider.cc",
     "generic_sensor/fake_platform_sensor_and_provider.h",
     "generic_sensor/fake_platform_sensor_fusion.cc",
     "generic_sensor/fake_platform_sensor_fusion.h",
     "generic_sensor/generic_sensor_service_unittest.cc",
+    "generic_sensor/gravity_fusion_algorithm_using_accelerometer_unittest.cc",
     "generic_sensor/linear_acceleration_fusion_algorithm_using_accelerometer_unittest.cc",
     "generic_sensor/orientation_euler_angles_fusion_algorithm_using_quaternion_unittest.cc",
     "generic_sensor/orientation_quaternion_fusion_algorithm_using_euler_angles_unittest.cc",
     "generic_sensor/orientation_test_data.h",
     "generic_sensor/platform_sensor_and_provider_unittest.cc",
-    "generic_sensor/platform_sensor_and_provider_unittest_win.cc",
     "generic_sensor/platform_sensor_fusion_unittest.cc",
-    "generic_sensor/platform_sensor_provider_unittest_android.cc",
     "generic_sensor/platform_sensor_util_unittest.cc",
     "generic_sensor/relative_orientation_euler_angles_fusion_algorithm_using_accelerometer_and_gyroscope_unittest.cc",
     "generic_sensor/relative_orientation_euler_angles_fusion_algorithm_using_accelerometer_unittest.cc",
-    "geolocation/core_location_provider_unittest.mm",
+    "generic_sensor/sensor_fusion_algorithm_using_accelerometer_unittest.cc",
     "geolocation/geolocation_provider_impl_unittest.cc",
     "geolocation/geolocation_service_unittest.cc",
     "geolocation/location_arbitrator_unittest.cc",
@@ -158,9 +160,7 @@ source_set("tests") {
     "geolocation/position_cache_impl_unittest.cc",
     "geolocation/public_ip_address_geolocator_unittest.cc",
     "geolocation/public_ip_address_location_notifier_unittest.cc",
-    "geolocation/wifi_data_provider_chromeos_unittest.cc",
     "geolocation/wifi_data_provider_common_unittest.cc",
-    "geolocation/wifi_data_provider_win_unittest.cc",
     "geolocation/wifi_polling_policy_unittest.cc",
     "power_monitor/power_monitor_message_broadcaster_unittest.cc",
     "public/cpp/power_monitor/power_monitor_broadcast_source_unittest.cc",
@@ -174,16 +174,18 @@ source_set("tests") {
     "//base",
     "//base/test:test_support",
     "//base/third_party/dynamic_annotations",
+    "//build:chromeos_buildflags",
+    "//components/variations",
     "//device/base/synchronization",
     "//mojo/public/cpp/bindings",
     "//net",
     "//net:test_support",
+    "//services/device/compute_pressure",
     "//services/device/generic_sensor",
     "//services/device/geolocation",
     "//services/device/geolocation:test_support",
     "//services/device/power_monitor",
     "//services/device/public/cpp:device_features",
-    "//services/device/public/cpp/bluetooth:bluetooth_tests",
     "//services/device/public/cpp/power_monitor",
     "//services/device/public/mojom",
     "//services/device/wake_lock",
@@ -192,29 +194,63 @@ source_set("tests") {
     "//testing/gtest",
   ]
 
-  if (!is_linux_without_udev) {
+  if (is_android) {
+    sources += [ "generic_sensor/platform_sensor_provider_unittest_android.cc" ]
+  }
+
+  if (is_win) {
+    sources += [
+      "battery/battery_status_manager_win_unittest.cc",
+      "generic_sensor/platform_sensor_and_provider_unittest_win.cc",
+      "geolocation/wifi_data_provider_win_unittest.cc",
+    ]
+  }
+
+  if (is_chromeos || is_mac) {
+    sources +=
+        [ "public/cpp/geolocation/geolocation_system_permissions_unittest.cc" ]
+  }
+
+  if (is_chromeos && use_iioservice) {
+    sources += [
+      "generic_sensor/platform_sensor_chromeos_unittest.cc",
+      "generic_sensor/platform_sensor_provider_chromeos_unittest.cc",
+    ]
+    deps += [
+      "//chromeos/components/sensors:sensors",
+      "//chromeos/components/sensors:test_support",
+    ]
+  } else if ((is_linux || is_chromeos) && use_udev) {
     sources +=
         [ "generic_sensor/platform_sensor_and_provider_unittest_linux.cc" ]
   }
 
-  if (is_linux && !is_chromeos && use_dbus) {
-    sources += [
-      "battery/battery_status_manager_linux_unittest.cc",
-      "geolocation/wifi_data_provider_linux_unittest.cc",
-    ]
+  if (is_linux && use_dbus) {
+    sources += [ "battery/battery_status_manager_linux_unittest.cc" ]
     deps += [ "//dbus:test_support" ]
+
+    if (is_linux) {
+      sources += [ "geolocation/wifi_data_provider_linux_unittest.cc" ]
+    }
   }
 
-  if (is_chromeos) {
-    sources += [ "fingerprint/fingerprint_chromeos_unittest.cc" ]
+  if (is_chromeos_ash) {
+    sources += [
+      "fingerprint/fingerprint_chromeos_unittest.cc",
+      "geolocation/wifi_data_provider_chromeos_unittest.cc",
+    ]
     deps += [
-      "//chromeos/dbus:test_support",
-      "//chromeos/dbus/biod:test_support",
-      "//chromeos/network:test_support",
-      "//services/device/bluetooth:bluetooth_system_tests",
+      "//chromeos/ash/components/dbus/biod:test_support",
+      "//chromeos/ash/components/dbus/shill",
+      "//chromeos/ash/components/network:test_support",
       "//services/device/fingerprint",
       "//third_party/protobuf:protobuf_lite",
     ]
+  }
+
+  if (is_chromeos_lacros) {
+    sources += [ "geolocation/wifi_data_provider_lacros_unittest.cc" ]
+    deps += [ "//chromeos/lacros:test_support" ]
   }
 
   if (is_android) {
@@ -232,24 +268,29 @@ source_set("tests") {
   } else {
     sources += [
       "battery/battery_monitor_impl_unittest.cc",
+      "hid/hid_device_info_unittest.cc",
       "hid/hid_manager_unittest.cc",
+      "public/cpp/hid/hid_blocklist_unittest.cc",
     ]
     deps += [
+      "//components/variations:test_support",
       "//services/device/battery",
-      "//services/device/hid:mocks",
-      "//services/device/public/cpp/hid",
+      "//services/device/hid",
       "//services/device/vibration",
     ]
 
-    if (!is_linux_without_udev) {
+    if ((!is_linux && !is_chromeos) || use_udev) {
       sources += [
         "hid/hid_connection_impl_unittest.cc",
-        "hid/input_service_linux_unittest.cc",
-        "hid/test_report_descriptors.cc",
-        "hid/test_report_descriptors.h",
         "public/cpp/hid/hid_device_filter_unittest.cc",
         "public/cpp/hid/hid_report_descriptor_unittest.cc",
       ]
+      if (is_linux || is_chromeos) {
+        sources += [
+          "hid/hid_service_linux_unittest.cc",
+          "hid/input_service_linux_unittest.cc",
+        ]
+      }
       if (!is_fuchsia) {
         # Fuchsia does not currently implement HidService.
         sources += [ "hid/hid_service_unittest.cc" ]
@@ -265,14 +306,26 @@ source_set("tests") {
     }
   }
 
+  if (is_linux || is_chromeos) {
+    sources += [
+      "compute_pressure/core_times_unittest.cc",
+      "compute_pressure/cpu_probe_linux_unittest.cc",
+      "compute_pressure/procfs_stat_cpu_parser_unittest.cc",
+    ]
+  }
+
   if (is_serial_enabled_platform) {
     sources += [
+      "serial/bluetooth_serial_device_enumerator_unittests.cc",
       "serial/bluetooth_serial_port_impl_unittest.cc",
-      "serial/serial_device_enumerator_linux_unittest.cc",
       "serial/serial_device_enumerator_unittest.cc",
       "serial/serial_port_impl_unittest.cc",
       "serial/serial_port_manager_impl_unittest.cc",
     ]
+
+    if (is_linux || is_chromeos) {
+      sources += [ "serial/serial_device_enumerator_linux_unittest.cc" ]
+    }
 
     if (is_posix) {
       sources += [ "serial/serial_io_handler_posix_unittest.cc" ]
@@ -291,8 +344,8 @@ source_set("tests") {
     ]
   }
 
-  # USB does not compile on iOS.
-  if (!is_ios) {
+  # USB does not compile on Chromium without blink.
+  if (use_blink) {
     sources += [
       "public/cpp/usb/usb_utils_unittest.cc",
       "usb/mojo/device_impl_unittest.cc",
@@ -319,8 +372,13 @@ source_set("tests") {
     }
   }
 
+  if (is_mac) {
+    sources += [ "geolocation/core_location_provider_unittest.mm" ]
+  }
+
   # UsbContext is a libusb-specific object.
-  if (is_mac || is_win) {
+  # TODO(https://crbug.com/1096743) Remove these tests.
+  if (is_mac) {
     sources += [ "usb/usb_context_unittest.cc" ]
     deps += [ "//third_party/libusb" ]
   }
@@ -340,6 +398,7 @@ source_set("tests") {
       "geolocation/win/fake_status_changed_event_args_winrt.cc",
       "geolocation/win/fake_status_changed_event_args_winrt.h",
       "geolocation/win/location_provider_winrt_unittest.cc",
+      "hid/hid_preparsed_data_unittest.cc",
     ]
 
     # Needed for "generic_sensor/platform_sensor_and_provider_unittest_win.cc"
@@ -365,6 +424,7 @@ source_set("test_support") {
     "//mojo/public/cpp/bindings",
     "//net",
     "//net:test_support",
+    "//services/device/public/cpp:test_support",
     "//services/device/public/cpp/geolocation",
     "//services/device/public/mojom:device_service",
     "//services/network:test_support",
@@ -398,7 +458,7 @@ if (is_android) {
       "android/java/src/org/chromium/services/device/InterfaceRegistrar.java",
     ]
     deps = [
-      "//base:base_java",
+      "//base:jni_java",
       "//mojo/public/java:bindings_java",
       "//mojo/public/java:system_java",
       "//mojo/public/java/system:system_impl_java",
@@ -433,4 +493,16 @@ source_set("usb_test_gadget") {
     "//services/device/usb",
     "//tools/usb_gadget",
   ]
+}
+
+source_set("utility") {
+  sources = []
+
+  if (is_mac) {
+    sources += [
+      "utils/mac_utils.cc",
+      "utils/mac_utils.h",
+    ]
+  }
+  deps = [ "//base" ]
 }

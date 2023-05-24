@@ -1,14 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_MEDIA_CONTROL_RENDERER_MEDIA_PLAYBACK_OPTIONS_H_
 #define COMPONENTS_MEDIA_CONTROL_RENDERER_MEDIA_PLAYBACK_OPTIONS_H_
 
-#include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/sequence_checker.h"
 #include "components/media_control/mojom/media_playback_options.mojom.h"
 #include "content/public/common/media_playback_renderer_type.mojom.h"

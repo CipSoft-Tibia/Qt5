@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -57,7 +57,7 @@ class EmbedderTestTimerHandlingDelegate final : public EmbedderTest::Delegate {
 
   void AdvanceTime(int increment_msecs) {
     fake_elapsed_msecs_ += increment_msecs;
-    while (1) {
+    while (true) {
       auto iter = expiry_to_timer_map_.begin();
       if (iter == expiry_to_timer_map_.end()) {
         break;

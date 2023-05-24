@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 namespace device {
 
-bool IsProtected(const mojom::HidUsageAndPage& hid_usage_and_page) {
+bool IsAlwaysProtected(const mojom::HidUsageAndPage& hid_usage_and_page) {
   const uint16_t usage = hid_usage_and_page.usage;
   const uint16_t usage_page = hid_usage_and_page.usage_page;
 

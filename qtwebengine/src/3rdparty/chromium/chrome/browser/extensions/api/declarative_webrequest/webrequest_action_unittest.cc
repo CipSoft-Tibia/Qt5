@@ -1,8 +1,6 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-
-#include "extensions/browser/api/declarative_webrequest/webrequest_action.h"
 
 #include <stddef.h>
 
@@ -11,7 +9,6 @@
 #include "base/files/file_path.h"
 #include "base/json/json_file_value_serializer.h"
 #include "base/memory/ref_counted.h"
-#include "base/stl_util.h"
 #include "base/test/values_test_util.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -21,6 +18,7 @@
 #include "chrome/common/extensions/extension_test_util.h"
 #include "content/public/test/browser_task_environment.h"
 #include "extensions/browser/api/declarative_webrequest/request_stage.h"
+#include "extensions/browser/api/declarative_webrequest/webrequest_action.h"
 #include "extensions/browser/api/declarative_webrequest/webrequest_condition.h"
 #include "extensions/browser/api/declarative_webrequest/webrequest_constants.h"
 #include "extensions/browser/api/web_request/permission_helper.h"
@@ -36,8 +34,6 @@
 namespace helpers = extension_web_request_api_helpers;
 namespace keys = extensions::declarative_webrequest_constants;
 
-using base::DictionaryValue;
-using base::ListValue;
 using extension_test_util::LoadManifestUnchecked;
 using helpers::EventResponseDeltas;
 using testing::HasSubstr;
@@ -49,23 +45,19 @@ namespace {
 const char kUnknownActionType[] = "unknownType";
 
 std::unique_ptr<WebRequestActionSet> CreateSetOfActions(const char* json) {
-  std::unique_ptr<base::Value> parsed_value(
-      base::test::ParseJsonDeprecated(json));
-  const base::ListValue* parsed_list;
-  CHECK(parsed_value->GetAsList(&parsed_list));
+  base::Value::List parsed_value = base::test::ParseJsonList(json);
 
   WebRequestActionSet::Values actions;
-  for (auto it = parsed_list->begin(); it != parsed_list->end(); ++it) {
-    const base::DictionaryValue* dict;
-    CHECK(it->GetAsDictionary(&dict));
-    actions.push_back(dict->CreateDeepCopy());
+  for (const base::Value& entry : parsed_value) {
+    CHECK(entry.is_dict());
+    actions.push_back(entry.Clone());
   }
 
   std::string error;
   bool bad_message = false;
 
-  std::unique_ptr<WebRequestActionSet> action_set(
-      WebRequestActionSet::Create(NULL, NULL, actions, &error, &bad_message));
+  std::unique_ptr<WebRequestActionSet> action_set(WebRequestActionSet::Create(
+      nullptr, nullptr, actions, &error, &bad_message));
   EXPECT_EQ("", error);
   EXPECT_FALSE(bad_message);
   CHECK(action_set);
@@ -105,18 +97,13 @@ void WebRequestActionWithThreadsTest::SetUp() {
   std::string error;
   extension_ = LoadManifestUnchecked("permissions",
                                      "web_request_com_host_permissions.json",
-                                     Manifest::INVALID_LOCATION,
-                                     Extension::NO_FLAGS,
-                                     "ext_id_1",
-                                     &error);
+                                     mojom::ManifestLocation::kInvalidLocation,
+                                     Extension::NO_FLAGS, "ext_id_1", &error);
   ASSERT_TRUE(extension_.get()) << error;
-  extension_all_urls_ =
-      LoadManifestUnchecked("permissions",
-                            "web_request_all_host_permissions.json",
-                            Manifest::INVALID_LOCATION,
-                            Extension::NO_FLAGS,
-                            "ext_id_2",
-                            &error);
+  extension_all_urls_ = LoadManifestUnchecked(
+      "permissions", "web_request_all_host_permissions.json",
+      mojom::ManifestLocation::kInvalidLocation, Extension::NO_FLAGS,
+      "ext_id_2", &error);
   ASSERT_TRUE(extension_all_urls_.get()) << error;
   ExtensionRegistry::Get(browser_context())->AddEnabled(extension_);
   ExtensionRegistry::Get(browser_context())->AddEnabled(extension_all_urls_);
@@ -139,7 +126,7 @@ bool WebRequestActionWithThreadsTest::ActionWorksOnRequest(
   WebRequestData request_data(&request_info, stage, headers.get());
   std::set<std::string> ignored_tags;
   WebRequestAction::ApplyInfo apply_info = {
-      PermissionHelper::Get(browser_context()), request_data,
+      PermissionHelper::Get(browser_context()), raw_ref(request_data),
       false /*crosses_incognito*/, &deltas, &ignored_tags};
   action_set->Apply(extension_id, base::Time(), &apply_info);
   return (1u == deltas.size() || !ignored_tags.empty());
@@ -161,10 +148,17 @@ void WebRequestActionWithThreadsTest::CheckActionNeedsAllUrls(
 
   const std::string& webstore_url =
       ExtensionsClient::Get()->GetWebstoreBaseURL().spec();
+  const std::string& new_webstore_url =
+      ExtensionsClient::Get()->GetNewWebstoreBaseURL().spec();
   // The protected URLs should not be touched at all.
   EXPECT_FALSE(ActionWorksOnRequest(webstore_url.c_str(), extension_->id(),
                                     action_set.get(), stage));
   EXPECT_FALSE(ActionWorksOnRequest(webstore_url.c_str(),
+                                    extension_all_urls_->id(), action_set.get(),
+                                    stage));
+  EXPECT_FALSE(ActionWorksOnRequest(new_webstore_url.c_str(), extension_->id(),
+                                    action_set.get(), stage));
+  EXPECT_FALSE(ActionWorksOnRequest(new_webstore_url.c_str(),
                                     extension_all_urls_->id(), action_set.get(),
                                     stage));
 }
@@ -174,32 +168,27 @@ TEST(WebRequestActionTest, CreateAction) {
   bool bad_message = false;
   scoped_refptr<const WebRequestAction> result;
 
-  // Test wrong data type passed.
-  error.clear();
-  base::ListValue empty_list;
-  result = WebRequestAction::Create(
-      NULL, NULL, empty_list, &error, &bad_message);
-  EXPECT_TRUE(bad_message);
-  EXPECT_FALSE(result.get());
-
   // Test missing instanceType element.
-  base::DictionaryValue input;
+  base::Value::Dict input;
   error.clear();
-  result = WebRequestAction::Create(NULL, NULL, input, &error, &bad_message);
+  result =
+      WebRequestAction::Create(nullptr, nullptr, input, &error, &bad_message);
   EXPECT_TRUE(bad_message);
   EXPECT_FALSE(result.get());
 
   // Test wrong instanceType element.
-  input.SetString(keys::kInstanceTypeKey, kUnknownActionType);
+  input.Set(keys::kInstanceTypeKey, kUnknownActionType);
   error.clear();
-  result = WebRequestAction::Create(NULL, NULL, input, &error, &bad_message);
+  result =
+      WebRequestAction::Create(nullptr, nullptr, input, &error, &bad_message);
   EXPECT_NE("", error);
   EXPECT_FALSE(result.get());
 
   // Test success
-  input.SetString(keys::kInstanceTypeKey, keys::kCancelRequestType);
+  input.Set(keys::kInstanceTypeKey, keys::kCancelRequestType);
   error.clear();
-  result = WebRequestAction::Create(NULL, NULL, input, &error, &bad_message);
+  result =
+      WebRequestAction::Create(nullptr, nullptr, input, &error, &bad_message);
   EXPECT_EQ("", error);
   EXPECT_FALSE(bad_message);
   ASSERT_TRUE(result.get());
@@ -215,23 +204,26 @@ TEST(WebRequestActionTest, CreateActionSet) {
 
   // Test empty input.
   error.clear();
-  result = WebRequestActionSet::Create(NULL, NULL, input, &error, &bad_message);
+  result = WebRequestActionSet::Create(nullptr, nullptr, input, &error,
+                                       &bad_message);
   EXPECT_TRUE(error.empty()) << error;
   EXPECT_FALSE(bad_message);
   ASSERT_TRUE(result.get());
   EXPECT_TRUE(result->actions().empty());
   EXPECT_EQ(std::numeric_limits<int>::min(), result->GetMinimumPriority());
 
-  base::DictionaryValue correct_action;
-  correct_action.SetString(keys::kInstanceTypeKey, keys::kIgnoreRulesType);
-  correct_action.SetInteger(keys::kLowerPriorityThanKey, 10);
-  base::DictionaryValue incorrect_action;
-  incorrect_action.SetString(keys::kInstanceTypeKey, kUnknownActionType);
+  base::Value::Dict correct_action;
+  correct_action.Set(keys::kInstanceTypeKey, keys::kIgnoreRulesType);
+  correct_action.Set(keys::kLowerPriorityThanKey, 10);
+  base::Value::Dict incorrect_action;
+  incorrect_action.Set(keys::kInstanceTypeKey, kUnknownActionType);
+  base::Value::List wrong_format_action;
 
   // Test success.
-  input.push_back(correct_action.CreateDeepCopy());
+  input.emplace_back(std::move(correct_action));
   error.clear();
-  result = WebRequestActionSet::Create(NULL, NULL, input, &error, &bad_message);
+  result = WebRequestActionSet::Create(nullptr, nullptr, input, &error,
+                                       &bad_message);
   EXPECT_TRUE(error.empty()) << error;
   EXPECT_FALSE(bad_message);
   ASSERT_TRUE(result.get());
@@ -241,9 +233,18 @@ TEST(WebRequestActionTest, CreateActionSet) {
   EXPECT_EQ(10, result->GetMinimumPriority());
 
   // Test failure.
-  input.push_back(incorrect_action.CreateDeepCopy());
+  input.emplace_back(std::move(incorrect_action));
   error.clear();
-  result = WebRequestActionSet::Create(NULL, NULL, input, &error, &bad_message);
+  result = WebRequestActionSet::Create(nullptr, nullptr, input, &error,
+                                       &bad_message);
+  EXPECT_NE("", error);
+  EXPECT_FALSE(result.get());
+
+  // Test wrong data type passed.
+  input.emplace_back(std::move(wrong_format_action));
+  error.clear();
+  result = WebRequestActionSet::Create(nullptr, nullptr, input, &error,
+                                       &bad_message);
   EXPECT_NE("", error);
   EXPECT_FALSE(result.get());
 }
@@ -347,6 +348,13 @@ TEST_F(WebRequestActionWithThreadsTest, PermissionsToSendMessageToExtension) {
   EXPECT_FALSE(ActionWorksOnRequest(webstore_url.c_str(), extension_->id(),
                                     action_set.get(), ON_BEFORE_REQUEST));
   EXPECT_FALSE(ActionWorksOnRequest(webstore_url.c_str(),
+                                    extension_all_urls_->id(), action_set.get(),
+                                    ON_BEFORE_REQUEST));
+  const std::string& new_webstore_url =
+      ExtensionsClient::Get()->GetNewWebstoreBaseURL().spec();
+  EXPECT_FALSE(ActionWorksOnRequest(new_webstore_url.c_str(), extension_->id(),
+                                    action_set.get(), ON_BEFORE_REQUEST));
+  EXPECT_FALSE(ActionWorksOnRequest(new_webstore_url.c_str(),
                                     extension_all_urls_->id(), action_set.get(),
                                     ON_BEFORE_REQUEST));
 }
@@ -567,11 +575,10 @@ TEST(WebRequestActionTest, GetName) {
     "declarativeWebRequest.IgnoreRules",
   };
   std::unique_ptr<WebRequestActionSet> action_set(CreateSetOfActions(kActions));
-  ASSERT_EQ(base::size(kExpectedNames), action_set->actions().size());
+  ASSERT_EQ(std::size(kExpectedNames), action_set->actions().size());
   size_t index = 0;
-  for (auto it = action_set->actions().cbegin();
-       it != action_set->actions().cend(); ++it) {
-    EXPECT_EQ(kExpectedNames[index], (*it)->GetName());
+  for (const auto& action : action_set->actions()) {
+    EXPECT_EQ(kExpectedNames[index], action->GetName());
     ++index;
   }
 }

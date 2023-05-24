@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QFile>
 #include <QFileDialog>
@@ -72,19 +25,24 @@ Notepad::Notepad(QWidget *parent) :
     ui(new Ui::Notepad)
 {
     ui->setupUi(this);
-    this->setCentralWidget(ui->textEdit);
 
     connect(ui->actionNew, &QAction::triggered, this, &Notepad::newDocument);
     connect(ui->actionOpen, &QAction::triggered, this, &Notepad::open);
     connect(ui->actionSave, &QAction::triggered, this, &Notepad::save);
     connect(ui->actionSave_as, &QAction::triggered, this, &Notepad::saveAs);
     connect(ui->actionPrint, &QAction::triggered, this, &Notepad::print);
-    connect(ui->actionExit, &QAction::triggered, this, &Notepad::exit);
-    connect(ui->actionCopy, &QAction::triggered, this, &Notepad::copy);
-    connect(ui->actionCut, &QAction::triggered, this, &Notepad::cut);
-    connect(ui->actionPaste, &QAction::triggered, this, &Notepad::paste);
-    connect(ui->actionUndo, &QAction::triggered, this, &Notepad::undo);
-    connect(ui->actionRedo, &QAction::triggered, this, &Notepad::redo);
+    connect(ui->actionExit, &QAction::triggered, this, &QWidget::close);
+#if QT_CONFIG(clipboard)
+    connect(ui->textEdit, &QTextEdit::copyAvailable, ui->actionCopy, &QAction::setEnabled);
+    connect(ui->actionCopy, &QAction::triggered, ui->textEdit, &QTextEdit::copy);
+    connect(ui->actionCut, &QAction::triggered, ui->textEdit, &QTextEdit::cut);
+    connect(ui->actionPaste, &QAction::triggered, ui->textEdit, &QTextEdit::paste);
+#endif
+    connect(ui->textEdit, &QTextEdit::undoAvailable, ui->actionUndo, &QAction::setEnabled);
+    connect(ui->actionUndo, &QAction::triggered, ui->textEdit, &QTextEdit::undo);
+    connect(ui->textEdit, &QTextEdit::redoAvailable, ui->actionRedo, &QAction::setEnabled);
+    connect(ui->actionRedo, &QAction::triggered, ui->textEdit, &QTextEdit::redo);
+
     connect(ui->actionFont, &QAction::triggered, this, &Notepad::selectFont);
     connect(ui->actionBold, &QAction::triggered, this, &Notepad::setFontBold);
     connect(ui->actionUnderline, &QAction::triggered, this, &Notepad::setFontUnderline);
@@ -117,6 +75,8 @@ void Notepad::newDocument()
 void Notepad::open()
 {
     QString fileName = QFileDialog::getOpenFileName(this, "Open the file");
+    if (fileName.isEmpty())
+        return;
     QFile file(fileName);
     currentFile = fileName;
     if (!file.open(QIODevice::ReadOnly | QFile::Text)) {
@@ -136,6 +96,8 @@ void Notepad::save()
     // If we don't have a filename from before, get one.
     if (currentFile.isEmpty()) {
         fileName = QFileDialog::getSaveFileName(this, "Save");
+        if (fileName.isEmpty())
+            return;
         currentFile = fileName;
     } else {
         fileName = currentFile;
@@ -155,6 +117,8 @@ void Notepad::save()
 void Notepad::saveAs()
 {
     QString fileName = QFileDialog::getSaveFileName(this, "Save as");
+    if (fileName.isEmpty())
+        return;
     QFile file(fileName);
 
     if (!file.open(QFile::WriteOnly | QFile::Text)) {
@@ -180,42 +144,6 @@ void Notepad::print()
 #endif // QT_CONFIG(printdialog)
     ui->textEdit->print(&printDev);
 #endif // QT_CONFIG(printer)
-}
-
-void Notepad::exit()
-{
-    QCoreApplication::quit();
-}
-
-void Notepad::copy()
-{
-#if QT_CONFIG(clipboard)
-    ui->textEdit->copy();
-#endif
-}
-
-void Notepad::cut()
-{
-#if QT_CONFIG(clipboard)
-    ui->textEdit->cut();
-#endif
-}
-
-void Notepad::paste()
-{
-#if QT_CONFIG(clipboard)
-    ui->textEdit->paste();
-#endif
-}
-
-void Notepad::undo()
-{
-     ui->textEdit->undo();
-}
-
-void Notepad::redo()
-{
-    ui->textEdit->redo();
 }
 
 void Notepad::selectFont()
@@ -244,8 +172,7 @@ void Notepad::setFontBold(bool bold)
 
 void Notepad::about()
 {
-   QMessageBox::about(this, tr("About MDI"),
-                tr("The <b>Notepad</b> example demonstrates how to code a basic "
-                   "text editor using QtWidgets"));
-
+    QMessageBox::about(this, tr("About Notepad"),
+                       tr("The <b>Notepad</b> example demonstrates how to code a basic "
+                          "text editor using QtWidgets"));
 }

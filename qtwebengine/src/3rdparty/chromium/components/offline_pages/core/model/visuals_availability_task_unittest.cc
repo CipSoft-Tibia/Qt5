@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <memory>
 
-#include "base/bind_helpers.h"
-#include "base/test/bind_test_util.h"
+#include "base/functional/callback_helpers.h"
+#include "base/test/bind.h"
 #include "base/test/mock_callback.h"
 #include "components/offline_pages/core/model/model_task_test_base.h"
 #include "components/offline_pages/core/model/store_visuals_task.h"

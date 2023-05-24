@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,18 +10,14 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
 #include "base/token.h"
-
-namespace base {
-class Value;
-}
+#include "base/values.h"
 
 namespace data_decoder {
 
 // Returns all the children of |element|.
-const base::Value* GetXmlElementChildren(const base::Value& element);
+const base::Value::List* GetXmlElementChildren(const base::Value& element);
 
 // Returns the qualified name |name_space|:|name| or simply |name| if
 // |name_space| is empty.

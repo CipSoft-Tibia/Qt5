@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ PDFTestEnvironment::~PDFTestEnvironment() = default;
 
 // testing::Environment:
 void PDFTestEnvironment::SetUp() {
-  CFX_GEModule::Create(nullptr);
+  CFX_GEModule::Create(test_fonts_.font_paths());
 }
 
 void PDFTestEnvironment::TearDown() {

@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CONTENT_CAPTURE_CONTENT_CAPTURE_MANAGER_H_
 
 #include "base/memory/scoped_refptr.h"
+#include "base/time/time.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/renderer/core/content_capture/content_capture_task.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -16,7 +17,6 @@ namespace blink {
 
 class LocalFrame;
 class Node;
-class SentNodes;
 
 // This class is used to create the NodeHolder, and start the ContentCaptureTask
 // when necessary. The ContentCaptureManager is owned by main frame.
@@ -43,6 +43,10 @@ class CORE_EXPORT ContentCaptureManager
   // Invokes when text node content was changed.
   void OnNodeTextChanged(Node& node);
 
+  // Invokes when the LocalFrameRoot was shown/hidden.
+  void OnFrameWasShown();
+  void OnFrameWasHidden();
+
   // Invokes when the local_frame_root shutdown.
   void Shutdown();
 
@@ -67,7 +71,6 @@ class CORE_EXPORT ContentCaptureManager
     virtual void Trace(Visitor*) const;
   };
 
-  void NotifyNodeDetached(const Node& node);
   void ScheduleTask(ContentCaptureTask::ScheduleReason reason);
 
   // Returns true if the user had the input in last
@@ -82,9 +85,6 @@ class CORE_EXPORT ContentCaptureManager
   bool first_node_holder_created_ = false;
 
   Member<TaskSession> task_session_;
-
-  // A set of weak reference of the node that has been sent.
-  Member<SentNodes> sent_nodes_;
 
   // The latest user activation in any frame of the |local_frame_root_|.
   Member<UserActivation> latest_user_activation_;

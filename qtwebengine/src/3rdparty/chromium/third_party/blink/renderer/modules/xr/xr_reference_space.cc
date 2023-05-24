@@ -1,8 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/xr/xr_reference_space.h"
+
+#include <sstream>
+#include <string>
 
 #include "device/vr/public/mojom/vr_service.mojom-blink.h"
 #include "third_party/blink/renderer/modules/xr/xr_pose.h"
@@ -48,9 +51,9 @@ XRReferenceSpace::XRReferenceSpace(XRSession* session,
 
 XRReferenceSpace::~XRReferenceSpace() = default;
 
-XRPose* XRReferenceSpace::getPose(XRSpace* other_space) {
+XRPose* XRReferenceSpace::getPose(const XRSpace* other_space) const {
   if (type_ == ReferenceSpaceType::kViewer) {
-    base::Optional<TransformationMatrix> other_offset_from_viewer =
+    absl::optional<gfx::Transform> other_offset_from_viewer =
         other_space->OffsetFromViewer();
     if (!other_offset_from_viewer) {
       return nullptr;
@@ -68,22 +71,24 @@ XRPose* XRReferenceSpace::getPose(XRSpace* other_space) {
   }
 }
 
-void XRReferenceSpace::SetMojoFromFloor() {
-  const device::mojom::blink::VRDisplayInfoPtr& display_info =
-      session()->GetVRDisplayInfo();
+void XRReferenceSpace::SetMojoFromFloor() const {
+  const device::mojom::blink::VRStageParametersPtr& stage_parameters =
+      session()->GetStageParameters();
 
-  if (display_info && display_info->stage_parameters) {
-    // Use the transform given by xrDisplayInfo's stage_parameters if available.
-    mojo_from_floor_ = std::make_unique<TransformationMatrix>(
-        display_info->stage_parameters->mojo_from_floor.matrix());
+  if (stage_parameters) {
+    // Use the transform given by stage_parameters if available.
+    mojo_from_floor_ =
+        std::make_unique<gfx::Transform>(stage_parameters->mojo_from_floor);
   } else {
     mojo_from_floor_.reset();
   }
 
-  display_info_id_ = session()->DisplayInfoPtrId();
+  stage_parameters_id_ = session()->StageParametersId();
 }
 
-base::Optional<TransformationMatrix> XRReferenceSpace::MojoFromNative() {
+absl::optional<gfx::Transform> XRReferenceSpace::MojoFromNative() const {
+  DVLOG(3) << __func__ << ": type_=" << type_;
+
   switch (type_) {
     case ReferenceSpaceType::kViewer:
     case ReferenceSpaceType::kLocal:
@@ -96,16 +101,16 @@ base::Optional<TransformationMatrix> XRReferenceSpace::MojoFromNative() {
         // it's not tracked; but for any other type if it's not locatable, we
         // return nullopt.
         return type_ == ReferenceSpaceType::kViewer
-                   ? base::Optional<TransformationMatrix>({})
-                   : base::nullopt;
+                   ? absl::optional<gfx::Transform>(gfx::Transform{})
+                   : absl::nullopt;
       }
 
       return *mojo_from_native;
     }
     case ReferenceSpaceType::kLocalFloor: {
-      // Check first to see if the xrDisplayInfo has updated since the last
+      // Check first to see if the stage_parameters has updated since the last
       // call. If so, update the floor-level transform.
-      if (display_info_id_ != session()->DisplayInfoPtrId())
+      if (stage_parameters_id_ != session()->StageParametersId())
         SetMojoFromFloor();
 
       if (mojo_from_floor_) {
@@ -116,48 +121,48 @@ base::Optional<TransformationMatrix> XRReferenceSpace::MojoFromNative() {
       // transform based off of local space:
       auto mojo_from_local = session()->GetMojoFrom(ReferenceSpaceType::kLocal);
       if (!mojo_from_local) {
-        return base::nullopt;
+        return absl::nullopt;
       }
 
       // local_from_floor-local transform corresponding to the default height.
-      auto local_from_floor = TransformationMatrix().Translate3d(
-          0, kDefaultEmulationHeightMeters, 0);
+      auto local_from_floor =
+          gfx::Transform::MakeTranslation(0, kDefaultEmulationHeightMeters);
 
       return *mojo_from_local * local_from_floor;
     }
     case ReferenceSpaceType::kBoundedFloor: {
       NOTREACHED() << "kBoundedFloor should be handled by subclass";
-      return base::nullopt;
+      return absl::nullopt;
     }
   }
 }
 
-base::Optional<TransformationMatrix> XRReferenceSpace::NativeFromViewer(
-    const base::Optional<TransformationMatrix>& mojo_from_viewer) {
+absl::optional<gfx::Transform> XRReferenceSpace::NativeFromViewer(
+    const absl::optional<gfx::Transform>& mojo_from_viewer) const {
   if (type_ == ReferenceSpaceType::kViewer) {
     // Special case for viewer space, always return an identity matrix
     // explicitly. In theory the default behavior of multiplying NativeFromMojo
     // onto MojoFromViewer would be equivalent, but that would likely return an
     // almost-identity due to rounding errors.
-    return TransformationMatrix();
+    return gfx::Transform();
   }
 
   if (!mojo_from_viewer)
-    return base::nullopt;
+    return absl::nullopt;
 
   // Return native_from_viewer = native_from_mojo * mojo_from_viewer
   auto native_from_viewer = NativeFromMojo();
   if (!native_from_viewer)
-    return base::nullopt;
-  native_from_viewer->Multiply(*mojo_from_viewer);
+    return absl::nullopt;
+  native_from_viewer->PreConcat(*mojo_from_viewer);
   return native_from_viewer;
 }
 
-TransformationMatrix XRReferenceSpace::NativeFromOffsetMatrix() {
+gfx::Transform XRReferenceSpace::NativeFromOffsetMatrix() const {
   return origin_offset_->TransformMatrix();
 }
 
-TransformationMatrix XRReferenceSpace::OffsetFromNativeMatrix() {
+gfx::Transform XRReferenceSpace::OffsetFromNativeMatrix() const {
   return origin_offset_->InverseTransformMatrix();
 }
 
@@ -178,23 +183,31 @@ ReferenceSpaceType XRReferenceSpace::GetType() const {
 }
 
 XRReferenceSpace* XRReferenceSpace::getOffsetReferenceSpace(
-    XRRigidTransform* additional_offset) {
-  auto matrix =
-      NativeFromOffsetMatrix().Multiply(additional_offset->TransformMatrix());
+    XRRigidTransform* additional_offset) const {
+  auto matrix = NativeFromOffsetMatrix() * additional_offset->TransformMatrix();
 
   auto* result_transform = MakeGarbageCollected<XRRigidTransform>(matrix);
   return cloneWithOriginOffset(result_transform);
 }
 
 XRReferenceSpace* XRReferenceSpace::cloneWithOriginOffset(
-    XRRigidTransform* origin_offset) {
+    XRRigidTransform* origin_offset) const {
   return MakeGarbageCollected<XRReferenceSpace>(this->session(), origin_offset,
                                                 type_);
 }
 
-base::Optional<device::mojom::blink::XRNativeOriginInformation>
+device::mojom::blink::XRNativeOriginInformationPtr
 XRReferenceSpace::NativeOrigin() const {
-  return XRNativeOriginInformation::Create(this);
+  return device::mojom::blink::XRNativeOriginInformation::NewReferenceSpaceType(
+      this->GetType());
+}
+
+std::string XRReferenceSpace::ToString() const {
+  std::stringstream ss;
+
+  ss << "XRReferenceSpace(type=" << type_ << ")";
+
+  return ss.str();
 }
 
 void XRReferenceSpace::Trace(Visitor* visitor) const {
@@ -204,8 +217,10 @@ void XRReferenceSpace::Trace(Visitor* visitor) const {
 
 void XRReferenceSpace::OnReset() {
   if (type_ != ReferenceSpaceType::kViewer) {
-    DispatchEvent(
-        *XRReferenceSpaceEvent::Create(event_type_names::kReset, this));
+    // DispatchEvent inherited from core/dom/events/event_target.h isn't const.
+    XRReferenceSpace* mutable_this = const_cast<XRReferenceSpace*>(this);
+    mutable_this->DispatchEvent(
+        *XRReferenceSpaceEvent::Create(event_type_names::kReset, mutable_this));
   }
 }
 

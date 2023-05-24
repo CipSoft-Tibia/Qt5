@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,10 @@
 
 #include "xfa/fwl/cfwl_eventmouse.h"
 
-CFWL_EventMouse::CFWL_EventMouse(CFWL_Widget* pSrcTarget)
-    : CFWL_EventMouse(pSrcTarget, nullptr) {}
-
 CFWL_EventMouse::CFWL_EventMouse(CFWL_Widget* pSrcTarget,
-                                 CFWL_Widget* pDstTarget)
-    : CFWL_Event(CFWL_Event::Type::Mouse, pSrcTarget, pDstTarget) {}
+                                 CFWL_Widget* pDstTarget,
+                                 CFWL_MessageMouse::MouseCommand cmd)
+    : CFWL_Event(CFWL_Event::Type::Mouse, pSrcTarget, pDstTarget),
+      m_dwCmd(cmd) {}
 
 CFWL_EventMouse::~CFWL_EventMouse() = default;

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,8 @@
 #include <memory>
 #include <set>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "components/services/storage/public/mojom/service_worker_storage_control.mojom.h"
 #include "content/common/content_export.h"
@@ -19,6 +20,10 @@
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
+
+namespace crypto {
+class SecureHash;
+}  // namespace crypto
 
 namespace content {
 
@@ -34,18 +39,22 @@ namespace content {
 //
 // This class's behavior is modelled as a state machine; see the DoLoop function
 // for comments about this.
-//
-// Note that currently we have two types of interfaces to create an instance of
-// ServiceWorkerCacheWriter: storage service and non storage service.
-// After storage service is shipped, we use Mojo connection to read and write
-// the resource.
-// See https://crbug.com/1055677 for more info.
 class CONTENT_EXPORT ServiceWorkerCacheWriter {
  public:
   using OnWriteCompleteCallback = base::OnceCallback<void(net::Error)>;
 
+  // These values indicates the timing when the checksum update happens. As the
+  // sha256 checksum is a hash string calculated from script data, basically
+  // |kCacheMismatch| is preferable in terms of the efficiency.
+  //
+  // kCacheMismatch: Update the checksum when a cache mismatch and write data
+  // back to the cache.
+  // kAlways: Update the checksum regardless of whether there is a cache
+  // mismatch or not.
+  enum class ChecksumUpdateTiming { kCacheMismatch, kAlways };
+
   // This class defines the interfaces of observer that observes write
-  // operations. The observer is notified when response info or data
+  // operations. The observer is notified when response head or data
   // will be written to storage.
   class WriteObserver {
    public:
@@ -94,7 +103,8 @@ class CONTENT_EXPORT ServiceWorkerCacheWriter {
       mojo::Remote<storage::mojom::ServiceWorkerResourceReader> copy_reader,
       mojo::Remote<storage::mojom::ServiceWorkerResourceWriter> writer,
       int64_t writer_resource_id,
-      bool pause_when_not_identical);
+      bool pause_when_not_identical,
+      ChecksumUpdateTiming checksum_update_timing);
 
   ~ServiceWorkerCacheWriter();
 
@@ -144,6 +154,17 @@ class CONTENT_EXPORT ServiceWorkerCacheWriter {
 
   void set_write_observer(WriteObserver* write_observer) {
     write_observer_ = write_observer;
+  }
+
+  void FlushRemotesForTesting();
+
+  // Gets the hex-encoded checksum hash string calculated from the script body.
+  // This function should be called only once as it destroys the underlying data
+  // of the checksum. It resets |checksum_| not to be called multiple times.
+  std::string GetSha256Checksum();
+
+  ChecksumUpdateTiming checksum_update_timing() const {
+    return checksum_update_timing_;
   }
 
  private:
@@ -214,7 +235,8 @@ class CONTENT_EXPORT ServiceWorkerCacheWriter {
       mojo::Remote<storage::mojom::ServiceWorkerResourceReader> copy_reader,
       mojo::Remote<storage::mojom::ServiceWorkerResourceWriter> writer,
       int64_t writer_resource_id,
-      bool pause_when_not_identical);
+      bool pause_when_not_identical,
+      ChecksumUpdateTiming checksum_update_timing);
 
   // Drives this class's state machine. This function steps the state machine
   // until one of:
@@ -255,26 +277,29 @@ class CONTENT_EXPORT ServiceWorkerCacheWriter {
   int ReadResponseHead(storage::mojom::ServiceWorkerResourceReader* reader);
   int ReadDataHelper(storage::mojom::ServiceWorkerResourceReader* reader,
                      std::unique_ptr<DataPipeReader>& data_pipe_reader,
-                     net::IOBuffer* buf,
+                     scoped_refptr<net::IOBuffer> buf,
                      int buf_len);
 
   // If no write observer is set through set_write_observer(),
   // WriteResponseHead() operates the same as
   // WriteResponseHeadToResponseWriter() and WriteData() operates the same as
   // WriteDataToResponseWriter().
-  // If observer is set, the argument |response_info| or |data| is first sent
+  // If observer is set, the argument |response_head| or |data| is first sent
   // to observer then WriteResponseHeadToResponseWriter() or
   // WriteDataToResponseWriter() is called.
   int WriteResponseHead(network::mojom::URLResponseHeadPtr response_head);
-  int WriteData(scoped_refptr<net::IOBuffer> data, int length);
+  int WriteData(scoped_refptr<net::IOBuffer> data, size_t length);
   int WriteResponseHeadToResponseWriter(
       network::mojom::URLResponseHeadPtr response_head);
-  int WriteDataToResponseWriter(scoped_refptr<net::IOBuffer> data, int length);
+  int WriteDataToResponseWriter(scoped_refptr<net::IOBuffer> data,
+                                size_t length);
 
   // Called when |write_observer_| finishes its WillWriteData() operation.
   void OnWillWriteDataCompleted(scoped_refptr<net::IOBuffer> data,
-                                int length,
+                                size_t length,
                                 net::Error error);
+
+  void OnRemoteDisconnected();
 
   // Callback used by the above helpers for their IO operations. This is only
   // run when those IO operations complete asynchronously, in which case it
@@ -328,7 +353,7 @@ class CONTENT_EXPORT ServiceWorkerCacheWriter {
   // cache writer pauses immediately.
   const bool pause_when_not_identical_;
 
-  WriteObserver* write_observer_ = nullptr;
+  raw_ptr<WriteObserver, DanglingUntriaged> write_observer_ = nullptr;
 
   mojo::Remote<storage::mojom::ServiceWorkerResourceReader> compare_reader_;
   std::unique_ptr<DataPipeReader> compare_data_pipe_reader_;
@@ -338,6 +363,16 @@ class CONTENT_EXPORT ServiceWorkerCacheWriter {
   mojo::Remote<storage::mojom::ServiceWorkerResourceWriter> writer_;
   const int64_t writer_resource_id_ =
       blink::mojom::kInvalidServiceWorkerResourceId;
+
+  // Normally, the sha256 hash string is calculated only when there is an update
+  // on the script. But if |checksum_update_timing_| is kAlways, the hash
+  // string is calculated even when there is no update in the script.
+  const ChecksumUpdateTiming checksum_update_timing_;
+
+  // Calculate the hash string for the written bytes. This will be used for the
+  // experiment which needs to identify some specific service worker scripts
+  // (crbug.com/1371756).
+  std::unique_ptr<crypto::SecureHash> checksum_;
 
   base::WeakPtrFactory<ServiceWorkerCacheWriter> weak_factory_{this};
 };

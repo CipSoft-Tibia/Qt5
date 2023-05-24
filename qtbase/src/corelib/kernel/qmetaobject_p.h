@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2014 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2014 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QMETAOBJECT_P_H
 #define QMETAOBJECT_P_H
@@ -55,45 +19,42 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qmutex.h>
+#include <QtCore/qmetaobject.h>
 #ifndef QT_NO_QOBJECT
 #include <private/qobject_p.h> // For QObjectPrivate::Connection
 #endif
+#include <private/qtools_p.h>
 #include <QtCore/qvarlengtharray.h>
 
 QT_BEGIN_NAMESPACE
-// ### TODO Qt6: add a proper namespace with Q_NAMESPACE and use scoped enums
-// A namespace and scoped are needed to avoid enum clashes
+// ### TODO - QTBUG-87869: wrap in a proper Q_NAMESPACE and use scoped enums, to avoid name clashes
 
-enum PropertyFlags  {
+using namespace QtMiscUtils;
+
+enum PropertyFlags {
     Invalid = 0x00000000,
     Readable = 0x00000001,
     Writable = 0x00000002,
     Resettable = 0x00000004,
     EnumOrFlag = 0x00000008,
+    Alias = 0x00000010,
+    // Reserved for future usage = 0x00000020,
     StdCppSet = 0x00000100,
-//     Override = 0x00000200,
     Constant = 0x00000400,
     Final = 0x00000800,
     Designable = 0x00001000,
-    ResolveDesignable = 0x00002000,
     Scriptable = 0x00004000,
-    ResolveScriptable = 0x00008000,
     Stored = 0x00010000,
-    ResolveStored = 0x00020000,
-    Editable = 0x00040000,
-    ResolveEditable = 0x00080000,
     User = 0x00100000,
-    ResolveUser = 0x00200000,
-    Notify = 0x00400000,
-    Revisioned = 0x00800000,
     Required = 0x01000000,
+    Bindable = 0x02000000
 };
 
-enum MethodFlags  {
+enum MethodFlags {
     AccessPrivate = 0x00,
     AccessProtected = 0x01,
     AccessPublic = 0x02,
-    AccessMask = 0x03, //mask
+    AccessMask = 0x03, // mask
 
     MethodMethod = 0x00,
     MethodSignal = 0x04,
@@ -104,14 +65,18 @@ enum MethodFlags  {
     MethodCompatibility = 0x10,
     MethodCloned = 0x20,
     MethodScriptable = 0x40,
-    MethodRevisioned = 0x80
+    MethodRevisioned = 0x80,
+
+    MethodIsConst = 0x100, // no use case for volatile so far
 };
 
-enum MetaObjectFlags { // keep it in sync with QMetaObjectBuilder::MetaObjectFlag enum
+enum MetaObjectFlag {
     DynamicMetaObject = 0x01,
     RequiresVariantMetaObject = 0x02,
     PropertyAccessInStaticMetaCall = 0x04 // since Qt 5.5, property code is in the static metacall
 };
+Q_DECLARE_FLAGS(MetaObjectFlags, MetaObjectFlag)
+Q_DECLARE_OPERATORS_FOR_FLAGS(MetaObjectFlags)
 
 enum MetaDataFlags {
     IsUnresolvedType = 0x80000000,
@@ -124,7 +89,7 @@ enum EnumFlags {
     EnumIsScoped = 0x2
 };
 
-extern int qMetaTypeTypeInternal(const char *);
+Q_CORE_EXPORT int qMetaTypeTypeInternal(const char *);
 
 class QArgumentType
 {
@@ -143,7 +108,7 @@ public:
     QByteArray name() const
     {
         if (_type && _name.isEmpty())
-            const_cast<QArgumentType *>(this)->_name = QMetaType::typeName(_type);
+            const_cast<QArgumentType *>(this)->_name = QMetaType(_type).name();
         return _name;
     }
     bool operator==(const QArgumentType &other) const
@@ -165,17 +130,56 @@ private:
     int _type;
     QByteArray _name;
 };
-Q_DECLARE_TYPEINFO(QArgumentType, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QArgumentType, Q_RELOCATABLE_TYPE);
 
 typedef QVarLengthArray<QArgumentType, 10> QArgumentTypeArray;
 
-class QMetaMethodPrivate;
+namespace { class QMetaMethodPrivate; }
+class QMetaMethodInvoker : public QMetaMethod
+{
+    QMetaMethodInvoker() = delete;
+
+public:
+    enum class InvokeFailReason : int {
+        // negative values mean a match was found but the invocation failed
+        // (and a warning has been printed)
+        ReturnTypeMismatch = -1,
+        DeadLockDetected = -2,
+        CallViaVirtualFailed = -3,  // no warning
+        ConstructorCallOnObject = -4,
+        ConstructorCallWithoutResult = -5,
+        ConstructorCallFailed = -6, // no warning
+
+        CouldNotQueueParameter = -0x1000,
+
+        // zero is success
+        None = 0,
+
+        // positive values mean the parameters did not match
+        TooFewArguments,
+        FormalParameterMismatch = 0x1000,
+    };
+
+    // shadows the public function
+    static InvokeFailReason Q_CORE_EXPORT
+    invokeImpl(QMetaMethod self, void *target, Qt::ConnectionType, qsizetype paramCount,
+               const void *const *parameters, const char *const *typeNames,
+               const QtPrivate::QMetaTypeInterface *const *metaTypes);
+};
 
 struct QMetaObjectPrivate
 {
     // revision 7 is Qt 5.0 everything lower is not supported
     // revision 8 is Qt 5.12: It adds the enum name to QMetaEnum
-    enum { OutputRevision = 8 }; // Used by moc, qmetaobjectbuilder and qdbus
+    // revision 9 is Qt 6.0: It adds the metatype of properties and methods
+    // revision 10 is Qt 6.2: The metatype of the metaobject is stored in the metatypes array
+    //                        and metamethods store a flag stating whether they are const
+    // revision 11 is Qt 6.5: The metatype for void is stored in the metatypes array
+    // revision 12 is Qt 6.6: It adds the metatype for enums
+    enum { OutputRevision = 12 }; // Used by moc, qmetaobjectbuilder and qdbus
+    enum { IntsPerMethod = QMetaMethod::Data::Size };
+    enum { IntsPerEnum = QMetaEnum::Data::Size };
+    enum { IntsPerProperty = QMetaProperty::Data::Size };
 
     int revision;
     int className;
@@ -209,11 +213,12 @@ struct QMetaObjectPrivate
     static int indexOfConstructor(const QMetaObject *m, const QByteArray &name,
                                   int argc, const QArgumentType *types);
     Q_CORE_EXPORT static QMetaMethod signal(const QMetaObject *m, int signal_index);
-    static inline int signalOffset(const QMetaObject *m) {
+    static inline int signalOffset(const QMetaObject *m)
+    {
         Q_ASSERT(m != nullptr);
         int offset = 0;
         for (m = m->d.superdata; m; m = m->d.superdata)
-            offset += reinterpret_cast<const QMetaObjectPrivate*>(m->d.data)->signalCount;
+            offset += reinterpret_cast<const QMetaObjectPrivate *>(m->d.data)->signalCount;
         return offset;
     }
     Q_CORE_EXPORT static int absoluteSignalCount(const QMetaObject *m);
@@ -226,7 +231,7 @@ struct QMetaObjectPrivate
     static QList<QByteArray> parameterTypeNamesFromSignature(const char *signature);
 
 #ifndef QT_NO_QOBJECT
-    //defined in qobject.cpp
+    // defined in qobject.cpp
     enum DisconnectType { DisconnectAll, DisconnectOne };
     static void memberIndexes(const QObject *obj, const QMetaMethod &member,
                               int *signalIndex, int *methodIndex);
@@ -243,6 +248,17 @@ struct QMetaObjectPrivate
                                         const QObject *receiver, int method_index, void **slot,
                                         QBasicMutex *senderMutex, DisconnectType = DisconnectAll);
 #endif
+
+    template<int MethodType>
+    static inline int indexOfMethodRelative(const QMetaObject **baseObject,
+                                            const QByteArray &name, int argc,
+                                            const QArgumentType *types);
+
+    static bool methodMatch(const QMetaObject *m, const QMetaMethod &method,
+                            const QByteArray &name, int argc,
+                            const QArgumentType *types);
+    Q_CORE_EXPORT static QMetaMethod firstMethod(const QMetaObject *baseObject, QByteArrayView name);
+
 };
 
 // For meta-object generators
@@ -253,11 +269,7 @@ enum { MetaObjectPrivateFieldCount = sizeof(QMetaObjectPrivate) / sizeof(int) };
 // mirrored in moc's utils.h
 static inline bool is_ident_char(char s)
 {
-    return ((s >= 'a' && s <= 'z')
-            || (s >= 'A' && s <= 'Z')
-            || (s >= '0' && s <= '9')
-            || s == '_'
-       );
+    return isAsciiLetterOrNumber(s) || s == '_';
 }
 
 static inline bool is_space(char s)

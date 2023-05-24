@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mockcompositor.h"
 
 #include <QtGui/QRasterWindow>
-#include <QtGui/QOpenGLWindow>
 #if QT_CONFIG(cursor)
 #include <wayland-cursor.h>
 #include <QtGui/private/qguiapplication_p.h>
@@ -49,6 +23,7 @@ public:
     {
         exec([this] {
             m_config.autoConfigure = true;
+            m_config.autoFrameCallback = false; // for cursor animation test
 
             removeAll<Seat>();
 
@@ -63,6 +38,7 @@ class tst_seatv4 : public QObject, private SeatV4Compositor
 {
     Q_OBJECT
 private slots:
+    void init();
     void cleanup();
     void bindsToSeat();
     void keyboardKeyPress();
@@ -84,6 +60,12 @@ private slots:
     void animatedCursor();
 #endif
 };
+
+void tst_seatv4::init()
+{
+    // Remove the extra outputs to clean up for the next test
+    exec([&] { while (auto *o = output(1)) remove(o); });
+}
 
 void tst_seatv4::cleanup()
 {
@@ -135,7 +117,7 @@ void tst_seatv4::setsCursorOnEnter()
     window.show();
     QCOMPOSITOR_TRY_VERIFY(xdgSurface() && xdgSurface()->m_committedConfigureSerial);
 
-    exec([&] { pointer()->sendEnter(xdgSurface()->m_surface, {32, 32}); });
+    exec([&] { pointer()->sendEnter(xdgSurface()->m_surface, {24, 24}); });
     QCOMPOSITOR_TRY_VERIFY(cursorSurface());
 }
 
@@ -152,7 +134,7 @@ void tst_seatv4::usesEnterSerial()
     });
     QCOMPOSITOR_TRY_VERIFY(cursorSurface());
 
-    QTRY_COMPARE(setCursorSpy.count(), 1);
+    QTRY_COMPARE(setCursorSpy.size(), 1);
     QCOMPARE(setCursorSpy.takeFirst().at(0).toUInt(), enterSerial);
 }
 
@@ -164,13 +146,13 @@ void tst_seatv4::focusDestruction()
     window.show();
     QCOMPOSITOR_TRY_VERIFY(xdgSurface() && xdgSurface()->m_committedConfigureSerial);
     // Setting a cursor now is not allowed since there has been no enter event
-    QCOMPARE(setCursorSpy.count(), 0);
+    QCOMPARE(setCursorSpy.size(), 0);
 
     uint enterSerial = exec([&] {
         return pointer()->sendEnter(xdgSurface()->m_surface, {32, 32});
     });
     QCOMPOSITOR_TRY_VERIFY(cursorSurface());
-    QTRY_COMPARE(setCursorSpy.count(), 1);
+    QTRY_COMPARE(setCursorSpy.size(), 1);
     QCOMPARE(setCursorSpy.takeFirst().at(0).toUInt(), enterSerial);
 
     // Destroy the focus
@@ -184,7 +166,7 @@ void tst_seatv4::focusDestruction()
 
     // Setting a cursor now is not allowed since there has been no enter event
     xdgPingAndWaitForPong();
-    QCOMPARE(setCursorSpy.count(), 0);
+    QCOMPARE(setCursorSpy.size(), 0);
 }
 
 void tst_seatv4::mousePress()
@@ -213,7 +195,7 @@ void tst_seatv4::mousePressFloat()
 {
     class Window : public QRasterWindow {
     public:
-        void mousePressEvent(QMouseEvent *e) override { m_position = e->localPos(); }
+        void mousePressEvent(QMouseEvent *e) override { m_position = e->position(); }
         QPointF m_position;
     };
 
@@ -287,10 +269,10 @@ void tst_seatv4::simpleAxis()
         }
         struct Event // Because I didn't find a convenient way to copy it entirely
         {
-            const QPoint pixelDelta;
-            const QPoint angleDelta; // eights of a degree, positive is upwards, left
+            QPoint pixelDelta;
+            QPoint angleDelta; // eights of a degree, positive is upwards, left
         };
-        QVector<Event> m_events;
+        QList<Event> m_events;
     };
 
     WheelWindow window;
@@ -349,7 +331,7 @@ static bool supportsCursorSize(uint size, wl_shm *shm)
     return false;
 }
 
-static bool supportsCursorSizes(const QVector<uint> &sizes)
+static bool supportsCursorSizes(const QList<uint> &sizes)
 {
     auto *waylandIntegration = static_cast<QtWaylandClient::QWaylandIntegration *>(QGuiApplicationPrivate::platformIntegration());
     wl_shm *shm = waylandIntegration->display()->shm()->object();
@@ -360,7 +342,7 @@ static bool supportsCursorSizes(const QVector<uint> &sizes)
 
 static uint defaultCursorSize() {
     const int xCursorSize = qEnvironmentVariableIntValue("XCURSOR_SIZE");
-    return xCursorSize > 0 ? uint(xCursorSize) : 32;
+    return xCursorSize > 0 ? uint(xCursorSize) : 24;
 }
 
 void tst_seatv4::scaledCursor()
@@ -593,7 +575,7 @@ void tst_seatv4::animatedCursor()
     });
 
     // Verify that we get a new cursor buffer
-    QTRY_COMPARE(bufferSpy.count(), 1);
+    QTRY_COMPARE(bufferSpy.size(), 1);
 }
 
 #endif // QT_CONFIG(cursor)

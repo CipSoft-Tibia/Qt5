@@ -1,19 +1,16 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/input/mock_input_router_client.h"
 
 #include "content/browser/renderer_host/input/input_router.h"
+#include "content/browser/scheduler/browser_ui_thread_scheduler.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-using base::TimeDelta;
 using blink::WebGestureEvent;
 using blink::WebInputEvent;
-using blink::WebMouseEvent;
 using blink::WebMouseWheelEvent;
-using blink::WebTouchEvent;
-using blink::WebTouchPoint;
 
 namespace content {
 
@@ -42,6 +39,9 @@ void MockInputRouterClient::DecrementInFlightEventCount(
     blink::mojom::InputEventResultSource ack_source) {
   --in_flight_event_count_;
 }
+
+void MockInputRouterClient::NotifyUISchedulerOfScrollStateUpdate(
+    BrowserUIThreadScheduler::ScrollState) {}
 
 void MockInputRouterClient::DidOverscroll(
     const ui::DidOverscrollParams& params) {

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpainterpath.h"
 #include "qpainterpath_p.h"
@@ -44,7 +8,6 @@
 #include <qdebug.h>
 #include <qiodevice.h>
 #include <qlist.h>
-#include <qmatrix.h>
 #include <qpen.h>
 #include <qpolygon.h>
 #include <qtextlayout.h>
@@ -88,17 +51,6 @@ static bool hasValidCoords(QRectF r)
 {
     return isValidCoord(r.x()) && isValidCoord(r.y()) && isValidCoord(r.width()) && isValidCoord(r.height());
 }
-
-struct QPainterPathPrivateDeleter
-{
-    static inline void cleanup(QPainterPathPrivate *d)
-    {
-        // note - we must downcast to QPainterPathData since QPainterPathPrivate
-        // has a non-virtual destructor!
-        if (d && !d->ref.deref())
-            delete static_cast<QPainterPathData *>(d);
-    }
-};
 
 // This value is used to determine the length of control point vectors
 // when approximating arc segments as curves. The factor is multiplied
@@ -557,12 +509,7 @@ QPainterPath::QPainterPath() noexcept
 
     \sa operator=()
 */
-QPainterPath::QPainterPath(const QPainterPath &other)
-    : d_ptr(other.d_ptr.data())
-{
-    if (d_ptr)
-        d_ptr->ref.ref();
-}
+QPainterPath::QPainterPath(const QPainterPath &other) = default;
 
 /*!
     Creates a QPainterPath object with the given \a startPoint as its
@@ -570,26 +517,14 @@ QPainterPath::QPainterPath(const QPainterPath &other)
 */
 
 QPainterPath::QPainterPath(const QPointF &startPoint)
-    : d_ptr(new QPainterPathData)
+    : d_ptr(new QPainterPathPrivate(startPoint))
 {
-    Element e = { startPoint.x(), startPoint.y(), MoveToElement };
-    d_func()->elements << e;
 }
 
 void QPainterPath::detach()
 {
-    if (d_ptr->ref.loadRelaxed() != 1)
-        detach_helper();
+    d_ptr.detach();
     setDirty(true);
-}
-
-/*!
-    \internal
-*/
-void QPainterPath::detach_helper()
-{
-    QPainterPathPrivate *data = new QPainterPathData(*d_func());
-    d_ptr.reset(data);
 }
 
 /*!
@@ -597,7 +532,7 @@ void QPainterPath::detach_helper()
 */
 void QPainterPath::ensureData_helper()
 {
-    QPainterPathPrivate *data = new QPainterPathData;
+    QPainterPathPrivate *data = new QPainterPathPrivate;
     data->elements.reserve(16);
     QPainterPath::Element e = { 0, 0, QPainterPath::MoveToElement };
     data->elements << e;
@@ -614,12 +549,8 @@ void QPainterPath::ensureData_helper()
 */
 QPainterPath &QPainterPath::operator=(const QPainterPath &other)
 {
-    if (other.d_func() != d_func()) {
-        QPainterPathPrivate *data = other.d_func();
-        if (data)
-            data->ref.ref();
-        d_ptr.reset(data);
-    }
+    QPainterPath copy(other);
+    swap(copy);
     return *this;
 }
 
@@ -669,7 +600,7 @@ void QPainterPath::clear()
 
     Attempts to allocate memory for at least \a size elements.
 
-    \sa clear(), capacity(), QVector::reserve()
+    \sa clear(), capacity(), QList::reserve()
     \since 5.13
 */
 void QPainterPath::reserve(int size)
@@ -754,7 +685,7 @@ void QPainterPath::moveTo(const QPointF &p)
     ensureData();
     detach();
 
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
     Q_ASSERT(!d->elements.isEmpty());
 
     d->require_moveTo = false;
@@ -804,7 +735,7 @@ void QPainterPath::lineTo(const QPointF &p)
     ensureData();
     detach();
 
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
     Q_ASSERT(!d->elements.isEmpty());
     d->maybeMoveTo();
     if (p == QPointF(d->elements.constLast()))
@@ -863,7 +794,7 @@ void QPainterPath::cubicTo(const QPointF &c1, const QPointF &c2, const QPointF &
     ensureData();
     detach();
 
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
     Q_ASSERT(!d->elements.isEmpty());
 
 
@@ -1202,6 +1133,9 @@ void QPainterPath::addEllipse(const QRectF &boundingRect)
     that the left end of the text's baseline lies at the specified \a
     point.
 
+    Some fonts may yield overlapping subpaths and will require the
+    \c Qt::WindingFill fill rule for correct rendering.
+
     \table 100%
     \row
     \li \inlineimage qpainterpath-addtext.png
@@ -1210,7 +1144,7 @@ void QPainterPath::addEllipse(const QRectF &boundingRect)
     \endtable
 
     \sa QPainter::drawText(), {QPainterPath#Composing a
-    QPainterPath}{Composing a QPainterPath}
+    QPainterPath}{Composing a QPainterPath}, setFillRule()
 */
 void QPainterPath::addText(const QPointF &point, const QFont &f, const QString &text)
 {
@@ -1294,7 +1228,7 @@ void QPainterPath::addPath(const QPainterPath &other)
     ensureData();
     detach();
 
-    QPainterPathData *d = reinterpret_cast<QPainterPathData *>(d_func());
+    QPainterPathPrivate *d = d_func();
     // Remove last moveto so we don't get multiple moveto's
     if (d->elements.constLast().type == MoveToElement)
         d->elements.remove(d->elements.size()-1);
@@ -1325,7 +1259,7 @@ void QPainterPath::connectPath(const QPainterPath &other)
     ensureData();
     detach();
 
-    QPainterPathData *d = reinterpret_cast<QPainterPathData *>(d_func());
+    QPainterPathPrivate *d = d_func();
     // Remove last moveto so we don't get multiple moveto's
     if (d->elements.constLast().type == MoveToElement)
         d->elements.remove(d->elements.size()-1);
@@ -1515,7 +1449,7 @@ QRectF QPainterPath::boundingRect() const
 {
     if (!d_ptr)
         return QRectF();
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
 
     if (d->dirtyBounds)
         computeBoundingRect();
@@ -1536,7 +1470,7 @@ QRectF QPainterPath::controlPointRect() const
 {
     if (!d_ptr)
         return QRectF();
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
 
     if (d->dirtyControlBounds)
         computeControlPointRect();
@@ -1665,19 +1599,6 @@ QList<QPolygonF> QPainterPath::toSubpathPolygons(const QTransform &matrix) const
     return flatCurves;
 }
 
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-  \overload
-  \obsolete
-
-  Use toSubpathPolygons(const QTransform &matrix) instead.
- */
-QList<QPolygonF> QPainterPath::toSubpathPolygons(const QMatrix &matrix) const
-{
-    return toSubpathPolygons(QTransform(matrix));
-}
-#endif // QT_DEPRECATED_SINCE(5, 15)
-
 /*!
     Converts the path into a list of polygons using the
     QTransform \a matrix, and returns the list.
@@ -1711,7 +1632,7 @@ QList<QPolygonF> QPainterPath::toFillPolygons(const QTransform &matrix) const
     if (count == 0)
         return polys;
 
-    QVector<QRectF> bounds;
+    QList<QRectF> bounds;
     bounds.reserve(count);
     for (int i=0; i<count; ++i)
         bounds += subpaths.at(i).boundingRect();
@@ -1722,7 +1643,7 @@ QList<QPolygonF> QPainterPath::toFillPolygons(const QTransform &matrix) const
         qDebug() << " bounds" << i << bounds.at(i);
 #endif
 
-    QVector< QVector<int> > isects;
+    QList< QList<int> > isects;
     isects.resize(count);
 
     // find all intersections
@@ -1750,12 +1671,12 @@ QList<QPolygonF> QPainterPath::toFillPolygons(const QTransform &matrix) const
 
     // flatten the sets of intersections
     for (int i=0; i<count; ++i) {
-        const QVector<int> &current_isects = isects.at(i);
+        const QList<int> &current_isects = isects.at(i);
         for (int j=0; j<current_isects.size(); ++j) {
             int isect_j = current_isects.at(j);
             if (isect_j == i)
                 continue;
-            const QVector<int> &isects_j = isects.at(isect_j);
+            const QList<int> &isects_j = isects.at(isect_j);
             for (int k = 0, size = isects_j.size(); k < size; ++k) {
                 int isect_k = isects_j.at(k);
                 if (isect_k != i && !isects.at(i).contains(isect_k)) {
@@ -1779,7 +1700,7 @@ QList<QPolygonF> QPainterPath::toFillPolygons(const QTransform &matrix) const
 
     // Join the intersected subpaths as rewinded polygons
     for (int i=0; i<count; ++i) {
-        const QVector<int> &subpath_list = isects.at(i);
+        const QList<int> &subpath_list = isects.at(i);
         if (!subpath_list.isEmpty()) {
             QPolygonF buildUp;
             for (int j=0; j<subpath_list.size(); ++j) {
@@ -1796,19 +1717,6 @@ QList<QPolygonF> QPainterPath::toFillPolygons(const QTransform &matrix) const
 
     return polys;
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-  \overload
-  \obsolete
-
-  Use toFillPolygons(const QTransform &matrix) instead.
- */
-QList<QPolygonF> QPainterPath::toFillPolygons(const QMatrix &matrix) const
-{
-    return toFillPolygons(QTransform(matrix));
-}
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 //same as qt_polygon_isect_line in qpolygon.cpp
 static void qt_painterpath_isect_line(const QPointF &p1,
@@ -1889,7 +1797,7 @@ bool QPainterPath::contains(const QPointF &pt) const
     if (isEmpty() || !controlPointRect().contains(pt))
         return false;
 
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
 
     int winding_number = 0;
 
@@ -2183,7 +2091,7 @@ bool QPainterPath::intersects(const QRectF &rect) const
 
     Q_D(QPainterPath);
 
-    // Check if the rectangle surounds any subpath...
+    // Check if the rectangle surrounds any subpath...
     for (int i=0; i<d->elements.size(); ++i) {
         const Element &e = d->elements.at(i);
         if (e.type == QPainterPath::MoveToElement && rect.contains(e))
@@ -2348,8 +2256,8 @@ static inline bool epsilonCompare(const QPointF &a, const QPointF &b, const QSiz
 
 bool QPainterPath::operator==(const QPainterPath &path) const
 {
-    QPainterPathData *d = reinterpret_cast<QPainterPathData *>(d_func());
-    QPainterPathData *other_d = path.d_func();
+    QPainterPathPrivate *d = d_func();
+    QPainterPathPrivate *other_d = path.d_func();
     if (other_d == d) {
         return true;
     } else if (!d || !other_d) {
@@ -2534,14 +2442,14 @@ QDataStream &operator>>(QDataStream &s, QPainterPath &p)
     int size;
     s >> size;
 
-    if (size == 0)
+    if (size == 0) {
+        p = {};
         return s;
+    }
 
     p.ensureData(); // in case if p.d_func() == 0
-    if (p.d_func()->elements.size() == 1) {
-        Q_ASSERT(p.d_func()->elements.at(0).type == QPainterPath::MoveToElement);
-        p.d_func()->elements.clear();
-    }
+    p.detach();
+    p.d_func()->elements.clear();
     for (int i=0; i<size; ++i) {
         int type;
         double x, y;
@@ -2564,9 +2472,7 @@ QDataStream &operator>>(QDataStream &s, QPainterPath &p)
     s >> fillRule;
     Q_ASSERT(fillRule == Qt::OddEvenFill || fillRule == Qt::WindingFill);
     p.d_func()->fillRule = Qt::FillRule(fillRule);
-    p.d_func()->dirtyBounds = true;
-    p.d_func()->dirtyControlBounds = true;
-    if (errorDetected)
+    if (errorDetected || p.d_func()->elements.isEmpty())
         p = QPainterPath();  // Better than to return path with possibly corrupt datastructure, which would likely cause crash
     return s;
 }
@@ -2624,7 +2530,7 @@ void qt_path_stroke_cubic_to(qfixed c1x, qfixed c1y,
     \endlist
 
     The setDashPattern() function accepts both a Qt::PenStyle object
-    and a vector representation of the pattern as argument.
+    and a list representation of the pattern as argument.
 
     In addition you can specify a curve's threshold, controlling the
     granularity with which a curve is drawn, using the
@@ -2843,16 +2749,16 @@ void QPainterPathStroker::setDashPattern(Qt::PenStyle style)
     dashPattern.  This function makes it possible to specify custom
     dash patterns.
 
-    Each element in the vector contains the lengths of the dashes and spaces
+    Each element in the list contains the lengths of the dashes and spaces
     in the stroke, beginning with the first dash in the first element, the
     first space in the second element, and alternating between dashes and
     spaces for each following pair of elements.
 
-    The vector can contain an odd number of elements, in which case the last
+    The list can contain an odd number of elements, in which case the last
     element will be extended by the length of the first element when the
     pattern repeats.
 */
-void QPainterPathStroker::setDashPattern(const QVector<qreal> &dashPattern)
+void QPainterPathStroker::setDashPattern(const QList<qreal> &dashPattern)
 {
     d_func()->dashPattern.clear();
     for (int i=0; i<dashPattern.size(); ++i)
@@ -2862,7 +2768,7 @@ void QPainterPathStroker::setDashPattern(const QVector<qreal> &dashPattern)
 /*!
     Returns the dash pattern for the generated outlines.
 */
-QVector<qreal> QPainterPathStroker::dashPattern() const
+QList<qreal> QPainterPathStroker::dashPattern() const
 {
     return d_func()->dashPattern;
 }
@@ -2903,7 +2809,6 @@ void QPainterPathStroker::setDashOffset(qreal offset)
 */
 QPolygonF QPainterPath::toFillPolygon(const QTransform &matrix) const
 {
-
     const QList<QPolygonF> flats = toSubpathPolygons(matrix);
     QPolygonF polygon;
     if (flats.isEmpty())
@@ -2918,19 +2823,6 @@ QPolygonF QPainterPath::toFillPolygon(const QTransform &matrix) const
     }
     return polygon;
 }
-
-#if QT_DEPRECATED_SINCE(5, 15)
-/*!
-  \overload
-  \obsolete
-
-  Use toFillPolygon(const QTransform &matrix) instead.
-*/
-QPolygonF QPainterPath::toFillPolygon(const QMatrix &matrix) const
-{
-    return toFillPolygon(QTransform(matrix));
-}
-#endif // QT_DEPRECATED_SINCE(5, 15)
 
 //derivative of the equation
 static inline qreal slopeAt(qreal t, qreal a, qreal b, qreal c, qreal d)
@@ -3279,131 +3171,6 @@ void QPainterPath::addRoundedRect(const QRectF &rect, qreal xRadius, qreal yRadi
   Adds the given rectangle \a x, \a y, \a w, \a h  with rounded corners to the path.
  */
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-  \obsolete
-
-  Adds a rectangle \a r with rounded corners to the path.
-
-  The \a xRnd and \a yRnd arguments specify how rounded the corners
-  should be. 0 is angled corners, 99 is maximum roundedness.
-
-  \sa addRoundedRect()
-*/
-void QPainterPath::addRoundRect(const QRectF &r, int xRnd, int yRnd)
-{
-    if(xRnd >= 100)                          // fix ranges
-        xRnd = 99;
-    if(yRnd >= 100)
-        yRnd = 99;
-    if(xRnd <= 0 || yRnd <= 0) {             // add normal rectangle
-        addRect(r);
-        return;
-    }
-
-    QRectF rect = r.normalized();
-
-    if (rect.isNull())
-        return;
-
-    qreal x = rect.x();
-    qreal y = rect.y();
-    qreal w = rect.width();
-    qreal h = rect.height();
-    qreal rxx2 = w*xRnd/100;
-    qreal ryy2 = h*yRnd/100;
-
-    ensureData();
-    detach();
-
-    bool first = d_func()->elements.size() < 2;
-
-    arcMoveTo(x, y, rxx2, ryy2, 180);
-    arcTo(x, y, rxx2, ryy2, 180, -90);
-    arcTo(x+w-rxx2, y, rxx2, ryy2, 90, -90);
-    arcTo(x+w-rxx2, y+h-ryy2, rxx2, ryy2, 0, -90);
-    arcTo(x, y+h-ryy2, rxx2, ryy2, 270, -90);
-    closeSubpath();
-
-    d_func()->require_moveTo = true;
-    d_func()->convex = first;
-}
-
-/*!
-  \obsolete
-
-  \fn bool QPainterPath::addRoundRect(const QRectF &rect, int roundness);
-  \since 4.3
-  \overload
-
-  Adds a rounded rectangle, \a rect, to the path.
-
-  The \a roundness argument specifies uniform roundness for the
-  rectangle.  Vertical and horizontal roundness factors will be
-  adjusted accordingly to act uniformly around both axes. Use this
-  method if you want a rectangle equally rounded across both the X and
-  Y axis.
-
-  \sa addRoundedRect()
-*/
-void QPainterPath::addRoundRect(const QRectF &rect,
-                                int roundness)
-{
-    int xRnd = roundness;
-    int yRnd = roundness;
-    if (rect.width() > rect.height())
-        xRnd = int(roundness * rect.height()/rect.width());
-    else
-        yRnd = int(roundness * rect.width()/rect.height());
-    addRoundedRect(rect, xRnd, yRnd, Qt::RelativeSize);
-}
-
-/*!
-  \obsolete
-
-  \fn void QPainterPath::addRoundRect(qreal x, qreal y, qreal w, qreal h, int xRnd, int yRnd);
-  \overload
-
-  Adds a rectangle with rounded corners to the path. The rectangle
-  is constructed from \a x, \a y, and the width and height \a w
-  and \a h.
-
-  The \a xRnd and \a yRnd arguments specify how rounded the corners
-  should be. 0 is angled corners, 99 is maximum roundedness.
-
-  \sa addRoundedRect()
- */
-void QPainterPath::addRoundRect(qreal x, qreal y, qreal w, qreal h,
-                                int xRnd, int yRnd)
-{
-    addRoundedRect(QRectF(x, y, w, h), xRnd, yRnd, Qt::RelativeSize);
-}
-
-/*!
-  \obsolete
-
-  \fn bool QPainterPath::addRoundRect(qreal x, qreal y, qreal width, qreal height, int roundness);
-  \since 4.3
-  \overload
-
-  Adds a rounded rectangle to the path, defined by the coordinates \a
-  x and \a y with the specified \a width and \a height.
-
-  The \a roundness argument specifies uniform roundness for the
-  rectangle. Vertical and horizontal roundness factors will be
-  adjusted accordingly to act uniformly around both axes. Use this
-  method if you want a rectangle equally rounded across both the X and
-  Y axis.
-
-  \sa addRoundedRect()
-*/
-void QPainterPath::addRoundRect(qreal x, qreal y, qreal w, qreal h,
-                                int roundness)
-{
-    addRoundedRect(QRectF(x, y, w, h), roundness, Qt::RelativeSize);
-}
-#endif
-
 /*!
     \since 4.3
 
@@ -3457,21 +3224,6 @@ QPainterPath QPainterPath::subtracted(const QPainterPath &p) const
     return clipper.clip(QPathClipper::BoolSub);
 }
 
-#if QT_DEPRECATED_SINCE(5, 13)
-/*!
-    \since 4.3
-    \obsolete
-
-    Use subtracted() instead.
-
-    \sa subtracted()
-*/
-QPainterPath QPainterPath::subtractedInverted(const QPainterPath &p) const
-{
-    return p.subtracted(*this);
-}
-#endif
-
 /*!
     \since 4.4
 
@@ -3483,7 +3235,7 @@ QPainterPath QPainterPath::subtractedInverted(const QPainterPath &p) const
 */
 QPainterPath QPainterPath::simplified() const
 {
-    if(isEmpty())
+    if (isEmpty())
         return *this;
     QPathClipper clipper(*this, QPainterPath());
     return clipper.clip(QPathClipper::Simplify);
@@ -3542,7 +3294,7 @@ void QPainterPath::setDirty(bool dirty)
 
 void QPainterPath::computeBoundingRect() const
 {
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
     d->dirtyBounds = false;
     if (!d_ptr) {
         d->bounds = QRect();
@@ -3589,7 +3341,7 @@ void QPainterPath::computeBoundingRect() const
 
 void QPainterPath::computeControlPointRect() const
 {
-    QPainterPathData *d = d_func();
+    QPainterPathPrivate *d = d_func();
     d->dirtyControlBounds = false;
     if (!d_ptr) {
         d->controlBounds = QRect();

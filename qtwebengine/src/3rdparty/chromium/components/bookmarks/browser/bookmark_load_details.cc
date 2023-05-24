@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/bookmarks/browser/bookmark_load_details.h"
 
+#include "base/guid.h"
 #include "components/bookmarks/browser/bookmark_client.h"
 #include "components/bookmarks/browser/titled_url_index.h"
 #include "components/bookmarks/browser/url_index.h"
@@ -12,12 +13,14 @@ namespace bookmarks {
 
 BookmarkLoadDetails::BookmarkLoadDetails(BookmarkClient* client)
     : load_managed_node_callback_(client->GetLoadManagedNodeCallback()),
-      index_(std::make_unique<TitledUrlIndex>()) {
+      index_(std::make_unique<TitledUrlIndex>()),
+      load_start_(base::TimeTicks::Now()) {
   // WARNING: do NOT add |client| as a member. Much of this code runs on another
   // thread, and |client_| is not thread safe, and/or may be destroyed before
   // this.
   root_node_ = std::make_unique<BookmarkNode>(
-      /*id=*/0, BookmarkNode::kRootNodeGuid, GURL());
+      /*id=*/0, base::GUID::ParseLowercase(BookmarkNode::kRootNodeGuid),
+      GURL());
   root_node_ptr_ = root_node_.get();
   // WARNING: order is important here, various places assume the order is
   // constant (but can vary between embedders with the initial visibility

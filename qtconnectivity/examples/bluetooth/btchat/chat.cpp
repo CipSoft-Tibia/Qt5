@@ -1,57 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "chat.h"
-#include "remoteselector.h"
-#include "chatserver.h"
 #include "chatclient.h"
+#include "chatserver.h"
+#include "remoteselector.h"
+#include "ui_chat.h"
 
 #include <QtCore/qdebug.h>
 
@@ -59,28 +13,68 @@
 #include <QtBluetooth/qbluetoothlocaldevice.h>
 #include <QtBluetooth/qbluetoothuuid.h>
 
-#ifdef Q_OS_ANDROID
-#include <QtAndroidExtras/QtAndroid>
+#include <QtGui/qguiapplication.h>
+#include <QtGui/qstylehints.h>
+
+#if QT_CONFIG(permissions)
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qpermissions.h>
+#include <QtWidgets/qmessagebox.h>
 #endif
 
-static const QLatin1String serviceUuid("e8e10f95-1a70-4b27-9ccf-02010264e9c8");
+using namespace Qt::StringLiterals;
+
+static constexpr auto serviceUuid = "e8e10f95-1a70-4b27-9ccf-02010264e9c8"_L1;
 #ifdef Q_OS_ANDROID
-static const QLatin1String reverseUuid("c8e96402-0102-cf9c-274b-701a950fe1e8");
+static constexpr auto reverseUuid = "c8e96402-0102-cf9c-274b-701a950fe1e8"_L1;
 #endif
 
 Chat::Chat(QWidget *parent)
-    : QDialog(parent), ui(new Ui_Chat)
+    : QDialog(parent), ui(new Ui::Chat)
 {
     //! [Construct UI]
     ui->setupUi(this);
 
-    connect(ui->quitButton, &QPushButton::clicked, this, &Chat::accept);
     connect(ui->connectButton, &QPushButton::clicked, this, &Chat::connectClicked);
     connect(ui->sendButton, &QPushButton::clicked, this, &Chat::sendClicked);
     //! [Construct UI]
+    ui->connectButton->setFocus();
+
+    QStyleHints *styleHints = qGuiApp->styleHints();
+    updateIcons(styleHints->colorScheme());
+    connect(styleHints, &QStyleHints::colorSchemeChanged, this, &Chat::updateIcons);
+
+    initBluetooth();
+}
+
+Chat::~Chat()
+{
+    qDeleteAll(clients);
+    delete ui;
+}
+
+void Chat::initBluetooth()
+{
+#if QT_CONFIG(permissions)
+    QBluetoothPermission permission{};
+    switch (qApp->checkPermission(permission)) {
+    case Qt::PermissionStatus::Undetermined:
+        qApp->requestPermission(permission, this, &Chat::initBluetooth);
+        return;
+    case Qt::PermissionStatus::Denied:
+        QMessageBox::warning(this, tr("Missing permissions"),
+                             tr("Permissions are needed to use Bluetooth. "
+                                "Please grant the permissions to this "
+                                "application in the system settings."));
+        qApp->quit();
+        return;
+    case Qt::PermissionStatus::Granted:
+        break; // proceed to initialization
+    }
+#endif // QT_CONFIG(permissions)
 
     localAdapters = QBluetoothLocalDevice::allDevices();
-    if (localAdapters.count() < 2) {
+    if (localAdapters.size() < 2) {
         ui->localAdapterBox->setVisible(false);
     } else {
         //we ignore more than two adapters
@@ -91,8 +85,14 @@ Chat::Chat(QWidget *parent)
         ui->firstAdapter->setChecked(true);
         connect(ui->firstAdapter, &QRadioButton::clicked, this, &Chat::newAdapterSelected);
         connect(ui->secondAdapter, &QRadioButton::clicked, this, &Chat::newAdapterSelected);
+    }
+
+    // make discoverable
+    if (!localAdapters.isEmpty()) {
         QBluetoothLocalDevice adapter(localAdapters.at(0).address());
         adapter.setHostMode(QBluetoothLocalDevice::HostDiscoverable);
+    } else {
+        qWarning("Local adapter is not found! The application might work incorrectly.");
     }
 
     //! [Create Chat Server]
@@ -112,10 +112,13 @@ Chat::Chat(QWidget *parent)
     //! [Get local device name]
 }
 
-Chat::~Chat()
+void Chat::updateIcons(Qt::ColorScheme scheme)
 {
-    qDeleteAll(clients);
-    delete server;
+    const QString bluetoothIconName = (scheme == Qt::ColorScheme::Dark) ? u"bluetooth_dark"_s
+                                                                        : u"bluetooth"_s;
+    const QString sendIconName = (scheme == Qt::ColorScheme::Dark) ? u"send_dark"_s : u"send"_s;
+    ui->sendButton->setIcon(QIcon::fromTheme(sendIconName));
+    ui->connectButton->setIcon(QIcon::fromTheme(bluetoothIconName));
 }
 
 //! [clientConnected clientDisconnected]
@@ -165,7 +168,7 @@ int Chat::adapterFromUserSelection() const
 
 void Chat::reactOnSocketError(const QString &error)
 {
-    ui->chat->insertPlainText(error);
+    ui->chat->insertPlainText(QString::fromLatin1("%1\n").arg(error));
 }
 
 //! [clientDisconnected]
@@ -191,23 +194,20 @@ void Chat::connectClicked()
 
     RemoteSelector remoteSelector(adapter);
 #ifdef Q_OS_ANDROID
-    if (QtAndroid::androidSdkVersion() >= 23)
-        remoteSelector.startDiscovery(QBluetoothUuid(reverseUuid));
-    else
-        remoteSelector.startDiscovery(QBluetoothUuid(serviceUuid));
+    // QTBUG-61392
+    Q_UNUSED(serviceUuid);
+    remoteSelector.startDiscovery(QBluetoothUuid(reverseUuid));
 #else
     remoteSelector.startDiscovery(QBluetoothUuid(serviceUuid));
 #endif
     if (remoteSelector.exec() == QDialog::Accepted) {
         QBluetoothServiceInfo service = remoteSelector.service();
 
-        qDebug() << "Connecting to service 2" << service.serviceName()
+        qDebug() << "Connecting to service" << service.serviceName()
                  << "on" << service.device().name();
 
         // Create client
-        qDebug() << "Going to create client";
         ChatClient *client = new ChatClient(this);
-qDebug() << "Connecting...";
 
         connect(client, &ChatClient::messageReceived,
                 this, &Chat::showMessage);
@@ -218,7 +218,6 @@ qDebug() << "Connecting...";
         connect(client, &ChatClient::socketErrorOccurred,
                 this, &Chat::reactOnSocketError);
         connect(this, &Chat::sendMessage, client, &ChatClient::sendMessage);
-qDebug() << "Start client";
         client->startClient(service);
 
         clients.append(client);
@@ -241,12 +240,19 @@ void Chat::sendClicked()
 
     ui->sendText->setEnabled(true);
     ui->sendButton->setEnabled(true);
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    // avoid keyboard automatically popping up again on mobile devices
+    ui->sendButton->setFocus();
+#else
+    ui->sendText->setFocus();
+#endif
 }
 //! [sendClicked]
 
 //! [showMessage]
 void Chat::showMessage(const QString &sender, const QString &message)
 {
+    ui->chat->moveCursor(QTextCursor::End);
     ui->chat->insertPlainText(QString::fromLatin1("%1: %2\n").arg(sender, message));
     ui->chat->ensureCursorVisible();
 }

@@ -23,7 +23,6 @@
 
 #include <srt/srt.h>
 
-#include "libavutil/avassert.h"
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/time.h"
@@ -53,7 +52,6 @@ enum SRTMode {
 typedef struct SRTContext {
     const AVClass *class;
     int fd;
-    int listen_fd;
     int eid;
     int64_t rw_timeout;
     int64_t listen_timeout;
@@ -67,6 +65,7 @@ typedef struct SRTContext {
     int enforced_encryption;
     int kmrefreshrate;
     int kmpreannounce;
+    int64_t snddropdelay;
 #endif
     int mss;
     int ffs;
@@ -91,6 +90,7 @@ typedef struct SRTContext {
     int messageapi;
     SRT_TRANSTYPE transtype;
     int linger;
+    int tsbpd;
 } SRTContext;
 
 #define D AV_OPT_FLAG_DECODING_PARAM
@@ -112,6 +112,7 @@ static const AVOption libsrt_options[] = {
     { "enforced_encryption", "Enforces that both connection parties have the same passphrase set",                              OFFSET(enforced_encryption), AV_OPT_TYPE_BOOL,  { .i64 = -1 }, -1, 1,         .flags = D|E },
     { "kmrefreshrate",       "The number of packets to be transmitted after which the encryption key is switched to a new key", OFFSET(kmrefreshrate),       AV_OPT_TYPE_INT,   { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
     { "kmpreannounce",       "The interval between when a new encryption key is sent and when switchover occurs",               OFFSET(kmpreannounce),       AV_OPT_TYPE_INT,   { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
+    { "snddropdelay",        "The sender's extra delay(in microseconds) before dropping packets",                                     OFFSET(snddropdelay),        AV_OPT_TYPE_INT64,   { .i64 = -2 }, -2, INT64_MAX,   .flags = D|E },
 #endif
     { "mss",            "The Maximum Segment Size",                                             OFFSET(mss),              AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, 1500,      .flags = D|E },
     { "ffs",            "Flight flag size (window size) (in bytes)",                            OFFSET(ffs),              AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
@@ -123,7 +124,7 @@ static const AVOption libsrt_options[] = {
     { "tsbpddelay",     "deprecated, same effect as latency option",                            OFFSET(latency),          AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, .flags = D|E },
     { "rcvlatency",     "receive latency (in microseconds)",                                    OFFSET(rcvlatency),       AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, .flags = D|E },
     { "peerlatency",    "peer latency (in microseconds)",                                       OFFSET(peerlatency),      AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, .flags = D|E },
-    { "tlpktdrop",      "Enable receiver pkt drop",                                             OFFSET(tlpktdrop),        AV_OPT_TYPE_BOOL,     { .i64 = -1 }, -1, 1,         .flags = D|E },
+    { "tlpktdrop",      "Enable too-late pkt drop",                                             OFFSET(tlpktdrop),        AV_OPT_TYPE_BOOL,     { .i64 = -1 }, -1, 1,         .flags = D|E },
     { "nakreport",      "Enable receiver to send periodic NAK reports",                         OFFSET(nakreport),        AV_OPT_TYPE_BOOL,     { .i64 = -1 }, -1, 1,         .flags = D|E },
     { "connect_timeout", "Connect timeout(in milliseconds). Caller default: 3000, rendezvous (x 10)",                            OFFSET(connect_timeout),  AV_OPT_TYPE_INT64, { .i64 = -1 }, -1, INT64_MAX, .flags = D|E },
     { "mode",           "Connection mode (caller, listener, rendezvous)",                       OFFSET(mode),             AV_OPT_TYPE_INT,      { .i64 = SRT_MODE_CALLER }, SRT_MODE_CALLER, SRT_MODE_RENDEZVOUS, .flags = D|E, "mode" },
@@ -135,12 +136,14 @@ static const AVOption libsrt_options[] = {
     { "lossmaxttl",     "Maximum possible packet reorder tolerance",                            OFFSET(lossmaxttl),       AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
     { "minversion",     "The minimum SRT version that is required from the peer",               OFFSET(minversion),       AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
     { "streamid",       "A string of up to 512 characters that an Initiator can pass to a Responder",  OFFSET(streamid),  AV_OPT_TYPE_STRING,   { .str = NULL },              .flags = D|E },
+    { "srt_streamid",   "A string of up to 512 characters that an Initiator can pass to a Responder",  OFFSET(streamid),  AV_OPT_TYPE_STRING,   { .str = NULL },              .flags = D|E },
     { "smoother",       "The type of Smoother used for the transmission for that socket",       OFFSET(smoother),         AV_OPT_TYPE_STRING,   { .str = NULL },              .flags = D|E },
     { "messageapi",     "Enable message API",                                                   OFFSET(messageapi),       AV_OPT_TYPE_BOOL,     { .i64 = -1 }, -1, 1,         .flags = D|E },
     { "transtype",      "The transmission type for the socket",                                 OFFSET(transtype),        AV_OPT_TYPE_INT,      { .i64 = SRTT_INVALID }, SRTT_LIVE, SRTT_INVALID, .flags = D|E, "transtype" },
     { "live",           NULL, 0, AV_OPT_TYPE_CONST,  { .i64 = SRTT_LIVE }, INT_MIN, INT_MAX, .flags = D|E, "transtype" },
     { "file",           NULL, 0, AV_OPT_TYPE_CONST,  { .i64 = SRTT_FILE }, INT_MIN, INT_MAX, .flags = D|E, "transtype" },
     { "linger",         "Number of seconds that the socket waits for unsent data when closing", OFFSET(linger),           AV_OPT_TYPE_INT,      { .i64 = -1 }, -1, INT_MAX,   .flags = D|E },
+    { "tsbpd",          "Timestamp-based packet delivery",                                      OFFSET(tsbpd),            AV_OPT_TYPE_BOOL,     { .i64 = -1 }, -1, 1,         .flags = D|E },
     { NULL }
 };
 
@@ -154,6 +157,15 @@ static int libsrt_neterrno(URLContext *h)
     return os_errno ? AVERROR(os_errno) : AVERROR_UNKNOWN;
 }
 
+static int libsrt_getsockopt(URLContext *h, int fd, SRT_SOCKOPT optname, const char * optnamestr, void * optval, int * optlen)
+{
+    if (srt_getsockopt(fd, 0, optname, optval, optlen) < 0) {
+        av_log(h, AV_LOG_ERROR, "failed to get option %s on socket: %s\n", optnamestr, srt_getlasterror_str());
+        return AVERROR(EIO);
+    }
+    return 0;
+}
+
 static int libsrt_socket_nonblock(int socket, int enable)
 {
     int ret, blocking = enable ? 0 : 1;
@@ -164,15 +176,25 @@ static int libsrt_socket_nonblock(int socket, int enable)
     return srt_setsockopt(socket, 0, SRTO_RCVSYN, &blocking, sizeof(blocking));
 }
 
-static int libsrt_network_wait_fd(URLContext *h, int eid, int fd, int write)
+static int libsrt_epoll_create(URLContext *h, int fd, int write)
+{
+    int modes = SRT_EPOLL_ERR | (write ? SRT_EPOLL_OUT : SRT_EPOLL_IN);
+    int eid = srt_epoll_create();
+    if (eid < 0)
+        return libsrt_neterrno(h);
+    if (srt_epoll_add_usock(eid, fd, &modes) < 0) {
+        srt_epoll_release(eid);
+        return libsrt_neterrno(h);
+    }
+    return eid;
+}
+
+static int libsrt_network_wait_fd(URLContext *h, int eid, int write)
 {
     int ret, len = 1, errlen = 1;
-    int modes = SRT_EPOLL_ERR | (write ? SRT_EPOLL_OUT : SRT_EPOLL_IN);
     SRTSOCKET ready[1];
     SRTSOCKET error[1];
 
-    if (srt_epoll_add_usock(eid, fd, &modes) < 0)
-        return libsrt_neterrno(h);
     if (write) {
         ret = srt_epoll_wait(eid, error, &errlen, ready, &len, POLLING_TIME, 0, 0, 0, 0);
     } else {
@@ -186,14 +208,12 @@ static int libsrt_network_wait_fd(URLContext *h, int eid, int fd, int write)
     } else {
         ret = errlen ? AVERROR(EIO) : 0;
     }
-    if (srt_epoll_remove_usock(eid, fd) < 0)
-        return libsrt_neterrno(h);
     return ret;
 }
 
 /* TODO de-duplicate code from ff_network_wait_fd_timeout() */
 
-static int libsrt_network_wait_fd_timeout(URLContext *h, int eid, int fd, int write, int64_t timeout, AVIOInterruptCB *int_cb)
+static int libsrt_network_wait_fd_timeout(URLContext *h, int eid, int write, int64_t timeout, AVIOInterruptCB *int_cb)
 {
     int ret;
     int64_t wait_start = 0;
@@ -201,7 +221,7 @@ static int libsrt_network_wait_fd_timeout(URLContext *h, int eid, int fd, int wr
     while (1) {
         if (ff_check_interrupt(int_cb))
             return AVERROR_EXIT;
-        ret = libsrt_network_wait_fd(h, eid, fd, write);
+        ret = libsrt_network_wait_fd(h, eid, write);
         if (ret != AVERROR(EAGAIN))
             return ret;
         if (timeout > 0) {
@@ -217,18 +237,19 @@ static int libsrt_listen(int eid, int fd, const struct sockaddr *addr, socklen_t
 {
     int ret;
     int reuse = 1;
+    /* Max streamid length plus an extra space for the terminating null character */
+    char streamid[513];
+    int streamid_len = sizeof(streamid);
     if (srt_setsockopt(fd, SOL_SOCKET, SRTO_REUSEADDR, &reuse, sizeof(reuse))) {
         av_log(h, AV_LOG_WARNING, "setsockopt(SRTO_REUSEADDR) failed\n");
     }
-    ret = srt_bind(fd, addr, addrlen);
-    if (ret)
+    if (srt_bind(fd, addr, addrlen))
         return libsrt_neterrno(h);
 
-    ret = srt_listen(fd, 1);
-    if (ret)
+    if (srt_listen(fd, 1))
         return libsrt_neterrno(h);
 
-    ret = libsrt_network_wait_fd_timeout(h, eid, fd, 1, timeout, &h->interrupt_callback);
+    ret = libsrt_network_wait_fd_timeout(h, eid, 1, timeout, &h->interrupt_callback);
     if (ret < 0)
         return ret;
 
@@ -237,6 +258,9 @@ static int libsrt_listen(int eid, int fd, const struct sockaddr *addr, socklen_t
         return libsrt_neterrno(h);
     if (libsrt_socket_nonblock(ret, 1) < 0)
         av_log(h, AV_LOG_DEBUG, "libsrt_socket_nonblock failed\n");
+    if (!libsrt_getsockopt(h, ret, SRTO_STREAMID, "SRTO_STREAMID", streamid, &streamid_len))
+        /* Note: returned streamid_len doesn't count the terminating null character */
+        av_log(h, AV_LOG_VERBOSE, "accept streamid [%s], length %d\n", streamid, streamid_len);
 
     return ret;
 }
@@ -245,11 +269,10 @@ static int libsrt_listen_connect(int eid, int fd, const struct sockaddr *addr, s
 {
     int ret;
 
-    ret = srt_connect(fd, addr, addrlen);
-    if (ret < 0)
+    if (srt_connect(fd, addr, addrlen) < 0)
         return libsrt_neterrno(h);
 
-    ret = libsrt_network_wait_fd_timeout(h, eid, fd, 1, timeout, &h->interrupt_callback);
+    ret = libsrt_network_wait_fd_timeout(h, eid, 1, timeout, &h->interrupt_callback);
     if (ret < 0) {
         if (will_try_next) {
             av_log(h, AV_LOG_WARNING,
@@ -267,15 +290,6 @@ static int libsrt_setsockopt(URLContext *h, int fd, SRT_SOCKOPT optname, const c
 {
     if (srt_setsockopt(fd, 0, optname, optval, optlen) < 0) {
         av_log(h, AV_LOG_ERROR, "failed to set option %s on socket: %s\n", optnamestr, srt_getlasterror_str());
-        return AVERROR(EIO);
-    }
-    return 0;
-}
-
-static int libsrt_getsockopt(URLContext *h, int fd, SRT_SOCKOPT optname, const char * optnamestr, void * optval, int * optlen)
-{
-    if (srt_getsockopt(fd, 0, optname, optval, optlen) < 0) {
-        av_log(h, AV_LOG_ERROR, "failed to get option %s on socket: %s\n", optnamestr, srt_getlasterror_str());
         return AVERROR(EIO);
     }
     return 0;
@@ -306,6 +320,9 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
     int latency = s->latency / 1000;
     int rcvlatency = s->rcvlatency / 1000;
     int peerlatency = s->peerlatency / 1000;
+#if SRT_VERSION_VALUE >= 0x010302
+    int snddropdelay = s->snddropdelay > 0 ? s->snddropdelay / 1000 : s->snddropdelay;
+#endif
     int connect_timeout = s->connect_timeout;
 
     if ((s->mode == SRT_MODE_RENDEZVOUS && libsrt_setsockopt(h, fd, SRTO_RENDEZVOUS, "SRTO_RENDEZVOUS", &yes, sizeof(yes)) < 0) ||
@@ -322,6 +339,7 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
 #endif
         (s->kmrefreshrate >= 0 && libsrt_setsockopt(h, fd, SRTO_KMREFRESHRATE, "SRTO_KMREFRESHRATE", &s->kmrefreshrate, sizeof(s->kmrefreshrate)) < 0) ||
         (s->kmpreannounce >= 0 && libsrt_setsockopt(h, fd, SRTO_KMPREANNOUNCE, "SRTO_KMPREANNOUNCE", &s->kmpreannounce, sizeof(s->kmpreannounce)) < 0) ||
+        (s->snddropdelay  >=-1 && libsrt_setsockopt(h, fd, SRTO_SNDDROPDELAY,  "SRTO_SNDDROPDELAY",  &snddropdelay, sizeof(snddropdelay)) < 0) ||
 #endif
         (s->mss >= 0 && libsrt_setsockopt(h, fd, SRTO_MSS, "SRTO_MSS", &s->mss, sizeof(s->mss)) < 0) ||
         (s->ffs >= 0 && libsrt_setsockopt(h, fd, SRTO_FC, "SRTO_FC", &s->ffs, sizeof(s->ffs)) < 0) ||
@@ -330,7 +348,7 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
         (s->latency >= 0 && libsrt_setsockopt(h, fd, SRTO_LATENCY, "SRTO_LATENCY", &latency, sizeof(latency)) < 0) ||
         (s->rcvlatency >= 0 && libsrt_setsockopt(h, fd, SRTO_RCVLATENCY, "SRTO_RCVLATENCY", &rcvlatency, sizeof(rcvlatency)) < 0) ||
         (s->peerlatency >= 0 && libsrt_setsockopt(h, fd, SRTO_PEERLATENCY, "SRTO_PEERLATENCY", &peerlatency, sizeof(peerlatency)) < 0) ||
-        (s->tlpktdrop >= 0 && libsrt_setsockopt(h, fd, SRTO_TLPKTDROP, "SRTO_TLPKDROP", &s->tlpktdrop, sizeof(s->tlpktdrop)) < 0) ||
+        (s->tlpktdrop >= 0 && libsrt_setsockopt(h, fd, SRTO_TLPKTDROP, "SRTO_TLPKTDROP", &s->tlpktdrop, sizeof(s->tlpktdrop)) < 0) ||
         (s->nakreport >= 0 && libsrt_setsockopt(h, fd, SRTO_NAKREPORT, "SRTO_NAKREPORT", &s->nakreport, sizeof(s->nakreport)) < 0) ||
         (connect_timeout >= 0 && libsrt_setsockopt(h, fd, SRTO_CONNTIMEO, "SRTO_CONNTIMEO", &connect_timeout, sizeof(connect_timeout)) <0 ) ||
         (s->sndbuf >= 0 && libsrt_setsockopt(h, fd, SRTO_SNDBUF, "SRTO_SNDBUF", &s->sndbuf, sizeof(s->sndbuf)) < 0) ||
@@ -345,7 +363,8 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
 #endif
         (s->messageapi >= 0 && libsrt_setsockopt(h, fd, SRTO_MESSAGEAPI, "SRTO_MESSAGEAPI", &s->messageapi, sizeof(s->messageapi)) < 0) ||
         (s->payload_size >= 0 && libsrt_setsockopt(h, fd, SRTO_PAYLOADSIZE, "SRTO_PAYLOADSIZE", &s->payload_size, sizeof(s->payload_size)) < 0) ||
-        ((h->flags & AVIO_FLAG_WRITE) && libsrt_setsockopt(h, fd, SRTO_SENDER, "SRTO_SENDER", &yes, sizeof(yes)) < 0)) {
+        ((h->flags & AVIO_FLAG_WRITE) && libsrt_setsockopt(h, fd, SRTO_SENDER, "SRTO_SENDER", &yes, sizeof(yes)) < 0) ||
+        (s->tsbpd >= 0 && libsrt_setsockopt(h, fd, SRTO_TSBPDMODE, "SRTO_TSBPDMODE", &s->tsbpd, sizeof(s->tsbpd)) < 0)) {
         return AVERROR(EIO);
     }
 
@@ -363,7 +382,7 @@ static int libsrt_set_options_pre(URLContext *h, int fd)
 static int libsrt_setup(URLContext *h, const char *uri, int flags)
 {
     struct addrinfo hints = { 0 }, *ai, *cur_ai;
-    int port, fd = -1, listen_fd = -1;
+    int port, fd;
     SRTContext *s = h->priv_data;
     const char *p;
     char buf[256];
@@ -371,12 +390,7 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
     char hostname[1024],proto[1024],path[1024];
     char portstr[10];
     int64_t open_timeout = 0;
-    int eid;
-
-    eid = srt_epoll_create();
-    if (eid < 0)
-        return libsrt_neterrno(h);
-    s->eid = eid;
+    int eid, write_eid;
 
     av_url_split(proto, sizeof(proto), NULL, 0, hostname, sizeof(hostname),
         &port, path, sizeof(path), uri);
@@ -389,10 +403,10 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
     p = strchr(uri, '?');
     if (p) {
         if (av_find_info_tag(buf, sizeof(buf), "timeout", p)) {
-            s->rw_timeout = strtol(buf, NULL, 10);
+            s->rw_timeout = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "listen_timeout", p)) {
-            s->listen_timeout = strtol(buf, NULL, 10);
+            s->listen_timeout = strtoll(buf, NULL, 10);
         }
     }
     if (s->rw_timeout >= 0) {
@@ -415,7 +429,11 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
 
  restart:
 
+#if SRT_VERSION_VALUE >= 0x010401
+    fd = srt_create_socket();
+#else
     fd = srt_socket(cur_ai->ai_family, cur_ai->ai_socktype, 0);
+#endif
     if (fd < 0) {
         ret = libsrt_neterrno(h);
         goto fail;
@@ -436,21 +454,30 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
     if (libsrt_socket_nonblock(fd, 1) < 0)
         av_log(h, AV_LOG_DEBUG, "libsrt_socket_nonblock failed\n");
 
+    ret = write_eid = libsrt_epoll_create(h, fd, 1);
+    if (ret < 0)
+        goto fail1;
     if (s->mode == SRT_MODE_LISTENER) {
         // multi-client
-        if ((ret = libsrt_listen(s->eid, fd, cur_ai->ai_addr, cur_ai->ai_addrlen, h, s->listen_timeout)) < 0)
+        ret = libsrt_listen(write_eid, fd, cur_ai->ai_addr, cur_ai->ai_addrlen, h, s->listen_timeout);
+        srt_epoll_release(write_eid);
+        if (ret < 0)
             goto fail1;
-        listen_fd = fd;
+        srt_close(fd);
         fd = ret;
     } else {
         if (s->mode == SRT_MODE_RENDEZVOUS) {
-            ret = srt_bind(fd, cur_ai->ai_addr, cur_ai->ai_addrlen);
-            if (ret)
+            if (srt_bind(fd, cur_ai->ai_addr, cur_ai->ai_addrlen)) {
+                ret = libsrt_neterrno(h);
+                srt_epoll_release(write_eid);
                 goto fail1;
+            }
         }
 
-        if ((ret = libsrt_listen_connect(s->eid, fd, cur_ai->ai_addr, cur_ai->ai_addrlen,
-                                          open_timeout, h, !!cur_ai->ai_next)) < 0) {
+        ret = libsrt_listen_connect(write_eid, fd, cur_ai->ai_addr, cur_ai->ai_addrlen,
+                                    open_timeout, h, !!cur_ai->ai_next);
+        srt_epoll_release(write_eid);
+        if (ret < 0) {
             if (ret == AVERROR_EXIT)
                 goto fail1;
             else
@@ -471,9 +498,13 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
             h->max_packet_size = packet_size;
     }
 
+    ret = eid = libsrt_epoll_create(h, fd, flags & AVIO_FLAG_WRITE);
+    if (eid < 0)
+        goto fail1;
+
     h->is_streamed = 1;
     s->fd = fd;
-    s->listen_fd = listen_fd;
+    s->eid = eid;
 
     freeaddrinfo(ai);
     return 0;
@@ -484,16 +515,12 @@ static int libsrt_setup(URLContext *h, const char *uri, int flags)
         cur_ai = cur_ai->ai_next;
         if (fd >= 0)
             srt_close(fd);
-        if (listen_fd >= 0)
-            srt_close(listen_fd);
         ret = 0;
         goto restart;
     }
  fail1:
     if (fd >= 0)
         srt_close(fd);
-    if (listen_fd >= 0)
-        srt_close(listen_fd);
     freeaddrinfo(ai);
     return ret;
 }
@@ -502,7 +529,7 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
 {
     SRTContext *s = h->priv_data;
     const char * p;
-    char buf[256];
+    char buf[1024];
     int ret = 0;
 
     if (srt_startup() < 0) {
@@ -513,7 +540,7 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
     p = strchr(uri, '?');
     if (p) {
         if (av_find_info_tag(buf, sizeof(buf), "maxbw", p)) {
-            s->maxbw = strtoll(buf, NULL, 0);
+            s->maxbw = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "pbkeylen", p)) {
             s->pbkeylen = strtol(buf, NULL, 10);
@@ -532,6 +559,9 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
         if (av_find_info_tag(buf, sizeof(buf), "kmpreannounce", p)) {
             s->kmpreannounce = strtol(buf, NULL, 10);
         }
+        if (av_find_info_tag(buf, sizeof(buf), "snddropdelay", p)) {
+            s->snddropdelay = strtoll(buf, NULL, 10);
+        }
 #endif
         if (av_find_info_tag(buf, sizeof(buf), "mss", p)) {
             s->mss = strtol(buf, NULL, 10);
@@ -549,19 +579,19 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
             s->inputbw = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "oheadbw", p)) {
-            s->oheadbw = strtoll(buf, NULL, 10);
+            s->oheadbw = strtol(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "latency", p)) {
-            s->latency = strtol(buf, NULL, 10);
+            s->latency = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "tsbpddelay", p)) {
-            s->latency = strtol(buf, NULL, 10);
+            s->latency = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "rcvlatency", p)) {
-            s->rcvlatency = strtol(buf, NULL, 10);
+            s->rcvlatency = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "peerlatency", p)) {
-            s->peerlatency = strtol(buf, NULL, 10);
+            s->peerlatency = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "tlpktdrop", p)) {
             s->tlpktdrop = strtol(buf, NULL, 10);
@@ -570,7 +600,7 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
             s->nakreport = strtol(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "connect_timeout", p)) {
-            s->connect_timeout = strtol(buf, NULL, 10);
+            s->connect_timeout = strtoll(buf, NULL, 10);
         }
         if (av_find_info_tag(buf, sizeof(buf), "payload_size", p) ||
             av_find_info_tag(buf, sizeof(buf), "pkt_size", p)) {
@@ -584,7 +614,8 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
             } else if (!strcmp(buf, "rendezvous")) {
                 s->mode = SRT_MODE_RENDEZVOUS;
             } else {
-                return AVERROR(EIO);
+                ret = AVERROR(EINVAL);
+                goto err;
             }
         }
         if (av_find_info_tag(buf, sizeof(buf), "sndbuf", p)) {
@@ -632,10 +663,15 @@ static int libsrt_open(URLContext *h, const char *uri, int flags)
             s->linger = strtol(buf, NULL, 10);
         }
     }
-    return libsrt_setup(h, uri, flags);
+    ret = libsrt_setup(h, uri, flags);
+    if (ret < 0)
+        goto err;
+    return 0;
+
 err:
     av_freep(&s->smoother);
     av_freep(&s->streamid);
+    srt_cleanup();
     return ret;
 }
 
@@ -645,7 +681,7 @@ static int libsrt_read(URLContext *h, uint8_t *buf, int size)
     int ret;
 
     if (!(h->flags & AVIO_FLAG_NONBLOCK)) {
-        ret = libsrt_network_wait_fd_timeout(h, s->eid, s->fd, 0, h->rw_timeout, &h->interrupt_callback);
+        ret = libsrt_network_wait_fd_timeout(h, s->eid, 0, h->rw_timeout, &h->interrupt_callback);
         if (ret)
             return ret;
     }
@@ -664,12 +700,12 @@ static int libsrt_write(URLContext *h, const uint8_t *buf, int size)
     int ret;
 
     if (!(h->flags & AVIO_FLAG_NONBLOCK)) {
-        ret = libsrt_network_wait_fd_timeout(h, s->eid, s->fd, 1, h->rw_timeout, &h->interrupt_callback);
+        ret = libsrt_network_wait_fd_timeout(h, s->eid, 1, h->rw_timeout, &h->interrupt_callback);
         if (ret)
             return ret;
     }
 
-    ret = srt_sendmsg(s->fd, buf, size, -1, 0);
+    ret = srt_sendmsg(s->fd, buf, size, -1, 1);
     if (ret < 0) {
         ret = libsrt_neterrno(h);
     }
@@ -681,22 +717,12 @@ static int libsrt_close(URLContext *h)
 {
     SRTContext *s = h->priv_data;
 
-    srt_close(s->fd);
-
-    if (s->listen_fd >= 0)
-        srt_close(s->listen_fd);
-
     srt_epoll_release(s->eid);
+    srt_close(s->fd);
 
     srt_cleanup();
 
     return 0;
-}
-
-static int libsrt_get_file_handle(URLContext *h)
-{
-    SRTContext *s = h->priv_data;
-    return s->fd;
 }
 
 static const AVClass libsrt_class = {
@@ -712,7 +738,6 @@ const URLProtocol ff_libsrt_protocol = {
     .url_read            = libsrt_read,
     .url_write           = libsrt_write,
     .url_close           = libsrt_close,
-    .url_get_file_handle = libsrt_get_file_handle,
     .priv_data_size      = sizeof(SRTContext),
     .flags               = URL_PROTOCOL_FLAG_NETWORK,
     .priv_data_class     = &libsrt_class,

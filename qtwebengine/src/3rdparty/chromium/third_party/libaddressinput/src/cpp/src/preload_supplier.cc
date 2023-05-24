@@ -22,7 +22,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -47,10 +46,9 @@ namespace {
 // reader would consider to be "the same". The default implementation just does
 // case insensitive string comparison, but StringCompare can be overridden with
 // more sophisticated implementations.
-class IndexLess : public std::binary_function<std::string, std::string, bool> {
+class IndexLess {
  public:
-  result_type operator()(const first_argument_type& a,
-                         const second_argument_type& b) const {
+  bool operator()(const std::string& a, const std::string& b) const {
     static const StringCompare kStringCompare;
     return kStringCompare.NaturalLess(a, b);
   }
@@ -302,7 +300,7 @@ const Rule* PreloadSupplier::GetRule(const LookupKey& lookup_key) const {
 
 void PreloadSupplier::LoadRules(const std::string& region_code,
                                 const Callback& loaded) {
-  const std::string& key = KeyFromRegionCode(region_code);
+  const std::string key = KeyFromRegionCode(region_code);
 
   if (IsLoadedKey(key)) {
     loaded(true, region_code, 0);
@@ -343,7 +341,7 @@ bool PreloadSupplier::GetRuleHierarchy(const LookupKey& lookup_key,
         RegionDataConstants::GetMaxLookupKeyDepth(lookup_key.GetRegionCode()));
 
     for (size_t depth = 0; depth <= max_depth; ++depth) {
-      const std::string& key = lookup_key.ToKeyString(depth);
+      const std::string key = lookup_key.ToKeyString(depth);
       const Rule* rule = nullptr;
       auto it = rule_index_->find(key);
       if (it != rule_index_->end()) {

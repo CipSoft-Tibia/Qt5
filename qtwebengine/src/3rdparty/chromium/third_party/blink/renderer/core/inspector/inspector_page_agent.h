@@ -31,18 +31,21 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_INSPECTOR_PAGE_AGENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_INSPECTOR_PAGE_AGENT_H_
 
-#include "base/macros.h"
-#include "third_party/blink/public/mojom/v8_cache_options.mojom-blink.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/frame/ad_tracker.h"
 #include "third_party/blink/renderer/core/inspector/inspector_base_agent.h"
-#include "third_party/blink/renderer/core/inspector/protocol/Page.h"
+#include "third_party/blink/renderer/core/inspector/protocol/page.h"
 #include "third_party/blink/renderer/core/loader/frame_loader_types.h"
 #include "third_party/blink/renderer/core/page/chrome_client.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "v8/include/v8-inspector.h"
 
 namespace blink {
+
+class GenericFontFamilySettings;
 
 namespace probe {
 class RecalculateStyle;
@@ -52,10 +55,11 @@ class UpdateLayout;
 class Resource;
 class Document;
 class DocumentLoader;
+enum class FrameDetachType;
 class InspectedFrames;
 class InspectorResourceContentLoader;
 class LocalFrame;
-class ScriptSourceCode;
+class ClassicScript;
 enum class ResourceType : uint8_t;
 
 using blink::protocol::Maybe;
@@ -84,10 +88,10 @@ class CORE_EXPORT InspectorPageAgent final
     kWebSocketResource,
     kManifestResource,
     kSignedExchangeResource,
+    kPingResource,
     kOtherResource
   };
 
-  static HeapVector<Member<Document>> ImportsForFrame(LocalFrame*);
   static bool CachedResourceContent(const Resource*,
                                     String* result,
                                     bool* base64_encoded);
@@ -105,6 +109,8 @@ class CORE_EXPORT InspectorPageAgent final
                      Client*,
                      InspectorResourceContentLoader*,
                      v8_inspector::V8InspectorSession*);
+  InspectorPageAgent(const InspectorPageAgent&) = delete;
+  InspectorPageAgent& operator=(const InspectorPageAgent&) = delete;
 
   // Page API for frontend
   protocol::Response enable() override;
@@ -116,6 +122,7 @@ class CORE_EXPORT InspectorPageAgent final
   protocol::Response addScriptToEvaluateOnNewDocument(
       const String& source,
       Maybe<String> world_name,
+      Maybe<bool> include_command_line_api,
       String* identifier) override;
   protocol::Response removeScriptToEvaluateOnNewDocument(
       const String& identifier) override;
@@ -131,6 +138,9 @@ class CORE_EXPORT InspectorPageAgent final
   void getResourceContent(const String& frame_id,
                           const String& url,
                           std::unique_ptr<GetResourceContentCallback>) override;
+  protocol::Response getAdScriptId(
+      const String& frame_id,
+      Maybe<protocol::Page::AdScriptId>* ad_script_id) override;
   void searchInResource(const String& frame_id,
                         const String& url,
                         const String& query,
@@ -141,6 +151,15 @@ class CORE_EXPORT InspectorPageAgent final
                                         const String& html) override;
   protocol::Response setBypassCSP(bool enabled) override;
 
+  protocol::Response getPermissionsPolicyState(
+      const String& frame_id,
+      std::unique_ptr<
+          protocol::Array<protocol::Page::PermissionsPolicyFeatureState>>*)
+      override;
+  protocol::Response getOriginTrials(
+      const String& frame_id,
+      std::unique_ptr<protocol::Array<protocol::Page::OriginTrial>>*) override;
+
   protocol::Response startScreencast(Maybe<String> format,
                                      Maybe<int> quality,
                                      Maybe<int> max_width,
@@ -148,21 +167,29 @@ class CORE_EXPORT InspectorPageAgent final
                                      Maybe<int> every_nth_frame) override;
   protocol::Response stopScreencast() override;
   protocol::Response getLayoutMetrics(
-      std::unique_ptr<protocol::Page::LayoutViewport>*,
-      std::unique_ptr<protocol::Page::VisualViewport>*,
-      std::unique_ptr<protocol::DOM::Rect>*) override;
-  protocol::Response createIsolatedWorld(const String& frame_id,
-                                         Maybe<String> world_name,
-                                         Maybe<bool> grant_universal_access,
-                                         int* execution_context_id) override;
+      std::unique_ptr<protocol::Page::LayoutViewport>* out_layout_viewport,
+      std::unique_ptr<protocol::Page::VisualViewport>* out_visual_viewport,
+      std::unique_ptr<protocol::DOM::Rect>* out_content_size,
+      std::unique_ptr<protocol::Page::LayoutViewport>* out_css_layout_viewport,
+      std::unique_ptr<protocol::Page::VisualViewport>* out_css_visual_viewport,
+      std::unique_ptr<protocol::DOM::Rect>* out_css_content_size) override;
+  void createIsolatedWorld(
+      const String& frame_id,
+      Maybe<String> world_name,
+      Maybe<bool> grant_universal_access,
+      std::unique_ptr<CreateIsolatedWorldCallback>) override;
   protocol::Response setFontFamilies(
-      std::unique_ptr<protocol::Page::FontFamilies>) override;
+      std::unique_ptr<protocol::Page::FontFamilies>,
+      Maybe<protocol::Array<protocol::Page::ScriptFontFamilies>> forScripts)
+      override;
   protocol::Response setFontSizes(
       std::unique_ptr<protocol::Page::FontSizes>) override;
   protocol::Response generateTestReport(const String& message,
                                         Maybe<String> group) override;
 
-  protocol::Response setProduceCompilationCache(bool enabled) override;
+  protocol::Response produceCompilationCache(
+      std::unique_ptr<protocol::Array<protocol::Page::CompilationCacheParams>>
+          scripts) override;
   protocol::Response addCompilationCache(const String& url,
                                          const protocol::Binary& data) override;
   protocol::Response clearCompilationCache() override;
@@ -175,8 +202,12 @@ class CORE_EXPORT InspectorPageAgent final
   void DomContentLoadedEventFired(LocalFrame*);
   void LoadEventFired(LocalFrame*);
   void WillCommitLoad(LocalFrame*, DocumentLoader*);
-  void FrameAttachedToParent(LocalFrame*);
-  void FrameDetachedFromParent(LocalFrame*);
+  void DidRestoreFromBackForwardCache(LocalFrame*);
+  void DidOpenDocument(LocalFrame*, DocumentLoader*);
+  void FrameAttachedToParent(
+      LocalFrame*,
+      const absl::optional<AdScriptIdentifier>& ad_script_on_stack);
+  void FrameDetachedFromParent(LocalFrame*, FrameDetachType);
   void FrameStartedLoading(LocalFrame*);
   void FrameStoppedLoading(LocalFrame*);
   void FrameRequestedNavigation(Frame* target_frame,
@@ -205,12 +236,14 @@ class CORE_EXPORT InspectorPageAgent final
                   const AtomicString&,
                   const WebWindowFeatures&,
                   bool);
-  void ConsumeCompilationCache(const ScriptSourceCode& source,
-                               v8::ScriptCompiler::CachedData**);
-  void ProduceCompilationCache(const ScriptSourceCode& source,
-                               v8::Local<v8::Script> script);
+  void ApplyCompilationModeOverride(const ClassicScript&,
+                                    v8::ScriptCompiler::CachedData**,
+                                    v8::ScriptCompiler::CompileOptions*);
+  void DidProduceCompilationCache(const ClassicScript&,
+                                  v8::Local<v8::Script> script);
   void FileChooserOpened(LocalFrame* frame,
                          HTMLInputElement* element,
+                         bool multiple,
                          bool* intercepted);
 
   // Inspector Controller API
@@ -220,6 +253,8 @@ class CORE_EXPORT InspectorPageAgent final
   void Trace(Visitor*) const override;
 
  private:
+  struct IsolatedWorldRequest;
+
   void GetResourceContentAfterResourcesContentLoaded(
       const String& frame_id,
       const String& url,
@@ -240,39 +275,50 @@ class CORE_EXPORT InspectorPageAgent final
 
   void PageLayoutInvalidated(bool resized);
 
+  protocol::Response setFontFamilies(
+      GenericFontFamilySettings& family_settings,
+      const protocol::Array<protocol::Page::ScriptFontFamilies>& forScripts);
   std::unique_ptr<protocol::Page::Frame> BuildObjectForFrame(LocalFrame*);
   std::unique_ptr<protocol::Page::FrameTree> BuildObjectForFrameTree(
       LocalFrame*);
   std::unique_ptr<protocol::Page::FrameResourceTree> BuildObjectForResourceTree(
       LocalFrame*);
+  void CreateIsolatedWorldImpl(LocalFrame& frame,
+                               String world_name,
+                               bool grant_universal_access,
+                               std::unique_ptr<CreateIsolatedWorldCallback>);
+
   Member<InspectedFrames> inspected_frames_;
   HashMap<String, protocol::Binary> compilation_cache_;
+  // TODO(caseq): should this be stored as InspectorAgentState::StringMap
+  // instead? Current use cases do not require this, but we might eventually
+  // reconsider. Value is true iff eager compilation requested.
+  HashMap<String, bool> requested_compilation_cache_;
+
+  HeapHashMap<WeakMember<LocalFrame>, Vector<IsolatedWorldRequest>>
+      pending_isolated_worlds_;
   using FrameIsolatedWorlds = HashMap<String, scoped_refptr<DOMWrapperWorld>>;
   HeapHashMap<WeakMember<LocalFrame>, FrameIsolatedWorlds> isolated_worlds_;
+  HashMap<String, std::unique_ptr<blink::AdScriptIdentifier>>
+      ad_script_identifiers_;
   v8_inspector::V8InspectorSession* v8_session_;
   Client* client_;
   String pending_script_to_evaluate_on_load_once_;
   String script_to_evaluate_on_load_once_;
   Member<InspectorResourceContentLoader> inspector_resource_content_loader_;
-  bool intercept_file_chooser_ = false;
   int resource_content_loader_client_id_;
+  InspectorAgentState::Boolean intercept_file_chooser_;
   InspectorAgentState::Boolean enabled_;
   InspectorAgentState::Boolean screencast_enabled_;
   InspectorAgentState::Boolean lifecycle_events_enabled_;
   InspectorAgentState::Boolean bypass_csp_enabled_;
   InspectorAgentState::StringMap scripts_to_evaluate_on_load_;
   InspectorAgentState::StringMap worlds_to_evaluate_on_load_;
-  InspectorAgentState::String standard_font_family_;
-  InspectorAgentState::String fixed_font_family_;
-  InspectorAgentState::String serif_font_family_;
-  InspectorAgentState::String sans_serif_font_family_;
-  InspectorAgentState::String cursive_font_family_;
-  InspectorAgentState::String fantasy_font_family_;
-  InspectorAgentState::String pictograph_font_family_;
+  InspectorAgentState::BooleanMap
+      include_command_line_api_for_scripts_to_evaluate_on_load_;
   InspectorAgentState::Integer standard_font_size_;
   InspectorAgentState::Integer fixed_font_size_;
-  InspectorAgentState::Boolean produce_compilation_cache_;
-  DISALLOW_COPY_AND_ASSIGN(InspectorPageAgent);
+  InspectorAgentState::Bytes script_font_families_cbor_;
 };
 
 }  // namespace blink

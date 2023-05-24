@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,6 +31,8 @@ void MessageDispatcher::SetSink(MessageReceiver* sink) {
 }
 
 bool MessageDispatcher::Accept(Message* message) {
+  internal::MessageDispatchContext dispatch_context(message);
+
   DCHECK(sink_);
   if (validator_) {
     if (!validator_->Accept(message))

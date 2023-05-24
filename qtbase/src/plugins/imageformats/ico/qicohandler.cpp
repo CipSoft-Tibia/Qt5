@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QtIcoHandler
@@ -50,11 +14,16 @@
 #include <QtCore/qendian.h>
 #include <private/qendian_p.h>
 #include <QtGui/QImage>
-#include <QtCore/QFile>
 #include <QtCore/QBuffer>
+#include <QtCore/QFile>
+#include <QtCore/QLoggingCategory>
 #include <qvariant.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcIco, "qt.gui.imageio.ico")
+
+namespace {
 
 // These next two structs represent how the icon information is stored
 // in an ICO file.
@@ -95,6 +64,8 @@ typedef struct {                    // BMP information header
 } BMP_INFOHDR ,*LPBMP_INFOHDR;
 #define BMP_INFOHDR_SIZE 40
 
+}
+
 class ICOReader
 {
 public:
@@ -103,9 +74,9 @@ public:
     QImage iconAt(int index);
     static bool canRead(QIODevice *iodev);
 
-    static QVector<QImage> read(QIODevice *device);
+    static QList<QImage> read(QIODevice *device);
 
-    static bool write(QIODevice *device, const QVector<QImage> &images);
+    static bool write(QIODevice *device, const QList<QImage> &images);
 
     bool readIconEntry(int index, ICONDIRENTRY * iconEntry);
 
@@ -205,9 +176,7 @@ bool ICOReader::canRead(QIODevice *iodev)
 
         ICONDIR ikonDir;
         if (readIconDir(iodev, &ikonDir)) {
-            qint64 readBytes = ICONDIR_SIZE;
             if (readIconDirEntry(iodev, &ikonDir.idEntries[0])) {
-                readBytes += ICONDIRENTRY_SIZE;
                 // ICO format does not have a magic identifier, so we read 6 different values, which will hopefully be enough to identify the file.
                 if (   ikonDir.idReserved == 0
                     && (ikonDir.idType == 1 || ikonDir.idType == 2)
@@ -356,7 +325,7 @@ void ICOReader::read1BitBMP(QImage & image)
     if (iod) {
 
         int h = image.height();
-        int bpl = image.bytesPerLine();
+        qsizetype bpl = image.bytesPerLine();
 
         while (--h >= 0) {
             if (iod->read((char*)image.scanLine(h),bpl) != bpl) {
@@ -405,7 +374,7 @@ void ICOReader::read8BitBMP(QImage & image)
     if (iod) {
 
         int h = icoAttrib.h;
-        int bpl = image.bytesPerLine();
+        qsizetype bpl = image.bytesPerLine();
 
         while (--h >= 0) {
             if (iod->read((char *)image.scanLine(h), bpl) != bpl) {
@@ -425,7 +394,7 @@ void ICOReader::read16_24_32BMP(QImage & image)
         QRgb *p;
         QRgb  *end;
         uchar *buf = new uchar[image.bytesPerLine()];
-        int    bpl = ((icoAttrib.w*icoAttrib.nbits+31)/32)*4;
+        qsizetype    bpl = ((qsizetype(icoAttrib.w)*icoAttrib.nbits+31)/32)*4;
         uchar *b;
 
         while (--h >= 0) {
@@ -465,7 +434,9 @@ QImage ICOReader::iconAt(int index)
 
             static const uchar pngMagicData[] = { 137, 80, 78, 71, 13, 10, 26, 10 };
 
-            iod->seek(iconEntry.dwImageOffset);
+            if (!iod->seek(iconEntry.dwImageOffset)
+                || iconEntry.dwBytesInRes > iod->bytesAvailable())
+                return img;
 
             const QByteArray pngMagic = QByteArray::fromRawData((const char*)pngMagicData, sizeof(pngMagicData));
             const bool isPngImage = (iod->read(pngMagic.size()) == pngMagic);
@@ -521,13 +492,14 @@ QImage ICOReader::iconAt(int index)
                 else if (icoAttrib.ncolors > 0)
                     format = QImage::Format_Indexed8;
 
-                QImage image(icoAttrib.w, icoAttrib.h, format);
-                if (!image.isNull()) {
+                QImage image;
+                const QSize size(icoAttrib.w, icoAttrib.h);
+                if (QImageIOHandler::allocateImage(size, format, &image)) {
                     findColorInfo(image);
                     if (!image.isNull()) {
                         readBMP(image);
                         if (!image.isNull()) {
-                            if (icoAttrib.depth == 32) {
+                            if (icoAttrib.nbits == 32) {
                                 img = std::move(image).convertToFormat(QImage::Format_ARGB32_Premultiplied);
                             } else {
                                 QImage mask(image.width(), image.height(), QImage::Format_Mono);
@@ -563,9 +535,9 @@ QImage ICOReader::iconAt(int index)
 
     \sa write()
 */
-QVector<QImage> ICOReader::read(QIODevice *device)
+QList<QImage> ICOReader::read(QIODevice *device)
 {
-    QVector<QImage> images;
+    QList<QImage> images;
 
     ICOReader reader(device);
     const int N = reader.count();
@@ -589,18 +561,18 @@ QVector<QImage> ICOReader::read(QIODevice *device)
 
     \sa read()
 */
-bool ICOReader::write(QIODevice *device, const QVector<QImage> &images)
+bool ICOReader::write(QIODevice *device, const QList<QImage> &images)
 {
     bool retValue = false;
 
-    if (images.count()) {
+    if (images.size()) {
 
         qint64 origOffset = device->pos();
 
         ICONDIR id;
         id.idReserved = 0;
         id.idType = 1;
-        id.idCount = images.count();
+        id.idCount = images.size();
 
         ICONDIRENTRY * entries = new ICONDIRENTRY[id.idCount];
         BMP_INFOHDR * bmpHeaders = new BMP_INFOHDR[id.idCount];
@@ -763,6 +735,8 @@ bool QtIcoHandler::supportsOption(ImageOption option) const
  */
 bool QtIcoHandler::canRead() const
 {
+    if (knownCanRead)
+        return true;
     bool bCanRead = false;
     QIODevice *device = QImageIOHandler::device();
     if (device) {
@@ -770,8 +744,9 @@ bool QtIcoHandler::canRead() const
         if (bCanRead)
             setFormat("ico");
     } else {
-        qWarning("QtIcoHandler::canRead() called with no device");
+        qCWarning(lcIco, "QtIcoHandler::canRead() called with no device");
     }
+    knownCanRead = bCanRead;
     return bCanRead;
 }
 
@@ -808,7 +783,7 @@ bool QtIcoHandler::read(QImage *image)
 bool QtIcoHandler::write(const QImage &image)
 {
     QIODevice *device = QImageIOHandler::device();
-    QVector<QImage> imgs;
+    QList<QImage> imgs;
     imgs.append(image);
     return ICOReader::write(device, imgs);
 }

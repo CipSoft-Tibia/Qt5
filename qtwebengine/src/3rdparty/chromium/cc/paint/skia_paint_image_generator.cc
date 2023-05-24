@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,8 +29,9 @@ bool SkiaPaintImageGenerator::onGetPixels(const SkImageInfo& info,
                                           void* pixels,
                                           size_t row_bytes,
                                           const Options& options) {
-  return paint_image_generator_->GetPixels(
-      info, pixels, row_bytes, frame_index_, client_id_, uniqueID());
+  SkPixmap pixmap(info, pixels, row_bytes);
+  return paint_image_generator_->GetPixels(pixmap, frame_index_, client_id_,
+                                           uniqueID());
 }
 
 bool SkiaPaintImageGenerator::onQueryYUVAInfo(
@@ -41,8 +42,8 @@ bool SkiaPaintImageGenerator::onQueryYUVAInfo(
 }
 
 bool SkiaPaintImageGenerator::onGetYUVAPlanes(const SkYUVAPixmaps& planes) {
-  return paint_image_generator_->GetYUVAPlanes(planes, frame_index_,
-                                               uniqueID());
+  return paint_image_generator_->GetYUVAPlanes(planes, frame_index_, uniqueID(),
+                                               client_id_);
 }
 
 }  // namespace cc

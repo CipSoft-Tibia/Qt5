@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "buddyeditor.h"
 
@@ -40,18 +15,22 @@
 #include <connectionedit_p.h>
 #include <metadatabase_p.h>
 
-#include <QtCore/qdebug.h>
-#include <QtCore/qvector.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qmenu.h>
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qapplication.h>
+
+#include <QtGui/qaction.h>
+
+#include <QtCore/qdebug.h>
+#include <QtCore/qlist.h>
 
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
 
-static const char *buddyPropertyC = "buddy";
+using namespace Qt::StringLiterals;
+
+static const char buddyPropertyC[] = "buddy";
 
 static bool canBeBuddy(QWidget *w, QDesignerFormWindowInterface *form)
 {
@@ -62,7 +41,7 @@ static bool canBeBuddy(QWidget *w, QDesignerFormWindowInterface *form)
 
     QExtensionManager *ext = form->core()->extensionManager();
     if (QDesignerPropertySheetExtension *sheet = qt_extension<QDesignerPropertySheetExtension*>(ext, w)) {
-        const int index = sheet->indexOf(QStringLiteral("focusPolicy"));
+        const int index = sheet->indexOf(u"focusPolicy"_s);
         if (index != -1) {
             bool ok = false;
             const Qt::FocusPolicy q = static_cast<Qt::FocusPolicy>(qdesigner_internal::Utils::valueOf(sheet->property(index), &ok));
@@ -78,7 +57,7 @@ static QString buddy(QLabel *label, QDesignerFormEditorInterface *core)
     QDesignerPropertySheetExtension *sheet = qt_extension<QDesignerPropertySheetExtension*>(core->extensionManager(), label);
     if (sheet == nullptr)
         return QString();
-    const int prop_idx = sheet->indexOf(QLatin1String(buddyPropertyC));
+    const int prop_idx = sheet->indexOf(QLatin1StringView(buddyPropertyC));
     if (prop_idx == -1)
         return QString();
     return sheet->property(prop_idx).toString();
@@ -142,7 +121,7 @@ void BuddyEditor::updateBackground()
     ConnectionEdit::updateBackground();
 
     m_updating = true;
-    QVector<Connection *> newList;
+    QList<Connection *> newList;
     const auto label_list = background()->findChildren<QLabel*>();
     for (QLabel *label : label_list) {
         const QString buddy_name = buddy(label, m_formWindow->core());
@@ -164,7 +143,7 @@ void BuddyEditor::updateBackground()
         newList.append(con);
     }
 
-    QVector<Connection *> toRemove;
+    QList<Connection *> toRemove;
 
     const int c = connectionCount();
     for (int i = 0; i < c; i++) {
@@ -181,11 +160,11 @@ void BuddyEditor::updateBackground()
     if (!toRemove.isEmpty()) {
         DeleteConnectionsCommand command(this, toRemove);
         command.redo();
-        for (Connection *con : qAsConst(toRemove))
+        for (Connection *con : std::as_const(toRemove))
             delete takeConnection(con);
     }
 
-    for (Connection *newConn : qAsConst(newList)) {
+    for (Connection *newConn : std::as_const(newList)) {
         bool found = false;
         const int c = connectionCount();
         for (int i = 0; i < c; i++) {
@@ -210,6 +189,8 @@ void BuddyEditor::setBackground(QWidget *background)
 {
     clear();
     ConnectionEdit::setBackground(background);
+    if (background == nullptr)
+        return;
 
     const auto label_list = background->findChildren<QLabel*>();
     for (QLabel *label : label_list) {
@@ -230,7 +211,7 @@ void BuddyEditor::setBackground(QWidget *background)
 static QUndoCommand *createBuddyCommand(QDesignerFormWindowInterface *fw, QLabel *label, QWidget *buddy)
 {
     SetPropertyCommand *command = new SetPropertyCommand(fw);
-    command->init(label, QLatin1String(buddyPropertyC), buddy->objectName());
+    command->init(label, QLatin1StringView(buddyPropertyC), buddy->objectName());
     command->setText(BuddyEditor::tr("Add buddy"));
     return command;
 }
@@ -274,7 +255,7 @@ void BuddyEditor::widgetRemoved(QWidget *widget)
     child_list.prepend(widget);
 
     ConnectionSet remove_set;
-    for (QWidget *w : qAsConst(child_list)) {
+    for (QWidget *w : std::as_const(child_list)) {
         const ConnectionList &cl = connectionList();
         for (Connection *con : cl) {
             if (con->widget(EndPoint::Source) == w || con->widget(EndPoint::Target) == w)
@@ -284,7 +265,7 @@ void BuddyEditor::widgetRemoved(QWidget *widget)
 
     if (!remove_set.isEmpty()) {
         undoStack()->beginMacro(tr("Remove buddies"));
-        for (Connection *con : qAsConst(remove_set)) {
+        for (Connection *con : std::as_const(remove_set)) {
             setSelected(con, false);
             con->update();
             QWidget *source = con->widget(EndPoint::Source);
@@ -292,7 +273,7 @@ void BuddyEditor::widgetRemoved(QWidget *widget)
                 qDebug("BuddyConnection::widgetRemoved(): not a label");
             } else {
                 ResetPropertyCommand *command = new ResetPropertyCommand(formWindow());
-                command->init(source, QLatin1String(buddyPropertyC));
+                command->init(source, QLatin1StringView(buddyPropertyC));
                 undoStack()->push(command);
             }
             delete takeConnection(con);
@@ -316,7 +297,7 @@ void BuddyEditor::deleteSelected()
             qDebug("BuddyConnection::deleteSelected(): not a label");
         } else {
             ResetPropertyCommand *command = new ResetPropertyCommand(formWindow());
-            command->init(source, QLatin1String(buddyPropertyC));
+            command->init(source, QLatin1StringView(buddyPropertyC));
             undoStack()->push(command);
         }
         delete takeConnection(con);
@@ -356,10 +337,10 @@ void BuddyEditor::autoBuddy()
     // Add the list in one go.
     if (labelList.isEmpty())
         return;
-    const int count = labelList.size();
+    const auto count = labelList.size();
     Q_ASSERT(count == buddies.size());
     undoStack()->beginMacro(tr("Add %n buddies", nullptr, count));
-    for (int i = 0; i < count; i++)
+    for (qsizetype i = 0; i < count; ++i)
         undoStack()->push(createBuddyCommand(m_formWindow, labelList.at(i), buddies.at(i)));
     undoStack()->endMacro();
     // Now select all new ones

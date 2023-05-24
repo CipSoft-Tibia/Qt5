@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QITEMMODELSURFACEDATAPROXY_H
 #define QITEMMODELSURFACEDATAPROXY_H
@@ -33,13 +7,13 @@
 #include <QtDataVisualization/qsurfacedataproxy.h>
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QStringList>
-#include <QtCore/QRegExp>
+#include <QtCore/QRegularExpression>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 class QItemModelSurfaceDataProxyPrivate;
 
-class QT_DATAVISUALIZATION_EXPORT QItemModelSurfaceDataProxy : public QSurfaceDataProxy
+class Q_DATAVISUALIZATION_EXPORT QItemModelSurfaceDataProxy : public QSurfaceDataProxy
 {
     Q_OBJECT
     Q_ENUMS(MultiMatchBehavior)
@@ -54,17 +28,17 @@ class QT_DATAVISUALIZATION_EXPORT QItemModelSurfaceDataProxy : public QSurfaceDa
     Q_PROPERTY(bool useModelCategories READ useModelCategories WRITE setUseModelCategories NOTIFY useModelCategoriesChanged)
     Q_PROPERTY(bool autoRowCategories READ autoRowCategories WRITE setAutoRowCategories NOTIFY autoRowCategoriesChanged)
     Q_PROPERTY(bool autoColumnCategories READ autoColumnCategories WRITE setAutoColumnCategories NOTIFY autoColumnCategoriesChanged)
-    Q_PROPERTY(QRegExp rowRolePattern READ rowRolePattern WRITE setRowRolePattern NOTIFY rowRolePatternChanged REVISION 1)
-    Q_PROPERTY(QRegExp columnRolePattern READ columnRolePattern WRITE setColumnRolePattern NOTIFY columnRolePatternChanged REVISION 1)
-    Q_PROPERTY(QRegExp xPosRolePattern READ xPosRolePattern WRITE setXPosRolePattern NOTIFY xPosRolePatternChanged REVISION 1)
-    Q_PROPERTY(QRegExp yPosRolePattern READ yPosRolePattern WRITE setYPosRolePattern NOTIFY yPosRolePatternChanged REVISION 1)
-    Q_PROPERTY(QRegExp zPosRolePattern READ zPosRolePattern WRITE setZPosRolePattern NOTIFY zPosRolePatternChanged REVISION 1)
-    Q_PROPERTY(QString rowRoleReplace READ rowRoleReplace WRITE setRowRoleReplace NOTIFY rowRoleReplaceChanged REVISION 1)
-    Q_PROPERTY(QString columnRoleReplace READ columnRoleReplace WRITE setColumnRoleReplace NOTIFY columnRoleReplaceChanged REVISION 1)
-    Q_PROPERTY(QString xPosRoleReplace READ xPosRoleReplace WRITE setXPosRoleReplace NOTIFY xPosRoleReplaceChanged REVISION 1)
-    Q_PROPERTY(QString yPosRoleReplace READ yPosRoleReplace WRITE setYPosRoleReplace NOTIFY yPosRoleReplaceChanged REVISION 1)
-    Q_PROPERTY(QString zPosRoleReplace READ zPosRoleReplace WRITE setZPosRoleReplace NOTIFY zPosRoleReplaceChanged REVISION 1)
-    Q_PROPERTY(MultiMatchBehavior multiMatchBehavior READ multiMatchBehavior WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged REVISION 1)
+    Q_PROPERTY(QRegularExpression rowRolePattern READ rowRolePattern WRITE setRowRolePattern NOTIFY rowRolePatternChanged REVISION(1, 1))
+    Q_PROPERTY(QRegularExpression columnRolePattern READ columnRolePattern WRITE setColumnRolePattern NOTIFY columnRolePatternChanged REVISION(1, 1))
+    Q_PROPERTY(QRegularExpression xPosRolePattern READ xPosRolePattern WRITE setXPosRolePattern NOTIFY xPosRolePatternChanged REVISION(1, 1))
+    Q_PROPERTY(QRegularExpression yPosRolePattern READ yPosRolePattern WRITE setYPosRolePattern NOTIFY yPosRolePatternChanged REVISION(1, 1))
+    Q_PROPERTY(QRegularExpression zPosRolePattern READ zPosRolePattern WRITE setZPosRolePattern NOTIFY zPosRolePatternChanged REVISION(1, 1))
+    Q_PROPERTY(QString rowRoleReplace READ rowRoleReplace WRITE setRowRoleReplace NOTIFY rowRoleReplaceChanged REVISION(1, 1))
+    Q_PROPERTY(QString columnRoleReplace READ columnRoleReplace WRITE setColumnRoleReplace NOTIFY columnRoleReplaceChanged REVISION(1, 1))
+    Q_PROPERTY(QString xPosRoleReplace READ xPosRoleReplace WRITE setXPosRoleReplace NOTIFY xPosRoleReplaceChanged REVISION(1, 1))
+    Q_PROPERTY(QString yPosRoleReplace READ yPosRoleReplace WRITE setYPosRoleReplace NOTIFY yPosRoleReplaceChanged REVISION(1, 1))
+    Q_PROPERTY(QString zPosRoleReplace READ zPosRoleReplace WRITE setZPosRoleReplace NOTIFY zPosRoleReplaceChanged REVISION(1, 1))
+    Q_PROPERTY(MultiMatchBehavior multiMatchBehavior READ multiMatchBehavior WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged REVISION(1, 1))
 
 public:
     enum MultiMatchBehavior {
@@ -132,16 +106,16 @@ public:
     Q_INVOKABLE int rowCategoryIndex(const QString& category);
     Q_INVOKABLE int columnCategoryIndex(const QString& category);
 
-    void setRowRolePattern(const QRegExp &pattern);
-    QRegExp rowRolePattern() const;
-    void setColumnRolePattern(const QRegExp &pattern);
-    QRegExp columnRolePattern() const;
-    void setXPosRolePattern(const QRegExp &pattern);
-    QRegExp xPosRolePattern() const;
-    void setYPosRolePattern(const QRegExp &pattern);
-    QRegExp yPosRolePattern() const;
-    void setZPosRolePattern(const QRegExp &pattern);
-    QRegExp zPosRolePattern() const;
+    void setRowRolePattern(const QRegularExpression &pattern);
+    QRegularExpression rowRolePattern() const;
+    void setColumnRolePattern(const QRegularExpression &pattern);
+    QRegularExpression columnRolePattern() const;
+    void setXPosRolePattern(const QRegularExpression &pattern);
+    QRegularExpression xPosRolePattern() const;
+    void setYPosRolePattern(const QRegularExpression &pattern);
+    QRegularExpression yPosRolePattern() const;
+    void setZPosRolePattern(const QRegularExpression &pattern);
+    QRegularExpression zPosRolePattern() const;
 
     void setRowRoleReplace(const QString &replace);
     QString rowRoleReplace() const;
@@ -169,17 +143,17 @@ Q_SIGNALS:
     void useModelCategoriesChanged(bool enable);
     void autoRowCategoriesChanged(bool enable);
     void autoColumnCategoriesChanged(bool enable);
-    Q_REVISION(1) void rowRolePatternChanged(const QRegExp &pattern);
-    Q_REVISION(1) void columnRolePatternChanged(const QRegExp &pattern);
-    Q_REVISION(1) void xPosRolePatternChanged(const QRegExp &pattern);
-    Q_REVISION(1) void yPosRolePatternChanged(const QRegExp &pattern);
-    Q_REVISION(1) void zPosRolePatternChanged(const QRegExp &pattern);
-    Q_REVISION(1) void rowRoleReplaceChanged(const QString &replace);
-    Q_REVISION(1) void columnRoleReplaceChanged(const QString &replace);
-    Q_REVISION(1) void xPosRoleReplaceChanged(const QString &replace);
-    Q_REVISION(1) void yPosRoleReplaceChanged(const QString &replace);
-    Q_REVISION(1) void zPosRoleReplaceChanged(const QString &replace);
-    Q_REVISION(1) void multiMatchBehaviorChanged(MultiMatchBehavior behavior);
+    Q_REVISION(1, 1) void rowRolePatternChanged(const QRegularExpression &pattern);
+    Q_REVISION(1, 1) void columnRolePatternChanged(const QRegularExpression &pattern);
+    Q_REVISION(1, 1) void xPosRolePatternChanged(const QRegularExpression &pattern);
+    Q_REVISION(1, 1) void yPosRolePatternChanged(const QRegularExpression &pattern);
+    Q_REVISION(1, 1) void zPosRolePatternChanged(const QRegularExpression &pattern);
+    Q_REVISION(1, 1) void rowRoleReplaceChanged(const QString &replace);
+    Q_REVISION(1, 1) void columnRoleReplaceChanged(const QString &replace);
+    Q_REVISION(1, 1) void xPosRoleReplaceChanged(const QString &replace);
+    Q_REVISION(1, 1) void yPosRoleReplaceChanged(const QString &replace);
+    Q_REVISION(1, 1) void zPosRoleReplaceChanged(const QString &replace);
+    Q_REVISION(1, 1) void multiMatchBehaviorChanged(MultiMatchBehavior behavior);
 
 protected:
     QItemModelSurfaceDataProxyPrivate *dptr();
@@ -191,6 +165,6 @@ private:
     friend class SurfaceItemModelHandler;
 };
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE
 
 #endif

@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "abstractformbuilder.h"
 #include "formbuilderextra_p.h"
@@ -55,17 +8,6 @@
 #include "ui4_p.h"
 #include "properties_p.h"
 
-#include <QtCore/qvariant.h>
-#include <QtCore/qmetaobject.h>
-#include <QtCore/qfileinfo.h>
-#include <QtCore/qdir.h>
-#include <QtCore/qqueue.h>
-#include <QtCore/qhash.h>
-#include <QtCore/qpair.h>
-#include <QtCore/qdebug.h>
-#include <QtCore/qcoreapplication.h>
-
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qmainwindow.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qmenubar.h>
@@ -93,7 +35,18 @@
 #  include <private/qlayout_p.h> // Compiling within Designer
 #endif
 
+#include <QtGui/qaction.h>
+#include <QtGui/qactiongroup.h>
+
+#include <QtCore/qcoreapplication.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qdir.h>
+#include <QtCore/qfileinfo.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qmetaobject.h>
+#include <QtCore/qpair.h>
+#include <QtCore/qqueue.h>
+#include <QtCore/qvariant.h>
 #include <QtCore/qxmlstream.h>
 
 #include <limits.h>
@@ -103,13 +56,22 @@
 
 Q_DECLARE_METATYPE(QWidgetList)
 
-static const char *buttonGroupPropertyC = "buttonGroup";
+static const char buttonGroupPropertyC[] = "buttonGroup";
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifdef QFORMINTERNAL_NAMESPACE
 using namespace QFormInternal;
 #endif
+
+using QFBE = QFormBuilderExtra;
+
+static inline DomProperty *currentIndexProperty(const QList<DomProperty*> &properties)
+{
+    return QFBE::propertyByName(properties, "currentIndex");
+}
 
 class QFriendlyLayout: public QLayout
 {
@@ -138,7 +100,7 @@ public:
     QFormBuilder class to create user interfaces from UI files at
     run-time. For example:
 
-    \snippet lib/tools_designer_src_lib_uilib_abstractformbuilder.cpp 0
+    \snippet lib/tools_designer_src_lib_uilib_formbuilder.cpp 0
 
     To override certain aspects of the form builder's behavior,
     subclass QAbstractFormBuilder and reimplement the relevant virtual
@@ -199,8 +161,6 @@ QWidget *QAbstractFormBuilder::load(QIODevice *dev, QWidget *parentWidget)
 */
 QWidget *QAbstractFormBuilder::create(DomUI *ui, QWidget *parentWidget)
 {
-    using ButtonGroupHash = QFormBuilderExtra::ButtonGroupHash;
-
     d->clear();
     if (const DomLayoutDefault *def = ui->elementLayoutDefault()) {
        d->m_defaultMargin = def->hasAttributeMargin() ? def->attributeMargin() : INT_MIN;
@@ -218,12 +178,9 @@ QWidget *QAbstractFormBuilder::create(DomUI *ui, QWidget *parentWidget)
 
     if (QWidget *widget = create(ui_widget, parentWidget)) {
         // Reparent button groups that were actually created to main container for them to be found in the signal/slot part
-        const ButtonGroupHash &buttonGroups = d->buttonGroups();
-        if (!buttonGroups.isEmpty()) {
-            const ButtonGroupHash::const_iterator cend = buttonGroups.constEnd();
-            for (ButtonGroupHash::const_iterator it = buttonGroups.constBegin(); it != cend; ++it)
-                if (it.value().second)
-                    it.value().second->setParent(widget);
+        for (const auto &bg : std::as_const(d->buttonGroups())) {
+            if (bg.second)
+                bg.second->setParent(widget);
         }
         createConnections(ui->elementConnections(), widget);
         createResources(ui->elementResources()); // maybe this should go first, before create()...
@@ -298,10 +255,9 @@ QWidget *QAbstractFormBuilder::create(DomWidget *ui_widget, QWidget *parentWidge
 
     const auto &addActions = ui_widget->elementAddAction();
     if (!addActions.isEmpty()) {
-        const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
         for (DomActionRef *ui_action_ref : addActions) {
             const QString name = ui_action_ref->attributeName();
-            if (name == strings.separator) {
+            if (name == "separator"_L1) {
                 QAction *sep = new QAction(w);
                 sep->setSeparator(true);
                 w->addAction(sep);
@@ -383,8 +339,9 @@ QActionGroup *QAbstractFormBuilder::create(DomActionGroup *ui_action_group, QObj
 
 // figure out the toolbar area of a DOM attrib list.
 // By legacy, it is stored as an integer. As of 4.3.0, it is the enumeration value.
-Qt::ToolBarArea QAbstractFormBuilder::toolbarAreaFromDOMAttributes(const DomPropertyHash &attributes) {
-    const DomProperty *attr = attributes.value(QFormBuilderStrings::instance().toolBarAreaAttribute);
+Qt::ToolBarArea QAbstractFormBuilder::toolbarAreaFromDOMAttributes(const DomPropertyHash &attributes)
+{
+    const DomProperty *attr = attributes.value("toolBarArea"_L1);
     if (!attr)
         return Qt::TopToolBarArea;
     switch(attr->kind()) {
@@ -404,13 +361,12 @@ Qt::ToolBarArea QAbstractFormBuilder::toolbarAreaFromDOMAttributes(const DomProp
 */
 bool QAbstractFormBuilder::addItem(DomWidget *ui_widget, QWidget *widget, QWidget *parentWidget)
 {
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     const DomPropertyHash attributes = propertyMap(ui_widget->elementAttribute());
 
     if (parentWidget == nullptr)
         return true;
     // Check special cases. First: Custom container
-    const QString className = QLatin1String(parentWidget->metaObject()->className());
+    const QString className = QLatin1StringView(parentWidget->metaObject()->className());
     const QString addPageMethod = d->customWidgetAddPageMethod(className);
     if (!addPageMethod.isEmpty()) {
         // If this fails ( non-existent or non-slot), use ContainerExtension in Designer, else it can't be helped
@@ -432,8 +388,8 @@ bool QAbstractFormBuilder::addItem(DomWidget *ui_widget, QWidget *widget, QWidge
         if (QToolBar *toolBar = qobject_cast<QToolBar*>(widget)) {
             mw->addToolBar(toolbarAreaFromDOMAttributes(attributes), toolBar);
             // check break
-            if (const DomProperty *attr = attributes.value(strings.toolBarBreakAttribute))
-                if (attr->elementBool() == strings.trueValue)
+            if (const DomProperty *attr = attributes.value("toolBarBreak"_L1))
+                if (attr->elementBool() == "true"_L1)
                     mw->insertToolBarBreak (toolBar);
 
             return true;
@@ -451,7 +407,7 @@ bool QAbstractFormBuilder::addItem(DomWidget *ui_widget, QWidget *widget, QWidge
 #if QT_CONFIG(dockwidget)
         // apply the dockwidget's attributes
         if (QDockWidget *dockWidget = qobject_cast<QDockWidget*>(widget)) {
-            if (const DomProperty *attr = attributes.value(strings.dockWidgetAreaAttribute)) {
+            if (const DomProperty *attr = attributes.value("dockWidgetArea"_L1)) {
                 Qt::DockWidgetArea area = static_cast<Qt::DockWidgetArea>(attr->elementNumber());
                 if (!dockWidget->isAreaAllowed(area)) {
                     if (dockWidget->isAreaAllowed(Qt::LeftDockWidgetArea))
@@ -482,25 +438,25 @@ bool QAbstractFormBuilder::addItem(DomWidget *ui_widget, QWidget *widget, QWidge
         widget->setParent(nullptr);
 
         const int tabIndex = tabWidget->count();
-        if (const DomProperty *titleP = attributes.value(strings.titleAttribute, 0))
+        if (auto *titleP = attributes.value(QFormBuilderStrings::titleAttribute))
             tabWidget->addTab(widget, toString(titleP->elementString()));
         else
-            tabWidget->addTab(widget, strings.defaultTitle);
+            tabWidget->addTab(widget, "Page"_L1);
 
-        if (DomProperty *picon = attributes.value(strings.iconAttribute)) {
+        if (const auto *picon = attributes.value(QFormBuilderStrings::iconAttribute)) {
             QVariant v = resourceBuilder()->loadResource(workingDirectory(), picon);
             QVariant nativeValue = resourceBuilder()->toNativeValue(v);
             tabWidget->setTabIcon(tabIndex, qvariant_cast<QIcon>(nativeValue));
         }
 
 #if QT_CONFIG(tooltip)
-        if (const DomProperty *ptoolTip = attributes.value(strings.toolTipAttribute)) {
+        if (const auto *ptoolTip = attributes.value(QFormBuilderStrings::toolTipAttribute)) {
             tabWidget->setTabToolTip(tabIndex, toString(ptoolTip->elementString()));
         }
 #endif
 
 #if QT_CONFIG(whatsthis)
-        if (const DomProperty *pwhatsThis = attributes.value(strings.whatsThisAttribute)) {
+        if (const auto *pwhatsThis = attributes.value(QFormBuilderStrings::whatsThisAttribute)) {
             tabWidget->setTabWhatsThis(tabIndex, toString(pwhatsThis->elementString()));
         }
 #endif
@@ -512,19 +468,19 @@ bool QAbstractFormBuilder::addItem(DomWidget *ui_widget, QWidget *widget, QWidge
 #if QT_CONFIG(toolbox)
     else if (QToolBox *toolBox = qobject_cast<QToolBox*>(parentWidget)) {
         const int tabIndex = toolBox->count();
-        if (const DomProperty *labelP =  attributes.value(strings.labelAttribute, 0))
+        if (const auto *labelP =  attributes.value(QFormBuilderStrings::labelAttribute))
             toolBox->addItem(widget, toString(labelP->elementString()));
         else
-            toolBox->addItem(widget, strings.defaultTitle);
+            toolBox->addItem(widget, "Page"_L1);
 
-        if (DomProperty *picon = attributes.value(strings.iconAttribute)) {
+        if (const auto *picon = attributes.value(QFormBuilderStrings::iconAttribute)) {
             QVariant v = resourceBuilder()->loadResource(workingDirectory(), picon);
             QVariant nativeValue = resourceBuilder()->toNativeValue(v);
             toolBox->setItemIcon(tabIndex, qvariant_cast<QIcon>(nativeValue));
         }
 
 #if QT_CONFIG(tooltip)
-        if (const DomProperty *ptoolTip = attributes.value(strings.toolTipAttribute)) {
+        if (const auto *ptoolTip = attributes.value(QFormBuilderStrings::toolTipAttribute)) {
             toolBox->setItemToolTip(tabIndex, toString(ptoolTip->elementString()));
         }
 #endif
@@ -588,15 +544,13 @@ bool QAbstractFormBuilder::addItem(DomWidget *ui_widget, QWidget *widget, QWidge
 void QAbstractFormBuilder::layoutInfo(DomLayout *ui_layout, QObject *parent, int *margin, int *spacing)
 {
     Q_UNUSED(parent);
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
-    const DomPropertyHash properties = propertyMap(ui_layout->elementProperty());
+    auto properties = ui_layout->elementProperty();
 
     int mar = INT_MIN;
     int spac = INT_MIN;
-    if (const DomProperty *p = properties.value(strings.marginProperty, 0))
+    if (const DomProperty *p = QFBE::propertyByName(properties, "margin"))
         mar = p->elementNumber();
-
-    if (const DomProperty *p = properties.value(strings.spacingProperty, 0))
+    if (const DomProperty *p = QFBE::propertyByName(properties, "spacing"))
         spac = p->elementNumber();
 
 #ifdef Q_OS_MACOS
@@ -609,11 +563,10 @@ void QAbstractFormBuilder::layoutInfo(DomLayout *ui_layout, QObject *parent, int
             spac = INT_MIN;
 
         if (mar == INT_MIN || spac == INT_MIN) {
-            auto properties = ui_layout->elementProperty();
             for (auto it = properties.begin(); it != properties.end(); ) {
                 DomProperty *prop = *it;
-                if ((mar == INT_MIN && prop->attributeName() == strings.marginProperty)
-                    || (spac == INT_MIN && prop->attributeName() == strings.spacingProperty)) {
+                if ((mar == INT_MIN && prop->attributeName() == "margin"_L1)
+                    || (spac == INT_MIN && prop->attributeName() == "spacing"_L1)) {
                     delete prop;
                     it = properties.erase(it);
                 } else {
@@ -674,25 +627,10 @@ QLayout *QAbstractFormBuilder::create(DomLayout *ui_layout, QLayout *parentLayou
     if (margin != INT_MIN) {
         layout->setContentsMargins(margin, margin, margin, margin);
     } else {
-        const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
-        int left, top, right, bottom;
-        left = top = right = bottom = -1;
+        int left = -1, top = -1, right = -1, bottom = -1;
         layout->getContentsMargins(&left, &top, &right, &bottom);
-
-        const DomPropertyHash properties = propertyMap(ui_layout->elementProperty());
-
-        if (const DomProperty *p = properties.value(strings.leftMarginProperty, 0))
-            left = p->elementNumber();
-
-        if (const DomProperty *p = properties.value(strings.topMarginProperty, 0))
-            top = p->elementNumber();
-
-        if (const DomProperty *p = properties.value(strings.rightMarginProperty, 0))
-            right = p->elementNumber();
-
-        if (const DomProperty *p = properties.value(strings.bottomMarginProperty, 0))
-            bottom = p->elementNumber();
-
+        QFormBuilderExtra::getLayoutMargins(ui_layout->elementProperty(),
+                                            &left, &top, &right, &bottom);
         layout->setContentsMargins(left, top, right, bottom);
     }
 
@@ -701,12 +639,10 @@ QLayout *QAbstractFormBuilder::create(DomLayout *ui_layout, QLayout *parentLayou
     } else {
         QGridLayout *grid = qobject_cast<QGridLayout *>(layout);
         if (grid) {
-            const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
-            const DomPropertyHash properties = propertyMap(ui_layout->elementProperty());
-
-            if (const DomProperty *p = properties.value(strings.horizontalSpacingProperty, 0))
+            const auto &properties = ui_layout->elementProperty();
+            if (const auto *p = QFBE::propertyByName(properties, "horizontalSpacing"))
                 grid->setHorizontalSpacing(p->elementNumber());
-            if (const DomProperty *p = properties.value(strings.verticalSpacingProperty, 0))
+            if (const auto *p = QFBE::propertyByName(properties, "verticalSpacing"))
                 grid->setVerticalSpacing(p->elementNumber());
         }
     }
@@ -756,61 +692,55 @@ static inline QFormLayout::ItemRole formLayoutRole(int column, int colspan)
 
 static inline QString alignmentValue(Qt::Alignment a)
 {
-    QString h,v;
+    QLatin1StringView h;
+    QLatin1StringView v;
     switch (a & Qt::AlignHorizontal_Mask) {
     case Qt::AlignLeft:
-        h = QStringLiteral("Qt::AlignLeft");
+        h = "Qt::AlignLeft"_L1;
         break;
     case Qt::AlignRight:
-        h = QStringLiteral("Qt::AlignRight");
+        h = "Qt::AlignRight"_L1;
         break;
     case Qt::AlignHCenter:
-        h = QStringLiteral("Qt::AlignHCenter");
+        h = "Qt::AlignHCenter"_L1;
         break;
     case Qt::AlignJustify:
-        h = QStringLiteral("Qt::AlignJustify");
+        h = "Qt::AlignJustify"_L1;
         break;
     }
     switch (a & Qt::AlignVertical_Mask) {
     case Qt::AlignTop:
-        v = QStringLiteral("Qt::AlignTop");
+        v = "Qt::AlignTop"_L1;
         break;
     case Qt::AlignBottom:
-        v = QStringLiteral("Qt::AlignBottom");
+        v = "Qt::AlignBottom"_L1;
         break;
     case Qt::AlignVCenter:
-        v = QStringLiteral("Qt::AlignVCenter");
+        v = "Qt::AlignVCenter"_L1;
         break;
     }
-    if (h.isEmpty() && v.isEmpty())
-        return QString();
-    if (!v.isEmpty()) {
-        if (!h.isEmpty())
-            h += QLatin1Char('|');
-        h += v;
-    }
-    return h;
+
+    return h + (v.isEmpty() || h.isEmpty() ? ""_L1 : "|"_L1) + v;
 }
 
 static inline Qt::Alignment alignmentFromDom(const QString &in)
 {
     Qt::Alignment rc;
     if (!in.isEmpty()) {
-        const auto flags = in.splitRef(QLatin1Char('|'));
-        for (const auto &f : flags) {
-            if (f == QStringLiteral("Qt::AlignLeft")) {
+        for (const auto &f : qTokenize(in, u'|')) {
+            if (f.endsWith("::AlignLeft"_L1)) {
                 rc |= Qt::AlignLeft;
-            } else if (f == QStringLiteral("Qt::AlignRight")) {
+            } else if (f.endsWith("::AlignRight"_L1)) {
                 rc |= Qt::AlignRight;
-            } else if (f == QStringLiteral("Qt::AlignHCenter")) {
+            } else if (f.endsWith("::AlignHCenter"_L1)) {
                 rc |= Qt::AlignHCenter;
-            } else if (f == QStringLiteral("Qt::AlignJustify")) {
+            } else if (f.endsWith("::AlignJustify"_L1)) {
                 rc |= Qt::AlignJustify;
-            } else if (f == QStringLiteral("Qt::AlignTop")) {
+            } else if (f.endsWith("::AlignTop"_L1)) {
                 rc |= Qt::AlignTop;
-            } else if (f == QStringLiteral("Qt::AlignBottom")) {
+            } else if (f.endsWith("::AlignBottom"_L1)) {
                 rc |= Qt::AlignBottom;
-            } else if (f == QStringLiteral("Qt::AlignVCenter")) {
+            } else if (f.endsWith("::AlignVCenter"_L1)) {
                 rc |= Qt::AlignVCenter;
             }
         }
@@ -882,16 +812,15 @@ QLayoutItem *QAbstractFormBuilder::create(DomLayoutItem *ui_layoutItem, QLayout 
         const DomSpacer *ui_spacer = ui_layoutItem->elementSpacer();
         const auto &spacerProperties =  ui_spacer->elementProperty();
         if (!spacerProperties.isEmpty()) {
-            const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
             for (DomProperty *p : spacerProperties) {
                 const QVariant v = toVariant(&QAbstractFormBuilderGadget::staticMetaObject, p); // ### remove me
                 if (v.isNull())
                     continue;
-                if (p->attributeName() == strings.sizeHintProperty && p->kind() == DomProperty::Size) {
+                if (p->attributeName() == "sizeHint"_L1 && p->kind() == DomProperty::Size) {
                     size = v.toSize();  // ###  remove me
-                } else if (p->attributeName() == strings.sizeTypeProperty && p->kind() == DomProperty::Enum) {
+                } else if (p->attributeName() == "sizeType"_L1 && p->kind() == DomProperty::Enum) {
                     sizeType = static_cast<QSizePolicy::Policy>(v.toInt());
-                } else if (p->attributeName() == strings.orientationProperty && p->kind() == DomProperty::Enum) {
+                } else if (p->attributeName() == "orientation"_L1 && p->kind() == DomProperty::Enum) {
                     const Qt::Orientation o = static_cast<Qt::Orientation>(v.toInt());
                     isVspacer = (o == Qt::Vertical);
                 }
@@ -924,8 +853,8 @@ void QAbstractFormBuilder::applyProperties(QObject *o, const QList<DomProperty*>
         const QVariant v = toVariant(o->metaObject(), p);
         if (!v.isNull()) {
             QString attributeName = p->attributeName();
-            if (attributeName == QLatin1String("numDigits") && o->inherits("QLCDNumber")) // Deprecated in Qt 4, removed in Qt 5.
-                attributeName = QLatin1String("digitCount");
+            if (attributeName == "numDigits"_L1 && o->inherits("QLCDNumber")) // Deprecated in Qt 4, removed in Qt 5.
+                attributeName = u"digitCount"_s;
             if (!d->applyPropertyInternally(o, attributeName, v))
                 o->setProperty(attributeName.toUtf8(), v);
         }
@@ -1055,7 +984,7 @@ void QAbstractFormBuilder::save(QIODevice *dev, QWidget *widget)
     Q_ASSERT( ui_widget != nullptr );
 
     DomUI *ui = new DomUI();
-    ui->setAttributeVersion(QStringLiteral("4.0"));
+    ui->setAttributeVersion(u"4.0"_s);
     ui->setElementWidget(ui_widget);
 
     saveDom(ui, widget);
@@ -1113,13 +1042,15 @@ DomConnections *QAbstractFormBuilder::saveConnections()
 DomWidget *QAbstractFormBuilder::createDom(QWidget *widget, DomWidget *ui_parentWidget, bool recursive)
 {
     DomWidget *ui_widget = new DomWidget();
-    ui_widget->setAttributeClass(QLatin1String(widget->metaObject()->className()));
+    ui_widget->setAttributeClass(QLatin1StringView(widget->metaObject()->className()));
+    ui_widget->setAttributeName(widget->objectName());
+
     ui_widget->setElementProperty(computeProperties(widget));
 
     if (recursive) {
         if (QLayout *layout = widget->layout()) {
             if (DomLayout *ui_layout = createDom(layout, nullptr, ui_parentWidget)) {
-                QVector<DomLayout *> ui_layouts;
+                QList<DomLayout *> ui_layouts;
                 ui_layouts.append(ui_layout);
 
                 ui_widget->setElementLayout(ui_layouts);
@@ -1128,9 +1059,9 @@ DomWidget *QAbstractFormBuilder::createDom(QWidget *widget, DomWidget *ui_parent
     }
 
     // widgets, actions and action groups
-    QVector<DomWidget *> ui_widgets;
-    QVector<DomAction *> ui_actions;
-    QVector<DomActionGroup *> ui_action_groups;
+    QList<DomWidget *> ui_widgets;
+    QList<DomAction *> ui_actions;
+    QList<DomActionGroup *> ui_action_groups;
 
     QObjectList children;
 
@@ -1166,7 +1097,7 @@ DomWidget *QAbstractFormBuilder::createDom(QWidget *widget, DomWidget *ui_parent
         }
     }
 
-    for (QObject *obj : qAsConst(children)) {
+    for (QObject *obj : std::as_const(children)) {
         if (QWidget *childWidget = qobject_cast<QWidget*>(obj)) {
             if (d->m_laidout.contains(childWidget) || !recursive)
                 continue;
@@ -1200,7 +1131,7 @@ DomWidget *QAbstractFormBuilder::createDom(QWidget *widget, DomWidget *ui_parent
     }
 
     // add-action
-    QVector<DomActionRef *> ui_action_refs;
+    QList<DomActionRef *> ui_action_refs;
     const auto &actions = widget->actions();
     ui_action_refs.reserve(actions.size());
     for (QAction *action : actions) {
@@ -1226,16 +1157,14 @@ DomWidget *QAbstractFormBuilder::createDom(QWidget *widget, DomWidget *ui_parent
 */
 DomActionRef *QAbstractFormBuilder::createActionRefDom(QAction *action)
 {
-    QString name = action->objectName();
-
-    if (action->menu() != nullptr)
-        name = action->menu()->objectName();
-
     DomActionRef *ui_action_ref = new DomActionRef();
-    if (action->isSeparator())
-        ui_action_ref->setAttributeName(QFormBuilderStrings::instance().separator);
-    else
-        ui_action_ref->setAttributeName(name);
+    if (action->isSeparator()) {
+        ui_action_ref->setAttributeName("separator"_L1);
+    } else {
+        ui_action_ref->setAttributeName(action->menu() != nullptr
+                                        ? action->menu()->objectName()
+                                        : action->objectName());
+    }
 
     return ui_action_ref;
 }
@@ -1337,7 +1266,7 @@ DomLayout *QAbstractFormBuilder::createDom(QLayout *layout, DomLayout *ui_layout
 {
     Q_UNUSED(ui_layout);
     DomLayout *lay = new DomLayout();
-    lay->setAttributeClass(QLatin1String(layout->metaObject()->className()));
+    lay->setAttributeClass(QLatin1StringView(layout->metaObject()->className()));
     const QString objectName = layout->objectName();
     if (!objectName.isEmpty())
         lay->setAttributeName(objectName);
@@ -1354,9 +1283,9 @@ DomLayout *QAbstractFormBuilder::createDom(QLayout *layout, DomLayout *ui_layout
         newList = saveLayoutEntries(layout);
     }
 
-    QVector<DomLayoutItem *> ui_items;
+    QList<DomLayoutItem *> ui_items;
     ui_items.reserve(newList.size());
-    for (const FormBuilderSaveLayoutEntry &item : qAsConst(newList)) {
+    for (const FormBuilderSaveLayoutEntry &item : std::as_const(newList)) {
         if (DomLayoutItem *ui_item = createDom(item.item, lay, ui_parentWidget)) {
             if (item.row >= 0)
                 ui_item->setAttributeRow(item.row);
@@ -1408,10 +1337,9 @@ DomSpacer *QAbstractFormBuilder::createDom(QSpacerItem *spacer, DomLayout *ui_la
     QList<DomProperty*> properties;
 
     DomProperty *prop = nullptr;
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     // sizeHint property
     prop = new DomProperty();
-    prop->setAttributeName(strings.sizeHintProperty);
+    prop->setAttributeName("sizeHint"_L1);
     prop->setElementSize(new DomSize());
     prop->elementSize()->setElementWidth(spacer->sizeHint().width());
     prop->elementSize()->setElementHeight(spacer->sizeHint().height());
@@ -1419,8 +1347,9 @@ DomSpacer *QAbstractFormBuilder::createDom(QSpacerItem *spacer, DomLayout *ui_la
 
     // orientation property
     prop = new DomProperty(); // ### we don't implemented the case where expandingDirections() is both Vertical and Horizontal
-    prop->setAttributeName(strings.orientationProperty);
-    prop->setElementEnum((spacer->expandingDirections() & Qt::Horizontal) ? strings.qtHorizontal : strings.qtVertical);
+    prop->setAttributeName("orientation"_L1);
+    prop->setElementEnum((spacer->expandingDirections() & Qt::Horizontal) != 0 ?
+                         "Qt::Horizontal"_L1 : "Qt::Vertical"_L1);
     properties.append(prop);
 
     ui_spacer->setElementProperty(properties);
@@ -1459,13 +1388,13 @@ QList<DomProperty*> QAbstractFormBuilder::computeProperties(QObject *obj)
         const QString pname = QString::fromUtf8(propertyNames.at(i));
         const QMetaProperty prop = meta->property(meta->indexOfProperty(pname.toUtf8()));
 
-        if (!prop.isWritable() || !checkProperty(obj, QLatin1String(prop.name())))
+        if (!prop.isWritable() || !checkProperty(obj, QLatin1StringView(prop.name())))
             continue;
 
         const QVariant v = prop.read(obj);
 
         DomProperty *dom_prop = nullptr;
-        if (v.type() == QVariant::Int) {
+        if (v.metaType().id() == QMetaType::Int) {
             dom_prop = new DomProperty();
 
             if (prop.isFlagType())
@@ -1474,7 +1403,7 @@ QList<DomProperty*> QAbstractFormBuilder::computeProperties(QObject *obj)
             if (prop.isEnumType()) {
                 QString scope = QString::fromUtf8(prop.enumerator().scope());
                 if (scope.size())
-                    scope += QString::fromUtf8("::");
+                    scope += "::"_L1;
                 const QString e = QString::fromUtf8(prop.enumerator().valueToKey(v.toInt()));
                 if (e.size())
                     dom_prop->setElementEnum(scope + e);
@@ -1594,7 +1523,7 @@ DomButtonGroups *QAbstractFormBuilder::saveButtonGroups(const QWidget *mainConta
     const QObjectList &mchildren = mainContainer->children();
     if (mchildren.isEmpty())
         return nullptr;
-    QVector<DomButtonGroup *> domGroups;
+    QList<DomButtonGroup *> domGroups;
     for (QObject *o : mchildren) {
         if (auto bg = qobject_cast<QButtonGroup *>(o))
             if (DomButtonGroup* dg = createDom(bg))
@@ -1620,13 +1549,12 @@ public:
 template<class T>
 static void storeItemFlags(const T *item, QList<DomProperty*> *properties)
 {
-    static const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     static const Qt::ItemFlags defaultFlags = T().flags();
     static const QMetaEnum itemFlags_enum = metaEnum<QAbstractFormBuilderGadget>("itemFlags");
 
     if (item->flags() != defaultFlags) {
         DomProperty *p = new DomProperty;
-        p->setAttributeName(strings.flagsAttribute);
+        p->setAttributeName(QFormBuilderStrings::flagsAttribute);
         p->setElementSet(QString::fromLatin1(itemFlags_enum.valueToKeys(item->flags())));
         properties->append(p);
     }
@@ -1704,13 +1632,12 @@ template<class T>
 static void loadItemPropsNFlags(QAbstractFormBuilder *abstractFormBuilder, T *item,
         const QHash<QString, DomProperty*> &properties)
 {
-    static const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     static const QMetaEnum itemFlags_enum = metaEnum<QAbstractFormBuilderGadget>("itemFlags");
 
     loadItemProps<T>(abstractFormBuilder, item, properties);
 
-    DomProperty *p;
-    if ((p = properties.value(strings.flagsAttribute)) && p->kind() == DomProperty::Set)
+    DomProperty *p = properties.value(QFormBuilderStrings::flagsAttribute);
+    if (p != nullptr && p->kind() == DomProperty::Set)
         item->setFlags(enumKeysToValue<Qt::ItemFlags>(itemFlags_enum, p->elementSet().toLatin1()));
 }
 
@@ -1721,7 +1648,7 @@ void QAbstractFormBuilder::saveTreeWidgetExtraInfo(QTreeWidget *treeWidget, DomW
 {
     Q_UNUSED(ui_parentWidget);
 
-    QVector<DomColumn *> columns;
+    QList<DomColumn *> columns;
     DomProperty *p;
     QVariant v;
     const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
@@ -1734,10 +1661,10 @@ void QAbstractFormBuilder::saveTreeWidgetExtraInfo(QTreeWidget *treeWidget, DomW
         for (const QFormBuilderStrings::TextRoleNName &it : strings.itemTextRoles) {
             p = saveText(it.second, treeWidget->headerItem()->data(c, it.first.second));
             // Prevent uic 4.4.X from crashing if it cannot find a column text
-            if (!p && it.first.first == Qt::EditRole && it.second == QStringLiteral("text")) {
+            if (!p && it.first.first == Qt::EditRole && it.second == "text"_L1) {
                 DomString *defaultHeader = new DomString;
                 defaultHeader->setText(QString::number(c + 1));
-                defaultHeader->setAttributeNotr(QStringLiteral("true"));
+                defaultHeader->setAttributeNotr(u"true"_s);
                 p = new DomProperty;
                 p->setAttributeName(it.second);
                 p->setElementString(defaultHeader);
@@ -1812,7 +1739,7 @@ void QAbstractFormBuilder::saveTableWidgetExtraInfo(QTableWidget *tableWidget, D
     Q_UNUSED(ui_parentWidget);
 
     // save the horizontal header
-    QVector<DomColumn *> columns;
+    QList<DomColumn *> columns;
     auto *header = tableWidget->horizontalHeader();
     for (int c = 0; c < tableWidget->columnCount(); c++) {
         QList<DomProperty*> properties;
@@ -1827,7 +1754,7 @@ void QAbstractFormBuilder::saveTableWidgetExtraInfo(QTableWidget *tableWidget, D
     ui_widget->setElementColumn(columns);
 
     // save the vertical header
-    QVector<DomRow *> rows;
+    QList<DomRow *> rows;
     header = tableWidget->verticalHeader();
     for (int r = 0; r < tableWidget->rowCount(); r++) {
         QList<DomProperty*> properties;
@@ -1892,7 +1819,7 @@ void QAbstractFormBuilder::saveComboBoxExtraInfo(QComboBox *comboBox, DomWidget 
     for (int i=0; i < count; ++i) {
         // We might encounter items for which both builders return 0 in Designer
         // (indicating a custom combo adding items in the constructor). Ignore those.
-        DomProperty *textProperty = saveText(QFormBuilderStrings::instance().textAttribute,
+        DomProperty *textProperty = saveText(QFormBuilderStrings::textAttribute,
                                              comboBox->itemData(i, Qt::DisplayPropertyRole));
         DomProperty *iconProperty = saveResource(comboBox->itemData(i, Qt::DecorationPropertyRole));
         if (textProperty || iconProperty) {
@@ -1923,14 +1850,31 @@ void QAbstractFormBuilder::saveButtonExtraInfo(const QAbstractButton *widget, Do
         DomPropertyList attributes = ui_widget->elementAttribute();
         DomString *domString = new DomString();
         domString->setText(buttonGroup->objectName());
-        domString->setAttributeNotr(QStringLiteral("true"));
+        domString->setAttributeNotr(u"true"_s);
         DomProperty *domProperty = new DomProperty();
-        domProperty->setAttributeName(QLatin1String(buttonGroupPropertyC));
+        domProperty->setAttributeName(QLatin1StringView(buttonGroupPropertyC));
         domProperty->setElementString(domString);
         attributes += domProperty;
         ui_widget->setElementAttribute(attributes);
     }
 }
+
+static const QLatin1StringView tableHeaderPrefixes[] = {
+    "horizontalHeader"_L1,
+    "verticalHeader"_L1,
+};
+
+static constexpr QLatin1StringView itemViewHeaderRealPropertyNames[] =
+{
+    // Special handling for qtableview/qtreeview fake header attributes
+    "visible"_L1,
+    "cascadingSectionResizes"_L1,
+    "minimumSectionSize"_L1,    // before defaultSectionSize
+    "defaultSectionSize"_L1,
+    "highlightSections"_L1,
+    "showSortIndicator"_L1,
+    "stretchLastSection"_L1
+};
 
 /*!
     \internal
@@ -1939,26 +1883,13 @@ void QAbstractFormBuilder::saveButtonExtraInfo(const QAbstractButton *widget, Do
 void QAbstractFormBuilder::saveItemViewExtraInfo(const QAbstractItemView *itemView,
                                                  DomWidget *ui_widget, DomWidget *)
 {
-    //
-    // Special handling for qtableview/qtreeview fake header attributes
-    //
-    static const QLatin1String realPropertyNames[] = {
-        QLatin1String("visible"),
-        QLatin1String("cascadingSectionResizes"),
-        QLatin1String("minimumSectionSize"),    // before defaultSectionSize
-        QLatin1String("defaultSectionSize"),
-        QLatin1String("highlightSections"),
-        QLatin1String("showSortIndicator"),
-        QLatin1String("stretchLastSection"),
-    };
-
     if (const QTreeView *treeView = qobject_cast<const QTreeView*>(itemView)) {
         auto viewProperties = ui_widget->elementAttribute();
         const auto &headerProperties = computeProperties(treeView->header());
-        for (const QString &realPropertyName : realPropertyNames) {
-            const QString upperPropertyName = realPropertyName.at(0).toUpper()
+        for (const QLatin1StringView realPropertyName : itemViewHeaderRealPropertyNames) {
+            const QString upperPropertyName = QChar(realPropertyName.at(0)).toUpper()
                                               + realPropertyName.mid(1);
-            const QString fakePropertyName = QStringLiteral("header") + upperPropertyName;
+            const QString fakePropertyName = "header"_L1 + upperPropertyName;
             for (DomProperty *property : headerProperties) {
                 if (property->attributeName() == realPropertyName) {
                     property->setAttributeName(fakePropertyName);
@@ -1968,20 +1899,16 @@ void QAbstractFormBuilder::saveItemViewExtraInfo(const QAbstractItemView *itemVi
         }
         ui_widget->setElementAttribute(viewProperties);
     } else if (const QTableView *tableView = qobject_cast<const QTableView*>(itemView)) {
-        static const QStringList headerPrefixes =
-                (QStringList() << QStringLiteral("horizontalHeader")
-                               << QStringLiteral("verticalHeader"));
-
         auto viewProperties = ui_widget->elementAttribute();
-        for (const QString &headerPrefix : headerPrefixes) {
-            const auto &headerProperties = headerPrefix == QStringLiteral("horizontalHeader")
+        for (QLatin1StringView headerPrefix : tableHeaderPrefixes) {
+            const auto &headerProperties = headerPrefix == "horizontalHeader"_L1
                 ? computeProperties(tableView->horizontalHeader())
                 : computeProperties(tableView->verticalHeader());
-            for (const QString &realPropertyName : realPropertyNames) {
-                const QString upperPropertyName = realPropertyName.at(0).toUpper()
+            for (const QLatin1StringView realPropertyName : itemViewHeaderRealPropertyNames) {
+                const QString upperPropertyName = QChar(realPropertyName.at(0)).toUpper()
                                                   + realPropertyName.mid(1);
                 const QString fakePropertyName = headerPrefix + upperPropertyName;
-                for (DomProperty *property : qAsConst(headerProperties)) {
+                for (DomProperty *property : std::as_const(headerProperties)) {
                     if (property->attributeName() == realPropertyName) {
                         property->setAttributeName(fakePropertyName);
                         viewProperties << property;
@@ -2062,8 +1989,6 @@ void QAbstractFormBuilder::saveExtraInfo(QWidget *widget, DomWidget *ui_widget,
 void QAbstractFormBuilder::loadListWidgetExtraInfo(DomWidget *ui_widget, QListWidget *listWidget, QWidget *parentWidget)
 {
     Q_UNUSED(parentWidget);
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
-
     const auto &elementItem = ui_widget->elementItem();
     for (DomItem *ui_item : elementItem) {
         const DomPropertyHash properties = propertyMap(ui_item->elementProperty());
@@ -2071,8 +1996,7 @@ void QAbstractFormBuilder::loadListWidgetExtraInfo(DomWidget *ui_widget, QListWi
         loadItemPropsNFlags<QListWidgetItem>(this, item, properties);
     }
 
-    DomProperty *currentRow = propertyMap(ui_widget->elementProperty()).value(strings.currentRowProperty);
-    if (currentRow)
+    if (auto *currentRow = QFBE::propertyByName(ui_widget->elementProperty(), "currentRow"))
         listWidget->setCurrentRow(currentRow->elementNumber());
 }
 
@@ -2085,10 +2009,10 @@ void QAbstractFormBuilder::loadTreeWidgetExtraInfo(DomWidget *ui_widget, QTreeWi
     const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     const QMetaEnum itemFlags_enum = metaEnum<QAbstractFormBuilderGadget>("itemFlags");
     const auto &columns = ui_widget->elementColumn();
-    if (columns.count() > 0)
-        treeWidget->setColumnCount(columns.count());
+    if (!columns.isEmpty())
+        treeWidget->setColumnCount(columns.size());
 
-    for (int i = 0; i<columns.count(); ++i) {
+    for (qsizetype i = 0, size = columns.size(); i < size; ++i) {
         const DomColumn *c = columns.at(i);
         const DomPropertyHash properties = propertyMap(c->elementProperty());
 
@@ -2108,7 +2032,7 @@ void QAbstractFormBuilder::loadTreeWidgetExtraInfo(DomWidget *ui_widget, QTreeWi
                 treeWidget->headerItem()->setData(i, it.first.second, v);
             }
 
-        if ((p = properties.value(strings.iconAttribute))) {
+        if ((p = properties.value(QFormBuilderStrings::iconAttribute))) {
             v = resourceBuilder()->loadResource(workingDirectory(), p);
             QVariant nativeValue = resourceBuilder()->toNativeValue(v);
             treeWidget->headerItem()->setIcon(i, qvariant_cast<QIcon>(nativeValue));
@@ -2136,16 +2060,18 @@ void QAbstractFormBuilder::loadTreeWidgetExtraInfo(DomWidget *ui_widget, QTreeWi
         const auto &properties = domItem->elementProperty();
         int col = -1;
         for (DomProperty *property : properties) {
-            if (property->attributeName() == strings.flagsAttribute && !property->elementSet().isEmpty()) {
+            if (property->attributeName() == QFormBuilderStrings::flagsAttribute
+                && !property->elementSet().isEmpty()) {
                 currentItem->setFlags(enumKeysToValue<Qt::ItemFlags>(itemFlags_enum, property->elementSet().toLatin1()));
-            } else if (property->attributeName() == strings.textAttribute && property->elementString()) {
+            } else if (property->attributeName() == QFormBuilderStrings::textAttribute
+                       && property->elementString()) {
                 col++;
                 QVariant textV = textBuilder()->loadText(property);
                 QVariant nativeValue = textBuilder()->toNativeValue(textV);
                 currentItem->setText(col, qvariant_cast<QString>(nativeValue));
                 currentItem->setData(col, Qt::DisplayPropertyRole, textV);
             } else if (col >= 0) {
-                if (property->attributeName() == strings.iconAttribute) {
+                if (property->attributeName() == QFormBuilderStrings::iconAttribute) {
                     QVariant v = resourceBuilder()->loadResource(workingDirectory(), property);
                     if (v.isValid()) {
                         QVariant nativeValue = resourceBuilder()->toNativeValue(v);
@@ -2188,9 +2114,9 @@ void QAbstractFormBuilder::loadTableWidgetExtraInfo(DomWidget *ui_widget, QTable
     Q_UNUSED(parentWidget);
 
     const auto &columns = ui_widget->elementColumn();
-    if (columns.count() > 0)
-        tableWidget->setColumnCount(columns.count());
-    for (int i = 0; i< columns.count(); i++) {
+    if (!columns.isEmpty())
+        tableWidget->setColumnCount(columns.size());
+    for (qsizetype i = 0, size = columns.size(); i < size; ++i) {
         DomColumn *c = columns.at(i);
         const DomPropertyHash properties = propertyMap(c->elementProperty());
 
@@ -2202,9 +2128,9 @@ void QAbstractFormBuilder::loadTableWidgetExtraInfo(DomWidget *ui_widget, QTable
     }
 
     const auto &rows = ui_widget->elementRow();
-    if (rows.count() > 0)
-        tableWidget->setRowCount(rows.count());
-    for (int i = 0; i< rows.count(); i++) {
+    if (!rows.isEmpty())
+        tableWidget->setRowCount(rows.size());
+    for (qsizetype i = 0, size = rows.size(); i < size; ++i) {
         const DomRow *r = rows.at(i);
         const DomPropertyHash properties = propertyMap(r->elementProperty());
 
@@ -2232,24 +2158,21 @@ void QAbstractFormBuilder::loadTableWidgetExtraInfo(DomWidget *ui_widget, QTable
 void QAbstractFormBuilder::loadComboBoxExtraInfo(DomWidget *ui_widget, QComboBox *comboBox, QWidget *parentWidget)
 {
     Q_UNUSED(parentWidget);
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     const auto &elementItem = ui_widget->elementItem();
     for (DomItem *ui_item : elementItem) {
-        const DomPropertyHash properties = propertyMap(ui_item->elementProperty());
+        const auto &properties = ui_item->elementProperty();
         QString text;
         QIcon icon;
         QVariant textData;
         QVariant iconData;
 
-        DomProperty *p = nullptr;
-
-        p = properties.value(strings.textAttribute);
+        DomProperty *p = QFBE::propertyByName(properties, QFormBuilderStrings::textAttribute);
         if (p && p->elementString()) {
              textData = textBuilder()->loadText(p);
              text = qvariant_cast<QString>(textBuilder()->toNativeValue(textData));
         }
 
-        p = properties.value(strings.iconAttribute);
+        p = QFBE::propertyByName(properties, QFormBuilderStrings::iconAttribute);
         if (p) {
              iconData = resourceBuilder()->loadResource(workingDirectory(), p);
              icon = qvariant_cast<QIcon>(resourceBuilder()->toNativeValue(iconData));
@@ -2260,8 +2183,7 @@ void QAbstractFormBuilder::loadComboBoxExtraInfo(DomWidget *ui_widget, QComboBox
         comboBox->setItemData((comboBox->count()-1), textData, Qt::DisplayPropertyRole);
     }
 
-    DomProperty *currentIndex = propertyMap(ui_widget->elementProperty()).value(strings.currentIndexProperty);
-    if (currentIndex)
+    if (auto *currentIndex = currentIndexProperty(ui_widget->elementProperty()))
         comboBox->setCurrentIndex(currentIndex->elementNumber());
 }
 
@@ -2271,7 +2193,7 @@ static QString buttonGroupName(const DomWidget *ui_widget)
     const auto &attributes = ui_widget->elementAttribute();
     if (attributes.isEmpty())
         return QString();
-    const QString buttonGroupProperty = QLatin1String(buttonGroupPropertyC);
+    const QString buttonGroupProperty = QLatin1StringView(buttonGroupPropertyC);
     for (const DomProperty *p : attributes) {
         if (p->attributeName() == buttonGroupProperty)
             return p->elementString()->text();
@@ -2293,7 +2215,7 @@ void QAbstractFormBuilder::loadButtonExtraInfo(const DomWidget *ui_widget, QAbst
         return;
     // Find entry
     ButtonGroupHash &buttonGroups = d->buttonGroups();
-    ButtonGroupHash::iterator it = buttonGroups.find(groupName);
+    const auto it = buttonGroups.find(groupName);
     if (it == buttonGroups.end()) {
 #ifdef QFORMINTERNAL_NAMESPACE // Suppress the warning when copying in Designer
         uiLibWarning(QCoreApplication::translate("QAbstractFormBuilder", "Invalid QButtonGroup reference '%1' referenced by '%2'.").arg(groupName, button->objectName()));
@@ -2317,26 +2239,13 @@ void QAbstractFormBuilder::loadButtonExtraInfo(const DomWidget *ui_widget, QAbst
 void QAbstractFormBuilder::loadItemViewExtraInfo(DomWidget *ui_widget, QAbstractItemView *itemView,
                                                  QWidget *)
 {
-    //
-    // Special handling for qtableview/qtreeview fake header attributes
-    //
-    static const QLatin1String realPropertyNames[] = {
-        QLatin1String("visible"),
-        QLatin1String("cascadingSectionResizes"),
-        QLatin1String("minimumSectionSize"),    // before defaultSectionSize
-        QLatin1String("defaultSectionSize"),
-        QLatin1String("highlightSections"),
-        QLatin1String("showSortIndicator"),
-        QLatin1String("stretchLastSection"),
-    };
-
     if (QTreeView *treeView = qobject_cast<QTreeView*>(itemView)) {
         const auto &allAttributes = ui_widget->elementAttribute();
         QList<DomProperty *> headerProperties;
-        for (const QString &realPropertyName : realPropertyNames) {
-            const QString upperPropertyName = realPropertyName.at(0).toUpper()
+        for (QLatin1StringView realPropertyName : itemViewHeaderRealPropertyNames) {
+            const QString upperPropertyName = QChar(realPropertyName.at(0)).toUpper()
                                               + realPropertyName.mid(1);
-            const QString fakePropertyName = QStringLiteral("header") + upperPropertyName;
+            const QString fakePropertyName = "header"_L1 + upperPropertyName;
             for (DomProperty *attr : allAttributes) {
                 if (attr->attributeName() == fakePropertyName) {
                     attr->setAttributeName(realPropertyName);
@@ -2346,15 +2255,11 @@ void QAbstractFormBuilder::loadItemViewExtraInfo(DomWidget *ui_widget, QAbstract
         }
         applyProperties(treeView->header(), headerProperties);
     } else if (QTableView *tableView = qobject_cast<QTableView*>(itemView)) {
-        static const QStringList headerPrefixes =
-                (QStringList() << QStringLiteral("horizontalHeader")
-                               << QStringLiteral("verticalHeader"));
-
         const auto &allAttributes = ui_widget->elementAttribute();
-        for (const QString &headerPrefix : headerPrefixes) {
+        for (QLatin1StringView headerPrefix : tableHeaderPrefixes) {
             QList<DomProperty*> headerProperties;
-            for (const QString &realPropertyName : realPropertyNames) {
-                const QString upperPropertyName = realPropertyName.at(0).toUpper()
+            for (QLatin1StringView realPropertyName : itemViewHeaderRealPropertyNames) {
+                const QString upperPropertyName = QChar(realPropertyName.at(0)).toUpper()
                                                   + realPropertyName.mid(1);
                 const QString fakePropertyName = headerPrefix + upperPropertyName;
                 for (DomProperty *attr : allAttributes) {
@@ -2364,7 +2269,7 @@ void QAbstractFormBuilder::loadItemViewExtraInfo(DomWidget *ui_widget, QAbstract
                     }
                 }
             }
-            if (headerPrefix == QStringLiteral("horizontalHeader"))
+            if (headerPrefix == "horizontalHeader"_L1)
                 applyProperties(tableView->horizontalHeader(), headerProperties);
             else
                 applyProperties(tableView->verticalHeader(), headerProperties);
@@ -2377,7 +2282,6 @@ void QAbstractFormBuilder::loadItemViewExtraInfo(DomWidget *ui_widget, QAbstract
 */
 void QAbstractFormBuilder::loadExtraInfo(DomWidget *ui_widget, QWidget *widget, QWidget *parentWidget)
 {
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
     if (false) {
 #if QT_CONFIG(listwidget)
     } else if (QListWidget *listWidget = qobject_cast<QListWidget*>(widget)) {
@@ -2398,23 +2302,19 @@ void QAbstractFormBuilder::loadExtraInfo(DomWidget *ui_widget, QWidget *widget, 
 #endif
 #if QT_CONFIG(tabwidget)
     } else if (QTabWidget *tabWidget = qobject_cast<QTabWidget*>(widget)) {
-        const DomProperty *currentIndex = propertyMap(ui_widget->elementProperty()).value(strings.currentIndexProperty);
-        if (currentIndex)
+        if (auto *currentIndex = currentIndexProperty(ui_widget->elementProperty()))
             tabWidget->setCurrentIndex(currentIndex->elementNumber());
 #endif
 #if QT_CONFIG(stackedwidget)
     } else if (QStackedWidget *stackedWidget = qobject_cast<QStackedWidget*>(widget)) {
-        const DomProperty *currentIndex = propertyMap(ui_widget->elementProperty()).value(strings.currentIndexProperty);
-        if (currentIndex)
+        if (auto *currentIndex = currentIndexProperty(ui_widget->elementProperty()))
             stackedWidget->setCurrentIndex(currentIndex->elementNumber());
 #endif
 #if QT_CONFIG(toolbox)
     } else if (QToolBox *toolBox = qobject_cast<QToolBox*>(widget)) {
-        const DomProperty *currentIndex = propertyMap(ui_widget->elementProperty()).value(strings.currentIndexProperty);
-        if (currentIndex)
+        if (auto *currentIndex = currentIndexProperty(ui_widget->elementProperty()))
             toolBox->setCurrentIndex(currentIndex->elementNumber());
-        const DomProperty *tabSpacing = propertyMap(ui_widget->elementProperty()).value(strings.tabSpacingProperty);
-        if (tabSpacing)
+        if (auto *tabSpacing = QFBE::propertyByName(ui_widget->elementProperty(), "tabSpacing"))
             toolBox->layout()->setSpacing(tabSpacing->elementNumber());
 #endif
     } else if (QAbstractButton *ab = qobject_cast<QAbstractButton *>(widget)) {
@@ -2451,7 +2351,7 @@ void QAbstractFormBuilder::setWorkingDirectory(const QDir &directory)
 */
 DomAction *QAbstractFormBuilder::createDom(QAction *action)
 {
-    if (action->parentWidget() == action->menu() || action->isSeparator())
+    if (action->parent() == action->menu() || action->isSeparator())
         return nullptr;
 
     DomAction *ui_action = new DomAction;
@@ -2469,7 +2369,7 @@ DomAction *QAbstractFormBuilder::createDom(QAction *action)
 
 DomButtonGroup *QAbstractFormBuilder::createDom(QButtonGroup *buttonGroup)
 {
-    if (buttonGroup->buttons().count() == 0) // Empty group left over on form?
+    if (buttonGroup->buttons().isEmpty()) // Empty group left over on form?
         return nullptr;
     DomButtonGroup *domButtonGroup = new DomButtonGroup;
     domButtonGroup->setAttributeName(buttonGroup->objectName());
@@ -2488,7 +2388,7 @@ DomActionGroup *QAbstractFormBuilder::createDom(QActionGroup *actionGroup)
 
     ui_action_group->setElementProperty(computeProperties(actionGroup));
 
-    QVector<DomAction *> ui_actions;
+    QList<DomAction *> ui_actions;
 
     const auto &actions = actionGroup->actions();
     ui_actions.reserve(actions.size());
@@ -2533,34 +2433,6 @@ QMetaEnum QAbstractFormBuilder::toolBarAreaMetaEnum()
     return metaEnum<QAbstractFormBuilderGadget>("toolBarArea");
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-
-/*!
-    \internal
-    Return paths of an icon.
-*/
-
-QAbstractFormBuilder::IconPaths QAbstractFormBuilder::iconPaths(const QIcon &icon) const
-{
-    Q_UNUSED(icon);
-    qWarning() << "QAbstractFormBuilder::iconPaths() is obsoleted";
-    return IconPaths();
-}
-
-/*!
-    \internal
-    Return paths of a pixmap.
-*/
-
-QAbstractFormBuilder::IconPaths QAbstractFormBuilder::pixmapPaths(const QPixmap &pixmap) const
-{
-    Q_UNUSED(pixmap);
-    qWarning() << "QAbstractFormBuilder::pixmapPaths() is obsoleted";
-    return IconPaths();
-}
-
-#endif // < Qt 6
-
 /*!
     \internal
     Set up a DOM property with icon.
@@ -2576,7 +2448,7 @@ void QAbstractFormBuilder::setIconProperty(DomProperty &p, const IconPaths &ip) 
 */
     dpi->setText(ip.first);
 
-    p.setAttributeName(QFormBuilderStrings::instance().iconAttribute);
+    p.setAttributeName(QFormBuilderStrings::iconAttribute);
     p.setElementIconSet(dpi);
 }
 
@@ -2590,22 +2462,6 @@ void QAbstractFormBuilder::setPixmapProperty(DomProperty &p, const IconPaths &ip
     QFormBuilderExtra::setPixmapProperty(&p, ip);
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-
-/*!
-    \internal
-    Convenience. Return DOM property for icon; 0 if icon.isNull().
-*/
-
-DomProperty* QAbstractFormBuilder::iconToDomProperty(const QIcon &icon) const
-{
-    Q_UNUSED(icon);
-    qWarning() << "QAbstractFormBuilder::iconToDomProperty() is obsoleted";
-    return nullptr;
-}
-
-#endif // < Qt 6
-
 /*!
     \internal
     \since 4.4
@@ -2618,7 +2474,7 @@ DomProperty *QAbstractFormBuilder::saveResource(const QVariant &v) const
 
     DomProperty *p = resourceBuilder()->saveResource(workingDirectory(), v);
     if (p)
-        p->setAttributeName(QFormBuilderStrings::instance().iconAttribute);
+        p->setAttributeName(QFormBuilderStrings::iconAttribute);
     return p;
 }
 
@@ -2656,64 +2512,6 @@ const DomResourcePixmap *QAbstractFormBuilder::domPixmap(const DomProperty* p) {
     }
     return nullptr;
 }
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-
-/*!
-    \internal
-    Create icon from DOM.
-    From 4.4 - unused
-*/
-
-QIcon QAbstractFormBuilder::domPropertyToIcon(const DomResourcePixmap *icon)
-{
-    Q_UNUSED(icon);
-    qWarning() << "QAbstractFormBuilder::domPropertyToIcon() is obsoleted";
-    return QIcon();
-}
-
-/*!
-    \internal
-    Create icon from DOM. Assert if !domPixmap
-    From 4.4 - unused
-*/
-
-QIcon QAbstractFormBuilder::domPropertyToIcon(const DomProperty* p)
-{
-    Q_UNUSED(p);
-    qWarning() << "QAbstractFormBuilder::domPropertyToIcon() is obsoleted";
-    return QIcon();
-}
-
-
-/*!
-    \internal
-    Create pixmap from DOM.
-    From 4.4 - unused
-*/
-
-QPixmap QAbstractFormBuilder::domPropertyToPixmap(const DomResourcePixmap* pixmap)
-{
-    Q_UNUSED(pixmap);
-    qWarning() << "QAbstractFormBuilder::domPropertyToPixmap() is obsoleted";
-    return QPixmap();
-}
-
-
-/*!
-    \internal
-    Create pixmap from DOM. Assert if !domPixmap
-    From 4.4 - unused
-*/
-
-QPixmap QAbstractFormBuilder::domPropertyToPixmap(const DomProperty* p)
-{
-    Q_UNUSED(p);
-    qWarning() << "QAbstractFormBuilder::domPropertyToPixmap() is obsoleted";
-    return QPixmap();
-}
-
-#endif // < Qt 6
 
 /*!
     \fn void QAbstractFormBuilder::createConnections ( DomConnections *, QWidget * )

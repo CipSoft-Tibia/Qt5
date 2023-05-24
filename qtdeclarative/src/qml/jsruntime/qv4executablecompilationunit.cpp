@@ -1,42 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qml/qqmlprivate.h"
+#include "qv4engine_p.h"
 #include "qv4executablecompilationunit_p.h"
 
 #include <private/qv4engine_p.h>
@@ -54,6 +20,8 @@
 #include <private/qml_compile_hash_p.h>
 #include <private/qqmltypewrapper_p.h>
 #include <private/inlinecomponentutils_p.h>
+#include <private/qv4resolvedtypereference_p.h>
+#include <private/qv4objectiterator_p.h>
 
 #include <QtQml/qqmlfile.h>
 #include <QtQml/qqmlpropertymap.h>
@@ -65,14 +33,16 @@
 #include <QtCore/qcryptographichash.h>
 #include <QtCore/QScopedValueRollback>
 
-#if defined(QML_COMPILE_HASH)
+static_assert(QV4::CompiledData::QmlCompileHashSpace > QML_COMPILE_HASH_LENGTH);
+
+#if defined(QML_COMPILE_HASH) && defined(QML_COMPILE_HASH_LENGTH) && QML_COMPILE_HASH_LENGTH > 0
 #  ifdef Q_OS_LINUX
 // Place on a separate section on Linux so it's easier to check from outside
 // what the hash version is.
 __attribute__((section(".qml_compile_hash")))
 #  endif
-const char qml_compile_hash[48 + 1] = QML_COMPILE_HASH;
-static_assert(sizeof(QV4::CompiledData::Unit::libraryVersionHash) >= QML_COMPILE_HASH_LENGTH + 1,
+const char qml_compile_hash[QV4::CompiledData::QmlCompileHashSpace] = QML_COMPILE_HASH;
+static_assert(sizeof(QV4::CompiledData::Unit::libraryVersionHash) > QML_COMPILE_HASH_LENGTH,
               "Compile hash length exceeds reserved size in data structure. Please adjust and bump the format version");
 #else
 #  error "QML_COMPILE_HASH must be defined for the build of QtDeclarative to ensure version checking for cache files"
@@ -142,23 +112,20 @@ QV4::Function *ExecutableCompilationUnit::linkToEngine(ExecutionEngine *engine)
     Q_ASSERT(!runtimeStrings);
     Q_ASSERT(data);
     const quint32 stringCount = totalStringCount();
-    runtimeStrings = (QV4::Heap::String **)malloc(stringCount * sizeof(QV4::Heap::String*));
-    // memset the strings to 0 in case a GC run happens while we're within the loop below
-    memset(runtimeStrings, 0, stringCount * sizeof(QV4::Heap::String*));
+    // strings need to be 0 in case a GC run happens while we're within the loop below
+    runtimeStrings = (QV4::Heap::String **)calloc(stringCount, sizeof(QV4::Heap::String*));
     for (uint i = 0; i < stringCount; ++i)
         runtimeStrings[i] = engine->newString(stringAt(i));
 
+    // zero-initialize regexps in case a GC run happens while we're within the loop below
     runtimeRegularExpressions
-            = new QV4::Value[data->regexpTableSize];
-    // memset the regexps to 0 in case a GC run happens while we're within the loop below
-    memset(runtimeRegularExpressions, 0,
-           data->regexpTableSize * sizeof(QV4::Value));
+            = new QV4::Value[data->regexpTableSize] {};
     for (uint i = 0; i < data->regexpTableSize; ++i) {
         const CompiledData::RegExp *re = data->regexpAt(i);
-        uint f = re->flags;
+        uint f = re->flags();
         const CompiledData::RegExp::Flags flags = static_cast<CompiledData::RegExp::Flags>(f);
         runtimeRegularExpressions[i] = QV4::RegExp::create(
-                engine, stringAt(re->stringIndex), flags);
+                engine, stringAt(re->stringIndex()), flags);
     }
 
     if (data->lookupTableSize) {
@@ -169,7 +136,7 @@ QV4::Function *ExecutableCompilationUnit::linkToEngine(ExecutionEngine *engine)
             QV4::Lookup *l = runtimeLookups + i;
 
             CompiledData::Lookup::Type type
-                    = CompiledData::Lookup::Type(uint(compiledLookups[i].type_and_flags));
+                    = CompiledData::Lookup::Type(uint(compiledLookups[i].type()));
             if (type == CompiledData::Lookup::Type_Getter)
                 l->getter = QV4::Lookup::getterGeneric;
             else if (type == CompiledData::Lookup::Type_Setter)
@@ -178,17 +145,17 @@ QV4::Function *ExecutableCompilationUnit::linkToEngine(ExecutionEngine *engine)
                 l->globalGetter = QV4::Lookup::globalGetterGeneric;
             else if (type == CompiledData::Lookup::Type_QmlContextPropertyGetter)
                 l->qmlContextPropertyGetter = QQmlContextWrapper::resolveQmlContextPropertyLookupGetter;
-            l->nameIndex = compiledLookups[i].nameIndex;
+            l->forCall = compiledLookups[i].mode() == CompiledData::Lookup::Mode_ForCall;
+            l->nameIndex = compiledLookups[i].nameIndex();
         }
     }
 
     if (data->jsClassTableSize) {
+        // zero the regexps with calloc in case a GC run happens while we're within the loop below
         runtimeClasses
-                = (QV4::Heap::InternalClass **)malloc(data->jsClassTableSize
-                                                      * sizeof(QV4::Heap::InternalClass *));
-        // memset the regexps to 0 in case a GC run happens while we're within the loop below
-        memset(runtimeClasses, 0,
-               data->jsClassTableSize * sizeof(QV4::Heap::InternalClass *));
+                = (QV4::Heap::InternalClass **)calloc(data->jsClassTableSize,
+                                                      sizeof(QV4::Heap::InternalClass *));
+
         for (uint i = 0; i < data->jsClassTableSize; ++i) {
             int memberCount = 0;
             const CompiledData::JSClassMember *member
@@ -199,17 +166,37 @@ QV4::Function *ExecutableCompilationUnit::linkToEngine(ExecutionEngine *engine)
                 runtimeClasses[i]
                         = runtimeClasses[i]->addMember(
                                 engine->identifierTable->asPropertyKey(
-                                        runtimeStrings[member->nameOffset]),
-                                member->isAccessor
+                                        runtimeStrings[member->nameOffset()]),
+                                member->isAccessor()
                                         ? QV4::Attr_Accessor
                                         : QV4::Attr_Data);
         }
     }
 
     runtimeFunctions.resize(data->functionTableSize);
+    static bool ignoreAotCompiledFunctions
+            = qEnvironmentVariableIsSet("QV4_FORCE_INTERPRETER")
+            || !(engine->diskCacheOptions() & ExecutionEngine::DiskCache::AotNative);
+
+    const QQmlPrivate::AOTCompiledFunction *aotFunction
+            = ignoreAotCompiledFunctions ? nullptr : aotCompiledFunctions;
+
+    auto advanceAotFunction = [&](int i) -> const QQmlPrivate::AOTCompiledFunction * {
+        if (aotFunction) {
+            if (aotFunction->functionPtr) {
+                if (aotFunction->extraData == i)
+                    return aotFunction++;
+            } else {
+                aotFunction = nullptr;
+            }
+        }
+        return nullptr;
+    };
+
     for (int i = 0 ;i < runtimeFunctions.size(); ++i) {
         const QV4::CompiledData::Function *compiledFunction = data->functionAt(i);
-        runtimeFunctions[i] = QV4::Function::create(engine, this, compiledFunction);
+        runtimeFunctions[i] = QV4::Function::create(engine, this, compiledFunction,
+                                                    advanceAotFunction(i));
     }
 
     Scope scope(engine);
@@ -285,12 +272,9 @@ void ExecutableCompilationUnit::unlink()
     if (engine)
         nextCompilationUnit.remove();
 
-    if (isRegisteredWithEngine) {
+    if (isRegistered) {
         Q_ASSERT(data && propertyCaches.count() > 0 && propertyCaches.at(/*root object*/0));
-        if (qmlEngine)
-            qmlEngine->unregisterInternalCompositeType(this);
-        QQmlMetaType::unregisterInternalCompositeType({metaTypeId, listMetaTypeId});
-        isRegisteredWithEngine = false;
+        QQmlMetaType::unregisterInternalCompositeType(this);
     }
 
     propertyCaches.clear();
@@ -302,18 +286,17 @@ void ExecutableCompilationUnit::unlink()
 
     dependentScripts.clear();
 
-    typeNameCache = nullptr;
+    typeNameCache.reset();
 
     qDeleteAll(resolvedTypes);
     resolvedTypes.clear();
 
     engine = nullptr;
-    qmlEngine = nullptr;
 
     delete [] runtimeLookups;
     runtimeLookups = nullptr;
 
-    for (QV4::Function *f : qAsConst(runtimeFunctions))
+    for (QV4::Function *f : std::as_const(runtimeFunctions))
         f->destroy();
     runtimeFunctions.clear();
 
@@ -341,14 +324,14 @@ void ExecutableCompilationUnit::markObjects(QV4::MarkStack *markStack)
             if (runtimeClasses[i])
                 runtimeClasses[i]->mark(markStack);
     }
-    for (QV4::Function *f : qAsConst(runtimeFunctions))
+    for (QV4::Function *f : std::as_const(runtimeFunctions))
         if (f && f->internalClass)
             f->internalClass->mark(markStack);
-    for (QV4::Heap::InternalClass *c : qAsConst(runtimeBlocks))
+    for (QV4::Heap::InternalClass *c : std::as_const(runtimeBlocks))
         if (c)
             c->mark(markStack);
 
-    for (QV4::Heap::Object *o : qAsConst(templateObjects))
+    for (QV4::Heap::Object *o : std::as_const(templateObjects))
         if (o)
             o->mark(markStack);
 
@@ -368,34 +351,56 @@ IdentifierHash ExecutableCompilationUnit::createNamedObjectsPerComponent(int com
     const quint32_le *namedObjectIndexPtr = component->namedObjectsInComponentTable();
     for (quint32 i = 0; i < component->nNamedObjectsInComponent; ++i, ++namedObjectIndexPtr) {
         const CompiledData::Object *namedObject = objectAt(*namedObjectIndexPtr);
-        namedObjectCache.add(runtimeStrings[namedObject->idNameIndex], namedObject->id);
+        namedObjectCache.add(runtimeStrings[namedObject->idNameIndex], namedObject->objectId());
     }
+    Q_ASSERT(!namedObjectCache.isEmpty());
     return *namedObjectsPerComponentCache.insert(componentObjectIndex, namedObjectCache);
 }
 
-void ExecutableCompilationUnit::finalizeCompositeType(QQmlEnginePrivate *qmlEngine, CompositeMetaTypeIds typeIds)
+template<typename F>
+void processInlinComponentType(
+    const QQmlType &type, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+    F &&populateIcData)
 {
-    this->qmlEngine = qmlEngine;
+    if (type.isInlineComponentType()) {
+        QString icRootName;
+        if (compilationUnit->icRootName) {
+            icRootName = type.elementName();
+            std::swap(*compilationUnit->icRootName, icRootName);
+        } else {
+            compilationUnit->icRootName = std::make_unique<QString>(type.elementName());
+        }
 
+        populateIcData();
+
+        if (icRootName.isEmpty())
+            compilationUnit->icRootName.reset();
+        else
+            std::swap(*compilationUnit->icRootName, icRootName);
+    } else {
+        populateIcData();
+    }
+}
+
+void ExecutableCompilationUnit::finalizeCompositeType(CompositeMetaTypeIds types)
+{
     // Add to type registry of composites
     if (propertyCaches.needsVMEMetaObject(/*root object*/0)) {
         // typeIds is only valid for types that have references to themselves.
-        if (!typeIds.isValid())
-            typeIds = QQmlMetaType::registerInternalCompositeType(rootPropertyCache()->className());
-        metaTypeId = typeIds.id;
-        listMetaTypeId = typeIds.listId;
-        qmlEngine->registerInternalCompositeType(this);
+        if (!types.isValid())
+            types = CompositeMetaTypeIds::fromCompositeName(rootPropertyCache()->className());
+        typeIds = types;
+        QQmlMetaType::registerInternalCompositeType(this);
 
     } else {
         const QV4::CompiledData::Object *obj = objectAt(/*root object*/0);
         auto *typeRef = resolvedTypes.value(obj->inheritedTypeNameIndex);
         Q_ASSERT(typeRef);
         if (const auto compilationUnit = typeRef->compilationUnit()) {
-            metaTypeId = compilationUnit->metaTypeId;
-            listMetaTypeId = compilationUnit->listMetaTypeId;
+            typeIds = compilationUnit->typeIds;
         } else {
-            metaTypeId = typeRef->type.typeId();
-            listMetaTypeId = typeRef->type.qListTypeId();
+            const auto type = typeRef->type();
+            typeIds = CompositeMetaTypeIds{ type.typeId(), type.qListTypeId() };
         }
     }
 
@@ -408,7 +413,7 @@ void ExecutableCompilationUnit::finalizeCompositeType(QQmlEnginePrivate *qmlEngi
             allICs.push_back(*it);
         }
     }
-    std::vector<Node> nodes;
+    NodeList nodes;
     nodes.resize(allICs.size());
     std::iota(nodes.begin(), nodes.end(), 0);
     AdjacencyList adjacencyList;
@@ -421,33 +426,34 @@ void ExecutableCompilationUnit::finalizeCompositeType(QQmlEnginePrivate *qmlEngi
     // We need to first iterate over all inline components, as the containing component might create instances of them
     // and in that case we need to add its object count
     for (auto nodeIt = nodesSorted.rbegin(); nodeIt != nodesSorted.rend(); ++nodeIt) {
-        const auto &ic = allICs.at(nodeIt->index);
-        int lastICRoot = ic.objectIndex;
+        const auto &ic = allICs.at(nodeIt->index());
+        const int lastICRoot = ic.objectIndex;
         for (int i = ic.objectIndex; i<objectCount(); ++i) {
             const QV4::CompiledData::Object *obj = objectAt(i);
-            bool leftCurrentInlineComponent =
-                       (i != lastICRoot && obj->flags & QV4::CompiledData::Object::IsInlineComponentRoot)
-                    || !(obj->flags & QV4::CompiledData::Object::InPartOfInlineComponent);
+            bool leftCurrentInlineComponent
+                    = (i != lastICRoot
+                            && obj->hasFlag(QV4::CompiledData::Object::IsInlineComponentRoot))
+                        || !obj->hasFlag(QV4::CompiledData::Object::IsPartOfInlineComponent);
             if (leftCurrentInlineComponent)
                 break;
-            inlineComponentData[lastICRoot].totalBindingCount += obj->nBindings;
+            const QString lastICRootName = stringAt(ic.nameIndex);
+            inlineComponentData[lastICRootName].totalBindingCount += obj->nBindings;
 
             if (auto *typeRef = resolvedTypes.value(obj->inheritedTypeNameIndex)) {
-                if (typeRef->type.isValid() && typeRef->type.parserStatusCast() != -1)
-                    ++inlineComponentData[lastICRoot].totalParserStatusCount;
+                const auto type = typeRef->type();
+                if (type.isValid() && type.parserStatusCast() != -1)
+                    ++inlineComponentData[lastICRootName].totalParserStatusCount;
 
-                ++inlineComponentData[lastICRoot].totalObjectCount;
+                ++inlineComponentData[lastICRootName].totalObjectCount;
                 if (const auto compilationUnit = typeRef->compilationUnit()) {
                     // if the type is an inline component type, we have to extract the information from it
                     // This requires that inline components are visited in the correct order
-                    auto icRoot = compilationUnit->icRoot;
-                    if (typeRef->type.isInlineComponentType()) {
-                        icRoot = typeRef->type.inlineComponendId();
-                    }
-                    QScopedValueRollback<int> rollback {compilationUnit->icRoot, icRoot};
-                    inlineComponentData[lastICRoot].totalBindingCount += compilationUnit->totalBindingsCount();
-                    inlineComponentData[lastICRoot].totalParserStatusCount += compilationUnit->totalParserStatusCount();
-                    inlineComponentData[lastICRoot].totalObjectCount += compilationUnit->totalObjectCount();
+                    processInlinComponentType(type, compilationUnit, [&]() {
+                        auto &icData = inlineComponentData[lastICRootName];
+                        icData.totalBindingCount += compilationUnit->totalBindingsCount();
+                        icData.totalParserStatusCount += compilationUnit->totalParserStatusCount();
+                        icData.totalObjectCount += compilationUnit->totalObjectCount();
+                    });
                 }
             }
         }
@@ -457,23 +463,21 @@ void ExecutableCompilationUnit::finalizeCompositeType(QQmlEnginePrivate *qmlEngi
     int objectCount = 0;
     for (quint32 i = 0, count = this->objectCount(); i < count; ++i) {
         const QV4::CompiledData::Object *obj = objectAt(i);
-        if (obj->flags & QV4::CompiledData::Object::InPartOfInlineComponent) {
+        if (obj->hasFlag(QV4::CompiledData::Object::IsPartOfInlineComponent))
             continue;
-        }
+
         bindingCount += obj->nBindings;
         if (auto *typeRef = resolvedTypes.value(obj->inheritedTypeNameIndex)) {
-            if (typeRef->type.isValid() && typeRef->type.parserStatusCast() != -1)
+            const auto type = typeRef->type();
+            if (type.isValid() && type.parserStatusCast() != -1)
                 ++parserStatusCount;
             ++objectCount;
             if (const auto compilationUnit = typeRef->compilationUnit()) {
-                auto icRoot = compilationUnit->icRoot;
-                if (typeRef->type.isInlineComponentType()) {
-                    icRoot = typeRef->type.inlineComponendId();
-                }
-                QScopedValueRollback<int> rollback {compilationUnit->icRoot, icRoot};
-                bindingCount += compilationUnit->totalBindingsCount();
-                parserStatusCount += compilationUnit->totalParserStatusCount();
-                objectCount += compilationUnit->totalObjectCount();
+                processInlinComponentType(type, compilationUnit, [&](){
+                    bindingCount += compilationUnit->totalBindingsCount();
+                    parserStatusCount += compilationUnit->totalParserStatusCount();
+                    objectCount += compilationUnit->totalObjectCount();
+                });
             }
         }
     }
@@ -484,21 +488,30 @@ void ExecutableCompilationUnit::finalizeCompositeType(QQmlEnginePrivate *qmlEngi
 }
 
 int ExecutableCompilationUnit::totalBindingsCount() const {
-    if (icRoot == -1)
+    if (!icRootName)
         return m_totalBindingsCount;
-    return inlineComponentData[icRoot].totalBindingCount;
+    return inlineComponentData[*icRootName].totalBindingCount;
 }
 
 int ExecutableCompilationUnit::totalObjectCount() const {
-    if (icRoot == -1)
+    if (!icRootName)
         return m_totalObjectCount;
-    return inlineComponentData[icRoot].totalObjectCount;
+    return inlineComponentData[*icRootName].totalObjectCount;
+}
+
+ResolvedTypeReference *ExecutableCompilationUnit::resolvedType(QMetaType type) const
+{
+    for (ResolvedTypeReference *ref : std::as_const(resolvedTypes)) {
+        if (ref->type().typeId() == type)
+            return ref;
+    }
+    return nullptr;
 }
 
 int ExecutableCompilationUnit::totalParserStatusCount() const {
-    if (icRoot == -1)
+    if (!icRootName)
         return m_totalParserStatusCount;
-    return inlineComponentData[icRoot].totalParserStatusCount;
+    return inlineComponentData[*icRootName].totalParserStatusCount;
 }
 
 bool ExecutableCompilationUnit::verifyChecksum(const CompiledData::DependentTypesHasher &dependencyHasher) const
@@ -516,11 +529,12 @@ bool ExecutableCompilationUnit::verifyChecksum(const CompiledData::DependentType
                       sizeof(data->dependencyMD5Checksum)) == 0;
 }
 
-CompositeMetaTypeIds ExecutableCompilationUnit::typeIdsForComponent(int objectid) const
+CompositeMetaTypeIds ExecutableCompilationUnit::typeIdsForComponent(
+    const QString &inlineComponentName) const
 {
-    if (objectid == 0)
-        return {metaTypeId, listMetaTypeId};
-    return inlineComponentData[objectid].typeIds;
+    if (inlineComponentName.isEmpty())
+        return typeIds;
+    return inlineComponentData[inlineComponentName].typeIds;
 }
 
 QStringList ExecutableCompilationUnit::moduleRequests() const
@@ -550,10 +564,12 @@ Heap::Module *ExecutableCompilationUnit::instantiate(ExecutionEngine *engine)
         setModule(module->d());
 
     for (const QString &request: moduleRequests()) {
-        auto dependentModuleUnit = engine->loadModule(QUrl(request), this);
+        const QUrl url(request);
+        const auto dependentModuleUnit = engine->loadModule(url, this);
         if (engine->hasException)
             return nullptr;
-        dependentModuleUnit->instantiate(engine);
+        if (dependentModuleUnit.compiled)
+            dependentModuleUnit.compiled->instantiate(engine);
     }
 
     ScopedString importName(scope);
@@ -565,30 +581,87 @@ Heap::Module *ExecutableCompilationUnit::instantiate(ExecutionEngine *engine)
     }
     for (uint i = 0; i < importCount; ++i) {
         const CompiledData::ImportEntry &entry = data->importEntryTable()[i];
-        auto dependentModuleUnit = engine->loadModule(urlAt(entry.moduleRequest), this);
+        QUrl url = urlAt(entry.moduleRequest);
         importName = runtimeStrings[entry.importName];
-        const Value *valuePtr = dependentModuleUnit->resolveExport(importName);
-        if (!valuePtr) {
-            QString referenceErrorMessage = QStringLiteral("Unable to resolve import reference ");
-            referenceErrorMessage += importName->toQString();
-            engine->throwReferenceError(referenceErrorMessage, fileName(), entry.location.line, entry.location.column);
-            return nullptr;
+
+        const auto module = engine->loadModule(url, this);
+        if (module.compiled) {
+            const Value *valuePtr = module.compiled->resolveExport(importName);
+            if (!valuePtr) {
+                QString referenceErrorMessage = QStringLiteral("Unable to resolve import reference ");
+                referenceErrorMessage += importName->toQString();
+                engine->throwReferenceError(
+                        referenceErrorMessage, fileName(),
+                        entry.location.line(), entry.location.column());
+                return nullptr;
+            }
+            imports[i] = valuePtr;
+        } else if (Value *value = module.native) {
+            const QString name = importName->toQString();
+            if (value->isNullOrUndefined()) {
+                QString errorMessage = name;
+                errorMessage += QStringLiteral(" from ");
+                errorMessage += url.toString();
+                errorMessage += QStringLiteral(" is null");
+                engine->throwError(errorMessage);
+                return nullptr;
+            }
+
+            if (name == QStringLiteral("default")) {
+                imports[i] = value;
+            } else {
+                url.setFragment(name);
+                const auto fragment = engine->moduleForUrl(url, this);
+                if (fragment.native) {
+                    imports[i] = fragment.native;
+                } else {
+                    Scope scope(this->engine);
+                    ScopedObject o(scope, value);
+                    if (!o) {
+                        QString referenceErrorMessage = QStringLiteral("Unable to resolve import reference ");
+                        referenceErrorMessage += name;
+                        referenceErrorMessage += QStringLiteral(" because ");
+                        referenceErrorMessage += url.toString(QUrl::RemoveFragment);
+                        referenceErrorMessage += QStringLiteral(" is not an object");
+                        engine->throwReferenceError(
+                                referenceErrorMessage, fileName(),
+                                entry.location.line(), entry.location.column());
+                        return nullptr;
+                    }
+
+                    const ScopedPropertyKey key(scope, scope.engine->identifierTable->asPropertyKey(name));
+                    const ScopedValue result(scope, o->get(key));
+                    imports[i] = engine->registerNativeModule(url, result);
+                }
+            }
         }
-        imports[i] = valuePtr;
     }
+
+    const auto throwReferenceError = [&](const CompiledData::ExportEntry &entry, const QString &importName) {
+        QString referenceErrorMessage = QStringLiteral("Unable to resolve re-export reference ");
+        referenceErrorMessage += importName;
+        engine->throwReferenceError(
+                referenceErrorMessage, fileName(),
+                entry.location.line(), entry.location.column());
+    };
 
     for (uint i = 0; i < data->indirectExportEntryTableSize; ++i) {
         const CompiledData::ExportEntry &entry = data->indirectExportEntryTable()[i];
-        auto dependentModuleUnit = engine->loadModule(urlAt(entry.moduleRequest), this);
-        if (!dependentModuleUnit)
-            return nullptr;
-
+        auto dependentModule = engine->loadModule(urlAt(entry.moduleRequest), this);
         ScopedString importName(scope, runtimeStrings[entry.importName]);
-        if (!dependentModuleUnit->resolveExport(importName)) {
-            QString referenceErrorMessage = QStringLiteral("Unable to resolve re-export reference ");
-            referenceErrorMessage += importName->toQString();
-            engine->throwReferenceError(referenceErrorMessage, fileName(), entry.location.line, entry.location.column);
-            return nullptr;
+        if (const auto dependentModuleUnit = dependentModule.compiled) {
+            if (!dependentModuleUnit->resolveExport(importName)) {
+                throwReferenceError(entry, importName->toQString());
+                return nullptr;
+            }
+        } else if (const auto native = dependentModule.native) {
+            ScopedObject o(scope, native);
+            const ScopedPropertyKey key(scope, scope.engine->identifierTable->asPropertyKey(importName));
+            const ScopedValue result(scope, o->get(key));
+            if (result->isUndefined()) {
+                throwReferenceError(entry, importName->toQString());
+                return nullptr;
+            }
         }
     }
 
@@ -625,13 +698,31 @@ const Value *ExecutableCompilationUnit::resolveExportRecursively(
 
     if (auto indirectExport = lookupNameInExportTable(
                 data->indirectExportEntryTable(), data->indirectExportEntryTableSize, exportName)) {
-        auto dependentModuleUnit = engine->loadModule(urlAt(indirectExport->moduleRequest), this);
-        if (!dependentModuleUnit)
-            return nullptr;
+        QUrl request = urlAt(indirectExport->moduleRequest);
+        auto dependentModule = engine->loadModule(request, this);
         ScopedString importName(scope, runtimeStrings[indirectExport->importName]);
-        return dependentModuleUnit->resolveExportRecursively(importName, resolveSet);
-    }
+        if (dependentModule.compiled) {
+            return dependentModule.compiled->resolveExportRecursively(importName, resolveSet);
+        } else if (dependentModule.native) {
+            if (exportName->toQString() == QLatin1String("*"))
+                return dependentModule.native;
+            if (exportName->toQString() == QLatin1String("default"))
+                return nullptr;
 
+            request.setFragment(importName->toQString());
+            const auto fragment = engine->moduleForUrl(request);
+            if (fragment.native)
+                return fragment.native;
+
+            ScopedObject o(scope, dependentModule.native);
+            if (o)
+                return engine->registerNativeModule(request, o->get(importName));
+
+            return nullptr;
+        } else {
+            return nullptr;
+        }
+    }
 
     if (exportName->toQString() == QLatin1String("default"))
         return nullptr;
@@ -640,11 +731,28 @@ const Value *ExecutableCompilationUnit::resolveExportRecursively(
 
     for (uint i = 0; i < data->starExportEntryTableSize; ++i) {
         const CompiledData::ExportEntry &entry = data->starExportEntryTable()[i];
-        auto dependentModuleUnit = engine->loadModule(urlAt(entry.moduleRequest), this);
-        if (!dependentModuleUnit)
-            return nullptr;
+        QUrl request = urlAt(entry.moduleRequest);
+        auto dependentModule = engine->loadModule(request, this);
+        const Value *resolution = nullptr;
+        if (dependentModule.compiled) {
+            resolution = dependentModule.compiled->resolveExportRecursively(
+                        exportName, resolveSet);
+        } else if (dependentModule.native) {
+            if (exportName->toQString() == QLatin1String("*")) {
+                resolution = dependentModule.native;
+            } else if (exportName->toQString() != QLatin1String("default")) {
+                request.setFragment(exportName->toQString());
+                const auto fragment = engine->moduleForUrl(request);
+                if (fragment.native) {
+                    resolution = fragment.native;
+                } else {
+                    ScopedObject o(scope, dependentModule.native);
+                    if (o)
+                        resolution = engine->registerNativeModule(request, o->get(exportName));
+                }
+            }
+        }
 
-        const Value *resolution = dependentModuleUnit->resolveExportRecursively(exportName, resolveSet);
         // ### handle ambiguous
         if (resolution) {
             if (!starResolution) {
@@ -697,10 +805,21 @@ void ExecutableCompilationUnit::getExportedNamesRecursively(
 
     for (uint i = 0; i < data->starExportEntryTableSize; ++i) {
         const CompiledData::ExportEntry &entry = data->starExportEntryTable()[i];
-        auto dependentModuleUnit = engine->loadModule(urlAt(entry.moduleRequest), this);
-        if (!dependentModuleUnit)
-            return;
-        dependentModuleUnit->getExportedNamesRecursively(names, exportNameSet, /*includeDefaultExport*/false);
+        auto dependentModule = engine->loadModule(urlAt(entry.moduleRequest), this);
+        if (dependentModule.compiled) {
+            dependentModule.compiled->getExportedNamesRecursively(
+                        names, exportNameSet, /*includeDefaultExport*/false);
+        } else if (dependentModule.native) {
+            Scope scope(engine);
+            ScopedObject o(scope, dependentModule.native);
+            ObjectIterator iterator(scope, o, ObjectIterator::EnumerableOnly);
+            while (true) {
+                ScopedValue val(scope, iterator.nextPropertyNameAsString());
+                if (val->isNull())
+                    break;
+                append(val->toQString());
+            }
+        }
     }
 }
 
@@ -714,10 +833,15 @@ void ExecutableCompilationUnit::evaluate()
 void ExecutableCompilationUnit::evaluateModuleRequests()
 {
     for (const QString &request: moduleRequests()) {
-        auto dependentModuleUnit = engine->loadModule(QUrl(request), this);
+        auto dependentModule = engine->loadModule(QUrl(request), this);
+        if (dependentModule.native)
+            continue;
+
         if (engine->hasException)
             return;
-        dependentModuleUnit->evaluate();
+
+        Q_ASSERT(dependentModule.compiled);
+        dependentModule.compiled->evaluate();
         if (engine->hasException)
             return;
     }
@@ -731,7 +855,7 @@ bool ExecutableCompilationUnit::loadFromDisk(const QUrl &url, const QDateTime &s
     }
 
     const QString sourcePath = QQmlFile::urlToLocalFileOrQrc(url);
-    QScopedPointer<CompilationUnitMapper> cacheFile(new CompilationUnitMapper());
+    auto cacheFile = std::make_unique<CompilationUnitMapper>();
 
     const QStringList cachePaths = { sourcePath + QLatin1Char('c'), localCacheFilePath(url) };
     for (const QString &cachePath : cachePaths) {
@@ -748,15 +872,20 @@ bool ExecutableCompilationUnit::loadFromDisk(const QUrl &url, const QDateTime &s
         });
         setUnitData(mappedUnit);
 
-        if (data->sourceFileIndex != 0
-            && sourcePath != QQmlFile::urlToLocalFileOrQrc(stringAt(data->sourceFileIndex))) {
-            *errorString = QStringLiteral("QML source file has moved to a different location.");
-            continue;
+        if (data->sourceFileIndex != 0) {
+            if (data->sourceFileIndex >= data->stringTableSize + dynamicStrings.size()) {
+                *errorString = QStringLiteral("QML source file index is invalid.");
+                continue;
+            }
+            if (sourcePath != QQmlFile::urlToLocalFileOrQrc(stringAt(data->sourceFileIndex))) {
+                *errorString = QStringLiteral("QML source file has moved to a different location.");
+                continue;
+            }
         }
 
         dataPtrRevert.dismiss();
         free(const_cast<CompiledData::Unit*>(oldDataPtr));
-        backingFile.reset(cacheFile.take());
+        backingFile = std::move(cacheFile);
         return true;
     }
 
@@ -777,78 +906,34 @@ bool ExecutableCompilationUnit::saveToDisk(const QUrl &unitUrl, QString *errorSt
 
     return CompiledData::SaveableUnitPointer(unitData()).saveToDisk<char>(
             [&unitUrl, errorString](const char *data, quint32 size) {
-        return CompiledData::SaveableUnitPointer::writeDataToFile(localCacheFilePath(unitUrl), data,
-                                                                  size, errorString);
+        const QString cachePath = localCacheFilePath(unitUrl);
+        if (CompiledData::SaveableUnitPointer::writeDataToFile(
+                    cachePath, data, size, errorString)) {
+            CompilationUnitMapper::invalidate(cachePath);
+            return true;
+        }
+
+        return false;
     });
 }
 
 /*!
-Returns the property cache, if one alread exists.  The cache is not referenced.
-*/
-QQmlRefPointer<QQmlPropertyCache> ResolvedTypeReference::propertyCache() const
+    \internal
+    This function creates a temporary key vector and sorts it to guarantuee a stable
+    hash. This is used to calculate a check-sum on dependent meta-objects.
+ */
+bool ResolvedTypeReferenceMap::addToHash(
+        QCryptographicHash *hash, QHash<quintptr, QByteArray> *checksums) const
 {
-    if (type.isValid())
-        return typePropertyCache;
-    else
-        return m_compilationUnit->rootPropertyCache();
-}
-
-/*!
-Returns the property cache, creating one if it doesn't already exist.  The cache is not referenced.
-*/
-QQmlRefPointer<QQmlPropertyCache> ResolvedTypeReference::createPropertyCache(QQmlEngine *engine)
-{
-    if (typePropertyCache) {
-        return typePropertyCache;
-    } else if (type.isValid()) {
-        typePropertyCache = QQmlEnginePrivate::get(engine)->cache(type.metaObject(), minorVersion);
-        return typePropertyCache;
-    } else {
-        Q_ASSERT(m_compilationUnit);
-        return m_compilationUnit->rootPropertyCache();
-    }
-}
-
-bool ResolvedTypeReference::addToHash(QCryptographicHash *hash, QQmlEngine *engine)
-{
-    if (type.isValid() && !type.isInlineComponentType()) {
-        bool ok = false;
-        hash->addData(createPropertyCache(engine)->checksum(&ok));
-        return ok;
-    }
-    if (!m_compilationUnit)
-        return false;
-    hash->addData(m_compilationUnit->data->md5Checksum,
-                  sizeof(m_compilationUnit->data->md5Checksum));
-    return true;
-}
-
-template <typename T>
-bool qtTypeInherits(const QMetaObject *mo) {
-    while (mo) {
-        if (mo == &T::staticMetaObject)
-            return true;
-        mo = mo->superClass();
-    }
-    return false;
-}
-
-void ResolvedTypeReference::doDynamicTypeCheck()
-{
-    const QMetaObject *mo = nullptr;
-    if (typePropertyCache)
-        mo = typePropertyCache->firstCppMetaObject();
-    else if (type.isValid())
-        mo = type.metaObject();
-    else if (m_compilationUnit)
-        mo = m_compilationUnit->rootPropertyCache()->firstCppMetaObject();
-    isFullyDynamicType = qtTypeInherits<QQmlPropertyMap>(mo);
-}
-
-bool ResolvedTypeReferenceMap::addToHash(QCryptographicHash *hash, QQmlEngine *engine) const
-{
+    std::vector<int> keys (size());
+    int i = 0;
     for (auto it = constBegin(), end = constEnd(); it != end; ++it) {
-        if (!it.value()->addToHash(hash, engine))
+        keys[i] = it.key();
+        ++i;
+    }
+    std::sort(keys.begin(), keys.end());
+    for (int key: keys) {
+        if (!this->operator[](key)->addToHash(hash, checksums))
             return false;
     }
 
@@ -857,58 +942,54 @@ bool ResolvedTypeReferenceMap::addToHash(QCryptographicHash *hash, QQmlEngine *e
 
 QString ExecutableCompilationUnit::bindingValueAsString(const CompiledData::Binding *binding) const
 {
+#if QT_CONFIG(translation)
     using namespace CompiledData;
-    switch (binding->type) {
-    case Binding::Type_Script:
-    case Binding::Type_String:
-        return stringAt(binding->stringIndex);
-    case Binding::Type_Null:
-        return QStringLiteral("null");
-    case Binding::Type_Boolean:
-        return binding->value.b ? QStringLiteral("true") : QStringLiteral("false");
-    case Binding::Type_Number:
-        return QString::number(bindingValueAsNumber(binding), 'g', QLocale::FloatingPointShortest);
-    case Binding::Type_Invalid:
-        return QString();
-#if !QT_CONFIG(translation)
+    bool byId = false;
+    switch (binding->type()) {
     case Binding::Type_TranslationById:
-    case Binding::Type_Translation:
-        return stringAt(
-                data->translations()[binding->value.translationDataIndex].stringIndex);
-#else
-    case Binding::Type_TranslationById: {
-        const TranslationData &translation
-                = data->translations()[binding->value.translationDataIndex];
-        QByteArray id = stringAt(translation.stringIndex).toUtf8();
-        return qtTrId(id.constData(), translation.number);
-    }
+        byId = true;
+        Q_FALLTHROUGH();
     case Binding::Type_Translation: {
-        const TranslationData &translation
-                = data->translations()[binding->value.translationDataIndex];
-        // This code must match that in the qsTr() implementation
-        const QString &path = fileName();
-        int lastSlash = path.lastIndexOf(QLatin1Char('/'));
-        QStringRef context = (lastSlash > -1) ? path.midRef(lastSlash + 1, path.length() - lastSlash - 5)
-                                              : QStringRef();
-        QByteArray contextUtf8 = context.toUtf8();
-        QByteArray comment = stringAt(translation.commentIndex).toUtf8();
-        QByteArray text = stringAt(translation.stringIndex).toUtf8();
-        return QCoreApplication::translate(contextUtf8.constData(), text.constData(),
-                                           comment.constData(), translation.number);
+        return translateFrom({ binding->value.translationDataIndex, byId });
     }
-#endif
     default:
         break;
     }
-    return QString();
+#endif
+    return CompilationUnit::bindingValueAsString(binding);
 }
 
-QString ExecutableCompilationUnit::bindingValueAsScriptString(
-        const CompiledData::Binding *binding) const
+QString ExecutableCompilationUnit::translateFrom(TranslationDataIndex index) const
 {
-    return (binding->type == CompiledData::Binding::Type_String)
-            ? CompiledData::Binding::escapedString(stringAt(binding->stringIndex))
-            : bindingValueAsString(binding);
+#if !QT_CONFIG(translation)
+    return QString();
+#else
+    const CompiledData::TranslationData &translation = data->translations()[index.index];
+
+    if (index.byId) {
+        QByteArray id = stringAt(translation.stringIndex).toUtf8();
+        return qtTrId(id.constData(), translation.number);
+    }
+
+    const auto fileContext = [this]() {
+        // This code must match that in the qsTr() implementation
+        const QString &path = fileName();
+        int lastSlash = path.lastIndexOf(QLatin1Char('/'));
+
+        QStringView context = (lastSlash > -1)
+                ? QStringView{ path }.mid(lastSlash + 1, path.size() - lastSlash - 5)
+                : QStringView();
+        return context.toUtf8();
+    };
+
+    const bool hasContext
+            = translation.contextIndex != QV4::CompiledData::TranslationData::NoContextIndex;
+    QByteArray comment = stringAt(translation.commentIndex).toUtf8();
+    QByteArray text = stringAt(translation.stringIndex).toUtf8();
+    return QCoreApplication::translate(
+            hasContext ? stringAt(translation.contextIndex).toUtf8() : fileContext(),
+            text, comment, translation.number);
+#endif
 }
 
 bool ExecutableCompilationUnit::verifyHeader(
@@ -944,9 +1025,15 @@ bool ExecutableCompilationUnit::verifyHeader(
         }
     }
 
-#if defined(QML_COMPILE_HASH)
-    if (qstrcmp(qml_compile_hash, unit->libraryVersionHash) != 0) {
-        *errorString = QStringLiteral("QML library version mismatch. Expected compile hash does not match");
+#if defined(QML_COMPILE_HASH) && defined(QML_COMPILE_HASH_LENGTH) && QML_COMPILE_HASH_LENGTH > 0
+    if (qstrncmp(qml_compile_hash, unit->libraryVersionHash, QML_COMPILE_HASH_LENGTH) != 0) {
+        *errorString = QStringLiteral("QML compile hashes don't match. Found %1 expected %2")
+                .arg(QString::fromLatin1(
+                         QByteArray(unit->libraryVersionHash, QML_COMPILE_HASH_LENGTH)
+                         .toPercentEncoding()),
+                     QString::fromLatin1(
+                         QByteArray(qml_compile_hash, QML_COMPILE_HASH_LENGTH)
+                         .toPercentEncoding()));
         return false;
     }
 #else

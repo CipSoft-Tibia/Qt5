@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,9 @@ namespace security_interstitials {
 ConnectionHelpUI::ConnectionHelpUI(content::WebUI* web_ui)
     : content::WebUIController(web_ui) {
   content::WebUIDataSource* html_source =
-      content::WebUIDataSource::Create(kChromeUIConnectionHelpHost);
+      content::WebUIDataSource::CreateAndAdd(
+          web_ui->GetWebContents()->GetBrowserContext(),
+          kChromeUIConnectionHelpHost);
 
   // JS code needs these constants to decide which section to expand.
   html_source->AddInteger("certCommonNameInvalid",
@@ -58,7 +60,7 @@ ConnectionHelpUI::ConnectionHelpUI(content::WebUI* web_ui)
                                   IDS_CONNECTION_HELP_INCORRECT_CLOCK_DETAILS);
 
 // The superfish section should only be added on Windows.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   html_source->AddBoolean("isWindows", true);
   html_source->AddLocalizedString("connectionHelpMitmSoftwareTitle",
                                   IDS_CONNECTION_HELP_MITM_SOFTWARE_TITLE);
@@ -87,10 +89,6 @@ ConnectionHelpUI::ConnectionHelpUI(content::WebUI* web_ui)
                                IDR_SECURITY_INTERSTITIAL_CONNECTION_HELP_JS);
   html_source->SetDefaultResource(
       IDR_SECURITY_INTERSTITIAL_CONNECTION_HELP_HTML);
-
-  content::BrowserContext* browser_context =
-      web_ui->GetWebContents()->GetBrowserContext();
-  content::WebUIDataSource::Add(browser_context, html_source);
 }
 
 ConnectionHelpUI::~ConnectionHelpUI() {}

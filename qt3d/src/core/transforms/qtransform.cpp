@@ -1,46 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtransform.h"
 #include "qtransform_p.h"
-
-#include <Qt3DCore/qpropertyupdatedchange.h>
 
 #include <Qt3DCore/private/qmath3d_p.h>
 
@@ -234,35 +196,23 @@ QTransform::QTransform(QTransformPrivate &dd, QNode *parent)
 {
 }
 
-/*!
-    \internal
- */
-// TODO Unused remove in Qt6
-void QTransform::sceneChangeEvent(const QSceneChangePtr &change)
-{
-    Q_D(QTransform);
-    switch (change->type()) {
-    case PropertyUpdated: {
-        Qt3DCore::QPropertyUpdatedChangePtr propertyChange = qSharedPointerCast<Qt3DCore::QPropertyUpdatedChange>(change);
-        if (propertyChange->propertyName() == QByteArrayLiteral("worldMatrix")) {
-            const bool blocked = blockNotifications(true);
-            d->setWorldMatrix(propertyChange->value().value<QMatrix4x4>());
-            blockNotifications(blocked);
-        }
-        break;
-    }
-    default:
-        break;
-    }
-}
-
 void QTransformPrivate::setWorldMatrix(const QMatrix4x4 &worldMatrix)
 {
     Q_Q(QTransform);
     if (m_worldMatrix == worldMatrix)
         return;
+    const bool blocked = q->blockNotifications(true);
     m_worldMatrix = worldMatrix;
     emit q->worldMatrixChanged(worldMatrix);
+    q->blockNotifications(blocked);
+}
+
+void QTransformPrivate::update()
+{
+    if (!m_blockNotifications)
+        m_dirty = true;
+    markDirty(QScene::TransformDirty);
+    QNodePrivate::update();
 }
 
 void QTransform::setMatrix(const QMatrix4x4 &m)
@@ -629,19 +579,6 @@ QMatrix4x4 QTransform::rotateFromAxes(const QVector3D &xAxis, const QVector3D &y
                       xAxis.y(), yAxis.y(), zAxis.y(), 0.0f,
                       xAxis.z(), yAxis.z(), zAxis.z(), 0.0f,
                       0.0f, 0.0f, 0.0f, 1.0f);
-}
-
-QNodeCreatedChangeBasePtr QTransform::createNodeCreationChange() const
-{
-    auto creationChange = QNodeCreatedChangePtr<QTransformData>::create(this);
-    auto &data = creationChange->data;
-
-    Q_D(const QTransform);
-    data.rotation = d->m_rotation;
-    data.scale = d->m_scale;
-    data.translation = d->m_translation;
-
-    return creationChange;
 }
 
 } // namespace Qt3DCore

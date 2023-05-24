@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_intrinsic_sizes_result_options.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
 #include "third_party/blink/renderer/core/layout/ng/custom/custom_layout_fragment.h"
 #include "third_party/blink/renderer/core/layout/ng/custom/custom_layout_scope.h"
 #include "third_party/blink/renderer/core/layout/ng/custom/layout_worklet.h"
@@ -16,6 +17,7 @@
 #include "third_party/blink/renderer/core/layout/ng/ng_block_layout_algorithm.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_length_utils.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_out_of_flow_layout_part.h"
+#include "third_party/blink/renderer/platform/bindings/script_forbidden_scope.h"
 
 namespace blink {
 
@@ -23,12 +25,10 @@ NGCustomLayoutAlgorithm::NGCustomLayoutAlgorithm(
     const NGLayoutAlgorithmParams& params)
     : NGLayoutAlgorithm(params), params_(params) {
   DCHECK(params.space.IsNewFormattingContext());
-  container_builder_.SetIsNewFormattingContext(
-      params.space.IsNewFormattingContext());
 }
 
 MinMaxSizesResult NGCustomLayoutAlgorithm::ComputeMinMaxSizes(
-    const MinMaxSizesInput& input) const {
+    const MinMaxSizesFloatInput& input) {
   if (!Node().IsCustomLayoutLoaded())
     return FallbackMinMaxSizes(input);
 
@@ -48,13 +48,19 @@ MinMaxSizesResult NGCustomLayoutAlgorithm::ComputeMinMaxSizes(
     return FallbackMinMaxSizes(input);
   }
 
-  bool depends_on_percentage_block_size = false;
+  bool depends_on_block_constraints = false;
   IntrinsicSizesResultOptions* intrinsic_sizes_result_options = nullptr;
+  LogicalSize border_box_size{
+      container_builder_.InlineSize(),
+      ComputeBlockSizeForFragment(
+          ConstraintSpace(), Style(), BorderPadding(),
+          CalculateDefaultBlockSize(ConstraintSpace(), Node(), BreakToken(),
+                                    BorderScrollbarPadding()),
+          container_builder_.InlineSize())};
   if (!instance->IntrinsicSizes(
-          ConstraintSpace(), document, Node(),
-          container_builder_.InitialBorderBoxSize(), BorderScrollbarPadding(),
-          input.percentage_resolution_block_size, &scope,
-          &intrinsic_sizes_result_options, &depends_on_percentage_block_size)) {
+          ConstraintSpace(), document, Node(), border_box_size,
+          BorderScrollbarPadding(), ChildAvailableSize().block_size, &scope,
+          &intrinsic_sizes_result_options, &depends_on_block_constraints)) {
     // TODO(ikilpatrick): Report this error to the developer.
     return FallbackMinMaxSizes(input);
   }
@@ -69,11 +75,11 @@ MinMaxSizesResult NGCustomLayoutAlgorithm::ComputeMinMaxSizes(
   sizes.min_size.ClampNegativeToZero();
   sizes.max_size.ClampNegativeToZero();
 
-  return {sizes, depends_on_percentage_block_size};
+  return MinMaxSizesResult(sizes, depends_on_block_constraints);
 }
 
-scoped_refptr<const NGLayoutResult> NGCustomLayoutAlgorithm::Layout() {
-  DCHECK(!BreakToken());
+const NGLayoutResult* NGCustomLayoutAlgorithm::Layout() {
+  DCHECK(!IsBreakInside(BreakToken()));
 
   if (!Node().IsCustomLayoutLoaded())
     return FallbackLayout();
@@ -81,6 +87,8 @@ scoped_refptr<const NGLayoutResult> NGCustomLayoutAlgorithm::Layout() {
   ScriptForbiddenScope::AllowUserAgentScript allow_script;
   CustomLayoutScope scope;
 
+  // TODO(ikilpatrick): Scale inputs/outputs by effective-zoom.
+  const float effective_zoom = Style().EffectiveZoom();
   const AtomicString& name = Style().DisplayLayoutCustomName();
   const Document& document = Node().GetDocument();
   LayoutWorklet* worklet = LayoutWorklet::From(*document.domWindow());
@@ -96,8 +104,14 @@ scoped_refptr<const NGLayoutResult> NGCustomLayoutAlgorithm::Layout() {
 
   FragmentResultOptions* fragment_result_options = nullptr;
   scoped_refptr<SerializedScriptValue> fragment_result_data;
-  if (!instance->Layout(ConstraintSpace(), document, Node(),
-                        container_builder_.InitialBorderBoxSize(),
+  LogicalSize border_box_size{
+      container_builder_.InlineSize(),
+      ComputeBlockSizeForFragment(
+          ConstraintSpace(), Style(), BorderPadding(),
+          CalculateDefaultBlockSize(ConstraintSpace(), Node(), BreakToken(),
+                                    BorderScrollbarPadding()),
+          container_builder_.InlineSize())};
+  if (!instance->Layout(ConstraintSpace(), document, Node(), border_box_size,
                         BorderScrollbarPadding(), &scope,
                         fragment_result_options, &fragment_result_data)) {
     // TODO(ikilpatrick): Report this error to the developer.
@@ -156,10 +170,12 @@ scoped_refptr<const NGLayoutResult> NGCustomLayoutAlgorithm::Layout() {
       ConstraintSpace(), Style(), BorderPadding(), auto_block_size,
       container_builder_.InitialBorderBoxSize().inline_size);
 
+  // TODO(ikilpatrick): Allow setting both the first/last baseline instead of a
+  // general baseline.
   if (fragment_result_options->hasBaseline()) {
-    LayoutUnit baseline =
-        LayoutUnit::FromDoubleRound(fragment_result_options->baseline());
-    container_builder_.SetBaseline(baseline);
+    LayoutUnit baseline = LayoutUnit::FromDoubleRound(
+        effective_zoom * fragment_result_options->baseline());
+    container_builder_.SetBaselines(baseline);
   }
 
   container_builder_.SetCustomLayoutData(std::move(fragment_result_data));
@@ -186,11 +202,11 @@ void NGCustomLayoutAlgorithm::AddAnyOutOfFlowPositionedChildren(
 }
 
 MinMaxSizesResult NGCustomLayoutAlgorithm::FallbackMinMaxSizes(
-    const MinMaxSizesInput& input) const {
+    const MinMaxSizesFloatInput& input) const {
   return NGBlockLayoutAlgorithm(params_).ComputeMinMaxSizes(input);
 }
 
-scoped_refptr<const NGLayoutResult> NGCustomLayoutAlgorithm::FallbackLayout() {
+const NGLayoutResult* NGCustomLayoutAlgorithm::FallbackLayout() {
   return NGBlockLayoutAlgorithm(params_).Layout();
 }
 

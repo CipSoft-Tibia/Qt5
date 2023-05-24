@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/webgl_any.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_timer_query_ext.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -128,8 +128,8 @@ void EXTDisjointTimerQuery::queryCounterEXT(WebGLTimerQueryEXT* query,
     return;
   }
 
-  // Timestamps are disabled in WebGL due to lack of driver support on multiple
-  // platforms, so we don't actually perform a GL call.
+  scoped.Context()->ContextGL()->QueryCounterEXT(query->Object(), target);
+
   query->SetTarget(target);
   query->ResetCachedResult();
 }

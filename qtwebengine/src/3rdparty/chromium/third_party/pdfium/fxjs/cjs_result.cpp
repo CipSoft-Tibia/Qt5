@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include "fxjs/cjs_result.h"
 
-CJS_Result::CJS_Result() {}
+CJS_Result::CJS_Result() = default;
 
 CJS_Result::CJS_Result(v8::Local<v8::Value> ret) : return_(ret) {}
 

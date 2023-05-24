@@ -1,7 +1,17 @@
 oshima@chromium.org
-dcastagna@chromium.org
 
-# For Input (keyboard, mouse, touch)
-mukai@chromium.org
+# For Graphics
+fangzhoug@chromium.org
+petermcneeley@chromium.org
+# For Graphics, SurfaceId embedding, CC implementation
+jonross@chromium.org
 
-# COMPONENT: Internals>Exosphere
+# For Input (keyboard, mouse, touch, data_device)
+yhanada@chromium.org
+
+# For text_input and keyboard.
+hidehiko@chromium.org
+
+# For extended-drag.
+per-file extended_drag*=nickdiego@igalia.com
+per-file wayland/zcr_extended_drag*=nickdiego@igalia.com

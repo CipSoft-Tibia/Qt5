@@ -1,10 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/renderer/bindings/binding_access_checker.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "extensions/renderer/bindings/api_binding_test.h"
 #include "gin/converter.h"
 
@@ -62,7 +62,7 @@ TEST_F(BindingAccessCheckerTest, TestHasAccessOrThrowError) {
 
 TEST_F(BindingAccessCheckerTest, TestHasPromiseAccess) {
   bool context_allows_promises = true;
-  auto promises_available = base::Bind(
+  auto promises_available = base::BindRepeating(
       [](bool* flag, v8::Local<v8::Context> context) { return *flag; },
       &context_allows_promises);
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QXCBBASICCONNECTION_H
 #define QXCBBASICCONNECTION_H
 
@@ -96,11 +60,14 @@ public:
     bool hasShm() const { return m_hasShm; }
     bool hasShmFd() const { return m_hasShmFd; }
     bool hasXSync() const { return m_hasXSync; }
-    bool hasXinerama() const { return m_hasXinerama; }
     bool hasBigRequest() const;
+
+    bool isAtLeastXRandR12() const { return m_hasXRandr && m_xrandr1Minor >= 2; }
+    bool isAtLeastXRandR15() const { return m_hasXRandr && m_xrandr1Minor >= 5; }
 
     bool isAtLeastXI21() const { return m_xi2Enabled && m_xi2Minor >= 1; }
     bool isAtLeastXI22() const { return m_xi2Enabled && m_xi2Minor >= 2; }
+    bool isAtLeastXI24() const { return m_xi2Enabled && m_xi2Minor >= 4; }
     bool isXIEvent(xcb_generic_event_t *event) const;
     bool isXIType(xcb_generic_event_t *event, uint16_t type) const;
 
@@ -113,7 +80,6 @@ protected:
     void initializeXFixes();
     void initializeXRender();
     void initializeXRandr();
-    void initializeXinerama();
     void initializeXShape();
     void initializeXKB();
     void initializeXSync();
@@ -130,7 +96,6 @@ private:
     QXcbAtom m_xcbAtom;
 
     bool m_hasXFixes = false;
-    bool m_hasXinerama = false;
     bool m_hasXhape = false;
     bool m_hasInputShape;
     bool m_hasXRandr = false;
@@ -146,6 +111,8 @@ private:
     int m_xi2Minor = -1;
     int m_xiOpCode = -1;
     uint32_t m_xinputFirstEvent = 0;
+
+    int m_xrandr1Minor = -1;
 
     uint32_t m_xfixesFirstEvent = 0;
     uint32_t m_xrandrFirstEvent = 0;

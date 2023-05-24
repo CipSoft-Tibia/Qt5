@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 
 #include <memory>
 
-#include "base/callback.h"
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
+#include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "content/common/content_export.h"
 #include "media/base/android/stream_texture_wrapper.h"
 #include "media/base/renderer_factory.h"
@@ -36,7 +36,7 @@ class CONTENT_EXPORT MediaPlayerRendererClientFactory
   ~MediaPlayerRendererClientFactory() override;
 
   std::unique_ptr<media::Renderer> CreateRenderer(
-      const scoped_refptr<base::SingleThreadTaskRunner>& media_task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& media_task_runner,
       const scoped_refptr<base::TaskRunner>& worker_task_runner,
       media::AudioRendererSink* audio_renderer_sink,
       media::VideoRendererSink* video_renderer_sink,

@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 #include "fxjs/gc/heap.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/v8_test_environment.h"
+#include "v8/include/libplatform/libplatform.h"
 
 FXGCUnitTest::FXGCUnitTest() = default;
 
 FXGCUnitTest::~FXGCUnitTest() = default;
 
 void FXGCUnitTest::SetUp() {
-  FXV8UnitTest::SetUp();
+  ::testing::Test::SetUp();
   auto* env = V8TestEnvironment::GetInstance();
   FXGC_Initialize(env->platform(), env->isolate());
   heap_ = FXGC_CreateHeap();
@@ -21,12 +22,18 @@ void FXGCUnitTest::SetUp() {
 }
 
 void FXGCUnitTest::TearDown() {
-  FXGC_ForceGarbageCollection(heap_.get());
-  auto* env = V8TestEnvironment::GetInstance();
-  while (v8::platform::PumpMessageLoop(env->platform(), env->isolate()))
-    continue;
-
+  ForceGCAndPump();
   heap_.reset();
   FXGC_Release();
-  FXV8UnitTest::TearDown();
+  ::testing::Test::TearDown();
+}
+
+void FXGCUnitTest::ForceGCAndPump() {
+  FXGC_ForceGarbageCollection(heap_.get());
+  Pump();
+}
+
+void FXGCUnitTest::Pump() {
+  V8TestEnvironment::PumpPlatformMessageLoop(
+      V8TestEnvironment::GetInstance()->isolate());
 }

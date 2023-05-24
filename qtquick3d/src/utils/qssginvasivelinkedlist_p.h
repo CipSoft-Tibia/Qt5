@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2008-2012 NVIDIA Corporation.
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2008-2012 NVIDIA Corporation.
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSGINVASIVELINKEDLIST_H
 #define QSSGINVASIVELINKEDLIST_H
@@ -45,6 +19,12 @@
 #include <QtQuick3DUtils/private/qtquick3dutilsglobal_p.h>
 
 QT_BEGIN_NAMESPACE
+
+#ifdef QT_DEBUG
+#define QSSG_VERIFY_NODE(X) if (!(X)) qCritical("Node links are not null!");
+#else
+#define QSSG_VERIFY_NODE(X) Q_UNUSED((X));
+#endif
 
 // Used for singly linked list where
 // items have either no head or tail ptr.
@@ -68,7 +48,7 @@ struct QSSGListAccessorPrevious
 {
     static inline T *get(T &o) { return o.*p; }
     static inline const T *get(const T &o) { return o.*p; }
-    static inline void set(T &o, T *next) { o.*p = next; }
+    static inline void set(T &o, T *prev) { o.*p = prev; }
 };
 
 // Base linked list without an included head or tail member.
@@ -139,7 +119,7 @@ struct QSSGLinkedListIterator
         return *this;
     }
 
-    Iterator &operator++(int)
+    Iterator operator++(int)
     {
         Iterator retval(*this);
         ++(*this);
@@ -159,13 +139,6 @@ struct QSSGInvasiveSingleLinkedList : public QSSGInvasiveLinkListBase<T, QSSGNul
     using iterator = QSSGLinkedListIterator<T, TailOp>;
     using const_iterator = iterator;
     T *m_head = nullptr;
-    QSSGInvasiveSingleLinkedList() = default;
-    QSSGInvasiveSingleLinkedList(const List &inOther) : m_head(inOther.m_head) {}
-    List &operator=(const List &inOther)
-    {
-        m_head = inOther.m_head;
-        return *this;
-    }
 
     inline  T &front() const { return *m_head; }
 
@@ -178,9 +151,15 @@ struct QSSGInvasiveSingleLinkedList : public QSSGInvasiveLinkListBase<T, QSSGNul
 
     void push_back(T &inObj)
     {
-        if (m_head == nullptr)
+        // The next pointer of the tail must be null.
+        // We assert because if the inObj actually points somewhere then it's
+        // likely that we: Crash at some later point, we loop, or we broke the links
+        // in another list.
+        QSSG_VERIFY_NODE(TailOp::get(inObj) == nullptr);
+
+        if (m_head == nullptr) {
             m_head = &inObj;
-        else {
+        } else {
             T *lastObj = nullptr;
             for (iterator iter = begin(), endIter = end(); iter != endIter; ++iter)
                 lastObj = &(*iter);
@@ -189,16 +168,50 @@ struct QSSGInvasiveSingleLinkedList : public QSSGInvasiveLinkListBase<T, QSSGNul
             if (lastObj)
                 TailOp::set(*lastObj, &inObj);
         }
+        TailOp::set(inObj, nullptr);
     }
 
     void remove(T &inObj)
     {
-        if (m_head == &inObj)
+        if (m_head == &inObj) {
             m_head = TailOp::get(inObj);
-        BaseList::remove(inObj);
+            BaseList::remove(inObj);
+        } else if (m_head) {
+            // We need to find the node pointing to inObj
+            T *head = m_head;
+            T *tail = TailOp::get(*head);
+            while (head && tail != &inObj) {
+                head = TailOp::get(*head);
+                tail = head ? TailOp::get(*head) : nullptr;
+            }
+
+            if (head && tail == &inObj) {
+                T *oldTail = TailOp::get(inObj);
+                TailOp::set(inObj, nullptr); // deteach from the list
+                TailOp::set(*head, oldTail); // insert old tail to head of inObj
+            }
+        }
     }
 
-    inline bool empty() const { return m_head == nullptr; }
+    /*!
+     * \brief removeAll removes all nodes and re-sets their tail to null.
+     */
+    void removeAll()
+    {
+        for (auto it = begin(), e = end(); it != e;)
+            remove(*(it++));
+    }
+
+    /*!
+     * \brief clear will set the head of the list to null.
+     *  Note that the nodes are not updated in this case!
+     */
+    void clear()
+    {
+        m_head = nullptr;
+    }
+
+    inline bool isEmpty() const { return m_head == nullptr; }
 
     inline iterator begin() { return iterator(m_head); }
     inline iterator end() { return iterator(nullptr); }
@@ -221,15 +234,6 @@ struct QSSGInvasiveLinkedList : public QSSGInvasiveLinkListBase<T, QSSGListAcces
     T *m_head = nullptr;
     T *m_tail = nullptr;
 
-    QSSGInvasiveLinkedList() = default;
-    QSSGInvasiveLinkedList(const List &inOther) : m_head(inOther.m_head), m_tail(inOther.m_tail) {}
-    List &operator=(const List &inOther)
-    {
-        m_head = inOther.m_head;
-        m_tail = inOther.m_tail;
-        return *this;
-    }
-
     inline T &front() const
     {
         Q_ASSERT(m_head);
@@ -246,8 +250,16 @@ struct QSSGInvasiveLinkedList : public QSSGInvasiveLinkListBase<T, QSSGListAcces
 
     void push_front(T &inObj)
     {
+        // The prev pointer of the head must be null.
+        // If the inObj actually points somewhere then it's likely that we're going to:
+        // Crash at some later point, loop, or that the we just broke the another list.
+        QSSG_VERIFY_NODE(HeadOp::get(inObj) == nullptr);
+
         if (m_head != nullptr)
             BaseList::insert_before(*m_head, inObj);
+        else
+            HeadOp::set(inObj, nullptr);
+
         m_head = &inObj;
 
         if (m_tail == nullptr)
@@ -256,8 +268,17 @@ struct QSSGInvasiveLinkedList : public QSSGInvasiveLinkListBase<T, QSSGListAcces
 
     void push_back(T &inObj)
     {
+        // The next pointer of the tail must be null.
+        // We assert because if the inObj actually points somewhere then it's
+        // likely that we: Crash at some later point, we loop, or we broke the links
+        // in another list.
+        QSSG_VERIFY_NODE(TailOp::get(inObj) == nullptr);
+
         if (m_tail != nullptr)
             BaseList::insert_after(*m_tail, inObj);
+        else
+            TailOp::set(inObj, nullptr);
+
         m_tail = &inObj;
 
         if (m_head == nullptr)
@@ -274,7 +295,25 @@ struct QSSGInvasiveLinkedList : public QSSGInvasiveLinkListBase<T, QSSGListAcces
         BaseList::remove(inObj);
     }
 
-    inline bool empty() const { return m_head == nullptr; }
+    /*!
+     * \brief removeAll removes all nodes and re-sets their head and tail to null.
+     */
+    void removeAll()
+    {
+        for (auto it = begin(), e = end(); it != e;)
+            remove(*(it++));
+    }
+
+    /*!
+     * \brief clear will set the head and tail of the list to null.
+     *  Note that the nodes are not updated in this case!
+     */
+    void clear()
+    {
+        m_head = m_tail = nullptr;
+    }
+
+    inline bool isEmpty() const { return m_head == nullptr; }
 
     inline iterator begin() { return iterator(m_head); }
     inline iterator end() { return iterator(nullptr); }

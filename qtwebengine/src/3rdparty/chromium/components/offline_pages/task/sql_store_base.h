@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,13 +10,13 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/memory/weak_ptr.h"
-#include "base/task_runner_util.h"
-#include "base/threading/thread_task_runner_handle.h"
-#include "base/trace_event/trace_event.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "sql/database.h"
 
 namespace offline_pages {
@@ -47,13 +47,16 @@ class SqlStoreBase {
 
   // Defines inactivity time of DB after which it is going to be closed.
   // TODO(crbug.com/933369): Derive appropriate value in a scientific way.
-  static constexpr base::TimeDelta kClosingDelay =
-      base::TimeDelta::FromSeconds(20);
+  static constexpr base::TimeDelta kClosingDelay = base::Seconds(20);
 
   // If |file_path| is empty, this constructs an in-memory database.
   SqlStoreBase(const std::string& histogram_tag,
                scoped_refptr<base::SequencedTaskRunner> blocking_task_runner,
                const base::FilePath& file_path);
+
+  SqlStoreBase(const SqlStoreBase&) = delete;
+  SqlStoreBase& operator=(const SqlStoreBase&) = delete;
+
   virtual ~SqlStoreBase();
 
   // Gets the initialization status of the store.
@@ -127,14 +130,13 @@ class SqlStoreBase {
     DCHECK_NE(initialization_status_, InitializationStatus::kInProgress);
     sql::Database* db = ExecuteBegin();
     if (!db) {
-      base::ThreadTaskRunnerHandle::Get()->PostTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE,
           base::BindOnce(std::move(result_callback), std::move(default_value)));
       return;
     }
-    base::PostTaskAndReplyWithResult(
-        background_task_runner_.get(), FROM_HERE,
-        base::BindOnce(std::move(run_callback), db),
+    background_task_runner_->PostTaskAndReplyWithResult(
+        FROM_HERE, base::BindOnce(std::move(run_callback), db),
         base::BindOnce(&SqlStoreBase::RescheduleClosing<T>,
                        weak_ptr_factory_.GetWeakPtr(),
                        std::move(result_callback)));
@@ -181,8 +183,6 @@ class SqlStoreBase {
 
   base::WeakPtrFactory<SqlStoreBase> weak_ptr_factory_{this};
   base::WeakPtrFactory<SqlStoreBase> closing_weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(SqlStoreBase);
 };
 
 }  // namespace offline_pages

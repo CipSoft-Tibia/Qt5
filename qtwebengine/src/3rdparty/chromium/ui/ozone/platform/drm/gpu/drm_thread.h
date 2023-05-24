@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,6 @@
 #include <memory>
 
 #include "base/files/file.h"
-#include "base/files/scoped_file.h"
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread.h"
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
@@ -21,17 +19,17 @@
 #include "ui/display/types/display_configuration_params.h"
 #include "ui/gfx/native_pixmap_handle.h"
 #include "ui/gfx/native_widget_types.h"
-#include "ui/gfx/vsync_provider.h"
 #include "ui/ozone/platform/drm/common/display_types.h"
 #include "ui/ozone/platform/drm/gpu/drm_device_generator.h"
-#include "ui/ozone/public/mojom/device_cursor.mojom.h"
-#include "ui/ozone/public/mojom/drm_device.mojom.h"
+#include "ui/ozone/platform/drm/mojom/device_cursor.mojom.h"
+#include "ui/ozone/platform/drm/mojom/drm_device.mojom.h"
+#include "ui/ozone/public/hardware_capabilities.h"
 #include "ui/ozone/public/overlay_surface_candidate.h"
 #include "ui/ozone/public/swap_completion_callback.h"
 
 namespace base {
 class FilePath;
-}
+}  // namespace base
 
 namespace display {
 struct GammaRampRGBEntry;
@@ -69,6 +67,10 @@ class DrmThread : public base::Thread,
                               const std::vector<OverlayStatus>&)>;
 
   DrmThread();
+
+  DrmThread(const DrmThread&) = delete;
+  DrmThread& operator=(const DrmThread&) = delete;
+
   ~DrmThread() override;
 
   void Start(base::OnceClosure receiver_completer,
@@ -104,7 +106,7 @@ class DrmThread : public base::Thread,
                               gfx::NativePixmapHandle handle,
                               std::unique_ptr<GbmBuffer>* buffer,
                               scoped_refptr<DrmFramebuffer>* framebuffer);
-  void SetClearOverlayCacheCallback(base::RepeatingClosure callback);
+  void SetDisplaysConfiguredCallback(base::RepeatingClosure callback);
   void AddDrmDeviceReceiver(
       mojo::PendingReceiver<ozone::mojom::DrmDevice> receiver);
 
@@ -125,6 +127,10 @@ class DrmThread : public base::Thread,
       gfx::AcceleratedWidget widget,
       const std::vector<OverlaySurfaceCandidate>& candidates,
       std::vector<OverlayStatus>* result);
+  // Calls `receive_callback` with a `HardwareCapabilities` containing
+  // information about overlay support on the current hardware.
+  void GetHardwareCapabilities(gfx::AcceleratedWidget widget,
+                               HardwareCapabilitiesCallback receive_callback);
 
   // DrmWindowProxy (on GPU thread) is the client for these methods.
   void SchedulePageFlip(gfx::AcceleratedWidget widget,
@@ -143,13 +149,21 @@ class DrmThread : public base::Thread,
   void TakeDisplayControl(base::OnceCallback<void(bool)> callback) override;
   void RelinquishDisplayControl(
       base::OnceCallback<void(bool)> callback) override;
+  void ShouldDisplayEventTriggerConfiguration(
+      const EventPropertyMap& event_props,
+      base::OnceCallback<void(bool)> callback) override;
   void RefreshNativeDisplays(
       base::OnceCallback<void(MovableDisplaySnapshots)> callback) override;
-  void AddGraphicsDevice(const base::FilePath& path, base::File file) override;
+  void AddGraphicsDevice(const base::FilePath& path,
+                         mojo::PlatformHandle fd_mojo_handle) override;
   void RemoveGraphicsDevice(const base::FilePath& path) override;
   void ConfigureNativeDisplays(
       const std::vector<display::DisplayConfigurationParams>& config_requests,
+      uint32_t modeset_flag,
       ConfigureNativeDisplaysCallback callback) override;
+  void SetHdcpKeyProp(int64_t display_id,
+                      const std::string& key,
+                      SetHdcpKeyPropCallback callback) override;
   void GetHDCPState(int64_t display_id,
                     base::OnceCallback<void(int64_t,
                                             bool,
@@ -166,7 +180,9 @@ class DrmThread : public base::Thread,
       int64_t display_id,
       const std::vector<display::GammaRampRGBEntry>& degamma_lut,
       const std::vector<display::GammaRampRGBEntry>& gamma_lut) override;
-  void SetPrivacyScreen(int64_t display_id, bool enabled) override;
+  void SetPrivacyScreen(int64_t display_id,
+                        bool enabled,
+                        base::OnceCallback<void(bool)> callback) override;
   void GetDeviceCursor(
       mojo::PendingAssociatedReceiver<ozone::mojom::DeviceCursor> receiver)
       override;
@@ -175,12 +191,13 @@ class DrmThread : public base::Thread,
   void SetCursor(gfx::AcceleratedWidget widget,
                  const std::vector<SkBitmap>& bitmaps,
                  const gfx::Point& location,
-                 int32_t frame_delay_ms) override;
+                 base::TimeDelta frame_delay) override;
   void MoveCursor(gfx::AcceleratedWidget widget,
                   const gfx::Point& location) override;
 
   // base::Thread:
   void Init() override;
+  void CleanUp() override;
 
  private:
   struct TaskInfo {
@@ -227,8 +244,6 @@ class DrmThread : public base::Thread,
   std::unique_ptr<DrmDeviceGenerator> device_generator_;
 
   base::WeakPtrFactory<DrmThread> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DrmThread);
 };
 
 }  // namespace ui

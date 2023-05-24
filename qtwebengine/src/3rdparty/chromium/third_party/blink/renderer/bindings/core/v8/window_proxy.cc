@@ -37,7 +37,6 @@
 #include "third_party/blink/renderer/core/frame/dom_window.h"
 #include "third_party/blink/renderer/core/frame/frame.h"
 #include "third_party/blink/renderer/platform/bindings/v8_dom_wrapper.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 #include "v8/include/v8.h"
 
 namespace blink {
@@ -50,6 +49,7 @@ WindowProxy::~WindowProxy() {
 
 void WindowProxy::Trace(Visitor* visitor) const {
   visitor->Trace(frame_);
+  visitor->Trace(global_proxy_);
 }
 
 WindowProxy::WindowProxy(v8::Isolate* isolate,
@@ -84,7 +84,7 @@ v8::Local<v8::Object> WindowProxy::GlobalProxyIfNotDetached() {
   if (lifecycle_ == Lifecycle::kContextIsInitialized) {
     DLOG_IF(FATAL, !is_global_object_attached_)
         << "Context is initialized but global object is detached!";
-    return global_proxy_.NewLocal(isolate_);
+    return global_proxy_.Get(isolate_);
   }
   return v8::Local<v8::Object>();
 }
@@ -94,12 +94,12 @@ v8::Local<v8::Object> WindowProxy::ReleaseGlobalProxy() {
          lifecycle_ == Lifecycle::kGlobalObjectIsDetached);
 
   // Make sure the global object was detached from the proxy by calling
-  // clearForNavigation().
+  // ClearForSwap().
   DLOG_IF(FATAL, is_global_object_attached_)
-      << "Context not detached by calling clearForNavigation()";
+      << "Context not detached by calling ClearForSwap()";
 
-  v8::Local<v8::Object> global_proxy = global_proxy_.NewLocal(isolate_);
-  global_proxy_.Clear();
+  v8::Local<v8::Object> global_proxy = global_proxy_.Get(isolate_);
+  global_proxy_.Reset();
   return global_proxy;
 }
 
@@ -107,15 +107,11 @@ void WindowProxy::SetGlobalProxy(v8::Local<v8::Object> global_proxy) {
   DCHECK_EQ(lifecycle_, Lifecycle::kContextIsUninitialized);
 
   CHECK(global_proxy_.IsEmpty());
-  global_proxy_.Set(isolate_, global_proxy);
-
-  // Initialize the window proxy now, to re-establish the connection between
-  // the global object and the v8::Context. This is really only needed for a
-  // RemoteDOMWindow, since it has no scripting environment of its own.
-  // Without this, existing script references to a swapped in RemoteDOMWindow
-  // would be broken until that RemoteDOMWindow was vended again through an
-  // interface like window.frames.
-  Initialize();
+  global_proxy_.Reset(isolate_, global_proxy);
+  // The global proxy was transferred from a previous WindowProxy, so the state
+  // should be detached, not uninitialized. This ensures that it will be
+  // properly reinitialized when needed, e.g. by `UpdateDocument()`.
+  lifecycle_ = Lifecycle::kGlobalObjectIsDetached;
 }
 
 // Create a new environment and setup the global object.

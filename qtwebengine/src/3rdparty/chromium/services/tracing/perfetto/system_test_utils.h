@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include "base/functional/callback.h"
 #include "services/tracing/public/cpp/perfetto/posix_system_producer.h"
 
 namespace base {
@@ -27,7 +28,9 @@ class MockSystemService {
  public:
   MockSystemService(const std::string& consumer_socket,
                     const std::string& producer_socket);
-  MockSystemService(const base::ScopedTempDir& tmp_dir);
+  explicit MockSystemService(const base::ScopedTempDir& tmp_dir);
+  MockSystemService(const base::ScopedTempDir& tmp_dir,
+                    std::unique_ptr<perfetto::base::TaskRunner>);
   ~MockSystemService();
 
   perfetto::TracingService* GetService();
@@ -52,7 +55,8 @@ class MockPosixSystemProducer : public PosixSystemProducer {
       bool check_sdk_level = false,
       uint32_t num_data_sources = 0,
       base::OnceClosure data_source_enabled_callback = base::OnceClosure(),
-      base::OnceClosure data_source_disabled_callback = base::OnceClosure());
+      base::OnceClosure data_source_disabled_callback = base::OnceClosure(),
+      bool sandbox_forbids_socket_connection = false);
 
   ~MockPosixSystemProducer() override;
 
@@ -68,12 +72,17 @@ class MockPosixSystemProducer : public PosixSystemProducer {
   void SetDataSourceDisabledCallback(
       base::OnceClosure data_source_disabled_callback);
 
+ protected:
+  // Override for testing.
+  bool SandboxForbidsSocketConnection() override;
+
  private:
   uint32_t num_data_sources_expected_;
   uint32_t num_data_sources_active_ = 0;
   base::OnceClosure data_source_enabled_callback_;
   base::OnceClosure data_source_disabled_callback_;
   std::unique_ptr<SystemProducer> old_producer_;
+  bool sandbox_forbids_socket_connection_;
 };
 
 }  // namespace tracing

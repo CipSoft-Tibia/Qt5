@@ -27,13 +27,41 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_TIMING_FUNCTION_VALUE_H_
 
 #include "base/memory/scoped_refptr.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/css/css_value.h"
 #include "third_party/blink/renderer/platform/animation/timing_function.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
+#include "ui/gfx/animation/keyframe/timing_function.h"
 
 namespace blink {
 namespace cssvalue {
+
+struct CSSLinearStop {
+  double number;
+  absl::optional<double> length_a;
+  absl::optional<double> length_b;
+};
+
+class CSSLinearTimingFunctionValue : public CSSValue {
+ public:
+  explicit CSSLinearTimingFunctionValue(Vector<gfx::LinearEasingPoint> points)
+      : CSSValue(kLinearTimingFunctionClass), points_(std::move(points)) {}
+  explicit CSSLinearTimingFunctionValue(
+      const std::vector<gfx::LinearEasingPoint>& points)
+      : CSSValue(kLinearTimingFunctionClass), points_(points) {}
+
+  String CustomCSSText() const;
+  const Vector<gfx::LinearEasingPoint>& Points() const { return points_; }
+
+  bool Equals(const CSSLinearTimingFunctionValue&) const;
+
+  void TraceAfterDispatch(blink::Visitor* visitor) const {
+    CSSValue::TraceAfterDispatch(visitor);
+  }
+
+ private:
+  Vector<gfx::LinearEasingPoint> points_;
+};
 
 class CSSCubicBezierTimingFunctionValue : public CSSValue {
  public:
@@ -93,6 +121,13 @@ class CSSStepsTimingFunctionValue : public CSSValue {
 }  // namespace cssvalue
 
 template <>
+struct DowncastTraits<cssvalue::CSSLinearTimingFunctionValue> {
+  static bool AllowFrom(const CSSValue& value) {
+    return value.IsLinearTimingFunctionValue();
+  }
+};
+
+template <>
 struct DowncastTraits<cssvalue::CSSCubicBezierTimingFunctionValue> {
   static bool AllowFrom(const CSSValue& value) {
     return value.IsCubicBezierTimingFunctionValue();
@@ -108,4 +143,4 @@ struct DowncastTraits<cssvalue::CSSStepsTimingFunctionValue> {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_TIMING_FUNCTION_VALUE_H_

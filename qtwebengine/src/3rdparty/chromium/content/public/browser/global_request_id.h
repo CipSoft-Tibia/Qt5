@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <tuple>
+
+#include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 
 namespace content {
 
@@ -44,6 +46,8 @@ struct GlobalRequestID {
     return child_id != other.child_id ||
         request_id != other.request_id;
   }
+
+  void WriteIntoTrace(perfetto::TracedValue context) const;
 };
 
 }  // namespace content

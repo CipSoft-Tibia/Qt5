@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DCORE_VECTOR3D_SSE_P_H
 #define QT3DCORE_VECTOR3D_SSE_P_H
@@ -58,14 +22,13 @@
 #include <QDebug>
 #include <math.h>
 
-#ifdef QT_COMPILER_SUPPORTS_SSE2
+#ifdef __SSE2__
 
 QT_BEGIN_NAMESPACE
 
 namespace Qt3DCore {
 
 class Matrix4x4_SSE;
-class Matrix4x4_AVX2;
 class Vector4D_SSE;
 
 class Vector3D_SSE
@@ -178,13 +141,8 @@ public:
         return ((_mm_movemask_ps(_mm_cmpeq_ps(m_xyzw, _mm_set_ps1(0.0f))) & 0x7) == 0x7);
     }
 
-#if defined(__AVX2__) && defined(QT_COMPILER_SUPPORTS_AVX2)
-    Q_3DCORE_PRIVATE_EXPORT Vector3D_SSE unproject(const Matrix4x4_AVX2 &modelView, const Matrix4x4_AVX2 &projection, const QRect &viewport) const;
-    Q_3DCORE_PRIVATE_EXPORT Vector3D_SSE project(const Matrix4x4_AVX2 &modelView, const Matrix4x4_AVX2 &projection, const QRect &viewport) const;
-#else
     Q_3DCORE_PRIVATE_EXPORT Vector3D_SSE unproject(const Matrix4x4_SSE &modelView, const Matrix4x4_SSE &projection, const QRect &viewport) const;
     Q_3DCORE_PRIVATE_EXPORT Vector3D_SSE project(const Matrix4x4_SSE &modelView, const Matrix4x4_SSE &projection, const QRect &viewport) const;
-#endif
 
     Q_ALWAYS_INLINE float x() const { return _mm_cvtss_f32(m_xyzw); }
 
@@ -247,8 +205,7 @@ public:
         case 2:
             return z();
         default:
-            Q_UNREACHABLE();
-            return 0.0f;
+            Q_UNREACHABLE_RETURN(0.0f);
         }
     }
 
@@ -269,8 +226,7 @@ public:
             case 2:
                 return m_vec->z();
             default:
-                Q_UNREACHABLE();
-                return 0.0f;
+                Q_UNREACHABLE_RETURN(0.0f);
             }
         }
 
@@ -347,13 +303,6 @@ public:
     }
 
     friend class Vector4D_SSE;
-
-#if defined(__AVX2__) && defined(QT_COMPILER_SUPPORTS_AVX2)
-    friend class Matrix4x4_AVX2;
-    friend Vector3D_SSE operator*(const Vector3D_SSE &vector, const Matrix4x4_AVX2 &matrix);
-    friend Vector3D_SSE operator*(const Matrix4x4_AVX2 &matrix, const Vector3D_SSE &vector);
-#endif
-
     friend class Matrix4x4_SSE;
     friend Vector3D_SSE operator*(const Vector3D_SSE &vector, const Matrix4x4_SSE &matrix);
     friend Vector3D_SSE operator*(const Matrix4x4_SSE &matrix, const Vector3D_SSE &vector);
@@ -396,6 +345,6 @@ QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(Qt3DCore::Vector3D_SSE)
 
-#endif // QT_COMPILER_SUPPORTS_SSE2
+#endif // __SSE2__
 
 #endif // QT3DCORE_VECTOR3D_SSE_P_H

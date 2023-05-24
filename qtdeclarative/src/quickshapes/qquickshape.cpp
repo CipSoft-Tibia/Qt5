@@ -1,58 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickshape_p.h"
 #include "qquickshape_p_p.h"
 #include "qquickshapegenericrenderer_p.h"
-#include "qquickshapenvprrenderer_p.h"
 #include "qquickshapesoftwarerenderer_p.h"
+#include "qquickshapecurverenderer_p.h"
 #include <private/qsgplaintexture_p.h>
 #include <private/qquicksvgparser_p.h>
 #include <QtGui/private/qdrawhelper_p.h>
 #include <QOpenGLFunctions>
 #include <QLoggingCategory>
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 static void initResources()
 {
 #if defined(QT_STATIC)
-    Q_INIT_RESOURCE(qtquickshapes);
+    Q_INIT_RESOURCE(qtquickshapes_shaders);
 #endif
 }
 
@@ -68,10 +32,42 @@ Q_LOGGING_CATEGORY(QQSHAPE_LOG_TIME_DIRTY_SYNC, "qt.shape.time.sync")
 
     To use the types in this module, import the module with the following line:
 
-    \qml \QtMinorVersion
-    import QtQuick.Shapes 1.\1
+    \qml
+    import QtQuick.Shapes
     \endqml
+
+    Qt Quick Shapes provides tools for drawing arbitrary shapes in a Qt Quick scene.
+    \l{Shape}{Shapes} can be constructed from basic building blocks like \l{PathLine}{lines} and
+    \l{PathCubic}{curves} that define sub-shapes. The sub-shapes can then be filled with solid
+    colors or gradients, and an outline stroke can be defined.
+
+    Qt Quick Shapes also supports higher level path element types, such as \l{PathText}{text} and
+    \l{PathSvg}{SVG path descriptions}. The currently supported element types is: PathMove,
+    PathLine, PathQuad, PathCubic, PathArc, PathText and PathSvg.
+
+    Qt Quick Shapes triangulates the shapes and renders the corresponding triangles on the GPU.
+    Therefore, altering the control points of elements will lead to re-triangulation of the
+    affected paths, at some performance cost. In addition, curves are flattened before they are
+    rendered, so applying a very high scale to the shape may show artifacts where it is visible
+    that the curves are represented by a sequence of smaller, straight lines.
+
+    \note Qt Quick Shapes relies on multi-sampling for anti-aliasing. This can be enabled for the
+    entire application or window using the corresponding settings in QSurfaceFormat. It can also
+    be enabled for only the shape, by setting its \l{Item::layer.enabled}{layer.enabled} property to
+    true and then adjusting the \l{Item::layer.samples}{layer.samples} property. In the latter case,
+    multi-sampling will not be applied to the entire scene, but the shape will be rendered via an
+    intermediate off-screen buffer.
+
+    For further information, the \l{Qt Quick Examples - Shapes}{Shapes example} shows how to
+    implement different types of shapes, fills and strokes.
 */
+
+void QQuickShapes_initializeModule()
+{
+    QQuickShapesModule::defineModule();
+}
+
+Q_CONSTRUCTOR_FUNCTION(QQuickShapes_initializeModule)
 
 void QQuickShapesModule::defineModule()
 {
@@ -390,10 +386,8 @@ void QQuickShapePath::setCapStyle(CapStyle style)
     This property defines the style of stroking. The default value is
     ShapePath.SolidLine.
 
-    \list
-    \li ShapePath.SolidLine - A plain line.
-    \li ShapePath.DashLine - Dashes separated by a few pixels.
-    \endlist
+    \value ShapePath.SolidLine  A plain line.
+    \value ShapePath.DashLine   Dashes separated by a few pixels.
  */
 
 QQuickShapePath::StrokeStyle QQuickShapePath::strokeStyle() const
@@ -530,9 +524,7 @@ void QQuickShapePath::resetFillGradient()
     \brief Renders a path.
     \since 5.10
 
-    Renders a path either by generating geometry via QPainterPath and manual
-    triangulation or by using a GPU vendor extension like
-    \c{GL_NV_path_rendering}.
+    Renders a path by triangulating geometry from a QPainterPath.
 
     This approach is different from rendering shapes via QQuickPaintedItem or
     the 2D Canvas because the path never gets rasterized in software.
@@ -546,7 +538,7 @@ void QQuickShapePath::resetFillGradient()
     Shape. However, not all Shape implementations support all path
     element types, while some may not make sense for PathView. Shape's
     currently supported subset is: PathMove, PathLine, PathQuad, PathCubic,
-    PathArc, and PathSvg.
+    PathArc, PathText and PathSvg.
 
     See \l Path for a detailed overview of the supported path elements.
 
@@ -588,19 +580,12 @@ void QQuickShapePath::resetFillGradient()
 
     \list
 
-    \li When running with the OpenGL backend of Qt Quick, both the generic,
-    triangulation-based and the NVIDIA-specific \c{GL_NV_path_rendering}
-    methods are available. By default only the generic approach is used.
-    Setting Shape.vendorExtensionsEnabled property to \c true leads to using
-    NV_path_rendering on NVIDIA systems when running directly on OpenGL, and
-    the generic method on others. When OpenGL is not used directly by the scene
-    graph, for example because it is using the graphics abstraction layer
-    (QRhi), only the generic shape renderer is available.
+    \li When Qt Quick is running with the default, hardware-accelerated backend (RHI),
+    the generic shape renderer will be used. This converts the shapes into triangles
+    which are passed to the renderer.
 
     \li The \c software backend is fully supported. The path is rendered via
     QPainter::strokePath() and QPainter::fillPath() in this case.
-
-    \li The Direct 3D 12 backend is not currently supported.
 
     \li The OpenVG backend is not currently supported.
 
@@ -626,16 +611,10 @@ void QQuickShapePath::resetFillGradient()
     a frequently changing property can still result in a lower overall system
     load than with imperative painting approaches (for example, QPainter).
 
-    \li If animating properties other than stroke and fill colors is a must,
-    it is recommended to target systems providing \c{GL_NV_path_rendering}
-    where the cost of property changes is smaller.
-
     \li At the same time, attention must be paid to the number of Shape
-    elements in the scene, in particular when using this special accelerated
-    approach for \c{GL_NV_path_rendering}. The way such a Shape item is
-    represented in the scene graph is different from an ordinary
-    geometry-based item, and incurs a certain cost when it comes to OpenGL
-    state changes.
+    elements in the scene. The way such a Shape item is represented in
+    the scene graph is different from an ordinary geometry-based item,
+    and incurs a certain cost when it comes to OpenGL state changes.
 
     \li As a general rule, scenes should avoid using separate Shape items when
     it is not absolutely necessary. Prefer using one Shape item with multiple
@@ -661,6 +640,7 @@ void QQuickShapePrivate::_q_shapePathChanged()
     Q_Q(QQuickShape);
     spChanged = true;
     q->polish();
+    emit q->boundingRectChanged();
 }
 
 void QQuickShapePrivate::setStatus(QQuickShape::Status newStatus)
@@ -684,6 +664,7 @@ QQuickShape::~QQuickShape()
 
 /*!
     \qmlproperty enumeration QtQuick.Shapes::Shape::rendererType
+    \readonly
 
     This property determines which path rendering backend is active.
 
@@ -691,21 +672,45 @@ QQuickShape::~QQuickShape()
            The renderer is unknown.
 
     \value Shape.GeometryRenderer
-           The generic, driver independent solution for OpenGL. Uses the same
+           The generic, driver independent solution for GPU rendering. Uses the same
            CPU-based triangulation approach as QPainter's OpenGL 2 paint
-           engine. This is the default on non-NVIDIA hardware when the default,
-           OpenGL Qt Quick scenegraph backend is in use.
-
-    \value Shape.NvprRenderer
-           Path items are rendered by performing OpenGL calls using the
-           \c{GL_NV_path_rendering} extension. This is the default on NVIDIA
-           hardware when the default, OpenGL Qt Quick scenegraph backend is in
-           use.
+           engine. This is the default when the RHI-based Qt Quick scenegraph
+           backend is in use.
 
     \value Shape.SoftwareRenderer
            Pure QPainter drawing using the raster paint engine. This is the
            default, and only, option when the Qt Quick scenegraph is running
            with the \c software backend.
+
+    \value Shape.CurveRenderer
+           Experimental GPU-based renderer, added as technology preview in Qt 6.6.
+           In contrast to \c Shape.GeometryRenderer, curves are not approximated by short straight
+           lines. Instead, curves are rendered using a specialized fragment shader. This improves
+           visual quality and avoids re-tesselation performance hit when zooming. Also,
+           \c Shape.CurveRenderer provides native, high-quality anti-aliasing, without the
+           performance cost of multi- or supersampling.
+
+    By default, \c Shape.GeometryRenderer will be selected unless the Qt Quick scenegraph is running
+    with the \c software backend. In that case, \c Shape.SoftwareRenderer will be used.
+    \c Shape.CurveRenderer may be requested using the \l preferredRendererType property.
+
+    Note that \c Shape.CurveRenderer is currently regarded as experimental. The enum name of
+    this renderer may change in future versions of Qt, and some shapes may render incorrectly.
+    Among the known limitations are:
+    \list 1
+      \li Only quadratic curves are inherently supported. Cubic curves will be approximated by
+          quadratic curves.
+      \li Shapes where elements intersect are not rendered correctly. The \l [QML] {Path::simplify}
+          {Path.simplify} property may be used to remove self-intersections from such shapes, but
+          may incur a performance cost and reduced visual quality.
+      \li Shapes that span a large numerical range, such as a long string of text, may have
+          issues. Consider splitting these shapes into multiple ones, for instance by making
+          a \l PathText for each individual word.
+      \li If the shape is being rendered into a Qt Quick 3D scene, the
+          \c GL_OES_standard_derivatives extension to OpenGL is required when the OpenGL
+          RHI backend is in use (this is available by default on OpenGL ES 3 and later, but
+          optional in OpenGL ES 2).
+    \endlist
 */
 
 QQuickShape::RendererType QQuickShape::rendererType() const
@@ -713,6 +718,56 @@ QQuickShape::RendererType QQuickShape::rendererType() const
     Q_D(const QQuickShape);
     return d->rendererType;
 }
+
+/*!
+    \qmlproperty enumeration QtQuick.Shapes::Shape::preferredRendererType
+    \since 6.6
+
+    Requests a specific backend to use for rendering the shape. The possible values are the same as
+    for \l rendererType. The default is \c Shape.UnknownRenderer, indicating no particular preference.
+
+    If the requested renderer type is not supported for the current Qt Quick backend, the default
+    renderer for that backend will be used instead. This will be reflected in the \l rendererType
+    when the backend is initialized.
+
+    \c Shape.SoftwareRenderer can currently not be selected without running the scenegraph with
+    the \c software backend, in which case it will be selected regardless of the
+    \c preferredRendererType.
+
+    \note This API is considered tech preview and may change or be removed in future versions of
+    Qt.
+
+    See \l rendererType for more information on the implications.
+*/
+
+QQuickShape::RendererType QQuickShape::preferredRendererType() const
+{
+    Q_D(const QQuickShape);
+    return d->preferredType;
+}
+
+void QQuickShape::setPreferredRendererType(QQuickShape::RendererType preferredType)
+{
+    Q_D(QQuickShape);
+    if (d->preferredType == preferredType)
+        return;
+
+    d->preferredType = preferredType;
+    // (could bail out here if selectRenderType shows no change?)
+
+    for (int i = 0; i < d->sp.size(); ++i) {
+        QQuickShapePath *p = d->sp[i];
+        QQuickShapePathPrivate *pp = QQuickShapePathPrivate::get(p);
+        pp->dirty |= QQuickShapePathPrivate::DirtyAll;
+    }
+    d->spChanged = true;
+    d->_q_shapePathChanged();
+    polish();
+    update();
+
+    emit preferredRendererTypeChanged();
+}
+
 
 /*!
     \qmlproperty bool QtQuick.Shapes::Shape::asynchronous
@@ -748,28 +803,30 @@ void QQuickShape::setAsynchronous(bool async)
 }
 
 /*!
+    \qmlproperty rect QtQuick.Shapes::Shape::boundingRect
+    \since 6.6
+
+    Contains the united bounding rect of all sub paths in the shape.
+ */
+QRectF QQuickShape::boundingRect() const
+{
+    Q_D(const QQuickShape);
+    QRectF brect;
+    for (QQuickShapePath *path : d->sp) {
+        brect = brect.united(path->path().boundingRect());
+    }
+
+    return brect;
+}
+
+/*!
     \qmlproperty bool QtQuick.Shapes::Shape::vendorExtensionsEnabled
 
-    This property controls the usage of non-standard OpenGL extensions like
-    \c GL_NV_path_rendering.
+    This property controls the usage of non-standard OpenGL extensions.
 
     The default value is \c false.
 
-    As of Qt 5.12 Shape.NvprRenderer is disabled by default and a uniform
-    behavior, based on triangulating the path and generating QSGGeometryNode
-    instances, is used regardless of the graphics card and drivers. To enable
-    using vendor-specific path rendering approaches set the value to \c true.
-    Depending on the platform and content, this can lead to improved
-    performance. Setting the value to \c true is safe in any case since
-    rendering falls back to the default method when the vendor-specific
-    approach, such as \c GL_NV_path_rendering, is not supported at run time.
-
-    \deprecated
-
-    Changing the default value (false) is not recommended. In particular,
-    support for Shape.NvprRenderer will not be available in future Qt versions.
-    Applications experiencing rendering problems with the property set to true
-    are advised to set it to false.
+    As of Qt 6.0 there are no vendor-specific rendering paths implemented.
  */
 
 bool QQuickShape::vendorExtensionsEnabled() const
@@ -789,6 +846,7 @@ void QQuickShape::setVendorExtensionsEnabled(bool enable)
 
 /*!
     \qmlproperty enumeration QtQuick.Shapes::Shape::status
+    \readonly
 
     This property determines the status of the Shape and is relevant when
     Shape.asynchronous is set to \c true.
@@ -904,7 +962,7 @@ static void vpe_clear(QQmlListProperty<QObject> *property)
     Shape. It can also contain any other type of objects, since Shape, like
     Item, allows adding any visual or non-visual objects as children.
 
-    \default
+    \qmldefault
  */
 
 QQmlListProperty<QObject> QQuickShape::data()
@@ -945,6 +1003,12 @@ void QQuickShape::updatePolish()
     d->spChanged = false;
     d->effectRefCount = currentEffectRefCount;
 
+    QQuickShape::RendererType expectedRenderer = d->selectRendererType();
+    if (d->rendererType != expectedRenderer) {
+        delete d->renderer;
+        d->renderer = nullptr;
+    }
+
     if (!d->renderer) {
         d->createRenderer();
         if (!d->renderer)
@@ -957,8 +1021,6 @@ void QQuickShape::updatePolish()
     // when the item is visible.
     if (isVisible() || d->effectRefCount > 0)
         d->sync();
-
-    update();
 }
 
 void QQuickShape::itemChange(ItemChange change, const ItemChangeData &data)
@@ -969,7 +1031,7 @@ void QQuickShape::itemChange(ItemChange change, const ItemChangeData &data)
     if (change == ItemVisibleHasChanged && data.boolValue)
         d->_q_shapePathChanged();
     else if (change == QQuickItem::ItemSceneChange) {
-        for (int i = 0; i < d->sp.count(); ++i)
+        for (int i = 0; i < d->sp.size(); ++i)
             QQuickShapePathPrivate::get(d->sp[i])->dirty = QQuickShapePathPrivate::DirtyAll;
         d->_q_shapePathChanged();
     }
@@ -981,47 +1043,74 @@ QSGNode *QQuickShape::updatePaintNode(QSGNode *node, UpdatePaintNodeData *)
 {
     // Called on the render thread, with the gui thread blocked. We can now
     // safely access gui thread data.
-
     Q_D(QQuickShape);
-    if (d->renderer) {
-        if (!node)
+
+    if (d->renderer || d->rendererChanged) {
+        if (!node || d->rendererChanged) {
+            d->rendererChanged = false;
+            delete node;
             node = d->createNode();
-        d->renderer->updateNode();
+        }
+        if (d->renderer)
+            d->renderer->updateNode();
     }
     return node;
+}
+
+QQuickShape::RendererType QQuickShapePrivate::selectRendererType()
+{
+    QQuickShape::RendererType res = QQuickShape::UnknownRenderer;
+    Q_Q(QQuickShape);
+    QSGRendererInterface *ri = q->window()->rendererInterface();
+    if (!ri)
+        return res;
+
+    static const bool environmentPreferCurve =
+        qEnvironmentVariable("QT_QUICKSHAPES_BACKEND").toLower() == QLatin1String("curverenderer");
+
+    switch (ri->graphicsApi()) {
+    case QSGRendererInterface::Software:
+        res = QQuickShape::SoftwareRenderer;
+        break;
+    default:
+        if (QSGRendererInterface::isApiRhiBased(ri->graphicsApi())) {
+            if (preferredType == QQuickShape::CurveRenderer || environmentPreferCurve) {
+                res = QQuickShape::CurveRenderer;
+            } else {
+                res = QQuickShape::GeometryRenderer;
+            }
+        } else {
+            qWarning("No path backend for this graphics API yet");
+        }
+        break;
+    }
+
+    return res;
 }
 
 // the renderer object lives on the gui thread
 void QQuickShapePrivate::createRenderer()
 {
     Q_Q(QQuickShape);
-    QSGRendererInterface *ri = q->window()->rendererInterface();
-    if (!ri)
+    QQuickShape::RendererType selectedType = selectRendererType();
+    if (selectedType == QQuickShape::UnknownRenderer)
         return;
 
-    switch (ri->graphicsApi()) {
-#if QT_CONFIG(opengl)
-    case QSGRendererInterface::OpenGL:
-        if (enableVendorExts && QQuickShapeNvprRenderNode::isSupported()) {
-            rendererType = QQuickShape::NvprRenderer;
-            renderer = new QQuickShapeNvprRenderer;
-        } else {
-            rendererType = QQuickShape::GeometryRenderer;
-            renderer = new QQuickShapeGenericRenderer(q);
-        }
-        break;
-#endif
-    case QSGRendererInterface::Software:
-        rendererType = QQuickShape::SoftwareRenderer;
+    rendererType = selectedType;
+    rendererChanged = true;
+
+    switch (selectedType) {
+    case QQuickShape::SoftwareRenderer:
         renderer = new QQuickShapeSoftwareRenderer;
         break;
+    case QQuickShape::GeometryRenderer:
+        renderer = new QQuickShapeGenericRenderer(q);
+        break;
+    case QQuickShape::CurveRenderer:
+        renderer = new QQuickShapeCurveRenderer(q);
+        break;
     default:
-        if (QSGRendererInterface::isApiRhiBased(ri->graphicsApi())) {
-            rendererType = QQuickShape::GeometryRenderer;
-            renderer = new QQuickShapeGenericRenderer(q);
-        } else {
-            qWarning("No path backend for this graphics API yet");
-        }
+        Q_UNREACHABLE();
         break;
     }
 }
@@ -1031,26 +1120,13 @@ QSGNode *QQuickShapePrivate::createNode()
 {
     Q_Q(QQuickShape);
     QSGNode *node = nullptr;
-    if (!q->window())
+    if (!q->window() || !renderer)
         return node;
     QSGRendererInterface *ri = q->window()->rendererInterface();
     if (!ri)
         return node;
 
     switch (ri->graphicsApi()) {
-#if QT_CONFIG(opengl)
-    case QSGRendererInterface::OpenGL:
-        if (enableVendorExts && QQuickShapeNvprRenderNode::isSupported()) {
-            node = new QQuickShapeNvprRenderNode;
-            static_cast<QQuickShapeNvprRenderer *>(renderer)->setNode(
-                static_cast<QQuickShapeNvprRenderNode *>(node));
-        } else {
-            node = new QQuickShapeGenericNode;
-            static_cast<QQuickShapeGenericRenderer *>(renderer)->setRootNode(
-                static_cast<QQuickShapeGenericNode *>(node));
-        }
-        break;
-#endif
     case QSGRendererInterface::Software:
         node = new QQuickShapeSoftwareRenderNode(q);
         static_cast<QQuickShapeSoftwareRenderer *>(renderer)->setNode(
@@ -1058,9 +1134,14 @@ QSGNode *QQuickShapePrivate::createNode()
         break;
     default:
         if (QSGRendererInterface::isApiRhiBased(ri->graphicsApi())) {
-            node = new QQuickShapeGenericNode;
-            static_cast<QQuickShapeGenericRenderer *>(renderer)->setRootNode(
-                static_cast<QQuickShapeGenericNode *>(node));
+            if (rendererType == QQuickShape::CurveRenderer) {
+                node = new QSGNode;
+                static_cast<QQuickShapeCurveRenderer *>(renderer)->setRootNode(node);
+            } else {
+                node = new QQuickShapeGenericNode;
+                static_cast<QQuickShapeGenericRenderer *>(renderer)->setRootNode(
+                    static_cast<QQuickShapeGenericNode *>(node));
+            }
         } else {
             qWarning("No path backend for this graphics API yet");
         }
@@ -1081,7 +1162,7 @@ void QQuickShapePrivate::asyncShapeReady(void *data)
 
 void QQuickShapePrivate::sync()
 {
-    syncTimingTotalDirty = 0;
+    int totalDirty = 0;
     syncTimingActive = QQSHAPE_LOG_TIME_DIRTY_SYNC().isDebugEnabled();
     if (syncTimingActive)
         syncTimer.start();
@@ -1092,13 +1173,15 @@ void QQuickShapePrivate::sync()
         renderer->setAsyncCallback(asyncShapeReady, this);
     }
 
-    const int count = sp.count();
-    renderer->beginSync(count);
+    const int count = sp.size();
+    bool countChanged = false;
+    renderer->beginSync(count, &countChanged);
+    renderer->setTriangulationScale(triangulationScale);
 
     for (int i = 0; i < count; ++i) {
         QQuickShapePath *p = sp[i];
         int &dirty(QQuickShapePathPrivate::get(p)->dirty);
-        syncTimingTotalDirty |= dirty;
+        totalDirty |= dirty;
 
         if (dirty & QQuickShapePathPrivate::DirtyPath)
             renderer->setPath(i, p);
@@ -1122,6 +1205,7 @@ void QQuickShapePrivate::sync()
         dirty = 0;
     }
 
+    syncTimingTotalDirty = totalDirty;
     if (syncTimingTotalDirty)
         ++syncTimeCounter;
     else
@@ -1135,6 +1219,12 @@ void QQuickShapePrivate::sync()
             qDebug("[Shape %p] [%d] [dirty=0x%x] update took %lld ms",
                    q_func(), syncTimeCounter, syncTimingTotalDirty, syncTimer.elapsed());
     }
+
+    // Must dirty the QQuickItem if something got changed, nothing
+    // else does this for us.
+    Q_Q(QQuickShape);
+    if (totalDirty || countChanged)
+        q->update();
 }
 
 // ***** gradient support *****
@@ -1522,6 +1612,7 @@ static void generateGradientColorTable(const QQuickShapeGradientCacheKey &gradie
 {
     int pos = 0;
     const QGradientStops &s = gradient.stops;
+    Q_ASSERT(!s.isEmpty());
     const bool colorInterpolation = true;
 
     uint alpha = qRound(opacity * 256);
@@ -1559,8 +1650,6 @@ static void generateGradientColorTable(const QQuickShapeGradientCacheKey &gradie
         current_color = next_color;
     }
 
-    Q_ASSERT(s.size() > 0);
-
     uint last_color = ARGB2RGBA(qPremultiply(ARGB_COMBINE_ALPHA(s[sLast].second.rgba(), alpha)));
     for ( ; pos < size; ++pos)
         colorTable[pos] = last_color;
@@ -1595,7 +1684,10 @@ QSGTexture *QQuickShapeGradientCache::get(const QQuickShapeGradientCacheKey &gra
     if (!tx) {
         static const int W = 1024; // texture size is 1024x1
         QImage gradTab(W, 1, QImage::Format_RGBA8888_Premultiplied);
-        generateGradientColorTable(grad, reinterpret_cast<uint *>(gradTab.bits()), W, 1.0f);
+        if (!grad.stops.isEmpty())
+            generateGradientColorTable(grad, reinterpret_cast<uint *>(gradTab.bits()), W, 1.0f);
+        else
+            gradTab.fill(Qt::black);
         tx = new QSGPlainTexture;
         tx->setImage(gradTab);
         switch (grad.spread) {
@@ -1620,83 +1712,6 @@ QSGTexture *QQuickShapeGradientCache::get(const QQuickShapeGradientCacheKey &gra
     }
     return tx;
 }
-
-#if QT_CONFIG(opengl)
-
-// contexts sharing with each other get the same cache instance
-class QQuickShapeGradientCacheWrapper
-{
-public:
-    QQuickShapeGradientOpenGLCache *get(QOpenGLContext *context)
-    {
-        return m_resource.value<QQuickShapeGradientOpenGLCache>(context);
-    }
-
-private:
-    QOpenGLMultiGroupSharedResource m_resource;
-};
-
-QQuickShapeGradientOpenGLCache *QQuickShapeGradientOpenGLCache::currentCache()
-{
-    static QQuickShapeGradientCacheWrapper qt_path_gradient_caches;
-    return qt_path_gradient_caches.get(QOpenGLContext::currentContext());
-}
-
-// let QOpenGLContext manage the lifetime of the cached textures
-QQuickShapeGradientOpenGLCache::~QQuickShapeGradientOpenGLCache()
-{
-    m_cache.clear();
-}
-
-void QQuickShapeGradientOpenGLCache::invalidateResource()
-{
-    m_cache.clear();
-}
-
-void QQuickShapeGradientOpenGLCache::freeResource(QOpenGLContext *)
-{
-    qDeleteAll(m_cache);
-    m_cache.clear();
-}
-
-QSGTexture *QQuickShapeGradientOpenGLCache::get(const QQuickShapeGradientCacheKey &grad)
-{
-    QSGPlainTexture *tx = m_cache[grad];
-    if (!tx) {
-        QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
-        GLuint id;
-        f->glGenTextures(1, &id);
-        f->glBindTexture(GL_TEXTURE_2D, id);
-        static const uint W = 1024; // texture size is 1024x1
-        uint buf[W];
-        generateGradientColorTable(grad, buf, W, 1.0f);
-        f->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, buf);
-        tx = new QSGPlainTexture;
-        tx->setTextureId(id);
-        switch (grad.spread) {
-        case QQuickShapeGradient::PadSpread:
-            tx->setHorizontalWrapMode(QSGTexture::ClampToEdge);
-            tx->setVerticalWrapMode(QSGTexture::ClampToEdge);
-            break;
-        case QQuickShapeGradient::RepeatSpread:
-            tx->setHorizontalWrapMode(QSGTexture::Repeat);
-            tx->setVerticalWrapMode(QSGTexture::Repeat);
-            break;
-        case QQuickShapeGradient::ReflectSpread:
-            tx->setHorizontalWrapMode(QSGTexture::MirroredRepeat);
-            tx->setVerticalWrapMode(QSGTexture::MirroredRepeat);
-            break;
-        default:
-            qWarning("Unknown gradient spread mode %d", grad.spread);
-            break;
-        }
-        tx->setFiltering(QSGTexture::Linear);
-        m_cache[grad] = tx;
-    }
-    return tx;
-}
-
-#endif // QT_CONFIG(opengl)
 
 QT_END_NAMESPACE
 

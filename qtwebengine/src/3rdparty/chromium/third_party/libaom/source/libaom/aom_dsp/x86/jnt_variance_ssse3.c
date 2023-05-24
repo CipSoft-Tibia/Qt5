@@ -15,7 +15,6 @@
 
 #include "config/aom_config.h"
 #include "config/aom_dsp_rtcd.h"
-#include "config/av1_rtcd.h"
 
 #include "aom_dsp/x86/synonyms.h"
 
@@ -50,13 +49,12 @@ void aom_dist_wtd_comp_avg_pred_ssse3(uint8_t *comp_pred, const uint8_t *pred,
                                       int ref_stride,
                                       const DIST_WTD_COMP_PARAMS *jcp_param) {
   int i;
-  const uint8_t w0 = (uint8_t)jcp_param->fwd_offset;
-  const uint8_t w1 = (uint8_t)jcp_param->bck_offset;
+  const int8_t w0 = (int8_t)jcp_param->fwd_offset;
+  const int8_t w1 = (int8_t)jcp_param->bck_offset;
   const __m128i w = _mm_set_epi8(w1, w0, w1, w0, w1, w0, w1, w0, w1, w0, w1, w0,
                                  w1, w0, w1, w0);
-  const uint16_t round = ((1 << DIST_PRECISION_BITS) >> 1);
-  const __m128i r =
-      _mm_set_epi16(round, round, round, round, round, round, round, round);
+  const int16_t round = (int16_t)((1 << DIST_PRECISION_BITS) >> 1);
+  const __m128i r = _mm_set1_epi16(round);
 
   if (width >= 16) {
     // Read 16 pixels one row at a time
@@ -96,10 +94,10 @@ void aom_dist_wtd_comp_avg_pred_ssse3(uint8_t *comp_pred, const uint8_t *pred,
     assert(!(width & 3));
     assert(!(height & 3));
     for (i = 0; i < height; i += 4) {
-      const uint8_t *row0 = ref + 0 * ref_stride;
-      const uint8_t *row1 = ref + 1 * ref_stride;
-      const uint8_t *row2 = ref + 2 * ref_stride;
-      const uint8_t *row3 = ref + 3 * ref_stride;
+      const int8_t *row0 = (const int8_t *)ref + 0 * ref_stride;
+      const int8_t *row1 = (const int8_t *)ref + 1 * ref_stride;
+      const int8_t *row2 = (const int8_t *)ref + 2 * ref_stride;
+      const int8_t *row3 = (const int8_t *)ref + 3 * ref_stride;
 
       __m128i p0 =
           _mm_setr_epi8(row0[0], row0[1], row0[2], row0[3], row1[0], row1[1],
@@ -113,38 +111,6 @@ void aom_dist_wtd_comp_avg_pred_ssse3(uint8_t *comp_pred, const uint8_t *pred,
       pred += 16;
       ref += 4 * ref_stride;
     }
-  }
-}
-
-void aom_dist_wtd_comp_avg_upsampled_pred_ssse3(
-    MACROBLOCKD *xd, const struct AV1Common *const cm, int mi_row, int mi_col,
-    const MV *const mv, uint8_t *comp_pred, const uint8_t *pred, int width,
-    int height, int subpel_x_q3, int subpel_y_q3, const uint8_t *ref,
-    int ref_stride, const DIST_WTD_COMP_PARAMS *jcp_param, int subpel_search) {
-  int n;
-  int i;
-  aom_upsampled_pred(xd, cm, mi_row, mi_col, mv, comp_pred, width, height,
-                     subpel_x_q3, subpel_y_q3, ref, ref_stride, subpel_search);
-  /*The total number of pixels must be a multiple of 16 (e.g., 4x4).*/
-  assert(!(width * height & 15));
-  n = width * height >> 4;
-
-  const uint8_t w0 = (uint8_t)jcp_param->fwd_offset;
-  const uint8_t w1 = (uint8_t)jcp_param->bck_offset;
-  const __m128i w = _mm_set_epi8(w1, w0, w1, w0, w1, w0, w1, w0, w1, w0, w1, w0,
-                                 w1, w0, w1, w0);
-  const uint16_t round = ((1 << DIST_PRECISION_BITS) >> 1);
-  const __m128i r =
-      _mm_set_epi16(round, round, round, round, round, round, round, round);
-
-  for (i = 0; i < n; i++) {
-    __m128i p0 = xx_loadu_128(comp_pred);
-    __m128i p1 = xx_loadu_128(pred);
-
-    compute_dist_wtd_avg(&p0, &p1, &w, &r, comp_pred);
-
-    comp_pred += 16;
-    pred += 16;
   }
 }
 
@@ -184,9 +150,12 @@ DIST_WTD_SUBPIX_AVG_VAR(8, 8)
 DIST_WTD_SUBPIX_AVG_VAR(8, 4)
 DIST_WTD_SUBPIX_AVG_VAR(4, 8)
 DIST_WTD_SUBPIX_AVG_VAR(4, 4)
+
+#if !CONFIG_REALTIME_ONLY
 DIST_WTD_SUBPIX_AVG_VAR(4, 16)
 DIST_WTD_SUBPIX_AVG_VAR(16, 4)
 DIST_WTD_SUBPIX_AVG_VAR(8, 32)
 DIST_WTD_SUBPIX_AVG_VAR(32, 8)
 DIST_WTD_SUBPIX_AVG_VAR(16, 64)
 DIST_WTD_SUBPIX_AVG_VAR(64, 16)
+#endif

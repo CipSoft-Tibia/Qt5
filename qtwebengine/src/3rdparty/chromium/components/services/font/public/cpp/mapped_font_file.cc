@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,7 @@ MappedFontFile::MappedFontFile(uint32_t font_id)
     : font_id_(font_id), observer_(nullptr) {}
 
 bool MappedFontFile::Initialize(base::File file) {
-  base::ThreadRestrictions::ScopedAllowIO allow_mmap;
+  base::ScopedAllowBlocking allow_mmap;
   return mapped_font_file_.Initialize(std::move(file));
 }
 
@@ -42,7 +42,7 @@ MappedFontFile::~MappedFontFile() {
 
 // static
 void MappedFontFile::ReleaseProc(const void* ptr, void* context) {
-  base::ThreadRestrictions::ScopedAllowIO allow_munmap;
+  base::ScopedAllowBlocking allow_munmap;
   static_cast<MappedFontFile*>(context)->Release();
 }
 

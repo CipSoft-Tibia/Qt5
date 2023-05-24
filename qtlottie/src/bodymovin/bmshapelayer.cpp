@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the lottie-qt module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "bmshapelayer_p.h"
 
@@ -51,9 +25,10 @@ BMShapeLayer::BMShapeLayer(const BMShapeLayer &other)
     m_appliedTrim = other.m_appliedTrim;
 }
 
-BMShapeLayer::BMShapeLayer(const QJsonObject &definition)
+BMShapeLayer::BMShapeLayer(const QJsonObject &definition, const QVersionNumber &version)
 {
     m_type = BM_LAYER_SHAPE_IX;
+    m_version = version;
 
     BMLayer::parse(definition);
     if (m_hidden)
@@ -70,18 +45,18 @@ BMShapeLayer::BMShapeLayer(const QJsonObject &definition)
     }
 
     QJsonObject trans = definition.value(QLatin1String("ks")).toObject();
-    m_layerTransform = new BMBasicTransform(trans, this);
+    m_layerTransform = new BMBasicTransform(trans, version, this);
 
     QJsonArray items = definition.value(QLatin1String("shapes")).toArray();
     QJsonArray::const_iterator itemIt = items.constEnd();
     while (itemIt != items.constBegin()) {
         itemIt--;
-        BMShape *shape = BMShape::construct((*itemIt).toObject(), this);
+        BMShape *shape = BMShape::construct((*itemIt).toObject(), version, this);
         if (shape)
             appendChild(shape);
     }
 
-    if (m_maskProperties.length())
+    if (m_maskProperties.size())
         qCWarning(lcLottieQtBodymovinParser)
             << "BM Shape Layer: mask properties found, but not supported"
             << m_maskProperties;

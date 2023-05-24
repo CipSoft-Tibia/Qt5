@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,6 @@
 #include "extensions/common/api/declarative_net_request.h"
 #include "extensions/common/api/declarative_net_request/constants.h"
 #include "extensions/common/api/declarative_net_request/dnr_manifest_data.h"
-#include "extensions/common/api/declarative_net_request/utils.h"
 #include "extensions/common/error_utils.h"
 #include "extensions/common/extension_resource.h"
 #include "extensions/common/manifest_constants.h"
@@ -31,22 +30,26 @@ namespace declarative_net_request {
 DNRManifestHandler::DNRManifestHandler() = default;
 DNRManifestHandler::~DNRManifestHandler() = default;
 
-bool DNRManifestHandler::Parse(Extension* extension, base::string16* error) {
-  DCHECK(extension->manifest()->HasKey(
+bool DNRManifestHandler::Parse(Extension* extension, std::u16string* error) {
+  DCHECK(extension->manifest()->FindKey(
       dnr_api::ManifestKeys::kDeclarativeNetRequest));
-  DCHECK(IsAPIAvailable());
 
-  if (!PermissionsParser::HasAPIPermission(
-          extension, APIPermission::kDeclarativeNetRequest)) {
+  bool has_permission =
+      PermissionsParser::HasAPIPermission(
+          extension, mojom::APIPermissionID::kDeclarativeNetRequest) ||
+      PermissionsParser::HasAPIPermission(
+          extension,
+          mojom::APIPermissionID::kDeclarativeNetRequestWithHostAccess);
+  if (!has_permission) {
     *error = ErrorUtils::FormatErrorMessageUTF16(
-        errors::kDeclarativeNetRequestPermissionNeeded, kAPIPermission,
+        errors::kDeclarativeNetRequestPermissionNeeded,
         dnr_api::ManifestKeys::kDeclarativeNetRequest);
     return false;
   }
 
   dnr_api::ManifestKeys manifest_keys;
   if (!dnr_api::ManifestKeys::ParseFromDictionary(
-          *extension->manifest()->value(), &manifest_keys, error)) {
+          extension->manifest()->available_values(), &manifest_keys, error)) {
     return false;
   }
   std::vector<dnr_api::Ruleset> rulesets =
@@ -80,10 +83,10 @@ bool DNRManifestHandler::Parse(Extension* extension, base::string16* error) {
 
     // ID validation.
     const std::string& manifest_id = rulesets[index].id;
-    constexpr char kReservedRulesetIDPrefix = '_';
 
-    // Ensure that the dynamic ruleset ID is reserved.
+    // Sanity check that the dynamic and session ruleset IDs are reserved.
     DCHECK_EQ(kReservedRulesetIDPrefix, dnr_api::DYNAMIC_RULESET_ID[0]);
+    DCHECK_EQ(kReservedRulesetIDPrefix, dnr_api::SESSION_RULESET_ID[0]);
 
     if (manifest_id.empty() || !ruleset_ids.insert(manifest_id).second ||
         manifest_id[0] == kReservedRulesetIDPrefix) {
@@ -106,6 +109,8 @@ bool DNRManifestHandler::Parse(Extension* extension, base::string16* error) {
   std::vector<DNRManifestData::RulesetInfo> rulesets_info;
   rulesets_info.reserve(rulesets.size());
 
+  int enabled_ruleset_count = 0;
+
   // Note: the static_cast<int> below is safe because we did already verify that
   // |rulesets.size()| <= dnr_api::MAX_NUMBER_OF_STATIC_RULESETS, which is an
   // integer.
@@ -114,7 +119,19 @@ bool DNRManifestHandler::Parse(Extension* extension, base::string16* error) {
     if (!get_ruleset_info(i, &info))
       return false;
 
+    if (info.enabled)
+      enabled_ruleset_count++;
+
     rulesets_info.push_back(std::move(info));
+  }
+
+  if (enabled_ruleset_count > dnr_api::MAX_NUMBER_OF_ENABLED_STATIC_RULESETS) {
+    *error = ErrorUtils::FormatErrorMessageUTF16(
+        errors::kEnabledRulesetCountExceeded,
+        dnr_api::ManifestKeys::kDeclarativeNetRequest,
+        dnr_api::DNRInfo::kRuleResources,
+        base::NumberToString(dnr_api::MAX_NUMBER_OF_ENABLED_STATIC_RULESETS));
+    return false;
   }
 
   extension->SetManifestData(
@@ -126,8 +143,6 @@ bool DNRManifestHandler::Parse(Extension* extension, base::string16* error) {
 bool DNRManifestHandler::Validate(const Extension* extension,
                                   std::string* error,
                                   std::vector<InstallWarning>* warnings) const {
-  DCHECK(IsAPIAvailable());
-
   DNRManifestData* data =
       static_cast<DNRManifestData*>(extension->GetManifestData(
           dnr_api::ManifestKeys::kDeclarativeNetRequest));
@@ -155,11 +170,7 @@ bool DNRManifestHandler::Validate(const Extension* extension,
 base::span<const char* const> DNRManifestHandler::Keys() const {
   static constexpr const char* kKeys[] = {
       dnr_api::ManifestKeys::kDeclarativeNetRequest};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 }  // namespace declarative_net_request

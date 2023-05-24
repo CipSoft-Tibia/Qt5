@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUATERNION_H
 #define QQUATERNION_H
@@ -85,20 +49,17 @@ public:
     void setZ(float z);
     void setScalar(float scalar);
 
-    Q_DECL_CONSTEXPR static inline float dotProduct(const QQuaternion &q1, const QQuaternion &q2);
+    constexpr static inline float dotProduct(const QQuaternion &q1, const QQuaternion &q2);
 
     float length() const;
     float lengthSquared() const;
 
-    Q_REQUIRED_RESULT QQuaternion normalized() const;
+    [[nodiscard]] QQuaternion normalized() const;
     void normalize();
 
     inline QQuaternion inverted() const;
 
-    Q_REQUIRED_RESULT QQuaternion conjugated() const;
-#if QT_DEPRECATED_SINCE(5, 5)
-    Q_REQUIRED_RESULT QT_DEPRECATED QQuaternion conjugate() const;
-#endif
+    [[nodiscard]] QQuaternion conjugated() const;
 
     QVector3D rotatedVector(const QVector3D& vector) const;
 
@@ -108,8 +69,18 @@ public:
     QQuaternion &operator*=(const QQuaternion &quaternion);
     QQuaternion &operator/=(float divisor);
 
-    friend inline bool operator==(const QQuaternion &q1, const QQuaternion &q2);
-    friend inline bool operator!=(const QQuaternion &q1, const QQuaternion &q2);
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_FLOAT_COMPARE
+    friend inline bool operator==(const QQuaternion &q1, const QQuaternion &q2) noexcept
+    {
+        return q1.wp == q2.wp && q1.xp == q2.xp && q1.yp == q2.yp && q1.zp == q2.zp;
+    }
+    friend inline bool operator!=(const QQuaternion &q1, const QQuaternion &q2) noexcept
+    {
+        return !(q1 == q2);
+    }
+QT_WARNING_POP
+
     friend inline const QQuaternion operator+(const QQuaternion &q1, const QQuaternion &q2);
     friend inline const QQuaternion operator-(const QQuaternion &q1, const QQuaternion &q2);
     friend inline const QQuaternion operator*(float factor, const QQuaternion &quaternion);
@@ -162,16 +133,15 @@ private:
     float wp, xp, yp, zp;
 };
 
-Q_DECLARE_TYPEINFO(QQuaternion, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QQuaternion, Q_PRIMITIVE_TYPE);
 
 inline QQuaternion::QQuaternion() : wp(1.0f), xp(0.0f), yp(0.0f), zp(0.0f) {}
 
 inline QQuaternion::QQuaternion(float aScalar, float xpos, float ypos, float zpos) : wp(aScalar), xp(xpos), yp(ypos), zp(zpos) {}
 
 QT_WARNING_PUSH
-QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
-QT_WARNING_DISABLE_GCC("-Wfloat-equal")
-QT_WARNING_DISABLE_INTEL(1572)
+QT_WARNING_DISABLE_FLOAT_COMPARE
+
 inline bool QQuaternion::isNull() const
 {
     return wp == 0.0f && xp == 0.0f && yp == 0.0f && zp == 0.0f;
@@ -180,11 +150,6 @@ inline bool QQuaternion::isNull() const
 inline bool QQuaternion::isIdentity() const
 {
     return wp == 1.0f && xp == 0.0f && yp == 0.0f && zp == 0.0f;
-}
-
-inline bool operator==(const QQuaternion &q1, const QQuaternion &q2)
-{
-    return q1.wp == q2.wp && q1.xp == q2.xp && q1.yp == q2.yp && q1.zp == q2.zp;
 }
 QT_WARNING_POP
 
@@ -198,7 +163,7 @@ inline void QQuaternion::setY(float aY) { yp = aY; }
 inline void QQuaternion::setZ(float aZ) { zp = aZ; }
 inline void QQuaternion::setScalar(float aScalar) { wp = aScalar; }
 
-Q_DECL_CONSTEXPR inline float QQuaternion::dotProduct(const QQuaternion &q1, const QQuaternion &q2)
+constexpr inline float QQuaternion::dotProduct(const QQuaternion &q1, const QQuaternion &q2)
 {
     return q1.wp * q2.wp + q1.xp * q2.xp + q1.yp * q2.yp + q1.zp * q2.zp;
 }
@@ -220,13 +185,6 @@ inline QQuaternion QQuaternion::conjugated() const
 {
     return QQuaternion(wp, -xp, -yp, -zp);
 }
-
-#if QT_DEPRECATED_SINCE(5, 5)
-inline QQuaternion QQuaternion::conjugate() const
-{
-    return conjugated();
-}
-#endif
 
 inline QQuaternion &QQuaternion::operator+=(const QQuaternion &quaternion)
 {
@@ -284,11 +242,6 @@ inline QQuaternion &QQuaternion::operator/=(float divisor)
     yp /= divisor;
     zp /= divisor;
     return *this;
-}
-
-inline bool operator!=(const QQuaternion &q1, const QQuaternion &q2)
-{
-    return !operator==(q1, q2);
 }
 
 inline const QQuaternion operator+(const QQuaternion &q1, const QQuaternion &q2)

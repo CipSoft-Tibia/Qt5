@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -78,7 +78,7 @@ bool AXTreeCombiner::Combine() {
   return true;
 }
 
-int32_t AXTreeCombiner::MapId(AXTreeID tree_id, int32_t node_id) {
+AXNodeID AXTreeCombiner::MapId(AXTreeID tree_id, AXNodeID node_id) {
   auto tree_id_node_id = std::make_pair(tree_id, node_id);
   if (tree_id_node_id_map_[tree_id_node_id] == 0)
     tree_id_node_id_map_[tree_id_node_id] = next_id_++;

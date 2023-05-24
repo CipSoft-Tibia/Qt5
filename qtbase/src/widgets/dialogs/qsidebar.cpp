@@ -1,44 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsidebar_p.h"
-#include "qfilesystemmodel.h"
 
 #include <qaction.h>
 #include <qurl.h>
@@ -48,10 +11,13 @@
 #include <qmimedata.h>
 #include <qevent.h>
 #include <qdebug.h>
-#include <qfileiconprovider.h>
+#include <qfilesystemmodel.h>
+#include <qabstractfileiconprovider.h>
 #include <qfiledialog.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 void QSideBarDelegate::initStyleOption(QStyleOptionViewItem *option,
                                          const QModelIndex &index) const
@@ -82,7 +48,7 @@ QUrlModel::QUrlModel(QObject *parent) : QStandardItemModel(parent), showFullPath
 */
 QStringList QUrlModel::mimeTypes() const
 {
-    return QStringList(QLatin1String("text/uri-list"));
+    return QStringList("text/uri-list"_L1);
 }
 
 /*!
@@ -198,9 +164,9 @@ void QUrlModel::setUrl(const QModelIndex &index, const QUrl &url, const QModelIn
 
         QIcon newIcon = qvariant_cast<QIcon>(dirIndex.data(Qt::DecorationRole));
         if (!dirIndex.isValid()) {
-            const QFileIconProvider *provider = fileSystemModel->iconProvider();
+            const QAbstractFileIconProvider *provider = fileSystemModel->iconProvider();
             if (provider)
-                newIcon = provider->icon(QFileIconProvider::Folder);
+                newIcon = provider->icon(QAbstractFileIconProvider::Folder);
             newName = QFileInfo(url.toLocalFile()).fileName();
             if (!invalidUrls.contains(url))
                 invalidUrls.append(url);
@@ -211,11 +177,14 @@ void QUrlModel::setUrl(const QModelIndex &index, const QUrl &url, const QModelIn
             setData(index, true, EnabledRole);
         }
 
+        // newIcon could be null if fileSystemModel->iconProvider() returns null
+        if (!newIcon.isNull()) {
         // Make sure that we have at least 32x32 images
-        const QSize size = newIcon.actualSize(QSize(32,32));
-        if (size.width() < 32) {
-            QPixmap smallPixmap = newIcon.pixmap(QSize(32, 32));
-            newIcon.addPixmap(smallPixmap.scaledToWidth(32, Qt::SmoothTransformation));
+            const QSize size = newIcon.actualSize(QSize(32,32));
+            if (size.width() < 32) {
+                QPixmap smallPixmap = newIcon.pixmap(QSize(32, 32));
+                newIcon.addPixmap(smallPixmap.scaledToWidth(32, Qt::SmoothTransformation));
+            }
         }
 
         if (index.data().toString() != newName)
@@ -245,9 +214,10 @@ void QUrlModel::addUrls(const QList<QUrl> &list, int row, bool move)
     if (row == -1)
         row = rowCount();
     row = qMin(row, rowCount());
-    for (int i = list.count() - 1; i >= 0; --i) {
-        QUrl url = list.at(i);
-        if (!url.isValid() || url.scheme() != QLatin1String("file"))
+    const auto rend = list.crend();
+    for (auto it = list.crbegin(); it != rend; ++it) {
+        QUrl url = *it;
+        if (!url.isValid() || url.scheme() != "file"_L1)
             continue;
         //this makes sure the url is clean
         const QString cleanUrl = QDir::cleanPath(url.toLocalFile());
@@ -325,7 +295,7 @@ void QUrlModel::setFileSystemModel(QFileSystemModel *model)
 void QUrlModel::dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight)
 {
     QModelIndex parent = topLeft.parent();
-    for (int i = 0; i < watching.count(); ++i) {
+    for (int i = 0; i < watching.size(); ++i) {
         QModelIndex index = watching.at(i).index;
         if (index.model() && topLeft.model()) {
             Q_ASSERT(index.model() == topLeft.model());
@@ -346,13 +316,11 @@ void QUrlModel::dataChanged(const QModelIndex &topLeft, const QModelIndex &botto
 void QUrlModel::layoutChanged()
 {
     QStringList paths;
-    const int numPaths = watching.count();
-    paths.reserve(numPaths);
-    for (int i = 0; i < numPaths; ++i)
-        paths.append(watching.at(i).path);
+    paths.reserve(watching.size());
+    for (const WatchItem &item : std::as_const(watching))
+        paths.append(item.path);
     watching.clear();
-    for (int i = 0; i < numPaths; ++i) {
-        QString path = paths.at(i);
+    for (const auto &path : paths) {
         QModelIndex newIndex = fileSystemModel->index(path);
         watching.append({newIndex, path});
         if (newIndex.isValid())
@@ -451,7 +419,7 @@ void QSidebar::showContextMenu(const QPoint &position)
         connect(action, SIGNAL(triggered()), this, SLOT(removeEntry()));
         actions.append(action);
     }
-    if (actions.count() > 0)
+    if (actions.size() > 0)
         QMenu::exec(actions, mapToGlobal(position));
 }
 #endif // QT_CONFIG(menu)
@@ -463,16 +431,13 @@ void QSidebar::showContextMenu(const QPoint &position)
 */
 void QSidebar::removeEntry()
 {
-    QList<QModelIndex> idxs = selectionModel()->selectedIndexes();
-    QList<QPersistentModelIndex> indexes;
-    const int numIndexes = idxs.count();
-    indexes.reserve(numIndexes);
-    for (int i = 0; i < numIndexes; i++)
-        indexes.append(idxs.at(i));
-
-    for (int i = 0; i < numIndexes; ++i) {
-        if (!indexes.at(i).data(QUrlModel::UrlRole).toUrl().path().isEmpty())
-            model()->removeRow(indexes.at(i).row());
+    const QList<QModelIndex> idxs = selectionModel()->selectedIndexes();
+    // Create a list of QPersistentModelIndex as the removeRow() calls below could
+    // invalidate the indexes in "idxs"
+    const QList<QPersistentModelIndex> persIndexes(idxs.cbegin(), idxs.cend());
+    for (const QPersistentModelIndex &persistent : persIndexes) {
+        if (!persistent.data(QUrlModel::UrlRole).toUrl().path().isEmpty())
+            model()->removeRow(persistent.row());
     }
 }
 
@@ -504,7 +469,7 @@ void QSidebar::focusInEvent(QFocusEvent *event)
 bool QSidebar::event(QEvent * event)
 {
     if (event->type() == QEvent::KeyRelease) {
-        QKeyEvent* ke = (QKeyEvent*) event;
+        QKeyEvent *ke = static_cast<QKeyEvent *>(event);
         if (ke->key() == Qt::Key_Delete) {
             removeEntry();
             return true;

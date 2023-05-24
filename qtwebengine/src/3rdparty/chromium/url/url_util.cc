@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,14 @@
 
 #include <stddef.h>
 #include <string.h>
+
 #include <atomic>
+#include <ostream>
 
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
+#include "base/containers/contains.h"
 #include "base/no_destructor.h"
-#include "base/stl_util.h"
 #include "base/strings/string_util.h"
 #include "url/url_canon_internal.h"
 #include "url/url_constants.h"
@@ -27,6 +29,16 @@ namespace {
 struct SchemeWithType {
   std::string scheme;
   SchemeType type;
+};
+
+// A pair for representing a scheme and a custom protocol handler for it.
+//
+// This pair of strings must be normalized protocol handler parameters as
+// described in the Custom Handler specification.
+// https://html.spec.whatwg.org/multipage/system-state.html#normalize-protocol-handler-parameters
+struct SchemeWithHandler {
+  std::string scheme;
+  std::string handler;
 };
 
 // List of currently registered schemes and associated properties.
@@ -101,6 +113,9 @@ struct SchemeRegistry {
       kAboutScheme,
   };
 
+  // Schemes with a predefined default custom handler.
+  std::vector<SchemeWithHandler> predefined_handler_schemes;
+
   bool allow_non_standard_schemes = false;
 };
 
@@ -138,7 +153,8 @@ template<typename CHAR> struct CharToStringPiece {
 template<> struct CharToStringPiece<char> {
   typedef base::StringPiece Piece;
 };
-template<> struct CharToStringPiece<base::char16> {
+template <>
+struct CharToStringPiece<char16_t> {
   typedef base::StringPiece16 Piece;
 };
 
@@ -148,11 +164,11 @@ template<typename CHAR>
 inline bool DoCompareSchemeComponent(const CHAR* spec,
                                      const Component& component,
                                      const char* compare_to) {
-  if (!component.is_nonempty())
+  if (component.is_empty())
     return compare_to[0] == 0;  // When component is empty, match empty scheme.
-  return base::LowerCaseEqualsASCII(
-      typename CharToStringPiece<CHAR>::Piece(
-          &spec[component.begin], component.len),
+  return base::EqualsCaseInsensitiveASCII(
+      typename CharToStringPiece<CHAR>::Piece(&spec[component.begin],
+                                              component.len),
       compare_to);
 }
 
@@ -163,13 +179,14 @@ bool DoIsInSchemes(const CHAR* spec,
                    const Component& scheme,
                    SchemeType* type,
                    const std::vector<SchemeWithType>& schemes) {
-  if (!scheme.is_nonempty())
+  if (scheme.is_empty())
     return false;  // Empty or invalid schemes are non-standard.
 
   for (const SchemeWithType& scheme_with_type : schemes) {
-    if (base::LowerCaseEqualsASCII(typename CharToStringPiece<CHAR>::Piece(
-                                       &spec[scheme.begin], scheme.len),
-                                   scheme_with_type.scheme)) {
+    if (base::EqualsCaseInsensitiveASCII(
+            typename CharToStringPiece<CHAR>::Piece(&spec[scheme.begin],
+                                                    scheme.len),
+            scheme_with_type.scheme)) {
       *type = scheme_with_type.type;
       return true;
     }
@@ -216,6 +233,13 @@ bool DoCanonicalize(const CHAR* spec,
                     CharsetConverter* charset_converter,
                     CanonOutput* output,
                     Parsed* output_parsed) {
+  // Trim leading C0 control characters and spaces.
+  int begin = 0;
+  TrimURL(spec, &begin, &spec_len, trim_path_end);
+  DCHECK(0 <= begin && begin <= spec_len);
+  spec += begin;
+  spec_len -= begin;
+
   output->ReserveSizeIfNeeded(spec_len);
 
   // Remove any whitespace from the middle of the relative URL if necessary.
@@ -321,8 +345,11 @@ bool DoResolveRelative(const char* base_spec,
     // The effect is to allow, for example, GURL("qrc:foo").Resolve("bar") to
     // return "qrc:bar" instead of just erroring out.
     base::StringPiece scheme_piece(&base_spec[base_parsed.scheme.begin], base_parsed.scheme.len);
-    if (CustomScheme::FindScheme(scheme_piece))
+    if (const CustomScheme* scheme = CustomScheme::FindScheme(scheme_piece)) {
         base_is_hierarchical = true;
+        if (scheme->type == SCHEME_WITHOUT_AUTHORITY)
+          base_is_authority_based = false;
+    }
   }
 
   SchemeType unused_scheme_type = SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION;
@@ -439,6 +466,13 @@ bool DoReplaceComponents(const char* spec,
     // ref).
     Replacements<CHAR> replacements_no_scheme = replacements;
     replacements_no_scheme.SetScheme(NULL, Component());
+    // If the input URL has potentially dangling markup, set the flag on the
+    // output too. Note that in some cases the replacement gets rid of the
+    // potentially dangling markup, but this ok since the check will fail
+    // closed.
+    if (parsed.potentially_dangling_markup) {
+      out_parsed->potentially_dangling_markup = true;
+    }
     return DoReplaceComponents(recanonicalized.data(), recanonicalized.length(),
                                recanonicalized_parsed, replacements_no_scheme,
                                charset_converter, output, out_parsed);
@@ -478,11 +512,11 @@ void DoSchemeModificationPreamble() {
   // the SchemeRegistry has been used.
   //
   // This normally means you're trying to set up a new scheme too late or using
-  // the SchemeRegistry too early in your application's init process. Make sure
-  // that you haven't added any static GURL initializers in tests.
+  // the SchemeRegistry too early in your application's init process.
 // QWE: We violate this but it is harmless.
-//  DCHECK(!g_scheme_registries_used.load())
-//      << "Trying to add a scheme after the lists have been used.";
+//   DCHECK(!g_scheme_registries_used.load())
+//       << "Trying to add a scheme after the lists have been used. "
+//          "Make sure that you haven't added any static GURL initializers in tests.";
 
   // If this assert triggers, it means you've called Add*Scheme after
   // LockSchemeRegistries has been called (see the header file for
@@ -495,13 +529,24 @@ void DoSchemeModificationPreamble() {
       << "Trying to add a scheme after the lists have been locked.";
 }
 
+void DoAddSchemeWithHandler(const char* new_scheme,
+                            const char* handler,
+                            std::vector<SchemeWithHandler>* schemes) {
+  DoSchemeModificationPreamble();
+  DCHECK(schemes);
+  DCHECK(strlen(new_scheme) > 0);
+  DCHECK(strlen(handler) > 0);
+  DCHECK_EQ(base::ToLowerASCII(new_scheme), new_scheme);
+  DCHECK(!base::Contains(*schemes, new_scheme, &SchemeWithHandler::scheme));
+  schemes->push_back({new_scheme, handler});
+}
+
 void DoAddScheme(const char* new_scheme, std::vector<std::string>* schemes) {
   DoSchemeModificationPreamble();
   DCHECK(schemes);
   DCHECK(strlen(new_scheme) > 0);
   DCHECK_EQ(base::ToLowerASCII(new_scheme), new_scheme);
-  DCHECK(std::find(schemes->begin(), schemes->end(), new_scheme) ==
-         schemes->end());
+  DCHECK(!base::Contains(*schemes, new_scheme));
   schemes->push_back(new_scheme);
 }
 
@@ -512,10 +557,7 @@ void DoAddSchemeWithType(const char* new_scheme,
   DCHECK(schemes);
   DCHECK(strlen(new_scheme) > 0);
   DCHECK_EQ(base::ToLowerASCII(new_scheme), new_scheme);
-  DCHECK(std::find_if(schemes->begin(), schemes->end(),
-                      [&new_scheme](const SchemeWithType& scheme) {
-                        return scheme.scheme == new_scheme;
-                      }) == schemes->end());
+  DCHECK(!base::Contains(*schemes, new_scheme, &SchemeWithType::scheme));
   schemes->push_back({new_scheme, type});
 }
 
@@ -566,6 +608,15 @@ bool AllowNonStandardSchemesForAndroidWebView() {
 void AddStandardScheme(const char* new_scheme, SchemeType type) {
   DoAddSchemeWithType(new_scheme, type,
                       &GetSchemeRegistryWithoutLocking()->standard_schemes);
+}
+
+std::vector<std::string> GetStandardSchemes() {
+  std::vector<std::string> result;
+  result.reserve(GetSchemeRegistry().standard_schemes.size());
+  for (const auto& entry : GetSchemeRegistry().standard_schemes) {
+    result.push_back(entry.scheme);
+  }
+  return result;
 }
 
 void AddReferrerScheme(const char* new_scheme, SchemeType type) {
@@ -634,6 +685,22 @@ const std::vector<std::string>& GetEmptyDocumentSchemes() {
   return GetSchemeRegistry().empty_document_schemes;
 }
 
+void AddPredefinedHandlerScheme(const char* new_scheme, const char* handler) {
+  DoAddSchemeWithHandler(
+      new_scheme, handler,
+      &GetSchemeRegistryWithoutLocking()->predefined_handler_schemes);
+}
+
+std::vector<std::pair<std::string, std::string>> GetPredefinedHandlerSchemes() {
+  std::vector<std::pair<std::string, std::string>> result;
+  result.reserve(GetSchemeRegistry().predefined_handler_schemes.size());
+  for (const SchemeWithHandler& entry :
+       GetSchemeRegistry().predefined_handler_schemes) {
+    result.emplace_back(entry.scheme, entry.handler);
+  }
+  return result;
+}
+
 void LockSchemeRegistries() {
   scheme_registries_locked = true;
 }
@@ -649,13 +716,13 @@ bool GetStandardSchemeType(const char* spec,
   return DoIsStandard(spec, scheme, type);
 }
 
-bool GetStandardSchemeType(const base::char16* spec,
+bool GetStandardSchemeType(const char16_t* spec,
                            const Component& scheme,
                            SchemeType* type) {
   return DoIsStandard(spec, scheme, type);
 }
 
-bool IsStandard(const base::char16* spec, const Component& scheme) {
+bool IsStandard(const char16_t* spec, const Component& scheme) {
   SchemeType unused_scheme_type;
   return DoIsStandard(spec, scheme, &unused_scheme_type);
 }
@@ -673,7 +740,7 @@ bool FindAndCompareScheme(const char* str,
   return DoFindAndCompareScheme(str, str_len, compare, found_scheme);
 }
 
-bool FindAndCompareScheme(const base::char16* str,
+bool FindAndCompareScheme(const char16_t* str,
                           int str_len,
                           const char* compare,
                           Component* found_scheme) {
@@ -734,7 +801,7 @@ bool Canonicalize(const char* spec,
                         charset_converter, output, output_parsed);
 }
 
-bool Canonicalize(const base::char16* spec,
+bool Canonicalize(const char16_t* spec,
                   int spec_len,
                   bool trim_path_end,
                   CharsetConverter* charset_converter,
@@ -760,7 +827,7 @@ bool ResolveRelative(const char* base_spec,
 bool ResolveRelative(const char* base_spec,
                      int base_spec_len,
                      const Parsed& base_parsed,
-                     const base::char16* relative,
+                     const char16_t* relative,
                      int relative_length,
                      CharsetConverter* charset_converter,
                      CanonOutput* output,
@@ -784,7 +851,7 @@ bool ReplaceComponents(const char* spec,
 bool ReplaceComponents(const char* spec,
                        int spec_len,
                        const Parsed& parsed,
-                       const Replacements<base::char16>& replacements,
+                       const Replacements<char16_t>& replacements,
                        CharsetConverter* charset_converter,
                        CanonOutput* output,
                        Parsed* out_parsed) {
@@ -796,11 +863,15 @@ void DecodeURLEscapeSequences(const char* input,
                               int length,
                               DecodeURLMode mode,
                               CanonOutputW* output) {
+  if (length <= 0)
+    return;
+
   STACK_UNINITIALIZED RawCanonOutputT<char> unescaped_chars;
-  for (int i = 0; i < length; i++) {
+  size_t length_size_t = static_cast<size_t>(length);
+  for (size_t i = 0; i < length_size_t; i++) {
     if (input[i] == '%') {
       unsigned char ch;
-      if (DecodeEscaped(input, &i, length, &ch)) {
+      if (DecodeEscaped(input, &i, length_size_t, &ch)) {
         unescaped_chars.push_back(ch);
       } else {
         // Invalid escape sequence, copy the percent literal.
@@ -815,7 +886,8 @@ void DecodeURLEscapeSequences(const char* input,
   int output_initial_length = output->length();
   // Convert that 8-bit to UTF-16. It's not clear IE does this at all to
   // JavaScript URLs, but Firefox and Safari do.
-  for (int i = 0; i < unescaped_chars.length(); i++) {
+  size_t unescaped_length = unescaped_chars.length();
+  for (size_t i = 0; i < unescaped_length; i++) {
     unsigned char uch = static_cast<unsigned char>(unescaped_chars.at(i));
     if (uch < 0x80) {
       // Non-UTF-8, just append directly
@@ -823,15 +895,15 @@ void DecodeURLEscapeSequences(const char* input,
     } else {
       // next_ch will point to the last character of the decoded
       // character.
-      int next_character = i;
-      unsigned code_point;
-      if (ReadUTFChar(unescaped_chars.data(), &next_character,
-                      unescaped_chars.length(), &code_point)) {
+      size_t next_character = i;
+      base_icu::UChar32 code_point;
+      if (ReadUTFChar(unescaped_chars.data(), &next_character, unescaped_length,
+                      &code_point)) {
         // Valid UTF-8 character, convert to UTF-16.
         AppendUTF16Value(code_point, output);
         i = next_character;
       } else if (mode == DecodeURLMode::kUTF8) {
-        DCHECK_EQ(code_point, 0xFFFDU);
+        DCHECK_EQ(code_point, 0xFFFD);
         AppendUTF16Value(code_point, output);
         i = next_character;
       } else {
@@ -840,7 +912,7 @@ void DecodeURLEscapeSequences(const char* input,
         // copy all characters from the beginning to the end of the
         // identified sequence.
         output->set_length(output_initial_length);
-        for (int j = 0; j < unescaped_chars.length(); ++j)
+        for (size_t j = 0; j < unescaped_chars.length(); ++j)
           output->push_back(static_cast<unsigned char>(unescaped_chars.at(j)));
         break;
       }
@@ -864,7 +936,7 @@ bool CompareSchemeComponent(const char* spec,
   return DoCompareSchemeComponent(spec, component, compare_to);
 }
 
-bool CompareSchemeComponent(const base::char16* spec,
+bool CompareSchemeComponent(const char16_t* spec,
                             const Component& component,
                             const char* compare_to) {
   return DoCompareSchemeComponent(spec, component, compare_to);

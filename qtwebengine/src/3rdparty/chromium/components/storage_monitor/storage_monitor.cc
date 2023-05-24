@@ -1,14 +1,15 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/storage_monitor/storage_monitor.h"
 
+#include <memory>
 #include <utility>
 
+#include "base/containers/contains.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
-#include "base/strings/utf_string_conversions.h"
+#include "base/memory/raw_ptr.h"
 #include "components/storage_monitor/removable_storage_observer.h"
 #include "components/storage_monitor/transient_device_ids.h"
 
@@ -20,15 +21,14 @@ StorageMonitor* g_storage_monitor = nullptr;
 
 }  // namespace
 
-StorageMonitor::Receiver::~Receiver() {
-}
+StorageMonitor::Receiver::~Receiver() = default;
 
 class StorageMonitor::ReceiverImpl : public StorageMonitor::Receiver {
  public:
   explicit ReceiverImpl(StorageMonitor* notifications)
       : notifications_(notifications) {}
 
-  ~ReceiverImpl() override {}
+  ~ReceiverImpl() override = default;
 
   void ProcessAttach(const StorageInfo& info) override;
 
@@ -37,7 +37,7 @@ class StorageMonitor::ReceiverImpl : public StorageMonitor::Receiver {
   void MarkInitialized() override;
 
  private:
-  StorageMonitor* notifications_;
+  raw_ptr<StorageMonitor> notifications_;
 };
 
 void StorageMonitor::ReceiverImpl::ProcessAttach(const StorageInfo& info) {
@@ -78,8 +78,8 @@ std::vector<StorageInfo> StorageMonitor::GetAllAvailableStorages() const {
   std::vector<StorageInfo> results;
 
   base::AutoLock lock(storage_lock_);
-  for (auto it = storage_map_.begin(); it != storage_map_.end(); ++it) {
-    results.push_back(it->second);
+  for (const auto& item : storage_map_) {
+    results.push_back(item.second);
   }
   return results;
 }
@@ -140,11 +140,10 @@ StorageMonitor::StorageMonitor()
       initializing_(false),
       initialized_(false),
       transient_device_ids_(new TransientDeviceIds) {
-  receiver_.reset(new ReceiverImpl(this));
+  receiver_ = std::make_unique<ReceiverImpl>(this);
 }
 
-StorageMonitor::~StorageMonitor() {
-}
+StorageMonitor::~StorageMonitor() = default;
 
 StorageMonitor::Receiver* StorageMonitor::receiver() const {
   return receiver_.get();

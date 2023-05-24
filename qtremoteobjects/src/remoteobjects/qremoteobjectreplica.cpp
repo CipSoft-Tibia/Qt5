@@ -1,46 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qremoteobjectreplica.h"
 #include "qremoteobjectreplica_p.h"
 
 #include "qremoteobjectnode.h"
+#include "qremoteobjectnode_p.h"
 #include "qremoteobjectdynamicreplica.h"
 #include "qremoteobjectpacket_p.h"
 #include "qremoteobjectpendingcall_p.h"
@@ -106,21 +71,29 @@ QConnectedReplicaImplementation::QConnectedReplicaImplementation(const QString &
     connect(&m_heartbeatTimer, &QTimer::timeout, this, [this] {
         // TODO: Revisit if a baseclass method can be used to avoid specialized cast
         // conditional logic.
-        auto clientIo = qobject_cast<ClientIoDevice *>(connectionToSource);
+
         if (m_pendingCalls.contains(0)) {
             m_pendingCalls.take(0);
             // The source didn't respond in time, disconnect the connection
-            if (clientIo)
-                clientIo->disconnectFromServer();
-            else if (connectionToSource)
-                connectionToSource->close();
-        } else {
-            serializePingPacket(m_packet, m_objectName);
-            if (sendCommandWithReply(0).d->serialId == -1) {
-                m_heartbeatTimer.stop();
+            if (connectionToSource) {
+                auto clientIo = qobject_cast<QtROClientIoDevice *>(connectionToSource);
                 if (clientIo)
                     clientIo->disconnectFromServer();
-                else if (connectionToSource)
+                else
+                    connectionToSource->close();
+            }
+        } else {
+            if (connectionToSource.isNull()) {
+                qCDebug(QT_REMOTEOBJECT) << "Ignoring heartbeat as there is no source connected.";
+                return;
+            }
+            connectionToSource->d_func()->m_codec->serializePingPacket(m_objectName);
+            if (sendCommandWithReply(0).d->serialId == -1) {
+                m_heartbeatTimer.stop();
+                auto clientIo = qobject_cast<QtROClientIoDevice *>(connectionToSource);
+                if (clientIo)
+                    clientIo->disconnectFromServer();
+                else
                     connectionToSource->close();
             }
         }
@@ -133,7 +106,7 @@ QConnectedReplicaImplementation::QConnectedReplicaImplementation(const QString &
     QtRemoteObjects::getTypeNameAndMetaobjectFromClassInfo(offsetMeta);
     for (int index = offsetMeta->propertyOffset(); index < offsetMeta->propertyCount(); ++index) {
         const QMetaProperty property = offsetMeta->property(index);
-        if (QMetaType::typeFlags(property.userType()).testFlag(QMetaType::PointerToQObject))
+        if (property.metaType().flags().testFlag(QMetaType::PointerToQObject))
             m_childIndices << index - offsetMeta->propertyOffset();
     }
 }
@@ -142,12 +115,14 @@ QConnectedReplicaImplementation::~QConnectedReplicaImplementation()
 {
     if (!connectionToSource.isNull()) {
         qCDebug(QT_REMOTEOBJECT) << "Replica deleted: sending RemoveObject to RemoteObjectSource" << m_objectName;
-        serializeRemoveObjectPacket(m_packet, m_objectName);
+        connectionToSource->d_func()->m_codec->serializeRemoveObjectPacket(m_objectName);
         sendCommand();
     }
     for (auto prop : m_propertyStorage) {
-        if (prop.canConvert<QObject*>())
-            prop.value<QObject *>()->deleteLater();
+        if (prop.canConvert<QObject*>()) {
+            if (auto o = prop.value<QObject*>())
+                o->deleteLater();
+        }
     }
 }
 
@@ -187,27 +162,25 @@ void QRemoteObjectReplicaImplementation::emitNotified()
 
 bool QConnectedReplicaImplementation::sendCommand()
 {
-    if (connectionToSource.isNull() || !connectionToSource->isOpen()) {
-        if (connectionToSource.isNull())
-            qCWarning(QT_REMOTEOBJECT) << "connectionToSource is null";
+    Q_ASSERT(connectionToSource);
+    if (!connectionToSource->isOpen())
         return false;
-    }
 
-    connectionToSource->write(m_packet.array, m_packet.size);
+    connectionToSource->d_func()->m_codec->send(connectionToSource);
     if (m_heartbeatTimer.interval())
         m_heartbeatTimer.start();
     return true;
 }
 
-QVector<int> QConnectedReplicaImplementation::childIndices() const
+QList<int> QConnectedReplicaImplementation::childIndices() const
 {
     return m_childIndices;
 }
 
-void QConnectedReplicaImplementation::initialize(QVariantList &values)
+void QConnectedReplicaImplementation::initialize(QVariantList &&values)
 {
     qCDebug(QT_REMOTEOBJECT) << "initialize()" << m_propertyStorage.size();
-    const int nParam = values.size();
+    const int nParam = int(values.size());
     QVarLengthArray<int> changedProperties(nParam);
     const int offset = m_propertyOffset;
     for (int i = 0; i < nParam; ++i) {
@@ -215,10 +188,12 @@ void QConnectedReplicaImplementation::initialize(QVariantList &values)
         changedProperties[i] = -1;
         if (m_propertyStorage[i] != values.at(i)) {
             const QMetaProperty property = m_metaObject->property(i+offset);
-            m_propertyStorage[i] = QRemoteObjectPackets::decodeVariant(values[i], property.userType());
+            m_propertyStorage[i] = QRemoteObjectPackets::decodeVariant(std::move(values[i]), property.metaType());
             changedProperties[i] = i;
         }
-        qCDebug(QT_REMOTEOBJECT) << "SETPROPERTY" << i << m_metaObject->property(i+offset).name() << values.at(i).typeName() << values.at(i).toString();
+        qCDebug(QT_REMOTEOBJECT) << "SETPROPERTY" << i << m_metaObject->property(i+offset).name()
+                                 << m_propertyStorage[i].typeName()
+                                 << m_propertyStorage[i].toString();
     }
 
     Q_ASSERT(m_state.loadAcquire() < QRemoteObjectReplica::Valid || m_state.loadAcquire() == QRemoteObjectReplica::Suspect);
@@ -287,21 +262,28 @@ void QConnectedReplicaImplementation::setDynamicMetaObject(const QMetaObject *me
 
     for (int index = m_metaObject->propertyOffset(); index < m_metaObject->propertyCount(); ++index) {
         const QMetaProperty property = m_metaObject->property(index);
-        if (QMetaType::typeFlags(property.userType()).testFlag(QMetaType::PointerToQObject))
+        if (property.metaType().flags().testFlag(QMetaType::PointerToQObject))
             m_childIndices << index - m_metaObject->propertyOffset();
     }
 }
 
-void QRemoteObjectReplicaImplementation::setDynamicProperties(const QVariantList &values)
+void QRemoteObjectReplicaImplementation::setDynamicProperties(QVariantList &&values)
 {
+    const int offset = m_propertyOffset;
+    int propertyIndex = -1;
+    for (auto &prop : values) {
+        propertyIndex++;
+        const QMetaProperty property = m_metaObject->property(propertyIndex+offset);
+        prop = QRemoteObjectPackets::decodeVariant(std::move(prop), property.metaType());
+    }
     //rely on order of properties;
-    setProperties(values);
+    setProperties(std::move(values));
 }
 
-void QConnectedReplicaImplementation::setDynamicProperties(const QVariantList &values)
+void QConnectedReplicaImplementation::setDynamicProperties(QVariantList &&values)
 {
-    QRemoteObjectReplicaImplementation::setDynamicProperties(values);
-    for (QRemoteObjectReplica *obj : qExchange(m_parentsNeedingConnect, {}))
+    QRemoteObjectReplicaImplementation::setDynamicProperties(std::move(values));
+    for (QRemoteObjectReplica *obj : std::exchange(m_parentsNeedingConnect, {}))
         configurePrivate(obj);
 
     Q_ASSERT(m_state.loadAcquire() < QRemoteObjectReplica::Valid);
@@ -363,6 +345,10 @@ void QConnectedReplicaImplementation::_q_send(QMetaObject::Call call, int index,
     static const bool debugArgs = qEnvironmentVariableIsSet("QT_REMOTEOBJECT_DEBUG_ARGUMENTS");
 
     Q_ASSERT(call == QMetaObject::InvokeMetaMethod || call == QMetaObject::WriteProperty);
+    if (connectionToSource.isNull()) {
+        qCWarning(QT_REMOTEOBJECT) << "connectionToSource is null";
+        return;
+    }
 
     if (call == QMetaObject::InvokeMetaMethod) {
         if (debugArgs) {
@@ -373,7 +359,7 @@ void QConnectedReplicaImplementation::_q_send(QMetaObject::Call call, int index,
         if (index < m_methodOffset) //index - m_methodOffset < 0 is invalid, and can't be resolved on the Source side
             qCWarning(QT_REMOTEOBJECT) << "Skipping invalid method invocation.  Index not found:" << index << "( offset =" << m_methodOffset << ") object:" << m_objectName << this->m_metaObject->method(index).name();
         else {
-            serializeInvokePacket(m_packet, m_objectName, call, index - m_methodOffset, args);
+            connectionToSource->d_func()->m_codec->serializeInvokePacket(m_objectName, call, index - m_methodOffset, args);
             sendCommand();
         }
     } else {
@@ -381,7 +367,7 @@ void QConnectedReplicaImplementation::_q_send(QMetaObject::Call call, int index,
         if (index < m_propertyOffset) //index - m_propertyOffset < 0 is invalid, and can't be resolved on the Source side
             qCWarning(QT_REMOTEOBJECT) << "Skipping invalid property invocation.  Index not found:" << index << "( offset =" << m_propertyOffset << ") object:" << m_objectName << this->m_metaObject->property(index).name();
         else {
-            serializeInvokePacket(m_packet, m_objectName, call, index - m_propertyOffset, args);
+            connectionToSource->d_func()->m_codec->serializeInvokePacket(m_objectName, call, index - m_propertyOffset, args);
             sendCommand();
         }
     }
@@ -390,10 +376,14 @@ void QConnectedReplicaImplementation::_q_send(QMetaObject::Call call, int index,
 QRemoteObjectPendingCall QConnectedReplicaImplementation::_q_sendWithReply(QMetaObject::Call call, int index, const QVariantList &args)
 {
     Q_ASSERT(call == QMetaObject::InvokeMetaMethod);
+    if (connectionToSource.isNull()) {
+        qCWarning(QT_REMOTEOBJECT) << "connectionToSource is null";
+        return QRemoteObjectPendingCall();
+    }
 
     qCDebug(QT_REMOTEOBJECT) << "Send" << call << this->m_metaObject->method(index).name() << index << args << connectionToSource;
     int serialId = (m_curSerialId == std::numeric_limits<int>::max() ? 1 : m_curSerialId++);
-    serializeInvokePacket(m_packet, m_objectName, call, index - m_methodOffset, args, serialId);
+    connectionToSource->d_func()->m_codec->serializeInvokePacket(m_objectName, call, index - m_methodOffset, args, serialId);
     return sendCommandWithReply(serialId);
 }
 
@@ -464,11 +454,11 @@ const QVariant QConnectedReplicaImplementation::getProperty(int i) const
     return m_propertyStorage[i];
 }
 
-void QConnectedReplicaImplementation::setProperties(const QVariantList &properties)
+void QConnectedReplicaImplementation::setProperties(QVariantList &&properties)
 {
     Q_ASSERT(m_propertyStorage.isEmpty());
-    m_propertyStorage.reserve(properties.length());
-    m_propertyStorage = properties;
+    m_propertyStorage.reserve(properties.size());
+    m_propertyStorage = std::move(properties);
 }
 
 void QConnectedReplicaImplementation::setProperty(int i, const QVariant &prop)
@@ -476,7 +466,7 @@ void QConnectedReplicaImplementation::setProperty(int i, const QVariant &prop)
     m_propertyStorage[i] = prop;
 }
 
-void QConnectedReplicaImplementation::setConnection(IoDeviceBase *conn)
+void QConnectedReplicaImplementation::setConnection(QtROIoDeviceBase *conn)
 {
     if (connectionToSource.isNull()) {
         connectionToSource = conn;
@@ -487,6 +477,7 @@ void QConnectedReplicaImplementation::setConnection(IoDeviceBase *conn)
 
 void QConnectedReplicaImplementation::setDisconnected()
 {
+    Q_ASSERT(connectionToSource);
     connectionToSource.clear();
     setState(QRemoteObjectReplica::State::Suspect);
     for (const int index : childIndices()) {
@@ -499,7 +490,8 @@ void QConnectedReplicaImplementation::setDisconnected()
 
 void QConnectedReplicaImplementation::requestRemoteObjectSource()
 {
-    serializeAddObjectPacket(m_packet, m_objectName, needsDynamicInitialization());
+    Q_ASSERT(connectionToSource);
+    connectionToSource->d_func()->m_codec->serializeAddObjectPacket(m_objectName, needsDynamicInitialization());
     sendCommand();
 }
 
@@ -517,7 +509,7 @@ void QRemoteObjectReplicaImplementation::configurePrivate(QRemoteObjectReplica *
         if (mm.methodType() == QMetaMethod::Signal) {
             const bool res = QMetaObject::connect(this, i, rep, i, Qt::DirectConnection, nullptr);
             qCDebug(QT_REMOTEOBJECT) << "  Rep connect"<<i<<res<<mm.name();
-            Q_UNUSED(res);
+            Q_UNUSED(res)
         }
     }
     if (m_methodOffset == 0) //We haven't initialized the offsets yet
@@ -540,7 +532,7 @@ void QRemoteObjectReplicaImplementation::configurePrivate(QRemoteObjectReplica *
                 ++m_numSignals;
                 const bool res = QMetaObject::connect(this, i, rep, i, Qt::DirectConnection, nullptr);
                 qCDebug(QT_REMOTEOBJECT) << "  Connect"<<i<<res<<mm.name();
-                Q_UNUSED(res);
+                Q_UNUSED(res)
             }
         }
         m_methodOffset = m_signalOffset + m_numSignals;
@@ -549,7 +541,7 @@ void QRemoteObjectReplicaImplementation::configurePrivate(QRemoteObjectReplica *
         for (int i = m_signalOffset; i < m_methodOffset; ++i) {
             const bool res = QMetaObject::connect(this, i, rep, i, Qt::DirectConnection, nullptr);
             qCDebug(QT_REMOTEOBJECT) << "  Connect"<<i<<res<<m_metaObject->method(i).name();
-            Q_UNUSED(res);
+            Q_UNUSED(res)
         }
         if (isInitialized()) {
             qCDebug(QT_REMOTEOBJECT) << QStringLiteral("ReplicaImplementation initialized, emitting signal on replica");
@@ -576,7 +568,7 @@ void QConnectedReplicaImplementation::configurePrivate(QRemoteObjectReplica *rep
         // we are initializing an nth replica of the same type
         if (!firstReplicaInstance) {
             const int offset = m_propertyOffset;
-            const int nParam = m_propertyStorage.count();
+            const int nParam = int(m_propertyStorage.size());
             void *args[] = {nullptr, nullptr};
             for (int i = 0; i < nParam; ++i) {
                 const int notifyIndex = m_metaObject->property(i+offset).notifySignalIndex();
@@ -606,9 +598,15 @@ void QConnectedReplicaImplementation::configurePrivate(QRemoteObjectReplica *rep
     communication latency. As long as the replica has been initialized and the
     communication is not disrupted, receipt and order of changes is guaranteed.
 
-    The \l {isInitialized} and \l {state} properties (and corresponding \l {initialized()}/\l {stateChanged()} signals) allow the state of a \l {Replica} to be determined.
+    The \l {isInitialized} and \l {state} properties (and corresponding
+    \l {initialized()}/\l {stateChanged()} signals) allow the state of a
+    \l {Replica} to be determined.
 
-    While Qt Remote Objects (QtRO) handles the initialization and synchronization of \l {Replica} objects, there are numerous steps happening behind the scenes which can fail and that aren't encountered in single process Qt applications.  See \l {Troubleshooting} for advice on how to handle such issues when using a remote objects network.
+    While Qt Remote Objects (QtRO) handles the initialization and
+    synchronization of \l {Replica} objects, there are numerous steps happening
+    behind the scenes which can fail and that aren't encountered in single
+    process Qt applications. See \l {Troubleshooting} for advice on how to
+    handle such issues when using a remote objects network.
 */
 
 /*!
@@ -616,17 +614,28 @@ void QConnectedReplicaImplementation::configurePrivate(QRemoteObjectReplica *rep
 
     This enum type specifies the various state codes associated with QRemoteObjectReplica states:
 
-    \value Uninitialized initial value of DynamicReplica, where nothing is known about the replica before connection to source.
-    \value Default initial value of static replica, where any defaults set in the .rep file are available so it can be used if necessary.
-    \value Valid indicates the replica is connected, has good property values and can be interacted with.
-    \value Suspect error state that occurs if the connection to the source is lost after it is initialized.
-    \value SignatureMismatch error state that occurs if a connection to the source is made, but the source and replica are not derived from the same .rep (only possible for static Replicas).
+    \value Uninitialized Initial value of DynamicReplica, where nothing is
+    known about the replica before connection to source.
+
+    \value Default Initial value of static replica, where any defaults set in
+    the .rep file are available so it can be used if necessary.
+
+    \value Valid Indicates the replica is connected, has good property values
+    and can be interacted with.
+
+    \value Suspect Error state that occurs if the connection to the source is
+    lost after it is initialized.
+
+    \value SignatureMismatch Error state that occurs if a connection to the
+    source is made, but the source and replica are not derived from the same
+    .rep (only possible for static Replicas).
 */
 
 /*!
     \fn void QRemoteObjectReplica::stateChanged(State state, State oldState)
 
-    This signal is emitted whenever a replica's state toggles between \l QRemoteObjectReplica::State.
+    This signal is emitted whenever a replica's state toggles between
+    \l QRemoteObjectReplica::State.
 
     The change in state is represented with \a state and \a oldState.
 
@@ -735,9 +744,9 @@ void QRemoteObjectReplica::initializeNode(QRemoteObjectNode *node, const QString
 /*!
     \internal
 */
-void QRemoteObjectReplica::setProperties(const QVariantList &properties)
+void QRemoteObjectReplica::setProperties(QVariantList &&properties)
 {
-    d_impl->setProperties(properties);
+    d_impl->setProperties(std::move(properties));
 }
 
 /*!
@@ -749,7 +758,8 @@ void QRemoteObjectReplica::setChild(int i, const QVariant &value)
 }
 
 /*!
-    Returns \c true if this replica has been initialized with data from the \l {Source} object.  Returns \c false otherwise.
+    Returns \c true if this replica has been initialized with data from the
+    \l {Source} object.  Returns \c false otherwise.
 
     \sa state()
 */
@@ -759,7 +769,8 @@ bool QRemoteObjectReplica::isInitialized() const
 }
 
 /*!
-    Returns \c true if this replica has been initialized with data from the \l {Source} object.  Returns \c false otherwise.
+    Returns \c true if this replica has been initialized with data from the
+    \l {Source} object.  Returns \c false otherwise.
 
     \sa isInitialized()
 */
@@ -792,7 +803,9 @@ void QRemoteObjectReplica::initialize()
 }
 
 /*!
-    Returns \c true if this replica has been initialized and has a valid connection with the \l {QRemoteObjectNode} {node} hosting the \l {Source}.  Returns \c false otherwise.
+    Returns \c true if this replica has been initialized and has a valid
+    connection with the \l {QRemoteObjectNode} {node} hosting the \l {Source}.
+    Returns \c false otherwise.
 
     \sa isInitialized()
 */
@@ -802,7 +815,9 @@ bool QRemoteObjectReplica::isReplicaValid() const
 }
 
 /*!
-    Blocking call that waits for the replica to become initialized or until the \a timeout (in ms) expires.  Returns \c true if the replica is initialized when the call completes, \c false otherwise.
+    Blocking call that waits for the replica to become initialized or until the
+    \a timeout (in ms) expires. Returns \c true if the replica is initialized
+    when the call completes, \c false otherwise.
 
     If \a timeout is -1, this function will not time out.
 
@@ -831,7 +846,7 @@ const QVariant QInProcessReplicaImplementation::getProperty(int i) const
     return connectionToSource->m_object->metaObject()->property(index).read(connectionToSource->m_object);
 }
 
-void QInProcessReplicaImplementation::setProperties(const QVariantList &)
+void QInProcessReplicaImplementation::setProperties(QVariantList &&)
 {
     //TODO some verification here maybe?
 }
@@ -870,10 +885,10 @@ QRemoteObjectPendingCall QInProcessReplicaImplementation::_q_sendWithReply(QMeta
     Q_ASSERT(call == QMetaObject::InvokeMetaMethod);
 
     const int ReplicaIndex = index - m_methodOffset;
-    int typeId = QMetaType::type(connectionToSource->m_api->typeName(ReplicaIndex).constData());
-    if (!QMetaType(typeId).sizeOf())
-        typeId = QVariant::Invalid;
-    QVariant returnValue(typeId, nullptr);
+    auto metaType = QMetaType::fromName(connectionToSource->m_api->typeName(ReplicaIndex).constData());
+    if (!metaType.sizeOf())
+        metaType = QMetaType(QMetaType::UnknownType);
+    QVariant returnValue(metaType, nullptr);
 
     const int resolvedIndex = connectionToSource->m_api->sourceMethodIndex(ReplicaIndex);
     if (resolvedIndex < 0) {
@@ -895,11 +910,11 @@ const QVariant QStubReplicaImplementation::getProperty(int i) const
     return m_propertyStorage[i];
 }
 
-void QStubReplicaImplementation::setProperties(const QVariantList &properties)
+void QStubReplicaImplementation::setProperties(QVariantList &&properties)
 {
     Q_ASSERT(m_propertyStorage.isEmpty());
-    m_propertyStorage.reserve(properties.length());
-    m_propertyStorage = properties;
+    m_propertyStorage.reserve(properties.size());
+    m_propertyStorage = std::move(properties);
 }
 
 void QStubReplicaImplementation::setProperty(int i, const QVariant &prop)
@@ -909,17 +924,17 @@ void QStubReplicaImplementation::setProperty(int i, const QVariant &prop)
 
 void QStubReplicaImplementation::_q_send(QMetaObject::Call call, int index, const QVariantList &args)
 {
-    Q_UNUSED(call);
-    Q_UNUSED(index);
-    Q_UNUSED(args);
+    Q_UNUSED(call)
+    Q_UNUSED(index)
+    Q_UNUSED(args)
     qWarning("Tried calling a slot or setting a property on a replica that hasn't been initialized with a node");
 }
 
 QRemoteObjectPendingCall QStubReplicaImplementation::_q_sendWithReply(QMetaObject::Call call, int index, const QVariantList &args)
 {
-    Q_UNUSED(call);
-    Q_UNUSED(index);
-    Q_UNUSED(args);
+    Q_UNUSED(call)
+    Q_UNUSED(index)
+    Q_UNUSED(args)
     qWarning("Tried calling a slot or setting a property on a replica that hasn't been initialized with a node");
     return QRemoteObjectPendingCall(); //Invalid
 }

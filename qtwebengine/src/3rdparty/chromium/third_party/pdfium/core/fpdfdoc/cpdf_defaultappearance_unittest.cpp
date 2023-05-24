@@ -1,13 +1,15 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "core/fpdfdoc/cpdf_defaultappearance.h"
 
+#include <iterator>
+
+#include "core/fpdfapi/parser/cpdf_simple_parser.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/test_support.h"
 #include "third_party/base/span.h"
-#include "third_party/base/stl_util.h"
 
 TEST(CPDFDefaultAppearanceTest, FindTagParamFromStart) {
   static const struct FindTagTestStruct {
@@ -36,13 +38,12 @@ TEST(CPDFDefaultAppearanceTest, FindTagParamFromStart) {
       STR_IN_TEST_CASE("1 2 3 4 5 6 7 8 cm", "cm", 6, true, 3),
   };
 
-  CPDF_DefaultAppearance da;
-  for (size_t i = 0; i < pdfium::size(test_data); ++i) {
+  for (size_t i = 0; i < std::size(test_data); ++i) {
     CPDF_SimpleParser parser(
         pdfium::make_span(test_data[i].input, test_data[i].input_size));
     EXPECT_EQ(test_data[i].result,
-              da.FindTagParamFromStartForTesting(&parser, test_data[i].token,
-                                                 test_data[i].num_params))
+              CPDF_DefaultAppearance::FindTagParamFromStartForTesting(
+                  &parser, test_data[i].token, test_data[i].num_params))
         << " for case " << i;
     EXPECT_EQ(test_data[i].result_pos, parser.GetCurPos()) << " for case " << i;
   }

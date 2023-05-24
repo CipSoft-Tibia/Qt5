@@ -1,42 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qqmljavascriptexpression_p.h"
 #include "qqmljavascriptexpression_p.h"
 
 #include <private/qqmlexpression_p.h>
@@ -51,6 +16,9 @@
 #include <private/qv4qobjectwrapper_p.h>
 #include <private/qqmlbuiltinfunctions_p.h>
 #include <private/qqmlsourcecoordinate_p.h>
+#include <private/qqmlabstractbinding_p.h>
+#include <private/qqmlpropertybinding_p.h>
+#include <private/qproperty_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -109,15 +77,33 @@ QQmlJavaScriptExpression::~QQmlJavaScriptExpression()
             m_nextExpression->m_prevExpression = m_prevExpression;
     }
 
+    while (qpropertyChangeTriggers) {
+        auto current = qpropertyChangeTriggers;
+        qpropertyChangeTriggers = current->next;
+        QRecyclePool<TriggerList>::Delete(current);
+    }
+
     clearActiveGuards();
     clearError();
     if (m_scopeObject.isT2()) // notify DeleteWatcher of our deletion.
         m_scopeObject.asT2()->_s = nullptr;
 }
 
+QString QQmlJavaScriptExpression::expressionIdentifier() const
+{
+    if (auto f = function()) {
+        QString url = f->sourceFile();
+        uint lineNumber = f->compiledFunction->location.line();
+        uint columnNumber = f->compiledFunction->location.column();
+        return url + QString::asprintf(":%u:%u", lineNumber, columnNumber);
+    }
+
+    return QStringLiteral("[native code]");
+}
+
 void QQmlJavaScriptExpression::setNotifyOnValueChanged(bool v)
 {
-    activeGuards.setFlagValue(v);
+    activeGuards.setTag(v ? NotifyOnValueChanged : NoGuardTag);
     if (!v)
         clearActiveGuards();
 }
@@ -134,7 +120,7 @@ QQmlSourceLocation QQmlJavaScriptExpression::sourceLocation() const
     return QQmlSourceLocation();
 }
 
-void QQmlJavaScriptExpression::setContext(QQmlContextData *context)
+void QQmlJavaScriptExpression::setContext(const QQmlRefPointer<QQmlContextData> &context)
 {
     if (m_prevExpression) {
         *m_prevExpression = m_nextExpression;
@@ -144,20 +130,10 @@ void QQmlJavaScriptExpression::setContext(QQmlContextData *context)
         m_nextExpression = nullptr;
     }
 
-    m_context = context;
+    m_context = context.data();
 
-    if (context) {
-        m_nextExpression = context->expressions;
-        if (m_nextExpression)
-            m_nextExpression->m_prevExpression = &m_nextExpression;
-        m_prevExpression = &context->expressions;
-        context->expressions = this;
-    }
-}
-
-QV4::Function *QQmlJavaScriptExpression::function() const
-{
-    return m_v4Function;
+    if (context)
+        context->addExpression(this);
 }
 
 void QQmlJavaScriptExpression::refresh()
@@ -166,87 +142,136 @@ void QQmlJavaScriptExpression::refresh()
 
 QV4::ReturnedValue QQmlJavaScriptExpression::evaluate(bool *isUndefined)
 {
-    QV4::ExecutionEngine *v4 = m_context->engine->handle();
-    QV4::Scope scope(v4);
-    QV4::JSCallData jsCall(scope);
-
-    return evaluate(jsCall.callData(), isUndefined);
-}
-
-QV4::ReturnedValue QQmlJavaScriptExpression::evaluate(QV4::CallData *callData, bool *isUndefined)
-{
-    Q_ASSERT(m_context && m_context->engine);
-
-    QV4::Function *v4Function = function();
-    if (!v4Function) {
+    QQmlEngine *qmlengine = engine();
+    if (!qmlengine) {
         if (isUndefined)
             *isUndefined = true;
         return QV4::Encode::undefined();
     }
 
-    QQmlEnginePrivate *ep = QQmlEnginePrivate::get(m_context->engine);
+    QV4::Scope scope(qmlengine->handle());
+    QV4::JSCallArguments jsCall(scope);
+
+    return evaluate(jsCall.callData(scope), isUndefined);
+}
+
+class QQmlJavaScriptExpressionCapture
+{
+    Q_DISABLE_COPY_MOVE(QQmlJavaScriptExpressionCapture)
+public:
+    QQmlJavaScriptExpressionCapture(QQmlJavaScriptExpression *expression, QQmlEngine *engine)
+        : watcher(expression)
+        , capture(engine, expression, &watcher)
+        , ep(QQmlEnginePrivate::get(engine))
+    {
+        Q_ASSERT(expression->notifyOnValueChanged() || expression->activeGuards.isEmpty());
+
+        lastPropertyCapture = ep->propertyCapture;
+        ep->propertyCapture = expression->notifyOnValueChanged() ? &capture : nullptr;
+
+        if (expression->notifyOnValueChanged())
+            capture.guards.copyAndClearPrepend(expression->activeGuards);
+    }
+
+    ~QQmlJavaScriptExpressionCapture()
+    {
+        if (capture.errorString) {
+            for (int ii = 0; ii < capture.errorString->size(); ++ii)
+                qWarning("%s", qPrintable(capture.errorString->at(ii)));
+            delete capture.errorString;
+            capture.errorString = nullptr;
+        }
+
+        while (QQmlJavaScriptExpressionGuard *g = capture.guards.takeFirst())
+            g->Delete();
+
+        ep->propertyCapture = lastPropertyCapture;
+    }
+
+    bool catchException(const QV4::Scope &scope) const
+    {
+        if (scope.hasException()) {
+            if (watcher.wasDeleted())
+                scope.engine->catchException(); // ignore exception
+            else
+                capture.expression->delayedError()->catchJavaScriptException(scope.engine);
+            return true;
+        }
+
+        if (!watcher.wasDeleted() && capture.expression->hasDelayedError())
+            capture.expression->delayedError()->clearError();
+        return false;
+    }
+
+private:
+    QQmlJavaScriptExpression::DeleteWatcher watcher;
+    QQmlPropertyCapture capture;
+    QQmlEnginePrivate *ep;
+    QQmlPropertyCapture *lastPropertyCapture;
+};
+
+QV4::ReturnedValue QQmlJavaScriptExpression::evaluate(QV4::CallData *callData, bool *isUndefined)
+{
+    QQmlEngine *qmlEngine = engine();
+    QV4::Function *v4Function = function();
+    if (!v4Function || !qmlEngine) {
+        if (isUndefined)
+            *isUndefined = true;
+        return QV4::Encode::undefined();
+    }
 
     // All code that follows must check with watcher before it accesses data members
     // incase we have been deleted.
-    DeleteWatcher watcher(this);
+    QQmlJavaScriptExpressionCapture capture(this, qmlEngine);
 
-    Q_ASSERT(notifyOnValueChanged() || activeGuards.isEmpty());
-    QQmlPropertyCapture capture(m_context->engine, this, &watcher);
+    QV4::Scope scope(qmlEngine->handle());
 
-    QQmlPropertyCapture *lastPropertyCapture = ep->propertyCapture;
-    ep->propertyCapture = notifyOnValueChanged() ? &capture : nullptr;
-
-
-    if (notifyOnValueChanged())
-        capture.guards.copyAndClearPrepend(activeGuards);
-
-    QV4::ExecutionEngine *v4 = m_context->engine->handle();
-    callData->thisObject = v4->globalObject;
-    if (scopeObject()) {
-         QV4::ReturnedValue scope = QV4::QObjectWrapper::wrap(v4, scopeObject());
-        if (QV4::Value::fromReturnedValue(scope).isObject())
-            callData->thisObject = scope;
+    if (QObject *thisObject = scopeObject()) {
+        callData->thisObject = QV4::QObjectWrapper::wrap(scope.engine, thisObject);
+        if (callData->thisObject.isNullOrUndefined())
+            callData->thisObject = scope.engine->globalObject;
+    } else {
+        callData->thisObject = scope.engine->globalObject;
     }
 
     Q_ASSERT(m_qmlScope.valueRef());
-    QV4::ReturnedValue res = v4Function->call(
+    QV4::ScopedValue result(scope, v4Function->call(
             &(callData->thisObject.asValue<QV4::Value>()),
             callData->argValues<QV4::Value>(), callData->argc(),
-            static_cast<QV4::ExecutionContext *>(m_qmlScope.valueRef()));
-    QV4::Scope scope(v4);
-    QV4::ScopedValue result(scope, res);
+            static_cast<QV4::ExecutionContext *>(m_qmlScope.valueRef())));
 
-    if (scope.hasException()) {
-        if (watcher.wasDeleted())
-            scope.engine->catchException(); // ignore exception
-        else
-            delayedError()->catchJavaScriptException(scope.engine);
+    if (capture.catchException(scope)) {
         if (isUndefined)
             *isUndefined = true;
-    } else {
-        if (isUndefined)
-            *isUndefined = result->isUndefined();
-
-        if (!watcher.wasDeleted() && hasDelayedError())
-            delayedError()->clearError();
+    } else if (isUndefined) {
+        *isUndefined = result->isUndefined();
     }
-
-    if (capture.errorString) {
-        for (int ii = 0; ii < capture.errorString->count(); ++ii)
-            qWarning("%s", qPrintable(capture.errorString->at(ii)));
-        delete capture.errorString;
-        capture.errorString = nullptr;
-    }
-
-    while (QQmlJavaScriptExpressionGuard *g = capture.guards.takeFirst())
-        g->Delete();
-
-    if (!watcher.wasDeleted())
-        setTranslationsCaptured(capture.translationCaptured);
-
-    ep->propertyCapture = lastPropertyCapture;
 
     return result->asReturnedValue();
+}
+
+bool QQmlJavaScriptExpression::evaluate(void **a, const QMetaType *types, int argc)
+{
+    // All code that follows must check with watcher before it accesses data members
+    // incase we have been deleted.
+    QQmlEngine *qmlEngine = engine();
+
+    // If there is no engine, we have no way to evaluate anything.
+    // This can happen on destruction.
+    if (!qmlEngine)
+        return false;
+
+    QQmlJavaScriptExpressionCapture capture(this, qmlEngine);
+
+    QV4::Scope scope(qmlEngine->handle());
+
+    Q_ASSERT(m_qmlScope.valueRef());
+    Q_ASSERT(function());
+    const bool resultIsDefined = function()->call(
+                scopeObject(), a, types, argc,
+                static_cast<QV4::ExecutionContext *>(m_qmlScope.valueRef()));
+
+    return !capture.catchException(scope) && resultIsDefined;
 }
 
 void QQmlPropertyCapture::captureProperty(QQmlNotifier *n)
@@ -282,6 +307,99 @@ void QQmlPropertyCapture::captureProperty(QObject *o, int c, int n, bool doNotif
         return;
 
     Q_ASSERT(expression);
+
+    // If c < 0 we won't find any property. We better leave the metaobjects alone in that case.
+    // QQmlListModel expects us _not_ to trigger the creation of dynamic metaobjects from here.
+    if (c >= 0) {
+        const QQmlData *ddata = QQmlData::get(o, /*create=*/false);
+        const QMetaObject *metaObjectForBindable = nullptr;
+        if (auto const propCache = (ddata ? ddata->propertyCache.data() : nullptr)) {
+            Q_ASSERT(propCache->property(c));
+            if (propCache->property(c)->isBindable())
+                metaObjectForBindable = propCache->metaObject();
+        } else {
+            const QMetaObject *m = o->metaObject();
+            if (m->property(c).isBindable())
+                metaObjectForBindable = m;
+        }
+        if (metaObjectForBindable) {
+            captureBindableProperty(o, metaObjectForBindable, c);
+            return;
+        }
+    }
+
+    captureNonBindableProperty(o, n, c, doNotify);
+}
+
+void QQmlPropertyCapture::captureProperty(
+        QObject *o, const QQmlPropertyCache *propertyCache, const QQmlPropertyData *propertyData,
+        bool doNotify)
+{
+    if (watcher->wasDeleted())
+        return;
+
+    Q_ASSERT(expression);
+
+    if (propertyData->isBindable()) {
+        if (const QMetaObject *metaObjectForBindable = propertyCache->metaObject()) {
+            captureBindableProperty(o, metaObjectForBindable, propertyData->coreIndex());
+            return;
+        }
+    }
+
+    captureNonBindableProperty(o, propertyData->notifyIndex(), propertyData->coreIndex(), doNotify);
+}
+
+bool QQmlJavaScriptExpression::needsPropertyChangeTrigger(QObject *target, int propertyIndex)
+{
+    TriggerList **prev = &qpropertyChangeTriggers;
+    TriggerList *current = qpropertyChangeTriggers;
+    while (current) {
+        if (!current->target) {
+            *prev = current->next;
+            QRecyclePool<TriggerList>::Delete(current);
+            current = *prev;
+        } else if (current->target == target && current->propertyIndex == propertyIndex) {
+            return false; // already installed
+        } else {
+            prev = &current->next;
+            current = current->next;
+        }
+    }
+
+    return true;
+}
+
+void QQmlPropertyCapture::captureTranslation()
+{
+    // use a unique invalid index to avoid needlessly querying the metaobject for
+    // the correct index of of the  translationLanguage property
+    int const invalidIndex = -2;
+    if (expression->needsPropertyChangeTrigger(engine, invalidIndex)) {
+        auto trigger = expression->allocatePropertyChangeTrigger(engine, invalidIndex);
+        trigger->setSource(QQmlEnginePrivate::get(engine)->translationLanguage);
+    }
+}
+
+void QQmlPropertyCapture::captureBindableProperty(
+        QObject *o, const QMetaObject *metaObjectForBindable, int c)
+{
+    // if the property is a QPropery, and we're binding to a QProperty
+    // the automatic capturing process already takes care of everything
+    if (!expression->mustCaptureBindableProperty())
+        return;
+
+    if (expression->needsPropertyChangeTrigger(o, c)) {
+        auto trigger = expression->allocatePropertyChangeTrigger(o, c);
+        QUntypedBindable bindable;
+        void *argv[] = { &bindable };
+        metaObjectForBindable->metacall(o, QMetaObject::BindableProperty, c, argv);
+        bindable.observe(trigger);
+    }
+}
+
+void QQmlPropertyCapture::captureNonBindableProperty(QObject *o, int n, int c, bool doNotify)
+{
     if (n == -1) {
         if (!errorString) {
             errorString = new QStringList;
@@ -291,11 +409,9 @@ void QQmlPropertyCapture::captureProperty(QObject *o, int c, int n, bool doNotif
             errorString->append(preamble);
         }
 
-        const QMetaObject *metaObj = o->metaObject();
-        QMetaProperty metaProp = metaObj->property(c);
-
+        const QMetaProperty metaProp = o->metaObject()->property(c);
         QString error = QLatin1String("    ") +
-                QString::fromUtf8(metaObj->className()) +
+                QString::fromUtf8(o->metaObject()->className()) +
                 QLatin1String("::") +
                 QString::fromUtf8(metaProp.name());
         errorString->append(error);
@@ -337,10 +453,11 @@ QQmlDelayedError *QQmlJavaScriptExpression::delayedError()
 }
 
 QV4::ReturnedValue
-QQmlJavaScriptExpression::evalFunction(QQmlContextData *ctxt, QObject *scopeObject,
-                                       const QString &code, const QString &filename, quint16 line)
+QQmlJavaScriptExpression::evalFunction(
+        const QQmlRefPointer<QQmlContextData> &ctxt, QObject *scopeObject,
+        const QString &code, const QString &filename, quint16 line)
 {
-    QQmlEngine *engine = ctxt->engine;
+    QQmlEngine *engine = ctxt->engine();
     QQmlEnginePrivate *ep = QQmlEnginePrivate::get(engine);
 
     QV4::ExecutionEngine *v4 = engine->handle();
@@ -367,10 +484,11 @@ QQmlJavaScriptExpression::evalFunction(QQmlContextData *ctxt, QObject *scopeObje
     return result->asReturnedValue();
 }
 
-void QQmlJavaScriptExpression::createQmlBinding(QQmlContextData *ctxt, QObject *qmlScope,
-                                          const QString &code, const QString &filename, quint16 line)
+void QQmlJavaScriptExpression::createQmlBinding(
+        const QQmlRefPointer<QQmlContextData> &ctxt, QObject *qmlScope, const QString &code,
+        const QString &filename, quint16 line)
 {
-    QQmlEngine *engine = ctxt->engine;
+    QQmlEngine *engine = ctxt->engine();
     QQmlEnginePrivate *ep = QQmlEnginePrivate::get(engine);
 
     QV4::ExecutionEngine *v4 = engine->handle();
@@ -396,12 +514,38 @@ void QQmlJavaScriptExpression::setupFunction(QV4::ExecutionContext *qmlContext, 
         return;
     m_qmlScope.set(qmlContext->engine(), *qmlContext);
     m_v4Function = f;
-    setCompilationUnit(m_v4Function->executableCompilationUnit());
+    m_compilationUnit.reset(m_v4Function->executableCompilationUnit());
 }
 
 void QQmlJavaScriptExpression::setCompilationUnit(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit)
 {
     m_compilationUnit = compilationUnit;
+}
+
+void QPropertyChangeTrigger::trigger(QPropertyObserver *observer, QUntypedPropertyData *) {
+    auto This = static_cast<QPropertyChangeTrigger *>(observer);
+    This->m_expression->expressionChanged();
+}
+
+QMetaProperty QPropertyChangeTrigger::property() const
+{
+    if (!target)
+        return {};
+    auto const mo = target->metaObject();
+    if (!mo)
+        return {};
+    return mo->property(propertyIndex);
+}
+
+QPropertyChangeTrigger *QQmlJavaScriptExpression::allocatePropertyChangeTrigger(QObject *target, int propertyIndex)
+{
+    auto trigger = QQmlEnginePrivate::get(engine())->qPropertyTriggerPool.New( this );
+    trigger->target = target;
+    trigger->propertyIndex = propertyIndex;
+    auto oldHead = qpropertyChangeTriggers;
+    trigger->next = oldHead;
+    qpropertyChangeTriggers = trigger;
+    return trigger;
 }
 
 void QQmlJavaScriptExpression::clearActiveGuards()

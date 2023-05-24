@@ -1,0 +1,14 @@
+# QTBUG-102712
+[loadEmptyPageViewVisible]
+android
+[loadEmptyPageViewHidden]
+android
+[loadNonexistentFileUrl]
+android
+[backAndForward]
+android
+[titleUpdate]
+android
+#QTBUG-108752
+[settings_JS]
+android

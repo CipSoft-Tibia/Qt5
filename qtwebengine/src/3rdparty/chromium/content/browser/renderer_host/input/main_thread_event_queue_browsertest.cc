@@ -1,13 +1,13 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <tuple>
 #include <utility>
 
 #include "base/auto_reset.h"
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -16,7 +16,6 @@
 #include "content/browser/renderer_host/render_widget_host_input_event_router.h"
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/browser/web_contents/web_contents_impl.h"
-#include "content/common/input_messages.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/common/content_switches.h"
@@ -76,11 +75,20 @@ namespace content {
 class MainThreadEventQueueBrowserTest : public ContentBrowserTest {
  public:
   MainThreadEventQueueBrowserTest() {}
+
+  MainThreadEventQueueBrowserTest(const MainThreadEventQueueBrowserTest&) =
+      delete;
+  MainThreadEventQueueBrowserTest& operator=(
+      const MainThreadEventQueueBrowserTest&) = delete;
+
   ~MainThreadEventQueueBrowserTest() override {}
 
   RenderWidgetHostImpl* GetWidgetHost() {
-    return RenderWidgetHostImpl::From(
-        shell()->web_contents()->GetRenderViewHost()->GetWidget());
+    return RenderWidgetHostImpl::From(shell()
+                                          ->web_contents()
+                                          ->GetPrimaryMainFrame()
+                                          ->GetRenderViewHost()
+                                          ->GetWidget());
   }
 
   void OnSyntheticGestureCompleted(SyntheticGesture::Result result) {
@@ -95,19 +103,16 @@ class MainThreadEventQueueBrowserTest : public ContentBrowserTest {
     RenderWidgetHostImpl* host = GetWidgetHost();
     host->GetView()->SetSize(gfx::Size(400, 400));
 
-    base::string16 ready_title(base::ASCIIToUTF16("ready"));
+    std::u16string ready_title(u"ready");
     TitleWatcher watcher(shell()->web_contents(), ready_title);
-    ignore_result(watcher.WaitAndGetTitle());
+    std::ignore = watcher.WaitAndGetTitle();
 
     HitTestRegionObserver observer(host->GetFrameSinkId());
     observer.WaitForHitTestData();
   }
 
   int ExecuteScriptAndExtractInt(const std::string& script) {
-    int value = 0;
-    EXPECT_TRUE(content::ExecuteScriptAndExtractInt(
-        shell(), "domAutomationController.send(" + script + ")", &value));
-    return value;
+    return EvalJs(shell(), script).ExtractInt();
   }
 
   void DoMouseMove() {
@@ -189,13 +194,10 @@ class MainThreadEventQueueBrowserTest : public ContentBrowserTest {
     EXPECT_EQ(35, last_touch_x);
     EXPECT_EQ(40, last_touch_y);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MainThreadEventQueueBrowserTest);
 };
 
 // Disabled due to flaky test results: crbug.com/805666.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define MAYBE_MouseMove DISABLED_MouseMove
 #else
 #define MAYBE_MouseMove MouseMove
@@ -206,7 +208,7 @@ IN_PROC_BROWSER_TEST_F(MainThreadEventQueueBrowserTest, MAYBE_MouseMove) {
 }
 
 // Disabled on MacOS because it doesn't support touch input.
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #define MAYBE_TouchMove DISABLED_TouchMove
 #else
 #define MAYBE_TouchMove TouchMove

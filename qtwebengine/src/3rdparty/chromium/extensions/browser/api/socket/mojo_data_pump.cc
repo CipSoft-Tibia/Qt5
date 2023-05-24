@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/io_buffer.h"
@@ -36,7 +36,7 @@ MojoDataPump::MojoDataPump(mojo::ScopedDataPipeConsumerHandle receive_stream,
       base::BindRepeating(&MojoDataPump::SendMore, base::Unretained(this)));
 }
 
-MojoDataPump::~MojoDataPump() {}
+MojoDataPump::~MojoDataPump() = default;
 
 void MojoDataPump::Read(int count, ReadCallback callback) {
   DCHECK(callback);

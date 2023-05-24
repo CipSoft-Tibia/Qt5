@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
@@ -37,7 +37,7 @@ constexpr std::array<uint8_t, kAaguidLength> kTestDeviceAaguid = {
 using TestMakeCredentialTaskCallback =
     ::device::test::StatusAndValueCallbackReceiver<
         CtapDeviceResponseCode,
-        base::Optional<AuthenticatorMakeCredentialResponse>>;
+        absl::optional<AuthenticatorMakeCredentialResponse>>;
 
 class FidoMakeCredentialTaskTest : public testing::Test {
  public:
@@ -54,7 +54,7 @@ class FidoMakeCredentialTaskTest : public testing::Test {
             test_data::kClientDataJson, std::move(rp), std::move(user),
             PublicKeyCredentialParams(
                 std::vector<PublicKeyCredentialParams::CredentialInfo>(1))),
-        callback_receiver_.callback());
+        MakeCredentialOptions(), callback_receiver_.callback());
   }
 
   TestMakeCredentialTaskCallback& make_credential_callback_receiver() {
@@ -95,9 +95,10 @@ TEST_F(FidoMakeCredentialTaskTest, TestRegisterSuccessWithFake) {
 
   // We don't verify the response from the fake, but do a quick sanity check.
   ASSERT_TRUE(make_credential_callback_receiver().value());
-  EXPECT_EQ(
-      32u,
-      make_credential_callback_receiver().value()->raw_credential_id().size());
+  EXPECT_EQ(32u, make_credential_callback_receiver()
+                     .value()
+                     ->attestation_object.GetCredentialId()
+                     .size());
 }
 
 TEST_F(FidoMakeCredentialTaskTest, FallbackToU2fRegisterSuccess) {
@@ -148,7 +149,7 @@ TEST_F(FidoMakeCredentialTaskTest, EnforceClientPinWhenUserVerificationSet) {
 
   auto device = MockFidoDevice::MakeCtap(std::move(device_info));
   device->ExpectCtap2CommandAndRespondWith(
-      CtapRequestCommand::kAuthenticatorMakeCredential, base::nullopt);
+      CtapRequestCommand::kAuthenticatorMakeCredential, absl::nullopt);
 
   PublicKeyCredentialRpEntity rp(test_data::kRelyingPartyId);
   PublicKeyCredentialUserEntity user(
@@ -159,39 +160,13 @@ TEST_F(FidoMakeCredentialTaskTest, EnforceClientPinWhenUserVerificationSet) {
           std::vector<PublicKeyCredentialParams::CredentialInfo>(1)));
   request.user_verification = UserVerificationRequirement::kRequired;
   const auto task = std::make_unique<MakeCredentialTask>(
-      device.get(), std::move(request), callback_receiver_.callback());
+      device.get(), std::move(request), MakeCredentialOptions(),
+      callback_receiver_.callback());
 
   make_credential_callback_receiver().WaitForCallback();
   EXPECT_EQ(CtapDeviceResponseCode::kCtap2ErrOther,
             make_credential_callback_receiver().status());
   EXPECT_FALSE(make_credential_callback_receiver().value());
-}
-
-TEST_F(FidoMakeCredentialTaskTest, TestU2fOnly) {
-  // Regardless of the device's supported protocol, it should receive a U2F
-  // request, because the task is instantiated in U2F-only mode.
-  auto device = MockFidoDevice::MakeCtap();
-
-  device->ExpectWinkedAtLeastOnce();
-  device->ExpectRequestAndRespondWith(
-      test_data::kU2fRegisterCommandApdu,
-      test_data::kApduEncodedNoErrorRegisterResponse);
-
-  PublicKeyCredentialRpEntity rp(test_data::kRelyingPartyId);
-  PublicKeyCredentialUserEntity user(
-      fido_parsing_utils::Materialize(test_data::kUserId));
-  auto request = CtapMakeCredentialRequest(
-      test_data::kClientDataJson, std::move(rp), std::move(user),
-      PublicKeyCredentialParams(
-          std::vector<PublicKeyCredentialParams::CredentialInfo>(1)));
-  request.is_u2f_only = true;
-  const auto task = std::make_unique<MakeCredentialTask>(
-      device.get(), std::move(request), callback_receiver_.callback());
-  make_credential_callback_receiver().WaitForCallback();
-
-  EXPECT_EQ(CtapDeviceResponseCode::kSuccess,
-            make_credential_callback_receiver().status());
-  EXPECT_TRUE(make_credential_callback_receiver().value());
 }
 
 }  // namespace

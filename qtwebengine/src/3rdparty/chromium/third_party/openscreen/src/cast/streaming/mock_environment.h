@@ -21,7 +21,7 @@ class MockEnvironment : public Environment {
   MOCK_METHOD(IPEndpoint, GetBoundLocalEndpoint, (), (const, override));
 
   // Used for intercepting packet sends from the implementation under test.
-  MOCK_METHOD(void, SendPacket, (absl::Span<const uint8_t> packet), (override));
+  MOCK_METHOD(void, SendPacket, (ByteView packet), (override));
 };
 
 }  // namespace cast

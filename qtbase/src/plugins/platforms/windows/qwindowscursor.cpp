@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef  QT_NO_CURSOR
 #include "qwindowscursor.h"
@@ -50,6 +14,7 @@
 #include <QtGui/qscreen.h>
 #include <QtGui/private/qguiapplication_p.h> // getPixmapCursor()
 #include <QtGui/private/qhighdpiscaling_p.h>
+#include <QtGui/private/qpixmap_win_p.h>
 #include <QtCore/private/qwinregistry_p.h>
 
 #include <QtCore/qdebug.h>
@@ -65,9 +30,6 @@ static bool initResources()
 
 QT_BEGIN_NAMESPACE
 
-Q_GUI_EXPORT HBITMAP qt_pixmapToWinHBITMAP(const QPixmap &p, int hbitmapFormat = 0);
-Q_GUI_EXPORT HBITMAP qt_createIconMask(const QBitmap &bitmap);
-
 /*!
     \class QWindowsCursorCacheKey
     \brief Cache key for storing values in a QHash with a QCursor as key.
@@ -79,10 +41,10 @@ QWindowsPixmapCursorCacheKey::QWindowsPixmapCursorCacheKey(const QCursor &c)
     : bitmapCacheKey(c.pixmap().cacheKey()), maskCacheKey(0)
 {
     if (!bitmapCacheKey) {
-        Q_ASSERT(!c.bitmap(Qt::ReturnByValue).isNull());
-        Q_ASSERT(!c.mask(Qt::ReturnByValue).isNull());
-        bitmapCacheKey = c.bitmap(Qt::ReturnByValue).cacheKey();
-        maskCacheKey = c.mask(Qt::ReturnByValue).cacheKey();
+        Q_ASSERT(!c.bitmap().isNull());
+        Q_ASSERT(!c.mask().isNull());
+        bitmapCacheKey = c.bitmap().cacheKey();
+        maskCacheKey = c.mask().cacheKey();
     }
 }
 
@@ -102,7 +64,7 @@ QWindowsPixmapCursorCacheKey::QWindowsPixmapCursorCacheKey(const QCursor &c)
 HCURSOR QWindowsCursor::createPixmapCursor(QPixmap pixmap, const QPoint &hotSpot, qreal scaleFactor)
 {
     HCURSOR cur = nullptr;
-    const qreal pixmapScaleFactor = scaleFactor / pixmap.devicePixelRatioF();
+    const qreal pixmapScaleFactor = scaleFactor / pixmap.devicePixelRatio();
     if (!qFuzzyCompare(pixmapScaleFactor, 1)) {
         pixmap = pixmap.scaled((pixmapScaleFactor * QSizeF(pixmap.size())).toSize(),
                                Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -141,14 +103,16 @@ static HCURSOR createBitmapCursor(const QImage &bbits, const QImage &mbits,
         hotSpot.setX(width / 2);
     if (hotSpot.y() < 0)
         hotSpot.setY(height / 2);
-    const int n = qMax(1, width / 8);
-    QScopedArrayPointer<uchar> xBits(new uchar[height * n]);
-    QScopedArrayPointer<uchar> xMask(new uchar[height * n]);
+    // a ddb is word aligned, QImage depends on bow it was created
+    const auto bplDdb = qMax(1, ((width + 15) >> 4) << 1);
+    const auto bplImg = int(bbits.bytesPerLine());
+    QScopedArrayPointer<uchar> xBits(new uchar[height * bplDdb]);
+    QScopedArrayPointer<uchar> xMask(new uchar[height * bplDdb]);
     int x = 0;
     for (int i = 0; i < height; ++i) {
         const uchar *bits = bbits.constScanLine(i);
         const uchar *mask = mbits.constScanLine(i);
-        for (int j = 0; j < n; ++j) {
+        for (int j = 0; j < bplImg && j < bplDdb; ++j) {
             uchar b = bits[j];
             uchar m = mask[j];
             if (invb)
@@ -159,6 +123,11 @@ static HCURSOR createBitmapCursor(const QImage &bbits, const QImage &mbits,
             xMask[x] = b ^ m;
             ++x;
         }
+        for (int i = bplImg; i < bplDdb; ++i) {
+            xBits[x] = 0;
+            xMask[x] = 0;
+            ++x;
+        }
     }
     return CreateCursor(GetModuleHandle(nullptr), hotSpot.x(), hotSpot.y(), width, height,
                         xBits.data(), xMask.data());
@@ -167,10 +136,10 @@ static HCURSOR createBitmapCursor(const QImage &bbits, const QImage &mbits,
 // Create a cursor from image and mask of the format QImage::Format_Mono.
 static HCURSOR createBitmapCursor(const QCursor &cursor, qreal scaleFactor = 1)
 {
-    Q_ASSERT(cursor.shape() == Qt::BitmapCursor && !cursor.bitmap(Qt::ReturnByValue).isNull());
-    QImage bbits = cursor.bitmap(Qt::ReturnByValue).toImage();
-    QImage mbits = cursor.mask(Qt::ReturnByValue).toImage();
-    scaleFactor /= bbits.devicePixelRatioF();
+    Q_ASSERT(cursor.shape() == Qt::BitmapCursor && !cursor.bitmap().isNull());
+    QImage bbits = cursor.bitmap().toImage();
+    QImage mbits = cursor.mask().toImage();
+    scaleFactor /= bbits.devicePixelRatio();
     if (!qFuzzyCompare(scaleFactor, 1)) {
         const QSize scaledSize = (QSizeF(bbits.size()) * scaleFactor).toSize();
         bbits = bbits.scaled(scaledSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -588,7 +557,7 @@ QWindowsCursor::QWindowsCursor(const QPlatformScreen *screen)
     : m_screen(screen)
 {
     static const bool dummy = initResources();
-    Q_UNUSED(dummy)
+    Q_UNUSED(dummy);
 }
 
 inline CursorHandlePtr QWindowsCursor::cursorHandle(const QCursor &cursor)

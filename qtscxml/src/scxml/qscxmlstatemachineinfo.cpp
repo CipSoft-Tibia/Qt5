@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qscxmlstatemachineinfo_p.h"
 #include "qscxmlstatemachine_p.h"
@@ -71,22 +35,22 @@ QScxmlStateMachine *QScxmlStateMachineInfo::stateMachine() const
     return d->stateMachine();
 }
 
-QVector<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::allStates() const
+QList<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::allStates() const
 {
     Q_D(const QScxmlStateMachineInfo);
 
-    QVector<QScxmlStateMachineInfo::StateId> all;
+    QList<QScxmlStateMachineInfo::StateId> all;
     for (int i = 0, ei = d->stateTable()->stateCount; i < ei; ++i) {
         all.append(i);
     }
     return all;
 }
 
-QVector<QScxmlStateMachineInfo::TransitionId> QScxmlStateMachineInfo::allTransitions() const
+QList<QScxmlStateMachineInfo::TransitionId> QScxmlStateMachineInfo::allTransitions() const
 {
     Q_D(const QScxmlStateMachineInfo);
 
-    QVector<QScxmlStateMachineInfo::TransitionId> all;
+    QList<QScxmlStateMachineInfo::TransitionId> all;
     for (int i = 0, ei = d->stateTable()->transitionCount; i < ei; ++i) {
         all.append(i);
     }
@@ -136,7 +100,7 @@ QScxmlStateMachineInfo::StateType QScxmlStateMachineInfo::stateType(StateId stat
     }
 }
 
-QVector<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::stateChildren(StateId stateId) const
+QList<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::stateChildren(StateId stateId) const
 {
     Q_D(const QScxmlStateMachineInfo);
 
@@ -146,7 +110,7 @@ QVector<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::stateChildren(S
     if (stateId >= 0 && stateId < d->stateTable()->stateCount)
         childStates = d->stateTable()->state(stateId).childStates;
 
-    QVector<QScxmlStateMachineInfo::StateId> all;
+    QList<QScxmlStateMachineInfo::StateId> all;
     if (childStates == QScxmlExecutableContent::StateTable::InvalidIndex)
         return all;
 
@@ -199,11 +163,11 @@ QScxmlStateMachineInfo::StateId QScxmlStateMachineInfo::transitionSource(Transit
     return transition.source;
 }
 
-QVector<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::transitionTargets(TransitionId transitionId) const
+QList<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::transitionTargets(TransitionId transitionId) const
 {
     Q_D(const QScxmlStateMachineInfo);
 
-    QVector<QScxmlStateMachineInfo::StateId> targets;
+    QList<QScxmlStateMachineInfo::StateId> targets;
     if (transitionId < 0 || transitionId >= d->stateTable()->transitionCount)
         return targets;
 
@@ -218,11 +182,11 @@ QVector<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::transitionTarge
     return targets;
 }
 
-QVector<QString> QScxmlStateMachineInfo::transitionEvents(TransitionId transitionId) const
+QList<QString> QScxmlStateMachineInfo::transitionEvents(TransitionId transitionId) const
 {
     Q_D(const QScxmlStateMachineInfo);
 
-    QVector<QString> events;
+    QList<QString> events;
     if (transitionId < 0 || transitionId >= d->stateTable()->transitionCount)
         return events;
 
@@ -239,11 +203,11 @@ QVector<QString> QScxmlStateMachineInfo::transitionEvents(TransitionId transitio
     return events;
 }
 
-QVector<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::configuration() const
+QList<QScxmlStateMachineInfo::StateId> QScxmlStateMachineInfo::configuration() const
 {
     Q_D(const QScxmlStateMachineInfo);
     const auto &list = d->stateMachinePrivate()->configuration().list();
-    return QVector<StateId>(list.cbegin(), list.cend());
+    return QList<StateId>(list.cbegin(), list.cend());
 }
 
 QT_END_NAMESPACE

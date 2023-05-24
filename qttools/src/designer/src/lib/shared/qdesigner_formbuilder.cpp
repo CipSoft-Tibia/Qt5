@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_formbuilder_p.h"
 #include "dynamicpropertysheet.h"
@@ -68,6 +43,8 @@
 #include <QtCore/qcoreapplication.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -123,11 +100,11 @@ QWidget *QDesignerFormBuilder::createWidget(const QString &widgetName, QWidget *
 {
     QWidget *widget = nullptr;
 
-    if (widgetName == QStringLiteral("QToolBar")) {
+    if (widgetName == "QToolBar"_L1) {
         widget = new QToolBar(parentWidget);
-    } else if (widgetName == QStringLiteral("QMenu")) {
+    } else if (widgetName == "QMenu"_L1) {
         widget = new QMenu(parentWidget);
-    } else if (widgetName == QStringLiteral("QMenuBar")) {
+    } else if (widgetName == "QMenuBar"_L1) {
         widget = new QMenuBar(parentWidget);
     } else {
         widget = core()->widgetFactory()->createWidget(widgetName, parentWidget);
@@ -231,7 +208,7 @@ void QDesignerFormBuilder::applyProperties(QObject *o, const QList<DomProperty*>
 
     const QDesignerPropertySheetExtension *sheet = qt_extension<QDesignerPropertySheetExtension*>(core()->extensionManager(), o);
     const QDesignerDynamicPropertySheetExtension *dynamicSheet = qt_extension<QDesignerDynamicPropertySheetExtension*>(core()->extensionManager(), o);
-    const bool changingMetaObject = WidgetFactory::classNameOf(core(), o) == QStringLiteral("QAxWidget");
+    const bool changingMetaObject = WidgetFactory::classNameOf(core(), o) == "QAxWidget"_L1;
     const QDesignerMetaObjectInterface *meta = core()->introspection()->metaObject(o);
     const bool dynamicPropertiesAllowed = dynamicSheet && dynamicSheet->dynamicPropertiesAllowed();
 
@@ -267,7 +244,7 @@ void QDesignerFormBuilder::applyProperties(QObject *o, const QList<DomProperty*>
 
         QObject *obj = o;
         QAbstractScrollArea *scroll = qobject_cast<QAbstractScrollArea *>(o);
-        if (scroll && attributeName == QStringLiteral("cursor") && scroll->viewport())
+        if (scroll && attributeName == "cursor"_L1 && scroll->viewport())
             obj = scroll->viewport();
 
         // a real property
@@ -346,12 +323,8 @@ QWidget *QDesignerFormBuilder::createPreview(const QDesignerFormWindowInterface 
     }
     // Fake application style sheet by prepending. (If this doesn't work, fake by nesting
     // into parent widget).
-    if (!appStyleSheet.isEmpty()) {
-        QString styleSheet = appStyleSheet;
-        styleSheet += QLatin1Char('\n');
-        styleSheet +=  widget->styleSheet();
-        widget->setStyleSheet(styleSheet);
-    }
+    if (!appStyleSheet.isEmpty())
+        widget->setStyleSheet(appStyleSheet + u'\n' + widget->styleSheet());
     return widget;
 }
 

@@ -92,8 +92,9 @@ enum WebTextInputFlags {
   // Whether an input field is or has ever been a password. For such an input
   // type we don't want autocomplete or a keyboard to memorize the content.
   kWebTextInputFlagHasBeenPasswordField = 1 << 12,
+  kWebTextInputFlagVertical = 1 << 13,
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_TEXT_INPUT_TYPE_H_

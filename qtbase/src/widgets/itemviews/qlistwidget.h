@@ -1,50 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLISTWIDGET_H
 #define QLISTWIDGET_H
 
-#include <QtWidgets/qtwidgetsglobal.h>
 #include <QtWidgets/qlistview.h>
-#include <QtCore/qvariant.h>
-#include <QtCore/qvector.h>
+#include <QtWidgets/qtwidgetsglobal.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qitemselectionmodel.h>
+#include <QtCore/qvariant.h>
 
 QT_REQUIRE_CONFIG(listwidget);
 
@@ -93,7 +57,7 @@ public:
         { return data(Qt::StatusTipRole).toString(); }
     inline void setStatusTip(const QString &statusTip);
 
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     inline QString toolTip() const
         { return data(Qt::ToolTipRole).toString(); }
     inline void setToolTip(const QString &toolTip);
@@ -109,34 +73,27 @@ public:
         { return qvariant_cast<QFont>(data(Qt::FontRole)); }
     inline void setFont(const QFont &font);
 
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
     inline int textAlignment() const
         { return data(Qt::TextAlignmentRole).toInt(); }
+#else
+    inline Qt::Alignment textAlignment() const
+    { return qvariant_cast<Qt::Alignment>(data(Qt::TextAlignmentRole)); }
+#endif
+#if QT_DEPRECATED_SINCE(6, 4)
+    QT_DEPRECATED_VERSION_X_6_4("Use the overload taking Qt::Alignment")
     inline void setTextAlignment(int alignment)
         { setData(Qt::TextAlignmentRole, alignment); }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X ("Use QListWidgetItem::background() instead")
-    inline QColor backgroundColor() const
-        { return qvariant_cast<QColor>(data(Qt::BackgroundRole)); }
+    inline void setTextAlignment(Qt::AlignmentFlag alignment)
+        { setData(Qt::TextAlignmentRole, QVariant::fromValue(Qt::Alignment(alignment))); }
 #endif
-    // no QT_DEPRECATED_SINCE because it is a virtual function
-    QT_DEPRECATED_X ("Use QListWidgetItem::setBackground() instead")
-    virtual void setBackgroundColor(const QColor &color)
-        { setData(Qt::BackgroundRole, color); }
+    inline void setTextAlignment(Qt::Alignment alignment)
+        { setData(Qt::TextAlignmentRole, QVariant::fromValue(alignment)); }
 
     inline QBrush background() const
         { return qvariant_cast<QBrush>(data(Qt::BackgroundRole)); }
     inline void setBackground(const QBrush &brush)
         { setData(Qt::BackgroundRole, brush.style() != Qt::NoBrush ? QVariant(brush) : QVariant()); }
-
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X ("Use QListWidgetItem::foreground() instead")
-    inline QColor textColor() const
-        { return qvariant_cast<QColor>(data(Qt::ForegroundRole)); }
-    QT_DEPRECATED_X ("Use QListWidgetItem::setForeground() instead")
-    inline void setTextColor(const QColor &color)
-        { setData(Qt::ForegroundRole, color); }
-#endif
 
     inline QBrush foreground() const
         { return qvariant_cast<QBrush>(data(Qt::ForegroundRole)); }
@@ -144,7 +101,7 @@ public:
         { setData(Qt::ForegroundRole, brush.style() != Qt::NoBrush ? QVariant(brush) : QVariant()); }
 
     inline Qt::CheckState checkState() const
-        { return static_cast<Qt::CheckState>(data(Qt::CheckStateRole).toInt()); }
+        { return qvariant_cast<Qt::CheckState>(data(Qt::CheckStateRole)); }
     inline void setCheckState(Qt::CheckState state)
         { setData(Qt::CheckStateRole, static_cast<int>(state)); }
 
@@ -169,7 +126,6 @@ public:
 private:
     QListModel *listModel() const;
     int rtti;
-    QVector<void *> dummy;
     QListWidget *view;
     QListWidgetItemPrivate *d;
     Qt::ItemFlags itemFlags;
@@ -184,7 +140,7 @@ inline void QListWidgetItem::setIcon(const QIcon &aicon)
 inline void QListWidgetItem::setStatusTip(const QString &astatusTip)
 { setData(Qt::StatusTipRole, astatusTip); }
 
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
 inline void QListWidgetItem::setToolTip(const QString &atoolTip)
 { setData(Qt::ToolTipRole, atoolTip); }
 #endif
@@ -208,7 +164,8 @@ class Q_WIDGETS_EXPORT QListWidget : public QListView
 {
     Q_OBJECT
     Q_PROPERTY(int count READ count)
-    Q_PROPERTY(int currentRow READ currentRow WRITE setCurrentRow NOTIFY currentRowChanged USER true)
+    Q_PROPERTY(int currentRow READ currentRow WRITE setCurrentRow NOTIFY currentRowChanged
+               USER true)
     Q_PROPERTY(bool sortingEnabled READ isSortingEnabled WRITE setSortingEnabled)
 
     friend class QListWidgetItem;
@@ -256,24 +213,15 @@ public:
     void setItemWidget(QListWidgetItem *item, QWidget *widget);
     inline void removeItemWidget(QListWidgetItem *item);
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X ("Use QListWidgetItem::isSelected() instead")
-    bool isItemSelected(const QListWidgetItem *item) const;
-    QT_DEPRECATED_X ("Use QListWidgetItem::setSelected() instead")
-    void setItemSelected(const QListWidgetItem *item, bool select);
-#endif
     QList<QListWidgetItem*> selectedItems() const;
     QList<QListWidgetItem*> findItems(const QString &text, Qt::MatchFlags flags) const;
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X ("Use QListWidgetItem::isHidden() instead")
-    bool isItemHidden(const QListWidgetItem *item) const;
-    QT_DEPRECATED_X ("Use QListWidgetItem::setHidden() instead")
-    void setItemHidden(const QListWidgetItem *item, bool hide);
-#endif
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QList<QListWidgetItem*> items(const QMimeData *data) const;
+
+    QModelIndex indexFromItem(const QListWidgetItem *item) const;
+    QListWidgetItem *itemFromIndex(const QModelIndex &index) const;
+
 protected:
-#endif
 #if QT_CONFIG(draganddrop)
     void dropEvent(QDropEvent *event) override;
 #endif
@@ -287,7 +235,6 @@ Q_SIGNALS:
     void itemDoubleClicked(QListWidgetItem *item);
     void itemActivated(QListWidgetItem *item);
     void itemEntered(QListWidgetItem *item);
-    // ### Qt 6: add changed roles
     void itemChanged(QListWidgetItem *item);
 
     void currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous);
@@ -299,28 +246,11 @@ Q_SIGNALS:
 protected:
     bool event(QEvent *e) override;
     virtual QStringList mimeTypes() const;
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     virtual QMimeData *mimeData(const QList<QListWidgetItem *> &items) const;
-#else
-    virtual QMimeData *mimeData(const QList<QListWidgetItem*> items) const;
-#endif
 #if QT_CONFIG(draganddrop)
     virtual bool dropMimeData(int index, const QMimeData *data, Qt::DropAction action);
     virtual Qt::DropActions supportedDropActions() const;
 #endif
-
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-public:
-#else
-protected:
-#endif
-    QList<QListWidgetItem*> items(const QMimeData *data) const;
-
-    QModelIndex indexFromItem(const QListWidgetItem *item) const;
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    QModelIndex indexFromItem(QListWidgetItem *item) const; // ### Qt 6: remove
-#endif
-    QListWidgetItem *itemFromIndex(const QModelIndex &index) const;
 
 private:
     void setModel(QAbstractItemModel *model) override;

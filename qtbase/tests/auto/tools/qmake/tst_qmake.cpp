@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include "testcompiler.h"
 
@@ -36,14 +11,8 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
-
-#if defined(DEBUG_BUILD)
-#  define DIR_INFIX "debug/"
-#elif defined(RELEASE_BUILD)
-#  define DIR_INFIX "release/"
-#else
-#  define DIR_INFIX ""
-#endif
+#include <QLibraryInfo>
+#include <QProcessEnvironment>
 
 class tst_qmake : public QObject
 {
@@ -125,8 +94,17 @@ static void copyDir(const QString &sourceDirPath, const QString &targetDirPath)
 void tst_qmake::initTestCase()
 {
     QVERIFY2(tempWorkDir.isValid(), qPrintable(tempWorkDir.errorString()));
-    QString binpath = QLibraryInfo::location(QLibraryInfo::BinariesPath);
+    QString binpath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
     QString cmd = QString("%1/qmake").arg(binpath);
+
+    // If Qt is cross-compiled with CMake, we might also cross-compile qmake for the device.
+    // In this case we don't want to use the cross-compiled qmake, but rather the host qmake
+    // shell wrapper (if it's available).
+    const QString hostQmake = QString("%1/host-qmake").arg(binpath);
+    if (QFile::exists(hostQmake)) {
+        cmd = hostQmake;
+    }
+
 #ifdef Q_CC_MSVC
     const QString jom = QStandardPaths::findExecutable(QLatin1String("jom.exe"));
     if (jom.isEmpty()) {
@@ -146,7 +124,7 @@ void tst_qmake::initTestCase()
     QString testDataPath = QFINDTESTDATA(subProgram);
     if (!testDataPath.endsWith(subProgram))
         QFAIL("Cannot find test data directory.");
-    testDataPath.chop(subProgram.length() - testDataSubDir.length());
+    testDataPath.chop(subProgram.size() - testDataSubDir.size());
 
     QString userWorkDir = qgetenv("TST_QMAKE_BUILD_DIR");
     if (userWorkDir.isEmpty()) {
@@ -318,6 +296,9 @@ void tst_qmake::subdirs()
 
 void tst_qmake::subdir_via_pro_file_extra_target()
 {
+    if (QProcessEnvironment::systemEnvironment().contains(QStringLiteral("QT_TEST_RUNNING_IN_CTEST")))
+        QSKIP("This test does not run properly when invoked from CTest.");
+
     QString workDir = base_path + "/testdata/subdir_via_pro_file_extra_target";
 
     QDir D;
@@ -661,7 +642,7 @@ void tst_qmake::qinstall()
 
     // install an executable file
     {
-        const QString mocFilePath = QLibraryInfo::location(QLibraryInfo::BinariesPath)
+        const QString mocFilePath = QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath)
                 + "/moc"
 #ifdef Q_OS_WIN
                 + ".exe"
@@ -722,7 +703,7 @@ void tst_qmake::resources()
     QVERIFY(test_compiler.qmake(workDir, "resources"));
 
     {
-        QFile qrcFile(workDir + '/' + DIR_INFIX "qmake_pro_file.qrc");
+        QFile qrcFile(workDir + '/' + "qmake_pro_file.qrc");
         QVERIFY2(qrcFile.exists(), qPrintable(qrcFile.fileName()));
         QVERIFY(qrcFile.open(QFile::ReadOnly));
         QByteArray qrcXml = qrcFile.readAll();
@@ -731,7 +712,7 @@ void tst_qmake::resources()
     }
 
     {
-        QFile qrcFile(workDir + '/' + DIR_INFIX "qmake_subdir.qrc");
+        QFile qrcFile(workDir + '/' + "qmake_subdir.qrc");
         QVERIFY(qrcFile.exists());
         QVERIFY(qrcFile.open(QFile::ReadOnly));
         QByteArray qrcXml = qrcFile.readAll();
@@ -739,7 +720,7 @@ void tst_qmake::resources()
     }
 
     {
-        QFile qrcFile(workDir + '/' + DIR_INFIX "qmake_qmake_immediate.qrc");
+        QFile qrcFile(workDir + '/' + "qmake_qmake_immediate.qrc");
         QVERIFY(qrcFile.exists());
         QVERIFY(qrcFile.open(QFile::ReadOnly));
         QByteArray qrcXml = qrcFile.readAll();

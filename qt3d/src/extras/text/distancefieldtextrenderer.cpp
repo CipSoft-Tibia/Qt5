@@ -1,46 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qgeometry.h>
 #include <Qt3DRender/qmaterial.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qgeometry.h>
 #include <Qt3DRender/qgeometryrenderer.h>
 
 #include <Qt3DExtras/private/qtext2dmaterial_p.h>
@@ -77,33 +41,33 @@ void DistanceFieldTextRendererPrivate::init()
     m_renderer = new Qt3DRender::QGeometryRenderer(q);
     m_renderer->setPrimitiveType(Qt3DRender::QGeometryRenderer::Triangles);
 
-    m_geometry = new Qt3DRender::QGeometry(m_renderer);
+    m_geometry = new Qt3DCore::QGeometry(m_renderer);
     m_renderer->setGeometry(m_geometry);
 
-    m_vertexBuffer = new Qt3DRender::QBuffer(m_geometry);
-    m_indexBuffer = new Qt3DRender::QBuffer(m_geometry);
+    m_vertexBuffer = new Qt3DCore::QBuffer(m_geometry);
+    m_indexBuffer = new Qt3DCore::QBuffer(m_geometry);
 
-    m_positionAttr = new Qt3DRender::QAttribute(m_geometry);
-    m_positionAttr->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
-    m_positionAttr->setVertexBaseType(Qt3DRender::QAttribute::Float);
-    m_positionAttr->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    m_positionAttr = new Qt3DCore::QAttribute(m_geometry);
+    m_positionAttr->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
+    m_positionAttr->setVertexBaseType(Qt3DCore::QAttribute::Float);
+    m_positionAttr->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     m_positionAttr->setVertexSize(3);
     m_positionAttr->setByteStride(5 * sizeof(float));
     m_positionAttr->setByteOffset(0);
     m_positionAttr->setBuffer(m_vertexBuffer);
 
-    m_texCoordAttr = new Qt3DRender::QAttribute(m_geometry);
-    m_texCoordAttr->setName(Qt3DRender::QAttribute::defaultTextureCoordinateAttributeName());
-    m_texCoordAttr->setVertexBaseType(Qt3DRender::QAttribute::Float);
-    m_texCoordAttr->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    m_texCoordAttr = new Qt3DCore::QAttribute(m_geometry);
+    m_texCoordAttr->setName(Qt3DCore::QAttribute::defaultTextureCoordinateAttributeName());
+    m_texCoordAttr->setVertexBaseType(Qt3DCore::QAttribute::Float);
+    m_texCoordAttr->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     m_texCoordAttr->setVertexSize(2);
     m_texCoordAttr->setByteStride(5 * sizeof(float));
     m_texCoordAttr->setByteOffset(3 * sizeof(float));
     m_texCoordAttr->setBuffer(m_vertexBuffer);
 
-    m_indexAttr = new Qt3DRender::QAttribute(m_geometry);
-    m_indexAttr->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
-    m_indexAttr->setVertexBaseType(Qt3DRender::QAttribute::UnsignedShort);
+    m_indexAttr = new Qt3DCore::QAttribute(m_geometry);
+    m_indexAttr->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
+    m_indexAttr->setVertexBaseType(Qt3DCore::QAttribute::UnsignedShort);
     m_indexAttr->setBuffer(m_indexBuffer);
 
     m_geometry->addAttribute(m_positionAttr);
@@ -129,18 +93,18 @@ DistanceFieldTextRenderer::~DistanceFieldTextRenderer()
 }
 
 void DistanceFieldTextRenderer::setGlyphData(Qt3DRender::QAbstractTexture *glyphTexture,
-                                             const QVector<float> &vertexData,
-                                             const QVector<quint16> &indexData)
+                                             const std::vector<float> &vertexData,
+                                             const std::vector<quint16> &indexData)
 {
     Q_D(DistanceFieldTextRenderer);
 
-    const int vertexCount = vertexData.size() / 5;
+    const size_t vertexCount = vertexData.size() / 5;
 
     d->m_vertexBuffer->setData(QByteArray((char*) vertexData.data(), vertexData.size() * sizeof(float)));
     d->m_indexBuffer->setData(QByteArray((char*) indexData.data(), indexData.size() * sizeof(quint16)));
-    d->m_positionAttr->setCount(vertexCount);
-    d->m_texCoordAttr->setCount(vertexCount);
-    d->m_indexAttr->setCount(indexData.size());
+    d->m_positionAttr->setCount(uint(vertexCount));
+    d->m_texCoordAttr->setCount(uint(vertexCount));
+    d->m_indexAttr->setCount(uint(indexData.size()));
 
     d->m_material->setDistanceFieldTexture(glyphTexture);
 }
@@ -154,3 +118,5 @@ void DistanceFieldTextRenderer::setColor(const QColor &color)
 } // namespace Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_distancefieldtextrenderer_p.cpp"

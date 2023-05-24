@@ -27,8 +27,7 @@ namespace perfetto {
 namespace trace_processor {
 
 // Importer module for heap and CPU sampling profile data.
-// TODO(eseckler): Currently handles only StreamingProfilePackets. Also move
-// other profiling data import functionality into this module.
+// TODO(eseckler): consider moving heap profiles here as well.
 class ProfileModule : public ProtoImporterModule {
  public:
   explicit ProfileModule(TraceProcessorContext* context);
@@ -41,11 +40,15 @@ class ProfileModule : public ProtoImporterModule {
       PacketSequenceState* state,
       uint32_t field_id) override;
 
-  void ParsePacket(const protos::pbzero::TracePacket::Decoder& decoder,
-                   const TimestampedTracePiece& ttp,
-                   uint32_t field_id) override;
+  void ParseTracePacketData(const protos::pbzero::TracePacket::Decoder& decoder,
+                            int64_t ts,
+                            const TracePacketData& data,
+                            uint32_t field_id) override;
+
+  void NotifyEndOfFile() override;
 
  private:
+  // chrome stack sampling:
   ModuleResult TokenizeStreamingProfilePacket(
       PacketSequenceState*,
       TraceBlobView* packet,
@@ -54,6 +57,23 @@ class ProfileModule : public ProtoImporterModule {
       int64_t timestamp,
       PacketSequenceStateGeneration*,
       protozero::ConstBytes streaming_profile_packet);
+
+  // perf event profiling:
+  void ParsePerfSample(int64_t ts,
+                       PacketSequenceStateGeneration* sequence_state,
+                       const protos::pbzero::TracePacket::Decoder& decoder);
+
+  // heap profiling:
+  void ParseProfilePacket(int64_t ts,
+                          PacketSequenceStateGeneration*,
+                          uint32_t seq_id,
+                          protozero::ConstBytes);
+  void ParseDeobfuscationMapping(int64_t ts,
+                                 PacketSequenceStateGeneration*,
+                                 uint32_t seq_id,
+                                 protozero::ConstBytes);
+  void ParseModuleSymbols(protozero::ConstBytes);
+  void ParseSmapsPacket(int64_t ts, protozero::ConstBytes);
 
   TraceProcessorContext* context_;
 };

@@ -1,11 +1,12 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/extensions/api/declarative_content/chrome_content_rules_registry.h"
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "chrome/browser/chrome_notification_types.h"
 #include "chrome/browser/extensions/extension_util.h"
 #include "chrome/browser/profiles/profile.h"
@@ -13,8 +14,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_details.h"
-#include "content/public/browser/notification_service.h"
-#include "content/public/browser/notification_source.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/api/declarative/rules_registry_service.h"
 #include "extensions/browser/extension_registry.h"
@@ -40,13 +39,15 @@ class ChromeContentRulesRegistry::EvaluationScope {
   explicit EvaluationScope(ChromeContentRulesRegistry* registry);
   EvaluationScope(ChromeContentRulesRegistry* registry,
                   EvaluationDisposition disposition);
+
+  EvaluationScope(const EvaluationScope&) = delete;
+  EvaluationScope& operator=(const EvaluationScope&) = delete;
+
   ~EvaluationScope();
 
  private:
-  ChromeContentRulesRegistry* const registry_;
+  const raw_ptr<ChromeContentRulesRegistry> registry_;
   const EvaluationDisposition previous_disposition_;
-
-  DISALLOW_COPY_AND_ASSIGN(EvaluationScope);
 };
 
 ChromeContentRulesRegistry::EvaluationScope::EvaluationScope(
@@ -78,29 +79,14 @@ ChromeContentRulesRegistry::EvaluationScope::~EvaluationScope() {
 ChromeContentRulesRegistry::ChromeContentRulesRegistry(
     content::BrowserContext* browser_context,
     RulesCacheDelegate* cache_delegate,
-    const PredicateEvaluatorsFactory& evaluators_factory)
+    PredicateEvaluatorsFactory evaluators_factory)
     : ContentRulesRegistry(browser_context,
                            declarative_content_constants::kOnPageChanged,
                            content::BrowserThread::UI,
                            cache_delegate,
                            RulesRegistryService::kDefaultRulesRegistryID),
-      evaluators_(evaluators_factory.Run(this)),
-      evaluation_disposition_(EVALUATE_REQUESTS) {
-  registrar_.Add(this,
-                 content::NOTIFICATION_WEB_CONTENTS_DESTROYED,
-                 content::NotificationService::AllBrowserContextsAndSources());
-}
-
-void ChromeContentRulesRegistry::Observe(
-    int type,
-    const content::NotificationSource& source,
-    const content::NotificationDetails& details) {
-  DCHECK_EQ(content::NOTIFICATION_WEB_CONTENTS_DESTROYED, type);
-
-  // Note that neither non-tab WebContents nor tabs from other browser
-  // contexts will be in the map.
-  active_rules_.erase(content::Source<content::WebContents>(source).ptr());
-}
+      evaluators_(std::move(evaluators_factory).Run(this)),
+      evaluation_disposition_(EVALUATE_REQUESTS) {}
 
 void ChromeContentRulesRegistry::RequestEvaluation(
     content::WebContents* contents) {
@@ -144,6 +130,23 @@ void ChromeContentRulesRegistry::DidFinishNavigation(
   }
 }
 
+void ChromeContentRulesRegistry::WebContentsDestroyed(
+    content::WebContents* web_contents) {
+  active_rules_.erase(web_contents);
+}
+
+void ChromeContentRulesRegistry::OnWatchedPageChanged(
+    content::WebContents* contents,
+    const std::vector<std::string>& css_selectors) {
+  if (base::Contains(active_rules_, contents)) {
+    EvaluationScope evaluation_scope(this);
+    for (const std::unique_ptr<ContentPredicateEvaluator>& evaluator :
+         evaluators_) {
+      evaluator->OnWatchedPageChanged(contents, css_selectors);
+    }
+  }
+}
+
 ChromeContentRulesRegistry::ContentRule::ContentRule(
     const Extension* extension,
     std::vector<std::unique_ptr<const ContentCondition>> conditions,
@@ -163,19 +166,25 @@ ChromeContentRulesRegistry::CreateRule(
     const api::events::Rule& api_rule,
     std::string* error) {
   std::vector<std::unique_ptr<const ContentCondition>> conditions;
-  for (const std::unique_ptr<base::Value>& value : api_rule.conditions) {
+  for (const base::Value& value : api_rule.conditions) {
     conditions.push_back(
-        CreateContentCondition(extension, predicate_factories, *value, error));
+        CreateContentCondition(extension, predicate_factories, value, error));
     if (!error->empty())
-      return std::unique_ptr<ContentRule>();
+      return nullptr;
   }
 
   std::vector<std::unique_ptr<const ContentAction>> actions;
-  for (const std::unique_ptr<base::Value>& value : api_rule.actions) {
+  for (const base::Value& value : api_rule.actions) {
+    // TODO(crbug.com/1314149): Migrate api_rule to use base::Value::Dict to
+    // avoid conversion.
+    if (!value.is_dict()) {
+      return nullptr;
+    }
+
     actions.push_back(ContentAction::Create(browser_context(), extension,
-                                            *value, error));
+                                            value.GetDict(), error));
     if (!error->empty())
-      return std::unique_ptr<ContentRule>();
+      return nullptr;
   }
 
   // Note: |api_rule| may contain tags, but these are ignored.

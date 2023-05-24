@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,7 +33,6 @@ extern const char kEventConsoleMessage[];
 extern const char kEventContentLoad[];
 extern const char kEventContextMenuShow[];
 extern const char kEventDialog[];
-extern const char kEventDropLink[];
 extern const char kEventExit[];
 extern const char kEventExitFullscreen[];
 extern const char kEventFindReply[];
@@ -115,6 +114,7 @@ extern const char kInternalBaseURLForDataURL[];
 extern const char kInternalCurrentEntryIndex[];
 extern const char kInternalEntryCount[];
 extern const char kInternalProcessId[];
+extern const char kInternalVisibleUrl[];
 
 // Parameters to callback functions.
 extern const char kFindNumberOfMatches[];
@@ -143,7 +143,6 @@ extern const int kInvalidPermissionRequestID;
 //
 // Note that these are not in an enum because using enums to declare bitmasks
 // results in the enum values being signed.
-extern const uint32_t WEB_VIEW_REMOVE_DATA_MASK_APPCACHE;
 extern const uint32_t WEB_VIEW_REMOVE_DATA_MASK_CACHE;
 extern const uint32_t WEB_VIEW_REMOVE_DATA_MASK_COOKIES;
 extern const uint32_t WEB_VIEW_REMOVE_DATA_MASK_FILE_SYSTEMS;

@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright (c) 2016 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright (c) 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -14,7 +14,7 @@ import sys
 
 
 def CompareFiles(file1, file2):
-  return file(file1, 'r').read() == file(file2, 'r').read()
+  return open(file1, 'r').read() == open(file2, 'r').read()
 
 
 def TouchStamp(stamp_path):

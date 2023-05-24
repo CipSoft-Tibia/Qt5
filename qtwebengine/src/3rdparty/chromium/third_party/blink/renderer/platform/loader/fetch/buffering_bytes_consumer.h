@@ -1,21 +1,20 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_BUFFERING_BYTES_CONSUMER_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_BUFFERING_BYTES_CONSUMER_H_
 
-#include <memory>
-
 #include "base/memory/scoped_refptr.h"
-#include "base/util/type_safety/pass_key.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/types/pass_key.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_deque.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/bytes_consumer.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/timer.h"
-#include "third_party/blink/renderer/platform/wtf/deque.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
-#include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
 
@@ -46,7 +45,7 @@ class PLATFORM_EXPORT BufferingBytesConsumer final
 
   // Use the Create*() factory methods instead of direct instantiation.
   BufferingBytesConsumer(
-      util::PassKey<BufferingBytesConsumer> key,
+      base::PassKey<BufferingBytesConsumer> key,
       BytesConsumer* bytes_consumer,
       scoped_refptr<base::SingleThreadTaskRunner> timer_task_runner,
       base::TimeDelta buffering_start_delay);
@@ -87,8 +86,8 @@ class PLATFORM_EXPORT BufferingBytesConsumer final
   void BufferData();
 
   const Member<BytesConsumer> bytes_consumer_;
-  TaskRunnerTimer<BufferingBytesConsumer> timer_;
-  Deque<Vector<char>> buffer_;
+  HeapTaskRunnerTimer<BufferingBytesConsumer> timer_;
+  HeapDeque<Member<HeapVector<char>>> buffer_;
   size_t offset_for_first_chunk_ = 0;
 
   enum class BufferingState {

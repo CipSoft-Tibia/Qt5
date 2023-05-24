@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,23 +10,28 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_piece.h"
+#include "components/speech/audio_encoder.h"
+#include "components/speech/chunked_byte_buffer.h"
 #include "components/speech/downstream_loader.h"
 #include "components/speech/downstream_loader_client.h"
 #include "components/speech/upstream_loader.h"
 #include "components/speech/upstream_loader_client.h"
-#include "content/browser/speech/audio_encoder.h"
-#include "content/browser/speech/chunked_byte_buffer.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/speech_recognition_session_preamble.h"
 #include "services/network/public/cpp/simple_url_loader_stream_consumer.h"
-#include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "third_party/blink/public/mojom/speech/speech_recognition_error.mojom.h"
 #include "third_party/blink/public/mojom/speech/speech_recognition_grammar.mojom.h"
 #include "third_party/blink/public/mojom/speech/speech_recognition_result.mojom.h"
+
+class AudioChunk;
+
+namespace base {
+class TimeDelta;
+}
 
 namespace network {
 class SharedURLLoaderFactory;
@@ -34,7 +39,6 @@ class SharedURLLoaderFactory;
 
 namespace content {
 
-class AudioChunk;
 struct SpeechRecognitionError;
 
 // A speech recognition engine supporting continuous recognition by means of
@@ -110,6 +114,10 @@ class CONTENT_EXPORT SpeechRecognitionEngine
   SpeechRecognitionEngine(
       scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
       const std::string& accept_language);
+
+  SpeechRecognitionEngine(const SpeechRecognitionEngine&) = delete;
+  SpeechRecognitionEngine& operator=(const SpeechRecognitionEngine&) = delete;
+
   ~SpeechRecognitionEngine() override;
 
   // Sets the URL requests are sent to for tests.
@@ -128,7 +136,7 @@ class CONTENT_EXPORT SpeechRecognitionEngine
   friend class speech::UpstreamLoaderClient;
   friend class speech::DownstreamLoader;
 
-  Delegate* delegate_;
+  raw_ptr<Delegate> delegate_;
 
   // Response status codes from the speech recognition webservice.
   static const int kWebserviceStatusNoError;
@@ -163,6 +171,10 @@ class CONTENT_EXPORT SpeechRecognitionEngine
 
   struct FSMEventArgs {
     explicit FSMEventArgs(FSMEvent event_value);
+
+    FSMEventArgs(const FSMEventArgs&) = delete;
+    FSMEventArgs& operator=(const FSMEventArgs&) = delete;
+
     ~FSMEventArgs();
 
     FSMEvent event;
@@ -172,9 +184,6 @@ class CONTENT_EXPORT SpeechRecognitionEngine
 
     // In case of EVENT_DOWNSTREAM_RESPONSE, hold the current chunk bytes.
     std::unique_ptr<std::vector<uint8_t>> response;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(FSMEventArgs);
   };
 
   // speech::UpstreamLoaderClient
@@ -211,6 +220,9 @@ class CONTENT_EXPORT SpeechRecognitionEngine
   // upload formats, and uses the appropriate one.
   void UploadAudioChunk(const std::string& data, FrameType type, bool is_final);
 
+  // The total audio duration of the upstream request.
+  base::TimeDelta upstream_audio_duration_;
+
   Config config_;
   std::unique_ptr<speech::UpstreamLoader> upstream_loader_;
   std::unique_ptr<speech::DownstreamLoader> downstream_loader_;
@@ -218,15 +230,13 @@ class CONTENT_EXPORT SpeechRecognitionEngine
   const std::string accept_language_;
   std::unique_ptr<AudioEncoder> encoder_;
   std::unique_ptr<AudioEncoder> preamble_encoder_;
-  ChunkedByteBuffer chunked_byte_buffer_;
+  speech::ChunkedByteBuffer chunked_byte_buffer_;
   bool got_last_definitive_result_;
   bool is_dispatching_event_;
   bool use_framed_post_data_;
   FSMState state_;
 
   SEQUENCE_CHECKER(sequence_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(SpeechRecognitionEngine);
 };
 
 }  // namespace content

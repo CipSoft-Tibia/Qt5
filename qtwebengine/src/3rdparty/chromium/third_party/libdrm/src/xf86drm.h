@@ -481,6 +481,29 @@ do {	register unsigned int __old __asm("o0");		\
 		: "cr0", "memory");			\
 	} while (0)
 
+# elif defined (__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) \
+	|| defined (__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6ZK__) \
+	|| defined (__ARM_ARCH_6K__) || defined(__ARM_ARCH_6T2__) \
+	|| defined (__ARM_ARCH_7__) || defined(__ARM_ARCH_7A__) \
+	|| defined(__ARM_ARCH_7R__) || defined(__ARM_ARCH_7M__) \
+	|| defined(__ARM_ARCH_7EM__)
+       /* excluding ARMv4/ARMv5 and lower (lacking ldrex/strex support) */
+       #undef DRM_DEV_MODE
+       #define DRM_DEV_MODE     (S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)
+
+       #define DRM_CAS(lock,old,new,__ret)             \
+       do {                                            \
+               __asm__ __volatile__ (                  \
+                       "1: ldrex %0, [%1]\n"           \
+                       "   teq %0, %2\n"               \
+                       "   ite eq\n"                   \
+                       "   strexeq %0, %3, [%1]\n"     \
+                       "   movne   %0, #1\n"           \
+               : "=&r" (__ret)                         \
+               : "r" (lock), "r" (old), "r" (new)      \
+               : "cc","memory");                       \
+       } while (0)
+
 #endif /* architecture */
 #endif /* __GNUC__ >= 2 */
 
@@ -790,8 +813,28 @@ extern char *drmGetDeviceNameFromFd(int fd);
 extern char *drmGetDeviceNameFromFd2(int fd);
 extern int drmGetNodeTypeFromFd(int fd);
 
+/* Convert between GEM handles and DMA-BUF file descriptors.
+ *
+ * Warning: since GEM handles are not reference-counted and are unique per
+ * DRM file description, the caller is expected to perform its own reference
+ * counting. drmPrimeFDToHandle is guaranteed to return the same handle for
+ * different FDs if they reference the same underlying buffer object. This
+ * could even be a buffer object originally created on the same DRM FD.
+ *
+ * When sharing a DRM FD with an API such as EGL or GBM, the caller must not
+ * use drmPrimeHandleToFD nor drmPrimeFDToHandle. A single user-space
+ * reference-counting implementation is necessary to avoid double-closing GEM
+ * handles.
+ *
+ * Two processes can't share the same DRM FD and both use it to create or
+ * import GEM handles, even when using a single user-space reference-counting
+ * implementation like GBM, because GBM doesn't share its state between
+ * processes.
+ */
 extern int drmPrimeHandleToFD(int fd, uint32_t handle, uint32_t flags, int *prime_fd);
 extern int drmPrimeFDToHandle(int fd, int prime_fd, uint32_t *handle);
+
+extern int drmCloseBufferHandle(int fd, uint32_t handle);
 
 extern char *drmGetPrimaryDeviceNameFromFd(int fd);
 extern char *drmGetRenderDeviceNameFromFd(int fd);
@@ -874,6 +917,8 @@ extern void drmFreeDevices(drmDevicePtr devices[], int count);
 extern int drmGetDevice2(int fd, uint32_t flags, drmDevicePtr *device);
 extern int drmGetDevices2(uint32_t flags, drmDevicePtr devices[], int max_devices);
 
+extern int drmGetDeviceFromDevId(dev_t dev_id, uint32_t flags, drmDevicePtr *device);
+
 extern int drmDevicesEqual(drmDevicePtr a, drmDevicePtr b);
 
 extern int drmSyncobjCreate(int fd, uint32_t flags, uint32_t *handle);
@@ -896,10 +941,26 @@ extern int drmSyncobjTimelineWait(int fd, uint32_t *handles, uint64_t *points,
 				  uint32_t *first_signaled);
 extern int drmSyncobjQuery(int fd, uint32_t *handles, uint64_t *points,
 			   uint32_t handle_count);
+extern int drmSyncobjQuery2(int fd, uint32_t *handles, uint64_t *points,
+			    uint32_t handle_count, uint32_t flags);
 extern int drmSyncobjTransfer(int fd,
 			      uint32_t dst_handle, uint64_t dst_point,
 			      uint32_t src_handle, uint64_t src_point,
 			      uint32_t flags);
+
+extern char *
+drmGetFormatModifierVendor(uint64_t modifier);
+
+extern char *
+drmGetFormatModifierName(uint64_t modifier);
+
+extern char *
+drmGetFormatName(uint32_t format);
+
+#ifndef fourcc_mod_get_vendor
+#define fourcc_mod_get_vendor(modifier) \
+       (((modifier) >> 56) & 0xff)
+#endif
 
 #if defined(__cplusplus)
 }

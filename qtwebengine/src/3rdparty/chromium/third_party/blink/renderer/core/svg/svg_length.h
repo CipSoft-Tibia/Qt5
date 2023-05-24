@@ -24,19 +24,20 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_numeric_literal_value.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
-#include "third_party/blink/renderer/core/svg/properties/svg_property.h"
+#include "third_party/blink/renderer/core/svg/properties/svg_listable_property.h"
 #include "third_party/blink/renderer/core/svg/svg_length_context.h"
 #include "third_party/blink/renderer/core/svg/svg_parsing_error.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 
 namespace blink {
 
+class Length;
 class QualifiedName;
-
+class SVGLengthConversionData;
 class SVGLengthTearOff;
 
-class CORE_EXPORT SVGLength final : public SVGPropertyBase {
+class CORE_EXPORT SVGLength final : public SVGListablePropertyBase {
  public:
   typedef SVGLengthTearOff TearOffType;
 
@@ -71,7 +72,6 @@ class CORE_EXPORT SVGLength final : public SVGPropertyBase {
     return To<CSSNumericLiteralValue>(*value_).GetType();
   }
 
-  void SetUnitType(CSSPrimitiveValue::UnitType);
   SVGLengthMode UnitMode() const {
     return static_cast<SVGLengthMode>(unit_mode_);
   }
@@ -79,6 +79,8 @@ class CORE_EXPORT SVGLength final : public SVGPropertyBase {
   bool operator==(const SVGLength&) const;
   bool operator!=(const SVGLength& other) const { return !operator==(other); }
 
+  Length ConvertToLength(const SVGLengthConversionData&) const;
+  float Value(const SVGLengthConversionData&, float dimension) const;
   float Value(const SVGLengthContext&) const;
   void SetValue(float, const SVGLengthContext&);
   void SetValueAsNumber(float);
@@ -87,17 +89,6 @@ class CORE_EXPORT SVGLength final : public SVGPropertyBase {
   void SetValueInSpecifiedUnits(float value);
 
   const CSSPrimitiveValue& AsCSSPrimitiveValue() const { return *value_; }
-
-  // Resolves LengthTypePercentage into a normalized floating point number (full
-  // value is 1.0).
-  float ValueAsPercentage() const;
-
-  // Returns a number to be used as percentage (so full value is 100)
-  float ValueAsPercentage100() const;
-
-  // Scale the input value by this SVGLength. Higher precision than input *
-  // valueAsPercentage().
-  float ScaleByPercentage(float) const;
 
   String ValueAsString() const override;
   SVGParsingError SetValueAsString(const String&);
@@ -117,9 +108,11 @@ class CORE_EXPORT SVGLength final : public SVGPropertyBase {
   }
   bool IsCalculated() const { return value_->IsCalculated(); }
   bool IsPercentage() const { return value_->IsPercentage(); }
+  bool HasContainerRelativeUnits() const {
+    return value_->HasContainerRelativeUnits();
+  }
 
   bool IsNegativeNumericLiteral() const;
-  bool IsZero() const { return value_->GetFloatValue() == 0; }
 
   static SVGLengthMode LengthModeForAnimatedLengthAttribute(
       const QualifiedName&);

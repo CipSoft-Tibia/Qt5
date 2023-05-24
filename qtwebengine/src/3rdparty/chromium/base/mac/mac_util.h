@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,10 +14,10 @@
 #include "base/base_export.h"
 
 namespace base {
-
 class FilePath;
+}
 
-namespace mac {
+namespace base::mac {
 
 // Returns an sRGB color space.  The return value is a static value; do not
 // release it!
@@ -31,28 +31,17 @@ BASE_EXPORT CGColorSpaceRef GetGenericRGBColorSpace();
 // is a static value; do not release it!
 BASE_EXPORT CGColorSpaceRef GetSystemColorSpace();
 
-// Returns true if the file at |file_path| is excluded from Time Machine
-// backups.
-BASE_EXPORT bool GetFileBackupExclusion(const FilePath& file_path);
-
-// Excludes the file given by |file_path| from Time Machine backups.
-BASE_EXPORT bool SetFileBackupExclusion(const FilePath& file_path);
-
-// Checks if the current application is set as a Login Item, so it will launch
-// on Login. If a non-NULL pointer to is_hidden is passed, the Login Item also
-// is queried for the 'hide on launch' flag.
-BASE_EXPORT bool CheckLoginItemStatus(bool* is_hidden);
-
-// Adds current application to the set of Login Items with specified "hide"
-// flag. This has the same effect as adding/removing the application in
+// Adds the specified application to the set of Login Items with specified
+// "hide" flag. This has the same effect as adding/removing the application in
 // SystemPreferences->Accounts->LoginItems or marking Application in the Dock
 // as "Options->Open on Login".
 // Does nothing if the application is already set up as Login Item with
 // specified hide flag.
-BASE_EXPORT void AddToLoginItems(bool hide_on_startup);
+BASE_EXPORT void AddToLoginItems(const FilePath& app_bundle_file_path,
+                                 bool hide_on_startup);
 
-// Removes the current application from the list Of Login Items.
-BASE_EXPORT void RemoveFromLoginItems();
+// Removes the specified application from the list of Login Items.
+BASE_EXPORT void RemoveFromLoginItems(const FilePath& app_bundle_file_path);
 
 // Returns true if the current process was automatically launched as a
 // 'Login Item' or via Lion's Resume. Used to suppress opening windows.
@@ -105,9 +94,6 @@ BASE_EXPORT int MacOSVersion();
     return internal::MacOSVersion() >= 1000 + V;                    \
   }
 
-// TODO(https://crbug.com/1105187): Update MAC_OS_X_VERSION_MIN_REQUIRED to
-// whatever macro it turns into in the future.
-
 #define DEFINE_IS_OS_FUNCS_CR_MIN_REQUIRED(V, DEPLOYMENT_TARGET_TEST) \
   inline bool IsOS##V() {                                             \
     DEPLOYMENT_TARGET_TEST(>, V, false)                               \
@@ -143,27 +129,25 @@ BASE_EXPORT int MacOSVersion();
 //   Chromium, remove the #ifdef that switches between
 //   TEST_DEPLOYMENT_TARGET and IGNORE_DEPLOYMENT_TARGET.
 
-DEFINE_OLD_IS_OS_FUNCS_CR_MIN_REQUIRED(10, OLD_TEST_DEPLOYMENT_TARGET)
-DEFINE_OLD_IS_OS_FUNCS(11, OLD_TEST_DEPLOYMENT_TARGET)
-DEFINE_OLD_IS_OS_FUNCS(12, OLD_TEST_DEPLOYMENT_TARGET)
-DEFINE_OLD_IS_OS_FUNCS(13, OLD_TEST_DEPLOYMENT_TARGET)
-
-#ifdef MAC_OS_X_VERSION_10_14
+// Versions of macOS supported at runtime but whose SDK is not supported for
+// building.
+DEFINE_OLD_IS_OS_FUNCS_CR_MIN_REQUIRED(13, OLD_TEST_DEPLOYMENT_TARGET)
 DEFINE_OLD_IS_OS_FUNCS(14, OLD_TEST_DEPLOYMENT_TARGET)
-#else
-DEFINE_OLD_IS_OS_FUNCS(14, IGNORE_DEPLOYMENT_TARGET)
-#endif
-
-#ifdef MAC_OS_X_VERSION_10_15
 DEFINE_OLD_IS_OS_FUNCS(15, OLD_TEST_DEPLOYMENT_TARGET)
+DEFINE_IS_OS_FUNCS(11, TEST_DEPLOYMENT_TARGET)
+
+// Versions of macOS supported at runtime and whose SDK is supported for
+// building.
+#ifdef MAC_OS_VERSION_12_0
+DEFINE_IS_OS_FUNCS(12, TEST_DEPLOYMENT_TARGET)
 #else
-DEFINE_OLD_IS_OS_FUNCS(15, IGNORE_DEPLOYMENT_TARGET)
+DEFINE_IS_OS_FUNCS(12, IGNORE_DEPLOYMENT_TARGET)
 #endif
 
-#ifdef MAC_OS_VERSION_11_0
-DEFINE_IS_OS_FUNCS(11, TEST_DEPLOYMENT_TARGET)
+#ifdef MAC_OS_VERSION_13_0
+DEFINE_IS_OS_FUNCS(13, TEST_DEPLOYMENT_TARGET)
 #else
-DEFINE_IS_OS_FUNCS(11, IGNORE_DEPLOYMENT_TARGET)
+DEFINE_IS_OS_FUNCS(13, IGNORE_DEPLOYMENT_TARGET)
 #endif
 
 #undef DEFINE_OLD_IS_OS_FUNCS_CR_MIN_REQUIRED
@@ -177,8 +161,8 @@ DEFINE_IS_OS_FUNCS(11, IGNORE_DEPLOYMENT_TARGET)
 // This should be infrequently used. It only makes sense to use this to avoid
 // codepaths that are very likely to break on future (unreleased, untested,
 // unborn) OS releases, or to log when the OS is newer than any known version.
-inline bool IsOSLaterThan11_DontCallThis() {
-  return !IsAtMostOS11();
+inline bool IsOSLaterThan13_DontCallThis() {
+  return !IsAtMostOS13();
 }
 
 enum class CPUType {
@@ -213,7 +197,53 @@ BASE_EXPORT std::string GetOSDisplayName();
 // Returns the serial number of the macOS device.
 BASE_EXPORT std::string GetPlatformSerialNumber();
 
-}  // namespace mac
-}  // namespace base
+// System Settings (née System Preferences) pane or subpanes to open via
+// `OpenSystemSettingsPane()`, below. The naming is based on the naming in the
+// System Settings app in the latest macOS release, macOS 13 Ventura.
+enum class SystemSettingsPane {
+  // Accessibility > Captions
+  kAccessibility_Captions,
+
+  // Date & Time
+  kDateTime,
+
+  // Network > Proxies
+  kNetwork_Proxies,
+
+  // Printers & Scanners
+  kPrintersScanners,
+
+  // Privacy & Security > Accessibility
+  kPrivacySecurity_Accessibility,
+
+  // Privacy & Security > Bluetooth
+  // Available on macOS 11 and later.
+  kPrivacySecurity_Bluetooth,
+
+  // Privacy & Security > Camera
+  // Available on macOS 10.14 and later.
+  kPrivacySecurity_Camera,
+
+  // Privacy & Security > Extensions > Sharing
+  kPrivacySecurity_Extensions_Sharing,
+
+  // Privacy & Security > Location Services
+  kPrivacySecurity_LocationServices,
+
+  // Privacy & Security > Microphone
+  // Available on macOS 10.14 and later.
+  kPrivacySecurity_Microphone,
+
+  // Privacy & Security > Screen Recording
+  // Available on macOS 10.15 and later.
+  kPrivacySecurity_ScreenRecording,
+};
+
+// Opens the specified System Settings pane. If the specified subpane does not
+// exist on the release of macOS that is running, the parent pane will open
+// instead.
+BASE_EXPORT void OpenSystemSettingsPane(SystemSettingsPane pane);
+
+}  // namespace base::mac
 
 #endif  // BASE_MAC_MAC_UTIL_H_

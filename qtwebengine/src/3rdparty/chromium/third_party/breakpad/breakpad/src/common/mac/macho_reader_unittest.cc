@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -1517,6 +1516,51 @@ TEST_F(LoadCommand, MisplacedSectionAfter) {
 }
 
 TEST_F(LoadCommand, MisplacedSectionTooBig) {
+  WithConfiguration config(kLittleEndian, 64);
+
+  // The segment.
+  LoadedSection segment;
+  segment.address() = 0x696d83cc;
+  segment.Append(10, '0');
+
+  // The contents of the following sections don't matter, because
+  // we're not really going to Place them in segment; we're just going
+  // to set all their labels by hand to get the (impossible)
+  // configurations we want.
+
+  // A section with 0 as is start address.
+  LoadedSection empty;
+  empty.Append(10, '4');
+  empty.start() = 0;
+  empty.address() = segment.address() + 1;
+  empty.final_size() = empty.Size();
+
+  SegmentLoadCommand command;
+  command.Header("segment", segment, 0x173baa29, 0x8407275d, 0xed8f7057)
+      .AppendSectionEntry("empty", "segment", 0, 0x8b53ae5c, empty);
+
+  LoadCommands commands;
+  commands.Place(&command);
+
+  MachOFile file;
+  file.Header(&commands).Place(&segment);
+
+  ReadFile(&file, true, CPU_TYPE_ANY, 0);
+
+  Segment actual_segment;
+  EXPECT_TRUE(reader.FindSegment("segment", &actual_segment));
+
+  EXPECT_CALL(reporter, MisplacedSectionData("empty", "segment")).Times(0);
+
+  EXPECT_CALL(section_handler,
+              HandleSection(MatchSection(true, "empty", "segment",
+                                         empty.address().Value())))
+      .WillOnce(Return(true));
+
+  EXPECT_TRUE(reader.WalkSegmentSections(actual_segment, &section_handler));
+}
+
+TEST_F(LoadCommand, MisplacedSectionButSectionIsEmpty) {
   WithConfiguration config(kLittleEndian, 64);
 
   // The segment.

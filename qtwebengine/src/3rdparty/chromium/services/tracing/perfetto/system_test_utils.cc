@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include "base/files/scoped_temp_dir.h"
+#include "base/task/sequenced_task_runner.h"
 #include "services/tracing/perfetto/test_utils.h"
 #include "services/tracing/public/cpp/perfetto/perfetto_traced_process.h"
 #include "third_party/perfetto/include/perfetto/ext/tracing/core/commit_data_request.h"
@@ -20,15 +21,20 @@ MockSystemService::MockSystemService(const std::string& consumer_socket,
     : used_tmpdir_(false),
       consumer_(consumer_socket),
       producer_(producer_socket),
-      task_runner_(std::make_unique<PerfettoTaskRunner>(
-          base::SequencedTaskRunnerHandle::Get())) {
+      task_runner_(std::make_unique<base::tracing::PerfettoTaskRunner>(
+          base::SequencedTaskRunner::GetCurrentDefault())) {
   StartService();
 }
 
 MockSystemService::MockSystemService(const base::ScopedTempDir& tmp_dir)
-    : used_tmpdir_(true),
-      task_runner_(std::make_unique<PerfettoTaskRunner>(
-          base::SequencedTaskRunnerHandle::Get())) {
+    : MockSystemService(tmp_dir,
+                        std::make_unique<base::tracing::PerfettoTaskRunner>(
+                            base::SequencedTaskRunner::GetCurrentDefault())) {}
+
+MockSystemService::MockSystemService(
+    const base::ScopedTempDir& tmp_dir,
+    std::unique_ptr<perfetto::base::TaskRunner> task_runner)
+    : used_tmpdir_(true), task_runner_(std::move(task_runner)) {
   // We need to set TMPDIR environment variable because when a new producer
   // connects to the perfetto service it needs to create a memmap'd file for
   // the shared memory buffer. Setting TMPDIR allows the service to know
@@ -87,12 +93,14 @@ MockPosixSystemProducer::MockPosixSystemProducer(
     bool check_sdk_level,
     uint32_t num_data_sources,
     base::OnceClosure data_source_enabled_callback,
-    base::OnceClosure data_source_disabled_callback)
+    base::OnceClosure data_source_disabled_callback,
+    bool sandbox_forbids_socket_connection)
     : PosixSystemProducer(socket.c_str(),
                           PerfettoTracedProcess::Get()->GetTaskRunner()),
       num_data_sources_expected_(num_data_sources),
       data_source_enabled_callback_(std::move(data_source_enabled_callback)),
-      data_source_disabled_callback_(std::move(data_source_disabled_callback)) {
+      data_source_disabled_callback_(std::move(data_source_disabled_callback)),
+      sandbox_forbids_socket_connection_(sandbox_forbids_socket_connection) {
   // We want to set the SystemProducer to this mock, but that 'requires' passing
   // ownership of ourselves to PerfettoTracedProcess. Since someone else manages
   // our deletion we need to be careful in the deconstructor to not double free
@@ -141,6 +149,10 @@ void MockPosixSystemProducer::SetDataSourceEnabledCallback(
 void MockPosixSystemProducer::SetDataSourceDisabledCallback(
     base::OnceClosure data_source_disabled_callback) {
   data_source_disabled_callback_ = std::move(data_source_disabled_callback);
+}
+
+bool MockPosixSystemProducer::SandboxForbidsSocketConnection() {
+  return sandbox_forbids_socket_connection_;
 }
 
 }  // namespace tracing

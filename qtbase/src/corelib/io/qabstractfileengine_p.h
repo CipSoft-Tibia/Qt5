@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTFILEENGINE_P_H
 #define QABSTRACTFILEENGINE_P_H
@@ -54,6 +18,8 @@
 #include <QtCore/private/qglobal_p.h>
 #include "QtCore/qfile.h"
 #include "QtCore/qdir.h"
+
+#include <optional>
 
 #ifdef open
 #error qabstractfileengine_p.h must be included before any header file that defines open
@@ -102,11 +68,13 @@ public:
         PathName,
         AbsoluteName,
         AbsolutePathName,
-        LinkName,
+        AbsoluteLinkTarget,
         CanonicalName,
         CanonicalPathName,
         BundleName,
-        NFileNames = 9
+        JunctionName,
+        RawLinkPath,
+        NFileNames  // Must be last.
     };
     enum FileOwner {
         OwnerUser,
@@ -121,7 +89,8 @@ public:
 
     virtual ~QAbstractFileEngine();
 
-    virtual bool open(QIODevice::OpenMode openMode);
+    virtual bool open(QIODevice::OpenMode openMode,
+                      std::optional<QFile::Permissions> permissions = std::nullopt);
     virtual bool close();
     virtual bool flush();
     virtual bool syncToDisk();
@@ -134,7 +103,8 @@ public:
     virtual bool rename(const QString &newName);
     virtual bool renameOverwrite(const QString &newName);
     virtual bool link(const QString &newName);
-    virtual bool mkdir(const QString &dirName, bool createParentDirectories) const;
+    virtual bool mkdir(const QString &dirName, bool createParentDirectories,
+                       std::optional<QFile::Permissions> permissions = std::nullopt) const;
     virtual bool rmdir(const QString &dirName, bool recurseParentDirectories) const;
     virtual bool setSize(qint64 size);
     virtual bool caseSensitive() const;
@@ -237,7 +207,7 @@ public:
 
     virtual QString currentFileName() const = 0;
     virtual QFileInfo currentFileInfo() const;
-    QString currentFilePath() const;
+    virtual QString currentFilePath() const;
 
 protected:
     enum EntryInfoType {

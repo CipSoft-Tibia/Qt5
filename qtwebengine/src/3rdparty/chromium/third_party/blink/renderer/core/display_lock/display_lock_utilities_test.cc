@@ -1,33 +1,34 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_intersection_observer_init.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_context.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_document_state.h"
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
+#include "third_party/blink/renderer/core/testing/intersection_observer_test_helper.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 
 namespace blink {
 
-class DisplayLockUtilitiesTest
-    : public RenderingTest,
-      private ScopedCSSContentVisibilityHiddenMatchableForTest {
+class DisplayLockUtilitiesTest : public RenderingTest {
  public:
   DisplayLockUtilitiesTest()
-      : RenderingTest(MakeGarbageCollected<SingleChildLocalFrameClient>()),
-        ScopedCSSContentVisibilityHiddenMatchableForTest(true) {}
+      : RenderingTest(MakeGarbageCollected<SingleChildLocalFrameClient>()) {}
 
   void LockElement(Element& element, bool activatable) {
-    StringBuilder value;
-    value.Append("content-visibility: hidden");
-    if (activatable)
-      value.Append("-matchable");
-    element.setAttribute(html_names::kStyleAttr, value.ToAtomicString());
+    if (activatable) {
+      element.setAttribute(html_names::kHiddenAttr, "until-found");
+    } else {
+      element.setAttribute(html_names::kStyleAttr,
+                           "content-visibility: hidden");
+    }
     UpdateAllLifecyclePhasesForTest();
   }
 
@@ -36,6 +37,18 @@ class DisplayLockUtilitiesTest
     UpdateAllLifecyclePhasesForTest();
   }
 };
+
+TEST_F(DisplayLockUtilitiesTest, ShouldIgnoreHiddenUntilFoundChildren) {
+  SetBodyInnerHTML(R"HTML(
+    <div hidden=until-found>
+      <div id=target></div>
+    </div>
+  )HTML");
+
+  Node* target = GetDocument().getElementById("target");
+  EXPECT_TRUE(DisplayLockUtilities::ShouldIgnoreNodeDueToDisplayLock(
+      *target, DisplayLockActivationReason::kAccessibility));
+}
 
 TEST_F(DisplayLockUtilitiesTest, DISABLED_ActivatableLockedInclusiveAncestors) {
   SetBodyInnerHTML(R"HTML(
@@ -236,9 +249,99 @@ TEST_F(DisplayLockUtilitiesTest, LockedSubtreeCrossingFrames) {
   // Unlock grandparent.
   CommitElement(*grandparent);
 
+  // CommitElement(*grandparent) ran a lifecycle update, but during that update
+  // the iframe document was still throttled, so did not update style. The
+  // iframe document should have become unthrottled at the end of that update,
+  // so it takes an additional lifecycle update to resolve style in the iframe.
+  UpdateAllLifecyclePhasesForTest();
+
   EXPECT_FALSE(
       DisplayLockUtilities::IsInLockedSubtreeCrossingFrames(*grandparent));
   EXPECT_FALSE(DisplayLockUtilities::IsInLockedSubtreeCrossingFrames(*parent));
   EXPECT_FALSE(DisplayLockUtilities::IsInLockedSubtreeCrossingFrames(*child));
 }
+
+TEST_F(DisplayLockUtilitiesTest, InteractionWithIntersectionObserver) {
+  SetHtmlInnerHTML(R"HTML(
+    <div id="container"><iframe id="frame"></iframe></div>
+  )HTML");
+  SetChildFrameHTML(R"HTML(
+    <div id="target"></target>
+  )HTML");
+
+  auto* container = GetDocument().getElementById("container");
+  auto* target = ChildDocument().getElementById("target");
+
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(ChildDocument().View()->ShouldThrottleRenderingForTest());
+  LockElement(*container, false);
+  EXPECT_TRUE(ChildDocument().View()->ShouldThrottleRenderingForTest());
+
+  target->setInnerHTML("Hello, world!");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_TRUE(ChildDocument().View()->ShouldThrottleRenderingForTest());
+  EXPECT_TRUE(ChildDocument().Lifecycle().GetState() ==
+              DocumentLifecycle::kVisualUpdatePending);
+
+  IntersectionObserverInit* observer_init = IntersectionObserverInit::Create();
+  TestIntersectionObserverDelegate* observer_delegate =
+      MakeGarbageCollected<TestIntersectionObserverDelegate>(ChildDocument());
+  IntersectionObserver* observer =
+      IntersectionObserver::Create(observer_init, *observer_delegate);
+  observer->observe(target);
+  UpdateAllLifecyclePhasesForTest();
+  test::RunPendingTasks();
+  EXPECT_TRUE(ChildDocument().View()->ShouldThrottleRenderingForTest());
+  EXPECT_EQ(ChildDocument().Lifecycle().GetState(),
+            DocumentLifecycle::kVisualUpdatePending);
+  EXPECT_EQ(observer_delegate->CallCount(), 1);
+  EXPECT_EQ(observer_delegate->EntryCount(), 1);
+  EXPECT_FALSE(observer_delegate->LastEntry()->GetGeometry().IsIntersecting());
+  EXPECT_EQ(observer_delegate->LastEntry()->GetGeometry().TargetRect(),
+            PhysicalRect());
+  EXPECT_EQ(observer_delegate->LastEntry()->GetGeometry().RootRect(),
+            PhysicalRect());
+
+  CommitElement(*container);
+  test::RunPendingTasks();
+  EXPECT_FALSE(ChildDocument().View()->ShouldThrottleRenderingForTest());
+  EXPECT_EQ(ChildDocument().Lifecycle().GetState(),
+            DocumentLifecycle::kVisualUpdatePending);
+  EXPECT_EQ(observer_delegate->CallCount(), 1);
+
+  UpdateAllLifecyclePhasesForTest();
+  test::RunPendingTasks();
+  EXPECT_FALSE(ChildDocument().View()->ShouldThrottleRenderingForTest());
+  EXPECT_FALSE(ChildDocument().View()->NeedsLayout());
+  EXPECT_EQ(ChildDocument().Lifecycle().GetState(),
+            DocumentLifecycle::kPaintClean);
+  EXPECT_EQ(observer_delegate->CallCount(), 2);
+  EXPECT_EQ(observer_delegate->EntryCount(), 2);
+  EXPECT_TRUE(observer_delegate->LastEntry()->GetGeometry().IsIntersecting());
+  EXPECT_NE(observer_delegate->LastEntry()->GetGeometry().TargetRect(),
+            PhysicalRect());
+  EXPECT_EQ(observer_delegate->LastEntry()->GetGeometry().IntersectionRect(),
+            observer_delegate->LastEntry()->GetGeometry().TargetRect());
+  EXPECT_NE(observer_delegate->LastEntry()->GetGeometry().RootRect(),
+            PhysicalRect());
+}
+
+TEST_F(DisplayLockUtilitiesTest, ContainerQueryCrash) {
+  SetHtmlInnerHTML(R"HTML(
+    <style>
+      #container {
+        content-visibility: hidden;
+        container-type: size;
+      }
+    </style>
+    <div id="container"><div id="child"></div></div>
+  )HTML");
+
+  auto* child = DynamicTo<HTMLElement>(GetDocument().getElementById("child"));
+  ASSERT_TRUE(child);
+
+  // Should not fail DCHECKs or crash.
+  child->offsetTopForBinding();
+}
+
 }  // namespace blink

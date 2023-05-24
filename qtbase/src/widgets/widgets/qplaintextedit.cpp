@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplaintextedit_p.h"
 
@@ -71,9 +35,14 @@
 
 QT_BEGIN_NAMESPACE
 
-static inline bool shouldEnableInputMethod(QPlainTextEdit *plaintextedit)
+static inline bool shouldEnableInputMethod(QPlainTextEdit *control)
 {
-    return !plaintextedit->isReadOnly();
+#if defined(Q_OS_ANDROID)
+    Q_UNUSED(control);
+    return !control->isReadOnly() || (control->textInteractionFlags() & Qt::TextSelectableByMouse);
+#else
+    return !control->isReadOnly();
+#endif
 }
 
 class QPlainTextDocumentLayoutPrivate : public QAbstractTextDocumentLayoutPrivate
@@ -449,22 +418,29 @@ QPlainTextEditControl::QPlainTextEditControl(QPlainTextEdit *parent)
     setAcceptRichText(false);
 }
 
-void QPlainTextEditPrivate::_q_cursorPositionChanged()
+void QPlainTextEditPrivate::cursorPositionChanged()
 {
     pageUpDownLastCursorYIsValid = false;
     Q_Q(QPlainTextEdit);
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QAccessibleTextCursorEvent ev(q, q->textCursor().position());
     QAccessible::updateAccessibility(&ev);
 #endif
     emit q->cursorPositionChanged();
 }
 
-void QPlainTextEditPrivate::_q_verticalScrollbarActionTriggered(int action) {
-    if (action == QAbstractSlider::SliderPageStepAdd) {
+void QPlainTextEditPrivate::verticalScrollbarActionTriggered(int action) {
+
+    const auto a = static_cast<QAbstractSlider::SliderAction>(action);
+    switch (a) {
+    case QAbstractSlider::SliderPageStepAdd:
         pageUpDown(QTextCursor::Down, QTextCursor::MoveAnchor, false);
-    } else if (action == QAbstractSlider::SliderPageStepSub) {
+        break;
+    case QAbstractSlider::SliderPageStepSub:
         pageUpDown(QTextCursor::Up, QTextCursor::MoveAnchor, false);
+        break;
+    default:
+        break;
     }
 }
 
@@ -653,10 +629,7 @@ void QPlainTextEditPrivate::setTopBlock(int blockNumber, int lineNumber, int dx)
         lineNumber = maxTopLine - block.firstLineNumber();
     }
 
-    {
-        const QSignalBlocker blocker(vbar);
-        vbar->setValue(newTopLine);
-    }
+    vbar->setValue(newTopLine);
 
     if (!dx && blockNumber == control->topBlock && lineNumber == topLine)
         return;
@@ -672,10 +645,7 @@ void QPlainTextEditPrivate::setTopBlock(int blockNumber, int lineNumber, int dx)
         control->topBlock = blockNumber;
         topLine = lineNumber;
 
-        {
-            const QSignalBlocker blocker(vbar);
-            vbar->setValue(block.firstLineNumber() + lineNumber);
-        }
+        vbar->setValue(block.firstLineNumber() + lineNumber);
 
         if (dx || dy) {
             viewport->scroll(q->isRightToLeft() ? -dx : dx, dy);
@@ -755,20 +725,16 @@ void QPlainTextEditPrivate::updateViewport()
 }
 
 QPlainTextEditPrivate::QPlainTextEditPrivate()
-    : control(nullptr),
-      tabChangesFocus(false),
-      lineWrap(QPlainTextEdit::WidgetWidth),
-      wordWrap(QTextOption::WrapAtWordBoundaryOrAnywhere),
-      clickCausedFocus(0), placeholderVisible(1),
-      topLine(0), topLineFracture(0),
-      pageUpDownLastCursorYIsValid(false)
+    : tabChangesFocus(false)
+    , showCursorOnInitialShow(false)
+    , backgroundVisible(false)
+    , centerOnScroll(false)
+    , inDrag(false)
+    , clickCausedFocus(false)
+    , pageUpDownLastCursorYIsValid(false)
+    , placeholderTextShown(false)
 {
-    showCursorOnInitialShow = true;
-    backgroundVisible = false;
-    centerOnScroll = false;
-    inDrag = false;
 }
-
 
 void QPlainTextEditPrivate::init(const QString &txt)
 {
@@ -782,23 +748,28 @@ void QPlainTextEditPrivate::init(const QString &txt)
 
     control->setPalette(q->palette());
 
-    QObject::connect(vbar, SIGNAL(actionTriggered(int)), q, SLOT(_q_verticalScrollbarActionTriggered(int)));
-
-    QObject::connect(control, SIGNAL(microFocusChanged()), q, SLOT(updateMicroFocus()));
-    QObject::connect(control, SIGNAL(documentSizeChanged(QSizeF)), q, SLOT(_q_adjustScrollbars()));
-    QObject::connect(control, SIGNAL(blockCountChanged(int)), q, SIGNAL(blockCountChanged(int)));
-    QObject::connect(control, SIGNAL(updateRequest(QRectF)), q, SLOT(_q_repaintContents(QRectF)));
-    QObject::connect(control, SIGNAL(modificationChanged(bool)), q, SIGNAL(modificationChanged(bool)));
-
-    QObject::connect(control, SIGNAL(textChanged()), q, SIGNAL(textChanged()));
-    QObject::connect(control, SIGNAL(undoAvailable(bool)), q, SIGNAL(undoAvailable(bool)));
-    QObject::connect(control, SIGNAL(redoAvailable(bool)), q, SIGNAL(redoAvailable(bool)));
-    QObject::connect(control, SIGNAL(copyAvailable(bool)), q, SIGNAL(copyAvailable(bool)));
-    QObject::connect(control, SIGNAL(selectionChanged()), q, SIGNAL(selectionChanged()));
-    QObject::connect(control, SIGNAL(cursorPositionChanged()), q, SLOT(_q_cursorPositionChanged()));
-
-    QObject::connect(control, SIGNAL(textChanged()), q, SLOT(_q_textChanged()));
-    QObject::connect(control, SIGNAL(textChanged()), q, SLOT(updateMicroFocus()));
+    QObjectPrivate::connect(vbar, &QAbstractSlider::actionTriggered,
+                            this, &QPlainTextEditPrivate::verticalScrollbarActionTriggered);
+    QObject::connect(control, &QWidgetTextControl::microFocusChanged, q,
+                     [q](){q->updateMicroFocus(); });
+    QObjectPrivate::connect(control, &QWidgetTextControl::documentSizeChanged,
+                            this, &QPlainTextEditPrivate::adjustScrollbars);
+    QObject::connect(control, &QWidgetTextControl::blockCountChanged,
+                     q, &QPlainTextEdit::blockCountChanged);
+    QObjectPrivate::connect(control, &QWidgetTextControl::updateRequest,
+                            this, &QPlainTextEditPrivate::repaintContents);
+    QObject::connect(control, &QWidgetTextControl::modificationChanged,
+                     q, &QPlainTextEdit::modificationChanged);
+    QObject::connect(control, &QWidgetTextControl::textChanged, q, &QPlainTextEdit::textChanged);
+    QObject::connect(control, &QWidgetTextControl::undoAvailable, q, &QPlainTextEdit::undoAvailable);
+    QObject::connect(control, &QWidgetTextControl::redoAvailable, q, &QPlainTextEdit::redoAvailable);
+    QObject::connect(control, &QWidgetTextControl::copyAvailable, q, &QPlainTextEdit::copyAvailable);
+    QObject::connect(control, &QWidgetTextControl::selectionChanged, q, &QPlainTextEdit::selectionChanged);
+    QObjectPrivate::connect(control, &QWidgetTextControl::cursorPositionChanged,
+                            this, &QPlainTextEditPrivate::cursorPositionChanged);
+    QObjectPrivate::connect(control, &QWidgetTextControl::textChanged,
+                            this, &QPlainTextEditPrivate::updatePlaceholderVisibility);
+    QObject::connect(control, &QWidgetTextControl::textChanged, q, [q](){q->updateMicroFocus(); });
 
     // set a null page size initially to avoid any relayouting until the textedit
     // is shown. relayoutDocument() will take care of setting the page size to the
@@ -824,29 +795,21 @@ void QPlainTextEditPrivate::init(const QString &txt)
 #ifndef QT_NO_CURSOR
     viewport->setCursor(Qt::IBeamCursor);
 #endif
-    originalOffsetY = 0;
 }
 
-void QPlainTextEditPrivate::_q_textChanged()
+void QPlainTextEditPrivate::updatePlaceholderVisibility()
 {
-    Q_Q(QPlainTextEdit);
-
     // We normally only repaint the part of view that contains text in the
-    // document that has changed (in _q_repaintContents). But the placeholder
+    // document that has changed (in repaintContents). But the placeholder
     // text is not a part of the document, but is drawn on separately. So whenever
     // we either show or hide the placeholder text, we issue a full update.
-    bool placeholderCurrentyVisible = placeholderVisible;
-
-    placeholderVisible = !placeholderText.isEmpty()
-            && q->document()->isEmpty()
-            && (!q->firstVisibleBlock().isValid() ||
-                 q->firstVisibleBlock().layout()->preeditAreaText().isEmpty());
-
-    if (placeholderCurrentyVisible != placeholderVisible)
+    if (placeholderTextShown != placeHolderTextToBeShown()) {
         viewport->update();
+        placeholderTextShown = placeHolderTextToBeShown();
+    }
 }
 
-void QPlainTextEditPrivate::_q_repaintContents(const QRectF &contentsRect)
+void QPlainTextEditPrivate::repaintContents(const QRectF &contentsRect)
 {
     Q_Q(QPlainTextEdit);
     if (!contentsRect.isValid()) {
@@ -979,7 +942,7 @@ void QPlainTextEditPrivate::pageUpDown(QTextCursor::MoveOperation op, QTextCurso
 
 #if QT_CONFIG(scrollbar)
 
-void QPlainTextEditPrivate::_q_adjustScrollbars()
+void QPlainTextEditPrivate::adjustScrollbars()
 {
     Q_Q(QPlainTextEdit);
     QTextDocument *doc = control->document();
@@ -1033,8 +996,6 @@ void QPlainTextEditPrivate::_q_adjustScrollbars()
         vSliderLength = lineSpacing != 0 ? viewport->height() / lineSpacing : 0;
     }
 
-
-
     QSizeF documentSize = documentLayout->documentSize();
     vbar->setRange(0, qMax(0, vmax));
     vbar->setPageStep(vSliderLength);
@@ -1043,10 +1004,7 @@ void QPlainTextEditPrivate::_q_adjustScrollbars()
     if (firstVisibleBlock.isValid())
         visualTopLine = firstVisibleBlock.firstLineNumber() + topLine;
 
-    {
-        const QSignalBlocker blocker(vbar);
-        vbar->setValue(visualTopLine);
-    }
+    vbar->setValue(visualTopLine);
 
     hbar->setRange(0, (int)documentSize.width() - viewport->width());
     hbar->setPageStep(viewport->width());
@@ -1226,10 +1184,8 @@ void QPlainTextEditPrivate::ensureViewportLayouted()
    editor with line wrap enabled in real time. It also makes for a
    fast log viewer (see setMaximumBlockCount()).
 
-
-    \sa QTextDocument, QTextCursor, {Application Example},
-        {Code Editor Example}, {Syntax Highlighter Example},
-        {Rich Text Processing}
+    \sa QTextDocument, QTextCursor
+        {Syntax Highlighter Example}, {Rich Text Processing}
 
 */
 
@@ -1341,7 +1297,7 @@ void QPlainTextEdit::setDocument(QTextDocument *document)
     d->documentLayoutPtr = documentLayout;
     d->updateDefaultTextOption();
     d->relayoutDocument();
-    d->_q_adjustScrollbars();
+    d->adjustScrollbars();
 }
 
 /*!
@@ -1373,8 +1329,7 @@ void QPlainTextEdit::setPlaceholderText(const QString &placeholderText)
     Q_D(QPlainTextEdit);
     if (d->placeholderText != placeholderText) {
         d->placeholderText = placeholderText;
-        if (d->control->document()->isEmpty())
-            d->viewport->update();
+        d->updatePlaceholderVisibility();
     }
 }
 
@@ -1430,7 +1385,7 @@ QString QPlainTextEdit::anchorAt(const QPoint &pos) const
     if (cursorPos < 0)
         return QString();
 
-    QTextDocumentPrivate *pieceTable = document()->docHandle();
+    QTextDocumentPrivate *pieceTable = QTextDocumentPrivate::get(document());
     QTextDocumentPrivate::FragmentIterator it = pieceTable->find(cursorPos);
     QTextCharFormat fmt = pieceTable->formatCollection()->charFormat(it->format);
     return fmt.anchorHref();
@@ -1554,53 +1509,57 @@ bool QPlainTextEdit::event(QEvent *e)
 {
     Q_D(QPlainTextEdit);
 
+    switch (e->type()) {
 #ifndef QT_NO_CONTEXTMENU
-    if (e->type() == QEvent::ContextMenu
-        && static_cast<QContextMenuEvent *>(e)->reason() == QContextMenuEvent::Keyboard) {
-        ensureCursorVisible();
-        const QPoint cursorPos = cursorRect().center();
-        QContextMenuEvent ce(QContextMenuEvent::Keyboard, cursorPos, d->viewport->mapToGlobal(cursorPos));
-        ce.setAccepted(e->isAccepted());
-        const bool result = QAbstractScrollArea::event(&ce);
-        e->setAccepted(ce.isAccepted());
-        return result;
-    }
+    case QEvent::ContextMenu:
+        if (static_cast<QContextMenuEvent *>(e)->reason() == QContextMenuEvent::Keyboard) {
+            ensureCursorVisible();
+            const QPoint cursorPos = cursorRect().center();
+            QContextMenuEvent ce(QContextMenuEvent::Keyboard, cursorPos, d->viewport->mapToGlobal(cursorPos));
+            ce.setAccepted(e->isAccepted());
+            const bool result = QAbstractScrollArea::event(&ce);
+            e->setAccepted(ce.isAccepted());
+            return result;
+        }
+        break;
 #endif // QT_NO_CONTEXTMENU
-    if (e->type() == QEvent::ShortcutOverride
-               || e->type() == QEvent::ToolTip) {
+    case QEvent::ShortcutOverride:
+    case QEvent::ToolTip:
         d->sendControlEvent(e);
-    }
+        break;
 #ifdef QT_KEYPAD_NAVIGATION
-    else if (e->type() == QEvent::EnterEditFocus || e->type() == QEvent::LeaveEditFocus) {
+    case QEvent::EnterEditFocus:
+    case QEvent::LeaveEditFocus:
         if (QApplicationPrivate::keypadNavigationEnabled())
             d->sendControlEvent(e);
-    }
+        break;
 #endif
 #ifndef QT_NO_GESTURES
-    else if (e->type() == QEvent::Gesture) {
-        QGestureEvent *ge = static_cast<QGestureEvent *>(e);
-        QPanGesture *g = static_cast<QPanGesture *>(ge->gesture(Qt::PanGesture));
-        if (g) {
+    case QEvent::Gesture:
+        if (auto *g = static_cast<QGestureEvent *>(e)->gesture(Qt::PanGesture)) {
+            QPanGesture *panGesture = static_cast<QPanGesture *>(g);
             QScrollBar *hBar = horizontalScrollBar();
             QScrollBar *vBar = verticalScrollBar();
-            if (g->state() == Qt::GestureStarted)
+            if (panGesture->state() == Qt::GestureStarted)
                 d->originalOffsetY = vBar->value();
-            QPointF offset = g->offset();
+            QPointF offset = panGesture->offset();
             if (!offset.isNull()) {
                 if (QGuiApplication::isRightToLeft())
                     offset.rx() *= -1;
                 // QPlainTextEdit scrolls by lines only in vertical direction
                 QFontMetrics fm(document()->defaultFont());
                 int lineHeight = fm.height();
-                int newX = hBar->value() - g->delta().x();
+                int newX = hBar->value() - panGesture->delta().x();
                 int newY = d->originalOffsetY - offset.y()/lineHeight;
                 hBar->setValue(newX);
                 vBar->setValue(newY);
             }
         }
         return true;
-    }
 #endif // QT_NO_GESTURES
+    default:
+        break;
+    }
     return QAbstractScrollArea::event(e);
 }
 
@@ -1833,8 +1792,11 @@ void QPlainTextEdit::keyPressEvent(QKeyEvent *e)
 */
 void QPlainTextEdit::keyReleaseEvent(QKeyEvent *e)
 {
-#ifdef QT_KEYPAD_NAVIGATION
     Q_D(QPlainTextEdit);
+    if (!isReadOnly())
+        d->handleSoftwareInputPanel();
+
+#ifdef QT_KEYPAD_NAVIGATION
     if (QApplicationPrivate::keypadNavigationEnabled()) {
         if (!e->isAutoRepeat() && e->key() == Qt::Key_Back
             && d->deleteAllTimer.isActive()) {
@@ -1880,7 +1842,7 @@ void QPlainTextEdit::resizeEvent(QResizeEvent *e)
     Q_D(QPlainTextEdit);
     if (e->oldSize().width() != e->size().width())
         d->relayoutDocument();
-    d->_q_adjustScrollbars();
+    d->adjustScrollbars();
 }
 
 void QPlainTextEditPrivate::relayoutDocument()
@@ -1946,7 +1908,7 @@ void QPlainTextEdit::paintEvent(QPaintEvent *e)
     er.setRight(qMin(er.right(), maxX));
     painter.setClipRect(er);
 
-    if (d->placeholderVisible) {
+    if (d->placeHolderTextToBeShown()) {
         const QColor col = d->control->palette().placeholderText().color();
         painter.setPen(col);
         painter.setClipRect(e->rect());
@@ -1980,8 +1942,7 @@ void QPlainTextEdit::paintEvent(QPaintEvent *e)
                 fillBackground(&painter, contentsRect, bg);
             }
 
-
-            QVector<QTextLayout::FormatRange> selections;
+            QList<QTextLayout::FormatRange> selections;
             int blpos = block.position();
             int bllen = block.length();
             for (int i = 0; i < context.selections.size(); ++i) {
@@ -2091,7 +2052,7 @@ void QPlainTextEdit::mouseMoveEvent(QMouseEvent *e)
 {
     Q_D(QPlainTextEdit);
     d->inDrag = false; // paranoia
-    const QPoint pos = e->pos();
+    const QPoint pos = e->position().toPoint();
     d->sendControlEvent(e);
     if (!(e->buttons() & Qt::LeftButton))
         return;
@@ -2115,7 +2076,7 @@ void QPlainTextEdit::mouseReleaseEvent(QMouseEvent *e)
         d->ensureCursorVisible();
     }
 
-    if (!isReadOnly() && rect().contains(e->pos()))
+    if (!isReadOnly() && rect().contains(e->position().toPoint()))
         d->handleSoftwareInputPanel(e->button(), d->clickCausedFocus);
     d->clickCausedFocus = 0;
 }
@@ -2186,7 +2147,7 @@ void QPlainTextEdit::dragLeaveEvent(QDragLeaveEvent *e)
 void QPlainTextEdit::dragMoveEvent(QDragMoveEvent *e)
 {
     Q_D(QPlainTextEdit);
-    d->autoScrollDragPos = e->pos();
+    d->autoScrollDragPos = e->position().toPoint();
     if (!d->autoScrollTimer.isActive())
         d->autoScrollTimer.start(100, this);
     d->sendControlEvent(e);
@@ -2218,6 +2179,10 @@ void QPlainTextEdit::inputMethodEvent(QInputMethodEvent *e)
     }
 #endif
     d->sendControlEvent(e);
+    const bool emptyEvent = e->preeditString().isEmpty() && e->commitString().isEmpty()
+                         && e->attributes().isEmpty();
+    if (emptyEvent)
+        return;
     ensureCursorVisible();
 }
 
@@ -2242,9 +2207,13 @@ QVariant QPlainTextEdit::inputMethodQuery(Qt::InputMethodQuery query, QVariant a
 {
     Q_D(const QPlainTextEdit);
     switch (query) {
-        case Qt::ImHints:
-        case Qt::ImInputItemClipRectangle:
+    case Qt::ImEnabled:
+        return isEnabled() && !isReadOnly();
+    case Qt::ImHints:
+    case Qt::ImInputItemClipRectangle:
         return QWidget::inputMethodQuery(query);
+    case Qt::ImReadOnly:
+        return isReadOnly();
     default:
         break;
     }
@@ -2313,6 +2282,7 @@ void QPlainTextEdit::showEvent(QShowEvent *)
         d->showCursorOnInitialShow = false;
         ensureCursorVisible();
     }
+    d->adjustScrollbars();
 }
 
 /*! \reimp
@@ -2321,20 +2291,30 @@ void QPlainTextEdit::changeEvent(QEvent *e)
 {
     Q_D(QPlainTextEdit);
     QAbstractScrollArea::changeEvent(e);
-    if (e->type() == QEvent::ApplicationFontChange
-        || e->type() == QEvent::FontChange) {
+
+    switch (e->type()) {
+    case QEvent::ApplicationFontChange:
+    case QEvent::FontChange:
         d->control->document()->setDefaultFont(font());
-    }  else if(e->type() == QEvent::ActivationChange) {
+        break;
+    case QEvent::ActivationChange:
+        d->control->setPalette(palette());
         if (!isActiveWindow())
             d->autoScrollTimer.stop();
-    } else if (e->type() == QEvent::EnabledChange) {
+        break;
+    case QEvent::EnabledChange:
         e->setAccepted(isEnabled());
         d->control->setPalette(palette());
         d->sendControlEvent(e);
-    } else if (e->type() == QEvent::PaletteChange) {
+        break;
+    case QEvent::PaletteChange:
         d->control->setPalette(palette());
-    } else if (e->type() == QEvent::LayoutDirectionChange) {
+        break;
+    case QEvent::LayoutDirectionChange:
         d->sendControlEvent(e);
+        break;
+    default:
+        break;
     }
 }
 
@@ -2491,32 +2471,18 @@ void QPlainTextEdit::setOverwriteMode(bool overwrite)
     d->control->setOverwriteMode(overwrite);
 }
 
-#if QT_DEPRECATED_SINCE(5, 10)
-/*!
-    \property QPlainTextEdit::tabStopWidth
-    \brief the tab stop width in pixels
-    \deprecated in Qt 5.10. Use tabStopDistance instead.
-
-    By default, this property contains a value of 80.
-*/
-
-int QPlainTextEdit::tabStopWidth() const
-{
-    return qRound(tabStopDistance());
-}
-
-void QPlainTextEdit::setTabStopWidth(int width)
-{
-    setTabStopDistance(width);
-}
-#endif
-
 /*!
     \property QPlainTextEdit::tabStopDistance
     \brief the tab stop distance in pixels
     \since 5.10
 
-    By default, this property contains a value of 80.
+    By default, this property contains a value of 80 pixels.
+
+    Do not set a value less than the \l {QFontMetrics::}{horizontalAdvance()}
+    of the QChar::VisualTabCharacter character, otherwise the tab-character
+    will be drawn incompletely.
+
+    \sa QTextOption::ShowTabsAndSpaces, QTextDocument::defaultTextOption
 */
 
 qreal QPlainTextEdit::tabStopDistance() const
@@ -2634,7 +2600,7 @@ void QPlainTextEdit::insertFromMimeData(const QMimeData *source)
 bool QPlainTextEdit::isReadOnly() const
 {
     Q_D(const QPlainTextEdit);
-    return !(d->control->textInteractionFlags() & Qt::TextEditable);
+    return !d->control || !(d->control->textInteractionFlags() & Qt::TextEditable);
 }
 
 void QPlainTextEdit::setReadOnly(bool ro)
@@ -2819,7 +2785,7 @@ void QPlainTextEdit::setLineWrapMode(LineWrapMode wrap)
     d->lineWrap = wrap;
     d->updateDefaultTextOption();
     d->relayoutDocument();
-    d->_q_adjustScrollbars();
+    d->adjustScrollbars();
     ensureCursorVisible();
 }
 
@@ -2905,7 +2871,7 @@ void QPlainTextEdit::setCenterOnScroll(bool enabled)
     if (enabled == d->centerOnScroll)
         return;
     d->centerOnScroll = enabled;
-    d->_q_adjustScrollbars();
+    d->adjustScrollbars();
 }
 
 
@@ -2922,38 +2888,20 @@ bool QPlainTextEdit::find(const QString &exp, QTextDocument::FindFlags options)
 }
 
 /*!
-    \fn bool QPlainTextEdit::find(const QRegExp &exp, QTextDocument::FindFlags options)
-
-    \since 5.3
-    \overload
-
-    Finds the next occurrence, matching the regular expression, \a exp, using the given
-    \a options. The QTextDocument::FindCaseSensitively option is ignored for this overload,
-    use QRegExp::caseSensitivity instead.
-
-    Returns \c true if a match was found and changes the cursor to select the match;
-    otherwise returns \c false.
-*/
-#ifndef QT_NO_REGEXP
-bool QPlainTextEdit::find(const QRegExp &exp, QTextDocument::FindFlags options)
-{
-    Q_D(QPlainTextEdit);
-    return d->control->find(exp, options);
-}
-#endif
-
-/*!
     \fn bool QPlainTextEdit::find(const QRegularExpression &exp, QTextDocument::FindFlags options)
 
     \since 5.13
     \overload
 
     Finds the next occurrence, matching the regular expression, \a exp, using the given
-    \a options. The QTextDocument::FindCaseSensitively option is ignored for this overload,
-    use QRegularExpression::CaseInsensitiveOption instead.
+    \a options.
 
     Returns \c true if a match was found and changes the cursor to select the match;
     otherwise returns \c false.
+
+    \warning For historical reasons, the case sensitivity option set on
+    \a exp is ignored. Instead, the \a options are used to determine
+    if the search is case sensitive or not.
 */
 #if QT_CONFIG(regularexpression)
 bool QPlainTextEdit::find(const QRegularExpression &exp, QTextDocument::FindFlags options)
@@ -3054,12 +3002,17 @@ void QPlainTextEditPrivate::append(const QString &text, Qt::TextFormat format)
     bool documentSizeChangedBlocked = documentLayout->priv()->blockDocumentSizeChanged;
     documentLayout->priv()->blockDocumentSizeChanged = true;
 
-    if (format == Qt::RichText)
+    switch (format) {
+    case Qt::RichText:
         control->appendHtml(text);
-    else if (format == Qt::PlainText)
+        break;
+    case Qt::PlainText:
         control->appendPlainText(text);
-    else
+        break;
+    default:
         control->append(text);
+        break;
+    }
 
     if (maximumBlockCount > 0) {
         if (document->blockCount() > maximumBlockCount) {
@@ -3081,7 +3034,7 @@ void QPlainTextEditPrivate::append(const QString &text, Qt::TextFormat format)
     }
 
     documentLayout->priv()->blockDocumentSizeChanged = documentSizeChangedBlocked;
-    _q_adjustScrollbars();
+    adjustScrollbars();
 
 
     if (atBottom) {

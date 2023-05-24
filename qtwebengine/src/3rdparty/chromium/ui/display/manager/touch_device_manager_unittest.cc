@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,9 @@
 #include "ui/events/devices/touchscreen_device.h"
 
 namespace display {
+
 namespace {
+
 ui::TouchscreenDevice CreateTouchscreenDevice(int id,
                                               ui::InputDeviceType type,
                                               const gfx::Size& size) {
@@ -33,7 +35,7 @@ ui::TouchscreenDevice CreateTouchscreenDevice(int id,
 TouchDeviceManager::TouchAssociationInfo CreateTouchAssociationInfo(
     int days_old) {
   TouchDeviceManager::TouchAssociationInfo info;
-  info.timestamp = base::Time::Now() - base::TimeDelta::FromDays(days_old);
+  info.timestamp = base::Time::Now() - base::Days(days_old);
   return info;
 }
 
@@ -44,6 +46,10 @@ using DisplayInfoList = std::vector<ManagedDisplayInfo>;
 class TouchAssociationTest : public testing::Test {
  public:
   TouchAssociationTest() {}
+
+  TouchAssociationTest(const TouchAssociationTest&) = delete;
+  TouchAssociationTest& operator=(const TouchAssociationTest&) = delete;
+
   ~TouchAssociationTest() override {}
 
   DisplayManager* display_manager() { return display_manager_.get(); }
@@ -120,9 +126,6 @@ class TouchAssociationTest : public testing::Test {
   DisplayInfoList displays_;
   std::unique_ptr<DisplayManager> display_manager_;
   TouchDeviceManager* touch_device_manager_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TouchAssociationTest);
 };
 
 TEST_F(TouchAssociationTest, NoTouchscreens) {
@@ -357,6 +360,11 @@ TEST_F(TouchAssociationTest,
 class TouchAssociationFromPrefTest : public TouchAssociationTest {
  public:
   TouchAssociationFromPrefTest() {}
+
+  TouchAssociationFromPrefTest(const TouchAssociationFromPrefTest&) = delete;
+  TouchAssociationFromPrefTest& operator=(const TouchAssociationFromPrefTest&) =
+      delete;
+
   ~TouchAssociationFromPrefTest() override {}
 
   void SetUp() override {
@@ -392,7 +400,7 @@ class TouchAssociationFromPrefTest : public TouchAssociationTest {
     touch_associations[TouchDeviceIdentifier::FromDevice(devices_[1])]
                       [displays_[1].id()] = CreateTouchAssociationInfo(2);
 
-    // Craete priority list for Device Id = 3
+    // Create priority list for Device Id = 3
     //   - Display Index 2
     //   - Display Index 3
     //   - Display Index 0
@@ -416,9 +424,6 @@ class TouchAssociationFromPrefTest : public TouchAssociationTest {
 
  protected:
   std::vector<ui::TouchscreenDevice> devices_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TouchAssociationFromPrefTest);
 };
 
 TEST_F(TouchAssociationFromPrefTest, CorrectMapping) {
@@ -580,6 +585,12 @@ TEST_F(TouchAssociationFromPrefTest, InternalDisplayIsNotMatched) {
 class TouchAssociationWithDuplicateDeviceTest : public TouchAssociationTest {
  public:
   TouchAssociationWithDuplicateDeviceTest() {}
+
+  TouchAssociationWithDuplicateDeviceTest(
+      const TouchAssociationWithDuplicateDeviceTest&) = delete;
+  TouchAssociationWithDuplicateDeviceTest& operator=(
+      const TouchAssociationWithDuplicateDeviceTest&) = delete;
+
   ~TouchAssociationWithDuplicateDeviceTest() override {}
 
   void SetUp() override {
@@ -607,7 +618,7 @@ class TouchAssociationWithDuplicateDeviceTest : public TouchAssociationTest {
         2, ui::InputDeviceType::INPUT_DEVICE_USB, gfx::Size(1920, 1080)));
 
     // Create another device with the same name but different port. Ensure that
-    // the touch device idnetifier is the same by setting the same vendor id,
+    // the touch device identifier is the same by setting the same vendor id,
     // product id and name.
     devices_.back().name = device_name_1;
     devices_.back().phys = ports[1];
@@ -659,7 +670,7 @@ class TouchAssociationWithDuplicateDeviceTest : public TouchAssociationTest {
     touch_associations[TouchDeviceIdentifier::FromDevice(devices_[1])]
                       [displays_[1].id()] = CreateTouchAssociationInfo(2);
 
-    // Craete priority list for Device Id = 3
+    // Create priority list for Device Id = 3
     //   - Display Index 2
     //   - Display Index 3
     //   - Display Index 0
@@ -672,7 +683,7 @@ class TouchAssociationWithDuplicateDeviceTest : public TouchAssociationTest {
     touch_associations[TouchDeviceIdentifier::FromDevice(devices_[2])]
                       [displays_[0].id()] = CreateTouchAssociationInfo(3);
 
-    // Craete priority list for Device Id = 5
+    // Create priority list for Device Id = 5
     //   - Display Index 3
     //   - Display Index 2
     touch_associations[TouchDeviceIdentifier::FromDevice(devices_[4])] =
@@ -707,9 +718,6 @@ class TouchAssociationWithDuplicateDeviceTest : public TouchAssociationTest {
 
  protected:
   std::vector<ui::TouchscreenDevice> devices_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TouchAssociationWithDuplicateDeviceTest);
 };
 
 TEST_F(TouchAssociationWithDuplicateDeviceTest, CorrectMapping) {

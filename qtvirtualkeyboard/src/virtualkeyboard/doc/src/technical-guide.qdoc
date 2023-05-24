@@ -1,46 +1,58 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 
-\page technical-guide.html
-
-\title Technical Guide
-
-\section1 Overview
-
+\page qtvirtualkeyboard-overview.html
+\title Qt Virtual Keyboard Overview
+\brief Describes the technical details of the Qt Virtual Keyboard module.
+\ingroup explanantion
 This document provides a technical overview of the Qt Virtual Keyboard plugin.
+
+\section1 Features
+
+Key features of the Qt Virtual Keyboard include:
+
+\list
+    \li Customizable keyboard layouts and styles with dynamic switching.
+    \li Predictive text input with word selection.
+    \li Character preview and alternative character view.
+    \li Automatic capitalization and space insertion.
+    \li Scalability to different resolutions.
+    \li Support for different character sets (Latin, Simplified/Traditional Chinese,
+        Hindi, Japanese, Arabic, Hebrew, Korean, and others).
+    \li Support for most common input \l {Supported Languages}{languages},
+        with possibility to easily extend the language support.
+    \li Left-to-right and right-to-left input.
+    \li Hardware key support for 2-way and 5-way navigation.
+    \li \l {Handwriting Recognition}{Handwriting support}, with gestures for fullscreen input.
+    \li Audio feedback.
+    \li Cross-platform functionality.
+    \li Supports both \l {Integration Method}{Qt Quick and Qt Widgets applications}.
+\endlist
+
+\section1 Supported Languages
+
+\include layouts.qdocinc layout-list
+
+\section1 Third-party Plugins
+
+The Qt Virtual Keyboard supports third-party plugins from the following vendors:
+\list
+    \li \l {Cerence XT9 Advanced Input}{Cerence XT9} advanced input.
+    \li \l {Handwriting Recognition#Cerence Handwriting}{Cerence Handwriting} text input.
+    \li \l {Handwriting Recognition#MyScript}{MyScript} Text handwriting recognition
+\endlist
+
+\l {Building Qt Virtual Keyboard} describes how to integrate these plugins
+into the Qt Virtual Keyboard.
 
 \section1 Basic Concepts
 
-The Qt Virtual Keyboard project is a Qt 5 input context plugin which implements
+The Qt Virtual Keyboard project is a Qt input context plugin that implements
 QPlatformInputContextPlugin and QPlatformInputContext interfaces.
 These interfaces allow the plugin to be used as a platform input
-context plugin in Qt 5 applications.
+context plugin in Qt applications.
 
 The plugin itself provides an input framework supporting multiple
 input methods as well as a QML UI for the virtual keyboard. The input
@@ -61,8 +73,6 @@ The input framework provides the following main interfaces:
     \li InputMethod: a base type for QML-based input methods. The input method
         usually handles key events, but can also handle mouse and touch input
         events.
-    \li QVirtualKeyboardExtensionPlugin: a plugin interface for virtual keyboard
-        extensions that provide additional functionality.
 \endlist
 
 \section1 Input Context
@@ -87,46 +97,68 @@ from the application. This information includes, but is not limited to:
 
 \section2 Locale
 
-The list of supported locales is specified by the existence of a locale specific
-layout directory in "layouts/*". Each layout directory may contain one
-or more layouts, for example fi_FI/main.qml or symbols.qml. If the locale specific
-layout is not different from the fallback locale, then a place holder file \c
-<layout type>.fallback can be added for the layout. This will specify the virtual
-keyboard that a fallback layout can be used instead.
+The Virtual Keyboard Engine generates the list of supported locales from
+locale-specific layout directories in \c {layouts/}. Each layout directory
+must contain a definition or fallback for the following layout types:
+\e dialpad, \e digits, \e handwriting, \e main, \e numbers, and \e symbols.
+Definitions are implemented in \c {.qml}-files, fallbacks are defined by a
+placeholder file with the \c {.fallback} file extension. The \c {layouts/}
+directory must contain a \c {fallback/} sub-directory that contains definitions
+for each layout type.
 
-At minimum the layout directory must contain the files:
+Each layout directory may contain the definition of one or more layout types.
+If the locale-specific layout is the same as that of the fallback locale, you
+can add a placeholder file for the layout called \c {<layout type>.fallback}.
+This instructs the virtual keyboard to use the fallback layout instead.
 
-\list
-    \li \c dialpad.fallback
-    \li \c digits.fallback
-    \li \c main.fallback
-    \li \c numbers.fallback
-    \li \c symbols.fallback
-\endlist
+For example: you may add a locale-specific layout for Finnish, that defines the
+main layout type in \c {main.qml}. For the other layout types, you opt for the
+fallback mechanism. Your \c {layouts/} tree will look like this:
+
+\badcode
+.
+├── fallback
+│   ├── dialpad.qml
+│   ├── digits.qml
+│   ├── handwriting.qml
+│   ├── main.qml
+│   ├── numbers.qml
+│   └── symbols.qml
+└── fi_FI
+    ├── dialpad.fallback
+    ├── digits.fallback
+    ├── handwriting.fallback
+    ├── main.qml
+    ├── numbers.fallback
+    └── symbols.fallback
+\endcode
+
+It's imperative that the \c {layouts/fallback} directory always contain a set
+of full implementation files.
 
 The application can specify the initial layout by changing the default locale.
-However, this needs to be done before the application is initialized and the
-input method plugin is loaded. If no changes are made to the default locale, the
-current system locale is used.
+However, this must be done before the application initializes and loads the
+input method plugin. If there are no changes to the default locale, the current
+system locale is used.
 
-The keyboard locale matching is performed in the following sequence:
+Matching the keyboard locale follows this sequence:
 
 \list
-    \li layouts/<language>_<country>
-    \li layouts/<language>_*
-    \li layouts/en_GB
+    \li \c {layouts/<language>_<country>}
+    \li \c {layouts/<language>_*}
+    \li \c {layouts/fallback} -- the default layout here is \e en_GB.
 \endlist
 
-The locale is first matched against the full locale name. If a full match is
-not found, then only the locale language is matched. If a partial match is
-not found, then the "en_GB" locale is used as a fallback.
+First, the locale is matched against the full locale name. If a there isn't a
+full match, then only the locale language is matched. Finally, the contents of
+\c {layouts/fallback} is used as a fallback when there's also no partial match.
 
 After the locale selection is done, the keyboard updates the input locale and
 input direction to match the current layout. The application can receive this
 information through the QInputMethod interface.
 
-Internally, the current input locale is also updated to the QVirtualKeyboardInputEngine
-and the current input method instances.
+Internally, the current input locale is also updated to
+QVirtualKeyboardInputEngine and the current input method instances.
 
 \section1 Input Engine
 
@@ -179,28 +211,17 @@ case:
         input method.
 \endlist
 
-\section1 Virtual Keyboard Extension Plugin
+\section1 Virtual Keyboard Plugins
 
-An extension plugin allows third-party providers to enhance the functionality
-of the virtual keyboard without recompiling it. Currently the extension plugin
-can provide keyboard layouts and custom input methods. Creating a plugin for
-Qt Virtual Keyboard is similar to the standard way of creating a Qt plugin:
+The \e src/plugins directory of the virtual keyboard contains the existing plugins
+for the virtual keyboard. These plugins are standard QML modules loaded implicitly
+by the QtQuick.VirtualKeyboard.Plugins QML module.
 
-\list
-    \li \b {Link against the virtualkeyboard library}.
-
-        The virtualkeyboard module must be linked against the plugin:
-
-        \badcode
-        QT += virtualkeyboard
-        \endcode
-
-        This allows the plugin to access \l QVirtualKeyboardInputContext and other interfaces.
-    \li \b {Implement a subclass of QVirtualKeyboardExtensionPlugin.}
-
-        The plugin provides the virtual keyboard with the necessary metadata,
-        which allows it to sort and load the plugins.
-\endlist
+A plugin may provide keyboard layouts and input methods (usually both). The input method
+used by the virtual keyboard depends on which keyboard layout is in use. The keyboard layout
+may provide an instance of a custom input method by the KeyboardLayout.createInputMethod()
+function. Otherwise, the default input method (DefaultInputMethod) created by the virtual
+keyboard is used.
 
 \section2 Adding Keyboard Layouts
 
@@ -208,82 +229,29 @@ The plugin can add keyboard layouts for the virtual keyboard by including
 the layout files in the Qt resources of the plugin binary.
 
 The virtual keyboard searches for the keyboard layouts (per language) from a specific
-path \e /QtQuick/VirtualKeyboard/content/layouts/<language_COUNTRY>, so it is essential
-to use this exact path also in the plugin. Qt resource paths can be overlapped, however,
-the plugin cannot override the existing layouts in the virtual keyboard plugin.
+path \e /qt-project.org/imports/QtQuick/VirtualKeyboard/Layouts/<language_COUNTRY>, so it is essential
+to use this exact path also in the plugin. Qt resource paths can overlap, meaning that
+the plugin can override existing layouts on the virtual keyboard.
 
-If the extension plugin needs to override the built-in keyboard layout, the virtual
-keyboard must be recompiled with only specific languages (e.g. \e CONFIG+=lang-en) or without
-keyboard layouts at (e.g. \e CONFIG+=disable-layouts). Alternatively, if recompiling is not an
-option, it is possible to override the built-in keyboard layouts and have them loaded directly
+It is also possible to override the built-in keyboard layouts by having them loaded directly
 from the file system by using the \e QT_VIRTUALKEYBOARD_LAYOUT_PATH environment variable.
 
 \section2 Adding Input Method
 
 The plugin can register an input method that other keyboard layouts can use by
 default (such as \c DefaultInputMethod) or an input method that is used privately
-in the plugin.
+in the plugin (by also providing custom keyboard layout, which creates the input
+method).
 
-The input method must implement \l {QVirtualKeyboardAbstractInputMethod} (C++) or InputMethod (QML)
-interface and the plugin must register it as a QML type in
-{QVirtualKeyboardExtensionPlugin::registerTypes} method.
-
-\section2 Metadata for the Extension Plugin
-
-Metadata allows the virtual keyboard to inspect the plugin before loading
-the actual library. It also prevents the virtual keyboard from loading
-conflicting extension plugins, for example, two handwriting extensions.
-
-\table
-    \row
-        \li \c Name
-        \li \c Required
-        \li This field defines the plugin name. There are several built-in
-            plugins available by default:
-
-            \list
-            \li \c hangul
-            \li \c default (Hunspell)
-            \li \c handwriting (T9 Write, Lipi-Toolkit)
-            \li \c japanese (OpenWNN)
-            \li \c pinyin
-            \li \c traditional_chinese
-            \endlist
-    \row
-        \li \c Provider
-        \li \c Optional
-        \li An informative name of the plugin provider. Used mainly for diagnostics.
-    \row
-        \li \c InputMethod
-        \li \c Optional
-        \li This field tells the virtual keyboard the plugin contains an input method.
-            When this field is defined, the virtual keyboard will invoke the
-            \l {QVirtualKeyboardExtensionPlugin::registerTypes} {interface}
-            for registering the QML types.
-            Similar to the \c Name, there can be only one provider for each input method.
-    \row
-        \li \c Version
-        \li \c Required
-        \li An integer defining the version number of the plugin. If there are two or more
-            plugins available of the same \c Name, the one with greatest version number is
-            preferred.
-\endtable
-
-The following metadata example is from the Lipi-Toolkit extension plugin (lipi.json):
-
-\badcode
-{
-    "Name": "handwriting",
-    "Provider": "Qt Lipi-Toolkit Extension",
-    "InputMethod": "HandwritingInputMethod",
-    "Version": 100
-}
-\endcode
+The input method must implement a \l {QVirtualKeyboardAbstractInputMethod} (C++) or InputMethod (QML)
+interface and it must be registered as a QML type (\l {QML_NAMED_ELEMENT}) by the plugin.
 
 \section1 Implementing a Custom Input Method
 
-The implementation of input methods starts by deciding which interface is used;
-QML or C++. In this example the QML interface is used.
+The implementation of input methods starts by deciding which interface is used,
+QML or C++. In this example the QML interface is used. The same logic and interfaces
+apply with the C++ interface \l {QVirtualKeyboardAbstractInputMethod}. In this case,
+the plugin must be linked to the \e VirtualKeyboard module.
 
 The following example shows the minimum functionality that is required
 from an input method:
@@ -399,17 +367,19 @@ function selectionListItemSelected(type, index) {
 
 \section1 Integrating Handwriting Recognition
 
-Since version 2.0 of the virtual keyboard, input methods can consume
-touch input data from touch screens or other input devices. This allows
-integration of a handwriting recognition engine seamlessly to the virtual
-keyboard, without any changes to the existing keyboard layouts (as
-the virtual keyboard already provides the handwriting keyboard layouts for
-most languages).
+An input method can also use input data from the touch screen or other input devices.
 
-Towards an input method, handwriting recognition works on the same principle
-as handling of normal keyboard input, i.e. input data is collected by the
-keyboard layout and transferred by the input engine to the input method for
-processing.
+When the input begins, the virtual keyboard calls the input method function
+\l { QVirtualKeyboardAbstractInputMethod::traceBegin } { traceBegin }, which returns a new \l {QVirtualKeyboardTrace} {Trace}
+object to which the input is collected on behalf of the input method. Similarly, when
+the finger or stylus is raised, the event is terminated with the \l { QVirtualKeyboardAbstractInputMethod::traceEnd } { traceEnd } call.
+The input method processes the collected data and produces text using the
+\l {QVirtualKeyboardInputContext} {InputContext} interface.
+
+There are predefined keyboard layouts for handwriting. However, they are not included
+by default, and the handwriting plugin should include them in its own resources. For
+examples of how to do this, see the existing plugins for handwriting from \e MyScript
+or \e Cerence.
 
 \section2 Data Model for Handwriting Input
 
@@ -465,7 +435,7 @@ the object. This also removes the trace rendered to the screen.
 
 \section1 Keyboard Layouts
 
-Keyboard layouts are located in the \e src/virtualkeyboard/content/layouts
+Keyboard layouts are located in the \e src/layouts/builtin
 directory. Each subdirectory of the layout directory represents a locale.
 The locale directory is a string of the form "language_country", where
 language is a lowercase, two-letter ISO 639 language code, and country is an
@@ -517,29 +487,16 @@ Otherwise, the key weight is inherited from its parent element.
 New keys are added to the keyboard row using the Key type or one of the
 specialized key types. Below is the list of all key types:
 
-\list
-    \li \l Key
-    \li \l BackspaceKey
-    \li \l ChangeLanguageKey
-    \li \l EnterKey
-    \li \l FillerKey
-    \li \l HideKeyboardKey
-    \li \l NumberKey
-    \li \l ShiftKey
-    \li \l SpaceKey
-    \li \l SymbolModeKey
-    \li \l HandwritingModeKey
-    \li \l TraceInputKey
-\endlist
+\generatelist groupsbymodule qtvirtualkeyboard-key-types
 
 For example, to add a regular key which sends a key event to the input method:
 
 \code
-    import QtQuick 2.0
-    import QtQuick.Layouts 1.0
-    import QtQuick.VirtualKeyboard 2.1
+    import QtQuick
+    import QtQuick.VirtualKeyboard
+    import QtQuick.VirtualKeyboard.Components
 
-    // file: layouts/en_GB/main.qml
+    // file: en_GB/main.qml
 
     KeyboardLayout {
         keyWeight: 160
@@ -568,11 +525,11 @@ The effective value for the key weight will be 160. For the sake of the
 example, we add another key which specifies a custom key weight:
 
 \code
-    import QtQuick 2.0
-    import QtQuick.Layouts 1.0
-    import QtQuick.VirtualKeyboard 2.1
+    import QtQuick
+    import QtQuick.VirtualKeyboard
+    import QtQuick.VirtualKeyboard.Components
 
-    // file: layouts/en_GB/main.qml
+    // file: en_GB/main.qml
 
     KeyboardLayout {
         keyWeight: 160
@@ -626,11 +583,11 @@ sourceComponent property.
 For example:
 
 \code
-    import QtQuick 2.0
-    import QtQuick.Layouts 1.0
-    import QtQuick.VirtualKeyboard 2.1
+    import QtQuick
+    import QtQuick.VirtualKeyboard
+    import QtQuick.VirtualKeyboard.Components
 
-    // file: layouts/en_GB/symbols.qml
+    // file: en_GB/symbols.qml
 
     KeyboardLayoutLoader {
         property bool secondPage
@@ -674,7 +631,7 @@ This type of keyboard layout must meet the following requirements:
 \li provides an instance of HandwritingInputMethod as the input method.
 \endlist
 
-The handwriting layout may also include ChangeLanguageKey. For this purpose, it is
+The handwriting layout may also include \l ChangeLanguageKey. For this purpose, it is
 important to use the \l {ChangeLanguageKey::customLayoutsOnly} {customLayoutsOnly} attribute, which will filter out languages
 that do not use handwriting.
 
@@ -695,8 +652,8 @@ In case the environment variable is not set, or contains an invalid
 directory, the virtual keyboard falls back to the default built-in layouts.
 
 To prevent the built-in layouts from being built into the virtual keyboard
-plugin when using custom layouts, add \c disable-layouts to the \c CONFIG qmake variable.
-For more information, see \l {Advanced Configuration Options}.
+plugin when using custom layouts, add \c -no-vkb-layouts option to the \c configure script.
+For more information, see \l [DOC] {Advanced Usage} {Configuration Options}.
 
 \section1 Keyboard Styles
 
@@ -721,7 +678,7 @@ style name, the virtual keyboard falls back in the default built-in style.
 
 The process of creating a new style begins by creating a new subdirectory
 for the style in a QML import path under the URL-based directory structure
-QtQuick/VirtualKeyboard/Styles/. See \l {QML Import Path}
+QtQuick/VirtualKeyboard/Styles/. See \l[QtQml]{QML Import Path}
 for information about QML import paths. The directory
 name can not contain spaces or special characters other than underscore.
 Also, the directory name can not be the same as one of the built-in style,
@@ -730,7 +687,7 @@ which currently includes "default" and "retro".
 A good starting point for creating a new style is to use an existing
 built-in style as a template and edit it. You can find the built-in
 styles from the virtual keyboard sources directory
-src/virtualkeyboard/content/styles. Copy one of the directories containing
+src/styles/builtin. Copy one of the directories containing
 a built-in style into the \e Styles directory and rename it to "test".
 The directory structure should now be as follows:
 

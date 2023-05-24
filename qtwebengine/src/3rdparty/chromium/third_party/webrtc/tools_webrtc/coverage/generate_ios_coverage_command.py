@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -6,7 +7,6 @@
 # tree. An additional intellectual property rights grant can be found
 # in the file PATENTS.  All contributing project authors may
 # be found in the AUTHORS file in the root of the source tree.
-
 """Generates command-line instructions to produce one-time iOS coverage using
 coverage.py.
 
@@ -47,34 +47,32 @@ if os.path.exists(binary_path):
 ========== ENDING OF PATCH ==========
 
 """
-
 import sys
 
 DIRECTORY = 'out/coverage'
 
 TESTS = [
-  'audio_decoder_unittests',
-  'common_audio_unittests',
-  'common_video_unittests',
-  'modules_tests',
-  'modules_unittests',
-  'rtc_media_unittests',
-  'rtc_pc_unittests',
-  'rtc_stats_unittests',
-  'rtc_unittests',
-  'slow_tests',
-  'system_wrappers_unittests',
-  'test_support_unittests',
-  'tools_unittests',
-  'video_capture_tests',
-  'video_engine_tests',
-  'webrtc_nonparallel_tests',
+    'audio_decoder_unittests',
+    'common_audio_unittests',
+    'common_video_unittests',
+    'modules_tests',
+    'modules_unittests',
+    'rtc_media_unittests',
+    'rtc_pc_unittests',
+    'rtc_stats_unittests',
+    'rtc_unittests',
+    'system_wrappers_unittests',
+    'test_support_unittests',
+    'tools_unittests',
+    'video_capture_tests',
+    'video_engine_tests',
+    'webrtc_nonparallel_tests',
 ]
 
 XC_TESTS = [
-  'apprtcmobile_tests',
-  'sdk_framework_unittests',
-  'sdk_unittests',
+    'apprtcmobile_tests',
+    'sdk_framework_unittests',
+    'sdk_unittests',
 ]
 
 
@@ -88,11 +86,8 @@ def FormatIossimTest(test_name, is_xctest=False):
 
 def GetGNArgs(is_simulator):
   target_cpu = 'x64' if is_simulator else 'arm64'
-  return ([] +
-          ['target_os="ios"'] +
-          ['target_cpu="%s"' % target_cpu] +
-          ['use_clang_coverage=true'] +
-          ['is_component_build=false'] +
+  return ([] + ['target_os="ios"'] + ['target_cpu="%s"' % target_cpu] +
+          ['use_clang_coverage=true'] + ['is_component_build=false'] +
           ['dcheck_always_on=true'])
 
 
@@ -100,75 +95,71 @@ def GenerateIOSSimulatorCommand():
   gn_args_string = ' '.join(GetGNArgs(is_simulator=True))
   gn_cmd = ['gn', 'gen', DIRECTORY, '--args=\'%s\'' % gn_args_string]
 
-  coverage_cmd = (
-      [sys.executable, 'tools/code_coverage/coverage.py'] +
-      ["%s.app" % t for t in XC_TESTS + TESTS] +
-      ['-b %s' % DIRECTORY, '-o out/report'] +
-      ['-i=\'.*/out/.*|.*/third_party/.*|.*test.*\''] +
-      [FormatIossimTest(t, is_xctest=True) for t in XC_TESTS] +
-      [FormatIossimTest(t, is_xctest=False) for t in TESTS]
-  )
+  coverage_cmd = ([sys.executable, 'tools/code_coverage/coverage.py'] +
+                  ["%s.app" % t for t in XC_TESTS + TESTS] +
+                  ['-b %s' % DIRECTORY, '-o out/report'] +
+                  ['-i=\'.*/out/.*|.*/third_party/.*|.*test.*\''] +
+                  [FormatIossimTest(t, is_xctest=True) for t in XC_TESTS] +
+                  [FormatIossimTest(t, is_xctest=False) for t in TESTS])
 
-  print 'To get code coverage using iOS simulator just run following commands:'
-  print ''
-  print ' '.join(gn_cmd)
-  print ''
-  print ' '.join(coverage_cmd)
+  print('To get code coverage using iOS sim just run following commands:')
+  print('')
+  print(' '.join(gn_cmd))
+  print('')
+  print(' '.join(coverage_cmd))
   return 0
 
 
 def GenerateIOSDeviceCommand():
   gn_args_string = ' '.join(GetGNArgs(is_simulator=False))
 
-  coverage_report_cmd = (
-      [sys.executable, 'tools/code_coverage/coverage.py'] +
-      ['%s.app' % t for t in TESTS] +
-      ['-b %s' % DIRECTORY] +
-      ['-o out/report'] +
-      ['-p %s/merged.profdata' % DIRECTORY] +
-      ['-i=\'.*/out/.*|.*/third_party/.*|.*test.*\'']
-  )
+  coverage_report_cmd = ([sys.executable, 'tools/code_coverage/coverage.py'] +
+                         ['%s.app' % t for t in TESTS] + ['-b %s' % DIRECTORY] +
+                         ['-o out/report'] +
+                         ['-p %s/merged.profdata' % DIRECTORY] +
+                         ['-i=\'.*/out/.*|.*/third_party/.*|.*test.*\''])
 
-  print 'Computing code coverage for real iOS device is a little bit tedious.'
-  print ''
-  print 'You will need:'
-  print ''
-  print '1. Generate xcode project and open it with Xcode 10+:'
-  print '  gn gen %s --ide=xcode --args=\'%s\'' % (DIRECTORY, gn_args_string)
-  print '  open %s/all.xcworkspace' % DIRECTORY
-  print ''
-  print '2. Execute these Run targets manually with Xcode Run button and '
-  print 'manually save generated coverage.profraw file to %s:' % DIRECTORY
-  print '\n'.join('- %s' % t for t in TESTS)
-  print ''
-  print '3. Execute these Test targets manually with Xcode Test button and '
-  print 'manually save generated coverage.profraw file to %s:' % DIRECTORY
-  print '\n'.join('- %s' % t for t in XC_TESTS)
-  print ''
-  print '4. Merge *.profraw files to *.profdata using llvm-profdata tool:'
-  print ('  build/mac_files/Xcode.app/Contents/Developer/Toolchains/' +
+  print('Computing code coverage for real iOS device is a little bit tedious.')
+  print('')
+  print('You will need:')
+  print('')
+  print('1. Generate xcode project and open it with Xcode 10+:')
+  print('  gn gen %s --ide=xcode --args=\'%s\'' % (DIRECTORY, gn_args_string))
+  print('  open %s/all.xcworkspace' % DIRECTORY)
+  print('')
+  print('2. Execute these Run targets manually with Xcode Run button and ')
+  print('manually save generated coverage.profraw file to %s:' % DIRECTORY)
+  print('\n'.join('- %s' % t for t in TESTS))
+  print('')
+  print('3. Execute these Test targets manually with Xcode Test button and ')
+  print('manually save generated coverage.profraw file to %s:' % DIRECTORY)
+  print('\n'.join('- %s' % t for t in XC_TESTS))
+  print('')
+  print('4. Merge *.profraw files to *.profdata using llvm-profdata tool:')
+  print(('  build/mac_files/Xcode.app/Contents/Developer/Toolchains/' +
          'XcodeDefault.xctoolchain/usr/bin/llvm-profdata merge ' +
          '-o %s/merged.profdata ' % DIRECTORY +
-         '-sparse=true %s/*.profraw' % DIRECTORY)
-  print ''
-  print '5. Generate coverage report:'
-  print '  ' + ' '.join(coverage_report_cmd)
+         '-sparse=true %s/*.profraw' % DIRECTORY))
+  print('')
+  print('5. Generate coverage report:')
+  print('  ' + ' '.join(coverage_report_cmd))
   return 0
 
 
-def Main():
+def main():
   if len(sys.argv) < 2:
-    print 'Please specify type of coverage:'
-    print '  %s simulator' % sys.argv[0]
-    print '  %s device' % sys.argv[0]
+    print('Please specify type of coverage:')
+    print('  %s simulator' % sys.argv[0])
+    print('  %s device' % sys.argv[0])
   elif sys.argv[1] == 'simulator':
     GenerateIOSSimulatorCommand()
   elif sys.argv[1] == 'device':
     GenerateIOSDeviceCommand()
   else:
-    print 'Unsupported type of coverage'
+    print('Unsupported type of coverage')
 
   return 0
 
+
 if __name__ == '__main__':
-  sys.exit(Main())
+  sys.exit(main())

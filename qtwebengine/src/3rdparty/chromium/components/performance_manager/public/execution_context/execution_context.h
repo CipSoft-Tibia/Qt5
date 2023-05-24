@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 #define COMPONENTS_PERFORMANCE_MANAGER_PUBLIC_EXECUTION_CONTEXT_EXECUTION_CONTEXT_H_
 
 #include "base/observer_list_types.h"
+#include "components/performance_manager/public/execution_context_priority/execution_context_priority.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 
 class GURL;
@@ -16,6 +17,8 @@ class FrameNode;
 class Graph;
 class ProcessNode;
 class WorkerNode;
+
+using execution_context_priority::PriorityAndReason;
 
 namespace execution_context {
 
@@ -47,6 +50,12 @@ class ExecutionContext {
   using Observer = ExecutionContextObserver;
   using ObserverDefaultImpl = ExecutionContextObserverDefaultImpl;
 
+  // Syntactic sugar for converting from a node to the corresponding
+  // ExecutionContext.
+  static const ExecutionContext* From(const ExecutionContext* ec) { return ec; }
+  static const ExecutionContext* From(const FrameNode* frame_node);
+  static const ExecutionContext* From(const WorkerNode* worker_node);
+
   ExecutionContext() = default;
   ExecutionContext(const ExecutionContext&) = delete;
   ExecutionContext& operator=(const ExecutionContext&) = delete;
@@ -73,6 +82,10 @@ class ExecutionContext {
   // ExecutionContext is hosted. This will never return nullptr.
   virtual const ProcessNode* GetProcessNode() const = 0;
 
+  // Returns the current priority of the execution context, and the reason for
+  // the execution context having that particular priority.
+  virtual const PriorityAndReason& GetPriorityAndReason() const = 0;
+
   // Returns the underlying FrameNode, if this context is a FrameNode, or
   // nullptr otherwise.
   virtual const FrameNode* GetFrameNode() const = 0;
@@ -97,6 +110,11 @@ class ExecutionContextObserver : public base::CheckedObserver {
   // Called when an ExecutionContext is about to be removed. The pointer |ec|
   // becomes invalid immediately after this returns.
   virtual void OnBeforeExecutionContextRemoved(const ExecutionContext* ec) = 0;
+
+  // Invoked when the execution context priority and reason changes.
+  virtual void OnPriorityAndReasonChanged(
+      const ExecutionContext* ec,
+      const PriorityAndReason& previous_value) = 0;
 };
 
 // A default implementation of ExecutionContextObserver with empty stubs for all
@@ -113,6 +131,9 @@ class ExecutionContextObserverDefaultImpl : public ExecutionContextObserver {
   // ExecutionContextObserver implementation:
   void OnExecutionContextAdded(const ExecutionContext* ec) override {}
   void OnBeforeExecutionContextRemoved(const ExecutionContext* ec) override {}
+  void OnPriorityAndReasonChanged(
+      const ExecutionContext* ec,
+      const PriorityAndReason& previous_value) override {}
 };
 
 // Helper function for converting from a WorkerToken to an

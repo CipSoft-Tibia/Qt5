@@ -1,65 +1,40 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef CONTENT_CLIENT_QT_H
 #define CONTENT_CLIENT_QT_H
 
 #include "qtwebenginecoreglobal_p.h"
+
 #include "base/strings/string_piece.h"
+#include "base/synchronization/lock.h"
+#include "components/embedder_support/origin_trials/origin_trial_policy_impl.h"
 #include "content/public/common/content_client.h"
 #include "ui/base/layout.h"
+
+#include <memory>
 
 namespace QtWebEngineCore {
 
 class ContentClientQt : public content::ContentClient {
 public:
 #if QT_CONFIG(webengine_pepper_plugins)
-    void AddPepperPlugins(std::vector<content::PepperPluginInfo>* plugins) override;
+    void AddPlugins(std::vector<content::ContentPluginInfo> *plugins) override;
 #endif
     void AddContentDecryptionModules(std::vector<content::CdmInfo> *cdms,
                                      std::vector<media::CdmHostFilePath> *cdm_host_file_paths) override;
     void AddAdditionalSchemes(Schemes* schemes) override;
 
-    base::StringPiece GetDataResource(int, ui::ScaleFactor) override;
+    base::StringPiece GetDataResource(int, ui::ResourceScaleFactor) override;
     base::RefCountedMemory* GetDataResourceBytes(int resource_id) override;
     gfx::Image &GetNativeImageNamed(int resource_id) override;
-    base::string16 GetLocalizedString(int message_id) override;
+    std::u16string GetLocalizedString(int message_id) override;
+    blink::OriginTrialPolicy *GetOriginTrialPolicy() override;
+
+private:
+    // Used to lock when |origin_trial_policy_| is initialized.
+    base::Lock origin_trial_policy_lock_;
+    std::unique_ptr<embedder_support::OriginTrialPolicyImpl> origin_trial_policy_;
 };
 
 } // namespace QtWebEngineCore

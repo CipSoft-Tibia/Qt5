@@ -110,6 +110,8 @@ enum Jpeg2000Quantsty { // quantization style
 #define JPEG2000_CSTY_PREC      0x01 // Precincts defined in coding style
 #define JPEG2000_CSTY_SOP       0x02 // SOP marker present
 #define JPEG2000_CSTY_EPH       0x04 // EPH marker present
+#define JPEG2000_CTSY_HTJ2K_F   0x40 // Only HT code-blocks (Rec. ITU-T T.814 | ISO/IEC 15444-15) are present
+#define JPEG2000_CTSY_HTJ2K_M   0xC0 // HT code blocks (Rec. ITU-T T.814 | ISO/IEC 15444-15) can be present
 
 // Progression orders
 #define JPEG2000_PGOD_LRCP      0x00  // Layer-resolution level-component-position progression
@@ -127,6 +129,7 @@ typedef struct Jpeg2000T1Context {
 
 typedef struct Jpeg2000TgtNode {
     uint8_t val;
+    uint8_t temp_val;
     uint8_t vis;
     struct Jpeg2000TgtNode *parent;
 } Jpeg2000TgtNode;
@@ -161,10 +164,19 @@ typedef struct Jpeg2000Pass {
     int flushed_len;
 } Jpeg2000Pass;
 
+typedef struct Jpeg2000Layer {
+    uint8_t *data_start;
+    int data_len;
+    int npasses;
+    double disto;
+    int cum_passes;
+} Jpeg2000Layer;
+
 typedef struct Jpeg2000Cblk {
     uint8_t npasses;
     uint8_t ninclpasses; // number coding of passes included in codestream
     uint8_t nonzerobits;
+    uint8_t incl;
     uint16_t length;
     uint16_t *lengthinc;
     uint8_t nb_lengthinc;
@@ -175,6 +187,7 @@ typedef struct Jpeg2000Cblk {
     int nb_terminationsinc;
     int *data_start;
     Jpeg2000Pass *passes;
+    Jpeg2000Layer *layers;
     int coord[2][2]; // border coordinates {{x0, x1}, {y0, y1}}
 } Jpeg2000Cblk; // code block
 
@@ -289,5 +302,7 @@ static inline int needs_termination(int style, int passno) {
         return 1;
     return 0;
 }
+
+void ff_tag_tree_zero(Jpeg2000TgtNode *t, int w, int h, int val);
 
 #endif /* AVCODEC_JPEG2000_H */

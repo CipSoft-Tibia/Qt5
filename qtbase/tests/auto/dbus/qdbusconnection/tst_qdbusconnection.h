@@ -1,59 +1,44 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef TST_QDBUSCONNECTION_H
 #define TST_QDBUSCONNECTION_H
 
 #include <QObject>
-#include <QtDBus/QtDBus>
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTestEventLoop>
+#include <QDBusMessage>
+#include <QDBusConnection>
+#include <QDBusServer>
+#include <QDBusVirtualObject>
 
 class BaseObject: public QObject
 {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "local.BaseObject")
 public:
-    BaseObject(QObject *parent = 0) : QObject(parent) { }
+    BaseObject(QObject *parent = nullptr) : QObject(parent) { }
 public slots:
     void anotherMethod() { }
+signals:
+    void baseObjectSignal();
 };
 
 class MyObject: public BaseObject
 {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "local.MyObject")
 public slots:
     void method(const QDBusMessage &msg);
 
 public:
     static QString path;
     int callCount;
-    MyObject(QObject *parent = 0) : BaseObject(parent), callCount(0) {}
+    MyObject(QObject *parent = nullptr) : BaseObject(parent), callCount(0) {}
+
+signals:
+    void myObjectSignal();
 };
 
 class MyObjectWithoutInterface: public QObject
@@ -66,7 +51,7 @@ public:
     static QString path;
     static QString interface;
     int callCount;
-    MyObjectWithoutInterface(QObject *parent = 0) : QObject(parent), callCount(0) {}
+    MyObjectWithoutInterface(QObject *parent = nullptr) : QObject(parent), callCount(0) {}
 };
 
 class SignalReceiver : public QObject
@@ -135,6 +120,10 @@ private slots:
     void callVirtualObject();
     void callVirtualObjectLocal();
     void pendingCallWhenDisconnected();
+
+    void emptyServerAddress();
+
+    void parentClassSignal();
 
 public:
     QString serviceName() const { return "org.qtproject.Qt.Autotests.QDBusConnection"; }
@@ -238,7 +227,7 @@ class TestObject : public QObject
 {
 Q_OBJECT
 public:
-    TestObject(QObject *parent = 0) : QObject(parent) {}
+    TestObject(QObject *parent = nullptr) : QObject(parent) {}
     ~TestObject() {}
 
     QString func;
@@ -270,12 +259,12 @@ class VirtualObject: public QDBusVirtualObject
 public:
     VirtualObject() :success(true) {}
 
-    QString introspect(const QString & /* path */) const
+    QString introspect(const QString & /* path */) const override
     {
         return QString();
     }
 
-    bool handleMessage(const QDBusMessage &message, const QDBusConnection &connection) {
+    bool handleMessage(const QDBusMessage &message, const QDBusConnection &connection) override {
         ++callCount;
         lastMessage = message;
 

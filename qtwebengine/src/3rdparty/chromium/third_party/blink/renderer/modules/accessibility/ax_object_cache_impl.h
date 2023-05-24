@@ -32,25 +32,37 @@
 #include <memory>
 #include <utility>
 
+#include "base/dcheck_is_on.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-blink.h"
+#include "third_party/blink/public/mojom/render_accessibility.mojom-blink.h"
 #include "third_party/blink/public/web/web_ax_enums.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_aria_notification_options.h"
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache_base.h"
 #include "third_party/blink/renderer/core/accessibility/blink_ax_event_intent.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
+#include "third_party/blink/renderer/modules/accessibility/aria_notification.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object.h"
+#include "third_party/blink/renderer/modules/accessibility/blink_ax_tree_source.h"
+#include "third_party/blink/renderer/modules/accessibility/inspector_accessibility_agent.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_deque.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "ui/accessibility/ax_enums.mojom-blink-forward.h"
+#include "ui/accessibility/ax_mode.h"
+#include "ui/accessibility/ax_tree_serializer.h"
 
 namespace blink {
 
@@ -58,52 +70,103 @@ class AbstractInlineTextBox;
 class AXRelationCache;
 class HTMLAreaElement;
 class LocalFrameView;
+class WebLocalFrameClient;
+
+// Describes a decicion on whether to create an AXNodeObject, an AXLayoutObject,
+// or nothing (which will cause the AX subtree to be pruned at that point).
+// Currently this also mirrors the decision on whether to back the object by a
+// node or a layout object. When the AXObject is backed by a node, it's
+// AXID can be looked up in node_object_mapping_, and when the AXObject is
+// backed by layout, it's AXID can be looked up in layout_object_mapping_.
+// TODO(accessibility) Split the decision of what to use for backing from what
+// type of object to create, and use a node whenever possible, in order to
+// enable more stable IDs for most objects.
+enum AXObjectType { kPruneSubtree = 0, kAXNodeObject, kAXLayoutObject };
 
 // This class should only be used from inside the accessibility directory.
 class MODULES_EXPORT AXObjectCacheImpl
     : public AXObjectCacheBase,
       public mojom::blink::PermissionObserver {
  public:
-  static AXObjectCache* Create(Document&);
+  static AXObjectCache* Create(Document&, const ui::AXMode&);
 
-  explicit AXObjectCacheImpl(Document&);
+  AXObjectCacheImpl(Document&, const ui::AXMode&);
+
+  AXObjectCacheImpl(const AXObjectCacheImpl&) = delete;
+  AXObjectCacheImpl& operator=(const AXObjectCacheImpl&) = delete;
+
   ~AXObjectCacheImpl() override;
   void Trace(Visitor*) const override;
 
-  Document& GetDocument() { return *document_; }
+  // The main document.
+  Document& GetDocument() const { return *document_; }
+  // The popup document, if showing, otherwise null.
+  Document* GetPopupDocumentIfShowing() const { return popup_document_; }
+
   AXObject* FocusedObject();
+
+  const ui::AXMode& GetAXMode() override;
+  void SetAXMode(const ui::AXMode&) override;
+
+  // When the accessibility tree view is open in DevTools, we listen for changes
+  // to the tree by registering an InspectorAccessibilityAgent here and notify
+  // the agent when AXEvents are fired or nodes are marked dirty.
+  void AddInspectorAgent(InspectorAccessibilityAgent*);
+  void RemoveInspectorAgent(InspectorAccessibilityAgent*);
+
+  // Ensure that a full document lifecycle will occur, which in turn ensures
+  // that a call to ProcessDeferredAccessibilityEvents() will occur soon.
+  void ScheduleAXUpdate() const override;
 
   void Dispose() override;
 
-  // Register/remove popups
-  void InitializePopup(Document* document) override;
-  void DisposePopup(Document* document) override;
+  void Freeze() override {
+    is_frozen_ = true;
+    ax_tree_source_->Freeze();
+  }
+  void Thaw() override {
+    is_frozen_ = false;
+    ax_tree_source_->Thaw();
+  }
+  bool IsFrozen() { return is_frozen_; }
 
   //
   // Iterators.
   //
 
-  AXObject::InOrderTraversalIterator InOrderTraversalBegin();
-  AXObject::InOrderTraversalIterator InOrderTraversalEnd();
-
   void SelectionChanged(Node*) override;
-  void UpdateReverseRelations(const AXObject* relation_source,
-                              const Vector<String>& target_ids);
+  // Update reverse relation cache when aria-labelledby or aria-describedby
+  // point to the relation_source.
+  void UpdateReverseTextRelations(const AXObject* relation_source,
+                                  const Vector<String>& target_ids);
+  // Effects a ChildrenChanged() on the passed-in object, if unignored,
+  // otherwise, uses the first unignored ancestor. Returns the object that the
+  // children changed occurs on.
+  AXObject* ChildrenChanged(AXObject*);
+  void ChildrenChangedWithCleanLayout(AXObject*);
   void ChildrenChanged(Node*) override;
   void ChildrenChanged(const LayoutObject*) override;
   void ChildrenChanged(AccessibleNode*) override;
+  void SlotAssignmentWillChange(Node*) override;
   void CheckedStateChanged(Node*) override;
   void ListboxOptionStateChanged(HTMLOptionElement*) override;
   void ListboxSelectedChildrenChanged(HTMLSelectElement*) override;
   void ListboxActiveIndexChanged(HTMLSelectElement*) override;
   void LocationChanged(const LayoutObject*) override;
-  void RadiobuttonRemovedFromGroup(HTMLInputElement*) override;
   void ImageLoaded(const LayoutObject*) override;
 
   void Remove(AccessibleNode*) override;
   void Remove(LayoutObject*) override;
   void Remove(Node*) override;
+  void Remove(Document*) override;
   void Remove(AbstractInlineTextBox*) override;
+  void Remove(AXObject*);  // Calls more specific Remove methods as necessary.
+
+  // For any ancestor that could contain the passed-in AXObject* in their cached
+  // children, clear their children and set needs to update children on them.
+  // In addition, ChildrenChanged() on an included ancestor that might contain
+  // this child, if one exists.
+  void ChildrenChangedOnAncestorOf(AXObject*);
 
   const Element* RootAXEditableElement(const Node*) override;
 
@@ -126,17 +189,21 @@ class MODULES_EXPORT AXObjectCacheImpl
                               Element*) override;
   void HandleValidationMessageVisibilityChanged(
       const Node* form_control) override;
+  void HandleEventListenerAdded(const Node& node,
+                                const AtomicString& event_type) override;
+  void HandleEventListenerRemoved(const Node& node,
+                                  const AtomicString& event_type) override;
   void HandleFocusedUIElementChanged(Element* old_focused_element,
                                      Element* new_focused_element) override;
   void HandleInitialFocus() override;
   void HandleTextFormControlChanged(Node*) override;
   void HandleEditableTextContentChanged(Node*) override;
-  void HandleScaleAndLocationChanged(Document*) override;
   void HandleTextMarkerDataAdded(Node* start, Node* end) override;
   void HandleValueChanged(Node*) override;
-  void HandleUpdateActiveMenuOption(LayoutObject*, int option_index) override;
+  void HandleUpdateActiveMenuOption(Node*) override;
   void DidShowMenuListPopup(LayoutObject*) override;
   void DidHideMenuListPopup(LayoutObject*) override;
+  void HandleLoadStart(Document*) override;
   void HandleLoadComplete(Document*) override;
   void HandleLayoutComplete(Document*) override;
   void HandleClicked(Node*) override;
@@ -147,8 +214,10 @@ class MODULES_EXPORT AXObjectCacheImpl
                              Element*,
                              const LayoutRect&) override;
 
-  void InlineTextBoxesUpdated(LineLayoutItem) override;
+  void InlineTextBoxesUpdated(LayoutObject*) override;
+  // Called during the accessibility lifecycle to refresh the AX tree.
   void ProcessDeferredAccessibilityEvents(Document&) override;
+  // Is there work to be done when layout becomes clean?
   bool IsDirty() const override;
 
   // Called when a HTMLFrameOwnerElement (such as an iframe element) changes the
@@ -166,82 +235,130 @@ class MODULES_EXPORT AXObjectCacheImpl
   void HandleFrameRectsChanged(Document&) override;
 
   // Invalidates the bounding box, which can be later retrieved by
-  // GetAllObjectsWithChangedBounds.
+  // SerializeLocationChanges.
   void InvalidateBoundingBox(const LayoutObject*) override;
+
+  void SetCachedBoundingBox(AXID id, const ui::AXRelativeBounds& bounds);
+
+  void SerializerClearedNode(AXID id);
 
   const AtomicString& ComputedRoleForNode(Node*) override;
   String ComputedNameForNode(Node*) override;
 
-  void OnTouchAccessibilityHover(const IntPoint&) override;
+  void OnTouchAccessibilityHover(const gfx::Point&) override;
 
-  AXObject* ObjectFromAXID(AXID id) const { return objects_.at(id); }
+  AXObject* ObjectFromAXID(AXID id) const override;
   AXObject* Root();
 
-  // used for objects without backing elements
-  AXObject* GetOrCreate(ax::mojom::blink::Role);
-  AXObject* GetOrCreate(AccessibleNode*);
-  AXObject* GetOrCreate(LayoutObject*) override;
-  AXObject* GetOrCreate(const Node*);
+  // Used for objects without backing DOM nodes, layout objects, etc.
+  AXObject* CreateAndInit(ax::mojom::blink::Role, AXObject* parent);
+
+  AXObject* GetOrCreate(AccessibleNode*, AXObject* parent);
+  AXObject* GetOrCreate(LayoutObject*, AXObject* parent_if_known) override;
+  AXObject* GetOrCreate(LayoutObject* layout_object);
+  AXObject* GetOrCreate(const Node*, AXObject* parent_if_known);
+  AXObject* GetOrCreate(Node*, AXObject* parent_if_known);
   AXObject* GetOrCreate(Node*);
-  AXObject* GetOrCreate(AbstractInlineTextBox*);
+  AXObject* GetOrCreate(const Node*);
+  AXObject* GetOrCreate(AbstractInlineTextBox*, AXObject* parent_if_known);
 
   AXID GetAXID(Node*) override;
-  Element* GetElementFromAXID(AXID) override;
 
-  // Will only return the AXObject if it already exists.
-  AXObject* GetIfExists(const Node*);
+  AXID GetExistingAXID(Node*) override;
+
+  // Return an AXObject for the AccessibleNode. If the AccessibleNode is
+  // attached to an element, will return the AXObject for that element instead.
   AXObject* Get(AccessibleNode*);
   AXObject* Get(AbstractInlineTextBox*);
 
-  // These can actually return a different AXObject* if it's determined that
-  // the wrong type currently axists (AXNodeObject vs AXLayoutObject).
-  // TODO(aleventhal) These should not have any side effects.
-  AXObject* Get(const Node*) override;
+  // Get an AXObject* backed by the passed-in DOM node or the node's layout
+  // object, whichever is available.
+  // If it no longer the correct type of AXObject (AXNodeObject/AXLayoutObject),
+  // will Invalidate() the AXObject so that it is refreshed with a new object
+  // when safe to do so.
+  AXObject* Get(const Node*);
   AXObject* Get(const LayoutObject*);
 
-  AXObject* FirstAccessibleObjectFromNode(const Node*);
+  // Get an AXObject* in a way that is safe for the current calling context:
+  // - No calls into layout during an unclean layout phase
+  // - Does not walk the flat tree during slot reassignment.
+  // - Will not do invalidations from display locking changes, unless the
+  //   caller passes in true for allow_display_locking_invalidation.
+  //   This is generally safe to do, but may not be desirable e.g. when
+  //   simply writing a DCHECK, where a pure get is optimal so as to avoid
+  //   changing behavior.
+  AXObject* SafeGet(const Node* node,
+                    bool allow_display_locking_invalidation = false,
+                    bool allow_layout_object_relevance_check = false);
 
-  void Remove(AXID);
+  // Return true if the object is still part of the tree, meaning that ancestors
+  // exist or can be repaired all the way to the root.
+  bool IsStillInTree(AXObject*);
 
   void ChildrenChangedWithCleanLayout(Node* optional_node_for_relation_update,
                                       AXObject*);
 
-  void MaybeNewRelationTarget(Node* node, AXObject* obj);
+  // Mark an object or subtree dirty, aka its properties have changed and it
+  // needs to be reserialized. Use the |*WithCleanLayout| versions when layout
+  // is already known to be clean.
+  void MarkAXObjectDirty(AXObject*);
+
+  void MarkAXObjectDirtyWithCleanLayout(AXObject*);
+  void MarkAXObjectDirtyWithCleanLayoutAndEvent(
+      AXObject*,
+      ax::mojom::blink::EventFrom event_from,
+      ax::mojom::blink::Action event_from_action);
+
+  void MarkAXSubtreeDirtyWithCleanLayout(AXObject*);
+
+  // Set the parent of |child|. If no parent is possible, this means the child
+  // can no longer be in the AXTree, so remove the child.
+  AXObject* RestoreParentOrPrune(AXObject* child);
+
+  // When an object is created or its id changes, this must be called so that
+  // the relation cache is updated.
+  void MaybeNewRelationTarget(Node& node, AXObject* obj);
 
   void HandleActiveDescendantChangedWithCleanLayout(Node*);
+  void SectionOrRegionRoleMaybeChanged(Element* element);
   void HandleRoleChangeWithCleanLayout(Node*);
-  void HandleRoleChangeIfNotEditableWithCleanLayout(Node*);
+  void HandleAriaHiddenChangedWithCleanLayout(Node*);
   void HandleAriaExpandedChangeWithCleanLayout(Node*);
   void HandleAriaSelectedChangedWithCleanLayout(Node*);
+  void HandleAriaPressedChangedWithCleanLayout(Element*);
   void HandleNodeLostFocusWithCleanLayout(Node*);
   void HandleNodeGainedFocusWithCleanLayout(Node*);
-  void HandleLoadCompleteWithCleanLayout(Node*);
   void UpdateCacheAfterNodeIsAttachedWithCleanLayout(Node*);
   void DidShowMenuListPopupWithCleanLayout(Node*);
   void DidHideMenuListPopupWithCleanLayout(Node*);
-  void StyleChangedWithCleanLayout(Node*);
   void HandleScrollPositionChangedWithCleanLayout(Node*);
   void HandleValidationMessageVisibilityChangedWithCleanLayout(const Node*);
+  void HandleUpdateActiveMenuOptionWithCleanLayout(Node*);
+  void HandleEditableTextContentChangedWithCleanLayout(Node*);
 
   bool InlineTextBoxAccessibilityEnabled();
 
   void RemoveAXID(AXObject*);
 
-  AXID GenerateAXID() const;
+  AXID GenerateAXID() const override;
+
+  void AddAriaNotification(Node*,
+                           const String,
+                           const AriaNotificationOptions*) override;
 
   // Counts the number of times the document has been modified. Some attribute
   // values are cached as long as the modification count hasn't changed.
   int ModificationCount() const { return modification_count_; }
+  void IncrementModificationCount() { ++modification_count_; }
 
   void PostNotification(const LayoutObject*, ax::mojom::blink::Event);
   // Creates object if necessary.
   void EnsurePostNotification(Node*, ax::mojom::blink::Event);
+  void EnsureMarkDirtyWithCleanLayout(Node*);
   // Does not create object.
   // TODO(accessibility) Find out if we can merge with EnsurePostNotification().
   void PostNotification(Node*, ax::mojom::blink::Event);
   void PostNotification(AXObject*, ax::mojom::blink::Event);
-  void MarkAXObjectDirty(AXObject*, bool subtree);
-  void MarkElementDirty(const Node*, bool subtree);
 
   //
   // Aria-owns support.
@@ -251,31 +368,16 @@ class MODULES_EXPORT AXObjectCacheImpl
   // aria-owns.
   bool IsAriaOwned(const AXObject*) const;
 
-  // Returns the parent of the given object due to aria-owns.
-  AXObject* GetAriaOwnedParent(const AXObject*) const;
+  // Returns the parent of the given object due to aria-owns, if valid.
+  AXObject* ValidatedAriaOwner(const AXObject*) const;
 
-  // Given an object that has an aria-owns attributes, and a vector of ids from
-  // the value of that attribute, updates the internal state to reflect the new
-  // set of children owned by this object, returning the result in
-  // |ownedChildren|. The result is validated - illegal, duplicate, or cyclical
-  // references have been removed.
-  //
-  // If one or more ids aren't found, they're added to a lookup table so that if
-  // an element with that id appears later, it can be added when you call
-  // updateTreeIfElementIdIsAriaOwned.
-  void UpdateAriaOwns(const AXObject* owner,
-                      const Vector<String>& id_vector,
-                      HeapVector<Member<AXObject>>& owned_children);
+  // Given an object that has an aria-owns attribute, return the validated
+  // set of aria-owned children.
+  void ValidatedAriaOwnedChildren(const AXObject* owner,
+                                  HeapVector<Member<AXObject>>& owned_children);
 
-  // Given an object that has explicitly set elements for aria-owns, update the
-  // internal state to reflect the new set of children owned by this object.
-  // Note that |owned_children| will be the AXObjects corresponding to the
-  // elements in |attr_associated_elements|. These elements are validated -
-  // exist in the DOM, and are a descendant of a shadow including ancestor.
-  void UpdateAriaOwnsFromAttrAssociatedElements(
-      const AXObject* owner,
-      const HeapVector<Member<Element>>& attr_associated_elements,
-      HeapVector<Member<AXObject>>& owned_children);
+  // Given a <map> element, get the image currently associated with it, if any.
+  AXObject* GetAXImageForMap(HTMLMapElement& map);
 
   // Adds |object| to |fixed_or_sticky_node_ids_| if it has a fixed or sticky
   // position.
@@ -293,27 +395,110 @@ class MODULES_EXPORT AXObjectCacheImpl
   // granted, it only applies to the next event received.
   void RequestAOMEventListenerPermission();
 
-  // For built-in HTML form validation messages.
-  AXObject* ValidationMessageObjectIfInvalid();
+  // For built-in HTML form validation messages. Set notify_children_changed to
+  // true if not already processing changed children.
+  AXObject* ValidationMessageObjectIfInvalid(bool notify_children_changed);
 
   WebAXAutofillState GetAutofillState(AXID id) const;
   void SetAutofillState(AXID id, WebAXAutofillState state);
 
-  ax::mojom::blink::EventFrom active_event_from() const {
-    return active_event_from_;
+  std::pair<ax::mojom::blink::EventFrom, ax::mojom::blink::Action>
+  active_event_from_data() const {
+    return std::make_pair(active_event_from_, active_event_from_action_);
   }
-  void set_active_event_from(const ax::mojom::blink::EventFrom event_from) {
+
+  void set_active_event_from_data(
+      const ax::mojom::blink::EventFrom event_from,
+      const ax::mojom::blink::Action event_from_action) {
     active_event_from_ = event_from;
+    active_event_from_action_ = event_from_action;
   }
 
   AXObject* GetActiveAriaModalDialog() const;
 
-  bool UseAXMenuList() { return use_ax_menu_list_; }
+  static bool UseAXMenuList() { return use_ax_menu_list_; }
+  static bool ShouldCreateAXMenuListFor(LayoutObject* layout_object);
+  static bool ShouldCreateAXMenuListOptionFor(const Node*);
+  static bool IsRelevantPseudoElement(const Node& node);
+  static bool IsRelevantPseudoElementDescendant(
+      const LayoutObject& layout_object);
+  static bool IsRelevantSlotElement(const HTMLSlotElement& slot);
+
+  bool HasBeenDisposed() { return has_been_disposed_; }
 
   // Retrieves a vector of all AXObjects whose bounding boxes may have changed
-  // since the last query. Clears the vector so that the next time it's
+  // since the last query. Sends the resulting vector over mojo to the browser
+  // process. Clears the vector so that the next time it's
   // called, it will only retrieve objects that have changed since now.
-  HeapVector<Member<AXObject>> GetAllObjectsWithChangedBounds();
+  void SerializeLocationChanges() override;
+
+  // Searches the accessibility tree for plugin's root object and returns it.
+  // Returns an empty WebAXObject if no root object is present.
+  AXObject* GetPluginRoot() override {
+    return ax_tree_source_->GetPluginRoot();
+  }
+
+  bool SerializeEntireTree(bool exclude_offscreen,
+                           size_t max_node_count,
+                           base::TimeDelta timeout,
+                           ui::AXTreeUpdate*) override;
+
+  void MarkAllImageAXObjectsDirty() override {
+    return Root()->MarkAllImageAXObjectsDirty();
+  }
+
+  void ResetSerializer() override { ax_tree_serializer_->Reset(); }
+
+  void MarkAXObjectDirtyWithDetails(
+      AXObject* obj,
+      bool subtree,
+      ax::mojom::blink::EventFrom event_from,
+      ax::mojom::blink::Action event_from_action,
+      const std::vector<ui::AXEventIntent>& event_intents) override;
+
+  void SerializeDirtyObjectsAndEvents(
+      bool has_plugin_tree_source,
+      std::vector<ui::AXTreeUpdate>& updates,
+      std::vector<ui::AXEvent>& events,
+      bool& had_end_of_test_event,
+      bool& had_load_complete_messages,
+      bool& need_to_send_location_changes) override;
+
+  void ClearDirtyObjectsAndPendingEvents() override {
+    dirty_objects_.clear();
+    pending_events_.clear();
+  }
+
+  bool HasDirtyObjects() const override { return !dirty_objects_.empty(); }
+
+  bool AddPendingEvent(const ui::AXEvent& event,
+                       bool insert_at_beginning) override;
+
+  void InvalidateSerializerSubtree(AXObject& obj) {
+    ax_tree_serializer_->InvalidateSubtree(&obj);
+  }
+
+  bool IsInClientTree(AXObject& obj) {
+    return ax_tree_serializer_->IsInClientTree(&obj);
+  }
+
+  void OnLoadInlineTextBoxes(AXObject& obj) {
+    ax_tree_source_->OnLoadInlineTextBoxes(obj);
+  }
+
+  bool ShouldLoadInlineTextBoxes(AXObject& obj) {
+    return ax_tree_source_->ShouldLoadInlineTextBoxes(&obj);
+  }
+
+  void SetImageAsDataNodeId(int id, const gfx::Size& max_size) {
+    ax_tree_source_->set_image_data_node_id(id, max_size);
+  }
+
+  int image_data_node_id() { return ax_tree_source_->image_data_node_id(); }
+
+  static constexpr int kDataTableHeuristicMinRows = 20;
+
+  void UpdateAXForAllDocuments() override;
 
  protected:
   void PostPlatformNotification(
@@ -321,6 +506,8 @@ class MODULES_EXPORT AXObjectCacheImpl
       ax::mojom::blink::Event event_type,
       ax::mojom::blink::EventFrom event_from =
           ax::mojom::blink::EventFrom::kNone,
+      ax::mojom::blink::Action event_from_action =
+          ax::mojom::blink::Action::kNone,
       const BlinkAXEventIntentsSet& event_intents = BlinkAXEventIntentsSet());
   void LabelChangedWithCleanLayout(Element*);
 
@@ -329,17 +516,76 @@ class MODULES_EXPORT AXObjectCacheImpl
     return active_event_intents_;
   }
 
-  AXObject* CreateFromRenderer(LayoutObject*);
-  AXObject* CreateFromNode(Node*);
-  AXObject* CreateFromInlineTextBox(AbstractInlineTextBox*);
+  // Mark object as invalid and needing to be refreshed when layout is clean.
+  // Will result in a new object with the same AXID, and will also call
+  // ChildrenChanged() on the parent of invalidated objects. Automatically
+  // de-dupes extra object refreshes and ChildrenChanged() calls.
+  void Invalidate(Document&, AXID);
+
+  void Remove(AXID);
 
  private:
+  struct AXDirtyObject : public GarbageCollected<AXDirtyObject> {
+    AXDirtyObject(AXObject* obj_arg,
+                  ax::mojom::blink::EventFrom event_from_arg,
+                  ax::mojom::blink::Action event_from_action_arg,
+                  std::vector<ui::AXEventIntent> event_intents_arg)
+        : obj(obj_arg),
+          event_from(event_from_arg),
+          event_from_action(event_from_action_arg),
+          event_intents(event_intents_arg) {}
+
+    static AXDirtyObject* Create(AXObject* obj,
+                                 ax::mojom::blink::EventFrom event_from,
+                                 ax::mojom::blink::Action event_from_action,
+                                 std::vector<ui::AXEventIntent> event_intents) {
+      return MakeGarbageCollected<AXDirtyObject>(
+          obj, event_from, event_from_action, event_intents);
+    }
+
+    void Trace(Visitor* visitor) const { visitor->Trace(obj); }
+
+    Member<AXObject> obj;
+    ax::mojom::blink::EventFrom event_from;
+    ax::mojom::blink::Action event_from_action;
+    std::vector<ui::AXEventIntent> event_intents ALLOW_DISCOURAGED_TYPE(
+        "Avoids conversion when passed from/to ui::AXTreeUpdate or "
+        "blink::WebAXObject");
+  };
+
+  // Create an AXObject, and do not check if a previous one exists.
+  // Also, initialize the object and add it to maps for later retrieval.
+  AXObject* CreateAndInit(Node*,
+                          LayoutObject*,
+                          AXObject* parent_if_known,
+                          AXID use_axid = 0);
+  // Helpers for CreateAndInitIfRelevant() methods..
+  AXObject* CreateFromRenderer(LayoutObject*);
+  AXObject* CreateFromNode(Node*);
+
+  AXObject* CreateFromInlineTextBox(AbstractInlineTextBox*);
+
+  mojo::Remote<mojom::blink::RenderAccessibilityHost>&
+  GetOrCreateRemoteRenderAccessibilityHost();
+  WebLocalFrameClient* GetWebLocalFrameClient() const;
+  void ProcessDeferredAccessibilityEventsImpl(Document&);
+  void UpdateLifecycleIfNeeded(Document& document);
+
+  bool IsMainDocumentDirty() const;
+  bool IsPopupDocumentDirty() const;
+
+  HeapHashSet<WeakMember<InspectorAccessibilityAgent>> agents_;
+
   struct AXEventParams final : public GarbageCollected<AXEventParams> {
     AXEventParams(AXObject* target,
                   ax::mojom::blink::Event event_type,
                   ax::mojom::blink::EventFrom event_from,
+                  ax::mojom::blink::Action event_from_action,
                   const BlinkAXEventIntentsSet& intents)
-        : target(target), event_type(event_type), event_from(event_from) {
+        : target(target),
+          event_type(event_type),
+          event_from(event_from),
+          event_from_action(event_from_action) {
       for (const auto& intent : intents) {
         event_intents.insert(intent.key, intent.value);
       }
@@ -347,6 +593,7 @@ class MODULES_EXPORT AXObjectCacheImpl
     Member<AXObject> target;
     ax::mojom::blink::Event event_type;
     ax::mojom::blink::EventFrom event_from;
+    ax::mojom::blink::Action event_from_action;
     BlinkAXEventIntentsSet event_intents;
 
     void Trace(Visitor* visitor) const { visitor->Trace(target); }
@@ -356,11 +603,13 @@ class MODULES_EXPORT AXObjectCacheImpl
     TreeUpdateParams(const Node* node,
                      AXID axid,
                      ax::mojom::blink::EventFrom event_from,
+                     ax::mojom::blink::Action event_from_action,
                      const BlinkAXEventIntentsSet& intents,
                      base::OnceClosure callback)
         : node(node),
           axid(axid),
           event_from(event_from),
+          event_from_action(event_from_action),
           callback(std::move(callback)) {
       for (const auto& intent : intents) {
         event_intents.insert(intent.key, intent.value);
@@ -369,25 +618,48 @@ class MODULES_EXPORT AXObjectCacheImpl
     WeakMember<const Node> node;
     AXID axid;
     ax::mojom::blink::EventFrom event_from;
+    ax::mojom::blink::Action event_from_action;
     BlinkAXEventIntentsSet event_intents;
     base::OnceClosure callback;
 
     void Trace(Visitor* visitor) const { visitor->Trace(node); }
   };
+  typedef HeapVector<Member<TreeUpdateParams>> TreeUpdateCallbackQueue;
 
   ax::mojom::blink::EventFrom ComputeEventFrom();
 
+  void MarkAXObjectDirtyWithCleanLayoutHelper(
+      AXObject* obj,
+      bool subtree,
+      ax::mojom::blink::EventFrom event_from,
+      ax::mojom::blink::Action event_from_action);
+  void MarkAXSubtreeDirty(AXObject*);
+  void MarkElementDirty(const Node*);
+  void MarkElementDirtyWithCleanLayout(const Node*);
+
+  // Given an object to mark dirty or fire an event on, return an object
+  // included in the tree that can be used with the serializer, or null if there
+  // is no relevant object to use. Objects that are not included in the tree,
+  // and have no ancestor object included in the tree, are pruned from the tree,
+  // in which case there is nothing to be serialized.
+  AXObject* GetSerializationTarget(AXObject* obj);
+
+  // Helper that clears children up to the first included ancestor and returns
+  // the ancestor if a children changed notification should be fired on it.
+  AXObject* InvalidateChildren(AXObject* obj);
+
   Member<Document> document_;
+  Member<Document> popup_document_;
+
+  ui::AXMode ax_mode_;
   HeapHashMap<AXID, Member<AXObject>> objects_;
   // LayoutObject and AbstractInlineTextBox are not on the Oilpan heap so we
   // do not use HeapHashMap for those mappings.
   HeapHashMap<Member<AccessibleNode>, AXID> accessible_node_mapping_;
-  HashMap<const LayoutObject*, AXID> layout_object_mapping_;
+  HeapHashMap<Member<const LayoutObject>, AXID> layout_object_mapping_;
   HeapHashMap<Member<const Node>, AXID> node_object_mapping_;
   HashMap<AbstractInlineTextBox*, AXID> inline_text_box_object_mapping_;
   int modification_count_;
-
-  HashSet<AXID> ids_in_use_;
 
   // Used for a mock AXObject representing the message displayed in the
   // validation message bubble.
@@ -400,16 +672,35 @@ class MODULES_EXPORT AXObjectCacheImpl
   // AriaModalPrunesAXTree setting enabled, such as Mac.
   WeakMember<AXObject> active_aria_modal_dialog_;
 
+  // If non-null, this is the node that the current aria-activedescendant caused
+  // to have the selected state.
+  WeakMember<Node> last_selected_from_active_descendant_;
+
   std::unique_ptr<AXRelationCache> relation_cache_;
 
+  bool processing_deferred_events_ = false;
 #if DCHECK_IS_ON()
-  // Verified when finalizing.
-  bool has_been_disposed_ = false;
+  bool updating_layout_and_ax_ = false;
 #endif
 
-  HeapVector<Member<AXEventParams>> notifications_to_post_;
+  // Verified when finalizing.
+  bool has_been_disposed_ = false;
 
-  void ProcessUpdates(Document&);
+  HeapVector<Member<AXEventParams>> notifications_to_post_main_;
+  HeapVector<Member<AXEventParams>> notifications_to_post_popup_;
+
+  // Call the queued callback methods that do processing which must occur when
+  // layout is clean. These callbacks are stored in tree_update_callback_queue_,
+  // and have names like FooBarredWithCleanLayout().
+  void ProcessCleanLayoutCallbacks(Document&);
+
+  // Destroy and recreate any objects which are no longer valid, for example
+  // they used to be an AXNodeObject and now must be an AXLayoutObject, or
+  // vice-versa. Also fires children changed on the parent of these nodes.
+  void ProcessInvalidatedObjects(Document&);
+
+  // Send events to RenderAccessibilityImpl, which serializes them and then
+  // sends the serialized events and dirty objects to the browser process.
   void PostNotifications(Document&);
 
   // Get the currently focused Node element.
@@ -420,7 +711,8 @@ class MODULES_EXPORT AXObjectCacheImpl
 
   AXObject* FocusedImageMapUIElement(HTMLAreaElement*);
 
-  AXID GetOrCreateAXID(AXObject*);
+  // Associate an AXObject with an AXID. Generate one if none is supplied.
+  AXID AssociateAXID(AXObject*, AXID use_axid = 0);
 
   void TextChanged(Node*);
   bool NodeIsTextControl(const Node*);
@@ -441,11 +733,11 @@ class MODULES_EXPORT AXObjectCacheImpl
   void ContainingTableRowsOrColsMaybeChanged(Node*);
 
   // Must be called an entire subtree of accessible objects are no longer valid.
-  void InvalidateTableSubtree(AXObject* subtree);
+  void RemoveAXObjectsInLayoutSubtree(AXObject* subtree, int depth);
 
   // Object for HTML validation alerts. Created at most once per object cache.
   AXObject* GetOrCreateValidationMessageObject();
-  void RemoveValidationMessageObject();
+  void RemoveValidationMessageObjectWithCleanLayout(Node* document);
 
   // Enqueue a callback to the given method to be run after layout is
   // complete.
@@ -464,17 +756,26 @@ class MODULES_EXPORT AXObjectCacheImpl
   // Provide either a DOM node or AXObject. If both are provided, then they must
   // match, meaning that the AXObject's DOM node must equal the provided node.
   void DeferTreeUpdate(void (AXObjectCacheImpl::*method)(Node*, AXObject*),
-                       Node* node,
                        AXObject* obj);
 
   void DeferTreeUpdateInternal(base::OnceClosure callback, const Node* node);
   void DeferTreeUpdateInternal(base::OnceClosure callback, AXObject* obj);
 
-  void SelectionChangedWithCleanLayout(Node* node);
   void TextChangedWithCleanLayout(Node* node);
   void ChildrenChangedWithCleanLayout(Node* node);
+
+  // If the presence of document markers changed for the given text node, then
+  // call children changed.
+  void HandleTextMarkerDataAddedWithCleanLayout(Node*);
   void HandleAttributeChangedWithCleanLayout(const QualifiedName& attr_name,
                                              Element* element);
+  void HandleUseMapAttributeChangedWithCleanLayout(Element*);
+  void HandleNameAttributeChangedWithCleanLayout(Element*);
+
+  bool DoesEventListenerImpactIgnoredState(
+      const AtomicString& event_type) const;
+  void HandleEventSubscriptionChanged(const Node& node,
+                                      const AtomicString& event_type);
 
   //
   // aria-modal support
@@ -489,15 +790,16 @@ class MODULES_EXPORT AXObjectCacheImpl
   // setting enabled, or where there is no active ancestral aria-modal dialog.
   AXObject* AncestorAriaModalDialog(Node* node);
 
-  void ScheduleVisualUpdate();
   void FireTreeUpdatedEventImmediately(
       Document& document,
       ax::mojom::blink::EventFrom event_from,
+      ax::mojom::blink::Action event_from_action,
       const BlinkAXEventIntentsSet& event_intents,
       base::OnceClosure callback);
   void FireAXEventImmediately(AXObject* obj,
                               ax::mojom::blink::Event event_type,
                               ax::mojom::blink::EventFrom event_from,
+                              ax::mojom::blink::Action event_from_action,
                               const BlinkAXEventIntentsSet& event_intents);
 
   void SetMaxPendingUpdatesForTesting(wtf_size_t max_pending_updates) {
@@ -509,8 +811,22 @@ class MODULES_EXPORT AXObjectCacheImpl
   // Invalidates the bounding boxes of fixed or sticky positioned objects which
   // should be updated when the scroll offset is changed. Like
   // InvalidateBoundingBox, it can be later retrieved by
-  // GetAllObjectsWithChangedBounds.
+  // SerializeLocationChanges.
   void InvalidateBoundingBoxForFixedOrStickyPosition();
+
+  // Return true if this is the popup document. There can only be one popup
+  // document at a time. If it is not the popup document, it's the main
+  // document stored in |document_|.
+  bool IsPopup(Document& document) const;
+
+  // Get the invalidated objects for the passed-in document.
+  HashSet<AXID>& GetInvalidatedIds(Document& document);
+
+  // Get the queued tree update callbacks for the passed-in document
+  TreeUpdateCallbackQueue& GetTreeUpdateCallbackQueue(Document& document);
+
+  // Get the event notifications to post for the passed-in document.
+  HeapVector<Member<AXEventParams>>& GetNotificationsToPost(Document& document);
 
   // Whether the user has granted permission for the user to install event
   // listeners for accessibility events using the AOM.
@@ -521,13 +837,21 @@ class MODULES_EXPORT AXObjectCacheImpl
   HeapMojoReceiver<mojom::blink::PermissionObserver, AXObjectCacheImpl>
       permission_observer_receiver_;
 
-  // The main document, plus any page popups.
-  HeapHashSet<WeakMember<Document>> documents_;
-
   // Queued callbacks.
-  typedef HeapVector<Member<TreeUpdateParams>> TreeUpdateCallbackQueue;
-  TreeUpdateCallbackQueue tree_update_callback_queue_;
+  TreeUpdateCallbackQueue tree_update_callback_queue_main_;
+  TreeUpdateCallbackQueue tree_update_callback_queue_popup_;
+
+  // Help de-dupe processing of repetitive events.
   HeapHashSet<WeakMember<Node>> nodes_with_pending_children_changed_;
+  HashSet<AXID> nodes_with_pending_location_changed_;
+
+  // Nodes with document markers that have received accessibility updates.
+  HeapHashSet<WeakMember<Node>> nodes_with_spelling_or_grammar_markers_;
+
+  // True when layout has changed, and changed locations must be serialized.
+  bool need_to_send_location_changes_ = false;
+
+  AXID last_value_change_node_ = ui::AXNodeData::kInvalidAXID;
 
   // If tree_update_callback_queue_ gets improbably large, stop
   // enqueueing updates and fire a single ChildrenChanged event on the
@@ -539,8 +863,12 @@ class MODULES_EXPORT AXObjectCacheImpl
   HashMap<AXID, WebAXAutofillState> autofill_state_map_;
 
   // The set of node IDs whose bounds has changed since the last time
-  // GetAllObjectsWithChangedBounds was called.
+  // SerializeLocationChanges was called.
   HashSet<AXID> changed_bounds_ids_;
+
+  // Known locations and sizes of bounding boxes that are known to have been
+  // serialized.
+  HashMap<AXID, ui::AXRelativeBounds> cached_bounding_boxes_;
 
   // The list of node IDs whose position is fixed or sticky.
   HashSet<AXID> fixed_or_sticky_node_ids_;
@@ -549,16 +877,41 @@ class MODULES_EXPORT AXObjectCacheImpl
   ax::mojom::blink::EventFrom active_event_from_ =
       ax::mojom::blink::EventFrom::kNone;
 
+  // The accessibility action that caused the event. Will only be valid if
+  // active_event_from_ is set to kAction.
+  ax::mojom::blink::Action active_event_from_action_ =
+      ax::mojom::blink::Action::kNone;
+
   // A set of currently active event intents.
   BlinkAXEventIntentsSet active_event_intents_;
 
+  // A set of aria notifications that have yet to be added to ax_tree_data.
+  HeapVector<Member<AriaNotification>> aria_notifications_;
+
+  bool is_frozen_ = false;  // Used with Freeze(), Thaw() and IsFrozen() above.
+
+  // Set of ID's of current AXObjects that need to be destroyed and recreated.
+  HashSet<AXID> invalidated_ids_main_;
+  HashSet<AXID> invalidated_ids_popup_;
+
   // If false, exposes the internal accessibility tree of a select pop-up
   // instead.
-  bool use_ax_menu_list_ = true;
+  static bool use_ax_menu_list_;
 
-  DISALLOW_COPY_AND_ASSIGN(AXObjectCacheImpl);
+  GC_PLUGIN_IGNORE("https://crbug.com/1381979")
+  mojo::Remote<mojom::blink::RenderAccessibilityHost>
+      render_accessibility_host_;
+
+  Member<BlinkAXTreeSource> ax_tree_source_;
+  std::unique_ptr<ui::AXTreeSerializer<AXObject*, HeapVector<AXObject*>>>
+      ax_tree_serializer_;
+
+  HeapDeque<Member<AXDirtyObject>> dirty_objects_;
+
+  Deque<ui::AXEvent> pending_events_;
 
   FRIEND_TEST_ALL_PREFIXES(AccessibilityTest, PauseUpdatesAfterMaxNumberQueued);
+  FRIEND_TEST_ALL_PREFIXES(AccessibilityTest, RemoveAXID);
 };
 
 // This is the only subclass of AXObjectCache.

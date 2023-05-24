@@ -9,19 +9,14 @@ QtObject {
     Component.onCompleted: {
         var x = new XMLHttpRequest;
         x.open(reqType, url);
-        x.setRequestHeader("Accept-Language","en-US");
 
         // Test to the end
         x.onreadystatechange = function() {
-            if (x.readyState == XMLHttpRequest.DONE) {
-                if (reqType == "HEAD" || reqType == "DELETE")
-                    dataOK = (x.responseText == "");
-                else
-                    dataOK = (x.responseText == "QML Rocks!\n");
-            }
+            let expect = reqType == "HEAD" || reqType == "DELETE" ? "" : "QML Rocks!\n";
+            if (x.readyState == XMLHttpRequest.DONE)
+                dataOK = (x.responseText == expect);
         }
 
         x.send("Data To Ignore");
     }
 }
-

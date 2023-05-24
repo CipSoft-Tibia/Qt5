@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgraphicsscene_bsp_p.h"
 
@@ -44,57 +8,14 @@
 
 QT_BEGIN_NAMESPACE
 
-class QGraphicsSceneInsertItemBspTreeVisitor : public QGraphicsSceneBspTreeVisitor
-{
-public:
-    QGraphicsItem *item;
-
-    void visit(QList<QGraphicsItem *> *items) override
-    { items->prepend(item); }
-};
-
-class QGraphicsSceneRemoveItemBspTreeVisitor : public QGraphicsSceneBspTreeVisitor
-{
-public:
-    QGraphicsItem *item;
-
-    void visit(QList<QGraphicsItem *> *items) override
-    { items->removeAll(item); }
-};
-
-class QGraphicsSceneFindItemBspTreeVisitor : public QGraphicsSceneBspTreeVisitor
-{
-public:
-    QList<QGraphicsItem *> *foundItems;
-    bool onlyTopLevelItems;
-
-    void visit(QList<QGraphicsItem *> *items) override
-    {
-        for (int i = 0; i < items->size(); ++i) {
-            QGraphicsItem *item = items->at(i);
-            if (onlyTopLevelItems && item->d_ptr->parent)
-                item = item->topLevelItem();
-            if (!item->d_func()->itemDiscovered && item->d_ptr->visible) {
-                item->d_func()->itemDiscovered = 1;
-                foundItems->prepend(item);
-            }
-        }
-    }
-};
 
 QGraphicsSceneBspTree::QGraphicsSceneBspTree()
     : leafCnt(0)
 {
-    insertVisitor = new QGraphicsSceneInsertItemBspTreeVisitor;
-    removeVisitor = new QGraphicsSceneRemoveItemBspTreeVisitor;
-    findVisitor = new QGraphicsSceneFindItemBspTreeVisitor;
 }
 
 QGraphicsSceneBspTree::~QGraphicsSceneBspTree()
 {
-    delete insertVisitor;
-    delete removeVisitor;
-    delete findVisitor;
 }
 
 void QGraphicsSceneBspTree::initialize(const QRectF &rect, int depth)
@@ -103,7 +24,7 @@ void QGraphicsSceneBspTree::initialize(const QRectF &rect, int depth)
     leafCnt = 0;
     nodes.resize((1 << (depth + 1)) - 1);
     nodes.fill(Node());
-    leaves.resize(1 << depth);
+    leaves.resize(1ll << depth);
     leaves.fill(QList<QGraphicsItem *>());
 
     initialize(rect, depth, 0);
@@ -118,14 +39,16 @@ void QGraphicsSceneBspTree::clear()
 
 void QGraphicsSceneBspTree::insertItem(QGraphicsItem *item, const QRectF &rect)
 {
-    insertVisitor->item = item;
-    climbTree(insertVisitor, rect);
+    climbTree([item](QList<QGraphicsItem *> *items){
+        items->prepend(item);
+    }, rect);
 }
 
 void QGraphicsSceneBspTree::removeItem(QGraphicsItem *item, const QRectF &rect)
 {
-    removeVisitor->item = item;
-    climbTree(removeVisitor, rect);
+    climbTree([item](QList<QGraphicsItem *> *items){
+        items->removeAll(item);
+    }, rect);
 }
 
 void QGraphicsSceneBspTree::removeItems(const QSet<QGraphicsItem *> &items)
@@ -144,14 +67,22 @@ void QGraphicsSceneBspTree::removeItems(const QSet<QGraphicsItem *> &items)
 
 QList<QGraphicsItem *> QGraphicsSceneBspTree::items(const QRectF &rect, bool onlyTopLevelItems) const
 {
-    QList<QGraphicsItem *> tmp;
-    findVisitor->foundItems = &tmp;
-    findVisitor->onlyTopLevelItems = onlyTopLevelItems;
-    climbTree(findVisitor, rect);
+    QList<QGraphicsItem *> foundItems;
+    climbTree([&foundItems, onlyTopLevelItems](QList<QGraphicsItem *> *items) {
+        for (int i = 0; i < items->size(); ++i) {
+            QGraphicsItem *item = items->at(i);
+            if (onlyTopLevelItems && item->d_ptr->parent)
+                item = item->topLevelItem();
+            if (!item->d_func()->itemDiscovered && item->d_ptr->visible) {
+                item->d_func()->itemDiscovered = 1;
+                foundItems.prepend(item);
+            }
+        }
+    }, rect);
     // Reset discovery bits.
-    for (int i = 0; i < tmp.size(); ++i)
-        tmp.at(i)->d_ptr->itemDiscovered = 0;
-    return tmp;
+    for (const auto &foundItem : std::as_const(foundItems))
+        foundItem->d_ptr->itemDiscovered = 0;
+    return foundItems;
 }
 
 int QGraphicsSceneBspTree::leafCount() const
@@ -230,7 +161,8 @@ void QGraphicsSceneBspTree::initialize(const QRectF &rect, int depth, int index)
     }
 }
 
-void QGraphicsSceneBspTree::climbTree(QGraphicsSceneBspTreeVisitor *visitor, const QRectF &rect, int index) const
+template<typename Visitor>
+void QGraphicsSceneBspTree::climbTree(Visitor &&visitor, const QRectF &rect, int index) const
 {
     if (nodes.isEmpty())
         return;
@@ -240,7 +172,7 @@ void QGraphicsSceneBspTree::climbTree(QGraphicsSceneBspTreeVisitor *visitor, con
 
     switch (node.type) {
     case Node::Leaf: {
-        visitor->visit(const_cast<QList<QGraphicsItem*>*>(&leaves[node.leafIndex]));
+        visitor(const_cast<QList<QGraphicsItem*>*>(&leaves[node.leafIndex]));
         break;
     }
     case Node::Vertical:

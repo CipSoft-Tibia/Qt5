@@ -56,6 +56,8 @@
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include "vtune-jit.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -65,8 +67,12 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../../../include/v8-callbacks.h"
+#include "../../../include/v8-initialization.h"
+#include "../../../include/v8-local-handle.h"
+#include "../../../include/v8-primitive.h"
+#include "../../../include/v8-script.h"
 #include "v8-vtune.h"
-#include "vtune-jit.h"
 
 namespace vTune {
 namespace internal {
@@ -137,7 +143,7 @@ static JITCodeLineInfo* UntagLineInfo(void* ptr) {
 
 // The parameter str is a mixed pattern which contains the
 // function name and some other info. It comes from all the
-// Logger::CodeCreateEvent(...) function. This function get the
+// V8FileLogger::CodeCreateEvent(...) function. This function get the
 // pure function name from the input parameter.
 static std::string GetFunctionNameFromMixedName(const char* str, int length) {
   int index = 0;
@@ -146,7 +152,8 @@ static std::string GetFunctionNameFromMixedName(const char* str, int length) {
 
   while (str[index++] != ':' && (index < length)) {}
 
-  if (str[index] == '*' || str[index] == '~' ) index++;
+  const char state = str[index];
+  if (state == '*' || state == '+' || state == '-' || state == '~') index++;
   if (index >= length) return std::string();
 
   start_ptr = const_cast<char*>(str + index);
@@ -194,8 +201,7 @@ void VTUNEJITInterface::event_handler(const v8::JitCodeEvent* event) {
         if (*script != NULL) {
           // Get the source file name and set it to jmethod.source_file_name
           if ((*script->GetScriptName())->IsString()) {
-            Local<String> script_name =
-                Local<String>::Cast(script->GetScriptName());
+            Local<String> script_name = script->GetScriptName().As<String>();
             temp_file_name.reset(
                 new char[script_name->Utf8Length(event->isolate) + 1]);
             script_name->WriteUtf8(event->isolate, temp_file_name.get());
@@ -289,7 +295,6 @@ void VTUNEJITInterface::event_handler(const v8::JitCodeEvent* event) {
 }  // namespace internal
 
 v8::JitCodeEventHandler GetVtuneCodeEventHandler() {
-  v8::V8::SetFlagsFromString("--no-compact-code-space");
   return vTune::internal::VTUNEJITInterface::event_handler;
 }
 

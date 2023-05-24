@@ -1,10 +1,13 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/win/hwnd_util.h"
 
+#include <windows.h>
+
 #include "base/i18n/rtl.h"
+#include "base/trace_event/base_tracing.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/views/widget/widget.h"
@@ -37,25 +40,27 @@ gfx::Rect GetWindowBoundsForClientBounds(View* view,
   if (host) {
     HWND hwnd = host->GetAcceleratedWidget();
     RECT rect = client_bounds.ToRECT();
-    DWORD style = ::GetWindowLong(hwnd, GWL_STYLE);
-    DWORD ex_style = ::GetWindowLong(hwnd, GWL_EXSTYLE);
-    AdjustWindowRectEx(&rect, style, FALSE, ex_style);
+    auto style = static_cast<DWORD>(::GetWindowLong(hwnd, GWL_STYLE));
+    auto ex_style = static_cast<DWORD>(::GetWindowLong(hwnd, GWL_EXSTYLE));
+    ::AdjustWindowRectEx(&rect, style, FALSE, ex_style);
     return gfx::Rect(rect);
   }
   return client_bounds;
 }
 
 void ShowSystemMenuAtScreenPixelLocation(HWND window, const gfx::Point& point) {
+  TRACE_EVENT0("ui", "ShowSystemMenuAtScreenPixelLocation");
+
   UINT flags = TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD;
   if (base::i18n::IsRTL())
     flags |= TPM_RIGHTALIGN;
-  HMENU menu = GetSystemMenu(window, FALSE);
+  HMENU menu = ::GetSystemMenu(window, FALSE);
 
   const int command =
-      TrackPopupMenu(menu, flags, point.x(), point.y(), 0, window, nullptr);
+      ::TrackPopupMenu(menu, flags, point.x(), point.y(), 0, window, nullptr);
 
   if (command)
-    SendMessage(window, WM_SYSCOMMAND, command, 0);
+    ::SendMessage(window, WM_SYSCOMMAND, static_cast<WPARAM>(command), 0);
 }
 
 }  // namespace views

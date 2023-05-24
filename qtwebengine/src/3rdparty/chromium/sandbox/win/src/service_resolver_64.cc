@@ -1,9 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "sandbox/win/src/service_resolver.h"
 
+#include <ntstatus.h>
 #include <stddef.h>
 
 #include <memory>
@@ -45,7 +46,7 @@ struct ServiceEntry {
   USHORT xchg_ax_ax2;         // = 66 90
 };
 
-// Service code for 64 bit Windows 8.
+// Service code for 64 bit Windows 8 and Windows 10 1507 (build 10240).
 struct ServiceEntryW8 {
   // This struct contains the following code:
   // 00 48894c2408      mov     [rsp+8], rcx
@@ -68,7 +69,7 @@ struct ServiceEntryW8 {
   BYTE nop;                   // = 90
 };
 
-// Service code for 64 bit systems with int 2e fallback.
+// Service code for 64 bit systems with int 2e fallback. Windows 10 1511+
 struct ServiceEntryWithInt2E {
   // This struct contains roughly the following code:
   // 00 4c8bd1           mov     r10,rcx
@@ -282,9 +283,8 @@ NTSTATUS ServiceResolverThunk::PerformPatch(void* local_thunk,
   return STATUS_SUCCESS;
 }
 
-bool Wow64ResolverThunk::IsFunctionAService(void* local_thunk) const {
-  NOTREACHED_NT();
-  return false;
+bool ServiceResolverThunk::VerifyJumpTargetForTesting(void*) const {
+  return true;
 }
 
 }  // namespace sandbox

@@ -1,9 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/accessibility/ax_view_obj_wrapper.h"
 
+#include <string>
 #include <vector>
 
 #include "ui/accessibility/ax_action_data.h"
@@ -20,21 +21,19 @@ AXViewObjWrapper::AXViewObjWrapper(AXAuraObjCache* aura_obj_cache, View* view)
     : AXAuraObjWrapper(aura_obj_cache), view_(view) {
   if (view->GetWidget())
     aura_obj_cache_->GetOrCreate(view->GetWidget());
-  observer_.Add(view);
+  observation_.Observe(view);
 }
 
 AXViewObjWrapper::~AXViewObjWrapper() = default;
 
-bool AXViewObjWrapper::IsIgnored() {
-  return !view_ || view_->GetViewAccessibility().IsIgnored();
-}
-
 AXAuraObjWrapper* AXViewObjWrapper::GetParent() {
-  if (!view_)
-    return nullptr;
+  if (view_->parent()) {
+    if (view_->parent()->GetViewAccessibility().GetChildTreeID() !=
+        ui::AXTreeIDUnknown())
+      return nullptr;
 
-  if (view_->parent())
     return aura_obj_cache_->GetOrCreate(view_->parent());
+  }
 
   if (view_->GetWidget())
     return aura_obj_cache_->GetOrCreate(view_->GetWidget());
@@ -44,10 +43,12 @@ AXAuraObjWrapper* AXViewObjWrapper::GetParent() {
 
 void AXViewObjWrapper::GetChildren(
     std::vector<AXAuraObjWrapper*>* out_children) {
-  if (!view_)
+  const ViewAccessibility& view_accessibility = view_->GetViewAccessibility();
+
+  // Ignore this view's descendants if it has a child tree.
+  if (view_accessibility.GetChildTreeID() != ui::AXTreeIDUnknown())
     return;
 
-  const ViewAccessibility& view_accessibility = view_->GetViewAccessibility();
   if (view_accessibility.IsLeaf())
     return;
 
@@ -62,43 +63,42 @@ void AXViewObjWrapper::GetChildren(
 }
 
 void AXViewObjWrapper::Serialize(ui::AXNodeData* out_node_data) {
-  if (!view_)
-    return;
-
   ViewAccessibility& view_accessibility = view_->GetViewAccessibility();
-
   view_accessibility.GetAccessibleNodeData(out_node_data);
-  out_node_data->id = GetUniqueId();
 
-  if (view_accessibility.GetNextFocus()) {
+  if (view_accessibility.GetNextWindowFocus()) {
     out_node_data->AddIntAttribute(
-        ax::mojom::IntAttribute::kNextFocusId,
-        aura_obj_cache_->GetID(view_accessibility.GetNextFocus()));
+        ax::mojom::IntAttribute::kNextWindowFocusId,
+        aura_obj_cache_->GetOrCreate(view_accessibility.GetNextWindowFocus())
+            ->GetUniqueId());
   }
 
-  if (view_accessibility.GetPreviousFocus()) {
+  if (view_accessibility.GetPreviousWindowFocus()) {
     out_node_data->AddIntAttribute(
-        ax::mojom::IntAttribute::kPreviousFocusId,
-        aura_obj_cache_->GetID(view_accessibility.GetPreviousFocus()));
+        ax::mojom::IntAttribute::kPreviousWindowFocusId,
+        aura_obj_cache_
+            ->GetOrCreate(view_accessibility.GetPreviousWindowFocus())
+            ->GetUniqueId());
   }
 }
 
-int32_t AXViewObjWrapper::GetUniqueId() const {
-  return view_ ? view_->GetViewAccessibility().GetUniqueId()
-               : ui::AXNode::kInvalidAXID;
+ui::AXNodeID AXViewObjWrapper::GetUniqueId() const {
+  return view_->GetViewAccessibility().GetUniqueId();
 }
 
 bool AXViewObjWrapper::HandleAccessibleAction(const ui::AXActionData& action) {
-  return view_ ? view_->HandleAccessibleAction(action) : false;
+  return view_->HandleAccessibleAction(action);
 }
 
 std::string AXViewObjWrapper::ToString() const {
-  return std::string(view_ ? view_->GetClassName() : "Null view");
+  return std::string(view_->GetClassName());
 }
 
 void AXViewObjWrapper::OnViewIsDeleting(View* observed_view) {
-  observer_.RemoveAll();
-  view_ = nullptr;
+  DCHECK_EQ(view_, observed_view);
+  observation_.Reset();
+  // Remove() deletes |this|, so this should be the last line in the function.
+  aura_obj_cache_->Remove(observed_view);
 }
 
 }  // namespace views

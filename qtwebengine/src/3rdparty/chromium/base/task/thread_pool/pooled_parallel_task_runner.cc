@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,27 +21,18 @@ PooledParallelTaskRunner::~PooledParallelTaskRunner() = default;
 bool PooledParallelTaskRunner::PostDelayedTask(const Location& from_here,
                                                OnceClosure closure,
                                                TimeDelta delay) {
-  if (!PooledTaskRunnerDelegate::Exists())
+  if (!PooledTaskRunnerDelegate::MatchesCurrentDelegate(
+          pooled_task_runner_delegate_)) {
     return false;
+  }
 
   // Post the task as part of a one-off single-task Sequence.
   scoped_refptr<Sequence> sequence = MakeRefCounted<Sequence>(
       traits_, this, TaskSourceExecutionMode::kParallel);
 
-  {
-    CheckedAutoLock auto_lock(lock_);
-    sequences_.insert(sequence.get());
-  }
-
   return pooled_task_runner_delegate_->PostTaskWithSequence(
-      Task(from_here, std::move(closure), delay), std::move(sequence));
-}
-
-void PooledParallelTaskRunner::UnregisterSequence(Sequence* sequence) {
-  DCHECK(sequence);
-
-  CheckedAutoLock auto_lock(lock_);
-  sequences_.erase(sequence);
+      Task(from_here, std::move(closure), TimeTicks::Now(), delay),
+      std::move(sequence));
 }
 
 }  // namespace internal

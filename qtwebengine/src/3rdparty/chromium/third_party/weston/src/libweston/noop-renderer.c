@@ -29,6 +29,7 @@
 #include <stdlib.h>
 
 #include <libweston/libweston.h>
+#include "libweston-internal.h"
 
 static int
 noop_renderer_read_pixels(struct weston_output *output,
@@ -106,7 +107,7 @@ noop_renderer_init(struct weston_compositor *ec)
 {
 	struct weston_renderer *renderer;
 
-	renderer = malloc(sizeof *renderer);
+	renderer = zalloc(sizeof *renderer);
 	if (renderer == NULL)
 		return -1;
 

@@ -1,4 +1,4 @@
-# Copyright 2017 The PDFium Authors. All rights reserved.
+# Copyright 2017 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Classes that draw conclusions out of a comparison and represent them."""
@@ -31,7 +31,7 @@ RATING_TO_COLOR = {
 }
 
 
-class ComparisonConclusions(object):
+class ComparisonConclusions:
   """All conclusions drawn from a comparison.
 
   This is initialized empty and then processes pairs of results for each test
@@ -182,7 +182,7 @@ class ComparisonConclusions(object):
     return output_dict
 
 
-class ComparisonSummary(object):
+class ComparisonSummary:
   """Totals computed for a comparison."""
 
   def __init__(self):
@@ -207,7 +207,7 @@ class ComparisonSummary(object):
     return result
 
 
-class CaseResult(object):
+class CaseResult:
   """The conclusion for the comparison of a single test case."""
 
   def __init__(self, case_name, before, after, ratio, rating):
@@ -245,9 +245,9 @@ def PrintConclusionsDictHumanReadable(conclusions_dict, colored, key=None):
     key: String with the CaseResult dictionary key to sort the cases.
   """
   # Print header
-  print '=' * 80
-  print '{0:>11s} {1:>15s}  {2}'.format('% Change', 'Time after', 'Test case')
-  print '-' * 80
+  print('=' * 80)
+  print('{0:>11s} {1:>15s}  {2}'.format('% Change', 'Time after', 'Test case'))
+  print('-' * 80)
 
   color = FORMAT_NORMAL
 
@@ -264,18 +264,18 @@ def PrintConclusionsDictHumanReadable(conclusions_dict, colored, key=None):
       color = RATING_TO_COLOR[case_dict['rating']]
 
     if case_dict['rating'] == RATING_FAILURE:
-      print u'{} to measure time for {}'.format(
-          color.format('Failed'), case_name).encode('utf-8')
+      print(u'{} to measure time for {}'.format(
+          color.format('Failed'), case_name).encode('utf-8'))
       continue
 
-    print u'{0} {1:15,d}  {2}'.format(
+    print(u'{0} {1:15,d}  {2}'.format(
         color.format('{:+11.4%}'.format(case_dict['ratio'])),
-        case_dict['after'], case_name).encode('utf-8')
+        case_dict['after'], case_name).encode('utf-8'))
 
   # Print totals
   totals = conclusions_dict['summary']
-  print '=' * 80
-  print 'Test cases run: %d' % totals['total']
+  print('=' * 80)
+  print('Test cases run: %d' % totals['total'])
 
   if colored:
     color = FORMAT_MAGENTA if totals[RATING_FAILURE] else FORMAT_GREEN

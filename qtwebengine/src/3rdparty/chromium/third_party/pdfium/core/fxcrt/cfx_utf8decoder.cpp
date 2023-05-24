@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,18 +6,28 @@
 
 #include "core/fxcrt/cfx_utf8decoder.h"
 
-CFX_UTF8Decoder::CFX_UTF8Decoder() = default;
+#include <utility>
+
+CFX_UTF8Decoder::CFX_UTF8Decoder(ByteStringView input) {
+  for (char c : input) {
+    ProcessByte(c);
+  }
+}
 
 CFX_UTF8Decoder::~CFX_UTF8Decoder() = default;
 
-void CFX_UTF8Decoder::AppendCodePoint(uint32_t ch) {
-  m_Buffer.AppendChar(static_cast<wchar_t>(ch));
+WideString CFX_UTF8Decoder::TakeResult() {
+  return std::move(m_Buffer);
 }
 
-void CFX_UTF8Decoder::Input(uint8_t byte) {
+void CFX_UTF8Decoder::AppendCodePoint(uint32_t ch) {
+  m_Buffer += static_cast<wchar_t>(ch);
+}
+
+void CFX_UTF8Decoder::ProcessByte(uint8_t byte) {
   if (byte < 0x80) {
     m_PendingBytes = 0;
-    m_Buffer.AppendChar(byte);
+    AppendCodePoint(byte);
   } else if (byte < 0xc0) {
     if (m_PendingBytes == 0) {
       return;

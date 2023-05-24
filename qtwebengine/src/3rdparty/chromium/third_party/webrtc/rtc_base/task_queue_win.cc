@@ -24,25 +24,28 @@
 #include <string.h>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
-#include "api/task_queue/queued_task.h"
+#include "absl/types/optional.h"
 #include "api/task_queue/task_queue_base.h"
+#include "api/units/time_delta.h"
+#include "api/units/timestamp.h"
 #include "rtc_base/arraysize.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/event.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/numerics/safe_conversions.h"
 #include "rtc_base/platform_thread.h"
-#include "rtc_base/time_utils.h"
 #include "rtc_base/synchronization/mutex.h"
+#include "rtc_base/time_utils.h"
 
 namespace webrtc {
 namespace {
-#define WM_RUN_TASK WM_USER + 1
 #define WM_QUEUE_DELAYED_TASK WM_USER + 2
 
 void CALLBACK InitializeQueueThread(ULONG_PTR param) {
@@ -56,22 +59,18 @@ rtc::ThreadPriority TaskQueuePriorityToThreadPriority(
     TaskQueueFactory::Priority priority) {
   switch (priority) {
     case TaskQueueFactory::Priority::HIGH:
-      return rtc::kRealtimePriority;
+      return rtc::ThreadPriority::kRealtime;
     case TaskQueueFactory::Priority::LOW:
-      return rtc::kLowPriority;
+      return rtc::ThreadPriority::kLow;
     case TaskQueueFactory::Priority::NORMAL:
-      return rtc::kNormalPriority;
-    default:
-      RTC_NOTREACHED();
-      break;
+      return rtc::ThreadPriority::kNormal;
   }
-  return rtc::kNormalPriority;
 }
 
-int64_t GetTick() {
+Timestamp CurrentTime() {
   static const UINT kPeriod = 1;
   bool high_res = (timeBeginPeriod(kPeriod) == TIMERR_NOERROR);
-  int64_t ret = rtc::TimeMillis();
+  Timestamp ret = Timestamp::Micros(rtc::TimeMicros());
   if (high_res)
     timeEndPeriod(kPeriod);
   return ret;
@@ -81,8 +80,8 @@ class DelayedTaskInfo {
  public:
   // Default ctor needed to support priority_queue::pop().
   DelayedTaskInfo() {}
-  DelayedTaskInfo(uint32_t milliseconds, std::unique_ptr<QueuedTask> task)
-      : due_time_(GetTick() + milliseconds), task_(std::move(task)) {}
+  DelayedTaskInfo(TimeDelta delay, absl::AnyInvocable<void() &&> task)
+      : due_time_(CurrentTime() + delay), task_(std::move(task)) {}
   DelayedTaskInfo(DelayedTaskInfo&&) = default;
 
   // Implement for priority_queue.
@@ -95,23 +94,23 @@ class DelayedTaskInfo {
 
   // See below for why this method is const.
   void Run() const {
-    RTC_DCHECK(due_time_);
-    task_->Run() ? task_.reset() : static_cast<void>(task_.release());
+    RTC_DCHECK(task_);
+    std::move(task_)();
   }
 
-  int64_t due_time() const { return due_time_; }
+  Timestamp due_time() const { return due_time_; }
 
  private:
-  int64_t due_time_ = 0;  // Absolute timestamp in milliseconds.
+  Timestamp due_time_ = Timestamp::Zero();
 
-  // |task| needs to be mutable because std::priority_queue::top() returns
+  // `task` needs to be mutable because std::priority_queue::top() returns
   // a const reference and a key in an ordered queue must not be changed.
   // There are two basic workarounds, one using const_cast, which would also
-  // make the key (|due_time|), non-const and the other is to make the non-key
-  // (|task|), mutable.
-  // Because of this, the |task| variable is made private and can only be
-  // mutated by calling the |Run()| method.
-  mutable std::unique_ptr<QueuedTask> task_;
+  // make the key (`due_time`), non-const and the other is to make the non-key
+  // (`task`), mutable.
+  // Because of this, the `task` variable is made private and can only be
+  // mutated by calling the `Run()` method.
+  mutable absl::AnyInvocable<void() &&> task_;
 };
 
 class MultimediaTimer {
@@ -123,6 +122,9 @@ class MultimediaTimer {
     Cancel();
     ::CloseHandle(event_);
   }
+
+  MultimediaTimer(const MultimediaTimer&) = delete;
+  MultimediaTimer& operator=(const MultimediaTimer&) = delete;
 
   bool StartOneShotTimer(UINT delay_ms) {
     RTC_DCHECK_EQ(0, timer_id_);
@@ -150,8 +152,6 @@ class MultimediaTimer {
  private:
   HANDLE event_ = nullptr;
   MMRESULT timer_id_ = 0;
-
-  RTC_DISALLOW_COPY_AND_ASSIGN(MultimediaTimer);
 };
 
 class TaskQueueWin : public TaskQueueBase {
@@ -160,63 +160,44 @@ class TaskQueueWin : public TaskQueueBase {
   ~TaskQueueWin() override = default;
 
   void Delete() override;
-  void PostTask(std::unique_ptr<QueuedTask> task) override;
-  void PostDelayedTask(std::unique_ptr<QueuedTask> task,
-                       uint32_t milliseconds) override;
-
+  void PostTask(absl::AnyInvocable<void() &&> task) override;
+  void PostDelayedTask(absl::AnyInvocable<void() &&> task,
+                       TimeDelta delay) override;
+  void PostDelayedHighPrecisionTask(absl::AnyInvocable<void() &&> task,
+                                    TimeDelta delay) override;
   void RunPendingTasks();
 
  private:
-  static void ThreadMain(void* context);
-
-  class WorkerThread : public rtc::PlatformThread {
-   public:
-    WorkerThread(rtc::ThreadRunFunction func,
-                 void* obj,
-                 absl::string_view thread_name,
-                 rtc::ThreadPriority priority)
-        : PlatformThread(func, obj, thread_name, priority) {}
-
-    bool QueueAPC(PAPCFUNC apc_function, ULONG_PTR data) {
-      return rtc::PlatformThread::QueueAPC(apc_function, data);
-    }
-  };
-
   void RunThreadMain();
   bool ProcessQueuedMessages();
   void RunDueTasks();
   void ScheduleNextTimer();
   void CancelTimers();
 
+  MultimediaTimer timer_;
   // Since priority_queue<> by defult orders items in terms of
   // largest->smallest, using std::less<>, and we want smallest->largest,
-  // we would like to use std::greater<> here. Alas it's only available in
-  // C++14 and later, so we roll our own compare template that that relies on
-  // operator<().
-  template <typename T>
-  struct greater {
-    bool operator()(const T& l, const T& r) { return l > r; }
-  };
-
-  MultimediaTimer timer_;
+  // we would like to use std::greater<> here.
   std::priority_queue<DelayedTaskInfo,
                       std::vector<DelayedTaskInfo>,
-                      greater<DelayedTaskInfo>>
+                      std::greater<DelayedTaskInfo>>
       timer_tasks_;
   UINT_PTR timer_id_ = 0;
-  WorkerThread thread_;
+  rtc::PlatformThread thread_;
   Mutex pending_lock_;
-  std::queue<std::unique_ptr<QueuedTask>> pending_
+  std::queue<absl::AnyInvocable<void() &&>> pending_
       RTC_GUARDED_BY(pending_lock_);
   HANDLE in_queue_;
 };
 
 TaskQueueWin::TaskQueueWin(absl::string_view queue_name,
                            rtc::ThreadPriority priority)
-    : thread_(&TaskQueueWin::ThreadMain, this, queue_name, priority),
-      in_queue_(::CreateEvent(nullptr, true, false, nullptr)) {
+    : in_queue_(::CreateEvent(nullptr, true, false, nullptr)) {
   RTC_DCHECK(in_queue_);
-  thread_.Start();
+  thread_ = rtc::PlatformThread::SpawnJoinable(
+      [this] { RunThreadMain(); }, queue_name,
+      rtc::ThreadAttributes().SetPriority(priority));
+
   rtc::Event event(false, false);
   RTC_CHECK(thread_.QueueAPC(&InitializeQueueThread,
                              reinterpret_cast<ULONG_PTR>(&event)));
@@ -225,42 +206,48 @@ TaskQueueWin::TaskQueueWin(absl::string_view queue_name,
 
 void TaskQueueWin::Delete() {
   RTC_DCHECK(!IsCurrent());
-  while (!::PostThreadMessage(thread_.GetThreadRef(), WM_QUIT, 0, 0)) {
+  RTC_CHECK(thread_.GetHandle() != absl::nullopt);
+  while (
+      !::PostThreadMessage(GetThreadId(*thread_.GetHandle()), WM_QUIT, 0, 0)) {
     RTC_CHECK_EQ(ERROR_NOT_ENOUGH_QUOTA, ::GetLastError());
     Sleep(1);
   }
-  thread_.Stop();
+  thread_.Finalize();
   ::CloseHandle(in_queue_);
   delete this;
 }
 
-void TaskQueueWin::PostTask(std::unique_ptr<QueuedTask> task) {
+void TaskQueueWin::PostTask(absl::AnyInvocable<void() &&> task) {
   MutexLock lock(&pending_lock_);
   pending_.push(std::move(task));
   ::SetEvent(in_queue_);
 }
 
-void TaskQueueWin::PostDelayedTask(std::unique_ptr<QueuedTask> task,
-                                   uint32_t milliseconds) {
-  if (!milliseconds) {
+void TaskQueueWin::PostDelayedTask(absl::AnyInvocable<void() &&> task,
+                                   TimeDelta delay) {
+  if (delay <= TimeDelta::Zero()) {
     PostTask(std::move(task));
     return;
   }
 
-  // TODO(tommi): Avoid this allocation.  It is currently here since
-  // the timestamp stored in the task info object, is a 64bit timestamp
-  // and WPARAM is 32bits in 32bit builds.  Otherwise, we could pass the
-  // task pointer and timestamp as LPARAM and WPARAM.
-  auto* task_info = new DelayedTaskInfo(milliseconds, std::move(task));
-  if (!::PostThreadMessage(thread_.GetThreadRef(), WM_QUEUE_DELAYED_TASK, 0,
+  auto* task_info = new DelayedTaskInfo(delay, std::move(task));
+  RTC_CHECK(thread_.GetHandle() != absl::nullopt);
+  if (!::PostThreadMessage(GetThreadId(*thread_.GetHandle()),
+                           WM_QUEUE_DELAYED_TASK, 0,
                            reinterpret_cast<LPARAM>(task_info))) {
     delete task_info;
   }
 }
 
+void TaskQueueWin::PostDelayedHighPrecisionTask(
+    absl::AnyInvocable<void() &&> task,
+    TimeDelta delay) {
+  PostDelayedTask(std::move(task), delay);
+}
+
 void TaskQueueWin::RunPendingTasks() {
   while (true) {
-    std::unique_ptr<QueuedTask> task;
+    absl::AnyInvocable<void() &&> task;
     {
       MutexLock lock(&pending_lock_);
       if (pending_.empty())
@@ -269,14 +256,8 @@ void TaskQueueWin::RunPendingTasks() {
       pending_.pop();
     }
 
-    if (!task->Run())
-      task.release();
+    std::move(task)();
   }
-}
-
-// static
-void TaskQueueWin::ThreadMain(void* context) {
-  static_cast<TaskQueueWin*>(context)->RunThreadMain();
 }
 
 void TaskQueueWin::RunThreadMain() {
@@ -309,6 +290,18 @@ void TaskQueueWin::RunThreadMain() {
       RunPendingTasks();
     }
   }
+  // Ensure remaining deleted tasks are destroyed with Current() set up to this
+  // task queue.
+  std::queue<absl::AnyInvocable<void() &&>> pending;
+  {
+    MutexLock lock(&pending_lock_);
+    pending_.swap(pending);
+  }
+  pending = {};
+#if RTC_DCHECK_IS_ON
+  MutexLock lock(&pending_lock_);
+  RTC_DCHECK(pending_.empty());
+#endif
 }
 
 bool TaskQueueWin::ProcessQueuedMessages() {
@@ -316,26 +309,19 @@ bool TaskQueueWin::ProcessQueuedMessages() {
   // To protect against overly busy message queues, we limit the time
   // we process tasks to a few milliseconds. If we don't do that, there's
   // a chance that timer tasks won't ever run.
-  static const int kMaxTaskProcessingTimeMs = 500;
-  auto start = GetTick();
+  static constexpr TimeDelta kMaxTaskProcessingTime = TimeDelta::Millis(500);
+  Timestamp start = CurrentTime();
   while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) &&
          msg.message != WM_QUIT) {
     if (!msg.hwnd) {
       switch (msg.message) {
-        // TODO(tommi): Stop using this way of queueing tasks.
-        case WM_RUN_TASK: {
-          QueuedTask* task = reinterpret_cast<QueuedTask*>(msg.lParam);
-          if (task->Run())
-            delete task;
-          break;
-        }
         case WM_QUEUE_DELAYED_TASK: {
           std::unique_ptr<DelayedTaskInfo> info(
               reinterpret_cast<DelayedTaskInfo*>(msg.lParam));
           bool need_to_schedule_timers =
               timer_tasks_.empty() ||
               timer_tasks_.top().due_time() > info->due_time();
-          timer_tasks_.emplace(std::move(*info.get()));
+          timer_tasks_.push(std::move(*info));
           if (need_to_schedule_timers) {
             CancelTimers();
             ScheduleNextTimer();
@@ -351,7 +337,7 @@ bool TaskQueueWin::ProcessQueuedMessages() {
           break;
         }
         default:
-          RTC_NOTREACHED();
+          RTC_DCHECK_NOTREACHED();
           break;
       }
     } else {
@@ -359,7 +345,7 @@ bool TaskQueueWin::ProcessQueuedMessages() {
       ::DispatchMessage(&msg);
     }
 
-    if (GetTick() > start + kMaxTaskProcessingTimeMs)
+    if (CurrentTime() > start + kMaxTaskProcessingTime)
       break;
   }
   return msg.message != WM_QUIT;
@@ -367,7 +353,7 @@ bool TaskQueueWin::ProcessQueuedMessages() {
 
 void TaskQueueWin::RunDueTasks() {
   RTC_DCHECK(!timer_tasks_.empty());
-  auto now = GetTick();
+  Timestamp now = CurrentTime();
   do {
     const auto& top = timer_tasks_.top();
     if (top.due_time() > now)
@@ -383,8 +369,9 @@ void TaskQueueWin::ScheduleNextTimer() {
     return;
 
   const auto& next_task = timer_tasks_.top();
-  int64_t delay_ms = std::max(0ll, next_task.due_time() - GetTick());
-  uint32_t milliseconds = rtc::dchecked_cast<uint32_t>(delay_ms);
+  TimeDelta delay =
+      std::max(TimeDelta::Zero(), next_task.due_time() - CurrentTime());
+  uint32_t milliseconds = delay.RoundUpTo(TimeDelta::Millis(1)).ms<uint32_t>();
   if (!timer_.StartOneShotTimer(milliseconds))
     timer_id_ = ::SetTimer(nullptr, 0, milliseconds, nullptr);
 }

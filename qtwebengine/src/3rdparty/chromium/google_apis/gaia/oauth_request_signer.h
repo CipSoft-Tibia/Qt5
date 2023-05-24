@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <map>
 #include <string>
 
-#include "base/macros.h"
+#include "base/component_export.h"
 
 class GURL;
 
@@ -16,7 +16,7 @@ class GURL;
 //   http://oauth.net/core/1.0/#signing_process
 //
 // NOTE: Currently the only supported SignatureMethod is HMAC_SHA1_SIGNATURE
-class OAuthRequestSigner {
+class COMPONENT_EXPORT(GOOGLE_APIS) OAuthRequestSigner {
  public:
   enum SignatureMethod {
     HMAC_SHA1_SIGNATURE,
@@ -30,6 +30,10 @@ class OAuthRequestSigner {
   };
 
   typedef std::map<std::string,std::string> Parameters;
+
+  OAuthRequestSigner() = delete;
+  OAuthRequestSigner(const OAuthRequestSigner&) = delete;
+  OAuthRequestSigner& operator=(const OAuthRequestSigner&) = delete;
 
   // Percent encoding and decoding for OAuth.
   //
@@ -92,9 +96,6 @@ class OAuthRequestSigner {
                              const std::string& token_key,
                              const std::string& token_secret,
                              std::string* signed_result);
-
- private:
-  DISALLOW_IMPLICIT_CONSTRUCTORS(OAuthRequestSigner);
 };
 
 #endif  // GOOGLE_APIS_GAIA_OAUTH_REQUEST_SIGNER_H_

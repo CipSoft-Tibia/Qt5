@@ -1,12 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/ui_devtools/views/view_element.h"
 
+#include <memory>
+
 #include "base/strings/utf_string_conversions.h"
-#include "components/ui_devtools/Protocol.h"
+#include "components/ui_devtools/protocol.h"
 #include "components/ui_devtools/ui_devtools_unittest_utils.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/views/test/views_test_base.h"
 
 namespace ui_devtools {
@@ -61,13 +64,13 @@ void TestBooleanCustomPropertySetting(ui_devtools::ViewElement* element,
 
 using ::testing::_;
 
-class NamedTestView : public views::View {
+class MockNamedTestView : public views::View {
  public:
-  METADATA_HEADER(NamedTestView);
+  METADATA_HEADER(MockNamedTestView);
 
   // For custom properties test.
-  base::string16 GetTooltipText(const gfx::Point& p) const override {
-    return base::ASCIIToUTF16("This is the tooltip");
+  std::u16string GetTooltipText(const gfx::Point& p) const override {
+    return u"This is the tooltip";
   }
 
   int GetBoolProperty() const { return bool_property_; }
@@ -76,41 +79,78 @@ class NamedTestView : public views::View {
   SkColor GetColorProperty() const { return color_property_; }
   void SetColorProperty(SkColor color) { color_property_ = color; }
 
+  MOCK_METHOD1(OnMousePressed, bool(const ui::MouseEvent&));
+  MOCK_METHOD1(OnMouseDragged, bool(const ui::MouseEvent&));
+  MOCK_METHOD1(OnMouseReleased, void(const ui::MouseEvent&));
+  MOCK_METHOD1(OnMouseMoved, void(const ui::MouseEvent&));
+  MOCK_METHOD1(OnMouseEntered, void(const ui::MouseEvent&));
+  MOCK_METHOD1(OnMouseExited, void(const ui::MouseEvent&));
+  MOCK_METHOD1(OnMouseWheel, bool(const ui::MouseWheelEvent&));
+
  private:
   bool bool_property_ = false;
   SkColor color_property_ = SK_ColorGRAY;
 };
 
-BEGIN_METADATA(NamedTestView, views::View)
+BEGIN_METADATA(MockNamedTestView, views::View)
 ADD_PROPERTY_METADATA(bool, BoolProperty)
-ADD_PROPERTY_METADATA(SkColor, ColorProperty)
+ADD_PROPERTY_METADATA(SkColor, ColorProperty, ui::metadata::SkColorConverter)
+END_METADATA
+
+class AlwaysOnTopView : public views::View {
+  METADATA_HEADER(AlwaysOnTopView);
+};
+BEGIN_METADATA(AlwaysOnTopView, views::View)
+END_METADATA
+
+class SelfReorderingTestView : public views::View, public views::ViewObserver {
+ public:
+  METADATA_HEADER(SelfReorderingTestView);
+  SelfReorderingTestView()
+      : always_on_top_view_(AddChildView(std::make_unique<AlwaysOnTopView>())) {
+    AddObserver(this);
+  }
+  ~SelfReorderingTestView() override { RemoveObserver(this); }
+
+  // views::ViewObserver
+  void OnChildViewAdded(View* observed_view, View* child) override {
+    ReorderChildView(always_on_top_view_, children().size());
+  }
+
+ private:
+  raw_ptr<views::View> always_on_top_view_;
+};
+BEGIN_METADATA(SelfReorderingTestView, views::View)
 END_METADATA
 
 class ViewElementTest : public views::ViewsTestBase {
  public:
   ViewElementTest() {}
+
+  ViewElementTest(const ViewElementTest&) = delete;
+  ViewElementTest& operator=(const ViewElementTest&) = delete;
+
   ~ViewElementTest() override {}
 
  protected:
   void SetUp() override {
     views::ViewsTestBase::SetUp();
-    view_.reset(new NamedTestView);
-    delegate_.reset(new testing::NiceMock<MockUIElementDelegate>);
+    view_ = std::make_unique<testing::NiceMock<MockNamedTestView>>();
+    delegate_ = std::make_unique<testing::NiceMock<MockUIElementDelegate>>();
     // |OnUIElementAdded| is called on element creation.
     EXPECT_CALL(*delegate_, OnUIElementAdded(_, _)).Times(1);
-    element_.reset(new ViewElement(view_.get(), delegate_.get(), nullptr));
+    element_ =
+        std::make_unique<ViewElement>(view_.get(), delegate_.get(), nullptr);
   }
 
-  NamedTestView* view() { return view_.get(); }
+  MockNamedTestView* view() { return view_.get(); }
   ViewElement* element() { return element_.get(); }
   MockUIElementDelegate* delegate() { return delegate_.get(); }
 
  private:
-  std::unique_ptr<NamedTestView> view_;
+  std::unique_ptr<MockNamedTestView> view_;
   std::unique_ptr<ViewElement> element_;
   std::unique_ptr<MockUIElementDelegate> delegate_;
-
-  DISALLOW_COPY_AND_ASSIGN(ViewElementTest);
 };
 
 TEST_F(ViewElementTest, SettingsBoundsOnViewCallsDelegate) {
@@ -186,7 +226,7 @@ TEST_F(ViewElementTest, GetBounds) {
 TEST_F(ViewElementTest, GetAttributes) {
   std::vector<std::string> attrs = element()->GetAttributes();
   EXPECT_THAT(attrs,
-              testing::ElementsAre("name", NamedTestView::kViewClassName));
+              testing::ElementsAre("name", MockNamedTestView::kViewClassName));
 }
 
 TEST_F(ViewElementTest, GetCustomProperties) {
@@ -202,7 +242,7 @@ TEST_F(ViewElementTest, GetCustomProperties) {
   // the vector.
   DCHECK_EQ(indices.first, 0U);
 
-  indices = GetPropertyIndices(element(), "tooltip");
+  indices = GetPropertyIndices(element(), "Tooltip");
   // The tooltip property should be in the second ClassProperties object in the
   // vector.
   DCHECK_EQ(indices.first, 1U);
@@ -210,7 +250,7 @@ TEST_F(ViewElementTest, GetCustomProperties) {
   std::vector<UIElement::UIProperty> ui_props =
       props[indices.first].properties_;
 
-  EXPECT_EQ(ui_props[indices.second].name_, "tooltip");
+  EXPECT_EQ(ui_props[indices.second].name_, "Tooltip");
   EXPECT_EQ(ui_props[indices.second].value_, "This is the tooltip");
 }
 
@@ -259,38 +299,154 @@ TEST_F(ViewElementTest, ColorProperty) {
       "--ColorProperty: rgba(0,0,  255, 1);"));
   EXPECT_EQ(view()->GetColorProperty(), SK_ColorBLUE);
 
-  EXPECT_TRUE(element()->SetPropertiesFromString("--ColorProperty: #0352fc"));
-  EXPECT_EQ(view()->GetColorProperty(), SkColorSetARGB(255, 3, 82, 252));
-
   EXPECT_TRUE(element()->SetPropertiesFromString(
       "--ColorProperty: hsl(240, 84%, 28%);"));
-  EXPECT_EQ(view()->GetColorProperty(), SkColorSetARGB(255, 11, 11, 131));
+  EXPECT_EQ(view()->GetColorProperty(), SkColorSetARGB(255, 0x0B, 0x0B, 0x47));
+
+  EXPECT_TRUE(element()->SetPropertiesFromString(
+      "--ColorProperty: hsla(240, 84%, 28%, 0.5);"));
+  EXPECT_EQ(view()->GetColorProperty(), SkColorSetARGB(128, 0x0B, 0x0B, 0x47));
 }
 
 TEST_F(ViewElementTest, BadColorProperty) {
   DCHECK_EQ(view()->GetColorProperty(), SK_ColorGRAY);
 
-  EXPECT_FALSE(
-      element()->SetPropertiesFromString("-ColorProperty: rgba(1,2,3,4);"));
+  element()->SetPropertiesFromString("--ColorProperty: #0352fc");
   EXPECT_EQ(view()->GetColorProperty(), SK_ColorGRAY);
 
-  EXPECT_FALSE(
-      element()->SetPropertiesFromString("--ColorProperty: rgba(1,2,3,4;"));
+  element()->SetPropertiesFromString("--ColorProperty: rgba(1,2,3,4);");
   EXPECT_EQ(view()->GetColorProperty(), SK_ColorGRAY);
 
-  EXPECT_FALSE(
-      element()->SetPropertiesFromString("--ColorProperty: rgb(1,2,3,4;)"));
+  element()->SetPropertiesFromString("--ColorProperty: rgba(1,2,3,4;");
+  EXPECT_EQ(view()->GetColorProperty(), SK_ColorGRAY);
+
+  element()->SetPropertiesFromString("--ColorProperty: rgb(1,2,3,4;)");
   EXPECT_EQ(view()->GetColorProperty(), SK_ColorGRAY);
 }
 
 TEST_F(ViewElementTest, GetSources) {
   std::vector<UIElement::Source> sources = element()->GetSources();
 
-  // ViewElement should have two sources: from NamedTestView and from View.
+  // ViewElement should have two sources: from MockNamedTestView and from View.
   EXPECT_EQ(sources.size(), 2U);
+#if defined(__clang__) && defined(_MSC_VER)
+  EXPECT_EQ(sources[0].path_,
+            "components\\ui_devtools\\views\\view_element_unittest.cc");
+  EXPECT_EQ(sources[1].path_, "ui\\views\\view.h");
+#else
   EXPECT_EQ(sources[0].path_,
             "components/ui_devtools/views/view_element_unittest.cc");
   EXPECT_EQ(sources[1].path_, "ui/views/view.h");
+#endif
+}
+
+TEST_F(ViewElementTest, DispatchMouseEvent) {
+  // The view must be in a widget in order to dispatch mouse event correctly.
+  auto widget = std::make_unique<views::Widget>();
+  views::Widget::InitParams params =
+      CreateParams(views::Widget::InitParams::TYPE_WINDOW);
+  params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  widget->Init(std::move(params));
+  widget->GetContentsView()->AddChildView(view());
+  widget->Show();
+  gfx::Rect bounds(50, 60, 70, 80);
+  view()->SetBoundsRect(bounds);
+  std::pair<gfx::NativeWindow, gfx::Rect> window_and_bounds =
+      element()->GetNodeWindowAndScreenBounds();
+  EXPECT_EQ(window_and_bounds.first, widget->GetNativeWindow());
+  EXPECT_EQ(window_and_bounds.second, view()->GetBoundsInScreen());
+
+  EXPECT_CALL(*view(), OnMousePressed(_)).Times(1);
+  EXPECT_CALL(*view(), OnMouseDragged(_)).Times(1);
+  EXPECT_CALL(*view(), OnMouseReleased(_)).Times(1);
+  EXPECT_CALL(*view(), OnMouseMoved(_)).Times(1);
+  EXPECT_CALL(*view(), OnMouseEntered(_)).Times(1);
+  EXPECT_CALL(*view(), OnMouseExited(_)).Times(1);
+  EXPECT_CALL(*view(), OnMouseWheel(_)).Times(1);
+  std::vector<std::unique_ptr<protocol::DOM::MouseEvent>> events;
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MousePressed)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::Left)
+          .setWheelDirection(
+              protocol::DOM::MouseEvent::WheelDirectionEnum::None)
+          .build());
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MouseDragged)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::Left)
+          .setWheelDirection(
+              protocol::DOM::MouseEvent::WheelDirectionEnum::None)
+          .build());
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MouseReleased)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::Left)
+          .setWheelDirection(
+              protocol::DOM::MouseEvent::WheelDirectionEnum::None)
+          .build());
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MouseMoved)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::None)
+          .setWheelDirection(
+              protocol::DOM::MouseEvent::WheelDirectionEnum::None)
+          .build());
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MouseEntered)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::None)
+          .setWheelDirection(
+              protocol::DOM::MouseEvent::WheelDirectionEnum::None)
+          .build());
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MouseExited)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::None)
+          .setWheelDirection(
+              protocol::DOM::MouseEvent::WheelDirectionEnum::None)
+          .build());
+  events.emplace_back(
+      protocol::DOM::MouseEvent::create()
+          .setType(protocol::DOM::MouseEvent::TypeEnum::MouseWheel)
+          .setX(0)
+          .setY(0)
+          .setButton(protocol::DOM::MouseEvent::ButtonEnum::None)
+          .setWheelDirection(protocol::DOM::MouseEvent::WheelDirectionEnum::Up)
+          .build());
+  for (auto& event : events)
+    element()->DispatchMouseEvent(event.get());
+
+  view()->parent()->RemoveChildView(view());
+}
+
+TEST_F(ViewElementTest, OutOfOrderObserverTest) {
+  // Override the expectation from setup; we don't need to keep track
+  // in this test.
+  EXPECT_CALL(*delegate(), OnUIElementAdded(_, _)).Times(testing::AnyNumber());
+  auto view = std::make_unique<SelfReorderingTestView>();
+  auto element = std::make_unique<ViewElement>(view.get(), delegate(), nullptr);
+  // `element` will receive OnChildViewReordered and OnViewAdded out of
+  // order. Ensure it doesn't crash and that the subtree is consistent
+  // afterward.
+  view->AddChildView(std::make_unique<views::View>());
+  ASSERT_EQ(element->children().size(), 2u);
+  auto attrs = element->children().at(1)->GetAttributes();
+  EXPECT_EQ(attrs[0], "name");
+  std::string& name = attrs[1];
+  EXPECT_EQ(name, "AlwaysOnTopView");
 }
 
 }  // namespace ui_devtools

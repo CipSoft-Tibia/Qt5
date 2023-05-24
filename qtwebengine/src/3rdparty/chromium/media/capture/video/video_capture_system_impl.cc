@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,18 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/ranges/algorithm.h"
+#include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "media/base/bind_to_current_loop.h"
+#include "media/base/scoped_async_trace.h"
+#include "media/capture/video/video_capture_device_factory.h"
+#include "media/capture/video/video_capture_metrics.h"
+
+using ScopedCaptureTrace =
+    media::TypedScopedAsyncTrace<media::TraceCategory::kVideoAndImageCapture>;
 
 namespace {
 
@@ -46,9 +54,10 @@ void ConsolidateCaptureFormats(media::VideoCaptureFormats* formats) {
     return;
   // Mark all formats as I420, since this is what the renderer side will get
   // anyhow: the actual pixel format is decided at the device level.
-  // Don't do this for Y16 format as it is handled separatelly.
+  // Don't do this for the Y16 or NV12 formats as they are handled separately.
   for (auto& format : *formats) {
-    if (format.pixel_format != media::PIXEL_FORMAT_Y16)
+    if (format.pixel_format != media::PIXEL_FORMAT_Y16 &&
+        format.pixel_format != media::PIXEL_FORMAT_NV12)
       format.pixel_format = media::PIXEL_FORMAT_I420;
   }
   std::sort(formats->begin(), formats->end(), IsCaptureFormatSmaller);
@@ -56,6 +65,13 @@ void ConsolidateCaptureFormats(media::VideoCaptureFormats* formats) {
   auto last =
       std::unique(formats->begin(), formats->end(), IsCaptureFormatEqual);
   formats->erase(last, formats->end());
+}
+
+void DeviceInfosCallbackTrampoline(
+    media::VideoCaptureSystem::DeviceInfoCallback callback,
+    std::unique_ptr<ScopedCaptureTrace> trace,
+    const std::vector<media::VideoCaptureDeviceInfo>& infos) {
+  std::move(callback).Run(infos);
 }
 
 }  // anonymous namespace
@@ -73,8 +89,9 @@ VideoCaptureSystemImpl::~VideoCaptureSystemImpl() = default;
 void VideoCaptureSystemImpl::GetDeviceInfosAsync(
     DeviceInfoCallback result_callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
-
-  device_enum_request_queue_.push_back(std::move(result_callback));
+  device_enum_request_queue_.push_back(base::BindOnce(
+      &DeviceInfosCallbackTrampoline, std::move(result_callback),
+      ScopedCaptureTrace::CreateIfEnabled("GetDeviceInfosAsync")));
   if (device_enum_request_queue_.size() == 1) {
     // base::Unretained() is safe because |factory_| is owned and it guarantees
     // not to call the callback after destruction.
@@ -83,23 +100,26 @@ void VideoCaptureSystemImpl::GetDeviceInfosAsync(
   }
 }
 
-std::unique_ptr<VideoCaptureDevice> VideoCaptureSystemImpl::CreateDevice(
+VideoCaptureErrorOrDevice VideoCaptureSystemImpl::CreateDevice(
     const std::string& device_id) {
+  TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
+               "VideoCaptureSystemImpl::CreateDevice");
   DCHECK(thread_checker_.CalledOnValidThread());
   const VideoCaptureDeviceInfo* device_info = LookupDeviceInfoFromId(device_id);
-  if (!device_info)
-    return nullptr;
+  if (!device_info) {
+    return VideoCaptureErrorOrDevice(
+        VideoCaptureError::kVideoCaptureSystemDeviceIdNotFound);
+  }
   return factory_->CreateDevice(device_info->descriptor);
 }
 
 const VideoCaptureDeviceInfo* VideoCaptureSystemImpl::LookupDeviceInfoFromId(
     const std::string& device_id) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  auto iter =
-      std::find_if(devices_info_cache_.begin(), devices_info_cache_.end(),
-                   [&device_id](const VideoCaptureDeviceInfo& device_info) {
-                     return device_info.descriptor.device_id == device_id;
-                   });
+  auto iter = base::ranges::find(devices_info_cache_, device_id,
+                                 [](const VideoCaptureDeviceInfo& device_info) {
+                                   return device_info.descriptor.device_id;
+                                 });
   if (iter == devices_info_cache_.end())
     return nullptr;
   return &(*iter);
@@ -109,6 +129,11 @@ void VideoCaptureSystemImpl::DevicesInfoReady(
     std::vector<VideoCaptureDeviceInfo> devices_info) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(!device_enum_request_queue_.empty());
+
+  // Only save metrics the first time device infos are populated.
+  if (devices_info_cache_.empty()) {
+    LogCaptureDeviceMetrics(devices_info);
+  }
 
   for (auto& device_info : devices_info) {
     ConsolidateCaptureFormats(&device_info.supported_formats);
@@ -127,6 +152,10 @@ void VideoCaptureSystemImpl::DevicesInfoReady(
     if (!weak_this)
       return;
   }
+}
+
+VideoCaptureDeviceFactory* VideoCaptureSystemImpl::GetFactory() {
+  return factory_.get();
 }
 
 }  // namespace media

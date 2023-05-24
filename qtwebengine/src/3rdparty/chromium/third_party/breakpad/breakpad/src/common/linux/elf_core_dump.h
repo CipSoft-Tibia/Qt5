@@ -1,5 +1,4 @@
-// Copyright (c) 2011, Google Inc.
-// All rights reserved.
+// Copyright 2011 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -106,6 +105,8 @@ class ElfCoreDump {
   // Constructor that takes the core dump content from |content|.
   explicit ElfCoreDump(const MemoryRange& content);
 
+  ~ElfCoreDump();
+
   // Sets the core dump content to |content|.
   void SetContent(const MemoryRange& content);
 
@@ -139,9 +140,15 @@ class ElfCoreDump {
   // an empty note if no note is found.
   Note GetFirstNote() const;
 
+  // Sets the mem fd.
+  void SetProcMem(const int fd);
+
  private:
   // Core dump content.
   MemoryRange content_;
+
+  // Descriptor for /proc/<pid>/mem.
+  int proc_mem_fd_;
 };
 
 }  // namespace google_breakpad

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLOWENERGYCONTROLLERBLUEZ_P_H
 #define QLOWENERGYCONTROLLERBLUEZ_P_H
@@ -52,12 +16,13 @@
 //
 
 #include <qglobal.h>
+#include <QtCore/QList>
 #include <QtCore/QQueue>
-#include <QtCore/QVector>
 #include <QtBluetooth/qbluetooth.h>
 #include <QtBluetooth/qlowenergycharacteristic.h>
 #include "qlowenergycontroller.h"
 #include "qlowenergycontrollerbase_p.h"
+#include "bluez/bluez_data_p.h"
 
 #include <QtBluetooth/QBluetoothSocket>
 #include <functional>
@@ -89,7 +54,8 @@ public:
     void disconnectFromDevice() override;
 
     void discoverServices() override;
-    void discoverServiceDetails(const QBluetoothUuid &service) override;
+    void discoverServiceDetails(const QBluetoothUuid &service,
+                                QLowEnergyService::DiscoveryMode mode) override;
 
     void startAdvertising(const QLowEnergyAdvertisingParameters &params,
                           const QLowEnergyAdvertisingData &advertisingData,
@@ -117,6 +83,8 @@ public:
     void addToGenericAttributeList(const QLowEnergyServiceData &service,
                                    QLowEnergyHandle startHandle) override;
 
+    int mtu() const override;
+
     struct Attribute {
         Attribute() : handle(0) {}
 
@@ -130,13 +98,13 @@ public:
         int minLength;
         int maxLength;
     };
-    QVector<Attribute> localAttributes;
+    QList<Attribute> localAttributes;
 
 private:
     quint16 connectionHandle = 0;
     QBluetoothSocket *l2cpSocket = nullptr;
     struct Request {
-        quint8 command;
+        QBluezConst::AttCommand command;
         QByteArray payload;
         // TODO reference below is ugly but until we know all commands and their
         // requirements this is WIP
@@ -153,10 +121,10 @@ private:
         quint16 valueOffset;
         QByteArray value;
     };
-    QVector<WriteRequest> openPrepareWriteRequests;
+    QList<WriteRequest> openPrepareWriteRequests;
 
     // Invariant: !scheduledIndications.isEmpty => indicationInFlight == true
-    QVector<QLowEnergyHandle> scheduledIndications;
+    QList<QLowEnergyHandle> scheduledIndications;
     bool indicationInFlight = false;
 
     struct TempClientConfigurationData {
@@ -179,14 +147,14 @@ private:
         quint16 configValue;
         bool charValueWasUpdated = false;
     };
-    QHash<quint64, QVector<ClientConfigurationData>> clientConfigData;
+    QHash<quint64, QList<ClientConfigurationData>> clientConfigData;
 
     struct SigningData {
         SigningData() = default;
-        SigningData(const quint128 &csrk, quint32 signCounter = quint32(-1))
+        SigningData(BluezUint128 csrk, quint32 signCounter = quint32(-1))
             : key(csrk), counter(signCounter) {}
 
-        quint128 key;
+        BluezUint128 key;
         quint32 counter = quint32(-1);
     };
     QHash<quint64, SigningData> signingData;
@@ -198,7 +166,7 @@ private:
     bool encryptionChangePending;
     bool receivedMtuExchangeRequest = false;
 
-    HciManager *hciManager = nullptr;
+    std::shared_ptr<HciManager> hciManager;
     QLeAdvertiser *advertiser = nullptr;
     QSocketNotifier *serverSocketNotifier = nullptr;
     QTimer *requestTimer = nullptr;
@@ -225,7 +193,7 @@ private:
     void closeServerSocket();
 
     bool isBonded() const;
-    QVector<TempClientConfigurationData> gatherClientConfigData();
+    QList<TempClientConfigurationData> gatherClientConfigData();
     void storeClientConfigurations();
     void restoreClientConfigurations();
 
@@ -262,7 +230,7 @@ private:
                                  bool isCancelation);
     void sendNextPrepareWriteRequest(const QLowEnergyHandle handle,
                                      const QByteArray &newValue, quint16 offset);
-    bool increaseEncryptLevelfRequired(quint8 errorCode);
+    bool increaseEncryptLevelfRequired(QBluezConst::AttError errorCode);
 
     void resetController();
 
@@ -270,7 +238,7 @@ private:
 
     bool checkPacketSize(const QByteArray &packet, int minSize, int maxSize = -1);
     bool checkHandle(const QByteArray &packet, QLowEnergyHandle handle);
-    bool checkHandlePair(quint8 request, QLowEnergyHandle startingHandle,
+    bool checkHandlePair(QBluezConst::AttCommand request, QLowEnergyHandle startingHandle,
                          QLowEnergyHandle endingHandle);
 
     void handleExchangeMtuRequest(const QByteArray &packet);
@@ -285,30 +253,34 @@ private:
     void handlePrepareWriteRequest(const QByteArray &packet);
     void handleExecuteWriteRequest(const QByteArray &packet);
 
-    void sendErrorResponse(quint8 request, quint16 handle, quint8 code);
+    void sendErrorResponse(QBluezConst::AttCommand request, quint16 handle,
+                           QBluezConst::AttError code);
 
     using ElemWriter = std::function<void(const Attribute &, char *&)>;
-    void sendListResponse(const QByteArray &packetStart, int elemSize,
-                          const QVector<Attribute> &attributes, const ElemWriter &elemWriter);
+    void sendListResponse(const QByteArray &packetStart, qsizetype elemSize,
+                          const QList<Attribute> &attributes, const ElemWriter &elemWriter);
 
     void sendNotification(QLowEnergyHandle handle);
     void sendIndication(QLowEnergyHandle handle);
-    void sendNotificationOrIndication(quint8 opCode, QLowEnergyHandle handle);
+    void sendNotificationOrIndication(QBluezConst::AttCommand opCode, QLowEnergyHandle handle);
     void sendNextIndication();
 
-    void ensureUniformAttributes(QVector<Attribute> &attributes, const std::function<int(const Attribute &)> &getSize);
-    void ensureUniformUuidSizes(QVector<Attribute> &attributes);
-    void ensureUniformValueSizes(QVector<Attribute> &attributes);
+    void ensureUniformAttributes(QList<Attribute> &attributes,
+                                 const std::function<int(const Attribute &)> &getSize);
+    void ensureUniformUuidSizes(QList<Attribute> &attributes);
+    void ensureUniformValueSizes(QList<Attribute> &attributes);
 
     using AttributePredicate = std::function<bool(const Attribute &)>;
-    QVector<Attribute> getAttributes(QLowEnergyHandle startHandle, QLowEnergyHandle endHandle,
+    QList<Attribute> getAttributes(
+            QLowEnergyHandle startHandle, QLowEnergyHandle endHandle,
             const AttributePredicate &attributePredicate = [](const Attribute &) { return true; });
 
-    int checkPermissions(const Attribute &attr, QLowEnergyCharacteristic::PropertyType type);
-    int checkReadPermissions(const Attribute &attr);
-    int checkReadPermissions(QVector<Attribute> &attributes);
+    QBluezConst::AttError checkPermissions(const Attribute &attr,
+                                           QLowEnergyCharacteristic::PropertyType type);
+    QBluezConst::AttError checkReadPermissions(const Attribute &attr);
+    QBluezConst::AttError checkReadPermissions(QList<Attribute> &attributes);
 
-    bool verifyMac(const QByteArray &message, const quint128 &csrk, quint32 signCounter,
+    bool verifyMac(const QByteArray &message, BluezUint128 csrk, quint32 signCounter,
                    quint64 expectedMac);
 
     void updateLocalAttributeValue(
@@ -350,7 +322,7 @@ private slots:
     void activeConnectionTerminationDone();
 };
 
-Q_DECLARE_TYPEINFO(QLowEnergyControllerPrivateBluez::Attribute, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QLowEnergyControllerPrivateBluez::Attribute, Q_RELOCATABLE_TYPE);
 
 QT_END_NAMESPACE
 

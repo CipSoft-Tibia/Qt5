@@ -27,6 +27,8 @@
 #include "third_party/blink/renderer/core/loader/resource/font_resource.h"
 
 #include "base/metrics/histogram_functions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/memory_dump_manager.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/mojom/loader/request_context_frame_type.mojom-blink.h"
 #include "third_party/blink/renderer/platform/fonts/font_custom_platform_data.h"
@@ -44,17 +46,15 @@ namespace blink {
 // https://tabatkins.github.io/specs/css-font-display/#font-display-desc
 // TODO(toyoshim): Revisit short limit value once cache-aware font display is
 // launched. crbug.com/570205
-constexpr base::TimeDelta kFontLoadWaitShort =
-    base::TimeDelta::FromMilliseconds(100);
-constexpr base::TimeDelta kFontLoadWaitLong =
-    base::TimeDelta::FromMilliseconds(3000);
+constexpr base::TimeDelta kFontLoadWaitShort = base::Milliseconds(100);
+constexpr base::TimeDelta kFontLoadWaitLong = base::Milliseconds(3000);
 
 FontResource* FontResource::Fetch(FetchParameters& params,
                                   ResourceFetcher* fetcher,
                                   FontResourceClient* client) {
-  params.SetRequestContext(mojom::RequestContextType::FONT);
+  params.SetRequestContext(mojom::blink::RequestContextType::FONT);
   params.SetRequestDestination(network::mojom::RequestDestination::kFont);
-  return ToFontResource(
+  return To<FontResource>(
       fetcher->RequestResource(params, FontResourceFactory(), client));
 }
 
@@ -102,20 +102,24 @@ void FontResource::StartLoadLimitTimersIfNecessary(
 
   font_load_short_limit_ = PostDelayedCancellableTask(
       *task_runner, FROM_HERE,
-      WTF::Bind(&FontResource::FontLoadShortLimitCallback,
-                WrapWeakPersistent(this)),
+      WTF::BindOnce(&FontResource::FontLoadShortLimitCallback,
+                    WrapWeakPersistent(this)),
       kFontLoadWaitShort);
   font_load_long_limit_ = PostDelayedCancellableTask(
       *task_runner, FROM_HERE,
-      WTF::Bind(&FontResource::FontLoadLongLimitCallback,
-                WrapWeakPersistent(this)),
+      WTF::BindOnce(&FontResource::FontLoadLongLimitCallback,
+                    WrapWeakPersistent(this)),
       kFontLoadWaitLong);
 }
 
 scoped_refptr<FontCustomPlatformData> FontResource::GetCustomFontData() {
   if (!font_data_ && !ErrorOccurred() && !IsLoading()) {
-    if (Data())
+    if (Data()) {
+      auto decode_start_time = base::TimeTicks::Now();
       font_data_ = FontCustomPlatformData::Create(Data(), ots_parsing_message_);
+      base::UmaHistogramMicrosecondsTimes(
+          "Blink.Fonts.DecodeTime", base::TimeTicks::Now() - decode_start_time);
+    }
 
     if (!font_data_) {
       SetStatus(ResourceStatus::kDecodeError);
@@ -140,9 +144,6 @@ void FontResource::WillReloadAfterDiskCacheMiss() {
   }
   if (load_limit_state_ == LoadLimitState::kLongLimitExceeded)
     NotifyClientsLongLimitExceeded();
-
-  base::UmaHistogramEnumeration("WebFont.LoadLimitOnDiskCacheMiss",
-                                load_limit_state_);
 }
 
 void FontResource::FontLoadShortLimitCallback() {
@@ -209,7 +210,13 @@ void FontResource::OnMemoryDump(WebMemoryDumpLevelOfDetail level,
   const String name = GetMemoryDumpName() + "/decoded_webfont";
   WebMemoryAllocatorDump* dump = memory_dump->CreateMemoryAllocatorDump(name);
   dump->AddScalar("size", "bytes", font_data_->DataSize());
-  memory_dump->AddSuballocation(dump->Guid(), "malloc");
+
+  const char* system_allocator_name =
+      base::trace_event::MemoryDumpManager::GetInstance()
+          ->system_allocator_pool_name();
+  if (system_allocator_name) {
+    memory_dump->AddSuballocation(dump->Guid(), system_allocator_name);
+  }
 }
 
 void FontResource::AddClearDataObserver(

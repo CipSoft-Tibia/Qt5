@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,16 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
+#include "base/memory/safe_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/sample_vector.h"
 #include "base/observer_list.h"
 #include "base/observer_list_types.h"
-#include "base/optional.h"
 #include "base/time/time.h"
 #include "net/base/isolation_info.h"
 #include "net/base/net_export.h"
+#include "net/base/network_handle.h"
 #include "net/dns/dns_config.h"
 #include "net/dns/public/secure_dns_mode.h"
 
@@ -90,12 +92,13 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
   // session.
   size_t NumAvailableDohServers(const DnsSession* session) const;
 
-  // Record that server failed to respond (due to SRV_FAIL or timeout). If
-  // |is_doh_server| and the number of failures has surpassed a threshold,
-  // sets the DoH probe state to unavailable. Noop if |session| is not the
-  // current session. Should only be called with with server failure |rv|s,
-  // not eg OK, ERR_NAME_NOT_RESOLVED (which at the transaction level is
-  // expected to be nxdomain), or ERR_IO_PENDING.
+  // Record failure to get a response from the server (e.g. SERVFAIL, connection
+  // failures, or that the server failed to respond before the fallback period
+  // elapsed. If |is_doh_server| and the number of failures has surpassed a
+  // threshold, sets the DoH probe state to unavailable. Noop if |session| is
+  // not the current session. Should only be called with with server failure
+  // |rv|s, not e.g. OK, ERR_NAME_NOT_RESOLVED (which at the transaction level
+  // is expected to be nxdomain), or ERR_IO_PENDING.
   void RecordServerFailure(size_t server_index,
                            bool is_doh_server,
                            int rv,
@@ -115,20 +118,41 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
                  int rv,
                  const DnsSession* session);
 
-  // Return the timeout for the next query. |attempt| counts from 0 and is used
-  // for exponential backoff.
-  base::TimeDelta NextClassicTimeout(size_t classic_server_index,
-                                     int attempt,
-                                     const DnsSession* session);
+  // Return the period the next query should run before fallback to next
+  // attempt. (Not actually a "timeout" because queries are not typically
+  // cancelled as additional attempts are made.) |attempt| counts from 0 and is
+  // used for exponential backoff.
+  base::TimeDelta NextClassicFallbackPeriod(size_t classic_server_index,
+                                            int attempt,
+                                            const DnsSession* session);
 
-  // Return the timeout for the next DoH query.
-  base::TimeDelta NextDohTimeout(size_t doh_server_index,
-                                 const DnsSession* session);
+  // Return the period the next DoH query should run before fallback to next
+  // attempt.
+  base::TimeDelta NextDohFallbackPeriod(size_t doh_server_index,
+                                        const DnsSession* session);
+
+  // Return a timeout for an insecure transaction (from Transaction::Start()).
+  // Expected that the transaction will skip waiting for this timeout if it is
+  // using fast timeouts, and also expected that transactions will always wait
+  // for all attempts to run for at least their fallback period before dying
+  // with timeout.
+  base::TimeDelta ClassicTransactionTimeout(const DnsSession* session);
+
+  // Return a timeout for a secure transaction (from Transaction::Start()).
+  // Expected that the transaction will skip waiting for this timeout if it is
+  // using fast timeouts, and also expected that transactions will always wait
+  // for all attempts to run for at least their fallback period before dying
+  // with timeout.
+  base::TimeDelta SecureTransactionTimeout(SecureDnsMode secure_dns_mode,
+                                           const DnsSession* session);
 
   void RegisterDohStatusObserver(DohStatusObserver* observer);
   void UnregisterDohStatusObserver(const DohStatusObserver* observer);
 
   URLRequestContext* url_request_context() { return url_request_context_; }
+  const URLRequestContext* url_request_context() const {
+    return url_request_context_;
+  }
   void set_url_request_context(URLRequestContext* url_request_context) {
     DCHECK(!url_request_context_);
     DCHECK(url_request_context);
@@ -157,6 +181,19 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
   // (alternative service info if it supports QUIC, for instance).
   const IsolationInfo& isolation_info() const { return isolation_info_; }
 
+  // Network to perform the DNS lookups for. When equal to
+  // handles::kInvalidNetworkHandle the decision of which one to target is left
+  // to the resolver. Virtual for testing.
+  virtual handles::NetworkHandle GetTargetNetwork() const;
+
+  base::SafeRef<ResolveContext> AsSafeRef() {
+    return weak_ptr_factory_.GetSafeRef();
+  }
+
+  base::WeakPtr<ResolveContext> GetWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
  private:
   friend DohDnsServerIterator;
   friend ClassicDnsServerIterator;
@@ -169,13 +206,13 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
     ~ServerStats();
 
     // Count of consecutive failures after last success.
-    int last_failure_count;
+    int last_failure_count = 0;
 
     // True if any success has ever been recorded for this server for the
     // current connection.
     bool current_connection_success = false;
 
-    // Last time when server returned failure or timeout.
+    // Last time when server returned failure or exceeded fallback period.
     base::TimeTicks last_failure;
     // Last time when server returned success.
     base::TimeTicks last_success;
@@ -195,15 +232,20 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
   // ServerStats found.
   ServerStats* GetServerStats(size_t server_index, bool is_doh_server);
 
-  // Return the timeout for the next query.
-  base::TimeDelta NextTimeoutHelper(ServerStats* server_stats, int attempt);
+  // Return the fallback period for the next query.
+  base::TimeDelta NextFallbackPeriodHelper(const ServerStats* server_stats,
+                                           int attempt);
+
+  template <typename Iterator>
+  base::TimeDelta TransactionTimeoutHelper(Iterator server_stats_begin,
+                                           Iterator server_stats_end);
 
   // Record the time to perform a query.
   void RecordRttForUma(size_t server_index,
                        bool is_doh_server,
                        base::TimeDelta rtt,
                        int rv,
-                       base::TimeDelta base_timeout,
+                       base::TimeDelta base_fallback_period,
                        const DnsSession* session);
   std::string GetQueryTypeForUma(size_t server_index,
                                  bool is_doh_server,
@@ -211,21 +253,26 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
   std::string GetDohProviderIdForUma(size_t server_index,
                                      bool is_doh_server,
                                      const DnsSession* session);
+  bool GetProviderUseExtraLogging(size_t server_index,
+                                  bool is_doh_server,
+                                  const DnsSession* session);
 
   void NotifyDohStatusObserversOfSessionChanged();
   void NotifyDohStatusObserversOfUnavailable(bool network_change);
 
   static bool ServerStatsToDohAvailability(const ServerStats& stats);
 
-  URLRequestContext* url_request_context_;
+  raw_ptr<URLRequestContext> url_request_context_;
 
   std::unique_ptr<HostCache> host_cache_;
 
-  // Current maximum server timeout. Updated on connection change.
-  base::TimeDelta max_timeout_;
+  // Current maximum server fallback period. Updated on connection change.
+  base::TimeDelta max_fallback_period_;
 
+  // All DohStatusObservers only hold a WeakPtr<ResolveContext>, so there's no
+  // need for check_empty to be true.
   base::ObserverList<DohStatusObserver,
-                     true /* check_empty */,
+                     false /* check_empty */,
                      false /* allow_reentrancy */>
       doh_status_observers_;
 
@@ -241,13 +288,15 @@ class NET_EXPORT_PRIVATE ResolveContext : public base::CheckedObserver {
   base::WeakPtr<const DnsSession> current_session_;
   // Current index into |config_.nameservers| to begin resolution with.
   int classic_server_index_ = 0;
-  base::TimeDelta initial_timeout_;
+  base::TimeDelta initial_fallback_period_;
   // Track runtime statistics of each classic (insecure) DNS server.
   std::vector<ServerStats> classic_server_stats_;
   // Track runtime statistics of each DoH server.
   std::vector<ServerStats> doh_server_stats_;
 
   const IsolationInfo isolation_info_;
+
+  base::WeakPtrFactory<ResolveContext> weak_ptr_factory_{this};
 };
 
 }  // namespace net

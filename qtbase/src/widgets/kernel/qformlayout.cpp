@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qapplication.h"
 #include "qdebug.h"
@@ -43,19 +7,19 @@
 #include "qlabel.h"
 #include "qlayout_p.h"
 #include "qlayoutengine_p.h"
+#include "qlist.h"
 #include "qrect.h"
-#include "qvector.h"
 #include "qwidget.h"
 
 QT_BEGIN_NAMESPACE
 
-namespace {
+namespace QtPrivate {
 // Fixed column matrix, stores items as [i11, i12, i21, i22...],
 // with FORTRAN-style index operator(r, c).
 template <class T, int NumColumns>
 class FixedColumnMatrix {
 public:
-    typedef QVector<T> Storage;
+    typedef QList<T> Storage;
 
     FixedColumnMatrix() { }
 
@@ -104,13 +68,11 @@ void FixedColumnMatrix<T, NumColumns>::storageIndexToPosition(int idx, int *rowP
 const uint DefaultFieldGrowthPolicy = 255;
 const uint DefaultRowWrapPolicy = 255;
 
-enum { ColumnCount = 2 };
-
 // -- our data structure for our items
 // This owns the QLayoutItem
 struct QFormLayoutItem
 {
-    QFormLayoutItem(QLayoutItem* i) : item(i), fullRow(false), isHfw(false) { }
+    QFormLayoutItem(QLayoutItem* i) : item(i) { }
     ~QFormLayoutItem() { delete item; }
 
     // Wrappers
@@ -127,37 +89,68 @@ struct QFormLayoutItem
     void setGeometry(const QRect& r) { item->setGeometry(r); }
     QRect geometry() const { return item->geometry(); }
 
+    void setVisible(bool on);
+    bool isHidden() const { return !isVisible || (widget() && widget()->isHidden()); }
+
     // For use with FixedColumnMatrix
     bool operator==(const QFormLayoutItem& other) { return item == other.item; }
 
-    QLayoutItem *item;
-    bool fullRow;
+    QLayoutItem *item = nullptr;
+    bool fullRow = false;
+    bool isVisible = true;
 
     // set by updateSizes
-    bool isHfw;
+    bool isHfw = false;
     QSize minSize;
     QSize sizeHint;
     QSize maxSize;
 
     // also set by updateSizes
-    int sbsHSpace; // only used for side by side, for the field item only (not label)
-    int vSpace; // This is the spacing to the item in the row above
+    int sbsHSpace = -1; // only used for side by side, for the field item only (not label)
+    int vSpace = -1; // This is the spacing to the item in the row above
 
     // set by setupVerticalLayoutData
-    bool sideBySide;
-    int vLayoutIndex;
+    bool sideBySide = false;
+    int vLayoutIndex = -1;
 
     // set by setupHorizontalLayoutData
-    int layoutPos;
-    int layoutWidth;
+    int layoutPos = -1;
+    int layoutWidth = -1;
 };
+
+static void hideOrShowWidgetsInLayout(QLayout *layout, bool on)
+{
+    for (int i = 0; i < layout->count(); ++i) {
+        QLayoutItem *item = layout->itemAt(i);
+        if (QWidget *widget = item->widget())
+            widget->setVisible(on);
+        else if (item->layout())
+            hideOrShowWidgetsInLayout(item->layout(), on);
+    }
+}
+
+void QFormLayoutItem::setVisible(bool on)
+{
+    isVisible = on;
+    // Explicitly hide the widget so that it loses focus and
+    // doesn't automatically get shown again when this layout
+    // hides and shows.
+    if (widget()) {
+        widget()->setVisible(on);
+        return;
+    }
+    // Layouts can't be hidden, so we have to traverse the widgets
+    // inside and hide all of them so that they also lose focus.
+    if (layout())
+        hideOrShowWidgetsInLayout(layout(), on);
+}
 
 class QFormLayoutPrivate : public QLayoutPrivate
 {
     Q_DECLARE_PUBLIC(QFormLayout)
 
 public:
-    typedef FixedColumnMatrix<QFormLayoutItem *, ColumnCount> ItemMatrix;
+    using ItemMatrix = QtPrivate::FixedColumnMatrix<QFormLayoutItem *, 2>;
 
     QFormLayoutPrivate();
     ~QFormLayoutPrivate() { }
@@ -169,7 +162,7 @@ public:
     void setLayout(int row, QFormLayout::ItemRole role, QLayout *layout);
     void setWidget(int row, QFormLayout::ItemRole role, QWidget *widget);
 
-    void arrangeWidgets(const QVector<QLayoutStruct>& layouts, QRect &rect);
+    void arrangeWidgets(const QList<QLayoutStruct> &layouts, QRect &rect);
 
     void updateSizes();
 
@@ -215,11 +208,11 @@ public:
     int formMaxWidth;
     void calcSizeHints();
 
-    QVector<QLayoutStruct> vLayouts; // set by setupVerticalLayoutData;
+    QList<QLayoutStruct> vLayouts; // set by setupVerticalLayoutData;
     int vLayoutCount;               // Number of rows we calculated in setupVerticalLayoutData
     int maxLabelWidth;              // the label width we calculated in setupVerticalLayoutData
 
-    QVector<QLayoutStruct> hfwLayouts;
+    QList<QLayoutStruct> hfwLayouts;
 
     int hSpacing = -1;
     int vSpacing = -1;
@@ -378,23 +371,25 @@ void QFormLayoutPrivate::updateSizes()
                             QSizePolicy::ControlTypes(fldtop ? fldtop->controlTypes() : QSizePolicy::DefaultType);
 
                         // To be compatible to QGridLayout, we have to compare solitary labels & fields with both predecessors
-                        if (label) {
+                        if (label && !label->isHidden()) {
                             if (!field) {
                                 int lblspacing = style->combinedLayoutSpacing(lbltoptypes, lbltypes, Qt::Vertical, nullptr, parent);
                                 int fldspacing = style->combinedLayoutSpacing(fldtoptypes, lbltypes, Qt::Vertical, nullptr, parent);
                                 label->vSpace = qMax(lblspacing, fldspacing);
-                            } else
+                            } else {
                                 label->vSpace = style->combinedLayoutSpacing(lbltoptypes, lbltypes, Qt::Vertical, nullptr, parent);
+                            }
                         }
 
-                        if (field) {
+                        if (field && !field->isHidden()) {
                             // check spacing against both the previous label and field
                             if (!label) {
                                 int lblspacing = style->combinedLayoutSpacing(lbltoptypes, fldtypes, Qt::Vertical, nullptr, parent);
                                 int fldspacing = style->combinedLayoutSpacing(fldtoptypes, fldtypes, Qt::Vertical, nullptr, parent);
                                 field->vSpace = qMax(lblspacing, fldspacing);
-                            } else
+                            } else {
                                 field->vSpace = style->combinedLayoutSpacing(fldtoptypes, fldtypes, Qt::Vertical, nullptr, parent);
+                            }
                         }
                     }
                 }
@@ -483,6 +478,7 @@ void QFormLayoutPrivate::recalcHFW(int w)
 
 void QFormLayoutPrivate::setupHfwLayoutData()
 {
+    Q_Q(QFormLayout);
     // setupVerticalLayoutData must be called before this
     // setupHorizontalLayoutData must also be called before this
     // copies non hfw data into hfw
@@ -507,7 +503,11 @@ void QFormLayoutPrivate::setupHfwLayoutData()
         QFormLayoutItem *label = m_matrix(i, 0);
         QFormLayoutItem *field = m_matrix(i, 1);
 
-        if (label) {
+        // ignore rows with only hidden items
+        if (!q->isRowVisible(i))
+            continue;
+
+        if (label && label->vLayoutIndex > -1) {
             if (label->isHfw) {
                 // We don't check sideBySide here, since a label is only
                 // ever side by side with its field
@@ -522,7 +522,7 @@ void QFormLayoutPrivate::setupHfwLayoutData()
             }
         }
 
-        if (field) {
+        if (field && field->vLayoutIndex > -1) {
             int hfw = field->isHfw ? field->heightForWidth(field->layoutWidth) : 0;
             int h = field->isHfw ? hfw : field->sizeHint.height();
             int mh = field->isHfw ? hfw : field->minSize.height();
@@ -681,12 +681,18 @@ void QFormLayoutPrivate::setupVerticalLayoutData(int width)
     bool prevRowSplit = false;
 
     for (int i = 0; i < rr; ++i) {
-        QFormLayoutItem *label =  m_matrix(i, 0);
+        QFormLayoutItem *label = m_matrix(i, 0);
         QFormLayoutItem *field = m_matrix(i, 1);
 
-        // Totally ignore empty rows...
-        if (!label && !field)
+        // Ignore empty rows or rows with only hidden items,
+        // and invalidate their position in the layout.
+        if (!q->isRowVisible(i)) {
+            if (label)
+                label->vLayoutIndex = -1;
+            if (field)
+                field->vLayoutIndex = -1;
             continue;
+        }
 
         QSize min1;
         QSize min2;
@@ -1646,7 +1652,7 @@ void QFormLayout::addItem(QLayoutItem *item)
 int QFormLayout::count() const
 {
     Q_D(const QFormLayout);
-    return d->m_things.count();
+    return d->m_things.size();
 }
 
 /*!
@@ -2171,7 +2177,7 @@ int QFormLayout::spacing() const
     }
 }
 
-void QFormLayoutPrivate::arrangeWidgets(const QVector<QLayoutStruct>& layouts, QRect &rect)
+void QFormLayoutPrivate::arrangeWidgets(const QList<QLayoutStruct> &layouts, QRect &rect)
 {
     Q_Q(QFormLayout);
 
@@ -2193,7 +2199,10 @@ void QFormLayoutPrivate::arrangeWidgets(const QVector<QLayoutStruct>& layouts, Q
         QFormLayoutItem *label = m_matrix(i, 0);
         QFormLayoutItem *field = m_matrix(i, 1);
 
-        if (label) {
+        if (!q->isRowVisible(i))
+            continue;
+
+        if (label && label->vLayoutIndex > -1) {
             int height = layouts.at(label->vLayoutIndex).size;
             if ((label->expandingDirections() & Qt::Vertical) == 0) {
                 /*
@@ -2220,7 +2229,7 @@ void QFormLayoutPrivate::arrangeWidgets(const QVector<QLayoutStruct>& layouts, Q
             label->setGeometry(QStyle::visualRect(layoutDirection, rect, QRect(p, sz)));
         }
 
-        if (field) {
+        if (field && field->vLayoutIndex > -1) {
             QSize sz(field->layoutWidth, layouts.at(field->vLayoutIndex).size);
             QPoint p(field->layoutPos + leftOffset + rect.x(), layouts.at(field->vLayoutIndex).pos);
 /*
@@ -2297,6 +2306,158 @@ void QFormLayout::setItem(int row, ItemRole role, QLayoutItem *item)
     if (row >= rowCnt)
         d->insertRows(rowCnt, row - rowCnt + 1);
     d->setItem(row, role, item);
+}
+
+/*!
+    \since 6.4
+
+    Shows the row \a row if \a on is true, otherwise hides the row.
+
+    \a row must be non-negative and less than rowCount().
+
+    \sa removeRow(), takeRow()
+*/
+void QFormLayout::setRowVisible(int row, bool on)
+{
+    Q_D(QFormLayout);
+    QFormLayoutItem *label = d->m_matrix(row, 0);
+    QFormLayoutItem *field = d->m_matrix(row, 1);
+    bool change = false;
+    if (label) {
+        change = label->isVisible != on;
+        label->setVisible(on);
+    }
+    if (field) {
+        change |= field->isVisible != on;
+        field->setVisible(on);
+    }
+    if (change)
+        invalidate();
+}
+
+/*!
+    \since 6.4
+
+    \overload
+
+    Shows the row corresponding to \a widget if \a on is true,
+    otherwise hides the row.
+
+    \sa removeRow(), takeRow()
+*/
+void QFormLayout::setRowVisible(QWidget *widget, bool on)
+{
+    Q_D(QFormLayout);
+    if (Q_UNLIKELY(!d->checkWidget(widget)))
+        return;
+
+    int row;
+    ItemRole role;
+    getWidgetPosition(widget, &row, &role);
+
+    if (Q_UNLIKELY(row < 0)) {
+        qWarning("QFormLayout::setRowVisible: Invalid widget");
+        return;
+    }
+
+    setRowVisible(row, on);
+}
+
+/*!
+    \since 6.4
+
+    \overload
+
+    Shows the row corresponding to \a layout if \a on is true,
+    otherwise hides the row.
+
+    \sa removeRow(), takeRow()
+*/
+void QFormLayout::setRowVisible(QLayout *layout, bool on)
+{
+    Q_D(QFormLayout);
+    if (Q_UNLIKELY(!d->checkLayout(layout)))
+        return;
+
+    int row;
+    ItemRole role;
+    getLayoutPosition(layout, &row, &role);
+
+    if (Q_UNLIKELY(row < 0)) {
+        qWarning("QFormLayout::setRowVisible: Invalid layout");
+        return;
+    }
+
+    setRowVisible(row, on);
+}
+
+/*!
+    \since 6.4
+
+    Returns true if some items in the row \a row are visible,
+    otherwise returns false.
+*/
+bool QFormLayout::isRowVisible(int row) const
+{
+    Q_D(const QFormLayout);
+    QFormLayoutItem *label = d->m_matrix(row, 0);
+    QFormLayoutItem *field = d->m_matrix(row, 1);
+
+    int visibleItemCount = 2;
+    if (!label || label->isHidden() || (label->widget() && label->widget()->isHidden()))
+        --visibleItemCount;
+    if (!field || field->isHidden() || (field->widget() && field->widget()->isHidden()))
+        --visibleItemCount;
+
+    return visibleItemCount > 0;
+}
+
+/*!
+    \since 6.4
+    \overload
+
+    Returns true if some items in the row corresponding to \a widget
+    are visible, otherwise returns false.
+*/
+bool QFormLayout::isRowVisible(QWidget *widget) const
+{
+    Q_D(const QFormLayout);
+    if (Q_UNLIKELY(!d->checkWidget(widget)))
+        return false;
+    int row;
+    ItemRole role;
+    getWidgetPosition(widget, &row, &role);
+
+    if (Q_UNLIKELY(row < 0)) {
+        qWarning("QFormLayout::takeRow: Invalid widget");
+        return false;
+    }
+
+    return isRowVisible(row);
+}
+
+/*!
+    \since 6.4
+    \overload
+
+    Returns true if some items in the row corresponding to \a layout
+    are visible, otherwise returns false.
+*/
+bool QFormLayout::isRowVisible(QLayout *layout) const
+{
+    Q_D(const QFormLayout);
+    if (Q_UNLIKELY(!d->checkLayout(layout)))
+        return false;
+    int row;
+    ItemRole role;
+    getLayoutPosition(layout, &row, &role);
+
+    if (Q_UNLIKELY(row < 0)) {
+        qWarning("QFormLayout::takeRow: Invalid layout");
+        return false;
+    }
+
+    return isRowVisible(row);
 }
 
 /*!

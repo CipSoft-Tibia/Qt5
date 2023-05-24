@@ -7,7 +7,6 @@
     "Files": "Vera.ttf",
     "Description": "Vera is a group typeface (font) with a liberal license.",
 
-    "Homepage": "https://www.gnome.org/fonts/",
     "Version": "1.10",
     "DownloadLocation": "http://ftp.gnome.org/pub/GNOME/sources/ttf-bitstream-vera/1.10/ttf-bitstream-vera-1.10.tar.bz2",
     "License": "Bitstream Vera Font License",
@@ -20,7 +19,7 @@
     "Name": "DejaVu Fonts",
     "QDocModule": "qtgui",
     "QtUsage": "Used for WebAssembly platform.",
-    "Files": "DejaVuSans.ttf, DejaVuSansMono.ttf",
+    "Files": "DejaVuSans.ttf DejaVuSansMono.ttf",
     "Description": "The DejaVu fonts are a font family based on the Vera Fonts.",
 
     "Homepage": "https://dejavu-fonts.github.io/",
@@ -28,8 +27,8 @@
     "License": "Bitstream Vera Font License",
     "LicenseId": "urn:dje:license:bitstream",
     "LicenseFile": "DEJAVU-LICENSE",
-    "Copyright": "Copyright (c) 2003 by Bitstream, Inc
-Copyright (c) 2006 by Tavmjong Bah
-(c) American Mathematical Society"
+    "Copyright": ["Copyright (c) 2003 by Bitstream, Inc",
+    "Copyright (c) 2006 by Tavmjong Bah",
+    "(c) American Mathematical Society"]
 }
 ]

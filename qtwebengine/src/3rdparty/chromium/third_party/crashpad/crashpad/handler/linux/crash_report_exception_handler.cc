@@ -1,4 +1,4 @@
-// Copyright 2018 The Crashpad Authors. All rights reserved.
+// Copyright 2018 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "build/build_config.h"
 #include "client/settings.h"
 #include "handler/linux/capture_snapshot.h"
 #include "minidump/minidump_file_writer.h"
@@ -35,15 +36,54 @@
 #include "util/stream/log_output_stream.h"
 #include "util/stream/zlib_output_stream.h"
 
-namespace crashpad {
+#if BUILDFLAG(IS_ANDROID)
+#include <android/log.h>
+#endif
 
+namespace crashpad {
 namespace {
 
+class Logger final : public LogOutputStream::Delegate {
+ public:
+  Logger() = default;
+
+  Logger(const Logger&) = delete;
+  Logger& operator=(const Logger&) = delete;
+
+  ~Logger() override = default;
+
+#if BUILDFLAG(IS_ANDROID)
+  int Log(const char* buf) override {
+    return __android_log_buf_write(
+        LOG_ID_CRASH, ANDROID_LOG_FATAL, "crashpad", buf);
+  }
+
+  size_t OutputCap() override {
+    // Most minidumps are expected to be compressed and encoded into less than
+    // 128k.
+    return 128 * 1024;
+  }
+
+  size_t LineWidth() override {
+    // From Android NDK r20 <android/log.h>, log message text may be truncated
+    // to less than an implementation-specific limit (1023 bytes), for sake of
+    // safe and being easy to read in logcat, choose 512.
+    return 512;
+  }
+#else
+  // TODO(jperaza): Log to an appropriate location on Linux.
+  int Log(const char* buf) override { return -ENOTCONN; }
+  size_t OutputCap() override { return 0; }
+  size_t LineWidth() override { return 0; }
+#endif
+};
+
 bool WriteMinidumpLogFromFile(FileReaderInterface* file_reader) {
-  ZlibOutputStream stream(ZlibOutputStream::Mode::kCompress,
-                          std::make_unique<Base94OutputStream>(
-                              Base94OutputStream::Mode::kEncode,
-                              std::make_unique<LogOutputStream>()));
+  ZlibOutputStream stream(
+      ZlibOutputStream::Mode::kCompress,
+      std::make_unique<Base94OutputStream>(
+          Base94OutputStream::Mode::kEncode,
+          std::make_unique<LogOutputStream>(std::make_unique<Logger>())));
   FileOperationResult read_result;
   do {
     uint8_t buffer[4096];
@@ -144,13 +184,9 @@ bool CrashReportExceptionHandler::HandleExceptionWithConnection(
 
   UUID client_id;
   Settings* const settings = database_->GetSettings();
-  if (settings) {
-    // If GetSettings() or GetClientID() fails, something else will log a
-    // message and client_id will be left at its default value, all zeroes,
-    // which is appropriate.
-    settings->GetClientID(&client_id);
+  if (settings && settings->GetClientID(&client_id)) {
+    process_snapshot->SetClientID(client_id);
   }
-  process_snapshot->SetClientID(client_id);
 
   return write_minidump_to_database_
              ? WriteMinidumpToDatabase(process_snapshot.get(),
@@ -259,7 +295,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToLog(
       ZlibOutputStream::Mode::kCompress,
       std::make_unique<Base94OutputStream>(
           Base94OutputStream::Mode::kEncode,
-          std::make_unique<LogOutputStream>())));
+          std::make_unique<LogOutputStream>(std::make_unique<Logger>()))));
   if (!minidump.WriteMinidump(&writer, false /* allow_seek */)) {
     LOG(ERROR) << "WriteMinidump failed";
     return false;

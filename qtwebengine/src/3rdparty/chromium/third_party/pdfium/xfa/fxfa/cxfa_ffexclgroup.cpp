@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ CXFA_FFExclGroup::CXFA_FFExclGroup(CXFA_Node* pNode) : CXFA_FFWidget(pNode) {}
 
 CXFA_FFExclGroup::~CXFA_FFExclGroup() = default;
 
-void CXFA_FFExclGroup::RenderWidget(CXFA_Graphics* pGS,
+void CXFA_FFExclGroup::RenderWidget(CFGAS_GEGraphics* pGS,
                                     const CFX_Matrix& matrix,
                                     HighlightOption highlight) {
   if (!HasVisibleStatus())

@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 my{
     Countries{
         001{"ကမ္ဘာ"}
@@ -172,7 +173,7 @@ my{
         LK{"သီရိလင်္ကာ"}
         LR{"လိုက်ဘေးရီးယား"}
         LS{"လီဆိုသို"}
-        LT{"လစ်သူယေးနီးယား"}
+        LT{"လစ်သူဝေးနီးယား"}
         LU{"လူဇင်ဘတ်"}
         LV{"လတ်ဗီးယား"}
         LY{"လစ်ဗျား"}
@@ -306,6 +307,7 @@ my{
         CG{"ကွန်ဂို သမ္မတနိုင်ငံ"}
         CI{"အိုင်ဗရီကို့စ်"}
         CZ{"ချက် ပြည်ထောင်စု"}
+        NZ{"အေအိုတေးအာရိုအာ နယူးဇီလန်"}
+        TR{"တာ့ကီယဲ"}
     }
-    Version{"37"}
 }

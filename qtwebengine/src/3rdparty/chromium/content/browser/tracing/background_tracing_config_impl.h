@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
 #include "base/trace_event/trace_config.h"
 #include "build/build_config.h"
 #include "content/common/content_export.h"
@@ -24,29 +23,22 @@ class CONTENT_EXPORT BackgroundTracingConfigImpl
  public:
   explicit BackgroundTracingConfigImpl(TracingMode tracing_mode);
 
+  BackgroundTracingConfigImpl(const BackgroundTracingConfigImpl&) = delete;
+  BackgroundTracingConfigImpl& operator=(const BackgroundTracingConfigImpl&) =
+      delete;
+
   ~BackgroundTracingConfigImpl() override;
 
   // From BackgroundTracingConfig
-  void IntoDict(base::DictionaryValue* dict) override;
+  base::Value::Dict ToDict() override;
+
+  void SetPackageNameFilteringEnabled(bool) override;
 
   enum CategoryPreset {
     CATEGORY_PRESET_UNSET,
     CUSTOM_CATEGORY_PRESET,
     CUSTOM_TRACE_CONFIG,
-    BENCHMARK,
-    BENCHMARK_DEEP,
-    BENCHMARK_GPU,
-    BENCHMARK_IPC,
     BENCHMARK_STARTUP,
-    BENCHMARK_BLINK_GC,
-    BENCHMARK_MEMORY_HEAVY,
-    BENCHMARK_MEMORY_LIGHT,
-    BENCHMARK_EXECUTION_METRIC,
-    BENCHMARK_NAVIGATION,
-    BENCHMARK_RENDERERS,
-    BENCHMARK_SERVICEWORKER,
-    BENCHMARK_POWER,
-    BLINK_STYLE,
   };
 
   CategoryPreset category_preset() const { return category_preset_; }
@@ -57,13 +49,10 @@ class CONTENT_EXPORT BackgroundTracingConfigImpl
   const std::vector<std::unique_ptr<BackgroundTracingRule>>& rules() const {
     return rules_;
   }
-  const std::string& scenario_name() const { return scenario_name_; }
 
-  void AddPreemptiveRule(const base::DictionaryValue* dict);
-  void AddReactiveRule(
-      const base::DictionaryValue* dict,
-      BackgroundTracingConfigImpl::CategoryPreset category_preset);
-  void AddSystemRule(const base::DictionaryValue* dict);
+  void AddPreemptiveRule(const base::Value::Dict& dict);
+  void AddReactiveRule(const base::Value::Dict& dict);
+  void AddSystemRule(const base::Value::Dict& dict);
 
   base::trace_event::TraceConfig GetTraceConfig() const;
   const std::string& enabled_data_sources() const {
@@ -81,14 +70,14 @@ class CONTENT_EXPORT BackgroundTracingConfigImpl
   bool requires_anonymized_data() const { return requires_anonymized_data_; }
 
   static std::unique_ptr<BackgroundTracingConfigImpl> PreemptiveFromDict(
-      const base::DictionaryValue* dict);
+      const base::Value::Dict& dict);
   static std::unique_ptr<BackgroundTracingConfigImpl> ReactiveFromDict(
-      const base::DictionaryValue* dict);
+      const base::Value::Dict& dict);
   static std::unique_ptr<BackgroundTracingConfigImpl> SystemFromDict(
-      const base::DictionaryValue* dict);
+      const base::Value::Dict& dict);
 
   static std::unique_ptr<BackgroundTracingConfigImpl> FromDict(
-      const base::DictionaryValue* dict);
+      base::Value::Dict&& dict);
 
   static std::string CategoryPresetToString(
       BackgroundTracingConfigImpl::CategoryPreset category_preset);
@@ -100,7 +89,7 @@ class CONTENT_EXPORT BackgroundTracingConfigImpl
   FRIEND_TEST_ALL_PREFIXES(BackgroundTracingConfigTest,
                            ValidPreemptiveConfigToString);
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   constexpr static int kMaxBufferSizeKb = 4 * 1024;
   // ~1MB compressed size.
   constexpr static int kUploadLimitKb = 5 * 1024;
@@ -114,19 +103,19 @@ class CONTENT_EXPORT BackgroundTracingConfigImpl
       BackgroundTracingConfigImpl::CategoryPreset,
       base::trace_event::TraceRecordMode);
 
-  BackgroundTracingRule* AddRule(const base::DictionaryValue* dict);
-  void SetBufferSizeLimits(const base::DictionaryValue* dict);
+  BackgroundTracingRule* AddRule(const base::Value::Dict& dict);
+  void SetBufferSizeLimits(const base::Value::Dict* dict);
   int GetMaximumTraceBufferSizeKb() const;
 
+  // A trace config extracted from the "trace_config" field of the input
+  // dictionnary.
   base::trace_event::TraceConfig trace_config_;
   CategoryPreset category_preset_;
   std::vector<std::unique_ptr<BackgroundTracingRule>> rules_;
-  std::string scenario_name_;
   std::string custom_categories_;
   std::string enabled_data_sources_;
 
   bool requires_anonymized_data_ = false;
-  bool trace_browser_process_only_ = false;
 
   // The default memory overhead of running background tracing for various
   // scenarios. These are configurable by experiments.
@@ -144,8 +133,6 @@ class CONTENT_EXPORT BackgroundTracingConfigImpl
   int upload_limit_network_kb_ = 1024;
   int upload_limit_kb_ = kUploadLimitKb;
   int interning_reset_interval_ms_ = 5000;
-
-  DISALLOW_COPY_AND_ASSIGN(BackgroundTracingConfigImpl);
 };
 
 }  // namespace content

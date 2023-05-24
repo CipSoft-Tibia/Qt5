@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,31 +36,32 @@ const std::string* PrintPreviewStickySettings::printer_app_state() const {
 }
 
 void PrintPreviewStickySettings::StoreAppState(const std::string& data) {
-  printer_app_state_ = base::make_optional(data);
+  printer_app_state_ = absl::make_optional(data);
 }
 
 void PrintPreviewStickySettings::SaveInPrefs(PrefService* prefs) const {
-  base::Value dict(base::Value::Type::DICTIONARY);
+  base::Value::Dict dict;
   if (printer_app_state_)
-    dict.SetKey(kSettingAppState, base::Value(*printer_app_state_));
-  prefs->Set(prefs::kPrintPreviewStickySettings, dict);
+    dict.Set(kSettingAppState, *printer_app_state_);
+  prefs->SetDict(prefs::kPrintPreviewStickySettings, std::move(dict));
 }
 
 void PrintPreviewStickySettings::RestoreFromPrefs(PrefService* prefs) {
-  const base::DictionaryValue* value =
-      prefs->GetDictionary(prefs::kPrintPreviewStickySettings);
-  const base::Value* app_state =
-      value->FindKeyOfType(kSettingAppState, base::Value::Type::STRING);
+  const base::Value::Dict& value =
+      prefs->GetDict(prefs::kPrintPreviewStickySettings);
+  const std::string* app_state = value.FindString(kSettingAppState);
   if (app_state)
-    StoreAppState(app_state->GetString());
+    StoreAppState(*app_state);
 }
 
 base::flat_map<std::string, int>
 PrintPreviewStickySettings::GetPrinterRecentlyUsedRanks() {
+  auto recently_used_printers = GetRecentlyUsedPrinters();
   int current_rank = 0;
-  base::flat_map<std::string, int> recently_used_ranks;
-  for (const std::string& printer_id : GetRecentlyUsedPrinters())
-    recently_used_ranks[printer_id] = current_rank++;
+  std::vector<std::pair<std::string, int>> recently_used_ranks;
+  recently_used_ranks.reserve(recently_used_printers.size());
+  for (std::string& printer_id : recently_used_printers)
+    recently_used_ranks.emplace_back(std::move(printer_id), current_rank++);
   return recently_used_ranks;
 }
 
@@ -69,20 +70,23 @@ std::vector<std::string> PrintPreviewStickySettings::GetRecentlyUsedPrinters() {
   if (!sticky_settings_state)
     return {};
 
-  base::Optional<base::Value> sticky_settings_state_value =
+  absl::optional<base::Value> sticky_settings_state_value =
       base::JSONReader::Read(*sticky_settings_state);
   if (!sticky_settings_state_value || !sticky_settings_state_value->is_dict())
     return {};
 
-  base::Value* recent_destinations =
-      sticky_settings_state_value->FindListKey(kRecentDestinations);
+  base::Value::List* recent_destinations =
+      sticky_settings_state_value->GetDict().FindList(kRecentDestinations);
   if (!recent_destinations)
     return {};
 
   std::vector<std::string> printers;
-  printers.reserve(recent_destinations->GetList().size());
-  for (const auto& recent_destination : recent_destinations->GetList()) {
-    const std::string* printer_id = recent_destination.FindStringKey(kId);
+  printers.reserve(recent_destinations->size());
+  for (const auto& recent_destination : *recent_destinations) {
+    if (!recent_destination.is_dict())
+      continue;
+    const std::string* printer_id =
+        recent_destination.GetDict().FindString(kId);
     if (!printer_id)
       continue;
     printers.push_back(*printer_id);

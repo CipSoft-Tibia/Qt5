@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #ifndef CORE_FXCODEC_JBIG2_JBIG2_PDDPROC_H_
 #define CORE_FXCODEC_JBIG2_JBIG2_PDDPROC_H_
 
-#include <memory>
+#include <stdint.h>
 
-#include "core/fxcrt/fx_system.h"
+#include <memory>
 
 class CJBig2_ArithDecoder;
 class CJBig2_BitStream;

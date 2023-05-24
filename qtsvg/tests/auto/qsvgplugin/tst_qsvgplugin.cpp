@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QtTest>
@@ -32,7 +7,6 @@
 #include "../../../src/plugins/imageformats/svg/qsvgiohandler.cpp"
 #include <QImage>
 #include <QStringList>
-#include <QVector>
 
 #ifndef SRCDIR
 #define SRCDIR
@@ -93,6 +67,9 @@ void tst_QSvgPlugin::checkSize_data()
     QTest::newRow("wide_size")           << QFINDTESTDATA("wide_size.svg")           << 100 << 200;
     QTest::newRow("wide_size_viewbox")   << QFINDTESTDATA("wide_size_viewbox.svg")   << 100 << 200;
     QTest::newRow("wide_viewbox")        << QFINDTESTDATA("wide_viewbox.svg")        <<  50 << 100;
+    QTest::newRow("invalid_xml")         << QFINDTESTDATA("invalid_xml.svg")         <<  0 << 0;
+    QTest::newRow("xml_not_svg")         << QFINDTESTDATA("xml_not_svg.svg")         <<  0 << 0;
+    QTest::newRow("invalid_then_valid")  << QFINDTESTDATA("invalid_then_valid.svg")  <<  0 << 0;
 }
 
 void tst_QSvgPlugin::checkSize()
@@ -110,10 +87,19 @@ void tst_QSvgPlugin::checkSize()
     QImage image;
     plugin.read(&image);
 
+    // Check that plugin survives double load
+    QVariant sizeVariant = plugin.option(QImageIOHandler::Size);
+
     file.close();
 
     QCOMPARE(imageHeight, image.height());
     QCOMPARE(imageWidth, image.width());
+
+    QSize size = qvariant_cast<QSize>(sizeVariant);
+    if (size.isEmpty())
+        size = QSize(0, 0); // don't distinguish between null and invalid QSize
+    QCOMPARE(size.width(), imageWidth);
+    QCOMPARE(size.height(), imageHeight);
 }
 
 void tst_QSvgPlugin::checkImageInclude()

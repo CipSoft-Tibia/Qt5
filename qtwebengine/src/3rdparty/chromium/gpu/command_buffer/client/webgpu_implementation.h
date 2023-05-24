@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,15 @@
 #define GPU_COMMAND_BUFFER_CLIENT_WEBGPU_IMPLEMENTATION_H_
 
 #include <dawn/webgpu.h>
-#include <dawn_wire/WireClient.h>
+#include <dawn/wire/WireClient.h>
 
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
+#include "gpu/command_buffer/client/dawn_client_memory_transfer_service.h"
+#include "gpu/command_buffer/client/dawn_client_serializer.h"
 #include "gpu/command_buffer/client/gpu_control_client.h"
 #include "gpu/command_buffer/client/implementation_base.h"
 #include "gpu/command_buffer/client/logging.h"
@@ -24,53 +27,38 @@
 namespace gpu {
 namespace webgpu {
 
-class DawnClientMemoryTransferService;
-
 #if BUILDFLAG(USE_DAWN)
-class WebGPUCommandSerializer final : public dawn_wire::CommandSerializer {
+class DawnWireServices : public APIChannel {
+ private:
+  friend class base::RefCounted<DawnWireServices>;
+  ~DawnWireServices() override;
+
  public:
-  WebGPUCommandSerializer(
-      DawnDeviceClientID device_client_id,
-      WebGPUCmdHelper* helper,
-      DawnClientMemoryTransferService* memory_transfer_service,
-      std::unique_ptr<TransferBuffer> c2s_transfer_buffer);
-  ~WebGPUCommandSerializer() override;
+  DawnWireServices(WebGPUImplementation* webgpu_implementation,
+                   WebGPUCmdHelper* helper,
+                   MappedMemoryManager* mapped_memory,
+                   std::unique_ptr<TransferBuffer> transfer_buffer);
 
-  // Send WGPUDeviceProperties to the server side
-  // Note that this function should only be called once for each
-  // WebGPUCommandSerializer object.
-  void RequestDeviceCreation(
-      uint32_t requested_adapter_id,
-      const WGPUDeviceProperties& requested_device_properties);
+  const DawnProcTable& GetProcs() const override;
 
-  // dawn_wire::CommandSerializer implementation
-  void* GetCmdSpace(size_t size) final;
-  bool Flush() final;
+  WGPUInstance GetWGPUInstance() const override;
 
-  void SetClientAwaitingFlush(bool awaiting_flush);
-  bool ClientAwaitingFlush() const { return client_awaiting_flush_; }
+  dawn::wire::WireClient* wire_client();
+  DawnClientSerializer* serializer();
+  DawnClientMemoryTransferService* memory_transfer_service();
 
-  // Called upon context lost.
-  void HandleGpuControlLostContext();
+  void Disconnect() override;
 
-  // For the WebGPUInterface implementation of WebGPUImplementation
-  WGPUDevice GetDevice() const;
-  ReservedTexture ReserveTexture();
-  bool HandleCommands(const char* commands, size_t command_size);
+  bool IsDisconnected() const;
+
+  void FreeMappedResources(WebGPUCmdHelper* helper);
 
  private:
-  DawnDeviceClientID device_client_id_;
-  WebGPUCmdHelper* helper_;
-  DawnClientMemoryTransferService* memory_transfer_service_;
-
-  std::unique_ptr<dawn_wire::WireClient> wire_client_;
-
-  uint32_t c2s_buffer_default_size_ = 0;
-  uint32_t c2s_put_offset_ = 0;
-  std::unique_ptr<TransferBuffer> c2s_transfer_buffer_;
-  ScopedTransferBufferPtr c2s_buffer_;
-
-  bool client_awaiting_flush_ = false;
+  bool disconnected_ = false;
+  DawnClientMemoryTransferService memory_transfer_service_;
+  DawnClientSerializer serializer_;
+  dawn::wire::WireClient wire_client_;
+  WGPUInstance wgpu_instance_;
 };
 #endif
 
@@ -80,6 +68,10 @@ class WEBGPU_EXPORT WebGPUImplementation final : public WebGPUInterface,
   explicit WebGPUImplementation(WebGPUCmdHelper* helper,
                                 TransferBufferInterface* transfer_buffer,
                                 GpuControl* gpu_control);
+
+  WebGPUImplementation(const WebGPUImplementation&) = delete;
+  WebGPUImplementation& operator=(const WebGPUImplementation&) = delete;
+
   ~WebGPUImplementation() override;
 
   gpu::ContextResult Initialize(const SharedMemoryLimits& limits);
@@ -89,29 +81,18 @@ class WEBGPU_EXPORT WebGPUImplementation final : public WebGPUInterface,
 // this file instead of having to edit some template or the code generator.
 #include "gpu/command_buffer/client/webgpu_implementation_autogen.h"
 
+  void AssociateMailbox(GLuint device_id,
+                        GLuint device_generation,
+                        GLuint id,
+                        GLuint generation,
+                        GLuint usage,
+                        const WGPUTextureFormat* view_formats,
+                        GLuint view_format_count,
+                        MailboxFlags flags,
+                        const Mailbox& mailbox) override;
+
   // ContextSupport implementation.
   void SetAggressivelyFreeResources(bool aggressively_free_resources) override;
-  void Swap(uint32_t flags,
-            SwapCompletedCallback complete_callback,
-            PresentationCallback presentation_callback) override;
-  void SwapWithBounds(const std::vector<gfx::Rect>& rects,
-                      uint32_t flags,
-                      SwapCompletedCallback swap_completed,
-                      PresentationCallback presentation_callback) override;
-  void PartialSwapBuffers(const gfx::Rect& sub_buffer,
-                          uint32_t flags,
-                          SwapCompletedCallback swap_completed,
-                          PresentationCallback presentation_callback) override;
-  void CommitOverlayPlanes(uint32_t flags,
-                           SwapCompletedCallback swap_completed,
-                           PresentationCallback presentation_callback) override;
-  void ScheduleOverlayPlane(int plane_z_order,
-                            gfx::OverlayTransform plane_transform,
-                            unsigned overlay_texture_id,
-                            const gfx::Rect& display_bounds,
-                            const gfx::RectF& uv_rect,
-                            bool enable_blend,
-                            unsigned gpu_fence_id) override;
   uint64_t ShareGroupTracingGUID() const override;
   void SetErrorMessageCallback(
       base::RepeatingCallback<void(const char*, int32_t)> callback) override;
@@ -137,6 +118,7 @@ class WEBGPU_EXPORT WebGPUImplementation final : public WebGPUInterface,
   void GenUnverifiedSyncTokenCHROMIUM(GLbyte* sync_token) override;
   void VerifySyncTokensCHROMIUM(GLbyte** sync_tokens, GLsizei count) override;
   void WaitSyncTokenCHROMIUM(const GLbyte* sync_token) override;
+  void ShallowFlushCHROMIUM() override;
   bool HasGrContextSupport() const override;
 
   // ImplementationBase implementation.
@@ -149,67 +131,31 @@ class WEBGPU_EXPORT WebGPUImplementation final : public WebGPUInterface,
   void OnGpuControlLostContext() final;
   void OnGpuControlLostContextMaybeReentrant() final;
   void OnGpuControlErrorMessage(const char* message, int32_t id) final;
-  void OnGpuControlSwapBuffersCompleted(
-      const SwapBuffersCompleteParams& params) final;
-  void OnSwapBufferPresented(uint64_t swap_id,
-                             const gfx::PresentationFeedback& feedback) final;
   void OnGpuControlReturnData(base::span<const uint8_t> data) final;
 
   // WebGPUInterface implementation
-  const DawnProcTable& GetProcs() const override;
   void FlushCommands() override;
-  void FlushCommands(DawnDeviceClientID device_client_id) override;
-  void EnsureAwaitingFlush(DawnDeviceClientID device_client_id,
-                           bool* needs_flush) override;
-  void FlushAwaitingCommands(DawnDeviceClientID device_client_id) override;
-  WGPUDevice GetDevice(DawnDeviceClientID device_client_id) override;
-  ReservedTexture ReserveTexture(DawnDeviceClientID device_client_id) override;
-  bool RequestAdapterAsync(
-      PowerPreference power_preference,
-      base::OnceCallback<void(int32_t, const WGPUDeviceProperties&)>
-          request_adapter_callback) override;
-  bool RequestDeviceAsync(
-      uint32_t requested_adapter_id,
-      const WGPUDeviceProperties& requested_device_properties,
-      base::OnceCallback<void(bool, DawnDeviceClientID)>
-          request_device_callback) override;
-  void RemoveDevice(DawnDeviceClientID device_client_id) override;
+  bool EnsureAwaitingFlush() override;
+  void FlushAwaitingCommands() override;
+  scoped_refptr<APIChannel> GetAPIChannel() const override;
+  ReservedTexture ReserveTexture(
+      WGPUDevice device,
+      const WGPUTextureDescriptor* optionalDesc = nullptr) override;
+  WGPUDevice DeprecatedEnsureDefaultDeviceSync() override;
 
  private:
   const char* GetLogPrefix() const { return "webgpu"; }
   void CheckGLError() {}
-  DawnRequestAdapterSerial NextRequestAdapterSerial();
-  DawnDeviceClientID NextDeviceClientID();
+  void LoseContext();
 
-  WebGPUCmdHelper* helper_;
+  raw_ptr<WebGPUCmdHelper> helper_;
 #if BUILDFLAG(USE_DAWN)
-  std::unique_ptr<DawnClientMemoryTransferService> memory_transfer_service_;
-
-  WebGPUCommandSerializer* GetCommandSerializerWithDeviceClientID(
-      DawnDeviceClientID device_client_id) const;
-  void FlushAllCommandSerializers();
-  void ClearAllCommandSerializers();
-  bool AddNewCommandSerializer(DawnDeviceClientID device_client_id);
-  base::flat_map<DawnDeviceClientID, std::unique_ptr<WebGPUCommandSerializer>>
-      command_serializers_;
+  scoped_refptr<DawnWireServices> dawn_wire_;
 #endif
-  DawnProcTable procs_ = {};
 
   LogSettings log_settings_;
 
-  base::flat_map<DawnRequestAdapterSerial,
-                 base::OnceCallback<void(int32_t, const WGPUDeviceProperties&)>>
-      request_adapter_callback_map_;
-  DawnRequestAdapterSerial request_adapter_serial_ = 0;
-
-  base::flat_map<DawnDeviceClientID,
-                 base::OnceCallback<void(bool, DawnDeviceClientID)>>
-      request_device_callback_map_;
-  DawnDeviceClientID device_client_id_ = 0;
-
   std::atomic_bool lost_{false};
-
-  DISALLOW_COPY_AND_ASSIGN(WebGPUImplementation);
 };
 
 }  // namespace webgpu

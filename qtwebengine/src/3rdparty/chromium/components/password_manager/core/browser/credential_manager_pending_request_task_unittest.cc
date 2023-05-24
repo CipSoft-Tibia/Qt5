@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/credential_manager_pending_request_task.h"
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/task_environment.h"
 #include "components/password_manager/core/browser/stub_password_manager_client.h"
@@ -18,13 +19,13 @@ namespace {
 
 class TestPasswordManagerClient : public StubPasswordManagerClient {
  public:
-  TestPasswordManagerClient(PasswordStore* profile_store,
-                            PasswordStore* account_store)
+  TestPasswordManagerClient(PasswordStoreInterface* profile_store,
+                            PasswordStoreInterface* account_store)
       : profile_store_(profile_store), account_store_(account_store) {}
-  PasswordStore* GetProfilePasswordStore() const override {
+  PasswordStoreInterface* GetProfilePasswordStore() const override {
     return profile_store_;
   }
-  PasswordStore* GetAccountPasswordStore() const override {
+  PasswordStoreInterface* GetAccountPasswordStore() const override {
     return account_store_;
   }
 
@@ -43,8 +44,8 @@ class TestPasswordManagerClient : public StubPasswordManagerClient {
 
  private:
   std::vector<std::unique_ptr<PasswordForm>> forms_passed_to_ui_;
-  PasswordStore* profile_store_;
-  PasswordStore* account_store_;
+  raw_ptr<PasswordStoreInterface> profile_store_;
+  raw_ptr<PasswordStoreInterface> account_store_;
 };
 
 class CredentialManagerPendingRequestTaskDelegateMock
@@ -73,10 +74,12 @@ class CredentialManagerPendingRequestTaskTest : public ::testing::Test {
  public:
   CredentialManagerPendingRequestTaskTest() {
     profile_store_ = new TestPasswordStore(IsAccountStore(false));
-    profile_store_->Init(/*prefs=*/nullptr);
+    profile_store_->Init(/*prefs=*/nullptr,
+                         /*affiliated_match_helper=*/nullptr);
 
     account_store_ = new TestPasswordStore(IsAccountStore(true));
-    account_store_->Init(/*prefs=*/nullptr);
+    account_store_->Init(/*prefs=*/nullptr,
+                         /*affiliated_match_helper=*/nullptr);
 
     client_ = std::make_unique<TestPasswordManagerClient>(profile_store_.get(),
                                                           account_store_.get());
@@ -87,10 +90,10 @@ class CredentialManagerPendingRequestTaskTest : public ::testing::Test {
     ON_CALL(delegate_mock_, GetOrigin)
         .WillByDefault(testing::Return(url::Origin::Create(url)));
 
-    form_.username_value = base::ASCIIToUTF16("Username");
-    form_.password_value = base::ASCIIToUTF16("Password");
+    form_.username_value = u"Username";
+    form_.password_value = u"Password";
     form_.url = url;
-    form_.signon_realm = form_.url.GetOrigin().spec();
+    form_.signon_realm = form_.url.DeprecatedGetOriginAsURL().spec();
     form_.scheme = PasswordForm::Scheme::kHtml;
     form_.skip_zero_click = false;
   }
@@ -157,13 +160,13 @@ TEST_F(CredentialManagerPendingRequestTaskTest,
 
   PasswordForm profile_form = form_;
   profile_form.in_store = PasswordForm::Store::kProfileStore;
-  profile_form.password_value = base::ASCIIToUTF16("ProfilePassword");
+  profile_form.password_value = u"ProfilePassword";
   std::vector<std::unique_ptr<PasswordForm>> profile_forms;
   profile_forms.push_back(std::make_unique<PasswordForm>(profile_form));
 
   PasswordForm account_form = form_;
   account_form.in_store = PasswordForm::Store::kAccountStore;
-  account_form.password_value = base::ASCIIToUTF16("AccountPassword");
+  account_form.password_value = u"AccountPassword";
   std::vector<std::unique_ptr<PasswordForm>> account_forms;
   account_forms.push_back(std::make_unique<PasswordForm>(account_form));
 
@@ -177,7 +180,7 @@ TEST_F(CredentialManagerPendingRequestTaskTest,
 TEST_F(CredentialManagerPendingRequestTaskTest,
        SameUsernameSamePasswordsInBothStores) {
   // This is testing that when two credentials have the same username and
-  //  passwords from two store, the account store version is passed to the UI.
+  // passwords from two store, the account store version is passed to the UI.
   CredentialManagerPendingRequestTask task(
       &delegate_mock_, /*callback=*/base::DoNothing(),
       CredentialMediationRequirement::kOptional, /*include_passwords=*/true,
@@ -212,7 +215,7 @@ TEST_F(CredentialManagerPendingRequestTaskTest,
       {federation_url}, StoresToQuery::kProfileAndAccountStores);
 
   form_.federation_origin = url::Origin::Create(federation_url);
-  form_.password_value = base::string16();
+  form_.password_value = std::u16string();
   form_.signon_realm = "federation://example.com/google.com";
 
   PasswordForm profile_form = form_;

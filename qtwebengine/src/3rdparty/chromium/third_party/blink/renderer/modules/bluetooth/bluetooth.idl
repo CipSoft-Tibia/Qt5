@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
     RuntimeEnabled=WebBluetooth,
     SecureContext
 ] interface Bluetooth : EventTarget {
-    [CallWith=ScriptState, RaisesException] Promise<boolean> getAvailability();
+    [CallWith=ScriptState, RaisesException, MeasureAs=WebBluetoothGetAvailability] Promise<boolean> getAvailability();
     [RuntimeEnabled=WebBluetoothGetDevices, CallWith=ScriptState, RaisesException, MeasureAs=WebBluetoothGetDevices] Promise<sequence<BluetoothDevice>> getDevices();
     [CallWith=ScriptState, RaisesException, MeasureAs=WebBluetoothRequestDevice] Promise<BluetoothDevice> requestDevice (optional RequestDeviceOptions options = {});
 

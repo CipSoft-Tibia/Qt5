@@ -1,52 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtBluetooth/qlowenergyadvertisingdata.h>
 #include <QtBluetooth/qlowenergyadvertisingparameters.h>
@@ -57,53 +10,95 @@
 #include <QtBluetooth/qlowenergyservice.h>
 #include <QtBluetooth/qlowenergyservicedata.h>
 #include <QtCore/qbytearray.h>
-#ifndef Q_OS_ANDROID
-#include <QtCore/qcoreapplication.h>
-#else
+#if defined(Q_OS_ANDROID) || defined(Q_OS_DARWIN)
 #include <QtGui/qguiapplication.h>
+#else
+#include <QtCore/qcoreapplication.h>
 #endif
 #include <QtCore/qlist.h>
 #include <QtCore/qloggingcategory.h>
-#include <QtCore/qscopedpointer.h>
 #include <QtCore/qtimer.h>
+#if QT_CONFIG(permissions)
+#include <QtCore/qpermissions.h>
+#endif
+
+#include <memory>
 
 int main(int argc, char *argv[])
 {
-    //QLoggingCategory::setFilterRules(QStringLiteral("qt.bluetooth* = true"));
-#ifndef Q_OS_ANDROID
-    QCoreApplication app(argc, argv);
-#else
+    // QLoggingCategory::setFilterRules(QStringLiteral("qt.bluetooth* = true"));
+#if defined(Q_OS_ANDROID) || defined(Q_OS_DARWIN)
     QGuiApplication app(argc, argv);
+#else
+    QCoreApplication app(argc, argv);
 #endif
 
+#if QT_CONFIG(permissions)
+    //! [Check Bluetooth Permission]
+    auto permissionStatus = app.checkPermission(QBluetoothPermission{});
+    //! [Check Bluetooth Permission]
+
+    //! [Request Bluetooth Permission]
+    if (permissionStatus == Qt::PermissionStatus::Undetermined) {
+        qInfo("Requesting Bluetooth permission ...");
+        app.requestPermission(QBluetoothPermission{}, [&permissionStatus](const QPermission &permission){
+            qApp->exit();
+            permissionStatus = permission.status();
+        });
+        // Now, wait for permission request to resolve.
+        app.exec();
+    }
+    //! [Request Bluetooth Permission]
+
+    if (permissionStatus == Qt::PermissionStatus::Denied) {
+        // Either explicitly denied by a user, or Bluetooth is off.
+        qWarning("This application cannot use Bluetooth, the permission was denied");
+        return -1;
+    }
+
+#endif
     //! [Advertising Data]
     QLowEnergyAdvertisingData advertisingData;
     advertisingData.setDiscoverability(QLowEnergyAdvertisingData::DiscoverabilityGeneral);
     advertisingData.setIncludePowerLevel(true);
     advertisingData.setLocalName("HeartRateServer");
-    advertisingData.setServices(QList<QBluetoothUuid>() << QBluetoothUuid::HeartRate);
+    advertisingData.setServices(QList<QBluetoothUuid>() << QBluetoothUuid::ServiceClassUuid::HeartRate);
     //! [Advertising Data]
 
     //! [Service Data]
     QLowEnergyCharacteristicData charData;
-    charData.setUuid(QBluetoothUuid::HeartRateMeasurement);
+    charData.setUuid(QBluetoothUuid::CharacteristicType::HeartRateMeasurement);
     charData.setValue(QByteArray(2, 0));
     charData.setProperties(QLowEnergyCharacteristic::Notify);
-    const QLowEnergyDescriptorData clientConfig(QBluetoothUuid::ClientCharacteristicConfiguration,
+    const QLowEnergyDescriptorData clientConfig(QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration,
                                                 QByteArray(2, 0));
     charData.addDescriptor(clientConfig);
 
     QLowEnergyServiceData serviceData;
     serviceData.setType(QLowEnergyServiceData::ServiceTypePrimary);
-    serviceData.setUuid(QBluetoothUuid::HeartRate);
+    serviceData.setUuid(QBluetoothUuid::ServiceClassUuid::HeartRate);
     serviceData.addCharacteristic(charData);
     //! [Service Data]
 
     //! [Start Advertising]
-    const QScopedPointer<QLowEnergyController> leController(QLowEnergyController::createPeripheral());
-    QScopedPointer<QLowEnergyService> service(leController->addService(serviceData));
+    bool errorOccurred = false;
+    const std::unique_ptr<QLowEnergyController> leController(QLowEnergyController::createPeripheral());
+    auto errorHandler = [&leController, &errorOccurred](QLowEnergyController::Error errorCode) {
+            qWarning().noquote().nospace() << errorCode << " occurred: "
+                << leController->errorString();
+            if (errorCode != QLowEnergyController::RemoteHostClosedError) {
+                qWarning("Heartrate-server quitting due to the error.");
+                errorOccurred = true;
+                QCoreApplication::quit();
+            }
+    };
+    QObject::connect(leController.get(), &QLowEnergyController::errorOccurred, errorHandler);
+
+    std::unique_ptr<QLowEnergyService> service(leController->addService(serviceData));
     leController->startAdvertising(QLowEnergyAdvertisingParameters(), advertisingData,
                                    advertisingData);
+    if (errorOccurred)
+        return -1;
     //! [Start Advertising]
 
     //! [Provide Heartbeat]
@@ -115,7 +110,7 @@ int main(int argc, char *argv[])
         value.append(char(0)); // Flags that specify the format of the value.
         value.append(char(currentHeartRate)); // Actual value.
         QLowEnergyCharacteristic characteristic
-                = service->characteristic(QBluetoothUuid::HeartRateMeasurement);
+                = service->characteristic(QBluetoothUuid::CharacteristicType::HeartRateMeasurement);
         Q_ASSERT(characteristic.isValid());
         service->writeCharacteristic(characteristic, value); // Potentially causes notification.
         if (currentHeartRate == 60)
@@ -131,14 +126,15 @@ int main(int argc, char *argv[])
     heartbeatTimer.start(1000);
     //! [Provide Heartbeat]
 
-    auto reconnect = [&leController, advertisingData, &service, serviceData]()
-    {
+    auto reconnect = [&leController, advertisingData, &service, serviceData]() {
         service.reset(leController->addService(serviceData));
-        if (!service.isNull())
+        if (service) {
             leController->startAdvertising(QLowEnergyAdvertisingParameters(),
                                            advertisingData, advertisingData);
+        }
     };
-    QObject::connect(leController.data(), &QLowEnergyController::disconnected, reconnect);
+    QObject::connect(leController.get(), &QLowEnergyController::disconnected, reconnect);
 
-    return app.exec();
+    const int retval = QCoreApplication::exec();
+    return errorOccurred ? -1 : retval;
 }

@@ -35,7 +35,6 @@ TransformState& TransformState::operator=(const TransformState& other) {
     last_planar_point_ = other.last_planar_point_;
   if (map_quad_)
     last_planar_quad_ = other.last_planar_quad_;
-  accumulating_transform_ = other.accumulating_transform_;
   force_accumulating_transform_ = other.force_accumulating_transform_;
   direction_ = other.direction_;
 
@@ -43,7 +42,7 @@ TransformState& TransformState::operator=(const TransformState& other) {
 
   if (other.accumulated_transform_) {
     accumulated_transform_ =
-        std::make_unique<TransformationMatrix>(*other.accumulated_transform_);
+        std::make_unique<gfx::Transform>(*other.accumulated_transform_);
   }
 
   return *this;
@@ -60,12 +59,12 @@ void TransformState::TranslateTransform(const PhysicalOffset& offset) {
 }
 
 void TransformState::TranslateMappedCoordinates(const PhysicalOffset& offset) {
-  FloatSize adjusted_offset((direction_ == kApplyTransformDirection) ? offset
-                                                                     : -offset);
+  gfx::Vector2dF adjusted_offset(
+      (direction_ == kApplyTransformDirection) ? offset : -offset);
   if (map_point_)
-    last_planar_point_.Move(adjusted_offset);
+    last_planar_point_ += adjusted_offset;
   if (map_quad_)
-    last_planar_quad_.Move(adjusted_offset);
+    last_planar_quad_ += adjusted_offset;
 }
 
 void TransformState::Move(const PhysicalOffset& offset,
@@ -77,7 +76,7 @@ void TransformState::Move(const PhysicalOffset& offset,
     accumulated_offset_ += offset;
   } else {
     ApplyAccumulatedOffset();
-    if (accumulating_transform_ && accumulated_transform_) {
+    if (accumulated_transform_) {
       // If we're accumulating into an existing transform, apply the
       // translation.
       TranslateTransform(offset);
@@ -86,7 +85,6 @@ void TransformState::Move(const PhysicalOffset& offset,
       TranslateMappedCoordinates(offset);
     }
   }
-  accumulating_transform_ = accumulate == kAccumulateTransform;
 }
 
 void TransformState::ApplyAccumulatedOffset() {
@@ -102,20 +100,20 @@ void TransformState::ApplyAccumulatedOffset() {
   }
 }
 
-// FIXME: We transform AffineTransform to TransformationMatrix. This is rather
+// FIXME: We transform AffineTransform to gfx::Transform. This is rather
 // inefficient.
 void TransformState::ApplyTransform(
     const AffineTransform& transform_from_container,
     TransformAccumulation accumulate) {
-  ApplyTransform(transform_from_container.ToTransformationMatrix(), accumulate);
+  ApplyTransform(transform_from_container.ToTransform(), accumulate);
 }
 
 void TransformState::ApplyTransform(
-    const TransformationMatrix& transform_from_container,
+    const gfx::Transform& transform_from_container,
     TransformAccumulation accumulate) {
-  if (transform_from_container.IsIntegerTranslation()) {
-    Move(PhysicalOffset::FromFloatSizeRound(
-             transform_from_container.To2DTranslation()),
+  if (transform_from_container.IsIdentityOrInteger2dTranslation()) {
+    Move(PhysicalOffset::FromVector2dFRound(
+             transform_from_container.To2dTranslation()),
          accumulate);
     return;
   }
@@ -126,28 +124,26 @@ void TransformState::ApplyTransform(
   // transform
   if (accumulated_transform_) {
     if (direction_ == kApplyTransformDirection)
-      accumulated_transform_ = std::make_unique<TransformationMatrix>(
+      accumulated_transform_ = std::make_unique<gfx::Transform>(
           transform_from_container * *accumulated_transform_);
     else
-      accumulated_transform_->Multiply(transform_from_container);
+      accumulated_transform_->PreConcat(transform_from_container);
   } else if (accumulate == kAccumulateTransform) {
     // Make one if we started to accumulate
     accumulated_transform_ =
-        std::make_unique<TransformationMatrix>(transform_from_container);
+        std::make_unique<gfx::Transform>(transform_from_container);
   }
 
   if (accumulate == kFlattenTransform) {
     if (force_accumulating_transform_) {
-      accumulated_transform_->FlattenTo2d();
+      accumulated_transform_->Flatten();
     } else {
-      const TransformationMatrix* final_transform =
-          accumulated_transform_ ? accumulated_transform_.get()
-                                 : &transform_from_container;
+      const gfx::Transform* final_transform = accumulated_transform_
+                                                  ? accumulated_transform_.get()
+                                                  : &transform_from_container;
       FlattenWithTransform(*final_transform);
     }
   }
-  accumulating_transform_ =
-      accumulate == kAccumulateTransform || force_accumulating_transform_;
 }
 
 void TransformState::Flatten() {
@@ -156,7 +152,6 @@ void TransformState::Flatten() {
   ApplyAccumulatedOffset();
 
   if (!accumulated_transform_) {
-    accumulating_transform_ = false;
     return;
   }
 
@@ -164,50 +159,51 @@ void TransformState::Flatten() {
 }
 
 PhysicalOffset TransformState::MappedPoint() const {
-  FloatPoint point = last_planar_point_;
-  point.Move(FloatSize(direction_ == kApplyTransformDirection
-                           ? accumulated_offset_
-                           : -accumulated_offset_));
+  gfx::PointF point = last_planar_point_;
+  point += gfx::Vector2dF(direction_ == kApplyTransformDirection
+                              ? accumulated_offset_
+                              : -accumulated_offset_);
   if (accumulated_transform_) {
-    point = direction_ == kApplyTransformDirection
-                ? accumulated_transform_->MapPoint(point)
-                : accumulated_transform_->Inverse().ProjectPoint(point);
+    point =
+        direction_ == kApplyTransformDirection
+            ? accumulated_transform_->MapPoint(point)
+            : accumulated_transform_->InverseOrIdentity().ProjectPoint(point);
   }
-  return PhysicalOffset::FromFloatPointRound(point);
+  return PhysicalOffset::FromPointFRound(point);
 }
 
-FloatQuad TransformState::MappedQuad() const {
-  FloatQuad quad = last_planar_quad_;
-  quad.Move(FloatSize((direction_ == kApplyTransformDirection)
-                          ? accumulated_offset_
-                          : -accumulated_offset_));
+gfx::QuadF TransformState::MappedQuad() const {
+  gfx::QuadF quad = last_planar_quad_;
+  quad += gfx::Vector2dF((direction_ == kApplyTransformDirection)
+                             ? accumulated_offset_
+                             : -accumulated_offset_);
   if (!accumulated_transform_)
     return quad;
 
   if (direction_ == kApplyTransformDirection)
     return accumulated_transform_->MapQuad(quad);
 
-  return accumulated_transform_->Inverse().ProjectQuad(quad);
+  return accumulated_transform_->InverseOrIdentity().ProjectQuad(quad);
 }
 
-const TransformationMatrix& TransformState::AccumulatedTransform() const {
+const gfx::Transform& TransformState::AccumulatedTransform() const {
   DCHECK(force_accumulating_transform_);
-  DCHECK(accumulating_transform_);
   return *accumulated_transform_;
 }
 
-void TransformState::FlattenWithTransform(const TransformationMatrix& t) {
+void TransformState::FlattenWithTransform(const gfx::Transform& t) {
   if (direction_ == kApplyTransformDirection) {
     if (map_point_)
       last_planar_point_ = t.MapPoint(last_planar_point_);
     if (map_quad_)
       last_planar_quad_ = t.MapQuad(last_planar_quad_);
   } else {
-    TransformationMatrix inverse_transform = t.Inverse();
-    if (map_point_)
-      last_planar_point_ = inverse_transform.ProjectPoint(last_planar_point_);
-    if (map_quad_) {
-      last_planar_quad_ = inverse_transform.ProjectQuad(last_planar_quad_);
+    gfx::Transform inverse_transform;
+    if (t.GetInverse(&inverse_transform)) {
+      if (map_point_)
+        last_planar_point_ = inverse_transform.ProjectPoint(last_planar_point_);
+      if (map_quad_)
+        last_planar_quad_ = inverse_transform.ProjectQuad(last_planar_quad_);
     }
   }
 
@@ -216,7 +212,6 @@ void TransformState::FlattenWithTransform(const TransformationMatrix& t) {
   // preserve-3d and flat elements.
   if (accumulated_transform_)
     accumulated_transform_->MakeIdentity();
-  accumulating_transform_ = false;
 }
 
 }  // namespace blink

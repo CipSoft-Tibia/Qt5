@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qskyboxentity.h"
 #include "qskyboxentity_p.h"
@@ -54,6 +18,7 @@
 #include <Qt3DRender/qgraphicsapifilter.h>
 #include <Qt3DRender/qseamlesscubemap.h>
 #include <Qt3DRender/qshaderprogram.h>
+#include <Qt3DRender/qgeometryrenderer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -70,13 +35,16 @@ QSkyboxEntityPrivate::QSkyboxEntityPrivate()
     , m_loadedTexture(new QTextureLoader())
     , m_gl3Shader(new QShaderProgram())
     , m_gl2es2Shader(new QShaderProgram())
+    , m_rhiShader(new QShaderProgram())
     , m_gl2Technique(new QTechnique())
     , m_es2Technique(new QTechnique())
     , m_gl3Technique(new QTechnique())
+    , m_rhiTechnique(new QTechnique())
     , m_filterKey(new QFilterKey)
     , m_gl2RenderPass(new QRenderPass())
     , m_es2RenderPass(new QRenderPass())
     , m_gl3RenderPass(new QRenderPass())
+    , m_rhiRenderPass(new QRenderPass())
     , m_mesh(new QCuboidMesh())
     , m_gammaStrengthParameter(new QParameter(QStringLiteral("gammaStrength"), 0.0f))
     , m_textureParameter(new QParameter(QStringLiteral("skyboxTexture"), m_skyboxTexture))
@@ -101,6 +69,8 @@ void QSkyboxEntityPrivate::init()
     m_gl3Shader->setFragmentShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/gl3/skybox.frag"))));
     m_gl2es2Shader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/es2/skybox.vert"))));
     m_gl2es2Shader->setFragmentShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/es2/skybox.frag"))));
+    m_rhiShader->setVertexShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/rhi/skybox.vert"))));
+    m_rhiShader->setFragmentShaderCode(QShaderProgram::loadSource(QUrl(QStringLiteral("qrc:/shaders/rhi/skybox.frag"))));
 
     m_gl3Technique->graphicsApiFilter()->setApi(QGraphicsApiFilter::OpenGL);
     m_gl3Technique->graphicsApiFilter()->setMajorVersion(3);
@@ -117,6 +87,10 @@ void QSkyboxEntityPrivate::init()
     m_es2Technique->graphicsApiFilter()->setMinorVersion(0);
     m_es2Technique->graphicsApiFilter()->setProfile(QGraphicsApiFilter::NoProfile);
 
+    m_rhiTechnique->graphicsApiFilter()->setApi(QGraphicsApiFilter::RHI);
+    m_rhiTechnique->graphicsApiFilter()->setMajorVersion(1);
+    m_rhiTechnique->graphicsApiFilter()->setMinorVersion(0);
+
     m_filterKey->setParent(m_effect);
     m_filterKey->setName(QStringLiteral("renderingStyle"));
     m_filterKey->setValue(QStringLiteral("forward"));
@@ -124,10 +98,12 @@ void QSkyboxEntityPrivate::init()
     m_gl3Technique->addFilterKey(m_filterKey);
     m_gl2Technique->addFilterKey(m_filterKey);
     m_es2Technique->addFilterKey(m_filterKey);
+    m_rhiTechnique->addFilterKey(m_filterKey);
 
     m_gl3RenderPass->setShaderProgram(m_gl3Shader);
     m_gl2RenderPass->setShaderProgram(m_gl2es2Shader);
     m_es2RenderPass->setShaderProgram(m_gl2es2Shader);
+    m_rhiRenderPass->setShaderProgram(m_rhiShader);
 
     QCullFace *cullFront = new QCullFace();
     cullFront->setMode(QCullFace::Front);
@@ -142,14 +118,18 @@ void QSkyboxEntityPrivate::init()
     m_gl2RenderPass->addRenderState(depthTest);
     m_es2RenderPass->addRenderState(cullFront);
     m_es2RenderPass->addRenderState(depthTest);
+    m_rhiRenderPass->addRenderState(cullFront);
+    m_rhiRenderPass->addRenderState(depthTest);
 
     m_gl3Technique->addRenderPass(m_gl3RenderPass);
     m_gl2Technique->addRenderPass(m_gl2RenderPass);
     m_es2Technique->addRenderPass(m_es2RenderPass);
+    m_rhiTechnique->addRenderPass(m_rhiRenderPass);
 
     m_effect->addTechnique(m_gl3Technique);
     m_effect->addTechnique(m_gl2Technique);
     m_effect->addTechnique(m_es2Technique);
+    m_effect->addTechnique(m_rhiTechnique);
 
     m_material->setEffect(m_effect);
     m_material->addParameter(m_gammaStrengthParameter);
@@ -383,3 +363,5 @@ bool QSkyboxEntity::isGammaCorrectEnabled() const
     \since 5.9
 */
 QT_END_NAMESPACE
+
+#include "moc_qskyboxentity.cpp"

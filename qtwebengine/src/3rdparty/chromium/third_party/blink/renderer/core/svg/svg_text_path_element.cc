@@ -24,7 +24,7 @@
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_text_path.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_length.h"
 #include "third_party/blink/renderer/core/svg/svg_enumeration_map.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -86,7 +86,9 @@ void SVGTextPathElement::ClearResourceReferences() {
   RemoveAllOutgoingReferences();
 }
 
-void SVGTextPathElement::SvgAttributeChanged(const QualifiedName& attr_name) {
+void SVGTextPathElement::SvgAttributeChanged(
+    const SvgAttributeChangedParams& params) {
+  const QualifiedName& attr_name = params.name;
   if (SVGURIReference::IsKnownAttribute(attr_name)) {
     SVGElement::InvalidationGuard invalidation_guard(this);
     BuildPendingResource();
@@ -106,16 +108,15 @@ void SVGTextPathElement::SvgAttributeChanged(const QualifiedName& attr_name) {
     return;
   }
 
-  SVGTextContentElement::SvgAttributeChanged(attr_name);
+  SVGTextContentElement::SvgAttributeChanged(params);
 }
 
 LayoutObject* SVGTextPathElement::CreateLayoutObject(const ComputedStyle&,
                                                      LegacyLayout) {
-  return new LayoutSVGTextPath(this);
+  return MakeGarbageCollected<LayoutSVGTextPath>(this);
 }
 
-bool SVGTextPathElement::LayoutObjectIsNeeded(
-    const ComputedStyle& style) const {
+bool SVGTextPathElement::LayoutObjectIsNeeded(const DisplayStyle& style) const {
   if (parentNode() &&
       (IsA<SVGAElement>(*parentNode()) || IsA<SVGTextElement>(*parentNode())))
     return SVGElement::LayoutObjectIsNeeded(style);

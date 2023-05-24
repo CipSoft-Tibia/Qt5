@@ -1,14 +1,17 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_TABLE_NG_TABLE_LAYOUT_ALGORITHM_HELPERS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_TABLE_NG_TABLE_LAYOUT_ALGORITHM_HELPERS_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/ng/table/ng_table_layout_algorithm_types.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 
 namespace blink {
+
+class NGTableNode;
 
 // Table size distribution algorithms.
 class CORE_EXPORT NGTableAlgorithmHelpers {
@@ -24,30 +27,25 @@ class CORE_EXPORT NGTableAlgorithmHelpers {
     return current_column + 1;
   }
 
-  // Flex/grid containing blocks need Table minmax size to be computed without
-  // using percentages.
-  // |containing_block_expects_minmax_without_percentages| is used to do
-  // this.
   // |undistributable_space| is size of space not occupied by cells
   // (borders, border spacing).
-  static void ComputeGridInlineMinmax(
-      NGTableTypes::Columns& column_constraints,
-      bool is_fixed_layout,
-      bool containing_block_expects_minmax_without_percentages,
+  static MinMaxSizes ComputeGridInlineMinMax(
+      const NGTableNode& node,
+      const NGTableTypes::Columns& column_constraints,
       LayoutUnit undistributable_space,
-      MinMaxSizes* minmax_sum);
+      bool is_fixed_layout,
+      bool is_layout_pass);
 
-  static void DistributeColspanCellToColumns(
-      const NGTableTypes::ColspanCell& colspan_cell,
+  static void DistributeColspanCellsToColumns(
+      const NGTableTypes::ColspanCells& colspan_cells,
       LayoutUnit inline_border_spacing,
       bool is_fixed_layout,
       NGTableTypes::Columns* column_constraints);
 
-  static void SynchronizeAssignableTableInlineSizeAndColumns(
+  static Vector<LayoutUnit> SynchronizeAssignableTableInlineSizeAndColumns(
       LayoutUnit assignable_table_inline_size,
-      LayoutUnit inline_border_spacing,
       bool is_fixed_layout,
-      NGTableTypes::Columns* column_constraints);
+      const NGTableTypes::Columns& column_constraints);
 
   static void DistributeRowspanCellToRows(
       const NGTableTypes::RowspanCell& rowspan_cell,

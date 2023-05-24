@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "graphmodifier.h"
 #include <QtDataVisualization/QValue3DAxis>
@@ -42,7 +16,6 @@
 #ifndef QT_NO_CURSOR
 #include <QtGui/QCursor>
 #endif
-using namespace QtDataVisualization;
 
 //#define JITTER_PLANE
 //#define WONKY_PLANE
@@ -194,7 +167,7 @@ void GraphModifier::fillSeries()
     m_multiseries[3]->dataProxy()->resetArray(dataArray4);
 }
 
-void GraphModifier::toggleSeries1(bool enabled)
+void GraphModifier::toggleSeries1(int enabled)
 {
     qDebug() << __FUNCTION__ << " enabled = " << enabled;
 
@@ -205,7 +178,7 @@ void GraphModifier::toggleSeries1(bool enabled)
     }
 }
 
-void GraphModifier::toggleSeries2(bool enabled)
+void GraphModifier::toggleSeries2(int enabled)
 {
     qDebug() << __FUNCTION__ << " enabled = " << enabled;
 
@@ -216,7 +189,7 @@ void GraphModifier::toggleSeries2(bool enabled)
     }
 }
 
-void GraphModifier::toggleSeries3(bool enabled)
+void GraphModifier::toggleSeries3(int enabled)
 {
     qDebug() << __FUNCTION__ << " enabled = " << enabled;
 
@@ -227,7 +200,7 @@ void GraphModifier::toggleSeries3(bool enabled)
     }
 }
 
-void GraphModifier::toggleSeries4(bool enabled)
+void GraphModifier::toggleSeries4(int enabled)
 {
     qDebug() << __FUNCTION__ << " enabled = " << enabled;
 
@@ -238,7 +211,7 @@ void GraphModifier::toggleSeries4(bool enabled)
     }
 }
 
-void GraphModifier::toggleSmooth(bool enabled)
+void GraphModifier::toggleSmooth(int enabled)
 {
     qDebug() << "GraphModifier::toggleSmooth " << enabled;
     m_theSeries->setFlatShadingEnabled(enabled);
@@ -247,7 +220,7 @@ void GraphModifier::toggleSmooth(bool enabled)
 #endif
 }
 
-void GraphModifier::toggleSurfaceGrid(bool enable)
+void GraphModifier::toggleSurfaceGrid(int enable)
 {
     qDebug() << "GraphModifier::toggleSurfaceGrid" << enable;
     if (enable)
@@ -261,7 +234,7 @@ void GraphModifier::toggleSurfaceGrid(bool enable)
 #endif
 }
 
-void GraphModifier::toggleSurface(bool enable)
+void GraphModifier::toggleSurface(int enable)
 {
     qDebug() << "GraphModifier::toggleSurface" << enable;
     if (enable)
@@ -275,7 +248,7 @@ void GraphModifier::toggleSurface(bool enable)
 #endif
 }
 
-void GraphModifier::toggleSeriesVisible(bool enable)
+void GraphModifier::toggleSeriesVisible(int enable)
 {
     m_theSeries->setVisible(enable);
 #ifdef MULTI_SERIES
@@ -283,13 +256,13 @@ void GraphModifier::toggleSeriesVisible(bool enable)
 #endif
 }
 
-void GraphModifier::toggleSmoothS2(bool enabled)
+void GraphModifier::toggleSmoothS2(int enabled)
 {
     qDebug() << __FUNCTION__ << enabled;
     m_multiseries[1]->setFlatShadingEnabled(enabled);
 }
 
-void GraphModifier::toggleSurfaceGridS2(bool enable)
+void GraphModifier::toggleSurfaceGridS2(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     if (enable)
@@ -300,7 +273,7 @@ void GraphModifier::toggleSurfaceGridS2(bool enable)
     m_multiseries[1]->setDrawMode(m_drawMode2);
 }
 
-void GraphModifier::toggleSurfaceS2(bool enable)
+void GraphModifier::toggleSurfaceS2(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     if (enable)
@@ -311,19 +284,19 @@ void GraphModifier::toggleSurfaceS2(bool enable)
     m_multiseries[1]->setDrawMode(m_drawMode2);
 }
 
-void GraphModifier::toggleSeries2Visible(bool enable)
+void GraphModifier::toggleSeries2Visible(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     m_multiseries[1]->setVisible(enable);
 }
 
-void GraphModifier::toggleSmoothS3(bool enabled)
+void GraphModifier::toggleSmoothS3(int enabled)
 {
     qDebug() << __FUNCTION__ << enabled;
     m_multiseries[2]->setFlatShadingEnabled(enabled);
 }
 
-void GraphModifier::toggleSurfaceGridS3(bool enable)
+void GraphModifier::toggleSurfaceGridS3(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     if (enable)
@@ -334,7 +307,7 @@ void GraphModifier::toggleSurfaceGridS3(bool enable)
     m_multiseries[2]->setDrawMode(m_drawMode3);
 }
 
-void GraphModifier::toggleSurfaceS3(bool enable)
+void GraphModifier::toggleSurfaceS3(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     if (enable)
@@ -345,19 +318,19 @@ void GraphModifier::toggleSurfaceS3(bool enable)
     m_multiseries[2]->setDrawMode(m_drawMode3);
 }
 
-void GraphModifier::toggleSeries3Visible(bool enable)
+void GraphModifier::toggleSeries3Visible(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     m_multiseries[2]->setVisible(enable);
 }
 
-void GraphModifier::toggleSmoothS4(bool enabled)
+void GraphModifier::toggleSmoothS4(int enabled)
 {
     qDebug() << __FUNCTION__ << enabled;
     m_multiseries[3]->setFlatShadingEnabled(enabled);
 }
 
-void GraphModifier::toggleSurfaceGridS4(bool enable)
+void GraphModifier::toggleSurfaceGridS4(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     if (enable)
@@ -368,7 +341,7 @@ void GraphModifier::toggleSurfaceGridS4(bool enable)
     m_multiseries[3]->setDrawMode(m_drawMode4);
 }
 
-void GraphModifier::toggleSurfaceS4(bool enable)
+void GraphModifier::toggleSurfaceS4(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     if (enable)
@@ -379,13 +352,13 @@ void GraphModifier::toggleSurfaceS4(bool enable)
     m_multiseries[3]->setDrawMode(m_drawMode4);
 }
 
-void GraphModifier::toggleSeries4Visible(bool enable)
+void GraphModifier::toggleSeries4Visible(int enable)
 {
     qDebug() << __FUNCTION__ << enable;
     m_multiseries[3]->setVisible(enable);
 }
 
-void GraphModifier::toggleSqrtSin(bool enable)
+void GraphModifier::toggleSqrtSin(int enable)
 {
     if (enable) {
         qDebug() << "Create Sqrt&Sin surface, (" << m_xCount << ", " << m_zCount << ")";
@@ -427,7 +400,7 @@ void GraphModifier::toggleSqrtSin(bool enable)
     }
 }
 
-void GraphModifier::togglePlane(bool enable)
+void GraphModifier::togglePlane(int enable)
 {
     qDebug() << "GraphModifier::togglePlane " << enable;
 
@@ -750,21 +723,21 @@ void GraphModifier::changeLabelRotation(int rotation)
     m_graph->axisZ()->setLabelAutoRotation(float(rotation));
 }
 
-void GraphModifier::toggleAxisTitleVisibility(bool enabled)
+void GraphModifier::toggleAxisTitleVisibility(int enabled)
 {
     m_graph->axisX()->setTitleVisible(enabled);
     m_graph->axisY()->setTitleVisible(enabled);
     m_graph->axisZ()->setTitleVisible(enabled);
 }
 
-void GraphModifier::toggleAxisTitleFixed(bool enabled)
+void GraphModifier::toggleAxisTitleFixed(int enabled)
 {
     m_graph->axisX()->setTitleFixed(enabled);
     m_graph->axisY()->setTitleFixed(enabled);
     m_graph->axisZ()->setTitleFixed(enabled);
 }
 
-void GraphModifier::toggleXAscending(bool enabled)
+void GraphModifier::toggleXAscending(int enabled)
 {
     m_ascendingX = enabled;
 
@@ -794,7 +767,7 @@ void GraphModifier::toggleXAscending(bool enabled)
     }
 }
 
-void GraphModifier::toggleZAscending(bool enabled)
+void GraphModifier::toggleZAscending(int enabled)
 {
     m_ascendingZ = enabled;
 
@@ -824,7 +797,7 @@ void GraphModifier::toggleZAscending(bool enabled)
     }
 }
 
-void GraphModifier::togglePolar(bool enabled)
+void GraphModifier::togglePolar(int enabled)
 {
     m_graph->setPolar(enabled);
 }
@@ -1682,7 +1655,7 @@ void GraphModifier::setHorizontalAspectRatio(int ratio)
     m_graph->setHorizontalAspectRatio(aspectRatio);
 }
 
-void GraphModifier::setSurfaceTexture(bool enabled)
+void GraphModifier::setSurfaceTexture(int enabled)
 {
     if (enabled)
         m_multiseries[3]->setTexture(QImage(":/maps/mapimage"));

@@ -1,48 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "net/client_cert_store_data.h"
 
 #if QT_CONFIG(ssl)
-#include "base/logging.h"
-#include "base/macros.h"
-#include "base/memory/ptr_util.h"
 #include "net/base/net_errors.h"
 #include "net/cert/x509_certificate.h"
 #include "net/ssl/ssl_platform_key_util.h"
@@ -59,16 +20,16 @@
 
 namespace {
 
-class SSLPlatformKeyOverride : public net::ThreadedSSLPrivateKey::Delegate
+class SSLPlatformKeyQt : public net::ThreadedSSLPrivateKey::Delegate
 {
 public:
-    SSLPlatformKeyOverride(const QByteArray &sslKeyInBytes)
+    SSLPlatformKeyQt(const QByteArray &sslKeyInBytes)
     {
         m_mem = BIO_new_mem_buf(sslKeyInBytes, -1);
         m_key = PEM_read_bio_PrivateKey(m_mem, nullptr, nullptr, nullptr);
     }
 
-    ~SSLPlatformKeyOverride() override
+    ~SSLPlatformKeyQt() override
     {
         if (m_key)
             EVP_PKEY_free(m_key);
@@ -113,8 +74,6 @@ public:
 private:
     EVP_PKEY *m_key;
     BIO *m_mem;
-
-    DISALLOW_COPY_AND_ASSIGN(SSLPlatformKeyOverride);
 };
 
 scoped_refptr<net::SSLPrivateKey> wrapOpenSSLPrivateKey(const QByteArray &sslKeyInBytes)
@@ -123,7 +82,7 @@ scoped_refptr<net::SSLPrivateKey> wrapOpenSSLPrivateKey(const QByteArray &sslKey
         return nullptr;
 
     return base::MakeRefCounted<net::ThreadedSSLPrivateKey>(
-                std::make_unique<SSLPlatformKeyOverride>(sslKeyInBytes),
+                std::make_unique<SSLPlatformKeyQt>(sslKeyInBytes),
                 net::GetSSLPlatformKeyTaskRunner());
 }
 
@@ -138,7 +97,8 @@ void ClientCertificateStoreData::add(const QSslCertificate &certificate, const Q
 
     Entry *data = new Entry;
     data->keyPtr = wrapOpenSSLPrivateKey(sslKeyInBytes);
-    data->certPtr = net::X509Certificate::CreateFromBytes(certInBytes.data(), certInBytes.length());
+    data->certPtr = net::X509Certificate::CreateFromBytes(base::make_span((const unsigned char *)certInBytes.data(),
+                                                                          (unsigned long)certInBytes.length()));
     data->key = privateKey;
     data->certificate = certificate;
     extraCerts.append(data);

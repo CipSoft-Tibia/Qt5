@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/test/scoped_run_loop_timeout.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/strings/strcat.h"
@@ -19,8 +19,10 @@ namespace {
 
 bool g_add_gtest_failure_on_timeout = false;
 
-std::string TimeoutMessage(const RepeatingCallback<std::string()>& get_log) {
-  std::string message = "RunLoop::Run() timed out.";
+std::string TimeoutMessage(const RepeatingCallback<std::string()>& get_log,
+                           const Location& timeout_enabled_from_here) {
+  std::string message = "RunLoop::Run() timed out. Timeout set at ";
+  message += timeout_enabled_from_here.ToString() + ".";
   if (get_log)
     StrAppend(&message, {"\n", get_log.Run()});
   return message;
@@ -37,7 +39,7 @@ ScopedRunLoopTimeout::~ScopedRunLoopTimeout() {
 }
 
 ScopedRunLoopTimeout::ScopedRunLoopTimeout(
-    const Location& from_here,
+    const Location& timeout_enabled_from_here,
     TimeDelta timeout,
     RepeatingCallback<std::string()> on_timeout_log)
     : nested_timeout_(RunLoop::GetTimeoutForCurrentThread()) {
@@ -46,21 +48,24 @@ ScopedRunLoopTimeout::ScopedRunLoopTimeout(
 
   if (g_add_gtest_failure_on_timeout) {
     run_timeout_.on_timeout = BindRepeating(
-        [](const Location& from_here,
-           RepeatingCallback<std::string()> on_timeout_log) {
-          GTEST_FAIL_AT(from_here.file_name(), from_here.line_number())
-              << TimeoutMessage(on_timeout_log);
+        [](const Location& timeout_enabled_from_here,
+           RepeatingCallback<std::string()> on_timeout_log,
+           const Location& run_from_here) {
+          GTEST_FAIL_AT(run_from_here.file_name(), run_from_here.line_number())
+              << TimeoutMessage(on_timeout_log, timeout_enabled_from_here);
         },
-        from_here, std::move(on_timeout_log));
+        timeout_enabled_from_here, std::move(on_timeout_log));
   } else {
     run_timeout_.on_timeout = BindRepeating(
-        [](const Location& from_here,
-           RepeatingCallback<std::string()> on_timeout_log) {
-          std::string message = TimeoutMessage(on_timeout_log);
-          logging::LogMessage(from_here.file_name(), from_here.line_number(),
-                              message.data());
+        [](const Location& timeout_enabled_from_here,
+           RepeatingCallback<std::string()> on_timeout_log,
+           const Location& run_from_here) {
+          std::string message =
+              TimeoutMessage(on_timeout_log, timeout_enabled_from_here);
+          logging::LogMessage(run_from_here.file_name(),
+                              run_from_here.line_number(), message.data());
         },
-        from_here, std::move(on_timeout_log));
+        timeout_enabled_from_here, std::move(on_timeout_log));
   }
 
   RunLoop::SetTimeoutForCurrentThread(&run_timeout_);

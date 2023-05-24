@@ -13,14 +13,14 @@
 // limitations under the License.
 
 import {binaryDecode, binaryEncode} from '../base/string_utils';
-import {Actions} from '../common/actions';
+import {TRACE_SUFFIX} from '../common/constants';
 
 import {
   ConsumerPortResponse,
+  hasProperty,
   isReadBuffersResponse,
-  Typed
+  Typed,
 } from './consumer_port_types';
-import {globals} from './globals';
 import {Consumer, RpcConsumerPort} from './record_controller_interfaces';
 
 export interface ChromeExtensionError extends Typed {
@@ -38,16 +38,28 @@ export interface GetCategoriesResponse extends Typed {
 export type ChromeExtensionMessage = ChromeExtensionError|ChromeExtensionStatus|
     ConsumerPortResponse|GetCategoriesResponse;
 
-function isError(obj: Typed): obj is ChromeExtensionError {
+export function isChromeExtensionError(obj: Typed):
+    obj is ChromeExtensionError {
   return obj.type === 'ChromeExtensionError';
 }
 
-function isStatus(obj: Typed): obj is ChromeExtensionStatus {
+export function isChromeExtensionStatus(obj: Typed):
+    obj is ChromeExtensionStatus {
   return obj.type === 'ChromeExtensionStatus';
 }
 
-function isGetCategoriesResponse(obj: Typed): obj is GetCategoriesResponse {
-  return obj.type === 'GetCategoriesResponse';
+function isObject(obj: unknown): obj is object {
+  return typeof obj === 'object' && obj !== null;
+}
+
+export function isGetCategoriesResponse(obj: unknown):
+    obj is GetCategoriesResponse {
+  if (!(isObject(obj) && hasProperty(obj, 'type') &&
+        obj.type === 'GetCategoriesResponse')) {
+    return false;
+  }
+
+  return hasProperty(obj, 'categories') && Array.isArray(obj.categories);
 }
 
 // This class acts as a proxy from the record controller (running in a worker),
@@ -70,16 +82,12 @@ export class ChromeExtensionConsumerPort extends RpcConsumerPort {
   }
 
   onExtensionMessage(message: {data: ChromeExtensionMessage}) {
-    if (isError(message.data)) {
+    if (isChromeExtensionError(message.data)) {
       this.sendErrorMessage(message.data.error);
       return;
     }
-    if (isStatus(message.data)) {
+    if (isChromeExtensionStatus(message.data)) {
       this.sendStatus(message.data.status);
-      return;
-    }
-    if (isGetCategoriesResponse(message.data)) {
-      globals.dispatch(Actions.setChromeCategories(message.data));
       return;
     }
 
@@ -94,5 +102,9 @@ export class ChromeExtensionConsumerPort extends RpcConsumerPort {
   handleCommand(method: string, requestData: Uint8Array): void {
     const reqEncoded = binaryEncode(requestData);
     this.extensionPort.postMessage({method, requestData: reqEncoded});
+  }
+
+  getRecordedTraceSuffix(): string {
+    return `${TRACE_SUFFIX}.gz`;
   }
 }

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcborstreamwriter.h"
 
@@ -43,9 +7,11 @@
 #include <private/qcborcommon_p.h>
 
 #include <private/qnumeric_p.h>
+#include <private/qstringconverter_p.h>
 #include <qbuffer.h>
 #include <qdebug.h>
 #include <qstack.h>
+#include <qvarlengtharray.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -63,16 +29,14 @@ QT_WARNING_POP
 
 // silence compilers that complain about this being a static function declared
 // but never defined
-static CborError Q_DECL_UNUSED cbor_encoder_close_container_checked(CborEncoder*, const CborEncoder*)
+[[maybe_unused]] static CborError cbor_encoder_close_container_checked(CborEncoder*, const CborEncoder*)
 {
-    Q_UNREACHABLE();
-    return CborErrorInternalError;
+    Q_UNREACHABLE_RETURN(CborErrorInternalError);
 }
 
-static CborError Q_DECL_UNUSED cbor_encode_float_as_half_float(CborEncoder *, float)
+[[maybe_unused]] static CborError cbor_encode_float_as_half_float(CborEncoder *, float)
 {
-    Q_UNREACHABLE();
-    return CborErrorInternalError;
+    Q_UNREACHABLE_RETURN(CborErrorInternalError);
 }
 
 Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
@@ -81,6 +45,7 @@ Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
    \class QCborStreamWriter
    \inmodule QtCore
    \ingroup cbor
+   \ingroup qtserialization
    \reentrant
    \since 5.12
 
@@ -92,8 +57,7 @@ Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
    Representation, a very compact form of binary data encoding that is
    compatible with JSON. It was created by the IETF Constrained RESTful
    Environments (CoRE) WG, which has used it in many new RFCs. It is meant to
-   be used alongside the \l{https://tools.ietf.org/html/rfc7252}{CoAP
-   protocol}.
+   be used alongside the \l{RFC 7252}{CoAP protocol}.
 
    QCborStreamWriter provides a StAX-like API, similar to that of
    \l{QXmlStreamWriter}. It is rather low-level and requires a bit of knowledge
@@ -123,7 +87,7 @@ Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
 
    QCborStreamWriter supports all CBOR features required to create canonical
    and strict streams. It implements almost all of the features specified in
-   \l {https://tools.ietf.org/html/rfc7049}{RFC 7049}.
+   \l {RFC 7049}.
 
    The following table lists the CBOR features that QCborStreamWriter supports.
 
@@ -151,7 +115,7 @@ Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
    \section2 Canonical CBOR encoding
 
    Canonical CBOR encoding is defined by
-   \l{https://tools.ietf.org/html/rfc7049#section-3.9}{Section 3.9 of RFC
+   \l{RFC 7049, section 3.9}{Section 3.9 of RFC
    7049}. Canonical encoding is not a requirement for Qt's CBOR decoding
    functionality, but it may be required for some protocols. In particular,
    protocols that require the ability to reproduce the same stream identically
@@ -181,7 +145,7 @@ Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
    \section2 Strict CBOR mode
 
    Strict mode is defined by
-   \l{https://tools.ietf.org/html/rfc7049#section-3.10}{Section 3.10 of RFC
+   \l{RFC 7049, section 3.10}{Section 3.10 of RFC
    7049}. As for Canonical encoding above, QCborStreamWriter makes it possible
    to create strict CBOR streams, but does not require them or validate that
    the output is so.
@@ -212,12 +176,14 @@ Q_DECLARE_TYPEINFO(CborEncoder, Q_PRIMITIVE_TYPE);
    \endlist
 
    \sa QCborStreamReader, QCborValue, QXmlStreamWriter
+       {Parsing and displaying CBOR data}, {Serialization Converter},
+       {Saving and Loading a Game}
  */
 
 class QCborStreamWriterPrivate
 {
 public:
-    static Q_CONSTEXPR quint64 IndefiniteLength = (std::numeric_limits<quint64>::max)();
+    static constexpr quint64 IndefiniteLength = (std::numeric_limits<quint64>::max)();
 
     QIODevice *device;
     CborEncoder encoder;
@@ -243,7 +209,7 @@ public:
 
     void createContainer(CborError (*f)(CborEncoder *, CborEncoder *, size_t), quint64 len = IndefiniteLength)
     {
-        Q_STATIC_ASSERT(size_t(IndefiniteLength) == CborIndefiniteLength);
+        static_assert(size_t(IndefiniteLength) == CborIndefiniteLength);
         if (sizeof(len) != sizeof(size_t) && len != IndefiniteLength) {
             if (Q_UNLIKELY(len >= CborIndefiniteLength)) {
                 // TinyCBOR can't do this in 32-bit mode
@@ -450,11 +416,11 @@ void QCborStreamWriter::append(QCborNegativeInteger n)
 /*!
    \overload
 
-   Appends the text string \a str to the stream, creating a CBOR Text String
-   value. QCborStreamWriter will attempt to write the entire string in one
-   chunk.
+   Appends the Latin-1 string viewed by \a str to the stream, creating a CBOR
+   Text String value. QCborStreamWriter will attempt to write the entire string
+   in one chunk.
 
-   The following example appends a simple string to the stream:
+   The following example appends a simple Latin-1 string literal to the stream:
 
    \snippet code/src_corelib_serialization_qcborstream.cpp 8
 
@@ -467,7 +433,7 @@ void QCborStreamWriter::append(QCborNegativeInteger n)
 
    \sa QCborStreamReader::isString(), QCborStreamReader::readString()
  */
-void QCborStreamWriter::append(QLatin1String str)
+void QCborStreamWriter::append(QLatin1StringView str)
 {
     // We've got Latin-1 but CBOR wants UTF-8, so check if the string is the
     // common subset (US-ASCII).
@@ -475,8 +441,10 @@ void QCborStreamWriter::append(QLatin1String str)
         // it is plain US-ASCII
         appendTextString(str.latin1(), str.size());
     } else {
-        // non-ASCII, so we need a pass-through UTF-16
-        append(QString(str));
+        // non-ASCII, convert:
+        QVarLengthArray<char> utf8(str.size() * 2); // each L1 char gives at most two U8 units
+        const qsizetype written = QUtf8::convertFromLatin1(utf8.data(), str) - utf8.data();
+        appendTextString(utf8.data(), written);
     }
 }
 
@@ -640,11 +608,11 @@ void QCborStreamWriter::appendByteString(const char *data, qsizetype len)
    The string pointed to by \a utf8 is expected to be properly encoded UTF-8.
    QCborStreamWriter performs no validation that this is the case.
 
-   Unlike the QLatin1String overload of append(), this function is not limited
+   Unlike the QLatin1StringView overload of append(), this function is not limited
    to 2 GB. However, note that neither QCborStreamReader::readString() nor
    QCborValue support reading CBOR streams with text strings larger than 2 GB.
 
-   \sa append(QLatin1String), append(QStringView),
+   \sa append(QLatin1StringView), append(QStringView),
        QCborStreamReader::isString(), QCborStreamReader::readString()
  */
 void QCborStreamWriter::appendTextString(const char *utf8, qsizetype len)
@@ -664,11 +632,11 @@ void QCborStreamWriter::appendTextString(const char *utf8, qsizetype len)
    The string pointed to by \a str is expected to be properly encoded UTF-8.
    QCborStreamWriter performs no validation that this is the case.
 
-   Unlike the QLatin1String overload of append(), this function is not limited
+   Unlike the QLatin1StringView overload of append(), this function is not limited
    to 2 GB. However, note that neither QCborStreamReader nor QCborValue support
    reading CBOR streams with text strings larger than 2 GB.
 
-   \sa append(QLatin1String), append(QStringView),
+   \sa append(QLatin1StringView), append(QStringView),
        QCborStreamReader::isString(), QCborStreamReader::readString()
  */
 
@@ -729,7 +697,7 @@ void QCborStreamWriter::appendTextString(const char *utf8, qsizetype len)
    length is implied by the elements contained in it. Note, however, that use
    of indeterminate-length arrays is not compliant with canonical CBOR encoding.
 
-   The following example appends elements from the linked list of strings
+   The following example appends elements from the list of strings
    passed as input:
 
    \snippet code/src_corelib_serialization_qcborstream.cpp 20
@@ -763,7 +731,8 @@ void QCborStreamWriter::startArray()
    seem to allow up to 2\sup{64}-1 elements in the array. However, both
    QCborStreamWriter and QCborStreamReader are currently limited to 2\sup{32}-2
    items on 32-bit systems and 2\sup{64}-2 items on 64-bit ones. Also note that
-   QCborArray is currently limited to 2\sup{27} elements in any platform.
+   QCborArray is currently limited to 2\sup{27} elements on 32-bit platforms and
+   2\sup{59} elements on 64-bit ones.
 
    \sa startArray(), endArray(), startMap(), QCborStreamReader::isArray(),
    QCborStreamReader::isLengthKnown()
@@ -802,7 +771,7 @@ bool QCborStreamWriter::endArray()
    indeterminate-length maps is not compliant with canonical CBOR encoding
    (canonical encoding also requires keys to be unique and in sorted order).
 
-   The following example appends elements from the linked list of int and
+   The following example appends elements from the list of int and
    string pairs passed as input:
 
    \snippet code/src_corelib_serialization_qcborstream.cpp 22
@@ -836,7 +805,8 @@ void QCborStreamWriter::startMap()
    seem to allow up to 2\sup{64}-1 pairs in the map. However, both
    QCborStreamWriter and QCborStreamReader are currently limited to 2\sup{31}-1
    items on 32-bit systems and 2\sup{63}-1 items on 64-bit ones. Also note that
-   QCborMap is currently limited to 2\sup{26} elements in any platform.
+   QCborMap is currently limited to 2\sup{26} elements on 32-bit platforms and
+   2\sup{58} on 64-bit ones.
 
    \sa startMap(), endMap(), startArray(), QCborStreamReader::isMap(),
        QCborStreamReader::isLengthKnown()
@@ -866,3 +836,7 @@ bool QCborStreamWriter::endMap()
 }
 
 QT_END_NAMESPACE
+
+#undef CBOR_ENCODER_WRITER_CONTROL
+#undef CBOR_ENCODER_WRITE_FUNCTION
+#undef CBOR_ENCODER_NO_CHECK_USER

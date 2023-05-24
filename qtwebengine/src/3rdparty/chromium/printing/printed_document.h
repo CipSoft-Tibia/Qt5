@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,13 @@
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
-#include "base/strings/string16.h"
 #include "base/synchronization/lock.h"
 #include "build/build_config.h"
-#include "printing/native_drawing_context.h"
+#include "printing/mojom/print.mojom.h"
 #include "printing/print_settings.h"
 
 namespace base {
@@ -32,18 +32,18 @@ class PrintingContext;
 // will have write access. Sensible functions are protected by a lock.
 // Warning: Once a page is loaded, it cannot be replaced. Pages may be discarded
 // under low memory conditions.
-class PRINTING_EXPORT PrintedDocument
+class COMPONENT_EXPORT(PRINTING) PrintedDocument
     : public base::RefCountedThreadSafe<PrintedDocument> {
  public:
   // The cookie shall be unique and has a specific relationship with its
   // originating source and settings.
   PrintedDocument(std::unique_ptr<PrintSettings> settings,
-                  const base::string16& name,
+                  const std::u16string& name,
                   int cookie);
   PrintedDocument(const PrintedDocument&) = delete;
   PrintedDocument& operator=(const PrintedDocument&) = delete;
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Indicates that the PDF has been generated and the document is waiting for
   // conversion for printing. This is needed on Windows so that the print job
   // is not cancelled if the web contents dies before PDF conversion finishes.
@@ -62,10 +62,10 @@ class PRINTING_EXPORT PrintedDocument
   // Note: locks for a short amount of time.
   scoped_refptr<PrintedPage> GetPage(uint32_t page_number);
 
-  // Drop the specified page's reference for the particular page number.
+  // Removes reference to a particular `page` based on its page number.
   // Note: locks for a short amount of time.
-  void DropPage(const PrintedPage* page);
-#endif  // defined(OS_WIN)
+  void RemovePage(const PrintedPage* page);
+#endif  // BUILDFLAG(IS_WIN)
 
   // Sets the document data. Note: locks for a short amount of time.
   void SetDocument(std::unique_ptr<MetafilePlayer> metafile);
@@ -76,15 +76,21 @@ class PRINTING_EXPORT PrintedDocument
 
 // Draws the page in the context.
 // Note: locks for a short amount of time in debug only.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // This is applicable when using the Windows GDI print API.
-  void RenderPrintedPage(const PrintedPage& page,
-                         printing::NativeDrawingContext context) const;
-#endif
+  mojom::ResultCode RenderPrintedPage(const PrintedPage& page,
+                                      PrintingContext* context) const;
 
-  // Draws the document in the context. Returns true on success and false on
-  // failure. Fails if context->NewPage() or context->PageDone() fails.
-  bool RenderPrintedDocument(PrintingContext* context);
+#if !defined(NDEBUG)
+  // Verifies that the page is intended to be printed for the document.
+  // Note: locks for a short amount of time.
+  bool IsPageInList(const PrintedPage& page) const;
+#endif  // !defined(NDEBUG)
+#endif  // BUILDFLAG(IS_WIN)
+
+  // Draws the document in the context.  Fails if context->NewPage() or
+  // context->PageDone() fails.
+  mojom::ResultCode RenderPrintedDocument(PrintingContext* context);
 
   // Returns true if all the necessary pages for the settings are already
   // rendered.
@@ -108,30 +114,22 @@ class PRINTING_EXPORT PrintedDocument
 
   // Getters. All these items are immutable hence thread-safe.
   const PrintSettings& settings() const { return *immutable_.settings_; }
-  const base::string16& name() const { return immutable_.name_; }
+  const std::u16string& name() const { return immutable_.name_; }
   int cookie() const { return immutable_.cookie_; }
 
   // Sets a path where to dump printing output files for debugging. If never
-  // set, no files are generated. |debug_dump_path| must not be empty.
+  // set, no files are generated. `debug_dump_path` must not be empty.
   static void SetDebugDumpPath(const base::FilePath& debug_dump_path);
 
   // Returns true if SetDebugDumpPath() has been called.
   static bool HasDebugDumpPath();
 
-  // Creates debug file name from given |document_name| and |extension|.
-  // |extension| should include the leading dot. e.g. ".pdf"
+  // Creates debug file name from given `document_name` and `extension`.
+  // `extension` should include the leading dot. e.g. ".pdf"
   // Should only be called when debug dumps are enabled.
   static base::FilePath CreateDebugDumpPath(
-      const base::string16& document_name,
+      const std::u16string& document_name,
       const base::FilePath::StringType& extension);
-
-#if defined(OS_WIN)
-  // Get page content rect adjusted based on
-  // http://dev.w3.org/csswg/css3-page/#positioning-page-box
-  static gfx::Rect GetCenteredPageContentRect(const gfx::Size& paper_size,
-                                              const gfx::Size& page_size,
-                                              const gfx::Rect& content_rect);
-#endif
 
   // Dump data on blocking task runner.
   // Should only be called when debug dumps are enabled.
@@ -161,7 +159,7 @@ class PRINTING_EXPORT PrintedDocument
 
     std::unique_ptr<MetafilePlayer> metafile_;
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     // Contains the pages' representation. This is a collection of PrintedPage.
     // Warning: Lock must be held when accessing this member.
     // This is applicable when using the Windows GDI print API which has the
@@ -179,7 +177,7 @@ class PRINTING_EXPORT PrintedDocument
   // construction.
   struct Immutable {
     Immutable(std::unique_ptr<PrintSettings> settings,
-              const base::string16& name,
+              const std::u16string& name,
               int cookie);
     ~Immutable();
 
@@ -187,7 +185,7 @@ class PRINTING_EXPORT PrintedDocument
     std::unique_ptr<PrintSettings> settings_;
 
     // Document name. Immutable.
-    base::string16 name_;
+    std::u16string name_;
 
     // Cookie to uniquely identify this document. It is used to make sure that a
     // PrintedPage is correctly belonging to the PrintedDocument. Since

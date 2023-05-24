@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/observer_list.h"
 #include "base/time/time.h"
 #include "components/viz/client/frame_evictor.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
@@ -24,7 +26,7 @@
 #include "services/viz/public/mojom/compositing/compositor_frame_sink.mojom.h"
 #include "services/viz/public/mojom/hit_test/hit_test_region_list.mojom.h"
 #include "third_party/blink/public/common/page/content_to_visible_time_reporter.h"
-#include "third_party/blink/public/mojom/page/record_content_to_visible_time_request.mojom-forward.h"
+#include "third_party/blink/public/mojom/widget/record_content_to_visible_time_request.mojom-forward.h"
 #include "ui/compositor/compositor.h"
 #include "ui/compositor/compositor_observer.h"
 #include "ui/compositor/layer.h"
@@ -46,7 +48,8 @@ class CONTENT_EXPORT DelegatedFrameHostClient {
   virtual bool DelegatedFrameHostIsVisible() const = 0;
   // Returns the color that the resize gutters should be drawn with.
   virtual SkColor DelegatedFrameHostGetGutterColor() const = 0;
-  virtual void OnFrameTokenChanged(uint32_t frame_token) = 0;
+  virtual void OnFrameTokenChanged(uint32_t frame_token,
+                                   base::TimeTicks activation_time) = 0;
   virtual float GetDeviceScaleFactor() const = 0;
   virtual void InvalidateLocalSurfaceIdOnEviction() = 0;
   virtual std::vector<viz::SurfaceId> CollectSurfaceIdsForEviction() = 0;
@@ -82,6 +85,10 @@ class CONTENT_EXPORT DelegatedFrameHost
   DelegatedFrameHost(const viz::FrameSinkId& frame_sink_id,
                      DelegatedFrameHostClient* client,
                      bool should_register_frame_sink_id);
+
+  DelegatedFrameHost(const DelegatedFrameHost&) = delete;
+  DelegatedFrameHost& operator=(const DelegatedFrameHost&) = delete;
+
   ~DelegatedFrameHost() override;
 
   void AddObserverForTesting(Observer* observer);
@@ -90,11 +97,13 @@ class CONTENT_EXPORT DelegatedFrameHost
   // ui::CompositorObserver implementation.
   void OnCompositingShuttingDown(ui::Compositor* compositor) override;
 
+  void ClearFallbackSurfaceForCommitPending();
   void ResetFallbackToFirstNavigationSurface();
 
   // viz::HostFrameSinkClient implementation.
   void OnFirstSurfaceActivation(const viz::SurfaceInfo& surface_info) override;
-  void OnFrameTokenChanged(uint32_t frame_token) override;
+  void OnFrameTokenChanged(uint32_t frame_token,
+                           base::TimeTicks activation_time) override;
 
   // Public interface exposed to RenderWidgetHostView.
 
@@ -110,6 +119,14 @@ class CONTENT_EXPORT DelegatedFrameHost
                 const gfx::Size& dip_size,
                 blink::mojom::RecordContentToVisibleTimeRequestPtr
                     record_tab_switch_time_request);
+
+  // Called to request the presentation time for the next frame or cancel any
+  // requests when the RenderWidget's visibility state is not changing. If the
+  // visibility state is changing call WasHidden or WasShown instead.
+  void RequestSuccessfulPresentationTimeForNextFrame(
+      blink::mojom::RecordContentToVisibleTimeRequestPtr visible_time_request);
+  void CancelSuccessfulPresentationTimeRequest();
+
   void EmbedSurface(const viz::LocalSurfaceId& local_surface_id,
                     const gfx::Size& dip_size,
                     cc::DeadlinePolicy deadline_policy);
@@ -135,13 +152,14 @@ class CONTENT_EXPORT DelegatedFrameHost
   bool CanCopyFromCompositingSurface() const;
   const viz::FrameSinkId& frame_sink_id() const { return frame_sink_id_; }
 
+  // FrameEvictorClient:
   // Returns the surface id for the most recently embedded surface.
-  viz::SurfaceId GetCurrentSurfaceId() const {
-    return viz::SurfaceId(frame_sink_id_, local_surface_id_);
-  }
+  viz::SurfaceId GetCurrentSurfaceId() const override;
 
   bool HasPrimarySurface() const;
   bool HasFallbackSurface() const;
+
+  viz::SurfaceId GetFallbackSurfaceIdForTesting() const;
 
   void OnCompositingDidCommitForTesting(ui::Compositor* compositor) {
     OnCompositingDidCommit(compositor);
@@ -175,6 +193,10 @@ class CONTENT_EXPORT DelegatedFrameHost
     return frame_eviction_state_;
   }
 
+  const viz::FrameEvictor* GetFrameEvictorForTesting() const {
+    return frame_evictor_.get();
+  }
+
  private:
   friend class DelegatedFrameHostClient;
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostViewAuraBrowserTest,
@@ -185,11 +207,15 @@ class CONTENT_EXPORT DelegatedFrameHost
                            StaleFrameContentOnEvictionNone);
 
   // FrameEvictorClient implementation.
-  void EvictDelegatedFrame() override;
+  void EvictDelegatedFrame(
+      const std::vector<viz::SurfaceId>& surface_ids) override;
+  std::vector<viz::SurfaceId> CollectSurfaceIdsForEviction() const override;
+  viz::SurfaceId GetPreNavigationSurfaceId() const override;
 
   void DidCopyStaleContent(std::unique_ptr<viz::CopyOutputResult> result);
 
-  void ContinueDelegatedFrameEviction();
+  void ContinueDelegatedFrameEviction(
+      const std::vector<viz::SurfaceId>& surface_ids);
 
   SkColor GetGutterColor() const;
 
@@ -197,15 +223,16 @@ class CONTENT_EXPORT DelegatedFrameHost
       const gfx::Rect& src_subrect,
       const gfx::Size& output_size,
       viz::CopyOutputRequest::ResultFormat format,
+      viz::CopyOutputRequest::ResultDestination destination,
       viz::CopyOutputRequest::CopyOutputRequestCallback callback);
 
   void SetFrameEvictionStateAndNotifyObservers(
       FrameEvictionState frame_eviction_state);
 
   const viz::FrameSinkId frame_sink_id_;
-  DelegatedFrameHostClient* const client_;
+  const raw_ptr<DelegatedFrameHostClient> client_;
   const bool should_register_frame_sink_id_;
-  ui::Compositor* compositor_ = nullptr;
+  raw_ptr<ui::Compositor> compositor_ = nullptr;
 
   // The LocalSurfaceId of the currently embedded surface.
   viz::LocalSurfaceId local_surface_id_;
@@ -218,7 +245,7 @@ class CONTENT_EXPORT DelegatedFrameHost
   // TODO(ccameron): The meaning of "current" should be made more clear here.
   gfx::Size current_frame_size_in_dip_;
 
-  viz::HostFrameSinkManager* const host_frame_sink_manager_;
+  const raw_ptr<viz::HostFrameSinkManager> host_frame_sink_manager_;
 
   std::unique_ptr<viz::FrameEvictor> frame_evictor_;
 
@@ -240,8 +267,6 @@ class CONTENT_EXPORT DelegatedFrameHost
   base::ObserverList<Observer>::Unchecked observers_;
 
   base::WeakPtrFactory<DelegatedFrameHost> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DelegatedFrameHost);
 };
 
 }  // namespace content

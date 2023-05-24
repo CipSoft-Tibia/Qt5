@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <Qt3DCore/qaspectjob.h>
 #include <Qt3DCore/qabstractaspect.h>
 #include <Qt3DCore/private/qaspectmanager_p.h>
+#include <Qt3DCore/private/qaspectengine_p.h>
 #include <Qt3DCore/private/qscheduler_p.h>
 #include <private/qabstractaspect_p.h>
 #include <private/qaspectjob_p.h>
@@ -43,7 +19,7 @@ class JobPrivate : public QAspectJobPrivate
 
 public:
     // QAspectJobPrivate interface
-    void postFrame(QAspectManager *aspectManager)
+    void postFrame(QAspectManager *aspectManager) override
     {
         Q_ASSERT(aspectManager);
         m_postFrameCalled = true;
@@ -128,7 +104,7 @@ public:
 
 private:
     // QAbstractAspect interface
-    QVector<QAspectJobPtr> jobsToExecute(qint64)
+    std::vector<QAspectJobPtr> jobsToExecute(qint64) override
     {
         return { m_first, m_second };
     }
@@ -162,13 +138,15 @@ private Q_SLOTS:
     void checkScheduleAndWaitForFrameAspectJobs()
     {
         // GIVEN
-        QScheduler scheduler;
-        QAspectManager manager;
+        Qt3DCore::QAspectEngine engine;
+        auto manager = Qt3DCore::QAspectEnginePrivate::get(&engine)->m_aspectManager;
+        QVERIFY(manager);
+        manager->initialize();
+
         Aspect aspect;
         AspectPrivate *aspectPriv = static_cast<AspectPrivate *>(QObjectPrivate::get(&aspect));
 
-        manager.registerAspect(&aspect);
-        scheduler.setAspectManager(&manager);
+        engine.registerAspect(&aspect);
 
         // THEN
         const JobPtr first = aspect.firstJob();
@@ -181,7 +159,7 @@ private Q_SLOTS:
         QVERIFY(!second->postFrameCalled());
 
         // WHEN
-        const int count = scheduler.scheduleAndWaitForFrameAspectJobs(0, false);
+        const int count = manager->scheduler()->scheduleAndWaitForFrameAspectJobs(0, false);
 
         // THEN
         QCOMPARE(count, 2);
@@ -192,7 +170,7 @@ private Q_SLOTS:
         QVERIFY(aspectPriv->jobsDoneCalled());
         QVERIFY(!aspectPriv->frameDoneCalled());
 
-        manager.unregisterAspect(&aspect);
+        engine.unregisterAspect(&aspect);
     }
 };
 

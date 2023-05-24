@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,9 @@
 
 #include "base/auto_reset.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "base/sequence_checker.h"
-#include "base/sequenced_task_runner.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/performance_manager/persistence/site_data/site_data_store.h"
 #include "third_party/leveldatabase/src/include/leveldb/db.h"
 
@@ -29,6 +28,9 @@ class LevelDBSiteDataStore : public SiteDataStore {
  public:
   explicit LevelDBSiteDataStore(const base::FilePath& db_path);
 
+  LevelDBSiteDataStore(const LevelDBSiteDataStore&) = delete;
+  LevelDBSiteDataStore& operator=(const LevelDBSiteDataStore&) = delete;
+
   ~LevelDBSiteDataStore() override;
 
   // SiteDataStore:
@@ -44,14 +46,11 @@ class LevelDBSiteDataStore : public SiteDataStore {
   void GetStoreSize(GetStoreSizeCallback callback) override;
   void SetInitializationCallbackForTesting(base::OnceClosure callback) override;
 
-  bool DatabaseIsInitializedForTesting();
+  void DatabaseIsInitializedForTesting(base::OnceCallback<void(bool)> reply_cb);
 
-  // Returns a raw pointer to the database for testing purposes. Note that as
-  // the DB operations are made on a separate sequence it's recommended to call
-  // TaskEnvironment::RunUntilIdle before calling this function to ensure
-  // that the database has been fully initialized. The LevelDB implementation is
-  // thread safe.
-  leveldb::DB* GetDBForTesting();
+  // Run a task against the raw DB implementation and wait for it to complete.
+  void RunTaskWithRawDBForTesting(base::OnceCallback<void(leveldb::DB*)> task,
+                                  base::OnceClosure after_task_run_closure);
 
   // Make the new instances of this class use an in memory database rather than
   // creating it on disk.
@@ -70,11 +69,10 @@ class LevelDBSiteDataStore : public SiteDataStore {
   // to run on |blocking_task_runner_|, it is guaranteed that the AsyncHelper
   // held by this object will only be destructed once all the tasks that have
   // been posted to it have completed.
-  std::unique_ptr<AsyncHelper, base::OnTaskRunnerDeleter> async_helper_;
+  std::unique_ptr<AsyncHelper, base::OnTaskRunnerDeleter> async_helper_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
   SEQUENCE_CHECKER(sequence_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(LevelDBSiteDataStore);
 };
 
 }  // namespace performance_manager

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/lazy_instance.h"
 #include "content/public/browser/web_contents.h"
+#include "extensions/browser/extension_web_contents_observer.h"
 #include "extensions/browser/extensions_browser_client.h"
 
 using content::WebContents;
@@ -18,31 +19,39 @@ const char kViewTypeUserDataKey[] = "ViewTypeUserData";
 
 class ViewTypeUserData : public base::SupportsUserData::Data {
  public:
-  explicit ViewTypeUserData(ViewType type) : type_(type) {}
+  explicit ViewTypeUserData(mojom::ViewType type) : type_(type) {}
   ~ViewTypeUserData() override {}
-  ViewType type() { return type_; }
+  mojom::ViewType type() { return type_; }
 
  private:
-  ViewType type_;
+  mojom::ViewType type_;
 };
 
 }  // namespace
 
-ViewType GetViewType(WebContents* tab) {
+mojom::ViewType GetViewType(WebContents* tab) {
   if (!tab)
-    return VIEW_TYPE_INVALID;
+    return mojom::ViewType::kInvalid;
 
   ViewTypeUserData* user_data = static_cast<ViewTypeUserData*>(
       tab->GetUserData(&kViewTypeUserDataKey));
 
-  return user_data ? user_data->type() : VIEW_TYPE_INVALID;
+  return user_data ? user_data->type() : mojom::ViewType::kInvalid;
 }
 
-void SetViewType(WebContents* tab, ViewType type) {
+void SetViewType(WebContents* tab, mojom::ViewType type) {
   tab->SetUserData(&kViewTypeUserDataKey,
                    std::make_unique<ViewTypeUserData>(type));
 
   ExtensionsBrowserClient::Get()->AttachExtensionTaskManagerTag(tab, type);
+
+  if (auto* ewco = ExtensionWebContentsObserver::GetForWebContents(tab)) {
+    tab->ForEachRenderFrameHost(
+        [ewco, type](content::RenderFrameHost* frame_host) {
+          if (mojom::LocalFrame* local_frame = ewco->GetLocalFrame(frame_host))
+            local_frame->NotifyRenderViewType(type);
+        });
+  }
 }
 
 }  // namespace extensions

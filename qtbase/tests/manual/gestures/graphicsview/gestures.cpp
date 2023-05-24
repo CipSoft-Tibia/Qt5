@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "gestures.h"
 
@@ -54,17 +29,15 @@ QGestureRecognizer::Result ThreeFingerSlideGestureRecognizer::recognize(QGesture
     case QEvent::TouchUpdate:
         if (d->state() != Qt::NoGesture) {
             QTouchEvent *ev = static_cast<QTouchEvent*>(event);
-            if (ev->touchPoints().size() == 3) {
+            if (ev->points().size() == 3) {
                 d->gestureFired = true;
                 result = QGestureRecognizer::TriggerGesture;
             } else {
                 result = QGestureRecognizer::MayBeGesture;
-                for (int i = 0; i < ev->touchPoints().size(); ++i) {
-                    const QTouchEvent::TouchPoint &pt = ev->touchPoints().at(i);
-                    const int distance = (pt.pos().toPoint() - pt.startPos().toPoint()).manhattanLength();
-                    if (distance > 20) {
+                for (const QEventPoint &pt : ev->points()) {
+                    const int distance = (pt.globalPosition().toPoint() - pt.globalPressPosition().toPoint()).manhattanLength();
+                    if (distance > 20)
                         result = QGestureRecognizer::CancelGesture;
-                    }
                 }
             }
         } else {

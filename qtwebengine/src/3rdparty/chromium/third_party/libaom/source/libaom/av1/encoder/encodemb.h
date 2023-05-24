@@ -56,7 +56,7 @@ struct encode_b_args {
   const struct AV1_COMP *cpi;
   MACROBLOCK *x;
   struct optimize_ctx *ctx;
-  int8_t *skip;
+  uint8_t *skip;
   ENTROPY_CONTEXT *ta;
   ENTROPY_CONTEXT *tl;
   RUN_TYPE dry_run;
@@ -81,15 +81,18 @@ void av1_setup_qmatrix(const CommonQuantParams *quant_params,
                        const MACROBLOCKD *xd, int plane, TX_SIZE tx_size,
                        TX_TYPE tx_type, QUANT_PARAM *qparam);
 
+void av1_xform_dc_only(MACROBLOCK *x, int plane, int block,
+                       TxfmParam *txfm_param, int64_t per_px_mean);
+
 void av1_xform_quant(MACROBLOCK *x, int plane, int block, int blk_row,
                      int blk_col, BLOCK_SIZE plane_bsize, TxfmParam *txfm_param,
-                     QUANT_PARAM *qparam);
+                     const QUANT_PARAM *qparam);
 
 void av1_xform(MACROBLOCK *x, int plane, int block, int blk_row, int blk_col,
                BLOCK_SIZE plane_bsize, TxfmParam *txfm_param);
 
 void av1_quant(MACROBLOCK *x, int plane, int block, TxfmParam *txfm_param,
-               QUANT_PARAM *qparam);
+               const QUANT_PARAM *qparam);
 
 int av1_optimize_b(const struct AV1_COMP *cpi, MACROBLOCK *mb, int plane,
                    int block, TX_SIZE tx_size, TX_TYPE tx_type,
@@ -120,11 +123,16 @@ int av1_optimize_b(const struct AV1_COMP *cpi, MACROBLOCK *mb, int plane,
 //   `txb_entropy_ctx`, which `mb` points to, may be modified by this function.
 void av1_dropout_qcoeff(MACROBLOCK *mb, int plane, int block, TX_SIZE tx_size,
                         TX_TYPE tx_type, int qindex);
+// Same as above, with the number of zeroes needed before/after a coeff to drop
+// it explicitly passed in, instead of being derived from qindex.
+void av1_dropout_qcoeff_num(MACROBLOCK *mb, int plane, int block,
+                            TX_SIZE tx_size, TX_TYPE tx_type,
+                            int dropout_num_before, int dropout_num_after);
 
-void av1_subtract_block(const MACROBLOCKD *xd, int rows, int cols,
-                        int16_t *diff, ptrdiff_t diff_stride,
-                        const uint8_t *src8, ptrdiff_t src_stride,
-                        const uint8_t *pred8, ptrdiff_t pred_stride);
+void av1_subtract_block(BitDepthInfo bd_info, int rows, int cols, int16_t *diff,
+                        ptrdiff_t diff_stride, const uint8_t *src8,
+                        ptrdiff_t src_stride, const uint8_t *pred8,
+                        ptrdiff_t pred_stride);
 
 void av1_subtract_txb(MACROBLOCK *x, int plane, BLOCK_SIZE plane_bsize,
                       int blk_col, int blk_row, TX_SIZE tx_size);
@@ -153,6 +161,19 @@ static INLINE int is_trellis_used(TRELLIS_OPT_TYPE optimize_b,
     return false;
   return true;
 }
+
+// Scaling terms (precision of 12 bits) to perform tx-size specific
+// normalization that is used in DCT_DCT forward transform.
+// For transform blocks of 1:2 and 2:1       - sqrt(2) normalization is used
+// For transform blocks of 1:4 and 4:1       - factor of 2 is used
+// For transform blocks TX_8x8 and below     - an additional factor of 2 is used
+// For transform blocks max(width,height)=64 - currently not supported
+
+static const uint16_t dc_coeff_scale[TX_SIZES_ALL] = {
+  1024, 2048, 4096, 4096, 0,    1448, 1448, 2896, 2896, 2896,
+  2896, 0,    0,    2048, 2048, 4096, 4096, 0,    0
+};
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

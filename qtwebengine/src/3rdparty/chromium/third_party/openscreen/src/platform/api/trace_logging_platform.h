@@ -5,7 +5,12 @@
 #ifndef PLATFORM_API_TRACE_LOGGING_PLATFORM_H_
 #define PLATFORM_API_TRACE_LOGGING_PLATFORM_H_
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "platform/api/time.h"
+#include "platform/api/trace_event.h"
 #include "platform/base/error.h"
 #include "platform/base/trace_logging_activation.h"
 #include "platform/base/trace_logging_types.h"
@@ -22,31 +27,19 @@ class TraceLoggingPlatform {
  public:
   virtual ~TraceLoggingPlatform();
 
-  // Determines whether trace logging is enabled for the given category.
-  virtual bool IsTraceLoggingEnabled(TraceCategory::Value category) = 0;
+  // Determines whether trace logging is enabled for the given category. Note
+  // that if any categories are supported, this function should return "true"
+  // when called with TraceCategory::kAny.
+  virtual bool IsTraceLoggingEnabled(TraceCategory category) = 0;
 
   // Log a synchronous trace.
-  virtual void LogTrace(const char* name,
-                        const uint32_t line,
-                        const char* file,
-                        Clock::time_point start_time,
-                        Clock::time_point end_time,
-                        TraceIdHierarchy ids,
-                        Error::Code error) = 0;
+  virtual void LogTrace(TraceEvent event, Clock::time_point end_time) = 0;
 
   // Log an asynchronous trace start.
-  virtual void LogAsyncStart(const char* name,
-                             const uint32_t line,
-                             const char* file,
-                             Clock::time_point timestamp,
-                             TraceIdHierarchy ids) = 0;
+  virtual void LogAsyncStart(TraceEvent event) = 0;
 
   // Log an asynchronous trace end.
-  virtual void LogAsyncEnd(const uint32_t line,
-                           const char* file,
-                           Clock::time_point timestamp,
-                           TraceId trace_id,
-                           Error::Code error) = 0;
+  virtual void LogAsyncEnd(TraceEvent event) = 0;
 };
 
 }  // namespace openscreen

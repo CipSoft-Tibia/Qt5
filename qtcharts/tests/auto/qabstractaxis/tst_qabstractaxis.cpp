@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qabstractaxis.h"
 
@@ -131,18 +105,18 @@ void tst_QAbstractAxis::axisPen()
     m_axis->setLinePen(axisPen);
     QCOMPARE(m_axis->linePen(), axisPen);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -191,18 +165,18 @@ void tst_QAbstractAxis::gridLinePen()
     m_axis->setGridLinePen(gridLinePen);
     QCOMPARE(m_axis->gridLinePen(), gridLinePen);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -242,18 +216,18 @@ void tst_QAbstractAxis::minorGridLinePen()
     m_axis->setMinorGridLinePen(minorGridLinePen);
     QCOMPARE(m_axis->minorGridLinePen(), minorGridLinePen);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -291,18 +265,18 @@ void tst_QAbstractAxis::lineVisible()
     m_axis->setLineVisible(lineVisible);
     QCOMPARE(m_axis->isLineVisible(), lineVisible);
 
-    QCOMPARE(spy0.count(), 1);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -338,16 +312,16 @@ void tst_QAbstractAxis::gridLineVisible()
     m_axis->setGridLineVisible(gridLineVisible);
     QCOMPARE(m_axis->isGridLineVisible(), gridLineVisible);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 1);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -386,18 +360,18 @@ void tst_QAbstractAxis::minorGridLineVisible()
     m_axis->setMinorGridLineVisible(minorGridLineVisible);
     QCOMPARE(m_axis->isMinorGridLineVisible(), minorGridLineVisible);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 1);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 1);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -435,18 +409,18 @@ void tst_QAbstractAxis::gridLineColor()
     m_axis->setGridLineColor(gridLineColor);
     QCOMPARE(m_axis->gridLineColor(), gridLineColor);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 1);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 1);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -483,18 +457,18 @@ void tst_QAbstractAxis::minorGridLineColor()
     m_axis->setMinorGridLineColor(minorGridLineColor);
     QCOMPARE(m_axis->minorGridLineColor(), minorGridLineColor);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 1);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 1);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -532,18 +506,18 @@ void tst_QAbstractAxis::visible()
     m_axis->setVisible(visible);
     QCOMPARE(m_axis->isVisible(), visible);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 1);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 1);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -580,18 +554,18 @@ void tst_QAbstractAxis::labelsAngle()
     m_axis->setLabelsAngle(labelsAngle);
     QCOMPARE(m_axis->labelsAngle(), labelsAngle);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -630,18 +604,18 @@ void tst_QAbstractAxis::labelsBrush()
     m_axis->setLabelsBrush(labelsBrush);
     QCOMPARE(m_axis->labelsBrush(), labelsBrush);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
     //TODO QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_view->show();
     QVERIFY(QTest::qWaitForWindowExposed(m_view));
@@ -687,18 +661,18 @@ void tst_QAbstractAxis::labelsFont()
     m_axis->setLabelsFont(labelsFont);
     QCOMPARE(m_axis->labelsFont(), labelsFont);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_view->show();
     QVERIFY(QTest::qWaitForWindowExposed(m_view));
@@ -735,18 +709,18 @@ void tst_QAbstractAxis::labelsVisible()
     m_axis->setLabelsVisible(labelsVisible);
     QCOMPARE(m_axis->labelsVisible(), labelsVisible);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 1);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 1);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -788,18 +762,18 @@ void tst_QAbstractAxis::orientation()
     }
     QCOMPARE(m_axis->orientation(), orientation);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_view->show();
     QVERIFY(QTest::qWaitForWindowExposed(m_view));
@@ -891,18 +865,18 @@ void tst_QAbstractAxis::shadesBrush()
     m_axis->setShadesBrush(shadesBrush);
     QCOMPARE(m_axis->shadesBrush(), shadesBrush);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
     //TODO QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_view->show();
     QVERIFY(QTest::qWaitForWindowExposed(m_view));
@@ -948,18 +922,18 @@ void tst_QAbstractAxis::shadesPen()
     m_axis->setShadesPen(shadesPen);
     QCOMPARE(m_axis->shadesPen(), shadesPen);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -997,18 +971,18 @@ void tst_QAbstractAxis::shadesVisible()
     m_axis->setShadesVisible(shadesVisible);
     QCOMPARE(m_axis->shadesVisible(), shadesVisible);
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 1);
-    QCOMPARE(spy8.count(), 0);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 1);
+    QCOMPARE(spy8.size(), 0);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
 
     m_chart->addAxis(m_axis, Qt::AlignBottom);
     m_series->attachAxis(m_axis);
@@ -1042,18 +1016,18 @@ void tst_QAbstractAxis::show()
 
     m_axis->show();
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 1);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 1);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
     QCOMPARE(m_axis->isVisible(), true);
 }
 
@@ -1082,18 +1056,18 @@ void tst_QAbstractAxis::hide()
 
     m_axis->hide();
 
-    QCOMPARE(spy0.count(), 0);
-    QCOMPARE(spy1.count(), 0);
-    QCOMPARE(spy2.count(), 0);
-    QCOMPARE(spy3.count(), 0);
-    QCOMPARE(spy4.count(), 0);
-    QCOMPARE(spy5.count(), 0);
-    QCOMPARE(spy6.count(), 0);
-    QCOMPARE(spy7.count(), 0);
-    QCOMPARE(spy8.count(), 1);
-    QCOMPARE(spy9.count(), 0);
-    QCOMPARE(spy10.count(), 0);
-    QCOMPARE(spy11.count(), 0);
+    QCOMPARE(spy0.size(), 0);
+    QCOMPARE(spy1.size(), 0);
+    QCOMPARE(spy2.size(), 0);
+    QCOMPARE(spy3.size(), 0);
+    QCOMPARE(spy4.size(), 0);
+    QCOMPARE(spy5.size(), 0);
+    QCOMPARE(spy6.size(), 0);
+    QCOMPARE(spy7.size(), 0);
+    QCOMPARE(spy8.size(), 1);
+    QCOMPARE(spy9.size(), 0);
+    QCOMPARE(spy10.size(), 0);
+    QCOMPARE(spy11.size(), 0);
     QCOMPARE(m_axis->isVisible(),false);
 }
 

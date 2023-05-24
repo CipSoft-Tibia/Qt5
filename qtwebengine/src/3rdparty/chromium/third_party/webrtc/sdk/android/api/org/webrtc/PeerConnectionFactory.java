@@ -12,7 +12,7 @@ package org.webrtc;
 
 import android.content.Context;
 import android.os.Process;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import java.util.List;
 import org.webrtc.Logging.Severity;
 import org.webrtc.PeerConnection;
@@ -133,7 +133,7 @@ public class PeerConnectionFactory {
   public static class Options {
     // Keep in sync with webrtc/rtc_base/network.h!
     //
-    // These bit fields are defined for |networkIgnoreMask| below.
+    // These bit fields are defined for `networkIgnoreMask` below.
     static final int ADAPTER_TYPE_UNKNOWN = 0;
     static final int ADAPTER_TYPE_ETHERNET = 1 << 0;
     static final int ADAPTER_TYPE_WIFI = 1 << 1;
@@ -404,6 +404,7 @@ public class PeerConnectionFactory {
   public PeerConnection createPeerConnection(List<PeerConnection.IceServer> iceServers,
       MediaConstraints constraints, PeerConnection.Observer observer) {
     PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
+    rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
     return createPeerConnection(rtcConfig, constraints, observer);
   }
 
@@ -411,6 +412,7 @@ public class PeerConnectionFactory {
   public PeerConnection createPeerConnection(
       List<PeerConnection.IceServer> iceServers, PeerConnection.Observer observer) {
     PeerConnection.RTCConfiguration rtcConfig = new PeerConnection.RTCConfiguration(iceServers);
+    rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
     return createPeerConnection(rtcConfig, observer);
   }
 
@@ -547,15 +549,12 @@ public class PeerConnectionFactory {
   /**
    * Print the Java stack traces for the critical threads used by PeerConnectionFactory, namely;
    * signaling thread, worker thread, and network thread. If printNativeStackTraces is true, also
-   * attempt to print the C++ stack traces for these (and some other) threads.
+   * attempt to print the C++ stack traces for these threads.
    */
   public void printInternalStackTraces(boolean printNativeStackTraces) {
     printStackTrace(signalingThread, printNativeStackTraces);
     printStackTrace(workerThread, printNativeStackTraces);
     printStackTrace(networkThread, printNativeStackTraces);
-    if (printNativeStackTraces) {
-      nativePrintStackTracesOfRegisteredThreads();
-    }
   }
 
   @CalledByNative
@@ -616,5 +615,4 @@ public class PeerConnectionFactory {
   private static native void nativeInjectLoggable(JNILogging jniLogging, int severity);
   private static native void nativeDeleteLoggable();
   private static native void nativePrintStackTrace(int tid);
-  private static native void nativePrintStackTracesOfRegisteredThreads();
 }

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,7 @@
 #include <vector>
 
 #include "base/check.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/features/behavior_feature.h"
@@ -111,13 +109,13 @@ UsbDevicePermission::CheckParam::CheckParam(
       interface_id(interface_id),
       interface_class_allowed(IsInterfaceClassPermissionAlowed(extension)) {}
 
-UsbDevicePermission::CheckParam::~CheckParam() {}
+UsbDevicePermission::CheckParam::~CheckParam() = default;
 
 UsbDevicePermission::UsbDevicePermission(const APIPermissionInfo* info)
     : SetDisjunctionPermission<UsbDevicePermissionData, UsbDevicePermission>(
           info) {}
 
-UsbDevicePermission::~UsbDevicePermission() {}
+UsbDevicePermission::~UsbDevicePermission() = default;
 
 bool UsbDevicePermission::FromValue(
     const base::Value* value,
@@ -150,10 +148,10 @@ PermissionIDSet UsbDevicePermission::GetPermissions() const {
       const char* product =
           device::UsbIds::GetProductName(data.vendor_id(), data.product_id());
       if (product) {
-        base::string16 product_name_and_vendor = l10n_util::GetStringFUTF16(
+        std::u16string product_name_and_vendor = l10n_util::GetStringFUTF16(
             IDS_EXTENSION_USB_DEVICE_PRODUCT_NAME_AND_VENDOR,
             base::UTF8ToUTF16(product), base::UTF8ToUTF16(vendor));
-        ids.insert(APIPermission::kUsbDevice, product_name_and_vendor);
+        ids.insert(mojom::APIPermissionID::kUsbDevice, product_name_and_vendor);
       } else {
         unknown_product_vendors.insert(data.vendor_id());
       }
@@ -165,12 +163,12 @@ PermissionIDSet UsbDevicePermission::GetPermissions() const {
   for (uint16_t vendor_id : unknown_product_vendors) {
     const char* vendor = device::UsbIds::GetVendorName(vendor_id);
     DCHECK(vendor);
-    ids.insert(APIPermission::kUsbDeviceUnknownProduct,
+    ids.insert(mojom::APIPermissionID::kUsbDeviceUnknownProduct,
                base::UTF8ToUTF16(vendor));
   }
 
   if (found_unknown_vendor)
-    ids.insert(APIPermission::kUsbDeviceUnknownVendor);
+    ids.insert(mojom::APIPermissionID::kUsbDeviceUnknownVendor);
 
   return ids;
 }

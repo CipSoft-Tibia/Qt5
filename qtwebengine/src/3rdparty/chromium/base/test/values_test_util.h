@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,43 +15,43 @@
 
 namespace base {
 
-// All the functions below expect that the value for the given key in
+// All the functions below expect that the value for the given path in
 // the given dictionary equals the given expected value.
 
 void ExpectDictBooleanValue(bool expected_value,
-                            const DictionaryValue& value,
-                            const std::string& key);
-
-void ExpectDictDictionaryValue(const DictionaryValue& expected_value,
-                               const DictionaryValue& value,
-                               const std::string& key);
+                            const Value::Dict& dict,
+                            StringPiece path);
 
 void ExpectDictIntegerValue(int expected_value,
-                            const DictionaryValue& value,
-                            const std::string& key);
+                            const Value::Dict& dict,
+                            StringPiece path);
 
-void ExpectDictListValue(const ListValue& expected_value,
-                         const DictionaryValue& value,
-                         const std::string& key);
+void ExpectDictStringValue(StringPiece expected_value,
+                           const Value::Dict& dict,
+                           StringPiece path);
 
-void ExpectDictStringValue(const std::string& expected_value,
-                           const DictionaryValue& value,
-                           const std::string& key);
+void ExpectDictValue(const Value::Dict& expected_value,
+                     const Value::Dict& dict,
+                     StringPiece path);
+
+void ExpectDictValue(const Value& expected_value,
+                     const Value::Dict& dict,
+                     StringPiece path);
 
 void ExpectStringValue(const std::string& expected_str, const Value& actual);
 
 namespace test {
 
-// A custom GMock matcher which matches if a base::Value is a dictionary which
-// has a key |key| that is equal to |value|.
-testing::Matcher<const base::Value&> DictionaryHasValue(
+// A custom GMock matcher which matches if a base::Value::Dict has a key |key|
+// that is equal to |value|.
+testing::Matcher<const base::Value::Dict&> DictionaryHasValue(
     const std::string& key,
     const base::Value& expected_value);
 
-// A custom GMock matcher which matches if a base::Value is a dictionary which
-// contains all key/value pairs from |template_value|.
-testing::Matcher<const base::Value&> DictionaryHasValues(
-    const base::Value& template_value);
+// A custom GMock matcher which matches if a base::Value::Dict contains all
+// key/value pairs from |template_value|.
+testing::Matcher<const base::Value::Dict&> DictionaryHasValues(
+    const base::Value::Dict& template_value);
 
 // A custom GMock matcher.  For details, see
 // https://github.com/google/googletest/blob/644319b9f06f6ca9bf69fe791be399061044bc3d/googlemock/docs/CookBook.md#writing-new-polymorphic-matchers
@@ -59,19 +59,26 @@ class IsJsonMatcher {
  public:
   explicit IsJsonMatcher(base::StringPiece json);
   explicit IsJsonMatcher(const base::Value& value);
+  explicit IsJsonMatcher(const base::Value::Dict& value);
+  explicit IsJsonMatcher(const base::Value::List& value);
+
   IsJsonMatcher(const IsJsonMatcher& other);
+  IsJsonMatcher& operator=(const IsJsonMatcher& other);
+
   ~IsJsonMatcher();
 
   bool MatchAndExplain(base::StringPiece json,
                        testing::MatchResultListener* listener) const;
   bool MatchAndExplain(const base::Value& value,
                        testing::MatchResultListener* listener) const;
+  bool MatchAndExplain(const base::Value::Dict& dict,
+                       testing::MatchResultListener* listener) const;
+  bool MatchAndExplain(const base::Value::List& list,
+                       testing::MatchResultListener* listener) const;
   void DescribeTo(std::ostream* os) const;
   void DescribeNegationTo(std::ostream* os) const;
 
  private:
-  IsJsonMatcher& operator=(const IsJsonMatcher& other) = delete;
-
   base::Value expected_value_;
 };
 
@@ -88,16 +95,16 @@ inline testing::PolymorphicMatcher<IsJsonMatcher> IsJson(const T& value) {
   return testing::MakePolymorphicMatcher(IsJsonMatcher(value));
 }
 
-// Parses |json| as JSON, allowing trailing commas, and returns the resulting
-// value.  If |json| fails to parse, causes an EXPECT failure and returns the
+// Parses `json` as JSON, allowing trailing commas, and returns the resulting
+// value.  If `json` fails to parse, causes an EXPECT failure and returns the
 // Null Value.
 Value ParseJson(StringPiece json);
 
-// DEPRECATED.
-// Parses |json| as JSON, allowing trailing commas, and returns the
-// resulting value.  If the json fails to parse, causes an EXPECT
-// failure and returns the Null Value (but never a NULL pointer).
-std::unique_ptr<Value> ParseJsonDeprecated(StringPiece json);
+// Just like ParseJson(), except returns Dicts/Lists. If `json` fails to parse
+// or is not of the expected type, causes an EXPECT failure and returns an empty
+// container.
+Value::Dict ParseJsonDict(StringPiece json);
+Value::List ParseJsonList(StringPiece json);
 
 }  // namespace test
 }  // namespace base

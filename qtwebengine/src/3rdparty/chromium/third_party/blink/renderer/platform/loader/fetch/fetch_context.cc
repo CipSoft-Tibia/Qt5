@@ -45,22 +45,17 @@ mojom::FetchCacheMode FetchContext::ResourceRequestCachePolicy(
 }
 
 void FetchContext::PrepareRequest(ResourceRequest&,
-                                  const FetchInitiatorInfo&,
+                                  ResourceLoaderOptions&,
                                   WebScopedVirtualTimePauser&,
                                   ResourceType) {}
 
-void FetchContext::AddResourceTiming(const ResourceTimingInfo&) {}
+void FetchContext::AddResourceTiming(mojom::blink::ResourceTimingInfoPtr,
+                                     const WTF::AtomicString&) {}
 
 void FetchContext::PopulateResourceRequest(
     ResourceType,
-    const ClientHintsPreferences&,
     const FetchParameters::ResourceWidth&,
     ResourceRequest&,
     const ResourceLoaderOptions&) {}
-
-mojo::PendingReceiver<mojom::blink::WorkerTimingContainer>
-FetchContext::TakePendingWorkerTimingReceiver(int request_id) {
-  return mojo::NullReceiver();
-}
 
 }  // namespace blink

@@ -24,6 +24,7 @@
  * TAK parser
  **/
 
+#define CACHED_BITSTREAM_READER !ARCH_X86_32
 #define BITSTREAM_READER_LE
 #include "parser.h"
 #include "tak.h"
@@ -122,7 +123,7 @@ fail:
     return buf_size + consumed;
 }
 
-AVCodecParser ff_tak_parser = {
+const AVCodecParser ff_tak_parser = {
     .codec_ids      = { AV_CODEC_ID_TAK },
     .priv_data_size = sizeof(TAKParseContext),
     .parser_parse   = tak_parse,

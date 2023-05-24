@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,9 @@
 #define CONTENT_BROWSER_THEME_HELPER_MAC_H_
 
 #include "base/containers/span.h"
-#include "base/macros.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/memory/writable_shared_memory_region.h"
-#include "content/public/browser/notification_observer.h"
-#include "content/public/browser/notification_registrar.h"
+#include "content/public/browser/render_process_host_creation_observer.h"
 #include "third_party/blink/public/common/sandbox_support/sandbox_support_mac.h"
 #include "third_party/blink/public/platform/mac/web_scrollbar_theme.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -26,11 +24,14 @@ namespace content {
 // This class is used to monitor macOS system appearance changes and to notify
 // sandboxed child processes when they change. This class lives on the UI
 // thread.
-class ThemeHelperMac : public NotificationObserver {
+class ThemeHelperMac : public content::RenderProcessHostCreationObserver {
  public:
   // Return pointer to the singleton instance for the current process, or NULL
   // if none.
   static ThemeHelperMac* GetInstance();
+
+  ThemeHelperMac(const ThemeHelperMac&) = delete;
+  ThemeHelperMac& operator=(const ThemeHelperMac&) = delete;
 
   // Duplicates a handle to the read-only copy of the system color table,
   // which can be shared to sandboxed child processes.
@@ -51,10 +52,8 @@ class ThemeHelperMac : public NotificationObserver {
   // be stored.
   void LoadSystemColorsForCurrentAppearance(base::span<SkColor> values);
 
-  // Overridden from NotificationObserver:
-  void Observe(int type,
-               const NotificationSource& source,
-               const NotificationDetails& details) override;
+  // Overridden from content::RenderProcessHostCreationObserver:
+  void OnRenderProcessHostCreated(content::RenderProcessHost* host) override;
 
   // ObjC object that observes notifications from the system.
   SystemThemeObserver* theme_observer_;  // strong
@@ -67,10 +66,6 @@ class ThemeHelperMac : public NotificationObserver {
   // Read-only handle to the |writable_color_map_| that can be duplicated for
   // sharing to child processes.
   base::ReadOnlySharedMemoryRegion read_only_color_map_;
-
-  NotificationRegistrar registrar_;
-
-  DISALLOW_COPY_AND_ASSIGN(ThemeHelperMac);
 };
 
 }  // namespace content

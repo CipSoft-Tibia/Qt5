@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,8 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/observer_list.h"
 #include "dbus/object_path.h"
 #include "dbus/property.h"
@@ -40,8 +40,6 @@ class DEVICE_BLUETOOTH_EXPORT FakeBluetoothAdapterClient
 
   FakeBluetoothAdapterClient();
   ~FakeBluetoothAdapterClient() override;
-  int GetPauseCount() { return pause_count_; }
-  int GetUnpauseCount() { return unpause_count_; }
 
   // BluetoothAdapterClient overrides
   void Init(dbus::Bus* bus, const std::string& bluetooth_service_name) override;
@@ -53,12 +51,6 @@ class DEVICE_BLUETOOTH_EXPORT FakeBluetoothAdapterClient
                       ResponseCallback callback) override;
   void StopDiscovery(const dbus::ObjectPath& object_path,
                      ResponseCallback callback) override;
-  void PauseDiscovery(const dbus::ObjectPath& object_path,
-                      base::OnceClosure callback,
-                      ErrorCallback error_callback) override;
-  void UnpauseDiscovery(const dbus::ObjectPath& object_path,
-                        base::OnceClosure callback,
-                        ErrorCallback error_callback) override;
   void RemoveDevice(const dbus::ObjectPath& object_path,
                     const dbus::ObjectPath& device_path,
                     base::OnceClosure callback,
@@ -75,6 +67,11 @@ class DEVICE_BLUETOOTH_EXPORT FakeBluetoothAdapterClient
                            uint32_t handle,
                            base::OnceClosure callback,
                            ErrorCallback error_callback) override;
+  void ConnectDevice(const dbus::ObjectPath& object_path,
+                     const std::string& address,
+                     const absl::optional<AddressType>& address_type,
+                     ConnectDeviceCallback callback,
+                     ErrorCallback error_callback) override;
 
   // Sets the current simulation timeout interval.
   void SetSimulationIntervalMs(int interval_ms);
@@ -88,16 +85,19 @@ class DEVICE_BLUETOOTH_EXPORT FakeBluetoothAdapterClient
   // Make StartDiscovery fail when called next time.
   void MakeStartDiscoveryFail();
 
-  // Mark the adapter and second adapter as visible or invisible.
-  void SetVisible(bool visible);
-  void SetSecondVisible(bool visible);
+  // Sets whether discovery simulation should be enabled or not.
+  void SetDiscoverySimulation(bool enabled);
+
+  // Mark the adapter and second adapter as present or not.
+  void SetPresent(bool present);
+  void SetSecondPresent(bool present);
 
   // Set adapter UUIDs
   void SetUUIDs(const std::vector<std::string>& uuids);
   void SetSecondUUIDs(const std::vector<std::string>& uuids);
 
   // Set discoverable timeout
-  void SetDiscoverableTimeout(uint32_t timeout);
+  void SetDiscoverableTimeout(base::TimeDelta timeout);
 
   // Object path, name and addresses of the adapters we emulate.
   static const char kAdapterPath[];
@@ -125,33 +125,30 @@ class DEVICE_BLUETOOTH_EXPORT FakeBluetoothAdapterClient
   std::unique_ptr<Properties> properties_;
   std::unique_ptr<Properties> second_properties_;
 
-  // Whether the adapter and second adapter should be visible or not.
-  bool visible_;
-  bool second_visible_;
+  // Whether the adapter and second adapter should be present or not.
+  bool present_ = true;
+  bool second_present_ = false;
 
   // Number of times we've been asked to discover.
-  int discovering_count_;
-
-  // Number of times we've been asked to pause discovery.
-  int pause_count_;
-
-  // Number of times we've been asked to unpause discovery.
-  int unpause_count_;
+  int discovering_count_ = 0;
 
   // Current discovery filter
   std::unique_ptr<DiscoveryFilter> discovery_filter_;
 
   // When set, next call to SetDiscoveryFilter would fail.
-  bool set_discovery_filter_should_fail_;
+  bool set_discovery_filter_should_fail_ = false;
 
   // When set, next call to StartDiscovery would fail.
   bool set_start_discovery_should_fail_ = false;
+
+  // When set, enables discovery simulation.
+  bool enable_discovery_simulation_ = true;
 
   // Current timeout interval used when posting delayed tasks.
   int simulation_interval_ms_;
 
   // Last used handle value issued for a service record.
-  uint32_t last_handle_;
+  uint32_t last_handle_ = 0;
 
   // Service records manually registered with this adapter by handle.
   std::map<uint32_t, BluetoothServiceRecordBlueZ> records_;

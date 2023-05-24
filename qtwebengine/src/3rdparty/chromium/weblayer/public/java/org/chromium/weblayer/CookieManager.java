@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,18 +12,20 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.chromium.weblayer_private.interfaces.APICallException;
+import org.chromium.weblayer_private.interfaces.IBooleanCallback;
 import org.chromium.weblayer_private.interfaces.ICookieChangedCallbackClient;
 import org.chromium.weblayer_private.interfaces.ICookieManager;
 import org.chromium.weblayer_private.interfaces.IProfile;
+import org.chromium.weblayer_private.interfaces.IStringCallback;
 import org.chromium.weblayer_private.interfaces.ObjectWrapper;
 import org.chromium.weblayer_private.interfaces.StrictModeWorkaround;
 
+import java.util.List;
+
 /**
  * Manages cookies for a WebLayer profile.
- *
- * @since 83
  */
-public class CookieManager {
+class CookieManager {
     private final ICookieManager mImpl;
 
     static CookieManager create(IProfile profile) {
@@ -55,17 +57,10 @@ public class CookieManager {
      * @throws IllegalArgumentException if the cookie is invalid.
      */
     public void setCookie(
-            @NonNull Uri uri, @NonNull String value, @Nullable Callback<Boolean> callback) {
+            @NonNull Uri uri, @NonNull String value, @NonNull IBooleanCallback callback) {
         ThreadCheck.ensureOnUiThread();
         try {
-            ValueCallback<Boolean> valueCallback = (Boolean result) -> {
-                if (callback != null) {
-                    callback.onResult(result);
-                }
-            };
-            if (!mImpl.setCookie(uri.toString(), value, ObjectWrapper.wrap(valueCallback))) {
-                throw new IllegalArgumentException("Invalid cookie: " + value);
-            }
+            mImpl.setCookie(uri.toString(), value, callback);
         } catch (RemoteException e) {
             throw new APICallException(e);
         }
@@ -78,13 +73,33 @@ public class CookieManager {
      * @param callback a callback to be executed with the cookie value in the format of the 'Cookie'
      *     HTTP request header. If there is no cookie, this will be called with an empty string.
      */
-    public void getCookie(@NonNull Uri uri, @NonNull Callback<String> callback) {
+    public void getCookie(@NonNull Uri uri, @NonNull IStringCallback callback) {
         ThreadCheck.ensureOnUiThread();
         try {
-            ValueCallback<String> valueCallback = (String result) -> {
+            mImpl.getCookie(uri.toString(), callback);
+        } catch (RemoteException e) {
+            throw new APICallException(e);
+        }
+    }
+
+    /**
+     * Gets the cookies for the given URL in the form of the 'Set-Cookie' HTTP response header.
+     *
+     * @param uri the URI to get cookies for.
+     * @param callback a callback to be executed with a list of cookie strings in the format of the
+     *     'Set-Cookie' HTTP response header.
+     * @since 101
+     */
+    public void getResponseCookies(@NonNull Uri uri, @NonNull Callback<List<String>> callback) {
+        ThreadCheck.ensureOnUiThread();
+        if (WebLayer.getSupportedMajorVersionInternal() < 101) {
+            throw new UnsupportedOperationException();
+        }
+        try {
+            ValueCallback<List<String>> valueCallback = (List<String> result) -> {
                 callback.onResult(result);
             };
-            mImpl.getCookie(uri.toString(), ObjectWrapper.wrap(valueCallback));
+            mImpl.getResponseCookies(uri.toString(), ObjectWrapper.wrap(valueCallback));
         } catch (RemoteException e) {
             throw new APICallException(e);
         }

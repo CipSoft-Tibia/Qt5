@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Aaron McCarthy <mccarthy.aaron@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtFoo module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Aaron McCarthy <mccarthy.aaron@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacesearchreplyosm.h"
 #include "qplacemanagerengineosm.h"
@@ -46,7 +10,13 @@
 #include <QtNetwork/QNetworkReply>
 #include <QtPositioning/QGeoCircle>
 #include <QtPositioning/QGeoRectangle>
+#include <QtPositioning/QGeoLocation>
+#include <QtPositioning/QGeoAddress>
+#include <QtLocation/QPlace>
+#include <QtLocation/QPlaceAttribute>
+#include <QtLocation/QPlaceIcon>
 #include <QtLocation/QPlaceResult>
+#include <QtLocation/QPlaceCategory>
 #include <QtLocation/QPlaceSearchRequest>
 #include <QtLocation/private/qplacesearchrequest_p.h>
 
@@ -63,9 +33,10 @@ QPlaceSearchReplyOsm::QPlaceSearchReplyOsm(const QPlaceSearchRequest &request,
     }
     setRequest(request);
 
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)),
-            this, SLOT(networkError(QNetworkReply::NetworkError)));
+    connect(reply, &QNetworkReply::finished,
+            this, &QPlaceSearchReplyOsm::replyFinished);
+    connect(reply, &QNetworkReply::errorOccurred,
+            this, &QPlaceSearchReplyOsm::networkError);
     connect(this, &QPlaceReply::aborted, reply, &QNetworkReply::abort);
     connect(this, &QObject::destroyed, reply, &QObject::deleteLater);
 }
@@ -77,7 +48,7 @@ QPlaceSearchReplyOsm::~QPlaceSearchReplyOsm()
 void QPlaceSearchReplyOsm::setError(QPlaceReply::Error errorCode, const QString &errorString)
 {
     QPlaceReply::setError(errorCode, errorString);
-    emit error(errorCode, errorString);
+    emit errorOccurred(errorCode, errorString);
     setFinished(true);
     emit finished();
 }
@@ -180,7 +151,7 @@ QPlaceResult QPlaceSearchReplyOsm::parsePlaceResult(const QJsonObject &item) con
                                                item.value(QStringLiteral("lon")).toString().toDouble());
 
     //const QString placeRank = item.value(QStringLiteral("place_rank")).toString();
-    //const QString category = item.value(QStringLiteral("category")).toString();
+    const QString categoryName = item.value(QStringLiteral("category")).toString();
     const QString type = item.value(QStringLiteral("type")).toString();
     //double importance = item.value(QStringLiteral("importance")).toDouble();
 
@@ -195,8 +166,7 @@ QPlaceResult QPlaceSearchReplyOsm::parsePlaceResult(const QJsonObject &item) con
     place.setIcon(icon);
 
     QJsonObject addressDetails = item.value(QStringLiteral("address")).toObject();
-
-    const QString title = addressDetails.value(type).toString();
+    const QString title = addressDetails.value(categoryName).toString();
 
     place.setName(title);
 
@@ -214,15 +184,20 @@ QPlaceResult QPlaceSearchReplyOsm::parsePlaceResult(const QJsonObject &item) con
     //address.setCountryCode(addressDetails.value(QStringLiteral("country_code")).toString());
     address.setPostalCode(addressDetails.value(QStringLiteral("postcode")).toString());
     address.setStreet(addressDetails.value(QStringLiteral("road")).toString());
+    address.setStreetNumber(addressDetails.value(QStringLiteral("house_number")).toString());
     address.setState(addressDetails.value(QStringLiteral("state")).toString());
     address.setDistrict(addressDetails.value(QStringLiteral("suburb")).toString());
 
     QGeoLocation location;
     location.setCoordinate(coordinate);
     location.setAddress(address);
-    location.setBoundingBox(parseBoundingBox(item.value(QStringLiteral("boundingbox")).toArray()));
-
+    location.setBoundingShape(parseBoundingBox(item.value(QStringLiteral("boundingbox")).toArray()));
     place.setLocation(location);
+
+    QPlaceCategory category;
+    category.setName(categoryName + "=" + type);
+    category.setCategoryId(categoryName + "=" + type);
+    place.setCategory(category);
 
     QPlaceResult result;
     result.setIcon(icon);

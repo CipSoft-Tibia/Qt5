@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 
@@ -32,7 +7,7 @@
 #include <qquickitem.h>
 #include <qquickview.h>
 
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 #include "mypropertymap.h"
 
 class tst_SignalSpy : public QQmlDataTest
@@ -50,6 +25,7 @@ private:
 };
 
 tst_SignalSpy::tst_SignalSpy()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
     qmlRegisterType<MyPropertyMap>("MyImport", 1, 0, "MyPropertyMap");
 }
@@ -69,25 +45,32 @@ void tst_SignalSpy::testValid()
 
 void tst_SignalSpy::testCount()
 {
-    QQuickView window;
-    window.resize(200, 200);
-    window.setSource(testFileUrl("signalspy.qml"));
-    window.show();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-    QVERIFY(window.rootObject() != nullptr);
+    const QUrl urls[] = {
+        testFileUrl("signalspy.qml"),
+        testFileUrl("signalspy2.qml"),
+    };
+    for (const auto &url : urls) {
+        QQuickView window;
+        window.resize(200, 200);
+        window.setSource(url);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QVERIFY(window.rootObject() != nullptr);
 
-    QObject *mouseSpy = window.rootObject()->findChild<QObject*>("mouseSpy");
-    QCOMPARE(mouseSpy->property("count").toInt(), 0);
+        QObject *mouseSpy = window.rootObject()->findChild<QObject *>("mouseSpy");
+        QCOMPARE(mouseSpy->property("count").toInt(), 0);
 
-    QObject *propertyMapSpy = window.rootObject()->findChild<QObject*>("propertyMapSpy");
-    QCOMPARE(propertyMapSpy->property("count").toInt(), 0);
+        QObject *propertyMapSpy = window.rootObject()->findChild<QObject *>("propertyMapSpy");
+        QCOMPARE(propertyMapSpy->property("count").toInt(), 0);
 
-    QTest::mouseClick(&window, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(100, 100));
-    QTRY_COMPARE(mouseSpy->property("count").toInt(), 1);
+        QTest::mouseClick(&window, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(100, 100));
+        QTRY_COMPARE(mouseSpy->property("count").toInt(), 1);
 
-    MyPropertyMap *propertyMap = static_cast<MyPropertyMap *>(window.rootObject()->findChild<QObject*>("propertyMap"));
-    Q_EMIT propertyMap->mySignal();
-    QCOMPARE(propertyMapSpy->property("count").toInt(), 1);
+        MyPropertyMap *propertyMap = static_cast<MyPropertyMap *>(
+                window.rootObject()->findChild<QObject *>("propertyMap"));
+        Q_EMIT propertyMap->mySignal();
+        QCOMPARE(propertyMapSpy->property("count").toInt(), 1);
+    }
 }
 
 QTEST_MAIN(tst_SignalSpy)

@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/devtools/devtools_stream_blob.h"
 
 #include "base/base64.h"
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_piece.h"
 #include "content/browser/blob_storage/chrome_blob_storage_context.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -201,7 +201,8 @@ void DevToolsStreamBlob::OnReadComplete(int bytes_read) {
     status = blob_reader_->remaining_bytes() ? StatusSuccess : StatusEOF;
     if (is_binary_) {
       base64_encoded = true;
-      Base64Encode(base::StringPiece(io_buf_->data(), bytes_read), data.get());
+      base::Base64Encode(base::StringPiece(io_buf_->data(), bytes_read),
+                         data.get());
     } else {
       // TODO(caseq): truncate at UTF8 boundary.
       *data = std::string(io_buf_->data(), bytes_read);

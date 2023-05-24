@@ -1,48 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qv4internalclass_p.h>
 #include <qv4string_p.h>
 #include <qv4engine_p.h>
-#include <qv4identifier_p.h>
+#include <qv4identifierhash_p.h>
 #include "qv4object_p.h"
-#include "qv4identifiertable_p.h"
 #include "qv4value_p.h"
 #include "qv4mm_p.h"
 #include <private/qprimefornumbits_p.h>
@@ -76,34 +39,6 @@ void PropertyHash::addEntry(const PropertyHash::Entry &entry, int classSize)
     }
     d->entries[idx] = entry;
     ++d->size;
-}
-
-int PropertyHash::removeIdentifier(PropertyKey identifier, int classSize)
-{
-    int val = -1;
-    PropertyHashData *dd = new PropertyHashData(d->numBits);
-    for (int i = 0; i < d->alloc; ++i) {
-        const Entry &e = d->entries[i];
-        if (!e.identifier.isValid() || e.index >= static_cast<unsigned>(classSize))
-            continue;
-        if (e.identifier == identifier) {
-            val = e.index;
-            continue;
-        }
-        uint idx = e.identifier.id() % dd->alloc;
-        while (dd->entries[idx].identifier.isValid()) {
-            ++idx;
-            idx %= dd->alloc;
-        }
-        dd->entries[idx] = e;
-    }
-    dd->size = classSize;
-    if (!--d->refCount)
-        delete d;
-    d = dd;
-
-    Q_ASSERT(val != -1);
-    return val;
 }
 
 void PropertyHash::detach(bool grow, int classSize)
@@ -178,7 +113,7 @@ void SharedInternalClassDataPrivate<PropertyKey>::setSize(uint s)
     data->values.size = s;
 }
 
-PropertyKey SharedInternalClassDataPrivate<PropertyKey>::at(uint i)
+PropertyKey SharedInternalClassDataPrivate<PropertyKey>::at(uint i) const
 {
     Q_ASSERT(data && i < size());
     return PropertyKey::fromId(data->values.values[i].rawValue());
@@ -205,11 +140,20 @@ SharedInternalClassDataPrivate<PropertyAttributes>::SharedInternalClassDataPriva
       m_engine(other.m_engine)
 {
     Q_ASSERT(m_size <= m_alloc);
+    Q_ASSERT(m_alloc > 0);
+
     m_engine->memoryManager->changeUnmanagedHeapSizeUsage(m_alloc * sizeof(PropertyAttributes));
-    data = new PropertyAttributes[m_alloc];
-    if (other.data)
-        memcpy(data, other.data, (m_size - 1) * sizeof(PropertyAttributes));
-    data[pos] = value;
+    const PropertyAttributes *source = other.m_alloc > NumAttributesInPointer
+            ? other.m_data
+            : other.m_inlineData;
+    PropertyAttributes *target;
+    if (m_alloc > NumAttributesInPointer)
+        m_data = target = new PropertyAttributes[m_alloc];
+    else
+        target = m_inlineData;
+
+    memcpy(target, source, (m_size - 1) * sizeof(PropertyAttributes));
+    target[pos] = value;
 }
 
 SharedInternalClassDataPrivate<PropertyAttributes>::SharedInternalClassDataPrivate(
@@ -219,12 +163,14 @@ SharedInternalClassDataPrivate<PropertyAttributes>::SharedInternalClassDataPriva
       m_size(other.m_size),
       m_engine(other.m_engine)
 {
-    if (m_alloc) {
-        m_engine->memoryManager->changeUnmanagedHeapSizeUsage(m_alloc * sizeof(PropertyAttributes));
-        data = new PropertyAttributes[m_alloc];
-        memcpy(data, other.data, m_size*sizeof(PropertyAttributes));
+    m_engine->memoryManager->changeUnmanagedHeapSizeUsage(m_alloc * sizeof(PropertyAttributes));
+    if (m_alloc > NumAttributesInPointer) {
+        m_data = new PropertyAttributes[m_alloc];
+        memcpy(m_data, other.m_data, m_size*sizeof(PropertyAttributes));
+    } else if (m_alloc > 0) {
+        memcpy(m_inlineData, other.m_inlineData, m_alloc * sizeof(PropertyAttributes));
     } else {
-        data = nullptr;
+        m_data = nullptr;
     }
 }
 
@@ -232,13 +178,14 @@ SharedInternalClassDataPrivate<PropertyAttributes>::~SharedInternalClassDataPriv
 {
     m_engine->memoryManager->changeUnmanagedHeapSizeUsage(
             -qptrdiff(m_alloc * sizeof(PropertyAttributes)));
-    delete [] data;
+    if (m_alloc > NumAttributesInPointer)
+        delete [] m_data;
 }
 
 void SharedInternalClassDataPrivate<PropertyAttributes>::grow() {
     uint alloc;
     if (!m_alloc) {
-        alloc = 8;
+        alloc = NumAttributesInPointer;
         m_engine->memoryManager->changeUnmanagedHeapSizeUsage(alloc * sizeof(PropertyAttributes));
     } else {
         // yes, signed. We don't want to deal with stuff > 2G
@@ -252,12 +199,16 @@ void SharedInternalClassDataPrivate<PropertyAttributes>::grow() {
                 (alloc - m_alloc) * sizeof(PropertyAttributes));
     }
 
-    auto *n = new PropertyAttributes[alloc];
-    if (data) {
-        memcpy(n, data, m_alloc*sizeof(PropertyAttributes));
-        delete [] data;
+    if (alloc > NumAttributesInPointer) {
+        auto *n = new PropertyAttributes[alloc];
+        if (m_alloc > NumAttributesInPointer) {
+            memcpy(n, m_data, m_alloc * sizeof(PropertyAttributes));
+            delete [] m_data;
+        } else if (m_alloc > 0) {
+            memcpy(n, m_inlineData, m_alloc * sizeof(PropertyAttributes));
+        }
+        m_data = n;
     }
-    data = n;
     m_alloc = alloc;
 }
 
@@ -265,6 +216,13 @@ namespace Heap {
 
 void InternalClass::init(ExecutionEngine *engine)
 {
+//    InternalClass is automatically zeroed during allocation:
+//    prototype = nullptr;
+//    parent = nullptr;
+//    size = 0;
+//    numRedundantTransitions = 0;
+//    flags = 0;
+
     Base::init();
     new (&propertyTable) PropertyHash();
     new (&nameMap) SharedInternalClassData<PropertyKey>(engine);
@@ -273,13 +231,6 @@ void InternalClass::init(ExecutionEngine *engine)
 
     this->engine = engine;
     vtable = QV4::InternalClass::staticVTable();
-//    prototype = nullptr;
-//    parent = nullptr;
-//    size = 0;
-    extensible = true;
-    isFrozen = false;
-    isSealed = false;
-    isUsedAsProto = false;
     protoId = engine->newProtoId();
 
     // Also internal classes need an internal class pointer. Simply make it point to itself
@@ -300,10 +251,8 @@ void InternalClass::init(Heap::InternalClass *other)
     prototype = other->prototype;
     parent = other;
     size = other->size;
-    extensible = other->extensible;
-    isSealed = other->isSealed;
-    isFrozen = other->isFrozen;
-    isUsedAsProto = other->isUsedAsProto;
+    numRedundantTransitions = other->numRedundantTransitions;
+    flags = other->flags;
     protoId = engine->newProtoId();
 
     internalClass.set(engine, other->internalClass);
@@ -331,9 +280,15 @@ void InternalClass::destroy()
     Base::destroy();
 }
 
-QString InternalClass::keyAt(uint index) const
+ReturnedValue InternalClass::keyAt(uint index) const
 {
-    return nameMap.at(index).toQString();
+    PropertyKey key = nameMap.at(index);
+    if (!key.isValid())
+        return Encode::undefined();
+    if (key.isArrayIndex())
+        return Encode(key.asArrayIndex());
+    Q_ASSERT(key.isStringOrSymbol());
+    return key.asStringOrSymbol()->asReturnedValue();
 }
 
 void InternalClass::changeMember(QV4::Object *object, PropertyKey id, PropertyAttributes data, InternalClassEntry *entry)
@@ -365,7 +320,102 @@ static void addDummyEntry(InternalClass *newClass, PropertyHash::Entry e)
     ++newClass->size;
 }
 
-Heap::InternalClass *InternalClass::changeMember(PropertyKey identifier, PropertyAttributes data, InternalClassEntry *entry)
+static PropertyAttributes attributesFromFlags(int flags)
+{
+    PropertyAttributes attributes;
+    attributes.m_all = uchar(flags);
+    return attributes;
+}
+
+static Heap::InternalClass *cleanInternalClass(Heap::InternalClass *orig)
+{
+    if (++orig->numRedundantTransitions < Heap::InternalClass::MaxRedundantTransitions)
+        return orig;
+
+    // We will generally add quite a few transitions here. We have 255 redundant ones.
+    // We can expect at least as many significant ones in addition.
+    std::vector<InternalClassTransition> transitions;
+
+    Scope scope(orig->engine);
+    Scoped<QV4::InternalClass> child(scope, orig);
+
+    {
+        quint8 remainingRedundantTransitions = orig->numRedundantTransitions;
+        QSet<PropertyKey> properties;
+        int structureChanges = 0;
+
+        Scoped<QV4::InternalClass> parent(scope, orig->parent);
+        while (parent && remainingRedundantTransitions > 0) {
+            Q_ASSERT(child->d() != scope.engine->classes[ExecutionEngine::Class_Empty]);
+            const auto it = std::find_if(
+                        parent->d()->transitions.begin(), parent->d()->transitions.end(),
+                        [&child](const InternalClassTransition &t) {
+                return child->d() == t.lookup;
+            });
+            Q_ASSERT(it != parent->d()->transitions.end());
+
+            if (it->flags & InternalClassTransition::StructureChange) {
+                // A structural change. Each kind of structural change has to be recorded only once.
+                if ((structureChanges & it->flags) != it->flags) {
+                    transitions.push_back(*it);
+                    structureChanges |= it->flags;
+                } else {
+                    --remainingRedundantTransitions;
+                }
+            } else if (!properties.contains(it->id)) {
+                // We only need the final state of the property.
+                properties.insert(it->id);
+
+                // Property removal creates _two_ redundant transitions.
+                // We don't have to replay either, but numRedundantTransitions only records one.
+                if (it->flags != 0)
+                    transitions.push_back(*it);
+            } else {
+                --remainingRedundantTransitions;
+            }
+
+            child = parent->d();
+            parent = child->d()->parent;
+            Q_ASSERT(child->d() != parent->d());
+        }
+    }
+
+    for (auto it = transitions.rbegin(); it != transitions.rend(); ++it) {
+        switch (it->flags) {
+        case InternalClassTransition::NotExtensible:
+            child = child->d()->nonExtensible();
+            continue;
+        case InternalClassTransition::VTableChange:
+            child = child->d()->changeVTable(it->vtable);
+            continue;
+        case InternalClassTransition::PrototypeChange:
+            child = child->d()->changePrototype(it->prototype);
+            continue;
+        case InternalClassTransition::ProtoClass:
+            child = child->d()->asProtoClass();
+            continue;
+        case InternalClassTransition::Sealed:
+            child = child->d()->sealed();
+            continue;
+        case InternalClassTransition::Frozen:
+            child = child->d()->frozen();
+            continue;
+        case InternalClassTransition::Locked:
+            child = child->d()->locked();
+            continue;
+        default:
+            Q_ASSERT(it->flags != 0);
+            Q_ASSERT(it->flags < InternalClassTransition::StructureChange);
+            child = child->addMember(it->id, attributesFromFlags(it->flags));
+            continue;
+        }
+    }
+
+    return child->d();
+}
+
+Heap::InternalClass *InternalClass::changeMember(
+        PropertyKey identifier, PropertyAttributes data, InternalClassEntry *entry)
 {
     if (!data.isEmpty())
         data.resolve();
@@ -381,7 +431,7 @@ Heap::InternalClass *InternalClass::changeMember(PropertyKey identifier, Propert
     }
 
     if (data == propertyData.at(idx))
-        return static_cast<Heap::InternalClass *>(this);
+        return this;
 
     Transition temp = { { identifier }, nullptr, int(data.all()) };
     Transition &t = lookupOrInsertTransition(temp);
@@ -394,7 +444,8 @@ Heap::InternalClass *InternalClass::changeMember(PropertyKey identifier, Propert
         Q_ASSERT(!propertyData.at(idx).isAccessor());
 
         // add a dummy entry for the accessor
-        entry->setterIndex = newClass->size;
+        if (entry)
+            entry->setterIndex = newClass->size;
         e->setterIndex = newClass->size;
         addDummyEntry(newClass, *e);
     }
@@ -403,7 +454,8 @@ Heap::InternalClass *InternalClass::changeMember(PropertyKey identifier, Propert
 
     t.lookup = newClass;
     Q_ASSERT(t.lookup);
-    return newClass;
+
+    return cleanInternalClass(newClass);
 }
 
 Heap::InternalClass *InternalClass::changePrototypeImpl(Heap::Object *proto)
@@ -413,7 +465,7 @@ Heap::InternalClass *InternalClass::changePrototypeImpl(Heap::Object *proto)
     if (proto)
         proto->setUsedAsProto();
     Q_ASSERT(prototype != proto);
-    Q_ASSERT(!proto || proto->internalClass->isUsedAsProto);
+    Q_ASSERT(!proto || proto->internalClass->isUsedAsProto());
 
     Transition temp = { { PropertyKey::invalid() }, nullptr, Transition::PrototypeChange };
     temp.prototype = proto;
@@ -427,8 +479,7 @@ Heap::InternalClass *InternalClass::changePrototypeImpl(Heap::Object *proto)
     newClass->prototype = proto;
 
     t.lookup = newClass;
-
-    return newClass;
+    return prototype ? cleanInternalClass(newClass) : newClass;
 }
 
 Heap::InternalClass *InternalClass::changeVTableImpl(const VTable *vt)
@@ -449,12 +500,14 @@ Heap::InternalClass *InternalClass::changeVTableImpl(const VTable *vt)
     t.lookup = newClass;
     Q_ASSERT(t.lookup);
     Q_ASSERT(newClass->vtable);
-    return newClass;
+    return vtable == QV4::InternalClass::staticVTable()
+            ? newClass
+            : cleanInternalClass(newClass);
 }
 
 Heap::InternalClass *InternalClass::nonExtensible()
 {
-    if (!extensible)
+    if (!isExtensible())
         return this;
 
     Transition temp = { { PropertyKey::invalid() }, nullptr, Transition::NotExtensible};
@@ -463,7 +516,25 @@ Heap::InternalClass *InternalClass::nonExtensible()
         return t.lookup;
 
     Heap::InternalClass *newClass = engine->newClass(this);
-    newClass->extensible = false;
+    newClass->flags |= NotExtensible;
+
+    t.lookup = newClass;
+    Q_ASSERT(t.lookup);
+    return newClass;
+}
+
+InternalClass *InternalClass::locked()
+{
+    if (isLocked())
+        return this;
+
+    Transition temp = { { PropertyKey::invalid() }, nullptr, Transition::Locked};
+    Transition &t = lookupOrInsertTransition(temp);
+    if (t.lookup)
+        return t.lookup;
+
+    Heap::InternalClass *newClass = engine->newClass(this);
+    newClass->flags |= Locked;
 
     t.lookup = newClass;
     Q_ASSERT(t.lookup);
@@ -500,7 +571,7 @@ Heap::InternalClass *InternalClass::addMember(PropertyKey identifier, PropertyAt
 
 Heap::InternalClass *InternalClass::addMemberImpl(PropertyKey identifier, PropertyAttributes data, InternalClassEntry *entry)
 {
-    Transition temp = { { identifier }, nullptr, (int)data.flags() };
+    Transition temp = { { identifier }, nullptr, int(data.all()) };
     Transition &t = lookupOrInsertTransition(temp);
 
     if (entry) {
@@ -553,21 +624,23 @@ void InternalClass::removeMember(QV4::Object *object, PropertyKey identifier)
     changeMember(object, identifier, Attr_Invalid);
 
 #ifndef QT_NO_DEBUG
-    // we didn't remove the data slot, just made it inaccessible
-    Q_ASSERT(object->internalClass()->size == oldClass->size);
+    // We didn't remove the data slot, just made it inaccessible.
+    // ... unless we've rebuilt the whole class. Then all the deleted properties are gone.
+    Q_ASSERT(object->internalClass()->numRedundantTransitions == 0
+             || object->internalClass()->size == oldClass->size);
 #endif
 }
 
 Heap::InternalClass *InternalClass::sealed()
 {
-    if (isSealed)
+    if (isSealed())
         return this;
 
     Transition temp = { { PropertyKey::invalid() }, nullptr, InternalClassTransition::Sealed };
     Transition &t = lookupOrInsertTransition(temp);
 
     if (t.lookup) {
-        Q_ASSERT(t.lookup && t.lookup->isSealed);
+        Q_ASSERT(t.lookup && t.lookup->isSealed());
         return t.lookup;
     }
 
@@ -575,7 +648,7 @@ Heap::InternalClass *InternalClass::sealed()
     Scoped<QV4::InternalClass> ic(scope, engine->newClass(this));
     Heap::InternalClass *s = ic->d();
 
-    if (!isFrozen) { // freezing also makes all properties non-configurable
+    if (!isFrozen()) { // freezing also makes all properties non-configurable
         for (uint i = 0; i < size; ++i) {
             PropertyAttributes attrs = propertyData.at(i);
             if (attrs.isEmpty())
@@ -584,7 +657,7 @@ Heap::InternalClass *InternalClass::sealed()
             s->propertyData.set(i, attrs);
         }
     }
-    s->isSealed = true;
+    s->flags |= Sealed;
 
     t.lookup = s;
     return s;
@@ -592,14 +665,14 @@ Heap::InternalClass *InternalClass::sealed()
 
 Heap::InternalClass *InternalClass::frozen()
 {
-    if (isFrozen)
+    if (isFrozen())
         return this;
 
     Transition temp = { { PropertyKey::invalid() }, nullptr, InternalClassTransition::Frozen };
     Transition &t = lookupOrInsertTransition(temp);
 
     if (t.lookup) {
-        Q_ASSERT(t.lookup && t.lookup->isFrozen);
+        Q_ASSERT(t.lookup && t.lookup->isFrozen());
         return t.lookup;
     }
 
@@ -616,7 +689,7 @@ Heap::InternalClass *InternalClass::frozen()
         attrs.setConfigurable(false);
         f->propertyData.set(i, attrs);
     }
-    f->isFrozen = true;
+    f->flags |= Frozen;
 
     t.lookup = f;
     return f;
@@ -640,7 +713,7 @@ InternalClass *InternalClass::cryopreserved()
 
 bool InternalClass::isImplicitlyFrozen() const
 {
-    if (isFrozen)
+    if (isFrozen())
         return true;
 
     for (uint i = 0; i < size; ++i) {
@@ -656,7 +729,7 @@ bool InternalClass::isImplicitlyFrozen() const
 
 Heap::InternalClass *InternalClass::asProtoClass()
 {
-    if (isUsedAsProto)
+    if (isUsedAsProto())
         return this;
 
     Transition temp = { { PropertyKey::invalid() }, nullptr, Transition::ProtoClass };
@@ -665,7 +738,7 @@ Heap::InternalClass *InternalClass::asProtoClass()
         return t.lookup;
 
     Heap::InternalClass *newClass = engine->newClass(this);
-    newClass->isUsedAsProto = true;
+    newClass->flags |= UsedAsProto;
 
     t.lookup = newClass;
     Q_ASSERT(t.lookup);
@@ -685,7 +758,7 @@ static void updateProtoUsage(Heap::Object *o, Heap::InternalClass *ic)
 
 void InternalClass::updateProtoUsage(Heap::Object *o)
 {
-    Q_ASSERT(isUsedAsProto);
+    Q_ASSERT(isUsedAsProto());
     Heap::InternalClass *ic = engine->internalClasses(EngineBase::Class_Empty);
     Q_ASSERT(!ic->prototype);
 
@@ -697,6 +770,9 @@ void InternalClass::markObjects(Heap::Base *b, MarkStack *stack)
     Heap::InternalClass *ic = static_cast<Heap::InternalClass *>(b);
     if (ic->prototype)
         ic->prototype->mark(stack);
+
+    if (ic->parent)
+        ic->parent->mark(stack);
 
     ic->nameMap.mark(stack);
 }

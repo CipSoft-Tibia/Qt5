@@ -23,52 +23,9 @@
 #include "libavutil/common.h"
 #include "libavutil/ffmath.h"
 #include "libavutil/float_dsp.h"
-#include "libavutil/mathematics.h"
-#include "avcodec.h"
 #include "acelp_pitch_delay.h"
 #include "celp_math.h"
 #include "audiodsp.h"
-
-int ff_acelp_decode_8bit_to_1st_delay3(int ac_index)
-{
-    ac_index += 58;
-    if(ac_index > 254)
-        ac_index = 3 * ac_index - 510;
-    return ac_index;
-}
-
-int ff_acelp_decode_4bit_to_2nd_delay3(
-        int ac_index,
-        int pitch_delay_min)
-{
-    if(ac_index < 4)
-        return 3 * (ac_index + pitch_delay_min);
-    else if(ac_index < 12)
-        return 3 * pitch_delay_min + ac_index + 6;
-    else
-        return 3 * (ac_index + pitch_delay_min) - 18;
-}
-
-int ff_acelp_decode_5_6_bit_to_2nd_delay3(
-        int ac_index,
-        int pitch_delay_min)
-{
-        return 3 * pitch_delay_min + ac_index - 2;
-}
-
-int ff_acelp_decode_9bit_to_1st_delay6(int ac_index)
-{
-    if(ac_index < 463)
-        return ac_index + 105;
-    else
-        return 6 * (ac_index - 368);
-}
-int ff_acelp_decode_6bit_to_2nd_delay6(
-        int ac_index,
-        int pitch_delay_min)
-{
-    return 6 * pitch_delay_min + ac_index - 3;
-}
 
 void ff_acelp_update_past_gain(
     int16_t* quant_energy,

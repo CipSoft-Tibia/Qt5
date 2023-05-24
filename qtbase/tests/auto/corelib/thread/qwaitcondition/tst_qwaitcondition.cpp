@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QReadWriteLock>
 
 #include <qatomic.h>
 #include <qcoreapplication.h>
@@ -77,7 +53,7 @@ public:
     inline wait_QMutex_Thread_1()
     { }
 
-    void run()
+    void run() override
     {
         mutex.lock();
         cond.wakeOne();
@@ -95,10 +71,10 @@ public:
     QWaitCondition *cond;
 
     inline wait_QMutex_Thread_2()
-    : mutex(0), cond(0)
+    : mutex(nullptr), cond(nullptr)
     { }
 
-    void run()
+    void run() override
     {
         mutex->lock();
         started.wakeOne();
@@ -116,7 +92,7 @@ public:
     inline wait_QReadWriteLock_Thread_1()
     { }
 
-    void run()
+    void run() override
     {
         readWriteLock.lockForWrite();
         cond.wakeOne();
@@ -134,10 +110,10 @@ public:
     QWaitCondition *cond;
 
     inline wait_QReadWriteLock_Thread_2()
-    : readWriteLock(0), cond(0)
+    : readWriteLock(nullptr), cond(nullptr)
     { }
 
-    void run()
+    void run() override
     {
         readWriteLock->lockForRead();
         started.wakeOne();
@@ -392,13 +368,13 @@ public:
     QWaitCondition *cond;
 
     inline wake_Thread()
-    : mutex(0), cond(0)
+    : mutex(nullptr), cond(nullptr)
     { }
 
     static inline void sleep(ulong s)
-    { QThread::sleep(s); }
+    { QThread::sleep(std::chrono::seconds{s}); }
 
-    void run()
+    void run() override
     {
         Q_ASSERT(count);
         Q_ASSERT(mutex);
@@ -424,13 +400,13 @@ public:
     QWaitCondition *cond;
 
     inline wake_Thread_2()
-    : readWriteLock(0), cond(0)
+    : readWriteLock(nullptr), cond(nullptr)
     { }
 
     static inline void sleep(ulong s)
-    { QThread::sleep(s); }
+    { QThread::sleep(std::chrono::seconds{s}); }
 
-    void run()
+    void run() override
     {
         Q_ASSERT(count);
         Q_ASSERT(readWriteLock);
@@ -764,7 +740,8 @@ public:
     QWaitCondition *startup;
     QWaitCondition *waitCondition;
 
-    void run() {
+    void run() override
+    {
         mutex->lock();
 
         ready = true;
@@ -796,7 +773,8 @@ public:
     QWaitCondition *startup;
     QWaitCondition *waitCondition;
 
-    void run() {
+    void run() override
+    {
         readWriteLock->lockForWrite();
 
         ready = true;

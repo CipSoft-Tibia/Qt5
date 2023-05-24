@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,11 @@
 
 #include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/renderer/core/clipboard/data_object.h"
 #include "third_party/blink/renderer/platform/file_metadata.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -44,8 +45,8 @@ TEST(WebDragDataTest, items) {
     metadata.length = 1234;
     KURL url(
         "filesystem:http://example.com/isolated/hash/visible-non-native-file");
-    data_object->Add(
-        File::CreateForFileSystemFile(url, metadata, File::kIsUserVisible));
+    data_object->Add(File::CreateForFileSystemFile(
+        url, metadata, File::kIsUserVisible, BlobDataHandle::Create()));
   }
 
   // Not user visible file system URL file.
@@ -55,43 +56,60 @@ TEST(WebDragDataTest, items) {
     KURL url(
         "filesystem:http://example.com/isolated/hash/"
         "not-visible-non-native-file");
-    data_object->Add(
-        File::CreateForFileSystemFile(url, metadata, File::kIsNotUserVisible));
+    data_object->Add(File::CreateForFileSystemFile(
+        url, metadata, File::kIsNotUserVisible, BlobDataHandle::Create()));
   }
 
   WebDragData data = data_object->ToWebDragData();
   WebVector<WebDragData::Item> items = data.Items();
   ASSERT_EQ(6u, items.size());
 
-  EXPECT_EQ(WebDragData::Item::kStorageTypeFilename, items[0].storage_type);
-  EXPECT_EQ("/native/path", items[0].filename_data);
-  EXPECT_EQ("path", items[0].display_name_data);
+  {
+    const auto* item = absl::get_if<WebDragData::FilenameItem>(&items[0]);
+    ASSERT_TRUE(item != nullptr);
+    EXPECT_EQ("/native/path", item->filename);
+    EXPECT_EQ("path", item->display_name);
+  }
 
-  EXPECT_EQ(WebDragData::Item::kStorageTypeString, items[1].storage_type);
-  EXPECT_EQ("text/plain", items[1].string_type);
-  EXPECT_EQ("name", items[1].string_data);
+  {
+    const auto* item = absl::get_if<WebDragData::StringItem>(&items[1]);
+    ASSERT_TRUE(item != nullptr);
+    EXPECT_EQ("text/plain", item->type);
+    EXPECT_EQ("name", item->data);
+  }
 
-  EXPECT_EQ(WebDragData::Item::kStorageTypeFilename, items[2].storage_type);
-  EXPECT_EQ("/native/visible/snapshot", items[2].filename_data);
-  EXPECT_EQ("name", items[2].display_name_data);
+  {
+    const auto* item = absl::get_if<WebDragData::FilenameItem>(&items[2]);
+    ASSERT_TRUE(item != nullptr);
+    EXPECT_EQ("/native/visible/snapshot", item->filename);
+    EXPECT_EQ("name", item->display_name);
+  }
 
-  EXPECT_EQ(WebDragData::Item::kStorageTypeFilename, items[3].storage_type);
-  EXPECT_EQ("/native/not-visible/snapshot", items[3].filename_data);
-  EXPECT_EQ("name", items[3].display_name_data);
+  {
+    const auto* item = absl::get_if<WebDragData::FilenameItem>(&items[3]);
+    ASSERT_TRUE(item != nullptr);
+    EXPECT_EQ("/native/not-visible/snapshot", item->filename);
+    EXPECT_EQ("name", item->display_name);
+  }
 
-  EXPECT_EQ(WebDragData::Item::kStorageTypeFileSystemFile,
-            items[4].storage_type);
-  EXPECT_EQ(
-      "filesystem:http://example.com/isolated/hash/visible-non-native-file",
-      items[4].file_system_url);
-  EXPECT_EQ(1234, items[4].file_system_file_size);
+  {
+    const auto* item = absl::get_if<WebDragData::FileSystemFileItem>(&items[4]);
+    ASSERT_TRUE(item != nullptr);
+    EXPECT_EQ(
+        "filesystem:http://example.com/isolated/hash/visible-non-native-file",
+        item->url);
+    EXPECT_EQ(1234, item->size);
+  }
 
-  EXPECT_EQ(WebDragData::Item::kStorageTypeFileSystemFile,
-            items[5].storage_type);
-  EXPECT_EQ(
-      "filesystem:http://example.com/isolated/hash/not-visible-non-native-file",
-      items[5].file_system_url);
-  EXPECT_EQ(1234, items[5].file_system_file_size);
+  {
+    const auto* item = absl::get_if<WebDragData::FileSystemFileItem>(&items[5]);
+    ASSERT_TRUE(item != nullptr);
+    EXPECT_EQ(
+        "filesystem:http://example.com/isolated/hash/"
+        "not-visible-non-native-file",
+        item->url);
+    EXPECT_EQ(1234, item->size);
+  }
 }
 
 }  // namespace blink

@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
     \externalpage https://source.android.com/setup/start/build-numbers
     \title Android: Build Numbers
@@ -43,6 +19,30 @@
 /*!
     \externalpage https://developer.android.com/studio/command-line/adb#devicestatus
     \title Android: Query for devices
+*/
+/*!
+    \externalpage https://developer.android.com/training/app-links/deep-linking
+    \title Android: Create Deep Links to App Content
+*/
+/*!
+    \externalpage https://developer.android.com/training/app-links/verify-site-associations
+    \title Android: Verify Android App Links
+*/
+/*!
+    \externalpage https://source.android.com/devices/tech/debug/tagged-pointers
+    \title Android: Tagged Pointers
+*/
+/*!
+    \externalpage https://developer.apple.com/documentation/uikit/uiapplication/1622952-canopenurl
+    \title iOS: canOpenURL:
+*/
+/*!
+    \externalpage https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app
+    \title iOS: Defining a Custom URL Scheme for Your App
+*/
+/*!
+    \externalpage https://developer.apple.com/documentation/xcode/supporting-associated-domains
+    \title iOS: Supporting Associated Domains
 */
 /*!
     \externalpage http://www.freedesktop.org/
@@ -77,7 +77,7 @@
 */
 
 /*!
-    \externalpage http://www.cmake.org/cmake/help/documentation.html
+    \externalpage https://cmake.org/cmake/help/latest/
     \title CMake Documentation
 */
 
@@ -114,6 +114,11 @@
 /*!
     \externalpage https://cmake.org/cmake/help/latest/command/target_link_libraries.html
     \title CMake target_link_libraries Documentation
+*/
+
+/*!
+    \externalpage https://conan.io/
+    \title Conan
 */
 
 /*!
@@ -208,8 +213,8 @@
 */
 
 /*!
-    \externalpage http://msdn.microsoft.com/en-us/directx/default.aspx
-    \title Direct X SDK
+    \externalpage https://docs.microsoft.com/en-us/windows/win32/winsock/socket-handles-2
+    \title Winsock 2 Socket Handle
 */
 
 /*!
@@ -323,12 +328,12 @@
 */
 
 /*!
-    \externalpage http://cgi.netscape.com/newsref/std/cookie_spec.html
+    \externalpage https://web.archive.org/web/20020803110822/http://wp.netscape.com/newsref/std/cookie_spec.html
     \title Netscape Cookie Specification
 */
 
 /*!
-    \externalpage http://msdn.microsoft.com/en-us/library/ms533046(VS.85).aspx
+    \externalpage https://docs.microsoft.com/en-us/previous-versions//ms533046(v=vs.85)
     \title Mitigating Cross-site Scripting With HTTP-only Cookies
 */
 
@@ -483,7 +488,7 @@
 */
 
 /*!
-    \externalpage http://msdn.microsoft.com/en-us/library/dd318066.aspx
+    \externalpage https://docs.microsoft.com/en-us/windows/win32/winauto/event-constants
     \title Microsoft Active Accessibility Event Constants
 */
 
@@ -528,6 +533,41 @@
 */
 
 /*!
+   \externalpage http://facebook.github.io/zstd/
+   \title Zstandard Site
+*/
+
+/*!
     \externalpage https://www.unicode.org/
     \title Unicode standard
+*/
+
+/*!
+    \externalpage https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
+    \title CreateProcess
+*/
+
+/*!
+    \externalpage https://testanything.org
+    \title Test Anything Protocol
+*/
+
+/*!
+    \externalpage https://www.jetbrains.com/teamcity/
+    \title TeamCity
+*/
+
+/*!
+    \externalpage https://junit.org/
+    \title JUnit XML
+*/
+
+/*!
+    \externalpage https://www.qt.io/product/quality-assurance/test-center
+    \title Test Center
+*/
+
+/*!
+    \externalpage https://specifications.freedesktop.org/trash-spec/trashspec-1.0.html
+    \title FreeDesktop.org Trash specification version 1.0
 */

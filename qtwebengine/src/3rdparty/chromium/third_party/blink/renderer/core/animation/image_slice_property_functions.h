@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_IMAGE_SLICE_PROPERTY_FUNCTIONS_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_IMAGE_SLICE_PROPERTY_FUNCTIONS_H_
 
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/css/css_property_names.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -24,8 +25,9 @@ class ImageSlicePropertyFunctions {
   STATIC_ONLY(ImageSlicePropertyFunctions);
 
  public:
-  static ImageSlice GetInitialImageSlice(const CSSProperty& property) {
-    return GetImageSlice(property, ComputedStyle::InitialStyle());
+  static ImageSlice GetInitialImageSlice(const CSSProperty& property,
+                                         const ComputedStyle& initial_style) {
+    return GetImageSlice(property, initial_style);
   }
 
   static ImageSlice GetImageSlice(const CSSProperty& property,
@@ -33,7 +35,7 @@ class ImageSlicePropertyFunctions {
     switch (property.PropertyID()) {
       default:
         NOTREACHED();
-        FALLTHROUGH;
+        [[fallthrough]];
       case CSSPropertyID::kBorderImageSlice:
         return ImageSlice(style.BorderImageSlices(),
                           style.BorderImageSlicesFill());
@@ -44,16 +46,16 @@ class ImageSlicePropertyFunctions {
   }
 
   static void SetImageSlice(const CSSProperty& property,
-                            ComputedStyle& style,
+                            ComputedStyleBuilder& builder,
                             const ImageSlice& slice) {
     switch (property.PropertyID()) {
       case CSSPropertyID::kBorderImageSlice:
-        style.SetBorderImageSlices(slice.slices);
-        style.SetBorderImageSlicesFill(slice.fill);
+        builder.SetBorderImageSlices(slice.slices);
+        builder.SetBorderImageSlicesFill(slice.fill);
         break;
       case CSSPropertyID::kWebkitMaskBoxImageSlice:
-        style.SetMaskBoxImageSlices(slice.slices);
-        style.SetMaskBoxImageSlicesFill(slice.fill);
+        builder.SetMaskBoxImageSlices(slice.slices);
+        builder.SetMaskBoxImageSlicesFill(slice.fill);
         break;
       default:
         NOTREACHED();

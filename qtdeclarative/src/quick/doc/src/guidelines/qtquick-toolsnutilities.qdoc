@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtquick-tools-and-utilities.html
@@ -35,78 +11,106 @@ especially for Qt Quick developers. The following sections provide a brief
 introduction to those tools and utilities, and provide links to further
 information about them.
 
-\section1 Qt Quick Designer
+\section1 Qt Creator
 
-The Qt Quick Designer enables designing Qt Quick-based UIs using simple
-drag-n-drop gestures that most designers are familiar with. It offers UI
-elements from the Qt Quick and Qt Quick Controls modules, as well as
-integration for custom UI elements.
+The \l{Qt Creator Manual}{Qt Creator} IDE is the key tool that enhances the overall developer
+experience of working with Qt and Qt Quick. Its editing, formatting, profiling and
+debugging features for Qt Quick make working with Qt Quick easier.
 
-The following is a list of example applications that use UIs created by
-the Qt Quick Designer:
+\section1 Qt Design Studio
 
-\list
- \li \l{Qt Quick Controls - Contact List}
- \li \l{Qt Quick Controls - Flat Style}
-\endlist
+\l{Qt Design Studio Manual}{Qt Design Studio} enables designing Qt Quick-based
+UIs using simple drag-n-drop gestures that most designers are familiar with.
+It offers UI elements from the Qt Quick and Qt Quick Controls modules, as well
+as integration for custom UI elements.
 
-\section2 QML Debugger and Profiler
+\section1 Qt Quick Effect Maker (QQEM)
 
-Being a declarative language, a piece of QML code provides minimal details
-about the entities defined. In such a scenario, the QML debugger is a very
-useful utility that enables:
+\l{\QQEM} is a tool for creating shader effects for Qt Quick with
+high productivity and performance. You can run Qt Quick Effect Maker as a
+standalone tool.
+
+\section1 QML Debugger
+
+The \l{Qt Creator: QML Debugger}{QML Debugger} is a very useful utility that
+enables:
 \list
  \li debugging JavaScript functions,
  \li executing JavaScript expressions,
  \li and inspecting QML properties.
 \endlist
 
-Besides this, a QML profiler enables you to get necessary diagnostic information,
-allowing you to analyze the application code for performance issues. For
-example, too much JavaScript in each frame, long-running C++ functions, and
-so on.
+The QML debugger is part of both \e{Qt Creator} and \e{Qt Design Studio}.
 
-\section2 Related Information
-\list
- \li \l{QML Debugger}
- \li \l{QML Profiler}
-\endlist
+\section1 QML Profiler
 
-\section2 QmlLive, GammaRay, and Squish
+The \l{Qt Creator: QML Profiler}{QML Profiler} enables you to get necessary
+diagnostic information, allowing you to analyze the application code for
+performance issues. For example, too much JavaScript in each frame,
+long-running C++ functions, and so on.
 
-QmlLive is a 3rd party tool that offers a QML runtime capable of rendering
-changes to the code in realtime. It avoids the need to rebuild the
-application after every code change and install it on the target device.
-You can also extend it to build a custom runtime that suits your needs.
+The profiler is part of both \e{Qt Creator} and \e{Qt Design Studio}.
 
-GammaRay is a useful utility that provides diagnostic information
-about your application. It is similar to the QML Profiler described in the
-earlier section, but offers a lot more. For example, the number of items or
-QObjects created, function calls made, time taken by each function call,
+\section1 QmlLive
+
+\l{QmlLive Manual}{QmlLive} is a 3rd party tool that offers a QML runtime
+capable of rendering changes to the code in realtime. It avoids the need to
+rebuild the application after every code change and install it on the target
+device. You can also extend it to build a custom runtime that suits your needs.
+
+\section1 GammaRay
+
+\l{GammaRay Manual}{GammaRay} is a useful utility that provides diagnostic
+information about your application. It is similar to the QML Profiler described
+in the earlier section, but offers a lot more. For example, the number of items
+or QObjects created, function calls made, time taken by each function call,
 property value introspection at runtime, and so on. Such information is very
 handy, especially while debugging QML applications.
 
-Squish is a well-known testing tool that automates UI testing by recording
-your actions or running scripts. Once the tests are setup, UI tests are a lot
-easier to run.
+\section1 Squish
 
-\section2 Related Information
+\l{Squish GUI Test Automation Tool}{Squish} is a well-known testing tool that
+automates UI testing by recording your actions or running scripts. Once the
+tests are setup, UI tests are a lot easier to run.
+
+\section1 qmllint
+
+\l{qtquick-tool-qmllint.html}{qmllint} is a tool shipped with Qt, that verifies
+the syntatic validity of QML files. It also warns about some QML anti-patterns.
+If you want to disable a specific warning type, you can find the appropriate
+flag for doing so by passing \c{--help} on the command line.
+
+\section1 qmlformat
+
+\e qmlformat is a tool that automatically formats QML files in accordance
+with the \l{QML Coding Conventions}.
+
+If you pass the \c{-n} or \c{--normalize} flag, \e qmlformat groups all
+properties, functions, and signals together, instead of retaining the order you
+specified.
+
+By default, qmlformat writes the formatted version of the file to stdout.
+If you wish to have your file updated in-place specify the \c{-i} flag.
+
+You may also change tab widths and line ending types among other settings,
+either via command line options or by using a settings file called
+\c{.qmlformat.ini}. A default settings file can be obtained by passing the
+\c{--write-defaults} flag.
+
+As with all tools, the \c{-h} or \c{--help} flag will print some information on
+all the available options.
+
+\section1 Qt Quick Compiler
+
+The Qt Quick Compiler consist of two components:
 \list
- \li \l{QmlLive}
- \li \l{GammaRay}
- \li \l{Squish}
+    \li \l {QML type compiler}
+    \li \l {QML script compiler}
 \endlist
 
-\section1 Qt Creator
+\section1 QML Language Server
 
-The Qt Creator IDE is the key tool that enhances the overall developer experience of
-working with Qt Quick. Its auto-completion and debugging features make working
-with Qt Quick easier. Besides this, most of the tools and utilities
-mentioned in the earlier sections are integrated into it, with the possibility of
-integrating 3rd party tools such as QmlLive and GammaRay.
+\l{QML Language Server} is a tool shipped with Qt that helps you edit
+QML code in your favorite (LSP-compatible) editor.
 
-\section2 Related Information
-\list
-\li \l{Qt Creator Manual}
-\endlist
 */

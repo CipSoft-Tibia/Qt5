@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 gd{
     Currencies{
         ADP{
@@ -898,6 +899,10 @@ gd{
             "SKK",
             "Koruna Slòbhacach",
         }
+        SLE{
+            "SLE",
+            "Leone Siarra Leòmhannach ùr",
+        }
         SLL{
             "SLL",
             "Leone Siarra Leòmhannach",
@@ -1036,7 +1041,7 @@ gd{
         }
         UYW{
             "UYW",
-            "aonad inneacs tuarastail ainmeach Uruguaidh",
+            "Aonad inneacs tuarastail ainmeach Uruguaidh",
         }
         UZS{
             "UZS",
@@ -1045,6 +1050,10 @@ gd{
         VEB{
             "VEB",
             "Bolívar Bheinisealach (1871–2008)",
+        }
+        VED{
+            "VED",
+            "Bolívar Soberano",
         }
         VEF{
             "VEF",
@@ -1119,7 +1128,7 @@ gd{
             "Franc UIC Frangach",
         }
         XOF{
-            "CFA",
+            "F CFA",
             "Franc CFA Afraga an Iar",
         }
         XPD{
@@ -2663,6 +2672,12 @@ gd{
             other{"koruna Slòbhacach"}
             two{"koruna Slòbhacach"}
         }
+        SLE{
+            few{"leone Siarra Leòmhannach ùr"}
+            one{"leone Siarra Leòmhannach ùr"}
+            other{"leone Siarra Leòmhannach ùr"}
+            two{"leone Siarra Leòmhannach ùr"}
+        }
         SLL{
             few{"leone Siarra Leòmhannach"}
             one{"leone Siarra Leòmhannach"}
@@ -2884,6 +2899,12 @@ gd{
             one{"bholívar Bheinisealach (1871–2008)"}
             other{"bolívar Bheinisealach (1871–2008)"}
             two{"bholívar Bheinisealach (1871–2008)"}
+        }
+        VED{
+            few{"bolívar Soberano"}
+            one{"bholívar Soberano"}
+            other{"bolívar Soberano"}
+            two{"bholívar Soberano"}
         }
         VEF{
             few{"bolívar Bheinisealach (2008–2018)"}
@@ -3144,5 +3165,4 @@ gd{
         other{"{0} {1}"}
         two{"{0} {1}"}
     }
-    Version{"37"}
 }

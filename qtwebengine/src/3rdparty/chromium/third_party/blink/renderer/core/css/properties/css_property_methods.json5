@@ -27,17 +27,17 @@
     {
       name: "ParseShorthand",
       return_type: "bool",
-      parameters: "(bool, CSSParserTokenRange&, const CSSParserContext&, const CSSParserLocalContext&, HeapVector<CSSPropertyValue, 256>&)",
+      parameters: "(bool, CSSParserTokenRange&, const CSSParserContext&, const CSSParserLocalContext&, HeapVector<CSSPropertyValue, 64>&)",
     },
     {
       name: "CSSValueFromComputedStyleInternal",
       return_type: "const CSSValue*",
-      parameters: "(const ComputedStyle&, const SVGComputedStyle&, const LayoutObject*, bool allow_visited_style)",
+      parameters: "(const ComputedStyle&, const LayoutObject*, bool allow_visited_style)",
     },
     {
       name: "ColorIncludingFallback",
       return_type: "const blink::Color",
-      parameters: "(bool, const ComputedStyle&)",
+      parameters: "(bool, const ComputedStyle&, bool* is_current_color = nullptr)",
     },
     {
       name: "InitialValue",

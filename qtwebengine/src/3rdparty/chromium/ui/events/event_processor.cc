@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,14 +23,14 @@ EventDispatchDetails EventProcessor::OnEventFromSource(Event* event) {
   Event* event_to_dispatch = event;
   std::unique_ptr<Event> event_copy;
   if (!dispatch_original_event) {
-    event_copy = Event::Clone(*event);
+    event_copy = event->Clone();
     event_to_dispatch = event_copy.get();
   }
 
   EventDispatchDetails details;
   OnEventProcessingStarted(event_to_dispatch);
+  EventTarget* target = nullptr;
   if (!event_to_dispatch->handled()) {
-    EventTarget* target = nullptr;
     EventTarget* root = GetRootForEvent(event_to_dispatch);
     DCHECK(root);
     EventTargeter* targeter = root->GetEventTargeter();
@@ -44,6 +44,13 @@ EventDispatchDetails EventProcessor::OnEventFromSource(Event* event) {
         target = targeter->FindTargetForEvent(root, event_to_dispatch);
     }
     DCHECK(targeter);
+
+    // FindTargetForEvent may dispatch event, which may delete the event
+    // processor.
+    if (!weak_this) {
+      details.dispatcher_destroyed = true;
+      return details;
+    }
 
     while (target) {
       details = DispatchEvent(target, event_to_dispatch);
@@ -70,14 +77,16 @@ EventDispatchDetails EventProcessor::OnEventFromSource(Event* event) {
       target = targeter->FindNextBestTarget(target, event_to_dispatch);
     }
   }
-  OnEventProcessingFinished(event);
+  OnEventProcessingFinished(event, target, details);
   return details;
 }
 
 void EventProcessor::OnEventProcessingStarted(Event* event) {
 }
 
-void EventProcessor::OnEventProcessingFinished(Event* event) {
-}
+void EventProcessor::OnEventProcessingFinished(
+    Event* event,
+    EventTarget* target,
+    const EventDispatchDetails& details) {}
 
 }  // namespace ui

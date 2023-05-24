@@ -11,7 +11,6 @@
 #include "test/fake_texture_frame.h"
 
 #include "api/video/i420_buffer.h"
-#include "rtc_base/ref_counted_object.h"
 
 namespace webrtc {
 namespace test {
@@ -23,7 +22,7 @@ VideoFrame FakeNativeBuffer::CreateFrame(int width,
                                          VideoRotation rotation) {
   return VideoFrame::Builder()
       .set_video_frame_buffer(
-          new rtc::RefCountedObject<FakeNativeBuffer>(width, height))
+          rtc::make_ref_counted<FakeNativeBuffer>(width, height))
       .set_timestamp_rtp(timestamp)
       .set_timestamp_ms(render_time_ms)
       .set_rotation(rotation)
@@ -44,7 +43,7 @@ int FakeNativeBuffer::height() const {
 
 rtc::scoped_refptr<I420BufferInterface> FakeNativeBuffer::ToI420() {
   rtc::scoped_refptr<I420Buffer> buffer = I420Buffer::Create(width_, height_);
-  I420Buffer::SetBlack(buffer);
+  I420Buffer::SetBlack(buffer.get());
   return buffer;
 }
 

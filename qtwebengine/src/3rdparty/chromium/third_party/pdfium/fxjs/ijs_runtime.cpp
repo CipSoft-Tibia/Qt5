@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include "fxjs/cjs_runtimestub.h"
 
 #ifdef PDF_ENABLE_V8
+#include "fpdfsdk/cpdfsdk_formfillenvironment.h"
 #include "fxjs/cfxjs_engine.h"
 #include "fxjs/cjs_runtime.h"
 #ifdef PDF_ENABLE_XFA
@@ -18,7 +19,7 @@ IJS_Runtime::ScopedEventContext::ScopedEventContext(IJS_Runtime* pRuntime)
     : m_pRuntime(pRuntime), m_pContext(pRuntime->NewEventContext()) {}
 
 IJS_Runtime::ScopedEventContext::~ScopedEventContext() {
-  m_pRuntime->ReleaseEventContext(m_pContext.Release());
+  m_pRuntime->ReleaseEventContext(m_pContext.ExtractAsDangling());
 }
 
 // static

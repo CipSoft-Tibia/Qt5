@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandclient.h"
 #include <QtCore/private/qobject_p.h>
@@ -75,6 +49,8 @@ public:
         QWaylandClient *parent = nullptr;
     };
     Listener listener;
+
+    QWaylandClient::TextInputProtocols mTextInputProtocols = QWaylandClient::NoProtocol;
 };
 
 /*!
@@ -158,7 +134,7 @@ QWaylandClient *QWaylandClient::fromWlClient(QWaylandCompositor *compositor, wl_
 }
 
 /*!
- * \qmlproperty WaylandCompositor QtWaylandCompositor::WaylandClient::compositor
+ * \qmlproperty WaylandCompositor QtWayland.Compositor::WaylandClient::compositor
  *
  * This property holds the compositor of this WaylandClient.
  */
@@ -186,7 +162,7 @@ wl_client *QWaylandClient::client() const
 }
 
 /*!
- * \qmlproperty int QtWaylandCompositor::WaylandClient::userId
+ * \qmlproperty int QtWayland.Compositor::WaylandClient::userId
  *
  * This property holds the user id of this WaylandClient.
  */
@@ -205,7 +181,7 @@ qint64 QWaylandClient::userId() const
 }
 
 /*!
- * \qmlproperty int QtWaylandCompositor::WaylandClient::groupId
+ * \qmlproperty int QtWayland.Compositor::WaylandClient::groupId
  * \readonly
  *
  * This property holds the group id of this WaylandClient.
@@ -224,7 +200,7 @@ qint64 QWaylandClient::groupId() const
 }
 
 /*!
- * \qmlproperty int QtWaylandCompositor::WaylandClient::processId
+ * \qmlproperty int QtWayland.Compositor::WaylandClient::processId
  * \readonly
  *
  * This property holds the process id of this WaylandClient.
@@ -243,7 +219,7 @@ qint64 QWaylandClient::processId() const
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandClient::kill(signal)
+ * \qmlmethod void QtWayland.Compositor::WaylandClient::kill(signal)
  *
  * Kills the client with the specified \a signal.
  */
@@ -259,7 +235,7 @@ void QWaylandClient::kill(int signal)
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::WaylandClient::close()
+ * \qmlmethod void QtWayland.Compositor::WaylandClient::close()
  *
  * Closes the client
  */
@@ -273,4 +249,20 @@ void QWaylandClient::close()
     d->compositor->destroyClient(this);
 }
 
+QWaylandClient::TextInputProtocols QWaylandClient::textInputProtocols() const
+{
+    Q_D(const QWaylandClient);
+    return d->mTextInputProtocols;
+}
+
+void QWaylandClient::setTextInputProtocols(TextInputProtocols p)
+{
+    Q_D(QWaylandClient);
+    if (d->mTextInputProtocols != p)
+        d->mTextInputProtocols = p;
+}
+
 QT_END_NAMESPACE
+
+#include "moc_qwaylandclient.cpp"
+

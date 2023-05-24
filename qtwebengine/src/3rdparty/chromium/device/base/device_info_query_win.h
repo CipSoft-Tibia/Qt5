@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,6 @@
 
 #include <string>
 
-#include "base/macros.h"
-#include "base/strings/string16.h"
 #include "device/base/device_base_export.h"
 
 namespace device {
@@ -22,6 +20,10 @@ namespace device {
 class DEVICE_BASE_EXPORT DeviceInfoQueryWin {
  public:
   DeviceInfoQueryWin();
+
+  DeviceInfoQueryWin(const DeviceInfoQueryWin&) = delete;
+  DeviceInfoQueryWin& operator=(const DeviceInfoQueryWin&) = delete;
+
   ~DeviceInfoQueryWin();
 
   // Add a device to |device_info_list_| using its |device_path| so that
@@ -42,8 +44,6 @@ class DEVICE_BASE_EXPORT DeviceInfoQueryWin {
   HDEVINFO device_info_list_ = INVALID_HANDLE_VALUE;
   // When device_info_data_.cbSize != 0, |device_info_data_| is valid.
   SP_DEVINFO_DATA device_info_data_;
-
-  DISALLOW_COPY_AND_ASSIGN(DeviceInfoQueryWin);
 };
 
 }  // namespace device

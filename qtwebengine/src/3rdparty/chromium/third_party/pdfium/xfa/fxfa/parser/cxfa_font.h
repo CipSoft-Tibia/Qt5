@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #ifndef XFA_FXFA_PARSER_CXFA_FONT_H_
 #define XFA_FXFA_PARSER_CXFA_FONT_H_
 
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
 #include "xfa/fxfa/parser/cxfa_node.h"
 
 class CXFA_Font final : public CXFA_Node {
@@ -28,7 +28,7 @@ class CXFA_Font final : public CXFA_Node {
   bool IsBold();
   bool IsItalic();
 
-  FX_ARGB GetColor();
+  FX_ARGB GetColor() const;
   void SetColor(FX_ARGB color);
 
  private:

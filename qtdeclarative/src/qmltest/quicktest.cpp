@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "quicktest_p.h"
 #include "quicktestresult_p.h"
@@ -45,14 +9,16 @@
 #include <QtQml/qqmlengine.h>
 #include <QtQml/qqmlcontext.h>
 #include <QtQuick/private/qquickitem_p.h>
+#include <QtQuick/private/qquickwindow_p.h>
 #include <QtQuick/qquickitem.h>
 #include <QtQuick/qquickview.h>
+#include <QtQuick/qquickwindow.h>
 #include <QtQml/qjsvalue.h>
 #include <QtQml/qjsengine.h>
 #include <QtQml/qqmlpropertymap.h>
 #include <QtQuick/private/qquickitem_p.h>
 #include <QtQuick/qquickitem.h>
-#include <QtGui/qopengl.h>
+#include <qopengl.h>
 #include <QtCore/qurl.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qdir.h>
@@ -70,11 +36,7 @@
 #include <QtQml/QQmlFileSelector>
 
 #include <private/qqmlcomponent_p.h>
-#include <private/qv4executablecompilationunit_p.h>
-
-#ifdef QT_QMLTEST_WITH_WIDGETS
-#include <QtWidgets/QApplication>
-#endif
+#include <private/qv4resolvedtypereference_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -114,7 +76,38 @@ bool QQuickTest::qIsPolishScheduled(const QQuickItem *item)
 }
 
 /*!
+    \since 6.4
+    \overload qIsPolishScheduled()
+
+    Returns \c true if there are any items managed by this window for
+    which \c qIsPolishScheduled(item) returns \c true, otherwise
+    returns \c false.
+
+    For example, if an item somewhere within the scene may or may not
+    be polished, but you need to wait for it if it is, you can use
+    the following code:
+
+    \code
+        if (QQuickTest::qIsPolishScheduled(window))
+            QVERIFY(QQuickTest::qWaitForPolish(window));
+    \endcode
+
+    The QML equivalent of this function is
+    \l [QML]{TestCase::}{isPolishScheduled()}.
+
+    \sa QQuickItem::polish(), QQuickItem::updatePolish(),
+        QQuickTest::qWaitForPolish()
+*/
+bool QQuickTest::qIsPolishScheduled(const QQuickWindow *window)
+{
+    return !QQuickWindowPrivate::get(window)->itemsToPolish.isEmpty();
+}
+
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+#if QT_DEPRECATED_SINCE(6, 4)
+/*!
     \since 5.13
+    \deprecated [6.4] Use \l qWaitForPolish() instead.
 
     Waits for \a timeout milliseconds or until
     \l {QQuickItem::}{updatePolish()} has been called on \a item.
@@ -130,28 +123,61 @@ bool QQuickTest::qIsPolishScheduled(const QQuickItem *item)
 */
 bool QQuickTest::qWaitForItemPolished(const QQuickItem *item, int timeout)
 {
+    return qWaitForPolish(item, timeout);
+}
+#endif
+#endif
+
+/*!
+    \since 6.4
+
+    Waits for \a timeout milliseconds or until
+    \l {QQuickItem::}{updatePolish()} has been called on \a item.
+
+    Returns \c true if \c updatePolish() was called on \a item within
+    \a timeout milliseconds, otherwise returns \c false.
+
+    \sa QQuickItem::polish(), QQuickItem::updatePolish(),
+        QQuickTest::qIsPolishScheduled()
+*/
+bool QQuickTest::qWaitForPolish(const QQuickItem *item, int timeout)
+{
     return QTest::qWaitFor([&]() { return !QQuickItemPrivate::get(item)->polishScheduled; }, timeout);
 }
 
-static QObject *testRootObject(QQmlEngine *engine, QJSEngine *jsEngine)
+/*!
+    \since 6.4
+
+    Waits for \a timeout milliseconds or until \c qIsPolishScheduled(item)
+    returns \c false for all items managed by \a window.
+
+    Returns \c true if \c qIsPolishScheduled(item) returns false for all items
+    within \a timeout milliseconds, otherwise returns \c false.
+
+    The QML equivalent of this function is
+    \l [QML]{TestCase::}{waitForPolish()}.
+
+    \sa QQuickItem::polish(), QQuickItem::updatePolish(),
+        QQuickTest::qIsPolishScheduled()
+*/
+bool QQuickTest::qWaitForPolish(const QQuickWindow *window, int timeout)
 {
-    Q_UNUSED(engine);
-    Q_UNUSED(jsEngine);
-    return QTestRootObject::instance();
+    return QTest::qWaitFor([&]() { return QQuickWindowPrivate::get(window)->itemsToPolish.isEmpty(); }, timeout);
 }
 
 static inline QString stripQuotes(const QString &s)
 {
-    if (s.length() >= 2 && s.startsWith(QLatin1Char('"')) && s.endsWith(QLatin1Char('"')))
-        return s.mid(1, s.length() - 2);
+    if (s.size() >= 2 && s.startsWith(QLatin1Char('"')) && s.endsWith(QLatin1Char('"')))
+        return s.mid(1, s.size() - 2);
     else
         return s;
 }
 
-void handleCompileErrors(const QFileInfo &fi, QQuickView *view)
+static void handleCompileErrors(
+        const QFileInfo &fi, const QList<QQmlError> &errors, QQmlEngine *engine,
+        QQuickView *view = nullptr)
 {
     // Error compiling the test - flag failure in the log and continue.
-    const QList<QQmlError> errors = view->errors();
     QuickTestResult results;
     results.setTestCaseName(fi.baseName());
     results.startLogging();
@@ -173,8 +199,11 @@ void handleCompileErrors(const QFileInfo &fi, QQuickView *view)
         str << ": " << e.description() << '\n';
     }
     str << "  Working directory: " << QDir::toNativeSeparators(QDir::current().absolutePath()) << '\n';
-    if (QQmlEngine *engine = view->engine()) {
-        str << "  View: " << view->metaObject()->className() << ", import paths:\n";
+    if (engine) {
+        str << "  ";
+        if (view)
+            str << "View: " << view->metaObject()->className() << ", ";
+        str << "Import paths:\n";
         const auto importPaths = engine->importPathList();
         for (const QString &i : importPaths)
             str << "    '" << QDir::toNativeSeparators(i) << "'\n";
@@ -194,25 +223,49 @@ void handleCompileErrors(const QFileInfo &fi, QQuickView *view)
     results.stopLogging();
 }
 
-bool qWaitForSignal(QObject *obj, const char* signal, int timeout = 5000)
-{
-    QSignalSpy spy(obj, signal);
-    QElapsedTimer timer;
-    timer.start();
+class SimpleReceiver : public QObject {
+    Q_OBJECT
+public:
+    bool signalReceived = false;
+public slots:
+    void slotFun() { signalReceived = true; }
+};
 
-    while (!spy.size()) {
-        int remaining = timeout - int(timer.elapsed());
-        if (remaining <= 0)
-            break;
-        QCoreApplication::processEvents(QEventLoop::AllEvents, remaining);
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        QTest::qSleep(10);
+bool qWaitForSignal(QObject *obj, const char* signal, int timeout)
+{
+    if (!obj || !signal) {
+        qWarning("qWaitForSignal: invalid arguments");
+        return false;
+    }
+    if (((signal[0] - '0') & 0x03) != QSIGNAL_CODE) {
+        qWarning("qWaitForSignal: not a valid signal, use the SIGNAL macro");
+        return false;
     }
 
-    return spy.size();
+    int sig = obj->metaObject()->indexOfSignal(signal + 1);
+    if (sig == -1) {
+        const QByteArray ba = QMetaObject::normalizedSignature(signal + 1);
+        sig = obj->metaObject()->indexOfSignal(ba.constData());
+        if (sig == -1) {
+            qWarning("qWaitForSignal: no such signal %s::%s", obj->metaObject()->className(),
+                     signal);
+            return false;
+        }
+    }
+
+    SimpleReceiver receiver;
+    static int slot = receiver.metaObject()->indexOfSlot("slotFun()");
+    if (!QMetaObject::connect(obj, sig, &receiver, slot)) {
+        qWarning("qWaitForSignal: failed to connect to signal %s::%s",
+                 obj->metaObject()->className(), signal);
+        return false;
+    }
+
+    return QTest::qWaitFor([&]() { return receiver.signalReceived; }, timeout);
 }
 
-void maybeInvokeSetupMethod(QObject *setupObject, const char *member, QGenericArgument val0 = QGenericArgument(nullptr))
+template <typename... Args>
+void maybeInvokeSetupMethod(QObject *setupObject, const char *member, Args &&... args)
 {
     // It's OK if it doesn't exist: since we have more than one callback that
     // can be called, it makes sense if the user only implements one of them.
@@ -223,7 +276,7 @@ void maybeInvokeSetupMethod(QObject *setupObject, const char *member, QGenericAr
     const int methodIndex = setupMetaObject->indexOfMethod(member);
     if (methodIndex != -1) {
         const QMetaMethod method = setupMetaObject->method(methodIndex);
-        method.invoke(setupObject, val0);
+        method.invoke(setupObject, std::forward<Args>(args)...);
     }
 }
 
@@ -309,7 +362,7 @@ private:
 
         if (!object) // Start at root of compilation unit if not enumerating a specific child
             object = compilationUnit->objectAt(0);
-        if (object->flags & Object::IsInlineComponentRoot)
+        if (object->hasFlag(Object::IsInlineComponentRoot))
             return result;
 
         if (const auto superTypeUnit = compilationUnit->resolvedTypes.value(
@@ -325,13 +378,13 @@ private:
                 // Look for override of name in this type
                 for (auto binding = object->bindingsBegin(); binding != object->bindingsEnd(); ++binding) {
                     if (compilationUnit->stringAt(binding->propertyNameIndex) == QLatin1String("name")) {
-                        if (binding->type == QV4::CompiledData::Binding::Type_String) {
+                        if (binding->type() == QV4::CompiledData::Binding::Type_String) {
                             result.testCaseName = compilationUnit->stringAt(binding->stringIndex);
                         } else {
                             QQmlError error;
                             error.setUrl(compilationUnit->url());
-                            error.setLine(binding->location.line);
-                            error.setColumn(binding->location.column);
+                            error.setLine(binding->location.line());
+                            error.setColumn(binding->location.column());
                             error.setDescription(QStringLiteral("the 'name' property of a TestCase must be a literal string"));
                             result.errors << error;
                         }
@@ -355,7 +408,7 @@ private:
         }
 
         for (auto binding = object->bindingsBegin(); binding != object->bindingsEnd(); ++binding) {
-            if (binding->type == QV4::CompiledData::Binding::Type_Object) {
+            if (binding->type() == QV4::CompiledData::Binding::Type_Object) {
                 const Object *child = compilationUnit->objectAt(binding->value.objectIndex);
                 result << enumerateTestCases(compilationUnit, child);
             }
@@ -372,28 +425,9 @@ int quick_test_main(int argc, char **argv, const char *name, const char *sourceD
 
 int quick_test_main_with_setup(int argc, char **argv, const char *name, const char *sourceDir, QObject *setup)
 {
-    // Peek at arguments to check for '-widgets' argument
-#ifdef QT_QMLTEST_WITH_WIDGETS
-    bool withWidgets = false;
-    for (int index = 1; index < argc; ++index) {
-        if (strcmp(argv[index], "-widgets") == 0) {
-            withWidgets = true;
-            break;
-        }
-    }
-#endif
-
-    QCoreApplication *app = nullptr;
-    if (!QCoreApplication::instance()) {
-#ifdef QT_QMLTEST_WITH_WIDGETS
-        if (withWidgets)
-            app = new QApplication(argc, argv);
-        else
-#endif
-        {
-            app = new QGuiApplication(argc, argv);
-        }
-    }
+    QScopedPointer<QCoreApplication> app;
+    if (!QCoreApplication::instance())
+        app.reset(new QGuiApplication(argc, argv));
 
     if (setup)
         maybeInvokeSetupMethod(setup, "applicationAvailable()");
@@ -425,11 +459,6 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
             index += 2;
         } else if (strcmp(argv[index], "-opengl") == 0) {
             ++index;
-#ifdef QT_QMLTEST_WITH_WIDGETS
-        } else if (strcmp(argv[index], "-widgets") == 0) {
-            withWidgets = true;
-            ++index;
-#endif
         } else if (strcmp(argv[index], "-translation") == 0 && (index + 1) < argc) {
             translationFile = stripQuotes(QString::fromLocal8Bit(argv[index + 1]));
             index += 2;
@@ -460,11 +489,6 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
     }
 #endif
 
-#if defined(Q_OS_WINRT)
-    if (testPath.isEmpty())
-        testPath = QLatin1String(":/");
-#endif
-
     // Determine where to look for the test data.
     if (testPath.isEmpty() && sourceDir) {
         const QString s = QString::fromLocal8Bit(sourceDir);
@@ -472,7 +496,7 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
             testPath = s;
     }
 
-#if defined(Q_OS_ANDROID)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_INTEGRITY)
             if (testPath.isEmpty())
                     testPath = QLatin1String(":/");
 #endif
@@ -491,11 +515,35 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
 
     const QFileInfo testPathInfo(testPath);
     if (testPathInfo.isFile()) {
-        if (!testPath.endsWith(QLatin1String(".qml"))) {
-            qWarning("'%s' does not have the suffix '.qml'.", qPrintable(testPath));
+        if (testPath.endsWith(QLatin1String(".qml"))) {
+            files << testPath;
+        } else if (testPath.endsWith(QLatin1String(".qmltests"))) {
+            QFile file(testPath);
+            if (file.open(QIODevice::ReadOnly)) {
+                while (!file.atEnd()) {
+                    const QString filePath = testPathInfo.dir()
+                                                     .filePath(QString::fromUtf8(file.readLine()))
+                                                     .trimmed();
+                    const QFileInfo f(filePath);
+                    if (f.exists())
+                        files.append(filePath);
+                    else
+                        qWarning("The test file '%s' does not exists", qPrintable(filePath));
+                }
+                file.close();
+                files.sort();
+                if (files.isEmpty()) {
+                    qWarning("The file '%s' does not contain any tests files",
+                             qPrintable(testPath));
+                    return 1;
+                }
+            } else {
+                qWarning("Could not read '%s'", qPrintable(testPath));
+            }
+        } else {
+            qWarning("'%s' does not have the suffix '.qml' or '.qmltests'.", qPrintable(testPath));
             return 1;
         }
-        files << testPath;
     } else if (testPathInfo.isDir()) {
         // Scan the test data directory recursively, looking for "tst_*.qml" files.
         const QStringList filters(QStringLiteral("tst_*.qml"));
@@ -518,23 +566,20 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
 
     qputenv("QT_QTESTLIB_RUNNING", "1");
 
-    // Register the custom factory function
-    qmlRegisterSingletonType<QTestRootObject>("Qt.test.qtestroot", 1, 0, "QTestRootObject", testRootObject);
-
     QSet<QString> commandLineTestFunctions(QTest::testFunctions.cbegin(), QTest::testFunctions.cend());
     const bool filteringTestFunctions = !commandLineTestFunctions.isEmpty();
 
     // Scan through all of the "tst_*.qml" files and run each of them
     // in turn with a separate QQuickView (for test isolation).
-    for (const QString &file : qAsConst(files)) {
+    for (const QString &file : std::as_const(files)) {
         const QFileInfo fi(file);
         if (!fi.exists())
             continue;
 
         QQmlEngine engine;
-        for (const QString &path : qAsConst(imports))
+        for (const QString &path : std::as_const(imports))
             engine.addImportPath(path);
-        for (const QString &path : qAsConst(pluginPaths))
+        for (const QString &path : std::as_const(pluginPaths))
             engine.addPluginPath(path);
 
         if (!fileSelectors.isEmpty()) {
@@ -551,9 +596,8 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
 
         TestCaseCollector testCaseCollector(fi, &engine);
         if (!testCaseCollector.errors().isEmpty()) {
-            for (const QQmlError &error : testCaseCollector.errors())
-                qWarning() << error;
-            exit(1);
+            handleCompileErrors(fi, testCaseCollector.errors(), &engine);
+            continue;
         }
 
         TestCaseCollector::TestCaseList availableTestFunctions = testCaseCollector.testCases();
@@ -578,56 +622,50 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
         QObject::connect(view.engine(), SIGNAL(quit()),
                          &eventLoop, SLOT(quit()));
         view.rootContext()->setContextProperty
-            (QLatin1String("qtest"), QTestRootObject::instance()); // Deprecated. Use QTestRootObject from Qt.test.qtestroot instead
+            (QLatin1String("qtest"), QTestRootObject::instance()); // Deprecated. Use QTestRootObject from QtTest instead
 
         view.setObjectName(fi.baseName());
         view.setTitle(view.objectName());
         QTestRootObject::instance()->init();
         QString path = fi.absoluteFilePath();
         if (path.startsWith(QLatin1String(":/")))
-            view.setSource(QUrl(QLatin1String("qrc:") + path.midRef(1)));
+            view.setSource(QUrl(QLatin1String("qrc:") + QStringView{path}.mid(1)));
         else
             view.setSource(QUrl::fromLocalFile(path));
 
         while (view.status() == QQuickView::Loading)
             QTest::qWait(10);
         if (view.status() == QQuickView::Error) {
-            handleCompileErrors(fi, &view);
+            handleCompileErrors(fi, view.errors(), view.engine(), &view);
             continue;
         }
-        if (!QTestRootObject::instance()->hasQuit) {
-            // If the test already quit, then it was performed
-            // synchronously during setSource().  Otherwise it is
-            // an asynchronous test and we need to show the window
-            // and wait for the first frame to be rendered
-            // and then wait for quit indication.
-            view.setFramePosition(QPoint(50, 50));
-            if (view.size().isEmpty()) { // Avoid hangs with empty windows.
-                view.resize(200, 200);
-            }
-            view.show();
-            if (!QTest::qWaitForWindowExposed(&view)) {
-                qWarning().nospace()
-                    << "Test '" << QDir::toNativeSeparators(path) << "' window not exposed after show().";
-            }
-            view.requestActivate();
-            if (!QTest::qWaitForWindowActive(&view)) {
-                qWarning().nospace()
-                    << "Test '" << QDir::toNativeSeparators(path) << "' window not active after requestActivate().";
-            }
-            if (view.isExposed()) {
-                // Defer property update until event loop has started
-                QTimer::singleShot(0, []() {
-                    QTestRootObject::instance()->setWindowShown(true);
-                });
-            } else {
-                qWarning().nospace()
-                    << "Test '" << QDir::toNativeSeparators(path) << "' window was never exposed! "
-                    << "If the test case was expecting windowShown, it will hang.";
-            }
-            if (!QTestRootObject::instance()->hasQuit && QTestRootObject::instance()->hasTestCase())
-                eventLoop.exec();
+
+        view.setFramePosition(QPoint(50, 50));
+        if (view.size().isEmpty()) { // Avoid hangs with empty windows.
+            view.resize(200, 200);
         }
+        view.show();
+        if (!QTest::qWaitForWindowExposed(&view)) {
+            qWarning().nospace()
+                << "Test '" << QDir::toNativeSeparators(path) << "' window not exposed after show().";
+        }
+        view.requestActivate();
+        if (!QTest::qWaitForWindowActive(&view)) {
+            qWarning().nospace()
+                << "Test '" << QDir::toNativeSeparators(path) << "' window not active after requestActivate().";
+        }
+        if (view.isExposed()) {
+            // Defer property update until event loop has started
+            QTimer::singleShot(0, []() {
+                QTestRootObject::instance()->setWindowShown(true);
+            });
+        } else {
+            qWarning().nospace()
+                << "Test '" << QDir::toNativeSeparators(path) << "' window was never exposed! "
+                << "If the test case was expecting windowShown, it will hang.";
+        }
+        if (!QTestRootObject::instance()->hasQuit && QTestRootObject::instance()->hasTestCase())
+            eventLoop.exec();
     }
 
     if (setup)
@@ -635,14 +673,14 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
 
     // Flush the current logging stream.
     QuickTestResult::setProgramName(nullptr);
-    delete app;
+    app.reset();
 
     // Check that all test functions passed on the command line were found
     if (!commandLineTestFunctions.isEmpty()) {
         qWarning() << "Could not find the following test functions:";
-        for (const QString &functionName : qAsConst(commandLineTestFunctions))
+        for (const QString &functionName : std::as_const(commandLineTestFunctions))
             qWarning("    %s()", qUtf8Printable(functionName));
-        return commandLineTestFunctions.count();
+        return commandLineTestFunctions.size();
     }
 
     // Return the number of failures as the exit code.
@@ -650,3 +688,6 @@ int quick_test_main_with_setup(int argc, char **argv, const char *name, const ch
 }
 
 QT_END_NAMESPACE
+
+#include "moc_quicktest_p.cpp"
+#include "quicktest.moc"

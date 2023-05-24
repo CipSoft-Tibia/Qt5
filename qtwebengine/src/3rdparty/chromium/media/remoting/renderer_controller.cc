@@ -1,35 +1,34 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/remoting/renderer_controller.h"
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/time/default_tick_clock.h"
 #include "base/time/tick_clock.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
+#include "media/remoting/metrics.h"
+#include "media/remoting/remoting_constants.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "media/base/android/media_codec_util.h"
 #endif
 
 namespace media {
 namespace remoting {
 
+using mojom::RemotingSinkAudioCapability;
+using mojom::RemotingSinkFeature;
+using mojom::RemotingSinkVideoCapability;
+
 namespace {
 
-// The duration to delay the start of media remoting to ensure all preconditions
-// are held stable before switching to media remoting.
-constexpr base::TimeDelta kDelayedStart = base::TimeDelta::FromSeconds(5);
-
-constexpr int kPixelPerSec4K = 3840 * 2160 * 30;  // 4k 30fps.
-constexpr int kPixelPerSec2K = 1920 * 1080 * 30;  // 1080p 30fps.
-
-// The minimum media element duration that is allowed for media remoting.
-// Frequent switching into and out of media remoting for short-duration media
-// can feel "janky" to the user.
-constexpr double kMinRemotingMediaDurationInSec = 60;
+constexpr int kPixelsPerSec4k = 3840 * 2160 * 30;  // 4k 30fps.
+constexpr int kPixelsPerSec2k = 1920 * 1080 * 30;  // 1080p 30fps.
 
 StopTrigger GetStopTrigger(mojom::RemotingStopReason reason) {
   switch (reason) {
@@ -81,13 +80,15 @@ MediaObserverClient::ReasonToSwitchToLocal GetSwitchReason(
     case PEERS_OUT_OF_SYNC:
     case RPC_INVALID:
     case DATA_PIPE_CREATE_ERROR:
-    case MOJO_PIPE_ERROR:
+    case DATA_PIPE_WRITE_ERROR:
     case MESSAGE_SEND_FAILED:
     case DATA_SEND_FAILED:
     case UNEXPECTED_FAILURE:
       return MediaObserverClient::ReasonToSwitchToLocal::PIPELINE_ERROR;
+    case MOJO_DISCONNECTED:
     case ROUTE_TERMINATED:
     case MEDIA_ELEMENT_DESTROYED:
+    case MEDIA_ELEMENT_FROZEN:
     case START_RACE:
     case SERVICE_GONE:
       return MediaObserverClient::ReasonToSwitchToLocal::ROUTE_TERMINATED;
@@ -103,8 +104,9 @@ RendererController::RendererController(
     mojo::PendingReceiver<mojom::RemotingSource> source_receiver,
     mojo::PendingRemote<mojom::Remoter> remoter)
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING_RPC)
-    : rpc_broker_(base::BindRepeating(&RendererController::SendMessageToSink,
-                                      base::Unretained(this))),
+    : rpc_messenger_([this](std::vector<uint8_t> message) {
+        SendMessageToSink(std::move(message));
+      }),
 #else
     :
 #endif
@@ -122,13 +124,8 @@ RendererController::~RendererController() {
 void RendererController::OnSinkAvailable(
     mojom::RemotingSinkMetadataPtr metadata) {
   DCHECK(thread_checker_.CalledOnValidThread());
+  sink_metadata_ = std::move(metadata);
 
-  sink_metadata_ = *metadata;
-
-  if (!HasFeatureCapability(mojom::RemotingSinkFeature::RENDERING)) {
-    OnSinkGone();
-    return;
-  }
   UpdateAndMaybeSwitch(SINK_AVAILABLE, UNKNOWN_STOP_TRIGGER);
 }
 
@@ -137,7 +134,7 @@ void RendererController::OnSinkGone() {
 
   // Prevent the clients to start any future remoting sessions. Won't affect the
   // behavior of the currently-running session (if any).
-  sink_metadata_ = mojom::RemotingSinkMetadata();
+  sink_metadata_ = nullptr;
 }
 
 void RendererController::OnStarted() {
@@ -146,7 +143,7 @@ void RendererController::OnStarted() {
   VLOG(1) << "Remoting started successively.";
   if (remote_rendering_started_ && client_) {
     metrics_recorder_.DidStartSession();
-    client_->SwitchToRemoteRenderer(sink_metadata_.friendly_name);
+    client_->SwitchToRemoteRenderer(sink_metadata_->friendly_name);
   }
 }
 
@@ -154,8 +151,10 @@ void RendererController::OnStartFailed(mojom::RemotingStartFailReason reason) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   VLOG(1) << "Failed to start remoting:" << reason;
+  is_media_remoting_requested_ = false;
   if (remote_rendering_started_) {
     metrics_recorder_.WillStopSession(START_RACE);
+    metrics_recorder_.StartSessionFailed(reason);
     remote_rendering_started_ = false;
   }
 }
@@ -164,6 +163,7 @@ void RendererController::OnStopped(mojom::RemotingStopReason reason) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   VLOG(1) << "Remoting stopped: " << reason;
+  is_media_remoting_requested_ = false;
   OnSinkGone();
   UpdateAndMaybeSwitch(UNKNOWN_START_TRIGGER, GetStopTrigger(reason));
 }
@@ -173,7 +173,8 @@ void RendererController::OnMessageFromSink(
   DCHECK(thread_checker_.CalledOnValidThread());
 
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING_RPC)
-  std::unique_ptr<pb::RpcMessage> rpc(new pb::RpcMessage());
+  std::unique_ptr<openscreen::cast::RpcMessage> rpc(
+      new openscreen::cast::RpcMessage());
   if (!rpc->ParseFromArray(message.data(), message.size())) {
     VLOG(1) << "corrupted Rpc message";
     OnSinkGone();
@@ -181,7 +182,7 @@ void RendererController::OnMessageFromSink(
     return;
   }
 
-  rpc_broker_.ProcessMessageFromRemote(std::move(rpc));
+  rpc_messenger_.ProcessMessageFromRemote(std::move(rpc));
 #endif
 }
 
@@ -206,48 +207,63 @@ void RendererController::OnRemotePlaybackDisabled(bool disabled) {
   UpdateAndMaybeSwitch(ENABLED_BY_PAGE, DISABLED_BY_PAGE);
 }
 
+void RendererController::OnMediaRemotingRequested() {
+  is_media_remoting_requested_ = true;
+  UpdateAndMaybeSwitch(REQUESTED_BY_BROWSER, UNKNOWN_STOP_TRIGGER);
+}
+
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING_RPC)
-base::WeakPtr<RpcBroker> RendererController::GetRpcBroker() {
+openscreen::WeakPtr<openscreen::cast::RpcMessenger>
+RendererController::GetRpcMessenger() {
   DCHECK(thread_checker_.CalledOnValidThread());
 
-  return rpc_broker_.GetWeakPtr();
+  return rpc_messenger_.GetWeakPtr();
 }
 #endif
 
-void RendererController::StartDataPipe(
-    std::unique_ptr<mojo::DataPipe> audio_data_pipe,
-    std::unique_ptr<mojo::DataPipe> video_data_pipe,
-    DataPipeStartCallback done_callback) {
+void RendererController::StartDataPipe(uint32_t data_pipe_capacity,
+                                       bool audio,
+                                       bool video,
+                                       DataPipeStartCallback done_callback) {
   DCHECK(thread_checker_.CalledOnValidThread());
   DCHECK(!done_callback.is_null());
 
-  bool audio = audio_data_pipe != nullptr;
-  bool video = video_data_pipe != nullptr;
-  if (!audio && !video) {
-    LOG(ERROR) << "No audio nor video to establish data pipe";
+  bool ok = audio || video;
+
+  mojo::ScopedDataPipeProducerHandle audio_producer_handle;
+  mojo::ScopedDataPipeConsumerHandle audio_consumer_handle;
+  if (ok && audio) {
+    ok &= mojo::CreateDataPipe(data_pipe_capacity, audio_producer_handle,
+                               audio_consumer_handle) == MOJO_RESULT_OK;
+  }
+
+  mojo::ScopedDataPipeProducerHandle video_producer_handle;
+  mojo::ScopedDataPipeConsumerHandle video_consumer_handle;
+  if (ok && video) {
+    ok &= mojo::CreateDataPipe(data_pipe_capacity, video_producer_handle,
+                               video_consumer_handle) == MOJO_RESULT_OK;
+  }
+
+  if (!ok) {
+    VLOG(1) << "No audio nor video to establish data pipe";
     std::move(done_callback)
         .Run(mojo::NullRemote(), mojo::NullRemote(),
              mojo::ScopedDataPipeProducerHandle(),
              mojo::ScopedDataPipeProducerHandle());
     return;
   }
+
   mojo::PendingRemote<mojom::RemotingDataStreamSender> audio_stream_sender;
   mojo::PendingRemote<mojom::RemotingDataStreamSender> video_stream_sender;
   remoter_->StartDataStreams(
-      audio ? std::move(audio_data_pipe->consumer_handle)
-            : mojo::ScopedDataPipeConsumerHandle(),
-      video ? std::move(video_data_pipe->consumer_handle)
-            : mojo::ScopedDataPipeConsumerHandle(),
+      std::move(audio_consumer_handle), std::move(video_consumer_handle),
       audio ? audio_stream_sender.InitWithNewPipeAndPassReceiver()
             : mojo::NullReceiver(),
       video ? video_stream_sender.InitWithNewPipeAndPassReceiver()
             : mojo::NullReceiver());
   std::move(done_callback)
       .Run(std::move(audio_stream_sender), std::move(video_stream_sender),
-           audio ? std::move(audio_data_pipe->producer_handle)
-                 : mojo::ScopedDataPipeProducerHandle(),
-           video ? std::move(video_data_pipe->producer_handle)
-                 : mojo::ScopedDataPipeProducerHandle());
+           std::move(audio_producer_handle), std::move(video_producer_handle));
 }
 
 void RendererController::OnMetadataChanged(const PipelineMetadata& metadata) {
@@ -255,6 +271,8 @@ void RendererController::OnMetadataChanged(const PipelineMetadata& metadata) {
 
   const bool was_audio_codec_supported = has_audio() && IsAudioCodecSupported();
   const bool was_video_codec_supported = has_video() && IsVideoCodecSupported();
+  const bool natural_size_changed =
+      pipeline_metadata_.natural_size != metadata.natural_size;
   pipeline_metadata_ = metadata;
   const bool is_audio_codec_supported = has_audio() && IsAudioCodecSupported();
   const bool is_video_codec_supported = has_video() && IsVideoCodecSupported();
@@ -277,6 +295,13 @@ void RendererController::OnMetadataChanged(const PipelineMetadata& metadata) {
                        : UNSUPPORTED_VIDEO_CODEC;
   }
 
+  // Reset and calculate pixel rate again when video size changes.
+  if (natural_size_changed) {
+    pixel_rate_timer_.Stop();
+    pixels_per_second_ = 0;
+    MaybeStartCalculatePixelRateTimer();
+  }
+
   UpdateRemotePlaybackAvailabilityMonitoringState();
 
   UpdateAndMaybeSwitch(start_trigger, stop_trigger);
@@ -297,7 +322,7 @@ void RendererController::OnDataSourceInitialized(
 }
 
 void RendererController::OnHlsManifestDetected() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   is_hls_ = true;
   UpdateRemotePlaybackAvailabilityMonitoringState();
 #else
@@ -310,7 +335,7 @@ void RendererController::UpdateRemotePlaybackAvailabilityMonitoringState() {
 // thus the source is supported when the URL is either http or https, video and
 // audio codecs are supported by the remote playback device; HLS is playable by
 // Chrome on Android (which is not detected by the pipeline metadata atm).
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   const bool is_media_supported = is_hls_ || IsRemotePlaybackSupported();
 #else
   const bool is_media_supported = IsAudioOrVideoSupported();
@@ -327,62 +352,12 @@ void RendererController::UpdateRemotePlaybackAvailabilityMonitoringState() {
 
 bool RendererController::IsVideoCodecSupported() const {
   DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK(has_video());
-
-  // Media Remoting doesn't support encrypted media.
-  if (pipeline_metadata_.video_decoder_config.is_encrypted())
-    return false;
-
-  switch (pipeline_metadata_.video_decoder_config.codec()) {
-    case VideoCodec::kCodecH264:
-      return HasVideoCapability(mojom::RemotingSinkVideoCapability::CODEC_H264);
-    case VideoCodec::kCodecVP8:
-      return HasVideoCapability(mojom::RemotingSinkVideoCapability::CODEC_VP8);
-    case VideoCodec::kCodecVP9:
-      return HasVideoCapability(mojom::RemotingSinkVideoCapability::CODEC_VP9);
-    case VideoCodec::kCodecHEVC:
-      return HasVideoCapability(mojom::RemotingSinkVideoCapability::CODEC_HEVC);
-    default:
-      VLOG(2) << "Remoting does not support video codec: "
-              << pipeline_metadata_.video_decoder_config.codec();
-      return false;
-  }
+  return GetVideoCompatibility() == RemotingCompatibility::kCompatible;
 }
 
 bool RendererController::IsAudioCodecSupported() const {
   DCHECK(thread_checker_.CalledOnValidThread());
-  DCHECK(has_audio());
-
-  // Media Remoting doesn't support encrypted media.
-  if (pipeline_metadata_.audio_decoder_config.is_encrypted())
-    return false;
-
-  switch (pipeline_metadata_.audio_decoder_config.codec()) {
-    case AudioCodec::kCodecAAC:
-      return HasAudioCapability(mojom::RemotingSinkAudioCapability::CODEC_AAC);
-    case AudioCodec::kCodecOpus:
-      return HasAudioCapability(mojom::RemotingSinkAudioCapability::CODEC_OPUS);
-    case AudioCodec::kCodecMP3:
-    case AudioCodec::kCodecPCM:
-    case AudioCodec::kCodecVorbis:
-    case AudioCodec::kCodecFLAC:
-    case AudioCodec::kCodecAMR_NB:
-    case AudioCodec::kCodecAMR_WB:
-    case AudioCodec::kCodecPCM_MULAW:
-    case AudioCodec::kCodecGSM_MS:
-    case AudioCodec::kCodecPCM_S16BE:
-    case AudioCodec::kCodecPCM_S24BE:
-    case AudioCodec::kCodecEAC3:
-    case AudioCodec::kCodecPCM_ALAW:
-    case AudioCodec::kCodecALAC:
-    case AudioCodec::kCodecAC3:
-      return HasAudioCapability(
-          mojom::RemotingSinkAudioCapability::CODEC_BASELINE_SET);
-    default:
-      VLOG(2) << "Remoting does not support audio codec: "
-              << pipeline_metadata_.audio_decoder_config.codec();
-      return false;
-  }
+  return GetAudioCompatibility() == RemotingCompatibility::kCompatible;
 }
 
 void RendererController::OnPlaying() {
@@ -390,35 +365,133 @@ void RendererController::OnPlaying() {
 
   is_paused_ = false;
   UpdateAndMaybeSwitch(PLAY_COMMAND, UNKNOWN_STOP_TRIGGER);
+  MaybeStartCalculatePixelRateTimer();
 }
 
 void RendererController::OnPaused() {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   is_paused_ = true;
-  // Cancel the start if in the middle of delayed start.
-  CancelDelayedStart();
+  // Cancel the timer since pixel rate cannot be calculated when media is
+  // paused.
+  pixel_rate_timer_.Stop();
 }
 
-bool RendererController::CanBeRemoting() const {
+void RendererController::OnFrozen() {
   DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(is_paused_);
 
-  if (!client_)
-    return false;  // No way to switch to the remoting renderer.
+  // If the element is frozen we want to stop remoting.
+  UpdateAndMaybeSwitch(UNKNOWN_START_TRIGGER, MEDIA_ELEMENT_FROZEN);
+}
 
-  if (permanently_disable_remoting_)
-    return false;
+RemotingCompatibility RendererController::GetVideoCompatibility() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(has_video());
 
-  if (!IsAudioOrVideoSupported())
-    return false;
+  // Media Remoting doesn't support encrypted media.
+  if (pipeline_metadata_.video_decoder_config.is_encrypted())
+    return RemotingCompatibility::kEncryptedVideo;
+
+  bool compatible = false;
+  switch (pipeline_metadata_.video_decoder_config.codec()) {
+    case VideoCodec::kH264:
+      compatible = HasVideoCapability(RemotingSinkVideoCapability::CODEC_H264);
+      break;
+    case VideoCodec::kVP8:
+      compatible = HasVideoCapability(RemotingSinkVideoCapability::CODEC_VP8);
+      break;
+    case VideoCodec::kVP9:
+      compatible = HasVideoCapability(RemotingSinkVideoCapability::CODEC_VP9);
+      break;
+    case VideoCodec::kHEVC:
+      compatible = HasVideoCapability(RemotingSinkVideoCapability::CODEC_HEVC);
+      break;
+    default:
+      VLOG(2) << "Remoting does not support video codec: "
+              << pipeline_metadata_.video_decoder_config.codec();
+  }
+  return compatible ? RemotingCompatibility::kCompatible
+                    : RemotingCompatibility::kIncompatibleVideoCodec;
+}
+
+RemotingCompatibility RendererController::GetAudioCompatibility() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(has_audio());
+
+  // Media Remoting doesn't support encrypted media.
+  if (pipeline_metadata_.audio_decoder_config.is_encrypted())
+    return RemotingCompatibility::kEncryptedAudio;
+
+  bool compatible = false;
+  switch (pipeline_metadata_.audio_decoder_config.codec()) {
+    case AudioCodec::kAAC:
+      compatible = HasAudioCapability(RemotingSinkAudioCapability::CODEC_AAC);
+      break;
+    case AudioCodec::kOpus:
+      compatible = HasAudioCapability(RemotingSinkAudioCapability::CODEC_OPUS);
+      break;
+    case AudioCodec::kMP3:
+    case AudioCodec::kPCM:
+    case AudioCodec::kVorbis:
+    case AudioCodec::kFLAC:
+    case AudioCodec::kAMR_NB:
+    case AudioCodec::kAMR_WB:
+    case AudioCodec::kPCM_MULAW:
+    case AudioCodec::kGSM_MS:
+    case AudioCodec::kPCM_S16BE:
+    case AudioCodec::kPCM_S24BE:
+    case AudioCodec::kEAC3:
+    case AudioCodec::kPCM_ALAW:
+    case AudioCodec::kALAC:
+    case AudioCodec::kAC3:
+    case AudioCodec::kDTS:
+    case AudioCodec::kDTSXP2:
+    case AudioCodec::kDTSE:
+      compatible =
+          HasAudioCapability(RemotingSinkAudioCapability::CODEC_BASELINE_SET);
+      break;
+    default:
+      VLOG(2) << "Remoting does not support audio codec: "
+              << pipeline_metadata_.audio_decoder_config.codec();
+  }
+  return compatible ? RemotingCompatibility::kCompatible
+                    : RemotingCompatibility::kIncompatibleAudioCodec;
+}
+
+RemotingCompatibility RendererController::GetCompatibility() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(client_);
 
   if (is_remote_playback_disabled_)
-    return false;
+    return RemotingCompatibility::kDisabledByPage;
 
-  if (client_->Duration() <= kMinRemotingMediaDurationInSec)
-    return false;
+  if (!has_video() && !has_audio())
+    return RemotingCompatibility::kNoAudioNorVideo;
 
-  return true;
+  // When `is_media_remoting_requested_`, it is guaranteed that the sink is
+  // compatible and the media element meets the minimum duration requirement. So
+  // there's no need to check for compatibilities.
+  if (is_media_remoting_requested_) {
+    return RemotingCompatibility::kCompatible;
+  }
+
+  if (client_->Duration() <= kMinMediaDurationForSwitchingToRemotingInSec) {
+    return RemotingCompatibility::kDurationBelowThreshold;
+  }
+
+  if (has_video()) {
+    RemotingCompatibility compatibility = GetVideoCompatibility();
+    if (compatibility != RemotingCompatibility::kCompatible)
+      return compatibility;
+  }
+
+  if (has_audio()) {
+    RemotingCompatibility compatibility = GetAudioCompatibility();
+    if (compatibility != RemotingCompatibility::kCompatible)
+      return compatibility;
+  }
+  return RemotingCompatibility::kCompatible;
 }
 
 bool RendererController::IsAudioOrVideoSupported() const {
@@ -431,91 +504,46 @@ void RendererController::UpdateAndMaybeSwitch(StartTrigger start_trigger,
                                               StopTrigger stop_trigger) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
-  bool should_be_remoting = CanBeRemoting();
+  bool should_be_remoting = ShouldBeRemoting();
 
-  // Being the dominant visible content is the signal that starts remote
-  // rendering.
-  should_be_remoting &=
-      (is_dominant_content_ && !encountered_renderer_fatal_error_);
-
-  if ((remote_rendering_started_ ||
-       delayed_start_stability_timer_.IsRunning()) == should_be_remoting) {
+  if (should_be_remoting == remote_rendering_started_) {
     return;
   }
 
-  // Only switch to remoting when media is playing. Since the renderer is
-  // created when video starts loading/playing, receiver will display a black
-  // screen before video starts playing if switching to remoting when paused.
-  // Thus, the user experience is improved by not starting remoting until
-  // playback resumes.
-  if (should_be_remoting && is_paused_)
-    return;
-
-  if (should_be_remoting) {
-    WaitForStabilityBeforeStart(start_trigger);
-  } else if (delayed_start_stability_timer_.IsRunning()) {
-    DCHECK(!remote_rendering_started_);
-    CancelDelayedStart();
-  } else {
+  // Stop Remoting.
+  if (!should_be_remoting) {
     remote_rendering_started_ = false;
+    is_media_remoting_requested_ = false;
     DCHECK_NE(UNKNOWN_STOP_TRIGGER, stop_trigger);
     metrics_recorder_.WillStopSession(stop_trigger);
     if (client_)
       client_->SwitchToLocalRenderer(GetSwitchReason(stop_trigger));
     VLOG(2) << "Request to stop remoting: stop_trigger=" << stop_trigger;
     remoter_->Stop(mojom::RemotingStopReason::LOCAL_PLAYBACK);
+    return;
   }
-}
 
-void RendererController::WaitForStabilityBeforeStart(
-    StartTrigger start_trigger) {
-  DCHECK(!delayed_start_stability_timer_.IsRunning());
-  DCHECK(!remote_rendering_started_);
-  DCHECK(client_);
+  // Start remoting. First, check pixel rate compatibility.
+  if (pixels_per_second_ == 0) {
+    MaybeStartCalculatePixelRateTimer();
+    return;
+  }
 
-  delayed_start_stability_timer_.Start(
-      FROM_HERE, kDelayedStart,
-      base::BindOnce(&RendererController::OnDelayedStartTimerFired,
-                     base::Unretained(this), start_trigger,
-                     client_->DecodedFrameCount(), clock_->NowTicks()));
-}
-
-void RendererController::CancelDelayedStart() {
-  delayed_start_stability_timer_.Stop();
-}
-
-void RendererController::OnDelayedStartTimerFired(
-    StartTrigger start_trigger,
-    unsigned decoded_frame_count_before_delay,
-    base::TimeTicks delayed_start_time) {
-  DCHECK(is_dominant_content_);
-  DCHECK(!remote_rendering_started_);
-  DCHECK(client_);  // This task is canceled otherwise.
-
-  base::TimeDelta elapsed = clock_->NowTicks() - delayed_start_time;
-  DCHECK(!elapsed.is_zero());
-  if (has_video()) {
-    const double frame_rate =
-        (client_->DecodedFrameCount() - decoded_frame_count_before_delay) /
-        elapsed.InSecondsF();
-    const double pixel_per_sec =
-        frame_rate * pipeline_metadata_.natural_size.GetArea();
-    if ((pixel_per_sec > kPixelPerSec4K) ||
-        ((pixel_per_sec > kPixelPerSec2K) &&
-         !HasVideoCapability(mojom::RemotingSinkVideoCapability::SUPPORT_4K))) {
-      VLOG(1) << "Media remoting is not supported: frame_rate = " << frame_rate
-              << " resolution = " << pipeline_metadata_.natural_size.ToString();
-      permanently_disable_remoting_ = true;
-      return;
+  auto pixel_rate_support = GetPixelRateSupport();
+  metrics_recorder_.RecordVideoPixelRateSupport(pixel_rate_support);
+  if (pixel_rate_support == PixelRateSupport::k2kSupported ||
+      pixel_rate_support == PixelRateSupport::k4kSupported) {
+    remote_rendering_started_ = true;
+    DCHECK_NE(UNKNOWN_START_TRIGGER, start_trigger);
+    metrics_recorder_.WillStartSession(start_trigger);
+    // |MediaObserverClient::SwitchToRemoteRenderer()| will be called after
+    // remoting is started successfully.
+    if (is_media_remoting_requested_) {
+      remoter_->StartWithPermissionAlreadyGranted();
+    } else {
+      remoter_->Start();
     }
   }
-
-  remote_rendering_started_ = true;
-  DCHECK_NE(UNKNOWN_START_TRIGGER, start_trigger);
-  metrics_recorder_.WillStartSession(start_trigger);
-  // |MediaObserverClient::SwitchToRemoteRenderer()| will be called after
-  // remoting is started successfully.
-  remoter_->Start();
 }
 
 void RendererController::OnRendererFatalError(StopTrigger stop_trigger) {
@@ -526,7 +554,14 @@ void RendererController::OnRendererFatalError(StopTrigger stop_trigger) {
   if (!remote_rendering_started_)
     return;
 
-  encountered_renderer_fatal_error_ = true;
+  // MOJO_DISCONNECTED means the streaming session has stopped, which is not a
+  // fatal error and should not prevent future sessions.
+  // Clean sinks so that `UpdateAndMaybeSwitch` will stop remoting.
+  if (stop_trigger != StopTrigger::MOJO_DISCONNECTED) {
+    encountered_renderer_fatal_error_ = true;
+    OnSinkGone();
+  }
+
   UpdateAndMaybeSwitch(UNKNOWN_START_TRIGGER, stop_trigger);
 }
 
@@ -534,45 +569,115 @@ void RendererController::SetClient(MediaObserverClient* client) {
   DCHECK(thread_checker_.CalledOnValidThread());
 
   client_ = client;
+  // Reset `encountered_renderer_fatal_error_` when the media element changes so
+  // that the previous renderer fatal error won't prevent Remoting the new
+  // content.
+  encountered_renderer_fatal_error_ = false;
   if (!client_) {
-    CancelDelayedStart();
+    pixel_rate_timer_.Stop();
     if (remote_rendering_started_) {
       metrics_recorder_.WillStopSession(MEDIA_ELEMENT_DESTROYED);
       remoter_->Stop(mojom::RemotingStopReason::UNEXPECTED_FAILURE);
       remote_rendering_started_ = false;
     }
-    return;
   }
 }
 
 bool RendererController::HasVideoCapability(
     mojom::RemotingSinkVideoCapability capability) const {
-  return std::find(std::begin(sink_metadata_.video_capabilities),
-                   std::end(sink_metadata_.video_capabilities),
-                   capability) != std::end(sink_metadata_.video_capabilities);
+  return sink_metadata_ &&
+         base::Contains(sink_metadata_->video_capabilities, capability);
 }
 
 bool RendererController::HasAudioCapability(
     mojom::RemotingSinkAudioCapability capability) const {
-  return std::find(std::begin(sink_metadata_.audio_capabilities),
-                   std::end(sink_metadata_.audio_capabilities),
-                   capability) != std::end(sink_metadata_.audio_capabilities);
+  return sink_metadata_ &&
+         base::Contains(sink_metadata_->audio_capabilities, capability);
 }
 
 bool RendererController::HasFeatureCapability(
-    mojom::RemotingSinkFeature capability) const {
-  return std::find(std::begin(sink_metadata_.features),
-                   std::end(sink_metadata_.features),
-                   capability) != std::end(sink_metadata_.features);
+    RemotingSinkFeature capability) const {
+  return sink_metadata_ && base::Contains(sink_metadata_->features, capability);
 }
 
-void RendererController::SendMessageToSink(
-    std::unique_ptr<std::vector<uint8_t>> message) {
+bool RendererController::SinkSupportsRemoting() const {
+  // when `is_media_remoting_requested_` is true, all discovered sinks are
+  // compatible with this media content.
+  if (is_media_remoting_requested_) {
+    return !sink_metadata_.is_null();
+  }
+  return HasFeatureCapability(RemotingSinkFeature::RENDERING);
+}
+
+bool RendererController::ShouldBeRemoting() {
+  // Starts remote rendering when the media is the dominant content or the
+  // browser has sent an explicit request.
+  if (!is_dominant_content_ && !is_media_remoting_requested_) {
+    return false;
+  }
+  // Only switch to remoting when media is playing. Since the renderer is
+  // created when video starts loading, the receiver would display a black
+  // screen if switching to remoting while paused. Thus, the user experience is
+  // improved by not starting remoting until playback resumes.
+  if (is_paused_ || encountered_renderer_fatal_error_ || !client_ ||
+      !SinkSupportsRemoting()) {
+    return false;
+  }
+
+  const RemotingCompatibility compatibility = GetCompatibility();
+  metrics_recorder_.RecordCompatibility(compatibility);
+  return compatibility == RemotingCompatibility::kCompatible;
+}
+
+void RendererController::MaybeStartCalculatePixelRateTimer() {
+  if (pixel_rate_timer_.IsRunning() || !client_ || is_paused_ ||
+      pixels_per_second_ != 0) {
+    return;
+  }
+
+  pixel_rate_timer_.Start(
+      FROM_HERE, base::Seconds(kPixelRateCalInSec),
+      base::BindOnce(&RendererController::DoCalculatePixelRate,
+                     base::Unretained(this), client_->DecodedFrameCount(),
+                     clock_->NowTicks()));
+}
+
+void RendererController::DoCalculatePixelRate(
+    int decoded_frame_count_before_delay,
+    base::TimeTicks delayed_start_time) {
+  DCHECK(client_);
+  DCHECK(!is_paused_);
+
+  base::TimeDelta elapsed = clock_->NowTicks() - delayed_start_time;
+  const double frame_rate =
+      (client_->DecodedFrameCount() - decoded_frame_count_before_delay) /
+      elapsed.InSecondsF();
+  pixels_per_second_ = frame_rate * pipeline_metadata_.natural_size.GetArea();
+  UpdateAndMaybeSwitch(PIXEL_RATE_READY, UNKNOWN_STOP_TRIGGER);
+}
+
+PixelRateSupport RendererController::GetPixelRateSupport() const {
+  DCHECK(pixels_per_second_ != 0);
+
+  if (pixels_per_second_ <= kPixelsPerSec2k) {
+    return PixelRateSupport::k2kSupported;
+  }
+  if (pixels_per_second_ <= kPixelsPerSec4k) {
+    if (HasVideoCapability(mojom::RemotingSinkVideoCapability::SUPPORT_4K)) {
+      return PixelRateSupport::k4kSupported;
+    } else {
+      return PixelRateSupport::k4kNotSupported;
+    }
+  }
+  return PixelRateSupport::kOver4kNotSupported;
+}
+
+void RendererController::SendMessageToSink(std::vector<uint8_t> message) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  remoter_->SendMessageToSink(*message);
+  remoter_->SendMessageToSink(message);
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 
 bool RendererController::IsAudioRemotePlaybackSupported() const {
   DCHECK(thread_checker_.CalledOnValidThread());
@@ -582,22 +687,25 @@ bool RendererController::IsAudioRemotePlaybackSupported() const {
     return false;
 
   switch (pipeline_metadata_.audio_decoder_config.codec()) {
-    case AudioCodec::kCodecAAC:
-    case AudioCodec::kCodecOpus:
-    case AudioCodec::kCodecMP3:
-    case AudioCodec::kCodecPCM:
-    case AudioCodec::kCodecVorbis:
-    case AudioCodec::kCodecFLAC:
-    case AudioCodec::kCodecAMR_NB:
-    case AudioCodec::kCodecAMR_WB:
-    case AudioCodec::kCodecPCM_MULAW:
-    case AudioCodec::kCodecGSM_MS:
-    case AudioCodec::kCodecPCM_S16BE:
-    case AudioCodec::kCodecPCM_S24BE:
-    case AudioCodec::kCodecEAC3:
-    case AudioCodec::kCodecPCM_ALAW:
-    case AudioCodec::kCodecALAC:
-    case AudioCodec::kCodecAC3:
+    case AudioCodec::kAAC:
+    case AudioCodec::kOpus:
+    case AudioCodec::kMP3:
+    case AudioCodec::kPCM:
+    case AudioCodec::kVorbis:
+    case AudioCodec::kFLAC:
+    case AudioCodec::kAMR_NB:
+    case AudioCodec::kAMR_WB:
+    case AudioCodec::kPCM_MULAW:
+    case AudioCodec::kGSM_MS:
+    case AudioCodec::kPCM_S16BE:
+    case AudioCodec::kPCM_S24BE:
+    case AudioCodec::kEAC3:
+    case AudioCodec::kPCM_ALAW:
+    case AudioCodec::kALAC:
+    case AudioCodec::kAC3:
+    case AudioCodec::kDTS:
+    case AudioCodec::kDTSXP2:
+    case AudioCodec::kDTSE:
       return true;
     default:
       return false;
@@ -612,10 +720,10 @@ bool RendererController::IsVideoRemotePlaybackSupported() const {
     return false;
 
   switch (pipeline_metadata_.video_decoder_config.codec()) {
-    case VideoCodec::kCodecH264:
-    case VideoCodec::kCodecVP8:
-    case VideoCodec::kCodecVP9:
-    case VideoCodec::kCodecHEVC:
+    case VideoCodec::kH264:
+    case VideoCodec::kVP8:
+    case VideoCodec::kVP9:
+    case VideoCodec::kHEVC:
       return true;
     default:
       return false;
@@ -628,7 +736,7 @@ bool RendererController::IsRemotePlaybackSupported() const {
           (!has_audio() || IsAudioRemotePlaybackSupported()));
 }
 
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace remoting
 }  // namespace media

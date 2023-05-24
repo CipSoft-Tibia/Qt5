@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,13 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/condition_variable.h"
 #include "base/synchronization/lock.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "media/base/decryptor.h"
 #include "media/base/demuxer_stream.h"
@@ -30,11 +32,10 @@
 #include "media/base/video_renderer_sink.h"
 #include "media/filters/decoder_stream.h"
 #include "media/filters/video_renderer_algorithm.h"
-#include "media/renderers/default_renderer_factory.h"
+#include "media/renderers/renderer_impl_factory.h"
 #include "media/video/gpu_memory_buffer_video_frame_pool.h"
 
 namespace base {
-class SingleThreadTaskRunner;
 class TickClock;
 }  // namespace base
 
@@ -55,12 +56,17 @@ class MEDIA_EXPORT VideoRendererImpl
   //
   // Setting |drop_frames_| to true causes the renderer to drop expired frames.
   VideoRendererImpl(
-      const scoped_refptr<base::SingleThreadTaskRunner>& media_task_runner,
+      const scoped_refptr<base::SequencedTaskRunner>& media_task_runner,
       VideoRendererSink* sink,
       const CreateVideoDecodersCB& create_video_decoders_cb,
       bool drop_frames,
       MediaLog* media_log,
-      std::unique_ptr<GpuMemoryBufferVideoFramePool> gmb_pool);
+      std::unique_ptr<GpuMemoryBufferVideoFramePool> gmb_pool,
+      MediaPlayerLoggingID media_player_id);
+
+  VideoRendererImpl(const VideoRendererImpl&) = delete;
+  VideoRendererImpl& operator=(const VideoRendererImpl&) = delete;
+
   ~VideoRendererImpl() override;
 
   // VideoRenderer implementation.
@@ -73,7 +79,7 @@ class MEDIA_EXPORT VideoRendererImpl
   void StartPlayingFrom(base::TimeDelta timestamp) override;
   void OnTimeProgressing() override;
   void OnTimeStopped() override;
-  void SetLatencyHint(base::Optional<base::TimeDelta> latency_hint) override;
+  void SetLatencyHint(absl::optional<base::TimeDelta> latency_hint) override;
 
   void SetTickClockForTesting(const base::TickClock* tick_clock);
   size_t frames_queued_for_testing() const {
@@ -88,7 +94,7 @@ class MEDIA_EXPORT VideoRendererImpl
   // VideoRendererSink::RenderCallback implementation.
   scoped_refptr<VideoFrame> Render(base::TimeTicks deadline_min,
                                    base::TimeTicks deadline_max,
-                                   bool background_rendering) override;
+                                   RenderingMode rendering_mode) override;
   void OnFrameDropped() override;
   base::TimeDelta GetPreferredRenderInterval() override;
 
@@ -110,10 +116,13 @@ class MEDIA_EXPORT VideoRendererImpl
   // RenderClient of the new config.
   void OnConfigChange(const VideoDecoderConfig& config);
 
+  // Called when the decoder stream and selector have a fallback after failed
+  // decode.
+  void OnFallback(PipelineStatus status);
+
   // Callback for |video_decoder_stream_| to deliver decoded video frames and
   // report video decoding status.
-  void FrameReady(VideoDecoderStream::ReadStatus status,
-                  scoped_refptr<VideoFrame> frame);
+  void FrameReady(VideoDecoderStream::ReadResult result);
 
   // Helper method for enqueueing a frame to |alogorithm_|.
   void AddReadyFrame_Locked(scoped_refptr<VideoFrame> frame);
@@ -174,6 +183,10 @@ class MEDIA_EXPORT VideoRendererImpl
   // duration is before |start_timestamp_|.
   bool IsBeforeStartTime(const VideoFrame& frame);
 
+  // Helper method for checking if we have the best possible first frame to
+  // paint in the queue.
+  bool HasBestFirstFrame(const VideoFrame& frame);
+
   // Attempts to remove frames which are no longer effective for rendering when
   // |buffering_state_| == BUFFERING_HAVE_NOTHING or |was_background_rendering_|
   // is true.  If the current media time as provided by |wall_clock_time_cb_| is
@@ -200,14 +213,14 @@ class MEDIA_EXPORT VideoRendererImpl
   void AttemptReadAndCheckForMetadataChanges(VideoPixelFormat pixel_format,
                                              const gfx::Size& natural_size);
 
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+  scoped_refptr<base::SequencedTaskRunner> task_runner_;
 
   // Sink which calls into VideoRendererImpl via Render() for video frames.  Do
   // not call any methods on the sink while |lock_| is held or the two threads
   // might deadlock. Do not call Start() or Stop() on the sink directly, use
   // StartSink() and StopSink() to ensure background rendering is started.  Only
   // access these values on |task_runner_|.
-  VideoRendererSink* const sink_;
+  const raw_ptr<VideoRendererSink> sink_;
   bool sink_started_;
 
   // Stores the last decoder config that was passed to
@@ -218,7 +231,7 @@ class MEDIA_EXPORT VideoRendererImpl
   // Used for accessing data members.
   base::Lock lock_;
 
-  RendererClient* client_;
+  raw_ptr<RendererClient> client_;
 
   // Pool of GpuMemoryBuffers and resources used to create hardware frames.
   // Ensure this is destructed after |algorithm_| for optimal memory release
@@ -230,9 +243,11 @@ class MEDIA_EXPORT VideoRendererImpl
   std::unique_ptr<VideoDecoderStream> video_decoder_stream_;
 
   // Passed in during Initialize().
-  DemuxerStream* demuxer_stream_;
+  raw_ptr<DemuxerStream> demuxer_stream_;
 
-  MediaLog* media_log_;
+  raw_ptr<MediaLog> media_log_;
+
+  MediaPlayerLoggingID player_id_;
 
   // Flag indicating low-delay mode.
   bool low_delay_;
@@ -287,7 +302,7 @@ class MEDIA_EXPORT VideoRendererImpl
   // last call to |statistics_cb_|. These must be accessed under lock.
   PipelineStatistics stats_;
 
-  const base::TickClock* tick_clock_;
+  raw_ptr<const base::TickClock> tick_clock_;
 
   // Algorithm for selecting which frame to render; manages frames and all
   // timing related information. Ensure this is destructed before
@@ -339,11 +354,11 @@ class MEDIA_EXPORT VideoRendererImpl
   FrameRateEstimator fps_estimator_;
 
   // Last FPS, if any, reported to the client.
-  base::Optional<int> last_reported_fps_;
+  absl::optional<int> last_reported_fps_;
 
   // Value saved from last call to SetLatencyHint(). Used to recompute buffering
   // limits as framerate fluctuates.
-  base::Optional<base::TimeDelta> latency_hint_;
+  absl::optional<base::TimeDelta> latency_hint_;
 
   // When latency_hint_ > 0, we make regular adjustments to buffering caps as
   // |algorithm_->average_frame_duration()| fluctuates, but we only want to emit
@@ -358,8 +373,6 @@ class MEDIA_EXPORT VideoRendererImpl
   // want to discard video frames that might be received after the stream has
   // been reset.
   base::WeakPtrFactory<VideoRendererImpl> cancel_on_flush_weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(VideoRendererImpl);
 };
 
 }  // namespace media

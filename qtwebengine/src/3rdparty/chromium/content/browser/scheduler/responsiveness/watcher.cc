@@ -1,13 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/scheduler/responsiveness/watcher.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/pending_task.h"
 #include "base/power_monitor/power_monitor.h"
-#include "base/task/post_task.h"
 #include "build/build_config.h"
 #include "content/browser/scheduler/responsiveness/calculator.h"
 #include "content/browser/scheduler/responsiveness/message_loop_observer.h"
@@ -185,16 +185,6 @@ void Watcher::DidRunEventOnUIThread(const void* opaque_identifier) {
                                              execution_finish_time);
 }
 
-void Watcher::OnSuspend() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  calculator_->SetProcessSuspended(true);
-}
-
-void Watcher::OnResume() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  calculator_->SetProcessSuspended(false);
-}
-
 Watcher::Watcher() = default;
 Watcher::~Watcher() = default;
 
@@ -208,8 +198,6 @@ void Watcher::SetUp() {
 
   metric_source_ = CreateMetricSource();
   metric_source_->SetUp();
-
-  base::PowerMonitor::AddObserver(this);
 }
 
 void Watcher::Destroy() {
@@ -220,8 +208,10 @@ void Watcher::Destroy() {
       &Watcher::FinishDestroyMetricSource, base::RetainedRef(this)));
 
   metric_source_->Destroy(std::move(on_destroy_complete));
+}
 
-  base::PowerMonitor::RemoveObserver(this);
+void Watcher::OnFirstIdle() {
+  calculator_->OnFirstIdle();
 }
 
 void Watcher::SetUpOnIOThread() {

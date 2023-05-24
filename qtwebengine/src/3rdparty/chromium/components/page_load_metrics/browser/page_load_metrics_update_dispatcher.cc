@@ -1,22 +1,23 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/page_load_metrics/browser/page_load_metrics_update_dispatcher.h"
+#include "base/memory/raw_ptr.h"
+#include "components/page_load_metrics/browser/layout_shift_normalization.h"
 
 #include <ostream>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/metrics/histogram_macros.h"
-#include "base/optional.h"
+#include "base/metrics/histogram_functions.h"
 #include "components/page_load_metrics/browser/page_load_metrics_embedder_interface.h"
 #include "components/page_load_metrics/browser/page_load_metrics_util.h"
 #include "components/page_load_metrics/browser/page_load_tracker.h"
-#include "components/page_load_metrics/common/page_load_metrics_constants.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace page_load_metrics {
@@ -26,10 +27,10 @@ namespace internal {
 const char kPageLoadTimingStatus[] = "PageLoad.Internal.PageLoadTimingStatus";
 const char kPageLoadTimingDispatchStatus[] =
     "PageLoad.Internal.PageLoadTimingStatus.AtTimingCallbackDispatch";
-const char kHistogramOutOfOrderTiming[] =
-    "PageLoad.Internal.OutOfOrderInterFrameTiming";
-const char kHistogramOutOfOrderTimingBuffered[] =
-    "PageLoad.Internal.OutOfOrderInterFrameTiming.AfterBuffering";
+const char kPageLoadTimingPrerenderStatus[] =
+    "PageLoad.Internal.PageLoadTimingStatus.OnPrerenderPage";
+const char kPageLoadTimingFencedFramesStatus[] =
+    "PageLoad.Internal.PageLoadTimingStatus.OnFencedFramesPage";
 
 }  // namespace internal
 
@@ -37,7 +38,7 @@ namespace {
 
 // Helper to allow use of Optional<> values in LOG() messages.
 std::ostream& operator<<(std::ostream& os,
-                         const base::Optional<base::TimeDelta>& opt) {
+                         const absl::optional<base::TimeDelta>& opt) {
   if (opt)
     os << opt.value();
   else
@@ -47,16 +48,12 @@ std::ostream& operator<<(std::ostream& os,
 
 // If second is non-zero, first must also be non-zero and less than or equal to
 // second.
-bool EventsInOrder(const base::Optional<base::TimeDelta>& first,
-                   const base::Optional<base::TimeDelta>& second) {
+bool EventsInOrder(const absl::optional<base::TimeDelta>& first,
+                   const absl::optional<base::TimeDelta>& second) {
   if (!second) {
     return true;
   }
   return first && first <= second;
-}
-
-bool IsMainFrame(content::RenderFrameHost* render_frame_host) {
-  return render_frame_host->GetParent() == nullptr;
 }
 
 internal::PageLoadTimingStatus IsValidPageLoadTiming(
@@ -71,6 +68,18 @@ internal::PageLoadTimingStatus IsValidPageLoadTiming(
   }
 
   // Verify proper ordering between the various timings.
+
+  // Note for activation_start
+  //
+  // PaintTiming is composed in MetricsRenderFrameObserver::GetTiming,
+  // which also clamps wall clocks as navigation_start origin.
+  // Majority of wall clocks are taken in render side, but
+  // activation_start is taken in browser side
+  // PageImpl::ActivateForPrerendering. Besides, there is no control
+  // of these events. Therefore, we don't have any order relations
+  // between activation_start and others except for navigation_start.
+  // (Always 0 = navigation_start <= activation_start for main frames as
+  // navigation_start origin TimeDelta.)
 
   if (!EventsInOrder(timing.response_start, timing.parse_timing->parse_start)) {
     // We sometimes get a zero response_start with a non-zero parse start. See
@@ -236,25 +245,15 @@ internal::PageLoadTimingStatus IsValidPageLoadTiming(
   return internal::VALID;
 }
 
-// If the updated value has an earlier time than the current value, log so we
-// can keep track of how often this happens.
-void LogIfOutOfOrderTiming(const base::Optional<base::TimeDelta>& current,
-                           const base::Optional<base::TimeDelta>& update) {
-  if (!current || !update)
-    return;
-
-  if (update < current) {
-    PAGE_LOAD_HISTOGRAM(internal::kHistogramOutOfOrderTimingBuffered,
-                        current.value() - update.value());
-  }
-}
-
 // PageLoadTimingMerger merges timing values received from different frames
 // together.
 class PageLoadTimingMerger {
  public:
   explicit PageLoadTimingMerger(mojom::PageLoadTiming* target)
       : target_(target) {}
+
+  PageLoadTimingMerger(const PageLoadTimingMerger&) = delete;
+  PageLoadTimingMerger& operator=(const PageLoadTimingMerger&) = delete;
 
   // Merge timing values from |new_page_load_timing| into the target
   // PageLoadTiming;
@@ -269,6 +268,10 @@ class PageLoadTimingMerger {
     MergeBackForwardCacheTiming(navigation_start_offset,
                                 new_page_load_timing.back_forward_cache_timings,
                                 is_main_frame);
+    if (is_main_frame) {
+      MaybeUpdateTimeDelta(&target_->activation_start, navigation_start_offset,
+                           new_page_load_timing.activation_start);
+    }
   }
 
   // Whether we merged a new value.
@@ -285,9 +288,9 @@ class PageLoadTimingMerger {
   // |navigation_start_offset| contains the delta in navigation start time
   // between the main frame and the frame for |optional_candidate_new_value|.
   bool MaybeUpdateTimeDelta(
-      base::Optional<base::TimeDelta>* inout_existing_value,
+      absl::optional<base::TimeDelta>* inout_existing_value,
       base::TimeDelta navigation_start_offset,
-      const base::Optional<base::TimeDelta>& optional_candidate_new_value) {
+      const absl::optional<base::TimeDelta>& optional_candidate_new_value) {
     // If we don't get a new value, there's nothing to do
     if (!optional_candidate_new_value)
       return false;
@@ -310,8 +313,6 @@ class PageLoadTimingMerger {
       // to happen occasionally, as inter-frame updates can arrive out of order.
       // Record a histogram to track how frequently it happens, along with the
       // magnitude of the delta.
-      PAGE_LOAD_HISTOGRAM(internal::kHistogramOutOfOrderTiming,
-                          inout_existing_value->value() - candidate_new_value);
     } else {
       // We only want to set this for new updates. If there's already a value,
       // then the window during which we buffer updates is over. We'll still
@@ -333,6 +334,9 @@ class PageLoadTimingMerger {
     mojom::PaintTiming* target_paint_timing = target_->paint_timing.get();
     MaybeUpdateTimeDelta(&target_paint_timing->first_paint,
                          navigation_start_offset, new_paint_timing.first_paint);
+    MaybeUpdateTimeDelta(&target_paint_timing->first_eligible_to_paint,
+                         navigation_start_offset,
+                         new_paint_timing.first_eligible_to_paint);
     MaybeUpdateTimeDelta(&target_paint_timing->first_image_paint,
                          navigation_start_offset,
                          new_paint_timing.first_image_paint);
@@ -340,10 +344,14 @@ class PageLoadTimingMerger {
                          navigation_start_offset,
                          new_paint_timing.first_contentful_paint);
     if (is_main_frame) {
-      // FMP and FCP++ are only tracked in the main frame.
+      // FMP is only tracked in the main frame.
       target_paint_timing->first_meaningful_paint =
           new_paint_timing.first_meaningful_paint;
 
+      // LCP and the first input/scroll timestamp are not merged by us; instead,
+      // PLMUD passes the per-frame data to its client (PageLoadTracker) via
+      // OnTimingChanged and OnSubFrameTimingChanged, and merged results are
+      // calculated and held by the LargestContentfulPaintHandler.
       target_paint_timing->largest_contentful_paint =
           new_paint_timing.largest_contentful_paint->Clone();
       target_paint_timing->experimental_largest_contentful_paint =
@@ -413,12 +421,10 @@ class PageLoadTimingMerger {
   }
 
   // The target PageLoadTiming we are merging values into.
-  mojom::PageLoadTiming* const target_;
+  const raw_ptr<mojom::PageLoadTiming> target_;
 
   // Whether we merged a new value into |target_|.
   bool should_buffer_timing_update_callback_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(PageLoadTimingMerger);
 };
 
 }  // namespace
@@ -435,7 +441,9 @@ PageLoadMetricsUpdateDispatcher::PageLoadMetricsUpdateDispatcher(
       pending_merged_page_timing_(CreatePageLoadTiming()),
       main_frame_metadata_(mojom::FrameMetadata::New()),
       subframe_metadata_(mojom::FrameMetadata::New()),
-      page_input_timing_(mojom::InputTiming()) {}
+      page_input_timing_(mojom::InputTiming::New()),
+      is_prerendered_page_load_(navigation_handle->IsInPrerenderedMainFrame()) {
+}
 
 PageLoadMetricsUpdateDispatcher::~PageLoadMetricsUpdateDispatcher() {
   ShutDown();
@@ -458,12 +466,14 @@ void PageLoadMetricsUpdateDispatcher::UpdateMetrics(
     content::RenderFrameHost* render_frame_host,
     mojom::PageLoadTimingPtr new_timing,
     mojom::FrameMetadataPtr new_metadata,
-    mojom::PageLoadFeaturesPtr new_features,
+    const std::vector<blink::UseCounterFeature>& new_features,
     const std::vector<mojom::ResourceDataUpdatePtr>& resources,
     mojom::FrameRenderDataUpdatePtr render_data,
     mojom::CpuTimingPtr new_cpu_timing,
-    mojom::DeferredResourceCountsPtr new_deferred_resource_data,
-    mojom::InputTimingPtr input_timing_delta) {
+    mojom::InputTimingPtr input_timing_delta,
+    mojom::SubresourceLoadMetricsPtr subresource_load_metrics,
+    uint32_t soft_navigation_count,
+    internal::PageLoadTrackerPageType page_type) {
   if (embedder_interface_->IsExtensionUrl(
           render_frame_host->GetLastCommittedURL())) {
     // Extensions can inject child frames into a page. We don't want to track
@@ -477,31 +487,50 @@ void PageLoadMetricsUpdateDispatcher::UpdateMetrics(
   // both updates.
   client_->UpdateResourceDataUse(render_frame_host, resources);
 
-  // Report new deferral info.
-  client_->OnNewDeferredResourceCounts(*new_deferred_resource_data);
+  UpdateHasSeenInputOrScroll(*new_timing);
 
-  bool is_main_frame = IsMainFrame(render_frame_host);
+  bool is_main_frame = client_->IsPageMainFrame(render_frame_host);
   if (is_main_frame) {
     UpdateMainFrameMetadata(render_frame_host, std::move(new_metadata));
-    UpdateMainFrameTiming(std::move(new_timing));
+    UpdateMainFrameTiming(std::move(new_timing), page_type);
     UpdateMainFrameRenderData(*render_data);
+    if (subresource_load_metrics) {
+      UpdateMainFrameSubresourceLoadMetrics(*subresource_load_metrics);
+    }
+    UpdateSoftNavigationCount(soft_navigation_count);
   } else {
     UpdateSubFrameMetadata(render_frame_host, std::move(new_metadata));
     UpdateSubFrameTiming(render_frame_host, std::move(new_timing));
+    // This path is just for the AMP metrics.
+    UpdateSubFrameInputTiming(render_frame_host, *input_timing_delta);
   }
   UpdatePageInputTiming(*input_timing_delta);
-  UpdatePageRenderData(*render_data);
+  UpdatePageRenderData(*render_data, is_main_frame);
   if (!is_main_frame) {
     // This path is just for the AMP metrics.
     OnSubFrameRenderDataChanged(render_frame_host, *render_data);
   }
 
-  client_->UpdateFeaturesUsage(render_frame_host, *new_features);
+  client_->UpdateFeaturesUsage(render_frame_host, new_features);
+}
+
+void PageLoadMetricsUpdateDispatcher::UpdateHasSeenInputOrScroll(
+    const mojom::PageLoadTiming& new_timing) {
+  const mojom::PaintTiming* paint_timing = new_timing.paint_timing.get();
+  if (!paint_timing)
+    return;
+
+  // NOTE: we cannot use the first input/scroll in current_merged_page_timing_,
+  // because PageLoadTimingMerger ignores this field.  We could reach into the
+  // LargestContentfulPaintHandler, but it is simpler to just watch the
+  // per-frame timing updates and remember a boolean.
+  if (paint_timing->first_input_or_scroll_notified_timestamp.has_value())
+    has_seen_input_or_scroll_ = true;
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdateFeatures(
     content::RenderFrameHost* render_frame_host,
-    const mojom::PageLoadFeatures& new_features) {
+    const std::vector<blink::UseCounterFeature>& new_features) {
   if (embedder_interface_->IsExtensionUrl(
           render_frame_host->GetLastCommittedURL())) {
     // Extensions can inject child frames into a page. We don't want to track
@@ -514,7 +543,7 @@ void PageLoadMetricsUpdateDispatcher::UpdateFeatures(
 void PageLoadMetricsUpdateDispatcher::SetUpSharedMemoryForSmoothness(
     content::RenderFrameHost* render_frame_host,
     base::ReadOnlySharedMemoryRegion shared_memory) {
-  const bool is_main_frame = IsMainFrame(render_frame_host);
+  const bool is_main_frame = client_->IsPageMainFrame(render_frame_host);
   if (is_main_frame) {
     client_->SetUpSharedMemoryForSmoothness(std::move(shared_memory));
   } else {
@@ -542,10 +571,9 @@ void PageLoadMetricsUpdateDispatcher::DidFinishSubFrameNavigation(
       navigation_handle->GetFrameTreeNodeId(), navigation_delta));
 }
 
-void PageLoadMetricsUpdateDispatcher::OnFrameDeleted(
-    content::RenderFrameHost* render_frame_host) {
-  subframe_navigation_start_offset_.erase(
-      render_frame_host->GetFrameTreeNodeId());
+void PageLoadMetricsUpdateDispatcher::OnSubFrameDeleted(
+    int frame_tree_node_id) {
+  subframe_navigation_start_offset_.erase(frame_tree_node_id);
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdateSubFrameTiming(
@@ -565,6 +593,12 @@ void PageLoadMetricsUpdateDispatcher::UpdateSubFrameTiming(
   merger.Merge(navigation_start_offset, *new_timing, false /* is_main_frame */);
 
   MaybeDispatchTimingUpdates(merger.should_buffer_timing_update_callback());
+}
+
+void PageLoadMetricsUpdateDispatcher::UpdateSubFrameInputTiming(
+    content::RenderFrameHost* render_frame_host,
+    const mojom::InputTiming& input_timing_delta) {
+  client_->OnSubFrameInputTimingChanged(render_frame_host, input_timing_delta);
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdateFrameCpuTiming(
@@ -588,19 +622,34 @@ void PageLoadMetricsUpdateDispatcher::UpdateFrameCpuTiming(
 void PageLoadMetricsUpdateDispatcher::UpdateSubFrameMetadata(
     content::RenderFrameHost* render_frame_host,
     mojom::FrameMetadataPtr subframe_metadata) {
+  if (subframe_metadata->main_frame_viewport_rect) {
+    mojo::ReportBadMessage(
+        "Unexpected main_frame_viewport_rect set for a subframe.");
+    return;
+  }
+
   // Merge the subframe loading behavior flags with any we've already observed,
   // possibly from other subframes.
   subframe_metadata_->behavior_flags |= subframe_metadata->behavior_flags;
   client_->OnSubframeMetadataChanged(render_frame_host, *subframe_metadata);
 
-  MaybeUpdateFrameIntersection(render_frame_host, subframe_metadata);
+  MaybeUpdateMainFrameIntersectionRect(render_frame_host, subframe_metadata);
 }
 
-void PageLoadMetricsUpdateDispatcher::MaybeUpdateFrameIntersection(
+void PageLoadMetricsUpdateDispatcher::UpdateMainFrameSubresourceLoadMetrics(
+    const mojom::SubresourceLoadMetrics& subresource_load_metrics) {
+  subresource_load_metrics_ = subresource_load_metrics;
+}
+
+void PageLoadMetricsUpdateDispatcher::UpdateSoftNavigationCount(
+    uint32_t soft_navigation_count) {
+  client_->OnSoftNavigationCountChanged(soft_navigation_count);
+}
+void PageLoadMetricsUpdateDispatcher::MaybeUpdateMainFrameIntersectionRect(
     content::RenderFrameHost* render_frame_host,
     const mojom::FrameMetadataPtr& frame_metadata) {
   // Handle intersection updates if included in the metadata.
-  if (frame_metadata->intersection_update.is_null())
+  if (!frame_metadata->main_frame_intersection_rect)
     return;
 
   // Do not notify intersections for untracked loads,
@@ -608,7 +657,7 @@ void PageLoadMetricsUpdateDispatcher::MaybeUpdateFrameIntersection(
   // TODO(crbug/1061091): Document definition of untracked loads in page load
   // metrics.
   const int frame_tree_node_id = render_frame_host->GetFrameTreeNodeId();
-  bool is_main_frame = IsMainFrame(render_frame_host);
+  bool is_main_frame = client_->IsPageMainFrame(render_frame_host);
   if (!is_main_frame &&
       subframe_navigation_start_offset_.find(frame_tree_node_id) ==
           subframe_navigation_start_offset_.end()) {
@@ -616,23 +665,37 @@ void PageLoadMetricsUpdateDispatcher::MaybeUpdateFrameIntersection(
   }
 
   auto existing_intersection_it =
-      frame_intersection_updates_.find(frame_tree_node_id);
+      main_frame_intersection_rects_.find(frame_tree_node_id);
 
-  // Check if we already have a frame intersection update for the frame,
-  // dispatch updates for the first frame intersection update or if
-  // the intersection has changed.
-  if (existing_intersection_it == frame_intersection_updates_.end() ||
-      !existing_intersection_it->second.Equals(
-          *frame_metadata->intersection_update)) {
-    frame_intersection_updates_[frame_tree_node_id] =
-        *frame_metadata->intersection_update;
-    client_->OnFrameIntersectionUpdate(render_frame_host,
-                                       *frame_metadata->intersection_update);
+  // Check if we already have a frame intersection rect for the frame, dispatch
+  // updates for the first frame intersection rect or if the intersection has
+  // changed.
+  if (existing_intersection_it == main_frame_intersection_rects_.end() ||
+      existing_intersection_it->second !=
+          *frame_metadata->main_frame_intersection_rect) {
+    main_frame_intersection_rects_[frame_tree_node_id] =
+        *frame_metadata->main_frame_intersection_rect;
+    client_->OnMainFrameIntersectionRectChanged(
+        render_frame_host, *frame_metadata->main_frame_intersection_rect);
+  }
+}
+
+void PageLoadMetricsUpdateDispatcher::MaybeUpdateMainFrameViewportRect(
+    const mojom::FrameMetadataPtr& frame_metadata) {
+  // Handle viewport updates if included in the metadata.
+  if (!frame_metadata->main_frame_viewport_rect)
+    return;
+
+  if (!main_frame_viewport_rect_ ||
+      *frame_metadata->main_frame_viewport_rect != *main_frame_viewport_rect_) {
+    main_frame_viewport_rect_ = *frame_metadata->main_frame_viewport_rect;
+    client_->OnMainFrameViewportRectChanged(*main_frame_viewport_rect_);
   }
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdateMainFrameTiming(
-    mojom::PageLoadTimingPtr new_timing) {
+    mojom::PageLoadTimingPtr new_timing,
+    internal::PageLoadTrackerPageType page_type) {
   // Throw away IPCs that are not relevant to the current navigation.
   // Two timing structures cannot refer to the same navigation if they indicate
   // that a navigation started at different times, so a new timing struct with a
@@ -647,8 +710,18 @@ void PageLoadMetricsUpdateDispatcher::UpdateMainFrameTiming(
   }
 
   internal::PageLoadTimingStatus status = IsValidPageLoadTiming(*new_timing);
-  UMA_HISTOGRAM_ENUMERATION(internal::kPageLoadTimingStatus, status,
-                            internal::LAST_PAGE_LOAD_TIMING_STATUS);
+  base::UmaHistogramEnumeration(internal::kPageLoadTimingStatus, status,
+                                internal::LAST_PAGE_LOAD_TIMING_STATUS);
+  if (page_type == internal::PageLoadTrackerPageType::kPrerenderPage) {
+    base::UmaHistogramEnumeration(internal::kPageLoadTimingPrerenderStatus,
+                                  status,
+                                  internal::LAST_PAGE_LOAD_TIMING_STATUS);
+  } else if (page_type ==
+             internal::PageLoadTrackerPageType::kFencedFramesPage) {
+    base::UmaHistogramEnumeration(internal::kPageLoadTimingFencedFramesStatus,
+                                  status,
+                                  internal::LAST_PAGE_LOAD_TIMING_STATUS);
+  }
   if (status != internal::VALID) {
     RecordInternalError(ERR_BAD_TIMING_IPC_INVALID_TIMING);
     return;
@@ -691,46 +764,73 @@ void PageLoadMetricsUpdateDispatcher::UpdateMainFrameMetadata(
   main_frame_metadata_ = std::move(new_metadata);
   client_->OnMainFrameMetadataChanged();
 
-  if (!main_frame_metadata_.is_null())
-    MaybeUpdateFrameIntersection(render_frame_host, main_frame_metadata_);
+  if (!main_frame_metadata_.is_null()) {
+    MaybeUpdateMainFrameIntersectionRect(render_frame_host,
+                                         main_frame_metadata_);
+    MaybeUpdateMainFrameViewportRect(main_frame_metadata_);
+
+    client_->OnMainFrameImageAdRectsChanged(
+        main_frame_metadata_->main_frame_image_ad_rects);
+  }
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdatePageInputTiming(
     const mojom::InputTiming& input_timing_delta) {
-  page_input_timing_.num_input_events += input_timing_delta.num_input_events;
-  page_input_timing_.total_input_delay += input_timing_delta.total_input_delay;
-  page_input_timing_.total_adjusted_input_delay +=
+  page_input_timing_->num_input_events += input_timing_delta.num_input_events;
+  page_input_timing_->total_input_delay += input_timing_delta.total_input_delay;
+  page_input_timing_->total_adjusted_input_delay +=
       input_timing_delta.total_adjusted_input_delay;
+  // On the sending side, we ensure input_timing_delta.max_event_duration and
+  // input_timing_delta.total_event_durations are not null pointers otherwise
+  // VALIDATION_ERROR_UNEXPECTED_NULL_POINTER will be triggered on the receiving
+  // side. But in some tests where the whole input_timing_delta is set as the
+  // default state, input_timing_delta.max_event_durations or
+  // input_timing_delta.total_event_durations can be null.
+  if (input_timing_delta.num_interactions) {
+    responsiveness_metrics_normalization_.AddNewUserInteractionLatencies(
+        input_timing_delta.num_interactions,
+        *(input_timing_delta.max_event_durations));
+  }
+  if (input_timing_delta.num_interactions ||
+      page_input_timing_->num_input_events) {
+    client_->OnPageInputTimingChanged(input_timing_delta.num_interactions,
+                                      page_input_timing_->num_input_events);
+  }
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdatePageRenderData(
-    const mojom::FrameRenderDataUpdate& render_data) {
+    const mojom::FrameRenderDataUpdate& render_data,
+    bool is_main_frame) {
   page_render_data_.layout_shift_score += render_data.layout_shift_delta;
+  layout_shift_normalization_.AddNewLayoutShifts(
+      render_data.new_layout_shifts, base::TimeTicks::Now(),
+      page_render_data_.layout_shift_score);
+  layout_shift_normalization_for_bfcache_.AddNewLayoutShifts(
+      render_data.new_layout_shifts, base::TimeTicks::Now(),
+      page_render_data_.layout_shift_score -
+          cumulative_layout_shift_score_for_bfcache_);
 
-  page_render_data_.all_layout_block_count +=
-      render_data.all_layout_block_count_delta;
-  page_render_data_.ng_layout_block_count +=
-      render_data.ng_layout_block_count_delta;
-  page_render_data_.all_layout_call_count +=
-      render_data.all_layout_call_count_delta;
-  page_render_data_.ng_layout_call_count +=
-      render_data.ng_layout_call_count_delta;
+  // Stop accumulating page-wide layout_shift_score_before_input_or_scroll after
+  // input or scroll in any frame. Note that we can't unconditionally accumulate
+  // layout_shift_delta_before_input_or_scroll, because that field only reflects
+  // input/scroll in the same frame as the shift.
+  if (!has_seen_input_or_scroll_) {
+    page_render_data_.layout_shift_score_before_input_or_scroll +=
+        render_data.layout_shift_delta_before_input_or_scroll;
+  }
+
+  client_->OnPageRenderDataChanged(render_data, is_main_frame);
 }
 
 void PageLoadMetricsUpdateDispatcher::UpdateMainFrameRenderData(
     const mojom::FrameRenderDataUpdate& render_data) {
   main_frame_render_data_.layout_shift_score += render_data.layout_shift_delta;
+
+  // Track main frame cumulative score up to the first input or scroll in the
+  // main frame. For this we do not care about inputs sent to subframes, so we
+  // should not check has_seen_input_or_scroll_ (but see crbug.com/1136207).
   main_frame_render_data_.layout_shift_score_before_input_or_scroll +=
       render_data.layout_shift_delta_before_input_or_scroll;
-
-  main_frame_render_data_.all_layout_block_count +=
-      render_data.all_layout_block_count_delta;
-  main_frame_render_data_.ng_layout_block_count +=
-      render_data.ng_layout_block_count_delta;
-  main_frame_render_data_.all_layout_call_count +=
-      render_data.all_layout_call_count_delta;
-  main_frame_render_data_.ng_layout_call_count +=
-      render_data.ng_layout_call_count_delta;
 }
 
 void PageLoadMetricsUpdateDispatcher::OnSubFrameRenderDataChanged(
@@ -739,14 +839,22 @@ void PageLoadMetricsUpdateDispatcher::OnSubFrameRenderDataChanged(
   client_->OnSubFrameRenderDataChanged(render_frame_host, render_data);
 }
 
+void PageLoadMetricsUpdateDispatcher::FlushPendingTimingUpdates() {
+  // If there's a pending update, dispatch the update now.
+  if (timer_->IsRunning()) {
+    timer_->Stop();
+    DispatchTimingUpdates();
+  }
+}
+
 void PageLoadMetricsUpdateDispatcher::MaybeDispatchTimingUpdates(
     bool should_buffer_timing_update_callback) {
-  // If we merged a new timing value, then we should buffer updates for
-  // |kBufferTimerDelayMillis|, to allow for any other out of order timings to
-  // arrive before we dispatch the minimum observed timings to observers.
+  // If we merged a new timing value, then we should buffer updates to allow for
+  // any other out of order timings to arrive before we dispatch to observers.
   if (should_buffer_timing_update_callback) {
     timer_->Start(
-        FROM_HERE, base::TimeDelta::FromMilliseconds(kBufferTimerDelayMillis),
+        FROM_HERE,
+        base::Milliseconds(GetBufferTimerDelayMillis(TimerType::kBrowser)),
         base::BindOnce(&PageLoadMetricsUpdateDispatcher::DispatchTimingUpdates,
                        base::Unretained(this)));
   } else if (!timer_->IsRunning()) {
@@ -769,25 +877,23 @@ void PageLoadMetricsUpdateDispatcher::DispatchTimingUpdates() {
       // ordering of these events in their callbacks.
       return;
     }
+    if (is_prerendered_page_load_ &&
+        !pending_merged_page_timing_->activation_start) {
+      // Similarly, in a prerendered page load we may receive a first paint in a
+      // child frame before we've received a notification for activation start
+      // in the main frame.
+      return;
+    }
   }
   if (current_merged_page_timing_->Equals(*pending_merged_page_timing_))
     return;
-
-  LogIfOutOfOrderTiming(current_merged_page_timing_->paint_timing->first_paint,
-                        pending_merged_page_timing_->paint_timing->first_paint);
-  LogIfOutOfOrderTiming(
-      current_merged_page_timing_->paint_timing->first_image_paint,
-      pending_merged_page_timing_->paint_timing->first_image_paint);
-  LogIfOutOfOrderTiming(
-      current_merged_page_timing_->paint_timing->first_contentful_paint,
-      pending_merged_page_timing_->paint_timing->first_contentful_paint);
 
   current_merged_page_timing_ = pending_merged_page_timing_->Clone();
 
   internal::PageLoadTimingStatus status =
       IsValidPageLoadTiming(*pending_merged_page_timing_);
-  UMA_HISTOGRAM_ENUMERATION(internal::kPageLoadTimingDispatchStatus, status,
-                            internal::LAST_PAGE_LOAD_TIMING_STATUS);
+  base::UmaHistogramEnumeration(internal::kPageLoadTimingDispatchStatus, status,
+                                internal::LAST_PAGE_LOAD_TIMING_STATUS);
 
   client_->OnTimingChanged();
 }

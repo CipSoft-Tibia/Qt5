@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 //! [0]
 QHash<QString, int> hash;
@@ -89,7 +42,7 @@ QHash<int, QWidget *> hash;
 ...
 for (int i = 0; i < 1000; ++i) {
     if (hash[i] == okButton)
-        cout << "Found button at index " << i << Qt::endl;
+        cout << "Found button at index " << i << endl;
 }
 //! [6]
 
@@ -98,17 +51,14 @@ for (int i = 0; i < 1000; ++i) {
 QHashIterator<QString, int> i(hash);
 while (i.hasNext()) {
     i.next();
-    cout << i.key() << ": " << i.value() << Qt::endl;
+    cout << qPrintable(i.key()) << ": " << i.value() << endl;
 }
 //! [7]
 
 
 //! [8]
-QHash<QString, int>::const_iterator i = hash.constBegin();
-while (i != hash.constEnd()) {
-    cout << i.key() << ": " << i.value() << Qt::endl;
-    ++i;
-}
+for (auto i = hash.cbegin(), end = hash.cend(); i != end; ++i)
+    cout << qPrintable(i.key()) << ": " << i.value() << endl;
 //! [8]
 
 
@@ -122,8 +72,8 @@ hash.insert("plenty", 2000);
 //! [12]
 QHash<QString, int> hash;
 ...
-foreach (int value, hash)
-    cout << value << Qt::endl;
+for (int value : std::as_const(hash))
+    cout << value << endl;
 //! [12]
 
 
@@ -149,9 +99,9 @@ inline bool operator==(const Employee &e1, const Employee &e2)
            && e1.dateOfBirth() == e2.dateOfBirth();
 }
 
-inline uint qHash(const Employee &key, uint seed)
+inline size_t qHash(const Employee &key, size_t seed)
 {
-    return qHash(key.name(), seed) ^ key.dateOfBirth().day();
+    return qHashMulti(seed, key.name(), key.dateOfBirth());
 }
 
 #endif // EMPLOYEE_H
@@ -185,7 +135,7 @@ QHash<QString, int> hash;
 ...
 QHash<QString, int>::const_iterator i = hash.find("HDR");
 while (i != hash.end() && i.key() == "HDR") {
-    cout << i.value() << Qt::endl;
+    cout << i.value() << endl;
     ++i;
 }
 //! [16]
@@ -198,50 +148,20 @@ hash.insert("February", 2);
 ...
 hash.insert("December", 12);
 
-QHash<QString, int>::iterator i;
-for (i = hash.begin(); i != hash.end(); ++i)
-    cout << i.key() << ": " << i.value() << Qt::endl;
+for (auto i = hash.cbegin(), end = hash.cend(); i != end; ++i)
+    cout << qPrintable(key()) << ": " << i.value() << endl;
 //! [17]
 
 
 //! [18]
-QHash<QString, int>::iterator i;
-for (i = hash.begin(); i != hash.end(); ++i)
+for (auto i = hash.begin(), end = hash.end(); i != end; ++i)
     i.value() += 2;
 //! [18]
 
-
-//! [19]
-QHash<QString, int>::iterator i = hash.begin();
-while (i != hash.end()) {
-    if (i.key().startsWith('_'))
-        i = hash.erase(i);
-    else
-        ++i;
-}
-//! [19]
-
-
-//! [20]
-QHash<QString, int>::iterator i = hash.begin();
-while (i != hash.end()) {
-    QHash<QString, int>::iterator prev = i;
-    ++i;
-    if (prev.key().startsWith('_'))
-        hash.erase(prev);
-}
-//! [20]
-
-
 //! [21]
-// WRONG
-while (i != hash.end()) {
-    if (i.key().startsWith('_'))
-        hash.erase(i);
-    ++i;
-}
+erase_if(hash, [](const QHash<QString, int>::iterator it) { return it.value() > 10; });
 //! [21]
-
+}
 
 //! [22]
 if (i.key() == "Hello")
@@ -256,9 +176,8 @@ hash.insert("February", 2);
 ...
 hash.insert("December", 12);
 
-QHash<QString, int>::const_iterator i;
-for (i = hash.constBegin(); i != hash.constEnd(); ++i)
-    cout << i.key() << ": " << i.value() << Qt::endl;
+for (auto i = hash.cbegin(), end = hash.cend(); i != end; ++i)
+    cout << qPrintable(i.key()) << ": " << i.value() << endl;
 //! [23]
 
 
@@ -279,24 +198,24 @@ hash3 = hash1 + hash2;
 
 //! [25]
 QList<int> values = hash.values("plenty");
-for (int i = 0; i < values.size(); ++i)
-    cout << values.at(i) << Qt::endl;
+for (auto i : std::as_const(values))
+    cout << i << endl;
 //! [25]
 
 
 //! [26]
-QMultiHash<QString, int>::iterator i = hash.find("plenty");
-while (i != hash.end() && i.key() == "plenty") {
-    cout << i.value() << Qt::endl;
+auto i = hash.constFind("plenty");
+while (i != hash.cend() && i.key() == "plenty") {
+    cout << i.value() << endl;
     ++i;
 }
 //! [26]
 
 //! [27]
-for (QHash<int, QString>::const_iterator it = hash.cbegin(), end = hash.cend(); it != end; ++it) {
-    cout << "The key: " << it.key() << Qt::endl
-    cout << "The value: " << it.value() << Qt::endl;
-    cout << "Also the value: " << (*it) << Qt::endl;
+for (auto it = hash.cbegin(), end = hash.cend(); it != end; ++it) {
+    cout << "The key: " << it.key() << endl;
+    cout << "The value: " << qPrintable(it.value()) << endl;
+    cout << "Also the value: " << qPrintable(*it) << endl;
 }
 //! [27]
 
@@ -312,7 +231,7 @@ qDeleteAll(hash2.keyBegin(), hash2.keyEnd());
 //! [28]
 
 //! [qhashbits]
-inline uint qHash(const std::vector<int> &key, uint seed = 0)
+inline size_t qHash(const std::vector<int> &key, size_t seed = 0)
 {
     if (key.empty())
         return seed;
@@ -322,22 +241,18 @@ inline uint qHash(const std::vector<int> &key, uint seed = 0)
 //! [qhashbits]
 
 //! [qhashrange]
-inline uint qHash(const std::vector<int> &key, uint seed = 0)
+inline size_t qHash(const std::vector<int> &key, size_t seed = 0)
 {
     return qHashRange(key.begin(), key.end(), seed);
 }
 //! [qhashrange]
 
 //! [qhashrangecommutative]
-inline uint qHash(const std::unordered_set<int> &key, uint seed = 0)
+inline size_t qHash(const std::unordered_set<int> &key, size_t seed = 0)
 {
     return qHashRangeCommutative(key.begin(), key.end(), seed);
 }
 //! [qhashrangecommutative]
-
-//! [29]
-qHash(qMakePair(key.first, key.second), seed);
-//! [29]
 
 //! [30]
 {0, 1, 2}
@@ -348,9 +263,45 @@ qHash(qMakePair(key.first, key.second), seed);
 //! [31]
 
 //! [32]
-uint qHash(K key);
-uint qHash(const K &key);
+size_t qHash(K key, size_t seed);
+size_t qHash(const K &key, size_t seed);
 
-uint qHash(K key, uint seed);
-uint qHash(const K &key, uint seed);
+size_t qHash(K key);        // deprecated, do not use
+size_t qHash(const K &key); // deprecated, do not use
 //! [32]
+
+//! [33]
+namespace std {
+template <> struct hash<K>
+{
+    // seed is optional
+    size_t operator()(const K &key, size_t seed = 0) const;
+};
+}
+//! [33]
+
+//! [34]
+QHash<QString, int> hash;
+hash.insert("January", 1);
+hash.insert("February", 2);
+// ...
+hash.insert("December", 12);
+
+for (auto [key, value] : hash.asKeyValueRange()) {
+    cout << qPrintable(key) << ": " << value << endl;
+    --value; // convert to JS month indexing
+}
+//! [34]
+
+//! [35]
+QMultiHash<QString, int> hash;
+hash.insert("January", 1);
+hash.insert("February", 2);
+// ...
+hash.insert("December", 12);
+
+for (auto [key, value] : hash.asKeyValueRange()) {
+    cout << qPrintable(key) << ": " << value << endl;
+    --value; // convert to JS month indexing
+}
+//! [35]

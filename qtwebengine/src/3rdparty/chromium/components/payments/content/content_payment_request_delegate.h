@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "components/payments/content/payment_request_display_manager.h"
 #include "components/payments/core/payment_request_delegate.h"
@@ -15,24 +16,37 @@
 template <class T>
 class scoped_refptr;
 
-namespace autofill {
+namespace content {
+class RenderFrameHost;
+}  // namespace content
+
+namespace webauthn {
 class InternalAuthenticator;
-}  // namespace autofill
+}  // namespace webauthn
 
 namespace payments {
 
 class PaymentManifestWebDataService;
 class PaymentRequestDialog;
 class PaymentRequestDisplayManager;
+class PaymentUIObserver;
+class SecurePaymentConfirmationNoCreds;
 
 // The delegate for PaymentRequest that can use content.
 class ContentPaymentRequestDelegate : public PaymentRequestDelegate {
  public:
+  using GetTwaPackageNameCallback =
+      base::OnceCallback<void(const std::string& twa_package_name)>;
+
   ~ContentPaymentRequestDelegate() override;
+
+  // Returns the RenderFrameHost for the frame that initiated the
+  // PaymentRequest.
+  virtual content::RenderFrameHost* GetRenderFrameHost() const = 0;
 
   // Creates and returns an instance of the InternalAuthenticator interface for
   // communication with WebAuthn.
-  virtual std::unique_ptr<autofill::InternalAuthenticator>
+  virtual std::unique_ptr<webauthn::InternalAuthenticator>
   CreateInternalAuthenticator() const = 0;
 
   // Returns the web data service for caching payment method manifests.
@@ -64,15 +78,22 @@ class ContentPaymentRequestDelegate : public PaymentRequestDelegate {
   // parameter will return an "Invalid certificate" error message.
   virtual std::string GetInvalidSslCertificateErrorMessage() = 0;
 
-  // Returns whether the UI should be skipped for a "basic-card" scenario. This
-  // will only be true in tests.
-  virtual bool SkipUiForBasicCard() const = 0;
-
-  // Returns the Android package name of the Trusted Web Activity that invoked
-  // this browser, if any. Otherwise, an empty string.
-  virtual std::string GetTwaPackageName() const = 0;
+  // Obtains the Android package name of the Trusted Web Activity that invoked
+  // this browser, if any. Otherwise, calls `callback` with an empty string.
+  virtual void GetTwaPackageName(GetTwaPackageNameCallback callback) const = 0;
 
   virtual PaymentRequestDialog* GetDialogForTesting() = 0;
+  virtual SecurePaymentConfirmationNoCreds*
+  GetNoMatchingCredentialsDialogForTesting() = 0;
+
+  virtual const base::WeakPtr<PaymentUIObserver> GetPaymentUIObserver()
+      const = 0;
+
+  virtual void ShowNoMatchingPaymentCredentialDialog(
+      const std::u16string& merchant_name,
+      const std::string& rp_id,
+      base::OnceClosure response_callback,
+      base::OnceClosure opt_out_callback) = 0;
 
   // Returns a weak pointer to this delegate.
   base::WeakPtr<ContentPaymentRequestDelegate> GetContentWeakPtr();

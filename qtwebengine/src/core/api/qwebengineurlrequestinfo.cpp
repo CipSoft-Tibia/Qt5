@@ -1,48 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebengineurlrequestinfo.h"
 #include "qwebengineurlrequestinfo_p.h"
 
 #include "web_contents_adapter_client.h"
 
+#include <memory>
+#include <utility>
+
 QT_BEGIN_NAMESPACE
+
+// We changed the type from QScopedPointer to unique_ptr, make sure it's binary compatible:
+static_assert(sizeof(QScopedPointer<QWebEngineUrlRequestInfoPrivate>)
+              == sizeof(std::unique_ptr<QWebEngineUrlRequestInfoPrivate>));
 
 ASSERT_ENUMS_MATCH(QtWebEngineCore::WebContentsAdapterClient::LinkNavigation, QWebEngineUrlRequestInfo::NavigationTypeLink)
 ASSERT_ENUMS_MATCH(QtWebEngineCore::WebContentsAdapterClient::TypedNavigation, QWebEngineUrlRequestInfo::NavigationTypeTyped)
@@ -87,7 +58,7 @@ ASSERT_ENUMS_MATCH(QtWebEngineCore::WebContentsAdapterClient::RedirectNavigation
 */
 
 /*!
-    \fn QWebEngineUrlRequestInterceptor::QWebEngineUrlRequestInterceptor(QObject * p = 0)
+    \fn QWebEngineUrlRequestInterceptor::QWebEngineUrlRequestInterceptor(QObject *p = nullptr)
 
     Creates a new QWebEngineUrlRequestInterceptor object with \a p as parent.
 */
@@ -105,10 +76,10 @@ ASSERT_ENUMS_MATCH(QtWebEngineCore::WebContentsAdapterClient::RedirectNavigation
     execution of this function is finished.
 */
 
-QWebEngineUrlRequestInfoPrivate::QWebEngineUrlRequestInfoPrivate(QWebEngineUrlRequestInfo::ResourceType resource,
-                                                                 QWebEngineUrlRequestInfo::NavigationType navigation,
-                                                                 const QUrl &u, const QUrl &fpu, const QUrl &i,
-                                                                 const QByteArray &m)
+QWebEngineUrlRequestInfoPrivate::QWebEngineUrlRequestInfoPrivate(
+        QWebEngineUrlRequestInfo::ResourceType resource,
+        QWebEngineUrlRequestInfo::NavigationType navigation, const QUrl &u, const QUrl &fpu,
+        const QUrl &i, const QByteArray &m, const QHash<QByteArray, QByteArray> &h)
     : resourceType(resource)
     , navigationType(navigation)
     , shouldBlockRequest(false)
@@ -118,6 +89,7 @@ QWebEngineUrlRequestInfoPrivate::QWebEngineUrlRequestInfoPrivate(QWebEngineUrlRe
     , initiator(i)
     , method(m)
     , changed(false)
+    , extraHeaders(h)
 {}
 
 /*!
@@ -128,14 +100,17 @@ QWebEngineUrlRequestInfo::QWebEngineUrlRequestInfo() {}
 /*!
     \internal
 */
-QWebEngineUrlRequestInfo::QWebEngineUrlRequestInfo(QWebEngineUrlRequestInfo &&p) : d_ptr(p.d_ptr.take()) {}
+QWebEngineUrlRequestInfo::QWebEngineUrlRequestInfo(QWebEngineUrlRequestInfo &&p)
+    : d_ptr(std::move(p.d_ptr))
+{
+}
 
 /*!
     \internal
 */
 QWebEngineUrlRequestInfo &QWebEngineUrlRequestInfo::operator=(QWebEngineUrlRequestInfo &&p)
 {
-    d_ptr.reset(p.d_ptr.take());
+    d_ptr = std::move(p.d_ptr);
     return *this;
 }
 
@@ -181,6 +156,7 @@ QWebEngineUrlRequestInfo::QWebEngineUrlRequestInfo(QWebEngineUrlRequestInfoPriva
     \value ResourceTypePluginResource  A resource requested by a plugin. (Added in Qt 5.7)
     \value ResourceTypeNavigationPreloadMainFrame  A main-frame service worker navigation preload request. (Added in Qt 5.14)
     \value ResourceTypeNavigationPreloadSubFrame  A sub-frame service worker navigation preload request. (Added in Qt 5.14)
+    \value ResourceTypeWebSocket  A WebSocket request. (Added in Qt 6.4)
     \value ResourceTypeUnknown  Unknown request type.
 
     \note For forward compatibility all values not matched should be treated as unknown,
@@ -309,8 +285,27 @@ void QWebEngineUrlRequestInfo::block(bool shouldBlock)
 
 void QWebEngineUrlRequestInfo::setHttpHeader(const QByteArray &name, const QByteArray &value)
 {
-    d_ptr->changed = true;
+    // Headers are case insentive, so we need to compare manually
+    for (auto it = d_ptr->extraHeaders.begin(); it != d_ptr->extraHeaders.end(); ++it) {
+        if (it.key().compare(name, Qt::CaseInsensitive) == 0) {
+            d_ptr->extraHeaders.erase(it);
+            break;
+        }
+    }
+
     d_ptr->extraHeaders.insert(name, value);
+}
+
+/*!
+    Returns the request headers.
+    \since 6.5
+    \note Not all headers are visible at this stage as Chromium will add
+    security and proxy headers at a later stage.
+*/
+
+QHash<QByteArray, QByteArray> QWebEngineUrlRequestInfo::httpHeaders() const
+{
+    return d_ptr->extraHeaders;
 }
 
 QT_END_NAMESPACE

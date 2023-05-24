@@ -1,7 +1,8 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "components/autofill/core/common/unique_ids.h"
 #import "components/autofill/ios/browser/autofill_util.h"
 
 #include "base/strings/utf_string_conversions.h"
@@ -15,12 +16,14 @@ using AutofillUtilTest = PlatformTest;
 
 using autofill::ExtractIDs;
 using autofill::ExtractFillingResults;
+using autofill::FieldRendererId;
 using base::ASCIIToUTF16;
 
 TEST_F(AutofillUtilTest, ExtractIDs) {
-  std::vector<uint32_t> extracted_ids;
+  std::vector<FieldRendererId> extracted_ids;
   NSString* valid_ids = @"[\"1\",\"2\"]";
-  std::vector<uint32_t> expected_result = {1, 2};
+  std::vector<FieldRendererId> expected_result = {FieldRendererId(1),
+                                                  FieldRendererId(2)};
   EXPECT_TRUE(ExtractIDs(valid_ids, &extracted_ids));
   EXPECT_EQ(expected_result, extracted_ids);
 
@@ -36,10 +39,10 @@ TEST_F(AutofillUtilTest, ExtractIDs) {
 }
 
 TEST_F(AutofillUtilTest, ExtractFillingResults) {
-  std::map<uint32_t, base::string16> extracted_results;
+  std::map<uint32_t, std::u16string> extracted_results;
   NSString* valid_results = @"{\"1\":\"username\",\"2\":\"adress\"}";
-  std::map<uint32_t, base::string16> expected_result = {
-      {1, ASCIIToUTF16("username")}, {2, ASCIIToUTF16("adress")}};
+  std::map<uint32_t, std::u16string> expected_result = {{1, u"username"},
+                                                        {2, u"adress"}};
   EXPECT_TRUE(ExtractFillingResults(valid_results, &extracted_results));
   EXPECT_EQ(expected_result, extracted_results);
 

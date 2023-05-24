@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -113,7 +113,7 @@ TEST(ContextCacheControllerTest, ScopedBusyWhileVisible) {
 
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(true));
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(false));
-  task_runner->FastForwardBy(base::TimeDelta::FromSeconds(5));
+  task_runner->FastForwardBy(base::Seconds(5));
   Mock::VerifyAndClearExpectations(&context_support);
 
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(true));
@@ -129,7 +129,7 @@ TEST(ContextCacheControllerTest, ScopedBusyWhileNotVisible) {
 
   // We are not visible, so becoming busy should not trigger an idle callback.
   cache_controller.ClientBecameNotBusy(std::move(busy));
-  task_runner->FastForwardBy(base::TimeDelta::FromSeconds(5));
+  task_runner->FastForwardBy(base::Seconds(5));
 }
 
 TEST(ContextCacheControllerTest, ScopedBusyMulitpleWhileVisible) {
@@ -149,7 +149,7 @@ TEST(ContextCacheControllerTest, ScopedBusyMulitpleWhileVisible) {
   // When we fast forward, only one cleanup should happen.
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(true));
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(false));
-  task_runner->FastForwardBy(base::TimeDelta::FromSeconds(5));
+  task_runner->FastForwardBy(base::Seconds(5));
   Mock::VerifyAndClearExpectations(&context_support);
 
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(true));
@@ -163,7 +163,7 @@ TEST(ContextCacheControllerTest, CheckSkiaResourcePurgeAPI) {
   auto task_runner = base::MakeRefCounted<base::TestMockTimeTaskRunner>();
   ContextCacheController cache_controller(&context_support, task_runner);
   auto context_provider = TestContextProvider::Create();
-  context_provider->BindToCurrentThread();
+  context_provider->BindToCurrentSequence();
   auto* gr_context = context_provider->GrContext();
   cache_controller.SetGrContext(gr_context);
 
@@ -191,7 +191,7 @@ TEST(ContextCacheControllerTest, CheckSkiaResourcePurgeAPI) {
   cache_controller.ClientBecameNotBusy(std::move(busy));
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(true));
   EXPECT_CALL(context_support, SetAggressivelyFreeResources(false));
-  task_runner->FastForwardBy(base::TimeDelta::FromSeconds(5));
+  task_runner->FastForwardBy(base::Seconds(5));
   Mock::VerifyAndClearExpectations(&context_support);
 
   // The Skia resource cache should now be empty.

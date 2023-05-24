@@ -1,56 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "cookie_monster_delegate_qt.h"
 
-#include "base/bind.h"
-#include "base/memory/ptr_util.h"
-#include "base/task/post_task.h"
-#include "content/public/browser/browser_task_traits.h"
-#include "content/public/browser/browser_thread.h"
-#include "mojo/public/cpp/bindings/binding.h"
+#include "base/functional/bind.h"
 #include "net/cookies/cookie_util.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
 
 #include "api/qwebenginecookiestore.h"
 #include "api/qwebenginecookiestore_p.h"
 #include "type_conversion.h"
+
+#include <QNetworkCookie>
 
 namespace QtWebEngineCore {
 
@@ -68,8 +29,6 @@ public:
 
 private:
     CookieMonsterDelegateQt *m_delegate;
-
-    DISALLOW_COPY_AND_ASSIGN(CookieChangeListener);
 };
 
 class CookieAccessFilter : public network::mojom::CookieRemoteAccessFilter
@@ -86,8 +45,6 @@ public:
 
 private:
     CookieMonsterDelegateQt *m_delegate;
-
-    DISALLOW_COPY_AND_ASSIGN(CookieAccessFilter);
 };
 
 
@@ -126,25 +83,21 @@ bool CookieMonsterDelegateQt::hasCookieMonster()
     return m_mojoCookieManager.is_bound();
 }
 
-void CookieMonsterDelegateQt::getAllCookies(quint64 callbackId)
+void CookieMonsterDelegateQt::getAllCookies()
 {
-    m_mojoCookieManager->GetAllCookies(base::BindOnce(&CookieMonsterDelegateQt::GetAllCookiesCallbackOnUIThread, this, callbackId));
+    m_mojoCookieManager->GetAllCookies(net::CookieStore::GetAllCookiesCallback());
 }
 
-void CookieMonsterDelegateQt::setCookie(quint64 callbackId, const QNetworkCookie &cookie, const QUrl &origin)
+void CookieMonsterDelegateQt::setCookie(const QNetworkCookie &cookie, const QUrl &origin)
 {
     Q_ASSERT(hasCookieMonster());
     Q_ASSERT(m_client);
 
-    net::CookieStore::SetCookiesCallback callback;
-
     GURL gurl = origin.isEmpty() ? sourceUrlForCookie(cookie) : toGurl(origin);
     std::string cookie_line = cookie.toRawForm().toStdString();
 
-    if (callbackId != CallbackDirectory::NoCallbackId)
-        callback = base::BindOnce(&CookieMonsterDelegateQt::SetCookieCallbackOnUIThread, this, callbackId);
     net::CookieInclusionStatus inclusion;
-    auto canonCookie = net::CanonicalCookie::Create(gurl, cookie_line, base::Time::Now(), base::nullopt, &inclusion);
+    auto canonCookie = net::CanonicalCookie::Create(gurl, cookie_line, base::Time::Now(), absl::nullopt, absl::nullopt, &inclusion);
     if (!inclusion.IsInclude()) {
         LOG(WARNING) << "QWebEngineCookieStore::setCookie() - Tried to set invalid cookie";
         return;
@@ -152,7 +105,7 @@ void CookieMonsterDelegateQt::setCookie(quint64 callbackId, const QNetworkCookie
     net::CookieOptions options;
     options.set_include_httponly();
     options.set_same_site_cookie_context(net::CookieOptions::SameSiteCookieContext::MakeInclusiveForSet());
-    m_mojoCookieManager->SetCanonicalCookie(*canonCookie.get(), gurl, options, std::move(callback));
+    m_mojoCookieManager->SetCanonicalCookie(*canonCookie.get(), gurl, options, net::CookieStore::SetCookiesCallback());
 }
 
 void CookieMonsterDelegateQt::deleteCookie(const QNetworkCookie &cookie, const QUrl &origin)
@@ -168,30 +121,26 @@ void CookieMonsterDelegateQt::deleteCookie(const QNetworkCookie &cookie, const Q
     m_mojoCookieManager->DeleteCookies(std::move(filter), network::mojom::CookieManager::DeleteCookiesCallback());
 }
 
-void CookieMonsterDelegateQt::deleteSessionCookies(quint64 callbackId)
+void CookieMonsterDelegateQt::deleteSessionCookies()
 {
     Q_ASSERT(hasCookieMonster());
     Q_ASSERT(m_client);
 
-    network::mojom::CookieManager::DeleteCookiesCallback callback =
-        base::BindOnce(&CookieMonsterDelegateQt::DeleteCookiesCallbackOnUIThread, this, callbackId);
     auto filter = network::mojom::CookieDeletionFilter::New();
     filter->session_control = network::mojom::CookieDeletionSessionControl::SESSION_COOKIES;
-    m_mojoCookieManager->DeleteCookies(std::move(filter), std::move(callback));
+    m_mojoCookieManager->DeleteCookies(std::move(filter), network::mojom::CookieManager::DeleteCookiesCallback());
 }
 
-void CookieMonsterDelegateQt::deleteAllCookies(quint64 callbackId)
+void CookieMonsterDelegateQt::deleteAllCookies()
 {
     Q_ASSERT(hasCookieMonster());
     Q_ASSERT(m_client);
 
-    network::mojom::CookieManager::DeleteCookiesCallback callback =
-        base::BindOnce(&CookieMonsterDelegateQt::DeleteCookiesCallbackOnUIThread, this, callbackId);
     auto filter = network::mojom::CookieDeletionFilter::New();
-    m_mojoCookieManager->DeleteCookies(std::move(filter), std::move(callback));
+    m_mojoCookieManager->DeleteCookies(std::move(filter), network::mojom::CookieManager::DeleteCookiesCallback());
 }
 
-void CookieMonsterDelegateQt::setMojoCookieManager(network::mojom::CookieManagerPtrInfo cookie_manager_info)
+void CookieMonsterDelegateQt::setMojoCookieManager(mojo::PendingRemote<network::mojom::CookieManager> cookie_manager_info)
 {
     if (m_mojoCookieManager.is_bound())
         unsetMojoCookieManager();
@@ -264,25 +213,6 @@ void CookieMonsterDelegateQt::OnCookieChanged(const net::CookieChangeInfo &chang
     if (!m_client)
         return;
     m_client->d_func()->onCookieChanged(toQt(change.cookie), change.cause != net::CookieChangeCause::INSERTED);
-}
-
-void CookieMonsterDelegateQt::GetAllCookiesCallbackOnUIThread(qint64 callbackId, const net::CookieList &cookies)
-{
-    QByteArray rawCookies = QByteArray::fromStdString(net::CanonicalCookie::BuildCookieLine(cookies));
-    if (m_client)
-        m_client->d_func()->onGetAllCallbackResult(callbackId, rawCookies);
-}
-
-void CookieMonsterDelegateQt::SetCookieCallbackOnUIThread(qint64 callbackId, net::CookieAccessResult status)
-{
-    if (m_client)
-        m_client->d_func()->onSetCallbackResult(callbackId, status.status.IsInclude());
-}
-
-void CookieMonsterDelegateQt::DeleteCookiesCallbackOnUIThread(qint64 callbackId, uint numCookies)
-{
-    if (m_client)
-        m_client->d_func()->onDeleteCallbackResult(callbackId, numCookies);
 }
 
 } // namespace QtWebEngineCore

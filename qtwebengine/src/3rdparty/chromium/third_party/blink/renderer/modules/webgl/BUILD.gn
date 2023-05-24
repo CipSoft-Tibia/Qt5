@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -64,6 +64,8 @@ blink_modules_sources("webgl") {
     "webgl_active_info.h",
     "webgl_buffer.cc",
     "webgl_buffer.h",
+    "webgl_clip_cull_distance.cc",
+    "webgl_clip_cull_distance.h",
     "webgl_color_buffer_float.cc",
     "webgl_color_buffer_float.h",
     "webgl_compressed_texture_astc.cc",
@@ -99,8 +101,6 @@ blink_modules_sources("webgl") {
     "webgl_extension.cc",
     "webgl_extension.h",
     "webgl_extension_name.h",
-    "webgl_fast_call.cc",
-    "webgl_fast_call.h",
     "webgl_fence_sync.cc",
     "webgl_fence_sync.h",
     "webgl_framebuffer.cc",
@@ -117,6 +117,8 @@ blink_modules_sources("webgl") {
     "webgl_object.h",
     "webgl_program.cc",
     "webgl_program.h",
+    "webgl_provoking_vertex.cc",
+    "webgl_provoking_vertex.h",
     "webgl_query.cc",
     "webgl_query.h",
     "webgl_renderbuffer.cc",
@@ -156,23 +158,20 @@ blink_modules_sources("webgl") {
     "webgl_video_texture.cc",
     "webgl_video_texture.h",
     "webgl_video_texture_enum.h",
+    "webgl_webcodecs_video_frame.cc",
+    "webgl_webcodecs_video_frame.h",
   ]
-
-  if (support_webgl2_compute_context) {
-    sources += [
-      "webgl2_compute_rendering_context.cc",
-      "webgl2_compute_rendering_context.h",
-      "webgl2_compute_rendering_context_base.cc",
-      "webgl2_compute_rendering_context_base.h",
-    ]
-  }
 
   # The modules/webgl/ directly is a larger module, and
   # the implementation depends on a fair chunk of core/ --
   # include the core pch for faster Windows compilation times.
   configs += [ "//third_party/blink/renderer/core:blink_core_pch" ]
 
-  public_deps = [ "//device/vr/public/mojom:mojom_blink" ]
-  deps = [ "//third_party/blink/renderer/modules/xr:xr" ]
+  public_deps = [ "//device/vr/public/mojom:vr_service_blink" ]
+  deps = [
+    "//build:chromeos_buildflags",
+    "//third_party/blink/renderer/modules/xr:xr",
+  ]
+  deps += [ "//third_party/blink/renderer/modules/webcodecs:webcodecs" ]
   allow_circular_includes_from = deps
 }

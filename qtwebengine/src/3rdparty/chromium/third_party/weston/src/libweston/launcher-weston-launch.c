@@ -47,6 +47,7 @@
 #include <libweston/libweston.h>
 #include "weston-launch.h"
 #include "launcher-impl.h"
+#include "shared/string-helpers.h"
 
 #define DRM_MAJOR 226
 
@@ -94,6 +95,18 @@ struct launcher_weston_launch {
 	int kb_mode, tty, drm_fd;
 };
 
+static ssize_t
+launcher_weston_launch_send(int sockfd, void *buf, size_t buflen)
+{
+	ssize_t len;
+
+	do {
+		len = send(sockfd, buf, buflen, 0);
+	} while (len < 0 && errno == EINTR);
+
+	return len;
+}
+
 static int
 launcher_weston_launch_open(struct weston_launcher *launcher_base,
 		     const char *path, int flags)
@@ -117,9 +130,7 @@ launcher_weston_launch_open(struct weston_launcher *launcher_base,
 	message->flags = flags;
 	strcpy(message->path, path);
 
-	do {
-		len = send(launcher->fd, message, n, 0);
-	} while (len < 0 && errno == EINTR);
+	launcher_weston_launch_send(launcher->fd, message, n);
 	free(message);
 
 	memset(&msg, 0, sizeof msg);
@@ -190,7 +201,7 @@ static int
 launcher_weston_launch_data(int fd, uint32_t mask, void *data)
 {
 	struct launcher_weston_launch *launcher = data;
-	int len, ret;
+	int len, ret, reply;
 
 	if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) {
 		weston_log("launcher socket closed, exiting\n");
@@ -215,6 +226,10 @@ launcher_weston_launch_data(int fd, uint32_t mask, void *data)
 		launcher->compositor->session_active = false;
 		wl_signal_emit(&launcher->compositor->session_signal,
 			       launcher->compositor);
+
+		reply = WESTON_LAUNCHER_DEACTIVATE_DONE;
+		launcher_weston_launch_send(launcher->fd, &reply, sizeof reply);
+
 		break;
 	default:
 		weston_log("unexpected event from weston-launch\n");
@@ -232,6 +247,27 @@ launcher_weston_launch_activate_vt(struct weston_launcher *launcher_base, int vt
 }
 
 static int
+launcher_weston_environment_get_fd(const char *env)
+{
+	char *e;
+	int fd, flags;
+
+	e = getenv(env);
+	if (!e || !safe_strtoint(e, &fd))
+		return -1;
+
+	flags = fcntl(fd, F_GETFD);
+	if (flags == -1)
+		return -1;
+
+	fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+	unsetenv(env);
+
+	return fd;
+}
+
+
+static int
 launcher_weston_launch_connect(struct weston_launcher **out, struct weston_compositor *compositor,
 			       int tty, const char *seat_id, bool sync_drm)
 {
@@ -246,9 +282,9 @@ launcher_weston_launch_connect(struct weston_launcher **out, struct weston_compo
 	* (struct launcher_weston_launch **) out = launcher;
 	launcher->compositor = compositor;
 	launcher->drm_fd = -1;
-	launcher->fd = weston_environment_get_fd("WESTON_LAUNCHER_SOCK");
+	launcher->fd = launcher_weston_environment_get_fd("WESTON_LAUNCHER_SOCK");
 	if (launcher->fd != -1) {
-		launcher->tty = weston_environment_get_fd("WESTON_TTY_FD");
+		launcher->tty = launcher_weston_environment_get_fd("WESTON_TTY_FD");
 		/* We don't get a chance to read out the original kb
 		 * mode for the tty, so just hard code K_UNICODE here
 		 * in case we have to clean if weston-launch dies. */

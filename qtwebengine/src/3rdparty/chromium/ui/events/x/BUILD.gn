@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,12 +13,11 @@ component("x") {
     "events_x_export.h",
     "events_x_utils.cc",
     "events_x_utils.h",
-    "x11_window_event_manager.cc",
-    "x11_window_event_manager.h",
   ]
   defines = [ "EVENTS_X_IMPLEMENTATION" ]
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//skia",
     "//ui/base:features",
     "//ui/display",

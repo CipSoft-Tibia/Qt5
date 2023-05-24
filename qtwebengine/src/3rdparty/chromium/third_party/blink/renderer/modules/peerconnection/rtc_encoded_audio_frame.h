@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,10 @@
 
 #include <stdint.h>
 
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -35,13 +37,12 @@ class MODULES_EXPORT RTCEncodedAudioFrame final : public ScriptWrappable {
       scoped_refptr<RTCEncodedAudioFrameDelegate> delegate);
 
   // rtc_encoded_audio_frame.idl implementation.
-  uint64_t timestamp() const;
+  // Returns the RTP Packet Timestamp for this frame.
+  uint32_t timestamp() const;
+  absl::optional<uint16_t> sequenceNumber() const;
   DOMArrayBuffer* data() const;
   RTCEncodedAudioFrameMetadata* getMetadata() const;
-  DOMArrayBuffer* additionalData() const;
   void setData(DOMArrayBuffer*);
-  uint32_t synchronizationSource() const;
-  Vector<uint32_t> contributingSources() const;
   String toString() const;
 
   scoped_refptr<RTCEncodedAudioFrameDelegate> Delegate() const;

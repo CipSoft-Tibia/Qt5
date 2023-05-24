@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,6 +59,12 @@ bool SyntheticGesture::AllowHighFrequencyDispatch() const {
 void SyntheticGesture::WaitForTargetAck(base::OnceClosure callback,
                                         SyntheticGestureTarget* target) const {
   std::move(callback).Run();
+}
+
+void SyntheticGesture::DidQueue(
+    base::WeakPtr<SyntheticGestureController> controller) {
+  DCHECK(controller);
+  dispatching_controller_ = controller;
 }
 
 }  // namespace content

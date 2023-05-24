@@ -54,7 +54,7 @@ export function formatTimestamp(sec: number) {
 
 // TODO(hjd): Rename to formatTimestampWithUnits
 // 1000000023ns -> "1s 23ns"
-export function timeToCode(sec: number) {
+export function timeToCode(sec: number): string {
   let result = '';
   let ns = Math.round(sec * 1e9);
   if (ns < 1) return '0s';
@@ -63,9 +63,9 @@ export function timeToCode(sec: number) {
     ['s', 1000000000],
     ['ms', 1000000],
     ['us', 1000],
-    ['ns', 1]
+    ['ns', 1],
   ];
-  unitAndValue.forEach(pair => {
+  unitAndValue.forEach((pair) => {
     const unit = pair[0] as string;
     const val = pair[1] as number;
     if (ns >= val) {
@@ -75,6 +75,12 @@ export function timeToCode(sec: number) {
     }
   });
   return result.slice(0, -1);
+}
+
+export function currentDateHourAndMinute(): string {
+  const date = new Date();
+  return `${date.toISOString().substr(0, 10)}-${date.getHours()}-${
+      date.getMinutes()}`;
 }
 
 export class TimeSpan {

@@ -1,6 +1,6 @@
 include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 include($QT_INSTALL_DOCS/global/externalsites.qdocconf)
-
+include($QT_INSTALL_DOCS/config/exampleurl-qtdoc.qdocconf)
 
 project                 = QtDoc
 description             = Qt Reference Documentation
@@ -24,10 +24,18 @@ exampledirs += \
     ../snippets \
     ../../examples
 
-# Don't parse files in snippets and cmake directories
 excludedirs += \
     ../src/snippets \
-    ../src/cmake
+    ../src/cmake \
+    ../src/platformintegration
+
+# include java files in the list of example sources
+examples.fileextensions =+ *.java
+
+# Exclude documentation for the broken examples
+excludefiles += \
+    ../../examples/demos/maroon/doc/src/maroon.qdoc \
+    ../../examples/demos/tweetsearch/doc/src/tweetsearch.qdoc
 
 examplesinstallpath =
 
@@ -39,39 +47,71 @@ qhp.QtDoc.virtualFolder       = qtdoc
 qhp.QtDoc.indexTitle          = Qt $QT_VERSION Reference Documentation
 qhp.QtDoc.indexRoot           =
 
-qhp.QtDoc.filterAttributes    = qtdoc $QT_VERSION qtrefdoc
-qhp.QtDoc.customFilters.Qt.name = QtDoc $QT_VERSION
-qhp.QtDoc.customFilters.Qt.filterAttributes = qtdoc $QT_VERSION
 qhp.QtDoc.subprojects         = classes qmltypes examples
 qhp.QtDoc.subprojects.classes.title = Classes
-qhp.QtDoc.subprojects.classes.indexTitle = All Classes
-qhp.QtDoc.subprojects.classes.selectors = class fake:headerfile
+qhp.QtDoc.subprojects.classes.indexTitle = All C++ Classes
+qhp.QtDoc.subprojects.classes.selectors = class headerfile
 qhp.QtDoc.subprojects.classes.sortPages = true
 qhp.QtDoc.subprojects.qmltypes.title = QML Types
 qhp.QtDoc.subprojects.qmltypes.indexTitle = All QML Types
-qhp.QtDoc.subprojects.qmltypes.selectors = qmlclass
+qhp.QtDoc.subprojects.qmltypes.selectors = qmltype
 qhp.QtDoc.subprojects.qmltypes.sortPages = true
 qhp.QtDoc.subprojects.examples.title = Tutorials and Examples
 qhp.QtDoc.subprojects.examples.indexTitle = Qt Examples And Tutorials
-qhp.QtDoc.subprojects.examples.selectors = fake:example
+qhp.QtDoc.subprojects.examples.selectors = example
 qhp.QtDoc.subprojects.examples.sortPages = true
 
-# Add an image used in example manifests to qhp
-HTML.extraimages             += images/qt-codesample.png
-qhp.QtDoc.extraFiles         += images/qt-codesample.png
+# Add an image used in example manifests to qhp, as well as thumbnails for YouTube links
+{HTML.extraimages,DocBook.extraimages,qhp.QtDoc.extraFiles} += images/qt-codesample.png \
+                                                               images/yIv0vO8B7tQ.jpg \
+                                                               images/5OiIqFTjUZI.jpg \
+                                                               images/nmvurCcsWos.jpg \
+                                                               images/xNIz78IPBu0.jpg
 
 # Add an .html file with sidebar content, used in the online style
 HTML.stylesheets             += style/qt5-sidebar.html
 
 macro.indextitle              = "\\title Qt $QT_VER"
 macro.qtver                   = "$QT_VER"
+macro.qtmajorversion          = "$QT_VER"
+macro.qtmajorversion.match    = "^(\\d+)"
 
-# Config to enable YouTube links in the offline documentation
-{HTML.extraimages,qhp.QtDoc.extraFiles} += images/232cwcW5atA.jpg
+macro.qt5 = "\\l{https://doc.qt.io/qt-5/\1}{\2}"
+macro.qtbug = "\\l{https://bugreports.qt.io/browse/\1}{\1}"
 
-manifestmeta.highlighted.names = "QtDoc/Coffee Machine Example" \
-                                 "QtDoc/Qt Quick Demo - Same Game"
+# Highlight all examples in "Application Examples" category, as they are
+# often added also to other categories (and typically are highlighted there)
+manifestmeta.highlighted.names = "QtDoc/Calqlatr" \
+                                 "QtDoc/Coffee Machine" \
+                                 "QtDoc/Dice" \
+                                 "QtDoc/Document Viewer" \
+                                 "QtDoc/FX & Material Showroom" \
+                                 "QtDoc/Media Player Example" \
+                                 "QtDoc/Photo Surface" \
+                                 "QtDoc/Robot Arm Example" \
+                                 "QtDoc/Thermostat" \
+                                 "QtDoc/To Do List Example" \
+                                 "QtDoc/Same Game" \
+                                 "QtDoc/StocQt"
 
-manifestmeta.filters += coffeemachine
-manifestmeta.coffeemachine.names = "QtDoc/Coffee Machine Example"
-manifestmeta.coffeemachine.tags = quick,embedded
+manifestmeta.examplecategories = "Application Examples" \
+                                 "Desktop" \
+                                 "Mobile" \
+                                 "Embedded" \
+                                 "Graphics" \
+                                 "Multimedia" \
+                                 "Data Visualization & 3D" \
+                                 "Data Processing & I/O" \
+                                 "Connectivity" \
+                                 "Networking" \
+                                 "Positioning & Location" \
+                                 "User Interface Components" \
+                                 "Web Technologies"
+
+# Include 'Qt for Education' pages
+include(../edu/config/qtforeducation.qdocconf)
+
+# doc/src/overviews.qdoc:
+#   (qdoc) warning: '\generatelist explanations-webtechnologies' no such group
+#   (qdoc) warning: '\generatelist explanations-positioning' no such group
+warninglimit = 2

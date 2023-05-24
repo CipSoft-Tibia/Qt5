@@ -153,7 +153,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 - (void)startCaptureWithDevice:(AVCaptureDevice *)device
                         format:(AVCaptureDeviceFormat *)format
                            fps:(NSInteger)fps
-             completionHandler:(nullable void (^)(NSError *))completionHandler {
+             completionHandler:(nullable void (^)(NSError *_Nullable error))completionHandler {
   _willBeRunning = YES;
   [RTC_OBJC_TYPE(RTCDispatcher)
       dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
@@ -476,9 +476,16 @@ const int64_t kNanosecondsPerSecond = 1000000000;
 
   if (mediaSubType != _outputPixelFormat) {
     _outputPixelFormat = mediaSubType;
-    _videoDataOutput.videoSettings =
-        @{ (NSString *)kCVPixelBufferPixelFormatTypeKey : @(mediaSubType) };
   }
+
+  // Update videoSettings with dimensions, as some virtual cameras, e.g. Snap Camera, may not work
+  // otherwise.
+  CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+  _videoDataOutput.videoSettings = @{
+    (id)kCVPixelBufferWidthKey : @(dimensions.width),
+    (id)kCVPixelBufferHeightKey : @(dimensions.height),
+    (id)kCVPixelBufferPixelFormatTypeKey : @(_outputPixelFormat),
+  };
 }
 
 #pragma mark - Private, called inside capture queue

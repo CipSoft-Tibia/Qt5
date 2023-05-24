@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -66,6 +30,21 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \enum QLocalSocket::SocketOption
+    \since 6.2
+    This enum describes the possible options that can be used to connect to
+    a server. Currently, on Linux and Android it is used for specifying
+    connection to a server listening to a socket bound to an abstract address.
+
+    \value NoOptions No options have been set.
+    \value AbstractNamespaceOption
+    The socket will try to connect to an abstract address. This flag is specific
+    to Linux and Android. On other platforms is ignored.
+
+    \sa socketOptions
+*/
+
+/*!
     \fn void QLocalSocket::connectToServer(OpenMode openMode)
     \since 5.1
 
@@ -90,7 +69,7 @@ QT_BEGIN_NAMESPACE
     Note that unlike in most other QIODevice subclasses, open() may not open the device directly.
     The function return false if the socket was already connected or if the server to connect
     to was not defined and true in any other case. The connected() or errorOccurred() signals will be
-    emitted once the device is actualy open (or the connection failed).
+    emitted once the device is actually open (or the connection failed).
 
     See connectToServer() for more details.
 */
@@ -132,10 +111,9 @@ QT_BEGIN_NAMESPACE
 
     \list
         \li On Windows, the returned value is a
-        \l{https://msdn.microsoft.com/en-us/library/windows/desktop/ms740522(v=vs.85).aspx}
-        {Winsock 2 Socket Handle}.
+        \l{Winsock 2 Socket Handle}.
 
-        \li With WinRT and on INTEGRITY, the returned value is the
+        \li On INTEGRITY, the returned value is the
         QTcpSocket socket descriptor and the type is defined by
         \l{QTcpSocket::socketDescriptor}{socketDescriptor}.
 
@@ -148,6 +126,16 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \fn qint64 QLocalSocket::readData(char *data, qint64 c)
+    \reimp
+*/
+
+/*!
+    \fn qint64 QLocalSocket::readLineData(char *data, qint64 maxSize)
+    \reimp
+*/
+
+/*!
+    \fn qint64 QLocalSocket::skipData(qint64 maxSize)
     \reimp
 */
 
@@ -183,7 +171,14 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \fn void QLocalSocket::close()
-    \reimp
+
+    Closes the I/O device for the socket and calls disconnectFromServer()
+    to close the socket's connection.
+
+    See QIODevice::close() for a description of the actions that occur when an I/O
+    device is closed.
+
+    \sa abort()
 */
 
 /*!
@@ -214,7 +209,7 @@ QT_BEGIN_NAMESPACE
     Attempts to close the socket. If there is pending data waiting to be
     written, QLocalSocket will enter ClosingState and wait until all data
     has been written. Eventually, it will enter UnconnectedState and emit
-    the disconnectedFromServer() signal.
+    the disconnected() signal.
 
     \sa connectToServer()
 */
@@ -330,13 +325,6 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QLocalSocket::error(QLocalSocket::LocalSocketError socketError)
-    \obsolete
-
-    Use errorOccurred() instead.
-*/
-
-/*!
     \fn void QLocalSocket::errorOccurred(QLocalSocket::LocalSocketError socketError)
     \since 5.15
 
@@ -371,10 +359,9 @@ QLocalSocket::QLocalSocket(QObject * parent)
     : QIODevice(*new QLocalSocketPrivate, parent)
 {
     Q_D(QLocalSocket);
-    d->init();
 
-    // Support the deprecated error() signal:
-    connect(this, &QLocalSocket::errorOccurred, this, QOverload<QLocalSocket::LocalSocketError>::of(&QLocalSocket::error));
+    d->readBufferChunkSize = 0; // force QIODevice unbuffered mode
+    d->init();
 }
 
 /*!
@@ -382,7 +369,7 @@ QLocalSocket::QLocalSocket(QObject * parent)
  */
 QLocalSocket::~QLocalSocket()
 {
-    QLocalSocket::close();
+    abort();
 #if !defined(Q_OS_WIN) && !defined(QT_LOCALSOCKET_TCP)
     Q_D(QLocalSocket);
     d->unixSocket.setParent(nullptr);
@@ -441,6 +428,37 @@ QString QLocalSocket::serverName() const
 {
     Q_D(const QLocalSocket);
     return d->serverName;
+}
+
+/*!
+    \property QLocalSocket::socketOptions
+    \since 6.2
+    \brief the socket options.
+
+    Options must be set while the socket is in \l{UnconnectedState} state.
+
+    \sa connectToServer()
+ */
+QLocalSocket::SocketOptions QLocalSocket::socketOptions() const
+{
+    Q_D(const QLocalSocket);
+    return d->socketOptions;
+}
+
+void QLocalSocket::setSocketOptions(QLocalSocket::SocketOptions option)
+{
+    Q_D(QLocalSocket);
+    if (d->state != UnconnectedState) {
+        qWarning("QLocalSocket::setSocketOptions() called while not in unconnected state");
+        return;
+    }
+    d->socketOptions = option;
+}
+
+QBindable<QLocalSocket::SocketOptions> QLocalSocket::bindableSocketOptions()
+{
+    Q_D(QLocalSocket);
+    return &d->socketOptions;
 }
 
 /*!

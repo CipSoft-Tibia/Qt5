@@ -17,13 +17,15 @@
 #ifndef INCLUDE_PERFETTO_EXT_BASE_STRING_WRITER_H_
 #define INCLUDE_PERFETTO_EXT_BASE_STRING_WRITER_H_
 
-#include <inttypes.h>
 #include <string.h>
+
+#include <cinttypes>
 #include <cmath>
 #include <cstdlib>
 #include <limits>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/string_view.h"
 
 namespace perfetto {
@@ -70,7 +72,13 @@ class StringWriter {
   template <char padchar, uint64_t padding>
   void AppendPaddedInt(int64_t sign_value) {
     const bool negate = std::signbit(static_cast<double>(sign_value));
-    uint64_t absolute_value = static_cast<uint64_t>(std::abs(sign_value));
+    uint64_t absolute_value;
+    if (sign_value == std::numeric_limits<int64_t>::min()) {
+      absolute_value =
+          static_cast<uint64_t>(std::numeric_limits<int64_t>::max()) + 1;
+    } else {
+      absolute_value = static_cast<uint64_t>(std::abs(sign_value));
+    }
     AppendPaddedInt<padchar, padding>(absolute_value, negate);
   }
 
@@ -90,8 +98,8 @@ class StringWriter {
   void AppendHexInt(IntType value) {
     // TODO(lalitm): trying to optimize this is premature given we almost never
     // print hex ints. Reevaluate this in the future if we do print them more.
-    size_t res = static_cast<size_t>(
-        snprintf(buffer_ + pos_, size_ - pos_, "%" PRIx64, value));
+    size_t res =
+        base::SprintfTrunc(buffer_ + pos_, size_ - pos_, "%" PRIx64, value);
     PERFETTO_DCHECK(pos_ + res <= size_);
     pos_ += res;
   }
@@ -100,8 +108,7 @@ class StringWriter {
   void AppendDouble(double value) {
     // TODO(lalitm): trying to optimize this is premature given we almost never
     // print doubles. Reevaluate this in the future if we do print them more.
-    size_t res = static_cast<size_t>(
-        snprintf(buffer_ + pos_, size_ - pos_, "%lf", value));
+    size_t res = base::SprintfTrunc(buffer_ + pos_, size_ - pos_, "%lf", value);
     PERFETTO_DCHECK(pos_ + res <= size_);
     pos_ += res;
   }
@@ -122,7 +129,7 @@ class StringWriter {
   char* CreateStringCopy() {
     char* dup = reinterpret_cast<char*>(malloc(pos_ + 1));
     if (dup) {
-      strncpy(dup, buffer_, pos_);
+      memcpy(dup, buffer_, pos_);
       dup[pos_] = '\0';
     }
     return dup;
@@ -153,7 +160,9 @@ class StringWriter {
 
     if (padding > 0) {
       size_t num_digits = kSizeNeeded - 1 - idx;
-      for (size_t i = num_digits; i < padding; i++) {
+      // std::max() needed to work around GCC not being able to tell that
+      // padding > 0.
+      for (size_t i = num_digits; i < std::max(uint64_t{1u}, padding); i++) {
         data[idx--] = padchar;
       }
     }

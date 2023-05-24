@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QEGLFSINTEGRATION_H
 #define QEGLFSINTEGRATION_H
@@ -57,7 +21,9 @@
 #include <QtGui/QWindow>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformnativeinterface.h>
+#include <qpa/qplatformopenglcontext.h>
 #include <qpa/qplatformscreen.h>
+#include <QtGui/private/qkeymapper_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,6 +33,12 @@ class QFbVtHandler;
 class QEvdevKeyboardManager;
 
 class Q_EGLFS_EXPORT QEglFSIntegration : public QPlatformIntegration, public QPlatformNativeInterface
+#if QT_CONFIG(evdev)
+    , public QNativeInterface::Private::QEvdevKeyMapper
+#endif
+#ifndef QT_NO_OPENGL
+    , public QNativeInterface::Private::QEGLIntegration
+#endif
 {
 public:
     QEglFSIntegration();
@@ -86,10 +58,8 @@ public:
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override;
 #ifndef QT_NO_OPENGL
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
+    QOpenGLContext *createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const override;
     QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const override;
-#endif
-#if QT_CONFIG(vulkan)
-    QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const override;
 #endif
     bool hasCapability(QPlatformIntegration::Capability cap) const override;
 
@@ -111,18 +81,23 @@ public:
     QPointer<QWindow> pointerWindow() { return m_pointerWindow; }
     void setPointerWindow(QWindow *pointerWindow) { m_pointerWindow = pointerWindow; }
 
+#if QT_CONFIG(evdev)
+    void loadKeymap(const QString &filename) override;
+    void switchLang() override;
+#endif
+
+protected:
+    virtual void createInputHandlers();
+    QEvdevKeyboardManager *m_kbdMgr;
+
 private:
     EGLNativeDisplayType nativeDisplay() const;
-    void createInputHandlers();
-    static void loadKeymapStatic(const QString &filename);
-    static void switchLangStatic();
 
     EGLDisplay m_display;
     QPlatformInputContext *m_inputContext;
     QScopedPointer<QPlatformFontDatabase> m_fontDb;
     QScopedPointer<QPlatformServices> m_services;
     QScopedPointer<QFbVtHandler> m_vtHandler;
-    QEvdevKeyboardManager *m_kbdMgr;
     QPointer<QWindow> m_pointerWindow;
     bool m_disableInputHandlers;
 };

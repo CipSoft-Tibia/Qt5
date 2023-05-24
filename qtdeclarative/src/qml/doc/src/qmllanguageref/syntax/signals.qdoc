@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtqml-syntax-signals.html
@@ -59,9 +35,9 @@ receiving this signal should be \c onClicked. In the example below, whenever
 the button is clicked, the \c onClicked handler is invoked, applying a random
 color to the parent \l Rectangle:
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
-import QtQuick.Controls 2.\1
+\qml
+import QtQuick
+import QtQuick.Controls
 
 Rectangle {
     id: rect
@@ -85,10 +61,12 @@ This type of signal is a \e {property change signal} and signal handlers for
 these signals are written in the form \e on<Property>Changed, where
 \e <Property> is the name of the property, with the first letter capitalized.
 
-For example, the \l MouseArea type has a \l {MouseArea::pressed}{pressed} property. To receive a notification whenever this property changes, write a signal handler named \c onPressedChanged:
+For example, the \l MouseArea type has a \l {MouseArea::pressed}{pressed} property.
+To receive a notification whenever this property changes, write a signal handler
+named \c onPressedChanged:
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
+\qml
+import QtQuick
 
 Rectangle {
     id: rect
@@ -104,6 +82,55 @@ Even though the \l TapHandler documentation does not document a signal handler
 named \c onPressedChanged, the signal is implicitly provided by the fact that
 the \c pressed property exists.
 
+\section2 Signal parameters
+
+Signals might have parameters. To access those, you should assign a function to the handler. Both
+arrow functions and anonymous functions work.
+
+For the following examples, consider a Status component with an errorOccurred signal (see
+\l{Adding signals to custom QML types} for more information about how signals can be added to
+QML components).
+
+\qml
+// Status.qml
+import QtQuick
+
+Item {
+    id: myitem
+    signal errorOccurred(message: string, line: int, column: int)
+}
+\endqml
+
+\qml
+Status {
+    onErrorOccurred: (mgs, line, col) => console.log(`${line}:${col}: ${msg}`)
+}
+\endqml
+
+\note The names of the formal parameters in the function do not have to match those in the
+signal.
+
+If you do not need to handle all parameters, it is possible to omit trailing ones:
+\qml
+Status {
+    onErrorOccurred: function (message) { console.log(message) }
+}
+\endqml
+
+It is not possible to leave out leading parameters you are interested in, however you can use some
+placeholder name to indicate to readers that they are not important:
+\qml
+Status {
+    onErrorOccurred: (_, _, col) => console.log(`Error happened at column ${col}`)
+}
+\endqml
+
+\note Instead of using a function, it is possible, but discouraged, to use a plain code block. In
+that case all signal parameters get injected into the scope of the block. However, this can make
+code difficult to read as it's unclear where the parameters come from, and results in slower
+lookups in the QML engine. Injecting parameters in this way is deprecated, and will cause runtime
+warnings if the parameter is actually used.
+
 \section2 Using the Connections type
 
 In some cases it may be desirable to access a signal outside of the object that
@@ -116,9 +143,9 @@ received by the root \l Rectangle instead, by placing the \c onClicked handler
 in a \l Connections object that has its \l {Connections::target}{target} set to
 the \c button:
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
-import QtQuick.Controls 2.\1
+\qml
+import QtQuick
+import QtQuick.Controls
 
 Rectangle {
     id: rect
@@ -151,8 +178,8 @@ For example, \l{Component::completed}{Component.onCompleted} is an attached
 signal handler. It is often used to execute some JavaScript code when its
 creation process is complete. Here is an example:
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
+\qml
+import QtQuick
 
 Rectangle {
     width: 200; height: 200
@@ -195,9 +222,9 @@ root \l Rectangle object has an \c activated signal, which is emitted whenever t
 child \l TapHandler is \c tapped. In this particular example the activated signal
 is emitted with the x and y coordinates of the mouse click:
 
-\qml \QtMinorVersion
+\qml
 // SquareButton.qml
-import QtQuick 2.\1
+import QtQuick
 
 Rectangle {
     id: root
@@ -209,8 +236,8 @@ Rectangle {
 
     TapHandler {
         id: handler
-        onTapped: root.activated(mouseXY.x, mouseXY.y)
-        onPressedChanged: mouseXY = handler.point.position
+        onTapped: root.activated(root.mouseXY.x, root.mouseXY.y)
+        onPressedChanged: root.mouseXY = handler.point.position
     }
 }
 \endqml
@@ -220,7 +247,7 @@ Now any objects of the \c SquareButton can connect to the \c activated signal us
 \qml
 // myapplication.qml
 SquareButton {
-    onActivated: console.log("Activated at " + xPosition + "," + yPosition)
+    onActivated: (xPosition, yPosition)=> console.log("Activated at " + xPosition + "," + yPosition)
 }
 \endqml
 
@@ -237,8 +264,8 @@ signal to be received by a method instead of a signal handler.
 
 Below, the \c messageReceived signal is connected to three methods using the \c connect() method:
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
+\qml
+import QtQuick
 
 Rectangle {
     id: relay
@@ -289,8 +316,8 @@ Rectangle {
 By connecting signals to other signals, the \c connect() method can form different
 signal chains.
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
+\qml
+import QtQuick
 
 Rectangle {
     id: forwarder

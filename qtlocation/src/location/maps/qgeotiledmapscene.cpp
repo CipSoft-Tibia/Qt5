@@ -1,53 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Copyright (C) 2014 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// Copyright (C) 2014 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
 #include "qgeotiledmapscene_p.h"
 #include "qgeotiledmapscene_p_p.h"
 #include "qgeocameradata_p.h"
 #include "qabstractgeotilecache_p.h"
 #include "qgeotilespec_p.h"
-#include <QtPositioning/private/qdoublevector3d_p.h>
-#include <QtPositioning/private/qwebmercator_p.h>
-#include <QtCore/private/qobject_p.h>
+
 #include <QtQuick/QQuickWindow>
 #include <QtGui/QVector3D>
-#include <cmath>
+
+#include <QtCore/private/qobject_p.h>
+#include <QtPositioning/private/qdoublevector3d_p.h>
 #include <QtPositioning/private/qlocationutils_p.h>
 #include <QtPositioning/private/qdoublematrix4x4_p.h>
 #include <QtPositioning/private/qwebmercator_p.h>
+
+#include <cmath>
 
 static QVector3D toVector3D(const QDoubleVector3D& in)
 {
@@ -78,7 +48,6 @@ void QGeoTiledMapScene::updateSceneParameters()
     const float delta = d->m_cameraData.zoomLevel() - d->m_intZoomLevel;
     d->m_linearScaling = qAbs(delta) > 0.05 || d->isTiltedOrRotated();
     d->m_sideLength = 1 << d->m_intZoomLevel;
-    d->m_mapEdgeSize = std::pow(2.0, d->m_cameraData.zoomLevel()) * d->m_tileSize;
 }
 
 void QGeoTiledMapScene::setTileSize(int tileSize)
@@ -143,22 +112,7 @@ void QGeoTiledMapScene::clearTexturedTiles()
 }
 
 QGeoTiledMapScenePrivate::QGeoTiledMapScenePrivate()
-    : QObjectPrivate(),
-      m_tileSize(0),
-#ifdef QT_LOCATION_DEBUG
-      m_scaleFactor(1.0),
-#else
-      m_scaleFactor(10.0),
-#endif
-      m_intZoomLevel(0),
-      m_sideLength(0),
-      m_minTileX(-1),
-      m_minTileY(-1),
-      m_maxTileX(-1),
-      m_maxTileY(-1),
-      m_tileXWrapsBelow(0),
-      m_linearScaling(false),
-      m_dropTextures(false)
+    : QObjectPrivate()
 {
 }
 
@@ -453,17 +407,17 @@ void QGeoTiledMapScenePrivate::setupCamera()
 
 static bool qgeotiledmapscene_isTileInViewport_Straight(const QRectF &tileRect, const QMatrix4x4 &matrix)
 {
-    const QRectF boundingRect = QRectF(matrix * tileRect.topLeft(), matrix * tileRect.bottomRight());
+    const QRectF boundingRect = QRectF(matrix.map(tileRect.topLeft()), matrix.map(tileRect.bottomRight()));
     return QRectF(-1, -1, 2, 2).intersects(boundingRect);
 }
 
 static bool qgeotiledmapscene_isTileInViewport_rotationTilt(const QRectF &tileRect, const QMatrix4x4 &matrix)
 {
     // Transformed corners
-    const QPointF tlt = matrix * tileRect.topLeft();
-    const QPointF trt = matrix * tileRect.topRight();
-    const QPointF blt = matrix * tileRect.bottomLeft();
-    const QPointF brt = matrix * tileRect.bottomRight();
+    const QPointF tlt = matrix.map(tileRect.topLeft());
+    const QPointF trt = matrix.map(tileRect.topRight());
+    const QPointF blt = matrix.map(tileRect.bottomLeft());
+    const QPointF brt = matrix.map(tileRect.bottomRight());
 
     const QRectF boundingRect = QRectF(QPointF(qMin(qMin(qMin(tlt.x(), trt.x()), blt.x()), brt.x())
                                               ,qMax(qMax(qMax(tlt.y(), trt.y()), blt.y()), brt.y()))
@@ -483,8 +437,7 @@ static bool qgeotiledmapscene_isTileInViewport(const QRectF &tileRect, const QMa
 void QGeoTiledMapRootNode::updateTiles(QGeoTiledMapTileContainerNode *root,
                                        QGeoTiledMapScenePrivate *d,
                                        double camAdjust,
-                                       QQuickWindow *window,
-                                       bool ogl)
+                                       QQuickWindow *window)
 {
     // Set up the matrix...
     QDoubleVector3D eye = d->m_cameraEye;
@@ -531,12 +484,6 @@ void QGeoTiledMapRootNode::updateTiles(QGeoTiledMapTileContainerNode *root,
                 } else {
                     node->setFiltering((d->m_linearScaling || overzooming) ? QSGTexture::Linear : QSGTexture::Nearest);
                 }
-#if QT_CONFIG(opengl)
-                if (ogl)
-                    static_cast<QSGDefaultImageNode *>(node)->setAnisotropyLevel(QSGTexture::Anisotropy16x);
-#else
-    Q_UNUSED(ogl);
-#endif
                 dirtyBits |= QSGNode::DirtyMaterial;
             }
             if (dirtyBits != 0)
@@ -564,10 +511,6 @@ void QGeoTiledMapRootNode::updateTiles(QGeoTiledMapTileContainerNode *root,
             } else {
                 tileNode->setFiltering((d->m_linearScaling || overzooming) ? QSGTexture::Linear : QSGTexture::Nearest);
             }
-#if QT_CONFIG(opengl)
-            if (ogl)
-                static_cast<QSGDefaultImageNode *>(tileNode)->setAnisotropyLevel(QSGTexture::Anisotropy16x);
-#endif
             root->addChild(s, tileNode);
         } else {
 #ifdef QT_LOCATION_DEBUG
@@ -589,10 +532,9 @@ QSGNode *QGeoTiledMapScene::updateSceneGraph(QSGNode *oldNode, QQuickWindow *win
     float h = d->m_screenSize.height();
     if (w <= 0 || h <= 0) {
         delete oldNode;
-        return 0;
+        return nullptr;
     }
 
-    bool isOpenGL = (window->rendererInterface()->graphicsApi() == QSGRendererInterface::OpenGL);
     QGeoTiledMapRootNode *mapRoot = static_cast<QGeoTiledMapRootNode *>(oldNode);
     if (!mapRoot)
         mapRoot = new QGeoTiledMapRootNode();
@@ -625,7 +567,7 @@ QSGNode *QGeoTiledMapScene::updateSceneGraph(QSGNode *oldNode, QQuickWindow *win
 
     // Evicting loZL tiles temporarily used in place of hiZL ones
     if (d->m_updatedTextures.size()) {
-        const QVector<QGeoTileSpec> &toRemove = d->m_updatedTextures;
+        const QList<QGeoTileSpec> &toRemove = d->m_updatedTextures;
         for (const QGeoTileSpec &s : toRemove) {
             if (mapRoot->tiles->tiles.contains(s))
                 delete mapRoot->tiles->tiles.take(s);
@@ -661,9 +603,9 @@ QSGNode *QGeoTiledMapScene::updateSceneGraph(QSGNode *oldNode, QQuickWindow *win
 #ifdef QT_LOCATION_DEBUG
     d->m_sideLengthPixel = sideLength;
 #endif
-    mapRoot->updateTiles(mapRoot->tiles, d, 0, window, isOpenGL);
-    mapRoot->updateTiles(mapRoot->wrapLeft, d, +sideLength, window, isOpenGL);
-    mapRoot->updateTiles(mapRoot->wrapRight, d, -sideLength, window, isOpenGL);
+    mapRoot->updateTiles(mapRoot->tiles, d, 0, window);
+    mapRoot->updateTiles(mapRoot->wrapLeft, d, +sideLength, window);
+    mapRoot->updateTiles(mapRoot->wrapRight, d, -sideLength, window);
 
     mapRoot->isTextureLinear = d->m_linearScaling;
 

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,22 +10,23 @@
 
 #include "base/base64.h"
 #include "base/no_destructor.h"
-#include "components/metrics/content/content_stability_metrics_provider.h"
-#include "components/metrics/content/extensions_helper.h"
 #include "components/metrics/metrics_provider.h"
 #include "components/metrics/metrics_service.h"
 #include "components/page_load_metrics/browser/metrics_web_contents_observer.h"
+#include "components/prefs/pref_service.h"
+#include "components/ukm/ukm_service.h"
 #include "components/variations/variations_ids_provider.h"
 #include "components/version_info/android/channel_getter.h"
 #include "content/public/browser/browser_context.h"
 #include "google_apis/google_api_keys.h"
 #include "weblayer/browser/browser_context_impl.h"
+#include "weblayer/browser/browser_list.h"
+#include "weblayer/browser/browser_process.h"
 #include "weblayer/browser/java/jni/MetricsServiceClient_jni.h"
 #include "weblayer/browser/system_network_context_manager.h"
 #include "weblayer/browser/tab_impl.h"
 
 namespace weblayer {
-
 namespace {
 
 // IMPORTANT: DO NOT CHANGE sample rates without first ensuring the Chrome
@@ -51,6 +52,10 @@ const int kPackageNameLimitRatePerMille = 100;
 class PageLoadMetricsProvider : public metrics::MetricsProvider {
  public:
   PageLoadMetricsProvider() = default;
+
+  PageLoadMetricsProvider(const PageLoadMetricsProvider&) = delete;
+  PageLoadMetricsProvider& operator=(const PageLoadMetricsProvider&) = delete;
+
   ~PageLoadMetricsProvider() override = default;
 
   // metrics:MetricsProvider implementation:
@@ -64,9 +69,6 @@ class PageLoadMetricsProvider : public metrics::MetricsProvider {
         observer->FlushMetricsOnAppEnterBackground();
     }
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(PageLoadMetricsProvider);
 };
 
 }  // namespace
@@ -80,9 +82,11 @@ WebLayerMetricsServiceClient* WebLayerMetricsServiceClient::GetInstance() {
 
 WebLayerMetricsServiceClient::WebLayerMetricsServiceClient() {
   ProfileImpl::AddProfileObserver(this);
+  BrowserList::GetInstance()->AddObserver(this);
 }
 
 WebLayerMetricsServiceClient::~WebLayerMetricsServiceClient() {
+  BrowserList::GetInstance()->RemoveObserver(this);
   ProfileImpl::RemoveProfileObserver(this);
 }
 
@@ -97,7 +101,7 @@ void WebLayerMetricsServiceClient::RegisterExternalExperiments(
     return;
   }
 
-  GetMetricsService()->synthetic_trial_registry()->RegisterExternalExperiments(
+  GetMetricsService()->GetSyntheticTrialRegistry()->RegisterExternalExperiments(
       "WebLayerExperiments", experiment_ids,
       variations::SyntheticTrialRegistry::kOverrideExistingIds);
 }
@@ -127,7 +131,12 @@ std::string WebLayerMetricsServiceClient::GetUploadSigningKey() {
   return decoded_key;
 }
 
-int WebLayerMetricsServiceClient::GetSampleRatePerMille() {
+const network_time::NetworkTimeTracker*
+WebLayerMetricsServiceClient::GetNetworkTimeTracker() {
+  return BrowserProcess::GetInstance()->GetNetworkTimeTracker();
+}
+
+int WebLayerMetricsServiceClient::GetSampleRatePerMille() const {
   version_info::Channel channel = version_info::android::GetChannel();
   if (channel == version_info::Channel::STABLE ||
       channel == version_info::Channel::UNKNOWN) {
@@ -141,8 +150,6 @@ void WebLayerMetricsServiceClient::OnMetricsStart() {
     std::move(task).Run();
   }
   post_start_tasks_.clear();
-  GetMetricsService()->synthetic_trial_registry()->AddSyntheticTrialObserver(
-      variations::VariationsIdsProvider::GetInstance());
 }
 
 void WebLayerMetricsServiceClient::OnMetricsNotStarted() {
@@ -155,14 +162,7 @@ int WebLayerMetricsServiceClient::GetPackageNameLimitRatePerMille() {
 
 void WebLayerMetricsServiceClient::RegisterAdditionalMetricsProviders(
     metrics::MetricsService* service) {
-  service->RegisterMetricsProvider(
-      std::make_unique<metrics::ContentStabilityMetricsProvider>(pref_service(),
-                                                                 nullptr));
   service->RegisterMetricsProvider(std::make_unique<PageLoadMetricsProvider>());
-}
-
-bool WebLayerMetricsServiceClient::IsPersistentHistogramsEnabled() {
-  return true;
 }
 
 bool WebLayerMetricsServiceClient::IsOffTheRecordSessionActive() {
@@ -180,6 +180,42 @@ WebLayerMetricsServiceClient::GetURLLoaderFactory() {
       ->GetSharedURLLoaderFactory();
 }
 
+void WebLayerMetricsServiceClient::ApplyConsent(bool user_consent,
+                                                bool app_consent) {
+  // TODO(https://crbug.com/1155163): update this once consent can be
+  // dynamically changed.
+  // It is expected this function is called only once, and that prior to this
+  // function the metrics service has not been started. The reason the metric
+  // service should not have been started prior to this function is that the
+  // metrics service is only started if consent is given, and this function is
+  // responsible for setting consent.
+  DCHECK(!GetMetricsServiceIfStarted());
+  // UkmService is only created if consent is given.
+  DCHECK(!GetUkmService());
+
+  SetHaveMetricsConsent(user_consent, app_consent);
+  ApplyForegroundStateToServices();
+}
+
+void WebLayerMetricsServiceClient::ApplyForegroundStateToServices() {
+  const bool is_in_foreground =
+      BrowserList::GetInstance()->HasAtLeastOneResumedBrowser();
+  if (auto* metrics_service = WebLayerMetricsServiceClient::GetInstance()
+                                  ->GetMetricsServiceIfStarted()) {
+    if (is_in_foreground)
+      metrics_service->OnAppEnterForeground();
+    else
+      metrics_service->OnAppEnterBackground();
+  }
+
+  if (auto* ukm_service = GetUkmService()) {
+    if (is_in_foreground)
+      ukm_service->OnAppEnterForeground();
+    else
+      ukm_service->OnAppEnterBackground();
+  }
+}
+
 void WebLayerMetricsServiceClient::ProfileCreated(ProfileImpl* profile) {
   UpdateUkmService();
 }
@@ -188,12 +224,21 @@ void WebLayerMetricsServiceClient::ProfileDestroyed(ProfileImpl* profile) {
   UpdateUkmService();
 }
 
+void WebLayerMetricsServiceClient::OnHasAtLeastOneResumedBrowserStateChanged(
+    bool new_value) {
+  ApplyForegroundStateToServices();
+}
+
+void JNI_ApplyConsentHelper(bool user_consent, bool app_consent) {
+  WebLayerMetricsServiceClient::GetInstance()->ApplyConsent(user_consent,
+                                                            app_consent);
+}
+
 // static
 void JNI_MetricsServiceClient_SetHaveMetricsConsent(JNIEnv* env,
                                                     jboolean user_consent,
                                                     jboolean app_consent) {
-  WebLayerMetricsServiceClient::GetInstance()->SetHaveMetricsConsent(
-      user_consent, app_consent);
+  JNI_ApplyConsentHelper(user_consent, app_consent);
 }
 
 }  // namespace weblayer

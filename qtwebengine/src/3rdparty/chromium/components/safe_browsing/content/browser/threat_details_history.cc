@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -8,8 +8,8 @@
 
 #include <stddef.h>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "components/safe_browsing/content/browser/threat_details.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -24,7 +24,7 @@ ThreatDetailsRedirectsCollector::ThreatDetailsRedirectsCollector(
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   if (history_service) {
-    history_service_observer_.Add(history_service.get());
+    history_service_observation_.Observe(history_service.get());
   }
 }
 
@@ -42,8 +42,8 @@ void ThreatDetailsRedirectsCollector::StartHistoryCollection(
 
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE,
-      base::BindOnce(&ThreatDetailsRedirectsCollector::StartGetRedirects, this,
-                     urls));
+      base::BindOnce(&ThreatDetailsRedirectsCollector::StartGetRedirects,
+                     weak_factory_.GetWeakPtr(), urls));
 }
 
 bool ThreatDetailsRedirectsCollector::HasStarted() const {
@@ -79,7 +79,7 @@ void ThreatDetailsRedirectsCollector::GetRedirects(const GURL& url) {
   history_service_->QueryRedirectsTo(
       url,
       base::BindOnce(&ThreatDetailsRedirectsCollector::OnGotQueryRedirectsTo,
-                     base::Unretained(this), url),
+                     weak_factory_.GetWeakPtr(), url),
       &request_tracker_);
 }
 
@@ -111,7 +111,8 @@ void ThreatDetailsRedirectsCollector::AllDone() {
 
 void ThreatDetailsRedirectsCollector::HistoryServiceBeingDeleted(
     history::HistoryService* history_service) {
-  history_service_observer_.Remove(history_service);
+  DCHECK(history_service_observation_.IsObservingSource(history_service));
+  history_service_observation_.Reset();
   history_service_.reset();
 }
 

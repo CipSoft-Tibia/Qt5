@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,10 +10,7 @@ import("//components/feed/features.gni")
 # any of the feed targets.
 buildflag_header("buildflags") {
   header = "buildflags.h"
-  flags = [
-    "ENABLE_FEED_V1=$enable_feed_v1",
-    "ENABLE_FEED_V2=$enable_feed_v2",
-  ]
+  flags = [ "ENABLE_FEED_V2=$enable_feed_v2" ]
 }
 
 static_library("feature_list") {
@@ -25,18 +22,22 @@ static_library("feature_list") {
   deps = [
     ":buildflags",
     "//base",
+    "//components/signin/public/base",
+    "//components/sync/base",
   ]
 }
 
 source_set("unit_tests") {
   testonly = true
+  sources = [ "feed_feature_list_unittest.cc" ]
   deps = [
-    "core:core_unit_tests",
+    ":feature_list",
+    "core/common:feed_core_common_unit_tests",
     "core/v2:core_unit_tests",
-    "//components/feed/core/common:core_common_unit_tests",
+    "//base",
+    "//base/test:test_support",
+    "//components/signin/public/base",
+    "//components/sync/base",
+    "//testing/gtest",
   ]
-
-  if (!is_ios) {
-    deps += [ "content:content_unit_tests" ]
-  }
 }

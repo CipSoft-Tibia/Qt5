@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,25 +6,25 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/files/file.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/synchronization/waitable_event.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "components/services/font/public/cpp/mapped_font_file.h"
+#include "pdf/buildflags.h"
 
 namespace font_service {
 namespace internal {
 
 FontServiceThread::FontServiceThread()
     : task_runner_(base::ThreadPool::CreateSequencedTaskRunner(
-          {base::TaskPriority::USER_VISIBLE, base::MayBlock()})) {}
+          {base::TaskPriority::USER_BLOCKING, base::MayBlock()})) {}
 
 FontServiceThread::~FontServiceThread() {
   // Ensure the remote is unbound on the appropriate sequence.
-  task_runner_->PostTask(FROM_HERE,
-                         base::BindOnce([](mojo::Remote<mojom::FontService>) {},
-                                        std::move(font_service_)));
+  task_runner_->PostTask(
+      FROM_HERE, base::DoNothingWithBoundArgs(std::move(font_service_)));
 }
 
 void FontServiceThread::Init(
@@ -111,6 +111,7 @@ bool FontServiceThread::MatchFontByPostscriptNameOrFullFontName(
   return out_valid;
 }
 
+#if BUILDFLAG(ENABLE_PDF)
 void FontServiceThread::MatchFontWithFallback(
     std::string family,
     bool is_bold,
@@ -127,6 +128,7 @@ void FontServiceThread::MatchFontWithFallback(
                      charset, fallback_family_type, out_font_file_handle));
   done_event.Wait();
 }
+#endif  // BUILDFLAG(ENABLE_PDF)
 
 scoped_refptr<MappedFontFile> FontServiceThread::OpenStream(
     const SkFontConfigInterface::FontIdentity& identity) {
@@ -368,6 +370,7 @@ void FontServiceThread::OnMatchFontByPostscriptNameOrFullFontNameComplete(
   done_event->Signal();
 }
 
+#if BUILDFLAG(ENABLE_PDF)
 void FontServiceThread::MatchFontWithFallbackImpl(
     base::WaitableEvent* done_event,
     std::string family,
@@ -401,6 +404,7 @@ void FontServiceThread::OnMatchFontWithFallbackComplete(
   *out_font_file_handle = std::move(file);
   done_event->Signal();
 }
+#endif  // BUILDFLAG(ENABLE_PDF)
 
 void FontServiceThread::OnFontServiceDisconnected() {
   std::set<base::WaitableEvent*> events;

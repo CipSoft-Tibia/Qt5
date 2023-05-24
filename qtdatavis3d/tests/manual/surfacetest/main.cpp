@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "graphmodifier.h"
+#include "buttonwrapper.h"
+#include "checkboxwrapper.h"
 #include <QtDataVisualization/q3dtheme.h>
 
 #include <QApplication>
@@ -45,12 +21,11 @@
 #include <QFrame>
 #include <QDebug>
 
-using namespace QtDataVisualization;
-
 const int initialTheme = 4;
 
 int main(int argc, char *argv[])
 {
+    qputenv("QSG_RHI_BACKEND", "opengl");
     QApplication app(argc, argv);
 
     QWidget *widget = new QWidget;
@@ -581,49 +556,66 @@ int main(int argc, char *argv[])
     QObject::connect(series4VisibleCB, &QCheckBox::stateChanged,
                      modifier, &GraphModifier::toggleSeries4Visible);
 
+    CheckBoxWrapper *series1SmoothCBWrapper = new CheckBoxWrapper(smoothCB);
+    CheckBoxWrapper *series1SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridCB);
+    CheckBoxWrapper *series1surfaceCBWrapper = new CheckBoxWrapper(surfaceCB);
+    CheckBoxWrapper *series1VisibleCBWrapper = new CheckBoxWrapper(seriesVisibleCB);
     QObject::connect(series1CB, &QCheckBox::stateChanged,
                      modifier, &GraphModifier::toggleSeries1);
     QObject::connect(series1CB, &QCheckBox::stateChanged,
-                     smoothCB, &QPushButton::setEnabled);
+                     series1SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series1CB, &QCheckBox::stateChanged,
-                     surfaceGridCB, &QPushButton::setEnabled);
+                     series1SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series1CB, &QCheckBox::stateChanged,
-                     surfaceCB, &QPushButton::setEnabled);
+                     series1surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series1CB, &QCheckBox::stateChanged,
-                     seriesVisibleCB, &QPushButton::setEnabled);
+                     series1VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 
+
+    CheckBoxWrapper *series2SmoothCBWrapper = new CheckBoxWrapper(smoothS2CB);
+    CheckBoxWrapper *series2SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridS2CB);
+    CheckBoxWrapper *series2surfaceCBWrapper = new CheckBoxWrapper(surfaceS2CB);
+    CheckBoxWrapper *series2VisibleCBWrapper = new CheckBoxWrapper(series2VisibleCB);
     QObject::connect(series2CB, &QCheckBox::stateChanged,
                      modifier, &GraphModifier::toggleSeries2);
     QObject::connect(series2CB, &QCheckBox::stateChanged,
-                     smoothS2CB, &QPushButton::setEnabled);
+                     series2SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series2CB, &QCheckBox::stateChanged,
-                     surfaceGridS2CB, &QPushButton::setEnabled);
+                     series2SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series2CB, &QCheckBox::stateChanged,
-                     surfaceS2CB, &QPushButton::setEnabled);
+                     series2surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series2CB, &QCheckBox::stateChanged,
-                     series2VisibleCB, &QPushButton::setEnabled);
+                     series2VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 
+    CheckBoxWrapper *series3SmoothCBWrapper = new CheckBoxWrapper(smoothS3CB);
+    CheckBoxWrapper *series3SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridS3CB);
+    CheckBoxWrapper *series3surfaceCBWrapper = new CheckBoxWrapper(surfaceS3CB);
+    CheckBoxWrapper *series3VisibleCBWrapper = new CheckBoxWrapper(series3VisibleCB);
     QObject::connect(series3CB, &QCheckBox::stateChanged,
                      modifier, &GraphModifier::toggleSeries3);
     QObject::connect(series3CB, &QCheckBox::stateChanged,
-                     smoothS3CB, &QPushButton::setEnabled);
+                     series3SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series3CB, &QCheckBox::stateChanged,
-                     surfaceGridS3CB, &QPushButton::setEnabled);
+                     series3SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series3CB, &QCheckBox::stateChanged,
-                     surfaceS3CB, &QPushButton::setEnabled);
+                     series3surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series3CB, &QCheckBox::stateChanged,
-                     series3VisibleCB, &QPushButton::setEnabled);
+                     series3VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 
+    CheckBoxWrapper *series4SmoothCBWrapper = new CheckBoxWrapper(smoothS4CB);
+    CheckBoxWrapper *series4SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridS4CB);
+    CheckBoxWrapper *series4surfaceCBWrapper = new CheckBoxWrapper(surfaceS4CB);
+    CheckBoxWrapper *series4VisibleCBWrapper = new CheckBoxWrapper(series4VisibleCB);
     QObject::connect(series4CB, &QCheckBox::stateChanged,
                      modifier, &GraphModifier::toggleSeries4);
     QObject::connect(series4CB, &QCheckBox::stateChanged,
-                     smoothS4CB, &QPushButton::setEnabled);
+                     series4SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series4CB, &QCheckBox::stateChanged,
-                     surfaceGridS4CB, &QPushButton::setEnabled);
+                     series4SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series4CB, &QCheckBox::stateChanged,
-                     surfaceS4CB, &QPushButton::setEnabled);
+                     series4surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
     QObject::connect(series4CB, &QCheckBox::stateChanged,
-                     series4VisibleCB, &QPushButton::setEnabled);
+                     series4VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 #else
     QObject::connect(sqrtSinCB, &QRadioButton::toggled,
                      modifier, &GraphModifier::toggleSqrtSin);

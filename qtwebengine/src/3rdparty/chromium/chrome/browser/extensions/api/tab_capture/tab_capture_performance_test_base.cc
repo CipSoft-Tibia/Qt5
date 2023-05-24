@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,14 @@
 
 #include "base/base64.h"
 #include "base/base_switches.h"
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
+#include "base/functional/bind.h"
 #include "base/path_service.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/unpacked_installer.h"
 #include "chrome/browser/profiles/profile.h"
@@ -84,8 +87,6 @@ void TabCapturePerformanceTestBase::SetUpCommandLine(
 
   command_line->AppendSwitchASCII(extensions::switches::kAllowlistedExtensionID,
                                   kExtensionId);
-
-  InProcessBrowserTest::SetUpCommandLine(command_line);
 }
 
 void TabCapturePerformanceTestBase::LoadExtension(
@@ -110,9 +111,9 @@ void TabCapturePerformanceTestBase::NavigateToTestPage(
     const std::string& test_page_html_content) {
   LOG(INFO) << "Navigating to test page...";
   test_page_to_serve_ = test_page_html_content;
-  ui_test_utils::NavigateToURL(
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
       browser(),
-      embedded_test_server()->GetURL(kTestWebPageHostname, kTestWebPagePath));
+      embedded_test_server()->GetURL(kTestWebPageHostname, kTestWebPagePath)));
 }
 
 base::Value TabCapturePerformanceTestBase::SendMessageToExtension(
@@ -232,7 +233,7 @@ std::string TabCapturePerformanceTestBase::MakeBase64EncodedGZippedString(
 void TabCapturePerformanceTestBase::ContinueBrowserFor(
     base::TimeDelta duration) {
   base::RunLoop run_loop;
-  base::SequencedTaskRunnerHandle::Get()->PostDelayedTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE, run_loop.QuitClosure(), duration);
   run_loop.Run();
 }
@@ -243,9 +244,11 @@ void TabCapturePerformanceTestBase::QueryTraceEvents(
     base::StringPiece event_name,
     trace_analyzer::TraceEventVector* events) {
   const trace_analyzer::Query kQuery =
-      trace_analyzer::Query::EventNameIs(event_name.as_string()) &&
+      trace_analyzer::Query::EventNameIs(std::string(event_name)) &&
       (trace_analyzer::Query::EventPhaseIs(TRACE_EVENT_PHASE_BEGIN) ||
        trace_analyzer::Query::EventPhaseIs(TRACE_EVENT_PHASE_ASYNC_BEGIN) ||
+       trace_analyzer::Query::EventPhaseIs(
+           TRACE_EVENT_PHASE_NESTABLE_ASYNC_BEGIN) ||
        trace_analyzer::Query::EventPhaseIs(TRACE_EVENT_PHASE_FLOW_BEGIN) ||
        trace_analyzer::Query::EventPhaseIs(TRACE_EVENT_PHASE_INSTANT) ||
        trace_analyzer::Query::EventPhaseIs(TRACE_EVENT_PHASE_COMPLETE));

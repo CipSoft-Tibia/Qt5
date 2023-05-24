@@ -90,14 +90,21 @@ ErrorOr<Clock::time_point> SDLAudioPlayer::RenderNextFrame(
 
   // Punt if the number of channels is not supported by SDL.
   constexpr int kSdlSupportedChannelCounts[] = {1, 2, 4, 6};
+  int frame_channels =
+#if _LIBAVUTIL_OLD_CHANNEL_LAYOUT
+      frame.channels;
+#else
+      frame.ch_layout.nb_channels;
+#endif  // _LIBAVUTIL_OLD_CHANNEL_LAYOUT
+
   if (std::find(std::begin(kSdlSupportedChannelCounts),
                 std::end(kSdlSupportedChannelCounts),
-                frame.channels) == std::end(kSdlSupportedChannelCounts)) {
+                frame_channels) == std::end(kSdlSupportedChannelCounts)) {
     std::ostringstream error;
-    error << "SDL does not support " << frame.channels << " audio channels.";
+    error << "SDL does not support " << frame_channels << " audio channels.";
     return Error(Error::Code::kUnknownError, error.str());
   }
-  pending_audio_spec_.channels = frame.channels;
+  pending_audio_spec_.channels = frame_channels;
 
   // If |device_spec_| is different from what is required, re-compute the sample
   // buffer size and the amount of time that represents. The |device_spec_| will
@@ -122,28 +129,27 @@ ErrorOr<Clock::time_point> SDLAudioPlayer::RenderNextFrame(
 
   // If the decoded audio is in planar format, interleave it for SDL.
   const int bytes_per_sample = av_get_bytes_per_sample(frame_format);
-  const int byte_count = frame.nb_samples * frame.channels * bytes_per_sample;
+  const int byte_count = frame.nb_samples * frame_channels * bytes_per_sample;
   if (av_sample_fmt_is_planar(frame_format)) {
     interleaved_audio_buffer_.resize(byte_count);
     switch (bytes_per_sample) {
       case 1:
-        InterleaveAudioSamples<uint8_t>(frame.data, frame.channels,
+        InterleaveAudioSamples<uint8_t>(frame.data, frame_channels,
                                         frame.nb_samples,
                                         &interleaved_audio_buffer_[0]);
         break;
       case 2:
-        InterleaveAudioSamples<uint16_t>(frame.data, frame.channels,
+        InterleaveAudioSamples<uint16_t>(frame.data, frame_channels,
                                          frame.nb_samples,
                                          &interleaved_audio_buffer_[0]);
         break;
       case 4:
-        InterleaveAudioSamples<uint32_t>(frame.data, frame.channels,
+        InterleaveAudioSamples<uint32_t>(frame.data, frame_channels,
                                          frame.nb_samples,
                                          &interleaved_audio_buffer_[0]);
         break;
       default:
         OSP_NOTREACHED();
-        break;
     }
     pending_audio_ = absl::Span<const uint8_t>(interleaved_audio_buffer_);
   } else {

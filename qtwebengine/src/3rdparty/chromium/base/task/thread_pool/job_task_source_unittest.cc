@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 
 #include <utility>
 
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/task/thread_pool/pooled_task_runner_delegate.h"
 #include "base/task/thread_pool/test_utils.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/gtest_util.h"
 #include "base/test/test_timeouts.h"
 #include "build/build_config.h"
@@ -27,13 +27,16 @@ class MockPooledTaskRunnerDelegate : public PooledTaskRunnerDelegate {
  public:
   MOCK_METHOD2(PostTaskWithSequence,
                bool(Task task, scoped_refptr<Sequence> sequence));
-  MOCK_CONST_METHOD1(ShouldYield, bool(const TaskSource* task_source));
+  MOCK_METHOD1(ShouldYield, bool(const TaskSource* task_source));
   MOCK_METHOD1(EnqueueJobTaskSource,
                bool(scoped_refptr<JobTaskSource> task_source));
   MOCK_METHOD1(RemoveJobTaskSource,
                void(scoped_refptr<JobTaskSource> task_source));
   MOCK_CONST_METHOD1(IsRunningPoolWithTraits, bool(const TaskTraits& traits));
   MOCK_METHOD2(UpdatePriority,
+               void(scoped_refptr<TaskSource> task_source,
+                    TaskPriority priority));
+  MOCK_METHOD2(UpdateJobPriority,
                void(scoped_refptr<TaskSource> task_source,
                     TaskPriority priority));
 };
@@ -79,11 +82,11 @@ TEST_F(ThreadPoolJobTaskSourceTest, RunTasks) {
 
     std::move(task.task).Run();
     EXPECT_EQ(0U, task_source->GetRemainingConcurrency());
-    EXPECT_FALSE(task_source->IsCompleted());
+    EXPECT_TRUE(task_source->IsActive());
     // Returns false because the task source is out of tasks.
     EXPECT_FALSE(registered_task_source.DidProcessTask());
     EXPECT_EQ(0U, task_source->GetWorkerCount());
-    EXPECT_TRUE(task_source->IsCompleted());
+    EXPECT_FALSE(task_source->IsActive());
   }
 }
 
@@ -345,13 +348,13 @@ TEST_F(ThreadPoolJobTaskSourceTest, RunJoinTaskInParallel) {
   auto worker_task = registered_task_source.TakeTask();
 
   EXPECT_TRUE(task_source->WillJoin());
-  EXPECT_FALSE(task_source->IsCompleted());
+  EXPECT_TRUE(task_source->IsActive());
 
   std::move(worker_task.task).Run();
   EXPECT_FALSE(registered_task_source.DidProcessTask());
 
   EXPECT_FALSE(task_source->RunJoinTask());
-  EXPECT_TRUE(task_source->IsCompleted());
+  EXPECT_FALSE(task_source->IsActive());
 }
 
 // Verifies that a call to NotifyConcurrencyIncrease() calls the delegate

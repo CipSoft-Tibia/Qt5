@@ -1,15 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef PPAPI_SHARED_IMPL_GRAPHICS_3D_IMPL_H_
-#define PPAPI_SHARED_IMPL_GRAPHICS_3D_IMPL_H_
+#ifndef PPAPI_SHARED_IMPL_PPB_GRAPHICS_3D_SHARED_H_
+#define PPAPI_SHARED_IMPL_PPB_GRAPHICS_3D_SHARED_H_
 
 #include <stdint.h>
 
 #include <memory>
 
-#include "base/macros.h"
 #include "ppapi/c/pp_completion_callback.h"
 #include "ppapi/shared_impl/ppapi_shared_export.h"
 #include "ppapi/shared_impl/resource.h"
@@ -34,6 +33,9 @@ class PPAPI_SHARED_EXPORT PPB_Graphics3D_Shared
     : public Resource,
       public thunk::PPB_Graphics3D_API {
  public:
+  PPB_Graphics3D_Shared(const PPB_Graphics3D_Shared&) = delete;
+  PPB_Graphics3D_Shared& operator=(const PPB_Graphics3D_Shared&) = delete;
+
   // Resource overrides.
   thunk::PPB_Graphics3D_API* AsPPB_Graphics3D_API() override;
 
@@ -66,19 +68,23 @@ class PPAPI_SHARED_EXPORT PPB_Graphics3D_Shared
   void SwapBuffersACK(int32_t pp_error);
 
  protected:
-  PPB_Graphics3D_Shared(PP_Instance instance);
+  PPB_Graphics3D_Shared(PP_Instance instance, bool use_shared_images_swapchain);
   PPB_Graphics3D_Shared(const HostResource& host_resource,
-                        const gfx::Size& size);
+                        const gfx::Size& size,
+                        bool use_shared_images_swapchain);
   ~PPB_Graphics3D_Shared() override;
 
   virtual gpu::CommandBuffer* GetCommandBuffer() = 0;
   virtual gpu::GpuControl* GetGpuControl() = 0;
   virtual int32_t DoSwapBuffers(const gpu::SyncToken& sync_token,
                                 const gfx::Size& size) = 0;
+  virtual void DoResize(gfx::Size size) = 0;
 
   bool HasPendingSwap() const;
   bool CreateGLES2Impl(gpu::gles2::GLES2Implementation* share_gles2);
   void DestroyGLES2Impl();
+
+  const bool use_shared_images_swapchain_;
 
  private:
   std::unique_ptr<gpu::gles2::GLES2CmdHelper> gles2_helper_;
@@ -91,10 +97,8 @@ class PPAPI_SHARED_EXPORT PPB_Graphics3D_Shared
 
   // Callback that needs to be executed when swap-buffers is completed.
   scoped_refptr<TrackedCallback> swap_callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(PPB_Graphics3D_Shared);
 };
 
 }  // namespace ppapi
 
-#endif  // PPAPI_SHARED_IMPL_GRAPHICS_3D_IMPL_H_
+#endif  // PPAPI_SHARED_IMPL_PPB_GRAPHICS_3D_SHARED_H_

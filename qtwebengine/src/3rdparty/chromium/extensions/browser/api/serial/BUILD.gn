@@ -1,4 +1,4 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -17,6 +17,8 @@ source_set("serial") {
     "serial_port_manager.h",
   ]
 
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
   deps = [
     "//content/public/common",
     "//extensions/common/api",
@@ -25,5 +27,8 @@ source_set("serial") {
     "//services/service_manager/public/cpp",
   ]
 
-  public_deps = [ "//extensions/browser:browser_sources" ]
+  public_deps = [
+    "//content/public/browser",
+    "//extensions/browser:browser_sources",
+  ]
 }

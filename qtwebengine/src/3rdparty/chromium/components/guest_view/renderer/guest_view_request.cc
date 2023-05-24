@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,117 +7,84 @@
 #include <tuple>
 #include <utility>
 
-#include "components/guest_view/common/guest_view_messages.h"
+#include "base/no_destructor.h"
+#include "components/guest_view/common/guest_view.mojom.h"
 #include "components/guest_view/renderer/guest_view_container.h"
 #include "content/public/renderer/render_frame.h"
-#include "content/public/renderer/render_view.h"
+#include "content/public/renderer/render_thread.h"
+#include "ipc/ipc_sync_channel.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_remote_frame.h"
 #include "third_party/blink/public/web/web_view.h"
+#include "v8/include/v8-context.h"
+#include "v8/include/v8-function.h"
+#include "v8/include/v8-microtask-queue.h"
 
 namespace guest_view {
 
-GuestViewRequest::GuestViewRequest(GuestViewContainer* container,
-                                   v8::Local<v8::Function> callback,
-                                   v8::Isolate* isolate)
+namespace {
+
+mojom::GuestViewHost* GetGuestViewHost() {
+  static base::NoDestructor<mojo::AssociatedRemote<mojom::GuestViewHost>>
+      guest_view_host;
+  if (!*guest_view_host) {
+    content::RenderThread::Get()->GetChannel()->GetRemoteAssociatedInterface(
+        guest_view_host.get());
+  }
+
+  return guest_view_host->get();
+}
+
+}  // namespace
+
+GuestViewAttachRequest::GuestViewAttachRequest(
+    guest_view::GuestViewContainer* container,
+    int render_frame_routing_id,
+    int guest_instance_id,
+    base::Value::Dict params,
+    v8::Local<v8::Function> callback,
+    v8::Isolate* isolate)
     : container_(container),
       callback_(isolate, callback),
-      isolate_(isolate) {
+      isolate_(isolate),
+      render_frame_routing_id_(render_frame_routing_id),
+      guest_instance_id_(guest_instance_id),
+      params_(std::move(params)) {}
+
+GuestViewAttachRequest::~GuestViewAttachRequest() = default;
+
+void GuestViewAttachRequest::PerformRequest() {
+  GetGuestViewHost()->AttachToEmbedderFrame(
+      render_frame_routing_id_, container_->element_instance_id(),
+      guest_instance_id_, params_.Clone(),
+      base::BindOnce(&GuestViewAttachRequest::OnAcknowledged,
+                     weak_ptr_factory_.GetWeakPtr()));
 }
 
-GuestViewRequest::~GuestViewRequest() {
+void GuestViewAttachRequest::OnAcknowledged() {
+  // Destroys `this`.
+  container_->OnRequestAcknowledged(this);
 }
 
-void GuestViewRequest::ExecuteCallbackIfAvailable(
+void GuestViewAttachRequest::ExecuteCallbackIfAvailable(
     int argc,
     std::unique_ptr<v8::Local<v8::Value>[]> argv) {
   if (callback_.IsEmpty())
     return;
 
-  v8::HandleScope handle_scope(isolate());
+  v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Function> callback =
       v8::Local<v8::Function>::New(isolate_, callback_);
-  v8::Local<v8::Context> context = callback->CreationContext();
-  if (context.IsEmpty())
+  v8::Local<v8::Context> context;
+  if (!callback->GetCreationContext().ToLocal(&context))
     return;
 
   v8::Context::Scope context_scope(context);
-  v8::MicrotasksScope microtasks(
-      isolate(), v8::MicrotasksScope::kDoNotRunMicrotasks);
+  v8::MicrotasksScope microtasks(isolate_, context->GetMicrotaskQueue(),
+                                 v8::MicrotasksScope::kDoNotRunMicrotasks);
 
   callback->Call(context, context->Global(), argc, argv.get())
       .FromMaybe(v8::Local<v8::Value>());
-}
-
-GuestViewAttachRequest::GuestViewAttachRequest(
-    GuestViewContainer* container,
-    int guest_instance_id,
-    std::unique_ptr<base::DictionaryValue> params,
-    v8::Local<v8::Function> callback,
-    v8::Isolate* isolate)
-    : GuestViewRequest(container, callback, isolate),
-      guest_instance_id_(guest_instance_id),
-      params_(std::move(params)) {}
-
-GuestViewAttachRequest::~GuestViewAttachRequest() {
-}
-
-void GuestViewAttachRequest::PerformRequest() {
-  if (!container()->render_frame())
-    return;
-
-  // TODO(wjmaclean): Can this next chunk be removed?
-  // Step 1, send the attach params to guest_view/.
-  container()->render_frame()->Send(
-      new GuestViewHostMsg_AttachGuest(container()->element_instance_id(),
-                                       guest_instance_id_,
-                                       *params_));
-}
-
-void GuestViewAttachRequest::HandleResponse(const IPC::Message& message) {
-  // TODO(fsamuel): Rename this message so that it's apparent that this is a
-  // response to GuestViewHostMsg_AttachGuest. Perhaps
-  // GuestViewMsg_AttachGuest_ACK?
-  GuestViewMsg_GuestAttached::Param param;
-  if (!GuestViewMsg_GuestAttached::Read(&message, &param))
-    return;
-
-  content::RenderView* guest_proxy_render_view =
-      content::RenderView::FromRoutingID(std::get<1>(param));
-  // TODO(fsamuel): Should we be reporting an error to JavaScript or DCHECKing?
-  if (!guest_proxy_render_view)
-    return;
-
-  v8::HandleScope handle_scope(isolate());
-  blink::WebFrame* frame = guest_proxy_render_view->GetWebView()->MainFrame();
-  v8::Local<v8::Value> window = frame->GlobalProxy();
-
-  const int argc = 1;
-  std::unique_ptr<v8::Local<v8::Value>[]> argv(new v8::Local<v8::Value>[argc]);
-  argv[0] = window;
-
-  // Call the AttachGuest API's callback with the guest proxy as the first
-  // parameter.
-  ExecuteCallbackIfAvailable(argc, std::move(argv));
-}
-
-GuestViewDetachRequest::GuestViewDetachRequest(
-    GuestViewContainer* container,
-    v8::Local<v8::Function> callback,
-    v8::Isolate* isolate)
-    : GuestViewRequest(container, callback, isolate) {
-}
-
-GuestViewDetachRequest::~GuestViewDetachRequest() {
-}
-
-void GuestViewDetachRequest::PerformRequest() {
-  // TODO(wjmaclean): Remove this function.
-}
-
-void GuestViewDetachRequest::HandleResponse(const IPC::Message& message) {
-  DCHECK(message.type() == GuestViewMsg_GuestDetached::ID);
-  ExecuteCallbackIfAvailable(0 /* argc */, nullptr);
 }
 
 }  // namespace guest_view

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -43,9 +43,7 @@ inline constexpr WebSandboxFlags operator~(WebSandboxFlags flags) {
 
 // The output of |ParseSandboxPolicy(input)|.
 struct WebSandboxFlagsParsingResult {
-  // The complement of the parsed WebSandboxFlags policy.
-  // TODO(arthursonzogni): Update the caller of ParseWebSandboxPolicy(). They
-  // should directly use the policy instead of its complement.
+  // The parsed WebSandboxFlags policy.
   mojom::WebSandboxFlags flags;
 
   // The console error message to be displayed for invalid input. Empty when
@@ -69,4 +67,4 @@ WebSandboxFlagsParsingResult ParseWebSandboxPolicy(
 
 }  // namespace network
 
-#endif  // SERVICES_NETWORK_PUBLIC_CPP_SANDBOX_FLAGS_H_
+#endif  // SERVICES_NETWORK_PUBLIC_CPP_WEB_SANDBOX_FLAGS_H_

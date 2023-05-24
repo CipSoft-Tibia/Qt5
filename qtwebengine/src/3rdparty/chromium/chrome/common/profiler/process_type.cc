@@ -1,12 +1,14 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/common/profiler/process_type.h"
 
+#include "base/command_line.h"
+#include "components/metrics/call_stack_profile_params.h"
 #include "content/public/common/content_switches.h"
 #include "extensions/buildflags/buildflags.h"
-#include "sandbox/policy/sandbox.h"
+#include "services/network/public/mojom/network_service.mojom.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "extensions/common/switches.h"
@@ -30,33 +32,30 @@ metrics::CallStackProfileParams::Process GetProfileParamsProcess(
   std::string process_type =
       command_line.GetSwitchValueASCII(switches::kProcessType);
   if (process_type.empty())
-    return metrics::CallStackProfileParams::BROWSER_PROCESS;
+    return metrics::CallStackProfileParams::Process::kBrowser;
 
   // Renderer process exclusive of extension renderers.
   if (process_type == switches::kRendererProcess &&
       !IsExtensionRenderer(command_line)) {
-    return metrics::CallStackProfileParams::RENDERER_PROCESS;
+    return metrics::CallStackProfileParams::Process::kRenderer;
   }
 
   if (process_type == switches::kGpuProcess)
-    return metrics::CallStackProfileParams::GPU_PROCESS;
+    return metrics::CallStackProfileParams::Process::kGpu;
 
   if (process_type == switches::kUtilityProcess) {
-    auto sandbox_type =
-        sandbox::policy::SandboxTypeFromCommandLine(command_line);
-    if (sandbox_type == sandbox::policy::SandboxType::kNetwork)
-      return metrics::CallStackProfileParams::NETWORK_SERVICE_PROCESS;
-    return metrics::CallStackProfileParams::UTILITY_PROCESS;
+    auto utility_sub_type =
+        command_line.GetSwitchValueASCII(switches::kUtilitySubType);
+    if (utility_sub_type == network::mojom::NetworkService::Name_)
+      return metrics::CallStackProfileParams::Process::kNetworkService;
+    return metrics::CallStackProfileParams::Process::kUtility;
   }
 
   if (process_type == switches::kZygoteProcess)
-    return metrics::CallStackProfileParams::ZYGOTE_PROCESS;
+    return metrics::CallStackProfileParams::Process::kZygote;
 
   if (process_type == switches::kPpapiPluginProcess)
-    return metrics::CallStackProfileParams::PPAPI_PLUGIN_PROCESS;
+    return metrics::CallStackProfileParams::Process::kPpapiPlugin;
 
-  if (process_type == switches::kPpapiBrokerProcess)
-    return metrics::CallStackProfileParams::PPAPI_BROKER_PROCESS;
-
-  return metrics::CallStackProfileParams::UNKNOWN_PROCESS;
+  return metrics::CallStackProfileParams::Process::kUnknown;
 }

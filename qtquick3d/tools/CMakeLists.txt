@@ -1,0 +1,20 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
+add_subdirectory(balsam)
+if(TARGET Qt::Widgets)
+    if(TARGET Qt::Concurrent)
+        add_subdirectory(balsamui)
+    else()
+        message(NOTICE "Skipping balsamui as the condition \"TARGET Qt::Concurrent\" is not met.")
+    endif()
+else()
+    message(NOTICE "Skipping balsamui as the condition \"TARGET Qt::Widgets\" is not met.")
+endif()
+add_subdirectory(meshdebug)
+if(TARGET Qt::ShaderTools)
+    add_subdirectory(shadergen)
+endif()
+add_subdirectory(instancer)
+add_subdirectory(shapegen)
+add_subdirectory(materialeditor)

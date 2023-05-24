@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,16 +11,16 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/test/test_simple_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/test/task_environment.h"
 #include "google_apis/gcm/base/fake_encryptor.h"
+#include "google_apis/gcm/base/gcm_constants.h"
 #include "google_apis/gcm/base/mcs_message.h"
 #include "google_apis/gcm/base/mcs_util.h"
 #include "google_apis/gcm/protocol/mcs.pb.h"
@@ -51,6 +51,8 @@ class GCMStoreImplTest : public testing::Test {
   GCMStoreImplTest();
   ~GCMStoreImplTest() override;
 
+  void TearDown() override;
+
   std::unique_ptr<GCMStoreImpl> BuildGCMStore();
   void LoadGCMStore(GCMStoreImpl* gcm_store,
                     std::unique_ptr<GCMStore::LoadResult>* result_dst);
@@ -67,8 +69,7 @@ class GCMStoreImplTest : public testing::Test {
   void UpdateCallback(bool success);
 
  protected:
-  scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle task_runner_handle_;
+  base::test::TaskEnvironment task_environment_;
   base::ScopedTempDir temp_directory_;
   base::FilePath store_path_;
   bool expected_success_;
@@ -76,8 +77,8 @@ class GCMStoreImplTest : public testing::Test {
 };
 
 GCMStoreImplTest::GCMStoreImplTest()
-    : task_runner_(new base::TestSimpleTaskRunner()),
-      task_runner_handle_(task_runner_),
+    : task_environment_(base::test::TaskEnvironment::TimeSource::MOCK_TIME,
+                        base::test::TaskEnvironment::MainThreadType::IO),
       expected_success_(true),
       next_persistent_id_(base::Time::Now().ToInternalValue()) {
   EXPECT_TRUE(temp_directory_.CreateUniqueTempDir());
@@ -85,15 +86,20 @@ GCMStoreImplTest::GCMStoreImplTest()
 
 GCMStoreImplTest::~GCMStoreImplTest() {}
 
+void GCMStoreImplTest::TearDown() {
+  PumpLoop();
+}
+
 std::unique_ptr<GCMStoreImpl> GCMStoreImplTest::BuildGCMStore() {
   // Pass an non-existent directory as store path to match the exact behavior in
   // the production code. Currently GCMStoreImpl checks if the directory exists
   // and contains a CURRENT file to determine the store existence.
   store_path_ =
       temp_directory_.GetPath().Append(FILE_PATH_LITERAL("GCM Store"));
-  return std::unique_ptr<GCMStoreImpl>(new GCMStoreImpl(
+  return std::make_unique<GCMStoreImpl>(
       store_path_, /*remove_account_mappings_with_email_key=*/true,
-      task_runner_, base::WrapUnique<Encryptor>(new FakeEncryptor)));
+      task_environment_.GetMainThreadTaskRunner(),
+      std::make_unique<FakeEncryptor>());
 }
 
 void GCMStoreImplTest::LoadGCMStore(
@@ -109,7 +115,9 @@ std::string GCMStoreImplTest::GetNextPersistentId() {
   return base::NumberToString(next_persistent_id_++);
 }
 
-void GCMStoreImplTest::PumpLoop() { task_runner_->RunUntilIdle(); }
+void GCMStoreImplTest::PumpLoop() {
+  task_environment_.RunUntilIdle();
+}
 
 void GCMStoreImplTest::LoadCallback(
     std::unique_ptr<GCMStore::LoadResult>* result_dst,
@@ -346,6 +354,40 @@ TEST_F(GCMStoreImplTest, IncomingMessages) {
   ASSERT_TRUE(load_result->outgoing_messages.empty());
 }
 
+// Verify saving some incoming messages, reopening the directory after half of
+// the TTL and TTL, and then verify expired incoming messages got removed.
+TEST_F(GCMStoreImplTest, IncomingMessages_WithTTL) {
+  auto gcm_store = BuildGCMStore();
+  std::unique_ptr<GCMStore::LoadResult> load_result;
+  LoadGCMStore(gcm_store.get(), &load_result);
+
+  std::vector<std::string> persistent_ids;
+  for (int i = 0; i < kNumPersistentIds; ++i) {
+    persistent_ids.push_back(GetNextPersistentId());
+    gcm_store->AddIncomingMessage(
+        persistent_ids.back(), base::BindOnce(&GCMStoreImplTest::UpdateCallback,
+                                              base::Unretained(this)));
+    PumpLoop();
+  }
+
+  task_environment_.FastForwardBy(kIncomingMessageTTL / 2);
+
+  gcm_store = BuildGCMStore();
+  LoadGCMStore(gcm_store.get(), &load_result);
+
+  EXPECT_EQ(persistent_ids, load_result->incoming_messages);
+  EXPECT_TRUE(load_result->outgoing_messages.empty());
+
+  task_environment_.FastForwardBy(kIncomingMessageTTL / 2);
+
+  gcm_store = BuildGCMStore();
+  load_result->incoming_messages.clear();
+  LoadGCMStore(gcm_store.get(), &load_result);
+
+  ASSERT_TRUE(load_result->incoming_messages.empty());
+  ASSERT_TRUE(load_result->outgoing_messages.empty());
+}
+
 // Verify saving some outgoing messages, reopening the directory, and then
 // removing those outgoing messages.
 TEST_F(GCMStoreImplTest, OutgoingMessages) {
@@ -354,7 +396,6 @@ TEST_F(GCMStoreImplTest, OutgoingMessages) {
   LoadGCMStore(gcm_store.get(), &load_result);
 
   std::vector<std::string> persistent_ids;
-  const int kNumPersistentIds = 10;
   for (int i = 0; i < kNumPersistentIds; ++i) {
     persistent_ids.push_back(GetNextPersistentId());
     mcs_proto::DataMessageStanza message;
@@ -402,7 +443,6 @@ TEST_F(GCMStoreImplTest, IncomingAndOutgoingMessages) {
   LoadGCMStore(gcm_store.get(), &load_result);
 
   std::vector<std::string> persistent_ids;
-  const int kNumPersistentIds = 10;
   for (int i = 0; i < kNumPersistentIds; ++i) {
     persistent_ids.push_back(GetNextPersistentId());
     gcm_store->AddIncomingMessage(

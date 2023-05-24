@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <limits>
 
 #include "base/check_op.h"
-#include "base/macros.h"
 #include "base/numerics/safe_math.h"
 #include "cc/base/math_util.h"
 #include "components/viz/common/resources/resource_format.h"
@@ -48,7 +47,10 @@ class VIZ_RESOURCE_FORMAT_EXPORT ResourceSizes {
   // number of bytes.
   template <typename T>
   static T CheckedSizeInBytes(const gfx::Size& size, ResourceFormat format);
-
+  // WARNING: The `format` must be single planar.
+  // TODO(hitawala): Add multiplanar format support.
+  template <typename T>
+  static T CheckedSizeInBytes(const gfx::Size& size, SharedImageFormat format);
   // Returns the width in bytes but may overflow or return 0. Only do this for
   // computing widths for sizes that have already been checked.
   template <typename T>
@@ -162,6 +164,12 @@ T ResourceSizes::CheckedSizeInBytes(const gfx::Size& size,
   T bytes;
   CHECK(MaybeSizeInBytesInternal<T>(size, format, false, &bytes));
   return bytes;
+}
+
+template <typename T>
+T ResourceSizes::CheckedSizeInBytes(const gfx::Size& size,
+                                    SharedImageFormat format) {
+  return CheckedSizeInBytes<T>(size, format.resource_format());
 }
 
 template <typename T>

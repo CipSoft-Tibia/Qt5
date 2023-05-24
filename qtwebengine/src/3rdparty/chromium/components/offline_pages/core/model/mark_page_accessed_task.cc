@@ -1,17 +1,16 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/offline_pages/core/model/mark_page_accessed_task.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "components/offline_pages/core/client_namespace_constants.h"
 #include "components/offline_pages/core/model/offline_page_model_utils.h"
 #include "components/offline_pages/core/offline_page_metadata_store.h"
-#include "components/offline_pages/core/offline_store_utils.h"
 #include "sql/database.h"
 #include "sql/statement.h"
 #include "sql/transaction.h"
@@ -28,7 +27,7 @@ void ReportAccessHistogram(int64_t offline_id,
   // Used as upper bound of PageAccessInterval histogram which is used for
   // evaluating how good the expiration period is. The expiration period of a
   // page will be longer than one year in extreme cases so it's good enough.
-  const int kMinutesPerYear = base::TimeDelta::FromDays(365).InMinutes();
+  const int kMinutesPerYear = base::Days(365).InMinutes();
 
   static const char kSql[] =
       "SELECT client_namespace, last_access_time FROM " OFFLINE_PAGES_TABLE_NAME
@@ -40,8 +39,7 @@ void ReportAccessHistogram(int64_t offline_id,
     UMA_HISTOGRAM_ENUMERATION("OfflinePages.AccessPageCount",
                               model_utils::ToNamespaceEnum(name_space));
 
-    base::Time last_access_time =
-        store_utils::FromDatabaseTime(statement.ColumnInt64(1));
+    base::Time last_access_time = statement.ColumnTime(1);
     base::UmaHistogramCustomCounts(
         model_utils::AddHistogramSuffix(name_space,
                                         "OfflinePages.PageAccessInterval"),
@@ -63,7 +61,7 @@ bool MarkPageAccessedSync(const base::Time& access_time,
       " SET last_access_time = ?, access_count = access_count + 1"
       " WHERE offline_id = ?";
   sql::Statement statement(db->GetCachedStatement(SQL_FROM_HERE, kSql));
-  statement.BindInt64(0, store_utils::ToDatabaseTime(access_time));
+  statement.BindTime(0, access_time);
   statement.BindInt64(1, offline_id);
   if (!statement.Run())
     return false;

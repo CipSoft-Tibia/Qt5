@@ -43,7 +43,6 @@ extern "C" {
 
 #include <libweston/matrix.h>
 #include <libweston/zalloc.h>
-#include <libweston/timeline-object.h>
 
 struct weston_geometry {
 	int32_t x, y;
@@ -79,6 +78,7 @@ struct weston_pointer;
 struct linux_dmabuf_buffer;
 struct weston_recorder;
 struct weston_pointer_constraint;
+struct ro_anonymous_file;
 
 enum weston_keyboard_modifier {
 	MODIFIER_CTRL = (1 << 0),
@@ -185,10 +185,10 @@ enum weston_hdcp_protection {
 	WESTON_HDCP_ENABLE_TYPE_1
 };
 
-/** Represents a monitor
+/** Represents a head, usually a display connector
  *
- * This object represents a monitor (hardware backends like DRM) or a window
- * (windowed nested backends).
+ * \rst
+ See :ref:`libweston-head`. \endrst
  *
  * \ingroup head
  */
@@ -207,6 +207,10 @@ struct weston_head {
 
 	int32_t mm_width;		/**< physical image width in mm */
 	int32_t mm_height;		/**< physical image height in mm */
+
+	/** WL_OUTPUT_TRANSFORM enum to apply to match native orientation */
+	uint32_t transform;
+
 	char *make;			/**< monitor manufacturer (PNP ID) */
 	char *model;			/**< monitor model */
 	char *serial_number;		/**< monitor serial */
@@ -222,7 +226,10 @@ struct weston_head {
 	enum weston_hdcp_protection current_protection;
 };
 
-/** Represents an output
+/** Content producer for heads
+ *
+ * \rst
+ See :ref:`libweston-output`. \endrst
  *
  * \ingroup output
  */
@@ -248,8 +255,6 @@ struct weston_output {
 
 	/** Output area in global coordinates, simple rect */
 	pixman_region32_t region;
-
-	pixman_region32_t previous_damage;
 
 	/** True if damage has occurred since the last repaint for this output;
 	 *  if set, a repaint will eventually occur. */
@@ -319,8 +324,6 @@ struct weston_output {
 			  uint16_t *r,
 			  uint16_t *g,
 			  uint16_t *b);
-
-	struct weston_timeline_object timeline;
 
 	bool enabled; /**< is in the output_list, not pending list */
 	int scale;
@@ -707,8 +710,7 @@ weston_pointer_start_drag(struct weston_pointer *pointer,
 		       struct wl_client *client);
 struct weston_xkb_info {
 	struct xkb_keymap *keymap;
-	size_t keymap_size;
-	char *keymap_string;
+	struct ro_anonymous_file *keymap_rofile;
 	int32_t ref_count;
 	xkb_mod_index_t shift_mod;
 	xkb_mod_index_t caps_mod;
@@ -1118,6 +1120,7 @@ struct weston_compositor {
 
 	struct weston_log_context *weston_log_ctx;
 	struct weston_log_scope *debug_scene;
+	struct weston_log_scope *timeline;
 
 	struct content_protection *content_protection;
 };
@@ -1464,8 +1467,6 @@ struct weston_surface {
 	 */
 	const char *role_name;
 
-	struct weston_timeline_object timeline;
-
 	bool is_mapped;
 	bool is_opaque;
 
@@ -1674,6 +1675,9 @@ weston_compositor_add_axis_binding(struct weston_compositor *compositor,
 				   void *data);
 
 void
+weston_binding_destroy(struct weston_binding *binding);
+
+void
 weston_install_debug_key_binding(struct weston_compositor *compositor,
 				 uint32_t mod);
 
@@ -1766,13 +1770,16 @@ void
 weston_compositor_get_time(struct timespec *time);
 
 void
-weston_compositor_tear_down(struct weston_compositor *ec);
-void
 weston_compositor_destroy(struct weston_compositor *ec);
 
 struct weston_compositor *
 weston_compositor_create(struct wl_display *display,
 			 struct weston_log_context *log_ctx, void *user_data);
+
+bool
+weston_compositor_add_destroy_listener_once(struct weston_compositor *compositor,
+					    struct wl_listener *listener,
+					    wl_notify_func_t destroy_handler);
 
 enum weston_compositor_backend {
 	WESTON_BACKEND_DRM,
@@ -1951,6 +1958,9 @@ weston_head_get_name(struct weston_head *head);
 struct weston_output *
 weston_head_get_output(struct weston_head *head);
 
+uint32_t
+weston_head_get_transform(struct weston_head *head);
+
 void
 weston_head_detach(struct weston_head *head);
 
@@ -2010,6 +2020,9 @@ weston_output_init(struct weston_output *output,
 		   struct weston_compositor *compositor,
 		   const char *name);
 
+void
+weston_output_move(struct weston_output *output, int x, int y);
+
 int
 weston_output_enable(struct weston_output *output);
 
@@ -2034,13 +2047,17 @@ weston_compositor_enable_touch_calibrator(struct weston_compositor *compositor,
 				weston_touch_calibration_save_func save);
 
 struct weston_log_context *
-weston_log_ctx_compositor_create(void);
+weston_log_ctx_create(void);
 
 void
-weston_log_ctx_compositor_destroy(struct weston_compositor *compositor);
+weston_log_ctx_destroy(struct weston_log_context *log_ctx);
 
 int
 weston_compositor_enable_content_protection(struct weston_compositor *compositor);
+
+void
+weston_timeline_refresh_subscription_objects(struct weston_compositor *wc,
+					     void *object);
 
 #ifdef  __cplusplus
 }

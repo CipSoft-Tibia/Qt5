@@ -1,10 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/devtools_ui.h"
 
 #include "base/command_line.h"
+#include "base/strings/stringprintf.h"
 #ifndef TOOLKIT_QT
 #include "chrome/browser/devtools/url_constants.h"
 #endif
@@ -16,8 +17,8 @@
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
+#include "content/public/common/bindings_policy.h"
 #include "content/public/common/user_agent.h"
-#include "net/base/load_flags.h"
 
 // static
 GURL DevToolsUI::GetProxyURL(const std::string& frontend_url) {
@@ -40,11 +41,9 @@ GURL DevToolsUI::GetProxyURL(const std::string& frontend_url) {
 // static
 GURL DevToolsUI::GetRemoteBaseURL() {
 #ifndef TOOLKIT_QT
-  return GURL(base::StringPrintf(
-      "%s%s/%s/",
-      kRemoteFrontendBase,
-      kRemoteFrontendPath,
-      content::GetWebKitRevision().c_str()));
+  return GURL(base::StringPrintf("%s%s/%s/", kRemoteFrontendBase,
+                                 kRemoteFrontendPath,
+                                 content::GetChromiumGitRevision().c_str()));
 #else
   return GURL();
 #endif
@@ -79,9 +78,10 @@ DevToolsUI::DevToolsUI(content::WebUI* web_ui)
     , bindings_(web_ui->GetWebContents())
 #endif
 {
-  web_ui->SetBindings(0);
-  auto factory = content::BrowserContext::GetDefaultStoragePartition(
-                     web_ui->GetWebContents()->GetBrowserContext())
+  web_ui->SetBindings(content::BINDINGS_POLICY_NONE);
+  auto factory = web_ui->GetWebContents()
+                     ->GetBrowserContext()
+                     ->GetDefaultStoragePartition()
                      ->GetURLLoaderFactoryForBrowserProcess();
   content::URLDataSource::Add(
       web_ui->GetWebContents()->GetBrowserContext(),

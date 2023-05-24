@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,10 @@
 
 #include <string>
 
+#include "base/feature_list.h"
 #include "base/logging.h"
+#include "base/observer_list.h"
+#include "net/base/features.h"
 #include "net/socket/ssl_client_socket_impl.h"
 #include "net/socket/stream_socket.h"
 #include "net/ssl/ssl_client_session_cache.h"
@@ -14,9 +17,7 @@
 
 namespace net {
 
-SSLClientSocket::SSLClientSocket()
-    : signed_cert_timestamps_received_(false),
-      stapled_ocsp_response_received_(false) {}
+SSLClientSocket::SSLClientSocket() = default;
 
 // static
 void SSLClientSocket::SetSSLKeyLogger(std::unique_ptr<SSLKeyLogger> logger) {
@@ -50,20 +51,17 @@ SSLClientContext::SSLClientContext(
     SSLConfigService* ssl_config_service,
     CertVerifier* cert_verifier,
     TransportSecurityState* transport_security_state,
-    CTVerifier* cert_transparency_verifier,
     CTPolicyEnforcer* ct_policy_enforcer,
     SSLClientSessionCache* ssl_client_session_cache,
     SCTAuditingDelegate* sct_auditing_delegate)
     : ssl_config_service_(ssl_config_service),
       cert_verifier_(cert_verifier),
       transport_security_state_(transport_security_state),
-      cert_transparency_verifier_(cert_transparency_verifier),
       ct_policy_enforcer_(ct_policy_enforcer),
       ssl_client_session_cache_(ssl_client_session_cache),
       sct_auditing_delegate_(sct_auditing_delegate) {
   CHECK(cert_verifier_);
   CHECK(transport_security_state_);
-  CHECK(cert_transparency_verifier_);
   CHECK(ct_policy_enforcer_);
 
   if (ssl_config_service_) {
@@ -78,6 +76,11 @@ SSLClientContext::~SSLClientContext() {
     ssl_config_service_->RemoveObserver(this);
   }
   CertDatabase::GetInstance()->RemoveObserver(this);
+}
+
+bool SSLClientContext::EncryptedClientHelloEnabled() const {
+  return config_.ech_enabled &&
+         base::FeatureList::IsEnabled(features::kEncryptedClientHello);
 }
 
 std::unique_ptr<SSLClientSocket> SSLClientContext::CreateSSLClientSocket(

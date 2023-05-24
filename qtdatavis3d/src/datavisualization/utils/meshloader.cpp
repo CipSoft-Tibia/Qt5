@@ -1,52 +1,24 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "meshloader_p.h"
 
 #include <QtCore/QFile>
 #include <QtCore/QStringList>
-#include <QtCore/QVector>
+#include <QtCore/QList>
 #include <QtGui/QVector2D>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 QString slashTag = QStringLiteral("/");
 
-bool MeshLoader::loadOBJ(const QString &path,
-                         QVector<QVector3D> &out_vertices,
-                         QVector<QVector2D> &out_uvs,
-                         QVector<QVector3D> &out_normals)
+bool MeshLoader::loadOBJ(const QString &path, QList<QVector3D> &out_vertices,
+                         QList<QVector2D> &out_uvs, QList<QVector3D> &out_normals)
 {
-    QVector<unsigned int> vertexIndices, uvIndices, normalIndices;
-    QVector<QVector3D> temp_vertices;
-    QVector<QVector2D> temp_uvs;
-    QVector<QVector3D> temp_normals;
+    QList<unsigned int> vertexIndices, uvIndices, normalIndices;
+    QList<QVector3D> temp_vertices;
+    QList<QVector2D> temp_uvs;
+    QList<QVector3D> temp_normals;
 
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -83,6 +55,10 @@ bool MeshLoader::loadOBJ(const QString &path,
             QStringList set1 = lineContents.at(1).split(slashTag);
             QStringList set2 = lineContents.at(2).split(slashTag);
             QStringList set3 = lineContents.at(3).split(slashTag);
+            if (set1.size() < 3 || set2.size() < 3 || set3.size() < 3) {
+                qWarning("The file being loaded is missing UVs and/or normals");
+                return false;
+            }
             vertexIndex[0] = set1.at(0).toUInt();
             vertexIndex[1] = set2.at(0).toUInt();
             vertexIndex[2] = set3.at(0).toUInt();
@@ -125,4 +101,4 @@ bool MeshLoader::loadOBJ(const QString &path,
     return true;
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

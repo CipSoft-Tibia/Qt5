@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -43,7 +43,7 @@ viz_component("host") {
 
   deps = [
     "//base",
-    "//components/ui_devtools:buildflags",
+    "//build:chromeos_buildflags",
     "//gpu/ipc/client",
     "//gpu/ipc/common",
     "//services/viz/privileged/mojom",
@@ -60,7 +60,7 @@ viz_component("host") {
     "//ui/gfx/geometry",
   ]
 
-  if (is_mac) {
+  if (is_apple) {
     deps += [ "//ui/accelerated_widget_mac" ]
   }
 
@@ -82,9 +82,11 @@ viz_source_set("unit_tests") {
     ":host",
     "//base",
     "//base/test:test_support",
+    "//build:chromeos_buildflags",
     "//components/viz/test:test_support",
     "//gpu",
     "//gpu/ipc/host",
+    "//media:media_buildflags",
     "//mojo/public/cpp/bindings",
     "//services/viz/privileged/mojom",
     "//services/viz/public/mojom",
@@ -94,10 +96,6 @@ viz_source_set("unit_tests") {
 
   if (use_ozone) {
     deps += [ "//ui/ozone" ]
-  }
-
-  if (use_x11 || use_ozone) {
-    deps += [ "//ui/base:features" ]
   }
 }
 
@@ -110,5 +108,6 @@ fuzzer_test("hit_test_query_fuzzer") {
     ":host",
     "//base/test:test_support",
     "//components/viz/test:test_support",
+    "//ui/gfx:test_support",
   ]
 }

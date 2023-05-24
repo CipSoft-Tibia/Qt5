@@ -19,7 +19,7 @@
                autofocus autocomplete="off"
                placeholder="Enter omnibox input [Alt+L]">
         <div class="arrow-container">
-          <span class="arrow-padding"></span>
+          <span id="arrow-padding"></span>
           <span class="arrow-up">▲</span>
         </div>
         <label class="row checkbox-container"
@@ -58,7 +58,10 @@
               [<span class="accesskey">x</span>]
             </span>
           </label>
-        <label class="row checkbox-container">
+        <label class="row checkbox-container" title="Assuming it is checked:
+1) To simulate an on-focus input on NTP, choose NTP page classification and clear the input and current URL.
+2) To simulate an on-focus input elsewhere: choose 'arbitrary URL' or a 'SRP' page classification, and add a add a valid (e.g. https://www.google.com) page URL to both the input and current URL.
+3) To simulate an on-clobber input: choose 'arbitrary URL' or a 'SRP' page classification, clear the input, and add a valid page URL to the current URL.">
             <input id="zero-suggest" type="checkbox" accesskey="z">
             <span>
               <span class="accesskey">Z</span>ero suggest
@@ -88,19 +91,21 @@
                title="Mostly useful when zero-suggest is enabled, but may also affect clipboard and search providers.">
         <select id="page-classification" class="row" accesskey="o">
           <option value="0">Invalid spec</option>
+          <option value="1">(OBSOLETE) new tab page</option>
           <option value="2">about:blank</option>
           <option value="3">user's home page</option>
           <option value="4" selected>arbitrary URL</option>
           <option value="6">
             search result page doing search term replacement
           </option>
+          <option value="7">new tab page omnibox</option>
+          <option value="8">new tab page fakebox</option>
           <option value="9">
             search result page not doing search term replacement
           </option>
-          <option value="7">new tab page omnibox</option>
-          <option value="8">new tab page fakebox</option>
           <option value="15">new tab page realbox</option>
-          <option value="1">(OBSOLETE) new tab page</option>
+          <option value="16">search widget (Android)</option>
+          <option value="19">quick action search widget (Android)</option>
         </select>
       </div>
 

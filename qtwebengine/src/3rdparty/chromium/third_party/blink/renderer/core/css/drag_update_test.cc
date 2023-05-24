@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,7 +16,8 @@ TEST(DragUpdateTest, AffectedByDragUpdate) {
   // Check that when dragging the div in the document below, you only get a
   // single element style recalc.
 
-  auto dummy_page_holder = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  auto dummy_page_holder =
+      std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   Document& document = dummy_page_holder->GetDocument();
   document.documentElement()->setInnerHTML(R"HTML(
     <style>div {width:100px;height:100px} div:-webkit-drag {
@@ -29,11 +30,11 @@ TEST(DragUpdateTest, AffectedByDragUpdate) {
     </div>
   )HTML");
 
-  document.View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  document.View()->UpdateAllLifecyclePhasesForTest();
   unsigned start_count = document.GetStyleEngine().StyleForElementCount();
 
   document.getElementById("div")->SetDragged(true);
-  document.View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  document.View()->UpdateAllLifecyclePhasesForTest();
 
   unsigned element_count =
       document.GetStyleEngine().StyleForElementCount() - start_count;
@@ -45,7 +46,8 @@ TEST(DragUpdateTest, ChildAffectedByDragUpdate) {
   // Check that when dragging the div in the document below, you get a
   // single element style recalc.
 
-  auto dummy_page_holder = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  auto dummy_page_holder =
+      std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   Document& document = dummy_page_holder->GetDocument();
   document.documentElement()->setInnerHTML(R"HTML(
     <style>div {width:100px;height:100px} div:-webkit-drag .drag {
@@ -74,7 +76,8 @@ TEST(DragUpdateTest, SiblingAffectedByDragUpdate) {
   // Check that when dragging the div in the document below, you get a
   // single element style recalc.
 
-  auto dummy_page_holder = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  auto dummy_page_holder =
+      std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   Document& document = dummy_page_holder->GetDocument();
   document.documentElement()->setInnerHTML(R"HTML(
     <style>div {width:100px;height:100px} div:-webkit-drag + .drag {

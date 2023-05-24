@@ -48,6 +48,9 @@
   <message desc="The description of the forceClickOnCurrentItem key. Displayed in the Options page." name="IDS_CHROMEVOX_FORCE_CLICK_ON_CURRENT_ITEM">
     Click on current item
   </message>
+  <message desc="The description of the forceLongClickOnCurrentItem key. Displayed in the Options page." name="IDS_CHROMEVOX_FORCE_LONG_CLICK_ON_CURRENT_ITEM">
+    Long click on current item
+  </message>
   <message desc="The description of the readLinkURL key. Displayed in the Options page." name="IDS_CHROMEVOX_READ_LINK_URL">
     Announce the URL behind a link
   </message>
@@ -466,6 +469,9 @@
   <message desc="Spoken when the user exits a container." name="IDS_CHROMEVOX_EXITED_CONTAINER">
     Exited <ph name="type">$1</ph>.
   </message>
+  <message desc="Spoken when the user navigates to the end of a container. For example, the user moves to the last button within a toolbar." name="IDS_CHROMEVOX_END_OF_CONTAINER" is_accessibility_with_no_ui="true">
+    <ph name="type">$1</ph> end
+  </message>
   <message desc="Spoken before the list of elements when a live region of a page is removed." name="IDS_CHROMEVOX_LIVE_REGIONS_REMOVED">
     removed:
   </message>
@@ -703,11 +709,11 @@
   <message desc="Accessibility role description for a single comment" name="IDS_CHROMEVOX_ROLE_COMMENT">
     Comment
   </message>
-  <message desc="Accessibility role description for content deletion, meaning content that is has been or is suggested to be removed from a document, such as in a revision review" name="IDS_CHROMEVOX_ROLE_CONTENT_DELETION">
-    Deletion
+  <message desc="Accessibility role description for content deletion, meaning content that is has been or is suggested to be removed from a document, such as in a revision review" name="IDS_CHROMEVOX_ROLE_CONTENT_DELETION" is_accessibility_with_no_ui="true">
+    Delete
   </message>
-  <message desc="Accessibility role description for content insertion, meaning content that is has been or is suggested to be inserted into a document, such as in a revision review" name="IDS_CHROMEVOX_ROLE_CONTENT_INSERTION">
-    Insertion
+  <message desc="Accessibility role description for content insertion, meaning content that is has been or is suggested to be inserted into a document, such as in a revision review" name="IDS_CHROMEVOX_ROLE_CONTENT_INSERTION" is_accessibility_with_no_ui="true">
+    Insert
   </message>
   <message desc="This is an abbreviated ARIA widget role name shown on a braille display. When translating, try to find a contracted form of the translation for 'combo box' according to local conventions. If reasonable, use all lowercase and avoid punctuation to keep the number of characters as low as possible." name="IDS_CHROMEVOX_ROLE_COMBOBOX_BRL">
     cbo
@@ -807,6 +813,12 @@
   </message>
   <message desc="Accessibility role description for page break" name="IDS_CHROMEVOX_ROLE_DOC_PAGE_BREAK">
     Page break
+  </message>
+  <message desc="Accessibility role description for page footer" name="IDS_CHROMEVOX_ROLE_DOC_PAGE_FOOTER">
+    Page footer
+  </message>
+  <message desc="Accessibility role description for page header" name="IDS_CHROMEVOX_ROLE_DOC_PAGE_HEADER">
+    Page header
   </message>
   <message desc="Accessibility role description for page list" name="IDS_CHROMEVOX_ROLE_DOC_PAGE_LIST">
     Page list
@@ -967,8 +979,14 @@
   <message desc="This is an abbreviated ARIA widget role name shown on a braille display. When translating, try to find a contracted form of the translation for 'status' according to local conventions. If reasonable, use all lowercase and avoid punctuation to keep the number of characters as low as possible." name="IDS_CHROMEVOX_ROLE_STATUS_BRL">
     sts
   </message>
-  <message desc="Accessibility role description for suggestion, meaning a suggested change to some content" name="IDS_CHROMEVOX_ROLE_SUGGESTION">
-    Suggestion
+  <message desc="Accessibility role description for subscript," name="IDS_CHROMEVOX_ROLE_SUBSCRIPT" is_accessibility_with_no_ui="true">
+    Subscript
+  </message>
+  <message desc="Accessibility role description for suggestion, meaning a suggested change to some content" name="IDS_CHROMEVOX_ROLE_SUGGESTION" is_accessibility_with_no_ui="true">
+    Suggest
+  </message>
+  <message desc="Accessibility role description for superscript," name="IDS_CHROMEVOX_ROLE_SUPERSCRIPT" is_accessibility_with_no_ui="true">
+    Superscript
   </message>
   <message desc="Describes an element with the ARIA role tab." meaning="UI element" name="IDS_CHROMEVOX_ROLE_TAB">
     Tab
@@ -1207,6 +1225,24 @@
   <message desc="Describes an element where the checked state is mixed or indeterminate." name="IDS_CHROMEVOX_CHECKED_MIXED">
     Partially checked
   </message>
+  <message desc="Describes an element with the ARIA attribute aria-current=true." name="IDS_CHROMEVOX_ARIA_CURRENT_TRUE">
+    Current
+  </message>
+  <message desc="Describes an element with the ARIA attribute aria-current=page." name="IDS_CHROMEVOX_ARIA_CURRENT_PAGE">
+    Current page
+  </message>
+  <message desc="Describes an element with the ARIA attribute aria-current=step." name="IDS_CHROMEVOX_ARIA_CURRENT_STEP">
+    Current step
+  </message>
+  <message desc="Describes an element with the ARIA attribute aria-current=location." name="IDS_CHROMEVOX_ARIA_CURRENT_LOCATION">
+    Current location
+  </message>
+  <message desc="Describes an element with the ARIA attribute aria-current=date." name="IDS_CHROMEVOX_ARIA_CURRENT_DATE">
+    Current date
+  </message>
+  <message desc="Describes an element with the ARIA attribute aria-current=time." name="IDS_CHROMEVOX_ARIA_CURRENT_TIME">
+    Current time
+  </message>
   <message desc="Describes an element with the ARIA attribute aria-disabled=true." name="IDS_CHROMEVOX_ARIA_DISABLED_TRUE">
     Disabled
   </message>
@@ -1222,6 +1258,9 @@
   <message desc="Describes an element with the ARIA attribute aria-invalid=grammar." name="IDS_CHROMEVOX_ARIA_INVALID_GRAMMAR">
     Grammatical mistake detected
   </message>
+  <message desc="Describes a spoken hint when aria-invalid=grammar." name="IDS_CHROMEVOX_HINT_INVALID_GRAMMAR">
+    grammar error
+  </message>
   <message desc="Shown on a braille display as a suffix to text fields that are marked as containing a grammatical mistake. When translating, stick to lowercase." name="IDS_CHROMEVOX_ARIA_INVALID_GRAMMAR_BRL">
     grammatical mistake
   </message>
@@ -1229,6 +1268,9 @@
     Spelling mistake detected
   </message>
   <message desc="Shown on a braille display as a suffix to text fields that are marked as containing a misspelling. When translating, stick to lowercase." name="IDS_CHROMEVOX_ARIA_INVALID_SPELLING_BRL">
+    misspelled
+  </message>
+  <message desc="Describes a spoken hint when aria-invalid=spelling." name="IDS_CHROMEVOX_HINT_INVALID_SPELLING">
     misspelled
   </message>
   <message desc="Describes an element with the ARIA attribute aria-multiline=true." name="IDS_CHROMEVOX_ARIA_MULTILINE_TRUE">
@@ -1474,6 +1516,9 @@
   <message desc="Further describes a list-like element with a number of items. e.g. This will be combined with other messages to produce: List with 3 items." name="IDS_CHROMEVOX_LIST_WITH_ITEMS">
     {COUNT, plural, =1{with # item} other{with # items}}
   </message>
+  <message desc="Further describes the level of nesting of a list-like element on the last item. e.g. This will be combined with other messages to produce: List end nested level 2." name="IDS_CHROMEVOX_LIST_NESTED_LEVEL">
+    {COUNT, plural, =1{} other{nested level #}}
+  </message>
   <!-- TODO(crbug.com/999781): This should not need ICU msg format. Fix where the message is used. -->  <message desc="Further describes a list-like element with a number of items in braille." name="IDS_CHROMEVOX_LIST_WITH_ITEMS_BRL">
     {COUNT, plural, =1{+#} other{+#}}
   </message>
@@ -1657,6 +1702,15 @@
   <message desc="The description of the next similar item command." name="IDS_CHROMEVOX_NEXT_SIMILAR_ITEM">
     Next similar item
   </message>
+  <message desc="The description of the previous invalid command." name="IDS_CHROMEVOX_PREVIOUS_INVALID_ITEM">
+    Previous invalid item
+  </message>
+  <message desc="The description of the next invalid item command." name="IDS_CHROMEVOX_NEXT_INVALID_ITEM">
+    Next invalid item
+  </message>
+  <message desc="Spoken if the user attempts to jump to the previous or next invalid item when none exists." name="IDS_CHROMEVOX_NO_INVALID_ITEM">
+    No invalid item
+  </message>
   <message desc="Describes nodes or anything describing them as a landmark." name="IDS_CHROMEVOX_ROLE_LANDMARK">
     Landmark
   </message>
@@ -1719,6 +1773,9 @@
   </message>
   <message desc="Spoken when earcons are off." name="IDS_CHROMEVOX_EARCONS_OFF">
     Earcons off
+  </message>
+  <message desc="Description of the toggle dictation key combination. Shown in the ChromeVox menus." name="IDS_CHROMEVOX_TOGGLE_DICTATION">
+    Toggle dictation
   </message>
   <message desc="Description of the toggle earcons key. Shown in options page." name="IDS_CHROMEVOX_TOGGLE_EARCONS">
     Turn sound feedback (earcons) on or off
@@ -1840,6 +1897,12 @@
   <message desc="BULLET (•) character description." name="IDS_CHROMEVOX_BULLET">
     {COUNT, plural, =1 {bullet}other {# bullets}}
   </message>
+  <message desc="Second level bullet (◦) character description." name="IDS_CHROMEVOX_WHITE_BULLET">
+    {COUNT, plural, =1 {white bullet}other {# white bullets}}
+  </message>
+  <message desc="Third level bullet (■) character description." name="IDS_CHROMEVOX_SQUARE_BULLET">
+    {COUNT, plural, =1 {square bullet}other {# square bullets}}
+  </message>
   <message desc="Describes the braille click command. Displayed in the options page." name="IDS_CHROMEVOX_BRAILLE_ROUTING">
     Click the item under routing key <ph name="ROUTING_KEY_NUMBER">$1</ph>
   </message>
@@ -1943,7 +2006,7 @@
     Google Assistant
   </message>
 
-  
+
   <message desc="Title of the ChromeVox panel, a window that displays the text ChromeVox is speaking and contains controls to manipulate ChromeVox." name="IDS_CHROMEVOX_PANEL_TITLE">
     ChromeVox Panel
   </message>
@@ -1956,6 +2019,9 @@
   <message desc="Title of the button that opens up the ChromeVox menus." name="IDS_CHROMEVOX_MENUS_TITLE">
     ChromeVox Menus
   </message>
+  <message desc="Title of the button that opens up the ChromeVox menus." name="IDS_CHROMEVOX_MENUS_COLLAPSE_TITLE">
+    ChromeVox Menus collapse
+  </message>
   <message desc="Title of the button that opens up ChromeVox options." name="IDS_CHROMEVOX_OPTIONS">
     ChromeVox Options
   </message>
@@ -1964,6 +2030,9 @@
   </message>
   <message desc="Text in parentheses to be appended next to a tab that's currently active." name="IDS_CHROMEVOX_ACTIVE_TAB">
     (active)
+  </message>
+  <message desc="Title displayed in the panel for the touch gestures menu." name="IDS_CHROMEVOX_PANEL_MENU_TOUCHGESTURES">
+    Touch Gestures
   </message>
   <message desc="Title displayed in the panel for the jump menu." name="IDS_CHROMEVOX_PANEL_MENU_JUMP">
     Jump
@@ -1986,20 +2055,8 @@
   <message desc="Title displayed in the panel for the menuitem to report an issue." name="IDS_CHROMEVOX_PANEL_MENU_ITEM_REPORT_ISSUE">
     Report an issue
   </message>
-  <message desc="Title of a notification that ChromeVox has been updated." name="IDS_CHROMEVOX_UPDATE_TITLE">
-    ChromeVox Updated
-  </message>
-  <message desc="Message text for a notification that ChromeVox has been updated for a new release." name="IDS_CHROMEVOX_UPDATE_MESSAGE_NEW">
-    Press ChromeVox o, n to find out what's new
-  </message>
   <message desc="Description of button that closes the ChromeVox Tutorial" name="IDS_CHROMEVOX_CLOSE_TUTORIAL">
     Close ChromeVox Tutorial
-  </message>
-  <message desc="Button that goes to the previous page in the ChromeVox Tutorial" name="IDS_CHROMEVOX_TUTORIAL_PREVIOUS">
-    Previous
-  </message>
-  <message desc="Button that goes to the next page in the ChromeVox Tutorial" name="IDS_CHROMEVOX_TUTORIAL_NEXT">
-    Next
   </message>
   <message desc="Heading that welcomes users to the ChromeVox tutorial" name="IDS_CHROMEVOX_TUTORIAL_WELCOME_HEADING">
     Welcome to ChromeVox!
@@ -2014,7 +2071,7 @@
     On, Off, and Stop
   </message>
   <message desc="Part of ChromeVox tutorial, explains that pressing Control on the keyboard stops it from speaking" name="IDS_CHROMEVOX_TUTORIAL_CONTROL">
-    To temporarily stop ChromeVox from speaking, press the Control key.
+    To stop any current ChromeVox speech, press the Control key.
   </message>
   <message desc="Part of ChromeVox tutorial, explains that you can turn ChromeVox on or turn it off, by pressing Control+Alt+Z on the keyboard" name="IDS_CHROMEVOX_TUTORIAL_ON_OFF">
     To turn ChromeVox on or off, use Control+Alt+Z.
@@ -2045,6 +2102,16 @@
   </message>
   <message desc="Part of the ChromeVox tutorial, explains two keystrokes to jump to the next or previous heading." name="IDS_CHROMEVOX_TUTORIAL_JUMP">
     Use jump commands to skip to specific types of elements. To jump forward between headings, press Search + H, or to jump backward, press Search + Shift + H.
+  </message>
+
+  <message desc="Part of the ChromeVox tutorial, explains that jump commands can be used to efficiently navigate." name="IDS_CHROMEVOX_TUTORIAL_JUMP_EFFICIENCY">
+    Jump commands can be used to efficiently navigate through a web page.
+  </message>
+  <message desc="Part of the ChromeVox tutorial, explains where to find more jump commands." name="IDS_CHROMEVOX_TUTORIAL_JUMP_MORE">
+    Additional jump commands include jumping by link, button, and checkbox, to name a few. A full list of jump commands can be found in the ChromeVox menus, which can be opened by pressing Search + Period.
+  </message>
+  <message desc="Part of the ChromeVox tutorial, heading used to illustrate jumping." name="IDS_CHROMEVOX_TUTORIAL_JUMP_FIRST_HEADING">
+    This is the first heading. Press Search + H to go to the next heading.
   </message>
   <message desc="Part of the ChromeVox tutorial, heading used to illustrate jumping." name="IDS_CHROMEVOX_TUTORIAL_JUMP_SECOND_HEADING">
     This is the second heading. Keep going; either press Search+H or Search+Shift+H
@@ -2077,23 +2144,8 @@
     Learn More
   </message>
   <message desc="Part of the ChromeVox tutorial, explaining that this is the end of the tutorial and that there are links to more information." name="IDS_CHROMEVOX_TUTORIAL_LEARN_MORE">
-    Congratulations! You’ve learned the essentials to use ChromeVox successfully. Remember that you can open the ChromeVox command menu at any time by pressing Search+Period. To learn even more about ChromeVox and Chrome OS, visit the following articles.
+    Congratulations! You’ve learned the essentials to use ChromeVox successfully. Remember that you can open the ChromeVox command menu at any time by pressing Search+Period. To learn even more about ChromeVox and ChromeOS, visit the following articles.
     If you're done with the tutorial, use ChromeVox to navigate to the Close button and click it.
-  </message>
-  <message desc="Part of the ChromeVox update notes for m63, title." name="IDS_CHROMEVOX_UPDATE_63_TITLE">
-    You've been updated to ChromeVox 63!
-  </message>
-  <message desc="Part of the ChromeVox update notes for m63, introductory text." name="IDS_CHROMEVOX_UPDATE_63_INTRO">
-    We have some exciting changes in this new release; here's what's new:
-  </message>
-  <message desc="Part of the ChromeVox update notes for 63, new items 1." name="IDS_CHROMEVOX_UPDATE_63_ITEM_1">
-    Classic removed. The keyboard toggle to switch back into ChromeVox Classic has been removed.
-  </message>
-  <message desc="Part of the ChromeVox update notes for m63, new items 2." name="IDS_CHROMEVOX_UPDATE_63_ITEM_2">
-    Rich text support. ChromeVox now supports rich text fields including jump commands, braille cursor routing, selection, and more.
-  </message>
-  <message desc="Part of the ChromeVox update notes for m63, new items 3." name="IDS_CHROMEVOX_UPDATE_63_ITEM_3">
-    Android apps for Chrome. If you have Play Store on your device, get a sneak peek at ChromeVox with Android apps. Try the experimental support by downloading Google Chrome Canary from the Play Store.
   </message>
   <message desc="Title of an article on the command reference for 'ChromeVox'" name="IDS_CHROMEVOX_NEXT_COMMAND_REFERENCE">
     ChromeVox Command Reference
@@ -2131,6 +2183,9 @@
   <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_CHECK_ON_EARCON_DESCRIPTION">
     A checked checkbox
   </message>
+  <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_CHROMEVOX_LOADING_EARCON_DESCRIPTION">
+    ChromeVox is loading
+  </message>
   <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_EDITABLE_TEXT_EARCON_DESCRIPTION">
     An editable text field
   </message>
@@ -2143,6 +2198,9 @@
   <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_LISTBOX_EARCON_DESCRIPTION">
     A listbox or combo box
   </message>
+  <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_NO_POINTER_ANCHOR_EARCON_DESCRIPTION">
+    No pointer anchor
+  </message>
   <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_PAGE_START_LOADING_EARCON_DESCRIPTION">
     A page load in progress
   </message>
@@ -2152,17 +2210,29 @@
   <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_SLIDER_EARCON_DESCRIPTION">
     A slider
   </message>
+  <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_SMART_STICKY_MODE_OFF_EARCON_DESCRIPTION">
+    Smart sticky mode off
+  </message>
+  <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_SMART_STICKY_MODE_ON_EARCON_DESCRIPTION">
+    Smart sticky mode on
+  </message>
   <message desc="Describes an audio clip that gets played for a specific event or control type. Use the default string as a guide to what the audio clip represents or conveys." name="IDS_CHROMEVOX_WRAP_EARCON_DESCRIPTION">
     Wrap from beginning to end or end to beginning inside of a page, dialog, or other container
   </message>
-  <message desc="Describes a command to turn off the visual display for accessibility without impacting usage of the machine." name="IDS_CHROMEVOX_DARKEN_SCREEN">
-    Darken screen
+  <message desc="Describes a command to turn off the visual display for accessibility without impacting usage of the machine." name="IDS_CHROMEVOX_TOGGLE_SCREEN_OFF">
+    Screen off
   </message>
-  <message desc="Describes a command to turn the visual display on for accessibility undoing any previous request to turn off the visual display." name="IDS_CHROMEVOX_UNDARKEN_SCREEN">
-    Undarken screen
+  <message desc="Describes a command to turn the visual display on for accessibility undoing any previous request to turn off the visual display." name="IDS_CHROMEVOX_TOGGLE_SCREEN_ON">
+    Screen on
   </message>
-  <message desc="Describes a command to toggle on/off the visual display for accessibility." name="IDS_CHROMEVOX_TOGGLE_DARK_SCREEN">
-    Toggle dark screen
+  <message desc="Describes a command to toggle on/off the visual display for accessibility." name="IDS_CHROMEVOX_TOGGLE_SCREEN">
+    Toggle screen on or off
+  </message>
+  <message desc="The title of a dialog shown the first time the user requests to turn off the visual display." name="IDS_CHROMEVOX_TOGGLE_SCREEN_TITLE">
+    Turn off screen?
+  </message>
+  <message desc="The message of a dialog Shown the first time a user requests to turn off the visual display, describes what the screen off command does and how to turn the screen on again with Search + Brightness Up buttons." name="IDS_CHROMEVOX_TOGGLE_SCREEN_DESCRIPTION">
+    This improves privacy by turning off your screen so it isn’t visible to others. You can always turn the screen back on by pressing Search + Brightness up.
   </message>
   <message desc="Describes a command that turns text to speech feedback off." name="IDS_CHROMEVOX_SPEECH_OFF">
     Speech off
@@ -2245,8 +2315,23 @@
   <message desc="A hint to the user that the current control is checkable." name="IDS_CHROMEVOX_HINT_CHECKABLE">
     Press Search+Space to toggle
   </message>
-  <message desc="A hint to the user that the current control is clickable." name="IDS_CHROMEVOX_HINT_CLICKABLE">
-    Press Search+Space to activate
+  <message desc="A hint to the user that the current control is actionable. When user do the 'action', 'label' will be performed." name="IDS_CHROMEVOX_HINT_ACTIONABLE" is_accessibility_with_no_ui="true">
+    <ph name="action">$1<ex>Press Search + Space</ex></ph> to <ph name="label">$2<ex>activate</ex></ph>
+  </message>
+  <message desc="The action to double tap the screen. This is used to announce a hint to the user controls that can be double tapped. e.g. Double tap to activate" name="IDS_CHROMEVOX_ACTION_DOUBLE_TAP" is_accessibility_with_no_ui="true">
+    Double tap
+  </message>
+  <message desc="The action to press search key and space key at the same time. This is used to announce a hint to the user that the current control is clickable. e.g. Press Search+Space to activate" name="IDS_CHROMEVOX_ACTION_SEARCH_PLUS_SPACE" is_accessibility_with_no_ui="true">
+    Press Search+Space
+  </message>
+  <message desc="The action to press search key, shift key and space key at the same time. This is used to announce a hint to the user that the current control is long clickable. e.g. Press Search+Shift+Space to long click" name="IDS_CHROMEVOX_ACTION_SEARCH_PLUS_SHIFT_PLUS_SPACE" is_accessibility_with_no_ui="true">
+    Press Search+Shift+Space
+  </message>
+  <message desc="The action to activate the current focus. This is used to announce a hint to the user that the current control is clickable e.g. Press Search+Space to activate" name="IDS_CHROMEVOX_LABEL_ACTIVATE" is_accessibility_with_no_ui="true">
+    activate
+  </message>
+  <message desc="The action to press and hold on the current focus. This is used to announce a hint to the user that the current control is long clickable e.g. Press Search+Shift+Space to long click" name="IDS_CHROMEVOX_LABEL_LONG_CLICK" is_accessibility_with_no_ui="true">
+    long click
   </message>
   <message desc="A hint to the user that the current control has a list of auto completions." name="IDS_CHROMEVOX_HINT_AUTOCOMPLETE_LIST">
     Press up or down arrow for auto completions
@@ -2260,8 +2345,14 @@
   <message desc="A hint to the user for interacting with the menu control." name="IDS_CHROMEVOX_HINT_MENU">
     Press up or down arrow to navigate; enter to activate
   </message>
+  <message desc="A hint to the user for interacting with the menu control. This variant has a horizontal orientation." name="IDS_CHROMEVOX_HINT_MENU_HORIZONTAL" is_accessibility_with_no_ui="true">
+    Press left or right arrow to navigate; enter to activate
+  </message>
   <message desc="A hint to the user that there are details associated with this element." name="IDS_CHROMEVOX_HINT_DETAILS">
     Press Search+A, J to jump to details
+  </message>
+  <message desc="A hint to the user that action is available on this node" name="IDS_CHROMEVOX_HINT_ACTION">
+    Actions available. Press Search+Ctrl+A to view
   </message>
   <message desc="The display name of the command that will jump to more details about an item." name="IDS_CHROMEVOX_JUMP_TO_DETAILS">
     Jump to Details
@@ -2283,9 +2374,6 @@
   </message>
   <message desc="A hint to the user about the special behavior of the Search key with arrows within a text field. This text will be spoken using text to speech along with a description of the text field's name and value. The text is intentionally in fragments to reduce the time needed to convey this information via text to speech. Keys are capitalized and do not contain plus separators because it adds to the spoken announcement's duration. As a general guide, try to read the string aloud." name="IDS_CHROMEVOX_HINT_SEARCH_WITHIN_TEXT_FIELD">
     Use Search Left or Right for Home or End, Search Control Left or Right for Control Home or End, Search Up or Down for Page Up or Down
-  </message>
-  <message desc="A hint to the user controls that can be double tapped." name="IDS_CHROMEVOX_HINT_DOUBLE_TAP">
-    Double tap to activate
   </message>
   <message desc="Shown to the user in braille and speech when the device goes into landscape orientation." name="IDS_CHROMEVOX_DEVICE_LANDSCAPE">
     landscape
@@ -2309,7 +2397,7 @@
     Double tap to start editing
   </message>
   <message desc="Describes Learn Mode when the mode is initially entered with text-to-speech." name="IDS_CHROMEVOX_LEARN_MODE_INTRO" is_accessibility_with_no_ui="true">
-    Press a qwerty key, refreshable braille key, or touch gesture to learn its function. Press control with w or escape to exit.
+    Press a qwerty key, refreshable braille key, or touch gesture to learn its function. Press control with w, space with Z, swipe left with two fingers, or escape to exit.
   </message>
   <message desc="Output when leaving Learn Mode." name="IDS_CHROMEVOX_LEARN_MODE_OUTTRO">
     Stopping Learn Mode
@@ -2337,7 +2425,7 @@
     Tap with 4 fingers to enter the ChromeVox menus
   </message>
   <message desc="Part of the ChromeVox touch tutorial page. Describes a two finger tap to stop speech." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_TWO_FINGER_TAP">
-    Tap with 2 fingers to temporarily stop speech
+    Tap with 2 fingers to stop any current speech
   </message>
   <message desc="Part of the ChromeVox touch tutorial page. Concludes this page." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_LEARN_MORE">
     Explore more gestures in Learn Mode and the Chromebook Help Center
@@ -2380,7 +2468,7 @@
     <ph name="font_family_string">$7<ex>Arial</ex></ph>
   </message>
 
-  
+
   <message desc="Spoken to describe color and opacity of text" name="IDS_CHROMEVOX_COLOR_DESCRIPTION">
     <ph name="color">$1<ex>Red</ex></ph>, <ph name="opacity_percentage">$2<ex>50</ex></ph>% opacity.
   </message>
@@ -2997,7 +3085,7 @@
     Double tap with one finger
   </message>
   <message desc="The text label for the use pitch changes checkbox." name="IDS_CHROMEVOX_OPTIONS_USE_PITCH_CHANGES_CHECKBOX_LABEL">
-    Change pitch when speaking element types and quoted, deleted, bolded, parenthesized, or capitalized text.
+    Change pitch when speaking element types and formatted text
   </message>
   <message desc="Describes the current web page position of the ChromeVox focus." is_accessibility_with_no_ui="true" name="IDS_CHROMEVOX_DESCRIBE_POS_BY_PAGE">
     Page <ph name="currentPage">$1<ex>1</ex></ph> of <ph name="totalPages">$2<ex>10</ex></ph>
@@ -3026,11 +3114,277 @@
   <message desc="Describes gesture that simulates pressing the enter key. No associated UI with this string which is spoken using text-to-speech." name="IDS_CHROMEVOX_ENTER_GESTURE_DESCRIPTION" is_accessibility_with_no_ui="true">
     Enter
   </message>
-  <message desc="Describes gesture that movees to the previous important section on the screen (e.g. the Launcher, Status Tray, etc). No associated UI with this string which is spoken using text-to-speech." name="IDS_CHROMEVOX_PREVIOUS_PANE_GESTURE_DESCRIPTION" is_accessibility_with_no_ui="true">
+  <message desc="Describes gesture that moves to the previous important section on the screen (e.g. the Launcher, Status Tray, etc). No associated UI with this string which is spoken using text-to-speech." name="IDS_CHROMEVOX_PREVIOUS_PANE_GESTURE_DESCRIPTION" is_accessibility_with_no_ui="true">
     Move to previous section. Examples include the Status Tray and Launcher.
   </message>
-  <message desc="Describes gesture that movees to the next important section on the screen (e.g. the Launcher, Status Tray, etc). No associated UI with this string which is spoken using text-to-speech." name="IDS_CHROMEVOX_NEXT_PANE_GESTURE_DESCRIPTION" is_accessibility_with_no_ui="true">
+  <message desc="Describes gesture that moves to the next important section on the screen (e.g. the Launcher, Status Tray, etc). No associated UI with this string which is spoken using text-to-speech." name="IDS_CHROMEVOX_NEXT_PANE_GESTURE_DESCRIPTION" is_accessibility_with_no_ui="true">
     Move to next section. Examples include the Status Tray and Launcher.
   </message>
-
+  <message desc="Describes an element with the ARIA role mark. We use 'marked content' since it's more descriptive than 'mark'." name="IDS_CHROMEVOX_ROLE_MARK" is_accessibility_with_no_ui="true">
+    Marked content
+  </message>
+  <message desc="The title displayed on the main menu of the ChromeVox tutorial." name="IDS_CHROMEVOX_TUTORIAL_MAIN_MENU_HEADER">
+    ChromeVox tutorial
+  </message>
+  <message desc="The title displayed for the quick orientation lesson set." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_TITLE">
+    Quick orientation
+  </message>
+  <message desc="The title displayed for the essential keys lesson set." name="IDS_CHROMEVOX_TUTORIAL_ESSENTIAL_KEYS_TITLE">
+    Essential keys
+  </message>
+  <message desc="The title displayed for the navigation lesson set." name="IDS_CHROMEVOX_TUTORIAL_NAVIGATION_TITLE">
+    Navigation
+  </message>
+  <message desc="The title displayed for the command references lesson set." name="IDS_CHROMEVOX_TUTORIAL_COMMAND_REFERENCES_TITLE">
+    Command references
+  </message>
+  <message desc="The title displayed for the sounds and settings lesson set." name="IDS_CHROMEVOX_TUTORIAL_SOUNDS_AND_SETTINGS_TITLE">
+    Sounds and settings
+  </message>
+  <message desc="The title displayed for the resources lesson set." name="IDS_CHROMEVOX_TUTORIAL_RESOURCES_TITLE">
+    Resources
+  </message>
+  <message desc="The title displayed for the touch orientation lesson set." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_TITLE">
+    Touch orientation
+  </message>
+  <message desc="The label for the button that restarts the quick orientation in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_RESTART_QUICK_ORIENTATION_BUTTON">
+    Restart quick orientation
+  </message>
+  <message desc="The label for the button that moves to the previous lesson in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_PREVIOUS_LESSON_BUTTON">
+    Previous lesson
+  </message>
+  <message desc="The label for the button that moves to the next lesson in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_NEXT_LESSON_BUTTON">
+    Next lesson
+  </message>
+  <message desc="The label for the button that moves to the main menu in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_MAIN_MENU_BUTTON">
+    Main menu
+  </message>
+  <message desc="The label for the button that moves to the lesson menu in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_LESSON_MENU_BUTTON">
+    All lessons
+  </message>
+  <message desc="The label for the button that exits the tutorial." name="IDS_CHROMEVOX_TUTORIAL_EXIT_BUTTON">
+    Exit tutorial
+  </message>
+  <message desc="The label for the button that opens the practice area in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_PRACTICE_AREA_OPEN_BUTTON">
+    Practice area
+  </message>
+  <message desc="The label for the button that closes the practice area in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_PRACTICE_AREA_CLOSE_BUTTON">
+    Close practice area
+  </message>
+  <message desc="Spoken to give supplemental information when focusing the main menu header in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_MAIN_MENU_HEADER_DESCRIPTION" is_accessibility_with_no_ui="true">
+    Press Search + Right Arrow, or Search + Left Arrow to browse topics
+  </message>
+  <message desc="Spoken to give supplemental information when focusing the main menu header in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_MAIN_MENU_HEADER_DESCRIPTION" is_accessibility_with_no_ui="true">
+    Swipe left or right with one finger to browse topics
+  </message>
+  <message desc="Spoken to give supplemental information when focusing the lesson menu header in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_LESSON_MENU_HEADER_DESCRIPTION" is_accessibility_with_no_ui="true">
+    Press Search + Right Arrow, or Search + Left Arrow to browse lessons for this topic
+  </message>
+  <message desc="Spoken to give supplemental information when focusing the lesson menu header in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_LESSON_MENU_HEADER_DESCRIPTION" is_accessibility_with_no_ui="true">
+    Swipe left or right with one finger to browse lessons for this topic
+  </message>
+  <message desc="Spoken to give supplemental information when focusing lesson titles in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_LESSON_TITLE_DESCRIPTION" is_accessibility_with_no_ui="true">
+    Press Search + Right Arrow, or Search + Left Arrow to navigate this lesson
+  </message>
+  <message desc="Spoken to give supplemental information when focusing the main menu header in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_LESSON_TITLE_DESCRIPTION" is_accessibility_with_no_ui="true">
+    Swipe left or right with one finger to navigate this lesson
+  </message>
+  <message desc="Text content for the 'Welcome to ChromeVox!' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_INTRO_TEXT">
+    Welcome to the ChromeVox tutorial. To exit this tutorial at any time, press the Escape key on the top left corner of the keyboard. To turn off ChromeVox, hold Control and Alt, and press Z. When you're ready, use the spacebar to move to the next lesson.
+  </message>
+  <message desc="Title for the 'Essential Keys: Control' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_CONTROL_TITLE">
+    Essential Keys: Control
+  </message>
+  <message desc="Text content for the 'Essential Keys: Control' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_CONTROL_TEXT">
+    Let's start with a few keys you'll use regularly. The Control key can be used to stop any current speech. Find the Control key on the bottom left corner of your keyboard. To continue, press the Control key.
+  </message>
+  <message desc="Title for the 'Essential Keys: Shift' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_SHIFT_TITLE">
+    Essential Keys: Shift
+  </message>
+  <message desc="Text content for the 'Essential Keys: Shift' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_SHIFT_TEXT">
+    Now, find the left Shift key, which is directly above the Control key. To continue, press the left Shift key.
+  </message>
+  <message desc="Title for the 'Essential keys: search' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_SEARCH_TITLE">
+    Essential Keys: Search
+  </message>
+  <message desc="Text content for the 'Essential keys: search' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_SEARCH_TEXT">
+    Next, you’ll learn about the Search key. The Search key is used in combination with other keys for ChromeVox commands. The Search key is immediately above the left Shift key. To continue, press the Search key.
+  </message>
+  <message desc="Title for the 'Basic Navigation' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_BASIC_NAVIGATION_TITLE">
+    Basic navigation
+  </message>
+  <message desc="Text content for the 'Basic Navigation' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_BASIC_NAVIGATION_MOVE_TEXT">
+    Now you’ll learn some basic navigation. You can hold Search and press the arrow keys to move around the screen. To continue, press Search + Right arrow.
+  </message>
+  <message desc="Text content for the 'Basic Navigation' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_BASIC_NAVIGATION_CLICK_TEXT">
+    If you reach an item you want to click, press Search + Space. Try it now to continue.
+  </message>
+  <message desc="Title for the 'Tab Navigation' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_TAB_TITLE">
+    Tab Navigation
+  </message>
+  <message desc="Text content for the 'Tab Navigation' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_TAB_TEXT">
+    You can also use the Tab key to move to the next interactive item on the screen. Find the Tab key, which is directly above the Search key. To continue, press the Tab key.
+  </message>
+  <message desc="Title for the 'Tab Navigation Continued' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_SHIFT_TAB_TITLE">
+    Tab Navigation Continued
+  </message>
+  <message desc="Text content for the 'Tab Navigation Continued' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_SHIFT_TAB_TEXT">
+    You can use Shift + Tab to move to the previous interactive item. To continue, press Shift + Tab.
+  </message>
+  <message desc="Title for the 'Enter' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_ENTER_TITLE">
+    Enter
+  </message>
+  <message desc="Text content for the 'Enter' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_ENTER_TEXT">
+    You can also press Enter to activate items. For example, Enter can be used to submit text in a form. To continue, press Enter.
+  </message>
+  <message desc="Title for the 'Drop-down lists' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_TITLE">
+    Drop-Down Lists
+  </message>
+  <message desc="Text content for the 'Drop-down lists' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_TEXT">
+    There will be times when you need to select an item from a drop-down list. To do so, first expand the list by pressing Search + Space. Then use the Up and Down arrow keys to select an item. Finally, collapse the list by pressing Search + Space.
+  </message>
+  <message desc="Text content for the 'Drop-down lists' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_CONTINUE_TEXT">
+    Press Search + Right arrow to find the practice area or the Next lesson button. Then press Search + Space to activate.
+  </message>
+  <message desc="Title for the practice area of the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_TITLE">
+    Practice area: Drop-down lists
+  </message>
+  <message desc="Instructions for the practice area of the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_INSTRUCTIONS">
+    Try selecting your favorite season from the list.
+  </message>
+  <message desc="A label for a select element in the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_LABEL">
+    My favorite season
+  </message>
+  <message desc="An option of the select element in the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_SPRING">
+    Spring
+  </message>
+  <message desc="An option of the select element in the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_SUMMER">
+    Summer
+  </message>
+  <message desc="An option of the select element in the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_FALL">
+    Fall
+  </message>
+  <message desc="An option of the select element in the drop-down lists lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_LISTS_PRACTICE_WINTER">
+    Winter
+  </message>
+  <message desc="Title for the 'Quick orientation complete' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_COMPLETE_TITLE">
+    Quick orientation complete!
+  </message>
+  <message desc="Text content for the 'Quick orientation complete' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_COMPLETE_TEXT">
+    Well done! You’ve learned the ChromeVox basics. You can go through the tutorial again or exit this tutorial by finding and clicking on a button below.
+  </message>
+  <message desc="Text content for the 'Quick orientation complete' lesson in the quick orientation." name="IDS_CHROMEVOX_TUTORIAL_QUICK_ORIENTATION_COMPLETE_ADDITIONAL_TEXT">
+    After you set up your device, you can come back and view more tutorials by pressing Search + O, then T.
+  </message>
+  <message desc="Title for the practice area of the jump commands lists lesson in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_JUMP_PRACTICE_TITLE">
+    Practice area: Jump commands
+  </message>
+  <message desc="Instructions for the practice area of the jump commands lesson in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_JUMP_PRACTICE_INSTRUCTIONS">
+    Try jumping by heading to navigate the text below.
+  </message>
+  <message desc="The lesson menu header in the tutorial." name="IDS_CHROMEVOX_TUTORIAL_LESSON_MENU_HEADER">
+    <ph name="topic">$1<ex>Quick Orientation</ex></ph> Tutorial, <ph name="lessons">$2<ex>3</ex></ph> Lessons
+  </message>
+  <message desc="A spoken announcement given in the tutorial if the user becomes inactive." name="IDS_CHROMEVOX_TUTORIAL_HINT_NAVIGATE" is_accessibility_with_no_ui="true">
+    Hint: Hold Search and press the arrow keys to navigate.
+  </message>
+  <message desc="A spoken announcement given in the tutorial if the user becomes inactive." name="IDS_CHROMEVOX_TUTORIAL_HINT_CLICK" is_accessibility_with_no_ui="true">
+    Hint: Press Search + Space to activate the current item.
+  </message>
+  <message desc="A spoken announcement given in the tutorial if the user becomes inactive." name="IDS_CHROMEVOX_TUTORIAL_HINT_EXIT" is_accessibility_with_no_ui="true">
+    Hint: Press Escape if you would like to exit this tutorial.
+  </message>
+  <message desc="A spoken announcement given in the tutorial if the user becomes inactive. Only given for touch devices." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_HINT_NAVIGATE" is_accessibility_with_no_ui="true">
+    Hint: Swipe left or right with one finger to navigate.
+  </message>
+  <message desc="A spoken announcement given in the tutorial if the user becomes inactive. Only given for touch devices." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_HINT_CLICK" is_accessibility_with_no_ui="true">
+    Hint: Double-tap with one finger to activate the current item.
+  </message>
+  <message desc="A spoken announcement given in the tutorial if the user becomes inactive. Only given for touch devices." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_HINT_EXIT" is_accessibility_with_no_ui="true">
+    Hint: Swipe from right to left with two fingers if you would like to exit this tutorial.
+  </message>
+  <message desc="Title for the intro lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_INTRO_TITLE">
+    ChromeVox touch tutorial
+  </message>
+  <message desc="Text content for the intro lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_INTRO_TEXT">
+    Welcome to the ChromeVox tutorial. To exit this tutorial at any time, swipe from right to left with two fingers. To turn ChromeVox on or off at any time, press and hold both Volume buttons for five seconds. When you’re ready, double-tap the screen with one finger to move to the next lesson.
+  </message>
+  <message desc="Title for the activate item lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_ACTIVATE_TITLE">
+    Activate an item
+  </message>
+  <message desc="Text content for the activate item lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_ACTIVATE_TEXT">
+    Let's start with a few gestures you'll use regularly. If you reach an item you want to activate, double-tap the screen with one finger. To continue, double-tap now.
+  </message>
+  <message desc="Title for the next/previous item lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_NEXT_PREVIOUS_ITEM_TITLE">
+    Move to the next or previous item
+  </message>
+  <message desc="Text content for the next/previous item lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_NEXT_ITEM_TEXT">
+    Next, you’ll learn how to move around the screen. You can swipe one finger from left to right to move to the next item. Try it now to move to the next step.
+  </message>
+  <message desc="Text content for the next/previous item lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_PREVIOUS_ITEM_TEXT">
+    You can also swipe one finger from right to left to move to the previous item. Try it now.
+  </message>
+  <message desc="Text content for the next/previous item lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_NEXT_PREVIOUS_CONTINUE_TEXT">
+    Once you’ve had some practice, find the Next lesson button. Then double-tap to continue.
+  </message>
+  <message desc="Title for the touch explore lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_TOUCH_EXPLORE_TITLE">
+    Explore by touch
+  </message>
+  <message desc="Text content for the touch explore lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_TOUCH_EXPLORE_TEXT">
+    You can also move around by dragging one finger around the screen. This is called exploring by touch. Try dragging your finger around to read the rest of this lesson.
+  </message>
+  <message desc="Text content for the touch explore lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_TOUCH_EXPLORE_MORE_TEXT">
+    Exploring by touch can help you quickly get a sense of what's on the screen.
+  </message>
+  <message desc="Text content for the touch explore lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_TOUCH_EXPLORE_EFFICIENCY_TEXT">
+    It can also be more efficient than swiping left and right with one finger.
+  </message>
+  <message desc="Text content for the touch explore lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_TOUCH_EXPLORE_CONTINUE_TEXT">
+    To continue, explore by touch to find the Next lesson button. Then double-tap to continue.
+  </message>
+  <message desc="Title for the stop speech lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_STOP_SPEECH_TITLE">
+    Stop speech
+  </message>
+  <message desc="Text content for the stop speech lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_STOP_SPECH_TEXT">
+    Tapping the screen with two fingers can be used to stop any current speech. This is useful if you don’t want ChromeVox to read something. To continue, tap the screen with two fingers.
+  </message>
+  <message desc="Title for the menus lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_MENUS_TITLE">
+    Access menus
+  </message>
+  <message desc="Text content for the menus lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_MENUS_TEXT">
+    Tapping the screen with four fingers will open and close the ChromeVox menus. These menus contain helpful information about commands and shortcuts. Once the menus are open, you can swipe with one finger to navigate through items, and double-tap to activate items. To continue, tap the screen with four fingers.
+  </message>
+  <message desc="Title for the next/previous section lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_NEXT_PREVIOUS_SECTION_TITLE">
+    Move to the next or previous section
+  </message>
+  <message desc="Text content for the next/previous section lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_NEXT_SECTION_TEXT">
+    You can also move between sections of the screen. For example, you can move between the launcher, the shelf, and your Chrome tabs. To move to the next section, swipe from left to right with four fingers. Try it now to continue.
+  </message>
+  <message desc="Text content for the next/previous section lesson in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_PREVIOUS_SECTION_TEXT">
+    Similarly, swiping from right to left with four fingers can be used to move to the previous section. Try it now!
+  </message>
+  <message desc="Title for the congratulations page in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_COMPLETE_TITLE">
+    Touch tutorial complete
+  </message>
+  <message desc="Text content for the congratulations page in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_COMPLETE_TEXT">
+    Well done! You’ve learned the basics of ChromeVox touch. You can go through the tutorial again or exit this tutorial using the buttons below.
+  </message>
+  <message desc="Text content for the congratulations page in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_COMPLETE_HELP_CENTER_TEXT">
+    For a full list of gestures, visit the help center.
+  </message>
+  <message desc="Text content for the congratulations page in the touch orientation." name="IDS_CHROMEVOX_TUTORIAL_TOUCH_ORIENTATION_COMPLETE_MORE_TUTORIALS_TEXT">
+    You can always view tutorials by opening the menus with a four-finger tap. Then activate the tutorial under the “ChromeVox” section.
+  </message>
+  <message desc="Spoken to describe a candidate in the IME conversion window." name="IDS_CHROMEVOX_IME_CANDIDATE" is_accessibility_with_no_ui="true">
+    Text conversion candidate
+  </message>
+  <message desc="Spoken to describe a &lt;abbr&gt; tag. For example, &lt;abbr title='uniform resource locator'&gt;URL/&lt;abbr&gt; would be spoken as 'URL, uniform resource locator, Abbreviation'" name="IDS_CHROMEVOX_TAG_ABBR" is_accessibility_with_no_ui="true">
+    Abbreviation
+  </message>
+  <message desc="Spoken message asking users to install the Accessibility Suite app from the Play Store when users tried to turn on Talkback without installing Accessibility Suite." name="IDS_CHROMEVOX_ANNOUNCE_INSTALL_TALKBACK" is_accessibility_with_no_ui="true">
+    TalkBack is currently not installed. Please install Android AccessibilitySuite through Play Store and try again.
+  </message>
+  <message desc="Spoken message notifying users that using TalkBack on Chromebook is no longer supported and keyboard shortcut are no longer customized for Chromebooks." name="IDS_CHROMEVOX_ANNOUNCE_TALKBACK_DEPRECATION" is_accessibility_with_no_ui="true">
+    TalkBack no longer provides customization for Chromebooks. You can still use it, but use TalkBack default keyboard shortcuts. Press Search+A, then K to see available shortcuts. If you still want to use TalkBack, press the command again.
+  </message>
 </grit-part>

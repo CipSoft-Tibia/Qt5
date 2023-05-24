@@ -1861,6 +1861,11 @@ main(int argc, char **argv)
 		return -1;
 	}
 
+	fprintf(stderr, "\n");
+	fprintf(stderr, "*** Please use wayland-info instead\n");
+	fprintf(stderr, "*** weston-info is deprecated and will be removed in a future version\n");
+	fprintf(stderr, "\n");
+
 	info.tablet_info = NULL;
 	info.xdg_output_manager_v1_info = NULL;
 	wl_list_init(&info.infos);

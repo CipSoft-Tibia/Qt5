@@ -1,4 +1,4 @@
-// Copyright (c) 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,12 @@
 #include <OpenGL/CGLRenderers.h>
 #include <OpenGL/CGLTypes.h>
 
-#include "base/bind.h"
 #include "base/cancelable_callback.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/no_destructor.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
@@ -48,13 +47,13 @@ void DualGPUStateMac::SwitchToLowPowerGPU() {
 }
 
 void DualGPUStateMac::AttemptSwitchToLowPowerGPUWithDelay() {
-  if (base::ThreadTaskRunnerHandle::IsSet()) {
+  if (base::SingleThreadTaskRunner::HasCurrentDefault()) {
     cancelable_delay_callback_.Reset(base::BindOnce(
         []() { DualGPUStateMac::GetInstance()->SwitchToLowPowerGPU(); }));
 
-    base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
         FROM_HERE, cancelable_delay_callback_.callback(),
-        base::TimeDelta::FromSeconds(kDelayLengthSeconds));
+        base::Seconds(kDelayLengthSeconds));
   } else {
     SwitchToLowPowerGPU();
   }

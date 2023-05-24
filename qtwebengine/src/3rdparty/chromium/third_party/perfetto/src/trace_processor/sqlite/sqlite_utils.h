@@ -19,14 +19,15 @@
 
 #include <math.h>
 #include <sqlite3.h>
-
-#include <functional>
-#include <limits>
-#include <string>
+#include <cstddef>
+#include <cstring>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/base/status.h"
 #include "perfetto/ext/base/optional.h"
 #include "perfetto/ext/base/string_utils.h"
+#include "perfetto/ext/base/string_view.h"
+#include "perfetto/trace_processor/basic_types.h"
 #include "src/trace_processor/sqlite/scoped_db.h"
 #include "src/trace_processor/sqlite/sqlite_table.h"
 
@@ -37,421 +38,218 @@ namespace sqlite_utils {
 const auto kSqliteStatic = reinterpret_cast<sqlite3_destructor_type>(0);
 const auto kSqliteTransient = reinterpret_cast<sqlite3_destructor_type>(-1);
 
-template <typename T>
-using is_numeric =
-    typename std::enable_if<std::is_arithmetic<T>::value, T>::type;
-
-template <typename T>
-using is_float =
-    typename std::enable_if<std::is_floating_point<T>::value, T>::type;
-
-template <typename T>
-using is_int = typename std::enable_if<std::is_integral<T>::value, T>::type;
-
 inline bool IsOpEq(int op) {
   return op == SQLITE_INDEX_CONSTRAINT_EQ;
 }
-
+inline bool IsOpLe(int op) {
+  return op == SQLITE_INDEX_CONSTRAINT_LE;
+}
+inline bool IsOpLt(int op) {
+  return op == SQLITE_INDEX_CONSTRAINT_LT;
+}
 inline bool IsOpGe(int op) {
   return op == SQLITE_INDEX_CONSTRAINT_GE;
 }
-
 inline bool IsOpGt(int op) {
   return op == SQLITE_INDEX_CONSTRAINT_GT;
 }
 
-inline bool IsOpLe(int op) {
-  return op == SQLITE_INDEX_CONSTRAINT_LE;
-}
-
-inline bool IsOpLt(int op) {
-  return op == SQLITE_INDEX_CONSTRAINT_LT;
-}
-
-inline std::string OpToString(int op) {
-  switch (op) {
-    case SQLITE_INDEX_CONSTRAINT_EQ:
-      return "=";
-    case SQLITE_INDEX_CONSTRAINT_NE:
-      return "!=";
-    case SQLITE_INDEX_CONSTRAINT_GE:
-      return ">=";
-    case SQLITE_INDEX_CONSTRAINT_GT:
-      return ">";
-    case SQLITE_INDEX_CONSTRAINT_LE:
-      return "<=";
-    case SQLITE_INDEX_CONSTRAINT_LT:
-      return "<";
-    case SQLITE_INDEX_CONSTRAINT_LIKE:
-      return "like";
-    default:
-      PERFETTO_FATAL("Operator to string conversion not impemented for %d", op);
+inline SqlValue::Type SqliteTypeToSqlValueType(int sqlite_type) {
+  switch (sqlite_type) {
+    case SQLITE_NULL:
+      return SqlValue::Type::kNull;
+    case SQLITE_BLOB:
+      return SqlValue::Type::kBytes;
+    case SQLITE_INTEGER:
+      return SqlValue::Type::kLong;
+    case SQLITE_FLOAT:
+      return SqlValue::Type::kDouble;
+    case SQLITE_TEXT:
+      return SqlValue::Type::kString;
   }
+  PERFETTO_FATAL("Unknown SQLite type %d", sqlite_type);
 }
 
-inline bool IsOpIsNull(int op) {
-  return op == SQLITE_INDEX_CONSTRAINT_ISNULL;
-}
-
-inline bool IsOpIsNotNull(int op) {
-  return op == SQLITE_INDEX_CONSTRAINT_ISNOTNULL;
-}
-
-template <typename T>
-T ExtractSqliteValue(sqlite3_value* value);
-
-template <>
-inline uint8_t ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_INTEGER);
-  return static_cast<uint8_t>(sqlite3_value_int(value));
-}
-
-template <>
-inline uint32_t ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_INTEGER);
-  return static_cast<uint32_t>(sqlite3_value_int64(value));
-}
-
-template <>
-inline int32_t ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_INTEGER);
-  return sqlite3_value_int(value);
-}
-
-template <>
-inline int64_t ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_INTEGER);
-  return static_cast<int64_t>(sqlite3_value_int64(value));
-}
-
-template <>
-inline double ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_FLOAT || type == SQLITE_INTEGER);
-  return sqlite3_value_double(value);
-}
-
-template <>
-inline bool ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_INTEGER);
-  return static_cast<bool>(sqlite3_value_int(value));
-}
-
-// Do not add a uint64_t version of ExtractSqliteValue. You should not be using
-// uint64_t at all given that SQLite doesn't support it.
-
-template <>
-inline const char* ExtractSqliteValue(sqlite3_value* value) {
-  auto type = sqlite3_value_type(value);
-  PERFETTO_DCHECK(type == SQLITE_TEXT);
-  return reinterpret_cast<const char*>(sqlite3_value_text(value));
-}
-
-template <>
-inline std::string ExtractSqliteValue(sqlite3_value* value) {
-  return ExtractSqliteValue<const char*>(value);
-}
-
-template <typename T>
-class NumericPredicate {
- public:
-  NumericPredicate(int op, T constant) : op_(op), constant_(constant) {}
-
-  PERFETTO_ALWAYS_INLINE bool operator()(T other) const {
-    switch (op_) {
-      case SQLITE_INDEX_CONSTRAINT_ISNULL:
-        return false;
-      case SQLITE_INDEX_CONSTRAINT_ISNOTNULL:
-        return true;
-      case SQLITE_INDEX_CONSTRAINT_EQ:
-      case SQLITE_INDEX_CONSTRAINT_IS:
-        return std::equal_to<T>()(other, constant_);
-      case SQLITE_INDEX_CONSTRAINT_NE:
-      case SQLITE_INDEX_CONSTRAINT_ISNOT:
-        return std::not_equal_to<T>()(other, constant_);
-      case SQLITE_INDEX_CONSTRAINT_GE:
-        return std::greater_equal<T>()(other, constant_);
-      case SQLITE_INDEX_CONSTRAINT_GT:
-        return std::greater<T>()(other, constant_);
-      case SQLITE_INDEX_CONSTRAINT_LE:
-        return std::less_equal<T>()(other, constant_);
-      case SQLITE_INDEX_CONSTRAINT_LT:
-        return std::less<T>()(other, constant_);
-      default:
-        PERFETTO_FATAL("For GCC");
-    }
-  }
-
- private:
-  int op_;
-  T constant_;
-};
-
-template <typename T, typename sqlite_utils::is_numeric<T>* = nullptr>
-NumericPredicate<T> CreateNumericPredicate(int op, sqlite3_value* value) {
-  T extracted =
-      IsOpIsNull(op) || IsOpIsNotNull(op) ? 0 : ExtractSqliteValue<T>(value);
-  return NumericPredicate<T>(op, extracted);
-}
-
-inline std::function<bool(const char*)> CreateStringPredicate(
-    int op,
-    sqlite3_value* value) {
-  switch (op) {
-    case SQLITE_INDEX_CONSTRAINT_ISNULL:
-      return [](const char* f) { return f == nullptr; };
-    case SQLITE_INDEX_CONSTRAINT_ISNOTNULL:
-      return [](const char* f) { return f != nullptr; };
-  }
-
-  const char* val = reinterpret_cast<const char*>(sqlite3_value_text(value));
-
-  // If the value compared against is null, then to stay consistent with SQL
-  // handling, we have to return false for non-null operators.
-  if (val == nullptr) {
-    PERFETTO_CHECK(op != SQLITE_INDEX_CONSTRAINT_IS &&
-                   op != SQLITE_INDEX_CONSTRAINT_ISNOT);
-    return [](const char*) { return false; };
-  }
-
-  switch (op) {
-    case SQLITE_INDEX_CONSTRAINT_EQ:
-    case SQLITE_INDEX_CONSTRAINT_IS:
-      return [val](const char* str) {
-        return str != nullptr && strcmp(str, val) == 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_NE:
-    case SQLITE_INDEX_CONSTRAINT_ISNOT:
-      return [val](const char* str) {
-        return str != nullptr && strcmp(str, val) != 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_GE:
-      return [val](const char* str) {
-        return str != nullptr && strcmp(str, val) >= 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_GT:
-      return [val](const char* str) {
-        return str != nullptr && strcmp(str, val) > 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_LE:
-      return [val](const char* str) {
-        return str != nullptr && strcmp(str, val) <= 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_LT:
-      return [val](const char* str) {
-        return str != nullptr && strcmp(str, val) < 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_LIKE:
-      return [val](const char* str) {
-        return str != nullptr && sqlite3_strlike(val, str, 0) == 0;
-      };
-    case SQLITE_INDEX_CONSTRAINT_GLOB:
-      return [val](const char* str) {
-        return str != nullptr && sqlite3_strglob(val, str) == 0;
-      };
-    default:
-      PERFETTO_FATAL("For GCC");
-  }
-}
-
-// Greater bound for floating point numbers.
-template <typename T, typename sqlite_utils::is_float<T>* = nullptr>
-T FindGtBound(bool is_eq, sqlite3_value* sqlite_val) {
-  constexpr auto kMax = static_cast<long double>(std::numeric_limits<T>::max());
-  auto type = sqlite3_value_type(sqlite_val);
-  if (type != SQLITE_INTEGER && type != SQLITE_FLOAT) {
-    return kMax;
-  }
-
-  // If this is a strict gt bound then just get the next highest float
-  // after value.
-  auto value = ExtractSqliteValue<T>(sqlite_val);
-  return is_eq ? value : nexttoward(value, kMax);
-}
-
-template <typename T, typename sqlite_utils::is_int<T>* = nullptr>
-T FindGtBound(bool is_eq, sqlite3_value* sqlite_val) {
-  auto type = sqlite3_value_type(sqlite_val);
-  if (type == SQLITE_INTEGER) {
-    auto value = ExtractSqliteValue<T>(sqlite_val);
-    return is_eq ? value : value + 1;
-  } else if (type == SQLITE_FLOAT) {
-    auto value = ExtractSqliteValue<double>(sqlite_val);
-    auto above = ceil(value);
-    auto cast = static_cast<T>(above);
-    return value < above ? cast : (is_eq ? cast : cast + 1);
-  } else {
-    return std::numeric_limits<T>::max();
-  }
-}
-
-template <typename T, typename sqlite_utils::is_float<T>* = nullptr>
-T FindLtBound(bool is_eq, sqlite3_value* sqlite_val) {
-  constexpr auto kMin =
-      static_cast<long double>(std::numeric_limits<T>::lowest());
-  auto type = sqlite3_value_type(sqlite_val);
-  if (type != SQLITE_INTEGER && type != SQLITE_FLOAT) {
-    return kMin;
-  }
-
-  // If this is a strict lt bound then just get the next lowest float
-  // before value.
-  auto value = ExtractSqliteValue<T>(sqlite_val);
-  return is_eq ? value : nexttoward(value, kMin);
-}
-
-template <typename T, typename sqlite_utils::is_int<T>* = nullptr>
-T FindLtBound(bool is_eq, sqlite3_value* sqlite_val) {
-  auto type = sqlite3_value_type(sqlite_val);
-  if (type == SQLITE_INTEGER) {
-    auto value = ExtractSqliteValue<T>(sqlite_val);
-    return is_eq ? value : value - 1;
-  } else if (type == SQLITE_FLOAT) {
-    auto value = ExtractSqliteValue<double>(sqlite_val);
-    auto below = floor(value);
-    auto cast = static_cast<T>(below);
-    return value > below ? cast : (is_eq ? cast : cast - 1);
-  } else {
-    return std::numeric_limits<T>::max();
-  }
-}
-
-template <typename T, typename sqlite_utils::is_float<T>* = nullptr>
-T FindEqBound(sqlite3_value* sqlite_val) {
-  auto type = sqlite3_value_type(sqlite_val);
-  if (type != SQLITE_INTEGER && type != SQLITE_FLOAT) {
-    return std::numeric_limits<T>::max();
-  }
-  return ExtractSqliteValue<T>(sqlite_val);
-}
-
-template <typename T, typename sqlite_utils::is_int<T>* = nullptr>
-T FindEqBound(sqlite3_value* sqlite_val) {
-  auto type = sqlite3_value_type(sqlite_val);
-  if (type == SQLITE_INTEGER) {
-    return ExtractSqliteValue<T>(sqlite_val);
-  } else if (type == SQLITE_FLOAT) {
-    auto value = ExtractSqliteValue<double>(sqlite_val);
-    auto below = floor(value);
-    auto cast = static_cast<T>(below);
-    return value > below ? std::numeric_limits<T>::max() : cast;
-  } else {
-    return std::numeric_limits<T>::max();
-  }
-}
-
-template <typename T>
-void ReportSqliteResult(sqlite3_context*, T value);
-
-// Do not add a uint64_t version of ReportSqliteResult. You should not be using
-// uint64_t at all given that SQLite doesn't support it.
-
-template <>
-inline void ReportSqliteResult(sqlite3_context* ctx, int32_t value) {
-  sqlite3_result_int(ctx, value);
-}
-
-template <>
-inline void ReportSqliteResult(sqlite3_context* ctx, int64_t value) {
-  sqlite3_result_int64(ctx, value);
-}
-
-template <>
-inline void ReportSqliteResult(sqlite3_context* ctx, uint8_t value) {
-  sqlite3_result_int(ctx, value);
-}
-
-template <>
-inline void ReportSqliteResult(sqlite3_context* ctx, uint32_t value) {
-  sqlite3_result_int64(ctx, value);
-}
-
-template <>
-inline void ReportSqliteResult(sqlite3_context* ctx, bool value) {
-  sqlite3_result_int(ctx, value);
-}
-
-template <>
-inline void ReportSqliteResult(sqlite3_context* ctx, double value) {
-  sqlite3_result_double(ctx, value);
-}
-
-inline util::Status GetColumnsForTable(
-    sqlite3* db,
-    const std::string& raw_table_name,
-    std::vector<SqliteTable::Column>& columns) {
-  PERFETTO_DCHECK(columns.empty());
-  char sql[1024];
-  const char kRawSql[] = "SELECT name, type from pragma_table_info(\"%s\")";
-
-  // Support names which are table valued functions with arguments.
-  std::string table_name = raw_table_name.substr(0, raw_table_name.find('('));
-  int n = snprintf(sql, sizeof(sql), kRawSql, table_name.c_str());
-  PERFETTO_DCHECK(n >= 0 || static_cast<size_t>(n) < sizeof(sql));
-
-  sqlite3_stmt* raw_stmt = nullptr;
-  int err = sqlite3_prepare_v2(db, sql, n, &raw_stmt, nullptr);
-  if (err != SQLITE_OK) {
-    return util::ErrStatus("Preparing database failed");
-  }
-  ScopedStmt stmt(raw_stmt);
-  PERFETTO_DCHECK(sqlite3_column_count(*stmt) == 2);
-
-  for (;;) {
-    err = sqlite3_step(raw_stmt);
-    if (err == SQLITE_DONE)
+inline SqlValue SqliteValueToSqlValue(sqlite3_value* value) {
+  SqlValue sql_value;
+  switch (sqlite3_value_type(value)) {
+    case SQLITE_INTEGER:
+      sql_value.type = SqlValue::Type::kLong;
+      sql_value.long_value = sqlite3_value_int64(value);
       break;
-    if (err != SQLITE_ROW) {
-      return util::ErrStatus("Querying schema of table %s failed",
-                             raw_table_name.c_str());
-    }
-
-    const char* name =
-        reinterpret_cast<const char*>(sqlite3_column_text(*stmt, 0));
-    const char* raw_type =
-        reinterpret_cast<const char*>(sqlite3_column_text(*stmt, 1));
-    if (!name || !raw_type || !*name) {
-      return util::ErrStatus("Schema for %s has invalid column values",
-                             raw_table_name.c_str());
-    }
-
-    SqlValue::Type type;
-    if (base::CaseInsensitiveEqual(raw_type, "STRING")) {
-      type = SqlValue::Type::kString;
-    } else if (base::CaseInsensitiveEqual(raw_type, "DOUBLE")) {
-      type = SqlValue::Type::kDouble;
-    } else if (base::CaseInsensitiveEqual(raw_type, "BIG INT") ||
-               base::CaseInsensitiveEqual(raw_type, "UNSIGNED INT") ||
-               base::CaseInsensitiveEqual(raw_type, "INT") ||
-               base::CaseInsensitiveEqual(raw_type, "BOOLEAN")) {
-      type = SqlValue::Type::kLong;
-    } else if (!*raw_type) {
-      PERFETTO_DLOG("Unknown column type for %s %s", raw_table_name.c_str(),
-                    name);
-      type = SqlValue::Type::kNull;
-    } else {
-      return util::ErrStatus("Unknown column type '%s' on table %s", raw_type,
-                             raw_table_name.c_str());
-    }
-    columns.emplace_back(columns.size(), name, type);
+    case SQLITE_FLOAT:
+      sql_value.type = SqlValue::Type::kDouble;
+      sql_value.double_value = sqlite3_value_double(value);
+      break;
+    case SQLITE_TEXT:
+      sql_value.type = SqlValue::Type::kString;
+      sql_value.string_value =
+          reinterpret_cast<const char*>(sqlite3_value_text(value));
+      break;
+    case SQLITE_BLOB:
+      sql_value.type = SqlValue::Type::kBytes;
+      sql_value.bytes_value = sqlite3_value_blob(value);
+      sql_value.bytes_count = static_cast<size_t>(sqlite3_value_bytes(value));
+      break;
   }
-  return util::OkStatus();
+  return sql_value;
 }
 
-template <typename T>
-int CompareValuesAsc(const T& f, const T& s) {
-  return f < s ? -1 : (f > s ? 1 : 0);
+inline base::Optional<std::string> SqlValueToString(SqlValue value) {
+  switch (value.type) {
+    case SqlValue::Type::kString:
+      return value.AsString();
+    case SqlValue::Type::kDouble:
+      return std::to_string(value.AsDouble());
+    case SqlValue::Type::kLong:
+      return std::to_string(value.AsLong());
+    case SqlValue::Type::kBytes:
+    case SqlValue::Type::kNull:
+      return base::nullopt;
+  }
+  PERFETTO_FATAL("For GCC");
 }
 
-template <typename T>
-int CompareValuesDesc(const T& f, const T& s) {
-  return -CompareValuesAsc(f, s);
+inline void ReportSqlValue(
+    sqlite3_context* ctx,
+    const SqlValue& value,
+    sqlite3_destructor_type string_destructor = kSqliteTransient,
+    sqlite3_destructor_type bytes_destructor = kSqliteTransient) {
+  switch (value.type) {
+    case SqlValue::Type::kLong:
+      sqlite3_result_int64(ctx, value.long_value);
+      break;
+    case SqlValue::Type::kDouble:
+      sqlite3_result_double(ctx, value.double_value);
+      break;
+    case SqlValue::Type::kString: {
+      sqlite3_result_text(ctx, value.string_value, -1, string_destructor);
+      break;
+    }
+    case SqlValue::Type::kBytes:
+      sqlite3_result_blob(ctx, value.bytes_value,
+                          static_cast<int>(value.bytes_count),
+                          bytes_destructor);
+      break;
+    case SqlValue::Type::kNull:
+      sqlite3_result_null(ctx);
+      break;
+  }
 }
+
+inline ScopedSqliteString ExpandedSqlForStmt(sqlite3_stmt* stmt) {
+  return ScopedSqliteString(sqlite3_expanded_sql(stmt));
+}
+
+inline base::Status FormatErrorMessage(base::StringView sql,
+                                       sqlite3* db,
+                                       int error_code) {
+  uint32_t offset = static_cast<uint32_t>(sqlite3_error_offset(db));
+
+  auto error_opt = FindLineWithOffset(sql, offset);
+
+  if (!error_opt.has_value()) {
+    return base::ErrStatus("Error: %s (errcode: %d)", sqlite3_errmsg(db),
+                           error_code);
+  }
+
+  auto error = error_opt.value();
+
+  return base::ErrStatus(
+      "Error in line:%u, col: %u.\n"
+      "%s\n"
+      "%s^\n"
+      "%s (errcode: %d)",
+      error.line_num, error.line_offset + 1, error.line.ToStdString().c_str(),
+      std::string(error.line_offset, ' ').c_str(), sqlite3_errmsg(db),
+      error_code);
+}
+
+inline base::Status FormatErrorMessage(sqlite3_stmt* stmt,
+                                       base::Optional<base::StringView> sql,
+                                       sqlite3* db,
+                                       int error_code) {
+  if (stmt) {
+    auto expanded_sql = ExpandedSqlForStmt(stmt);
+    PERFETTO_CHECK(expanded_sql);
+    return FormatErrorMessage(expanded_sql.get(), db, error_code);
+  }
+  PERFETTO_CHECK(sql.has_value());
+  return FormatErrorMessage(sql.value(), db, error_code);
+}
+
+inline base::Status PrepareStmt(sqlite3* db,
+                                const char* sql,
+                                ScopedStmt* stmt,
+                                const char** tail) {
+  sqlite3_stmt* raw_stmt = nullptr;
+  int err = sqlite3_prepare_v2(db, sql, -1, &raw_stmt, tail);
+  stmt->reset(raw_stmt);
+  if (err != SQLITE_OK)
+    return base::ErrStatus("%s", FormatErrorMessage(sql, db, err).c_message());
+  return base::OkStatus();
+}
+
+inline bool IsStmtDone(sqlite3_stmt* stmt) {
+  return !sqlite3_stmt_busy(stmt);
+}
+
+inline base::Status StepStmtUntilDone(sqlite3_stmt* stmt) {
+  PERFETTO_DCHECK(stmt);
+
+  if (IsStmtDone(stmt))
+    return base::OkStatus();
+
+  int err;
+  for (err = sqlite3_step(stmt); err == SQLITE_ROW; err = sqlite3_step(stmt)) {
+  }
+  if (err != SQLITE_DONE) {
+    auto db = sqlite3_db_handle(stmt);
+    return base::ErrStatus(
+        "%s", FormatErrorMessage(stmt, base::nullopt, db, err).c_message());
+  }
+  return base::OkStatus();
+}
+
+// Exracts the given type from the SqlValue if |value| can fit
+// in the provided optional. Note that SqlValue::kNull will always
+// succeed and cause base::nullopt to be set.
+//
+// Returns base::ErrStatus if the type does not match or does not
+// fit in the width of the provided optional type (i.e. int64 value
+// not fitting in int32 optional).
+base::Status ExtractFromSqlValue(const SqlValue& value,
+                                 base::Optional<int64_t>&);
+base::Status ExtractFromSqlValue(const SqlValue& value,
+                                 base::Optional<int32_t>&);
+base::Status ExtractFromSqlValue(const SqlValue& value,
+                                 base::Optional<uint32_t>&);
+base::Status ExtractFromSqlValue(const SqlValue& value,
+                                 base::Optional<double>&);
+base::Status ExtractFromSqlValue(const SqlValue& value,
+                                 base::Optional<const char*>&);
+
+// Returns the column names for the table named by |raw_table_name|.
+base::Status GetColumnsForTable(sqlite3* db,
+                                const std::string& raw_table_name,
+                                std::vector<SqliteTable::Column>& columns);
+
+// Reads a `SQLITE_TEXT` value and returns it as a wstring (UTF-16) in the
+// default byte order. `value` must be a `SQLITE_TEXT`.
+std::wstring SqliteValueToWString(sqlite3_value* value);
+
+// Given an SqlValue::Type, converts it to a human-readable string.
+// This should really only be used for debugging messages.
+const char* SqliteTypeToFriendlyString(SqlValue::Type type);
+
+// Verifies if |value| has the type represented by |expected_type|.
+// Returns base::OkStatus if it does or an base::ErrStatus with an
+// appropriate error mesage (incorporating |expected_type_str| if specified).
+base::Status TypeCheckSqliteValue(sqlite3_value* value,
+                                  SqlValue::Type expected_type);
+base::Status TypeCheckSqliteValue(sqlite3_value* value,
+                                  SqlValue::Type expected_type,
+                                  const char* expected_type_str);
 
 }  // namespace sqlite_utils
 }  // namespace trace_processor

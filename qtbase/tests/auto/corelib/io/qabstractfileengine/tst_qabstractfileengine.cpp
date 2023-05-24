@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the FOO module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/private/qabstractfileengine_p.h>
 #include <QtCore/private/qfsfileengine_p.h>
@@ -76,8 +51,10 @@ public:
     {
     }
 
-    bool open(QIODevice::OpenMode openMode)
+    bool open(QIODevice::OpenMode openMode, std::optional<QFile::Permissions> permissions) override
     {
+        Q_UNUSED(permissions);
+
         if (openForRead_ || openForWrite_) {
             qWarning("%s: file is already open for %s",
                      Q_FUNC_INFO,
@@ -108,7 +85,7 @@ public:
         return true;
     }
 
-    bool close()
+    bool close() override
     {
         openFile_.clear();
 
@@ -119,7 +96,7 @@ public:
         return true;
     }
 
-    qint64 size() const
+    qint64 size() const override
     {
         QSharedPointer<File> file = resolveFile(false);
         if (!file)
@@ -129,7 +106,7 @@ public:
         return file->content.size();
     }
 
-    qint64 pos() const
+    qint64 pos() const override
     {
         if (!openForRead_ && !openForWrite_) {
             qWarning("%s: file is not open", Q_FUNC_INFO);
@@ -138,7 +115,7 @@ public:
         return position_;
     }
 
-    bool seek(qint64 pos)
+    bool seek(qint64 pos) override
     {
         if (!openForRead_ && !openForWrite_) {
             qWarning("%s: file is not open", Q_FUNC_INFO);
@@ -153,7 +130,7 @@ public:
         return false;
     }
 
-    bool flush()
+    bool flush() override
     {
         if (!openForRead_ && !openForWrite_) {
             qWarning("%s: file is not open", Q_FUNC_INFO);
@@ -163,7 +140,7 @@ public:
         return true;
     }
 
-    bool remove()
+    bool remove() override
     {
         QMutexLocker lock(&fileSystemMutex);
         int count = fileSystem.remove(fileName_);
@@ -171,7 +148,7 @@ public:
         return (count == 1);
     }
 
-    bool copy(const QString &newName)
+    bool copy(const QString &newName) override
     {
         QMutexLocker lock(&fileSystemMutex);
         if (!fileSystem.contains(fileName_)
@@ -182,7 +159,7 @@ public:
         return true;
     }
 
-    bool rename(const QString &newName)
+    bool rename(const QString &newName) override
     {
         QMutexLocker lock(&fileSystemMutex);
         if (!fileSystem.contains(fileName_)
@@ -193,29 +170,7 @@ public:
         return true;
     }
 
-    //  bool link(const QString &newName)
-    //  {
-    //      Q_UNUSED(newName)
-    //      return false;
-    //  }
-
-    //  bool mkdir(const QString &dirName, bool createParentDirectories) const
-    //  {
-    //      Q_UNUSED(dirName)
-    //      Q_UNUSED(createParentDirectories)
-
-    //      return false;
-    //  }
-
-    //  bool rmdir(const QString &dirName, bool recurseParentDirectories) const
-    //  {
-    //      Q_UNUSED(dirName)
-    //      Q_UNUSED(recurseParentDirectories)
-
-    //      return false;
-    //  }
-
-    bool setSize(qint64 size)
+    bool setSize(qint64 size) override
     {
         if (size < 0)
             return false;
@@ -234,7 +189,7 @@ public:
         return (file->content.size() == size);
     }
 
-    FileFlags fileFlags(FileFlags type) const
+    FileFlags fileFlags(FileFlags type) const override
     {
         QSharedPointer<File> file = resolveFile(false);
         if (file) {
@@ -245,14 +200,7 @@ public:
         return FileFlags();
     }
 
-    //  bool setPermissions(uint perms)
-    //  {
-    //      Q_UNUSED(perms)
-
-    //      return false;
-    //  }
-
-    QString fileName(FileName file) const
+    QString fileName(FileName file) const override
     {
         switch (file) {
             case DefaultName:
@@ -265,8 +213,10 @@ public:
                 return QLatin1String("AbsoluteName");
             case AbsolutePathName:
                 return QLatin1String("AbsolutePathName");
-            case LinkName:
-                return QLatin1String("LinkName");
+            case AbsoluteLinkTarget:
+                return QLatin1String("AbsoluteLinkTarget");
+            case RawLinkPath:
+                return QLatin1String("RawLinkPath");
             case CanonicalName:
                 return QLatin1String("CanonicalName");
             case CanonicalPathName:
@@ -281,7 +231,7 @@ public:
         return QString();
     }
 
-    uint ownerId(FileOwner owner) const
+    uint ownerId(FileOwner owner) const override
     {
         QSharedPointer<File> file = resolveFile(false);
         if (file) {
@@ -302,7 +252,7 @@ public:
         return -2;
     }
 
-    QString owner(FileOwner owner) const
+    QString owner(FileOwner owner) const override
     {
         QSharedPointer<File> file = resolveFile(false);
         if (file) {
@@ -335,7 +285,7 @@ public:
         return QString();
     }
 
-    QDateTime fileTime(FileTime time) const
+    QDateTime fileTime(FileTime time) const override
     {
         QSharedPointer<File> file = resolveFile(false);
         if (file) {
@@ -355,14 +305,7 @@ public:
         return QDateTime();
     }
 
-    bool setFileTime(const QDateTime &newDate, FileTime time)
-    {
-        Q_UNUSED(newDate);
-        Q_UNUSED(time);
-        return false;
-    }
-
-    void setFileName(const QString &file)
+    void setFileName(const QString &file) override
     {
         if (openForRead_ || openForWrite_)
             qWarning("%s: Can't set file name while file is open", Q_FUNC_INFO);
@@ -370,21 +313,7 @@ public:
             fileName_ = file;
     }
 
-    //  typedef QAbstractFileEngineIterator Iterator;
-    //  Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames)
-    //  {
-    //      Q_UNUSED(filters)
-    //      Q_UNUSED(filterNames)
-
-    //      return 0;
-    //  }
-
-    //  Iterator *endEntryList()
-    //  {
-    //      return 0;
-    //  }
-
-    qint64 read(char *data, qint64 maxLen)
+    qint64 read(char *data, qint64 maxLen) override
     {
         if (!openForRead_) {
             qWarning("%s: file must be open for reading", Q_FUNC_INFO);
@@ -407,7 +336,7 @@ public:
         return readSize;
     }
 
-    qint64 write(const char *data, qint64 length)
+    qint64 write(const char *data, qint64 length) override
     {
         if (!openForWrite_) {
             qWarning("%s: file must be open for writing", Q_FUNC_INFO);
@@ -508,15 +437,15 @@ public:
             names.append("bar");
             index = -1;
         }
-        QString currentFileName() const
+        QString currentFileName() const override
         {
             return names.at(index);
         }
-        bool hasNext() const
+        bool hasNext() const override
         {
             return index < names.size() - 1;
         }
-        QString next()
+        QString next() override
         {
             if (!hasNext())
                 return QString();
@@ -530,11 +459,11 @@ public:
         : QFSFileEngine(fileName)
     {
     }
-    Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames)
+    Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames) override
     {
         return new Iterator(filters, filterNames);
     }
-    FileFlags fileFlags(FileFlags type) const
+    FileFlags fileFlags(FileFlags type) const override
     {
         if (fileName(DefaultName).endsWith(".tar")) {
             FileFlags ret = QFSFileEngine::fileFlags(type);
@@ -556,7 +485,7 @@ QHash<QString, QSharedPointer<ReferenceFileEngine::File> > ReferenceFileEngine::
 class FileEngineHandler
     : QAbstractFileEngineHandler
 {
-    QAbstractFileEngine *create(const QString &fileName) const
+    QAbstractFileEngine *create(const QString &fileName) const override
     {
         if (fileName.endsWith(".tar") || fileName.contains(".tar/"))
             return new MountingFileEngine(fileName);

@@ -37,11 +37,6 @@ class LayoutEmbeddedContent;
 class LayoutEmbeddedObject;
 class WebPluginContainerImpl;
 
-enum PreferPlugInsForImagesOption {
-  kShouldPreferPlugInsForImages,
-  kShouldNotPreferPlugInsForImages
-};
-
 class PluginParameters {
  public:
   PluginParameters() {}
@@ -97,18 +92,20 @@ class CORE_EXPORT HTMLPlugInElement
 
   bool ShouldAccelerate() const;
 
-  ParsedFeaturePolicy ConstructContainerPolicy() const override;
+  ParsedPermissionsPolicy ConstructContainerPolicy() const override;
 
   bool IsImageType() const;
   HTMLImageLoader* ImageLoader() const { return image_loader_.Get(); }
+  virtual bool UseFallbackContent() const;
 
  protected:
   HTMLPlugInElement(const QualifiedName& tag_name,
                     Document&,
-                    const CreateElementFlags,
-                    PreferPlugInsForImagesOption);
+                    const CreateElementFlags);
 
   // Node functions:
+  InsertionNotificationRequest InsertedInto(
+      ContainerNode& insertion_point) override;
   void RemovedFrom(ContainerNode& insertion_point) override;
   void DidMoveToNewDocument(Document& old_document) override;
   void AttachLayoutTree(AttachContext&) override;
@@ -121,7 +118,6 @@ class CORE_EXPORT HTMLPlugInElement
       MutableCSSPropertyValueSet*) override;
 
   virtual bool HasFallbackContent() const;
-  virtual bool UseFallbackContent() const;
   // Create or update the LayoutEmbeddedContent and return it, triggering layout
   // if necessary.
   virtual LayoutEmbeddedContent* LayoutEmbeddedContentForJSBindings() const;
@@ -172,7 +168,8 @@ class CORE_EXPORT HTMLPlugInElement
   bool IsFocusableStyle() const final;
   bool IsKeyboardFocusable() const final;
   void DidAddUserAgentShadowRoot(ShadowRoot&) final;
-  scoped_refptr<ComputedStyle> CustomStyleForLayoutObject() final;
+  scoped_refptr<const ComputedStyle> CustomStyleForLayoutObject(
+      const StyleRecalcContext&) final;
 
   // HTMLElement overrides:
   bool HasCustomFocusLogic() const override;
@@ -213,7 +210,6 @@ class CORE_EXPORT HTMLPlugInElement
 
   v8::Global<v8::Object> plugin_wrapper_;
   bool needs_plugin_update_;
-  bool should_prefer_plug_ins_for_images_;
   // Represents |layoutObject() && layoutObject()->isEmbeddedObject() &&
   // !layoutEmbeddedItem().showsUnavailablePluginIndicator()|.  We want to
   // avoid accessing |layoutObject()| in layoutObjectIsFocusable().

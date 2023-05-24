@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qhash.h>
 #include "gltexture_p.h"
@@ -45,6 +9,7 @@
 #include <private/qopengltexturehelper_p.h>
 #include <QDebug>
 #include <QOpenGLFunctions>
+#include <QtOpenGL/QOpenGLVersionFunctionsFactory>
 #include <QOpenGLTexture>
 #include <QOpenGLPixelTransferOptions>
 #include <Qt3DRender/qtexture.h>
@@ -54,15 +19,14 @@
 #include <Qt3DRender/private/qabstracttexture_p.h>
 #include <Qt3DRender/private/qtextureimagedata_p.h>
 #include <renderbuffer_p.h>
+#include <Qt3DCore/private/vector_helper_p.h>
 
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
 #include <QOpenGLFunctions_3_1>
 #include <QOpenGLFunctions_4_5_Core>
 #endif
 
 QT_BEGIN_NAMESPACE
-
-using namespace Qt3DCore;
 
 namespace Qt3DRender {
 namespace Render {
@@ -76,11 +40,11 @@ void uploadGLData(QOpenGLTexture *glTex,
                   int level, int layer, QOpenGLTexture::CubeMapFace face,
                   const QByteArray &bytes, const QTextureImageDataPtr &data)
 {
-    const auto alignment = QTextureImageDataPrivate::get(data.get())->m_alignment;
+    const auto alignment = data->alignment();
     QOpenGLPixelTransferOptions uploadOptions;
     uploadOptions.setAlignment(alignment);
     if (data->isCompressed())
-        glTex->setCompressedData(level, layer, face, bytes.size(), bytes.constData(), &uploadOptions);
+        glTex->setCompressedData(level, layer, face, bytes.size(), bytes.constData());
     else
         glTex->setData(level, layer, face, data->pixelFormat(), data->pixelType(), bytes.constData(), &uploadOptions);
 }
@@ -94,7 +58,7 @@ void uploadGLData(QOpenGLTexture *glTex,
     if (data->isCompressed()) {
         Q_UNREACHABLE();
     } else {
-        const auto alignment = QTextureImageDataPrivate::get(data.get())->m_alignment;
+        const auto alignment = data->alignment();
         QOpenGLPixelTransferOptions uploadOptions;
         uploadOptions.setAlignment(alignment);
         glTex->setData(xOffset, yOffset, zOffset,
@@ -179,7 +143,7 @@ bool GLTexture::loadTextureDataFromGenerator()
         m_properties.layers = m_textureData->layers();
         m_properties.format = m_textureData->format();
 
-        const QVector<QTextureImageDataPtr> imageData = m_textureData->imageData();
+        const QList<QTextureImageDataPtr> imageData = m_textureData->imageData();
 
         if (imageData.size() > 0) {
             // Set the mips level based on the first image if autoMipMapGeneration is disabled
@@ -193,7 +157,7 @@ bool GLTexture::loadTextureDataFromGenerator()
 void GLTexture::loadTextureDataFromImages()
 {
     int maxMipLevel = 0;
-    for (const Image &img : qAsConst(m_images)) {
+    for (const Image &img : std::as_const(m_images)) {
         const QTextureImageDataPtr imgData = img.generator->operator()();
         // imgData may be null in the following cases:
         // - Texture is created with TextureImages which have yet to be
@@ -404,19 +368,10 @@ void GLTexture::setProperties(const TextureProperties &props)
     }
 }
 
-void GLTexture::setImages(const QVector<Image> &images)
+void GLTexture::setImages(const std::vector<Image> &images)
 {
     // check if something has changed at all
-    bool same = (images.size() == m_images.size());
-    if (same) {
-        for (int i = 0; i < images.size(); i++) {
-            if (images[i] != m_images[i]) {
-                same = false;
-                break;
-            }
-        }
-    }
-
+    const bool same = (images == m_images);
 
     if (!same) {
         m_images = images;
@@ -440,9 +395,9 @@ void GLTexture::setSharedTextureId(int textureId)
     }
 }
 
-void GLTexture::addTextureDataUpdates(const QVector<QTextureDataUpdate> &updates)
+void GLTexture::addTextureDataUpdates(const std::vector<QTextureDataUpdate> &updates)
 {
-    m_pendingTextureDataUpdates += updates;
+    Qt3DCore::append(m_pendingTextureDataUpdates, updates);
     requestUpload();
 }
 
@@ -540,7 +495,7 @@ void GLTexture::uploadGLTextureData()
 {
     // Upload all QTexImageData set by the QTextureGenerator
     if (m_textureData) {
-        const QVector<QTextureImageDataPtr> imgData = m_textureData->imageData();
+        const QList<QTextureImageDataPtr> imgData = m_textureData->imageData();
 
         for (const QTextureImageDataPtr &data : imgData) {
             const int mipLevels = m_properties.generateMipMaps ? 1 : data->mipLevels();
@@ -560,7 +515,7 @@ void GLTexture::uploadGLTextureData()
     }
 
     // Upload all QTexImageData references by the TextureImages
-    for (int i = 0; i < std::min(m_images.size(), m_imageData.size()); i++) {
+    for (size_t i = 0; i < std::min(m_images.size(), m_imageData.size()); i++) {
         const QTextureImageDataPtr &imgData = m_imageData.at(i);
         // Here the bytes in the QTextureImageData contain data for a single
         // layer, face or mip level, unlike the QTextureGenerator case where
@@ -575,7 +530,7 @@ void GLTexture::uploadGLTextureData()
     m_imageData.clear();
 
     // Update data from TextureUpdates
-    const QVector<QTextureDataUpdate> textureDataUpdates = std::move(m_pendingTextureDataUpdates);
+    const std::vector<QTextureDataUpdate> textureDataUpdates = Qt3DCore::moveAndClear(m_pendingTextureDataUpdates);
     for (const QTextureDataUpdate &update : textureDataUpdates) {
         const QTextureImageDataPtr imgData = update.data();
 
@@ -678,7 +633,7 @@ void GLTexture::introspectPropertiesFromSharedTextureId()
     const QAbstractTexture::Target targets[] = {
         QAbstractTexture::Target2D,
         QAbstractTexture::TargetCubeMap,
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
         QAbstractTexture::Target1D,
         QAbstractTexture::Target1DArray,
         QAbstractTexture::Target3D,
@@ -691,13 +646,13 @@ void GLTexture::introspectPropertiesFromSharedTextureId()
 #endif
     };
 
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
     // Try to find texture target with GL 4.5 functions
     const QPair<int, int> ctxGLVersion = ctx->format().version();
     if (ctxGLVersion.first > 4 || (ctxGLVersion.first == 4 && ctxGLVersion.second >= 5)) {
         // Only for GL 4.5+
 #ifdef GL_TEXTURE_TARGET
-        QOpenGLFunctions_4_5_Core *gl5 = ctx->versionFunctions<QOpenGLFunctions_4_5_Core>();
+        QOpenGLFunctions_4_5_Core *gl5 = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_4_5_Core>();
         if (gl5 != nullptr)
             gl5->glGetTextureParameteriv(m_sharedTextureId, GL_TEXTURE_TARGET, reinterpret_cast<int *>(&m_properties.target));
 #endif
@@ -712,7 +667,7 @@ void GLTexture::introspectPropertiesFromSharedTextureId()
         const GLenum targetBindings[] = {
             GL_TEXTURE_BINDING_2D,
             GL_TEXTURE_BINDING_CUBE_MAP,
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
             GL_TEXTURE_BINDING_1D,
             GL_TEXTURE_BINDING_1D_ARRAY,
             GL_TEXTURE_BINDING_3D,
@@ -766,10 +721,10 @@ void GLTexture::introspectPropertiesFromSharedTextureId()
     gl->glGetTexParameteriv(int(m_properties.target), GL_TEXTURE_WRAP_S, reinterpret_cast<int *>(&m_parameters.wrapModeY));
     gl->glGetTexParameteriv(int(m_properties.target), GL_TEXTURE_WRAP_T, reinterpret_cast<int *>(&m_parameters.wrapModeZ));
 
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
     // Try to retrieve dimensions (not available on ES 2.0)
     if (!ctx->isOpenGLES()) {
-        QOpenGLFunctions_3_1 *gl3 = ctx->versionFunctions<QOpenGLFunctions_3_1>();
+        QOpenGLFunctions_3_1 *gl3 = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_3_1>();
         if (!gl3) {
             qWarning() << "Failed to retrieve shared texture dimensions";
             return;

@@ -1,4 +1,4 @@
-# Copyright 2015 PDFium Authors. All rights reserved.
+# Copyright 2015 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -36,16 +36,18 @@ declare_args() {
   # If XFA, also support tiff codec. Ignored if not XFA.
   pdf_enable_xfa_tiff = true
 
-  # Build PDFium against Skia (experimental) rather than AGG. Use Skia to draw
-  # everything.
+  # Build PDFium using C++20 if set to true. Otherwise builds with C++17.
+  # There is no "pdf_use_cxx20_override" variable because this is only used in
+  # standalone PDFium, and not when PDFium is embedded in our projects.
+  pdf_use_cxx20 = is_win && is_component_build
+
+  # Build PDFium with PartitionAlloc as the memory allocator.
+  pdf_use_partition_alloc = pdf_use_partition_alloc_override
+
+  # Build PDFium to use Skia (experimental) for all PDFium graphics.
+  # If enabled, coexists in build with AGG graphics and the default
+  # renderer is selectable at runtime.
   pdf_use_skia = pdf_use_skia_override
-
-  # Build PDFium against Skia (experimental) rather than AGG. Use Skia to draw
-  # paths.
-  pdf_use_skia_paths = pdf_use_skia_paths_override
-
-  # Build PDFium with or without experimental win32 GDI APIs.
-  pdf_use_win32_gdi = pdf_use_win32_gdi_override
 
   # Build PDFium standalone
   pdf_is_standalone = false
@@ -68,12 +70,14 @@ declare_args() {
   # Don't build against bundled libpng.
   pdfium_use_system_libpng = false
 
-  pdfium_use_qt_libpng = false
-  pdfium_qt_libpng_includes = ""
-}
+  # Don't build against bundled libtiff
+  pdfium_use_system_libtiff = false
 
-if (pdf_use_skia && pdf_use_skia_paths) {
-  assert(false, "Enable at most ONE of pdf_use_skia and pdf_use_skia_paths")
+  # Enable SSE2 for MSVC builds. Ignored if it's not a MSVC build.
+  msvc_use_sse2 = true
+
+  pdfium_use_qt_libpng = false
+  qt_libpng_config = ""
 }
 
 assert(!pdf_is_complete_lib || !is_component_build,

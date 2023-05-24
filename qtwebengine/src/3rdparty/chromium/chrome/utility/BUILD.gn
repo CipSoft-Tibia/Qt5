@@ -1,21 +1,17 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/crypto.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/features.gni")
 import("//build/config/sysroot.gni")
 import("//chrome/common/features.gni")
-import("//chromeos/assistant/assistant.gni")
+import("//chrome/services/speech/buildflags/buildflags.gni")
+import("//chromeos/ash/components/assistant/assistant.gni")
+import("//components/services/screen_ai/buildflags/features.gni")
+import("//crypto/features.gni")
 import("//extensions/buildflags/buildflags.gni")
 import("//printing/buildflags/buildflags.gni")
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 static_library("utility") {
   sources = [
@@ -36,22 +32,28 @@ static_library("utility") {
   public_deps = []
   deps = [
     "//base",
+    "//build:chromeos_buildflags",
     "//chrome:resources",
     "//chrome:strings",
     "//chrome/common",
     "//chrome/common:mojo_bindings",
-    "//chrome/services/machine_learning",
     "//chrome/services/qrcode_generator",
+    "//chrome/services/speech/buildflags",
+    "//components/heap_profiling/in_process",
+    "//components/metrics:child_call_stack_profile_builder",
     "//components/mirroring/service:mirroring_service",
     "//components/paint_preview/buildflags",
+    "//components/password_manager/services/csv_password:lib",
     "//components/safe_browsing:buildflags",
     "//components/search_engines",
     "//components/services/language_detection",
     "//components/services/paint_preview_compositor",
     "//components/services/patch:lib",
+    "//components/services/screen_ai/buildflags",
     "//components/services/unzip:lib",
     "//components/strings",
     "//components/url_formatter",
+    "//components/webapps/services/web_app_origin_association:lib",
     "//content/public/child",
     "//content/public/common",
     "//content/public/utility",
@@ -65,6 +67,7 @@ static_library("utility") {
     "//services/service_manager/public/cpp",
     "//skia",
     "//sql",
+    "//third_party/blink/public/common",
     "//third_party/zlib/google:zip",
     "//ui/base:buildflags",
   ]
@@ -76,64 +79,84 @@ static_library("utility") {
     ]
   }
 
+  if (!is_ios && !is_android) {
+    deps += [ "//components/password_manager/services/password_strength:lib" ]
+  }
+
+  if (is_mac) {
+    deps += [ "//chrome/services/mac_notifications" ]
+  }
+
   if (!is_android) {
     sources += [
       "importer/bookmark_html_reader.cc",
       "importer/bookmark_html_reader.h",
       "importer/bookmarks_file_importer.cc",
       "importer/bookmarks_file_importer.h",
-      "importer/edge_database_reader_win.cc",
-      "importer/edge_database_reader_win.h",
-      "importer/edge_importer_win.cc",
-      "importer/edge_importer_win.h",
       "importer/external_process_importer_bridge.cc",
       "importer/external_process_importer_bridge.h",
       "importer/favicon_reencode.cc",
       "importer/favicon_reencode.h",
-      "importer/firefox_importer.cc",
-      "importer/firefox_importer.h",
-      "importer/ie_importer_win.cc",
-      "importer/ie_importer_win.h",
       "importer/importer.cc",
       "importer/importer.h",
       "importer/importer_creator.cc",
       "importer/importer_creator.h",
-      "importer/nss_decryptor.cc",
-      "importer/nss_decryptor.h",
-      "importer/nss_decryptor_mac.h",
-      "importer/nss_decryptor_mac.mm",
-      "importer/nss_decryptor_win.cc",
-      "importer/nss_decryptor_win.h",
       "importer/profile_import_impl.cc",
       "importer/profile_import_impl.h",
-      "importer/safari_importer.h",
-      "importer/safari_importer.mm",
     ]
+    if (!is_chromeos) {
+      sources += [
+        "importer/firefox_importer.cc",
+        "importer/firefox_importer.h",
+      ]
+    }
+    if (is_mac) {
+      sources += [
+        "importer/safari_importer.h",
+        "importer/safari_importer.mm",
+      ]
+    }
+    if (!is_mac && !is_fuchsia && !is_chromeos) {
+      # NSS decryptor is not needed on ChromeOS. Additionally, it depends on
+      # system NSS that is unavailable on MacOS/Fuchsia.
+      sources += [
+        "importer/nss_decryptor.cc",
+        "importer/nss_decryptor.h",
+      ]
+
+      deps += [ "//crypto:buildflags" ]
+    }
+    if (is_win) {
+      sources += [
+        "importer/edge_database_reader_win.cc",
+        "importer/edge_database_reader_win.h",
+        "importer/edge_importer_win.cc",
+        "importer/edge_importer_win.h",
+        "importer/ie_importer_win.cc",
+        "importer/ie_importer_win.h",
+        "importer/nss_decryptor_win.cc",
+        "importer/nss_decryptor_win.h",
+      ]
+
+      deps += [ "//services/proxy_resolver_win" ]
+    }
     deps += [
       "//chrome/common:mojo_bindings",
       "//chrome/common/importer:interfaces",
-      "//chrome/services/speech:lib",
       "//components/autofill/core/common",
       "//services/proxy_resolver:lib",
     ]
   }
 
+  if (enable_screen_ai_service) {
+    deps += [ "//components/services/screen_ai" ]
+  }
+
   if (enable_extensions) {
-    sources += [
-      "image_writer/disk_unmounter_mac.cc",
-      "image_writer/disk_unmounter_mac.h",
-      "image_writer/error_message_strings.cc",
-      "image_writer/error_message_strings.h",
-      "image_writer/image_writer.cc",
-      "image_writer/image_writer.h",
-      "image_writer/image_writer_handler.cc",
-      "image_writer/image_writer_handler.h",
-      "image_writer/image_writer_mac.cc",
-      "image_writer/image_writer_win.cc",
-    ]
     deps += [
       "//chrome/common/extensions/api",
       "//chrome/services/removable_storage_writer:lib",
+      "//chrome/utility/image_writer",
     ]
 
     public_deps += [
@@ -150,68 +173,77 @@ static_library("utility") {
       libs = [ "esent.lib" ]
       ldflags += [ "/DELAYLOAD:esent.dll" ]
 
-      deps += [ "//chrome/services/util_win:lib" ]
+      deps += [
+        "//chrome/services/util_win:lib",
+        "//components/device_signals/core/common/mojom",
+      ]
     }
 
-    if (is_win || is_mac) {
-      deps += [ "//components/wifi" ]
-    } else {
-      sources += [ "image_writer/image_writer_stub.cc" ]
+    if (is_win || is_mac || is_linux) {
+      deps += [ "//chrome/services/system_signals" ]
     }
   }
 
-  if (is_chromeos) {
+  if (is_chromeos_ash) {
     deps += [
       "//chrome/services/file_util",
       "//chrome/services/sharing",
-      "//chrome/services/sharing/public/mojom:mojom",
-      "//chromeos/assistant:buildflags",
-      "//chromeos/services/ime:lib",
-      "//chromeos/services/ime/public/mojom",
+      "//chromeos/ash/components/assistant:buildflags",
+      "//chromeos/ash/components/local_search_service",
+      "//chromeos/ash/components/local_search_service/public/mojom",
+      "//chromeos/ash/components/trash_service",
+      "//chromeos/ash/components/trash_service/public/mojom",
+      "//chromeos/ash/services/ime:lib",
+      "//chromeos/ash/services/ime/public/mojom",
+      "//chromeos/ash/services/nearby/public/mojom:mojom",
+      "//chromeos/ash/services/quick_pair",
+      "//chromeos/ash/services/recording",
       "//chromeos/services/tts",
       "//chromeos/services/tts/public/mojom",
     ]
 
     if (enable_cros_libassistant) {
       deps += [
-        "//chromeos/services/assistant/audio_decoder:lib",
-        "//chromeos/services/assistant/public/mojom",
+        "//chromeos/ash/services/assistant/audio_decoder:lib",
+        "//chromeos/ash/services/assistant/public/mojom",
+        "//chromeos/ash/services/libassistant",
+        "//chromeos/ash/services/libassistant/public/mojom",
       ]
     }
   }
 
-  if (use_nss_certs) {
+  if (is_chromeos) {
+    deps += [
+      "//chromeos/components/quick_answers/public/cpp",
+      "//chromeos/components/quick_answers/public/mojom",
+    ]
+  }
+
+  # NSS decryptor is not needed on ChromeOS.
+  if (!is_chromeos && use_nss_certs) {
     sources += [
       "importer/nss_decryptor_system_nss.cc",
       "importer/nss_decryptor_system_nss.h",
     ]
-    deps += [
-      "//crypto",
-      "//crypto:platform",
-    ]
+    deps += [ "//crypto" ]
+    configs += [ "//build/config/linux/nss" ]
   }
 
-  if (enable_basic_printing) {
+  if (enable_printing) {
     deps += [
       "//components/services/print_compositor",
       "//components/services/print_compositor/public/mojom",
     ]
 
-    if (is_chromeos) {
+    # TODO(crbug.com/1302871): Simplify this. Is `!is_android` sufficient?
+    if (is_win || is_mac || is_linux || is_chromeos || is_fuchsia) {
+      deps += [ "//chrome/services/printing:lib" ]
+    }
+
+    if (is_chromeos_ash) {
       deps += [
         "//chrome/services/ipp_parser",
         "//chrome/services/ipp_parser/public/mojom",
-      ]
-    }
-  }
-
-  if (enable_print_preview) {
-    deps += [ "//chrome/services/printing:lib" ]
-
-    if (is_win) {
-      sources += [
-        "printing_handler.cc",
-        "printing_handler.h",
       ]
     }
   }
@@ -225,5 +257,9 @@ static_library("utility") {
 
   if (is_android || enable_extensions) {
     deps += [ "//chrome/services/media_gallery_util:lib" ]
+  }
+
+  if (enable_browser_speech_service) {
+    deps += [ "//chrome/services/speech:lib" ]
   }
 }

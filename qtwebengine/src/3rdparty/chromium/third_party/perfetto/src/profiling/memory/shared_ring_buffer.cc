@@ -16,14 +16,15 @@
 
 #include "src/profiling/memory/shared_ring_buffer.h"
 
-#include <atomic>
-#include <type_traits>
-
 #include <errno.h>
-#include <inttypes.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <atomic>
+#include <cinttypes>
+#include <type_traits>
 
 #include "perfetto/base/build_config.h"
 #include "perfetto/ext/base/scoped_file.h"
@@ -49,7 +50,6 @@ constexpr auto kFDSeals = F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL;
 #endif
 
 }  // namespace
-
 
 SharedRingBuffer::SharedRingBuffer(CreateFlag, size_t size) {
   size_t size_with_meta = size + kMetaPageSize;
@@ -174,7 +174,7 @@ void SharedRingBuffer::Initialize(base::ScopedFile mem_fd) {
     munmap(region, outer_size);
     return;
   }
-  size_ = size;
+  set_size(size);
   meta_ = reinterpret_cast<MetadataPage*>(region);
   mem_ = region + kMetaPageSize;
   mem_fd_ = std::move(mem_fd);
@@ -287,12 +287,13 @@ SharedRingBuffer::Buffer SharedRingBuffer::BeginRead() {
   return Buffer(rd_ptr, size, write_avail(pos));
 }
 
-void SharedRingBuffer::EndRead(Buffer buf) {
+size_t SharedRingBuffer::EndRead(Buffer buf) {
   if (!buf)
-    return;
+    return 0;
   size_t size_with_header = base::AlignUp<kAlignment>(buf.size + kHeaderSize);
   meta_->read_pos.fetch_add(size_with_header, std::memory_order_relaxed);
   meta_->stats.num_reads_succeeded++;
+  return size_with_header;
 }
 
 bool SharedRingBuffer::IsCorrupt(const PointerPositions& pos) {
@@ -310,11 +311,13 @@ SharedRingBuffer::SharedRingBuffer(SharedRingBuffer&& other) noexcept {
   *this = std::move(other);
 }
 
-SharedRingBuffer& SharedRingBuffer::operator=(SharedRingBuffer&& other) {
+SharedRingBuffer& SharedRingBuffer::operator=(
+    SharedRingBuffer&& other) noexcept {
   mem_fd_ = std::move(other.mem_fd_);
-  std::tie(meta_, mem_, size_) = std::tie(other.meta_, other.mem_, other.size_);
-  std::tie(other.meta_, other.mem_, other.size_) =
-      std::make_tuple(nullptr, nullptr, 0);
+  std::tie(meta_, mem_, size_, size_mask_) =
+      std::tie(other.meta_, other.mem_, other.size_, other.size_mask_);
+  std::tie(other.meta_, other.mem_, other.size_, other.size_mask_) =
+      std::make_tuple(nullptr, nullptr, 0, 0);
   return *this;
 }
 

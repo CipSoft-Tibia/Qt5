@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,15 +14,9 @@ using api::system_memory::MemoryInfo;
 base::LazyInstance<scoped_refptr<MemoryInfoProvider>>::DestructorAtExit
     MemoryInfoProvider::provider_ = LAZY_INSTANCE_INITIALIZER;
 
-MemoryInfoProvider::MemoryInfoProvider() {
-}
-
-MemoryInfoProvider::~MemoryInfoProvider() {
-}
-
 void MemoryInfoProvider::InitializeForTesting(
     scoped_refptr<MemoryInfoProvider> provider) {
-  DCHECK(provider.get() != NULL);
+  DCHECK(provider.get() != nullptr);
   provider_.Get() = provider;
 }
 
@@ -35,7 +29,7 @@ bool MemoryInfoProvider::QueryInfo() {
 
 // static
 MemoryInfoProvider* MemoryInfoProvider::Get() {
-  if (provider_.Get().get() == NULL)
+  if (provider_.Get().get() == nullptr)
     provider_.Get() = new MemoryInfoProvider();
   return provider_.Get().get();
 }

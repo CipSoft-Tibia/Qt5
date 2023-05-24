@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qfont.h>
 #include <qfontmetrics.h>
 #include <qfontdatabase.h>
@@ -43,15 +18,12 @@ private slots:
     void same();
     void metrics();
     void boundingRect();
+    void boundingRect2();
     void elidedText_data();
     void elidedText();
     void veryNarrowElidedText();
     void averageCharWidth();
-
-#if QT_DEPRECATED_SINCE(5, 11) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     void bypassShaping();
-#endif
-
     void elidedMultiLength();
     void elidedMultiLengthF();
     void inFontUcs4();
@@ -60,6 +32,8 @@ private slots:
     void leadingBelowLine();
     void elidedMetrics();
     void zeroWidthMetrics();
+    void verticalMetrics_data();
+    void verticalMetrics();
 };
 
 void tst_QFontMetrics::same()
@@ -95,11 +69,10 @@ void tst_QFontMetrics::same()
 void tst_QFontMetrics::metrics()
 {
     QFont font;
-    QFontDatabase fdb;
 
     // Query the QFontDatabase for a specific font, store the
     // result in family, style and size.
-    QStringList families = fdb.families();
+    QStringList families = QFontDatabase::families();
     if (families.isEmpty())
         return;
 
@@ -107,14 +80,14 @@ void tst_QFontMetrics::metrics()
     for (f_it = families.begin(); f_it != f_end; ++f_it) {
         const QString &family = *f_it;
 
-        QStringList styles = fdb.styles(family);
+        QStringList styles = QFontDatabase::styles(family);
         QStringList::ConstIterator s_it, s_end = styles.end();
         for (s_it = styles.begin(); s_it != s_end; ++s_it) {
             const QString &style = *s_it;
 
-            if (fdb.isSmoothlyScalable(family, style)) {
+            if (QFontDatabase::isSmoothlyScalable(family, style)) {
                 // smoothly scalable font... don't need to load every pointsize
-                font = fdb.font(family, style, 12);
+                font = QFontDatabase::font(family, style, 12);
 
                 QFontMetrics fontmetrics(font);
                 QCOMPARE(fontmetrics.ascent() + fontmetrics.descent(),
@@ -123,14 +96,14 @@ void tst_QFontMetrics::metrics()
                 QCOMPARE(fontmetrics.height() + fontmetrics.leading(),
                         fontmetrics.lineSpacing());
             } else {
-                QList<int> sizes = fdb.pointSizes(family, style);
+                QList<int> sizes = QFontDatabase::pointSizes(family, style);
                 QVERIFY(!sizes.isEmpty());
                 QList<int>::ConstIterator z_it, z_end = sizes.end();
                 for (z_it = sizes.begin(); z_it != z_end; ++z_it) {
                     const int size = *z_it;
 
                     // Initialize the font, and check if it is an exact match
-                    font = fdb.font(family, style, size);
+                    font = QFontDatabase::font(family, style, size);
 
                     QFontMetrics fontmetrics(font);
                     QCOMPARE(fontmetrics.ascent() + fontmetrics.descent(),
@@ -152,6 +125,21 @@ void tst_QFontMetrics::boundingRect()
     QVERIFY(r.top() < 0);
     r = fm.boundingRect(QString("Y"));
     QVERIFY(r.top() < 0);
+}
+
+void tst_QFontMetrics::boundingRect2()
+{
+    QFont f;
+    f.setPixelSize(16);
+    QFontMetricsF fm(f);
+    QString str("AVAVAVA vvvvvvvvvv fffffffff file");
+    QRectF br = fm.boundingRect(str);
+    QRectF tbr = fm.tightBoundingRect(str);
+    qreal advance = fm.horizontalAdvance(str);
+    // Bounding rect plus bearings should be similar to advance
+    qreal bearings = fm.leftBearing(QChar('A')) + fm.rightBearing(QChar('e'));
+    QVERIFY(qAbs(br.width() + bearings - advance) < fm.averageCharWidth()/2.0);
+    QVERIFY(qAbs(tbr.width() + bearings - advance) < fm.averageCharWidth()/2.0);
 }
 
 void tst_QFontMetrics::elidedText_data()
@@ -193,22 +181,21 @@ void tst_QFontMetrics::averageCharWidth()
     QVERIFY(fmf.averageCharWidth() != 0);
 }
 
-#if QT_DEPRECATED_SINCE(5, 11) && QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
 void tst_QFontMetrics::bypassShaping()
 {
     QFont f;
-    f.setStyleStrategy(QFont::ForceIntegerMetrics);
-    QFontMetrics fm(f);
+    f.setStyleStrategy(QFont::PreferNoShaping);
+    f.setKerning(false);
+
+    QFontMetricsF fm(f);
     QString text = " A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z";
-    int textWidth = fm.width(text, -1, Qt::TextBypassShaping);
+    qreal textWidth = fm.horizontalAdvance(text);
     QVERIFY(textWidth != 0);
-    int charsWidth = 0;
+    qreal charsWidth = 0;
     for (int i = 0; i < text.size(); ++i)
         charsWidth += fm.horizontalAdvance(text[i]);
-    // This assertion is needed in Qt WebKit's WebCore::Font::offsetForPositionForSimpleText
     QCOMPARE(textWidth, charsWidth);
 }
-#endif
 
 template<class FontMetrics, typename PrimitiveType> void elidedMultiLength_helper()
 {
@@ -380,6 +367,25 @@ void tst_QFontMetrics::zeroWidthMetrics()
     QCOMPARE(fm.horizontalAdvance(string3), fm.horizontalAdvance(string4));
     QCOMPARE(fm.boundingRect(string1).width(), fm.boundingRect(string2).width());
     QCOMPARE(fm.boundingRect(string3).width(), fm.boundingRect(string4).width());
+    QCOMPARE(fm.tightBoundingRect(string1).width(), fm.tightBoundingRect(string2).width());
+    QCOMPARE(fm.tightBoundingRect(string3).width(), fm.tightBoundingRect(string4).width());
+}
+
+void tst_QFontMetrics::verticalMetrics_data()
+{
+    QTest::addColumn<QFont>("font");
+    QStringList families = QFontDatabase::families();
+    for (const QString &family : families) {
+        QFont font(family);
+        QTest::newRow(family.toUtf8()) << font;
+    }
+}
+
+void tst_QFontMetrics::verticalMetrics()
+{
+    QFETCH(QFont, font);
+    QFontMetrics fm(font);
+    QVERIFY(fm.ascent() != 0 || fm.descent() != 0);
 }
 
 QTEST_MAIN(tst_QFontMetrics)

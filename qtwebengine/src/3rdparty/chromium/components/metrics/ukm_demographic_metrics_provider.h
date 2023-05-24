@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,7 @@ namespace metrics {
 // Interface of the provider of the synced user’s noised birth year and gender
 // to the UKM metrics server. For more details, see the documentation of
 // DemographicMetricsProvider at
-// components/metrics/demographic_metrics_provider.h.
+// components/metrics/demographics/demographic_metrics_provider.h.
 class UkmDemographicMetricsProvider {
  public:
   virtual ~UkmDemographicMetricsProvider() = default;

@@ -1,18 +1,13 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 # Note that this build file assumes rlz_use_chrome_net which is a condition in
 # the GYP file, but is always true for Chrome builds.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//rlz/buildflags/buildflags.gni")
 import("//testing/test.gni")
-
-# Reset sources_assignment_filter for the BUILD.gn file to prevent
-# regression during the migration of Chromium away from the feature.
-# See docs/no_sources_assignment_filter.md for more information.
-# TODO(crbug.com/1018739): remove this when migration is done.
-set_sources_assignment_filter([])
 
 config("rlz_lib_config") {
   defines = [ "RLZ_NETWORK_IMPLEMENTATION_CHROME_NET" ]
@@ -36,7 +31,10 @@ source_set("rlz_utils") {
 
   public_deps = [ "//base" ]
 
-  deps = [ "//third_party/zlib" ]
+  deps = [
+    "//build:chromeos_buildflags",
+    "//third_party/zlib",
+  ]
 }
 
 if (enable_rlz_support) {
@@ -78,16 +76,18 @@ if (enable_rlz_support) {
     deps = [
       ":rlz_utils",
       "//base",
+      "//build:chromeos_buildflags",
     ]
 
-    if (is_chromeos) {
+    if (is_chromeos_ash) {
       sources += [
         "chromeos/lib/rlz_value_store_chromeos.cc",
         "chromeos/lib/rlz_value_store_chromeos.h",
       ]
       deps += [
-        "//chromeos/dbus",
-        "//chromeos/system",
+        "//chromeos/ash/components/dbus",
+        "//chromeos/ash/components/dbus/debug_daemon",
+        "//chromeos/ash/components/system",
       ]
     }
 
@@ -125,9 +125,6 @@ if (enable_rlz_support) {
       "lib/rlz_lib.h",
     ]
 
-    # TODO(jschuh): crbug.com/167187 fix size_t to int truncations.
-    configs += [ "//build/config/compiler:no_size_t_to_int_warning" ]
-
     public_deps = [
       ":rlz_lib_no_network",
       "//base",
@@ -136,16 +133,17 @@ if (enable_rlz_support) {
     deps = [
       ":rlz_utils",
       "//base/third_party/dynamic_annotations",
+      "//build:chromeos_buildflags",
       "//net",
       "//services/network/public/cpp:cpp",
       "//services/network/public/mojom",
       "//url",
     ]
 
-    if (is_chromeos) {
+    if (is_chromeos_ash) {
       deps += [
-        "//chromeos/dbus",
-        "//chromeos/system",
+        "//chromeos/ash/components/dbus",
+        "//chromeos/ash/components/system",
       ]
     }
 
@@ -163,9 +161,12 @@ if (enable_rlz_support) {
       "//base/test:test_support",
       "//testing/gtest",
     ]
-    deps = [ ":rlz_lib" ]
-    if (is_chromeos) {
-      public_deps += [ "//chromeos/system" ]
+    deps = [
+      ":rlz_lib",
+      "//build:chromeos_buildflags",
+    ]
+    if (is_chromeos_ash) {
+      public_deps += [ "//chromeos/ash/components/system" ]
     }
   }
 
@@ -185,14 +186,12 @@ if (enable_rlz_support) {
       sources += [ "win/lib/machine_deal_test.cc" ]
     }
 
-    # TODO(jschuh): crbug.com/167187 fix size_t to int truncations.
-    configs += [ "//build/config/compiler:no_size_t_to_int_warning" ]
-
     deps = [
       ":rlz_lib",
       ":rlz_utils",
       ":test_support",
       "//base",
+      "//build:chromeos_buildflags",
       "//mojo/core/embedder",
       "//net:test_support",
       "//services/network:test_support",
@@ -200,10 +199,11 @@ if (enable_rlz_support) {
       "//testing/gtest",
       "//third_party/zlib",
     ]
-    if (is_chromeos) {
+    if (is_chromeos_ash) {
       deps += [
-        "//chromeos/dbus:test_support",
-        "//chromeos/system",
+        "//chromeos/ash/components/dbus:test_support",
+        "//chromeos/ash/components/dbus/debug_daemon",
+        "//chromeos/ash/components/system",
       ]
     }
   }

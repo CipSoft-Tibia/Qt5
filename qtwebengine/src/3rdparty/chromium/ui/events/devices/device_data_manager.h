@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "base/containers/flat_map.h"
-#include "base/macros.h"
 #include "base/observer_list.h"
 #include "ui/events/devices/device_hotplug_event_observer.h"
 #include "ui/events/devices/events_devices_export.h"
@@ -29,6 +28,10 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
     : public DeviceHotplugEventObserver {
  public:
   static const int kMaxDeviceNum = 128;
+
+  DeviceDataManager(const DeviceDataManager&) = delete;
+  DeviceDataManager& operator=(const DeviceDataManager&) = delete;
+
   ~DeviceDataManager() override;
 
   static void CreateInstance();
@@ -53,6 +56,7 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
   const std::vector<TouchscreenDevice>& GetTouchscreenDevices() const;
   const std::vector<InputDevice>& GetKeyboardDevices() const;
   const std::vector<InputDevice>& GetMouseDevices() const;
+  const std::vector<InputDevice>& GetPointingStickDevices() const;
   const std::vector<InputDevice>& GetTouchpadDevices() const;
 
   // Returns all the uncategorized input devices, which means input devices
@@ -68,6 +72,11 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
   void AddObserver(InputDeviceEventObserver* observer);
   void RemoveObserver(InputDeviceEventObserver* observer);
 
+  // Resets all device lists and |device_lists_complete_|. This method exists
+  // because the DeviceDataManager instance is created early in test suite setup
+  // and is hard to replace for tests that require a fresh one.
+  void ResetDeviceListsForTest();
+
  protected:
   DeviceDataManager();
 
@@ -77,6 +86,8 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
   void OnKeyboardDevicesUpdated(
       const std::vector<InputDevice>& devices) override;
   void OnMouseDevicesUpdated(
+      const std::vector<InputDevice>& devices) override;
+  void OnPointingStickDevicesUpdated(
       const std::vector<InputDevice>& devices) override;
   void OnTouchpadDevicesUpdated(
       const std::vector<InputDevice>& devices) override;
@@ -97,6 +108,7 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
   void NotifyObserversTouchscreenDeviceConfigurationChanged();
   void NotifyObserversKeyboardDeviceConfigurationChanged();
   void NotifyObserversMouseDeviceConfigurationChanged();
+  void NotifyObserversPointingStickDeviceConfigurationChanged();
   void NotifyObserversTouchpadDeviceConfigurationChanged();
   void NotifyObserversUncategorizedDeviceConfigurationChanged();
   void NotifyObserversDeviceListsComplete();
@@ -107,6 +119,7 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
   std::vector<TouchscreenDevice> touchscreen_devices_;
   std::vector<InputDevice> keyboard_devices_;
   std::vector<InputDevice> mouse_devices_;
+  std::vector<InputDevice> pointing_stick_devices_;
   std::vector<InputDevice> touchpad_devices_;
   std::vector<InputDevice> uncategorized_devices_;
   bool device_lists_complete_ = false;
@@ -120,8 +133,6 @@ class EVENTS_DEVICES_EXPORT DeviceDataManager
 
   // Contains touchscreen device info for each device mapped by device ID.
   base::flat_map<int, TouchDeviceTransform> touch_map_;
-
-  DISALLOW_COPY_AND_ASSIGN(DeviceDataManager);
 };
 
 }  // namespace ui

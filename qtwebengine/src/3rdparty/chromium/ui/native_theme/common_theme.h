@@ -1,42 +1,28 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_NATIVE_THEME_COMMON_THEME_H_
 #define UI_NATIVE_THEME_COMMON_THEME_H_
 
-#include <memory>
 
+#include "ui/color/color_id.h"
 #include "ui/native_theme/native_theme.h"
-
+#include "ui/native_theme/native_theme_export.h"
 
 namespace ui {
 
+class ColorProvider;
+
 // Drawing code that is common for all platforms.
-
-// Takes a SecurityChipColorId and |fg| and |bg| colors so that the security
-// chip color implementation can be shared outside of NativeTheme.
-SkColor NATIVE_THEME_EXPORT
-GetSecurityChipColor(NativeTheme::SecurityChipColorId chip_color_id,
-                     SkColor fg,
-                     SkColor bg,
-                     bool high_contrast = false);
-
-// Returns the color to use on Aura for |color_id|.  For a few colors that are
-// theme-specific, |base_theme| must be non-null; consult the code to see which
-// color IDs fall into this category.
-SkColor NATIVE_THEME_EXPORT GetAuraColor(
-    NativeTheme::ColorId color_id,
-    const NativeTheme* base_theme,
-    NativeTheme::ColorScheme color_scheme = NativeTheme::ColorScheme::kDefault);
 
 void NATIVE_THEME_EXPORT CommonThemePaintMenuItemBackground(
     const NativeTheme* theme,
+    const ColorProvider* color_provider,
     cc::PaintCanvas* canvas,
     NativeTheme::State state,
     const gfx::Rect& rect,
-    const NativeTheme::MenuItemExtraParams& menu_item,
-    NativeTheme::ColorScheme color_scheme);
+    const NativeTheme::MenuItemExtraParams& menu_item);
 
 }  // namespace ui
 

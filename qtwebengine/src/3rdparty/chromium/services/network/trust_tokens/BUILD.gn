@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,7 +10,10 @@ source_set("trust_tokens") {
   visibility = [
     ":*",
     "//services/network:network_service",
+    "//services/network:test_support",
     "//services/network:tests",
+    "//services/network/attribution",
+    "//services/network/attribution:tests",
   ]
 
   defines = [ "IS_NETWORK_SERVICE_IMPL" ]
@@ -20,23 +23,19 @@ source_set("trust_tokens") {
     "boringssl_trust_token_issuance_cryptographer.h",
     "boringssl_trust_token_redemption_cryptographer.cc",
     "boringssl_trust_token_redemption_cryptographer.h",
-    "ed25519_key_pair_generator.cc",
-    "ed25519_key_pair_generator.h",
-    "ed25519_trust_token_request_signer.cc",
-    "ed25519_trust_token_request_signer.h",
+    "boringssl_trust_token_state.cc",
+    "boringssl_trust_token_state.h",
     "expiry_inspecting_record_expiry_delegate.cc",
     "expiry_inspecting_record_expiry_delegate.h",
-    "has_trust_tokens_answerer.cc",
-    "has_trust_tokens_answerer.h",
     "in_memory_trust_token_persister.cc",
     "in_memory_trust_token_persister.h",
+    "operating_system_matching.cc",
+    "operating_system_matching.h",
     "operation_timing_request_helper_wrapper.cc",
     "operation_timing_request_helper_wrapper.h",
     "pending_trust_token_store.cc",
     "pending_trust_token_store.h",
     "scoped_boringssl_bytes.h",
-    "signed_redemption_record_serialization.cc",
-    "signed_redemption_record_serialization.h",
     "sqlite_trust_token_persister.cc",
     "sqlite_trust_token_persister.h",
     "suitable_trust_token_origin.cc",
@@ -45,8 +44,6 @@ source_set("trust_tokens") {
     "trust_token_client_data_canonicalization.h",
     "trust_token_database_owner.cc",
     "trust_token_database_owner.h",
-    "trust_token_http_headers.cc",
-    "trust_token_http_headers.h",
     "trust_token_key_commitment_controller.cc",
     "trust_token_key_commitment_controller.h",
     "trust_token_key_commitment_getter.h",
@@ -58,10 +55,11 @@ source_set("trust_tokens") {
     "trust_token_key_filtering.h",
     "trust_token_operation_metrics_recorder.cc",
     "trust_token_operation_metrics_recorder.h",
+    "trust_token_parameterization.cc",
     "trust_token_parameterization.h",
     "trust_token_persister.h",
-    "trust_token_request_canonicalizer.cc",
-    "trust_token_request_canonicalizer.h",
+    "trust_token_query_answerer.cc",
+    "trust_token_query_answerer.h",
     "trust_token_request_helper.h",
     "trust_token_request_helper_factory.cc",
     "trust_token_request_helper_factory.h",
@@ -80,7 +78,6 @@ source_set("trust_tokens") {
   deps = [
     ":storage_proto",
     "//base",
-    "//base/util/values:values_util",
     "//components/cbor",
     "//components/sqlite_proto",
     "//services/network/public/cpp",
@@ -98,14 +95,8 @@ source_set("test_support") {
   defines = [ "IS_NETWORK_SERVICE_IMPL" ]
 
   sources = [
-    "test/signed_request_verification_util.cc",
-    "test/signed_request_verification_util.h",
-    "test/test_server_handler_registration.cc",
-    "test/test_server_handler_registration.h",
-    "test/trust_token_request_handler.cc",
-    "test/trust_token_request_handler.h",
-    "test/trust_token_test_util.cc",
-    "test/trust_token_test_util.h",
+    "boringssl_trust_token_test_utils.cc",
+    "boringssl_trust_token_test_utils.h",
   ]
 
   deps = [
@@ -116,6 +107,7 @@ source_set("test_support") {
     "//net",
     "//net:test_support",
     "//net/traffic_annotation:test_support",
+    "//services/network/public/cpp",
     "//services/network/public/mojom",
     "//testing/gtest",
     "//url",
@@ -129,12 +121,8 @@ source_set("tests") {
 
   sources = [
     "boringssl_trust_token_issuance_cryptographer_unittest.cc",
-    "ed25519_key_pair_generator_unittest.cc",
-    "ed25519_trust_token_request_signer_unittest.cc",
     "expiry_inspecting_record_expiry_delegate_unittest.cc",
-    "has_trust_tokens_answerer_unittest.cc",
     "pending_trust_token_store_unittest.cc",
-    "signed_redemption_record_serialization_unittest.cc",
     "sqlite_trust_token_persister_unittest.cc",
     "suitable_trust_token_origin_unittest.cc",
     "trust_token_client_data_canonicalization_unittest.cc",
@@ -146,7 +134,7 @@ source_set("tests") {
     "trust_token_key_filtering_unittest.cc",
     "trust_token_operation_metrics_recorder_unittest.cc",
     "trust_token_persister_unittest.cc",
-    "trust_token_request_canonicalizer_unittest.cc",
+    "trust_token_query_answerer_unittest.cc",
     "trust_token_request_helper_factory_unittest.cc",
     "trust_token_request_issuance_helper_unittest.cc",
     "trust_token_request_redemption_helper_unittest.cc",

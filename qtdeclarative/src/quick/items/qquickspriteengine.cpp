@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickspriteengine_p.h"
 #include "qquicksprite_p.h"
@@ -45,8 +9,6 @@
 #include <QPainter>
 #include <QRandomGenerator>
 #include <QSet>
-#include <QtGui/qopengl.h>
-#include <QOpenGLFunctions>
 
 QT_BEGIN_NAMESPACE
 
@@ -305,7 +267,7 @@ int QQuickSpriteEngine::spriteCount() const //TODO: Actually image state count, 
 
 void QQuickStochasticEngine::setGoal(int state, int sprite, bool jump)
 {
-    if (sprite >= m_things.count() || state >= m_states.count()
+    if (sprite >= m_things.size() || state >= m_states.size()
             || sprite < 0 || state < 0)
         return;
     if (!jump){
@@ -354,12 +316,13 @@ void QQuickSpriteEngine::startAssemblingImage()
         return;
     m_loaded = false;
     m_errorsPrinted = false;
+    m_sprites.clear();
 
     //This could also trigger the start of the image loading in Sprites, however that currently happens in Sprite::setSource
 
     QList<QQuickStochasticState*> removals;
 
-    for (QQuickStochasticState* s : qAsConst(m_states)) {
+    for (QQuickStochasticState* s : std::as_const(m_states)) {
         QQuickSprite* sprite = qobject_cast<QQuickSprite*>(s);
         if (sprite) {
             m_sprites << sprite;
@@ -368,7 +331,7 @@ void QQuickSpriteEngine::startAssemblingImage()
             qDebug() << "Error: Non-sprite in QQuickSpriteEngine";
         }
     }
-    for (QQuickStochasticState* s : qAsConst(removals))
+    for (QQuickStochasticState* s : std::as_const(removals))
         m_states.removeAll(s);
     m_startedImageAssembly = true;
 }
@@ -377,7 +340,7 @@ QImage QQuickSpriteEngine::assembledImage(int maxSize)
 {
     QQuickPixmap::Status stat = status();
     if (!m_errorsPrinted && stat == QQuickPixmap::Error) {
-        for (QQuickSprite* s : qAsConst(m_sprites))
+        for (QQuickSprite* s : std::as_const(m_sprites))
             if (s->m_pix.isError())
                 qmlWarning(s) << s->m_pix.error();
         m_errorsPrinted = true;
@@ -392,7 +355,7 @@ QImage QQuickSpriteEngine::assembledImage(int maxSize)
     m_imageStateCount = 0;
     qreal pixelRatio = 1.0;
 
-    for (QQuickSprite* state : qAsConst(m_sprites)) {
+    for (QQuickSprite* state : std::as_const(m_sprites)) {
         if (state->frames() > m_maxFrames)
             m_maxFrames = state->frames();
 
@@ -452,16 +415,16 @@ QImage QQuickSpriteEngine::assembledImage(int maxSize)
     image.fill(0);
     QPainter p(&image);
     int y = 0;
-    for (QQuickSprite* state : qAsConst(m_sprites)) {
+    for (QQuickSprite* state : std::as_const(m_sprites)) {
         QImage img(state->m_pix.image());
         const int frameWidth = state->m_frameWidth;
         const int frameHeight = state->m_frameHeight;
-        const int imgHeight = img.height() / img.devicePixelRatioF();
-        const int imgWidth = img.width() / img.devicePixelRatioF();
+        const int imgHeight = img.height() / img.devicePixelRatio();
+        const int imgWidth = img.width() / img.devicePixelRatio();
         if (imgHeight == frameHeight && imgWidth <  maxSize){ //Simple case
             p.drawImage(QRect(0, y, state->m_frames * frameWidth, frameHeight),
                         img,
-                        QRect(state->m_frameX * img.devicePixelRatioF(), 0, state->m_frames * frameWidth * img.devicePixelRatioF(), frameHeight * img.devicePixelRatioF()));
+                        QRect(state->m_frameX * img.devicePixelRatio(), 0, state->m_frames * frameWidth * img.devicePixelRatio(), frameHeight * img.devicePixelRatio()));
             state->m_rowStartX = 0;
             state->m_rowY = y;
             y += frameHeight;
@@ -478,7 +441,7 @@ QImage QQuickSpriteEngine::assembledImage(int maxSize)
                     framesLeft -= copied/frameWidth;
                     p.drawImage(QRect(x, y, copied, frameHeight),
                                 img,
-                                QRect(curX * img.devicePixelRatioF(), curY * img.devicePixelRatioF(), copied * img.devicePixelRatioF(), frameHeight * img.devicePixelRatioF()));
+                                QRect(curX * img.devicePixelRatio(), curY * img.devicePixelRatio(), copied * img.devicePixelRatio(), frameHeight * img.devicePixelRatio()));
                     y += frameHeight;
                     curX += copied;
                     x = 0;
@@ -491,7 +454,7 @@ QImage QQuickSpriteEngine::assembledImage(int maxSize)
                     framesLeft -= copied/frameWidth;
                     p.drawImage(QRect(x, y, copied, frameHeight),
                                 img,
-                                QRect(curX * img.devicePixelRatioF(), curY * img.devicePixelRatioF(), copied * img.devicePixelRatioF(), frameHeight * img.devicePixelRatioF()));
+                                QRect(curX * img.devicePixelRatio(), curY * img.devicePixelRatio(), copied * img.devicePixelRatio(), frameHeight * img.devicePixelRatio()));
                     curY += frameHeight;
                     x += copied;
                     curX = 0;
@@ -526,7 +489,7 @@ void QQuickStochasticEngine::setCount(int c)
 
 void QQuickStochasticEngine::start(int index, int state)
 {
-    if (index >= m_things.count())
+    if (index >= m_things.size())
         return;
     m_things[index] = state;
     m_duration[index] = m_states.at(state)->variedDuration();
@@ -542,10 +505,10 @@ void QQuickStochasticEngine::start(int index, int state)
 
 void QQuickStochasticEngine::stop(int index)
 {
-    if (index >= m_things.count())
+    if (index >= m_things.size())
         return;
     //Will never change until start is called again with a new state (or manually advanced) - this is not a 'pause'
-    for (int i=0; i<m_stateUpdates.count(); i++)
+    for (int i=0; i<m_stateUpdates.size(); i++)
         m_stateUpdates[i].second.removeAll(index);
 }
 
@@ -558,7 +521,7 @@ void QQuickStochasticEngine::restart(int index)
     if (randomStart)
         m_startTimes[index] -= QRandomGenerator::global()->bounded(m_duration.at(index));
     int time = m_duration.at(index) + m_startTimes.at(index);
-    for (int i=0; i<m_stateUpdates.count(); i++)
+    for (int i=0; i<m_stateUpdates.size(); i++)
         m_stateUpdates[i].second.removeAll(index);
     if (m_duration.at(index) >= 0)
         addToUpdateList(time, index);
@@ -584,7 +547,7 @@ void QQuickSpriteEngine::restart(int index) //Reimplemented to recognize and han
                 time += spriteDuration(index);
         }
 
-        for (int i=0; i<m_stateUpdates.count(); i++)
+        for (int i=0; i<m_stateUpdates.size(); i++)
             m_stateUpdates[i].second.removeAll(index);
         addToUpdateList(time, index);
     }
@@ -592,7 +555,7 @@ void QQuickSpriteEngine::restart(int index) //Reimplemented to recognize and han
 
 void QQuickStochasticEngine::advance(int idx)
 {
-    if (idx >= m_things.count())
+    if (idx >= m_things.size())
         return;//TODO: Proper fix(because this has happened and I just ignored it)
     int nextIdx = nextState(m_things.at(idx), idx);
     m_things[idx] = nextIdx;
@@ -609,7 +572,7 @@ void QQuickSpriteEngine::advance(int idx) //Reimplemented to recognize and handl
         return;
     }
 
-    if (idx >= m_things.count())
+    if (idx >= m_things.size())
         return;//TODO: Proper fix(because this has happened and I just ignored it)
     if (m_duration.at(idx) == 0) {
         if (m_sprites.at(m_things.at(idx))->frameSync()) {
@@ -652,7 +615,7 @@ int QQuickStochasticEngine::nextState(int curState, int curThing)
                 iter!=m_states.at(curState)->m_to.constEnd(); ++iter){
             if (r < (*iter).toReal()){
                 bool superBreak = false;
-                for (int i=0; i<m_states.count(); i++){
+                for (int i=0; i<m_states.size(); i++){
                     if (m_states.at(i)->name() == iter.key()){
                         nextIdx = i;
                         superBreak = true;
@@ -678,7 +641,7 @@ uint QQuickStochasticEngine::updateSprites(uint time)//### would returning a lis
     m_timeOffset = time;
     m_addAdvance = false;
     int i = 0;
-    for (; i < m_stateUpdates.count() && time >= m_stateUpdates.at(i).first; ++i) {
+    for (; i < m_stateUpdates.size() && time >= m_stateUpdates.at(i).first; ++i) {
         const auto copy = m_stateUpdates.at(i).second;
         for (int idx : copy)
             advance(idx);
@@ -703,16 +666,16 @@ int QQuickStochasticEngine::goalSeek(int curIdx, int spriteIdx, int dist)
         return -1;
     //TODO: caching instead of excessively redoing iterative deepening (which was chosen arbitrarily anyways)
     // Paraphrased - implement in an *efficient* manner
-    for (int i=0; i<m_states.count(); i++)
+    for (int i=0; i<m_states.size(); i++)
         if (m_states.at(curIdx)->name() == goalName)
             return curIdx;
     if (dist < 0)
-        dist = m_states.count();
+        dist = m_states.size();
     QQuickStochasticState* curState = m_states.at(curIdx);
     for (QVariantMap::const_iterator iter = curState->m_to.constBegin();
         iter!=curState->m_to.constEnd(); ++iter){
         if (iter.key() == goalName)
-            for (int i=0; i<m_states.count(); i++)
+            for (int i=0; i<m_states.size(); i++)
                 if (m_states.at(i)->name() == goalName)
                     return i;
     }
@@ -721,7 +684,7 @@ int QQuickStochasticEngine::goalSeek(int curIdx, int spriteIdx, int dist)
         for (QVariantMap::const_iterator iter = curState->m_to.constBegin();
             iter!=curState->m_to.constEnd(); ++iter){
             int option = -1;
-            for (int j=0; j<m_states.count(); j++)//One place that could be a lot more efficient...
+            for (int j=0; j<m_states.size(); j++)//One place that could be a lot more efficient...
                 if (m_states.at(j)->name() == iter.key())
                     if (goalSeek(j, spriteIdx, i) != -1)
                         option = j;
@@ -729,7 +692,7 @@ int QQuickStochasticEngine::goalSeek(int curIdx, int spriteIdx, int dist)
                 options << option;
         }
         if (!options.isEmpty()){
-            if (options.count()==1)
+            if (options.size()==1)
                 return *(options.begin());
             int option = -1;
             qreal r = QRandomGenerator::global()->generateDouble();
@@ -741,7 +704,7 @@ int QQuickStochasticEngine::goalSeek(int curIdx, int spriteIdx, int dist)
             for (QVariantMap::const_iterator iter = curState->m_to.constBegin();
                 iter!=curState->m_to.constEnd(); ++iter){
                 bool superContinue = true;
-                for (int j=0; j<m_states.count(); j++)
+                for (int j=0; j<m_states.size(); j++)
                     if (m_states.at(j)->name() == iter.key())
                         if (options.contains(j))
                             superContinue = false;
@@ -749,7 +712,7 @@ int QQuickStochasticEngine::goalSeek(int curIdx, int spriteIdx, int dist)
                     continue;
                 if (r < (*iter).toReal()){
                     bool superBreak = false;
-                    for (int j=0; j<m_states.count(); j++){
+                    for (int j=0; j<m_states.size(); j++){
                         if (m_states.at(j)->name() == iter.key()){
                             option = j;
                             superBreak = true;
@@ -769,7 +732,7 @@ int QQuickStochasticEngine::goalSeek(int curIdx, int spriteIdx, int dist)
 
 void QQuickStochasticEngine::addToUpdateList(uint t, int idx)
 {
-    for (int i=0; i<m_stateUpdates.count(); i++){
+    for (int i=0; i<m_stateUpdates.size(); i++){
         if (m_stateUpdates.at(i).first == t){
             m_stateUpdates[i].second << idx;
             return;

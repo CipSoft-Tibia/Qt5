@@ -5,6 +5,7 @@
 #include "src/compiler/constant-folding-reducer.h"
 
 #include "src/compiler/js-graph.h"
+#include "src/compiler/js-heap-broker.h"
 #include "src/objects/objects-inl.h"
 
 namespace v8 {
@@ -12,7 +13,7 @@ namespace internal {
 namespace compiler {
 
 namespace {
-Node* TryGetConstant(JSGraph* jsgraph, Node* node) {
+Node* TryGetConstant(JSGraph* jsgraph, Node* node, JSHeapBroker* broker) {
   Type type = NodeProperties::GetType(node);
   Node* result;
   if (type.IsNone()) {
@@ -28,7 +29,7 @@ Node* TryGetConstant(JSGraph* jsgraph, Node* node) {
   } else if (type.Is(Type::Hole())) {
     result = jsgraph->TheHoleConstant();
   } else if (type.IsHeapConstant()) {
-    result = jsgraph->Constant(type.AsHeapConstant()->Ref());
+    result = jsgraph->Constant(type.AsHeapConstant()->Ref(), broker);
   } else if (type.Is(Type::PlainNumber()) && type.Min() == type.Max()) {
     result = jsgraph->Constant(type.Min());
   } else {
@@ -41,7 +42,7 @@ Node* TryGetConstant(JSGraph* jsgraph, Node* node) {
 }
 
 bool IsAlreadyBeingFolded(Node* node) {
-  DCHECK(FLAG_assert_types);
+  DCHECK(v8_flags.assert_types);
   if (node->opcode() == IrOpcode::kFoldConstant) return true;
   for (Edge edge : node->use_edges()) {
     if (NodeProperties::IsValueEdge(edge) &&
@@ -63,14 +64,14 @@ ConstantFoldingReducer::ConstantFoldingReducer(Editor* editor, JSGraph* jsgraph,
 ConstantFoldingReducer::~ConstantFoldingReducer() = default;
 
 Reduction ConstantFoldingReducer::Reduce(Node* node) {
-  DisallowHeapAccess no_heap_access;
   if (!NodeProperties::IsConstant(node) && NodeProperties::IsTyped(node) &&
       node->op()->HasProperty(Operator::kEliminatable) &&
-      node->opcode() != IrOpcode::kFinishRegion) {
-    Node* constant = TryGetConstant(jsgraph(), node);
+      node->opcode() != IrOpcode::kFinishRegion &&
+      node->opcode() != IrOpcode::kTypeGuard) {
+    Node* constant = TryGetConstant(jsgraph(), node, broker());
     if (constant != nullptr) {
       DCHECK(NodeProperties::IsTyped(constant));
-      if (!FLAG_assert_types) {
+      if (!v8_flags.assert_types) {
         DCHECK_EQ(node->op()->ControlOutputCount(), 0);
         ReplaceWithValue(node, constant);
         return Replace(constant);

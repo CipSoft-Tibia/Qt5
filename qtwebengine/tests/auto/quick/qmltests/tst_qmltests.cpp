@@ -1,45 +1,42 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <httpserver.h>
 
-#include <QtCore/QScopedPointer>
-#include <QTemporaryDir>
+#if QT_CONFIG(ssl)
+#include <httpsserver.h>
+#endif
+
+#include <QtCore/qscopedpointer.h>
+#include <QtCore/qtemporarydir.h>
+#include <QtGui/private/qinputmethod_p.h>
+#include <QtQml/qqmlengine.h>
+#include <QtQuick/qquickitem.h>
+#include <QtQuick/qquickwindow.h>
 #include <QtQuickTest/quicktest.h>
-#include <QtWebEngine/QQuickWebEngineProfile>
-#include <QQmlEngine>
-#include "qt_webengine_quicktest.h"
+#include <QtTest/qtest.h>
+#include <QtWebEngineQuick/qquickwebengineprofile.h>
+#include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#include <qt_webengine_quicktest.h>
 
 #if defined(Q_OS_LINUX) && defined(QT_DEBUG)
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 #endif
+
+class Setup : public QObject
+{
+    Q_OBJECT
+public:
+    Setup() { }
+
+public slots:
+    void qmlEngineAvailable(QQmlEngine *engine)
+    {
+        engine->addImportPath(QDir(QT_TESTCASE_SOURCEDIR).canonicalPath() + "/mock-delegates");
+    }
+};
 
 #if defined(Q_OS_LINUX) && defined(QT_DEBUG)
 static bool debuggerPresent()
@@ -108,8 +105,123 @@ public:
         return tempDir.isValid() ? tempDir.path() : QString();
     }
 
+    Q_INVOKABLE QUrl pathUrl(const QString &filename = QString())
+    {
+        Q_ASSERT(tempDir.isValid());
+        return filename.isEmpty() ? QUrl::fromLocalFile(tempDir.path())
+                                  : QUrl::fromLocalFile(tempDir.filePath(filename));
+    }
+
+    Q_INVOKABLE void removeRecursive(const QString dirname)
+    {
+        QDir dir(dirname);
+        QFileInfoList entries(dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot));
+        for (int i = 0; i < entries.size(); ++i) {
+            if (entries[i].isDir())
+                removeRecursive(entries[i].filePath());
+            else
+                dir.remove(entries[i].fileName());
+        }
+        QDir().rmdir(dirname);
+    }
+
+    Q_INVOKABLE void createDirectory(const QString dirname) { QDir(tempDir.path()).mkdir(dirname); }
+
 private:
     QTemporaryDir tempDir;
+};
+
+class TestInputContext : public QPlatformInputContext {
+    Q_OBJECT
+
+public:
+    TestInputContext() = default;
+    ~TestInputContext() { release(); }
+
+    Q_INVOKABLE void create()
+    {
+        QInputMethodPrivate *inputMethodPrivate = QInputMethodPrivate::get(qApp->inputMethod());
+        inputMethodPrivate->testContext = this;
+    }
+
+    Q_INVOKABLE void release()
+    {
+        QInputMethodPrivate *inputMethodPrivate = QInputMethodPrivate::get(qApp->inputMethod());
+        inputMethodPrivate->testContext = nullptr;
+    }
+
+    void showInputPanel() override { m_visible = true; }
+    void hideInputPanel() override { m_visible = false; }
+    bool isInputPanelVisible() const override { return m_visible; }
+
+private:
+    bool m_visible = false;
+};
+
+QT_BEGIN_NAMESPACE
+namespace QTest {
+    int Q_TESTLIB_EXPORT defaultMouseDelay();
+}
+QT_END_NAMESPACE
+
+class TestInputEvent : public QObject {
+    Q_OBJECT
+
+public:
+    TestInputEvent() = default;
+
+    Q_INVOKABLE bool mouseMultiClick(QObject *item, qreal x, qreal y, int clickCount)
+    {
+        QTEST_ASSERT(item);
+
+        QWindow *view = eventWindow(item);
+        if (!view)
+            return false;
+
+        for (int i = 0; i < clickCount; ++i) {
+            mouseEvent(QMouseEvent::MouseButtonPress, view, item, QPointF(x, y));
+            mouseEvent(QMouseEvent::MouseButtonRelease, view, item, QPointF(x, y));
+        }
+        QTest::lastMouseTimestamp += QTest::mouseDoubleClickInterval;
+
+        return true;
+    }
+
+private:
+    QWindow *eventWindow(QObject *item = nullptr)
+    {
+        QWindow *window = qobject_cast<QWindow *>(item);
+        if (window)
+            return window;
+
+        QQuickItem *quickItem = qobject_cast<QQuickItem *>(item);
+        if (quickItem)
+            return quickItem->window();
+
+        QQuickItem *testParentItem = qobject_cast<QQuickItem *>(parent());
+        if (testParentItem)
+            return testParentItem->window();
+
+        return nullptr;
+    }
+
+    void mouseEvent(QEvent::Type type, QWindow *window, QObject *item, const QPointF &_pos)
+    {
+        QTest::qWait(QTest::defaultMouseDelay());
+        QTest::lastMouseTimestamp += QTest::defaultMouseDelay();
+
+        QPoint pos;
+        QQuickItem *sgitem = qobject_cast<QQuickItem *>(item);
+        if (sgitem)
+            pos = sgitem->mapToScene(_pos).toPoint();
+
+        QMouseEvent me(type, pos, window->mapFromGlobal(pos), Qt::LeftButton, Qt::LeftButton, {});
+        me.setTimestamp(++QTest::lastMouseTimestamp);
+
+        QSpontaneKeyEvent::setSpontaneous(&me);
+        if (!qApp->notify(window, &me))
+            qWarning("Mouse click event not accepted by receiving window");
+    }
 };
 
 int main(int argc, char **argv)
@@ -123,35 +235,41 @@ int main(int argc, char **argv)
 
     sigaction(SIGSEGV, &sigAction, 0);
 #endif
-
-    QScopedPointer<Application> app;
-
+    QtWebEngineQuick::initialize();
     // Force to use English language for testing due to error message checks
     QLocale::setDefault(QLocale("en"));
 
-    static QByteArrayList params = {QByteArrayLiteral("--use-fake-device-for-media-stream")};
-    QVector<const char *> w_argv(argc); \
-    for (int i = 0; i < argc; ++i) \
-        w_argv[i] = argv[i]; \
-    for (int i = 0; i < params.size(); ++i) \
-        w_argv.append(params[i].data()); \
-    int w_argc = w_argv.size(); \
+    static QByteArrayList params = {QByteArrayLiteral("--webEngineArgs"),QByteArrayLiteral("--use-fake-device-for-media-stream")};
+    QList<const char *> w_argv(argc);
+    for (int i = 0; i < argc; ++i) w_argv[i] = argv[i];
+    for (int i = 0; i < params.size(); ++i) w_argv.append(params[i].data());
+    int w_argc = w_argv.size();
+    Application app(w_argc, const_cast<char **>(w_argv.data()));
 
-    if (!QCoreApplication::instance()) {
-        app.reset(new Application(w_argc, const_cast<char **>(w_argv.data())));
-    }
-    QtWebEngine::initialize();
     QQuickWebEngineProfile::defaultProfile()->setOffTheRecord(true);
     qmlRegisterType<TempDir>("Test.util", 1, 0, "TempDir");
+    qmlRegisterType<TestInputContext>("Test.util", 1, 0, "TestInputContext");
+    qmlRegisterType<TestInputEvent>("Test.util", 1, 0, "TestInputEvent");
 
     QTEST_SET_MAIN_SOURCE_PATH
     qmlRegisterSingletonType<HttpServer>("Test.Shared", 1, 0, "HttpServer", [&] (QQmlEngine *, QJSEngine *) {
         auto server = new HttpServer;
-        server->setResourceDirs({ TESTS_SHARED_DATA_DIR, QUICK_TEST_SOURCE_DIR });
+        server->setResourceDirs(
+                { server->sharedDataDir(),
+                  QDir(QT_TESTCASE_SOURCEDIR).canonicalPath() + QLatin1String("/data") });
         return server;
     });
 
-    int i = quick_test_main(argc, argv, "qmltests", QUICK_TEST_SOURCE_DIR);
+#if QT_CONFIG(ssl)
+    qmlRegisterSingletonType<HttpsServer>(
+            "Test.Shared", 1, 0, "HttpsServer", [&](QQmlEngine *, QJSEngine *) {
+                return new HttpsServer(":/resources/server.pem", ":/resources/server.key", "");
+            });
+#endif
+    Setup setup;
+    int i = quick_test_main_with_setup(
+            argc, argv, "qmltests",
+            qPrintable(QT_TESTCASE_BUILDDIR + QLatin1String("/webengine.qmltests")), &setup);
     return i;
 }
 

@@ -33,7 +33,7 @@ from blinkpy.common.net.web_test_results import WebTestResults
 
 class WebTestResultsTest(unittest.TestCase):
     # The real files have no whitespace, but newlines make this much more readable.
-    example_full_results_json = """ADD_RESULTS({
+    example_full_results_json = b"""ADD_RESULTS({
     "tests": {
         "fast": {
             "dom": {
@@ -128,12 +128,10 @@ class WebTestResultsTest(unittest.TestCase):
     def test_was_interrupted(self):
         self.assertTrue(
             WebTestResults.results_from_string(
-                'ADD_RESULTS({"tests":{},"interrupted":true});').
-            run_was_interrupted())
+                b'ADD_RESULTS({"tests":{},"interrupted":true});').interrupted)
         self.assertFalse(
             WebTestResults.results_from_string(
-                'ADD_RESULTS({"tests":{},"interrupted":false});').
-            run_was_interrupted())
+                b'ADD_RESULTS({"tests":{},"interrupted":false});').interrupted)
 
     def test_chromium_revision(self):
         self.assertEqual(
@@ -167,11 +165,12 @@ class WebTestResultsTest(unittest.TestCase):
         results = WebTestResults.results_from_string(
             self.example_full_results_json)
         self.assertEqual(
-            results.result_for_test('fast/dom/unexpected-pass.html').
-            actual_results(), 'PASS')
+            results.result_for_test(
+                'fast/dom/unexpected-pass.html').actual_results(), ['PASS'])
         self.assertEqual(
-            results.result_for_test('fast/dom/unexpected-flaky.html').
-            actual_results(), 'PASS FAIL')
+            results.result_for_test(
+                'fast/dom/unexpected-flaky.html').actual_results(),
+            ['PASS', 'FAIL'])
 
     def test_expected_results(self):
         results = WebTestResults.results_from_string(

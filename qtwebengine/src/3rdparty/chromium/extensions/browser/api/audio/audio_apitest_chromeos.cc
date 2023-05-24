@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,24 +8,22 @@
 #include <memory>
 
 #include "base/auto_reset.h"
-#include "base/command_line.h"
 #include "base/run_loop.h"
 #include "build/build_config.h"
-#include "chromeos/audio/audio_devices_pref_handler_stub.h"
-#include "chromeos/audio/cras_audio_handler.h"
-#include "chromeos/dbus/audio/fake_cras_audio_client.h"
+#include "chromeos/ash/components/audio/cras_audio_handler.h"
+#include "chromeos/ash/components/dbus/audio/fake_cras_audio_client.h"
 #include "extensions/common/features/feature_session_type.h"
-#include "extensions/common/switches.h"
 #include "extensions/shell/test/shell_apitest.h"
 #include "extensions/test/extension_test_message_listener.h"
 #include "extensions/test/result_catcher.h"
 
 namespace extensions {
 
-using chromeos::AudioDevice;
-using chromeos::AudioDeviceList;
-using chromeos::AudioNode;
-using chromeos::AudioNodeList;
+using ::ash::AudioDevice;
+using ::ash::AudioDeviceList;
+using ::ash::AudioNode;
+using ::ash::AudioNodeList;
+using ::ash::CrasAudioHandler;
 
 const uint64_t kJabraSpeaker1Id = 30001;
 const uint64_t kJabraSpeaker1StableDeviceId = 80001;
@@ -51,6 +49,12 @@ struct AudioNodeInfo {
 
 const uint32_t kInputMaxSupportedChannels = 1;
 const uint32_t kOutputMaxSupportedChannels = 2;
+
+const uint32_t kInputAudioEffect = 1;
+const uint32_t kOutputAudioEffect = 0;
+
+const int32_t kInputNumberOfVolumeSteps = 0;
+const int32_t kOutputNumberOfVolumeSteps = 25;
 
 const AudioNodeInfo kJabraSpeaker1 = {
     false, kJabraSpeaker1Id, kJabraSpeaker1StableDeviceId, "Jabra Speaker",
@@ -84,37 +88,38 @@ AudioNode CreateAudioNode(const AudioNodeInfo& info, int version) {
       // stable_device_id_v2:
       version == 2 ? info.stable_id ^ 0xFFFF : 0, info.device_name, info.type,
       info.name, false, 0,
-      info.is_input ? kInputMaxSupportedChannels : kOutputMaxSupportedChannels);
+      info.is_input ? kInputMaxSupportedChannels : kOutputMaxSupportedChannels,
+      info.is_input ? kInputAudioEffect : kOutputAudioEffect,
+      info.is_input ? kInputNumberOfVolumeSteps : kOutputNumberOfVolumeSteps);
 }
 
 class AudioApiTest : public ShellApiTest {
  public:
   AudioApiTest() = default;
+
+  AudioApiTest(const AudioApiTest&) = delete;
+  AudioApiTest& operator=(const AudioApiTest&) = delete;
+
   ~AudioApiTest() override = default;
 
   void SetUp() override {
     session_feature_type_ = extensions::ScopedCurrentFeatureSessionType(
-        extensions::FeatureSessionType::KIOSK);
+        extensions::mojom::FeatureSessionType::kKiosk);
 
     ShellApiTest::SetUp();
   }
 
   void ChangeAudioNodes(const AudioNodeList& audio_nodes) {
-    chromeos::FakeCrasAudioClient::Get()
-        ->SetAudioNodesAndNotifyObserversForTesting(audio_nodes);
+    ash::FakeCrasAudioClient::Get()->SetAudioNodesAndNotifyObserversForTesting(
+        audio_nodes);
     base::RunLoop().RunUntilIdle();
   }
 
-  chromeos::CrasAudioHandler* audio_handler() {
-    return chromeos::CrasAudioHandler::Get();
-  }
+  CrasAudioHandler* audio_handler() { return CrasAudioHandler::Get(); }
 
  protected:
-  std::unique_ptr<base::AutoReset<extensions::FeatureSessionType>>
+  std::unique_ptr<base::AutoReset<extensions::mojom::FeatureSessionType>>
       session_feature_type_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(AudioApiTest);
 };
 
 IN_PROC_BROWSER_TEST_F(AudioApiTest, Audio) {
@@ -141,7 +146,7 @@ IN_PROC_BROWSER_TEST_F(AudioApiTest, OnLevelChangedOutputDevice) {
 
   // Loads background app.
   ResultCatcher result_catcher;
-  ExtensionTestMessageListener load_listener("loaded", false);
+  ExtensionTestMessageListener load_listener("loaded");
   ASSERT_TRUE(LoadApp("api_test/audio/volume_change"));
   ASSERT_TRUE(load_listener.WaitUntilSatisfied());
 
@@ -175,7 +180,7 @@ IN_PROC_BROWSER_TEST_F(AudioApiTest, OnOutputMuteChanged) {
 
   // Loads background app.
   ResultCatcher result_catcher;
-  ExtensionTestMessageListener load_listener("loaded", false);
+  ExtensionTestMessageListener load_listener("loaded");
   ASSERT_TRUE(LoadApp("api_test/audio/output_mute_change"));
   ASSERT_TRUE(load_listener.WaitUntilSatisfied());
 
@@ -196,21 +201,23 @@ IN_PROC_BROWSER_TEST_F(AudioApiTest, OnInputMuteChanged) {
   // Set the jabra mic to be the active input device.
   AudioDevice jabra_mic(CreateAudioNode(kJabraMic1, 2));
   audio_handler()->SwitchToDevice(jabra_mic, true,
-                                  chromeos::CrasAudioHandler::ACTIVATE_BY_USER);
+                                  CrasAudioHandler::ACTIVATE_BY_USER);
   EXPECT_EQ(kJabraMic1.id, audio_handler()->GetPrimaryActiveInputNode());
 
   // Un-mute the input.
-  audio_handler()->SetInputMute(false);
+  audio_handler()->SetInputMute(
+      false, CrasAudioHandler::InputMuteChangeMethod::kOther);
   EXPECT_FALSE(audio_handler()->IsInputMuted());
 
   // Loads background app.
   ResultCatcher result_catcher;
-  ExtensionTestMessageListener load_listener("loaded", false);
+  ExtensionTestMessageListener load_listener("loaded");
   ASSERT_TRUE(LoadApp("api_test/audio/input_mute_change"));
   ASSERT_TRUE(load_listener.WaitUntilSatisfied());
 
   // Mute the input.
-  audio_handler()->SetInputMute(true);
+  audio_handler()->SetInputMute(
+      true, CrasAudioHandler::InputMuteChangeMethod::kOther);
   EXPECT_TRUE(audio_handler()->IsInputMuted());
 
   // Verify the background app got the OnMuteChanged event
@@ -230,7 +237,7 @@ IN_PROC_BROWSER_TEST_F(AudioApiTest, OnNodesChangedAddNodes) {
 
   // Load background app.
   ResultCatcher result_catcher;
-  ExtensionTestMessageListener load_listener("loaded", false);
+  ExtensionTestMessageListener load_listener("loaded");
   ASSERT_TRUE(LoadApp("api_test/audio/add_nodes"));
   ASSERT_TRUE(load_listener.WaitUntilSatisfied());
 
@@ -258,7 +265,7 @@ IN_PROC_BROWSER_TEST_F(AudioApiTest, OnNodesChangedRemoveNodes) {
 
   // Load background app.
   ResultCatcher result_catcher;
-  ExtensionTestMessageListener load_listener("loaded", false);
+  ExtensionTestMessageListener load_listener("loaded");
   ASSERT_TRUE(LoadApp("api_test/audio/remove_nodes"));
   ASSERT_TRUE(load_listener.WaitUntilSatisfied());
 
@@ -271,30 +278,6 @@ IN_PROC_BROWSER_TEST_F(AudioApiTest, OnNodesChangedRemoveNodes) {
   // Verify the background app got the onNodesChanged event
   // with the last node removed.
   EXPECT_TRUE(result_catcher.GetNextResult()) << result_catcher.message();
-}
-
-class WhitelistedAudioApiTest : public AudioApiTest {
- public:
-  WhitelistedAudioApiTest() = default;
-  ~WhitelistedAudioApiTest() override = default;
-
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    command_line->AppendSwitchASCII(
-        extensions::switches::kAllowlistedExtensionID,
-        "jlgnoeceollaejlkenecblnjmdcfhfgc");
-  }
-};
-
-IN_PROC_BROWSER_TEST_F(WhitelistedAudioApiTest, DeprecatedApi) {
-  // Set up the audio nodes for testing.
-  AudioNodeList audio_nodes = {
-      CreateAudioNode(kJabraSpeaker1, 2), CreateAudioNode(kJabraSpeaker2, 2),
-      CreateAudioNode(kHDMIOutput, 2),    CreateAudioNode(kJabraMic1, 2),
-      CreateAudioNode(kJabraMic2, 2),     CreateAudioNode(kUSBCameraMic, 2)};
-
-  ChangeAudioNodes(audio_nodes);
-
-  EXPECT_TRUE(RunAppTest("api_test/audio/deprecated_api")) << message_;
 }
 
 }  // namespace extensions

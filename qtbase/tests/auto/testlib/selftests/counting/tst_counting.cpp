@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QCoreApplication>
-#include <QtTest/QtTest>
+#include <QTest>
 
 class tst_Counting : public QObject
 {
@@ -217,10 +192,13 @@ void tst_Counting::testFailFail()
 
 void tst_Counting::init()
 {
-    if (strcmp(QTest::currentTestFunction(), "testFailInInit") == 0 && strcmp(QTest::currentDataTag(), "fail") == 0)
+    if (strcmp(QTest::currentTestFunction(), "testFailInInit") == 0
+        && strcmp(QTest::currentDataTag(), "fail") == 0) {
         QFAIL("Fail in init()");
-    else if (strcmp(QTest::currentTestFunction(), "testSkipInInit") == 0 && strcmp(QTest::currentDataTag(), "skip") == 0)
+    } else if (strcmp(QTest::currentTestFunction(), "testSkipInInit") == 0
+               && strcmp(QTest::currentDataTag(), "skip") == 0) {
         QSKIP("Skip in init()");
+    }
 }
 
 void tst_Counting::cleanup()
@@ -287,15 +265,18 @@ void tst_Counting::testSkipInCleanup()
         qDebug() << "This test function should execute and then QSKIP in cleanup()";
 }
 
-int main(int argc, char *argv[])
-{
 #ifdef TESTLIB_VERBOSITY_ARG
-    std::vector<const char*> args(argv, argv + argc);
-    args.push_back(QT_STRINGIFY(TESTLIB_VERBOSITY_ARG));
-    argc = args.size();
+#define SETUP() \
+    std::vector<const char*> args(argv, argv + argc); \
+    args.push_back(QT_STRINGIFY(TESTLIB_VERBOSITY_ARG)); \
+    argc = int(args.size()); \
     argv = const_cast<char**>(&args[0]);
+#else
+#define SETUP()
 #endif
 
-    QTEST_MAIN_IMPL(tst_Counting)
-}
+QTEST_MAIN_WRAPPER(tst_Counting,
+    SETUP()
+    QTEST_MAIN_SETUP())
+
 #include "tst_counting.moc"

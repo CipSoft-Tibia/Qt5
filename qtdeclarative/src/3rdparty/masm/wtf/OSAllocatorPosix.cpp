@@ -31,7 +31,6 @@
 #include <cstdlib>
 
 #include "PageAllocation.h"
-#include <dlfcn.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <wtf/Assertions.h>
@@ -98,6 +97,9 @@ static int memfdForUsage(size_t bytes, OSAllocator::Usage usage)
 void* OSAllocator::reserveUncommitted(size_t bytes, Usage usage, bool writable, bool executable)
 {
 #if OS(QNX)
+    UNUSED_PARAM(usage);
+    UNUSED_PARAM(writable);
+    UNUSED_PARAM(executable);
     // Reserve memory with PROT_NONE and MAP_LAZY so it isn't committed now.
     void* result = mmap(0, bytes, PROT_NONE, MAP_LAZY | MAP_PRIVATE | MAP_ANON, -1, 0);
     if (result == MAP_FAILED)
@@ -111,7 +113,8 @@ void* OSAllocator::reserveUncommitted(size_t bytes, Usage usage, bool writable, 
                         (fd == -1 ? MAP_ANON : 0), fd, 0);
     if (result == MAP_FAILED)
         CRASH();
-    madvise(result, bytes, MADV_DONTNEED);
+
+    while (madvise(result, bytes, MADV_DONTNEED) == -1 && errno == EAGAIN) { }
 
     if (fd != -1)
         close(fd);
@@ -218,7 +221,12 @@ void OSAllocator::commit(void* address, size_t bytes, bool writable, bool execut
         protection |= PROT_EXEC;
     if (mprotect(address, bytes, protection))
         CRASH();
-    madvise(address, bytes, MADV_WILLNEED);
+
+    while (madvise(address, bytes, MADV_WILLNEED)) {
+        if (errno != EAGAIN)
+            break; // We don't have to crash here. MADV_WILLNEED is only advisory
+    }
+
 #elif HAVE(MADV_FREE_REUSE)
     UNUSED_PARAM(writable);
     UNUSED_PARAM(executable);
@@ -238,7 +246,12 @@ void OSAllocator::decommit(void* address, size_t bytes)
     // Use PROT_NONE and MAP_LAZY to decommit the pages.
     mmap(address, bytes, PROT_NONE, MAP_FIXED | MAP_LAZY | MAP_PRIVATE | MAP_ANON, -1, 0);
 #elif OS(LINUX)
-    madvise(address, bytes, MADV_DONTNEED);
+    while (madvise(address, bytes, MADV_DONTNEED)) {
+        if (errno != EAGAIN) {
+            memset(address, 0, bytes); // We rely on madvise to zero-out the memory
+            break;
+        }
+    }
     if (mprotect(address, bytes, PROT_NONE))
         CRASH();
 #elif HAVE(MADV_FREE_REUSE)

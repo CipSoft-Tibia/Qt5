@@ -11,7 +11,7 @@
 # Webkit style was loosely based on the Qt style
 BasedOnStyle: WebKit
 
-Standard: Cpp11
+Standard: c++17
 
 # Column width is limited to 100 in accordance with Qt Coding Style.
 # https://wiki.qt.io/Qt_Coding_Style
@@ -20,9 +20,10 @@ ColumnLimit: 100
 # How much weight do extra characters after the line length limit have.
 # PenaltyExcessCharacter: 4
 
-# Disable reflow of qdoc comments: indentation rules are different.
-# Translation comments are also excluded.
-CommentPragmas: "^!|^:"
+# Disable reflow of some specific comments
+# qdoc comments: indentation rules are different.
+# Translation comments and SPDX license identifiers are also excluded.
+CommentPragmas: "^!|^:|^ SPDX-License-Identifier:"
 
 # We want a space between the type and the star for pointer types.
 PointerBindsToType: false
@@ -59,6 +60,11 @@ ContinuationIndentWidth: 8
 # No indentation for namespaces.
 NamespaceIndentation: None
 
+# Allow indentation for preprocessing directives (if/ifdef/endif). https://reviews.llvm.org/rL312125
+IndentPPDirectives: AfterHash
+# We only indent with 2 spaces for preprocessor directives
+PPIndentWidth: 2
+
 # Horizontally align arguments after an open bracket.
 # The coding style does not specify the following, but this is what gives
 # results closest to the existing code.
@@ -80,3 +86,23 @@ ForEachMacros:   [ foreach, Q_FOREACH, BOOST_FOREACH, forever, Q_FOREVER, QBENCH
 
 # Break constructor initializers before the colon and after the commas.
 BreakConstructorInitializers: BeforeColon
+
+# Add "// namespace <namespace>" comments on closing brace for a namespace
+# Ignored for namespaces that qualify as a short namespace,
+# see 'ShortNamespaceLines'
+FixNamespaceComments: true
+
+# Definition of how short a short namespace is, default 1
+ShortNamespaceLines: 1
+
+# When escaping newlines in a macro attach the '\' as far left as possible, e.g.
+##define a     \
+#   something; \
+#   other;     \
+#   thelastlineislong;
+AlignEscapedNewlines: Left
+
+# Avoids the addition of a space between an identifier and the
+# initializer list in list-initialization.
+SpaceBeforeCpp11BracedList: false
+

@@ -1,17 +1,33 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 
-cmake_minimum_required(VERSION 2.8)
+
+cmake_minimum_required(VERSION 3.16)
 project(qqc_test)
 
-find_package(Qt5Qml 5.0.0 REQUIRED)
-find_package(Qt5Gui 5.0.0 REQUIRED)
-find_package(Qt5Test 5.0.0 REQUIRED)
-find_package(Qt5QuickCompiler)
-
-set(CMAKE_CXXFLAGS "${CMAKE_CXXFLAGS} ${Qt5Core_EXECUTABLE_COMPILE_FLAGS}")
-
-qtquick_compiler_add_resources(RESOURCES "empty.qrc" "resources with space/qqc_test.qrc")
+find_package(Qt6 ${CMAKE_Core_MODULE_MAJOR_VERSION}.${CMAKE_Core_MODULE_MINOR_VERSION}
+    REQUIRED COMPONENTS Qml Gui Test
+)
 
 set(CMAKE_AUTOMOC ON)
 
-add_executable(qqc_test "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp" ${RESOURCES})
-target_link_libraries(qqc_test Qt5::Gui Qt5::Qml Qt5::Test)
+qt_add_executable(qqc_test
+    # Absolute path needed to avoid using the copied file in the build dir.
+    # That would still work, but it should use the file in the source dir.
+    ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
+)
+target_link_libraries(qqc_test PRIVATE Qt6::Gui Qt6::Qml Qt6::Test)
+
+set_source_files_properties("resources with space/main.qml" PROPERTIES
+    QT_RESOURCE_ALIAS main.qml
+)
+
+qt_add_qml_module(qqc_test
+    URI Test
+    VERSION 1.0
+    QML_FILES
+        "resources with space/main.qml"
+    RESOURCES
+        main.cpp
+    RESOURCE_PREFIX /
+)

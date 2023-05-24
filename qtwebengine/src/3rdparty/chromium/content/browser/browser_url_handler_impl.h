@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
 #include "base/memory/singleton.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/browser_url_handler.h"
 
 class GURL;
@@ -23,17 +23,16 @@ class CONTENT_EXPORT BrowserURLHandlerImpl : public BrowserURLHandler {
   // Returns the singleton instance.
   static BrowserURLHandlerImpl* GetInstance();
 
+  BrowserURLHandlerImpl(const BrowserURLHandlerImpl&) = delete;
+  BrowserURLHandlerImpl& operator=(const BrowserURLHandlerImpl&) = delete;
+
   // BrowserURLHandler implementation:
   void RewriteURLIfNecessary(GURL* url,
                              BrowserContext* browser_context) override;
   std::vector<GURL> GetPossibleRewrites(
       const GURL& url,
       BrowserContext* browser_context) override;
-  void SetFixupHandler(URLHandler handler) override;
   void AddHandlerPair(URLHandler handler, URLHandler reverse_handler) override;
-
-  // Fixes up the URL before rewriting occurs.
-  void FixupURLBeforeRewrite(GURL* url, BrowserContext* browser_context);
 
   // Like the //content-public RewriteURLIfNecessary overload (overridden
   // above), but if the original URL needs to be adjusted if the modified URL is
@@ -46,18 +45,14 @@ class CONTENT_EXPORT BrowserURLHandlerImpl : public BrowserURLHandler {
   bool ReverseURLRewrite(GURL* url, const GURL& original,
                          BrowserContext* browser_context);
 
-  // Sets the fixup handler during tests. Unlike |SetFixupHandler|, this can be
-  // called multiple time during tests.
-  void SetFixupHandlerForTesting(URLHandler handler);
+  // Reverses |AddHandlerPair| for the given |handler|.
+  void RemoveHandlerForTesting(URLHandler handler);
 
  private:
   // This object is a singleton:
   BrowserURLHandlerImpl();
   ~BrowserURLHandlerImpl() override;
   friend struct base::DefaultSingletonTraits<BrowserURLHandlerImpl>;
-
-  // A URLHandler to run in a preliminary phase, before rewriting is done.
-  URLHandler fixup_handler_;
 
   // The list of known URLHandlers, optionally with reverse-rewriters.
   typedef std::pair<URLHandler, URLHandler> HandlerPair;
@@ -67,8 +62,6 @@ class CONTENT_EXPORT BrowserURLHandlerImpl : public BrowserURLHandler {
   FRIEND_TEST_ALL_PREFIXES(BrowserURLHandlerImplTest, NullHandlerReverse);
   FRIEND_TEST_ALL_PREFIXES(BrowserURLHandlerImplTest, ViewSourceReverse);
   FRIEND_TEST_ALL_PREFIXES(BrowserURLHandlerImplTest, GetPossibleRewrites);
-
-  DISALLOW_COPY_AND_ASSIGN(BrowserURLHandlerImpl);
 };
 
 }  // namespace content

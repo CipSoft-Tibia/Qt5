@@ -1,6 +1,8 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+#include <ostream>
 
 #include "base/json/json_writer.h"
 #include "base/values.h"
@@ -21,24 +23,26 @@ const char* EnumString(SavePageRequest::AutoFetchNotificationState value) {
 }  // namespace
 
 std::string SavePageRequest::ToString() const {
-  base::DictionaryValue result;
-  result.SetInteger("request_id", request_id_);
-  result.SetString("url", url_.spec());
-  result.SetString("client_id", client_id_.ToString());
-  result.SetInteger("creation_time",
-                    creation_time_.ToDeltaSinceWindowsEpoch().InSeconds());
-  result.SetInteger("started_attempt_count", started_attempt_count_);
-  result.SetInteger("completed_attempt_count", completed_attempt_count_);
-  result.SetInteger("last_attempt_time",
-                    last_attempt_time_.ToDeltaSinceWindowsEpoch().InSeconds());
-  result.SetBoolean("user_requested", user_requested_);
-  result.SetInteger("state", static_cast<int>(state_));
-  result.SetInteger("fail_state", static_cast<int>(fail_state_));
-  result.SetInteger("pending_state", static_cast<int>(pending_state_));
-  result.SetString("original_url", original_url_.spec());
-  result.SetString("request_origin", request_origin_);
-  result.SetString("auto_fetch_notification_state",
-                   EnumString(auto_fetch_notification_state_));
+  base::Value::Dict result;
+  result.Set("request_id", static_cast<int>(request_id_));
+  result.Set("url", url_.spec());
+  result.Set("client_id", client_id_.ToString());
+  result.Set(
+      "creation_time",
+      static_cast<int>(creation_time_.ToDeltaSinceWindowsEpoch().InSeconds()));
+  result.Set("started_attempt_count", started_attempt_count_);
+  result.Set("completed_attempt_count", completed_attempt_count_);
+  result.Set("last_attempt_time",
+             static_cast<int>(
+                 last_attempt_time_.ToDeltaSinceWindowsEpoch().InSeconds()));
+  result.Set("user_requested", user_requested_);
+  result.Set("state", static_cast<int>(state_));
+  result.Set("fail_state", static_cast<int>(fail_state_));
+  result.Set("pending_state", static_cast<int>(pending_state_));
+  result.Set("original_url", original_url_.spec());
+  result.Set("request_origin", request_origin_);
+  result.Set("auto_fetch_notification_state",
+             EnumString(auto_fetch_notification_state_));
 
   std::string result_string;
   base::JSONWriter::Write(result, &result_string);

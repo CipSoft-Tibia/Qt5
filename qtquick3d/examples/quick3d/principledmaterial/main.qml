@@ -1,56 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.15
-import QtQuick.Window 2.14
-import QtQuick3D 1.15
+import QtQuick
+import QtQuick3D
+import QtQuick3D.Effects
+import QtQuick3D.Helpers
+import QtQuick.Controls
+import QtQuick.Layouts
 
 Window {
     id: window
@@ -58,98 +14,225 @@ Window {
     height: 720
     visible: true
     title: "Principled Materials Example"
+    //color: "black"
+    color: "#848895"
 
-    MaterialControl {
-        id: materialCtrl
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
+    Image {
+        anchors.fill: parent
+        source: "maps/grid.png"
+        fillMode: Image.Tile
+        horizontalAlignment: Image.AlignLeft
+        verticalAlignment: Image.AlignTop
     }
 
-    View3D {
+    SplitView {
+        id: splitView
         anchors.fill: parent
-        camera: camera
-        renderMode: View3D.Underlay
+        Page {
+            id: toolPage
+            SplitView.fillHeight: true
+            SplitView.preferredWidth: 420
+            SplitView.minimumWidth: 300
+            header: TabBar {
+               id: tabBar
+               TabButton {
+                   text: "Basics"
+               }
+               TabButton {
+                   text: "Alpha"
+               }
+               TabButton {
+                   text: "Details"
+               }
+               TabButton {
+                   text: "Clearcoat"
+               }
+               TabButton {
+                   text: "Refraction"
+               }
+               TabButton {
+                   text: "Special"
+               }
+            }
 
-        //! [rotating light]
-        // Rotate the light direction
-        DirectionalLight {
-            eulerRotation.y: -100
-            brightness: 100
-            SequentialAnimation on eulerRotation.y {
-                loops: Animation.Infinite
-                PropertyAnimation {
-                    duration: 5000
-                    to: 360
-                    from: 0
+            StackLayout {
+                id: toolPageSwipeView
+                anchors.fill: parent
+                anchors.margins: 10
+                currentIndex: tabBar.currentIndex
+
+                BasicsPane {
+                    id: basicsPane
+                    principledMaterial: basicMaterial
+                    specularGlossyMaterial: specularGlossyMaterial
+                }
+
+                AlphaPane {
+                    targetMaterial: viewport.specularGlossyMode ? specularGlossyMaterial : basicMaterial
+                    specularGlossyMode: viewport.specularGlossyMode
+                }
+
+                DetailsPane {
+                    targetMaterial: viewport.specularGlossyMode ? specularGlossyMaterial : basicMaterial
+                    view3D: viewport
+                }
+
+                ClearcoatPane {
+                    targetMaterial: viewport.specularGlossyMode ? specularGlossyMaterial : basicMaterial
+                }
+
+                RefractionPane {
+                    targetMaterial: viewport.specularGlossyMode ? specularGlossyMaterial : basicMaterial
+                    specularGlossyMode: viewport.specularGlossyMode
+                }
+
+                SpecialPane {
+                    targetMaterial: viewport.specularGlossyMode ? specularGlossyMaterial : basicMaterial
+                    linesModel: linesLogo
+                    pointsModel: pointsLogo
+                    specularGlossyMode: viewport.specularGlossyMode
                 }
             }
         }
-        //! [rotating light]
 
-        //! [environment]
-        environment: SceneEnvironment {
-            probeBrightness: 100
-            clearColor: "#848895"
+        View3D {
+            id: viewport
+            SplitView.fillHeight: true
+            SplitView.fillWidth: true
+            SplitView.minimumWidth: splitView.width * 0.5
+            environment: SceneEnvironment {
+                property bool enableEffects: false
+                antialiasingMode: SceneEnvironment.MSAA
+                antialiasingQuality: SceneEnvironment.High
+                lightProbe: Texture {
+                    source: "maps/OpenfootageNET_garage-1024.hdr"
+                }
+                effects: enableEffects ? [bloom, scurveTonemap] : []
+                backgroundMode: SceneEnvironment.SkyBox
 
-            backgroundMode: SceneEnvironment.Color
-            lightProbe: Texture {
-                source: "maps/OpenfootageNET_garage-1024.hdr"
+                SCurveTonemap {
+                    id: scurveTonemap
+                }
+                HDRBloomTonemap {
+                    id: bloom
+                }
             }
-        }
-        //! [environment]
-
-        PerspectiveCamera {
-            id: camera
-            position: Qt.vector3d(0, 0, 600)
-        }
-
-        //! [basic principled]
-        Model {
-            position: Qt.vector3d(-250, -30, 0)
-            scale: Qt.vector3d(4, 4, 4)
-            source: "#Sphere"
-            materials: [ PrincipledMaterial {
-                    baseColor: "#41cd52"
-                    metalness: materialCtrl.metalness
-                    roughness: materialCtrl.roughness
-                    specularAmount: materialCtrl.specular
-                    indexOfRefraction: materialCtrl.ior
-                    specularTint: materialCtrl.specularTint
-                    opacity: materialCtrl.opacityValue
+            Node {
+                id: originNode
+                PerspectiveCamera {
+                    id: cameraNode
+                    z: 600
+                    clipNear: 1
+                    clipFar: 10000
                 }
-            ]
-        }
-        //! [basic principled]
+            }
 
-        //! [textured principled]
-        Model {
-            position: Qt.vector3d(250, -30, 0)
-            scale: Qt.vector3d(4, 4, 4)
-            source: "#Sphere"
-            materials: [ PrincipledMaterial {
-                    metalness: materialCtrl.metalness
-                    roughness: materialCtrl.roughness
-                    specularAmount: materialCtrl.specular
-                    indexOfRefraction: materialCtrl.ior
-                    opacity: materialCtrl.opacityValue
+            property bool specularGlossyMode: basicsPane.specularGlossyMode
 
-                    baseColorMap: Texture { source: "maps/metallic/basecolor.jpg" }
-                    metalnessMap: Texture { source: "maps/metallic/metallic.jpg" }
-                    roughnessMap: Texture { source: "maps/metallic/roughness.jpg" }
-                    normalMap: Texture { source: "maps/metallic/normal.jpg" }
+            PrincipledMaterial {
+                id: basicMaterial
+                baseColor: "red"
+            }
 
-                    metalnessChannel: Material.R
-                    roughnessChannel: Material.R
+            SpecularGlossyMaterial {
+                id: specularGlossyMaterial
+                property alias baseColor: specularGlossyMaterial.albedoColor
+                property real specularAmount: 1.0
+                property real specularTint: 1.0
+
+                specularColor: Qt.rgba(0.22, 0.22, 0.22, 1.0)
+                albedoColor: "red"
+            }
+
+            Model {
+                id: cube
+                source: "#Cube"
+                materials: viewport.specularGlossyMode ? [ specularGlossyMaterial ] : [ basicMaterial ]
+                pickable: true
+            }
+
+            Model {
+                id: sphereModel
+                x: -200
+                scale: Qt.vector3d(1.5, 1.5, 1.5)
+                source: "#Sphere"
+                materials: viewport.specularGlossyMode ? [ specularGlossyMaterial ] : [ basicMaterial ]
+                pickable: true
+            }
+
+            Model {
+                id: monkeyMesh
+                x: 250
+                source: "meshes/suzanne.mesh"
+                materials: viewport.specularGlossyMode ? [ specularGlossyMaterial ] : [ basicMaterial ]
+                pickable: true
+            }
+
+            Model {
+                id: linesLogo
+                y: 200
+                x: -100
+                source: "meshes/logo_lines.mesh"
+                materials: viewport.specularGlossyMode ? [ specularGlossyMaterial ] : [ basicMaterial ]
+                pickable: true
+                visible: false
+            }
+
+            Model {
+                id: pointsLogo
+                y: 200
+                x: 100
+                source: "meshes/logo_points.mesh"
+                materials: viewport.specularGlossyMode ? [ specularGlossyMaterial ] : [ basicMaterial ]
+                pickable: true
+                visible: false
+            }
+            //! [resource loader]
+            ResourceLoader {
+                meshSources: [
+                    "meshes/logo_lines.mesh",
+                    "meshes/logo_points.mesh"
+                ]
+            }
+            //! [resource loader]
+
+            BackgroundCurtain {
+                visible: curtainToggleButton.checked
+                y: -150
+            }
+
+            OrbitCameraController {
+                origin: originNode
+                camera: cameraNode
+            }
+
+            MouseArea {
+                id: pickController
+                anchors.fill: parent
+                onClicked: function(mouse) {
+                    let pickResult = viewport.pick(mouse.x, mouse.y);
+                    if (pickResult.objectHit) {
+                        let pickedObject = pickResult.objectHit;
+                        // Move the camera orbit origin to be the clicked object
+                        originNode.position = pickedObject.position
+                    }
                 }
-            ]
-            //! [textured principled]
+            }
 
-            SequentialAnimation on eulerRotation {
-                loops: Animation.Infinite
-                PropertyAnimation {
-                    duration: 5000
-                    from: Qt.vector3d(0, 0, 0)
-                    to: Qt.vector3d(360, 360, 360)
+            Button {
+                id: curtainToggleButton
+                text: checked ? "Hide Curtain" : "Show Curtain"
+                checkable: true
+                checked: true
+                anchors.top: parent.top
+                anchors.right: parent.right
+            }
+
+            RowLayout {
+                anchors.bottom: parent.bottom
+                Label {
+                    text: "Drag Background to Orbit Camera, Touch/Click a Model to Center Camera"
+                    color: "#dddddd"
                 }
             }
         }

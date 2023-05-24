@@ -17,7 +17,7 @@
 #ifndef LIBGAV1_SRC_UTILS_MEMORY_H_
 #define LIBGAV1_SRC_UTILS_MEMORY_H_
 
-#if defined(__ANDROID__) || defined(_MSC_VER)
+#if defined(__ANDROID__) || defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h>
 #endif
 
@@ -34,8 +34,9 @@ namespace libgav1 {
 enum {
 // The byte alignment required for buffers used with SIMD code to be read or
 // written with aligned operations.
-#if defined(__i386__) || defined(_M_IX86)
-  kMaxAlignment = 16,  // extended alignment is safe on x86.
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || \
+    defined(_M_X64)
+  kMaxAlignment = 32,  // extended alignment is safe on x86.
 #else
   kMaxAlignment = alignof(max_align_t),
 #endif
@@ -54,7 +55,7 @@ enum {
 // void AlignedFree(void* aligned_memory);
 //   Free aligned memory.
 
-#if defined(_MSC_VER)  // MSVC
+#if defined(_MSC_VER) || defined(__MINGW32__)
 
 inline void* AlignedAlloc(size_t alignment, size_t size) {
   return _aligned_malloc(size, alignment);
@@ -62,7 +63,7 @@ inline void* AlignedAlloc(size_t alignment, size_t size) {
 
 inline void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
 
-#else  // !defined(_MSC_VER)
+#else  // !(defined(_MSC_VER) || defined(__MINGW32__))
 
 inline void* AlignedAlloc(size_t alignment, size_t size) {
 #if defined(__ANDROID__)
@@ -70,7 +71,7 @@ inline void* AlignedAlloc(size_t alignment, size_t size) {
   // more convenient to use memalign(). Unlike glibc, Android does not consider
   // memalign() an obsolete function.
   return memalign(alignment, size);
-#else  // !defined(__ANDROID__)
+#else   // !defined(__ANDROID__)
   void* ptr = nullptr;
   // posix_memalign requires that the requested alignment be at least
   // sizeof(void*). In this case, fall back on malloc which should return
@@ -88,7 +89,7 @@ inline void* AlignedAlloc(size_t alignment, size_t size) {
 
 inline void AlignedFree(void* aligned_memory) { free(aligned_memory); }
 
-#endif  // defined(_MSC_VER)
+#endif  // defined(_MSC_VER) || defined(__MINGW32__)
 
 inline void Memset(uint8_t* const dst, int value, size_t count) {
   memset(dst, value, count);
@@ -97,6 +98,12 @@ inline void Memset(uint8_t* const dst, int value, size_t count) {
 inline void Memset(uint16_t* const dst, int value, size_t count) {
   for (size_t i = 0; i < count; ++i) {
     dst[i] = static_cast<uint16_t>(value);
+  }
+}
+
+inline void Memset(int16_t* const dst, int value, size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    dst[i] = static_cast<int16_t>(value);
   }
 }
 

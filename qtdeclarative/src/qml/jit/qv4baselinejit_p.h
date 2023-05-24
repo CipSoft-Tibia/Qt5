@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QV4JIT_P_H
 #define QV4JIT_P_H
@@ -55,6 +19,7 @@
 #include <private/qv4function_p.h>
 #include <private/qv4instr_moth_p.h>
 #include <private/qv4bytecodehandler_p.h>
+#include <QtCore/qset.h>
 
 #if QT_CONFIG(qml_jit)
 
@@ -69,7 +34,7 @@ class BaselineJIT final: public Moth::ByteCodeHandler
 {
 public:
     BaselineJIT(QV4::Function *);
-    virtual ~BaselineJIT() Q_DECL_OVERRIDE;
+    ~BaselineJIT() override;
 
     void generate();
 
@@ -102,7 +67,9 @@ public:
     void generate_LoadElement(int base) override;
     void generate_StoreElement(int base, int index) override;
     void generate_LoadProperty(int name) override;
+    void generate_LoadOptionalProperty(int name, int offset) override;
     void generate_GetLookup(int index) override;
+    void generate_GetOptionalLookup(int index, int offset) override;
     void generate_StoreProperty(int name, int base) override;
     void generate_SetLookup(int index, int base) override;
     void generate_LoadSuperProperty(int property) override;
@@ -115,7 +82,6 @@ public:
     void generate_CallWithReceiver(int name, int thisObject, int argc, int argv) override;
     void generate_CallProperty(int name, int base, int argc, int argv) override;
     void generate_CallPropertyLookup(int lookupIndex, int base, int argc, int argv) override;
-    void generate_CallElement(int base, int index, int argc, int argv) override;
     void generate_CallName(int name, int argc, int argv) override;
     void generate_CallPossiblyDirectEval(int argc, int argv) override;
     void generate_CallGlobalLookup(int index, int argc, int argv) override;
@@ -178,6 +144,7 @@ public:
     void generate_CmpStrictNotEqual(int lhs) override;
     void generate_CmpIn(int lhs) override;
     void generate_CmpInstanceOf(int lhs) override;
+    void generate_As(int lhs) override;
     void generate_UNot() override;
     void generate_UPlus() override;
     void generate_UMinus() override;

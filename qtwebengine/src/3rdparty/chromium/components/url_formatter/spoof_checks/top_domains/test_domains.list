@@ -1,3 +1,6 @@
+#
+# List of top domains. Only used in unit tests.
+#
 d4000.com
 ###END_TOP_500###
 digklmo68.com
@@ -37,3 +40,5 @@ nn.com
 test.net
 # Unicode domain:
 fóó.com
+# Test domain for ß (deviation character)
+youtube.com

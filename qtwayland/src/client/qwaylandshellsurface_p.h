@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the config.tests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDSHELLSURFACE_H
 #define QWAYLANDSHELLSURFACE_H
@@ -53,21 +17,26 @@
 
 #include <QtCore/QSize>
 #include <QObject>
-
-#include <QtWaylandClient/private/qwayland-wayland.h>
+#include <QPoint>
 #include <QtWaylandClient/qtwaylandclientglobal.h>
+#include <QtCore/private/qglobal_p.h>
+
+#include <any>
+
+struct wl_surface;
 
 QT_BEGIN_NAMESPACE
 
 class QVariant;
 class QWindow;
+class QPlatformWindow;
 
 namespace QtWaylandClient {
 
 class QWaylandWindow;
 class QWaylandInputDevice;
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandShellSurface : public QObject
+class Q_WAYLANDCLIENT_EXPORT QWaylandShellSurface : public QObject
 {
     Q_OBJECT
 public:
@@ -86,19 +55,46 @@ public:
 
     virtual void raise() {}
     virtual void lower() {}
-    virtual void setContentOrientationMask(Qt::ScreenOrientations orientation) { Q_UNUSED(orientation) }
+    virtual void setContentOrientationMask(Qt::ScreenOrientations orientation) { Q_UNUSED(orientation); }
 
     virtual void sendProperty(const QString &name, const QVariant &value);
-
-    inline QWaylandWindow *window() { return m_window; }
 
     virtual void applyConfigure() {}
     virtual void requestWindowStates(Qt::WindowStates states) {Q_UNUSED(states);}
     virtual bool wantsDecorations() const { return false; }
+    virtual QMargins serverSideFrameMargins() const { return QMargins(); }
 
     virtual void propagateSizeHints() {}
 
     virtual void setWindowGeometry(const QRect &rect) { Q_UNUSED(rect); }
+    virtual void setWindowPosition(const QPoint &position) { Q_UNUSED(position); }
+
+    virtual bool requestActivate() { return false; }
+    virtual void setXdgActivationToken(const QString &token);
+    virtual void requestXdgActivationToken(quint32 serial);
+
+    virtual void setAlertState(bool enabled) { Q_UNUSED(enabled); }
+    virtual bool isAlertState() const { return false; }
+
+    virtual QString externWindowHandle() { return QString(); }
+
+    inline QWaylandWindow *window() { return m_window; }
+    QPlatformWindow *platformWindow();
+    struct wl_surface *wlSurface();
+
+    virtual std::any surfaceRole() const { return std::any(); };
+
+    virtual void attachPopup(QWaylandShellSurface *popup) { Q_UNUSED(popup); }
+    virtual void detachPopup(QWaylandShellSurface *popup) { Q_UNUSED(popup); }
+
+protected:
+    void resizeFromApplyConfigure(const QSize &sizeWithMargins, const QPoint &offset = {0, 0});
+    void repositionFromApplyConfigure(const QPoint &position);
+    void setGeometryFromApplyConfigure(const QPoint &globalPosition, const QSize &sizeWithMargins);
+    void applyConfigureWhenPossible();
+    void handleActivationChanged(bool activated);
+
+    static uint32_t getSerial(QWaylandInputDevice *inputDevice);
 
 private:
     QWaylandWindow *m_window = nullptr;

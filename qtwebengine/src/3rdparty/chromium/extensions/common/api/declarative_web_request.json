@@ -1,11 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 [
   {
     "namespace": "declarativeWebRequest",
-    "description": "<em><strong>Note:</strong> this API is currently on hold, without concrete plans to move to stable.</em> Use the <code>chrome.declarativeWebRequest</code> API to intercept, block, or modify requests in-flight. It is significantly faster than the <a href='webRequest'><code>chrome.webRequest</code> API</a> because you can register rules that are evaluated in the browser rather than the JavaScript engine, which reduces roundtrip latencies and allows higher efficiency.",
+    "description": "<em><strong>Note:</strong> this API is deprecated. Check out the $(ref:declarativeNetRequest) API instead.</em> Use the <code>chrome.declarativeWebRequest</code> API to intercept, block, or modify requests in-flight. It is significantly faster than the <a href='webRequest'><code>chrome.webRequest</code> API</a> because you can register rules that are evaluated in the browser rather than the JavaScript engine, which reduces roundtrip latencies and allows higher efficiency.",
     "types": [
       // TODO(devlin): The declarativeWebRequest API uses these enums as a form
       // of RTTI, but it's a rather verbose implementation. We should see if we
@@ -699,6 +699,10 @@
               "method": {"type": "string", "description": "Standard HTTP method."},
               "frameId": {"type": "integer", "description": "The value 0 indicates that the request happens in the main frame; a positive value indicates the ID of a subframe in which the request happens. If the document of a (sub-)frame is loaded (<code>type</code> is <code>main_frame</code> or <code>sub_frame</code>), <code>frameId</code> indicates the ID of this frame, not the ID of the outer frame. Frame IDs are unique within a tab."},
               "parentFrameId": {"type": "integer", "description": "ID of frame that wraps the frame which sent the request. Set to -1 if no parent frame exists."},
+              "documentId": {"type": "string", "optional": true, "description": "A UUID of the document that made the request."},
+              "parentDocumentId": {"type": "string", "optional": true, "description": "A UUID of the parent document owning this frame. This is not set if there is no parent."},
+              "documentLifecycle": {"$ref": "extensionTypes.DocumentLifecycle", "description": "The lifecycle the document is in."},
+              "frameType": {"$ref": "extensionTypes.FrameType", "description": "The type of frame the navigation occurred in."},
               "tabId": {"type": "integer", "description": "The ID of the tab in which the request takes place. Set to -1 if the request isn't related to a tab."},
               "type": {"$ref": "webRequest.ResourceType",
                        "description": "How the requested resource will be used."},

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -72,11 +72,10 @@ ShadowRoot* EditingTestBase::CreateShadowRootForElementWithIDAndSetInnerHTML(
     const char* shadow_root_content) {
   ShadowRoot& shadow_root =
       scope.getElementById(AtomicString::FromUTF8(host_element_id))
-          ->CreateV0ShadowRootForTesting();
+          ->AttachShadowRootInternal(ShadowRootType::kOpen);
   shadow_root.setInnerHTML(String::FromUTF8(shadow_root_content),
                            ASSERT_NO_EXCEPTION);
-  scope.GetDocument().View()->UpdateAllLifecyclePhases(
-      DocumentUpdateReason::kTest);
+  scope.GetDocument().View()->UpdateAllLifecyclePhasesForTest();
   return &shadow_root;
 }
 

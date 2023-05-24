@@ -16,7 +16,6 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 20px;
-  user-select: text;
 
   section {
     margin: 20px auto;
@@ -26,7 +25,7 @@
     border-radius: 8px;
 
     &.errors {
-      background-color: #F3E5F5;
+      background-color: #f3e5f5;
     }
 
     .metric-error {
@@ -37,7 +36,7 @@
     }
 
     h2 {
-      font-family: 'Raleway', sans-serif;
+      font-family: "Raleway", sans-serif;
       font-weight: 400;
       letter-spacing: 0.25px;
       font-size: 2rem;
@@ -77,11 +76,16 @@
           background-color: rgba(0, 0, 0, 0.04);
         }
 
+        td.name {
+          min-width: 150px;
+        }
+
         td {
           font-family: var(--monospace-font);
           font-size: 12px;
           padding: 5px;
           word-break: break-all;
+          white-space: pre-wrap;
           &:first-of-type {
             font-weight: 800;
           }

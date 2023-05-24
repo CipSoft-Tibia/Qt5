@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSGIMAGE_H
 #define QSSGIMAGE_H
@@ -42,21 +16,24 @@
 //
 
 #include <QtQuick3D/qquick3dobject.h>
+#include <QtQuick3D/QQuick3DTextureData>
 #include <QtQuick/private/qquickitemchangelistener_p.h>
+#include <QtQuick/QQuickItem>
 #include <QtQuick/QSGNode>
 #include <QtCore/QUrl>
 #include <QtCore/QPointer>
 
 QT_BEGIN_NAMESPACE
 
-class QQuickItem;
 class QSGLayer;
 struct QSSGRenderImage;
+
 class Q_QUICK3D_EXPORT QQuick3DTexture : public QQuick3DObject, public QQuickItemChangeListener
 {
     Q_OBJECT
     Q_PROPERTY(QUrl source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(QQuickItem *sourceItem READ sourceItem WRITE setSourceItem NOTIFY sourceItemChanged)
+    Q_PROPERTY(QQuick3DTextureData *textureData READ textureData WRITE setTextureData NOTIFY textureDataChanged)
     Q_PROPERTY(float scaleU READ scaleU WRITE setScaleU NOTIFY scaleUChanged)
     Q_PROPERTY(float scaleV READ scaleV WRITE setScaleV NOTIFY scaleVChanged)
     Q_PROPERTY(MappingMode mappingMode READ mappingMode WRITE setMappingMode NOTIFY mappingModeChanged)
@@ -67,8 +44,16 @@ class Q_QUICK3D_EXPORT QQuick3DTexture : public QQuick3DObject, public QQuickIte
     Q_PROPERTY(float positionV READ positionV WRITE setPositionV NOTIFY positionVChanged)
     Q_PROPERTY(float pivotU READ pivotU WRITE setPivotU NOTIFY pivotUChanged)
     Q_PROPERTY(float pivotV READ pivotV WRITE setPivotV NOTIFY pivotVChanged)
+    Q_PROPERTY(bool flipU READ flipU WRITE setFlipU NOTIFY flipUChanged)
     Q_PROPERTY(bool flipV READ flipV WRITE setFlipV NOTIFY flipVChanged)
-    Q_PROPERTY(Format format READ format WRITE setFormat NOTIFY formatChanged)
+    Q_PROPERTY(int indexUV READ indexUV WRITE setIndexUV NOTIFY indexUVChanged)
+    Q_PROPERTY(Filter magFilter READ magFilter WRITE setMagFilter NOTIFY magFilterChanged)
+    Q_PROPERTY(Filter minFilter READ minFilter WRITE setMinFilter NOTIFY minFilterChanged)
+    Q_PROPERTY(Filter mipFilter READ mipFilter WRITE setMipFilter NOTIFY mipFilterChanged)
+    Q_PROPERTY(bool generateMipmaps READ generateMipmaps WRITE setGenerateMipmaps NOTIFY generateMipmapsChanged)
+    Q_PROPERTY(bool autoOrientation READ autoOrientation WRITE setAutoOrientation NOTIFY autoOrientationChanged REVISION(6, 2))
+
+    QML_NAMED_ELEMENT(Texture)
 
 public:
     enum MappingMode
@@ -79,7 +64,7 @@ public:
     };
     Q_ENUM(MappingMode)
 
-    enum TilingMode
+    enum TilingMode // must match QSSGRenderTextureCoordOp
     {
         ClampToEdge = 1,
         MirroredRepeat,
@@ -87,42 +72,12 @@ public:
     };
     Q_ENUM(TilingMode)
 
-    enum Format {
-        Automatic = 0,
-        R8,
-        R16,
-        R16F,
-        R32I,
-        R32UI,
-        R32F,
-        RG8,
-        RGBA8,
-        RGB8,
-        SRGB8,
-        SRGB8A8,
-        RGB565,
-        RGBA5551,
-        Alpha8,
-        Luminance8,
-        Luminance16,
-        LuminanceAlpha8,
-        RGBA16F,
-        RG16F,
-        RG32F,
-        RGB32F,
-        RGBA32F,
-        R11G11B10,
-        RGB9E5,
-        RGBA_DXT1,
-        RGB_DXT1,
-        RGBA_DXT3,
-        RGBA_DXT5,
-        Depth16,
-        Depth24,
-        Depth32,
-        Depth24Stencil8
+    enum Filter { // must match QSSGRenderTextureFilterOp
+        None = 0,
+        Nearest,
+        Linear
     };
-    Q_ENUM(Format)
+    Q_ENUM(Filter)
 
     explicit QQuick3DTexture(QQuick3DObject *parent = nullptr);
     ~QQuick3DTexture() override;
@@ -139,27 +94,40 @@ public:
     float positionV() const;
     float pivotU() const;
     float pivotV() const;
+    bool flipU() const;
     bool flipV() const;
+    int indexUV() const;
+    Filter magFilter() const;
+    Filter minFilter() const;
+    Filter mipFilter() const;
+    QQuick3DTextureData *textureData() const;
+    bool generateMipmaps() const;
+    bool autoOrientation() const;
 
     QSSGRenderImage *getRenderImage();
-
-    Format format() const;
 
 public Q_SLOTS:
     void setSource(const QUrl &source);
     void setSourceItem(QQuickItem *sourceItem);
     void setScaleU(float scaleU);
     void setScaleV(float scaleV);
-    void setMappingMode(MappingMode mappingMode);
-    void setHorizontalTiling(TilingMode tilingModeHorizontal);
-    void setVerticalTiling(TilingMode tilingModeVertical);
+    void setMappingMode(QQuick3DTexture::MappingMode mappingMode);
+    void setHorizontalTiling(QQuick3DTexture::TilingMode tilingModeHorizontal);
+    void setVerticalTiling(QQuick3DTexture::TilingMode tilingModeVertical);
     void setRotationUV(float rotationUV);
     void setPositionU(float positionU);
     void setPositionV(float positionV);
     void setPivotU(float pivotU);
     void setPivotV(float pivotV);
+    void setFlipU(bool flipU);
     void setFlipV(bool flipV);
-    void setFormat(Format format);
+    void setIndexUV(int indexUV);
+    void setMagFilter(QQuick3DTexture::Filter magFilter);
+    void setMinFilter(QQuick3DTexture::Filter minFilter);
+    void setMipFilter(QQuick3DTexture::Filter mipFilter);
+    void setTextureData(QQuick3DTextureData * textureData);
+    void setGenerateMipmaps(bool generateMipmaps);
+    void setAutoOrientation(bool autoOrientation);
 
 Q_SIGNALS:
     void sourceChanged();
@@ -174,8 +142,15 @@ Q_SIGNALS:
     void positionVChanged();
     void pivotUChanged();
     void pivotVChanged();
+    void flipUChanged();
     void flipVChanged();
-    void formatChanged();
+    void indexUVChanged();
+    void magFilterChanged();
+    void minFilterChanged();
+    void mipFilterChanged();
+    void textureDataChanged();
+    void generateMipmapsChanged();
+    void autoOrientationChanged();
 
 protected:
     QSSGRenderGraphObject *updateSpatialNode(QSSGRenderGraphObject *node) override;
@@ -184,18 +159,25 @@ protected:
 
     void itemGeometryChanged(QQuickItem *item, QQuickGeometryChange change, const QRectF &geometry) override;
 
+    explicit QQuick3DTexture(QQuick3DObjectPrivate &dd, QQuick3DObject *parent = nullptr);
+
 private Q_SLOTS:
     void sourceItemDestroyed(QObject *item);
 
 private:
-    void createLayerTexture();
-
     enum class DirtyFlag {
         TransformDirty = (1 << 0),
         SourceDirty = (1 << 1),
-        SourceItemDirty = (1 << 2)
+        IndexUVDirty = (1 << 2),
+        TextureDataDirty = (1 << 3),
+        SamplerDirty = (1 << 4),
+        SourceItemDirty = (1 << 5),
+        FlipVDirty = (1 << 6)
     };
     Q_DECLARE_FLAGS(DirtyFlags, DirtyFlag)
+    void markDirty(DirtyFlag type);
+    void trySetSourceParent();
+    bool effectiveFlipV(const QSSGRenderImage &imageNode) const;
 
     QUrl m_source;
     QQuickItem *m_sourceItem = nullptr;
@@ -205,24 +187,35 @@ private:
     float m_scaleU = 1.0f;
     float m_scaleV = 1.0f;
     MappingMode m_mappingMode = UV;
-    TilingMode m_tilingModeHorizontal = ClampToEdge;
-    TilingMode m_tilingModeVertical = ClampToEdge;
+    TilingMode m_tilingModeHorizontal = Repeat;
+    TilingMode m_tilingModeVertical = Repeat;
     float m_rotationUV = 0;
     float m_positionU = 0;
     float m_positionV = 0;
     float m_pivotU = 0;
     float m_pivotV = 0;
+    bool m_flipU = false;
     bool m_flipV = false;
-    Format m_format = Automatic;
+    int m_indexUV = 0;
+    Filter m_magFilter = Linear;
+    Filter m_minFilter = Linear;
+    Filter m_mipFilter = None;
     DirtyFlags m_dirtyFlags = DirtyFlags(DirtyFlag::TransformDirty)
-                              | DirtyFlags(DirtyFlag::SourceDirty);
+                              | DirtyFlags(DirtyFlag::SourceDirty)
+                              | DirtyFlags(DirtyFlag::IndexUVDirty)
+                              | DirtyFlags(DirtyFlag::TextureDataDirty);
     QMetaObject::Connection m_textureProviderConnection;
     QMetaObject::Connection m_textureUpdateConnection;
-    QSharedPointer<QQuick3DSceneManager> m_sceneManagerForLayer;
+    QQuick3DSceneManager *m_sceneManagerForLayer = nullptr;
     QMetaObject::Connection m_sceneManagerWindowChangeConnection;
     QQuickItem *m_initializedSourceItem = nullptr;
     QSizeF m_initializedSourceItemSize;
-    void trySetSourceParent();
+    QHash<QByteArray, QMetaObject::Connection> m_connections;
+    QMetaObject::Connection m_textureDataConnection;
+    QQuick3DTextureData *m_textureData = nullptr;
+    bool m_generateMipmaps = false;
+    bool m_autoOrientation = true;
+    QMetaMethod m_updateSlot;
 };
 
 QT_END_NAMESPACE

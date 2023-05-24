@@ -1,4 +1,4 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,5 +31,5 @@ std::unique_ptr<v8::Platform> InitializeV8ForPDFium(
     const std::string& js_flags,
     const std::string& exe_path);
 #endif
-
+void ShutdownV8ForPDFium();
 #endif  // TESTING_V8_INITIALIZER_H_

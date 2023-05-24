@@ -1,26 +1,27 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/country_codes/country_codes.h"
 
-#if defined(OS_POSIX) && !defined(OS_APPLE)
+#include "build/build_config.h"
+
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_APPLE)
 #include <locale.h>
 #endif
 
 #include "base/strings/string_util.h"
-#include "build/build_config.h"
-#include "components/pref_registry/pref_registry_syncable.h"
+#include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <windows.h>
 #undef IN  // On Windows, windef.h defines this, which screws up "India" cases.
-#elif defined(OS_APPLE)
+#elif BUILDFLAG(IS_APPLE)
 #include "base/mac/scoped_cftyperef.h"
 #endif
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "base/android/locale_utils.h"
 #endif
 
@@ -49,7 +50,7 @@ int CountryCharsToCountryIDWithUpdate(char c1, char c2) {
   return CountryCharsToCountryID(c1, c2);
 }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 
 // For reference, a list of GeoIDs can be found at
 // http://msdn.microsoft.com/en-us/library/dd374073.aspx .
@@ -106,7 +107,7 @@ int GeoIDToCountryID(GEOID geo_id) {
   }
 }
 
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
 }  // namespace
 
@@ -133,18 +134,27 @@ int GetCountryIDFromPrefs(PrefService* prefs) {
   return prefs->GetInteger(country_codes::kCountryIDAtInstall);
 }
 
-void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
+void RegisterProfilePrefs(PrefRegistrySimple* registry) {
   registry->RegisterIntegerPref(country_codes::kCountryIDAtInstall,
                                 kCountryIDUnknown);
 }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 
 int GetCurrentCountryID() {
-  return GeoIDToCountryID(GetUserGeoID(GEOCLASS_NATION));
+  // Calls to GetCurrentCountryID occur fairly frequently and incur a heavy
+  // registry hit within the GetUserGeoID api call. Registry hits can be
+  // impactful to perf, particularly on virtualized systems.  To mitigate this
+  // we store the result of the first call in a static. The Id is only
+  // updated by calls to SetUserGeoID or the user manually updating the
+  // language and region settings.  It is expected that if it changes the user
+  // would need to restart applications to ensure the updated value is
+  // respected.
+  static int id = GeoIDToCountryID(GetUserGeoID(GEOCLASS_NATION));
+  return id;
 }
 
-#elif defined(OS_APPLE)
+#elif BUILDFLAG(IS_APPLE)
 
 int GetCurrentCountryID() {
   base::ScopedCFTypeRef<CFLocaleRef> locale(CFLocaleCopyCurrent());
@@ -161,13 +171,13 @@ int GetCurrentCountryID() {
                                            static_cast<char>(isobuf[1]));
 }
 
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
 
 int GetCurrentCountryID() {
   return CountryStringToCountryID(base::android::GetDefaultCountryCode());
 }
 
-#elif defined(OS_POSIX) || defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 
 int GetCurrentCountryID() {
   const char* locale = setlocale(LC_MESSAGES, nullptr);
@@ -191,5 +201,28 @@ int GetCurrentCountryID() {
 }
 
 #endif  // OS_*
+
+std::string CountryIDToCountryString(int country_id) {
+  // We only use the lowest 16 bits to build two ASCII characters. If there is
+  // more than that, the ID is invalid. The check for positive integers also
+  // handles the |kCountryIDUnknown| case.
+  if ((country_id & 0xFFFF) != country_id || country_id < 0)
+    return kCountryCodeUnknown;
+
+  // Decode the country code string from the provided integer. The first two
+  // bytes of the country ID represent two ASCII chars.
+  std::string country_code = {static_cast<char>(country_id >> 8),
+                              static_cast<char>(country_id)};
+  country_code = base::ToUpperASCII(country_code);
+
+  // Validate the code that was produced by feeding it back into the system.
+  return (CountryStringToCountryID(country_code) == country_id)
+             ? country_code
+             : kCountryCodeUnknown;
+}
+
+std::string GetCurrentCountryCode() {
+  return CountryIDToCountryString(GetCurrentCountryID());
+}
 
 }  // namespace country_codes

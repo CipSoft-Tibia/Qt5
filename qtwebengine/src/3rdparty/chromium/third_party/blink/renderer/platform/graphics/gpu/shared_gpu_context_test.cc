@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/null_task_runner.h"
 #include "components/viz/test/test_gles2_interface.h"
 #include "gpu/command_buffer/client/gles2_interface.h"
@@ -34,7 +35,9 @@ class SharedGpuContextTestBase : public Test {
  public:
   void SetUp() override {
     task_runner_ = base::MakeRefCounted<base::NullTaskRunner>();
-    handle_ = std::make_unique<base::ThreadTaskRunnerHandle>(task_runner_);
+    handle_ =
+        std::make_unique<base::SingleThreadTaskRunner::CurrentDefaultHandle>(
+            task_runner_);
     auto factory = [](GLES2InterfaceType* gl, bool* gpu_compositing_disabled)
         -> std::unique_ptr<WebGraphicsContext3DProvider> {
       *gpu_compositing_disabled = false;
@@ -57,7 +60,7 @@ class SharedGpuContextTestBase : public Test {
   }
 
   scoped_refptr<base::NullTaskRunner> task_runner_;
-  std::unique_ptr<base::ThreadTaskRunnerHandle> handle_;
+  std::unique_ptr<base::SingleThreadTaskRunner::CurrentDefaultHandle> handle_;
   GLES2InterfaceType gl_;
 };
 
@@ -85,7 +88,9 @@ class BadSharedGpuContextTest : public Test {
  public:
   void SetUp() override {
     task_runner_ = base::MakeRefCounted<base::NullTaskRunner>();
-    handle_ = std::make_unique<base::ThreadTaskRunnerHandle>(task_runner_);
+    handle_ =
+        std::make_unique<base::SingleThreadTaskRunner::CurrentDefaultHandle>(
+            task_runner_);
     auto factory = [](bool* gpu_compositing_disabled)
         -> std::unique_ptr<WebGraphicsContext3DProvider> {
       *gpu_compositing_disabled = false;
@@ -102,7 +107,7 @@ class BadSharedGpuContextTest : public Test {
   }
 
   scoped_refptr<base::NullTaskRunner> task_runner_;
-  std::unique_ptr<base::ThreadTaskRunnerHandle> handle_;
+  std::unique_ptr<base::SingleThreadTaskRunner::CurrentDefaultHandle> handle_;
 };
 
 // Test fixure that simulate not using gpu compositing.
@@ -130,7 +135,9 @@ class SharedGpuContextTestViz : public Test {
  public:
   void SetUp() override {
     task_runner_ = base::MakeRefCounted<base::NullTaskRunner>();
-    handle_ = std::make_unique<base::ThreadTaskRunnerHandle>(task_runner_);
+    handle_ =
+        std::make_unique<base::SingleThreadTaskRunner::CurrentDefaultHandle>(
+            task_runner_);
     test_context_provider_ = viz::TestContextProvider::Create();
     InitializeSharedGpuContext(test_context_provider_.get(),
                                /*cache = */ nullptr,
@@ -143,7 +150,7 @@ class SharedGpuContextTestViz : public Test {
     SharedGpuContext::ResetForTesting();
   }
   scoped_refptr<base::NullTaskRunner> task_runner_;
-  std::unique_ptr<base::ThreadTaskRunnerHandle> handle_;
+  std::unique_ptr<base::SingleThreadTaskRunner::CurrentDefaultHandle> handle_;
   scoped_refptr<viz::TestContextProvider> test_context_provider_;
 };
 
@@ -165,11 +172,9 @@ TEST_F(SharedGpuContextTest, Canvas2DLayerBridgeAutoRecovery) {
   // Canvas2DLayerBridge will restore the context and succeed.
   gl_.SetIsContextLost(true);
   EXPECT_FALSE(SharedGpuContext::IsValidWithoutRestoring());
-  IntSize size(10, 10);
-  CanvasColorParams color_params;
+  gfx::Size size(10, 10);
   std::unique_ptr<Canvas2DLayerBridge> bridge =
-      std::make_unique<Canvas2DLayerBridge>(size, RasterMode::kGPU,
-                                            color_params);
+      std::make_unique<Canvas2DLayerBridge>(size, RasterMode::kGPU, kNonOpaque);
   EXPECT_TRUE(bridge->IsAccelerated());
   EXPECT_TRUE(SharedGpuContext::IsValidWithoutRestoring());
 }
@@ -190,10 +195,10 @@ TEST_F(BadSharedGpuContextTest, AllowSoftwareToAcceleratedCanvasUpgrade) {
 TEST_F(BadSharedGpuContextTest, AccelerateImageBufferSurfaceCreationFails) {
   // With a bad shared context, AccelerateImageBufferSurface should fail and
   // return a nullptr provider
-  IntSize size(10, 10);
   std::unique_ptr<CanvasResourceProvider> resource_provider =
       CanvasResourceProvider::CreateSharedImageProvider(
-          size, kLow_SkFilterQuality, CanvasColorParams(),
+          SkImageInfo::MakeN32Premul(10, 10),
+          cc::PaintFlags::FilterQuality::kLow,
           CanvasResourceProvider::ShouldInitialize::kNo,
           SharedGpuContext::ContextProviderWrapper(), RasterMode::kGPU,
           true /*is_origin_top_left*/, 0u /*shared_image_usage_flags*/);
@@ -217,10 +222,10 @@ TEST_F(SharedGpuContextTestViz, AccelerateImageBufferSurfaceAutoRecovery) {
   // AcceleratedImageBufferSurface will restore the context and succeed
   test_context_provider_->TestContextGL()->set_context_lost(true);
   EXPECT_FALSE(SharedGpuContext::IsValidWithoutRestoring());
-  IntSize size(10, 10);
   std::unique_ptr<CanvasResourceProvider> resource_provider =
       CanvasResourceProvider::CreateSharedImageProvider(
-          size, kLow_SkFilterQuality, CanvasColorParams(),
+          SkImageInfo::MakeN32Premul(10, 10),
+          cc::PaintFlags::FilterQuality::kLow,
           CanvasResourceProvider::ShouldInitialize::kNo,
           SharedGpuContext::ContextProviderWrapper(), RasterMode::kGPU,
           true /*is_origin_top_left*/, 0u /*shared_image_usage_flags*/);

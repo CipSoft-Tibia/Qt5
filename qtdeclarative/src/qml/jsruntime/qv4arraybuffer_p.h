@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4ARRAYBUFFER_H
 #define QV4ARRAYBUFFER_H
 
@@ -52,6 +16,7 @@
 
 #include "qv4object_p.h"
 #include "qv4functionobject_p.h"
+#include <QtCore/qarraydatapointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -71,31 +36,48 @@ struct Q_QML_PRIVATE_EXPORT SharedArrayBuffer : Object {
     void init(size_t length);
     void init(const QByteArray& array);
     void destroy();
-    QTypedArrayData<char> *data;
+
+    void setSharedArrayBuffer(bool shared) noexcept { isShared = shared; }
+    bool isSharedArrayBuffer() const noexcept { return isShared; }
+
+    char *arrayData() noexcept { return arrayDataPointer()->data(); }
+    const char *constArrayData() const noexcept { return constArrayDataPointer()->data(); }
+    uint arrayDataLength() const noexcept { return constArrayDataPointer().size; }
+
+    bool hasSharedArrayData() const noexcept { return constArrayDataPointer().isShared(); }
+    bool hasDetachedArrayData() const noexcept { return constArrayDataPointer().isNull(); }
+    void detachArrayData() noexcept { arrayDataPointer().clear(); }
+
+    bool arrayDataNeedsDetach() const noexcept { return constArrayDataPointer().needsDetach(); }
+
+private:
+    const QArrayDataPointer<const char> &constArrayDataPointer() const noexcept
+    {
+        return *reinterpret_cast<const QArrayDataPointer<const char> *>(&arrayDataPointerStorage);
+    }
+    QArrayDataPointer<char> &arrayDataPointer() noexcept
+    {
+        return *reinterpret_cast<QArrayDataPointer<char> *>(&arrayDataPointerStorage);
+    }
+
+    template <typename T>
+    struct storage_t { alignas(T) unsigned char data[sizeof(T)]; };
+
+    storage_t<QArrayDataPointer<char>>
+    arrayDataPointerStorage;
     bool isShared;
-
-    uint byteLength() const { return data ? data->size : 0; }
-
-    bool isDetachedBuffer() const { return !data; }
-    bool isSharedArrayBuffer() const { return isShared; }
 };
 
 struct Q_QML_PRIVATE_EXPORT ArrayBuffer : SharedArrayBuffer {
     void init(size_t length) {
         SharedArrayBuffer::init(length);
-        isShared = false;
+        setSharedArrayBuffer(false);
     }
     void init(const QByteArray& array) {
         SharedArrayBuffer::init(array);
-        isShared = false;
-    }
-    void detachArrayBuffer() {
-        if (data && !data->ref.deref())
-            QTypedArrayData<char>::deallocate(data);
-        data = nullptr;
+        setSharedArrayBuffer(false);
     }
 };
-
 
 }
 
@@ -123,13 +105,14 @@ struct Q_QML_PRIVATE_EXPORT SharedArrayBuffer : Object
     V4_PROTOTYPE(sharedArrayBufferPrototype)
 
     QByteArray asByteArray() const;
-    uint byteLength() const { return d()->byteLength(); }
-    char *data() { Q_ASSERT(d()->data); return d()->data->data(); }
-    const char *constData() { Q_ASSERT(d()->data); return d()->data->data(); }
 
-    bool isShared() { return d()->data->ref.isShared(); }
-    bool isDetachedBuffer() const { return !d()->data; }
-    bool isSharedArrayBuffer() const { return d()->isShared; }
+    uint arrayDataLength() const { return d()->arrayDataLength(); }
+    char *arrayData() { return d()->arrayData(); }
+    const char *constArrayData() const { return d()->constArrayData(); }
+
+    bool hasSharedArrayData() { return d()->hasSharedArrayData(); }
+    bool hasDetachedArrayData() const { return d()->hasDetachedArrayData(); }
+    bool isSharedArrayBuffer() const { return d()->isSharedArrayBuffer(); }
 };
 
 struct Q_QML_PRIVATE_EXPORT ArrayBuffer : SharedArrayBuffer
@@ -139,14 +122,14 @@ struct Q_QML_PRIVATE_EXPORT ArrayBuffer : SharedArrayBuffer
     V4_PROTOTYPE(arrayBufferPrototype)
 
     QByteArray asByteArray() const;
-    uint byteLength() const { return d()->byteLength(); }
-    char *data() { detach(); return d()->data ? d()->data->data() : nullptr; }
+    uint arrayDataLength() const { return d()->arrayDataLength(); }
+    char *dataData() { if (d()->arrayDataNeedsDetach()) detach(); return d()->arrayData(); }
     // ### is that detach needed?
-    const char *constData() { detach(); return d()->data ? d()->data->data() : nullptr; }
+    const char *constArrayData() const { return d()->constArrayData(); }
+    bool hasSharedArrayData() { return d()->hasSharedArrayData(); }
+    void detachArrayData() { d()->detachArrayData(); }
 
-    bool isShared() { return d()->data && d()->data->ref.isShared(); }
     void detach();
-    void detachArrayBuffer() { d()->detachArrayBuffer(); }
 };
 
 struct SharedArrayBufferPrototype : Object

@@ -1,5 +1,3 @@
-# Omaha Protocol (V3.1)
-This document describes version 3.1 of the Omaha Client-Server Protocol.
 Previous versions are described at:
  * [Version 3](https://github.com/google/omaha/blob/master/doc/ServerProtocolV3.md)
  * [Version 2](https://github.com/google/omaha/blob/master/doc/ServerProtocolV2.md)
@@ -91,18 +89,17 @@ The Omaha protocol is anonymous, but allows servers to compute the number of
 unique active or update-checking devices. This is accomplished through
 client-regulated counting.
 
-The idea of client-regulated counting is to inspect all update
-check requests received over the last N days and discard all but one from each
+The idea of client-regulated counting is to inspect all update check requests
+received over the last N days and discard all but the first request from each
 client. The number of remaining requests is equal to the number of unique
 clients.
 
 Each response from the server contains a numeric date, representing the date (in
 the server's choice of timezone) that the client's request was received. The
 client stores this date, and sends it on the next request to the server. When
-inspecting this next request, the server can determine whether the date is
-greater than or equal to (current date - N). If so, this is the first request
-from the client in the N-day window. Otherwise, there is another request from
-this client in the N-day window and this request can be excluded from the count.
+inspecting the next request, the server can determine whether the date is before
+(current date - N + 1). If so, this is the first request from the client in the
+N-day window. Otherwise, this request is a "duplicate" and can be discarded.
 
 In certain environments (for example, frequently re-imaged VMs in internet
 cafes), it is likely that the client may fail to update the date of the last
@@ -150,7 +147,7 @@ Additions to the protocol that specify backward-compatible default values (often
 with a semantic meaning of "unknown") do not need to increase the protocol
 version. Removals of values with specified defaults from the protocol do not
 need to increase the protocol version, since the default value can be assumed by
-compatible enpoints. All other changes to the protocol may require a new version
+compatible endpoints. All other changes to the protocol may require a new version
 number.
 
 ### Timing & Backoff
@@ -279,7 +276,7 @@ A request object has the following members:
      counted toward official metrics. Default: "" (empty string).
  *   `updater`: A list of `updater` objects.
  *   `updaterchannel`: If present, identifies the distribution channel of the
-     client (e.g. "stable", "beta", "dev", "canary"). Default: "".
+     client (e.g. "stable", "beta", "dev", "canary", "extended"). Default: "".
  *   `updaterversion`: The version of the client that is sending this request.
      Default: "0".
 
@@ -330,6 +327,7 @@ is running within. It has the following members:
      *   "arm64": 64-bit ARM
      *   "x86": x86
      *   "x86_64": x86-64
+     *   "x64": x64
 
 #### `app` Objects (Update Check Request)
 Each managed application is represented by exactly one `app` object. It has the
@@ -348,6 +346,13 @@ following members:
  *   `cohortname`: A human-readable string identifying the semantics behind the
      current cohort. For example, this might be displayed to the user and
      indicate the channel or experimental status. Default: "".
+ *   `release_channel`: The target channel that the app switches to. For
+      example an app can have stable, beta, dev, and canary channels. Note
+      switching to an older channel may have no effect until the older channel
+      catches up with the install. Ex: a machine on today's beta (107.0.5304.62)
+      that is switched to stable will stay on that version until 107 ships to
+      stable. Downgrade can be forced by the use of the `rollback_allowed` in
+      the `updatecheck` node.
  *   `data`: A list of `data` objects.
  *   `disabled`: A list of `disabled` objects.
  *   `enabled`: Indicates whether the application is enabled on the client. As
@@ -388,8 +393,6 @@ following members:
  *   `lang`: The language of the application installation, in BCP 47
      representation, or "" if unknown or not applicable. Default: "".
  *   `ping`: A `ping` object.
- *   `rollback_allowed`: true if the client will accept a version downgrade.
-     Typically used in conjunction with a targetversionprefix. Default: false.
  *   `tag`: A string, representing arbitrary application-specific data that the
      client wishes to disclose to the server. Clients should prefer to extend
      this protocol with additional attributes rather than use this field, but in
@@ -429,6 +432,8 @@ data from the server. The server maintains a map of index values to data
 contents, and can supply them if requested. This is used during installation to
 transmit alternate branding or seeded configurations to the application. `data`
 objects have the following members:
+ *   `name`: The type of data lookup to perform. The only known supported value
+      is "install". Default: "".
  *   `index`: The key to look up on the server. Default: "".
 
 #### `disabled` Objects (Update Check Request)
@@ -441,13 +446,17 @@ causes for a disabled state may exist.
 #### `updatecheck` Objects (Update Check Request)
 An updatecheck object represents the actual intent to update. It has the
 following members:
+ *   `rollback_allowed`: true if the client will accept a version downgrade.
+     Typically used in conjunction with a targetversionprefix. Default: false.
+ *   `sameversionupdate`: true if the client is requesting that it be updated
+     to the version it currently has (usually as part of a repair or
+     overinstallation) instead of receiving no update. Default: false.
  *   `targetversionprefix`: A component-wise prefix of a version number, or a
-     complete version number suffixed with the `$` character. The server SHOULD
-     NOT return an update instruction to a version number that does not match
-     the prefix or complete version number. The prefix is interpreted a
-     dotted-tuple that specifies the exactly-matching elements; it is not a
-     lexical prefix. (For example, "1.2.3" matches "1.2.3.4" but not "1.2.34".)
-     Default: "".
+     complete version number. The server SHOULD NOT return an update
+     instruction to a version number that does not match the prefix or complete
+     version number. The prefix is interpreted a dotted-tuple that specifies
+     the exactly-matching elements; it is not a lexical prefix. (For example,
+     "1.2.3" matches "1.2.3.4" but not "1.2.34".) Default: "".
  *   `updatedisabled`: An indication of whether the client will honor an update
      response, if it receives one. Legal values are "true" (indicating that the
      client will ignore any update instruction) and "false" (indicating that the
@@ -523,6 +532,8 @@ object in the update check request.
  *   `app`: A list of `app` objects. There is one object for each `app` in the
      request body.
  *   `daystart`: A `daystart` object.
+ *   `systemrequirements`: A `systemrequirements` object. The server will not
+     send this element, but it may be present in offline installer manifests.
  *   `protocol`: The version of the Omaha protocol. Servers responding with this
      protocol must send a value of "3.1".
  *   `server`: A string identifying the server or server family for diagnostic
@@ -536,6 +547,47 @@ server's locale. It has the following members:
      received. The client should generally save this value for use in future
      update checks (for examples, see `request.app.ping.rd` and
      `request.app.installdate`).
+
+#### `systemrequirements` Objects (Update Check Response)
+A `systemrequirements` object contains information about the operating system
+that the application requires to install. It has the following members:
+ *   `platform`: The operating system family that the application requires
+     (e.g. "win", "mac", "linux", "ios", "android"), or "" if not applicable.
+ *   `arch`: Expected host processor architecture that the app is compatible
+     with, or "" if not applicable.
+
+     `arch` can be a single entry, or multiple entries separated with `,`.
+     Entries prefixed with a `-` (negative entries) indicate non-compatible
+     hosts. Non-prefixed entries indicate compatible guests.
+
+     An application is compatible with the current architecture if:
+     * `arch` is empty, or
+     * none of the negative entries within `arch` match the current host
+       architecture exactly, and there are no non-negative entries, or
+     * one of the non-negative entries within `arch` matches the current
+       architecture, or is compatible with the current architecture (i.e., it is
+       a compatible guest for the current host). The latter is determined by
+       `::IsWow64GuestMachineSupported()` on Windows.
+       * If `::IsWow64GuestMachineSupported()` is not available, returns `true`
+         if `arch` is x86.
+
+     Examples:
+     * `arch` == "x86".
+     * `arch` == "x64".
+     * `arch` == "x86,x64,-arm64": installation will fail if the underlying host
+       is arm64.
+ *   `min_os_version`: The minimum required version of the operating system, or
+     "" if not applicable.
+
+     The `min_os_version` is in the format `major.minor.build.patch` for
+     Windows. The `major`, `minor` and `build` are the values returned by the
+     `::GetVersionEx` API. The `patch` is the `UBR` value under the registry
+     path `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion`.
+
+     The `build` and the `patch` components may be omitted if all that is needed
+     is a minimum `major.minor` version. For example, `6.0` will match all OS
+     versions that are at or above that version, regardless of `build` and
+     `patch` numbers.
 
 #### `app` Objects (Update Check Response)
 An app object represents a per-application acknowledgement of the request. If an
@@ -572,8 +624,10 @@ in the response. It has the following members:
 #### `data` Objects (Update Check Response)
 Each data object in the response represents an answer to a data request from the
 client. It has the following members:
+ *   `name`: The requested data name from `request.app.data.name`, echoed back
+     to the client.
  *   `index`: The requested data index from `request.app.data.index`, echoed
-     back to the client.
+     back to the client, if valid.
  *   `status`: The outcome of the data lookup. Default: "ok". Known values:
      *   "ok": This tag contains the appropriate data response, even if such a
          response is the empty string.
@@ -582,7 +636,7 @@ client. It has the following members:
      *   "error-nodata": The data request was understood, but the server does
          not have a value for the requested entry. (This is distinct from having
          a zero-length value.)
- *   `value`: The value of the requested data index.
+ *   `#text`: The value of the requested data index.
 
 #### `updatecheck` Objects (Update Check Response)
 An updatecheck response object contains whether or not there is an update

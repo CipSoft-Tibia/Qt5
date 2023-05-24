@@ -1,47 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeoprojection_p.h"
+
+#include <QSize>
+#include <QtGui/QMatrix4x4>
+#include <QtPositioning/QGeoPolygon>
+#include <QtPositioning/QGeoRectangle>
+
 #include <QtPositioning/private/qwebmercator_p.h>
 #include <QtPositioning/private/qlocationutils_p.h>
 #include <QtPositioning/private/qclipperutils_p.h>
-#include <QtPositioning/QGeoPolygon>
-#include <QtPositioning/QGeoRectangle>
-#include <QSize>
-#include <QtGui/QMatrix4x4>
+
 #include <cmath>
 
 namespace {
@@ -493,11 +463,11 @@ QGeoShape QGeoProjectionWebMercator::visibleRegion() const
 {
     const QList<QDoubleVector2D> &visibleRegion = visibleGeometry();
     QGeoPolygon poly;
-    for (int i = 0; i < visibleRegion.size(); ++i) {
+    for (qsizetype i = 0; i < visibleRegion.size(); ++i) {
          const QDoubleVector2D &c = visibleRegion.at(i);
         // If a segment spans more than half of the map longitudinally, split in 2.
-        if (i && qAbs(visibleRegion.at(i-1).x() - c.x()) >= 0.5) { // This assumes a segment is never >= 1.0 (whole map span)
-            QDoubleVector2D extraPoint = (visibleRegion.at(i-1) + c) * 0.5;
+        if (i && qAbs(visibleRegion.at(i - 1).x() - c.x()) >= 0.5) { // This assumes a segment is never >= 1.0 (whole map span)
+            QDoubleVector2D extraPoint = (visibleRegion.at(i - 1) + c) * 0.5;
             poly.addCoordinate(wrappedMapProjectionToGeo(extraPoint));
         }
         poly.addCoordinate(wrappedMapProjectionToGeo(c));
@@ -770,15 +740,15 @@ void QGeoProjectionWebMercator::updateVisibleRegion()
     viewportRect.push_back(tr);
     viewportRect.push_back(tl);
 
-    c2t::clip2tri clipper;
+    QClipperUtils clipper;
     clipper.clearClipper();
-    clipper.addSubjectPath(QClipperUtils::qListToPath(mapRect), true);
-    clipper.addClipPolygon(QClipperUtils::qListToPath(viewportRect));
+    clipper.addSubjectPath(mapRect, true);
+    clipper.addClipPolygon(viewportRect);
 
-    Paths res = clipper.execute(c2t::clip2tri::Intersection);
+    const auto res = clipper.execute(QClipperUtils::Intersection);
     m_visibleRegion.clear();
     if (res.size())
-        m_visibleRegion = QClipperUtils::pathToQList(res[0]); // Intersection between two convex quadrilaterals should always be a single polygon
+        m_visibleRegion = res[0]; // Intersection between two convex quadrilaterals should always be a single polygon
 
     m_projectableRegion.clear();
     mapRect.clear();
@@ -814,39 +784,30 @@ void QGeoProjectionWebMercator::updateVisibleRegion()
         projectableRect.push_back(tl);
 
 
-        c2t::clip2tri clipperProjectable;
+        QClipperUtils clipperProjectable;
         clipperProjectable.clearClipper();
-        clipperProjectable.addSubjectPath(QClipperUtils::qListToPath(mapRect), true);
-        clipperProjectable.addClipPolygon(QClipperUtils::qListToPath(projectableRect));
+        clipperProjectable.addSubjectPath(mapRect, true);
+        clipperProjectable.addClipPolygon(projectableRect);
 
-        Paths resProjectable = clipperProjectable.execute(c2t::clip2tri::Intersection);
+        const auto resProjectable = clipperProjectable.execute(QClipperUtils::Intersection);
         if (resProjectable.size())
-            m_projectableRegion = QClipperUtils::pathToQList(resProjectable[0]); // Intersection between two convex quadrilaterals should always be a single polygon
+            m_projectableRegion = resProjectable[0]; // Intersection between two convex quadrilaterals should always be a single polygon
         else
             m_projectableRegion = viewportRect;
     }
 
     // Compute m_visibleRegionExpanded as a clipped expanded version of m_visibleRegion
     QDoubleVector2D centroid;
-    for (const QDoubleVector2D &v: qAsConst(m_visibleRegion))
+    for (const QDoubleVector2D &v: std::as_const(m_visibleRegion))
         centroid += v;
     centroid /= m_visibleRegion.size();
 
     m_visibleRegionExpanded.clear();
-    for (const QDoubleVector2D &v: qAsConst(m_visibleRegion)) {
+    for (const QDoubleVector2D &v: std::as_const(m_visibleRegion)) {
         const QDoubleVector2D vc = v - centroid;
         m_visibleRegionExpanded.push_back(centroid + vc * 1.2); // fixing expansion factor to 1.2
     }
 
-    c2t::clip2tri clipperExpanded;
-    clipperExpanded.clearClipper();
-    clipperExpanded.addSubjectPath(QClipperUtils::qListToPath(m_visibleRegionExpanded), true);
-    clipperExpanded.addClipPolygon(QClipperUtils::qListToPath(m_projectableRegion));
-    Paths resVisibleExpanded = clipperExpanded.execute(c2t::clip2tri::Intersection);
-    if (resVisibleExpanded.size())
-        m_visibleRegionExpanded = QClipperUtils::pathToQList(resVisibleExpanded[0]); // Intersection between two convex quadrilaterals should always be a single polygon
-    else
-        m_visibleRegionExpanded = m_visibleRegion;
 }
 
 QGeoCameraData QGeoProjectionWebMercator::cameraData() const

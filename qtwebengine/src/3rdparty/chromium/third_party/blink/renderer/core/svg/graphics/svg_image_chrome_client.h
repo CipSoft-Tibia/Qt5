@@ -29,10 +29,11 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_SVG_GRAPHICS_SVG_IMAGE_CHROME_CLIENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SVG_GRAPHICS_SVG_IMAGE_CHROME_CLIENT_H_
 
-#include <memory>
 #include "base/gtest_prod_util.h"
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/loader/empty_clients.h"
+#include "third_party/blink/renderer/platform/heap/disallow_new_wrapper.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 
@@ -44,6 +45,9 @@ class CORE_EXPORT SVGImageChromeClient final : public EmptyChromeClient {
  public:
   explicit SVGImageChromeClient(SVGImage*);
 
+  void InitAnimationTimer(
+      scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner);
+
   bool IsSVGImageChromeClient() const override;
 
   SVGImage* GetImage() const { return image_; }
@@ -54,18 +58,22 @@ class CORE_EXPORT SVGImageChromeClient final : public EmptyChromeClient {
 
   bool IsSuspended() const { return timeline_state_ >= kSuspended; }
 
+  void Trace(Visitor*) const final;
+
  private:
   void ChromeDestroyed() override;
-  void InvalidateRect(const IntRect&) override;
+  void InvalidateContainer() override;
   void ScheduleAnimation(const LocalFrameView*,
                          base::TimeDelta = base::TimeDelta()) override;
 
-  void SetTimer(std::unique_ptr<TimerBase>);
-  TimerBase* GetTimerForTesting() const { return animation_timer_.get(); }
+  void SetTimerForTesting(
+      DisallowNewWrapper<HeapTaskRunnerTimer<SVGImageChromeClient>>*);
+  TimerBase& GetTimerForTesting() const { return animation_timer_->Value(); }
   void AnimationTimerFired(TimerBase*);
 
   SVGImage* image_;
-  std::unique_ptr<TimerBase> animation_timer_;
+  Member<DisallowNewWrapper<HeapTaskRunnerTimer<SVGImageChromeClient>>>
+      animation_timer_;
   enum {
     kRunning,
     kSuspended,
@@ -75,6 +83,8 @@ class CORE_EXPORT SVGImageChromeClient final : public EmptyChromeClient {
   FRIEND_TEST_ALL_PREFIXES(SVGImageTest, TimelineSuspendAndResume);
   FRIEND_TEST_ALL_PREFIXES(SVGImageTest, ResetAnimation);
   FRIEND_TEST_ALL_PREFIXES(SVGImageSimTest, PageVisibilityHiddenToVisible);
+  FRIEND_TEST_ALL_PREFIXES(SVGImageSimTest,
+                           AnimationsPausedWhenImageScrolledOutOfView);
 };
 
 template <>

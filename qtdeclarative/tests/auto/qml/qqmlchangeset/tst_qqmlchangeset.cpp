@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <qrandom.h>
 #include <private/qqmlchangeset_p.h>
@@ -131,8 +106,8 @@ public:
         QHash<QQmlChangeSet::MoveKey, int> removedValues;
         foreach (const Signal &signal, changes) {
             if (signal.isInsert()) {
-                if (signal.index < 0 || signal.index > list.count()) {
-                    qDebug() << "insert out of range" << signal.index << list.count();
+                if (signal.index < 0 || signal.index > list.size()) {
+                    qDebug() << "insert out of range" << signal.index << list.size();
                     return false;
                 }
                 if (signal.moveId != -1) {
@@ -143,8 +118,8 @@ public:
                     list.insert(signal.index, signal.count, 100);
                 }
             } else if (signal.isRemove()) {
-                if (signal.index < 0 || signal.index + signal.count > list.count()) {
-                    qDebug() << "remove out of range" << signal.index << signal.count << list.count();
+                if (signal.index < 0 || signal.index + signal.count > list.size()) {
+                    qDebug() << "remove out of range" << signal.index << signal.count << list.size();
                     return false;
                 }
                 if (signal.moveId != -1) {
@@ -156,9 +131,9 @@ public:
             } else if (signal.isMove()) {
                 if (signal.index < 0
                         || signal.to < 0
-                        || signal.index + signal.count > list.count()
-                        || signal.to + signal.count > list.count()) {
-                    qDebug() << "move out of range" << signal.index << signal.to << signal.count << list.count();
+                        || signal.index + signal.count > list.size()
+                        || signal.to + signal.count > list.size()) {
+                    qDebug() << "move out of range" << signal.index << signal.to << signal.count << list.size();
                     return false;
                 }
                 move(signal.index, signal.to, signal.count, &list);
@@ -218,19 +193,19 @@ Q_DECLARE_METATYPE(tst_qqmlchangeset::SignalListList)
         qDebug() << input; \
         qDebug() << output; \
         qDebug() << changes; \
-        QVERIFY(false); \
+        QFAIL("Failed to apply input changes"); \
     } else if (!applyChanges(outputList, output)) { \
         qDebug() << input; \
         qDebug() << output; \
         qDebug() << changes; \
-        QVERIFY(false); \
+        QFAIL("Failed to apply output changes"); \
     } else if (outputList != inputList /* || changes != output*/) { \
         qDebug() << input; \
         qDebug() << output; \
         qDebug() << changes; \
         qDebug() << inputList; \
         qDebug() << outputList; \
-        QVERIFY(false); \
+        QFAIL("Outputs don't match inputs"); \
     } else if (changes != output) { \
         qDebug() << output; \
         qDebug() << changes; \

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -39,10 +39,6 @@ thunk::ResourceCreationAPI* TestGlobals::GetResourceCreationAPI(
 }
 
 PP_Module TestGlobals::GetModuleForInstance(PP_Instance instance) { return 0; }
-
-std::string TestGlobals::GetCmdLine() { return std::string(); }
-
-void TestGlobals::PreCacheFontForFlash(const void* /* logfontw */) {}
 
 void TestGlobals::LogWithSource(PP_Instance instance,
                                 PP_LogLevel level,

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFILEDIALOG_H
 #define QFILEDIALOG_H
@@ -55,8 +19,8 @@ QT_BEGIN_NAMESPACE
 class QModelIndex;
 class QItemSelection;
 struct QFileDialogArgs;
-class QFileIconProvider;
 class QFileDialogPrivate;
+class QAbstractFileIconProvider;
 class QAbstractItemDelegate;
 class QAbstractProxyModel;
 
@@ -67,38 +31,28 @@ class Q_WIDGETS_EXPORT QFileDialog : public QDialog
     Q_PROPERTY(FileMode fileMode READ fileMode WRITE setFileMode)
     Q_PROPERTY(AcceptMode acceptMode READ acceptMode WRITE setAcceptMode)
     Q_PROPERTY(QString defaultSuffix READ defaultSuffix WRITE setDefaultSuffix)
-#if QT_DEPRECATED_SINCE(5, 13)
-    Q_PROPERTY(bool readOnly READ isReadOnly WRITE setReadOnly DESIGNABLE false)
-    Q_PROPERTY(bool confirmOverwrite READ confirmOverwrite WRITE setConfirmOverwrite DESIGNABLE false)
-    Q_PROPERTY(bool resolveSymlinks READ resolveSymlinks WRITE setResolveSymlinks DESIGNABLE false)
-    Q_PROPERTY(bool nameFilterDetailsVisible READ isNameFilterDetailsVisible
-               WRITE setNameFilterDetailsVisible DESIGNABLE false)
-#endif
     Q_PROPERTY(Options options READ options WRITE setOptions)
     Q_PROPERTY(QStringList supportedSchemes READ supportedSchemes WRITE setSupportedSchemes)
 
 public:
     enum ViewMode { Detail, List };
     Q_ENUM(ViewMode)
-    enum FileMode { AnyFile, ExistingFile, Directory, ExistingFiles,
-                    DirectoryOnly Q_DECL_ENUMERATOR_DEPRECATED_X("Use setOption(ShowDirsOnly, true) instead")};
+    enum FileMode { AnyFile, ExistingFile, Directory, ExistingFiles };
     Q_ENUM(FileMode)
     enum AcceptMode { AcceptOpen, AcceptSave };
     Q_ENUM(AcceptMode)
     enum DialogLabel { LookIn, FileName, FileType, Accept, Reject };
 
+    // keep this in sync with QFileDialogOption::FileDialogOptions
     enum Option
     {
         ShowDirsOnly                = 0x00000001,
         DontResolveSymlinks         = 0x00000002,
         DontConfirmOverwrite        = 0x00000004,
-#if QT_DEPRECATED_SINCE(5, 14)
-        DontUseSheet Q_DECL_ENUMERATOR_DEPRECATED = 0x00000008,
-#endif
-        DontUseNativeDialog         = 0x00000010,
-        ReadOnly                    = 0x00000020,
-        HideNameFilterDetails       = 0x00000040,
-        DontUseCustomDirectoryIcons = 0x00000080
+        DontUseNativeDialog         = 0x00000008,
+        ReadOnly                    = 0x00000010,
+        HideNameFilterDetails       = 0x00000020,
+        DontUseCustomDirectoryIcons = 0x00000040
     };
     Q_ENUM(Option)
     Q_DECLARE_FLAGS(Options, Option)
@@ -123,13 +77,6 @@ public:
 
     void selectUrl(const QUrl &url);
     QList<QUrl> selectedUrls() const;
-
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use setOption(HideNameFilterDetails, !enabled) instead")
-    void setNameFilterDetailsVisible(bool enabled);
-    QT_DEPRECATED_X("Use !testOption(HideNameFilterDetails) instead")
-    bool isNameFilterDetailsVisible() const;
-#endif
 
     void setNameFilter(const QString &filter);
     void setNameFilters(const QStringList &filters);
@@ -156,28 +103,11 @@ public:
     void setAcceptMode(AcceptMode mode);
     AcceptMode acceptMode() const;
 
-#if QT_DEPRECATED_SINCE(5, 13)
-    void setReadOnly(bool enabled);
-    bool isReadOnly() const;
-
-    QT_DEPRECATED_X("Use setOption(DontResolveSymlinks, !enabled) instead")
-    void setResolveSymlinks(bool enabled);
-    QT_DEPRECATED_X("Use !testOption(DontResolveSymlinks) instead")
-    bool resolveSymlinks() const;
-#endif
-
     void setSidebarUrls(const QList<QUrl> &urls);
     QList<QUrl> sidebarUrls() const;
 
     QByteArray saveState() const;
     bool restoreState(const QByteArray &state);
-
-#if QT_DEPRECATED_SINCE(5, 13)
-    QT_DEPRECATED_X("Use setOption(DontConfirmOverwrite, !enabled) instead")
-    void setConfirmOverwrite(bool enabled);
-    QT_DEPRECATED_X("Use !testOption(DontConfirmOverwrite) instead")
-    bool confirmOverwrite() const;
-#endif
 
     void setDefaultSuffix(const QString &suffix);
     QString defaultSuffix() const;
@@ -188,8 +118,8 @@ public:
     void setItemDelegate(QAbstractItemDelegate *delegate);
     QAbstractItemDelegate *itemDelegate() const;
 
-    void setIconProvider(QFileIconProvider *provider);
-    QFileIconProvider *iconProvider() const;
+    void setIconProvider(QAbstractFileIconProvider *provider);
+    QAbstractFileIconProvider *iconProvider() const;
 
     void setLabelText(DialogLabel label, const QString &text);
     QString labelText(DialogLabel label) const;

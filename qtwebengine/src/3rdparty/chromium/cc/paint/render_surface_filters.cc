@@ -1,9 +1,10 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stddef.h>
 #include <algorithm>
+#include <utility>
 
 #include "cc/paint/render_surface_filters.h"
 
@@ -12,16 +13,9 @@
 #include "cc/paint/filter_operations.h"
 #include "cc/paint/paint_filter.h"
 #include "third_party/skia/include/core/SkColorFilter.h"
-#include "third_party/skia/include/core/SkImageFilter.h"
 #include "third_party/skia/include/core/SkRegion.h"
-#include "third_party/skia/include/effects/SkAlphaThresholdFilter.h"
-#include "third_party/skia/include/effects/SkColorFilterImageFilter.h"
-#include "third_party/skia/include/effects/SkColorMatrixFilter.h"
-#include "third_party/skia/include/effects/SkComposeImageFilter.h"
-#include "third_party/skia/include/effects/SkDropShadowImageFilter.h"
-#include "third_party/skia/include/effects/SkMagnifierImageFilter.h"
 #include "ui/gfx/geometry/size_f.h"
-#include "ui/gfx/skia_util.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 
 namespace cc {
 
@@ -205,16 +199,15 @@ sk_sp<PaintFilter> RenderSurfaceFilters::BuildImageFilter(
         break;
       case FilterOperation::DROP_SHADOW:
         image_filter = sk_make_sp<DropShadowPaintFilter>(
-            SkIntToScalar(op.drop_shadow_offset().x()),
-            SkIntToScalar(op.drop_shadow_offset().y()),
+            SkIntToScalar(op.offset().x()), SkIntToScalar(op.offset().y()),
             SkIntToScalar(op.amount()), SkIntToScalar(op.amount()),
             op.drop_shadow_color(),
-            SkDropShadowImageFilter::kDrawShadowAndForeground_ShadowMode,
+            DropShadowPaintFilter::ShadowMode::kDrawShadowAndForeground,
             std::move(image_filter));
         break;
       case FilterOperation::COLOR_MATRIX:
-        image_filter =
-            CreateMatrixImageFilter(op.matrix(), std::move(image_filter));
+        image_filter = CreateMatrixImageFilter(op.matrix().data(),
+                                               std::move(image_filter));
         break;
       case FilterOperation::ZOOM: {
         // The center point, always the midpoint of the unclipped rectangle.
@@ -269,7 +262,7 @@ sk_sp<PaintFilter> RenderSurfaceFilters::BuildImageFilter(
         sk_sp<SkColorFilter> cf;
         bool has_input = false;
         if (op.image_filter()->type() == PaintFilter::Type::kColorFilter &&
-            !op.image_filter()->crop_rect()) {
+            !op.image_filter()->GetCropRect()) {
           auto* color_paint_filter =
               static_cast<ColorFilterPaintFilter*>(op.image_filter().get());
           cf = color_paint_filter->color_filter();
@@ -299,6 +292,12 @@ sk_sp<PaintFilter> RenderSurfaceFilters::BuildImageFilter(
         } else {
           image_filter = std::move(alpha_filter);
         }
+        break;
+      }
+      case FilterOperation::OFFSET: {
+        image_filter = sk_make_sp<OffsetPaintFilter>(
+            SkIntToScalar(op.offset().x()), SkIntToScalar(op.offset().y()),
+            std::move(image_filter));
         break;
       }
     }

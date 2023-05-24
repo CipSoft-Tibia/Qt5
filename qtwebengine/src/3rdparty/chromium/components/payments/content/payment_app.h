@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,15 +9,14 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
 #include "build/build_config.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/payments/core/payer_data.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/blink/public/mojom/payments/payment_app.mojom.h"
+#include "third_party/blink/public/mojom/payments/payment_handler_host.mojom.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 
 namespace payments {
@@ -34,8 +33,6 @@ class PaymentApp {
     // Undefined type of payment app. Can be used for setting the default return
     // value of an abstract class or an interface.
     UNDEFINED,
-    // The payment app built into the browser that uses the autofill data.
-    AUTOFILL,
     // A 3rd-party platform-specific mobile app, such as an Android app
     // integrated via
     // https://developers.google.com/web/fundamentals/payments/payment-apps-developer-guide/android-payment-apps
@@ -63,25 +60,25 @@ class PaymentApp {
     virtual void OnInstrumentDetailsError(const std::string& error_message) = 0;
   };
 
+  PaymentApp(const PaymentApp&) = delete;
+  PaymentApp& operator=(const PaymentApp&) = delete;
+
   virtual ~PaymentApp();
 
   // Will call into the |delegate| (can't be null) on success or error.
-  virtual void InvokePaymentApp(Delegate* delegate) = 0;
+  virtual void InvokePaymentApp(base::WeakPtr<Delegate> delegate) = 0;
   // Called when the payment app window has closed.
   virtual void OnPaymentAppWindowClosed() {}
   // Returns whether the app is complete to be used for payment without further
   // editing.
   virtual bool IsCompleteForPayment() const = 0;
-  // Returns the calculated completeness score. Used to sort the list of
-  // available apps.
-  virtual uint32_t GetCompletenessScore() const = 0;
   // Returns whether the app can be preselected in the payment sheet. If none of
   // the apps can be preselected, the user must explicitly select an app from a
   // list.
   virtual bool CanPreselect() const = 0;
   // Returns a message to indicate to the user what's missing for the app to be
   // complete for payment.
-  virtual base::string16 GetMissingInfoLabel() const = 0;
+  virtual std::u16string GetMissingInfoLabel() const = 0;
   // Returns this app's answer for PaymentRequest.hasEnrolledInstrument().
   virtual bool HasEnrolledInstrument() const = 0;
   // Records the use of this payment app.
@@ -94,8 +91,8 @@ class PaymentApp {
   virtual std::string GetId() const = 0;
 
   // Return the sub/label of payment app, to be displayed to the user.
-  virtual base::string16 GetLabel() const = 0;
-  virtual base::string16 GetSublabel() const = 0;
+  virtual std::u16string GetLabel() const = 0;
+  virtual std::u16string GetSublabel() const = 0;
 
   // Returns the icon bitmap or null.
   virtual const SkBitmap* icon_bitmap() const;
@@ -110,24 +107,9 @@ class PaymentApp {
   virtual std::set<std::string> GetApplicationIdentifiersThatHideThisApp()
       const;
 
-  // Whether the payment app is ready for minimal UI flow.
-  virtual bool IsReadyForMinimalUI() const;
-
-  // The account balance of the payment app that is ready for a minimal UI flow.
-  virtual std::string GetAccountBalance() const;
-
-  // Disable opening a window for this payment app. Used in minimal UI flow.
-  virtual void DisableShowingOwnUI();
-
   // Returns true if this payment app can be used to fulfill a request
-  // specifying |method| as supported method of payment. The parsed basic-card
-  // specific data (supported_networks) is relevant only for the
-  // AutofillPaymentApp, which runs inside of the browser process and thus
-  // should not be parsing untrusted JSON strings from the renderer.
-  virtual bool IsValidForModifier(
-      const std::string& method,
-      bool supported_networks_specified,
-      const std::set<std::string>& supported_networks) const = 0;
+  // specifying |method| as supported method of payment.
+  virtual bool IsValidForModifier(const std::string& method) const = 0;
 
   // Sets |is_valid| to true if this payment app can handle payments for the
   // given |payment_method_identifier|. The |is_valid| is an out-param instead
@@ -189,6 +171,12 @@ class PaymentApp {
   // example, when the Play Billing payment app is available in a TWA.
   virtual bool IsPreferred() const;
 
+  // Updates the response IPC structure with the fields that are unique to this
+  // type of payment app. Used when JSON serialization of payment method
+  // specific data is not being used.
+  virtual mojom::PaymentResponsePtr SetAppSpecificResponseFields(
+      mojom::PaymentResponsePtr response) const;
+
  protected:
   PaymentApp(int icon_resource_id, Type type);
 
@@ -199,8 +187,6 @@ class PaymentApp {
   bool operator<(const PaymentApp& other) const;
   int icon_resource_id_;
   Type type_;
-
-  DISALLOW_COPY_AND_ASSIGN(PaymentApp);
 };
 
 }  // namespace payments

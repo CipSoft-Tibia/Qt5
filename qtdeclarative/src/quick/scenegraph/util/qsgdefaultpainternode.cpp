@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgdefaultpainternode_p.h"
 
@@ -43,10 +7,6 @@
 
 #include <QtQuick/private/qsgdefaultrendercontext_p.h>
 #include <QtQuick/private/qsgcontext_p.h>
-#include <private/qopenglextensions_p.h>
-#include <qopenglframebufferobject.h>
-#include <qopenglfunctions.h>
-#include <qopenglpaintdevice.h>
 #include <qmath.h>
 #include <qpainter.h>
 
@@ -55,32 +15,18 @@ QT_BEGIN_NAMESPACE
 #define QT_MINIMUM_DYNAMIC_FBO_SIZE 64U
 
 QSGPainterTexture::QSGPainterTexture()
-    : QSGPlainTexture(*(new QSGPainterTexturePrivate))
+    : QSGPlainTexture(*(new QSGPlainTexturePrivate(this)))
 {
     m_retain_image = true;
 }
 
-void QSGPainterTexture::bind()
+void QSGPainterTexture::commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates)
 {
-    if (m_dirty_rect.isNull()) {
-        QSGPlainTexture::bind();
-        return;
+    if (!m_dirty_rect.isNull()) {
+        setImage(m_image);
+        m_dirty_rect = QRect();
     }
-
-    setImage(m_image);
-    QSGPlainTexture::bind();
-
-    m_dirty_rect = QRect();
-}
-
-void QSGPainterTexturePrivate::updateRhiTexture(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates)
-{
-    Q_Q(QSGPainterTexture);
-    if (!q->m_dirty_rect.isNull()) {
-        q->setImage(q->m_image);
-        q->m_dirty_rect = QRect();
-    }
-    QSGPlainTexturePrivate::updateRhiTexture(rhi, resourceUpdates);
+    QSGPlainTexture::commitTextureOperations(rhi, resourceUpdates);
 }
 
 QSGDefaultPainterNode::QSGDefaultPainterNode(QQuickPaintedItem *item)
@@ -88,11 +34,8 @@ QSGDefaultPainterNode::QSGDefaultPainterNode(QQuickPaintedItem *item)
     , m_preferredRenderTarget(QQuickPaintedItem::Image)
     , m_actualRenderTarget(QQuickPaintedItem::Image)
     , m_item(item)
-    , m_fbo(nullptr)
-    , m_multisampledFbo(nullptr)
     , m_geometry(QSGGeometry::defaultAttributes_TexturedPoint2D(), 4)
     , m_texture(nullptr)
-    , m_gl_device(nullptr)
     , m_fillColor(Qt::transparent)
     , m_contentsScale(1.0)
     , m_dirtyContents(false)
@@ -100,13 +43,13 @@ QSGDefaultPainterNode::QSGDefaultPainterNode(QQuickPaintedItem *item)
     , m_linear_filtering(false)
     , m_mipmapping(false)
     , m_smoothPainting(false)
-    , m_extensionsChecked(false)
     , m_multisamplingSupported(false)
     , m_fastFBOResizing(false)
     , m_dirtyGeometry(false)
     , m_dirtyRenderTarget(false)
     , m_dirtyTexture(false)
 {
+    Q_UNUSED(m_multisamplingSupported);
     m_context = static_cast<QSGDefaultRenderContext *>(static_cast<QQuickPaintedItemPrivate *>(QObjectPrivate::get(item))->sceneGraphRenderContext());
 
     setMaterial(&m_materialO);
@@ -121,9 +64,6 @@ QSGDefaultPainterNode::QSGDefaultPainterNode(QQuickPaintedItem *item)
 QSGDefaultPainterNode::~QSGDefaultPainterNode()
 {
     delete m_texture;
-    delete m_fbo;
-    delete m_multisampledFbo;
-    delete m_gl_device;
 }
 
 void QSGDefaultPainterNode::paint()
@@ -131,24 +71,10 @@ void QSGDefaultPainterNode::paint()
     QRect dirtyRect = m_dirtyRect.isNull() ? QRect(0, 0, m_size.width(), m_size.height()) : m_dirtyRect;
 
     QPainter painter;
-    if (m_actualRenderTarget == QQuickPaintedItem::Image) {
-        if (m_image.isNull())
-            return;
-        painter.begin(&m_image);
-    } else {
-        Q_ASSERT(!m_context->rhi());
-        if (!m_gl_device) {
-            m_gl_device = new QOpenGLPaintDevice(m_fboSize);
-            m_gl_device->setPaintFlipped(true);
-        }
-
-        if (m_multisampledFbo)
-            m_multisampledFbo->bind();
-        else
-            m_fbo->bind();
-
-        painter.begin(m_gl_device);
-    }
+    Q_ASSERT(m_actualRenderTarget == QQuickPaintedItem::Image);
+    if (m_image.isNull())
+        return;
+    painter.begin(&m_image);
 
     if (m_smoothPainting) {
         painter.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
@@ -182,23 +108,15 @@ void QSGDefaultPainterNode::paint()
     }
 
     painter.setCompositionMode(QPainter::CompositionMode_Source);
-    painter.fillRect(clipRect, m_fillColor);
+    if (m_fillColor.isValid())
+        painter.fillRect(clipRect, m_fillColor);
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
     m_item->paint(&painter);
     painter.end();
 
-    if (m_actualRenderTarget == QQuickPaintedItem::Image) {
-        m_texture->setImage(m_image);
-        m_texture->setDirtyRect(dirtyTextureRect);
-    } else if (m_multisampledFbo) {
-        QOpenGLFramebufferObject::blitFramebuffer(m_fbo, dirtyTextureRect, m_multisampledFbo, dirtyTextureRect);
-    }
-
-    if (m_multisampledFbo)
-        m_multisampledFbo->release();
-    else if (m_fbo)
-        m_fbo->release();
+    m_texture->setImage(m_image);
+    m_texture->setDirtyRect(dirtyTextureRect);
 
     m_dirtyRect = QRect();
 }
@@ -232,11 +150,7 @@ void QSGDefaultPainterNode::updateTexture()
 
 void QSGDefaultPainterNode::updateGeometry()
 {
-    QRectF source;
-    if (m_actualRenderTarget == QQuickPaintedItem::Image)
-        source = QRectF(0, 0, 1, 1);
-    else
-        source = QRectF(0, 0, qreal(m_textureSize.width()) / m_fboSize.width(), qreal(m_textureSize.height()) / m_fboSize.height());
+    QRectF source(0, 0, 1, 1);
     QRectF dest(0, 0, m_size.width(), m_size.height());
     if (m_actualRenderTarget == QQuickPaintedItem::InvertedYFramebufferObject)
         dest = QRectF(QPointF(0, m_size.height()), QPointF(m_size.width(), 0));
@@ -248,108 +162,20 @@ void QSGDefaultPainterNode::updateGeometry()
 
 void QSGDefaultPainterNode::updateRenderTarget()
 {
-    if (!m_extensionsChecked && !m_context->rhi()) {
-        QOpenGLExtensions *e = static_cast<QOpenGLExtensions *>(QOpenGLContext::currentContext()->functions());
-        m_multisamplingSupported = e->hasOpenGLExtension(QOpenGLExtensions::FramebufferMultisample)
-            && e->hasOpenGLExtension(QOpenGLExtensions::FramebufferBlit);
-        m_extensionsChecked = true;
-    }
-
     m_dirtyContents = true;
 
-    QQuickPaintedItem::RenderTarget oldTarget = m_actualRenderTarget;
-    if (m_preferredRenderTarget == QQuickPaintedItem::Image) {
-        m_actualRenderTarget = QQuickPaintedItem::Image;
-    } else {
-        // Image is the only option when there is no multisample framebuffer
-        // support and smooth painting is wanted, and when using the RHI. The
-        // latter may change in the future.
-        if ((!m_multisamplingSupported && m_smoothPainting) || m_context->rhi())
-            m_actualRenderTarget = QQuickPaintedItem::Image;
-        else
-            m_actualRenderTarget = m_preferredRenderTarget;
+    m_actualRenderTarget = QQuickPaintedItem::Image;
+    if (!m_image.isNull() && !m_dirtyGeometry)
+        return;
+
+    m_image = QImage(m_textureSize, QImage::Format_RGBA8888_Premultiplied);
+    m_image.fill(Qt::transparent);
+
+    if (!m_texture) {
+        m_texture = new QSGPainterTexture;
+        m_texture->setOwnsTexture(true);
     }
-    if (oldTarget != m_actualRenderTarget) {
-        m_image = QImage();
-        delete m_fbo;
-        delete m_multisampledFbo;
-        delete m_gl_device;
-        m_fbo = m_multisampledFbo = nullptr;
-        m_gl_device = nullptr;
-    }
-
-    if (m_actualRenderTarget == QQuickPaintedItem::FramebufferObject ||
-            m_actualRenderTarget == QQuickPaintedItem::InvertedYFramebufferObject)
-    {
-        Q_ASSERT(!m_context->rhi());
-        const QOpenGLContext *ctx = m_context->openglContext();
-        if (m_fbo && !m_dirtyGeometry && (!ctx->format().samples() || !m_multisamplingSupported))
-            return;
-
-        if (m_fboSize.isEmpty())
-            updateFBOSize();
-
-        delete m_fbo;
-        delete m_multisampledFbo;
-        m_fbo = m_multisampledFbo = nullptr;
-        if (m_gl_device)
-            m_gl_device->setSize(m_fboSize);
-
-        if (m_smoothPainting && ctx->format().samples() && m_multisamplingSupported) {
-            {
-                QOpenGLFramebufferObjectFormat format;
-                format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-                format.setSamples(8);
-                m_multisampledFbo = new QOpenGLFramebufferObject(m_fboSize, format);
-            }
-            {
-                QOpenGLFramebufferObjectFormat format;
-                format.setAttachment(QOpenGLFramebufferObject::NoAttachment);
-                m_fbo = new QOpenGLFramebufferObject(m_fboSize, format);
-            }
-        } else {
-            QOpenGLFramebufferObjectFormat format;
-            format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
-            m_fbo = new QOpenGLFramebufferObject(m_fboSize, format);
-        }
-    } else {
-        if (!m_image.isNull() && !m_dirtyGeometry)
-            return;
-
-        m_image = QImage(m_textureSize, QImage::Format_ARGB32_Premultiplied);
-        m_image.fill(Qt::transparent);
-    }
-
-    QSGPainterTexture *texture = new QSGPainterTexture;
-    if (m_actualRenderTarget == QQuickPaintedItem::Image) {
-        texture->setOwnsTexture(true);
-        texture->setTextureSize(m_textureSize);
-    } else {
-        texture->setTextureId(m_fbo->texture());
-        texture->setOwnsTexture(false);
-        texture->setTextureSize(m_fboSize);
-    }
-
-    if (m_texture)
-        delete m_texture;
-
-    m_texture = texture;
-}
-
-void QSGDefaultPainterNode::updateFBOSize()
-{
-    int fboWidth;
-    int fboHeight;
-    if (m_fastFBOResizing) {
-        fboWidth = qMax(QT_MINIMUM_DYNAMIC_FBO_SIZE, qNextPowerOfTwo(m_textureSize.width() - 1));
-        fboHeight = qMax(QT_MINIMUM_DYNAMIC_FBO_SIZE, qNextPowerOfTwo(m_textureSize.height() - 1));
-    } else {
-        QSize minimumFBOSize = m_context->sceneGraphContext()->minimumFBOSize();
-        fboWidth = qMax(minimumFBOSize.width(), m_textureSize.width());
-        fboHeight = qMax(minimumFBOSize.height(), m_textureSize.height());
-    }
-
-    m_fboSize = QSize(fboWidth, fboHeight);
+    m_texture->setTextureSize(m_textureSize);
 }
 
 void QSGDefaultPainterNode::setPreferredRenderTarget(QQuickPaintedItem::RenderTarget target)
@@ -379,12 +205,7 @@ void QSGDefaultPainterNode::setTextureSize(const QSize &size)
         return;
 
     m_textureSize = size;
-    updateFBOSize();
-
-    if (m_fbo)
-        m_dirtyRenderTarget = m_fbo->size() != m_fboSize || m_dirtyRenderTarget;
-    else
-        m_dirtyRenderTarget = true;
+    m_dirtyRenderTarget = true;
     m_dirtyGeometry = true;
     m_dirtyTexture = true;
 }
@@ -465,23 +286,12 @@ void QSGDefaultPainterNode::setFastFBOResizing(bool fastResizing)
         return;
 
     m_fastFBOResizing = fastResizing;
-    updateFBOSize();
-
-    if ((m_preferredRenderTarget == QQuickPaintedItem::FramebufferObject
-         || m_preferredRenderTarget == QQuickPaintedItem::InvertedYFramebufferObject)
-            && (!m_fbo || (m_fbo && m_fbo->size() != m_fboSize))) {
-        m_dirtyRenderTarget = true;
-        m_dirtyGeometry = true;
-        m_dirtyTexture = true;
-    }
 }
 
 QImage QSGDefaultPainterNode::toImage() const
 {
-    if (m_actualRenderTarget == QQuickPaintedItem::Image)
-        return m_image;
-    else
-        return m_fbo->toImage();
+    Q_ASSERT(m_actualRenderTarget == QQuickPaintedItem::Image);
+    return m_image;
 }
 
 QT_END_NAMESPACE

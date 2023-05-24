@@ -5,12 +5,36 @@
  * found in the LICENSE file.
  */
 
-#include "include/core/SkCanvas.h"
-#include "include/core/SkString.h"
 #include "include/effects/SkShaderMaskFilter.h"
+
+#include "include/core/SkBitmap.h"
+#include "include/core/SkBlendMode.h"
+#include "include/core/SkCanvas.h"
+#include "include/core/SkFlattenable.h"
+#include "include/core/SkMaskFilter.h"
+#include "include/core/SkPaint.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkScalar.h"
+#include "include/core/SkShader.h"
+#include "src/core/SkMask.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkReadBuffer.h"
+#include "src/core/SkWriteBuffer.h"
 #include "src/shaders/SkShaderBase.h"
+
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <utility>
+
+class SkMatrix;
+
+#if SK_SUPPORT_GPU
+#include "src/gpu/ganesh/GrFragmentProcessor.h"
+struct GrFPArgs;
+#endif
 
 class SkShaderMF : public SkMaskFilterBase {
 public:
@@ -29,7 +53,8 @@ public:
 
 protected:
 #if SK_SUPPORT_GPU
-    std::unique_ptr<GrFragmentProcessor> onAsFragmentProcessor(const GrFPArgs&) const override;
+    std::unique_ptr<GrFragmentProcessor> onAsFragmentProcessor(const GrFPArgs&,
+                                                               const MatrixRec&) const override;
     bool onHasFragmentProcessor() const override;
 #endif
 
@@ -98,7 +123,6 @@ bool SkShaderMF::filterMask(SkMask* dst, const SkMask& src, const SkMatrix& ctm,
 
     SkPaint paint;
     paint.setShader(fShader);
-    paint.setFilterQuality(SkFilterQuality::kLow_SkFilterQuality);
     // this blendmode is the trick: we only draw the shader where the mask is
     paint.setBlendMode(SkBlendMode::kSrcIn);
 
@@ -111,10 +135,11 @@ bool SkShaderMF::filterMask(SkMask* dst, const SkMask& src, const SkMatrix& ctm,
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 #if SK_SUPPORT_GPU
-#include "src/gpu/GrFragmentProcessor.h"
 
-std::unique_ptr<GrFragmentProcessor> SkShaderMF::onAsFragmentProcessor(const GrFPArgs& args) const {
-    return GrFragmentProcessor::MulInputByChildAlpha(as_SB(fShader)->asFragmentProcessor(args));
+std::unique_ptr<GrFragmentProcessor>
+SkShaderMF::onAsFragmentProcessor(const GrFPArgs& args, const MatrixRec& mRec) const {
+    auto fp = as_SB(fShader)->asFragmentProcessor(args, mRec);
+    return GrFragmentProcessor::MulInputByChildAlpha(std::move(fp));
 }
 
 bool SkShaderMF::onHasFragmentProcessor() const {

@@ -33,13 +33,19 @@ void CreateAnalyzedStream(Scenario* s,
   auto* audio = s->CreateAudioStream(route->forward(), AudioStreamConfig());
   s->Every(TimeDelta::Seconds(1), [=] {
     collectors->call.AddStats(caller->GetStats());
-    collectors->video_send.AddStats(video->send()->GetStats(), s->Now());
-    collectors->audio_receive.AddStats(audio->receive()->GetStats());
+
+    VideoSendStream::Stats send_stats;
+    caller->SendTask([&]() { send_stats = video->send()->GetStats(); });
+    collectors->video_send.AddStats(send_stats, s->Now());
+
+    AudioReceiveStreamInterface::Stats receive_stats;
+    caller->SendTask([&]() { receive_stats = audio->receive()->GetStats(); });
+    collectors->audio_receive.AddStats(receive_stats);
 
     // Querying the video stats from within the expected runtime environment
     // (i.e. the TQ that belongs to the CallClient, not the Scenario TQ that
     // we're currently on).
-    VideoReceiveStream::Stats video_receive_stats;
+    VideoReceiveStreamInterface::Stats video_receive_stats;
     auto* video_stream = video->receive();
     callee->SendTask([&video_stream, &video_receive_stats]() {
       video_receive_stats = video_stream->GetStats();
@@ -85,9 +91,9 @@ TEST(ScenarioAnalyzerTest, PsnrIsLowWhenNetworkIsBad) {
   // might change due to changes in configuration and encoder etc.
   EXPECT_NEAR(analyzer.stats().psnr_with_freeze.Mean(), 20, 10);
   EXPECT_NEAR(stats.call.stats().target_rate.Mean().kbps(), 75, 50);
-  EXPECT_NEAR(stats.video_send.stats().media_bitrate.Mean().kbps(), 100, 50);
+  EXPECT_NEAR(stats.video_send.stats().media_bitrate.Mean().kbps(), 70, 30);
   EXPECT_NEAR(stats.video_receive.stats().resolution.Mean(), 180, 10);
-  EXPECT_NEAR(stats.audio_receive.stats().jitter_buffer.Mean().ms(), 200, 150);
+  EXPECT_NEAR(stats.audio_receive.stats().jitter_buffer.Mean().ms(), 250, 200);
 }
 
 TEST(ScenarioAnalyzerTest, CountsCapturedButNotRendered) {

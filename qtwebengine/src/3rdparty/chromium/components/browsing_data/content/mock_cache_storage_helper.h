@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,12 @@
 #include <list>
 #include <map>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "components/browsing_data/content/cache_storage_helper.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 
 namespace content {
-class BrowserContext;
+class StoragePartition;
 }
 
 namespace browsing_data {
@@ -23,7 +23,10 @@ namespace browsing_data {
 // call Notify().
 class MockCacheStorageHelper : public CacheStorageHelper {
  public:
-  explicit MockCacheStorageHelper(content::BrowserContext* browser_context);
+  explicit MockCacheStorageHelper(content::StoragePartition* storage_partition);
+
+  MockCacheStorageHelper(const MockCacheStorageHelper&) = delete;
+  MockCacheStorageHelper& operator=(const MockCacheStorageHelper&) = delete;
 
   // Adds some StorageUsageInfo samples.
   void AddCacheStorageSamples();
@@ -35,22 +38,20 @@ class MockCacheStorageHelper : public CacheStorageHelper {
   void Reset();
 
   // Returns true if all cache storage files were deleted since the last
-  // Reset() invokation.
+  // Reset() invocation.
   bool AllDeleted();
 
   // CacheStorageHelper.
   void StartFetching(FetchCallback callback) override;
-  void DeleteCacheStorage(const url::Origin& origin) override;
+  void DeleteCacheStorage(const blink::StorageKey& storage_key) override;
 
  private:
   ~MockCacheStorageHelper() override;
 
   FetchCallback callback_;
   bool fetched_ = false;
-  std::map<url::Origin, bool> origins_;
+  std::map<blink::StorageKey, bool> storage_keys_;
   std::list<content::StorageUsageInfo> response_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockCacheStorageHelper);
 };
 
 }  // namespace browsing_data

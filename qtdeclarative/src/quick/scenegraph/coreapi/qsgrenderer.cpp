@@ -1,49 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrenderer_p.h"
 #include "qsgnodeupdater_p.h"
-#if QT_CONFIG(opengl)
-# include <QtGui/QOpenGLFramebufferObject>
-# include <QtGui/QOpenGLContext>
-# include <QtGui/QOpenGLFunctions>
-#endif
 #include <private/qquickprofiler_p.h>
 #include <qtquick_tracepoints_p.h>
 
@@ -51,55 +10,30 @@
 
 QT_BEGIN_NAMESPACE
 
-#if QT_CONFIG(opengl)
-static const bool qsg_sanity_check = qEnvironmentVariableIntValue("QSG_SANITY_CHECK");
-#endif
-
 static QElapsedTimer frameTimer;
 static qint64 preprocessTime;
 static qint64 updatePassTime;
+
+Q_TRACE_POINT(qtquick, QSG_preprocess_entry)
+Q_TRACE_POINT(qtquick, QSG_preprocess_exit)
+Q_TRACE_POINT(qtquick, QSG_update_entry)
+Q_TRACE_POINT(qtquick, QSG_update_exit)
+Q_TRACE_POINT(qtquick, QSG_renderScene_entry)
+Q_TRACE_POINT(qtquick, QSG_renderScene_exit)
+
+#ifndef QT_NO_DEBUG
+bool _q_sg_leak_check = !qEnvironmentVariableIsEmpty("QML_LEAK_CHECK");
+#endif
 
 int qt_sg_envInt(const char *name, int defaultValue)
 {
     if (Q_LIKELY(!qEnvironmentVariableIsSet(name)))
         return defaultValue;
     bool ok = false;
-    int value = qgetenv(name).toInt(&ok);
+    int value = qEnvironmentVariableIntValue(name, &ok);
     return ok ? value : defaultValue;
 }
 
-void QSGBindable::clear(QSGAbstractRenderer::ClearMode mode) const
-{
-#if QT_CONFIG(opengl)
-    GLuint bits = 0;
-    if (mode & QSGAbstractRenderer::ClearColorBuffer) bits |= GL_COLOR_BUFFER_BIT;
-    if (mode & QSGAbstractRenderer::ClearDepthBuffer) bits |= GL_DEPTH_BUFFER_BIT;
-    if (mode & QSGAbstractRenderer::ClearStencilBuffer) bits |= GL_STENCIL_BUFFER_BIT;
-    QOpenGLContext::currentContext()->functions()->glClear(bits);
-#else
-    Q_UNUSED(mode)
-#endif
-}
-
-// Reactivate the color buffer after switching to the stencil.
-void QSGBindable::reactivate() const
-{
-#if QT_CONFIG(opengl)
-    QOpenGLContext::currentContext()->functions()->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-#endif
-}
-#if QT_CONFIG(opengl)
-QSGBindableFboId::QSGBindableFboId(GLuint id)
-    : m_id(id)
-{
-}
-
-
-void QSGBindableFboId::bind() const
-{
-    QOpenGLContext::currentContext()->functions()->glBindFramebuffer(GL_FRAMEBUFFER, m_id);
-}
-#endif
 /*!
     \class QSGRenderer
     \brief The renderer class is the abstract baseclass used for rendering the
@@ -136,11 +70,7 @@ QSGRenderer::QSGRenderer(QSGRenderContext *context)
     , m_current_uniform_data(nullptr)
     , m_current_resource_update_batch(nullptr)
     , m_rhi(nullptr)
-    , m_rt(nullptr)
-    , m_cb(nullptr)
-    , m_rp_desc(nullptr)
     , m_node_updater(nullptr)
-    , m_bindable(nullptr)
     , m_changed_emitted(false)
     , m_is_rendering(false)
     , m_is_preprocessing(false)
@@ -189,35 +119,7 @@ bool QSGRenderer::isMirrored() const
     return matrix(0, 0) * matrix(1, 1) - matrix(0, 1) * matrix(1, 0) > 0;
 }
 
-void QSGRenderer::renderScene(uint fboId)
-{
-    if (m_rt) {
-        class B : public QSGBindable
-        {
-        public:
-            void bind() const override { }
-        } bindable;
-        renderScene(bindable);
-    } else {
-#if QT_CONFIG(opengl)
-        if (fboId) {
-            QSGBindableFboId bindable(fboId);
-            renderScene(bindable);
-        } else {
-            class B : public QSGBindable
-            {
-            public:
-                void bind() const override { QOpenGLFramebufferObject::bindDefault(); }
-            } bindable;
-            renderScene(bindable);
-        }
-#else
-        Q_UNUSED(fboId)
-#endif
-    }
-}
-
-void QSGRenderer::renderScene(const QSGBindable &bindable)
+void QSGRenderer::renderScene()
 {
     if (!rootNode())
         return;
@@ -225,42 +127,23 @@ void QSGRenderer::renderScene(const QSGBindable &bindable)
     Q_TRACE_SCOPE(QSG_renderScene);
     m_is_rendering = true;
 
-
     bool profileFrames = QSG_LOG_TIME_RENDERER().isDebugEnabled();
     if (profileFrames)
         frameTimer.start();
     Q_QUICK_SG_PROFILE_START(QQuickProfiler::SceneGraphRendererFrame);
 
-    qint64 bindTime = 0;
-    qint64 renderTime = 0;
-
-    m_bindable = &bindable;
-    preprocess();
-
-    Q_TRACE(QSG_binding_entry);
-    bindable.bind();
-    if (profileFrames)
-        bindTime = frameTimer.nsecsElapsed();
-    Q_TRACE(QSG_binding_exit);
+    // The QML Profiler architecture is extremely fragile: we have to record a
+    // hardcoded number of data points for each event, otherwise the view will
+    // show weird things in Creator. So record a dummy Binding data point, even
+    // though it is meaningless for our purposes.
     Q_QUICK_SG_PROFILE_RECORD(QQuickProfiler::SceneGraphRendererFrame,
                               QQuickProfiler::SceneGraphRendererBinding);
+
+    qint64 renderTime = 0;
+
+    preprocess();
+
     Q_TRACE(QSG_render_entry);
-
-#if QT_CONFIG(opengl)
-    // Sanity check that attribute registers are disabled
-    if (qsg_sanity_check) {
-        GLint count = 0;
-        QOpenGLContext::currentContext()->functions()->glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &count);
-        GLint enabled;
-        for (int i=0; i<count; ++i) {
-            QOpenGLContext::currentContext()->functions()->glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &enabled);
-            if (enabled) {
-                qWarning("QSGRenderer: attribute %d is enabled, this can lead to memory corruption and crashes.", i);
-            }
-        }
-    }
-#endif
-
     render();
     if (profileFrames)
         renderTime = frameTimer.nsecsElapsed();
@@ -270,15 +153,36 @@ void QSGRenderer::renderScene(const QSGBindable &bindable)
 
     m_is_rendering = false;
     m_changed_emitted = false;
-    m_bindable = nullptr;
 
     qCDebug(QSG_LOG_TIME_RENDERER,
-            "time in renderer: total=%dms, preprocess=%d, updates=%d, binding=%d, rendering=%d",
+            "time in renderer: total=%dms, preprocess=%d, updates=%d, rendering=%d",
             int(renderTime / 1000000),
             int(preprocessTime / 1000000),
             int((updatePassTime - preprocessTime) / 1000000),
-            int((bindTime - updatePassTime) / 1000000),
-            int((renderTime - bindTime) / 1000000));
+            int((renderTime - updatePassTime) / 1000000));
+}
+
+void QSGRenderer::prepareSceneInline()
+{
+    if (!rootNode())
+        return;
+
+    Q_ASSERT(!m_is_rendering);
+    m_is_rendering = true;
+
+    preprocess();
+
+    prepareInline();
+}
+
+void QSGRenderer::renderSceneInline()
+{
+    Q_ASSERT(m_is_rendering);
+
+    renderInline();
+
+    m_is_rendering = false;
+    m_changed_emitted = false;
 }
 
 /*!
@@ -379,6 +283,14 @@ void QSGRenderer::removeNodesToPreprocess(QSGNode *node)
         if (m_is_preprocessing)
             m_nodes_dont_preprocess.insert(node);
     }
+}
+
+void QSGRenderer::prepareInline()
+{
+}
+
+void QSGRenderer::renderInline()
+{
 }
 
 

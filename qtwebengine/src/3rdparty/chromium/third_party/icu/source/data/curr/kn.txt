@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 kn{
     Currencies{
         AED{
@@ -192,7 +193,7 @@ kn{
         }
         FKP{
             "FKP",
-            "ಫಾಲ್ಕ್‌ಲ್ಯಾಂಡ್ ದ್ವೀಪಗಳ ಪೌಂಡ್",
+            "ಫಾಕ್‌ಲ್ಯಾಂಡ್ ದ್ವೀಪಗಳ ಪೌಂಡ್",
         }
         GBP{
             "£",
@@ -631,7 +632,7 @@ kn{
             "ಪೂರ್ವ ಕೆರೀಬಿಯನ್ ಡಾಲರ್",
         }
         XOF{
-            "CFA",
+            "F CFA",
             "ಪಶ್ಚಿಮ ಆಫ್ರಿಕಾದ CFA ಫ್ರಾಂಕ್",
         }
         XPF{
@@ -660,9 +661,12 @@ kn{
         }
     }
     Currencies%narrow{
+        AFN{"؋"}
+        AMD{"֏"}
         AOA{"Kz"}
         ARS{"$"}
         AUD{"$"}
+        AZN{"₼"}
         BAM{"KM"}
         BBD{"$"}
         BDT{"৳"}
@@ -690,6 +694,7 @@ kn{
         FKP{"£"}
         GBP{"£"}
         GEL{"₾"}
+        GHS{"GH₵"}
         GIP{"£"}
         GNF{"FG"}
         GTQ{"Q"}
@@ -756,7 +761,6 @@ kn{
         ZMW{"ZK"}
     }
     Currencies%variant{
-        GEL{"₾"}
         TRY{"TL"}
     }
     CurrencyPlurals{
@@ -949,8 +953,8 @@ kn{
             other{"ಫಿಜಿಯನ್ ಡಾಲರ್‌ಗಳು"}
         }
         FKP{
-            one{"ಫಾಲ್ಕ್‌ಲ್ಯಾಂಡ್ ದ್ವೀಪಗಳ ಪೌಂಡ್"}
-            other{"ಫಾಲ್ಕ್‌ಲ್ಯಾಂಡ್ ದ್ವೀಪಗಳ ಪೌಂಡ್‍ಗಳು"}
+            one{"ಫಾಕ್‌ಲ್ಯಾಂಡ್ ದ್ವೀಪಗಳ ಪೌಂಡ್"}
+            other{"ಫಾಕ್‌ಲ್ಯಾಂಡ್ ದ್ವೀಪಗಳ ಪೌಂಡ್‍ಗಳು"}
         }
         GBP{
             one{"ಬ್ರಿಟಿಷ್ ಪೌಂಡ್"}
@@ -1091,6 +1095,10 @@ kn{
         LRD{
             one{"ಲಿಬೇರಿಯನ್ ಡಾಲರ್"}
             other{"ಲಿಬೇರಿಯನ್ ಡಾಲರ್‌ಗಳು"}
+        }
+        LSL{
+            one{"ಲೆಸೊತೊ ಲೊತಿ"}
+            other{"ಲೆಸೊತೊ ಲೊತಿಗಳು"}
         }
         LTL{
             one{"ಲಿಥುನಿಯನ್‌ ಲಿತಾಸ್‌"}
@@ -1313,7 +1321,7 @@ kn{
             other{"ಟರ್ಕ್‍ಮೆನಿಸ್ತಾನ್ ಮನಾತ್"}
         }
         TND{
-            one{"ತುನೀಸಿಯನ್ ದಿನಾರ್"}
+            one{"ಟುನೀಶಿಯನ್ ದಿನಾರ್"}
             other{"ಟ್ಯುನೀಷಿಯನ್‌ ದಿನಾರ್‌ಗಳು"}
         }
         TOP{
@@ -1413,5 +1421,4 @@ kn{
         one{"{0} {1}"}
         other{"{0} {1}"}
     }
-    Version{"37"}
 }

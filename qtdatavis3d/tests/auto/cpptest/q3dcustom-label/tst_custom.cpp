@@ -1,39 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
 #include <QtDataVisualization/QCustom3DLabel>
 
 #include "cpptestutil.h"
-
-using namespace QtDataVisualization;
 
 class tst_custom: public QObject
 {
@@ -81,8 +53,8 @@ void tst_custom::construct()
     QVERIFY(custom);
     delete custom;
 
-    custom = new QCustom3DLabel("label", QFont("Times New Roman", 10.0), QVector3D(1.0, 1.0, 1.0),
-                                QVector3D(1.0, 1.0, 1.0), QQuaternion(1.0, 1.0, 10.0, 100.0));
+    custom = new QCustom3DLabel("label", QFont("Times New Roman", 10.0), QVector3D(1.0f, 1.0f, 1.0f),
+                                QVector3D(1.0f, 1.0f, 1.0f), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
     QVERIFY(custom);
     QCOMPARE(custom->backgroundColor(), QColor(Qt::gray));
     QCOMPARE(custom->isBackgroundEnabled(), true);
@@ -92,10 +64,10 @@ void tst_custom::construct()
     QCOMPARE(custom->text(), QString("label"));
     QCOMPARE(custom->textColor(), QColor(Qt::white));
     QCOMPARE(custom->meshFile(), QString(":/defaultMeshes/plane"));
-    QCOMPARE(custom->position(), QVector3D(1.0, 1.0, 1.0));
+    QCOMPARE(custom->position(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(custom->isPositionAbsolute(), false);
-    QCOMPARE(custom->rotation(), QQuaternion(1.0, 1.0, 10.0, 100.0));
-    QCOMPARE(custom->scaling(), QVector3D(1.0, 1.0, 1.0));
+    QCOMPARE(custom->rotation(), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
+    QCOMPARE(custom->scaling(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(custom->isScalingAbsolute(), true);
     QCOMPARE(custom->isShadowCasting(), false);
     QCOMPARE(custom->textureFile(), QString());
@@ -148,17 +120,17 @@ void tst_custom::initializeProperties()
     QCOMPARE(m_custom->textColor(), QColor(Qt::blue));
 
     // Common (from QCustom3DItem)
-    m_custom->setPosition(QVector3D(1.0, 1.0, 1.0));
+    m_custom->setPosition(QVector3D(1.0f, 1.0f, 1.0f));
     m_custom->setPositionAbsolute(true);
-    m_custom->setRotation(QQuaternion(1.0, 1.0, 10.0, 100.0));
-    m_custom->setScaling(QVector3D(1.0, 1.0, 1.0));
+    m_custom->setRotation(QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
+    m_custom->setScaling(QVector3D(1.0f, 1.0f, 1.0f));
     m_custom->setShadowCasting(true);
     m_custom->setVisible(false);
 
-    QCOMPARE(m_custom->position(), QVector3D(1.0, 1.0, 1.0));
+    QCOMPARE(m_custom->position(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(m_custom->isPositionAbsolute(), true);
-    QCOMPARE(m_custom->rotation(), QQuaternion(1.0, 1.0, 10.0, 100.0));
-    QCOMPARE(m_custom->scaling(), QVector3D(1.0, 1.0, 1.0));
+    QCOMPARE(m_custom->rotation(), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
+    QCOMPARE(m_custom->scaling(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(m_custom->isShadowCasting(), true);
     QCOMPARE(m_custom->isVisible(), false);
 }

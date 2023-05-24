@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 
 #include <windows.h>
 
-#include "base/bind.h"
 #include "base/check.h"
-#include "base/macros.h"
-#include "base/sequenced_task_runner.h"
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/win/scoped_handle.h"
 #include "base/win/windows_version.h"
 
@@ -19,11 +19,6 @@ namespace {
 
 HANDLE CreatePowerRequest(POWER_REQUEST_TYPE type,
                           const std::string& description) {
-  if (type == PowerRequestExecutionRequired &&
-      base::win::GetVersion() == base::win::Version::WIN7) {
-    return INVALID_HANDLE_VALUE;
-  }
-
   std::wstring wide_description = base::ASCIIToWide(description);
   REASON_CONTEXT context = {0};
   context.Version = POWER_REQUEST_CONTEXT_VERSION;
@@ -48,11 +43,6 @@ void DeletePowerRequest(POWER_REQUEST_TYPE type, HANDLE handle) {
   if (!request_handle.IsValid())
     return;
 
-  if (type == PowerRequestExecutionRequired &&
-      base::win::GetVersion() == base::win::Version::WIN7) {
-    return;
-  }
-
   BOOL success = ::PowerClearRequest(request_handle.Get(), type);
   DCHECK(success);
 }
@@ -69,6 +59,9 @@ class PowerSaveBlocker::Delegate
         description_(description),
         ui_task_runner_(ui_task_runner) {}
 
+  Delegate(const Delegate&) = delete;
+  Delegate& operator=(const Delegate&) = delete;
+
   // Does the actual work to apply or remove the desired power save block.
   void ApplyBlock();
   void RemoveBlock();
@@ -83,28 +76,39 @@ class PowerSaveBlocker::Delegate
   mojom::WakeLockType type_;
   const std::string description_;
   base::win::ScopedHandle handle_;
+  // Bug: 1182771
+  // The Windows owners recommended acquiring both system and video wake
+  // locks during onscreen media playback scenarios for Win10 and below to
+  // ensure sleep timeout puts the system to sleep only after the display has
+  // turned off. This is not necessary for Win11+ since only a display request
+  // is needed and it will behave the same on both a S3 based system and a
+  // Modern Standby one.
+  base::win::ScopedHandle system_sleep_prevention_handle_;
   scoped_refptr<base::SequencedTaskRunner> ui_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(Delegate);
 };
 
 void PowerSaveBlocker::Delegate::ApplyBlock() {
   DCHECK(ui_task_runner_->RunsTasksInCurrentSequence());
   handle_.Set(CreatePowerRequest(RequestType(), description_));
+  // See comment on instance variable above
+  if (type_ == mojom::WakeLockType::kPreventDisplaySleep &&
+      base::win::GetVersion() < base::win::Version::WIN11) {
+    system_sleep_prevention_handle_.Set(
+        CreatePowerRequest(PowerRequestSystemRequired, description_));
+  }
 }
 
 void PowerSaveBlocker::Delegate::RemoveBlock() {
   DCHECK(ui_task_runner_->RunsTasksInCurrentSequence());
   DeletePowerRequest(RequestType(), handle_.Take());
+  DeletePowerRequest(PowerRequestSystemRequired,
+                     system_sleep_prevention_handle_.Take());
 }
 
 POWER_REQUEST_TYPE PowerSaveBlocker::Delegate::RequestType() {
   if (type_ == mojom::WakeLockType::kPreventDisplaySleep ||
       type_ == mojom::WakeLockType::kPreventDisplaySleepAllowDimming)
     return PowerRequestDisplayRequired;
-
-  if (base::win::GetVersion() == base::win::Version::WIN7)
-    return PowerRequestSystemRequired;
 
   return PowerRequestExecutionRequired;
 }

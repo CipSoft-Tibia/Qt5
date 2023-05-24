@@ -1,64 +1,27 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "assimpimporter.h"
 
 #include <Qt3DCore/qentity.h>
 #include <Qt3DCore/qtransform.h>
-#include <Qt3DExtras/qdiffusemapmaterial.h>
-#include <Qt3DExtras/qdiffusespecularmapmaterial.h>
-#include <Qt3DExtras/qphongmaterial.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/qgeometry.h>
 #include <Qt3DRender/qcameralens.h>
 #include <Qt3DRender/qeffect.h>
-#include <Qt3DRender/qgeometry.h>
 #include <Qt3DRender/qgeometryrenderer.h>
 #include <Qt3DRender/qmaterial.h>
 #include <Qt3DRender/qmesh.h>
 #include <Qt3DRender/qparameter.h>
 #include <Qt3DRender/qtexture.h>
 #include <Qt3DRender/qtextureimagedatagenerator.h>
-#include <Qt3DExtras/qmorphphongmaterial.h>
 #include <Qt3DExtras/qdiffusemapmaterial.h>
 #include <Qt3DExtras/qdiffusespecularmapmaterial.h>
 #include <Qt3DExtras/qphongmaterial.h>
+#include <Qt3DExtras/qmorphphongmaterial.h>
+#include <Qt3DExtras/qnormaldiffusemapmaterial.h>
+#include <Qt3DExtras/qnormaldiffusespecularmapmaterial.h>
 #include <Qt3DAnimation/qkeyframeanimation.h>
 #include <Qt3DAnimation/qmorphinganimation.h>
 #include <QtCore/QFileInfo>
@@ -67,8 +30,8 @@
 #include <qmath.h>
 
 #include <Qt3DCore/private/qabstractnodefactory_p.h>
+#include <Qt3DCore/private/qurlhelper_p.h>
 #include <Qt3DRender/private/renderlogging_p.h>
-#include <Qt3DRender/private/qurlhelper_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -105,6 +68,8 @@ const QString ASSIMP_MATERIAL_AMBIENT_TEXTURE = QLatin1String("ambientTex");
 const QString ASSIMP_MATERIAL_SPECULAR_TEXTURE = QLatin1String("specularTexture");
 const QString ASSIMP_MATERIAL_EMISSIVE_TEXTURE = QLatin1String("emissiveTex");
 const QString ASSIMP_MATERIAL_NORMALS_TEXTURE = QLatin1String("normalsTex");
+// Keep the old "normalsTex" parameter name to keep backwards compatibility, add "normalTexture" as a new one
+const QString ASSIMP_MATERIAL_NORMALS_TEXTURE2 = QLatin1String("normalTexture");
 const QString ASSIMP_MATERIAL_OPACITY_TEXTURE = QLatin1String("opacityTex");
 const QString ASSIMP_MATERIAL_REFLECTION_TEXTURE = QLatin1String("reflectionTex");
 const QString ASSIMP_MATERIAL_HEIGHT_TEXTURE = QLatin1String("heightTex");
@@ -132,7 +97,7 @@ const QString COLOR_ATTRIBUTE_NAME = QAttribute::defaultColorAttributeName();
 /*
  * Returns a QMatrix4x4 from \a matrix;
  */
-QMatrix4x4 aiMatrix4x4ToQMatrix4x4(const aiMatrix4x4 &matrix) Q_DECL_NOTHROW
+QMatrix4x4 aiMatrix4x4ToQMatrix4x4(const aiMatrix4x4 &matrix) noexcept
 {
     return QMatrix4x4(matrix.a1, matrix.a2, matrix.a3, matrix.a4,
                       matrix.b1, matrix.b2, matrix.b3, matrix.b4,
@@ -151,9 +116,14 @@ inline QString aiStringToQString(const aiString &str)
 QMaterial *createBestApproachingMaterial(const aiMaterial *assimpMaterial)
 {
     aiString path; // unused but necessary
+    const bool hasNormalTexture = (assimpMaterial->GetTexture(aiTextureType_NORMALS, 0, &path) == AI_SUCCESS);
     const bool hasDiffuseTexture = (assimpMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &path) == AI_SUCCESS);
     const bool hasSpecularTexture = (assimpMaterial->GetTexture(aiTextureType_SPECULAR, 0, &path) == AI_SUCCESS);
 
+    if (hasNormalTexture && hasDiffuseTexture && hasSpecularTexture)
+        return QAbstractNodeFactory::createNode<QNormalDiffuseSpecularMapMaterial>("QNormalDiffuseSpecularMapMaterial");
+    if (hasNormalTexture && hasDiffuseTexture)
+        return QAbstractNodeFactory::createNode<QNormalDiffuseMapMaterial>("QNormalDiffuseMapMaterial");
     if (hasDiffuseTexture && hasSpecularTexture)
         return QAbstractNodeFactory::createNode<QDiffuseSpecularMapMaterial>("QDiffuseSpecularMapMaterial");
     if (hasDiffuseTexture)
@@ -208,7 +178,7 @@ void setParameterValue(const QString &name, QMaterial *material, const QVariant 
     p->setValue(value);
 }
 
-QAttribute *createAttribute(QBuffer *buffer,
+QAttribute *createAttribute(Qt3DCore::QBuffer *buffer,
                             const QString &name,
                             QAttribute::VertexBaseType vertexBaseType,
                             uint vertexSize,
@@ -229,7 +199,7 @@ QAttribute *createAttribute(QBuffer *buffer,
     return attribute;
 }
 
-QAttribute *createIndexAttribute(QBuffer *buffer,
+QAttribute *createIndexAttribute(Qt3DCore::QBuffer *buffer,
                                  QAttribute::VertexBaseType vertexBaseType,
                                  uint vertexSize,
                                  uint count,
@@ -382,7 +352,7 @@ AssimpImporter::~AssimpImporter()
  */
 bool AssimpImporter::areAssimpExtensions(const QStringList &extensions)
 {
-    for (const auto &ext : qAsConst(extensions))
+    for (const auto &ext : std::as_const(extensions))
         if (AssimpImporter::assimpSupportedFormatsList.contains(ext.toLower()))
             return true;
     return false;
@@ -394,7 +364,7 @@ bool AssimpImporter::areAssimpExtensions(const QStringList &extensions)
  */
 void AssimpImporter::setSource(const QUrl &source)
 {
-    const QString path = QUrlHelper::urlToLocalFileOrQrc(source);
+    const QString path = Qt3DCore::QUrlHelper::urlToLocalFileOrQrc(source);
     QFileInfo file(path);
     m_sceneDir = file.absoluteDir();
     if (!file.exists()) {
@@ -451,7 +421,7 @@ Qt3DCore::QEntity *AssimpImporter::scene(const QString &id)
     if (m_scene->m_animations.size() > 0) {
         qWarning() << "No target found for " << m_scene->m_animations.size() << " animations!";
 
-        for (Qt3DAnimation::QKeyframeAnimation *anim : qAsConst(m_scene->m_animations))
+        for (Qt3DAnimation::QKeyframeAnimation *anim : std::as_const(m_scene->m_animations))
             delete anim;
         m_scene->m_animations.clear();
     }
@@ -472,7 +442,7 @@ Qt3DCore::QEntity *AssimpImporter::node(const QString &id)
 }
 
 template <typename T>
-void findAnimationsForNode(QVector<T *> &animations, QVector<T *> &result, const QString &name)
+void findAnimationsForNode(QList<T *> &animations, QList<T *> &result, const QString &name)
 {
     for (T *anim : animations) {
         if (anim->targetName() == name) {
@@ -505,12 +475,12 @@ Qt3DCore::QEntity *AssimpImporter::node(aiNode *node)
         if (morphingAnimations.size() > 0) {
             material = new Qt3DExtras::QMorphPhongMaterial(entityNode);
 
-            QVector<Qt3DAnimation::QMorphingAnimation *> animations;
+            QList<Qt3DAnimation::QMorphingAnimation *> animations;
             findAnimationsForNode<Qt3DAnimation::QMorphingAnimation>(m_scene->m_morphAnimations,
                                                                   animations,
                                                                   aiStringToQString(node->mName));
             const auto morphTargetList = morphingAnimations.at(0)->morphTargetList();
-            for (Qt3DAnimation::QMorphingAnimation *anim : qAsConst(animations)) {
+            for (Qt3DAnimation::QMorphingAnimation *anim : std::as_const(animations)) {
                 anim->setParent(entityNode);
                 anim->setTarget(mesh);
                 anim->setMorphTargets(morphTargetList);
@@ -562,12 +532,12 @@ Qt3DCore::QEntity *AssimpImporter::node(aiNode *node)
     transform->setMatrix(qTransformMatrix);
     entityNode->addComponent(transform);
 
-    QVector<Qt3DAnimation::QKeyframeAnimation *> animations;
+    QList<Qt3DAnimation::QKeyframeAnimation *> animations;
     findAnimationsForNode<Qt3DAnimation::QKeyframeAnimation>(m_scene->m_animations,
                                                           animations,
                                                           aiStringToQString(node->mName));
 
-    for (Qt3DAnimation::QKeyframeAnimation *anim : qAsConst(animations)) {
+    for (Qt3DAnimation::QKeyframeAnimation *anim : std::as_const(animations)) {
         anim->setTarget(transform);
         anim->setParent(entityNode);
     }
@@ -702,12 +672,10 @@ QGeometryRenderer *AssimpImporter::loadMesh(uint meshIndex)
     QGeometryRenderer *geometryRenderer = QAbstractNodeFactory::createNode<QGeometryRenderer>("QGeometryRenderer");
     QGeometry *meshGeometry = QAbstractNodeFactory::createNode<QGeometry>("QGeometry");
     meshGeometry->setParent(geometryRenderer);
-    Qt3DRender::QBuffer *vertexBuffer = QAbstractNodeFactory::createNode<Qt3DRender::QBuffer>("QBuffer");
+    Qt3DCore::QBuffer *vertexBuffer = QAbstractNodeFactory::createNode<Qt3DCore::QBuffer>("QBuffer");
     vertexBuffer->setParent(meshGeometry);
-    vertexBuffer->setType(Qt3DRender::QBuffer::VertexBuffer);
-    Qt3DRender::QBuffer *indexBuffer = QAbstractNodeFactory::createNode<Qt3DRender::QBuffer>("QBuffer");
+    Qt3DCore::QBuffer *indexBuffer = QAbstractNodeFactory::createNode<Qt3DCore::QBuffer>("QBuffer");
     indexBuffer->setParent(meshGeometry);
-    indexBuffer->setType(Qt3DRender::QBuffer::IndexBuffer);
 
     geometryRenderer->setGeometry(meshGeometry);
 
@@ -824,7 +792,7 @@ QGeometryRenderer *AssimpImporter::loadMesh(uint meshIndex)
         for (uint i = 0; i < mesh->mNumFaces; i++) {
             aiFace face = mesh->mFaces[i];
             Q_ASSERT(face.mNumIndices == 3);
-            for (ushort j = 0; j < face.mNumIndices; j++)
+            for (uint j = 0; j < face.mNumIndices; j++)
                 reinterpret_cast<quint16*>(ibufferContent.data())[i * 3 + j] = face.mIndices[j];
         }
     }
@@ -846,8 +814,9 @@ QGeometryRenderer *AssimpImporter::loadMesh(uint meshIndex)
 
         Qt3DAnimation::QMorphingAnimation *morphingAnimation
                 = new Qt3DAnimation::QMorphingAnimation(geometryRenderer);
-        QVector<QString> names;
-        QVector<Qt3DAnimation::QMorphTarget *> targets;
+        QList<QString> names;
+
+        QList<Qt3DAnimation::QMorphTarget *> targets;
         uint voff = 0;
         uint noff = 0;
         uint tanoff = 0;
@@ -889,7 +858,7 @@ QGeometryRenderer *AssimpImporter::loadMesh(uint meshIndex)
             aiAnimMesh *animesh = mesh->mAnimMeshes[i];
             Qt3DAnimation::QMorphTarget *target = new Qt3DAnimation::QMorphTarget(geometryRenderer);
             targets.push_back(target);
-            QVector<QAttribute *> attributes;
+            QList<QAttribute *> attributes;
             QByteArray targetBufferArray;
             targetBufferArray.resize(clumpSize * mesh->mNumVertices * sizeof(float));
             float *dst = reinterpret_cast<float *>(targetBufferArray.data());
@@ -922,8 +891,8 @@ QGeometryRenderer *AssimpImporter::loadMesh(uint meshIndex)
                 }
             }
 
-            Qt3DRender::QBuffer *targetBuffer
-                    = QAbstractNodeFactory::createNode<Qt3DRender::QBuffer>("QBuffer");
+            Qt3DCore::QBuffer *targetBuffer
+                    = QAbstractNodeFactory::createNode<Qt3DCore::QBuffer>("QBuffer");
             targetBuffer->setData(targetBufferArray);
             targetBuffer->setParent(meshGeometry);
 
@@ -1051,7 +1020,7 @@ Qt3DCore::QEntity *AssimpImporter::loadCamera(aiNode *node)
     return camera;
 }
 
-int findTimeIndex(const QVector<float> &times, float time) {
+int findTimeIndex(const QList<float> &times, float time) {
     for (int i = 0; i < times.size(); i++) {
         if (qFuzzyCompare(times[i], time))
             return i;
@@ -1059,7 +1028,7 @@ int findTimeIndex(const QVector<float> &times, float time) {
     return -1;
 }
 
-void insertAtTime(QVector<float> &positions, QVector<Qt3DCore::QTransform *> &tranforms,
+void insertAtTime(QList<float> &positions, QList<Qt3DCore::QTransform *> &tranforms,
                   Qt3DCore::QTransform *t, float time)
 {
     if (positions.size() == 0) {
@@ -1091,8 +1060,8 @@ void AssimpImporter::loadAnimation(uint animationIndex)
         aiNode *targetNode = m_scene->m_aiScene->mRootNode->FindNode(nodeAnim->mNodeName);
 
         Qt3DAnimation::QKeyframeAnimation *kfa = new Qt3DAnimation::QKeyframeAnimation();
-        QVector<float> positions;
-        QVector<Qt3DCore::QTransform*> transforms;
+        QList<float> positions;
+        QList<Qt3DCore::QTransform *> transforms;
         if ((nodeAnim->mNumPositionKeys > 1)
                 || !(nodeAnim->mNumPositionKeys == 1 && nodeAnim->mPositionKeys[0].mValue.x == 0
                     && nodeAnim->mPositionKeys[0].mValue.y == 0
@@ -1164,7 +1133,7 @@ void AssimpImporter::loadAnimation(uint animationIndex)
         aiMesh *mesh = m_scene->m_aiScene->mMeshes[targetNode->mMeshes[0]];
 
         Qt3DAnimation::QMorphingAnimation *morphingAnimation = new Qt3DAnimation::QMorphingAnimation;
-        QVector<float> positions;
+        QList<float> positions;
         positions.resize(morphAnim->mNumKeys);
         // set so that weights array is allocated to correct size in morphingAnimation
         morphingAnimation->setTargetPositions(positions);
@@ -1172,7 +1141,7 @@ void AssimpImporter::loadAnimation(uint animationIndex)
             aiMeshMorphKey &key = morphAnim->mKeys[j];
             positions[j] = key.mTime * tickScale;
 
-            QVector<float> weights;
+            QList<float> weights;
             weights.resize(key.mNumValuesAndWeights);
             for (int k = 0; k < weights.size(); k++) {
                 const unsigned int value = key.mValues[k];
@@ -1311,8 +1280,12 @@ void AssimpImporter::copyMaterialTextures(QMaterial *material, aiMaterial *assim
             tex->setWrapMode(wrapMode);
 
             qCDebug(AssimpImporterLog) << Q_FUNC_INFO << " Loaded Texture " << fullPath;
-            setParameterValue(m_scene->m_textureToParameterName[textureType[i]],
-                    material, QVariant::fromValue(tex));
+            const QString parameterName = m_scene->m_textureToParameterName[textureType[i]];
+            setParameterValue(parameterName, material, QVariant::fromValue(tex));
+
+            if (parameterName == ASSIMP_MATERIAL_NORMALS_TEXTURE) {
+                setParameterValue(ASSIMP_MATERIAL_NORMALS_TEXTURE2, material, QVariant::fromValue(tex));
+            }
         }
     }
 }
@@ -1390,5 +1363,7 @@ AssimpImporter::SceneImporter::~SceneImporter()
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_assimpimporter.cpp"
 
 #include "assimpimporter.moc"

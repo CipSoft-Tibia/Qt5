@@ -1,11 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/captive_portal/content/captive_portal_tab_helper.h"
 
-#include "base/bind.h"
 #include "base/debug/dump_without_crashing.h"
+#include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "components/captive_portal/content/captive_portal_login_detector.h"
 #include "content/public/browser/browser_thread.h"
@@ -18,20 +18,6 @@
 
 namespace captive_portal {
 
-// static
-void CaptivePortalTabHelper::CreateForWebContents(
-    content::WebContents* contents,
-    CaptivePortalService* captive_portal_service,
-    const CaptivePortalTabReloader::OpenLoginTabCallback&
-        open_login_tab_callback) {
-  if (FromWebContents(contents))
-    return;
-  contents->SetUserData(
-      UserDataKey(),
-      base::WrapUnique(new CaptivePortalTabHelper(
-          contents, captive_portal_service, open_login_tab_callback)));
-}
-
 CaptivePortalTabHelper::CaptivePortalTabHelper(
     content::WebContents* web_contents,
     CaptivePortalService* captive_portal_service,
@@ -39,7 +25,7 @@ CaptivePortalTabHelper::CaptivePortalTabHelper(
         open_login_tab_callback)
 
     : content::WebContentsObserver(web_contents),
-      navigation_handle_(nullptr),
+      content::WebContentsUserData<CaptivePortalTabHelper>(*web_contents),
       tab_reloader_(new CaptivePortalTabReloader(captive_portal_service,
                                                  web_contents,
                                                  open_login_tab_callback)),
@@ -59,7 +45,7 @@ CaptivePortalTabHelper::~CaptivePortalTabHelper() {
 void CaptivePortalTabHelper::DidStartNavigation(
     content::NavigationHandle* navigation_handle) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  if (!navigation_handle->IsInMainFrame() ||
+  if (!navigation_handle->IsInPrimaryMainFrame() ||
       navigation_handle->IsSameDocument()) {
     return;
   }
@@ -88,7 +74,7 @@ void CaptivePortalTabHelper::DidRedirectNavigation(
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   if (navigation_handle != navigation_handle_)
     return;
-  DCHECK(navigation_handle->IsInMainFrame());
+  DCHECK(navigation_handle->IsInPrimaryMainFrame());
   tab_reloader_->OnRedirect(
       navigation_handle->GetURL().SchemeIsCryptographic());
 }
@@ -97,8 +83,8 @@ void CaptivePortalTabHelper::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
-  // Exclude subframe navigations.
-  if (!navigation_handle->IsInMainFrame())
+  // Exclude non-primary frame and subframe navigations.
+  if (!navigation_handle->IsInPrimaryMainFrame())
     return;
 
   // Exclude same-document navigations and aborted navigations that were not
@@ -169,6 +155,6 @@ CaptivePortalTabReloader* CaptivePortalTabHelper::GetTabReloaderForTest() {
   return tab_reloader_.get();
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(CaptivePortalTabHelper)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(CaptivePortalTabHelper);
 
 }  // namespace captive_portal

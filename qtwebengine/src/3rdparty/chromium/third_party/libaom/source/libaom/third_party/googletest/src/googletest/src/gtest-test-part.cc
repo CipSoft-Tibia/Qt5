@@ -41,34 +41,32 @@ using internal::GetUnitTestImpl;
 
 // Gets the summary of the failure message by omitting the stack trace
 // in it.
-std::string TestPartResult::ExtractSummary(const char *message) {
-  const char *const stack_trace = strstr(message, internal::kStackTraceMarker);
+std::string TestPartResult::ExtractSummary(const char* message) {
+  const char* const stack_trace = strstr(message, internal::kStackTraceMarker);
   return stack_trace == nullptr ? message : std::string(message, stack_trace);
 }
 
 // Prints a TestPartResult object.
-std::ostream &operator<<(std::ostream &os, const TestPartResult &result) {
+std::ostream& operator<<(std::ostream& os, const TestPartResult& result) {
   return os << internal::FormatFileLocation(result.file_name(),
                                             result.line_number())
             << " "
-            << (result.type() == TestPartResult::kSuccess
-                    ? "Success"
-                    : result.type() == TestPartResult::kSkip
-                          ? "Skipped"
-                          : result.type() == TestPartResult::kFatalFailure
-                                ? "Fatal failure"
-                                : "Non-fatal failure")
+            << (result.type() == TestPartResult::kSuccess ? "Success"
+                : result.type() == TestPartResult::kSkip  ? "Skipped"
+                : result.type() == TestPartResult::kFatalFailure
+                    ? "Fatal failure"
+                    : "Non-fatal failure")
             << ":\n"
             << result.message() << std::endl;
 }
 
 // Appends a TestPartResult to the array.
-void TestPartResultArray::Append(const TestPartResult &result) {
+void TestPartResultArray::Append(const TestPartResult& result) {
   array_.push_back(result);
 }
 
 // Returns the TestPartResult at the given index (0-based).
-const TestPartResult &TestPartResultArray::GetTestPartResult(int index) const {
+const TestPartResult& TestPartResultArray::GetTestPartResult(int index) const {
   if (index < 0 || index >= size()) {
     printf("\nInvalid index (%d) into TestPartResultArray.\n", index);
     internal::posix::Abort();
@@ -97,7 +95,7 @@ HasNewFatalFailureHelper::~HasNewFatalFailureHelper() {
 }
 
 void HasNewFatalFailureHelper::ReportTestPartResult(
-    const TestPartResult &result) {
+    const TestPartResult& result) {
   if (result.fatally_failed()) has_new_fatal_failure_ = true;
   original_reporter_->ReportTestPartResult(result);
 }

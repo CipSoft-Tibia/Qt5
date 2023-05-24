@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QXYModelMapper>
 #include <private/qxymodelmapper_p.h>
@@ -34,7 +8,7 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QDebug>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     Constructs a mapper object which is a child of \a parent.
@@ -263,10 +237,10 @@ QModelIndex QXYModelMapperPrivate::yModelIndex(int yPos)
 qreal QXYModelMapperPrivate::valueFromModel(QModelIndex index)
 {
     QVariant value = m_model->data(index, Qt::DisplayRole);
-    switch (value.type()) {
-    case QVariant::DateTime:
+    switch (value.metaType().id()) {
+    case QMetaType::QDateTime:
         return value.toDateTime().toMSecsSinceEpoch();
-    case QVariant::Date:
+    case QMetaType::QDate:
         return value.toDate().startOfDay().toMSecsSinceEpoch();
     default:
         return value.toReal();
@@ -276,11 +250,11 @@ qreal QXYModelMapperPrivate::valueFromModel(QModelIndex index)
 void QXYModelMapperPrivate::setValueToModel(QModelIndex index, qreal value)
 {
     QVariant oldValue = m_model->data(index, Qt::DisplayRole);
-    switch (oldValue.type()) {
-    case QVariant::DateTime:
+    switch (oldValue.metaType().id()) {
+    case QMetaType::QDateTime:
         m_model->setData(index, QDateTime::fromMSecsSinceEpoch(value));
         break;
-    case QVariant::Date:
+    case QMetaType::QDate:
         m_model->setData(index, QDateTime::fromMSecsSinceEpoch(value).date());
         break;
     default:
@@ -367,31 +341,32 @@ void QXYModelMapperPrivate::modelUpdated(QModelIndex topLeft, QModelIndex bottom
 
     blockSeriesSignals();
     QModelIndex index;
-    QPointF oldPoint;
     QPointF newPoint;
+    int indexColumn = 0;
+    int indexRow = 0;
     for (int row = topLeft.row(); row <= bottomRight.row(); row++) {
         for (int column = topLeft.column(); column <= bottomRight.column(); column++) {
             index = topLeft.sibling(row, column);
-            if (m_orientation == Qt::Vertical && (index.column() == m_xSection || index.column() == m_ySection)) {
-                if (index.row() >= m_first && (m_count == - 1 || index.row() < m_first + m_count)) {
-                    QModelIndex xIndex = xModelIndex(index.row() - m_first);
-                    QModelIndex yIndex = yModelIndex(index.row() - m_first);
+            indexColumn = index.column();
+            indexRow = index.row();
+            if (m_orientation == Qt::Vertical && (indexColumn == m_xSection || indexColumn == m_ySection)) {
+                if (indexRow >= m_first && (m_count == - 1 || indexRow < m_first + m_count)) {
+                    QModelIndex xIndex = xModelIndex(indexRow - m_first);
+                    QModelIndex yIndex = yModelIndex(indexRow - m_first);
                     if (xIndex.isValid() && yIndex.isValid()) {
-                        oldPoint = m_series->points().at(index.row() - m_first);
                         newPoint.setX(valueFromModel(xIndex));
                         newPoint.setY(valueFromModel(yIndex));
-                        m_series->replace(index.row() - m_first, newPoint);
+                        m_series->replace(indexRow - m_first, newPoint);
                     }
                 }
-            } else if (m_orientation == Qt::Horizontal && (index.row() == m_xSection || index.row() == m_ySection)) {
-                if (index.column() >= m_first && (m_count == - 1 || index.column() < m_first + m_count)) {
-                    QModelIndex xIndex = xModelIndex(index.column() - m_first);
-                    QModelIndex yIndex = yModelIndex(index.column() - m_first);
+            } else if (m_orientation == Qt::Horizontal && (indexRow == m_xSection || indexRow == m_ySection)) {
+                if (indexColumn >= m_first && (m_count == - 1 || indexColumn < m_first + m_count)) {
+                    QModelIndex xIndex = xModelIndex(indexColumn - m_first);
+                    QModelIndex yIndex = yModelIndex(indexColumn - m_first);
                     if (xIndex.isValid() && yIndex.isValid()) {
-                        oldPoint = m_series->points().at(index.column() - m_first);
                         newPoint.setX(valueFromModel(xIndex));
                         newPoint.setY(valueFromModel(yIndex));
-                        m_series->replace(index.column() - m_first, newPoint);
+                        m_series->replace(indexColumn - m_first, newPoint);
                     }
                 }
             }
@@ -573,7 +548,7 @@ void QXYModelMapperPrivate::initializeXYFromModel()
     blockSeriesSignals(false);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qxymodelmapper.cpp"
 #include "moc_qxymodelmapper_p.cpp"

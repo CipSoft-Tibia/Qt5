@@ -1,13 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
 #include "base/base_paths.h"
 #include "base/check.h"
+#include "base/containers/contains.h"
 #include "base/files/file_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/test/scoped_path_override.h"
@@ -21,7 +21,7 @@ namespace weblayer {
 class ProfileDiskOperationsTest : public testing::Test {
  protected:
   base::ScopedPathOverride data_dir_override_{DIR_USER_DATA};
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
   base::ScopedPathOverride cache_dir_override_{base::DIR_CACHE};
 #endif
 };
@@ -63,8 +63,7 @@ TEST_F(ProfileDiskOperationsTest, BasicListProfileNames) {
   std::vector<std::string> listed_names = ListProfileNames();
   EXPECT_EQ(names.size(), listed_names.size());
   for (const auto& name : names) {
-    auto itr = std::find(listed_names.begin(), listed_names.end(), name);
-    EXPECT_TRUE(itr != listed_names.end());
+    EXPECT_TRUE(base::Contains(listed_names, name));
   }
 }
 

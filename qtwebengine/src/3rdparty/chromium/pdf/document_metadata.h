@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 #define PDF_DOCUMENT_METADATA_H_
 
 #include <string>
+
+#include "base/time/time.h"
 
 namespace chrome_pdf {
 
@@ -26,20 +28,44 @@ enum class PdfVersion {
   kMaxValue = k2_0
 };
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class FormType {
+  kNone = 0,
+  kAcroForm = 1,
+  kXFAFull = 2,
+  kXFAForeground = 3,
+  kMaxValue = kXFAForeground
+};
+
 // Document properties, including those specified in the document information
 // dictionary (see section 14.3.3 "Document Information Dictionary" of the ISO
-// 32000-1 standard), as well as other properties about the file.
-// TODO(crbug.com/93619): Finish adding information dictionary fields like
-// |keywords|, |creation_date|, and |mod_date|. Also add fields like
-// |size_bytes|, |is_encrypted|, and |is_linearized|.
+// 32000-1:2008 spec).
 struct DocumentMetadata {
   DocumentMetadata();
   DocumentMetadata(const DocumentMetadata&) = delete;
   DocumentMetadata& operator=(const DocumentMetadata&) = delete;
   ~DocumentMetadata();
 
-  // Version of the document
+  // Version of the document.
   PdfVersion version = PdfVersion::kUnknown;
+
+  // The size of the document in bytes.
+  size_t size_bytes = 0;
+
+  // Number of pages in the document.
+  size_t page_count = 0;
+
+  // Whether the document is optimized by linearization (see annex F "Linearized
+  // PDF" of the ISO 32000-1:2008 spec).
+  bool linearized = false;
+
+  // Whether the document contains file attachments (see section 12.5.6.15 "File
+  // Attachment Annotations" of the ISO 32000-1:2008 spec).
+  bool has_attachments = false;
+
+  // The type of form contained in the document.
+  FormType form_type = FormType::kNone;
 
   // The document's title.
   std::string title;
@@ -50,12 +76,21 @@ struct DocumentMetadata {
   // The document's subject.
   std::string subject;
 
+  // The document's keywords.
+  std::string keywords;
+
   // The name of the application that created the original document.
   std::string creator;
 
   // If the document's format was not originally PDF, the name of the
   // application that converted the document to PDF.
   std::string producer;
+
+  // The date and time the document was created.
+  base::Time creation_date;
+
+  // The date and time the document was most recently modified.
+  base::Time mod_date;
 };
 
 }  // namespace chrome_pdf

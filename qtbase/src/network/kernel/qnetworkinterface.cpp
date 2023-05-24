@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkinterface.h"
 #include "qnetworkinterface_p.h"
@@ -48,6 +12,12 @@
 #ifndef QT_NO_NETWORKINTERFACE
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QNetworkAddressEntry)
+QT_IMPL_METATYPE_EXTERN(QNetworkInterface)
+
+static_assert(QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+           && sizeof(QScopedPointer<QNetworkAddressEntryPrivate>) == sizeof(std::unique_ptr<QNetworkAddressEntryPrivate>));
 
 static QList<QNetworkInterfacePrivate *> postProcess(QList<QNetworkInterfacePrivate *> list)
 {
@@ -139,7 +109,7 @@ QString QNetworkInterfacePrivate::makeHwAddress(int len, uchar *data)
     QChar *out = result.data();
     for (int i = 0; i < len; ++i) {
         if (i)
-            *out++ = QLatin1Char(':');
+            *out++ = u':';
         *out++ = QLatin1Char(QtMiscUtils::toHexUpper(data[i] / 16));
         *out++ = QLatin1Char(QtMiscUtils::toHexUpper(data[i] % 16));
     }
@@ -204,7 +174,7 @@ QNetworkAddressEntry::QNetworkAddressEntry()
     object \a other.
 */
 QNetworkAddressEntry::QNetworkAddressEntry(const QNetworkAddressEntry &other)
-    : d(new QNetworkAddressEntryPrivate(*other.d.data()))
+    : d(new QNetworkAddressEntryPrivate(*other.d.get()))
 {
 }
 
@@ -213,7 +183,7 @@ QNetworkAddressEntry::QNetworkAddressEntry(const QNetworkAddressEntry &other)
 */
 QNetworkAddressEntry &QNetworkAddressEntry::operator=(const QNetworkAddressEntry &other)
 {
-    *d.data() = *other.d.data();
+    *d.get() = *other.d.get();
     return *this;
 }
 
@@ -489,7 +459,7 @@ void QNetworkAddressEntry::clearAddressLifetime()
     \since 5.11
 
     Returns \c true if this address is permanent on this interface, \c false if
-    it's temporary. A permenant address is one which has no expiration time and
+    it's temporary. A permanent address is one which has no expiration time and
     is often static (manually configured).
 
     If this information could not be determined, this function returns \c true.
@@ -903,7 +873,7 @@ QList<QHostAddress> QNetworkInterface::allAddresses()
         if ((p->flags & QNetworkInterface::IsUp) == 0)
             continue;
 
-        for (const QNetworkAddressEntry &entry : qAsConst(p->addressEntries))
+        for (const QNetworkAddressEntry &entry : std::as_const(p->addressEntries))
             result += entry.ip();
     }
 
@@ -928,17 +898,32 @@ static inline QDebug flagsDebug(QDebug debug, QNetworkInterface::InterfaceFlags 
     return debug;
 }
 
-static inline QDebug operator<<(QDebug debug, const QNetworkAddressEntry &entry)
+/*!
+   \since 6.2
+
+    Writes the QNetworkAddressEntry \a entry to the stream and
+    returns a reference to the \a debug stream.
+
+    \relates QNetworkAddressEntry
+ */
+QDebug operator<<(QDebug debug, const QNetworkAddressEntry &entry)
 {
-    debug << "(address = " << entry.ip();
+    QDebugStateSaver saver(debug);
+    debug.resetFormat().nospace();
+    debug << "address = " << entry.ip();
     if (!entry.netmask().isNull())
         debug << ", netmask = " << entry.netmask();
     if (!entry.broadcast().isNull())
         debug << ", broadcast = " << entry.broadcast();
-    debug << ')';
     return debug;
 }
 
+/*!
+    Writes the QNetworkInterface \a networkInterface to the stream and
+    returns a reference to the \a debug stream.
+
+    \relates QNetworkInterface
+ */
 QDebug operator<<(QDebug debug, const QNetworkInterface &networkInterface)
 {
     QDebugStateSaver saver(debug);

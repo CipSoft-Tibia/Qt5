@@ -15,6 +15,8 @@
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 
+#include <string>
+
 typedef Window XWindow;
 
 namespace sk_app {
@@ -35,6 +37,9 @@ public:
 
     void setTitle(const char*) override;
     void show() override;
+
+    const char* getClipboardText() override;
+    void        setClipboardText(const char*) override;
 
     bool attach(BackendType) override;
 
@@ -93,7 +98,9 @@ private:
     int      fPendingHeight;
     bool     fPendingResize;
 
-    BackendType fBackend;
+    BackendType fBackend = BackendType::kRaster_BackendType;
+
+    std::string fClipboardText;
 
     using INHERITED = Window;
 };

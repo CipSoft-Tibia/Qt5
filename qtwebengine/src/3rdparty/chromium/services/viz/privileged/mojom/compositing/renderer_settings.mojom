@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,11 @@ import "services/viz/privileged/mojom/compositing/overlay_strategy.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 import "ui/gfx/mojom/color_space.mojom";
 
+// same kInvalidDisplayId defined in ui/display/types/display_constants.h
+const int64 kInvalidDisplayId = -1;
+
 struct RendererSettings {
+  bool apply_simple_frame_rate_throttling;
   bool allow_antialiasing;
   bool force_antialiasing;
   bool force_blending_with_shaders;
@@ -17,8 +21,6 @@ struct RendererSettings {
   bool release_overlay_resources_after_gpu_query;
   bool should_clear_root_render_pass;
   int32 slow_down_compositing_scale_factor;
-  bool use_skia_renderer;
-  bool allow_overlays;
   bool auto_resize_output_surface;
   bool requires_alpha_channel;
 
@@ -30,10 +32,14 @@ struct RendererSettings {
 
   [EnableIf=use_ozone]
   array<OverlayStrategy> overlay_strategies;
+
+  [EnableIf=is_mac]
+  int64 display_id = kInvalidDisplayId;
 };
 
 struct DebugRendererSettings {
   bool tint_composited_content;
+  bool tint_composited_content_modulate;
   bool show_overdraw_feedback;
   bool show_dc_layer_debug_borders;
   bool show_aggregated_damage;

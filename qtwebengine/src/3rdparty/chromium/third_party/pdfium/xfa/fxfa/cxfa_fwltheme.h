@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,8 @@
 
 #include <memory>
 
+#include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/widestring.h"
 #include "fxjs/gc/heap.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
@@ -38,8 +40,8 @@ class CXFA_FWLTheme final : public cppgc::GarbageCollected<CXFA_FWLTheme>,
   float GetCYBorderSize() const override;
   CFX_RectF GetUIMargin(const CFWL_ThemePart& pThemePart) const override;
   float GetFontSize(const CFWL_ThemePart& pThemePart) const override;
-  RetainPtr<CFGAS_GEFont> GetFont(
-      const CFWL_ThemePart& pThemePart) const override;
+  RetainPtr<CFGAS_GEFont> GetFont(const CFWL_ThemePart& pThemePart) override;
+  RetainPtr<CFGAS_GEFont> GetFWLFont() override;
   float GetLineHeight(const CFWL_ThemePart& pThemePart) const override;
   float GetScrollBarWidth() const override;
   FX_COLORREF GetTextColor(const CFWL_ThemePart& pThemePart) const override;
@@ -48,9 +50,10 @@ class CXFA_FWLTheme final : public cppgc::GarbageCollected<CXFA_FWLTheme>,
   bool LoadCalendarFont(CXFA_FFDoc* doc);
 
  private:
-  explicit CXFA_FWLTheme(CXFA_FFApp* pApp);
+  CXFA_FWLTheme(cppgc::Heap* pHeap, CXFA_FFApp* pApp);
 
   std::unique_ptr<CFDE_TextOut> m_pTextOut;
+  RetainPtr<CFGAS_GEFont> m_pFWLFont;
   RetainPtr<CFGAS_GEFont> m_pCalendarFont;
   cppgc::Member<CXFA_FFApp> const m_pApp;
   WideString m_wsResource;

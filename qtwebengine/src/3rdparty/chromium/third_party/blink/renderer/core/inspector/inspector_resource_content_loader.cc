@@ -1,10 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/inspector/inspector_resource_content_loader.h"
 
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
+#include "third_party/blink/public/platform/modules/service_worker/web_service_worker_network_provider.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/core/css/css_style_sheet.h"
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
@@ -24,6 +25,30 @@
 #include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
 
 namespace blink {
+
+namespace {
+
+bool ShouldSkipFetchingUrl(const KURL& url) {
+  return !url.IsValid() || url.IsAboutBlankURL() || url.IsAboutSrcdocURL();
+}
+
+bool IsServiceWorkerPresent(Document* document) {
+  DocumentLoader* loader = document->Loader();
+  if (!loader)
+    return false;
+
+  if (loader->GetResponse().WasFetchedViaServiceWorker())
+    return true;
+
+  WebServiceWorkerNetworkProvider* provider =
+      loader->GetServiceWorkerNetworkProvider();
+  if (!provider)
+    return false;
+
+  return provider->ControllerServiceWorkerID() >= 0;
+}
+
+}  // namespace
 
 // NOTE: While this is a RawResourceClient, it loads both raw and css stylesheet
 // resources. Stylesheets can only safely use a RawResourceClient because it has
@@ -72,7 +97,6 @@ void InspectorResourceContentLoader::Start() {
     if (frame->GetDocument()->IsInitialEmptyDocument())
       continue;
     documents.push_back(frame->GetDocument());
-    documents.AppendVector(InspectorPageAgent::ImportsForFrame(frame));
   }
   for (Document* document : documents) {
     HashSet<String> urls_to_fetch;
@@ -87,24 +111,22 @@ void InspectorResourceContentLoader::Start() {
       resource_request = ResourceRequest(document->Url());
       resource_request.SetCacheMode(mojom::FetchCacheMode::kOnlyIfCached);
     }
-    resource_request.SetRequestContext(mojom::RequestContextType::INTERNAL);
-    if (document->Loader() &&
-        document->Loader()->GetResponse().WasFetchedViaServiceWorker()) {
+    resource_request.SetRequestContext(
+        mojom::blink::RequestContextType::INTERNAL);
+
+    if (IsServiceWorkerPresent(document)) {
+      // If the request is going to be intercepted by a service worker, then
+      // don't use only-if-cached. only-if-cached will cause the service worker
+      // to throw an exception if it repeats the request, which is a problem:
+      // crbug.com/823392 crbug.com/1098389
       resource_request.SetCacheMode(mojom::FetchCacheMode::kDefault);
     }
 
     ResourceFetcher* fetcher = document->Fetcher();
-    if (document->ImportsController()) {
-      // For @imports from HTML imported Documents, we use the
-      // context document for getting origin and ResourceFetcher to use the
-      // main Document's origin, while using the element document for
-      // CompleteURL() to use imported Documents' base URLs.
-      fetcher = document->GetExecutionContext()->Fetcher();
-    }
 
     scoped_refptr<const DOMWrapperWorld> world =
         document->GetExecutionContext()->GetCurrentWorld();
-    if (!resource_request.Url().GetString().IsEmpty()) {
+    if (!ShouldSkipFetchingUrl(resource_request.Url())) {
       urls_to_fetch.insert(resource_request.Url().GetString());
       ResourceLoaderOptions options(world);
       options.initiator_info.name = fetch_initiator_type_names::kInternal;
@@ -123,14 +145,15 @@ void InspectorResourceContentLoader::Start() {
       if (style_sheet->IsInline() || !style_sheet->Contents()->LoadCompleted())
         continue;
       String url = style_sheet->href();
-      if (url.IsEmpty() || urls_to_fetch.Contains(url))
+      if (ShouldSkipFetchingUrl(KURL(url)) || urls_to_fetch.Contains(url))
         continue;
       urls_to_fetch.insert(url);
-      ResourceRequest resource_request(url);
-      resource_request.SetRequestContext(mojom::RequestContextType::INTERNAL);
+      ResourceRequest style_sheet_resource_request(url);
+      style_sheet_resource_request.SetRequestContext(
+          mojom::blink::RequestContextType::INTERNAL);
       ResourceLoaderOptions options(world);
       options.initiator_info.name = fetch_initiator_type_names::kInternal;
-      FetchParameters params(std::move(resource_request), options);
+      FetchParameters params(std::move(style_sheet_resource_request), options);
       ResourceClient* resource_client =
           MakeGarbageCollected<ResourceClient>(this);
       // Prevent garbage collection by holding a reference to this resource.
@@ -146,13 +169,17 @@ void InspectorResourceContentLoader::Start() {
     // TODO (alexrudenko): This code duplicates the code in manifest_manager.cc
     // and manifest_fetcher.cc. Move it to a shared place.
     HTMLLinkElement* link_element = document->LinkManifest();
-    if (link_element) {
-      auto link = link_element->Href();
+    KURL link;
+    if (link_element)
+      link = link_element->Href();
+    if (!ShouldSkipFetchingUrl(link)) {
       auto use_credentials = EqualIgnoringASCIICase(
           link_element->FastGetAttribute(html_names::kCrossoriginAttr),
           "use-credentials");
       ResourceRequest manifest_request(link);
       manifest_request.SetMode(network::mojom::RequestMode::kCors);
+      manifest_request.SetTargetAddressSpace(
+          network::mojom::IPAddressSpace::kUnknown);
       // See https://w3c.github.io/manifest/. Use "include" when use_credentials
       // is true, and "omit" otherwise.
       manifest_request.SetCredentialsMode(
@@ -197,7 +224,7 @@ void InspectorResourceContentLoader::Cancel(int client_id) {
 }
 
 InspectorResourceContentLoader::~InspectorResourceContentLoader() {
-  DCHECK(resources_.IsEmpty());
+  DCHECK(resources_.empty());
 }
 
 void InspectorResourceContentLoader::Trace(Visitor* visitor) const {

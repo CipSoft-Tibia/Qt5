@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,19 +6,19 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "content/browser/payments/installed_payment_apps_finder_impl.h"
 #include "content/browser/payments/payment_app_content_unittest_base.h"
 #include "content/public/browser/payment_app_provider.h"
-#include "content/public/browser/permission_type.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/mock_permission_manager.h"
 #include "content/public/test/test_browser_context.h"
 #include "content/public/test/test_web_contents_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/mojom/payments/payment_app.mojom.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom.h"
 #include "url/gurl.h"
@@ -73,16 +73,21 @@ class PaymentAppProviderTest : public PaymentAppContentUnitTestBase {
     std::unique_ptr<MockPermissionManager> mock_permission_manager(
         new testing::NiceMock<MockPermissionManager>());
     ON_CALL(*mock_permission_manager,
-            GetPermissionStatus(PermissionType::PAYMENT_HANDLER, testing::_,
-                                testing::_))
-        .WillByDefault(
-            testing::Return(blink::mojom::PermissionStatus::GRANTED));
+            GetPermissionResultForOriginWithoutContext(
+                blink::PermissionType::PAYMENT_HANDLER, testing::_))
+        .WillByDefault(testing::Return(
+            PermissionResult(blink::mojom::PermissionStatus::GRANTED,
+                             PermissionStatusSource::UNSPECIFIED)));
     static_cast<TestBrowserContext*>(browser_context())
         ->SetPermissionControllerDelegate(std::move(mock_permission_manager));
 
     web_contents_ =
         test_web_contents_factory_.CreateWebContents(browser_context());
   }
+
+  PaymentAppProviderTest(const PaymentAppProviderTest&) = delete;
+  PaymentAppProviderTest& operator=(const PaymentAppProviderTest&) = delete;
+
   ~PaymentAppProviderTest() override {}
 
   void SetPaymentInstrument(
@@ -141,14 +146,12 @@ class PaymentAppProviderTest : public PaymentAppContentUnitTestBase {
 
  private:
   TestWebContentsFactory test_web_contents_factory_;
-  WebContents* web_contents_;
-
-  DISALLOW_COPY_AND_ASSIGN(PaymentAppProviderTest);
+  raw_ptr<WebContents> web_contents_;
 };
 
 TEST_F(PaymentAppProviderTest, AbortPaymentTest) {
   PaymentManager* manager = CreatePaymentManager(
-      GURL("https://example.com"), GURL("https://example.com/script.js"));
+      GURL("https://example.test"), GURL("https://example.test/script.js"));
 
   PaymentHandlerStatus status;
   SetPaymentInstrument(manager, "payment_instrument_key",
@@ -171,7 +174,7 @@ TEST_F(PaymentAppProviderTest, AbortPaymentTest) {
 
 TEST_F(PaymentAppProviderTest, CanMakePaymentTest) {
   PaymentManager* manager = CreatePaymentManager(
-      GURL("https://example.com"), GURL("https://example.com/script.js"));
+      GURL("https://example.test"), GURL("https://example.test/script.js"));
 
   PaymentHandlerStatus status;
   SetPaymentInstrument(manager, "payment_instrument_key",
@@ -192,7 +195,7 @@ TEST_F(PaymentAppProviderTest, CanMakePaymentTest) {
   bool can_make_payment = false;
   base::RunLoop loop;
   CanMakePayment(last_sw_registration_id(),
-                 url::Origin::Create(GURL("https://example.com")), "id",
+                 url::Origin::Create(GURL("https://example.test")), "id",
                  std::move(event_data),
                  base::BindOnce(&CaptureCanMakePaymentResult,
                                 loop.QuitClosure(), &can_make_payment));
@@ -201,10 +204,11 @@ TEST_F(PaymentAppProviderTest, CanMakePaymentTest) {
 }
 
 TEST_F(PaymentAppProviderTest, InvokePaymentAppTest) {
-  PaymentManager* manager1 = CreatePaymentManager(
-      GURL("https://hellopay.com/a"), GURL("https://hellopay.com/a/script.js"));
+  PaymentManager* manager1 =
+      CreatePaymentManager(GURL("https://hellopay.test/a/"),
+                           GURL("https://hellopay.test/a/script.js"));
   PaymentManager* manager2 = CreatePaymentManager(
-      GURL("https://bobpay.com/b"), GURL("https://bobpay.com/b/script.js"));
+      GURL("https://bobpay.test/b/"), GURL("https://bobpay.test/b/script.js"));
 
   PaymentHandlerStatus status;
   SetPaymentInstrument(manager1, "test_key1",
@@ -222,7 +226,8 @@ TEST_F(PaymentAppProviderTest, InvokePaymentAppTest) {
   ASSERT_EQ(2U, apps.size());
 
   int64_t bobpay_registration_id = last_sw_registration_id();
-  EXPECT_EQ(apps[bobpay_registration_id]->scope.spec(), "https://bobpay.com/b");
+  EXPECT_EQ(apps[bobpay_registration_id]->scope.spec(),
+            "https://bobpay.test/b/");
 
   payments::mojom::PaymentRequestEventDataPtr event_data =
       payments::mojom::PaymentRequestEventData::New();
@@ -231,19 +236,20 @@ TEST_F(PaymentAppProviderTest, InvokePaymentAppTest) {
 
   bool called = false;
   InvokePaymentApp(bobpay_registration_id,
-                   url::Origin::Create(GURL("https://bobpay.com")),
+                   url::Origin::Create(GURL("https://bobpay.test")),
                    std::move(event_data),
                    base::BindOnce(&InvokePaymentAppCallback, &called));
   ASSERT_TRUE(called);
 }
 
 TEST_F(PaymentAppProviderTest, GetAllPaymentAppsTest) {
-  PaymentManager* manager1 = CreatePaymentManager(
-      GURL("https://hellopay.com/a"), GURL("https://hellopay.com/a/script.js"));
+  PaymentManager* manager1 =
+      CreatePaymentManager(GURL("https://hellopay.test/a/"),
+                           GURL("https://hellopay.test/a/script.js"));
   int64_t hellopay_registration_id = last_sw_registration_id();
 
   PaymentManager* manager2 = CreatePaymentManager(
-      GURL("https://bobpay.com/b"), GURL("https://bobpay.com/b/script.js"));
+      GURL("https://bobpay.test/b/"), GURL("https://bobpay.test/b/script.js"));
   int64_t bobpay_registration_id = last_sw_registration_id();
 
   PaymentHandlerStatus status;
@@ -272,11 +278,11 @@ TEST_F(PaymentAppProviderTest, GetAllPaymentAppsTest) {
 
 TEST_F(PaymentAppProviderTest, GetAllPaymentAppsFromTheSameOriginTest) {
   PaymentManager* manager1 = CreatePaymentManager(
-      GURL("https://bobpay.com/a"), GURL("https://bobpay.com/a/script.js"));
+      GURL("https://bobpay.test/a/"), GURL("https://bobpay.test/a/script.js"));
   int64_t bobpay_a_registration_id = last_sw_registration_id();
 
   PaymentManager* manager2 = CreatePaymentManager(
-      GURL("https://bobpay.com/b"), GURL("https://bobpay.com/b/script.js"));
+      GURL("https://bobpay.test/b/"), GURL("https://bobpay.test/b/script.js"));
   int64_t bobpay_b_registration_id = last_sw_registration_id();
 
   PaymentHandlerStatus status;
@@ -304,10 +310,11 @@ TEST_F(PaymentAppProviderTest, GetAllPaymentAppsFromTheSameOriginTest) {
 }
 
 TEST_F(PaymentAppProviderTest, AbortPaymentWhenClosingOpenedWindow) {
-  PaymentManager* manager1 = CreatePaymentManager(
-      GURL("https://hellopay.com/a"), GURL("https://hellopay.com/a/script.js"));
+  PaymentManager* manager1 =
+      CreatePaymentManager(GURL("https://hellopay.test/a/"),
+                           GURL("https://hellopay.test/a/script.js"));
   PaymentManager* manager2 = CreatePaymentManager(
-      GURL("https://bobpay.com/b"), GURL("https://bobpay.com/b/script.js"));
+      GURL("https://bobpay.test/b/"), GURL("https://bobpay.test/b/script.js"));
 
   PaymentHandlerStatus status;
   SetPaymentInstrument(manager1, "test_key1",
@@ -325,7 +332,8 @@ TEST_F(PaymentAppProviderTest, AbortPaymentWhenClosingOpenedWindow) {
   ASSERT_EQ(2U, apps.size());
 
   int64_t bobpay_registration_id = last_sw_registration_id();
-  EXPECT_EQ(apps[bobpay_registration_id]->scope.spec(), "https://bobpay.com/b");
+  EXPECT_EQ(apps[bobpay_registration_id]->scope.spec(),
+            "https://bobpay.test/b/");
 
   payments::mojom::PaymentRequestEventDataPtr event_data =
       payments::mojom::PaymentRequestEventData::New();
@@ -336,7 +344,7 @@ TEST_F(PaymentAppProviderTest, AbortPaymentWhenClosingOpenedWindow) {
 
   bool called = false;
   InvokePaymentApp(bobpay_registration_id,
-                   url::Origin::Create(GURL("https://bobpay.com")),
+                   url::Origin::Create(GURL("https://bobpay.test")),
                    std::move(event_data),
                    base::BindOnce(&InvokePaymentAppCallback, &called));
   ASSERT_FALSE(called);

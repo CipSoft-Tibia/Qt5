@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,12 @@
 
 #import <Foundation/Foundation.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/mac/foundation_util.h"
 #include "base/mac/mac_logging.h"
 #include "base/mac/scoped_cftyperef.h"
 #include "base/mac/scoped_nsobject.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/cbor/writer.h"
 #include "device/fido/fido_constants.h"
@@ -39,64 +40,46 @@ constexpr std::array<uint8_t, 16> kAaguid = {0xad, 0xce, 0x00, 0x02, 0x35, 0xbc,
                                              0xc6, 0x0a, 0x64, 0x8b, 0x0b, 0x25,
                                              0xf1, 0xf0, 0x55, 0x03};
 
-// SecKeyRefToECPublicKey converts a SecKeyRef for a public key into an
-// equivalent |PublicKey| instance. It returns |nullptr| if the key cannot
-// be converted.
-std::unique_ptr<PublicKey> SecKeyRefToECPublicKey(SecKeyRef public_key_ref)
-    API_AVAILABLE(macosx(10.12.2)) {
-  CHECK(public_key_ref);
-  ScopedCFTypeRef<CFErrorRef> err;
-  ScopedCFTypeRef<CFDataRef> data_ref(
-      SecKeyCopyExternalRepresentation(public_key_ref, err.InitializeInto()));
-  if (!data_ref) {
-    LOG(ERROR) << "SecCopyExternalRepresentation failed: " << err;
-    return nullptr;
-  }
-  base::span<const uint8_t> key_data =
-      base::make_span(CFDataGetBytePtr(data_ref), CFDataGetLength(data_ref));
-  auto key = P256PublicKey::ParseX962Uncompressed(
-      static_cast<int32_t>(CoseAlgorithmIdentifier::kEs256), key_data);
-  if (!key) {
-    LOG(ERROR) << "Unexpected public key format: "
-               << base::HexEncode(key_data.data(), key_data.size());
-    return nullptr;
-  }
-  return key;
-}
-
 namespace {
 
-// Returns the current time in seconds since epoch as a privacy-preserving
-// signature counter. Because of the conversion to a 32-bit unsigned integer,
-// the counter will overflow in the year 2108.
-std::array<uint8_t, 4> GetTimestampSignatureCounter() {
-  // TODO(martinkr): The timestamp somewhat defeats the supposed "cloning
-  // detection" properties of a less predictable counter. If we do want real
-  // counters, they should be at least per RP and could probably  be stored in
-  // PrefService.
-  uint32_t sign_counter = static_cast<uint32_t>(base::Time::Now().ToDoubleT());
-  return std::array<uint8_t, 4>{
-      static_cast<uint8_t>((sign_counter >> 24) & 0xff),
-      static_cast<uint8_t>((sign_counter >> 16) & 0xff),
-      static_cast<uint8_t>((sign_counter >> 8) & 0xff),
-      static_cast<uint8_t>(sign_counter & 0xff),
-  };
+// Returns the signature counter to use in the authenticatorData.
+std::array<uint8_t, 4> MakeSignatureCounter(
+    CredentialMetadata::SignCounter counter_type) {
+  // For current credentials, the counter is fixed at 0.
+  switch (counter_type) {
+    case CredentialMetadata::SignCounter::kTimestamp: {
+      // Legacy credentials use a timestamp-based counter. RPs expect a non-zero
+      // counter to be increasing with each assertion, so we can't fix the
+      // counter at 0 for old credentials. Because of the conversion to a 32-bit
+      // unsigned integer, the counter will overflow in the year 2108.
+      uint32_t sign_counter =
+          static_cast<uint32_t>(base::Time::Now().ToDoubleT());
+      return std::array<uint8_t, 4>{
+          static_cast<uint8_t>((sign_counter >> 24) & 0xff),
+          static_cast<uint8_t>((sign_counter >> 16) & 0xff),
+          static_cast<uint8_t>((sign_counter >> 8) & 0xff),
+          static_cast<uint8_t>(sign_counter & 0xff),
+      };
+    }
+    case CredentialMetadata::SignCounter::kZero:
+      return {0, 0, 0, 0};
+  }
 }
 
 }  // namespace
 
 COMPONENT_EXPORT(DEVICE_FIDO)
-base::Optional<AttestedCredentialData> MakeAttestedCredentialData(
+absl::optional<AttestedCredentialData> MakeAttestedCredentialData(
     std::vector<uint8_t> credential_id,
     std::unique_ptr<PublicKey> public_key) {
   if (credential_id.empty() || credential_id.size() > 255) {
     LOG(ERROR) << "invalid credential id: "
                << base::HexEncode(credential_id.data(), credential_id.size());
-    return base::nullopt;
+    return absl::nullopt;
   }
   if (!public_key) {
     LOG(ERROR) << "no public key";
-    return base::nullopt;
+    return absl::nullopt;
   }
   std::array<uint8_t, 2> encoded_credential_id_length = {
       0, static_cast<uint8_t>(credential_id.size())};
@@ -106,8 +89,9 @@ base::Optional<AttestedCredentialData> MakeAttestedCredentialData(
 }
 
 AuthenticatorData MakeAuthenticatorData(
+    CredentialMetadata::SignCounter counter_type,
     const std::string& rp_id,
-    base::Optional<AttestedCredentialData> attested_credential_data) {
+    absl::optional<AttestedCredentialData> attested_credential_data) {
   const uint8_t flags =
       static_cast<uint8_t>(AuthenticatorData::Flag::kTestOfUserPresence) |
       static_cast<uint8_t>(AuthenticatorData::Flag::kTestOfUserVerification) |
@@ -115,14 +99,14 @@ AuthenticatorData MakeAuthenticatorData(
            ? static_cast<uint8_t>(AuthenticatorData::Flag::kAttestation)
            : 0);
   return AuthenticatorData(fido_parsing_utils::CreateSHA256Hash(rp_id), flags,
-                           GetTimestampSignatureCounter(),
+                           MakeSignatureCounter(counter_type),
                            std::move(attested_credential_data));
 }
 
-base::Optional<std::vector<uint8_t>> GenerateSignature(
+absl::optional<std::vector<uint8_t>> GenerateSignature(
     const AuthenticatorData& authenticator_data,
     base::span<const uint8_t, kClientDataHashLength> client_data_hash,
-    SecKeyRef private_key) API_AVAILABLE(macosx(10.12.2)) {
+    SecKeyRef private_key) {
   const std::vector<uint8_t> serialized_authenticator_data =
       authenticator_data.SerializeToByteArray();
   size_t capacity =
@@ -140,11 +124,48 @@ base::Optional<std::vector<uint8_t>> GenerateSignature(
           sig_input, err.InitializeInto()));
   if (!sig_data) {
     LOG(ERROR) << "SecKeyCreateSignature failed: " << err;
-    return base::nullopt;
+    return absl::nullopt;
   }
   return std::vector<uint8_t>(
       CFDataGetBytePtr(sig_data),
       CFDataGetBytePtr(sig_data) + CFDataGetLength(sig_data));
+}
+
+// SecKeyRefToECPublicKey converts a SecKeyRef for a public key into an
+// equivalent |PublicKey| instance. It returns |nullptr| if the key cannot
+// be converted.
+std::unique_ptr<PublicKey> SecKeyRefToECPublicKey(SecKeyRef public_key_ref) {
+  CHECK(public_key_ref);
+  ScopedCFTypeRef<CFErrorRef> err;
+  ScopedCFTypeRef<CFDataRef> data_ref(
+      SecKeyCopyExternalRepresentation(public_key_ref, err.InitializeInto()));
+  if (!data_ref) {
+    LOG(ERROR) << "SecCopyExternalRepresentation failed: " << err;
+    return nullptr;
+  }
+  base::span<const uint8_t> key_data =
+      base::make_span(CFDataGetBytePtr(data_ref),
+                      base::checked_cast<size_t>(CFDataGetLength(data_ref)));
+  auto key = P256PublicKey::ParseX962Uncompressed(
+      static_cast<int32_t>(CoseAlgorithmIdentifier::kEs256), key_data);
+  if (!key) {
+    LOG(ERROR) << "Unexpected public key format: "
+               << base::HexEncode(key_data.data(), key_data.size());
+    return nullptr;
+  }
+  return key;
+}
+
+CodeSigningState ProcessIsSigned() {
+  base::ScopedCFTypeRef<SecTaskRef> task(SecTaskCreateFromSelf(nullptr));
+  if (!task) {
+    return CodeSigningState::kNotSigned;
+  }
+
+  base::ScopedCFTypeRef<CFStringRef> sign_id(
+      SecTaskCopySigningIdentifier(task.get(), /* error= */ nullptr));
+  return static_cast<bool>(sign_id) ? CodeSigningState::kSigned
+                                    : CodeSigningState::kNotSigned;
 }
 
 }  // namespace mac

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 
 #include <windows.h>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 
 namespace base {
 namespace win {
@@ -77,10 +77,10 @@ bool ObjectWatcher::StartWatchingInternal(HANDLE object,
                                           const Location& from_here) {
   DCHECK(delegate);
   DCHECK(!wait_object_) << "Already watching an object";
-  DCHECK(SequencedTaskRunnerHandle::IsSet());
+  DCHECK(SequencedTaskRunner::HasCurrentDefault());
 
   location_ = from_here;
-  task_runner_ = SequencedTaskRunnerHandle::Get();
+  task_runner_ = SequencedTaskRunner::GetCurrentDefault();
 
   run_once_ = execute_only_once;
 
@@ -93,7 +93,9 @@ bool ObjectWatcher::StartWatchingInternal(HANDLE object,
   // DoneWaiting can be synchronously called from RegisterWaitForSingleObject,
   // so set up all state now.
   callback_ = BindRepeating(&ObjectWatcher::Signal, weak_factory_.GetWeakPtr(),
-                            delegate);
+                            // For all non-test usages, the delegate's lifetime
+                            // exceeds object_watcher's. This should be safe.
+                            base::UnsafeDanglingUntriaged(delegate));
   object_ = object;
 
   if (!RegisterWaitForSingleObject(&wait_object_, object, DoneWaiting, this,

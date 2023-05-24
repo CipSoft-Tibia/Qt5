@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "pbuilder_pbx.h"
 #include "option.h"
 #include "meta.h"
 #include <qdir.h>
-#include <qregexp.h>
+#include <qregularexpression.h>
 #include <qcryptographichash.h>
 #include <qdebug.h>
 #include <qsettings.h>
@@ -112,7 +87,7 @@ ProjectBuilderMakefileGenerator::writeSubDirs(QTextStream &t)
     for(int pb_subdir = 0; pb_subdir < pb_subdirs.size(); ++pb_subdir) {
         ProjectBuilderSubDirs *pb = pb_subdirs[pb_subdir];
         const ProStringList &subdirs = pb->project->values("SUBDIRS");
-        for(int subdir = 0; subdir < subdirs.count(); subdir++) {
+        for(int subdir = 0; subdir < subdirs.size(); subdir++) {
             ProString tmpk = subdirs[subdir];
             const ProKey fkey(tmpk + ".file");
             if (!pb->project->isEmpty(fkey)) {
@@ -354,7 +329,7 @@ ProjectBuilderMakefileGenerator::writeSubDirs(QTextStream &t)
     t << "\t\t\tprojectReferences = (\n";
     {
         const ProStringList &qmake_subdirs = project->values("QMAKE_PBX_SUBDIRS");
-        for(int i = 0; i < qmake_subdirs.count(); i++) {
+        for(int i = 0; i < qmake_subdirs.size(); i++) {
             const ProString &subdir = qmake_subdirs[i];
             t << "\t\t\t\t{\n"
               << "\t\t\t\t\t" << writeSettings("ProductGroup", keyFor(subdir + "_PRODUCTGROUP")) << ";\n"
@@ -454,17 +429,17 @@ ProjectBuilderSources::files(QMakeProject *project) const
 
 static QString xcodeFiletypeForFilename(const QString &filename)
 {
-    for (const QString &ext : qAsConst(Option::cpp_ext)) {
+    for (const QString &ext : std::as_const(Option::cpp_ext)) {
         if (filename.endsWith(ext))
             return QStringLiteral("sourcecode.cpp.cpp");
     }
 
-    for (const QString &ext : qAsConst(Option::c_ext)) {
+    for (const QString &ext : std::as_const(Option::c_ext)) {
         if (filename.endsWith(ext))
             return QStringLiteral("sourcecode.c.c");
     }
 
-    for (const QString &ext : qAsConst(Option::h_ext)) {
+    for (const QString &ext : std::as_const(Option::h_ext)) {
         if (filename.endsWith(ext))
             return "sourcecode.c.h";
     }
@@ -499,9 +474,14 @@ static QList<QVariantMap> provisioningTeams()
     QList<QVariantMap> flatTeams;
     for (QVariantMap::const_iterator it = teamMap.begin(), end = teamMap.end(); it != end; ++it) {
         const QString emailAddress = it.key();
-        QVariantMap team = it.value().toMap();
-        team[QLatin1String("emailAddress")] = emailAddress;
-        flatTeams.append(team);
+        const QVariantList emailTeams = it.value().toList();
+
+        for (QVariantList::const_iterator teamIt = emailTeams.begin(),
+             teamEnd = emailTeams.end(); teamIt != teamEnd; ++teamIt) {
+            QVariantMap team = teamIt->toMap();
+            team[QLatin1String("emailAddress")] = emailAddress;
+            flatTeams.append(team);
+        }
     }
 
     // Sort teams so that Free Provisioning teams come last
@@ -544,14 +524,14 @@ bool ProjectBuilderMakefileGenerator::replaceLibrarySuffix(const QString &lib_fi
                     warn_msg(WarnLogic, "Failed to find expected suffix '%s' for library '%s'.",
                              qPrintable(librarySuffix), qPrintable(library));
                 } else {
-                    library.replace(pos, librarySuffix.length(), suffixSetting);
+                    library.replace(pos, librarySuffix.size(), suffixSetting);
                     if (name.endsWith(librarySuffix))
-                        name.chop(librarySuffix.length());
+                        name.chop(librarySuffix.size());
                 }
             } else {
                 int pos = library.lastIndexOf(name);
                 if (pos != -1)
-                    library.insert(pos + name.length(), suffixSetting);
+                    library.insert(pos + name.size(), suffixSetting);
             }
         }
     }
@@ -644,7 +624,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                 bool isObj = project->values(ProKey(*it + ".CONFIG")).indexOf("no_link") == -1;
                 if (!isObj) {
                     for (int i = 0; i < sources.size(); ++i) {
-                        if (sources.at(i).keyName() == inputs.at(input)) {
+                        if (sources.at(i).keyName() == inputs.at(input).toQStringView()) {
                             duplicate = true;
                             break;
                         }
@@ -678,7 +658,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
 
         const QStringList &files = fileFixify(sources.at(source).files(project),
                                               FileFixifyFromOutdir | FileFixifyAbsolute);
-        for(int f = 0; f < files.count(); ++f) {
+        for(int f = 0; f < files.size(); ++f) {
             QString file = files[f];
             if(!sources.at(source).compilerName().isNull() &&
                !verifyExtraCompiler(sources.at(source).compilerName(), file))
@@ -893,7 +873,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                                              "QMAKE_LIBS", "QMAKE_LIBS_PRIVATE", nullptr };
         for (int i = 0; libs[i]; i++) {
             tmp = project->values(libs[i]);
-            for(int x = 0; x < tmp.count();) {
+            for(int x = 0; x < tmp.size();) {
                 bool libSuffixReplaced = false;
                 bool remove = false;
                 QString library, name;
@@ -932,7 +912,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                     if(opt.size() > 2) {
                         r = opt.mid(2).toQString();
                     } else {
-                        if(x == tmp.count()-1)
+                        if(x == tmp.size()-1)
                             break;
                         r = tmp[++x].toQString();
                     }
@@ -941,12 +921,12 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                         frameworkdirs.append(r);
                     }
                 } else if(opt == "-framework") {
-                    if(x == tmp.count()-1)
+                    if(x == tmp.size()-1)
                         break;
                     const ProString &framework = tmp[x+1];
                     ProStringList fdirs = frameworkdirs;
                     fdirs << "/System/Library/Frameworks/" << "/Library/Frameworks/";
-                    for(int fdir = 0; fdir < fdirs.count(); fdir++) {
+                    for(int fdir = 0; fdir < fdirs.size(); fdir++) {
                         if(exists(fdirs[fdir] + QDir::separator() + framework + ".framework")) {
                             remove = true;
                             library = fdirs[fdir] + Option::dir_sep + framework + ".framework";
@@ -975,7 +955,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                     const int slsh = library.lastIndexOf(Option::dir_sep);
                     if(name.isEmpty()) {
                         if(slsh != -1)
-                            name = library.right(library.length() - slsh - 1);
+                            name = library.right(library.size() - slsh - 1);
                     }
                     if(slsh != -1) {
                         const QString path = QFileInfo(library.left(slsh)).absoluteFilePath();
@@ -1028,12 +1008,12 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
             mkt << "SUBLIBS= ";
             // ### This is missing the parametrization found in unixmake2.cpp
             tmp = project->values("SUBLIBS");
-            for(int i = 0; i < tmp.count(); i++)
+            for(int i = 0; i < tmp.size(); i++)
                 t << escapeFilePath("tmp/lib" + tmp[i] + ".a") << ' ';
             t << Qt::endl << Qt::endl;
             mkt << "sublibs: $(SUBLIBS)\n\n";
             tmp = project->values("SUBLIBS");
-            for(int i = 0; i < tmp.count(); i++)
+            for(int i = 0; i < tmp.size(); i++)
                 t << escapeFilePath("tmp/lib" + tmp[i] + ".a") + ":\n\t"
                   << var(ProKey("MAKELIB" + tmp[i])) << Qt::endl << Qt::endl;
             mkt.flush();
@@ -1168,7 +1148,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
 
         //all bundle data
         const ProStringList &bundle_data = project->values("QMAKE_BUNDLE_DATA");
-        for(int i = 0; i < bundle_data.count(); i++) {
+        for(int i = 0; i < bundle_data.size(); i++) {
             ProStringList bundle_files;
             ProString path = project->first(ProKey(bundle_data[i] + ".path"));
             const bool isEmbeddedFramework = ((!osx && path == QLatin1String("Frameworks"))
@@ -1178,7 +1158,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
 
             //all files
             const ProStringList &files = project->values(ProKey(bundle_data[i] + ".files"));
-            for(int file = 0; file < files.count(); file++) {
+            for(int file = 0; file < files.size(); file++) {
                 QString fn = fileFixify(files[file].toQString(), FileFixifyAbsolute);
                 QString name = fn.split(Option::dir_sep).back();
                 QString file_ref_key = keyFor("QMAKE_PBX_BUNDLE_DATA_FILE_REF." + bundle_data[i] + "-" + fn);
@@ -1201,13 +1181,13 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
 
             if (copyBundleResources && ((!osx && path.isEmpty())
                                         || (osx && path == QLatin1String("Contents/Resources")))) {
-                for (const ProString &s : qAsConst(bundle_files))
+                for (const ProString &s : std::as_const(bundle_files))
                     bundle_resources_files << s;
             } else if (copyBundleResources && isEmbeddedFramework) {
-                for (const ProString &s : qAsConst(bundle_files))
+                for (const ProString &s : std::as_const(bundle_files))
                     embedded_frameworks << s;
             } else if (copyBundleResources && isEmbeddedPlugin) {
-                for (const ProString &s : qAsConst(bundle_files)) {
+                for (const ProString &s : std::as_const(bundle_files)) {
                     ProString subpath = (path == pluginsPrefix) ? ProString() : path.mid(pluginsPrefix.size() + 1);
                     embedded_plugins[subpath] << s;
                 }
@@ -1631,6 +1611,12 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                             plist_in_text.replace(QLatin1String("@TYPEINFO@"),
                                 (project->isEmpty("QMAKE_PKGINFO_TYPEINFO")
                                     ? QString::fromLatin1("????") : project->first("QMAKE_PKGINFO_TYPEINFO").left(4).toQString()));
+                            QString launchScreen = var("QMAKE_IOS_LAUNCH_SCREEN");
+                            if (launchScreen.isEmpty())
+                                launchScreen = QLatin1String("LaunchScreen");
+                            else
+                                launchScreen = QFileInfo(launchScreen).baseName();
+                            plist_in_text.replace(QLatin1String("${IOS_LAUNCH_SCREEN}"), launchScreen);
                             QFile plist_out_file(Option::output_dir + "/Info.plist");
                             if (plist_out_file.open(QIODevice::WriteOnly | QIODevice::Text)) {
                                 QTextStream plist_out(&plist_out_file);
@@ -1698,7 +1684,7 @@ ProjectBuilderMakefileGenerator::writeMakeParts(QTextStream &t)
                     t << "\t\t\t\t" << writeSettings("CODE_SIGN_IDENTITY", project->first("QMAKE_XCODE_CODE_SIGN_IDENTITY")) << ";\n";
 
                 tmp = project->values("QMAKE_PBX_VARS");
-                for (int i = 0; i < tmp.count(); i++) {
+                for (int i = 0; i < tmp.size(); i++) {
                     QString var = tmp[i].toQString(), val = QString::fromLocal8Bit(qgetenv(var.toLatin1().constData()));
                     if (val.isEmpty() && var == "TB")
                         val = "/usr/bin/";
@@ -1881,11 +1867,12 @@ QString
 ProjectBuilderMakefileGenerator::fixForOutput(const QString &values)
 {
     //get the environment variables references
-    QRegExp reg_var("\\$\\((.*)\\)");
-    for(int rep = 0; (rep = reg_var.indexIn(values, rep)) != -1;) {
-        if(project->values("QMAKE_PBX_VARS").indexOf(reg_var.cap(1)) == -1)
-            project->values("QMAKE_PBX_VARS").append(reg_var.cap(1));
-        rep += reg_var.matchedLength();
+    QRegularExpression reg_var("\\$\\((.*)\\)");
+    QRegularExpressionMatch match;
+    for (int rep = 0; (match = reg_var.match(values, rep)).hasMatch();) {
+        if (project->values("QMAKE_PBX_VARS").indexOf(match.captured(1)) == -1)
+            project->values("QMAKE_PBX_VARS").append(match.captured(1));
+        rep = match.capturedEnd();
     }
 
     return values;
@@ -1901,7 +1888,7 @@ ProStringList
 ProjectBuilderMakefileGenerator::fixListForOutput(const ProStringList &l)
 {
     ProStringList ret;
-    for(int i = 0; i < l.count(); i++)
+    for(int i = 0; i < l.size(); i++)
         ret += fixForOutput(l[i].toQString());
     return ret;
 }
@@ -1983,7 +1970,7 @@ ProjectBuilderMakefileGenerator::pbxbuild()
 static QString quotedStringLiteral(const QString &value)
 {
     QString result;
-    const int len = value.length();
+    const int len = value.size();
     result.reserve(int(len * 1.1) + 2);
 
     result += QLatin1Char('"');
@@ -2035,7 +2022,7 @@ ProjectBuilderMakefileGenerator::writeSettings(const QString &var, const ProStri
     for(int i = 0; i < indent_level; ++i)
         newline += "\t";
 
-    static QRegExp allowedVariableCharacters("^[a-zA-Z0-9_]*$");
+    static QRegularExpression allowedVariableCharacters("^[a-zA-Z0-9_]*$");
     ret += var.contains(allowedVariableCharacters) ? var : quotedStringLiteral(var);
 
     ret += " = ";

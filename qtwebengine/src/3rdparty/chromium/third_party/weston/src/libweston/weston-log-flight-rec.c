@@ -26,7 +26,7 @@
 #include "config.h"
 
 #include <libweston/weston-log.h>
-#include "helpers.h"
+#include "shared/helpers.h"
 #include <libweston/libweston.h>
 
 #include "weston-log-internal.h"
@@ -45,6 +45,10 @@ struct weston_ring_buffer {
 	FILE *file;		/**< where to write in case we need to dump the buf */
 	bool overlap;		/**< in case buff overlaps, hint from where to print buf contents */
 };
+
+/** allows easy access to the ring buffer in case of a core dump
+ */
+WL_EXPORT struct weston_ring_buffer *weston_primary_flight_recorder_ring_buffer = NULL;
 
 /** A black box type of stream, used to aggregate data continuously, and
  * when needed, to dump its contents for inspection.
@@ -182,6 +186,28 @@ weston_log_flight_recorder_map_memory(struct weston_debug_log_flight_recorder *f
 		flight_rec->rb.buf[i] = 0xff;
 }
 
+static void
+weston_log_subscriber_display_flight_rec_data(struct weston_ring_buffer *rb,
+					      FILE *file)
+{
+	FILE *file_d = stderr;
+	if (file)
+		file_d = file;
+
+	if (!rb->overlap) {
+		if (rb->append_pos)
+			fwrite(rb->buf, sizeof(char), rb->append_pos, file_d);
+		else
+			fwrite(rb->buf, sizeof(char), rb->size, file_d);
+	} else {
+		/* from append_pos to size */
+		fwrite(&rb->buf[rb->append_pos], sizeof(char),
+		       rb->size - rb->append_pos, file_d);
+		/* from 0 to append_pos */
+		fwrite(rb->buf, sizeof(char), rb->append_pos, file_d);
+	}
+}
+
 WL_EXPORT void
 weston_log_subscriber_display_flight_rec(struct weston_log_subscriber *sub)
 {
@@ -189,24 +215,28 @@ weston_log_subscriber_display_flight_rec(struct weston_log_subscriber *sub)
 		to_flight_recorder(sub);
 	struct weston_ring_buffer *rb = &flight_rec->rb;
 
-	if (rb->append_pos <= rb->size && !rb->overlap) {
-		if (rb->append_pos)
-			fwrite(rb->buf, sizeof(char), rb->append_pos, rb->file);
-		else
-			fwrite(rb->buf, sizeof(char), rb->size, rb->file);
-	} else {
-		/* from append_pos to size */
-		fwrite(&rb->buf[rb->append_pos], sizeof(char),
-		       rb->size - rb->append_pos, rb->file);
-		/* from 0 to append_pos */
-		fwrite(rb->buf, sizeof(char), rb->append_pos, rb->file);
-	}
+	weston_log_subscriber_display_flight_rec_data(rb, rb->file);
+}
+
+static void
+weston_log_subscriber_destroy_flight_rec(struct weston_log_subscriber *sub)
+{
+	struct weston_debug_log_flight_recorder *flight_rec = to_flight_recorder(sub);
+
+	/* Resets weston_primary_flight_recorder_ring_buffer to NULL if it
+	 * is the destroyed subscriber */
+	if (weston_primary_flight_recorder_ring_buffer == &flight_rec->rb)
+		weston_primary_flight_recorder_ring_buffer = NULL;
+
+	weston_log_subscriber_release(sub);
+	free(flight_rec->rb.buf);
+	free(flight_rec);
 }
 
 /** Create a flight recorder type of subscriber
  *
  * Allocates both the flight recorder and the underlying ring buffer. Use
- * weston_log_subscriber_destroy_flight_rec() to clean-up.
+ * weston_log_subscriber_destroy() to clean-up.
  *
  * @param size specify the maximum size (in bytes) of the backing storage
  * for the flight recorder
@@ -218,12 +248,16 @@ weston_log_subscriber_create_flight_rec(size_t size)
 	struct weston_debug_log_flight_recorder *flight_rec;
 	char *weston_rb;
 
+	assert("Can't create more than one flight recorder." &&
+			!weston_primary_flight_recorder_ring_buffer);
+
 	flight_rec = zalloc(sizeof(*flight_rec));
 	if (!flight_rec)
 		return NULL;
 
 	flight_rec->base.write = weston_log_flight_recorder_write;
-	flight_rec->base.destroy = NULL;
+	flight_rec->base.destroy = weston_log_subscriber_destroy_flight_rec;
+	flight_rec->base.destroy_subscription = NULL;
 	flight_rec->base.complete = NULL;
 	wl_list_init(&flight_rec->base.subscription_list);
 
@@ -234,6 +268,7 @@ weston_log_subscriber_create_flight_rec(size_t size)
 	}
 
 	weston_ring_buffer_init(&flight_rec->rb, size, weston_rb);
+	weston_primary_flight_recorder_ring_buffer = &flight_rec->rb;
 
 	/* write some data to the rb such that the memory gets mapped */
 	weston_log_flight_recorder_map_memory(flight_rec);
@@ -241,16 +276,21 @@ weston_log_subscriber_create_flight_rec(size_t size)
 	return &flight_rec->base;
 }
 
-/** Destroys the weston_log_subscriber object created with
- * weston_log_subscriber_create_flight_rec()
+/** Retrieve flight recorder ring buffer contents, could be useful when
+ * implementing an assert()-like wrapper.
  *
- * @param sub the weston_log_subscriber object
+ * @param file a FILE type already opened. Can also pass stderr/stdout under gdb
+ * if the program is loaded into memory.
+ *
+ * Uses the global exposed weston_primary_flight_recorder_ring_buffer.
  *
  */
 WL_EXPORT void
-weston_log_subscriber_destroy_flight_rec(struct weston_log_subscriber *sub)
+weston_log_flight_recorder_display_buffer(FILE *file)
 {
-	struct weston_debug_log_flight_recorder *flight_rec = to_flight_recorder(sub);
-	free(flight_rec->rb.buf);
-	free(flight_rec);
+	if (!weston_primary_flight_recorder_ring_buffer)
+		return;
+
+	weston_log_subscriber_display_flight_rec_data(weston_primary_flight_recorder_ring_buffer,
+						      file);
 }

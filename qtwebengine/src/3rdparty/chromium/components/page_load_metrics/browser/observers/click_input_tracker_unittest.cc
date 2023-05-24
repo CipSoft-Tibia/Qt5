@@ -1,12 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/page_load_metrics/browser/observers/click_input_tracker.h"
 
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/test_simple_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/ukm/test_ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -19,14 +19,15 @@ class ClickInputTrackerTest : public testing::Test {
  public:
   ClickInputTrackerTest()
       : task_runner_(new base::TestSimpleTaskRunner),
-        task_runner_handle_(task_runner_) {}
+        task_runner_current_default_handle_(task_runner_) {}
+
+  ClickInputTrackerTest(const ClickInputTrackerTest&) = delete;
+  ClickInputTrackerTest& operator=(const ClickInputTrackerTest&) = delete;
 
  protected:
   scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle task_runner_handle_;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ClickInputTrackerTest);
+  base::SingleThreadTaskRunner::CurrentDefaultHandle
+      task_runner_current_default_handle_;
 };
 
 TEST_F(ClickInputTrackerTest, OnUserInputGestureTapClickBurst) {
@@ -39,21 +40,21 @@ TEST_F(ClickInputTrackerTest, OnUserInputGestureTapClickBurst) {
   click_tracker.OnUserInput(tap1);
   EXPECT_EQ(1, click_tracker.GetCurrentBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebGestureEvent tap2(blink::WebInputEvent::Type::kGestureTap, 0,
                               timestamp);
   tap2.SetPositionInScreen(gfx::PointF(103, 198));
   click_tracker.OnUserInput(tap2);
   EXPECT_EQ(2, click_tracker.GetCurrentBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(200);
+  timestamp += base::Milliseconds(200);
   blink::WebGestureEvent tap3(blink::WebInputEvent::Type::kGestureTap, 0,
                               timestamp);
   tap3.SetPositionInScreen(gfx::PointF(99, 202));
   click_tracker.OnUserInput(tap3);
   EXPECT_EQ(3, click_tracker.GetCurrentBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(300);
+  timestamp += base::Milliseconds(300);
   blink::WebGestureEvent tap4(blink::WebInputEvent::Type::kGestureTap, 0,
                               timestamp);
   tap4.SetPositionInScreen(gfx::PointF(101, 201));
@@ -61,7 +62,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputGestureTapClickBurst) {
   EXPECT_EQ(4, click_tracker.GetCurrentBurstCountForTesting());
 
   // Now exceed time delta threshold.
-  timestamp += base::TimeDelta::FromMilliseconds(800);
+  timestamp += base::Milliseconds(800);
   blink::WebGestureEvent tap5(blink::WebInputEvent::Type::kGestureTap, 0,
                               timestamp);
   tap5.SetPositionInScreen(gfx::PointF(101, 201));
@@ -69,7 +70,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputGestureTapClickBurst) {
   EXPECT_EQ(1, click_tracker.GetCurrentBurstCountForTesting());
   EXPECT_EQ(4, click_tracker.GetMaxBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebGestureEvent tap6(blink::WebInputEvent::Type::kGestureTap, 0,
                               timestamp);
   tap6.SetPositionInScreen(gfx::PointF(103, 198));
@@ -104,21 +105,21 @@ TEST_F(ClickInputTrackerTest, OnUserInputMouseUpClickBurst) {
   click_tracker.OnUserInput(click1);
   EXPECT_EQ(1, click_tracker.GetCurrentBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebMouseEvent click2(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click2.SetPositionInScreen(gfx::PointF(103, 198));
   click_tracker.OnUserInput(click2);
   EXPECT_EQ(2, click_tracker.GetCurrentBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(200);
+  timestamp += base::Milliseconds(200);
   blink::WebMouseEvent click3(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click3.SetPositionInScreen(gfx::PointF(99, 202));
   click_tracker.OnUserInput(click3);
   EXPECT_EQ(3, click_tracker.GetCurrentBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(300);
+  timestamp += base::Milliseconds(300);
   blink::WebMouseEvent click4(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click4.SetPositionInScreen(gfx::PointF(101, 201));
@@ -126,7 +127,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputMouseUpClickBurst) {
   EXPECT_EQ(4, click_tracker.GetCurrentBurstCountForTesting());
 
   // Now exceed position delta threshold.
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebMouseEvent click5(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click5.SetPositionInScreen(gfx::PointF(151, 201));
@@ -134,7 +135,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputMouseUpClickBurst) {
   EXPECT_EQ(1, click_tracker.GetCurrentBurstCountForTesting());
   EXPECT_EQ(4, click_tracker.GetMaxBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebMouseEvent click6(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click6.SetPositionInScreen(gfx::PointF(153, 198));
@@ -142,7 +143,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputMouseUpClickBurst) {
   EXPECT_EQ(2, click_tracker.GetCurrentBurstCountForTesting());
   EXPECT_EQ(4, click_tracker.GetMaxBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebMouseEvent click7(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click7.SetPositionInScreen(gfx::PointF(153, 198));
@@ -150,7 +151,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputMouseUpClickBurst) {
   EXPECT_EQ(3, click_tracker.GetCurrentBurstCountForTesting());
   EXPECT_EQ(4, click_tracker.GetMaxBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebMouseEvent click8(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click8.SetPositionInScreen(gfx::PointF(153, 198));
@@ -158,7 +159,7 @@ TEST_F(ClickInputTrackerTest, OnUserInputMouseUpClickBurst) {
   EXPECT_EQ(4, click_tracker.GetCurrentBurstCountForTesting());
   EXPECT_EQ(4, click_tracker.GetMaxBurstCountForTesting());
 
-  timestamp += base::TimeDelta::FromMilliseconds(100);
+  timestamp += base::Milliseconds(100);
   blink::WebMouseEvent click9(blink::WebInputEvent::Type::kMouseUp, 0,
                               timestamp);
   click9.SetPositionInScreen(gfx::PointF(153, 198));

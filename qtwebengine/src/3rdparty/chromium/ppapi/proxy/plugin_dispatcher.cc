@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 #include "base/compiler_specific.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "ipc/ipc_message.h"
@@ -18,9 +19,6 @@
 #include "ipc/ipc_sync_message_filter.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/c/ppp_instance.h"
-#include "ppapi/proxy/flash_clipboard_resource.h"
-#include "ppapi/proxy/flash_file_resource.h"
-#include "ppapi/proxy/flash_resource.h"
 #include "ppapi/proxy/gamepad_resource.h"
 #include "ppapi/proxy/interface_list.h"
 #include "ppapi/proxy/interface_proxy.h"
@@ -30,7 +28,6 @@
 #include "ppapi/proxy/plugin_var_serialization_rules.h"
 #include "ppapi/proxy/ppapi_messages.h"
 #include "ppapi/proxy/ppb_instance_proxy.h"
-#include "ppapi/proxy/ppp_class_proxy.h"
 #include "ppapi/proxy/resource_creation_proxy.h"
 #include "ppapi/proxy/resource_reply_thread_registrar.h"
 #include "ppapi/shared_impl/ppapi_globals.h"
@@ -97,7 +94,7 @@ bool PluginDispatcher::Sender::SendMessage(IPC::Message* msg) {
 }
 
 bool PluginDispatcher::Sender::Send(IPC::Message* msg) {
-  TRACE_EVENT2("ppapi proxy", "PluginDispatcher::Send", "Class",
+  TRACE_EVENT2("ppapi_proxy", "PluginDispatcher::Send", "Class",
                IPC_MESSAGE_ID_CLASS(msg->type()), "Line",
                IPC_MESSAGE_ID_LINE(msg->type()));
   // We always want plugin->renderer messages to arrive in-order. If some sync
@@ -217,9 +214,9 @@ bool PluginDispatcher::InitPluginWithChannel(
     base::ProcessId peer_pid,
     const IPC::ChannelHandle& channel_handle,
     bool is_client) {
-  if (!Dispatcher::InitWithChannel(delegate, peer_pid, channel_handle,
-                                   is_client,
-                                   base::ThreadTaskRunnerHandle::Get()))
+  if (!Dispatcher::InitWithChannel(
+          delegate, peer_pid, channel_handle, is_client,
+          base::SingleThreadTaskRunner::GetCurrentDefault()))
     return false;
   plugin_delegate_ = delegate;
   plugin_dispatcher_id_ = plugin_delegate_->Register(this);
@@ -244,9 +241,9 @@ bool PluginDispatcher::Send(IPC::Message* msg) {
 }
 
 bool PluginDispatcher::SendAndStayLocked(IPC::Message* msg) {
-  TRACE_EVENT2("ppapi proxy", "PluginDispatcher::SendAndStayLocked",
-               "Class", IPC_MESSAGE_ID_CLASS(msg->type()),
-               "Line", IPC_MESSAGE_ID_LINE(msg->type()));
+  TRACE_EVENT2("ppapi_proxy", "PluginDispatcher::SendAndStayLocked", "Class",
+               IPC_MESSAGE_ID_CLASS(msg->type()), "Line",
+               IPC_MESSAGE_ID_LINE(msg->type()));
   if (!msg->is_reply())
     msg->set_unblock(true);
   return sender_->SendMessage(msg);
@@ -256,9 +253,9 @@ bool PluginDispatcher::OnMessageReceived(const IPC::Message& msg) {
   // We need to grab the proxy lock to ensure that we don't collide with the
   // plugin making pepper calls on a different thread.
   ProxyAutoLock lock;
-  TRACE_EVENT2("ppapi proxy", "PluginDispatcher::OnMessageReceived",
-               "Class", IPC_MESSAGE_ID_CLASS(msg.type()),
-               "Line", IPC_MESSAGE_ID_LINE(msg.type()));
+  TRACE_EVENT2("ppapi_proxy", "PluginDispatcher::OnMessageReceived", "Class",
+               IPC_MESSAGE_ID_CLASS(msg.type()), "Line",
+               IPC_MESSAGE_ID_LINE(msg.type()));
 
   if (msg.routing_id() == MSG_ROUTING_CONTROL) {
     // Handle some plugin-specific control messages.
@@ -362,7 +359,7 @@ void PluginDispatcher::OnMsgSetPreferences(const Preferences& prefs) {
   // the default fonts and such in the middle of a running plugin could be
   // confusing to it. As a result, we never allow the preferences to be changed
   // once they're set. The user will have to restart to get new font prefs
-  // propogated to plugins.
+  // propagated to plugins.
   if (!received_preferences_) {
     received_preferences_ = true;
     preferences_ = prefs;

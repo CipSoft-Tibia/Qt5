@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,8 +23,14 @@ class PLATFORM_EXPORT DarkModeColorFilter {
       const DarkModeSettings& settings);
 
   virtual ~DarkModeColorFilter();
-  virtual SkColor InvertColor(SkColor color) const = 0;
+  virtual SkColor4f InvertColor(const SkColor4f& color) const = 0;
   virtual sk_sp<SkColorFilter> ToSkColorFilter() const = 0;
+  virtual SkColor4f AdjustColorForHigherConstrast(
+      const SkColor4f& adjusted_color,
+      const SkColor4f& background,
+      float reference_contrast_ratio) {
+    return adjusted_color;
+  }
 };
 
 }  // namespace blink

@@ -2,21 +2,12 @@ requires(qtHaveModule(concurrent))
 
 TEMPLATE      = subdirs
 SUBDIRS       = imagescaling \
-                map \
-                progressdialog \
-                runfunction \
+                primecounter \
                 wordcount
-
-
-!qtHaveModule(gui) {
-    SUBDIRS -= \
-        map
-}
 
 !qtHaveModule(widgets) {
     SUBDIRS -= \
         imagescaling \
-        progressdialog \
-        runfunction \
+        primecounter \
         wordcount
 }

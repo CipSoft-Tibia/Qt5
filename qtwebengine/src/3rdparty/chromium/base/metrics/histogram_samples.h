@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,11 @@
 
 #include <limits>
 #include <memory>
+#include <string>
 
 #include "base/atomicops.h"
+#include "base/base_export.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_base.h"
 
 namespace base {
@@ -112,7 +115,7 @@ class BASE_EXPORT HistogramSamples {
     // histogram types, there might be races during histogram accumulation
     // and snapshotting that we choose to accept. In this case, the tallies
     // might mismatch even when no memory corruption has happened.
-    HistogramBase::AtomicCount redundant_count;
+    HistogramBase::AtomicCount redundant_count{0};
 
     // A single histogram value and associated count. This allows histograms
     // that typically report only a single value to not require full storage
@@ -127,7 +130,6 @@ class BASE_EXPORT HistogramSamples {
     LocalMetadata();
   };
 
-  HistogramSamples(uint64_t id, Metadata* meta);
   HistogramSamples(const HistogramSamples&) = delete;
   HistogramSamples& operator=(const HistogramSamples&) = delete;
   virtual ~HistogramSamples();
@@ -147,7 +149,13 @@ class BASE_EXPORT HistogramSamples {
   virtual std::unique_ptr<SampleCountIterator> Iterator() const = 0;
   virtual void Serialize(Pickle* pickle) const;
 
-  // Accessor fuctions.
+  // Returns ASCII representation of histograms data for histogram samples.
+  // The dictionary returned will be of the form
+  // {"name":<string>, "header":<string>, "body": <string>}
+  base::Value::Dict ToGraphDict(StringPiece histogram_name,
+                                int32_t flags) const;
+
+  // Accessor functions.
   uint64_t id() const { return meta_->id; }
   int64_t sum() const {
 #ifdef ARCH_CPU_64_BITS
@@ -174,6 +182,9 @@ class BASE_EXPORT HistogramSamples {
     MAX_NEGATIVE_SAMPLE_REASONS
   };
 
+  HistogramSamples(uint64_t id, Metadata* meta);
+  HistogramSamples(uint64_t id, std::unique_ptr<Metadata> meta);
+
   // Based on |op| type, add or subtract sample counts data from the iterator.
   enum Operator { ADD, SUBTRACT };
   virtual bool AddSubtractImpl(SampleCountIterator* iter, Operator op) = 0;
@@ -197,13 +208,38 @@ class BASE_EXPORT HistogramSamples {
     return meta_->single_sample;
   }
 
+  // Produces an actual graph (set of blank vs non blank char's) for a bucket.
+  void WriteAsciiBucketGraph(double x_count,
+                             int line_length,
+                             std::string* output) const;
+
+  // Writes textual description of the bucket contents (relative to histogram).
+  // Output is the count in the buckets, as well as the percentage.
+  void WriteAsciiBucketValue(HistogramBase::Count current,
+                             double scaled_sum,
+                             std::string* output) const;
+
+  // Gets a body for this histogram samples.
+  virtual std::string GetAsciiBody() const;
+
+  // Gets a header message describing this histogram samples.
+  virtual std::string GetAsciiHeader(StringPiece histogram_name,
+                                     int32_t flags) const;
+
+  // Returns a string description of what goes in a given bucket.
+  const std::string GetSimpleAsciiBucketRange(
+      HistogramBase::Sample sample) const;
+
   Metadata* meta() { return meta_; }
 
  private:
-  // Depending on derived class meta values can come from local stoarge or
-  // external storage in which case HistogramSamples class cannot take ownership
-  // of Metadata*.
-  Metadata* meta_;
+  // Depending on derived class `meta_` can come from:
+  // - Local storage: Then `meta_owned_` is set and meta_ points to it.
+  // - External storage: Then `meta_owned_` is null, and `meta_` point toward an
+  //   external object. The callers guarantees the value will outlive this
+  //   instance.
+  std::unique_ptr<Metadata> meta_owned_;
+  raw_ptr<Metadata> meta_;
 };
 
 class BASE_EXPORT SampleCountIterator {

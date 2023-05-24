@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLLISTMODEL_P_P_H
 #define QQMLLISTMODEL_P_P_H
@@ -127,7 +91,7 @@ public:
     ModelNodeMetaObject(QObject *object, QQmlListModel *model, int elementIndex);
     ~ModelNodeMetaObject();
 
-    QAbstractDynamicMetaObject *toDynamicMetaObject(QObject *object) override;
+    QMetaObject *toDynamicMetaObject(QObject *object) override;
 
     static ModelNodeMetaObject *get(QObject *obj);
 
@@ -216,6 +180,7 @@ public:
             QObject,
             VariantMap,
             DateTime,
+            Url,
             Function,
 
             MaxDataType
@@ -237,7 +202,7 @@ public:
     const Role *getExistingRole(const QString &key) const;
     const Role *getExistingRole(QV4::String *key) const;
 
-    int roleCount() const { return roles.count(); }
+    int roleCount() const { return roles.size(); }
 
     static void sync(ListLayout *src, ListLayout *target);
 
@@ -252,18 +217,23 @@ private:
 
 struct StringOrTranslation
 {
-    explicit StringOrTranslation(const QString &s);
-    explicit StringOrTranslation(const QV4::CompiledData::Binding *binding);
     ~StringOrTranslation();
-    bool isSet() const { return d.flag(); }
-    bool isTranslation() const { return d.isT2(); }
+    bool isSet() const { return binding || arrayData; }
+    bool isTranslation() const { return binding && !arrayData; }
     void setString(const QString &s);
     void setTranslation(const QV4::CompiledData::Binding *binding);
     QString toString(const QQmlListModel *owner) const;
     QString asString() const;
 private:
     void clear();
-    QBiPointer<QStringData, const QV4::CompiledData::Binding> d;
+
+    union {
+        char16_t *stringData = nullptr;
+        const QV4::CompiledData::Binding *binding;
+    };
+
+    QTypedArrayData<char16_t> *arrayData = nullptr;
+    uint stringSize = 0;
 };
 
 /*!
@@ -272,17 +242,14 @@ private:
 class ListElement
 {
 public:
+    enum ObjectIndestructible { Indestructible = 1, ExplicitlySet = 2 };
+    enum { BLOCK_SIZE = 64 - sizeof(int) - sizeof(ListElement *) - sizeof(ModelNodeMetaObject *) };
 
     ListElement();
     ListElement(int existingUid);
     ~ListElement();
 
     static QVector<int> sync(ListElement *src, ListLayout *srcLayout, ListElement *target, ListLayout *targetLayout);
-
-    enum
-    {
-        BLOCK_SIZE = 64 - sizeof(int) - sizeof(ListElement *) - sizeof(ModelNodeMetaObject *)
-    };
 
 private:
 
@@ -296,20 +263,22 @@ private:
     int setDoubleProperty(const ListLayout::Role &role, double n);
     int setBoolProperty(const ListLayout::Role &role, bool b);
     int setListProperty(const ListLayout::Role &role, ListModel *m);
-    int setQObjectProperty(const ListLayout::Role &role, QObject *o);
+    int setQObjectProperty(const ListLayout::Role &role, QV4::QObjectWrapper *o);
     int setVariantMapProperty(const ListLayout::Role &role, QV4::Object *o);
     int setVariantMapProperty(const ListLayout::Role &role, QVariantMap *m);
     int setDateTimeProperty(const ListLayout::Role &role, const QDateTime &dt);
+    int setUrlProperty(const ListLayout::Role &role, const QUrl &url);
     int setFunctionProperty(const ListLayout::Role &role, const QJSValue &f);
     int setTranslationProperty(const ListLayout::Role &role, const QV4::CompiledData::Binding *b);
 
     void setStringPropertyFast(const ListLayout::Role &role, const QString &s);
     void setDoublePropertyFast(const ListLayout::Role &role, double n);
     void setBoolPropertyFast(const ListLayout::Role &role, bool b);
-    void setQObjectPropertyFast(const ListLayout::Role &role, QObject *o);
+    void setQObjectPropertyFast(const ListLayout::Role &role, QV4::QObjectWrapper *o);
     void setListPropertyFast(const ListLayout::Role &role, ListModel *m);
     void setVariantMapFast(const ListLayout::Role &role, QV4::Object *o);
     void setDateTimePropertyFast(const ListLayout::Role &role, const QDateTime &dt);
+    void setUrlPropertyFast(const ListLayout::Role &role, const QUrl &url);
     void setFunctionPropertyFast(const ListLayout::Role &role, const QJSValue &f);
 
     void clearProperty(const ListLayout::Role &role);
@@ -317,10 +286,11 @@ private:
     QVariant getProperty(const ListLayout::Role &role, const QQmlListModel *owner, QV4::ExecutionEngine *eng);
     ListModel *getListProperty(const ListLayout::Role &role);
     StringOrTranslation *getStringProperty(const ListLayout::Role &role);
-    QObject *getQObjectProperty(const ListLayout::Role &role);
-    QPointer<QObject> *getGuardProperty(const ListLayout::Role &role);
+    QV4::QObjectWrapper *getQObjectProperty(const ListLayout::Role &role);
+    QV4::PersistentValue *getGuardProperty(const ListLayout::Role &role);
     QVariantMap *getVariantMapProperty(const ListLayout::Role &role);
     QDateTime *getDateTimeProperty(const ListLayout::Role &role);
+    QUrl *getUrlProperty(const ListLayout::Role &role);
     QJSValue *getFunctionProperty(const ListLayout::Role &role);
 
     inline char *getPropertyMemory(const ListLayout::Role &role);
@@ -355,6 +325,8 @@ public:
 
     QVariant getProperty(int elementIndex, int roleIndex, const QQmlListModel *owner, QV4::ExecutionEngine *eng);
     ListModel *getListProperty(int elementIndex, const ListLayout::Role &role);
+
+    void updateTranslations();
 
     int roleCount() const
     {

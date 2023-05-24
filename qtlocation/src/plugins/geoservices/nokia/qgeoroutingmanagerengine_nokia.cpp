@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeoroutingmanagerengine_nokia.h"
 #include "qgeoroutereply_nokia.h"
@@ -60,8 +27,7 @@ QGeoRoutingManagerEngineNokia::QGeoRoutingManagerEngineNokia(
     Q_ASSERT(networkManager);
     m_networkManager->setParent(this);
 
-    m_appId = parameters.value(QStringLiteral("here.app_id")).toString();
-    m_token = parameters.value(QStringLiteral("here.token")).toString();
+    m_apiKey = parameters.value(QStringLiteral("here.apiKey")).toString();
 
     QGeoRouteRequest::FeatureTypes featureTypes;
     featureTypes |= QGeoRouteRequest::TollFeature;
@@ -113,25 +79,20 @@ QGeoRouteReply *QGeoRoutingManagerEngineNokia::calculateRoute(const QGeoRouteReq
 
     if (reqStrings.isEmpty()) {
         QGeoRouteReply *reply = new QGeoRouteReply(QGeoRouteReply::UnsupportedOptionError, "The given route request options are not supported by this service provider.", this);
-        emit error(reply, reply->error(), reply->errorString());
+        emit errorOccurred(reply, reply->error(), reply->errorString());
         return reply;
     }
 
     QList<QNetworkReply*> replies;
-    foreach (const QString &reqString, reqStrings)
+    for (const QString &reqString : reqStrings)
         replies.append(m_networkManager->get(QNetworkRequest(QUrl(reqString))));
 
     QGeoRouteReplyNokia *reply = new QGeoRouteReplyNokia(request, replies, this);
 
-    connect(reply,
-            SIGNAL(finished()),
-            this,
-            SLOT(routeFinished()));
-
-    connect(reply,
-            SIGNAL(error(QGeoRouteReply::Error,QString)),
-            this,
-            SLOT(routeError(QGeoRouteReply::Error,QString)));
+    connect(reply, &QGeoRouteReplyNokia::finished,
+            this, &QGeoRoutingManagerEngineNokia::routeFinished);
+    connect(reply, &QGeoRouteReplyNokia::errorOccurred,
+            this, &QGeoRoutingManagerEngineNokia::routeError);
 
     return reply;
 }
@@ -142,27 +103,22 @@ QGeoRouteReply *QGeoRoutingManagerEngineNokia::updateRoute(const QGeoRoute &rout
 
     if (reqStrings.isEmpty()) {
         QGeoRouteReply *reply = new QGeoRouteReply(QGeoRouteReply::UnsupportedOptionError, "The given route request options are not supported by this service provider.", this);
-        emit error(reply, reply->error(), reply->errorString());
+        emit errorOccurred(reply, reply->error(), reply->errorString());
         return reply;
     }
 
     QList<QNetworkReply*> replies;
-    foreach (const QString &reqString, reqStrings)
+    for (const QString &reqString : reqStrings)
         replies.append(m_networkManager->get(QNetworkRequest(QUrl(reqString))));
 
     QGeoRouteRequest updateRequest(route.request());
     updateRequest.setTravelModes(route.travelMode());
     QGeoRouteReplyNokia *reply = new QGeoRouteReplyNokia(updateRequest, replies, this);
 
-    connect(reply,
-            SIGNAL(finished()),
-            this,
-            SLOT(routeFinished()));
-
-    connect(reply,
-            SIGNAL(error(QGeoRouteReply::Error,QString)),
-            this,
-            SLOT(routeError(QGeoRouteReply::Error,QString)));
+    connect(reply, &QGeoRouteReplyNokia::finished,
+            this, &QGeoRoutingManagerEngineNokia::routeFinished);
+    connect(reply, &QGeoRouteReplyNokia::errorOccurred,
+            this, &QGeoRoutingManagerEngineNokia::routeError);
 
     return reply;
 }
@@ -170,13 +126,13 @@ QGeoRouteReply *QGeoRoutingManagerEngineNokia::updateRoute(const QGeoRoute &rout
 bool QGeoRoutingManagerEngineNokia::checkEngineSupport(const QGeoRouteRequest &request,
         QGeoRouteRequest::TravelModes travelModes) const
 {
-    QList<QGeoRouteRequest::FeatureType> featureTypeList = request.featureTypes();
+    const QList<QGeoRouteRequest::FeatureType> featureTypeList = request.featureTypes();
     QGeoRouteRequest::FeatureTypes featureTypeFlag = QGeoRouteRequest::NoFeature;
     QGeoRouteRequest::FeatureWeights featureWeightFlag = QGeoRouteRequest::NeutralFeatureWeight;
 
-    for (int i = 0; i < featureTypeList.size(); ++i) {
-        featureTypeFlag |= featureTypeList.at(i);
-        featureWeightFlag |= request.featureWeight(featureTypeList.at(i));
+    for (const auto &featureType : featureTypeList) {
+        featureTypeFlag |= featureType;
+        featureWeightFlag |= request.featureWeight(featureType);
     }
 
     if ((featureTypeFlag & supportedFeatureTypes()) != featureTypeFlag)
@@ -211,7 +167,7 @@ bool QGeoRoutingManagerEngineNokia::checkEngineSupport(const QGeoRouteRequest &r
     return true;
 }
 
-QStringList QGeoRoutingManagerEngineNokia::calculateRouteRequestString(const QGeoRouteRequest &request)
+QStringList QGeoRoutingManagerEngineNokia::calculateRouteRequestString(const QGeoRouteRequest &request) const
 {
     bool supported = checkEngineSupport(request, request.travelModes());
 
@@ -219,21 +175,18 @@ QStringList QGeoRoutingManagerEngineNokia::calculateRouteRequestString(const QGe
         return QStringList();
     QStringList requests;
 
-    QString baseRequest = QStringLiteral("http://");
+    QString baseRequest = QStringLiteral("https://");
     baseRequest += m_uriProvider->getCurrentHost();
     baseRequest += QStringLiteral("/routing/7.2/calculateroute.xml");
 
     baseRequest += QStringLiteral("?alternatives=");
     baseRequest += QString::number(request.numberAlternativeRoutes());
 
-    if (!m_appId.isEmpty() && !m_token.isEmpty()) {
-        baseRequest += QStringLiteral("&app_id=");
-        baseRequest += m_appId;
-        baseRequest += QStringLiteral("&token=");
-        baseRequest += m_token;
+    if (!m_apiKey.isEmpty()) {
+        baseRequest += QStringLiteral("&apiKey=");
+        baseRequest += m_apiKey;
     }
 
-    const QList<QVariantMap> metadata = request.waypointsMetadata();
     const QList<QGeoCoordinate> waypoints = request.waypoints();
     int numWaypoints = waypoints.size();
     if (numWaypoints < 2)
@@ -248,13 +201,6 @@ QStringList QGeoRoutingManagerEngineNokia::calculateRouteRequestString(const QGe
         baseRequest += ',';
         baseRequest += trimDouble(c.longitude());
         baseRequest += QStringLiteral(";;"); // ;<TransitRadius>;<UserLabel>
-        if (metadata.size() > i) {
-            const QVariantMap &meta = metadata.at(i);
-            if (meta.contains(QStringLiteral("bearing"))) {
-                qreal bearing = meta.value(QStringLiteral("bearing")).toDouble();
-                baseRequest += ';' + QString::number(int(bearing));
-            }
-        }
     }
 
     QGeoRouteRequest::RouteOptimizations optimization = request.routeOptimization();
@@ -265,7 +211,7 @@ QStringList QGeoRoutingManagerEngineNokia::calculateRouteRequestString(const QGe
     if (optimization.testFlag(QGeoRouteRequest::FastestRoute))
         types.append("fastest");
 
-    foreach (const QString &optimization, types) {
+    for (const QString &optimization : types) {
         QString requestString = baseRequest;
         requestString += modesRequestString(request, request.travelModes(), optimization);
         requestString += routeRequestString(request);
@@ -281,7 +227,7 @@ QStringList QGeoRoutingManagerEngineNokia::updateRouteRequestString(const QGeoRo
         return QStringList();
     QStringList requests;
 
-    QString baseRequest = "http://";
+    QString baseRequest = "https://";
     baseRequest += m_uriProvider->getCurrentHost();
     baseRequest += "/routing/7.2/getroute.xml";
 
@@ -301,7 +247,7 @@ QStringList QGeoRoutingManagerEngineNokia::updateRouteRequestString(const QGeoRo
     if (optimization.testFlag(QGeoRouteRequest::FastestRoute))
         types.append("fastest");
 
-    foreach (const QString &optimization, types) {
+    for (const QString &optimization : types) {
         QString requestString = baseRequest;
         requestString += modesRequestString(route.request(), route.travelMode(), optimization);
         requestString += routeRequestString(route.request());
@@ -388,7 +334,7 @@ QString QGeoRoutingManagerEngineNokia::routeRequestString(const QGeoRouteRequest
 {
     QString requestString;
 
-    foreach (const QGeoRectangle &area, request.excludeAreas()) {
+    for (const QGeoRectangle &area : request.excludeAreas()) {
         requestString += QLatin1String("&avoidareas=");
         requestString += trimDouble(area.topLeft().latitude());
         requestString += QLatin1String(",");
@@ -483,12 +429,12 @@ void QGeoRoutingManagerEngineNokia::routeError(QGeoRouteReply::Error error, cons
     if (!reply)
         return;
 
-    if (receivers(SIGNAL(error(QGeoRouteReply*,QGeoRouteReply::Error,QString))) == 0) {
+    if (receivers(SIGNAL(errorOccurred(QGeoRouteReply*,QGeoRouteReply::Error,QString))) == 0) {
         reply->deleteLater();
         return;
     }
 
-    emit this->error(reply, error, errorString);
+    emit errorOccurred(reply, error, errorString);
 }
 
 QT_END_NAMESPACE

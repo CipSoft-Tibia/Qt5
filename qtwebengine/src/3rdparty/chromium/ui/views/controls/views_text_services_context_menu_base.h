@@ -1,18 +1,22 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_VIEWS_CONTROLS_VIEWS_TEXT_SERVICES_CONTEXT_MENU_BASE_H_
 #define UI_VIEWS_CONTROLS_VIEWS_TEXT_SERVICES_CONTEXT_MENU_BASE_H_
 
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "ui/views/controls/views_text_services_context_menu.h"
+#include "ui/views/views_export.h"
 
 namespace views {
 
 // This base class is used to add and handle text service items in the textfield
 // context menu. Specific platforms may subclass and add additional items.
-class ViewsTextServicesContextMenuBase : public ViewsTextServicesContextMenu {
+class VIEWS_EXPORT ViewsTextServicesContextMenuBase
+    : public ViewsTextServicesContextMenu {
  public:
   ViewsTextServicesContextMenuBase(ui::SimpleMenuModel* menu,
                                    Textfield* client);
@@ -31,14 +35,14 @@ class ViewsTextServicesContextMenuBase : public ViewsTextServicesContextMenu {
   bool SupportsCommand(int command_id) const override;
 
  protected:
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
   Textfield* client() { return client_; }
   const Textfield* client() const { return client_; }
 #endif
 
  private:
   // The view associated with the menu. Weak. Owns |this|.
-  Textfield* const client_;
+  const raw_ptr<Textfield> client_;
 };
 
 }  // namespace views

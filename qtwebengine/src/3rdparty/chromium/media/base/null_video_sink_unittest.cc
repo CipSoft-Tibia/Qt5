@@ -1,15 +1,15 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/test/simple_test_tick_clock.h"
 #include "base/test/task_environment.h"
+#include "base/time/time.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "media/base/null_video_sink.h"
 #include "media/base/test_helpers.h"
@@ -23,22 +23,28 @@ using testing::Return;
 
 namespace media {
 
+using RenderingMode = VideoRendererSink::RenderCallback::RenderingMode;
+
 class NullVideoSinkTest : public testing::Test,
                           public VideoRendererSink::RenderCallback {
  public:
   NullVideoSinkTest() {
     // Never use null TimeTicks since they have special connotations.
-    tick_clock_.Advance(base::TimeDelta::FromMicroseconds(12345));
+    tick_clock_.Advance(base::Microseconds(12345));
   }
+
+  NullVideoSinkTest(const NullVideoSinkTest&) = delete;
+  NullVideoSinkTest& operator=(const NullVideoSinkTest&) = delete;
+
   ~NullVideoSinkTest() override = default;
 
   std::unique_ptr<NullVideoSink> ConstructSink(bool clockless,
                                                base::TimeDelta interval) {
-    std::unique_ptr<NullVideoSink> new_sink(
-        new NullVideoSink(clockless, interval,
-                          base::BindRepeating(&NullVideoSinkTest::FrameReceived,
-                                              base::Unretained(this)),
-                          task_environment_.GetMainThreadTaskRunner()));
+    auto new_sink = std::make_unique<NullVideoSink>(
+        clockless, interval,
+        base::BindRepeating(&NullVideoSinkTest::FrameReceived,
+                            base::Unretained(this)),
+        task_environment_.GetMainThreadTaskRunner());
     new_sink->set_tick_clock_for_testing(&tick_clock_);
     return new_sink;
   }
@@ -57,7 +63,7 @@ class NullVideoSinkTest : public testing::Test,
   MOCK_METHOD3(Render,
                scoped_refptr<VideoFrame>(base::TimeTicks,
                                          base::TimeTicks,
-                                         bool));
+                                         RenderingMode));
   MOCK_METHOD0(OnFrameDropped, void());
 
   MOCK_METHOD1(FrameReceived, void(scoped_refptr<VideoFrame>));
@@ -65,12 +71,10 @@ class NullVideoSinkTest : public testing::Test,
  protected:
   base::test::SingleThreadTaskEnvironment task_environment_;
   base::SimpleTestTickClock tick_clock_;
-
-  DISALLOW_COPY_AND_ASSIGN(NullVideoSinkTest);
 };
 
 TEST_F(NullVideoSinkTest, BasicFunctionality) {
-  const base::TimeDelta kInterval = base::TimeDelta::FromMilliseconds(25);
+  const base::TimeDelta kInterval = base::Milliseconds(25);
 
   std::unique_ptr<NullVideoSink> sink = ConstructSink(false, kInterval);
   scoped_refptr<VideoFrame> test_frame = CreateFrame(base::TimeDelta());
@@ -80,7 +84,8 @@ TEST_F(NullVideoSinkTest, BasicFunctionality) {
     sink->Start(this);
     const base::TimeTicks current_time = tick_clock_.NowTicks();
     const base::TimeTicks current_interval_end = current_time + kInterval;
-    EXPECT_CALL(*this, Render(current_time, current_interval_end, false))
+    EXPECT_CALL(*this, Render(current_time, current_interval_end,
+                              RenderingMode::kNormal))
         .WillOnce(Return(test_frame));
     WaitableMessageLoopEvent event;
     EXPECT_CALL(*this, FrameReceived(test_frame))
@@ -98,7 +103,7 @@ TEST_F(NullVideoSinkTest, BasicFunctionality) {
     SCOPED_TRACE("Waiting for second render call.");
     WaitableMessageLoopEvent event;
     scoped_refptr<VideoFrame> test_frame_2 = CreateFrame(kInterval);
-    EXPECT_CALL(*this, Render(_, _, true))
+    EXPECT_CALL(*this, Render(_, _, RenderingMode::kBackground))
         .WillOnce(Return(test_frame))
         .WillOnce(Return(test_frame_2));
     EXPECT_CALL(*this, FrameReceived(test_frame)).Times(0);
@@ -122,7 +127,7 @@ TEST_F(NullVideoSinkTest, BasicFunctionality) {
 
 TEST_F(NullVideoSinkTest, ClocklessFunctionality) {
   // Construct the sink with a huge interval, it should still complete quickly.
-  const base::TimeDelta interval = base::TimeDelta::FromSeconds(10);
+  const base::TimeDelta interval = base::Seconds(10);
   std::unique_ptr<NullVideoSink> sink = ConstructSink(true, interval);
 
   scoped_refptr<VideoFrame> test_frame = CreateFrame(base::TimeDelta());
@@ -141,11 +146,13 @@ TEST_F(NullVideoSinkTest, ClocklessFunctionality) {
   for (int i = 0; i < kTestRuns; ++i) {
     if (i < kTestRuns - 1) {
       EXPECT_CALL(*this, Render(current_time + i * interval,
-                                current_time + (i + 1) * interval, false))
+                                current_time + (i + 1) * interval,
+                                RenderingMode::kNormal))
           .WillOnce(Return(test_frame));
     } else {
       EXPECT_CALL(*this, Render(current_time + i * interval,
-                                current_time + (i + 1) * interval, false))
+                                current_time + (i + 1) * interval,
+                                RenderingMode::kNormal))
           .WillOnce(
               DoAll(RunOnceClosure(event.GetClosure()), Return(test_frame_2)));
     }

@@ -73,6 +73,10 @@ class BaseRuntimeFeatureWriter(json5_generator.Writer):
             # Specify the type of status
             feature['status_type'] = "dict" if isinstance(
                 feature['status'], dict) else "str"
+            if feature['base_feature'] == 'none':
+                feature['base_feature'] = ''
+            elif feature['base_feature'] == '':
+                feature['base_feature'] = feature['name']
 
         self._origin_trial_features = [
             feature for feature in self._features if feature['in_origin_trial']
@@ -113,12 +117,25 @@ class RuntimeFeatureWriter(BaseRuntimeFeatureWriter):
     def __init__(self, json5_file_path, output_dir):
         super(RuntimeFeatureWriter, self).__init__(json5_file_path, output_dir)
         self._outputs = {
-            (self.file_basename + '.h'): self.generate_header,
-            (self.file_basename + '.cc'): self.generate_implementation,
+            (self.file_basename + '.h'):
+            self.generate_header,
+            (self.file_basename + '.cc'):
+            self.generate_implementation,
+            ('exported/web_runtime_features_base.cc'):
+            self.generate_web_implementation,
         }
 
         # Write features to file for bindings generation
         self._write_features_to_pickle_file(output_dir)
+        self._overridable_features = util.overridable_features(self._features)
+
+        overridable_set = set()
+        for feature in self._overridable_features:
+            overridable_set.add(str(feature['name']))
+
+        for feature in self._features:
+            feature['is_overridable_feature'] = str(
+                feature['name']) in overridable_set
 
     def _write_features_to_pickle_file(self, platform_output_dir):
         # TODO(yashard): Get the file path from args instead of hardcoding it.
@@ -138,7 +155,7 @@ class RuntimeFeatureWriter(BaseRuntimeFeatureWriter):
                 except Exception:
                     # If trouble unpickling, overwrite
                     pass
-        with open(os.path.abspath(file_name), 'w') as pickle_file:
+        with open(os.path.abspath(file_name), 'wb') as pickle_file:
             pickle.dump(features_map, pickle_file)
 
     def _template_inputs(self):
@@ -157,6 +174,10 @@ class RuntimeFeatureWriter(BaseRuntimeFeatureWriter):
 
     @template_expander.use_jinja('templates/' + file_basename + '.cc.tmpl')
     def generate_implementation(self):
+        return self._template_inputs()
+
+    @template_expander.use_jinja('templates/web_runtime_features_base.cc.tmpl')
+    def generate_web_implementation(self):
         return self._template_inputs()
 
 

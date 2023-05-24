@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2019, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -66,10 +66,7 @@ DeboneProcess::DeboneProcess()
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-DeboneProcess::~DeboneProcess()
-{
-    // nothing to do here
-}
+DeboneProcess::~DeboneProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -148,7 +145,7 @@ void DeboneProcess::Execute( aiScene* pScene)
                 }
 
                 if(!DefaultLogger::isNullLogger()) {
-                    ASSIMP_LOG_INFO_F("Removed %u bones. Input bones:", in - out, ". Output bones: ", out);
+                    ASSIMP_LOG_INFO("Removed %u bones. Input bones:", in - out, ". Output bones: ", out);
                 }
 
                 // and destroy the source mesh. It should be completely contained inside the new submeshes
@@ -156,7 +153,7 @@ void DeboneProcess::Execute( aiScene* pScene)
             }
             else    {
                 // Mesh is kept unchanged - store it's new place in the mesh array
-                mSubMeshIndices[a].push_back(std::pair<unsigned int,aiNode*>(static_cast<unsigned int>(meshes.size()),(aiNode*)0));
+                mSubMeshIndices[a].emplace_back(static_cast<unsigned int>(meshes.size()), (aiNode *)0);
                 meshes.push_back(srcMesh);
             }
         }
@@ -414,7 +411,8 @@ void DeboneProcess::UpdateNode(aiNode* pNode) const
     }
 
     if( pNode->mNumMeshes > 0 ) {
-        delete [] pNode->mMeshes; pNode->mMeshes = NULL;
+        delete[] pNode->mMeshes;
+        pNode->mMeshes = nullptr;
     }
 
     pNode->mNumMeshes = static_cast<unsigned int>(newMeshList.size());

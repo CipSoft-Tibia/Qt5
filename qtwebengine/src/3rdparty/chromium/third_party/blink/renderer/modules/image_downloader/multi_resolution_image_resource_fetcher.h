@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/public/web/web_associated_url_loader_options.h"
@@ -42,12 +41,16 @@ class MultiResolutionImageResourceFetcher {
   using StartCallback = base::OnceCallback<void(const WebURLResponse& response,
                                                 const std::string& data)>;
 
+  MultiResolutionImageResourceFetcher(const KURL& image_url,
+                                      LocalFrame* frame,
+                                      bool is_favicon,
+                                      mojom::blink::FetchCacheMode cache_mode,
+                                      Callback callback);
+
   MultiResolutionImageResourceFetcher(
-      const KURL& image_url,
-      LocalFrame* frame,
-      mojom::blink::RequestContextType request_context,
-      mojom::blink::FetchCacheMode cache_mode,
-      Callback callback);
+      const MultiResolutionImageResourceFetcher&) = delete;
+  MultiResolutionImageResourceFetcher& operator=(
+      const MultiResolutionImageResourceFetcher&) = delete;
 
   virtual ~MultiResolutionImageResourceFetcher();
 
@@ -68,7 +71,7 @@ class MultiResolutionImageResourceFetcher {
   void SetSkipServiceWorker(bool skip_service_worker);
   void SetCacheMode(mojom::FetchCacheMode mode);
 
-  // Associate the corresponding WebURLLoaderOptions to the loader. Must be
+  // Associate the corresponding URLLoaderOptions to the loader. Must be
   // called before Start. Used if the LoaderType is FRAME_ASSOCIATED_LOADER.
   void SetLoaderOptions(const WebAssociatedURLLoaderOptions& options);
 
@@ -81,7 +84,7 @@ class MultiResolutionImageResourceFetcher {
   // |fetch_credentials_mode| is the credentials mode to use. See
   // https://fetch.spec.whatwg.org/#concept-request-credentials-mode
   void Start(LocalFrame* frame,
-             mojom::RequestContextType request_context,
+             bool is_favicon,
              network::mojom::RequestMode request_mode,
              network::mojom::CredentialsMode credentials_mode,
              StartCallback callback);
@@ -102,8 +105,6 @@ class MultiResolutionImageResourceFetcher {
 
   // Request to send.
   WebURLRequest request_;
-
-  DISALLOW_COPY_AND_ASSIGN(MultiResolutionImageResourceFetcher);
 };
 
 }  // namespace blink

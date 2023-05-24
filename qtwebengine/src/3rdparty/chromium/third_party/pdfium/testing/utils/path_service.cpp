@@ -1,14 +1,19 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "testing/utils/path_service.h"
+
+#include <stddef.h>
 
 #ifdef _WIN32
 #include <Windows.h>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <sys/stat.h>
+#elif defined(__Fuchsia__)
+#include <sys/stat.h>
+#include <unistd.h>
 #else  // Linux
 #include <linux/limits.h>
 #include <sys/stat.h>
@@ -18,10 +23,12 @@
 #include <string>
 
 #include "core/fxcrt/fx_system.h"
+#include "third_party/base/check.h"
 
 namespace {
 
-#if defined(__APPLE__) || (defined(ANDROID) && __ANDROID_API__ < 21)
+#if defined(__APPLE__) || defined(__Fuchsia__) || \
+    (defined(ANDROID) && __ANDROID_API__ < 21)
 using stat_wrapper_t = struct stat;
 
 int CallStat(const char* path, stat_wrapper_t* sb) {
@@ -68,7 +75,7 @@ bool PathService::GetExecutableDir(std::string* path) {
     return false;
   *path = std::string(path_buffer);
 #elif defined(__APPLE__)
-  ASSERT(path);
+  DCHECK(path);
   unsigned int path_length = 0;
   _NSGetExecutablePath(NULL, &path_length);
   if (path_length == 0)
@@ -89,10 +96,10 @@ bool PathService::GetExecutableDir(std::string* path) {
 #endif  // _WIN32
 
   // Get the directory path.
-  std::size_t pos = path->size() - 1;
+  size_t pos = path->size() - 1;
   if (EndsWithSeparator(*path))
     pos--;
-  std::size_t found = path->find_last_of(PATH_SEPARATOR, pos);
+  size_t found = path->find_last_of(PATH_SEPARATOR, pos);
   if (found == std::string::npos)
     return false;
   path->resize(found);
@@ -159,4 +166,40 @@ bool PathService::GetTestFilePath(const std::string& file_name,
     path->push_back(PATH_SEPARATOR);
   path->append(file_name);
   return true;
+}
+
+// static
+bool PathService::GetThirdPartyFilePath(const std::string& file_name,
+                                        std::string* path) {
+  if (!GetSourceDir(path))
+    return false;
+
+  if (!EndsWithSeparator(*path))
+    path->push_back(PATH_SEPARATOR);
+
+  std::string potential_path = *path;
+  potential_path.append("third_party");
+
+  // Use third_party/bigint as a way to distinguish PDFium's vs. other's.
+  std::string bigint = potential_path + PATH_SEPARATOR + "bigint";
+  if (PathService::DirectoryExists(bigint)) {
+    *path = potential_path;
+    path->append(PATH_SEPARATOR + file_name);
+    return true;
+  }
+
+  potential_path = *path;
+  potential_path.append("third_party");
+  potential_path.push_back(PATH_SEPARATOR);
+  potential_path.append("pdfium");
+  potential_path.push_back(PATH_SEPARATOR);
+  potential_path.append("third_party");
+  bigint = potential_path + PATH_SEPARATOR + "bigint";
+  if (PathService::DirectoryExists(potential_path)) {
+    *path = potential_path;
+    path->append(PATH_SEPARATOR + file_name);
+    return true;
+  }
+
+  return false;
 }

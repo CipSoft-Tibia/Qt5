@@ -1,5 +1,4 @@
-// Copyright (c) 2020, Google Inc.
-// All rights reserved.
+// Copyright 2020 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -29,7 +28,7 @@
 
 // Original author: Sterling Augustine <saugustine@google.com>
 
-// dwarf2reader_lineinfo_unittest.cc: Unit tests for dwarf2reader::LineInfo
+// dwarf2reader_lineinfo_unittest.cc: Unit tests for google_breakpad::LineInfo
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -49,7 +48,7 @@ using testing::Sequence;
 using testing::Test;
 using testing::_;
 
-using namespace dwarf2reader;
+using namespace google_breakpad;
 
 namespace {
 
@@ -169,7 +168,7 @@ TEST_F(LineProgram, ReadLinesDwarf4) {
   // dwarf4 line info headers don't encode the address size.
   byte_reader.SetAddressSize(8);
   LineInfo line_reader(dwarf4_line_program,
-                       sizeof(dwarf5_line_program),
+                       sizeof(dwarf4_line_program),
                        &byte_reader,
                        // dwarf4 line tables can't access the string sections
                        // so pass values likely to make assertions fail if

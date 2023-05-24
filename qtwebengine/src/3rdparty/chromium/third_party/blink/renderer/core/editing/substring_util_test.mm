@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include "third_party/blink/renderer/core/editing/testing/editing_test_base.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
-#include "third_party/blink/renderer/core/frame/web_frame_widget_base.h"
+#include "third_party/blink/renderer/core/frame/web_frame_widget_impl.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
@@ -46,13 +46,13 @@ TEST_F(SubStringUtilTest, SubstringUtil) {
       base_url_ + "content_editable_populated.html"));
 
   web_view->GetSettings()->SetDefaultFontSize(12);
-  web_view->Resize(WebSize(400, 400));
+  web_view->MainFrameWidget()->Resize(gfx::Size(400, 400));
   WebLocalFrameImpl* frame =
       static_cast<WebLocalFrameImpl*>(web_view->MainFrame());
 
   gfx::Point baseline_point;
   NSAttributedString* result = SubstringUtil::AttributedSubstringInRange(
-      frame->GetFrame(), 10, 3, &baseline_point);
+      frame->GetFrame(), 10, 3, baseline_point);
   ASSERT_TRUE(!!result);
 
   gfx::Point point(baseline_point);
@@ -63,7 +63,7 @@ TEST_F(SubStringUtilTest, SubstringUtil) {
   web_view->SetZoomLevel(3);
 
   result = SubstringUtil::AttributedSubstringInRange(frame->GetFrame(), 5, 5,
-                                                     &baseline_point);
+                                                     baseline_point);
   ASSERT_TRUE(!!result);
 
   point = baseline_point;
@@ -77,17 +77,16 @@ TEST_F(SubStringUtilTest, SubstringUtilBaselinePoint) {
   WebView* web_view = static_cast<WebView*>(web_view_helper_.InitializeAndLoad(
       base_url_ + "content_editable_multiline.html"));
   web_view->GetSettings()->SetDefaultFontSize(12);
-  web_view->Resize(WebSize(400, 400));
+  web_view->MainFrameWidget()->Resize(gfx::Size(400, 400));
   WebLocalFrameImpl* frame =
       static_cast<WebLocalFrameImpl*>(web_view->MainFrame());
 
   gfx::Point old_point;
-  SubstringUtil::AttributedSubstringInRange(frame->GetFrame(), 3, 1,
-                                            &old_point);
+  SubstringUtil::AttributedSubstringInRange(frame->GetFrame(), 3, 1, old_point);
 
   gfx::Point new_point;
   SubstringUtil::AttributedSubstringInRange(frame->GetFrame(), 3, 20,
-                                            &new_point);
+                                            new_point);
 
   EXPECT_EQ(old_point.x(), new_point.x());
   EXPECT_EQ(old_point.y(), new_point.y());
@@ -98,21 +97,21 @@ TEST_F(SubStringUtilTest, SubstringUtilPinchZoom) {
   WebView* web_view = static_cast<WebView*>(web_view_helper_.InitializeAndLoad(
       base_url_ + "content_editable_populated.html"));
   web_view->GetSettings()->SetDefaultFontSize(12);
-  web_view->Resize(WebSize(400, 400));
+  web_view->MainFrameWidget()->Resize(gfx::Size(400, 400));
   WebLocalFrameImpl* frame =
       static_cast<WebLocalFrameImpl*>(web_view->MainFrame());
   NSAttributedString* result = nil;
 
   gfx::Point baseline_point;
   result = SubstringUtil::AttributedSubstringInRange(frame->GetFrame(), 10, 3,
-                                                     &baseline_point);
+                                                     baseline_point);
   ASSERT_TRUE(!!result);
 
   web_view->SetPageScaleFactor(3);
 
   gfx::Point point_after_zoom;
   result = SubstringUtil::AttributedSubstringInRange(frame->GetFrame(), 10, 3,
-                                                     &point_after_zoom);
+                                                     point_after_zoom);
   ASSERT_TRUE(!!result);
 
   // We won't have moved by a full factor of 3 because of the translations, but
@@ -128,7 +127,7 @@ TEST_F(SubStringUtilTest, SubstringUtilIframe) {
       web_view_helper_.InitializeAndLoad(base_url_ + "single_iframe.html"));
   web_view->GetSettings()->SetDefaultFontSize(12);
   web_view->GetSettings()->SetJavaScriptEnabled(true);
-  web_view->Resize(WebSize(400, 400));
+  web_view->MainFrameWidget()->Resize(gfx::Size(400, 400));
   WebLocalFrameImpl* main_frame =
       static_cast<WebLocalFrameImpl*>(web_view->MainFrame());
   WebLocalFrameImpl* child_frame = WebLocalFrameImpl::FromFrame(
@@ -136,7 +135,7 @@ TEST_F(SubStringUtilTest, SubstringUtilIframe) {
 
   gfx::Point baseline_point;
   NSAttributedString* result = SubstringUtil::AttributedSubstringInRange(
-      child_frame->GetFrame(), 11, 7, &baseline_point);
+      child_frame->GetFrame(), 11, 7, baseline_point);
   ASSERT_NE(result, nullptr);
 
   gfx::Point point(baseline_point);

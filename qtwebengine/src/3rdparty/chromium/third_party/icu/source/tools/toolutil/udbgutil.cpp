@@ -239,7 +239,7 @@ static const Field names_UDebugEnumType[] =
 
 /**
  * @param type type of item
- * @param actual TRUE: for the actual enum's type (UCAL_FIELD_COUNT, etc), or FALSE for the string count
+ * @param actual true: for the actual enum's type (UCAL_FIELD_COUNT, etc), or false for the string count
  */
 static int32_t _udbg_enumCount(UDebugEnumType type, UBool actual) {
 	switch(type) {
@@ -288,16 +288,16 @@ static const Field* _udbg_enumFields(UDebugEnumType type) {
 // implementation
 
 int32_t  udbg_enumCount(UDebugEnumType type) {
-	return _udbg_enumCount(type, FALSE);
+	return _udbg_enumCount(type, false);
 }
 
 int32_t  udbg_enumExpectedCount(UDebugEnumType type) {
-	return _udbg_enumCount(type, TRUE);
+	return _udbg_enumCount(type, true);
 }
 
 const char *  udbg_enumName(UDebugEnumType type, int32_t field) {
 	if(field<0 ||
-				field>=_udbg_enumCount(type,FALSE)) { // also will catch unsupported items
+				field>=_udbg_enumCount(type,false)) { // also will catch unsupported items
 		return NULL;
 	} else {
 		const Field *fields = _udbg_enumFields(type);
@@ -311,7 +311,7 @@ const char *  udbg_enumName(UDebugEnumType type, int32_t field) {
 
 int32_t  udbg_enumArrayValue(UDebugEnumType type, int32_t field) {
 	if(field<0 ||
-				field>=_udbg_enumCount(type,FALSE)) { // also will catch unsupported items
+				field>=_udbg_enumCount(type,false)) { // also will catch unsupported items
 		return -1;
 	} else {
 		const Field *fields = _udbg_enumFields(type);
@@ -324,18 +324,18 @@ int32_t  udbg_enumArrayValue(UDebugEnumType type, int32_t field) {
 }
 
 int32_t udbg_enumByName(UDebugEnumType type, const char *value) {
-    if(type<0||type>=_udbg_enumCount(UDBG_UDebugEnumType, TRUE)) {
+    if(type<0||type>=_udbg_enumCount(UDBG_UDebugEnumType, true)) {
         return -1; // type out of range
     }
 	const Field *fields = _udbg_enumFields(type);
     if (fields != NULL) {
-        for(int32_t field = 0;field<_udbg_enumCount(type, FALSE);field++) {
+        for(int32_t field = 0;field<_udbg_enumCount(type, false);field++) {
             if(!strcmp(value, fields[field].str + fields[field].prefix)) {
                 return fields[field].num;
             }
         }
         // try with the prefix
-        for(int32_t field = 0;field<_udbg_enumCount(type, FALSE);field++) {
+        for(int32_t field = 0;field<_udbg_enumCount(type, false);field++) {
             if(!strcmp(value, fields[field].str)) {
                 return fields[field].num;
             }
@@ -490,7 +490,7 @@ U_CAPI  int32_t
 paramLocaleDefaultBcp47(const USystemParams * /* param */, char *target, int32_t targetCapacity, UErrorCode *status) {
   if(U_FAILURE(*status))return 0;
   const char *def = uloc_getDefault();
-  return uloc_toLanguageTag(def,target,targetCapacity,FALSE,status);
+  return uloc_toLanguageTag(def,target,targetCapacity,false,status);
 }
 
 
@@ -594,24 +594,11 @@ U_CAPI void udbg_writeIcuInfo(FILE *out) {
   fprintf(out, " </icuSystemParams>\n");
 }
 
-#define ICU_TRAC_URL "http://bugs.icu-project.org/trac/ticket/"
-#define CLDR_TRAC_URL "http://unicode.org/cldr/trac/ticket/"
-#define CLDR_TICKET_PREFIX "cldrbug:"
+#define UNICODE_BUG_URL "https://unicode-org.atlassian.net/browse/"
+#define OLD_CLDR_PREFIX "cldrbug:"
+#define CLDR_BUG_PREFIX "CLDR-"
+#define ICU_BUG_PREFIX "ICU-"
 
-U_CAPI char *udbg_knownIssueURLFrom(const char *ticket, char *buf) {
-  if( ticket==NULL ) {
-    return NULL;
-  }
-
-  if( !strncmp(ticket, CLDR_TICKET_PREFIX, strlen(CLDR_TICKET_PREFIX)) ) {
-    strcpy( buf, CLDR_TRAC_URL );
-    strcat( buf, ticket+strlen(CLDR_TICKET_PREFIX) );
-  } else {
-    strcpy( buf, ICU_TRAC_URL );
-    strcat( buf, ticket );
-  }
-  return buf;
-}
 
 
 #include <set>
@@ -641,21 +628,40 @@ KnownIssues::~KnownIssues()
 {
 }
 
-void KnownIssues::add(const char *ticket, const char *where, const UChar *msg, UBool *firstForTicket, UBool *firstForWhere)
+/**
+ * Map cldr:1234 to CLDR-1234
+ * Map 1234 to ICU-1234
+ */
+static std::string mapTicketId(const char *ticketStr) {
+  std::string ticket(ticketStr);
+  // TODO: Can remove this function once all logKnownIssue calls are switched over
+  // to the ICU-1234 and CLDR-1234 format.
+  if(ticket.rfind(OLD_CLDR_PREFIX) == 0) {
+    // map cldrbug:1234 to CLDR-1234
+    ticket.replace(0, uprv_strlen(OLD_CLDR_PREFIX), CLDR_BUG_PREFIX);
+  } else if(::isdigit(ticket[0])) {
+    // map 1234 to ICU-1234
+    ticket.insert(0, ICU_BUG_PREFIX);
+  }
+  return ticket;
+}
+
+void KnownIssues::add(const char *ticketStr, const char *where, const UChar *msg, UBool *firstForTicket, UBool *firstForWhere)
 {
+  const std::string ticket = mapTicketId(ticketStr);
   if(fTable.find(ticket) == fTable.end()) {
-    if(firstForTicket!=NULL) *firstForTicket = TRUE;
+    if(firstForTicket!=NULL) *firstForTicket = true;
     fTable[ticket] = std::map < std::string, std::set < std::string > >();
   } else {
-    if(firstForTicket!=NULL) *firstForTicket = FALSE;
+    if(firstForTicket!=NULL) *firstForTicket = false;
   }
   if(where==NULL) return;
 
   if(fTable[ticket].find(where) == fTable[ticket].end()) {
-    if(firstForWhere!=NULL) *firstForWhere = TRUE;
+    if(firstForWhere!=NULL) *firstForWhere = true;
     fTable[ticket][where] = std::set < std::string >();
   } else {
-    if(firstForWhere!=NULL) *firstForWhere = FALSE;
+    if(firstForWhere!=NULL) *firstForWhere = false;
   }
   if(msg==NULL || !*msg) return;
 
@@ -664,21 +670,22 @@ void KnownIssues::add(const char *ticket, const char *where, const UChar *msg, U
   fTable[ticket][where].insert(std::string(icu::CStr(ustr)()));
 }
 
-void KnownIssues::add(const char *ticket, const char *where, const char *msg, UBool *firstForTicket, UBool *firstForWhere)
+void KnownIssues::add(const char *ticketStr, const char *where, const char *msg, UBool *firstForTicket, UBool *firstForWhere)
 {
+  const std::string ticket = mapTicketId(ticketStr);
   if(fTable.find(ticket) == fTable.end()) {
-    if(firstForTicket!=NULL) *firstForTicket = TRUE;
+    if(firstForTicket!=NULL) *firstForTicket = true;
     fTable[ticket] = std::map < std::string, std::set < std::string > >();
   } else {
-    if(firstForTicket!=NULL) *firstForTicket = FALSE;
+    if(firstForTicket!=NULL) *firstForTicket = false;
   }
   if(where==NULL) return;
 
   if(fTable[ticket].find(where) == fTable[ticket].end()) {
-    if(firstForWhere!=NULL) *firstForWhere = TRUE;
+    if(firstForWhere!=NULL) *firstForWhere = true;
     fTable[ticket][where] = std::set < std::string >();
   } else {
-    if(firstForWhere!=NULL) *firstForWhere = FALSE;
+    if(firstForWhere!=NULL) *firstForWhere = false;
   }
   if(msg==NULL || !*msg) return;
 
@@ -689,7 +696,7 @@ void KnownIssues::add(const char *ticket, const char *where, const char *msg, UB
 UBool KnownIssues::print()
 {
   if(fTable.empty()) {
-    return FALSE;
+    return false;
   }
 
   std::cout << "KNOWN ISSUES" << std::endl;
@@ -697,8 +704,13 @@ UBool KnownIssues::print()
           std::map <  std::string,  std::set <  std::string > > >::iterator i = fTable.begin();
        i != fTable.end();
        i++ ) {
-    char URL[1024];
-    std::cout << '#' << (*i).first << " <" << udbg_knownIssueURLFrom( (*i).first.c_str(), URL ) << ">" << std::endl;
+    const std::string ticketid = (*i).first;
+    std::cout << "[" << ticketid << "] ";
+    if(ticketid.rfind(ICU_BUG_PREFIX) == 0 || ticketid.rfind(CLDR_BUG_PREFIX) == 0) {
+      // If it's a unicode.org bug.
+      std::cout << UNICODE_BUG_URL << ticketid;
+    } // Else: some other kind of bug. Allow this, but without a URL.
+    std::cout << std::endl;
 
     for( std::map< std::string, std::set < std::string > >::iterator ii = (*i).second.begin();
          ii != (*i).second.end();
@@ -711,7 +723,7 @@ UBool KnownIssues::print()
       }
     }
   }
-  return TRUE;
+  return true;
 }
 
 U_CAPI void *udbg_knownIssue_openU(void *ptr, const char *ticket, char *where, const UChar *msg, UBool *firstForTicket,
@@ -741,10 +753,10 @@ U_CAPI void *udbg_knownIssue_open(void *ptr, const char *ticket, char *where, co
 U_CAPI UBool udbg_knownIssue_print(void *ptr) {
   KnownIssues *t = static_cast<KnownIssues*>(ptr);
   if(t==NULL) {
-    return FALSE;
+    return false;
   } else {
     t->print();
-    return TRUE;
+    return true;
   }
 }
 

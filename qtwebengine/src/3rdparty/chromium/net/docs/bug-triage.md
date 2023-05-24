@@ -8,7 +8,7 @@ of their two days working on bug triage/investigation.
 ## 1. Review untriaged bugs
 
 Look through [this list of untriaged
-bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=pri%20-stars%20-opened&q=status%3Aunconfirmed%2Cuntriaged%20-Needs%3DFeedback%20-Label%3ANetwork-Triaged%20component%3DInternals%3ENetwork%2CInternals%3ENetwork%3ECache%2CInternals%3ENetwork%3ESSL%2CInternals%3ENetwork%3EQUIC%2CInternals%3ENetwork%3EAuth%2CInternals%3ENetwork%3EHTTP2%2CInternals%3ENetwork%3EProxy%2CInternals%3ENetwork%3ELibrary%2CInternals%3ENetwork%3ELogging%2CInternals%3ENetwork%3EConnectivity%2CInternals%3ENetwork%3EDomainSecurityPolicy%2CInternals%3ENetwork%3ETrustTokens%2CInternals%3ENetwork%3EFilters%2CInternals%3ENetwork%3EFTP%2CInternals%3ENetwork%3ESDCH).
+bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=pri%20-stars%20-opened&q=status%3Aunconfirmed%2Cuntriaged%20-Needs%3DFeedback%20-Label%3ANetwork-Triaged%20-has%3ANextAction%20component%3DInternals%3ENetwork%3EReportingAndNEL%2CInternals%3ENetwork%3ECache%3ESimple%2CInternals%3ENetwork%2CInternals%3ENetwork%3ECache%2CInternals%3ENetwork%3ESSL%2CInternals%3ENetwork%3EQUIC%2CInternals%3ENetwork%3EAuth%2CInternals%3ENetwork%3EHTTP2%2CInternals%3ENetwork%3EProxy%2CInternals%3ENetwork%3ELogging%2CInternals%3ENetwork%3EConnectivity%2CInternals%3ENetwork%3EDomainSecurityPolicy%2CInternals%3ENetwork%3EFTP%2CInternals%3ENetwork%3EDNS).
 
 The goal is for this query to be empty. Bugs can be removed from the triage queue
 by doing any of the following:
@@ -23,7 +23,7 @@ For each bug try to:
   elsewhere
 * Dupe it against an existing bug
 * Close it as `WontFix`.
-* Give the bug a priority. Refer to [this (internal) document for guidelines](https://goto.google.com/xnzwn)
+* Give the bug a priority. Refer to [this document for guidelines](https://docs.google.com/document/d/1JOtp1LS7suqTjMuv41jQFc7aCTR33zJKPoGjKpvVFCA)
 * If the bug is a potential security issue (Allows for code execution from remote
   site, allows crossing security boundaries, unchecked array bounds, etc) mark
   it `Type-Bug-Security`.
@@ -72,7 +72,7 @@ crashers](https://goto.google.com/network_triage_internal#investigating-crashers
 ## 2. Follow-up on issues with the Needs-Feedback label
 
 Look through [this list of Needs=Feedback
-bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=pri%20-modified&q=Needs%3DFeedback%20component%3DInternals%3ENetwork%2CInternals%3ENetwork%3ECache%2CInternals%3ENetwork%3ESSL%2CInternals%3ENetwork%3EQUIC%2CInternals%3ENetwork%3EAuth%2CInternals%3ENetwork%3EHTTP2%2CInternals%3ENetwork%3EProxy%2CInternals%3ENetwork%3ELibrary%2CInternals%3ENetwork%3ELogging%2CInternals%3ENetwork%3EConnectivity%2CInternals%3ENetwork%3EDomainSecurityPolicy%2CInternals%3ENetwork%3ETrustTokens%2CInternals%3ENetwork%3EFilters%2CInternals%3ENetwork%3EFTP%2CInternals%3ENetwork%3ESDCH).
+bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=-modified%20-modified&q=Needs%3DFeedback%20component%3DInternals%3ENetwork%3EReportingAndNEL%2CInternals%3ENetwork%3ECache%3ESimple%2CInternals%3ENetwork%2CInternals%3ENetwork%3ECache%2CInternals%3ENetwork%3ESSL%2CInternals%3ENetwork%3EQUIC%2CInternals%3ENetwork%3EAuth%2CInternals%3ENetwork%3EHTTP2%2CInternals%3ENetwork%3EProxy%2CInternals%3ENetwork%3ELogging%2CInternals%3ENetwork%3EConnectivity%2CInternals%3ENetwork%3EDomainSecurityPolicy%2CInternals%3ENetwork%3EFTP%2CInternals%3ENetwork%3EDNS).
 
 * If the requested feedback was provided, review the new information and repeat
   the same steps as (1) to re-triage based on the new information.
@@ -82,7 +82,7 @@ bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=pri%20-modified&q=Ne
 ## 3. Ensure P0 and P1 bugs have an owner
 
 Look through [the list of unowned high priority
-bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=pri%20-stars%20-opened&q=Pri%3A0%2C1%20-has%3Aowner%20-label%3ANetwork-Triaged%20component%3DInternals%3ENetwork%2CInternals%3ENetwork%3ECache%2CInternals%3ENetwork%3ESSL%2CInternals%3ENetwork%3EQUIC%2CInternals%3ENetwork%3EAuth%2CInternals%3ENetwork%3EHTTP2%2CInternals%3ENetwork%3EProxy%2CInternals%3ENetwork%3ELibrary%2CInternals%3ENetwork%3ELogging%2CInternals%3ENetwork%3EConnectivity%2CInternals%3ENetwork%3EDomainSecurityPolicy%2CInternals%3ENetwork%3ETrustTokens%2CInternals%3ENetwork%3EFilters%2CInternals%3ENetwork%3EFTP%2CInternals%3ENetwork%3ESDCH).
+bugs](https://bugs.chromium.org/p/chromium/issues/list?sort=pri%20-stars%20-opened&q=Pri%3A0%2C1%20-has%3Aowner%20-label%3ANetwork-Triaged%20component%3DInternals%3ENetwork%3EReportingAndNEL%2CInternals%3ENetwork%3ECache%3ESimple%2CInternals%3ENetwork%2CInternals%3ENetwork%3ECache%2CInternals%3ENetwork%3ESSL%2CInternals%3ENetwork%3EQUIC%2CInternals%3ENetwork%3EAuth%2CInternals%3ENetwork%3EHTTP2%2CInternals%3ENetwork%3EProxy%2CInternals%3ENetwork%3ELogging%2CInternals%3ENetwork%3EConnectivity%2CInternals%3ENetwork%3EDomainSecurityPolicy%2CInternals%3ENetwork%3EFTP%2CInternals%3ENetwork%3EDNS).
 These bugs should either have an owner, or be downgraded to a lower priority.
 
 ## 4. (Optional) Look through crash reports
@@ -109,18 +109,17 @@ The ones that are included are:
 Internals>Network
 Internals>Network>Auth
 Internals>Network>Cache
+Internals>Network>Cache>Simple
+Internals>Network>DNS
 Internals>Network>Connectivity
 Internals>Network>DomainSecurityPolicy
-Internals>Network>Filters
 Internals>Network>FTP
 Internals>Network>HTTP2
-Internals>Network>Library
 Internals>Network>Logging
 Internals>Network>Proxy
 Internals>Network>QUIC
-Internals>Network>SDCH
+Internals>Network>ReportingAndNEL
 Internals>Network>SSL
-Internals>Network>TrustTokens
 ```
 
 The rest of the `Internals>Network` subcomponents are out of scope,
@@ -132,37 +131,38 @@ Internals>Network>CertTrans
 Internals>Network>Cookies
 Internals>Network>DataProxy
 Internals>Network>DataUse
-Internals>Network>DNS
 Internals>Network>DoH
 Internals>Network>EV
+Internals>Network>Library
 Internals>Network>NetInfo
 Internals>Network>NetworkQuality
-Internals>Network>ReportingAndNEL
+Internals>Network>TrustTokens
 Internals>Network>VPN
 ```
 
 ## Management
 
-* Your rotation will appear in Google Calendar as two days. You are expected to
-  work on it full-time (as best you can) during those calendar days, during your
-  ordinary working hours.
+* Your rotation will appear in Google Calendar for three days, as a full day 
+  event. However you should work on it during normal business hours only. 
+  The bug triage work should be considered P1 during this period, but you 
+  should feel free to work on project work once you triage outstanding issues.
 
-* Google Calendar [google.com_52n2p39ad82hah9v7j26vek830@group.calendar.google.com](https://calendar.google.com/calendar/embed?src=google.com_52n2p39ad82hah9v7j26vek830%40group.calendar.google.com&ctz=America%2FLos_Angeles)
+* Google Calendar [c_c76b86b0356db19c1e06879b16d84a2fb7b9747f066b671c46875261c9e7f17a@group.calendar.google.com](https://calendar.google.com/calendar/embed?src=c_c76b86b0356db19c1e06879b16d84a2fb7b9747f066b671c46875261c9e7f17a%40group.calendar.google.com&ctz=Asia%2FTokyo)
 
 * Owners for the network bug triage rotation can find instructions on
-generating and modifying shifts
-[here (internal-only)](https://goto.google.com/pflvb).
+  generating and modifying shifts
+[here (internal-only)](https://goto.google.com/net-triage-setup).
 
 * An overview of bug trends can be seen on [Chromium
   Dashboard](https://chromiumdash.appspot.com/components/Internals/Network?project=Chromium)
 
-* There is also an [internal dashboard with bug trends for Web
-  Platform](https://goto.google.com/vufyq) that includes network issues.
-
 * The issue tracker doesn't track any official mappings between components and
   OWNERS. This [internal document](https://goto.google.com/kojfj) enumerates
-  the known owners for subcomponents.
+  the known owners for subcomponents. Owners information is dynamic, and the 
+  document might become outdated, you can always go to the source, search for 
+  the component in a DIR_METADATA file and look for an OWNERS file in the same, 
+  or parent directory.
 
 * [Web Platform Team SLOs](https://docs.google.com/document/d/18ylPve6jd43m8B7Dil6xmS4G9MHL2_DhQon72je-O9o/edit)
 
-* [(Internal) Web Platform bug triage guidelines](http://go/xnzwn)
+* [Web Platform bug triage guidelines](https://docs.google.com/document/d/1JOtp1LS7suqTjMuv41jQFc7aCTR33zJKPoGjKpvVFCA)

@@ -1,4 +1,4 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,21 +19,21 @@ class RuleIteratorSimple : public RuleIterator {
  public:
   RuleIteratorSimple(ContentSetting setting) : setting_(setting) {}
 
+  RuleIteratorSimple(const RuleIteratorSimple&) = delete;
+  RuleIteratorSimple& operator=(const RuleIteratorSimple&) = delete;
+
   bool HasNext() const override { return !is_done_; }
 
   Rule Next() override {
     DCHECK(HasNext());
     is_done_ = true;
     return Rule(ContentSettingsPattern::Wildcard(),
-                ContentSettingsPattern::Wildcard(), base::Value(setting_),
-                base::Time(), SessionModel::Durable);
+                ContentSettingsPattern::Wildcard(), base::Value(setting_), {});
   }
 
  private:
   const ContentSetting setting_;
   bool is_done_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(RuleIteratorSimple);
 };
 
 }  // namespace
@@ -43,11 +43,7 @@ GlobalValueMap::GlobalValueMap() {}
 GlobalValueMap::~GlobalValueMap() {}
 
 std::unique_ptr<RuleIterator> GlobalValueMap::GetRuleIterator(
-    ContentSettingsType content_type,
-    const ResourceIdentifier& resource_identifier) const {
-  if (!resource_identifier.empty())
-    return nullptr;
-
+    ContentSettingsType content_type) const {
   auto it = settings_.find(content_type);
   if (it == settings_.end())
     return nullptr;

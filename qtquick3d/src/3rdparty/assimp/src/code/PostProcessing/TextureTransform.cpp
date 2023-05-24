@@ -2,7 +2,7 @@
 Open Asset Import Library (assimp)
 ----------------------------------------------------------------------
 
-Copyright (c) 2006-2019, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 All rights reserved.
@@ -64,10 +64,7 @@ TextureTransformStep::TextureTransformStep() :
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-TextureTransformStep::~TextureTransformStep()
-{
-    // nothing to do here
-}
+TextureTransformStep::~TextureTransformStep() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -92,9 +89,8 @@ void TextureTransformStep::PreProcessUVTransform(STransformVecInfo& info)
      *  are applied is - as always - scaling, rotation, translation.
      */
 
-    char szTemp[512];
-    int rounded = 0;
-
+	int rounded;
+	char szTemp[512];
 
     /* Optimize the rotation angle. That's slightly difficult as
      * we have an inprecise floating-point number (when comparing
@@ -105,10 +101,11 @@ void TextureTransformStep::PreProcessUVTransform(STransformVecInfo& info)
     if (info.mRotation)
     {
         float out = info.mRotation;
-        if ((rounded = static_cast<int>((info.mRotation / static_cast<float>(AI_MATH_TWO_PI)))))
+        rounded = static_cast<int>((info.mRotation / static_cast<float>(AI_MATH_TWO_PI)));
+        if (rounded)
         {
             out -= rounded * static_cast<float>(AI_MATH_PI);
-            ASSIMP_LOG_INFO_F("Texture coordinate rotation ", info.mRotation, " can be simplified to ", out);
+            ASSIMP_LOG_INFO("Texture coordinate rotation ", info.mRotation, " can be simplified to ", out);
         }
 
         // Next step - convert negative rotation angles to positives
@@ -125,7 +122,8 @@ void TextureTransformStep::PreProcessUVTransform(STransformVecInfo& info)
      * type (e.g. if mirroring is active there IS a difference between
      * offset 2 and 3)
      */
-    if ((rounded  = (int)info.mTranslation.x))  {
+    rounded = (int)info.mTranslation.x;
+    if (rounded) {
         float out = 0.0f;
         szTemp[0] = 0;
         if (aiTextureMapMode_Wrap == info.mapU) {
@@ -158,7 +156,8 @@ void TextureTransformStep::PreProcessUVTransform(STransformVecInfo& info)
      * type (e.g. if mirroring is active there IS a difference between
      * offset 2 and 3)
      */
-    if ((rounded  = (int)info.mTranslation.y))  {
+    rounded = (int)info.mTranslation.y;
+    if (rounded) {
         float out = 0.0f;
         szTemp[0] = 0;
         if (aiTextureMapMode_Wrap == info.mapV) {
@@ -176,7 +175,7 @@ void TextureTransformStep::PreProcessUVTransform(STransformVecInfo& info)
         }
         else if (aiTextureMapMode_Clamp == info.mapV || aiTextureMapMode_Decal == info.mapV)    {
             // Clamp - translations beyond 1,1 are senseless
-            ::ai_snprintf(szTemp,512,"[c] UV V offset %f canbe clamped to 1.0f",info.mTranslation.y);
+            ::ai_snprintf(szTemp,512,"[c] UV V offset %f can be clamped to 1.0f",info.mTranslation.y);
 
             out = 1.f;
         }
@@ -185,7 +184,6 @@ void TextureTransformStep::PreProcessUVTransform(STransformVecInfo& info)
             info.mTranslation.y = out;
         }
     }
-    return;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -428,7 +426,7 @@ void TextureTransformStep::Execute( aiScene* pScene)
         // at the end of the list
         bool ref[AI_MAX_NUMBER_OF_TEXTURECOORDS];
         for (unsigned int n = 0; n < AI_MAX_NUMBER_OF_TEXTURECOORDS;++n)
-            ref[n] = (!mesh->mTextureCoords[n] ? true : false);
+            ref[n] = !mesh->mTextureCoords[n];
 
         for (it = trafo.begin();it != trafo.end(); ++it)
             ref[(*it).uvIndex] = true;
@@ -436,7 +434,7 @@ void TextureTransformStep::Execute( aiScene* pScene)
         for (unsigned int n = 0; n < AI_MAX_NUMBER_OF_TEXTURECOORDS;++n) {
             if (ref[n])
                 continue;
-            trafo.push_back(STransformVecInfo());
+            trafo.emplace_back();
             trafo.back().uvIndex = n;
         }
 
@@ -447,7 +445,7 @@ void TextureTransformStep::Execute( aiScene* pScene)
         if (size > AI_MAX_NUMBER_OF_TEXTURECOORDS) {
 
             if (!DefaultLogger::isNullLogger()) {
-                ASSIMP_LOG_ERROR_F(static_cast<unsigned int>(trafo.size()), " UV channels required but just ", 
+                ASSIMP_LOG_ERROR(static_cast<unsigned int>(trafo.size()), " UV channels required but just ",
                     AI_MAX_NUMBER_OF_TEXTURECOORDS, " available");
             }
             size = AI_MAX_NUMBER_OF_TEXTURECOORDS;
@@ -507,7 +505,7 @@ void TextureTransformStep::Execute( aiScene* pScene)
             aiVector3D* dest, *end;
             dest = mesh->mTextureCoords[n];
 
-            ai_assert(NULL != src);
+            ai_assert(nullptr != src);
 
             // Copy the data to the destination array
             if (dest != src)
@@ -538,7 +536,7 @@ void TextureTransformStep::Execute( aiScene* pScene)
                 m5.a3 += trl.x; m5.b3 += trl.y;
                 matrix = m2 * m4 * matrix * m3 * m5;
 
-                for (src = dest; src != end; ++src) { /* manual homogenious divide */
+                for (src = dest; src != end; ++src) { /* manual homogeneous divide */
                     src->z = 1.f;
                     *src = matrix * *src;
                     src->x /= src->z;
@@ -556,7 +554,7 @@ void TextureTransformStep::Execute( aiScene* pScene)
     if (!DefaultLogger::isNullLogger()) {
 
         if (transformedChannels)    {
-            ASSIMP_LOG_INFO_F("TransformUVCoordsProcess end: ", outChannels, " output channels (in: ", inChannels, ", modified: ", transformedChannels,")");
+            ASSIMP_LOG_INFO("TransformUVCoordsProcess end: ", outChannels, " output channels (in: ", inChannels, ", modified: ", transformedChannels,")");
         } else {
             ASSIMP_LOG_DEBUG("TransformUVCoordsProcess finished");
         }

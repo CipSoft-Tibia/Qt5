@@ -1,4 +1,7 @@
 include_rules = [
-  "+components/variations",
+  "+components/safe_browsing/core/browser",
+  "+components/safe_browsing/core/common",
+  "+content/public/browser",
   "+content/public/test",
+  "+crypto",
 ]

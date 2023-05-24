@@ -20,23 +20,25 @@
 
 #include "third_party/blink/renderer/core/css/css_style_sheet.h"
 
-#include "third_party/blink/renderer/bindings/core/v8/media_list_or_string.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_css_style_sheet_init.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_medialist_string.h"
 #include "third_party/blink/renderer/core/css/css_import_rule.h"
 #include "third_party/blink/renderer/core/css/css_rule_list.h"
 #include "third_party/blink/renderer/core/css/media_list.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_context.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_impl.h"
+#include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/css/style_rule.h"
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/node.h"
-#include "third_party/blink/renderer/core/frame/deprecation.h"
+#include "third_party/blink/renderer/core/dom/tree_scope.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/html/html_link_element.h"
 #include "third_party/blink/renderer/core/html/html_style_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
@@ -46,7 +48,7 @@
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
@@ -87,42 +89,31 @@ static bool IsAcceptableCSSStyleSheetParent(const Node& parent_node) {
 // static
 const Document* CSSStyleSheet::SingleOwnerDocument(
     const CSSStyleSheet* style_sheet) {
-  if (style_sheet)
+  if (style_sheet) {
     return StyleSheetContents::SingleOwnerDocument(style_sheet->Contents());
+  }
   return nullptr;
 }
 
 CSSStyleSheet* CSSStyleSheet::Create(Document& document,
                                      const CSSStyleSheetInit* options,
                                      ExceptionState& exception_state) {
-  auto* parser_context = MakeGarbageCollected<CSSParserContext>(document);
-  if (AdTracker::IsAdScriptExecutingInDocument(&document))
-    parser_context->SetIsAdRelated();
+  return CSSStyleSheet::Create(document, document.BaseURL(), options,
+                               exception_state);
+}
 
-  // Following steps at spec draft
-  // https://wicg.github.io/construct-stylesheets/#dom-cssstylesheet-cssstylesheet
-  auto* contents = MakeGarbageCollected<StyleSheetContents>(parser_context);
-  CSSStyleSheet* sheet = MakeGarbageCollected<CSSStyleSheet>(contents, nullptr);
-  sheet->SetConstructorDocument(document);
-  sheet->SetTitle(options->title());
-  sheet->ClearOwnerNode();
-  sheet->ClearOwnerRule();
-  contents->RegisterClient(sheet);
-  scoped_refptr<MediaQuerySet> media_query_set;
-  if (options->media().IsString()) {
-    media_query_set = MediaQuerySet::Create(options->media().GetAsString(),
-                                            document.GetExecutionContext());
-  } else {
-    media_query_set = options->media().GetAsMediaList()->Queries()->Copy();
+CSSStyleSheet* CSSStyleSheet::Create(Document& document,
+                                     const KURL& base_url,
+                                     const CSSStyleSheetInit* options,
+                                     ExceptionState& exception_state) {
+  auto* parser_context =
+      MakeGarbageCollected<CSSParserContext>(document, base_url);
+  if (AdTracker::IsAdScriptExecutingInDocument(&document)) {
+    parser_context->SetIsAdRelated();
   }
-  auto* media_list = MakeGarbageCollected<MediaList>(
-      media_query_set, const_cast<CSSStyleSheet*>(sheet));
-  sheet->SetMedia(media_list);
-  if (options->alternate())
-    sheet->SetAlternateFromConstructor(true);
-  if (options->disabled())
-    sheet->setDisabled(true);
-  return sheet;
+
+  auto* contents = MakeGarbageCollected<StyleSheetContents>(parser_context);
+  return MakeGarbageCollected<CSSStyleSheet>(contents, document, options);
 }
 
 CSSStyleSheet* CSSStyleSheet::CreateInline(StyleSheetContents* sheet,
@@ -142,13 +133,17 @@ CSSStyleSheet* CSSStyleSheet::CreateInline(Node& owner_node,
       owner_node_document, owner_node_document.BaseURL(),
       true /* origin_clean */,
       Referrer(
-          owner_node_document.GetExecutionContext()
-              ? owner_node_document.GetExecutionContext()->OutgoingReferrer()
-              : String(),  // GetExecutionContext() only returns null in tests.
-          owner_node.GetDocument().GetReferrerPolicy()),
+          // Fetch requests from an inline CSS use the referrer of the owner
+          // document. `Referrer::ClientReferrerString()` for a fetch request
+          // just means "use the default referrer", which will be computed from
+          // the client (in this case, the owner document's ExecutionContext)
+          // when fetching.
+          Referrer::ClientReferrerString(),
+          network::mojom::ReferrerPolicy::kDefault),
       encoding);
-  if (AdTracker::IsAdScriptExecutingInDocument(&owner_node.GetDocument()))
+  if (AdTracker::IsAdScriptExecutingInDocument(&owner_node.GetDocument())) {
     parser_context->SetIsAdRelated();
+  }
   auto* sheet = MakeGarbageCollected<StyleSheetContents>(parser_context,
                                                          base_url.GetString());
   return MakeGarbageCollected<CSSStyleSheet>(sheet, owner_node, true,
@@ -164,13 +159,41 @@ CSSStyleSheet::CSSStyleSheet(StyleSheetContents* contents,
 }
 
 CSSStyleSheet::CSSStyleSheet(StyleSheetContents* contents,
+                             Document& document,
+                             const CSSStyleSheetInit* options)
+    : CSSStyleSheet(contents, nullptr) {
+  // Following steps at spec draft
+  // https://wicg.github.io/construct-stylesheets/#dom-cssstylesheet-cssstylesheet
+  SetConstructorDocument(document);
+  SetTitle(options->title());
+  ClearOwnerNode();
+  ClearOwnerRule();
+  Contents()->RegisterClient(this);
+  switch (options->media()->GetContentType()) {
+    case V8UnionMediaListOrString::ContentType::kMediaList:
+      media_queries_ = options->media()->GetAsMediaList()->Queries();
+      break;
+    case V8UnionMediaListOrString::ContentType::kString:
+      media_queries_ = MediaQuerySet::Create(options->media()->GetAsString(),
+                                             document.GetExecutionContext());
+      break;
+  }
+  if (options->alternate()) {
+    SetAlternateFromConstructor(true);
+  }
+  if (options->disabled()) {
+    setDisabled(true);
+  }
+}
+
+CSSStyleSheet::CSSStyleSheet(StyleSheetContents* contents,
                              Node& owner_node,
                              bool is_inline_stylesheet,
                              const TextPosition& start_position)
     : contents_(contents),
-      is_inline_stylesheet_(is_inline_stylesheet),
       owner_node_(&owner_node),
-      start_position_(start_position) {
+      start_position_(start_position),
+      is_inline_stylesheet_(is_inline_stylesheet) {
 #if DCHECK_IS_ON()
   DCHECK(IsAcceptableCSSStyleSheetParent(owner_node));
 #endif
@@ -191,7 +214,8 @@ void CSSStyleSheet::WillMutateRules() {
   DCHECK(contents_->IsCacheableForStyleElement() ||
          contents_->IsCacheableForResource());
 
-  // Copy-on-write.
+  // Copy-on-write. Note that this eagerly parses any rules that were
+  // lazily parsed.
   contents_->UnregisterClient(this);
   contents_ = contents_->Copy();
   contents_->RegisterClient(this);
@@ -208,9 +232,10 @@ void CSSStyleSheet::DidMutate(Mutation mutation) {
     DCHECK_LE(contents_->ClientSize(), 1u);
   }
   Document* document = OwnerDocument();
-  if (!document || !document->IsActive())
+  if (!document || !document->IsActive()) {
     return;
-  if (!custom_element_tag_names_.IsEmpty()) {
+  }
+  if (!custom_element_tag_names_.empty()) {
     document->GetStyleEngine().ScheduleCustomElementInvalidations(
         custom_element_tag_names_);
   }
@@ -219,20 +244,22 @@ void CSSStyleSheet::DidMutate(Mutation mutation) {
     document->GetStyleEngine().SetNeedsActiveStyleUpdate(
         ownerNode()->GetTreeScope());
     invalidate_matched_properties_cache = true;
-  } else if (!adopted_tree_scopes_.IsEmpty()) {
+  } else if (!adopted_tree_scopes_.empty()) {
     for (auto tree_scope : adopted_tree_scopes_) {
       // It is currently required that adopted sheets can not be moved between
       // documents.
       DCHECK(tree_scope->GetDocument() == document);
-      if (!tree_scope->RootNode().isConnected())
+      if (!tree_scope->RootNode().isConnected()) {
         continue;
+      }
       document->GetStyleEngine().SetNeedsActiveStyleUpdate(*tree_scope);
       invalidate_matched_properties_cache = true;
     }
   }
   if (mutation == Mutation::kRules) {
-    if (invalidate_matched_properties_cache)
+    if (invalidate_matched_properties_cache) {
       document->GetStyleResolver().InvalidateMatchedPropertiesCache();
+    }
     probe::DidMutateStyleSheet(document, this);
   }
 }
@@ -256,36 +283,46 @@ CSSStyleSheet::InspectorMutationScope::~InspectorMutationScope() {
 
 void CSSStyleSheet::ReattachChildRuleCSSOMWrappers() {
   for (unsigned i = 0; i < child_rule_cssom_wrappers_.size(); ++i) {
-    if (!child_rule_cssom_wrappers_[i])
+    if (!child_rule_cssom_wrappers_[i]) {
       continue;
+    }
     child_rule_cssom_wrappers_[i]->Reattach(contents_->RuleAt(i));
   }
 }
 
 void CSSStyleSheet::setDisabled(bool disabled) {
-  if (disabled == is_disabled_)
+  if (disabled == is_disabled_) {
     return;
+  }
   is_disabled_ = disabled;
 
   DidMutate(Mutation::kSheet);
 }
 
-void CSSStyleSheet::SetMediaQueries(
-    scoped_refptr<MediaQuerySet> media_queries) {
-  media_queries_ = std::move(media_queries);
-  if (media_cssom_wrapper_ && media_queries_)
-    media_cssom_wrapper_->Reattach(media_queries_.get());
+bool CSSStyleSheet::MatchesMediaQueries(const MediaQueryEvaluator& evaluator) {
+  media_query_result_flags_.Clear();
+
+  if (!media_queries_) {
+    return true;
+  }
+  return evaluator.Eval(*media_queries_, &media_query_result_flags_);
 }
 
-bool CSSStyleSheet::MatchesMediaQueries(const MediaQueryEvaluator& evaluator) {
-  viewport_dependent_media_query_results_.clear();
-  device_dependent_media_query_results_.clear();
+void CSSStyleSheet::AddedAdoptedToTreeScope(TreeScope& tree_scope) {
+  adopted_tree_scopes_.insert(&tree_scope);
+}
 
-  if (!media_queries_)
-    return true;
-  return evaluator.Eval(*media_queries_,
-                        &viewport_dependent_media_query_results_,
-                        &device_dependent_media_query_results_);
+void CSSStyleSheet::RemovedAdoptedFromTreeScope(TreeScope& tree_scope) {
+  adopted_tree_scopes_.erase(&tree_scope);
+}
+
+bool CSSStyleSheet::HasViewportDependentMediaQueries() const {
+  return media_query_result_flags_.is_viewport_dependent;
+}
+
+bool CSSStyleSheet::HasDynamicViewportDependentMediaQueries() const {
+  return media_query_result_flags_.unit_flags &
+         MediaQueryExpValue::UnitFlags::kDynamicViewport;
 }
 
 unsigned CSSStyleSheet::length() const {
@@ -294,23 +331,27 @@ unsigned CSSStyleSheet::length() const {
 
 CSSRule* CSSStyleSheet::item(unsigned index) {
   unsigned rule_count = length();
-  if (index >= rule_count)
+  if (index >= rule_count) {
     return nullptr;
+  }
 
-  if (child_rule_cssom_wrappers_.IsEmpty())
+  if (child_rule_cssom_wrappers_.empty()) {
     child_rule_cssom_wrappers_.Grow(rule_count);
+  }
   DCHECK_EQ(child_rule_cssom_wrappers_.size(), rule_count);
 
   Member<CSSRule>& css_rule = child_rule_cssom_wrappers_[index];
-  if (!css_rule)
-    css_rule = contents_->RuleAt(index)->CreateCSSOMWrapper(this);
+  if (!css_rule) {
+    css_rule = contents_->RuleAt(index)->CreateCSSOMWrapper(index, this);
+  }
   return css_rule.Get();
 }
 
 void CSSStyleSheet::ClearOwnerNode() {
   DidMutate(Mutation::kSheet);
-  if (owner_node_)
+  if (owner_node_) {
     contents_->UnregisterClient(this);
+  }
   owner_node_ = nullptr;
 }
 
@@ -331,7 +372,7 @@ unsigned CSSStyleSheet::insertRule(const String& rule_string,
     return 0;
   }
 
-  DCHECK(child_rule_cssom_wrappers_.IsEmpty() ||
+  DCHECK(child_rule_cssom_wrappers_.empty() ||
          child_rule_cssom_wrappers_.size() == contents_->RuleCount());
 
   if (index > length()) {
@@ -344,8 +385,10 @@ unsigned CSSStyleSheet::insertRule(const String& rule_string,
   }
   const auto* context =
       MakeGarbageCollected<CSSParserContext>(contents_->ParserContext(), this);
+
   StyleRuleBase* rule =
-      CSSParser::ParseRule(context, contents_.Get(), rule_string);
+      CSSParser::ParseRule(context, contents_.Get(),
+                           /*parent_rule_for_nesting=*/nullptr, rule_string);
 
   if (!rule) {
     exception_state.ThrowDOMException(
@@ -362,17 +405,19 @@ unsigned CSSStyleSheet::insertRule(const String& rule_string,
   }
   bool success = contents_->WrapperInsertRule(rule, index);
   if (!success) {
-    if (rule->IsNamespaceRule())
+    if (rule->IsNamespaceRule()) {
       exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                         "Failed to insert the rule");
-    else
+    } else {
       exception_state.ThrowDOMException(
           DOMExceptionCode::kHierarchyRequestError,
           "Failed to insert the rule.");
+    }
     return 0;
   }
-  if (!child_rule_cssom_wrappers_.IsEmpty())
+  if (!child_rule_cssom_wrappers_.empty()) {
     child_rule_cssom_wrappers_.insert(index, Member<CSSRule>(nullptr));
+  }
 
   return index;
 }
@@ -385,7 +430,7 @@ void CSSStyleSheet::deleteRule(unsigned index,
     return;
   }
 
-  DCHECK(child_rule_cssom_wrappers_.IsEmpty() ||
+  DCHECK(child_rule_cssom_wrappers_.empty() ||
          child_rule_cssom_wrappers_.size() == contents_->RuleCount());
 
   if (index >= length()) {
@@ -410,9 +455,10 @@ void CSSStyleSheet::deleteRule(unsigned index,
     return;
   }
 
-  if (!child_rule_cssom_wrappers_.IsEmpty()) {
-    if (child_rule_cssom_wrappers_[index])
+  if (!child_rule_cssom_wrappers_.empty()) {
+    if (child_rule_cssom_wrappers_[index]) {
       child_rule_cssom_wrappers_[index]->SetParentStyleSheet(nullptr);
+    }
     child_rule_cssom_wrappers_.EraseAt(index);
   }
 }
@@ -425,10 +471,11 @@ int CSSStyleSheet::addRule(const String& selector,
   text.Append(selector);
   text.Append(" { ");
   text.Append(style);
-  if (!style.IsEmpty())
+  if (!style.empty()) {
     text.Append(' ');
+  }
   text.Append('}');
-  insertRule(text.ToString(), index, exception_state);
+  insertRule(text.ReleaseString(), index, exception_state);
 
   // As per Microsoft documentation, always return -1.
   return -1;
@@ -441,13 +488,13 @@ int CSSStyleSheet::addRule(const String& selector,
 }
 
 ScriptPromise CSSStyleSheet::replace(ScriptState* script_state,
-                                     const String& text) {
+                                     const String& text,
+                                     ExceptionState& exception_state) {
   if (!IsConstructed()) {
-    return ScriptPromise::RejectWithDOMException(
-        script_state,
-        MakeGarbageCollected<DOMException>(
-            DOMExceptionCode::kNotAllowedError,
-            "Can't call replace on non-constructed CSSStyleSheets."));
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kNotAllowedError,
+        "Can't call replace on non-constructed CSSStyleSheets.");
+    return ScriptPromise();
   }
   SetText(text, CSSImportRules::kIgnoreWithWarning);
   // We currently parse synchronously, and since @import support was removed,
@@ -491,18 +538,13 @@ bool CSSStyleSheet::IsLoading() const {
 }
 
 MediaList* CSSStyleSheet::media() {
-  if (!media_queries_)
+  if (!media_queries_) {
     media_queries_ = MediaQuerySet::Create();
-
+  }
   if (!media_cssom_wrapper_) {
-    media_cssom_wrapper_ = MakeGarbageCollected<MediaList>(
-        media_queries_.get(), const_cast<CSSStyleSheet*>(this));
+    media_cssom_wrapper_ = MakeGarbageCollected<MediaList>(this);
   }
   return media_cssom_wrapper_.Get();
-}
-
-void CSSStyleSheet::SetMedia(MediaList* media_list) {
-  media_cssom_wrapper_ = media_list;
 }
 
 CSSStyleSheet* CSSStyleSheet::parentStyleSheet() const {
@@ -510,8 +552,9 @@ CSSStyleSheet* CSSStyleSheet::parentStyleSheet() const {
 }
 
 Document* CSSStyleSheet::OwnerDocument() const {
-  if (CSSStyleSheet* parent = parentStyleSheet())
+  if (CSSStyleSheet* parent = parentStyleSheet()) {
     return parent->OwnerDocument();
+  }
   if (IsConstructed()) {
     DCHECK(!ownerNode());
     return ConstructorDocument();
@@ -525,21 +568,23 @@ bool CSSStyleSheet::SheetLoaded() {
   return load_completed_;
 }
 
-void CSSStyleSheet::StartLoadingDynamicSheet() {
+void CSSStyleSheet::SetToPendingState() {
   SetLoadCompleted(false);
-  owner_node_->StartLoadingDynamicSheet();
+  owner_node_->SetToPendingState();
 }
 
 void CSSStyleSheet::SetLoadCompleted(bool completed) {
-  if (completed == load_completed_)
+  if (completed == load_completed_) {
     return;
+  }
 
   load_completed_ = completed;
 
-  if (completed)
+  if (completed) {
     contents_->ClientLoadCompleted(this);
-  else
+  } else {
     contents_->ClientLoadStarted(this);
+  }
 }
 
 void CSSStyleSheet::SetText(const String& text, CSSImportRules import_rules) {
@@ -577,34 +622,36 @@ bool CSSStyleSheet::IsAlternate() const {
 
 bool CSSStyleSheet::CanBeActivated(
     const String& current_preferrable_name) const {
-  if (disabled())
+  if (disabled()) {
     return false;
+  }
 
   if (owner_node_ && owner_node_->IsInShadowTree()) {
     if (IsA<HTMLStyleElement>(owner_node_.Get()) ||
-        IsA<SVGStyleElement>(owner_node_.Get()))
+        IsA<SVGStyleElement>(owner_node_.Get())) {
       return true;
-    auto* html_link_element = DynamicTo<HTMLLinkElement>(owner_node_.Get());
-    if (html_link_element && html_link_element->IsImport())
-      return !IsAlternate();
+    }
   }
 
   auto* html_link_element = DynamicTo<HTMLLinkElement>(owner_node_.Get());
   if (!owner_node_ ||
       owner_node_->getNodeType() == Node::kProcessingInstructionNode ||
       !html_link_element || !html_link_element->IsEnabledViaScript()) {
-    if (!title_.IsEmpty() && title_ != current_preferrable_name)
+    if (!title_.empty() && title_ != current_preferrable_name) {
       return false;
+    }
   }
 
-  if (IsAlternate() && title_.IsEmpty())
+  if (IsAlternate() && title_.empty()) {
     return false;
+  }
 
   return true;
 }
 
 void CSSStyleSheet::Trace(Visitor* visitor) const {
   visitor->Trace(contents_);
+  visitor->Trace(media_queries_);
   visitor->Trace(owner_node_);
   visitor->Trace(owner_rule_);
   visitor->Trace(media_cssom_wrapper_);

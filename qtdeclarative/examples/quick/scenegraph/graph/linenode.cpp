@@ -1,95 +1,89 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "linenode.h"
 
 #include <QtGui/QColor>
 
-#include <QtQuick/QSGSimpleMaterial>
+#include <QtQuick/QSGMaterial>
 
-struct LineMaterial
+class LineShader : public QSGMaterialShader
 {
-    QColor color;
-    float spread;
-    float size;
-};
-
-class LineShader : public QSGSimpleMaterialShader<LineMaterial>
-{
-    QSG_DECLARE_SIMPLE_SHADER(LineShader, LineMaterial)
-
 public:
     LineShader() {
-        setShaderSourceFile(QOpenGLShader::Vertex, ":/scenegraph/graph/shaders/line.vsh");
-        setShaderSourceFile(QOpenGLShader::Fragment, ":/scenegraph/graph/shaders/line.fsh");
+        setShaderFileName(VertexStage, QLatin1String(":/scenegraph/graph/shaders/line.vert.qsb"));
+        setShaderFileName(FragmentStage, QLatin1String(":/scenegraph/graph/shaders/line.frag.qsb"));
     }
 
-    QList<QByteArray> attributes() const override {  return QList<QByteArray>() << "pos" << "t"; }
-
-    void updateState(const LineMaterial *m, const LineMaterial *) override {
-        program()->setUniformValue(id_color, m->color);
-        program()->setUniformValue(id_spread, m->spread);
-        program()->setUniformValue(id_size, m->size);
-    }
-
-    void resolveUniforms() override {
-        id_spread = program()->uniformLocation("spread");
-        id_size = program()->uniformLocation("size");
-        id_color = program()->uniformLocation("color");
-    }
-
-private:
-    int id_color = -1;
-    int id_spread = -1;
-    int id_size = -1;
+    bool updateUniformData(RenderState &state, QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
 };
+
+class LineMaterial : public QSGMaterial
+{
+public:
+    LineMaterial()
+    {
+        setFlag(Blending);
+    }
+
+    QSGMaterialType *type() const override
+    {
+        static QSGMaterialType type;
+        return &type;
+    }
+
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override
+    {
+        return new LineShader;
+    }
+
+    int compare(const QSGMaterial *m) const override
+    {
+        const LineMaterial *other = static_cast<const LineMaterial *>(m);
+
+        if (int diff = int(state.color.rgb()) - int(other->state.color.rgb()))
+            return diff;
+
+        if (int diff = state.size - other->state.size)
+            return diff;
+
+        if (int diff = state.spread - other->state.spread)
+            return diff;
+
+        return 0;
+    }
+
+    struct {
+        QColor color;
+        float size;
+        float spread;
+    } state;
+};
+
+bool LineShader::updateUniformData(RenderState &state, QSGMaterial *newMaterial, QSGMaterial *)
+{
+    QByteArray *buf = state.uniformData();
+    Q_ASSERT(buf->size() >= 92);
+
+    if (state.isMatrixDirty()) {
+        const QMatrix4x4 m = state.combinedMatrix();
+        memcpy(buf->data(), m.constData(), 64);
+    }
+
+    if (state.isOpacityDirty()) {
+        const float opacity = state.opacity();
+        memcpy(buf->data() + 80, &opacity, 4);
+    }
+
+    LineMaterial *mat = static_cast<LineMaterial *>(newMaterial);
+    float c[4];
+    mat->state.color.getRgbF(&c[0], &c[1], &c[2], &c[3]);
+    memcpy(buf->data() + 64, c, 16);
+    memcpy(buf->data() + 84, &mat->state.size, 4);
+    memcpy(buf->data() + 88, &mat->state.spread, 4);
+
+    return true;
+}
 
 struct LineVertex {
     float x;
@@ -101,8 +95,8 @@ struct LineVertex {
 static const QSGGeometry::AttributeSet &attributes()
 {
     static QSGGeometry::Attribute attr[] = {
-        QSGGeometry::Attribute::create(0, 2, GL_FLOAT, true),
-        QSGGeometry::Attribute::create(1, 1, GL_FLOAT)
+        QSGGeometry::Attribute::create(0, 2, QSGGeometry::FloatType, true),
+        QSGGeometry::Attribute::create(1, 1, QSGGeometry::FloatType)
     };
     static QSGGeometry::AttributeSet set = { 2, 3 * sizeof(float), attr };
     return set;
@@ -112,13 +106,13 @@ LineNode::LineNode(float size, float spread, const QColor &color)
     : m_geometry(attributes(), 0)
 {
     setGeometry(&m_geometry);
-    m_geometry.setDrawingMode(GL_TRIANGLE_STRIP);
+    m_geometry.setDrawingMode(QSGGeometry::DrawTriangleStrip);
 
-    QSGSimpleMaterial<LineMaterial> *m = LineShader::createMaterial();
-    m->state()->color = color;
-    m->state()->size = size;
-    m->state()->spread = spread;
-    m->setFlag(QSGMaterial::Blending);
+    LineMaterial *m = new LineMaterial;
+    m->state.color = color;
+    m->state.size = size;
+    m->state.spread = spread;
+
     setMaterial(m);
     setFlag(OwnsMaterial);
 }

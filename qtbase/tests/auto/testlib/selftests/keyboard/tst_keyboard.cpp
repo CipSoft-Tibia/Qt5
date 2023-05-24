@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/qtest.h>
 #include <QtGui/qwindow.h>
+#include <QtGui/private/qguiapplication_p.h>
+#include <QtGui/qpa/qplatformintegration.h>
 
 class tst_Keyboard : public QObject
 {
@@ -54,7 +31,7 @@ public:
         mEventOrder.append(copiedEvent);
     }
 
-    QVector<QSharedPointer<QKeyEvent>> mEventOrder;
+    QList<QSharedPointer<QKeyEvent>> mEventOrder;
 };
 
 void tst_Keyboard::keyPressAndRelease()
@@ -63,6 +40,15 @@ void tst_Keyboard::keyPressAndRelease()
     window.show();
     window.setGeometry(100, 100, 200, 200);
     QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation)) {
+        QTest::ignoreMessage(QtWarningMsg,
+                             "qWaitForWindowActive was called on a platform that doesn't support window "
+                             "activation. This means there is an error in the test and it should either "
+                             "check for the WindowActivation platform capability before calling "
+                             "qWaitForWindowActivate, use qWaitForWindowExposed instead, or skip the test. "
+                             "Falling back to qWaitForWindowExposed.");
+    }
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     QTest::keyPress(&window, Qt::Key_A);

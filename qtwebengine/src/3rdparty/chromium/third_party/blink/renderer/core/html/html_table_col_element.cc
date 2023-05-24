@@ -69,9 +69,9 @@ void HTMLTableColElement::ParseAttribute(
     if (GetLayoutObject() && GetLayoutObject()->IsLayoutTableCol())
       GetLayoutObject()->UpdateFromElement();
   } else if (params.name == html_names::kWidthAttr) {
-    if (!params.new_value.IsEmpty()) {
+    if (!params.new_value.empty()) {
       if (GetLayoutObject() && GetLayoutObject()->IsLayoutTableCol()) {
-        LayoutTableCol* col = ToLayoutTableCol(GetLayoutObject());
+        auto* col = To<LayoutBox>(GetLayoutObject());
         int new_width = Width().ToInt();
         if (new_width != col->Size().Width()) {
           col->SetNeedsLayoutAndIntrinsicWidthsRecalcAndFullPaintInvalidation(

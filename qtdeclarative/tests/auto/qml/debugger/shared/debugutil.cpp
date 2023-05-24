@@ -1,50 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "debugutil_p.h"
 #include "qqmldebugprocess_p.h"
 
 #include <private/qqmldebugconnection_p.h>
 
-#include <QtCore/qeventloop.h>
 #include <QtCore/qtimer.h>
+#include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
 
-bool QQmlDebugTest::waitForSignal(QObject *receiver, const char *member, int timeout) {
-    QEventLoop loop;
-    QTimer timer;
-    timer.setSingleShot(true);
-    QObject::connect(&timer, SIGNAL(timeout()), &loop, SLOT(quit()));
-    QObject::connect(receiver, member, &loop, SLOT(quit()));
-    timer.start(timeout);
-    loop.exec();
-    if (!timer.isActive())
-        qWarning("waitForSignal %s timed out after %d ms", member, timeout);
-    return timer.isActive();
+QQmlDebugTest::QQmlDebugTest(const char *qmlTestDataDir, FailOnWarningsPolicy failOnWarningsPolicy)
+    : QQmlDataTest(qmlTestDataDir, failOnWarningsPolicy)
+{
+}
+
+bool QQmlDebugTest::waitForSignal(QObject *sender, const char *member, int timeout)
+{
+    QSignalSpy spy(sender, member);
+
+    // Do not use spy.wait(). We want to avoid nested event loops.
+    if (QTest::qWaitFor([&]() { return spy.size() > 0; }, timeout))
+        return true;
+
+    qWarning("waitForSignal %s timed out after %d ms", member, timeout);
+    return false;
 }
 
 QList<QQmlDebugClient *> QQmlDebugTest::createOtherClients(QQmlDebugConnection *connection)
@@ -149,18 +129,11 @@ QQmlDebugTest::ConnectResult QQmlDebugTest::connectTo(
     ClientStateHandler stateHandler(m_clients, createOtherClients(m_connection), services.isEmpty()
                                     ? QQmlDebugClient::Enabled : QQmlDebugClient::Unavailable);
 
-
-    const int port = m_process->debugPort();
-    m_connection->connectToHost(QLatin1String("127.0.0.1"), port);
-
-    QEventLoop loop;
-    QTimer timer;
-    QObject::connect(&stateHandler, &ClientStateHandler::allOk, &loop, &QEventLoop::quit);
-    QObject::connect(m_connection, &QQmlDebugConnection::disconnected, &loop, &QEventLoop::quit);
-    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
-
-    timer.start(5000);
-    loop.exec();
+    QSignalSpy okSpy(&stateHandler, &ClientStateHandler::allOk);
+    QSignalSpy disconnectSpy(m_connection, &QQmlDebugConnection::disconnected);
+    m_connection->connectToHost(QLatin1String("127.0.0.1"), m_process->debugPort());
+    if (!QTest::qWaitFor([&](){ return okSpy.size() > 0 || disconnectSpy.size() > 0; }, 5000))
+        return ConnectionTimeout;
 
     if (!stateHandler.allEnabled())
         return EnableFailed;
@@ -258,6 +231,8 @@ QString debugJsServerPath(const QString &selfPath)
     static const char *debugserver = "qqmldebugjsserver";
     QString appPath = QCoreApplication::applicationDirPath();
     const int position = appPath.lastIndexOf(selfPath);
-    return (position == -1 ? appPath : appPath.replace(position, selfPath.length(), debugserver))
+    return (position == -1 ? appPath : appPath.replace(position, selfPath.size(), debugserver))
             + "/" + debugserver;
 }
+
+#include <moc_debugutil_p.cpp>

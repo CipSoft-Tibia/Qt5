@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,19 +11,19 @@
 namespace blink {
 namespace {
 
-TEST(CSSURIValueTest, ValueWithURLMadeAbsolute) {
+TEST(CSSURIValueTest, ComputedCSSValue) {
   cssvalue::CSSURIValue* rel = MakeGarbageCollected<cssvalue::CSSURIValue>(
       "a", KURL("http://foo.com/a"));
-  cssvalue::CSSURIValue* abs = rel->ValueWithURLMadeAbsolute(
-      KURL("http://bar.com"), WTF::TextEncoding());
+  cssvalue::CSSURIValue* abs =
+      rel->ComputedCSSValue(KURL("http://bar.com"), WTF::TextEncoding());
   EXPECT_EQ("url(\"http://bar.com/a\")", abs->CssText());
 }
 
-TEST(CSSURIValueTest, AlreadyAbsoluteURLMadeAbsolute) {
+TEST(CSSURIValueTest, AlreadyComputedCSSValue) {
   cssvalue::CSSURIValue* rel = MakeGarbageCollected<cssvalue::CSSURIValue>(
       "http://baz.com/a", KURL("http://baz.com/a"));
-  cssvalue::CSSURIValue* abs = rel->ValueWithURLMadeAbsolute(
-      KURL("http://bar.com"), WTF::TextEncoding());
+  cssvalue::CSSURIValue* abs =
+      rel->ComputedCSSValue(KURL("http://bar.com"), WTF::TextEncoding());
   EXPECT_EQ("url(\"http://baz.com/a\")", abs->CssText());
 }
 

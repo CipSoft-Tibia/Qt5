@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="0" failures="0" tests="3" name="tst_Keyboard">
+<testsuite name="tst_Keyboard" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="3" failures="0" errors="0" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="pass" name="keyPressAndRelease"/>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err/>
+  <testcase name="initTestCase" classname="tst_Keyboard" time="@TEST_DURATION@"/>
+  <testcase name="keyPressAndRelease" classname="tst_Keyboard" time="@TEST_DURATION@"/>
+  <testcase name="cleanupTestCase" classname="tst_Keyboard" time="@TEST_DURATION@"/>
 </testsuite>

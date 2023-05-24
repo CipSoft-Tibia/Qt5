@@ -1,55 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Julian Sherollari <jdotsh@gmail.com>
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Julian Sherollari <jdotsh@gmail.com>
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QApplication>
+#include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QDebug>
 #include <QFile>
@@ -71,8 +24,10 @@
 #include <QFileInfo>
 #include <QtCore/qobjectdefs.h>
 #ifdef Q_OS_ANDROID
-#include <QtAndroid>
+#    include <QtCore/private/qandroidextras_p.h>
 #endif
+
+using namespace Qt::StringLiterals;
 
 class extractor
 {
@@ -115,13 +70,31 @@ public:
             ls["properties"] = mapPolyline->property("props").toMap();
         return ls;
     }
+    //! [Extractor Example Circle]
     static QVariantMap toVariant(QDeclarativeCircleMapItem *mapCircle)
     {
         QVariantMap pt;
         pt["type"] = "Point";
         pt["data"] = QVariant::fromValue(mapCircle->geoShape());
-        if (hasProperties(mapCircle))
-            pt["properties"] = mapCircle->property("props").toMap();
+        QVariantMap propMap = mapCircle->property("props").toMap();
+        propMap["radius"] = mapCircle->radius();
+        pt["properties"] = propMap;
+        return pt;
+    }
+    //! [Extractor Example Circle]
+    static QVariantMap toVariant(QDeclarativeRectangleMapItem *mapRectangle)
+    {
+        QVariantMap pt;
+        pt["type"] = "Polygon";
+        QGeoRectangle rectanlge = mapRectangle->geoShape();
+        QGeoPolygon poly;
+        poly.addCoordinate(rectanlge.topLeft());
+        poly.addCoordinate(rectanlge.topRight());
+        poly.addCoordinate(rectanlge.bottomRight());
+        poly.addCoordinate(rectanlge.bottomLeft());
+        pt["data"] = QVariant::fromValue(poly);
+        if (hasProperties(mapRectangle))
+            pt["properties"] = mapRectangle->property("props").toMap();
         return pt;
     }
 
@@ -155,20 +128,30 @@ public:
                 entry = toVariant(polygon);
             } else if (QDeclarativeCircleMapItem *circle = qobject_cast<QDeclarativeCircleMapItem *>(kid)) {
                 entry = toVariant(circle); // If GeoJSON Point type is visualized in other ways, handle those types here instead.
+            } else if (QDeclarativeRectangleMapItem *rectangle = qobject_cast<QDeclarativeRectangleMapItem *>(kid)) {
+                entry = toVariant(rectangle); // For the self-drawn rectangles. Will be exported as Polygons
             }
             features.append(entry);
         }
-        if (nodeType.isEmpty()) // Dirty hack to handle (=skip) the first MIV used to process the fictitious list with 1 element
-            return features.first().toMap();
+        if (nodeType.isEmpty()) {
+            if (features.isEmpty())
+                return root;
+            else if (features.size() == 1)
+                return features.first().toMap();
+            else
+                root["type"] = "FeatureCollection";
+        }
         root["data"] = features;
         return root;
     }
 };
 
+//! [GeoJsoner]
 class GeoJsoner: public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QVariant model MEMBER m_importedGeoJson NOTIFY modelChanged)
+//! [GeoJsoner]
 
 public:
     GeoJsoner(QObject *parent = nullptr) : QObject(parent)
@@ -177,6 +160,42 @@ public:
     }
 
 public slots:
+    //! [clear]
+    Q_INVOKABLE void clear()
+    {
+        m_importedGeoJson = QVariantList();
+        emit modelChanged();
+    }
+    //! [clear]
+
+    //! [add item]
+    Q_INVOKABLE void addItem(QQuickItem *item)
+    {
+        QVariant entry;
+        if (QDeclarativePolylineMapItem *polyline = qobject_cast<QDeclarativePolylineMapItem *>(item)) {
+            entry = extractor::toVariant(polyline);
+        } else if (QDeclarativePolygonMapItem *polygon = qobject_cast<QDeclarativePolygonMapItem *>(item)) {
+            entry = extractor::toVariant(polygon);
+        } else if (QDeclarativeCircleMapItem *circle = qobject_cast<QDeclarativeCircleMapItem *>(item)) {
+            entry = extractor::toVariant(circle);
+        } else if (QDeclarativeRectangleMapItem *rectangle = qobject_cast<QDeclarativeRectangleMapItem *>(item)) {
+            entry = extractor::toVariant(rectangle);
+        } else {
+            return;
+        }
+        QVariantList geoJson = m_importedGeoJson.toList();
+        if (!geoJson.isEmpty()){
+            QVariantList geoData = (geoJson[0].toMap()["type"] == "FeatureCollection") ? geoJson[0].toMap()["data"].toList() : geoJson;
+            geoData.append(entry);
+            geoJson[0] = QVariantMap{{"type", "FeatureCollection"}, {"data", geoData}};
+        }
+        else {
+            geoJson.append(entry);
+        }
+        m_importedGeoJson = geoJson;
+        emit modelChanged();
+    }
+    //! [add item]
 
     Q_INVOKABLE bool load(QUrl url)
     {
@@ -197,14 +216,17 @@ public slots:
         }
 
         // Import geographic data to a QVariantList
+        //! [Conversion QVariantList]
         QVariantList modelList = QGeoJson::importGeoJson(loadDoc);
         m_importedGeoJson =  modelList;
         emit modelChanged();
+        //! [Conversion QVariantList]
         return true;
     }
 
     // Used by the MapItemView Extractor to identify a Feature
-    Q_INVOKABLE QVariantList toGeoJson(QDeclarativeGeoMapItemView *mapItemView)
+    //! [Conversion QVariantList From Items]
+    Q_INVOKABLE QVariantList toVariant(QDeclarativeGeoMapItemView *mapItemView)
     {
         QVariantList res;
         QDeclarativeGeoMapItemView *root = mapItemView;
@@ -213,7 +235,9 @@ public slots:
             res.append(miv);
         return res;
     }
+    //! [Conversion QVariantList From Items]
 
+    //! [Write QVariantList to Json]
     Q_INVOKABLE void dumpGeoJSON(QVariantList geoJson, QUrl url)
     {
         QJsonDocument json = QGeoJson::exportGeoJson(geoJson);
@@ -222,6 +246,7 @@ public slots:
         jsonFile.write(json.toJson());
         jsonFile.close();
     }
+    //! [Write QVariantList to Json]
 
     Q_INVOKABLE void writeDebug(QVariantList geoJson, QUrl url)
     {
@@ -252,14 +277,16 @@ public:
 
 #ifdef Q_OS_ANDROID
 // Request permissions because we're using QStandardPaths::writableLocation()
-bool requestStoragePermissions() {
-    using namespace QtAndroid;
-
-    QString permission = QStringLiteral("android.permission.WRITE_EXTERNAL_STORAGE");
-    const QHash<QString, PermissionResult> results = requestPermissionsSync(QStringList({permission}));
-    if (!results.contains(permission) || results[permission] == PermissionResult::Denied) {
-        qWarning() << "Couldn't get permission: " << permission;
-        return false;
+bool requestStoragePermissions()
+{
+    const QString permission = "android.permission.WRITE_EXTERNAL_STORAGE"_L1;
+    auto checkFuture = QtAndroidPrivate::checkPermission(permission);
+    if (checkFuture.result() == QtAndroidPrivate::Denied) {
+        auto requestFuture = QtAndroidPrivate::requestPermission(permission);
+        if (requestFuture.result() != QtAndroidPrivate::Authorized) {
+            qWarning() << "Couldn't get permission: " << permission;
+            return false;
+        }
     }
 
     return true;
@@ -268,8 +295,8 @@ bool requestStoragePermissions() {
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    QApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
+
 #ifdef Q_OS_ANDROID
     if (!requestStoragePermissions())
         return -1;
@@ -282,7 +309,10 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("dataPath", QUrl(QStringLiteral("file://")
                                                               + qPrintable(QT_STRINGIFY(SRC_PATH))
                                                               + QStringLiteral("/data")));
+    //! [QMLEngine]
     qmlRegisterType<GeoJsoner>("Qt.GeoJson", 1, 0, "GeoJsoner");
+    //! [QMLEngine]
+
     engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
 
     if (engine.rootObjects().isEmpty())

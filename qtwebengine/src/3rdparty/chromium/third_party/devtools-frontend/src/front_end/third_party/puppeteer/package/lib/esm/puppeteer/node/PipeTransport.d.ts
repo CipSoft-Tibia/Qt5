@@ -15,17 +15,15 @@
  * limitations under the License.
  */
 import { ConnectionTransport } from '../common/ConnectionTransport.js';
-import { PuppeteerEventListener } from '../common/helper.js';
-
+/**
+ * @internal
+ */
 export declare class PipeTransport implements ConnectionTransport {
-    _pipeWrite: NodeJS.WritableStream;
-    _pendingMessage: string;
-    _eventListeners: PuppeteerEventListener[];
+    #private;
     onclose?: () => void;
-    onmessage?: () => void;
+    onmessage?: (value: string) => void;
     constructor(pipeWrite: NodeJS.WritableStream, pipeRead: NodeJS.ReadableStream);
     send(message: string): void;
-    _dispatch(buffer: Buffer): void;
     close(): void;
 }
 //# sourceMappingURL=PipeTransport.d.ts.map

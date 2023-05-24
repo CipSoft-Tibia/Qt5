@@ -1,10 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/devtools/device/cast_device_provider.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "chrome/browser/devtools/device/android_device_manager.h"
 #include "net/base/host_port_pair.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -70,7 +70,7 @@ TEST(CastDeviceProviderTest, ServiceDiscovery) {
   // Callback should be run, and the queried service should match the expected.
   device_provider_->QueryDeviceInfo(
       cast_service.address.host(),
-      base::Bind(&CompareDeviceInfo, &was_run, expected));
+      base::BindOnce(&CompareDeviceInfo, &was_run, expected));
   ASSERT_TRUE(was_run);
   was_run = false;
 
@@ -90,7 +90,7 @@ TEST(CastDeviceProviderTest, ServiceDiscovery) {
 
   // Callback should not be run, since this service is not yet discovered.
   device_provider_->QueryDeviceInfo(other_service.address.host(),
-                                    base::Bind(&DummyCallback, &was_run));
+                                    base::BindOnce(&DummyCallback, &was_run));
   ASSERT_FALSE(was_run);
 
   device_provider_->OnDeviceChanged(cast_service_type, true, other_service);
@@ -98,7 +98,7 @@ TEST(CastDeviceProviderTest, ServiceDiscovery) {
   // Callback should not be run, since non-cast services are not discovered by
   // this device provider.
   device_provider_->QueryDeviceInfo(other_service.address.host(),
-                                    base::Bind(&DummyCallback, &was_run));
+                                    base::BindOnce(&DummyCallback, &was_run));
   ASSERT_FALSE(was_run);
 
   // Remove the cast service.
@@ -107,6 +107,6 @@ TEST(CastDeviceProviderTest, ServiceDiscovery) {
 
   // Callback should not be run, since the cast service has been removed.
   device_provider_->QueryDeviceInfo(cast_service.address.host(),
-                                    base::Bind(&DummyCallback, &was_run));
+                                    base::BindOnce(&DummyCallback, &was_run));
   ASSERT_FALSE(was_run);
 }

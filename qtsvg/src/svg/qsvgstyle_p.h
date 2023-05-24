@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSVGSTYLE_P_H
 #define QSVGSTYLE_P_H
@@ -70,7 +34,7 @@ class QSvgTinyDocument;
 template <class T> class QSvgRefCounter
 {
 public:
-    QSvgRefCounter() { t = 0; }
+    QSvgRefCounter() { t = nullptr; }
     QSvgRefCounter(T *_t)
     {
         t = _t;
@@ -148,6 +112,7 @@ struct Q_SVG_PRIVATE_EXPORT QSvgExtraStates
     int nestedUseLevel = 0;
     int nestedUseCount = 0;
     bool vectorEffect; // true if pen is cosmetic
+    qint8 imageRendering; // QSvgQualityStyle::ImageRendering
 };
 
 class Q_SVG_PRIVATE_EXPORT QSvgStyleProperty : public QSvgRefCounted
@@ -186,10 +151,18 @@ public:
 class Q_SVG_PRIVATE_EXPORT QSvgQualityStyle : public QSvgStyleProperty
 {
 public:
+    enum ImageRendering: qint8 {
+        ImageRenderingAuto = 0,
+        ImageRenderingOptimizeSpeed = 1,
+        ImageRenderingOptimizeQuality = 2,
+    };
+
     QSvgQualityStyle(int color);
     void apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states) override;
     void revert(QPainter *p, QSvgExtraStates &states) override;
     Type type() const override;
+
+    void setImageRendering(ImageRendering);
 private:
     // color-render ing v 	v 	'auto' | 'optimizeSpeed' |
     //                                  'optimizeQuality' | 'inherit'
@@ -210,7 +183,9 @@ private:
 
     // image-rendering v 	v 	'auto' | 'optimizeSpeed' | 'optimizeQuality' |
     //                                      'inherit'
-    //QSvgImageRendering m_imageRendering;
+    qint32 m_imageRendering: 4;
+    qint32 m_oldImageRendering: 4;
+    quint32 m_imageRenderingSet: 1;
 };
 
 
@@ -363,8 +338,6 @@ public:
         m_variantSet = 1;
     }
 
-    static int SVGToQtWeight(int weight);
-
     void setWeight(int weight)
     {
         m_weight = weight;
@@ -415,7 +388,7 @@ public:
     void setStroke(QBrush brush)
     {
         m_stroke.setBrush(brush);
-        m_style = 0;
+        m_style = nullptr;
         m_strokeSet = 1;
     }
 
@@ -425,7 +398,7 @@ public:
         m_strokeSet = 1;
     }
 
-    void setDashArray(const QVector<qreal> &dashes);
+    void setDashArray(const QList<qreal> &dashes);
 
     void setDashArrayNone()
     {
@@ -650,7 +623,7 @@ public:
     };
 public:
     QSvgAnimateTransform(int startMs, int endMs, int by = 0);
-    void setArgs(TransformType type, Additive additive, const QVector<qreal> &args);
+    void setArgs(TransformType type, Additive additive, const QList<qreal> &args);
     void setFreeze(bool freeze);
     void setRepeatCount(qreal repeatCount);
     void apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &states) override;
@@ -693,7 +666,7 @@ private:
     qreal m_totalRunningTime;
     TransformType m_type;
     Additive m_additive;
-    QVector<qreal> m_args;
+    QList<qreal> m_args;
     int m_count;
     QTransform m_transform;
     QTransform m_oldWorldTransform;

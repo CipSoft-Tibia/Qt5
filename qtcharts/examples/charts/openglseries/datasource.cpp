@@ -1,41 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "datasource.h"
-#include <QtCore/QtMath>
-#include <QtCore/QRandomGenerator>
 
-QT_CHARTS_USE_NAMESPACE
+#include <QLabel>
+#include <QRandomGenerator>
+#include <QtMath>
+#include <QXYSeries>
 
-DataSource::DataSource(QObject *parent) :
-    QObject(parent),
-    m_index(-1)
+DataSource::DataSource(QObject *parent)
+     : QObject(parent)
 {
     generateData(0, 0, 0);
 }
@@ -43,14 +17,14 @@ DataSource::DataSource(QObject *parent) :
 void DataSource::update(QAbstractSeries *series, int seriesIndex)
 {
     if (series) {
-        QXYSeries *xySeries = static_cast<QXYSeries *>(series);
-        const QVector<QVector<QPointF> > &seriesData = m_data.at(seriesIndex);
+        auto xySeries = static_cast<QXYSeries *>(series);
+        const QList<QList<QPointF>> &seriesData = m_data.at(seriesIndex);
         if (seriesIndex == 0)
             m_index++;
         if (m_index > seriesData.count() - 1)
             m_index = 0;
 
-        QVector<QPointF> points = seriesData.at(m_index);
+        const auto points = seriesData.at(m_index);
         // Use replace instead of clear + append, it's optimized for performance
         xySeries->replace(points);
     }
@@ -103,10 +77,10 @@ void DataSource::generateData(int seriesCount, int rowCount, int colCount)
 
     // Append the new data depending on the type
     for (int k(0); k < seriesCount; k++) {
-        QVector<QVector<QPointF> > seriesData;
+        QList<QList<QPointF>> seriesData;
         qreal height = qreal(k) * (10.0 / qreal(seriesCount)) + 0.3;
         for (int i(0); i < rowCount; i++) {
-            QVector<QPointF> points;
+            QList<QPointF> points;
             points.reserve(colCount);
             for (int j(0); j < colCount; j++) {
                 qreal x(0);

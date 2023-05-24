@@ -1,11 +1,13 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_PUBLIC_BROWSER_URL_LOADER_THROTTLES_H_
 #define CONTENT_PUBLIC_BROWSER_URL_LOADER_THROTTLES_H_
 
-#include "base/callback.h"
+#include <vector>
+
+#include "base/functional/callback.h"
 #include "content/common/content_export.h"
 
 namespace blink {

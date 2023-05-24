@@ -1,10 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CC_TILES_RASTER_TILE_PRIORITY_QUEUE_ALL_H_
 #define CC_TILES_RASTER_TILE_PRIORITY_QUEUE_ALL_H_
 
+#include <memory>
 #include <set>
 #include <utility>
 #include <vector>
@@ -44,6 +45,7 @@ class CC_EXPORT RasterTilePriorityQueueAll : public RasterTilePriorityQueue {
   std::vector<std::unique_ptr<TilingSetRasterQueueAll>> active_queues_;
   std::vector<std::unique_ptr<TilingSetRasterQueueAll>> pending_queues_;
   TreePriority tree_priority_;
+  const bool fix_raster_tile_priority_queue_for_smoothness_;
 };
 
 }  // namespace cc

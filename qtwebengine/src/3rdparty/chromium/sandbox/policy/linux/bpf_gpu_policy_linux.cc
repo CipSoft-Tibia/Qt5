@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,8 @@
 #include <unistd.h>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "sandbox/linux/bpf_dsl/bpf_dsl.h"
 #include "sandbox/linux/seccomp-bpf-helpers/syscall_parameters_restrictions.h"
 #include "sandbox/linux/seccomp-bpf-helpers/syscall_sets.h"
@@ -29,9 +29,12 @@
 #define F_ADD_SEALS     1033
 #endif
 
+using sandbox::bpf_dsl::AllOf;
 using sandbox::bpf_dsl::Allow;
 using sandbox::bpf_dsl::Arg;
+using sandbox::bpf_dsl::BoolExpr;
 using sandbox::bpf_dsl::Error;
+using sandbox::bpf_dsl::If;
 using sandbox::bpf_dsl::ResultExpr;
 using sandbox::bpf_dsl::Trap;
 using sandbox::syscall_broker::BrokerProcess;
@@ -45,25 +48,32 @@ GpuProcessPolicy::~GpuProcessPolicy() {}
 
 // Main policy for x86_64/i386. Extended by CrosArmGpuProcessPolicy.
 ResultExpr GpuProcessPolicy::EvaluateSyscall(int sysno) const {
+  // Many GPU drivers need to dlopen additional libraries (see the file
+  // permissions in gpu_sandbox_hook_linux.cc that end in .so).
+  if (SyscallSets::IsDlopen(sysno)) {
+    return Allow();
+  }
+
   switch (sysno) {
     case __NR_kcmp:
       return Error(ENOSYS);
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS)
     case __NR_fallocate:
       return Allow();
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
     case __NR_fcntl: {
       // The Nvidia driver uses flags not in the baseline policy
       // fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW)
       // https://crbug.com/1128175
-      const Arg<int> cmd(1);
-      const Arg<long> long_arg(2);
+      const Arg<unsigned int> cmd(1);
+      const Arg<unsigned long> arg(2);
 
-      const uint64_t kAllowedMask = F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW;
-      if (cmd == F_ADD_SEALS && (long_arg & ~kAllowedMask) == 0)
-        return Allow();
+      const unsigned long kAllowedMask =
+          F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW;
+      BoolExpr add_seals =
+          AllOf(cmd == F_ADD_SEALS, (arg & ~kAllowedMask) == 0);
 
-      break;
+      return If(add_seals, Allow()).Else(BPFBasePolicy::EvaluateSyscall(sysno));
     }
     case __NR_ftruncate:
 #if defined(__i386__) || defined(__arm__) || \
@@ -75,7 +85,6 @@ ResultExpr GpuProcessPolicy::EvaluateSyscall(int sysno) const {
 #endif
     case __NR_getdents64:
     case __NR_ioctl:
-    case __NR_memfd_create:
       return Allow();
 #if defined(__i386__) || defined(__x86_64__) || defined(__mips__)
     // The Nvidia driver uses flags not in the baseline policy
@@ -91,7 +100,6 @@ ResultExpr GpuProcessPolicy::EvaluateSyscall(int sysno) const {
     case __NR_sysinfo:
     case __NR_uname:  // https://crbug.com/1075934
       return Allow();
-    case __NR_sched_getaffinity:
     case __NR_sched_setaffinity:
       return RestrictSchedTarget(GetPolicyPid(), sysno);
     case __NR_prlimit64:
@@ -99,17 +107,15 @@ ResultExpr GpuProcessPolicy::EvaluateSyscall(int sysno) const {
     default:
       break;
   }
-  if (SyscallSets::IsEventFd(sysno))
-    return Allow();
 
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS) && defined(USE_X11)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
   if (SyscallSets::IsSystemVSharedMemory(sysno))
     return Allow();
 #endif
 
   auto* sandbox_linux = SandboxLinux::GetInstance();
   if (sandbox_linux->ShouldBrokerHandleSyscall(sysno))
-    return sandbox_linux->HandleViaBroker();
+    return sandbox_linux->HandleViaBroker(sysno);
 
   // Default on the baseline policy.
   return BPFBasePolicy::EvaluateSyscall(sysno);

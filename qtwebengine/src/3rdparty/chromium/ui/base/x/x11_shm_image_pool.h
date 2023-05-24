@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,25 +9,23 @@
 #include <list>
 #include <vector>
 
-#include "base/callback_forward.h"
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/sequence_checker.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "ui/base/x/x11_util.h"
-#include "ui/events/platform/x11/x11_event_source.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/x/event.h"
 #include "ui/gfx/x/shm.h"
-#include "ui/gfx/x/x11.h"
 
 namespace ui {
 
 // Creates XImages backed by shared memory that will be shared with the X11
 // server for processing.
-class COMPONENT_EXPORT(UI_BASE_X) XShmImagePool : public XEventDispatcher {
+class COMPONENT_EXPORT(UI_BASE_X) XShmImagePool : public x11::EventObserver {
  public:
   XShmImagePool(x11::Connection* connection,
                 x11::Drawable drawable,
@@ -35,6 +33,9 @@ class COMPONENT_EXPORT(UI_BASE_X) XShmImagePool : public XEventDispatcher {
                 int depth,
                 std::size_t max_frames_pending,
                 bool enable_multibuffering);
+
+  XShmImagePool(const XShmImagePool&) = delete;
+  XShmImagePool& operator=(const XShmImagePool&) = delete;
 
   ~XShmImagePool() override;
 
@@ -64,7 +65,7 @@ class COMPONENT_EXPORT(UI_BASE_X) XShmImagePool : public XEventDispatcher {
 
     x11::Shm::Seg shmseg{};
     int shmid = 0;
-    void* shmaddr = nullptr;
+    raw_ptr<void> shmaddr = nullptr;
     bool shmem_attached_to_server = false;
     SkBitmap bitmap;
     std::unique_ptr<SkCanvas> canvas;
@@ -78,12 +79,12 @@ class COMPONENT_EXPORT(UI_BASE_X) XShmImagePool : public XEventDispatcher {
     x11::Shm::Seg shmseg{};
   };
 
-  // XEventDispatcher:
-  bool DispatchXEvent(x11::Event* xev) override;
+  // x11::EventObserver:
+  void OnEvent(const x11::Event& xev) override;
 
   void Cleanup();
 
-  x11::Connection* const connection_;
+  const raw_ptr<x11::Connection> connection_;
   const x11::Drawable drawable_;
   const x11::VisualId visual_;
   const int depth_;
@@ -97,8 +98,6 @@ class COMPONENT_EXPORT(UI_BASE_X) XShmImagePool : public XEventDispatcher {
   std::list<SwapClosure> swap_closures_;
 
   SEQUENCE_CHECKER(sequence_checker_);
-
-  DISALLOW_COPY_AND_ASSIGN(XShmImagePool);
 };
 
 }  // namespace ui

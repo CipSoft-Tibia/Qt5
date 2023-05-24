@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,15 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include "base/bind_helpers.h"
+
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/strings/string_util.h"
 #include "base/test/metrics/histogram_tester.h"
-#include "base/test/scoped_feature_list.h"
 #include "content/browser/service_worker/embedded_worker_test_helper.h"
 #include "content/browser/service_worker/service_worker_consts.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
 #include "content/browser/service_worker/service_worker_test_utils.h"
-#include "content/browser/url_loader_factory_getter.h"
 #include "content/public/test/browser_task_environment.h"
 #include "mojo/public/cpp/system/data_pipe_utils.h"
 #include "net/base/load_flags.h"
@@ -30,7 +29,10 @@
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
 #include "services/network/test/test_url_loader_client.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_registration.mojom.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_registration_options.mojom.h"
+#include "url/origin.h"
 
 namespace content {
 namespace service_worker_updated_script_loader_unittest {
@@ -67,7 +69,8 @@ class MockHTTPServer {
 
 // ServiceWorkerUpdatedScriptLoaderTest is for testing the handling of requests
 // for installing service worker scripts via ServiceWorkerUpdatedScriptLoader.
-class ServiceWorkerUpdatedScriptLoaderTest : public testing::Test {
+class ServiceWorkerUpdatedScriptLoaderTest
+    : public testing::TestWithParam<blink::mojom::ScriptType> {
  public:
   ServiceWorkerUpdatedScriptLoaderTest()
       : task_environment_(BrowserTaskEnvironment::IO_MAINLOOP),
@@ -78,7 +81,7 @@ class ServiceWorkerUpdatedScriptLoaderTest : public testing::Test {
 
   void SetUp() override {
     helper_ = std::make_unique<EmbeddedWorkerTestHelper>(base::FilePath());
-    SetUpRegistration(kScriptURL);
+    SetUpRegistration(kScriptURL, GetParam());
 
     // Create the old script resource in storage.
     WriteToDiskCacheWithIdSync(context()->GetStorageControl(), kScriptURL,
@@ -88,26 +91,31 @@ class ServiceWorkerUpdatedScriptLoaderTest : public testing::Test {
 
   // Sets up ServiceWorkerRegistration and ServiceWorkerVersion. This should be
   // called before DoRequest().
-  void SetUpRegistration(const GURL& script_url) {
+  void SetUpRegistration(const GURL& script_url,
+                         const blink::mojom::ScriptType& script_type) {
     blink::mojom::ServiceWorkerRegistrationOptions options;
     options.scope = script_url.GetWithoutFilename();
-    SetUpRegistrationWithOptions(script_url, options);
+    options.type = script_type;
+    SetUpRegistrationWithOptions(script_url, options,
+                                 blink::StorageKey::CreateFirstParty(
+                                     url::Origin::Create(options.scope)));
   }
   void SetUpRegistrationWithOptions(
       const GURL& script_url,
-      blink::mojom::ServiceWorkerRegistrationOptions options) {
+      blink::mojom::ServiceWorkerRegistrationOptions options,
+      const blink::StorageKey& key) {
     registration_ =
-        CreateNewServiceWorkerRegistration(context()->registry(), options);
-    SetUpVersion(script_url);
+        CreateNewServiceWorkerRegistration(context()->registry(), options, key);
+    SetUpVersion(script_url, options.type);
   }
 
   // After this is called, |version_| will be a new, uninstalled version. The
   // next time DoRequest() is called, |version_| will attempt to install,
   // possibly updating if registration has an installed worker.
-  void SetUpVersion(const GURL& script_url) {
+  void SetUpVersion(const GURL& script_url,
+                    const blink::mojom::ScriptType& script_type) {
     version_ = CreateNewServiceWorkerVersion(
-        context()->registry(), registration_.get(), script_url,
-        blink::mojom::ScriptType::kClassic);
+        context()->registry(), registration_.get(), script_url, script_type);
     version_->SetStatus(ServiceWorkerVersion::NEW);
   }
 
@@ -194,7 +202,7 @@ class ServiceWorkerUpdatedScriptLoaderTest : public testing::Test {
 };
 
 // Tests the loader when the first script data block is different.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, FirstBlockDifferent) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, FirstBlockDifferent) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 24\0\0";
   const std::string kDiffBlock = "diff-block-";
@@ -223,7 +231,7 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, FirstBlockDifferent) {
 }
 
 // Tests the loader when the script data block in the middle is different.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, MiddleBlockDifferent) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, MiddleBlockDifferent) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 34\0\0";
   const std::string kSameBlock = "old-block";
@@ -253,7 +261,7 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, MiddleBlockDifferent) {
 }
 
 // Tests the loader when the last script data block is different.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, LastBlockDifferent) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, LastBlockDifferent) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 21\0\0";
   const std::string kSameBlock = "old-block";
@@ -280,7 +288,7 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, LastBlockDifferent) {
 
 // Tests the loader when the last script data block is different and
 // OnCompleted() has been called during update check.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, LastBlockDifferentCompleted) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, LastBlockDifferentCompleted) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 21\0\0";
   const std::string kSameBlock = "old-block";
@@ -303,7 +311,7 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, LastBlockDifferentCompleted) {
 }
 
 // Tests the loader when the new script has more data appended.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, NewScriptLargerThanOld) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, NewScriptLargerThanOld) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 39\0\0";
   const std::string kSameBlock = kOldData;
@@ -333,7 +341,7 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, NewScriptLargerThanOld) {
 }
 
 // Tests the loader when the script changed to have no body.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, NewScriptEmptyBody) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, NewScriptEmptyBody) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 0\0\0";
   const std::string kNewData;
@@ -355,7 +363,7 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, NewScriptEmptyBody) {
 
 // Tests the loader could report error when the resumed network
 // download completed with error.
-TEST_F(ServiceWorkerUpdatedScriptLoaderTest, CompleteFailed) {
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, CompleteFailed) {
   const std::string kNewHeaders =
       "HTTP/1.0 200 OK\0Content-Type: text/javascript\0Content-Length: 34\0\0";
   const std::string kSameBlock = "old-block";
@@ -380,5 +388,53 @@ TEST_F(ServiceWorkerUpdatedScriptLoaderTest, CompleteFailed) {
             LookupResourceId(kScriptURL));
 }
 
+// Regression test for https://crbug.com/1312995.
+TEST_P(ServiceWorkerUpdatedScriptLoaderTest, ClientConsumeNetworkLater) {
+  const std::string kNewHeaders =
+      "HTTP/1.1 200 OK\0Content-Type: text/javascript\0\0";
+  const std::string kSameBlock = kOldData;
+  const std::string kDiffBlock = "|diff-block|";
+  const std::string kNetworkBlock(
+      ServiceWorkerUpdatedScriptLoader::kReadBufferSize, 'a');
+  std::string new_data = kSameBlock + kDiffBlock;
+
+  SetUpComparedScriptInfo(
+      kSameBlock.length(), kNewHeaders, kDiffBlock,
+      ServiceWorkerUpdatedScriptLoader::LoaderState::kLoadingBody,
+      ServiceWorkerUpdatedScriptLoader::WriterState::kWriting);
+
+  DoRequest(kScriptURL, &client_, &loader_);
+
+  // Keep writing body until ServiceWorkerUpdatedScriptLoader's client producer
+  // data pipe becomes full.
+  while (true) {
+    uint32_t bytes_written = kNetworkBlock.size();
+    MojoResult result = network_producer_->WriteData(
+        kNetworkBlock.data(), &bytes_written, MOJO_WRITE_DATA_FLAG_NONE);
+    if (result != MOJO_RESULT_OK) {
+      ASSERT_EQ(result, MOJO_RESULT_SHOULD_WAIT);
+      break;
+    }
+    new_data += kNetworkBlock.substr(0, bytes_written);
+    // Make sure ServiceWorkerUpdatedScriptLoader have a chance to write data to
+    // the client's producer data pipe. This should not enter an infinite loop.
+    base::RunLoop().RunUntilIdle();
+  }
+
+  // Notify the completion of network loader.
+  network_producer_.reset();
+  NotifyLoaderCompletion(net::OK);
+
+  std::string response = ReadDataPipe(client_->response_body_release());
+  ASSERT_EQ(response, new_data);
+
+  client_->RunUntilComplete();
+  ASSERT_EQ(net::OK, client_->completion_status().error_code);
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ServiceWorkerUpdatedScriptLoaderTest,
+                         testing::Values(blink::mojom::ScriptType::kClassic,
+                                         blink::mojom::ScriptType::kModule));
 }  // namespace service_worker_updated_script_loader_unittest
 }  // namespace content

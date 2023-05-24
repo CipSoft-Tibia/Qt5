@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -12,15 +12,17 @@ import("//components/module_installer/android/module_desc_java.gni")
 # Supports most variables of the android_app_bundle_module, plus:
 #   module_desc: Descriptor of this module. See
 #     //chrome/android/modules/chrome_feature_modules.gni for the format.
-#   is_monochrome_or_trichrome: (Optional) Whether this module is packaged into
-#     Monochrome or Trichrome.
+#   is_monochrome: (Optional) Whether this module is Monochrome.
+#   is_trichrome: (Optional) Whether this module is Trichrome.
 #   is_64_bit_browser: (Optional) Whether Chrome (as opposed to WebView) runs in
 #     64 bit.
 template("chrome_feature_module") {
   assert(defined(invoker.module_desc))
   _module_desc = invoker.module_desc
-  _is_monochrome_or_trichrome = defined(invoker.is_monochrome_or_trichrome) &&
-                                invoker.is_monochrome_or_trichrome
+  _is_monochrome_or_trichrome =
+      (defined(invoker.is_monochrome) && invoker.is_monochrome) ||
+      (defined(invoker.is_trichrome) && invoker.is_trichrome)
+  not_needed(invoker, [ "is_trichrome" ])
 
   _loadable_modules_32_bit = []
   if (defined(_module_desc.loadable_modules_32_bit)) {
@@ -86,18 +88,27 @@ template("chrome_feature_module") {
   android_app_bundle_module(target_name) {
     forward_variables_from(invoker,
                            [
+                             "add_view_trace_events",
                              "base_module_target",
+                             "custom_assertion_handler",
+                             "enable_jni_multiplexing",
+                             "expected_android_manifest",
+                             "expected_android_manifest_base",
+                             "expected_android_manifest_library_version_offset",
+                             "expected_android_manifest_version_code_offset",
                              "manifest_package",
                              "min_sdk_version",
                              "package_id",
-                             "uncompress_shared_libraries",
+                             "target_sdk_version",
                              "version_code",
                              "version_name",
                            ])
-    android_manifest = _module_desc.android_manifest
-    if (defined(_module_desc.android_manifest_dep)) {
-      android_manifest_dep = _module_desc.android_manifest_dep
-    }
+    forward_variables_from(_module_desc,
+                           [
+                             "android_manifest",
+                             "android_manifest_dep",
+                             "uses_split",
+                           ])
     deps = [ ":${target_name}__module_desc_java" ]
     if (defined(_module_desc.pak_deps)) {
       deps += [ ":${target_name}__pak_assets" ]
@@ -107,9 +118,9 @@ template("chrome_feature_module") {
     }
 
     # Don't embed more translations than required (http://crbug.com/932017).
-    aapt_locale_allowlist = locales
+    aapt_locale_allowlist = platform_pak_locales
     proguard_enabled = !is_java_debug
-    package_name = _module_desc.name
+    module_name = _module_desc.name
 
     # Determine whether to assign native libraries to the primary or secondary
     # ABI.
@@ -124,6 +135,24 @@ template("chrome_feature_module") {
     } else {
       loadable_modules = _loadable_modules_32_bit
       shared_libraries = _shared_libraries
+    }
+
+    # Adds unwind table asset to the chrome apk for the given library target. This
+    # is not part of generic apk assets target since it depends on the main shared
+    # library of the apk, to extract unwind tables.
+    if (defined(_module_desc.include_unwind_assets) &&
+        _module_desc.include_unwind_assets) {
+      _needs_32bit_lib = target_cpu == "arm" ||
+                         (_is_monochrome_or_trichrome &&
+                          target_cpu == "arm64" && !invoker.is_64_bit_browser)
+
+      if (_needs_32bit_lib) {
+        if (_is_monochrome_or_trichrome) {
+          deps += [ "//chrome/android:libmonochrome_unwind_table_assets" ]
+        } else {
+          deps += [ "//chrome/android:libchrome_unwind_table_assets" ]
+        }
+      }
     }
   }
 }

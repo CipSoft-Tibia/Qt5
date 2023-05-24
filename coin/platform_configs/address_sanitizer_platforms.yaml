@@ -1,0 +1,12 @@
+Version: 2
+Configurations:
+-
+    Id: 'opensuse-15.5-host-asan'
+    Template: 'qtci-linux-openSUSE-15.5-x86_64-52'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'WarningsAreErrors', 'UseConfigure', 'UseAddressSanitizer']
+    Configure arguments: '-nomake examples -developer-build'
+    Environment variables: [
+        'CMAKE_ARGS=-DOPENSSL_ROOT_DIR={{.Env.OPENSSL_HOME}}',
+        'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}}'
+    ]

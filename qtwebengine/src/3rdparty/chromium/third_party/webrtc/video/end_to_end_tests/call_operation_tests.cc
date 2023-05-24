@@ -88,38 +88,23 @@ TEST_F(CallOperationEndToEndTest, RendersSingleDelayedFrame) {
       event_.Set();
     }
 
-    bool Wait() { return event_.Wait(kDefaultTimeoutMs); }
+    bool Wait() { return event_.Wait(kDefaultTimeout); }
 
     rtc::Event event_;
   } renderer;
 
   test::FrameForwarder frame_forwarder;
-  std::unique_ptr<test::DirectTransport> sender_transport;
-  std::unique_ptr<test::DirectTransport> receiver_transport;
 
   SendTask(
-      RTC_FROM_HERE, task_queue(),
-      [this, &renderer, &frame_forwarder, &sender_transport,
-       &receiver_transport]() {
+      task_queue(), [this, &renderer, &frame_forwarder]() {
         CreateCalls();
+        CreateSendTransport(BuiltInNetworkBehaviorConfig(),
+                            /*observer=*/nullptr);
 
-        sender_transport = std::make_unique<test::DirectTransport>(
-            task_queue(),
-            std::make_unique<FakeNetworkPipe>(
-                Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
-            sender_call_.get(), payload_type_map_);
-        receiver_transport = std::make_unique<test::DirectTransport>(
-            task_queue(),
-            std::make_unique<FakeNetworkPipe>(
-                Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
-            receiver_call_.get(), payload_type_map_);
-        sender_transport->SetReceiver(receiver_call_->Receiver());
-        receiver_transport->SetReceiver(sender_call_->Receiver());
-
-        CreateSendConfig(1, 0, 0, sender_transport.get());
-        CreateMatchingReceiveConfigs(receiver_transport.get());
+        CreateReceiveTransport(BuiltInNetworkBehaviorConfig(),
+                               /*observer=*/nullptr);
+        CreateSendConfig(1, 0, 0);
+        CreateMatchingReceiveConfigs();
 
         video_receive_configs_[0].renderer = &renderer;
 
@@ -146,14 +131,11 @@ TEST_F(CallOperationEndToEndTest, RendersSingleDelayedFrame) {
   EXPECT_TRUE(renderer.Wait())
       << "Timed out while waiting for the frame to render.";
 
-  SendTask(RTC_FROM_HERE, task_queue(),
-           [this, &sender_transport, &receiver_transport]() {
-             Stop();
-             DestroyStreams();
-             sender_transport.reset();
-             receiver_transport.reset();
-             DestroyCalls();
-           });
+  SendTask(task_queue(), [this]() {
+    Stop();
+    DestroyStreams();
+    DestroyCalls();
+  });
 }
 
 TEST_F(CallOperationEndToEndTest, TransmitsFirstFrame) {
@@ -161,7 +143,7 @@ TEST_F(CallOperationEndToEndTest, TransmitsFirstFrame) {
    public:
     void OnFrame(const VideoFrame& video_frame) override { event_.Set(); }
 
-    bool Wait() { return event_.Wait(kDefaultTimeoutMs); }
+    bool Wait() { return event_.Wait(kDefaultTimeout); }
 
     rtc::Event event_;
   } renderer;
@@ -173,28 +155,15 @@ TEST_F(CallOperationEndToEndTest, TransmitsFirstFrame) {
   std::unique_ptr<test::DirectTransport> receiver_transport;
 
   SendTask(
-      RTC_FROM_HERE, task_queue(),
-      [this, &renderer, &frame_generator, &frame_forwarder, &sender_transport,
-       &receiver_transport]() {
+      task_queue(), [this, &renderer, &frame_generator, &frame_forwarder]() {
         CreateCalls();
+        CreateSendTransport(BuiltInNetworkBehaviorConfig(),
+                            /*observer=*/nullptr);
+        CreateReceiveTransport(BuiltInNetworkBehaviorConfig(),
+                               /*observer=*/nullptr);
 
-        sender_transport = std::make_unique<test::DirectTransport>(
-            task_queue(),
-            std::make_unique<FakeNetworkPipe>(
-                Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
-            sender_call_.get(), payload_type_map_);
-        receiver_transport = std::make_unique<test::DirectTransport>(
-            task_queue(),
-            std::make_unique<FakeNetworkPipe>(
-                Clock::GetRealTimeClock(), std::make_unique<SimulatedNetwork>(
-                                               BuiltInNetworkBehaviorConfig())),
-            receiver_call_.get(), payload_type_map_);
-        sender_transport->SetReceiver(receiver_call_->Receiver());
-        receiver_transport->SetReceiver(sender_call_->Receiver());
-
-        CreateSendConfig(1, 0, 0, sender_transport.get());
-        CreateMatchingReceiveConfigs(receiver_transport.get());
+        CreateSendConfig(1, 0, 0);
+        CreateMatchingReceiveConfigs();
         video_receive_configs_[0].renderer = &renderer;
 
         CreateVideoStreams();
@@ -216,14 +185,11 @@ TEST_F(CallOperationEndToEndTest, TransmitsFirstFrame) {
   EXPECT_TRUE(renderer.Wait())
       << "Timed out while waiting for the frame to render.";
 
-  SendTask(RTC_FROM_HERE, task_queue(),
-           [this, &sender_transport, &receiver_transport]() {
-             Stop();
-             DestroyStreams();
-             sender_transport.reset();
-             receiver_transport.reset();
-             DestroyCalls();
-           });
+  SendTask(task_queue(), [this]() {
+    Stop();
+    DestroyStreams();
+    DestroyCalls();
+  });
 }
 
 }  // namespace webrtc

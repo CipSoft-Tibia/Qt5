@@ -31,13 +31,11 @@
 #include "src/obu_parser.h"
 #include "src/post_filter.h"
 #include "src/prediction_mask.h"
-#include "src/quantizer.h"
 #include "src/threading_strategy.h"
 #include "src/utils/blocking_counter.h"
 #include "src/utils/common.h"
 #include "src/utils/constants.h"
 #include "src/utils/logging.h"
-#include "src/utils/parameter_tree.h"
 #include "src/utils/raw_bit_reader.h"
 #include "src/utils/segmentation.h"
 #include "src/utils/threadpool.h"
@@ -632,10 +630,6 @@ DecoderImpl::~DecoderImpl() {
 }
 
 StatusCode DecoderImpl::Init() {
-  if (!GenerateWedgeMask(&wedge_masks_)) {
-    LIBGAV1_DLOG(ERROR, "GenerateWedgeMask() failed.");
-    return kStatusOutOfMemory;
-  }
   if (!output_frame_queue_.Init(kMaxLayers)) {
     LIBGAV1_DLOG(ERROR, "output_frame_queue_.Init() failed.");
     return kStatusOutOfMemory;
@@ -854,6 +848,14 @@ StatusCode DecoderImpl::ParseAndSchedule(const uint8_t* data, size_t size,
       LIBGAV1_DLOG(ERROR, "Failed to parse OBU.");
       return status;
     }
+    if (!MaybeInitializeQuantizerMatrix(obu->frame_header())) {
+      LIBGAV1_DLOG(ERROR, "InitializeQuantizerMatrix() failed.");
+      return kStatusOutOfMemory;
+    }
+    if (!MaybeInitializeWedgeMasks(obu->frame_header().frame_type)) {
+      LIBGAV1_DLOG(ERROR, "InitializeWedgeMasks() failed.");
+      return kStatusOutOfMemory;
+    }
     if (IsNewSequenceHeader(*obu)) {
       const ObuSequenceHeader& sequence_header = obu->sequence_header();
       const Libgav1ImageFormat image_format =
@@ -1043,6 +1045,14 @@ StatusCode DecoderImpl::DecodeTemporalUnit(const TemporalUnit& temporal_unit,
       LIBGAV1_DLOG(ERROR, "Failed to parse OBU.");
       return status;
     }
+    if (!MaybeInitializeQuantizerMatrix(obu->frame_header())) {
+      LIBGAV1_DLOG(ERROR, "InitializeQuantizerMatrix() failed.");
+      return kStatusOutOfMemory;
+    }
+    if (!MaybeInitializeWedgeMasks(obu->frame_header().frame_type)) {
+      LIBGAV1_DLOG(ERROR, "InitializeWedgeMasks() failed.");
+      return kStatusOutOfMemory;
+    }
     if (IsNewSequenceHeader(*obu)) {
       const ObuSequenceHeader& sequence_header = obu->sequence_header();
       const Libgav1ImageFormat image_format =
@@ -1161,6 +1171,24 @@ StatusCode DecoderImpl::CopyFrameToOutputBuffer(
   buffer_.spatial_id = frame->spatial_id();
   buffer_.temporal_id = frame->temporal_id();
   buffer_.buffer_private_data = frame->buffer_private_data();
+  if (frame->hdr_cll_set()) {
+    buffer_.has_hdr_cll = 1;
+    buffer_.hdr_cll = frame->hdr_cll();
+  } else {
+    buffer_.has_hdr_cll = 0;
+  }
+  if (frame->hdr_mdcv_set()) {
+    buffer_.has_hdr_mdcv = 1;
+    buffer_.hdr_mdcv = frame->hdr_mdcv();
+  } else {
+    buffer_.has_hdr_mdcv = 0;
+  }
+  if (frame->itut_t35_set()) {
+    buffer_.has_itut_t35 = 1;
+    buffer_.itut_t35 = frame->itut_t35();
+  } else {
+    buffer_.has_itut_t35 = 0;
+  }
   output_frame_ = frame;
   return kStatusOk;
 }
@@ -1222,12 +1250,21 @@ StatusCode DecoderImpl::DecodeTiles(
     LIBGAV1_DLOG(ERROR, "Failed to allocate memory for the decoder buffer.");
     return kStatusOutOfMemory;
   }
-  if (sequence_header.enable_cdef) {
+  if (frame_header.cdef.bits > 0) {
     if (!frame_scratch_buffer->cdef_index.Reset(
             DivideBy16(frame_header.rows4x4 + kMaxBlockHeight4x4),
             DivideBy16(frame_header.columns4x4 + kMaxBlockWidth4x4),
             /*zero_initialize=*/false)) {
       LIBGAV1_DLOG(ERROR, "Failed to allocate memory for cdef index.");
+      return kStatusOutOfMemory;
+    }
+  }
+  if (do_cdef) {
+    if (!frame_scratch_buffer->cdef_skip.Reset(
+            DivideBy2(frame_header.rows4x4 + kMaxBlockHeight4x4),
+            DivideBy16(frame_header.columns4x4 + kMaxBlockWidth4x4),
+            /*zero_initialize=*/true)) {
+      LIBGAV1_DLOG(ERROR, "Failed to allocate memory for cdef skip.");
       return kStatusOutOfMemory;
     }
   }
@@ -1271,8 +1308,7 @@ StatusCode DecoderImpl::DecodeTiles(
   // without having to check for boundary conditions.
   if (!frame_scratch_buffer->block_parameters_holder.Reset(
           frame_header.rows4x4 + kMaxBlockHeight4x4,
-          frame_header.columns4x4 + kMaxBlockWidth4x4,
-          sequence_header.use_128x128_superblock)) {
+          frame_header.columns4x4 + kMaxBlockWidth4x4)) {
     return kStatusOutOfMemory;
   }
   const dsp::Dsp* const dsp =
@@ -1355,23 +1391,39 @@ StatusCode DecoderImpl::DecodeTiles(
     const int pixel_size = sequence_header.color_config.bitdepth == 8
                                ? sizeof(uint8_t)
                                : sizeof(uint16_t);
+    const int coefficients_size = kSuperResFilterTaps *
+                                  Align(frame_header.upscaled_width, 16) *
+                                  pixel_size;
     if (!frame_scratch_buffer->superres_coefficients[kPlaneTypeY].Resize(
-            kSuperResFilterTaps * Align(frame_header.upscaled_width, 16) *
-            pixel_size)) {
+            coefficients_size)) {
       LIBGAV1_DLOG(ERROR,
                    "Failed to Resize superres_coefficients[kPlaneTypeY].");
       return kStatusOutOfMemory;
     }
+#if LIBGAV1_MSAN
+    // Quiet SuperRes_NEON() msan warnings.
+    memset(frame_scratch_buffer->superres_coefficients[kPlaneTypeY].get(), 0,
+           coefficients_size);
+#endif
+    const int uv_coefficients_size =
+        kSuperResFilterTaps *
+        Align(SubsampledValue(frame_header.upscaled_width, 1), 16) * pixel_size;
     if (!sequence_header.color_config.is_monochrome &&
         sequence_header.color_config.subsampling_x != 0 &&
         !frame_scratch_buffer->superres_coefficients[kPlaneTypeUV].Resize(
-            kSuperResFilterTaps *
-            Align(SubsampledValue(frame_header.upscaled_width, 1), 16) *
-            pixel_size)) {
+            uv_coefficients_size)) {
       LIBGAV1_DLOG(ERROR,
                    "Failed to Resize superres_coefficients[kPlaneTypeUV].");
       return kStatusOutOfMemory;
     }
+#if LIBGAV1_MSAN
+    if (!sequence_header.color_config.is_monochrome &&
+        sequence_header.color_config.subsampling_x != 0) {
+      // Quiet SuperRes_NEON() msan warnings.
+      memset(frame_scratch_buffer->superres_coefficients[kPlaneTypeUV].get(), 0,
+             uv_coefficients_size);
+    }
+#endif
   }
 
   if (do_superres && threading_strategy.post_filter_thread_pool() != nullptr) {
@@ -1395,10 +1447,6 @@ StatusCode DecoderImpl::DecodeTiles(
       return kStatusOutOfMemory;
     }
   }
-
-  PostFilter post_filter(frame_header, sequence_header, frame_scratch_buffer,
-                         current_frame->buffer(), dsp,
-                         settings_.post_filter_mask);
 
   if (is_frame_parallel_ && !IsIntraFrame(frame_header.frame_type)) {
     // We can parse the current frame if all the reference frames have been
@@ -1468,6 +1516,9 @@ StatusCode DecoderImpl::DecodeTiles(
     }
   }
 
+  PostFilter post_filter(frame_header, sequence_header, frame_scratch_buffer,
+                         current_frame->buffer(), dsp,
+                         settings_.post_filter_mask);
   SymbolDecoderContext saved_symbol_decoder_context;
   BlockingCounterWithStatus pending_tiles(tile_count);
   for (int tile_number = 0; tile_number < tile_count; ++tile_number) {
@@ -1475,9 +1526,9 @@ StatusCode DecoderImpl::DecodeTiles(
         tile_number, tile_buffers[tile_number].data,
         tile_buffers[tile_number].size, sequence_header, frame_header,
         current_frame, state, frame_scratch_buffer, wedge_masks_,
-        &saved_symbol_decoder_context, prev_segment_ids, &post_filter, dsp,
-        threading_strategy.row_thread_pool(tile_number), &pending_tiles,
-        is_frame_parallel_, use_intra_prediction_buffer);
+        quantizer_matrix_, &saved_symbol_decoder_context, prev_segment_ids,
+        &post_filter, dsp, threading_strategy.row_thread_pool(tile_number),
+        &pending_tiles, is_frame_parallel_, use_intra_prediction_buffer);
     if (tile == nullptr) {
       LIBGAV1_DLOG(ERROR, "Failed to create tile.");
       return kStatusOutOfMemory;
@@ -1569,7 +1620,7 @@ StatusCode DecoderImpl::ApplyFilmGrain(
          (*film_grain_frame)->buffer()->stride(kPlaneV));
   const int output_stride_uv = (*film_grain_frame)->buffer()->stride(kPlaneU);
 #if LIBGAV1_MAX_BITDEPTH >= 10
-  if (displayable_frame->buffer()->bitdepth() > 8) {
+  if (displayable_frame->buffer()->bitdepth() == 10) {
     FilmGrain<10> film_grain(displayable_frame->film_grain_params(),
                              displayable_frame->buffer()->is_monochrome(),
                              color_matrix_is_identity,
@@ -1592,6 +1643,30 @@ StatusCode DecoderImpl::ApplyFilmGrain(
     return kStatusOk;
   }
 #endif  // LIBGAV1_MAX_BITDEPTH >= 10
+#if LIBGAV1_MAX_BITDEPTH == 12
+  if (displayable_frame->buffer()->bitdepth() == 12) {
+    FilmGrain<12> film_grain(displayable_frame->film_grain_params(),
+                             displayable_frame->buffer()->is_monochrome(),
+                             color_matrix_is_identity,
+                             displayable_frame->buffer()->subsampling_x(),
+                             displayable_frame->buffer()->subsampling_y(),
+                             displayable_frame->upscaled_width(),
+                             displayable_frame->frame_height(), thread_pool);
+    if (!film_grain.AddNoise(
+            displayable_frame->buffer()->data(kPlaneY),
+            displayable_frame->buffer()->stride(kPlaneY),
+            displayable_frame->buffer()->data(kPlaneU),
+            displayable_frame->buffer()->data(kPlaneV), input_stride_uv,
+            (*film_grain_frame)->buffer()->data(kPlaneY),
+            (*film_grain_frame)->buffer()->stride(kPlaneY),
+            (*film_grain_frame)->buffer()->data(kPlaneU),
+            (*film_grain_frame)->buffer()->data(kPlaneV), output_stride_uv)) {
+      LIBGAV1_DLOG(ERROR, "film_grain.AddNoise() failed.");
+      return kStatusOutOfMemory;
+    }
+    return kStatusOk;
+  }
+#endif  // LIBGAV1_MAX_BITDEPTH == 12
   FilmGrain<8> film_grain(displayable_frame->film_grain_params(),
                           displayable_frame->buffer()->is_monochrome(),
                           color_matrix_is_identity,
@@ -1637,6 +1712,29 @@ bool DecoderImpl::IsNewSequenceHeader(const ObuParser& obu) {
   sequence_header_ = sequence_header;
   has_sequence_header_ = true;
   return sequence_header_changed;
+}
+
+bool DecoderImpl::MaybeInitializeWedgeMasks(FrameType frame_type) {
+  if (IsIntraFrame(frame_type) || wedge_masks_initialized_) {
+    return true;
+  }
+  if (!GenerateWedgeMask(&wedge_masks_)) {
+    return false;
+  }
+  wedge_masks_initialized_ = true;
+  return true;
+}
+
+bool DecoderImpl::MaybeInitializeQuantizerMatrix(
+    const ObuFrameHeader& frame_header) {
+  if (quantizer_matrix_initialized_ || !frame_header.quantizer.use_matrix) {
+    return true;
+  }
+  if (!InitializeQuantizerMatrix(&quantizer_matrix_)) {
+    return false;
+  }
+  quantizer_matrix_initialized_ = true;
+  return true;
 }
 
 }  // namespace libgav1

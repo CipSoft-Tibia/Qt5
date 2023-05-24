@@ -1,67 +1,42 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtTest module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QVector>
-#include <vector>
+#include <QList>
 #include "qrawvector.h"
+#include <vector>
 
-const int N = 1000000;
-double s = 0;
+// Used as accumulator in tests:
+double accumulate = 0;
 
 QVector<double> qvector_fill_and_return_helper()
 {
-    QVector<double> v(N);
-    for (int i = 0; i != N; ++i)
+    QVector<double> v(million);
+    for (int i = 0; i != million; ++i)
         v[i] = i;
     return v;
 }
 
 QVector<double> qrawvector_fill_and_return_helper()
 {
-    QRawVector<double> v(N);
-    for (int i = 0; i != N; ++i)
+    QRawVector<double> v(million);
+    for (int i = 0; i != million; ++i)
         v[i] = i;
     return v.mutateToVector();
 }
 
 QVector<double> mixedvector_fill_and_return_helper()
 {
-    std::vector<double> v(N);
-    for (int i = 0; i != N; ++i)
+    std::vector<double> v(million);
+    for (int i = 0; i != million; ++i)
         v[i] = i;
-    return QVector<double>::fromStdVector(v);
+    return QVector<double>(v.begin(), v.end());
 }
 
 
 std::vector<double> stdvector_fill_and_return_helper()
 {
-    std::vector<double> v(N);
-    for (int i = 0; i != N; ++i)
+    std::vector<double> v(million);
+    for (int i = 0; i != million; ++i)
         v[i] = i;
     return v;
 }
@@ -79,6 +54,8 @@ QVectorData *QVectorData::allocate(int size, int alignment)
 {
     return static_cast<QVectorData *>(alignment > alignmentThreshold() ? qMallocAligned(size, alignment) : ::malloc(size));
 }
+
+QT_BEGIN_NAMESPACE
 
 QVectorData *QVectorData::reallocate(QVectorData *x, int newsize, int oldsize, int alignment)
 {
@@ -99,3 +76,5 @@ int QVectorData::grow(int sizeOfHeader, int size, int sizeOfT)
 {
     return qCalculateGrowingBlockSize(size, sizeOfT, sizeOfHeader).elementCount;
 }
+
+QT_END_NAMESPACE

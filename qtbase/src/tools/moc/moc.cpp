@@ -1,31 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2019 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "moc.h"
 #include "generator.h"
@@ -39,35 +14,25 @@
 
 // for normalizeTypeInternal
 #include <private/qmetaobject_moc_p.h>
+#include <private/qduplicatetracker_p.h>
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 // only moc needs this function
-static QByteArray normalizeType(const QByteArray &ba, bool fixScope = false)
+static QByteArray normalizeType(const QByteArray &ba)
 {
-    const char *s = ba.constData();
-    int len = ba.size();
-    char stackbuf[64];
-    char *buf = (len >= 64 ? new char[len + 1] : stackbuf);
-    char *d = buf;
-    char last = 0;
-    while(*s && is_space(*s))
-        s++;
-    while (*s) {
-        while (*s && !is_space(*s))
-            last = *d++ = *s++;
-        while (*s && is_space(*s))
-            s++;
-        if (*s && ((is_ident_char(*s) && is_ident_char(last))
-                   || ((*s == ':') && (last == '<')))) {
-            last = *d++ = ' ';
-        }
-    }
-    *d = '\0';
-    QByteArray result = normalizeTypeInternal(buf, d, fixScope);
-    if (buf != stackbuf)
-        delete [] buf;
-    return result;
+    return ba.size() ? normalizeTypeInternal(ba.constBegin(), ba.constEnd()) : ba;
+}
+
+const QByteArray &Moc::toFullyQualified(const QByteArray &name) const noexcept
+{
+    if (auto it = knownQObjectClasses.find(name); it != knownQObjectClasses.end())
+        return it.value();
+    if (auto it = knownGadgets.find(name); it != knownGadgets.end())
+        return it.value();
+    return name;
 }
 
 bool Moc::parseClassHead(ClassDef *def)
@@ -83,6 +48,9 @@ bool Moc::parseClassHead(ClassDef *def)
         if (token == SEMIC || token == RANGLE)
             return false;
     } while (token);
+
+    // support attributes like "class [[deprecated]]] name"
+    skipCxxAttributes();
 
     if (!test(IDENTIFIER)) // typedef struct { ... }
         return false;
@@ -128,17 +96,17 @@ bool Moc::parseClassHead(ClassDef *def)
             else
                 test(PUBLIC);
             test(VIRTUAL);
-            const QByteArray type = parseType().name;
+            const Type type = parseType();
             // ignore the 'class Foo : BAR(Baz)' case
             if (test(LPAREN)) {
                 until(RPAREN);
             } else {
-                def->superclassList += qMakePair(type, access);
+                def->superclassList.push_back({type.name, toFullyQualified(type.name), access});
             }
         } while (test(COMMA));
 
         if (!def->superclassList.isEmpty()
-            && knownGadgets.contains(def->superclassList.constFirst().first)) {
+            && knownGadgets.contains(def->superclassList.constFirst().classname)) {
             // Q_GADGET subclasses are treated as Q_GADGETs
             knownGadgets.insert(def->classname, def->qualified);
             knownGadgets.insert(def->qualified, def->qualified);
@@ -284,7 +252,7 @@ bool Moc::parseEnum(EnumDef *def)
     }
     if (test(COLON)) { // C++11 strongly typed enum
         // enum Foo : unsigned long { ... };
-        parseType(); //ignore the result
+        def->type = normalizeType(parseType().name);
     }
     if (!test(LBRACE))
         return false;
@@ -341,7 +309,7 @@ void Moc::parseFunctionArguments(FunctionDef *def)
             arg.rightType += lexem();
         }
         arg.normalizedType = normalizeType(QByteArray(arg.type.name + ' ' + arg.rightType));
-        arg.typeNameForCast = normalizeType(QByteArray(noRef(arg.type.name) + "(*)" + arg.rightType));
+        arg.typeNameForCast = QByteArray("std::add_pointer_t<"+arg.normalizedType+">");
         if (test(EQ))
             arg.isDefault = true;
         def->arguments += arg;
@@ -353,6 +321,11 @@ void Moc::parseFunctionArguments(FunctionDef *def)
         && def->arguments.constLast().normalizedType == "QPrivateSignal") {
         def->arguments.removeLast();
         def->isPrivateSignal = true;
+    }
+    if (def->arguments.size() == 1
+        && def->arguments.constLast().normalizedType == "QMethodRawArguments") {
+        def->arguments.removeLast();
+        def->isRawSlot = true;
     }
 }
 
@@ -397,17 +370,42 @@ bool Moc::skipCxxAttributes()
     return false;
 }
 
+QTypeRevision Moc::parseRevision()
+{
+    next(LPAREN);
+    QByteArray revisionString = lexemUntil(RPAREN);
+    revisionString.remove(0, 1);
+    revisionString.chop(1);
+    const QList<QByteArray> majorMinor = revisionString.split(',');
+    switch (majorMinor.size()) {
+    case 1: {
+        bool ok = false;
+        const int revision = revisionString.toInt(&ok);
+        if (!ok || !QTypeRevision::isValidSegment(revision))
+            error("Invalid revision");
+        return QTypeRevision::fromMinorVersion(revision);
+    }
+    case 2: { // major.minor
+        bool ok = false;
+        const int major = majorMinor[0].toInt(&ok);
+        if (!ok || !QTypeRevision::isValidSegment(major))
+            error("Invalid major version");
+        const int minor = majorMinor[1].toInt(&ok);
+        if (!ok || !QTypeRevision::isValidSegment(minor))
+            error("Invalid minor version");
+        return QTypeRevision::fromVersion(major, minor);
+    }
+    default:
+        error("Invalid revision");
+        return QTypeRevision();
+    }
+}
+
 bool Moc::testFunctionRevision(FunctionDef *def)
 {
+
     if (test(Q_REVISION_TOKEN)) {
-        next(LPAREN);
-        QByteArray revision = lexemUntil(RPAREN);
-        revision.remove(0, 1);
-        revision.chop(1);
-        bool ok = false;
-        def->revision = revision.toInt(&ok);
-        if (!ok || def->revision < 0)
-            error("Invalid revision");
+        def->revision = parseRevision().toEncodedVersion<int>();
         return true;
     }
 
@@ -420,8 +418,7 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
     def->isVirtual = false;
     def->isStatic = false;
     //skip modifiers and attributes
-    while (test(INLINE) || (test(STATIC) && (def->isStatic = true) == true) ||
-        (test(VIRTUAL) && (def->isVirtual = true) == true) //mark as virtual
+    while (testForFunctionModifiers(def)
         || skipCxxAttributes() || testFunctionAttribute(def) || testFunctionRevision(def)) {}
     bool templateFunction = (lookup() == TEMPLATE);
     def->type = parseType();
@@ -437,6 +434,10 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
         scopedFunctionName = def->type.isScoped;
         def->type = Type("int");
     } else {
+        // we might have modifiers and attributes after a tag
+        // note that testFunctionAttribute is handled further below,
+        // and revisions and attributes must come first
+        while (testForFunctionModifiers(def)) {}
         Type tempType = parseType();;
         while (!tempType.name.isEmpty() && lookup() != LPAREN) {
             if (testFunctionAttribute(def->type.firstToken, def))
@@ -520,14 +521,20 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
     return true;
 }
 
+bool Moc::testForFunctionModifiers(FunctionDef *def)
+{
+    return test(EXPLICIT) || test(INLINE) ||
+            (test(STATIC) && (def->isStatic = true)) ||
+            (test(VIRTUAL) && (def->isVirtual = true));
+}
+
 // like parseFunction, but never aborts with an error
 bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
 {
     def->isVirtual = false;
     def->isStatic = false;
     //skip modifiers and attributes
-    while (test(EXPLICIT) || test(INLINE) || (test(STATIC) && (def->isStatic = true) == true) ||
-        (test(VIRTUAL) && (def->isVirtual = true) == true) //mark as virtual
+    while (testForFunctionModifiers(def)
         || skipCxxAttributes() || testFunctionAttribute(def) || testFunctionRevision(def)) {}
     bool tilde = test(TILDE);
     def->type = parseType();
@@ -545,6 +552,10 @@ bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
             def->type = Type("int");
         }
     } else {
+        // ### TODO: The condition before testForFunctionModifiers shoulnd't be necessary,
+        // but otherwise we end up with misparses
+        if (def->isSlot || def->isSignal || def->isInvokable)
+            while (testForFunctionModifiers(def)) {}
         Type tempType = parseType();;
         while (!tempType.name.isEmpty() && lookup() != LPAREN) {
             if (testFunctionAttribute(def->type.firstToken, def))
@@ -592,19 +603,47 @@ bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
     return true;
 }
 
+inline void handleDefaultArguments(QList<FunctionDef> *functionList, FunctionDef &function)
+{
+    // support a function with a default argument by pretending there is an
+    // overload without the argument (the original function is the overload with
+    // all arguments present)
+    while (function.arguments.size() > 0 && function.arguments.constLast().isDefault) {
+        function.wasCloned = true;
+        function.arguments.removeLast();
+        *functionList += function;
+    }
+}
+
+void Moc::prependNamespaces(BaseDef &def, const QList<NamespaceDef> &namespaceList) const
+{
+    auto it = namespaceList.crbegin();
+    const auto rend = namespaceList.crend();
+    for (; it != rend; ++it) {
+        if (inNamespace(&*it))
+            def.qualified.prepend(it->classname + "::");
+    }
+}
+
 void Moc::parse()
 {
-    QVector<NamespaceDef> namespaceList;
+    QList<NamespaceDef> namespaceList;
     bool templateClass = false;
     while (hasNext()) {
         Token t = next();
         switch (t) {
             case NAMESPACE: {
-                int rewind = index;
+                qsizetype rewind = index;
                 if (test(IDENTIFIER)) {
                     QByteArray nsName = lexem();
                     QByteArrayList nested;
                     while (test(SCOPE)) {
+                        /* treat (C++20's) namespace A::inline B {} as A::B
+                           this is mostly to not break compilation when encountering such
+                           a construct in a header; the interaction of Qt's meta-macros with
+                           inline namespaces is still rather poor.
+                        */
+                        test(INLINE);
                         next(IDENTIFIER);
                         nested.append(nsName);
                         nsName = lexem();
@@ -626,11 +665,8 @@ void Moc::parse()
                         def.end = index;
                         index = def.begin + 1;
 
-                        for (int i = namespaceList.size() - 1; i >= 0; --i) {
-                            if (inNamespace(&namespaceList.at(i))) {
-                                def.qualified.prepend(namespaceList.at(i).classname + "::");
-                            }
-                        }
+                        prependNamespaces(def, namespaceList);
+
                         for (const QByteArray &ns : nested) {
                             NamespaceDef parentNs;
                             parentNs.classname = ns;
@@ -645,8 +681,10 @@ void Moc::parse()
                             switch (next()) {
                             case NAMESPACE:
                                 if (test(IDENTIFIER)) {
-                                    while (test(SCOPE))
+                                    while (test(SCOPE)) {
+                                        test(INLINE); // ignore inline namespaces
                                         next(IDENTIFIER);
+                                    }
                                     if (test(EQ)) {
                                         // namespace Foo = Bar::Baz;
                                         until(SEMIC);
@@ -684,6 +722,11 @@ void Moc::parse()
                                 break;
                             case Q_CLASSINFO_TOKEN:
                                 parseClassInfo(&def);
+                                break;
+                            case Q_MOC_INCLUDE_TOKEN:
+                                // skip it, the namespace is parsed twice
+                                next(LPAREN);
+                                lexemUntil(RPAREN);
                                 break;
                             case ENUM: {
                                 EnumDef enumDef;
@@ -728,6 +771,9 @@ void Moc::parse()
             case Q_DECLARE_METATYPE_TOKEN:
                 parseDeclareMetatype();
                 break;
+            case Q_MOC_INCLUDE_TOKEN:
+                parseMocInclude();
+                break;
             case USING:
                 if (test(NAMESPACE)) {
                     while (test(SCOPE) || test(IDENTIFIER))
@@ -752,6 +798,12 @@ void Moc::parse()
                     case Q_OBJECT_TOKEN:
                         def.hasQObject = true;
                         break;
+                    case Q_GADGET_EXPORT_TOKEN:
+                        next(LPAREN);
+                        while (test(IDENTIFIER))
+                            {}
+                        next(RPAREN);
+                        Q_FALLTHROUGH();
                     case Q_GADGET_TOKEN:
                         def.hasQGadget = true;
                         break;
@@ -762,9 +814,7 @@ void Moc::parse()
                 if (!def.hasQObject && !def.hasQGadget)
                     continue;
 
-                for (int i = namespaceList.size() - 1; i >= 0; --i)
-                    if (inNamespace(&namespaceList.at(i)))
-                        def.qualified.prepend(namespaceList.at(i).classname + "::");
+                prependNamespaces(def, namespaceList);
 
                 QHash<QByteArray, QByteArray> &classHash = def.hasQObject ? knownQObjectClasses : knownGadgets;
                 classHash.insert(def.classname, def.qualified);
@@ -777,10 +827,9 @@ void Moc::parse()
             continue;
         ClassDef def;
         if (parseClassHead(&def)) {
+            prependNamespaces(def, namespaceList);
+
             FunctionDef::Access access = FunctionDef::Private;
-            for (int i = namespaceList.size() - 1; i >= 0; --i)
-                if (inNamespace(&namespaceList.at(i)))
-                    def.qualified.prepend(namespaceList.at(i).classname + "::");
             while (inClass(&def) && hasNext()) {
                 switch ((t = next())) {
                 case PRIVATE:
@@ -829,13 +878,22 @@ void Moc::parse()
                     if (def.classname != "Qt" && def.classname != "QObject" && def.superclassList.isEmpty())
                         error("Class contains Q_OBJECT macro but does not inherit from QObject");
                     break;
+                case Q_GADGET_EXPORT_TOKEN:
+                    next(LPAREN);
+                    while (test(IDENTIFIER))
+                        {}
+                    next(RPAREN);
+                    Q_FALLTHROUGH();
                 case Q_GADGET_TOKEN:
                     def.hasQGadget = true;
                     if (templateClass)
                         error("Template classes not supported by Q_GADGET");
                     break;
                 case Q_PROPERTY_TOKEN:
-                    parseProperty(&def);
+                    parseProperty(&def, Named);
+                    break;
+                case QT_ANONYMOUS_PROPERTY_TOKEN:
+                    parseProperty(&def, Anonymous);
                     break;
                 case Q_PLUGIN_METADATA_TOKEN:
                     parsePluginData(&def);
@@ -860,6 +918,9 @@ void Moc::parse()
                 case Q_CLASSINFO_TOKEN:
                     parseClassInfo(&def);
                     break;
+                case Q_MOC_INCLUDE_TOKEN:
+                    parseMocInclude();
+                    break;
                 case Q_INTERFACES_TOKEN:
                     parseInterfaces(&def);
                     break;
@@ -867,7 +928,10 @@ void Moc::parse()
                     parseSlotInPrivate(&def, access);
                     break;
                 case Q_PRIVATE_PROPERTY_TOKEN:
-                    parsePrivateProperty(&def);
+                    parsePrivateProperty(&def, Named);
+                    break;
+                case QT_ANONYMOUS_PRIVATE_PROPERTY_TOKEN:
+                    parsePrivateProperty(&def, Anonymous);
                     break;
                 case ENUM: {
                     EnumDef enumDef;
@@ -880,16 +944,12 @@ void Moc::parse()
                 default:
                     FunctionDef funcDef;
                     funcDef.access = access;
-                    int rewind = index--;
+                    qsizetype rewind = index--;
                     if (parseMaybeFunction(&def, &funcDef)) {
                         if (funcDef.isConstructor) {
                             if ((access == FunctionDef::Public) && funcDef.isInvokable) {
                                 def.constructorList += funcDef;
-                                while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-                                    funcDef.wasCloned = true;
-                                    funcDef.arguments.removeLast();
-                                    def.constructorList += funcDef;
-                                }
+                                handleDefaultArguments(&def.constructorList, funcDef);
                             }
                         } else if (funcDef.isDestructor) {
                             // don't care about destructors
@@ -898,29 +958,17 @@ void Moc::parse()
                                 def.publicList += funcDef;
                             if (funcDef.isSlot) {
                                 def.slotList += funcDef;
-                                while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-                                    funcDef.wasCloned = true;
-                                    funcDef.arguments.removeLast();
-                                    def.slotList += funcDef;
-                                }
+                                handleDefaultArguments(&def.slotList, funcDef);
                                 if (funcDef.revision > 0)
                                     ++def.revisionedMethods;
                             } else if (funcDef.isSignal) {
                                 def.signalList += funcDef;
-                                while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-                                    funcDef.wasCloned = true;
-                                    funcDef.arguments.removeLast();
-                                    def.signalList += funcDef;
-                                }
+                                handleDefaultArguments(&def.signalList, funcDef);
                                 if (funcDef.revision > 0)
                                     ++def.revisionedMethods;
                             } else if (funcDef.isInvokable) {
                                 def.methodList += funcDef;
-                                while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-                                    funcDef.wasCloned = true;
-                                    funcDef.arguments.removeLast();
-                                    def.methodList += funcDef;
-                                }
+                                handleDefaultArguments(&def.methodList, funcDef);
                                 if (funcDef.revision > 0)
                                     ++def.revisionedMethods;
                             }
@@ -945,7 +993,9 @@ void Moc::parse()
             if (!def.pluginData.iid.isEmpty())
                 def.pluginData.metaArgs = metaArgs;
 
-            checkSuperClasses(&def);
+            if (def.hasQObject && !def.superclassList.isEmpty())
+                checkSuperClasses(&def);
+
             checkProperties(&def);
 
             classList += def;
@@ -954,7 +1004,7 @@ void Moc::parse()
             classHash.insert(def.qualified, def.qualified);
         }
     }
-    for (const auto &n : qAsConst(namespaceList)) {
+    for (const auto &n : std::as_const(namespaceList)) {
         if (!n.hasQNamespace)
             continue;
         ClassDef def;
@@ -979,7 +1029,7 @@ void Moc::parse()
     }
 }
 
-static bool any_type_contains(const QVector<PropertyDef> &properties, const QByteArray &pattern)
+static bool any_type_contains(const QList<PropertyDef> &properties, const QByteArray &pattern)
 {
     for (const auto &p : properties) {
         if (p.type.contains(pattern))
@@ -988,7 +1038,7 @@ static bool any_type_contains(const QVector<PropertyDef> &properties, const QByt
     return false;
 }
 
-static bool any_arg_contains(const QVector<FunctionDef> &functions, const QByteArray &pattern)
+static bool any_arg_contains(const QList<FunctionDef> &functions, const QByteArray &pattern)
 {
     for (const auto &f : functions) {
         for (const auto &arg : f.arguments) {
@@ -1013,17 +1063,21 @@ static QByteArrayList make_candidates()
     return result;
 }
 
-static QByteArrayList requiredQtContainers(const QVector<ClassDef> &classes)
+static QByteArrayList requiredQtContainers(const QList<ClassDef> &classes)
 {
     static const QByteArrayList candidates = make_candidates();
 
     QByteArrayList required;
     required.reserve(candidates.size());
 
+    bool needsQProperty = false;
+
     for (const auto &candidate : candidates) {
         const QByteArray pattern = candidate + '<';
 
         for (const auto &c : classes) {
+            for (const auto &p : c.propertyList)
+                needsQProperty |= !p.bind.isEmpty();
             if (any_type_contains(c.propertyList, pattern) ||
                     any_arg_contains(c.slotList, pattern) ||
                     any_arg_contains(c.signalList, pattern) ||
@@ -1034,30 +1088,35 @@ static QByteArrayList requiredQtContainers(const QVector<ClassDef> &classes)
         }
     }
 
+    if (needsQProperty)
+        required.push_back("QProperty");
+
     return required;
 }
 
 void Moc::generate(FILE *out, FILE *jsonOutput)
 {
-    QByteArray fn = filename;
-    int i = filename.length()-1;
-    while (i > 0 && filename.at(i - 1) != '/' && filename.at(i - 1) != '\\')
-        --i;                                // skip path
-    if (i >= 0)
-        fn = filename.mid(i);
+    QByteArrayView fn = QByteArrayView(filename);
+
+    auto isSlash = [](char ch) { return ch == '/' || ch == '\\'; };
+    auto rit = std::find_if(fn.crbegin(), fn.crend(), isSlash);
+    if (rit != fn.crend())
+        fn = fn.last(rit - fn.crbegin());
+
     fprintf(out, "/****************************************************************************\n"
             "** Meta object code from reading C++ file '%s'\n**\n" , fn.constData());
     fprintf(out, "** Created by: The Qt Meta Object Compiler version %d (Qt %s)\n**\n" , mocOutputRevision, QT_VERSION_STR);
     fprintf(out, "** WARNING! All changes made in this file will be lost!\n"
             "*****************************************************************************/\n\n");
 
-    fprintf(out, "#include <memory>\n");  // For std::addressof
+    // include header(s) of user class definitions at _first_ to allow
+    // for preprocessor definitions possibly affecting standard headers.
+    // see https://codereview.qt-project.org/c/qt/qtbase/+/445937
     if (!noInclude) {
         if (includePath.size() && !includePath.endsWith('/'))
             includePath += '/';
-        for (int i = 0; i < includeFiles.size(); ++i) {
-            QByteArray inc = includeFiles.at(i);
-            if (inc.at(0) != '<' && inc.at(0) != '"') {
+        for (QByteArray inc : std::as_const(includeFiles)) {
+            if (!inc.isEmpty() && inc.at(0) != '<' && inc.at(0) != '"') {
                 if (includePath.size() && includePath != "./")
                     inc.prepend(includePath);
                 inc = '\"' + inc + '\"';
@@ -1068,7 +1127,6 @@ void Moc::generate(FILE *out, FILE *jsonOutput)
     if (classList.size() && classList.constFirst().classname == "Qt")
         fprintf(out, "#include <QtCore/qobject.h>\n");
 
-    fprintf(out, "#include <QtCore/qbytearray.h>\n"); // For QByteArrayData
     fprintf(out, "#include <QtCore/qmetatype.h>\n");  // For QMetaType::Type
     if (mustIncludeQPluginH)
         fprintf(out, "#include <QtCore/qplugin.h>\n");
@@ -1077,6 +1135,18 @@ void Moc::generate(FILE *out, FILE *jsonOutput)
     for (const QByteArray &qtContainer : qtContainers)
         fprintf(out, "#include <QtCore/%s>\n", qtContainer.constData());
 
+    fprintf(out, "\n%s#include <QtCore/qtmochelpers.h>\n%s\n",
+#if QT_VERSION <= QT_VERSION_CHECK(6, 9, 0)
+            "#if __has_include(<QtCore/qtmochelpers.h>)\n",
+            "#else\n"
+            "QT_BEGIN_MOC_NAMESPACE\n"
+            "#endif\n"
+#else
+            "", ""
+#endif
+    );
+
+    fprintf(out, "\n#include <memory>\n\n");  // For std::addressof
 
     fprintf(out, "#if !defined(Q_MOC_OUTPUT_REVISION)\n"
             "#error \"The header file '%s' doesn't include <QObject>.\"\n", fn.constData());
@@ -1087,32 +1157,38 @@ void Moc::generate(FILE *out, FILE *jsonOutput)
             " much.)\"\n", QT_VERSION_STR);
     fprintf(out, "#endif\n\n");
 
-    fprintf(out, "QT_BEGIN_MOC_NAMESPACE\n");
+#if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
+    fprintf(out, "#ifndef Q_CONSTINIT\n"
+            "#define Q_CONSTINIT\n"
+            "#endif\n\n");
+#endif
+
     fprintf(out, "QT_WARNING_PUSH\n");
     fprintf(out, "QT_WARNING_DISABLE_DEPRECATED\n");
+    fprintf(out, "QT_WARNING_DISABLE_GCC(\"-Wuseless-cast\")\n");
 
     fputs("", out);
-    for (i = 0; i < classList.size(); ++i) {
-        Generator generator(&classList[i], metaTypes, knownQObjectClasses, knownGadgets, out);
+    for (ClassDef &def : classList) {
+        Generator generator(&def, metaTypes, knownQObjectClasses, knownGadgets, out,
+                            requireCompleteTypes);
         generator.generateCode();
     }
     fputs("", out);
 
     fprintf(out, "QT_WARNING_POP\n");
-    fprintf(out, "QT_END_MOC_NAMESPACE\n");
 
     if (jsonOutput) {
         QJsonObject mocData;
-        mocData[QLatin1String("outputRevision")] = mocOutputRevision;
-        mocData[QLatin1String("inputFile")] = QLatin1String(fn.constData());
+        mocData["outputRevision"_L1] = mocOutputRevision;
+        mocData["inputFile"_L1] = QLatin1StringView(fn.constData());
 
         QJsonArray classesJsonFormatted;
 
-        for (const ClassDef &cdef: qAsConst(classList))
+        for (const ClassDef &cdef: std::as_const(classList))
             classesJsonFormatted.append(cdef.toJson());
 
         if (!classesJsonFormatted.isEmpty())
-            mocData[QLatin1String("classes")] = classesJsonFormatted;
+            mocData["classes"_L1] = classesJsonFormatted;
 
         QJsonDocument jsonDoc(mocData);
         fputs(jsonDoc.toJson().constData(), jsonOutput);
@@ -1121,17 +1197,9 @@ void Moc::generate(FILE *out, FILE *jsonOutput)
 
 void Moc::parseSlots(ClassDef *def, FunctionDef::Access access)
 {
-    int defaultRevision = -1;
-    if (test(Q_REVISION_TOKEN)) {
-        next(LPAREN);
-        QByteArray revision = lexemUntil(RPAREN);
-        revision.remove(0, 1);
-        revision.chop(1);
-        bool ok = false;
-        defaultRevision = revision.toInt(&ok);
-        if (!ok || defaultRevision < 0)
-            error("Invalid revision");
-    }
+    QTypeRevision defaultRevision;
+    if (test(Q_REVISION_TOKEN))
+        defaultRevision = parseRevision();
 
     next(COLON);
     while (inClass(def) && hasNext()) {
@@ -1160,32 +1228,20 @@ void Moc::parseSlots(ClassDef *def, FunctionDef::Access access)
             continue;
         if (funcDef.revision > 0) {
             ++def->revisionedMethods;
-        } else if (defaultRevision != -1) {
-            funcDef.revision = defaultRevision;
+        } else if (defaultRevision.isValid()) {
+            funcDef.revision = defaultRevision.toEncodedVersion<int>();
             ++def->revisionedMethods;
         }
         def->slotList += funcDef;
-        while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-            funcDef.wasCloned = true;
-            funcDef.arguments.removeLast();
-            def->slotList += funcDef;
-        }
+        handleDefaultArguments(&def->slotList, funcDef);
     }
 }
 
 void Moc::parseSignals(ClassDef *def)
 {
-    int defaultRevision = -1;
-    if (test(Q_REVISION_TOKEN)) {
-        next(LPAREN);
-        QByteArray revision = lexemUntil(RPAREN);
-        revision.remove(0, 1);
-        revision.chop(1);
-        bool ok = false;
-        defaultRevision = revision.toInt(&ok);
-        if (!ok || defaultRevision < 0)
-            error("Invalid revision");
-    }
+    QTypeRevision defaultRevision;
+    if (test(Q_REVISION_TOKEN))
+        defaultRevision = parseRevision();
 
     next(COLON);
     while (inClass(def) && hasNext()) {
@@ -1216,21 +1272,20 @@ void Moc::parseSignals(ClassDef *def)
             error("Not a signal declaration");
         if (funcDef.revision > 0) {
             ++def->revisionedMethods;
-        } else if (defaultRevision != -1) {
-            funcDef.revision = defaultRevision;
+        } else if (defaultRevision.isValid()) {
+            funcDef.revision = defaultRevision.toEncodedVersion<int>();
             ++def->revisionedMethods;
         }
         def->signalList += funcDef;
-        while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-            funcDef.wasCloned = true;
-            funcDef.arguments.removeLast();
-            def->signalList += funcDef;
-        }
+        handleDefaultArguments(&def->signalList, funcDef);
     }
 }
 
-void Moc::createPropertyDef(PropertyDef &propDef)
+void Moc::createPropertyDef(PropertyDef &propDef, int propertyIndex, Moc::PropertyMode mode)
 {
+    propDef.location = index;
+    propDef.relativeIndex = propertyIndex;
+
     QByteArray type = parseType().name;
     if (type.isEmpty())
         error();
@@ -1256,38 +1311,59 @@ void Moc::createPropertyDef(PropertyDef &propDef)
 
     propDef.type = type;
 
+    if (mode == Moc::Named) {
+        next();
+        propDef.name = lexem();
+    }
+
+    parsePropertyAttributes(propDef);
+}
+
+void Moc::parsePropertyAttributes(PropertyDef &propDef)
+{
     auto checkIsFunction = [&](const QByteArray &def, const char *name) {
         if (def.endsWith(')')) {
             QByteArray msg = "Providing a function for ";
             msg += name;
-            msg += " in a property declaration is deprecated and will not be supported in Qt 6 anymore.";
-            warning(msg.constData());
+            msg += " in a property declaration is not be supported in Qt 6.";
+            error(msg.constData());
         }
     };
 
-    next();
-    propDef.name = lexem();
     while (test(IDENTIFIER)) {
-        const QByteArray l = lexem();
+        const Symbol &lsym = symbol();
+        const QByteArray l = lsym.lexem();
         if (l[0] == 'C' && l == "CONSTANT") {
             propDef.constant = true;
             continue;
-        } else if(l[0] == 'F' && l == "FINAL") {
+        } else if (l[0] == 'F' && l == "FINAL") {
             propDef.final = true;
+            continue;
+        } else if (l[0] == 'N' && l == "NAME") {
+            next(IDENTIFIER);
+            propDef.name = lexem();
             continue;
         } else if (l[0] == 'R' && l == "REQUIRED") {
             propDef.required = true;
+            continue;
+        } else if (l[0] == 'R' && l == "REVISION" && test(LPAREN)) {
+            prev();
+            propDef.revision = parseRevision().toEncodedVersion<int>();
             continue;
         }
 
         QByteArray v, v2;
         if (test(LPAREN)) {
             v = lexemUntil(RPAREN);
-            v = v.mid(1, v.length() - 2); // removes the '(' and ')'
+            v = v.mid(1, v.size() - 2); // removes the '(' and ')'
         } else if (test(INTEGER_LITERAL)) {
             v = lexem();
             if (l != "REVISION")
-                error(1);
+                error(lsym);
+        } else if (test(DEFAULT)) {
+            v = lexem();
+            if (l != "READ" && l != "WRITE")
+                error(lsym);
         } else {
             next(IDENTIFIER);
             v = lexem();
@@ -1301,20 +1377,21 @@ void Moc::createPropertyDef(PropertyDef &propDef)
             if (l == "MEMBER")
                 propDef.member = v;
             else
-                error(2);
+                error(lsym);
             break;
         case 'R':
             if (l == "READ")
                 propDef.read = v;
             else if (l == "RESET")
-                propDef.reset = v + v2;
+                propDef.reset = v;
             else if (l == "REVISION") {
                 bool ok = false;
-                propDef.revision = v.toInt(&ok);
-                if (!ok || propDef.revision < 0)
-                    error(1);
+                const int minor = v.toInt(&ok);
+                if (!ok || !QTypeRevision::isValidSegment(minor))
+                    error(lsym);
+                propDef.revision = QTypeRevision::fromMinorVersion(minor).toEncodedVersion<int>();
             } else
-                error(2);
+                error(lsym);
             break;
         case 'S':
             if (l == "SCRIPTABLE") {
@@ -1324,37 +1401,28 @@ void Moc::createPropertyDef(PropertyDef &propDef)
                 propDef.stored = v + v2;
                 checkIsFunction(propDef.stored, "STORED");
             } else
-                error(2);
+                error(lsym);
             break;
-        case 'W': if (l != "WRITE") error(2);
+        case 'W': if (l != "WRITE") error(lsym);
             propDef.write = v;
             break;
-        case 'D': if (l != "DESIGNABLE") error(2);
+        case 'B': if (l != "BINDABLE") error(lsym);
+            propDef.bind = v;
+            break;
+        case 'D': if (l != "DESIGNABLE") error(lsym);
             propDef.designable = v + v2;
             checkIsFunction(propDef.designable, "DESIGNABLE");
             break;
-        case 'E': if (l != "EDITABLE") error(2); {
-            const QByteArray msg = "EDITABLE flag for property declaration is deprecated.";
-            warning(msg.constData());
-            propDef.editable = v + v2;
-            checkIsFunction(propDef.editable, "EDITABLE");
-        }
-            break;
-        case 'N': if (l != "NOTIFY") error(2);
+        case 'N': if (l != "NOTIFY") error(lsym);
             propDef.notify = v;
             break;
-        case 'U': if (l != "USER") error(2);
+        case 'U': if (l != "USER") error(lsym);
             propDef.user = v + v2;
             checkIsFunction(propDef.user, "USER");
             break;
         default:
-            error(2);
+            error(lsym);
         }
-    }
-    if (propDef.read.isNull() && propDef.member.isNull()) {
-        const QByteArray msg = "Property declaration " + propDef.name
-                + " has no READ accessor function or associated MEMBER variable. The property will be invalid.";
-        warning(msg.constData());
     }
     if (propDef.constant && !propDef.write.isNull()) {
         const QByteArray msg = "Property declaration " + propDef.name
@@ -1368,19 +1436,33 @@ void Moc::createPropertyDef(PropertyDef &propDef)
         propDef.constant = false;
         warning(msg.constData());
     }
+    if (propDef.constant && !propDef.bind.isNull()) {
+        const QByteArray msg = "Property declaration " + propDef.name
+                + " is both BINDable and CONSTANT. CONSTANT will be ignored.";
+        propDef.constant = false;
+        warning(msg.constData());
+    }
+    if (propDef.read == "default" && propDef.bind.isNull()) {
+        const QByteArray msg = "Property declaration " + propDef.name
+                + " is not BINDable but default-READable. READ will be ignored.";
+        propDef.read = "";
+        warning(msg.constData());
+    }
+    if (propDef.write == "default" && propDef.bind.isNull()) {
+        const QByteArray msg = "Property declaration " + propDef.name
+                + " is not BINDable but default-WRITEable. WRITE will be ignored.";
+        propDef.write = "";
+        warning(msg.constData());
+    }
 }
 
-void Moc::parseProperty(ClassDef *def)
+void Moc::parseProperty(ClassDef *def, Moc::PropertyMode mode)
 {
     next(LPAREN);
     PropertyDef propDef;
-    createPropertyDef(propDef);
+    createPropertyDef(propDef, int(def->propertyList.size()), mode);
     next(RPAREN);
 
-    if(!propDef.notify.isEmpty())
-        def->notifyableProperties++;
-    if (propDef.revision > 0)
-        ++def->revisionedProperties;
     def->propertyList += propDef;
 }
 
@@ -1399,9 +1481,11 @@ void Moc::parsePluginData(ClassDef *def)
         } else if (l == "FILE") {
             next(STRING_LITERAL);
             QByteArray metaDataFile = unquotedLexem();
-            QFileInfo fi(QFileInfo(QString::fromLocal8Bit(currentFilenames.top().constData())).dir(), QString::fromLocal8Bit(metaDataFile.constData()));
-            for (int j = 0; j < includes.size() && !fi.exists(); ++j) {
-                const IncludePath &p = includes.at(j);
+            QFileInfo fi(QFileInfo(QString::fromLocal8Bit(currentFilenames.top())).dir(),
+                         QString::fromLocal8Bit(metaDataFile));
+            for (const IncludePath &p : std::as_const(includes)) {
+                if (fi.exists())
+                    break;
                 if (p.isFrameworkPath)
                     continue;
 
@@ -1446,31 +1530,33 @@ void Moc::parsePluginData(ClassDef *def)
     next(RPAREN);
 }
 
-void Moc::parsePrivateProperty(ClassDef *def)
+QByteArray Moc::parsePropertyAccessor()
+{
+    int nesting = 0;
+    QByteArray accessor;
+    while (1) {
+        Token t = peek();
+        if (!nesting && (t == RPAREN || t == COMMA))
+            break;
+        t = next();
+        if (t == LPAREN)
+            ++nesting;
+        if (t == RPAREN)
+            --nesting;
+        accessor += lexem();
+    }
+    return accessor;
+}
+
+void Moc::parsePrivateProperty(ClassDef *def, Moc::PropertyMode mode)
 {
     next(LPAREN);
     PropertyDef propDef;
-    next(IDENTIFIER);
-    propDef.inPrivateClass = lexem();
-    while (test(SCOPE)) {
-        propDef.inPrivateClass += lexem();
-        next(IDENTIFIER);
-        propDef.inPrivateClass += lexem();
-    }
-    // also allow void functions
-    if (test(LPAREN)) {
-        next(RPAREN);
-        propDef.inPrivateClass += "()";
-    }
+    propDef.inPrivateClass = parsePropertyAccessor();
 
     next(COMMA);
 
-    createPropertyDef(propDef);
-
-    if(!propDef.notify.isEmpty())
-        def->notifyableProperties++;
-    if (propDef.revision > 0)
-        ++def->revisionedProperties;
+    createPropertyDef(propDef, int(def->propertyList.size()), mode);
 
     def->propertyList += propDef;
 }
@@ -1514,15 +1600,20 @@ void Moc::parseFlag(BaseDef *def)
     next(RPAREN);
 }
 
-void Moc::parseClassInfo(BaseDef *def)
+Moc::EncounteredQmlMacro Moc::parseClassInfo(BaseDef *def)
 {
+    bool encounteredQmlMacro = false;
     next(LPAREN);
     ClassInfoDef infoDef;
     next(STRING_LITERAL);
     infoDef.name = symbol().unquotedLexem();
+    if (infoDef.name.startsWith("QML."))
+        encounteredQmlMacro = true;
     next(COMMA);
     if (test(STRING_LITERAL)) {
         infoDef.value = symbol().unquotedLexem();
+    } else if (test(Q_REVISION_TOKEN)) {
+        infoDef.value = QByteArray::number(parseRevision().toEncodedVersion<quint16>());
     } else {
         // support Q_CLASSINFO("help", QT_TR_NOOP("blah"))
         next(IDENTIFIER);
@@ -1533,13 +1624,20 @@ void Moc::parseClassInfo(BaseDef *def)
     }
     next(RPAREN);
     def->classInfoList += infoDef;
+    return encounteredQmlMacro ? EncounteredQmlMacro::Yes : EncounteredQmlMacro::No;
+}
+
+void Moc::parseClassInfo(ClassDef *def)
+{
+    if (parseClassInfo(static_cast<BaseDef *>(def)) == EncounteredQmlMacro::Yes)
+        def->requireCompleteMethodTypes = true;
 }
 
 void Moc::parseInterfaces(ClassDef *def)
 {
     next(LPAREN);
     while (test(IDENTIFIER)) {
-        QVector<ClassDef::Interface> iface;
+        QList<ClassDef::Interface> iface;
         iface += ClassDef::Interface(lexem());
         while (test(SCOPE)) {
             iface.last().className += lexem();
@@ -1556,7 +1654,7 @@ void Moc::parseInterfaces(ClassDef *def)
             }
         }
         // resolve from classnames to interface ids
-        for (int i = 0; i < iface.count(); ++i) {
+        for (qsizetype i = 0; i < iface.size(); ++i) {
             const QByteArray iid = interface2IdMap.value(iface.at(i).className);
             if (iid.isEmpty())
                 error("Undefined interface");
@@ -1600,6 +1698,16 @@ void Moc::parseDeclareMetatype()
     metaTypes.append(typeName);
 }
 
+void Moc::parseMocInclude()
+{
+    next(LPAREN);
+    QByteArray include = lexemUntil(RPAREN);
+    // remove parentheses
+    include.remove(0, 1);
+    include.chop(1);
+    includeFiles.append(include);
+}
+
 void Moc::parseSlotInPrivate(ClassDef *def, FunctionDef::Access access)
 {
     next(LPAREN);
@@ -1615,11 +1723,7 @@ void Moc::parseSlotInPrivate(ClassDef *def, FunctionDef::Access access)
     funcDef.access = access;
     parseFunction(&funcDef, true);
     def->slotList += funcDef;
-    while (funcDef.arguments.size() > 0 && funcDef.arguments.constLast().isDefault) {
-        funcDef.wasCloned = true;
-        funcDef.arguments.removeLast();
-        def->slotList += funcDef;
-    }
+    handleDefaultArguments(&def->slotList, funcDef);
     if (funcDef.revision > 0)
         ++def->revisionedMethods;
 
@@ -1627,7 +1731,7 @@ void Moc::parseSlotInPrivate(ClassDef *def, FunctionDef::Access access)
 
 QByteArray Moc::lexemUntil(Token target)
 {
-    int from = index;
+    qsizetype from = index;
     until(target);
     QByteArray s;
     while (from <= index) {
@@ -1661,9 +1765,9 @@ bool Moc::until(Token target) {
     }
 
     //when searching commas within the default argument, we should take care of template depth (anglecount)
-    // unfortunatelly, we do not have enough semantic information to know if '<' is the operator< or
+    // unfortunately, we do not have enough semantic information to know if '<' is the operator< or
     // the beginning of a template type. so we just use heuristics.
-    int possible = -1;
+    qsizetype possible = -1;
 
     while (index < symbols.size()) {
         Token t = symbols.at(index++).token;
@@ -1717,7 +1821,7 @@ bool Moc::until(Token target) {
         }
     }
 
-    if(target == COMMA && angleCount != 0 && possible != -1) {
+    if (target == COMMA && angleCount != 0 && possible != -1) {
         index = possible;
         return true;
     }
@@ -1727,7 +1831,8 @@ bool Moc::until(Token target) {
 
 void Moc::checkSuperClasses(ClassDef *def)
 {
-    const QByteArray firstSuperclass = def->superclassList.value(0).first;
+    Q_ASSERT(!def->superclassList.isEmpty());
+    const QByteArray &firstSuperclass = def->superclassList.at(0).classname;
 
     if (!knownQObjectClasses.contains(firstSuperclass)) {
         // enable once we /require/ include paths
@@ -1742,8 +1847,18 @@ void Moc::checkSuperClasses(ClassDef *def)
 #endif
         return;
     }
-    for (int i = 1; i < def->superclassList.count(); ++i) {
-        const QByteArray superClass = def->superclassList.at(i).first;
+
+    auto isRegisteredInterface = [&def](QByteArrayView super) {
+        auto matchesSuperClass = [&super](const auto &ifaces) {
+            return !ifaces.isEmpty() && ifaces.first().className == super;
+        };
+        return std::any_of(def->interfaceList.cbegin(), def->interfaceList.cend(), matchesSuperClass);
+    };
+
+    const auto end = def->superclassList.cend();
+    auto it = def->superclassList.cbegin() + 1;
+    for (; it != end; ++it) {
+        const QByteArray &superClass = it->classname;
         if (knownQObjectClasses.contains(superClass)) {
             const QByteArray msg
                     = "Class "
@@ -1757,14 +1872,7 @@ void Moc::checkSuperClasses(ClassDef *def)
         }
 
         if (interface2IdMap.contains(superClass)) {
-            bool registeredInterface = false;
-            for (int i = 0; i < def->interfaceList.count(); ++i)
-                if (def->interfaceList.at(i).constFirst().className == superClass) {
-                    registeredInterface = true;
-                    break;
-                }
-
-            if (!registeredInterface) {
+            if (!isRegisteredInterface(superClass)) {
                 const QByteArray msg
                         = "Class "
                         + def->classname
@@ -1782,22 +1890,33 @@ void Moc::checkSuperClasses(ClassDef *def)
 void Moc::checkProperties(ClassDef *cdef)
 {
     //
-    // specify get function, for compatibiliy we accept functions
+    // specify get function, for compatibility we accept functions
     // returning pointers, or const char * for QByteArray.
     //
-    QSet<QByteArray> definedProperties;
-    for (int i = 0; i < cdef->propertyList.count(); ++i) {
+    QDuplicateTracker<QByteArray> definedProperties(cdef->propertyList.size());
+    for (int i = 0; i < cdef->propertyList.size(); ++i) {
         PropertyDef &p = cdef->propertyList[i];
-        if (p.read.isEmpty() && p.member.isEmpty())
-            continue;
-        if (definedProperties.contains(p.name)) {
+        if (definedProperties.hasSeen(p.name)) {
             QByteArray msg = "The property '" + p.name + "' is defined multiple times in class " + cdef->classname + ".";
             warning(msg.constData());
         }
-        definedProperties.insert(p.name);
 
-        for (int j = 0; j < cdef->publicList.count(); ++j) {
-            const FunctionDef &f = cdef->publicList.at(j);
+        if (p.read.isEmpty() && p.member.isEmpty() && p.bind.isEmpty()) {
+            const qsizetype rewind = index;
+            if (p.location >= 0)
+                index = p.location;
+            QByteArray msg = "Property declaration " + p.name + " has neither an associated QProperty<> member"
+                             ", nor a READ accessor function nor an associated MEMBER variable. The property will be invalid.";
+            warning(msg.constData());
+            index = rewind;
+            if (p.write.isEmpty()) {
+                cdef->propertyList.removeAt(i);
+                --i;
+            }
+            continue;
+        }
+
+        for (const FunctionDef &f : std::as_const(cdef->publicList)) {
             if (f.name != p.read)
                 continue;
             if (!f.isConst) // get  functions must be const
@@ -1821,11 +1940,11 @@ void Moc::checkProperties(ClassDef *cdef)
             p.gspec = spec;
             break;
         }
-        if(!p.notify.isEmpty()) {
+        if (!p.notify.isEmpty()) {
             int notifyId = -1;
-            for (int j = 0; j < cdef->signalList.count(); ++j) {
+            for (int j = 0; j < cdef->signalList.size(); ++j) {
                 const FunctionDef &f = cdef->signalList.at(j);
-                if(f.name != p.notify) {
+                if (f.name != p.notify) {
                     continue;
                 } else {
                     notifyId = j /* Signal indexes start from 0 */;
@@ -1837,9 +1956,9 @@ void Moc::checkProperties(ClassDef *cdef)
                 int index = cdef->nonClassSignalList.indexOf(p.notify);
                 if (index == -1) {
                     cdef->nonClassSignalList << p.notify;
-                    p.notifyId = -1 - cdef->nonClassSignalList.count();
+                    p.notifyId = -1 - cdef->nonClassSignalList.size();
                 } else {
-                    p.notifyId = -2 - index;
+                    p.notifyId = int(-2 - index);
                 }
             }
         }
@@ -1849,21 +1968,21 @@ void Moc::checkProperties(ClassDef *cdef)
 QJsonObject ClassDef::toJson() const
 {
     QJsonObject cls;
-    cls[QLatin1String("className")] = QString::fromUtf8(classname.constData());
-    cls[QLatin1String("qualifiedClassName")] = QString::fromUtf8(qualified.constData());
+    cls["className"_L1] = QString::fromUtf8(classname.constData());
+    cls["qualifiedClassName"_L1] = QString::fromUtf8(qualified.constData());
 
     QJsonArray classInfos;
-    for (const auto &info: qAsConst(classInfoList)) {
+    for (const auto &info: std::as_const(classInfoList)) {
         QJsonObject infoJson;
-        infoJson[QLatin1String("name")] = QString::fromUtf8(info.name);
-        infoJson[QLatin1String("value")] = QString::fromUtf8(info.value);
+        infoJson["name"_L1] = QString::fromUtf8(info.name);
+        infoJson["value"_L1] = QString::fromUtf8(info.value);
         classInfos.append(infoJson);
     }
 
     if (classInfos.size())
-        cls[QLatin1String("classInfos")] = classInfos;
+        cls["classInfos"_L1] = classInfos;
 
-    const auto appendFunctions = [&cls](const QString &type, const QVector<FunctionDef> &funcs) {
+    const auto appendFunctions = [&cls](const QString &type, const QList<FunctionDef> &funcs) {
         QJsonArray jsonFuncs;
 
         for (const FunctionDef &fdef: funcs)
@@ -1873,59 +1992,59 @@ QJsonObject ClassDef::toJson() const
             cls[type] = jsonFuncs;
     };
 
-    appendFunctions(QLatin1String("signals"), signalList);
-    appendFunctions(QLatin1String("slots"), slotList);
-    appendFunctions(QLatin1String("constructors"), constructorList);
-    appendFunctions(QLatin1String("methods"), methodList);
+    appendFunctions("signals"_L1, signalList);
+    appendFunctions("slots"_L1, slotList);
+    appendFunctions("constructors"_L1, constructorList);
+    appendFunctions("methods"_L1, methodList);
 
     QJsonArray props;
 
-    for (const PropertyDef &propDef: qAsConst(propertyList))
+    for (const PropertyDef &propDef: std::as_const(propertyList))
         props.append(propDef.toJson());
 
     if (!props.isEmpty())
-        cls[QLatin1String("properties")] = props;
+        cls["properties"_L1] = props;
 
     if (hasQObject)
-        cls[QLatin1String("object")] = true;
+        cls["object"_L1] = true;
     if (hasQGadget)
-        cls[QLatin1String("gadget")] = true;
+        cls["gadget"_L1] = true;
     if (hasQNamespace)
-        cls[QLatin1String("namespace")] = true;
+        cls["namespace"_L1] = true;
 
     QJsonArray superClasses;
 
-    for (const auto &super: qAsConst(superclassList)) {
-        const auto name = super.first;
-        const auto access = super.second;
+    for (const auto &super: std::as_const(superclassList)) {
         QJsonObject superCls;
-        superCls[QLatin1String("name")] = QString::fromUtf8(name);
-        FunctionDef::accessToJson(&superCls, access);
+        superCls["name"_L1] = QString::fromUtf8(super.classname);
+        if (super.classname != super.qualified)
+            superCls["fullyQualifiedName"_L1] = QString::fromUtf8(super.qualified);
+        FunctionDef::accessToJson(&superCls, super.access);
         superClasses.append(superCls);
     }
 
     if (!superClasses.isEmpty())
-        cls[QLatin1String("superClasses")] = superClasses;
+        cls["superClasses"_L1] = superClasses;
 
     QJsonArray enums;
-    for (const EnumDef &enumDef: qAsConst(enumList))
+    for (const EnumDef &enumDef: std::as_const(enumList))
         enums.append(enumDef.toJson(*this));
     if (!enums.isEmpty())
-        cls[QLatin1String("enums")] = enums;
+        cls["enums"_L1] = enums;
 
     QJsonArray ifaces;
-    for (const QVector<Interface> &ifaceList: interfaceList) {
+    for (const QList<Interface> &ifaceList : interfaceList) {
         QJsonArray jsonList;
         for (const Interface &iface: ifaceList) {
             QJsonObject ifaceJson;
-            ifaceJson[QLatin1String("id")] = QString::fromUtf8(iface.interfaceId);
-            ifaceJson[QLatin1String("className")] = QString::fromUtf8(iface.className);
+            ifaceJson["id"_L1] = QString::fromUtf8(iface.interfaceId);
+            ifaceJson["className"_L1] = QString::fromUtf8(iface.className);
             jsonList.append(ifaceJson);
         }
         ifaces.append(jsonList);
     }
     if (!ifaces.isEmpty())
-        cls[QLatin1String("interfaces")] = ifaces;
+        cls["interfaces"_L1] = ifaces;
 
     return cls;
 }
@@ -1933,22 +2052,25 @@ QJsonObject ClassDef::toJson() const
 QJsonObject FunctionDef::toJson() const
 {
     QJsonObject fdef;
-    fdef[QLatin1String("name")] = QString::fromUtf8(name);
+    fdef["name"_L1] = QString::fromUtf8(name);
     if (!tag.isEmpty())
-        fdef[QLatin1String("tag")] = QString::fromUtf8(tag);
-    fdef[QLatin1String("returnType")] = QString::fromUtf8(normalizedType);
+        fdef["tag"_L1] = QString::fromUtf8(tag);
+    fdef["returnType"_L1] = QString::fromUtf8(normalizedType);
 
     QJsonArray args;
     for (const ArgumentDef &arg: arguments)
         args.append(arg.toJson());
 
     if (!args.isEmpty())
-        fdef[QLatin1String("arguments")] = args;
+        fdef["arguments"_L1] = args;
 
     accessToJson(&fdef, access);
 
     if (revision > 0)
-        fdef[QLatin1String("revision")] = revision;
+        fdef["revision"_L1] = revision;
+
+    if (wasCloned)
+        fdef["isCloned"_L1] = true;
 
     return fdef;
 }
@@ -1956,35 +2078,36 @@ QJsonObject FunctionDef::toJson() const
 void FunctionDef::accessToJson(QJsonObject *obj, FunctionDef::Access acs)
 {
     switch (acs) {
-    case Private: (*obj)[QLatin1String("access")] = QLatin1String("private"); break;
-    case Public: (*obj)[QLatin1String("access")] = QLatin1String("public"); break;
-    case Protected: (*obj)[QLatin1String("access")] = QLatin1String("protected"); break;
+    case Private: (*obj)["access"_L1] = "private"_L1; break;
+    case Public: (*obj)["access"_L1] = "public"_L1; break;
+    case Protected: (*obj)["access"_L1] = "protected"_L1; break;
     }
 }
 
 QJsonObject ArgumentDef::toJson() const
 {
     QJsonObject arg;
-    arg[QLatin1String("type")] = QString::fromUtf8(normalizedType);
+    arg["type"_L1] = QString::fromUtf8(normalizedType);
     if (!name.isEmpty())
-        arg[QLatin1String("name")] = QString::fromUtf8(name);
+        arg["name"_L1] = QString::fromUtf8(name);
     return arg;
 }
 
 QJsonObject PropertyDef::toJson() const
 {
     QJsonObject prop;
-    prop[QLatin1String("name")] = QString::fromUtf8(name);
-    prop[QLatin1String("type")] = QString::fromUtf8(type);
+    prop["name"_L1] = QString::fromUtf8(name);
+    prop["type"_L1] = QString::fromUtf8(type);
 
     const auto jsonify = [&prop](const char *str, const QByteArray &member) {
         if (!member.isEmpty())
-            prop[QLatin1String(str)] = QString::fromUtf8(member);
+            prop[QLatin1StringView(str)] = QString::fromUtf8(member);
     };
 
     jsonify("member", member);
     jsonify("read", read);
     jsonify("write", write);
+    jsonify("bindable", bind);
     jsonify("reset", reset);
     jsonify("notify", notify);
     jsonify("privateClass", inPrivateClass);
@@ -1997,7 +2120,7 @@ QJsonObject PropertyDef::toJson() const
             value = false;
         else
             value = QString::fromUtf8(boolOrString); // function name to query at run-time
-        prop[QLatin1String(str)] = value;
+        prop[QLatin1StringView(str)] = value;
     };
 
     jsonifyBoolOrString("designable", designable);
@@ -2005,12 +2128,12 @@ QJsonObject PropertyDef::toJson() const
     jsonifyBoolOrString("stored", stored);
     jsonifyBoolOrString("user", user);
 
-    prop[QLatin1String("constant")] = constant;
-    prop[QLatin1String("final")] = final;
-    prop[QLatin1String("required")] = required;
-
+    prop["constant"_L1] = constant;
+    prop["final"_L1] = final;
+    prop["required"_L1] = required;
+    prop["index"_L1] = relativeIndex;
     if (revision > 0)
-        prop[QLatin1String("revision")] = revision;
+        prop["revision"_L1] = revision;
 
     return prop;
 }
@@ -2018,19 +2141,40 @@ QJsonObject PropertyDef::toJson() const
 QJsonObject EnumDef::toJson(const ClassDef &cdef) const
 {
     QJsonObject def;
-    def[QLatin1String("name")] = QString::fromUtf8(name);
+    def["name"_L1] = QString::fromUtf8(name);
     if (!enumName.isEmpty())
-        def[QLatin1String("alias")] = QString::fromUtf8(enumName);
-    def[QLatin1String("isFlag")] = cdef.enumDeclarations.value(name);
-    def[QLatin1String("isClass")] = isEnumClass;
+        def["alias"_L1] = QString::fromUtf8(enumName);
+    if (!type.isEmpty())
+        def["type"_L1] = QString::fromUtf8(type);
+    def["isFlag"_L1] = cdef.enumDeclarations.value(name);
+    def["isClass"_L1] = isEnumClass;
 
     QJsonArray valueArr;
     for (const QByteArray &value: values)
         valueArr.append(QString::fromUtf8(value));
     if (!valueArr.isEmpty())
-        def[QLatin1String("values")] = valueArr;
+        def["values"_L1] = valueArr;
 
     return def;
+}
+
+QByteArray EnumDef::qualifiedType(const ClassDef *cdef) const
+{
+    if (name == cdef->classname) {
+        // The name of the enclosing namespace is the same as the enum class name
+        if (cdef->qualified.contains("::")) {
+            // QTBUG-112996, fully qualify by using cdef->qualified to disambiguate enum
+            // class name and enclosing namespace, e.g.:
+            // namespace A { namespace B { Q_NAMESPACE; enum class B { }; Q_ENUM_NS(B) } }
+            return cdef->qualified % "::" % name;
+        } else {
+            // Just "B"; otherwise the compiler complains about the type "B::B" inside
+            // "B::staticMetaObject" in the generated code; e.g.:
+            // namespace B { Q_NAMESPACE; enum class B { }; Q_ENUM_NS(B) }
+            return name;
+        }
+    }
+    return cdef->classname % "::" % name;
 }
 
 QT_END_NAMESPACE

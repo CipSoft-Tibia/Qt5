@@ -1,11 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Tests for PaymentRequest::abort().
 
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/testing/mock_function_scope.h"
 #include "third_party/blink/renderer/modules/payments/payment_request.h"
 #include "third_party/blink/renderer/modules/payments/payment_test_helper.h"
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
@@ -33,7 +36,11 @@ TEST(AbortTest, CannotAbortTwiceConcurrently) {
   PaymentRequest* request = PaymentRequest::Create(
       scope.GetExecutionContext(), BuildPaymentMethodDataForTest(),
       BuildPaymentDetailsInitForTest(), ASSERT_NO_EXCEPTION);
+
+  LocalFrame::NotifyUserActivation(
+      &scope.GetFrame(), mojom::UserActivationNotificationType::kTest);
   request->show(scope.GetScriptState(), ASSERT_NO_EXCEPTION);
+
   request->abort(scope.GetScriptState(), ASSERT_NO_EXCEPTION);
 
   request->abort(scope.GetScriptState(), scope.GetExceptionState());
@@ -45,10 +52,13 @@ TEST(AbortTest, CannotAbortTwiceConcurrently) {
 // should not reject with exception.
 TEST(AbortTest, CanAbortAfterShow) {
   PaymentRequestV8TestingScope scope;
-  PaymentRequestMockFunctionScope funcs(scope.GetScriptState());
+  MockFunctionScope funcs(scope.GetScriptState());
   PaymentRequest* request = PaymentRequest::Create(
       scope.GetExecutionContext(), BuildPaymentMethodDataForTest(),
       BuildPaymentDetailsInitForTest(), ASSERT_NO_EXCEPTION);
+
+  LocalFrame::NotifyUserActivation(
+      &scope.GetFrame(), mojom::UserActivationNotificationType::kTest);
   request->show(scope.GetScriptState(), ASSERT_NO_EXCEPTION);
 
   request->abort(scope.GetScriptState(), ASSERT_NO_EXCEPTION)
@@ -59,10 +69,13 @@ TEST(AbortTest, CanAbortAfterShow) {
 // promise should be rejected.
 TEST(AbortTest, FailedAbortShouldRejectAbortPromise) {
   PaymentRequestV8TestingScope scope;
-  PaymentRequestMockFunctionScope funcs(scope.GetScriptState());
+  MockFunctionScope funcs(scope.GetScriptState());
   PaymentRequest* request = PaymentRequest::Create(
       scope.GetExecutionContext(), BuildPaymentMethodDataForTest(),
       BuildPaymentDetailsInitForTest(), ASSERT_NO_EXCEPTION);
+
+  LocalFrame::NotifyUserActivation(
+      &scope.GetFrame(), mojom::UserActivationNotificationType::kTest);
   request->show(scope.GetScriptState(), ASSERT_NO_EXCEPTION);
 
   request->abort(scope.GetScriptState(), ASSERT_NO_EXCEPTION)
@@ -76,11 +89,15 @@ TEST(AbortTest, FailedAbortShouldRejectAbortPromise) {
 // call should not be rejected, as it's not a duplicate request anymore.
 TEST(AbortTest, CanAbortAgainAfterFirstAbortRejected) {
   PaymentRequestV8TestingScope scope;
-  PaymentRequestMockFunctionScope funcs(scope.GetScriptState());
+  MockFunctionScope funcs(scope.GetScriptState());
   PaymentRequest* request = PaymentRequest::Create(
       scope.GetExecutionContext(), BuildPaymentMethodDataForTest(),
       BuildPaymentDetailsInitForTest(), ASSERT_NO_EXCEPTION);
+
+  LocalFrame::NotifyUserActivation(
+      &scope.GetFrame(), mojom::UserActivationNotificationType::kTest);
   request->show(scope.GetScriptState(), ASSERT_NO_EXCEPTION);
+
   request->abort(scope.GetScriptState(), ASSERT_NO_EXCEPTION);
   static_cast<payments::mojom::blink::PaymentRequestClient*>(request)->OnAbort(
       false);
@@ -93,11 +110,13 @@ TEST(AbortTest, CanAbortAgainAfterFirstAbortRejected) {
 // promise should be rejected, and request.abort() promise should be resolved.
 TEST(AbortTest, SuccessfulAbortShouldRejectShowPromiseAndResolveAbortPromise) {
   PaymentRequestV8TestingScope scope;
-  PaymentRequestMockFunctionScope funcs(scope.GetScriptState());
+  MockFunctionScope funcs(scope.GetScriptState());
   PaymentRequest* request = PaymentRequest::Create(
       scope.GetExecutionContext(), BuildPaymentMethodDataForTest(),
       BuildPaymentDetailsInitForTest(), ASSERT_NO_EXCEPTION);
 
+  LocalFrame::NotifyUserActivation(
+      &scope.GetFrame(), mojom::UserActivationNotificationType::kTest);
   request->show(scope.GetScriptState(), ASSERT_NO_EXCEPTION)
       .Then(funcs.ExpectNoCall(), funcs.ExpectCall());
   request->abort(scope.GetScriptState(), ASSERT_NO_EXCEPTION)

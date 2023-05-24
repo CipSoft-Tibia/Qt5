@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,34 +9,43 @@
 #include <stdint.h>
 
 #include <map>
+#include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/strings/string16.h"
 #import "content/browser/accessibility/browser_accessibility_cocoa.h"
 #include "content/browser/accessibility/browser_accessibility_manager.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/ax_event_notification_details.h"
 
 namespace content {
+
+class BrowserAccessibilityCocoaBrowserTest;
+class WebAXPlatformTreeManagerDelegate;
 
 class CONTENT_EXPORT BrowserAccessibilityManagerMac
     : public BrowserAccessibilityManager {
  public:
   BrowserAccessibilityManagerMac(const ui::AXTreeUpdate& initial_tree,
-                                 BrowserAccessibilityDelegate* delegate);
+                                 WebAXPlatformTreeManagerDelegate* delegate);
+
+  BrowserAccessibilityManagerMac(const BrowserAccessibilityManagerMac&) =
+      delete;
+  BrowserAccessibilityManagerMac& operator=(
+      const BrowserAccessibilityManagerMac&) = delete;
 
   ~BrowserAccessibilityManagerMac() override;
 
   static ui::AXTreeUpdate GetEmptyDocument();
 
-  BrowserAccessibility* GetFocus() const override;
+  // AXTreeManager overrides.
+  void FireFocusEvent(ui::AXNode* node) override;
 
-  // Implementation of BrowserAccessibilityManager.
-  void FireFocusEvent(BrowserAccessibility* node) override;
+  // BrowserAccessibilityManager overrides.
   void FireBlinkEvent(ax::mojom::Event event_type,
-                      BrowserAccessibility* node) override;
+                      BrowserAccessibility* node,
+                      int action_request_id) override;
   void FireGeneratedEvent(ui::AXEventGenerator::Event event_type,
-                          BrowserAccessibility* node) override;
+                          const ui::AXNode* node) override;
 
   bool OnAccessibilityEvents(
       const AXEventNotificationDetails& details) override;
@@ -59,16 +68,16 @@ class CONTENT_EXPORT BrowserAccessibilityManagerMac
   // Returns an autoreleased object.
   NSDictionary* GetUserInfoForValueChangedNotification(
       const BrowserAccessibilityCocoa* native_node,
-      const base::string16& deleted_text,
-      const base::string16& inserted_text,
+      const std::u16string& deleted_text,
+      const std::u16string& inserted_text,
       id edit_text_marker) const;
-
-  void AnnounceActiveDescendant(BrowserAccessibility* node) const;
 
   bool IsInGeneratedEventBatch(ui::AXEventGenerator::Event event_type) const;
 
   // Returns whether this page is a new tab page on Chrome.
   bool IsChromeNewTabPage();
+
+  bool ShouldFireLoadCompleteNotification();
 
   // Keeps track of any edits that have been made by the user during a tree
   // update. Used by NSAccessibilityValueChangedNotification.
@@ -79,7 +88,7 @@ class CONTENT_EXPORT BrowserAccessibilityManagerMac
   // constructor.
   friend class BrowserAccessibilityManager;
 
-  DISALLOW_COPY_AND_ASSIGN(BrowserAccessibilityManagerMac);
+  friend class BrowserAccessibilityCocoaBrowserTest;
 };
 
 }  // namespace content

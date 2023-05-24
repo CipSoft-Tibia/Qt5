@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,16 +10,15 @@
 #include "third_party/blink/renderer/core/css/style_rule_keyframe.h"
 #include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/core/feature_policy/layout_animations_policy.h"
+#include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/core/frame/csp/content_security_policy.h"
-#include "third_party/blink/renderer/core/frame/deprecation.h"
+#include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
-#include "third_party/blink/renderer/core/html/imports/html_imports_controller.h"
 #include "third_party/blink/renderer/core/loader/document_loader.h"
 #include "third_party/blink/renderer/core/page/page.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/core/permissions_policy/layout_animations_policy.h"
 
 namespace blink {
 
@@ -41,7 +40,6 @@ CSSParserContext::CSSParserContext(const CSSParserContext* other,
                        other->origin_clean_,
                        other->charset_,
                        other->mode_,
-                       other->match_mode_,
                        other->profile_,
                        other->referrer_,
                        other->is_html_document_,
@@ -63,7 +61,6 @@ CSSParserContext::CSSParserContext(const CSSParserContext* other,
                        origin_clean,
                        charset,
                        other->mode_,
-                       other->match_mode_,
                        other->profile_,
                        referrer,
                        other->is_html_document_,
@@ -83,7 +80,6 @@ CSSParserContext::CSSParserContext(CSSParserMode mode,
                        true /* origin_clean */,
                        WTF::TextEncoding(),
                        mode,
-                       mode,
                        profile,
                        Referrer(),
                        false,
@@ -91,12 +87,16 @@ CSSParserContext::CSSParserContext(CSSParserMode mode,
                        secure_context_mode,
                        nullptr,
                        use_counter_document,
-                       blink::ResourceFetchRestriction::kNone) {}
+                       ResourceFetchRestriction::kNone) {}
 
 CSSParserContext::CSSParserContext(const Document& document)
+    : CSSParserContext(document, document.BaseURL()) {}
+
+CSSParserContext::CSSParserContext(const Document& document,
+                                   const KURL& base_url_override)
     : CSSParserContext(
           document,
-          document.BaseURL(),
+          base_url_override,
           true /* origin_clean */,
           Referrer(document.GetExecutionContext()
                        ? document.GetExecutionContext()->OutgoingReferrer()
@@ -119,11 +119,6 @@ CSSParserContext::CSSParserContext(
           origin_clean,
           charset,
           document.InQuirksMode() ? kHTMLQuirksMode : kHTMLStandardMode,
-          document.ImportsController() && profile == kLiveProfile
-              ? (document.ImportsController()->TreeRoot()->InQuirksMode()
-                     ? kHTMLQuirksMode
-                     : kHTMLStandardMode)
-              : document.InQuirksMode() ? kHTMLQuirksMode : kHTMLStandardMode,
           profile,
           referrer,
           IsA<HTMLDocument>(document),
@@ -145,7 +140,6 @@ CSSParserContext::CSSParserContext(const ExecutionContext& context)
                        true /* origin_clean */,
                        WTF::TextEncoding(),
                        kHTMLStandardMode,
-                       kHTMLStandardMode,
                        kLiveProfile,
                        Referrer(context.Url().StrippedForUseAsReferrer(),
                                 context.GetReferrerPolicy()),
@@ -156,14 +150,13 @@ CSSParserContext::CSSParserContext(const ExecutionContext& context)
                        IsA<LocalDOMWindow>(&context)
                            ? To<LocalDOMWindow>(context).document()
                            : nullptr,
-                       blink::ResourceFetchRestriction::kNone) {}
+                       ResourceFetchRestriction::kNone) {}
 
 CSSParserContext::CSSParserContext(
     const KURL& base_url,
     bool origin_clean,
     const WTF::TextEncoding& charset,
     CSSParserMode mode,
-    CSSParserMode match_mode,
     SelectorProfile profile,
     const Referrer& referrer,
     bool is_html_document,
@@ -176,7 +169,6 @@ CSSParserContext::CSSParserContext(
       world_(std::move(world)),
       origin_clean_(origin_clean),
       mode_(mode),
-      match_mode_(match_mode),
       profile_(profile),
       referrer_(referrer),
       is_html_document_(is_html_document),
@@ -190,8 +182,7 @@ CSSParserContext::CSSParserContext(
 bool CSSParserContext::operator==(const CSSParserContext& other) const {
   return base_url_ == other.base_url_ && origin_clean_ == other.origin_clean_ &&
          charset_ == other.charset_ && mode_ == other.mode_ &&
-         match_mode_ == other.match_mode_ && profile_ == other.profile_ &&
-         is_ad_related_ == other.is_ad_related_ &&
+         profile_ == other.profile_ && is_ad_related_ == other.is_ad_related_ &&
          is_html_document_ == other.is_html_document_ &&
          use_legacy_background_size_shorthand_behavior_ ==
              other.use_legacy_background_size_shorthand_behavior_ &&
@@ -215,7 +206,7 @@ const CSSParserContext* StrictCSSParserContext(
   if (!context) {
     context = MakeGarbageCollected<CSSParserContext>(kHTMLStandardMode,
                                                      secure_context_mode);
-    context.RegisterAsStaticReference();
+    LEAK_SANITIZER_IGNORE_OBJECT(&context);
   }
 
   return context;
@@ -230,21 +221,25 @@ bool CSSParserContext::IsSecureContext() const {
 }
 
 KURL CSSParserContext::CompleteURL(const String& url) const {
-  if (url.IsNull())
+  if (url.IsNull()) {
     return KURL();
-  if (!Charset().IsValid())
+  }
+  if (!Charset().IsValid()) {
     return KURL(BaseURL(), url);
+  }
   return KURL(BaseURL(), url, Charset());
 }
 
 void CSSParserContext::Count(WebFeature feature) const {
-  if (IsUseCounterRecordingEnabled())
+  if (IsUseCounterRecordingEnabled()) {
     document_->CountUse(feature);
+  }
 }
 
 void CSSParserContext::CountDeprecation(WebFeature feature) const {
-  if (IsUseCounterRecordingEnabled() && document_)
+  if (IsUseCounterRecordingEnabled() && document_) {
     Deprecation::CountDeprecation(document_->GetExecutionContext(), feature);
+  }
 }
 
 void CSSParserContext::Count(CSSParserMode mode, CSSPropertyID property) const {
@@ -269,26 +264,21 @@ const ExecutionContext* CSSParserContext::GetExecutionContext() const {
 
 void CSSParserContext::ReportLayoutAnimationsViolationIfNeeded(
     const StyleRuleKeyframe& rule) const {
-  if (!document_ || !document_->GetExecutionContext())
+  if (!document_ || !document_->GetExecutionContext()) {
     return;
-  for (size_t i = 0; i < rule.Properties().PropertyCount(); ++i) {
+  }
+  for (unsigned i = 0; i < rule.Properties().PropertyCount(); ++i) {
     CSSPropertyID id = rule.Properties().PropertyAt(i).Id();
-    if (id == CSSPropertyID::kVariable)
+    if (id == CSSPropertyID::kVariable) {
       continue;
+    }
     const CSSProperty& property = CSSProperty::Get(id);
-    if (!LayoutAnimationsPolicy::AffectedCSSProperties().Contains(&property))
+    if (!LayoutAnimationsPolicy::AffectedCSSProperties().Contains(&property)) {
       continue;
+    }
     LayoutAnimationsPolicy::ReportViolation(property,
                                             *document_->GetExecutionContext());
   }
-}
-
-bool CSSParserContext::CustomElementsV0Enabled() const {
-  // Support features conservatively.
-  if (!document_)
-    return true;
-  return RuntimeEnabledFeatures::CustomElementsV0Enabled(
-      document_->GetExecutionContext());
 }
 
 bool CSSParserContext::IsForMarkupSanitization() const {

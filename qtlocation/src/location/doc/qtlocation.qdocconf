@@ -5,8 +5,6 @@ project           = QtLocation
 description    = Qt Location Reference Documentation
 version          = $QT_VERSION
 
-
-
 qhp.projects            = QtLocation
 
 qhp.QtLocation.file                = qtlocation.qhp
@@ -15,9 +13,6 @@ qhp.QtLocation.virtualFolder       = qtlocation
 qhp.QtLocation.indexTitle          = Qt Location
 qhp.QtLocation.indexRoot           =
 
-qhp.QtLocation.filterAttributes    = qtlocation $QT_VERSION qtrefdoc
-qhp.QtLocation.customFilters.Qt.name = QtLocation $QT_VERSION
-qhp.QtLocation.customFilters.Qt.filterAttributes = qtlocation $QT_VERSION
 qhp.QtLocation.subprojects         = classes qml examples
 qhp.QtLocation.subprojects.classes.title = C++ Classes
 qhp.QtLocation.subprojects.classes.indexTitle = Qt Location C++ Classes
@@ -33,25 +28,27 @@ qhp.QtLocation.subprojects.examples.selectors = fake:example
 
 tagfile                 = ../../../doc/qtlocation/qtlocation.tags
 
-depends += qtcore qtdoc qtgui qtquick qtqml qtnetwork qtpositioning qtquickcontrols qtlinguist qtxmlpatterns
+depends += qtcore qtdoc qtgui qtwidgets qtquick qtquickcontrols qtqml qtqmlmodels qtnetwork qtpositioning qtlinguist
 
-headerdirs  +=  .. \
-                ../../imports/location
+headerdirs  +=  ..
 
-sourcedirs  +=  .. \
-                ../../imports/location \
-                ../../plugins/geoservices/nokia
+sourcedirs  +=  ..
 
 examplesinstallpath = location
 
-manifestmeta.highlighted.names = "QtLocation/Map Viewer (QML)"
-
 exampledirs += ../../../examples/location \
                snippets/
-
 
 imagedirs   += images
 
 navigation.landingpage = "Qt Location"
 navigation.cppclassespage = "Qt Location C++ Classes"
 navigation.qmltypespage = "Qt Location QML Types"
+
+manifestmeta.highlighted.names = \
+    "QtLocation/GeoJson Viewer (QML)" \
+    "QtLocation/Map Viewer (QML)" \
+    "QtLocation/Places Map (QML)"
+
+# Fail the documentation build when warnings get introduced
+warninglimit = 0

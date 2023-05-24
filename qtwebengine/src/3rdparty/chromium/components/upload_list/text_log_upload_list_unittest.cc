@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
@@ -24,10 +24,14 @@ const char kTestUploadId[] = "0123456789abcdef";
 const char kTestLocalID[] = "fedcba9876543210";
 const char kTestCaptureTime[] = "2345678901";
 const char kTestSource[] = "test_source";
+const char kTestPathHash[] = "1a2b3c4d5e6f";
 
 class TextLogUploadListTest : public testing::Test {
  public:
   TextLogUploadListTest() = default;
+
+  TextLogUploadListTest(const TextLogUploadListTest&) = delete;
+  TextLogUploadListTest& operator=(const TextLogUploadListTest&) = delete;
 
   void SetUp() override {
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
@@ -49,8 +53,6 @@ class TextLogUploadListTest : public testing::Test {
 
  protected:
   base::test::TaskEnvironment task_environment_;
-
-  DISALLOW_COPY_AND_ASSIGN(TextLogUploadListTest);
 };
 
 // These tests test that UploadList can parse a vector of log entry strings of
@@ -527,6 +529,46 @@ TEST_F(TextLogUploadListTest, ParseWithSource_JSON) {
   }
 }
 
+TEST_F(TextLogUploadListTest, ParseWithPathHash_JSON) {
+  std::stringstream stream;
+  for (int i = 1; i <= 4; ++i) {
+    stream << "{";
+    stream << "\"upload_time\":\"" << kTestUploadTime << "\",";
+    stream << "\"upload_id\":\"" << kTestUploadId << "\",";
+    stream << "\"local_id\":\"" << kTestLocalID << "\",";
+    stream << "\"capture_time\":\"" << kTestCaptureTime << "\",";
+    stream << "\"state\":"
+           << static_cast<int>(UploadList::UploadInfo::State::Uploaded) << ",";
+    stream << "\"source\":\"" << kTestSource << "\",";
+    stream << "\"path_hash\":\"" << kTestPathHash << "\"";
+    stream << "}" << std::endl;
+  }
+  WriteUploadLog(stream.str());
+
+  scoped_refptr<TextLogUploadList> upload_list =
+      new TextLogUploadList(log_path());
+
+  base::RunLoop run_loop;
+  upload_list->Load(run_loop.QuitClosure());
+  run_loop.Run();
+
+  std::vector<UploadList::UploadInfo> uploads;
+  upload_list->GetUploads(999, &uploads);
+
+  EXPECT_EQ(4u, uploads.size());
+  for (const UploadList::UploadInfo& upload : uploads) {
+    double time_double = upload.upload_time.ToDoubleT();
+    EXPECT_STREQ(kTestUploadTime, base::NumberToString(time_double).c_str());
+    EXPECT_STREQ(kTestUploadId, upload.upload_id.c_str());
+    EXPECT_STREQ(kTestLocalID, upload.local_id.c_str());
+    time_double = upload.capture_time.ToDoubleT();
+    EXPECT_STREQ(kTestCaptureTime, base::NumberToString(time_double).c_str());
+    EXPECT_EQ(UploadList::UploadInfo::State::Uploaded, upload.state);
+    EXPECT_STREQ(kTestSource, upload.source.c_str());
+    EXPECT_STREQ(kTestPathHash, upload.path_hash.c_str());
+  }
+}
+
 TEST_F(TextLogUploadListTest, ParseHybridFormat) {
   std::stringstream stream;
   for (int i = 1; i <= 4; ++i) {
@@ -594,6 +636,34 @@ TEST_F(TextLogUploadListTest, SkipInvalidEntry_JSON) {
 
   // The invalid JSON entry should be skipped.
   EXPECT_EQ(1u, uploads.size());
+}
+
+// Test log entry string with only single column.
+// Such kind of lines are considered as invalid CSV entry. They should be
+// skipped in parsing the log file.
+TEST_F(TextLogUploadListTest, SkipBlankOrCorruptedEntry) {
+  std::string test_entry;
+
+  // Add an empty line.
+  test_entry += "\n";
+
+  // Add a line with only single column.
+  test_entry.append(kTestUploadTime);
+  test_entry += "\n";
+
+  WriteUploadLog(test_entry);
+
+  scoped_refptr<TextLogUploadList> upload_list =
+      new TextLogUploadList(log_path());
+
+  base::RunLoop run_loop;
+  upload_list->Load(run_loop.QuitClosure());
+  run_loop.Run();
+
+  std::vector<UploadList::UploadInfo> uploads;
+  upload_list->GetUploads(999, &uploads);
+
+  EXPECT_EQ(0u, uploads.size());
 }
 
 TEST_F(TextLogUploadListTest, ClearUsingUploadTime) {

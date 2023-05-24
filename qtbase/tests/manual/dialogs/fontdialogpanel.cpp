@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "fontdialogpanel.h"
+#include "utils.h"
 
 #include <QGroupBox>
 #include <QCheckBox>
@@ -38,15 +14,6 @@
 #include <QDoubleSpinBox>
 #include <QTimer>
 #include <QDebug>
-
-static inline QPushButton *addButton(const QString &description, QVBoxLayout *layout,
-                                     QObject *receiver, const char *slotFunc)
-{
-    QPushButton *button = new QPushButton(description);
-    QObject::connect(button, SIGNAL(clicked()), receiver, slotFunc);
-    layout->addWidget(button);
-    return button;
-}
 
 FontDialogPanel::FontDialogPanel(QWidget *parent)
     : QWidget(parent)
@@ -80,7 +47,9 @@ FontDialogPanel::FontDialogPanel(QWidget *parent)
     QGroupBox *buttonsGroupBox = new QGroupBox(tr("Show"));
     QVBoxLayout *buttonsLayout = new QVBoxLayout(buttonsGroupBox);
     addButton(tr("Exec modal"), buttonsLayout, this, SLOT(execModal()));
-    addButton(tr("Show modal"), buttonsLayout, this, SLOT(showModal()));
+    addButton(tr("Show application modal"), buttonsLayout,
+              [this]() { showModal(Qt::ApplicationModal); });
+    addButton(tr("Show window modal"), buttonsLayout, [this]() { showModal(Qt::WindowModal); });
     m_deleteModalDialogButton =
         addButton(tr("Delete modal"), buttonsLayout, this, SLOT(deleteModalDialog()));
     addButton(tr("Show non-modal"), buttonsLayout, this, SLOT(showNonModal()));
@@ -112,7 +81,7 @@ void FontDialogPanel::execModal()
     dialog.exec();
 }
 
-void FontDialogPanel::showModal()
+void FontDialogPanel::showModal(Qt::WindowModality modality)
 {
     if (m_modalDialog.isNull()) {
         static int  n = 0;
@@ -124,6 +93,7 @@ void FontDialogPanel::showModal()
                                       .arg(QLatin1String(QT_VERSION_STR)));
         enableDeleteModalDialogButton();
     }
+    m_modalDialog->setWindowModality(modality);
     applySettings(m_modalDialog);
     m_modalDialog->show();
 }
@@ -196,12 +166,10 @@ void FontDialogPanel::applySettings(QFontDialog *d) const
 {
     d->setOption(QFontDialog::NoButtons, m_noButtons->isChecked());
     d->setOption(QFontDialog::DontUseNativeDialog, m_dontUseNativeDialog->isChecked());
-#if QT_VERSION >= 0x050000
     d->setOption(QFontDialog::ScalableFonts, m_scalableFilter->isChecked());
     d->setOption(QFontDialog::NonScalableFonts, m_nonScalableFilter->isChecked());
     d->setOption(QFontDialog::MonospacedFonts, m_monospacedFilter->isChecked());
     d->setOption(QFontDialog::ProportionalFonts, m_proportionalFilter->isChecked());
-#endif // Qt 5
 
     QFont font = m_fontFamilyBox->currentFont();
     font.setPointSizeF(m_fontSizeBox->value());

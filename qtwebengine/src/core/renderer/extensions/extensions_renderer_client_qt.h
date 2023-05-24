@@ -1,49 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef EXTENSIONSRENDERERCLIENTQT_H
 #define EXTENSIONSRENDERERCLIENTQT_H
 
 #include <memory>
-#include <string>
 
-#include "base/macros.h"
 #include "extensions/renderer/extensions_renderer_client.h"
 #include "services/service_manager/public/cpp/binder_registry.h"
 #include "ui/base/page_transition_types.h"
@@ -54,13 +16,15 @@ namespace blink {
 class WebLocalFrame;
 struct WebPluginParams;
 class WebURL;
+class WebView;
 }
 
 namespace content {
-class BrowserPluginDelegate;
 class RenderFrame;
-class RenderView;
-struct WebPluginInfo;
+}
+
+namespace net {
+class SiteForCookies;
 }
 
 namespace url {
@@ -69,7 +33,6 @@ class Origin;
 
 namespace extensions {
 class Dispatcher;
-class ExtensionsGuestViewContainerDispatcher;
 class ResourceRequestPolicyQt;
 }
 
@@ -93,15 +56,17 @@ public:
 
     // Match ContentRendererClientQt's method names...
     void RenderThreadStarted();
+    void WebViewCreated(blink::WebView *web_view,
+                        const url::Origin *outermost_origin);
     void RenderFrameCreated(content::RenderFrame *, service_manager::BinderRegistry *);
     bool OverrideCreatePlugin(content::RenderFrame *render_frame,
                               const blink::WebPluginParams &params);
     void WillSendRequest(blink::WebLocalFrame *frame,
                          ui::PageTransition transition_type,
                          const blink::WebURL &url,
+                         const net::SiteForCookies &site_for_cookies,
                          const url::Origin *initiator_origin,
-                         GURL *new_url,
-                         bool *attach_same_site_cookies);
+                         GURL *new_url);
 
     static bool ShouldFork(blink::WebLocalFrame *frame,
                            const GURL &url,
@@ -124,7 +89,6 @@ private:
     std::unique_ptr<ExtensionsDispatcherDelegateQt> extension_dispatcher_delegate_;
     std::unique_ptr<RendererPermissionsPolicyDelegateQt> permissions_policy_delegate_;
     std::unique_ptr<extensions::Dispatcher> extension_dispatcher_;
-    std::unique_ptr<extensions::ExtensionsGuestViewContainerDispatcher> guest_view_container_dispatcher_;
     std::unique_ptr<extensions::ResourceRequestPolicyQt> resource_request_policy_;
 };
 

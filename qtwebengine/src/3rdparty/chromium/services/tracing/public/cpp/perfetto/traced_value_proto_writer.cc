@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #include "services/tracing/public/cpp/perfetto/traced_value_proto_writer.h"
@@ -8,6 +8,7 @@
 
 #include "base/hash/hash.h"
 #include "base/json/string_escape.h"
+#include "base/strings/string_piece.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/traced_value.h"
 #include "third_party/perfetto/include/perfetto/protozero/message_handle.h"
@@ -125,7 +126,7 @@ class ProtoWriter final : public TracedValue::Writer {
   }
 
   void SetValueWithCopiedName(base::StringPiece name, Writer* value) override {
-    SetValue(name.as_string().c_str(), value);
+    SetValue(std::string(name).c_str(), value);
   }
 
   void BeginArray() override {
@@ -196,7 +197,12 @@ class ProtoWriter final : public TracedValue::Writer {
     return full_size;
   }
 
-  void AppendAsTraceFormat(std::string* out) const override { NOTREACHED(); }
+  void AppendAsTraceFormat(std::string* /*out*/) const override {
+    // This is not implemented, but still occasionally called from atrace
+    // exporter. See crbug.com/1411929 for details.
+    // TODO(khokhlov): Make sure this method in NOTREACHED() after the SDK
+    // migration (crbug.com/1006541).
+  }
 
   bool AppendToProto(
       base::trace_event::TracedValue::ProtoAppender* appender) override {

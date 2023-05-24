@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QRAWVECTOR_H
 #define QRAWVECTOR_H
@@ -41,8 +16,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-QT_BEGIN_NAMESPACE
+const int million = 1000000;
+extern double accumulate;
 
+// Defined in outofline.cpp
+extern QVector<double> qvector_fill_and_return_helper();
+extern QVector<double> qrawvector_fill_and_return_helper();
+extern std::vector<double> stdvector_fill_and_return_helper();
+extern QVector<double> mixedvector_fill_and_return_helper();
+
+QT_BEGIN_NAMESPACE
 
 struct QVectorData
 {
@@ -130,78 +113,9 @@ public:
     bool contains(const T &t) const;
     int count(const T &t) const;
 
-#ifdef QT_STRICT_ITERATORS
-    class iterator {
-    public:
-        T *i;
-        typedef std::random_access_iterator_tag  iterator_category;
-        typedef ptrdiff_t difference_type;
-        typedef T value_type;
-        typedef T *pointer;
-        typedef T &reference;
-
-        inline iterator() : i(0) {}
-        inline iterator(T *n) : i(n) {}
-        inline iterator(const iterator &o): i(o.i){}
-        inline T &operator*() const { return *i; }
-        inline T *operator->() const { return i; }
-        inline T &operator[](int j) const { return *(i + j); }
-        inline bool operator==(const iterator &o) const { return i == o.i; }
-        inline bool operator!=(const iterator &o) const { return i != o.i; }
-        inline bool operator<(const iterator& other) const { return i < other.i; }
-        inline bool operator<=(const iterator& other) const { return i <= other.i; }
-        inline bool operator>(const iterator& other) const { return i > other.i; }
-        inline bool operator>=(const iterator& other) const { return i >= other.i; }
-        inline iterator &operator++() { ++i; return *this; }
-        inline iterator operator++(int) { T *n = i; ++i; return n; }
-        inline iterator &operator--() { i--; return *this; }
-        inline iterator operator--(int) { T *n = i; i--; return n; }
-        inline iterator &operator+=(int j) { i+=j; return *this; }
-        inline iterator &operator-=(int j) { i-=j; return *this; }
-        inline iterator operator+(int j) const { return iterator(i+j); }
-        inline iterator operator-(int j) const { return iterator(i-j); }
-        inline int operator-(iterator j) const { return i - j.i; }
-    };
-    friend class iterator;
-
-    class const_iterator {
-    public:
-        T *i;
-        typedef std::random_access_iterator_tag  iterator_category;
-        typedef ptrdiff_t difference_type;
-        typedef T value_type;
-        typedef const T *pointer;
-        typedef const T &reference;
-
-        inline const_iterator() : i(0) {}
-        inline const_iterator(T *n) : i(n) {}
-        inline const_iterator(const const_iterator &o): i(o.i) {}
-        inline explicit const_iterator(const iterator &o): i(o.i) {}
-        inline const T &operator*() const { return *i; }
-        inline const T *operator->() const { return i; }
-        inline const T &operator[](int j) const { return *(i + j); }
-        inline bool operator==(const const_iterator &o) const { return i == o.i; }
-        inline bool operator!=(const const_iterator &o) const { return i != o.i; }
-        inline bool operator<(const const_iterator& other) const { return i < other.i; }
-        inline bool operator<=(const const_iterator& other) const { return i <= other.i; }
-        inline bool operator>(const const_iterator& other) const { return i > other.i; }
-        inline bool operator>=(const const_iterator& other) const { return i >= other.i; }
-        inline const_iterator &operator++() { ++i; return *this; }
-        inline const_iterator operator++(int) { T *n = i; ++i; return n; }
-        inline const_iterator &operator--() { i--; return *this; }
-        inline const_iterator operator--(int) { T *n = i; i--; return n; }
-        inline const_iterator &operator+=(int j) { i+=j; return *this; }
-        inline const_iterator &operator-=(int j) { i+=j; return *this; }
-        inline const_iterator operator+(int j) const { return const_iterator(i+j); }
-        inline const_iterator operator-(int j) const { return const_iterator(i-j); }
-        inline int operator-(const_iterator j) const { return i - j.i; }
-    };
-    friend class const_iterator;
-#else
     // STL-style
     typedef T *iterator;
     typedef const T *const_iterator;
-#endif
     inline iterator begin() { return m_begin; }
     inline const_iterator begin() const { return m_begin; }
     inline const_iterator constBegin() const { return m_begin; }
@@ -273,23 +187,20 @@ private:
 
     class AlignmentDummy { QVectorData header; T array[1]; };
 
-    static Q_DECL_CONSTEXPR int offsetOfTypedData()
+    static constexpr int offsetOfTypedData()
     {
         // (non-POD)-safe offsetof(AlignmentDummy, array)
         return (sizeof(QVectorData) + (alignOfTypedData() - 1)) & ~(alignOfTypedData() - 1);
     }
-    static Q_DECL_CONSTEXPR int alignOfTypedData()
+    static constexpr int alignOfTypedData()
     {
-#ifdef Q_ALIGNOF
-        return Q_ALIGNOF(AlignmentDummy);
-#else
-        return sizeof(void *);
-#endif
+        return alignof(AlignmentDummy);
     }
 
 public:
     QVector<T> mutateToVector()
     {
+        Q_ASSERT(!"Fix QTBUG-95061 before calling this; it is broken beyond repair");
         Data *d = toBase(m_begin);
         d->ref.initializeOwned();
         d->alloc = m_alloc;
@@ -434,7 +345,7 @@ void QRawVector<T>::realloc(int asize, int aalloc, bool ref)
     T *xbegin = m_begin;
     if (aalloc != xalloc || ref) {
         // (re)allocate memory
-        if (QTypeInfo<T>::isStatic) {
+        if (!QTypeInfo<T>::isRelocatable) {
             xbegin = allocate(aalloc);
             xsize = 0;
             changed = true;
@@ -535,7 +446,7 @@ typename QRawVector<T>::iterator QRawVector<T>::insert(iterator before, size_typ
         const T copy(t);
         if (m_size + n > m_alloc)
             realloc(m_size, QVectorData::grow(offsetOfTypedData(), m_size + n, sizeof(T)), false);
-        if (QTypeInfo<T>::isStatic) {
+        if (!QTypeInfo<T>::isRelocatable) {
             T *b = m_begin + m_size;
             T *i = m_begin + m_size + n;
             while (i != b)

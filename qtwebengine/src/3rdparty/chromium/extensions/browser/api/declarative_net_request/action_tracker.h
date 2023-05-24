@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,13 @@
 #include <map>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "extensions/common/api/declarative_net_request.h"
 #include "extensions/common/api/declarative_net_request/constants.h"
 #include "extensions/common/extension_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 class Clock;
@@ -36,8 +39,7 @@ class ActionTracker {
  public:
   // The lifespan of matched rules in |rules_matched_| not associated with an
   // active document,
-  static constexpr base::TimeDelta kNonActiveTabRuleLifespan =
-      base::TimeDelta::FromMinutes(5);
+  static constexpr base::TimeDelta kNonActiveTabRuleLifespan = base::Minutes(5);
 
   explicit ActionTracker(content::BrowserContext* browser_context);
   ~ActionTracker();
@@ -56,14 +58,20 @@ class ActionTracker {
   void SetTimerForTest(
       std::unique_ptr<base::RetainingOneShotTimer> injected_trim_rules_timer);
 
+  // Disables checking whether a tab ID corresponds to an existing tab when a
+  // rule is matched. Used for unit tests where WebContents/actual tabs do not
+  // exist.
+  void SetCheckTabIdOnRuleMatchForTest(bool check_tab_id);
+
   // Called whenever a request matches with a rule.
   void OnRuleMatched(const RequestAction& request_action,
                      const WebRequestInfo& request_info);
 
   // Updates the action count for all tabs for the specified |extension_id|'s
-  // extension action. Called when chrome.setActionCountAsBadgeText(true) is
-  // called by an extension.
-  void OnPreferenceEnabled(const ExtensionId& extension_id) const;
+  // extension action. Called when the extension calls setExtensionActionOptions
+  // to enable setting the action count as badge text.
+  void OnActionCountAsBadgeTextPreferenceEnabled(
+      const ExtensionId& extension_id) const;
 
   // Clears the TrackedInfo for the specified |extension_id| for all tabs.
   // Called when an extension's ruleset is removed.
@@ -85,7 +93,7 @@ class ActionTracker {
   // rules matched for |tab_id| will be returned.
   std::vector<api::declarative_net_request::MatchedRuleInfo> GetMatchedRules(
       const Extension& extension,
-      const base::Optional<int>& tab_id,
+      const absl::optional<int>& tab_id,
       const base::Time& min_time_stamp);
 
   // Returns the number of matched rules in |rules_tracked_| for the given
@@ -101,6 +109,13 @@ class ActionTracker {
   // tests.
   int GetPendingRuleCountForTest(const ExtensionId& extension_id,
                                  int64_t navigation_id);
+
+  // Increments the action count for the given |extension_id| and |tab_id|.
+  // A negative value for |increment| will decrement the action count, but the
+  // action count will never be less than 0.
+  void IncrementActionCountForTab(const ExtensionId& extension_id,
+                                  int tab_id,
+                                  int increment);
 
  private:
   // Template key type used for TrackedInfo, specified by an extension_id and
@@ -194,9 +209,9 @@ class ActionTracker {
   // TrackedInfo is added to |rules_tracked_| once the navigation commits.
   std::map<ExtensionNavigationIdKey, TrackedInfo> pending_navigation_actions_;
 
-  content::BrowserContext* browser_context_;
+  raw_ptr<content::BrowserContext> browser_context_;
 
-  ExtensionPrefs* extension_prefs_;
+  raw_ptr<ExtensionPrefs> extension_prefs_;
 };
 
 }  // namespace declarative_net_request

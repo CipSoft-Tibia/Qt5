@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,14 +6,14 @@ import("//build/config/features.gni")
 import("//build/config/nacl/config.gni")
 import("//build/config/nacl/rules.gni")
 import("//components/nacl/features.gni")
+import("//components/nacl/target_cpu.gni")
 import("//ppapi/buildflags/buildflags.gni")
 import("//testing/test.gni")
 if (is_mac) {
   import("//build/config/mac/rules.gni")
 }
 
-assert(!is_android || enable_plugins,
-       "//ppapi should not be referenced when is_android && !enable_plugins")
+assert(enable_ppapi)
 
 # Test files shared between several targets below.
 #
@@ -32,8 +32,6 @@ test_common_source_files = [
   "tests/test_audio.h",
   "tests/test_audio_config.cc",
   "tests/test_audio_config.h",
-  "tests/test_audio_encoder.cc",
-  "tests/test_audio_encoder.h",
   "tests/test_case.cc",
   "tests/test_case.h",
   "tests/test_console.cc",
@@ -110,8 +108,6 @@ test_common_source_files = [
   "tests/test_test_internals.h",
   "tests/test_trace_event.cc",
   "tests/test_trace_event.h",
-  "tests/test_truetype_font.cc",
-  "tests/test_truetype_font.h",
   "tests/test_udp_socket.cc",
   "tests/test_udp_socket.h",
   "tests/test_udp_socket_private.cc",
@@ -122,6 +118,7 @@ test_common_source_files = [
   "tests/test_url_loader.h",
   "tests/test_url_request.cc",
   "tests/test_url_request.h",
+  "tests/test_utils.h",
   "tests/test_utils.cc",
   "tests/test_var.cc",
   "tests/test_var.h",
@@ -167,8 +164,6 @@ copy("copy_test_files2") {
 source_set("ppapi_tests_sources") {
   sources = test_common_source_files
   sources += [
-    "tests/test_broker.cc",
-    "tests/test_broker.h",
     "tests/test_browser_font.cc",
     "tests/test_browser_font.h",
     "tests/test_buffer.cc",
@@ -179,24 +174,8 @@ source_set("ppapi_tests_sources") {
     "tests/test_crypto.h",
     "tests/test_file_chooser.cc",
     "tests/test_file_chooser.h",
-    "tests/test_flash.cc",
-    "tests/test_flash.h",
-    "tests/test_flash_clipboard.cc",
-    "tests/test_flash_clipboard.h",
-    "tests/test_flash_drm.cc",
-    "tests/test_flash_drm.h",
-    "tests/test_flash_file.cc",
-    "tests/test_flash_file.h",
-    "tests/test_flash_fullscreen.cc",
-    "tests/test_flash_fullscreen.h",
-    "tests/test_flash_fullscreen_for_browser_ui.cc",
-    "tests/test_flash_fullscreen_for_browser_ui.h",
-    "tests/test_flash_message_loop.cc",
-    "tests/test_flash_message_loop.h",
     "tests/test_net_address_private.cc",
     "tests/test_net_address_private.h",
-    "tests/test_pdf.cc",
-    "tests/test_pdf.h",
     "tests/test_tcp_socket_private_trusted.cc",
     "tests/test_tcp_socket_private_trusted.h",
     "tests/test_url_util.cc",
@@ -237,50 +216,6 @@ if (is_mac) {
 }
 target(ppapi_tests_target_type, "ppapi_tests") {
   deps = [ ":ppapi_tests_sources" ]
-}
-
-# Test plugin for power saver tests.
-# See also ppapi::RegisterFlashTestPlugin.
-source_set("power_saver_test_plugin_sources") {
-  sources = [
-    "tests/power_saver_test_plugin.cc",
-    "tests/test_utils.cc",
-  ]
-
-  deps = [
-    "//ppapi/cpp",
-    "//ppapi/shared_impl",
-  ]
-}
-
-# Test plugin for Cross-Origin Read Blocking.
-# See also ppapi::RegisterCorbTestPlugin.
-source_set("corb_test_plugin_sources") {
-  sources = [
-    "tests/corb_test_plugin.cc",
-    "tests/test_utils.cc",
-  ]
-
-  deps = [
-    "//ppapi/cpp",
-    "//ppapi/shared_impl",
-  ]
-}
-
-if (!is_mac) {
-  shared_library("corb_test_plugin") {
-    deps = [ ":corb_test_plugin_sources" ]
-  }
-  shared_library("power_saver_test_plugin") {
-    deps = [ ":power_saver_test_plugin_sources" ]
-  }
-} else {
-  mac_plugin_bundle("corb_test_plugin") {
-    deps = [ ":corb_test_plugin_sources" ]
-  }
-  mac_plugin_bundle("power_saver_test_plugin") {
-    deps = [ ":power_saver_test_plugin_sources" ]
-  }
 }
 
 source_set("blink_deprecated_test_plugin_sources") {
@@ -329,12 +264,10 @@ test("ppapi_unittests") {
     "proxy/device_enumeration_resource_helper_unittest.cc",
     "proxy/file_chooser_resource_unittest.cc",
     "proxy/file_system_resource_unittest.cc",
-    "proxy/flash_resource_unittest.cc",
     "proxy/interface_list_unittest.cc",
     "proxy/mock_resource.cc",
     "proxy/mock_resource.h",
     "proxy/nacl_message_scanner_unittest.cc",
-    "proxy/pdf_resource_unittest.cc",
     "proxy/plugin_dispatcher_unittest.cc",
     "proxy/plugin_resource_tracker_unittest.cc",
     "proxy/plugin_var_tracker_unittest.cc",
@@ -438,7 +371,10 @@ if (enable_nacl) {
         "GL_GLEXT_PROTOTYPES",
         "PPAPI_TEST_IMPLEMENTATION",
       ]
-      deps = [ "//ppapi/cpp" ]
+      deps = [
+        "//ppapi/cpp",
+        "//ppapi/native_client/src/untrusted/irt_stub:ppapi_stub_lib",
+      ]
       if (current_cpu == "pnacl") {
         pretranslate_pexe = true
       }
@@ -448,18 +384,14 @@ if (enable_nacl) {
   group("ppapi_nacl_tests_all") {
     data_deps = [
       ":copy_test_files",
-      ":ppapi_nacl_tests(//build/toolchain/nacl:clang_newlib_${target_cpu})",
+      ":ppapi_nacl_tests(//build/toolchain/nacl:clang_newlib_${nacl_target_cpu})",
       ":ppapi_nacl_tests(//build/toolchain/nacl:newlib_pnacl)",
     ]
 
     if (target_cpu != "mipsel" && !is_mac && !is_win) {
-      data_deps +=
-          [ ":ppapi_nacl_tests(//build/toolchain/nacl:glibc_${target_cpu})" ]
-    }
-
-    if ((is_linux || is_chromeos) && enable_nacl_nonsfi) {
-      data_deps +=
-          [ ":ppapi_nacl_tests(//build/toolchain/nacl:newlib_pnacl_nonsfi)" ]
+      data_deps += [
+        ":ppapi_nacl_tests(//build/toolchain/nacl:glibc_${nacl_target_cpu})",
+      ]
     }
   }
 }

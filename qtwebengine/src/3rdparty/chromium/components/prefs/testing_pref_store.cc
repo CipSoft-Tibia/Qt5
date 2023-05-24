@@ -1,14 +1,15 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/prefs/testing_pref_store.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "base/json/json_writer.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/strings/string_piece.h"
 #include "base/values.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -21,13 +22,13 @@ TestingPrefStore::TestingPrefStore()
       init_complete_(false),
       committed_(true) {}
 
-bool TestingPrefStore::GetValue(const std::string& key,
+bool TestingPrefStore::GetValue(base::StringPiece key,
                                 const base::Value** value) const {
   return prefs_.GetValue(key, value);
 }
 
-std::unique_ptr<base::DictionaryValue> TestingPrefStore::GetValues() const {
-  return prefs_.AsDictionaryValue();
+base::Value::Dict TestingPrefStore::GetValues() const {
+  return prefs_.AsDict();
 }
 
 bool TestingPrefStore::GetMutableValue(const std::string& key,
@@ -44,7 +45,7 @@ void TestingPrefStore::RemoveObserver(PrefStore::Observer* observer) {
 }
 
 bool TestingPrefStore::HasObservers() const {
-  return observers_.might_have_observers();
+  return !observers_.empty();
 }
 
 bool TestingPrefStore::IsInitializationComplete() const {
@@ -52,21 +53,19 @@ bool TestingPrefStore::IsInitializationComplete() const {
 }
 
 void TestingPrefStore::SetValue(const std::string& key,
-                                std::unique_ptr<base::Value> value,
+                                base::Value value,
                                 uint32_t flags) {
-  DCHECK(value);
-  if (prefs_.SetValue(key, base::Value::FromUniquePtrValue(std::move(value)))) {
+  if (prefs_.SetValue(key, std::move(value))) {
     committed_ = false;
     NotifyPrefValueChanged(key);
   }
 }
 
 void TestingPrefStore::SetValueSilently(const std::string& key,
-                                        std::unique_ptr<base::Value> value,
+                                        base::Value value,
                                         uint32_t flags) {
-  DCHECK(value);
-  CheckPrefIsSerializable(key, *value);
-  if (prefs_.SetValue(key, base::Value::FromUniquePtrValue(std::move(value))))
+  CheckPrefIsSerializable(key, value);
+  if (prefs_.SetValue(key, std::move(value)))
     committed_ = false;
 }
 
@@ -143,15 +142,15 @@ void TestingPrefStore::ReportValueChanged(const std::string& key,
 
 void TestingPrefStore::SetString(const std::string& key,
                                  const std::string& value) {
-  SetValue(key, std::make_unique<base::Value>(value), DEFAULT_PREF_WRITE_FLAGS);
+  SetValue(key, base::Value(value), DEFAULT_PREF_WRITE_FLAGS);
 }
 
 void TestingPrefStore::SetInteger(const std::string& key, int value) {
-  SetValue(key, std::make_unique<base::Value>(value), DEFAULT_PREF_WRITE_FLAGS);
+  SetValue(key, base::Value(value), DEFAULT_PREF_WRITE_FLAGS);
 }
 
 void TestingPrefStore::SetBoolean(const std::string& key, bool value) {
-  SetValue(key, std::make_unique<base::Value>(value), DEFAULT_PREF_WRITE_FLAGS);
+  SetValue(key, base::Value(value), DEFAULT_PREF_WRITE_FLAGS);
 }
 
 bool TestingPrefStore::GetString(const std::string& key,
@@ -160,7 +159,11 @@ bool TestingPrefStore::GetString(const std::string& key,
   if (!prefs_.GetValue(key, &stored_value) || !stored_value)
     return false;
 
-  return stored_value->GetAsString(value);
+  if (value && stored_value->is_string()) {
+    *value = stored_value->GetString();
+    return true;
+  }
+  return stored_value->is_string();
 }
 
 bool TestingPrefStore::GetInteger(const std::string& key, int* value) const {
@@ -168,7 +171,11 @@ bool TestingPrefStore::GetInteger(const std::string& key, int* value) const {
   if (!prefs_.GetValue(key, &stored_value) || !stored_value)
     return false;
 
-  return stored_value->GetAsInteger(value);
+  if (value && stored_value->is_int()) {
+    *value = stored_value->GetInt();
+    return true;
+  }
+  return stored_value->is_int();
 }
 
 bool TestingPrefStore::GetBoolean(const std::string& key, bool* value) const {
@@ -176,7 +183,11 @@ bool TestingPrefStore::GetBoolean(const std::string& key, bool* value) const {
   if (!prefs_.GetValue(key, &stored_value) || !stored_value)
     return false;
 
-  return stored_value->GetAsBoolean(value);
+  if (value && stored_value->is_bool()) {
+    *value = stored_value->GetBool();
+    return true;
+  }
+  return stored_value->is_bool();
 }
 
 void TestingPrefStore::SetBlockAsyncRead(bool block_async_read) {
@@ -184,10 +195,6 @@ void TestingPrefStore::SetBlockAsyncRead(bool block_async_read) {
   block_async_read_ = block_async_read;
   if (pending_async_read_ && !block_async_read_)
     NotifyInitializationCompleted();
-}
-
-void TestingPrefStore::ClearMutableValues() {
-  NOTIMPLEMENTED();
 }
 
 void TestingPrefStore::OnStoreDeletionFromDisk() {}

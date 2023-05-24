@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_OPENGL_RENDERER_H
 #define QT3DRENDER_RENDER_OPENGL_RENDERER_H
@@ -61,21 +25,20 @@
 #include <Qt3DRender/private/rendersettings_p.h>
 #include <Qt3DRender/private/updateshaderdatatransformjob_p.h>
 #include <Qt3DRender/private/framecleanupjob_p.h>
-#include <Qt3DRender/private/platformsurfacefilter_p.h>
 #include <Qt3DRender/private/sendbuffercapturejob_p.h>
 #include <Qt3DRender/private/genericlambdajob_p.h>
 #include <Qt3DRender/private/shaderbuilder_p.h>
 #include <Qt3DRender/private/lightgatherer_p.h>
 #include <Qt3DRender/private/texture_p.h>
 #include <Qt3DRender/private/filterentitybycomponentjob_p.h>
+#include <Qt3DRender/private/filtercompatibletechniquejob_p.h>
+#include <Qt3DRender/private/renderqueue_p.h>
+#include <Qt3DRender/private/renderercache_p.h>
+#include <Qt3DRender/private/renderviewinitializerjob_p.h>
 #include <shaderparameterpack_p.h>
-#include <renderviewinitializerjob_p.h>
-#include <filtercompatibletechniquejob_p.h>
-#include <renderercache_p.h>
 #include <logging_p.h>
 #include <gl_handle_types_p.h>
 #include <glfence_p.h>
-#include <renderercache_p.h>
 
 #include <QHash>
 #include <QMatrix4x4>
@@ -89,6 +52,8 @@
 #include <QAtomicInt>
 #include <QScopedPointer>
 #include <QSemaphore>
+#include <QMouseEvent>
+#include <QKeyEvent>
 
 #include <functional>
 
@@ -99,13 +64,10 @@ class tst_Renderer;
 QT_BEGIN_NAMESPACE
 
 class QSurface;
-class QMouseEvent;
 class QScreen;
 
 namespace Qt3DCore {
 class QEntity;
-class QFrameAllocator;
-class QEventFilterService;
 }
 
 namespace Qt3DRender {
@@ -137,7 +99,6 @@ class Shader;
 class Entity;
 class Effect;
 class RenderPass;
-class RenderThread;
 class RenderStateSet;
 class VSyncFrameAdvanceService;
 class NodeManagers;
@@ -162,19 +123,21 @@ namespace OpenGL {
 class CommandThread;
 class SubmissionContext;
 class RenderCommand;
-class RenderQueue;
-class RenderView;
 class GLShader;
 class GLResourceManagers;
+class RenderView;
 
 class Q_AUTOTEST_EXPORT Renderer : public AbstractRenderer
 {
 public:
-    explicit Renderer(QRenderAspect::RenderType type);
+    explicit Renderer();
     ~Renderer();
 
     void dumpInfo() const override;
     API api() const override { return Qt3DRender::API::OpenGL; }
+
+    void setRenderDriver(RenderDriver driver) override;
+    RenderDriver renderDriver() const override;
 
     qint64 time() const override;
     void setTime(qint64 time) override;
@@ -193,8 +156,7 @@ public:
     void shutdown() override;
     void releaseGraphicsResources() override;
 
-    void render() override;
-    void doRender(bool swapBuffers = true) override;
+    void render(bool swapBuffers = true) override;
     void cleanGraphicsResources() override;
 
     bool isRunning() const override { return m_running.loadRelaxed(); }
@@ -203,7 +165,7 @@ public:
     Entity *sceneRoot() const override { return m_renderSceneRoot; }
 
     FrameGraphNode *frameGraphRoot() const override;
-    RenderQueue *renderQueue() const { return m_renderQueue; }
+    RenderQueue<RenderView> *renderQueue() { return &m_renderQueue; }
 
     void markDirty(BackendNodeDirtySet changes, BackendNode *node) override;
     BackendNodeDirtySet dirtyBits() override;
@@ -215,11 +177,11 @@ public:
     void skipNextFrame() override;
     void jobsDone(Qt3DCore::QAspectManager *manager) override;
 
-    void setPendingEvents(const QList<QPair<QObject *, QMouseEvent>> &mouseEvents, const QList<QKeyEvent> &keyEvents) override;
+    bool processMouseEvent(QObject *object, QMouseEvent *event) override;
+    bool processKeyEvent(QObject *object, QKeyEvent *event) override;
 
-    QVector<Qt3DCore::QAspectJobPtr> preRenderingJobs() override;
-    QVector<Qt3DCore::QAspectJobPtr> renderBinJobs() override;
-
+    std::vector<Qt3DCore::QAspectJobPtr> preRenderingJobs() override;
+    std::vector<Qt3DCore::QAspectJobPtr> renderBinJobs() override;
     inline FrameCleanupJobPtr frameCleanupJob() const { return m_cleanupJob; }
     inline UpdateShaderDataTransformJobPtr updateShaderDataTransformJob() const { return m_updateShaderDataTransformJob; }
     inline FilterCompatibleTechniqueJobPtr filterCompatibleTechniqueJob() const { return m_filterCompatibleTechniqueJob; }
@@ -238,10 +200,6 @@ public:
 
     inline GLResourceManagers *glResourceManagers() const { return m_glResourceManagers; }
 
-    // Executed in secondary GL thread
-    void loadShader(Shader *shader, Qt3DRender::Render::HShader shaderHandle) override;
-
-
     void updateGLResources();
     void updateTexture(Texture *texture);
     void cleanupTexture(Qt3DCore::QNodeId cleanedUpTextureId);
@@ -253,7 +211,7 @@ public:
                          QRect outputRect,
                          GLuint defaultFramebuffer);
 
-    void prepareCommandsSubmission(const QVector<RenderView *> &renderViews);
+    void prepareCommandsSubmission(const std::vector<RenderView *> &renderViews);
     bool executeCommandsSubmission(RenderView *rv);
     bool updateVAOWithAttributes(Geometry *geometry,
                                  const RenderCommand *command,
@@ -263,8 +221,11 @@ public:
     bool requiresVAOAttributeUpdate(Geometry *geometry,
                                     const RenderCommand *command) const;
 
-    // For Scene2D rendering
+    // For Scene3D/Scene2D rendering
     void setOpenGLContext(QOpenGLContext *context) override;
+    void setRHIContext(QRhi *) override {};
+    void setDefaultRHIRenderTarget(QRhiRenderTarget *) override {};
+    void setRHICommandBuffer(QRhiCommandBuffer *) override {};
     bool accessOpenGLTexture(Qt3DCore::QNodeId nodeId,
                              QOpenGLTexture **texture,
                              QMutex **lock,
@@ -278,7 +239,7 @@ public:
     inline RenderStateSet *defaultRenderState() const { return m_defaultRenderStateSet; }
 
     void enqueueRenderView(RenderView *renderView, int submitOrder);
-    bool isReadyToSubmit();
+    bool waitUntilReadyToSubmit();
 
     QVariant executeCommand(const QStringList &args) override;
     void setOffscreenSurfaceHelper(OffscreenSurfaceHelper *helper) override;
@@ -295,9 +256,9 @@ public:
         QSurface *surface;
     };
 
-    ViewSubmissionResultData submitRenderViews(const QVector<RenderView *> &renderViews);
+    ViewSubmissionResultData submitRenderViews(const std::vector<RenderView *> &renderViews);
 
-    RendererCache *cache() { return &m_cache; }
+    RendererCache<RenderCommand> *cache() { return &m_cache; }
     void setScreen(QScreen *scr) override;
     QScreen *screen() const override;
 
@@ -307,7 +268,6 @@ public:
 
 private:
 #endif
-    bool canRender() const;
     Profiling::FrameProfiler *activeProfiler() const;
 
     Qt3DCore::QServiceLocator *m_services;
@@ -327,8 +287,7 @@ private:
     QScopedPointer<SubmissionContext> m_submissionContext;
     QSurfaceFormat m_format;
 
-    RenderQueue *m_renderQueue;
-    QScopedPointer<RenderThread> m_renderThread;
+    RenderQueue<RenderView> m_renderQueue;
     QScopedPointer<VSyncFrameAdvanceService> m_vsyncFrameAdvanceService;
 
     QSemaphore m_submitRenderViewsSemaphore;
@@ -337,8 +296,8 @@ private:
 
     QAtomicInt m_running;
 
-    QVector<Attribute *> m_dirtyAttributes;
-    QVector<Geometry *> m_dirtyGeometry;
+    std::vector<Attribute *> m_dirtyAttributes;
+    std::vector<Geometry *> m_dirtyGeometry;
     QAtomicInt m_exposed;
 
     struct DirtyBits {
@@ -364,7 +323,8 @@ private:
     RenderableEntityFilterPtr m_renderableEntityFilterJob;
     ComputableEntityFilterPtr m_computableEntityFilterJob;
 
-    QVector<Qt3DCore::QNodeId> m_pendingRenderCaptureSendRequests;
+    QMutex m_pendingRenderCaptureSendRequestsMutex;
+    std::vector<Qt3DCore::QNodeId> m_pendingRenderCaptureSendRequests;
 
     void performDraw(const RenderCommand *command);
     void performCompute(const RenderView *rv, RenderCommand *command);
@@ -375,7 +335,6 @@ private:
     SynchronizerJobPtr m_bufferGathererJob;
     SynchronizerJobPtr m_vaoGathererJob;
     SynchronizerJobPtr m_textureGathererJob;
-    SynchronizerJobPtr m_sendSetFenceHandlesToFrontendJob;
     SynchronizerPostFramePtr m_introspectShaderJob;
 
     void lookForAbandonedVaos();
@@ -385,21 +344,21 @@ private:
     void reloadDirtyShaders();
     void sendShaderChangesToFrontend(Qt3DCore::QAspectManager *manager);
     void sendTextureChangesToFrontend(Qt3DCore::QAspectManager *manager);
-    void sendSetFenceHandlesToFrontend();
+    void sendSetFenceHandlesToFrontend(Qt3DCore::QAspectManager *manager);
     void sendDisablesToFrontend(Qt3DCore::QAspectManager *manager);
 
     QMutex m_abandonedVaosMutex;
-    QVector<HVao> m_abandonedVaos;
+    std::vector<HVao> m_abandonedVaos;
 
-    QVector<HBuffer> m_dirtyBuffers;
-    QVector<Qt3DCore::QNodeId> m_downloadableBuffers;
-    QVector<HShader> m_dirtyShaders;
-    QVector<HTexture> m_dirtyTextures;
-    QVector<QPair<Texture::TextureUpdateInfo, Qt3DCore::QNodeIdVector>> m_updatedTextureProperties;
-    QVector<QPair<Qt3DCore::QNodeId, GLFence>> m_updatedSetFences;
-    QVector<Qt3DCore::QNodeId> m_updatedDisableSubtreeEnablers;
+    std::vector<HBuffer> m_dirtyBuffers;
+    std::vector<Qt3DCore::QNodeId> m_downloadableBuffers;
+    std::vector<HShader> m_dirtyShaders;
+    std::vector<HTexture> m_dirtyTextures;
+    std::vector<QPair<Texture::TextureUpdateInfo, Qt3DCore::QNodeIdVector>> m_updatedTextureProperties;
+    std::vector<QPair<Qt3DCore::QNodeId, GLFence>> m_updatedSetFences;
+    std::vector<Qt3DCore::QNodeId> m_updatedDisableSubtreeEnablers;
     Qt3DCore::QNodeIdVector m_textureIdsToCleanup;
-    QVector<ShaderBuilderUpdate> m_shaderBuilderUpdates;
+    std::vector<ShaderBuilderUpdate> m_shaderBuilderUpdates;
     Qt3DCore::QNodeIdVector m_lastLoadedShaderIds;
 
     bool m_ownedContext;
@@ -417,17 +376,15 @@ private:
 #endif
 
     QMetaObject::Connection m_contextConnection;
-    RendererCache m_cache;
+    RendererCache<RenderCommand> m_cache;
     bool m_shouldSwapBuffers;
+    RenderDriver m_driver = RenderDriver::Qt3D;
 
-    QVector<FrameGraphNode *> m_frameGraphLeaves;
+    std::vector<FrameGraphNode *> m_frameGraphLeaves;
     QScreen *m_screen = nullptr;
     QSharedPointer<ResourceAccessor> m_scene2DResourceAccessor;
 
     Debug::ImGuiRenderer *m_imGuiRenderer;
-    QList<QPair<QObject *, QMouseEvent>> m_frameMouseEvents;
-    QList<QKeyEvent> m_frameKeyEvents;
-    QMutex m_frameEventsMutex;
     int m_jobsInLastFrame;
 };
 

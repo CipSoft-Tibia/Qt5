@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -102,10 +102,11 @@ bool ParseHSTSHeader(const std::string& value,
       case DIRECTIVE_END:
         if (base::IsAsciiWhitespace(token[0]))
           continue;
-        if (base::LowerCaseEqualsASCII(token, "max-age")) {
+        if (base::EqualsCaseInsensitiveASCII(token, "max-age")) {
           state = AFTER_MAX_AGE_LABEL;
           max_age_observed++;
-        } else if (base::LowerCaseEqualsASCII(token, "includesubdomains")) {
+        } else if (base::EqualsCaseInsensitiveASCII(token,
+                                                    "includesubdomains")) {
           state = AFTER_INCLUDE_SUBDOMAINS;
           include_subdomains_observed++;
           include_subdomains_candidate = true;
@@ -162,7 +163,7 @@ bool ParseHSTSHeader(const std::string& value,
     case AFTER_MAX_AGE:
     case AFTER_INCLUDE_SUBDOMAINS:
     case AFTER_UNKNOWN_LABEL:
-      *max_age = base::TimeDelta::FromSeconds(max_age_candidate);
+      *max_age = base::Seconds(max_age_candidate);
       *include_subdomains = include_subdomains_candidate;
       return true;
     case START:
@@ -173,74 +174,6 @@ bool ParseHSTSHeader(const std::string& value,
       NOTREACHED();
       return false;
   }
-}
-
-// "Expect-CT" ":"
-//     "max-age" "=" delta-seconds
-//     [ "," "enforce" ]
-//     [ "," "report-uri" "=" absolute-URI ]
-bool ParseExpectCTHeader(const std::string& value,
-                         base::TimeDelta* max_age,
-                         bool* enforce,
-                         GURL* report_uri) {
-  bool parsed_max_age = false;
-  bool enforce_candidate = false;
-  bool has_report_uri = false;
-  uint32_t max_age_candidate = 0;
-  GURL parsed_report_uri;
-
-  HttpUtil::NameValuePairsIterator name_value_pairs(
-      value.begin(), value.end(), ',',
-      HttpUtil::NameValuePairsIterator::Values::NOT_REQUIRED,
-      // Use STRICT_QUOTES because "UAs must not attempt to fix malformed header
-      // fields."
-      HttpUtil::NameValuePairsIterator::Quotes::STRICT_QUOTES);
-
-  while (name_value_pairs.GetNext()) {
-    base::StringPiece name = name_value_pairs.name_piece();
-    if (base::LowerCaseEqualsASCII(name, "max-age")) {
-      // "A given directive MUST NOT appear more than once in a given header
-      // field."
-      if (parsed_max_age)
-        return false;
-      if (!MaxAgeToLimitedInt(name_value_pairs.value_piece(),
-                              kMaxExpectCTAgeSecs, &max_age_candidate)) {
-        return false;
-      }
-      parsed_max_age = true;
-    } else if (base::LowerCaseEqualsASCII(name, "enforce")) {
-      // "A given directive MUST NOT appear more than once in a given header
-      // field."
-      if (enforce_candidate)
-        return false;
-      if (!name_value_pairs.value_piece().empty())
-        return false;
-      enforce_candidate = true;
-    } else if (base::LowerCaseEqualsASCII(name, "report-uri")) {
-      // "A given directive MUST NOT appear more than once in a given header
-      // field."
-      if (has_report_uri)
-        return false;
-
-      has_report_uri = true;
-      parsed_report_uri = GURL(name_value_pairs.value_piece());
-      if (parsed_report_uri.is_empty() || !parsed_report_uri.is_valid())
-        return false;
-    } else {
-      // Silently ignore unknown directives for forward compatibility.
-    }
-  }
-
-  if (!name_value_pairs.valid())
-    return false;
-
-  if (!parsed_max_age)
-    return false;
-
-  *max_age = base::TimeDelta::FromSeconds(max_age_candidate);
-  *enforce = enforce_candidate;
-  *report_uri = parsed_report_uri;
-  return true;
 }
 
 }  // namespace net

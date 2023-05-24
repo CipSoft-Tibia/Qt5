@@ -48,6 +48,8 @@
         <xsl:when test="$text='pointsize'">pointSize</xsl:when>
         <xsl:when test="$text='strikeout'">strikeOut</xsl:when>
         <xsl:when test="$text='stylestrategy'">styleStrategy</xsl:when>
+        <xsl:when test="$text='hintingpreference'">hintingPreference</xsl:when>
+        <xsl:when test="$text='fontweight'">fontWeight</xsl:when>
         <xsl:when test="$text='hsizetype'">hSizeType</xsl:when>
         <xsl:when test="$text='vsizetype'">vSizeType</xsl:when>
         <xsl:when test="$text='horstretch'">horStretch</xsl:when>
@@ -142,7 +144,7 @@
             </xsl:when>
             <xsl:when test="$xs-type='xs:boolean'">
                 <xsl:value-of select="$val"/>
-                <xsl:text> == QLatin1String("true")</xsl:text>
+                <xsl:text> == u"true"_s</xsl:text>
             </xsl:when>
             <xsl:when test="$xs-type='xs:long'">
                 <xsl:value-of select="$val"/>
@@ -217,9 +219,7 @@
             <xsl:when test="$xs-type='xs:boolean'">
                 <xsl:text>(</xsl:text>
                 <xsl:value-of select="$val"/>
-                <!-- Note: Do not use QStringLiteral here as the types are not compatible:
-                     QConstStringData<5> vs QConstStringData<4> -->
-                <xsl:text> ? QLatin1String("true") : QLatin1String("false"))</xsl:text>
+                <xsl:text> ? u"true"_s : u"false"_s)</xsl:text>
             </xsl:when>
             <xsl:otherwise>### BZZZZT! ###</xsl:otherwise>
         </xsl:choose>
@@ -260,11 +260,7 @@
                     <xsl:when test="$xs-type='xs:long'">QList&lt;qlonglong&gt;</xsl:when>
                     <xsl:when test="$xs-type='xs:unsignedInt'">QList&lt;uint&gt;</xsl:when>
                     <xsl:when test="$xs-type='xs:unsignedLong'">QList&lt;qulonglong&gt;</xsl:when>
-<!-- ### fixme Qt 6: Change the QList<DomProperty*> to QVector<DomProperty*> by
-     removing the below line and change the virtual methods QAbstractFormBuilder::applyProperties()
-     and QAbstractFormBuilder::computeProperties(QObject *obj) accordingly (repeats 2 times below). -->
-                    <xsl:when test="$xs-type='Property'">QList&lt;DomProperty *&gt;</xsl:when>
-                    <xsl:otherwise>QVector&lt;Dom<xsl:value-of select="$xs-type"/> *&gt;</xsl:otherwise>
+                    <xsl:otherwise>QList&lt;Dom<xsl:value-of select="$xs-type"/> *&gt;</xsl:otherwise>
                 </xsl:choose>
             </xsl:when>
             <xsl:otherwise>
@@ -297,8 +293,7 @@
                     <xsl:when test="$xs-type='xs:long'">QList&lt;qlonglong&gt; </xsl:when>
                     <xsl:when test="$xs-type='xs:unsignedInt'">QList&lt;uint&gt; </xsl:when>
                     <xsl:when test="$xs-type='xs:unsignedLong'">QList&lt;qulonglong&gt; </xsl:when>
-                    <xsl:when test="$xs-type='Property'">QList&lt;DomProperty*&gt; </xsl:when>
-                    <xsl:otherwise>QVector&lt;Dom<xsl:value-of select="$xs-type"/> *&gt; </xsl:otherwise>
+                    <xsl:otherwise>QList&lt;Dom<xsl:value-of select="$xs-type"/> *&gt; </xsl:otherwise>
                 </xsl:choose>
             </xsl:when>
             <xsl:otherwise>
@@ -331,8 +326,7 @@
                     <xsl:when test="$xs-type='xs:long'">const QList&lt;qlonglong&gt; &amp;</xsl:when>
                     <xsl:when test="$xs-type='xs:unsignedInt'">const QList&lt;uint&gt; &amp;</xsl:when>
                     <xsl:when test="$xs-type='xs:unsignedLong'">const QList&lt;qulonglong&gt; &amp;</xsl:when>
-                    <xsl:when test="$xs-type='Property'">const QList&lt;DomProperty *&gt; &amp;</xsl:when>
-                    <xsl:otherwise>const QVector&lt;Dom<xsl:value-of select="$xs-type"/> *&gt; &amp;</xsl:otherwise>
+                    <xsl:otherwise>const QList&lt;Dom<xsl:value-of select="$xs-type"/> *&gt; &amp;</xsl:otherwise>
                 </xsl:choose>
             </xsl:when>
             <xsl:otherwise>

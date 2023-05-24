@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeotileproviderosm.h"
 
@@ -55,11 +22,14 @@ static void setSSL(QGeoMapType &mapType, bool isHTTPS)
                           metadata);
 }
 
-QGeoTileProviderOsm::QGeoTileProviderOsm(QNetworkAccessManager *nm,
-                                         const QGeoMapType &mapType,
-                                         const QVector<TileProvider *> &providers,
+QGeoTileProviderOsm::QGeoTileProviderOsm(QNetworkAccessManager *nm, const QGeoMapType &mapType,
+                                         const QList<TileProvider *> &providers,
                                          const QGeoCameraCapabilities &cameraCapabilities)
-:   m_nm(nm), m_provider(nullptr), m_mapType(mapType), m_status(Idle), m_cameraCapabilities(cameraCapabilities)
+    : m_nm(nm),
+      m_provider(nullptr),
+      m_mapType(mapType),
+      m_status(Idle),
+      m_cameraCapabilities(cameraCapabilities)
 {
     for (int i = 0; i < providers.size(); ++i) {
         TileProvider *p = providers[i];
@@ -137,7 +107,7 @@ bool QGeoTileProviderOsm::isHighDpi() const
     return m_provider->isHighDpi();
 }
 
-const QDateTime QGeoTileProviderOsm::timestamp() const
+QDateTime QGeoTileProviderOsm::timestamp() const
 {
     if (!m_provider)
         return QDateTime();
@@ -261,11 +231,11 @@ void QGeoTileProviderOsm::addProvider(TileProvider *provider)
 {
     if (!provider)
         return;
-    QScopedPointer<TileProvider> p(provider);
+    std::unique_ptr<TileProvider> p(provider);
     if (provider->status() == TileProvider::Invalid)
         return; // if the provider is already resolved and invalid, no point in adding it.
 
-    provider = p.take();
+    provider = p.release();
     provider->setNetworkManager(m_nm);
     provider->setParent(this);
     m_providerList.append(provider);
@@ -338,8 +308,10 @@ void TileProvider::resolveProvider()
     request.setAttribute(QNetworkRequest::BackgroundRequestAttribute, true);
     request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferNetwork);
     QNetworkReply *reply = m_nm->get(request);
-    connect(reply, SIGNAL(finished()), this, SLOT(onNetworkReplyFinished()) );
-    connect(reply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)), this, SLOT(onNetworkReplyError(QNetworkReply::NetworkError)));
+    connect(reply, &QNetworkReply::finished,
+            this, &TileProvider::onNetworkReplyFinished);
+    connect(reply, &QNetworkReply::errorOccurred,
+            this, &TileProvider::onNetworkReplyError);
 }
 
 void TileProvider::handleError(QNetworkReply::NetworkError error)

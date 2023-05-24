@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include <AppKit/AppKit.h>
@@ -46,6 +10,10 @@
 
 #include <qpa/qplatformnativeinterface.h>
 #include <QtPrintSupport/qprintengine.h>
+
+#include <QtPrintSupport/private/qprintengine_mac_p.h>
+
+#include <QtCore/private/qcore_mac_p.h>
 
 QT_USE_NAMESPACE
 
@@ -82,7 +50,7 @@ QT_USE_NAMESPACE
         PMGetOrientation(format, &orientation);
         QSizeF paperSize = QSizeF(paperRect.right - paperRect.left, paperRect.bottom - paperRect.top);
         printer->printEngine()->setProperty(QPrintEngine::PPK_CustomPaperSize, paperSize);
-        printer->printEngine()->setProperty(QPrintEngine::PPK_Orientation, orientation == kPMLandscape ? QPrinter::Landscape : QPrinter::Portrait);
+        printer->printEngine()->setProperty(QPrintEngine::PPK_Orientation, orientation == kPMLandscape ? QPageLayout::Landscape : QPageLayout::Portrait);
     }
 
     dialog->done((returnCode == NSModalResponseOK) ? QDialog::Accepted : QDialog::Rejected);
@@ -114,13 +82,7 @@ void QMacPageSetupDialogPrivate::openCocoaPageLayout(Qt::WindowModality modality
 {
     Q_Q(QPageSetupDialog);
 
-    // get the NSPrintInfo from the print engine in the platform plugin
-    void *voidp = 0;
-    (void) QMetaObject::invokeMethod(qApp->platformNativeInterface(),
-                                     "NSPrintInfoForPrintEngine",
-                                     Q_RETURN_ARG(void *, voidp),
-                                     Q_ARG(QPrintEngine *, printer->printEngine()));
-    printInfo = static_cast<NSPrintInfo *>(voidp);
+    printInfo = static_cast<QMacPrintEngine *>(printer->printEngine())->printInfo();
     [printInfo retain];
 
     pageLayout = [NSPageLayout pageLayout];

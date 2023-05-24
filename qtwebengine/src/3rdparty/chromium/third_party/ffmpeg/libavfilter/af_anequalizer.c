@@ -103,7 +103,7 @@ static void draw_curves(AVFilterContext *ctx, AVFilterLink *inlink, AVFrame *out
 
     memset(out->data[0], 0, s->h * out->linesize[0]);
 
-    for (ch = 0; ch < inlink->channels; ch++) {
+    for (ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
         uint8_t fg[4] = { 0xff, 0xff, 0xff, 0xff };
         int prev_v = -1;
         double f;
@@ -196,7 +196,7 @@ static av_cold int init(AVFilterContext *ctx)
         .type         = AVMEDIA_TYPE_AUDIO,
     };
 
-    ret = ff_insert_outpad(ctx, 0, &pad);
+    ret = ff_append_outpad(ctx, &pad);
     if (ret < 0)
         return ret;
 
@@ -206,7 +206,7 @@ static av_cold int init(AVFilterContext *ctx)
             .type         = AVMEDIA_TYPE_VIDEO,
             .config_props = config_video,
         };
-        ret = ff_insert_outpad(ctx, 1, &vpad);
+        ret = ff_append_outpad(ctx, &vpad);
         if (ret < 0)
             return ret;
     }
@@ -231,23 +231,23 @@ static int query_formats(AVFilterContext *ctx)
     if (s->draw_curves) {
         AVFilterLink *videolink = ctx->outputs[1];
         formats = ff_make_format_list(pix_fmts);
-        if ((ret = ff_formats_ref(formats, &videolink->in_formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &videolink->incfg.formats)) < 0)
             return ret;
     }
 
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->out_formats)) < 0 ||
-        (ret = ff_formats_ref(formats, &outlink->in_formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0 ||
+        (ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
         return ret;
 
     layouts = ff_all_channel_counts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->out_channel_layouts)) < 0 ||
-        (ret = ff_channel_layouts_ref(layouts, &outlink->in_channel_layouts)) < 0)
+    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0 ||
+        (ret = ff_channel_layouts_ref(layouts, &outlink->incfg.channel_layouts)) < 0)
         return ret;
 
     formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->out_samplerates)) < 0 ||
-        (ret = ff_formats_ref(formats, &outlink->in_samplerates)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0 ||
+        (ret = ff_formats_ref(formats, &outlink->incfg.samplerates)) < 0)
         return ret;
 
     return 0;
@@ -577,8 +577,8 @@ static int config_input(AVFilterLink *inlink)
     if (!args)
         return AVERROR(ENOMEM);
 
-    s->nb_allocated = 32 * inlink->channels;
-    s->filters = av_calloc(inlink->channels, 32 * sizeof(*s->filters));
+    s->nb_allocated = 32 * inlink->ch_layout.nb_channels;
+    s->filters = av_calloc(inlink->ch_layout.nb_channels, 32 * sizeof(*s->filters));
     if (!s->filters) {
         s->nb_allocated = 0;
         av_free(args);
@@ -610,7 +610,7 @@ static int config_input(AVFilterLink *inlink)
             s->filters[s->nb_filters].ignore = 1;
 
         if (s->filters[s->nb_filters].channel < 0 ||
-            s->filters[s->nb_filters].channel >= inlink->channels)
+            s->filters[s->nb_filters].channel >= inlink->ch_layout.nb_channels)
             s->filters[s->nb_filters].ignore = 1;
 
         s->filters[s->nb_filters].type = av_clip(s->filters[s->nb_filters].type, 0, NB_TYPES - 1);
@@ -693,28 +693,45 @@ static double process_sample(FoSection *s1, double in)
     return p1;
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
+static int filter_channels(AVFilterContext *ctx, void *arg,
+                           int jobnr, int nb_jobs)
 {
-    AVFilterContext *ctx = inlink->dst;
     AudioNEqualizerContext *s = ctx->priv;
-    AVFilterLink *outlink = ctx->outputs[0];
-    double *bptr;
-    int i, n;
+    AVFrame *buf = arg;
+    const int start = (buf->ch_layout.nb_channels * jobnr) / nb_jobs;
+    const int end = (buf->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;
 
-    for (i = 0; i < s->nb_filters; i++) {
+    for (int i = 0; i < s->nb_filters; i++) {
         EqualizatorFilter *f = &s->filters[i];
+        double *bptr;
 
         if (f->gain == 0. || f->ignore)
             continue;
+        if (f->channel < start ||
+            f->channel >= end)
+            continue;
 
         bptr = (double *)buf->extended_data[f->channel];
-        for (n = 0; n < buf->nb_samples; n++) {
+        for (int n = 0; n < buf->nb_samples; n++) {
             double sample = bptr[n];
 
             sample  = process_sample(f->section, sample);
             bptr[n] = sample;
         }
     }
+
+    return 0;
+}
+
+static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
+{
+    AVFilterContext *ctx = inlink->dst;
+    AudioNEqualizerContext *s = ctx->priv;
+    AVFilterLink *outlink = ctx->outputs[0];
+
+    if (!ctx->is_disabled)
+        ff_filter_execute(ctx, filter_channels, buf, NULL,
+                          FFMIN(inlink->ch_layout.nb_channels, ff_filter_get_nb_threads(ctx)));
 
     if (s->draw_curves) {
         AVFrame *clone;
@@ -740,23 +757,24 @@ static const AVFilterPad inputs[] = {
     {
         .name           = "default",
         .type           = AVMEDIA_TYPE_AUDIO,
+        .flags          = AVFILTERPAD_FLAG_NEEDS_WRITABLE,
         .config_props   = config_input,
         .filter_frame   = filter_frame,
-        .needs_writable = 1,
     },
-    { NULL }
 };
 
-AVFilter ff_af_anequalizer = {
+const AVFilter ff_af_anequalizer = {
     .name          = "anequalizer",
     .description   = NULL_IF_CONFIG_SMALL("Apply high-order audio parametric multi band equalizer."),
     .priv_size     = sizeof(AudioNEqualizerContext),
     .priv_class    = &anequalizer_class,
     .init          = init,
     .uninit        = uninit,
-    .query_formats = query_formats,
-    .inputs        = inputs,
+    FILTER_INPUTS(inputs),
     .outputs       = NULL,
-    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
+    FILTER_QUERY_FUNC(query_formats),
     .process_command = process_command,
+    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
+                     AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
 };

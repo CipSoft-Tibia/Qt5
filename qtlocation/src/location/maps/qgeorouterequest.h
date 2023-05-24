@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGEOROUTEREQUEST_H
 #define QGEOROUTEREQUEST_H
@@ -42,12 +9,13 @@
 #include <QtCore/QDateTime>
 
 #include <QtLocation/qlocationglobal.h>
-#include <QtPositioning/qgeocoordinate.h>
-#include <QtPositioning/qgeorectangle.h>
+#include <QtPositioning/QGeoCoordinate>
 
 QT_BEGIN_NAMESPACE
 
+class QGeoRectangle;
 class QGeoRouteRequestPrivate;
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QGeoRouteRequestPrivate, Q_LOCATION_EXPORT)
 
 class Q_LOCATION_EXPORT QGeoRouteRequest
 {
@@ -107,20 +75,29 @@ public:
     explicit QGeoRouteRequest(const QList<QGeoCoordinate> &waypoints = QList<QGeoCoordinate>());
     QGeoRouteRequest(const QGeoCoordinate &origin,
                      const QGeoCoordinate &destination);
-    QGeoRouteRequest(const QGeoRouteRequest &other);
+    QGeoRouteRequest(const QGeoRouteRequest &other) noexcept;
+    QGeoRouteRequest(QGeoRouteRequest &&other) noexcept = default;
 
     ~QGeoRouteRequest();
 
-    QGeoRouteRequest &operator= (const QGeoRouteRequest &other);
+    QGeoRouteRequest &operator= (const QGeoRouteRequest &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QGeoRouteRequest)
 
-    bool operator == (const QGeoRouteRequest &other) const;
-    bool operator != (const QGeoRouteRequest &other) const;
+    void swap(QGeoRouteRequest &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    friend inline bool operator==(const QGeoRouteRequest &lhs,
+                                  const QGeoRouteRequest &rhs) noexcept
+    {
+        return lhs.isEqual(rhs);
+    }
+    friend inline bool operator!=(const QGeoRouteRequest &lhs,
+                                  const QGeoRouteRequest &rhs) noexcept
+    {
+        return !lhs.isEqual(rhs);
+    }
 
     void setWaypoints(const QList<QGeoCoordinate> &waypoints);
     QList<QGeoCoordinate> waypoints() const;
-
-    void setWaypointsMetadata(const QList<QVariantMap> &waypointMetadata);
-    QList<QVariantMap> waypointsMetadata() const;
 
     void setExcludeAreas(const QList<QGeoRectangle> &areas);
     QList<QGeoRectangle> excludeAreas() const;
@@ -153,11 +130,10 @@ public:
     void setDepartureTime(const QDateTime &departureTime);
     QDateTime departureTime() const;
 
-    void setExtraParameters(const QVariantMap &extraParameters);
-    QVariantMap extraParameters() const;
-
 private:
     QExplicitlySharedDataPointer<QGeoRouteRequestPrivate> d_ptr;
+
+    bool isEqual(const QGeoRouteRequest &other) const noexcept;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QGeoRouteRequest::TravelModes)

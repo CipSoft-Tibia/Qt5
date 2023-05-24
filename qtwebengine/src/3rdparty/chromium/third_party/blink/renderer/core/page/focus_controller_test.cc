@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,14 +16,14 @@ namespace blink {
 
 class FocusControllerTest : public PageTestBase {
  private:
-  void SetUp() override { PageTestBase::SetUp(IntSize()); }
+  void SetUp() override { PageTestBase::SetUp(gfx::Size()); }
 };
 
 TEST_F(FocusControllerTest, SetInitialFocus) {
   GetDocument().body()->setInnerHTML("<input><textarea>");
   auto* input = To<Element>(GetDocument().body()->firstChild());
   // Set sequential focus navigation point before the initial focus.
-  input->focus();
+  input->Focus();
   input->blur();
   GetFocusController().SetInitialFocus(mojom::blink::FocusType::kForward);
   EXPECT_EQ(input, GetDocument().FocusedElement())
@@ -95,12 +95,12 @@ TEST_F(FocusControllerTest, SVGFocusableElementInForm) {
   auto* first = To<Element>(form->firstChild());
   auto* last = To<Element>(form->lastChild());
 
-  Element* next = GetFocusController().NextFocusableElementInForm(
+  Element* next = GetFocusController().NextFocusableElementForImeAndAutofill(
       first, mojom::blink::FocusType::kForward);
   EXPECT_EQ(next, last)
       << "SVG Element should be skipped even when focusable in form.";
 
-  Element* prev = GetFocusController().NextFocusableElementInForm(
+  Element* prev = GetFocusController().NextFocusableElementForImeAndAutofill(
       next, mojom::blink::FocusType::kBackward);
   EXPECT_EQ(prev, first)
       << "SVG Element should be skipped even when focusable in form.";
@@ -134,6 +134,159 @@ TEST_F(FocusControllerTest, FindFocusableAfterElement) {
 
   EXPECT_EQ(nullptr, GetFocusController().FindFocusableElementAfter(
                          *first, mojom::blink::FocusType::kNone));
+}
+
+TEST_F(FocusControllerTest, NextFocusableElementForImeAndAutofill) {
+  GetDocument().body()->setInnerHTML(
+      "<form>"
+      "  <input type='text' id='username'>"
+      "  <input type='password' id='password'>"
+      "  <input type='submit' value='Login'>"
+      "</form>");
+  Element* username = GetElementById("username");
+  Element* password = GetElementById("password");
+  ASSERT_TRUE(username);
+  ASSERT_TRUE(password);
+
+  EXPECT_EQ(password,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                username, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         username, mojom::blink::FocusType::kBackward));
+
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         password, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(username,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                password, mojom::blink::FocusType::kBackward));
+}
+
+TEST_F(FocusControllerTest, NextFocusableElementForImeAndAutofill_NoFormTag) {
+  GetDocument().body()->setInnerHTML(
+      "  <input type='text' id='username'>"
+      "  <input type='password' id='password'>"
+      "  <input type='submit' value='Login'>");
+  Element* username = GetElementById("username");
+  Element* password = GetElementById("password");
+  ASSERT_TRUE(username);
+  ASSERT_TRUE(password);
+
+  EXPECT_EQ(password,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                username, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         username, mojom::blink::FocusType::kBackward));
+
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         password, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(username,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                password, mojom::blink::FocusType::kBackward));
+}
+
+// Ignore a checkbox to streamline form submission.
+TEST_F(FocusControllerTest, NextFocusableElementForImeAndAutofill_Checkbox) {
+  GetDocument().body()->setInnerHTML(
+      "<form>"
+      "  <input type='text' id='username'>"
+      "  <input type='password' id='password'>"
+      "  <input type='checkbox' id='remember-me'>"
+      "  <input type='submit' value='Login'>"
+      "</form>");
+  Element* username = GetElementById("username");
+  Element* password = GetElementById("password");
+  ASSERT_TRUE(username);
+  ASSERT_TRUE(password);
+
+  EXPECT_EQ(password,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                username, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         username, mojom::blink::FocusType::kBackward));
+
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         password, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(username,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                password, mojom::blink::FocusType::kBackward));
+}
+
+// A <select> element should block a form submission.
+TEST_F(FocusControllerTest, NextFocusableElementForImeAndAutofill_Select) {
+  GetDocument().body()->setInnerHTML(
+      "<form>"
+      "  <input type='text' id='username'>"
+      "  <input type='password' id='password'>"
+      "  <select id='login_type'>"
+      "    <option value='regular'>Regular</option>"
+      "    <option value='invisible'>Invisible</option>"
+      "  </select>"
+      "  <input type='submit' value='Login'>"
+      "</form>");
+  Element* username = GetElementById("username");
+  Element* password = GetElementById("password");
+  Element* login_type = GetElementById("login_type");
+  ASSERT_TRUE(username);
+  ASSERT_TRUE(password);
+  ASSERT_TRUE(login_type);
+
+  EXPECT_EQ(password,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                username, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         username, mojom::blink::FocusType::kBackward));
+
+  EXPECT_EQ(login_type,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                password, mojom::blink::FocusType::kForward));
+  EXPECT_EQ(username,
+            GetFocusController().NextFocusableElementForImeAndAutofill(
+                password, mojom::blink::FocusType::kBackward));
+}
+
+// A submit button is used to detect the end of a user form within a combined
+// form. Combined form is a <form> element that encloses several user form (e.g.
+// signin and signup). See the HTML in the test for clarity.
+TEST_F(FocusControllerTest,
+       NextFocusableElementForImeAndAutofill_SubmitButton) {
+  GetDocument().body()->setInnerHTML(
+      "<form>"
+      "  <div>Login</div>"
+      "    <input type='email' id='login_username'>"
+      "    <input type='password' id='login_password'>"
+      "    <input type='submit' id='login_submit'>"
+      "  <div>Create an account</div>"
+      "    <input type='email' id='signup_username'>"
+      "    <input type='text' id='signup_full_name'>"
+      "    <input type='password' id='signup_password'>"
+      "    <button type='submit' id='signup_submit'>"
+      "  <div>Forgot password?</div>"
+      "    <input type='email' id='recover_username'>"
+      "    <span>Request a recovery link</span>"
+      "</form>");
+  // "login_submit" closes the signin form.
+  Element* login_password = GetElementById("login_password");
+  ASSERT_TRUE(login_password);
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         login_password, mojom::blink::FocusType::kForward));
+  Element* signup_username = GetElementById("signup_username");
+  ASSERT_TRUE(signup_username);
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         signup_username, mojom::blink::FocusType::kBackward));
+
+  // "signup_password" closes the signup form.
+  Element* signup_password = GetElementById("signup_password");
+  ASSERT_TRUE(signup_password);
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         signup_password, mojom::blink::FocusType::kForward));
+  Element* recover_username = GetElementById("recover_username");
+  ASSERT_TRUE(recover_username);
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         recover_username, mojom::blink::FocusType::kBackward));
+
+  // The end of the recovery form is detected just because it the end of <form>.
+  EXPECT_EQ(nullptr, GetFocusController().NextFocusableElementForImeAndAutofill(
+                         recover_username, mojom::blink::FocusType::kForward));
 }
 
 }  // namespace blink

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Andre Hartmann <aha_1980@gmx.de>
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Andre Hartmann <aha_1980@gmx.de>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "virtualcanbackend.h"
 
@@ -145,7 +112,7 @@ void VirtualCanServer::readyRead()
             const QByteArrayList commandList = command.split(':');
             Q_ASSERT(commandList.size() == 2);
 
-            for (QTcpSocket *writeSocket : qAsConst(m_serverSockets)) {
+            for (QTcpSocket *writeSocket : std::as_const(m_serverSockets)) {
                 // Don't send the frame back to its origin
                 if (writeSocket == readSocket)
                     continue;
@@ -224,7 +191,7 @@ void VirtualCanBackend::close()
     m_clientSocket->write("disconnect:can" + QByteArray::number(m_channel) + '\n');
 }
 
-void VirtualCanBackend::setConfigurationParameter(int key, const QVariant &value)
+void VirtualCanBackend::setConfigurationParameter(ConfigurationKey key, const QVariant &value)
 {
     if (key == QCanBusDevice::ReceiveOwnKey || key == QCanBusDevice::CanFdKey)
         QCanBusDevice::setConfigurationParameter(key, value);
@@ -300,18 +267,28 @@ QString VirtualCanBackend::interpretErrorFrame(const QCanBusFrame &errorFrame)
     return QString();
 }
 
+QCanBusDeviceInfo VirtualCanBackend::virtualCanDeviceInfo(uint channel)
+{
+    return createDeviceInfo(
+                QStringLiteral("virtualcan"),
+                QStringLiteral("can%1").arg(channel), QString(),
+                QStringLiteral("Qt Virtual CAN bus"), QString(),
+                channel, true, true);
+}
+
 QList<QCanBusDeviceInfo> VirtualCanBackend::interfaces()
 {
     QList<QCanBusDeviceInfo> result;
 
-    for (int channel = 0; channel < VirtualChannels; ++channel) {
-        result.append(std::move(createDeviceInfo(
-                                    QStringLiteral("can%1").arg(channel), QString(),
-                                    QStringLiteral("Qt Virtual CAN bus"), channel,
-                                    true, true)));
-    }
+    for (uint channel = 0; channel < VirtualChannels; ++channel)
+        result.append(virtualCanDeviceInfo(channel));
 
     return result;
+}
+
+QCanBusDeviceInfo VirtualCanBackend::deviceInfo() const
+{
+    return virtualCanDeviceInfo(m_channel);
 }
 
 void VirtualCanBackend::clientConnected()
@@ -344,7 +321,7 @@ void VirtualCanBackend::clientReadyRead()
         const QByteArrayList list = answer.split('#');
         Q_ASSERT(list.size() == 3);
 
-        const quint32 id = list.at(0).toUInt();
+        const QCanBusFrame::FrameId id = list.at(0).toUInt();
         const QByteArray flags = list.at(1);
         const QByteArray data = QByteArray::fromHex(list.at(2));
         const qint64 timeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();

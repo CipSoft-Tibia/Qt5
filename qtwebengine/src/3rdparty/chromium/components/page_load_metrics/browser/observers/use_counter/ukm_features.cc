@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,21 +8,30 @@
 
 // This file defines a list of UseCounter WebFeature measured in the
 // UKM-based UseCounter. Features must all satisfy UKM privacy requirements
-// (see go/ukm). In addition, features should only be added if it's shown
-// (or highly likely be) rare, e.g. <1% of page views as measured by UMA.
+// (see go/ukm). In addition, features should only be added if it's shown to be
+// (or highly likely to be) rare, e.g. <1% of page views as measured by UMA.
 //
 // UKM-based UseCounter should be used to cover the case when UMA UseCounter
 // data shows a behaviour that is rare but too common to blindly change.
-// UKM-based UseCounter would allow use to find specific pages to reason about
-// either a breaking change is acceptable or not.
+// UKM-based UseCounter would allow us to find specific pages to reason about
+// whether a breaking change is acceptable or not.
+//
+// This event is emitted for every page load and is not sub-sampled by the UKM
+// system. The WebFeature::kPageVisits is always present in the event, so
+// it is valid to take the ratio of events with your feature to kPageVisit to
+// estimate "percentage of page views using a feature". Note that the lack of
+// sub-sampling is the reason why this event must only be used for rare
+// features.
+//
+// Obsolete UseCounters (kOBSOLETE_*) should be removed from this list.
 
 using WebFeature = blink::mojom::WebFeature;
 
 // UKM-based UseCounter features (WebFeature) should be defined in
 // opt_in_features list.
-const UseCounterPageLoadMetricsObserver::UkmFeatureList&
-UseCounterPageLoadMetricsObserver::GetAllowedUkmFeatures() {
-  static base::NoDestructor<UseCounterPageLoadMetricsObserver::UkmFeatureList>
+const UseCounterMetricsRecorder::UkmFeatureList&
+UseCounterMetricsRecorder::GetAllowedUkmFeatures() {
+  static base::NoDestructor<UseCounterMetricsRecorder::UkmFeatureList>
       // We explicitly use an std::initializer_list below to work around GCC
       // bug 84849, which causes having a base::NoDestructor<T<U>> and passing
       // an initializer list of Us does not work.
@@ -31,9 +40,6 @@ UseCounterPageLoadMetricsObserver::GetAllowedUkmFeatures() {
           WebFeature::kNavigatorVibrateSubFrame,
           WebFeature::kTouchEventPreventedNoTouchAction,
           WebFeature::kTouchEventPreventedForcedDocumentPassiveNoTouchAction,
-          WebFeature::kApplicationCacheInstalledButNoManifest,
-          WebFeature::kApplicationCacheManifestSelectInsecureOrigin,
-          WebFeature::kApplicationCacheManifestSelectSecureOrigin,
           WebFeature::kMixedContentAudio,
           WebFeature::kMixedContentImage,
           WebFeature::kMixedContentVideo,
@@ -46,24 +52,11 @@ UseCounterPageLoadMetricsObserver::GetAllowedUkmFeatures() {
           WebFeature::kXMLHttpRequestSynchronousInWorker,
           WebFeature::kPaymentHandler,
           WebFeature::kPaymentRequestShowWithoutGesture,
-          WebFeature::kHTMLImports,
-          WebFeature::kHTMLImportsOnReverseOriginTrials,
-          WebFeature::kElementCreateShadowRoot,
-          WebFeature::kElementCreateShadowRootOnReverseOriginTrials,
-          WebFeature::kDocumentRegisterElement,
-          WebFeature::kDocumentRegisterElementOnReverseOriginTrials,
+          WebFeature::kPaymentRequestShowWithoutGestureOrToken,
           WebFeature::kCredentialManagerCreatePublicKeyCredential,
           WebFeature::kCredentialManagerGetPublicKeyCredential,
           WebFeature::kCredentialManagerMakePublicKeyCredentialSuccess,
           WebFeature::kCredentialManagerGetPublicKeyCredentialSuccess,
-          WebFeature::kU2FCryptotokenRegister,
-          WebFeature::kU2FCryptotokenSign,
-          // TODO(crbug.com/1129465): The below four use counters have high
-          // usage, but are expected to be deprecated in several milestones.
-          WebFeature::kElementAttachShadow,
-          WebFeature::kElementAttachShadowOpen,
-          WebFeature::kElementAttachShadowClosed,
-          WebFeature::kCustomElementRegistryDefine,
           WebFeature::kTextToSpeech_Speak,
           WebFeature::kTextToSpeech_SpeakDisallowedByAutoplay,
           WebFeature::kCSSEnvironmentVariable_SafeAreaInsetTop,
@@ -92,6 +85,7 @@ UseCounterPageLoadMetricsObserver::GetAllowedUkmFeatures() {
           WebFeature::kSignedExchangeInnerResponseInSubFrame,
           WebFeature::kWebShareShare,
           WebFeature::kDownloadInAdFrameWithoutUserGesture,
+          WebFeature::kStorageBucketsOpen,
           WebFeature::kOpenWebDatabase,
           WebFeature::kV8MediaCapabilities_DecodingInfo_Method,
           WebFeature::kOpenerNavigationDownloadCrossOrigin,
@@ -153,7 +147,7 @@ UseCounterPageLoadMetricsObserver::GetAllowedUkmFeatures() {
           WebFeature::kTrustTokenXhr,
           WebFeature::kTrustTokenFetch,
           WebFeature::kTrustTokenIframe,
-          WebFeature::kV8Document_HasTrustToken_Method,
+          WebFeature::kV8Document_HasPrivateToken_Method,
           WebFeature::kV8HTMLVideoElement_RequestVideoFrameCallback_Method,
           WebFeature::kV8HTMLVideoElement_CancelVideoFrameCallback_Method,
           WebFeature::kSchemefulSameSiteContextDowngrade,
@@ -167,18 +161,119 @@ UseCounterPageLoadMetricsObserver::GetAllowedUkmFeatures() {
           WebFeature::kSchemelesslySameSitePostMessage,
           WebFeature::kSchemelesslySameSitePostMessageSecureToInsecure,
           WebFeature::kSchemelesslySameSitePostMessageInsecureToSecure,
-          WebFeature::kElementAttachInternalsBeforeConstructor,
-          WebFeature::kAddressSpaceLocalEmbeddedInPrivateSecureContext,
-          WebFeature::kAddressSpaceLocalEmbeddedInPrivateNonSecureContext,
-          WebFeature::kAddressSpaceLocalEmbeddedInPublicSecureContext,
-          WebFeature::kAddressSpaceLocalEmbeddedInPublicNonSecureContext,
-          WebFeature::kAddressSpaceLocalEmbeddedInUnknownSecureContext,
-          WebFeature::kAddressSpaceLocalEmbeddedInUnknownNonSecureContext,
-          WebFeature::kAddressSpacePrivateEmbeddedInPublicSecureContext,
-          WebFeature::kAddressSpacePrivateEmbeddedInPublicNonSecureContext,
-          WebFeature::kAddressSpacePrivateEmbeddedInUnknownSecureContext,
-          WebFeature::kAddressSpacePrivateEmbeddedInUnknownNonSecureContext,
+          WebFeature::kAddressSpacePrivateSecureContextEmbeddedLocal,
+          WebFeature::kAddressSpacePrivateNonSecureContextEmbeddedLocal,
+          WebFeature::kAddressSpacePublicSecureContextEmbeddedLocal,
+          WebFeature::kAddressSpacePublicNonSecureContextEmbeddedLocal,
+          WebFeature::kAddressSpacePublicSecureContextEmbeddedPrivate,
+          WebFeature::kAddressSpacePublicNonSecureContextEmbeddedPrivate,
+          WebFeature::kAddressSpaceUnknownSecureContextEmbeddedLocal,
+          WebFeature::kAddressSpaceUnknownNonSecureContextEmbeddedLocal,
+          WebFeature::kAddressSpaceUnknownSecureContextEmbeddedPrivate,
+          WebFeature::kAddressSpaceUnknownNonSecureContextEmbeddedPrivate,
+          WebFeature::kAddressSpacePrivateSecureContextNavigatedToLocal,
+          WebFeature::kAddressSpacePrivateNonSecureContextNavigatedToLocal,
+          WebFeature::kAddressSpacePublicSecureContextNavigatedToLocal,
+          WebFeature::kAddressSpacePublicNonSecureContextNavigatedToLocal,
+          WebFeature::kAddressSpacePublicSecureContextNavigatedToPrivate,
+          WebFeature::kAddressSpacePublicNonSecureContextNavigatedToPrivate,
+          WebFeature::kAddressSpaceUnknownSecureContextNavigatedToLocal,
+          WebFeature::kAddressSpaceUnknownNonSecureContextNavigatedToLocal,
+          WebFeature::kAddressSpaceUnknownSecureContextNavigatedToPrivate,
+          WebFeature::kAddressSpaceUnknownNonSecureContextNavigatedToPrivate,
+          WebFeature::kFileSystemPickerMethod,
+          WebFeature::kV8Window_ShowOpenFilePicker_Method,
+          WebFeature::kV8Window_ShowSaveFilePicker_Method,
+          WebFeature::kV8Window_ShowDirectoryPicker_Method,
+          WebFeature::kV8StorageManager_GetDirectory_Method,
+          WebFeature::kBarcodeDetectorDetect,
+          WebFeature::kFaceDetectorDetect,
+          WebFeature::kTextDetectorDetect,
           WebFeature::kV8SharedArrayBufferConstructedWithoutIsolation,
+          WebFeature::kV8HTMLVideoElement_GetVideoPlaybackQuality_Method,
+          WebFeature::kWebPImage,
+          WebFeature::kAVIFImage,
+          WebFeature::kGetDisplayMedia,
+          WebFeature::kLaxAllowingUnsafeCookies,
+          WebFeature::kOversrollBehaviorOnViewportBreaks,
+          WebFeature::kPaymentRequestCSPViolation,
+          WebFeature::kRequestedFileSystemPersistentThirdPartyContext,
+          WebFeature::kPrefixedStorageInfoThirdPartyContext,
+          WebFeature::
+              kCrossBrowsingContextGroupMainFrameNulledNonEmptyNameAccessed,
+          WebFeature::kControlledWorkerWillBeUncontrolled,
+          WebFeature::kUsbDeviceOpen,
+          WebFeature::kWebBluetoothRemoteServerConnect,
+          WebFeature::kSerialRequestPort,
+          WebFeature::kSerialPortOpen,
+          WebFeature::kHidRequestDevice,
+          WebFeature::kHidDeviceOpen,
+          WebFeature::kControlledNonBlobURLWorkerWillBeUncontrolled,
+          WebFeature::kSameSiteCookieInclusionChangedByCrossSiteRedirect,
+          WebFeature::
+              kBlobStoreAccessAcrossAgentClustersInResolveAsURLLoaderFactory,
+          WebFeature::kBlobStoreAccessAcrossAgentClustersInResolveForNavigation,
+          WebFeature::kSearchEventFired,
+          WebFeature::kReadOrWriteWebDatabase,
+          WebFeature::kExternalProtocolBlockedBySandbox,
+          WebFeature::kWebCodecsAudioDecoder,
+          WebFeature::kWebCodecsVideoDecoder,
+          WebFeature::kWebCodecsVideoEncoder,
+          WebFeature::kWebCodecsVideoTrackReader,
+          WebFeature::kWebCodecsImageDecoder,
+          WebFeature::kWebCodecsAudioEncoder,
+          WebFeature::kWebCodecsVideoFrameFromImage,
+          WebFeature::kWebCodecsVideoFrameFromBuffer,
+          WebFeature::kPrivateNetworkAccessIgnoredPreflightError,
+          WebFeature::kPrivateNetworkAccessIgnoredCrossOriginPreflightError,
+          WebFeature::kPrivateNetworkAccessIgnoredCrossSitePreflightError,
+          WebFeature::kWebBluetoothGetAvailability,
+          WebFeature::kCookieHasNotBeenRefreshedIn201To300Days,
+          WebFeature::kCookieHasNotBeenRefreshedIn301To350Days,
+          WebFeature::kCookieHasNotBeenRefreshedIn351To400Days,
+          WebFeature::kPartitionedCookies,
+          WebFeature::kScriptSchedulingType_Defer,
+          WebFeature::kScriptSchedulingType_ParserBlocking,
+          WebFeature::kScriptSchedulingType_ParserBlockingInline,
+          WebFeature::kScriptSchedulingType_InOrder,
+          WebFeature::kScriptSchedulingType_Async,
+          WebFeature::kClientHintsMetaHTTPEquivAcceptCH,
+          WebFeature::kAutomaticLazyAds,
+          WebFeature::kAutomaticLazyEmbeds,
+          WebFeature::kCookieDomainNonASCII,
+          WebFeature::kClientHintsMetaEquivDelegateCH,
+          WebFeature::kAuthorizationCoveredByWildcard,
+          WebFeature::kImageAd,
+          WebFeature::kLinkRelPrefetchAsDocumentSameOrigin,
+          WebFeature::kLinkRelPrefetchAsDocumentCrossOrigin,
+          WebFeature::kChromeLoadTimesCommitLoadTime,
+          WebFeature::kChromeLoadTimesConnectionInfo,
+          WebFeature::kChromeLoadTimesFinishDocumentLoadTime,
+          WebFeature::kChromeLoadTimesFinishLoadTime,
+          WebFeature::kChromeLoadTimesFirstPaintAfterLoadTime,
+          WebFeature::kChromeLoadTimesFirstPaintTime,
+          WebFeature::kChromeLoadTimesNavigationType,
+          WebFeature::kChromeLoadTimesNpnNegotiatedProtocol,
+          WebFeature::kChromeLoadTimesRequestTime,
+          WebFeature::kChromeLoadTimesStartLoadTime,
+          WebFeature::kChromeLoadTimesUnknown,
+          WebFeature::kChromeLoadTimesWasAlternateProtocolAvailable,
+          WebFeature::kChromeLoadTimesWasFetchedViaSpdy,
+          WebFeature::kChromeLoadTimesWasNpnNegotiated,
+          WebFeature::kGamepadButtons,
+          WebFeature::kWebNfcNdefReaderScan,
+          WebFeature::kWakeLockAcquireScreenLockWithoutActivation,
+          WebFeature::kGetDisplayMediaWithoutUserActivation,
+          WebFeature::kDataUrlInSvgUse,
+          WebFeature::kExecutedNonTrivialJavaScriptURL,
+          WebFeature::kV8DeprecatedStorageQuota_QueryUsageAndQuota_Method,
+          WebFeature::kV8DeprecatedStorageQuota_RequestQuota_Method,
+          WebFeature::kRequestFileSystem,
+          WebFeature::kRequestFileSystemWorker,
+          WebFeature::kRequestFileSystemSyncWorker,
+          WebFeature::
+              kHTMLPatternRegExpUnicodeSetIncompatibilitiesWithUnicodeMode,
+          WebFeature::kGetDisplayMediaWithPreferCurrentTabTrue,
       }));
   return *opt_in_features;
 }

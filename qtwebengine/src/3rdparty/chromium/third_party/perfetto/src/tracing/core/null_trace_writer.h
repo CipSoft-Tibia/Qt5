@@ -26,7 +26,7 @@ namespace perfetto {
 
 // A specialization of TraceWriter which no-ops all the writes routing them
 // into a fixed region of memory
-// See //include/perfetto/tracing/core/trace_writer.h for docs.
+// See //include/perfetto/ext/tracing/core/trace_writer.h for docs.
 class NullTraceWriter : public TraceWriter {
  public:
   NullTraceWriter();
@@ -35,6 +35,7 @@ class NullTraceWriter : public TraceWriter {
   // TraceWriter implementation. See documentation in trace_writer.h.
   // TracePacketHandle is defined in trace_writer.h
   TracePacketHandle NewTracePacket() override;
+  void FinishTracePacket() override;
   void Flush(std::function<void()> callback = {}) override;
   WriterID writer_id() const override;
   uint64_t written() const override;
@@ -46,7 +47,7 @@ class NullTraceWriter : public TraceWriter {
   protozero::ScatteredStreamWriterNullDelegate delegate_;
   protozero::ScatteredStreamWriter stream_;
 
-  // The packet returned via NewTracePacket(). Its owned by this class,
+  // The packet returned via NewTracePacket(). It is owned by this class,
   // TracePacketHandle has just a pointer to it.
   std::unique_ptr<protozero::RootMessage<protos::pbzero::TracePacket>>
       cur_packet_;

@@ -1,11 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_PUSH_MESSAGING_PUSH_MESSAGING_BRIDGE_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_PUSH_MESSAGING_PUSH_MESSAGING_BRIDGE_H_
 
-#include "base/macros.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom-blink.h"
 #include "third_party/blink/renderer/modules/service_worker/service_worker_registration.h"
@@ -33,6 +32,10 @@ class PushMessagingBridge final : public GarbageCollected<PushMessagingBridge>,
   static PushMessagingBridge* From(ServiceWorkerRegistration* registration);
 
   explicit PushMessagingBridge(ServiceWorkerRegistration& registration);
+
+  PushMessagingBridge(const PushMessagingBridge&) = delete;
+  PushMessagingBridge& operator=(const PushMessagingBridge&) = delete;
+
   virtual ~PushMessagingBridge();
 
   // Asynchronously determines the permission state for the current origin.
@@ -47,11 +50,7 @@ class PushMessagingBridge final : public GarbageCollected<PushMessagingBridge>,
   void DidGetPermissionState(ScriptPromiseResolver* resolver,
                              mojom::blink::PermissionStatus status);
 
-  HeapMojoRemote<mojom::blink::PermissionService,
-                 HeapMojoWrapperMode::kWithoutContextObserver>
-      permission_service_;
-
-  DISALLOW_COPY_AND_ASSIGN(PushMessagingBridge);
+  HeapMojoRemote<mojom::blink::PermissionService> permission_service_;
 };
 
 }  // namespace blink

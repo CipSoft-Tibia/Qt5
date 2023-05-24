@@ -1,12 +1,12 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_DEVICE_PUBLIC_CPP_GEOLOCATION_LOCATION_PROVIDER_H_
 #define SERVICES_DEVICE_PUBLIC_CPP_GEOLOCATION_LOCATION_PROVIDER_H_
 
-#include "base/callback.h"
 #include "base/compiler_specific.h"
+#include "base/functional/callback.h"
 #include "services/device/public/mojom/geoposition.mojom.h"
 
 namespace device {

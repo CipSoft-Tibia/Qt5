@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,16 @@
 #include <algorithm>
 #include <memory>
 #include <set>
-#include <vector>
 
-#include "base/bind.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
 #include "base/system/sys_info.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/test_simple_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace offline_pages {
@@ -64,7 +63,8 @@ class ArchiveManagerTest : public testing::Test {
 
  private:
   scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle task_runner_handle_;
+  base::SingleThreadTaskRunner::CurrentDefaultHandle
+      task_runner_current_default_handle_;
   base::ScopedTempDir temporary_dir_;
   base::ScopedTempDir private_archive_dir_;
   base::ScopedTempDir public_archive_dir_;
@@ -78,7 +78,7 @@ class ArchiveManagerTest : public testing::Test {
 
 ArchiveManagerTest::ArchiveManagerTest()
     : task_runner_(new base::TestSimpleTaskRunner),
-      task_runner_handle_(task_runner_),
+      task_runner_current_default_handle_(task_runner_),
       callback_status_(CallbackStatus::NOT_CALLED),
       last_storage_sizes_({0, 0, 0}) {}
 
@@ -88,7 +88,7 @@ void ArchiveManagerTest::SetUp() {
   ASSERT_TRUE(public_archive_dir_.CreateUniqueTempDir());
   ResetManager(temporary_dir_.GetPath(), private_archive_dir_.GetPath(),
                public_archive_dir_.GetPath());
-  histogram_tester_.reset(new base::HistogramTester());
+  histogram_tester_ = std::make_unique<base::HistogramTester>();
 }
 
 void ArchiveManagerTest::PumpLoop() {
@@ -104,9 +104,9 @@ void ArchiveManagerTest::ResetManager(
     const base::FilePath& temporary_dir,
     const base::FilePath& private_archive_dir,
     const base::FilePath& public_archive_dir) {
-  manager_.reset(new ArchiveManager(temporary_dir, private_archive_dir,
-                                    public_archive_dir,
-                                    base::ThreadTaskRunnerHandle::Get()));
+  manager_ = std::make_unique<ArchiveManager>(
+      temporary_dir, private_archive_dir, public_archive_dir,
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 }
 
 void ArchiveManagerTest::Callback(bool result) {

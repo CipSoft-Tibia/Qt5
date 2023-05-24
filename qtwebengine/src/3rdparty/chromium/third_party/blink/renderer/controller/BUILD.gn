@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,7 +10,14 @@ import("//third_party/blink/renderer/config.gni")
 import("//third_party/blink/renderer/core/core.gni")
 import("//third_party/blink/renderer/modules/modules.gni")
 
-visibility = [ "//third_party/blink/*" ]
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+}
+
+visibility = [
+  "//:gn_all",
+  "//third_party/blink/*",
+]
 
 jumbo_component("controller") {
   output_name = "blink_controller"
@@ -23,6 +30,10 @@ jumbo_component("controller") {
     "//third_party/blink/renderer/platform",
     "//v8",
   ]
+
+  if (use_blink_extensions_chromeos) {
+    deps += [ "//third_party/blink/renderer/extensions/chromeos" ]
+  }
 
   configs += [
     "//build/config/compiler:wexit_time_destructors",
@@ -39,6 +50,7 @@ jumbo_component("controller") {
     "blink_initializer.h",
     "blink_leak_detector.cc",
     "blink_leak_detector.h",
+    "blink_shutdown.cc",
     "controller_export.h",
     "dev_tools_frontend_impl.cc",
     "dev_tools_frontend_impl.h",
@@ -67,6 +79,8 @@ jumbo_component("controller") {
       "memory_usage_monitor_posix.h",
       "oom_intervention_impl.cc",
       "oom_intervention_impl.h",
+      "private_memory_footprint_provider.cc",
+      "private_memory_footprint_provider.h",
     ]
     public_deps = [ "//third_party/blink/public/mojom:memory_usage_monitor_linux_mojo_bindings_blink" ]
   }
@@ -102,6 +116,16 @@ jumbo_component("controller") {
   configs += blink_symbols_config
   configs -= [ "//build/config/compiler:default_optimization" ]
   configs += blink_optimization_config
+
+  # These targets are not necessary to build the Blink renderer, however, these
+  # targets are quite useful for Blink developers to get error if any when
+  # adding/editing *.idl files, especially because it's very easy to forget to
+  # add generated bindings files to the lists defined in
+  # generated_in_{core,modules}.gni. Hence, run the check scripts here.
+  deps += [
+    "//third_party/blink/renderer/bindings:check_generated_file_list",
+    "//third_party/blink/renderer/bindings:validate_web_idl",
+  ]
 }
 
 group("blink_unittests_data") {
@@ -124,14 +148,20 @@ group("webkit_unit_tests") {
 test("blink_unittests") {
   deps = [ ":blink_unittests_sources" ]
 
-  data_deps = [
-    ":blink_unittests_data",
-    "//content/shell:pak",
-  ]
+  if (is_ios) {
+    bundle_deps = [
+      ":blink_unittests_bundle_data",
+      ":blink_unittests_pak_bundle_data",
+    ]
+  } else {
+    data_deps = [
+      ":blink_unittests_data",
+      "//content/shell:pak",
+    ]
+  }
 
   if (is_android) {
     deps += [
-      "//base:base_java",
       "//content/public/android:content_java",
       "//content/shell/android:content_shell_assets",
       "//net/android:net_java",
@@ -140,6 +170,17 @@ test("blink_unittests") {
     if (enable_chrome_android_internal) {
       data_deps += [ "//clank/build/bot/filters:blink_unittests_filters" ]
     }
+  }
+
+  if (is_fuchsia) {
+    # TODO(https://crbug.com/1185811): Investigate removing the requirement for
+    # job_policy_ambient_mark_vmo_exec for the sake of V8's allocator in tests.
+    test_runner_shard = "//build/config/fuchsia/test/elf_test_ambient_exec_runner.shard.test-cml"
+    additional_manifest_fragments = [
+      "//build/config/fuchsia/test/fonts.shard.test-cml",
+      "//build/config/fuchsia/test/network.shard.test-cml",
+      "//build/config/fuchsia/test/mark_vmo_executable.shard.test-cml",
+    ]
   }
 }
 
@@ -152,7 +193,7 @@ jumbo_source_set("blink_perf_tests_sources") {
   visibility = [ "*" ]
   testonly = true
 
-  sources = [ "tests/run_all_tests.cc" ]
+  sources = [ "tests/run_all_perftests.cc" ]
 
   deps = [
     ":controller",
@@ -181,6 +222,7 @@ source_set("blink_bindings_test_sources") {
     "//third_party/blink/renderer/core:testing",
     "//third_party/blink/renderer/core:unit_test_support",
     "//third_party/blink/renderer/modules:modules",
+    "//third_party/blink/renderer/modules/mediastream:test_support",
     "//third_party/blink/renderer/platform:platform",
     "//third_party/blink/renderer/platform:test_support",
   ]
@@ -197,6 +239,7 @@ jumbo_source_set("blink_unittests_sources") {
   testonly = true
 
   sources = [
+    "performance_manager/renderer_resource_coordinator_impl_test.cc",
     "performance_manager/v8_detailed_memory_reporter_impl_test.cc",
     "performance_manager/v8_worker_memory_reporter_test.cc",
     "tests/run_all_tests.cc",
@@ -226,6 +269,7 @@ jumbo_source_set("blink_unittests_sources") {
     "//base:i18n",
     "//base/test:test_support",
     "//components/payments/mojom:mojom_blink",
+    "//components/performance_manager/public/mojom:mojom_blink",
     "//content/test:test_support",
     "//gpu:test_support",
     "//testing/gmock",
@@ -251,4 +295,18 @@ jumbo_source_set("blink_unittests_sources") {
     "//third_party/blink/renderer:inside_blink",
     "//third_party/blink/renderer/core:blink_core_pch",
   ]
+}
+
+if (is_ios) {
+  bundle_data("blink_unittests_pak_bundle_data") {
+    testonly = true
+    public_deps = [ "//content/shell:pak" ]
+    sources = [ "$root_out_dir/content_shell.pak" ]
+    outputs = [ "{{bundle_resources_dir}}/content_shell.pak" ]
+  }
+
+  bundle_data_from_filelist("blink_unittests_bundle_data") {
+    testonly = true
+    filelist_name = "blink_unittests_bundle_data.filelist"
+  }
 }

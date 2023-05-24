@@ -1,0 +1,26 @@
+version: 2
+accept_configuration:
+  condition: property
+  property: features
+  not_contains_value: Disable
+
+instructions:
+  Build:
+    - !include "{{qt/qtbase}}/coin_module_build_template_v2.yaml"
+
+  Test:
+    - type: EnvironmentVariable
+      variableName: QTWEBENGINE_DISABLE_SANDBOX
+      variableValue: "1"
+      enable_if:
+        condition: property
+        property: target.osVersion
+        equals_value: QEMU
+    - type: Group
+      instructions:
+        - !include "{{qt/qtbase}}/coin_module_test_template_v3.yaml"
+      enable_if:
+        condition: property
+        property: target.os
+        not_equals_value: QNX
+

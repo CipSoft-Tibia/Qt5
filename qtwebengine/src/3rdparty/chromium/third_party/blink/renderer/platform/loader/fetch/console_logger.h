@@ -1,16 +1,21 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_CONSOLE_LOGGER_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_CONSOLE_LOGGER_H_
 
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink-forward.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/heap/visitor.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
+
+class ConsoleMessage;
 
 // A pure virtual interface for console logging.
 // Retaining an instance of ConsoleLogger may be dangerous because after the
@@ -21,17 +26,28 @@ class PLATFORM_EXPORT ConsoleLogger : public GarbageCollectedMixin {
   ConsoleLogger() = default;
   virtual ~ConsoleLogger() = default;
 
-  void AddConsoleMessage(mojom::ConsoleMessageSource source,
-                         mojom::ConsoleMessageLevel level,
+  void AddConsoleMessage(mojom::blink::ConsoleMessageSource source,
+                         mojom::blink::ConsoleMessageLevel level,
                          const String& message,
+                         bool discard_duplicates = false,
+                         absl::optional<mojom::blink::ConsoleMessageCategory>
+                             category = absl::nullopt) {
+    AddConsoleMessageImpl(source, level, message, discard_duplicates, category);
+  }
+
+  void AddConsoleMessage(ConsoleMessage* message,
                          bool discard_duplicates = false) {
-    AddConsoleMessageImpl(source, level, message, discard_duplicates);
+    AddConsoleMessageImpl(message, discard_duplicates);
   }
 
  private:
-  virtual void AddConsoleMessageImpl(mojom::ConsoleMessageSource,
-                                     mojom::ConsoleMessageLevel,
-                                     const String& message,
+  virtual void AddConsoleMessageImpl(
+      mojom::blink::ConsoleMessageSource,
+      mojom::blink::ConsoleMessageLevel,
+      const String& message,
+      bool discard_duplicates,
+      absl::optional<mojom::blink::ConsoleMessageCategory> category) = 0;
+  virtual void AddConsoleMessageImpl(ConsoleMessage* message,
                                      bool discard_duplicates) = 0;
 };
 
@@ -57,14 +73,24 @@ class PLATFORM_EXPORT DetachableConsoleLogger final
   Member<ConsoleLogger> logger_;
 
  private:
-  void AddConsoleMessageImpl(mojom::ConsoleMessageSource source,
-                             mojom::ConsoleMessageLevel level,
-                             const String& message,
+  void AddConsoleMessageImpl(
+      mojom::blink::ConsoleMessageSource source,
+      mojom::blink::ConsoleMessageLevel level,
+      const String& message,
+      bool discard_duplicates,
+      absl::optional<mojom::blink::ConsoleMessageCategory> category) override {
+    if (!logger_) {
+      return;
+    }
+    logger_->AddConsoleMessage(source, level, message, discard_duplicates,
+                               category);
+  }
+  void AddConsoleMessageImpl(ConsoleMessage* message,
                              bool discard_duplicates) override {
     if (!logger_) {
       return;
     }
-    logger_->AddConsoleMessage(source, level, message, discard_duplicates);
+    logger_->AddConsoleMessage(message, discard_duplicates);
   }
 };
 

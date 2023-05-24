@@ -1,41 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QDebug>
 #include <QJSValueIterator>
+#include <QtCore/qiterable.h>
 #include <private/qquickvaluetypes_p.h>
 #include <private/qqmlglobal_p.h>
 #include <private/qv4engine_p.h>
 #include <private/qv4variantobject_p.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 #include "testtypes.h"
 
 QT_BEGIN_NAMESPACE
@@ -46,10 +22,10 @@ class tst_qqmlvaluetypes : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qqmlvaluetypes() {}
+    tst_qqmlvaluetypes() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 
     void point();
     void pointf();
@@ -65,7 +41,6 @@ private slots:
     void matrix4x4();
     void font();
     void color();
-    void variant();
     void locale();
     void qmlproperty();
 
@@ -99,6 +74,10 @@ private slots:
     void enumProperties();
     void scarceTypes();
     void nonValueTypes();
+    void char16Type();
+    void writeBackOnFunctionCall();
+    void valueTypeConversions();
+    void readReferenceOnGetOwnProperty();
 
 private:
     QQmlEngine engine;
@@ -290,43 +269,11 @@ void tst_qqmlvaluetypes::sizef()
     }
 }
 
-void tst_qqmlvaluetypes::variant()
-{
-    {
-    QQmlComponent component(&engine, testFileUrl("variant_read.qml"));
-    MyTypeObject *object = qobject_cast<MyTypeObject *>(component.create());
-    QVERIFY(object != nullptr);
-
-    QCOMPARE(float(object->property("s_width").toDouble()), float(0.1));
-    QCOMPARE(float(object->property("s_height").toDouble()), float(100923.2));
-    QCOMPARE(object->property("copy"), QVariant(QSizeF(0.1, 100923.2)));
-
-    delete object;
-    }
-
-    {
-    QQmlComponent component(&engine, testFileUrl("variant_write.1.qml"));
-    QObject *object = component.create();
-    QVERIFY(object != nullptr);
-    QVERIFY(object->property("complete").toBool());
-    QVERIFY(object->property("success").toBool());
-    delete object;
-    }
-
-    {
-    QQmlComponent component(&engine, testFileUrl("variant_write.2.qml"));
-    QObject *object = component.create();
-    QVERIFY(object != nullptr);
-    QVERIFY(object->property("complete").toBool());
-    QVERIFY(object->property("success").toBool());
-    delete object;
-    }
-}
-
 void tst_qqmlvaluetypes::locale()
 {
-    {
-        QQmlComponent component(&engine, testFileUrl("locale_read.qml"));
+    for (const QUrl &testFile :
+         { testFileUrl("locale_read.qml"), testFileUrl("locale_read_singleton.qml") }) {
+        QQmlComponent component(&engine, testFile);
         QScopedPointer<QObject> object(component.create());
         QVERIFY(!object.isNull());
 
@@ -343,7 +290,7 @@ void tst_qqmlvaluetypes::locale()
         QCOMPARE(object->property("groupSeparator").toString().at(0), locale.groupSeparator());
         QCOMPARE(object->property("measurementSystem").toInt(), int(locale.measurementSystem()));
         QCOMPARE(object->property("name").toString(), locale.name());
-        QCOMPARE(object->property("nativeCountryName").toString(), locale.nativeCountryName());
+        QCOMPARE(object->property("nativeCountryName").toString(), locale.nativeTerritoryName());
         QCOMPARE(object->property("nativeLanguageName").toString(), locale.nativeLanguageName());
         QCOMPARE(object->property("negativeSign").toString().at(0), locale.negativeSign());
         QCOMPARE(object->property("percent").toString().at(0), locale.percent());
@@ -721,6 +668,14 @@ void tst_qqmlvaluetypes::quaternion()
 
         delete object;
     }
+
+    {
+        QQmlComponent component(&engine, testFileUrl("quaternion_invokables.qml"));
+        QObject *object = component.create();
+        QVERIFY(object != nullptr);
+        QVERIFY(object->property("success").toBool());
+        delete object;
+    }
 }
 
 void tst_qqmlvaluetypes::matrix4x4()
@@ -937,10 +892,10 @@ void tst_qqmlvaluetypes::color()
         MyTypeObject *object = qobject_cast<MyTypeObject *>(component.create());
         QVERIFY(object != nullptr);
 
-        QCOMPARE((float)object->property("v_r").toDouble(), (float)0.2);
-        QCOMPARE((float)object->property("v_g").toDouble(), (float)0.88);
-        QCOMPARE((float)object->property("v_b").toDouble(), (float)0.6);
-        QCOMPARE((float)object->property("v_a").toDouble(), (float)0.34);
+        QCOMPARE(float(object->property("v_r").toDouble()), 0.2f);
+        QCOMPARE(float(object->property("v_g").toDouble()), 0.88f);
+        QCOMPARE(float(object->property("v_b").toDouble()), 0.6f);
+        QCOMPARE(float(object->property("v_a").toDouble()), 0.34f);
 
         QCOMPARE(qRound(object->property("hsv_h").toDouble() * 100), 43);
         QCOMPARE(qRound(object->property("hsv_s").toDouble() * 100), 77);
@@ -956,10 +911,10 @@ void tst_qqmlvaluetypes::color()
         QVERIFY(!object->property("invalid").toBool());
 
         QColor comparison;
-        comparison.setRedF(0.2);
-        comparison.setGreenF(0.88);
-        comparison.setBlueF(0.6);
-        comparison.setAlphaF(0.34);
+        comparison.setRedF(0.2f);
+        comparison.setGreenF(0.88f);
+        comparison.setBlueF(0.6f);
+        comparison.setAlphaF(0.34f);
         QCOMPARE(object->property("copy"), QVariant(comparison));
 
         delete object;
@@ -971,10 +926,10 @@ void tst_qqmlvaluetypes::color()
         QVERIFY(object != nullptr);
 
         QColor newColor;
-        newColor.setRedF(0.5);
-        newColor.setGreenF(0.38);
-        newColor.setBlueF(0.3);
-        newColor.setAlphaF(0.7);
+        newColor.setRedF(0.5f);
+        newColor.setGreenF(0.38f);
+        newColor.setBlueF(0.3f);
+        newColor.setAlphaF(0.7f);
         QCOMPARE(object->color(), newColor);
 
         delete object;
@@ -986,7 +941,7 @@ void tst_qqmlvaluetypes::color()
         QVERIFY(object != nullptr);
 
         QColor newColor;
-        newColor.setHsvF(0.43, 0.77, 0.88, 0.7);
+        newColor.setHsvF(0.43f, 0.77f, 0.88f, 0.7f);
         QCOMPARE(object->color(), newColor);
 
         delete object;
@@ -998,7 +953,7 @@ void tst_qqmlvaluetypes::color()
         QVERIFY(object != nullptr);
 
         QColor newColor;
-        newColor.setHslF(0.43, 0.74, 0.54, 0.7);
+        newColor.setHslF(0.43f, 0.74f, 0.54f, 0.7f);
         QCOMPARE(object->color(), newColor);
 
         delete object;
@@ -1009,10 +964,10 @@ void tst_qqmlvaluetypes::color()
         MyTypeObject *object = qobject_cast<MyTypeObject *>(component.create());
         QVERIFY(object != nullptr);
         QColor comparison;
-        comparison.setRedF(0.2);
-        comparison.setGreenF(0.88);
-        comparison.setBlueF(0.6);
-        comparison.setAlphaF(0.34);
+        comparison.setRedF(0.2f);
+        comparison.setGreenF(0.88f);
+        comparison.setBlueF(0.6f);
+        comparison.setAlphaF(0.34f);
         QString colorString = comparison.name(QColor::HexArgb);
         QCOMPARE(object->property("colorToString").toString(), colorString);
         QCOMPARE(object->property("colorEqualsIdenticalRgba").toBool(), true);
@@ -1205,7 +1160,7 @@ static void checkNoErrors(QQmlComponent& component)
     QList<QQmlError> errors = component.errors();
     if (errors.isEmpty())
         return;
-    for (int ii = 0; ii < errors.count(); ++ii) {
+    for (int ii = 0; ii < errors.size(); ++ii) {
         const QQmlError &error = errors.at(ii);
         qWarning("%d:%d:%s",error.line(),error.column(),error.description().toUtf8().constData());
     }
@@ -1735,8 +1690,8 @@ void tst_qqmlvaluetypes::sequences()
     {
         QList<BaseGadget> gadgetList{1, 4, 7, 8, 15};
         QJSValue value = engine.toScriptValue(gadgetList);
-        QCOMPARE(value.property("length").toInt(), gadgetList.length());
-        for (int i = 0; i < gadgetList.length(); ++i)
+        QCOMPARE(value.property("length").toInt(), gadgetList.size());
+        for (int i = 0; i < gadgetList.size(); ++i)
             QCOMPARE(value.property(i).property("baseProperty").toInt(), gadgetList.at(i).baseProperty());
     }
     {
@@ -1744,13 +1699,13 @@ void tst_qqmlvaluetypes::sequences()
         QJSValue value = engine.toScriptValue(container);
         QCOMPARE(value.property("length").toInt(), int(container.size()));
         for (size_t i = 0; i < container.size(); ++i)
-            QCOMPARE(value.property(i).property("baseProperty").toInt(), container.at(i).baseProperty());
+            QCOMPARE(value.property(quint32(i)).property("baseProperty").toInt(), container.at(i).baseProperty());
     }
     {
-        QVector<QChar> qcharVector{1, 4, 42, 8, 15};
+        QVector<QChar> qcharVector{QChar(1), QChar(4), QChar(42), QChar(8), QChar(15)};
         QJSValue value = engine.toScriptValue(qcharVector);
-        QCOMPARE(value.property("length").toInt(), qcharVector.length());
-        for (int i = 0; i < qcharVector.length(); ++i)
+        QCOMPARE(value.property("length").toInt(), qcharVector.size());
+        for (int i = 0; i < qcharVector.size(); ++i)
             QCOMPARE(value.property(i).toString(), qcharVector.at(i));
     }
     {
@@ -1812,7 +1767,7 @@ void tst_qqmlvaluetypes::enumerableProperties()
         names.insert(name);
     }
 
-    QCOMPARE(names.count(), 2);
+    QCOMPARE(names.size(), 2);
     QVERIFY(names.contains(QStringLiteral("baseProperty")));
     QVERIFY(names.contains(QStringLiteral("derivedProperty")));
 }
@@ -1855,8 +1810,8 @@ void tst_qqmlvaluetypes::scarceTypes()
     // These should not be treated as value types because we want the scarce resource
     // mechanism to clear them when going out of scope. The scarce resource mechanism
     // only works on QV4::VariantObject as that has an additional level of redirection.
-    QVERIFY(!QQmlValueTypeFactory::isValueType(qMetaTypeId<QImage>()));
-    QVERIFY(!QQmlValueTypeFactory::isValueType(qMetaTypeId<QPixmap>()));
+    QVERIFY(!QQmlMetaType::isValueType(QMetaType::fromType<QImage>()));
+    QVERIFY(!QQmlMetaType::isValueType(QMetaType::fromType<QPixmap>()));
 
     QV4::ExecutionEngine engine;
     QV4::Scope scope(&engine);
@@ -1871,12 +1826,168 @@ void tst_qqmlvaluetypes::scarceTypes()
 }
 
 #define CHECK_TYPE_IS_NOT_VALUETYPE(Type, typeId, cppType) \
-    QVERIFY(!QQmlValueTypeFactory::isValueType(QMetaType::Type));
+    QVERIFY(!QQmlMetaType::isValueType(QMetaType(QMetaType::Type)));
 
 void tst_qqmlvaluetypes::nonValueTypes()
 {
     CHECK_TYPE_IS_NOT_VALUETYPE(UnknownType, 0, void)
-    QT_FOR_EACH_STATIC_PRIMITIVE_TYPE(CHECK_TYPE_IS_NOT_VALUETYPE);
+            QT_FOR_EACH_STATIC_PRIMITIVE_TYPE(CHECK_TYPE_IS_NOT_VALUETYPE);
+}
+
+void tst_qqmlvaluetypes::char16Type()
+{
+    QV4::ExecutionEngine engine;
+    QV4::Scope scope(&engine);
+
+    char16_t t = 't';
+    QVariant v = QVariant::fromValue(t);
+    char16_t *vt = static_cast<char16_t *>(v.data());
+    *vt++ = 'a';
+    *vt++ = 'u';
+    QCOMPARE(v.typeId(), QMetaType::Char16);
+    QV4::ScopedValue scoped(scope, engine.fromVariant(v));
+    QCOMPARE(scoped->toQString(), "a");
+}
+
+struct Foo {
+    Q_GADGET
+    QML_ANONYMOUS
+public:
+    int val = 1;
+    Q_INVOKABLE int value() const { return val; }
+    Q_INVOKABLE void setValue(int v) { val = v; }
+};
+
+Q_DECLARE_METATYPE(Foo);
+
+class S : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(Foo foo READ foo WRITE setFoo NOTIFY fooChanged);
+    QML_ELEMENT
+public:
+    int writeCount = 0;
+    Foo f;
+    Foo foo() { return f; }
+    void setFoo(Foo f)
+    {
+        ++writeCount;
+        this->f = f;
+        emit fooChanged();
+    }
+    Q_INVOKABLE Foo get() { return f; }
+signals:
+    void fooChanged();
+};
+
+void tst_qqmlvaluetypes::writeBackOnFunctionCall()
+{
+    qmlRegisterTypesAndRevisions<Foo>("WriteBack", 1);
+    qmlRegisterTypesAndRevisions<S>("WriteBack", 1);
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.setData("import QtQml 2.15\n"
+                      "import WriteBack 1.0\n"
+                      "QtObject {\n"
+                      "    property S s: S {}\n"
+                      "    property int a: -1\n"
+                      "    property int b: -1\n"
+                      "    Component.onCompleted: {\n"
+                      "        var f = s.foo\n"
+                      "        f.setValue(3)\n"
+                      "        s.foo = f\n"
+                      "        a = f.value()\n"
+                      "        f = s.get()\n"
+                      "        f.setValue(3)\n"
+                      "        b = f.value()\n"
+                      "    }\n"
+                      "}\n", QUrl());
+    QVERIFY2(component.isReady(), component.errorString().toUtf8());
+    QScopedPointer<QObject> o(component.create());
+    QVERIFY(!o.isNull());
+    QCOMPARE(o->property("a").toInt(), 3);
+    QCOMPARE(o->property("b").toInt(), 3);
+    S *s = qvariant_cast<S *>(o->property("s"));
+    QVERIFY(s);
+    // f.value() should not write back.
+    QCOMPARE(s->writeCount, 2);
+}
+
+struct TypeB;
+struct TypeA
+{
+    Q_GADGET
+
+public:
+    TypeA() = default;
+    TypeA(const TypeB &other);
+    TypeA &operator=(const TypeB &other);
+
+    int a = 4;
+};
+
+struct TypeB
+{
+    Q_GADGET
+
+public:
+    TypeB() = default;
+    TypeB(const TypeA &other) : b(other.a) {}
+    TypeB &operator=(const TypeA &other) { b = other.a; return *this; }
+
+    int b = 5;
+};
+
+TypeA::TypeA(const TypeB &other) : a(other.b) {}
+TypeA &TypeA::operator=(const TypeB &other) { a = other.b; return *this; }
+
+void tst_qqmlvaluetypes::valueTypeConversions()
+{
+    QMetaType::registerConverter<TypeA, TypeB>();
+    QMetaType::registerConverter<TypeB, TypeA>();
+
+    TypeA a;
+    TypeB b;
+
+    QJSEngine engine;
+    QJSValue jsA = engine.toScriptValue(a);
+    QJSValue jsB = engine.toScriptValue(b);
+
+    TypeA resultA = engine.fromScriptValue<TypeA>(jsB);
+    TypeB resultB = engine.fromScriptValue<TypeB>(jsA);
+
+    QCOMPARE(resultA.a, b.b);
+    QCOMPARE(resultB.b, a.a);
+}
+
+class Chose : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QRectF f READ ff CONSTANT)
+public:
+    Chose(QObject *parent = nullptr) : QObject(parent) {}
+    QRectF ff() const { return QRectF(); }
+    Q_INVOKABLE bool g(QJSValue v) { return v.hasProperty("x"); }
+};
+
+void tst_qqmlvaluetypes::readReferenceOnGetOwnProperty()
+{
+    Chose chose;
+    QQmlEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("chose"), &chose);
+    QQmlComponent c(&engine);
+    c.setData(R"fin(
+        import QtQml
+        QtObject {
+            property bool allo: chose.g(chose.f)
+        }
+    )fin", QUrl());
+
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+    QVERIFY(o->property("allo").toBool());
 }
 
 #undef CHECK_TYPE_IS_NOT_VALUETYPE

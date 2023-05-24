@@ -30,13 +30,13 @@
 from core.css import css_properties
 from collections import defaultdict
 import json5_generator
-from name_utilities import enum_key_for_css_property, id_for_css_property
+from name_utilities import enum_key_for_css_property
 import template_expander
 
 
 def collect_runtime_flags(properties):
     """Returns a list of unique runtime flags used by the properties"""
-    flags = {p['runtime_flag'] for p in properties if p['runtime_flag']}
+    flags = {p.runtime_flag for p in properties if p.runtime_flag}
     return sorted(flags)
 
 
@@ -69,9 +69,9 @@ class Expansion(object):
 
     @property
     def enabled_longhands(self):
-        include = lambda longhand: not longhand[
-            'runtime_flag'] or self.is_enabled(longhand['runtime_flag'])
-        return filter(include, self._longhands)
+        include = lambda longhand: not longhand.runtime_flag or self.is_enabled(
+            longhand.runtime_flag)
+        return list(filter(include, self._longhands))
 
     @property
     def index(self):
@@ -87,8 +87,9 @@ class Expansion(object):
 
 def create_expansions(longhands):
     flags = collect_runtime_flags(longhands)
-    expansions = map(lambda mask: Expansion(longhands, flags, mask),
-                     range(1 << len(flags)))
+    expansions = list(
+        map(lambda mask: Expansion(longhands, flags, mask),
+            range(1 << len(flags))))
     assert len(expansions) > 0
     # We generate 2^N expansions for N flags, so enforce some limit.
     assert len(flags) <= 4, 'Too many runtime flags for a single shorthand'
@@ -114,25 +115,21 @@ class StylePropertyShorthandWriter(json5_generator.Writer):
 
         self._longhand_dictionary = defaultdict(list)
         for property_ in json5_properties.shorthands:
-            property_['longhand_enum_keys'] = map(enum_key_for_css_property,
-                                                  property_['longhands'])
-            property_['longhand_property_ids'] = map(id_for_css_property,
-                                                     property_['longhands'])
+            longhand_enum_keys = list(
+                map(enum_key_for_css_property, property_.longhands))
 
-            longhands = map(
-                lambda name: json5_properties.properties_by_name[name],
-                property_['longhands'])
-            property_['expansions'] = create_expansions(longhands)
-            for longhand_enum_key in property_['longhand_enum_keys']:
+            longhands = list(
+                map(lambda name: json5_properties.properties_by_name[name],
+                    property_.longhands))
+            property_.expansions = create_expansions(longhands)
+            for longhand_enum_key in longhand_enum_keys:
                 self._longhand_dictionary[longhand_enum_key].append(property_)
 
         for longhands in self._longhand_dictionary.values():
             # Sort first by number of longhands in decreasing order, then
             # alphabetically
-            longhands.sort(
-                key=
-                lambda property_: (-len(property_['longhand_property_ids']), property_['name'].original)
-            )
+            longhands.sort(key=lambda property_: (-len(property_.longhands),
+                                                  property_.name.original))
 
     @template_expander.use_jinja(
         'core/css/templates/style_property_shorthand.cc.tmpl')

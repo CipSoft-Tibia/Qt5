@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,8 @@ namespace {
 // We don't expect more precision than a float's worth from this code.
 float MakeDoubleNumAsFloat(const wchar_t* str) {
   return static_cast<float>(
-      CXFA_LocaleValue(XFA_VT_FLOAT, str, nullptr).GetDoubleNum());
+      CXFA_LocaleValue(CXFA_LocaleValue::ValueType::kFloat, str, nullptr)
+          .GetDoubleNum());
 }
 
 }  // namespace

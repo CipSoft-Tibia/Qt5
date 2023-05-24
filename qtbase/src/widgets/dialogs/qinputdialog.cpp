@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qinputdialog.h"
 
@@ -74,8 +38,7 @@ static const char *candidateSignal(int which)
     case NumCandidateSignals:
         break;
     };
-    Q_UNREACHABLE();
-    return nullptr;
+    Q_UNREACHABLE_RETURN(nullptr);
 }
 
 static const char *signalForMember(const char *member)
@@ -118,9 +81,7 @@ private slots:
 private:
     void keyPressEvent(QKeyEvent *event) override {
         if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !hasAcceptableInput()) {
-#ifndef QT_NO_PROPERTIES
             setProperty("value", property("value"));
-#endif
         } else {
             QSpinBox::keyPressEvent(event);
         }
@@ -153,9 +114,7 @@ private slots:
 private:
     void keyPressEvent(QKeyEvent *event) override {
         if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) && !hasAcceptableInput()) {
-#ifndef QT_NO_PROPERTIES
             setProperty("value", property("value"));
-#endif
         } else {
             QDoubleSpinBox::keyPressEvent(event);
         }
@@ -300,7 +259,7 @@ void QInputDialogPrivate::ensureComboBox()
         comboBox->hide();
         QObject::connect(comboBox, SIGNAL(editTextChanged(QString)),
                          q, SLOT(_q_textChanged(QString)));
-        QObject::connect(comboBox, SIGNAL(currentIndexChanged(QString)),
+        QObject::connect(comboBox, SIGNAL(currentTextChanged(QString)),
                          q, SLOT(_q_textChanged(QString)));
     }
 }
@@ -1321,42 +1280,6 @@ int QInputDialog::getInt(QWidget *parent, const QString &title, const QString &l
     }
 }
 
-/*!
-    \fn int QInputDialog::getInteger(QWidget *parent, const QString &title, const QString &label, int value, int min, int max, int step, bool *ok, Qt::WindowFlags flags)
-    \deprecated use getInt()
-
-    Static convenience function to get an integer input from the user.
-
-    \a title is the text which is displayed in the title bar of the dialog.
-    \a label is the text which is shown to the user (it should say what should
-    be entered).
-    \a value is the default integer which the spinbox will be set to.
-    \a min and \a max are the minimum and maximum values the user may choose.
-    \a step is the amount by which the values change as the user presses the
-    arrow buttons to increment or decrement the value.
-
-    If \a ok is nonnull *\a ok will be set to true if the user pressed \uicontrol OK
-    and to false if the user pressed \uicontrol Cancel. The dialog's parent is
-    \a parent. The dialog will be modal and uses the widget \a flags.
-
-    On success, this function returns the integer which has been entered by the
-    user; on failure, it returns the initial \a value.
-
-    Use this static function like this:
-
-    \snippet dialogs/standarddialogs/dialog.cpp 0
-
-    \sa getText(), getDouble(), getItem(), getMultiLineText()
-*/
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) && !defined(Q_QDOC)
-double QInputDialog::getDouble(QWidget *parent, const QString &title, const QString &label,
-                               double value, double min, double max, int decimals, bool *ok,
-                               Qt::WindowFlags flags)
-{
-    return QInputDialog::getDouble(parent, title, label, value, min, max, decimals, ok, flags, 1.0);
-}
-#endif
 /*!
     Static convenience function to get a floating point number from the user.
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@
 #include <sstream>
 #include <string>
 
-#include "base/macros.h"
+#include "base/memory/raw_ref.h"
 
 namespace zucchini {
 
@@ -37,19 +37,19 @@ class LimitedOutputStream : public std::ostream {
     bool full() const { return counter_ >= limit_; }
 
    private:
-    std::ostream& os_;
+    const raw_ref<std::ostream> os_;
     const int limit_;
     int counter_ = 0;
   };
 
  public:
   LimitedOutputStream(std::ostream& os, int limit);
+  LimitedOutputStream(const LimitedOutputStream&) = delete;
+  const LimitedOutputStream& operator=(const LimitedOutputStream&) = delete;
   bool full() const { return buf_.full(); }
 
  private:
   StreamBuf buf_;
-
-  DISALLOW_COPY_AND_ASSIGN(LimitedOutputStream);
 };
 
 // A class to render hexadecimal numbers for std::ostream with 0-padding. This
@@ -88,14 +88,14 @@ std::ostream& operator<<(std::ostream& os, const AsHex<N, T>& as_hex) {
 class PrefixSep {
  public:
   explicit PrefixSep(const std::string& sep_str) : sep_str_(sep_str) {}
+  PrefixSep(const PrefixSep&) = delete;
+  const PrefixSep& operator=(const PrefixSep&) = delete;
 
   friend std::ostream& operator<<(std::ostream& ostr, PrefixSep& obj);
 
  private:
   std::string sep_str_;
   bool first_ = true;
-
-  DISALLOW_COPY_AND_ASSIGN(PrefixSep);
 };
 
 // An input manipulator that dictates the expected next character in
@@ -103,6 +103,8 @@ class PrefixSep {
 class EatChar {
  public:
   explicit EatChar(char ch) : ch_(ch) {}
+  EatChar(const EatChar&) = delete;
+  const EatChar& operator=(const EatChar&) = delete;
 
   friend inline std::istream& operator>>(std::istream& istr,
                                          const EatChar& obj) {
@@ -113,8 +115,6 @@ class EatChar {
 
  private:
   char ch_;
-
-  DISALLOW_COPY_AND_ASSIGN(EatChar);
 };
 
 // An input manipulator that reads an unsigned integer from |std::istream|,
@@ -130,11 +130,11 @@ class StrictUInt {
       istr.setstate(std::ios_base::failbit);
       return istr;
     }
-    return istr >> obj.var_;
+    return istr >> *obj.var_;
   }
 
  private:
-  T& var_;
+  const raw_ref<T> var_;
 };
 
 // Stub out uint8_t: istream treats it as char, and value won't be read as int!

@@ -1,15 +1,19 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef BASE_METRICS_HISTOGRAM_MACROS_H_
 #define BASE_METRICS_HISTOGRAM_MACROS_H_
 
-#include "base/macros.h"
+#include "base/check_op.h"
 #include "base/metrics/histogram.h"
 #include "base/metrics/histogram_macros_internal.h"
 #include "base/metrics/histogram_macros_local.h"
 #include "base/time/time.h"
+
+#ifndef CR_EXPAND_ARG
+#define CR_EXPAND_ARG(x) x
+#endif
 
 
 // Macros for efficient use of histograms.
@@ -54,13 +58,14 @@
 //
 // The second variant requires three arguments: the first two are the same as
 // before, and the third argument is the enum boundary: this must be strictly
-// greater than any other enumerator that will be sampled.
+// greater than any other enumerator that will be sampled. This only works for
+// enums with a fixed underlying type.
 //
 // Sample usage:
 //   // These values are logged to UMA. Entries should not be renumbered and
 //   // numeric values should never be reused. Please keep in sync with "MyEnum"
 //   // in src/tools/metrics/histograms/enums.xml.
-//   enum class MyEnum {
+//   enum class MyEnum : uint8_t {
 //     FIRST_VALUE = 0,
 //     SECOND_VALUE = 1,
 //     ...
@@ -78,8 +83,8 @@
 #define UMA_HISTOGRAM_ENUMERATION(name, ...)                            \
   CR_EXPAND_ARG(INTERNAL_UMA_HISTOGRAM_ENUMERATION_GET_MACRO(           \
       __VA_ARGS__, INTERNAL_UMA_HISTOGRAM_ENUMERATION_SPECIFY_BOUNDARY, \
-      INTERNAL_UMA_HISTOGRAM_ENUMERATION_DEDUCE_BOUNDARY)(              \
-      name, __VA_ARGS__, base::HistogramBase::kUmaTargetedHistogramFlag))
+      INTERNAL_UMA_HISTOGRAM_ENUMERATION_DEDUCE_BOUNDARY)               \
+  (name, __VA_ARGS__, base::HistogramBase::kUmaTargetedHistogramFlag))
 
 // As above but "scaled" count to avoid overflows caused by increments of
 // large amounts. See UMA_HISTOGRAM_SCALED_EXACT_LINEAR for more information.
@@ -111,16 +116,22 @@
 
 // All of these macros must be called with |name| as a runtime constant.
 
-// Used for capturing integer data with a linear bucketing scheme. This can be
-// used when you want the exact value of some small numeric count, with a max of
-// 100 or less. If you need to capture a range of greater than 100, we recommend
-// the use of the COUNT histograms below.
-
+// For numeric measurements where you want exact integer values up to
+// |exclusive_max|. |exclusive_max| itself is included in the overflow bucket.
+// Therefore, if you want an accurate measure up to kMax, then |exclusive_max|
+// should be set to kMax + 1.
+//
+// |exclusive_max| should be 101 or less. If you need to capture a larger range,
+// we recommend the use of the COUNT histograms below.
+//
 // Sample usage:
-//   UMA_HISTOGRAM_EXACT_LINEAR("Histogram.Linear", count, 10);
-#define UMA_HISTOGRAM_EXACT_LINEAR(name, sample, value_max) \
-  INTERNAL_HISTOGRAM_EXACT_LINEAR_WITH_FLAG(                \
-      name, sample, value_max, base::HistogramBase::kUmaTargetedHistogramFlag)
+//   base::UmaHistogramExactLinear("Histogram.Linear", sample, kMax + 1);
+// In this case, buckets are 1, 2, .., kMax, kMax+1, where the kMax+1 bucket
+// captures everything kMax+1 and above.
+#define UMA_HISTOGRAM_EXACT_LINEAR(name, sample, exclusive_max) \
+  INTERNAL_HISTOGRAM_EXACT_LINEAR_WITH_FLAG(                    \
+      name, sample, exclusive_max,                              \
+      base::HistogramBase::kUmaTargetedHistogramFlag)
 
 // Used for capturing basic percentages. This will be 100 buckets of size 1.
 
@@ -136,7 +147,7 @@
 // large numbers. For example, code might pass a count of 1825 bytes and a scale
 // of 1024 bytes to report values in kilobytes. Only the scaled count is
 // reported, but the remainder is tracked between calls, so that multiple calls
-// will accumulate correctly. Only "exact linear" is supported.
+// will accumulate correctly.
 // It'll be necessary to #include "base/lazy_instance.h" to use this macro.
 //   name: Full constant name of the histogram (must not change between calls).
 //   sample: Bucket to be incremented.
@@ -191,19 +202,18 @@
 #define UMA_HISTOGRAM_COUNTS_10M(name, sample) UMA_HISTOGRAM_CUSTOM_COUNTS(    \
     name, sample, 1, 10000000, 50)
 
-// This can be used when the default ranges are not sufficient. This macro lets
-// the metric developer customize the min and max of the sampled range, as well
-// as the number of buckets recorded.
-// Any data outside the range here will be put in underflow and overflow
-// buckets. Min values should be >=1 as emitted 0s will still go into the
-// underflow bucket.
+// This macro allows the min, max, and number of buckets to be customized. Any
+// samples whose values are outside of [min, exclusive_max-1] are put in the
+// underflow or overflow buckets. Note that |min| should be >=1 as emitted 0s go
+// into the underflow bucket.
 
 // Sample usage:
 //   UMA_HISTOGRAM_CUSTOM_COUNTS("My.Histogram", sample, 1, 100000000, 50);
-#define UMA_HISTOGRAM_CUSTOM_COUNTS(name, sample, min, max, bucket_count)      \
-    INTERNAL_HISTOGRAM_CUSTOM_COUNTS_WITH_FLAG(                                \
-        name, sample, min, max, bucket_count,                                  \
-        base::HistogramBase::kUmaTargetedHistogramFlag)
+#define UMA_HISTOGRAM_CUSTOM_COUNTS(name, sample, min, exclusive_max, \
+                                    bucket_count)                     \
+  INTERNAL_HISTOGRAM_CUSTOM_COUNTS_WITH_FLAG(                         \
+      name, sample, min, exclusive_max, bucket_count,                 \
+      base::HistogramBase::kUmaTargetedHistogramFlag)
 
 //------------------------------------------------------------------------------
 // Timing histograms. These are used for collecting timing data (generally
@@ -219,25 +229,25 @@
 
 // Short timings - up to 10 seconds. For high-resolution (microseconds) timings,
 // see UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES.
-#define UMA_HISTOGRAM_TIMES(name, sample) UMA_HISTOGRAM_CUSTOM_TIMES(          \
-    name, sample, base::TimeDelta::FromMilliseconds(1),                        \
-    base::TimeDelta::FromSeconds(10), 50)
+#define UMA_HISTOGRAM_TIMES(name, sample)                         \
+  UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(1), \
+                             base::Seconds(10), 50)
 
 // Medium timings - up to 3 minutes. Note this starts at 10ms (no good reason,
 // but not worth changing).
-#define UMA_HISTOGRAM_MEDIUM_TIMES(name, sample) UMA_HISTOGRAM_CUSTOM_TIMES(   \
-    name, sample, base::TimeDelta::FromMilliseconds(10),                       \
-    base::TimeDelta::FromMinutes(3), 50)
+#define UMA_HISTOGRAM_MEDIUM_TIMES(name, sample)                   \
+  UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(10), \
+                             base::Minutes(3), 50)
 
 // Long timings - up to an hour.
-#define UMA_HISTOGRAM_LONG_TIMES(name, sample) UMA_HISTOGRAM_CUSTOM_TIMES(     \
-    name, sample, base::TimeDelta::FromMilliseconds(1),                        \
-    base::TimeDelta::FromHours(1), 50)
+#define UMA_HISTOGRAM_LONG_TIMES(name, sample)                    \
+  UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(1), \
+                             base::Hours(1), 50)
 
 // Long timings with higher granularity - up to an hour with 100 buckets.
-#define UMA_HISTOGRAM_LONG_TIMES_100(name, sample) UMA_HISTOGRAM_CUSTOM_TIMES( \
-    name, sample, base::TimeDelta::FromMilliseconds(1),                        \
-    base::TimeDelta::FromHours(1), 100)
+#define UMA_HISTOGRAM_LONG_TIMES_100(name, sample)                \
+  UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, base::Milliseconds(1), \
+                             base::Hours(1), 100)
 
 // This can be used when the default ranges are not sufficient. This macro lets
 // the metric developer customize the min and max of the sampled range, as well
@@ -245,7 +255,7 @@
 
 // Sample usage:
 //   UMA_HISTOGRAM_CUSTOM_TIMES("Very.Long.Timing.Histogram", time_delta,
-//       base::TimeDelta::FromSeconds(1), base::TimeDelta::FromDays(1), 100);
+//       base::Seconds(1), base::Days(1), 100);
 #define UMA_HISTOGRAM_CUSTOM_TIMES(name, sample, min, max, bucket_count) \
   STATIC_HISTOGRAM_POINTER_BLOCK(                                        \
       name, AddTimeMillisecondsGranularity(sample),                      \
@@ -263,8 +273,8 @@
 // Sample usage:
 //  UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
 //      "High.Resolution.TimingMicroseconds.Histogram", time_delta,
-//      base::TimeDelta::FromMicroseconds(1),
-//      base::TimeDelta::FromMilliseconds(10), 100);
+//      base::Microseconds(1),
+//      base::Milliseconds(10), 100);
 #define UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(name, sample, min, max, \
                                                 bucket_count)           \
   STATIC_HISTOGRAM_POINTER_BLOCK(                                       \
@@ -302,7 +312,7 @@ enum class ScopedHistogramTiming {
 // Similar scoped histogram timer, but this uses
 // UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES, measuring from 1 microseconds to 1
 // second, with 50 buckets.
-#define SCOPED_UMA_HISTOGRAM_SHORT_TIMER(name)  \
+#define SCOPED_UMA_HISTOGRAM_TIMER_MICROS(name) \
   INTERNAL_SCOPED_UMA_HISTOGRAM_TIMER_EXPANDER( \
       name, ScopedHistogramTiming::kMicrosecondTimes, __COUNTER__)
 
@@ -321,6 +331,11 @@ enum class ScopedHistogramTiming {
 // approximately 500M.
 #define UMA_HISTOGRAM_MEMORY_KB(name, sample)                                  \
     UMA_HISTOGRAM_CUSTOM_COUNTS(name, sample, 1000, 500000, 50)
+
+// Used to measure common MB-granularity memory stats. Range is up to 4000MiB -
+// approximately 4GiB.
+#define UMA_HISTOGRAM_MEMORY_MEDIUM_MB(name, sample) \
+  UMA_HISTOGRAM_CUSTOM_COUNTS(name, sample, 1, 4000, 100)
 
 // Used to measure common MB-granularity memory stats. Range is up to ~64G.
 #define UMA_HISTOGRAM_MEMORY_LARGE_MB(name, sample)                            \
@@ -358,18 +373,36 @@ enum class ScopedHistogramTiming {
       INTERNAL_UMA_HISTOGRAM_ENUMERATION_DEDUCE_BOUNDARY)               \
   (name, __VA_ARGS__, base::HistogramBase::kUmaStabilityHistogramFlag))
 
-#define UMA_STABILITY_HISTOGRAM_LONG_TIMES(name, sample) \
-  STATIC_HISTOGRAM_POINTER_BLOCK(                        \
-      name, AddTimeMillisecondsGranularity(sample),      \
-      base::Histogram::FactoryTimeGet(                   \
-          name, base::TimeDelta::FromMilliseconds(1),    \
-          base::TimeDelta::FromHours(1), 50,             \
+#define UMA_STABILITY_HISTOGRAM_LONG_TIMES(name, sample)   \
+  STATIC_HISTOGRAM_POINTER_BLOCK(                          \
+      name, AddTimeMillisecondsGranularity(sample),        \
+      base::Histogram::FactoryTimeGet(                     \
+          name, base::Milliseconds(1), base::Hours(1), 50, \
           base::HistogramBase::kUmaStabilityHistogramFlag))
 
 #define UMA_STABILITY_HISTOGRAM_PERCENTAGE(name, percent_as_int) \
   INTERNAL_HISTOGRAM_EXACT_LINEAR_WITH_FLAG(                     \
       name, percent_as_int, 101,                                 \
       base::HistogramBase::kUmaStabilityHistogramFlag)
+
+//------------------------------------------------------------------------------
+// Sparse histograms.
+//
+// The |sample| can be a negative or non-negative number.
+//
+// Sparse histograms are well suited for recording counts of exact sample values
+// that are sparsely distributed over a relatively large range, in cases where
+// ultra-fast performance is not critical. For instance, Sqlite.Version.* are
+// sparse because for any given database, there's going to be exactly one
+// version logged.
+//
+// For important details on performance, data size, and usage, see the
+// documentation on the regular function equivalents (histogram_functions.h).
+#define UMA_HISTOGRAM_SPARSE(name, sample) \
+  STATIC_HISTOGRAM_POINTER_BLOCK(          \
+      name, Add(sample),                   \
+      base::SparseHistogram::FactoryGet(   \
+          name, base::HistogramBase::kUmaTargetedHistogramFlag))
 
 //------------------------------------------------------------------------------
 // Histogram instantiation helpers.

@@ -11,6 +11,7 @@
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 
@@ -19,35 +20,29 @@ namespace {
 class MemoryLogWriter final : public RtcEventLogOutput {
  public:
   explicit MemoryLogWriter(std::map<std::string, std::string>* target,
-                           std::string filename)
+                           absl::string_view filename)
       : target_(target), filename_(filename) {}
-  ~MemoryLogWriter() final {
-    size_t size;
-    buffer_.GetSize(&size);
-    target_->insert({filename_, std::string(buffer_.GetBuffer(), size)});
-  }
+  ~MemoryLogWriter() final { target_->insert({filename_, std::move(buffer_)}); }
   bool IsActive() const override { return true; }
-  bool Write(const std::string& value) override {
-    size_t written;
-    int error;
-    return buffer_.WriteAll(value.data(), value.size(), &written, &error) ==
-           rtc::SR_SUCCESS;
-    RTC_DCHECK_EQ(value.size(), written);
+  bool Write(absl::string_view value) override {
+    buffer_.append(value.data(), value.size());
+    return true;
   }
   void Flush() override {}
 
  private:
   std::map<std::string, std::string>* const target_;
   const std::string filename_;
-  rtc::MemoryStream buffer_;
+  std::string buffer_;
 };
 
-class MemoryLogWriterFactory : public LogWriterFactoryInterface {
+class MemoryLogWriterFactory final : public LogWriterFactoryInterface {
  public:
   explicit MemoryLogWriterFactory(std::map<std::string, std::string>* target)
       : target_(target) {}
-  ~MemoryLogWriterFactory() final {}
-  std::unique_ptr<RtcEventLogOutput> Create(std::string filename) override {
+  ~MemoryLogWriterFactory() override {}
+  std::unique_ptr<RtcEventLogOutput> Create(
+      absl::string_view filename) override {
     return std::make_unique<MemoryLogWriter>(target_, filename);
   }
 

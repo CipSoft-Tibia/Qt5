@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 // This file is included from qnsview.mm, and only used to organize the code
 
@@ -43,7 +7,13 @@
 
 - (void)initDrawing
 {
-    [self updateLayerBacking];
+    if (qt_mac_resolveOption(-1, m_platformWindow->window(),
+        "_q_mac_wantsLayer", "QT_MAC_WANTS_LAYER") != -1) {
+        qCWarning(lcQpaDrawing) << "Layer-backing is always enabled."
+            << " QT_MAC_WANTS_LAYER/_q_mac_wantsLayer has no effect.";
+    }
+
+    self.wantsLayer = YES;
 }
 
 - (BOOL)isOpaque
@@ -59,47 +29,6 @@
 }
 
 // ----------------------- Layer setup -----------------------
-
-- (void)updateLayerBacking
-{
-    self.wantsLayer = [self layerEnabledByMacOS]
-        || [self layerExplicitlyRequested]
-        || [self shouldUseMetalLayer];
-}
-
-- (BOOL)layerEnabledByMacOS
-{
-    // AppKit has its own logic for this, but if we rely on that, our layers are created
-    // by AppKit at a point where we've already set up other parts of the platform plugin
-    // based on the presence of layers or not. Once we've rewritten these parts to support
-    // dynamically picking up layer enablement we can let AppKit do its thing.
-
-    if (QMacVersion::currentRuntime() >= QOperatingSystemVersion::MacOSBigSur)
-        return true; // Big Sur always enables layer-backing, regardless of SDK
-
-    if (QMacVersion::currentRuntime() >= QOperatingSystemVersion::MacOSMojave
-        && QMacVersion::buildSDK() >= QOperatingSystemVersion::MacOSMojave)
-        return true; // Mojave and Catalina enable layers based on the app's SDK
-
-    return false; // Prior versions needed explicitly enabled layer backing
-}
-
-- (BOOL)layerExplicitlyRequested
-{
-    static bool wantsLayer = [&]() {
-        int wantsLayer = qt_mac_resolveOption(-1, m_platformWindow->window(),
-            "_q_mac_wantsLayer", "QT_MAC_WANTS_LAYER");
-
-        if (wantsLayer != -1 && [self layerEnabledByMacOS]) {
-            qCWarning(lcQpaDrawing) << "Layer-backing cannot be explicitly controlled on 10.14 when built against the 10.14 SDK";
-            return true;
-        }
-
-        return wantsLayer == 1;
-    }();
-
-    return wantsLayer;
-}
 
 - (BOOL)shouldUseMetalLayer
 {
@@ -153,8 +82,7 @@
 {
     qCDebug(lcQpaDrawing) << "Making" << self
         << (self.wantsLayer ? "layer-backed" : "layer-hosted")
-        << "with" << layer << "due to being" << ([self layerExplicitlyRequested] ? "explicitly requested"
-            : [self shouldUseMetalLayer] ? "needed by surface type" : "enabled by macOS");
+        << "with" << layer;
 
     if (layer.delegate && layer.delegate != self) {
         qCWarning(lcQpaDrawing) << "Layer already has delegate" << layer.delegate
@@ -235,7 +163,9 @@
 */
 - (BOOL)layer:(CALayer *)layer shouldInheritContentsScale:(CGFloat)scale fromWindow:(NSWindow *)window
 {
-    Q_UNUSED(layer); Q_UNUSED(scale); Q_UNUSED(window);
+    Q_UNUSED(layer);
+    Q_UNUSED(scale);
+    Q_UNUSED(window);
     return NO;
 }
 
@@ -247,24 +177,11 @@
 */
 - (void)drawRect:(NSRect)dirtyBoundingRect
 {
-    Q_ASSERT_X(!self.layer, "QNSView",
-        "The drawRect code path should not be hit when we are layer backed");
-
-    if (!m_platformWindow)
-        return;
-
-    QRegion exposedRegion;
-    const NSRect *dirtyRects;
-    NSInteger numDirtyRects;
-    [self getRectsBeingDrawn:&dirtyRects count:&numDirtyRects];
-    for (int i = 0; i < numDirtyRects; ++i)
-        exposedRegion += QRectF::fromCGRect(dirtyRects[i]).toRect();
-
-    if (exposedRegion.isEmpty())
-        exposedRegion = QRectF::fromCGRect(dirtyBoundingRect).toRect();
-
-    qCDebug(lcQpaDrawing) << "[QNSView drawRect:]" << m_platformWindow->window() << exposedRegion;
-    m_platformWindow->handleExposeEvent(exposedRegion);
+    Q_UNUSED(dirtyBoundingRect);
+    // As we are layer backed we shouldn't really end up here, but AppKit will
+    // in some cases call this method just because we implement it.
+    // FIXME: Remove drawRect and switch from displayLayer to updateLayer
+    qCWarning(lcQpaDrawing) << "[QNSView drawRect] called for layer backed view";
 }
 
 /*

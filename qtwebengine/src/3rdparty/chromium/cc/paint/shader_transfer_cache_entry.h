@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ namespace cc {
 // image) and that the design complication for this edge case isn't worth
 // it.
 
-class CC_PAINT_EXPORT ServiceShaderTransferCacheEntry
+class CC_PAINT_EXPORT ServiceShaderTransferCacheEntry final
     : public ServiceTransferCacheEntryBase<TransferCacheEntryType::kShader> {
  public:
   explicit ServiceShaderTransferCacheEntry(sk_sp<PaintShader> shader,

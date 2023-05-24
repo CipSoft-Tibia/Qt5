@@ -1,13 +1,12 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #import "content/browser/renderer_host/text_input_client_mac.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/singleton.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/threading/sequenced_task_runner_handle.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "content/browser/renderer_host/frame_tree.h"
@@ -21,34 +20,14 @@ namespace content {
 
 namespace {
 
-// TODO(ekaramad): TextInputClientMac expects to have a RenderWidgetHost to use
-// for handling mojo calls. However, for fullscreen flash, we end up with a
-// PepperWidget. For those scenarios, do not send the mojo calls. We need to
-// figure out what features are properly supported and perhaps send the
-// mojo call to the parent widget of the plugin (https://crbug.com/663384).
-bool IsFullScreenRenderWidget(RenderWidgetHost* widget) {
-  RenderWidgetHostImpl* rwhi = RenderWidgetHostImpl::From(widget);
-  if (!rwhi->delegate() ||
-      rwhi == rwhi->delegate()->GetFullscreenRenderWidgetHost()) {
-    return true;
-  }
-  return false;
-}
-
 RenderFrameHostImpl* GetFocusedRenderFrameHostImpl(RenderWidgetHost* widget) {
   RenderWidgetHostImpl* rwhi = RenderWidgetHostImpl::From(widget);
-  FrameTree* tree = rwhi->delegate()->GetFrameTree();
+  FrameTree* tree = rwhi->frame_tree();
   FrameTreeNode* focused_node = tree->GetFocusedFrame();
   return focused_node ? focused_node->current_frame_host() : nullptr;
 }
 
 }  // namespace
-
-// The amount of time in milliseconds that the browser process will wait for a
-// response from the renderer.
-// TODO(rsesek): Using the histogram data, find the best upper-bound for this
-// value.
-const float kWaitTimeout = 1500;
 
 TextInputClientMac::TextInputClientMac()
     : character_index_(UINT32_MAX), lock_(), condition_(&lock_) {}
@@ -65,8 +44,12 @@ void TextInputClientMac::GetStringAtPoint(RenderWidgetHost* rwh,
                                           const gfx::Point& point,
                                           GetStringCallback callback) {
   RenderWidgetHostImpl* rwhi = RenderWidgetHostImpl::From(rwh);
-  rwhi->GetAssociatedFrameWidget()->GetStringAtPoint(point,
-                                                     std::move(callback));
+  if (rwhi && rwhi->GetAssociatedFrameWidget()) {
+    rwhi->GetAssociatedFrameWidget()->GetStringAtPoint(point,
+                                                       std::move(callback));
+  } else {
+    std::move(callback).Run(nullptr, gfx::Point());
+  }
 }
 
 void TextInputClientMac::GetStringFromRange(RenderWidgetHost* rwh,
@@ -84,9 +67,6 @@ void TextInputClientMac::GetStringFromRange(RenderWidgetHost* rwh,
 
 uint32_t TextInputClientMac::GetCharacterIndexAtPoint(RenderWidgetHost* rwh,
                                                       const gfx::Point& point) {
-  if (IsFullScreenRenderWidget(rwh))
-    return UINT32_MAX;
-
   RenderFrameHostImpl* rfhi = GetFocusedRenderFrameHostImpl(rwh);
   // If it doesn't have a focused frame, it calls
   // SetCharacterIndexAndSignal() with index 0.
@@ -101,7 +81,7 @@ uint32_t TextInputClientMac::GetCharacterIndexAtPoint(RenderWidgetHost* rwh,
 
   // http://crbug.com/121917
   base::ScopedAllowBaseSyncPrimitivesOutsideBlockingScope allow_wait;
-  condition_.TimedWait(base::TimeDelta::FromMilliseconds(kWaitTimeout));
+  condition_.TimedWait(wait_timeout_);
   AfterRequest();
 
   base::TimeDelta delta(base::TimeTicks::Now() - start);
@@ -113,9 +93,6 @@ uint32_t TextInputClientMac::GetCharacterIndexAtPoint(RenderWidgetHost* rwh,
 
 gfx::Rect TextInputClientMac::GetFirstRectForRange(RenderWidgetHost* rwh,
                                                    const gfx::Range& range) {
-  if (IsFullScreenRenderWidget(rwh))
-    return gfx::Rect();
-
   RenderFrameHostImpl* rfhi = GetFocusedRenderFrameHostImpl(rwh);
   if (!rfhi)
     return gfx::Rect();
@@ -128,14 +105,18 @@ gfx::Rect TextInputClientMac::GetFirstRectForRange(RenderWidgetHost* rwh,
 
   // http://crbug.com/121917
   base::ScopedAllowBaseSyncPrimitivesOutsideBlockingScope allow_wait;
-  condition_.TimedWait(base::TimeDelta::FromMilliseconds(kWaitTimeout));
+  condition_.TimedWait(wait_timeout_);
   AfterRequest();
 
   base::TimeDelta delta(base::TimeTicks::Now() - start);
   UMA_HISTOGRAM_LONG_TIMES("TextInputClient.FirstRect",
                            delta * base::Time::kMicrosecondsPerMillisecond);
 
-  return first_rect_;
+  // `first_rect_` is in (child) frame coordinate and needs to be transformed to
+  // the root frame coordinate.
+  return gfx::Rect(
+      rwh->GetView()->TransformPointToRootCoordSpace(first_rect_.origin()),
+      first_rect_.size());
 }
 
 void TextInputClientMac::SetCharacterIndexAndSignal(uint32_t index) {

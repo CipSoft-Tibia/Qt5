@@ -1,0 +1,20 @@
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+//! [0]
+\li \c COPY_COMMENTS copies comments from \c .proto files. If provided in
+the parameter list, comments related to messages and fields are copied to
+generated header files.
+\li \c GENERATE_PACKAGE_SUBFOLDERS generates a folder structure for the
+generated files matching the \c .proto file's package name. For example,
+\c{package io.qt.test;} would put the generated files into \c {io/qt/test/}.
+\li \c EXTRA_NAMESPACE is an optional namespace that will be used for the
+generated classes. The classes are always generated in a namespace whose
+name is the same as the package name specified in the \c .proto file.
+If this option is used, then everything will be nested inside the extra
+namespace.
+\li \c EXPORT_MACRO is the base name of the symbol export macro used for
+the generated code. The generated macro name is constructed as
+\c QPB_<EXPORT_MACRO>_EXPORT. If the option is not set, the macro is not
+generated.
+//! [0]

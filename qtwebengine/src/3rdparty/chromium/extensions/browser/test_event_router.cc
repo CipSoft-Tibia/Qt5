@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 namespace extensions {
 
-TestEventRouter::EventObserver::~EventObserver() {}
+TestEventRouter::EventObserver::~EventObserver() = default;
 
 void TestEventRouter::EventObserver::OnDispatchEventToExtension(
     const std::string& extension_id,
@@ -20,7 +20,7 @@ void TestEventRouter::EventObserver::OnBroadcastEvent(const Event& event) {}
 TestEventRouter::TestEventRouter(content::BrowserContext* context)
     : EventRouter(context, ExtensionPrefs::Get(context)) {}
 
-TestEventRouter::~TestEventRouter() {}
+TestEventRouter::~TestEventRouter() = default;
 
 int TestEventRouter::GetEventCount(std::string event_name) const {
   if (seen_events_.count(event_name) == 0)

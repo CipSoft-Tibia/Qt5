@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,15 +7,18 @@ import("//testing/test.gni")
 
 test("gcp_unittests") {
   sources = [
+    "../extension/app_inventory_manager_unittests.cc",
     "../extension/service_unittests.cc",
     "../extension/task_manager_unittests.cc",
     "../gaiacp/associated_user_validator_unittests.cc",
     "../gaiacp/device_policies_manager_unittests.cc",
+    "../gaiacp/experiments_manager_unittests.cc",
     "../gaiacp/gaia_credential_base_unittests.cc",
     "../gaiacp/gaia_credential_other_user_unittests.cc",
     "../gaiacp/gaia_credential_provider_unittests.cc",
     "../gaiacp/gaia_credential_unittests.cc",
     "../gaiacp/gcp_utils_unittests.cc",
+    "../gaiacp/gem_device_details_manager_unittests.cc",
     "../gaiacp/reauth_credential_unittests.cc",
     "../gaiacp/user_policies_manager_unittests.cc",
     "../gaiacp/win_http_url_fetcher_unittests.cc",
@@ -33,11 +36,13 @@ test("gcp_unittests") {
   ]
 
   deps = [
+    "../extension:app_inventory",
     "../extension:common",
     "../extension:extension_lib",
     "../gaiacp:common",
     "../gaiacp:gaia_credential_provider_idl",
     "../gaiacp:gaiacp_lib",
+    "../gaiacp:mdm_utils",
     "../gaiacp:policies",
     "../gaiacp:string_resources",
     "../gaiacp:util",
@@ -64,6 +69,5 @@ test("gcp_unittests") {
   data = [
     "//net/tools/testserver/",
     "//third_party/pywebsocket3/src/mod_pywebsocket/",
-    "//third_party/tlslite/",
   ]
 }

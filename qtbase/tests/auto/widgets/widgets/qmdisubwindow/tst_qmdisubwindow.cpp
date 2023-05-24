@@ -1,38 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-
-#include <QtTest/QtTest>
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmdisubwindow.h"
 #include "private/qmdisubwindow_p.h"
 #include "qmdiarea.h"
 
+#include <QTest>
 #include <QLayout>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -47,9 +20,12 @@
 #include <QStyleOptionTitleBar>
 #include <QPushButton>
 #include <QScreen>
+#include <QScrollBar>
 #include <QSizeGrip>
+#include <QSignalSpy>
+#include <QList>
 
-#include <QVector>
+#include <QtWidgets/private/qapplication_p.h>
 
 QT_BEGIN_NAMESPACE
 extern bool qt_tab_all_widgets();
@@ -223,6 +199,7 @@ private slots:
     void styleChange();
     void testFullScreenState();
     void testRemoveBaseWidget();
+    void testRespectMinimumSize();
 };
 
 void tst_QMdiSubWindow::initTestCase()
@@ -255,25 +232,33 @@ void tst_QMdiSubWindow::sizeHint()
 
 void tst_QMdiSubWindow::minimumSizeHint()
 {
-    const auto globalStrut = QApplication::globalStrut();
+    class Widget : public QWidget
+    {
+    public:
+        Widget() = default;
+
+        QSize minimumSizeHint() const override
+        {
+            return QSize(100, 100);
+        }
+
+    };
     QMdiSubWindow window;
     window.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     window.show();
 
-    QCOMPARE(window.minimumSizeHint(), globalStrut);
+    QCOMPARE(window.minimumSizeHint(), QSize(0, 0));
 
     window.setWidget(new QWidget);
-    QCOMPARE(window.minimumSizeHint(), window.layout()->minimumSize()
-                                       .expandedTo(globalStrut));
+    QCOMPARE(window.minimumSizeHint(), window.layout()->minimumSize());
 
     delete window.widget();
     delete window.layout();
-    window.setWidget(new QWidget);
-    QCOMPARE(window.minimumSizeHint(), globalStrut);
+    window.setWidget(new Widget);
+    QCOMPARE(window.minimumSizeHint(), QSize(0, 0));
 
     window.widget()->show();
-    QCOMPARE(window.minimumSizeHint(), window.widget()->minimumSizeHint()
-                                       .expandedTo(globalStrut));
+    QCOMPARE(window.minimumSizeHint(), window.widget()->minimumSizeHint());
 }
 
 void tst_QMdiSubWindow::minimumSize()
@@ -393,13 +378,13 @@ void tst_QMdiSubWindow::setWindowState()
 
 void tst_QMdiSubWindow::mainWindowSupport()
 {
-    QVector<QMdiSubWindow *> windows;
+    QList<QMdiSubWindow *> windows;
     QMdiArea *workspace = new QMdiArea;
     QMainWindow mainWindow;
     mainWindow.setCentralWidget(workspace);
     mainWindow.show();
     mainWindow.menuBar()->setVisible(true);
-    QApplication::setActiveWindow(&mainWindow);
+    QApplicationPrivate::setActiveWindow(&mainWindow);
     bool nativeMenuBar = mainWindow.menuBar()->isNativeMenuBar();
 
     // QMainWindow's window title is empty, so on a platform which does NOT have a native menubar,
@@ -488,7 +473,7 @@ void tst_QMdiSubWindow::mainWindowSupport()
 
     workspace->activateNextSubWindow();
     QCoreApplication::processEvents();
-    for (QMdiSubWindow *window : qAsConst(windows)) {
+    for (QMdiSubWindow *window : std::as_const(windows)) {
         QCOMPARE(workspace->activeSubWindow(), window);
         QVERIFY(window->isMaximized());
         QVERIFY(window->maximizedButtonsWidget());
@@ -525,7 +510,7 @@ void tst_QMdiSubWindow::emittingOfSignals()
     workspace.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     workspace.show();
     QCoreApplication::processEvents();
-    QApplication::setActiveWindow(&workspace);
+    QApplicationPrivate::setActiveWindow(&workspace);
     QMdiSubWindow *window = qobject_cast<QMdiSubWindow *>(workspace.addSubWindow(new QWidget));
     QCoreApplication::processEvents();
     window->show();
@@ -545,9 +530,9 @@ void tst_QMdiSubWindow::emittingOfSignals()
 
     int count = 0;
     if (signal == SIGNAL(aboutToActivate())) {
-        count += spy.count();
+        count += spy.size();
     } else {
-        for (int i = 0; i < spy.count(); ++i) {
+        for (int i = 0; i < spy.size(); ++i) {
             Qt::WindowStates oldState = qvariant_cast<Qt::WindowStates>(spy.at(i).at(0));
             Qt::WindowStates newState = qvariant_cast<Qt::WindowStates>(spy.at(i).at(1));
             if (watchedState != Qt::WindowNoState) {
@@ -561,9 +546,6 @@ void tst_QMdiSubWindow::emittingOfSignals()
             }
         }
     }
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("windowMaximized", "Broken on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(count, 1);
 
     window->setParent(nullptr);
@@ -573,7 +555,7 @@ void tst_QMdiSubWindow::emittingOfSignals()
 
     spy.clear();
     triggerSignal(window, &workspace, signal);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     delete window;
     window = nullptr;
@@ -590,9 +572,6 @@ void tst_QMdiSubWindow::showShaded()
     QVERIFY(QTest::qWaitForWindowExposed(&workspace));
 
     QVERIFY(!window->isShaded());
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Windows are maximized per default on WinRt ", Abort);
-#endif
     QVERIFY(!window->isMaximized());
 
     QCOMPARE(window->size(), QSize(300, 300));
@@ -686,10 +665,6 @@ void tst_QMdiSubWindow::showNormal()
     QCoreApplication::processEvents();
     window->showNormal();
     QCoreApplication::processEvents();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("showMinimized", "Windows are maximized per default on WinRt ", Abort);
-    QEXPECT_FAIL("showMaximized", "Windows are maximized per default on WinRt ", Abort);
-#endif
     QCOMPARE(window->geometry(), originalGeometry);
 }
 
@@ -800,9 +775,6 @@ void tst_QMdiSubWindow::setOpaqueResizeAndMove()
 
     // Leave resize mode
     sendMouseRelease(mouseReceiver, mousePosition);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Fails on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(resizeSpy.count(), expectedGeometryCount);
     QCOMPARE(window->size(), windowSize + QSize(geometryCount, geometryCount));
     }
@@ -969,9 +941,6 @@ void tst_QMdiSubWindow::mouseDoubleClick()
     workspace.show();
     window->show();
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Windows are maximized per default on WinRt ", Abort);
-#endif
     QVERIFY(!window->isMaximized());
     QVERIFY(!window->isShaded());
 
@@ -1045,9 +1014,6 @@ void tst_QMdiSubWindow::setSystemMenu()
     QVERIFY(!QApplication::activePopupWidget());
     subWindow->showSystemMenu();
     QTRY_COMPARE(QApplication::activePopupWidget(), qobject_cast<QWidget *>(systemMenu));
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Broken on WinRT - QTBUG-68297", Abort);
-#endif
     QTRY_COMPARE(systemMenu->mapToGlobal(QPoint(0, 0)),
                  (globalPopupPos = subWindow->mapToGlobal(subWindow->contentsRect().topLeft())) );
 
@@ -1066,7 +1032,7 @@ void tst_QMdiSubWindow::setSystemMenu()
     subWindow->setSystemMenu(systemMenu);
     QCOMPARE(subWindow->systemMenu(), qobject_cast<QMenu *>(systemMenu));
     QCOMPARE(subWindow->systemMenu()->parentWidget(), static_cast<QWidget *>(subWindow));
-    QCOMPARE(subWindow->systemMenu()->actions().count(), 1);
+    QCOMPARE(subWindow->systemMenu()->actions().size(), 1);
 
     // Show the new system menu
     QVERIFY(!QApplication::activePopupWidget());
@@ -1170,7 +1136,7 @@ void tst_QMdiSubWindow::restoreFocus()
     topArea.show();
     box->show();
 
-    QApplication::setActiveWindow(&topArea);
+    QApplicationPrivate::setActiveWindow(&topArea);
     QMdiSubWindow *expectedFocusWindow = nestedWorkspace->subWindowList().last();
     QVERIFY(expectedFocusWindow);
     QVERIFY(expectedFocusWindow->widget());
@@ -1262,7 +1228,7 @@ void tst_QMdiSubWindow::restoreFocusOverCreation()
     subWidget1->m_lineEdit2->setFocus();
     subWindow1->show();
     mdiArea.show();
-    QApplication::setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     QVERIFY(QTest::qWaitForWindowActive(&mdiArea));
     QCOMPARE(QApplication::focusWidget(), subWidget1->m_lineEdit2);
 
@@ -1271,9 +1237,6 @@ void tst_QMdiSubWindow::restoreFocusOverCreation()
     QTRY_COMPARE(QApplication::focusWidget(), subWidget2->m_lineEdit1);
 
     mdiArea.setActiveSubWindow(subWindow1);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Broken on WinRt - QTBUG-68297", Abort);
-#endif
     QTRY_COMPARE(QApplication::focusWidget(), subWidget1->m_lineEdit2);
 }
 
@@ -1293,9 +1256,9 @@ void tst_QMdiSubWindow::changeFocusWithTab()
     mdiArea.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     mdiArea.addSubWindow(widget);
     mdiArea.show();
-    QCOMPARE(mdiArea.subWindowList().count(), 1);
+    QCOMPARE(mdiArea.subWindowList().size(), 1);
 
-    QApplication::setActiveWindow(&mdiArea);
+    QApplicationPrivate::setActiveWindow(&mdiArea);
     QCOMPARE(QApplication::focusWidget(), static_cast<QWidget *>(firstLineEdit));
 
     // Next
@@ -1375,7 +1338,7 @@ void tst_QMdiSubWindow::closeEvent()
 
     QVERIFY(window->close());
     QCOMPARE(closeSpy.count(), 3);
-    QCOMPARE(mdiArea.subWindowList().count(), 0);
+    QCOMPARE(mdiArea.subWindowList().size(), 0);
 }
 
 // There exists more tests in QMdiArea which covers window title support
@@ -1486,9 +1449,6 @@ void tst_QMdiSubWindow::resizeEvents()
     QCOMPARE(window->widget()->windowState(), windowState);
 
     // Make sure we got as many resize events as expected.
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("maximized", "Broken on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(windowResizeEventSpy.count(), expectedWindowResizeEvents);
     QCOMPARE(widgetResizeEventSpy.count(), expectedWidgetResizeEvents);
     windowResizeEventSpy.clear();
@@ -1498,10 +1458,6 @@ void tst_QMdiSubWindow::resizeEvents()
     window->showNormal();
 
     // Check that the window state is correct.
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("minimized", "Broken on WinRT - QTBUG-68297", Abort);
-    QEXPECT_FAIL("shaded", "Broken on WinRT - QTBUG-68297", Abort);
-#endif
     QCOMPARE(window->windowState(), Qt::WindowNoState | Qt::WindowActive);
     QCOMPARE(window->widget()->windowState(), Qt::WindowNoState);
 
@@ -1590,9 +1546,6 @@ void tst_QMdiSubWindow::hideAndShow()
 
 #if !defined (Q_OS_DARWIN)
     QVERIFY(menuBar->cornerWidget(Qt::TopRightCorner));
-#if defined Q_OS_QNX
-    QEXPECT_FAIL("", "QTBUG-38231", Abort);
-#endif
     QVERIFY(subWindow->maximizedButtonsWidget());
     QVERIFY(subWindow->maximizedSystemMenuIconWidget());
     QCOMPARE(menuBar->cornerWidget(Qt::TopRightCorner), subWindow->maximizedButtonsWidget());
@@ -1768,9 +1721,6 @@ void tst_QMdiSubWindow::fixedMinMaxSize()
     QCOMPARE(subWindow->maximumSize(), maximumSize);
     mdiArea.addSubWindow(subWindow);
     subWindow->show();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Windows are maximized per default on WinRt ", Abort);
-#endif
     QCOMPARE(subWindow->size(), minimumSize);
 
     // Calculate the size of a minimized sub window.
@@ -1826,9 +1776,6 @@ void tst_QMdiSubWindow::replaceMenuBarWhileMaximized()
 
     QCoreApplication::processEvents();
 
-#if defined Q_OS_QNX
-    QEXPECT_FAIL("", "QTBUG-38231", Abort);
-#endif
     QVERIFY(subWindow->maximizedButtonsWidget());
     QVERIFY(subWindow->maximizedSystemMenuIconWidget());
     QCOMPARE(menuBar1->cornerWidget(Qt::TopLeftCorner), subWindow->maximizedSystemMenuIconWidget());
@@ -2006,7 +1953,7 @@ void tst_QMdiSubWindow::task_182852()
     mainWindow.setCentralWidget(workspace);
     mainWindow.show();
     mainWindow.menuBar()->setVisible(true);
-    QApplication::setActiveWindow(&mainWindow);
+    QApplicationPrivate::setActiveWindow(&mainWindow);
     if (mainWindow.menuBar()->isNativeMenuBar())
         return; // The main window's title is not overwritten if we have a native menubar (macOS, Unity etc.)
 
@@ -2156,7 +2103,7 @@ void tst_QMdiSubWindow::styleChange()
 
     // subWindowActivated should NOT be activated by a style change,
     // even if internally QMdiSubWindow un-minimizes subwindows temporarily.
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 }
 
 void tst_QMdiSubWindow::testFullScreenState()
@@ -2170,9 +2117,6 @@ void tst_QMdiSubWindow::testFullScreenState()
     subWindow->showFullScreen(); // QMdiSubWindow does not support the fullscreen state. This call
                                  // should be equivalent to setVisible(true) (and not showNormal())
     QVERIFY(QTest::qWaitForWindowExposed(&mdiArea));
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Windows are maximized per default on WinRt ", Abort);
-#endif
     QCOMPARE(subWindow->size(), QSize(300, 300));
 }
 
@@ -2196,6 +2140,36 @@ void tst_QMdiSubWindow::testRemoveBaseWidget()
     QCOMPARE(widget2->parent(), widget1);
 
     delete widget1;
+}
+
+void tst_QMdiSubWindow::testRespectMinimumSize()  // QTBUG-100494
+{
+    QMdiArea mdiArea;
+    mdiArea.resize(400, 400);
+    mdiArea.setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    mdiArea.setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    auto vlay = new QVBoxLayout;
+    vlay->addWidget(new QPushButton(QLatin1String("btn1-1")));
+    vlay->addSpacerItem(new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding));
+    vlay->addWidget(new QPushButton(QLatin1String("btn1-2")));
+    auto w1 = new QWidget;
+    w1->setLayout(vlay);
+    w1->resize(300, 200);
+    w1->setMinimumSize(200, 150);
+    auto sw = new QMdiSubWindow;
+    sw->setWidget(w1);
+    sw->resize(w1->size());
+    mdiArea.addSubWindow(sw);
+    sw->showMaximized();
+
+    mdiArea.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mdiArea));
+    QVERIFY(!mdiArea.horizontalScrollBar()->isVisible());
+    QVERIFY(!mdiArea.verticalScrollBar()->isVisible());
+    mdiArea.resize(150, 100);
+    QTRY_VERIFY(mdiArea.horizontalScrollBar()->isVisible());
+    QTRY_VERIFY(mdiArea.verticalScrollBar()->isVisible());
 }
 
 QTEST_MAIN(tst_QMdiSubWindow)

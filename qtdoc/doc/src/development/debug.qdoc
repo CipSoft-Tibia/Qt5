@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page debug.html
@@ -119,22 +95,42 @@
     \row \li \c QT_HASH_SEED
          \li Set to an integer value to disable QHash and QSet using a new random ordering for
              each application run, which in some cases might make testing and debugging difficult.
+    \row \li \c QT_WIN_DEBUG_CONSOLE
+         \li On Windows, GUI applications are not attached to a console, so
+             output written to \c stdout and \c stderr is not visible to the
+             user. IDEs typically redirect and display output, but when running
+             an application from the command line, debug output is lost. To get
+             access to the output, set this environment variable to \c new to
+             make the application allocate a new console, or to \c attach to
+             make the application attempt to attach to the parent process'
+             console.
     \endtable
 
     \section1 Warning and Debugging Messages
 
-    Qt includes global macros for writing out warning and debug
-    text. You can use them for the following purposes:
+    Qt includes global C++ macros for writing out warning and debug text.
+    The plain macros use a default \l {QLoggingCategory}{logging category};
+    the categorized logging macros allow you to specify the category.
+    You can use them for the following purposes:
 
-    \list
-    \li qDebug() is used for writing custom debug output.
-    \li qInfo() is used for informational messages.
-    \li qWarning() is used to report warnings and recoverable errors in
-       your application.
-    \li qCritical() is used for writing critical error messages and
-       reporting system errors.
-    \li qFatal() is used for writing fatal error messages shortly before exiting.
-    \endlist
+    \table
+    \header \li Plain macro \li Categorized macro \li Purpose
+    \row \li qDebug()
+         \li qCDebug()
+         \li Used for writing custom debug output
+    \row \li qInfo()
+         \li qCInfo()
+         \li Used for informational messages
+    \row \li qWarning()
+         \li qCWarning()
+         \li Used to report warnings and recoverable errors in your application or library
+    \row \li qCritical()
+         \li qCCritical()
+         \li Used for writing critical error messages and reporting system errors
+    \row \li qFatal()
+         \li -
+         \li Used for writing messages about fatal errors shortly before exiting
+    \endtable
 
     If you include the <QtDebug> header file, the \c qDebug() macro
     can also be used as an output stream. For example:
@@ -150,7 +146,7 @@
     by setting the \c QT_MESSAGE_PATTERN environment variable. For example:
 
     \code
-    QT_MESSAGE_PATTERN="[%{type}] %{appname} (%{file}:%{line}) - %{message}"
+    QT_MESSAGE_PATTERN="[%{time process} %{type}] %{appname} %{category} %{function} - %{message}"
     \endcode
 
     The format is documented in qSetMessagePattern(). You can also install your
@@ -168,6 +164,8 @@
     QObject::dumpObjectInfo() are often useful when an application
     looks or acts strangely. More useful if you use \l{QObject::setObjectName()}{object names}
     than not, but often useful even without names.
+
+    In QML, \l {QtQuick::Item::}{dumpItemTree()} serves the same purpose.
 
     \section1 Providing Support for the qDebug() Stream Operator
 
@@ -223,6 +221,9 @@
     print warning messages when a programming error is detected. We
     therefore recommend that you use a debug version of Qt when
     developing Qt-based software.
+
+    Logging and \l {LoggingCategory}{categorized logging} are also
+    possible in \l {Debugging QML Applications}{QML}.
 
     \section1 Common Bugs
 

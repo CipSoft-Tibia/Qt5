@@ -1,39 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-\qmlmodule QtQml 2.\QtMinorVersion
+\qmlmodule QtQml
 \title Qt QML QML Types
 \ingroup qmlmodules
 \brief List of QML types provided by the Qt QML module
 
 The \l{Qt QML} module provides the definition and implementation of various
-convenience types which can be used with the QML language, including some
-elementary QML types which can provide the basis for further extensions to the
+convenience types that can be used with the QML language. This includes
+elementary QML types, which can provide the basis for further extensions to the
 QML language. The \l QtObject and \l Component object types are non-visual and
 provide building-blocks for extensions to QML.
 
@@ -43,38 +19,36 @@ The types provided by the \c QtQml module are only available in a QML document
 if that document imports the \c QtQml namespace (or if the document imports the
 \c QtQuick namespace, as noted below).
 
-The current version of the \c QtQml module is version 2.\QtMinorVersion, and
-thus it may be imported via the following statement:
+To use the module, import the \c QtQml module with the following statement:
 
-\qml \QtMinorVersion
-import QtQml 2.\1
+\qml
+import QtQml
 \endqml
 
 Most clients will never need to use the \c QtQml import, as all of the types
-are also provided by the \c QtQuick namespace which may be imported as
+are also provided by the \c QtQuick namespace, which may be imported as
 follows:
 
-\qml \QtMinorVersion
-import QtQuick 2.\1
+\qml
+import QtQuick
 \endqml
 
-See the \l{Qt Quick} module documentation for more information about the \c
-QtQuick namespace and what it provides to QML application developers.
+See the \l{Qt Quick} module documentation for more information about the
+\c QtQuick namespace and what it provides to QML application developers.
 
-The QML types for creating lists and models, such as \l ListModel and \l
-ListElement, are moved to a submodule, \c QtQml.Models. The \l{Qt QML Models QML
-Types}{Qt QML Models} page has more information.
-
+The QML types for creating lists and models, such as \l ListModel and
+\l ListElement, are moved to a submodule, \c QtQml.Models. The
+\l {Qt QML Models QML Types}{Qt QML Models} page has more information.
 
 The documentation for the types below applies equally to the types of the same
 name provided by the \l{Qt Quick} module, as they are in fact identical.
 
-\section1 Basic Types
+\section1 Value Types
 
-The following \l{qtqml-typesystem-basictypes.html}{QML basic types} are
+The following \l{qtqml-typesystem-valuetypes.html}{QML Value Types} are
 provided:
 
-\annotatedlist qtqmlbasictypes
+\annotatedlist qtqmlvaluetypes
 
 \section1 Object Types
 
@@ -84,12 +58,13 @@ provided:
 */
 
 /*!
-\qmlbasictype date
-\ingroup qtqmlbasictypes
-\ingroup qtquickbasictypes
+\qmlvaluetype date
+\ingroup qmlvaluetypes
 \brief a date value.
 
 The \c date type refers to a date value, including the time of the day.
+
+Properties of type \c date default to an invalid value.
 
 To create a \c date value, specify it as a "YYYY-MM-DDThh:mm:ss.zzzZ" string.
 (The T is literal, YYYY is a full year number, MM and DD are month and day
@@ -98,7 +73,7 @@ milliseconds and Z as time-zone offset. The T and following time are optional.
 If they are omitted, the date is handled as the start of UTC's day, which
 falls on other dates in some time-zones. When T is included, the :ss.zzz or
 just .zzz part can be omitted. With or without those, the zone offset can be
-omitted, in which case local time is used.)  For example:
+omitted, in which case local time is used.) For example:
 
 \qml
 MyDatePicker { minDate: "2000-01-01 0:0"; maxDate: "2020-12-31 23:59" }
@@ -117,16 +92,15 @@ or a relevant time-zone and selecting a time of day (such as noon)
 that reliably exists (daylight-savings transitions skip an hour, near
 one end or the other of a day).
 
-This basic type is provided by the QML language. It can be implicitly converted
+This value type is provided by the QML language. It can be implicitly converted
 to a \l{QtQml::Date}{Date} object.
 
-\sa {QtQml::Date}{QML Date object}, {QML Basic Types}
+\sa {QtQml::Date}{QML Date object}, {QML Value Types}
 */
 
 /*!
-\qmlbasictype point
-\ingroup qtqmlbasictypes
-\ingroup qtquickbasictypes
+\qmlvaluetype point
+\ingroup qtqmlvaluetypes
 \brief a value with x and y attributes.
 
 The \c point type refers to a value with \c x and \c y attributes.
@@ -148,16 +122,19 @@ When integrating with C++, note that any QPoint or QPointF value
 converted into a \c point value. When a \c point value is passed to C++, it
 is automatically converted into a QPointF value.
 
-\sa{QML Basic Types}
+Properties of type \c point are \c {Qt.point(0, 0)} by default.
+
+\sa{QML Value Types}
 */
 
 /*!
-\qmlbasictype size
-\ingroup qtqmlbasictypes
-\ingroup qtquickbasictypes
-\brief a value with width and height attributes
+\qmlvaluetype size
+\ingroup qtqmlvaluetypes
+\brief a value with width and height attributes.
 
 The \c size type refers to a value with has \c width and \c height attributes.
+
+Properties of type \c size have \c {Qt.size(-1, -1)} as default value.
 
 For example, to read the \c width and \c height values of the
 \l {Image::sourceSize} size-type property:
@@ -186,16 +163,18 @@ When integrating with C++, note that any QSize or QSizeF value
 converted into a \c size value, and vice-versa. When a \c size value is passed to C++, it
 is automatically converted into a QSizeF value.
 
-\sa{QML Basic Types}
+\sa{QML Value Types}
 */
 
 /*!
-\qmlbasictype rect
-\ingroup qtqmlbasictypes
-\ingroup qtquickbasictypes
+\qmlvaluetype rect
+\ingroup qtqmlvaluetypes
 \brief a value with x, y, width and height attributes.
 
 The \c rect type refers to a value with \c x, \c y, \c width and \c height attributes.
+
+Properties of type \c rect are \c {Qt.rect(0, 0, 0, 0)} by default. This is an
+empty rectangle at the coordinate origin.
 
 For example, to read the \c width and \c height values of the \l Item
 \l {Item::childrenRect.x}{childrenRect} rect-type property:
@@ -229,5 +208,5 @@ When integrating with C++, note that any QRect or QRectF value
 converted into a \c rect value, and vice-versa. When a \c rect value is passed to C++, it
 is automatically converted into a QRectF value.
 
-\sa{QML Basic Types}
+\sa{QML Value Types}
 */

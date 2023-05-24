@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,12 @@
 #include "base/logging.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 
 namespace base {
 class CommandLine;
 class FilePath;
-}
+}  // namespace base
 
 namespace logging {
 
@@ -35,10 +36,24 @@ void InitChromeLogging(const base::CommandLine& command_line,
 LoggingDestination DetermineLoggingDestination(
     const base::CommandLine& command_line);
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
+// Prepare the log file. If |new_log| is true, rotate the previous log file to
+// write new logs to the latest log file. Otherwise, we reuse the existing file
+// if exists.
+base::FilePath SetUpLogFile(const base::FilePath& target_path, bool new_log);
+
+// Allow external calls to the internal method for testing.
+bool RotateLogFile(const base::FilePath& target_path);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#if defined(UNIT_TEST)
+// Expose the following methods only for tests.
+
 // Point the logging symlink to the system log or the user session log.
 base::FilePath SetUpSymlinkIfNeeded(const base::FilePath& symlink_path,
                                     bool new_log);
+#endif  // defined(UNIT_TEST)
 
 // Remove the logging symlink.
 void RemoveSymlinkAndLog(const base::FilePath& link_path,
@@ -61,12 +76,12 @@ base::FilePath GetLogFileName(const base::CommandLine& command_line);
 // otherwise.
 bool DialogsAreSuppressed();
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
 // Inserts timestamp before file extension (if any) in the form
 // "_yymmdd-hhmmss".
 base::FilePath GenerateTimestampedName(const base::FilePath& base_path,
                                        base::Time timestamp);
-#endif  // OS_CHROMEOS
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }  // namespace logging
 
 #endif  // CHROME_COMMON_LOGGING_CHROME_H_

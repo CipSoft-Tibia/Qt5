@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -34,7 +34,7 @@ TEST(StringUtilTest, DISABLED_IsStringASCIIPerf) {
     for (size_t non_ascii_loc = 0; non_ascii_loc < 3; ++non_ascii_loc) {
       size_t non_ascii_pos = str_length * non_ascii_loc / 2 + 2;
       MeasureIsStringASCII<std::string>(str_length, non_ascii_pos);
-      MeasureIsStringASCII<string16>(str_length, non_ascii_pos);
+      MeasureIsStringASCII<std::u16string>(str_length, non_ascii_pos);
 #if defined(WCHAR_T_IS_UTF32)
       MeasureIsStringASCII<std::basic_string<wchar_t>>(str_length,
                                                        non_ascii_pos);

@@ -1,36 +1,73 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
-#include <QtCore/qcoreapplication.h>
-#include <QtCore/qcoreevent.h>
+#include <QtGui/qguiapplication.h>
+#include <QtGui/qevent.h>
+#include <QtCore/private/qfutureinterface_p.h>
+
+#define FOR_EACH_CORE_EVENT(X) \
+    /* qcoreevent.h */ \
+    X(QEvent, (QEvent::None)) \
+    X(QTimerEvent, (42)) \
+    X(QChildEvent, (QEvent::ChildAdded, nullptr)) \
+    X(QDynamicPropertyChangeEvent, ("size")) \
+    X(QDeferredDeleteEvent, ()) \
+    /* qfutureinterface_p.h */ \
+    X(QFutureCallOutEvent, ()) \
+    /* end */
+
+#define FOR_EACH_GUI_EVENT(X) \
+    /* qevent.h */ \
+    X(QInputEvent, (QEvent::None, nullptr)) \
+    X(QPointerEvent, (QEvent::None, nullptr)) \
+    /* doesn't work with nullptr: */ \
+    X(QSinglePointEvent, (QEvent::None, QPointingDevice::primaryPointingDevice(), {}, {}, {}, {}, {}, {})) \
+    X(QEnterEvent, ({}, {}, {})) \
+    X(QMouseEvent, (QEvent::None, {}, {}, {}, {}, {}, {}, {}, QPointingDevice::primaryPointingDevice())) \
+    X(QHoverEvent, (QEvent::None, {}, {}, QPointF{})) \
+    X(QWheelEvent, ({}, {}, {}, {}, {}, {}, {}, {})) \
+    X(QTabletEvent, (QEvent::None, QPointingDevice::primaryPointingDevice(), {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})) \
+    X(QNativeGestureEvent, ({}, QPointingDevice::primaryPointingDevice(), 0, {}, {}, {}, {}, {})) \
+    X(QKeyEvent, (QEvent::None, 0, {})) \
+    X(QFocusEvent, (QEvent::None)) \
+    X(QPaintEvent, (QRect{0, 0, 100, 100})) \
+    X(QMoveEvent, ({}, {})) \
+    X(QExposeEvent, ({})) \
+    X(QPlatformSurfaceEvent, ({})) \
+    X(QResizeEvent, ({}, {})) \
+    X(QCloseEvent, ()) \
+    X(QIconDragEvent, ()) \
+    X(QShowEvent, ()) \
+    X(QHideEvent, ()) \
+    X(QContextMenuEvent, (QContextMenuEvent::Reason::Keyboard, {}, {})) \
+    X(QInputMethodEvent, ()) \
+    X(QInputMethodQueryEvent, ({})) \
+    X(QDropEvent, ({}, {}, {}, {}, {})) \
+    X(QDragMoveEvent, ({}, {}, {}, {}, {})) \
+    X(QDragEnterEvent, ({}, {}, {}, {}, {})) \
+    X(QDragLeaveEvent, ()) \
+    X(QHelpEvent, ({}, {}, {})) \
+    X(QStatusTipEvent, ({})) \
+    X(QWhatsThisClickedEvent, ({})) \
+    X(QActionEvent, (0, nullptr)) \
+    X(QFileOpenEvent, (QString{})) \
+    X(QToolBarChangeEvent, (false)) \
+    X(QShortcutEvent, ({}, 0)) \
+    X(QWindowStateChangeEvent, ({})) \
+    X(QTouchEvent, (QEvent::None)) \
+    X(QScrollPrepareEvent, ({})) \
+    X(QScrollEvent, ({}, {}, {})) \
+    X(QScreenOrientationChangeEvent, (nullptr, {})) \
+    X(QApplicationStateChangeEvent, ({})) \
+    /* end */
+
+#define FOR_EACH_EVENT(X) \
+    FOR_EACH_CORE_EVENT(X) \
+    FOR_EACH_GUI_EVENT(X) \
+    /* end */
 
 class tst_QEvent : public QObject
 {
@@ -40,6 +77,7 @@ public:
     ~tst_QEvent();
 
 private slots:
+    void clone() const;
     void registerEventType_data();
     void registerEventType();
     void exhaustEventTypeRegistration(); // keep behind registerEventType() test
@@ -54,6 +92,18 @@ tst_QEvent::tst_QEvent()
 
 tst_QEvent::~tst_QEvent()
 { }
+
+void tst_QEvent::clone() const
+{
+#define ACTION(Type, Init) do { \
+        const std::unique_ptr<const Type> e(new Type Init); \
+        auto c = e->clone(); \
+        static_assert(std::is_same_v<decltype(c), Type *>); \
+        delete c; \
+    } while (0);
+
+    FOR_EACH_EVENT(ACTION)
+}
 
 void tst_QEvent::registerEventType_data()
 {

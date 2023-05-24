@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTHREADPOOL_P_H
 #define QTHREADPOOL_P_H
@@ -55,6 +19,7 @@
 #include "QtCore/qmutex.h"
 #include "QtCore/qthread.h"
 #include "QtCore/qwaitcondition.h"
+#include "QtCore/qthreadpool.h"
 #include "QtCore/qset.h"
 #include "QtCore/qqueue.h"
 #include "private/qobject_p.h"
@@ -65,47 +30,44 @@ QT_BEGIN_NAMESPACE
 
 class QDeadlineTimer;
 
-class QueuePage {
+class QueuePage
+{
 public:
     enum {
         MaxPageSize = 256
     };
 
-    QueuePage(QRunnable *runnable, int pri)
-        : m_priority(pri)
+    QueuePage(QRunnable *runnable, int pri) : m_priority(pri) { push(runnable); }
+
+    bool isFull() { return m_lastIndex >= MaxPageSize - 1; }
+
+    bool isFinished() { return m_firstIndex > m_lastIndex; }
+
+    void push(QRunnable *runnable)
     {
-        push(runnable);
-    }
-
-    bool isFull() {
-        return m_lastIndex >= MaxPageSize - 1;
-    }
-
-    bool isFinished() {
-        return m_firstIndex > m_lastIndex;
-    }
-
-    void push(QRunnable *runnable) {
         Q_ASSERT(runnable != nullptr);
         Q_ASSERT(!isFull());
         m_lastIndex += 1;
         m_entries[m_lastIndex] = runnable;
     }
 
-    void skipToNextOrEnd() {
+    void skipToNextOrEnd()
+    {
         while (!isFinished() && m_entries[m_firstIndex] == nullptr) {
             m_firstIndex += 1;
         }
     }
 
-    QRunnable *first() {
+    QRunnable *first()
+    {
         Q_ASSERT(!isFinished());
         QRunnable *runnable = m_entries[m_firstIndex];
         Q_ASSERT(runnable);
         return runnable;
     }
 
-    QRunnable *pop() {
+    QRunnable *pop()
+    {
         Q_ASSERT(!isFinished());
         QRunnable *runnable = first();
         Q_ASSERT(runnable);
@@ -120,7 +82,8 @@ public:
         return runnable;
     }
 
-    bool tryTake(QRunnable *runnable) {
+    bool tryTake(QRunnable *runnable)
+    {
         Q_ASSERT(!isFinished());
         for (int i = m_firstIndex; i <= m_lastIndex; i++) {
             if (m_entries[i] == runnable) {
@@ -135,9 +98,7 @@ public:
         return false;
     }
 
-    int priority() const {
-        return m_priority;
-    }
+    int priority() const { return m_priority; }
 
 private:
     int m_priority = 0;
@@ -160,8 +121,11 @@ public:
     int activeThreadCount() const;
 
     void tryToStartMoreThreads();
+    bool areAllThreadsActive() const;
     bool tooManyThreadsActive() const;
 
+    int maxThreadCount() const
+    { return qMax(requestedMaxThreadCount, 1); }    // documentation says we start at least one
     void startThread(QRunnable *runnable = nullptr);
     void reset();
     bool waitForDone(int msecs);
@@ -170,18 +134,22 @@ public:
     void stealAndRunRunnable(QRunnable *runnable);
     void deletePageIfFinished(QueuePage *page);
 
+    static QThreadPool *qtGuiInstance();
+
     mutable QMutex mutex;
     QSet<QThreadPoolThread *> allThreads;
     QQueue<QThreadPoolThread *> waitingThreads;
     QQueue<QThreadPoolThread *> expiredThreads;
-    QVector<QueuePage*> queue;
+    QList<QueuePage *> queue;
     QWaitCondition noActiveThreads;
+    QString objectName;
 
     int expiryTimeout = 30000;
-    int maxThreadCount = QThread::idealThreadCount();
+    int requestedMaxThreadCount = QThread::idealThreadCount();  // don't use this directly
     int reservedThreads = 0;
     int activeThreads = 0;
     uint stackSize = 0;
+    QThread::Priority threadPriority = QThread::InheritPriority;
 };
 
 QT_END_NAMESPACE

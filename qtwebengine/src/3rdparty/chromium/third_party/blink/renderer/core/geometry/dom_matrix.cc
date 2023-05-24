@@ -1,49 +1,56 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/geometry/dom_matrix.h"
 
 #include "third_party/blink/renderer/bindings/core/v8/v8_dom_matrix_init.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_string_unrestricteddoublesequence.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/platform/transforms/affine_transform.h"
+#include "third_party/blink/renderer/platform/wtf/math_extras.h"
 
 namespace blink {
 
 DOMMatrix* DOMMatrix::Create() {
-  return MakeGarbageCollected<DOMMatrix>(TransformationMatrix());
+  return MakeGarbageCollected<DOMMatrix>(gfx::Transform());
 }
 
 DOMMatrix* DOMMatrix::Create(ExecutionContext* execution_context,
                              ExceptionState& exception_state) {
-  return MakeGarbageCollected<DOMMatrix>(TransformationMatrix());
+  return MakeGarbageCollected<DOMMatrix>(gfx::Transform());
 }
 
-DOMMatrix* DOMMatrix::Create(ExecutionContext* execution_context,
-                             StringOrUnrestrictedDoubleSequence& init,
-                             ExceptionState& exception_state) {
-  if (init.IsString()) {
-    if (!execution_context->IsWindow()) {
-      exception_state.ThrowTypeError(
-          "DOMMatrix can't be constructed with strings on workers.");
-      return nullptr;
-    }
+DOMMatrix* DOMMatrix::Create(
+    ExecutionContext* execution_context,
+    const V8UnionStringOrUnrestrictedDoubleSequence* init,
+    ExceptionState& exception_state) {
+  DCHECK(init);
 
-    DOMMatrix* matrix = MakeGarbageCollected<DOMMatrix>(TransformationMatrix());
-    matrix->SetMatrixValueFromString(execution_context, init.GetAsString(),
-                                     exception_state);
-    return matrix;
-  }
+  switch (init->GetContentType()) {
+    case V8UnionStringOrUnrestrictedDoubleSequence::ContentType::kString: {
+      if (!execution_context->IsWindow()) {
+        exception_state.ThrowTypeError(
+            "DOMMatrix can't be constructed with strings on workers.");
+        return nullptr;
+      }
 
-  if (init.IsUnrestrictedDoubleSequence()) {
-    const Vector<double>& sequence = init.GetAsUnrestrictedDoubleSequence();
-    if (sequence.size() != 6 && sequence.size() != 16) {
-      exception_state.ThrowTypeError(
-          "The sequence must contain 6 elements for a 2D matrix or 16 elements "
-          "for a 3D matrix.");
-      return nullptr;
+      DOMMatrix* matrix = MakeGarbageCollected<DOMMatrix>(gfx::Transform());
+      matrix->SetMatrixValueFromString(execution_context, init->GetAsString(),
+                                       exception_state);
+      return matrix;
     }
-    return MakeGarbageCollected<DOMMatrix>(sequence, sequence.size());
+    case V8UnionStringOrUnrestrictedDoubleSequence::ContentType::
+        kUnrestrictedDoubleSequence: {
+      const Vector<double>& sequence = init->GetAsUnrestrictedDoubleSequence();
+      if (sequence.size() != 6 && sequence.size() != 16) {
+        exception_state.ThrowTypeError(
+            "The sequence must contain 6 elements for a 2D matrix or 16 "
+            "elements "
+            "for a 3D matrix.");
+        return nullptr;
+      }
+      return MakeGarbageCollected<DOMMatrix>(sequence, sequence.size());
+    }
   }
 
   NOTREACHED();
@@ -55,50 +62,39 @@ DOMMatrix* DOMMatrix::Create(DOMMatrixReadOnly* other,
   return MakeGarbageCollected<DOMMatrix>(other->Matrix(), other->is2D());
 }
 
-DOMMatrix* DOMMatrix::Create(const SkMatrix44& matrix,
-                             ExceptionState& exception_state) {
-  TransformationMatrix transformation_matrix(matrix);
-  return MakeGarbageCollected<DOMMatrix>(transformation_matrix,
-                                         transformation_matrix.IsAffine());
-}
-
 DOMMatrix* DOMMatrix::CreateForSerialization(double sequence[], int size) {
   return MakeGarbageCollected<DOMMatrix>(sequence, size);
 }
 
 DOMMatrix* DOMMatrix::fromFloat32Array(NotShared<DOMFloat32Array> float32_array,
                                        ExceptionState& exception_state) {
-  if (float32_array.View()->lengthAsSizeT() != 6 &&
-      float32_array.View()->lengthAsSizeT() != 16) {
+  if (float32_array->length() != 6 && float32_array->length() != 16) {
     exception_state.ThrowTypeError(
         "The sequence must contain 6 elements for a 2D matrix or 16 elements "
         "for a 3D matrix.");
     return nullptr;
   }
   return MakeGarbageCollected<DOMMatrix>(
-      float32_array.View()->Data(),
-      static_cast<int>(float32_array.View()->lengthAsSizeT()));
+      float32_array->Data(), static_cast<int>(float32_array->length()));
 }
 
 DOMMatrix* DOMMatrix::fromFloat64Array(NotShared<DOMFloat64Array> float64_array,
                                        ExceptionState& exception_state) {
-  if (float64_array.View()->lengthAsSizeT() != 6 &&
-      float64_array.View()->lengthAsSizeT() != 16) {
+  if (float64_array->length() != 6 && float64_array->length() != 16) {
     exception_state.ThrowTypeError(
         "The sequence must contain 6 elements for a 2D matrix or 16 elements "
         "for a 3D matrix.");
     return nullptr;
   }
   return MakeGarbageCollected<DOMMatrix>(
-      float64_array.View()->Data(),
-      static_cast<int>(float64_array.View()->lengthAsSizeT()));
+      float64_array->Data(), static_cast<int>(float64_array->length()));
 }
 
 template <typename T>
 DOMMatrix::DOMMatrix(T sequence, int size)
     : DOMMatrixReadOnly(sequence, size) {}
 
-DOMMatrix::DOMMatrix(const TransformationMatrix& matrix, bool is2d)
+DOMMatrix::DOMMatrix(const gfx::Transform& matrix, bool is2d)
     : DOMMatrixReadOnly(matrix, is2d) {}
 
 DOMMatrix* DOMMatrix::fromMatrix(DOMMatrixInit* other,
@@ -109,13 +105,13 @@ DOMMatrix* DOMMatrix::fromMatrix(DOMMatrixInit* other,
   }
   if (other->is2D()) {
     return MakeGarbageCollected<DOMMatrix>(
-        TransformationMatrix(other->m11(), other->m12(), other->m21(),
-                             other->m22(), other->m41(), other->m42()),
+        gfx::Transform::Affine(other->m11(), other->m12(), other->m21(),
+                               other->m22(), other->m41(), other->m42()),
         other->is2D());
   }
 
   return MakeGarbageCollected<DOMMatrix>(
-      TransformationMatrix(
+      gfx::Transform::ColMajor(
           other->m11(), other->m12(), other->m13(), other->m14(), other->m21(),
           other->m22(), other->m23(), other->m24(), other->m31(), other->m32(),
           other->m33(), other->m34(), other->m41(), other->m42(), other->m43(),
@@ -129,22 +125,8 @@ void DOMMatrix::SetIs2D(bool value) {
 }
 
 void DOMMatrix::SetNAN() {
-  matrix_.SetM11(NAN);
-  matrix_.SetM12(NAN);
-  matrix_.SetM13(NAN);
-  matrix_.SetM14(NAN);
-  matrix_.SetM21(NAN);
-  matrix_.SetM22(NAN);
-  matrix_.SetM23(NAN);
-  matrix_.SetM24(NAN);
-  matrix_.SetM31(NAN);
-  matrix_.SetM32(NAN);
-  matrix_.SetM33(NAN);
-  matrix_.SetM34(NAN);
-  matrix_.SetM41(NAN);
-  matrix_.SetM42(NAN);
-  matrix_.SetM43(NAN);
-  matrix_.SetM44(NAN);
+  matrix_ = gfx::Transform::ColMajor(NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN,
+                                     NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN);
 }
 
 DOMMatrix* DOMMatrix::multiplySelf(DOMMatrixInit* other,
@@ -176,7 +158,7 @@ DOMMatrix* DOMMatrix::preMultiplySelf(DOMMatrixInit* other,
   if (!other_matrix->is2D())
     is2d_ = false;
 
-  TransformationMatrix& matrix = matrix_;
+  gfx::Transform& matrix = matrix_;
   matrix_ = other_matrix->Matrix() * matrix;
 
   return this;
@@ -219,7 +201,7 @@ DOMMatrix* DOMMatrix::scaleSelf(double sx,
     translateSelf(ox, oy, oz);
 
   if (is2d_)
-    matrix_.ScaleNonUniform(sx, sy);
+    matrix_.Scale(sx, sy);
   else
     matrix_.Scale3d(sx, sy, sz);
 
@@ -246,15 +228,15 @@ DOMMatrix* DOMMatrix::rotateSelf(double rot_x, double rot_y) {
 
 DOMMatrix* DOMMatrix::rotateSelf(double rot_x, double rot_y, double rot_z) {
   if (rot_z)
-    matrix_.Rotate3d(0, 0, 1, rot_z);
+    matrix_.RotateAboutZAxis(rot_z);
 
   if (rot_y) {
-    matrix_.Rotate3d(0, 1, 0, rot_y);
+    matrix_.RotateAboutYAxis(rot_y);
     is2d_ = false;
   }
 
   if (rot_x) {
-    matrix_.Rotate3d(1, 0, 0, rot_x);
+    matrix_.RotateAboutXAxis(rot_x);
     is2d_ = false;
   }
 
@@ -262,7 +244,7 @@ DOMMatrix* DOMMatrix::rotateSelf(double rot_x, double rot_y, double rot_z) {
 }
 
 DOMMatrix* DOMMatrix::rotateFromVectorSelf(double x, double y) {
-  matrix_.Rotate(rad2deg(atan2(y, x)));
+  matrix_.Rotate(Rad2deg(atan2(y, x)));
   return this;
 }
 
@@ -270,7 +252,7 @@ DOMMatrix* DOMMatrix::rotateAxisAngleSelf(double x,
                                           double y,
                                           double z,
                                           double angle) {
-  matrix_.Rotate3d(x, y, z, angle);
+  matrix_.RotateAbout(x, y, z, angle);
 
   if (x != 0 || y != 0)
     is2d_ = false;
@@ -289,23 +271,18 @@ DOMMatrix* DOMMatrix::skewYSelf(double sy) {
 }
 
 DOMMatrix* DOMMatrix::perspectiveSelf(double p) {
-  matrix_.ApplyPerspective(p);
+  matrix_.ApplyPerspectiveDepth(p);
   return this;
 }
 
 DOMMatrix* DOMMatrix::invertSelf() {
-  if (is2d_) {
-    AffineTransform affine_transform = matrix_.ToAffineTransform();
-    if (affine_transform.IsInvertible()) {
-      matrix_ = affine_transform.Inverse();
-      return this;
-    }
-  } else {
-    if (matrix_.IsInvertible()) {
-      matrix_ = matrix_.Inverse();
-      return this;
-    }
+  if (matrix_.GetInverse(&matrix_)) {
+    // We rely on gfx::Transform::GetInverse() to produce a 2d inverse for any
+    // 2d matrix.
+    DCHECK(!is2d_ || matrix_.Is2dTransform());
+    return this;
   }
+
   SetNAN();
   SetIs2D(false);
   return this;

@@ -166,8 +166,7 @@ def compute_params(root, supported_extensions):
         for command in section.findall('./require/command'):
             proc_name = command.attrib['name']
             assert all_procs[proc_name].alias == None
-            if proc_name not in removed_procs:
-                section_procs.append(all_procs[proc_name])
+            section_procs.append(all_procs[proc_name])
 
         section_enums = []
         for enum in section.findall('./require/enum'):
@@ -262,18 +261,21 @@ class OpenGLLoaderGenerator(Generator):
         return [
             FileRender(
                 'opengl/OpenGLFunctionsBase.cpp',
-                'src/dawn_native/opengl/OpenGLFunctionsBase_autogen.cpp',
+                'src/dawn/native/opengl/OpenGLFunctionsBase_autogen.cpp',
                 [params]),
             FileRender('opengl/OpenGLFunctionsBase.h',
-                       'src/dawn_native/opengl/OpenGLFunctionsBase_autogen.h',
+                       'src/dawn/native/opengl/OpenGLFunctionsBase_autogen.h',
                        [params]),
             FileRender('opengl/opengl_platform.h',
-                       'src/dawn_native/opengl/opengl_platform_autogen.h',
+                       'src/dawn/native/opengl/opengl_platform_autogen.h',
                        [params]),
         ]
 
     def get_dependencies(self, args):
-        return [os.path.abspath(args.gl_xml)]
+        return [
+            os.path.abspath(args.gl_xml),
+            os.path.abspath(args.supported_extensions)
+        ]
 
 
 if __name__ == '__main__':

@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef DEVICE_BLUETOOTH_SERVER_SOCKET_H_
 #define DEVICE_BLUETOOTH_SERVER_SOCKET_H_
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "device/bluetooth/public/mojom/adapter.mojom.h"
 
@@ -33,6 +33,7 @@ class ServerSocket : public mojom::ServerSocket {
 
   // mojom::ServerSocket:
   void Accept(AcceptCallback callback) override;
+  void Disconnect(DisconnectCallback callback) override;
 
  private:
   void OnAccept(AcceptCallback callback,

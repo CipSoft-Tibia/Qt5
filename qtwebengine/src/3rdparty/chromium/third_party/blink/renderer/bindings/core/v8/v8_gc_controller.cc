@@ -32,90 +32,91 @@
 
 #include <algorithm>
 
-#include "third_party/blink/public/platform/blame_context.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_source_code.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_node.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_script_runner.h"
 #include "third_party/blink/renderer/core/dom/attr.h"
+#include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/node.h"
-#include "third_party/blink/renderer/core/html/imports/html_imports_controller.h"
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
 #include "third_party/blink/renderer/platform/bindings/active_script_wrappable_manager.h"
 #include "third_party/blink/renderer/platform/bindings/script_forbidden_scope.h"
 #include "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h"
 #include "third_party/blink/renderer/platform/bindings/wrapper_type_info.h"
-#include "third_party/blink/renderer/platform/heap/heap_stats_collector.h"
-#include "third_party/blink/renderer/platform/heap/unified_heap_controller.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/instrumentation/histogram.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/partitions.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
 
-Node* V8GCController::OpaqueRootForGC(v8::Isolate*, Node* node) {
+namespace {
+
+const Node& OpaqueRootForGC(v8::Isolate*, const Node* node) {
   DCHECK(node);
   if (node->isConnected())
-    return &node->GetDocument().TreeRootDocument();
+    return node->GetDocument();
 
   if (auto* attr = DynamicTo<Attr>(node)) {
     Node* owner_element = attr->ownerElement();
     if (!owner_element)
-      return node;
+      return *node;
     node = owner_element;
   }
 
   while (Node* parent = node->ParentOrShadowHostOrTemplateHostNode())
     node = parent;
 
-  return node;
-}
-
-namespace {
-
-bool IsNestedInV8GC(ThreadState* thread_state, v8::GCType type) {
-  return thread_state && (type == v8::kGCTypeMarkSweepCompact ||
-                          type == v8::kGCTypeIncrementalMarking);
+  return *node;
 }
 
 }  // namespace
+
+// static
+v8::EmbedderGraph::Node::Detachedness V8GCController::DetachednessFromWrapper(
+    v8::Isolate* isolate,
+    const v8::Local<v8::Value>& v8_value,
+    uint16_t class_id,
+    void*) {
+  if (class_id != WrapperTypeInfo::kNodeClassId)
+    return v8::EmbedderGraph::Node::Detachedness::kUnknown;
+  const auto& root_node =
+      OpaqueRootForGC(isolate, V8Node::ToImpl(v8_value.As<v8::Object>()));
+  if (root_node.isConnected() && root_node.GetExecutionContext())
+    return v8::EmbedderGraph::Node::Detachedness::kAttached;
+  return v8::EmbedderGraph::Node::Detachedness::kDetached;
+}
 
 void V8GCController::GcPrologue(v8::Isolate* isolate,
                                 v8::GCType type,
                                 v8::GCCallbackFlags flags) {
   RUNTIME_CALL_TIMER_SCOPE(isolate, RuntimeCallStats::CounterId::kGcPrologue);
-  ThreadHeapStatsCollector::BlinkGCInV8Scope nested_scope(
-      IsNestedInV8GC(ThreadState::Current(), type)
-          ? ThreadState::Current()->Heap().stats_collector()
-          : nullptr);
-  ScriptForbiddenScope::Enter();
+  auto* per_isolate_data = V8PerIsolateData::From(isolate);
+  per_isolate_data->EnterGC();
 
-  // Attribute garbage collection to the all frames instead of a specific
-  // frame.
-  if (BlameContext* blame_context =
-          Platform::Current()->GetTopLevelBlameContext())
-    blame_context->Enter();
+  ScriptForbiddenScope::Enter();
 
   v8::HandleScope scope(isolate);
   switch (type) {
     case v8::kGCTypeIncrementalMarking:
       // Recomputing ASWs is opportunistic during incremental marking as they
       // only need to be recomputing during the atomic pause for corectness.
-      V8PerIsolateData::From(isolate)
-          ->GetActiveScriptWrappableManager()
-          ->RecomputeActiveScriptWrappables(
-              ActiveScriptWrappableManager::RecomputeMode::kOpportunistic);
+      if (per_isolate_data->GetActiveScriptWrappableManager()) {
+        per_isolate_data->GetActiveScriptWrappableManager()
+            ->RecomputeActiveScriptWrappables(
+                ActiveScriptWrappableManager::RecomputeMode::kOpportunistic);
+      }
       break;
     case v8::kGCTypeMarkSweepCompact:
-      V8PerIsolateData::From(isolate)
-          ->GetActiveScriptWrappableManager()
-          ->RecomputeActiveScriptWrappables(
-              ActiveScriptWrappableManager::RecomputeMode::kRequired);
+      if (per_isolate_data->GetActiveScriptWrappableManager()) {
+        per_isolate_data->GetActiveScriptWrappableManager()
+            ->RecomputeActiveScriptWrappables(
+                ActiveScriptWrappableManager::RecomputeMode::kRequired);
+      }
       break;
     default:
       break;
@@ -126,33 +127,21 @@ void V8GCController::GcEpilogue(v8::Isolate* isolate,
                                 v8::GCType type,
                                 v8::GCCallbackFlags flags) {
   RUNTIME_CALL_TIMER_SCOPE(isolate, RuntimeCallStats::CounterId::kGcEpilogue);
-  ThreadHeapStatsCollector::BlinkGCInV8Scope nested_scope(
-      IsNestedInV8GC(ThreadState::Current(), type)
-          ? ThreadState::Current()->Heap().stats_collector()
-          : nullptr);
+
+  V8PerIsolateData::From(isolate)->LeaveGC();
+
   ScriptForbiddenScope::Exit();
 
-  if (BlameContext* blame_context =
-          Platform::Current()->GetTopLevelBlameContext())
-    blame_context->Leave();
-
   ThreadState* current_thread_state = ThreadState::Current();
-  if (current_thread_state && !current_thread_state->IsGCForbidden()) {
-    if (flags & v8::kGCCallbackFlagForced) {
-      // Forces a precise GC at the end of the current event loop. This is
-      // required for testing code that cannot use GC internals but rather has
-      // to rely on window.gc(). Only schedule additional GCs if the last GC was
-      // using conservative stack scanning.
-      if (type == v8::kGCTypeScavenge ||
-          current_thread_state->RequiresForcedGCForTesting()) {
-        current_thread_state->ScheduleForcedGCForTesting();
-      }
-    }
+  if (current_thread_state) {
+    current_thread_state->NotifyGarbageCollection(type, flags);
   }
 
-  TRACE_EVENT_INSTANT1(TRACE_DISABLED_BY_DEFAULT("devtools.timeline"),
-                       "UpdateCounters", TRACE_EVENT_SCOPE_THREAD, "data",
-                       inspector_update_counters_event::Data());
+  TRACE_EVENT_INSTANT1(
+      TRACE_DISABLED_BY_DEFAULT("devtools.timeline"), "UpdateCounters",
+      TRACE_EVENT_SCOPE_THREAD, "data", [&](perfetto::TracedValue context) {
+        inspector_update_counters_event::Data(std::move(context));
+      });
 }
 
 }  // namespace blink

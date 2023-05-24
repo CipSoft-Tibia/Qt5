@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <private/qv4bytecodegenerator_p.h>
 #include <private/qv4compilercontext_p.h>
@@ -48,6 +12,12 @@ using namespace Moth;
 void BytecodeGenerator::setLocation(const QQmlJS::SourceLocation &loc)
 {
     currentLine = static_cast<int>(loc.startLine);
+    currentSourceLocation = loc;
+}
+
+void BytecodeGenerator::incrementStatement()
+{
+    ++currentStatement;
 }
 
 int BytecodeGenerator::newRegister()
@@ -164,26 +134,36 @@ void BytecodeGenerator::finalize(Compiler::Context *context)
 
     // collect content and line numbers
     QByteArray code;
-    QVector<CompiledData::CodeOffsetToLine> lineNumbers;
+    QVector<CompiledData::CodeOffsetToLineAndStatement> lineAndStatementNumbers;
+
     currentLine = -1;
+    currentStatement = -1;
+
     Q_UNUSED(startLine);
-    for (const auto &i : qAsConst(instructions)) {
-        if (i.line != currentLine) {
-            currentLine = i.line;
-            CompiledData::CodeOffsetToLine entry;
+    for (qsizetype i = 0; i < instructions.size(); i++) {
+        if (instructions[i].line != currentLine || instructions[i].statement != currentStatement) {
+            currentLine = instructions[i].line;
+            currentStatement = instructions[i].statement;
+            CompiledData::CodeOffsetToLineAndStatement entry;
             entry.codeOffset = code.size();
             entry.line = currentLine;
-            lineNumbers.append(entry);
+            entry.statement = currentStatement;
+            lineAndStatementNumbers.append(entry);
         }
-        code.append(reinterpret_cast<const char *>(i.packed), i.size);
+
+        if (m_sourceLocationTable)
+            m_sourceLocationTable->entries[i].offset = static_cast<quint32>(code.size());
+
+        code.append(reinterpret_cast<const char *>(instructions[i].packed), instructions[i].size);
     }
 
     context->code = code;
-    context->lineNumberMapping = lineNumbers;
+    context->lineAndStatementNumberMapping = lineAndStatementNumbers;
+    context->sourceLocationTable = std::move(m_sourceLocationTable);
 
-    for (const auto &li : _labelInfos) {
+    context->labelInfo.reserve(context->labelInfo.size() + _labelInfos.size());
+    for (const auto &li : _labelInfos)
         context->labelInfo.push_back(instructions.at(labels.at(li.labelIndex)).position);
-    }
 }
 
 int BytecodeGenerator::addInstructionHelper(Instr::Type type, const Instr &i, int offsetOfOffset) {
@@ -215,6 +195,7 @@ QT_WARNING_DISABLE_GCC("-Wmaybe-uninitialized") // broken gcc warns about Instru
             currentLine = -currentLine;
             addInstruction(Instruction::Debug());
             currentLine = -currentLine;
+            currentSourceLocation = QQmlJS::SourceLocation();
         }
 QT_WARNING_POP
     }
@@ -225,7 +206,16 @@ QT_WARNING_POP
     int s = argCount*sizeof(int);
     if (offsetOfOffset != -1)
         offsetOfOffset += Instr::encodedLength(type);
-    I instr{type, static_cast<short>(s + Instr::encodedLength(type)), 0, currentLine, offsetOfOffset, -1, "\0\0" };
+    I instr {
+        type,
+        static_cast<short>(s + Instr::encodedLength(type)),
+        0,
+        currentLine,
+        currentStatement,
+        offsetOfOffset,
+        -1,
+        "\0\0"
+    };
     uchar *code = instr.packed;
     code = Instr::pack(code, Instr::wideInstructionType(type));
 
@@ -235,6 +225,8 @@ QT_WARNING_POP
     }
 
     instructions.append(instr);
+    if (m_sourceLocationTable)
+        m_sourceLocationTable->entries.append({ 0, currentSourceLocation });
 
     return pos;
 }

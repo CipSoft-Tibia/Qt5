@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,58 +6,51 @@
 
 from __future__ import print_function
 
+import json
 import os
 import subprocess
-import sys
 import textwrap
 
 _SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-_SWARMING_CLIENT = os.path.join(_SRC_ROOT, 'tools', 'swarming_client',
-                                'swarming.py')
+_SWARMING_CLIENT = os.path.join(_SRC_ROOT, 'tools', 'luci-go', 'swarming')
 _SWARMING_SERVER = 'chromium-swarm.appspot.com'
 
 
 def _get_bots(swarming_server, pool, cache):
   cmd = [
-      sys.executable,
       _SWARMING_CLIENT,
       'bots',
-      '-b',
       '-S',
       swarming_server,
-      '-d',
-      'caches',
-      cache,
-      '-d',
-      'pool',
-      pool,
+      '-dimension',
+      'caches=' + cache,
+      '-dimension',
+      'pool=' + pool,
   ]
-  return subprocess.check_output(cmd).splitlines()
+  return [bot['bot_id'] for bot in json.loads(subprocess.check_output(cmd))]
 
 
-def _trigger_clobber(swarming_server, pool, cache, bot, mount_rel_path,
+def _trigger_clobber(swarming_server, pool, realm, cache, bot, mount_rel_path,
                      dry_run):
   cmd = [
-      sys.executable,
       _SWARMING_CLIENT,
       'trigger',
       '-S',
       swarming_server,
-      '-d',
-      'pool',
-      pool,
-      '-d',
-      'id',
-      bot,
-      '--cipd-package',
-      'cpython:infra/python/cpython/${platform}:latest',
-      '--named-cache',
-      cache,
-      mount_rel_path,
-      '--priority=10',
-      '--raw-cmd',
+      '-realm',
+      realm,
+      '-dimension',
+      'pool=' + pool,
+      '-dimension',
+      'id=' + bot,
+      '-cipd-package',
+      'cpython3:infra/3pp/tools/cpython3/${platform}=latest',
+      '-named-cache',
+      cache + '=' + mount_rel_path,
+      '-priority',
+      '10',
       '--',
-      'cpython/bin/python${EXECUTABLE_SUFFIX}',
+      'cpython3/bin/python3${EXECUTABLE_SUFFIX}',
       '-c',
       textwrap.dedent('''\
           import os, shutil, stat
@@ -93,6 +86,7 @@ def add_common_args(argument_parser):
 
 def clobber_caches(swarming_server,
                    pool,
+                   realm,
                    cache,
                    mount_rel_path,
                    dry_run,
@@ -109,6 +103,7 @@ def clobber_caches(swarming_server,
     * swarming_server - The swarming_server instance to lookup bots to clobber
       caches on.
     * pool - The pool of machines to lookup bots to clobber caches on.
+    * realm - The realm to trigger tasks into.
     * cache - The name of the cache to clobber.
     * mount_rel_path - The relative path to mount the cache to when clobbering.
     * dry_run - Whether a dry-run should be performed where the commands that
@@ -120,16 +115,22 @@ def clobber_caches(swarming_server,
     bots = [bot_id]
   else:
     bots = _get_bots(swarming_server, pool, cache)
+    if not bots:
+      print(f'There are no bots on swarming server {swarming_server}'
+            f' in pool {pool} that have cache {cache}')
+      return 0
 
   print('The following bots will be clobbered:')
   print()
   for bot in bots:
     print('  %s' % bot)
   print()
-  val = raw_input('Proceed? [Y/n] ')
+  val = input('Proceed? [Y/n] ')
   if val and not val[0] in ('Y', 'y'):
     print('Cancelled.')
     return 1
 
   for bot in bots:
-    _trigger_clobber(swarming_server, pool, cache, bot, mount_rel_path, dry_run)
+    _trigger_clobber(swarming_server, pool, realm, cache, bot, mount_rel_path,
+                     dry_run)
+  return 0

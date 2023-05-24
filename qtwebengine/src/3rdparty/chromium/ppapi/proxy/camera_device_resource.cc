@@ -1,10 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/camera_device_resource.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "ppapi/proxy/camera_capabilities_resource.h"
 #include "ppapi/proxy/plugin_resource_tracker.h"
 #include "ppapi/proxy/ppapi_messages.h"
@@ -40,8 +40,8 @@ int32_t CameraDeviceResource::Open(
 
   Call<PpapiPluginMsg_CameraDevice_OpenReply>(
       RENDERER, PpapiHostMsg_CameraDevice_Open(source_string_var->value()),
-      base::Bind(&CameraDeviceResource::OnPluginMsgOpenReply,
-                 base::Unretained(this)));
+      base::BindOnce(&CameraDeviceResource::OnPluginMsgOpenReply,
+                     base::Unretained(this)));
   return PP_OK_COMPLETIONPENDING;
 }
 
@@ -81,8 +81,9 @@ int32_t CameraDeviceResource::GetCameraCapabilities(
   get_capabilities_callback_ = callback;
   Call<PpapiPluginMsg_CameraDevice_GetSupportedVideoCaptureFormatsReply>(
       RENDERER, PpapiHostMsg_CameraDevice_GetSupportedVideoCaptureFormats(),
-      base::Bind(&CameraDeviceResource::OnPluginMsgGetVideoCaptureFormatsReply,
-                 base::Unretained(this), capabilities));
+      base::BindOnce(
+          &CameraDeviceResource::OnPluginMsgGetVideoCaptureFormatsReply,
+          base::Unretained(this), capabilities));
 
   return PP_OK_COMPLETIONPENDING;
 }

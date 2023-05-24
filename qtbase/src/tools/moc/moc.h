@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MOC_H
 #define MOC_H
@@ -32,12 +7,13 @@
 #include "parser.h"
 #include <qstringlist.h>
 #include <qmap.h>
-#include <qpair.h>
 #include <qjsondocument.h>
 #include <qjsonarray.h>
 #include <qjsonobject.h>
+#include <qtyperevision.h>
 #include <stdio.h>
-#include <ctype.h>
+
+#include <private/qtools_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -59,19 +35,21 @@ struct Type
     Token firstToken;
     ReferenceType referenceType;
 };
-Q_DECLARE_TYPEINFO(Type, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(Type, Q_RELOCATABLE_TYPE);
 
 struct ClassDef;
 struct EnumDef
 {
     QByteArray name;
     QByteArray enumName;
-    QVector<QByteArray> values;
+    QByteArray type;
+    QList<QByteArray> values;
     bool isEnumClass; // c++11 enum class
     EnumDef() : isEnumClass(false) {}
     QJsonObject toJson(const ClassDef &cdef) const;
+    QByteArray qualifiedType(const ClassDef *cdef) const;
 };
-Q_DECLARE_TYPEINFO(EnumDef, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(EnumDef, Q_RELOCATABLE_TYPE);
 
 struct ArgumentDef
 {
@@ -83,12 +61,12 @@ struct ArgumentDef
 
     QJsonObject toJson() const;
 };
-Q_DECLARE_TYPEINFO(ArgumentDef, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(ArgumentDef, Q_RELOCATABLE_TYPE);
 
 struct FunctionDef
 {
     Type type;
-    QVector<ArgumentDef> arguments;
+    QList<ArgumentDef> arguments;
     QByteArray normalizedType;
     QByteArray tag;
     QByteArray name;
@@ -115,22 +93,25 @@ struct FunctionDef
     bool isConstructor = false;
     bool isDestructor = false;
     bool isAbstract = false;
+    bool isRawSlot = false;
 
     QJsonObject toJson() const;
     static void accessToJson(QJsonObject *obj, Access acs);
 };
-Q_DECLARE_TYPEINFO(FunctionDef, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(FunctionDef, Q_RELOCATABLE_TYPE);
 
 struct PropertyDef
 {
     bool stdCppSet() const {
+        if (name.isEmpty())
+            return false;
         QByteArray s("set");
-        s += toupper(name[0]);
+        s += QtMiscUtils::toAsciiUpper(name[0]);
         s += name.mid(1);
         return (s == write);
     }
 
-    QByteArray name, type, member, read, write, reset, designable, scriptable, editable, stored, user, notify, inPrivateClass;
+    QByteArray name, type, member, read, write, bind, reset, designable, scriptable, stored, user, notify, inPrivateClass;
     int notifyId = -1; // -1 means no notifyId, >= 0 means signal defined in this class, < -1 means signal not defined in this class
     enum Specification  { ValueSpec, ReferenceSpec, PointerSpec };
     Specification gspec = ValueSpec;
@@ -138,42 +119,61 @@ struct PropertyDef
     bool constant = false;
     bool final = false;
     bool required = false;
+    int relativeIndex = -1; // property index in current metaobject
+
+    qsizetype location = -1; // token index, used for error reporting
 
     QJsonObject toJson() const;
 };
-Q_DECLARE_TYPEINFO(PropertyDef, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(PropertyDef, Q_RELOCATABLE_TYPE);
 
+struct PrivateQPropertyDef
+{
+    Type type;
+    QByteArray name;
+    QByteArray setter;
+    QByteArray accessor;
+    QByteArray storage;
+};
+Q_DECLARE_TYPEINFO(PrivateQPropertyDef, Q_RELOCATABLE_TYPE);
 
 struct ClassInfoDef
 {
     QByteArray name;
     QByteArray value;
 };
-Q_DECLARE_TYPEINFO(ClassInfoDef, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(ClassInfoDef, Q_RELOCATABLE_TYPE);
 
 struct BaseDef {
     QByteArray classname;
     QByteArray qualified;
-    QVector<ClassInfoDef> classInfoList;
+    QList<ClassInfoDef> classInfoList;
     QMap<QByteArray, bool> enumDeclarations;
-    QVector<EnumDef> enumList;
+    QList<EnumDef> enumList;
     QMap<QByteArray, QByteArray> flagAliases;
-    int begin = 0;
-    int end = 0;
+    qsizetype begin = 0;
+    qsizetype end = 0;
 };
 
+struct SuperClass {
+    QByteArray classname;
+    QByteArray qualified;
+    FunctionDef::Access access;
+};
+Q_DECLARE_TYPEINFO(SuperClass, Q_RELOCATABLE_TYPE);
+
 struct ClassDef : BaseDef {
-    QVector<QPair<QByteArray, FunctionDef::Access> > superclassList;
+    QList<SuperClass> superclassList;
 
     struct Interface
     {
-        Interface() {} // for QVector, don't use
+        Interface() { } // for QList, don't use
         inline explicit Interface(const QByteArray &_className)
             : className(_className) {}
         QByteArray className;
         QByteArray interfaceId;
     };
-    QVector<QVector<Interface> >interfaceList;
+    QList<QList<Interface>> interfaceList;
 
     struct PluginData {
         QByteArray iid;
@@ -182,50 +182,52 @@ struct ClassDef : BaseDef {
         QJsonDocument metaData;
     } pluginData;
 
-    QVector<FunctionDef> constructorList;
-    QVector<FunctionDef> signalList, slotList, methodList, publicList;
-    QVector<QByteArray> nonClassSignalList;
-    QVector<PropertyDef> propertyList;
-    int notifyableProperties = 0;
+    QList<FunctionDef> constructorList;
+    QList<FunctionDef> signalList, slotList, methodList, publicList;
+    QList<QByteArray> nonClassSignalList;
+    QList<PropertyDef> propertyList;
     int revisionedMethods = 0;
-    int revisionedProperties = 0;
 
     bool hasQObject = false;
     bool hasQGadget = false;
     bool hasQNamespace = false;
+    bool requireCompleteMethodTypes = false;
 
     QJsonObject toJson() const;
 };
-Q_DECLARE_TYPEINFO(ClassDef, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(ClassDef::Interface, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(ClassDef, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(ClassDef::Interface, Q_RELOCATABLE_TYPE);
 
 struct NamespaceDef : BaseDef {
     bool hasQNamespace = false;
     bool doGenerate = false;
 };
-Q_DECLARE_TYPEINFO(NamespaceDef, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(NamespaceDef, Q_RELOCATABLE_TYPE);
 
 class Moc : public Parser
 {
 public:
+    enum PropertyMode { Named, Anonymous };
+
     Moc()
-        : noInclude(false), mustIncludeQPluginH(false)
+        : noInclude(false), mustIncludeQPluginH(false), requireCompleteTypes(false)
         {}
 
     QByteArray filename;
 
     bool noInclude;
     bool mustIncludeQPluginH;
+    bool requireCompleteTypes;
     QByteArray includePath;
-    QVector<QByteArray> includeFiles;
-    QVector<ClassDef> classList;
+    QList<QByteArray> includeFiles;
+    QList<ClassDef> classList;
     QMap<QByteArray, QByteArray> interface2IdMap;
-    QVector<QByteArray> metaTypes;
+    QList<QByteArray> metaTypes;
     // map from class name to fully qualified name
     QHash<QByteArray, QByteArray> knownQObjectClasses;
     QHash<QByteArray, QByteArray> knownGadgets;
     QMap<QString, QJsonArray> metaArgs;
-    QVector<QString> parsedPluginMetadataFiles;
+    QList<QString> parsedPluginMetadataFiles;
 
     void parse();
     void generate(FILE *out, FILE *jsonOutput);
@@ -239,6 +241,10 @@ public:
         return index > def->begin && index < def->end - 1;
     }
 
+    const QByteArray &toFullyQualified(const QByteArray &name) const noexcept;
+
+    void prependNamespaces(BaseDef &def, const QList<NamespaceDef> &namespaceList) const;
+
     Type parseType();
 
     bool parseEnum(EnumDef *def);
@@ -248,17 +254,24 @@ public:
 
     void parseSlots(ClassDef *def, FunctionDef::Access access);
     void parseSignals(ClassDef *def);
-    void parseProperty(ClassDef *def);
+    void parseProperty(ClassDef *def, PropertyMode mode);
     void parsePluginData(ClassDef *def);
-    void createPropertyDef(PropertyDef &def);
+
+    void createPropertyDef(PropertyDef &def, int propertyIndex, PropertyMode mode);
+
+    void parsePropertyAttributes(PropertyDef &propDef);
     void parseEnumOrFlag(BaseDef *def, bool isFlag);
     void parseFlag(BaseDef *def);
-    void parseClassInfo(BaseDef *def);
+    enum class EncounteredQmlMacro {Yes, No};
+    EncounteredQmlMacro parseClassInfo(BaseDef *def);
+    void parseClassInfo(ClassDef *def);
     void parseInterfaces(ClassDef *def);
     void parseDeclareInterface();
     void parseDeclareMetatype();
+    void parseMocInclude();
     void parseSlotInPrivate(ClassDef *def, FunctionDef::Access access);
-    void parsePrivateProperty(ClassDef *def);
+    QByteArray parsePropertyAccessor();
+    void parsePrivateProperty(ClassDef *def, PropertyMode mode);
 
     void parseFunctionArguments(FunctionDef *def);
 
@@ -270,19 +283,21 @@ public:
     bool testFunctionAttribute(FunctionDef *def);
     bool testFunctionAttribute(Token tok, FunctionDef *def);
     bool testFunctionRevision(FunctionDef *def);
+    QTypeRevision parseRevision();
 
     bool skipCxxAttributes();
 
     void checkSuperClasses(ClassDef *def);
     void checkProperties(ClassDef* cdef);
+    bool testForFunctionModifiers(FunctionDef *def);
 };
 
 inline QByteArray noRef(const QByteArray &type)
 {
     if (type.endsWith('&')) {
         if (type.endsWith("&&"))
-            return type.left(type.length()-2);
-        return type.left(type.length()-1);
+            return type.left(type.size()-2);
+        return type.left(type.size()-1);
     }
     return type;
 }

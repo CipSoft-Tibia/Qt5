@@ -1,45 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGEOROUTESEGMENT_H
 #define QGEOROUTESEGMENT_H
 
+#include <QtCore/QObject>
 #include <QtCore/QExplicitlySharedDataPointer>
 #include <QtCore/QList>
 #include <QtLocation/qlocationglobal.h>
+#include <QtQml/qqml.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -47,18 +16,32 @@ class QGeoCoordinate;
 class QGeoManeuver;
 class QGeoRouteSegmentPrivate;
 
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QGeoRouteSegmentPrivate, Q_LOCATION_EXPORT)
 class Q_LOCATION_EXPORT QGeoRouteSegment
 {
+    Q_GADGET
+    QML_VALUE_TYPE(routeSegment)
+    QML_STRUCTURED_VALUE
 
+    Q_PROPERTY(int travelTime READ travelTime CONSTANT)
+    Q_PROPERTY(qreal distance READ distance CONSTANT)
+    Q_PROPERTY(QList<QGeoCoordinate> path READ path CONSTANT)
+    Q_PROPERTY(QGeoManeuver maneuver READ maneuver CONSTANT)
 public:
     QGeoRouteSegment();
-    QGeoRouteSegment(const QGeoRouteSegment &other);
+    QGeoRouteSegment(const QGeoRouteSegment &other) noexcept;
+    QGeoRouteSegment(QGeoRouteSegment &&other) noexcept = default;
     ~QGeoRouteSegment();
 
-    QGeoRouteSegment &operator= (const QGeoRouteSegment &other);
+    QGeoRouteSegment &operator=(const QGeoRouteSegment &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QGeoRouteSegment)
 
-    bool operator ==(const QGeoRouteSegment &other) const;
-    bool operator !=(const QGeoRouteSegment &other) const;
+    void swap(QGeoRouteSegment &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    friend inline bool operator ==(const QGeoRouteSegment &lhs, const QGeoRouteSegment &rhs) noexcept
+    { return lhs.isEqual(rhs); }
+    friend inline bool operator !=(const QGeoRouteSegment &lhs, const QGeoRouteSegment &rhs) noexcept
+    { return !lhs.isEqual(rhs); }
 
     bool isValid() const;
     bool isLegLastSegment() const;
@@ -78,12 +61,11 @@ public:
     void setManeuver(const QGeoManeuver &maneuver);
     QGeoManeuver maneuver() const;
 
-protected:
-    QGeoRouteSegment(const QExplicitlySharedDataPointer<QGeoRouteSegmentPrivate> &dd);
-    QExplicitlySharedDataPointer<QGeoRouteSegmentPrivate> &d();
-
 private:
     QExplicitlySharedDataPointer<QGeoRouteSegmentPrivate> d_ptr;
+    QGeoRouteSegment(QExplicitlySharedDataPointer<QGeoRouteSegmentPrivate> &&dd);
+
+    bool isEqual(const QGeoRouteSegment &other) const noexcept;
 
     friend class QGeoRouteSegmentPrivate;
 };

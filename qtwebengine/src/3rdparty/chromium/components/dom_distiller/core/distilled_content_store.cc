@@ -1,12 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/dom_distiller/core/distilled_content_store.h"
+#include "base/task/single_thread_task_runner.h"
 
+#include <memory>
 #include <utility>
-
-#include "base/threading/thread_task_runner_handle.h"
 
 namespace dom_distiller {
 
@@ -25,7 +25,7 @@ void InMemoryContentStore::SaveContent(
     InMemoryContentStore::SaveCallback callback) {
   InjectContent(entry, proto);
   if (!callback.is_null()) {
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), true));
   }
 }
@@ -53,11 +53,11 @@ void InMemoryContentStore::LoadContent(
   }
   std::unique_ptr<DistilledArticleProto> distilled_article;
   if (success) {
-    distilled_article.reset(new DistilledArticleProto(*it->second));
+    distilled_article = std::make_unique<DistilledArticleProto>(*it->second);
   } else {
-    distilled_article.reset(new DistilledArticleProto());
+    distilled_article = std::make_unique<DistilledArticleProto>();
   }
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), success,
                                 std::move(distilled_article)));
 }

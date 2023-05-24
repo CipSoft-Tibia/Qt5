@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickshadereffectmesh_p.h"
 #include <QtQuick/qsggeometry.h>
@@ -88,9 +52,9 @@ QQuickGridMesh::QQuickGridMesh(QObject *parent)
 {
 }
 
-bool QQuickGridMesh::validateAttributes(const QVector<QByteArray> &attributes, int *posIndex)
+bool QQuickGridMesh::validateAttributes(const QList<QByteArray> &attributes, int *posIndex)
 {
-    const int attrCount = attributes.count();
+    const int attrCount = attributes.size();
     int positionIndex = attributes.indexOf(qtPositionAttributeName());
     int texCoordIndex = attributes.indexOf(qtTexCoordAttributeName());
 
@@ -195,6 +159,10 @@ QSGGeometry *QQuickGridMesh::updateGeometry(QSGGeometry *geometry, int attrCount
     resolution higher.
 
     \table
+    \header
+    \li Result
+    \li QML code
+    \li gridmesh.vert
     \row
     \li \image declarative-gridmesh.png
     \li \qml
@@ -210,21 +178,27 @@ QSGGeometry *QQuickGridMesh::updateGeometry(QSGGeometry *geometry, int attrCount
                 source: "qt-logo.png"
                 sourceSize { width: 200; height: 200 }
             }
-            vertexShader: "
-                uniform highp mat4 qt_Matrix;
-                attribute highp vec4 qt_Vertex;
-                attribute highp vec2 qt_MultiTexCoord0;
-                varying highp vec2 qt_TexCoord0;
-                uniform highp float width;
-                void main() {
-                    highp vec4 pos = qt_Vertex;
-                    highp float d = .5 * smoothstep(0., 1., qt_MultiTexCoord0.y);
-                    pos.x = width * mix(d, 1.0 - d, qt_MultiTexCoord0.x);
-                    gl_Position = qt_Matrix * pos;
-                    qt_TexCoord0 = qt_MultiTexCoord0;
-                }"
+            vertexShader: "gridmesh.vert"
         }
         \endqml
+    \li \badcode
+        #version 440
+        layout(location = 0) in vec4 qt_Vertex;
+        layout(location = 1) in vec2 qt_MultiTexCoord0;
+        layout(location = 0) out vec2 qt_TexCoord0;
+        layout(std140, binding = 0) uniform buf {
+            mat4 qt_Matrix;
+            float qt_Opacity;
+            float width;
+        };
+        void main() {
+            vec4 pos = qt_Vertex;
+            float d = 0.5 * smoothstep(0.0, 1.0, qt_MultiTexCoord0.y);
+            pos.x = width * mix(d, 1.0 - d, qt_MultiTexCoord0.x);
+            gl_Position = qt_Matrix * pos;
+            qt_TexCoord0 = qt_MultiTexCoord0;
+        }
+        \endcode
     \endtable
 */
 
@@ -310,7 +284,7 @@ QQuickBorderImageMesh::QQuickBorderImageMesh(QObject *parent)
 {
 }
 
-bool QQuickBorderImageMesh::validateAttributes(const QVector<QByteArray> &attributes, int *posIndex)
+bool QQuickBorderImageMesh::validateAttributes(const QList<QByteArray> &attributes, int *posIndex)
 {
     Q_UNUSED(attributes);
     Q_UNUSED(posIndex);

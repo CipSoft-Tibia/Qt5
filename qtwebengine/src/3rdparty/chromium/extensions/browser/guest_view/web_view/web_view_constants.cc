@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,7 +27,6 @@ const char kEventConsoleMessage[] = "webViewInternal.onConsoleMessage";
 const char kEventContentLoad[] = "webViewInternal.onContentLoad";
 const char kEventContextMenuShow[] = "chromeWebViewInternal.onContextMenuShow";
 const char kEventDialog[] = "webViewInternal.onDialog";
-const char kEventDropLink[] = "webViewInternal.onDropLink";
 const char kEventExit[] = "webViewInternal.onExit";
 const char kEventExitFullscreen[] = "webViewInternal.onExitFullscreen";
 const char kEventFindReply[] = "webViewInternal.onFindReply";
@@ -109,6 +108,7 @@ const char kInternalBaseURLForDataURL[] = "baseUrlForDataUrl";
 const char kInternalCurrentEntryIndex[] = "currentEntryIndex";
 const char kInternalEntryCount[] = "entryCount";
 const char kInternalProcessId[] = "processId";
+const char kInternalVisibleUrl[] = "visibleUrl";
 
 // Parameters to callback functions.
 const char kFindNumberOfMatches[] = "numberOfMatches";
@@ -133,15 +133,14 @@ const unsigned int kMaxOutstandingPermissionRequests = 1024;
 const int kInvalidPermissionRequestID = 0;
 
 // ClearData API constants.
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_APPCACHE = 1 << 0;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_CACHE = 1 << 1;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_COOKIES = 1 << 2;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_FILE_SYSTEMS = 1 << 3;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_INDEXEDDB = 1 << 4;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_LOCAL_STORAGE = 1 << 5;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_WEBSQL = 1 << 6;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_SESSION_COOKIES = 1 << 7;
-const uint32_t WEB_VIEW_REMOVE_DATA_MASK_PERSISTENT_COOKIES = 1 << 8;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_CACHE = 1 << 0;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_COOKIES = 1 << 1;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_FILE_SYSTEMS = 1 << 2;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_INDEXEDDB = 1 << 3;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_LOCAL_STORAGE = 1 << 4;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_WEBSQL = 1 << 5;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_SESSION_COOKIES = 1 << 6;
+const uint32_t WEB_VIEW_REMOVE_DATA_MASK_PERSISTENT_COOKIES = 1 << 7;
 
 // Other.
 const char kWebViewContentScriptManagerKeyName[] =

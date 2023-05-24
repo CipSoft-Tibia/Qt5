@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the lottie-qt module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "bmlayer_p.h"
 
@@ -34,6 +8,7 @@
 #include <QJsonValue>
 #include <QLoggingCategory>
 
+#include "bmimagelayer_p.h"
 #include "bmshapelayer_p.h"
 #include "bmfilleffect_p.h"
 #include "bmbasictransform_p.h"
@@ -72,16 +47,20 @@ BMBase *BMLayer::clone() const
     return new BMLayer(*this);
 }
 
-BMLayer *BMLayer::construct(QJsonObject definition)
+BMLayer *BMLayer::construct(QJsonObject definition, const QVersionNumber &version)
 {
     qCDebug(lcLottieQtBodymovinParser) << "BMLayer::construct()";
 
     BMLayer *layer = nullptr;
     int type = definition.value(QLatin1String("ty")).toInt();
     switch (type) {
+    case 2:
+        qCDebug(lcLottieQtBodymovinParser) << "Parse image layer";
+        layer = new BMImageLayer(definition, version);
+        break;
     case 4:
         qCDebug(lcLottieQtBodymovinParser) << "Parse shape layer";
-        layer = new BMShapeLayer(definition);
+        layer = new BMShapeLayer(definition, version);
         break;
     default:
         qCWarning(lcLottieQtBodymovinParser) << "Unsupported layer type:" << type;
@@ -265,7 +244,7 @@ void BMLayer::parseEffects(const QJsonArray &definition, BMBase *effectRoot)
         case 21:
         {
             BMFillEffect *fill = new BMFillEffect;
-            fill->construct(effect);
+            fill->construct(effect, m_version);
             effectRoot->appendChild(fill);
             break;
         }

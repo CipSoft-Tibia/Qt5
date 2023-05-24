@@ -1,15 +1,15 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "services/image_annotation/public/cpp/image_processor.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "services/image_annotation/image_annotation_metrics.h"
 #include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkImage.h"
 #include "ui/gfx/codec/jpeg_codec.h"
 
 namespace image_annotation {
@@ -26,9 +26,9 @@ SkBitmap ScaleImage(const SkBitmap& source, const float scale) {
   dest.eraseColor(0);
 
   // Use a canvas to scale the source image onto the new bitmap.
-  SkCanvas canvas(dest);
+  SkCanvas canvas(dest, SkSurfaceProps{});
   canvas.scale(scale, scale);
-  canvas.drawBitmap(source, 0, 0, nullptr /* paint */);
+  canvas.drawImage(source.asImage(), 0, 0);
 
   return dest;
 }
@@ -91,11 +91,11 @@ mojo::PendingRemote<mojom::ImageProcessor> ImageProcessor::GetPendingRemote() {
 }
 
 void ImageProcessor::GetJpgImageData(GetJpgImageDataCallback callback) {
-  DCHECK(base::SequencedTaskRunnerHandle::IsSet());
+  DCHECK(base::SequencedTaskRunner::HasCurrentDefault());
 
   background_task_runner_->PostTask(
       FROM_HERE, base::BindOnce(&ScaleAndEncodeImage,
-                                base::SequencedTaskRunnerHandle::Get(),
+                                base::SequencedTaskRunner::GetCurrentDefault(),
                                 std::move(callback), get_pixels_.Run(),
                                 kMaxPixels, kJpgQuality));
 }

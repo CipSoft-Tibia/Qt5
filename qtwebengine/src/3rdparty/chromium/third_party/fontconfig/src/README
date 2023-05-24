@@ -1,11 +1,377 @@
                               Fontconfig
              Font configuration and customization library
-                      Version 2.13.91 (2.14 RC1)
-                              2019-06-10
+                            Version 2.14.2
+                              2023-01-27
 
 
 Check INSTALL for compilation and installation instructions.
 Report bugs to https://gitlab.freedesktop.org/fontconfig/fontconfig/issues/new.
+
+2.14.2
+
+Akira TAGOH (13):
+      Fix the build issue on meson when -g option is added to c_args
+      Store artifacts for meson windows CI
+      Add FC_DESKTOP_NAME property
+      Add --with-default-sub-pixel-rendering option
+      Update po-conf/POTFILES.in
+      Ignore null pointer on Fc*Destroy functions
+      Convert tabs to spaces
+      Convert more tabs to spaces in docs
+      src/meson.build: Store correct paths to fontconfig.pc.
+      Fix a typo in description for HAVE_STDATOMIC_PRIMITIVES
+      Report more detailed logs instead of assertion.
+      Add some missing constant names for weight.
+      Adujst indentation between programlisting in fontconfig-user.sgml
+
+Christopher Degawa (1):
+      meson: modify gperf test to remove sh dependency
+
+Jason Francis (1):
+      meson: Update freetype2 git repository to upstream
+
+Jean Abou Samra (1):
+      Ignore LC_CTYPE if set to "UTF-8"
+
+Ondrej Balaz (1):
+      Expand ~ in glob
+
+lilinjie (1):
+      fix typo
+
+2.14.1
+
+Akira TAGOH (6):
+      Use the latest stable release image for CI for mingw
+      Real fix of 91114d18c
+      Fix test cases for wrong use of remap-dir
+      Add back sort command
+      Add config files to enable/disable antialias
+      Enable 10-sub-pixel-rgb.conf by default
+
+Alan Coopersmith (1):
+      Bump the cache version to 8 in doc/fontconfig-user.sgml
+
+Jeremy Huddleston Sequoia (3):
+      meson: Fix linking libexpat on darwin
+      meson: Use fc_templatedir and fc_baseconfigdir are used when installing configs
+      meson: Use fc_configdir where appropriate during build
+
+NorwayFun (4):
+      add Georgian
+      add Georgian
+      po: add Georgian translation
+      po: Add Georgian translation
+
+Sam James (1):
+      configure.ac: allow disabling docbook
+
+Taylor R Campbell (1):
+      Avoid misuse of ctype(3)
+
+Tim-Philipp Müller (7):
+      meson: add 'default-hinting' option
+      meson: add 'default-fonts-dirs' option
+      meson: add 'additional-fonts-dirs' option
+      meson: add 'cache-dir' option
+      meson: add 'template-dir', 'baseconfig-dir', 'config-dir', and 'xml-dir' options
+      ci: update windows image to a 2022-server based one
+      ci: update macOS image
+
+Xavier Claessens (3):
+      meson: Do not run fc-cache when installing into a DESTDIR
+      meson: Fix configuration warnings
+      link_confs.py: Fix prepending DESTDIR to absolute path
+
+2.14
+
+Alan Coopersmith (1):
+      Update address for reporting msgid bugs from bugzilla to gitlab
+
+2.13.96 (2.14 RC6)
+
+Akira TAGOH (2):
+      Add a missing file 48-spacing.conf
+      Merge branch 'main' of ssh://gitlab.freedesktop.org/fontconfig/fontconfig
+
+2.13.95 (2.14 RC5)
+
+Akira TAGOH (18):
+      Do not set different score to non-string values
+      Enable 11-lcdfilter-default.conf by default
+      Bump the cache version to 8
+      Reflect matching results to binding in FcPattern
+      Fix a memory leak when trying to open a non-existing file
+      Fix score estimation for postscriptname
+      Resolves symlinks against <dir prefix="relative">
+      Add the option to not build fontconfig cache during installation
+      conf.d/60-latin.conf: Make Noto default.
+      Fix some testcase fails for 14c265a1
+      Fix the issue fail to obtain the style name
+      Apply the change made by 23e46d1 again
+      Initialize variable
+      Add more description for fc-conflist.1 and FcConfigFileInfoIterInit.3
+      Update CaseFolding.txt to Unicode 14
+      Add an user font directory for Win32 to the default font path
+      Add test/wrapper-script.sh to the archive
+      Fix possible memory leaks in FcPatternObjectAddWithBinding
+
+Alex Richardson (3):
+      fcint: add casts to allow building with stricter compilers
+      Add support for C11 stdatomic atomics
+      FcCharSetPutLeaf(): Fix missing move of new_leaves contents
+
+Behdad Esfahbod (1):
+      If a varfont has 'opsz' axis, set FC_SIZE on default instant pattern
+
+Ben Wagner (6):
+      Add memory order constraints to C11 atomics
+      Free local FcCache lock on contention
+      Extend test thread args lifetime
+      Fix warning about os2->achVendID cannot be NULL
+      Back FcSerialize with open addressing hash table.
+      Actually skip leading spaces in style name
+
+Francesco Pretto (1):
+      WIN32: Fix pGetSystemWindowsDirectory found initialized during FcConfigParseAndLoadFromMemory
+
+Mehdi Sabwat (1):
+      fcstat: add support for wasm-emscripten
+
+Nirbheek Chauhan (1):
+      meson: Remove summary() from version_compare() block
+
+Pierre Ducroquet (5):
+      Add a configuration to switch to monospace if spacing=100 is requested
+      Reference the new configuration file
+      Remove configuration file from POTFILES
+      It seems this qual doesn't work on integers
+      Always add the family name from spacing=100
+
+Ryan Gonzalez (1):
+      Ensure config.h is always included before stdlib headers
+
+Ryan Schmidt (5):
+      Avoid PCRE syntax when using grep
+      Remove Bugzilla references
+      Fix run-test.sh to work with BSD mktemp
+      Restore fcatomic compatibility with Mac OS X 10.4.
+      Fix FC_DEFAULT_FONTS on macOS and with BSD sed
+
+2.13.94 (2.14 RC4)
+
+Akira TAGOH (10):
+      Add back fullname property at scan matching phase
+      Overwrite symlinks for config files
+      Fix missing <dir> element for WINDOWSFONTDIR in meson
+      Refactoring configure.ac to add <dir> element around font paths
+      Fix build fail when missing docbook and/or disabling doc-build
+      ci: Update CA cert related thing for Python on Windows
+      Add support for XDG_DATA_DIRS
+      Better wording for comments in config
+      Revert constructing fullname property from family and style properties
+      Fix score evaluation for multiple values in properties
+
+Albert Astals Cid (1):
+      Fix potential memory leak in _get_real_paths_from_prefix
+
+Ben Wagner (11):
+      Skip leading whitespace in style name.
+      Remove abort from FcCompareSize.
+      Add line between licenses in COPYING.
+      Portable trap conditions in run-test.sh.
+      Fix leaks in fcxml.c, fc-match.c, and tests.
+      Fix wild frees and leak of fs in test-conf.
+      Always run-test-conf, but skip if not built.
+      Fix test-conf string to integer conversion.
+      Test all not_eq for family names.
+      Clean up test-family-matching test.
+      Fix stack use after scope in FcConfigCompareValue
+
+Carmina16 (1):
+      ie.orth: Corrected; mistaken source replaced
+
+Heiko Becker (1):
+      Handle absolute sysconfdir when installing symlinks
+
+Jacko Dirks (1):
+      fccfg.c: lock_config: Fix potential memory leak
+
+Szunti (3):
+      Fix locale dependent behaviour in run-test.sh
+      Check qual and compare for family tests
+      Fix stripping whitespace from end of family in FcPatternAddFullname
+
+Tim-Philipp Müller (6):
+      meson: remove unused stdin_wrapper.py script
+      fcformat: fix compiler warnings with clang on Android
+      ci: add meson android aarch64 build
+      meson: error out in script if gperf preprocessing failed
+      meson: fix cross-compilation issues with gperf header file preprocessing
+      meson: fix subproject build regression
+
+Xavier Claessens (3):
+      Meson: Fallback to gperf subproject on all platforms
+      Meson: Do not wrap fccache insallation script
+      Windows: Fix symlink privilege error detection
+
+ratijas (1):
+      Fix closing tag bracket typo in doc/fontconfig-user.sgml
+
+2.13.93 (2.14 RC3)
+
+Akira TAGOH (48):
+      Affect FC_FONT_HAS_HINT property to score on matcher
+      Do not return FcFalse from FcConfigParseAndLoad*() if complain is set to false
+      Warn as well if no directory name for cachedir provided
+      Take effect sysroot functionality to the default config file
+      Read latest cache in paths
+      Fix a memory leak caused by the previous commit
+      Use FcConfigReference/Destroy appropriately instead of FcConfigGetCurrent
+      Fix potential race condition in FcConfigSetCurrent and FcConfigReference
+      Fix gcc warnings with -Wpointer-sign
+      Don't add a value for FC_FULLNAME in meta face
+      Fix a test fail when no bwrap was available
+      Add proper fullname for named-instances
+      Fix the process substitution doesn't work with FONTCONFIG_FILE
+      Fix memory leaks
+      Fix assertion in FcFini()
+      Set exact boolean value to color property
+      Fix assertion in FcCacheFini() again
+      Fix errors on shellcheck
+      Fix cache conflicts on OSTree based system
+      Drop unmaintained files
+      Drop elements with its namespace from conf
+      Add FC_ORDER property into cache
+      Drop Bitstream Vera fonts from 60-latin.conf
+      Fix a typo in doc/confdir.sgml.in
+      Fix empty XDG_CACHE_HOME Behavior
+      Fix build issues regarding formatter for Win32
+      Add some tweaks into runtest.sh to see progress
+      Integrate python scripts to autotools build
+      Make sure a minimum version of python
+      Make more clearer the license terms
+      Add CONFIGDIR to the fallback config where can be specified by --with-configdir
+      fc-scan: add --sysroot option
+      Construct fullname from family and style
+      Add fullname later once FcConfigSubstitute() is done
+      Update meson.build
+      Add Regular style when no meta data available to guess a style
+      Make sure a combination of family and familylang is available
+      Split up a code again coming from different copyright notice
+      Update COPYING
+      Use memcpy instead of strcpy
+      Evaluate mingw64_env to setup properly on CI
+      Add examples section in fc-match(1)
+      Drop duplicated BUILT_SOURCES in doc/Makefile.am
+      Initialize shell variables to be sure
+      Update README that missed changes mistakenly
+      new-version.sh: update version in meson.build
+      Update version in meson.build to sync up with configure.ac
+      new-version.sh: commit meson.build when bumpping
+
+Alan Coopersmith (1):
+      Fix some typos/spelling errors
+
+Ben Wagner (2):
+      Replace FT_UNUSED with FC_UNUSED.
+      Fix fc_atomic_ptr_get and use.
+
+Chun-wei Fan (2):
+      meson: Look for FreeType using CMake too
+      meson: Don't use .def files for Visual Studio builds
+
+James Lee (1):
+      Fix 'meson install' when cross compiling
+
+Jan Tojnar (4):
+      conf: Add JoyPixels emoji font
+      Correct reset-dirs in DTD
+      Drop elements with its namespace from fonts.conf.in
+      Turn unknown attributes into warning
+
+Jonathan Kew (1):
+      Set name_mapping to NULL after freeing
+
+Mathieu Duponchelle (1):
+      Some build fixes to support compilation with MSVC on Windows
+
+Matthias Clasen (17):
+      Avoid a crash in FcPatternHash with ranges
+      Special-case some of the string walking code
+      Add a hash function for families
+      Use a hash table for family matching
+      Add a shortcut for FcQualAny matching
+      Speed up fonthashint matching
+      Speed up FcConfigCompareValue
+      Speed up FcConfigCompareValue
+      Speed up FcCompareLang and FcCompareBool
+      Use a hash table for families in FcConfigSubstitute
+      Use __builtin_expect in a few places
+      Fixup: Promote ints to ranges when appropriate
+      Add FC_LIKELY and FC_UNLIKELY macros
+      Use FC_UNLIKELY
+      Fixup: Handle patterns without family
+      Fix up FC_LIKELY macros
+      Fix a problem in FcConfigSubstitute
+
+Nicolas Mailhot (1):
+      Use an URN for DTD ID
+
+Niklas Guertler (3):
+      Allow multiple default system font directories in the fallback config, and set them to the default dirs on Darwin.
+      Add <dir> XML tags to default values for FC_DEFAULT_FONTS on non-Darwin systems
+      Increased timeout for meson tests to 600sec to make tests work on Darwin
+
+Nirbheek Chauhan (2):
+      fcatomic: Fix EXC_BAD_ACCESS on iOS ARM64
+      meson: Fix build failure with gcc10 on mingw
+
+Szunti (1):
+      Add missing return type for FcFontSet* functions
+
+Tim-Philipp Müller (8):
+      doc: fix FcPatternFilter documentation
+      Use FC_PATH_MAX to fix build on Windows
+      Fix build on Windows some more
+      fccompat: fix build on Windows without unistd.h
+      Guard dirent.h includes
+      Add Meson build system
+      meson: print configuration summary()
+      ci: allow meson mingw build to fail
+
+Xavier Claessens (3):
+      meson: Fix build when 'tools' option is disabled
+      meson: Use version comparison function
+      meson: Fix build failure when compiler is not in PATH
+
+xiota (1):
+      Add Courier Std aliases.  Fixes #262.
+
+2.13.92 (2.14 RC2)
+
+Akira TAGOH (18):
+      Fix a typo on masking face id
+      Don't clean up pre-built docs if no docbook installed.
+      Fix obtaining real path from pre-defined names for Win32
+      Fix a crash when running with FC_DEBUG=256
+      Improve the performance a bit
+      Fix a typo
+      Add English name first into a cache
+      FcConfigParseAndLoad*() should returns false on config errors
+      Clean up temporary directory for tests
+      Add docs for missing properties
+      Fix the fail on fc-cache
+      Fix memory leaks
+      Fix a memory leak in FcFreeTypeQuery*()
+      Add 35-lang-normalize.conf
+      Add FC_FONT_HAS_HINT property to see if font has hinting or not.
+      Fix failing the check of prep table in some fonts
+      Fix the fails of make check when SOURCE_DATE_EPOCH is set
+      Improve the performance a bit
+
+Egmont Koblinger (1):
+      Fix the linear interpolation during weight mapping
 
 2.13.91 (2.14 RC1)
 
@@ -1099,7 +1465,7 @@ Akira TAGOH (60):
       Bug 26830 - Add search for libiconv non-default directory
       Bug 28491 - Allow matching on FC_FILE
       Bug 48573 - platform without regex do not have also REG_XXX defines
-      Bug 27526 - Compatibility fix for old windows sytems
+      Bug 27526 - Compatibility fix for old windows systems
       Add --with-expat, --with-expat-includes and --with-expat-lib back.
       doc: Fix a typo of the environment variable name.
       Bug 25151 - Move cleanCacheDirectory() from fc-cache.c into

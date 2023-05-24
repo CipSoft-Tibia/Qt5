@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \group thread
@@ -137,7 +113,7 @@
 
     Creating and destroying threads frequently can be expensive. To reduce this
     overhead, existing threads can be reused for new tasks. QThreadPool is a
-    collection of reuseable QThreads.
+    collection of reusable QThreads.
 
     To run code in one of a QThreadPool's threads, reimplement QRunnable::run()
     and instantiate the subclassed QRunnable. Use QThreadPool::start() to put
@@ -304,7 +280,7 @@
             \l{QtConcurrent::mappedReduced}() instead.
     \row
         \li One call/Permanent
-        \li Perfrom a long computation in a pure QML application, and update the GUI
+        \li Perform a long computation in a pure QML application, and update the GUI
             when the results are ready.
         \li Place the computation code in a \c{.js} script and attach it to a
             WorkerScript instance. Call
@@ -363,9 +339,9 @@
 
     QSemaphore is a generalization of QMutex that protects a certain
     number of identical resources. In contrast, a QMutex protects
-    exactly one resource. The \l{Semaphores Example} shows a typical application
-    of semaphores: synchronizing access to a circular buffer between a producer
-    and a consumer.
+    exactly one resource. The \l{Producer and Consumer using Semaphores} example
+    shows a typical application of semaphores: synchronizing access to a
+    circular buffer between a producer and a consumer.
 
     QWaitCondition synchronizes threads not by enforcing mutual exclusion but by
     providing a \e{condition variable}. While the other primitives make threads
@@ -373,8 +349,9 @@
     particular condition has been met. To allow the waiting threads to proceed,
     call \l{QWaitCondition::wakeOne()}{wakeOne()} to wake one randomly
     selected thread or \l{QWaitCondition::wakeAll()}{wakeAll()} to wake them all
-    simultaneously. The \l{Wait Conditions Example} shows how to solve the
-    producer-consumer problem using QWaitCondition instead of QSemaphore.
+    simultaneously. The \l{Producer and Consumer using Wait Conditions} example
+    shows how to solve the producer-consumer problem using QWaitCondition
+    instead of QSemaphore.
 
     \note Qt's synchronization classes rely on the use of properly
     aligned pointers. For instance, you cannot use packed classes with
@@ -597,8 +574,9 @@
     putting time-consuming operations in a separate worker thread and
     displaying the results on screen in the main thread when the
     worker thread is finished. This is the approach used for
-    implementing the \l{Mandelbrot Example} and
-    the \l{Blocking Fortune Client Example}.
+    implementing the \l{Mandelbrot} example and
+    the \l [QtNetwork] {Blocking Fortune Client}
+    {Blocking Fortune Client example}.
 
     In general, creating QObjects before the QApplication is not supported
     and can lead to weird crashes on exit, depending on the platform.
@@ -730,7 +708,7 @@
 
     QObject::connect() itself is thread-safe.
 
-    The \l{Mandelbrot Example} uses a queued
+    The \l{Mandelbrot} example uses a queued
     connection to communicate between a worker thread and the main
     thread. To avoid freezing the main thread's event loop (and, as a
     consequence, the application's user interface), all the
@@ -738,7 +716,8 @@
     thread. The thread emits a signal when it is done rendering the
     fractal.
 
-    Similarly, the \l{Blocking Fortune Client Example} uses a separate
+    Similarly, the \l [QtNetwork] {Blocking Fortune Client}
+    {Blocking Fortune Client example} uses a separate
     thread for communicating with a TCP server asynchronously.
 */
 
@@ -760,10 +739,11 @@
 
     \section1 Painting in Threads
 
-    QPainter can be used in a thread to paint onto QImage, QPrinter, and
-    QPicture paint devices. Painting onto QPixmaps and QWidgets is \e not
-    supported. On \macos the automatic progress dialog will not be
-    displayed if you are printing from outside the GUI thread.
+    QPainter can be used in a thread to paint onto QImage, QPrinter,
+    QPicture, and (for most platforms) QPixmap paint devices.
+    Painting onto QWidgets is \e not supported. On \macos the
+    automatic progress dialog will not be displayed if you are
+    printing from outside the GUI thread.
 
     Any number of threads can paint at any given time, however only
     one thread at a time can paint on a given paint device. In other

@@ -1,85 +1,161 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/export/password_csv_writer.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
 #include "components/password_manager/core/browser/import/csv_password.h"
 #include "components/password_manager/core/browser/import/csv_password_sequence.h"
-#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/ui/credential_ui_entry.h"
+#include "components/sync/base/features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
 
 using testing::ElementsAre;
 
+#if BUILDFLAG(IS_WIN)
+const std::string kLineEnding = "\r\n";
+#else
+const std::string kLineEnding = "\n";
+#endif
+
 namespace password_manager {
 
 namespace {
 
 MATCHER_P3(FormHasOriginUsernamePassword, origin, username, password, "") {
-  return arg.signon_realm == origin && arg.url == GURL(origin) &&
-         arg.username_value == base::UTF8ToUTF16(username) &&
-         arg.password_value == base::UTF8ToUTF16(password);
+  return arg.GetFirstSignonRealm() == origin && arg.GetURL() == GURL(origin) &&
+         arg.username == base::UTF8ToUTF16(username) &&
+         arg.password == base::UTF8ToUTF16(password);
 }
 
 }  // namespace
 
 TEST(PasswordCSVWriterTest, SerializePasswords_ZeroPasswords) {
-  std::vector<std::unique_ptr<PasswordForm>> passwords;
+  std::vector<CredentialUIEntry> credentials;
 
-  CSVPasswordSequence seq(PasswordCSVWriter::SerializePasswords(passwords));
+  CSVPasswordSequence seq(PasswordCSVWriter::SerializePasswords(credentials));
   ASSERT_EQ(CSVPassword::Status::kOK, seq.result());
 
   EXPECT_EQ(seq.begin(), seq.end());
 }
 
 TEST(PasswordCSVWriterTest, SerializePasswords_SinglePassword) {
-  std::vector<std::unique_ptr<PasswordForm>> passwords;
-  PasswordForm form;
-  form.url = GURL("http://example.com");
-  form.username_value = base::UTF8ToUTF16("Someone");
-  form.password_value = base::UTF8ToUTF16("Secret");
-  passwords.push_back(std::make_unique<PasswordForm>(form));
+  for (bool is_notes_enabled : {false, true}) {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureState(syncer::kPasswordNotesWithBackup,
+                                      is_notes_enabled);
 
-  CSVPasswordSequence seq(PasswordCSVWriter::SerializePasswords(passwords));
-  ASSERT_EQ(CSVPassword::Status::kOK, seq.result());
+    const std::u16string kNoteValue =
+        base::UTF8ToUTF16("Note Line 1" + kLineEnding + "Note Line 2");
+    std::vector<CredentialUIEntry> credentials;
+    PasswordForm form;
+    form.url = GURL("http://example.com");
+    form.username_value = u"Someone";
+    form.password_value = u"Secret";
+    form.notes = {PasswordNote(kNoteValue, base::Time::Now())};
+    credentials.emplace_back(form);
 
-  std::vector<PasswordForm> pwds;
-  for (const auto& pwd : seq) {
-    pwds.push_back(pwd.ParseValid());
+    CSVPasswordSequence seq(PasswordCSVWriter::SerializePasswords(credentials));
+    ASSERT_EQ(CSVPassword::Status::kOK, seq.result());
+
+    std::vector<CredentialUIEntry> pwds;
+    for (const auto& pwd : seq) {
+      pwds.emplace_back(pwd);
+    }
+    EXPECT_THAT(pwds, ElementsAre(FormHasOriginUsernamePassword(
+                          "http://example.com/", "Someone", "Secret")));
+
+    // TODO(crbug.com/1383938): remove this when CSVPasswordSequence will
+    // support notes.
+    std::string expected =
+        is_notes_enabled
+            ? "name,url,username,password,note" + kLineEnding +
+                  "example.com,http://example.com/,Someone,Secret,\"Note Line "
+                  "1" +
+                  kLineEnding + "Note Line 2\"" + kLineEnding
+            : "name,url,username,password" + kLineEnding +
+                  "example.com,http://example.com/,Someone,Secret" +
+                  kLineEnding;
+    EXPECT_EQ(expected, PasswordCSVWriter::SerializePasswords(credentials));
   }
-  EXPECT_THAT(pwds, ElementsAre(FormHasOriginUsernamePassword(
-                        "http://example.com/", "Someone", "Secret")));
 }
 
 TEST(PasswordCSVWriterTest, SerializePasswords_TwoPasswords) {
-  std::vector<std::unique_ptr<PasswordForm>> passwords;
+  std::vector<CredentialUIEntry> credentials;
   PasswordForm form;
   form.url = GURL("http://example.com");
-  form.username_value = base::UTF8ToUTF16("Someone");
-  form.password_value = base::UTF8ToUTF16("Secret");
-  passwords.push_back(std::make_unique<PasswordForm>(form));
+  form.username_value = u"Someone";
+  form.password_value = u"Secret";
+  credentials.emplace_back(form);
   form.url = GURL("http://other.org");
-  form.username_value = base::UTF8ToUTF16("Anyone");
-  form.password_value = base::UTF8ToUTF16("None");
-  passwords.push_back(std::make_unique<PasswordForm>(form));
+  form.username_value = u"Anyone";
+  form.password_value = u"None";
+  credentials.emplace_back(form);
 
-  CSVPasswordSequence seq(PasswordCSVWriter::SerializePasswords(passwords));
+  CSVPasswordSequence seq(PasswordCSVWriter::SerializePasswords(credentials));
   ASSERT_EQ(CSVPassword::Status::kOK, seq.result());
 
-  std::vector<PasswordForm> pwds;
+  std::vector<CredentialUIEntry> pwds;
   for (const auto& pwd : seq) {
-    pwds.push_back(pwd.ParseValid());
+    pwds.emplace_back(pwd);
   }
   EXPECT_THAT(pwds, ElementsAre(FormHasOriginUsernamePassword(
                                     "http://example.com/", "Someone", "Secret"),
                                 FormHasOriginUsernamePassword(
                                     "http://other.org/", "Anyone", "None")));
+}
+
+TEST(PasswordCSVWriterTest, SerializePasswordsWritesNames) {
+  for (bool is_notes_enabled : {false, true}) {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureState(syncer::kPasswordNotesWithBackup,
+                                      is_notes_enabled);
+    std::vector<CredentialUIEntry> credentials;
+    PasswordForm form;
+    form.url = GURL("http://example.com");
+    form.username_value = u"a";
+    form.password_value = u"b";
+    credentials.emplace_back(form);
+    form.url = GURL(
+        "android://"
+        "Jzj5T2E45Hb33D-lk-"
+        "EHZVCrb7a064dEicTwrTYQYGXO99JqE2YERhbMP1qLogwJiy87OsBzC09Gk094Z-U_hg=="
+        "@"
+        "com.netflix.mediaclient");
+    form.signon_realm =
+        "android://"
+        "Jzj5T2E45Hb33D-lk-"
+        "EHZVCrb7a064dEicTwrTYQYGXO99JqE2YERhbMP1qLogwJiy87OsBzC09Gk094Z-U_hg=="
+        "@"
+        "com.netflix.mediaclient";
+    form.app_display_name = "Netflix";
+    form.username_value = u"a";
+    form.password_value = u"b";
+    credentials.emplace_back(form);
+    std::string expected =
+        is_notes_enabled
+            ? "name,url,username,password,note" + kLineEnding +
+                  "example.com,http://example.com/,a,b," + kLineEnding +
+                  "Netflix,android://Jzj5T2E45Hb33D-lk-"
+                  "EHZVCrb7a064dEicTwrTYQYGXO99JqE2YERhbMP1qLogwJiy87OsB"
+                  "zC09Gk094Z-U_hg==@com.netflix.mediaclient,a,b," +
+                  kLineEnding
+            : "name,url,username,password" + kLineEnding +
+                  "example.com,http://example.com/,a,b" + kLineEnding +
+                  "Netflix,android://Jzj5T2E45Hb33D-lk-"
+                  "EHZVCrb7a064dEicTwrTYQYGXO99JqE2YERhbMP1qLogwJiy87OsB"
+                  "zC09Gk094Z-U_hg==@com.netflix.mediaclient,a,b" +
+                  kLineEnding;
+    EXPECT_EQ(expected, PasswordCSVWriter::SerializePasswords(credentials));
+  }
 }
 
 }  // namespace password_manager

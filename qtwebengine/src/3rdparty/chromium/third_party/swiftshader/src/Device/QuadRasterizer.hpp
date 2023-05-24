@@ -25,7 +25,7 @@ namespace sw {
 class QuadRasterizer : public Rasterizer
 {
 public:
-	QuadRasterizer(const PixelProcessor::State &state, SpirvShader const *spirvShader);
+	QuadRasterizer(const PixelProcessor::State &state, const SpirvShader *spirvShader);
 	virtual ~QuadRasterizer();
 
 	void generate();
@@ -33,12 +33,18 @@ public:
 protected:
 	Pointer<Byte> constants;
 
-	Float4 Dz[4];
-	Float4 Dw;
-	Float4 Dv[MAX_INTERFACE_COMPONENTS];
-	Float4 Df;
-	Float4 DclipDistance[MAX_CLIP_DISTANCES];
-	Float4 DcullDistance[MAX_CULL_DISTANCES];
+	// Fragment coordinates relative to the polygon's origin
+	// TODO(b/236162233): Use SIMD::Float2
+	SIMD::Float xFragment;
+	SIMD::Float yFragment;
+
+	// B * y + C term of interpolants plane equations
+	SIMD::Float Dz[4];
+	SIMD::Float Dw;
+	SIMD::Float Dv[MAX_INTERFACE_COMPONENTS];
+	SIMD::Float Df;
+	SIMD::Float DclipDistance[MAX_CLIP_DISTANCES];
+	SIMD::Float DcullDistance[MAX_CULL_DISTANCES];
 
 	UInt occlusion;
 
@@ -46,7 +52,7 @@ protected:
 
 	bool interpolateZ() const;
 	bool interpolateW() const;
-	Float4 interpolate(Float4 &x, Float4 &D, Float4 &rhw, Pointer<Byte> planeEquation, bool flat, bool perspective, bool clamp);
+	SIMD::Float interpolate(SIMD::Float &x, SIMD::Float &D, SIMD::Float &rhw, Pointer<Byte> planeEquation, bool flat, bool perspective);
 
 	const PixelProcessor::State &state;
 	const SpirvShader *const spirvShader;

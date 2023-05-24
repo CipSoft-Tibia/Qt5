@@ -24,6 +24,13 @@ namespace perfetto {
 namespace base {
 namespace {
 
+template <size_t N>
+struct UninitializedBuf {
+  UninitializedBuf() { memset(data, '?', sizeof(data)); }
+  operator char*() { return data; }
+  char data[N];
+};
+
 using testing::ElementsAre;
 
 TEST(StringUtilsTest, Lowercase) {
@@ -134,10 +141,15 @@ TEST(StringUtilsTest, StringToDouble) {
   EXPECT_DOUBLE_EQ(StringToDouble("1").value(), 1l);
   EXPECT_DOUBLE_EQ(StringToDouble("-42").value(), -42l);
   EXPECT_DOUBLE_EQ(StringToDouble("-42.5").value(), -42.5l);
+  EXPECT_DOUBLE_EQ(StringToDouble("0.5").value(), .5l);
+  EXPECT_DOUBLE_EQ(StringToDouble(".5").value(), .5l);
   EXPECT_EQ(StringToDouble(""), nullopt);
   EXPECT_EQ(StringToDouble("!?"), nullopt);
   EXPECT_EQ(StringToDouble("abc"), nullopt);
   EXPECT_EQ(StringToDouble("123 abc"), nullopt);
+  EXPECT_EQ(StringToDouble("124,456"), nullopt);
+  EXPECT_EQ(StringToDouble("4 2"), nullopt);
+  EXPECT_EQ(StringToDouble(" - 42"), nullopt);
 }
 
 TEST(StringUtilsTest, StartsWith) {
@@ -149,6 +161,14 @@ TEST(StringUtilsTest, StartsWith) {
   EXPECT_FALSE(StartsWith("abc", "abcd"));
   EXPECT_FALSE(StartsWith("aa", "ab"));
   EXPECT_FALSE(StartsWith("", "ab"));
+}
+
+TEST(StringUtilsTest, StartsWithAny) {
+  EXPECT_FALSE(StartsWithAny("", {"a", "b"}));
+  EXPECT_FALSE(StartsWithAny("abcd", {}));
+  EXPECT_FALSE(StartsWithAny("", {}));
+  EXPECT_TRUE(StartsWithAny("abcd", {"ac", "ab"}));
+  EXPECT_FALSE(StartsWithAny("abcd", {"bc", "ac"}));
 }
 
 TEST(StringUtilsTest, EndsWith) {
@@ -167,11 +187,26 @@ TEST(StringUtilsTest, ToHex) {
   EXPECT_EQ(ToHex("abc123"), "616263313233");
 }
 
-TEST(StringUtilsTest, intToHex) {
+TEST(StringUtilsTest, IntToHex) {
   EXPECT_EQ(IntToHexString(0), "0x00");
   EXPECT_EQ(IntToHexString(1), "0x01");
   EXPECT_EQ(IntToHexString(16), "0x10");
   EXPECT_EQ(IntToHexString(4294967295), "0xffffffff");
+}
+
+TEST(StringUtilsTest, Uint64ToHex) {
+  EXPECT_EQ(Uint64ToHexString(0), "0x0");
+  EXPECT_EQ(Uint64ToHexString(1), "0x1");
+  EXPECT_EQ(Uint64ToHexString(16), "0x10");
+  EXPECT_EQ(Uint64ToHexString(18446744073709551615UL), "0xffffffffffffffff");
+}
+
+TEST(StringUtilsTest, Uint64ToHexNoPrefix) {
+  EXPECT_EQ(Uint64ToHexStringNoPrefix(0), "0");
+  EXPECT_EQ(Uint64ToHexStringNoPrefix(1), "1");
+  EXPECT_EQ(Uint64ToHexStringNoPrefix(16), "10");
+  EXPECT_EQ(Uint64ToHexStringNoPrefix(18446744073709551615UL),
+            "ffffffffffffffff");
 }
 
 TEST(StringUtilsTest, CaseInsensitiveEqual) {
@@ -214,6 +249,16 @@ TEST(StringUtilsTest, Strip) {
   EXPECT_EQ(StripChars("foobar", "oa", '_'), "f__b_r");
   EXPECT_EQ(StripChars("foobar", "fbr", '_'), "_oo_a_");
   EXPECT_EQ(StripChars("foobar", "froab", '_'), "______");
+}
+
+TEST(StringUtilsTest, TrimWhitespace) {
+  EXPECT_EQ(TrimWhitespace(""), "");
+  EXPECT_EQ(TrimWhitespace(" "), "");
+  EXPECT_EQ(TrimWhitespace("\t\n"), "");
+
+  EXPECT_EQ(TrimWhitespace("\tx\n\n"), "x");
+  EXPECT_EQ(TrimWhitespace("\tx\n"), "x");
+  EXPECT_EQ(TrimWhitespace("\tx\nx\n"), "x\nx");
 }
 
 TEST(StringUtilsTest, Contains) {
@@ -261,11 +306,190 @@ TEST(StringUtilsTest, ReplaceAll) {
   EXPECT_EQ(ReplaceAll("abc", "c", "bbb"), "abbbb");
 }
 
-TEST(StringUtilsTest, TrimLeading) {
-  EXPECT_EQ(TrimLeading(""), "");
-  EXPECT_EQ(TrimLeading("a"), "a");
-  EXPECT_EQ(TrimLeading(" aaaa"), "aaaa");
-  EXPECT_EQ(TrimLeading(" aaaaa     "), "aaaaa     ");
+TEST(StringUtilsTest, StringCopy) {
+  // Nothing should be written when |dst_size| = 0.
+  {
+    char dst[2] = {42, 43};
+    StringCopy(dst, "12345", 0);
+    EXPECT_EQ(42, dst[0]);
+    EXPECT_EQ(43, dst[1]);
+  }
+
+  // Nominal case, len(src) < sizeof(dst).
+  {
+    UninitializedBuf<10> dst;
+    StringCopy(dst, "1234567", sizeof(dst));
+    EXPECT_STREQ(dst, "1234567");
+  }
+
+  // Edge case where we perfectly fit including the \0.
+  {
+    UninitializedBuf<8> dst;
+    StringCopy(dst, "1234567", sizeof(dst));
+    EXPECT_STREQ(dst, "1234567");
+  }
+
+  // Edge case where |dst| is smaller by one char.
+  {
+    UninitializedBuf<8> dst;
+    StringCopy(dst, "12345678", sizeof(dst));
+    EXPECT_STREQ(dst, "1234567");
+  }
+
+  // Case when |dst| is smaller than |src|.
+  {
+    UninitializedBuf<3> dst;
+    StringCopy(dst, "12345678", sizeof(dst));
+    EXPECT_STREQ(dst, "12");
+  }
+}
+
+TEST(StringUtilsTest, SprintfTrunc) {
+  {
+    UninitializedBuf<3> dst;
+    ASSERT_EQ(0u, SprintfTrunc(dst, sizeof(dst), "%s", ""));
+    EXPECT_STREQ(dst, "");
+  }
+
+  {
+    char dst[3]{'O', 'K', '\0'};
+    ASSERT_EQ(0u, SprintfTrunc(dst, 0, "whatever"));
+    EXPECT_STREQ(dst, "OK");  // dst_size == 0 shouldn't touch the buffer.
+  }
+
+  {
+    UninitializedBuf<1> dst;
+    ASSERT_EQ(0u, SprintfTrunc(dst, sizeof(dst), "whatever"));
+    EXPECT_STREQ(dst, "");
+  }
+
+  {
+    UninitializedBuf<3> dst;
+    ASSERT_EQ(1u, SprintfTrunc(dst, sizeof(dst), "1"));
+    EXPECT_STREQ(dst, "1");
+  }
+
+  {
+    UninitializedBuf<3> dst;
+    ASSERT_EQ(2u, SprintfTrunc(dst, sizeof(dst), "12"));
+    EXPECT_STREQ(dst, "12");
+  }
+
+  {
+    UninitializedBuf<3> dst;
+    ASSERT_EQ(2u, SprintfTrunc(dst, sizeof(dst), "123"));
+    EXPECT_STREQ(dst, "12");
+  }
+
+  {
+    UninitializedBuf<3> dst;
+    ASSERT_EQ(2u, SprintfTrunc(dst, sizeof(dst), "1234"));
+    EXPECT_STREQ(dst, "12");
+  }
+
+  {
+    UninitializedBuf<11> dst;
+    ASSERT_EQ(10u, SprintfTrunc(dst, sizeof(dst), "a %d b %s", 42, "foo"));
+    EXPECT_STREQ(dst, "a 42 b foo");
+  }
+}
+
+TEST(StringUtilsTest, StackString) {
+  {
+    StackString<1> s("123");
+    EXPECT_EQ(0u, s.len());
+    EXPECT_STREQ("", s.c_str());
+  }
+
+  {
+    StackString<4> s("123");
+    EXPECT_EQ(3u, s.len());
+    EXPECT_STREQ("123", s.c_str());
+    EXPECT_EQ(s.ToStdString(), std::string(s.c_str()));
+    EXPECT_EQ(s.string_view().ToStdString(), s.ToStdString());
+  }
+
+  {
+    StackString<3> s("123");
+    EXPECT_EQ(2u, s.len());
+    EXPECT_STREQ("12", s.c_str());
+    EXPECT_EQ(s.ToStdString(), std::string(s.c_str()));
+    EXPECT_EQ(s.string_view().ToStdString(), s.ToStdString());
+  }
+
+  {
+    StackString<11> s("foo %d %s", 42, "bar!!!OVERFLOW");
+    EXPECT_EQ(10u, s.len());
+    EXPECT_STREQ("foo 42 bar", s.c_str());
+    EXPECT_EQ(s.ToStdString(), std::string(s.c_str()));
+    EXPECT_EQ(s.string_view().ToStdString(), s.ToStdString());
+  }
+}
+
+TEST(FindLineTest, InvalidOffset1) {
+  std::string str = "abc\ndef\n\nghi";
+  uint32_t offset = 3;
+
+  auto error = FindLineWithOffset(base::StringView(str), offset);
+
+  EXPECT_FALSE(error.has_value());
+}
+
+TEST(FindLineTest, InvalidOffset2) {
+  std::string str = "abc\ndef\n\nghi";
+  uint32_t offset = 8;
+
+  auto error = FindLineWithOffset(base::StringView(str), offset);
+
+  EXPECT_FALSE(error.has_value());
+}
+
+TEST(FindLineTest, FirstCharacter) {
+  std::string str = "abc\ndef\n\nghi";
+  uint32_t offset = 0;
+
+  auto error = FindLineWithOffset(base::StringView(str), offset);
+
+  EXPECT_TRUE(error.has_value());
+  ASSERT_EQ(error.value().line_num, 1ul);
+  ASSERT_EQ(error.value().line_offset, 0ul);
+  ASSERT_EQ(error.value().line, "abc");
+}
+
+TEST(FindLineTest, StandardCheck) {
+  std::string str = "abc\ndef\n\nghi";
+  uint32_t offset = 5;
+
+  auto error = FindLineWithOffset(base::StringView(str), offset);
+
+  EXPECT_TRUE(error.has_value());
+  ASSERT_EQ(error.value().line_num, 2ul);
+  ASSERT_EQ(error.value().line_offset, 1ul);
+  ASSERT_EQ(error.value().line, "def");
+}
+
+TEST(FindLineTest, TwoBreakLines) {
+  std::string str = "abc\ndef\n\nghi";
+  uint32_t offset = 10;
+
+  auto error = FindLineWithOffset(base::StringView(str), offset);
+
+  EXPECT_TRUE(error.has_value());
+  ASSERT_EQ(error.value().line_num, 4ul);
+  ASSERT_EQ(error.value().line_offset, 1ul);
+  ASSERT_EQ(error.value().line, "ghi");
+}
+
+TEST(FindLineTest, EndsWithBreakLine) {
+  std::string str = "abc\ndef\n\nghi\n";
+  uint32_t offset = 10;
+
+  auto error = FindLineWithOffset(base::StringView(str), offset);
+
+  EXPECT_TRUE(error.has_value());
+  ASSERT_EQ(error.value().line_num, 4ul);
+  ASSERT_EQ(error.value().line_offset, 1ul);
+  ASSERT_EQ(error.value().line, "ghi");
 }
 
 }  // namespace

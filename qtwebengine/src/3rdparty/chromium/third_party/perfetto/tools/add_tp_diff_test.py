@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 import os
 import pathlib
 import sys
@@ -83,8 +82,8 @@ def main():
   print()
   trace_file = ''
   if trace_type == 'proto':
-    print('Proto traces should be added to the test-data zip '
-          'using the tools/add_test_trace.sh')
+    print('Proto traces should be added to the test_data GCS bucket '
+          'using tools/test_data upload')
     stdout_write('Provide the name of the trace (including any '
                  'extension) relative to test/data: ')
 
@@ -127,18 +126,25 @@ def main():
     return 1
 
   print()
-  print('Provide the path to the SQL file relative to the chosen folder {}'
-        .format(chosen_folder_path_rel_root))
+  print(
+      'Provide either the name of a built-in metric OR path to the file '
+      '(which must end in "_test.sql") relative to the chosen folder {}'.format(
+          chosen_folder_path_rel_root))
   stdout_write(
       'If the file does not already exist, an empty file will be created: ')
 
-  sql_file = sys.stdin.readline().rstrip()
-  sql_path = os.path.abspath(os.path.join(chosen_folder_path, sql_file))
-  create_if_not_exists(sql_path)
+  sql_file_or_metric = sys.stdin.readline().rstrip()
+  if sql_file_or_metric.endswith('.sql'):
+    if not  sql_file_or_metric.endswith('_test.sql'):
+      print('Error: SQL file {} must end in _test.sql'.format(sql_file_or_metric))
+      return 1
+    sql_path = os.path.abspath(
+        os.path.join(chosen_folder_path, sql_file_or_metric))
+    create_if_not_exists(sql_path)
 
   default_out_file = '{}_{}.out'.format(
       pathlib.Path(trace_file).stem,
-      pathlib.Path(sql_file).stem)
+      pathlib.Path(sql_file_or_metric).stem)
 
   print()
   print('Provide the name of the output file (or leave empty '
@@ -155,7 +161,13 @@ def main():
   print()
   print('Appending test to index file')
   with open(os.path.join(chosen_folder_path, 'index'), 'a') as index_file:
-    index_file.write('{} {} {}\n'.format(trace_file, sql_file, out_file))
+    index_file.write('{} {} {}\n'.format(trace_file, sql_file_or_metric,
+                                         out_file))
+
+  index_rel_path = os.path.join(chosen_folder_path_rel_root, 'index')
+  print()
+  print(f'Please modify the index file at {index_rel_path} by adding a '
+        f'comment and grouping with related tests')
 
   return 0
 

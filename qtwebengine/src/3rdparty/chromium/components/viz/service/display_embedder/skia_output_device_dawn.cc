@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,9 @@
 
 #include "base/check_op.h"
 #include "base/notreached.h"
+#include "base/time/time.h"
 #include "components/viz/common/gpu/dawn_context_provider.h"
-#include "third_party/dawn/src/include/dawn_native/D3D12Backend.h"
+#include "third_party/dawn/include/dawn/native/D3D12Backend.h"
 #include "ui/gfx/presentation_feedback.h"
 #include "ui/gfx/vsync_provider.h"
 #include "ui/gl/vsync_provider_win.h"
@@ -25,21 +26,19 @@ constexpr wgpu::TextureFormat kSwapChainFormat =
     wgpu::TextureFormat::RGBA8Unorm;
 
 constexpr wgpu::TextureUsage kUsage =
-    wgpu::TextureUsage::OutputAttachment | wgpu::TextureUsage::CopySrc;
+    wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc;
 
 }  // namespace
 
 SkiaOutputDeviceDawn::SkiaOutputDeviceDawn(
     DawnContextProvider* context_provider,
-    gfx::AcceleratedWidget widget,
     gfx::SurfaceOrigin origin,
     gpu::MemoryTracker* memory_tracker,
     DidSwapBufferCompleteCallback did_swap_buffer_complete_callback)
     : SkiaOutputDevice(context_provider->GetGrContext(),
                        memory_tracker,
                        did_swap_buffer_complete_callback),
-      context_provider_(context_provider),
-      child_window_(widget) {
+      context_provider_(context_provider) {
   capabilities_.output_surface_origin = origin;
   capabilities_.uses_default_gl_framebuffer = false;
   capabilities_.supports_post_sub_buffer = false;
@@ -53,8 +52,9 @@ SkiaOutputDeviceDawn::SkiaOutputDeviceDawn(
       kSurfaceColorType;
   capabilities_.sk_color_types[static_cast<int>(gfx::BufferFormat::BGRX_8888)] =
       kSurfaceColorType;
-  vsync_provider_ = std::make_unique<gl::VSyncProviderWin>(widget);
   child_window_.Initialize();
+  vsync_provider_ =
+      std::make_unique<gl::VSyncProviderWin>(child_window_.window());
 }
 
 SkiaOutputDeviceDawn::~SkiaOutputDeviceDawn() = default;
@@ -63,20 +63,21 @@ gpu::SurfaceHandle SkiaOutputDeviceDawn::GetChildSurfaceHandle() const {
   return child_window_.window();
 }
 
-bool SkiaOutputDeviceDawn::Reshape(const gfx::Size& size,
-                                   float device_scale_factor,
-                                   const gfx::ColorSpace& color_space,
-                                   gfx::BufferFormat format,
-                                   gfx::OverlayTransform transform) {
+bool SkiaOutputDeviceDawn::Reshape(
+    const SkSurfaceCharacterization& characterization,
+    const gfx::ColorSpace& color_space,
+    float device_scale_factor,
+    gfx::OverlayTransform transform) {
   DCHECK_EQ(transform, gfx::OVERLAY_TRANSFORM_NONE);
 
-  size_ = size;
-  sk_color_space_ = color_space.ToSkColorSpace();
+  size_ = gfx::SkISizeToSize(characterization.dimensions());
+  sk_color_space_ = characterization.refColorSpace();
+  sample_count_ = characterization.sampleCount();
 
   CreateSwapChainImplementation();
   wgpu::SwapChainDescriptor desc;
   desc.implementation = reinterpret_cast<int64_t>(&swap_chain_implementation_);
-  // TODO(sgilhuly): Use a wgpu::Surface in this call once the Surface-based
+  // TODO(rivr): Use a wgpu::Surface in this call once the Surface-based
   // SwapChain API is ready.
   swap_chain_ = context_provider_->GetDevice().CreateSwapChain(nullptr, &desc);
   if (!swap_chain_)
@@ -86,20 +87,18 @@ bool SkiaOutputDeviceDawn::Reshape(const gfx::Size& size,
   return true;
 }
 
-void SkiaOutputDeviceDawn::SwapBuffers(
-    BufferPresentedCallback feedback,
-    std::vector<ui::LatencyInfo> latency_info) {
+void SkiaOutputDeviceDawn::SwapBuffers(BufferPresentedCallback feedback,
+                                       OutputSurfaceFrame frame) {
   StartSwapBuffers({});
   swap_chain_.Present();
   FinishSwapBuffers(gfx::SwapCompletionResult(gfx::SwapResult::SWAP_ACK),
-                    gfx::Size(size_.width(), size_.height()),
-                    std::move(latency_info));
+                    gfx::Size(size_.width(), size_.height()), std::move(frame));
 
   base::TimeTicks timestamp = base::TimeTicks::Now();
   base::TimeTicks vsync_timebase;
   base::TimeDelta vsync_interval;
   uint32_t flags = 0;
-  // TODO(sgilhuly): Add an async path for getting vsync parameters. The sync
+  // TODO(rivr): Add an async path for getting vsync parameters. The sync
   // path is sufficient for VSyncProviderWin.
   if (vsync_provider_ && vsync_provider_->GetVSyncParametersIfAvailable(
                              &vsync_timebase, &vsync_interval)) {
@@ -119,12 +118,10 @@ SkSurface* SkiaOutputDeviceDawn::BeginPaint(
   info.fTextureView = swap_chain_.GetCurrentTextureView();
   info.fFormat = kSwapChainFormat;
   info.fLevelCount = 1;
-  GrBackendRenderTarget backend_target(
-      size_.width(), size_.height(), /*sampleCnt=*/0, /*stencilBits=*/0, info);
+  GrBackendRenderTarget backend_target(size_.width(), size_.height(),
+                                       sample_count_, /*stencilBits=*/0, info);
   DCHECK(backend_target.isValid());
-  // LegacyFontHost will get LCD text and skia figures out what type to use.
-  SkSurfaceProps surface_props(/*flags=*/0,
-                               SkSurfaceProps::kLegacyFontHost_InitType);
+  SkSurfaceProps surface_props{0, kUnknown_SkPixelGeometry};
   sk_surface_ = SkSurface::MakeFromBackendRenderTarget(
       context_provider_->GetGrContext(), backend_target,
       capabilities_.output_surface_origin == gfx::SurfaceOrigin::kTopLeft
@@ -141,7 +138,7 @@ void SkiaOutputDeviceDawn::EndPaint() {
 }
 
 void SkiaOutputDeviceDawn::CreateSwapChainImplementation() {
-  swap_chain_implementation_ = dawn_native::d3d12::CreateNativeSwapChainImpl(
+  swap_chain_implementation_ = dawn::native::d3d12::CreateNativeSwapChainImpl(
       context_provider_->GetDevice().Get(), child_window_.window());
 }
 

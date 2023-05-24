@@ -1,7 +1,7 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 tg{
-    Version{"37"}
     zoneStrings{
         "Asia:Dushanbe"{
             ec{"Душанбе"}
@@ -53,14 +53,14 @@ tg{
             ls{"Вақти стандартии аврупоии ғарбӣ"}
         }
         "meta:GMT"{
-            ls{"Ба вақти Гринвич"}
+            ls{"Вақти миёнаи Гринвич"}
         }
         fallbackFormat{"{1} ({0})"}
-        gmtFormat{"GMT{0}"}
-        gmtZeroFormat{"GMT"}
+        gmtFormat{"Вақти GMT {0}"}
+        gmtZeroFormat{"Вақти GMT"}
         hourFormat{"+HH:mm;-HH:mm"}
-        regionFormat{"{0}"}
-        regionFormatDaylight{"{0} (+1)"}
-        regionFormatStandard{"{0} (+0)"}
+        regionFormat{"Вақти {0}"}
+        regionFormatDaylight{"Вақти рӯзонаи {0}"}
+        regionFormatStandard{"Вақти стандартии {0}"}
     }
 }

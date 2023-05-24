@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCORE_UNIX_P_H
 #define QCORE_UNIX_P_H
@@ -66,8 +30,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#ifdef Q_OS_NACL
-#elif !defined (Q_OS_VXWORKS)
+#if !defined (Q_OS_VXWORKS)
 # if !defined(Q_OS_HPUX) || defined(__ia64)
 #  include <sys/select.h>
 # endif
@@ -76,6 +39,7 @@
 #  include <selectLib.h>
 #endif
 
+#include <chrono>
 #include <sys/wait.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -96,7 +60,7 @@
 
 struct sockaddr;
 
-#define EINTR_LOOP(var, cmd)                    \
+#define QT_EINTR_LOOP(var, cmd)                 \
     do {                                        \
         var = cmd;                              \
     } while (var == -1 && errno == EINTR)
@@ -105,53 +69,78 @@ QT_BEGIN_NAMESPACE
 
 Q_DECLARE_TYPEINFO(pollfd, Q_PRIMITIVE_TYPE);
 
-// Internal operator functions for timespecs
-inline timespec &normalizedTimespec(timespec &t)
+static constexpr auto OneSecAsNsecs = std::chrono::nanoseconds(std::chrono::seconds{ 1 }).count();
+
+inline timespec durationToTimespec(std::chrono::nanoseconds timeout) noexcept
 {
-    while (t.tv_nsec >= 1000000000) {
+    using namespace std::chrono;
+    const seconds secs = duration_cast<seconds>(timeout);
+    const nanoseconds frac = timeout - secs;
+    struct timespec ts;
+    ts.tv_sec = secs.count();
+    ts.tv_nsec = frac.count();
+    return ts;
+}
+
+template <typename Duration>
+inline Duration timespecToChrono(timespec ts) noexcept
+{
+    using namespace std::chrono;
+    return duration_cast<Duration>(seconds{ts.tv_sec} + nanoseconds{ts.tv_nsec});
+}
+
+inline std::chrono::milliseconds timespecToChronoMs(timespec ts) noexcept
+{
+    return timespecToChrono<std::chrono::milliseconds>(ts);
+}
+
+// Internal operator functions for timespecs
+constexpr inline timespec &normalizedTimespec(timespec &t)
+{
+    while (t.tv_nsec >= OneSecAsNsecs) {
         ++t.tv_sec;
-        t.tv_nsec -= 1000000000;
+        t.tv_nsec -= OneSecAsNsecs;
     }
     while (t.tv_nsec < 0) {
         --t.tv_sec;
-        t.tv_nsec += 1000000000;
+        t.tv_nsec += OneSecAsNsecs;
     }
     return t;
 }
-inline bool operator<(const timespec &t1, const timespec &t2)
+constexpr inline bool operator<(const timespec &t1, const timespec &t2)
 { return t1.tv_sec < t2.tv_sec || (t1.tv_sec == t2.tv_sec && t1.tv_nsec < t2.tv_nsec); }
-inline bool operator==(const timespec &t1, const timespec &t2)
+constexpr inline bool operator==(const timespec &t1, const timespec &t2)
 { return t1.tv_sec == t2.tv_sec && t1.tv_nsec == t2.tv_nsec; }
-inline bool operator!=(const timespec &t1, const timespec &t2)
+constexpr inline bool operator!=(const timespec &t1, const timespec &t2)
 { return !(t1 == t2); }
-inline timespec &operator+=(timespec &t1, const timespec &t2)
+constexpr inline timespec &operator+=(timespec &t1, const timespec &t2)
 {
     t1.tv_sec += t2.tv_sec;
     t1.tv_nsec += t2.tv_nsec;
     return normalizedTimespec(t1);
 }
-inline timespec operator+(const timespec &t1, const timespec &t2)
+constexpr inline timespec operator+(const timespec &t1, const timespec &t2)
 {
-    timespec tmp;
+    timespec tmp = {};
     tmp.tv_sec = t1.tv_sec + t2.tv_sec;
     tmp.tv_nsec = t1.tv_nsec + t2.tv_nsec;
     return normalizedTimespec(tmp);
 }
-inline timespec operator-(const timespec &t1, const timespec &t2)
+constexpr inline timespec operator-(const timespec &t1, const timespec &t2)
 {
-    timespec tmp;
+    timespec tmp = {};
     tmp.tv_sec = t1.tv_sec - (t2.tv_sec - 1);
-    tmp.tv_nsec = t1.tv_nsec - (t2.tv_nsec + 1000000000);
+    tmp.tv_nsec = t1.tv_nsec - (t2.tv_nsec + OneSecAsNsecs);
     return normalizedTimespec(tmp);
 }
-inline timespec operator*(const timespec &t1, int mul)
+constexpr inline timespec operator*(const timespec &t1, int mul)
 {
-    timespec tmp;
+    timespec tmp = {};
     tmp.tv_sec = t1.tv_sec * mul;
     tmp.tv_nsec = t1.tv_nsec * mul;
     return normalizedTimespec(tmp);
 }
-inline timeval timespecToTimeval(const timespec &ts)
+inline timeval timespecToTimeval(timespec ts)
 {
     timeval tv;
     tv.tv_sec = ts.tv_sec;
@@ -159,11 +148,46 @@ inline timeval timespecToTimeval(const timespec &ts)
     return tv;
 }
 
+inline timespec &operator+=(timespec &t1, std::chrono::milliseconds msecs)
+{
+    t1 += durationToTimespec(msecs);
+    return t1;
+}
+
+inline timespec &operator+=(timespec &t1, int ms)
+{
+    t1 += std::chrono::milliseconds{ms};
+    return t1;
+}
+
+inline timespec operator+(const timespec &t1, std::chrono::milliseconds msecs)
+{
+    timespec tmp = t1;
+    tmp += msecs;
+    return tmp;
+}
+
+inline timespec operator+(const timespec &t1, int ms)
+{
+    return t1 + std::chrono::milliseconds{ms};
+}
+
+inline timespec qAbsTimespec(timespec ts)
+{
+    if (ts.tv_sec < 0) {
+        ts.tv_sec = -ts.tv_sec - 1;
+        ts.tv_nsec -= OneSecAsNsecs;
+    }
+    if (ts.tv_sec == 0 && ts.tv_nsec < 0) {
+        ts.tv_nsec = -ts.tv_nsec;
+    }
+    return normalizedTimespec(ts);
+}
 
 inline void qt_ignore_sigpipe()
 {
     // Set to ignore SIGPIPE once only.
-    static QBasicAtomicInt atom = Q_BASIC_ATOMIC_INITIALIZER(0);
+    Q_CONSTINIT static QBasicAtomicInt atom = Q_BASIC_ATOMIC_INITIALIZER(0);
     if (!atom.loadRelaxed()) {
         // More than one thread could turn off SIGPIPE at the same time
         // But that's acceptable because they all would be doing the same
@@ -192,7 +216,7 @@ static inline int qt_safe_open(const char *pathname, int flags, mode_t mode = 07
     flags |= O_CLOEXEC;
 #endif
     int fd;
-    EINTR_LOOP(fd, QT_OPEN(pathname, flags, mode));
+    QT_EINTR_LOOP(fd, QT_OPEN(pathname, flags, mode));
 
 #ifndef O_CLOEXEC
     if (fd != -1)
@@ -264,10 +288,10 @@ static inline int qt_safe_dup2(int oldfd, int newfd, int flags = FD_CLOEXEC)
     int ret;
 #ifdef QT_THREADSAFE_CLOEXEC
     // use dup3
-    EINTR_LOOP(ret, ::dup3(oldfd, newfd, flags ? O_CLOEXEC : 0));
+    QT_EINTR_LOOP(ret, ::dup3(oldfd, newfd, flags ? O_CLOEXEC : 0));
     return ret;
 #else
-    EINTR_LOOP(ret, ::dup2(oldfd, newfd));
+    QT_EINTR_LOOP(ret, ::dup2(oldfd, newfd));
     if (ret == -1)
         return -1;
 
@@ -280,7 +304,7 @@ static inline int qt_safe_dup2(int oldfd, int newfd, int flags = FD_CLOEXEC)
 static inline qint64 qt_safe_read(int fd, void *data, qint64 maxlen)
 {
     qint64 ret = 0;
-    EINTR_LOOP(ret, QT_READ(fd, data, maxlen));
+    QT_EINTR_LOOP(ret, QT_READ(fd, data, maxlen));
     return ret;
 }
 #undef QT_READ
@@ -289,7 +313,7 @@ static inline qint64 qt_safe_read(int fd, void *data, qint64 maxlen)
 static inline qint64 qt_safe_write(int fd, const void *data, qint64 len)
 {
     qint64 ret = 0;
-    EINTR_LOOP(ret, QT_WRITE(fd, data, len));
+    QT_EINTR_LOOP(ret, QT_WRITE(fd, data, len));
     return ret;
 }
 #undef QT_WRITE
@@ -304,7 +328,7 @@ static inline qint64 qt_safe_write_nosignal(int fd, const void *data, qint64 len
 static inline int qt_safe_close(int fd)
 {
     int ret;
-    EINTR_LOOP(ret, QT_CLOSE(fd));
+    QT_EINTR_LOOP(ret, QT_CLOSE(fd));
     return ret;
 }
 #undef QT_CLOSE
@@ -316,28 +340,28 @@ static inline int qt_safe_execve(const char *filename, char *const argv[],
                                  char *const envp[])
 {
     int ret;
-    EINTR_LOOP(ret, ::execve(filename, argv, envp));
+    QT_EINTR_LOOP(ret, ::execve(filename, argv, envp));
     return ret;
 }
 
 static inline int qt_safe_execv(const char *path, char *const argv[])
 {
     int ret;
-    EINTR_LOOP(ret, ::execv(path, argv));
+    QT_EINTR_LOOP(ret, ::execv(path, argv));
     return ret;
 }
 
 static inline int qt_safe_execvp(const char *file, char *const argv[])
 {
     int ret;
-    EINTR_LOOP(ret, ::execvp(file, argv));
+    QT_EINTR_LOOP(ret, ::execvp(file, argv));
     return ret;
 }
 
 static inline pid_t qt_safe_waitpid(pid_t pid, int *status, int options)
 {
     int ret;
-    EINTR_LOOP(ret, ::waitpid(pid, status, options));
+    QT_EINTR_LOOP(ret, ::waitpid(pid, status, options));
     return ret;
 }
 #endif // QT_CONFIG(process)
@@ -348,7 +372,6 @@ static inline pid_t qt_safe_waitpid(pid_t pid, int *status, int options)
 
 // in qelapsedtimer_mac.cpp or qtimestamp_unix.cpp
 timespec qt_gettime() noexcept;
-void qt_nanosleep(timespec amount);
 QByteArray qt_readlink(const char *path);
 
 /* non-static */

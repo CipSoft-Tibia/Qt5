@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -62,8 +62,12 @@ class CORE_EXPORT LayoutOutsideListMarker final : public LayoutBlockFlow {
   ListMarker list_marker_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutOutsideListMarker,
-                                IsOutsideListMarkerForCustomContent());
+template <>
+struct DowncastTraits<LayoutOutsideListMarker> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsOutsideListMarkerForCustomContent();
+  }
+};
 
 }  // namespace blink
 

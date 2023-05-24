@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@
 namespace content {
 
 // Enables ref-counted shared ownership of a
-// mojo::Remote<video_capture::mojom::DeviceFactory>.
+// mojo::Remote<video_capture::mojom::VideoSourceProvider>.
 // Since instances of this class do not guarantee that the connection stays open
 // for its entire lifetime, clients must verify that the connection is bound
 // before using it.
@@ -24,6 +24,10 @@ class CONTENT_EXPORT RefCountedVideoSourceProvider
       mojo::Remote<video_capture::mojom::VideoSourceProvider> source_provider,
       base::OnceClosure destruction_cb);
 
+  RefCountedVideoSourceProvider(const RefCountedVideoSourceProvider&) = delete;
+  RefCountedVideoSourceProvider& operator=(
+      const RefCountedVideoSourceProvider&) = delete;
+
   base::WeakPtr<RefCountedVideoSourceProvider> GetWeakPtr();
 
   const mojo::Remote<video_capture::mojom::VideoSourceProvider>&
@@ -31,7 +35,6 @@ class CONTENT_EXPORT RefCountedVideoSourceProvider
     return source_provider_;
   }
 
-  void SetRetryCount(int32_t count);
   void ReleaseProviderForTesting();
 
  private:
@@ -41,8 +44,6 @@ class CONTENT_EXPORT RefCountedVideoSourceProvider
   mojo::Remote<video_capture::mojom::VideoSourceProvider> source_provider_;
   base::OnceClosure destruction_cb_;
   base::WeakPtrFactory<RefCountedVideoSourceProvider> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(RefCountedVideoSourceProvider);
 };
 
 }  // namespace content

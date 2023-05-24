@@ -1,18 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/blob/blob_bytes_provider.h"
 
-#include <algorithm>
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/files/file.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/ranges/algorithm.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
+#include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
@@ -25,17 +26,17 @@ class BlobBytesProviderTest : public testing::Test {
     Platform::SetMainThreadTaskRunnerForTesting();
 
     test_bytes1_.resize(128);
-    for (size_t i = 0; i < test_bytes1_.size(); ++i)
+    for (wtf_size_t i = 0; i < test_bytes1_.size(); ++i)
       test_bytes1_[i] = i % 191;
     test_data1_ = RawData::Create();
     test_data1_->MutableData()->AppendVector(test_bytes1_);
     test_bytes2_.resize(64);
-    for (size_t i = 0; i < test_bytes2_.size(); ++i)
+    for (wtf_size_t i = 0; i < test_bytes2_.size(); ++i)
       test_bytes2_[i] = i;
     test_data2_ = RawData::Create();
     test_data2_->MutableData()->AppendVector(test_bytes2_);
     test_bytes3_.resize(32);
-    for (size_t i = 0; i < test_bytes3_.size(); ++i)
+    for (wtf_size_t i = 0; i < test_bytes3_.size(); ++i)
       test_bytes3_[i] = (i + 10) % 137;
     test_data3_ = RawData::Create();
     test_data3_->MutableData()->AppendVector(test_bytes3_);
@@ -52,8 +53,7 @@ class BlobBytesProviderTest : public testing::Test {
 
   std::unique_ptr<BlobBytesProvider> CreateProvider(
       scoped_refptr<RawData> data = nullptr) {
-    auto result = BlobBytesProvider::CreateForTesting(
-        blink::scheduler::GetSequencedTaskRunnerForTesting());
+    auto result = std::make_unique<BlobBytesProvider>();
     if (data)
       result->AppendData(std::move(data));
     return result;
@@ -73,10 +73,12 @@ class BlobBytesProviderTest : public testing::Test {
 
 TEST_F(BlobBytesProviderTest, Consolidation) {
   auto data = CreateProvider();
-  data->AppendData(base::make_span("abc", 3));
-  data->AppendData(base::make_span("def", 3));
-  data->AppendData(base::make_span("ps1", 3));
-  data->AppendData(base::make_span("ps2", 3));
+  DCHECK_CALLED_ON_VALID_SEQUENCE(data->sequence_checker_);
+
+  data->AppendData(base::make_span("abc", 3u));
+  data->AppendData(base::make_span("def", 3u));
+  data->AppendData(base::make_span("ps1", 3u));
+  data->AppendData(base::make_span("ps2", 3u));
 
   EXPECT_EQ(1u, data->data_.size());
   EXPECT_EQ(12u, data->data_[0]->length());
@@ -145,14 +147,14 @@ class RequestAsFile : public BlobBytesProviderTest,
                              uint64_t file_offset) {
     base::FilePath path;
     base::CreateTemporaryFile(&path);
-    base::Optional<base::Time> received_modified;
+    absl::optional<base::Time> received_modified;
     test_provider_->RequestAsFile(
         source_offset, source_length,
         base::File(path, base::File::FLAG_OPEN | base::File::FLAG_WRITE),
         file_offset,
         base::BindOnce(
-            [](base::Optional<base::Time>* received_modified,
-               base::Optional<base::Time> modified) {
+            [](absl::optional<base::Time>* received_modified,
+               absl::optional<base::Time> modified) {
               *received_modified = modified;
             },
             &received_modified));
@@ -221,13 +223,12 @@ TEST_P(RequestAsFile, OffsetInNonEmptyFile) {
                   expected_data.size()));
   }
 
-  std::copy(sliced_data_.begin(), sliced_data_.end(),
-            expected_data.begin() + file_offset);
+  base::ranges::copy(sliced_data_, expected_data.begin() + file_offset);
 
   test_provider_->RequestAsFile(
       test.offset, test.size,
       base::File(path, base::File::FLAG_OPEN | base::File::FLAG_WRITE),
-      file_offset, base::BindOnce([](base::Optional<base::Time> last_modified) {
+      file_offset, base::BindOnce([](absl::optional<base::Time> last_modified) {
         EXPECT_TRUE(last_modified);
       }));
 
@@ -274,7 +275,7 @@ TEST_F(BlobBytesProviderTest, RequestAsFile_MultipleChunks) {
     provider->RequestAsFile(
         i, 16, base::File(path, base::File::FLAG_OPEN | base::File::FLAG_WRITE),
         combined_bytes_.size() - i - 16,
-        base::BindOnce([](base::Optional<base::Time> last_modified) {
+        base::BindOnce([](absl::optional<base::Time> last_modified) {
           EXPECT_TRUE(last_modified);
         }));
     expected_data.insert(0, combined_bytes_.data() + i, 16);
@@ -298,7 +299,7 @@ TEST_F(BlobBytesProviderTest, RequestAsFile_InvaldFile) {
 
   provider->RequestAsFile(
       0, 16, base::File(), 0,
-      base::BindOnce([](base::Optional<base::Time> last_modified) {
+      base::BindOnce([](absl::optional<base::Time> last_modified) {
         EXPECT_FALSE(last_modified);
       }));
 }
@@ -310,7 +311,7 @@ TEST_F(BlobBytesProviderTest, RequestAsFile_UnwritableFile) {
   base::CreateTemporaryFile(&path);
   provider->RequestAsFile(
       0, 16, base::File(path, base::File::FLAG_OPEN | base::File::FLAG_READ), 0,
-      base::BindOnce([](base::Optional<base::Time> last_modified) {
+      base::BindOnce([](absl::optional<base::Time> last_modified) {
         EXPECT_FALSE(last_modified);
       }));
 
@@ -327,8 +328,11 @@ TEST_F(BlobBytesProviderTest, RequestAsStream) {
   provider->AppendData(test_data2_);
   provider->AppendData(test_data3_);
 
-  mojo::DataPipe pipe(7);
-  provider->RequestAsStream(std::move(pipe.producer_handle));
+  mojo::ScopedDataPipeProducerHandle producer_handle;
+  mojo::ScopedDataPipeConsumerHandle consumer_handle;
+  ASSERT_EQ(mojo::CreateDataPipe(7, producer_handle, consumer_handle),
+            MOJO_RESULT_OK);
+  provider->RequestAsStream(std::move(producer_handle));
 
   Vector<uint8_t> received_data;
   base::RunLoop loop;
@@ -336,7 +340,7 @@ TEST_F(BlobBytesProviderTest, RequestAsStream) {
       FROM_HERE, mojo::SimpleWatcher::ArmingPolicy::AUTOMATIC,
       blink::scheduler::GetSequencedTaskRunnerForTesting());
   watcher.Watch(
-      pipe.consumer_handle.get(), MOJO_HANDLE_SIGNAL_READABLE,
+      consumer_handle.get(), MOJO_HANDLE_SIGNAL_READABLE,
       MOJO_WATCH_CONDITION_SATISFIED,
       base::BindRepeating(
           [](mojo::DataPipeConsumerHandle pipe,
@@ -361,7 +365,7 @@ TEST_F(BlobBytesProviderTest, RequestAsStream) {
                                     MOJO_READ_DATA_FLAG_ALL_OR_NONE));
             bytes_out->AppendVector(bytes);
           },
-          pipe.consumer_handle.get(), loop.QuitClosure(), &received_data));
+          consumer_handle.get(), loop.QuitClosure(), &received_data));
   loop.Run();
 
   EXPECT_EQ(combined_bytes_, received_data);

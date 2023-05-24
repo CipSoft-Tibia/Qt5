@@ -1,31 +1,59 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/commander/commander_handler.h"
 
-#include "base/bind.h"
+#include <string>
+#include <utility>
+
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/ui/commander/commander_view_model.h"
 
-const char CommanderHandler::Delegate::kKey[] =
-    "CommanderHandler::Delegate::kKey";
+namespace {
+// Message handler keys.
+constexpr char kTextChangedMessage[] = "textChanged";
+constexpr char kOptionSelectedMessage[] = "optionSelected";
+constexpr char kDismissMessage[] = "dismiss";
+constexpr char kHeightChangedMessage[] = "heightChanged";
+constexpr char kCompositeCommandCancelledMessage[] =
+    "compositeCommandCancelled";
+// WebUI event keys.
+constexpr char kViewModelUpdatedEvent[] = "view-model-updated";
+constexpr char kInitializeEvent[] = "initialize";
+// View model dictionary keys
+constexpr char kActionKey[] = "action";
+constexpr char kResultSetIdKey[] = "resultSetId";
+constexpr char kTitleKey[] = "title";
+constexpr char kEntityKey[] = "entity";
+constexpr char kAnnotationKey[] = "annotation";
+constexpr char kMatchedRangesKey[] = "matchedRanges";
+constexpr char kOptionsKey[] = "options";
+constexpr char kPromptTextKey[] = "promptText";
+}  // namespace
+
 CommanderHandler::CommanderHandler() = default;
 CommanderHandler::~CommanderHandler() = default;
 
 void CommanderHandler::RegisterMessages() {
   web_ui()->RegisterMessageCallback(
-      "textChanged", base::BindRepeating(&CommanderHandler::HandleTextChanged,
-                                         base::Unretained(this)));
+      kTextChangedMessage,
+      base::BindRepeating(&CommanderHandler::HandleTextChanged,
+                          base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
-      "optionSelected",
+      kOptionSelectedMessage,
       base::BindRepeating(&CommanderHandler::HandleOptionSelected,
                           base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
-      "dismiss", base::BindRepeating(&CommanderHandler::HandleDismiss,
-                                     base::Unretained(this)));
+      kCompositeCommandCancelledMessage,
+      base::BindRepeating(&CommanderHandler::HandleCompositeCommandCancelled,
+                          base::Unretained(this)));
   web_ui()->RegisterMessageCallback(
-      "heightChanged",
+      kDismissMessage, base::BindRepeating(&CommanderHandler::HandleDismiss,
+                                           base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      kHeightChangedMessage,
       base::BindRepeating(&CommanderHandler::HandleHeightChanged,
                           base::Unretained(this)));
 }
@@ -40,50 +68,79 @@ void CommanderHandler::OnJavascriptAllowed() {
     delegate_->OnHandlerEnabled(true);
 }
 
-void CommanderHandler::HandleTextChanged(const base::ListValue* args) {
+void CommanderHandler::HandleTextChanged(const base::Value::List& args) {
   AllowJavascript();
-  CHECK_EQ(1u, args->GetSize());
-  std::string text = args->GetList()[0].GetString();
+  CHECK_EQ(1u, args.size());
+  std::string text = args[0].GetString();
   if (delegate_)
     delegate_->OnTextChanged(base::UTF8ToUTF16(text));
 }
 
-void CommanderHandler::HandleOptionSelected(const base::ListValue* args) {
+void CommanderHandler::HandleOptionSelected(const base::Value::List& args) {
   AllowJavascript();
-  CHECK_EQ(2u, args->GetSize());
-  int index = args->GetList()[0].GetInt();
-  int result_set_id = args->GetList()[1].GetInt();
+  CHECK_EQ(2u, args.size());
+  int index = args[0].GetInt();
+  int result_set_id = args[1].GetInt();
   if (delegate_)
     delegate_->OnOptionSelected(index, result_set_id);
 }
 
-void CommanderHandler::HandleDismiss(const base::ListValue* args) {
+void CommanderHandler::HandleCompositeCommandCancelled(
+    const base::Value::List& args) {
+  if (!delegate_)
+    return;
+  AllowJavascript();
+  delegate_->OnCompositeCommandCancelled();
+}
+
+void CommanderHandler::HandleDismiss(const base::Value::List& args) {
   if (delegate_)
     delegate_->OnDismiss();
 }
 
-void CommanderHandler::HandleHeightChanged(const base::ListValue* args) {
-  CHECK_EQ(1u, args->GetSize());
-  int new_height = args->GetList()[0].GetInt();
+void CommanderHandler::HandleHeightChanged(const base::Value::List& args) {
+  CHECK_EQ(1u, args.size());
+  int new_height = args[0].GetInt();
   if (delegate_)
     delegate_->OnHeightChanged(new_height);
 }
 
 void CommanderHandler::ViewModelUpdated(
     commander::CommanderViewModel view_model) {
+  base::Value::Dict vm;
+  vm.Set(kActionKey, view_model.action);
+  vm.Set(kResultSetIdKey, view_model.result_set_id);
   if (view_model.action ==
       commander::CommanderViewModel::Action::kDisplayResults) {
-    base::Value list(base::Value::Type::LIST);
+    base::Value::List option_list;
     for (commander::CommandItemViewModel& item : view_model.items) {
-      // TODO(lgrey): This is temporary, just so we can display something.
-      // We will also need to pass on the result set id, and match ranges for
-      // each item.
-      list.Append(item.title);
+      base::Value::Dict option;
+      option.Set(kTitleKey, item.title);
+      option.Set(kEntityKey, item.entity_type);
+      if (!item.annotation.empty())
+        option.Set(kAnnotationKey, item.annotation);
+      base::Value::List ranges;
+      for (const gfx::Range& range : item.matched_ranges) {
+        base::Value::List range_value;
+        range_value.Append(static_cast<int>(range.start()));
+        range_value.Append(static_cast<int>(range.end()));
+        ranges.Append(std::move(range_value));
+      }
+      option.Set(kMatchedRangesKey, std::move(ranges));
+      option_list.Append(std::move(option));
     }
-    FireWebUIListener("view-model-updated", list);
+    vm.Set(kOptionsKey, std::move(option_list));
   } else {
+    // kDismiss is handled higher in the stack.
     DCHECK_EQ(view_model.action,
               commander::CommanderViewModel::Action::kPrompt);
-    // TODO(lgrey): Handle kPrompt. kDismiss is handled higher up the stack.
+    vm.Set(kPromptTextKey, view_model.prompt_text);
   }
+  FireWebUIListener(kViewModelUpdatedEvent, vm);
+}
+
+void CommanderHandler::PrepareToShow(Delegate* delegate) {
+  delegate_ = delegate;
+  if (IsJavascriptAllowed())
+    FireWebUIListener(kInitializeEvent);
 }

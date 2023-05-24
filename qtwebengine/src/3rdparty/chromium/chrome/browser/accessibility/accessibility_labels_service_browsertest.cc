@@ -1,8 +1,9 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -12,31 +13,27 @@
 #include "chrome/test/base/ui_test_utils.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_accessibility_state.h"
-#include "content/public/common/content_features.h"
 #include "content/public/test/browser_test.h"
-#if defined(OS_CHROMEOS)
-#include "chrome/browser/chromeos/accessibility/accessibility_manager.h"
-#else
-#include "content/public/browser/browser_accessibility_state.h"
-#endif  // defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/ash/accessibility/accessibility_manager.h"
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 class AccessibilityLabelsBrowserTest : public InProcessBrowserTest {
  public:
   AccessibilityLabelsBrowserTest() {}
 
-  // InProcessBrowserTest overrides:
-  void SetUp() override {
-    scoped_feature_list_.InitAndEnableFeature(
-        features::kExperimentalAccessibilityLabels);
-    InProcessBrowserTest::SetUp();
-  }
+  AccessibilityLabelsBrowserTest(const AccessibilityLabelsBrowserTest&) =
+      delete;
+  AccessibilityLabelsBrowserTest& operator=(
+      const AccessibilityLabelsBrowserTest&) = delete;
 
+  // InProcessBrowserTest overrides:
   void TearDownOnMainThread() override { EnableScreenReader(false); }
 
   void EnableScreenReader(bool enabled) {
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
     // Enable Chromevox.
-    chromeos::AccessibilityManager::Get()->EnableSpokenFeedback(enabled);
+    ash::AccessibilityManager::Get()->EnableSpokenFeedback(enabled);
 #else
     // Spoof a screen reader.
     if (enabled) {
@@ -46,12 +43,8 @@ class AccessibilityLabelsBrowserTest : public InProcessBrowserTest {
       content::BrowserAccessibilityState::GetInstance()
           ->RemoveAccessibilityModeFlags(ui::AXMode::kScreenReader);
     }
-#endif  // defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
   }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-  DISALLOW_COPY_AND_ASSIGN(AccessibilityLabelsBrowserTest);
 };
 
 // Changing the kAccessibilityImageLabelsEnabled pref should affect the

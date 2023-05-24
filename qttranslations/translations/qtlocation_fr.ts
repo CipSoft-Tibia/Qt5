@@ -538,11 +538,11 @@ Plus d&apos;informations sur https://www.mapbox.com</translation>
     </message>
     <message>
         <source>Plugin Error (%1): %2</source>
-        <translation>Erreur du Module (%1) : %2</translation>
+        <translation>Erreur du Module (%1)&#xa0;: %2</translation>
     </message>
     <message>
         <source>Plugin Error (%1): Could not instantiate provider</source>
-        <translation>Erreur de plugin (%1) : Impossible d&apos;instancier le fournisseur</translation>
+        <translation>Erreur de plugin (%1)&#xa0;: Impossible d&apos;instancier le fournisseur</translation>
     </message>
     <message>
         <source>Plugin is not valid</source>

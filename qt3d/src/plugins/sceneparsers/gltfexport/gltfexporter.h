@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef GLTFEXPORTER_H
 #define GLTFEXPORTER_H
@@ -54,6 +18,7 @@
 #include <QtCore/qjsondocument.h>
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qhash.h>
+#include <QtCore/qset.h>
 #include <QtGui/qvector3d.h>
 
 #include <Qt3DRender/qabstractlight.h>
@@ -94,7 +59,6 @@ public:
                      const QString &exportName, const QVariantHash &options) final;
 
     struct GltfOptions {
-        bool binaryJson;
         bool compactJson;
     };
 
@@ -119,7 +83,7 @@ private:
             uint componentType;
             uint target;
         };
-        QVector<BufferView> views;
+        QList<BufferView> views;
         struct Accessor {
             Accessor() : offset(0), stride(0), count(0), componentType(0) { }
             QString name;
@@ -131,7 +95,7 @@ private:
             uint componentType;
             QString type;
         };
-        QVector<Accessor> accessors;
+        QList<Accessor> accessors;
         QString name; // generated
         QString originalName; // may be empty
         QString materialName;
@@ -162,8 +126,8 @@ private:
         QHash<QString, QColor> colors;
         QHash<QString, QString> textures;
         QHash<QString, QVariant> values;
-        QVector<int> blendArguments;
-        QVector<int> blendEquations;
+        std::vector<int> blendArguments;
+        std::vector<int> blendEquations;
     };
 
     struct ProgramInfo {
@@ -215,7 +179,7 @@ private:
     struct Node {
         QString name;
         QString uniqueName; // generated
-        QVector<Node *> children;
+        QList<Node *> children;
     };
 
     void cacheDefaultProperties(PropertyCacheType type);
@@ -294,14 +258,14 @@ private:
     QHash<Qt3DRender::QEffect *, QString> m_effectIdMap;
     QHash<Qt3DRender::QTechnique *, QString> m_techniqueIdMap;
     QHash<PropertyCacheType, QObject *> m_defaultObjectCache;
-    QHash<PropertyCacheType, QVector<QMetaProperty> > m_propertyCache;
+    QHash<PropertyCacheType, QList<QMetaProperty>> m_propertyCache;
 
     QHash<Qt3DRender::QGeometryRenderer *, MeshInfo> m_meshInfo;
     QHash<Qt3DRender::QMaterial *, MaterialInfo> m_materialInfo;
     QHash<Qt3DRender::QCameraLens *, CameraInfo> m_cameraInfo;
     QHash<Qt3DRender::QAbstractLight *, LightInfo> m_lightInfo;
     QHash<Qt3DRender::QShaderProgram *, ProgramInfo> m_programInfo;
-    QVector<ShaderInfo> m_shaderInfo;
+    QList<ShaderInfo> m_shaderInfo;
 
     Node *m_rootNode;
     bool m_rootNodeEmpty;

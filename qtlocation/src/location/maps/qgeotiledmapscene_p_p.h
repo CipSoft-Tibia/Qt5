@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QGEOTILEDMAPSCENE_P_P_H
 #define QGEOTILEDMAPSCENE_P_P_H
 
@@ -48,13 +15,14 @@
 //
 
 #include "qgeotiledmapscene_p.h"
-#include <QtCore/private/qobject_p.h>
-#include <QtPositioning/private/qdoublevector3d_p.h>
-#include <QtQuick/QSGImageNode>
-#include <QtQuick/private/qsgdefaultimagenode_p.h>
-#include <QtQuick/QQuickWindow>
 #include "qgeocameradata_p.h"
 #include "qgeotilespec_p.h"
+
+#include <QtQuick/QSGImageNode>
+#include <QtQuick/QQuickWindow>
+
+#include <QtCore/private/qobject_p.h>
+#include <QtPositioning/private/qdoublevector3d_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -106,8 +74,7 @@ public:
     void updateTiles(QGeoTiledMapTileContainerNode *root,
                      QGeoTiledMapScenePrivate *d,
                      double camAdjust,
-                     QQuickWindow *window,
-                     bool ogl);
+                     QQuickWindow *window);
 
     bool isTextureLinear;
 
@@ -142,12 +109,12 @@ public:
     bool buildGeometry(const QGeoTileSpec &spec, QSGImageNode *imageNode, bool &overzooming);
     void updateTileBounds(const QSet<QGeoTileSpec> &tiles);
     void setupCamera();
-    inline bool isTiltedOrRotated() { return (m_cameraData.tilt() > 0.0) || (m_cameraData.bearing() > 0.0); }
+    inline bool isTiltedOrRotated() const { return (m_cameraData.tilt() > 0.0) || (m_cameraData.bearing() > 0.0); }
 
 public:
 
     QSize m_screenSize; // in pixels
-    int m_tileSize; // the pixel resolution for each tile
+    int m_tileSize = 0; // the pixel resolution for each tile
     QGeoCameraData m_cameraData;
     QRectF m_visibleArea;
     QSet<QGeoTileSpec> m_visibleTiles;
@@ -159,28 +126,32 @@ public:
 
     // scales up the tile geometry and the camera altitude, resulting in no visible effect
     // other than to control the accuracy of the render by keeping the values in a sensible range
-    double m_scaleFactor;
+    double m_scaleFactor =
+#ifdef QT_LOCATION_DEBUG
+        1.0;
+#else
+        10.0;
+#endif
 
     // rounded down, positive zoom is zooming in, corresponding to reduced altitude
-    int m_intZoomLevel;
+    int m_intZoomLevel = 0;
 
     // mercatorToGrid transform
     // the number of tiles in each direction for the whole map (earth) at the current zoom level.
     // it is 1<<zoomLevel
-    int m_sideLength;
-    double m_mapEdgeSize;
+    int m_sideLength = 0;
 
     QHash<QGeoTileSpec, QSharedPointer<QGeoTileTexture> > m_textures;
-    QVector<QGeoTileSpec> m_updatedTextures;
+    QList<QGeoTileSpec> m_updatedTextures;
 
     // tilesToGrid transform
-    int m_minTileX; // the minimum tile index, i.e. 0 to sideLength which is 1<< zoomLevel
-    int m_minTileY;
-    int m_maxTileX;
-    int m_maxTileY;
-    int m_tileXWrapsBelow; // the wrap point as a tile index
-    bool m_linearScaling;
-    bool m_dropTextures;
+    int m_minTileX = -1; // the minimum tile index, i.e. 0 to sideLength which is 1<< zoomLevel
+    int m_minTileY = -1;
+    int m_maxTileX = -1;
+    int m_maxTileY = -1;
+    int m_tileXWrapsBelow = 0; // the wrap point as a tile index
+    bool m_linearScaling = false;
+    bool m_dropTextures = false;
 
 #ifdef QT_LOCATION_DEBUG
     double m_sideLengthPixel;

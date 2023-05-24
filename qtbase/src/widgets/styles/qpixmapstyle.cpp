@@ -1,43 +1,7 @@
-/***************************************************************************
-**
-** Copyright (C) 2014 BlackBerry Limited. All rights reserved.
-** Copyright (C) 2015 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 BlackBerry Limited. All rights reserved.
+// Copyright (C) 2015 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpixmapstyle_p.h"
 #include "qpixmapstyle_p_p.h"
@@ -825,7 +789,7 @@ void QPixmapStyle::drawProgressBarBackground(const QStyleOption *option,
     bool vertical = false;
     if (const QStyleOptionProgressBar *pb =
             qstyleoption_cast<const QStyleOptionProgressBar *>(option)) {
-        vertical = pb->orientation == Qt::Vertical;
+        vertical = !(pb->state & QStyle::State_Horizontal);
     }
     drawCachedPixmap(vertical ? PB_VBackground : PB_HBackground, option->rect, painter);
 }
@@ -835,7 +799,7 @@ void QPixmapStyle::drawProgressBarLabel(const QStyleOption *option,
 {
     if (const QStyleOptionProgressBar *pb =
                     qstyleoption_cast<const QStyleOptionProgressBar *>(option)) {
-        const bool vertical = pb->orientation == Qt::Vertical;
+        const bool vertical = !(pb->state & QStyle::State_Horizontal);
         if (!vertical) {
             QPalette::ColorRole textRole = QPalette::ButtonText;
             proxy()->drawItemText(painter, pb->rect,
@@ -850,7 +814,7 @@ void QPixmapStyle::drawProgressBarFill(const QStyleOption *option,
 {
     const QStyleOptionProgressBar *pbar =
                 qstyleoption_cast<const QStyleOptionProgressBar*>(option);
-    const bool vertical = pbar->orientation == Qt::Vertical;
+    const bool vertical = !(pbar->state & QStyle::State_Horizontal);
     const bool flip = (pbar->direction == Qt::RightToLeft) ^ pbar->invertedAppearance;
 
     if (pbar->progress == pbar->maximum) {
@@ -1026,7 +990,7 @@ QSize QPixmapStyle::progressBarSizeFromContents(const QStyleOption *option,
     bool vertical = false;
     if (const QStyleOptionProgressBar *pb =
                     qstyleoption_cast<const QStyleOptionProgressBar *>(option)) {
-        vertical = pb->orientation == Qt::Vertical;
+        vertical = !(pb->state & QStyle::State_Horizontal);
     }
     QSize result = QCommonStyle::sizeFromContents(CT_Slider, option, contentsSize, widget);
     if (vertical) {
@@ -1205,10 +1169,10 @@ QPixmap QPixmapStylePrivate::getCachedPixmap(QPixmapStyle::ControlDescriptor con
 {
     Q_Q(const QPixmapStyle);
 
-    const QString sizeString = QString::number(size.width()) % QLatin1Char('*')
+    const QString sizeString = QString::number(size.width()) % u'*'
             % QString::number(size.height());
-    const QString key = QLatin1String(q->metaObject()->className()) % QString::number(control)
-            % QLatin1Char('@') % sizeString;
+    const QString key = QLatin1StringView(q->metaObject()->className()) % QString::number(control)
+            % u'@' % sizeString;
 
     QPixmap result;
 
@@ -1230,3 +1194,5 @@ QSize QPixmapStylePrivate::computeSize(const QPixmapStyleDescriptor &desc, int w
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qpixmapstyle_p.cpp"

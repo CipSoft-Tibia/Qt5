@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,12 @@
 #include "base/strings/stringprintf.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/extension_service_test_with_install.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/common/extensions/extension_test_util.h"
+#include "extensions/browser/extension_action.h"
+#include "extensions/browser/extension_action_manager.h"
 #include "extensions/common/api/extension_action/action_info.h"
 #include "extensions/common/api/extension_action/action_info_test_util.h"
-#include "extensions/common/features/feature_channel.h"
 #include "extensions/test/test_extension_dir.h"
 
 namespace extensions {
@@ -19,17 +21,7 @@ namespace {
 
 class ExtensionActionAPIUnitTest
     : public ExtensionServiceTestWithInstall,
-      public ::testing::WithParamInterface<ActionInfo::Type> {
- public:
-  ExtensionActionAPIUnitTest()
-      : current_channel_(GetOverrideChannelForActionType(GetParam())) {}
-  ~ExtensionActionAPIUnitTest() override {}
-
- private:
-  std::unique_ptr<ScopedCurrentChannel> current_channel_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExtensionActionAPIUnitTest);
-};
+      public ::testing::WithParamInterface<ActionInfo::Type> {};
 
 // Test that extensions can provide icons of arbitrary sizes in the manifest.
 TEST_P(ExtensionActionAPIUnitTest, MultiIcons) {
@@ -39,7 +31,7 @@ TEST_P(ExtensionActionAPIUnitTest, MultiIcons) {
       R"({
            "name": "A test extension that tests multiple browser action icons",
            "version": "1.0",
-           "manifest_version": 2,
+           "manifest_version": %d,
            "%s": {
              "default_icon": {
                "19": "icon19.png",
@@ -52,7 +44,8 @@ TEST_P(ExtensionActionAPIUnitTest, MultiIcons) {
 
   TestExtensionDir test_extension_dir;
   test_extension_dir.WriteManifest(base::StringPrintf(
-      kManifestTemplate, GetManifestKeyForActionType(GetParam())));
+      kManifestTemplate, GetManifestVersionForActionType(GetParam()),
+      ActionInfo::GetManifestKeyForActionType(GetParam())));
 
   {
     std::string icon_file_content;
@@ -79,6 +72,55 @@ TEST_P(ExtensionActionAPIUnitTest, MultiIcons) {
   EXPECT_EQ("icon24.png", icons.Get(24, ExtensionIconSet::MATCH_EXACTLY));
   EXPECT_EQ("icon24.png", icons.Get(31, ExtensionIconSet::MATCH_EXACTLY));
   EXPECT_EQ("icon38.png", icons.Get(38, ExtensionIconSet::MATCH_EXACTLY));
+}
+
+// Test that localization in the manifest properly applies to the "action"
+// title.
+TEST_P(ExtensionActionAPIUnitTest, ActionLocalization) {
+  InitializeEmptyExtensionService();
+
+  TestExtensionDir test_dir;
+  constexpr char kManifest[] =
+      R"({
+           "name": "Some extension",
+           "version": "3.0",
+           "manifest_version": %d,
+           "default_locale": "en",
+           "%s": { "default_title": "__MSG_default_action_title__" }
+         })";
+  test_dir.WriteManifest(
+      base::StringPrintf(kManifest, GetManifestVersionForActionType(GetParam()),
+                         ActionInfo::GetManifestKeyForActionType(GetParam())));
+
+  constexpr char kMessages[] =
+      R"({
+           "default_action_title": {
+             "message": "An Action Title!"
+           }
+         })";
+  {
+    // TODO(https://crbug.com/1135378): It's a bit clunky to write to nested
+    // files in a TestExtensionDir. It'd be nice to provide better support for
+    // this.
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    base::FilePath locales = test_dir.UnpackedPath().AppendASCII("_locales");
+    base::FilePath locales_en = locales.AppendASCII("en");
+    base::FilePath messages_path = locales_en.AppendASCII("messages.json");
+    ASSERT_TRUE(base::CreateDirectory(locales));
+    ASSERT_TRUE(base::CreateDirectory(locales_en));
+    ASSERT_TRUE(base::WriteFile(messages_path, kMessages));
+  }
+
+  const Extension* extension =
+      PackAndInstallCRX(test_dir.UnpackedPath(), INSTALL_NEW);
+  ASSERT_TRUE(extension);
+
+  auto* action_manager = ExtensionActionManager::Get(profile());
+  ExtensionAction* action = action_manager->GetExtensionAction(*extension);
+  ASSERT_TRUE(action);
+
+  EXPECT_EQ("An Action Title!",
+            action->GetTitle(ExtensionAction::kDefaultTabId));
 }
 
 INSTANTIATE_TEST_SUITE_P(All,

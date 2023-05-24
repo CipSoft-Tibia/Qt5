@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,10 @@
 
 #include "core/fpdfdoc/cpdf_aaction.h"
 
+#include <iterator>
+#include <utility>
+
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
-#include "third_party/base/stl_util.h"
 
 namespace {
 
@@ -37,12 +39,13 @@ constexpr const char* kAATypes[] = {
 
 // |kAATypes| should have one less element than enum AActionType due to
 // |kDocumentOpen|, which is an artificial type.
-static_assert(pdfium::size(kAATypes) == CPDF_AAction::kNumberOfActions - 1,
+static_assert(std::size(kAATypes) == CPDF_AAction::kNumberOfActions - 1,
               "kAATypes count mismatch");
 
 }  // namespace
 
-CPDF_AAction::CPDF_AAction(const CPDF_Dictionary* pDict) : m_pDict(pDict) {}
+CPDF_AAction::CPDF_AAction(RetainPtr<const CPDF_Dictionary> pDict)
+    : m_pDict(std::move(pDict)) {}
 
 CPDF_AAction::CPDF_AAction(const CPDF_AAction& that) = default;
 

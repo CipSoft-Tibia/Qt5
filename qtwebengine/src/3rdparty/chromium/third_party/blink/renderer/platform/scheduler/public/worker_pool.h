@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,8 @@
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_SCHEDULER_PUBLIC_WORKER_POOL_H_
 
 #include "base/location.h"
-#include "base/sequenced_task_runner.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -31,8 +32,8 @@ PLATFORM_EXPORT void PostTask(const base::Location&,
                               const base::TaskTraits&,
                               CrossThreadOnceClosure);
 
-// TODO(altimin): Expose CreateSequencedTaskRunner when the
-// need arises.
+PLATFORM_EXPORT scoped_refptr<base::SequencedTaskRunner>
+CreateSequencedTaskRunner(const base::TaskTraits& traits);
 
 }  // namespace worker_pool
 

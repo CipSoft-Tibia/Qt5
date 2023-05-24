@@ -27,10 +27,13 @@
 #include <aom/aomdx.h>
 
 #include "libavutil/common.h"
+#include "libavutil/cpu.h"
 #include "libavutil/imgutils.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
+#include "libaom.h"
 #include "profiles.h"
 
 typedef struct AV1DecodeContext {
@@ -56,30 +59,6 @@ static av_cold int aom_init(AVCodecContext *avctx,
     }
 
     return 0;
-}
-
-static void image_copy_16_to_8(AVFrame *pic, struct aom_image *img)
-{
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pic->format);
-    int i;
-
-    for (i = 0; i < desc->nb_components; i++) {
-        int w = img->d_w;
-        int h = img->d_h;
-        int x, y;
-
-        if (i) {
-            w = (w + img->x_chroma_shift) >> img->x_chroma_shift;
-            h = (h + img->y_chroma_shift) >> img->y_chroma_shift;
-        }
-
-        for (y = 0; y < h; y++) {
-            uint16_t *src = (uint16_t *)(img->planes[i] + y * img->stride[i]);
-            uint8_t *dst = pic->data[i] + y * pic->linesize[i];
-            for (x = 0; x < w; x++)
-                *dst++ = *src++;
-        }
-    }
 }
 
 // returns 0 on success, AVERROR_INVALIDDATA otherwise
@@ -134,15 +113,19 @@ static int set_pix_fmt(AVCodecContext *avctx, struct aom_image *img)
     case AOM_IMG_FMT_I444:
     case AOM_IMG_FMT_I44416:
         if (img->bit_depth == 8) {
-            avctx->pix_fmt = AV_PIX_FMT_YUV444P;
+            avctx->pix_fmt = avctx->colorspace == AVCOL_SPC_RGB ?
+                             AV_PIX_FMT_GBRP : AV_PIX_FMT_YUV444P;
             avctx->profile = FF_PROFILE_AV1_HIGH;
             return 0;
         } else if (img->bit_depth == 10) {
             avctx->pix_fmt = AV_PIX_FMT_YUV444P10;
+            avctx->pix_fmt = avctx->colorspace == AVCOL_SPC_RGB ?
+                             AV_PIX_FMT_GBRP10 : AV_PIX_FMT_YUV444P10;
             avctx->profile = FF_PROFILE_AV1_HIGH;
             return 0;
         } else if (img->bit_depth == 12) {
-            avctx->pix_fmt = AV_PIX_FMT_YUV444P12;
+            avctx->pix_fmt = avctx->colorspace == AVCOL_SPC_RGB ?
+                             AV_PIX_FMT_GBRP12 : AV_PIX_FMT_YUV444P12;
             avctx->profile = FF_PROFILE_AV1_PROFESSIONAL;
             return 0;
         } else {
@@ -154,11 +137,10 @@ static int set_pix_fmt(AVCodecContext *avctx, struct aom_image *img)
     }
 }
 
-static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
-                      AVPacket *avpkt)
+static int aom_decode(AVCodecContext *avctx, AVFrame *picture,
+                      int *got_frame, AVPacket *avpkt)
 {
     AV1DecodeContext *ctx = avctx->priv_data;
-    AVFrame *picture      = data;
     const void *iter      = NULL;
     struct aom_image *img;
     int ret;
@@ -198,6 +180,22 @@ static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
         if ((ret = ff_get_buffer(avctx, picture, 0)) < 0)
             return ret;
 
+#ifdef AOM_CTRL_AOMD_GET_FRAME_FLAGS
+        {
+            aom_codec_frame_flags_t flags;
+            ret = aom_codec_control(&ctx->decoder, AOMD_GET_FRAME_FLAGS, &flags);
+            if (ret == AOM_CODEC_OK) {
+                picture->key_frame = !!(flags & AOM_FRAME_IS_KEY);
+                if (flags & (AOM_FRAME_IS_KEY | AOM_FRAME_IS_INTRAONLY))
+                    picture->pict_type = AV_PICTURE_TYPE_I;
+                else if (flags & AOM_FRAME_IS_SWITCH)
+                    picture->pict_type = AV_PICTURE_TYPE_SP;
+                else
+                    picture->pict_type = AV_PICTURE_TYPE_P;
+            }
+        }
+#endif
+
         av_reduce(&picture->sample_aspect_ratio.num,
                   &picture->sample_aspect_ratio.den,
                   picture->height * img->r_w,
@@ -206,10 +204,14 @@ static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
         ff_set_sar(avctx, picture->sample_aspect_ratio);
 
         if ((img->fmt & AOM_IMG_FMT_HIGHBITDEPTH) && img->bit_depth == 8)
-            image_copy_16_to_8(picture, img);
-        else
-            av_image_copy(picture->data, picture->linesize, (const uint8_t **)img->planes,
-                          img->stride, avctx->pix_fmt, img->d_w, img->d_h);
+            ff_aom_image_copy_16_to_8(picture, img);
+        else {
+            const uint8_t *planes[4] = { img->planes[0], img->planes[1], img->planes[2] };
+            const int      stride[4] = { img->stride[0], img->stride[1], img->stride[2] };
+
+            av_image_copy(picture->data, picture->linesize, planes,
+                          stride, avctx->pix_fmt, img->d_w, img->d_h);
+        }
         *got_frame = 1;
     }
     return avpkt->size;
@@ -224,19 +226,21 @@ static av_cold int aom_free(AVCodecContext *avctx)
 
 static av_cold int av1_init(AVCodecContext *avctx)
 {
-    return aom_init(avctx, &aom_codec_av1_dx_algo);
+    return aom_init(avctx, aom_codec_av1_dx());
 }
 
-AVCodec ff_libaom_av1_decoder = {
-    .name           = "libaom-av1",
-    .long_name      = NULL_IF_CONFIG_SMALL("libaom AV1"),
-    .type           = AVMEDIA_TYPE_VIDEO,
-    .id             = AV_CODEC_ID_AV1,
+const FFCodec ff_libaom_av1_decoder = {
+    .p.name         = "libaom-av1",
+    CODEC_LONG_NAME("libaom AV1"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_AV1,
     .priv_data_size = sizeof(AV1DecodeContext),
     .init           = av1_init,
     .close          = aom_free,
-    .decode         = aom_decode,
-    .capabilities   = AV_CODEC_CAP_AUTO_THREADS | AV_CODEC_CAP_DR1,
-    .profiles       = NULL_IF_CONFIG_SMALL(ff_av1_profiles),
-    .wrapper_name   = "libaom",
+    FF_CODEC_DECODE_CB(aom_decode),
+    .p.capabilities = AV_CODEC_CAP_OTHER_THREADS | AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_AUTO_THREADS,
+    .p.profiles     = NULL_IF_CONFIG_SMALL(ff_av1_profiles),
+    .p.wrapper_name = "libaom",
 };

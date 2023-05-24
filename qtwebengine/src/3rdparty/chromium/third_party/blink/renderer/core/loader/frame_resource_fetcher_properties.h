@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,8 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_FRAME_RESOURCE_FETCHER_PROPERTIES_H_
 
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/loader/fetch/loader_freeze_mode.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher_properties.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 
@@ -31,23 +32,22 @@ class CORE_EXPORT FrameResourceFetcherProperties final
       const override {
     return *fetch_client_settings_object_;
   }
-  bool IsMainFrame() const override;
+  bool IsOutermostMainFrame() const override;
   ControllerServiceWorkerMode GetControllerServiceWorkerMode() const override;
   int64_t ServiceWorkerId() const override;
   bool IsPaused() const override;
+  LoaderFreezeMode FreezeMode() const override;
   bool IsDetached() const override { return false; }
   bool IsLoadComplete() const override;
   bool ShouldBlockLoadingSubResource() const override;
   bool IsSubframeDeprioritizationEnabled() const override;
   scheduler::FrameStatus GetFrameStatus() const override;
-  const KURL& WebBundlePhysicalUrl() const override;
   int GetOutstandingThrottledLimit() const override;
 
  private:
   const Member<DocumentLoader> document_loader_;
   const Member<Document> document_;
   Member<const FetchClientSettingsObject> fetch_client_settings_object_;
-  const KURL web_bundle_physical_url_;
 };
 
 }  // namespace blink

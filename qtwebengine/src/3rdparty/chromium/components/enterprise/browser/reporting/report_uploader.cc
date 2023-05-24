@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,10 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "base/time/time.h"
+#include "build/chromeos_buildflags.h"
+#include "components/enterprise/browser/reporting/report_type.h"
 #include "components/policy/core/common/cloud/cloud_policy_client.h"
+#include "components/policy/proto/device_management_backend.pb.h"
 
 namespace em = enterprise_management;
 
@@ -39,33 +42,62 @@ ReportUploader::ReportUploader(policy::CloudPolicyClient* client,
       maximum_number_of_retries_(maximum_number_of_retries) {}
 ReportUploader::~ReportUploader() = default;
 
-void ReportUploader::SetRequestAndUpload(ReportRequests requests,
+void ReportUploader::SetRequestAndUpload(ReportType report_type,
+                                         ReportRequestQueue requests,
                                          ReportCallback callback) {
+  report_type_ = report_type;
   requests_ = std::move(requests);
   callback_ = std::move(callback);
   Upload();
 }
 
 void ReportUploader::Upload() {
-  auto request = std::make_unique<ReportRequest>(*requests_.front());
   auto callback = base::BindRepeating(&ReportUploader::OnRequestFinished,
                                       weak_ptr_factory_.GetWeakPtr());
 
-#if defined(OS_CHROMEOS)
-  client_->UploadChromeOsUserReport(std::move(request), std::move(callback));
+  switch (report_type_) {
+    case ReportType::kFull:
+    case ReportType::kBrowserVersion: {
+      auto request = std::make_unique<ReportRequest::DeviceReportRequestProto>(
+          requests_.front()->GetDeviceReportRequest());
+      // Because MessageLite does not support DebugMessage(), print
+      // serialize string for debugging purposes. It's a non-human-friendly
+      // binary string but still provide useful information.
+      VLOG(2) << "Uploading report: " << request->SerializeAsString();
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+      client_->UploadChromeOsUserReport(std::move(request),
+                                        std::move(callback));
 #else
-  client_->UploadChromeDesktopReport(std::move(request), std::move(callback));
+      client_->UploadChromeDesktopReport(std::move(request),
+                                         std::move(callback));
 #endif
+      break;
+    }
+    case ReportType::kProfileReport: {
+      auto request = std::make_unique<em::ChromeProfileReportRequest>(
+          requests_.front()->GetChromeProfileReportRequest());
+      VLOG(2) << "Uploading report: " << request->SerializeAsString();
+      client_->UploadChromeProfileReport(std::move(request),
+                                         std::move(callback));
+      break;
+    }
+  }
 }
 
-void ReportUploader::OnRequestFinished(bool status) {
-  if (status) {
+void ReportUploader::OnRequestFinished(
+    policy::CloudPolicyClient::Result result) {
+  // Crash if the client is not registered, this should not happen.
+  // TODO(b/256553070) Handle unregistered case without crashing.
+  CHECK(!result.IsClientNotRegisteredError());
+
+  if (result.IsSuccess()) {
     NextRequest();
     RecordReportResponseMetrics(ReportResponseMetricsStatus::kSuccess);
     return;
   }
 
-  switch (client_->status()) {
+  switch (result.GetDMServerError()) {
     case policy::DM_STATUS_REQUEST_FAILED:  // network error
       RecordReportResponseMetrics(ReportResponseMetricsStatus::kNetworkError);
       Retry();

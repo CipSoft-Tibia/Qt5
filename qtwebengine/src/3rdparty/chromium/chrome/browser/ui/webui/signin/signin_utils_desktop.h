@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,26 +8,22 @@
 #include <string>
 
 class Profile;
+class SigninUIError;
 
-// Argument for |CanOfferSignin|.
-enum CanOfferSigninType {
-  CAN_OFFER_SIGNIN_FOR_ALL_ACCOUNTS,
-  CAN_OFFER_SIGNIN_FOR_SECONDARY_ACCOUNT
-};
+// Returns a non-error if sign-in is allowed for account with |email| and
+// |gaia_id| to |profile|. If the sign-in is not allowed, then the error type
+// and the error message are passed in the returned value.
+// This function can be used either for new signins or for reauthentication of
+// an already existing account. In the case of reauth, the function checks that
+// the account being reauthenticated matches the current Sync account.
+// TODO(alexilin): consider renaming this function to CanOfferSyncOrReauth() or
+// similar to make it clear that this function is about signin into Sync.
+SigninUIError CanOfferSignin(Profile* profile,
+                             const std::string& gaia_id,
+                             const std::string& email);
 
-// Returns true if sign-in is allowed for account with |email| and |gaia_id| to
-// |profile|. If the sign-in is not allowed, then the error message is passed
-// to the called in |out_error_message|
-bool CanOfferSignin(Profile* profile,
-                    CanOfferSigninType can_offer_type,
-                    const std::string& gaia_id,
-                    const std::string& email,
-                    std::string* out_error_message);
-
-// Return true if the account given by |email| and |gaia_id| is signed in to
-// Chrome in a different profile.
-bool IsCrossAccountError(Profile* profile,
-                         const std::string& email,
-                         const std::string& gaia_id);
+// Return true if an account other than `gaia_id` was previously signed into
+// `profile`.
+bool IsCrossAccountError(Profile* profile, const std::string& gaia_id);
 
 #endif  // CHROME_BROWSER_UI_WEBUI_SIGNIN_SIGNIN_UTILS_DESKTOP_H_

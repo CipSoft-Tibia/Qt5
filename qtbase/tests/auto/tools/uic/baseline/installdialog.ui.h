@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'installdialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -44,68 +44,68 @@ public:
     void setupUi(QDialog *InstallDialog)
     {
         if (InstallDialog->objectName().isEmpty())
-            InstallDialog->setObjectName(QString::fromUtf8("InstallDialog"));
+            InstallDialog->setObjectName("InstallDialog");
         InstallDialog->resize(436, 245);
         gridLayout = new QGridLayout(InstallDialog);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         label = new QLabel(InstallDialog);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
 
         gridLayout->addWidget(label, 0, 0, 1, 4);
 
         listWidget = new QListWidget(InstallDialog);
-        listWidget->setObjectName(QString::fromUtf8("listWidget"));
+        listWidget->setObjectName("listWidget");
 
         gridLayout->addWidget(listWidget, 1, 0, 4, 4);
 
         installButton = new QPushButton(InstallDialog);
-        installButton->setObjectName(QString::fromUtf8("installButton"));
+        installButton->setObjectName("installButton");
 
         gridLayout->addWidget(installButton, 1, 4, 1, 1);
 
         cancelButton = new QPushButton(InstallDialog);
-        cancelButton->setObjectName(QString::fromUtf8("cancelButton"));
+        cancelButton->setObjectName("cancelButton");
 
         gridLayout->addWidget(cancelButton, 2, 4, 1, 1);
 
         closeButton = new QPushButton(InstallDialog);
-        closeButton->setObjectName(QString::fromUtf8("closeButton"));
+        closeButton->setObjectName("closeButton");
 
         gridLayout->addWidget(closeButton, 3, 4, 1, 1);
 
-        spacerItem = new QSpacerItem(20, 56, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 56, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem, 4, 4, 1, 1);
 
         label_4 = new QLabel(InstallDialog);
-        label_4->setObjectName(QString::fromUtf8("label_4"));
+        label_4->setObjectName("label_4");
 
         gridLayout->addWidget(label_4, 5, 0, 1, 1);
 
         pathLineEdit = new QLineEdit(InstallDialog);
-        pathLineEdit->setObjectName(QString::fromUtf8("pathLineEdit"));
+        pathLineEdit->setObjectName("pathLineEdit");
 
         gridLayout->addWidget(pathLineEdit, 5, 1, 1, 2);
 
         browseButton = new QToolButton(InstallDialog);
-        browseButton->setObjectName(QString::fromUtf8("browseButton"));
+        browseButton->setObjectName("browseButton");
 
         gridLayout->addWidget(browseButton, 5, 3, 1, 1);
 
         line = new QFrame(InstallDialog);
-        line->setObjectName(QString::fromUtf8("line"));
+        line->setObjectName("line");
         line->setFrameShape(QFrame::HLine);
         line->setFrameShadow(QFrame::Sunken);
 
         gridLayout->addWidget(line, 6, 0, 1, 5);
 
         statusLabel = new QLabel(InstallDialog);
-        statusLabel->setObjectName(QString::fromUtf8("statusLabel"));
+        statusLabel->setObjectName("statusLabel");
 
         gridLayout->addWidget(statusLabel, 7, 0, 1, 2);
 
         progressBar = new QProgressBar(InstallDialog);
-        progressBar->setObjectName(QString::fromUtf8("progressBar"));
+        progressBar->setObjectName("progressBar");
         progressBar->setValue(0);
         progressBar->setOrientation(Qt::Horizontal);
 
@@ -113,7 +113,7 @@ public:
 
 
         retranslateUi(InstallDialog);
-        QObject::connect(closeButton, SIGNAL(clicked()), InstallDialog, SLOT(accept()));
+        QObject::connect(closeButton, &QPushButton::clicked, InstallDialog, qOverload<>(&QDialog::accept));
 
         QMetaObject::connectSlotsByName(InstallDialog);
     } // setupUi

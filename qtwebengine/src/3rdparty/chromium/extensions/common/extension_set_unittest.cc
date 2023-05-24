@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,30 +22,30 @@ namespace {
 scoped_refptr<Extension> CreateTestExtension(const std::string& name,
                                              const std::string& launch_url,
                                              const std::string& extent) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   base::FilePath path(FILE_PATH_LITERAL("c:\\"));
 #else
   base::FilePath path(FILE_PATH_LITERAL("/"));
 #endif
   path = path.AppendASCII(name);
 
-  base::DictionaryValue manifest;
-  manifest.SetString("name", name);
-  manifest.SetString("version", "1");
-  manifest.SetInteger("manifest_version", 2);
+  base::Value::Dict manifest;
+  manifest.Set("name", name);
+  manifest.Set("version", "1");
+  manifest.Set("manifest_version", 2);
 
   if (!launch_url.empty())
-    manifest.SetString("app.launch.web_url", launch_url);
+    manifest.SetByDottedPath("app.launch.web_url", launch_url);
 
   if (!extent.empty()) {
-    auto urls = std::make_unique<base::ListValue>();
-    urls->AppendString(extent);
-    manifest.Set("app.urls", std::move(urls));
+    base::Value::List urls;
+    urls.Append(extent);
+    manifest.SetByDottedPath("app.urls", std::move(urls));
   }
 
   std::string error;
   scoped_refptr<Extension> extension(
-      Extension::Create(path, Manifest::INTERNAL, manifest,
+      Extension::Create(path, mojom::ManifestLocation::kInternal, manifest,
                         Extension::NO_FLAGS, &error));
   EXPECT_TRUE(extension.get()) << error;
   return extension;

@@ -1,9 +1,10 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/fetch/blob_bytes_consumer.h"
 
+#include "base/task/sequenced_task_runner.h"
 #include "third_party/blink/public/common/blob/blob_utils.h"
 #include "third_party/blink/public/mojom/blob/blob.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
@@ -83,7 +84,7 @@ BytesConsumer::Result BlobBytesConsumer::BeginRead(const char** buffer,
     mojo::ScopedDataPipeConsumerHandle consumer_handle;
     mojo::ScopedDataPipeProducerHandle producer_handle;
     MojoResult rv =
-        mojo::CreateDataPipe(&options, &producer_handle, &consumer_handle);
+        mojo::CreateDataPipe(&options, producer_handle, consumer_handle);
     if (rv != MOJO_RESULT_OK)
       return Result::kError;
 

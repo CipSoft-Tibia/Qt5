@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
 
 namespace blink {
 
@@ -19,60 +18,88 @@ class StyleDifference {
 
  public:
   enum PropertyDifference {
-    kTransformChanged = 1 << 0,
-    kOpacityChanged = 1 << 1,
-    kZIndexChanged = 1 << 2,
-    kFilterChanged = 1 << 3,
-    kBackdropFilterChanged = 1 << 4,
+    kTransformPropertyChanged = 1 << 0,
+    // Other transform properties include changes other than the transform
+    // property itself such as individual transform properties, motion
+    // path, etc. See: |ComputedStyle::HasTransform|.
+    kOtherTransformPropertyChanged = 1 << 1,
+    kOpacityChanged = 1 << 2,
+    kZIndexChanged = 1 << 3,
+    kFilterChanged = 1 << 4,
     kCSSClipChanged = 1 << 5,
     // The object needs to issue paint invalidations if it is affected by text
     // decorations or properties dependent on color (e.g., border or outline).
-    // TextDecoration changes must also invalidate ink overflow.
+    // TextDecorationLine changes must also invalidate ink overflow.
     kTextDecorationOrColorChanged = 1 << 6,
     kBlendModeChanged = 1 << 7,
     kMaskChanged = 1 << 8,
-    // Whether background-color changed alpha to or from 1.
-    kHasAlphaChanged = 1 << 9,
+    kBackgroundColorChanged = 1 << 9,
+    kClipPathChanged = 1 << 10
     // If you add a value here, be sure to update kPropertyDifferenceCount.
   };
 
   StyleDifference()
-      : needs_paint_invalidation_(false),
+      : paint_invalidation_type_(
+            static_cast<unsigned>(PaintInvalidationType::kNone)),
         layout_type_(kNoLayout),
         needs_reshape_(false),
         recompute_visual_overflow_(false),
-        visual_rect_update_(false),
         property_specific_differences_(0),
         scroll_anchor_disabling_property_changed_(false),
-        compositing_reasons_changed_(false) {}
+        compositing_reasons_changed_(false),
+        compositable_paint_effect_changed_(false) {}
 
   void Merge(StyleDifference other) {
-    needs_paint_invalidation_ |= other.needs_paint_invalidation_;
+    paint_invalidation_type_ =
+        std::max(paint_invalidation_type_, other.paint_invalidation_type_);
     layout_type_ = std::max(layout_type_, other.layout_type_);
     needs_reshape_ |= other.needs_reshape_;
     recompute_visual_overflow_ |= other.recompute_visual_overflow_;
-    visual_rect_update_ |= other.visual_rect_update_;
     property_specific_differences_ |= other.property_specific_differences_;
     scroll_anchor_disabling_property_changed_ |=
         other.scroll_anchor_disabling_property_changed_;
     compositing_reasons_changed_ |= other.compositing_reasons_changed_;
+    compositable_paint_effect_changed_ |=
+        other.compositable_paint_effect_changed_;
   }
 
   bool HasDifference() const {
-    return needs_paint_invalidation_ || layout_type_ || needs_reshape_ ||
-           property_specific_differences_ || recompute_visual_overflow_ ||
-           visual_rect_update_ || scroll_anchor_disabling_property_changed_ ||
-           compositing_reasons_changed_;
+    return (paint_invalidation_type_ !=
+            static_cast<unsigned>(PaintInvalidationType::kNone)) ||
+           layout_type_ || needs_reshape_ || property_specific_differences_ ||
+           recompute_visual_overflow_ ||
+           scroll_anchor_disabling_property_changed_ ||
+           compositing_reasons_changed_ || compositable_paint_effect_changed_;
   }
 
   bool HasAtMostPropertySpecificDifferences(
       unsigned property_differences) const {
-    return !needs_paint_invalidation_ && !layout_type_ &&
+    return (paint_invalidation_type_ ==
+            static_cast<unsigned>(PaintInvalidationType::kNone)) &&
+           !layout_type_ && !compositing_reasons_changed_ &&
            !(property_specific_differences_ & ~property_differences);
   }
 
-  bool NeedsPaintInvalidation() const { return needs_paint_invalidation_; }
-  void SetNeedsPaintInvalidation() { needs_paint_invalidation_ = true; }
+  // For simple paint invalidation, we can directly invalidate the
+  // DisplayItemClients during style update, without paint invalidation during
+  // PrePaintTreeWalk.
+  bool NeedsSimplePaintInvalidation() const {
+    return paint_invalidation_type_ ==
+           static_cast<unsigned>(PaintInvalidationType::kSimple);
+  }
+  bool NeedsNormalPaintInvalidation() const {
+    return paint_invalidation_type_ ==
+           static_cast<unsigned>(PaintInvalidationType::kNormal);
+  }
+  void SetNeedsSimplePaintInvalidation() {
+    DCHECK(!NeedsNormalPaintInvalidation());
+    paint_invalidation_type_ =
+        static_cast<unsigned>(PaintInvalidationType::kSimple);
+  }
+  void SetNeedsNormalPaintInvalidation() {
+    paint_invalidation_type_ =
+        static_cast<unsigned>(PaintInvalidationType::kNormal);
+  }
 
   bool NeedsLayout() const { return layout_type_ != kNoLayout; }
   void ClearNeedsLayout() { layout_type_ = kNoLayout; }
@@ -97,14 +124,21 @@ class StyleDifference {
   }
   void SetNeedsRecomputeVisualOverflow() { recompute_visual_overflow_ = true; }
 
-  bool NeedsVisualRectUpdate() const { return visual_rect_update_; }
-  void SetNeedsVisualRectUpdate() { visual_rect_update_ = true; }
-
+  // True if the transform property itself changed, or properties related to
+  // transform changed (e.g., individual transform properties, motion path,
+  // etc.). See: |ComputedStyle::HasTransform|.
   bool TransformChanged() const {
-    return property_specific_differences_ & kTransformChanged;
+    return property_specific_differences_ & kTransformPropertyChanged ||
+           property_specific_differences_ & kOtherTransformPropertyChanged;
   }
-  void SetTransformChanged() {
-    property_specific_differences_ |= kTransformChanged;
+  bool OtherTransformPropertyChanged() const {
+    return property_specific_differences_ & kOtherTransformPropertyChanged;
+  }
+  void SetTransformPropertyChanged() {
+    property_specific_differences_ |= kTransformPropertyChanged;
+  }
+  void SetOtherTransformPropertyChanged() {
+    property_specific_differences_ |= kOtherTransformPropertyChanged;
   }
 
   bool OpacityChanged() const {
@@ -123,13 +157,6 @@ class StyleDifference {
     return property_specific_differences_ & kFilterChanged;
   }
   void SetFilterChanged() { property_specific_differences_ |= kFilterChanged; }
-
-  bool BackdropFilterChanged() const {
-    return property_specific_differences_ & kBackdropFilterChanged;
-  }
-  void SetBackdropFilterChanged() {
-    property_specific_differences_ |= kBackdropFilterChanged;
-  }
 
   bool CssClipChanged() const {
     return property_specific_differences_ & kCSSClipChanged;
@@ -157,11 +184,18 @@ class StyleDifference {
   }
   void SetMaskChanged() { property_specific_differences_ |= kMaskChanged; }
 
-  bool HasAlphaChanged() const {
-    return property_specific_differences_ & kHasAlphaChanged;
+  bool BackgroundColorChanged() const {
+    return property_specific_differences_ & kBackgroundColorChanged;
   }
-  void SetHasAlphaChanged() {
-    property_specific_differences_ |= kHasAlphaChanged;
+  void SetBackgroundColorChanged() {
+    property_specific_differences_ |= kBackgroundColorChanged;
+  }
+
+  bool ClipPathChanged() const {
+    return property_specific_differences_ & kClipPathChanged;
+  }
+  void SetClipPathChanged() {
+    property_specific_differences_ |= kClipPathChanged;
   }
 
   bool ScrollAnchorDisablingPropertyChanged() const {
@@ -174,24 +208,42 @@ class StyleDifference {
     return compositing_reasons_changed_;
   }
   void SetCompositingReasonsChanged() { compositing_reasons_changed_ = true; }
+  bool CompositablePaintEffectChanged() const {
+    return compositable_paint_effect_changed_;
+  }
+  void SetCompositablePaintEffectChanged() {
+    compositable_paint_effect_changed_ = true;
+  }
 
  private:
-  static constexpr int kPropertyDifferenceCount = 10;
+  static constexpr int kPropertyDifferenceCount = 11;
 
   friend CORE_EXPORT std::ostream& operator<<(std::ostream&,
                                               const StyleDifference&);
 
-  unsigned needs_paint_invalidation_ : 1;
+  enum class PaintInvalidationType { kNone, kSimple, kNormal };
+  unsigned paint_invalidation_type_ : 2;
 
   enum LayoutType { kNoLayout = 0, kPositionedMovement, kFullLayout };
   unsigned layout_type_ : 2;
   unsigned needs_reshape_ : 1;
   unsigned recompute_visual_overflow_ : 1;
-  unsigned visual_rect_update_ : 1;
   unsigned property_specific_differences_ : kPropertyDifferenceCount;
   unsigned scroll_anchor_disabling_property_changed_ : 1;
   unsigned compositing_reasons_changed_ : 1;
+  // Designed for the effects such as background-color, whose animation can be
+  // composited using paint worklet infra.
+  unsigned compositable_paint_effect_changed_ : 1;
+
+  // This exists only to get the object up to exactly 32 bits,
+  // which keeps Clang from making partial writes of it when copying
+  // (making two small writes to the stack and then reading the same
+  // data back again with a large read can cause store-to-load forward
+  // stalls). Feel free to take bits from here if you need them
+  // for something else.
+  unsigned padding_ [[maybe_unused]] : 12;
 };
+static_assert(sizeof(StyleDifference) == 4, "Remove some padding bits!");
 
 CORE_EXPORT std::ostream& operator<<(std::ostream&, const StyleDifference&);
 

@@ -39,6 +39,12 @@ extern "C" {
 
 #define INTERINTRA_WEDGE_SIGN 0
 
+#define DEFAULT_INTER_TX_TYPE DCT_DCT
+
+#define MAX_PALETTE_BLOCK_WIDTH 64
+
+#define MAX_PALETTE_BLOCK_HEIGHT 64
+
 /*!\cond */
 
 // DIFFWTD_MASK_TYPES should not surpass 1 << MAX_DIFFWTD_MASK_BITS
@@ -182,6 +188,7 @@ static const PREDICTION_MODE fimode_to_intradir[FILTER_INTRA_MODES] = {
 
 typedef struct RD_STATS {
   int rate;
+  int zero_rate;
   int64_t dist;
   // Please be careful of using rdcost, it's not guaranteed to be set all the
   // time.
@@ -190,15 +197,9 @@ typedef struct RD_STATS {
   // rate/dist.
   int64_t rdcost;
   int64_t sse;
-  int skip_txfm;  // sse should equal to dist when skip_txfm == 1
-  int zero_rate;
+  uint8_t skip_txfm;  // sse should equal to dist when skip_txfm == 1
 #if CONFIG_RD_DEBUG
   int txb_coeff_cost[MAX_MB_PLANE];
-  // TODO(jingning): Temporary solution to silence stack over-size warning
-  // in handle_inter_mode. This should be fixed after rate-distortion
-  // optimization refactoring.
-  int16_t txb_coeff_cost_map[MAX_MB_PLANE][TXB_COEFF_COST_MAP_SIZE]
-                            [TXB_COEFF_COST_MAP_SIZE];
 #endif  // CONFIG_RD_DEBUG
 } RD_STATS;
 
@@ -214,64 +215,132 @@ typedef struct {
 
 #define INTER_TX_SIZE_BUF_LEN 16
 #define TXK_TYPE_BUF_LEN 64
-// This structure now relates to 4x4 block regions.
+/*!\endcond */
+
+/*! \brief Stores the prediction/txfm mode of the current coding block
+ */
 typedef struct MB_MODE_INFO {
-  // interinter members
-  INTERINTER_COMPOUND_DATA interinter_comp;
-  WarpedMotionParams wm_params;
-  int_mv mv[2];
-  // q index for the current coding block.
+  /*****************************************************************************
+   * \name General Info of the Coding Block
+   ****************************************************************************/
+  /**@{*/
+  /*! \brief The block size of the current coding block */
+  BLOCK_SIZE bsize;
+  /*! \brief The partition type of the current coding block. */
+  PARTITION_TYPE partition;
+  /*! \brief The prediction mode used */
+  PREDICTION_MODE mode;
+  /*! \brief The UV mode when intra is used */
+  UV_PREDICTION_MODE uv_mode;
+  /*! \brief The q index for the current coding block. */
   int current_qindex;
-  // Only for INTER blocks
+  /**@}*/
+
+  /*****************************************************************************
+   * \name Inter Mode Info
+   ****************************************************************************/
+  /**@{*/
+  /*! \brief The motion vectors used by the current inter mode */
+  int_mv mv[2];
+  /*! \brief The reference frames for the MV */
+  MV_REFERENCE_FRAME ref_frame[2];
+  /*! \brief Filter used in subpel interpolation. */
   int_interpfilters interp_filters;
-  // TODO(debargha): Consolidate these flags
+  /*! \brief The motion mode used by the inter prediction. */
+  MOTION_MODE motion_mode;
+  /*! \brief Number of samples used by warp causal */
+  uint8_t num_proj_ref;
+  /*! \brief The number of overlapped neighbors above/left for obmc/warp motion
+   * mode. */
+  uint8_t overlappable_neighbors;
+  /*! \brief The parameters used in warp motion mode. */
+  WarpedMotionParams wm_params;
+  /*! \brief The type of intra mode used by inter-intra */
+  INTERINTRA_MODE interintra_mode;
+  /*! \brief The type of wedge used in interintra mode. */
+  int8_t interintra_wedge_index;
+  /*! \brief Struct that stores the data used in interinter compound mode. */
+  INTERINTER_COMPOUND_DATA interinter_comp;
+  /**@}*/
+
+  /*****************************************************************************
+   * \name Intra Mode Info
+   ****************************************************************************/
+  /**@{*/
+  /*! \brief Directional mode delta: the angle is base angle + (angle_delta *
+   * step). */
+  int8_t angle_delta[PLANE_TYPES];
+  /*! \brief The type of filter intra mode used (if applicable). */
+  FILTER_INTRA_MODE_INFO filter_intra_mode_info;
+  /*! \brief Chroma from Luma: Joint sign of alpha Cb and alpha Cr */
+  int8_t cfl_alpha_signs;
+  /*! \brief Chroma from Luma: Index of the alpha Cb and alpha Cr combination */
+  uint8_t cfl_alpha_idx;
+  /*! \brief Stores the size and colors of palette mode */
+  PALETTE_MODE_INFO palette_mode_info;
+  /**@}*/
+
+  /*****************************************************************************
+   * \name Transform Info
+   ****************************************************************************/
+  /**@{*/
+  /*! \brief Whether to skip transforming and sending. */
+  uint8_t skip_txfm;
+  /*! \brief Transform size when fixed size txfm is used (e.g. intra modes). */
+  TX_SIZE tx_size;
+  /*! \brief Transform size when recursive txfm tree is on. */
+  TX_SIZE inter_tx_size[INTER_TX_SIZE_BUF_LEN];
+  /**@}*/
+
+  /*****************************************************************************
+   * \name Loop Filter Info
+   ****************************************************************************/
+  /**@{*/
+  /*! \copydoc MACROBLOCKD::delta_lf_from_base */
+  int8_t delta_lf_from_base;
+  /*! \copydoc MACROBLOCKD::delta_lf */
+  int8_t delta_lf[FRAME_LF_COUNT];
+  /**@}*/
+
+  /*****************************************************************************
+   * \name Bitfield for Memory Reduction
+   ****************************************************************************/
+  /**@{*/
+  /*! \brief The segment id */
+  uint8_t segment_id : 3;
+  /*! \brief Only valid when temporal update if off. */
+  uint8_t seg_id_predicted : 1;
+  /*! \brief Which ref_mv to use */
+  uint8_t ref_mv_idx : 2;
+  /*! \brief Inter skip mode */
+  uint8_t skip_mode : 1;
+  /*! \brief Whether intrabc is used. */
+  uint8_t use_intrabc : 1;
+  /*! \brief Indicates if masked compound is used(1) or not (0). */
+  uint8_t comp_group_idx : 1;
+  /*! \brief Indicates whether dist_wtd_comp(0) is used or not (0). */
+  uint8_t compound_idx : 1;
+  /*! \brief Whether to use interintra wedge */
+  uint8_t use_wedge_interintra : 1;
+  /*! \brief CDEF strength per BLOCK_64X64 */
+  int8_t cdef_strength : 4;
+  /**@}*/
+
 #if CONFIG_RD_DEBUG
+  /*! \brief RD info used for debugging */
   RD_STATS rd_stats;
+  /*! \brief The current row in unit of 4x4 blocks for debugging */
   int mi_row;
+  /*! \brief The current col in unit of 4x4 blocks for debugging */
   int mi_col;
 #endif
 #if CONFIG_INSPECTION
+  /*! \brief Whether we are skipping the current rows or columns. */
   int16_t tx_skip[TXK_TYPE_BUF_LEN];
 #endif
-  PALETTE_MODE_INFO palette_mode_info;
-  // Common for both INTER and INTRA blocks
-  BLOCK_SIZE sb_type;
-  PREDICTION_MODE mode;
-  // Only for INTRA blocks
-  UV_PREDICTION_MODE uv_mode;
-  // interintra members
-  INTERINTRA_MODE interintra_mode;
-  MOTION_MODE motion_mode;
-  PARTITION_TYPE partition;
-  MV_REFERENCE_FRAME ref_frame[2];
-  FILTER_INTRA_MODE_INFO filter_intra_mode_info;
-  int8_t skip_txfm;
-  uint8_t inter_tx_size[INTER_TX_SIZE_BUF_LEN];
-  TX_SIZE tx_size;
-  int8_t delta_lf_from_base;
-  int8_t delta_lf[FRAME_LF_COUNT];
-  int8_t interintra_wedge_index;
-  // The actual prediction angle is the base angle + (angle_delta * step).
-  int8_t angle_delta[PLANE_TYPES];
-  /* deringing gain *per-superblock* */
-  // Joint sign of alpha Cb and alpha Cr
-  int8_t cfl_alpha_signs;
-  // Index of the alpha Cb and alpha Cr combination
-  uint8_t cfl_alpha_idx;
-  uint8_t num_proj_ref;
-  uint8_t overlappable_neighbors[2];
-  // If comp_group_idx=0, indicate if dist_wtd_comp(0) or avg_comp(1) is used.
-  uint8_t compound_idx;
-  uint8_t use_wedge_interintra : 1;
-  uint8_t segment_id : 3;
-  uint8_t seg_id_predicted : 1;  // valid only when temporal_update is enabled
-  uint8_t skip_mode : 1;
-  uint8_t use_intrabc : 1;
-  uint8_t ref_mv_idx : 2;
-  // Indicate if masked compound is used(1) or not(0).
-  uint8_t comp_group_idx : 1;
-  int8_t cdef_strength : 4;
 } MB_MODE_INFO;
+
+/*!\cond */
 
 static INLINE int is_intrabc_block(const MB_MODE_INFO *mbmi) {
   return mbmi->use_intrabc;
@@ -352,7 +421,7 @@ PREDICTION_MODE av1_above_block_mode(const MB_MODE_INFO *above_mi);
 static INLINE int is_global_mv_block(const MB_MODE_INFO *const mbmi,
                                      TransformationType type) {
   const PREDICTION_MODE mode = mbmi->mode;
-  const BLOCK_SIZE bsize = mbmi->sb_type;
+  const BLOCK_SIZE bsize = mbmi->bsize;
   const int block_size_allowed =
       AOMMIN(block_size_wide[bsize], block_size_high[bsize]) >= 8;
   return (mode == GLOBALMV || mode == GLOBAL_GLOBALMV) && type > TRANSLATION &&
@@ -484,10 +553,6 @@ typedef struct cfl_ctx {
 
   // Whether the reconstructed luma pixels need to be stored
   int store_y;
-
-#if CONFIG_DEBUG
-  int rate;
-#endif  // CONFIG_DEBUG
 } CFL_CTX;
 
 typedef struct dist_wtd_comp_params {
@@ -742,7 +807,7 @@ typedef struct macroblockd {
   FRAME_CONTEXT *tile_ctx;
 
   /*!
-   * Bit depth: copied from cm->seq_params.bit_depth for convenience.
+   * Bit depth: copied from cm->seq_params->bit_depth for convenience.
    */
   int bd;
 
@@ -825,7 +890,7 @@ typedef struct macroblockd {
   /*!
    * Mask for this block used for compound prediction.
    */
-  DECLARE_ALIGNED(16, uint8_t, seg_mask[2 * MAX_SB_SQUARE]);
+  uint8_t *seg_mask;
 
   /*!
    * CFL (chroma from luma) related parameters.
@@ -869,13 +934,42 @@ typedef struct macroblockd {
 /*!\cond */
 
 static INLINE int is_cur_buf_hbd(const MACROBLOCKD *xd) {
+#if CONFIG_AV1_HIGHBITDEPTH
   return xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH ? 1 : 0;
+#else
+  (void)xd;
+  return 0;
+#endif
 }
 
 static INLINE uint8_t *get_buf_by_bd(const MACROBLOCKD *xd, uint8_t *buf16) {
+#if CONFIG_AV1_HIGHBITDEPTH
   return (xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH)
              ? CONVERT_TO_BYTEPTR(buf16)
              : buf16;
+#else
+  (void)xd;
+  return buf16;
+#endif
+}
+
+typedef struct BitDepthInfo {
+  int bit_depth;
+  /*! Is the image buffer high bit depth?
+   * Low bit depth buffer uses uint8_t.
+   * High bit depth buffer uses uint16_t.
+   * Equivalent to cm->seq_params->use_highbitdepth
+   */
+  int use_highbitdepth_buf;
+} BitDepthInfo;
+
+static INLINE BitDepthInfo get_bit_depth_info(const MACROBLOCKD *xd) {
+  BitDepthInfo bit_depth_info;
+  bit_depth_info.bit_depth = xd->bd;
+  bit_depth_info.use_highbitdepth_buf = is_cur_buf_hbd(xd);
+  assert(IMPLIES(!bit_depth_info.use_highbitdepth_buf,
+                 bit_depth_info.bit_depth == 8));
+  return bit_depth_info;
 }
 
 static INLINE int get_sqr_bsize_idx(BLOCK_SIZE bsize) {
@@ -950,6 +1044,28 @@ static const int av1_ext_tx_used[EXT_TX_SET_TYPES][TX_TYPES] = {
   { 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0 },
   { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0 },
   { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+};
+
+// The bitmask corresponds to the transform types as defined in
+// enums.h TX_TYPE enumeration type. Setting the bit 0 means to disable
+// the use of the corresponding transform type in that table.
+// The av1_derived_intra_tx_used_flag table is used when
+// use_reduced_intra_txset is set to 2, where one only searches
+// the transform types derived from residual statistics.
+static const uint16_t av1_derived_intra_tx_used_flag[INTRA_MODES] = {
+  0x0209,  // DC_PRED:       0000 0010 0000 1001
+  0x0403,  // V_PRED:        0000 0100 0000 0011
+  0x0805,  // H_PRED:        0000 1000 0000 0101
+  0x020F,  // D45_PRED:      0000 0010 0000 1111
+  0x0009,  // D135_PRED:     0000 0000 0000 1001
+  0x0009,  // D113_PRED:     0000 0000 0000 1001
+  0x0009,  // D157_PRED:     0000 0000 0000 1001
+  0x0805,  // D203_PRED:     0000 1000 0000 0101
+  0x0403,  // D67_PRED:      0000 0100 0000 0011
+  0x0205,  // SMOOTH_PRED:   0000 0010 0000 1001
+  0x0403,  // SMOOTH_V_PRED: 0000 0100 0000 0011
+  0x0805,  // SMOOTH_H_PRED: 0000 1000 0000 0101
+  0x0209,  // PAETH_PRED:    0000 0010 0000 1001
 };
 
 static const uint16_t av1_reduced_intra_tx_used_flag[INTRA_MODES] = {
@@ -1064,7 +1180,7 @@ static INLINE TX_TYPE get_default_tx_type(PLANE_TYPE plane_type,
   if (is_inter_block(mbmi) || plane_type != PLANE_TYPE_Y ||
       xd->lossless[mbmi->segment_id] || tx_size >= TX_32X32 ||
       use_screen_content_tools)
-    return DCT_DCT;
+    return DEFAULT_INTER_TX_TYPE;
 
   return intra_mode_to_tx_type(mbmi, plane_type);
 }
@@ -1077,7 +1193,7 @@ static INLINE BLOCK_SIZE get_plane_block_size(BLOCK_SIZE bsize,
   assert(bsize < BLOCK_SIZES_ALL);
   assert(subsampling_x >= 0 && subsampling_x < 2);
   assert(subsampling_y >= 0 && subsampling_y < 2);
-  return ss_size_lookup[bsize][subsampling_x][subsampling_y];
+  return av1_ss_size_lookup[bsize][subsampling_x][subsampling_y];
 }
 
 /*
@@ -1271,7 +1387,7 @@ static INLINE TX_SIZE av1_get_tx_size(int plane, const MACROBLOCKD *xd) {
   if (xd->lossless[mbmi->segment_id]) return TX_4X4;
   if (plane == 0) return mbmi->tx_size;
   const MACROBLOCKD_PLANE *pd = &xd->plane[plane];
-  return av1_get_max_uv_txsize(mbmi->sb_type, pd->subsampling_x,
+  return av1_get_max_uv_txsize(mbmi->bsize, pd->subsampling_x,
                                pd->subsampling_y);
 }
 
@@ -1311,7 +1427,7 @@ static INLINE int is_interintra_allowed_ref(const MV_REFERENCE_FRAME rf[2]) {
 }
 
 static INLINE int is_interintra_allowed(const MB_MODE_INFO *mbmi) {
-  return is_interintra_allowed_bsize(mbmi->sb_type) &&
+  return is_interintra_allowed_bsize(mbmi->bsize) &&
          is_interintra_allowed_mode(mbmi->mode) &&
          is_interintra_allowed_ref(mbmi->ref_frame);
 }
@@ -1354,34 +1470,29 @@ static INLINE int is_motion_variation_allowed_compound(
 static const int max_neighbor_obmc[6] = { 0, 1, 2, 3, 4, 4 };
 
 static INLINE int check_num_overlappable_neighbors(const MB_MODE_INFO *mbmi) {
-  return !(mbmi->overlappable_neighbors[0] == 0 &&
-           mbmi->overlappable_neighbors[1] == 0);
+  return mbmi->overlappable_neighbors != 0;
 }
 
 static INLINE MOTION_MODE
 motion_mode_allowed(const WarpedMotionParams *gm_params, const MACROBLOCKD *xd,
                     const MB_MODE_INFO *mbmi, int allow_warped_motion) {
+  if (!check_num_overlappable_neighbors(mbmi)) return SIMPLE_TRANSLATION;
   if (xd->cur_frame_force_integer_mv == 0) {
     const TransformationType gm_type = gm_params[mbmi->ref_frame[0]].wmtype;
     if (is_global_mv_block(mbmi, gm_type)) return SIMPLE_TRANSLATION;
   }
-  if (is_motion_variation_allowed_bsize(mbmi->sb_type) &&
+  if (is_motion_variation_allowed_bsize(mbmi->bsize) &&
       is_inter_mode(mbmi->mode) && mbmi->ref_frame[1] != INTRA_FRAME &&
       is_motion_variation_allowed_compound(mbmi)) {
-    if (!check_num_overlappable_neighbors(mbmi)) return SIMPLE_TRANSLATION;
     assert(!has_second_ref(mbmi));
-    if (mbmi->num_proj_ref >= 1 &&
-        (allow_warped_motion &&
-         !av1_is_scaled(xd->block_ref_scale_factors[0]))) {
-      if (xd->cur_frame_force_integer_mv) {
-        return OBMC_CAUSAL;
-      }
+    if (mbmi->num_proj_ref >= 1 && allow_warped_motion &&
+        !xd->cur_frame_force_integer_mv &&
+        !av1_is_scaled(xd->block_ref_scale_factors[0])) {
       return WARPED_CAUSAL;
     }
     return OBMC_CAUSAL;
-  } else {
-    return SIMPLE_TRANSLATION;
   }
+  return SIMPLE_TRANSLATION;
 }
 
 static INLINE int is_neighbor_overlappable(const MB_MODE_INFO *mbmi) {
@@ -1391,8 +1502,10 @@ static INLINE int is_neighbor_overlappable(const MB_MODE_INFO *mbmi) {
 static INLINE int av1_allow_palette(int allow_screen_content_tools,
                                     BLOCK_SIZE sb_type) {
   assert(sb_type < BLOCK_SIZES_ALL);
-  return allow_screen_content_tools && block_size_wide[sb_type] <= 64 &&
-         block_size_high[sb_type] <= 64 && sb_type >= BLOCK_8X8;
+  return allow_screen_content_tools &&
+         block_size_wide[sb_type] <= MAX_PALETTE_BLOCK_WIDTH &&
+         block_size_high[sb_type] <= MAX_PALETTE_BLOCK_HEIGHT &&
+         sb_type >= BLOCK_8X8;
 }
 
 // Returns sub-sampled dimensions of the given block.
@@ -1444,10 +1557,12 @@ static INLINE void av1_get_block_dimensions(BLOCK_SIZE bsize, int plane,
 }
 
 /* clang-format off */
+// Pointer to a three-dimensional array whose first dimension is PALETTE_SIZES.
 typedef aom_cdf_prob (*MapCdf)[PALETTE_COLOR_INDEX_CONTEXTS]
                               [CDF_SIZE(PALETTE_COLORS)];
-typedef const int (*ColorCost)[PALETTE_SIZES][PALETTE_COLOR_INDEX_CONTEXTS]
-                              [PALETTE_COLORS];
+// Pointer to a const three-dimensional array whose first dimension is
+// PALETTE_SIZES.
+typedef const int (*ColorCost)[PALETTE_COLOR_INDEX_CONTEXTS][PALETTE_COLORS];
 /* clang-format on */
 
 typedef struct {
@@ -1468,7 +1583,7 @@ static INLINE int is_nontrans_global_motion(const MACROBLOCKD *xd,
   // First check if all modes are GLOBALMV
   if (mbmi->mode != GLOBALMV && mbmi->mode != GLOBAL_GLOBALMV) return 0;
 
-  if (AOMMIN(mi_size_wide[mbmi->sb_type], mi_size_high[mbmi->sb_type]) < 2)
+  if (AOMMIN(mi_size_wide[mbmi->bsize], mi_size_high[mbmi->bsize]) < 2)
     return 0;
 
   // Now check if all global motion is non translational

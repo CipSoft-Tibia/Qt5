@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,12 +23,14 @@ enum ResourceFormat {
   LUMINANCE_F16,
   RGBA_F16,
   R16_EXT,
+  RG16_EXT,
   RGBX_8888,
   BGRX_8888,
   RGBA_1010102,
   BGRA_1010102,
   YVU_420,
   YUV_420_BIPLANAR,
+  YUVA_420_TRIPLANAR,
   P010,
   RESOURCE_FORMAT_MAX = P010,
 };

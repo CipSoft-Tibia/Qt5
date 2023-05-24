@@ -1,12 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/viz/service/display_embedder/software_output_device_mac.h"
 
-#include "base/threading/sequenced_task_runner_handle.h"
+#import "base/task/sequenced_task_runner.h"
+#include "base/task/sequenced_task_runner.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/gfx/skia_util.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 
 namespace viz {
 
@@ -14,7 +15,7 @@ namespace {
 
 TEST(SoftwareOutputDeviceMacTest, Basics) {
   auto device = std::make_unique<SoftwareOutputDeviceMac>(
-      base::SequencedTaskRunnerHandle::Get());
+      base::SequencedTaskRunner::GetCurrentDefault());
   gfx::Size pixel_size(512, 512);
   float scale_factor = 1;
 

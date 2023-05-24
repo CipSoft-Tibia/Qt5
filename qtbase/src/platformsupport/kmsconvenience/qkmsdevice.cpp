@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2016 Pelagicore AG
-** Copyright (C) 2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2016 Pelagicore AG
+// Copyright (C) 2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qkmsdevice_p.h"
 
@@ -52,6 +16,8 @@
 #define ARRAY_LENGTH(a) (sizeof (a) / sizeof (a)[0])
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(qLcKmsDebug, "qt.qpa.eglfs.kms")
 
@@ -234,7 +200,7 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
     if (userConnectorConfig.contains(QStringLiteral("virtualPos"))) {
         const QByteArray vpos = userConnectorConfig.value(QStringLiteral("virtualPos")).toByteArray();
         const QByteArrayList vposComp = vpos.split(',');
-        if (vposComp.count() == 2)
+        if (vposComp.size() == 2)
             vinfo->virtualPos = QPoint(vposComp[0].trimmed().toInt(), vposComp[1].trimmed().toInt());
     }
     if (userConnectorConfig.value(QStringLiteral("primary")).toBool())
@@ -462,7 +428,7 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
         if (plane.possibleCrtcs & (1 << output.crtc_index)) {
             output.available_planes.append(plane);
             planeListStr.append(QString::number(plane.id));
-            planeListStr.append(QLatin1Char(' '));
+            planeListStr.append(u' ');
 
             // Choose the first primary plane that is not already assigned to
             // another screen's associated crtc.
@@ -471,7 +437,7 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
         }
     }
     qCDebug(qLcKmsDebug, "Output %s can use %d planes: %s",
-            connectorName.constData(), output.available_planes.count(), qPrintable(planeListStr));
+            connectorName.constData(), int(output.available_planes.size()), qPrintable(planeListStr));
 
     // This is for the EGLDevice/EGLStream backend. On some of those devices one
     // may want to target a pre-configured plane. It is probably useless for
@@ -509,10 +475,10 @@ QPlatformScreen *QKmsDevice::createScreenForConnector(drmModeResPtr resources,
     if (qEnvironmentVariableIsSet("QT_QPA_EGLFS_KMS_PLANES_FOR_CRTCS")) {
         const QString val = qEnvironmentVariable("QT_QPA_EGLFS_KMS_PLANES_FOR_CRTCS");
         qCDebug(qLcKmsDebug, "crtc_id:plane_id override list: %s", qPrintable(val));
-        const QStringList crtcPlanePairs = val.split(QLatin1Char(':'));
+        const QStringList crtcPlanePairs = val.split(u':');
         for (const QString &crtcPlanePair : crtcPlanePairs) {
-            const QStringList values = crtcPlanePair.split(QLatin1Char(','));
-            if (values.count() == 2 && uint(values[0].toInt()) == output.crtc_id) {
+            const QStringList values = crtcPlanePair.split(u',');
+            if (values.size() == 2 && uint(values[0].toInt()) == output.crtc_id) {
                 uint planeId = values[1].toInt();
                 for (QKmsPlane &kmsplane : m_planes) {
                     if (kmsplane.id == planeId) {
@@ -664,7 +630,7 @@ void QKmsDevice::createScreens()
 
     discoverPlanes();
 
-    QVector<OrderedScreen> screens;
+    QList<OrderedScreen> screens;
 
     int wantedConnectorIndex = -1;
     bool ok;
@@ -702,7 +668,7 @@ void QKmsDevice::createScreens()
     // The final list of screens is available, so do the second phase setup.
     // Hook up clone sources and targets.
     for (const OrderedScreen &orderedScreen : screens) {
-        QVector<QPlatformScreen *> screensCloningThisScreen;
+        QList<QPlatformScreen *> screensCloningThisScreen;
         for (const OrderedScreen &s : screens) {
             if (s.vinfo.output.clone_source == orderedScreen.vinfo.output.name)
                 screensCloningThisScreen.append(s.screen);
@@ -727,7 +693,7 @@ void QKmsDevice::createScreens()
     // Figure out the virtual desktop and register the screens to QPA/QGuiApplication.
     QPoint pos(0, 0);
     QList<QPlatformScreen *> siblings;
-    QVector<QPoint> virtualPositions;
+    QList<QPoint> virtualPositions;
     int primarySiblingIdx = -1;
 
     for (const OrderedScreen &orderedScreen : screens) {
@@ -750,10 +716,11 @@ void QKmsDevice::createScreens()
         // virtualIndex. This is not only handy but also required since for instance
         // evdevtouch relies on it when performing touch device - screen mapping.
         if (!m_screenConfig->separateScreens()) {
+            qCDebug(qLcKmsDebug) << "  virtual position is" << virtualPos;
             siblings.append(s);
             virtualPositions.append(virtualPos);
             if (orderedScreen.vinfo.isPrimary)
-                primarySiblingIdx = siblings.count() - 1;
+                primarySiblingIdx = siblings.size() - 1;
         } else {
             registerScreen(s, orderedScreen.vinfo.isPrimary, virtualPos, QList<QPlatformScreen *>() << s);
         }
@@ -761,7 +728,7 @@ void QKmsDevice::createScreens()
 
     if (!m_screenConfig->separateScreens()) {
         // enable the virtual desktop
-        for (int i = 0; i < siblings.count(); ++i)
+        for (int i = 0; i < siblings.size(); ++i)
             registerScreen(siblings[i], i == primarySiblingIdx, virtualPositions[i], siblings);
     }
 }
@@ -775,7 +742,7 @@ QPlatformScreen *QKmsDevice::createHeadlessScreen()
 // not all subclasses support screen cloning
 void QKmsDevice::registerScreenCloning(QPlatformScreen *screen,
                                        QPlatformScreen *screenThisScreenClones,
-                                       const QVector<QPlatformScreen *> &screensCloningThisScreen)
+                                       const QList<QPlatformScreen *> &screensCloningThisScreen)
 {
     Q_UNUSED(screen);
     Q_UNUSED(screenThisScreenClones);
@@ -1011,7 +978,7 @@ void QKmsDevice::parseCrtcProperties(uint32_t crtcId, QKmsOutput *output)
     }
 
     enumerateProperties(objProps, [output](drmModePropertyPtr prop, quint64 value) {
-        Q_UNUSED(value)
+        Q_UNUSED(value);
         if (!strcasecmp(prop->name, "mode_id"))
             output->modeIdPropertyId = prop->prop_id;
         else if (!strcasecmp(prop->name, "active"))
@@ -1033,7 +1000,6 @@ QKmsScreenConfig::QKmsScreenConfig()
     , m_pbuffers(false)
     , m_virtualDesktopLayout(VirtualDesktopLayoutHorizontal)
 {
-    loadConfig();
 }
 
 void QKmsScreenConfig::loadConfig()
@@ -1063,7 +1029,7 @@ void QKmsScreenConfig::loadConfig()
 
     const QJsonObject object = doc.object();
 
-    const QString headlessStr = object.value(QLatin1String("headless")).toString();
+    const QString headlessStr = object.value("headless"_L1).toString();
     const QByteArray headless = headlessStr.toUtf8();
     QSize headlessSize;
     if (sscanf(headless.constData(), "%dx%d", &headlessSize.rwidth(), &headlessSize.rheight()) == 2) {
@@ -1073,22 +1039,22 @@ void QKmsScreenConfig::loadConfig()
         m_headless = false;
     }
 
-    m_hwCursor = object.value(QLatin1String("hwcursor")).toBool(m_hwCursor);
-    m_pbuffers = object.value(QLatin1String("pbuffers")).toBool(m_pbuffers);
-    m_devicePath = object.value(QLatin1String("device")).toString();
-    m_separateScreens = object.value(QLatin1String("separateScreens")).toBool(m_separateScreens);
+    m_hwCursor = object.value("hwcursor"_L1).toBool(m_hwCursor);
+    m_pbuffers = object.value("pbuffers"_L1).toBool(m_pbuffers);
+    m_devicePath = object.value("device"_L1).toString();
+    m_separateScreens = object.value("separateScreens"_L1).toBool(m_separateScreens);
 
-    const QString vdOriString = object.value(QLatin1String("virtualDesktopLayout")).toString();
+    const QString vdOriString = object.value("virtualDesktopLayout"_L1).toString();
     if (!vdOriString.isEmpty()) {
-        if (vdOriString == QLatin1String("horizontal"))
+        if (vdOriString == "horizontal"_L1)
             m_virtualDesktopLayout = VirtualDesktopLayoutHorizontal;
-        else if (vdOriString == QLatin1String("vertical"))
+        else if (vdOriString == "vertical"_L1)
             m_virtualDesktopLayout = VirtualDesktopLayoutVertical;
         else
             qCWarning(qLcKmsDebug) << "Unknown virtualDesktopOrientation value" << vdOriString;
     }
 
-    const QJsonArray outputs = object.value(QLatin1String("outputs")).toArray();
+    const QJsonArray outputs = object.value("outputs"_L1).toArray();
     for (int i = 0; i < outputs.size(); i++) {
         const QVariantMap outputSettings = outputs.at(i).toObject().toVariantMap();
 

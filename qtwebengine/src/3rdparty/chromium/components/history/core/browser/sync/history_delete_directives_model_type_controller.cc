@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,37 +6,50 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "components/sync/driver/sync_client.h"
+#include "base/memory/weak_ptr.h"
+#include "components/history/core/browser/history_service.h"
 #include "components/sync/driver/sync_service.h"
 #include "components/sync/driver/sync_user_settings.h"
 #include "components/sync/model/model_type_store_service.h"
 
-namespace browser_sync {
+namespace history {
+
+namespace {
+
+base::WeakPtr<syncer::SyncableService> GetSyncableServiceFromHistoryService(
+    HistoryService* history_service) {
+  if (history_service) {
+    return history_service->GetDeleteDirectivesSyncableService();
+  }
+  return nullptr;
+}
+
+}  // namespace
 
 HistoryDeleteDirectivesModelTypeController::
     HistoryDeleteDirectivesModelTypeController(
         const base::RepeatingClosure& dump_stack,
         syncer::SyncService* sync_service,
         syncer::ModelTypeStoreService* model_type_store_service,
-        syncer::SyncClient* sync_client)
+        HistoryService* history_service,
+        PrefService* pref_service)
     : SyncableServiceBasedModelTypeController(
           syncer::HISTORY_DELETE_DIRECTIVES,
           model_type_store_service->GetStoreFactory(),
-          sync_client->GetSyncableServiceForType(
-              syncer::HISTORY_DELETE_DIRECTIVES),
+          GetSyncableServiceFromHistoryService(history_service),
           dump_stack),
-      sync_service_(sync_service) {}
+      helper_(syncer::HISTORY_DELETE_DIRECTIVES, sync_service, pref_service) {}
 
 HistoryDeleteDirectivesModelTypeController::
-    ~HistoryDeleteDirectivesModelTypeController() {}
+    ~HistoryDeleteDirectivesModelTypeController() = default;
 
 syncer::DataTypeController::PreconditionState
 HistoryDeleteDirectivesModelTypeController::GetPreconditionState() const {
   DCHECK(CalledOnValidThread());
-  return sync_service_->GetUserSettings()->IsEncryptEverythingEnabled()
-             ? PreconditionState::kMustStopAndClearData
-             : PreconditionState::kPreconditionsMet;
+  if (helper_.sync_service()->GetUserSettings()->IsEncryptEverythingEnabled()) {
+    return PreconditionState::kMustStopAndClearData;
+  }
+  return helper_.GetPreconditionState();
 }
 
 void HistoryDeleteDirectivesModelTypeController::LoadModels(
@@ -45,7 +58,7 @@ void HistoryDeleteDirectivesModelTypeController::LoadModels(
   DCHECK(CalledOnValidThread());
   DCHECK_EQ(NOT_RUNNING, state());
 
-  sync_service_->AddObserver(this);
+  sync_service_observation_.Observe(helper_.sync_service());
   SyncableServiceBasedModelTypeController::LoadModels(configure_context,
                                                       model_load_callback);
 }
@@ -55,7 +68,7 @@ void HistoryDeleteDirectivesModelTypeController::Stop(
     StopCallback callback) {
   DCHECK(CalledOnValidThread());
 
-  sync_service_->RemoveObserver(this);
+  sync_service_observation_.Reset();
 
   SyncableServiceBasedModelTypeController::Stop(shutdown_reason,
                                                 std::move(callback));
@@ -65,7 +78,7 @@ void HistoryDeleteDirectivesModelTypeController::OnStateChanged(
     syncer::SyncService* sync) {
   DCHECK(CalledOnValidThread());
   // Most of these calls will be no-ops but SyncService handles that just fine.
-  sync_service_->DataTypePreconditionChanged(type());
+  helper_.sync_service()->DataTypePreconditionChanged(type());
 }
 
-}  // namespace browser_sync
+}  // namespace history

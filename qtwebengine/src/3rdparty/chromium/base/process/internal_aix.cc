@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,7 +59,7 @@ pid_t ProcDirSlotToPid(const char* d_name) {
 
 bool ReadProcFile(const FilePath& file, struct psinfo* info) {
   // Synchronously reading files in /proc is safe.
-  ThreadRestrictions::ScopedAllowIO allow_io;
+  ScopedAllowBlocking scoped_allow_blocking;
   int fileId;
   if ((fileId = open(file.value().c_str(), O_RDONLY)) < 0) {
     DPLOG(WARNING) << "Failed to open " << file.MaybeAsASCII();

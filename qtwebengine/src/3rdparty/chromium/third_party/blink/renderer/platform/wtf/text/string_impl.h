@@ -26,13 +26,16 @@
 
 #include <limits.h>
 #include <string.h>
+
 #include <atomic>
 
-#include "base/callback_forward.h"
+#include "base/check_op.h"
 #include "base/containers/span.h"
-#include "base/macros.h"
+#include "base/dcheck_is_on.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/ref_counted.h"
 #include "base/numerics/checked_math.h"
+#include "base/numerics/safe_conversions.h"
 #include "build/build_config.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
@@ -41,15 +44,11 @@
 #include "third_party/blink/renderer/platform/wtf/text/ascii_fast_path.h"
 #include "third_party/blink/renderer/platform/wtf/text/number_parsing_options.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_hasher.h"
-#include "third_party/blink/renderer/platform/wtf/text/unicode.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_uchar.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "third_party/blink/renderer/platform/wtf/wtf_export.h"
 
-#if DCHECK_IS_ON()
-#include "third_party/blink/renderer/platform/wtf/thread_restriction_verifier.h"
-#endif
-
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_APPLE)
 #include "base/mac/scoped_cftyperef.h"
 
 typedef const struct __CFString* CFStringRef;
@@ -60,8 +59,6 @@ typedef const struct __CFString* CFStringRef;
 #endif
 
 namespace WTF {
-
-struct AlreadyHashed;
 
 enum TextCaseSensitivity {
   kTextCaseSensitive,
@@ -77,7 +74,8 @@ enum StripBehavior { kStripExtraWhiteSpace, kDoNotStripWhiteSpace };
 
 typedef bool (*CharacterMatchFunctionPtr)(UChar);
 typedef bool (*IsWhiteSpaceFunctionPtr)(UChar);
-typedef HashMap<wtf_size_t, StringImpl*, AlreadyHashed> StaticStringsTable;
+typedef HashMap<wtf_size_t, StringImpl*, AlreadyHashedTraits>
+    StaticStringsTable;
 
 // You can find documentation about this class in this doc:
 // https://docs.google.com/document/d/1kOCUlJdh2WJMJGDf-WoEQhmnjKLaOYRbiHz5TiGJl14/edit?usp=sharing
@@ -89,14 +87,12 @@ class WTF_EXPORT StringImpl {
   void operator delete(void*);
 
   // Used to construct static strings, which have a special ref_count_ that can
-  // never hit zero. This means that the static string will never be destroyed,
-  // which is important because static strings will be shared across threads &
-  // ref-counted in a non-threadsafe manner.
+  // never hit zero. This means that the static string will never be destroyed.
   enum ConstructEmptyStringTag { kConstructEmptyString };
   explicit StringImpl(ConstructEmptyStringTag)
       : length_(0),
-        hash_and_flags_(kAsciiCheckDone | kContainsOnlyAscii | kIs8Bit |
-                        kIsStatic) {
+        hash_and_flags_(kAsciiPropertyCheckDone | kContainsOnlyAscii |
+                        kIsLowerAscii | kIs8Bit | kIsStatic) {
     // Ensure that the hash is computed so that AtomicStringHash can call
     // existingHash() with impunity. The empty string is special because it
     // is never entered into AtomicString's HashKey, but still needs to
@@ -107,7 +103,8 @@ class WTF_EXPORT StringImpl {
   enum ConstructEmptyString16BitTag { kConstructEmptyString16Bit };
   explicit StringImpl(ConstructEmptyString16BitTag)
       : length_(0),
-        hash_and_flags_(kAsciiCheckDone | kContainsOnlyAscii | kIsStatic) {
+        hash_and_flags_(kAsciiPropertyCheckDone | kContainsOnlyAscii |
+                        kIsLowerAscii | kIsStatic) {
     GetHash();
   }
 
@@ -134,6 +131,8 @@ class WTF_EXPORT StringImpl {
   static StringImpl* empty_;
   static StringImpl* empty16_bit_;
 
+  StringImpl(const StringImpl&) = delete;
+  StringImpl& operator=(const StringImpl&) = delete;
   ~StringImpl();
 
   static void InitStatics();
@@ -150,6 +149,10 @@ class WTF_EXPORT StringImpl {
 
   static scoped_refptr<StringImpl> Create(const UChar*, wtf_size_t length);
   static scoped_refptr<StringImpl> Create(const LChar*, wtf_size_t length);
+  static scoped_refptr<StringImpl> Create(
+      const LChar*,
+      wtf_size_t length,
+      ASCIIStringAttributes ascii_attributes);
   static scoped_refptr<StringImpl> Create8BitIfPossible(const UChar*,
                                                         wtf_size_t length);
   template <wtf_size_t inlineCapacity>
@@ -222,7 +225,7 @@ class WTF_EXPORT StringImpl {
 
   bool ContainsOnlyASCIIOrEmpty() const;
 
-  bool IsSafeToSendToAnotherThread() const;
+  bool IsLowerASCII() const;
 
   // The high bits of 'hash' are always empty, but we prefer to store our
   // flags in the low bits because it makes them slightly more efficient to
@@ -253,40 +256,78 @@ class WTF_EXPORT StringImpl {
   }
 
   ALWAYS_INLINE bool HasOneRef() const {
-#if DCHECK_IS_ON()
-    DCHECK(IsStatic() || verifier_.IsSafeToUse()) << AsciiForDebugging();
-#endif
-    return ref_count_ == 1;
+    return ref_count_.load(std::memory_order_acquire) == 1;
   }
 
   ALWAYS_INLINE void AddRef() const {
+    if (!IsStatic()) {
+      uint32_t previous_ref_count =
+          ref_count_.fetch_add(1, std::memory_order_relaxed);
+      CHECK_NE(previous_ref_count, std::numeric_limits<uint32_t>::max());
 #if DCHECK_IS_ON()
-    DCHECK(IsStatic() || verifier_.OnRef(ref_count_)) << AsciiForDebugging();
+      ref_count_change_count_++;
 #endif
-    if (!IsStatic())
-      ref_count_ = base::CheckAdd(ref_count_, 1).ValueOrDie();
+    }
   }
 
-  ALWAYS_INLINE void Release() const {
-#if DCHECK_IS_ON()
-    DCHECK(IsStatic() || verifier_.OnDeref(ref_count_))
-        << AsciiForDebugging() << " " << CurrentThread();
-#endif
+  // We explicitly remove the AddRef and Release operations from the tsan
+  // bots because even though all data races in the C++ memory model sense
+  // are undefined behavior, the use of atomics prevents a data race on
+  // ref_count_ itself.
 
+  // Sharing the AtomicStringTable causes other races outside of ref_count_
+  // that could lead to an early deletion of the StringImpl while other
+  // threads are still holding references to it.
+  // Possible races:
+  // 1. Races where ref_count_ doesn't reach zero are not harmful.
+  // 2. Races involving only release calls are not harmful. The
+  //    atomicity of the operations guarantee that only the last subtraction to
+  //    be executed will trigger the deletion of the StringImpl.
+  // 3. A fetch_add on thread A is ordered after a fetch_sub on thread B that
+  //    reaches 0. This can only happen on an AddRef() reached through the
+  //    AtomicStringTable::Add* methods, otherwise there should be another
+  //    reference on thread A, and the Release() on thread B could not have
+  //    reached 0. This race is mitigated by the fact that the Atomic String
+  //    Table Add and Removal operations (including the fetch_sub to 0) are
+  //    done under a lock.
+
+  ALWAYS_INLINE void Release() const {
     if (!IsStatic()) {
+      // This can be a relaxed load as long as the subtraction is performed
+      // with acq_rel order. Any modification to `ref_count_` reordered after
+      // this load will be caught by the while loop or the fetch_sub inside
+      // DestroyIfNeeded().
+      uint32_t current_ref = ref_count_.load(std::memory_order_relaxed);
 #if DCHECK_IS_ON()
       // In non-DCHECK builds, we can save a bit of time in micro-benchmarks by
       // not checking the arithmetic. We hope that checking in DCHECK builds is
       // enough to catch implementation bugs, and that implementation bugs are
       // the only way we'd experience underflow.
-      ref_count_ = base::CheckSub(ref_count_, 1).ValueOrDie();
-#else
-      --ref_count_;
+      DCHECK_NE(current_ref, 0u);
+      ref_count_change_count_++;
 #endif
+      // This is a fancy fetch_sub() that allows the actual decrement to 0 to
+      // be delegated to the DestroyIfNeeded() function. The result of this
+      // compare_exchange_weak() will never be 0. Without this, there would be
+      // a potential race by reaching 0 and calling AddRef and Release on
+      // another thread before the deletion of the string in this thread,
+      // triggering the removal and destruction of the string twice.
+      do {
+        if (current_ref == 1) {
+          DestroyIfNeeded();
+          return;
+        }
+      } while (!ref_count_.compare_exchange_weak(current_ref, current_ref - 1,
+                                                 std::memory_order_acq_rel));
     }
-    if (ref_count_ == 0)
-      DestroyIfNotStatic();
   }
+
+#if DCHECK_IS_ON()
+  unsigned int RefCountChangeCountForTesting() const {
+    return ref_count_change_count_;
+  }
+  void ResetRefCountChangeCountForTesting() { ref_count_change_count_ = 0; }
+#endif
 
   ALWAYS_INLINE void Adopted() const {}
 
@@ -305,9 +346,8 @@ class WTF_EXPORT StringImpl {
       destination[i] = source[i];
   }
 
-  // Some string features, like refcounting and the atomicity flag, are not
-  // thread-safe. We achieve thread safety by isolation, giving each thread
-  // its own copy of the string.
+  // It is no longer required to create isolated copies for thread-safety
+  // purposes.
   scoped_refptr<StringImpl> IsolatedCopy() const;
 
   scoped_refptr<StringImpl> Substring(wtf_size_t pos,
@@ -347,6 +387,8 @@ class WTF_EXPORT StringImpl {
   scoped_refptr<StringImpl> FoldCase();
 
   scoped_refptr<StringImpl> Truncate(wtf_size_t length);
+
+  unsigned LengthWithStrippedWhiteSpace() const;
 
   scoped_refptr<StringImpl> StripWhiteSpace();
   scoped_refptr<StringImpl> StripWhiteSpace(IsWhiteSpaceFunctionPtr);
@@ -435,7 +477,7 @@ class WTF_EXPORT StringImpl {
                  wtf_size_t start = 0,
                  wtf_size_t length = UINT_MAX) const;
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_APPLE)
   base::ScopedCFTypeRef<CFStringRef> CreateCFString();
 #endif
 #ifdef __OBJC__
@@ -445,6 +487,7 @@ class WTF_EXPORT StringImpl {
   static const UChar kLatin1CaseFoldTable[256];
 
  private:
+  friend class AtomicStringTable;
   enum Flags {
     // These two fields are never modified for the lifetime of the StringImpl.
     // It is therefore safe to read them with a relaxed operation.
@@ -453,17 +496,20 @@ class WTF_EXPORT StringImpl {
 
     // This is the only flag that can be both set and unset. It is safe to do
     // so because all accesses are mediated by the same atomic string table and
-    // so protected by thread locality (pre-unification) or a mutex
-    // (post-unification). Thus these accesses can also be relaxed.
+    // so protected by a mutex. Thus these accesses can also be relaxed.
     kIsAtomic = 1 << 2,
 
-    // These two bits are set atomically together. They are initially both
+    // These bits are set atomically together. They are initially all
     // zero, and like the hash computation below, become non-zero only as part
     // of a single atomic bitwise or. Thus concurrent loads will always observe
-    // either a state where the ASCII check has not been completed and both
-    // bits are zero, or a state where the state is fully populated.
-    kAsciiCheckDone = 1 << 3,
+    // either a state where the ASCII property check has not been completed and
+    // all bits are zero, or a state where the state is fully populated.
+    //
+    // The reason kIsLowerAscii is cached but upper ascii is not is that
+    // DOM attributes APIs require a lowercasing check making it fairly hot.
+    kAsciiPropertyCheckDone = 1 << 3,
     kContainsOnlyAscii = 1 << 4,
+    kIsLowerAscii = 1 << 5,
 
     // The last 24 bits (past kHashShift) are reserved for the hash.
     // These bits are all zero if the hash is uncomputed, and the hash is
@@ -480,7 +526,19 @@ class WTF_EXPORT StringImpl {
   constexpr static int kHashShift = (sizeof(unsigned) * 8) - 24;
 
   static inline constexpr uint32_t LengthToAsciiFlags(int length) {
-    return length ? 0 : kAsciiCheckDone | kContainsOnlyAscii;
+    return length
+               ? 0
+               : kAsciiPropertyCheckDone | kContainsOnlyAscii | kIsLowerAscii;
+  }
+
+  static inline uint32_t ASCIIStringAttributesToFlags(
+      ASCIIStringAttributes ascii_attributes) {
+    uint32_t flags = kAsciiPropertyCheckDone;
+    if (ascii_attributes.contains_only_ascii)
+      flags |= kContainsOnlyAscii;
+    if (ascii_attributes.is_lower_ascii)
+      flags |= kIsLowerAscii;
+    return flags;
   }
 
   void SetHashRaw(unsigned hash_val) const {
@@ -515,14 +573,19 @@ class WTF_EXPORT StringImpl {
                                     wtf_size_t replacement_length);
 
   template <class UCharPredicate>
+  unsigned LengthWithStrippedMatchedCharacters(UCharPredicate) const;
+  template <class UCharPredicate>
   scoped_refptr<StringImpl> StripMatchedCharacters(UCharPredicate);
   template <typename CharType, class UCharPredicate>
   scoped_refptr<StringImpl> SimplifyMatchedCharactersToSpace(UCharPredicate,
                                                              StripBehavior);
   NOINLINE wtf_size_t HashSlowCase() const;
 
-  void DestroyIfNotStatic() const;
-  bool ContainsOnlyASCIIOrEmptySlowCase() const;
+  void DestroyIfNeeded() const;
+
+  // Calculates the kContainsOnlyAscii and kIsLowerAscii flags. Returns
+  // a bitfield with those 2 values.
+  unsigned ComputeASCIIFlags() const;
 
 #if DCHECK_IS_ON()
   std::string AsciiForDebugging() const;
@@ -539,13 +602,12 @@ class WTF_EXPORT StringImpl {
 #endif
 
 #if DCHECK_IS_ON()
-  mutable ThreadRestrictionVerifier verifier_;
+  mutable std::atomic<unsigned> ref_count_change_count_{0};
 #endif
-  mutable unsigned ref_count_{1};
+  // TODO (crbug.com/1083392): Use base::AtomicRefCount.
+  mutable std::atomic_uint32_t ref_count_{1};
   const unsigned length_;
   mutable std::atomic<uint32_t> hash_and_flags_;
-
-  DISALLOW_COPY_AND_ASSIGN(StringImpl);
 };
 
 template <>
@@ -586,9 +648,16 @@ WTF_EXPORT bool EqualNonNull(const StringImpl* a, const StringImpl* b);
 
 ALWAYS_INLINE bool StringImpl::ContainsOnlyASCIIOrEmpty() const {
   uint32_t flags = hash_and_flags_.load(std::memory_order_relaxed);
-  if (flags & kAsciiCheckDone)
+  if (flags & kAsciiPropertyCheckDone)
     return flags & kContainsOnlyAscii;
-  return ContainsOnlyASCIIOrEmptySlowCase();
+  return ComputeASCIIFlags() & kContainsOnlyAscii;
+}
+
+ALWAYS_INLINE bool StringImpl::IsLowerASCII() const {
+  uint32_t flags = hash_and_flags_.load(std::memory_order_relaxed);
+  if (flags & kAsciiPropertyCheckDone)
+    return flags & kIsLowerAscii;
+  return ComputeASCIIFlags() & kIsLowerAscii;
 }
 
 template <typename CharType>
@@ -643,6 +712,8 @@ inline bool EqualIgnoringASCIICase(const CharacterTypeA* a,
   return true;
 }
 
+WTF_EXPORT int CodeUnitCompareIgnoringASCIICase(const StringImpl*,
+                                                const StringImpl*);
 WTF_EXPORT int CodeUnitCompareIgnoringASCIICase(const StringImpl*,
                                                 const LChar*);
 
@@ -772,7 +843,7 @@ inline wtf_size_t LengthOfNullTerminatedString(const UChar* string) {
   size_t length = 0;
   while (string[length] != UChar(0))
     ++length;
-  return SafeCast<wtf_size_t>(length);
+  return base::checked_cast<wtf_size_t>(length);
 }
 
 template <wtf_size_t inlineCapacity>
@@ -847,14 +918,6 @@ static inline int CodeUnitCompare(const StringImpl* string1,
   return CodeUnitCompare16(string1, string2);
 }
 
-static inline bool IsSpaceOrNewline(UChar c) {
-  // Use IsASCIISpace() for basic Latin-1.
-  // This will include newlines, which aren't included in Unicode DirWS.
-  return c <= 0x7F
-             ? WTF::IsASCIISpace(c)
-             : WTF::unicode::Direction(c) == WTF::unicode::kWhiteSpaceNeutral;
-}
-
 inline scoped_refptr<StringImpl> StringImpl::IsolatedCopy() const {
   if (Is8Bit())
     return Create(Characters8(), length_);
@@ -887,19 +950,13 @@ inline void StringImpl::PrependTo(BufferType& result,
     result.Prepend(Characters16() + start, number_of_characters_to_copy);
 }
 
-struct StringHash;
-
-// StringHash is the default hash for StringImpl* and scoped_refptr<StringImpl>
 template <typename T>
-struct DefaultHash;
+struct HashTraits;
+// Defined in string_hash.h.
 template <>
-struct DefaultHash<StringImpl*> {
-  typedef StringHash Hash;
-};
+struct HashTraits<StringImpl*>;
 template <>
-struct DefaultHash<scoped_refptr<StringImpl>> {
-  typedef StringHash Hash;
-};
+struct HashTraits<scoped_refptr<StringImpl>>;
 
 }  // namespace WTF
 
@@ -913,4 +970,4 @@ using WTF::EqualNonNull;
 using WTF::LengthOfNullTerminatedString;
 using WTF::ReverseFind;
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_WTF_TEXT_STRING_IMPL_H_

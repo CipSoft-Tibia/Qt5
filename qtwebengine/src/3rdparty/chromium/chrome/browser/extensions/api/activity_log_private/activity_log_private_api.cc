@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/lazy_instance.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/values.h"
@@ -22,9 +22,6 @@
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/extension_system_provider.h"
 #include "extensions/browser/extensions_browser_client.h"
-#include "extensions/common/features/feature.h"
-#include "extensions/common/features/feature_provider.h"
-#include "extensions/common/hashed_extension_id.h"
 
 namespace extensions {
 
@@ -52,7 +49,7 @@ BrowserContextKeyedAPIFactory<ActivityLogAPI>::DeclareFactoryDependencies() {
 }
 
 ActivityLogAPI::ActivityLogAPI(content::BrowserContext* context)
-    : browser_context_(context), initialized_(false) {
+    : browser_context_(context) {
   if (!EventRouter::Get(browser_context_)) {  // Check for testing.
     DVLOG(1) << "ExtensionSystem event_router does not exist.";
     return;
@@ -65,9 +62,6 @@ ActivityLogAPI::ActivityLogAPI(content::BrowserContext* context)
   initialized_ = true;
 }
 
-ActivityLogAPI::~ActivityLogAPI() {
-}
-
 void ActivityLogAPI::Shutdown() {
   if (!initialized_) {  // Check for testing.
     DVLOG(1) << "ExtensionSystem event_router does not exist.";
@@ -75,14 +69,6 @@ void ActivityLogAPI::Shutdown() {
   }
   EventRouter::Get(browser_context_)->UnregisterObserver(this);
   activity_log_->RemoveObserver(this);
-}
-
-// static
-bool ActivityLogAPI::IsExtensionAllowlisted(const std::string& extension_id) {
-  // TODO(devlin): Pass in a HashedExtensionId to avoid this conversion.
-  return FeatureProvider::GetPermissionFeatures()
-      ->GetFeature("activityLogPrivate")
-      ->IsIdInAllowlist(HashedExtensionId(extension_id));
 }
 
 void ActivityLogAPI::OnListenerAdded(const EventListenerInfo& details) {
@@ -102,9 +88,9 @@ void ActivityLogAPI::StartOrStopListeningForExtensionActivities() {
 }
 
 void ActivityLogAPI::OnExtensionActivity(scoped_refptr<Action> activity) {
-  std::unique_ptr<base::ListValue> value(new base::ListValue());
+  base::Value::List value;
   ExtensionActivity activity_arg = activity->ConvertToExtensionActivity();
-  value->Append(activity_arg.ToValue());
+  value.Append(activity_arg.ToValue());
   auto event = std::make_unique<Event>(
       events::ACTIVITY_LOG_PRIVATE_ON_EXTENSION_ACTIVITY,
       activity_log_private::OnExtensionActivity::kEventName, std::move(value),
@@ -115,7 +101,7 @@ void ActivityLogAPI::OnExtensionActivity(scoped_refptr<Action> activity) {
 ExtensionFunction::ResponseAction
 ActivityLogPrivateGetExtensionActivitiesFunction::Run() {
   std::unique_ptr<activity_log_private::GetExtensionActivities::Params> params(
-      activity_log_private::GetExtensionActivities::Params::Create(*args_));
+      activity_log_private::GetExtensionActivities::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   // Get the arguments in the right format.
@@ -183,14 +169,14 @@ void ActivityLogPrivateGetExtensionActivitiesFunction::OnLookupCompleted(
 ExtensionFunction::ResponseAction
 ActivityLogPrivateDeleteActivitiesFunction::Run() {
   std::unique_ptr<activity_log_private::DeleteActivities::Params> params(
-      activity_log_private::DeleteActivities::Params::Create(*args_));
+      activity_log_private::DeleteActivities::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   // Put the arguments in the right format.
   std::vector<int64_t> action_ids;
   int64_t value;
-  for (size_t i = 0; i < params->activity_ids.size(); i++) {
-    if (base::StringToInt64(params->activity_ids[i], &value))
+  for (const auto& activity_id : params->activity_ids) {
+    if (base::StringToInt64(activity_id, &value))
       action_ids.push_back(value);
   }
 
@@ -204,7 +190,7 @@ ExtensionFunction::ResponseAction
 ActivityLogPrivateDeleteActivitiesByExtensionFunction::Run() {
   std::unique_ptr<activity_log_private::DeleteActivitiesByExtension::Params>
       params(activity_log_private::DeleteActivitiesByExtension::Params::Create(
-          *args_));
+          args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   ActivityLog* activity_log = ActivityLog::GetInstance(browser_context());
@@ -223,12 +209,13 @@ ActivityLogPrivateDeleteDatabaseFunction::Run() {
 
 ExtensionFunction::ResponseAction ActivityLogPrivateDeleteUrlsFunction::Run() {
   std::unique_ptr<activity_log_private::DeleteUrls::Params> params(
-      activity_log_private::DeleteUrls::Params::Create(*args_));
+      activity_log_private::DeleteUrls::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   // Put the arguments in the right format.
   std::vector<GURL> gurls;
-  const std::vector<std::string>& urls = *params->urls;
+  const std::vector<std::string>& urls = params->urls;
+  gurls.reserve(urls.size());
   for (const std::string& url : urls)
     gurls.push_back(GURL(url));
 

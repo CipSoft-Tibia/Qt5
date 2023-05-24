@@ -27,11 +27,14 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_DOM_SHADOW_ROOT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_DOM_SHADOW_ROOT_H_
 
+#include "base/check_op.h"
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/style_sheet_list.h"
 #include "third_party/blink/renderer/core/dom/container_node.h"
 #include "third_party/blink/renderer/core/dom/document_fragment.h"
 #include "third_party/blink/renderer/core/dom/element.h"
+#include "third_party/blink/renderer/core/dom/element_rare_data_field.h"
 #include "third_party/blink/renderer/core/dom/tree_scope.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
@@ -40,17 +43,21 @@ namespace blink {
 
 class Document;
 class ExceptionState;
-class ShadowRootV0;
+class GetInnerHTMLOptions;
 class SlotAssignment;
+class V8ObservableArrayCSSStyleSheet;
 class WhitespaceAttacher;
 
-enum class ShadowRootType { V0, kOpen, kClosed, kUserAgent };
+enum class ShadowRootType { kOpen, kClosed, kUserAgent };
 
-class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
+class CORE_EXPORT ShadowRoot final : public DocumentFragment,
+                                     public TreeScope,
+                                     public ElementRareDataField {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
   ShadowRoot(Document&, ShadowRootType);
+  ~ShadowRoot() override;
   ShadowRoot(const ShadowRoot&) = delete;
   ShadowRoot& operator=(const ShadowRoot&) = delete;
 
@@ -63,6 +70,8 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
   using TreeScope::SetDocument;
   using TreeScope::SetParentTreeScope;
 
+  DEFINE_ATTRIBUTE_EVENT_LISTENER(slotchange, kSlotchange)
+
   Element& host() const {
     DCHECK(ParentOrShadowHostNode());
     return *To<Element>(ParentOrShadowHostNode());
@@ -74,10 +83,6 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
         // UA ShadowRoot should not be exposed to the Web.
         NOTREACHED();
         return "";
-      case ShadowRootType::V0:
-        // v0 ShadowRoot shouldn't support |mode|, however, we must return
-        // something. Return "open" here for a historical reason.
-        return "open";
       case ShadowRootType::kOpen:
         return "open";
       case ShadowRootType::kClosed:
@@ -88,16 +93,7 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
     }
   }
 
-  bool IsV0() const { return GetType() == ShadowRootType::V0; }
-  bool IsOpenOrV0() const {
-    return GetType() == ShadowRootType::V0 ||
-           GetType() == ShadowRootType::kOpen;
-  }
-  bool IsV1() const {
-    return GetType() == ShadowRootType::kOpen ||
-           GetType() == ShadowRootType::kClosed ||
-           GetType() == ShadowRootType::kUserAgent;
-  }
+  bool IsOpen() const { return GetType() == ShadowRootType::kOpen; }
   bool IsUserAgent() const { return GetType() == ShadowRootType::kUserAgent; }
 
   InsertionNotificationRequest InsertedInto(ContainerNode&) override;
@@ -106,12 +102,11 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
   void SetNeedsAssignmentRecalc();
   bool NeedsSlotAssignmentRecalc() const;
 
-  ShadowRootV0& V0() const;
-
   // For Internals, don't use this.
   unsigned ChildShadowRootCount() const { return child_shadow_root_count_; }
 
   void RebuildLayoutTree(WhitespaceAttacher&);
+  void DetachLayoutTree(bool performing_reattach) override;
 
   void RegisterScopedHTMLStyleChild();
   void UnregisterScopedHTMLStyleChild();
@@ -128,15 +123,12 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
   void DidChangeHostChildSlotName(const AtomicString& old_value,
                                   const AtomicString& new_value);
 
-  void SetNeedsDistributionRecalcWillBeSetNeedsAssignmentRecalc();
-  void SetNeedsDistributionRecalc();
-  bool NeedsDistributionRecalc() const { return needs_distribution_recalc_; }
-
   void DistributeIfNeeded();
 
   Element* ActiveElement() const;
 
   String innerHTML() const;
+  String getInnerHTML(const GetInnerHTMLOptions* options) const;
   void setInnerHTML(const String&, ExceptionState& = ASSERT_NO_EXCEPTION);
 
   Node* Clone(Document&, CloneChildrenFlag) const override;
@@ -149,11 +141,15 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
     return slot_assignment_mode_ ==
            static_cast<unsigned>(SlotAssignmentMode::kManual);
   }
+  bool IsNamedSlotting() const {
+    return slot_assignment_mode_ ==
+           static_cast<unsigned>(SlotAssignmentMode::kNamed);
+  }
   SlotAssignmentMode GetSlotAssignmentMode() const {
     return static_cast<SlotAssignmentMode>(slot_assignment_mode_);
   }
   String slotAssignment() const {
-    return IsManualSlotting() ? "manual" : "auto";
+    return IsManualSlotting() ? "manual" : "named";
   }
 
   void SetIsDeclarativeShadowRoot(bool flag) {
@@ -172,6 +168,23 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
     return available_to_element_internals_;
   }
 
+  void SetNeedsDirAutoAttributeUpdate(bool flag) {
+    needs_dir_auto_attribute_update_ = flag;
+  }
+  bool NeedsDirAutoAttributeUpdate() const {
+    return needs_dir_auto_attribute_update_;
+  }
+
+  void SetHasFocusgroupAttributeOnDescendant(bool flag) {
+    has_focusgroup_attribute_on_descendant_ = flag;
+  }
+  bool HasFocusgroupAttributeOnDescendant() const {
+    return has_focusgroup_attribute_on_descendant_;
+  }
+
+  void SetRegistry(CustomElementRegistry*);
+  CustomElementRegistry* registry() const { return registry_; }
+
   bool ContainsShadowRoots() const { return child_shadow_root_count_; }
 
   StyleSheetList& StyleSheets();
@@ -181,9 +194,18 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
 
   void Trace(Visitor*) const override;
 
- private:
-  ~ShadowRoot() override;
+ protected:
+  void OnAdoptedStyleSheetSet(ScriptState*,
+                              V8ObservableArrayCSSStyleSheet&,
+                              uint32_t,
+                              Member<CSSStyleSheet>&,
+                              ExceptionState&) override;
+  void OnAdoptedStyleSheetDelete(ScriptState*,
+                                 V8ObservableArrayCSSStyleSheet&,
+                                 uint32_t,
+                                 ExceptionState&) override;
 
+ private:
   void ChildrenChanged(const ChildrenChange&) override;
 
   SlotAssignment& EnsureSlotAssignment();
@@ -193,11 +215,10 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
     DCHECK_GT(child_shadow_root_count_, 0u);
     --child_shadow_root_count_;
   }
-  void Distribute();
 
   Member<StyleSheetList> style_sheet_list_;
   Member<SlotAssignment> slot_assignment_;
-  Member<ShadowRootV0> shadow_root_v0_;
+  Member<CustomElementRegistry> registry_;
   unsigned child_shadow_root_count_ : 16;
   unsigned type_ : 2;
   unsigned registered_with_parent_shadow_root_ : 1;
@@ -205,8 +226,9 @@ class CORE_EXPORT ShadowRoot final : public DocumentFragment, public TreeScope {
   unsigned slot_assignment_mode_ : 1;
   unsigned is_declarative_shadow_root_ : 1;
   unsigned available_to_element_internals_ : 1;
-  unsigned needs_distribution_recalc_ : 1;
-  unsigned unused_ : 8;
+  unsigned needs_dir_auto_attribute_update_ : 1;
+  unsigned has_focusgroup_attribute_on_descendant_ : 1;
+  unsigned unused_ : 7;
 };
 
 inline Element* ShadowRoot::ActiveElement() const {
@@ -217,30 +239,11 @@ inline bool Node::IsInUserAgentShadowRoot() const {
   return ContainingShadowRoot() && ContainingShadowRoot()->IsUserAgent();
 }
 
-inline void ShadowRoot::DistributeIfNeeded() {
-  if (needs_distribution_recalc_)
-    Distribute();
-  needs_distribution_recalc_ = false;
-}
-
 inline ShadowRoot* Node::GetShadowRoot() const {
   auto* this_element = DynamicTo<Element>(this);
   if (!this_element)
     return nullptr;
   return this_element->GetShadowRoot();
-}
-
-inline ShadowRoot* Element::ShadowRootIfV1() const {
-  ShadowRoot* root = GetShadowRoot();
-  if (root && root->IsV1())
-    return root;
-  return nullptr;
-}
-
-inline ShadowRootV0& ShadowRoot::V0() const {
-  DCHECK(shadow_root_v0_);
-  DCHECK(IsV0());
-  return *shadow_root_v0_;
 }
 
 template <>

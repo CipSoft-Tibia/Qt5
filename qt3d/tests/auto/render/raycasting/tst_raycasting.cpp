@@ -1,32 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <Qt3DRender/private/entity_p.h>
 #include <Qt3DRender/private/qraycastingservice_p.h>
 #include <Qt3DRender/private/sphere_p.h>
@@ -49,6 +24,7 @@ public:
     ~tst_RayCasting() {}
 
 private Q_SLOTS:
+    void initTestCase();
     void shouldReturnValidHandle();
     void shouldReturnResultForEachHandle();
     void shouldReturnAllResults();
@@ -63,8 +39,15 @@ private Q_SLOTS:
 
 private:
     Sphere *volumeAt(int index);
-    QVector<Sphere> boundingVolumes;
+    QList<Sphere> boundingVolumes;
 };
+
+void tst_RayCasting::initTestCase()
+{
+#if defined Q_OS_QNX
+    QSKIP("This test times out on QNX (QTBUG-107694)");
+#endif
+}
 
 void tst_RayCasting::shouldIntersect_data()
 {
@@ -105,17 +88,17 @@ void tst_RayCasting::shouldIntersect()
 class MyBoudingVolumesProvider : public QBoundingVolumeProvider
 {
 public:
-    MyBoudingVolumesProvider(QVector<QBoundingVolume *> volumes)
+    MyBoudingVolumesProvider(QList<QBoundingVolume *> volumes)
         : m_volumes(volumes)
     {}
 
-    QVector<QBoundingVolume *> boundingVolumes() const
+    QList<QBoundingVolume *> boundingVolumes() const override
     {
         return m_volumes;
     }
 
 private:
-    QVector<QBoundingVolume *> m_volumes;
+    QList<QBoundingVolume *> m_volumes;
 };
 
 void tst_RayCasting::shouldReturnValidHandle()
@@ -123,7 +106,7 @@ void tst_RayCasting::shouldReturnValidHandle()
     // GIVEN
     QRay3D ray;
     Sphere v1;
-    MyBoudingVolumesProvider provider = QVector<QBoundingVolume *>() << &v1;
+    MyBoudingVolumesProvider provider = QList<QBoundingVolume *> { &v1 };
 
     QRayCastingService service;
 
@@ -143,7 +126,7 @@ void tst_RayCasting::shouldReturnResultForEachHandle()
 {
     // GIVEN
     QRay3D ray;
-    QVector<QBoundingVolume *> volumes;
+    QList<QBoundingVolume *> volumes;
     MyBoudingVolumesProvider provider(volumes);
 
     QRayCastingService service;
@@ -168,12 +151,12 @@ void tst_RayCasting::shouldReturnAllResults()
 {
     // GIVEN
     QRay3D ray;
-    QVector<QBoundingVolume *> volumes;
+    QList<QBoundingVolume *> volumes;
     MyBoudingVolumesProvider provider(volumes);
 
     QRayCastingService service;
 
-    QVector<QQueryHandle> handles;
+    QList<QQueryHandle> handles;
     handles.append(service.query(ray,
                                  QAbstractCollisionQueryService::AllHits,
                                  &provider));
@@ -182,11 +165,11 @@ void tst_RayCasting::shouldReturnAllResults()
                                  &provider));
 
     // WHEN
-    const QVector<QCollisionQueryResult> results = service.fetchAllResults();
+    const QList<QCollisionQueryResult> results = service.fetchAllResults();
 
     // THEN
     bool expectedHandlesFound = true;
-    for (QQueryHandle expected : qAsConst(handles)) {
+    for (QQueryHandle expected : std::as_const(handles)) {
         bool found = false;
         for (QCollisionQueryResult result : results) {
             if (result.handle() == expected)
@@ -202,54 +185,55 @@ void tst_RayCasting::shouldReturnAllResults()
 void tst_RayCasting::shouldReturnHits_data()
 {
     QTest::addColumn<QRay3D>("ray");
-    QTest::addColumn<QVector<QBoundingVolume *> >("volumes");
-    QTest::addColumn<QVector<QNodeId> >("hits");
-    QTest::addColumn<QAbstractCollisionQueryService::QueryMode >("queryMode");
+    QTest::addColumn<QList<QBoundingVolume *>>("volumes");
+    QTest::addColumn<std::vector<QNodeId> >("hits");
+    QTest::addColumn<QAbstractCollisionQueryService::QueryMode>("queryMode");
 
     QRay3D ray(Vector3D(1, 1, 1), Vector3D(0, 0, 1));
 
     this->boundingVolumes.clear();
-    this->boundingVolumes.append(QVector<Sphere>() << Sphere(Vector3D(1, 1, 1), 3, QNodeId::createId())
-                                 << Sphere(Vector3D(0, 0, 0), 3, QNodeId::createId())
-                                 << Sphere(Vector3D(0, 1, 3), 1, QNodeId::createId())
-                                 << Sphere(Vector3D(4, 4, 5), 1, QNodeId::createId())
-                                 << Sphere(Vector3D(2, 2, 11), 5, QNodeId::createId())
-                                 << Sphere(Vector3D(2, 2, 13), 1, QNodeId::createId())
-                                 << Sphere(Vector3D(2, 2, 15), 5, QNodeId::createId()));
+    this->boundingVolumes.append(QList<Sphere>
+                                 { Sphere(Vector3D(1, 1, 1), 3, QNodeId::createId()),
+                                   Sphere(Vector3D(0, 0, 0), 3, QNodeId::createId()),
+                                   Sphere(Vector3D(0, 1, 3), 1, QNodeId::createId()),
+                                   Sphere(Vector3D(4, 4, 5), 1, QNodeId::createId()),
+                                   Sphere(Vector3D(2, 2, 11), 5, QNodeId::createId()),
+                                   Sphere(Vector3D(2, 2, 13), 1, QNodeId::createId()),
+                                   Sphere(Vector3D(2, 2, 15), 5, QNodeId::createId()) });
 
     QTest::newRow("All hits, One sphere intersect") << ray
-                                                    << (QVector<QBoundingVolume *> () << volumeAt(0) << volumeAt(3))
-                                                    << (QVector<QNodeId>() << volumeAt(0)->id())
+                                                    << (QList<QBoundingVolume *> { volumeAt(0), volumeAt(3) })
+                                                    << (std::vector<QNodeId>{ volumeAt(0)->id() })
                                                     << QAbstractCollisionQueryService::AllHits;
 
     QTest::newRow("All hits, Three sphere intersect") << ray
-                                                      << (QVector<QBoundingVolume *> () << volumeAt(0) << volumeAt(3) << volumeAt(6) << volumeAt(2))
-                                                      << (QVector<QNodeId>() << volumeAt(0)->id() << volumeAt(2)->id() << volumeAt(6)->id())
+                                                      << (QList<QBoundingVolume *> { volumeAt(0), volumeAt(3), volumeAt(6), volumeAt(2) })
+                                                      << (std::vector<QNodeId>{ volumeAt(0)->id(), volumeAt(2)->id(), volumeAt(6)->id() })
                                                       << QAbstractCollisionQueryService::AllHits;
 
     QTest::newRow("All hits, No sphere intersect") << ray
-                                                   << (QVector<QBoundingVolume *> () << volumeAt(3)  << volumeAt(5))
-                                                   << (QVector<QNodeId>())
+                                                   << (QList<QBoundingVolume *> { volumeAt(3), volumeAt(5) })
+                                                   << (std::vector<QNodeId>{})
                                                    << QAbstractCollisionQueryService::AllHits;
 
     QTest::newRow("Sphere 1 intersect, returns First Hit") << ray
-                                                           << (QVector<QBoundingVolume *> () << volumeAt(0) << volumeAt(3) << volumeAt(6))
-                                                           << (QVector<QNodeId>() << volumeAt(0)->id())
+                                                           << (QList<QBoundingVolume *> { volumeAt(0), volumeAt(3), volumeAt(6) })
+                                                           << (std::vector<QNodeId>{ volumeAt(0)->id() })
                                                            << QAbstractCollisionQueryService::FirstHit;
 
     QTest::newRow("Sphere 3 and 5 intersects, returns First Hit") << ray
-                                                                  << (QVector<QBoundingVolume *> () << volumeAt(3) << volumeAt(6) << volumeAt(4))
-                                                                  << (QVector<QNodeId>() << volumeAt(4)->id())
+                                                                  << (QList<QBoundingVolume *> { volumeAt(3), volumeAt(6), volumeAt(4) })
+                                                                  << (std::vector<QNodeId>{ volumeAt(4)->id() })
                                                                   << QAbstractCollisionQueryService::FirstHit;
 
     QTest::newRow("Sphere 5 and 3 intersects, unordered list, returns First Hit") << ray
-                                                                                  << (QVector<QBoundingVolume *> () << volumeAt(4) << volumeAt(3) << volumeAt(6))
-                                                                                  << (QVector<QNodeId>() << volumeAt(4)->id())
+                                                                                  << (QList<QBoundingVolume *> { volumeAt(4), volumeAt(3), volumeAt(6) })
+                                                                                  << (std::vector<QNodeId>{volumeAt(4)->id() })
                                                                                   << QAbstractCollisionQueryService::FirstHit;
 
     QTest::newRow("No sphere intersect, returns First Hit") << ray
-                                                            << (QVector<QBoundingVolume *> () << volumeAt(3)  << volumeAt(5))
-                                                            << (QVector<QNodeId>())
+                                                            << (QList<QBoundingVolume *> { volumeAt(3), volumeAt(5) })
+                                                            << (std::vector<QNodeId>{})
                                                             << QAbstractCollisionQueryService::FirstHit;
 }
 
@@ -257,8 +241,8 @@ void tst_RayCasting::shouldReturnHits()
 {
     // GIVEN
     QFETCH(QRay3D, ray);
-    QFETCH(QVector<QBoundingVolume *>, volumes);
-    QFETCH(QVector<QNodeId>, hits);
+    QFETCH(QList<QBoundingVolume *>, volumes);
+    QFETCH(std::vector<QNodeId>, hits);
     QFETCH(QAbstractCollisionQueryService::QueryMode, queryMode);
 
     MyBoudingVolumesProvider provider(volumes);
@@ -282,8 +266,8 @@ void tst_RayCasting::shouldUseProvidedBoudingVolumes()
     Sphere sphere3(Vector3D(0, 1, 3), 1);
     Sphere sphere4(Vector3D(4, 4, 5), 1);
 
-    MyBoudingVolumesProvider provider(QVector<QBoundingVolume *>() << &sphere1 << &sphere4 << &sphere3);
-    QVector<QNodeId> hits(QVector<QNodeId>() << sphere1.id() << sphere3.id());
+    MyBoudingVolumesProvider provider(QList<QBoundingVolume *> { &sphere1, &sphere4, &sphere3 });
+    std::vector<QNodeId> hits{ sphere1.id(), sphere3.id()};
 
     QRayCastingService service;
 
@@ -321,7 +305,7 @@ void tst_RayCasting::mousePicking()
     camera.setUpVector(QVector3D(0.0f, 1.0f, 0.0f));
     camera.setViewCenter(QVector3D(0.0f, 0.0f, 0.0f));
 
-    const QRectF viewport(0.0f, 0.0f, 800.0f, 600.0f);
+    const QRectF viewport(0., 0., 800., 600.);
 
     // Window center on near plane
     QRay3D ray = Qt3DRender::Render::AbstractPickingJob::intersectionRay(viewport.center().toPoint(),

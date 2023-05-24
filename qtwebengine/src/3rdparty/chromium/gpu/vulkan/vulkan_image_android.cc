@@ -1,15 +1,36 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "gpu/vulkan/vulkan_image.h"
 
 #include "base/android/android_hardware_buffer_compat.h"
+#include "base/debug/crash_logging.h"
 #include "base/logging.h"
 #include "gpu/vulkan/vulkan_device_queue.h"
 #include "gpu/vulkan/vulkan_function_pointers.h"
 
 namespace gpu {
+
+namespace {
+bool IsSinglePlaneRGBVulkanAHBFormat(VkFormat format) {
+  switch (format) {
+    // AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM
+    case VK_FORMAT_R8G8B8A8_UNORM:
+    // AHARDWAREBUFFER_FORMAT_R8G8B8_UNORM
+    case VK_FORMAT_R8G8B8_UNORM:
+    // AHARDWAREBUFFER_FORMAT_R5G6B5_UNORM
+    case VK_FORMAT_R5G6B5_UNORM_PACK16:
+    // AHARDWAREBUFFER_FORMAT_R16G16B16A16_FLOAT
+    case VK_FORMAT_R16G16B16A16_SFLOAT:
+    // AHARDWAREBUFFER_FORMAT_R10G10B10A2_UNORM
+    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+      return true;
+    default:
+      return false;
+  }
+}
+}  // namespace
 
 bool VulkanImage::InitializeFromGpuMemoryBufferHandle(
     VulkanDeviceQueue* device_queue,
@@ -18,12 +39,15 @@ bool VulkanImage::InitializeFromGpuMemoryBufferHandle(
     VkFormat format,
     VkImageUsageFlags usage,
     VkImageCreateFlags flags,
-    VkImageTiling image_tiling) {
+    VkImageTiling image_tiling,
+    uint32_t queue_family_index) {
   if (gmb_handle.type != gfx::GpuMemoryBufferType::ANDROID_HARDWARE_BUFFER) {
     DLOG(ERROR) << "gmb_handle.type is not supported. type:" << gmb_handle.type;
     return false;
   }
   DCHECK(gmb_handle.android_hardware_buffer.is_valid());
+  SCOPED_CRASH_KEY_BOOL("vulkan", "gmb_buffer.is_valid",
+                        gmb_handle.android_hardware_buffer.is_valid());
   auto& ahb_handle = gmb_handle.android_hardware_buffer;
 
   // To obtain format properties of an Android hardware buffer, include an
@@ -58,8 +82,10 @@ bool VulkanImage::InitializeFromGpuMemoryBufferHandle(
       .externalFormat = 0,
   };
 
-  // If image has an external format, format must be VK_FORMAT_UNDEFINED.
-  if (ahb_format_props.format == VK_FORMAT_UNDEFINED) {
+  const bool should_use_external_format =
+      !IsSinglePlaneRGBVulkanAHBFormat(ahb_format_props.format);
+
+  if (should_use_external_format) {
     // externalFormat must be 0 or a value returned in the externalFormat member
     // of VkAndroidHardwareBufferFormatPropertiesANDROID by an earlier call to
     // vkGetAndroidHardwareBufferPropertiesANDROID.
@@ -100,6 +126,11 @@ bool VulkanImage::InitializeFromGpuMemoryBufferHandle(
     return false;
   }
 
+  // Skia currently requires all wrapped VkImages to have transfer src and dst
+  // usage. Additionally all AHB support these usages when imported into vulkan.
+  usage_flags |=
+      VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
   VkImageCreateFlags create_flags = 0;
   if (ahb_desc.usage & AHARDWAREBUFFER_USAGE_PROTECTED_CONTENT) {
     create_flags = VK_IMAGE_CREATE_PROTECTED_BIT;
@@ -117,17 +148,19 @@ bool VulkanImage::InitializeFromGpuMemoryBufferHandle(
       .size = ahb_props.allocationSize,
       .memoryTypeBits = ahb_props.memoryTypeBits,
   };
-  if (!Initialize(device_queue, size, ahb_format_props.format, usage_flags,
-                  create_flags, VK_IMAGE_TILING_OPTIMAL,
-                  &external_memory_image_info, &ahb_import_info,
-                  &requirements)) {
+
+  if (!InitializeSingleOrJointPlanes(
+          device_queue, size,
+          should_use_external_format ? VK_FORMAT_UNDEFINED
+                                     : ahb_format_props.format,
+          usage_flags, create_flags, VK_IMAGE_TILING_OPTIMAL,
+          &external_memory_image_info, &ahb_import_info, &requirements)) {
     return false;
   }
 
-  // VkImage is imported from external.
-  queue_family_index_ = VK_QUEUE_FAMILY_EXTERNAL;
+  queue_family_index_ = queue_family_index;
 
-  if (ahb_format_props.format == VK_FORMAT_UNDEFINED) {
+  if (should_use_external_format) {
     ycbcr_info_.emplace(VK_FORMAT_UNDEFINED, ahb_format_props.externalFormat,
                         ahb_format_props.suggestedYcbcrModel,
                         ahb_format_props.suggestedYcbcrRange,

@@ -1,24 +1,25 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/layout/ng/ng_constraint_space_builder.h"
 
-#include "third_party/blink/renderer/core/layout/ng/ng_layout_test.h"
+#include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 
 namespace blink {
 namespace {
 
-using NGConstraintSpaceBuilderTest = NGLayoutTest;
+using NGConstraintSpaceBuilderTest = RenderingTest;
 
 // Asserts that indefinite inline length becomes initial containing
 // block width for horizontal-tb inside vertical document.
 TEST(NGConstraintSpaceBuilderTest, AvailableSizeFromHorizontalICB) {
   PhysicalSize icb_size{kIndefiniteSize, LayoutUnit(51)};
 
-  NGConstraintSpaceBuilder horizontal_builder(WritingMode::kHorizontalTb,
-                                              WritingMode::kHorizontalTb,
-                                              /* is_new_fc */ true);
+  NGConstraintSpaceBuilder horizontal_builder(
+      WritingMode::kHorizontalTb,
+      {WritingMode::kHorizontalTb, TextDirection::kLtr},
+      /* is_new_fc */ true);
   LogicalSize fixed_size{LayoutUnit(100), LayoutUnit(200)};
   LogicalSize indefinite_size{kIndefiniteSize, kIndefiniteSize};
 
@@ -27,7 +28,8 @@ TEST(NGConstraintSpaceBuilderTest, AvailableSizeFromHorizontalICB) {
   horizontal_builder.SetPercentageResolutionSize(fixed_size);
 
   NGConstraintSpaceBuilder vertical_builder(
-      horizontal_builder.ToConstraintSpace(), WritingMode::kVerticalLr,
+      horizontal_builder.ToConstraintSpace(),
+      {WritingMode::kVerticalLr, TextDirection::kLtr},
       /* is_new_fc */ true);
 
   vertical_builder.SetOrthogonalFallbackInlineSize(icb_size.height);
@@ -45,9 +47,9 @@ TEST(NGConstraintSpaceBuilderTest, AvailableSizeFromHorizontalICB) {
 TEST(NGConstraintSpaceBuilderTest, AvailableSizeFromVerticalICB) {
   PhysicalSize icb_size{LayoutUnit(51), kIndefiniteSize};
 
-  NGConstraintSpaceBuilder horizontal_builder(WritingMode::kVerticalLr,
-                                              WritingMode::kVerticalLr,
-                                              /* is_new_fc */ true);
+  NGConstraintSpaceBuilder horizontal_builder(
+      WritingMode::kVerticalLr, {WritingMode::kVerticalLr, TextDirection::kLtr},
+      /* is_new_fc */ true);
   LogicalSize fixed_size{LayoutUnit(100), LayoutUnit(200)};
   LogicalSize indefinite_size{kIndefiniteSize, kIndefiniteSize};
 
@@ -56,7 +58,8 @@ TEST(NGConstraintSpaceBuilderTest, AvailableSizeFromVerticalICB) {
   horizontal_builder.SetPercentageResolutionSize(fixed_size);
 
   NGConstraintSpaceBuilder vertical_builder(
-      horizontal_builder.ToConstraintSpace(), WritingMode::kHorizontalTb,
+      horizontal_builder.ToConstraintSpace(),
+      {WritingMode::kHorizontalTb, TextDirection::kLtr},
       /* is_new_fc */ true);
 
   vertical_builder.SetOrthogonalFallbackInlineSize(icb_size.width);

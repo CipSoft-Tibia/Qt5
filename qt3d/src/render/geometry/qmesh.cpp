@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qmesh.h"
 #include "qmesh_p.h"
@@ -50,20 +14,21 @@
 #include <QtCore/QBuffer>
 #include <Qt3DRender/QRenderAspect>
 #include <Qt3DCore/QAspectEngine>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <Qt3DCore/private/qscene_p.h>
 #include <Qt3DCore/private/qdownloadhelperservice_p.h>
+#include <Qt3DCore/private/qurlhelper_p.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
 #include <Qt3DRender/private/nodemanagers_p.h>
 #include <Qt3DRender/private/qgeometryloaderinterface_p.h>
 #include <Qt3DRender/private/renderlogging_p.h>
-#include <Qt3DRender/private/qurlhelper_p.h>
 #include <Qt3DRender/private/qgeometryloaderfactory_p.h>
 #include <Qt3DRender/private/geometryrenderermanager_p.h>
 
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt3DCore;
 
 namespace Qt3DRender {
 
@@ -89,7 +54,8 @@ void QMeshPrivate::setScene(Qt3DCore::QScene *scene)
 void QMeshPrivate::updateFunctor()
 {
     Q_Q(QMesh);
-    q->setGeometryFactory(QGeometryFactoryPtr(new MeshLoaderFunctor(q)));
+    m_geometryFactory = QGeometryFactoryPtr(new MeshLoaderFunctor(q));
+    update();
 }
 
 void QMeshPrivate::setStatus(QMesh::Status status)
@@ -215,11 +181,6 @@ QMesh::QMesh(QMeshPrivate &dd, QNode *parent)
 {
 }
 
-// TODO Unused remove in Qt6
-void QMesh::sceneChangeEvent(const Qt3DCore::QSceneChangePtr &)
-{
-}
-
 void QMesh::setSource(const QUrl& source)
 {
     Q_D(QMesh);
@@ -296,7 +257,7 @@ MeshLoaderFunctor::MeshLoaderFunctor(QMesh *mesh, const QByteArray &sourceData)
 /*!
  * \internal
  */
-QGeometry *MeshLoaderFunctor::operator()()
+Qt3DCore::QGeometry *MeshLoaderFunctor::operator()()
 {
     m_status = QMesh::Loading;
 
@@ -334,7 +295,7 @@ QGeometry *MeshLoaderFunctor::operator()()
         if (!ext.contains(QLatin1String("obj")))
             ext << QLatin1String("obj");
     } else {
-        QString filePath = Qt3DRender::QUrlHelper::urlToLocalFileOrQrc(m_sourcePath);
+        QString filePath = Qt3DCore::QUrlHelper::urlToLocalFileOrQrc(m_sourcePath);
         QFileInfo finfo(filePath);
         if (finfo.suffix().isEmpty())
             ext << QLatin1String("obj");
@@ -343,7 +304,7 @@ QGeometry *MeshLoaderFunctor::operator()()
     }
 
     QScopedPointer<QGeometryLoaderInterface> loader;
-    for (const QString &e: qAsConst(ext)) {
+    for (const QString &e: std::as_const(ext)) {
         loader.reset(qLoadPlugin<QGeometryLoaderInterface, QGeometryLoaderFactory>(geometryLoader(), e));
         if (loader)
             break;
@@ -355,7 +316,7 @@ QGeometry *MeshLoaderFunctor::operator()()
     }
 
     if (m_sourceData.isEmpty()) {
-        QString filePath = Qt3DRender::QUrlHelper::urlToLocalFileOrQrc(m_sourcePath);
+        QString filePath = Qt3DCore::QUrlHelper::urlToLocalFileOrQrc(m_sourcePath);
         QFile file(filePath);
         if (!file.open(QIODevice::ReadOnly)) {
             qCDebug(Render::Jobs) << "Could not open file" << filePath << "for reading";
@@ -364,7 +325,7 @@ QGeometry *MeshLoaderFunctor::operator()()
         }
 
         if (loader->load(&file, m_meshName)) {
-            Qt3DRender::QGeometry *geometry = loader->geometry();
+            Qt3DCore::QGeometry *geometry = loader->geometry();
             m_status = geometry != nullptr ? QMesh::Ready : QMesh::Error;
             return geometry;
         }
@@ -377,7 +338,7 @@ QGeometry *MeshLoaderFunctor::operator()()
         }
 
         if (loader->load(&buffer, m_meshName)) {
-            Qt3DRender::QGeometry *geometry = loader->geometry();
+            Qt3DCore::QGeometry *geometry = loader->geometry();
             m_status = geometry != nullptr ? QMesh::Ready : QMesh::Error;
             return geometry;
         }
@@ -428,7 +389,7 @@ void MeshDownloadRequest::onCompleted()
         return;
 
     QGeometryFactoryPtr geometryFactory = renderer->geometryFactory();
-    if (!geometryFactory.isNull() && geometryFactory->id() == Qt3DRender::functorTypeId<MeshLoaderFunctor>()) {
+    if (!geometryFactory.isNull() && geometryFactory->id() == Qt3DCore::functorTypeId<MeshLoaderFunctor>()) {
         QSharedPointer<MeshLoaderFunctor> functor = qSharedPointerCast<MeshLoaderFunctor>(geometryFactory);
 
         // We make sure we are setting the result for the right request
@@ -445,3 +406,5 @@ void MeshDownloadRequest::onCompleted()
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_qmesh.cpp"

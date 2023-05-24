@@ -1,4 +1,4 @@
-# Copyright (c) 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -28,7 +28,6 @@ source_set("certificates") {
 
   deps = [
     "//base",
-    "//base/util/values:values_util",
     "//chrome/browser/nearby_sharing/client",
     "//chrome/browser/nearby_sharing/common",
     "//chrome/browser/nearby_sharing/contacts",
@@ -36,7 +35,7 @@ source_set("certificates") {
     "//chrome/browser/nearby_sharing/logging",
     "//chrome/browser/nearby_sharing/proto",
     "//chrome/browser/nearby_sharing/scheduling",
-    "//chrome/browser/ui/webui/nearby_share/public/mojom",
+    "//chromeos/ash/services/nearby/public/mojom",
     "//components/leveldb_proto",
     "//components/prefs",
     "//crypto",
@@ -60,7 +59,7 @@ source_set("test_support") {
     ":certificates",
     "//base",
     "//chrome/browser/nearby_sharing/proto",
-    "//chrome/browser/ui/webui/nearby_share/public/mojom",
+    "//chromeos/ash/services/nearby/public/mojom",
     "//components/leveldb_proto",
     "//components/prefs",
     "//crypto",
@@ -84,14 +83,13 @@ source_set("unit_tests") {
     ":test_support",
     "//base",
     "//base/test:test_support",
-    "//base/util/values:values_util",
     "//chrome/browser/nearby_sharing/client:test_support",
     "//chrome/browser/nearby_sharing/common",
     "//chrome/browser/nearby_sharing/contacts:test_support",
     "//chrome/browser/nearby_sharing/local_device_data:test_support",
     "//chrome/browser/nearby_sharing/proto",
     "//chrome/browser/nearby_sharing/scheduling:test_support",
-    "//chrome/browser/ui/webui/nearby_share/public/mojom",
+    "//chromeos/ash/services/nearby/public/mojom",
     "//components/leveldb_proto:test_support",
     "//components/prefs:test_support",
     "//crypto",

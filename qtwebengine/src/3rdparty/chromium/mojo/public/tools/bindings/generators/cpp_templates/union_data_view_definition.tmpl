@@ -4,9 +4,9 @@
 
 {%-   if kind|is_object_kind %}
 inline void {{union.name}}DataView::Get{{name|under_to_camel}}DataView(
-    {{kind|cpp_data_view_type}}* output) {
-  DCHECK(is_{{name}}());
-  *output = {{kind|cpp_data_view_type}}(data_->data.f_{{name}}.Get(), context_);
+    {{kind|cpp_data_view_type}}* output) const {
+  CHECK(is_{{name}}());
+  *output = {{kind|cpp_data_view_type}}(data_->data.f_{{name}}.Get(), message_);
 }
 {%-   endif %}
 {%- endfor %}

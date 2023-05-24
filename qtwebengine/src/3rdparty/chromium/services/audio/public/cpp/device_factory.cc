@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,14 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/threading/platform_thread.h"
 #include "services/audio/public/cpp/input_ipc.h"
 
 namespace audio {
 
 scoped_refptr<media::AudioCapturerSource> CreateInputDevice(
-    mojo::PendingRemote<mojom::StreamFactory> stream_factory,
+    mojo::PendingRemote<media::mojom::AudioStreamFactory> stream_factory,
     const std::string& device_id,
     DeadStreamDetection detect_dead_stream,
     mojo::PendingRemote<media::mojom::AudioLog> log) {
@@ -26,7 +26,7 @@ scoped_refptr<media::AudioCapturerSource> CreateInputDevice(
 }
 
 scoped_refptr<media::AudioCapturerSource> CreateInputDevice(
-    mojo::PendingRemote<mojom::StreamFactory> stream_factory,
+    mojo::PendingRemote<media::mojom::AudioStreamFactory> stream_factory,
     const std::string& device_id,
     DeadStreamDetection detect_dead_stream) {
   return CreateInputDevice(std::move(stream_factory), device_id,

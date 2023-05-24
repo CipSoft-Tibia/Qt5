@@ -1,16 +1,17 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/java/gin_java_bridge_object.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "content/common/gin_java_bridge_messages.h"
 #include "content/public/renderer/render_thread.h"
 #include "content/renderer/java/gin_java_function_invocation_helper.h"
 #include "gin/function_template.h"
 #include "third_party/blink/public/web/blink.h"
 #include "third_party/blink/public/web/web_local_frame.h"
+#include "v8/include/v8-function.h"
 
 namespace content {
 

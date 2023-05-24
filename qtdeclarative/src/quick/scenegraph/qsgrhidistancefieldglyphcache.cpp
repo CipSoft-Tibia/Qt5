@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrhidistancefieldglyphcache_p.h"
 #include "qsgcontext_p.h"
+#include "qsgdefaultrendercontext_p.h"
 #include <QtGui/private/qdistancefield_p.h>
 #include <QtCore/qelapsedtimer.h>
 #include <QtQml/private/qqmlglobal_p.h>
@@ -54,9 +19,12 @@ DEFINE_BOOL_CONFIG_OPTION(qsgPreferFullSizeGlyphCacheTextures, QSG_PREFER_FULLSI
 #  define QSG_RHI_DISTANCEFIELD_GLYPH_CACHE_PADDING 2
 #endif
 
-QSGRhiDistanceFieldGlyphCache::QSGRhiDistanceFieldGlyphCache(QRhi *rhi, const QRawFont &font)
-    : QSGDistanceFieldGlyphCache(font)
-    , m_rhi(rhi)
+QSGRhiDistanceFieldGlyphCache::QSGRhiDistanceFieldGlyphCache(QSGDefaultRenderContext *rc,
+                                                             const QRawFont &font,
+                                                             int renderTypeQuality)
+    : QSGDistanceFieldGlyphCache(font, renderTypeQuality)
+    , m_rc(rc)
+    , m_rhi(rc->rhi())
 {
     // Load a pregenerated cache if the font contains one
     loadPregeneratedCache(font);
@@ -64,13 +32,10 @@ QSGRhiDistanceFieldGlyphCache::QSGRhiDistanceFieldGlyphCache(QRhi *rhi, const QR
 
 QSGRhiDistanceFieldGlyphCache::~QSGRhiDistanceFieldGlyphCache()
 {
-    for (int i = 0; i < m_textures.count(); ++i)
-        delete m_textures[i].texture;
+    for (const TextureInfo &t : std::as_const(m_textures))
+        m_rc->deferredReleaseGlyphCacheTexture(t.texture);
 
     delete m_areaAllocator;
-
-    // should be empty, but just in case
-    qDeleteAll(m_pendingDispose);
 }
 
 void QSGRhiDistanceFieldGlyphCache::requestGlyphs(const QSet<glyph_t> &glyphs)
@@ -137,6 +102,11 @@ void QSGRhiDistanceFieldGlyphCache::requestGlyphs(const QSet<glyph_t> &glyphs)
     markGlyphsToRender(glyphsToRender);
 }
 
+bool QSGRhiDistanceFieldGlyphCache::isActive() const
+{
+    return !m_referencedGlyphs.empty();
+}
+
 void QSGRhiDistanceFieldGlyphCache::storeGlyphs(const QList<QDistanceField> &glyphs)
 {
     typedef QHash<TextureInfo *, QVector<glyph_t> > GlyphTextureHash;
@@ -176,15 +146,13 @@ void QSGRhiDistanceFieldGlyphCache::storeGlyphs(const QList<QDistanceField> &gly
         texInfo->uploads.append(QRhiTextureUploadEntry(0, 0, subresDesc));
     }
 
-    if (!m_resourceUpdates)
-        m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
-
+    QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
     for (int i = 0; i < glyphs.size(); ++i) {
         TextureInfo *texInfo = m_glyphsTexture.value(glyphs.at(i).glyph());
         if (!texInfo->uploads.isEmpty()) {
             QRhiTextureUploadDescription desc;
             desc.setEntries(texInfo->uploads.cbegin(), texInfo->uploads.cend());
-            m_resourceUpdates->uploadTexture(texInfo->texture, desc);
+            resourceUpdates->uploadTexture(texInfo->texture, desc);
             texInfo->uploads.clear();
         }
     }
@@ -193,18 +161,19 @@ void QSGRhiDistanceFieldGlyphCache::storeGlyphs(const QList<QDistanceField> &gly
         Texture t;
         t.texture = i.key()->texture;
         t.size = i.key()->size;
-        t.rhiBased = true;
         setGlyphsTexture(i.value(), t);
     }
 }
 
 void QSGRhiDistanceFieldGlyphCache::referenceGlyphs(const QSet<glyph_t> &glyphs)
 {
+    m_referencedGlyphs += glyphs;
     m_unusedGlyphs -= glyphs;
 }
 
 void QSGRhiDistanceFieldGlyphCache::releaseGlyphs(const QSet<glyph_t> &glyphs)
 {
+    m_referencedGlyphs -= glyphs;
     m_unusedGlyphs += glyphs;
 }
 
@@ -227,13 +196,11 @@ void QSGRhiDistanceFieldGlyphCache::createTexture(TextureInfo *texInfo,
     }
 
     texInfo->texture = m_rhi->newTexture(QRhiTexture::RED_OR_ALPHA8, QSize(width, height), 1, QRhiTexture::UsedAsTransferSource);
-    if (texInfo->texture->build()) {
-        if (!m_resourceUpdates)
-            m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
-
+    if (texInfo->texture->create()) {
+        QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
         QRhiTextureSubresourceUploadDescription subresDesc(pixels, width * height);
         subresDesc.setSourceSize(QSize(width, height));
-        m_resourceUpdates->uploadTexture(texInfo->texture, QRhiTextureUploadEntry(0, 0, subresDesc));
+        resourceUpdates->uploadTexture(texInfo->texture, QRhiTextureUploadEntry(0, 0, subresDesc));
     } else {
         qWarning("Failed to create distance field glyph cache");
     }
@@ -256,20 +223,18 @@ void QSGRhiDistanceFieldGlyphCache::resizeTexture(TextureInfo *texInfo, int widt
 
     updateRhiTexture(oldTexture, texInfo->texture, texInfo->size);
 
-    if (!m_resourceUpdates)
-        m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
-
+    QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
     if (useTextureResizeWorkaround()) {
         QRhiTextureSubresourceUploadDescription subresDesc(texInfo->image.constBits(),
                                                            oldWidth * oldHeight);
         subresDesc.setSourceSize(QSize(oldWidth, oldHeight));
-        m_resourceUpdates->uploadTexture(texInfo->texture, QRhiTextureUploadEntry(0, 0, subresDesc));
+        resourceUpdates->uploadTexture(texInfo->texture, QRhiTextureUploadEntry(0, 0, subresDesc));
         texInfo->image = texInfo->image.copy(0, 0, width, height);
     } else {
-        m_resourceUpdates->copyTexture(texInfo->texture, oldTexture);
+        resourceUpdates->copyTexture(texInfo->texture, oldTexture);
     }
 
-    m_pendingDispose.insert(oldTexture);
+    m_rc->deferredReleaseGlyphCacheTexture(oldTexture);
 }
 
 bool QSGRhiDistanceFieldGlyphCache::useTextureResizeWorkaround() const
@@ -526,7 +491,6 @@ bool QSGRhiDistanceFieldGlyphCache::loadPregeneratedCache(const QRawFont &font)
             Texture t;
             t.texture = texInfo->texture;
             t.size = texInfo->size;
-            t.rhiBased = true;
 
             setGlyphsTexture(glyphs, t);
 
@@ -538,8 +502,8 @@ bool QSGRhiDistanceFieldGlyphCache::loadPregeneratedCache(const QRawFont &font)
         quint64 now = timer.elapsed();
         qCDebug(QSG_LOG_TIME_GLYPH,
                 "distancefield: %d pre-generated glyphs loaded in %dms",
-                m_unusedGlyphs.size(),
-                (int) now);
+                int(m_unusedGlyphs.size()),
+                int(now));
     }
 
     return true;
@@ -547,17 +511,10 @@ bool QSGRhiDistanceFieldGlyphCache::loadPregeneratedCache(const QRawFont &font)
 
 void QSGRhiDistanceFieldGlyphCache::commitResourceUpdates(QRhiResourceUpdateBatch *mergeInto)
 {
-    if (m_resourceUpdates) {
-        mergeInto->merge(m_resourceUpdates);
-        m_resourceUpdates->release();
-        m_resourceUpdates = nullptr;
+    if (QRhiResourceUpdateBatch *resourceUpdates = m_rc->maybeGlyphCacheResourceUpdates()) {
+        mergeInto->merge(resourceUpdates);
+        m_rc->resetGlyphCacheResources();
     }
-
-    // now let's assume the resource updates will be committed in this frame
-    for (QRhiTexture *t : m_pendingDispose)
-        t->releaseAndDestroyLater(); // will be releaseAndDestroyed after the frame is submitted -> safe
-
-    m_pendingDispose.clear();
 }
 
 bool QSGRhiDistanceFieldGlyphCache::eightBitFormatIsAlphaSwizzled() const
@@ -566,5 +523,47 @@ bool QSGRhiDistanceFieldGlyphCache::eightBitFormatIsAlphaSwizzled() const
     // when sampling the texture
     return !m_rhi->isFeatureSupported(QRhi::RedOrAlpha8IsRed);
 }
+
+bool QSGRhiDistanceFieldGlyphCache::screenSpaceDerivativesSupported() const
+{
+    return m_rhi->isFeatureSupported(QRhi::ScreenSpaceDerivatives);
+}
+
+#if defined(QSG_DISTANCEFIELD_CACHE_DEBUG)
+void QSGRhiDistanceFieldGlyphCache::saveTexture(QRhiTexture *texture, const QString &nameBase) const
+{
+    quint64 textureId = texture->nativeTexture().object;
+    QString fileName = nameBase + QLatin1Char('_') + QString::number(textureId, 16);
+    fileName.replace(QLatin1Char('/'), QLatin1Char('_'));
+    fileName.replace(QLatin1Char(' '), QLatin1Char('_'));
+    fileName.append(QLatin1String(".png"));
+
+    QRhiReadbackResult *rbResult = new QRhiReadbackResult;
+    rbResult->completed = [rbResult, fileName] {
+        const QSize size = rbResult->pixelSize;
+        const qint64 numPixels = qint64(size.width()) * size.height();
+        if (numPixels == rbResult->data.size()) {
+            // 1 bpp data, may be packed; copy it to ensure QImage scanline alignment
+            QImage image(size, QImage::Format_Grayscale8);
+            const char *p = rbResult->data.constData();
+            for (int i = 0; i < size.height(); i++)
+                memcpy(image.scanLine(i), p + (i * size.width()), size.width());
+            image.save(fileName);
+        } else if (4 * numPixels == rbResult->data.size()) {
+            // 4 bpp data
+            const uchar *p = reinterpret_cast<const uchar *>(rbResult->data.constData());
+            QImage image(p, size.width(), size.height(), QImage::Format_RGBA8888);
+            image.save(fileName);
+        } else {
+            qWarning("Unhandled data format in glyph texture");
+        }
+        delete rbResult;
+    };
+
+    QRhiReadbackDescription rb(texture);
+    QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
+    resourceUpdates->readBackTexture(rb, rbResult);
+}
+#endif
 
 QT_END_NAMESPACE

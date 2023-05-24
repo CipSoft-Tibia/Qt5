@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,15 +14,7 @@
 
 namespace extensions {
 
-// Extension ids for stable / beta cast extensions. Included in
-// |kChromecastExtensionIds|.
-extern const char* const kBetaChromecastExtensionId;
-extern const char* const kStableChromecastExtensionId;
-
-// Extension ids for the chromecast.
-extern const char* const kChromecastExtensionIds[6];
-
-class TabCaptureCaptureFunction : public ExtensionFunction {
+class TabCaptureCaptureFunction final : public ExtensionFunction {
  public:
   DECLARE_EXTENSION_FUNCTION("tabCapture.capture", TABCAPTURE_CAPTURE)
 
@@ -33,7 +25,7 @@ class TabCaptureCaptureFunction : public ExtensionFunction {
   ResponseAction Run() final;
 };
 
-class TabCaptureGetCapturedTabsFunction : public ExtensionFunction {
+class TabCaptureGetCapturedTabsFunction final : public ExtensionFunction {
  public:
   DECLARE_EXTENSION_FUNCTION("tabCapture.getCapturedTabs",
                              TABCAPTURE_GETCAPTUREDTABS)
@@ -45,24 +37,7 @@ class TabCaptureGetCapturedTabsFunction : public ExtensionFunction {
   ResponseAction Run() final;
 };
 
-class TabCaptureCaptureOffscreenTabFunction : public ExtensionFunction {
- public:
-  DECLARE_EXTENSION_FUNCTION("tabCapture.captureOffscreenTab",
-                             TABCAPTURE_CAPTUREOFFSCREENTAB)
-
-  // Examines the min/max width/height constraints in the |options| to determine
-  // a suitable initial off-screen tab size.
-  static gfx::Size DetermineInitialSize(
-      const extensions::api::tab_capture::CaptureOptions& options);
-
- private:
-  ~TabCaptureCaptureOffscreenTabFunction() final {}
-
-  // ExtensionFunction:
-  ResponseAction Run() final;
-};
-
-class TabCaptureGetMediaStreamIdFunction : public ExtensionFunction {
+class TabCaptureGetMediaStreamIdFunction final : public ExtensionFunction {
  public:
   DECLARE_EXTENSION_FUNCTION("tabCapture.getMediaStreamId",
                              TABCAPTURE_GETMEDIASTREAMID)

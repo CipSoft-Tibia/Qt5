@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -59,12 +59,12 @@ ResizeObserver::ResizeObserver(Delegate* delegate, LocalDOMWindow* window)
 ResizeObserverBoxOptions ResizeObserver::ParseBoxOptions(
     const String& box_options) {
   if (box_options == kBoxOptionBorderBox)
-    return ResizeObserverBoxOptions::BorderBox;
+    return ResizeObserverBoxOptions::kBorderBox;
   if (box_options == kBoxOptionContentBox)
-    return ResizeObserverBoxOptions::ContentBox;
+    return ResizeObserverBoxOptions::kContentBox;
   if (box_options == kBoxOptionDevicePixelContentBox)
-    return ResizeObserverBoxOptions::DevicePixelContentBox;
-  return ResizeObserverBoxOptions::ContentBox;
+    return ResizeObserverBoxOptions::kDevicePixelContentBox;
+  return ResizeObserverBoxOptions::kContentBox;
 }
 
 void ResizeObserver::observeInternal(Element* target,
@@ -73,7 +73,7 @@ void ResizeObserver::observeInternal(Element* target,
 
   if (observer_map.Contains(this)) {
     auto observation = observer_map.find(this);
-    if ((*observation).value->observedBox() == box_option)
+    if ((*observation).value->ObservedBox() == box_option)
       return;
 
     // Unobserve target if box_option has changed and target already existed. If
@@ -104,7 +104,7 @@ void ResizeObserver::observe(Element* target,
 }
 
 void ResizeObserver::observe(Element* target) {
-  observeInternal(target, ResizeObserverBoxOptions::ContentBox);
+  observeInternal(target, ResizeObserverBoxOptions::kContentBox);
 }
 
 void ResizeObserver::unobserve(Element* target) {
@@ -135,7 +135,7 @@ void ResizeObserver::disconnect() {
 }
 
 size_t ResizeObserver::GatherObservations(size_t deeper_than) {
-  DCHECK(active_observations_.IsEmpty());
+  DCHECK(active_observations_.empty());
 
   size_t min_observed_depth = ResizeObserverController::kDepthBottom;
   for (auto& observation : observations_) {
@@ -153,7 +153,7 @@ size_t ResizeObserver::GatherObservations(size_t deeper_than) {
 }
 
 void ResizeObserver::DeliverObservations() {
-  if (active_observations_.IsEmpty())
+  if (active_observations_.empty())
     return;
 
   HeapVector<Member<ResizeObserverEntry>> entries;
@@ -162,8 +162,10 @@ void ResizeObserver::DeliverObservations() {
     // In case that the observer and the target belong to different execution
     // contexts and the target's execution context is already gone, then skip
     // such a target.
-    ExecutionContext* execution_context =
-        observation->Target()->GetExecutionContext();
+    Element* target = observation->Target();
+    if (!target)
+      continue;
+    ExecutionContext* execution_context = target->GetExecutionContext();
     if (!execution_context || execution_context->IsContextDestroyed())
       continue;
 
@@ -196,7 +198,7 @@ void ResizeObserver::ClearObservations() {
 }
 
 bool ResizeObserver::HasPendingActivity() const {
-  return !observations_.IsEmpty();
+  return !active_observations_.empty();
 }
 
 void ResizeObserver::Trace(Visitor* visitor) const {

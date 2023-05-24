@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,7 +25,8 @@ perfetto::TraceConfig COMPONENT_EXPORT(TRACING_CPP) GetDefaultPerfettoConfig(
     bool privacy_filtering_enabled = false,
     bool convert_to_legacy_json = false,
     perfetto::protos::gen::ChromeConfig::ClientPriority =
-        perfetto::protos::gen::ChromeConfig::USER_INITIATED);
+        perfetto::protos::gen::ChromeConfig::USER_INITIATED,
+    const std::string& json_agent_label_filter = "");
 
 // Creates a perfetto trace config with only the data sources included in
 // |source_names| and enabled by |trace_config|. Passing empty set will add all
@@ -38,7 +39,8 @@ perfetto::TraceConfig COMPONENT_EXPORT(TRACING_CPP)
         bool privacy_filtering_enabled = false,
         bool convert_to_legacy_json = false,
         perfetto::protos::gen::ChromeConfig::ClientPriority =
-            perfetto::protos::gen::ChromeConfig::USER_INITIATED);
+            perfetto::protos::gen::ChromeConfig::USER_INITIATED,
+        const std::string& json_agent_label_filter = "");
 
 }  // namespace tracing
 

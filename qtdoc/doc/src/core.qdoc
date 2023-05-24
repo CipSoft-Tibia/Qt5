@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page topics-core.html
 \title Core Internals
 \brief Qt's core topics
+\ingroup explanations-basics
 
 Qt contains a rich set of fundamental enablers, mainly from the \l{Qt Core}
 module. Qt uses these enablers to provide higher-level UI and application
@@ -46,13 +23,6 @@ basis for Qt's event system, which is a low-level way of communicating between
 QObject-based objects. Another high-level form of communication is provided in
 Qt's signals and slots mechanism.
 
-These features can also be used in combination
-with the State Machine Framework which provides a formally defined and
-predictable way of managing the states of your application.
-An alternative way of implementing state machines is using the
-\l{Qt SCXML Overview}{Qt SCXML} add-on module to create them from State Chart
-XML (SCXML) files.
-
 In addition, QObject
 provides a simple timing mechanism with \l QObject::startTimer(). Alternatively,
 the QTimer class provides a high-level interface for timers.
@@ -66,7 +36,6 @@ the QTimer class provides a high-level interface for timers.
     \list
     \li \l{Differences between String-Based and Functor-Based Connections}
     \endlist
-\li \l{The State Machine Framework}
 \li \l{Timers}
 \endlist
 
@@ -93,13 +62,13 @@ internationalization system.
 \li \l{Internationalization with Qt}
 \endlist
 
-\section1 Inter-Process Communication
+\section1 Inter-process communication in Qt
 
 Qt provides several classes to support communication between processes. You can
 also launch and manage external processes using the QProcess class.
 
 \list
-\li \l{Inter-Process Communication in Qt}
+\li \l{Inter-Process Communication}
 \endlist
 
 \section1 Threading
@@ -133,7 +102,6 @@ Qt applications which support third-party plugins.
 
 \list
 \li \l{Qt Platform Abstraction}
-\li \l{Implementing Atomic Operations} - for new architectures
 \li \l{How to Create Qt Plugins}
 \li \l{<QtEndian>}{Endian Conversion Functions} - functions for handling
     endianness from the QtEndian header

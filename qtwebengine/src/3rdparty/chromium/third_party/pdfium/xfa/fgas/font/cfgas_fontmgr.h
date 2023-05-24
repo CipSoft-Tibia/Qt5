@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,26 +14,16 @@
 #include <vector>
 
 #include "build/build_config.h"
-#include "core/fxcrt/fx_extension.h"
-#include "core/fxcrt/fx_string.h"
+#include "core/fxcrt/fx_codepage_forward.h"
 #include "core/fxcrt/retain_ptr.h"
+#include "core/fxcrt/widestring.h"
 #include "core/fxge/cfx_face.h"
-#include "core/fxge/fx_freetype.h"
+#include "core/fxge/freetype/fx_freetype.h"
 
 class CFGAS_GEFont;
-class CFX_FontMapper;
 class IFX_SeekableReadStream;
 
-#if defined(OS_WIN)
-struct FX_FONTMATCHPARAMS {
-  const wchar_t* pwsFamily;
-  uint32_t dwFontStyles;
-  uint32_t dwUSB;
-  bool matchParagraphStyle;
-  wchar_t wUnicode;
-  uint16_t wCodePage;
-};
-
+#if BUILDFLAG(IS_WIN)
 struct FX_FONTSIGNATURE {
   uint32_t fsUsb[4];
   uint32_t fsCsb[2];
@@ -49,7 +39,7 @@ inline bool operator==(const FX_FONTSIGNATURE& left,
 struct FX_FONTDESCRIPTOR {
   wchar_t wsFontFace[32];
   uint32_t dwFontStyles;
-  uint8_t uCharSet;
+  FX_Charset uCharSet;
   FX_FONTSIGNATURE FontSignature;
 };
 
@@ -61,38 +51,38 @@ inline bool operator==(const FX_FONTDESCRIPTOR& left,
          wcscmp(left.wsFontFace, right.wsFontFace) == 0;
 }
 
-#else  // defined(OS_WIN)
+#else  // BUILDFLAG(IS_WIN)
 
-class CFX_FontDescriptor {
+class CFGAS_FontDescriptor {
  public:
-  CFX_FontDescriptor();
-  ~CFX_FontDescriptor();
+  CFGAS_FontDescriptor();
+  ~CFGAS_FontDescriptor();
 
-  int32_t m_nFaceIndex;
-  uint32_t m_dwFontStyles;
+  int32_t m_nFaceIndex = 0;
+  uint32_t m_dwFontStyles = 0;
   WideString m_wsFaceName;
   std::vector<WideString> m_wsFamilyNames;
-  uint32_t m_dwUsb[4];
-  uint32_t m_dwCsb[2];
+  uint32_t m_dwUsb[4] = {};
+  uint32_t m_dwCsb[2] = {};
 };
 
-class CFX_FontDescriptorInfo {
+class CFGAS_FontDescriptorInfo {
  public:
-  CFX_FontDescriptor* pFont;
+  CFGAS_FontDescriptor* pFont;
   int32_t nPenalty;
 
-  bool operator>(const CFX_FontDescriptorInfo& other) const {
+  bool operator>(const CFGAS_FontDescriptorInfo& other) const {
     return nPenalty > other.nPenalty;
   }
-  bool operator<(const CFX_FontDescriptorInfo& other) const {
+  bool operator<(const CFGAS_FontDescriptorInfo& other) const {
     return nPenalty < other.nPenalty;
   }
-  bool operator==(const CFX_FontDescriptorInfo& other) const {
+  bool operator==(const CFGAS_FontDescriptorInfo& other) const {
     return nPenalty == other.nPenalty;
   }
 };
 
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
 class CFGAS_FontMgr {
  public:
@@ -100,7 +90,7 @@ class CFGAS_FontMgr {
   ~CFGAS_FontMgr();
 
   bool EnumFonts();
-  RetainPtr<CFGAS_GEFont> GetFontByCodePage(uint16_t wCodePage,
+  RetainPtr<CFGAS_GEFont> GetFontByCodePage(FX_CodePage wCodePage,
                                             uint32_t dwFontStyles,
                                             const wchar_t* pszFontFamily);
   RetainPtr<CFGAS_GEFont> GetFontByUnicode(wchar_t wUnicode,
@@ -108,49 +98,47 @@ class CFGAS_FontMgr {
                                            const wchar_t* pszFontFamily);
   RetainPtr<CFGAS_GEFont> LoadFont(const wchar_t* pszFontFamily,
                                    uint32_t dwFontStyles,
-                                   uint16_t wCodePage);
+                                   FX_CodePage wCodePage);
 
  private:
   RetainPtr<CFGAS_GEFont> GetFontByUnicodeImpl(wchar_t wUnicode,
                                                uint32_t dwFontStyles,
                                                const wchar_t* pszFontFamily,
                                                uint32_t dwHash,
-                                               uint16_t wCodePage,
+                                               FX_CodePage wCodePage,
                                                uint16_t wBitField);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   const FX_FONTDESCRIPTOR* FindFont(const wchar_t* pszFontFamily,
                                     uint32_t dwFontStyles,
                                     bool matchParagraphStyle,
-                                    uint16_t wCodePage,
+                                    FX_CodePage wCodePage,
                                     uint32_t dwUSB,
                                     wchar_t wUnicode);
 
-#else   // defined(OS_WIN)
+#else   // BUILDFLAG(IS_WIN)
   bool EnumFontsFromFontMapper();
-  bool EnumFontsFromFiles();
-  void RegisterFace(RetainPtr<CFX_Face> pFace, const WideString* pFaceName);
+  void RegisterFace(RetainPtr<CFX_Face> pFace, const WideString& wsFaceName);
   void RegisterFaces(const RetainPtr<IFX_SeekableReadStream>& pFontStream,
-                     const WideString* pFaceName);
-  void MatchFonts(std::vector<CFX_FontDescriptorInfo>* MatchedFonts,
-                  uint16_t wCodePage,
-                  uint32_t dwFontStyles,
-                  const WideString& FontName,
-                  wchar_t wcUnicode);
+                     const WideString& wsFaceName);
+  std::vector<CFGAS_FontDescriptorInfo> MatchFonts(FX_CodePage wCodePage,
+                                                   uint32_t dwFontStyles,
+                                                   const WideString& FontName,
+                                                   wchar_t wcUnicode);
   RetainPtr<CFGAS_GEFont> LoadFontInternal(const WideString& wsFaceName,
                                            int32_t iFaceIndex);
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
   std::map<uint32_t, std::vector<RetainPtr<CFGAS_GEFont>>> m_Hash2Fonts;
   std::set<wchar_t> m_FailedUnicodesSet;
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   std::deque<FX_FONTDESCRIPTOR> m_FontFaces;
 #else
-  std::vector<std::unique_ptr<CFX_FontDescriptor>> m_InstalledFonts;
-  std::map<uint32_t, std::unique_ptr<std::vector<CFX_FontDescriptorInfo>>>
+  std::vector<std::unique_ptr<CFGAS_FontDescriptor>> m_InstalledFonts;
+  std::map<uint32_t, std::vector<CFGAS_FontDescriptorInfo>>
       m_Hash2CandidateList;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 };
 
 #endif  // XFA_FGAS_FONT_CFGAS_FONTMGR_H_

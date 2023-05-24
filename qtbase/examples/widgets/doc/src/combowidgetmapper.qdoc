@@ -1,47 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example itemviews/combowidgetmapper
     \title Combo Widget Mapper Example
+    \examplecategory {User Interface Components}
     \ingroup examples-itemviews
     \brief The Combo Widget Mapper example shows how to use a custom delegate to
     map information from a model to specific widgets on a form.
 
     \image combowidgetmapper-example.png
 
-    In the \l{Simple Widget Mapper Example}, we showed the basic use of a
-    widget mapper to relate data exposed by a model to simple input widgets
-    in a user interface. However, sometimes we want to use input widgets that
-    expose data as choices to the user, such as QComboBox, and we need a way
-    to relate their input to the values stored in the model.
-
-    This example is very similar to the \l{Simple Widget Mapper Example}.
-    Again, we create a \c Window class with an almost identical user interface,
+    We create a \c Window class with an almost identical user interface,
     except that, instead of providing a spin box so that each person's age
     can be entered, we provide a combo box to allow their addresses to be
     classified as "Home", "Work" or "Other".
@@ -89,8 +59,7 @@
     interfering with the other input widgets. The implementation is shown later.
     \endomit
 
-    The rest of the constructor is very similar to that of the
-    \l{Simple Widget Mapper Example}:
+    The rest of the constructor sets up connections and layouts:
 
     \snippet itemviews/combowidgetmapper/window.cpp Set up connections and layouts
 
@@ -119,7 +88,7 @@
     \section1 Delegate Class Definition and Implementation
 
     The delegate we use to mediate interaction between the widget mapper and
-    the input widgets is a small QItemDelegate subclass:
+    the input widgets is a small QStyledItemDelegate subclass:
 
     \snippet itemviews/combowidgetmapper/delegate.h Delegate class definition
 
@@ -130,7 +99,7 @@
     Since we only provide an empty implementation of the constructor, we
     concentrate on the other two functions.
 
-    The \l{QItemDelegate::}{setEditorData()} implementation takes the data
+    The \l{QStyledItemDelegate::}{setEditorData()} implementation takes the data
     referred to by the model index supplied and processes it according to
     the presence of a \c currentIndex property in the editor widget:
 
@@ -142,10 +111,10 @@
     values needed for the \c currentIndex property.
 
     As a result, instead of showing "0", "1" or "2" in the combo box, one of
-    its predefined set of items is shown. We call QItemDelegate::setEditorData()
+    its predefined set of items is shown. We call QStyledItemDelegate::setEditorData()
     for widgets without the \c currentIndex property.
 
-    The \l{QItemDelegate::}{setModelData()} implementation performs the reverse
+    The \l{QStyledItemDelegate::}{setModelData()} implementation performs the reverse
     process, taking the value stored in the widget's \c currentIndex property
     and storing it back in the model:
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qpathclipper_p.h"
 
@@ -99,6 +63,7 @@ struct QIntersection
 
     QPointF pos;
 };
+Q_DECLARE_TYPEINFO(QIntersection, Q_PRIMITIVE_TYPE);
 
 class QIntersectionFinder
 {
@@ -268,11 +233,11 @@ private:
     void intersectLines(const QLineF &a, const QLineF &b, QDataBuffer<QIntersection> &intersections);
 
     QPathSegments &m_segments;
-    QVector<int> m_index;
+    QList<int> m_index;
 
     RectF m_bounds;
 
-    QVector<TreeNode> m_tree;
+    QList<TreeNode> m_tree;
     QDataBuffer<QIntersection> m_intersections;
 };
 
@@ -685,7 +650,8 @@ int QKdPointTree::build(int begin, int end, int depth)
         }
     }
 
-    qSwap(m_nodes.at(last), m_nodes.at(begin));
+    if (last != begin)
+        qSwap(m_nodes.at(last), m_nodes.at(begin));
 
     if (last > begin)
         m_nodes.at(last).left = &m_nodes.at(build(begin, last, depth + 1));
@@ -1618,7 +1584,7 @@ QPainterPath QPathClipper::clip(Operation operation)
 
 bool QPathClipper::doClip(QWingedEdge &list, ClipperMode mode)
 {
-    QVector<qreal> y_coords;
+    QList<qreal> y_coords;
     y_coords.reserve(list.vertexCount());
     for (int i = 0; i < list.vertexCount(); ++i)
         y_coords << list.vertex(i)->y;
@@ -1778,9 +1744,9 @@ bool QWingedEdge::isInside(qreal x, qreal y) const
     return winding & 1;
 }
 
-static QVector<QCrossingEdge> findCrossings(const QWingedEdge &list, qreal y)
+static QList<QCrossingEdge> findCrossings(const QWingedEdge &list, qreal y)
 {
-    QVector<QCrossingEdge> crossings;
+    QList<QCrossingEdge> crossings;
     for (int i = 0; i < list.edgeCount(); ++i) {
         const QPathEdge *edge = list.edge(i);
         QPointF a = *list.vertex(edge->first);
@@ -1797,7 +1763,7 @@ static QVector<QCrossingEdge> findCrossings(const QWingedEdge &list, qreal y)
 
 bool QPathClipper::handleCrossingEdges(QWingedEdge &list, qreal y, ClipperMode mode)
 {
-    QVector<QCrossingEdge> crossings = findCrossings(list, y);
+    QList<QCrossingEdge> crossings = findCrossings(list, y);
 
     Q_ASSERT(!crossings.isEmpty());
     std::sort(crossings.begin(), crossings.end());
@@ -1869,10 +1835,10 @@ bool QPathClipper::handleCrossingEdges(QWingedEdge &list, qreal y, ClipperMode m
 
 namespace {
 
-QVector<QPainterPath> toSubpaths(const QPainterPath &path)
+QList<QPainterPath> toSubpaths(const QPainterPath &path)
 {
 
-    QVector<QPainterPath> subpaths;
+    QList<QPainterPath> subpaths;
     if (path.isEmpty())
         return subpaths;
 
@@ -1965,7 +1931,7 @@ void clipLine(const QPointF &a, const QPointF &b, qreal t, QPainterPath &result)
 
     if (outA)
         addLine(result, QLineF(intersectLine<edge>(a, b, t), b));
-    else if(outB)
+    else if (outB)
         addLine(result, QLineF(a, intersectLine<edge>(a, b, t)));
     else
         addLine(result, QLineF(a, b));
@@ -2072,7 +2038,7 @@ QPainterPath clip(const QPainterPath &path, qreal t)
 
 QPainterPath intersectPath(const QPainterPath &path, const QRectF &rect)
 {
-    QVector<QPainterPath> subpaths = toSubpaths(path);
+    QList<QPainterPath> subpaths = toSubpaths(path);
 
     QPainterPath result;
     result.setFillRule(path.fillRule());

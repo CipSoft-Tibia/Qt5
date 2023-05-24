@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qglobal.h"
 #include "qjalalicalendar_p.h"
@@ -49,16 +13,17 @@ using namespace QRoundingDown;
 
 // Constants
 
-static const qint64 cycleDays = 1029983;
-static const int cycleYears = 2820;
-static const double yearLength = 365.24219858156028368; // 365 + leapRatio;
-static const qint64 jalaliEpoch = 2121446; // 475/01/01 AP, start of 2820 cycle
+constexpr qint64 cycleDays = 1029983;
+constexpr int cycleYears = 2820;
+constexpr double yearLength = 365.24219858156028368; // 365 + 683 / 2820.
+constexpr qint64 jalaliEpoch = 2121446; // 475/01/01 AP, start of 2820 cycle
+// This appears to be based on Ahmad Birashk's algorithm.
 
 // Calendar implementation
 
 static inline int cycle(qint64 jdn)
 {
-    return qDiv(jdn - jalaliEpoch, cycleDays);
+    return qDiv<cycleDays>(jdn - jalaliEpoch);
 }
 
 qint64 cycleStart(int cycleNo)
@@ -111,22 +76,19 @@ qint64 firstDayOfYear(int year, int cycleNo)
 
     Source: \l {https://en.wikipedia.org/wiki/Solar_Hijri_calendar}{Wikipedia
     page on Solar Hijri Calendar}
- */
-
-QJalaliCalendar::QJalaliCalendar()
-    : QCalendarBackend(QStringLiteral("Jalali"), QCalendar::System::Jalali)
-{
-    registerAlias(QStringLiteral("Persian"));
-}
+*/
 
 QString QJalaliCalendar::name() const
 {
     return QStringLiteral("Jalali");
 }
 
-QCalendar::System QJalaliCalendar::calendarSystem() const
+QStringList QJalaliCalendar::nameList()
 {
-    return QCalendar::System::Jalali;
+    return {
+        QStringLiteral("Jalali"),
+        QStringLiteral("Persian"),
+    };
 }
 
 bool QJalaliCalendar::isLeapYear(int year) const
@@ -135,7 +97,7 @@ bool QJalaliCalendar::isLeapYear(int year) const
         return false;
     if (year < 0)
         year++;
-    return qMod((year + 2346) * 683, 2820) < 683;
+    return qMod<2820>((year + 2346) * 683) < 683;
 }
 
 bool QJalaliCalendar::isLunar() const
@@ -160,7 +122,7 @@ bool QJalaliCalendar::dateToJulianDay(int year, int month, int day, qint64 *jd) 
         return false;
 
     const int y = year - (year < 0 ? 474 : 475);
-    const int c = qDiv(y, cycleYears);
+    const int c = qDiv<cycleYears>(y);
     const int yearInCycle = y - c * cycleYears;
     int dayInYear = day;
     for (int i = 1; i < month; ++i)
@@ -201,12 +163,12 @@ int QJalaliCalendar::daysInMonth(int month, int year) const
 
 const QCalendarLocale *QJalaliCalendar::localeMonthIndexData() const
 {
-    return locale_data;
+    return QtPrivate::Jalali::locale_data;
 }
 
-const ushort *QJalaliCalendar::localeMonthData() const
+const char16_t *QJalaliCalendar::localeMonthData() const
 {
-    return months_data;
+    return QtPrivate::Jalali::months_data;
 }
 
 QT_END_NAMESPACE

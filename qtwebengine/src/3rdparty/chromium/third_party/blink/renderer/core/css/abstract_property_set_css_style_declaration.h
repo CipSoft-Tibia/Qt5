@@ -38,11 +38,12 @@ class ExecutionContext;
 class MutableCSSPropertyValueSet;
 class StyleSheetContents;
 
-class AbstractPropertySetCSSStyleDeclaration : public CSSStyleDeclaration {
+class CORE_EXPORT AbstractPropertySetCSSStyleDeclaration
+    : public CSSStyleDeclaration {
  public:
   virtual Element* ParentElement() const { return nullptr; }
   StyleSheetContents* ContextStyleSheet() const;
-  AbstractPropertySetCSSStyleDeclaration(ExecutionContext* context)
+  explicit AbstractPropertySetCSSStyleDeclaration(ExecutionContext* context)
       : CSSStyleDeclaration(context) {}
 
   void Trace(Visitor*) const override;
@@ -69,8 +70,12 @@ class AbstractPropertySetCSSStyleDeclaration : public CSSStyleDeclaration {
                   ExceptionState&) final;
   const CSSValue* GetPropertyCSSValueInternal(CSSPropertyID) final;
   const CSSValue* GetPropertyCSSValueInternal(
-      AtomicString custom_property_name) final;
+      const AtomicString& custom_property_name) final;
   String GetPropertyValueInternal(CSSPropertyID) final;
+  String GetPropertyValueWithHint(const String& property_name,
+                                  unsigned index) final;
+  String GetPropertyPriorityWithHint(const String& property_name,
+                                     unsigned index) final;
   void SetPropertyInternal(CSSPropertyID,
                            const String& custom_property_name,
                            const String& value,
@@ -81,11 +86,21 @@ class AbstractPropertySetCSSStyleDeclaration : public CSSStyleDeclaration {
   bool CssPropertyMatches(CSSPropertyID, const CSSValue&) const final;
 
  protected:
-  enum MutationType { kNoChanges, kPropertyChanged };
+  enum MutationType {
+    kNoChanges,
+    // Only properties that were independent changed, so that if there are
+    // no other changes and this is on the inline style, it may be
+    // possible to reuse an already-computed style and just apply
+    // the new changes on top of it.
+    kIndependentPropertyChanged,
+    kPropertyChanged
+  };
   virtual void WillMutate() {}
   virtual void DidMutate(MutationType) {}
   virtual MutableCSSPropertyValueSet& PropertySet() const = 0;
   virtual bool IsKeyframeStyle() const { return false; }
+  bool FastPathSetProperty(CSSPropertyID unresolved_property,
+                           double value) override;
 };
 
 }  // namespace blink

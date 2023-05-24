@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -37,6 +37,19 @@ enum class ForceDarkImageBehavior {
   // Invert only some images. Images that act as icons or text should be
   // inverted, but photos, avatars, etc. should not be.
   kInvertSelectively
+};
+
+// Specifies the classifier used to determine which images to invert, when
+// ForceDarkImageBehavior is |kInvertSelectively|
+enum class ForceDarkImageClassifier {
+  // Same as ForceDarkInversionMethod::kUseBlinkSettings above.
+  kUseBlinkSettings,
+
+  // See DarkModeImageClassifierPolicy::kNumColorsWithMlFallback.
+  kNumColorsWithMlFallback,
+
+  // See DarkModeImageClassifierPolicy::kTransparencyAndNumColors.
+  kTransparencyAndNumColors
 };
 
 }  // namespace blink

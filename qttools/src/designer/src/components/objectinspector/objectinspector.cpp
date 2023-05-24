@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "objectinspector.h"
 #include "objectinspectormodel_p.h"
@@ -61,9 +36,9 @@
 #include <QtWidgets/qstyleditemdelegate.h>
 #include <QtGui/qevent.h>
 
-#include <QtCore/qsortfilterproxymodel.h>
-#include <QtCore/qvector.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qsortfilterproxymodel.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -89,8 +64,6 @@ namespace {
         UnmanagedWidgetSelection,
         // A widget managed by the form window cursor
         ManagedWidgetSelection };
-
-    using QObjectVector = QVector<QObject *>;
 }
 
 static inline SelectionType selectionType(const QDesignerFormWindowInterface *fw, QObject *o)
@@ -208,7 +181,7 @@ public:
 
     QModelIndexList indexesOf(QObject *o) const;
     QObject *objectAt(const QModelIndex &index) const;
-    QObjectVector indexesToObjects(const QModelIndexList &indexes) const;
+    QObjectList indexesToObjects(const QModelIndexList &indexes) const;
 
     void slotHeaderDoubleClicked(int column)       {  m_treeView->resizeColumnToContents(column); }
     void slotPopupContextMenu(QWidget *parent, const QPoint &pos);
@@ -255,6 +228,8 @@ ObjectInspector::ObjectInspectorPrivate::ObjectInspectorPrivate(QDesignerFormEdi
     m_filterModel->setSourceModel(m_model);
     m_filterModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_treeView->setModel(m_filterModel);
+    m_treeView->setSortingEnabled(true);
+    m_treeView->sortByColumn(0, Qt::AscendingOrder);
     m_treeView->setItemDelegate(new ObjectInspectorDelegate);
     m_treeView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     m_treeView->header()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -357,7 +332,7 @@ void ObjectInspector::ObjectInspectorPrivate::handleDragEnterMoveEvent(const QWi
 
     QWidget *dropTarget = nullptr;
     QPoint fakeDropTargetOffset = QPoint(0, 0);
-    if (QWidget *managedWidget = managedWidgetAt(objectInspectorWidget->mapToGlobal(event->pos()))) {
+    if (QWidget *managedWidget = managedWidgetAt(objectInspectorWidget->mapToGlobal(event->position().toPoint()))) {
         fakeDropTargetOffset = dropPointOffset(m_formWindow, managedWidget);
         // pretend we drag over the managed widget on the form
         const QPoint fakeFormPos = m_formWindow->mapFromGlobal(managedWidget->mapToGlobal(fakeDropTargetOffset));
@@ -454,12 +429,12 @@ void ObjectInspector::ObjectInspectorPrivate::selectIndexRange(const QModelIndex
         selectFlags |= QItemSelectionModel::Current;
 
     QItemSelectionModel *selectionModel = m_treeView->selectionModel();
-    const QModelIndexList::const_iterator cend = indexes.constEnd();
-    for (QModelIndexList::const_iterator it = indexes.constBegin(); it != cend; ++it)
-        if (it->column() == 0) {
-            selectionModel->select(*it, selectFlags);
+    for (const auto &mi : indexes) {
+        if (mi.column() == 0) {
+            selectionModel->select(mi, selectFlags);
             selectFlags &= ~(QItemSelectionModel::Clear|QItemSelectionModel::Current);
         }
+    }
     if (flags & MakeCurrent)
         m_treeView->scrollTo(indexes.constFirst(), QAbstractItemView::EnsureVisible);
 }
@@ -566,16 +541,16 @@ void ObjectInspector::ObjectInspectorPrivate::applyCursorSelection()
 }
 
 // Synchronize managed widget in the form (select in cursor). Block updates
-static int selectInCursor(FormWindowBase *fw, const QObjectVector &objects, bool value)
+static int selectInCursor(FormWindowBase *fw, const QObjectList &objects, bool value)
 {
     int rc = 0;
     const bool blocked = fw->blockSelectionChanged(true);
-    const QObjectVector::const_iterator ocend = objects.constEnd();
-    for (QObjectVector::const_iterator it = objects.constBegin(); it != ocend; ++it)
-        if (selectionType(fw, *it) == ManagedWidgetSelection) {
-            fw->selectWidget(static_cast<QWidget *>(*it), value);
+    for (auto *o : objects) {
+        if (selectionType(fw, o) == ManagedWidgetSelection) {
+            fw->selectWidget(static_cast<QWidget *>(o), value);
             rc++;
         }
+    }
     fw->blockSelectionChanged(blocked);
     return rc;
 }
@@ -590,16 +565,16 @@ void ObjectInspector::ObjectInspectorPrivate::slotSelectionChanged(const QItemSe
 
 // Convert indexes to object vectors taking into account that
 // some index lists are multicolumn ranges
-QObjectVector ObjectInspector::ObjectInspectorPrivate::indexesToObjects(const QModelIndexList &indexes) const
+QObjectList ObjectInspector::ObjectInspectorPrivate::indexesToObjects(const QModelIndexList &indexes) const
 {
+    QObjectList rc;
     if (indexes.isEmpty())
-        return  QObjectVector();
-    QObjectVector rc;
+        return rc;
     rc.reserve(indexes.size());
-    const QModelIndexList::const_iterator icend = indexes.constEnd();
-    for (QModelIndexList::const_iterator it = indexes.constBegin(); it != icend; ++it)
-        if (it->column() == 0)
-            rc.append(objectAt(*it));
+    for (const auto &mi : indexes) {
+        if (mi.column() == 0)
+            rc.append(objectAt(mi));
+    }
     return rc;
 }
 
@@ -609,9 +584,8 @@ bool ObjectInspector::ObjectInspectorPrivate::checkManagedWidgetSelection(const 
 {
     bool isManagedWidgetSelection = false;
     QItemSelectionModel *selectionModel = m_treeView->selectionModel();
-    const QModelIndexList::const_iterator cscend = rowSelection.constEnd();
-    for (QModelIndexList::const_iterator it = rowSelection.constBegin(); it != cscend; ++it) {
-        QObject *object = objectAt(*it);
+    for (const auto &mi : rowSelection) {
+        QObject *object = objectAt(mi);
         if (selectionType(m_formWindow, object) == ManagedWidgetSelection) {
             isManagedWidgetSelection = true;
             break;
@@ -622,10 +596,10 @@ bool ObjectInspector::ObjectInspectorPrivate::checkManagedWidgetSelection(const 
         return false;
     // Need to unselect unmanaged ones
     const bool blocked = selectionModel->blockSignals(true);
-    for (QModelIndexList::const_iterator it = rowSelection.constBegin(); it != cscend; ++it) {
-        QObject *object = objectAt(*it);
+    for (const auto &mi : rowSelection) {
+        QObject *object = objectAt(mi);
         if (selectionType(m_formWindow, object) != ManagedWidgetSelection)
-            selectionModel->select(*it, QItemSelectionModel::Deselect|QItemSelectionModel::Rows);
+            selectionModel->select(mi, QItemSelectionModel::Deselect|QItemSelectionModel::Rows);
     }
     selectionModel->blockSignals(blocked);
     return true;
@@ -634,8 +608,8 @@ bool ObjectInspector::ObjectInspectorPrivate::checkManagedWidgetSelection(const 
 void ObjectInspector::ObjectInspectorPrivate::synchronizeSelection(const QItemSelection & selectedSelection, const QItemSelection &deselectedSelection)
 {
     // Synchronize form window cursor.
-    const QObjectVector deselected = indexesToObjects(deselectedSelection.indexes());
-    const QObjectVector newlySelected = indexesToObjects(selectedSelection.indexes());
+    const QObjectList deselected = indexesToObjects(deselectedSelection.indexes());
+    const QObjectList newlySelected = indexesToObjects(selectedSelection.indexes());
 
     const QModelIndexList currentSelectedIndexes = m_treeView->selectionModel()->selectedRows(0);
 

@@ -1,11 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #if defined(WEBLAYER_MANUAL_JNI_REGISTRATION)
 #include "base/android/library_loader/library_loader_hooks.h"  // nogncheck
 #include "weblayer/browser/java/jni/WebViewCompatibilityHelperImpl_jni.h"  // nogncheck
-#include "weblayer/browser/java/weblayer_jni_registration.h"  // nogncheck
+#include "weblayer/browser/java/weblayer_jni_registration_generated.h"  // nogncheck
 #endif
 
 namespace weblayer {

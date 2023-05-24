@@ -1,7 +1,7 @@
 name: CI (CMake)
 on:
   push:
-    branches: [master]
+    branches: [main]
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -10,6 +10,6 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v2
-    - run: .github/cmake.sh
-      shell: bash
+      - uses: actions/checkout@v3
+      - run: .github/cmake.sh
+        shell: bash

@@ -29,6 +29,8 @@ class RelativeDateTimeFormatter;
 namespace v8 {
 namespace internal {
 
+#include "torque-generated/src/objects/js-relative-time-format-tq.inc"
+
 class JSRelativeTimeFormat
     : public TorqueGeneratedJSRelativeTimeFormat<JSRelativeTimeFormat,
                                                  JSObject> {
@@ -75,8 +77,8 @@ class JSRelativeTimeFormat
   // Bit positions in |flags|.
   DEFINE_TORQUE_GENERATED_JS_RELATIVE_TIME_FORMAT_FLAGS()
 
-  STATIC_ASSERT(Numeric::AUTO <= NumericBit::kMax);
-  STATIC_ASSERT(Numeric::ALWAYS <= NumericBit::kMax);
+  static_assert(Numeric::AUTO <= NumericBit::kMax);
+  static_assert(Numeric::ALWAYS <= NumericBit::kMax);
 
   DECL_PRINTER(JSRelativeTimeFormat)
 

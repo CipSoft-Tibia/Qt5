@@ -1,18 +1,18 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_SERVICES_STORAGE_INDEXED_DB_SCOPES_LEVELDB_SCOPES_TEST_UTILS_H_
 #define COMPONENTS_SERVICES_STORAGE_INDEXED_DB_SCOPES_LEVELDB_SCOPES_TEST_UTILS_H_
 
-#include "base/callback.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/callback.h"
 #include "base/test/task_environment.h"
 #include "base/threading/thread_restrictions.h"
 #include "components/services/storage/indexed_db/leveldb/fake_leveldb_factory.h"
 #include "components/services/storage/indexed_db/leveldb/leveldb_state.h"
+#include "components/services/storage/indexed_db/locks/partitioned_lock_manager.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scopes_coding.h"
-#include "components/services/storage/indexed_db/scopes/scopes_lock_manager.h"
 #include "components/services/storage/indexed_db/scopes/scopes_metadata.pb.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/leveldatabase/src/include/leveldb/slice.h"
@@ -84,13 +84,13 @@ class LevelDBScopesTestBase : public testing::Test {
 
   // Creates a shared lock request from |simple_lock_begin_| to
   // |simple_lock_end_|.
-  ScopesLockManager::ScopeLockRequest CreateSimpleSharedLock();
+  PartitionedLockManager::PartitionedLockRequest CreateSimpleSharedLock();
   // Creates a exclusive lock request from |simple_lock_begin_| to
   // |simple_lock_end_|.
-  ScopesLockManager::ScopeLockRequest CreateSimpleExclusiveLock();
+  PartitionedLockManager::PartitionedLockRequest CreateSimpleExclusiveLock();
 
-  ScopesLockManager::ScopeLockRequest CreateSharedLock(int i);
-  ScopesLockManager::ScopeLockRequest CreateExclusiveLock(int i);
+  PartitionedLockManager::PartitionedLockRequest CreateSharedLock(int i);
+  PartitionedLockManager::PartitionedLockRequest CreateExclusiveLock(int i);
 
   const base::FilePath& DatabaseDirFilePath();
 

@@ -1,10 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/shell/browser/shell_speech_recognition_manager_delegate.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_frame_host.h"
@@ -12,6 +12,7 @@
 #include "content/public/browser/speech_recognition_session_context.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/view_type_utils.h"
+#include "extensions/common/mojom/view_type.mojom.h"
 
 using content::BrowserThread;
 using content::SpeechRecognitionManager;
@@ -107,10 +108,11 @@ void ShellSpeechRecognitionManagerDelegate::CheckRenderFrameType(
   if (render_frame_host) {
     WebContents* web_contents =
         WebContents::FromRenderFrameHost(render_frame_host);
-    extensions::ViewType view_type = extensions::GetViewType(web_contents);
+    extensions::mojom::ViewType view_type =
+        extensions::GetViewType(web_contents);
 
-    if (view_type == extensions::VIEW_TYPE_APP_WINDOW ||
-        view_type == extensions::VIEW_TYPE_EXTENSION_BACKGROUND_PAGE) {
+    if (view_type == extensions::mojom::ViewType::kAppWindow ||
+        view_type == extensions::mojom::ViewType::kExtensionBackgroundPage) {
       allowed = true;
       check_permission = true;
     } else {

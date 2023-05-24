@@ -1,39 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
 #include <QtDataVisualization/QItemModelScatterDataProxy>
 #include <QtDataVisualization/Q3DScatter>
 #include <QtWidgets/QTableWidget>
-
-using namespace QtDataVisualization;
 
 class tst_proxy: public QObject
 {
@@ -109,16 +81,16 @@ void tst_proxy::initialProperties()
 
     QVERIFY(!m_proxy->itemModel());
     QCOMPARE(m_proxy->rotationRole(), QString());
-    QCOMPARE(m_proxy->rotationRolePattern(), QRegExp());
+    QCOMPARE(m_proxy->rotationRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->rotationRoleReplace(), QString());
     QCOMPARE(m_proxy->xPosRole(), QString());
-    QCOMPARE(m_proxy->xPosRolePattern(), QRegExp());
+    QCOMPARE(m_proxy->xPosRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->xPosRoleReplace(), QString());
     QCOMPARE(m_proxy->yPosRole(), QString());
-    QCOMPARE(m_proxy->yPosRolePattern(), QRegExp());
+    QCOMPARE(m_proxy->yPosRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->yPosRoleReplace(), QString());
     QCOMPARE(m_proxy->zPosRole(), QString());
-    QCOMPARE(m_proxy->zPosRolePattern(), QRegExp());
+    QCOMPARE(m_proxy->zPosRolePattern(), QRegularExpression());
     QCOMPARE(m_proxy->zPosRoleReplace(), QString());
 
     QCOMPARE(m_proxy->itemCount(), 0);
@@ -135,30 +107,30 @@ void tst_proxy::initializeProperties()
 
     m_proxy->setItemModel(table.model());
     m_proxy->setRotationRole("rotation");
-    m_proxy->setRotationRolePattern(QRegExp("/-/"));
+    m_proxy->setRotationRolePattern(QRegularExpression("/-/"));
     m_proxy->setRotationRoleReplace("\\\\1");
     m_proxy->setXPosRole("X");
-    m_proxy->setXPosRolePattern(QRegExp("/-/"));
+    m_proxy->setXPosRolePattern(QRegularExpression("/-/"));
     m_proxy->setXPosRoleReplace("\\\\1");
     m_proxy->setYPosRole("Y");
-    m_proxy->setYPosRolePattern(QRegExp("/-/"));
+    m_proxy->setYPosRolePattern(QRegularExpression("/-/"));
     m_proxy->setYPosRoleReplace("\\\\1");
     m_proxy->setZPosRole("Z");
-    m_proxy->setZPosRolePattern(QRegExp("/-/"));
+    m_proxy->setZPosRolePattern(QRegularExpression("/-/"));
     m_proxy->setZPosRoleReplace("\\\\1");
 
     QVERIFY(m_proxy->itemModel());
     QCOMPARE(m_proxy->rotationRole(), QString("rotation"));
-    QCOMPARE(m_proxy->rotationRolePattern(), QRegExp("/-/"));
+    QCOMPARE(m_proxy->rotationRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->rotationRoleReplace(), QString("\\\\1"));
     QCOMPARE(m_proxy->xPosRole(), QString("X"));
-    QCOMPARE(m_proxy->xPosRolePattern(), QRegExp("/-/"));
+    QCOMPARE(m_proxy->xPosRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->xPosRoleReplace(), QString("\\\\1"));
     QCOMPARE(m_proxy->yPosRole(), QString("Y"));
-    QCOMPARE(m_proxy->yPosRolePattern(), QRegExp("/-/"));
+    QCOMPARE(m_proxy->yPosRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->yPosRoleReplace(), QString("\\\\1"));
     QCOMPARE(m_proxy->zPosRole(), QString("Z"));
-    QCOMPARE(m_proxy->zPosRolePattern(), QRegExp("/-/"));
+    QCOMPARE(m_proxy->zPosRolePattern(), QRegularExpression("/-/"));
     QCOMPARE(m_proxy->zPosRoleReplace(), QString("\\\\1"));
 }
 
@@ -184,15 +156,16 @@ void tst_proxy::addModel()
     m_proxy->setItemModel(table.model());
     m_proxy->setXPosRole(table.model()->roleNames().value(Qt::DisplayRole));
     m_proxy->setZPosRole(table.model()->roleNames().value(Qt::DisplayRole));
-    m_proxy->setXPosRolePattern(QRegExp(QStringLiteral("^(\\d*)\\/(\\d*)\\/\\d*[\\.\\,]?\\d*\\/\\d*[\\.\\,]?\\d*$")));
+    m_proxy->setXPosRolePattern(QRegularExpression(QStringLiteral("^(\\d*)\\/(\\d*)\\/\\d*[\\.\\,]?\\d*\\/\\d*[\\.\\,]?\\d*$")));
     m_proxy->setXPosRoleReplace(QStringLiteral("\\2"));
-    m_proxy->setYPosRolePattern(QRegExp(QStringLiteral("^\\d*(\\/)(\\d*)\\/(\\d*[\\.\\,]?\\d*)\\/\\d*[\\.\\,]?\\d*$")));
+    m_proxy->setYPosRolePattern(QRegularExpression(QStringLiteral("^\\d*(\\/)(\\d*)\\/(\\d*[\\.\\,]?\\d*)\\/\\d*[\\.\\,]?\\d*$")));
     m_proxy->setYPosRoleReplace(QStringLiteral("\\3"));
-    m_proxy->setZPosRolePattern(QRegExp(QStringLiteral("^(\\d*)(\\/)(\\d*)\\/\\d*[\\.\\,]?\\d*\\/\\d*[\\.\\,]?\\d*$")));
+    m_proxy->setZPosRolePattern(QRegularExpression(QStringLiteral("^(\\d*)(\\/)(\\d*)\\/\\d*[\\.\\,]?\\d*\\/\\d*[\\.\\,]?\\d*$")));
     m_proxy->setZPosRoleReplace(QStringLiteral("\\1"));
+    QCoreApplication::processEvents();
 
     QScatter3DSeries *series = new QScatter3DSeries(m_proxy);
-    Q_UNUSED(series)
+    Q_UNUSED(series);
 
     QCoreApplication::processEvents();
 

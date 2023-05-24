@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <stddef.h>
 
-#include "cc/layers/layer.h"
+#include "cc/slim/layer.h"
 #include "ui/android/edge_effect.h"
 #include "ui/android/window_android_compositor.h"
 
@@ -44,6 +44,7 @@ OverscrollGlow::OverscrollGlow(OverscrollGlowClient* client)
 
 OverscrollGlow::~OverscrollGlow() {
   Detach();
+  client_ = nullptr;
 }
 
 void OverscrollGlow::Reset() {
@@ -119,7 +120,7 @@ bool OverscrollGlow::OnOverscrolled(base::TimeTicks current_time,
 }
 
 bool OverscrollGlow::Animate(base::TimeTicks current_time,
-                             cc::Layer* parent_layer) {
+                             cc::slim::Layer* parent_layer) {
   DCHECK(parent_layer);
   if (!CheckNeedsAnimate())
     return false;
@@ -136,10 +137,9 @@ bool OverscrollGlow::Animate(base::TimeTicks current_time,
   return CheckNeedsAnimate();
 }
 
-void OverscrollGlow::OnFrameUpdated(
-    const gfx::SizeF& viewport_size,
-    const gfx::SizeF& content_size,
-    const gfx::Vector2dF& content_scroll_offset) {
+void OverscrollGlow::OnFrameUpdated(const gfx::SizeF& viewport_size,
+                                    const gfx::SizeF& content_size,
+                                    const gfx::PointF& content_scroll_offset) {
   viewport_size_ = viewport_size;
   edge_offsets_[EdgeEffect::EDGE_TOP] = -content_scroll_offset.y();
   edge_offsets_[EdgeEffect::EDGE_LEFT] = -content_scroll_offset.x();
@@ -169,7 +169,7 @@ bool OverscrollGlow::CheckNeedsAnimate() {
   return false;
 }
 
-void OverscrollGlow::UpdateLayerAttachment(cc::Layer* parent) {
+void OverscrollGlow::UpdateLayerAttachment(cc::slim::Layer* parent) {
   DCHECK(parent);
   if (!root_layer_.get())
     return;
@@ -193,8 +193,11 @@ bool OverscrollGlow::InitializeIfNecessary() {
   if (initialized_)
     return true;
 
+  if (client_ == nullptr)
+    return false;
+
   DCHECK(!root_layer_.get());
-  root_layer_ = cc::Layer::Create();
+  root_layer_ = cc::slim::Layer::Create();
   for (size_t i = 0; i < EDGE_COUNT; ++i) {
     edge_effects_[i] = client_->CreateEdgeEffect();
     DCHECK(edge_effects_[i]);

@@ -1,12 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/web_package/signed_exchange_envelope.h"
 
-#include "base/callback.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/callback.h"
 #include "base/path_service.h"
 #include "components/cbor/values.h"
 #include "components/cbor/writer.h"
@@ -33,7 +33,7 @@ cbor::Value CBORByteString(const char* str) {
   return cbor::Value(str, cbor::Value::Type::BYTE_STRING);
 }
 
-base::Optional<SignedExchangeEnvelope> GenerateHeaderAndParse(
+absl::optional<SignedExchangeEnvelope> GenerateHeaderAndParse(
     SignedExchangeVersion version,
     base::StringPiece fallback_url,
     base::StringPiece signature,
@@ -95,7 +95,7 @@ TEST_P(SignedExchangeEnvelopeTest, ParseGoldenFile) {
       base::make_span(contents_bytes + signature_header_field_offset +
                           prologue_b.signature_header_field_length(),
                       prologue_b.cbor_header_length());
-  const base::Optional<SignedExchangeEnvelope> envelope =
+  const absl::optional<SignedExchangeEnvelope> envelope =
       SignedExchangeEnvelope::Parse(
           SignedExchangeVersion::kB3, prologue_b.fallback_url(),
           signature_header_field, cbor_bytes, nullptr /* devtools_proxy */);

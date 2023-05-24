@@ -7,7 +7,7 @@ underlying implementation.
 
 ## Related directories
 
-[`//content/browser/fileapi/`](../../../content/browser/fileapi) contains the
+[`//content/browser/file_system/`](../../../content/browser/file_system) contains the
 rest of the browser side implementation, while
 [`blink/renderer/modules/filesystem`](../../../third_party/blink/renderer/modules/filesystem)
 contains the renderer side implementation and
@@ -38,7 +38,7 @@ The three public file system types are:
 
 External File Systems are only used by Chrome OS. A lot of the code for this
 (besides `ExternalMountPoints` itself) lives in
-[`//chrome/browser/chromeos/fileapi/`](../../../chrome/browser/chromeos/fileapi/).
+[`//chrome/browser/ash/fileapi/`](../../../chrome/browser/ash/fileapi/).
 
 TODO(mek): Document this more.
 
@@ -50,7 +50,7 @@ specification](https://dev.w3.org/2009/dap/file-system/file-dir-sys.html).
 There are two flavors of this, "temporary" and "persistent".
 
 This same file system (or at least the "temporary" version) is also exposed via
-the new Native File System API.
+the new File System Access API.
 
 ### Isolated File Systems
 
@@ -58,7 +58,7 @@ Isolated file systems generally are used to expose files from other file system
 types to the web for the [Files and Directory Entries API](https://wicg.github.io/entries-api/),
 either via Drag&Drop or `<input type=file>`. They are also used for the (deprecated)
 [Chrome Apps chrome.fileSystem API](https://developer.chrome.com/apps/fileSystem),
-and the new [Native File System API](http://wicg.github.io/native-file-system/).
+and the new [File System Access API](http://wicg.github.io/file-system-access/).
 
 # Interesting Classes
 
@@ -78,9 +78,9 @@ It owns:
    specific "sync" file system.
 
  - Via `scoped_refptr` a bunch of `FileSystemBackend` instances. These
-   are either created by the `FileSystemContext` itself (for sandbox, plugin
-   private, and isolated file systems) or passed in to constructor after
-   requesting the additional backends from the content embedder via
+   are either created by the `FileSystemContext` itself (for sandbox and
+   isolated file systems) or passed in to constructor after requesting the
+   additional backends from the content embedder via
    `ContentBrowserClient::GetAdditionalFileSystemBackends`.
 
 And further more it references:
@@ -143,6 +143,6 @@ Today reference counts are increased/decreased implicitly by granting access to
 certain file systems to certain renderer processes (i.e.
 `content::ChildProcessSecurityPolicyImpl` calls `AddReference` when
 permission is granted, and call `RemoveReference` when the process is destroyed
-on all the file systems that renderer has access to). The Native File System API
+on all the file systems that renderer has access to). The File System Access API
 will introduce its own way of adding and removing references to these file
 systems.

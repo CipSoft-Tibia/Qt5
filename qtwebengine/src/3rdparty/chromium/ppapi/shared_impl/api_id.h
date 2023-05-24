@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,10 +13,8 @@ enum ApiID {
   // Zero is reserved for control messages.
   API_ID_NONE = 0,
   API_ID_PPB_AUDIO = 1,
-  API_ID_PPB_BROKER,
   API_ID_PPB_BUFFER,
   API_ID_PPB_CORE,
-  API_ID_PPB_FLASH_MESSAGELOOP,
   API_ID_PPB_GRAPHICS_3D,
   API_ID_PPB_IMAGE_DATA,
   API_ID_PPB_INSTANCE,
@@ -28,14 +26,12 @@ enum ApiID {
   API_ID_PPB_VIDEO_DECODER_DEV,
   API_ID_PPB_X509_CERTIFICATE_PRIVATE,
   API_ID_PPP_CLASS,
-  API_ID_PPP_FIND_PRIVATE,
   API_ID_PPP_GRAPHICS_3D,
   API_ID_PPP_INPUT_EVENT,
   API_ID_PPP_INSTANCE,
   API_ID_PPP_INSTANCE_PRIVATE,
   API_ID_PPP_MESSAGING,
   API_ID_PPP_MOUSE_LOCK,
-  API_ID_PPP_PDF,
   API_ID_PPP_PRINTING,
   API_ID_PPP_TEXT_INPUT,
   API_ID_PPP_VIDEO_DECODER_DEV,

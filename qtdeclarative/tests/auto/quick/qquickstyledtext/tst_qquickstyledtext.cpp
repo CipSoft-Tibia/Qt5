@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtTest/QtTest>
 #include <QtGui/QTextLayout>
@@ -152,9 +127,14 @@ void tst_qquickstyledtext::textOutput_data()
     QTest::newRow("space leading bold") << "this is<b> bold</b>" << "this is bold" << (FormatList() << Format(Format::Bold, 7, 5)) << false;
     QTest::newRow("space trailing bold") << "this is <b>bold </b>" << "this is bold " << (FormatList() << Format(Format::Bold, 8, 5)) << false;
     QTest::newRow("img") << "a<img src=\"blah.png\"/>b" << "a  b" << FormatList() << false;
+    QTest::newRow("img") << "a<img />b" << "a  b" << FormatList() << false;
     QTest::newRow("tag mix") << "<f6>ds<b></img><pro>gfh</b><w><w>ghj</stron><ql><sl><pl>dfg</j6><img><bol><r><prp>dfg<bkj></b><up><string>ewrq</al><bl>jklhj<zl>" << "dsgfhghjdfgdfgewrqjklhj" << (FormatList() << Format(Format::Bold, 2, 3)) << false;
     QTest::newRow("named html entities") << "&gt; &lt; &amp; &quot; &nbsp;" << QLatin1String("> < & \" ") + QChar(QChar::Nbsp) << FormatList() << false;
     QTest::newRow("invalid html entities") << "a &hello & a &goodbye;" << "a &hello & a " << FormatList() << false;
+    QTest::newRow("upper case tags 1") << "<B><I><S><U>text</U></S></I></B>" << "text" << (FormatList() << Format(Format::Bold|Format::Italic|Format::StrikeOut|Format::Underline, 0, 4)) << false;
+    QTest::newRow("upper case tags 2") << "<STRONG><DEL>text</DEL></STRONG>" << "text" << (FormatList() << Format(Format::Bold|Format::StrikeOut, 0, 4)) << false;
+    QTest::newRow("upper case font") << "<FONT COLOR=\"red\" SIZE=\"1\">text</FONT>" << "text" << (FormatList() << Format(0, 0, 4)) << true;
+    QTest::newRow("upper case entities") << "&LT;b&GT;&QUOT;this&QUOT; &AMP; that&LT;/b&GT;" << "<b>\"this\" & that</b>" << FormatList() << false;
 }
 
 void tst_qquickstyledtext::textOutput()
@@ -173,8 +153,8 @@ void tst_qquickstyledtext::textOutput()
 
     const QVector<QTextLayout::FormatRange> layoutFormats = layout.formats();
 
-    QCOMPARE(layoutFormats.count(), formats.count());
-    for (int i = 0; i < formats.count(); ++i) {
+    QCOMPARE(layoutFormats.size(), formats.size());
+    for (int i = 0; i < formats.size(); ++i) {
         QCOMPARE(layoutFormats.at(i).start, formats.at(i).start);
         QCOMPARE(layoutFormats.at(i).length, formats.at(i).length);
         if (formats.at(i).type & Format::Bold)
@@ -203,8 +183,8 @@ void tst_qquickstyledtext::anchors()
 
     const QVector<QTextLayout::FormatRange> layoutFormats = layout.formats();
 
-    QCOMPARE(layoutFormats.count(), formats.count());
-    for (int i = 0; i < formats.count(); ++i) {
+    QCOMPARE(layoutFormats.size(), formats.size());
+    for (int i = 0; i < formats.size(); ++i) {
         QCOMPARE(layoutFormats.at(i).start, formats.at(i).start);
         QCOMPARE(layoutFormats.at(i).length, formats.at(i).length);
         QVERIFY(layoutFormats.at(i).format.isAnchor() == bool(formats.at(i).type & Format::Anchor));

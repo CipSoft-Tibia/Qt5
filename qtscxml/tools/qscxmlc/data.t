@@ -33,7 +33,9 @@ struct ${classname}::Data: private QScxmlTableData {
     {
         Q_ASSERT(id >= QScxmlExecutableContent::NoString); Q_ASSERT(id < ${stringCount});
         if (id == QScxmlExecutableContent::NoString) return QString();
-        return QString({static_cast<QStringData*>(strings.data + id)});
+        const auto dataOffset = strings.offsetsAndSize[id * 2];
+        const auto dataSize = strings.offsetsAndSize[id * 2 + 1];
+        return QString::fromRawData(reinterpret_cast<const QChar*>(&strings.stringdata[dataOffset]), dataSize);
     }
 
     const qint32 *stateMachineTable() const override final
@@ -82,8 +84,8 @@ struct ${classname}::Data: private QScxmlTableData {
     static QScxmlExecutableContent::ForeachInfo foreaches[];
     static const qint32 theStateMachineTable[];
     static struct Strings {
-        QArrayData data[${stringCount}];
-        qunicodechar stringdata[${stringdataSize}];
+        const uint offsetsAndSize[${stringCount} * 2];
+        char16_t stringdata[${stringdataSize}];
     } strings;
 };
 
@@ -120,10 +122,6 @@ QScxmlExecutableContent::ForeachInfo ${classname}::Data::foreaches[] = {
 ${foreaches}
 };
 
-#define STR_LIT(idx, ofs, len) \
-    Q_STATIC_STRING_DATA_HEADER_INITIALIZER_WITH_OFFSET(len, \
-    qptrdiff(offsetof(Strings, stringdata) + ofs * sizeof(qunicodechar) - idx * sizeof(QArrayData)) \
-    )
 ${classname}::Data::Strings ${classname}::Data::strings = {{
 ${strLits}
 },{

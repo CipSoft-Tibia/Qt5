@@ -1,4 +1,4 @@
-// Copyright 2015 PDFium Authors. All rights reserved.
+// Copyright 2015 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -93,6 +93,7 @@ class EmbedderTest : public ::testing::Test,
   void SetUp() override;
   void TearDown() override;
 
+  Delegate* GetDelegate() { return delegate_; }
   void SetDelegate(Delegate* delegate) {
     delegate_ = delegate ? delegate : default_delegate_.get();
   }
@@ -101,12 +102,21 @@ class EmbedderTest : public ::testing::Test,
     form_fill_info_version_ = form_fill_info_version;
   }
 
-  FPDF_DOCUMENT document() const { return document_; }
-  FPDF_FORMHANDLE form_handle() const { return form_handle_; }
+  void SetDocumentFromAvail();
+  FPDF_DOCUMENT document() const { return document_.get(); }
+  FPDF_DOCUMENT saved_document() const { return saved_document_.get(); }
+  FPDF_FORMHANDLE form_handle() const { return form_handle_.get(); }
+  FPDF_FORMHANDLE saved_form_handle() const { return saved_form_handle_.get(); }
 
-  // Create an empty document, and its form fill environment. Returns true
-  // on success or false on failure.
-  bool CreateEmptyDocument();
+  // Wrapper for FPDFAvail_Create() to set `avail_`.
+  void CreateAvail(FX_FILEAVAIL* file_avail, FPDF_FILEACCESS* file);
+  FPDF_AVAIL avail() { return avail_.get(); }
+
+  // Create an empty document, and its form fill environment.
+  void CreateEmptyDocument();
+
+  // Create an empty document without a form fill environment.
+  void CreateEmptyDocumentWithoutFormFillEnvironment();
 
   // Open the document specified by |filename|, and create its form fill
   // environment, or return false on failure. The |filename| is relative to
@@ -191,14 +201,14 @@ class EmbedderTest : public ::testing::Test,
   // Simplified form of RenderPageWithFlags() with no handle and no flags.
   static ScopedFPDFBitmap RenderPage(FPDF_PAGE page);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Convert |page| into EMF with the specified page rendering |flags|.
   static std::vector<uint8_t> RenderPageWithFlagsToEmf(FPDF_PAGE page,
                                                        int flags);
 
   // Get the PostScript data from |emf_data|.
   static std::string GetPostScriptFromEmf(pdfium::span<const uint8_t> emf_data);
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 
   // Return bytes for each of the FPDFBitmap_* format types.
   static int BytesPerPixelForFormat(int format);
@@ -210,9 +220,9 @@ class EmbedderTest : public ::testing::Test,
                           LinearizeOption linearize_option,
                           JavaScriptOption javascript_option,
                           FakeFileAccess* network_simulator,
-                          FPDF_DOCUMENT* document,
-                          FPDF_AVAIL* avail,
-                          FPDF_FORMHANDLE* form_handle);
+                          ScopedFPDFDocument* document,
+                          ScopedFPDFAvail* avail,
+                          ScopedFPDFFormHandle* form_handle);
 
   FPDF_FORMHANDLE SetupFormFillEnvironment(FPDF_DOCUMENT doc,
                                            JavaScriptOption javascript_option);
@@ -221,11 +231,9 @@ class EmbedderTest : public ::testing::Test,
   // any, at the end of a row where the stride is larger than width * bpp.
   static std::string HashBitmap(FPDF_BITMAP bitmap);
 
-#ifndef NDEBUG
   // For debugging purposes.
   // Write |bitmap| as a PNG to |filename|.
   static void WriteBitmapToPng(FPDF_BITMAP bitmap, const std::string& filename);
-#endif
 
   // Check |bitmap| to make sure it has the right dimensions and content.
   static void CompareBitmap(FPDF_BITMAP bitmap,
@@ -265,61 +273,7 @@ class EmbedderTest : public ::testing::Test,
   void ClosePDFFileForWrite();
 #endif
 
-  std::unique_ptr<Delegate> default_delegate_;
-  Delegate* delegate_;
-
-#ifdef PDF_ENABLE_XFA
-  int form_fill_info_version_ = 2;
-#else   // PDF_ENABLE_XFA
-  int form_fill_info_version_ = 1;
-#endif  // PDF_ENABLE_XFA
-
-  FPDF_DOCUMENT document_ = nullptr;
-  FPDF_FORMHANDLE form_handle_ = nullptr;
-  FPDF_AVAIL avail_ = nullptr;
-  FPDF_FILEACCESS file_access_;                       // must outlive |avail_|.
-  std::unique_ptr<FakeFileAccess> fake_file_access_;  // must outlive |avail_|.
-
-  std::unique_ptr<TestLoader> loader_;
-  size_t file_length_ = 0;
-  std::unique_ptr<char, pdfium::FreeDeleter> file_contents_;
-  PageNumberToHandleMap page_map_;
-
-  FPDF_DOCUMENT saved_document_ = nullptr;
-  FPDF_FORMHANDLE saved_form_handle_ = nullptr;
-  FPDF_AVAIL saved_avail_ = nullptr;
-  FPDF_FILEACCESS saved_file_access_;  // must outlive |saved_avail_|.
-  // must outlive |saved_avail_|.
-  std::unique_ptr<FakeFileAccess> saved_fake_file_access_;
-  PageNumberToHandleMap saved_page_map_;
-
  private:
-  static void UnsupportedHandlerTrampoline(UNSUPPORT_INFO*, int type);
-  static int AlertTrampoline(IPDF_JSPLATFORM* plaform,
-                             FPDF_WIDESTRING message,
-                             FPDF_WIDESTRING title,
-                             int type,
-                             int icon);
-  static int SetTimerTrampoline(FPDF_FORMFILLINFO* info,
-                                int msecs,
-                                TimerCallback fn);
-  static void KillTimerTrampoline(FPDF_FORMFILLINFO* info, int id);
-  static FPDF_PAGE GetPageTrampoline(FPDF_FORMFILLINFO* info,
-                                     FPDF_DOCUMENT document,
-                                     int page_index);
-  static void DoURIActionTrampoline(FPDF_FORMFILLINFO* info,
-                                    FPDF_BYTESTRING uri);
-  static void DoGoToActionTrampoline(FPDF_FORMFILLINFO* info,
-                                     int page_index,
-                                     int zoom_mode,
-                                     float* pos_array,
-                                     int array_size);
-  static void OnFocusChangeTrampoline(FPDF_FORMFILLINFO* info,
-                                      FPDF_ANNOTATION annot,
-                                      int page_index);
-  static void DoURIActionWithKeyboardModifierTrampoline(FPDF_FORMFILLINFO* info,
-                                                        FPDF_BYTESTRING uri,
-                                                        int modifiers);
   static int WriteBlockCallback(FPDF_FILEWRITE* pFileWrite,
                                 const void* data,
                                 unsigned long size);
@@ -336,6 +290,34 @@ class EmbedderTest : public ::testing::Test,
 
   void UnloadPageCommon(FPDF_PAGE page, bool do_events);
   FPDF_PAGE LoadPageCommon(int page_number, bool do_events);
+
+  std::unique_ptr<Delegate> default_delegate_;
+  Delegate* delegate_;
+
+#ifdef PDF_ENABLE_XFA
+  int form_fill_info_version_ = 2;
+#else   // PDF_ENABLE_XFA
+  int form_fill_info_version_ = 1;
+#endif  // PDF_ENABLE_XFA
+
+  size_t file_length_ = 0;
+  // must outlive `loader_`.
+  std::unique_ptr<char, pdfium::FreeDeleter> file_contents_;
+  std::unique_ptr<TestLoader> loader_;
+  FPDF_FILEACCESS file_access_;                       // must outlive `avail_`.
+  std::unique_ptr<FakeFileAccess> fake_file_access_;  // must outlive `avail_`.
+  ScopedFPDFAvail avail_;
+  ScopedFPDFDocument document_;
+  ScopedFPDFFormHandle form_handle_;
+  PageNumberToHandleMap page_map_;
+
+  FPDF_FILEACCESS saved_file_access_;  // must outlive `saved_avail_`.
+  // must outlive `saved_avail_`.
+  std::unique_ptr<FakeFileAccess> saved_fake_file_access_;
+  ScopedFPDFAvail saved_avail_;
+  ScopedFPDFDocument saved_document_;
+  ScopedFPDFFormHandle saved_form_handle_;
+  PageNumberToHandleMap saved_page_map_;
 
   std::string data_string_;
   std::string saved_document_file_data_;

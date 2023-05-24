@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -79,9 +79,8 @@ class Download {
   // available until the download completes successfully.
   virtual base::FilePath GetLocation() = 0;
 
-  // Returns the file name for the download that should be displayed to the
-  // user.
-  virtual base::FilePath GetFileNameToReportToUser() = 0;
+  // Returns the display name for the download.
+  virtual std::u16string GetFileNameToReportToUser() = 0;
 
   // Returns the effective MIME type of downloaded content.
   virtual std::string GetMimeType() = 0;

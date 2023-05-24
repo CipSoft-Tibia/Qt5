@@ -1,11 +1,11 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/serialized_var.h"
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/notreached.h"
 #include "ipc/ipc_message_utils.h"
 #include "ppapi/c/pp_instance.h"
@@ -120,7 +120,7 @@ void SerializedVar::Inner::WriteToMessage(base::Pickle* m) const {
       RawVarDataGraph::Create(var_, instance_);
   if (data) {
     m->WriteBool(true);  // Success.
-    data->Write(m, base::Bind(&DefaultHandleWriter));
+    data->Write(m, base::BindRepeating(&DefaultHandleWriter));
   } else {
     m->WriteBool(false);  // Failure.
   }

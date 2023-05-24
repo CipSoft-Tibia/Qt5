@@ -17,14 +17,18 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_FUCHSIA_FUCHSIA_RECORD_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_FUCHSIA_FUCHSIA_RECORD_H_
 
-#include "src/trace_processor/importers/fuchsia/fuchsia_trace_utils.h"
-#include "src/trace_processor/storage/trace_storage.h"
-#include "src/trace_processor/trace_blob_view.h"
+#include "perfetto/trace_processor/trace_blob_view.h"
+#include "src/trace_processor/containers/string_pool.h"
 
 #include <vector>
 
 namespace perfetto {
 namespace trace_processor {
+
+struct FuchsiaThreadInfo {
+  uint64_t pid;
+  uint64_t tid;
+};
 
 // Data from a trace provider that is necessary for interpreting a binary
 // record. Namely, the record itself and the entries of the string table and the
@@ -32,24 +36,24 @@ namespace trace_processor {
 // the binary record after arbitrary reordering.
 class FuchsiaRecord {
  public:
-  FuchsiaRecord(TraceBlobView record_view)
+  explicit FuchsiaRecord(TraceBlobView record_view)
       : record_view_(std::move(record_view)) {}
 
   struct StringTableEntry {
     uint32_t index;
-    StringId string_id;
+    StringPool::Id string_id;
   };
 
   struct ThreadTableEntry {
     uint32_t index;
-    fuchsia_trace_utils::ThreadInfo info;
+    FuchsiaThreadInfo info;
   };
 
-  void InsertString(uint32_t, StringId);
-  StringId GetString(uint32_t);
+  void InsertString(uint32_t, StringPool::Id);
+  StringPool::Id GetString(uint32_t);
 
-  void InsertThread(uint32_t, fuchsia_trace_utils::ThreadInfo);
-  fuchsia_trace_utils::ThreadInfo GetThread(uint32_t);
+  void InsertThread(uint32_t, FuchsiaThreadInfo);
+  FuchsiaThreadInfo GetThread(uint32_t);
 
   void set_ticks_per_second(uint64_t ticks_per_second) {
     ticks_per_second_ = ticks_per_second;

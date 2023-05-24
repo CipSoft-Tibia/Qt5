@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include "base/command_line.h"
 #include "base/logging.h"
-#include "base/macros.h"
 #include "base/memory/ptr_util.h"
 #include "base/numerics/safe_conversions.h"
 #include "skia/ext/image_operations.h"
@@ -24,13 +23,13 @@
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/geometry/size_conversions.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/image/canvas_image_source.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/image/image_skia_rep.h"
 #include "ui/gfx/image/image_skia_source.h"
 #include "ui/gfx/skbitmap_operations.h"
 #include "ui/gfx/skia_paint_util.h"
-#include "ui/gfx/skia_util.h"
 
 namespace gfx {
 namespace {
@@ -60,21 +59,27 @@ class BinaryImageSource : public gfx::ImageSkiaSource {
   BinaryImageSource(const ImageSkia& first,
                     const ImageSkia& second,
                     const char* source_name)
-      : first_(first),
-        second_(second),
-        source_name_(source_name) {
-  }
+      : first_(first), second_(second), source_name_(source_name) {}
+
+  BinaryImageSource(const BinaryImageSource&) = delete;
+  BinaryImageSource& operator=(const BinaryImageSource&) = delete;
+
   ~BinaryImageSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep first_rep = first_.GetRepresentation(scale);
+    if (first_rep.is_null())
+      return first_rep;
     ImageSkiaRep second_rep = second_.GetRepresentation(scale);
+    if (second_rep.is_null())
+      return second_rep;
+
     if (first_rep.pixel_size() != second_rep.pixel_size()) {
       DCHECK_NE(first_rep.scale(), second_rep.scale());
       if (first_rep.scale() == second_rep.scale()) {
         LOG(ERROR) << "ImageSkiaRep size mismatch in " << source_name_;
-        return GetErrorImageRep(first_rep.scale(),first_rep.pixel_size());
+        return GetErrorImageRep(first_rep.scale(), first_rep.pixel_size());
       }
       first_rep = first_.GetRepresentation(1.0f);
       second_rep = second_.GetRepresentation(1.0f);
@@ -102,8 +107,6 @@ class BinaryImageSource : public gfx::ImageSkiaSource {
   // The name of a class that implements the BinaryImageSource.
   // The subclass is responsible for managing the memory.
   const char* source_name_;
-
-  DISALLOW_COPY_AND_ASSIGN(BinaryImageSource);
 };
 
 class BlendingImageSource : public BinaryImageSource {
@@ -112,8 +115,10 @@ class BlendingImageSource : public BinaryImageSource {
                       const ImageSkia& second,
                       double alpha)
       : BinaryImageSource(first, second, "BlendingImageSource"),
-        alpha_(alpha) {
-  }
+        alpha_(alpha) {}
+
+  BlendingImageSource(const BlendingImageSource&) = delete;
+  BlendingImageSource& operator=(const BlendingImageSource&) = delete;
 
   ~BlendingImageSource() override {}
 
@@ -128,8 +133,6 @@ class BlendingImageSource : public BinaryImageSource {
 
  private:
   double alpha_;
-
-  DISALLOW_COPY_AND_ASSIGN(BlendingImageSource);
 };
 
 class SuperimposedImageSource : public gfx::CanvasImageSource {
@@ -137,29 +140,30 @@ class SuperimposedImageSource : public gfx::CanvasImageSource {
   SuperimposedImageSource(const ImageSkia& first, const ImageSkia& second)
       : gfx::CanvasImageSource(first.size()), first_(first), second_(second) {}
 
+  SuperimposedImageSource(const SuperimposedImageSource&) = delete;
+  SuperimposedImageSource& operator=(const SuperimposedImageSource&) = delete;
+
   ~SuperimposedImageSource() override {}
 
   // gfx::CanvasImageSource override.
   void Draw(Canvas* canvas) override {
     canvas->DrawImageInt(first_, 0, 0);
-    canvas->DrawImageInt(second_,
-                         (first_.width() - second_.width()) / 2,
+    canvas->DrawImageInt(second_, (first_.width() - second_.width()) / 2,
                          (first_.height() - second_.height()) / 2);
   }
 
  private:
   const ImageSkia first_;
   const ImageSkia second_;
-
-  DISALLOW_COPY_AND_ASSIGN(SuperimposedImageSource);
 };
 
 class TransparentImageSource : public gfx::ImageSkiaSource {
  public:
   TransparentImageSource(const ImageSkia& image, double alpha)
-      : image_(image),
-        alpha_(alpha) {
-  }
+      : image_(image), alpha_(alpha) {}
+
+  TransparentImageSource(const TransparentImageSource&) = delete;
+  TransparentImageSource& operator=(const TransparentImageSource&) = delete;
 
   ~TransparentImageSource() override {}
 
@@ -167,9 +171,11 @@ class TransparentImageSource : public gfx::ImageSkiaSource {
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep image_rep = image_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
+
     SkBitmap alpha;
-    alpha.allocN32Pixels(image_rep.pixel_width(),
-                         image_rep.pixel_height());
+    alpha.allocN32Pixels(image_rep.pixel_width(), image_rep.pixel_height());
     alpha.eraseColor(SkColorSetA(SK_ColorBLACK, SK_AlphaOPAQUE * alpha_));
     return ImageSkiaRep(
         SkBitmapOperations::CreateMaskedBitmap(image_rep.GetBitmap(), alpha),
@@ -178,15 +184,15 @@ class TransparentImageSource : public gfx::ImageSkiaSource {
 
   ImageSkia image_;
   double alpha_;
-
-  DISALLOW_COPY_AND_ASSIGN(TransparentImageSource);
 };
 
 class MaskedImageSource : public BinaryImageSource {
  public:
   MaskedImageSource(const ImageSkia& rgb, const ImageSkia& alpha)
-      : BinaryImageSource(rgb, alpha, "MaskedImageSource") {
-  }
+      : BinaryImageSource(rgb, alpha, "MaskedImageSource") {}
+
+  MaskedImageSource(const MaskedImageSource&) = delete;
+  MaskedImageSource& operator=(const MaskedImageSource&) = delete;
 
   ~MaskedImageSource() override {}
 
@@ -198,30 +204,34 @@ class MaskedImageSource : public BinaryImageSource {
                             first_rep.GetBitmap(), second_rep.GetBitmap()),
                         first_rep.scale());
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MaskedImageSource);
 };
 
 class TiledImageSource : public gfx::ImageSkiaSource {
  public:
   TiledImageSource(const ImageSkia& source,
-                   int src_x, int src_y,
-                   int dst_w, int dst_h)
+                   int src_x,
+                   int src_y,
+                   int dst_w,
+                   int dst_h)
       : source_(source),
         src_x_(src_x),
         src_y_(src_y),
         dst_w_(dst_w),
-        dst_h_(dst_h) {
-  }
+        dst_h_(dst_h) {}
+
+  TiledImageSource(const TiledImageSource&) = delete;
+  TiledImageSource& operator=(const TiledImageSource&) = delete;
 
   ~TiledImageSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep source_rep = source_.GetRepresentation(scale);
-    gfx::Rect bounds = DIPToPixelBounds(gfx::Rect(src_x_, src_y_, dst_w_,
-                                                  dst_h_), source_rep.scale());
+    if (source_rep.is_null())
+      return source_rep;
+
+    gfx::Rect bounds = DIPToPixelBounds(
+        gfx::Rect(src_x_, src_y_, dst_w_, dst_h_), source_rep.scale());
     return ImageSkiaRep(SkBitmapOperations::CreateTiledBitmap(
                             source_rep.GetBitmap(), bounds.x(), bounds.y(),
                             bounds.width(), bounds.height()),
@@ -234,23 +244,24 @@ class TiledImageSource : public gfx::ImageSkiaSource {
   const int src_y_;
   const int dst_w_;
   const int dst_h_;
-
-  DISALLOW_COPY_AND_ASSIGN(TiledImageSource);
 };
 
 class HSLImageSource : public gfx::ImageSkiaSource {
  public:
-  HSLImageSource(const ImageSkia& image,
-                 const color_utils::HSL& hsl_shift)
-      : image_(image),
-        hsl_shift_(hsl_shift) {
-  }
+  HSLImageSource(const ImageSkia& image, const color_utils::HSL& hsl_shift)
+      : image_(image), hsl_shift_(hsl_shift) {}
+
+  HSLImageSource(const HSLImageSource&) = delete;
+  HSLImageSource& operator=(const HSLImageSource&) = delete;
 
   ~HSLImageSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep image_rep = image_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
+
     return gfx::ImageSkiaRep(SkBitmapOperations::CreateHSLShiftedBitmap(
                                  image_rep.GetBitmap(), hsl_shift_),
                              image_rep.scale());
@@ -259,28 +270,32 @@ class HSLImageSource : public gfx::ImageSkiaSource {
  private:
   const gfx::ImageSkia image_;
   const color_utils::HSL hsl_shift_;
-  DISALLOW_COPY_AND_ASSIGN(HSLImageSource);
 };
 
 // ImageSkiaSource which uses SkBitmapOperations::CreateButtonBackground
 // to generate image reps for the target image.  The image and mask can be
-// diferent sizes (crbug.com/171725).
-class ButtonImageSource: public gfx::ImageSkiaSource {
+// different sizes (crbug.com/171725).
+class ButtonImageSource : public gfx::ImageSkiaSource {
  public:
   ButtonImageSource(SkColor color,
                     const ImageSkia& image,
                     const ImageSkia& mask)
-      : color_(color),
-        image_(image),
-        mask_(mask) {
-  }
+      : color_(color), image_(image), mask_(mask) {}
+
+  ButtonImageSource(const ButtonImageSource&) = delete;
+  ButtonImageSource& operator=(const ButtonImageSource&) = delete;
 
   ~ButtonImageSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep image_rep = image_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
     ImageSkiaRep mask_rep = mask_.GetRepresentation(scale);
+    if (mask_rep.is_null())
+      return image_rep;
+
     if (image_rep.scale() != mask_rep.scale()) {
       image_rep = image_.GetRepresentation(1.0f);
       mask_rep = mask_.GetRepresentation(1.0f);
@@ -295,27 +310,29 @@ class ButtonImageSource: public gfx::ImageSkiaSource {
   const SkColor color_;
   const ImageSkia image_;
   const ImageSkia mask_;
-
-  DISALLOW_COPY_AND_ASSIGN(ButtonImageSource);
 };
 
 // ImageSkiaSource which uses SkBitmap::extractSubset to generate image reps
 // for the target image.
-class ExtractSubsetImageSource: public gfx::ImageSkiaSource {
+class ExtractSubsetImageSource : public gfx::ImageSkiaSource {
  public:
   ExtractSubsetImageSource(const gfx::ImageSkia& image,
                            const gfx::Rect& subset_bounds)
-      : image_(image),
-        subset_bounds_(subset_bounds) {
-  }
+      : image_(image), subset_bounds_(subset_bounds) {}
+
+  ExtractSubsetImageSource(const ExtractSubsetImageSource&) = delete;
+  ExtractSubsetImageSource& operator=(const ExtractSubsetImageSource&) = delete;
 
   ~ExtractSubsetImageSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep image_rep = image_.GetRepresentation(scale);
-    SkIRect subset_bounds_in_pixel = RectToSkIRect(
-        DIPToPixelBounds(subset_bounds_, image_rep.scale()));
+    if (image_rep.is_null())
+      return image_rep;
+
+    SkIRect subset_bounds_in_pixel =
+        RectToSkIRect(DIPToPixelBounds(subset_bounds_, image_rep.scale()));
     SkBitmap dst;
     bool success =
         image_rep.GetBitmap().extractSubset(&dst, subset_bounds_in_pixel);
@@ -326,8 +343,6 @@ class ExtractSubsetImageSource: public gfx::ImageSkiaSource {
  private:
   const gfx::ImageSkia image_;
   const gfx::Rect subset_bounds_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExtractSubsetImageSource);
 };
 
 // ResizeSource resizes relevant image reps in |source| to |target_dip_size|
@@ -339,13 +354,18 @@ class ResizeSource : public ImageSkiaSource {
                const Size& target_dip_size)
       : source_(source),
         resize_method_(method),
-        target_dip_size_(target_dip_size) {
-  }
+        target_dip_size_(target_dip_size) {}
+
+  ResizeSource(const ResizeSource&) = delete;
+  ResizeSource& operator=(const ResizeSource&) = delete;
+
   ~ResizeSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     const ImageSkiaRep& image_rep = source_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
     if (image_rep.GetWidth() == target_dip_size_.width() &&
         image_rep.GetHeight() == target_dip_size_.height())
       return image_rep;
@@ -354,6 +374,8 @@ class ResizeSource : public ImageSkiaSource {
     const SkBitmap resized = skia::ImageOperations::Resize(
         image_rep.GetBitmap(), resize_method_, target_pixel_size.width(),
         target_pixel_size.height());
+    if (resized.colorType() == kUnknown_SkColorType)
+      return ImageSkiaRep();
     return ImageSkiaRep(resized, scale);
   }
 
@@ -361,8 +383,6 @@ class ResizeSource : public ImageSkiaSource {
   const ImageSkia source_;
   skia::ImageOperations::ResizeMethod resize_method_;
   const Size target_dip_size_;
-
-  DISALLOW_COPY_AND_ASSIGN(ResizeSource);
 };
 
 // DropShadowSource generates image reps with drop shadow for image reps in
@@ -371,11 +391,17 @@ class DropShadowSource : public ImageSkiaSource {
  public:
   DropShadowSource(const ImageSkia& source, const ShadowValues& shadows_in_dip)
       : source_(source), shadows_in_dip_(shadows_in_dip) {}
+
+  DropShadowSource(const DropShadowSource&) = delete;
+  DropShadowSource& operator=(const DropShadowSource&) = delete;
+
   ~DropShadowSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     const ImageSkiaRep& image_rep = source_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
 
     ShadowValues shadows_in_pixel;
     for (size_t i = 0; i < shadows_in_dip_.size(); ++i)
@@ -389,8 +415,6 @@ class DropShadowSource : public ImageSkiaSource {
  private:
   const ImageSkia source_;
   const ShadowValues shadows_in_dip_;
-
-  DISALLOW_COPY_AND_ASSIGN(DropShadowSource);
 };
 
 // An image source that is 1px wide, suitable for tiling horizontally.
@@ -401,6 +425,10 @@ class HorizontalShadowSource : public CanvasImageSource {
       : CanvasImageSource(Size(1, GetHeightForShadows(shadows))),
         shadows_(shadows),
         fades_down_(fades_down) {}
+
+  HorizontalShadowSource(const HorizontalShadowSource&) = delete;
+  HorizontalShadowSource& operator=(const HorizontalShadowSource&) = delete;
+
   ~HorizontalShadowSource() override {}
 
   // CanvasImageSource overrides:
@@ -424,8 +452,6 @@ class HorizontalShadowSource : public CanvasImageSource {
 
   // The orientation of the shadow (true for shadows that emanate downwards).
   bool fades_down_;
-
-  DISALLOW_COPY_AND_ASSIGN(HorizontalShadowSource);
 };
 
 // RotatedSource generates image reps that are rotations of those in
@@ -434,14 +460,19 @@ class RotatedSource : public ImageSkiaSource {
  public:
   RotatedSource(const ImageSkia& source,
                 SkBitmapOperations::RotationAmount rotation)
-    : source_(source),
-      rotation_(rotation) {
-  }
+      : source_(source), rotation_(rotation) {}
+
+  RotatedSource(const RotatedSource&) = delete;
+  RotatedSource& operator=(const RotatedSource&) = delete;
+
   ~RotatedSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     const ImageSkiaRep& image_rep = source_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
+
     const SkBitmap rotated_bitmap =
         SkBitmapOperations::Rotate(image_rep.GetBitmap(), rotation_);
     return ImageSkiaRep(rotated_bitmap, image_rep.scale());
@@ -450,14 +481,15 @@ class RotatedSource : public ImageSkiaSource {
  private:
   const ImageSkia source_;
   const SkBitmapOperations::RotationAmount rotation_;
-
-  DISALLOW_COPY_AND_ASSIGN(RotatedSource);
 };
 
 class IconWithBadgeSource : public gfx::CanvasImageSource {
  public:
   IconWithBadgeSource(const ImageSkia& icon, const ImageSkia& badge)
       : gfx::CanvasImageSource(icon.size()), icon_(icon), badge_(badge) {}
+
+  IconWithBadgeSource(const IconWithBadgeSource&) = delete;
+  IconWithBadgeSource& operator=(const IconWithBadgeSource&) = delete;
 
   ~IconWithBadgeSource() override {}
 
@@ -471,8 +503,6 @@ class IconWithBadgeSource : public gfx::CanvasImageSource {
  private:
   const ImageSkia icon_;
   const ImageSkia badge_;
-
-  DISALLOW_COPY_AND_ASSIGN(IconWithBadgeSource);
 };
 
 // ImageSkiaSource which uses SkBitmapOperations::CreateColorMask
@@ -482,11 +512,17 @@ class ColorMaskSource : public gfx::ImageSkiaSource {
   ColorMaskSource(const ImageSkia& image, SkColor color)
       : image_(image), color_(color) {}
 
+  ColorMaskSource(const ColorMaskSource&) = delete;
+  ColorMaskSource& operator=(const ColorMaskSource&) = delete;
+
   ~ColorMaskSource() override {}
 
   // gfx::ImageSkiaSource overrides:
   ImageSkiaRep GetImageForScale(float scale) override {
     ImageSkiaRep image_rep = image_.GetRepresentation(scale);
+    if (image_rep.is_null())
+      return image_rep;
+
     return ImageSkiaRep(
         SkBitmapOperations::CreateColorMask(image_rep.GetBitmap(), color_),
         image_rep.scale());
@@ -495,8 +531,6 @@ class ColorMaskSource : public gfx::ImageSkiaSource {
  private:
   const ImageSkia image_;
   const SkColor color_;
-
-  DISALLOW_COPY_AND_ASSIGN(ColorMaskSource);
 };
 
 // Image source to create an image with a circle background.
@@ -509,6 +543,11 @@ class ImageWithCircleBackgroundSource : public gfx::CanvasImageSource {
         radius_(radius),
         color_(color),
         image_(image) {}
+
+  ImageWithCircleBackgroundSource(const ImageWithCircleBackgroundSource&) =
+      delete;
+  ImageWithCircleBackgroundSource& operator=(
+      const ImageWithCircleBackgroundSource&) = delete;
 
   ~ImageWithCircleBackgroundSource() override = default;
 
@@ -528,8 +567,72 @@ class ImageWithCircleBackgroundSource : public gfx::CanvasImageSource {
   const int radius_;
   const SkColor color_;
   const gfx::ImageSkia image_;
+};
 
-  DISALLOW_COPY_AND_ASSIGN(ImageWithCircleBackgroundSource);
+// Image source to create an image with a rounded rect background.
+class ImageWithRoundRectBackgroundSource : public gfx::CanvasImageSource {
+ public:
+  ImageWithRoundRectBackgroundSource(float size,
+                                     int radius,
+                                     SkColor color,
+                                     const gfx::ImageSkia& image)
+      : gfx::CanvasImageSource(gfx::Size(size, size)),
+        size_(size),
+        radius_(radius),
+        color_(color),
+        image_(image) {}
+
+  ImageWithRoundRectBackgroundSource(
+      const ImageWithRoundRectBackgroundSource&) = delete;
+  ImageWithRoundRectBackgroundSource& operator=(
+      const ImageWithRoundRectBackgroundSource&) = delete;
+
+  ~ImageWithRoundRectBackgroundSource() override = default;
+
+  // gfx::CanvasImageSource:
+  void Draw(gfx::Canvas* canvas) override {
+    cc::PaintFlags flags;
+    flags.setAntiAlias(true);
+    flags.setStyle(cc::PaintFlags::kFill_Style);
+    flags.setColor(color_);
+    canvas->DrawRoundRect(RectF{size_, size_}, radius_, flags);
+    // Center the image.
+    const int x = (size_ - image_.width()) / 2;
+    const int y = (size_ - image_.height()) / 2;
+    canvas->DrawImageInt(image_, x, y);
+  }
+
+ private:
+  const float size_;
+  const int radius_;
+  const SkColor color_;
+  const gfx::ImageSkia image_;
+};
+
+// Image source to create an image with a roundrect clip path.
+class ImageWithRoundRectClipSource : public gfx::CanvasImageSource {
+ public:
+  ImageWithRoundRectClipSource(int radius, const gfx::ImageSkia& image)
+      : gfx::CanvasImageSource(image.size()), radius_(radius), image_(image) {}
+
+  ImageWithRoundRectClipSource(const ImageWithRoundRectClipSource&) = delete;
+  ImageWithRoundRectClipSource& operator=(const ImageWithRoundRectClipSource&) =
+      delete;
+
+  ~ImageWithRoundRectClipSource() override = default;
+
+  // gfx::CanvasImageSource:
+  void Draw(gfx::Canvas* canvas) override {
+    canvas->ClipPath(
+        SkPath().addRoundRect(gfx::RectToSkRect(gfx::Rect(image_.size())),
+                              radius_, radius_),
+        true);
+    canvas->DrawImageInt(image_, 0, 0);
+  }
+
+ private:
+  const int radius_;
+  const gfx::ImageSkia image_;
 };
 }  // namespace
 
@@ -576,8 +679,10 @@ ImageSkia ImageSkiaOperations::CreateMaskedImage(const ImageSkia& rgb,
 
 // static
 ImageSkia ImageSkiaOperations::CreateTiledImage(const ImageSkia& source,
-                                                int src_x, int src_y,
-                                                int dst_w, int dst_h) {
+                                                int src_x,
+                                                int src_y,
+                                                int dst_w,
+                                                int dst_h) {
   if (source.isNull())
     return ImageSkia();
 
@@ -647,8 +752,7 @@ ImageSkia ImageSkiaOperations::CreateImageWithDropShadow(
 
   const gfx::Insets shadow_padding = -gfx::ShadowValue::GetMargin(shadows);
   gfx::Size shadow_image_size = source.size();
-  shadow_image_size.Enlarge(shadow_padding.width(),
-                            shadow_padding.height());
+  shadow_image_size.Enlarge(shadow_padding.width(), shadow_padding.height());
   return ImageSkia(std::make_unique<DropShadowSource>(source, shadows),
                    shadow_image_size);
 }
@@ -663,8 +767,8 @@ ImageSkia ImageSkiaOperations::CreateHorizontalShadow(
 
 // static
 ImageSkia ImageSkiaOperations::CreateRotatedImage(
-      const ImageSkia& source,
-      SkBitmapOperations::RotationAmount rotation) {
+    const ImageSkia& source,
+    SkBitmapOperations::RotationAmount rotation) {
   if (source.isNull())
     return ImageSkia();
 
@@ -705,5 +809,40 @@ ImageSkia ImageSkiaOperations::CreateImageWithCircleBackground(
   DCHECK_GE(radius * 2, image.height());
   return gfx::CanvasImageSource::MakeImageSkia<ImageWithCircleBackgroundSource>(
       radius, color, image);
+}
+
+ImageSkia ImageSkiaOperations::CreateImageWithRoundRectBackground(
+    float size,
+    int radius,
+    SkColor color,
+    const ImageSkia& image) {
+  DCHECK_GE(size, image.width());
+  DCHECK_GE(size, image.height());
+  return gfx::CanvasImageSource::MakeImageSkia<
+      ImageWithRoundRectBackgroundSource>(size, radius, color, image);
+}
+
+ImageSkia ImageSkiaOperations::CreateImageWithRoundRectClip(
+    int radius,
+    const ImageSkia& image) {
+  return gfx::CanvasImageSource::MakeImageSkia<ImageWithRoundRectClipSource>(
+      radius, image);
+}
+
+ImageSkia ImageSkiaOperations::CreateCroppedCenteredRoundRectImage(
+    const Size& size,
+    int border_radius,
+    const ImageSkia& image) {
+  float scale = std::min(static_cast<float>(image.width()) / size.width(),
+                         static_cast<float>(image.height()) / size.height());
+  Size scaled_size = {base::ClampFloor(scale * size.width()),
+                      base::ClampFloor(scale * size.height())};
+  Rect bounds{{0, 0}, image.size()};
+  bounds.ClampToCenteredSize(scaled_size);
+  auto scaled_and_cropped_image = CreateTiledImage(
+      image, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+  auto resized_image = CreateResizedImage(
+      scaled_and_cropped_image, skia::ImageOperations::RESIZE_LANCZOS3, size);
+  return CreateImageWithRoundRectClip(border_radius, resized_image);
 }
 }  // namespace gfx

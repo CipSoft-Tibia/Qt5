@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTUREGLYPHCACHE_P_H
 #define QTEXTUREGLYPHCACHE_P_H
@@ -83,7 +47,8 @@ public:
 
     struct GlyphAndSubPixelPosition
     {
-        GlyphAndSubPixelPosition(glyph_t g, QFixed spp) : glyph(g), subPixelPosition(spp) {}
+        GlyphAndSubPixelPosition(glyph_t g, const QFixedPoint &spp)
+            : glyph(g), subPixelPosition(spp) {}
 
         bool operator==(const GlyphAndSubPixelPosition &other) const
         {
@@ -91,7 +56,7 @@ public:
         }
 
         glyph_t glyph;
-        QFixed subPixelPosition;
+        QFixedPoint subPixelPosition;
     };
 
     struct Coord {
@@ -109,9 +74,13 @@ public:
         }
     };
 
-    bool populate(QFontEngine *fontEngine, int numGlyphs, const glyph_t *glyphs,
-                  const QFixedPoint *positions);
-    bool hasPendingGlyphs() const { return !m_pendingGlyphs.isEmpty(); };
+    bool populate(QFontEngine *fontEngine,
+                  qsizetype numGlyphs,
+                  const glyph_t *glyphs,
+                  const QFixedPoint *positions,
+                  QPainter::RenderHints renderHints = QPainter::RenderHints(),
+                  bool includeGlyphCacheScale = false);
+    bool hasPendingGlyphs() const { return !m_pendingGlyphs.isEmpty(); }
     void fillInPendingGlyphs();
 
     virtual void createTextureData(int width, int height) = 0;
@@ -119,7 +88,9 @@ public:
     virtual int glyphPadding() const { return 0; }
 
     virtual void beginFillTexture() { }
-    virtual void fillTexture(const Coord &coord, glyph_t glyph, QFixed subPixelPosition) = 0;
+    virtual void fillTexture(const Coord &coord,
+                             glyph_t glyph,
+                             const QFixedPoint &subPixelPosition) = 0;
     virtual void endFillTexture() { }
 
     inline void createCache(int width, int height) {
@@ -141,7 +112,7 @@ public:
     virtual int maxTextureWidth() const { return QT_DEFAULT_TEXTURE_GLYPH_CACHE_WIDTH; }
     virtual int maxTextureHeight() const { return -1; }
 
-    QImage textureMapForGlyph(glyph_t g, QFixed subPixelPosition) const;
+    QImage textureMapForGlyph(glyph_t g, const QFixedPoint &subPixelPosition) const;
 
 protected:
     int calculateSubPixelPositionCount(glyph_t) const;
@@ -156,9 +127,12 @@ protected:
     int m_currentRowHeight; // Height of last row
 };
 
-inline uint qHash(const QTextureGlyphCache::GlyphAndSubPixelPosition &g)
+inline size_t qHash(const QTextureGlyphCache::GlyphAndSubPixelPosition &g, size_t seed = 0)
 {
-    return (g.glyph << 8)  | (g.subPixelPosition * 10).round().toInt();
+    return qHashMulti(seed,
+                      g.glyph,
+                      g.subPixelPosition.x.value(),
+                      g.subPixelPosition.y.value());
 }
 
 
@@ -171,7 +145,9 @@ public:
 
     virtual void createTextureData(int width, int height) override;
     virtual void resizeTextureData(int width, int height) override;
-    virtual void fillTexture(const Coord &c, glyph_t glyph, QFixed subPixelPosition) override;
+    virtual void fillTexture(const Coord &c,
+                             glyph_t glyph,
+                             const QFixedPoint &subPixelPosition) override;
 
     inline const QImage &image() const { return m_image; }
 

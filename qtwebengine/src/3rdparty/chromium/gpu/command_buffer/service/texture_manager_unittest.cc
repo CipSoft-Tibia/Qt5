@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "base/command_line.h"
-#include "base/macros.h"
+#include "build/build_config.h"
 #include "gpu/command_buffer/client/client_test_helper.h"
 #include "gpu/command_buffer/service/error_state_mock.h"
 #include "gpu/command_buffer/service/feature_info.h"
@@ -24,6 +24,7 @@
 #include "gpu/command_buffer/service/mocks.h"
 #include "gpu/command_buffer/service/service_discardable_manager.h"
 #include "gpu/command_buffer/service/test_helper.h"
+#include "gpu/command_buffer/service/test_memory_tracker.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gl/gl_image_stub.h"
 #include "ui/gl/gl_mock.h"
@@ -1666,6 +1667,7 @@ TEST_F(TextureTest, UseDeletedTexture) {
   texture_ref = nullptr;
 }
 
+#if !BUILDFLAG(IS_ANDROID)
 TEST_F(TextureTest, GetLevelImage) {
   manager_->SetTarget(texture_ref_.get(), GL_TEXTURE_2D);
   manager_->SetLevelInfo(texture_ref_.get(), GL_TEXTURE_2D, 1, GL_RGBA, 2, 2, 1,
@@ -1674,39 +1676,41 @@ TEST_F(TextureTest, GetLevelImage) {
   EXPECT_TRUE(texture->GetLevelImage(GL_TEXTURE_2D, 1) == nullptr);
   // Set image.
   scoped_refptr<gl::GLImage> image(new gl::GLImageStub);
-  manager_->SetLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 1, image.get(),
-                          Texture::BOUND);
+  manager_->SetBoundLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 1,
+                               image.get());
   EXPECT_FALSE(texture->GetLevelImage(GL_TEXTURE_2D, 1) == nullptr);
   // Remove it.
-  manager_->SetLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 1, nullptr,
-                          Texture::UNBOUND);
+  manager_->UnsetLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 1);
   EXPECT_TRUE(texture->GetLevelImage(GL_TEXTURE_2D, 1) == nullptr);
-  manager_->SetLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 1, image.get(),
-                          Texture::UNBOUND);
-  // Image should be reset when SetLevelInfo is called.
+
+  // Re-add it, and check that it's reset when SetLevelInfo is called.
+  manager_->SetBoundLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 1,
+                               image.get());
   manager_->SetLevelInfo(texture_ref_.get(), GL_TEXTURE_2D, 1, GL_RGBA, 2, 2, 1,
                          0, GL_RGBA, GL_UNSIGNED_BYTE, gfx::Rect(2, 2));
   EXPECT_TRUE(texture->GetLevelImage(GL_TEXTURE_2D, 1) == nullptr);
 }
 
-TEST_F(TextureTest, SetLevelImageState) {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+TEST_F(TextureTest, MarkLevelImageBound) {
   manager_->SetTarget(texture_ref_.get(), GL_TEXTURE_2D);
   manager_->SetLevelInfo(texture_ref_.get(), GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 1,
                          0, GL_RGBA, GL_UNSIGNED_BYTE, gfx::Rect(2, 2));
   Texture* texture = texture_ref_->texture();
-  // Set image, initially BOUND.
+  // Set image, initially unbound.
   scoped_refptr<gl::GLImage> image(new gl::GLImageStub);
-  manager_->SetLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 0, image.get(),
-                          Texture::BOUND);
-  Texture::ImageState state;
-  texture->GetLevelImage(GL_TEXTURE_2D, 0, &state);
-  EXPECT_EQ(state, Texture::BOUND);
-  // Change the state.
-  texture->SetLevelImageState(GL_TEXTURE_2D, 0, Texture::COPIED);
-  texture->GetLevelImage(GL_TEXTURE_2D, 0, &state);
-  EXPECT_EQ(state, Texture::COPIED);
+  manager_->SetUnboundLevelImage(texture_ref_.get(), GL_TEXTURE_2D, 0,
+                                 image.get());
+  EXPECT_TRUE(texture->HasUnboundLevelImage(GL_TEXTURE_2D, 0));
+  // Mark the image as bound and verify that the state updates.
+  texture->MarkLevelImageBound(GL_TEXTURE_2D, 0);
+  EXPECT_FALSE(texture->HasUnboundLevelImage(GL_TEXTURE_2D, 0));
 }
+#endif
 
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
 TEST_F(TextureTest, SetStreamTextureImageServiceID) {
   manager_->SetTarget(texture_ref_.get(), GL_TEXTURE_EXTERNAL_OES);
   manager_->SetLevelInfo(texture_ref_.get(), GL_TEXTURE_EXTERNAL_OES, 0,
@@ -1721,28 +1725,21 @@ TEST_F(TextureTest, SetStreamTextureImageServiceID) {
 
   // Override the service_id.
   GLuint stream_texture_service_id = service_id + 1;
-  scoped_refptr<gl::GLImage> image(new gl::GLImageStub);
-  manager_->SetLevelStreamTextureImage(
-      texture_ref_.get(), GL_TEXTURE_EXTERNAL_OES, 0, image.get(),
-      Texture::BOUND, stream_texture_service_id);
+  texture->BindToServiceId(stream_texture_service_id);
 
   // Make sure that service_id() changed but owned_service_id() didn't.
   EXPECT_EQ(stream_texture_service_id, texture->service_id());
   EXPECT_EQ(owned_service_id, TextureTestHelper::owned_service_id(texture));
 
   // Undo the override.
-  manager_->SetLevelStreamTextureImage(texture_ref_.get(),
-                                       GL_TEXTURE_EXTERNAL_OES, 0, image.get(),
-                                       Texture::BOUND, 0);
+  texture->BindToServiceId(0);
 
   // The service IDs should be back as they were.
   EXPECT_EQ(service_id, texture->service_id());
   EXPECT_EQ(owned_service_id, TextureTestHelper::owned_service_id(texture));
 
   // Override again, so that we can check delete behavior.
-  manager_->SetLevelStreamTextureImage(
-      texture_ref_.get(), GL_TEXTURE_EXTERNAL_OES, 0, image.get(),
-      Texture::BOUND, stream_texture_service_id);
+  texture->BindToServiceId(stream_texture_service_id);
 
   // Remove the Texture.  It should delete the texture id that it owns, even
   // though it is overridden.
@@ -1752,6 +1749,7 @@ TEST_F(TextureTest, SetStreamTextureImageServiceID) {
   manager_->RemoveTexture(kClient1Id);
   texture_ref_ = nullptr;
 }
+#endif
 
 namespace {
 
@@ -2088,11 +2086,14 @@ TEST_P(ProduceConsumeTextureTest, ProduceConsumeTextureWithImage) {
   manager_->SetTarget(texture_ref_.get(), target);
   Texture* texture = texture_ref_->texture();
   EXPECT_EQ(static_cast<GLenum>(target), texture->target());
+#if !BUILDFLAG(IS_ANDROID)
   scoped_refptr<gl::GLImage> image(new gl::GLImageStub);
+#endif
   manager_->SetLevelInfo(texture_ref_.get(), target, 0, GL_RGBA, 0, 0, 1, 0,
                          GL_RGBA, GL_UNSIGNED_BYTE, gfx::Rect());
-  manager_->SetLevelImage(texture_ref_.get(), target, 0, image.get(),
-                          Texture::BOUND);
+#if !BUILDFLAG(IS_ANDROID)
+  manager_->SetBoundLevelImage(texture_ref_.get(), target, 0, image.get());
+#endif
   GLuint service_id = texture->service_id();
   Texture* produced_texture = Produce(texture_ref_.get());
 
@@ -2102,7 +2103,9 @@ TEST_P(ProduceConsumeTextureTest, ProduceConsumeTextureWithImage) {
   scoped_refptr<TextureRef> restored_texture = manager_->GetTexture(client_id);
   EXPECT_EQ(produced_texture, restored_texture->texture());
   EXPECT_EQ(service_id, restored_texture->service_id());
+#if !BUILDFLAG(IS_ANDROID)
   EXPECT_EQ(image.get(), restored_texture->texture()->GetLevelImage(target, 0));
+#endif
 }
 
 static const GLenum kTextureTargets[] = {GL_TEXTURE_2D, GL_TEXTURE_EXTERNAL_OES,
@@ -2138,31 +2141,6 @@ TEST_F(ProduceConsumeTextureTest, ProduceConsumeCube) {
       face5,
       GetLevelInfo(restored_texture.get(), GL_TEXTURE_CUBE_MAP_NEGATIVE_Z, 0));
 }
-
-class CountingMemoryTracker : public MemoryTracker {
- public:
-  CountingMemoryTracker() {
-    current_size_ = 0;
-  }
-  ~CountingMemoryTracker() override = default;
-
-  void TrackMemoryAllocatedChange(int64_t delta) override {
-    DCHECK(delta >= 0 || current_size_ >= static_cast<uint64_t>(-delta));
-    current_size_ += delta;
-  }
-
-  uint64_t GetSize() const override { return current_size_; }
-
-  uint64_t ClientTracingId() const override { return 0; }
-
-  int ClientId() const override { return 0; }
-
-  uint64_t ContextGroupTracingId() const override { return 0; }
-
- private:
-  uint64_t current_size_;
-  DISALLOW_COPY_AND_ASSIGN(CountingMemoryTracker);
-};
 
 class SharedTextureTest : public GpuServiceTest {
  public:
@@ -2232,9 +2210,9 @@ class SharedTextureTest : public GpuServiceTest {
 
   scoped_refptr<FeatureInfo> feature_info_;
   ServiceDiscardableManager discardable_manager_;
-  CountingMemoryTracker memory_tracker1_;
+  TestMemoryTracker memory_tracker1_;
   std::unique_ptr<TextureManager> texture_manager1_;
-  CountingMemoryTracker memory_tracker2_;
+  TestMemoryTracker memory_tracker2_;
   std::unique_ptr<TextureManager> texture_manager2_;
 };
 
@@ -2408,6 +2386,7 @@ TEST_F(SharedTextureTest, Memory) {
   EXPECT_EQ(initial_memory2, memory_tracker2_.GetSize());
 }
 
+#if !BUILDFLAG(IS_ANDROID)
 TEST_F(SharedTextureTest, Images) {
   scoped_refptr<TextureRef> ref1 = texture_manager1_->CreateTexture(10, 10);
   scoped_refptr<TextureRef> ref2 =
@@ -2422,15 +2401,15 @@ TEST_F(SharedTextureTest, Images) {
   EXPECT_FALSE(texture_manager1_->HaveImages());
   EXPECT_FALSE(texture_manager2_->HaveImages());
   scoped_refptr<gl::GLImage> image1(new gl::GLImageStub);
-  texture_manager1_->SetLevelImage(ref1.get(), GL_TEXTURE_2D, 1, image1.get(),
-                                   Texture::BOUND);
+  texture_manager1_->SetBoundLevelImage(ref1.get(), GL_TEXTURE_2D, 1,
+                                        image1.get());
   EXPECT_TRUE(ref1->texture()->HasImages());
   EXPECT_TRUE(ref2->texture()->HasImages());
   EXPECT_TRUE(texture_manager1_->HaveImages());
   EXPECT_TRUE(texture_manager2_->HaveImages());
   scoped_refptr<gl::GLImage> image2(new gl::GLImageStub);
-  texture_manager1_->SetLevelImage(ref1.get(), GL_TEXTURE_2D, 1, image2.get(),
-                                   Texture::BOUND);
+  texture_manager1_->SetBoundLevelImage(ref1.get(), GL_TEXTURE_2D, 1,
+                                        image2.get());
   EXPECT_TRUE(ref1->texture()->HasImages());
   EXPECT_TRUE(ref2->texture()->HasImages());
   EXPECT_TRUE(texture_manager1_->HaveImages());
@@ -2449,7 +2428,7 @@ TEST_F(SharedTextureTest, Images) {
   texture_manager1_->RemoveTexture(10);
   texture_manager2_->RemoveTexture(20);
 }
-
+#endif
 
 class TextureFormatTypeValidationTest : public TextureManagerTest {
  public:

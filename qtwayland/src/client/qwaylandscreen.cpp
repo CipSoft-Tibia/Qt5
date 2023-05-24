@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwaylandscreen_p.h"
 
@@ -55,7 +19,6 @@ namespace QtWaylandClient {
 
 QWaylandXdgOutputManagerV1::QWaylandXdgOutputManagerV1(QWaylandDisplay* display, uint id, uint version)
     : QtWayland::zxdg_output_manager_v1(display->wl_registry(), id, qMin(3u, version))
-    , m_version(qMin(3u, version))
 {
 }
 
@@ -81,7 +44,7 @@ QWaylandScreen::~QWaylandScreen()
 {
     if (zxdg_output_v1::isInitialized())
         zxdg_output_v1::destroy();
-    if (wl_output::isInitialized() && wl_output_get_version(wl_output::object()) >= WL_OUTPUT_RELEASE_SINCE_VERSION)
+    if (wl_output::isInitialized() && wl_output::version() >= WL_OUTPUT_RELEASE_SINCE_VERSION)
         wl_output::release();
 }
 
@@ -90,7 +53,8 @@ uint QWaylandScreen::requiredEvents() const
     uint ret = OutputDoneEvent;
 
     if (mWaylandDisplay->xdgOutputManager()) {
-        ret |= XdgOutputNameEvent;
+        if (mWaylandDisplay->xdgOutputManager()->version() >= 2)
+            ret |= XdgOutputNameEvent;
 
         if (mWaylandDisplay->xdgOutputManager()->version() < 3)
             ret |= XdgOutputDoneEvent;
@@ -186,9 +150,9 @@ QList<QPlatformScreen *> QWaylandScreen::virtualSiblings() const
     const QList<QWaylandScreen*> screens = mWaylandDisplay->screens();
     auto *placeholder = mWaylandDisplay->placeholderScreen();
 
-    list.reserve(screens.count() + (placeholder ? 1 : 0));
+    list.reserve(screens.size() + (placeholder ? 1 : 0));
 
-    for (QWaylandScreen *screen : qAsConst(screens)) {
+    for (QWaylandScreen *screen : std::as_const(screens)) {
         if (screen->screen())
             list << screen;
     }
@@ -197,16 +161,6 @@ QList<QPlatformScreen *> QWaylandScreen::virtualSiblings() const
         list << placeholder;
 
     return list;
-}
-
-void QWaylandScreen::setOrientationUpdateMask(Qt::ScreenOrientations mask)
-{
-    const auto allWindows = QGuiApplication::allWindows();
-    for (QWindow *window : allWindows) {
-        QWaylandWindow *w = static_cast<QWaylandWindow *>(window->handle());
-        if (w && w->waylandScreen() == this)
-            w->setOrientationMask(mask);
-    }
 }
 
 Qt::ScreenOrientation QWaylandScreen::orientation() const
@@ -235,6 +189,32 @@ QPlatformCursor *QWaylandScreen::cursor() const
     return mWaylandDisplay->waylandCursor();
 }
 #endif // QT_CONFIG(cursor)
+
+QPlatformScreen::SubpixelAntialiasingType QWaylandScreen::subpixelAntialiasingTypeHint() const
+{
+    QPlatformScreen::SubpixelAntialiasingType type = QPlatformScreen::subpixelAntialiasingTypeHint();
+    if (type == QPlatformScreen::Subpixel_None) {
+        switch (mSubpixel) {
+        case wl_output::subpixel_unknown:
+        case wl_output::subpixel_none:
+            type = QPlatformScreen::Subpixel_None;
+            break;
+        case wl_output::subpixel_horizontal_rgb:
+            type = QPlatformScreen::Subpixel_RGB;
+            break;
+        case wl_output::subpixel_horizontal_bgr:
+            type = QPlatformScreen::Subpixel_BGR;
+            break;
+        case wl_output::subpixel_vertical_rgb:
+            type = QPlatformScreen::Subpixel_VRGB;
+            break;
+        case wl_output::subpixel_vertical_bgr:
+            type = QPlatformScreen::Subpixel_VBGR;
+            break;
+        }
+    }
+    return type;
+}
 
 QWaylandScreen *QWaylandScreen::waylandScreenFromWindow(QWindow *window)
 {
@@ -271,11 +251,10 @@ void QWaylandScreen::output_geometry(int32_t x, int32_t y,
                                      const QString &model,
                                      int32_t transform)
 {
-    Q_UNUSED(subpixel);
-
     mManufacturer = make;
     mModel = model;
 
+    mSubpixel = subpixel;
     mTransform = transform;
 
     mPhysicalSize = QSize(width, height);

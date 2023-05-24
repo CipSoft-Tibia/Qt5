@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,14 @@
 
 #include <stdint.h>
 
+#include <string>
 #include <vector>
+
+#include "base/notreached.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/accessibility/ax_node_data.h"
+#include "ui/accessibility/ax_tree_data.h"
+#include "ui/accessibility/ax_tree_source_observer.h"
 
 namespace ui {
 
@@ -19,10 +26,10 @@ namespace ui {
 // as an AXNodeData. This is the primary interface to use when
 // an accessibility tree will be sent over an IPC before being
 // consumed.
-template<typename AXNodeSource, typename AXNodeData, typename AXTreeData>
+template <typename AXNodeSource>
 class AXTreeSource {
  public:
-  virtual ~AXTreeSource() {}
+  virtual ~AXTreeSource() = default;
 
   // Get the tree data and returns true if there is any data to copy.
   virtual bool GetTreeData(AXTreeData* data) const = 0;
@@ -32,14 +39,17 @@ class AXTreeSource {
 
   // Get a node by its id. If no node by that id exists in the tree, return a
   // null node, i.e. one that will return false if you call IsValid on it.
-  virtual AXNodeSource GetFromId(int32_t id) const = 0;
+  virtual AXNodeSource GetFromId(AXNodeID id) const = 0;
 
-  // Return the id of a node. All ids must be positive integers.
-  virtual int32_t GetId(AXNodeSource node) const = 0;
+  // Return the id of a node. All ids must be positive integers; 0 is not a
+  // valid ID. IDs are unique only across the current tree source, not across
+  // tree sources.
+  virtual AXNodeID GetId(AXNodeSource node) const = 0;
 
-  // Append all children of |node| to |out_children|.
-  virtual void GetChildren(AXNodeSource node,
-                           std::vector<AXNodeSource>* out_children) const = 0;
+  virtual void CacheChildrenIfNeeded(AXNodeSource) = 0;
+  virtual size_t GetChildCount(AXNodeSource) const = 0;
+  virtual AXNodeSource ChildAt(AXNodeSource, size_t) const = 0;
+  virtual void ClearChildCache(AXNodeSource) = 0;
 
   // Get the parent of |node|.
   virtual AXNodeSource GetParent(AXNodeSource node) const = 0;
@@ -68,11 +78,18 @@ class AXTreeSource {
     return node_data.ToString();
   }
 
-  // This is called by AXTreeSerializer when it serializes a tree and
-  // discovers that a node previously in the tree is no longer part of
-  // the tree. It can be used to allow an AXTreeSource to keep a cache
-  // indexed by node ID and delete nodes when they're no longer needed.
-  virtual void SerializerClearedNode(int32_t node_id) {}
+  // The following methods should be overridden in order to add or remove an
+  // `AXTreeSourceObserver`, which is notified when nodes are added, removed or
+  // updated in this tree source.
+
+  virtual void AddObserver(ui::AXTreeSourceObserver<AXNodeSource>* observer) {
+    NOTIMPLEMENTED();
+  }
+
+  virtual void RemoveObserver(
+      ui::AXTreeSourceObserver<AXNodeSource>* observer) {
+    NOTIMPLEMENTED();
+  }
 
  protected:
   AXTreeSource() {}

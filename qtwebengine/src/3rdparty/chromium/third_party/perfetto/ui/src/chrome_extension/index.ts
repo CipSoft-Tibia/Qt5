@@ -21,7 +21,7 @@ enableOnlyOnPerfettoHost();
 
 // Listen for messages from the perfetto ui.
 if (window.chrome) {
-  chrome.runtime.onConnectExternal.addListener(port => {
+  chrome.runtime.onConnectExternal.addListener((port) => {
     chromeTraceController = new ChromeTracingController(port);
     port.onMessage.addListener(onUIMessage);
   });
@@ -49,13 +49,15 @@ function enableOnlyOnPerfettoHost() {
       conditions: [new chrome.declarativeContent.PageStateMatcher({
         pageUrl: {hostSuffix: suffix},
       })],
-      actions: [new chrome.declarativeContent.ShowPageAction()]
+      actions: [new chrome.declarativeContent.ShowPageAction()],
     };
   }
   chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
     chrome.declarativeContent.onPageChanged.addRules([
       enableOnHostWithSuffix('localhost'),
+      enableOnHostWithSuffix('127.0.0.1'),
       enableOnHostWithSuffix('.perfetto.dev'),
+      enableOnHostWithSuffix('.storage.googleapis.com'),
     ]);
   });
 }

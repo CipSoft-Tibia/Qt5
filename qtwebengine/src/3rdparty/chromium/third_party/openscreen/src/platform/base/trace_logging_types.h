@@ -8,6 +8,8 @@
 #include <stdint.h>
 
 #include <limits>
+#include <sstream>
+#include <string>
 
 namespace openscreen {
 
@@ -22,7 +24,7 @@ constexpr TraceId kEmptyTraceId = 0x0;
 // specified value is desired.
 constexpr TraceId kUnsetTraceId = std::numeric_limits<TraceId>::max();
 
-// A class to represent the current TraceId Hirearchy and for the user to
+// A class to represent the current TraceId Hierarchy and for the user to
 // pass around as needed.
 struct TraceIdHierarchy {
   TraceId current;
@@ -33,37 +35,34 @@ struct TraceIdHierarchy {
     return {kEmptyTraceId, kEmptyTraceId, kEmptyTraceId};
   }
 
-  bool HasCurrent() { return current != kUnsetTraceId; }
-  bool HasParent() { return parent != kUnsetTraceId; }
-  bool HasRoot() { return root != kUnsetTraceId; }
+  bool HasCurrent() const { return current != kUnsetTraceId; }
+  bool HasParent() const { return parent != kUnsetTraceId; }
+  bool HasRoot() const { return root != kUnsetTraceId; }
+
+  std::string ToString() const;
 };
 
-inline bool operator==(const TraceIdHierarchy& lhs,
-                       const TraceIdHierarchy& rhs) {
-  return lhs.current == rhs.current && lhs.parent == rhs.parent &&
-         lhs.root == rhs.root;
-}
+std::ostream& operator<<(std::ostream& out, const TraceIdHierarchy& ids);
 
-inline bool operator!=(const TraceIdHierarchy& lhs,
-                       const TraceIdHierarchy& rhs) {
-  return !(lhs == rhs);
-}
+bool operator==(const TraceIdHierarchy& lhs, const TraceIdHierarchy& rhs);
 
-// BitFlags to represent the supported tracing categories.
-// NOTE: These are currently placeholder values and later changes should feel
-// free to edit them.
-struct TraceCategory {
-  enum Value : uint64_t {
-    kAny = std::numeric_limits<uint64_t>::max(),
-    kMdns = 0x01 << 0,
-    kQuic = 0x01 << 1,
-    kSsl = 0x01 << 2,
-    kPresentation = 0x01 << 3,
-    kStandaloneReceiver = 0x01 << 4,
-    kDiscovery = 0x01 << 5,
-    kStandaloneSender = 0x01 << 6,
-  };
+bool operator!=(const TraceIdHierarchy& lhs, const TraceIdHierarchy& rhs);
+
+// Supported trace category
+enum class TraceCategory : int {
+  kAny,
+  kMdns,
+  kQuic,
+  kSsl,
+  kPresentation,
+  kStandaloneReceiver,
+  kDiscovery,
+  kStandaloneSender,
+  kReceiver,
+  kSender
 };
+
+const char* ToString(TraceCategory category);
 
 }  // namespace openscreen
 

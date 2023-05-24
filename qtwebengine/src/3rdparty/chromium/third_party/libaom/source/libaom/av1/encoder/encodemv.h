@@ -18,8 +18,8 @@
 extern "C" {
 #endif
 
-void av1_encode_mv(AV1_COMP *cpi, aom_writer *w, const MV *mv, const MV *ref,
-                   nmv_context *mvctx, int usehp);
+void av1_encode_mv(AV1_COMP *cpi, aom_writer *w, ThreadData *td, const MV *mv,
+                   const MV *ref, nmv_context *mvctx, int usehp);
 
 void av1_update_mv_stats(const MV *mv, const MV *ref, nmv_context *mvctx,
                          MvSubpelPrecision precision);
@@ -27,6 +27,9 @@ void av1_update_mv_stats(const MV *mv, const MV *ref, nmv_context *mvctx,
 void av1_build_nmv_cost_table(int *mvjoint, int *mvcost[2],
                               const nmv_context *mvctx,
                               MvSubpelPrecision precision);
+void av1_build_nmv_component_cost_table(int *mvcost,
+                                        const nmv_component *const mvcomp,
+                                        MvSubpelPrecision precision);
 
 void av1_update_mv_count(ThreadData *td);
 
@@ -62,9 +65,9 @@ static INLINE uint8_t av1_log_in_base_2(unsigned int n) {
 }
 
 static INLINE MV_CLASS_TYPE av1_get_mv_class(int z, int *offset) {
-  const MV_CLASS_TYPE c = (z >= CLASS0_SIZE * 4096)
-                              ? MV_CLASS_10
-                              : (MV_CLASS_TYPE)av1_log_in_base_2(z >> 3);
+  assert(z >= 0);
+  const MV_CLASS_TYPE c = (MV_CLASS_TYPE)av1_log_in_base_2(z >> 3);
+  assert(c <= MV_CLASS_10);
   if (offset) *offset = z - av1_mv_class_base(c);
   return c;
 }

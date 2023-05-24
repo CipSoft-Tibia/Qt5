@@ -1,41 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmlprofilerdata.h"
 
-#include <QStringList>
-#include <QUrl>
-#include <QHash>
-#include <QFile>
-#include <QXmlStreamReader>
-#include <QRegularExpression>
-#include <QQueue>
-#include <QStack>
+#include <QtCore/qfile.h>
+#include <QtCore/qqueue.h>
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qurl.h>
+#include <QtCore/qxmlstream.h>
+#include <QtCore/qxpfunctional.h>
 
 #include <limits>
 
@@ -198,7 +171,7 @@ void QmlProfilerData::addEventType(const QQmlProfilerEventType &type)
         break;
     case PixmapCacheEvent: {
         const QString filePath = QUrl(type.location().filename()).path();
-        displayName = filePath.midRef(filePath.lastIndexOf(QLatin1Char('/')) + 1)
+        displayName = QStringView{filePath}.mid(filePath.lastIndexOf(QLatin1Char('/')) + 1)
                 + QLatin1Char(':') + QString::number(type.detailType());
         break;
     }
@@ -218,7 +191,7 @@ void QmlProfilerData::addEventType(const QQmlProfilerEventType &type)
             displayName = QString::fromLatin1("Unknown");
         } else {
             const QString filePath = QUrl(eventLocation.filename()).path();
-            displayName = filePath.midRef(
+            displayName = QStringView{filePath}.mid(
                         filePath.lastIndexOf(QLatin1Char('/')) + 1) +
                         QLatin1Char(':') + QString::number(eventLocation.line());
         }
@@ -236,7 +209,7 @@ void QmlProfilerData::computeQmlTime()
     qint64 level0Start = -1;
     int level = 0;
 
-    for (const QQmlProfilerEvent &event : qAsConst(d->events)) {
+    for (const QQmlProfilerEvent &event : std::as_const(d->events)) {
         const QQmlProfilerEventType &type = d->eventTypes.at(event.typeIndex());
         if (type.message() != MaximumMessage)
             continue;
@@ -273,7 +246,7 @@ bool compareStartTimes(const QQmlProfilerEvent &t1, const QQmlProfilerEvent &t2)
 
 void QmlProfilerData::sortStartTimes()
 {
-    if (d->events.count() < 2)
+    if (d->events.size() < 2)
         return;
 
     // assuming startTimes is partially sorted
@@ -400,6 +373,132 @@ private:
     QXmlStreamWriter stream;
 };
 
+struct DataIterator
+{
+    DataIterator(
+            const QmlProfilerDataPrivate *d,
+            qxp::function_ref<void(const QQmlProfilerEvent &, qint64)> &&sendEvent)
+        : d(d)
+        , sendEvent(std::move(sendEvent))
+    {}
+
+    void run();
+
+private:
+    void handleRangeEvent(const QQmlProfilerEvent &event, const QQmlProfilerEventType &type);
+    void sendPending();
+    void endLevel0();
+
+    const QmlProfilerDataPrivate *d = nullptr;
+    const qxp::function_ref<void(const QQmlProfilerEvent &, qint64)> sendEvent;
+
+    QQueue<QQmlProfilerEvent> pointEvents;
+    QList<QQmlProfilerEvent> rangeStarts[MaximumRangeType];
+    QList<qint64> rangeEnds[MaximumRangeType];
+
+    int level = 0;
+};
+
+void DataIterator::handleRangeEvent(
+        const QQmlProfilerEvent &event, const QQmlProfilerEventType &type)
+{
+    QList<QQmlProfilerEvent> &starts = rangeStarts[type.rangeType()];
+    switch (event.rangeStage()) {
+    case RangeStart: {
+        ++level;
+        starts.append(event);
+        break;
+    }
+    case RangeEnd: {
+        const qint64 invalidTimestamp = -1;
+        QList<qint64> &ends = rangeEnds[type.rangeType()];
+
+               // -1 because all valid timestamps are >= 0.
+        ends.resize(starts.size(), invalidTimestamp);
+
+        qsizetype i = starts.size();
+        while (ends[--i] != invalidTimestamp) {}
+
+        Q_ASSERT(i >= 0);
+        Q_ASSERT(starts[i].timestamp() <= event.timestamp());
+
+        ends[i] = event.timestamp();
+        if (--level == 0)
+            endLevel0();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void DataIterator::sendPending()
+{
+    // Send all pending events in the order of their start times.
+
+    qsizetype index[MaximumRangeType] = { 0, 0, 0, 0, 0, 0 };
+    while (true) {
+
+        // Find the range type with the minimum start time.
+        qsizetype minimum = MaximumRangeType;
+        qint64 minimumTime = std::numeric_limits<qint64>::max();
+        for (qsizetype i = 0; i < MaximumRangeType; ++i) {
+            const QList<QQmlProfilerEvent> &starts = rangeStarts[i];
+            if (starts.size() == index[i])
+                continue;
+            const qint64 timestamp = starts[index[i]].timestamp();
+            if (timestamp < minimumTime) {
+                minimumTime = timestamp;
+                minimum = i;
+            }
+        }
+        if (minimum == MaximumRangeType)
+            break;
+
+        // Send all point events that happened before the range we've found.
+        while (!pointEvents.isEmpty() && pointEvents.front().timestamp() < minimumTime)
+            sendEvent(pointEvents.dequeue(), 0);
+
+        // Send the range itself
+        sendEvent(rangeStarts[minimum][index[minimum]],
+                  rangeEnds[minimum][index[minimum]] - minimumTime);
+
+        // Bump the index so that we don't send the same range again
+        ++index[minimum];
+    }
+}
+
+void DataIterator::endLevel0()
+{
+    sendPending();
+    for (qsizetype i = 0; i < MaximumRangeType; ++i) {
+        rangeStarts[i].clear();
+        rangeEnds[i].clear();
+    }
+}
+
+void DataIterator::run()
+{
+    for (const QQmlProfilerEvent &event : std::as_const(d->events)) {
+        const QQmlProfilerEventType &type = d->eventTypes.at(event.typeIndex());
+        if (type.rangeType() != MaximumRangeType)
+            handleRangeEvent(event, type);
+        else if (level == 0)
+            sendEvent(event, 0);
+        else
+            pointEvents.enqueue(event);
+    }
+
+    for (qsizetype i = 0; i < MaximumRangeType; ++i) {
+        while (rangeEnds[i].size() < rangeStarts[i].size()) {
+            rangeEnds[i].append(d->traceEndTime);
+            --level;
+        }
+    }
+
+    sendPending();
+}
+
 bool QmlProfilerData::save(const QString &filename)
 {
     if (isEmpty()) {
@@ -467,6 +566,7 @@ bool QmlProfilerData::save(const QString &filename)
     stream.writeStartElement("profilerDataModel");
 
     auto sendEvent = [&](const QQmlProfilerEvent &event, qint64 duration = 0) {
+        Q_ASSERT(duration >= 0);
         const QQmlProfilerEventType &type = d->eventTypes.at(event.typeIndex());
         stream.writeStartElement("range");
         stream.writeAttribute("startTime", event.timestamp());
@@ -506,74 +606,7 @@ bool QmlProfilerData::save(const QString &filename)
         stream.writeEndElement();
     };
 
-    QQueue<QQmlProfilerEvent> pointEvents;
-    QQueue<QQmlProfilerEvent> rangeStarts[MaximumRangeType];
-    QStack<qint64> rangeEnds[MaximumRangeType];
-    int level = 0;
-
-    auto sendPending = [&]() {
-        forever {
-            int minimum = MaximumRangeType;
-            qint64 minimumTime = std::numeric_limits<qint64>::max();
-            for (int i = 0; i < MaximumRangeType; ++i) {
-                const QQueue<QQmlProfilerEvent> &starts = rangeStarts[i];
-                if (starts.isEmpty())
-                    continue;
-                if (starts.head().timestamp() < minimumTime) {
-                    minimumTime = starts.head().timestamp();
-                    minimum = i;
-                }
-            }
-            if (minimum == MaximumRangeType)
-                break;
-
-            while (!pointEvents.isEmpty() && pointEvents.front().timestamp() < minimumTime)
-                sendEvent(pointEvents.dequeue());
-
-            sendEvent(rangeStarts[minimum].dequeue(),
-                      rangeEnds[minimum].pop() - minimumTime);
-        }
-    };
-
-    for (const QQmlProfilerEvent &event : qAsConst(d->events)) {
-        const QQmlProfilerEventType &type = d->eventTypes.at(event.typeIndex());
-
-        if (type.rangeType() != MaximumRangeType) {
-            QQueue<QQmlProfilerEvent> &starts = rangeStarts[type.rangeType()];
-            switch (event.rangeStage()) {
-            case RangeStart: {
-                ++level;
-                starts.enqueue(event);
-                break;
-            }
-            case RangeEnd: {
-                QStack<qint64> &ends = rangeEnds[type.rangeType()];
-                if (starts.length() > ends.length()) {
-                    ends.push(event.timestamp());
-                    if (--level == 0)
-                        sendPending();
-                }
-                break;
-            }
-            default:
-                break;
-            }
-        } else {
-            if (level == 0)
-                sendEvent(event);
-            else
-                pointEvents.enqueue(event);
-        }
-    }
-
-    for (int i = 0; i < MaximumRangeType; ++i) {
-        while (rangeEnds[i].length() < rangeStarts[i].length()) {
-            rangeEnds[i].push(d->traceEndTime);
-            --level;
-        }
-    }
-
-    sendPending();
+    DataIterator(d, std::move(sendEvent)).run();
 
     stream.writeEndElement(); // profilerDataModel
 
@@ -622,7 +655,7 @@ void QmlProfilerData::setState(QmlProfilerData::State state)
 
 int QmlProfilerData::numLoadedEventTypes() const
 {
-    return d->eventTypes.length();
+    return d->eventTypes.size();
 }
 
 #include "moc_qmlprofilerdata.cpp"

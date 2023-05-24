@@ -32,16 +32,18 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_INSPECTOR_INSPECTOR_NETWORK_AGENT_H_
 
 #include "base/containers/span.h"
-#include "base/optional.h"
 #include "base/unguessable_token.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/inspector/inspected_frames.h"
 #include "third_party/blink/renderer/core/inspector/inspector_base_agent.h"
 #include "third_party/blink/renderer/core/inspector/inspector_page_agent.h"
-#include "third_party/blink/renderer/core/inspector/protocol/Network.h"
+#include "third_party/blink/renderer/core/inspector/protocol/network.h"
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_priority.h"
+#include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace network {
@@ -63,8 +65,10 @@ class LocalFrame;
 class HTTPHeaderMap;
 class KURL;
 class NetworkResourcesData;
+enum class RenderBlockingBehavior : uint8_t;
 class Resource;
 class ResourceError;
+struct ResourceLoaderOptions;
 class ResourceResponse;
 class XHRReplayData;
 class XMLHttpRequest;
@@ -89,7 +93,7 @@ class CORE_EXPORT InspectorNetworkAgent final
   void DidBlockRequest(const ResourceRequest&,
                        DocumentLoader*,
                        const KURL& fetch_context_url,
-                       const FetchInitiatorInfo&,
+                       const ResourceLoaderOptions&,
                        ResourceRequestBlockedReason,
                        ResourceType);
   void DidChangeResourcePriority(DocumentLoader*,
@@ -97,15 +101,16 @@ class CORE_EXPORT InspectorNetworkAgent final
                                  ResourceLoadPriority);
   void PrepareRequest(DocumentLoader*,
                       ResourceRequest&,
-                      const FetchInitiatorInfo&,
+                      ResourceLoaderOptions&,
                       ResourceType);
-  void WillSendRequest(uint64_t identifier,
-                       DocumentLoader*,
+  void WillSendRequest(DocumentLoader*,
                        const KURL& fetch_context_url,
                        const ResourceRequest&,
                        const ResourceResponse& redirect_response,
-                       const FetchInitiatorInfo&,
-                       ResourceType);
+                       const ResourceLoaderOptions&,
+                       ResourceType,
+                       RenderBlockingBehavior,
+                       base::TimeTicks timestamp);
   void WillSendNavigationRequest(uint64_t identifier,
                                  DocumentLoader*,
                                  const KURL&,
@@ -171,10 +176,11 @@ class CORE_EXPORT InspectorNetworkAgent final
                                 ClientNavigationReason);
   void FrameClearedScheduledNavigation(LocalFrame*);
 
-  void DidCreateWebSocket(ExecutionContext*,
-                          uint64_t identifier,
-                          const KURL& request_url,
-                          const String&);
+  void WillCreateWebSocket(ExecutionContext*,
+                           uint64_t identifier,
+                           const KURL& request_url,
+                           const String&,
+                           absl::optional<base::UnguessableToken>*);
   void WillSendWebSocketHandshakeRequest(
       ExecutionContext*,
       uint64_t identifier,
@@ -195,7 +201,15 @@ class CORE_EXPORT InspectorNetworkAgent final
                                const char* payload,
                                size_t payload_length);
   void DidReceiveWebSocketMessageError(uint64_t identifier, const String&);
+
+  void WebTransportCreated(ExecutionContext*,
+                           uint64_t transport_id,
+                           const KURL& request_url);
+  void WebTransportConnectionEstablished(uint64_t transport_id);
+  void WebTransportClosed(uint64_t transport_id);
+
   void SetDevToolsIds(ResourceRequest& request, const FetchInitiatorInfo&);
+  void IsCacheDisabled(bool* is_cache_disabled) const;
 
   // Called from frontend
   protocol::Response enable(Maybe<int> total_buffer_size,
@@ -204,7 +218,7 @@ class CORE_EXPORT InspectorNetworkAgent final
   protocol::Response disable() override;
   protocol::Response setExtraHTTPHeaders(
       std::unique_ptr<protocol::Network::Headers>) override;
-  protocol::Response setAttachDebugHeader(bool enabled) override;
+  protocol::Response setAttachDebugStack(bool enabled) override;
   void getResponseBody(const String& request_id,
                        std::unique_ptr<GetResponseBodyCallback>) override;
   protocol::Response searchInResponseBody(
@@ -229,14 +243,18 @@ class CORE_EXPORT InspectorNetworkAgent final
       Maybe<String> connection_type) override;
   protocol::Response setCacheDisabled(bool) override;
   protocol::Response setBypassServiceWorker(bool) override;
-  protocol::Response setDataSizeLimitsForTest(int max_total_size,
-                                              int max_resource_size) override;
   protocol::Response getCertificate(
       const String& origin,
       std::unique_ptr<protocol::Array<String>>* certificate) override;
 
   void getRequestPostData(const String& request_id,
                           std::unique_ptr<GetRequestPostDataCallback>) override;
+
+  protocol::Response setAcceptedEncodings(
+      std::unique_ptr<protocol::Array<protocol::Network::ContentEncoding>>
+          encodings) override;
+
+  protocol::Response clearAcceptedEncodingsOverride() override;
 
   // Called from other agents.
   protocol::Response GetResponseBody(const String& request_id,
@@ -249,14 +267,15 @@ class CORE_EXPORT InspectorNetworkAgent final
   String NavigationInitiatorInfo(LocalFrame*);
 
  private:
+  String RequestId(DocumentLoader*, uint64_t identifier);
   void Enable();
-  void WillSendRequestInternal(uint64_t identifier,
-                               DocumentLoader*,
+  void WillSendRequestInternal(DocumentLoader*,
                                const KURL& fetch_context_url,
                                const ResourceRequest&,
                                const ResourceResponse& redirect_response,
-                               const FetchInitiatorInfo&,
-                               InspectorPageAgent::ResourceType);
+                               const ResourceLoaderOptions&,
+                               InspectorPageAgent::ResourceType,
+                               base::TimeTicks timestamp);
 
   bool CanGetResponseBodyBlob(const String& request_id);
   void GetResponseBodyBlob(const String& request_id,
@@ -280,10 +299,9 @@ class CORE_EXPORT InspectorNetworkAgent final
   // Stores the pending request type till an identifier for the load is
   // generated by the loader and passed to the inspector via the
   // WillSendRequest() method.
-  base::Optional<InspectorPageAgent::ResourceType> pending_request_type_;
+  absl::optional<InspectorPageAgent::ResourceType> pending_request_type_;
 
   Member<XHRReplayData> pending_xhr_replay_data_;
-  bool is_handling_sync_xhr_ = false;
 
   HashMap<String, std::unique_ptr<protocol::Network::Initiator>>
       frame_navigation_initiator_map_;
@@ -294,10 +312,11 @@ class CORE_EXPORT InspectorNetworkAgent final
   InspectorAgentState::Boolean bypass_service_worker_;
   InspectorAgentState::BooleanMap blocked_urls_;
   InspectorAgentState::StringMap extra_request_headers_;
-  InspectorAgentState::Boolean debug_header_enabled_;
+  InspectorAgentState::Boolean attach_debug_stack_enabled_;
   InspectorAgentState::Integer total_buffer_size_;
   InspectorAgentState::Integer resource_buffer_size_;
   InspectorAgentState::Integer max_post_data_size_;
+  InspectorAgentState::BooleanMap accepted_encodings_;
 };
 
 }  // namespace blink

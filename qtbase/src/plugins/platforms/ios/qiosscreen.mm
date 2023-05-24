@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiosglobal.h"
 #include "qiosintegration.h"
@@ -49,7 +13,9 @@
 
 #include <QtCore/private/qcore_mac_p.h>
 
+#include <QtGui/qpointingdevice.h>
 #include <QtGui/private/qwindow_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 #include <private/qcoregraphics_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
@@ -107,14 +73,17 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 + (void)screenConnected:(NSNotification*)notification
 {
-    Q_ASSERT_X(QIOSIntegration::instance(), Q_FUNC_INFO,
-        "Screen connected before QIOSIntegration creation");
+    if (!QIOSIntegration::instance())
+        return; // Will be added when QIOSIntegration is created
 
     QWindowSystemInterface::handleScreenAdded(new QIOSScreen([notification object]));
 }
 
 + (void)screenDisconnected:(NSNotification*)notification
 {
+    if (!QIOSIntegration::instance())
+        return;
+
     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen disconnected that we didn't know about");
 
@@ -123,6 +92,9 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 + (void)screenModeChanged:(NSNotification*)notification
 {
+    if (!QIOSIntegration::instance())
+        return;
+
     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen changed that we didn't know about");
 
@@ -212,12 +184,21 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 {
     [super traitCollectionDidChange:previousTraitCollection];
 
-    if (@available(iOS 12, *)) {
-        if (self.screen == UIScreen.mainScreen) {
-            if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
-                QIOSTheme::initializeSystemPalette();
-                QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>(nullptr);
-            }
+    if (!qGuiApp)
+        return;
+
+    Qt::ColorScheme colorScheme = self.traitCollection.userInterfaceStyle
+                              == UIUserInterfaceStyleDark
+                              ? Qt::ColorScheme::Dark
+                              : Qt::ColorScheme::Light;
+
+    if (self.screen == UIScreen.mainScreen) {
+        // Check if the current userInterfaceStyle reports a different appearance than
+        // the platformTheme's appearance. We might have set that one based on the UIScreen
+        if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle
+            || QGuiApplicationPrivate::platformTheme()->colorScheme() != colorScheme) {
+            QIOSTheme::initializeSystemPalette();
+            QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
         }
     }
 }
@@ -227,6 +208,8 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 // -------------------------------------------------------------------------
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     Returns the model identifier of the device.
@@ -244,7 +227,7 @@ static QString deviceModelIdentifier()
     char value[size];
     sysctlbyname(key, &value, &size, NULL, 0);
 
-    return QString::fromLatin1(value);
+    return QString::fromLatin1(QByteArrayView(value, qsizetype(size)));
 #endif
 }
 
@@ -289,7 +272,7 @@ QIOSScreen::QIOSScreen(UIScreen *screen)
     if (!qt_apple_isApplicationExtension()) {
         for (UIWindow *existingWindow in qt_apple_sharedApplication().windows) {
             if (existingWindow.screen == m_uiScreen) {
-                m_uiWindow = [m_uiWindow retain];
+                m_uiWindow = [existingWindow retain];
                 break;
             }
         }
@@ -300,6 +283,8 @@ QIOSScreen::QIOSScreen(UIScreen *screen)
             m_uiWindow.rootViewController = [[[QIOSViewController alloc] initWithQIOSScreen:this] autorelease];
         }
     }
+
+    m_orientationListener = [[QIOSOrientationListener alloc] initWithQIOSScreen:this];
 
     updateProperties();
 
@@ -318,12 +303,10 @@ QIOSScreen::~QIOSScreen()
 
 QString QIOSScreen::name() const
 {
-    if (m_uiScreen == [UIScreen mainScreen]) {
-        return QString::fromNSString([UIDevice currentDevice].model)
-            + QLatin1String(" built-in display");
-    } else {
-        return QLatin1String("External display");
-    }
+    if (m_uiScreen == [UIScreen mainScreen])
+        return QString::fromNSString([UIDevice currentDevice].model) + " built-in display"_L1;
+    else
+        return "External display"_L1;
 }
 
 void QIOSScreen::updateProperties()
@@ -459,7 +442,7 @@ QSizeF QIOSScreen::physicalSize() const
     return m_physicalSize;
 }
 
-QDpi QIOSScreen::logicalDpi() const
+QDpi QIOSScreen::logicalBaseDpi() const
 {
     return QDpi(72, 72);
 }
@@ -521,17 +504,6 @@ Qt::ScreenOrientation QIOSScreen::orientation() const
 #endif
 }
 
-void QIOSScreen::setOrientationUpdateMask(Qt::ScreenOrientations mask)
-{
-    if (m_orientationListener && mask == Qt::PrimaryOrientation) {
-        [m_orientationListener release];
-        m_orientationListener = 0;
-    } else if (!m_orientationListener) {
-        m_orientationListener = [[QIOSOrientationListener alloc] initWithQIOSScreen:this];
-        updateProperties();
-    }
-}
-
 QPixmap QIOSScreen::grabWindow(WId window, int x, int y, int width, int height) const
 {
     if (window && ![reinterpret_cast<id>(window) isKindOfClass:[UIView class]])
@@ -574,6 +546,6 @@ UIWindow *QIOSScreen::uiWindow() const
     return m_uiWindow;
 }
 
-#include "moc_qiosscreen.cpp"
-
 QT_END_NAMESPACE
+
+#include "moc_qiosscreen.cpp"

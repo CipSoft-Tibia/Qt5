@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EDITING_SELECTION_TEMPLATE_H_
 
 #include <iosfwd>
-#include "base/macros.h"
+
+#include "base/dcheck_is_on.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/editing/position.h"
-#include "third_party/blink/renderer/core/editing/selection_type.h"
 #include "third_party/blink/renderer/core/editing/text_affinity.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
@@ -29,10 +29,12 @@ class SelectionTemplate final {
  public:
   // |Builder| is a helper class for constructing |SelectionTemplate| object.
   class CORE_EXPORT Builder final {
-    DISALLOW_NEW();
+    STACK_ALLOCATED();
 
    public:
     explicit Builder(const SelectionTemplate&);
+    Builder(const Builder&) = delete;
+    Builder& operator=(const Builder&) = delete;
     Builder();
 
     SelectionTemplate Build() const;
@@ -71,8 +73,6 @@ class SelectionTemplate final {
 
    private:
     SelectionTemplate selection_;
-
-    DISALLOW_COPY_AND_ASSIGN(Builder);
   };
 
   // Resets selection at end of life time of the object when base and extent
@@ -82,6 +82,9 @@ class SelectionTemplate final {
 
    public:
     explicit InvalidSelectionResetter(const SelectionTemplate&);
+    InvalidSelectionResetter(const InvalidSelectionResetter&) = delete;
+    InvalidSelectionResetter& operator=(const InvalidSelectionResetter&) =
+        delete;
     ~InvalidSelectionResetter();
 
     void Trace(Visitor*) const;
@@ -89,8 +92,6 @@ class SelectionTemplate final {
    private:
     const Member<const Document> document_;
     SelectionTemplate& selection_;
-
-    DISALLOW_COPY_AND_ASSIGN(InvalidSelectionResetter);
   };
 
   SelectionTemplate(const SelectionTemplate& other);
@@ -101,8 +102,8 @@ class SelectionTemplate final {
   bool operator==(const SelectionTemplate&) const;
   bool operator!=(const SelectionTemplate&) const;
 
-  PositionTemplate<Strategy> Base() const;
-  PositionTemplate<Strategy> Extent() const;
+  const PositionTemplate<Strategy>& Base() const;
+  const PositionTemplate<Strategy>& Extent() const;
   TextAffinity Affinity() const { return affinity_; }
   bool IsBaseFirst() const;
   bool IsCaret() const;
@@ -114,12 +115,9 @@ class SelectionTemplate final {
   bool AssertValid() const;
   bool AssertValidFor(const Document&) const;
 
-  PositionTemplate<Strategy> ComputeEndPosition() const;
-  PositionTemplate<Strategy> ComputeStartPosition() const;
+  const PositionTemplate<Strategy>& ComputeEndPosition() const;
+  const PositionTemplate<Strategy>& ComputeStartPosition() const;
   EphemeralRangeTemplate<Strategy> ComputeRange() const;
-
-  // Returns |SelectionType| for |this| based on |base_| and |extent_|.
-  SelectionType Type() const;
 
   void Trace(Visitor*) const;
 

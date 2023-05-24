@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <QtTest/QtTest>
 #include <QtQuick/private/qquickpixmapcache_p.h>
@@ -32,9 +7,8 @@
 #include <QtQuick/qquickimageprovider.h>
 #include <QtQml/QQmlComponent>
 #include <QNetworkReply>
-#include "../../shared/util.h"
-#include "testhttpserver.h"
-#include <QtNetwork/QNetworkConfigurationManager>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQuickTestUtils/private/testhttpserver_p.h>
 
 #if QT_CONFIG(concurrent)
 #include <qtconcurrentrun.h>
@@ -47,10 +21,10 @@ class tst_qquickpixmapcache : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qquickpixmapcache() {}
+    tst_qquickpixmapcache() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
     void single();
     void single_data();
     void parallel();
@@ -106,15 +80,6 @@ void tst_qquickpixmapcache::initTestCase()
     QQmlDataTest::initTestCase();
 
     QVERIFY2(server.listen(), qPrintable(server.errorString()));
-
-#if QT_CONFIG(bearermanagement)
-    // This avoids a race condition/deadlock bug in network config
-    // manager when it is accessed by the HTTP server thread before
-    // anything else. Bug report can be found at:
-    // QTBUG-26355
-    QNetworkConfigurationManager cm;
-    cm.updateConfigurations();
-#endif
 
     server.serveDirectory(testFile("http"));
 }
@@ -238,7 +203,7 @@ void tst_qquickpixmapcache::parallel()
     QList<bool> pending;
     QList<Slotter*> getters;
 
-    for (int i=0; i<targets.count(); ++i) {
+    for (int i=0; i<targets.size(); ++i) {
         QUrl target = targets.at(i);
         QQuickPixmap *pixmap = new QQuickPixmap;
 
@@ -258,9 +223,9 @@ void tst_qquickpixmapcache::parallel()
         }
     }
 
-    if (incache + slotters != targets.count())
+    if (incache + slotters != targets.size())
         QFAIL(QString::fromLatin1("pixmap counts don't add up: %1 incache, %2 slotters, %3 total")
-              .arg(incache).arg(slotters).arg(targets.count()).toLatin1().constData());
+              .arg(incache).arg(slotters).arg(targets.size()).toLatin1().constData());
 
     if (cancel >= 0) {
         pixmaps.at(cancel)->clear(getters[cancel]);
@@ -272,7 +237,7 @@ void tst_qquickpixmapcache::parallel()
         QVERIFY(!QTestEventLoop::instance().timeout());
     }
 
-    for (int i=0; i<targets.count(); ++i) {
+    for (int i=0; i<targets.size(); ++i) {
         QQuickPixmap *pixmap = pixmaps[i];
 
         if (i == cancel) {
@@ -350,8 +315,8 @@ public:
     MyPixmapProvider()
     : QQuickImageProvider(Pixmap) {}
 
-    virtual QPixmap requestPixmap(const QString &d, QSize *, const QSize &) {
-        Q_UNUSED(d)
+    QPixmap requestPixmap(const QString &d, QSize *, const QSize &) override {
+        Q_UNUSED(d);
         QPixmap pix(800, 600);
         pix.fill(fillColor);
         return pix;
@@ -427,6 +392,9 @@ void tst_qquickpixmapcache::lockingCrash()
 
 void tst_qquickpixmapcache::uncached()
 {
+#ifdef Q_OS_WEBOS
+    QSKIP("QQuickPixmap always loads with QQuickPixmap::Cache option in webOS");
+#endif
     QQmlEngine engine;
     engine.addImageProvider(QLatin1String("mypixmaps"), new MyPixmapProvider);
 

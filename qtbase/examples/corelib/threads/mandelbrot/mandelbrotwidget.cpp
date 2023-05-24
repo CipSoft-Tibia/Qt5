@@ -1,68 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "mandelbrotwidget.h"
 
-#include <QPainter>
+#include <QGesture>
+#include <QGestureEvent>
 #include <QKeyEvent>
+#include <QPainter>
 
 #include <math.h>
 
 //! [0]
-const double DefaultCenterX = -0.637011;
-const double DefaultCenterY = -0.0395159;
-const double DefaultScale = 0.00403897;
+constexpr double DefaultCenterX = -0.637011;
+constexpr double DefaultCenterY = -0.0395159;
+constexpr double DefaultScale = 0.00403897;
 
-const double ZoomInFactor = 0.8;
-const double ZoomOutFactor = 1 / ZoomInFactor;
-const int ScrollStep = 20;
+constexpr double ZoomInFactor = 0.8;
+constexpr double ZoomOutFactor = 1 / ZoomInFactor;
+constexpr int ScrollStep = 20;
 //! [0]
 
 //! [1]
@@ -73,6 +28,7 @@ MandelbrotWidget::MandelbrotWidget(QWidget *parent) :
     pixmapScale(DefaultScale),
     curScale(DefaultScale)
 {
+    help = tr("Zoom with mouse wheel, +/- keys or pinch.  Scroll with arrow keys or by dragging.");
     connect(&thread, &RenderThread::renderedImage,
             this, &MandelbrotWidget::updatePixmap);
 
@@ -80,8 +36,6 @@ MandelbrotWidget::MandelbrotWidget(QWidget *parent) :
 #if QT_CONFIG(cursor)
     setCursor(Qt::CrossCursor);
 #endif
-    resize(550, 400);
-
 }
 //! [1]
 
@@ -93,7 +47,8 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
 
     if (pixmap.isNull()) {
         painter.setPen(Qt::white);
-        painter.drawText(rect(), Qt::AlignCenter, tr("Rendering initial image, please wait..."));
+        painter.drawText(rect(), Qt::AlignCenter|Qt::TextWordWrap,
+                         tr("Rendering initial image, please wait..."));
 //! [2] //! [3]
         return;
 //! [3] //! [4]
@@ -107,43 +62,58 @@ void MandelbrotWidget::paintEvent(QPaintEvent * /* event */)
 //! [6] //! [7]
     } else {
 //! [7] //! [8]
-        auto previewPixmap = qFuzzyCompare(pixmap.devicePixelRatioF(), qreal(1))
+        const auto previewPixmap = qFuzzyCompare(pixmap.devicePixelRatio(), qreal(1))
             ? pixmap
-            : pixmap.scaled(pixmap.size() / pixmap.devicePixelRatioF(), Qt::KeepAspectRatio,
+            : pixmap.scaled(pixmap.deviceIndependentSize().toSize(), Qt::KeepAspectRatio,
                             Qt::SmoothTransformation);
-        double scaleFactor = pixmapScale / curScale;
-        int newWidth = int(previewPixmap.width() * scaleFactor);
-        int newHeight = int(previewPixmap.height() * scaleFactor);
-        int newX = pixmapOffset.x() + (previewPixmap.width() - newWidth) / 2;
-        int newY = pixmapOffset.y() + (previewPixmap.height() - newHeight) / 2;
+        const double scaleFactor = pixmapScale / curScale;
+        const int newWidth = int(previewPixmap.width() * scaleFactor);
+        const int newHeight = int(previewPixmap.height() * scaleFactor);
+        const int newX = pixmapOffset.x() + (previewPixmap.width() - newWidth) / 2;
+        const int newY = pixmapOffset.y() + (previewPixmap.height() - newHeight) / 2;
 
         painter.save();
         painter.translate(newX, newY);
         painter.scale(scaleFactor, scaleFactor);
 
-        QRectF exposed = painter.transform().inverted().mapRect(rect()).adjusted(-1, -1, 1, 1);
+        const QRectF exposed = painter.transform().inverted().mapRect(rect())
+                                       .adjusted(-1, -1, 1, 1);
         painter.drawPixmap(exposed, previewPixmap, exposed);
         painter.restore();
     }
 //! [8] //! [9]
 
-    QString text = tr("Use mouse wheel or the '+' and '-' keys to zoom. "
-                      "Press and hold left mouse button to scroll.");
-    QFontMetrics metrics = painter.fontMetrics();
-    int textWidth = metrics.horizontalAdvance(text);
+    const QFontMetrics metrics = painter.fontMetrics();
+    if (!info.isEmpty()){
+        const int infoWidth = metrics.horizontalAdvance(info);
+        const int infoHeight = (infoWidth/width() + 1) * (metrics.height() + 5);
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 127));
+        painter.drawRect((width() - infoWidth) / 2 - 5, 0, infoWidth + 10, infoHeight);
+
+        painter.setPen(Qt::white);
+        painter.drawText(rect(), Qt::AlignHCenter|Qt::AlignTop|Qt::TextWordWrap, info);
+    }
+
+    const int helpWidth = metrics.horizontalAdvance(help);
+    const int helpHeight = (helpWidth/width() + 1) * (metrics.height() + 5);
 
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(0, 0, 0, 127));
-    painter.drawRect((width() - textWidth) / 2 - 5, 0, textWidth + 10, metrics.lineSpacing() + 5);
+    painter.drawRect((width() - helpWidth) / 2 - 5, height()-helpHeight, helpWidth + 10,
+                     helpHeight);
+
     painter.setPen(Qt::white);
-    painter.drawText((width() - textWidth) / 2, metrics.leading() + metrics.ascent(), text);
+    painter.drawText(rect(), Qt::AlignHCenter|Qt::AlignBottom|Qt::TextWordWrap, help);
+
 }
 //! [9]
 
 //! [10]
 void MandelbrotWidget::resizeEvent(QResizeEvent * /* event */)
 {
-    thread.render(centerX, centerY, curScale, size(), devicePixelRatioF());
+    thread.render(centerX, centerY, curScale, size(), devicePixelRatio());
 }
 //! [10]
 
@@ -169,6 +139,9 @@ void MandelbrotWidget::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Up:
         scroll(0, +ScrollStep);
         break;
+    case Qt::Key_Q:
+        close();
+        break;
     default:
         QWidget::keyPressEvent(event);
     }
@@ -190,7 +163,7 @@ void MandelbrotWidget::wheelEvent(QWheelEvent *event)
 void MandelbrotWidget::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton)
-        lastDragPos = event->pos();
+        lastDragPos = event->position().toPoint();
 }
 //! [13]
 
@@ -198,8 +171,8 @@ void MandelbrotWidget::mousePressEvent(QMouseEvent *event)
 void MandelbrotWidget::mouseMoveEvent(QMouseEvent *event)
 {
     if (event->buttons() & Qt::LeftButton) {
-        pixmapOffset += event->pos() - lastDragPos;
-        lastDragPos = event->pos();
+        pixmapOffset += event->position().toPoint() - lastDragPos;
+        lastDragPos = event->position().toPoint();
         update();
     }
 }
@@ -209,12 +182,12 @@ void MandelbrotWidget::mouseMoveEvent(QMouseEvent *event)
 void MandelbrotWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        pixmapOffset += event->pos() - lastDragPos;
+        pixmapOffset += event->position().toPoint() - lastDragPos;
         lastDragPos = QPoint();
 
-        const auto pixmapSize = pixmap.size() / pixmap.devicePixelRatioF();
-        int deltaX = (width() - pixmapSize.width()) / 2 - pixmapOffset.x();
-        int deltaY = (height() - pixmapSize.height()) / 2 - pixmapOffset.y();
+        const auto pixmapSize = pixmap.deviceIndependentSize().toSize();
+        const int deltaX = (width() - pixmapSize.width()) / 2 - pixmapOffset.x();
+        const int deltaY = (height() - pixmapSize.height()) / 2 - pixmapOffset.y();
         scroll(deltaX, deltaY);
     }
 }
@@ -225,6 +198,8 @@ void MandelbrotWidget::updatePixmap(const QImage &image, double scaleFactor)
 {
     if (!lastDragPos.isNull())
         return;
+
+    info = image.text(RenderThread::infoKey());
 
     pixmap = QPixmap::fromImage(image);
     pixmapOffset = QPoint();
@@ -239,7 +214,7 @@ void MandelbrotWidget::zoom(double zoomFactor)
 {
     curScale *= zoomFactor;
     update();
-    thread.render(centerX, centerY, curScale, size(), devicePixelRatioF());
+    thread.render(centerX, centerY, curScale, size(), devicePixelRatio());
 }
 //! [17]
 
@@ -249,6 +224,27 @@ void MandelbrotWidget::scroll(int deltaX, int deltaY)
     centerX += deltaX * curScale;
     centerY += deltaY * curScale;
     update();
-    thread.render(centerX, centerY, curScale, size(), devicePixelRatioF());
+    thread.render(centerX, centerY, curScale, size(), devicePixelRatio());
 }
 //! [18]
+
+//! [gesture1]
+#ifndef QT_NO_GESTURES
+bool MandelbrotWidget::gestureEvent(QGestureEvent *event)
+{
+    if (auto *pinch = static_cast<QPinchGesture *>(event->gesture(Qt::PinchGesture))) {
+        if (pinch->changeFlags().testFlag(QPinchGesture::ScaleFactorChanged))
+            zoom(1.0 / pinch->scaleFactor());
+        return true;
+    }
+    return false;
+}
+
+bool MandelbrotWidget::event(QEvent *event)
+{
+    if (event->type() == QEvent::Gesture)
+        return gestureEvent(static_cast<QGestureEvent*>(event));
+    return QWidget::event(event);
+}
+#endif
+//! [gesture1]

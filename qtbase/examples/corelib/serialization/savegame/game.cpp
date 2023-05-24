@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "game.h"
 
@@ -58,62 +11,57 @@
 #include <QRandomGenerator>
 #include <QTextStream>
 
+using namespace Qt::StringLiterals;
+
 Character Game::player() const
 {
     return mPlayer;
 }
 
-QVector<Level> Game::levels() const
+QList<Level> Game::levels() const
 {
     return mLevels;
 }
 
-//! [0]
+//! [newGame]
 void Game::newGame()
 {
     mPlayer = Character();
-    mPlayer.setName(QStringLiteral("Hero"));
+    mPlayer.setName("Hero"_L1);
     mPlayer.setClassType(Character::Archer);
     mPlayer.setLevel(QRandomGenerator::global()->bounded(15, 21));
 
     mLevels.clear();
     mLevels.reserve(2);
 
-    Level village(QStringLiteral("Village"));
-    QVector<Character> villageNpcs;
+    Level village("Village"_L1);
+    QList<Character> villageNpcs;
     villageNpcs.reserve(2);
-    villageNpcs.append(Character(QStringLiteral("Barry the Blacksmith"),
-                                 QRandomGenerator::global()->bounded(8, 11),
-                                 Character::Warrior));
-    villageNpcs.append(Character(QStringLiteral("Terry the Trader"),
-                                 QRandomGenerator::global()->bounded(6, 8),
-                                 Character::Warrior));
+    villageNpcs.append(Character("Barry the Blacksmith"_L1,
+                                 QRandomGenerator::global()->bounded(8, 11), Character::Warrior));
+    villageNpcs.append(Character("Terry the Trader"_L1,
+                                 QRandomGenerator::global()->bounded(6, 8), Character::Warrior));
     village.setNpcs(villageNpcs);
     mLevels.append(village);
 
-    Level dungeon(QStringLiteral("Dungeon"));
-    QVector<Character> dungeonNpcs;
+    Level dungeon("Dungeon"_L1);
+    QList<Character> dungeonNpcs;
     dungeonNpcs.reserve(3);
-    dungeonNpcs.append(Character(QStringLiteral("Eric the Evil"),
-                                 QRandomGenerator::global()->bounded(18, 26),
-                                 Character::Mage));
-    dungeonNpcs.append(Character(QStringLiteral("Eric's Left Minion"),
-                                 QRandomGenerator::global()->bounded(5, 7),
-                                 Character::Warrior));
-    dungeonNpcs.append(Character(QStringLiteral("Eric's Right Minion"),
-                                 QRandomGenerator::global()->bounded(4, 9),
-                                 Character::Warrior));
+    dungeonNpcs.append(Character("Eric the Evil"_L1,
+                                 QRandomGenerator::global()->bounded(18, 26), Character::Mage));
+    dungeonNpcs.append(Character("Eric's Left Minion"_L1,
+                                 QRandomGenerator::global()->bounded(5, 7), Character::Warrior));
+    dungeonNpcs.append(Character("Eric's Right Minion"_L1,
+                                 QRandomGenerator::global()->bounded(4, 9), Character::Warrior));
     dungeon.setNpcs(dungeonNpcs);
     mLevels.append(dungeon);
 }
-//! [0]
+//! [newGame]
 
-//! [3]
+//! [loadGame]
 bool Game::loadGame(Game::SaveFormat saveFormat)
 {
-    QFile loadFile(saveFormat == Json
-        ? QStringLiteral("save.json")
-        : QStringLiteral("save.dat"));
+    QFile loadFile(saveFormat == Json ? "save.json"_L1 : "save.dat"_L1);
 
     if (!loadFile.open(QIODevice::ReadOnly)) {
         qWarning("Couldn't open save file.");
@@ -123,85 +71,72 @@ bool Game::loadGame(Game::SaveFormat saveFormat)
     QByteArray saveData = loadFile.readAll();
 
     QJsonDocument loadDoc(saveFormat == Json
-        ? QJsonDocument::fromJson(saveData)
-        : QJsonDocument(QCborValue::fromCbor(saveData).toMap().toJsonObject()));
+                          ? QJsonDocument::fromJson(saveData)
+                          : QJsonDocument(QCborValue::fromCbor(saveData).toMap().toJsonObject()));
 
     read(loadDoc.object());
 
-    QTextStream(stdout) << "Loaded save for "
-                        << loadDoc["player"]["name"].toString()
-                        << " using "
-                        << (saveFormat != Json ? "CBOR" : "JSON") << "...\n";
+    QTextStream(stdout) << "Loaded save for " << loadDoc["player"]["name"].toString()
+                        << " using " << (saveFormat != Json ? "CBOR" : "JSON") << "...\n";
     return true;
 }
-//! [3]
+//! [loadGame]
 
-//! [4]
+//! [saveGame]
 bool Game::saveGame(Game::SaveFormat saveFormat) const
 {
-    QFile saveFile(saveFormat == Json
-        ? QStringLiteral("save.json")
-        : QStringLiteral("save.dat"));
+    QFile saveFile(saveFormat == Json ? "save.json"_L1 : "save.dat"_L1);
 
     if (!saveFile.open(QIODevice::WriteOnly)) {
         qWarning("Couldn't open save file.");
         return false;
     }
 
-    QJsonObject gameObject;
-    write(gameObject);
-    saveFile.write(saveFormat == Json
-        ? QJsonDocument(gameObject).toJson()
-        : QCborValue::fromJsonValue(gameObject).toCbor());
+    QJsonObject gameObject = toJson();
+    saveFile.write(saveFormat == Json ? QJsonDocument(gameObject).toJson()
+                                      : QCborValue::fromJsonValue(gameObject).toCbor());
 
     return true;
 }
-//! [4]
+//! [saveGame]
 
-//! [1]
+//! [read]
 void Game::read(const QJsonObject &json)
 {
-    if (json.contains("player") && json["player"].isObject())
-        mPlayer.read(json["player"].toObject());
+    if (const QJsonValue v = json["player"]; v.isObject())
+        mPlayer = Character::fromJson(v.toObject());
 
-    if (json.contains("levels") && json["levels"].isArray()) {
-        QJsonArray levelArray = json["levels"].toArray();
+    if (const QJsonValue v = json["levels"]; v.isArray()) {
+        const QJsonArray levels = v.toArray();
         mLevels.clear();
-        mLevels.reserve(levelArray.size());
-        for (int levelIndex = 0; levelIndex < levelArray.size(); ++levelIndex) {
-            QJsonObject levelObject = levelArray[levelIndex].toObject();
-            Level level;
-            level.read(levelObject);
-            mLevels.append(level);
-        }
+        mLevels.reserve(levels.size());
+        for (const QJsonValue &level : levels)
+            mLevels.append(Level::fromJson(level.toObject()));
     }
 }
-//! [1]
+//! [read]
 
-//! [2]
-void Game::write(QJsonObject &json) const
+//! [toJson]
+QJsonObject Game::toJson() const
 {
-    QJsonObject playerObject;
-    mPlayer.write(playerObject);
-    json["player"] = playerObject;
+    QJsonObject json;
+    json["player"] = mPlayer.toJson();
 
-    QJsonArray levelArray;
-    for (const Level &level : mLevels) {
-        QJsonObject levelObject;
-        level.write(levelObject);
-        levelArray.append(levelObject);
-    }
-    json["levels"] = levelArray;
+    QJsonArray levels;
+    for (const Level &level : mLevels)
+        levels.append(level.toJson());
+    json["levels"] = levels;
+    return json;
 }
-//! [2]
+//! [toJson]
 
-void Game::print(int indentation) const
+void Game::print(QTextStream &s, int indentation) const
 {
     const QString indent(indentation * 2, ' ');
-    QTextStream(stdout) << indent << "Player\n";
-    mPlayer.print(indentation + 1);
+    s << indent << "Player\n";
+    mPlayer.print(s, indentation + 1);
 
-    QTextStream(stdout) << indent << "Levels\n";
-    for (Level level : mLevels)
-        level.print(indentation + 1);
+    s << indent << "Levels\n";
+    for (const Level &level : mLevels)
+        level.print(s, indentation + 1);
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 #include <utility>
 
 #include "base/compiler_specific.h"
-#include "components/content_settings/core/browser/content_settings_constraints.h"
 #include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_constraints.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 
@@ -72,6 +72,21 @@ bool IsConstraintPersistent(const ContentSettingConstraints& constraints);
 
 // Returns the expiration time for a supplied |duration|.
 base::Time GetConstraintExpiration(const base::TimeDelta duration);
+
+// Returns whether the given type supports tracking last_visit timestamps.
+bool CanTrackLastVisit(ContentSettingsType type);
+
+// Get a timestamp with week-precision.
+base::Time GetCoarseVisitedTime(base::Time time);
+
+// Returns a TimeDelta representing a week.
+base::TimeDelta GetCoarseVisitedTimePrecision();
+
+// Return whether the given permission can be auto-revoked using
+// ContentSettingConstraints::track_last_visit_for_autoexpiration.
+bool CanBeAutoRevoked(ContentSettingsType type,
+                      ContentSetting setting,
+                      bool is_one_time = false);
 
 }  // namespace content_settings
 

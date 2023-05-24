@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 #include "sql/statement.h"
 
 using base::Time;
-using base::TimeDelta;
 
 namespace history {
 
@@ -45,8 +44,8 @@ bool AndroidCacheDatabase::AddBookmarkCacheRow(const Time& created_time,
       "INSERT INTO android_cache_db.bookmark_cache (created_time, "
       "last_visit_time, url_id) VALUES (?, ?, ?)"));
 
-  statement.BindInt64(0, ToDatabaseTime(created_time));
-  statement.BindInt64(1, ToDatabaseTime(last_visit_time));
+  statement.BindTime(0, created_time);
+  statement.BindTime(1, last_visit_time);
   statement.BindInt64(2, url_id);
 
   if (!statement.Run()) {
@@ -109,14 +108,14 @@ bool AndroidCacheDatabase::SetFaviconID(URLID url_id,
 }
 
 SearchTermID AndroidCacheDatabase::AddSearchTerm(
-    const base::string16& term,
+    const std::u16string& term,
     const base::Time& last_visit_time) {
   sql::Statement statement(GetDB().GetCachedStatement(SQL_FROM_HERE,
       "INSERT INTO android_cache_db.search_terms (search, "
       "date) VALUES (?, ?)"));
 
   statement.BindString16(0, term);
-  statement.BindInt64(1, ToDatabaseTime(last_visit_time));
+  statement.BindTime(1, last_visit_time);
 
   if (!statement.Run()) {
     LOG(ERROR) << GetDB().GetErrorMessage();
@@ -134,13 +133,13 @@ bool AndroidCacheDatabase::UpdateSearchTerm(SearchTermID id,
       "WHERE _id = ?"
       ));
   statement.BindString16(0, row.term);
-  statement.BindInt64(1, ToDatabaseTime(row.last_visit_time));
+  statement.BindTime(1, row.last_visit_time);
   statement.BindInt64(2, id);
 
   return statement.Run();
 }
 
-SearchTermID AndroidCacheDatabase::GetSearchTerm(const base::string16& term,
+SearchTermID AndroidCacheDatabase::GetSearchTerm(const std::u16string& term,
                                                  SearchTermRow* row) {
   sql::Statement statement(GetDB().GetCachedStatement(SQL_FROM_HERE,
       "SELECT _id, search, date "
@@ -158,7 +157,7 @@ SearchTermID AndroidCacheDatabase::GetSearchTerm(const base::string16& term,
   if (row) {
     row->id = statement.ColumnInt64(0);
     row->term = statement.ColumnString16(1);
-    row->last_visit_time = FromDatabaseTime(statement.ColumnInt64(2));
+    row->last_visit_time = statement.ColumnTime(2);
   }
   return statement.ColumnInt64(0);
 }
@@ -178,16 +177,14 @@ bool AndroidCacheDatabase::CreateDatabase(const base::FilePath& db_name) {
   sql::Database::Delete(db_name_);
 
   // Using a new connection, otherwise we can not create the database.
-  sql::Database connection;
-
+  //
   // The db doesn't store too much data, so we don't need that big a page
   // size or cache.
-  connection.set_page_size(2048);
-  connection.set_cache_size(32);
-
-  // Run the database in exclusive mode. Nobody else should be accessing the
+  //
+  // The database is open in exclusive mode. Nobody else should be accessing the
   // database while we're running, and this will give somewhat improved perf.
-  connection.set_exclusive_locking();
+  sql::Database connection(
+      {.exclusive_locking = true, .page_size = 2048, .cache_size = 32});
 
   if (!connection.Open(db_name_)) {
     LOG(ERROR) << connection.GetErrorMessage();

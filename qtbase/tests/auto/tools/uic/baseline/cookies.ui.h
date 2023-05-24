@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'cookies.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -10,6 +10,7 @@
 #define COOKIES_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -39,42 +40,42 @@ public:
     void setupUi(QDialog *CookiesDialog)
     {
         if (CookiesDialog->objectName().isEmpty())
-            CookiesDialog->setObjectName(QString::fromUtf8("CookiesDialog"));
+            CookiesDialog->setObjectName("CookiesDialog");
         CookiesDialog->resize(550, 370);
         gridLayout = new QGridLayout(CookiesDialog);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
-        spacerItem = new QSpacerItem(252, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        gridLayout->setObjectName("gridLayout");
+        spacerItem = new QSpacerItem(252, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem, 0, 0, 1, 1);
 
         search = new SearchLineEdit(CookiesDialog);
-        search->setObjectName(QString::fromUtf8("search"));
+        search->setObjectName("search");
 
         gridLayout->addWidget(search, 0, 1, 1, 1);
 
         cookiesTable = new EditTableView(CookiesDialog);
-        cookiesTable->setObjectName(QString::fromUtf8("cookiesTable"));
+        cookiesTable->setObjectName("cookiesTable");
 
         gridLayout->addWidget(cookiesTable, 1, 0, 1, 2);
 
         hboxLayout = new QHBoxLayout();
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
+        hboxLayout->setObjectName("hboxLayout");
         removeButton = new QPushButton(CookiesDialog);
-        removeButton->setObjectName(QString::fromUtf8("removeButton"));
+        removeButton->setObjectName("removeButton");
 
         hboxLayout->addWidget(removeButton);
 
         removeAllButton = new QPushButton(CookiesDialog);
-        removeAllButton->setObjectName(QString::fromUtf8("removeAllButton"));
+        removeAllButton->setObjectName("removeAllButton");
 
         hboxLayout->addWidget(removeAllButton);
 
-        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem1);
 
         buttonBox = new QDialogButtonBox(CookiesDialog);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setStandardButtons(QDialogButtonBox::Ok);
 
         hboxLayout->addWidget(buttonBox);
@@ -84,7 +85,7 @@ public:
 
 
         retranslateUi(CookiesDialog);
-        QObject::connect(buttonBox, SIGNAL(accepted()), CookiesDialog, SLOT(accept()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, CookiesDialog, qOverload<>(&QDialog::accept));
 
         QMetaObject::connectSlotsByName(CookiesDialog);
     } // setupUi

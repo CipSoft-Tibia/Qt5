@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gl/gl_surface_egl.h"
 
@@ -29,7 +30,12 @@ class GLSurfaceWayland : public gl::NativeViewGLSurfaceEGL {
  public:
   using WaylandEglWindowPtr = std::unique_ptr<wl_egl_window, EGLWindowDeleter>;
 
-  explicit GLSurfaceWayland(WaylandEglWindowPtr egl_window);
+  GLSurfaceWayland(gl::GLDisplayEGL* display,
+                   WaylandEglWindowPtr egl_window,
+                   WaylandWindow* window);
+
+  GLSurfaceWayland(const GLSurfaceWayland&) = delete;
+  GLSurfaceWayland& operator=(const GLSurfaceWayland&) = delete;
 
   // gl::GLSurface:
   bool Resize(const gfx::Size& size,
@@ -37,13 +43,26 @@ class GLSurfaceWayland : public gl::NativeViewGLSurfaceEGL {
               const gfx::ColorSpace& color_space,
               bool has_alpha) override;
   EGLConfig GetConfig() override;
+  gfx::SwapResult SwapBuffers(PresentationCallback callback,
+                              gfx::FrameData data) override;
+  gfx::SwapResult PostSubBuffer(int x,
+                                int y,
+                                int width,
+                                int height,
+                                PresentationCallback callback,
+                                gfx::FrameData data) override;
 
  private:
   ~GLSurfaceWayland() override;
 
-  WaylandEglWindowPtr egl_window_;
+  // Delivers sequence number information to WaylandWindow. See the comments
+  // on WaylandWindow::applied_state() for more information.
+  void OnSequencePoint(int64_t seq);
 
-  DISALLOW_COPY_AND_ASSIGN(GLSurfaceWayland);
+  WaylandEglWindowPtr egl_window_;
+  const raw_ptr<WaylandWindow> window_;
+
+  float scale_factor_ = 1.f;
 };
 
 }  // namespace ui

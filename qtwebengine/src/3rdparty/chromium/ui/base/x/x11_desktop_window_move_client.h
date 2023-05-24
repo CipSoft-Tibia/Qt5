@@ -1,27 +1,42 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_BASE_X_X11_DESKTOP_WINDOW_MOVE_CLIENT_H_
 #define UI_BASE_X_X11_DESKTOP_WINDOW_MOVE_CLIENT_H_
 
-#include "base/callback.h"
-#include "base/compiler_specific.h"
 #include "base/component_export.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/base/x/x11_move_loop_delegate.h"
 #include "ui/base/x/x11_whole_screen_move_loop.h"
 #include "ui/gfx/geometry/point.h"
-#include "ui/gfx/x/x11.h"
+
+namespace gfx {
+class Rect;
+}
 
 namespace ui {
-
-class XWindow;
 
 // When we're dragging tabs, we need to manually position our window.
 class COMPONENT_EXPORT(UI_BASE_X) X11DesktopWindowMoveClient
     : public X11MoveLoopDelegate {
  public:
-  explicit X11DesktopWindowMoveClient(ui::XWindow* window);
+  // Connection point that the window being moved needs to implement.
+  class Delegate {
+   public:
+    // Sets new window bounds.
+    virtual void SetBoundsOnMove(const gfx::Rect& requested_bounds) = 0;
+    // Returns the cursor that was used at the time the move started.
+    virtual scoped_refptr<X11Cursor> GetLastCursor() = 0;
+    // Returns the size part of the window bounds.
+    virtual gfx::Size GetSize() = 0;
+
+   protected:
+    virtual ~Delegate();
+  };
+
+  explicit X11DesktopWindowMoveClient(Delegate* window);
   ~X11DesktopWindowMoveClient() override;
 
   // Overridden from X11WholeScreenMoveLoopDelegate:
@@ -39,7 +54,7 @@ class COMPONENT_EXPORT(UI_BASE_X) X11DesktopWindowMoveClient
 
   // We need to keep track of this so we can actually move it when reacting to
   // mouse events.
-  ui::XWindow* const window_;
+  const raw_ptr<Delegate> window_;
 
   // Our cursor offset from the top left window origin when the drag
   // started. Used to calculate the window's new bounds relative to the current

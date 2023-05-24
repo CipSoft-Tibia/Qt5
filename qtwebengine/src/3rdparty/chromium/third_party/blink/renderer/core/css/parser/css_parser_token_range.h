@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,6 +24,8 @@ class CORE_EXPORT CSSParserTokenRange {
   template <wtf_size_t InlineBuffer>
   CSSParserTokenRange(const Vector<CSSParserToken, InlineBuffer>& vector)
       : first_(vector.begin()), last_(vector.end()) {}
+  explicit CSSParserTokenRange(base::span<CSSParserToken> tokens)
+      : first_(tokens.data()), last_(tokens.data() + tokens.size()) {}
 
   // This should be called on a range with tokens returned by that range.
   CSSParserTokenRange MakeSubRange(const CSSParserToken* first,
@@ -31,16 +33,19 @@ class CORE_EXPORT CSSParserTokenRange {
 
   bool AtEnd() const { return first_ == last_; }
   const CSSParserToken* end() const { return last_; }
+  wtf_size_t size() const { return static_cast<wtf_size_t>(last_ - first_); }
 
   const CSSParserToken& Peek(wtf_size_t offset = 0) const {
-    if (first_ + offset >= last_)
+    if (first_ + offset >= last_) {
       return g_static_eof_token;
+    }
     return *(first_ + offset);
   }
 
   const CSSParserToken& Consume() {
-    if (first_ == last_)
+    if (first_ == last_) {
       return g_static_eof_token;
+    }
     return *first_++;
   }
 
@@ -56,8 +61,9 @@ class CORE_EXPORT CSSParserTokenRange {
   void ConsumeComponentValue();
 
   void ConsumeWhitespace() {
-    while (Peek().GetType() == kWhitespaceToken)
+    while (Peek().GetType() == kWhitespaceToken) {
       ++first_;
+    }
   }
 
   String Serialize() const;

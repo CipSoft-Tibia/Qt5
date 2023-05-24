@@ -1,14 +1,14 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_TYPED_ARRAYS_DOM_ARRAY_BUFFER_BASE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_TYPED_ARRAYS_DOM_ARRAY_BUFFER_BASE_H_
 
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
 
 namespace blink {
 
@@ -25,13 +25,7 @@ class CORE_EXPORT DOMArrayBufferBase : public ScriptWrappable {
   const void* DataMaybeShared() const { return contents_.DataMaybeShared(); }
   void* DataMaybeShared() { return contents_.DataMaybeShared(); }
 
-  size_t ByteLengthAsSizeT() const { return contents_.DataLength(); }
-
-  // This function is deprecated and should not be used. Use {ByteLengthAsSizeT}
-  // instead.
-  unsigned DeprecatedByteLengthAsUnsigned() const {
-    return base::checked_cast<unsigned>(contents_.DataLength());
-  }
+  size_t ByteLength() const { return contents_.DataLength(); }
 
   bool IsDetached() const { return is_detached_; }
 
@@ -39,10 +33,14 @@ class CORE_EXPORT DOMArrayBufferBase : public ScriptWrappable {
 
   bool IsShared() const { return contents_.IsShared(); }
 
-  v8::Local<v8::Value> Wrap(v8::Isolate*,
-                            v8::Local<v8::Object> creation_context) override {
+  bool IsResizableByUserJavaScript() const {
+    return contents_.IsResizableByUserJavaScript();
+  }
+
+  // ScriptWrappable overrides:
+  v8::MaybeLocal<v8::Value> Wrap(ScriptState*) override {
     NOTREACHED();
-    return v8::Local<v8::Object>();
+    return v8::Local<v8::Value>();
   }
 
  protected:

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -49,11 +49,20 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+@implementation ToolTipBaseView
+
+#ifndef MAC_OS_VERSION_13_0
+#define MAC_OS_VERSION_13_0 130000
+#endif
+
+// Remove these methods once macOS 13 becomes the minimum deployment version
+// (see comment in -setToolTipAtMousePoint: below). Consider moving the
+// remainder into BaseView.
+#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_VERSION_13_0
+
 // Any non-zero value will do, but using something recognizable might help us
 // debug some day.
 const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
-
-@implementation ToolTipBaseView
 
 // Override of a public NSView method, replacing the inherited functionality.
 // See above for rationale.
@@ -120,7 +129,7 @@ const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
 // Override of (apparently) a private NSView method(!)
 - (void)_removeTrackingRects:(NSTrackingRectTag *)tags count:(int)count {
   for (int i = 0; i < count; ++i) {
-    int tag = tags[i];
+    NSTrackingRectTag tag = tags[i];
     if (tag == 0)
       continue;
     DCHECK(tag == kTrackingRectTag);
@@ -128,12 +137,13 @@ const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
   }
 }
 
-// Sends a fake NSMouseExited event to the view for its current tracking rect.
+// Sends a fake NSEventTypeMouseExited event to the view for its current
+// tracking rect.
 - (void)_sendToolTipMouseExited {
   // Nothing matters except window, trackingNumber, and userData.
-  int windowNumber = [[self window] windowNumber];
+  NSInteger windowNumber = [[self window] windowNumber];
   NSTimeInterval eventTime = [[NSApp currentEvent] timestamp];
-  NSEvent* fakeEvent = [NSEvent enterExitEventWithType:NSMouseExited
+  NSEvent* fakeEvent = [NSEvent enterExitEventWithType:NSEventTypeMouseExited
                                               location:NSZeroPoint
                                          modifierFlags:0
                                              timestamp:eventTime
@@ -145,9 +155,10 @@ const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
   [_trackingRectOwner mouseExited:fakeEvent];
 }
 
-// Sends a fake NSMouseEntered event to the view for its current tracking rect.
+// Sends a fake NSEventTypeMouseEntered event to the view for its current
+// tracking rect.
 - (void)_sendToolTipMouseEntered {
-  int windowNumber = [[self window] windowNumber];
+  NSInteger windowNumber = [[self window] windowNumber];
 
   // Only send a fake mouse enter if the mouse is actually over the window,
   // versus over a window which overlaps it (see http://crbug.com/883269).
@@ -157,7 +168,7 @@ const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
 
   // Nothing matters except window, trackingNumber, and userData.
   NSTimeInterval eventTime = [[NSApp currentEvent] timestamp];
-  NSEvent* fakeEvent = [NSEvent enterExitEventWithType:NSMouseEntered
+  NSEvent* fakeEvent = [NSEvent enterExitEventWithType:NSEventTypeMouseEntered
                                               location:NSZeroPoint
                                          modifierFlags:0
                                              timestamp:eventTime
@@ -168,6 +179,8 @@ const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
                                               userData:_trackingRectUserData];
   [_trackingRectOwner mouseEntered:fakeEvent];
 }
+
+#endif  // MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_VERSION_13_0
 
 // Sets the view's current tooltip, to be displayed at the current mouse
 // location. (This does not make the tooltip appear -- as usual, it only
@@ -185,10 +198,33 @@ const NSTrackingRectTag kTrackingRectTag = 0xBADFACE;
 
   _toolTip.reset([toolTip copy]);
 
+  // It appears that as of macOS 13, tooltips are no longer set up with
+  // calls to addTrackingRect:... or removeTrackingRect:. As a result,
+  // _trackingRectOwner remains nil, which means the calls to
+  // [_trackingRectOwner mouseEntered:] in _sendToolTipMouseEntered and
+  // [_trackingRectOwner mouseExited:] in _sendToolTipMouseExited do nothing.
+  // It looks like this doesn't affect tooltip display, but the call to
+  // _sendToolTipMouseExited no longer orders it out. Therefore, when the user
+  // moves the mouse away from a tooltip on Ventura, the call to
+  // setToolTipAtMousePoint:nil initiated by the target view leaves the
+  // toopltip onscreen.
+  //
+  // The logic below was
+  //
+  //   if (tooltip) {
+  //     [self removeAllTooltips];
+  //     ...
+  //   }
+  //
+  // By moving the call to -removeAllTooltips outside of the conditional,
+  // we can ensure any visible tooltip will be removed from the screen.
+  // See crbug.com/1409942.
+  //
+  // The strategy of removing all tooltips rather than the single one that
+  // was added comes from WebKit, like the rest of the code here. It
+  // apparently works around some AppKit bug.
+  [self removeAllToolTips];
   if (toolTip) {
-    // See radar 3500217 for why we remove all tooltips
-    // rather than just the single one we created.
-    [self removeAllToolTips];
     NSRect wideOpenRect = NSMakeRect(-100000, -100000, 200000, 200000);
     _lastToolTipTag = [self addToolTipRect:wideOpenRect
                                      owner:self

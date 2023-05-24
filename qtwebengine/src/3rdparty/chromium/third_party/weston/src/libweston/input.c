@@ -1518,10 +1518,10 @@ send_enter_to_resource_list(struct wl_list *list,
 	struct wl_resource *resource;
 
 	wl_resource_for_each(resource, list) {
-		send_modifiers_to_resource(keyboard, resource, serial);
 		wl_keyboard_send_enter(resource, serial,
 				       surface->resource,
 				       &keyboard->keys);
+		send_modifiers_to_resource(keyboard, resource, serial);
 	}
 }
 
@@ -2086,32 +2086,30 @@ WL_EXPORT void
 weston_keyboard_send_keymap(struct weston_keyboard *kbd, struct wl_resource *resource)
 {
 	struct weston_xkb_info *xkb_info = kbd->xkb_info;
-	void *area;
 	int fd;
+	size_t size;
+	enum ro_anonymous_file_mapmode mapmode;
 
-	fd = os_create_anonymous_file(xkb_info->keymap_size);
-	if (fd < 0) {
-		weston_log("creating a keymap file for %lu bytes failed: %s\n",
-			   (unsigned long) xkb_info->keymap_size,
+	if (wl_resource_get_version(resource) < 7)
+		mapmode = RO_ANONYMOUS_FILE_MAPMODE_SHARED;
+	else
+		mapmode = RO_ANONYMOUS_FILE_MAPMODE_PRIVATE;
+
+	fd = os_ro_anonymous_file_get_fd(xkb_info->keymap_rofile, mapmode);
+	size = os_ro_anonymous_file_size(xkb_info->keymap_rofile);
+
+	if (fd == -1) {
+		weston_log("creating a keymap file failed: %s\n",
 			   strerror(errno));
 		return;
 	}
 
-	area = mmap(NULL, xkb_info->keymap_size, PROT_READ | PROT_WRITE,
-		    MAP_SHARED, fd, 0);
-	if (area == MAP_FAILED) {
-		weston_log("failed to mmap() %lu bytes\n",
-			   (unsigned long) xkb_info->keymap_size);
-		goto err_mmap;
-	}
-	strcpy(area, xkb_info->keymap_string);
-	munmap(area, xkb_info->keymap_size);
 	wl_keyboard_send_keymap(resource,
 				WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
 				fd,
-				xkb_info->keymap_size);
-err_mmap:
-	close(fd);
+				size);
+
+	os_ro_anonymous_file_put_fd(fd);
 }
 
 static void
@@ -2850,28 +2848,6 @@ static const struct wl_keyboard_interface keyboard_interface = {
 	keyboard_release
 };
 
-static bool
-should_send_modifiers_to_client(struct weston_seat *seat,
-				struct wl_client *client)
-{
-	struct weston_keyboard *keyboard = weston_seat_get_keyboard(seat);
-	struct weston_pointer *pointer = weston_seat_get_pointer(seat);
-
-	if (keyboard &&
-	    keyboard->focus &&
-	    keyboard->focus->resource &&
-	    wl_resource_get_client(keyboard->focus->resource) == client)
-		return true;
-
-	if (pointer &&
-	    pointer->focus &&
-	    pointer->focus->surface->resource &&
-	    wl_resource_get_client(pointer->focus->surface->resource) == client)
-		return true;
-
-	return false;
-}
-
 static void
 seat_get_keyboard(struct wl_client *client, struct wl_resource *resource,
 		  uint32_t id)
@@ -2917,12 +2893,6 @@ seat_get_keyboard(struct wl_client *client, struct wl_resource *resource,
 
 	weston_keyboard_send_keymap(keyboard, cr);
 
-	if (should_send_modifiers_to_client(seat, client)) {
-		send_modifiers_to_resource(keyboard,
-					   cr,
-					   keyboard->focus_serial);
-	}
-
 	if (keyboard->focus && keyboard->focus->resource &&
 	    wl_resource_get_client(keyboard->focus->resource) == client) {
 		struct weston_surface *surface =
@@ -2935,6 +2905,10 @@ seat_get_keyboard(struct wl_client *client, struct wl_resource *resource,
 				       keyboard->focus_serial,
 				       surface->resource,
 				       &keyboard->keys);
+
+		send_modifiers_to_resource(keyboard,
+					   cr,
+					   keyboard->focus_serial);
 
 		/* If this is the first keyboard resource for this
 		 * client... */
@@ -3122,7 +3096,7 @@ weston_compositor_set_xkb_rule_names(struct weston_compositor *ec,
 				     struct xkb_rule_names *names)
 {
 	if (ec->xkb_context == NULL) {
-		ec->xkb_context = xkb_context_new(0);
+		ec->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 		if (ec->xkb_context == NULL) {
 			weston_log("failed to create XKB context\n");
 			return -1;
@@ -3149,8 +3123,7 @@ weston_xkb_info_destroy(struct weston_xkb_info *xkb_info)
 
 	xkb_keymap_unref(xkb_info->keymap);
 
-	if (xkb_info->keymap_string)
-		free(xkb_info->keymap_string);
+	os_ro_anonymous_file_destroy(xkb_info->keymap_rofile);
 	free(xkb_info);
 }
 
@@ -3171,6 +3144,8 @@ weston_compositor_xkb_destroy(struct weston_compositor *ec)
 static struct weston_xkb_info *
 weston_xkb_info_create(struct xkb_keymap *keymap)
 {
+	char *keymap_string;
+	size_t keymap_size;
 	struct weston_xkb_info *xkb_info = zalloc(sizeof *xkb_info);
 	if (xkb_info == NULL)
 		return NULL;
@@ -3202,13 +3177,22 @@ weston_xkb_info_create(struct xkb_keymap *keymap)
 	xkb_info->scroll_led = xkb_keymap_led_get_index(xkb_info->keymap,
 							XKB_LED_NAME_SCROLL);
 
-	xkb_info->keymap_string = xkb_keymap_get_as_string(xkb_info->keymap,
+	keymap_string = xkb_keymap_get_as_string(xkb_info->keymap,
 							   XKB_KEYMAP_FORMAT_TEXT_V1);
-	if (xkb_info->keymap_string == NULL) {
+	if (keymap_string == NULL) {
 		weston_log("failed to get string version of keymap\n");
 		goto err_keymap;
 	}
-	xkb_info->keymap_size = strlen(xkb_info->keymap_string) + 1;
+	keymap_size = strlen(keymap_string) + 1;
+
+	xkb_info->keymap_rofile = os_ro_anonymous_file_create(keymap_size,
+							      keymap_string);
+	free(keymap_string);
+
+	if (!xkb_info->keymap_rofile) {
+		weston_log("failed to create anonymous file for keymap\n");
+		goto err_keymap;
+	}
 
 	return xkb_info;
 
@@ -3441,7 +3425,8 @@ weston_seat_init(struct weston_seat *seat, struct weston_compositor *ec,
 	wl_signal_init(&seat->destroy_signal);
 	wl_signal_init(&seat->updated_caps_signal);
 
-	seat->global = wl_global_create(ec->wl_display, &wl_seat_interface, 5,
+	seat->global = wl_global_create(ec->wl_display, &wl_seat_interface,
+					MIN(wl_seat_interface.version, 7),
 					seat, bind_seat);
 
 	seat->compositor = ec;

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,12 @@
 
 #include <vector>
 
-#include "base/callback_forward.h"
+#include "base/base_export.h"
 #include "base/check.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
-#include "base/threading/thread_task_runner_handle.h"
 
 namespace base {
 
@@ -72,7 +72,7 @@ class BASE_EXPORT OneShotEvent {
   void Post(const Location& from_here,
             OnceClosure task,
             scoped_refptr<SingleThreadTaskRunner> runner =
-                ThreadTaskRunnerHandle::Get()) const;
+                SingleThreadTaskRunner::GetCurrentDefault()) const;
   void PostDelayed(const Location& from_here,
                    OnceClosure task,
                    const TimeDelta& delay) const;

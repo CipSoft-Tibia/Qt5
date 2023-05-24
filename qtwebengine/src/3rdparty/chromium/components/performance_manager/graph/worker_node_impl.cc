@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,12 @@
 #include "components/performance_manager/graph/process_node_impl.h"
 
 namespace performance_manager {
+
+// static
+constexpr char WorkerNodeImpl::kDefaultPriorityReason[] =
+    "default worker priority";
+
+using PriorityAndReason = execution_context_priority::PriorityAndReason;
 
 WorkerNodeImpl::WorkerNodeImpl(const std::string& browser_context_id,
                                WorkerType worker_type,
@@ -26,6 +32,7 @@ WorkerNodeImpl::~WorkerNodeImpl() {
   DCHECK(client_frames_.empty());
   DCHECK(client_workers_.empty());
   DCHECK(child_workers_.empty());
+  DCHECK(!execution_context_);
 }
 
 void WorkerNodeImpl::AddClientFrame(FrameNodeImpl* frame_node) {
@@ -91,6 +98,22 @@ void WorkerNodeImpl::RemoveClientWorker(WorkerNodeImpl* worker_node) {
   DCHECK_EQ(removed, 1u);
 }
 
+void WorkerNodeImpl::SetPriorityAndReason(
+    const PriorityAndReason& priority_and_reason) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  priority_and_reason_.SetAndMaybeNotify(this, priority_and_reason);
+}
+
+void WorkerNodeImpl::SetResidentSetKbEstimate(uint64_t rss_estimate) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  resident_set_kb_estimate_ = rss_estimate;
+}
+
+void WorkerNodeImpl::SetPrivateFootprintKbEstimate(uint64_t pmf_estimate) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  private_footprint_kb_estimate_ = pmf_estimate;
+}
+
 void WorkerNodeImpl::OnFinalResponseURLDetermined(const GURL& url) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(url_.is_empty());
@@ -140,6 +163,21 @@ const base::flat_set<WorkerNodeImpl*>& WorkerNodeImpl::child_workers() const {
   return child_workers_;
 }
 
+const PriorityAndReason& WorkerNodeImpl::priority_and_reason() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return priority_and_reason_.value();
+}
+
+uint64_t WorkerNodeImpl::resident_set_kb_estimate() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return resident_set_kb_estimate_;
+}
+
+uint64_t WorkerNodeImpl::private_footprint_kb_estimate() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return private_footprint_kb_estimate_;
+}
+
 void WorkerNodeImpl::OnJoiningGraph() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -150,6 +188,11 @@ void WorkerNodeImpl::OnBeforeLeavingGraph() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   process_node_->RemoveWorker(this);
+}
+
+void WorkerNodeImpl::RemoveNodeAttachedData() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  execution_context_.reset();
 }
 
 WorkerNode::WorkerType WorkerNodeImpl::GetWorkerType() const {
@@ -204,6 +247,30 @@ const base::flat_set<const WorkerNode*> WorkerNodeImpl::GetChildWorkers()
     child_workers.insert(static_cast<const WorkerNode*>(child));
   DCHECK_EQ(child_workers.size(), child_workers_.size());
   return child_workers;
+}
+
+bool WorkerNodeImpl::VisitChildDedicatedWorkers(
+    const WorkerNodeVisitor& visitor) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  for (auto* worker_node_impl : child_workers_) {
+    const WorkerNode* node = worker_node_impl;
+    if (node->GetWorkerType() == WorkerType::kDedicated && !visitor(node)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const PriorityAndReason& WorkerNodeImpl::GetPriorityAndReason() const {
+  return priority_and_reason();
+}
+
+uint64_t WorkerNodeImpl::GetResidentSetKbEstimate() const {
+  return resident_set_kb_estimate();
+}
+
+uint64_t WorkerNodeImpl::GetPrivateFootprintKbEstimate() const {
+  return private_footprint_kb_estimate();
 }
 
 void WorkerNodeImpl::AddChildWorker(WorkerNodeImpl* worker_node) {

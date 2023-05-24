@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlayout.h"
 
@@ -88,7 +52,7 @@ inline static QSize toLayoutItemSize(QWidgetPrivate *priv, const QSize &size)
 
     Pure virtual functions are provided to return information about
     the layout, including, sizeHint(), minimumSize(), maximumSize()
-    and expanding().
+    and expandingDirections().
 
     The layout's geometry can be set and retrieved with setGeometry()
     and geometry(), and its alignment with setAlignment() and
@@ -360,11 +324,7 @@ QSpacerItem * QSpacerItem::spacerItem()
 
     \sa layout(), spacerItem()
 */
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-QWidget *QLayoutItem::widget()
-#else
 QWidget *QLayoutItem::widget() const
-#endif
 {
     return nullptr;
 }
@@ -372,11 +332,7 @@ QWidget *QLayoutItem::widget() const
 /*!
     Returns the widget managed by this item.
 */
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-QWidget *QWidgetItem::widget()
-#else
 QWidget *QWidgetItem::widget() const
-#endif
 {
     return wid;
 }
@@ -581,6 +537,36 @@ int QWidgetItem::heightForWidth(int w) const
     if (hfw < 0)
         hfw = 0;
     return hfw;
+}
+
+int QWidgetItem::minimumHeightForWidth(int w) const
+{
+    if (isEmpty())
+        return -1;
+
+    w = !wid->testAttribute(Qt::WA_LayoutUsesWidgetRect)
+      ? fromLayoutItemSize(wid->d_func(), QSize(w, 0)).width()
+      : w;
+
+    int hfw;
+    if (wid->layout())
+        hfw = wid->layout()->totalMinimumHeightForWidth(w);
+    else
+        hfw = wid->heightForWidth(w);   // QWidget doesn't have minimumHeightForWidth()
+
+    if (hfw > wid->maximumHeight())
+        hfw = wid->maximumHeight();
+    if (hfw < wid->minimumHeight())
+        hfw = wid->minimumHeight();
+
+    hfw = !wid->testAttribute(Qt::WA_LayoutUsesWidgetRect)
+        ? toLayoutItemSize(wid->d_func(), QSize(0, hfw)).height()
+        : hfw;
+
+    if (hfw < 0)
+        hfw = 0;
+    return hfw;
+
 }
 
 /*!

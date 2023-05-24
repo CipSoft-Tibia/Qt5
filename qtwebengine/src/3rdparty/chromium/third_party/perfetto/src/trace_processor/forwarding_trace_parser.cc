@@ -19,10 +19,9 @@
 #include "perfetto/base/logging.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
-#include "src/trace_processor/importers/ninja/ninja_log_parser.h"
 #include "src/trace_processor/importers/proto/proto_trace_parser.h"
 #include "src/trace_processor/importers/proto/proto_trace_reader.h"
-#include "src/trace_processor/trace_sorter.h"
+#include "src/trace_processor/sorter/trace_sorter.h"
 
 namespace perfetto {
 namespace trace_processor {
@@ -40,6 +39,17 @@ std::string RemoveWhitespace(std::string str) {
   return str;
 }
 
+TraceSorter::SortingMode ConvertSortingMode(SortingMode sorting_mode) {
+  switch (sorting_mode) {
+    case SortingMode::kDefaultHeuristics:
+    case SortingMode::kForceFlushPeriodWindowedSort:
+      return TraceSorter::SortingMode::kDefault;
+    case SortingMode::kForceFullSort:
+      return TraceSorter::SortingMode::kFullSort;
+  }
+  PERFETTO_FATAL("For GCC");
+}
+
 // Fuchsia traces have a magic number as documented here:
 // https://fuchsia.googlesource.com/fuchsia/+/HEAD/docs/development/tracing/trace-format/README.md#magic-number-record-trace-info-type-0
 constexpr uint64_t kFuchsiaMagicNumber = 0x0016547846040010;
@@ -51,17 +61,16 @@ ForwardingTraceParser::ForwardingTraceParser(TraceProcessorContext* context)
 
 ForwardingTraceParser::~ForwardingTraceParser() {}
 
-util::Status ForwardingTraceParser::Parse(std::unique_ptr<uint8_t[]> data,
-                                          size_t size) {
+util::Status ForwardingTraceParser::Parse(TraceBlobView blob) {
   // If this is the first Parse() call, guess the trace type and create the
   // appropriate parser.
-  static const int64_t kMaxWindowSize = std::numeric_limits<int64_t>::max();
   if (!reader_) {
     TraceType trace_type;
     {
       auto scoped_trace = context_->storage->TraceExecutionTimeIntoStats(
           stats::guess_trace_type_duration_ns);
-      trace_type = GuessTraceType(data.get(), size);
+      trace_type = GuessTraceType(blob.data(), blob.size());
+      context_->trace_type = trace_type;
     }
     switch (trace_type) {
       case kJsonTraceType: {
@@ -70,8 +79,9 @@ util::Status ForwardingTraceParser::Parse(std::unique_ptr<uint8_t[]> data,
           reader_ = std::move(context_->json_trace_tokenizer);
 
           // JSON traces have no guarantees about the order of events in them.
-          context_->sorter.reset(new TraceSorter(
-              std::move(context_->json_trace_parser), kMaxWindowSize));
+          context_->sorter.reset(
+              new TraceSorter(context_, std::move(context_->json_trace_parser),
+                              TraceSorter::SortingMode::kFullSort));
         } else {
           return util::ErrStatus("JSON support is disabled");
         }
@@ -79,19 +89,22 @@ util::Status ForwardingTraceParser::Parse(std::unique_ptr<uint8_t[]> data,
       }
       case kProtoTraceType: {
         PERFETTO_DLOG("Proto trace detected");
-        // This will be reduced once we read the trace config and we see flush
-        // period being set.
+        auto sorting_mode = ConvertSortingMode(context_->config.sorting_mode);
         reader_.reset(new ProtoTraceReader(context_));
         context_->sorter.reset(new TraceSorter(
+            context_,
             std::unique_ptr<TraceParser>(new ProtoTraceParser(context_)),
-            kMaxWindowSize));
-        context_->process_tracker->SetPidZeroIgnoredForIdleProcess();
+            sorting_mode));
+        context_->process_tracker->SetPidZeroIsUpidZeroIdleProcess();
         break;
       }
       case kNinjaLogTraceType: {
         PERFETTO_DLOG("Ninja log detected");
-        reader_.reset(new NinjaLogParser(context_));
-        break;
+        if (context_->ninja_log_parser) {
+          reader_ = std::move(context_->ninja_log_parser);
+          break;
+        }
+        return util::ErrStatus("Ninja support is disabled");
       }
       case kFuchsiaTraceType: {
         PERFETTO_DLOG("Fuchsia trace detected");
@@ -101,7 +114,8 @@ util::Status ForwardingTraceParser::Parse(std::unique_ptr<uint8_t[]> data,
 
           // Fuschia traces can have massively out of order events.
           context_->sorter.reset(new TraceSorter(
-              std::move(context_->fuchsia_trace_parser), kMaxWindowSize));
+              context_, std::move(context_->fuchsia_trace_parser),
+              TraceSorter::SortingMode::kFullSort));
         } else {
           return util::ErrStatus("Fuchsia support is disabled");
         }
@@ -109,7 +123,7 @@ util::Status ForwardingTraceParser::Parse(std::unique_ptr<uint8_t[]> data,
       }
       case kSystraceTraceType:
         PERFETTO_DLOG("Systrace trace detected");
-        context_->process_tracker->SetPidZeroIgnoredForIdleProcess();
+        context_->process_tracker->SetPidZeroIsUpidZeroIdleProcess();
         if (context_->systrace_trace_parser) {
           reader_ = std::move(context_->systrace_trace_parser);
           break;
@@ -129,12 +143,21 @@ util::Status ForwardingTraceParser::Parse(std::unique_ptr<uint8_t[]> data,
         } else {
           return util::ErrStatus(kNoZlibErr);
         }
+      case kAndroidBugreportTraceType:
+        if (context_->android_bugreport_parser) {
+          reader_ = std::move(context_->android_bugreport_parser);
+          break;
+        }
+        return util::ErrStatus("Android Bugreport support is disabled. %s",
+                               kNoZlibErr);
       case kUnknownTraceType:
-        return util::ErrStatus("Unknown trace type provided");
+        // If renaming this error message don't remove the "(ERR:fmt)" part.
+        // The UI's error_dialog.ts uses it to make the dialog more graceful.
+        return util::ErrStatus("Unknown trace type provided (ERR:fmt)");
     }
   }
 
-  return reader_->Parse(std::move(data), size);
+  return reader_->Parse(std::move(blob));
 }
 
 void ForwardingTraceParser::NotifyEndOfFile() {
@@ -145,7 +168,7 @@ TraceType GuessTraceType(const uint8_t* data, size_t size) {
   if (size == 0)
     return kUnknownTraceType;
   std::string start(reinterpret_cast<const char*>(data),
-                    std::min<size_t>(size, 20));
+                    std::min<size_t>(size, kGuessTraceMaxLookahead));
   if (size >= 8) {
     uint64_t first_word;
     memcpy(&first_word, data, sizeof(first_word));
@@ -153,25 +176,33 @@ TraceType GuessTraceType(const uint8_t* data, size_t size) {
       return kFuchsiaTraceType;
   }
   std::string start_minus_white_space = RemoveWhitespace(start);
-  if (base::StartsWith(start_minus_white_space, "{"))
+  if (base::StartsWith(start_minus_white_space, "{\""))
     return kJsonTraceType;
-  if (base::StartsWith(start_minus_white_space, "[{"))
+  if (base::StartsWith(start_minus_white_space, "[{\""))
     return kJsonTraceType;
 
   // Systrace with header but no leading HTML.
-  if (start.find("# tracer") != std::string::npos)
+  if (base::Contains(start, "# tracer"))
     return kSystraceTraceType;
 
   // Systrace with leading HTML.
-  if (base::StartsWith(start, "<!DOCTYPE html>") ||
-      base::StartsWith(start, "<html>"))
+  // Both: <!DOCTYPE html> and <!DOCTYPE HTML> have been observed.
+  std::string lower_start = base::ToLower(start);
+  if (base::StartsWith(lower_start, "<!doctype html>") ||
+      base::StartsWith(lower_start, "<html>"))
     return kSystraceTraceType;
 
-  // Ctrace is deflate'ed systrace.
-  if (start.find("TRACE:") != std::string::npos)
+  // Traces obtained from atrace -z (compress).
+  // They all have the string "TRACE:" followed by 78 9C which is a zlib header
+  // for "deflate, default compression, window size=32K" (see b/208691037)
+  if (base::Contains(start, "TRACE:\n\x78\x9c"))
     return kCtraceTraceType;
 
-  // Ninja's buils log (.ninja_log).
+  // Traces obtained from atrace without -z (no compression).
+  if (base::Contains(start, "TRACE:\n"))
+    return kSystraceTraceType;
+
+  // Ninja's build log (.ninja_log).
   if (base::StartsWith(start, "# ninja log"))
     return kNinjaLogTraceType;
 
@@ -185,6 +216,13 @@ TraceType GuessTraceType(const uint8_t* data, size_t size) {
 
   if (base::StartsWith(start, "\x0a"))
     return kProtoTraceType;
+
+  // Android bugreport.zip
+  // TODO(primiano). For now we assume any .zip file is a bugreport. In future,
+  // if we want to support different trace formats based on a .zip arachive we
+  // will need an extra layer similar to what we did kGzipTraceType.
+  if (base::StartsWith(start, "PK\x03\x04"))
+    return kAndroidBugreportTraceType;
 
   return kUnknownTraceType;
 }

@@ -11,12 +11,14 @@
  */
 
 #include <tmmintrin.h>  // SSSE3
+#include "config/av1_rtcd.h"
+#include "config/aom_scale_rtcd.h"
 
+#include "aom_dsp/x86/convolve_sse2.h"
+#include "aom_dsp/x86/convolve_ssse3.h"
 #include "aom_dsp/x86/mem_sse2.h"
 #include "aom_dsp/x86/transpose_sse2.h"
 #include "av1/common/resize.h"
-#include "config/av1_rtcd.h"
-#include "config/aom_scale_rtcd.h"
 
 static INLINE __m128i scale_plane_2_to_1_phase_0_kernel(
     const uint8_t *const src, const __m128i *const mask) {
@@ -25,16 +27,6 @@ static INLINE __m128i scale_plane_2_to_1_phase_0_kernel(
   const __m128i a_and = _mm_and_si128(a, *mask);
   const __m128i b_and = _mm_and_si128(b, *mask);
   return _mm_packus_epi16(a_and, b_and);
-}
-
-static INLINE void shuffle_filter_ssse3(const int16_t *const filter,
-                                        __m128i *const f) {
-  const __m128i f_values = _mm_load_si128((const __m128i *)filter);
-  // pack and duplicate the filter values
-  f[0] = _mm_shuffle_epi8(f_values, _mm_set1_epi16(0x0200u));
-  f[1] = _mm_shuffle_epi8(f_values, _mm_set1_epi16(0x0604u));
-  f[2] = _mm_shuffle_epi8(f_values, _mm_set1_epi16(0x0a08u));
-  f[3] = _mm_shuffle_epi8(f_values, _mm_set1_epi16(0x0e0cu));
 }
 
 static INLINE void shuffle_filter_odd_ssse3(const int16_t *const filter,
@@ -95,29 +87,6 @@ static INLINE __m128i convolve8_8_odd_offset_ssse3(const __m128i *const s,
   temp = _mm_adds_epi16(temp, k_64);
   temp = _mm_srai_epi16(temp, 7);
   return temp;
-}
-
-static INLINE __m128i convolve8_8_ssse3(const __m128i *const s,
-                                        const __m128i *const f) {
-  // multiply 2 adjacent elements with the filter and add the result
-  const __m128i k_64 = _mm_set1_epi16(1 << 6);
-  const __m128i x0 = _mm_maddubs_epi16(s[0], f[0]);
-  const __m128i x1 = _mm_maddubs_epi16(s[1], f[1]);
-  const __m128i x2 = _mm_maddubs_epi16(s[2], f[2]);
-  const __m128i x3 = _mm_maddubs_epi16(s[3], f[3]);
-  __m128i sum1, sum2;
-
-  // sum the results together, saturating only on the final step
-  // adding x0 with x2 and x1 with x3 is the only order that prevents
-  // outranges for all filters
-  sum1 = _mm_add_epi16(x0, x2);
-  sum2 = _mm_add_epi16(x1, x3);
-  // add the rounding offset early to avoid another saturated add
-  sum1 = _mm_add_epi16(sum1, k_64);
-  sum1 = _mm_adds_epi16(sum1, sum2);
-  // shift by 7 bit each 16 bit
-  sum1 = _mm_srai_epi16(sum1, 7);
-  return sum1;
 }
 
 static void scale_plane_2_to_1_phase_0(const uint8_t *src,
@@ -840,12 +809,44 @@ static void scale_plane_1_to_2_phase_0(const uint8_t *src,
   } while (--y);
 }
 
+// There's SIMD optimizations for 1/4, 1/2 and 3/4 downscaling and 2x upscaling
+// in SSSE3.
+static INLINE bool has_normative_scaler_ssse3(const int src_width,
+                                              const int src_height,
+                                              const int dst_width,
+                                              const int dst_height) {
+  const bool has_normative_scaler =
+      (2 * dst_width == src_width && 2 * dst_height == src_height) ||
+      (4 * dst_width == src_width && 4 * dst_height == src_height) ||
+      (4 * dst_width == 3 * src_width && 4 * dst_height == 3 * src_height) ||
+      (dst_width == src_width * 2 && dst_height == src_height * 2);
+
+  return has_normative_scaler;
+}
+
 void av1_resize_and_extend_frame_ssse3(const YV12_BUFFER_CONFIG *src,
                                        YV12_BUFFER_CONFIG *dst,
                                        const InterpFilter filter,
                                        const int phase, const int num_planes) {
+  bool has_normative_scaler =
+      has_normative_scaler_ssse3(src->y_crop_width, src->y_crop_height,
+                                 dst->y_crop_width, dst->y_crop_height);
+
+  if (num_planes > 1) {
+    has_normative_scaler =
+        has_normative_scaler &&
+        has_normative_scaler_ssse3(src->uv_crop_width, src->uv_crop_height,
+                                   dst->uv_crop_width, dst->uv_crop_height);
+  }
+
+  if (!has_normative_scaler) {
+    av1_resize_and_extend_frame_c(src, dst, filter, phase, num_planes);
+    return;
+  }
+
   // We use AOMMIN(num_planes, MAX_MB_PLANE) instead of num_planes to quiet
   // the static analysis warnings.
+  int malloc_failed = 0;
   for (int i = 0; i < AOMMIN(num_planes, MAX_MB_PLANE); ++i) {
     const int is_uv = i > 0;
     const int src_w = src->crop_widths[is_uv];
@@ -874,16 +875,17 @@ void av1_resize_and_extend_frame_ssse3(const YV12_BUFFER_CONFIG *src,
         const int buffer_height = (2 * dst_y_h + SUBPEL_TAPS - 2 + 7) & ~7;
         uint8_t *const temp_buffer =
             (uint8_t *)malloc(buffer_stride * buffer_height);
-        if (temp_buffer) {
-          const InterpKernel *interp_kernel =
-              (const InterpKernel *)av1_interp_filter_params_list[filter]
-                  .filter_ptr;
-          scale_plane_2_to_1_general(src->buffers[i], src->strides[is_uv],
-                                     dst->buffers[i], dst->strides[is_uv],
-                                     dst_w, dst_h, interp_kernel[phase],
-                                     temp_buffer);
-          free(temp_buffer);
+        if (!temp_buffer) {
+          malloc_failed = 1;
+          break;
         }
+        const InterpKernel *interp_kernel =
+            (const InterpKernel *)av1_interp_filter_params_list[filter]
+                .filter_ptr;
+        scale_plane_2_to_1_general(src->buffers[i], src->strides[is_uv],
+                                   dst->buffers[i], dst->strides[is_uv], dst_w,
+                                   dst_h, interp_kernel[phase], temp_buffer);
+        free(temp_buffer);
       }
     } else if (4 * dst_w == src_w && 4 * dst_h == src_h) {
       // 4 to 1
@@ -906,16 +908,17 @@ void av1_resize_and_extend_frame_ssse3(const YV12_BUFFER_CONFIG *src,
         const int extra_padding = 16;
         uint8_t *const temp_buffer =
             (uint8_t *)malloc(buffer_stride * buffer_height + extra_padding);
-        if (temp_buffer) {
-          const InterpKernel *interp_kernel =
-              (const InterpKernel *)av1_interp_filter_params_list[filter]
-                  .filter_ptr;
-          scale_plane_4_to_1_general(src->buffers[i], src->strides[is_uv],
-                                     dst->buffers[i], dst->strides[is_uv],
-                                     dst_w, dst_h, interp_kernel[phase],
-                                     temp_buffer);
-          free(temp_buffer);
+        if (!temp_buffer) {
+          malloc_failed = 1;
+          break;
         }
+        const InterpKernel *interp_kernel =
+            (const InterpKernel *)av1_interp_filter_params_list[filter]
+                .filter_ptr;
+        scale_plane_4_to_1_general(src->buffers[i], src->strides[is_uv],
+                                   dst->buffers[i], dst->strides[is_uv], dst_w,
+                                   dst_h, interp_kernel[phase], temp_buffer);
+        free(temp_buffer);
       }
     } else if (4 * dst_w == 3 * src_w && 4 * dst_h == 3 * src_h) {
       // 4 to 3
@@ -934,31 +937,38 @@ void av1_resize_and_extend_frame_ssse3(const YV12_BUFFER_CONFIG *src,
               : 0;
       const int buffer_size = buffer_stride_hor * buffer_height + extra_padding;
       uint8_t *const temp_buffer = (uint8_t *)malloc(buffer_size);
-      if (temp_buffer) {
-        const InterpKernel *interp_kernel =
-            (const InterpKernel *)av1_interp_filter_params_list[filter]
-                .filter_ptr;
-        scale_plane_4_to_3_general(src->buffers[i], src->strides[is_uv],
-                                   dst->buffers[i], dst->strides[is_uv], dst_w,
-                                   dst_h, interp_kernel, phase, temp_buffer);
-        free(temp_buffer);
+      if (!temp_buffer) {
+        malloc_failed = 1;
+        break;
       }
-    } else if (dst_w == src_w * 2 && dst_h == src_h * 2) {
+      const InterpKernel *interp_kernel =
+          (const InterpKernel *)av1_interp_filter_params_list[filter]
+              .filter_ptr;
+      scale_plane_4_to_3_general(src->buffers[i], src->strides[is_uv],
+                                 dst->buffers[i], dst->strides[is_uv], dst_w,
+                                 dst_h, interp_kernel, phase, temp_buffer);
+      free(temp_buffer);
+    } else {
+      assert(dst_w == src_w * 2 && dst_h == src_h * 2);
       // 1 to 2
       uint8_t *const temp_buffer = (uint8_t *)malloc(8 * ((src_y_w + 7) & ~7));
-      if (temp_buffer) {
-        const InterpKernel *interp_kernel =
-            (const InterpKernel *)av1_interp_filter_params_list[filter]
-                .filter_ptr;
-        scale_plane_1_to_2_phase_0(src->buffers[i], src->strides[is_uv],
-                                   dst->buffers[i], dst->strides[is_uv], src_w,
-                                   src_h, interp_kernel[8], temp_buffer);
-        free(temp_buffer);
+      if (!temp_buffer) {
+        malloc_failed = 1;
+        break;
       }
-    } else {
-      av1_resize_plane(src->buffers[i], src_h, src_w, src->strides[is_uv],
-                       dst->buffers[i], dst_h, dst_w, dst->strides[is_uv]);
+      const InterpKernel *interp_kernel =
+          (const InterpKernel *)av1_interp_filter_params_list[filter]
+              .filter_ptr;
+      scale_plane_1_to_2_phase_0(src->buffers[i], src->strides[is_uv],
+                                 dst->buffers[i], dst->strides[is_uv], src_w,
+                                 src_h, interp_kernel[8], temp_buffer);
+      free(temp_buffer);
     }
   }
-  aom_extend_frame_borders(dst, num_planes);
+
+  if (malloc_failed) {
+    av1_resize_and_extend_frame_c(src, dst, filter, phase, num_planes);
+  } else {
+    aom_extend_frame_borders(dst, num_planes);
+  }
 }

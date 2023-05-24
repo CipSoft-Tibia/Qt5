@@ -33,14 +33,19 @@
 
 #include "third_party/blink/renderer/platform/platform_export.h"
 
+namespace gfx {
+class SizeF;
+class TransformOperations;
+}
+
 namespace blink {
 
-class CompositorTransformOperations;
 class TransformOperations;
 
-PLATFORM_EXPORT void ToCompositorTransformOperations(
+PLATFORM_EXPORT void ToGfxTransformOperations(
     const TransformOperations& in_operations,
-    CompositorTransformOperations* out_operations);
+    gfx::TransformOperations* out_operations,
+    const gfx::SizeF& box_size);
 
 }  // namespace blink
 

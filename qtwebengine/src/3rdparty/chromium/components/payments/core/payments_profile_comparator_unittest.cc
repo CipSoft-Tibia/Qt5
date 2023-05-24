@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -51,7 +51,7 @@ class MockPaymentOptionsProvider : public PaymentOptionsProvider {
 AutofillProfile CreateProfileWithContactInfo(const char* name,
                                              const char* email,
                                              const char* phone) {
-  AutofillProfile profile(base::GenerateGUID(), "http://www.example.com/");
+  AutofillProfile profile(base::GenerateGUID(), "http://www.example.test/");
   autofill::test::SetProfileInfo(&profile, name, "", "", email, "", "", "", "",
                                  "", "", "", phone);
   return profile;
@@ -59,7 +59,7 @@ AutofillProfile CreateProfileWithContactInfo(const char* name,
 
 AutofillProfile CreateProfileWithCompleteAddress(const char* name,
                                                  const char* phone) {
-  AutofillProfile profile(base::GenerateGUID(), "http://www.example.com/");
+  AutofillProfile profile(base::GenerateGUID(), "http://www.example.test/");
   autofill::test::SetProfileInfo(&profile, name, "", "", "", "", "123 Fake St.",
                                  "", "Fakesville", "MN", "54000", "US", phone);
   return profile;
@@ -67,7 +67,7 @@ AutofillProfile CreateProfileWithCompleteAddress(const char* name,
 
 AutofillProfile CreateProfileWithPartialAddress(const char* name,
                                                 const char* phone) {
-  AutofillProfile profile(base::GenerateGUID(), "http://www.example.com/");
+  AutofillProfile profile(base::GenerateGUID(), "http://www.example.test/");
   autofill::test::SetProfileInfo(&profile, name, "", "", "", "", "123 Fake St.",
                                  "", "", "", "54000", "", phone);
   return profile;

@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "src/trace_processor/importers/common/args_tracker.h"
 #include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/types/trace_processor_context.h"
@@ -31,13 +32,36 @@ using FlowId = uint64_t;
 class FlowTracker {
  public:
   explicit FlowTracker(TraceProcessorContext*);
-  virtual ~FlowTracker();
+  ~FlowTracker();
 
-  virtual void Begin(TrackId track_id, FlowId flow_id);
+  void InsertFlow(SliceId slice_out_id, SliceId slice_in_id);
 
-  virtual void Step(TrackId track_id, FlowId flow_id);
+  // These methods track flow ids associated with slices and create flows as
+  // needed.
+  // If you don't have flow ids associated with slices, you should use the
+  // InsertFlow method above.
+  void Begin(SliceId slice_id, FlowId flow_id);
+  void Step(SliceId slice_id, FlowId flow_id);
+  void End(SliceId track_id, FlowId flow_id, bool close_flow);
 
-  virtual void End(TrackId track_id, FlowId flow_id, bool bind_enclosing_slice);
+  // These methods assume you have created a FlowId via GetFlowIdForV1Event and
+  // tie the flow id to the currently open slice on a given track. If you don't
+  // have a v1 event you should use the methods above.
+  void Begin(TrackId track_id, FlowId flow_id);
+  void Step(TrackId track_id, FlowId flow_id);
+
+  // When |bind_enclosing_slice| is true we will connect the flow to the
+  // currently open slice on the track, when false we will connect the flow to
+  // the next slice to be opened on the track.
+  // When |close_flow| is true it will mark this as the singular end of the
+  // flow, however if there are multiple end points this should be set to
+  // false. Both parameters are only needed for v1 flow events support
+  void End(TrackId track_id,
+           FlowId flow_id,
+           bool bind_enclosing_slice,
+           bool close_flow);
+
+  bool IsActive(FlowId flow_id) const;
 
   FlowId GetFlowIdForV1Event(uint64_t source_id, StringId cat, StringId name);
 
@@ -56,19 +80,16 @@ class FlowTracker {
 
   struct V1FlowIdHasher {
     size_t operator()(const V1FlowId& c) const {
-      base::Hash hasher;
-      hasher.Update(c.source_id);
-      hasher.Update(c.cat.raw_id());
-      hasher.Update(c.name.raw_id());
-      return std::hash<uint64_t>{}(hasher.digest());
+      return std::hash<uint64_t>{}(
+          base::Hasher::Combine(c.source_id, c.cat.raw_id(), c.name.raw_id()));
     }
   };
 
-  using FlowToSourceSliceMap = std::unordered_map<FlowId, SliceId>;
-  using PendingFlowsMap = std::unordered_map<TrackId, std::vector<FlowId>>;
+  using FlowToSourceSliceMap = base::FlatHashMap<FlowId, SliceId>;
+  using PendingFlowsMap = base::FlatHashMap<TrackId, std::vector<FlowId>>;
   using V1FlowIdToFlowIdMap =
-      std::unordered_map<V1FlowId, FlowId, V1FlowIdHasher>;
-  using FlowIdToV1FlowId = std::unordered_map<FlowId, V1FlowId>;
+      base::FlatHashMap<V1FlowId, FlowId, V1FlowIdHasher>;
+  using FlowIdToV1FlowId = base::FlatHashMap<FlowId, V1FlowId>;
 
   void InsertFlow(FlowId flow_id,
                   SliceId outgoing_slice_id,

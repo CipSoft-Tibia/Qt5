@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "passthrucanbackend.h"
 #include "passthrucanio.h"
@@ -130,7 +97,7 @@ PassThruCanBackend::~PassThruCanBackend()
     m_canIO->deleteLater();
 }
 
-void PassThruCanBackend::setConfigurationParameter(int key, const QVariant &value)
+void PassThruCanBackend::setConfigurationParameter(ConfigurationKey key, const QVariant &value)
 {
     QCanBusDevice::setConfigurationParameter(key, value);
 
@@ -177,12 +144,16 @@ QList<QCanBusDeviceInfo> PassThruCanBackend::interfaces()
 
         const QString name = canAdapterName(entries);
         if (!name.isEmpty())
-            list.append(createDeviceInfo(name));
-
+            list.append(createDeviceInfo(QStringLiteral("passthrucan"), name, false, false));
         entries.endGroup();
     }
 #endif
     return list;
+}
+
+QCanBusDeviceInfo PassThruCanBackend::deviceInfo() const
+{
+    return createDeviceInfo(QStringLiteral("passthrucan"), m_deviceName, false, false);
 }
 
 bool PassThruCanBackend::open()
@@ -200,7 +171,7 @@ bool PassThruCanBackend::open()
     QByteArray subDev;
 
     if (splitPos >= 0)
-      subDev = m_deviceName.midRef(splitPos + 1).toLatin1();
+      subDev = QStringView{m_deviceName}.mid(splitPos + 1).toLatin1();
 
     const QString library = libraryForAdapter(adapter);
     if (library.isEmpty()) {
@@ -215,10 +186,9 @@ bool PassThruCanBackend::open()
     }
     m_ioThread.start();
 
-    return QMetaObject::invokeMethod(m_canIO, "open", Qt::QueuedConnection,
-                                     Q_ARG(QString, library),
-                                     Q_ARG(QByteArray, subDev),
-                                     Q_ARG(uint, bitRate));
+    return QMetaObject::invokeMethod(m_canIO, [this, library, subDev, bitRate] {
+                                        m_canIO->open(library, subDev, bitRate);
+                                     }, Qt::QueuedConnection);
 }
 
 void PassThruCanBackend::close()
@@ -227,7 +197,7 @@ void PassThruCanBackend::close()
         qCCritical(QT_CANBUS_PLUGINS_PASSTHRU, "Unexpected state on close");
         return;
     }
-    QMetaObject::invokeMethod(m_canIO, "close", Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_canIO, &PassThruCanIO::close, Qt::QueuedConnection);
 }
 
 void PassThruCanBackend::ackOpenFinished(bool success)
@@ -250,7 +220,7 @@ void PassThruCanBackend::ackOpenFinished(bool success)
         }
         applyConfig(RawFilterKey, filters);
 
-        QMetaObject::invokeMethod(m_canIO, "listen", Qt::QueuedConnection);
+        QMetaObject::invokeMethod(m_canIO, &PassThruCanIO::listen, Qt::QueuedConnection);
 
         setState(ConnectedState);
     } else {
@@ -266,8 +236,9 @@ void PassThruCanBackend::ackCloseFinished()
     setState(UnconnectedState);
 }
 
-void PassThruCanBackend::applyConfig(int key, const QVariant &value)
+void PassThruCanBackend::applyConfig(QCanBusDevice::ConfigurationKey key, const QVariant &value)
 {
-    QMetaObject::invokeMethod(m_canIO, "applyConfig", Qt::QueuedConnection,
-                              Q_ARG(int, key), Q_ARG(QVariant, value));
+    QMetaObject::invokeMethod(m_canIO,
+                              [this, key, value] { m_canIO->applyConfig(key, value); },
+                              Qt::QueuedConnection);
 }

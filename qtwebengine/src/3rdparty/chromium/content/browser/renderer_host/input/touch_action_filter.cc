@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,6 +31,24 @@ bool IsYAxisActionDisallowed(cc::TouchAction action) {
 bool IsXAxisActionDisallowed(cc::TouchAction action) {
   return ((action & cc::TouchAction::kPanY) != cc::TouchAction::kNone) &&
          ((action & cc::TouchAction::kPanX) == cc::TouchAction::kNone);
+}
+
+void SetCursorControlIfNecessary(WebGestureEvent* event,
+                                 cc::TouchAction action) {
+  if (event->data.scroll_begin.pointer_count != 1)
+    return;
+  const float abs_delta_x = fabs(event->data.scroll_begin.delta_x_hint);
+  const float abs_delta_y = fabs(event->data.scroll_begin.delta_y_hint);
+  if (abs_delta_x <= abs_delta_y)
+    return;
+
+  // We shouldn't reach here if kPanX is not allowed for horizontal scroll.
+  DCHECK_NE(action & cc::TouchAction::kPanX, cc::TouchAction::kNone);
+  if ((action & cc::TouchAction::kInternalPanXScrolls) ==
+      cc::TouchAction::kInternalPanXScrolls)
+    return;
+
+  event->data.scroll_begin.cursor_control = true;
 }
 
 }  // namespace
@@ -93,10 +111,11 @@ FilterGestureEventResult TouchActionFilter::FilterGestureEvent(
           touch_action = compositor_allowed_touch_action_;
         }
       }
-      drop_scroll_events_ =
-          ShouldSuppressScrolling(*gesture_event, touch_action);
+      drop_scroll_events_ = ShouldSuppressScrolling(
+          *gesture_event, touch_action, active_touch_action_.has_value());
       FilterGestureEventResult res;
       if (!drop_scroll_events_) {
+        SetCursorControlIfNecessary(gesture_event, touch_action);
         res = FilterGestureEventResult::kFilterGestureEventAllowed;
       } else if (active_touch_action_.has_value()) {
         res = FilterGestureEventResult::kFilterGestureEventFiltered;
@@ -171,7 +190,7 @@ FilterGestureEventResult TouchActionFilter::FilterGestureEvent(
     case WebInputEvent::Type::kGesturePinchBegin:
       drop_pinch_events_ = (touch_action & cc::TouchAction::kPinchZoom) ==
                            cc::TouchAction::kNone;
-      FALLTHROUGH;
+      [[fallthrough]];
     case WebInputEvent::Type::kGesturePinchUpdate:
       gesture_sequence_.append("P");
       if (!drop_pinch_events_)
@@ -385,8 +404,13 @@ void TouchActionFilter::OnSetCompositorAllowedTouchAction(
 
 bool TouchActionFilter::ShouldSuppressScrolling(
     const blink::WebGestureEvent& gesture_event,
-    cc::TouchAction touch_action) {
+    cc::TouchAction touch_action,
+    bool is_active_touch_action) {
   DCHECK(gesture_event.GetType() == WebInputEvent::Type::kGestureScrollBegin);
+  // If kInternalPanXScrolls is true, kPanX must be true;
+  DCHECK((touch_action & cc::TouchAction::kInternalPanXScrolls) ==
+             cc::TouchAction::kNone ||
+         (touch_action & cc::TouchAction::kPanX) != cc::TouchAction::kNone);
 
   if (gesture_event.data.scroll_begin.pointer_count >= 2) {
     // Any GestureScrollBegin with more than one fingers is like a pinch-zoom
@@ -405,14 +429,33 @@ bool TouchActionFilter::ShouldSuppressScrolling(
   const float absDeltaXHint = fabs(deltaXHint);
   const float absDeltaYHint = fabs(deltaYHint);
 
+  // We need to wait for main-thread touch action to see if touch region is
+  // writable for stylus handwriting, and accumulate scroll events until then.
+  if ((gesture_event.primary_pointer_type ==
+           blink::WebPointerProperties::PointerType::kPen ||
+       gesture_event.primary_pointer_type ==
+           blink::WebPointerProperties::PointerType::kEraser) &&
+      !is_active_touch_action &&
+      (touch_action & cc::TouchAction::kInternalNotWritable) !=
+          cc::TouchAction::kInternalNotWritable)
+    return true;
+
   cc::TouchAction minimal_conforming_touch_action = cc::TouchAction::kNone;
-  if (absDeltaXHint >= absDeltaYHint) {
+  if (absDeltaXHint > absDeltaYHint) {
+    // If we're performing a horizontal gesture over a region that could
+    // potentially activate cursor control, we need to wait for the real
+    // main-thread touch action before making a decision since we'll need to set
+    // the cursor control bit correctly.
+    if (!is_active_touch_action &&
+        (touch_action & cc::TouchAction::kInternalPanXScrolls) !=
+            cc::TouchAction::kInternalPanXScrolls)
+      return true;
+
     if (deltaXHint > 0)
       minimal_conforming_touch_action |= cc::TouchAction::kPanLeft;
     else if (deltaXHint < 0)
       minimal_conforming_touch_action |= cc::TouchAction::kPanRight;
-  }
-  if (absDeltaYHint >= absDeltaXHint) {
+  } else {
     if (deltaYHint > 0)
       minimal_conforming_touch_action |= cc::TouchAction::kPanUp;
     else if (deltaYHint < 0)

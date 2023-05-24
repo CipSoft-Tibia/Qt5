@@ -6,8 +6,7 @@ Libweston
    :caption: Contents:
 
    libweston/compositor.rst
-   libweston/head.rst
-   libweston/output.rst
+   libweston/output-management.rst
    libweston/log.rst
 
 `Libweston` is an effort to separate the re-usable parts of Weston into a

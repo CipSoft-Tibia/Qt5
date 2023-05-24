@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTOBJECT_H
 #define QTEXTOBJECT_H
@@ -74,8 +38,6 @@ public:
     QTextDocument *document() const;
 
     int objectIndex() const;
-
-    QTextDocumentPrivate *docHandle() const;
 
 protected:
     QTextObject(QTextObjectPrivate &p, QTextDocument *doc);
@@ -137,40 +99,33 @@ public:
     QList<QTextFrame *> childFrames() const;
     QTextFrame *parentFrame() const;
 
-    class Q_GUI_EXPORT iterator {
-        QTextFrame *f;
-        int b;
-        int e;
-        QTextFrame *cf;
-        int cb;
+    class iterator {
+        QTextFrame *f = nullptr;
+        int b = 0;
+        int e = 0;
+        QTextFrame *cf = nullptr;
+        int cb = 0;
 
         friend class QTextFrame;
         friend class QTextTableCell;
         friend class QTextDocumentLayoutPrivate;
-        iterator(QTextFrame *frame, int block, int begin, int end);
+        inline iterator(QTextFrame *frame, int block, int begin, int end)
+            : f(frame), b(begin), e(end), cb(block)
+        {}
     public:
-        iterator(); // ### Qt 6: inline
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-        iterator(const iterator &o) noexcept; // = default
-        iterator &operator=(const iterator &o) noexcept; // = default
-        iterator(iterator &&other) noexcept // = default
-        { memcpy(static_cast<void *>(this), static_cast<void *>(&other), sizeof(iterator)); }
-        iterator &operator=(iterator &&other) noexcept // = default
-        { memcpy(static_cast<void *>(this), static_cast<void *>(&other), sizeof(iterator)); return *this; }
-#endif
-
+        constexpr iterator() noexcept = default;
         QTextFrame *parentFrame() const { return f; }
 
-        QTextFrame *currentFrame() const;
-        QTextBlock currentBlock() const;
+        QTextFrame *currentFrame() const { return cf; }
+        Q_GUI_EXPORT QTextBlock currentBlock() const;
 
         bool atEnd() const { return !cf && cb == e; }
 
         inline bool operator==(const iterator &o) const { return f == o.f && cf == o.cf && cb == o.cb; }
         inline bool operator!=(const iterator &o) const { return f != o.f || cf != o.cf || cb != o.cb; }
-        iterator &operator++();
+        Q_GUI_EXPORT iterator &operator++();
         inline iterator operator++(int) { iterator tmp = *this; operator++(); return tmp; }
-        iterator &operator--();
+        Q_GUI_EXPORT iterator &operator--();
         inline iterator operator--(int) { iterator tmp = *this; operator--(); return tmp; }
     };
 
@@ -188,7 +143,7 @@ private:
     Q_DECLARE_PRIVATE(QTextFrame)
     Q_DISABLE_COPY(QTextFrame)
 };
-Q_DECLARE_TYPEINFO(QTextFrame::iterator, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTextFrame::iterator, Q_RELOCATABLE_TYPE);
 
 inline void QTextFrame::setFrameFormat(const QTextFrameFormat &aformat)
 { QTextObject::setFormat(aformat); }
@@ -228,7 +183,7 @@ public:
 
     QString text() const;
 
-    QVector<QTextLayout::FormatRange> textFormats() const;
+    QList<QTextLayout::FormatRange> textFormats() const;
 
     const QTextDocument *document() const;
 
@@ -252,29 +207,26 @@ public:
     void setLineCount(int count);
     int lineCount() const;
 
-    class Q_GUI_EXPORT iterator {
-        const QTextDocumentPrivate *p;
-        int b;
-        int e;
-        int n;
+    class iterator {
+        const QTextDocumentPrivate *p = nullptr;
+        int b = 0;
+        int e = 0;
+        int n = 0;
         friend class QTextBlock;
-        iterator(const QTextDocumentPrivate *priv, int begin, int end, int f) : p(priv), b(begin), e(end), n(f) {}
+        iterator(const QTextDocumentPrivate *priv, int begin, int end, int f)
+            : p(priv), b(begin), e(end), n(f) {}
     public:
-        iterator() : p(nullptr), b(0), e(0), n(0) {}
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-        iterator(const iterator &o) : p(o.p), b(o.b), e(o.e), n(o.n) {}
-        iterator &operator=(const iterator &o) = default;
-#endif
+        constexpr iterator() = default;
 
-        QTextFragment fragment() const;
+        Q_GUI_EXPORT QTextFragment fragment() const;
 
         bool atEnd() const { return n == e; }
 
         inline bool operator==(const iterator &o) const { return p == o.p && n == o.n; }
         inline bool operator!=(const iterator &o) const { return p != o.p || n != o.n; }
-        iterator &operator++();
+        Q_GUI_EXPORT iterator &operator++();
         inline iterator operator++(int) { iterator tmp = *this; operator++(); return tmp; }
-        iterator &operator--();
+        Q_GUI_EXPORT iterator &operator--();
         inline iterator operator--(int) { iterator tmp = *this; operator--(); return tmp; }
     };
 
@@ -287,7 +239,6 @@ public:
     QTextBlock next() const;
     QTextBlock previous() const;
 
-    inline QTextDocumentPrivate *docHandle() const { return p; }
     inline int fragmentIndex() const { return n; }
 
 private:
@@ -297,8 +248,8 @@ private:
     friend class QTextLayout;
 };
 
-Q_DECLARE_TYPEINFO(QTextBlock, Q_MOVABLE_TYPE);
-Q_DECLARE_TYPEINFO(QTextBlock::iterator, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTextBlock, Q_RELOCATABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTextBlock::iterator, Q_RELOCATABLE_TYPE);
 
 
 class Q_GUI_EXPORT QTextFragment
@@ -333,7 +284,7 @@ private:
     int ne;
 };
 
-Q_DECLARE_TYPEINFO(QTextFragment, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTextFragment, Q_RELOCATABLE_TYPE);
 
 QT_END_NAMESPACE
 

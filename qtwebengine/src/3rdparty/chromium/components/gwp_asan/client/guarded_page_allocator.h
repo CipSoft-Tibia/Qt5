@@ -1,4 +1,4 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/compiler_specific.h"
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
@@ -43,6 +43,9 @@ class GWP_ASAN_EXPORT GuardedPageAllocator {
   // Does not allocate any memory for the allocator, to finish initializing call
   // Init().
   GuardedPageAllocator();
+
+  GuardedPageAllocator(const GuardedPageAllocator&) = delete;
+  GuardedPageAllocator& operator=(const GuardedPageAllocator&) = delete;
 
   // Configures this allocator to allocate up to max_alloced_pages pages at a
   // time, holding metadata for up to num_metadata allocations, from a pool of
@@ -101,6 +104,7 @@ class GWP_ASAN_EXPORT GuardedPageAllocator {
     FreeList() = default;
     virtual ~FreeList() = default;
     virtual void Initialize(T max_entries) = 0;
+    virtual void Initialize(T max_entries, std::vector<T>&& free_list) = 0;
     virtual bool Allocate(T* out, const char* type) = 0;
     virtual void Free(T entry) = 0;
   };
@@ -111,10 +115,11 @@ class GWP_ASAN_EXPORT GuardedPageAllocator {
   // SimpleFreeList is specifically designed to pre-allocate data in Initialize
   // so that it never recurses into malloc/free during Allocate/Free.
   template <typename T>
-  class SimpleFreeList : public FreeList<T> {
+  class SimpleFreeList final : public FreeList<T> {
    public:
     ~SimpleFreeList() final = default;
     void Initialize(T max_entries) final;
+    void Initialize(T max_entries, std::vector<T>&& free_list) final;
     bool Allocate(T* out, const char* type) final;
     void Free(T entry) final;
 
@@ -139,17 +144,21 @@ class GWP_ASAN_EXPORT GuardedPageAllocator {
   // first-come first-serve basis, this makes it likely that all slots will be
   // used up by common types first. Set aside a fixed amount of slots (~5%) for
   // one-off partitions so that we make sure to sample rare types as well.
-  class PartitionAllocSlotFreeList : public FreeList<AllocatorState::SlotIdx> {
+  class PartitionAllocSlotFreeList final
+      : public FreeList<AllocatorState::SlotIdx> {
    public:
     PartitionAllocSlotFreeList();
     ~PartitionAllocSlotFreeList() final;
     void Initialize(AllocatorState::SlotIdx max_entries) final;
+    void Initialize(AllocatorState::SlotIdx max_entries,
+                    std::vector<AllocatorState::SlotIdx>&& free_list) final;
     bool Allocate(AllocatorState::SlotIdx* out, const char* type) final;
     void Free(AllocatorState::SlotIdx entry) final;
 
    private:
     std::vector<const char*> type_mapping_;
     std::map<const char*, std::vector<AllocatorState::SlotIdx>> free_list_;
+    std::vector<AllocatorState::SlotIdx> initial_free_list_;
 
     // Number of used entries. This counter ensures all free entries are used
     // before starting to use random eviction.
@@ -233,8 +242,6 @@ class GWP_ASAN_EXPORT GuardedPageAllocator {
   friend class CrashAnalyzerTest;
   FRIEND_TEST_ALL_PREFIXES(CrashAnalyzerTest, InternalError);
   FRIEND_TEST_ALL_PREFIXES(CrashAnalyzerTest, StackTraceCollection);
-
-  DISALLOW_COPY_AND_ASSIGN(GuardedPageAllocator);
 };
 
 }  // namespace internal

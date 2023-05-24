@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #define CORE_FXCRT_CSS_CFX_CSSCOLORVALUE_H_
 
 #include "core/fxcrt/css/cfx_cssvalue.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxge/dib/fx_dib.h"
 
 class CFX_CSSColorValue final : public CFX_CSSValue {
  public:

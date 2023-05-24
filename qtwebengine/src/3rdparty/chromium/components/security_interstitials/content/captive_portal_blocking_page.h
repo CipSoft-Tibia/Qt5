@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "components/security_interstitials/content/ssl_blocking_page_base.h"
 #include "content/public/browser/certificate_request_result_type.h"
 #include "net/ssl/ssl_info.h"
@@ -47,11 +46,17 @@ class CaptivePortalBlockingPage : public SSLBlockingPageBase {
       const GURL& request_url,
       const GURL& login_url,
       std::unique_ptr<SSLCertReporter> ssl_cert_reporter,
+      bool can_show_enhanced_protection_message,
       const net::SSLInfo& ssl_info,
       std::unique_ptr<
           security_interstitials::SecurityInterstitialControllerClient>
           controller_client,
       const OpenLoginCallback& open_login_callback);
+
+  CaptivePortalBlockingPage(const CaptivePortalBlockingPage&) = delete;
+  CaptivePortalBlockingPage& operator=(const CaptivePortalBlockingPage&) =
+      delete;
+
   ~CaptivePortalBlockingPage() override;
 
   // InterstitialPageDelegate method:
@@ -67,8 +72,7 @@ class CaptivePortalBlockingPage : public SSLBlockingPageBase {
   std::string GetWiFiSSID() const;
 
   // SecurityInterstitialPage methods:
-  void PopulateInterstitialStrings(
-      base::DictionaryValue* load_time_data) override;
+  void PopulateInterstitialStrings(base::Value::Dict& load_time_data) override;
 
   // SecurityInterstitialPage method:
   void CommandReceived(const std::string& command) override;
@@ -84,8 +88,6 @@ class CaptivePortalBlockingPage : public SSLBlockingPageBase {
   bool is_wifi_info_overridden_for_testing_ = false;
   bool is_wifi_connection_for_testing_ = false;
   std::string wifi_ssid_for_testing_;
-
-  DISALLOW_COPY_AND_ASSIGN(CaptivePortalBlockingPage);
 };
 
 #endif  // COMPONENTS_SECURITY_INTERSTITIALS_CONTENT_CAPTIVE_PORTAL_BLOCKING_PAGE_H_

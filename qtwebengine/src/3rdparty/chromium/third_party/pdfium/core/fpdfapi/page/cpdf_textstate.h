@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/shared_copy_on_write.h"
 #include "core/fxcrt/unowned_ptr.h"
+#include "third_party/base/span.h"
 
 class CPDF_Document;
 class CPDF_Font;
@@ -36,13 +37,13 @@ class CPDF_TextState {
   void Emplace();
 
   RetainPtr<CPDF_Font> GetFont() const;
-  void SetFont(const RetainPtr<CPDF_Font>& pFont);
+  void SetFont(RetainPtr<CPDF_Font> pFont);
 
   float GetFontSize() const;
   void SetFontSize(float size);
 
-  const float* GetMatrix() const;
-  float* GetMutableMatrix();
+  pdfium::span<const float> GetMatrix() const;
+  pdfium::span<float> GetMutableMatrix();
 
   float GetCharSpace() const;
   void SetCharSpace(float sp);
@@ -55,8 +56,8 @@ class CPDF_TextState {
   TextRenderingMode GetTextMode() const;
   void SetTextMode(TextRenderingMode mode);
 
-  const float* GetCTM() const;
-  float* GetMutableCTM();
+  pdfium::span<const float> GetCTM() const;
+  pdfium::span<float> GetMutableCTM();
 
  private:
   class TextData final : public Retainable {
@@ -65,12 +66,12 @@ class CPDF_TextState {
 
     RetainPtr<TextData> Clone() const;
 
-    void SetFont(const RetainPtr<CPDF_Font>& pFont);
+    void SetFont(RetainPtr<CPDF_Font> pFont);
     float GetFontSizeV() const;
     float GetFontSizeH() const;
 
     RetainPtr<CPDF_Font> m_pFont;
-    UnownedPtr<CPDF_Document> m_pDocument;
+    UnownedPtr<const CPDF_Document> m_pDocument;
     float m_FontSize = 1.0f;
     float m_CharSpace = 0.0f;
     float m_WordSpace = 0.0f;

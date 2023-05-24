@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifdef QT_GUI_LIB
 #  include <QtGui/QGuiApplication>
@@ -32,7 +7,10 @@
 #else
 #  include <QtCore/QCoreApplication>
 #endif
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QAbstractEventDispatcher>
+#include <QTimer>
+#include <QThreadPool>
 
 enum {
     PreciseTimerInterval    =   10,
@@ -51,25 +29,36 @@ class tst_QEventDispatcher : public QObject
     bool doubleTimer = false;
 
 protected:
-    bool event(QEvent *e);
+    bool event(QEvent *e) override;
 
 public:
     inline tst_QEventDispatcher()
         : QObject(),
-          eventDispatcher(QAbstractEventDispatcher::instance(thread()))
+          eventDispatcher(QAbstractEventDispatcher::instance(thread())),
+          isGuiEventDispatcher(QCoreApplication::instance()->inherits("QGuiApplication"))
     { }
 
 private slots:
     void initTestCase();
+    void cleanup();
+
     void registerTimer();
+
     /* void registerSocketNotifier(); */ // Not implemented here, see tst_QSocketNotifier instead
     /* void registerEventNotifiier(); */ // Not implemented here, see tst_QWinEventNotifier instead
     void sendPostedEvents_data();
     void sendPostedEvents();
     void processEventsOnlySendsQueuedEvents();
+    // these two tests need to run before postedEventsPingPong
+    void postEventFromThread();
+    void postEventFromEventHandler();
+    // these tests don't leave the event dispatcher in a reliable state
     void postedEventsPingPong();
     void eventLoopExit();
     void interruptTrampling();
+
+private:
+    const bool isGuiEventDispatcher;
 };
 
 bool tst_QEventDispatcher::event(QEvent *e)
@@ -97,6 +86,12 @@ void tst_QEventDispatcher::initTestCase()
     while (!elapsedTimer.hasExpired(CoarseTimerInterval) && eventDispatcher->processEvents(QEventLoop::AllEvents)) {
             ;
     }
+}
+
+// consume pending posted events to avoid impact on the next test function
+void tst_QEventDispatcher::cleanup()
+{
+    eventDispatcher->processEvents(QEventLoop::AllEvents);
 }
 
 class TimerManager {
@@ -164,7 +159,7 @@ private:
         bool foundCoarse = false;
         bool foundVeryCoarse = false;
         const QList<QAbstractEventDispatcher::TimerInfo> timers = registeredTimers();
-        for (int i = 0; i < timers.count(); ++i) {
+        for (int i = 0; i < timers.size(); ++i) {
             const QAbstractEventDispatcher::TimerInfo &timerInfo = timers.at(i);
             if (timerInfo.timerId == m_preciseTimerId) {
                 QCOMPARE(timerInfo.interval, int(PreciseTimerInterval));
@@ -206,7 +201,7 @@ void tst_QEventDispatcher::registerTimer()
         return;
 
     // check that all 3 are present in the eventDispatcher's registeredTimer() list
-    QCOMPARE(timers.registeredTimers().count(), 3);
+    QCOMPARE(timers.registeredTimers().size(), 3);
     QVERIFY(timers.foundPrecise());
     QVERIFY(timers.foundCoarse());
     QVERIFY(timers.foundVeryCoarse());
@@ -241,7 +236,7 @@ void tst_QEventDispatcher::registerTimer()
     timers.unregister(timers.preciseTimerId());
     if (QTest::currentTestFailed())
         return;
-    QCOMPARE(timers.registeredTimers().count(), 2);
+    QCOMPARE(timers.registeredTimers().size(), 2);
     QVERIFY(!timers.foundPrecise());
     QVERIFY(timers.foundCoarse());
     QVERIFY(timers.foundVeryCoarse());
@@ -265,7 +260,7 @@ void tst_QEventDispatcher::registerTimer()
     timers.unregister(timers.coarseTimerId());
     if (QTest::currentTestFailed())
         return;
-    QCOMPARE(timers.registeredTimers().count(), 1);
+    QCOMPARE(timers.registeredTimers().size(), 1);
     QVERIFY(!timers.foundPrecise());
     QVERIFY(!timers.foundCoarse());
     QVERIFY(timers.foundVeryCoarse());
@@ -315,7 +310,7 @@ public:
 
     inline ProcessEventsOnlySendsQueuedEvents() : eventsReceived(0) {}
 
-    bool event(QEvent *event)
+    bool event(QEvent *event) override
     {
         ++eventsReceived;
 
@@ -351,6 +346,96 @@ void tst_QEventDispatcher::processEventsOnlySendsQueuedEvents()
     QCOMPARE(object.eventsReceived, 4);
 }
 
+void tst_QEventDispatcher::postEventFromThread()
+{
+    QThreadPool *threadPool = QThreadPool::globalInstance();
+    QAtomicInt hadToQuit = false;
+    QAtomicInt done = false;
+
+    threadPool->start([&]{
+        int loop = 1000 / 10; // give it a second
+        while (!done && --loop)
+            QThread::sleep(std::chrono::milliseconds{10});
+        if (done)
+            return;
+        hadToQuit = true;
+        QCoreApplication::eventDispatcher()->wakeUp();
+    });
+
+    struct EventReceiver : public QObject {
+        bool event(QEvent* event) override {
+            if (event->type() == QEvent::User)
+                return true;
+            return QObject::event(event);
+        }
+    } receiver;
+
+    int count = 500;
+    while (!hadToQuit && --count) {
+        threadPool->start([&receiver]{
+            QCoreApplication::postEvent(&receiver, new QEvent(QEvent::User));
+        });
+
+        QAbstractEventDispatcher::instance()->processEvents(QEventLoop::WaitForMoreEvents);
+    }
+    done = true;
+
+    QVERIFY(!hadToQuit);
+    QVERIFY(threadPool->waitForDone());
+}
+
+void tst_QEventDispatcher::postEventFromEventHandler()
+{
+    QThreadPool *threadPool = QThreadPool::globalInstance();
+    QAtomicInt hadToQuit = false;
+    QAtomicInt done = false;
+
+    threadPool->start([&]{
+        int loop = 250 / 10; // give it 250ms
+        while (!done && --loop)
+            QThread::sleep(std::chrono::milliseconds{10});
+        if (done)
+            return;
+        hadToQuit = true;
+        QCoreApplication::eventDispatcher()->wakeUp();
+    });
+
+    struct EventReceiver : public QObject {
+        int i = 0;
+        bool event(QEvent* event) override
+        {
+            if (event->type() == QEvent::User) {
+                ++i;
+                if (i < 2)
+                    QCoreApplication::postEvent(this, new QEvent(QEvent::User));
+                return true;
+            }
+            return QObject::event(event);
+        }
+    } receiver;
+    QCoreApplication::postEvent(&receiver, new QEvent(QEvent::User));
+    while (receiver.i < 2)
+        QAbstractEventDispatcher::instance()->processEvents(QEventLoop::WaitForMoreEvents);
+    done = true;
+
+    const QByteArrayView eventDispatcherName(QAbstractEventDispatcher::instance()->metaObject()->className());
+    qDebug() << eventDispatcherName;
+    // QXcbUnixEventDispatcher and QEventDispatcherUNIX do not do this correctly on any platform;
+    // both Windows event dispatchers fail as well.
+    const bool knownToFail = eventDispatcherName.contains("UNIX")
+                          || eventDispatcherName.contains("Unix")
+                          || eventDispatcherName.contains("Win32")
+                          || eventDispatcherName.contains("WindowsGui")
+                          || eventDispatcherName.contains("Android");
+
+    if (knownToFail)
+        QEXPECT_FAIL("", eventDispatcherName.constData(), Continue);
+
+    QVERIFY(!hadToQuit);
+    QVERIFY(threadPool->waitForDone());
+}
+
+
 void tst_QEventDispatcher::postedEventsPingPong()
 {
     QEventLoop mainLoop;
@@ -369,7 +454,7 @@ void tst_QEventDispatcher::postedEventsPingPong()
 
     // We should use Qt::CoarseTimer on Windows, to prevent event
     // dispatcher from sending a posted event.
-    QTimer::singleShot(500, Qt::CoarseTimer, [&mainLoop]() {
+    QTimer::singleShot(500, Qt::CoarseTimer, &mainLoop, [&mainLoop]() {
         mainLoop.exit(1);
     });
 
@@ -386,12 +471,12 @@ void tst_QEventDispatcher::eventLoopExit()
     // Imitates QApplication::exec():
     QEventLoop mainLoop;
     // The test itself is a lambda:
-    QTimer::singleShot(0, [&mainLoop]() {
+    QTimer::singleShot(0, &mainLoop, [&mainLoop]() {
         // Two more single shots, both will be posted as events
         // (zero timeout) and supposed to be processes by the
         // mainLoop:
 
-        QTimer::singleShot(0, [&mainLoop]() {
+        QTimer::singleShot(0, &mainLoop, [&mainLoop]() {
             // wakeUp triggers QCocoaEventDispatcher into incrementing
             // its 'serialNumber':
             mainLoop.wakeUp();
@@ -400,7 +485,7 @@ void tst_QEventDispatcher::eventLoopExit()
             QCoreApplication::processEvents();
         });
 
-        QTimer::singleShot(0, [&mainLoop]() {
+        QTimer::singleShot(0, &mainLoop, [&mainLoop]() {
             // With QCocoaEventDispatcher this is executed while in the
             // processEvents (see above) and would fail to actually
             // interrupt the loop.
@@ -409,7 +494,7 @@ void tst_QEventDispatcher::eventLoopExit()
     });
 
     bool timeoutObserved = false;
-    QTimer::singleShot(500, [&timeoutObserved, &mainLoop]() {
+    QTimer::singleShot(500, &mainLoop, [&timeoutObserved, &mainLoop]() {
         // In case the QEventLoop::exit above failed, we have to bail out
         // early, not wasting time:
         mainLoop.exit();
@@ -432,7 +517,7 @@ void tst_QEventDispatcher::interruptTrampling()
             auto dispatcher = eventDispatcher();
             QVERIFY(dispatcher);
             dispatcher->processEvents(QEventLoop::AllEvents);
-            QTimer::singleShot(0, [dispatcher]() {
+            QTimer::singleShot(0, dispatcher, [dispatcher]() {
                 dispatcher->wakeUp();
             });
             dispatcher->processEvents(QEventLoop::WaitForMoreEvents);

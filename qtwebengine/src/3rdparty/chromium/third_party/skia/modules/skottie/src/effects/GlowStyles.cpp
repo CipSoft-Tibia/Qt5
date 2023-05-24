@@ -10,6 +10,7 @@
 #include "include/core/SkColorFilter.h"
 #include "include/effects/SkColorMatrix.h"
 #include "include/effects/SkImageFilters.h"
+#include "include/private/base/SkTPin.h"
 #include "modules/skottie/src/Adapter.h"
 #include "modules/skottie/src/SkottieJson.h"
 #include "modules/skottie/src/SkottieValue.h"
@@ -17,8 +18,7 @@
 
 #include <cmath>
 
-namespace skottie {
-namespace internal {
+namespace skottie::internal {
 
 namespace  {
 
@@ -114,7 +114,7 @@ private:
 
         if (fType == Type::kInnerGlow) {
             // Inner glows draw on top of, and are masked with, the source.
-            f = SkImageFilters::Xfermode(SkBlendMode::kDstIn, std::move(f));
+            f = SkImageFilters::Blend(SkBlendMode::kDstIn, std::move(f));
 
             std::swap(source, f);
         }
@@ -160,4 +160,4 @@ sk_sp<sksg::RenderNode> EffectBuilder::attachInnerGlowStyle(const skjson::Object
     return make_glow_effect(jstyle, *fBuilder, std::move(layer), GlowAdapter::Type::kInnerGlow);
 }
 
-}} // namespace skottie::internal
+} // namespace skottie::internal

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTPROXYMODEL_H
 #define QABSTRACTPROXYMODEL_H
@@ -52,7 +16,8 @@ class QItemSelection;
 class Q_CORE_EXPORT QAbstractProxyModel : public QAbstractItemModel
 {
     Q_OBJECT
-    Q_PROPERTY(QAbstractItemModel* sourceModel READ sourceModel WRITE setSourceModel NOTIFY sourceModelChanged)
+    Q_PROPERTY(QAbstractItemModel *sourceModel READ sourceModel WRITE setSourceModel
+               NOTIFY sourceModelChanged BINDABLE bindableSourceModel)
 
 public:
     explicit QAbstractProxyModel(QObject *parent = nullptr);
@@ -60,6 +25,7 @@ public:
 
     virtual void setSourceModel(QAbstractItemModel *sourceModel);
     QAbstractItemModel *sourceModel() const;
+    QBindable<QAbstractItemModel *> bindableSourceModel();
 
     Q_INVOKABLE virtual QModelIndex mapToSource(const QModelIndex &proxyIndex) const = 0;
     Q_INVOKABLE virtual QModelIndex mapFromSource(const QModelIndex &sourceIndex) const = 0;
@@ -78,9 +44,7 @@ public:
     bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
     bool setItemData(const QModelIndex& index, const QMap<int, QVariant> &roles) override;
     bool setHeaderData(int section, Qt::Orientation orientation, const QVariant &value, int role = Qt::EditRole) override;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool clearItemData(const QModelIndex &index) override;
-#endif
 
     QModelIndex buddy(const QModelIndex &index) const override;
     bool canFetchMore(const QModelIndex &parent) const override;
@@ -98,20 +62,25 @@ public:
     QStringList mimeTypes() const override;
     Qt::DropActions supportedDragActions() const override;
     Qt::DropActions supportedDropActions() const override;
+    QHash<int, QByteArray> roleNames() const override;
 
 Q_SIGNALS:
     void sourceModelChanged(QPrivateSignal);
 
-protected Q_SLOTS:
-    void resetInternalData();
-
 protected:
+    QModelIndex createSourceIndex(int row, int col, void *internalPtr) const;
     QAbstractProxyModel(QAbstractProxyModelPrivate &, QObject *parent);
 
 private:
     Q_DECLARE_PRIVATE(QAbstractProxyModel)
     Q_DISABLE_COPY(QAbstractProxyModel)
     Q_PRIVATE_SLOT(d_func(), void _q_sourceModelDestroyed())
+    Q_PRIVATE_SLOT(d_func(), void _q_sourceModelRowsAboutToBeInserted(QModelIndex, int, int))
+    Q_PRIVATE_SLOT(d_func(), void _q_sourceModelRowsInserted(QModelIndex, int, int))
+    Q_PRIVATE_SLOT(d_func(), void _q_sourceModelRowsRemoved(QModelIndex, int, int))
+    Q_PRIVATE_SLOT(d_func(), void _q_sourceModelColumnsAboutToBeInserted(QModelIndex, int, int))
+    Q_PRIVATE_SLOT(d_func(), void _q_sourceModelColumnsInserted(QModelIndex, int, int))
+    Q_PRIVATE_SLOT(d_func(), void _q_sourceModelColumnsRemoved(QModelIndex, int, int))
 };
 
 QT_END_NAMESPACE

@@ -1,63 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qaxbase.h"
+
+#include <QtAxBase/private/qaxtypefunctions_p.h>
 
 #include <qmetaobject.h>
 #include <quuid.h>
 #include <qt_windows.h>
 #include <qtextstream.h>
+#include <qiodevicebase.h>
+#include <private/qtools_p.h>
 
 #include <ctype.h>
 
-#include "../shared/qaxtypes.h"
+#include "../shared/qaxtypes_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -99,15 +56,15 @@ static inline QString docuFromName(ITypeInfo *typeInfo, const QString &name)
 static QByteArray namedPrototype(const QByteArrayList &parameterTypes, const QByteArrayList &parameterNames, int numDefArgs = 0)
 {
     QByteArray prototype("(");
-    for (int p = 0; p < parameterTypes.count(); ++p) {
+    for (qsizetype p = 0; p < parameterTypes.size(); ++p) {
         prototype += parameterTypes.at(p);
 
-        if (p < parameterNames.count())
+        if (p < parameterNames.size())
             prototype += ' ' + parameterNames.at(p);
 
-        if (numDefArgs >= parameterTypes.count() - p)
+        if (numDefArgs >= parameterTypes.size() - p)
             prototype += " = 0";
-        if (p < parameterTypes.count() - 1)
+        if (p < parameterTypes.size() - 1)
             prototype += ", ";
     }
     prototype += ')';
@@ -117,14 +74,12 @@ static QByteArray namedPrototype(const QByteArrayList &parameterTypes, const QBy
 
 static QByteArray toType(const QByteArray &t)
 {
-    QByteArray type = t;
-    int vartype = QVariant::nameToType(type);
-    if (vartype == QVariant::Invalid)
-        type = "int";
+    QByteArray type = QMetaType::fromName(t).id() != QMetaType::UnknownType
+        ? t : QByteArrayLiteral("int");
 
     if (type.at(0) == 'Q')
         type.remove(0, 1);
-    type[0] = toupper(type.at(0));
+    type[0] = QtMiscUtils::toAsciiLower(type.at(0));
     if (type == "VariantList")
         type = "List";
     else if (type == "Map<QVariant,QVariant>")
@@ -137,7 +92,7 @@ static QByteArray toType(const QByteArray &t)
 
 QString qax_generateDocumentation(QAxBase *that)
 {
-    that->metaObject();
+    that->axBaseMetaObject();
 
     if (that->isNull())
         return QString();
@@ -149,9 +104,9 @@ QString qax_generateDocumentation(QAxBase *that)
         dispatch->GetTypeInfo(0, LOCALE_SYSTEM_DEFAULT, &typeInfo);
 
     QString docu;
-    QTextStream stream(&docu, QIODevice::WriteOnly);
+    QTextStream stream(&docu, QIODeviceBase::WriteOnly);
 
-    const QMetaObject *mo = that->metaObject();
+    const QMetaObject *mo = that->axBaseMetaObject();
     QString coClass  = QLatin1String(mo->classInfo(mo->indexOfClassInfo("CoClass")).value());
 
     stream << "<h1 align=center>" << coClass << " Reference</h1>" << Qt::endl;
@@ -222,7 +177,7 @@ QString qax_generateDocumentation(QAxBase *that)
 
             detail += QLatin1String("<p>Or call the function directly:<pre>\n");
 
-            bool hasParams = slot.parameterTypes().count() != 0;
+            const bool hasParams = !slot.parameterTypes().isEmpty();
             if (hasParams)
                 detail += QLatin1String("\tQVariantList params = ...\n");
             detail += QLatin1String("\t");
@@ -323,14 +278,14 @@ QString qax_generateDocumentation(QAxBase *that)
                              QLatin1String(type.constData()) +
                              QLatin1Char(' ') + QLatin1String(name.constData()) + QLatin1String("</h3>\n");
             detail += docuFromName(typeInfo, QString::fromLatin1(name));
-            QVariant::Type vartype = QVariant::nameToType(type);
             if (!prop.isReadable())
                 continue;
 
-            if (prop.isEnumType())
-                vartype = QVariant::Int;
+            const int vartype = prop.isEnumType()
+                ? int(QMetaType::Int)
+                : QMetaType::fromName(type).id();
 
-            if (vartype != QVariant::Invalid) {
+            if (vartype != QMetaType::UnknownType) {
                 detail += QLatin1String("<p>Read this property's value using QObject::property:<pre>\n");
                 if (prop.isEnumType())
                     detail += QLatin1String("\tint val = ");
@@ -362,7 +317,7 @@ QString qax_generateDocumentation(QAxBase *that)
                     setterSlot = "Set" + name;
                 } else {
                     QByteArray nameUp = name;
-                    nameUp[0] = char(toupper(nameUp.at(0)));
+                    nameUp[0] = QtMiscUtils::toAsciiUpper(nameUp.at(0));
                     setterSlot = "set" + nameUp;
                 }
                 detail += QLatin1String("<a href=\"#") + QString::fromLatin1(setterSlot) + QLatin1String("\">") +
@@ -391,14 +346,14 @@ QString qax_generateDocumentation(QAxBase *that)
             stream << "</ul>" << Qt::endl;
         }
     }
-    if (methodDetails.count()) {
+    if (!methodDetails.isEmpty()) {
         stream << "<hr><h2>Member Function Documentation</h2>" << Qt::endl;
-        for (int i = 0; i < methodDetails.count(); ++i)
+        for (qsizetype i = 0; i < methodDetails.size(); ++i)
             stream << methodDetails.at(i) << Qt::endl;
     }
-    if (propDetails.count()) {
+    if (!propDetails.isEmpty()) {
         stream << "<hr><h2>Property Documentation</h2>" << Qt::endl;
-        for (int i = 0; i < propDetails.count(); ++i)
+        for (qsizetype i = 0; i < propDetails.size(); ++i)
             stream << propDetails.at(i) << Qt::endl;
     }
 

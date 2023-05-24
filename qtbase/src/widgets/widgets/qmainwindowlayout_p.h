@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef QDYNAMICMAINWINDOWLAYOUT_P_H
-#define QDYNAMICMAINWINDOWLAYOUT_P_H
+#ifndef QMAINWINDOWLAYOUT_P_H
+#define QMAINWINDOWLAYOUT_P_H
 
 //
 //  W A R N I N G
@@ -60,22 +24,33 @@
 #include "QtGui/qpainter.h"
 #include "QtGui/qevent.h"
 #endif
-#include "QtCore/qvector.h"
-#include "QtCore/qset.h"
 #include "QtCore/qbasictimer.h"
+#include "QtCore/qlist.h"
+#include "QtCore/qset.h"
 #include "private/qlayoutengine_p.h"
 #include "private/qwidgetanimator_p.h"
-
 #if QT_CONFIG(dockwidget)
+#include "private/qdockwidget_p.h"
+
 #include "qdockarealayout_p.h"
+#include "qdockwidget.h"
+#else
+struct QDockWidgetPrivate {
+    enum class DragScope {
+        Group
+    };
+};
 #endif
 #if QT_CONFIG(toolbar)
 #include "qtoolbararealayout_p.h"
 #endif
+#include <QtCore/qloggingcategory.h>
 
 QT_REQUIRE_CONFIG(mainwindow);
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcQpaDockWidgets);
 
 class QToolBar;
 class QRubberBand;
@@ -210,7 +185,7 @@ bool QMainWindowLayoutSeparatorHelper<Layout>::windowEvent(QEvent *event)
 
 #if QT_CONFIG(cursor)
     case QEvent::HoverMove: {
-        adjustCursor(static_cast<QHoverEvent *>(event)->pos());
+        adjustCursor(static_cast<QHoverEvent *>(event)->position().toPoint());
         break;
     }
 
@@ -228,7 +203,7 @@ bool QMainWindowLayoutSeparatorHelper<Layout>::windowEvent(QEvent *event)
 
     case QEvent::MouseButtonPress: {
         QMouseEvent *e = static_cast<QMouseEvent *>(event);
-        if (e->button() == Qt::LeftButton && startSeparatorMove(e->pos())) {
+        if (e->button() == Qt::LeftButton && startSeparatorMove(e->position().toPoint())) {
             // The click was on a separator, eat this event
             e->accept();
             return true;
@@ -240,10 +215,10 @@ bool QMainWindowLayoutSeparatorHelper<Layout>::windowEvent(QEvent *event)
         QMouseEvent *e = static_cast<QMouseEvent *>(event);
 
 #if QT_CONFIG(cursor)
-        adjustCursor(e->pos());
+        adjustCursor(e->position().toPoint());
 #endif
         if (e->buttons() & Qt::LeftButton) {
-            if (separatorMove(e->pos())) {
+            if (separatorMove(e->position().toPoint())) {
                 // We're moving a separator, eat this event
                 e->accept();
                 return true;
@@ -255,7 +230,7 @@ bool QMainWindowLayoutSeparatorHelper<Layout>::windowEvent(QEvent *event)
 
     case QEvent::MouseButtonRelease: {
         QMouseEvent *e = static_cast<QMouseEvent *>(event);
-        if (endSeparatorMove(e->pos())) {
+        if (endSeparatorMove(e->position().toPoint())) {
             // We've released a separator, eat this event
             e->accept();
             return true;
@@ -334,18 +309,21 @@ bool QMainWindowLayoutSeparatorHelper<Layout>::endSeparatorMove(const QPoint &)
     return true;
 }
 
-class QDockWidgetGroupWindow : public QWidget
+class Q_AUTOTEST_EXPORT QDockWidgetGroupWindow : public QWidget
 {
     Q_OBJECT
 public:
-    explicit QDockWidgetGroupWindow(QWidget* parent = nullptr, Qt::WindowFlags f = { })
-        : QWidget(parent, f) {}
+    explicit QDockWidgetGroupWindow(QWidget *parent = nullptr, Qt::WindowFlags f = {})
+        : QWidget(parent, f)
+    {
+    }
     QDockAreaLayoutInfo *layoutInfo() const;
 #if QT_CONFIG(tabbar)
     const QDockAreaLayoutInfo *tabLayoutInfo() const;
     QDockWidget *activeTabbedDockWidget() const;
 #endif
     void destroyOrHideIfEmpty();
+    bool hasVisibleDockWidgets() const;
     void adjustFlags();
     bool hasNativeDecos() const;
 
@@ -353,6 +331,10 @@ public:
     void updateCurrentGapRect();
     void restore();
     void apply();
+    void childEvent(QChildEvent *event) override;
+    void reparent(QDockWidget *dockWidget);
+    void destroyIfSingleItemLeft();
+    QList<QDockWidget *> dockWidgets() const { return findChildren<QDockWidget *>(); }
 
     QRect currentGapRect;
     QList<int> currentGapPos;
@@ -362,6 +344,7 @@ signals:
 
 protected:
     bool event(QEvent *) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
     void paintEvent(QPaintEvent*) override;
 
 private:
@@ -369,14 +352,35 @@ private:
 };
 
 // This item will be used in the layout for the gap item. We cannot use QWidgetItem directly
-// because QWidgetItem functions return an empty size for widgets that are are floating.
+// because QWidgetItem functions return an empty size for widgets that are floating.
 class QDockWidgetGroupWindowItem : public QWidgetItem
 {
 public:
     explicit QDockWidgetGroupWindowItem(QDockWidgetGroupWindow *parent) : QWidgetItem(parent) {}
-    QSize minimumSize() const override { return lay()->minimumSize(); }
-    QSize maximumSize() const override { return lay()->maximumSize(); }
-    QSize sizeHint() const override { return lay()->sizeHint(); }
+
+    // when the item contains a dock widget, obtain its size (to prevent infinite loop)
+    // ask the layout otherwise
+    QSize minimumSize() const override
+    {
+        if (auto dw = widget()->findChild<QDockWidget *>())
+            return dw->minimumSize();
+        return lay()->minimumSize();
+    }
+    QSize maximumSize() const override
+    {
+        auto dw = widget()->findChild<QDockWidget *>();
+        if (dw)
+            return dw->maximumSize();
+        return lay()->maximumSize();
+    }
+    QSize sizeHint() const override
+    {
+        auto dw = widget()->findChild<QDockWidget *>();
+        if (dw)
+            return dw->sizeHint();
+        return lay()->sizeHint();
+    }
+    QWidget* widget() const override { return wid; }
 
 private:
     QLayout *lay() const { return const_cast<QDockWidgetGroupWindowItem *>(this)->widget()->layout(); }
@@ -384,12 +388,12 @@ private:
 #endif // QT_CONFIG(dockwidget)
 
 /* This data structure represents the state of all the tool-bars and dock-widgets. It's value based
-   so it can be easilly copied into a temporary variable. All operations are performed without moving
+   so it can be easily copied into a temporary variable. All operations are performed without moving
    any widgets. Only when we are sure we have the desired state, we call apply(), which moves the
    widgets.
 */
 
-class QMainWindowLayoutState
+class Q_AUTOTEST_EXPORT QMainWindowLayoutState
 {
 public:
     QRect rect;
@@ -414,6 +418,7 @@ public:
 
     QSize sizeHint() const;
     QSize minimumSize() const;
+    bool fits() const;
     void fitLayout();
 
     QLayoutItem *itemAt(int index, int *x) const;
@@ -443,6 +448,7 @@ public:
     bool restoreState(QDataStream &stream, const QMainWindowLayoutState &oldState);
 };
 
+class QMainWindowTabBar;
 class Q_AUTOTEST_EXPORT QMainWindowLayout
     : public QLayout,
       public QMainWindowLayoutSeparatorHelper<QMainWindowLayout>
@@ -451,6 +457,7 @@ class Q_AUTOTEST_EXPORT QMainWindowLayout
 
 public:
     QMainWindowLayoutState layoutState, savedState;
+    std::unique_ptr<QMainWindowLayoutState> restoredState;
 
     QMainWindowLayout(QMainWindow *mainwindow, QLayout *parentLayout);
     ~QMainWindowLayout();
@@ -458,22 +465,19 @@ public:
     QMainWindow::DockOptions dockOptions;
     void setDockOptions(QMainWindow::DockOptions opts);
 
-    // status bar
-
     QLayoutItem *statusbar;
 
+    // status bar
 #if QT_CONFIG(statusbar)
     QStatusBar *statusBar() const;
     void setStatusBar(QStatusBar *sb);
 #endif
 
     // central widget
-
     QWidget *centralWidget() const;
     void setCentralWidget(QWidget *cw);
 
     // toolbars
-
 #if QT_CONFIG(toolbar)
     void addToolBarBreak(Qt::ToolBarArea area);
     void insertToolBarBreak(QToolBar *before);
@@ -490,10 +494,11 @@ public:
 #endif
 
     // dock widgets
-
 #if QT_CONFIG(dockwidget)
     void setCorner(Qt::Corner corner, Qt::DockWidgetArea area);
     Qt::DockWidgetArea corner(Qt::Corner corner) const;
+    enum DockWidgetAreaSize {Visible, Maximum};
+    QRect dockWidgetAreaRect(Qt::DockWidgetArea area, DockWidgetAreaSize size = Maximum) const;
     void addDockWidget(Qt::DockWidgetArea area,
                        QDockWidget *dockwidget,
                        Qt::Orientation orientation);
@@ -540,15 +545,14 @@ public:
 #endif // QT_CONFIG(dockwidget)
 
     // save/restore
-
     enum VersionMarkers { // sentinel values used to validate state data
         VersionMarker = 0xff
     };
     void saveState(QDataStream &stream) const;
     bool restoreState(QDataStream &stream);
+    QBasicTimer discardRestoredStateTimer;
 
     // QLayout interface
-
     void addItem(QLayoutItem *item) override;
     void setGeometry(const QRect &r) override;
     QLayoutItem *itemAt(int index) const override;
@@ -562,7 +566,6 @@ public:
     void invalidate() override;
 
     // animations
-
     QWidgetAnimator widgetAnimator;
     QList<int> currentGapPos;
     QRect currentGapRect;
@@ -573,16 +576,31 @@ public:
 #if QT_CONFIG(dockwidget)
     QPointer<QDockWidgetGroupWindow> currentHoveredFloat; // set when dragging over a floating dock widget
     void setCurrentHoveredFloat(QDockWidgetGroupWindow *w);
+#if QT_CONFIG(tabbar)
+    bool isDockWidgetTabbed(const QDockWidget *dockWidget) const;
+    QList<QDockWidget *> tabifiedDockWidgets(const QDockWidget *dockWidget) const;
+    QMainWindowTabBar *findTabBar(const QDockWidget *dockWidget) const;
 #endif
+#endif
+    bool isInApplyState = false;
 
-    void hover(QLayoutItem *widgetItem, const QPoint &mousePos);
+    void hover(QLayoutItem *hoverTarget, const QPoint &mousePos);
     bool plug(QLayoutItem *widgetItem);
-    QLayoutItem *unplug(QWidget *widget, bool group = false);
+    QLayoutItem *unplug(QWidget *widget, QDockWidgetPrivate::DragScope scope);
     void revert(QLayoutItem *widgetItem);
-    void paintDropIndicator(QPainter *p, QWidget *widget, const QRegion &clip);
     void applyState(QMainWindowLayoutState &newState, bool animate = true);
+    void applyRestoredState();
     void restore(bool keepSavedState = false);
     void animationFinished(QWidget *widget);
+
+#if QT_CONFIG(draganddrop)
+    static bool needsPlatformDrag();
+    Qt::DropAction performPlatformWidgetDrag(QLayoutItem *widgetItem, const QPoint &pressPosition);
+    QLayoutItem *draggingWidget = nullptr;
+#endif
+
+protected:
+    void timerEvent(QTimerEvent *e) override;
 
 private Q_SLOTS:
     void updateGapIndicator();
@@ -596,6 +614,7 @@ private:
 #if QT_CONFIG(tabbar)
     void updateTabBarShapes();
 #endif
+    bool isInRestoreState = false;
 };
 
 #if QT_CONFIG(dockwidget) && !defined(QT_NO_DEBUG_STREAM)
@@ -606,4 +625,4 @@ QDebug operator<<(QDebug debug, const QMainWindowLayout *layout);
 
 QT_END_NAMESPACE
 
-#endif // QDYNAMICMAINWINDOWLAYOUT_P_H
+#endif // QMAINWINDOWLAYOUT_P_H

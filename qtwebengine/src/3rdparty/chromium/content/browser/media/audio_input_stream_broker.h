@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,19 @@
 
 #include <string>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "content/browser/media/audio_stream_broker.h"
 #include "content/common/content_export.h"
+#include "content/public/browser/audio_stream_broker.h"
 #include "media/base/audio_parameters.h"
 #include "media/mojo/mojom/audio_data_pipe.mojom.h"
 #include "media/mojo/mojom/audio_input_stream.mojom.h"
+#include "media/mojo/mojom/audio_stream_factory.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
-#include "services/audio/public/mojom/stream_factory.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/media/renderer_audio_input_stream_factory.mojom.h"
 
 namespace media {
@@ -41,14 +42,18 @@ class CONTENT_EXPORT AudioInputStreamBroker final
       uint32_t shared_memory_count,
       media::UserInputMonitorBase* user_input_monitor,
       bool enable_agc,
+      media::mojom::AudioProcessingConfigPtr processing_config,
       AudioStreamBroker::DeleterCallback deleter,
       mojo::PendingRemote<blink::mojom::RendererAudioInputStreamFactoryClient>
           renderer_factory_client);
 
+  AudioInputStreamBroker(const AudioInputStreamBroker&) = delete;
+  AudioInputStreamBroker& operator=(const AudioInputStreamBroker&) = delete;
+
   ~AudioInputStreamBroker() final;
 
   // Creates the stream.
-  void CreateStream(audio::mojom::StreamFactory* factory) final;
+  void CreateStream(media::mojom::AudioStreamFactory* factory) final;
 
   // media::AudioInputStreamObserver implementation.
   void DidStartRecording() final;
@@ -57,7 +62,7 @@ class CONTENT_EXPORT AudioInputStreamBroker final
   void StreamCreated(mojo::PendingRemote<media::mojom::AudioInputStream> stream,
                      media::mojom::ReadOnlyAudioDataPipePtr data_pipe,
                      bool initially_muted,
-                     const base::Optional<base::UnguessableToken>& stream_id);
+                     const absl::optional<base::UnguessableToken>& stream_id);
 
   void ObserverBindingLost(uint32_t reason, const std::string& description);
   void ClientBindingLost();
@@ -66,7 +71,7 @@ class CONTENT_EXPORT AudioInputStreamBroker final
   const std::string device_id_;
   media::AudioParameters params_;
   const uint32_t shared_memory_count_;
-  media::UserInputMonitorBase* const user_input_monitor_;
+  const raw_ptr<media::UserInputMonitorBase> user_input_monitor_;
   const bool enable_agc_;
 
   // Indicates that CreateStream has been called, but not StreamCreated.
@@ -74,6 +79,7 @@ class CONTENT_EXPORT AudioInputStreamBroker final
 
   DeleterCallback deleter_;
 
+  media::mojom::AudioProcessingConfigPtr processing_config_;
   mojo::Remote<blink::mojom::RendererAudioInputStreamFactoryClient>
       renderer_factory_client_;
   mojo::Receiver<AudioInputStreamObserver> observer_receiver_{this};
@@ -85,8 +91,6 @@ class CONTENT_EXPORT AudioInputStreamBroker final
           kDocumentDestroyed;
 
   base::WeakPtrFactory<AudioInputStreamBroker> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(AudioInputStreamBroker);
 };
 
 }  // namespace content

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QPLACEMANAGERENGINE_TEST_H
 #define QPLACEMANAGERENGINE_TEST_H
@@ -38,25 +13,24 @@
 #include <QtPositioning/QGeoCoordinate>
 #include <QtPositioning/QGeoLocation>
 #include <QtLocation/QPlaceContentReply>
+#include <QtLocation/QPlaceContentRequest>
 #include <QtLocation/QPlaceManager>
 #include <QtLocation/QPlaceManagerEngine>
 #include <QtLocation/QPlaceReply>
 #include <QtLocation/QPlaceDetailsReply>
-#include <QtLocation/QPlaceEditorial>
 #include <QtLocation/QPlaceIdReply>
-#include <QtLocation/QPlaceImage>
 #include <QtLocation/QPlaceSearchSuggestionReply>
 #include <QtLocation/QPlaceSearchReply>
+#include <QtLocation/QPlaceSearchRequest>
 #include <QtLocation/QPlaceResult>
 #include <QtLocation/QPlaceCategory>
 #include <QtLocation/QPlace>
-#include <QtLocation/QPlaceReview>
 #include <QtLocation/private/qplace_p.h>
 #include <QtTest/QTest>
 
 QT_BEGIN_NAMESPACE
 
-inline uint qHash(const QPlaceCategory &category)
+inline size_t qHash(const QPlaceCategory &category)
 {
     return qHash(QUuid(category.categoryId().toLatin1()));
 }
@@ -103,7 +77,7 @@ class PlaceReply : public QPlaceReply
     friend class QPlaceManagerEngineTest;
 
 public:
-    PlaceReply(QObject *parent = 0)
+    PlaceReply(QObject *parent = nullptr)
     :   QPlaceReply(parent)
     { }
 
@@ -120,13 +94,13 @@ class ContentReply : public QPlaceContentReply
     friend class QPlaceManagerEngineTest;
 
 public:
-    ContentReply(QObject *parent = 0)
+    ContentReply(QObject *parent = nullptr)
     : QPlaceContentReply(parent)
     {}
 
     Q_INVOKABLE void emitError()
     {
-        emit error(error(), errorString());
+        emit errorOccurred(error(), errorString());
     }
 
     Q_INVOKABLE void emitFinished()
@@ -142,13 +116,13 @@ class DetailsReply : public QPlaceDetailsReply
     friend class QPlaceManagerEngineTest;
 
 public:
-    DetailsReply(QObject *parent = 0)
+    DetailsReply(QObject *parent = nullptr)
     :   QPlaceDetailsReply(parent)
     { }
 
     Q_INVOKABLE void emitError()
     {
-        emit error(error(), errorString());
+        emit errorOccurred(error(), errorString());
     }
 
     Q_INVOKABLE void emitFinished()
@@ -164,13 +138,13 @@ class IdReply : public QPlaceIdReply
     friend class QPlaceManagerEngineTest;
 
 public:
-    IdReply(QPlaceIdReply::OperationType type, QObject *parent = 0)
+    IdReply(QPlaceIdReply::OperationType type, QObject *parent = nullptr)
     :   QPlaceIdReply(type, parent)
     { }
 
     Q_INVOKABLE void emitError()
     {
-        emit error(error(), errorString());
+        emit errorOccurred(error(), errorString());
     }
 
     Q_INVOKABLE void emitFinished()
@@ -184,7 +158,7 @@ class PlaceSearchReply : public QPlaceSearchReply
     Q_OBJECT
 
 public:
-    PlaceSearchReply(const QList<QPlaceSearchResult> &results, QObject *parent = 0)
+    PlaceSearchReply(const QList<QPlaceSearchResult> &results, QObject *parent = nullptr)
     :   QPlaceSearchReply(parent)
     {
         setResults(results);
@@ -192,7 +166,7 @@ public:
 
     Q_INVOKABLE void emitError()
     {
-        emit error(error(), errorString());
+        emit errorOccurred(error(), errorString());
     }
 
     Q_INVOKABLE void emitFinished()
@@ -206,7 +180,7 @@ class SuggestionReply : public QPlaceSearchSuggestionReply
     Q_OBJECT
 
 public:
-    SuggestionReply(const QStringList &suggestions, QObject *parent = 0)
+    SuggestionReply(const QStringList &suggestions, QObject *parent = nullptr)
     :   QPlaceSearchSuggestionReply(parent)
     {
         setSuggestions(suggestions);
@@ -214,7 +188,7 @@ public:
 
     Q_INVOKABLE void emitError()
     {
-        emit error(error(), errorString());
+        emit errorOccurred(error(), errorString());
     }
 
     Q_INVOKABLE void emitFinished()
@@ -304,45 +278,64 @@ public:
                             m_placeRecommendations.insert(place.placeId(), recommendations);
 
                             QJsonArray revArray = p.value(QStringLiteral("reviews")).toArray();
-                            QList<QPlaceReview> reviews;
+                            QList<QPlaceContent> reviews;
                             for (int j = 0; j < revArray.count(); ++j) {
                                 QJsonObject ro = revArray.at(j).toObject();
-                                QPlaceReview review;
-                                if (ro.contains(QStringLiteral("title")))
-                                    review.setTitle(ro.value(QStringLiteral("title")).toString());
-                                if (ro.contains(QStringLiteral("text")))
-                                    review.setText(ro.value(QStringLiteral("text")).toString());
+                                QPlaceContent review(QPlaceContent::ReviewType);
+                                if (ro.contains(QStringLiteral("title"))) {
+                                    review.setValue(QPlaceContent::ReviewTitle,
+                                                    ro.value(QStringLiteral("title")).toString());
+                                }
+                                if (ro.contains(QStringLiteral("text"))) {
+                                    review.setValue(QPlaceContent::ReviewText,
+                                                    ro.value(QStringLiteral("text")).toString());
+                                }
 
-                                if (ro.contains(QStringLiteral("language")))
-                                    review.setLanguage(ro.value("language").toString());
+                                if (ro.contains(QStringLiteral("language"))) {
+                                    review.setValue(QPlaceContent::ReviewLanguage,
+                                                    ro.value("language").toString());
+                                }
 
-                                if (ro.contains(QStringLiteral("rating")))
-                                    review.setRating(ro.value("rating").toDouble());
+                                if (ro.contains(QStringLiteral("rating"))) {
+                                    review.setValue(QPlaceContent::ReviewRating,
+                                                    ro.value("rating").toDouble());
+                                }
 
-                                if (ro.contains(QStringLiteral("dateTime")))
-                                    review.setDateTime(QDateTime::fromString(
-                                                           ro.value(QStringLiteral("dateTime")).toString(),
-                                                           QStringLiteral("hh:mm dd-MM-yyyy")));
-                                if (ro.contains(QStringLiteral("reviewId")))
-                                    review.setReviewId(ro.value("reviewId").toString());
+                                if (ro.contains(QStringLiteral("dateTime"))) {
+                                    const QString dtString =
+                                        ro.value(QStringLiteral("dateTime")).toString();
+                                    review.setValue(QPlaceContent::ReviewDateTime,
+                                                    QDateTime::fromString(dtString,
+                                                        QStringLiteral("hh:mm dd-MM-yyyy")));
+                                }
+                                if (ro.contains(QStringLiteral("reviewId"))) {
+                                    review.setValue(QPlaceContent::ReviewId,
+                                                    ro.value("reviewId").toString());
+                                }
 
                                 reviews << review;
                             }
                             m_placeReviews.insert(place.placeId(), reviews);
 
                             QJsonArray imgArray = p.value(QStringLiteral("images")).toArray();
-                            QList<QPlaceImage> images;
+                            QList<QPlaceContent> images;
                             for (int j = 0; j < imgArray.count(); ++j) {
                                 QJsonObject imgo = imgArray.at(j).toObject();
-                                QPlaceImage image;
-                                if (imgo.contains(QStringLiteral("url")))
-                                    image.setUrl(imgo.value(QStringLiteral("url")).toString());
+                                QPlaceContent image(QPlaceContent::ImageType);
+                                if (imgo.contains(QStringLiteral("url"))) {
+                                    image.setValue(QPlaceContent::ImageUrl,
+                                                  imgo.value(QStringLiteral("url")).toString());
+                                }
 
-                                if (imgo.contains("imageId"))
-                                    image.setImageId(imgo.value(QStringLiteral("imageId")).toString());
+                                if (imgo.contains("imageId")) {
+                                    image.setValue(QPlaceContent::ImageId,
+                                                imgo.value(QStringLiteral("imageId")).toString());
+                                }
 
-                                if (imgo.contains("mimeType"))
-                                    image.setMimeType(imgo.value(QStringLiteral("mimeType")).toString());
+                                if (imgo.contains("mimeType")) {
+                                    image.setValue(QPlaceContent::ImageMimeType,
+                                                imgo.value(QStringLiteral("mimeType")).toString());
+                                }
 
                                 images << image;
                             }
@@ -350,18 +343,24 @@ public:
                             m_placeImages.insert(place.placeId(), images);
 
                             QJsonArray edArray = p.value(QStringLiteral("editorials")).toArray();
-                            QList<QPlaceEditorial> editorials;
+                            QList<QPlaceContent> editorials;
                             for (int j = 0; j < edArray.count(); ++j) {
                                 QJsonObject edo = edArray.at(j).toObject();
-                                QPlaceEditorial editorial;
-                                if (edo.contains(QStringLiteral("title")))
-                                    editorial.setTitle(edo.value(QStringLiteral("title")).toString());
+                                QPlaceContent editorial(QPlaceContent::EditorialType);
+                                if (edo.contains(QStringLiteral("title"))) {
+                                    editorial.setValue(QPlaceContent::EditorialTitle,
+                                                    edo.value(QStringLiteral("title")).toString());
+                                }
 
-                                if (edo.contains(QStringLiteral("text")))
-                                    editorial.setText(edo.value(QStringLiteral("text")).toString());
+                                if (edo.contains(QStringLiteral("text"))) {
+                                    editorial.setValue(QPlaceContent::EditorialText,
+                                                    edo.value(QStringLiteral("text")).toString());
+                                }
 
-                                if (edo.contains(QStringLiteral("language")))
-                                    editorial.setLanguage(edo.value(QStringLiteral("language")).toString());
+                                if (edo.contains(QStringLiteral("language"))) {
+                                    editorial.setValue(QPlaceContent::EditorialLanguage,
+                                                edo.value(QStringLiteral("language")).toString());
+                                }
 
                                 editorials << editorial;
                             }
@@ -463,7 +462,7 @@ public:
         QList<QPlaceSearchResult> results;
 
         if (!query.searchTerm().isEmpty()) {
-            foreach (const QPlace &place, m_places) {
+            for (const QPlace &place : m_places) {
                 if (!place.name().contains(query.searchTerm(), Qt::CaseInsensitive))
                     continue;
 
@@ -476,7 +475,7 @@ public:
         } else if (!query.categories().isEmpty()) {
             const auto &categoryList = query.categories();
             const QSet<QPlaceCategory> categories(categoryList.cbegin(), categoryList.cend());
-            for (const QPlace &place : qAsConst(m_places)) {
+            for (const QPlace &place : std::as_const(m_places)) {
                 const auto &placeCategoryList = place.categories();
                 const QSet<QPlaceCategory> placeCategories(placeCategoryList.cbegin(), placeCategoryList.cend());
                 if (!placeCategories.intersects(categories))
@@ -489,8 +488,8 @@ public:
                 results.append(r);
             }
         } else if (!query.recommendationId().isEmpty()) {
-            QStringList recommendations = m_placeRecommendations.value(query.recommendationId());
-            foreach (const QString &id, recommendations) {
+            const QStringList recommendations = m_placeRecommendations.value(query.recommendationId());
+            for (const QString &id : recommendations) {
                 QPlaceResult r;
                 r.setPlace(m_places.value(id));
                 r.setTitle(r.place().name());
@@ -639,12 +638,12 @@ public:
         return QString();
     }
 
-    virtual QStringList childCategoryIds(const QString &categoryId) const override
+    QStringList childCategoryIds(const QString &categoryId) const override
     {
         return m_childCategories.value(categoryId);
     }
 
-    virtual QPlaceCategory category(const QString &categoryId) const override
+    QPlaceCategory category(const QString &categoryId) const override
     {
         return m_categories.value(categoryId);
     }
@@ -653,7 +652,7 @@ public:
     {
         QList<QPlaceCategory> categories;
 
-        foreach (const QString &id, m_childCategories.value(parentId))
+        for (const QString &id : m_childCategories.value(parentId))
             categories.append(m_categories.value(id));
 
         return categories;
@@ -678,11 +677,8 @@ public:
         sizeDictionary.insert(QStringLiteral("m"), 30);
         sizeDictionary.insert(QStringLiteral("l"), 50);
 
-        QStringList sizeKeys;
-        sizeKeys << QStringLiteral("s") << QStringLiteral("m") << QStringLiteral("l");
-
-        foreach (const QString &sizeKey, sizeKeys)
-        {
+        const QStringList sizeKeys = { QStringLiteral("s"), QStringLiteral("m"), QStringLiteral("l") };
+        for (const QString &sizeKey : sizeKeys) {
             if (icon.parameters().contains(sizeKey))
                 candidates.append(QPair<int, QUrl>(sizeDictionary.value(sizeKey),
                                   icon.parameters().value(sizeKey).toUrl()));
@@ -719,9 +715,9 @@ private:
     QHash<QString, QPlaceCategory> m_categories;
     QHash<QString, QStringList> m_childCategories;
     QHash<QString, QStringList> m_placeRecommendations;
-    QHash<QString, QList<QPlaceReview> > m_placeReviews;
-    QHash<QString, QList<QPlaceImage> > m_placeImages;
-    QHash<QString, QList<QPlaceEditorial> > m_placeEditorials;
+    QHash<QString, QList<QPlaceContent>> m_placeReviews;
+    QHash<QString, QList<QPlaceContent>> m_placeImages;
+    QHash<QString, QList<QPlaceContent>> m_placeEditorials;
 };
 
 #endif

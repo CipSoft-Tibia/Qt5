@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,7 @@
 #include "core/fxcrt/fx_coordinates.h"
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
+#include "third_party/base/check.h"
 
 #define JBIG2_GETDWORD(buf)                  \
   ((static_cast<uint32_t>((buf)[0]) << 24) | \
@@ -61,7 +62,7 @@ CJBig2_Image::CJBig2_Image(int32_t w, int32_t h) {
 CJBig2_Image::CJBig2_Image(int32_t w,
                            int32_t h,
                            int32_t stride,
-                           uint8_t* pBuf) {
+                           pdfium::span<uint8_t> pBuf) {
   if (w < 0 || h < 0)
     return;
 
@@ -76,7 +77,7 @@ CJBig2_Image::CJBig2_Image(int32_t w,
   m_nWidth = w;
   m_nHeight = h;
   m_nStride = stride;
-  m_pData.Reset(pBuf);
+  m_pData.Reset(pBuf.data());
 }
 
 CJBig2_Image::CJBig2_Image(const CJBig2_Image& other)
@@ -94,8 +95,7 @@ CJBig2_Image::~CJBig2_Image() = default;
 
 // static
 bool CJBig2_Image::IsValidImageSize(int32_t w, int32_t h) {
-  return w > 0 && w <= JBIG2_MAX_IMAGE_SIZE && h > 0 &&
-         h <= JBIG2_MAX_IMAGE_SIZE;
+  return w > 0 && w <= kJBig2MaxImageSize && h > 0 && h <= kJBig2MaxImageSize;
 }
 
 int CJBig2_Image::GetPixel(int32_t x, int32_t y) const {
@@ -266,7 +266,7 @@ bool CJBig2_Image::ComposeToInternal(CJBig2_Image* pDst,
                                      int32_t y,
                                      JBig2ComposeOp op,
                                      const FX_RECT& rtSrc) {
-  ASSERT(m_pData);
+  DCHECK(m_pData);
 
   // TODO(weili): Check whether the range check is correct. Should x>=1048576?
   if (x < -1048576 || x > 1048576 || y < -1048576 || y > 1048576)
@@ -670,5 +670,5 @@ bool CJBig2_Image::ComposeToInternal(CJBig2_Image* pDst,
       }
     }
   }
-  return 1;
+  return true;
 }

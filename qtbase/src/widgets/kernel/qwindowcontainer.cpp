@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwindowcontainer_p.h"
 #include "qwidget_p.h"
@@ -51,6 +15,8 @@
 #include <QPainter>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QWindowContainerPrivate : public QWidgetPrivate
 {
@@ -204,8 +170,6 @@ QWidget *QWidget::createWindowContainer(QWindow *window, QWidget *parent, Qt::Wi
     return new QWindowContainer(window, parent, flags);
 }
 
-
-
 /*!
     \internal
  */
@@ -219,21 +183,17 @@ QWindowContainer::QWindowContainer(QWindow *embeddedWindow, QWidget *parent, Qt:
         return;
     }
 
-    // The embedded QWindow must use the same logic as QWidget when it comes to the surface type.
-    // Otherwise we may end up with BadMatch failures on X11.
-    if (embeddedWindow->surfaceType() == QSurface::RasterSurface
-        && QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RasterGLSurface)
-        && !QCoreApplication::testAttribute(Qt::AA_ForceRasterWidgets))
-        embeddedWindow->setSurfaceType(QSurface::RasterGLSurface);
-
     d->window = embeddedWindow;
 
     QString windowName = d->window->objectName();
     if (windowName.isEmpty())
         windowName = QString::fromUtf8(d->window->metaObject()->className());
-    d->fakeParent.setObjectName(windowName + QLatin1String("ContainerFakeParent"));
+    d->fakeParent.setObjectName(windowName + "ContainerFakeParent"_L1);
 
     d->window->setParent(&d->fakeParent);
+    d->window->parent()->installEventFilter(this);
+    d->window->setFlag(Qt::SubWindow);
+
     setAcceptDrops(true);
 
     connect(QGuiApplication::instance(), SIGNAL(focusWindowChanged(QWindow*)), this, SLOT(focusWindowChanged(QWindow*)));
@@ -284,6 +244,26 @@ void QWindowContainer::focusWindowChanged(QWindow *focusWindow)
     \internal
  */
 
+bool QWindowContainer::eventFilter(QObject *o, QEvent *e)
+{
+    Q_D(QWindowContainer);
+    if (!d->window)
+        return false;
+
+    if (e->type() == QEvent::ChildRemoved) {
+        QChildEvent *ce = static_cast<QChildEvent *>(e);
+        if (ce->child() == d->window) {
+            o->removeEventFilter(this);
+            d->window = nullptr;
+        }
+    }
+    return false;
+}
+
+/*!
+    \internal
+ */
+
 bool QWindowContainer::event(QEvent *e)
 {
     Q_D(QWindowContainer);
@@ -292,12 +272,6 @@ bool QWindowContainer::event(QEvent *e)
 
     QEvent::Type type = e->type();
     switch (type) {
-    case QEvent::ChildRemoved: {
-        QChildEvent *ce = static_cast<QChildEvent *>(e);
-        if (ce->child() == d->window)
-            d->window = nullptr;
-        break;
-    }
     // The only thing we are interested in is making sure our sizes stay
     // in sync, so do a catch-all case.
     case QEvent::Resize:
@@ -312,10 +286,13 @@ bool QWindowContainer::event(QEvent *e)
     case QEvent::Show:
         d->updateUsesNativeWidgets();
         if (d->isStillAnOrphan()) {
+            d->window->parent()->removeEventFilter(this);
             d->window->setParent(d->usesNativeWidgets
                                  ? windowHandle()
                                  : window()->windowHandle());
             d->fakeParent.destroy();
+            if (d->window->parent())
+                d->window->parent()->installEventFilter(this);
         }
         if (d->window->parent()) {
             d->markParentChain();
@@ -386,7 +363,10 @@ static void qwindowcontainer_traverse(QWidget *parent, qwindowcontainer_traverse
 void QWindowContainer::toplevelAboutToBeDestroyed(QWidget *parent)
 {
     if (QWindowContainerPrivate *d = QWindowContainerPrivate::get(parent)) {
+        if (d->window->parent())
+            d->window->parent()->removeEventFilter(parent);
         d->window->setParent(&d->fakeParent);
+        d->window->parent()->installEventFilter(parent);
     }
     qwindowcontainer_traverse(parent, toplevelAboutToBeDestroyed);
 }
@@ -404,7 +384,9 @@ void QWindowContainer::parentWasChanged(QWidget *parent)
                 tld->createTLSysExtra();
                 Q_ASSERT(toplevel->windowHandle());
             }
+            d->window->parent()->removeEventFilter(parent);
             d->window->setParent(toplevel->windowHandle());
+            toplevel->windowHandle()->installEventFilter(parent);
             d->fakeParent.destroy();
             d->updateGeometry();
         }

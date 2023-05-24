@@ -1,17 +1,17 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_FONTS_SHAPING_HARFBUZZ_FONT_CACHE_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_FONTS_SHAPING_HARFBUZZ_FONT_CACHE_H_
 
-#include <hb.h>
-
-#include <memory>
-
 #include "third_party/blink/renderer/platform/fonts/font_metrics.h"
 #include "third_party/blink/renderer/platform/fonts/unicode_range_set.h"
-#include "third_party/harfbuzz-ng/utils/hb_scoped.h"
+
+#include <hb.h>
+#include <hb-cplusplus.hh>
+
+#include <memory>
 
 namespace blink {
 
@@ -24,6 +24,7 @@ struct HarfBuzzFontData;
 // need one for each unique SkTypeface.
 // FIXME, crbug.com/609099: We should fix the FontCache to only keep one
 // FontPlatformData object independent of size, then consider using this here.
+
 class HbFontCacheEntry : public RefCounted<HbFontCacheEntry> {
   USING_FAST_MALLOC(HbFontCacheEntry);
 
@@ -38,18 +39,27 @@ class HbFontCacheEntry : public RefCounted<HbFontCacheEntry> {
  private:
   explicit HbFontCacheEntry(hb_font_t* font);
 
-  HbScoped<hb_font_t> hb_font_;
+  hb::unique_ptr<hb_font_t> hb_font_;
   std::unique_ptr<HarfBuzzFontData> hb_font_data_;
 };
 
-// Declare as derived class in order to be able to forward-declare it as class
-// in FontGlobalContext.
-class HarfBuzzFontCache
-    : public HashMap<uint64_t,
-                     scoped_refptr<HbFontCacheEntry>,
-                     WTF::IntHash<uint64_t>,
-                     WTF::UnsignedWithZeroKeyHashTraits<uint64_t>> {};
+class HarfBuzzFontCache final {
+ public:
+  HarfBuzzFontCache();
+  ~HarfBuzzFontCache();
+
+  HbFontCacheEntry* RefOrNew(uint64_t unique_id,
+                             FontPlatformData* platform_data);
+  void Remove(uint64_t unique_id);
+
+ private:
+  using HbFontDataMap = HashMap<uint64_t,
+                                scoped_refptr<HbFontCacheEntry>,
+                                IntWithZeroKeyHashTraits<uint64_t>>;
+
+  HbFontDataMap font_map_;
+};
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_FONTS_SHAPING_HARFBUZZ_FONT_CACHE_H_

@@ -1,63 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.5
-import QtQuick.Controls 1.4
-import QtPositioning 5.5
-import QtLocation 5.6
+import QtQuick
+import QtQuick.Controls
+import QtPositioning
+import QtLocation
 import "../helper.js" as Helper
 
-Map {
-    id: map
+MapView {
+    id: view
     property bool followme: false
-    property variant scaleLengths: [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000]
+    property var scaleLengths: [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000]
 
     function calculateScale()
     {
@@ -88,32 +41,30 @@ Map {
         scaleText.text = text
     }
 
-    center {
+    map.center {
         // The Qt Company in Oslo
         latitude: 59.9485
         longitude: 10.7686
     }
 
-    gesture.flickDeceleration: 3000
-    gesture.enabled: true
-    onCopyrightLinkActivated: Qt.openUrlExternally(link)
+    map.onCopyrightLinkActivated: Qt.openUrlExternally(link)
 
-    onCenterChanged:{
+    map.onCenterChanged: {
         scaleTimer.restart()
         if (map.followme)
-            if (map.center != positionSource.position.coordinate) map.followme = false
+            if (map.center !== positionSource.position.coordinate) map.followme = false
     }
 
-    onZoomLevelChanged:{
+    map.onZoomLevelChanged: {
         scaleTimer.restart()
         if (map.followme) map.center = positionSource.position.coordinate
     }
 
-    onWidthChanged:{
+    onWidthChanged: {
         scaleTimer.restart()
     }
 
-    onHeightChanged:{
+    onHeightChanged: {
         scaleTimer.restart()
     }
 
@@ -131,7 +82,7 @@ Map {
         running: false
         repeat: false
         onTriggered: {
-            map.calculateScale()
+            view.calculateScale()
         }
     }
 
@@ -147,19 +98,19 @@ Map {
 
         Image {
             id: scaleImageLeft
-            source: "../../resources/scale_end.png"
+            source: Qt.resolvedUrl("../resources/scale_end.png")
             anchors.bottom: parent.bottom
             anchors.right: scaleImage.left
         }
         Image {
             id: scaleImage
-            source: "../../resources/scale.png"
+            source: Qt.resolvedUrl("../resources/scale.png")
             anchors.bottom: parent.bottom
             anchors.right: scaleImageRight.left
         }
         Image {
             id: scaleImageRight
-            source: "../../resources/scale_end.png"
+            source: Qt.resolvedUrl("../resources/scale_end.png")
             anchors.bottom: parent.bottom
             anchors.right: parent.right
         }
@@ -170,12 +121,13 @@ Map {
             text: "0 m"
         }
         Component.onCompleted: {
-            map.calculateScale();
+            view.calculateScale();
         }
     }
 
     MapQuickItem {
-        id: poiTheQtComapny
+        parent: view.map
+        id: poiTheQtCompany
         sourceItem: Rectangle { width: 14; height: 14; color: "#e41e25"; border.width: 2; border.color: "white"; smooth: true; radius: 7 }
         coordinate {
             latitude: 59.9485
@@ -186,6 +138,7 @@ Map {
     }
 
     MapQuickItem {
+        parent: view.map
         sourceItem: Text{
             text: "The Qt Company"
             color:"#242424"
@@ -193,8 +146,8 @@ Map {
             styleColor: "#ECECEC"
             style: Text.Outline
         }
-        coordinate: poiTheQtComapny.coordinate
-        anchorPoint: Qt.point(-poiTheQtComapny.sourceItem.width * 0.5,poiTheQtComapny.sourceItem.height * 1.5)
+        coordinate: poiTheQtCompany.coordinate
+        anchorPoint: Qt.point(-poiTheQtCompany.sourceItem.width * 0.5,poiTheQtCompany.sourceItem.height * 1.5)
     }
 
     PositionSource{
@@ -202,15 +155,15 @@ Map {
         active: followme
 
         onPositionChanged: {
-            map.center = positionSource.position.coordinate
+            view.map.center = positionSource.position.coordinate
         }
     }
 
     Slider {
         id: zoomSlider;
         z: map.z + 3
-        minimumValue: map.minimumZoomLevel;
-        maximumValue: map.maximumZoomLevel;
+        from: map.minimumZoomLevel;
+        to: map.maximumZoomLevel;
         anchors.margins: 10
         anchors.bottom: scale.top
         anchors.top: parent.top

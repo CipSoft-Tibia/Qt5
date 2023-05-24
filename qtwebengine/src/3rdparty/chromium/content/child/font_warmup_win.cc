@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,14 @@
 #include <dwrite.h>
 #include <stdint.h>
 #include <map>
+#include <string>
+#include <utility>
 
 #include "base/debug/alias.h"
 #include "base/files/file_path.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/no_destructor.h"
 #include "base/numerics/safe_conversions.h"
@@ -22,16 +24,15 @@
 #include "base/sys_byteorder.h"
 #include "base/trace_event/trace_event.h"
 #include "base/win/iat_patch_function.h"
-#include "base/win/windows_version.h"
 #include "build/build_config.h"
 #include "ppapi/buildflags/buildflags.h"
 #include "third_party/skia/include/core/SkFontMgr.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "third_party/skia/include/ports/SkTypeface_win.h"
 
-#if BUILDFLAG(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PPAPI)
 #include "ppapi/shared_impl/proxy_lock.h"
-#endif  // BUILDFLAG(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PPAPI)
 
 namespace content {
 
@@ -102,6 +103,9 @@ class FakeGdiObject : public base::RefCountedThreadSafe<FakeGdiObject> {
   FakeGdiObject(uint32_t magic, void* handle)
       : handle_(handle), magic_(magic) {}
 
+  FakeGdiObject(const FakeGdiObject&) = delete;
+  FakeGdiObject& operator=(const FakeGdiObject&) = delete;
+
   void set_typeface(sk_sp<SkTypeface> typeface) {
     typeface_ = std::move(typeface);
   }
@@ -114,11 +118,9 @@ class FakeGdiObject : public base::RefCountedThreadSafe<FakeGdiObject> {
   friend class base::RefCountedThreadSafe<FakeGdiObject>;
   ~FakeGdiObject() {}
 
-  void* handle_;
+  raw_ptr<void> handle_;
   uint32_t magic_;
   sk_sp<SkTypeface> typeface_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeGdiObject);
 };
 
 // This class acts as a factory for creating new fake GDI objects. It also maps
@@ -130,6 +132,9 @@ class FakeGdiObject : public base::RefCountedThreadSafe<FakeGdiObject> {
 class FakeGdiObjectFactory {
  public:
   FakeGdiObjectFactory() : curr_handle_(0) {}
+
+  FakeGdiObjectFactory(const FakeGdiObjectFactory&) = delete;
+  FakeGdiObjectFactory& operator=(const FakeGdiObjectFactory&) = delete;
 
   // Find a corresponding fake GDI object and verify its magic value.
   // The returned value is either nullptr or the validated object.
@@ -182,8 +187,6 @@ class FakeGdiObjectFactory {
   base::CheckedNumeric<uintptr_t> curr_handle_;
   std::map<void*, scoped_refptr<FakeGdiObject>> objects_;
   base::Lock objects_lock_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeGdiObjectFactory);
 };
 
 base::LazyInstance<FakeGdiObjectFactory>::Leaky g_fake_gdi_object_factory =
@@ -204,9 +207,9 @@ sk_sp<SkTypeface> GetTypefaceFromLOGFONT(const LOGFONTW* log_font) {
                                        : SkFontStyle::kUpright_Slant);
 
   std::string family_name = base::WideToUTF8(log_font->lfFaceName);
-#if BUILDFLAG(ENABLE_PLUGINS)
+#if BUILDFLAG(ENABLE_PPAPI)
   ppapi::ProxyAutoLock lock;  // Needed for DirectWrite font proxy.
-#endif                        // BUILDFLAG(ENABLE_PLUGINS)
+#endif                        // BUILDFLAG(ENABLE_PPAPI)
   return sk_sp<SkTypeface>(
       g_warmup_fontmgr->matchFamilyStyle(family_name.c_str(), style));
 }
@@ -383,47 +386,39 @@ GdiFontPatchDataImpl::GdiFontPatchDataImpl(const base::FilePath& path) {
 // StartServiceW
 // CloseServiceHandle.
 // These are all IAT patched.
+// The patching fails occasionally for unknown reasons, but the rate seems to
+// be low enough to not cause serious problems.
 void PatchServiceManagerCalls() {
   static bool is_patched = false;
   if (is_patched)
     return;
-  const char* service_provider_dll =
-      (base::win::GetVersion() >= base::win::Version::WIN8
-           ? "api-ms-win-service-management-l1-1-0.dll"
-           : "advapi32.dll");
+  const char* service_provider_dll = "api-ms-win-service-management-l1-1-0.dll";
 
   is_patched = true;
 
   static base::NoDestructor<base::win::IATPatchFunction> patch_open_sc_manager;
-  DWORD patched = patch_open_sc_manager->Patch(
-      L"dwrite.dll", service_provider_dll, "OpenSCManagerW",
-      reinterpret_cast<void*>(OpenSCManagerWPatch));
-  DCHECK(patched == 0);
+  patch_open_sc_manager->Patch(L"dwrite.dll", service_provider_dll,
+                               "OpenSCManagerW",
+                               reinterpret_cast<void*>(OpenSCManagerWPatch));
 
   static base::NoDestructor<base::win::IATPatchFunction>
       patch_close_service_handle;
-  patched = patch_close_service_handle->Patch(
+  patch_close_service_handle->Patch(
       L"dwrite.dll", service_provider_dll, "CloseServiceHandle",
       reinterpret_cast<void*>(CloseServiceHandlePatch));
-  DCHECK(patched == 0);
 
   static base::NoDestructor<base::win::IATPatchFunction> patch_open_service;
-  patched = patch_open_service->Patch(
-      L"dwrite.dll", service_provider_dll, "OpenServiceW",
-      reinterpret_cast<void*>(OpenServiceWPatch));
-  DCHECK(patched == 0);
+  patch_open_service->Patch(L"dwrite.dll", service_provider_dll, "OpenServiceW",
+                            reinterpret_cast<void*>(OpenServiceWPatch));
 
   static base::NoDestructor<base::win::IATPatchFunction> patch_start_service;
-  patched = patch_start_service->Patch(
-      L"dwrite.dll", service_provider_dll, "StartServiceW",
-      reinterpret_cast<void*>(StartServiceWPatch));
-  DCHECK(patched == 0);
+  patch_start_service->Patch(L"dwrite.dll", service_provider_dll,
+                             "StartServiceW",
+                             reinterpret_cast<void*>(StartServiceWPatch));
 
   static base::NoDestructor<base::win::IATPatchFunction> patch_nt_connect_port;
-  patched = patch_nt_connect_port->Patch(
-      L"dwrite.dll", "ntdll.dll", "NtAlpcConnectPort",
-      reinterpret_cast<void*>(NtALpcConnectPortPatch));
-  DCHECK(patched == 0);
+  patch_nt_connect_port->Patch(L"dwrite.dll", "ntdll.dll", "NtAlpcConnectPort",
+                               reinterpret_cast<void*>(NtALpcConnectPortPatch));
 }
 
 GdiFontPatchData* PatchGdiFontEnumeration(const base::FilePath& path) {

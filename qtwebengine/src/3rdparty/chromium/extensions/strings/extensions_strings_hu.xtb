@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">A következő csomag érvénytelen: "<ph name="ERROR_CODE" />".</translation>
 <translation id="1140871961407805696">Hátlapi</translation>
 <translation id="1196338895211115272">A privát kulcs exportálása sikertelen.</translation>
+<translation id="132960226125594336">A(z) <ph name="RELATIVE_PATH" /> fájlt nem sikerült betölteni a tartalomszkripthez, mert túllépné a szkript maximális méretét vagy a bővítmény maximális tartalomszkript-méretét.</translation>
 <translation id="1420684932347524586">Ajjaj! Nem sikerült a véletlenszerű RSA privát kulcs generálása.</translation>
 <translation id="1445572445564823378">Ez a bővítmény lassítja a <ph name="PRODUCT_NAME" /> működését. Kapcsolja ki a <ph name="PRODUCT_NAME" /> teljesítményének visszaállításához.</translation>
 <translation id="1468038450257740950">A WebGL nem támogatott.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">A csomag érvénytelen. Részletek: "<ph name="ERROR_MESSAGE" />".</translation>
 <translation id="8761756413268424715">A(z) „<ph name="APP_NAME" />” alkalmazás hozzáférést kér egyik eszközéhez:</translation>
 <translation id="8885905466771744233">A megadott bővítményhez már létezik privát kulcs. Használja újra vagy előbb törölje azt.</translation>
+<translation id="9039223174332979184">A gép rendszergazdája megköveteli, hogy a(z) <ph name="EXTENSION_NAME" /> legalább 3-as manifestverzióval rendelkezzen.</translation>
 <translation id="907841381057066561">Nem sikerült az ideiglenes .zip fájl létrehozása a tömörítés során.</translation>
 <translation id="941543339607623937">Érvénytelen privát kulcs.</translation>
 </translationbundle>

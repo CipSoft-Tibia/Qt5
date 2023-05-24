@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,10 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_util.h"
 #include "net/url_request/url_request.h"
@@ -28,6 +28,10 @@ GURL GetMockUrl(const std::string& scheme, const std::string& hostname) {
 class MockJobInterceptor : public URLRequestInterceptor {
  public:
   MockJobInterceptor() = default;
+
+  MockJobInterceptor(const MockJobInterceptor&) = delete;
+  MockJobInterceptor& operator=(const MockJobInterceptor&) = delete;
+
   ~MockJobInterceptor() override = default;
 
   // URLRequestInterceptor implementation
@@ -35,24 +39,19 @@ class MockJobInterceptor : public URLRequestInterceptor {
       URLRequest* request) const override {
     return std::make_unique<URLRequestHangingReadJob>(request);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MockJobInterceptor);
 };
 
 }  // namespace
 
 URLRequestHangingReadJob::URLRequestHangingReadJob(URLRequest* request)
-    : URLRequestJob(request),
-      // non-zero content-length
-      content_length_(10) {}
+    : URLRequestJob(request) {}
 
 URLRequestHangingReadJob::~URLRequestHangingReadJob() = default;
 
 void URLRequestHangingReadJob::Start() {
   // Start reading asynchronously so that all error reporting and data
   // callbacks happen as they would for network requests.
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&URLRequestHangingReadJob::StartAsync,
                                 weak_factory_.GetWeakPtr()));
 }

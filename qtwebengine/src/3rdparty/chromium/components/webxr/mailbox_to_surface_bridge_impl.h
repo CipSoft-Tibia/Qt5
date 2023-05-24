@@ -1,14 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_WEBXR_MAILBOX_TO_SURFACE_BRIDGE_IMPL_H_
 #define COMPONENTS_WEBXR_MAILBOX_TO_SURFACE_BRIDGE_IMPL_H_
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "device/vr/android/mailbox_to_surface_bridge.h"
 #include "gpu/command_buffer/common/sync_token.h"
 #include "gpu/ipc/common/surface_handle.h"
@@ -37,6 +37,11 @@ class MailboxToSurfaceBridgeImpl : public device::MailboxToSurfaceBridge {
   // must be called consistently on a single GL thread. This is verified by
   // DCHECKs.
   MailboxToSurfaceBridgeImpl();
+
+  MailboxToSurfaceBridgeImpl(const MailboxToSurfaceBridgeImpl&) = delete;
+  MailboxToSurfaceBridgeImpl& operator=(const MailboxToSurfaceBridgeImpl&) =
+      delete;
+
   ~MailboxToSurfaceBridgeImpl() override;
 
   bool IsConnected() override;
@@ -54,11 +59,14 @@ class MailboxToSurfaceBridgeImpl : public device::MailboxToSurfaceBridge {
 
   bool CopyMailboxToSurfaceAndSwap(const gpu::MailboxHolder& mailbox) override;
 
+  bool CopyMailboxToSurfaceAndSwap(const gpu::MailboxHolder& mailbox,
+                                   const gfx::Transform& uv_transform) override;
+
   void GenSyncToken(gpu::SyncToken* out_sync_token) override;
 
   void WaitSyncToken(const gpu::SyncToken& sync_token) override;
 
-  void WaitForClientGpuFence(gfx::GpuFence*) override;
+  void WaitForClientGpuFence(gfx::GpuFence&) override;
 
   void CreateGpuFence(const gpu::SyncToken& sync_token,
                       base::OnceCallback<void(std::unique_ptr<gfx::GpuFence>)>
@@ -77,12 +85,11 @@ class MailboxToSurfaceBridgeImpl : public device::MailboxToSurfaceBridge {
       scoped_refptr<viz::ContextProvider> provider);
   void InitializeRenderer();
   void DestroyContext();
-  void DrawQuad(unsigned int textureHandle);
+  void DrawQuad(unsigned int textureHandle, const gfx::Transform& uv_transform);
 
   scoped_refptr<viz::ContextProvider> context_provider_;
-  std::unique_ptr<gl::ScopedJavaSurface> surface_;
-  gpu::gles2::GLES2Interface* gl_ = nullptr;
-  gpu::ContextSupport* context_support_ = nullptr;
+  raw_ptr<gpu::gles2::GLES2Interface> gl_ = nullptr;
+  raw_ptr<gpu::ContextSupport> context_support_ = nullptr;
   int surface_handle_ = gpu::kNullSurfaceHandle;
   // TODO(https://crbug.com/836524): shouldn't have both of these closures
   // in the same class like this.
@@ -98,13 +105,14 @@ class MailboxToSurfaceBridgeImpl : public device::MailboxToSurfaceBridge {
   // A swap ID which is passed to GL swap. Incremented each call.
   uint64_t swap_id_ = 0;
 
+  // Uniform handle for the UV transform used by DrawQuad.
+  uint32_t uniform_uv_transform_handle_ = 0;
+
   // A task runner for the GL thread
   scoped_refptr<base::SingleThreadTaskRunner> gl_thread_task_runner_;
 
   // Must be last.
   base::WeakPtrFactory<MailboxToSurfaceBridgeImpl> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(MailboxToSurfaceBridgeImpl);
 };
 
 class MailboxToSurfaceBridgeFactoryImpl
@@ -115,4 +123,4 @@ class MailboxToSurfaceBridgeFactoryImpl
 
 }  // namespace webxr
 
-#endif  // COMPONENTS_WEBXR_MAILBOX_TO_SURFACE_BRIDGE_H_
+#endif  // COMPONENTS_WEBXR_MAILBOX_TO_SURFACE_BRIDGE_IMPL_H_

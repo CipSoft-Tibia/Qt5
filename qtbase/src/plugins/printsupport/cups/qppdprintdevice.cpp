@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qppdprintdevice.h"
 
@@ -52,6 +16,10 @@
 
 QT_BEGIN_NAMESPACE
 
+// avoid all the warnings about using deprecated API from CUPS (as there is no real replacement)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+
 QPpdPrintDevice::QPpdPrintDevice(const QString &id)
     : QPlatformPrintDevice(id),
       m_cupsDest(0),
@@ -60,7 +28,7 @@ QPpdPrintDevice::QPpdPrintDevice(const QString &id)
     if (!id.isEmpty()) {
 
         // TODO For now each dest is an individual device
-        const auto parts = id.splitRef(QLatin1Char('/'));
+        const auto parts = QStringView{id}.split(u'/');
         m_cupsName = parts.at(0).toUtf8();
         if (parts.size() > 1)
             m_cupsInstance = parts.at(1).toUtf8();
@@ -189,8 +157,8 @@ QMarginsF QPpdPrintDevice::printableMargins(const QPageSize &pageSize,
                                             QPageLayout::Orientation orientation,
                                             int resolution) const
 {
-    Q_UNUSED(orientation)
-    Q_UNUSED(resolution)
+    Q_UNUSED(orientation);
+    Q_UNUSED(resolution);
     if (!m_havePageSizes)
         loadPageSizes();
     // TODO Orientation?
@@ -460,7 +428,7 @@ bool QPpdPrintDevice::setProperty(QPrintDevice::PrintDevicePropertyKey key, cons
 {
     if (key == PDPK_PpdOption) {
         const QStringList values = value.toStringList();
-        if (values.count() == 2) {
+        if (values.size() == 2) {
             ppdMarkOption(m_ppd, values[0].toLatin1(), values[1].toLatin1());
             return true;
         }
@@ -473,7 +441,7 @@ bool QPpdPrintDevice::isFeatureAvailable(QPrintDevice::PrintDevicePropertyKey ke
 {
     if (key == PDPK_PpdChoiceIsInstallableConflict) {
         const QStringList values = params.toStringList();
-        if (values.count() == 2)
+        if (values.size() == 2)
             return ppdInstallableConflict(m_ppd, values[0].toLatin1(), values[1].toLatin1());
     }
 
@@ -507,5 +475,7 @@ cups_ptype_e QPpdPrintDevice::printerTypeFlags() const
 {
     return static_cast<cups_ptype_e>(printerOption("printer-type").toUInt());
 }
+
+QT_WARNING_POP
 
 QT_END_NAMESPACE

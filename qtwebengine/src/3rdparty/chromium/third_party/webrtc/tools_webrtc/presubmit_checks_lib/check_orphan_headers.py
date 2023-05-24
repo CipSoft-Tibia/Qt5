@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2017 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -9,14 +10,12 @@
 
 import os
 import re
-import string
-
 
 # TARGET_RE matches a GN target, and extracts the target name and the contents.
-TARGET_RE = re.compile(r'(?P<indent>\s*)\w+\("(?P<target_name>\w+)"\) {'
-                       r'(?P<target_contents>.*?)'
-                       r'(?P=indent)}',
-                       re.MULTILINE | re.DOTALL)
+TARGET_RE = re.compile(
+    r'(?P<indent>\s*)\w+\("(?P<target_name>\w+)"\) {'
+    r'(?P<target_contents>.*?)'
+    r'(?P=indent)}', re.MULTILINE | re.DOTALL)
 
 # SOURCES_RE matches a block of sources inside a GN target.
 SOURCES_RE = re.compile(
@@ -67,9 +66,7 @@ def GetBuildGnPathFromFilePath(file_path, file_exists_check, root_dir_path):
     candidate_build_gn_path = os.path.join(candidate_dir, 'BUILD.gn')
     if file_exists_check(candidate_build_gn_path):
       return candidate_build_gn_path
-    else:
-      candidate_dir = os.path.abspath(os.path.join(candidate_dir,
-                                                   os.pardir))
+    candidate_dir = os.path.abspath(os.path.join(candidate_dir, os.pardir))
   raise NoBuildGnFoundError(
       'No BUILD.gn file found for file: `{}`'.format(file_path))
 
@@ -113,7 +110,7 @@ def GetHeadersInBuildGnFileSources(file_content, target_abs_path):
       for source_file_match in SOURCE_FILE_RE.finditer(sources):
         source_file = source_file_match.group('source_file')
         if source_file.endswith('.h'):
-          source_file_tokens = string.split(source_file, '/')
-          headers_in_sources.add(os.path.join(target_abs_path,
-                                              *source_file_tokens))
+          source_file_tokens = source_file.split('/')
+          headers_in_sources.add(
+              os.path.join(target_abs_path, *source_file_tokens))
   return headers_in_sources

@@ -1,72 +1,43 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "remoteselector.h"
 #include "ui_remoteselector.h"
 
+#include <QtBluetooth/qbluetoothaddress.h>
 #include <QtBluetooth/qbluetoothlocaldevice.h>
 #include <QtBluetooth/qbluetoothservicediscoveryagent.h>
+#include <QtBluetooth/qbluetoothuuid.h>
 
-QT_USE_NAMESPACE
+#include <QtGui/qguiapplication.h>
+#include <QtGui/qstylehints.h>
+
+#include <QtWidgets/qlistwidget.h>
+
+using namespace Qt::StringLiterals;
 
 RemoteSelector::RemoteSelector(const QBluetoothAddress &localAdapter, QWidget *parent)
     :   QDialog(parent), ui(new Ui::RemoteSelector)
 {
     ui->setupUi(this);
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    setWindowState(Qt::WindowMaximized);
+#endif
 
+    QStyleHints *styleHints = qGuiApp->styleHints();
+    updateIcon(styleHints->colorScheme());
+    connect(styleHints, &QStyleHints::colorSchemeChanged, this, &RemoteSelector::updateIcon);
+
+//! [createDiscoveryAgent]
     m_discoveryAgent = new QBluetoothServiceDiscoveryAgent(localAdapter);
 
-    connect(m_discoveryAgent, SIGNAL(serviceDiscovered(QBluetoothServiceInfo)),
-            this, SLOT(serviceDiscovered(QBluetoothServiceInfo)));
-    connect(m_discoveryAgent, SIGNAL(finished()), this, SLOT(discoveryFinished()));
-    connect(m_discoveryAgent, SIGNAL(canceled()), this, SLOT(discoveryFinished()));
+    connect(m_discoveryAgent, &QBluetoothServiceDiscoveryAgent::serviceDiscovered,
+            this, &RemoteSelector::serviceDiscovered);
+    connect(m_discoveryAgent, &QBluetoothServiceDiscoveryAgent::finished,
+            this, &RemoteSelector::discoveryFinished);
+    connect(m_discoveryAgent, &QBluetoothServiceDiscoveryAgent::canceled,
+            this, &RemoteSelector::discoveryFinished);
+//! [createDiscoveryAgent]
 }
 
 RemoteSelector::~RemoteSelector()
@@ -83,9 +54,10 @@ void RemoteSelector::startDiscovery(const QBluetoothUuid &uuid)
 
     ui->remoteDevices->clear();
 
+//! [startDiscovery]
     m_discoveryAgent->setUuidFilter(uuid);
     m_discoveryAgent->start(QBluetoothServiceDiscoveryAgent::FullDiscovery);
-
+//! [startDiscovery]
 }
 
 void RemoteSelector::stopDiscovery()
@@ -115,11 +87,12 @@ void RemoteSelector::serviceDiscovered(const QBluetoothServiceInfo &serviceInfo)
     qDebug() << "\tRFCOMM server channel:" << serviceInfo.serverChannel();
 #endif
     const QBluetoothAddress address = serviceInfo.device().address();
-    for (const QBluetoothServiceInfo &info : qAsConst(m_discoveredServices)) {
+    for (const QBluetoothServiceInfo &info : std::as_const(m_discoveredServices)) {
         if (info.device().address() == address)
             return;
     }
 
+//! [serviceDiscovered]
     QString remoteName;
     if (serviceInfo.device().name().isEmpty())
         remoteName = address.toString();
@@ -132,6 +105,7 @@ void RemoteSelector::serviceDiscovered(const QBluetoothServiceInfo &serviceInfo)
 
     m_discoveredServices.insert(item, serviceInfo);
     ui->remoteDevices->addItem(item);
+//! [serviceDiscovered]
 }
 
 void RemoteSelector::discoveryFinished()
@@ -139,14 +113,40 @@ void RemoteSelector::discoveryFinished()
     ui->status->setText(tr("Select the chat service to connect to."));
 }
 
+void RemoteSelector::updateIcon(Qt::ColorScheme scheme)
+{
+    const QString bluetoothIconName = (scheme == Qt::ColorScheme::Dark) ? u"bluetooth_dark"_s
+                                                                        : u"bluetooth"_s;
+    const QIcon bluetoothIcon = QIcon::fromTheme(bluetoothIconName);
+    ui->iconLabel->setPixmap(bluetoothIcon.pixmap(24, 24, QIcon::Normal, QIcon::On));
+}
+
 void RemoteSelector::on_remoteDevices_itemActivated(QListWidgetItem *item)
 {
-    qDebug() << "got click" << item->text();
     m_service = m_discoveredServices.value(item);
     if (m_discoveryAgent->isActive())
         m_discoveryAgent->stop();
 
     accept();
+}
+
+void RemoteSelector::on_remoteDevices_itemClicked(QListWidgetItem *)
+{
+    ui->connectButton->setEnabled(true);
+    ui->connectButton->setFocus();
+}
+
+void RemoteSelector::on_connectButton_clicked()
+{
+    auto items = ui->remoteDevices->selectedItems();
+    if (items.size()) {
+        QListWidgetItem *item = items[0];
+        m_service = m_discoveredServices.value(item);
+        if (m_discoveryAgent->isActive())
+            m_discoveryAgent->stop();
+
+        accept();
+    }
 }
 
 void RemoteSelector::on_cancelButton_clicked()

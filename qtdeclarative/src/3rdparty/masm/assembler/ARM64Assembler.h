@@ -517,6 +517,7 @@ typedef enum {
     x29 = fp,
     x30 = lr,
     zr = 0x3f,
+    none = 0xff,
 } RegisterID;
 
 typedef enum {
@@ -525,8 +526,8 @@ typedef enum {
     #undef DECLARE_REGISTER
 } FPRegisterID;
 
-static Q_DECL_CONSTEXPR bool isSp(RegisterID reg) { return reg == sp; }
-static Q_DECL_CONSTEXPR bool isZr(RegisterID reg) { return reg == zr; }
+static constexpr bool isSp(RegisterID reg) { return reg == sp; }
+static constexpr bool isZr(RegisterID reg) { return reg == zr; }
 
 } // namespace ARM64Registers
 
@@ -535,15 +536,15 @@ public:
     typedef ARM64Registers::RegisterID RegisterID;
     typedef ARM64Registers::FPRegisterID FPRegisterID;
     
-    static Q_DECL_CONSTEXPR RegisterID firstRegister() { return ARM64Registers::x0; }
-    static Q_DECL_CONSTEXPR RegisterID lastRegister() { return ARM64Registers::sp; }
+    static constexpr RegisterID firstRegister() { return ARM64Registers::x0; }
+    static constexpr RegisterID lastRegister() { return ARM64Registers::sp; }
     
-    static Q_DECL_CONSTEXPR FPRegisterID firstFPRegister() { return ARM64Registers::q0; }
-    static Q_DECL_CONSTEXPR FPRegisterID lastFPRegister() { return ARM64Registers::q31; }
+    static constexpr FPRegisterID firstFPRegister() { return ARM64Registers::q0; }
+    static constexpr FPRegisterID lastFPRegister() { return ARM64Registers::q31; }
 
 private:
-    static Q_DECL_CONSTEXPR bool isSp(RegisterID reg) { return ARM64Registers::isSp(reg); }
-    static Q_DECL_CONSTEXPR bool isZr(RegisterID reg) { return ARM64Registers::isZr(reg); }
+    static constexpr bool isSp(RegisterID reg) { return ARM64Registers::isSp(reg); }
+    static constexpr bool isZr(RegisterID reg) { return ARM64Registers::isZr(reg); }
 
 public:
     ARM64Assembler()
@@ -656,6 +657,10 @@ public:
             data.realTypes.m_bitNumber = bitNumber;
             data.realTypes.m_compareRegister = compareRegister;
         }
+        LinkRecord(const LinkRecord& other)
+        {
+            *this = other;
+        }
         void operator=(const LinkRecord& other)
         {
             data.realTypes = other.data.realTypes;
@@ -676,11 +681,11 @@ public:
             struct RealTypes {
                 int64_t m_from : 48;
                 int64_t m_to : 48;
+                RegisterID m_compareRegister;
                 JumpType m_type : 8;
                 JumpLinkType m_linkType : 8;
                 Condition m_condition : 4;
                 unsigned m_bitNumber : 6;
-                RegisterID m_compareRegister : 6;
                 bool m_is64Bit : 1;
             } realTypes;
         } data;

@@ -1,12 +1,12 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/common/manifest_handlers/offline_enabled_info.h"
 
 #include <memory>
+#include <string>
 
-#include "base/strings/string16.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
@@ -38,29 +38,29 @@ OfflineEnabledHandler::OfflineEnabledHandler() {
 OfflineEnabledHandler::~OfflineEnabledHandler() {
 }
 
-bool OfflineEnabledHandler::Parse(Extension* extension, base::string16* error) {
-  if (!extension->manifest()->HasKey(keys::kOfflineEnabled)) {
+bool OfflineEnabledHandler::Parse(Extension* extension, std::u16string* error) {
+  const base::Value* offline_enabled_value =
+      extension->manifest()->FindKey(keys::kOfflineEnabled);
+  if (offline_enabled_value == nullptr) {
     // Only platform apps are provided with a default offline enabled value.
     // A platform app is offline enabled unless it requests the webview
     // permission. That is, offline_enabled is true when there is NO webview
     // permission requested and false when webview permission is present.
     DCHECK(extension->is_platform_app());
 
-    const bool has_webview_permission =
-        PermissionsParser::HasAPIPermission(extension, APIPermission::kWebView);
+    const bool has_webview_permission = PermissionsParser::HasAPIPermission(
+        extension, mojom::APIPermissionID::kWebView);
     extension->SetManifestData(
         keys::kOfflineEnabled,
         std::make_unique<OfflineEnabledInfo>(!has_webview_permission));
     return true;
   }
 
-  bool offline_enabled = false;
-
-  if (!extension->manifest()->GetBoolean(keys::kOfflineEnabled,
-                                         &offline_enabled)) {
-    *error = base::ASCIIToUTF16(manifest_errors::kInvalidOfflineEnabled);
+  if (!offline_enabled_value->is_bool()) {
+    *error = manifest_errors::kInvalidOfflineEnabled;
     return false;
   }
+  bool offline_enabled = offline_enabled_value->GetBool();
 
   extension->SetManifestData(
       keys::kOfflineEnabled,
@@ -74,11 +74,7 @@ bool OfflineEnabledHandler::AlwaysParseForType(Manifest::Type type) const {
 
 base::span<const char* const> OfflineEnabledHandler::Keys() const {
   static constexpr const char* kKeys[] = {keys::kOfflineEnabled};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 }  // namespace extensions

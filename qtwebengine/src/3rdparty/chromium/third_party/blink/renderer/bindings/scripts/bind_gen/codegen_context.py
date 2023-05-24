@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,19 +6,44 @@ import copy
 
 import web_idl
 
-from . import name_style
 from .codegen_format import NonRenderable
-from .path_manager import PathManager
 
 
 class CodeGenContext(object):
     """
     Represents a context of code generation.
 
-    Note that this is not relevant to Mako template context or any contexts.
-    Also note that CodeGenContext's attributes will be global template
-    variables.  |CodeGenContext.interface| will be available in templates as
-    "${interface}".
+    Note that this is not Mako template context itself, however
+    CodeGenContext's attributes will be bound as Mako's global template
+    variables as below.
+
+      code_node.set_base_template_vars(cg_context.template_bindings())
+
+    Then, |CodeGenContext.interface| will be available in template text as
+    "${interface}".  So, an instance of CodeGenContext represents a set of
+    global template variables.
+
+    CodeGenContext is immutable.  A new state should be created via
+    |make_copy|.
+
+      new_cg_context = old_cg_context.make_copy(
+          var1=new_value1, var2=new_value2, ...)
+
+    The immutability is important because CodeNodes may be created lazily from
+    an instance of CodeGenContext.  For example,
+
+      def foo(cg_context):
+        def define_symbol(symbol_node):
+          node = SymbolDefinitionNode(symbol_node)
+          node.append(TextNode("{}".format(cg_context.class_name)))
+          return node
+        symbol = SymbolNode("sym", definition_constructor=define_symbol)
+        ...
+
+    in this case, |define_symbol| may be run after the execution of |foo|
+    completes.  |define_symbol| is a closure which captures |cg_context|.
+    So, it's important that CodeGenContext is immutable in order to avoid any
+    surprising side effect.
     """
 
     # "for_world" attribute values
@@ -59,6 +84,8 @@ class CodeGenContext(object):
             "enumeration": None,
             "interface": None,
             "namespace": None,
+            "observable_array": None,
+            "sync_iterator": None,
             "typedef": None,
             "union": None,
 
@@ -84,6 +111,16 @@ class CodeGenContext(object):
             "named_property_deleter": None,
             "stringifier": None,
 
+            # Cache of a tuple of dictionary._DictionaryMember for the own
+            # members of the dictionary of which the Blink class is being
+            # generated.  The cache is used in dictionary.py to save code
+            # generation time.
+            "dictionary_own_members": (),
+            # Cache of a tuple of union._UnionMember for the flattened member
+            # types of the union of which the Blink class is being generated.
+            # The cache is used in union.py to save code generation time.
+            "union_members": (),
+
             # The names of the class being generated and its base class.
             "base_class_name": None,
             "class_name": None,
@@ -92,6 +129,12 @@ class CodeGenContext(object):
             # Used via [PerWorldBindings] to optimize the code path of the main
             # world.
             "for_world": cls.ALL_WORLDS,
+
+            # True when generating a callback of [NoAllocDirectCall].
+            "no_alloc_direct_call": False,
+            # True when generating a (fake) callback of [NoAllocDirectCall] for
+            # testing.
+            "no_alloc_direct_call_for_testing": False,
 
             # Type of V8 callback function which implements IDL attribute,
             # IDL operation, etc.
@@ -106,7 +149,6 @@ class CodeGenContext(object):
             "idl_location",
             "idl_location_and_name",
             "idl_name",
-            "is_return_by_argument",
             "may_throw_exception",
             "member_like",
             "property_",
@@ -189,7 +231,7 @@ class CodeGenContext(object):
     @property
     def class_like(self):
         return (self.callback_interface or self.dictionary or self.interface
-                or self.namespace)
+                or self.namespace or self.sync_iterator)
 
     @property
     def does_override_idl_return_type(self):
@@ -237,20 +279,21 @@ class CodeGenContext(object):
         return "<<unknown name>>"
 
     @property
-    def is_return_by_argument(self):
-        if self.does_override_idl_return_type:
-            return False
-        if self.return_type is None:
-            return False
-        return self.return_type.unwrap().is_union
-
-    @property
     def is_return_type_promise_type(self):
         if self.attribute:
             return self.attribute.idl_type.unwrap().is_promise
         if self.operation_group:
             return self.operation_group[0].return_type.unwrap().is_promise
         return False
+
+    @property
+    def logging_target(self):
+        return (self.attribute or self.constant or self.constructor
+                or self.constructor_group or self.dict_member
+                or (self.legacy_window_alias or self.exposed_construct)
+                or self.operation or self.operation_group
+                or (self.stringifier and self.stringifier.operation)
+                or self._indexed_or_named_property)
 
     @property
     def may_throw_exception(self):

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 
 #include <memory>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/scoped_refptr.h"
 #include "cc/metrics/frame_sequence_metrics.h"
 #include "ui/compositor/compositor_export.h"
 
@@ -35,9 +36,9 @@ class LayerAnimator;
 // and none of the layer animation sequences is aborted.
 class COMPOSITOR_EXPORT AnimationThroughputReporter {
  public:
-  using ReportCallback =
-      base::RepeatingCallback<void(cc::FrameSequenceMetrics::ThroughputData)>;
-  AnimationThroughputReporter(LayerAnimator* animator,
+  using ReportCallback = base::RepeatingCallback<void(
+      const cc::FrameSequenceMetrics::CustomReportData&)>;
+  AnimationThroughputReporter(scoped_refptr<LayerAnimator> animator,
                               ReportCallback report_callback);
   AnimationThroughputReporter(const AnimationThroughputReporter&) = delete;
   AnimationThroughputReporter& operator=(const AnimationThroughputReporter&) =
@@ -57,7 +58,7 @@ class COMPOSITOR_EXPORT AnimationThroughputReporter {
   // List here to access LayerAnimation's private |anmation_| member.
   static bool IsAnimatorAttachedToTimeline(LayerAnimator* animator);
 
-  LayerAnimator* const animator_;
+  scoped_refptr<LayerAnimator> animator_;
   std::unique_ptr<AnimationTracker> animation_tracker_;
 };
 

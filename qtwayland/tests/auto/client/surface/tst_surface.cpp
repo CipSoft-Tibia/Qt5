@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mockcompositor.h"
 #include <QtGui/QRasterWindow>
 #if QT_CONFIG(opengl)
-#include <QtGui/QOpenGLWindow>
+#include <QtOpenGL/QOpenGLWindow>
 #endif
 
 using namespace MockCompositor;
@@ -37,6 +12,8 @@ using namespace MockCompositor;
 class tst_surface : public QObject, private DefaultCompositor
 {
     Q_OBJECT
+public:
+    explicit tst_surface();
 private slots:
     void cleanup() { QTRY_VERIFY2(isClean(), qPrintable(dirtyMessage())); }
     void createDestroySurface();
@@ -51,6 +28,11 @@ private slots:
     void createSubsurfaceForHiddenParent();
 };
 
+tst_surface::tst_surface()
+{
+    m_config.autoFrameCallback = false;
+}
+
 void tst_surface::createDestroySurface()
 {
     QWindow window;
@@ -64,7 +46,6 @@ void tst_surface::createDestroySurface()
 
 void tst_surface::waitForFrameCallbackRaster()
 {
-    QSKIP("TODO: This currently fails, needs a fix");
     class TestWindow : public QRasterWindow {
     public:
         explicit TestWindow() { resize(40, 40); }
@@ -77,11 +58,11 @@ void tst_surface::waitForFrameCallbackRaster()
     TestWindow window;
     window.show();
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
-    QSignalSpy bufferSpy(exec([=] { return xdgSurface()->m_surface; }), &Surface::bufferCommitted);
-    exec([=] { xdgToplevel()->sendCompleteConfigure(); });
+    QSignalSpy bufferSpy(exec([&] { return xdgSurface()->m_surface; }), &Surface::bufferCommitted);
+    exec([&] { xdgToplevel()->sendCompleteConfigure(); });
 
     // We should get the first buffer without waiting for a frame callback
-    QTRY_COMPARE(bufferSpy.count(), 1);
+    QTRY_COMPARE(bufferSpy.size(), 1);
     bufferSpy.removeFirst();
 
     // Make sure we follow frame callbacks for some frames
@@ -92,7 +73,7 @@ void tst_surface::waitForFrameCallbackRaster()
             QVERIFY(!xdgToplevel()->surface()->m_waitingFrameCallbacks.empty());
             xdgToplevel()->surface()->sendFrameCallbacks();
         });
-        QTRY_COMPARE(bufferSpy.count(), 1);
+        QTRY_COMPARE(bufferSpy.size(), 1);
         bufferSpy.removeFirst();
     }
 }
@@ -100,7 +81,6 @@ void tst_surface::waitForFrameCallbackRaster()
 #if QT_CONFIG(opengl)
 void tst_surface::waitForFrameCallbackGl()
 {
-    QSKIP("TODO: This currently fails, needs a fix");
     class TestWindow : public QOpenGLWindow {
     public:
         explicit TestWindow()
@@ -119,18 +99,18 @@ void tst_surface::waitForFrameCallbackGl()
     TestWindow window;
     window.show();
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
-    QSignalSpy bufferSpy(exec([=] { return xdgSurface()->m_surface; }), &Surface::bufferCommitted);
-    exec([=] { xdgToplevel()->sendCompleteConfigure(); });
+    QSignalSpy bufferSpy(exec([&] { return xdgSurface()->m_surface; }), &Surface::bufferCommitted);
+    exec([&] { xdgToplevel()->sendCompleteConfigure(); });
 
     // We should get the first buffer without waiting for a frame callback
-    QTRY_COMPARE(bufferSpy.count(), 1);
+    QTRY_COMPARE(bufferSpy.size(), 1);
     bufferSpy.removeFirst();
 
     // Make sure we follow frame callbacks for some frames
     for (int i = 0; i < 5; ++i) {
         xdgPingAndWaitForPong(); // Make sure things have happened on the client
         if (!qEnvironmentVariableIntValue("QT_WAYLAND_DISABLE_WINDOWDECORATION") && i == 0) {
-            QCOMPARE(bufferSpy.count(), 1);
+            QCOMPARE(bufferSpy.size(), 1);
             bufferSpy.removeFirst();
         }
         exec([&] {
@@ -138,7 +118,7 @@ void tst_surface::waitForFrameCallbackGl()
             QVERIFY(!xdgToplevel()->surface()->m_waitingFrameCallbacks.empty());
             xdgToplevel()->surface()->sendFrameCallbacks();
         });
-        QTRY_COMPARE(bufferSpy.count(), 1);
+        QTRY_COMPARE(bufferSpy.size(), 1);
         bufferSpy.removeFirst();
     }
 }
@@ -155,8 +135,8 @@ void tst_surface::negotiateShmFormat()
     window.resize(64, 48);
     window.show();
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
-    QSignalSpy bufferSpy(exec([=] { return xdgSurface()->m_surface; }), &Surface::bufferCommitted);
-    const uint serial = exec([=] { return xdgToplevel()->sendCompleteConfigure(); });
+    QSignalSpy bufferSpy(exec([&] { return xdgSurface()->m_surface; }), &Surface::bufferCommitted);
+    const uint serial = exec([&] { return xdgToplevel()->sendCompleteConfigure(); });
     QCOMPOSITOR_TRY_COMPARE(xdgSurface()->m_committedConfigureSerial, serial);
     exec([&] {
         Buffer *buffer = xdgToplevel()->surface()->m_committed.buffer;
@@ -184,26 +164,26 @@ void tst_surface::createSubsurface()
 
     QCOMPOSITOR_TRY_VERIFY(subSurface());
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
-    exec([=] { xdgToplevel()->sendCompleteConfigure(); });
+    exec([&] { xdgToplevel()->sendCompleteConfigure(); });
     QCOMPOSITOR_TRY_VERIFY(xdgSurface()->m_committedConfigureSerial);
 
-    const Surface *mainSurface = exec([=] {return surface(0);});
-    const Surface *childSurface = exec([=] {return surface(1);});
+    const Surface *mainSurface = exec([&] {return surface(0);});
+    const Surface *childSurface = exec([&] {return surface(1);});
     QSignalSpy  mainSurfaceCommitSpy(mainSurface, &Surface::commit);
     QSignalSpy childSurfaceCommitSpy(childSurface, &Surface::commit);
 
     // Move subsurface. The parent should redraw and commit
     subWindow.setGeometry(100, 100, 64, 64);
     // the toplevel should commit to indicate the subsurface moved
-    QCOMPOSITOR_TRY_COMPARE(mainSurfaceCommitSpy.count(), 1);
+    QCOMPOSITOR_TRY_COMPARE(mainSurfaceCommitSpy.size(), 1);
     mainSurfaceCommitSpy.clear();
     childSurfaceCommitSpy.clear();
 
     // Move and resize the subSurface. The parent should redraw and commit
     // The child should also redraw
     subWindow.setGeometry(50, 50, 80, 80);
-    QCOMPOSITOR_TRY_COMPARE(mainSurfaceCommitSpy.count(), 1);
-    QCOMPOSITOR_TRY_COMPARE(childSurfaceCommitSpy.count(), 1);
+    QCOMPOSITOR_TRY_COMPARE(mainSurfaceCommitSpy.size(), 1);
+    QCOMPOSITOR_TRY_COMPARE(childSurfaceCommitSpy.size(), 1);
 
 }
 
@@ -214,7 +194,7 @@ void tst_surface::createSubsurfaceForHiddenParent()
     window.resize(64, 64);
     window.show();
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
-    exec([=] { xdgToplevel()->sendCompleteConfigure(); });
+    exec([&] { xdgToplevel()->sendCompleteConfigure(); });
     QCOMPOSITOR_TRY_VERIFY(xdgSurface()->m_committedConfigureSerial);
 
     window.hide();
@@ -226,6 +206,10 @@ void tst_surface::createSubsurfaceForHiddenParent()
 
     // Make sure the client doesn't quit before it has a chance to crash
     xdgPingAndWaitForPong();
+
+    // Make sure the subsurface was actually created
+    const Subsurface *subsurface = exec([&] {return subSurface(0);});
+    QVERIFY(subsurface);
 }
 
 QCOMPOSITOR_TEST_MAIN(tst_surface)

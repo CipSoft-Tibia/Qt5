@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,15 @@
 #define UI_GFX_DISPLAY_COLOR_SPACES_H_
 
 #include <string>
+#include <vector>
 
+#include "skia/ext/skcolorspace_primaries.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
 #include "ui/gfx/buffer_types.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/color_space_export.h"
+#include "ui/gfx/hdr_static_metadata.h"
 
 namespace mojo {
 template <class T, class U>
@@ -24,6 +29,9 @@ class DisplayColorSpacesDataView;
 
 // The values are set so std::max() can be used to find the widest.
 enum class ContentColorUsage : uint8_t {
+  // These values are histogrammed over time; do not change their ordinal
+  // values.  When deleting a color usage replace it with a dummy value; when
+  // adding a color usage, do so at the bottom (and update kMaxValue).
   kSRGB = 0,
   kWideColorGamut = 1,
   kHDR = 2,
@@ -35,8 +43,12 @@ enum class ContentColorUsage : uint8_t {
 // opposed to in ui/display because it is used directly by components/viz.
 class COLOR_SPACE_EXPORT DisplayColorSpaces {
  public:
+  static constexpr size_t kConfigCount = 6;
+
   // Initialize as sRGB-only.
   DisplayColorSpaces();
+  DisplayColorSpaces(const DisplayColorSpaces& display_color_space);
+  DisplayColorSpaces& operator=(const DisplayColorSpaces& display_color_space);
 
   // Initialize as |color_space| for all settings. If |color_space| is the
   // default (invalid) color space, then initialize to sRGB. The BufferFormat
@@ -67,16 +79,26 @@ class COLOR_SPACE_EXPORT DisplayColorSpaces {
   BufferFormat GetOutputBufferFormat(ContentColorUsage color_usage,
                                      bool needs_alpha) const;
 
-  // Set the custom SDR white level, in nits. This is a non-default value only
+  // Set the maximum SDR luminance, in nits. This is a non-default value only
   // on Windows.
-  void SetSDRWhiteLevel(float sdr_white_level) {
-    sdr_white_level_ = sdr_white_level;
+  void SetSDRMaxLuminanceNits(float sdr_max_luminance_nits) {
+    sdr_max_luminance_nits_ = sdr_max_luminance_nits;
   }
-  float GetSDRWhiteLevel() const { return sdr_white_level_; }
+  float GetSDRMaxLuminanceNits() const { return sdr_max_luminance_nits_; }
+
+  // Set the maximum luminance that HDR content can display. This is represented
+  // as a multiple of the SDR white luminance (so a display that is incapable of
+  // HDR would have a value of 1.0).
+  void SetHDRMaxLuminanceRelative(float hdr_max_luminance_relative) {
+    hdr_max_luminance_relative_ = hdr_max_luminance_relative;
+  }
+  float GetHDRMaxLuminanceRelative() const {
+    return hdr_max_luminance_relative_;
+  }
 
   // TODO(https://crbug.com/1116870): These helper functions exist temporarily
-  // to handle the transition of blink::ScreenInfo off of ColorSpace. All calls
-  // to these functions are to be eliminated.
+  // to handle the transition of display::ScreenInfo off of ColorSpace. All
+  // calls to these functions are to be eliminated.
   ColorSpace GetScreenInfoColorSpace() const;
 
   // Return the color space that should be used for rasterization.
@@ -91,6 +113,12 @@ class COLOR_SPACE_EXPORT DisplayColorSpaces {
 
   // Return true if the HDR color spaces are, indeed, HDR.
   bool SupportsHDR() const;
+
+  // Return the primaries that define the color gamut of the display.
+  const SkColorSpacePrimaries& GetPrimaries() const { return primaries_; }
+  void SetPrimaries(const SkColorSpacePrimaries& primaries) {
+    primaries_ = primaries;
+  }
 
   // Output as a vector of strings. This is a helper function for printing in
   // about:gpu. All output vectors will be the same length. Each entry will be
@@ -108,10 +136,11 @@ class COLOR_SPACE_EXPORT DisplayColorSpaces {
   friend struct mojo::StructTraits<gfx::mojom::DisplayColorSpacesDataView,
                                    gfx::DisplayColorSpaces>;
 
-  static constexpr size_t kConfigCount = 6;
   gfx::ColorSpace color_spaces_[kConfigCount];
   gfx::BufferFormat buffer_formats_[kConfigCount];
-  float sdr_white_level_ = ColorSpace::kDefaultSDRWhiteLevel;
+  SkColorSpacePrimaries primaries_ = SkNamedPrimariesExt::kSRGB;
+  float sdr_max_luminance_nits_ = ColorSpace::kDefaultSDRWhiteLevel;
+  float hdr_max_luminance_relative_ = 1.f;
 };
 
 }  // namespace gfx

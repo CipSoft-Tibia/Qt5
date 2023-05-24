@@ -2,30 +2,27 @@ include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 include($QT_INSTALL_DOCS/config/exampleurl-qtscxml.qdocconf)
 
 project                 = QtScxml
-description             = Qt Scxml Reference Documentation
+description             = Qt SCXML Reference Documentation
 version                 = $QT_VERSION
 
-# Install path for the examples. For Qt 5.6, the convention
-# is to use the repository name as the install location
-# under QT_INSTALL_EXAMPLES.
+# Install path for the examples
 examplesinstallpath     = scxml
 exampledirs             = ../../../examples/scxml
-imagedirs               = ../../../examples/doc/images
 
 examples.fileextensions += "*.scxml"
 
 qhp.QtScxml.subprojects = classes qmltypes examples
 qhp.QtScxml.subprojects.classes.title      = C++ Classes
 qhp.QtScxml.subprojects.classes.indexTitle = Qt SCXML C++ Classes
-qhp.QtScxml.subprojects.classes.selectors  = class fake:headerfile
+qhp.QtScxml.subprojects.classes.selectors  = class headerfile
 qhp.QtScxml.subprojects.classes.sortPages  = true
 qhp.QtScxml.subprojects.qmltypes.title      = QML Types
 qhp.QtScxml.subprojects.qmltypes.indexTitle = Qt SCXML QML Types
-qhp.QtScxml.subprojects.qmltypes.selectors  = qmlclass
+qhp.QtScxml.subprojects.qmltypes.selectors  = qmltype
 qhp.QtScxml.subprojects.qmltypes.sortPages  = true
 qhp.QtScxml.subprojects.examples.title = Examples
 qhp.QtScxml.subprojects.examples.indexTitle = Qt SCXML Examples
-qhp.QtScxml.subprojects.examples.selectors = fake:example
+qhp.QtScxml.subprojects.examples.selectors = doc:example
 
 qhp.projects            = QtScxml
 
@@ -35,21 +32,27 @@ qhp.QtScxml.virtualFolder       = qtscxml
 qhp.QtScxml.indexTitle          = Qt SCXML
 qhp.QtScxml.indexRoot           =
 
-depends += qtcore qtdoc qmake qtquick qtwidgets
+depends += qtcore qtdoc qmake qtquick qtwidgets qtstatemachine qtcmake
 
-headerdirs = .. ../../imports/scxmlstatemachine
+headerdirs = .. \
+             ../../scxmlqml \
+             ../../plugins/ecmascriptdatamodel
+
 sourcedirs += .. \
-              ../../imports/scxmlstatemachine \
+              ../../scxmlqml \
               ../../../tools/qscxmlc/doc \
-              ../../../examples/scxml
+              ../../plugins/ecmascriptdatamodel
 
 excludefiles += "../qscxmlexecutablecontent_p.h"
 
 tagfile = qtscxml.tags
 
-manifestmeta.highlighted.names = "QtScxml/Qt SCXML Calculator QML Example" \
-                                 "QtScxml/Qt SCXML Traffic Light QML Example (Dynamic)"
-
 navigation.landingpage = "Qt SCXML"
 navigation.cppclassespage = "Qt SCXML C++ Classes"
 navigation.qmltypespage = "Qt SCXML QML Types"
+
+# Highlighted examples in Data Processing & IO category
+manifestmeta.highlighted.names = "QtScxml/SCXML Sudoku"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

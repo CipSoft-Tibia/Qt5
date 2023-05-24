@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <limits>
 #include <memory>
 
+#include "base/task/single_thread_task_runner.h"
 #include "media/media_buildflags.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
@@ -53,8 +54,10 @@ std::unique_ptr<SctpTransportProxy> CreateProxy(
   DCHECK(worker_thread);
   LocalFrame* frame = To<LocalDOMWindow>(context)->GetFrame();
   DCHECK(frame);
-  return SctpTransportProxy::Create(*frame, main_thread, worker_thread,
-                                    native_transport, delegate);
+  return SctpTransportProxy::Create(
+      *frame, main_thread, worker_thread,
+      rtc::scoped_refptr<webrtc::SctpTransportInterface>(native_transport),
+      delegate);
 }
 
 }  // namespace
@@ -66,8 +69,8 @@ RTCSctpTransport::RTCSctpTransport(
                        native_transport,
                        context->GetTaskRunner(TaskType::kNetworking),
 #if BUILDFLAG(ENABLE_WEBRTC)
-                       PeerConnectionDependencyFactory::GetInstance()
-                           ->GetWebRtcNetworkTaskRunner()
+                       PeerConnectionDependencyFactory::From(*context)
+                           .GetWebRtcNetworkTaskRunner()
 #else
                        nullptr
 #endif
@@ -82,7 +85,7 @@ RTCSctpTransport::RTCSctpTransport(
       current_state_(webrtc::SctpTransportState::kNew),
       native_transport_(native_transport),
       proxy_(CreateProxy(context,
-                         native_transport,
+                         native_transport.get(),
                          this,
                          main_thread,
                          worker_thread)) {}
@@ -106,9 +109,9 @@ double RTCSctpTransport::maxMessageSize() const {
   return std::numeric_limits<double>::infinity();
 }
 
-base::Optional<int16_t> RTCSctpTransport::maxChannels() const {
+absl::optional<int16_t> RTCSctpTransport::maxChannels() const {
   if (!current_state_.MaxChannels())
-    return base::nullopt;
+    return absl::nullopt;
   return current_state_.MaxChannels().value();
 }
 

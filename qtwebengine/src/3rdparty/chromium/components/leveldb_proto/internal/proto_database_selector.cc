@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,7 @@
 #include "base/check_op.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/leveldb_proto/internal/migration_delegate.h"
 #include "components/leveldb_proto/internal/shared_proto_database.h"
 #include "components/leveldb_proto/internal/shared_proto_database_provider.h"
@@ -473,7 +474,7 @@ void ProtoDatabaseSelector::AddTransaction(base::OnceClosure task) {
       break;
     case InitStatus::NOT_STARTED:
       NOTREACHED();
-      FALLTHROUGH;
+      [[fallthrough]];
     case InitStatus::DONE:
       std::move(task).Run();
       break;
@@ -565,6 +566,18 @@ void ProtoDatabaseSelector::LoadKeysAndEntriesInRange(
     return;
   }
   db_->LoadKeysAndEntriesInRange(start, end, std::move(callback));
+}
+
+void ProtoDatabaseSelector::LoadKeysAndEntriesWhile(
+    const std::string& start,
+    const KeyIteratorController& controller,
+    typename Callbacks::LoadKeysAndEntriesCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!db_) {
+    std::move(callback).Run(false, nullptr);
+    return;
+  }
+  db_->LoadKeysAndEntriesWhile(start, controller, std::move(callback));
 }
 
 void ProtoDatabaseSelector::LoadKeys(Callbacks::LoadKeysCallback callback) {

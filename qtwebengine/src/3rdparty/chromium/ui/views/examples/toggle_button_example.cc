@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #include <memory>
 #include <utility>
 
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/geometry/insets.h"
@@ -16,8 +15,7 @@
 #include "ui/views/examples/grit/views_examples_resources.h"
 #include "ui/views/layout/box_layout.h"
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
 ToggleButtonExample::ToggleButtonExample()
     : ExampleBase(
@@ -29,13 +27,31 @@ void ToggleButtonExample::CreateExampleView(View* container) {
   auto layout = std::make_unique<BoxLayout>(BoxLayout::Orientation::kVertical);
   layout->set_cross_axis_alignment(BoxLayout::CrossAxisAlignment::kCenter);
   container->SetLayoutManager(std::move(layout));
-  button_ = container->AddChildView(std::make_unique<ToggleButton>(this));
+  container
+      ->AddChildView(std::make_unique<ToggleButton>(base::BindRepeating(
+          [](ToggleButtonExample* example) {
+            PrintStatus("Pressed 1! count: %d", ++example->count_1_);
+          },
+          base::Unretained(this))))
+      ->SetAccessibleName(l10n_util::GetStringUTF16(IDS_TOGGLE_BUTTON_NAME_1));
+  auto* button = container->AddChildView(
+      std::make_unique<ToggleButton>(base::BindRepeating(
+          [](ToggleButtonExample* example) {
+            PrintStatus("Pressed 2! count: %d", ++example->count_2_);
+          },
+          base::Unretained(this))));
+  button->SetAccessibleName(
+      l10n_util::GetStringUTF16(IDS_TOGGLE_BUTTON_NAME_2));
+  button->SetIsOn(true);
+  button = container->AddChildView(
+      std::make_unique<ToggleButton>(base::BindRepeating(
+          [](ToggleButtonExample* example) {
+            PrintStatus("Pressed 3! count: %d", ++example->count_2_);
+          },
+          base::Unretained(this))));
+  button->SetAccessibleName(
+      l10n_util::GetStringUTF16(IDS_TOGGLE_BUTTON_NAME_3));
+  button->SetEnabled(false);
 }
 
-void ToggleButtonExample::ButtonPressed(Button* sender,
-                                        const ui::Event& event) {
-  PrintStatus("Pressed! count: %d", ++count_);
-}
-
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples

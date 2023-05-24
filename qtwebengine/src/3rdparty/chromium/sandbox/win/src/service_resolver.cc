@@ -1,8 +1,10 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "sandbox/win/src/service_resolver.h"
+
+#include <ntstatus.h>
 
 #include "base/win/pe_image.h"
 #include "sandbox/win/src/internal_types.h"

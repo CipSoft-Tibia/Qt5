@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QJSENGINE_H
 #define QJSENGINE_H
@@ -45,8 +9,9 @@
 #include <QtCore/qvariant.h>
 #include <QtCore/qsharedpointer.h>
 #include <QtCore/qobject.h>
+#include <QtCore/qtimezone.h>
 #include <QtQml/qjsvalue.h>
-
+#include <QtQml/qjsmanagedvalue.h>
 #include <QtQml/qqmldebug.h>
 
 QT_BEGIN_NAMESPACE
@@ -68,11 +33,13 @@ public:
 
     QJSValue globalObject() const;
 
-    QJSValue evaluate(const QString &program, const QString &fileName = QString(), int lineNumber = 1);
+    QJSValue evaluate(const QString &program, const QString &fileName = QString(), int lineNumber = 1, QStringList *exceptionStackTrace = nullptr);
 
     QJSValue importModule(const QString &fileName);
+    bool registerModule(const QString &moduleName, const QJSValue &value);
 
     QJSValue newObject();
+    QJSValue newSymbol(const QString &name);
     QJSValue newArray(uint length = 0);
 
     QJSValue newQObject(QObject *object);
@@ -90,19 +57,224 @@ public:
     template <typename T>
     inline QJSValue toScriptValue(const T &value)
     {
-        return create(qMetaTypeId<T>(), &value);
+        return create(QMetaType::fromType<T>(), &value);
     }
+
+    template <typename T>
+    inline QJSManagedValue toManagedValue(const T &value)
+    {
+        return createManaged(QMetaType::fromType<T>(), &value);
+    }
+
+    template <typename T>
+    inline QJSPrimitiveValue toPrimitiveValue(const T &value)
+    {
+        // In the common case that the argument fits into QJSPrimitiveValue, use it.
+        if constexpr (std::disjunction_v<
+                std::is_same<T, int>,
+                std::is_same<T, bool>,
+                std::is_same<T, double>,
+                std::is_same<T, QString>>) {
+            return QJSPrimitiveValue(value);
+        } else {
+            return createPrimitive(QMetaType::fromType<T>(), &value);
+        }
+    }
+
     template <typename T>
     inline T fromScriptValue(const QJSValue &value)
     {
         return qjsvalue_cast<T>(value);
     }
 
+    template <typename T>
+    inline T fromManagedValue(const QJSManagedValue &value)
+    {
+        return qjsvalue_cast<T>(value);
+    }
+
+    template <typename T>
+    inline T fromPrimitiveValue(const QJSPrimitiveValue &value)
+    {
+        if constexpr (std::is_same_v<T, int>)
+            return value.toInteger();
+        if constexpr (std::is_same_v<T, bool>)
+            return value.toBoolean();
+        if constexpr (std::is_same_v<T, double>)
+            return value.toDouble();
+        if constexpr (std::is_same_v<T, QString>)
+            return value.toString();
+        if constexpr (std::is_same_v<T, QVariant>)
+            return value.toVariant();
+        if constexpr (std::is_pointer_v<T>)
+            return nullptr;
+        return qjsvalue_cast<T>(value);
+    }
+
+    template <typename T>
+    inline T fromVariant(const QVariant &value)
+    {
+        if constexpr (std::is_same_v<T, QVariant>)
+            return value;
+
+        const QMetaType sourceType = value.metaType();
+        const QMetaType targetType = QMetaType::fromType<T>();
+        if (sourceType == targetType)
+            return *reinterpret_cast<const T *>(value.constData());
+
+        if constexpr (std::is_same_v<T,std::remove_const_t<std::remove_pointer_t<T>> const *>) {
+            using nonConstT = std::remove_const_t<std::remove_pointer_t<T>> *;
+            const QMetaType nonConstTargetType = QMetaType::fromType<nonConstT>();
+            if (value.metaType() == nonConstTargetType)
+                return *reinterpret_cast<const nonConstT *>(value.constData());
+        }
+
+        if constexpr (std::is_same_v<T, QJSValue>)
+            return toScriptValue(value);
+
+        if constexpr (std::is_same_v<T, QJSManagedValue>)
+            return toManagedValue(value);
+
+        if constexpr (std::is_same_v<T, QJSPrimitiveValue>)
+            return toPrimitiveValue(value);
+
+        if constexpr (std::is_same_v<T, QString>) {
+            if (sourceType.flags() & QMetaType::PointerToQObject) {
+                return convertQObjectToString(
+                            *reinterpret_cast<QObject *const *>(value.constData()));
+            }
+        }
+
+        if constexpr (std::is_same_v<QObject, std::remove_const_t<std::remove_pointer_t<T>>>) {
+            if (sourceType.flags() & QMetaType::PointerToQObject) {
+                return *static_cast<QObject *const *>(value.constData());
+
+                // We should not access source->metaObject() here since that may trigger some
+                // rather involved code. convertVariant() can do this using property caches.
+            }
+        }
+
+        if (sourceType == QMetaType::fromType<QJSValue>())
+            return fromScriptValue<T>(*reinterpret_cast<const QJSValue *>(value.constData()));
+
+        if (sourceType == QMetaType::fromType<QJSManagedValue>()) {
+            return fromManagedValue<T>(
+                        *reinterpret_cast<const QJSManagedValue *>(value.constData()));
+        }
+
+        if (sourceType == QMetaType::fromType<QJSPrimitiveValue>()) {
+            return fromPrimitiveValue<T>(
+                        *reinterpret_cast<const QJSPrimitiveValue *>(value.constData()));
+        }
+
+        {
+            T t{};
+            if (value.metaType() == QMetaType::fromType<QString>()) {
+                if (convertString(value.toString(), targetType, &t))
+                    return t;
+            } else if (convertVariant(value, targetType, &t)) {
+                return t;
+            }
+
+            QMetaType::convert(value.metaType(), value.constData(), targetType, &t);
+            return t;
+        }
+    }
+
+    template<typename From, typename To>
+    inline To coerceValue(const From &from)
+    {
+        if constexpr (std::is_base_of_v<To, From>)
+            return from;
+
+        if constexpr (std::is_same_v<To, QJSValue>)
+            return toScriptValue(from);
+
+        if constexpr (std::is_same_v<From, QJSValue>)
+            return fromScriptValue<To>(from);
+
+        if constexpr (std::is_same_v<To, QJSManagedValue>)
+            return toManagedValue(from);
+
+        if constexpr (std::is_same_v<From, QJSManagedValue>)
+            return fromManagedValue<To>(from);
+
+        if constexpr (std::is_same_v<To, QJSPrimitiveValue>)
+            return toPrimitiveValue(from);
+
+        if constexpr (std::is_same_v<From, QJSPrimitiveValue>)
+            return fromPrimitiveValue<To>(from);
+
+        if constexpr (std::is_same_v<From, QVariant>)
+            return fromVariant<To>(from);
+
+        if constexpr (std::is_same_v<To, QVariant>)
+            return QVariant::fromValue(from);
+
+        if constexpr (std::is_same_v<To, QString>) {
+            if constexpr (std::is_base_of_v<QObject, std::remove_const_t<std::remove_pointer_t<From>>>)
+                return convertQObjectToString(from);
+        }
+
+        if constexpr (std::is_same_v<From, QDateTime>) {
+            if constexpr (std::is_same_v<To, QDate>)
+                return convertDateTimeToDate(from.toLocalTime());
+            if constexpr (std::is_same_v<To, QTime>)
+                return from.toLocalTime().time();
+            if constexpr (std::is_same_v<To, QString>)
+                return convertDateTimeToString(from.toLocalTime());
+        }
+
+        if constexpr (std::is_same_v<From, QDate>) {
+            if constexpr (std::is_same_v<To, QDateTime>)
+                return from.startOfDay(QTimeZone::UTC);
+            if constexpr (std::is_same_v<To, QTime>) {
+                // This is the current time zone offset, for better or worse
+                return coerceValue<QDateTime, QTime>(coerceValue<QDate, QDateTime>(from));
+            }
+            if constexpr (std::is_same_v<To, QString>)
+                return convertDateTimeToString(coerceValue<QDate, QDateTime>(from));
+        }
+
+        if constexpr (std::is_same_v<From, QTime>) {
+            if constexpr (std::is_same_v<To, QDate>) {
+                // Yes. April Fools' 1971. See qv4dateobject.cpp.
+                return from.isValid() ? QDate(1971, 4, 1) : QDate();
+            }
+
+            if constexpr (std::is_same_v<To, QDateTime>)
+                return QDateTime(coerceValue<QTime, QDate>(from), from, QTimeZone::LocalTime);
+            if constexpr (std::is_same_v<To, QString>)
+                return convertDateTimeToString(coerceValue<QTime, QDateTime>(from));
+        }
+
+        if constexpr (std::is_same_v<To, std::remove_const_t<std::remove_pointer_t<To>> const *>) {
+            using nonConstTo = std::remove_const_t<std::remove_pointer_t<To>> *;
+            if constexpr (std::is_same_v<From, nonConstTo>)
+                return from;
+        }
+
+        {
+            const QMetaType sourceType = QMetaType::fromType<From>();
+            const QMetaType targetType = QMetaType::fromType<To>();
+            To to{};
+            if constexpr (std::is_same_v<From, QString>) {
+                if (convertString(from, targetType, &to))
+                    return to;
+            } else if (convertMetaType(sourceType, &from, targetType, &to)) {
+                return to;
+            }
+
+            QMetaType::convert(sourceType, &from, targetType, &to);
+            return to;
+        }
+    }
+
     void collectGarbage();
 
-#if QT_DEPRECATED_SINCE(5, 6)
-    QT_DEPRECATED void installTranslatorFunctions(const QJSValue &object = QJSValue());
-#endif
+    enum ObjectOwnership { CppOwnership, JavaScriptOwnership };
+    static void setObjectOwnership(QObject *, ObjectOwnership);
+    static ObjectOwnership objectOwnership(QObject *);
 
     enum Extension {
         TranslationExtension = 0x1,
@@ -121,6 +293,9 @@ public:
 
     void throwError(const QString &message);
     void throwError(QJSValue::ErrorType errorType, const QString &message = QString());
+    void throwError(const QJSValue &error);
+    bool hasError() const;
+    QJSValue catchError();
 
     QString uiLanguage() const;
     void setUiLanguage(const QString &language);
@@ -129,11 +304,37 @@ Q_SIGNALS:
     void uiLanguageChanged();
 
 private:
-    QJSValue create(int type, const void *ptr);
+    QJSPrimitiveValue createPrimitive(QMetaType type, const void *ptr);
+    QJSManagedValue createManaged(QMetaType type, const void *ptr);
+    QJSValue create(QMetaType type, const void *ptr);
+#if QT_QML_REMOVED_SINCE(6, 5)
+    QJSValue create(int id, const void *ptr); // only there for BC reasons
+#endif
 
-    static bool convertV2(const QJSValue &value, int type, void *ptr);
+    static bool convertPrimitive(const QJSPrimitiveValue &value, QMetaType type, void *ptr);
+    static bool convertManaged(const QJSManagedValue &value, int type, void *ptr);
+    static bool convertManaged(const QJSManagedValue &value, QMetaType type, void *ptr);
+#if QT_QML_REMOVED_SINCE(6, 5)
+    static bool convertV2(const QJSValue &value, int type, void *ptr); // only there for BC reasons
+#endif
+    static bool convertV2(const QJSValue &value, QMetaType metaType, void *ptr);
+    static bool convertString(const QString &string, QMetaType metaType, void *ptr);
 
-    friend inline bool qjsvalue_cast_helper(const QJSValue &, int, void *);
+    bool convertVariant(const QVariant &value, QMetaType metaType, void *ptr);
+    bool convertMetaType(QMetaType fromType, const void *from, QMetaType toType, void *to);
+
+    QString convertQObjectToString(QObject *object);
+    QString convertDateTimeToString(const QDateTime &dateTime);
+    static QDate convertDateTimeToDate(const QDateTime &dateTime);
+
+    template<typename T>
+    friend inline T qjsvalue_cast(const QJSValue &);
+
+    template<typename T>
+    friend inline T qjsvalue_cast(const QJSManagedValue &);
+
+    template<typename T>
+    friend inline T qjsvalue_cast(const QJSPrimitiveValue &);
 
 protected:
     QJSEngine(QJSEnginePrivate &dd, QObject *parent = nullptr);
@@ -146,18 +347,10 @@ private:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QJSEngine::Extensions)
 
-inline bool qjsvalue_cast_helper(const QJSValue &value, int type, void *ptr)
-{
-    return QJSEngine::convertV2(value, type, ptr);
-}
-
 template<typename T>
 T qjsvalue_cast(const QJSValue &value)
 {
-    T t;
-    const int id = qMetaTypeId<T>();
-
-    if (qjsvalue_cast_helper(value, id, &t))
+    if (T t; QJSEngine::convertV2(value, QMetaType::fromType<T>(), &t))
         return t;
     else if (value.isVariant())
         return qvariant_cast<T>(value.toVariant());
@@ -165,8 +358,38 @@ T qjsvalue_cast(const QJSValue &value)
     return T();
 }
 
+template<typename T>
+T qjsvalue_cast(const QJSManagedValue &value)
+{
+    if (T t; QJSEngine::convertManaged(value, QMetaType::fromType<T>(), &t))
+        return t;
+
+    return qvariant_cast<T>(value.toVariant());
+}
+
+template<typename T>
+T qjsvalue_cast(const QJSPrimitiveValue &value)
+{
+    if (T t; QJSEngine::convertPrimitive(value, QMetaType::fromType<T>(), &t))
+        return t;
+
+    return qvariant_cast<T>(value.toVariant());
+}
+
 template <>
 inline QVariant qjsvalue_cast<QVariant>(const QJSValue &value)
+{
+    return value.toVariant();
+}
+
+template <>
+inline QVariant qjsvalue_cast<QVariant>(const QJSManagedValue &value)
+{
+    return value.toVariant();
+}
+
+template <>
+inline QVariant qjsvalue_cast<QVariant>(const QJSPrimitiveValue &value)
 {
     return value.toVariant();
 }

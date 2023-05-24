@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QtCore>
 #include <QtGui/QStandardItemModel>
@@ -61,13 +36,27 @@ public:
 
     QVariant data(const QModelIndex &index, int role) const override
     {
-        if (!index.isValid() || role != Qt::DisplayRole)
+        if (!index.isValid())
             return QVariant();
 
-        int serializedIndex = index.row() + (index.column() * m_columns);
-        if (modelData.contains(serializedIndex))
-            return modelData.value(serializedIndex);
-        return QStringLiteral("%1").arg(index.row());
+        QVariant ret;
+
+        switch (role) {
+        case Qt::UserRole:
+            ret = 42;
+            break;
+        case Qt::DisplayRole: {
+            int serializedIndex = index.row() + (index.column() * m_columns);
+            if (modelData.contains(serializedIndex))
+                ret = modelData.value(serializedIndex);
+            else
+                ret = QStringLiteral("%1").arg(index.row()); }
+            break;
+        default:
+            break;
+        }
+
+        return ret;
     }
 
     Q_INVOKABLE QVariant dataFromSerializedIndex(int index) const
@@ -79,7 +68,16 @@ public:
 
     QHash<int, QByteArray> roleNames() const override
     {
+        if (m_useCustomRoleNames)
+            return { { Qt::UserRole, "custom"} };
         return { {Qt::DisplayRole, "display"} };
+    }
+
+    Q_INVOKABLE void useCustomRoleNames(bool use)
+    {
+        beginResetModel();
+        m_useCustomRoleNames = use;
+        endResetModel();
     }
 
     Q_INVOKABLE void setModelData(const QPoint &cell, const QSize &span, const QString &string)
@@ -150,7 +148,7 @@ public:
 
     bool canFetchMore(const QModelIndex &parent) const override
     {
-        Q_UNUSED(parent)
+        Q_UNUSED(parent);
         return m_dataCanBeFetched;
     }
 
@@ -167,7 +165,7 @@ public:
 
     void fetchMore(const QModelIndex &parent) override
     {
-        Q_UNUSED(parent)
+        Q_UNUSED(parent);
         addRow(m_rows - 1);
     }
 
@@ -184,6 +182,22 @@ public:
         insertRow(row, QModelIndex());
     }
 
+    Q_INVOKABLE void addColumn(int column)
+    {
+        insertColumn(column, QModelIndex());
+    }
+
+    Qt::ItemFlags flags(const QModelIndex &index) const override
+    {
+        Q_UNUSED(index)
+        return m_flags;
+    }
+
+    void setFlags(Qt::ItemFlags flags)
+    {
+        m_flags = flags;
+    }
+
 signals:
     void rowCountChanged();
     void columnCountChanged();
@@ -192,7 +206,9 @@ private:
     int m_rows = 0;
     int m_columns = 0;
     bool m_dataCanBeFetched = false;
+    bool m_useCustomRoleNames = false;
     QHash<int, QString> modelData;
+    Qt::ItemFlags m_flags = Qt::ItemIsSelectable | Qt::ItemIsEnabled | Qt::ItemIsEditable;
 };
 
 #define TestModelAsVariant(...) QVariant::fromValue(QSharedPointer<TestModel>(new TestModel(__VA_ARGS__)))

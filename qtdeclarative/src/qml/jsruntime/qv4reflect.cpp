@@ -1,44 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4reflect_p.h"
-#include "qv4symbol_p.h"
 #include "qv4runtimeapi_p.h"
 #include "qv4objectproto_p.h"
 #include "qv4propertykey_p.h"
@@ -76,7 +39,10 @@ struct CallArgs {
 
 static CallArgs createListFromArrayLike(Scope &scope, const Object *o)
 {
-    int len = o->getLength();
+    int len = scope.engine->safeForAllocLength(o->getLength());
+    if (scope.engine->hasException)
+        return {nullptr, 0};
+
     Value *arguments = scope.alloc(len);
 
     for (int i = 0; i < len; ++i) {
@@ -128,14 +94,14 @@ ReturnedValue Reflect::method_defineProperty(const FunctionObject *f, const Valu
 
     ScopedObject O(scope, argv[0]);
     ScopedPropertyKey name(scope, (argc > 1 ? argv[1] : Value::undefinedValue()).toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedValue attributes(scope, argc > 2 ? argv[2] : Value::undefinedValue());
     ScopedProperty pd(scope);
     PropertyAttributes attrs;
     ObjectPrototype::toPropertyDescriptor(scope.engine, attributes, pd, &attrs);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     bool result = O->defineOwnProperty(name, pd, attrs);
@@ -199,7 +165,7 @@ ReturnedValue Reflect::method_has(const FunctionObject *f, const Value *, const 
     const Value *index = argc > 1 ? &argv[1] : &undef;
 
     ScopedPropertyKey name(scope, index->toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return false;
 
     return Encode(o->hasProperty(name));
@@ -268,7 +234,7 @@ ReturnedValue Reflect::method_set(const FunctionObject *f, const Value *, const 
     ScopedValue receiver(scope, argc >3 ? argv[3] : argv[0]);
 
     ScopedPropertyKey propertyKey(scope, index->toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return false;
     bool result = o->put(propertyKey, val, receiver);
     return Encode(result);

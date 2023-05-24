@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTANIMATION_P_H
 #define QABSTRACTANIMATION_P_H
@@ -56,6 +20,7 @@
 #include <QtCore/qtimer.h>
 #include <QtCore/qelapsedtimer.h>
 #include <private/qobject_p.h>
+#include <private/qproperty_p.h>
 #include <qabstractanimation.h>
 
 QT_REQUIRE_CONFIG(animation);
@@ -64,46 +29,48 @@ QT_BEGIN_NAMESPACE
 
 class QAnimationGroup;
 class QAbstractAnimation;
-class QAbstractAnimationPrivate : public QObjectPrivate
+class Q_CORE_EXPORT QAbstractAnimationPrivate : public QObjectPrivate
 {
 public:
-    QAbstractAnimationPrivate()
-        : state(QAbstractAnimation::Stopped),
-          direction(QAbstractAnimation::Forward),
-          totalCurrentTime(0),
-          currentTime(0),
-          loopCount(1),
-          currentLoop(0),
-          deleteWhenStopped(false),
-          hasRegisteredTimer(false),
-          isPause(false),
-          isGroup(false),
-          group(nullptr)
-    {
-    }
-
-    virtual ~QAbstractAnimationPrivate() {}
+    QAbstractAnimationPrivate();
+    virtual ~QAbstractAnimationPrivate();
 
     static QAbstractAnimationPrivate *get(QAbstractAnimation *q)
     {
         return q->d_func();
     }
 
-    QAbstractAnimation::State state;
-    QAbstractAnimation::Direction direction;
+    Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(QAbstractAnimationPrivate, QAbstractAnimation::State,
+                                         state, QAbstractAnimation::Stopped)
     void setState(QAbstractAnimation::State state);
 
-    int totalCurrentTime;
-    int currentTime;
-    int loopCount;
-    int currentLoop;
+    void setDirection(QAbstractAnimation::Direction direction)
+    {
+        q_func()->setDirection(direction);
+    }
+    void emitDirectionChanged() { Q_EMIT q_func()->directionChanged(direction); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QAbstractAnimationPrivate, QAbstractAnimation::Direction,
+                                       direction, &QAbstractAnimationPrivate::setDirection,
+                                       &QAbstractAnimationPrivate::emitDirectionChanged,
+                                       QAbstractAnimation::Forward)
 
-    bool deleteWhenStopped;
-    bool hasRegisteredTimer;
-    bool isPause;
-    bool isGroup;
+    void setCurrentTime(int msecs) { q_func()->setCurrentTime(msecs); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QAbstractAnimationPrivate, int, totalCurrentTime,
+                                       &QAbstractAnimationPrivate::setCurrentTime, 0)
+    int currentTime = 0;
 
-    QAnimationGroup *group;
+    Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(QAbstractAnimationPrivate, int, loopCount, 1)
+
+    void emitCurrentLoopChanged() { Q_EMIT q_func()->currentLoopChanged(currentLoop); }
+    Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QAbstractAnimationPrivate, int, currentLoop, nullptr,
+                                       &QAbstractAnimationPrivate::emitCurrentLoopChanged, 0)
+
+    bool deleteWhenStopped = false;
+    bool hasRegisteredTimer = false;
+    bool isPause = false;
+    bool isGroup = false;
+
+    QAnimationGroup *group = nullptr;
 
 private:
     Q_DECLARE_PUBLIC(QAbstractAnimation)
@@ -115,7 +82,10 @@ class QDefaultAnimationDriver : public QAnimationDriver
 {
     Q_OBJECT
 public:
-    QDefaultAnimationDriver(QUnifiedTimer *timer);
+    explicit QDefaultAnimationDriver(QUnifiedTimer *timer);
+    ~QDefaultAnimationDriver() override;
+
+protected:
     void timerEvent(QTimerEvent *e) override;
 
 private Q_SLOTS:
@@ -130,24 +100,27 @@ private:
 class Q_CORE_EXPORT QAnimationDriverPrivate : public QObjectPrivate
 {
 public:
-    QAnimationDriverPrivate() : running(false) {}
+    QAnimationDriverPrivate();
+    ~QAnimationDriverPrivate() override;
+
     QElapsedTimer timer;
-    bool running;
+    bool running = false;
 };
 
 class Q_CORE_EXPORT QAbstractAnimationTimer : public QObject
 {
     Q_OBJECT
 public:
-    QAbstractAnimationTimer() : isRegistered(false), isPaused(false), pauseDuration(0) {}
+    QAbstractAnimationTimer();
+    ~QAbstractAnimationTimer() override;
 
     virtual void updateAnimationsTime(qint64 delta) = 0;
     virtual void restartAnimationTimer() = 0;
     virtual int runningAnimationCount() = 0;
 
-    bool isRegistered;
-    bool isPaused;
-    int pauseDuration;
+    bool isRegistered = false;
+    bool isPaused = false;
+    int pauseDuration = 0;
 };
 
 class Q_CORE_EXPORT QUnifiedTimer : public QObject
@@ -157,6 +130,8 @@ private:
     QUnifiedTimer();
 
 public:
+    ~QUnifiedTimer() override;
+
     static QUnifiedTimer *instance();
     static QUnifiedTimer *instance(bool create);
 
@@ -185,7 +160,7 @@ public:
 
     void restart();
     void maybeUpdateAnimationsToCurrentTime();
-    void updateAnimationTimers(qint64 currentTick);
+    void updateAnimationTimers();
 
     //useful for profiling/debugging
     int runningAnimationCount();
@@ -222,6 +197,7 @@ private:
     bool slowMode;
     bool startTimersPending;
     bool stopTimerPending;
+    bool allowNegativeDelta;
 
     // This factor will be used to divide the DEFAULT_TIMER_INTERVAL at each tick
     // when slowMode is enabled. Setting it to 0 or higher than DEFAULT_TIMER_INTERVAL (16)
@@ -247,6 +223,8 @@ private:
     QAnimationTimer();
 
 public:
+    ~QAnimationTimer() override;
+
     static QAnimationTimer *instance();
     static QAnimationTimer *instance(bool create);
 
@@ -269,7 +247,7 @@ public:
     void updateAnimationsTime(qint64 delta) override;
 
     //useful for profiling/debugging
-    int runningAnimationCount() override { return animations.count(); }
+    int runningAnimationCount() override { return animations.size(); }
 
 private Q_SLOTS:
     void startAnimations();

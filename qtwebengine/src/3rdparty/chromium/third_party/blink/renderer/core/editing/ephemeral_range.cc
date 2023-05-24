@@ -1,10 +1,13 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/editing/ephemeral_range.h"
 
 #include <ostream>  // NOLINT
+
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/dom/abstract_range.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/range.h"
@@ -27,7 +30,7 @@ EphemeralRangeTemplate<Strategy>::EphemeralRangeTemplate(
     const PositionTemplate<Strategy>& start,
     const PositionTemplate<Strategy>& end)
     : start_position_(start),
-      end_position_(end)
+      end_position_(start.IsEquivalent(end) ? start : end)
 #if DCHECK_IS_ON()
       ,
       dom_tree_version_(start.IsNull() ? 0
@@ -56,6 +59,14 @@ template <typename Strategy>
 EphemeralRangeTemplate<Strategy>::EphemeralRangeTemplate(
     const PositionTemplate<Strategy>& position)
     : EphemeralRangeTemplate(position, position) {}
+
+template <typename Strategy>
+EphemeralRangeTemplate<Strategy>::EphemeralRangeTemplate(
+    const AbstractRange* range)
+    : EphemeralRangeTemplate(PositionTemplate<Strategy>(range->startContainer(),
+                                                        range->startOffset()),
+                             PositionTemplate<Strategy>(range->endContainer(),
+                                                        range->endOffset())) {}
 
 template <typename Strategy>
 EphemeralRangeTemplate<Strategy>::EphemeralRangeTemplate(const Range* range) {
@@ -212,16 +223,6 @@ std::ostream& operator<<(std::ostream& ostream,
 
 EphemeralRangeInFlatTree ToEphemeralRangeInFlatTree(
     const EphemeralRange& range) {
-  // We need to update the distribution before getting the position in the flat
-  // tree, since that operation requires us to navigate the flat tree.
-  if (range.StartPosition().AnchorNode()) {
-    range.StartPosition()
-        .AnchorNode()
-        ->UpdateDistributionForFlatTreeTraversal();
-  }
-  if (range.EndPosition().AnchorNode()) {
-    range.EndPosition().AnchorNode()->UpdateDistributionForFlatTreeTraversal();
-  }
   PositionInFlatTree start = ToPositionInFlatTree(range.StartPosition());
   PositionInFlatTree end = ToPositionInFlatTree(range.EndPosition());
   if (start.IsNull() || end.IsNull() ||

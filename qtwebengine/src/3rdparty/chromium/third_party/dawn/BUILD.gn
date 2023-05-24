@@ -17,10 +17,23 @@ import("scripts/dawn_overrides_with_defaults.gni")
 group("all") {
   testonly = true
   deps = [
-    "src/fuzzers:dawn_fuzzers",
-    "src/tests:dawn_tests",
+    "src/dawn/fuzzers",
+    "src/dawn/native:webgpu_dawn",
+    "src/dawn/tests",
+    "src/tint:libtint",
+    "src/tint:tint_unittests",
+    "src/tint/fuzzers",
   ]
   if (dawn_standalone) {
-    deps += [ "examples:dawn_samples" ]
+    deps += [
+      "src/dawn/samples",
+      "src/tint/cmd:tint",
+    ]
   }
+}
+
+# This target is built when no specific target is specified on the command line.
+group("default") {
+  testonly = true
+  deps = [ ":all" ]
 }

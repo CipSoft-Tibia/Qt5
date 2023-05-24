@@ -25,6 +25,8 @@
 
 #include "third_party/blink/renderer/modules/speech/speech_synthesis.h"
 
+#include <tuple>
+
 #include "build/build_config.h"
 #include "third_party/blink/public/common/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/common/privacy_budget/identifiability_metric_builder.h"
@@ -36,8 +38,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_speech_synthesis_error_event_init.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_speech_synthesis_event_init.h"
 #include "third_party/blink/renderer/core/dom/document.h"
-#include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/core/frame/deprecation.h"
+#include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/media/autoplay_policy.h"
@@ -53,19 +54,23 @@ namespace blink {
 
 const char SpeechSynthesis::kSupplementName[] = "SpeechSynthesis";
 
+SpeechSynthesisBase* SpeechSynthesis::Create(LocalDOMWindow& window) {
+  return MakeGarbageCollected<SpeechSynthesis>(window);
+}
+
 SpeechSynthesis* SpeechSynthesis::speechSynthesis(LocalDOMWindow& window) {
   SpeechSynthesis* synthesis =
       Supplement<LocalDOMWindow>::From<SpeechSynthesis>(window);
   if (!synthesis) {
     synthesis = MakeGarbageCollected<SpeechSynthesis>(window);
     ProvideTo(window, synthesis);
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     // On Android devices we lazily initialize |mojom_synthesis_| to avoid
     // needlessly binding to the TTS service, see https://crbug.com/811929.
     // TODO(crbug/811929): Consider moving this logic into the Android-
     // specific backend implementation.
 #else
-    ignore_result(synthesis->TryEnsureMojomSynthesis());
+    std::ignore = synthesis->TryEnsureMojomSynthesis();
 #endif
   }
   return synthesis;
@@ -81,7 +86,7 @@ void SpeechSynthesis::CreateForTesting(
 }
 
 SpeechSynthesis::SpeechSynthesis(LocalDOMWindow& window)
-    : ExecutionContextClient(&window),
+    : Supplement<LocalDOMWindow>(window),
       receiver_(this, &window),
       mojom_synthesis_(&window) {}
 
@@ -97,7 +102,7 @@ void SpeechSynthesis::OnSetVoiceList(
 
 const HeapVector<Member<SpeechSynthesisVoice>>& SpeechSynthesis::getVoices() {
   // Kick off initialization here to ensure voice list gets populated.
-  ignore_result(TryEnsureMojomSynthesis());
+  std::ignore = TryEnsureMojomSynthesis();
   RecordVoicesForIdentifiability();
   return voice_list_;
 }
@@ -106,10 +111,9 @@ void SpeechSynthesis::RecordVoicesForIdentifiability() const {
   constexpr IdentifiableSurface surface = IdentifiableSurface::FromTypeAndToken(
       IdentifiableSurface::Type::kWebFeature,
       WebFeature::kSpeechSynthesis_GetVoices_Method);
-  if (!IdentifiabilityStudySettings::Get()->ShouldSample(surface))
+  if (!IdentifiabilityStudySettings::Get()->ShouldSampleSurface(surface))
     return;
-  ExecutionContext* context = GetExecutionContext();
-  if (!context)
+  if (!GetSupplementable()->GetFrame())
     return;
 
   IdentifiableTokenBuilder builder;
@@ -119,12 +123,12 @@ void SpeechSynthesis::RecordVoicesForIdentifiability() const {
     builder.AddToken(IdentifiabilityBenignStringToken(voice->name()));
     builder.AddToken(voice->localService());
   }
-  IdentifiabilityMetricBuilder(context->UkmSourceID())
-      .Set(surface, builder.GetToken())
-      .Record(context->UkmRecorder());
+  IdentifiabilityMetricBuilder(GetSupplementable()->UkmSourceID())
+      .Add(surface, builder.GetToken())
+      .Record(GetSupplementable()->UkmRecorder());
 }
 
-bool SpeechSynthesis::speaking() const {
+bool SpeechSynthesis::Speaking() const {
   // If we have a current speech utterance, then that means we're assumed to be
   // in a speaking state. This state is independent of whether the utterance
   // happens to be paused.
@@ -141,6 +145,15 @@ bool SpeechSynthesis::paused() const {
   return is_paused_;
 }
 
+void SpeechSynthesis::Speak(const String& text, const String& lang) {
+  ScriptState* script_state =
+      ToScriptStateForMainWorld(GetSupplementable()->GetFrame());
+  SpeechSynthesisUtterance* utterance =
+      SpeechSynthesisUtterance::Create(GetSupplementable(), text);
+  utterance->setLang(lang);
+  speak(script_state, utterance);
+}
+
 void SpeechSynthesis::speak(ScriptState* script_state,
                             SpeechSynthesisUtterance* utterance) {
   DCHECK(utterance);
@@ -149,13 +162,13 @@ void SpeechSynthesis::speak(ScriptState* script_state,
 
   // Note: Non-UseCounter based TTS metrics are of the form TextToSpeech.* and
   // are generally global, whereas these are scoped to a single page load.
-  LocalDOMWindow* window = To<LocalDOMWindow>(GetExecutionContext());
-  UseCounter::Count(window, WebFeature::kTextToSpeech_Speak);
-  window->CountUseOnlyInCrossOriginIframe(
+  UseCounter::Count(GetSupplementable(), WebFeature::kTextToSpeech_Speak);
+  GetSupplementable()->CountUseOnlyInCrossOriginIframe(
       WebFeature::kTextToSpeech_SpeakCrossOrigin);
   if (!IsAllowedToStartByAutoplay()) {
     Deprecation::CountDeprecation(
-        window, WebFeature::kTextToSpeech_SpeakDisallowedByAutoplay);
+        GetSupplementable(),
+        WebFeature::kTextToSpeech_SpeakDisallowedByAutoplay);
     FireErrorEvent(utterance, 0 /* char_index */, "not-allowed");
     return;
   }
@@ -167,7 +180,7 @@ void SpeechSynthesis::speak(ScriptState* script_state,
     StartSpeakingImmediately();
 }
 
-void SpeechSynthesis::cancel() {
+void SpeechSynthesis::Cancel() {
   // Remove all the items from the utterance queue. The platform
   // may still have references to some of these utterances and may
   // fire events on them asynchronously.
@@ -178,7 +191,7 @@ void SpeechSynthesis::cancel() {
     mojom_synthesis->Cancel();
 }
 
-void SpeechSynthesis::pause() {
+void SpeechSynthesis::Pause() {
   if (is_paused_)
     return;
 
@@ -187,7 +200,7 @@ void SpeechSynthesis::pause() {
     mojom_synthesis->Pause();
 }
 
-void SpeechSynthesis::resume() {
+void SpeechSynthesis::Resume() {
   if (!CurrentSpeechUtterance())
     return;
 
@@ -210,13 +223,16 @@ void SpeechSynthesis::DidResumeSpeaking(SpeechSynthesisUtterance* utterance) {
   FireEvent(event_type_names::kResume, utterance, 0, 0, String());
 }
 
-void SpeechSynthesis::DidFinishSpeaking(SpeechSynthesisUtterance* utterance) {
-  HandleSpeakingCompleted(utterance, false);
+void SpeechSynthesis::DidFinishSpeaking(
+    SpeechSynthesisUtterance* utterance,
+    mojom::blink::SpeechSynthesisErrorCode error_code) {
+  HandleSpeakingCompleted(utterance, error_code);
 }
 
 void SpeechSynthesis::SpeakingErrorOccurred(
     SpeechSynthesisUtterance* utterance) {
-  HandleSpeakingCompleted(utterance, true);
+  HandleSpeakingCompleted(
+      utterance, mojom::blink::SpeechSynthesisErrorCode::kErrorOccurred);
 }
 
 void SpeechSynthesis::WordBoundaryEventOccurred(
@@ -238,8 +254,7 @@ void SpeechSynthesis::SentenceBoundaryEventOccurred(
 }
 
 void SpeechSynthesis::VoicesDidChange() {
-  if (GetExecutionContext())
-    DispatchEvent(*Event::Create(event_type_names::kVoiceschanged));
+  DispatchEvent(*Event::Create(event_type_names::kVoiceschanged));
 }
 
 void SpeechSynthesis::StartSpeakingImmediately() {
@@ -259,8 +274,11 @@ void SpeechSynthesis::StartSpeakingImmediately() {
 
 void SpeechSynthesis::HandleSpeakingCompleted(
     SpeechSynthesisUtterance* utterance,
-    bool error_occurred) {
+    mojom::blink::SpeechSynthesisErrorCode error_code) {
   DCHECK(utterance);
+
+  // Special handling for audio descriptions.
+  SpeechSynthesisBase::HandleSpeakingCompleted();
 
   bool should_start_speaking = false;
   // If the utterance that completed was the one we're currently speaking,
@@ -270,20 +288,35 @@ void SpeechSynthesis::HandleSpeakingCompleted(
     should_start_speaking = !utterance_queue_.empty();
   }
 
+  // https://wicg.github.io/speech-api/#speechsynthesiserrorevent-attributes
+  // The below errors are matched with SpeechSynthesisErrorCode values.
+  static constexpr char kErrorCanceled[] = "canceled";
+  static constexpr char kErrorInterrupted[] = "interrupted";
+  static constexpr char kErrorSynthesisFailed[] = "synthesis-failed";
+
   // Always fire the event, because the platform may have asynchronously
   // sent an event on an utterance before it got the message that we
   // canceled it, and we should always report to the user what actually
   // happened.
-  if (error_occurred) {
-    // TODO(csharrison): Actually pass the correct message. For now just use a
-    // generic error.
-    FireErrorEvent(utterance, 0, "synthesis-failed");
-  } else {
-    FireEvent(event_type_names::kEnd, utterance, 0, 0, String());
+  switch (error_code) {
+    case mojom::blink::SpeechSynthesisErrorCode::kInterrupted:
+      FireErrorEvent(utterance, 0, kErrorInterrupted);
+      break;
+    case mojom::blink::SpeechSynthesisErrorCode::kCancelled:
+      FireErrorEvent(utterance, 0, kErrorCanceled);
+      break;
+    case mojom::blink::SpeechSynthesisErrorCode::kErrorOccurred:
+      // TODO(csharrison): Actually pass the correct message. For now just use a
+      // generic error.
+      FireErrorEvent(utterance, 0, kErrorSynthesisFailed);
+      break;
+    case mojom::blink::SpeechSynthesisErrorCode::kNoError:
+      FireEvent(event_type_names::kEnd, utterance, 0, 0, String());
+      break;
   }
 
   // Start the next utterance if we just finished one and one was pending.
-  if (should_start_speaking && !utterance_queue_.IsEmpty())
+  if (should_start_speaking && !utterance_queue_.empty())
     StartSpeakingImmediately();
 }
 
@@ -322,10 +355,14 @@ void SpeechSynthesis::FireErrorEvent(SpeechSynthesisUtterance* utterance,
 }
 
 SpeechSynthesisUtterance* SpeechSynthesis::CurrentSpeechUtterance() const {
-  if (utterance_queue_.IsEmpty())
+  if (utterance_queue_.empty())
     return nullptr;
 
   return utterance_queue_.front();
+}
+
+ExecutionContext* SpeechSynthesis::GetExecutionContext() const {
+  return GetSupplementable();
 }
 
 void SpeechSynthesis::Trace(Visitor* visitor) const {
@@ -333,24 +370,23 @@ void SpeechSynthesis::Trace(Visitor* visitor) const {
   visitor->Trace(mojom_synthesis_);
   visitor->Trace(voice_list_);
   visitor->Trace(utterance_queue_);
-  ExecutionContextClient::Trace(visitor);
   Supplement<LocalDOMWindow>::Trace(visitor);
   EventTargetWithInlineData::Trace(visitor);
+  SpeechSynthesisBase::Trace(visitor);
 }
 
 bool SpeechSynthesis::GetElapsedTimeMillis(double* millis) {
-  if (!GetExecutionContext())
+  if (!GetSupplementable()->GetFrame())
     return false;
-  LocalDOMWindow* window = To<LocalDOMWindow>(GetExecutionContext());
-  if (window->document()->IsStopped())
+  if (GetSupplementable()->document()->IsStopped())
     return false;
 
-  *millis = DOMWindowPerformance::performance(*window)->now();
+  *millis = DOMWindowPerformance::performance(*GetSupplementable())->now();
   return true;
 }
 
 bool SpeechSynthesis::IsAllowedToStartByAutoplay() const {
-  Document* document = To<LocalDOMWindow>(GetExecutionContext())->document();
+  Document* document = GetSupplementable()->document();
   DCHECK(document);
 
   // Note: could check the utterance->volume here, but that could be overriden
@@ -366,10 +402,10 @@ void SpeechSynthesis::SetMojomSynthesisForTesting(
     mojo::PendingRemote<mojom::blink::SpeechSynthesis> mojom_synthesis) {
   mojom_synthesis_.Bind(
       std::move(mojom_synthesis),
-      GetExecutionContext()->GetTaskRunner(TaskType::kMiscPlatformAPI));
+      GetSupplementable()->GetTaskRunner(TaskType::kMiscPlatformAPI));
   receiver_.reset();
   mojom_synthesis_->AddVoiceListObserver(receiver_.BindNewPipeAndPassRemote(
-      GetExecutionContext()->GetTaskRunner(TaskType::kMiscPlatformAPI)));
+      GetSupplementable()->GetTaskRunner(TaskType::kMiscPlatformAPI)));
 }
 
 mojom::blink::SpeechSynthesis* SpeechSynthesis::TryEnsureMojomSynthesis() {
@@ -379,18 +415,17 @@ mojom::blink::SpeechSynthesis* SpeechSynthesis::TryEnsureMojomSynthesis() {
   // The frame could be detached. In that case, calls on mojom_synthesis_ will
   // just get dropped. That's okay and is simpler than having to null-check
   // mojom_synthesis_ before each use.
-  ExecutionContext* context = GetExecutionContext();
-
-  if (!context)
+  LocalDOMWindow* window = GetSupplementable();
+  if (!window->GetFrame())
     return nullptr;
 
   auto receiver = mojom_synthesis_.BindNewPipeAndPassReceiver(
-      context->GetTaskRunner(TaskType::kMiscPlatformAPI));
+      window->GetTaskRunner(TaskType::kMiscPlatformAPI));
 
-  context->GetBrowserInterfaceBroker().GetInterface(std::move(receiver));
+  window->GetBrowserInterfaceBroker().GetInterface(std::move(receiver));
 
   mojom_synthesis_->AddVoiceListObserver(receiver_.BindNewPipeAndPassRemote(
-      context->GetTaskRunner(TaskType::kMiscPlatformAPI)));
+      window->GetTaskRunner(TaskType::kMiscPlatformAPI)));
   return mojom_synthesis_.get();
 }
 

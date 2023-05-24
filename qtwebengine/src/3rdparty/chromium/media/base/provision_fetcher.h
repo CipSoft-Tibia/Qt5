@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "url/gurl.h"
 
 namespace media {
 
@@ -29,7 +30,7 @@ class ProvisionFetcher {
   // MediaDrm.ProvisionRequest.
   // The implementation must call |response_cb| asynchronously on the same
   // thread that this method is called.
-  virtual void Retrieve(const std::string& default_url,
+  virtual void Retrieve(const GURL& default_url,
                         const std::string& request_data,
                         ResponseCB response_cb) = 0;
 };

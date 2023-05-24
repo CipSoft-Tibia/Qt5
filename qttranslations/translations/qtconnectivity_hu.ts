@@ -24,6 +24,10 @@
         <translation>Ismeretlen hiba</translation>
     </message>
     <message>
+        <source>Missing permission</source>
+        <translation>Hiányzó jogosultság</translation>
+    </message>
+    <message>
         <source>Cannot start device inquiry</source>
         <translation>Nem lehet elindítani az eszközvizsgálatot</translation>
     </message>
@@ -40,6 +44,14 @@
         <translation>Érvénytelen Bluetooth adapter cím</translation>
     </message>
     <message>
+        <source>One or more device discovery methods are not supported on this platform</source>
+        <translation>Egy vagy több eszközfelderítési módszer nem támogatott ezen a platformon</translation>
+    </message>
+    <message>
+        <source>Classic Discovery cannot be started</source>
+        <translation>A klasszikus felderítést nem lehet elindítani</translation>
+    </message>
+    <message>
         <source>Device does not support Bluetooth</source>
         <translation>Az eszköznek nincs Bluetooth támogatása</translation>
     </message>
@@ -48,8 +60,16 @@
         <translation>Az átadott cím nem helyi eszköz.</translation>
     </message>
     <message>
+        <source>Failed to start device discovery due to missing permissions.</source>
+        <translation>Nem sikerült elindítani az eszközfelderítést hiányzó jogosultságok miatt.</translation>
+    </message>
+    <message>
+        <source>Location service turned off. Search is not possible.</source>
+        <translation>A helymeghatározási szolgáltatás ki van kapcsolva. A keresés nem lehetséges.</translation>
+    </message>
+    <message>
         <source>Discovery cannot be started</source>
-        <translation>A felderítést nem lehet elindítani</translation>
+        <translation type="vanished">A felderítést nem lehet elindítani</translation>
     </message>
     <message>
         <source>Bluetooth adapter error</source>
@@ -62,6 +82,10 @@
     <message>
         <source>Cannot access adapter during service discovery</source>
         <translation>Nem lehet hozzáférni az adapterhez a szolgáltatásfelderítés közben</translation>
+    </message>
+    <message>
+        <source>Bluetooth adapter powered off.</source>
+        <translation>A Bluetooth adapter ki van kapcsolva.</translation>
     </message>
 </context>
 <context>
@@ -84,7 +108,11 @@
     </message>
     <message>
         <source>Android API below v15 does not support SDP discovery</source>
-        <translation>A 15. verzió alatti Android API nem támogatja az SDP felderítést</translation>
+        <translation type="vanished">A 15. verzió alatti Android API nem támogatja az SDP felderítést</translation>
+    </message>
+    <message>
+        <source>Failed to start service discovery due to missing permissions.</source>
+        <translation>Nem sikerült elindítani az eszközfelderítést hiányzó jogosultságok miatt.</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -104,7 +132,7 @@
     </message>
     <message>
         <source>Unable to find appointed local adapter</source>
-        <translation>Nem található kijelölt helyi adapter</translation>
+        <translation type="vanished">Nem található kijelölt helyi adapter</translation>
     </message>
     <message>
         <source>Cannot find local Bluetooth adapter</source>
@@ -120,7 +148,7 @@
     </message>
     <message>
         <source>Unable to access device</source>
-        <translation>Nem lehet hozzáférni az eszközhöz</translation>
+        <translation type="vanished">Nem lehet hozzáférni az eszközhöz</translation>
     </message>
     <message>
         <source>Custom Service</source>
@@ -714,7 +742,7 @@
     </message>
     <message>
         <source>Firmware Revision String</source>
-        <translation> Firmware-változat karakterlánca</translation>
+        <translation>Firmware-változat karakterlánca</translation>
     </message>
     <message>
         <source>Hardware Revision String</source>
@@ -1129,6 +1157,10 @@
         <translation>Súlymérés</translation>
     </message>
     <message>
+        <source>Weight Scale Feature</source>
+        <translation>Súlymérleg funkció</translation>
+    </message>
+    <message>
         <source>User Control Point</source>
         <translation>Felhasználó-ellenőrző pont</translation>
     </message>
@@ -1236,8 +1268,21 @@
         <translation>Ismeretlen foglalathiba</translation>
     </message>
     <message>
+        <source>Network Error: %1</source>
+        <translation>Hálózati hiba: %1</translation>
+    </message>
+    <message>
         <source>Connecting to port is not supported</source>
-        <translation>A porthoz való csatlakozás nem támogatott</translation>
+        <translation type="vanished">A porthoz való csatlakozás nem támogatott</translation>
+    </message>
+    <message>
+        <source>Cannot connect to %1</source>
+        <comment>%1 = uuid</comment>
+        <translation>Nem lehet csatlakozni ehhez: %1</translation>
+    </message>
+    <message>
+        <source>Bluetooth socket connect failed due to missing permissions.</source>
+        <translation>A Bluetooth foglalathoz kapcsolódás sikertelen hiányzó jogosultságok miatt.</translation>
     </message>
     <message>
         <source>Device does not support Bluetooth</source>
@@ -1280,6 +1325,50 @@
     <message>
         <source>Cannot set connection security level</source>
         <translation>Nem lehet beállítani a kapcsolat biztonsági szintjét</translation>
+    </message>
+    <message>
+        <source>Cannot export profile on DBus</source>
+        <translation>Nem lehet exportálni profilt DBuson keresztül</translation>
+    </message>
+    <message>
+        <source>Cannot register profile on DBus</source>
+        <translation>Nem lehet regisztrálni profilt DBuson keresztül</translation>
+    </message>
+    <message>
+        <source>Cannot find remote device</source>
+        <translation>Nem található távoli eszköz</translation>
+    </message>
+    <message>
+        <source>Cannot connect to remote profile</source>
+        <translation>Nem lehet kapcsolódni távoli profilhoz</translation>
+    </message>
+    <message>
+        <source>Missing serviceUuid or Serial Port service class uuid</source>
+        <translation>Hiányzó serviceUuid vagy soros port szolgáltatásosztály UUID</translation>
+    </message>
+    <message>
+        <source>Invalid Bluetooth address passed to connectToService()</source>
+        <translation>Érvénytelen Bluetooth cím átadva a connectToService()-nek</translation>
+    </message>
+    <message>
+        <source>Network error</source>
+        <translation>Hálózati hiba</translation>
+    </message>
+    <message>
+        <source>Remote host closed connection</source>
+        <translation>A távoli gép lezárta a kapcsolatot</translation>
+    </message>
+    <message>
+        <source>Connection timed out</source>
+        <translation>A kapcsolat túllépte az időkorlátot</translation>
+    </message>
+    <message>
+        <source>Host not reachable</source>
+        <translation>A gép nem érhető el</translation>
+    </message>
+    <message>
+        <source>Host refused connection</source>
+        <translation>A gép elutasította a kapcsolatot</translation>
     </message>
 </context>
 <context>
@@ -1329,19 +1418,19 @@
     <name>QBluetoothTransferReplyBluez</name>
     <message>
         <source>Unknown Error</source>
-        <translation>Ismeretlen hiba</translation>
+        <translation type="vanished">Ismeretlen hiba</translation>
     </message>
     <message>
         <source>Could not open file for sending</source>
-        <translation>Nem sikerült megnyitni a fájlt a küldéshez</translation>
+        <translation type="vanished">Nem sikerült megnyitni a fájlt a küldéshez</translation>
     </message>
     <message>
         <source>The transfer was canceled</source>
-        <translation>Az átvitelt megszakították</translation>
+        <translation type="vanished">Az átvitelt megszakították</translation>
     </message>
     <message>
         <source>Operation canceled</source>
-        <translation>A művelet megszakítva</translation>
+        <translation type="vanished">A művelet megszakítva</translation>
     </message>
 </context>
 <context>
@@ -1363,8 +1452,62 @@
         <translation>Ismeretlen hiba</translation>
     </message>
     <message>
+        <source>Missing permission</source>
+        <translation>Hiányzó jogosultság</translation>
+    </message>
+    <message>
         <source>Error occurred trying to connect to remote device.</source>
         <translation>Hiba történt a távoli eszközhöz való csatlakozás során.</translation>
+    </message>
+    <message>
+        <source>Remote device closed the connection</source>
+        <translation>A távoli eszköz lezárta a kapcsolatot</translation>
+    </message>
+    <message>
+        <source>Failed to authorize on the remote device</source>
+        <translation>A hitelesítés a távoli eszközön sikertelen</translation>
+    </message>
+    <message>
+        <source>Missing permissions error</source>
+        <translation>Hiányzó jogosultságok hiba</translation>
+    </message>
+    <message>
+        <source>Error reading RSSI value</source>
+        <translation>Hiba az RSSI érték olvasásakor</translation>
+    </message>
+    <message>
+        <source>Advertisement data is larger than 31 bytes</source>
+        <translation>A hirdetési adat nagyobb, mint 31 bájt</translation>
+    </message>
+    <message>
+        <source>Advertisement feature not supported on the platform</source>
+        <translation>A hirdetési szolgáltatás nem támogatott a platformon</translation>
+    </message>
+    <message>
+        <source>Error occurred trying to start advertising</source>
+        <translation>Hiba történt a hirdetés megkezdésére tett kísérlet során</translation>
+    </message>
+    <message>
+        <source>Failed due to too many advertisers</source>
+        <translation>Túl sok hirdető miatt sikertelen</translation>
+    </message>
+    <message>
+        <source>Unknown advertisement error</source>
+        <translation>Ismeretlen hirdetési hiba</translation>
+    </message>
+</context>
+<context>
+    <name>QBluetoothSocketPrivateAndroid</name>
+    <message>
+        <source>Connecting to port is not supported</source>
+        <translation>A porthoz való csatlakozás nem támogatott</translation>
+    </message>
+</context>
+<context>
+    <name>QBluetoothSocketPrivateBluezDBus</name>
+    <message>
+        <source>Connecting to port is not supported via Bluez DBus</source>
+        <translation>A porthoz való csatlakozás nem támogatott Bluez DBuson keresztül</translation>
     </message>
 </context>
 </TS>

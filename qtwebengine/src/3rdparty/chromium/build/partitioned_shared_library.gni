@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -62,7 +62,7 @@ template("partitioned_shared_library") {
     }
     ldflags += [
       "-Wl,-soname,lib${_output_name}.so",
-      "--link-only",
+      "--partitioned-library",
     ]
 
     # This shared library is an intermediate artifact that should not packaged
@@ -100,12 +100,8 @@ template("partitioned_shared_library") {
         ]
       }
 
-      # Restrict to Android OS because ChromeOS uses the Android toolchain with
-      # use_debug_fission set globally, which isn't reliable across all
-      # possible build configs with Android.
-      if (is_android && target_os == "android" && use_debug_fission) {
-        dwp = rebase_path("${android_tool_prefix}dwp", root_build_dir)
-        args += [ "--dwp=${dwp}" ]
+      if (use_debug_fission) {
+        args += [ "--split-dwarf" ]
         outputs += [ invoker.unstripped_output + ".dwp" ]
       }
       args += [ rebase_path(sources[0], root_build_dir) ]

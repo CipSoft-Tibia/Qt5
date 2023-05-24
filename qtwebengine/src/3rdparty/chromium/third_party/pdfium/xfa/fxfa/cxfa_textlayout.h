@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,21 +12,21 @@
 
 #include "core/fxcrt/css/cfx_css.h"
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxcrt/fx_string.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxcrt/widestring.h"
+#include "core/fxge/dib/fx_dib.h"
 #include "fxjs/gc/heap.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/cppgc/visitor.h"
-#include "xfa/fgas/layout/cfx_char.h"
-#include "xfa/fgas/layout/cfx_textpiece.h"
+#include "xfa/fgas/layout/cfgas_char.h"
+#include "xfa/fgas/layout/cfgas_textpiece.h"
 #include "xfa/fxfa/fxfa_basic.h"
 
+class CFGAS_LinkUserData;
+class CFGAS_RTFBreak;
 class CFX_CSSComputedStyle;
-class CFX_LinkUserData;
-class CFX_RTFBreak;
 class CFX_RenderDevice;
 class CFX_XMLNode;
 class CXFA_FFDoc;
@@ -35,7 +35,6 @@ class CXFA_TextParser;
 class CXFA_TextProvider;
 class CXFA_TextTabstopsContext;
 class TextCharPos;
-struct FX_RTFTEXTOBJ;
 
 class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
  public:
@@ -63,10 +62,12 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
   bool HasBlock() const { return m_bHasBlock; }
   void ClearBlocks() { m_Blocks.clear(); }
   void ResetHasBlock() { m_bHasBlock = false; }
-  const wchar_t* GetLinkURLAtPoint(const CFX_PointF& point);
+
+  // Returns empty string when no link is present.
+  WideString GetLinkURLAtPoint(const CFX_PointF& point);
 
  private:
-  class TextPiece : public CFX_TextPiece {
+  class TextPiece : public CFGAS_TextPiece {
    public:
     TextPiece();
     ~TextPiece();
@@ -75,7 +76,7 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
     int32_t iLineThrough = 0;
     XFA_AttributeValue iPeriod = XFA_AttributeValue::All;
     FX_ARGB dwColor = 0;
-    RetainPtr<CFX_LinkUserData> pLinkData;
+    RetainPtr<CFGAS_LinkUserData> pLinkData;
   };
 
   class PieceLine {
@@ -109,7 +110,7 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
     float fHeight = 0;
     float fLastPos = 0;
     float fStartLineOffset = 0;
-    int32_t iChar = 0;
+    size_t nCharIdx = 0;
     // TODO(thestig): Make this size_t?
     int32_t iTotalLines = -1;
     UnownedPtr<const CFX_XMLNode> pXMLNode;
@@ -123,7 +124,7 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
 
   void GetTextDataNode();
   CFX_XMLNode* GetXMLContainerNode();
-  std::unique_ptr<CFX_RTFBreak> CreateBreak(bool bDefault);
+  std::unique_ptr<CFGAS_RTFBreak> CreateBreak(bool bDefault);
   void InitBreak(float fLineWidth);
   void InitBreak(CFX_CSSComputedStyle* pStyle,
                  CFX_CSSDisplay eDisplay,
@@ -138,9 +139,9 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
   bool LoadRichText(const CFX_XMLNode* pXMLNode,
                     float textWidth,
                     float* pLinePos,
-                    const RetainPtr<CFX_CSSComputedStyle>& pParentStyle,
+                    RetainPtr<CFX_CSSComputedStyle> pParentStyle,
                     bool bSavePieces,
-                    RetainPtr<CFX_LinkUserData> pLinkData,
+                    RetainPtr<CFGAS_LinkUserData> pLinkData,
                     bool bEndBreak,
                     bool bIsOl,
                     int32_t iLiCount);
@@ -148,11 +149,11 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
                   float* pLinePos,
                   float fSpaceAbove,
                   bool bSavePieces);
-  void AppendTextLine(CFX_BreakType dwStatus,
+  void AppendTextLine(CFGAS_Char::BreakType dwStatus,
                       float* pLinePos,
                       bool bSavePieces,
                       bool bEndBreak);
-  void EndBreak(CFX_BreakType dwStatus, float* pLinePos, bool bDefault);
+  void EndBreak(CFGAS_Char::BreakType dwStatus, float* pLinePos, bool bDefault);
   bool IsEnd(bool bSavePieces);
   void UpdateAlign(float fHeight, float fBottom);
   void RenderString(CFX_RenderDevice* pDevice,
@@ -182,7 +183,7 @@ class CXFA_TextLayout final : public cppgc::GarbageCollected<CXFA_TextLayout> {
   cppgc::Member<CXFA_TextProvider> const m_pTextProvider;
   cppgc::Member<CXFA_Node> m_pTextDataNode;
   cppgc::Member<CXFA_TextParser> m_pTextParser;
-  std::unique_ptr<CFX_RTFBreak> m_pBreak;
+  std::unique_ptr<CFGAS_RTFBreak> m_pBreak;
   std::unique_ptr<LoaderContext> m_pLoader;
   std::vector<std::unique_ptr<PieceLine>> m_pieceLines;
   std::unique_ptr<CXFA_TextTabstopsContext> m_pTabstopContext;

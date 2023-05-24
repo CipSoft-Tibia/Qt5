@@ -1,4 +1,4 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,6 +7,28 @@
 See http://dev.chromium.org/developers/how-tos/depottools/presubmit-scripts
 for more details on the presubmit API built into depot_tools.
 """
+
+
+USE_PYTHON3 = True
+
+
+def CheckChangeLintsClean(input_api, output_api):
+  """Makes sure that the code is cpplint clean."""
+  # lint_filters=[] stops the OFF_BY_DEFAULT_LINT_FILTERS from being disabled,
+  # finding many more issues. verbose_level=1 finds a small number of additional
+  # issues.
+  # The only valid extensions for cpplint are .cc, .h, .cpp, .cu, and .ch.
+  # Only process those extensions which are used in Chromium, in directories
+  # that currently lint clean.
+  CLEAN_CPP_FILES_ONLY = (r'base/win/.*\.(cc|h)$', )
+  source_file_filter = lambda x: input_api.FilterSourceFile(
+      x,
+      files_to_check=CLEAN_CPP_FILES_ONLY,
+      files_to_skip=input_api.DEFAULT_FILES_TO_SKIP)
+  return input_api.canned_checks.CheckChangeLintsClean(
+      input_api, output_api, source_file_filter=source_file_filter,
+      lint_filters=[], verbose_level=1)
+
 
 def _CheckNoInterfacesInBase(input_api, output_api):
   """Checks to make sure no files in libbase.a have |@interface|."""
@@ -32,6 +54,26 @@ def _CheckNoInterfacesInBase(input_api, output_api):
   return []
 
 
+def _FindLocations(input_api, search_regexes, files_to_check, files_to_skip):
+  """Returns locations matching one of the search_regexes."""
+  def FilterFile(affected_file):
+    return input_api.FilterSourceFile(
+      affected_file,
+      files_to_check=files_to_check,
+      files_to_skip=files_to_skip)
+
+  no_presubmit = r"// no-presubmit-check"
+  locations = []
+  for f in input_api.AffectedSourceFiles(FilterFile):
+    for line_num, line in f.ChangedContents():
+      for search_regex in search_regexes:
+        if (input_api.re.search(search_regex, line) and
+            not input_api.re.search(no_presubmit, line)):
+          locations.append("    %s:%d" % (f.LocalPath(), line_num))
+          break
+  return locations
+
+
 def _CheckNoTraceEventInclude(input_api, output_api):
   """Verify that //base includes base_tracing.h instead of trace event headers.
 
@@ -40,41 +82,61 @@ def _CheckNoTraceEventInclude(input_api, output_api):
   to maintain compatibility with the gn flag "enable_base_tracing = false".
   """
   discouraged_includes = [
-    r'^#include "base/trace_event/(?!base_tracing\.h)',
+    r'^#include "base/trace_event/(?!base_tracing\.h|base_tracing_forward\.h)',
+    r'^#include "third_party/perfetto/include/',
   ]
 
   files_to_check = [
     r".*\.(h|cc|mm)$",
   ]
   files_to_skip = [
-    r".*[\\/]test[\\/].*",
-    r".*[\\/]trace_event[\\/].*",
-    r".*[\\/]tracing[\\/].*",
+    r".*/test/.*",
+    r".*/trace_event/.*",
+    r".*/tracing/.*",
   ]
-  no_presubmit = r"// no-presubmit-check"
 
-  def FilterFile(affected_file):
-    return input_api.FilterSourceFile(
-      affected_file,
-      files_to_check=files_to_check,
-      files_to_skip=files_to_skip)
-
-  locations = []
-  for f in input_api.AffectedSourceFiles(FilterFile):
-    for line_num, line in f.ChangedContents():
-      for include in discouraged_includes:
-        if (input_api.re.search(include, line) and
-            not input_api.re.search(no_presubmit, line)):
-          locations.append("    %s:%d" % (f.LocalPath(), line_num))
-          break
-
+  locations = _FindLocations(input_api, discouraged_includes, files_to_check,
+                             files_to_skip)
   if locations:
     return [ output_api.PresubmitError(
         'Base code should include "base/trace_event/base_tracing.h" instead\n' +
         'of trace_event implementation headers. If you need to include an\n' +
-        'implementation header, verify that base_unittests still passes\n' +
-        'with gn arg "enable_base_tracing = false" and add\n' +
+        'implementation header, verify that "gn check" and base_unittests\n' +
+        'still pass with gn arg "enable_base_tracing = false" and add\n' +
         '"// no-presubmit-check" after the include. \n' +
+        '\n'.join(locations)) ]
+  return []
+
+
+def _WarnPbzeroIncludes(input_api, output_api):
+  """Warn to check enable_base_tracing=false when including a pbzero header.
+
+  Emits a warning when including a perfetto pbzero header, encouraging the
+  user to verify that //base still builds with enable_base_tracing=false.
+  """
+  warn_includes = [
+    r'^#include "third_party/perfetto/protos/',
+    r'^#include "base/tracing/protos/',
+  ]
+
+  files_to_check = [
+    r".*\.(h|cc|mm)$",
+  ]
+  files_to_skip = [
+    r".*/test/.*",
+    r".*/trace_event/.*",
+    r".*/tracing/.*",
+  ]
+
+  locations = _FindLocations(input_api, warn_includes, files_to_check,
+                             files_to_skip)
+  if locations:
+    return [ output_api.PresubmitPromptWarning(
+        'Please verify that "gn check" and base_unittests still pass with\n' +
+        'gn arg "enable_base_tracing = false" when adding typed trace\n' +
+        'events to //base. You can use "#if BUILDFLAG(ENABLE_BASE_TRACING)"\n' +
+        'to exclude pbzero headers and anything not supported by\n' +
+        '//base/trace_event/trace_event_stub.h.\n' +
         '\n'.join(locations)) ]
   return []
 
@@ -84,6 +146,8 @@ def _CommonChecks(input_api, output_api):
   results = []
   results.extend(_CheckNoInterfacesInBase(input_api, output_api))
   results.extend(_CheckNoTraceEventInclude(input_api, output_api))
+  results.extend(_WarnPbzeroIncludes(input_api, output_api))
+  results.extend(CheckChangeLintsClean(input_api, output_api))
   return results
 
 

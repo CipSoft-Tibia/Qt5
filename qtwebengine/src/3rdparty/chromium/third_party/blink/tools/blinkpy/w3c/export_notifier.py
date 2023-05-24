@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Sends notifications after automatic exports.
@@ -19,7 +19,8 @@ from blinkpy.w3c.wpt_github import GitHubError
 
 _log = logging.getLogger(__name__)
 RELEVANT_TASKCLUSTER_CHECKS = [
-    'wpt-chrome-dev-stability', 'wpt-firefox-nightly-stability', 'lint'
+    'wpt-chrome-dev-stability', 'wpt-firefox-nightly-stability', 'lint',
+    'infrastructure/ tests'
 ]
 
 
@@ -54,8 +55,7 @@ class ExportNotifier(object):
             if not check_runs:
                 continue
 
-            checks_results = self.get_relevant_failed_taskcluster_checks(
-                check_runs, pr.number)
+            checks_results = self.get_relevant_failed_taskcluster_checks(check_runs)
             if not checks_results:
                 continue
 
@@ -93,11 +93,13 @@ class ExportNotifier(object):
         _log.info('Processing %d CLs with failed Taskcluster checks.',
                   len(gerrit_dict))
         for change_id, pr_status_info in gerrit_dict.items():
+            _log.info('Change-Id: %s', change_id)
             try:
                 cl = self.gerrit.query_cl_comments_and_revisions(change_id)
                 has_commented = self.has_latest_taskcluster_status_commented(
                     cl.messages, pr_status_info)
                 if has_commented:
+                    _log.info('Comment is up-to-date. Nothing to do here.')
                     continue
 
                 revision = cl.revisions.get(pr_status_info.gerrit_sha)
@@ -131,17 +133,17 @@ class ExportNotifier(object):
             cl_gerrit_sha = PRStatusInfo.get_gerrit_sha_from_comment(
                 message['message'])
             if cl_gerrit_sha:
+                _log.debug('Found latest comment: %s', message['message'])
                 return cl_gerrit_sha == pr_status_info.gerrit_sha
 
         return False
 
-    def get_relevant_failed_taskcluster_checks(self, check_runs, pr_number):
+    def get_relevant_failed_taskcluster_checks(self, check_runs):
         """Filters relevant failed Taskcluster checks from check_runs.
 
         Args:
             check_runs: A JSON array; e.g. "check_runs" in
                 https://developer.github.com/v3/checks/runs/#response-3
-            pr_number: The PR number.
 
         Returns:
             A dictionary where keys are names of the Taskcluster checks and values
@@ -151,8 +153,7 @@ class ExportNotifier(object):
         for check in check_runs:
             if (check['conclusion'] == 'failure') and (
                     check['name'] in RELEVANT_TASKCLUSTER_CHECKS):
-                result_url = '{}pull/{}/checks?check_run_id={}'.format(
-                    WPT_GH_URL, pr_number, check['id'])
+                result_url = '{}runs/{}'.format(WPT_GH_URL, check['id'])
                 checks_results[check['name']] = result_url
 
         return checks_results

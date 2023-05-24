@@ -1,6 +1,8 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+import("//build/config/chromeos/ui_mode.gni")
 
 assert(!is_android)
 
@@ -9,14 +11,24 @@ static_library("discovery") {
   deps = [
     "//base",
     "//base:i18n",
+    "//build:chromeos_buildflags",
     "//chrome/app:generated_resources",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/media/router:data_decoder_util",
+    "//chrome/browser/media/router:logger_list",
+    "//chrome/browser/media/router:media_router_feature",
     "//chrome/common:constants",
-    "//components/cast_channel",
+    "//components/media_router/browser",
     "//components/media_router/common",
+    "//components/media_router/common/mojom:logger",
+    "//components/media_router/common/providers/cast/channel",
+    "//components/net_log",
+    "//components/prefs",
     "//components/version_info",
     "//content/public/browser",
     "//content/public/common",
     "//services/network/public/cpp",
+    "//third_party/openscreen/src/cast/common/channel/proto:channel_proto",
   ]
   sources = [
     "dial/device_description_fetcher.cc",
@@ -33,8 +45,9 @@ static_library("discovery") {
     "dial/dial_media_sink_service_impl.h",
     "dial/dial_registry.cc",
     "dial/dial_registry.h",
-    "dial/dial_service.cc",
     "dial/dial_service.h",
+    "dial/dial_service_impl.cc",
+    "dial/dial_service_impl.h",
     "dial/dial_url_fetcher.cc",
     "dial/dial_url_fetcher.h",
     "dial/parsed_dial_app_info.cc",
@@ -51,10 +64,6 @@ static_library("discovery") {
     "discovery_network_list_wifi.h",
     "discovery_network_monitor.cc",
     "discovery_network_monitor.h",
-    "discovery_network_monitor_metric_observer.cc",
-    "discovery_network_monitor_metric_observer.h",
-    "discovery_network_monitor_metrics.cc",
-    "discovery_network_monitor_metrics.h",
     "mdns/cast_media_sink_service.cc",
     "mdns/cast_media_sink_service.h",
     "mdns/cast_media_sink_service_impl.cc",
@@ -75,8 +84,16 @@ static_library("discovery") {
     sources += [ "discovery_network_list_wifi_linux.cc" ]
   }
 
+  if (is_chromeos_ash) {
+    deps += [ "//chromeos/ash/components/network" ]
+  }
+
   if (is_posix) {
     sources += [ "discovery_network_list_posix.cc" ]
+  }
+
+  if (is_fuchsia) {
+    sources += [ "discovery_network_list_fuchsia.cc" ]
   }
 
   if (is_mac) {

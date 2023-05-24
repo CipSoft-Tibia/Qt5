@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Copyright (C) 2014 Keith Gardner <kreios4004@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// Copyright (C) 2014 Keith Gardner <kreios4004@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qversionnumber.h>
 #include <QtCore/qhash.h>
@@ -56,6 +20,8 @@
 #include <limits>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QVersionNumber)
 
 /*!
     \class QVersionNumber
@@ -96,27 +62,29 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn QVersionNumber::QVersionNumber(const QVector<int> &seg)
+    \fn QVersionNumber::QVersionNumber(const QList<int> &seg)
 
     Constructs a version number from the list of numbers contained in \a seg.
 */
 
 /*!
-    \fn QVersionNumber::QVersionNumber(QVector<int> &&seg)
+    \fn QVersionNumber::QVersionNumber(QList<int> &&seg)
 
     Move-constructs a version number from the list of numbers contained in \a seg.
-
-    This constructor is only enabled if the compiler supports C++11 move semantics.
 */
 
 /*!
     \fn QVersionNumber::QVersionNumber(std::initializer_list<int> args)
 
-    Construct a version number from the std::initializer_list specified by
+    Constructs a version number from the std::initializer_list specified by
     \a args.
+*/
 
-    This constructor is only enabled if the compiler supports C++11 initializer
-    lists.
+/*!
+    \fn template <qsizetype N> QVersionNumber::QVersionNumber(const QVarLengthArray<int, N> &seg)
+    \since 6.4
+
+    Constructs a version number from the list of numbers contained in \a seg.
 */
 
 /*!
@@ -168,35 +136,35 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn const QVector<int>& QVersionNumber::segments() const
+    \fn QList<int> QVersionNumber::segments() const
 
     Returns all of the numerical segments.
 
     \sa majorVersion(), minorVersion(), microVersion()
 */
-QVector<int> QVersionNumber::segments() const
+QList<int> QVersionNumber::segments() const
 {
     if (m_segments.isUsingPointer())
         return *m_segments.pointer_segments;
 
-    QVector<int> result;
+    QList<int> result;
     result.resize(segmentCount());
-    for (int i = 0; i < segmentCount(); ++i)
+    for (qsizetype i = 0; i < segmentCount(); ++i)
         result[i] = segmentAt(i);
     return result;
 }
 
 /*!
-    \fn int QVersionNumber::segmentAt(int index) const
+    \fn int QVersionNumber::segmentAt(qsizetype index) const
 
-    Returns the segement value at \a index.  If the index does not exist,
+    Returns the segment value at \a index.  If the index does not exist,
     returns 0.
 
     \sa segments(), segmentCount()
 */
 
 /*!
-    \fn int QVersionNumber::segmentCount() const
+    \fn qsizetype QVersionNumber::segmentCount() const
 
     Returns the number of integers stored in segments().
 
@@ -215,7 +183,7 @@ QVector<int> QVersionNumber::segments() const
  */
 QVersionNumber QVersionNumber::normalized() const
 {
-    int i;
+    qsizetype i;
     for (i = m_segments.size(); i; --i)
         if (m_segments.at(i - 1) != 0)
             break;
@@ -239,7 +207,7 @@ bool QVersionNumber::isPrefixOf(const QVersionNumber &other) const noexcept
 {
     if (segmentCount() > other.segmentCount())
         return false;
-    for (int i = 0; i < segmentCount(); ++i) {
+    for (qsizetype i = 0; i < segmentCount(); ++i) {
         if (segmentAt(i) != other.segmentAt(i))
             return false;
     }
@@ -261,7 +229,7 @@ bool QVersionNumber::isPrefixOf(const QVersionNumber &other) const noexcept
 */
 int QVersionNumber::compare(const QVersionNumber &v1, const QVersionNumber &v2) noexcept
 {
-    int commonlen;
+    qsizetype commonlen;
 
     if (Q_LIKELY(!v1.m_segments.isUsingPointer() && !v2.m_segments.isUsingPointer())) {
         // we can't use memcmp because it interprets the data as unsigned bytes
@@ -269,12 +237,12 @@ int QVersionNumber::compare(const QVersionNumber &v1, const QVersionNumber &v2) 
         const qint8 *ptr2 = v2.m_segments.inline_segments + InlineSegmentStartIdx;
         commonlen = qMin(v1.m_segments.size(),
                          v2.m_segments.size());
-        for (int i = 0; i < commonlen; ++i)
+        for (qsizetype i = 0; i < commonlen; ++i)
             if (int x = ptr1[i] - ptr2[i])
                 return x;
     } else {
         commonlen = qMin(v1.segmentCount(), v2.segmentCount());
-        for (int i = 0; i < commonlen; ++i) {
+        for (qsizetype i = 0; i < commonlen; ++i) {
             if (v1.segmentAt(i) != v2.segmentAt(i))
                 return v1.segmentAt(i) - v2.segmentAt(i);
         }
@@ -311,8 +279,8 @@ int QVersionNumber::compare(const QVersionNumber &v1, const QVersionNumber &v2) 
 QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
                                             const QVersionNumber &v2)
 {
-    int commonlen = qMin(v1.segmentCount(), v2.segmentCount());
-    int i;
+    qsizetype commonlen = qMin(v1.segmentCount(), v2.segmentCount());
+    qsizetype i;
     for (i = 0; i < commonlen; ++i) {
         if (v1.segmentAt(i) != v2.segmentAt(i))
             break;
@@ -328,8 +296,7 @@ QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
 }
 
 /*!
-    \fn bool operator<(const QVersionNumber &lhs, const QVersionNumber &rhs)
-    \relates QVersionNumber
+    \fn bool QVersionNumber::operator<(const QVersionNumber &lhs, const QVersionNumber &rhs)
 
     Returns \c true if \a lhs is less than \a rhs; otherwise returns \c false.
 
@@ -337,8 +304,7 @@ QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
 */
 
 /*!
-    \fn bool operator<=(const QVersionNumber &lhs, const QVersionNumber &rhs)
-    \relates QVersionNumber
+    \fn bool QVersionNumber::operator<=(const QVersionNumber &lhs, const QVersionNumber &rhs)
 
     Returns \c true if \a lhs is less than or equal to \a rhs; otherwise
     returns \c false.
@@ -347,8 +313,7 @@ QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
 */
 
 /*!
-    \fn bool operator>(const QVersionNumber &lhs, const QVersionNumber &rhs)
-    \relates QVersionNumber
+    \fn bool QVersionNumber::operator>(const QVersionNumber &lhs, const QVersionNumber &rhs)
 
     Returns \c true if \a lhs is greater than \a rhs; otherwise returns \c
     false.
@@ -357,8 +322,7 @@ QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
 */
 
 /*!
-    \fn bool operator>=(const QVersionNumber &lhs, const QVersionNumber &rhs)
-    \relates QVersionNumber
+    \fn bool QVersionNumber::operator>=(const QVersionNumber &lhs, const QVersionNumber &rhs)
 
     Returns \c true if \a lhs is greater than or equal to \a rhs; otherwise
     returns \c false.
@@ -367,8 +331,7 @@ QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
 */
 
 /*!
-    \fn bool operator==(const QVersionNumber &lhs, const QVersionNumber &rhs)
-    \relates QVersionNumber
+    \fn bool QVersionNumber::operator==(const QVersionNumber &lhs, const QVersionNumber &rhs)
 
     Returns \c true if \a lhs is equal to \a rhs; otherwise returns \c false.
 
@@ -376,8 +339,7 @@ QVersionNumber QVersionNumber::commonPrefix(const QVersionNumber &v1,
 */
 
 /*!
-    \fn bool operator!=(const QVersionNumber &lhs, const QVersionNumber &rhs)
-    \relates QVersionNumber
+    \fn bool QVersionNumber::operator!=(const QVersionNumber &lhs, const QVersionNumber &rhs)
 
     Returns \c true if \a lhs is not equal to \a rhs; otherwise returns
     \c false.
@@ -397,17 +359,19 @@ QString QVersionNumber::toString() const
     QString version;
     version.reserve(qMax(segmentCount() * 2 - 1, 0));
     bool first = true;
-    for (int i = 0; i < segmentCount(); ++i) {
+    for (qsizetype i = 0; i < segmentCount(); ++i) {
         if (!first)
-            version += QLatin1Char('.');
+            version += u'.';
         version += QString::number(segmentAt(i));
         first = false;
     }
     return version;
 }
 
-#if QT_STRINGVIEW_LEVEL < 2
 /*!
+    \fn QVersionNumber QVersionNumber::fromString(QAnyStringView string, qsizetype *suffixIndex)
+    \since 6.4
+
     Constructs a QVersionNumber from a specially formatted \a string of
     non-negative decimal numbers delimited by a period (\c{.}).
 
@@ -415,79 +379,91 @@ QString QVersionNumber::toString() const
     is considered to be the suffix string.  The start index of that string will be
     stored in \a suffixIndex if it is not null.
 
-    \snippet qversionnumber/main.cpp 3
-
-    \sa isNull()
-*/
-QVersionNumber QVersionNumber::fromString(const QString &string, int *suffixIndex)
-{
-    return fromString(QLatin1String(string.toLatin1()), suffixIndex);
-}
-#endif
-
-/*!
-    \since 5.10
-    \overload
-
-    Constructs a QVersionNumber from a specially formatted \a string of
-    non-negative decimal numbers delimited by '.'.
-
-    Once the numerical segments have been parsed, the remainder of the string
-    is considered to be the suffix string.  The start index of that string will be
-    stored in \a suffixIndex if it is not null.
-
-    \snippet qversionnumber/main.cpp 3
-
-    \sa isNull()
-*/
-QVersionNumber QVersionNumber::fromString(QStringView string, int *suffixIndex)
-{
-    return fromString(QLatin1String(string.toLatin1()), suffixIndex);
-}
-
-/*!
-    \since 5.10
-    \overload
-
-    Constructs a QVersionNumber from a specially formatted \a string of
-    non-negative decimal numbers delimited by '.'.
-
-    Once the numerical segments have been parsed, the remainder of the string
-    is considered to be the suffix string.  The start index of that string will be
-    stored in \a suffixIndex if it is not null.
-
     \snippet qversionnumber/main.cpp 3-latin1-1
 
+    \note In versions prior to Qt 6.4, this function was overloaded for QString,
+    QLatin1StringView and QStringView instead, and \a suffixIndex was an \c{int*}.
+
     \sa isNull()
 */
-QVersionNumber QVersionNumber::fromString(QLatin1String string, int *suffixIndex)
+
+static QVersionNumber from_string(QLatin1StringView string, qsizetype *suffixIndex)
 {
-    QVector<int> seg;
+    // 32 should be more than enough, and, crucially, it means we're allocating
+    // not more (and often less) often when compared with direct QList usage
+    // for all possible segment counts (under the constraint that we don't want
+    // to keep more capacity around for the lifetime of the resulting
+    // QVersionNumber than required), esp. in the common case where the inline
+    // storage can be used.
+    QVarLengthArray<int, 32> seg;
 
     const char *start = string.begin();
-    const char *end = start;
     const char *lastGoodEnd = start;
     const char *endOfString = string.end();
 
     do {
-        bool ok = false;
-        const qulonglong value = qstrtoull(start, &end, 10, &ok);
-        if (!ok || value > qulonglong(std::numeric_limits<int>::max()))
+        // parsing as unsigned so a minus sign is rejected
+        auto [value, used] = qstrntoull(start, endOfString - start, 10);
+        if (used <= 0 || value > qulonglong(std::numeric_limits<int>::max()))
             break;
         seg.append(int(value));
-        start = end + 1;
-        lastGoodEnd = end;
-    } while (start < endOfString && (end < endOfString && *end == '.'));
+        start += used + 1;
+        lastGoodEnd = start - 1;
+    } while (start < endOfString && *lastGoodEnd == '.');
 
     if (suffixIndex)
-        *suffixIndex = int(lastGoodEnd - string.begin());
+        *suffixIndex = lastGoodEnd - string.begin();
 
-    return QVersionNumber(std::move(seg));
+    return QVersionNumber(seg);
+}
+
+static QVersionNumber from_string(q_no_char8_t::QUtf8StringView string, qsizetype *suffixIndex)
+{
+    return from_string(QLatin1StringView(string.data(), string.size()), suffixIndex);
+}
+
+// in qstring.cpp
+extern void qt_to_latin1(uchar *dst, const char16_t *uc, qsizetype len);
+
+static QVersionNumber from_string(QStringView string, qsizetype *suffixIndex)
+{
+    QVarLengthArray<char> copy;
+    copy.resize(string.size());
+    qt_to_latin1(reinterpret_cast<uchar*>(copy.data()), string.utf16(), string.size());
+    return from_string(QLatin1StringView(copy.data(), copy.size()), suffixIndex);
+}
+
+QVersionNumber QVersionNumber::fromString(QAnyStringView string, qsizetype *suffixIndex)
+{
+    return string.visit([=] (auto string) { return from_string(string, suffixIndex); });
+}
+
+void QVersionNumber::SegmentStorage::setListData(const QList<int> &seg)
+{
+    pointer_segments = new QList<int>(seg);
+}
+
+void QVersionNumber::SegmentStorage::setListData(QList<int> &&seg)
+{
+    pointer_segments = new QList<int>(std::move(seg));
+}
+
+void QVersionNumber::SegmentStorage::setListData(const int *first, const int *last)
+{
+    pointer_segments = new QList<int>(first, last);
+}
+
+void QVersionNumber::SegmentStorage::resize(qsizetype len)
+{
+    if (isUsingPointer())
+        pointer_segments->resize(len);
+    else
+        setInlineSize(len);
 }
 
 void QVersionNumber::SegmentStorage::setVector(int len, int maj, int min, int mic)
 {
-    pointer_segments = new QVector<int>;
+    pointer_segments = new QList<int>;
     pointer_segments->resize(len);
     pointer_segments->data()[0] = maj;
     if (len > 1) {
@@ -525,7 +501,7 @@ QDataStream& operator<<(QDataStream &out, const QVersionNumber &version)
 QDataStream& operator>>(QDataStream &in, QVersionNumber &version)
 {
     if (!version.m_segments.isUsingPointer())
-        version.m_segments.pointer_segments = new QVector<int>;
+        version.m_segments.pointer_segments = new QList<int>;
     in >> *version.m_segments.pointer_segments;
     return in;
 }
@@ -535,20 +511,20 @@ QDataStream& operator>>(QDataStream &in, QVersionNumber &version)
 QDebug operator<<(QDebug debug, const QVersionNumber &version)
 {
     QDebugStateSaver saver(debug);
-    debug.noquote() << version.toString();
+    debug.nospace().noquote();
+    debug << "QVersionNumber(" << version.toString() << ")";
     return debug;
 }
 #endif
 
 /*!
-    \fn uint qHash(const QVersionNumber &key, uint seed)
     \relates QHash
     \since 5.6
 
     Returns the hash value for the \a key, using \a seed to seed the
     calculation.
 */
-uint qHash(const QVersionNumber &key, uint seed)
+size_t qHash(const QVersionNumber &key, size_t seed)
 {
     QtPrivate::QHashCombine hash;
     for (int i = 0; i < key.segmentCount(); ++i)
@@ -557,4 +533,3 @@ uint qHash(const QVersionNumber &key, uint seed)
 }
 
 QT_END_NAMESPACE
-

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKVALUETYPES_P_H
 #define QQUICKVALUETYPES_P_H
@@ -52,7 +16,7 @@
 //
 
 #include <qqml.h>
-#include <qtquickglobal.h>
+#include <private/qtquickglobal_p.h>
 #include <private/qqmlvaluetype_p.h>
 
 #include <QtGui/QColor>
@@ -66,13 +30,7 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace QQuickValueTypes {
-
-void registerValueTypes();
-
-}
-
-class QQuickColorValueType
+class Q_QUICK_PRIVATE_EXPORT QQuickColorValueType
 {
     QColor v;
     Q_PROPERTY(qreal r READ r WRITE setR FINAL)
@@ -85,10 +43,24 @@ class QQuickColorValueType
     Q_PROPERTY(qreal hslHue READ hslHue WRITE setHslHue FINAL)
     Q_PROPERTY(qreal hslSaturation READ hslSaturation WRITE setHslSaturation FINAL)
     Q_PROPERTY(qreal hslLightness READ hslLightness WRITE setHslLightness FINAL)
-    Q_PROPERTY(bool valid READ isValid)
+    Q_PROPERTY(bool valid READ isValid FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QColor)
+    QML_VALUE_TYPE(color)
+    QML_EXTENDED(QQuickColorValueType)
+    QML_STRUCTURED_VALUE
+
 public:
+    static QVariant create(const QJSValue &params);
+
+    Q_INVOKABLE QQuickColorValueType(const QString &string);
     Q_INVOKABLE QString toString() const;
+
+    Q_INVOKABLE QVariant alpha(qreal value) const;
+    Q_INVOKABLE QVariant lighter(qreal factor = 1.5) const;
+    Q_INVOKABLE QVariant darker(qreal factor = 2.0) const;
+    Q_INVOKABLE QVariant tint(QVariant factor) const;
 
     qreal r() const;
     qreal g() const;
@@ -111,15 +83,25 @@ public:
     void setHslHue(qreal);
     void setHslSaturation(qreal);
     void setHslLightness(qreal);
+
+    operator QColor() const { return v; }
 };
 
-class QQuickVector2DValueType
+class Q_QUICK_PRIVATE_EXPORT QQuickVector2DValueType
 {
     QVector2D v;
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
     Q_PROPERTY(qreal y READ y WRITE setY FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QVector2D)
+    QML_VALUE_TYPE(vector2d)
+    QML_EXTENDED(QQuickVector2DValueType)
+    QML_STRUCTURED_VALUE
+
 public:
+    static QVariant create(const QJSValue &params);
+
     Q_INVOKABLE QString toString() const;
 
     qreal x() const;
@@ -138,16 +120,26 @@ public:
     Q_INVOKABLE QVector4D toVector4d() const;
     Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QVector2D &vec) const;
+
+    operator QVector2D() const { return v; }
 };
 
-class QQuickVector3DValueType
+class Q_QUICK_PRIVATE_EXPORT QQuickVector3DValueType
 {
     QVector3D v;
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
     Q_PROPERTY(qreal y READ y WRITE setY FINAL)
     Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QVector3D)
+    QML_VALUE_TYPE(vector3d)
+    QML_EXTENDED(QQuickVector3DValueType)
+    QML_STRUCTURED_VALUE
+
 public:
+    static QVariant create(const QJSValue &params);
+
     Q_INVOKABLE QString toString() const;
 
     qreal x() const;
@@ -170,9 +162,11 @@ public:
     Q_INVOKABLE QVector4D toVector4d() const;
     Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QVector3D &vec) const;
+
+    operator QVector3D() const { return v; }
 };
 
-class QQuickVector4DValueType
+class Q_QUICK_PRIVATE_EXPORT QQuickVector4DValueType
 {
     QVector4D v;
     Q_PROPERTY(qreal x READ x WRITE setX FINAL)
@@ -180,7 +174,15 @@ class QQuickVector4DValueType
     Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
     Q_PROPERTY(qreal w READ w WRITE setW FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QVector4D)
+    QML_VALUE_TYPE(vector4d)
+    QML_EXTENDED(QQuickVector4DValueType)
+    QML_STRUCTURED_VALUE
+
 public:
+    static QVariant create(const QJSValue &params);
+
     Q_INVOKABLE QString toString() const;
 
     qreal x() const;
@@ -204,17 +206,27 @@ public:
     Q_INVOKABLE QVector3D toVector3d() const;
     Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QVector4D &vec) const;
+
+    operator QVector4D() const { return v; }
 };
 
-class QQuickQuaternionValueType
+class Q_QUICK_PRIVATE_EXPORT QQuickQuaternionValueType
 {
     QQuaternion v;
-    Q_PROPERTY(qreal scalar READ scalar WRITE setScalar)
-    Q_PROPERTY(qreal x READ x WRITE setX)
-    Q_PROPERTY(qreal y READ y WRITE setY)
-    Q_PROPERTY(qreal z READ z WRITE setZ)
+    Q_PROPERTY(qreal scalar READ scalar WRITE setScalar FINAL)
+    Q_PROPERTY(qreal x READ x WRITE setX FINAL)
+    Q_PROPERTY(qreal y READ y WRITE setY FINAL)
+    Q_PROPERTY(qreal z READ z WRITE setZ FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QQuaternion)
+    QML_VALUE_TYPE(quaternion)
+    QML_EXTENDED(QQuickQuaternionValueType)
+    QML_STRUCTURED_VALUE
+
 public:
+    static QVariant create(const QJSValue &params);
+
     Q_INVOKABLE QString toString() const;
 
     qreal scalar() const;
@@ -225,9 +237,29 @@ public:
     void setX(qreal);
     void setY(qreal);
     void setZ(qreal);
+
+    Q_INVOKABLE qreal dotProduct(const QQuaternion &q) const;
+    Q_INVOKABLE QQuaternion times(const QQuaternion &q) const;
+    Q_INVOKABLE QVector3D times(const QVector3D &vec) const;
+    Q_INVOKABLE QQuaternion times(qreal factor) const;
+    Q_INVOKABLE QQuaternion plus(const QQuaternion &q) const;
+    Q_INVOKABLE QQuaternion minus(const QQuaternion &q) const;
+
+    Q_INVOKABLE QQuaternion normalized() const;
+    Q_INVOKABLE QQuaternion inverted() const;
+    Q_INVOKABLE QQuaternion conjugated() const;
+    Q_INVOKABLE qreal length() const;
+
+    Q_INVOKABLE QVector3D toEulerAngles() const;
+    Q_INVOKABLE QVector4D toVector4d() const;
+
+    Q_INVOKABLE bool fuzzyEquals(const QQuaternion &q, qreal epsilon) const;
+    Q_INVOKABLE bool fuzzyEquals(const QQuaternion &q) const;
+
+    operator QQuaternion() const { return v; }
 };
 
-class QQuickMatrix4x4ValueType
+class Q_QUICK_PRIVATE_EXPORT QQuickMatrix4x4ValueType
 {
     QMatrix4x4 v;
     Q_PROPERTY(qreal m11 READ m11 WRITE setM11 FINAL)
@@ -247,7 +279,15 @@ class QQuickMatrix4x4ValueType
     Q_PROPERTY(qreal m43 READ m43 WRITE setM43 FINAL)
     Q_PROPERTY(qreal m44 READ m44 WRITE setM44 FINAL)
     Q_GADGET
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_FOREIGN(QMatrix4x4)
+    QML_VALUE_TYPE(matrix4x4)
+    QML_EXTENDED(QQuickMatrix4x4ValueType)
+    QML_STRUCTURED_VALUE
+
 public:
+    static QVariant create(const QJSValue &params);
+
     qreal m11() const { return v(0, 0); }
     qreal m12() const { return v(0, 1); }
     qreal m13() const { return v(0, 2); }
@@ -284,6 +324,7 @@ public:
 
     Q_INVOKABLE void translate(const QVector3D &t) { v.translate(t); }
     Q_INVOKABLE void rotate(float angle, const QVector3D &axis) { v.rotate(angle, axis); }
+    Q_INVOKABLE void rotate(const QQuaternion &q) { v.rotate(q); }
     Q_INVOKABLE void scale(float s) { v.scale(s); }
     Q_INVOKABLE void scale(float sx, float sy, float sz) { v.scale(sx, sy, sz); }
     Q_INVOKABLE void scale(const QVector3D &s) { v.scale(s); }
@@ -303,11 +344,49 @@ public:
     Q_INVOKABLE QMatrix4x4 inverted() const;
     Q_INVOKABLE QMatrix4x4 transposed() const;
 
+    Q_INVOKABLE QPointF map(const QPointF p) const;
+    Q_INVOKABLE QRectF mapRect(const QRectF r) const;
+
     Q_INVOKABLE bool fuzzyEquals(const QMatrix4x4 &m, qreal epsilon) const;
     Q_INVOKABLE bool fuzzyEquals(const QMatrix4x4 &m) const;
+
+    operator QMatrix4x4() const { return v; }
 };
 
-class QQuickFontValueType
+namespace QQuickFontEnums
+{
+Q_NAMESPACE_EXPORT(Q_QUICK_PRIVATE_EXPORT)
+
+QML_NAMED_ELEMENT(Font)
+QML_ADDED_IN_VERSION(2, 0)
+
+enum FontWeight { Thin = QFont::Thin,
+                  ExtraLight = QFont::ExtraLight,
+                  Light = QFont::Light,
+                  Normal = QFont::Normal,
+                  Medium = QFont::Medium,
+                  DemiBold = QFont::DemiBold,
+                  Bold = QFont::Bold,
+                  ExtraBold = QFont::ExtraBold,
+                  Black = QFont::Black };
+Q_ENUM_NS(FontWeight)
+enum Capitalization { MixedCase = QFont::MixedCase,
+                       AllUppercase = QFont::AllUppercase,
+                       AllLowercase = QFont::AllLowercase,
+                       SmallCaps = QFont::SmallCaps,
+                       Capitalize = QFont::Capitalize };
+Q_ENUM_NS(Capitalization)
+
+enum HintingPreference {
+    PreferDefaultHinting = QFont::PreferDefaultHinting,
+    PreferNoHinting = QFont::PreferNoHinting,
+    PreferVerticalHinting = QFont::PreferVerticalHinting,
+    PreferFullHinting = QFont::PreferFullHinting
+};
+Q_ENUM_NS(HintingPreference)
+};
+
+class Q_QUICK_PRIVATE_EXPORT QQuickFontValueType
 {
     QFont v;
     Q_GADGET
@@ -315,48 +394,29 @@ class QQuickFontValueType
     Q_PROPERTY(QString family READ family WRITE setFamily FINAL)
     Q_PROPERTY(QString styleName READ styleName WRITE setStyleName FINAL)
     Q_PROPERTY(bool bold READ bold WRITE setBold FINAL)
-    Q_PROPERTY(FontWeight weight READ weight WRITE setWeight FINAL)
+    Q_PROPERTY(int weight READ weight WRITE setWeight FINAL)
     Q_PROPERTY(bool italic READ italic WRITE setItalic FINAL)
     Q_PROPERTY(bool underline READ underline WRITE setUnderline FINAL)
     Q_PROPERTY(bool overline READ overline WRITE setOverline FINAL)
     Q_PROPERTY(bool strikeout READ strikeout WRITE setStrikeout FINAL)
     Q_PROPERTY(qreal pointSize READ pointSize WRITE setPointSize FINAL)
     Q_PROPERTY(int pixelSize READ pixelSize WRITE setPixelSize FINAL)
-    Q_PROPERTY(Capitalization capitalization READ capitalization WRITE setCapitalization FINAL)
+    Q_PROPERTY(QQuickFontEnums::Capitalization capitalization READ capitalization WRITE setCapitalization FINAL)
     Q_PROPERTY(qreal letterSpacing READ letterSpacing WRITE setLetterSpacing FINAL)
     Q_PROPERTY(qreal wordSpacing READ wordSpacing WRITE setWordSpacing FINAL)
-    Q_PROPERTY(HintingPreference hintingPreference READ hintingPreference WRITE setHintingPreference FINAL)
+    Q_PROPERTY(QQuickFontEnums::HintingPreference hintingPreference READ hintingPreference WRITE setHintingPreference FINAL)
     Q_PROPERTY(bool kerning READ kerning WRITE setKerning FINAL)
     Q_PROPERTY(bool preferShaping READ preferShaping WRITE setPreferShaping FINAL)
+    Q_PROPERTY(QVariantMap features READ features WRITE setFeatures FINAL)
 
-    QML_NAMED_ELEMENT(Font)
-    QML_UNCREATABLE("Element is not creatable.")
+    QML_VALUE_TYPE(font)
+    QML_FOREIGN(QFont)
+    QML_ADDED_IN_VERSION(2, 0)
+    QML_EXTENDED(QQuickFontValueType)
+    QML_STRUCTURED_VALUE
 
 public:
-    enum FontWeight { Thin = QFont::Thin,
-                      ExtraLight = QFont::ExtraLight,
-                      Light = QFont::Light,
-                      Normal = QFont::Normal,
-                      Medium = QFont::Medium,
-                      DemiBold = QFont::DemiBold,
-                      Bold = QFont::Bold,
-                      ExtraBold = QFont::ExtraBold,
-                      Black = QFont::Black };
-    Q_ENUM(FontWeight)
-    enum Capitalization { MixedCase = QFont::MixedCase,
-                           AllUppercase = QFont::AllUppercase,
-                           AllLowercase = QFont::AllLowercase,
-                           SmallCaps = QFont::SmallCaps,
-                           Capitalize = QFont::Capitalize };
-    Q_ENUM(Capitalization)
-
-    enum HintingPreference {
-        PreferDefaultHinting = QFont::PreferDefaultHinting,
-        PreferNoHinting = QFont::PreferNoHinting,
-        PreferVerticalHinting = QFont::PreferVerticalHinting,
-        PreferFullHinting = QFont::PreferFullHinting
-    };
-    Q_ENUM(HintingPreference)
+    static QVariant create(const QJSValue &value);
 
     Q_INVOKABLE QString toString() const;
 
@@ -369,8 +429,8 @@ public:
     bool bold() const;
     void setBold(bool b);
 
-    FontWeight weight() const;
-    void setWeight(FontWeight);
+    int weight() const;
+    void setWeight(int);
 
     bool italic() const;
     void setItalic(bool b);
@@ -390,8 +450,8 @@ public:
     int pixelSize() const;
     void setPixelSize(int size);
 
-    Capitalization capitalization() const;
-    void setCapitalization(Capitalization);
+    QQuickFontEnums::Capitalization capitalization() const;
+    void setCapitalization(QQuickFontEnums::Capitalization);
 
     qreal letterSpacing() const;
     void setLetterSpacing(qreal spacing);
@@ -399,66 +459,85 @@ public:
     qreal wordSpacing() const;
     void setWordSpacing(qreal spacing);
 
-    HintingPreference hintingPreference() const;
-    void setHintingPreference(HintingPreference);
+    QQuickFontEnums::HintingPreference hintingPreference() const;
+    void setHintingPreference(QQuickFontEnums::HintingPreference);
 
     bool kerning() const;
     void setKerning(bool b);
 
     bool preferShaping() const;
     void setPreferShaping(bool b);
+
+    QVariantMap features() const;
+    void setFeatures(const QVariantMap &features);
+
+    operator QFont() const { return v; }
 };
 
-class QQuickColorSpaceValueType
+namespace QQuickColorSpaceEnums
+{
+Q_NAMESPACE_EXPORT(Q_QUICK_PRIVATE_EXPORT)
+QML_NAMED_ELEMENT(ColorSpace)
+QML_ADDED_IN_VERSION(2, 15)
+Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
+
+enum NamedColorSpace {
+    Unknown = 0,
+    SRgb,
+    SRgbLinear,
+    AdobeRgb,
+    DisplayP3,
+    ProPhotoRgb
+};
+Q_ENUM_NS(NamedColorSpace)
+
+enum class Primaries {
+    Custom = 0,
+    SRgb,
+    AdobeRgb,
+    DciP3D65,
+    ProPhotoRgb
+};
+Q_ENUM_NS(Primaries)
+enum class TransferFunction {
+    Custom = 0,
+    Linear,
+    Gamma,
+    SRgb,
+    ProPhotoRgb
+};
+Q_ENUM_NS(TransferFunction)
+}
+
+class Q_QUICK_PRIVATE_EXPORT QQuickColorSpaceValueType
 {
     QColorSpace v;
     Q_GADGET
 
-    Q_PROPERTY(NamedColorSpace namedColorSpace READ namedColorSpace WRITE setNamedColorSpace FINAL)
-    Q_PROPERTY(Primaries primaries READ primaries WRITE setPrimaries FINAL)
-    Q_PROPERTY(TransferFunction transferFunction READ transferFunction WRITE setTransferFunction FINAL)
+    Q_PROPERTY(QQuickColorSpaceEnums::NamedColorSpace namedColorSpace READ namedColorSpace WRITE setNamedColorSpace FINAL)
+    Q_PROPERTY(QQuickColorSpaceEnums::Primaries primaries READ primaries WRITE setPrimaries FINAL)
+    Q_PROPERTY(QQuickColorSpaceEnums::TransferFunction transferFunction READ transferFunction WRITE setTransferFunction FINAL)
     Q_PROPERTY(float gamma READ gamma WRITE setGamma FINAL)
 
-    QML_NAMED_ELEMENT(ColorSpace)
-    QML_ADDED_IN_MINOR_VERSION(15)
-    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
+    QML_ANONYMOUS
+    QML_FOREIGN(QColorSpace)
+    QML_ADDED_IN_VERSION(2, 15)
+    QML_EXTENDED(QQuickColorSpaceValueType)
+    QML_STRUCTURED_VALUE
 
 public:
-    enum NamedColorSpace {
-        Unknown = 0,
-        SRgb,
-        SRgbLinear,
-        AdobeRgb,
-        DisplayP3,
-        ProPhotoRgb
-    };
-    Q_ENUM(NamedColorSpace)
+    static QVariant create(const QJSValue &params);
 
-    enum class Primaries {
-        Custom = 0,
-        SRgb,
-        AdobeRgb,
-        DciP3D65,
-        ProPhotoRgb
-    };
-    Q_ENUM(Primaries)
-    enum class TransferFunction {
-        Custom = 0,
-        Linear,
-        Gamma,
-        SRgb,
-        ProPhotoRgb
-    };
-    Q_ENUM(TransferFunction)
-
-    NamedColorSpace namedColorSpace() const noexcept;
-    void setNamedColorSpace(NamedColorSpace namedColorSpace);
-    Primaries primaries() const noexcept;
-    void setPrimaries(Primaries primariesId);
-    TransferFunction transferFunction() const noexcept;
-    void setTransferFunction(TransferFunction transferFunction);
+    QQuickColorSpaceEnums::NamedColorSpace namedColorSpace() const noexcept;
+    void setNamedColorSpace(QQuickColorSpaceEnums::NamedColorSpace namedColorSpace);
+    QQuickColorSpaceEnums::Primaries primaries() const noexcept;
+    void setPrimaries(QQuickColorSpaceEnums::Primaries primariesId);
+    QQuickColorSpaceEnums::TransferFunction transferFunction() const noexcept;
+    void setTransferFunction(QQuickColorSpaceEnums::TransferFunction transferFunction);
     float gamma() const noexcept;
     void setGamma(float gamma);
+
+    operator QColorSpace() const { return v; }
 };
 
 QT_END_NAMESPACE

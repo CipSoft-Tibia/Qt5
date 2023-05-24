@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QImage>
@@ -244,6 +219,7 @@ void tst_QImageConversion::convertGeneric_data()
     QImage a2rgb30 = argb32.convertToFormat(QImage::Format_A2RGB30_Premultiplied);
     QImage rgb666 = rgb32.convertToFormat(QImage::Format_RGB666);
     QImage argb4444 = argb32.convertToFormat(QImage::Format_ARGB4444_Premultiplied);
+    QImage rgba64 = argb32.convertToFormat(QImage::Format_RGBA64);
     QImage rgba64pm = argb32.convertToFormat(QImage::Format_RGBA64_Premultiplied);
     QImage rgb888 = rgb32.convertToFormat(QImage::Format_RGB888);
     QImage bgr888 = rgb32.convertToFormat(QImage::Format_BGR888);
@@ -297,6 +273,10 @@ void tst_QImageConversion::convertGeneric_data()
     QTest::newRow("argb4444pm -> rgba8888pm") << argb4444 << QImage::Format_RGBA8888_Premultiplied;
     QTest::newRow("argb4444pm -> rgb30") << argb4444 << QImage::Format_RGB30;
     QTest::newRow("argb4444pm -> a2bgr30") << argb4444 << QImage::Format_A2BGR30_Premultiplied;
+
+    QTest::newRow("rgba64 -> argb32") << rgba64 << QImage::Format_ARGB32;
+    QTest::newRow("rgba64 -> argb32pm") << rgba64 << QImage::Format_ARGB32_Premultiplied;
+    QTest::newRow("rgba64 -> rgba64pm") << rgba64 << QImage::Format_RGBA64_Premultiplied;
 
     QTest::newRow("rgba64pm -> argb32") << rgba64pm << QImage::Format_ARGB32;
     QTest::newRow("rgba64pm -> rgbx8888") << rgba64pm << QImage::Format_RGBX8888;

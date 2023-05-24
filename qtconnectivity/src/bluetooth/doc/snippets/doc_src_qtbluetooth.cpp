@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 //! [include]
 #include <QtBluetooth/QBluetoothLocalDevice>
@@ -57,9 +10,6 @@
 #include <QtCore/QObject>
 #include <QtBluetooth/QBluetoothDeviceDiscoveryAgent>
 #include <QtBluetooth/QBluetoothServiceDiscoveryAgent>
-#include <QtBluetooth/QBluetoothTransferManager>
-#include <QtBluetooth/QBluetoothTransferRequest>
-#include <QtBluetooth/QBluetoothTransferReply>
 
 #include <QtBluetooth/QLowEnergyController>
 #include <QtBluetooth/QLowEnergyService>
@@ -84,8 +34,6 @@ public:
 public slots:
     void deviceDiscovered(const QBluetoothDeviceInfo &device);
     void serviceDiscovered(const QBluetoothServiceInfo &service);
-    void transferFinished(QBluetoothTransferReply* reply);
-    void error(QBluetoothTransferReply::TransferError errorType);
     void characteristicChanged(const QLowEnergyCharacteristic& ,const QByteArray&);
 };
 
@@ -160,40 +108,6 @@ void MyClass::serviceDiscovered(const QBluetoothServiceInfo &service)
 }
 //! [service_discovery]
 
-void MyClass::objectPush()
-{
-//! [sendfile]
-// Create a transfer manager
-QBluetoothTransferManager *transferManager = new QBluetoothTransferManager(this);
-
-// Create the transfer request and file to be sent
-QBluetoothAddress remoteAddress("00:11:22:33:44:55:66");
-QBluetoothTransferRequest request(remoteAddress);
-QFile *file = new QFile("testfile.txt");
-
-// Ask the transfer manager to send it
-QBluetoothTransferReply *reply = transferManager->put(request, file);
-if (reply->error() == QBluetoothTransferReply::NoError) {
-
-    // Connect to the reply's signals to be informed about the status and do cleanups when done
-    QObject::connect(reply, SIGNAL(finished(QBluetoothTransferReply*)),
-                     this, SLOT(transferFinished(QBluetoothTransferReply*)));
-    QObject::connect(reply, SIGNAL(error(QBluetoothTransferReply::TransferError)),
-                     this, SLOT(error(QBluetoothTransferReply::TransferError)));
-} else {
-    qWarning() << "Cannot push testfile.txt:" << reply->errorString();
-}
-//! [sendfile]
-}
-
-void MyClass::transferFinished(QBluetoothTransferReply* /*reply*/)
-{
-}
-
-void MyClass::error(QBluetoothTransferReply::TransferError /*errorType*/)
-{
-}
-
 void MyClass::characteristicChanged(const QLowEnergyCharacteristic &, const QByteArray &)
 {
 }
@@ -209,14 +123,14 @@ void MyClass::btleSharedData()
 
     // waiting for connection
 
-    first = control.createServiceObject(QBluetoothUuid::BatteryService);
-    second = control.createServiceObject(QBluetoothUuid::BatteryService);
-    Q_ASSERT(first->state() == QLowEnergyService::DiscoveryRequired);
+    first = control.createServiceObject(QBluetoothUuid::ServiceClassUuid::BatteryService);
+    second = control.createServiceObject(QBluetoothUuid::ServiceClassUuid::BatteryService);
+    Q_ASSERT(first->state() == QLowEnergyService::RemoteService);
     Q_ASSERT(first->state() == second->state());
 
     first->discoverDetails();
 
-    Q_ASSERT(first->state() == QLowEnergyService::DiscoveringServices);
+    Q_ASSERT(first->state() == QLowEnergyService::RemoteServiceDiscovering);
     Q_ASSERT(first->state() == second->state());
 //! [data_share_qlowenergyservice]
 }
@@ -229,7 +143,7 @@ void MyClass::enableCharNotifications()
     control->connectToDevice();
 
 
-    service = control->createServiceObject(QBluetoothUuid::BatteryService, this);
+    service = control->createServiceObject(QBluetoothUuid::ServiceClassUuid::BatteryService, this);
     if (!service)
         return;
 
@@ -240,12 +154,12 @@ void MyClass::enableCharNotifications()
 //! [enable_btle_notifications]
     //PreCondition: service details already discovered
     QLowEnergyCharacteristic batteryLevel = service->characteristic(
-                QBluetoothUuid::BatteryLevel);
+                QBluetoothUuid::CharacteristicType::BatteryLevel);
     if (!batteryLevel.isValid())
         return;
 
     QLowEnergyDescriptor notification = batteryLevel.descriptor(
-                QBluetoothUuid::ClientCharacteristicConfiguration);
+                QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration);
     if (!notification.isValid())
         return;
 

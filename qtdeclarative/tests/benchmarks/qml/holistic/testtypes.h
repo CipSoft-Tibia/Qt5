@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #ifndef TESTTYPES_H
 #define TESTTYPES_H
 
@@ -43,7 +18,7 @@
 #include <QtQml/qjsvalue.h>
 #include <QtQml/qqmlscriptstring.h>
 #include <QtQml/qqmlcomponent.h>
-#include <QtCore/qregexp.h>
+#include <QtCore/qregularexpression.h>
 
 class MyQmlAttachedObject : public QObject
 {
@@ -80,7 +55,7 @@ class MyQmlObject : public QObject
     Q_PROPERTY(QObject *objectProperty READ objectProperty WRITE setObjectProperty NOTIFY objectChanged)
     Q_PROPERTY(QQmlListProperty<QObject> objectListProperty READ objectListProperty CONSTANT)
     Q_PROPERTY(int resettableProperty READ resettableProperty WRITE setResettableProperty RESET resetProperty)
-    Q_PROPERTY(QRegExp regExp READ regExp WRITE setRegExp)
+    Q_PROPERTY(QRegularExpression regExp READ regExp WRITE setRegExp)
     Q_PROPERTY(int nonscriptable READ nonscriptable WRITE setNonscriptable SCRIPTABLE false)
 
 public:
@@ -109,7 +84,7 @@ public:
         emit objectChanged();
     }
 
-    QQmlListProperty<QObject> objectListProperty() { return QQmlListProperty<QObject>(this, m_objectQList); }
+    QQmlListProperty<QObject> objectListProperty() { return QQmlListProperty<QObject>(this, &m_objectQList); }
 
     bool methodCalled() const { return m_methodCalled; }
     bool methodIntCalled() const { return m_methodIntCalled; }
@@ -130,8 +105,8 @@ public:
     void setResettableProperty(int v) { m_resetProperty = v; }
     void resetProperty() { m_resetProperty = 13; }
 
-    QRegExp regExp() { return m_regExp; }
-    void setRegExp(const QRegExp &regExp) { m_regExp = regExp; }
+    QRegularExpression regExp() { return m_regExp; }
+    void setRegExp(const QRegularExpression &regExp) { m_regExp = regExp; }
 
     int console() const { return 11; }
 
@@ -173,7 +148,7 @@ private:
     QList<QObject *> m_objectQList;
     int m_value;
     int m_resetProperty;
-    QRegExp m_regExp;
+    QRegularExpression m_regExp;
     QVariant m_variant;
 };
 
@@ -186,7 +161,7 @@ class testQObjectApi : public QObject
     Q_PROPERTY (int qobjectTestProperty READ qobjectTestProperty NOTIFY qobjectTestPropertyChanged)
 
 public:
-    testQObjectApi(QObject* parent = 0)
+    testQObjectApi(QObject *parent = nullptr)
         : QObject(parent), m_testProperty(0)
     {
     }
@@ -209,7 +184,7 @@ class ArbitraryVariantProvider : public QObject
     Q_PROPERTY(QVariant arbitraryVariant READ arbitraryVariant WRITE setArbitraryVariant NOTIFY arbitraryVariantChanged)
 
 public:
-    ArbitraryVariantProvider(QObject *parent = 0)
+    ArbitraryVariantProvider(QObject *parent = nullptr)
         : QObject(parent), m_value(QVariant(QString(QLatin1String("random string value")))), m_count(1)
     {
     }
@@ -290,7 +265,7 @@ class ScarceResourceProvider : public QObject
     Q_PROPERTY(QPixmap largeScarceResource READ largeScarceResource WRITE setLargeScarceResource NOTIFY largeScarceResourceChanged)
 
 public:
-    ScarceResourceProvider(QObject *parent = 0)
+    ScarceResourceProvider(QObject *parent = nullptr)
         : QObject(parent), m_small(100, 100), m_large(1000, 1000), m_colour(1)
     {
         m_small.fill(Qt::blue);

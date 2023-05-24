@@ -1,56 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Aaron McCarthy <mccarthy.aaron@gmail.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtFoo module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Aaron McCarthy <mccarthy.aaron@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacemanagerengineosm.h"
 #include "qplacesearchreplyosm.h"
 #include "qplacecategoriesreplyosm.h"
 
+#include <QtCore/QElapsedTimer>
+#include <QtCore/QLocale>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QUrlQuery>
 #include <QtCore/QXmlStreamReader>
-#include <QtCore/QRegularExpression>
+
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkRequest>
 #include <QtNetwork/QNetworkReply>
-#include <QtPositioning/QGeoCircle>
-#include <QtLocation/private/unsupportedreplies_p.h>
 
-#include <QtCore/QElapsedTimer>
+#include <QtPositioning/QGeoCircle>
+
+#include <QtLocation/QPlaceCategory>
+#include <QtLocation/QPlaceSearchRequest>
+#include <QtLocation/private/unsupportedreplies_p.h>
 
 namespace
 {
@@ -158,11 +127,8 @@ QPlaceSearchReply *QPlaceManagerEngineOsm::search(const QPlaceSearchRequest &req
     if (!request.searchTerm().isEmpty())
         queryParts.append(request.searchTerm());
 
-    foreach (const QPlaceCategory &category, request.categories()) {
+    for (const QPlaceCategory &category : request.categories()) {
         QString id = category.categoryId();
-        int index = id.indexOf(QLatin1Char('='));
-        if (index != -1)
-            id = id.mid(index+1);
         queryParts.append(QLatin1Char('[') + id + QLatin1Char(']'));
     }
 
@@ -186,9 +152,10 @@ QPlaceSearchReply *QPlaceManagerEngineOsm::search(const QPlaceSearchRequest &req
     QNetworkReply *networkReply = m_networkManager->get(rq);
 
     QPlaceSearchReplyOsm *reply = new QPlaceSearchReplyOsm(request, networkReply, this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceSearchReplyOsm::finished,
+            this, &QPlaceManagerEngineOsm::replyFinished);
+    connect(reply, &QPlaceSearchReplyOsm::errorOccurred,
+            this, &QPlaceManagerEngineOsm::replyError);
 
     if (m_debugQuery)
         reply->requestUrl = requestUrl.url(QUrl::None);
@@ -206,9 +173,10 @@ QPlaceReply *QPlaceManagerEngineOsm::initializeCategories()
     }
 
     QPlaceCategoriesReplyOsm *reply = new QPlaceCategoriesReplyOsm(this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)),
-            this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &QPlaceCategoriesReplyOsm::finished,
+            this, &QPlaceManagerEngineOsm::replyFinished);
+    connect(reply, &QPlaceCategoriesReplyOsm::errorOccurred,
+            this, &QPlaceManagerEngineOsm::replyError);
 
     // TODO delayed finished() emission
     if (!m_categories.isEmpty())
@@ -239,7 +207,7 @@ QPlaceCategory QPlaceManagerEngineOsm::category(const QString &categoryId) const
 QList<QPlaceCategory> QPlaceManagerEngineOsm::childCategories(const QString &parentId) const
 {
     QList<QPlaceCategory> categories;
-    foreach (const QString &id, m_subcategories.value(parentId))
+    for (const QString &id : m_subcategories.value(parentId))
         categories.append(m_categories.value(id));
     return categories;
 }
@@ -274,11 +242,11 @@ void QPlaceManagerEngineOsm::categoryReplyFinished()
             QRegularExpressionMatchIterator i = regex.globalMatch(page);
             while (i.hasNext()) {
                 QRegularExpressionMatch match = i.next();
-                QString name = match.capturedRef(1).toString();
-                QString tagKey = match.capturedRef(2).toString();
-                QString tagValue = match.capturedRef(3).toString();
-                QString op = match.capturedRef(4).toString();
-                QString plural = match.capturedRef(5).toString();
+                QString name = match.capturedView(1).toString();
+                QString tagKey = match.capturedView(2).toString();
+                QString tagValue = match.capturedView(3).toString();
+                QString op = match.capturedView(4).toString();
+                QString plural = match.capturedView(5).toString();
 
                 // Only interested in any operator plural forms
                 if (op != QLatin1String("-") || plural != QLatin1String("Y"))
@@ -315,14 +283,14 @@ void QPlaceManagerEngineOsm::categoryReplyFinished()
         m_categoryLocales.clear();
     }
 
-    foreach (QPlaceCategoriesReplyOsm *reply, m_pendingCategoriesReply)
+    for (QPlaceCategoriesReplyOsm *reply : m_pendingCategoriesReply)
         reply->emitFinished();
     m_pendingCategoriesReply.clear();
 }
 
 void QPlaceManagerEngineOsm::categoryReplyError()
 {
-    foreach (QPlaceCategoriesReplyOsm *reply, m_pendingCategoriesReply)
+    for (QPlaceCategoriesReplyOsm *reply : m_pendingCategoriesReply)
         reply->setError(QPlaceReply::CommunicationError, tr("Network request error"));
 }
 
@@ -337,7 +305,7 @@ void QPlaceManagerEngineOsm::replyError(QPlaceReply::Error errorCode, const QStr
 {
     QPlaceReply *reply = qobject_cast<QPlaceReply *>(sender());
     if (reply)
-        emit error(reply, errorCode, errorString);
+        emit errorOccurred(reply, errorCode, errorString);
 }
 
 void QPlaceManagerEngineOsm::fetchNextCategoryLocale()
@@ -353,7 +321,8 @@ void QPlaceManagerEngineOsm::fetchNextCategoryLocale()
     QUrl requestUrl = QUrl(SpecialPhrasesBaseUrl + locale.name().left(2).toUpper());
 
     m_categoriesReply = m_networkManager->get(QNetworkRequest(requestUrl));
-    connect(m_categoriesReply, SIGNAL(finished()), this, SLOT(categoryReplyFinished()));
-    connect(m_categoriesReply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)),
-            this, SLOT(categoryReplyError()));
+    connect(m_categoriesReply, &QNetworkReply::finished,
+            this, &QPlaceManagerEngineOsm::categoryReplyFinished);
+    connect(m_categoriesReply, &QNetworkReply::errorOccurred,
+            this, &QPlaceManagerEngineOsm::categoryReplyError);
 }

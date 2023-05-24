@@ -1,12 +1,12 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_OFFLINE_PAGES_CORE_ARCHIVE_MANAGER_H_
 #define COMPONENTS_OFFLINE_PAGES_CORE_ARCHIVE_MANAGER_H_
 
-#include "base/callback_forward.h"
 #include "base/files/file_path.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/ref_counted.h"
 
 namespace base {
@@ -52,6 +52,10 @@ class ArchiveManager {
                  const base::FilePath& private_archives_dir_,
                  const base::FilePath& public_archives_dir,
                  const scoped_refptr<base::SequencedTaskRunner>& task_runner);
+
+  ArchiveManager(const ArchiveManager&) = delete;
+  ArchiveManager& operator=(const ArchiveManager&) = delete;
+
   virtual ~ArchiveManager();
 
   // Creates archives directory if one does not exist yet;
@@ -82,8 +86,6 @@ class ArchiveManager {
   // second task will start after the first one. This is an important assumption
   // for |ArchiveManager::EnsureArchivesDirCreated|.
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(ArchiveManager);
 };
 
 }  // namespace offline_pages

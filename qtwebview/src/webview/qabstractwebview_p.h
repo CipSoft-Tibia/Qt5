@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtWebView module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTWEBVIEW_P_H
 #define QABSTRACTWEBVIEW_P_H
@@ -56,12 +23,33 @@ QT_BEGIN_NAMESPACE
 class QWebView;
 class QWebViewLoadRequestPrivate;
 
+class Q_WEBVIEW_EXPORT QAbstractWebViewSettings : public QObject
+{
+    Q_OBJECT
+public:
+    virtual bool localStorageEnabled() const = 0;
+    virtual bool javascriptEnabled() const = 0;
+    virtual bool localContentCanAccessFileUrls() const = 0;
+    virtual bool allowFileAccess() const = 0;
+
+    virtual void setLocalContentCanAccessFileUrls(bool) = 0;
+    virtual void setJavascriptEnabled(bool) = 0;
+    virtual void setLocalStorageEnabled(bool) = 0;
+    virtual void setAllowFileAccess(bool) = 0;
+
+protected:
+    explicit QAbstractWebViewSettings(QObject *p = nullptr) : QObject(p) {}
+};
+
 class Q_WEBVIEW_EXPORT QAbstractWebView
         : public QObject
         , public QWebViewInterface
         , public QNativeViewController
 {
     Q_OBJECT
+
+public:
+    virtual QAbstractWebViewSettings *getSettings() const = 0;
 
 Q_SIGNALS:
     void titleChanged(const QString &title);
@@ -71,9 +59,11 @@ Q_SIGNALS:
     void javaScriptResult(int id, const QVariant &result);
     void requestFocus(bool focus);
     void httpUserAgentChanged(const QString &httpUserAgent);
+    void cookieAdded(const QString &domain, const QString &name);
+    void cookieRemoved(const QString &domain, const QString &name);
 
 protected:
-    explicit QAbstractWebView(QObject *p = 0) : QObject(p) { }
+    explicit QAbstractWebView(QObject *p = nullptr) : QObject(p) { }
 };
 
 QT_END_NAMESPACE

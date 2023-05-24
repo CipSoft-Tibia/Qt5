@@ -1,4 +1,4 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/testing/dummy_page_holder.h"
+#include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 
 namespace blink {
@@ -18,7 +19,8 @@ std::unique_ptr<DummyPageHolder> V8TestingScope::CreateDummyPageHolder(
   std::unique_ptr<DummyPageHolder> holder = std::make_unique<DummyPageHolder>();
   if (url.IsValid()) {
     holder->GetFrame().Loader().CommitNavigation(
-        WebNavigationParams::CreateWithHTMLBuffer(SharedBuffer::Create(), url),
+        WebNavigationParams::CreateWithHTMLBufferForTesting(
+            SharedBuffer::Create(), url),
         nullptr /* extra_data */);
     blink::test::RunPendingTasks();
   }
@@ -30,7 +32,10 @@ V8TestingScope::V8TestingScope(const KURL& url)
       handle_scope_(GetIsolate()),
       context_(GetScriptState()->GetContext()),
       context_scope_(GetContext()),
-      try_catch_(GetIsolate()) {
+      try_catch_(GetIsolate()),
+      microtasks_scope_(GetIsolate(),
+                        ToMicrotaskQueue(GetScriptState()),
+                        v8::MicrotasksScope::kDoNotRunMicrotasks) {
   GetFrame().GetSettings()->SetScriptEnabled(true);
 }
 
@@ -72,14 +77,17 @@ Document& V8TestingScope::GetDocument() {
 
 V8TestingScope::~V8TestingScope() {
   // Execute all pending microtasks.
-  // The document can be manually shut down here, so we cannot use GetIsolate()
-  // which relies on the active document.
-  v8::MicrotasksScope::PerformCheckpoint(GetContext()->GetIsolate());
+  PerformMicrotaskCheckpoint();
 
   // TODO(yukishiino): We put this statement here to clear an exception from
   // the isolate.  Otherwise, the leak detector complains.  Really mysterious
   // hack.
   v8::Function::New(GetContext(), nullptr);
+}
+
+void V8TestingScope::PerformMicrotaskCheckpoint() {
+  GetContext()->GetMicrotaskQueue()->PerformCheckpoint(
+      GetContext()->GetIsolate());
 }
 
 }  // namespace blink

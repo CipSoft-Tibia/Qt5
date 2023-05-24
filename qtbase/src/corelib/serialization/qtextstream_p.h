@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTEXTSTREAM_P_H
 #define QTEXTSTREAM_P_H
@@ -53,10 +17,10 @@
 //
 
 #include <QtCore/private/qglobal_p.h>
+#include <QtCore/qstringconverter.h>
+#include <QtCore/qiodevice.h>
+#include <QtCore/qlocale.h>
 #include "qtextstream.h"
-#if QT_CONFIG(textcodec)
-#include "qtextcodec.h"
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -71,8 +35,13 @@ public:
     inline void setupDevice(QTextStream *stream, QIODevice *device)
     {
         disconnect();
-        if (device)
-            connect(device, SIGNAL(aboutToClose()), this, SLOT(flushStream()));
+        if (device) {
+            // Force direct connection here so that QTextStream can be used
+            // from multiple threads when the application code is handling
+            // synchronization (see also QTBUG-12055).
+            connect(device, SIGNAL(aboutToClose()), this, SLOT(flushStream()),
+                    Qt::DirectConnection);
+        }
         this->stream = stream;
     }
 
@@ -118,13 +87,10 @@ public:
     int stringOffset;
     QIODevice::OpenMode stringOpenMode;
 
-#if QT_CONFIG(textcodec)
-    // codec
-    QTextCodec *codec;
-    QTextCodec::ConverterState readConverterState;
-    QTextCodec::ConverterState writeConverterState;
-    QTextCodec::ConverterState *readConverterSavedState;
-#endif
+    QStringConverter::Encoding encoding = QStringConverter::Utf8;
+    QStringEncoder fromUtf16;
+    QStringDecoder toUtf16;
+    QStringDecoder savedToUtf16;
 
     QString writeBuffer;
     QString readBuffer;
@@ -141,9 +107,9 @@ public:
 
     int lastTokenSize;
     bool deleteDevice;
-#if QT_CONFIG(textcodec)
     bool autoDetectUnicode;
-#endif
+    bool hasWrittenData = false;
+    bool generateBOM = false;
 
     // i/o
     enum TokenDelimiter {
@@ -173,21 +139,25 @@ public:
     NumberParsingStatus getNumber(qulonglong *l);
     bool getReal(double *f);
 
-    inline void write(const QString &data) { write(data.begin(), data.length()); }
+    inline void write(QStringView data) { write(data.begin(), data.size()); }
     inline void write(QChar ch);
-    void write(const QChar *data, int len);
-    void write(QLatin1String data);
-    void writePadding(int len);
-    inline void putString(const QString &ch, bool number = false) { putString(ch.constData(), ch.length(), number); }
-    void putString(const QChar *data, int len, bool number = false);
-    void putString(QLatin1String data, bool number = false);
+    void write(const QChar *data, qsizetype len);
+    void write(QLatin1StringView data);
+    void writePadding(qsizetype len);
+    inline void putString(QStringView string, bool number = false)
+    {
+        putString(string.constData(), string.size(), number);
+    }
+    void putString(const QChar *data, qsizetype len, bool number = false);
+    void putString(QLatin1StringView data, bool number = false);
+    void putString(QUtf8StringView data, bool number = false);
     inline void putChar(QChar ch);
     void putNumber(qulonglong number, bool negative);
 
     struct PaddingResult {
         int left, right;
     };
-    PaddingResult padding(int len) const;
+    PaddingResult padding(qsizetype len) const;
 
     // buffers
     bool fillReadBuffer(qint64 maxBytes = -1);

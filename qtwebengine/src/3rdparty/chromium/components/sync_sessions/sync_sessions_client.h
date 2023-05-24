@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 #define COMPONENTS_SYNC_SESSIONS_SYNC_SESSIONS_CLIENT_H_
 
 #include <memory>
+#include <string>
 
-#include "base/macros.h"
 #include "components/sync/model/model_type_store.h"
 
 class GURL;
@@ -23,6 +23,10 @@ class SyncedWindowDelegatesGetter;
 class SyncSessionsClient {
  public:
   SyncSessionsClient();
+
+  SyncSessionsClient(const SyncSessionsClient&) = delete;
+  SyncSessionsClient& operator=(const SyncSessionsClient&) = delete;
+
   virtual ~SyncSessionsClient();
 
   // Getters for services that sessions depends on.
@@ -39,15 +43,16 @@ class SyncSessionsClient {
   // componentized.
   virtual bool ShouldSyncURL(const GURL& url) const = 0;
 
+  // Returns if the provided |cache_guid| is the local device's current cache\
+  // GUID or is known to have been used in the past as local device GUID.
+  virtual bool IsRecentLocalCacheGuid(const std::string& cache_guid) const = 0;
+
   // Returns the SyncedWindowDelegatesGetter for this client.
   virtual SyncedWindowDelegatesGetter* GetSyncedWindowDelegatesGetter() = 0;
 
   // Returns a LocalSessionEventRouter instance that is customized for the
   // embedder's context.
   virtual LocalSessionEventRouter* GetLocalSessionEventRouter() = 0;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(SyncSessionsClient);
 };
 
 }  // namespace sync_sessions

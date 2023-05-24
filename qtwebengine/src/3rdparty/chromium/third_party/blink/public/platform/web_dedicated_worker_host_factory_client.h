@@ -1,17 +1,17 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_DEDICATED_WORKER_HOST_FACTORY_CLIENT_H_
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_DEDICATED_WORKER_HOST_FACTORY_CLIENT_H_
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/unguessable_token.h"
-#include "mojo/public/cpp/system/message_pipe.h"
 #include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "services/network/public/mojom/referrer_policy.mojom-shared.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
 #include "third_party/blink/public/mojom/blob/blob_url_store.mojom-shared.h"
+#include "third_party/blink/public/mojom/frame/back_forward_cache_controller.mojom-shared.h"
 #include "third_party/blink/public/mojom/frame/lifecycle.mojom-shared.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/web_fetch_client_settings_object.h"
@@ -33,6 +33,11 @@ class WebWorkerFetchContext;
 // content::DedicatedWorkerHostFactoryClient from blink::DedicatedWorker.
 class WebDedicatedWorkerHostFactoryClient {
  public:
+  using CreateWorkerHostCallback = base::OnceCallback<void(
+      const network::CrossOriginEmbedderPolicy&,
+      CrossVariantMojoRemote<
+          mojom::BackForwardCacheControllerHostInterfaceBase>)>;
+
   virtual ~WebDedicatedWorkerHostFactoryClient() = default;
 
   // Requests the creation of DedicatedWorkerHost in the browser process.
@@ -40,8 +45,8 @@ class WebDedicatedWorkerHostFactoryClient {
   // enabled by default.
   virtual void CreateWorkerHostDeprecated(
       const DedicatedWorkerToken& dedicated_worker_token,
-      base::OnceCallback<void(const network::CrossOriginEmbedderPolicy&)>
-          callback) = 0;
+      const blink::WebURL& script_url,
+      CreateWorkerHostCallback callback) = 0;
   // For PlzDedicatedWorker.
   virtual void CreateWorkerHost(
       const DedicatedWorkerToken& dedicated_worker_token,

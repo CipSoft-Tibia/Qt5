@@ -17,8 +17,10 @@
 #ifndef SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_GLOBAL_ARGS_TRACKER_H_
 #define SRC_TRACE_PROCESSOR_IMPORTERS_COMMON_GLOBAL_ARGS_TRACKER_H_
 
+#include "perfetto/ext/base/flat_hash_map.h"
+#include "perfetto/ext/base/hash.h"
+#include "perfetto/ext/base/small_vector.h"
 #include "src/trace_processor/storage/trace_storage.h"
-#include "src/trace_processor/types/trace_processor_context.h"
 #include "src/trace_processor/types/variadic.h"
 
 namespace perfetto {
@@ -36,20 +38,29 @@ class GlobalArgsTracker {
   // the same key will be overridden.
   enum class UpdatePolicy { kSkipIfExists, kAddOrUpdate };
 
-  struct Arg {
+  struct CompactArg {
     StringId flat_key = kNullStringId;
     StringId key = kNullStringId;
     Variadic value = Variadic::Integer(0);
-
-    Column* column;
-    uint32_t row;
     UpdatePolicy update_policy = UpdatePolicy::kAddOrUpdate;
   };
+  static_assert(std::is_trivially_destructible<CompactArg>::value,
+                "Args must be trivially destructible");
+
+  struct Arg : public CompactArg {
+    Column* column;
+    uint32_t row;
+
+    // Object slices this Arg to become a CompactArg.
+    CompactArg ToCompactArg() const { return CompactArg(*this); }
+  };
+  static_assert(std::is_trivially_destructible<Arg>::value,
+                "Args must be trivially destructible");
 
   struct ArgHasher {
     uint64_t operator()(const Arg& arg) const noexcept {
-      base::Hash hash;
-      hash.Update(arg.key);
+      base::Hasher hash;
+      hash.Update(arg.key.raw_id());
       // We don't hash arg.flat_key because it's a subsequence of arg.key.
       switch (arg.value.type) {
         case Variadic::Type::kInt:
@@ -59,7 +70,7 @@ class GlobalArgsTracker {
           hash.Update(arg.value.uint_value);
           break;
         case Variadic::Type::kString:
-          hash.Update(arg.value.string_value);
+          hash.Update(arg.value.string_value.raw_id());
           break;
         case Variadic::Type::kReal:
           hash.Update(arg.value.real_value);
@@ -71,21 +82,21 @@ class GlobalArgsTracker {
           hash.Update(arg.value.bool_value);
           break;
         case Variadic::Type::kJson:
-          hash.Update(arg.value.json_value);
+          hash.Update(arg.value.json_value.raw_id());
+          break;
+        case Variadic::Type::kNull:
+          hash.Update(0);
           break;
       }
       return hash.digest();
     }
   };
 
-  GlobalArgsTracker(TraceProcessorContext* context);
+  explicit GlobalArgsTracker(TraceStorage* storage);
 
   // Assumes that the interval [begin, end) of |args| is sorted by keys.
-  ArgSetId AddArgSet(const std::vector<Arg>& args,
-                     uint32_t begin,
-                     uint32_t end) {
-    std::vector<uint32_t> valid_indexes;
-    valid_indexes.reserve(end - begin);
+  ArgSetId AddArgSet(const Arg* args, uint32_t begin, uint32_t end) {
+    base::SmallVector<uint32_t, 64> valid_indexes;
 
     // TODO(eseckler): Also detect "invalid" key combinations in args sets (e.g.
     // "foo" and "foo.bar" in the same arg set)?
@@ -103,24 +114,27 @@ class GlobalArgsTracker {
         }
       }
 
-      valid_indexes.push_back(i);
+      valid_indexes.emplace_back(i);
     }
 
-    base::Hash hash;
+    base::Hasher hash;
     for (uint32_t i : valid_indexes) {
       hash.Update(ArgHasher()(args[i]));
     }
 
-    auto* arg_table = context_->storage->mutable_arg_table();
+    auto* arg_table = storage_->mutable_arg_table();
 
     ArgSetHash digest = hash.digest();
-    auto it = arg_row_for_hash_.find(digest);
-    if (it != arg_row_for_hash_.end())
-      return arg_table->arg_set_id()[it->second];
+    auto it_and_inserted =
+        arg_row_for_hash_.Insert(digest, arg_table->row_count());
+    if (!it_and_inserted.second) {
+      // Already inserted.
+      return arg_table->arg_set_id()[*it_and_inserted.first];
+    }
 
-    // The +1 ensures that nothing has an id == kInvalidArgSetId == 0.
-    ArgSetId id = static_cast<uint32_t>(arg_row_for_hash_.size()) + 1;
-    arg_row_for_hash_.emplace(digest, arg_table->row_count());
+    // Taking size() after the Insert() ensures that nothing has an id == 0
+    // (0 == kInvalidArgSetId).
+    ArgSetId id = static_cast<uint32_t>(arg_row_for_hash_.size());
     for (uint32_t i : valid_indexes) {
       const auto& arg = args[i];
 
@@ -150,19 +164,29 @@ class GlobalArgsTracker {
         case Variadic::Type::kJson:
           row.string_value = arg.value.json_value;
           break;
+        case Variadic::Type::kNull:
+          break;
       }
-      row.value_type = context_->storage->GetIdForVariadicType(arg.value.type);
+      row.value_type = storage_->GetIdForVariadicType(arg.value.type);
       arg_table->Insert(row);
     }
     return id;
   }
 
+  // Exposed for making tests easier to write.
+  ArgSetId AddArgSet(const std::vector<Arg>& args,
+                     uint32_t begin,
+                     uint32_t end) {
+    return AddArgSet(args.data(), begin, end);
+  }
+
  private:
   using ArgSetHash = uint64_t;
 
-  std::unordered_map<ArgSetHash, uint32_t> arg_row_for_hash_;
+  base::FlatHashMap<ArgSetHash, uint32_t, base::AlreadyHashed<ArgSetHash>>
+      arg_row_for_hash_;
 
-  TraceProcessorContext* context_;
+  TraceStorage* storage_;
 };
 
 }  // namespace trace_processor

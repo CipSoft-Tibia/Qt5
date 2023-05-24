@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 //
@@ -21,6 +21,10 @@ EGLBoolean eglChooseConfigFn(EGLDisplay dpy,
                              EGLConfig* configs,
                              EGLint config_size,
                              EGLint* num_config) override;
+EGLint eglClientWaitSyncFn(EGLDisplay dpy,
+                           EGLSync sync,
+                           EGLint flags,
+                           EGLTime timeout) override;
 EGLint eglClientWaitSyncKHRFn(EGLDisplay dpy,
                               EGLSyncKHR sync,
                               EGLint flags,
@@ -28,10 +32,16 @@ EGLint eglClientWaitSyncKHRFn(EGLDisplay dpy,
 EGLBoolean eglCopyBuffersFn(EGLDisplay dpy,
                             EGLSurface surface,
                             EGLNativePixmapType target) override;
+void* eglCopyMetalSharedEventANGLEFn(EGLDisplay dpy, EGLSync sync) override;
 EGLContext eglCreateContextFn(EGLDisplay dpy,
                               EGLConfig config,
                               EGLContext share_context,
                               const EGLint* attrib_list) override;
+EGLImage eglCreateImageFn(EGLDisplay dpy,
+                          EGLContext ctx,
+                          EGLenum target,
+                          EGLClientBuffer buffer,
+                          const EGLAttrib* attrib_list) override;
 EGLImageKHR eglCreateImageKHRFn(EGLDisplay dpy,
                                 EGLContext ctx,
                                 EGLenum target,
@@ -50,12 +60,25 @@ EGLSurface eglCreatePixmapSurfaceFn(EGLDisplay dpy,
                                     EGLConfig config,
                                     EGLNativePixmapType pixmap,
                                     const EGLint* attrib_list) override;
+EGLSurface eglCreatePlatformPixmapSurfaceFn(
+    EGLDisplay dpy,
+    EGLConfig config,
+    void* native_pixmap,
+    const EGLAttrib* attrib_list) override;
+EGLSurface eglCreatePlatformWindowSurfaceFn(
+    EGLDisplay dpy,
+    EGLConfig config,
+    void* native_window,
+    const EGLAttrib* attrib_list) override;
 EGLStreamKHR eglCreateStreamKHRFn(EGLDisplay dpy,
                                   const EGLint* attrib_list) override;
 EGLBoolean eglCreateStreamProducerD3DTextureANGLEFn(
     EGLDisplay dpy,
     EGLStreamKHR stream,
     EGLAttrib* attrib_list) override;
+EGLSync eglCreateSyncFn(EGLDisplay dpy,
+                        EGLenum type,
+                        const EGLAttrib* attrib_list) override;
 EGLSyncKHR eglCreateSyncKHRFn(EGLDisplay dpy,
                               EGLenum type,
                               const EGLint* attrib_list) override;
@@ -66,9 +89,11 @@ EGLSurface eglCreateWindowSurfaceFn(EGLDisplay dpy,
 EGLint eglDebugMessageControlKHRFn(EGLDEBUGPROCKHR callback,
                                    const EGLAttrib* attrib_list) override;
 EGLBoolean eglDestroyContextFn(EGLDisplay dpy, EGLContext ctx) override;
+EGLBoolean eglDestroyImageFn(EGLDisplay dpy, EGLImage image) override;
 EGLBoolean eglDestroyImageKHRFn(EGLDisplay dpy, EGLImageKHR image) override;
 EGLBoolean eglDestroyStreamKHRFn(EGLDisplay dpy, EGLStreamKHR stream) override;
 EGLBoolean eglDestroySurfaceFn(EGLDisplay dpy, EGLSurface surface) override;
+EGLBoolean eglDestroySyncFn(EGLDisplay dpy, EGLSync sync) override;
 EGLBoolean eglDestroySyncKHRFn(EGLDisplay dpy, EGLSyncKHR sync) override;
 EGLint eglDupNativeFenceFDANDROIDFn(EGLDisplay dpy, EGLSyncKHR sync) override;
 EGLBoolean eglExportDMABUFImageMESAFn(EGLDisplay dpy,
@@ -81,6 +106,10 @@ EGLBoolean eglExportDMABUFImageQueryMESAFn(EGLDisplay dpy,
                                            int* fourcc,
                                            int* num_planes,
                                            EGLuint64KHR* modifiers) override;
+EGLBoolean eglExportVkImageANGLEFn(EGLDisplay dpy,
+                                   EGLImageKHR image,
+                                   void* vk_image,
+                                   void* vk_image_create_info) override;
 EGLBoolean eglGetCompositorTimingANDROIDFn(EGLDisplay dpy,
                                            EGLSurface surface,
                                            EGLint numTimestamps,
@@ -125,6 +154,10 @@ EGLDisplay eglGetPlatformDisplayFn(EGLenum platform,
                                    const EGLAttrib* attrib_list) override;
 __eglMustCastToProperFunctionPointerType eglGetProcAddressFn(
     const char* procname) override;
+EGLBoolean eglGetSyncAttribFn(EGLDisplay dpy,
+                              EGLSync sync,
+                              EGLint attribute,
+                              EGLAttrib* value) override;
 EGLBoolean eglGetSyncAttribKHRFn(EGLDisplay dpy,
                                  EGLSyncKHR sync,
                                  EGLint attribute,
@@ -161,6 +194,9 @@ EGLBoolean eglQueryContextFn(EGLDisplay dpy,
                              EGLint attribute,
                              EGLint* value) override;
 EGLBoolean eglQueryDebugKHRFn(EGLint attribute, EGLAttrib* value) override;
+EGLBoolean eglQueryDeviceAttribEXTFn(EGLDeviceEXT device,
+                                     EGLint attribute,
+                                     EGLAttrib* value) override;
 EGLBoolean eglQueryDevicesEXTFn(EGLint max_devices,
                                 EGLDeviceEXT* devices,
                                 EGLint* num_devices) override;
@@ -169,6 +205,19 @@ const char* eglQueryDeviceStringEXTFn(EGLDeviceEXT device,
 EGLBoolean eglQueryDisplayAttribANGLEFn(EGLDisplay dpy,
                                         EGLint attribute,
                                         EGLAttrib* value) override;
+EGLBoolean eglQueryDisplayAttribEXTFn(EGLDisplay dpy,
+                                      EGLint attribute,
+                                      EGLAttrib* value) override;
+EGLBoolean eglQueryDmaBufFormatsEXTFn(EGLDisplay dpy,
+                                      EGLint max_formats,
+                                      EGLint* formats,
+                                      EGLint* num_formats) override;
+EGLBoolean eglQueryDmaBufModifiersEXTFn(EGLDisplay dpy,
+                                        EGLint format,
+                                        EGLint max_modifiers,
+                                        EGLuint64KHR* modifiers,
+                                        EGLBoolean* external_only,
+                                        EGLint* num_modifiers) override;
 EGLBoolean eglQueryStreamKHRFn(EGLDisplay dpy,
                                EGLStreamKHR stream,
                                EGLenum attribute,
@@ -232,4 +281,6 @@ EGLBoolean eglTerminateFn(EGLDisplay dpy) override;
 EGLBoolean eglWaitClientFn(void) override;
 EGLBoolean eglWaitGLFn(void) override;
 EGLBoolean eglWaitNativeFn(EGLint engine) override;
+EGLint eglWaitSyncFn(EGLDisplay dpy, EGLSync sync, EGLint flags) override;
 EGLint eglWaitSyncKHRFn(EGLDisplay dpy, EGLSyncKHR sync, EGLint flags) override;
+void eglWaitUntilWorkScheduledANGLEFn(EGLDisplay dpy) override;

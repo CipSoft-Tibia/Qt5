@@ -22,56 +22,35 @@
 
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
-#include "third_party/blink/renderer/core/frame/navigator_concurrent_hardware.h"
-#include "third_party/blink/renderer/core/frame/navigator_device_memory.h"
-#include "third_party/blink/renderer/core/frame/navigator_id.h"
-#include "third_party/blink/renderer/core/frame/navigator_language.h"
-#include "third_party/blink/renderer/core/frame/navigator_on_line.h"
-#include "third_party/blink/renderer/core/frame/navigator_ua.h"
-#include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/core/execution_context/navigator_base.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/supplementable.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
-class LocalFrame;
-
-class CORE_EXPORT Navigator final : public ScriptWrappable,
-                                    public NavigatorConcurrentHardware,
-                                    public NavigatorDeviceMemory,
-                                    public NavigatorID,
-                                    public NavigatorLanguage,
-                                    public NavigatorOnLine,
-                                    public NavigatorUA,
-                                    public ExecutionContextClient,
+class CORE_EXPORT Navigator final : public NavigatorBase,
                                     public Supplementable<Navigator> {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  explicit Navigator(LocalFrame*);
+  explicit Navigator(ExecutionContext*);
 
   // NavigatorCookies
   bool cookieEnabled() const;
 
-  bool webdriver() const { return true; }
+  bool webdriver() const;
 
   String productSub() const;
   String vendor() const;
   String vendorSub() const;
 
   String platform() const override;
-  String userAgent() const override;
 
   String GetAcceptLanguages() override;
-  UserAgentMetadata GetUserAgentMetadata() const override;
   void SetUserAgentMetadataForTesting(UserAgentMetadata);
 
   void Trace(Visitor*) const override;
-
- protected:
-  ExecutionContext* GetUAExecutionContext() const override;
 
  private:
   UserAgentMetadata metadata_;

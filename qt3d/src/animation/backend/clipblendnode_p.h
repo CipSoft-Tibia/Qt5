@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DANIMATION_ANIMATION_CLIPBLENDNODE_P_H
 #define QT3DANIMATION_ANIMATION_CLIPBLENDNODE_P_H
@@ -82,22 +49,21 @@ public:
     void setClipResults(Qt3DCore::QNodeId animatorId, const ClipResults &clipResults);
     ClipResults clipResults(Qt3DCore::QNodeId animatorId) const;
 
-    virtual QVector<Qt3DCore::QNodeId> allDependencyIds() const = 0;
-    virtual QVector<Qt3DCore::QNodeId> currentDependencyIds() const = 0;
+    virtual QList<Qt3DCore::QNodeId> allDependencyIds() const = 0;
+    virtual QList<Qt3DCore::QNodeId> currentDependencyIds() const = 0;
     virtual double duration() const = 0;
 
 protected:
     explicit ClipBlendNode(BlendType blendType);
-    void initializeFromPeer(const Qt3DCore::QNodeCreatedChangeBasePtr &change) override;
-    virtual ClipResults doBlend(const QVector<ClipResults> &blendData) const = 0;
+    virtual ClipResults doBlend(const QList<ClipResults> &blendData) const = 0;
 
 private:
     ClipBlendNodeManager *m_manager;
     BlendType m_blendType;
 
     // Store the results of evaluations indexed by animator id
-    QVector<Qt3DCore::QNodeId> m_animatorIds;
-    QVector<ClipResults> m_clipResults;
+    QList<Qt3DCore::QNodeId> m_animatorIds;
+    QList<ClipResults> m_clipResults;
 };
 
 template<typename Backend, typename Frontend>
@@ -110,14 +76,14 @@ public:
     {
     }
 
-    Qt3DCore::QBackendNode *create(const Qt3DCore::QNodeCreatedChangeBasePtr &change) const final
+    Qt3DCore::QBackendNode *create(Qt3DCore::QNodeId id) const final
     {
-        if (m_manager->containsNode(change->subjectId()))
-            return static_cast<Backend *>(m_manager->lookupNode(change->subjectId()));
+        if (m_manager->containsNode(id))
+            return static_cast<Backend *>(m_manager->lookupNode(id));
         Backend *backend = new Backend();
         backend->setClipBlendNodeManager(m_manager);
         backend->setHandler(m_handler);
-        m_manager->appendNode(change->subjectId(), backend);
+        m_manager->appendNode(id, backend);
         return backend;
     }
 

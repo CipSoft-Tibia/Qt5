@@ -1,6 +1,6 @@
 // -*- mode: c++ -*-
 
-// Copyright (c) 2010 Google Inc. All Rights Reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -12,7 +12,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -53,12 +53,12 @@ using ::testing::Return;
 using ::testing::Sequence;
 using ::testing::StrEq;
 
-using dwarf2reader::DIEDispatcher;
-using dwarf2reader::DIEHandler;
-using dwarf2reader::DwarfAttribute;
-using dwarf2reader::DwarfForm;
-using dwarf2reader::DwarfTag;
-using dwarf2reader::RootDIEHandler;
+using google_breakpad::DIEDispatcher;
+using google_breakpad::DIEHandler;
+using google_breakpad::DwarfAttribute;
+using google_breakpad::DwarfForm;
+using google_breakpad::DwarfTag;
+using google_breakpad::RootDIEHandler;
 
 class MockDIEHandler: public DIEHandler {
  public:

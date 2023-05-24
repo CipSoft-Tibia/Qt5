@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,7 +15,7 @@ class LatestLocalSurfaceIdLookupDelegate {
       const FrameSinkId& frame_sink_id) const = 0;
 
  protected:
-  virtual ~LatestLocalSurfaceIdLookupDelegate() {}
+  virtual ~LatestLocalSurfaceIdLookupDelegate() = default;
 };
 
 }  // namespace viz

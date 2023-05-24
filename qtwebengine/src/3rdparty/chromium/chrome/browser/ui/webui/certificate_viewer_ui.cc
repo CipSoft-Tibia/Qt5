@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,16 +21,16 @@
 
 namespace {
 
-content::WebUIDataSource* GetWebUIDataSource(const std::string& host) {
+void CreateAndAddWebUIDataSource(Profile* profile, const std::string& host) {
   content::WebUIDataSource* html_source =
-      content::WebUIDataSource::Create(host);
+      content::WebUIDataSource::CreateAndAdd(profile, host);
 
   static constexpr webui::LocalizedString kStrings[] = {
       {"general", IDS_CERT_INFO_GENERAL_TAB_LABEL},
       {"details", IDS_CERT_INFO_DETAILS_TAB_LABEL},
       {"close", IDS_CLOSE},
       {"export", IDS_CERT_DETAILS_EXPORT_CERTIFICATE},
-      {"usages", IDS_CERT_INFO_VERIFIED_USAGES_GROUP},
+      {"exportA11yLabel", IDS_CERT_DETAILS_EXPORT_CERTIFICATE_A11Y_LABEL},
       {"issuedTo", IDS_CERT_INFO_SUBJECT_GROUP},
       {"issuedBy", IDS_CERT_INFO_ISSUER_GROUP},
       {"cn", IDS_CERT_INFO_COMMON_NAME_LABEL},
@@ -45,12 +45,16 @@ content::WebUIDataSource* GetWebUIDataSource(const std::string& host) {
       {"hierarchy", IDS_CERT_DETAILS_CERTIFICATE_HIERARCHY_LABEL},
       {"certFields", IDS_CERT_DETAILS_CERTIFICATE_FIELDS_LABEL},
       {"certFieldVal", IDS_CERT_DETAILS_CERTIFICATE_FIELD_VALUE_LABEL},
+      {"certError", IDS_CERT_DUMP_ERROR},
   };
-  AddLocalizedStringsBulk(html_source, kStrings);
+  html_source->AddLocalizedStrings(kStrings);
 
   html_source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::TrustedTypes,
-      "trusted-types cr-ui-tree-js-static;");
+      "trusted-types static-types certificate-test-script;");
+  html_source->OverrideContentSecurityPolicy(
+      network::mojom::CSPDirectiveName::ScriptSrc,
+      "script-src chrome://resources chrome://webui-test 'self';");
 
   html_source->UseStringsJs();
 
@@ -60,7 +64,6 @@ content::WebUIDataSource* GetWebUIDataSource(const std::string& host) {
   html_source->AddResourcePath("certificate_viewer.css",
       IDR_CERTIFICATE_VIEWER_CSS);
   html_source->SetDefaultResource(IDR_CERTIFICATE_VIEWER_HTML);
-  return html_source;
 }
 
 }  // namespace
@@ -68,10 +71,8 @@ content::WebUIDataSource* GetWebUIDataSource(const std::string& host) {
 CertificateViewerUI::CertificateViewerUI(content::WebUI* web_ui)
     : ConstrainedWebDialogUI(web_ui) {
   // Set up the chrome://view-cert source.
-  Profile* profile = Profile::FromWebUI(web_ui);
-  content::WebUIDataSource::Add(
-      profile,
-      GetWebUIDataSource(chrome::kChromeUICertificateViewerHost));
+  CreateAndAddWebUIDataSource(Profile::FromWebUI(web_ui),
+                              chrome::kChromeUICertificateViewerHost);
 }
 
 CertificateViewerUI::~CertificateViewerUI() {

@@ -1,45 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef QGLOBAL_H
-# include <QtCore/qglobal.h>
+
+#if 0
+#pragma qt_class(QtProcessorDetection)
+#pragma qt_sync_skip_header_check
+#pragma qt_sync_stop_processing
 #endif
 
 #ifndef QPROCESSORDETECTION_H
@@ -84,8 +51,8 @@
 
     Alpha is bi-endian, use endianness auto-detection implemented below.
 */
-// #elif defined(__alpha__) || defined(_M_ALPHA)
-// #  define Q_PROCESSOR_ALPHA
+#if defined(__alpha__) || defined(_M_ALPHA)
+#  define Q_PROCESSOR_ALPHA
 // Q_BYTE_ORDER not defined, use endianness auto-detection
 
 /*
@@ -94,7 +61,7 @@
     ARM is bi-endian, detect using __ARMEL__ or __ARMEB__, falling back to
     auto-detection implemented below.
 */
-#if defined(__arm__) || defined(__TARGET_ARCH_ARM) || defined(_M_ARM) || defined(_M_ARM64) || defined(__aarch64__) || defined(__ARM64__)
+#elif defined(__arm__) || defined(__TARGET_ARCH_ARM) || defined(_M_ARM) || defined(_M_ARM64) || defined(__aarch64__) || defined(__ARM64__)
 #  if defined(__aarch64__) || defined(__ARM64__) || defined(_M_ARM64)
 #    define Q_PROCESSOR_ARM_64
 #    define Q_PROCESSOR_WORDSIZE 8
@@ -176,6 +143,15 @@
 // #  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
 
 /*
+    PA-RISC family, no revisions or variants
+
+    PA-RISC is big-endian.
+*/
+#elif defined(__hppa__)
+#  define Q_PROCESSOR_HPPA
+#  define Q_BYTE_ORDER Q_BIG_ENDIAN
+
+/*
     X86 family, known variants: 32- and 64-bit
 
     X86 is little-endian.
@@ -222,6 +198,29 @@
 #  define Q_PROCESSOR_IA64
 #  define Q_PROCESSOR_WORDSIZE   8
 // Q_BYTE_ORDER not defined, use endianness auto-detection
+
+/*
+    LoongArch family, known variants: 32- and 64-bit
+
+    LoongArch is little-endian.
+*/
+#elif defined(__loongarch__)
+#  define Q_PROCESSOR_LOONGARCH
+#  if __loongarch_grlen == 64
+#    define Q_PROCESSOR_LOONGARCH_64
+#  else
+#    define Q_PROCESSOR_LOONGARCH_32
+#  endif
+#  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
+
+/*
+    Motorola 68000 family, no revisions or variants
+
+    M68K is big-endian.
+*/
+#elif defined(__m68k__)
+#  define Q_PROCESSOR_M68K
+#  define Q_BYTE_ORDER Q_BIG_ENDIAN
 
 /*
     MIPS family, known revisions: I, II, III, IV, 32, 64
@@ -327,7 +326,7 @@
 */
 #elif defined(__sparc__)
 #  define Q_PROCESSOR_SPARC
-#  if defined(__sparc_v9__)
+#  if defined(__sparc_v9__) || defined(__sparcv9)
 #    define Q_PROCESSOR_SPARC_V9
 #  endif
 #  if defined(__sparc64__)
@@ -340,6 +339,12 @@
 #  define Q_PROCESSOR_WASM
 #  define Q_BYTE_ORDER Q_LITTLE_ENDIAN
 #  define Q_PROCESSOR_WORDSIZE 8
+#ifdef QT_COMPILER_SUPPORTS_SSE2
+#  define Q_PROCESSOR_X86 6   // enables SIMD support
+# define Q_PROCESSOR_X86_64 // wasm64
+#  define Q_PROCESSOR_WASM_64
+#endif
+
 #endif
 
 /*
@@ -357,8 +362,7 @@
 #    define Q_BYTE_ORDER __BYTE_ORDER__
 #  elif defined(__BIG_ENDIAN__) || defined(_big_endian__) || defined(_BIG_ENDIAN)
 #    define Q_BYTE_ORDER Q_BIG_ENDIAN
-#  elif defined(__LITTLE_ENDIAN__) || defined(_little_endian__) || defined(_LITTLE_ENDIAN) \
-        || defined(WINAPI_FAMILY) // WinRT is always little-endian according to MSDN.
+#  elif defined(__LITTLE_ENDIAN__) || defined(_little_endian__) || defined(_LITTLE_ENDIAN)
 #    define Q_BYTE_ORDER Q_LITTLE_ENDIAN
 #  else
 #    error "Unable to determine byte order!"

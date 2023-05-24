@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,10 +12,10 @@
 namespace {
 
 const CXFA_Node::PropertyData kPclPropertyData[] = {
-    {XFA_Element::FontInfo, 1, 0},   {XFA_Element::Jog, 1, 0},
-    {XFA_Element::Xdc, 1, 0},        {XFA_Element::BatchOutput, 1, 0},
-    {XFA_Element::PageOffset, 1, 0}, {XFA_Element::OutputBin, 1, 0},
-    {XFA_Element::Staple, 1, 0},     {XFA_Element::MediumInfo, 1, 0},
+    {XFA_Element::FontInfo, 1, {}},   {XFA_Element::Jog, 1, {}},
+    {XFA_Element::Xdc, 1, {}},        {XFA_Element::BatchOutput, 1, {}},
+    {XFA_Element::PageOffset, 1, {}}, {XFA_Element::OutputBin, 1, {}},
+    {XFA_Element::Staple, 1, {}},     {XFA_Element::MediumInfo, 1, {}},
 };
 
 const CXFA_Node::AttributeData kPclAttributeData[] = {
@@ -29,7 +29,7 @@ const CXFA_Node::AttributeData kPclAttributeData[] = {
 CXFA_Pcl::CXFA_Pcl(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                XFA_XDPPACKET_Config,
+                XFA_XDPPACKET::kConfig,
                 XFA_ObjectType::Node,
                 XFA_Element::Pcl,
                 kPclPropertyData,

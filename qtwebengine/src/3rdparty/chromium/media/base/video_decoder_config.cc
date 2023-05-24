@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,51 +22,6 @@ static bool IsValidSize(const gfx::Size& size) {
   return area && area <= limits::kMaxCanvas &&
          size.width() <= limits::kMaxDimension &&
          size.height() <= limits::kMaxDimension;
-}
-
-VideoCodec VideoCodecProfileToVideoCodec(VideoCodecProfile profile) {
-  switch (profile) {
-    case VIDEO_CODEC_PROFILE_UNKNOWN:
-      return kUnknownVideoCodec;
-    case H264PROFILE_BASELINE:
-    case H264PROFILE_MAIN:
-    case H264PROFILE_EXTENDED:
-    case H264PROFILE_HIGH:
-    case H264PROFILE_HIGH10PROFILE:
-    case H264PROFILE_HIGH422PROFILE:
-    case H264PROFILE_HIGH444PREDICTIVEPROFILE:
-    case H264PROFILE_SCALABLEBASELINE:
-    case H264PROFILE_SCALABLEHIGH:
-    case H264PROFILE_STEREOHIGH:
-    case H264PROFILE_MULTIVIEWHIGH:
-      return kCodecH264;
-    case HEVCPROFILE_MAIN:
-    case HEVCPROFILE_MAIN10:
-    case HEVCPROFILE_MAIN_STILL_PICTURE:
-      return kCodecHEVC;
-    case VP8PROFILE_ANY:
-      return kCodecVP8;
-    case VP9PROFILE_PROFILE0:
-    case VP9PROFILE_PROFILE1:
-    case VP9PROFILE_PROFILE2:
-    case VP9PROFILE_PROFILE3:
-      return kCodecVP9;
-    case DOLBYVISION_PROFILE0:
-    case DOLBYVISION_PROFILE4:
-    case DOLBYVISION_PROFILE5:
-    case DOLBYVISION_PROFILE7:
-    case DOLBYVISION_PROFILE8:
-    case DOLBYVISION_PROFILE9:
-      return kCodecDolbyVision;
-    case THEORAPROFILE_ANY:
-      return kCodecTheora;
-    case AV1PROFILE_PROFILE_MAIN:
-    case AV1PROFILE_PROFILE_HIGH:
-    case AV1PROFILE_PROFILE_PRO:
-      return kCodecAV1;
-  }
-  NOTREACHED();
-  return kUnknownVideoCodec;
 }
 
 VideoDecoderConfig::VideoDecoderConfig() = default;
@@ -107,13 +62,14 @@ void VideoDecoderConfig::Initialize(VideoCodec codec,
   coded_size_ = coded_size;
   visible_rect_ = visible_rect;
   natural_size_ = natural_size;
+  aspect_ratio_ = VideoAspectRatio(visible_rect, natural_size);
   extra_data_ = extra_data;
   encryption_scheme_ = encryption_scheme;
   color_space_info_ = color_space;
 }
 
 bool VideoDecoderConfig::IsValidConfig() const {
-  return codec_ != kUnknownVideoCodec && IsValidSize(coded_size_) &&
+  return codec_ != VideoCodec::kUnknown && IsValidSize(coded_size_) &&
          IsValidSize(natural_size_) &&
          gfx::Rect(coded_size_).Contains(visible_rect_);
 }
@@ -153,16 +109,21 @@ std::string VideoDecoderConfig::AsHumanReadableString() const {
 
   if (hdr_metadata().has_value()) {
     s << std::setprecision(4) << ", luminance range: "
-      << hdr_metadata()->mastering_metadata.luminance_min << "-"
-      << hdr_metadata()->mastering_metadata.luminance_max << ", primaries: r("
-      << hdr_metadata()->mastering_metadata.primary_r.x() << ","
-      << hdr_metadata()->mastering_metadata.primary_r.y() << ") g("
-      << hdr_metadata()->mastering_metadata.primary_g.x() << ","
-      << hdr_metadata()->mastering_metadata.primary_g.y() << ") b("
-      << hdr_metadata()->mastering_metadata.primary_b.x() << ","
-      << hdr_metadata()->mastering_metadata.primary_b.y() << ") wp("
-      << hdr_metadata()->mastering_metadata.white_point.x() << ","
-      << hdr_metadata()->mastering_metadata.white_point.y() << ")";
+      << hdr_metadata()->color_volume_metadata.luminance_min << "-"
+      << hdr_metadata()->color_volume_metadata.luminance_max
+      << ", primaries: r("
+      << hdr_metadata()->color_volume_metadata.primaries.fRX << ","
+      << hdr_metadata()->color_volume_metadata.primaries.fRY << ") g("
+      << hdr_metadata()->color_volume_metadata.primaries.fGX << ","
+      << hdr_metadata()->color_volume_metadata.primaries.fGY << ") b("
+      << hdr_metadata()->color_volume_metadata.primaries.fBX << ","
+      << hdr_metadata()->color_volume_metadata.primaries.fBY << ") wp("
+      << hdr_metadata()->color_volume_metadata.primaries.fWX << ","
+      << hdr_metadata()->color_volume_metadata.primaries.fWY
+      << "), max_content_light_level="
+      << hdr_metadata()->max_content_light_level
+      << ", max_frame_average_light_level="
+      << hdr_metadata()->max_frame_average_light_level;
   }
 
   return s.str();
@@ -170,10 +131,6 @@ std::string VideoDecoderConfig::AsHumanReadableString() const {
 
 std::string VideoDecoderConfig::GetHumanReadableCodecName() const {
   return GetCodecName(codec());
-}
-
-double VideoDecoderConfig::GetPixelAspectRatio() const {
-  return ::media::GetPixelAspectRatio(visible_rect_, natural_size_);
 }
 
 void VideoDecoderConfig::SetExtraData(const std::vector<uint8_t>& extra_data) {

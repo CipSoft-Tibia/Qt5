@@ -91,8 +91,9 @@ class CORE_EXPORT FillLayer {
   const FillLayer* Next() const { return next_; }
   FillLayer* Next() { return next_; }
   FillLayer* EnsureNext() {
-    if (!next_)
+    if (!next_) {
       next_ = new FillLayer(GetType());
+    }
     return next_;
   }
 
@@ -235,9 +236,14 @@ class CORE_EXPORT FillLayer {
     ComputeCachedPropertiesIfNeeded();
     return any_layer_has_url_image_;
   }
+  bool AnyLayerHasLocalAttachment() const {
+    ComputeCachedPropertiesIfNeeded();
+    return any_layer_has_local_attachment_;
+  }
   bool AnyLayerHasLocalAttachmentImage() const {
     ComputeCachedPropertiesIfNeeded();
-    return any_layer_has_local_attachment_image_;
+    // Note that this can have false-positive in rare cases.
+    return any_layer_has_local_attachment_ && any_layer_has_image_;
   }
   bool AnyLayerHasFixedAttachmentImage() const {
     ComputeCachedPropertiesIfNeeded();
@@ -246,6 +252,10 @@ class CORE_EXPORT FillLayer {
   bool AnyLayerHasDefaultAttachmentImage() const {
     ComputeCachedPropertiesIfNeeded();
     return any_layer_has_default_attachment_image_;
+  }
+  bool AnyLayerUsesCurrentColor() const {
+    ComputeCachedPropertiesIfNeeded();
+    return any_layer_uses_current_color_;
   }
 
   static EFillAttachment InitialFillAttachment(EFillLayerType) {
@@ -288,15 +298,14 @@ class CORE_EXPORT FillLayer {
  private:
   friend class ComputedStyle;
 
-  FillLayer() = default;
-
   bool ImageIsOpaque(const Document&, const ComputedStyle&) const;
   bool ImageTilesLayer() const;
   bool LayerPropertiesEqual(const FillLayer&) const;
 
   void ComputeCachedPropertiesIfNeeded() const {
-    if (!cached_properties_computed_)
+    if (!cached_properties_computed_) {
       ComputeCachedProperties();
+    }
   }
   void ComputeCachedProperties() const;
 
@@ -343,12 +352,15 @@ class CORE_EXPORT FillLayer {
   mutable unsigned any_layer_has_image_ : 1;
   // True if any of this of subsequent layers has a url() image.
   mutable unsigned any_layer_has_url_image_ : 1;
-  // True if any of this or subsequent layers has local attachment image.
-  mutable unsigned any_layer_has_local_attachment_image_ : 1;
+  // True if any of this or subsequent layers has local attachment.
+  mutable unsigned any_layer_has_local_attachment_ : 1;
   // True if any of this or subsequent layers has fixed attachment image.
   mutable unsigned any_layer_has_fixed_attachment_image_ : 1;
   // True if any of this or subsequent layers has default attachment image.
   mutable unsigned any_layer_has_default_attachment_image_ : 1;
+  // True if any of this or subsequent layers depends on the value of
+  // currentColor.
+  mutable unsigned any_layer_uses_current_color_ : 1;
   // Set once any of the above is accessed. The layers will be frozen
   // thereafter.
   mutable unsigned cached_properties_computed_ : 1;

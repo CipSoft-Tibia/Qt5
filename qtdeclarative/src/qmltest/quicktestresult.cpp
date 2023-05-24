@@ -1,45 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Crimson AS <info@crimson.no>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Crimson AS <info@crimson.no>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "quicktestresult_p.h"
 #include "quicktest.h"
+#include "quicktest_p.h"
 #include <QtTest/qtestcase.h>
 #include <QtTest/qtestsystem.h>
 #include <QtTest/private/qtestblacklist_p.h>
@@ -48,11 +13,6 @@
 #include <QtTest/private/qtestlog_p.h>
 #include "qtestoptions_p.h"
 #include <QtTest/qbenchmark.h>
-// qbenchmark_p.h pulls windows.h via 3rd party; prevent it from defining
-// the min/max macros which would clash with qnumeric_p.h's usage of min()/max().
-#if defined(Q_OS_WIN32) && !defined(NOMINMAX)
-#  define NOMINMAX
-#endif
 #include <QtTest/private/qbenchmark_p.h>
 #include <QtCore/qset.h>
 #include <QtCore/qmap.h>
@@ -80,8 +40,6 @@ QT_BEGIN_NAMESPACE
 static const char *globalProgramName = nullptr;
 static bool loggingStarted = false;
 static QBenchmarkGlobalData globalBenchmarkData;
-
-extern bool qWaitForSignal(QObject *obj, const char* signal, int timeout = 5000);
 
 class Q_QUICK_TEST_EXPORT QuickTestImageObject : public QObject
 {
@@ -198,7 +156,7 @@ public:
     QTest::QBenchmarkIterationController *benchmarkIter;
     QBenchmarkTestMethodData *benchmarkData;
     int iterCount;
-    QList<QBenchmarkResult> results;
+    QList<QList<QBenchmarkResult>> resultsList;
 };
 
 QByteArray QuickTestResultPrivate::intern(const QString &str)
@@ -501,8 +459,10 @@ bool QuickTestResult::verify
 bool QuickTestResult::fuzzyCompare(const QVariant &actual, const QVariant &expected, qreal delta)
 {
     if (actual.userType() == QMetaType::QColor || expected.userType() == QMetaType::QColor) {
-        if (!actual.canConvert(QMetaType::QColor) || !expected.canConvert(QMetaType::QColor))
+        if (!actual.canConvert(QMetaType(QMetaType::QColor))
+                || !expected.canConvert(QMetaType(QMetaType::QColor))) {
             return false;
+        }
 
         //fuzzy color comparison
         QColor act;
@@ -514,7 +474,7 @@ bool QuickTestResult::fuzzyCompare(const QVariant &actual, const QVariant &expec
             return false;
         act = var.value<QColor>();
 
-        QQml_colorProvider()->colorFromString(expected.toString(), &ok);
+        var = QQml_colorProvider()->colorFromString(expected.toString(), &ok);
         if (!ok)
             return false;
         exp = var.value<QColor>();
@@ -554,7 +514,7 @@ void QuickTestResult::stringify(QQmlV4Function *args)
     if (value->isObject()
         && !value->as<QV4::FunctionObject>()
         && !value->as<QV4::ArrayObject>()) {
-        QVariant v = scope.engine->toVariant(value, QMetaType::UnknownType);
+        QVariant v = QV4::ExecutionEngine::toVariant(value, QMetaType {});
         if (v.isValid()) {
             switch (v.userType()) {
             case QMetaType::QVector3D:
@@ -643,10 +603,21 @@ void QuickTestResult::ignoreWarning(const QJSValue &message)
 {
     if (message.isRegExp()) {
 #if QT_CONFIG(regularexpression)
-        QTestLog::ignoreMessage(QtWarningMsg, message.toVariant().toRegularExpression());
+        QTestLog::ignoreMessage(QtWarningMsg, qjsvalue_cast<QRegularExpression>(message));
 #endif
     } else {
         QTestLog::ignoreMessage(QtWarningMsg, message.toString().toUtf8());
+    }
+}
+
+void QuickTestResult::failOnWarning(const QJSValue &message)
+{
+    if (message.isRegExp()) {
+#if QT_CONFIG(regularexpression)
+        QTestLog::failOnWarning(qjsvalue_cast<QRegularExpression>(message));
+#endif
+    } else {
+        QTestLog::failOnWarning(message.toString().toUtf8());
     }
 }
 
@@ -674,7 +645,7 @@ void QuickTestResult::startMeasurement()
     d->benchmarkData = new QBenchmarkTestMethodData();
     QBenchmarkTestMethodData::current = d->benchmarkData;
     d->iterCount = (QBenchmarkGlobalData::current->measurer->needsWarmupIteration()) ? -1 : 0;
-    d->results.clear();
+    d->resultsList.clear();
 }
 
 void QuickTestResult::beginDataRun()
@@ -686,14 +657,17 @@ void QuickTestResult::endDataRun()
 {
     Q_D(QuickTestResult);
     QBenchmarkTestMethodData::current->endDataRun();
+    const QList<QBenchmarkResult> &results = QBenchmarkTestMethodData::current->results;
+    if (results.isEmpty())
+        return;     // shouldn't happen
     if (d->iterCount > -1)  // iteration -1 is the warmup iteration.
-        d->results.append(QBenchmarkTestMethodData::current->result);
+        d->resultsList.append(results);
 
     if (QBenchmarkGlobalData::current->verboseOutput) {
         if (d->iterCount == -1) {
-            qDebug() << "warmup stage result      :" << QBenchmarkTestMethodData::current->result.value;
+            qDebug() << "warmup stage result      :" << results.first().measurement.value;
         } else {
-            qDebug() << "accumulation stage result:" << QBenchmarkTestMethodData::current->result.value;
+            qDebug() << "accumulation stage result:" << results.first().measurement.value;
         }
     }
 }
@@ -703,17 +677,20 @@ bool QuickTestResult::measurementAccepted()
     return QBenchmarkTestMethodData::current->resultsAccepted();
 }
 
-static QBenchmarkResult qMedian(const QList<QBenchmarkResult> &container)
+static QList<QBenchmarkResult> qMedian(const QList<QList<QBenchmarkResult>> &container)
 {
-    const int count = container.count();
+    const int count = container.size();
     if (count == 0)
-        return QBenchmarkResult();
+        return {};
 
     if (count == 1)
         return container.at(0);
 
-    QList<QBenchmarkResult> containerCopy = container;
-    std::sort(containerCopy.begin(), containerCopy.end());
+    QList<QList<QBenchmarkResult>> containerCopy = container;
+    std::sort(containerCopy.begin(), containerCopy.end(),
+              [](const QList<QBenchmarkResult> &a, const QList<QBenchmarkResult> &b) {
+        return a.first() < b.first();
+    });
 
     const int middle = count / 2;
 
@@ -728,13 +705,13 @@ bool QuickTestResult::needsMoreMeasurements()
     if (d->iterCount < QBenchmarkGlobalData::current->adjustMedianIterationCount())
         return true;
     if (QBenchmarkTestMethodData::current->resultsAccepted())
-        QTestLog::addBenchmarkResult(qMedian(d->results));
+        QTestLog::addBenchmarkResults(qMedian(d->resultsList));
     return false;
 }
 
 void QuickTestResult::startBenchmark(RunMode runMode, const QString &tag)
 {
-    QBenchmarkTestMethodData::current->result = QBenchmarkResult();
+    QBenchmarkTestMethodData::current->results = {};
     QBenchmarkTestMethodData::current->resultAccepted = false;
     QBenchmarkGlobalData::current->context.tag = tag;
     QBenchmarkGlobalData::current->context.slotName = functionName();
@@ -773,7 +750,8 @@ QObject *QuickTestResult::grabImage(QQuickItem *item)
     if (item && item->window()) {
         QQuickWindow *window = item->window();
         QImage grabbed = window->grabWindow();
-        QRectF rf(item->x(), item->y(), item->width(), item->height());
+        const auto dpi = grabbed.devicePixelRatio();
+        QRectF rf(item->x() * dpi, item->y() * dpi, item->width() * dpi, item->height() * dpi);
         rf = rf.intersected(QRectF(0, 0, grabbed.width(), grabbed.height()));
         QObject *o = new QuickTestImageObject(grabbed.copy(rf.toAlignedRect()));
         QQmlEngine::setContextForObject(o, qmlContext(this));
@@ -787,14 +765,30 @@ QObject *QuickTestResult::findChild(QObject *parent, const QString &objectName)
     return parent ? parent->findChild<QObject*>(objectName) : 0;
 }
 
-bool QuickTestResult::isPolishScheduled(QQuickItem *item) const
+bool QuickTestResult::isPolishScheduled(QObject *itemOrWindow) const
 {
-    return QQuickTest::qIsPolishScheduled(item);
+    if (auto item = qobject_cast<QQuickItem*>(itemOrWindow))
+        return QQuickTest::qIsPolishScheduled(item);
+
+    if (auto window = qobject_cast<QQuickWindow*>(itemOrWindow))
+        return QQuickTest::qIsPolishScheduled(window);
+
+    qmlWarning(this) << "isPolishScheduled() expects either an Item or Window, but got"
+        << QDebug::toString(itemOrWindow);
+    return false;
 }
 
-bool QuickTestResult::waitForItemPolished(QQuickItem *item, int timeout)
+bool QuickTestResult::waitForPolish(QObject *itemOrWindow, int timeout) const
 {
-    return QQuickTest::qWaitForItemPolished(item, timeout);
+    if (auto item = qobject_cast<QQuickItem*>(itemOrWindow))
+        return QQuickTest::qWaitForPolish(item, timeout);
+
+    if (auto window = qobject_cast<QQuickWindow*>(itemOrWindow))
+        return QQuickTest::qWaitForPolish(window, timeout);
+
+    qmlWarning(this) << "waitForItemPolish() expects either an Item or Window, but got"
+        << QDebug::toString(itemOrWindow);
+    return false;
 }
 
 namespace QTest {

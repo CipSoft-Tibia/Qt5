@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcborvalue.h"
 #include "qcborvalue_p.h"
@@ -48,6 +12,8 @@
 #include <private/qtools_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace  {
 class DiagnosticNotation
@@ -75,7 +41,7 @@ private:
             ++dn->nestingLevel;
             static const char indent[IndentationWidth + 1] = "    ";
             if (dn->opts & QCborValue::LineWrapped)
-                dn->separator += QLatin1String(indent, IndentationWidth);
+                dn->separator += QLatin1StringView(indent, IndentationWidth);
         }
         ~Nest()
         {
@@ -86,7 +52,7 @@ private:
     };
 
     DiagnosticNotation(QCborValue::DiagnosticNotationOptions opts_)
-        : separator(QLatin1String(opts_ & QCborValue::LineWrapped ? "\n" : "")), opts(opts_)
+        : separator(opts_ & QCborValue::LineWrapped ? "\n"_L1 : ""_L1), opts(opts_)
     {
         byteArrayFormatStack.push(int(QCborKnownTags::ExpectedBase16));
     }
@@ -109,11 +75,11 @@ static QString makeFpString(double d)
     } else if (convertDoubleTo(d, &v)) {
         s = QString::fromLatin1("%1.0").arg(v);
         if (d < 0)
-            s.prepend(QLatin1Char('-'));
+            s.prepend(u'-');
     } else {
         s = QString::number(d, 'g', QLocale::FloatingPointShortest);
-        if (!s.contains(QLatin1Char('.')) && !s.contains('e'))
-            s += QLatin1Char('.');
+        if (!s.contains(u'.') && !s.contains(u'e'))
+            s += u'.';
     }
     return s;
 }
@@ -131,7 +97,7 @@ static bool isByteArrayEncodingTag(QCborTag tag)
 
 void DiagnosticNotation::appendString(const QString &s)
 {
-    result += QLatin1Char('"');
+    result += u'"';
 
     const QChar *begin = s.begin();
     const QChar *end = s.end();
@@ -161,7 +127,7 @@ void DiagnosticNotation::appendString(const QString &s)
         };
         int buflen = 2;
         QChar buf[10];
-        buf[0] = QLatin1Char('\\');
+        buf[0] = u'\\';
         buf[1] = QChar::Null;
         char16_t uc = ptr->unicode();
 
@@ -171,14 +137,17 @@ void DiagnosticNotation::appendString(const QString &s)
             buf[1] = QChar(uc);
 
         if (buf[1] == QChar::Null) {
-            using QtMiscUtils::toHexUpper;
+            const auto toHexUpper = [](char32_t value) -> QChar {
+                // QtMiscUtils::toHexUpper() returns char, we need QChar, so wrap
+                return char16_t(QtMiscUtils::toHexUpper(value));
+            };
             if (ptr->isHighSurrogate() && (ptr + 1) != end && ptr[1].isLowSurrogate()) {
                 // properly-paired surrogates
                 ++ptr;
                 char32_t ucs4 = QChar::surrogateToUcs4(uc, ptr->unicode());
-                buf[1] = 'U';
-                buf[2] = '0'; // toHexUpper(ucs4 >> 28);
-                buf[3] = '0'; // toHexUpper(ucs4 >> 24);
+                buf[1] = u'U';
+                buf[2] = u'0'; // toHexUpper(ucs4 >> 28);
+                buf[3] = u'0'; // toHexUpper(ucs4 >> 24);
                 buf[4] = toHexUpper(ucs4 >> 20);
                 buf[5] = toHexUpper(ucs4 >> 16);
                 buf[6] = toHexUpper(ucs4 >> 12);
@@ -187,7 +156,7 @@ void DiagnosticNotation::appendString(const QString &s)
                 buf[9] = toHexUpper(ucs4);
                 buflen = 10;
             } else {
-                buf[1] = 'u';
+                buf[1] = u'u';
                 buf[2] = toHexUpper(uc >> 12);
                 buf[3] = toHexUpper(uc >> 8);
                 buf[4] = toHexUpper(uc >> 4);
@@ -200,18 +169,18 @@ void DiagnosticNotation::appendString(const QString &s)
         begin = ptr + 1;
     }
 
-    result += QLatin1Char('"');
+    result += u'"';
 }
 
 void DiagnosticNotation::appendArray(const QCborArray &a)
 {
-    result += QLatin1Char('[');
+    result += u'[';
 
     // length 2 (including the space) when not line wrapping
-    QLatin1String commaValue(", ", opts & QCborValue::LineWrapped ? 1 : 2);
+    QLatin1StringView commaValue(", ", opts & QCborValue::LineWrapped ? 1 : 2);
     {
         Nest n(this);
-        QLatin1String comma;
+        QLatin1StringView comma;
         for (auto v : a) {
             result += comma + separator;
             comma = commaValue;
@@ -219,28 +188,28 @@ void DiagnosticNotation::appendArray(const QCborArray &a)
         }
     }
 
-    result += separator + QLatin1Char(']');
+    result += separator + u']';
 }
 
 void DiagnosticNotation::appendMap(const QCborMap &m)
 {
-    result += QLatin1Char('{');
+    result += u'{';
 
     // length 2 (including the space) when not line wrapping
-    QLatin1String commaValue(", ", opts & QCborValue::LineWrapped ? 1 : 2);
+    QLatin1StringView commaValue(", ", opts & QCborValue::LineWrapped ? 1 : 2);
     {
         Nest n(this);
-        QLatin1String comma;
+        QLatin1StringView comma;
         for (auto v : m) {
             result += comma + separator;
             comma = commaValue;
             appendValue(v.first);
-            result += QLatin1String(": ");
+            result += ": "_L1;
             appendValue(v.second);
         }
     }
 
-    result += separator + QLatin1Char('}');
+    result += separator + u'}';
 };
 
 void DiagnosticNotation::appendValue(const QCborValue &v)
@@ -273,16 +242,16 @@ void DiagnosticNotation::appendValue(const QCborValue &v)
     case QCborValue::Map:
         return appendMap(v.toMap());
     case QCborValue::False:
-        result += QLatin1String("false");
+        result += "false"_L1;
         return;
     case QCborValue::True:
-        result += QLatin1String("true");
+        result += "true"_L1;
         return;
     case QCborValue::Null:
-        result += QLatin1String("null");
+        result += "null"_L1;
         return;
     case QCborValue::Undefined:
-        result += QLatin1String("undefined");
+        result += "undefined"_L1;
         return;
     case QCborValue::Double:
         result += makeFpString(v.toDouble());
@@ -302,9 +271,9 @@ void DiagnosticNotation::appendValue(const QCborValue &v)
         bool byteArrayFormat = opts & QCborValue::ExtendedFormat && isByteArrayEncodingTag(v.tag());
         if (byteArrayFormat)
             byteArrayFormatStack.push(int(v.tag()));
-        result += QString::number(quint64(v.tag())) + QLatin1Char('(');
+        result += QString::number(quint64(v.tag())) + u'(';
         appendValue(v.taggedValue());
-        result += QLatin1Char(')');
+        result += u')';
         if (byteArrayFormat)
             byteArrayFormatStack.pop();
     } else {
@@ -323,7 +292,7 @@ void DiagnosticNotation::appendValue(const QCborValue &v)
     would be possible.
 
     CBOR diagnostic notation is specified by
-    \l{https://tools.ietf.org/html/rfc7049#section-6}{section 6} of RFC 7049.
+    \l{RFC 7049, section 6}{section 6} of RFC 7049.
     It is a text representation of the CBOR stream and it is very similar to
     JSON, but it supports the CBOR types not found in JSON. The extended format
     enabled by the \l{DiagnosticNotationOption}{ExtendedFormat} flag is

@@ -43,10 +43,10 @@
    `git cl upload` should warn you if you are missing this step.
 
 [gn-build-config]: https://www.chromium.org/developers/gn-build-configuration
-[compiler.gni]: https://chromium.googlesource.com/angle/angle/+/refs/heads/master/src/compiler.gni
-[libGLESv2.gni]: https://chromium.googlesource.com/angle/angle/+/refs/heads/master/src/libGLESv2.gni
-[glslang.l]: https://chromium.googlesource.com/angle/angle/+/refs/heads/master/src/compiler/translator/glslang.l
-[run_code_generation.py]: https://chromium.googlesource.com/angle/angle/+/refs/heads/master/scripts/run_code_generation.py
+[compiler.gni]: https://chromium.googlesource.com/angle/angle/+/refs/heads/main/src/compiler.gni
+[libGLESv2.gni]: https://chromium.googlesource.com/angle/angle/+/refs/heads/main/src/libGLESv2.gni
+[glslang.l]: https://chromium.googlesource.com/angle/angle/+/refs/heads/main/src/compiler/translator/glslang.l
+[run_code_generation.py]: https://chromium.googlesource.com/angle/angle/+/refs/heads/main/scripts/run_code_generation.py
 
 ### Testing
 
@@ -117,9 +117,9 @@
 
 ## Life of a Change List
 
-### Getting started with Gerrit for ANGLE
+### <a name="getting-started-with-gerrit"></a>Getting started with Gerrit for ANGLE
 
-1. Go to [https://chromium-review.googlesource.com/new-password][CR-passwd]
+1. Go to [https://chromium.googlesource.com/new-password][CR-passwd]
 2. Log in with the email you use for your git commits.
 3. Follow the directions on the new-password page to set up authentication with your Google account.
 4. Make sure to set your real name.
@@ -131,12 +131,12 @@
      CL with a particular review, and track dependencies between commits.
    * Download the hook from
      [https://chromium-review.googlesource.com/tools/hooks/commit-msg][commit-msg-hook] and copy
-     this file to `.git/hooks/commit-msg` within your local repository. On non-Windows, platforms,
+     this file to `.git/hooks/commit-msg` within your local repository. On non-Windows platforms,
      ensure that permissions are set to allow execution.
    * *BE AWARE:* Some patch management tools, such as StGit, currently bypass git hooks. They should
      not currently be used with changes intended for review.
 
-[CR-passwd]: https://chromium-review.googlesource.com/new-password
+[CR-passwd]: https://chromium.googlesource.com/new-password
 [CR-settings]: https://chromium-review.googlesource.com/#/settings
 [commit-msg-hook]: https://chromium-review.googlesource.com/tools/hooks/commit-msg
 
@@ -146,9 +146,9 @@
    * `git add src/../FileName.cpp`
    * `git commit`
    * A text editor will open. Add a description at the top of the file.
-      * If your changes are associated with an issue in the issue tracker (e.g. a fix for a reported
-        bug), please associate the CL with that issue by adding the following line to the commit
-        message: `Bug: angleproject:<issue number>`.
+   * Associate the CL with an issue in the issue tracker (e.g. a fix for a reported bug)
+     by adding the following line to the commit message: `Bug: angleproject:<issue number>`.
+     * If necessary please file a new bug at http://anglebug.com/new
    * Save.
    * Close the text editor.
    * Use `git commit --amend` to update your CL with new changes.
@@ -198,7 +198,50 @@ about the process.
    See [the Chromium docs][TBR] for more info.
  * There are exceptions to these rules. Use your best judgement.
 
-[TBR]: https://chromium.googlesource.com/chromium/src/+/master/docs/code_reviews.md#tbr-to-be-reviewed
+[TBR]: https://chromium.googlesource.com/chromium/src/+/main/docs/code_reviews.md#tbr-to-be-reviewed
+
+### Reverting a CL
+
+Sometimes a change will cause an unforseen problem, e.g. on a platform that's not tested with
+pre-submit testing.  In those cases, a CL may be reverted; often by a "[Wrangler][wrangler]", who is
+an engineer who keeps the testing infrastructure healthy/green.
+
+[wrangler]: ../infra/ANGLEWrangling.md
+
+The best and easiest way to create a revert change is with Gerrit's **REVERT** button, in the
+upper-right corner of the original change.  Pressing this will pop up a dialog with a template
+commit message, and an optional checkbox for automatically sending the revert CL to CQ.  Please edit
+the commit message with the reason for the revert.  When satisfied, press the dialog's **REVERT**
+button.  It is wise to add the author and reviewers of the original CL as reviewers of the revert
+CL.  If it's been less than 24 hours since the original CL landed, the revert Cl will land
+immediately and bypass the try bots.
+
+If you cannot use Gerrit's **REVERT** button, you can create a revert CL with the "git revert"
+command.  When doing so, the commit message should include a short description for why the original
+commit needs to be reverted, and potentially a bug; similar to this example [revert CL][RevertCL].
+
+[RevertCL]: https://chromium-review.googlesource.com/c/chromium/src/+/2453504
+
+
+### Relanding a reverted CL
+
+When you re-land a reverted CL, follow this process:
+
+ * Prefix the CL title with "Reland: ".
+ * Keep the commit message of the original CL and add a description of what changed in the re-land.
+ * Ensure the re-land CL has a unique Change-Id.
+ * First upload the reverted CL as Patchset 1 with no changes applied.
+ * Then, apply your fixes, and upload your CL as a new Patchset.  The reviewers will be able to see
+   the diff between Patchset 1 and the fixed/final Patchset.
+
+Here is an example [reland CL][RelandCL].  This [link][RelandCLDiff] shows the difference between Patchset 1
+and the fixed/final Patchset.  Notice how a reviewer can easily see the fix to the original CL.
+
+[RelandCL]: https://chromium-review.googlesource.com/c/angle/angle/+/2197735
+[RelandCLDiff]: https://chromium-review.googlesource.com/c/angle/angle/+/2197735/1..3
+
+If you do not need to make any changes to your CL to re-land, you can instead use Gerrit's **CREATE
+RELAND** button.
 
 ### Committer status
 
@@ -220,9 +263,10 @@ See also:
 * [Chromium Projects: Contributing Code][Contributing-code]
 * [depot_tools tutorial][depot-tools-tutorial]
 * [angle_perftests README][Perftest-README]
+* [ANGLE Testing and Processes](TestingAndProcesses.md)
 
 [Committer-status]: https://dev.chromium.org/getting-involved/become-a-committer
 [Contributing-code]: http://www.chromium.org/developers/contributing-code/
 [depot-tools-tutorial]: http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html
 [Perftest-README]: ../src/tests/perf_tests/README.md
-[Owners]: https://chromium.googlesource.com/chromium/src/+/master/docs/code_reviews.md#expectations-of-owners
+[Owners]: https://chromium.googlesource.com/chromium/src/+/main/docs/code_reviews.md#expectations-of-owners

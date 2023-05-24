@@ -1,4 +1,4 @@
-// Copyright (c) 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,6 @@
 
 #include <stdint.h>
 
-#include <string>
-
-#include "base/macros.h"
 #include "ui/gfx/x/event.h"
 #include "ui/gl/gl_export.h"
 #include "ui/gl/gl_surface_egl_x11.h"
@@ -20,7 +17,13 @@ namespace gl {
 class GL_EXPORT NativeViewGLSurfaceEGLX11GLES2
     : public NativeViewGLSurfaceEGLX11 {
  public:
-  explicit NativeViewGLSurfaceEGLX11GLES2(x11::Window window);
+  explicit NativeViewGLSurfaceEGLX11GLES2(gl::GLDisplayEGL* display,
+                                          x11::Window window);
+
+  NativeViewGLSurfaceEGLX11GLES2(const NativeViewGLSurfaceEGLX11GLES2&) =
+      delete;
+  NativeViewGLSurfaceEGLX11GLES2& operator=(
+      const NativeViewGLSurfaceEGLX11GLES2&) = delete;
 
   // NativeViewGLSurfaceEGL overrides.
   EGLConfig GetConfig() override;
@@ -40,12 +43,10 @@ class GL_EXPORT NativeViewGLSurfaceEGLX11GLES2
   }
 
  private:
-  // XEventDispatcher:
-  bool DispatchXEvent(x11::Event* xev) override;
+  // x11::EventObserver:
+  void OnEvent(const x11::Event& xev) override;
 
   x11::Window parent_window_;
-
-  DISALLOW_COPY_AND_ASSIGN(NativeViewGLSurfaceEGLX11GLES2);
 };
 
 }  // namespace gl

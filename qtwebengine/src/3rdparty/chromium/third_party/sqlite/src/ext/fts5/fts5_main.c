@@ -22,7 +22,9 @@
 ** assert() conditions in the fts5 code are activated - conditions that are
 ** only true if it is guaranteed that the fts5 database is not corrupt.
 */
+#ifdef SQLITE_DEBUG
 int sqlite3_fts5_may_be_corrupt = 1;
+#endif
 
 
 typedef struct Fts5Auxdata Fts5Auxdata;
@@ -258,7 +260,7 @@ static void fts5CheckTransactionState(Fts5FullTable *p, int op, int iSavepoint){
       break;
 
     case FTS5_SYNC:
-      assert( p->ts.eState==1 );
+      assert( p->ts.eState==1 || p->ts.eState==2 );
       p->ts.eState = 2;
       break;
 
@@ -273,21 +275,21 @@ static void fts5CheckTransactionState(Fts5FullTable *p, int op, int iSavepoint){
       break;
 
     case FTS5_SAVEPOINT:
-      assert( p->ts.eState==1 );
+      assert( p->ts.eState>=1 );
       assert( iSavepoint>=0 );
       assert( iSavepoint>=p->ts.iSavepoint );
       p->ts.iSavepoint = iSavepoint;
       break;
       
     case FTS5_RELEASE:
-      assert( p->ts.eState==1 );
+      assert( p->ts.eState>=1 );
       assert( iSavepoint>=0 );
       assert( iSavepoint<=p->ts.iSavepoint );
       p->ts.iSavepoint = iSavepoint-1;
       break;
 
     case FTS5_ROLLBACKTO:
-      assert( p->ts.eState==1 );
+      assert( p->ts.eState>=1 );
       assert( iSavepoint>=-1 );
       /* The following assert() can fail if another vtab strikes an error
       ** within an xSavepoint() call then SQLite calls xRollbackTo() - without
@@ -802,7 +804,7 @@ static int fts5SorterNext(Fts5Cursor *pCsr){
   rc = sqlite3_step(pSorter->pStmt);
   if( rc==SQLITE_DONE ){
     rc = SQLITE_OK;
-    CsrFlagSet(pCsr, FTS5CSR_EOF);
+    CsrFlagSet(pCsr, FTS5CSR_EOF|FTS5CSR_REQUIRE_CONTENT);
   }else if( rc==SQLITE_ROW ){
     const u8 *a;
     const u8 *aBlob;
@@ -1372,7 +1374,8 @@ static int fts5FilterMethod(
         pTab->pStorage, fts5StmtType(pCsr), &pCsr->pStmt, &pTab->p.base.zErrMsg
     );
     if( rc==SQLITE_OK ){
-      if( pCsr->ePlan==FTS5_PLAN_ROWID ){
+      if( pRowidEq!=0 ){
+        assert( pCsr->ePlan==FTS5_PLAN_ROWID );
         sqlite3_bind_value(pCsr->pStmt, 1, pRowidEq);
       }else{
         sqlite3_bind_int64(pCsr->pStmt, 1, pCsr->iFirstRowid);
@@ -1622,7 +1625,7 @@ static int fts5UpdateMethod(
   int rc = SQLITE_OK;             /* Return code */
 
   /* A transaction must be open when this is called. */
-  assert( pTab->ts.eState==1 );
+  assert( pTab->ts.eState==1 || pTab->ts.eState==2 );
 
   assert( pVtab->zErrMsg==0 );
   assert( nArg==1 || nArg==(2+pConfig->nCol+2) );
@@ -1947,13 +1950,15 @@ static int fts5CacheInstArray(Fts5Cursor *pCsr){
 
         nInst++;
         if( nInst>=pCsr->nInstAlloc ){
-          pCsr->nInstAlloc = pCsr->nInstAlloc ? pCsr->nInstAlloc*2 : 32;
+          int nNewSize = pCsr->nInstAlloc ? pCsr->nInstAlloc*2 : 32;
           aInst = (int*)sqlite3_realloc64(
-              pCsr->aInst, pCsr->nInstAlloc*sizeof(int)*3
+              pCsr->aInst, nNewSize*sizeof(int)*3
               );
           if( aInst ){
             pCsr->aInst = aInst;
+            pCsr->nInstAlloc = nNewSize;
           }else{
+            nInst--;
             rc = SQLITE_NOMEM;
             break;
           }
@@ -2861,7 +2866,9 @@ static int fts5Init(sqlite3 *db){
     }
     if( rc==SQLITE_OK ){
       rc = sqlite3_create_function(
-          db, "fts5_source_id", 0, SQLITE_UTF8, p, fts5SourceIdFunc, 0, 0
+          db, "fts5_source_id", 0, 
+          SQLITE_UTF8|SQLITE_DETERMINISTIC|SQLITE_INNOCUOUS,
+          p, fts5SourceIdFunc, 0, 0
       );
     }
   }

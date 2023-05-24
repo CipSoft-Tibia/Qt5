@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Splits a XML file into smaller XMLs in subfolders.
@@ -19,7 +19,7 @@ import path_util
 # The top level comment templates that will be formatted and added to each split
 # histograms xml.
 FIRST_TOP_LEVEL_COMMENT_TEMPLATE = """
-Copyright 2020 The Chromium Authors. All rights reserved.
+Copyright 2021 The Chromium Authors
 Use of this source code is governed by a BSD-style license that can be
 found in the LICENSE file.
 """
@@ -30,10 +30,9 @@ along with a detailed description for each histogram.
 For best practices on writing histogram descriptions, see
 https://chromium.googlesource.com/chromium/src.git/+/HEAD/tools/metrics/histograms/README.md
 
-Please send CLs to chromium-metrics-reviews@google.com rather than to specific
-individuals. These CLs will be automatically reassigned to a reviewer within
-about 5 minutes. This approach helps the metrics team to load-balance incoming
-reviews. Googlers can read more about this at go/gwsq-gerrit.
+Please send CLs to individuals in the OWNERS file in the same directory as this
+xml file. If no OWNERS file exists, then send the CL to
+chromium-metrics-reviews@google.com.
 """
 # Number of times that splitting of histograms will be carried out.
 TARGET_DEPTH = 1
@@ -44,6 +43,7 @@ AGGREGATE_THRESHOLD = 20
 # put in.
 _PREDEFINED_NAMES_MAPPING = {
     'BackForwardCache': 'BackForwardCache',
+    'ChromeOS': 'ChromeOS',
     'CustomTabs': 'CustomTabs',
     'CustomTab': 'CustomTabs',
     'DataReductionProxy': 'DataReductionProxy',
@@ -77,8 +77,7 @@ _PREDEFINED_NAMES_MAPPING = {
 
 def _ParseMergedXML():
   """Parses merged xml into different types of nodes"""
-  merged_histograms = merge_xml.MergeFiles(histogram_paths.HISTOGRAMS_XMLS +
-                                           [histogram_paths.OBSOLETE_XML])
+  merged_histograms = merge_xml.MergeFiles(histogram_paths.HISTOGRAMS_XMLS)
   histogram_nodes = merged_histograms.getElementsByTagName('histogram')
   variants_nodes = merged_histograms.getElementsByTagName('variants')
   histogram_suffixes_nodes = merged_histograms.getElementsByTagName(
@@ -277,27 +276,6 @@ def _BuildDocumentDict(nodes, depth):
   return document_dict
 
 
-def _SeparateObsoleteHistogram(histogram_nodes):
-  """Separates a NodeList of histograms into obsolete and non-obsolete.
-
-  Args:
-    histogram_nodes: A NodeList object containing histogram nodes.
-
-  Returns:
-    obsolete_nodes: A list of obsolete nodes.
-    non_obsolete_nodes: A list of non-obsolete nodes.
-  """
-  obsolete_nodes = []
-  non_obsolete_nodes = []
-  for histogram in histogram_nodes:
-    obsolete_tag_nodelist = histogram.getElementsByTagName('obsolete')
-    if len(obsolete_tag_nodelist) > 0:
-      obsolete_nodes.append(histogram)
-    else:
-      non_obsolete_nodes.append(histogram)
-  return obsolete_nodes, non_obsolete_nodes
-
-
 def SplitIntoMultipleHistogramXMLs(output_base_dir):
   """Splits a large histograms.xml and writes out the split xmls.
 
@@ -313,18 +291,11 @@ def SplitIntoMultipleHistogramXMLs(output_base_dir):
   _CreateXMLFile('histogram suffixes', 'histogram_suffixes_list',
                  histogram_suffixes_nodes, output_base_dir,
                  'histogram_suffixes_list.xml')
-
-  obsolete_nodes, non_obsolete_nodes = _SeparateObsoleteHistogram(
-      histogram_nodes)
-  # Create separate XML file for obsolete histograms.
-  _CreateXMLFile('obsolete histograms', 'histograms', obsolete_nodes,
-                 output_base_dir, 'obsolete_histograms.xml')
-
-  document_dict = _BuildDocumentDict(non_obsolete_nodes + variants_nodes, 0)
+  document_dict = _BuildDocumentDict(histogram_nodes + variants_nodes, 0)
 
   _WriteDocumentDict(document_dict, output_base_dir)
 
 
 if __name__ == '__main__':
   SplitIntoMultipleHistogramXMLs(
-      path_util.GetInputFile('tools/metrics/histograms/histograms_xml'))
+      path_util.GetInputFile('tools/metrics/histograms/metadata'))

@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'buttongroup.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -51,13 +51,13 @@ public:
     void setupUi(QWidget *Form)
     {
         if (Form->objectName().isEmpty())
-            Form->setObjectName(QString::fromUtf8("Form"));
+            Form->setObjectName("Form");
         Form->resize(545, 471);
         gridLayout = new QGridLayout(Form);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         easingCurvePicker = new QListWidget(Form);
-        easingCurvePicker->setObjectName(QString::fromUtf8("easingCurvePicker"));
-        QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        easingCurvePicker->setObjectName("easingCurvePicker");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Preferred);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(easingCurvePicker->sizePolicy().hasHeightForWidth());
@@ -72,17 +72,17 @@ public:
         gridLayout->addWidget(easingCurvePicker, 0, 0, 1, 2);
 
         verticalLayout = new QVBoxLayout();
-        verticalLayout->setObjectName(QString::fromUtf8("verticalLayout"));
+        verticalLayout->setObjectName("verticalLayout");
         groupBox_2 = new QGroupBox(Form);
-        groupBox_2->setObjectName(QString::fromUtf8("groupBox_2"));
+        groupBox_2->setObjectName("groupBox_2");
         groupBox_2->setMaximumSize(QSize(16777215, 16777215));
         gridLayout_2 = new QGridLayout(groupBox_2);
-        gridLayout_2->setObjectName(QString::fromUtf8("gridLayout_2"));
+        gridLayout_2->setObjectName("gridLayout_2");
         lineRadio = new QRadioButton(groupBox_2);
         buttonGroup = new QButtonGroup(Form);
-        buttonGroup->setObjectName(QString::fromUtf8("buttonGroup"));
+        buttonGroup->setObjectName("buttonGroup");
         buttonGroup->addButton(lineRadio);
-        lineRadio->setObjectName(QString::fromUtf8("lineRadio"));
+        lineRadio->setObjectName("lineRadio");
         lineRadio->setMaximumSize(QSize(16777215, 40));
         lineRadio->setLayoutDirection(Qt::LeftToRight);
         lineRadio->setChecked(true);
@@ -91,7 +91,7 @@ public:
 
         circleRadio = new QRadioButton(groupBox_2);
         buttonGroup->addButton(circleRadio);
-        circleRadio->setObjectName(QString::fromUtf8("circleRadio"));
+        circleRadio->setObjectName("circleRadio");
         circleRadio->setMaximumSize(QSize(16777215, 40));
 
         gridLayout_2->addWidget(circleRadio, 1, 0, 1, 1);
@@ -100,18 +100,18 @@ public:
         verticalLayout->addWidget(groupBox_2);
 
         groupBox = new QGroupBox(Form);
-        groupBox->setObjectName(QString::fromUtf8("groupBox"));
-        QSizePolicy sizePolicy1(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        groupBox->setObjectName("groupBox");
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Preferred);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(groupBox->sizePolicy().hasHeightForWidth());
         groupBox->setSizePolicy(sizePolicy1);
         formLayout = new QFormLayout(groupBox);
-        formLayout->setObjectName(QString::fromUtf8("formLayout"));
+        formLayout->setObjectName("formLayout");
         formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
         label = new QLabel(groupBox);
-        label->setObjectName(QString::fromUtf8("label"));
-        QSizePolicy sizePolicy2(QSizePolicy::Preferred, QSizePolicy::Preferred);
+        label->setObjectName("label");
+        QSizePolicy sizePolicy2(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Preferred);
         sizePolicy2.setHorizontalStretch(0);
         sizePolicy2.setVerticalStretch(0);
         sizePolicy2.setHeightForWidth(label->sizePolicy().hasHeightForWidth());
@@ -121,9 +121,9 @@ public:
         formLayout->setWidget(0, QFormLayout::LabelRole, label);
 
         periodSpinBox = new QDoubleSpinBox(groupBox);
-        periodSpinBox->setObjectName(QString::fromUtf8("periodSpinBox"));
+        periodSpinBox->setObjectName("periodSpinBox");
         periodSpinBox->setEnabled(false);
-        QSizePolicy sizePolicy3(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy3(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy3.setHorizontalStretch(0);
         sizePolicy3.setVerticalStretch(0);
         sizePolicy3.setHeightForWidth(periodSpinBox->sizePolicy().hasHeightForWidth());
@@ -136,7 +136,7 @@ public:
         formLayout->setWidget(0, QFormLayout::FieldRole, periodSpinBox);
 
         amplitudeSpinBox = new QDoubleSpinBox(groupBox);
-        amplitudeSpinBox->setObjectName(QString::fromUtf8("amplitudeSpinBox"));
+        amplitudeSpinBox->setObjectName("amplitudeSpinBox");
         amplitudeSpinBox->setEnabled(false);
         amplitudeSpinBox->setMinimumSize(QSize(0, 30));
         amplitudeSpinBox->setMinimum(-1.000000000000000);
@@ -146,13 +146,13 @@ public:
         formLayout->setWidget(2, QFormLayout::FieldRole, amplitudeSpinBox);
 
         label_3 = new QLabel(groupBox);
-        label_3->setObjectName(QString::fromUtf8("label_3"));
+        label_3->setObjectName("label_3");
         label_3->setMinimumSize(QSize(0, 30));
 
         formLayout->setWidget(4, QFormLayout::LabelRole, label_3);
 
         overshootSpinBox = new QDoubleSpinBox(groupBox);
-        overshootSpinBox->setObjectName(QString::fromUtf8("overshootSpinBox"));
+        overshootSpinBox->setObjectName("overshootSpinBox");
         overshootSpinBox->setEnabled(false);
         overshootSpinBox->setMinimumSize(QSize(0, 30));
         overshootSpinBox->setMinimum(-1.000000000000000);
@@ -162,7 +162,7 @@ public:
         formLayout->setWidget(4, QFormLayout::FieldRole, overshootSpinBox);
 
         label_2 = new QLabel(groupBox);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
         label_2->setMinimumSize(QSize(0, 30));
 
         formLayout->setWidget(2, QFormLayout::LabelRole, label_2);
@@ -170,7 +170,7 @@ public:
 
         verticalLayout->addWidget(groupBox);
 
-        verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         verticalLayout->addItem(verticalSpacer);
 
@@ -178,8 +178,8 @@ public:
         gridLayout->addLayout(verticalLayout, 1, 0, 1, 1);
 
         graphicsView = new QGraphicsView(Form);
-        graphicsView->setObjectName(QString::fromUtf8("graphicsView"));
-        QSizePolicy sizePolicy4(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        graphicsView->setObjectName("graphicsView");
+        QSizePolicy sizePolicy4(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Expanding);
         sizePolicy4.setHorizontalStretch(0);
         sizePolicy4.setVerticalStretch(0);
         sizePolicy4.setHeightForWidth(graphicsView->sizePolicy().hasHeightForWidth());

@@ -31,50 +31,21 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_PAGE_POPUP_H_
 #define THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_PAGE_POPUP_H_
 
-#include "third_party/blink/public/mojom/page/widget.mojom-shared.h"
-#include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/web/web_widget.h"
-#include "third_party/blink/public/web/web_widget_client.h"
 
 namespace blink {
 
-class WebWidgetClient;
 class WebDocument;
-class WebView;
-
-class WebPagePopupClient : public WebWidgetClient {
- public:
-  // Called when the window for this popup widget should be closed. The
-  // WebWidget will be closed asynchronously as a result of this
-  // request.
-  virtual void ClosePopupWidgetSoon() = 0;
-};
 
 class WebPagePopup : public WebWidget {
  public:
-  // Returns a WebPagePopup which is self-referencing. It's self-reference will
-  // be released when the popup is closed via Close().
-  BLINK_EXPORT static WebPagePopup* Create(
-      WebPagePopupClient*,
-      CrossVariantMojoAssociatedRemote<mojom::WidgetHostInterfaceBase>
-          widget_host,
-      CrossVariantMojoAssociatedReceiver<mojom::WidgetInterfaceBase> widget);
-
   // The popup's accessibility tree is connected to the main document's
   // accessibility tree. Access to the popup document is needed to ensure the
   // popup's layout is clean before serializing the combined tree.
   virtual WebDocument GetDocument() = 0;
-
-  // Initialization is typically done after creation inside blink, but some
-  // content tests call Create directly so we expose an initialization.
-  virtual void InitializeForTesting(WebView* view) = 0;
-
-  // Web tests require access to the client for a WebPagePopup in order
-  // to synchronously composite.
-  virtual WebPagePopupClient* GetClientForTesting() const = 0;
 };
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_PUBLIC_WEB_WEB_PAGE_POPUP_H_

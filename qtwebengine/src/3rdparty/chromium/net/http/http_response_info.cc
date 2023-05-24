@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include "base/numerics/safe_conversions.h"
 #include "base/pickle.h"
 #include "base/time/time.h"
-#include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
 #include "net/cert/sct_status_flags.h"
 #include "net/cert/signed_certificate_timestamp.h"
@@ -16,7 +15,8 @@
 #include "net/http/http_response_headers.h"
 #include "net/ssl/ssl_cert_request_info.h"
 #include "net/ssl/ssl_connection_status_flags.h"
-#include "net/third_party/quiche/src/quic/core/quic_versions.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_versions.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/boringssl/src/include/openssl/ssl.h"
 
 using base::Time;
@@ -115,8 +115,22 @@ enum {
   // restricted in some way.
   RESPONSE_INFO_RESTRICTED_PREFETCH = 1 << 26,
 
-  // TODO(darin): Add other bits to indicate alternate request methods.
-  // For now, we don't support storing those.
+  // This bit is set if the response has a nonempty `dns_aliases` entry.
+  RESPONSE_INFO_HAS_DNS_ALIASES = 1 << 27,
+
+  // This bit is set for an entry in the single-keyed cache that has been marked
+  // unusable due to the checksum not matching.
+  RESPONSE_INFO_SINGLE_KEYED_CACHE_ENTRY_UNUSABLE = 1 << 28,
+
+  // This bit is set if the response has `encrypted_client_hello` set.
+  RESPONSE_INFO_ENCRYPTED_CLIENT_HELLO = 1 << 29,
+
+  // This bit is set if the response has `browser_run_id` set.
+  RESPONSE_INFO_BROWSER_RUN_ID = 1 << 30,
+
+  // This enum only has a few bits (`1 << 31` is the limit). If allocating the
+  // last flag, instead allocate it as `RESPONSE_INFO_HAS_EXTRA_FLAGS` to
+  // signal another flags word.
 };
 
 HttpResponseInfo::ConnectionInfoCoarse HttpResponseInfo::ConnectionInfoToCoarse(
@@ -165,6 +179,9 @@ HttpResponseInfo::ConnectionInfoCoarse HttpResponseInfo::ConnectionInfoToCoarse(
     case CONNECTION_INFO_QUIC_DRAFT_28:
     case CONNECTION_INFO_QUIC_DRAFT_29:
     case CONNECTION_INFO_QUIC_T051:
+    case CONNECTION_INFO_QUIC_RFC_V1:
+    case CONNECTION_INFO_DEPRECATED_QUIC_2_DRAFT_1:
+    case CONNECTION_INFO_QUIC_2_DRAFT_8:
       return CONNECTION_INFO_COARSE_QUIC;
 
     case CONNECTION_INFO_UNKNOWN:
@@ -179,19 +196,7 @@ HttpResponseInfo::ConnectionInfoCoarse HttpResponseInfo::ConnectionInfoToCoarse(
   return CONNECTION_INFO_COARSE_OTHER;
 }
 
-HttpResponseInfo::HttpResponseInfo()
-    : was_cached(false),
-      cache_entry_status(CacheEntryStatus::ENTRY_UNDEFINED),
-      server_data_unavailable(false),
-      network_accessed(false),
-      was_fetched_via_spdy(false),
-      was_alpn_negotiated(false),
-      was_fetched_via_proxy(false),
-      did_use_http_auth(false),
-      unused_since_prefetch(false),
-      restricted_prefetch(false),
-      async_revalidation_requested(false),
-      connection_info(CONNECTION_INFO_UNKNOWN) {}
+HttpResponseInfo::HttpResponseInfo() = default;
 
 HttpResponseInfo::HttpResponseInfo(const HttpResponseInfo& rhs) = default;
 
@@ -228,7 +233,7 @@ bool HttpResponseInfo::InitFromPickle(const base::Pickle& pickle,
   response_time = Time::FromInternalValue(time_val);
 
   // Read response-headers
-  headers = new HttpResponseHeaders(&iter);
+  headers = base::MakeRefCounted<HttpResponseHeaders>(&iter);
   if (headers->response_code() == -1)
     return false;
 
@@ -337,8 +342,7 @@ bool HttpResponseInfo::InitFromPickle(const base::Pickle& pickle,
   if (flags & RESPONSE_INFO_HAS_STALENESS) {
     if (!iter.ReadInt64(&time_val))
       return false;
-    stale_revalidate_timeout =
-        base::Time() + base::TimeDelta::FromMicroseconds(time_val);
+    stale_revalidate_timeout = base::Time() + base::Microseconds(time_val);
   }
 
   was_fetched_via_spdy = (flags & RESPONSE_INFO_WAS_SPDY) != 0;
@@ -355,6 +359,9 @@ bool HttpResponseInfo::InitFromPickle(const base::Pickle& pickle,
 
   restricted_prefetch = (flags & RESPONSE_INFO_RESTRICTED_PREFETCH) != 0;
 
+  single_keyed_cache_entry_unusable =
+      (flags & RESPONSE_INFO_SINGLE_KEYED_CACHE_ENTRY_UNUSABLE) != 0;
+
   ssl_info.pkp_bypassed = (flags & RESPONSE_INFO_PKP_BYPASSED) != 0;
 
   // Read peer_signature_algorithm.
@@ -367,6 +374,31 @@ bool HttpResponseInfo::InitFromPickle(const base::Pickle& pickle,
     }
     ssl_info.peer_signature_algorithm =
         base::checked_cast<uint16_t>(peer_signature_algorithm);
+  }
+
+  // Read DNS aliases.
+  if (flags & RESPONSE_INFO_HAS_DNS_ALIASES) {
+    int num_aliases;
+    if (!iter.ReadInt(&num_aliases))
+      return false;
+
+    std::string alias;
+    for (int i = 0; i < num_aliases; i++) {
+      if (!iter.ReadString(&alias))
+        return false;
+      dns_aliases.insert(alias);
+    }
+  }
+
+  ssl_info.encrypted_client_hello =
+      (flags & RESPONSE_INFO_ENCRYPTED_CLIENT_HELLO) != 0;
+
+  // Read browser_run_id.
+  if (flags & RESPONSE_INFO_BROWSER_RUN_ID) {
+    int64_t id;
+    if (!iter.ReadInt64(&id))
+      return false;
+    browser_run_id = absl::make_optional(id);
   }
 
   return true;
@@ -406,10 +438,18 @@ void HttpResponseInfo::Persist(base::Pickle* pickle,
     flags |= RESPONSE_INFO_UNUSED_SINCE_PREFETCH;
   if (restricted_prefetch)
     flags |= RESPONSE_INFO_RESTRICTED_PREFETCH;
+  if (single_keyed_cache_entry_unusable)
+    flags |= RESPONSE_INFO_SINGLE_KEYED_CACHE_ENTRY_UNUSABLE;
   if (ssl_info.pkp_bypassed)
     flags |= RESPONSE_INFO_PKP_BYPASSED;
   if (!stale_revalidate_timeout.is_null())
     flags |= RESPONSE_INFO_HAS_STALENESS;
+  if (!dns_aliases.empty())
+    flags |= RESPONSE_INFO_HAS_DNS_ALIASES;
+  if (ssl_info.encrypted_client_hello)
+    flags |= RESPONSE_INFO_ENCRYPTED_CLIENT_HELLO;
+  if (browser_run_id.has_value())
+    flags |= RESPONSE_INFO_BROWSER_RUN_ID;
 
   pickle->WriteInt(flags);
   pickle->WriteInt64(request_time.ToInternalValue());
@@ -459,6 +499,16 @@ void HttpResponseInfo::Persist(base::Pickle* pickle,
 
   if (ssl_info.is_valid() && ssl_info.peer_signature_algorithm != 0)
     pickle->WriteInt(ssl_info.peer_signature_algorithm);
+
+  if (!dns_aliases.empty()) {
+    pickle->WriteInt(dns_aliases.size());
+    for (const auto& alias : dns_aliases)
+      pickle->WriteString(alias);
+  }
+
+  if (browser_run_id.has_value()) {
+    pickle->WriteInt64(browser_run_id.value());
+  }
 }
 
 bool HttpResponseInfo::DidUseQuic() const {
@@ -504,6 +554,9 @@ bool HttpResponseInfo::DidUseQuic() const {
     case CONNECTION_INFO_QUIC_DRAFT_28:
     case CONNECTION_INFO_QUIC_DRAFT_29:
     case CONNECTION_INFO_QUIC_T051:
+    case CONNECTION_INFO_QUIC_RFC_V1:
+    case CONNECTION_INFO_DEPRECATED_QUIC_2_DRAFT_1:
+    case CONNECTION_INFO_QUIC_2_DRAFT_8:
       return true;
     case NUM_OF_CONNECTION_INFOS:
       NOTREACHED();
@@ -600,6 +653,12 @@ std::string HttpResponseInfo::ConnectionInfoToString(
       return "http2+quic/999";
     case CONNECTION_INFO_QUIC_T051:
       return "h3-T051";
+    case CONNECTION_INFO_QUIC_RFC_V1:
+      return "h3";
+    case CONNECTION_INFO_DEPRECATED_QUIC_2_DRAFT_1:
+      return "h3/quic2draft01";
+    case CONNECTION_INFO_QUIC_2_DRAFT_8:
+      return "h3/quic2draft08";
     case NUM_OF_CONNECTION_INFOS:
       break;
   }

@@ -1,0 +1,16 @@
+--- .upstream/outputrevision.h	2022-07-14 10:20:51.543950028 +0200
++++ outputrevision.h	2023-08-21 11:17:37.747825158 +0200
+@@ -4,7 +4,13 @@
+ #ifndef OUTPUTREVISION_H
+ #define OUTPUTREVISION_H
+ 
++#include <QtCore/qglobal.h> // -- QtScxml
++
++QT_BEGIN_NAMESPACE // -- QtScxml
++
+ // if the output revision changes, you MUST change it in qobjectdefs.h too
+ enum { mocOutputRevision = 68 };          // moc format output revision
+ 
++QT_END_NAMESPACE // -- QtScxml
++
+ #endif // OUTPUTREVISION_H

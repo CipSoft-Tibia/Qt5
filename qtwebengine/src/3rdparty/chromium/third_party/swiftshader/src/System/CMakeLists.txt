@@ -37,6 +37,8 @@ set(SYSTEM_SRC_FILES
     Socket.cpp
     Socket.hpp
     Synchronization.hpp
+    SwiftConfig.cpp
+    SwiftConfig.hpp
     Timer.cpp
     Timer.hpp
     Types.hpp
@@ -47,6 +49,15 @@ if(LINUX OR ANDROID)
         Linux/MemFd.cpp
         Linux/MemFd.hpp
     )
+endif()
+
+set(SYSTEM_COMPILE_OPTIONS "")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND SYSTEM_COMPILE_OPTIONS
+        "-Wexit-time-destructors"  # declaration requires an exit-time destructor
+    )
+    # We use exit-time destructors for the global configuration.
+    SET_SOURCE_FILES_PROPERTIES("SwiftConfig.cpp" PROPERTIES COMPILE_FLAGS "-Wno-exit-time-destructors")
 endif()
 
 add_library(vk_system EXCLUDE_FROM_ALL
@@ -66,6 +77,12 @@ target_include_directories(vk_system
 target_compile_options(vk_system
     PRIVATE
         ${ROOT_PROJECT_COMPILE_OPTIONS}
+        ${SYSTEM_COMPILE_OPTIONS}
+)
+
+target_link_libraries(vk_system
+    PUBLIC
+        marl
 )
 
 target_link_options(vk_system

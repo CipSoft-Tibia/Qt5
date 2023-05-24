@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkaccessdebugpipebackend_p.h"
 #include "QtCore/qdatastream.h"
@@ -45,6 +9,8 @@
 #include "private/qnoncontiguousbytedevice_p.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifdef QT_BUILD_INTERNAL
 
@@ -74,14 +40,19 @@ QNetworkAccessDebugPipeBackendFactory::create(QNetworkAccessManager::Operation o
     }
 
     QUrl url = request.url();
-    if (url.scheme() == QLatin1String("debugpipe"))
+    if (url.scheme() == "debugpipe"_L1)
         return new QNetworkAccessDebugPipeBackend;
     return nullptr;
 }
 
 QNetworkAccessDebugPipeBackend::QNetworkAccessDebugPipeBackend()
-    : bareProtocol(false), hasUploadFinished(false), hasDownloadFinished(false),
-    hasEverythingFinished(false), bytesDownloaded(0), bytesUploaded(0)
+    : QNetworkAccessBackend(QNetworkAccessBackend::TargetType::Networked),
+      bareProtocol(false),
+      hasUploadFinished(false),
+      hasDownloadFinished(false),
+      hasEverythingFinished(false),
+      bytesDownloaded(0),
+      bytesUploaded(0)
 {
 }
 
@@ -104,23 +75,40 @@ void QNetworkAccessDebugPipeBackend::open()
     // socket bytes written -> we can push more from upstream to socket
     connect(&socket, SIGNAL(bytesWritten(qint64)), SLOT(socketBytesWritten(qint64)));
 
-    bareProtocol = QUrlQuery(url()).queryItemValue(QLatin1String("bare")) == QLatin1String("1");
+    bareProtocol = QUrlQuery(url()).queryItemValue("bare"_L1) == "1"_L1;
 
     if (operation() == QNetworkAccessManager::PutOperation) {
         createUploadByteDevice();
-        QObject::connect(uploadByteDevice.data(), SIGNAL(readyRead()), this, SLOT(uploadReadyReadSlot()));
+        QObject::connect(uploadByteDevice(), SIGNAL(readyRead()), this,
+                         SLOT(uploadReadyReadSlot()));
         QMetaObject::invokeMethod(this, "uploadReadyReadSlot", Qt::QueuedConnection);
     }
 }
 
 void QNetworkAccessDebugPipeBackend::socketReadyRead()
 {
-    pushFromSocketToDownstream();
+    readyRead();
 }
 
-void QNetworkAccessDebugPipeBackend::downstreamReadyWrite()
+qint64 QNetworkAccessDebugPipeBackend::read(char *data, qint64 maxlen)
 {
-    pushFromSocketToDownstream();
+    qint64 haveRead = socket.read(data, maxlen);
+
+    if (haveRead == -1) {
+        hasDownloadFinished = true;
+        // this ensures a good last downloadProgress is emitted
+        setHeader(QNetworkRequest::ContentLengthHeader, QVariant());
+        possiblyFinish();
+        return haveRead;
+    }
+
+    bytesDownloaded += haveRead;
+    return haveRead;
+}
+
+qint64 QNetworkAccessDebugPipeBackend::bytesAvailable() const
+{
+    return socket.bytesAvailable();
 }
 
 void QNetworkAccessDebugPipeBackend::socketBytesWritten(qint64)
@@ -131,42 +119,6 @@ void QNetworkAccessDebugPipeBackend::socketBytesWritten(qint64)
 void QNetworkAccessDebugPipeBackend::uploadReadyReadSlot()
 {
     pushFromUpstreamToSocket();
-}
-
-void QNetworkAccessDebugPipeBackend::pushFromSocketToDownstream()
-{
-    QByteArray buffer;
-
-    if (socket.state() == QAbstractSocket::ConnectingState) {
-        return;
-    }
-
-    forever {
-        if (hasDownloadFinished)
-            return;
-
-        buffer.resize(ReadBufferSize);
-        qint64 haveRead = socket.read(buffer.data(), ReadBufferSize);
-
-        if (haveRead == -1) {
-            hasDownloadFinished = true;
-            // this ensures a good last downloadProgress is emitted
-            setHeader(QNetworkRequest::ContentLengthHeader, QVariant());
-            possiblyFinish();
-            break;
-        } else if (haveRead == 0) {
-            break;
-        } else {
-            // have read something
-            buffer.resize(haveRead);
-            bytesDownloaded += haveRead;
-
-            QByteDataBuffer list;
-            list.append(buffer);
-            buffer.clear(); // important because of implicit sharing!
-            writeDownstreamData(list);
-        }
-    }
 }
 
 void QNetworkAccessDebugPipeBackend::pushFromUpstreamToSocket()
@@ -180,20 +132,20 @@ void QNetworkAccessDebugPipeBackend::pushFromUpstreamToSocket()
             if (socket.bytesToWrite() >= WriteBufferSize)
                 return;
 
-            qint64 haveRead;
-            const char *readPointer = uploadByteDevice->readPointer(WriteBufferSize, haveRead);
+            QByteArray data(WriteBufferSize, Qt::Uninitialized);
+            qint64 haveRead = uploadByteDevice()->peek(data.data(), data.size());
             if (haveRead == -1) {
                 // EOF
                 hasUploadFinished = true;
-                emitReplyUploadProgress(bytesUploaded, bytesUploaded);
                 possiblyFinish();
                 break;
-            } else if (haveRead == 0 || readPointer == nullptr) {
+            } else if (haveRead == 0) {
                 // nothing to read right now, we will be called again later
                 break;
             } else {
                 qint64 haveWritten;
-                haveWritten = socket.write(readPointer, haveRead);
+                data.truncate(haveRead);
+                haveWritten = socket.write(std::move(data));
 
                 if (haveWritten < 0) {
                     // write error!
@@ -203,13 +155,11 @@ void QNetworkAccessDebugPipeBackend::pushFromUpstreamToSocket()
                     finished();
                     return;
                 } else {
-                    uploadByteDevice->advanceReadPointer(haveWritten);
+                    uploadByteDevice()->skip(haveWritten);
                     bytesUploaded += haveWritten;
-                    emitReplyUploadProgress(bytesUploaded, -1);
                 }
 
                 //QCoreApplication::processEvents();
-
             }
         }
     }
@@ -232,7 +182,7 @@ void QNetworkAccessDebugPipeBackend::possiblyFinish()
 
 }
 
-void QNetworkAccessDebugPipeBackend::closeDownstreamChannel()
+void QNetworkAccessDebugPipeBackend::close()
 {
     qWarning("QNetworkAccessDebugPipeBackend::closeDownstreamChannel() %d",operation());;
     //if (operation() == QNetworkAccessManager::GetOperation)
@@ -266,11 +216,10 @@ void QNetworkAccessDebugPipeBackend::socketError()
 
 void QNetworkAccessDebugPipeBackend::socketDisconnected()
 {
-    pushFromSocketToDownstream();
-
     if (socket.bytesToWrite() == 0) {
         // normal close
     } else {
+        readyRead(); // @todo this is odd
         // abnormal close
         QString msg = QNetworkAccessDebugPipeBackend::tr("Remote host closed the connection prematurely on %1")
                              .arg(url().toString());
@@ -287,3 +236,5 @@ void QNetworkAccessDebugPipeBackend::socketConnected()
 #endif
 
 QT_END_NAMESPACE
+
+#include "moc_qnetworkaccessdebugpipebackend_p.cpp"

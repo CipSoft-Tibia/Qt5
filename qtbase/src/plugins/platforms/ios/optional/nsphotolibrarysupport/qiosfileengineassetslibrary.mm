@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qiosfileengineassetslibrary.h"
 
@@ -47,14 +11,17 @@
 #include <QtCore/qurl.h>
 #include <QtCore/qset.h>
 #include <QtCore/qthreadstorage.h>
+#include <QtCore/qfileselector.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static QThreadStorage<QString> g_iteratorCurrentUrl;
 static QThreadStorage<QPointer<QIOSAssetData> > g_assetDataCache;
 
 static const int kBufferSize = 10;
-static ALAsset *kNoAsset = 0;
+static ALAsset *kNoAsset = nullptr;
 
 static bool ensureAuthorizationDialogNotBlocked()
 {
@@ -222,7 +189,7 @@ public:
 
         // We can only load images from the asset library async. And this might take time, since it
         // involves showing the authorization dialog. But the QFile API is synchronuous, so we need to
-        // wait until we have access to the data. [ALAssetLibrary assetForUrl:] will shedule a block on
+        // wait until we have access to the data. [ALAssetLibrary assetForUrl:] will schedule a block on
         // the current thread. But instead of spinning the event loop to force the block to execute, we
         // wrap the call inside a synchronuous dispatch queue so that it executes on another thread.
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
@@ -249,7 +216,7 @@ public:
                 }
 
                 if (!asset)
-                    engine->setError(QFile::OpenError, QLatin1String("could not open image"));
+                    engine->setError(QFile::OpenError, "could not open image"_L1);
 
                 m_asset = [asset retain];
                 dispatch_semaphore_signal(semaphore);
@@ -353,8 +320,11 @@ ALAsset *QIOSFileEngineAssetsLibrary::loadAsset() const
     return m_data->m_asset;
 }
 
-bool QIOSFileEngineAssetsLibrary::open(QIODevice::OpenMode openMode)
+bool QIOSFileEngineAssetsLibrary::open(QIODevice::OpenMode openMode,
+                                       std::optional<QFile::Permissions> permissions)
 {
+    Q_UNUSED(permissions);
+
     if (openMode & (QIODevice::WriteOnly | QIODevice::Text))
         return false;
     return loadAsset();
@@ -366,7 +336,7 @@ bool QIOSFileEngineAssetsLibrary::close()
         // Delete later, so that we can reuse the asset if a QFile is
         // opened with the same path during the same event loop cycle.
         m_data->deleteLater();
-        m_data = 0;
+        m_data = nullptr;
     }
     return true;
 }
@@ -374,7 +344,18 @@ bool QIOSFileEngineAssetsLibrary::close()
 QAbstractFileEngine::FileFlags QIOSFileEngineAssetsLibrary::fileFlags(QAbstractFileEngine::FileFlags type) const
 {
     QAbstractFileEngine::FileFlags flags;
-    const bool isDir = (m_assetUrl == QLatin1String("assets-library://"));
+    const bool isDir = (m_assetUrl == "assets-library://"_L1);
+    if (!isDir) {
+        static const QFileSelector fileSelector;
+        static const auto selectors = fileSelector.allSelectors();
+        if (m_assetUrl.startsWith("assets-library://"_L1)) {
+            for (const auto &selector : selectors) {
+                if (m_assetUrl.endsWith(selector))
+                    return flags;
+            }
+        }
+    }
+
     const bool exists = isDir || m_assetUrl == g_iteratorCurrentUrl.localData() || loadAsset();
 
     if (!exists)
@@ -410,7 +391,7 @@ qint64 QIOSFileEngineAssetsLibrary::read(char *data, qint64 maxlen)
     if (!bytesRead)
         return 0;
 
-    NSError *error = 0;
+    NSError *error = nullptr;
     [[asset defaultRepresentation] getBytes:(uint8_t *)data fromOffset:m_offset length:bytesRead error:&error];
 
     if (error) {
@@ -449,16 +430,11 @@ void QIOSFileEngineAssetsLibrary::setFileName(const QString &file)
     // QUrl::fromLocalFile() will remove double slashes. Since the asset url is
     // passed around as a file name in the app (and converted to/from a file url, e.g
     // in QFileDialog), we need to ensure that m_assetUrl ends up being valid.
-    int index = file.indexOf(QLatin1String("/asset"));
+    qsizetype index = file.indexOf("/asset"_L1);
     if (index == -1)
-        m_assetUrl = QLatin1String("assets-library://");
+        m_assetUrl = "assets-library://"_L1;
     else
-        m_assetUrl = QLatin1String("assets-library:/") + file.mid(index);
-}
-
-QStringList QIOSFileEngineAssetsLibrary::entryList(QDir::Filters filters, const QStringList &filterNames) const
-{
-    return QAbstractFileEngine::entryList(filters, filterNames);
+        m_assetUrl = "assets-library:/"_L1 + file.mid(index);
 }
 
 #ifndef QT_NO_FILESYSTEMITERATOR

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,9 @@
 #include <string>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/observer_list.h"
-#include "base/scoped_observer.h"
+#include "base/scoped_observation.h"
 #include "base/synchronization/lock.h"
 #include "base/threading/thread_checker.h"
 #include "components/content_settings/core/browser/content_settings_observer.h"
@@ -20,9 +19,14 @@
 #include "components/content_settings/core/common/cookie_settings_base.h"
 #include "components/keyed_service/core/refcounted_keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
+#include "net/cookies/cookie_setting_override.h"
 
 class GURL;
 class PrefService;
+
+namespace net {
+class SiteForCookies;
+}  // namespace net
 
 namespace content_settings {
 
@@ -65,6 +69,9 @@ class CookieSettings : public CookieSettingsBase,
                  bool is_incognito,
                  const char* extension_scheme = kDummyExtensionScheme);
 
+  CookieSettings(const CookieSettings&) = delete;
+  CookieSettings& operator=(const CookieSettings&) = delete;
+
   // Returns the default content setting (CONTENT_SETTING_ALLOW,
   // CONTENT_SETTING_BLOCK, or CONTENT_SETTING_SESSION_ONLY) for cookies. If
   // |provider_id| is not nullptr, the id of the provider which provided the
@@ -74,11 +81,10 @@ class CookieSettings : public CookieSettingsBase,
   ContentSetting GetDefaultCookieSetting(std::string* provider_id) const;
 
   // Returns all patterns with a non-default cookie setting, mapped to their
-  // actual settings, in the precedence order of the setting rules. |settings|
-  // must be a non-nullptr outparam.
+  // actual settings, in the precedence order of the setting rules.
   //
   // This may be called on any thread.
-  void GetCookieSettings(ContentSettingsForOneType* settings) const;
+  ContentSettingsForOneType GetCookieSettings() const;
 
   // Sets the default content setting (CONTENT_SETTING_ALLOW,
   // CONTENT_SETTING_BLOCK, or CONTENT_SETTING_SESSION_ONLY) for cookies.
@@ -123,11 +129,11 @@ class CookieSettings : public CookieSettingsBase,
   virtual bool ShouldBlockThirdPartyCookies() const;
 
   // content_settings::CookieSettingsBase:
-  void GetSettingForLegacyCookieAccess(const std::string& cookie_domain,
-                                       ContentSetting* setting) const override;
+  ContentSetting GetSettingForLegacyCookieAccess(
+      const std::string& cookie_domain) const override;
   bool ShouldIgnoreSameSiteRestrictions(
       const GURL& url,
-      const GURL& site_for_cookies) const override;
+      const net::SiteForCookies& site_for_cookies) const override;
 
   // Detaches the |CookieSettings| from |PrefService|. This methods needs to be
   // called before destroying the service. Afterwards, only const methods can be
@@ -156,17 +162,18 @@ class CookieSettings : public CookieSettingsBase,
                                 const GURL& first_party_url) const;
 
   // content_settings::CookieSettingsBase:
-  void GetCookieSettingInternal(const GURL& url,
-                                const GURL& first_party_url,
-                                bool is_third_party_request,
-                                content_settings::SettingSource* source,
-                                ContentSetting* cookie_setting) const override;
+  ContentSetting GetCookieSettingInternal(
+      const GURL& url,
+      const GURL& first_party_url,
+      bool is_third_party_request,
+      net::CookieSettingOverrides overrides,
+      content_settings::SettingSource* source) const override;
 
   // content_settings::Observer:
-  void OnContentSettingChanged(const ContentSettingsPattern& primary_pattern,
-                               const ContentSettingsPattern& secondary_pattern,
-                               ContentSettingsType content_type,
-                               const std::string& resource_identifier) override;
+  void OnContentSettingChanged(
+      const ContentSettingsPattern& primary_pattern,
+      const ContentSettingsPattern& secondary_pattern,
+      ContentSettingsTypeSet content_type_set) override;
 
   void OnCookiePreferencesChanged();
 
@@ -176,20 +183,15 @@ class CookieSettings : public CookieSettingsBase,
 
   base::ThreadChecker thread_checker_;
   base::ObserverList<Observer> observers_;
-  scoped_refptr<HostContentSettingsMap> host_content_settings_map_;
-  ScopedObserver<HostContentSettingsMap, content_settings::Observer>
-      content_settings_observer_{this};
+  const scoped_refptr<HostContentSettingsMap> host_content_settings_map_;
+  base::ScopedObservation<HostContentSettingsMap, content_settings::Observer>
+      content_settings_observation_{this};
   PrefChangeRegistrar pref_change_registrar_;
   const bool is_incognito_;
   const char* extension_scheme_;  // Weak.
 
-  // Used around accesses to |block_third_party_cookies_| to guarantee thread
-  // safety.
   mutable base::Lock lock_;
-
-  bool block_third_party_cookies_;
-
-  DISALLOW_COPY_AND_ASSIGN(CookieSettings);
+  bool block_third_party_cookies_ GUARDED_BY(lock_);
 };
 
 }  // namespace content_settings

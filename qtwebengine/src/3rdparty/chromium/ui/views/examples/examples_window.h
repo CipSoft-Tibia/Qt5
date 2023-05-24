@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/strings/stringprintf.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/views/examples/create_examples.h"
@@ -22,6 +22,8 @@ class Widget;
 namespace examples {
 
 VIEWS_EXAMPLES_EXPORT extern const char kExamplesWidgetName[];
+
+VIEWS_EXAMPLES_EXPORT bool CheckCommandLineUsage();
 
 // Returns the current widget.
 VIEWS_EXAMPLES_EXPORT Widget* GetExamplesWidget();

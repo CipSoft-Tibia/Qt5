@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QGuiApplication>
 
@@ -55,6 +8,9 @@
 #include <Qt3DRender/QCameraLens>
 #include <Qt3DCore/QTransform>
 #include <Qt3DCore/QAspectEngine>
+#include <Qt3DCore/QGeometry>
+#include <Qt3DCore/QAttribute>
+#include <Qt3DCore/QBuffer>
 
 #include <Qt3DInput/QInputAspect>
 
@@ -64,9 +20,6 @@
 #include <Qt3DExtras/QPerVertexColorMaterial>
 
 #include <Qt3DRender/QGeometryRenderer>
-#include <Qt3DRender/QGeometry>
-#include <Qt3DRender/QAttribute>
-#include <Qt3DRender/QBuffer>
 
 #include <QPropertyAnimation>
 #include <Qt3DExtras/qt3dwindow.h>
@@ -105,10 +58,10 @@ int main(int argc, char* argv[])
 
     // Custom Mesh (TetraHedron)
     Qt3DRender::QGeometryRenderer *customMeshRenderer = new Qt3DRender::QGeometryRenderer;
-    Qt3DRender::QGeometry *customGeometry = new Qt3DRender::QGeometry(customMeshRenderer);
+    Qt3DCore::QGeometry *customGeometry = new Qt3DCore::QGeometry(customMeshRenderer);
 
-    Qt3DRender::QBuffer *vertexDataBuffer = new Qt3DRender::QBuffer(customGeometry);
-    Qt3DRender::QBuffer *indexDataBuffer = new Qt3DRender::QBuffer(customGeometry);
+    Qt3DCore::QBuffer *vertexDataBuffer = new Qt3DCore::QBuffer(customGeometry);
+    Qt3DCore::QBuffer *indexDataBuffer = new Qt3DCore::QBuffer(customGeometry);
 
     // vec3 for position
     // vec3 for colors
@@ -149,11 +102,10 @@ int main(int argc, char* argv[])
     QVector3D blue(0.0f, 0.0f, 1.0f);
     QVector3D white(1.0f, 1.0f, 1.0f);
 
-    const QVector<QVector3D> vertices = QVector<QVector3D>()
-            << v0 << n0 << red
-            << v1 << n1 << blue
-            << v2 << n2 << green
-            << v3 << n3 << white;
+    const QList<QVector3D> vertices = { v0, n0, red,
+                                        v1, n1, blue,
+                                        v2, n2, green,
+                                        v3, n3, white };
 
     float *rawVertexArray = reinterpret_cast<float *>(vertexBufferData.data());
     int idx = 0;
@@ -190,40 +142,40 @@ int main(int argc, char* argv[])
     indexDataBuffer->setData(indexBufferData);
 
     // Attributes
-    Qt3DRender::QAttribute *positionAttribute = new Qt3DRender::QAttribute();
-    positionAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    Qt3DCore::QAttribute *positionAttribute = new Qt3DCore::QAttribute();
+    positionAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     positionAttribute->setBuffer(vertexDataBuffer);
-    positionAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+    positionAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
     positionAttribute->setVertexSize(3);
     positionAttribute->setByteOffset(0);
     positionAttribute->setByteStride(9 * sizeof(float));
     positionAttribute->setCount(4);
-    positionAttribute->setName(Qt3DRender::QAttribute::defaultPositionAttributeName());
+    positionAttribute->setName(Qt3DCore::QAttribute::defaultPositionAttributeName());
 
-    Qt3DRender::QAttribute *normalAttribute = new Qt3DRender::QAttribute();
-    normalAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    Qt3DCore::QAttribute *normalAttribute = new Qt3DCore::QAttribute();
+    normalAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     normalAttribute->setBuffer(vertexDataBuffer);
-    normalAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+    normalAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
     normalAttribute->setVertexSize(3);
     normalAttribute->setByteOffset(3 * sizeof(float));
     normalAttribute->setByteStride(9 * sizeof(float));
     normalAttribute->setCount(4);
-    normalAttribute->setName(Qt3DRender::QAttribute::defaultNormalAttributeName());
+    normalAttribute->setName(Qt3DCore::QAttribute::defaultNormalAttributeName());
 
-    Qt3DRender::QAttribute *colorAttribute = new Qt3DRender::QAttribute();
-    colorAttribute->setAttributeType(Qt3DRender::QAttribute::VertexAttribute);
+    Qt3DCore::QAttribute *colorAttribute = new Qt3DCore::QAttribute();
+    colorAttribute->setAttributeType(Qt3DCore::QAttribute::VertexAttribute);
     colorAttribute->setBuffer(vertexDataBuffer);
-    colorAttribute->setVertexBaseType(Qt3DRender::QAttribute::Float);
+    colorAttribute->setVertexBaseType(Qt3DCore::QAttribute::Float);
     colorAttribute->setVertexSize(3);
     colorAttribute->setByteOffset(6 * sizeof(float));
     colorAttribute->setByteStride(9 * sizeof(float));
     colorAttribute->setCount(4);
-    colorAttribute->setName(Qt3DRender::QAttribute::defaultColorAttributeName());
+    colorAttribute->setName(Qt3DCore::QAttribute::defaultColorAttributeName());
 
-    Qt3DRender::QAttribute *indexAttribute = new Qt3DRender::QAttribute();
-    indexAttribute->setAttributeType(Qt3DRender::QAttribute::IndexAttribute);
+    Qt3DCore::QAttribute *indexAttribute = new Qt3DCore::QAttribute();
+    indexAttribute->setAttributeType(Qt3DCore::QAttribute::IndexAttribute);
     indexAttribute->setBuffer(indexDataBuffer);
-    indexAttribute->setVertexBaseType(Qt3DRender::QAttribute::UnsignedShort);
+    indexAttribute->setVertexBaseType(Qt3DCore::QAttribute::UnsignedShort);
     indexAttribute->setVertexSize(1);
     indexAttribute->setByteOffset(0);
     indexAttribute->setByteStride(0);

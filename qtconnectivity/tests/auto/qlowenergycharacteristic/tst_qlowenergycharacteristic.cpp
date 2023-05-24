@@ -1,31 +1,6 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited all rights reserved
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited all rights reserved
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QUuid>
@@ -86,22 +61,32 @@ tst_QLowEnergyCharacteristic::~tst_QLowEnergyCharacteristic()
 
 void tst_QLowEnergyCharacteristic::initTestCase()
 {
+#if defined(Q_OS_MACOS)
+    QSKIP("The low energy characteristic tests fail on macOS");
+#endif
     if (QBluetoothLocalDevice::allDevices().isEmpty()) {
-        qWarning("No remote device discovered.");
+        qWarning("No local adapter, not discovering remote devices");
         return;
     }
 
-    // start Bluetooth if not started
     QBluetoothLocalDevice device;
-    device.powerOn();
+    if (device.hostMode() == QBluetoothLocalDevice::HostPoweredOff) {
+        // Attempt to switch Bluetooth ON
+        device.powerOn();
+        QTest::qWait(1000);
+        if (device.hostMode() == QBluetoothLocalDevice::HostPoweredOff) {
+            qWarning("Bluetooth couldn't be switched ON, not discovering remote devices");
+            return;
+        }
+    }
 
-    // find an arbitrary low energy device in vincinity
+    // find an arbitrary low energy device in vicinity
     // find an arbitrary service with characteristic
     QBluetoothDeviceDiscoveryAgent *devAgent = new QBluetoothDeviceDiscoveryAgent(this);
     connect(devAgent, SIGNAL(deviceDiscovered(QBluetoothDeviceInfo)),
             this, SLOT(deviceDiscovered(QBluetoothDeviceInfo)));
 
-    QSignalSpy errorSpy(devAgent, SIGNAL(error(QBluetoothDeviceDiscoveryAgent::Error)));
+    QSignalSpy errorSpy(devAgent, SIGNAL(errorOccurred(QBluetoothDeviceDiscoveryAgent::Error)));
     QVERIFY(errorSpy.isValid());
     QVERIFY(errorSpy.isEmpty());
 
@@ -110,17 +95,17 @@ void tst_QLowEnergyCharacteristic::initTestCase()
     QVERIFY(spy.isEmpty());
 
     devAgent->start();
-    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 50000);
+    QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 100000);
 
     // find first service with descriptor
     QLowEnergyController *controller = 0;
-    for (const QBluetoothDeviceInfo &remoteDevice : qAsConst(remoteLeDevices)) {
+    for (const QBluetoothDeviceInfo &remoteDevice : std::as_const(remoteLeDevices)) {
         controller = QLowEnergyController::createCentral(remoteDevice, this);
         qDebug() << "Connecting to" << remoteDevice.name()
                  << remoteDevice.address() << remoteDevice.deviceUuid();
         controller->connectToDevice();
         QTRY_IMPL(controller->state() != QLowEnergyController::ConnectingState,
-                  20000);
+                  50000);
         if (controller->state() != QLowEnergyController::ConnectedState) {
             // any error and we skip
             delete controller;
@@ -131,8 +116,8 @@ void tst_QLowEnergyCharacteristic::initTestCase()
         QSignalSpy discoveryFinishedSpy(controller, SIGNAL(discoveryFinished()));
         QSignalSpy stateSpy(controller, SIGNAL(stateChanged(QLowEnergyController::ControllerState)));
         controller->discoverServices();
-        QTRY_VERIFY_WITH_TIMEOUT(discoveryFinishedSpy.count() == 1, 10000);
-        QCOMPARE(stateSpy.count(), 2);
+        QTRY_VERIFY_WITH_TIMEOUT(discoveryFinishedSpy.size() == 1, 10000);
+        QCOMPARE(stateSpy.size(), 2);
         QCOMPARE(stateSpy.at(0).at(0).value<QLowEnergyController::ControllerState>(),
                  QLowEnergyController::DiscoveringState);
         QCOMPARE(stateSpy.at(1).at(0).value<QLowEnergyController::ControllerState>(),
@@ -146,7 +131,7 @@ void tst_QLowEnergyCharacteristic::initTestCase()
 
             leService->discoverDetails();
             QTRY_VERIFY_WITH_TIMEOUT(
-                        leService->state() == QLowEnergyService::ServiceDiscovered, 10000);
+                        leService->state() == QLowEnergyService::RemoteServiceDiscovered, 10000);
 
             const QList<QLowEnergyCharacteristic> chars = leService->characteristics();
             for (const QLowEnergyCharacteristic &ch : chars) {
@@ -195,14 +180,13 @@ void tst_QLowEnergyCharacteristic::tst_constructionDefault()
     QVERIFY(!characteristic.isValid());
     QCOMPARE(characteristic.value(), QByteArray());
     QVERIFY(characteristic.uuid().isNull());
-    QVERIFY(characteristic.handle() == 0);
     QCOMPARE(characteristic.name(), QString());
-    QCOMPARE(characteristic.descriptors().count(), 0);
+    QCOMPARE(characteristic.descriptors().size(), 0);
     QCOMPARE(characteristic.descriptor(QBluetoothUuid()),
              QLowEnergyDescriptor());
-    QCOMPARE(characteristic.descriptor(QBluetoothUuid(QBluetoothUuid::ClientCharacteristicConfiguration)),
+    QCOMPARE(characteristic.descriptor(QBluetoothUuid(QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration)),
              QLowEnergyDescriptor());
-    QCOMPARE(characteristic.descriptor(QBluetoothUuid::ClientCharacteristicConfiguration),
+    QCOMPARE(characteristic.descriptor(QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration),
              QLowEnergyDescriptor());
     QCOMPARE(characteristic.properties(), QLowEnergyCharacteristic::Unknown);
 
@@ -210,9 +194,8 @@ void tst_QLowEnergyCharacteristic::tst_constructionDefault()
     QVERIFY(!copyConstructed.isValid());
     QCOMPARE(copyConstructed.value(), QByteArray());
     QVERIFY(copyConstructed.uuid().isNull());
-    QVERIFY(copyConstructed.handle() == 0);
     QCOMPARE(copyConstructed.name(), QString());
-    QCOMPARE(copyConstructed.descriptors().count(), 0);
+    QCOMPARE(copyConstructed.descriptors().size(), 0);
     QCOMPARE(copyConstructed.properties(), QLowEnergyCharacteristic::Unknown);
 
     QVERIFY(copyConstructed == characteristic);
@@ -231,9 +214,8 @@ void tst_QLowEnergyCharacteristic::tst_constructionDefault()
     QVERIFY(!assigned.isValid());
     QCOMPARE(assigned.value(), QByteArray());
     QVERIFY(assigned.uuid().isNull());
-    QVERIFY(assigned.handle() == 0);
     QCOMPARE(assigned.name(), QString());
-    QCOMPARE(assigned.descriptors().count(), 0);
+    QCOMPARE(assigned.descriptors().size(), 0);
     QCOMPARE(assigned.properties(), QLowEnergyCharacteristic::Unknown);
 
     QVERIFY(assigned == characteristic);
@@ -251,20 +233,19 @@ void tst_QLowEnergyCharacteristic::tst_assignCompare()
     QVERIFY(!target.isValid());
     QCOMPARE(target.value(), QByteArray());
     QVERIFY(target.uuid().isNull());
-    QVERIFY(target.handle() == 0);
     QCOMPARE(target.name(), QString());
-    QCOMPARE(target.descriptors().count(), 0);
+    QCOMPARE(target.descriptors().size(), 0);
     QCOMPARE(target.properties(), QLowEnergyCharacteristic::Unknown);
 
-    int indexWithDescriptor = -1;
+    qsizetype indexWithDescriptor = -1;
     const QList<QLowEnergyCharacteristic> chars = globalService->characteristics();
     QVERIFY(!chars.isEmpty());
-    for (int i = 0; i < chars.count(); i++) {
+    for (qsizetype i = 0; i < chars.size(); ++i) {
         const QLowEnergyCharacteristic specific =
                 globalService->characteristic(chars[i].uuid());
         QVERIFY(specific.isValid());
         QCOMPARE(specific, chars[i]);
-        if (chars[i].descriptors().count() > 0) {
+        if (!chars[i].descriptors().isEmpty()) {
             indexWithDescriptor = i;
             break;
         }
@@ -281,13 +262,12 @@ void tst_QLowEnergyCharacteristic::tst_assignCompare()
     target = chars[indexWithDescriptor];
     QVERIFY(target.isValid());
     QVERIFY(!target.name().isEmpty());
-    HANDLE_VERIFY(target.handle() > 0);
     QVERIFY(!target.uuid().isNull());
     QVERIFY(target.properties() != QLowEnergyCharacteristic::Unknown);
     if (target.properties() & QLowEnergyCharacteristic::Read)
         QVERIFY(!target.value().isEmpty());
     if (!noDescriptors)
-        QVERIFY(target.descriptors().count() > 0);
+        QVERIFY(!target.descriptors().isEmpty());
 
     QVERIFY(target == chars[indexWithDescriptor]);
     QVERIFY(chars[indexWithDescriptor] == target);
@@ -296,35 +276,35 @@ void tst_QLowEnergyCharacteristic::tst_assignCompare()
 
     QCOMPARE(target.isValid(), chars[indexWithDescriptor].isValid());
     QCOMPARE(target.name(), chars[indexWithDescriptor].name());
-    QCOMPARE(target.handle(), chars[indexWithDescriptor].handle());
     QCOMPARE(target.uuid(), chars[indexWithDescriptor].uuid());
     QCOMPARE(target.value(), chars[indexWithDescriptor].value());
     QCOMPARE(target.properties(), chars[indexWithDescriptor].properties());
-    QCOMPARE(target.descriptors().count(),
-             chars[indexWithDescriptor].descriptors().count());
-    for (int i = 0; i < target.descriptors().count(); i++) {
-        const QLowEnergyDescriptor ref = chars[indexWithDescriptor].descriptors()[i];
-        QCOMPARE(target.descriptors()[i].name(), ref.name());
-        QCOMPARE(target.descriptors()[i].isValid(), ref.isValid());
-        QCOMPARE(target.descriptors()[i].type(), ref.type());
-        QCOMPARE(target.descriptors()[i].handle(), ref.handle());
-        QCOMPARE(target.descriptors()[i].uuid(), ref.uuid());
-        QCOMPARE(target.descriptors()[i].value(), ref.value());
+    {
+        const auto targetDescriptors = target.descriptors();
+        const auto referenceDescriptors = chars[indexWithDescriptor].descriptors();
+        QCOMPARE(targetDescriptors.size(), referenceDescriptors.size());
+        for (qsizetype i = 0; i < targetDescriptors.size(); ++i) {
+            const QLowEnergyDescriptor ref = referenceDescriptors[i];
+            QCOMPARE(targetDescriptors[i].name(), ref.name());
+            QCOMPARE(targetDescriptors[i].isValid(), ref.isValid());
+            QCOMPARE(targetDescriptors[i].type(), ref.type());
+            QCOMPARE(targetDescriptors[i].uuid(), ref.uuid());
+            QCOMPARE(targetDescriptors[i].value(), ref.value());
 
-        const QLowEnergyDescriptor ref2 = chars[indexWithDescriptor].descriptor(ref.uuid());
-        QCOMPARE(ref, ref2);
+            const QLowEnergyDescriptor ref2 = chars[indexWithDescriptor].descriptor(ref.uuid());
+            QCOMPARE(ref, ref2);
+        }
     }
 
     // test copy constructor
     QLowEnergyCharacteristic copyConstructed(target);
     QCOMPARE(copyConstructed.isValid(), chars[indexWithDescriptor].isValid());
     QCOMPARE(copyConstructed.name(), chars[indexWithDescriptor].name());
-    QCOMPARE(copyConstructed.handle(), chars[indexWithDescriptor].handle());
     QCOMPARE(copyConstructed.uuid(), chars[indexWithDescriptor].uuid());
     QCOMPARE(copyConstructed.value(), chars[indexWithDescriptor].value());
     QCOMPARE(copyConstructed.properties(), chars[indexWithDescriptor].properties());
-    QCOMPARE(copyConstructed.descriptors().count(),
-             chars[indexWithDescriptor].descriptors().count());
+    QCOMPARE(copyConstructed.descriptors().size(),
+             chars[indexWithDescriptor].descriptors().size());
 
     QVERIFY(copyConstructed == target);
     QVERIFY(target == copyConstructed);
@@ -337,9 +317,8 @@ void tst_QLowEnergyCharacteristic::tst_assignCompare()
     QVERIFY(!target.isValid());
     QCOMPARE(target.value(), QByteArray());
     QVERIFY(target.uuid().isNull());
-    QVERIFY(target.handle() == 0);
     QCOMPARE(target.name(), QString());
-    QCOMPARE(target.descriptors().count(), 0);
+    QCOMPARE(target.descriptors().size(), 0);
     QCOMPARE(target.properties(), QLowEnergyCharacteristic::Unknown);
 
     QVERIFY(invalid == target);
@@ -352,7 +331,7 @@ void tst_QLowEnergyCharacteristic::tst_assignCompare()
     QVERIFY(chars[indexWithDescriptor] != target);
     QVERIFY(target != chars[indexWithDescriptor]);
 
-    if (chars.count() >= 2) {
+    if (chars.size() >= 2) {
         // at least two characteristics
         QVERIFY(!(chars[0] == chars[1]));
         QVERIFY(!(chars[1] == chars[0]));

@@ -13,6 +13,7 @@
 #include "number_utypes.h"
 #include "numparse_types.h"
 #include "formattedval_impl.h"
+#include "number_decnum.h"
 #include "unicode/numberformatter.h"
 #include "unicode/unumberformatter.h"
 
@@ -115,7 +116,8 @@ unumf_formatInt(const UNumberFormatter* uformatter, int64_t value, UFormattedNum
     auto* result = UFormattedNumberApiHelper::validate(uresult, *ec);
     if (U_FAILURE(*ec)) { return; }
 
-    result->fData.getStringRef().clear();
+    result->fData.resetString();
+    result->fData.quantity.clear();
     result->fData.quantity.setToLong(value);
     formatter->fFormatter.formatImpl(&result->fData, *ec);
 }
@@ -127,7 +129,8 @@ unumf_formatDouble(const UNumberFormatter* uformatter, double value, UFormattedN
     auto* result = UFormattedNumberApiHelper::validate(uresult, *ec);
     if (U_FAILURE(*ec)) { return; }
 
-    result->fData.getStringRef().clear();
+    result->fData.resetString();
+    result->fData.quantity.clear();
     result->fData.quantity.setToDouble(value);
     formatter->fFormatter.formatImpl(&result->fData, *ec);
 }
@@ -139,7 +142,8 @@ unumf_formatDecimal(const UNumberFormatter* uformatter, const char* value, int32
     auto* result = UFormattedNumberApiHelper::validate(uresult, *ec);
     if (U_FAILURE(*ec)) { return; }
 
-    result->fData.getStringRef().clear();
+    result->fData.resetString();
+    result->fData.quantity.clear();
     result->fData.quantity.setToDecNumber({value, valueLen}, *ec);
     if (U_FAILURE(*ec)) { return; }
     formatter->fFormatter.formatImpl(&result->fData, *ec);
@@ -162,11 +166,11 @@ unumf_resultToString(const UFormattedNumber* uresult, UChar* buffer, int32_t buf
 U_CAPI UBool U_EXPORT2
 unumf_resultNextFieldPosition(const UFormattedNumber* uresult, UFieldPosition* ufpos, UErrorCode* ec) {
     const auto* result = UFormattedNumberApiHelper::validate(uresult, *ec);
-    if (U_FAILURE(*ec)) { return FALSE; }
+    if (U_FAILURE(*ec)) { return false; }
 
     if (ufpos == nullptr) {
         *ec = U_ILLEGAL_ARGUMENT_ERROR;
-        return FALSE;
+        return false;
     }
 
     FieldPosition fp;
@@ -177,7 +181,7 @@ unumf_resultNextFieldPosition(const UFormattedNumber* uresult, UFieldPosition* u
     ufpos->beginIndex = fp.getBeginIndex();
     ufpos->endIndex = fp.getEndIndex();
     // NOTE: MSVC sometimes complains when implicitly converting between bool and UBool
-    return retval ? TRUE : FALSE;
+    return retval ? true : false;
 }
 
 U_CAPI void U_EXPORT2
@@ -194,6 +198,23 @@ unumf_resultGetAllFieldPositions(const UFormattedNumber* uresult, UFieldPosition
     auto* fpi = reinterpret_cast<FieldPositionIterator*>(ufpositer);
     FieldPositionIteratorHandler fpih(fpi, *ec);
     result->fData.getAllFieldPositions(fpih, *ec);
+}
+
+U_CAPI int32_t U_EXPORT2
+unumf_resultToDecimalNumber(
+        const UFormattedNumber* uresult,
+        char* dest,
+        int32_t destCapacity,
+        UErrorCode* ec) {
+    const auto* result = UFormattedNumberApiHelper::validate(uresult, *ec);
+    if (U_FAILURE(*ec)) {
+        return 0;
+    }
+    DecNum decnum;
+    return result->fData.quantity
+        .toDecNum(decnum, *ec)
+        .toCharString(*ec)
+        .extract(dest, destCapacity, *ec);
 }
 
 U_CAPI void U_EXPORT2

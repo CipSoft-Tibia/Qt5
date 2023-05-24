@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
 #include <qtabwidget.h>
 #include <qtabbar.h>
 #include <qdebug.h>
@@ -35,7 +11,7 @@
 #include <qlabel.h>
 #include <QtWidgets/qboxlayout.h>
 
-#if defined(Q_OS_WIN) && !defined(Q_OS_WINRT)
+#if defined(Q_OS_WIN)
 #  include <qt_windows.h>
 #define Q_CHECK_PAINTEVENTS \
     if (::SwitchDesktop(::GetThreadDesktop(::GetCurrentThreadId())) == 0) \
@@ -60,10 +36,12 @@ class QTabWidgetChild:public QTabWidget {
     };
 
   protected:
-    virtual void tabInserted(int /*index */ ) {
+    virtual void tabInserted(int /*index */ ) override
+    {
         tabCount++;
     };
-    virtual void tabRemoved(int /*index */ ) {
+    virtual void tabRemoved(int /*index */ ) override
+    {
         tabCount--;
     };
     int tabCount;
@@ -82,6 +60,7 @@ private slots:
     void tabPosition();
     void tabEnabled();
     void tabHidden();
+    void checkHiddenTab();
     void tabText();
     void tabShape();
     void tabTooltip();
@@ -100,6 +79,9 @@ private slots:
     void tabBarClicked();
     void moveCurrentTab();
     void autoHide();
+
+    void setCurrentBeforeShow_data();
+    void setCurrentBeforeShow();
 
   private:
     int addPage();
@@ -271,6 +253,32 @@ void tst_QTabWidget::tabHidden()
     }
 }
 
+void tst_QTabWidget::checkHiddenTab()
+{
+    tw->addTab(new QWidget(), "foo");
+    tw->addTab(new QWidget(), "bar");
+    tw->addTab(new QWidget(), "baz");
+    QCOMPARE(tw->count(), 3);
+    tw->setCurrentIndex(0);
+    tw->setTabVisible(1, false);
+
+    QKeyEvent keyTab(QKeyEvent::KeyPress, Qt::Key_Tab, Qt::ControlModifier);
+    QVERIFY(QApplication::sendEvent(tw, &keyTab));
+    QCOMPARE(tw->currentIndex(), 2);
+    QVERIFY(QApplication::sendEvent(tw, &keyTab));
+    QCOMPARE(tw->currentIndex(), 0);
+    QVERIFY(QApplication::sendEvent(tw, &keyTab));
+    QCOMPARE(tw->currentIndex(), 2);
+
+    QKeyEvent keyBacktab(QKeyEvent::KeyPress, Qt::Key_Backtab, Qt::ControlModifier);
+    QVERIFY(QApplication::sendEvent(tw, &keyBacktab));
+    QCOMPARE(tw->currentIndex(), 0);
+    QVERIFY(QApplication::sendEvent(tw, &keyBacktab));
+    QCOMPARE(tw->currentIndex(), 2);
+    QVERIFY(QApplication::sendEvent(tw, &keyBacktab));
+    QCOMPARE(tw->currentIndex(), 0);
+}
+
 void tst_QTabWidget::tabText()
 {
     // Test bad arguments
@@ -380,12 +388,12 @@ void tst_QTabWidget::currentIndex()
     QCOMPARE(tw->currentIndex(), -1);
     tw->setCurrentIndex(-1);
     QCOMPARE(tw->currentIndex(), -1);
-    QCOMPARE(spy.count(), 0);
+    QCOMPARE(spy.size(), 0);
 
     int firstIndex = addPage();
     tw->setCurrentIndex(firstIndex);
     QCOMPARE(tw->currentIndex(), firstIndex);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     QList<QVariant> arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), firstIndex);
 
@@ -393,19 +401,19 @@ void tst_QTabWidget::currentIndex()
     QCOMPARE(tw->currentIndex(), firstIndex);
     tw->setCurrentIndex(index);
     QCOMPARE(tw->currentIndex(), index);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), index);
 
     removePage(index);
     QCOMPARE(tw->currentIndex(), firstIndex);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), firstIndex);
 
     removePage(firstIndex);
     QCOMPARE(tw->currentIndex(), -1);
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
     arguments = spy.takeFirst();
     QCOMPARE(arguments.at(0).toInt(), -1);
 }
@@ -553,7 +561,8 @@ public:
     PaintCounter() :count(0) { setAttribute(Qt::WA_OpaquePaintEvent); }
     int count;
 protected:
-    void paintEvent(QPaintEvent*) {
+    void paintEvent(QPaintEvent*) override
+    {
         ++count;
     }
 };
@@ -685,8 +694,8 @@ void tst_QTabWidget::tabBarClicked()
     QSignalSpy clickSpy(&tabWidget, SIGNAL(tabBarClicked(int)));
     QSignalSpy doubleClickSpy(&tabWidget, SIGNAL(tabBarDoubleClicked(int)));
 
-    QCOMPARE(clickSpy.count(), 0);
-    QCOMPARE(doubleClickSpy.count(), 0);
+    QCOMPARE(clickSpy.size(), 0);
+    QCOMPARE(doubleClickSpy.size(), 0);
 
     QTabBar &tabBar = *tabWidget.tabBar();
     Qt::MouseButton button = Qt::LeftButton;
@@ -694,27 +703,27 @@ void tst_QTabWidget::tabBarClicked()
         const QPoint tabPos = tabBar.tabRect(0).center();
 
         QTest::mouseClick(&tabBar, button, {}, tabPos);
-        QCOMPARE(clickSpy.count(), 1);
+        QCOMPARE(clickSpy.size(), 1);
         QCOMPARE(clickSpy.takeFirst().takeFirst().toInt(), 0);
-        QCOMPARE(doubleClickSpy.count(), 0);
+        QCOMPARE(doubleClickSpy.size(), 0);
 
         QTest::mouseDClick(&tabBar, button, {}, tabPos);
-        QCOMPARE(clickSpy.count(), 1);
+        QCOMPARE(clickSpy.size(), 1);
         QCOMPARE(clickSpy.takeFirst().takeFirst().toInt(), 0);
-        QCOMPARE(doubleClickSpy.count(), 1);
+        QCOMPARE(doubleClickSpy.size(), 1);
         QCOMPARE(doubleClickSpy.takeFirst().takeFirst().toInt(), 0);
 
         const QPoint barPos(tabBar.tabRect(0).right() + 5, tabBar.tabRect(0).center().y());
 
         QTest::mouseClick(&tabBar, button, {}, barPos);
-        QCOMPARE(clickSpy.count(), 1);
+        QCOMPARE(clickSpy.size(), 1);
         QCOMPARE(clickSpy.takeFirst().takeFirst().toInt(), -1);
-        QCOMPARE(doubleClickSpy.count(), 0);
+        QCOMPARE(doubleClickSpy.size(), 0);
 
         QTest::mouseDClick(&tabBar, button, {}, barPos);
-        QCOMPARE(clickSpy.count(), 1);
+        QCOMPARE(clickSpy.size(), 1);
         QCOMPARE(clickSpy.takeFirst().takeFirst().toInt(), -1);
-        QCOMPARE(doubleClickSpy.count(), 1);
+        QCOMPARE(doubleClickSpy.size(), 1);
         QCOMPARE(doubleClickSpy.takeFirst().takeFirst().toInt(), -1);
 
         button = Qt::MouseButton(button << 1);
@@ -769,6 +778,40 @@ void tst_QTabWidget::autoHide()
     QVERIFY(sizeHint1.height() > tabWidget.sizeHint().height());
     QVERIFY(minSizeHint1.height() > tabWidget.sizeHint().height());
     QVERIFY(heightForWidth1 > tabWidget.heightForWidth(20));
+}
+
+void tst_QTabWidget::setCurrentBeforeShow_data()
+{
+    QTest::addColumn<QTabWidget::TabPosition>("tabPosition");
+    QTest::newRow("West") << QTabWidget::West;
+    QTest::newRow("North") << QTabWidget::North;
+    QTest::newRow("East") << QTabWidget::East;
+    QTest::newRow("South") << QTabWidget::South;
+}
+
+void tst_QTabWidget::setCurrentBeforeShow()
+{
+    QFETCH(QTabWidget::TabPosition, tabPosition);
+
+    QTabWidget tabWidget;
+    tabWidget.setTabPosition(tabPosition);
+
+    QPixmap pm(50, 50);
+    pm.fill(Qt::red);
+    const QIcon icon(pm);
+    for (int i = 0; i < 4; ++i)
+        tabWidget.addTab(new QWidget, icon, QString("Tab %1").arg(i));
+
+    // the tab widget has space for the entire tab bar
+    tabWidget.resize(tabWidget.tabBar()->sizeHint() + QSize(50, 50));
+    tabWidget.setCurrentIndex(2);
+    tabWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&tabWidget));
+
+    QCOMPARE_GE(tabWidget.tabBar()->tabRect(0).x(), 0);
+    QCOMPARE_GE(tabWidget.tabBar()->tabRect(0).y(), 0);
+
+    QTest::qWait(2000);
 }
 
 QTEST_MAIN(tst_QTabWidget)

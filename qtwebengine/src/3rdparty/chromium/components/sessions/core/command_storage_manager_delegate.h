@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,6 +27,11 @@ class CommandStorageManagerDelegate {
   // Called when a new crypto key has been generated. This is only called if
   // CommandStorageManager was configured to enable encryption.
   virtual void OnGeneratedNewCryptoKey(const std::vector<uint8_t>& key) {}
+
+  // Called if there is an error in writing commands to the file. The
+  // expectation is that once this is called, the delegate calls
+  // set_pending_reset(true) and adds commands to restore the current state.
+  virtual void OnErrorWritingSessionCommands() = 0;
 
  protected:
   virtual ~CommandStorageManagerDelegate() {}

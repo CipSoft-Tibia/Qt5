@@ -1,8 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/offline_pages/core/prefetch/prefetch_types.h"
+
+#include <ostream>
 
 namespace offline_pages {
 
@@ -141,16 +143,18 @@ std::string PrefetchEnumToString(PrefetchItemErrorCode value) {
 
 RenderPageInfo::RenderPageInfo() = default;
 
-RenderPageInfo::RenderPageInfo(const RenderPageInfo& other) = default;
+RenderPageInfo::RenderPageInfo(const RenderPageInfo&) = default;
+
+RenderPageInfo& RenderPageInfo::operator=(const RenderPageInfo&) = default;
 
 PrefetchURL::PrefetchURL(const std::string& id,
                          const GURL& url,
-                         const base::string16& title)
+                         const std::u16string& title)
     : id(id), url(url), title(title) {}
 
 PrefetchURL::PrefetchURL(const std::string& id,
                          const GURL& url,
-                         const base::string16& title,
+                         const std::u16string& title,
                          const GURL& thumbnail_url,
                          const GURL& favicon_url,
                          const std::string& snippet,
@@ -197,7 +201,7 @@ bool PrefetchArchiveInfo::empty() const {
   return offline_id == 0;
 }
 
-base::Optional<PrefetchItemState> ToPrefetchItemState(int value) {
+absl::optional<PrefetchItemState> ToPrefetchItemState(int value) {
   switch (static_cast<PrefetchItemState>(value)) {
     case PrefetchItemState::NEW_REQUEST:
     case PrefetchItemState::SENT_GENERATE_PAGE_BUNDLE:
@@ -212,10 +216,10 @@ base::Optional<PrefetchItemState> ToPrefetchItemState(int value) {
     case PrefetchItemState::ZOMBIE:
       return static_cast<PrefetchItemState>(value);
   }
-  return base::nullopt;
+  return absl::nullopt;
 }
 
-base::Optional<PrefetchItemErrorCode> ToPrefetchItemErrorCode(int value) {
+absl::optional<PrefetchItemErrorCode> ToPrefetchItemErrorCode(int value) {
   switch (static_cast<PrefetchItemErrorCode>(value)) {
     case PrefetchItemErrorCode::SUCCESS:
     case PrefetchItemErrorCode::TOO_MANY_NEW_URLS:
@@ -241,7 +245,7 @@ base::Optional<PrefetchItemErrorCode> ToPrefetchItemErrorCode(int value) {
     case PrefetchItemErrorCode::SUGGESTION_INVALIDATED:
       return static_cast<PrefetchItemErrorCode>(value);
   }
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 std::ostream& operator<<(std::ostream& out,

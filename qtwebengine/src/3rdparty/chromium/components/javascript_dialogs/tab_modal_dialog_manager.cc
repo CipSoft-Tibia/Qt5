@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,22 +6,22 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/stringprintf.h"
 #include "components/javascript_dialogs/app_modal_dialog_manager.h"
 #include "components/javascript_dialogs/tab_modal_dialog_view.h"
 #include "components/navigation_metrics/navigation_metrics.h"
-#include "components/ukm/content/source_url_recorder.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "ui/gfx/text_elider.h"
+#include "url/origin.h"
 
 namespace javascript_dialogs {
 
@@ -68,18 +68,19 @@ enum class DialogOriginRelationship {
 DialogOriginRelationship GetDialogOriginRelationship(
     content::WebContents* web_contents,
     content::RenderFrameHost* alerting_frame) {
-  GURL main_frame_url = web_contents->GetLastCommittedURL();
+  url::Origin main_frame_origin =
+      web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
 
-  if (!main_frame_url.SchemeIsHTTPOrHTTPS())
+  if (!main_frame_origin.GetURL().SchemeIsHTTPOrHTTPS())
     return DialogOriginRelationship::NON_HTTP_MAIN_FRAME;
 
-  if (alerting_frame == web_contents->GetMainFrame())
+  if (alerting_frame == web_contents->GetPrimaryMainFrame())
     return DialogOriginRelationship::HTTP_MAIN_FRAME;
 
-  GURL alerting_frame_url = alerting_frame->GetLastCommittedURL();
+  url::Origin alerting_frame_origin = alerting_frame->GetLastCommittedOrigin();
 
-  if (alerting_frame_url.SchemeIsHTTPOrHTTPS()) {
-    if (main_frame_url.GetOrigin() == alerting_frame_url.GetOrigin()) {
+  if (alerting_frame_origin.GetURL().SchemeIsHTTPOrHTTPS()) {
+    if (main_frame_origin == alerting_frame_origin) {
       return DialogOriginRelationship::
           HTTP_MAIN_FRAME_HTTP_SAME_ORIGIN_ALERTING_FRAME;
     }
@@ -92,16 +93,16 @@ DialogOriginRelationship GetDialogOriginRelationship(
   // because the main frame has an HTTP(S) scheme.
   content::RenderFrameHost* nearest_http_ancestor_frame =
       alerting_frame->GetParent();
-  while (!nearest_http_ancestor_frame->GetLastCommittedURL()
+  while (!nearest_http_ancestor_frame->GetLastCommittedOrigin()
+              .GetURL()
               .SchemeIsHTTPOrHTTPS()) {
     nearest_http_ancestor_frame = nearest_http_ancestor_frame->GetParent();
   }
 
-  GURL nearest_http_ancestor_frame_url =
-      nearest_http_ancestor_frame->GetLastCommittedURL();
+  url::Origin nearest_http_ancestor_frame_origin =
+      nearest_http_ancestor_frame->GetLastCommittedOrigin();
 
-  if (main_frame_url.GetOrigin() ==
-      nearest_http_ancestor_frame_url.GetOrigin()) {
+  if (main_frame_origin == nearest_http_ancestor_frame_origin) {
     return DialogOriginRelationship::
         HTTP_MAIN_FRAME_NON_HTTP_ALERTING_FRAME_SAME_ORIGIN_ANCESTOR;
   }
@@ -111,19 +112,8 @@ DialogOriginRelationship GetDialogOriginRelationship(
 
 }  // namespace
 
-// static
-void TabModalDialogManager::CreateForWebContents(
-    content::WebContents* web_contents,
-    std::unique_ptr<TabModalDialogManagerDelegate> delegate) {
-  if (!FromWebContents(web_contents)) {
-    web_contents->SetUserData(UserDataKey(),
-                              base::WrapUnique(new TabModalDialogManager(
-                                  web_contents, std::move(delegate))));
-  }
-}
-
 TabModalDialogManager::~TabModalDialogManager() {
-  CloseDialog(DismissalCause::kTabHelperDestroyed, false, base::string16());
+  CloseDialog(DismissalCause::kTabHelperDestroyed, false, std::u16string());
 }
 
 void TabModalDialogManager::BrowserActiveStateChanged() {
@@ -134,7 +124,7 @@ void TabModalDialogManager::BrowserActiveStateChanged() {
 }
 
 void TabModalDialogManager::CloseDialogWithReason(DismissalCause reason) {
-  CloseDialog(reason, false, base::string16());
+  CloseDialog(reason, false, std::u16string());
 }
 
 void TabModalDialogManager::SetDialogShownCallbackForTesting(
@@ -148,7 +138,7 @@ bool TabModalDialogManager::IsShowingDialogForTesting() const {
 
 void TabModalDialogManager::ClickDialogButtonForTesting(
     bool accept,
-    const base::string16& user_input) {
+    const std::u16string& user_input) {
   DCHECK(!!dialog_);
   CloseDialog(DismissalCause::kDialogButtonClicked, accept, user_input);
 }
@@ -162,20 +152,18 @@ void TabModalDialogManager::RunJavaScriptDialog(
     content::WebContents* alerting_web_contents,
     content::RenderFrameHost* render_frame_host,
     content::JavaScriptDialogType dialog_type,
-    const base::string16& message_text,
-    const base::string16& default_prompt_text,
+    const std::u16string& message_text,
+    const std::u16string& default_prompt_text,
     DialogClosedCallback callback,
     bool* did_suppress_message) {
   DCHECK_EQ(alerting_web_contents,
             content::WebContents::FromRenderFrameHost(render_frame_host));
 
-  GURL alerting_frame_url = render_frame_host->GetLastCommittedURL();
-
   content::WebContents* web_contents = WebContentsObserver::web_contents();
   DialogOriginRelationship origin_relationship =
       GetDialogOriginRelationship(alerting_web_contents, render_frame_host);
   navigation_metrics::Scheme scheme =
-      navigation_metrics::GetScheme(alerting_frame_url);
+      navigation_metrics::GetScheme(render_frame_host->GetLastCommittedURL());
   switch (dialog_type) {
     case content::JAVASCRIPT_DIALOG_TYPE_ALERT:
       UMA_HISTOGRAM_ENUMERATION("JSDialogs.OriginRelationship.Alert",
@@ -201,7 +189,7 @@ void TabModalDialogManager::RunJavaScriptDialog(
   }
 
   // Close any dialog already showing.
-  CloseDialog(DismissalCause::kSubsequentDialogShown, false, base::string16());
+  CloseDialog(DismissalCause::kSubsequentDialogShown, false, std::u16string());
 
   bool make_pending = false;
   if (!delegate_->IsWebContentsForemost() &&
@@ -216,7 +204,7 @@ void TabModalDialogManager::RunJavaScriptDialog(
       case content::JAVASCRIPT_DIALOG_TYPE_ALERT: {
         // When an alert fires in the background, make the callback so that the
         // render process can continue.
-        std::move(callback).Run(true, base::string16());
+        std::move(callback).Run(true, std::u16string());
         callback.Reset();
 
         delegate_->SetTabNeedsAttention(true);
@@ -226,7 +214,7 @@ void TabModalDialogManager::RunJavaScriptDialog(
       }
       case content::JAVASCRIPT_DIALOG_TYPE_CONFIRM: {
         *did_suppress_message = true;
-        alerting_web_contents->GetMainFrame()->AddMessageToConsole(
+        render_frame_host->AddMessageToConsole(
             blink::mojom::ConsoleMessageLevel::kWarning,
             base::StringPrintf(kDialogSuppressedConsoleMessageFormat, "confirm",
                                "5140698722467840"));
@@ -234,7 +222,7 @@ void TabModalDialogManager::RunJavaScriptDialog(
       }
       case content::JAVASCRIPT_DIALOG_TYPE_PROMPT: {
         *did_suppress_message = true;
-        alerting_web_contents->GetMainFrame()->AddMessageToConsole(
+        render_frame_host->AddMessageToConsole(
             blink::mojom::ConsoleMessageLevel::kWarning,
             base::StringPrintf(kDialogSuppressedConsoleMessageFormat, "prompt",
                                "5637107137642496"));
@@ -250,16 +238,16 @@ void TabModalDialogManager::RunJavaScriptDialog(
   const int kMessageTextMaxRows = 24;
   const int kMessageTextMaxCols = 80;
   const size_t kDefaultPromptMaxSize = 2000;
-  base::string16 truncated_message_text;
+  std::u16string truncated_message_text;
   gfx::ElideRectangleString(message_text, kMessageTextMaxRows,
                             kMessageTextMaxCols, false,
                             &truncated_message_text);
-  base::string16 truncated_default_prompt_text;
+  std::u16string truncated_default_prompt_text;
   gfx::ElideString(default_prompt_text, kDefaultPromptMaxSize,
                    &truncated_default_prompt_text);
 
-  base::string16 title = GetAppModalDialogManager()->GetTitle(
-      alerting_web_contents, alerting_frame_url);
+  std::u16string title = GetAppModalDialogManager()->GetTitle(
+      alerting_web_contents, render_frame_host->GetLastCommittedOrigin());
   dialog_callback_ = std::move(callback);
   dialog_type_ = dialog_type;
   if (make_pending) {
@@ -273,7 +261,7 @@ void TabModalDialogManager::RunJavaScriptDialog(
                        DismissalCause::kDialogButtonClicked),
         base::BindOnce(&TabModalDialogManager::CloseDialog,
                        base::Unretained(this), DismissalCause::kDialogClosed,
-                       false, base::string16()));
+                       false, std::u16string()));
   } else {
     DCHECK(!pending_dialog_);
     dialog_ = delegate_->CreateNewDialog(
@@ -284,7 +272,7 @@ void TabModalDialogManager::RunJavaScriptDialog(
                        DismissalCause::kDialogButtonClicked),
         base::BindOnce(&TabModalDialogManager::CloseDialog,
                        base::Unretained(this), DismissalCause::kDialogClosed,
-                       false, base::string16()));
+                       false, std::u16string()));
   }
 
   delegate_->WillRunDialog();
@@ -331,7 +319,7 @@ void TabModalDialogManager::RunBeforeUnloadDialog(
 bool TabModalDialogManager::HandleJavaScriptDialog(
     content::WebContents* web_contents,
     bool accept,
-    const base::string16* prompt_override) {
+    const std::u16string* prompt_override) {
   if (dialog_ || pending_dialog_) {
     CloseDialog(DismissalCause::kHandleDialogCalled, accept,
                 prompt_override ? *prompt_override : dialog_->GetUserInput());
@@ -345,7 +333,7 @@ bool TabModalDialogManager::HandleJavaScriptDialog(
 
 void TabModalDialogManager::CancelDialogs(content::WebContents* web_contents,
                                           bool reset_state) {
-  CloseDialog(DismissalCause::kCancelDialogsCalled, false, base::string16());
+  CloseDialog(DismissalCause::kCancelDialogsCalled, false, std::u16string());
 
   // Cancel any app-modal dialogs being run by the app-modal dialog system.
   return GetAppModalDialogManager()->CancelDialogs(web_contents, reset_state);
@@ -364,15 +352,19 @@ void TabModalDialogManager::OnVisibilityChanged(
 
 void TabModalDialogManager::DidStartNavigation(
     content::NavigationHandle* navigation_handle) {
+  if (!navigation_handle->IsInPrimaryMainFrame())
+    return;
+
   // Close the dialog if the user started a new navigation. This allows reloads
   // and history navigations to proceed.
-  CloseDialog(DismissalCause::kTabNavigated, false, base::string16());
+  CloseDialog(DismissalCause::kTabNavigated, false, std::u16string());
 }
 
 TabModalDialogManager::TabModalDialogManager(
     content::WebContents* web_contents,
     std::unique_ptr<TabModalDialogManagerDelegate> delegate)
     : content::WebContentsObserver(web_contents),
+      content::WebContentsUserData<TabModalDialogManager>(*web_contents),
       delegate_(std::move(delegate)) {}
 
 void TabModalDialogManager::LogDialogDismissalCause(DismissalCause cause) {
@@ -385,8 +377,9 @@ void TabModalDialogManager::LogDialogDismissalCause(DismissalCause cause) {
   // WebContents that had the alert call in it. For 99.9999% of cases they're
   // the same, but for instances like the <webview> tag in extensions and PDF
   // files that alert they may differ.
-  ukm::SourceId source_id = ukm::GetSourceIdForWebContentsDocument(
-      WebContentsObserver::web_contents());
+  ukm::SourceId source_id = WebContentsObserver::web_contents()
+                                ->GetPrimaryMainFrame()
+                                ->GetPageUkmSourceId();
   if (source_id != ukm::kInvalidSourceId) {
     ukm::builders::AbusiveExperienceHeuristic_JavaScriptDialog(source_id)
         .SetDismissalCause(static_cast<int64_t>(cause))
@@ -404,17 +397,17 @@ void TabModalDialogManager::HandleTabSwitchAway(DismissalCause cause) {
     // When the user switches tabs, make the callback so that the render process
     // can continue.
     if (dialog_callback_) {
-      std::move(dialog_callback_).Run(true, base::string16());
+      std::move(dialog_callback_).Run(true, std::u16string());
       dialog_callback_.Reset();
     }
   } else {
-    CloseDialog(cause, false, base::string16());
+    CloseDialog(cause, false, std::u16string());
   }
 }
 
 void TabModalDialogManager::CloseDialog(DismissalCause cause,
                                         bool success,
-                                        const base::string16& user_input) {
+                                        const std::u16string& user_input) {
   if (!dialog_ && !pending_dialog_)
     return;
 
@@ -453,6 +446,6 @@ void TabModalDialogManager::CloseDialog(DismissalCause cause,
   delegate_->DidCloseDialog();
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(TabModalDialogManager)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(TabModalDialogManager);
 
 }  // namespace javascript_dialogs

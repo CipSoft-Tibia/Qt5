@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,6 +26,10 @@ const char kSubresourceFilterRulesetChecksum[] =
 
 UnindexedRulesetInfo::UnindexedRulesetInfo() = default;
 UnindexedRulesetInfo::~UnindexedRulesetInfo() = default;
+UnindexedRulesetInfo::UnindexedRulesetInfo(const UnindexedRulesetInfo&) =
+    default;
+UnindexedRulesetInfo& UnindexedRulesetInfo::operator=(
+    const UnindexedRulesetInfo&) = default;
 
 IndexedRulesetVersion::IndexedRulesetVersion() = default;
 IndexedRulesetVersion::IndexedRulesetVersion(const std::string& content_version,

@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 // An example exercising more than a single feature. Enables profiling
 // (resource logging to a file) and inserts debug markers and sets some
@@ -62,9 +15,8 @@
 
 #include <QFileInfo>
 #include <QFile>
-#include <QtGui/private/qrhiprofiler_p.h>
+#include <QElapsedTimer>
 
-#define PROFILE_TO_FILE
 //#define SKIP_PRESENT
 //#define USE_MSAA
 //#define USE_SRGB_SWAPCHAIN
@@ -83,18 +35,11 @@ struct {
     QSize lastOutputSize;
     int frameCount = 0;
     QFile profOut;
+    QElapsedTimer gpuFrameTimePrintTimer;
 } d;
 
 void preInit()
 {
-#ifdef PROFILE_TO_FILE
-    rhiFlags |= QRhi::EnableProfiling;
-    const QString profFn = QFileInfo(QLatin1String("rhiprof.txt")).absoluteFilePath();
-    qDebug("Writing profiling output to %s", qPrintable(profFn));
-    d.profOut.setFileName(profFn);
-    d.profOut.open(QIODevice::WriteOnly);
-#endif
-
 #ifdef SKIP_PRESENT
     endFrameFlags |= QRhi::SkipPresent;
 #endif
@@ -129,10 +74,6 @@ void preInit()
 
 void Window::customInit()
 {
-#ifdef PROFILE_TO_FILE
-    m_r->profiler()->setDevice(&d.profOut);
-#endif
-
     d.triRenderer.setRhi(m_r);
     d.triRenderer.setSampleCount(sampleCount);
     d.triRenderer.initResources(m_rp);
@@ -159,10 +100,6 @@ void Window::customInit()
         d.liveTexCubeRenderer.setTranslation(QVector3D(-2.0f, 0, 0));
     }
 
-    // Put the gpu mem allocator statistics to the profiling stream after doing
-    // all the init. (where applicable)
-    m_r->profiler()->addVMemAllocatorStats();
-
     // Check some features/limits.
     qDebug("isFeatureSupported(MultisampleTexture): %d", m_r->isFeatureSupported(QRhi::MultisampleTexture));
     qDebug("isFeatureSupported(MultisampleRenderBuffer): %d", m_r->isFeatureSupported(QRhi::MultisampleRenderBuffer));
@@ -181,9 +118,25 @@ void Window::customInit()
     qDebug("isFeatureSupported(VertexShaderPointSize): %d", m_r->isFeatureSupported(QRhi::VertexShaderPointSize));
     qDebug("isFeatureSupported(BaseVertex): %d", m_r->isFeatureSupported(QRhi::BaseVertex));
     qDebug("isFeatureSupported(BaseInstance): %d", m_r->isFeatureSupported(QRhi::BaseInstance));
+    qDebug("isFeatureSupported(PipelineCacheDataLoadSave): %d", m_r->isFeatureSupported(QRhi::PipelineCacheDataLoadSave));
     qDebug("Min 2D texture width/height: %d", m_r->resourceLimit(QRhi::TextureSizeMin));
     qDebug("Max 2D texture width/height: %d", m_r->resourceLimit(QRhi::TextureSizeMax));
     qDebug("Max color attachment count: %d", m_r->resourceLimit(QRhi::MaxColorAttachments));
+    qDebug("MaxThreadGroupsPerDimension: %d", m_r->resourceLimit(QRhi::MaxThreadGroupsPerDimension));
+    qDebug("MaxThreadsPerThreadGroup: %d", m_r->resourceLimit(QRhi::MaxThreadsPerThreadGroup));
+    qDebug("MaxThreadGroupX: %d", m_r->resourceLimit(QRhi::MaxThreadGroupX));
+    qDebug("MaxThreadGroupY: %d", m_r->resourceLimit(QRhi::MaxThreadGroupY));
+    qDebug("MaxThreadGroupZ: %d", m_r->resourceLimit(QRhi::MaxThreadGroupZ));
+    qDebug("TextureArraySizeMax: %d", m_r->resourceLimit(QRhi::TextureArraySizeMax));
+    qDebug("MaxUniformBufferRange: %d", m_r->resourceLimit(QRhi::MaxUniformBufferRange));
+    qDebug("MaxVertexInputs: %d", m_r->resourceLimit(QRhi::MaxVertexInputs));
+    qDebug("MaxVertexOutputs: %d", m_r->resourceLimit(QRhi::MaxVertexOutputs));
+
+    // With Vulkan at least we should see some details from the memory allocator.
+    qDebug() << m_r->statistics();
+
+    // Every two seconds try printing last known gpu frame time.
+    d.gpuFrameTimePrintTimer.start();
 }
 
 void Window::customRelease()
@@ -203,6 +156,11 @@ void Window::customRender()
 {
     const QSize outputSize = m_sc->currentPixelSize();
     QRhiCommandBuffer *cb = m_sc->currentFrameCommandBuffer();
+
+    if (d.gpuFrameTimePrintTimer.elapsed() > 2000) {
+        qDebug() << "Last completed GPU frame time" << cb->lastCompletedGpuTime() << "seconds";
+        d.gpuFrameTimePrintTimer.restart();
+    }
 
     if (outputSize != d.lastOutputSize) {
         d.triRenderer.resize(outputSize);

@@ -123,7 +123,7 @@ int sqlite3BtreeIncrVacuum(Btree *);
 #define BTREE_BLOBKEY    2    /* Table has keys only - no data */
 
 int sqlite3BtreeDropTable(Btree*, int, int*);
-int sqlite3BtreeClearTable(Btree*, int, int*);
+int sqlite3BtreeClearTable(Btree*, int, i64*);
 int sqlite3BtreeClearTableOfCursor(BtCursor*);
 int sqlite3BtreeTripAllCursors(Btree*, int, int);
 
@@ -183,7 +183,7 @@ int sqlite3BtreeNewDb(Btree *p);
 **     reduce network bandwidth.
 **
 ** Note that BTREE_HINT_FLAGS with BTREE_BULKLOAD is the only hint used by
-** standard SQLite.  The other hints are provided for extentions that use
+** standard SQLite.  The other hints are provided for extensions that use
 ** the SQLite parser and code generator but substitute their own storage
 ** engine.
 */
@@ -247,11 +247,15 @@ void sqlite3BtreeCursorHint(BtCursor*, int, ...);
 #endif
 
 int sqlite3BtreeCloseCursor(BtCursor*);
-int sqlite3BtreeMovetoUnpacked(
+int sqlite3BtreeTableMoveto(
   BtCursor*,
-  UnpackedRecord *pUnKey,
   i64 intKey,
   int bias,
+  int *pRes
+);
+int sqlite3BtreeIndexMoveto(
+  BtCursor*,
+  UnpackedRecord *pUnKey,
   int *pRes
 );
 int sqlite3BtreeCursorHasMoved(BtCursor*);
@@ -325,7 +329,15 @@ const void *sqlite3BtreePayloadFetch(BtCursor*, u32 *pAmt);
 u32 sqlite3BtreePayloadSize(BtCursor*);
 sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor*);
 
-char *sqlite3BtreeIntegrityCheck(sqlite3*,Btree*,Pgno*aRoot,int nRoot,int,int*);
+int sqlite3BtreeIntegrityCheck(
+  sqlite3 *db,  /* Database connection that is running the check */
+  Btree *p,     /* The btree to be checked */
+  Pgno *aRoot,  /* An array of root pages numbers for individual trees */
+  int nRoot,    /* Number of entries in aRoot[] */
+  int mxErr,    /* Stop reporting errors after this many */
+  int *pnErr,   /* OUT: Write number of errors seen to this variable */
+  char **pzOut  /* OUT: Write the error message string here */
+);
 struct Pager *sqlite3BtreePager(Btree*);
 i64 sqlite3BtreeRowCountEst(BtCursor*);
 
@@ -363,6 +375,8 @@ void sqlite3BtreeCursorList(Btree*);
 #endif
 
 int sqlite3BtreeTransferRow(BtCursor*, BtCursor*, i64);
+
+void sqlite3BtreeClearCache(Btree*);
 
 /*
 ** If we are not using shared cache, then there is no need to

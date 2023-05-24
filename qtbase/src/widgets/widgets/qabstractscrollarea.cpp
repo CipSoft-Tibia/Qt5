@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractscrollarea.h"
 
@@ -67,6 +31,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QAbstractScrollArea
@@ -202,7 +168,7 @@ void QAbstractScrollAreaScrollBarContainer::addWidget(QWidget *widget, LogicalPo
 }
 
 /*! \internal
-    Retuns a list of scroll bar widgets for the given position. The scroll bar
+    Returns a list of scroll-bar widgets for the given position. The scroll bar
     itself is not returned.
 */
 QWidgetList QAbstractScrollAreaScrollBarContainer::widgets(LogicalPosition position)
@@ -282,11 +248,11 @@ void QAbstractScrollAreaPrivate::init()
 {
     Q_Q(QAbstractScrollArea);
     viewport = new QWidget(q);
-    viewport->setObjectName(QLatin1String("qt_scrollarea_viewport"));
+    viewport->setObjectName("qt_scrollarea_viewport"_L1);
     viewport->setBackgroundRole(QPalette::Base);
     viewport->setAutoFillBackground(true);
     scrollBarContainers[Qt::Horizontal] = new QAbstractScrollAreaScrollBarContainer(Qt::Horizontal, q);
-    scrollBarContainers[Qt::Horizontal]->setObjectName(QLatin1String("qt_scrollarea_hcontainer"));
+    scrollBarContainers[Qt::Horizontal]->setObjectName("qt_scrollarea_hcontainer"_L1);
     hbar = scrollBarContainers[Qt::Horizontal]->scrollBar;
     hbar->setRange(0,0);
     scrollBarContainers[Qt::Horizontal]->setVisible(false);
@@ -294,7 +260,7 @@ void QAbstractScrollAreaPrivate::init()
     QObject::connect(hbar, SIGNAL(valueChanged(int)), q, SLOT(_q_hslide(int)));
     QObject::connect(hbar, SIGNAL(rangeChanged(int,int)), q, SLOT(_q_showOrHideScrollBars()), Qt::QueuedConnection);
     scrollBarContainers[Qt::Vertical] = new QAbstractScrollAreaScrollBarContainer(Qt::Vertical, q);
-    scrollBarContainers[Qt::Vertical]->setObjectName(QLatin1String("qt_scrollarea_vcontainer"));
+    scrollBarContainers[Qt::Vertical]->setObjectName("qt_scrollarea_vcontainer"_L1);
     vbar = scrollBarContainers[Qt::Vertical]->scrollBar;
     vbar->setRange(0,0);
     scrollBarContainers[Qt::Vertical]->setVisible(false);
@@ -329,21 +295,24 @@ void QAbstractScrollAreaPrivate::layoutChildren()
 void QAbstractScrollAreaPrivate::layoutChildren_helper(bool *needHorizontalScrollbar, bool *needVerticalScrollbar)
 {
     Q_Q(QAbstractScrollArea);
-    bool htransient = hbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, hbar);
+    QStyleOptionSlider barOpt;
+
+    hbar->initStyleOption(&barOpt);
+    bool htransient = hbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, &barOpt, hbar);
     bool needh = *needHorizontalScrollbar || ((hbarpolicy != Qt::ScrollBarAlwaysOff) && ((hbarpolicy == Qt::ScrollBarAlwaysOn && !htransient)
                             || ((hbarpolicy == Qt::ScrollBarAsNeeded || htransient)
                             && hbar->minimum() < hbar->maximum() && !hbar->sizeHint().isEmpty())));
+    const int hscrollOverlap = hbar->style()->pixelMetric(QStyle::PM_ScrollView_ScrollBarOverlap, &barOpt, hbar);
 
-    bool vtransient = vbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, vbar);
+    vbar->initStyleOption(&barOpt);
+    bool vtransient = vbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, &barOpt, vbar);
     bool needv = *needVerticalScrollbar || ((vbarpolicy != Qt::ScrollBarAlwaysOff) && ((vbarpolicy == Qt::ScrollBarAlwaysOn && !vtransient)
                             || ((vbarpolicy == Qt::ScrollBarAsNeeded || vtransient)
                             && vbar->minimum() < vbar->maximum() && !vbar->sizeHint().isEmpty())));
+    const int vscrollOverlap = vbar->style()->pixelMetric(QStyle::PM_ScrollView_ScrollBarOverlap, &barOpt, vbar);
 
     QStyleOption opt(0);
-    opt.init(q);
-
-    const int hscrollOverlap = hbar->style()->pixelMetric(QStyle::PM_ScrollView_ScrollBarOverlap, &opt, hbar);
-    const int vscrollOverlap = vbar->style()->pixelMetric(QStyle::PM_ScrollView_ScrollBarOverlap, &opt, vbar);
+    opt.initFrom(q);
 
     const int hsbExt = hbar->sizeHint().height();
     const int vsbExt = vbar->sizeHint().width();
@@ -402,7 +371,7 @@ void QAbstractScrollAreaPrivate::layoutChildren_helper(bool *needHorizontalScrol
 #if QT_CONFIG(itemviews)
     if ((vscrollOverlap > 0 && needv) || (hscrollOverlap > 0 && needh)) {
         const QList<QHeaderView *> headers = q->findChildren<QHeaderView*>();
-        if (headers.count() <= 2) {
+        if (headers.size() <= 2) {
             for (const QHeaderView *header : headers) {
                 const QRect geo = header->geometry();
                 if (header->orientation() == Qt::Vertical && header->isVisible() && QStyle::visualRect(opt.direction, opt.rect, geo).left() <= opt.rect.width() / 2)
@@ -566,15 +535,13 @@ scrolling range.
 QSize QAbstractScrollArea::maximumViewportSize() const
 {
     Q_D(const QAbstractScrollArea);
-    int hsbExt = d->hbar->sizeHint().height();
-    int vsbExt = d->vbar->sizeHint().width();
-
     int f = 2 * d->frameWidth;
     QSize max = size() - QSize(f + d->left + d->right, f + d->top + d->bottom);
+    // Count the sizeHint of the bar only if it is displayed.
     if (d->vbarpolicy == Qt::ScrollBarAlwaysOn)
-        max.rwidth() -= vsbExt;
+        max.rwidth() -= d->vbar->sizeHint().width();
     if (d->hbarpolicy == Qt::ScrollBarAlwaysOn)
-        max.rheight() -= hsbExt;
+        max.rheight() -= d->hbar->sizeHint().height();
     return max;
 }
 
@@ -838,7 +805,7 @@ QWidgetList QAbstractScrollArea::scrollBarWidgets(Qt::Alignment alignment)
 /*!
     Sets the margins around the scrolling area to \a left, \a top, \a
     right and \a bottom. This is useful for applications such as
-    spreadsheets with "locked" rows and columns. The marginal space is
+    spreadsheets with "locked" rows and columns. The marginal space
     is left blank; put widgets in the unused area.
 
     Note that this function is frequently called by QTreeView and
@@ -1133,7 +1100,7 @@ void QAbstractScrollArea::resizeEvent(QResizeEvent *)
     This event handler can be reimplemented in a subclass to receive
     paint events (passed in \a event), for the viewport() widget.
 
-    \note If you open a painter, make sure to open it on the viewport().
+    \note If you create a QPainter, it must operate on the viewport().
 
     \sa QWidget::paintEvent()
 */
@@ -1363,38 +1330,27 @@ void QAbstractScrollArea::scrollContentsBy(int, int)
     viewport()->update();
 }
 
-bool QAbstractScrollAreaPrivate::canStartScrollingAt( const QPoint &startPos )
+bool QAbstractScrollAreaPrivate::canStartScrollingAt(const QPoint &startPos) const
 {
-    Q_Q(QAbstractScrollArea);
-
-#if QT_CONFIG(graphicsview)
-    // don't start scrolling when a drag mode has been set.
-    // don't start scrolling on a movable item.
-    if (QGraphicsView *view = qobject_cast<QGraphicsView *>(q)) {
-        if (view->dragMode() != QGraphicsView::NoDrag)
-            return false;
-
-        QGraphicsItem *childItem = view->itemAt(startPos);
-
-        if (childItem && (childItem->flags() & QGraphicsItem::ItemIsMovable))
-            return false;
-    }
-#endif
+    Q_Q(const QAbstractScrollArea);
 
     // don't start scrolling on a QAbstractSlider
-    if (qobject_cast<QAbstractSlider *>(q->viewport()->childAt(startPos))) {
+    if (qobject_cast<QAbstractSlider *>(q->viewport()->childAt(startPos)))
         return false;
-    }
 
     return true;
 }
 
 void QAbstractScrollAreaPrivate::flashScrollBars()
 {
-    bool htransient = hbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, hbar);
+    QStyleOptionSlider opt;
+    hbar->initStyleOption(&opt);
+
+    bool htransient = hbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, &opt, hbar);
     if ((hbarpolicy != Qt::ScrollBarAlwaysOff) && (hbarpolicy == Qt::ScrollBarAsNeeded || htransient))
         hbar->d_func()->flash();
-    bool vtransient = vbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, nullptr, vbar);
+    vbar->initStyleOption(&opt);
+    bool vtransient = vbar->style()->styleHint(QStyle::SH_ScrollBar_Transient, &opt, vbar);
     if ((vbarpolicy != Qt::ScrollBarAlwaysOff) && (vbarpolicy == Qt::ScrollBarAsNeeded || vtransient))
         vbar->d_func()->flash();
 }
@@ -1475,9 +1431,9 @@ QSize QAbstractScrollArea::sizeHint() const
 
     if (!d->sizeHint.isValid() || d->sizeAdjustPolicy == QAbstractScrollArea::AdjustToContents) {
         const int f = 2 * d->frameWidth;
-        const QSize frame( f, f );
-        const bool vbarHidden = d->vbar->isHidden() || d->vbarpolicy == Qt::ScrollBarAlwaysOff;
-        const bool hbarHidden = d->hbar->isHidden() || d->hbarpolicy == Qt::ScrollBarAlwaysOff;
+        const QSize frame(f, f);
+        const bool vbarHidden = !d->vbar->isVisibleTo(this) || d->vbarpolicy == Qt::ScrollBarAlwaysOff;
+        const bool hbarHidden = !d->vbar->isVisibleTo(this) || d->hbarpolicy == Qt::ScrollBarAlwaysOff;
         const QSize scrollbars(vbarHidden ? 0 : d->vbar->sizeHint().width(),
                                hbarHidden ? 0 : d->hbar->sizeHint().height());
         d->sizeHint = frame + scrollbars + viewportSizeHint();
@@ -1507,7 +1463,7 @@ QSize QAbstractScrollArea::viewportSizeHint() const
 /*!
     \since 5.2
     \property QAbstractScrollArea::sizeAdjustPolicy
-    This property holds the policy describing how the size of the scroll area changes when the
+    \brief the policy describing how the size of the scroll area changes when the
     size of the viewport changes.
 
     The default policy is QAbstractScrollArea::AdjustIgnored.

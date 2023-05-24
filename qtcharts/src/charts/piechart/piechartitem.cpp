@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/qpieslice.h>
 #include <QtCharts/qpieseries.h>
@@ -39,7 +13,7 @@
 #include <private/chartdataset_p.h>
 #include <private/pieanimation_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 PieChartItem::PieChartItem(QPieSeries *series, QGraphicsItem* item)
     : ChartItem(series->d_func(),item),
@@ -156,7 +130,7 @@ void PieChartItem::updateLayout()
     foreach (QPieSlice *slice, m_series->slices()) {
         PieSliceItem *sliceItem = m_sliceItems.value(slice);
         if (sliceItem) {
-            PieSliceData sliceData = updateSliceGeometry(slice);
+            const PieSliceData sliceData = updateSliceGeometry(slice);
             if (m_animation)
                 presenter()->startAnimation(m_animation->updateValue(sliceItem, sliceData));
             else
@@ -167,7 +141,7 @@ void PieChartItem::updateLayout()
     update();
 }
 
-void PieChartItem::handleSlicesAdded(QList<QPieSlice *> slices)
+void PieChartItem::handleSlicesAdded(const QList<QPieSlice *> &slices)
 {
     // delay creating slice items until there is a proper rectangle
     if (!m_rect.isValid() && m_sliceItems.isEmpty())
@@ -177,7 +151,7 @@ void PieChartItem::handleSlicesAdded(QList<QPieSlice *> slices)
 
     bool startupAnimation = m_sliceItems.isEmpty();
 
-    foreach(QPieSlice * slice, slices) {
+    for (auto *slice : slices) {
         PieSliceItem *sliceItem = new PieSliceItem(this);
         m_sliceItems.insert(slice, sliceItem);
 
@@ -210,11 +184,11 @@ void PieChartItem::handleSlicesAdded(QList<QPieSlice *> slices)
     }
 }
 
-void PieChartItem::handleSlicesRemoved(QList<QPieSlice *> slices)
+void PieChartItem::handleSlicesRemoved(const QList<QPieSlice *> &slices)
 {
     themeManager()->updateSeries(m_series);
 
-    foreach (QPieSlice *slice, slices) {
+    for (auto *slice : slices) {
 
         PieSliceItem *sliceItem = m_sliceItems.value(slice);
 
@@ -271,6 +245,6 @@ PieSliceData PieChartItem::updateSliceGeometry(QPieSlice *slice)
     return sliceData;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_piechartitem_p.cpp"

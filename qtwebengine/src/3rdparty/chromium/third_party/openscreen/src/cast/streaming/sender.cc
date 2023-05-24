@@ -9,14 +9,16 @@
 #include <ratio>
 
 #include "cast/streaming/session_config.h"
+#include "platform/base/trivial_clock_traits.h"
 #include "util/chrono_helpers.h"
 #include "util/osp_logging.h"
 #include "util/std_util.h"
+#include "util/trace_logging.h"
 
 namespace openscreen {
 namespace cast {
 
-using openscreen::operator<<;  // For std::chrono::duration logging.
+using clock_operators::operator<<;
 
 Sender::Sender(Environment* environment,
                SenderPacketRouter* packet_router,
@@ -94,6 +96,10 @@ FrameId Sender::GetNextFrameId() const {
   return last_enqueued_frame_id_ + 1;
 }
 
+Clock::duration Sender::GetCurrentRoundTripTime() const {
+  return round_trip_time_;
+}
+
 Sender::EnqueueFrameResult Sender::EnqueueFrame(const EncodedFrame& frame) {
   // Assume the fields of the |frame| have all been set correctly, with
   // monotonically increasing timestamps and a valid pointer to the data.
@@ -136,7 +142,7 @@ Sender::EnqueueFrameResult Sender::EnqueueFrame(const EncodedFrame& frame) {
   last_enqueued_frame_id_ = slot->frame->frame_id;
   OSP_DCHECK_LE(num_frames_in_flight_,
                 last_enqueued_frame_id_ - checkpoint_frame_id_);
-  if (slot->frame->dependency == EncodedFrame::KEY_FRAME) {
+  if (slot->frame->dependency == EncodedFrame::Dependency::kKeyFrame) {
     last_enqueued_key_frame_id_ = slot->frame->frame_id;
   }
 
@@ -168,6 +174,17 @@ Sender::EnqueueFrameResult Sender::EnqueueFrame(const EncodedFrame& frame) {
   packet_router_->RequestRtpSend(rtcp_session_.receiver_ssrc());
 
   return OK;
+}
+
+void Sender::CancelInFlightData() {
+  TRACE_SCOPED1(TraceCategory::kSender, "CancelInFlightData",
+                "frames_in_flight",
+                std::to_string(last_enqueued_frame_id_ - checkpoint_frame_id_));
+
+  while (checkpoint_frame_id_ < last_enqueued_frame_id_) {
+    ++checkpoint_frame_id_;
+    CancelPendingFrame(checkpoint_frame_id_);
+  }
 }
 
 void Sender::OnReceivedRtcpPacket(Clock::time_point arrival_time,
@@ -304,10 +321,12 @@ void Sender::OnReceiverReport(const RtcpReportBlock& receiver_report) {
     round_trip_time_ =
         (kInertia * round_trip_time_ + measurement) / (kInertia + 1);
   }
-  // TODO(miu): Add tracing event here to note the updated RTT.
+  TRACE_SCOPED1(TraceCategory::kSender, "UpdatedRoundTripTime",
+                "round_trip_time", ToString(round_trip_time_));
 }
 
 void Sender::OnReceiverIndicatesPictureLoss() {
+  TRACE_SCOPED(TraceCategory::kSender, "OnReceiverIndicatesPictureLoss");
   // The Receiver will continue the PLI notifications until it has received a
   // key frame. Thus, if a key frame is already in-flight, don't make a state
   // change that would cause this Sender to force another expensive key frame.
@@ -335,6 +354,8 @@ void Sender::OnReceiverIndicatesPictureLoss() {
 
 void Sender::OnReceiverCheckpoint(FrameId frame_id,
                                   milliseconds playout_delay) {
+  TRACE_SCOPED2(TraceCategory::kSender, "OnReceiverCheckpoint", "frame_id",
+                frame_id.ToString(), "playout_delay", ToString(playout_delay));
   if (frame_id > last_enqueued_frame_id_) {
     OSP_LOG_ERROR
         << "Ignoring checkpoint for " << latest_expected_frame_id_
@@ -360,6 +381,8 @@ void Sender::OnReceiverCheckpoint(FrameId frame_id,
 
 void Sender::OnReceiverHasFrames(std::vector<FrameId> acks) {
   OSP_DCHECK(!acks.empty() && AreElementsSortedAndUnique(acks));
+  TRACE_SCOPED1(TraceCategory::kSender, "OnReceiverHasFrames", "frame_ids",
+                Join(acks));
 
   if (acks.back() > last_enqueued_frame_id_) {
     OSP_LOG_ERROR << "Ignoring individual frame ACKs: ACKing frame "
@@ -377,6 +400,8 @@ void Sender::OnReceiverHasFrames(std::vector<FrameId> acks) {
 }
 
 void Sender::OnReceiverIsMissingPackets(std::vector<PacketNack> nacks) {
+  TRACE_SCOPED1(TraceCategory::kSender, "OnReceiverIsMissingPackets",
+                "number_of_packets", std::to_string(nacks.size()));
   OSP_DCHECK(!nacks.empty() && AreElementsSortedAndUnique(nacks));
   OSP_DCHECK_NE(rtcp_packet_arrival_time_, SenderPacketRouter::kNever);
 
@@ -408,14 +433,13 @@ void Sender::OnReceiverIsMissingPackets(std::vector<PacketNack> nacks) {
     // happen in rare cases where RTCP packets arrive out-of-order (i.e., the
     // network shuffled them).
     if (!slot) {
-      // TODO(miu): Add tracing event here to record this.
+      TRACE_SCOPED(TraceCategory::kSender, "MissingNackSlot");
       for (++nack_it; nack_it != nacks.end() && nack_it->frame_id == frame_id;
            ++nack_it) {
       }
       continue;
     }
 
-    // NOLINTNEXTLINE
     latest_expected_frame_id_ = std::max(latest_expected_frame_id_, frame_id);
 
     const auto HandleIndividualNack = [&](FramePacketId packet_id) {
@@ -513,6 +537,8 @@ Sender::ChosenPacketAndWhen Sender::ChooseKickstartPacket() {
 }
 
 void Sender::CancelPendingFrame(FrameId frame_id) {
+  TRACE_SCOPED1(TraceCategory::kSender, "CancelPendingFrame", "frame_id",
+                frame_id.ToString());
   PendingFrameSlot* const slot = get_slot_for(frame_id);
   if (!slot->is_active_for_frame(frame_id)) {
     return;  // Frame was already canceled.

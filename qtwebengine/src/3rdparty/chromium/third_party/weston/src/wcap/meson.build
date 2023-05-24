@@ -15,7 +15,7 @@ endif
 executable(
 	'wcap-decode',
 	srcs_wcap,
-	include_directories: include_directories('..'),
+	include_directories: common_inc,
 	dependencies: [ dep_libm, wcap_dep_cairo ],
 	install: true
 )

@@ -80,8 +80,11 @@ class BufferPool
                            size_t *offsetOut           = nullptr,
                            bool *newBufferAllocatedOut = nullptr);
 
-    // After a sequence of CPU writes, call commit to ensure the data is visible to the device.
-    angle::Result commit(ContextMtl *contextMtl);
+    // After a sequence of CPU writes, call commit to ensure the data is visible to the GPU.
+    // Note: the data will only be made visible to the GPU if the buffer's storage mode is not
+    // shared AND a non-null pointer was passed to allocate(). Otherwise, this call only advances
+    // the flush pointer.
+    angle::Result commit(ContextMtl *contextMtl, bool flushEntireBuffer = false);
 
     // This releases all the buffers that have been allocated since this was last called.
     void releaseInFlightBuffers(ContextMtl *contextMtl);
@@ -114,7 +117,6 @@ class BufferPool
     angle::Result allocateNewBuffer(ContextMtl *contextMtl);
     void destroyBufferList(ContextMtl *contextMtl, std::deque<BufferRef> *buffers);
     angle::Result finalizePendingBuffer(ContextMtl *contextMtl);
-
     size_t mInitialSize;
     BufferRef mBuffer;
     uint32_t mNextAllocationOffset;

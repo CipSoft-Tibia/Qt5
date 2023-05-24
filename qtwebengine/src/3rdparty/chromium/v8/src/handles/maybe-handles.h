@@ -45,6 +45,7 @@ class MaybeHandle final {
       : location_(maybe_handle.location_) {}
 
   V8_INLINE MaybeHandle(T object, Isolate* isolate);
+  V8_INLINE MaybeHandle(T object, LocalHeap* local_heap);
 
   V8_INLINE void Assert() const { DCHECK_NOT_NULL(location_); }
   V8_INLINE void Check() const { CHECK_NOT_NULL(location_); }
@@ -91,6 +92,8 @@ class MaybeObjectHandle {
       : reference_type_(HeapObjectReferenceType::STRONG) {}
   inline MaybeObjectHandle(MaybeObject object, Isolate* isolate);
   inline MaybeObjectHandle(Object object, Isolate* isolate);
+  inline MaybeObjectHandle(MaybeObject object, LocalHeap* local_heap);
+  inline MaybeObjectHandle(Object object, LocalHeap* local_heap);
   inline explicit MaybeObjectHandle(Handle<Object> object);
 
   static inline MaybeObjectHandle Weak(Object object, Isolate* isolate);
@@ -100,15 +103,7 @@ class MaybeObjectHandle {
   inline MaybeObject operator->() const;
   inline Handle<Object> object() const;
 
-  bool is_identical_to(const MaybeObjectHandle& other) const {
-    Handle<Object> this_handle;
-    Handle<Object> other_handle;
-    return reference_type_ == other.reference_type_ &&
-           handle_.ToHandle(&this_handle) ==
-               other.handle_.ToHandle(&other_handle) &&
-           this_handle.is_identical_to(other_handle);
-  }
-
+  inline bool is_identical_to(const MaybeObjectHandle& other) const;
   bool is_null() const { return handle_.is_null(); }
 
  private:
@@ -121,6 +116,71 @@ class MaybeObjectHandle {
   HeapObjectReferenceType reference_type_;
   MaybeHandle<Object> handle_;
 };
+
+#ifdef V8_ENABLE_CONSERVATIVE_STACK_SCANNING
+
+template <typename T>
+class DirectMaybeHandle final {
+ public:
+  V8_INLINE DirectMaybeHandle() = default;
+
+  V8_INLINE DirectMaybeHandle(NullMaybeHandleType) {}
+
+  // Constructor for handling automatic up casting from DirectHandle.
+  // Ex. DirectHandle<JSArray> can be passed when DirectMaybeHandle<Object> is
+  // expected.
+  template <typename S, typename = typename std::enable_if<
+                            std::is_convertible<S*, T*>::value>::type>
+  V8_INLINE DirectMaybeHandle(DirectHandle<S> handle)
+      : location_(handle.location_) {}
+
+  // Constructor for handling automatic up casting.
+  // Ex. DirectMaybeHandle<JSArray> can be passed when DirectHandle<Object> is
+  // expected.
+  template <typename S, typename = typename std::enable_if<
+                            std::is_convertible<S*, T*>::value>::type>
+  V8_INLINE DirectMaybeHandle(DirectMaybeHandle<S> maybe_handle)
+      : location_(maybe_handle.location_) {}
+
+  V8_INLINE DirectMaybeHandle(T object, Isolate* isolate);
+  V8_INLINE DirectMaybeHandle(T object, LocalHeap* local_heap);
+
+  V8_INLINE void Assert() const { DCHECK_NE(location_, kTaggedNullAddress); }
+  V8_INLINE void Check() const { CHECK_NE(location_, kTaggedNullAddress); }
+
+  V8_INLINE DirectHandle<T> ToDirectHandleChecked() const {
+    Check();
+    return DirectHandle<T>(location_);
+  }
+
+  // Convert to a DirectHandle with a type that can be upcasted to.
+  template <typename S>
+  V8_WARN_UNUSED_RESULT V8_INLINE bool ToDirectHandle(
+      DirectHandle<S>* out) const {
+    if (location_ == kTaggedNullAddress) {
+      *out = DirectHandle<T>::null();
+      return false;
+    } else {
+      *out = DirectHandle<T>(location_);
+      return true;
+    }
+  }
+
+  // Returns the raw address where this direct handle is stored.
+  V8_INLINE Address address() const { return location_; }
+
+  bool is_null() const { return location_ == kTaggedNullAddress; }
+
+ protected:
+  Address location_ = kTaggedNullAddress;
+
+  // DirectMaybeHandles of different classes are allowed to access each
+  // other's location_.
+  template <typename>
+  friend class DirectMaybeHandle;
+};
+
+#endif  // V8_ENABLE_CONSERVATIVE_STACK_SCANNING
 
 }  // namespace internal
 }  // namespace v8

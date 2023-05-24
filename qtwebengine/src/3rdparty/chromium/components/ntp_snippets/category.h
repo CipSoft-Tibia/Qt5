@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,7 +35,7 @@ enum class KnownCategories {
   FOREIGN_TABS_DEPRECATED,
 
   // Pages from the user reading list.
-  READING_LIST,
+  READING_LIST_DEPRECATED,
 
   // ****************** INSERT NEW LOCAL CATEGORIES HERE! ******************
   // Existing categories are persisted and they must never be removed. This may

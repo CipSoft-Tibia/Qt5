@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,33 +8,31 @@
 #define CORE_FXCRT_CSS_CFX_CSSNUMBERVALUE_H_
 
 #include "core/fxcrt/css/cfx_cssvalue.h"
-#include "core/fxcrt/fx_system.h"
-
-enum class CFX_CSSNumberType {
-  Number,
-  Percent,
-  EMS,
-  EXS,
-  Pixels,
-  CentiMeters,
-  MilliMeters,
-  Inches,
-  Points,
-  Picas,
-};
 
 class CFX_CSSNumberValue final : public CFX_CSSValue {
  public:
-  CFX_CSSNumberValue(CFX_CSSNumberType type, float value);
+  enum class Unit {
+    kNumber,
+    kPercent,
+    kEMS,
+    kEXS,
+    kPixels,
+    kCentiMeters,
+    kMilliMeters,
+    kInches,
+    kPoints,
+    kPicas,
+  };
+
+  CFX_CSSNumberValue(Unit unit, float value);
   ~CFX_CSSNumberValue() override;
 
-  float Value() const { return value_; }
-  CFX_CSSNumberType Kind() const { return type_; }
-
+  Unit unit() const { return unit_; }
+  float value() const { return value_; }
   float Apply(float percentBase) const;
 
  private:
-  CFX_CSSNumberType type_;
+  Unit unit_;
   float value_;
 };
 

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,16 +9,11 @@
 #include <string>
 
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "content/common/content_export.h"
 #include "content/public/browser/navigation_throttle.h"
 #include "services/network/public/mojom/content_security_policy.mojom-forward.h"
-#include "services/network/public/mojom/parsed_headers.mojom-forward.h"
-
-class GURL;
-
-namespace url {
-class Origin;
-}
+#include "services/network/public/mojom/x_frame_options.mojom-forward.h"
+#include "third_party/blink/public/mojom/devtools/console_message.mojom-shared.h"
 
 namespace net {
 class HttpResponseHeaders;
@@ -31,21 +26,14 @@ class NavigationHandle;
 // rules, and blocking requests which violate them.
 class CONTENT_EXPORT AncestorThrottle : public NavigationThrottle {
  public:
-  enum class HeaderDisposition {
-    NONE = 0,
-    DENY,
-    SAMEORIGIN,
-    ALLOWALL,
-    INVALID,
-    CONFLICT
-  };
-
   static std::unique_ptr<NavigationThrottle> MaybeCreateThrottleFor(
       NavigationHandle* handle);
 
+  AncestorThrottle(const AncestorThrottle&) = delete;
+  AncestorThrottle& operator=(const AncestorThrottle&) = delete;
+
   ~AncestorThrottle() override;
 
-  NavigationThrottle::ThrottleCheckResult WillStartRequest() override;
   NavigationThrottle::ThrottleCheckResult WillRedirectRequest() override;
   NavigationThrottle::ThrottleCheckResult WillProcessResponse() override;
   const char* GetNameForLogging() override;
@@ -58,34 +46,23 @@ class CONTENT_EXPORT AncestorThrottle : public NavigationThrottle {
   FRIEND_TEST_ALL_PREFIXES(AncestorThrottleTest, ErrorsParsingXFrameOptions);
   FRIEND_TEST_ALL_PREFIXES(AncestorThrottleTest,
                            IgnoreWhenFrameAncestorsPresent);
-  FRIEND_TEST_ALL_PREFIXES(AncestorThrottleTest,
-                           AllowsBlanketEnforcementOfRequiredCSP);
 
   explicit AncestorThrottle(NavigationHandle* handle);
   NavigationThrottle::ThrottleCheckResult ProcessResponseImpl(
       LoggingDisposition logging,
       bool is_response_check);
-  void ParseXFrameOptionsError(const std::string& value,
-                               HeaderDisposition disposition);
-  void ConsoleErrorXFrameOptions(HeaderDisposition disposition);
+  void ParseXFrameOptionsError(const net::HttpResponseHeaders* headers,
+                               network::mojom::XFrameOptionsValue disposition);
+  void ConsoleErrorXFrameOptions(
+      network::mojom::XFrameOptionsValue disposition);
+  void ConsoleErrorEmbeddingRequiresOptIn();
+  void AddMessageToConsole(blink::mojom::ConsoleMessageLevel level,
+                           std::string message);
   CheckResult EvaluateXFrameOptions(LoggingDisposition logging);
   CheckResult EvaluateFrameAncestors(
       const std::vector<network::mojom::ContentSecurityPolicyPtr>&
           content_security_policy);
-  CheckResult EvaluateCSPEmbeddedEnforcement();
-  static bool AllowsBlanketEnforcementOfRequiredCSP(
-      const url::Origin& request_origin,
-      const GURL& response_url,
-      const network::mojom::AllowCSPFromHeaderValuePtr& allow_csp_from);
-
-  // Parses an 'X-Frame-Options' header. If the result is either CONFLICT
-  // or INVALID, |header_value| will be populated with the value which caused
-  // the parse error.
-  HeaderDisposition ParseXFrameOptionsHeader(
-      const net::HttpResponseHeaders* headers,
-      std::string* header_value);
-
-  DISALLOW_COPY_AND_ASSIGN(AncestorThrottle);
+  CheckResult EvaluateEmbeddingOptIn(LoggingDisposition logging);
 };
 
 }  // namespace content

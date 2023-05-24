@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,9 @@
 #include <memory>
 
 #include "base/run_loop.h"
-#include "base/stl_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/system/data_pipe_utils.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -64,7 +66,7 @@ constexpr char kQuickBrownFoxFormData[] =
     "Quick brown fox\r\n"
     "--boundary--\r\n";
 constexpr size_t kQuickBrownFoxFormDataLength =
-    base::size(kQuickBrownFoxFormData) - 1u;
+    std::size(kQuickBrownFoxFormData) - 1u;
 
 class FetchDataLoaderTest : public testing::Test {
  protected:
@@ -277,6 +279,70 @@ TEST_F(FetchDataLoaderBlobTest, LoadAsBlobCancel) {
   checkpoint.Call(4);
 }
 
+TEST_F(FetchDataLoaderBlobTest, LoadAsBlobNoClientCallbacksAfterCancel) {
+  Checkpoint checkpoint;
+  BytesConsumer::Client* client = nullptr;
+  auto* consumer = MakeGarbageCollected<MockBytesConsumer>();
+
+  FetchDataLoader* fetch_data_loader =
+      FetchDataLoader::CreateLoaderAsBlobHandle("text/test", fake_task_runner_);
+  auto* fetch_data_loader_client =
+      MakeGarbageCollected<MockFetchDataLoaderClient>();
+  scoped_refptr<BlobDataHandle> blob_data_handle;
+
+  base::RunLoop run_loop;
+
+  InSequence s;
+  EXPECT_CALL(checkpoint, Call(1));
+  EXPECT_CALL(*consumer,
+              DrainAsBlobDataHandle(
+                  BytesConsumer::BlobSizePolicy::kDisallowBlobWithInvalidSize))
+      .WillOnce(Return(ByMove(nullptr)));
+  EXPECT_CALL(*consumer, SetClient(_)).WillOnce(SaveArg<0>(&client));
+  EXPECT_CALL(*consumer, DrainAsDataPipe());
+  EXPECT_CALL(*consumer, GetPublicState())
+      .WillOnce(Return(BytesConsumer::PublicState::kReadableOrWaiting));
+  EXPECT_CALL(checkpoint, Call(2));
+  EXPECT_CALL(*consumer, BeginRead(_, _))
+      .WillOnce(DoAll(SetArgPointee<0>(nullptr), SetArgPointee<1>(0),
+                      Return(Result::kShouldWait)));
+  EXPECT_CALL(checkpoint, Call(3));
+  EXPECT_CALL(*consumer, BeginRead(_, _))
+      .WillOnce(DoAll(SetArgPointee<0>(kQuickBrownFox),
+                      SetArgPointee<1>(kQuickBrownFoxLengthWithTerminatingNull),
+                      Return(Result::kOk)));
+  EXPECT_CALL(*consumer, EndRead(kQuickBrownFoxLengthWithTerminatingNull))
+      .WillOnce(Return(Result::kOk));
+  EXPECT_CALL(*consumer, BeginRead(_, _))
+      .WillOnce(DoAll(SetArgPointee<0>(nullptr), SetArgPointee<1>(0),
+                      Return(Result::kShouldWait)));
+  EXPECT_CALL(checkpoint, Call(4));
+  EXPECT_CALL(*consumer, Cancel());
+  EXPECT_CALL(checkpoint, Call(5));
+  EXPECT_CALL(*consumer, BeginRead(_, _)).WillOnce(Return(Result::kDone));
+  EXPECT_CALL(*consumer, Cancel());
+  // This should never happen due to explicit FetchDataLoader::Cancel call.
+  EXPECT_CALL(*fetch_data_loader_client, DidFetchDataLoadedBlobHandleMock(_))
+      .Times(0);
+  EXPECT_CALL(checkpoint, Call(6));
+
+  checkpoint.Call(1);
+  fetch_data_loader->Start(consumer, fetch_data_loader_client);
+  checkpoint.Call(2);
+  fake_task_runner_->RunUntilIdle();
+  checkpoint.Call(3);
+  client->OnStateChange();
+  run_loop.RunUntilIdle();
+  checkpoint.Call(4);
+  // Cancel the load to verify no FetchDataLoader::Client calls happen
+  // afterwards.
+  fetch_data_loader->Cancel();
+  checkpoint.Call(5);
+  client->OnStateChange();
+  run_loop.RunUntilIdle();
+  checkpoint.Call(6);
+}
+
 TEST_F(FetchDataLoaderBlobTest,
        LoadAsBlobViaDrainAsBlobDataHandleWithSameContentType) {
   auto blob_data = std::make_unique<BlobData>();
@@ -403,7 +469,7 @@ TEST_F(FetchDataLoaderTest, LoadAsArrayBuffer) {
 
   ASSERT_TRUE(array_buffer);
   ASSERT_EQ(kQuickBrownFoxLengthWithTerminatingNull,
-            array_buffer->ByteLengthAsSizeT());
+            array_buffer->ByteLength());
   EXPECT_STREQ(kQuickBrownFox, static_cast<const char*>(array_buffer->Data()));
 }
 
@@ -839,7 +905,7 @@ TEST_F(FetchDataLoaderTest, LoadAsDataPipeFromDataPipe) {
   auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
   mojo::ScopedDataPipeConsumerHandle readable;
   mojo::ScopedDataPipeProducerHandle writable;
-  MojoResult rv = mojo::CreateDataPipe(nullptr, &writable, &readable);
+  MojoResult rv = mojo::CreateDataPipe(nullptr, writable, readable);
   ASSERT_EQ(rv, MOJO_RESULT_OK);
 
   ASSERT_TRUE(mojo::BlockingCopyFromString("hello", writable));
@@ -880,7 +946,7 @@ TEST_F(FetchDataLoaderTest, LoadAsDataPipeFromDataPipeFailure) {
   auto task_runner = base::MakeRefCounted<scheduler::FakeTaskRunner>();
   mojo::ScopedDataPipeConsumerHandle readable;
   mojo::ScopedDataPipeProducerHandle writable;
-  MojoResult rv = mojo::CreateDataPipe(nullptr, &writable, &readable);
+  MojoResult rv = mojo::CreateDataPipe(nullptr, writable, readable);
   ASSERT_EQ(rv, MOJO_RESULT_OK);
 
   ASSERT_TRUE(mojo::BlockingCopyFromString("hello", writable));

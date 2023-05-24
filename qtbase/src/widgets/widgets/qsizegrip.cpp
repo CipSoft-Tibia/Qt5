@@ -1,57 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsizegrip.h"
 
 #include "qapplication.h"
 #include "qevent.h"
-#include "qpainter.h"
+#include "qstylepainter.h"
 #include "qwindow.h"
 #include <qpa/qplatformwindow.h>
 #include "qstyle.h"
 #include "qstyleoption.h"
 #include "qlayout.h"
 #include "qdebug.h"
-#include <QDesktopWidget>
 
 #include <private/qwidget_p.h>
-#include <private/qdesktopwidget_p.h>
+#include "private/qapplication_p.h"
+#include <qpa/qplatformtheme.h>
 #include <QtWidgets/qabstractscrollarea.h>
 
 QT_BEGIN_NAMESPACE
@@ -173,6 +137,10 @@ Qt::Corner QSizeGripPrivate::corner() const
     On some platforms the size grip automatically hides itself when the
     window is shown full screen or maximised.
 
+    \note On macOS, size grips are no longer part of the human interface
+    guideline, and won't show unless used in a QMdiSubWindow. Set another
+    style on size grips that you want to be visible in main windows.
+
     \table 50%
     \row \li \inlineimage fusion-statusbar-sizegrip.png Screenshot of a Fusion style size grip
     \li A size grip widget at the bottom-right corner of a main window, shown in the
@@ -229,9 +197,8 @@ QSizeGrip::~QSizeGrip()
 QSize QSizeGrip::sizeHint() const
 {
     QStyleOption opt(0);
-    opt.init(this);
-    return (style()->sizeFromContents(QStyle::CT_SizeGrip, &opt, QSize(13, 13), this).
-            expandedTo(QApplication::globalStrut()));
+    opt.initFrom(this);
+    return style()->sizeFromContents(QStyle::CT_SizeGrip, &opt, QSize(13, 13), this);
 }
 
 /*!
@@ -245,11 +212,11 @@ void QSizeGrip::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
     Q_D(QSizeGrip);
-    QPainter painter(this);
+    QStylePainter painter(this);
     QStyleOptionSizeGrip opt;
-    opt.init(this);
+    opt.initFrom(this);
     opt.corner = d->m_corner;
-    style()->drawControl(QStyle::CE_SizeGrip, &opt, &painter, this);
+    painter.drawControl(QStyle::CE_SizeGrip, opt);
 }
 
 /*!
@@ -292,7 +259,7 @@ void QSizeGrip::mousePressEvent(QMouseEvent * e)
 
     Q_D(QSizeGrip);
     QWidget *tlw = qt_sizegrip_topLevelWidget(this);
-    d->p = e->globalPos();
+    d->p = e->globalPosition().toPoint();
     d->gotMousePress = true;
     d->r = tlw->geometry();
 
@@ -316,8 +283,12 @@ void QSizeGrip::mousePressEvent(QMouseEvent * e)
     QRect availableGeometry;
     bool hasVerticalSizeConstraint = true;
     bool hasHorizontalSizeConstraint = true;
-    if (tlw->isWindow())
-        availableGeometry = QDesktopWidgetPrivate::availableGeometry(tlw);
+    if (tlw->isWindow()) {
+        if (QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::InteractiveResizeAcrossScreens).toBool())
+            availableGeometry = tlw->screen()->availableVirtualGeometry();
+        else
+            availableGeometry = QWidgetPrivate::availableScreenGeometry(tlw);
+    }
     else {
         const QWidget *tlwParent = tlw->parentWidget();
         // Check if tlw is inside QAbstractScrollArea/QScrollArea.
@@ -386,7 +357,7 @@ void QSizeGrip::mouseMoveEvent(QMouseEvent * e)
     if (!d->gotMousePress || tlw->testAttribute(Qt::WA_WState_ConfigPending))
         return;
 
-    QPoint np(e->globalPos());
+    QPoint np(e->globalPosition().toPoint());
 
     // Don't extend beyond the available geometry; bound to dyMax and dxMax.
     QSize ns;

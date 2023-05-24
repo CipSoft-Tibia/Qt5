@@ -1,41 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "linuxdmabufclientbufferintegration.h"
 #include "linuxdmabuf.h"
 
 #include <QtWaylandCompositor/QWaylandCompositor>
 #include <QtWaylandCompositor/private/qwayland-server-wayland.h>
+#include <QtWaylandCompositor/private/qwltextureorphanage_p.h>
 #include <qpa/qplatformnativeinterface.h>
+#include <QtOpenGL/QOpenGLTexture>
+#include <QtCore/QVarLengthArray>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLTexture>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -266,6 +242,12 @@ LinuxDmabufClientBufferIntegration::LinuxDmabufClientBufferIntegration()
 LinuxDmabufClientBufferIntegration::~LinuxDmabufClientBufferIntegration()
 {
     m_importedBuffers.clear();
+
+    if (egl_unbind_wayland_display != nullptr && m_displayBound) {
+        Q_ASSERT(m_wlDisplay != nullptr);
+        if (!egl_unbind_wayland_display(m_eglDisplay, m_wlDisplay))
+            qCWarning(qLcWaylandCompositorHardwareIntegration) << "eglUnbindWaylandDisplayWL failed";
+    }
 }
 
 void LinuxDmabufClientBufferIntegration::initializeHardware(struct ::wl_display *display)
@@ -319,66 +301,54 @@ void LinuxDmabufClientBufferIntegration::initializeHardware(struct ::wl_display 
 
     if (egl_bind_wayland_display && egl_unbind_wayland_display) {
         m_displayBound = egl_bind_wayland_display(m_eglDisplay, display);
-        if (!m_displayBound) {
-            if (ignoreBindDisplay) {
-                qCWarning(qLcWaylandCompositorHardwareIntegration) << "Could not bind Wayland display. Ignoring.";
-            } else {
-                qCWarning(qLcWaylandCompositorHardwareIntegration) << "Failed to initialize EGL display. Could not bind Wayland display.";
-                return;
-            }
-        }
+        if (!m_displayBound)
+            qCDebug(qLcWaylandCompositorHardwareIntegration) << "Wayland display already bound by other client buffer integration.";
+        m_wlDisplay = display;
     }
 
     // request and sent formats/modifiers only after egl_display is bound
-    QHash<uint32_t, QVector<uint64_t>> modifiers;
+    QHash<uint32_t, QList<uint64_t>> modifiers;
     for (const auto &format : supportedDrmFormats()) {
         modifiers[format] = supportedDrmModifiers(format);
     }
     m_linuxDmabuf->setSupportedModifiers(modifiers);
 }
 
-QVector<uint32_t> LinuxDmabufClientBufferIntegration::supportedDrmFormats()
+QList<uint32_t> LinuxDmabufClientBufferIntegration::supportedDrmFormats()
 {
     if (!egl_query_dmabuf_formats_ext)
-        return QVector<uint32_t>();
+        return QList<uint32_t>();
 
     // request total number of formats
     EGLint count = 0;
     EGLBoolean success = egl_query_dmabuf_formats_ext(m_eglDisplay, 0, nullptr, &count);
 
     if (success && count > 0) {
-        QVector<uint32_t> drmFormats(count);
+        QList<uint32_t> drmFormats(count);
         if (egl_query_dmabuf_formats_ext(m_eglDisplay, count, (EGLint *) drmFormats.data(), &count))
             return drmFormats;
     }
 
-    return QVector<uint32_t>();
+    return QList<uint32_t>();
 }
 
-QVector<uint64_t> LinuxDmabufClientBufferIntegration::supportedDrmModifiers(uint32_t format)
+QList<uint64_t> LinuxDmabufClientBufferIntegration::supportedDrmModifiers(uint32_t format)
 {
     if (!egl_query_dmabuf_modifiers_ext)
-        return QVector<uint64_t>();
+        return QList<uint64_t>();
 
     // request total number of formats
     EGLint count = 0;
     EGLBoolean success = egl_query_dmabuf_modifiers_ext(m_eglDisplay, format, 0, nullptr, nullptr, &count);
 
     if (success && count > 0) {
-        QVector<uint64_t> modifiers(count);
+        QList<uint64_t> modifiers(count);
         if (egl_query_dmabuf_modifiers_ext(m_eglDisplay, format, count, modifiers.data(), nullptr, &count)) {
             return modifiers;
         }
     }
 
-    return QVector<uint64_t>();
-}
-
-void LinuxDmabufClientBufferIntegration::deleteOrphanedTextures()
-{
-    Q_ASSERT(QOpenGLContext::currentContext());
-    qDeleteAll(m_orphanedTextures);
-    m_orphanedTextures.clear();
+    return QList<uint64_t>();
 }
 
 void LinuxDmabufClientBufferIntegration::deleteImage(EGLImageKHR image)
@@ -388,16 +358,12 @@ void LinuxDmabufClientBufferIntegration::deleteImage(EGLImageKHR image)
 
 QtWayland::ClientBuffer *LinuxDmabufClientBufferIntegration::createBufferFor(wl_resource *resource)
 {
-    // fallback for shared memory buffers
-    if (wl_shm_buffer_get(resource))
-        return nullptr;
-
     auto it = m_importedBuffers.find(resource);
     if (it != m_importedBuffers.end()) {
         m_importedBuffers.value(resource);
         return new LinuxDmabufClientBuffer(this, it.value()->resource()->handle, m_importedBuffers.value(resource));
     }
-    qCWarning(qLcWaylandCompositorHardwareIntegration) << "could not create client buffer for dmabuf buffer";
+
     return nullptr;
 }
 
@@ -431,7 +397,7 @@ LinuxDmabufClientBuffer::LinuxDmabufClientBuffer(LinuxDmabufClientBufferIntegrat
 QOpenGLTexture *LinuxDmabufClientBuffer::toOpenGlTexture(int plane)
 {
     // At this point we should have a valid OpenGL context, so it's safe to destroy textures
-    m_integration->deleteOrphanedTextures();
+    QtWayland::QWaylandTextureOrphanage::instance()->deleteTextures();
 
     if (!m_buffer)
         return nullptr;
@@ -449,6 +415,7 @@ QOpenGLTexture *LinuxDmabufClientBuffer::toOpenGlTexture(int plane)
     }
 
     if (m_textureDirty) {
+        m_textureDirty = false;
         texture->bind();
         glTexParameterf(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         m_integration->gl_egl_image_target_texture_2d(target, d->image(plane));

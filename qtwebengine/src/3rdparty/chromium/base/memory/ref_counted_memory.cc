@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,9 +13,8 @@ namespace base {
 
 bool RefCountedMemory::Equals(
     const scoped_refptr<RefCountedMemory>& other) const {
-  return other.get() &&
-         size() == other->size() &&
-         (memcmp(front(), other->front(), size()) == 0);
+  return other.get() && size() == other->size() &&
+         (size() == 0 || (memcmp(front(), other->front(), size()) == 0));
 }
 
 RefCountedMemory::RefCountedMemory() = default;
@@ -35,8 +34,10 @@ RefCountedStaticMemory::~RefCountedStaticMemory() = default;
 RefCountedBytes::RefCountedBytes() = default;
 
 RefCountedBytes::RefCountedBytes(const std::vector<unsigned char>& initializer)
-    : data_(initializer) {
-}
+    : data_(initializer) {}
+
+RefCountedBytes::RefCountedBytes(base::span<const unsigned char> initializer)
+    : data_(initializer.begin(), initializer.end()) {}
 
 RefCountedBytes::RefCountedBytes(const unsigned char* p, size_t size)
     : data_(p, p + size) {}
@@ -66,13 +67,7 @@ RefCountedString::RefCountedString() = default;
 
 RefCountedString::~RefCountedString() = default;
 
-// static
-scoped_refptr<RefCountedString> RefCountedString::TakeString(
-    std::string* to_destroy) {
-  auto self = MakeRefCounted<RefCountedString>();
-  to_destroy->swap(self->data_);
-  return self;
-}
+RefCountedString::RefCountedString(std::string str) : data_(std::move(str)) {}
 
 const unsigned char* RefCountedString::front() const {
   return data_.empty() ? nullptr
@@ -81,6 +76,21 @@ const unsigned char* RefCountedString::front() const {
 
 size_t RefCountedString::size() const {
   return data_.size();
+}
+
+RefCountedString16::RefCountedString16() = default;
+
+RefCountedString16::~RefCountedString16() = default;
+
+RefCountedString16::RefCountedString16(std::u16string str)
+    : data_(std::move(str)) {}
+
+const unsigned char* RefCountedString16::front() const {
+  return reinterpret_cast<const unsigned char*>(data_.data());
+}
+
+size_t RefCountedString16::size() const {
+  return data_.size() * sizeof(char16_t);
 }
 
 RefCountedSharedMemoryMapping::RefCountedSharedMemoryMapping(

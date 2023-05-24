@@ -19,7 +19,7 @@ public:
 
 #if SK_SUPPORT_GPU
     int numRenderTasks() const {
-        return fDDL->fRenderTasks.count();
+        return fDDL->fRenderTasks.size();
     }
 
     GrRenderTargetProxy* targetProxy() const {
@@ -33,12 +33,14 @@ public:
     const SkTArray<GrRecordingContext::ProgramData>& programData() const {
         return fDDL->programData();
     }
+
+    const SkTArray<sk_sp<GrRenderTask>>& renderTasks() const {
+        return fDDL->fRenderTasks;
+    }
 #endif
 
 private:
     explicit SkDeferredDisplayListPriv(SkDeferredDisplayList* ddl) : fDDL(ddl) {}
-    SkDeferredDisplayListPriv(SkDeferredDisplayListPriv&&) = default;
-    SkDeferredDisplayListPriv(const SkDeferredDisplayListPriv&) = delete;
     SkDeferredDisplayListPriv& operator=(const SkDeferredDisplayListPriv&) = delete;
 
     // No taking addresses of this type.

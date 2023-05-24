@@ -1,15 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/zucchini/ensemble_matcher.h"
 
-#include <algorithm>
 #include <limits>
 
+#include "base/containers/cxx20_erase.h"
 #include "base/logging.h"
-#include "base/stl_util.h"
-#include "base/strings/stringprintf.h"
+#include "base/ranges/algorithm.h"
 
 namespace zucchini {
 
@@ -28,7 +27,7 @@ void EnsembleMatcher::Trim() {
   auto is_match_dex = [](const ElementMatch& match) {
     return match.exe_type() == kExeTypeDex;
   };
-  auto num_dex = std::count_if(matches_.begin(), matches_.end(), is_match_dex);
+  auto num_dex = base::ranges::count_if(matches_, is_match_dex);
   if (num_dex > 1) {
     LOG(WARNING) << "Found " << num_dex << " DEX: Ignoring all.";
     base::EraseIf(matches_, is_match_dex);

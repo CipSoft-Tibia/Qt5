@@ -1,13 +1,18 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/tiles/checker_image_tracker.h"
 
-#include "base/bind.h"
+#include <memory>
+#include <unordered_set>
+#include <utility>
+
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "cc/paint/paint_image_builder.h"
+#include "cc/test/paint_image_matchers.h"
 #include "cc/test/skia_common.h"
 #include "cc/tiles/image_controller.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -23,13 +28,15 @@ const int kCheckerableImageDimension = 512;
 const int kLargeNonCheckerableImageDimension = 1145;
 const int kSmallNonCheckerableImageDimension = 16;
 
+const TargetColorParams kDefaultTargetColorParams;
+
 class TestImageController : public ImageController {
  public:
   // We can use the same thread for the image worker because all use of it in
   // the ImageController is over-ridden here.
   TestImageController()
-      : ImageController(base::ThreadTaskRunnerHandle::Get().get(),
-                        base::ThreadTaskRunnerHandle::Get()) {
+      : ImageController(base::SingleThreadTaskRunner::GetCurrentDefault().get(),
+                        base::SingleThreadTaskRunner::GetCurrentDefault()) {
     SetMaxImageCacheLimitBytesForTesting(kMaxImageCacheSizeBytes);
   }
 
@@ -123,9 +130,9 @@ class CheckerImageTrackerTest : public testing::Test,
                          .set_is_multipart(is_multipart)
                          .set_decoding_mode(PaintImage::DecodingMode::kAsync)
                          .TakePaintImage(),
-                     SkIRect::MakeWH(dimension, dimension),
-                     kNone_SkFilterQuality, SkMatrix::I(),
-                     PaintImage::kDefaultFrameIndex, gfx::ColorSpace());
+                     false, SkIRect::MakeWH(dimension, dimension),
+                     PaintFlags::FilterQuality::kNone, SkM44(),
+                     PaintImage::kDefaultFrameIndex, kDefaultTargetColorParams);
   }
 
   bool ShouldCheckerImage(const DrawImage& draw_image, WhichTree tree) {
@@ -186,8 +193,10 @@ TEST_F(CheckerImageTrackerTest, UpdatesImagesAtomically) {
       BuildImageDecodeQueue(draw_images, WhichTree::PENDING_TREE);
 
   ASSERT_EQ(2u, image_decode_queue.size());
-  EXPECT_EQ(checkerable_image.paint_image(), image_decode_queue[0].paint_image);
-  EXPECT_EQ(checkerable_image.paint_image(), image_decode_queue[1].paint_image);
+  EXPECT_TRUE(checkerable_image.paint_image().IsSameForTesting(
+      image_decode_queue[0].paint_image));
+  EXPECT_TRUE(checkerable_image.paint_image().IsSameForTesting(
+      image_decode_queue[1].paint_image));
 
   checker_image_tracker_->ScheduleImageDecodeQueue(image_decode_queue);
   EXPECT_EQ(image_controller_.num_of_locked_images(), 1);
@@ -426,7 +435,8 @@ TEST_F(CheckerImageTrackerTest, CheckersOnlyStaticCompletedImages) {
   CheckerImageTracker::ImageDecodeQueue image_decode_queue =
       BuildImageDecodeQueue(draw_images, WhichTree::PENDING_TREE);
   EXPECT_EQ(image_decode_queue.size(), 1U);
-  EXPECT_EQ(image_decode_queue[0].paint_image, static_image.paint_image());
+  EXPECT_TRUE(image_decode_queue[0].paint_image.IsSameForTesting(
+      static_image.paint_image()));
 
   // Change the partial image to complete and try again. It should sstill not
   // be checkered.
@@ -437,9 +447,9 @@ TEST_F(CheckerImageTrackerTest, CheckersOnlyStaticCompletedImages) {
           .set_id(partial_image.paint_image().stable_id())
           .set_paint_image_generator(CreatePaintImageGenerator(image_size))
           .TakePaintImage(),
-      SkIRect::MakeWH(image_size.width(), image_size.height()),
-      kNone_SkFilterQuality, SkMatrix::I(), PaintImage::kDefaultFrameIndex,
-      gfx::ColorSpace());
+      false, SkIRect::MakeWH(image_size.width(), image_size.height()),
+      PaintFlags::FilterQuality::kNone, SkM44(), PaintImage::kDefaultFrameIndex,
+      kDefaultTargetColorParams);
   EXPECT_FALSE(
       ShouldCheckerImage(completed_paint_image, WhichTree::PENDING_TREE));
 }
@@ -467,11 +477,11 @@ TEST_F(CheckerImageTrackerTest, ChoosesMaxScaleAndQuality) {
 
   DrawImage image = CreateImage(ImageType::CHECKERABLE);
   DrawImage scaled_image1(image, 0.5f, PaintImage::kDefaultFrameIndex,
-                          gfx::ColorSpace());
+                          TargetColorParams());
   DrawImage scaled_image2 =
-      DrawImage(image.paint_image(), image.src_rect(), kHigh_SkFilterQuality,
-                SkMatrix::Scale(1.8f, 1.8f), PaintImage::kDefaultFrameIndex,
-                gfx::ColorSpace());
+      DrawImage(image.paint_image(), false, image.src_rect(),
+                PaintFlags::FilterQuality::kHigh, SkM44::Scale(1.8f, 1.8f),
+                PaintImage::kDefaultFrameIndex, kDefaultTargetColorParams);
 
   std::vector<DrawImage> draw_images = {scaled_image1, scaled_image2};
   CheckerImageTracker::ImageDecodeQueue image_decode_queue =
@@ -481,7 +491,7 @@ TEST_F(CheckerImageTrackerTest, ChoosesMaxScaleAndQuality) {
   EXPECT_EQ(image_controller_.decoded_images()[0].scale(),
             SkSize::Make(1.8f, 1.8f));
   EXPECT_EQ(image_controller_.decoded_images()[0].filter_quality(),
-            kHigh_SkFilterQuality);
+            PaintFlags::FilterQuality::kHigh);
 }
 
 TEST_F(CheckerImageTrackerTest, DontCheckerMultiPartImages) {
@@ -524,18 +534,15 @@ TEST_F(CheckerImageTrackerTest, RespectsDecodePriority) {
   checker_image_tracker_->SetMaxDecodePriorityAllowed(
       CheckerImageTracker::DecodeType::kRaster);
   base::RunLoop().RunUntilIdle();
-  EXPECT_EQ(image_controller_.decoded_images().size(), 2u);
-  EXPECT_EQ(image_controller_.decoded_images()[0], image1);
-  EXPECT_EQ(image_controller_.decoded_images()[1], image2);
+  EXPECT_THAT(image_controller_.decoded_images(),
+              ImagesAreSame({image1, image2}));
 
   // All decodes allowed. The complete queue should be flushed.
   checker_image_tracker_->SetMaxDecodePriorityAllowed(
       CheckerImageTracker::DecodeType::kPreDecode);
   base::RunLoop().RunUntilIdle();
-  EXPECT_EQ(image_controller_.decoded_images()[0], image1);
-  EXPECT_EQ(image_controller_.decoded_images()[1], image2);
-  EXPECT_EQ(image_controller_.decoded_images()[2], image3);
-  EXPECT_EQ(image_controller_.decoded_images()[3], image4);
+  EXPECT_THAT(image_controller_.decoded_images(),
+              ImagesAreSame({image1, image2, image3, image4}));
 }
 
 TEST_F(CheckerImageTrackerTest, UseSrcRectForSize) {
@@ -544,9 +551,10 @@ TEST_F(CheckerImageTrackerTest, UseSrcRectForSize) {
   // Create an image with checkerable dimensions and subrect it. It should not
   // be checkered.
   DrawImage image = CreateImage(ImageType::CHECKERABLE);
-  image = DrawImage(image.paint_image(), SkIRect::MakeWH(200, 200),
-                    image.filter_quality(), SkMatrix::I(),
-                    PaintImage::kDefaultFrameIndex, image.target_color_space());
+  image =
+      DrawImage(image.paint_image(), false, SkIRect::MakeWH(200, 200),
+                image.filter_quality(), SkM44(), PaintImage::kDefaultFrameIndex,
+                image.target_color_params());
   EXPECT_FALSE(ShouldCheckerImage(image, WhichTree::PENDING_TREE));
 }
 

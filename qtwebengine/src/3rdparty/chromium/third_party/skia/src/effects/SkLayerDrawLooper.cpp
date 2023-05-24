@@ -4,6 +4,10 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+
+#include "include/core/SkTypes.h"
+
+#ifdef SK_SUPPORT_LEGACY_DRAWLOOPER
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkMaskFilter.h"
@@ -11,7 +15,7 @@
 #include "include/core/SkUnPreMultiply.h"
 #include "include/effects/SkBlurDrawLooper.h"
 #include "include/effects/SkLayerDrawLooper.h"
-#include "src/core/SkArenaAlloc.h"
+#include "src/base/SkArenaAlloc.h"
 #include "src/core/SkBlendModePriv.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkMaskFilterBase.h"
@@ -114,7 +118,7 @@ void SkLayerDrawLooper::LayerDrawLooperContext::ApplyInfo(
         dst->setColorFilter(src.refColorFilter());
     }
     if (bits & kXfermode_Bit) {
-        dst->setBlendMode(src.getBlendMode());
+        dst->setBlender(src.refBlender());
     }
 
     // we don't override these
@@ -228,7 +232,7 @@ sk_sp<SkFlattenable> SkLayerDrawLooper::CreateProc(SkReadBuffer& buffer) {
         info.fColorMode = (SkBlendMode)buffer.readInt();
         buffer.readPoint(&info.fOffset);
         info.fPostTranslate = buffer.readBool();
-        buffer.readPaint(builder.addLayerOnTop(info), nullptr);
+        *builder.addLayerOnTop(info) = buffer.readPaint();
         if (!buffer.isValid()) {
             return nullptr;
         }
@@ -331,3 +335,5 @@ sk_sp<SkDrawLooper> SkBlurDrawLooper::Make(SkColor4f color, SkColorSpace* cs,
 
     return builder.detach();
 }
+
+#endif

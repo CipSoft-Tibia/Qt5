@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -32,6 +31,8 @@ import (
 	"strings"
 	"time"
 )
+
+const loginEndpoint = "acvp/v1/login"
 
 // Server represents an ACVP server.
 type Server struct {
@@ -89,7 +90,7 @@ func NewServer(prefix string, logFile string, derCertificates [][]byte, privateK
 				return conn, err
 			},
 		},
-		Timeout: 10 * time.Second,
+		Timeout: 120 * time.Second,
 	}
 
 	return &Server{client: client, prefix: prefix, totpFunc: totp, PrefixTokens: make(map[string]string)}
@@ -166,12 +167,12 @@ func parseReplyToBytes(in io.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	buf, err := ioutil.ReadAll(decoder.Buffered())
+	buf, err := io.ReadAll(decoder.Buffered())
 	if err != nil {
 		return nil, err
 	}
 
-	rest, err := ioutil.ReadAll(in)
+	rest, err := io.ReadAll(in)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +240,7 @@ func expired(tokenStr string) bool {
 	if json.Unmarshal(jsonBytes, &token) != nil {
 		return false
 	}
-	return token.Expiry > 0 && token.Expiry < uint64(time.Now().Unix())
+	return token.Expiry > 0 && token.Expiry < uint64(time.Now().Add(-10*time.Second).Unix())
 }
 
 func (server *Server) getToken(endPoint string) (string, error) {
@@ -255,7 +256,7 @@ func (server *Server) getToken(endPoint string) (string, error) {
 		var reply struct {
 			AccessToken string `json:"accessToken"`
 		}
-		if err := server.postMessage(&reply, "acvp/v1/login", map[string]string{
+		if err := server.postMessage(&reply, loginEndpoint, map[string]string{
 			"password":    server.totpFunc(),
 			"accessToken": token,
 		}); err != nil {
@@ -278,7 +279,7 @@ func (server *Server) Login() error {
 		SizeLimit             int64  `json:"sizeConstraint"`
 	}
 
-	if err := server.postMessage(&reply, "acvp/v1/login", map[string]string{"password": server.totpFunc()}); err != nil {
+	if err := server.postMessage(&reply, loginEndpoint, map[string]string{"password": server.totpFunc()}); err != nil {
 		return err
 	}
 
@@ -372,7 +373,7 @@ func (server *Server) newRequestWithToken(method, endpoint string, body io.Reade
 	if err != nil {
 		return nil, err
 	}
-	if len(token) != 0 {
+	if len(token) != 0 && endpoint != loginEndpoint {
 		req.Header.Add("Authorization", "Bearer "+token)
 	}
 	return req, nil
@@ -422,7 +423,7 @@ func (server *Server) write(method string, reply interface{}, endPoint string, c
 	buf.Write(contents)
 	buf.WriteString(requestSuffix)
 
-	req, err := server.newRequestWithToken("POST", endPoint, &buf)
+	req, err := server.newRequestWithToken(method, endPoint, &buf)
 	if err != nil {
 		return err
 	}
@@ -479,7 +480,7 @@ var (
 )
 
 // GetPaged returns an array of records of some type using one or more requests to the server. See
-// https://usnistgov.github.io/ACVP/artifacts/draft-fussell-acvp-spec-00.html#paging_response
+// https://pages.nist.gov/ACVP/draft-fussell-acvp-spec.html#paging_response
 func (server *Server) GetPaged(out interface{}, endPoint string, condition Query) error {
 	output := reflect.ValueOf(out)
 	if output.Kind() != reflect.Ptr {
@@ -555,7 +556,7 @@ func (server *Server) GetPaged(out interface{}, endPoint string, condition Query
 	return nil
 }
 
-// https://usnistgov.github.io/ACVP/artifacts/draft-fussell-acvp-spec-00.html#rfc.section.11.8.3.1
+// https://pages.nist.gov/ACVP/draft-fussell-acvp-spec.html#rfc.section.11.8.3.1
 type Vendor struct {
 	URL         string    `json:"url,omitempty"`
 	Name        string    `json:"name,omitempty"`
@@ -566,7 +567,7 @@ type Vendor struct {
 	Addresses   []Address `json:"addresses,omitempty"`
 }
 
-// https://usnistgov.github.io/ACVP/artifacts/draft-fussell-acvp-spec-00.html#rfc.section.11.9
+// https://pages.nist.gov/ACVP/draft-fussell-acvp-spec.html#rfc.section.11.9
 type Address struct {
 	URL        string `json:"url,omitempty"`
 	Street1    string `json:"street1,omitempty"`
@@ -578,7 +579,7 @@ type Address struct {
 	PostalCode string `json:"postalCode,omitempty"`
 }
 
-// https://usnistgov.github.io/ACVP/artifacts/draft-fussell-acvp-spec-00.html#rfc.section.11.10
+// https://pages.nist.gov/ACVP/draft-fussell-acvp-spec.html#rfc.section.11.10
 type Person struct {
 	URL          string   `json:"url,omitempty"`
 	FullName     string   `json:"fullName,omitempty"`
@@ -590,7 +591,7 @@ type Person struct {
 	} `json:"phoneNumbers,omitempty"`
 }
 
-// https://usnistgov.github.io/ACVP/artifacts/draft-fussell-acvp-spec-00.html#rfc.section.11.11
+// https://pages.nist.gov/ACVP/draft-fussell-acvp-spec.html#rfc.section.11.11
 type Module struct {
 	URL         string   `json:"url,omitempty"`
 	Name        string   `json:"name,omitempty"`

@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,14 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/numerics/ranges.h"
-
+#include "base/containers/contains.h"
+#include "base/cxx17_backports.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/typed_macros.h"
 #include "media/capture/video/chromeos/camera_metadata_utils.h"
+#include "media/capture/video/chromeos/camera_trace_utils.h"
+#include "third_party/perfetto/include/perfetto/tracing/track.h"
 
 namespace media {
 
@@ -51,8 +55,7 @@ Camera3AController::Camera3AController(
                      ANDROID_CONTROL_AWB_STATE_INACTIVE),
       awb_mode_set_(false),
       set_point_of_interest_running_(false),
-      ae_locked_for_point_of_interest_(false),
-      zero_shutter_lag_enabled_(false) {
+      ae_locked_for_point_of_interest_(false) {
   DCHECK(task_runner_->BelongsToCurrentThread());
 
   capture_metadata_dispatcher_->AddResultMetadataObserver(this);
@@ -106,11 +109,10 @@ Camera3AController::Camera3AController(
     if (available_modes.empty()) {
       return false;
     }
-    if (std::find(
-            available_modes.begin(), available_modes.end(),
+    if (!base::Contains(
+            available_modes,
             base::checked_cast<uint8_t>(
-                cros::mojom::AndroidControlMode::ANDROID_CONTROL_MODE_AUTO)) ==
-        available_modes.end()) {
+                cros::mojom::AndroidControlMode::ANDROID_CONTROL_MODE_AUTO))) {
       return false;
     }
     if (!available_ae_modes_.count(
@@ -157,6 +159,29 @@ Camera3AController::Camera3AController(
             base::checked_cast<uint8_t>(ae_mode_));
   Set3AMode(cros::mojom::CameraMetadataTag::ANDROID_CONTROL_AWB_MODE,
             base::checked_cast<uint8_t>(awb_mode_));
+
+  // Enable face detection if it's available.
+  auto face_modes = GetMetadataEntryAsSpan<uint8_t>(
+      static_metadata, cros::mojom::CameraMetadataTag::
+                           ANDROID_STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
+  // We don't need face landmarks and ids, so using SIMPLE mode instead of FULL
+  // mode should be enough.
+  const auto face_mode_simple = cros::mojom::AndroidStatisticsFaceDetectMode::
+      ANDROID_STATISTICS_FACE_DETECT_MODE_SIMPLE;
+  if (base::Contains(face_modes,
+                     base::checked_cast<uint8_t>(face_mode_simple))) {
+    SetRepeatingCaptureMetadata(
+        cros::mojom::CameraMetadataTag::ANDROID_STATISTICS_FACE_DETECT_MODE,
+        face_mode_simple);
+  }
+
+  auto request_keys = GetMetadataEntryAsSpan<int32_t>(
+      static_metadata_,
+      cros::mojom::CameraMetadataTag::ANDROID_REQUEST_AVAILABLE_REQUEST_KEYS);
+  zero_shutter_lag_supported_ = base::Contains(
+      request_keys,
+      static_cast<int32_t>(
+          cros::mojom::CameraMetadataTag::ANDROID_CONTROL_ENABLE_ZSL));
 }
 
 Camera3AController::~Camera3AController() {
@@ -169,6 +194,16 @@ Camera3AController::~Camera3AController() {
 void Camera3AController::Stabilize3AForStillCapture(
     base::OnceClosure on_3a_stabilized_callback) {
   DCHECK(task_runner_->BelongsToCurrentThread());
+
+  auto track = GetTraceTrack(CameraTraceEvent::kStabilize3A, request_id_);
+  TRACE_EVENT_BEGIN("camera", "Stabilize3AForStillCapture", track);
+  on_3a_stabilized_callback = base::BindOnce(
+      [](base::OnceClosure callback, perfetto::Track track) {
+        TRACE_EVENT_END("camera", std::move(track));
+        std::move(callback).Run();
+      },
+      std::move(on_3a_stabilized_callback), std::move(track));
+  ++request_id_;
 
   if (set_point_of_interest_running_) {
     // Use the settings from point of interest.
@@ -184,7 +219,7 @@ void Camera3AController::Stabilize3AForStillCapture(
     return;
   }
 
-  if (Is3AStabilized() || zero_shutter_lag_enabled_) {
+  if (Is3AStabilized() || zero_shutter_lag_supported_) {
     std::move(on_3a_stabilized_callback).Run();
     return;
   }
@@ -199,7 +234,7 @@ void Camera3AController::Stabilize3AForStillCapture(
   }
 
   Set3aStabilizedCallback(std::move(on_3a_stabilized_callback),
-                          base::TimeDelta::FromSeconds(2));
+                          base::Seconds(2));
 
   if (af_mode_ !=
       cros::mojom::AndroidControlAfMode::ANDROID_CONTROL_AF_MODE_OFF) {
@@ -233,9 +268,8 @@ void Camera3AController::OnResultMetadataAvailable(
     // metadata from zero-shutter-lag request may be out of order compared to
     // previous regular requests.
     // https://developer.android.com/reference/android/hardware/camera2/CaptureResult#CONTROL_ENABLE_ZSL
-    latest_sensor_timestamp_ =
-        std::max(latest_sensor_timestamp_,
-                 base::TimeDelta::FromNanoseconds(sensor_timestamp[0]));
+    latest_sensor_timestamp_ = std::max(latest_sensor_timestamp_,
+                                        base::Nanoseconds(sensor_timestamp[0]));
   }
 
   if (!af_mode_set_) {
@@ -397,6 +431,66 @@ void Camera3AController::SetAutoWhiteBalanceMode(
   DVLOG(1) << "Setting AWB mode to: " << awb_mode_;
 }
 
+void Camera3AController::SetExposureTime(bool enable_auto,
+                                         int64_t exposure_time_nanoseconds) {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+
+  if (enable_auto) {
+    if (!available_ae_modes_.count(
+            cros::mojom::AndroidControlAeMode::ANDROID_CONTROL_AE_MODE_ON)) {
+      LOG(WARNING) << "Don't support ANDROID_CONTROL_AE_MODE_ON";
+      return;
+    }
+    ae_mode_ = cros::mojom::AndroidControlAeMode::ANDROID_CONTROL_AE_MODE_ON;
+    capture_metadata_dispatcher_->UnsetRepeatingCaptureMetadata(
+        cros::mojom::CameraMetadataTag::ANDROID_SENSOR_EXPOSURE_TIME);
+  } else {
+    if (!available_ae_modes_.count(
+            cros::mojom::AndroidControlAeMode::ANDROID_CONTROL_AE_MODE_OFF)) {
+      LOG(WARNING) << "Don't support ANDROID_CONTROL_AE_MODE_OFF";
+      return;
+    }
+    ae_mode_ = cros::mojom::AndroidControlAeMode::ANDROID_CONTROL_AE_MODE_OFF;
+    SetRepeatingCaptureMetadata(
+        cros::mojom::CameraMetadataTag::ANDROID_SENSOR_EXPOSURE_TIME,
+        exposure_time_nanoseconds);
+  }
+
+  Set3AMode(cros::mojom::CameraMetadataTag::ANDROID_CONTROL_AE_MODE,
+            base::checked_cast<uint8_t>(ae_mode_));
+  DVLOG(1) << "Setting AE mode to: " << ae_mode_;
+}
+
+void Camera3AController::SetFocusDistance(bool enable_auto,
+                                          float focus_distance_diopters) {
+  DCHECK(task_runner_->BelongsToCurrentThread());
+
+  if (enable_auto) {
+    if (!available_af_modes_.count(
+            cros::mojom::AndroidControlAfMode::ANDROID_CONTROL_AF_MODE_AUTO)) {
+      LOG(WARNING) << "Don't support ANDROID_CONTROL_AF_MODE_AUTO";
+      return;
+    }
+    af_mode_ = cros::mojom::AndroidControlAfMode::ANDROID_CONTROL_AF_MODE_AUTO;
+    capture_metadata_dispatcher_->UnsetRepeatingCaptureMetadata(
+        cros::mojom::CameraMetadataTag::ANDROID_LENS_FOCUS_DISTANCE);
+  } else {
+    if (!available_af_modes_.count(
+            cros::mojom::AndroidControlAfMode::ANDROID_CONTROL_AF_MODE_OFF)) {
+      LOG(WARNING) << "Don't support ANDROID_CONTROL_AE_MODE_OFF";
+      return;
+    }
+    af_mode_ = cros::mojom::AndroidControlAfMode::ANDROID_CONTROL_AF_MODE_OFF;
+    SetRepeatingCaptureMetadata(
+        cros::mojom::CameraMetadataTag::ANDROID_LENS_FOCUS_DISTANCE,
+        focus_distance_diopters);
+  }
+
+  Set3AMode(cros::mojom::CameraMetadataTag::ANDROID_CONTROL_AF_MODE,
+            base::checked_cast<uint8_t>(af_mode_));
+  DVLOG(1) << "Setting AF mode to: " << af_mode_;
+}
+
 bool Camera3AController::IsPointOfInterestSupported() {
   return point_of_interest_supported_;
 }
@@ -451,14 +545,10 @@ void Camera3AController::SetPointOfInterest(gfx::Point point) {
 
   // (xmin, ymin, xmax, ymax, weight)
   std::vector<int32_t> region = {
-      base::ClampToRange(point.x() - roi_radius, 0,
-                         active_array_size.width() - 1),
-      base::ClampToRange(point.y() - roi_radius, 0,
-                         active_array_size.height() - 1),
-      base::ClampToRange(point.x() + roi_radius, 0,
-                         active_array_size.width() - 1),
-      base::ClampToRange(point.y() + roi_radius, 0,
-                         active_array_size.height() - 1),
+      base::clamp(point.x() - roi_radius, 0, active_array_size.width() - 1),
+      base::clamp(point.y() - roi_radius, 0, active_array_size.height() - 1),
+      base::clamp(point.x() + roi_radius, 0, active_array_size.width() - 1),
+      base::clamp(point.y() + roi_radius, 0, active_array_size.height() - 1),
       1,
   };
 
@@ -492,7 +582,7 @@ void Camera3AController::SetPointOfInterestOn3AModeSet() {
   Set3aStabilizedCallback(
       base::BindOnce(&Camera3AController::SetPointOfInterestOn3AStabilized,
                      GetWeakPtr()),
-      base::TimeDelta::FromSeconds(2));
+      base::Seconds(2));
   SetCaptureMetadata(
       cros::mojom::CameraMetadataTag::ANDROID_CONTROL_AF_TRIGGER,
       cros::mojom::AndroidControlAfTrigger::ANDROID_CONTROL_AF_TRIGGER_START);
@@ -511,9 +601,8 @@ void Camera3AController::SetPointOfInterestOn3AStabilized() {
   delayed_ae_unlock_callback_.Reset(base::BindOnce(
       &Camera3AController::SetPointOfInterestUnlockAe, GetWeakPtr()));
   // TODO(shik): Apply different delays for image capture / video recording.
-  task_runner_->PostDelayedTask(FROM_HERE,
-                                delayed_ae_unlock_callback_.callback(),
-                                base::TimeDelta::FromSeconds(4));
+  task_runner_->PostDelayedTask(
+      FROM_HERE, delayed_ae_unlock_callback_.callback(), base::Seconds(4));
 }
 
 void Camera3AController::SetPointOfInterestUnlockAe() {
@@ -521,10 +610,6 @@ void Camera3AController::SetPointOfInterestUnlockAe() {
 
   ae_locked_for_point_of_interest_ = false;
   ClearRepeatingCaptureMetadata();
-}
-
-void Camera3AController::UpdateZeroShutterLagAvailability(bool enabled) {
-  zero_shutter_lag_enabled_ = enabled;
 }
 
 base::WeakPtr<Camera3AController> Camera3AController::GetWeakPtr() {

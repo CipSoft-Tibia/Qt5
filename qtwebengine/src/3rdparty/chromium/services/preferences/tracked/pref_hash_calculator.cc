@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/json/json_string_value_serializer.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
@@ -31,6 +31,61 @@ std::string GetDigestString(const std::string& key,
   return base::HexEncode(&digest[0], digest.size());
 }
 
+void RemoveEmptyValueDictEntries(base::Value::Dict& dict);
+void RemoveEmptyValueListEntries(base::Value::List& list);
+
+// Removes empty Dict and List Values from |dict|, potentially nested.
+// This function may leave |dict| empty, and |dict| may be empty when passed in.
+void RemoveEmptyValueDictEntries(base::Value::Dict& dict) {
+  auto it = dict.begin();
+  while (it != dict.end()) {
+    base::Value& value = it->second;
+    if (value.is_list()) {
+      base::Value::List& sub_list = value.GetList();
+      RemoveEmptyValueListEntries(sub_list);
+      if (sub_list.empty()) {
+        it = dict.erase(it);
+        continue;
+      }
+    }
+    if (value.is_dict()) {
+      base::Value::Dict& sub_dict = value.GetDict();
+      RemoveEmptyValueDictEntries(sub_dict);
+      if (sub_dict.empty()) {
+        it = dict.erase(it);
+        continue;
+      }
+    }
+    it++;
+  }
+}
+
+// Removes empty Dict and List Values from |list|, potentially nested.
+// This function may leave |list| empty, and |list| may be empty when passed in.
+void RemoveEmptyValueListEntries(base::Value::List& list) {
+  auto it = list.begin();
+  while (it != list.end()) {
+    base::Value& item = *it;
+    if (item.is_list()) {
+      base::Value::List& sub_list = item.GetList();
+      RemoveEmptyValueListEntries(sub_list);
+      if (sub_list.empty()) {
+        it = list.erase(it);
+        continue;
+      }
+    }
+    if (item.is_dict()) {
+      base::Value::Dict& sub_dict = item.GetDict();
+      RemoveEmptyValueDictEntries(sub_dict);
+      if (sub_dict.empty()) {
+        it = list.erase(it);
+        continue;
+      }
+    }
+    it++;
+  }
+}
+
 // Verifies that |digest_string| is a valid HMAC of |message| using |key|.
 // |digest_string| must be encoded as a hexadecimal string.
 bool VerifyDigestString(const std::string& key,
@@ -45,21 +100,31 @@ bool VerifyDigestString(const std::string& key,
 // Renders |value| as a string. |value| may be NULL, in which case the result
 // is an empty string. This method can be expensive and its result should be
 // re-used rather than recomputed where possible.
-std::string ValueAsString(const base::Value* value) {
-  // Dictionary values may contain empty lists and sub-dictionaries. Make a
-  // deep copy with those removed to make the hash more stable.
-  const base::DictionaryValue* dict_value;
-  std::unique_ptr<base::DictionaryValue> canonical_dict_value;
-  if (value && value->GetAsDictionary(&dict_value)) {
-    canonical_dict_value = dict_value->DeepCopyWithoutEmptyChildren();
-    value = canonical_dict_value.get();
-  }
+
+std::string ValueAsString(const base::Value::Dict* value) {
+  if (!value)
+    return std::string();
+
+  base::Value::Dict dict = value->Clone();
+  RemoveEmptyValueDictEntries(dict);
 
   std::string value_as_string;
-  if (value) {
-    JSONStringValueSerializer serializer(&value_as_string);
-    serializer.Serialize(*value);
-  }
+  JSONStringValueSerializer serializer(&value_as_string);
+  serializer.Serialize(dict);
+
+  return value_as_string;
+}
+
+std::string ValueAsString(const base::Value* value) {
+  if (!value)
+    return std::string();
+
+  if (value->is_dict())
+    return ValueAsString(&value->GetDict());
+
+  std::string value_as_string;
+  JSONStringValueSerializer serializer(&value_as_string);
+  serializer.Serialize(*value);
 
   return value_as_string;
 }
@@ -92,11 +157,30 @@ std::string PrefHashCalculator::Calculate(const std::string& path,
                          GetMessage(device_id_, path, ValueAsString(value)));
 }
 
+std::string PrefHashCalculator::Calculate(const std::string& path,
+                                          const base::Value::Dict* dict) const {
+  return GetDigestString(seed_,
+                         GetMessage(device_id_, path, ValueAsString(dict)));
+}
+
 PrefHashCalculator::ValidationResult PrefHashCalculator::Validate(
     const std::string& path,
     const base::Value* value,
     const std::string& digest_string) const {
-  const std::string value_as_string(ValueAsString(value));
+  return Validate(path, ValueAsString(value), digest_string);
+}
+
+PrefHashCalculator::ValidationResult PrefHashCalculator::Validate(
+    const std::string& path,
+    const base::Value::Dict* dict,
+    const std::string& digest_string) const {
+  return Validate(path, ValueAsString(dict), digest_string);
+}
+
+PrefHashCalculator::ValidationResult PrefHashCalculator::Validate(
+    const std::string& path,
+    const std::string& value_as_string,
+    const std::string& digest_string) const {
   if (VerifyDigestString(seed_, GetMessage(device_id_, path, value_as_string),
                          digest_string)) {
     return VALID;

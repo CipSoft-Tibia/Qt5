@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Robin Burchell <robin.burchell@viroteck.net>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Robin Burchell <robin.burchell@viroteck.net>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qoscbundle_p.h"
 #include "qtuio_p.h"
@@ -80,7 +44,7 @@ QOscBundle::QOscBundle(const QByteArray &data)
     // "followed by an OSC Time
     // Tag, followed by zero or more OSC Bundle Elements. The OSC-timetag is a
     // 64-bit fixed point time tag whose semantics are described below."
-    if (parsedBytes > (quint32)data.size() || data.size() - parsedBytes < sizeof(quint64))
+    if (parsedBytes > (quint32)data.size() || data.size() - parsedBytes < qsizetype(sizeof(quint64)))
         return;
 
     // "Time tags are represented by a 64 bit fixed point number. The first 32
@@ -101,7 +65,7 @@ QOscBundle::QOscBundle(const QByteArray &data)
 
     if (oscTimeEpoch == 0 && oscTimePico == 1) {
         // "The time tag value consisting of 63 zero bits followed by a
-        // one in the least signifigant bit is a special case meaning
+        // one in the least significant bit is a special case meaning
         // "immediately.""
         isImmediate = true;
     }
@@ -113,7 +77,7 @@ QOscBundle::QOscBundle(const QByteArray &data)
         //
         // in practice, a bundle can contain multiple bundles or messages,
         // though, and each is prefixed by a size.
-        if (data.size() - parsedBytes < sizeof(quint32))
+        if (data.size() - parsedBytes < qsizetype(sizeof(quint32)))
             return;
 
         quint32 size = qFromBigEndian<quint32>((const uchar*)data.constData() + parsedBytes);

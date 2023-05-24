@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
    \namespace QTest
@@ -46,8 +22,10 @@
    You can use \l QVERIFY2() when it is practical and valuable to put additional
    information into the test failure report.
 
+//! [macro-usage-limitation]
    \note This macro can only be used in a test function that is invoked
    by the test framework.
+//! [macro-usage-limitation]
 
    For example, the following code shows this macro being used to verify that a
    \l QSignalSpy object is valid:
@@ -58,7 +36,8 @@
    \c QVERIFY(x == y), because it reports both the expected and actual value
    when the comparison fails.
 
-   \sa QCOMPARE(), QTRY_VERIFY(), QSignalSpy, QEXPECT_FAIL()
+   \sa QCOMPARE(), QTRY_VERIFY(), QSignalSpy, QEXPECT_FAIL(), QCOMPARE_EQ(),
+       QCOMPARE_NE(), QCOMPARE_LT(), QCOMPARE_LE(), QCOMPARE_GT(), QCOMPARE_GE()
 */
 
 /*! \macro QVERIFY2(condition, message)
@@ -97,7 +76,8 @@
     \c {FAIL! : tst_QFile::open_write() 'opened' returned FALSE.
         (open /tmp/qt.a3B42Cd: No space left on device)}
 
-    \sa QVERIFY(), QCOMPARE(), QEXPECT_FAIL()
+    \sa QVERIFY(), QCOMPARE(), QEXPECT_FAIL(), QCOMPARE_EQ(), QCOMPARE_NE(),
+        QCOMPARE_LT(), QCOMPARE_LE(), QCOMPARE_GT(), QCOMPARE_GE()
 */
 
 /*! \macro QCOMPARE(actual, expected)
@@ -116,23 +96,34 @@
    Expected.  If the parameter order is swapped, debugging a failing test can be
    confusing and tests expecting zero may fail due to rounding errors.
 
-   When comparing floating-point types (\c float, \c double, and \c qfloat16),
-   \l qFuzzyCompare() is used for finite values. If qFuzzyIsNull() is true for
-   both values, they are also considered equal. Infinities match if they have
-   the same sign, and any NaN as actual value matches with any NaN as expected
-   value (even though NaN != NaN, even when they're identical).
-
    QCOMPARE() tries to output the contents of the values if the comparison fails,
    so it is visible from the test log why the comparison failed.
 
    Example:
    \snippet code/src_qtestlib_qtestcase.cpp 2
 
-   \note This macro can only be used in a test function that is invoked
-   by the test framework.
+   When comparing floating-point types (\c float, \c double, and \c qfloat16),
+   \l {qFuzzyCompare()} is used for finite values. If \l {<QtNumeric>::}{qFuzzyIsNull()}
+   is true for both values, they are also considered equal. Infinities
+   match if they have the same sign, and any NaN as actual value matches
+   with any NaN as expected value (even though NaN != NaN, even when
+   they're identical).
 
-   For your own classes, you can use \l QTest::toString() to format values for
-   outputting into the test log.
+   When comparing QList, arrays and initializer lists of the value type
+   can be passed as expected value:
+   \snippet code/src_qtestlib_qtestcase.cpp 34
+
+   Note that using initializer lists requires defining a helper macro
+   to prevent the preprocessor from interpreting the commas as macro argument
+   delimiters:
+   \snippet code/src_qtestlib_qtestcase.cpp 35
+
+   \include qtestcase.qdoc macro-usage-limitation
+
+//! [to-string-overload-desc]
+   For your own classes, you can overload \l QTest::toString() to format values
+   for output into the test log.
+//! [to-string-overload-desc]
 
    Example:
    \snippet code/src_qtestlib_qtestcase_snippet.cpp 34
@@ -141,24 +132,165 @@
    be released with \c delete[] (rather than \c free() or plain \c delete) once
    the calling code is done with it.
 
-   \sa QVERIFY(), QTRY_COMPARE(), QTest::toString(), QEXPECT_FAIL()
+   \sa QVERIFY(), QTRY_COMPARE(), QTest::toString(), QEXPECT_FAIL(),
+       QCOMPARE_EQ(), QCOMPARE_NE(), QCOMPARE_LT(), QCOMPARE_LE(),
+       QCOMPARE_GT(), QCOMPARE_GE()
+*/
+
+/*! \macro QCOMPARE_EQ(computed, baseline)
+    \since 6.4
+
+    \relates QTest
+
+    The QCOMPARE_EQ() macro checks that \a computed is equal to \a baseline using
+    the equality operator. If that is true, execution continues. If not, a
+    failure is recorded in the test log and the test function returns without
+    attempting any later checks.
+
+    It is generally similar to calling \c {QVERIFY(computed == baseline);}
+    but prints a formatted error message reporting \a computed and \a baseline argument
+    expressions and values in case of failure.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \include qtestcase.qdoc to-string-overload-desc
+
+    \note Unlike QCOMPARE(), this macro does not provide overloads for custom
+    types and pointers. So passing e.g. two \c {const char *} values as
+    parameters will compare \e pointers, while QCOMPARE() does a comparison of
+    C-style strings.
+
+    \sa QCOMPARE(), QCOMPARE_NE(), QCOMPARE_LT(), QCOMPARE_LE(), QCOMPARE_GT(),
+        QCOMPARE_GE()
+*/
+
+/*! \macro QCOMPARE_NE(computed, baseline)
+    \since 6.4
+
+    \relates QTest
+
+    The QCOMPARE_NE() macro checks that \a computed is not equal to \a baseline using
+    the inequality operator. If that is true, execution continues. If not, a
+    failure is recorded in the test log and the test function returns without
+    attempting any later checks.
+
+    It is generally similar to calling \c {QVERIFY(computed != baseline);}
+    but prints a formatted error message reporting \a computed and \a baseline argument
+    expressions and values in case of failure.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \include qtestcase.qdoc to-string-overload-desc
+
+    \sa QCOMPARE_EQ(), QCOMPARE_LT(), QCOMPARE_LE(), QCOMPARE_GT(), QCOMPARE_GE()
+*/
+
+/*! \macro QCOMPARE_LT(computed, baseline)
+    \since 6.4
+
+    \relates QTest
+
+    The QCOMPARE_LT() macro checks that \a computed is less than \a baseline using the
+    less-than operator. If that is true, execution continues. If not, a failure
+    is recorded in the test log and the test function returns without attempting
+    any later checks.
+
+    It is generally similar to calling \c {QVERIFY(computed < baseline);}
+    but prints a formatted error message reporting \a computed and \a baseline argument
+    expressions and values in case of failure.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \include qtestcase.qdoc to-string-overload-desc
+
+    \sa QCOMPARE_EQ(), QCOMPARE_NE(), QCOMPARE_LE(), QCOMPARE_GT(), QCOMPARE_GE()
+*/
+
+/*! \macro QCOMPARE_LE(computed, baseline)
+    \since 6.4
+
+    \relates QTest
+
+    The QCOMPARE_LE() macro checks that \a computed is at most \a baseline using the
+    less-than-or-equal-to operator. If that is true, execution continues. If
+    not, a failure is recorded in the test log and the test function returns
+    without attempting any later checks.
+
+    It is generally similar to calling \c {QVERIFY(computed <= baseline);}
+    but prints a formatted error message reporting \a computed and \a baseline argument
+    expressions and values in case of failure.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \include qtestcase.qdoc to-string-overload-desc
+
+    \sa QCOMPARE_EQ(), QCOMPARE_NE(), QCOMPARE_LT(), QCOMPARE_GT(), QCOMPARE_GE()
+*/
+
+/*! \macro QCOMPARE_GT(computed, baseline)
+    \since 6.4
+
+    \relates QTest
+
+    The QCOMPARE_GT() macro checks that \a computed is greater than \a baseline using
+    the greater-than operator. If that is true, execution continues. If not, a
+    failure is recorded in the test log and the test function returns without
+    attempting any later checks.
+
+    It is generally similar to calling \c {QVERIFY(computed > baseline);}
+    but prints a formatted error message reporting \a computed and \a baseline argument
+    expressions and values in case of failure.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \include qtestcase.qdoc to-string-overload-desc
+
+    \sa QCOMPARE_EQ(), QCOMPARE_NE(), QCOMPARE_LT(), QCOMPARE_LE(), QCOMPARE_GE()
+*/
+
+/*! \macro QCOMPARE_GE(computed, baseline)
+    \since 6.4
+
+    \relates QTest
+
+    The QCOMPARE_GE() macro checks that \a computed is at least \a baseline using the
+    greater-than-or-equal-to operator. If that is true, execution continues. If
+    not, a failure is recorded in the test log and the test function returns
+    without attempting any later checks.
+
+    It is generally similar to calling \c {QVERIFY(computed >= baseline);}
+    but prints a formatted error message reporting \a computed and \a baseline argument
+    expressions and values in case of failure.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \include qtestcase.qdoc to-string-overload-desc
+
+    \sa QCOMPARE_EQ(), QCOMPARE_NE(), QCOMPARE_LT(), QCOMPARE_LE(), QCOMPARE_GT()
 */
 
 /*! \macro QVERIFY_EXCEPTION_THROWN(expression, exceptiontype)
    \since 5.3
 
    \relates QTest
+   \deprecated [6.3] Use \c{QVERIFY_THROWS_EXCEPTION(exceptiontype, expression)} instead.
+*/
 
-   The QVERIFY_EXCEPTION_THROWN macro executes \a expression
-   and tries to catch an exception thrown from \a expression.
+/*!
+   \macro QVERIFY_THROWS_EXCEPTION(exceptiontype, ...)
+   \relates QTest
+   \since 6.3
+
+   The QVERIFY_THROWS_EXCEPTION macro executes the expression given in the variadic
+   argument and expects to catch an exception thrown from the expression.
 
    There are several possible outcomes:
 
    \list
-   \li If \a expression throws an exception that is either the same as
+   \li If the expression throws an exception that is either the same as
    \a exceptiontype or derived from \a exceptiontype, then execution will continue.
 
-   \li Otherwise, if \a expression throws no exception, or the
+   \li Otherwise, if the expression throws no exception, or the
    exception thrown derives from \c{std::exception}, then a failure
    will be recorded in the test log and the macro returns early
    (from enclosing function).
@@ -167,6 +299,50 @@
    \a exceptiontype, a failure will be recorded in the test log, and the exception is
    re-thrown. This avoids problems with e.g. pthread cancellation exceptions.
    \endlist
+
+   The macro uses variadic arguments so the expression can contain commas that the
+   preprocessor considers argument separators, e.g. as in
+   \code
+   QVERIFY_THROWS_EXCEPTION(std::bad_alloc,
+   // macro arguments:      ^ exceptiontype
+                            std::vector<std::pair<int, long>>{42'000'000'000, {42, 42L}});
+   // macro arguments:      \---------- 1 ----------/  \-------- 2 --------/  \3/  \ 4 /
+   //                       \----------------------- expression -----------------------/
+   \endcode
+
+   \note This macro can only be used in a test function that is invoked
+   by the test framework.
+*/
+
+/*!
+   \macro QVERIFY_THROWS_NO_EXCEPTION(...)
+   \since 6.3
+
+   \relates QTest
+
+   The QVERIFY_THROWS_NO_EXCEPTION macro executes the expression given in its
+   variadic argument and tries to catch any exception thrown from the expression.
+
+   There are several different outcomes:
+
+   \list
+   \li If the expression does not throw an exception, then execution will continue.
+
+   \li Otherwise, if an exception derived from \c{std::exception} is caught, a failure
+   will be recorded in the test log and the macro returns early (implicit return from
+   enclosing function).
+
+   \li If an exception not derived from \c{std::exception} is caught, a failure will be
+   recorded in the test log and the exception will be re-thrown. This avoids problems
+   with e.g. pthread cancellation exceptions.
+   \endlist
+
+   The macro uses variadic arguments so the expression can contain commas that the
+   preprocessor considers argument separators, e.g. as in
+   \code
+   QVERIFY_THROWS_NO_EXCEPTION(std::pair<int, long>{42, 42L});
+   // macro arguments:         \---- 1 ----/  \-- 2 -/  \3 /
+   \endcode
 
    \note This macro can only be used in a test function that is invoked
    by the test framework.
@@ -237,7 +413,7 @@
 
    Example:
    \code
-   QTRY_VERIFY2_WITH_TIMEOUT(list.size() > 2, QByteArray::number(list.size()).constData());
+   QTRY_VERIFY2(list.size() > 2, QByteArray::number(list.size()).constData());
    \endcode
 
    \note This macro can only be used in a test function that is invoked
@@ -277,6 +453,168 @@
 
    \sa QTRY_COMPARE_WITH_TIMEOUT(), QCOMPARE(), QVERIFY(), QTRY_VERIFY(),
    QEXPECT_FAIL()
+*/
+
+/*! \macro QTRY_COMPARE_EQ_WITH_TIMEOUT(computed, baseline, timeout)
+    \since 6.4
+    \relates QTest
+
+    This macro is similar to QCOMPARE_EQ(), but performs the comparison of the
+    \a computed and \a baseline values repeatedly, until either the comparison returns
+    \c true or the \a timeout (in milliseconds) is reached. Between each
+    comparison, events will be processed. If the timeout is reached, a failure
+    is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_EQ(), QTRY_COMPARE_EQ()
+*/
+
+/*! \macro QTRY_COMPARE_EQ(computed, baseline)
+    \since 6.4
+    \relates QTest
+
+    Performs comparison of \a computed and \a baseline values by invoking
+    QTRY_COMPARE_EQ_WITH_TIMEOUT with a timeout of five seconds.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_EQ(), QTRY_COMPARE_EQ_WITH_TIMEOUT()
+*/
+
+/*! \macro QTRY_COMPARE_NE_WITH_TIMEOUT(computed, baseline, timeout)
+    \since 6.4
+    \relates QTest
+
+    This macro is similar to QCOMPARE_NE(), but performs the comparison of the
+    \a computed and \a baseline values repeatedly, until either the comparison returns
+    \c true or the \a timeout (in milliseconds) is reached. Between each
+    comparison, events will be processed. If the timeout is reached, a failure
+    is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_NE(), QTRY_COMPARE_NE()
+*/
+
+/*! \macro QTRY_COMPARE_NE(computed, baseline)
+    \since 6.4
+    \relates QTest
+
+    Performs comparison of \a computed and \a baseline values by invoking
+    QTRY_COMPARE_NE_WITH_TIMEOUT with a timeout of five seconds.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_NE(), QTRY_COMPARE_NE_WITH_TIMEOUT()
+*/
+
+/*! \macro QTRY_COMPARE_LT_WITH_TIMEOUT(computed, baseline, timeout)
+    \since 6.4
+    \relates QTest
+
+    This macro is similar to QCOMPARE_LT(), but performs the comparison of the
+    \a computed and \a baseline values repeatedly, until either the comparison returns
+    \c true or the \a timeout (in milliseconds) is reached. Between each
+    comparison, events will be processed. If the timeout is reached, a failure
+    is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_LT(), QTRY_COMPARE_LT()
+*/
+
+/*! \macro QTRY_COMPARE_LT(computed, baseline)
+    \since 6.4
+    \relates QTest
+
+    Performs comparison of \a computed and \a baseline values by invoking
+    QTRY_COMPARE_LT_WITH_TIMEOUT with a timeout of five seconds.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_LT(), QTRY_COMPARE_LT_WITH_TIMEOUT()
+*/
+
+/*! \macro QTRY_COMPARE_LE_WITH_TIMEOUT(computed, baseline, timeout)
+    \since 6.4
+    \relates QTest
+
+    This macro is similar to QCOMPARE_LE(), but performs the comparison of the
+    \a computed and \a baseline values repeatedly, until either the comparison returns
+    \c true or the \a timeout (in milliseconds) is reached. Between each
+    comparison, events will be processed. If the timeout is reached, a failure
+    is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_LE(), QTRY_COMPARE_LE()
+*/
+
+/*! \macro QTRY_COMPARE_LE(computed, baseline)
+    \since 6.4
+    \relates QTest
+
+    Performs comparison of \a computed and \a baseline values by invoking
+    QTRY_COMPARE_LE_WITH_TIMEOUT with a timeout of five seconds.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_LE(), QTRY_COMPARE_LE_WITH_TIMEOUT()
+*/
+
+/*! \macro QTRY_COMPARE_GT_WITH_TIMEOUT(computed, baseline, timeout)
+    \since 6.4
+    \relates QTest
+
+    This macro is similar to QCOMPARE_GT(), but performs the comparison of the
+    \a computed and \a baseline values repeatedly, until either the comparison returns
+    \c true or the \a timeout (in milliseconds) is reached. Between each
+    comparison, events will be processed. If the timeout is reached, a failure
+    is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_GT(), QTRY_COMPARE_GT()
+*/
+
+/*! \macro QTRY_COMPARE_GT(computed, baseline)
+    \since 6.4
+    \relates QTest
+
+    Performs comparison of \a computed and \a baseline values by invoking
+    QTRY_COMPARE_GT_WITH_TIMEOUT with a timeout of five seconds.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_GT(), QTRY_COMPARE_GT_WITH_TIMEOUT()
+*/
+
+/*! \macro QTRY_COMPARE_GE_WITH_TIMEOUT(computed, baseline, timeout)
+    \since 6.4
+    \relates QTest
+
+    This macro is similar to QCOMPARE_GE(), but performs the comparison of the
+    \a computed and \a baseline values repeatedly, until either the comparison returns
+    \c true or the \a timeout (in milliseconds) is reached. Between each
+    comparison, events will be processed. If the timeout is reached, a failure
+    is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_GE(), QTRY_COMPARE_GE()
+*/
+
+/*! \macro QTRY_COMPARE_GE(computed, baseline)
+    \since 6.4
+    \relates QTest
+
+    Performs comparison of \a computed and \a baseline values by invoking
+    QTRY_COMPARE_GE_WITH_TIMEOUT with a timeout of five seconds.
+
+    \include qtestcase.qdoc macro-usage-limitation
+
+    \sa QCOMPARE_GE(), QTRY_COMPARE_GE_WITH_TIMEOUT()
 */
 
 /*! \macro QFETCH(type, name)
@@ -336,6 +674,7 @@
 
    \relates QTest
    \threadsafe
+   \deprecated Use qWarning() instead.
 
    Appends \a message as a warning to the test log. This macro can be used anywhere
    in your tests.
@@ -443,7 +782,8 @@
    failure will be reported.
 
    If a \l QVERIFY() or \l QCOMPARE() is marked as an expected failure,
-   but passes instead, an unexpected pass (XPASS) is written to the test log.
+   but passes instead, an unexpected pass (XPASS) is written to the test log
+   and will be counted as a test failure.
 
    The parameter \a dataIndex describes for which entry in the test data the
    failure is expected. Pass an empty string (\c{""}) if the failure
@@ -452,7 +792,8 @@
    \a comment will be appended to the test log for the expected failure.
 
    \a mode is a \l QTest::TestFailMode and sets whether the test should
-   continue to execute or not.
+   continue to execute or not. The \a mode is applied regardless of
+   whether the expected test failure occurs.
 
    \note This macro can only be used in a test function that is invoked
    by the test framework.
@@ -469,7 +810,7 @@
    \snippet code/src_qtestlib_qtestcase.cpp 10
 
    The above testfunction will not continue executing for the test data
-   entry \c{data27}.
+   entry \c{data27} (regardless of the value of \c i).
 
    \sa QTest::TestFailMode, QVERIFY(), QCOMPARE()
 */
@@ -521,6 +862,10 @@
    point to the working directory from which the compiler is invoked, or only
    absolute paths to the source files are passed to the compiler. Otherwise, the
    absolute path of the source directory cannot be determined.
+
+   \note The \c{QT_TESTCASE_BUILDDIR} macro is also implicitly defined if CMake is used
+   and the QtTest module is linked to the target. You can change the default
+   \c{QT_TESTCASE_BUILDDIR} by setting the QT_TESTCASE_BUILDDIR property on the target.
 
    \note For tests that use the \l QTEST_APPLESS_MAIN() macro to generate a
    \c{main()} function, \c{QFINDTESTDATA} will not attempt to find test data
@@ -617,8 +962,8 @@
     this macro.
 
     Unlike QBENCHMARK, the contents of the contained code block is only run
-    once. The elapsed time will be reported as "0" if it's to short to
-    be measured by the selected backend. (Use)
+    once. The elapsed time will be reported as "0" if it's too short to
+    be measured by the selected backend.
 
     \sa {Qt Test Overview#Creating a Benchmark}{Creating a Benchmark},
     {Chapter 5: Writing a Benchmark}{Writing a Benchmark}
@@ -626,14 +971,16 @@
 
 /*! \enum QTest::TestFailMode
 
-    This enum describes the modes for handling an expected failure of the
-    \l QVERIFY() or \l QCOMPARE() macros.
+    This enum describes the modes for handling a check, such as by \l
+    QVERIFY() or \l QCOMPARE() macros, that is known to fail. The mode
+    applies regardless of whether the check fails or succeeds.
 
-    \value Abort Aborts the execution of the test. Use this mode when it
-           doesn't make sense to execute the test any further after the
-           expected failure.
+    \value Abort Aborts the execution of the test. Use this mode when
+           it doesn't make sense to execute the test any further after
+           the problematic check.
 
-    \value Continue Continues execution of the test after the expected failure.
+    \value Continue Continues execution of the test after the
+           problematic check.
 
     \sa QEXPECT_FAIL()
 */
@@ -914,7 +1261,16 @@
     on a \a widget.  The position of the release is defined by \a pos;
     the default position is the center of the widget. If \a delay is
     specified, the test will wait for the specified amount of
-    milliseconds before releasing the button.
+    milliseconds before releasing the button; otherwise, it will wait for a
+    default amount of time (1 ms), which can be overridden via
+    \l {Testing Options}{command-line arguments}.
+
+    \note If you wish to test a double-click by sending events individually,
+    specify a short delay, greater than the default, on both mouse release events.
+    The total of the delays for the press, release, press and release must be
+    less than QStyleHints::mouseDoubleClickInterval(). But if you don't need
+    to check state between events, it's better to use QTest::mouseDClick().
+    \snippet code/src_qtestlib_qtestcase_snippet.cpp 35
 
     \sa QTest::mousePress(), QTest::mouseClick()
 */
@@ -927,7 +1283,16 @@
     on a \a window.  The position of the release is defined by \a pos;
     the default position is the center of the window. If \a delay is
     specified, the test will wait for the specified amount of
-    milliseconds before releasing the button.
+    milliseconds before releasing the button; otherwise, it will wait for a
+    default amount of time (1 ms), which can be overridden via
+    \l {Testing Options}{command-line arguments}.
+
+    \note If you wish to test a double-click by sending events individually,
+    specify a short delay, greater than the default, on both mouse release events.
+    The total of the delays for the press, release, press and release must be
+    less than QStyleHints::mouseDoubleClickInterval(). But if you don't need
+    to check state between events, it's better to use QTest::mouseDClick().
+    \snippet code/src_qtestlib_qtestcase_snippet.cpp 35
 
     \sa QTest::mousePress(), QTest::mouseClick()
 */
@@ -999,13 +1364,6 @@
 */
 
 /*!
-    \fn template <typename T1, typename T2> char *QTest::toString(const QPair<T1, T2> &pair)
-    \overload
-    \since 5.11
-    Returns a textual representation of the \a pair.
-*/
-
-/*!
     \fn template <typename T1, typename T2> char *QTest::toString(const std::pair<T1, T2> &pair)
     \overload
     \since 5.11
@@ -1070,7 +1428,7 @@
 */
 
 /*!
-    \fn char *QTest::toString(const QLatin1String &string)
+    \fn char *QTest::toString(const QLatin1StringView &string)
     \overload
 
     Returns a textual representation of the given \a string.
@@ -1251,21 +1609,23 @@
 */
 
 /*!
-    \fn template <typename Tuple, int... I> char *QTest::toString(const Tuple &tuple, QtPrivate::IndexesList<I...> )
-    \internal
-    \since 5.12
+    \fn char *QTest::toString(const QKeySequence &ks)
+    \overload
+    \since 6.5
+    Returns a textual representation of the key sequence \a ks.
 */
 
 /*!
-    \fn QTouchDevice *QTest::createTouchDevice(QTouchDevice::DeviceType devType = QTouchDevice::TouchScreen)
+    \fn QPointingDevice * QTest::createTouchDevice(QInputDevice::DeviceType devType = QInputDevice::DeviceType::TouchScreen, QInputDevice::Capabilities caps = QInputDevice::Capability::Position)
     \since 5.8
 
-    Creates a dummy touch device of type \a devType for simulation of touch events.
+    Creates a dummy touch device of type \a devType with capabilities \a caps for
+    simulation of touch events.
 
-    The touch device will be registered with the QPA window system interface,
-    and deleted automatically when the QCoreApplication is deleted. So you
-    should typically use createTouchDevice() to initialize a QTouchDevice
-    member variable in your test case class, and use the same instance for all tests.
+    The touch device will be registered with the Qt window system interface.
+    You should typically use createTouchDevice() to initialize a QPointingDevice
+    member variable in your test case class, use the same instance for all tests and
+    delete it when no longer needed.
 
     \sa QTest::QTouchEventSequence, touchEvent()
 */
@@ -1293,15 +1653,21 @@
 */
 
 /*!
-  \fn void QTest::QTouchEventSequence::commit(bool processEvents)
+    \fn bool QTest::QTouchEventSequence::commit(bool processEvents)
 
-   Commits this sequence of touch events to the event system. Normally there is no need to call this
-   function because it is called from the destructor. However, if autoCommit is disabled, the events
-   only get committed upon explicitly calling this function.
+    Commits this touch event to the event system, and returns whether it was
+    accepted after delivery.
 
-   In special cases tests may want to disable the processing of the events. This can be achieved by
-   setting \a processEvents to false. This results in merely queuing the events, the event loop will
-   not be forced to process them.
+    Normally there is no need to call this function because it is called from
+    the destructor. However, if autoCommit is disabled, the events only get
+    committed upon explicitly calling this function. Another reason to call it
+    explicitly is to check the return value.
+
+    In special cases, tests may want to disable the processing of the event.
+    This can be achieved by setting \a processEvents to false. This results in
+    merely queuing the event: the event loop will not be forced to process it.
+
+    Returns whether the event was accepted after delivery.
 */
 
 /*!
@@ -1318,13 +1684,13 @@
 */
 
 /*!
-    \fn QTouchEventSequence &QTest::QTouchEventSequence::press(int touchId, const QPoint &pt, QWidget *widget)
+    \fn QTouchEventWidgetSequence &QTest::QTouchEventWidgetSequence::press(int touchId, const QPoint &pt, QWidget *widget)
 
     Adds a press event for touchpoint \a touchId at position \a pt to this sequence and returns
-    a reference to this QTouchEventSequence.
+    a reference to this QTouchEventWidgetSequence.
 
     The position \a pt is interpreted as relative to \a widget. If \a widget is the null pointer, then
-    \a pt is interpreted as relative to the widget provided when instantiating this QTouchEventSequence.
+    \a pt is interpreted as relative to the widget provided when instantiating this QTouchEventWidgetSequence.
 
     Simulates that the user pressed the touch screen or pad with the finger identified by \a touchId.
 */
@@ -1343,13 +1709,13 @@
 */
 
 /*!
-    \fn QTouchEventSequence &QTest::QTouchEventSequence::move(int touchId, const QPoint &pt, QWidget *widget)
+    \fn QTouchEventWidgetSequence &QTest::QTouchEventWidgetSequence::move(int touchId, const QPoint &pt, QWidget *widget)
 
     Adds a move event for touchpoint \a touchId at position \a pt to this sequence and returns
-    a reference to this QTouchEventSequence.
+    a reference to this QTouchEventWidgetSequence.
 
     The position \a pt is interpreted as relative to \a widget. If \a widget is the null pointer, then
-    \a pt is interpreted as relative to the widget provided when instantiating this QTouchEventSequence.
+    \a pt is interpreted as relative to the widget provided when instantiating this QTouchEventWidgetSequence.
 
     Simulates that the user moved the finger identified by \a touchId.
 */
@@ -1368,13 +1734,13 @@
 */
 
 /*!
-    \fn QTouchEventSequence &QTest::QTouchEventSequence::release(int touchId, const QPoint &pt, QWidget *widget)
+    \fn QTouchEventWidgetSequence &QTest::QTouchEventWidgetSequence::release(int touchId, const QPoint &pt, QWidget *widget)
 
     Adds a release event for touchpoint \a touchId at position \a pt to this sequence and returns
-    a reference to this QTouchEventSequence.
+    a reference to this QTouchEventWidgetSequence.
 
     The position \a pt is interpreted as relative to \a widget. If \a widget is the null pointer, then
-    \a pt is interpreted as relative to the widget provided when instantiating this QTouchEventSequence.
+    \a pt is interpreted as relative to the widget provided when instantiating this QTouchEventWidgetSequence.
 
     Simulates that the user lifted the finger identified by \a touchId.
 */
@@ -1389,7 +1755,7 @@
 */
 
 /*!
-    \fn QTouchEventSequence QTest::touchEvent(QWindow *window, QTouchDevice *device, bool autoCommit)
+    \fn QTouchEventSequence QTest::touchEvent(QWindow *window, QPointingDevice *device, bool autoCommit)
     \since 5.0
 
     Creates and returns a QTouchEventSequence for the \a device to
@@ -1409,7 +1775,7 @@
 */
 
 /*!
-    \fn QTouchEventSequence QTest::touchEvent(QWidget *widget, QTouchDevice *device, bool autoCommit)
+    \fn QTouchEventSequence QTest::touchEvent(QWidget *widget, QPointingDevice *device, bool autoCommit)
 
     Creates and returns a QTouchEventSequence for the \a device to
     simulate events for \a widget.

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
+#include "base/ranges/algorithm.h"
 #include "components/zucchini/disassembler.h"
 #include "components/zucchini/element_detection.h"
 #include "components/zucchini/equivalence_map.h"
@@ -32,26 +33,26 @@ bool ApplyEquivalenceAndExtraData(ConstBufferView old_image,
     CHECK(next_dst_it >= dst_it);
 
     offset_t gap = static_cast<offset_t>(next_dst_it - dst_it);
-    base::Optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
+    absl::optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
     if (!extra_data) {
       LOG(ERROR) << "Error reading extra_data";
       return false;
     }
     // |extra_data| length is based on what was parsed from the patch so this
     // copy should be valid.
-    dst_it = std::copy(extra_data->begin(), extra_data->end(), dst_it);
+    dst_it = base::ranges::copy(*extra_data, dst_it);
     CHECK_EQ(dst_it, next_dst_it);
     dst_it = std::copy_n(old_image.begin() + equivalence->src_offset,
                          equivalence->length, dst_it);
     CHECK_EQ(dst_it, next_dst_it + equivalence->length);
   }
   offset_t gap = static_cast<offset_t>(new_image.end() - dst_it);
-  base::Optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
+  absl::optional<ConstBufferView> extra_data = extra_data_source.GetNext(gap);
   if (!extra_data) {
     LOG(ERROR) << "Error reading extra_data";
     return false;
   }
-  std::copy(extra_data->begin(), extra_data->end(), dst_it);
+  base::ranges::copy(*extra_data, dst_it);
   if (!equiv_source.Done() || !extra_data_source.Done()) {
     LOG(ERROR) << "Found trailing equivalence and extra_data";
     return false;

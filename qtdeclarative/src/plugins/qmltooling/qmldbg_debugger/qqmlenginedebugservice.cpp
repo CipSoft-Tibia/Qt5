@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlenginedebugservice.h"
 #include "qqmlwatcher.h"
@@ -99,7 +63,7 @@ static bool isSaveable(const QVariant &value)
         return false;
     NullDevice nullDevice;
     QDataStream fakeStream(&nullDevice);
-    return QMetaType::save(fakeStream, valType, value.constData());
+    return QMetaType(valType).save(fakeStream, value.constData());
 }
 
 QQmlEngineDebugServiceImpl::QQmlEngineDebugServiceImpl(QObject *parent) :
@@ -158,7 +122,7 @@ QDataStream &operator>>(QDataStream &ds,
 static inline bool isSignalPropertyName(const QString &signalName)
 {
     // see QmlCompiler::isSignalPropertyName
-    return signalName.length() >= 3 && signalName.startsWith(QLatin1String("on")) &&
+    return signalName.size() >= 3 && signalName.startsWith(QLatin1String("on")) &&
             signalName.at(2).isLetter() && signalName.at(2).isUpper();
 }
 
@@ -196,9 +160,9 @@ QQmlEngineDebugServiceImpl::propertyData(QObject *obj, int propIdx)
 
     rv.value = valueContents(prop.read(obj));
 
-    if (QQmlMetaType::isQObject(prop.userType()))  {
+    if (prop.metaType().flags().testFlag(QMetaType::PointerToQObject))  {
         rv.type = QQmlObjectProperty::Object;
-    } else if (QQmlMetaType::isList(prop.userType())) {
+    } else if (QQmlMetaType::isList(prop.metaType())) {
         rv.type = QQmlObjectProperty::List;
     } else if (prop.userType() == QMetaType::QVariant) {
         rv.type = QQmlObjectProperty::Variant;
@@ -215,7 +179,8 @@ QVariant QQmlEngineDebugServiceImpl::valueContents(QVariant value) const
     // maps for serialization.
     if (value.userType() == qMetaTypeId<QJSValue>())
         value = value.value<QJSValue>().toVariant();
-    const int userType = value.userType();
+    const QMetaType metaType = value.metaType();
+    const int metaTypeId = metaType.id();
 
     //QObject * is not streamable.
     //Convert all such instances to a String value
@@ -238,7 +203,7 @@ QVariant QQmlEngineDebugServiceImpl::valueContents(QVariant value) const
         return contents;
     }
 
-    switch (userType) {
+    switch (metaTypeId) {
     case QMetaType::QRect:
     case QMetaType::QRectF:
     case QMetaType::QPoint:
@@ -257,8 +222,8 @@ QVariant QQmlEngineDebugServiceImpl::valueContents(QVariant value) const
     case QMetaType::QJsonDocument:
         return value.toJsonDocument().toVariant();
     default:
-        if (QQmlValueTypeFactory::isValueType(userType)) {
-            const QMetaObject *mo = QQmlValueTypeFactory::metaObjectForMetaType(userType);
+        if (QQmlMetaType::isValueType(metaType)) {
+            const QMetaObject *mo = QQmlMetaType::metaObjectForValueType(metaType);
             if (mo) {
                 int toStringIndex = mo->indexOfMethod("toString()");
                 if (toStringIndex != -1) {
@@ -274,7 +239,7 @@ QVariant QQmlEngineDebugServiceImpl::valueContents(QVariant value) const
             return value;
     }
 
-    if (QQmlMetaType::isQObject(userType)) {
+    if (metaType.flags().testFlag(QMetaType::PointerToQObject)) {
         QObject *o = QQmlMetaType::toQObject(value);
         if (o) {
             QString name = o->objectName();
@@ -294,8 +259,8 @@ void QQmlEngineDebugServiceImpl::buildObjectDump(QDataStream &message,
 
     QObjectList children = object->children();
 
-    int childrenCount = children.count();
-    for (int ii = 0; ii < children.count(); ++ii) {
+    int childrenCount = children.size();
+    for (int ii = 0; ii < children.size(); ++ii) {
         if (qobject_cast<QQmlContext*>(children[ii]))
             --childrenCount;
     }
@@ -304,7 +269,7 @@ void QQmlEngineDebugServiceImpl::buildObjectDump(QDataStream &message,
 
     QList<QQmlObjectProperty> fakeProperties;
 
-    for (int ii = 0; ii < children.count(); ++ii) {
+    for (int ii = 0; ii < children.size(); ++ii) {
         QObject *child = children.at(ii);
         if (qobject_cast<QQmlContext*>(child))
             continue;
@@ -353,12 +318,12 @@ void QQmlEngineDebugServiceImpl::buildObjectDump(QDataStream &message,
         }
     }
 
-    message << propertyIndexes.size() + fakeProperties.count();
+    message << int(propertyIndexes.size() + fakeProperties.size());
 
     for (int ii = 0; ii < propertyIndexes.size(); ++ii)
         message << propertyData(object, propertyIndexes.at(ii));
 
-    for (int ii = 0; ii < fakeProperties.count(); ++ii)
+    for (int ii = 0; ii < fakeProperties.size(); ++ii)
         message << fakeProperties[ii];
 }
 
@@ -367,7 +332,7 @@ void QQmlEngineDebugServiceImpl::prepareDeferredObjects(QObject *obj)
     qmlExecuteDeferred(obj);
 
     QObjectList children = obj->children();
-    for (int ii = 0; ii < children.count(); ++ii) {
+    for (int ii = 0; ii < children.size(); ++ii) {
         QObject *child = children.at(ii);
         prepareDeferredObjects(child);
     }
@@ -378,7 +343,7 @@ void QQmlEngineDebugServiceImpl::storeObjectIds(QObject *co)
 {
     QQmlDebugService::idForObject(co);
     QObjectList children = co->children();
-    for (int ii = 0; ii < children.count(); ++ii)
+    for (int ii = 0; ii < children.size(); ++ii)
         storeObjectIds(children.at(ii));
 }
 
@@ -389,7 +354,7 @@ void QQmlEngineDebugServiceImpl::buildObjectList(QDataStream &message,
     if (!ctxt->isValid())
         return;
 
-    QQmlContextData *p = QQmlContextData::get(ctxt);
+    QQmlRefPointer<QQmlContextData> p = QQmlContextData::get(ctxt);
 
     QString ctxtName = ctxt->objectName();
     int ctxtId = QQmlDebugService::idForObject(ctxt);
@@ -400,31 +365,31 @@ void QQmlEngineDebugServiceImpl::buildObjectList(QDataStream &message,
 
     int count = 0;
 
-    QQmlContextData *child = p->childContexts;
+    QQmlRefPointer<QQmlContextData> child = p->childContexts();
     while (child) {
         ++count;
-        child = child->nextChild;
+        child = child->nextChild();
     }
 
     message << count;
 
-    child = p->childContexts;
+    child = p->childContexts();
     while (child) {
         buildObjectList(message, child->asQQmlContext(), instances);
-        child = child->nextChild;
+        child = child->nextChild();
     }
 
     count = 0;
-    for (int ii = 0; ii < instances.count(); ++ii) {
+    for (int ii = 0; ii < instances.size(); ++ii) {
         QQmlData *data = QQmlData::get(instances.at(ii));
-        if (data->context == p)
+        if (data->context == p.data())
             count ++;
     }
     message << count;
 
-    for (int ii = 0; ii < instances.count(); ++ii) {
+    for (int ii = 0; ii < instances.size(); ++ii) {
         QQmlData *data = QQmlData::get(instances.at(ii));
-        if (data->context == p)
+        if (data->context == p.data())
             message << objectData(instances.at(ii));
     }
 }
@@ -432,8 +397,8 @@ void QQmlEngineDebugServiceImpl::buildObjectList(QDataStream &message,
 void QQmlEngineDebugServiceImpl::buildStatesList(bool cleanList,
                                              const QList<QPointer<QObject> > &instances)
 {
-    if (m_statesDelegate)
-        m_statesDelegate->buildStatesList(cleanList, instances);
+    if (auto delegate = statesDelegate())
+        delegate->buildStatesList(cleanList, instances);
 }
 
 QQmlEngineDebugServiceImpl::QQmlObjectData
@@ -500,9 +465,9 @@ void QQmlEngineDebugServiceImpl::processMessage(const QByteArray &message)
 
     if (type == "LIST_ENGINES") {
         rs << QByteArray("LIST_ENGINES_R");
-        rs << queryId << m_engines.count();
+        rs << queryId << int(m_engines.size());
 
-        for (int ii = 0; ii < m_engines.count(); ++ii) {
+        for (int ii = 0; ii < m_engines.size(); ++ii) {
             QJSEngine *engine = m_engines.at(ii);
 
             QString engineName = engine->objectName();
@@ -522,16 +487,11 @@ void QQmlEngineDebugServiceImpl::processMessage(const QByteArray &message)
 
         if (engine) {
             QQmlContext *rootContext = engine->rootContext();
-            // Clean deleted objects
             QQmlContextPrivate *ctxtPriv = QQmlContextPrivate::get(rootContext);
-            for (int ii = 0; ii < ctxtPriv->instances.count(); ++ii) {
-                if (!ctxtPriv->instances.at(ii)) {
-                    ctxtPriv->instances.removeAt(ii);
-                    --ii;
-                }
-            }
-            buildObjectList(rs, rootContext, ctxtPriv->instances);
-            buildStatesList(true, ctxtPriv->instances);
+            ctxtPriv->cleanInstances(); // Clean deleted objects
+            const QList<QPointer<QObject>> instances = ctxtPriv->instances();
+            buildObjectList(rs, rootContext, instances);
+            buildStatesList(true, instances);
         }
 
     } else if (type == "FETCH_OBJECT") {
@@ -563,7 +523,7 @@ void QQmlEngineDebugServiceImpl::processMessage(const QByteArray &message)
         const QList<QObject*> objects = objectForLocationInfo(file, lineNumber, columnNumber);
 
         rs << QByteArray("FETCH_OBJECTS_FOR_LOCATION_R") << queryId
-           << objects.count();
+           << int(objects.size());
 
         for (QObject *object : objects) {
             if (recurse)
@@ -686,8 +646,8 @@ bool QQmlEngineDebugServiceImpl::setBinding(int objectId,
         if (property.isValid()) {
 
             bool inBaseState = true;
-            if (m_statesDelegate) {
-                m_statesDelegate->updateBinding(context, property, expression, isLiteralValue,
+            if (auto delegate = statesDelegate()) {
+                delegate->updateBinding(context, property, expression, isLiteralValue,
                                                 filename, line, column, &inBaseState);
             }
 
@@ -712,8 +672,8 @@ bool QQmlEngineDebugServiceImpl::setBinding(int objectId,
 
         } else {
             // not a valid property
-            if (m_statesDelegate)
-                ok = m_statesDelegate->setBindingForInvalidProperty(object, propertyName, expression, isLiteralValue);
+            if (auto delegate = statesDelegate())
+                ok = delegate->setBindingForInvalidProperty(object, propertyName, expression, isLiteralValue);
             if (!ok)
                 qWarning() << "QQmlEngineDebugService::setBinding: unable to set property" << propertyName << "on object" << object;
         }
@@ -727,7 +687,7 @@ bool QQmlEngineDebugServiceImpl::resetBinding(int objectId, const QString &prope
     QQmlContext *context = qmlContext(object);
 
     if (object && context && context->isValid()) {
-        QStringRef parentPropertyRef(&propertyName);
+        QStringView parentPropertyRef(propertyName);
         const int idx = parentPropertyRef.indexOf(QLatin1Char('.'));
         if (idx != -1)
             parentPropertyRef = parentPropertyRef.left(idx);
@@ -766,8 +726,8 @@ bool QQmlEngineDebugServiceImpl::resetBinding(int objectId, const QString &prope
             return true;
         }
 
-        if (m_statesDelegate) {
-            m_statesDelegate->resetBindingForInvalidProperty(object, propertyName);
+        if (auto delegate = statesDelegate()) {
+            delegate->resetBindingForInvalidProperty(object, propertyName);
             return true;
         }
 
@@ -783,11 +743,10 @@ bool QQmlEngineDebugServiceImpl::setMethodBody(int objectId, const QString &meth
     QQmlContext *context = qmlContext(object);
     if (!object || !context || !context->isValid())
         return false;
-    QQmlContextData *contextData = QQmlContextData::get(context);
+    QQmlRefPointer<QQmlContextData> contextData = QQmlContextData::get(context);
 
     QQmlPropertyData dummy;
-    QQmlPropertyData *prop =
-            QQmlPropertyCache::property(context->engine(), object, method, contextData, dummy);
+    const QQmlPropertyData *prop = QQmlPropertyCache::property(object, method, contextData, &dummy);
 
     if (!prop || !prop->isVMEFunction())
         return false;
@@ -796,7 +755,7 @@ bool QQmlEngineDebugServiceImpl::setMethodBody(int objectId, const QString &meth
     QList<QByteArray> paramNames = metaMethod.parameterNames();
 
     QString paramStr;
-    for (int ii = 0; ii < paramNames.count(); ++ii) {
+    for (int ii = 0; ii < paramNames.size(); ++ii) {
         if (ii != 0) paramStr.append(QLatin1Char(','));
         paramStr.append(QString::fromUtf8(paramNames.at(ii)));
     }
@@ -812,9 +771,9 @@ bool QQmlEngineDebugServiceImpl::setMethodBody(int objectId, const QString &meth
 
     int lineNumber = 0;
     QV4::ScopedFunctionObject oldMethod(scope, vmeMetaObject->vmeMethod(prop->coreIndex()));
-    if (oldMethod && oldMethod->d()->function) {
-        lineNumber = oldMethod->d()->function->compiledFunction->location.line;
-    }
+    if (oldMethod && oldMethod->d()->function)
+        lineNumber = oldMethod->d()->function->compiledFunction->location.line();
+
     QV4::ScopedValue v(scope, QQmlJavaScriptExpression::evalFunction(contextData, object, jsfunction, contextData->urlString(), lineNumber));
     vmeMetaObject->setVmeMethod(prop->coreIndex(), v);
     return true;
@@ -861,11 +820,6 @@ void QQmlEngineDebugServiceImpl::objectCreated(QJSEngine *engine, QObject *objec
     //unique queryId -1
     rs << QByteArray("OBJECT_CREATED") << qint32(-1) << engineId << objectId << parentId;
     emit messageToClient(name(), rs.data());
-}
-
-void QQmlEngineDebugServiceImpl::setStatesDelegate(QQmlDebugStatesDelegate *delegate)
-{
-    m_statesDelegate = delegate;
 }
 
 QT_END_NAMESPACE

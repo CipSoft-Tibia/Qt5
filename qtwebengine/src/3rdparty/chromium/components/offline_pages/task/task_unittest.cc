@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,11 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/test_simple_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/offline_pages/task/test_task.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -50,7 +51,7 @@ class NestingTask : public Task {
     TaskComplete();
   }
 
-  NestingTask* child_ = nullptr;
+  raw_ptr<NestingTask> child_ = nullptr;
   bool completed_ = false;
 };
 
@@ -61,12 +62,13 @@ class OfflineTaskTest : public testing::Test {
   void PumpLoop();
  private:
   scoped_refptr<base::TestSimpleTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle task_runner_handle_;
+  base::SingleThreadTaskRunner::CurrentDefaultHandle
+      task_runner_current_default_handle_;
 };
 
 OfflineTaskTest::OfflineTaskTest()
     : task_runner_(new base::TestSimpleTaskRunner),
-      task_runner_handle_(task_runner_) {}
+      task_runner_current_default_handle_(task_runner_) {}
 
 void OfflineTaskTest::PumpLoop() {
   task_runner_->RunUntilIdle();

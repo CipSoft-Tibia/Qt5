@@ -1,12 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef EXTENSIONS_BROWSER_API_RUNTIME_RUNTIME_API_DELEGATE_H_
 #define EXTENSIONS_BROWSER_API_RUNTIME_RUNTIME_API_DELEGATE_H_
 
-#include "base/callback.h"
-#include "base/version.h"
+#include "base/functional/callback.h"
+#include "extensions/common/api/runtime.h"
 
 class GURL;
 
@@ -15,12 +15,6 @@ class BrowserContext;
 }
 
 namespace extensions {
-
-namespace api {
-namespace runtime {
-struct PlatformInfo;
-}
-}
 
 class Extension;
 class UpdateObserver;
@@ -31,19 +25,18 @@ class UpdateObserver;
 class RuntimeAPIDelegate {
  public:
   struct UpdateCheckResult {
-    bool success;
-    std::string response;
+    api::runtime::RequestUpdateCheckStatus status;
     std::string version;
 
-    UpdateCheckResult(bool success,
-                      const std::string& response,
+    UpdateCheckResult(const api::runtime::RequestUpdateCheckStatus& status,
                       const std::string& version);
   };
 
-  virtual ~RuntimeAPIDelegate() {}
+  virtual ~RuntimeAPIDelegate() = default;
 
   // The callback given to RequestUpdateCheck.
-  typedef base::Callback<void(const UpdateCheckResult&)> UpdateCheckCallback;
+  using UpdateCheckCallback =
+      base::OnceCallback<void(const UpdateCheckResult&)>;
 
   // Registers an UpdateObserver on behalf of the runtime API.
   virtual void AddUpdateObserver(UpdateObserver* observer) = 0;
@@ -58,7 +51,7 @@ class RuntimeAPIDelegate {
   // are disabled. Otherwise |callback| is called with the result of the
   // update check.
   virtual bool CheckForUpdates(const std::string& extension_id,
-                               const UpdateCheckCallback& callback) = 0;
+                               UpdateCheckCallback callback) = 0;
 
   // Navigates the browser to a URL on behalf of the runtime API.
   virtual void OpenURL(const GURL& uninstall_url) = 0;

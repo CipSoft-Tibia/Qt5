@@ -40,8 +40,8 @@ class SwitchInfo {
       DCHECK_LE(min_value, max_value);
       // Note that {value_range} can be 0 if {min_value} is -2^31 and
       // {max_value} is 2^31-1, so don't assume that it's non-zero below.
-      value_range_ =
-          1u + bit_cast<uint32_t>(max_value) - bit_cast<uint32_t>(min_value);
+      value_range_ = 1u + base::bit_cast<uint32_t>(max_value) -
+                     base::bit_cast<uint32_t>(min_value);
     } else {
       value_range_ = 0;
     }
@@ -85,10 +85,12 @@ class OperandGenerator {
                                      GetVReg(node)));
   }
 
+  InstructionOperand DefineSameAsInput(Node* node, int input_index) {
+    return Define(node, UnallocatedOperand(GetVReg(node), input_index));
+  }
+
   InstructionOperand DefineSameAsFirst(Node* node) {
-    return Define(node,
-                  UnallocatedOperand(UnallocatedOperand::SAME_AS_FIRST_INPUT,
-                                     GetVReg(node)));
+    return DefineSameAsInput(node, 0);
   }
 
   InstructionOperand DefineAsFixed(Node* node, Register reg) {
@@ -177,6 +179,16 @@ class OperandGenerator {
                                         GetVReg(node)));
   }
 
+  enum class RegisterUseKind { kUseRegister, kUseUniqueRegister };
+  InstructionOperand UseRegister(Node* node, RegisterUseKind unique_reg) {
+    if (V8_LIKELY(unique_reg == RegisterUseKind::kUseRegister)) {
+      return UseRegister(node);
+    } else {
+      DCHECK_EQ(unique_reg, RegisterUseKind::kUseUniqueRegister);
+      return UseUniqueRegister(node);
+    }
+  }
+
   InstructionOperand UseFixed(Node* node, Register reg) {
     return Use(node, UnallocatedOperand(UnallocatedOperand::FIXED_REGISTER,
                                         reg.code(), GetVReg(node)));
@@ -189,6 +201,10 @@ class OperandGenerator {
   }
 
   InstructionOperand UseImmediate(int immediate) {
+    return sequence()->AddImmediate(Constant(immediate));
+  }
+
+  InstructionOperand UseImmediate64(int64_t immediate) {
     return sequence()->AddImmediate(Constant(immediate));
   }
 
@@ -224,7 +240,7 @@ class OperandGenerator {
   int AllocateVirtualRegister() { return sequence()->NextVirtualRegister(); }
 
   InstructionOperand DefineSameAsFirstForVreg(int vreg) {
-    return UnallocatedOperand(UnallocatedOperand::SAME_AS_FIRST_INPUT, vreg);
+    return UnallocatedOperand(UnallocatedOperand::SAME_AS_INPUT, vreg);
   }
 
   InstructionOperand DefineAsRegistertForVreg(int vreg) {
@@ -270,6 +286,11 @@ class OperandGenerator {
   InstructionOperand TempRegister(Register reg) {
     return UnallocatedOperand(UnallocatedOperand::FIXED_REGISTER, reg.code(),
                               InstructionOperand::kInvalidVirtualRegister);
+  }
+
+  InstructionOperand TempRegister(int code) {
+    return UnallocatedOperand(UnallocatedOperand::FIXED_REGISTER, code,
+                              sequence()->NextVirtualRegister());
   }
 
   template <typename FPRegType>
@@ -344,8 +365,6 @@ class OperandGenerator {
         return Constant(HeapConstantOf(node->op()));
       case IrOpcode::kCompressedHeapConstant:
         return Constant(HeapConstantOf(node->op()), true);
-      case IrOpcode::kDelayedStringConstant:
-        return Constant(StringConstantBaseOf(node->op()));
       case IrOpcode::kDeadValue: {
         switch (DeadValueRepresentationOf(node->op())) {
           case MachineRepresentation::kBit:
@@ -413,7 +432,7 @@ class OperandGenerator {
 
   UnallocatedOperand ToUnallocatedOperand(LinkageLocation location,
                                           int virtual_register) {
-    if (location.IsAnyRegister()) {
+    if (location.IsAnyRegister() || location.IsNullRegister()) {
       // any machine register.
       return UnallocatedOperand(UnallocatedOperand::MUST_HAVE_REGISTER,
                                 virtual_register);

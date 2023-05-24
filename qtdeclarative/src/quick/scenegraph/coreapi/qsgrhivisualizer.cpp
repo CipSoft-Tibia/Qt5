@@ -1,49 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Copyright (C) 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
-** Copyright (C) 2016 Robin Burchell <robin.burchell@viroteck.net>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2016 Jolla Ltd, author: <gunnar.sletta@jollamobile.com>
+// Copyright (C) 2016 Robin Burchell <robin.burchell@viroteck.net>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrhivisualizer_p.h"
 #include <qmath.h>
-#include <QQuickWindow>
-#include <private/qsgmaterialrhishader_p.h>
-#include <private/qsgshadersourcebuilder_p.h>
+#include <private/qsgmaterialshader_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -94,13 +56,13 @@ void RhiVisualizer::prepareVisualize()
         return;
 
     if (!m_vs.isValid()) {
-        m_vs = QSGMaterialRhiShaderPrivate::loadShader(
+        m_vs = QSGMaterialShaderPrivate::loadShader(
                     QLatin1String(":/qt-project.org/scenegraph/shaders_ng/visualization.vert.qsb"));
-        m_fs = QSGMaterialRhiShaderPrivate::loadShader(
+        m_fs = QSGMaterialShaderPrivate::loadShader(
                     QLatin1String(":/qt-project.org/scenegraph/shaders_ng/visualization.frag.qsb"));
     }
 
-    m_fade.prepare(this, m_renderer->m_rhi, m_renderer->m_resourceUpdates, m_renderer->renderPassDescriptor());
+    m_fade.prepare(this, m_renderer->m_rhi, m_renderer->m_resourceUpdates, m_renderer->renderTarget().rpDesc);
 
     const bool forceUintIndex = m_renderer->m_uint32IndexForRhi;
 
@@ -137,7 +99,7 @@ void RhiVisualizer::visualize()
     if (m_visualizeMode == VisualizeNothing)
         return;
 
-    QRhiCommandBuffer *cb = m_renderer->commandBuffer();
+    QRhiCommandBuffer *cb = m_renderer->renderTarget().cb;
     m_fade.render(cb);
 
     switch (m_visualizeMode) {
@@ -165,7 +127,7 @@ void RhiVisualizer::recordDrawCalls(const QVector<DrawCall> &drawCalls,
                                     bool blendOneOne)
 {
     for (const DrawCall &dc : drawCalls) {
-        QRhiGraphicsPipeline *ps = m_pipelines.pipeline(this, m_renderer->m_rhi, srb, m_renderer->renderPassDescriptor(),
+        QRhiGraphicsPipeline *ps = m_pipelines.pipeline(this, m_renderer->m_rhi, srb, m_renderer->renderTarget().rpDesc,
                                                         dc.vertex.topology, dc.vertex.format, dc.vertex.stride,
                                                         blendOneOne);
         if (!ps)
@@ -195,14 +157,14 @@ void RhiVisualizer::Fade::prepare(RhiVisualizer *visualizer,
     if (!vbuf) {
         float v[] = { -1, 1,   1, 1,   -1, -1,   1, -1 };
         vbuf = rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(v));
-        if (!vbuf->build())
+        if (!vbuf->create())
             return;
         u->uploadStaticBuffer(vbuf, v);
     }
 
     if (!ubuf) {
         ubuf = rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, DrawCall::UBUF_SIZE);
-        if (!ubuf->build())
+        if (!ubuf->create())
             return;
         float bgOpacity = 0.8f;
         if (visualizer->m_visualizeMode == Visualizer::VisualizeBatches)
@@ -221,7 +183,7 @@ void RhiVisualizer::Fade::prepare(RhiVisualizer *visualizer,
     if (!srb) {
         srb = rhi->newShaderResourceBindings();
         srb->setBindings({ QRhiShaderResourceBinding::uniformBuffer(0, ubufVisibility, ubuf) });
-        if (!srb->build())
+        if (!srb->create())
             return;
     }
 
@@ -239,7 +201,7 @@ void RhiVisualizer::Fade::prepare(RhiVisualizer *visualizer,
         ps->setVertexInputLayout(inputLayout);
         ps->setShaderResourceBindings(srb);
         ps->setRenderPassDescriptor(rpDesc);
-        if (!ps->build())
+        if (!ps->create())
             return;
     }
 }
@@ -290,15 +252,15 @@ static inline uint aligned(uint v, uint byteAlign)
     return (v + byteAlign - 1) & ~(byteAlign - 1);
 }
 
-static bool ensureBuffer(QRhi *rhi, QRhiBuffer **buf, QRhiBuffer::UsageFlags usage, int newSize)
+static bool ensureBuffer(QRhi *rhi, QRhiBuffer **buf, QRhiBuffer::UsageFlags usage, quint32 newSize)
 {
     if (!*buf) {
         *buf = rhi->newBuffer(QRhiBuffer::Dynamic, usage, newSize);
-        if (!(*buf)->build())
+        if (!(*buf)->create())
             return false;
     } else if ((*buf)->size() < newSize) {
         (*buf)->setSize(newSize);
-        if (!(*buf)->build())
+        if (!(*buf)->create())
             return false;
     }
     return true;
@@ -313,7 +275,7 @@ QRhiGraphicsPipeline *RhiVisualizer::PipelineCache::pipeline(RhiVisualizer *visu
                                                              quint32 vertexStride,
                                                              bool blendOneOne)
 {
-    for (int i = 0, ie = pipelines.count(); i != ie; ++i) {
+    for (int i = 0, ie = pipelines.size(); i != ie; ++i) {
         const Pipeline &p(pipelines.at(i));
         if (p.topology == topology && p.format == vertexFormat && p.stride == vertexStride)
             return p.ps;
@@ -339,7 +301,7 @@ QRhiGraphicsPipeline *RhiVisualizer::PipelineCache::pipeline(RhiVisualizer *visu
     ps->setVertexInputLayout(inputLayout);
     ps->setShaderResourceBindings(srb);
     ps->setRenderPassDescriptor(rpDesc);
-    if (!ps->build())
+    if (!ps->create())
         return nullptr;
 
     Pipeline p;
@@ -354,7 +316,7 @@ QRhiGraphicsPipeline *RhiVisualizer::PipelineCache::pipeline(RhiVisualizer *visu
 
 void RhiVisualizer::PipelineCache::releaseResources()
 {
-    for (int i = 0, ie = pipelines.count(); i != ie; ++i)
+    for (int i = 0, ie = pipelines.size(); i != ie; ++i)
         delete pipelines.at(i).ps;
 
     pipelines.clear();
@@ -365,7 +327,7 @@ void RhiVisualizer::ChangeVis::gather(Node *n)
     if (n->type() == QSGNode::GeometryNodeType && n->element()->batch && visualizer->m_visualizeChangeSet.contains(n)) {
         const uint dirty = visualizer->m_visualizeChangeSet.value(n);
         const bool tinted = (dirty & QSGNODE_DIRTY_PARENT) != 0;
-        const QColor color = QColor::fromHsvF((rand() & 1023) / 1023.0f, 0.3f, 1.0f);
+        const QColor color = QColor::fromHsvF((visualizer->m_randomGenerator.generate() & 1023) / 1023.0f, 0.3f, 1.0f).toRgb();
         const float alpha = 0.5f;
 
         QMatrix4x4 matrix = visualizer->m_renderer->m_current_projection_matrix;
@@ -453,7 +415,7 @@ void RhiVisualizer::ChangeVis::prepare(Node *n, RhiVisualizer *visualizer,
     if (!srb) {
         srb = rhi->newShaderResourceBindings();
         srb->setBindings({ QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, ubufVisibility, ubuf, DrawCall::UBUF_SIZE) });
-        if (!srb->build())
+        if (!srb->create())
             return;
     }
 }
@@ -492,7 +454,7 @@ void RhiVisualizer::BatchVis::gather(Batch *b)
     QMatrix4x4 rotation;
     memcpy(dc.uniforms.data + 64, rotation.constData(), 64);
 
-    QColor color = QColor::fromHsvF((rand() & 1023) / 1023.0, 1.0, 1.0);
+    const QColor color = QColor::fromHsvF((visualizer->m_randomGenerator.generate() & 1023) / 1023.0, 1.0, 1.0).toRgb();
 
     float c[4] = {
         float(color.redF()),
@@ -566,7 +528,6 @@ void RhiVisualizer::BatchVis::prepare(const QDataBuffer<Batch *> &opaqueBatches,
 
     drawCalls.clear();
 
-    srand(0); // To force random colors to be roughly the same every time..
     for (int i = 0; i < opaqueBatches.size(); ++i)
         gather(opaqueBatches.at(i));
     for (int i = 0; i < alphaBatches.size(); ++i)
@@ -591,7 +552,7 @@ void RhiVisualizer::BatchVis::prepare(const QDataBuffer<Batch *> &opaqueBatches,
     if (!srb) {
         srb = rhi->newShaderResourceBindings();
         srb->setBindings({ QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, ubufVisibility, ubuf, DrawCall::UBUF_SIZE) });
-        if (!srb->build())
+        if (!srb->create())
             return;
     }
 }
@@ -685,7 +646,7 @@ void RhiVisualizer::ClipVis::prepare(QSGNode *node, RhiVisualizer *visualizer,
     if (!srb) {
         srb = rhi->newShaderResourceBindings();
         srb->setBindings({ QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, ubufVisibility, ubuf, DrawCall::UBUF_SIZE) });
-        if (!srb->build())
+        if (!srb->create())
             return;
     }
 }
@@ -793,14 +754,14 @@ void RhiVisualizer::OverdrawVis::prepare(Node *n, RhiVisualizer *visualizer,
             1, 1, 0,    1, 1, 1
         };
         box.vbuf = rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(v));
-        if (!box.vbuf->build())
+        if (!box.vbuf->create())
             return;
         u->uploadStaticBuffer(box.vbuf, v);
     }
 
     if (!box.ubuf) {
         box.ubuf = rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, DrawCall::UBUF_SIZE);
-        if (!box.ubuf->build())
+        if (!box.ubuf->create())
             return;
         QMatrix4x4 ident;
         u->updateDynamicBuffer(box.ubuf, 0, 64, ident.constData());
@@ -817,7 +778,7 @@ void RhiVisualizer::OverdrawVis::prepare(Node *n, RhiVisualizer *visualizer,
     if (!box.srb) {
         box.srb = rhi->newShaderResourceBindings();
         box.srb->setBindings({ QRhiShaderResourceBinding::uniformBuffer(0, ubufVisibility, box.ubuf) });
-        if (!box.srb->build())
+        if (!box.srb->create())
             return;
     }
 
@@ -839,8 +800,8 @@ void RhiVisualizer::OverdrawVis::prepare(Node *n, RhiVisualizer *visualizer,
         inputLayout.setAttributes({ { 0, 0, QRhiVertexInputAttribute::Float3, 0 } });
         box.ps->setVertexInputLayout(inputLayout);
         box.ps->setShaderResourceBindings(box.srb);
-        box.ps->setRenderPassDescriptor(visualizer->m_renderer->renderPassDescriptor());
-        if (!box.ps->build())
+        box.ps->setRenderPassDescriptor(visualizer->m_renderer->renderTarget().rpDesc);
+        if (!box.ps->create())
             return;
     }
 
@@ -881,7 +842,7 @@ void RhiVisualizer::OverdrawVis::prepare(Node *n, RhiVisualizer *visualizer,
     if (!srb) {
         srb = rhi->newShaderResourceBindings();
         srb->setBindings({ QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, ubufVisibility, ubuf, DrawCall::UBUF_SIZE) });
-        if (!srb->build())
+        if (!srb->create())
             return;
     }
 }

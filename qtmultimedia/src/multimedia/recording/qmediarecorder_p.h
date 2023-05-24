@@ -1,44 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef QMEDIARECORDER_P_H
-#define QMEDIARECORDER_P_H
+#ifndef QMediaRecorder_P_H
+#define QMediaRecorder_P_H
 
 //
 //  W A R N I N G
@@ -52,59 +16,37 @@
 //
 
 #include "qmediarecorder.h"
-#include "qmediaobject_p.h"
+#include "qcamera.h"
 #include <QtCore/qurl.h>
+#include <QtCore/qpointer.h>
+#include "private/qplatformmediarecorder_p.h"
 
 QT_BEGIN_NAMESPACE
 
-class QMediaRecorderControl;
-class QMediaContainerControl;
-class QAudioEncoderSettingsControl;
-class QVideoEncoderSettingsControl;
-class QMetaDataWriterControl;
-class QMediaAvailabilityControl;
+class QPlatformMediaRecorder;
 class QTimer;
 
-class QMediaRecorderPrivate
+class Q_MULTIMEDIA_EXPORT QMediaRecorderPrivate
 {
-    Q_DECLARE_NON_CONST_PUBLIC(QMediaRecorder)
+    Q_DECLARE_PUBLIC(QMediaRecorder)
 
 public:
     QMediaRecorderPrivate();
-    virtual ~QMediaRecorderPrivate() {}
 
-    void applySettingsLater();
-    void restartCamera();
+    static QString msgFailedStartRecording();
 
-    QMediaObject *mediaObject;
+    QMediaCaptureSession *captureSession = nullptr;
+    QPlatformMediaRecorder *control = nullptr;
+    QString initErrorMessage;
 
-    QMediaRecorderControl *control;
-    QMediaContainerControl *formatControl;
-    QAudioEncoderSettingsControl *audioControl;
-    QVideoEncoderSettingsControl *videoControl;
-    QMetaDataWriterControl *metaDataControl;
-    QMediaAvailabilityControl *availabilityControl;
+    bool settingsChanged = false;
 
-    bool settingsChanged;
+    QMediaEncoderSettings encoderSettings;
 
-    QTimer* notifyTimer;
-
-    QMediaRecorder::State state;
-    QMediaRecorder::Error error;
-    QString errorString;
-    QUrl actualLocation;
-
-    void _q_stateChanged(QMediaRecorder::State state);
-    void _q_error(int error, const QString &errorString);
-    void _q_serviceDestroyed();
-    void _q_updateActualLocation(const QUrl &);
-    void _q_notify();
-    void _q_updateNotifyInterval(int ms);
-    void _q_applySettings();
-    void _q_availabilityChanged(QMultimedia::AvailabilityStatus availability);
-
-    QMediaRecorder *q_ptr;
+    QMediaRecorder *q_ptr = nullptr;
 };
+
+#undef Q_DECLARE_NON_CONST_PUBLIC
 
 QT_END_NAMESPACE
 

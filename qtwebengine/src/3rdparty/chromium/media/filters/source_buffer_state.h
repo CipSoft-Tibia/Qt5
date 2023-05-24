@@ -1,15 +1,14 @@
-// Copyright (c) 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_FILTERS_SOURCE_BUFFER_STATE_H_
 #define MEDIA_FILTERS_SOURCE_BUFFER_STATE_H_
 
-#include <list>
-
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/memory/memory_pressure_listener.h"
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "media/base/audio_codecs.h"
 #include "media/base/demuxer.h"
 #include "media/base/demuxer_stream.h"
@@ -22,7 +21,6 @@
 
 namespace media {
 
-using base::TimeDelta;
 
 class ChunkDemuxerStream;
 class FrameProcessor;
@@ -42,6 +40,9 @@ class MEDIA_EXPORT SourceBufferState {
                     CreateDemuxerStreamCB create_demuxer_stream_cb,
                     MediaLog* media_log);
 
+  SourceBufferState(const SourceBufferState&) = delete;
+  SourceBufferState& operator=(const SourceBufferState&) = delete;
+
   ~SourceBufferState();
 
   void Init(StreamParser::InitCB init_cb,
@@ -56,26 +57,50 @@ class MEDIA_EXPORT SourceBufferState {
   void ChangeType(std::unique_ptr<StreamParser> new_stream_parser,
                   const std::string& new_expected_codecs);
 
-  // Appends new data to the StreamParser.
-  // Returns true if the data was successfully appended. Returns false if an
-  // error occurred. |*timestamp_offset| is used and possibly updated by the
-  // append. |append_window_start| and |append_window_end| correspond to the MSE
-  // spec's similarly named source buffer attributes that are used in coded
-  // frame processing.
-  bool Append(const uint8_t* data,
-              size_t length,
-              TimeDelta append_window_start,
-              TimeDelta append_window_end,
-              TimeDelta* timestamp_offset);
+  // Appends media data to the StreamParser, but no parsing is done of it yet,
+  // just buffering the media data for future parsing via RunSegmentParserLoop()
+  // calls. Returns true on success. Returns false if the parser was unable to
+  // allocate resources; content in `data` is not copied as a result, and this
+  // failure is reported (through various layers) up to the SourceBuffer's
+  // implementation of appendBuffer(), which should then notify the app of
+  // append failure using a `QuotaExceededErr` exception per the MSE
+  // specification. App could use a back-off and retry strategy or otherwise
+  // alter their behavior to attempt to buffer media for further playback.
+  [[nodiscard]] bool AppendToParseBuffer(const uint8_t* data, size_t length);
+
+  // Tells the stream parser to parse more of the data previously sent to it
+  // from this object's AppendToParseBuffer(). `*timestamp_offset` is used and
+  // possibly updated by the parsing.  `append_window_start` and
+  // `append_window_end` correspond to the MSE spec's similarly named source
+  // buffer attributes that are used in coded frame processing.
+  // Returns kSuccess if the parse succeeded and all previously provided data
+  // from AppendToParseBuffer() has been inspected.
+  // Returns kSuccessHasMoreData if the parse succeeded, yet there remains
+  // uninspected data remaining from AppendToParseBuffer(); more call(s) to this
+  // method are necessary for the parser to attempt inspection of that data.
+  // Returns kFailed if the parse failed.
+  [[nodiscard]] StreamParser::ParseStatus RunSegmentParserLoop(
+      base::TimeDelta append_window_start,
+      base::TimeDelta append_window_end,
+      base::TimeDelta* timestamp_offset);
+
+  // AppendChunks appends the provided BufferQueue.
+  [[nodiscard]] bool AppendChunks(
+      std::unique_ptr<StreamParser::BufferQueue> buffer_queue,
+      base::TimeDelta append_window_start,
+      base::TimeDelta append_window_end,
+      base::TimeDelta* timestamp_offset);
 
   // Aborts the current append sequence and resets the parser.
-  void ResetParserState(TimeDelta append_window_start,
-                        TimeDelta append_window_end,
-                        TimeDelta* timestamp_offset);
+  void ResetParserState(base::TimeDelta append_window_start,
+                        base::TimeDelta append_window_end,
+                        base::TimeDelta* timestamp_offset);
 
   // Calls Remove(|start|, |end|, |duration|) on all
   // ChunkDemuxerStreams managed by this object.
-  void Remove(TimeDelta start, TimeDelta end, TimeDelta duration);
+  void Remove(base::TimeDelta start,
+              base::TimeDelta end,
+              base::TimeDelta duration);
 
   // If the buffer is full, attempts to try to free up space, as specified in
   // the "Coded Frame Eviction Algorithm" in the Media Source Extensions Spec.
@@ -113,24 +138,29 @@ class MEDIA_EXPORT SourceBufferState {
   // Returns the range of buffered data in this source, capped at |duration|.
   // |ended| - Set to true if end of stream has been signaled and the special
   // end of stream range logic needs to be executed.
-  Ranges<TimeDelta> GetBufferedRanges(TimeDelta duration, bool ended) const;
+  Ranges<base::TimeDelta> GetBufferedRanges(base::TimeDelta duration,
+                                            bool ended) const;
+
+  // Returns the lowest PTS of currently buffered frames in this source, or
+  // base::TimeDelta() if none of the streams contain buffered data.
+  base::TimeDelta GetLowestPresentationTimestamp() const;
 
   // Returns the highest PTS of currently buffered frames in this source, or
   // base::TimeDelta() if none of the streams contain buffered data.
-  TimeDelta GetHighestPresentationTimestamp() const;
+  base::TimeDelta GetHighestPresentationTimestamp() const;
 
   // Returns the highest buffered duration across all streams managed
   // by this object.
-  // Returns TimeDelta() if none of the streams contain buffered data.
-  TimeDelta GetMaxBufferedDuration() const;
+  // Returns base::TimeDelta() if none of the streams contain buffered data.
+  base::TimeDelta GetMaxBufferedDuration() const;
 
   // Helper methods that call methods with similar names on all the
   // ChunkDemuxerStreams managed by this object.
   void StartReturningData();
   void AbortReads();
-  void Seek(TimeDelta seek_time);
+  void Seek(base::TimeDelta seek_time);
   void CompletePendingReadIfPossible();
-  void OnSetDuration(TimeDelta duration);
+  void OnSetDuration(base::TimeDelta duration);
   void MarkEndOfStream();
   void UnmarkEndOfStream();
   void Shutdown();
@@ -140,12 +170,12 @@ class MEDIA_EXPORT SourceBufferState {
   void SetMemoryLimits(DemuxerStream::Type type, size_t memory_limit);
   bool IsSeekWaitingForData() const;
 
-  using RangesList = std::vector<Ranges<TimeDelta>>;
-  static Ranges<TimeDelta> ComputeRangesIntersection(
+  using RangesList = std::vector<Ranges<base::TimeDelta>>;
+  static Ranges<base::TimeDelta> ComputeRangesIntersection(
       const RangesList& active_ranges,
       bool ended);
 
-  void SetTracksWatcher(const Demuxer::MediaTracksUpdatedCB& tracks_updated_cb);
+  void SetTracksWatcher(Demuxer::MediaTracksUpdatedCB tracks_updated_cb);
 
   void SetParseWarningCallback(SourceBufferParseWarningCB parse_warning_cb);
 
@@ -209,17 +239,19 @@ class MEDIA_EXPORT SourceBufferState {
   // or video blocks. Useful to prevent log spam.
   int num_missing_track_logs_ = 0;
 
-  // During Append(), if OnNewBuffers() coded frame processing updates the
-  // timestamp offset then |*timestamp_offset_during_append_| is also updated
-  // so Append()'s caller can know the new offset. This pointer is only non-NULL
-  // during the lifetime of an Append() call.
-  TimeDelta* timestamp_offset_during_append_;
+  // During RunSegmentParserLoop() or AppendChunks(), if OnNewBuffers() coded
+  // frame processing updates the timestamp offset then
+  // `*timestamp_offset_during_append_` is also updated so the caller can know
+  // the new offset. This pointer is only non-NULL during the lifetime of a
+  // RunSegmentParserLoop() or AppendChunks() call.
+  raw_ptr<base::TimeDelta> timestamp_offset_during_append_;
 
-  // During Append(), coded frame processing triggered by OnNewBuffers()
-  // requires these two attributes. These are only valid during the lifetime of
-  // an Append() call.
-  TimeDelta append_window_start_during_append_;
-  TimeDelta append_window_end_during_append_;
+  // During RunSegmentParserLoop() or AppendChunks(), coded frame processing
+  // triggered by OnNewBuffers() requires these two attributes. These are only
+  // valid during the lifetime of a RunSegmentParserLoop() or AppendChunks()
+  // call.
+  base::TimeDelta append_window_start_during_append_;
+  base::TimeDelta append_window_end_during_append_;
 
   // Keeps track of whether a media segment is being parsed.
   bool parsing_media_segment_;
@@ -240,7 +272,7 @@ class MEDIA_EXPORT SourceBufferState {
 
   std::unique_ptr<FrameProcessor> frame_processor_;
   const CreateDemuxerStreamCB create_demuxer_stream_cb_;
-  MediaLog* media_log_;
+  raw_ptr<MediaLog> media_log_;
 
   StreamParser::InitCB init_cb_;
   StreamParser::EncryptedMediaInitDataCB encrypted_media_init_data_cb_;
@@ -248,21 +280,20 @@ class MEDIA_EXPORT SourceBufferState {
 
   State state_;
 
-  // During Append(), OnNewConfigs() will trigger the initialization segment
-  // received algorithm. Note, the MSE spec explicitly disallows this algorithm
-  // during an Abort(), since Abort() is allowed only to emit coded frames, and
-  // only if the parser is PARSING_MEDIA_SEGMENT (not an INIT segment). So we
-  // also have a flag here that indicates if Append is in progress and we can
-  // invoke this callback.
+  // During RunSegmentParserLoop() or AppendChunks(), OnNewConfigs() will
+  // trigger the initialization segment received algorithm. Note, the MSE spec
+  // explicitly disallows this algorithm during an Abort(), since Abort() is
+  // allowed only to emit coded frames, and only if the parser is
+  // PARSING_MEDIA_SEGMENT (not an INIT segment). So we also have a
+  // `new_configs_possible_` flag here that indicates if RunSegmentParserLoop()
+  // or AppendChunks() is in progress and we can invoke this callback.
   Demuxer::MediaTracksUpdatedCB init_segment_received_cb_;
-  bool append_in_progress_ = false;
+  bool new_configs_possible_ = false;
   bool first_init_segment_received_ = false;
   bool encrypted_media_init_data_reported_ = false;
 
   std::vector<AudioCodec> expected_audio_codecs_;
   std::vector<VideoCodec> expected_video_codecs_;
-
-  DISALLOW_COPY_AND_ASSIGN(SourceBufferState);
 };
 
 }  // namespace media

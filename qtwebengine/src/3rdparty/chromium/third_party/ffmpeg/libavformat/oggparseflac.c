@@ -19,6 +19,7 @@
  */
 
 #include <stdlib.h>
+#include "libavcodec/avcodec.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/flac.h"
 #include "avformat.h"
@@ -59,7 +60,7 @@ flac_header (AVFormatContext * s, int idx)
 
         st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
         st->codecpar->codec_id = AV_CODEC_ID_FLAC;
-        st->need_parsing = AVSTREAM_PARSE_HEADERS;
+        ffstream(st)->need_parsing = AVSTREAM_PARSE_HEADERS;
 
         if ((ret = ff_alloc_extradata(st->codecpar, FLAC_STREAMINFO_SIZE)) < 0)
             return ret;

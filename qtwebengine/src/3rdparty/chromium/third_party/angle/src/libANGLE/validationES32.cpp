@@ -14,6 +14,8 @@
 #include "libANGLE/VertexArray.h"
 #include "libANGLE/validationES.h"
 #include "libANGLE/validationES2_autogen.h"
+#include "libANGLE/validationES3.h"
+#include "libANGLE/validationES31.h"
 #include "libANGLE/validationES31_autogen.h"
 #include "libANGLE/validationES3_autogen.h"
 
@@ -25,23 +27,29 @@ namespace gl
 {
 using namespace err;
 
-bool ValidateBlendBarrier(const Context *context)
+bool ValidateBlendBarrier(const Context *context, angle::EntryPoint entryPoint)
 {
     return true;
 }
 
 bool ValidateBlendEquationSeparatei(const Context *context,
+                                    angle::EntryPoint entryPoint,
                                     GLuint buf,
                                     GLenum modeRGB,
                                     GLenum modeAlpha)
 {
-    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, buf, "buf"))
     {
-        context->validationError(GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
         return false;
     }
 
-    if (!ValidateBlendEquationSeparate(context, modeRGB, modeAlpha))
+    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    {
+        context->validationError(entryPoint, GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
+        return false;
+    }
+
+    if (!ValidateBlendEquationSeparate(context, entryPoint, modeRGB, modeAlpha))
     {
         // error already generated
         return false;
@@ -50,15 +58,23 @@ bool ValidateBlendEquationSeparatei(const Context *context,
     return true;
 }
 
-bool ValidateBlendEquationi(const Context *context, GLuint buf, GLenum mode)
+bool ValidateBlendEquationi(const Context *context,
+                            angle::EntryPoint entryPoint,
+                            GLuint buf,
+                            GLenum mode)
 {
-    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, buf, "buf"))
     {
-        context->validationError(GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
         return false;
     }
 
-    if (!ValidateBlendEquation(context, mode))
+    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    {
+        context->validationError(entryPoint, GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
+        return false;
+    }
+
+    if (!ValidateBlendEquation(context, entryPoint, mode))
     {
         // error already generated
         return false;
@@ -68,19 +84,25 @@ bool ValidateBlendEquationi(const Context *context, GLuint buf, GLenum mode)
 }
 
 bool ValidateBlendFuncSeparatei(const Context *context,
+                                angle::EntryPoint entryPoint,
                                 GLuint buf,
                                 GLenum srcRGB,
                                 GLenum dstRGB,
                                 GLenum srcAlpha,
                                 GLenum dstAlpha)
 {
-    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, buf, "buf"))
     {
-        context->validationError(GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
         return false;
     }
 
-    if (!ValidateBlendFuncSeparate(context, srcRGB, dstRGB, srcAlpha, dstAlpha))
+    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    {
+        context->validationError(entryPoint, GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
+        return false;
+    }
+
+    if (!ValidateBlendFuncSeparate(context, entryPoint, srcRGB, dstRGB, srcAlpha, dstAlpha))
     {
         // error already generated
         return false;
@@ -89,15 +111,24 @@ bool ValidateBlendFuncSeparatei(const Context *context,
     return true;
 }
 
-bool ValidateBlendFunci(const Context *context, GLuint buf, GLenum src, GLenum dst)
+bool ValidateBlendFunci(const Context *context,
+                        angle::EntryPoint entryPoint,
+                        GLuint buf,
+                        GLenum src,
+                        GLenum dst)
 {
-    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, buf, "buf"))
     {
-        context->validationError(GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
         return false;
     }
 
-    if (!ValidateBlendFunc(context, src, dst))
+    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    {
+        context->validationError(entryPoint, GL_INVALID_VALUE, kExceedsMaxDrawBuffers);
+        return false;
+    }
+
+    if (!ValidateBlendFunc(context, entryPoint, src, dst))
     {
         // error already generated
         return false;
@@ -107,15 +138,21 @@ bool ValidateBlendFunci(const Context *context, GLuint buf, GLenum src, GLenum d
 }
 
 bool ValidateColorMaski(const Context *context,
-                        GLuint index,
+                        angle::EntryPoint entryPoint,
+                        GLuint buf,
                         GLboolean r,
                         GLboolean g,
                         GLboolean b,
                         GLboolean a)
 {
-    if (index >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, buf, "buf"))
     {
-        context->validationError(GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
+        return false;
+    }
+
+    if (buf >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
+    {
+        context->validationError(entryPoint, GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
         return false;
     }
 
@@ -123,6 +160,7 @@ bool ValidateColorMaski(const Context *context,
 }
 
 bool ValidateCopyImageSubData(const Context *context,
+                              angle::EntryPoint entryPoint,
                               GLuint srcName,
                               GLenum srcTarget,
                               GLint srcLevel,
@@ -139,10 +177,19 @@ bool ValidateCopyImageSubData(const Context *context,
                               GLsizei srcHeight,
                               GLsizei srcDepth)
 {
-    return true;
+    if (context->getClientVersion() < ES_3_2)
+    {
+        context->validationError(entryPoint, GL_INVALID_OPERATION, kES32Required);
+        return false;
+    }
+
+    return ValidateCopyImageSubDataBase(context, entryPoint, srcName, srcTarget, srcLevel, srcX,
+                                        srcY, srcZ, dstName, dstTarget, dstLevel, dstX, dstY, dstZ,
+                                        srcWidth, srcHeight, srcDepth);
 }
 
 bool ValidateDebugMessageCallback(const Context *context,
+                                  angle::EntryPoint entryPoint,
                                   GLDEBUGPROC callback,
                                   const void *userParam)
 {
@@ -150,6 +197,7 @@ bool ValidateDebugMessageCallback(const Context *context,
 }
 
 bool ValidateDebugMessageControl(const Context *context,
+                                 angle::EntryPoint entryPoint,
                                  GLenum source,
                                  GLenum type,
                                  GLenum severity,
@@ -161,6 +209,7 @@ bool ValidateDebugMessageControl(const Context *context,
 }
 
 bool ValidateDebugMessageInsert(const Context *context,
+                                angle::EntryPoint entryPoint,
                                 GLenum source,
                                 GLenum type,
                                 GLuint id,
@@ -171,41 +220,45 @@ bool ValidateDebugMessageInsert(const Context *context,
     return true;
 }
 
-bool ValidateDisablei(const Context *context, GLenum target, GLuint index)
+bool ValidateDisablei(const Context *context,
+                      angle::EntryPoint entryPoint,
+                      GLenum target,
+                      GLuint index)
 {
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, index, "index"))
+    {
+        return false;
+    }
+
     switch (target)
     {
         case GL_BLEND:
             if (index >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
             {
-                context->validationError(GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
+                context->validationError(entryPoint, GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
                 return false;
             }
             break;
         default:
-            context->validationError(GL_INVALID_ENUM, kEnumNotSupported);
+            context->validationErrorF(entryPoint, GL_INVALID_ENUM, kEnumNotSupported, target);
             return false;
     }
     return true;
 }
 
 bool ValidateDrawElementsBaseVertex(const Context *context,
+                                    angle::EntryPoint entryPoint,
                                     PrimitiveMode mode,
                                     GLsizei count,
                                     DrawElementsType type,
                                     const void *indices,
                                     GLint basevertex)
 {
-    if (!context->getExtensions().drawElementsBaseVertexAny())
-    {
-        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
-        return false;
-    }
-
-    return ValidateDrawElementsCommon(context, mode, count, type, indices, 1);
+    return ValidateDrawElementsCommon(context, entryPoint, mode, count, type, indices, 1);
 }
 
 bool ValidateDrawElementsInstancedBaseVertex(const Context *context,
+                                             angle::EntryPoint entryPoint,
                                              PrimitiveMode mode,
                                              GLsizei count,
                                              DrawElementsType type,
@@ -213,16 +266,12 @@ bool ValidateDrawElementsInstancedBaseVertex(const Context *context,
                                              GLsizei instancecount,
                                              GLint basevertex)
 {
-    if (!context->getExtensions().drawElementsBaseVertexAny())
-    {
-        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
-        return false;
-    }
-
-    return ValidateDrawElementsInstancedBase(context, mode, count, type, indices, instancecount);
+    return ValidateDrawElementsInstancedBase(context, entryPoint, mode, count, type, indices,
+                                             instancecount);
 }
 
 bool ValidateDrawRangeElementsBaseVertex(const Context *context,
+                                         angle::EntryPoint entryPoint,
                                          PrimitiveMode mode,
                                          GLuint start,
                                          GLuint end,
@@ -231,19 +280,13 @@ bool ValidateDrawRangeElementsBaseVertex(const Context *context,
                                          const void *indices,
                                          GLint basevertex)
 {
-    if (!context->getExtensions().drawElementsBaseVertexAny())
-    {
-        context->validationError(GL_INVALID_OPERATION, kExtensionNotEnabled);
-        return false;
-    }
-
     if (end < start)
     {
-        context->validationError(GL_INVALID_VALUE, kInvalidElementRange);
+        context->validationError(entryPoint, GL_INVALID_VALUE, kInvalidElementRange);
         return false;
     }
 
-    if (!ValidateDrawElementsCommon(context, mode, count, type, indices, 0))
+    if (!ValidateDrawElementsCommon(context, entryPoint, mode, count, type, indices, 1))
     {
         return false;
     }
@@ -257,25 +300,34 @@ bool ValidateDrawRangeElementsBaseVertex(const Context *context,
     return true;
 }
 
-bool ValidateEnablei(const Context *context, GLenum target, GLuint index)
+bool ValidateEnablei(const Context *context,
+                     angle::EntryPoint entryPoint,
+                     GLenum target,
+                     GLuint index)
 {
+    if (!ValidateDrawBufferIndexIfActivePLS(context, entryPoint, index, "index"))
+    {
+        return false;
+    }
+
     switch (target)
     {
         case GL_BLEND:
             if (index >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
             {
-                context->validationError(GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
+                context->validationError(entryPoint, GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
                 return false;
             }
             break;
         default:
-            context->validationError(GL_INVALID_ENUM, kEnumNotSupported);
+            context->validationErrorF(entryPoint, GL_INVALID_ENUM, kEnumNotSupported, target);
             return false;
     }
     return true;
 }
 
 bool ValidateFramebufferTexture(const Context *context,
+                                angle::EntryPoint entryPoint,
                                 GLenum target,
                                 GLenum attachment,
                                 TextureID texture,
@@ -285,6 +337,7 @@ bool ValidateFramebufferTexture(const Context *context,
 }
 
 bool ValidateGetDebugMessageLog(const Context *context,
+                                angle::EntryPoint entryPoint,
                                 GLuint count,
                                 GLsizei bufSize,
                                 const GLenum *sources,
@@ -297,12 +350,13 @@ bool ValidateGetDebugMessageLog(const Context *context,
     return true;
 }
 
-bool ValidateGetGraphicsResetStatus(const Context *context)
+bool ValidateGetGraphicsResetStatus(const Context *context, angle::EntryPoint entryPoint)
 {
     return true;
 }
 
 bool ValidateGetObjectLabel(const Context *context,
+                            angle::EntryPoint entryPoint,
                             GLenum identifier,
                             GLuint name,
                             GLsizei bufSize,
@@ -313,6 +367,7 @@ bool ValidateGetObjectLabel(const Context *context,
 }
 
 bool ValidateGetObjectPtrLabel(const Context *context,
+                               angle::EntryPoint entryPoint,
                                const void *ptr,
                                GLsizei bufSize,
                                const GLsizei *length,
@@ -321,7 +376,10 @@ bool ValidateGetObjectPtrLabel(const Context *context,
     return true;
 }
 
-bool ValidateGetPointerv(const Context *context, GLenum pname, void *const *params)
+bool ValidateGetPointerv(const Context *context,
+                         angle::EntryPoint entryPoint,
+                         GLenum pname,
+                         void *const *params)
 {
     Version clientVersion = context->getClientVersion();
 
@@ -336,7 +394,7 @@ bool ValidateGetPointerv(const Context *context, GLenum pname, void *const *para
             case GL_POINT_SIZE_ARRAY_POINTER_OES:
                 return true;
             default:
-                context->validationError(GL_INVALID_ENUM, kInvalidPointerQuery);
+                context->validationError(entryPoint, GL_INVALID_ENUM, kInvalidPointerQuery);
                 return false;
         }
     }
@@ -348,18 +406,19 @@ bool ValidateGetPointerv(const Context *context, GLenum pname, void *const *para
             case GL_DEBUG_CALLBACK_USER_PARAM:
                 return true;
             default:
-                context->validationError(GL_INVALID_ENUM, kInvalidPointerQuery);
+                context->validationError(entryPoint, GL_INVALID_ENUM, kInvalidPointerQuery);
                 return false;
         }
     }
     else
     {
-        context->validationError(GL_INVALID_OPERATION, kES1or32Required);
+        context->validationError(entryPoint, GL_INVALID_OPERATION, kES1or32Required);
         return false;
     }
 }
 
 bool ValidateGetSamplerParameterIiv(const Context *context,
+                                    angle::EntryPoint entryPoint,
                                     SamplerID sampler,
                                     GLenum pname,
                                     const GLint *params)
@@ -368,6 +427,7 @@ bool ValidateGetSamplerParameterIiv(const Context *context,
 }
 
 bool ValidateGetSamplerParameterIuiv(const Context *context,
+                                     angle::EntryPoint entryPoint,
                                      SamplerID sampler,
                                      GLenum pname,
                                      const GLuint *params)
@@ -376,6 +436,7 @@ bool ValidateGetSamplerParameterIuiv(const Context *context,
 }
 
 bool ValidateGetTexParameterIiv(const Context *context,
+                                angle::EntryPoint entryPoint,
                                 TextureType targetPacked,
                                 GLenum pname,
                                 const GLint *params)
@@ -384,6 +445,7 @@ bool ValidateGetTexParameterIiv(const Context *context,
 }
 
 bool ValidateGetTexParameterIuiv(const Context *context,
+                                 angle::EntryPoint entryPoint,
                                  TextureType targetPacked,
                                  GLenum pname,
                                  const GLuint *params)
@@ -392,56 +454,63 @@ bool ValidateGetTexParameterIuiv(const Context *context,
 }
 
 bool ValidateGetnUniformfv(const Context *context,
+                           angle::EntryPoint entryPoint,
                            ShaderProgramID program,
                            UniformLocation location,
                            GLsizei bufSize,
                            const GLfloat *params)
 {
-    return true;
+    return ValidateSizedGetUniform(context, entryPoint, program, location, bufSize, nullptr);
 }
 
 bool ValidateGetnUniformiv(const Context *context,
+                           angle::EntryPoint entryPoint,
                            ShaderProgramID program,
                            UniformLocation location,
                            GLsizei bufSize,
                            const GLint *params)
 {
-    return true;
+    return ValidateSizedGetUniform(context, entryPoint, program, location, bufSize, nullptr);
 }
 
 bool ValidateGetnUniformuiv(const Context *context,
+                            angle::EntryPoint entryPoint,
                             ShaderProgramID program,
                             UniformLocation location,
                             GLsizei bufSize,
                             const GLuint *params)
 {
-    return true;
+    return ValidateSizedGetUniform(context, entryPoint, program, location, bufSize, nullptr);
 }
 
-bool ValidateIsEnabledi(const Context *context, GLenum target, GLuint index)
+bool ValidateIsEnabledi(const Context *context,
+                        angle::EntryPoint entryPoint,
+                        GLenum target,
+                        GLuint index)
 {
     switch (target)
     {
         case GL_BLEND:
             if (index >= static_cast<GLuint>(context->getCaps().maxDrawBuffers))
             {
-                context->validationError(GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
+                context->validationError(entryPoint, GL_INVALID_VALUE, kIndexExceedsMaxDrawBuffer);
                 return false;
             }
             break;
         default:
-            context->validationError(GL_INVALID_ENUM, kEnumNotSupported);
+            context->validationErrorF(entryPoint, GL_INVALID_ENUM, kEnumNotSupported, target);
             return false;
     }
     return true;
 }
 
-bool ValidateMinSampleShading(const Context *context, GLfloat value)
+bool ValidateMinSampleShading(const Context *context, angle::EntryPoint entryPoint, GLfloat value)
 {
     return true;
 }
 
 bool ValidateObjectLabel(const Context *context,
+                         angle::EntryPoint entryPoint,
                          GLenum identifier,
                          GLuint name,
                          GLsizei length,
@@ -451,6 +520,7 @@ bool ValidateObjectLabel(const Context *context,
 }
 
 bool ValidateObjectPtrLabel(const Context *context,
+                            angle::EntryPoint entryPoint,
                             const void *ptr,
                             GLsizei length,
                             const GLchar *label)
@@ -458,17 +528,21 @@ bool ValidateObjectPtrLabel(const Context *context,
     return true;
 }
 
-bool ValidatePatchParameteri(const Context *context, GLenum pname, GLint value)
+bool ValidatePatchParameteri(const Context *context,
+                             angle::EntryPoint entryPoint,
+                             GLenum pname,
+                             GLint value)
 {
     return true;
 }
 
-bool ValidatePopDebugGroup(const Context *context)
+bool ValidatePopDebugGroup(const Context *context, angle::EntryPoint entryPoint)
 {
     return true;
 }
 
 bool ValidatePrimitiveBoundingBox(const Context *context,
+                                  angle::EntryPoint entryPoint,
                                   GLfloat minX,
                                   GLfloat minY,
                                   GLfloat minZ,
@@ -482,6 +556,7 @@ bool ValidatePrimitiveBoundingBox(const Context *context,
 }
 
 bool ValidatePushDebugGroup(const Context *context,
+                            angle::EntryPoint entryPoint,
                             GLenum source,
                             GLuint id,
                             GLsizei length,
@@ -491,6 +566,7 @@ bool ValidatePushDebugGroup(const Context *context,
 }
 
 bool ValidateReadnPixels(const Context *context,
+                         angle::EntryPoint entryPoint,
                          GLint x,
                          GLint y,
                          GLsizei width,
@@ -504,6 +580,7 @@ bool ValidateReadnPixels(const Context *context,
 }
 
 bool ValidateSamplerParameterIiv(const Context *context,
+                                 angle::EntryPoint entryPoint,
                                  SamplerID sampler,
                                  GLenum pname,
                                  const GLint *param)
@@ -512,6 +589,7 @@ bool ValidateSamplerParameterIiv(const Context *context,
 }
 
 bool ValidateSamplerParameterIuiv(const Context *context,
+                                  angle::EntryPoint entryPoint,
                                   SamplerID sampler,
                                   GLenum pname,
                                   const GLuint *param)
@@ -520,24 +598,40 @@ bool ValidateSamplerParameterIuiv(const Context *context,
 }
 
 bool ValidateTexBuffer(const Context *context,
+                       angle::EntryPoint entryPoint,
                        TextureType target,
                        GLenum internalformat,
                        BufferID buffer)
 {
-    return true;
+    if (context->getClientVersion() < ES_3_2)
+    {
+        context->validationError(entryPoint, GL_INVALID_OPERATION, kES32Required);
+        return false;
+    }
+
+    return ValidateTexBufferBase(context, entryPoint, target, internalformat, buffer);
 }
 
 bool ValidateTexBufferRange(const Context *context,
+                            angle::EntryPoint entryPoint,
                             TextureType target,
                             GLenum internalformat,
                             BufferID buffer,
                             GLintptr offset,
                             GLsizeiptr size)
 {
-    return true;
+    if (context->getClientVersion() < ES_3_2)
+    {
+        context->validationError(entryPoint, GL_INVALID_OPERATION, kES32Required);
+        return false;
+    }
+
+    return ValidateTexBufferRangeBase(context, entryPoint, target, internalformat, buffer, offset,
+                                      size);
 }
 
 bool ValidateTexParameterIiv(const Context *context,
+                             angle::EntryPoint entryPoint,
                              TextureType targetPacked,
                              GLenum pname,
                              const GLint *params)
@@ -546,6 +640,7 @@ bool ValidateTexParameterIiv(const Context *context,
 }
 
 bool ValidateTexParameterIuiv(const Context *context,
+                              angle::EntryPoint entryPoint,
                               TextureType targetPacked,
                               GLenum pname,
                               const GLuint *params)
@@ -554,6 +649,7 @@ bool ValidateTexParameterIuiv(const Context *context,
 }
 
 bool ValidateTexStorage3DMultisample(const Context *context,
+                                     angle::EntryPoint entryPoint,
                                      TextureType targetPacked,
                                      GLsizei samples,
                                      GLenum internalformat,

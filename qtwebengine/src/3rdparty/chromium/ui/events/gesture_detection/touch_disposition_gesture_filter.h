@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 #include "base/containers/queue.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/events/gesture_detection/bitset_32.h"
 #include "ui/events/gesture_detection/gesture_detection_export.h"
 #include "ui/events/gesture_detection/gesture_event_data_packet.h"
@@ -29,6 +29,11 @@ class GESTURE_DETECTION_EXPORT TouchDispositionGestureFilter {
  public:
   explicit TouchDispositionGestureFilter(
       TouchDispositionGestureFilterClient* client);
+
+  TouchDispositionGestureFilter(const TouchDispositionGestureFilter&) = delete;
+  TouchDispositionGestureFilter& operator=(
+      const TouchDispositionGestureFilter&) = delete;
+
   ~TouchDispositionGestureFilter();
 
   // To be called upon production of touch-derived gestures by the platform,
@@ -37,17 +42,20 @@ class GESTURE_DETECTION_EXPORT TouchDispositionGestureFilter {
   // touch event. It is imperative that a single packet is received for
   // *each* touch event, even those that did not produce a gesture.
   enum PacketResult {
-    SUCCESS,              // Packet successfully queued.
-    INVALID_PACKET_ORDER, // Packets were received in the wrong order, i.e.,
-                          // TOUCH_BEGIN should always precede other packets.
-    INVALID_PACKET_TYPE,  // Packet had an invalid type.
+    SUCCESS,                // Packet successfully queued.
+    INVALID_PACKET_ORDER,   // Packets were received in the wrong order, i.e.,
+                            // TOUCH_BEGIN should always precede other packets.
+                            // CANCEL results in EMPTY_GESTURE_SEQ as it is
+                            // allowed without a corresponding TOUCH_BEGIN.
+    INVALID_PACKET_TYPE,    // Packet had an invalid type.
+    EMPTY_GESTURE_SEQUENCE  // CANCEL received without a TOUCH_BEGIN.
   };
   PacketResult OnGesturePacket(const GestureEventDataPacket& packet);
 
   // OnTouchEventAck must be called upon receipt of every touch event ack.
   void OnTouchEventAck(uint32_t unique_touch_event_id,
                        bool event_consumed,
-                       bool is_source_touch_event_set_non_blocking);
+                       bool is_source_touch_event_set_blocking);
 
   // Whether there are any active gesture sequences still queued in the filter.
   bool IsEmpty() const;
@@ -97,7 +105,7 @@ class GESTURE_DETECTION_EXPORT TouchDispositionGestureFilter {
   GestureSequence& Head();
   GestureSequence& Tail();
 
-  TouchDispositionGestureFilterClient* client_;
+  raw_ptr<TouchDispositionGestureFilterClient> client_;
   base::queue<GestureSequence> sequences_;
 
   GestureHandlingState state_;
@@ -111,8 +119,6 @@ class GESTURE_DETECTION_EXPORT TouchDispositionGestureFilter {
   bool needs_show_press_event_;
   bool needs_fling_ending_event_;
   bool needs_scroll_ending_event_;
-
-  DISALLOW_COPY_AND_ASSIGN(TouchDispositionGestureFilter);
 };
 
 }  // namespace ui

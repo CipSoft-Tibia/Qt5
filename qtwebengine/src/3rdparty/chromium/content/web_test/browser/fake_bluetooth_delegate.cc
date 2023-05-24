@@ -1,10 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/web_test/browser/fake_bluetooth_delegate.h"
 
+#include "base/containers/contains.h"
 #include "content/public/browser/web_contents.h"
+#include "content/web_test/browser/web_test_control_host.h"
 #include "device/bluetooth/bluetooth_device.h"
 #include "third_party/blink/public/common/bluetooth/web_bluetooth_device_id.h"
 #include "third_party/blink/public/mojom/bluetooth/web_bluetooth.mojom.h"
@@ -16,9 +18,45 @@ using device::BluetoothUUID;
 
 namespace content {
 
+namespace {
+
+class AlwaysAllowBluetoothScanning : public BluetoothScanningPrompt {
+ public:
+  explicit AlwaysAllowBluetoothScanning(const EventHandler& event_handler) {
+    event_handler.Run(BluetoothScanningPrompt::Event::kAllow);
+  }
+};
+
+}  // namespace
+
 // public
 FakeBluetoothDelegate::FakeBluetoothDelegate() = default;
 FakeBluetoothDelegate::~FakeBluetoothDelegate() = default;
+
+std::unique_ptr<BluetoothChooser> FakeBluetoothDelegate::RunBluetoothChooser(
+    RenderFrameHost* frame,
+    const BluetoothChooser::EventHandler& event_handler) {
+  if (auto* web_test_control_host = WebTestControlHost::Get())
+    return web_test_control_host->RunBluetoothChooser(frame, event_handler);
+  return nullptr;
+}
+
+std::unique_ptr<BluetoothScanningPrompt>
+FakeBluetoothDelegate::ShowBluetoothScanningPrompt(
+    RenderFrameHost* frame,
+    const BluetoothScanningPrompt::EventHandler& event_handler) {
+  return std::make_unique<AlwaysAllowBluetoothScanning>(event_handler);
+}
+
+void FakeBluetoothDelegate::ShowDevicePairPrompt(
+    RenderFrameHost* frame,
+    const std::u16string& device_identifier,
+    PairPromptCallback callback,
+    PairingKind pairing_kind,
+    const absl::optional<std::u16string>& pin) {
+  std::move(callback).Run(content::BluetoothDelegate::PairPromptResult(
+      content::BluetoothDelegate::PairPromptStatus::kCancelled));
+}
 
 WebBluetoothDeviceId FakeBluetoothDelegate::GetWebBluetoothDeviceId(
     RenderFrameHost* frame,
@@ -65,6 +103,17 @@ bool FakeBluetoothDelegate::HasDevicePermission(
   return base::Contains(device_id_to_services_map_, device_id);
 }
 
+void FakeBluetoothDelegate::RevokeDevicePermissionWebInitiated(
+    RenderFrameHost* frame,
+    const WebBluetoothDeviceId& device_id) {
+  device_id_to_services_map_.erase(device_id);
+  device_id_to_name_map_.erase(device_id);
+  device_id_to_manufacturer_code_map_.erase(device_id);
+  auto& device_address_to_id_map = GetAddressToIdMapForOrigin(frame);
+  base::EraseIf(device_address_to_id_map,
+                [device_id](auto& entry) { return entry.second == device_id; });
+}
+
 bool FakeBluetoothDelegate::IsAllowedToAccessService(
     RenderFrameHost* frame,
     const WebBluetoothDeviceId& device_id,
@@ -97,6 +146,12 @@ bool FakeBluetoothDelegate::IsAllowedToAccessManufacturerData(
 
   return base::Contains(id_to_manufacturer_data_it->second, manufacturer_code);
 }
+
+void FakeBluetoothDelegate::AddFramePermissionObserver(
+    FramePermissionObserver* observer) {}
+
+void FakeBluetoothDelegate::RemoveFramePermissionObserver(
+    FramePermissionObserver* observer) {}
 
 std::vector<blink::mojom::WebBluetoothDevicePtr>
 FakeBluetoothDelegate::GetPermittedDevices(RenderFrameHost* frame) {
@@ -161,9 +216,9 @@ void FakeBluetoothDelegate::GrantUnionOfServicesAndManufacturerDataForDevice(
 FakeBluetoothDelegate::AddressToIdMap&
 FakeBluetoothDelegate::GetAddressToIdMapForOrigin(RenderFrameHost* frame) {
   auto* web_contents = WebContents::FromRenderFrameHost(frame);
-  auto origin_pair =
-      std::make_pair(frame->GetLastCommittedOrigin(),
-                     web_contents->GetMainFrame()->GetLastCommittedOrigin());
+  auto origin_pair = std::make_pair(
+      frame->GetLastCommittedOrigin(),
+      web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin());
   return device_address_to_id_map_for_origin_[origin_pair];
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -185,7 +185,7 @@ void TestLookup(const char* name, KeyboardLayoutEngine* engine) {
     int input_flags;
     DomKey::Base output_dom_key;
     KeyboardCode output_keycode;
-    base::char16 output_character;
+    char16_t output_character;
   } kTestCases[] = {
       {DomCode::US_A, EF_NONE, DomKey::Constant<'a'>::Character, VKEY_A, 'a'},
       {DomCode::US_A, EF_SHIFT_DOWN, DomKey::Constant<'A'>::Character, VKEY_A,
@@ -201,7 +201,7 @@ void TestLookup(const char* name, KeyboardLayoutEngine* engine) {
     KeyboardCode keycode;
     SCOPED_TRACE(base::StringPrintf(
         "%s(%s, 0x%X)", name,
-        KeycodeConverter::DomCodeToCodeString(t.input_dom_code),
+        KeycodeConverter::DomCodeToCodeString(t.input_dom_code).c_str(),
         t.input_flags));
     EXPECT_TRUE(
         engine->Lookup(t.input_dom_code, t.input_flags, &dom_key, &keycode));

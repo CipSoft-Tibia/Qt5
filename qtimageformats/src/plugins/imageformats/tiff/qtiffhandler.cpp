@@ -1,48 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtiffhandler_p.h"
-#include <qvariant.h>
+
 #include <qcolorspace.h>
 #include <qdebug.h>
+#include <qfloat16.h>
 #include <qimage.h>
-#include <qglobal.h>
+#include <qvariant.h>
+#include <qvarlengtharray.h>
+#include <qbuffer.h>
+#include <qfiledevice.h>
+
 extern "C" {
 #include "tiffio.h"
 }
@@ -90,13 +59,33 @@ toff_t qtiffSizeProc(thandle_t fd)
     return static_cast<QIODevice *>(fd)->size();
 }
 
-int qtiffMapProc(thandle_t /*fd*/, tdata_t* /*pbase*/, toff_t* /*psize*/)
+int qtiffMapProc(thandle_t fd, void **base, toff_t *size)
 {
+    QIODevice *device = static_cast<QIODevice *>(fd);
+
+    QFileDevice *file = qobject_cast<QFileDevice *>(device);
+    if (file) {
+        *base = file->map(0, file->size());
+        if (*base != nullptr) {
+            *size = file->size();
+            return 1;
+        }
+    } else {
+        QBuffer *buf = qobject_cast<QBuffer *>(device);
+        if (buf) {
+            *base = const_cast<char *>(buf->data().constData());
+            *size = buf->size();
+            return 1;
+        }
+    }
     return 0;
 }
 
-void qtiffUnmapProc(thandle_t /*fd*/, tdata_t /*base*/, toff_t /*size*/)
+void qtiffUnmapProc(thandle_t fd, void *base, toff_t /*size*/)
 {
+    QFileDevice *file = qobject_cast<QFileDevice *>(static_cast<QIODevice *>(fd));
+    if (file && base)
+        file->unmap(static_cast<uchar *>(base));
 }
 
 
@@ -118,6 +107,7 @@ public:
     QSize size;
     uint16_t photometric;
     bool grayscale;
+    bool floatingPoint;
     bool headersRead;
     int currentDirectory;
     int directoryCount;
@@ -271,6 +261,10 @@ bool QTiffHandlerPrivate::readHeaders(QIODevice *device)
     uint16_t samplesPerPixel; // they may be e.g. grayscale with 2 samples per pixel
     if (!TIFFGetField(tiff, TIFFTAG_SAMPLESPERPIXEL, &samplesPerPixel))
         samplesPerPixel = 1;
+    uint16_t sampleFormat;
+    if (!TIFFGetField(tiff, TIFFTAG_SAMPLEFORMAT, &sampleFormat))
+        sampleFormat = SAMPLEFORMAT_VOID;
+    floatingPoint = (sampleFormat == SAMPLEFORMAT_IEEEFP);
 
     grayscale = photometric == PHOTOMETRIC_MINISBLACK || photometric == PHOTOMETRIC_MINISWHITE;
 
@@ -278,13 +272,15 @@ bool QTiffHandlerPrivate::readHeaders(QIODevice *device)
         format = QImage::Format_Mono;
     else if (photometric == PHOTOMETRIC_MINISBLACK && bitPerSample == 8 && samplesPerPixel == 1)
         format = QImage::Format_Grayscale8;
-    else if (photometric == PHOTOMETRIC_MINISBLACK && bitPerSample == 16 && samplesPerPixel == 1)
+    else if (photometric == PHOTOMETRIC_MINISBLACK && bitPerSample == 16 && samplesPerPixel == 1 && !floatingPoint)
         format = QImage::Format_Grayscale16;
     else if ((grayscale || photometric == PHOTOMETRIC_PALETTE) && bitPerSample == 8 && samplesPerPixel == 1)
         format = QImage::Format_Indexed8;
     else if (samplesPerPixel < 4)
-        if (bitPerSample == 16 && photometric == PHOTOMETRIC_RGB)
-            format = QImage::Format_RGBX64;
+        if (bitPerSample == 16 && (photometric == PHOTOMETRIC_RGB || photometric == PHOTOMETRIC_MINISBLACK))
+            format = floatingPoint ? QImage::Format_RGBX16FPx4 : QImage::Format_RGBX64;
+        else if (bitPerSample == 32 && floatingPoint && (photometric == PHOTOMETRIC_RGB || photometric == PHOTOMETRIC_MINISBLACK))
+            format = QImage::Format_RGBX32FPx4;
         else
             format = QImage::Format_RGB32;
     else {
@@ -304,9 +300,16 @@ bool QTiffHandlerPrivate::readHeaders(QIODevice *device)
             if (gotField && count && extrasamples[0] == EXTRASAMPLE_UNASSALPHA)
                 premultiplied = false;
             if (premultiplied)
-                format = QImage::Format_RGBA64_Premultiplied;
+                format = floatingPoint ? QImage::Format_RGBA16FPx4_Premultiplied : QImage::Format_RGBA64_Premultiplied;
             else
-                format = QImage::Format_RGBA64;
+                format = floatingPoint ? QImage::Format_RGBA16FPx4 : QImage::Format_RGBA64;
+        } else if (bitPerSample == 32 && floatingPoint && photometric == PHOTOMETRIC_RGB) {
+            if (gotField && count && extrasamples[0] == EXTRASAMPLE_UNASSALPHA)
+                premultiplied = false;
+            if (premultiplied)
+                format = QImage::Format_RGBA32FPx4_Premultiplied;
+            else
+                format = QImage::Format_RGBA32FPx4;
         } else {
             if (premultiplied)
                 format = QImage::Format_ARGB32_Premultiplied;
@@ -349,13 +352,7 @@ bool QTiffHandler::read(QImage *image)
 
     QImage::Format format = d->format;
 
-    if (image->size() == d->size && image->format() != format)
-        image->reinterpretAsFormat(format);
-
-    if (image->size() != d->size || image->format() != format)
-        *image = QImage(d->size, format);
-
-    if (image->isNull()) {
+    if (!QImageIOHandler::allocateImage(d->size, format, image)) {
         d->close();
         return false;
     }
@@ -369,7 +366,7 @@ bool QTiffHandler::read(QImage *image)
     // Setup color tables
     if (format == QImage::Format_Mono || format == QImage::Format_Indexed8) {
         if (format == QImage::Format_Mono) {
-            QVector<QRgb> colortable(2);
+            QList<QRgb> colortable(2);
             if (d->photometric == PHOTOMETRIC_MINISBLACK) {
                 colortable[0] = 0xff000000;
                 colortable[1] = 0xffffffff;
@@ -380,7 +377,7 @@ bool QTiffHandler::read(QImage *image)
             image->setColorTable(colortable);
         } else if (format == QImage::Format_Indexed8) {
             const uint16_t tableSize = 256;
-            QVector<QRgb> qtColorTable(tableSize);
+            QList<QRgb> qtColorTable(tableSize);
             if (d->grayscale) {
                 for (int i = 0; i<tableSize; ++i) {
                     const int c = (d->photometric == PHOTOMETRIC_MINISBLACK) ? i : (255 - i);
@@ -415,12 +412,16 @@ bool QTiffHandler::read(QImage *image)
     bool format8bit = (format == QImage::Format_Mono || format == QImage::Format_Indexed8 || format == QImage::Format_Grayscale8);
     bool format16bit = (format == QImage::Format_Grayscale16);
     bool format64bit = (format == QImage::Format_RGBX64 || format == QImage::Format_RGBA64 || format == QImage::Format_RGBA64_Premultiplied);
+    bool format64fp = (format == QImage::Format_RGBX16FPx4 || format == QImage::Format_RGBA16FPx4 || format == QImage::Format_RGBA16FPx4_Premultiplied);
+    bool format128fp = (format == QImage::Format_RGBX32FPx4 || format == QImage::Format_RGBA32FPx4 || format == QImage::Format_RGBA32FPx4_Premultiplied);
 
     // Formats we read directly, instead of over RGBA32:
-    if (format8bit || format16bit || format64bit) {
+    if (format8bit || format16bit || format64bit || format64fp || format128fp) {
         int bytesPerPixel = image->depth() / 8;
-        if (format == QImage::Format_RGBX64)
-            bytesPerPixel = 6;
+        if (format == QImage::Format_RGBX64 || format == QImage::Format_RGBX16FPx4)
+            bytesPerPixel = d->photometric == PHOTOMETRIC_RGB ? 6 : 2;
+        else if (format == QImage::Format_RGBX32FPx4)
+            bytesPerPixel = d->photometric == PHOTOMETRIC_RGB ? 12 : 4;
         if (TIFFIsTiled(tiff)) {
             quint32 tileWidth, tileLength;
             TIFFGetField(tiff, TIFFTAG_TILEWIDTH, &tileWidth);
@@ -432,9 +433,12 @@ bool QTiffHandler::read(QImage *image)
             quint32 byteWidth = (format == QImage::Format_Mono) ? (width + 7)/8 : (width * bytesPerPixel);
             quint32 byteTileWidth = (format == QImage::Format_Mono) ? tileWidth/8 : (tileWidth * bytesPerPixel);
             tmsize_t byteTileSize = TIFFTileSize(tiff);
+            if (byteTileSize > image->sizeInBytes() || byteTileSize / tileLength < byteTileWidth) {
+                d->close();
+                return false;
+            }
             uchar *buf = (uchar *)_TIFFmalloc(byteTileSize);
-            if (!buf || byteTileSize / tileLength < byteTileWidth) {
-                _TIFFfree(buf);
+            if (!buf) {
                 d->close();
                 return false;
             }
@@ -466,8 +470,17 @@ bool QTiffHandler::read(QImage *image)
                 }
             }
         }
-        if (format == QImage::Format_RGBX64)
-            rgb48fixup(image);
+        if (format == QImage::Format_RGBX64 || format == QImage::Format_RGBX16FPx4) {
+            if (d->photometric == PHOTOMETRIC_RGB)
+                rgb48fixup(image, d->floatingPoint);
+            else
+                rgbFixup(image);
+        } else if (format == QImage::Format_RGBX32FPx4) {
+            if (d->photometric == PHOTOMETRIC_RGB)
+                rgb96fixup(image);
+            else
+                rgbFixup(image);
+        }
     } else {
         const int stopOnError = 1;
         if (TIFFReadRGBAImageOriented(tiff, width, height, reinterpret_cast<uint32_t *>(image->bits()), qt2Exif(d->transformation), stopOnError)) {
@@ -517,7 +530,7 @@ bool QTiffHandler::read(QImage *image)
     return true;
 }
 
-static bool checkGrayscale(const QVector<QRgb> &colorTable)
+static bool checkGrayscale(const QList<QRgb> &colorTable)
 {
     if (colorTable.size() != 256)
         return false;
@@ -531,9 +544,9 @@ static bool checkGrayscale(const QVector<QRgb> &colorTable)
     return true;
 }
 
-static QVector<QRgb> effectiveColorTable(const QImage &image)
+static QList<QRgb> effectiveColorTable(const QImage &image)
 {
-    QVector<QRgb> colors;
+    QList<QRgb> colors;
     switch (image.format()) {
     case QImage::Format_Indexed8:
         colors = image.colorTable();
@@ -663,7 +676,7 @@ bool QTiffHandler::write(const QImage &image)
                || format == QImage::Format_Grayscale8
                || format == QImage::Format_Grayscale16
                || format == QImage::Format_Alpha8) {
-        QVector<QRgb> colorTable = effectiveColorTable(image);
+        QList<QRgb> colorTable = effectiveColorTable(image);
         bool isGrayscale = checkGrayscale(colorTable);
         if (isGrayscale) {
             uint16_t photometric = PHOTOMETRIC_MINISBLACK;
@@ -672,6 +685,7 @@ bool QTiffHandler::write(const QImage &image)
             if (!TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, photometric)
                     || !TIFFSetField(tiff, TIFFTAG_COMPRESSION, compression == NoCompression ? COMPRESSION_NONE : COMPRESSION_LZW)
                     || !TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, image.depth())
+                    || !TIFFSetField(tiff, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT)
                     || !TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, defaultStripSize(tiff))) {
                 TIFFClose(tiff);
                 return false;
@@ -716,11 +730,15 @@ bool QTiffHandler::write(const QImage &image)
             }
         }
         TIFFClose(tiff);
-    } else if (format == QImage::Format_RGBX64) {
+    } else if (format == QImage::Format_RGBX64 || format == QImage::Format_RGBX16FPx4) {
         if (!TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB)
             || !TIFFSetField(tiff, TIFFTAG_COMPRESSION, compression == NoCompression ? COMPRESSION_NONE : COMPRESSION_LZW)
             || !TIFFSetField(tiff, TIFFTAG_SAMPLESPERPIXEL, 3)
             || !TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, 16)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLEFORMAT,
+                             format == QImage::Format_RGBX64
+                                ? SAMPLEFORMAT_UINT
+                                : SAMPLEFORMAT_IEEEFP)
             || !TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(tiff, 0))) {
             TIFFClose(tiff);
             return false;
@@ -748,6 +766,54 @@ bool QTiffHandler::write(const QImage &image)
             || !TIFFSetField(tiff, TIFFTAG_COMPRESSION, compression == NoCompression ? COMPRESSION_NONE : COMPRESSION_LZW)
             || !TIFFSetField(tiff, TIFFTAG_SAMPLESPERPIXEL, 4)
             || !TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, 16)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_UINT)
+            || !TIFFSetField(tiff, TIFFTAG_EXTRASAMPLES, 1, &extrasamples)
+            || !TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(tiff, 0))) {
+            TIFFClose(tiff);
+            return false;
+        }
+        for (int y = 0; y < height; ++y) {
+            if (TIFFWriteScanline(tiff, (void*)image.scanLine(y), y) != 1) {
+                TIFFClose(tiff);
+                return false;
+            }
+        }
+        TIFFClose(tiff);
+    } else if (format == QImage::Format_RGBX32FPx4) {
+        if (!TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB)
+            || !TIFFSetField(tiff, TIFFTAG_COMPRESSION, compression == NoCompression ? COMPRESSION_NONE : COMPRESSION_LZW)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLESPERPIXEL, 3)
+            || !TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, 32)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_IEEEFP)
+            || !TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(tiff, 0))) {
+            TIFFClose(tiff);
+            return false;
+        }
+        std::unique_ptr<float[]> line(new float[width * 3]);
+        for (int y = 0; y < height; ++y) {
+            const float *srcLine = reinterpret_cast<const float *>(image.constScanLine(y));
+            for (int x = 0; x < width; ++x) {
+                line[x * 3 + 0] = srcLine[x * 4 + 0];
+                line[x * 3 + 1] = srcLine[x * 4 + 1];
+                line[x * 3 + 2] = srcLine[x * 4 + 2];
+            }
+
+            if (TIFFWriteScanline(tiff, (void*)line.get(), y) != 1) {
+                TIFFClose(tiff);
+                return false;
+            }
+        }
+        TIFFClose(tiff);
+    } else if (format == QImage::Format_RGBA16FPx4 || format == QImage::Format_RGBA32FPx4
+               || format == QImage::Format_RGBA16FPx4_Premultiplied
+               || format == QImage::Format_RGBA32FPx4_Premultiplied) {
+        const bool premultiplied = image.format() != QImage::Format_RGBA16FPx4 && image.format() != QImage::Format_RGBA32FPx4;
+        const uint16_t extrasamples = premultiplied ? EXTRASAMPLE_ASSOCALPHA : EXTRASAMPLE_UNASSALPHA;
+        if (!TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB)
+            || !TIFFSetField(tiff, TIFFTAG_COMPRESSION, compression == NoCompression ? COMPRESSION_NONE : COMPRESSION_LZW)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLESPERPIXEL, 4)
+            || !TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, image.depth() == 64 ? 16 : 32)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLEFORMAT, SAMPLEFORMAT_IEEEFP)
             || !TIFFSetField(tiff, TIFFTAG_EXTRASAMPLES, 1, &extrasamples)
             || !TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, TIFFDefaultStripSize(tiff, 0))) {
             TIFFClose(tiff);
@@ -846,7 +912,7 @@ QVariant QTiffHandler::option(ImageOption option) const
 
 void QTiffHandler::setOption(ImageOption option, const QVariant &value)
 {
-    if (option == CompressionRatio && value.type() == QVariant::Int)
+    if (option == CompressionRatio && value.metaType().id() == QMetaType::Int)
         d->compression = qBound(0, value.toInt(), 1);
     if (option == ImageTransformation) {
         int transformation = value.toInt();
@@ -860,8 +926,7 @@ bool QTiffHandler::supportsOption(ImageOption option) const
     return option == CompressionRatio
             || option == Size
             || option == ImageFormat
-            || option == ImageTransformation
-            || option == TransformedByDefault;
+            || option == ImageTransformation;
 }
 
 bool QTiffHandler::jumpToNextImage()
@@ -916,22 +981,81 @@ void QTiffHandler::convert32BitOrder(void *buffer, int width)
     }
 }
 
-void QTiffHandler::rgb48fixup(QImage *image)
+void QTiffHandler::rgb48fixup(QImage *image, bool floatingPoint)
 {
     Q_ASSERT(image->depth() == 64);
     const int h = image->height();
     const int w = image->width();
     uchar *scanline = image->bits();
     const qsizetype bpl = image->bytesPerLine();
+    quint16 mask = 0xffff;
+    const qfloat16 fp_mask = qfloat16(1.0f);
+    if (floatingPoint)
+        memcpy(&mask, &fp_mask, 2);
     for (int y = 0; y < h; ++y) {
         quint16 *dst = reinterpret_cast<uint16_t *>(scanline);
         for (int x = w - 1; x >= 0; --x) {
-            dst[x * 4 + 3] = 0xffff;
+            dst[x * 4 + 3] = mask;
             dst[x * 4 + 2] = dst[x * 3 + 2];
             dst[x * 4 + 1] = dst[x * 3 + 1];
             dst[x * 4 + 0] = dst[x * 3 + 0];
         }
         scanline += bpl;
+    }
+}
+
+void QTiffHandler::rgb96fixup(QImage *image)
+{
+    Q_ASSERT(image->depth() == 128);
+    const int h = image->height();
+    const int w = image->width();
+    uchar *scanline = image->bits();
+    const qsizetype bpl = image->bytesPerLine();
+    for (int y = 0; y < h; ++y) {
+        float *dst = reinterpret_cast<float *>(scanline);
+        for (int x = w - 1; x >= 0; --x) {
+            dst[x * 4 + 3] = 1.0f;
+            dst[x * 4 + 2] = dst[x * 3 + 2];
+            dst[x * 4 + 1] = dst[x * 3 + 1];
+            dst[x * 4 + 0] = dst[x * 3 + 0];
+        }
+        scanline += bpl;
+    }
+}
+
+void QTiffHandler::rgbFixup(QImage *image)
+{
+    Q_ASSERT(d->floatingPoint);
+    if (image->depth() == 64) {
+        const int h = image->height();
+        const int w = image->width();
+        uchar *scanline = image->bits();
+        const qsizetype bpl = image->bytesPerLine();
+        for (int y = 0; y < h; ++y) {
+            qfloat16 *dst = reinterpret_cast<qfloat16 *>(scanline);
+            for (int x = w - 1; x >= 0; --x) {
+                dst[x * 4 + 3] = qfloat16(1.0f);
+                dst[x * 4 + 2] = dst[x];
+                dst[x * 4 + 1] = dst[x];
+                dst[x * 4 + 0] = dst[x];
+            }
+            scanline += bpl;
+        }
+    } else {
+        const int h = image->height();
+        const int w = image->width();
+        uchar *scanline = image->bits();
+        const qsizetype bpl = image->bytesPerLine();
+        for (int y = 0; y < h; ++y) {
+            float *dst = reinterpret_cast<float *>(scanline);
+            for (int x = w - 1; x >= 0; --x) {
+                dst[x * 4 + 3] = 1.0f;
+                dst[x * 4 + 2] = dst[x];
+                dst[x * 4 + 1] = dst[x];
+                dst[x * 4 + 0] = dst[x];
+            }
+            scanline += bpl;
+        }
     }
 }
 

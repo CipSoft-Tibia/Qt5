@@ -1,11 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/devtools/protocol/devtools_download_manager_delegate.h"
 
-#include "base/bind.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/memory/ptr_util.h"
 #include "base/task/thread_pool.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -25,8 +26,7 @@ const char kDevToolsDownloadManagerDelegateName[] =
 
 DevToolsDownloadManagerDelegate::DevToolsDownloadManagerDelegate(
     content::BrowserContext* browser_context) {
-  download_manager_ =
-      content::BrowserContext::GetDownloadManager(browser_context);
+  download_manager_ = browser_context->GetDownloadManager();
   DCHECK(download_manager_);
   original_download_delegate_ = download_manager_->GetDelegate();
   download_manager_->SetDelegate(this);
@@ -79,8 +79,8 @@ bool DevToolsDownloadManagerDelegate::DetermineDownloadTarget(
     std::move(*callback).Run(
         empty_path, download::DownloadItem::TARGET_DISPOSITION_OVERWRITE,
         download::DOWNLOAD_DANGER_TYPE_NOT_DANGEROUS,
-        download::DownloadItem::MixedContentStatus::UNKNOWN, empty_path,
-        base::nullopt /*download_schedule*/,
+        download::DownloadItem::InsecureDownloadStatus::UNKNOWN, empty_path,
+        empty_path, std::string() /*mime_type*/,
         download::DOWNLOAD_INTERRUPT_REASON_USER_CANCELED);
     return true;
   }
@@ -160,10 +160,18 @@ void DevToolsDownloadManagerDelegate::OnDownloadPathGenerated(
   std::move(callback).Run(
       suggested_path, download::DownloadItem::TARGET_DISPOSITION_OVERWRITE,
       download::DOWNLOAD_DANGER_TYPE_MAYBE_DANGEROUS_CONTENT,
-      download::DownloadItem::MixedContentStatus::UNKNOWN,
+      download::DownloadItem::InsecureDownloadStatus::UNKNOWN,
       suggested_path.AddExtension(FILE_PATH_LITERAL(".crdownload")),
-      base::nullopt /*download_schedule*/,
+      suggested_path.BaseName(), std::string(),
       download::DOWNLOAD_INTERRUPT_REASON_NONE);
+}
+
+download::DownloadItem* DevToolsDownloadManagerDelegate::GetDownloadByGuid(
+    const std::string& guid) {
+  if (!download_manager_) {
+    return nullptr;
+  }
+  return download_manager_->GetDownloadByGuid(guid);
 }
 
 }  // namespace protocol

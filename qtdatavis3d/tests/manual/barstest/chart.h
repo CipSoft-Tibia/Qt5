@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef CHARTMODIFIER_H
 #define CHARTMODIFIER_H
@@ -41,8 +15,6 @@
 #include <QColorDialog>
 #include <QTimer>
 #include <QLabel>
-
-using namespace QtDataVisualization;
 
 class GraphModifier : public QObject
 {
@@ -70,13 +42,15 @@ public:
     void changeFontSize(int fontsize);
     void rotateX(int rotation);
     void rotateY(int rotation);
-    void setFpsMeasurement(bool enable);
+    void setFpsMeasurement(int state);
     void setBackgroundEnabled(int enabled);
     void setGridEnabled(int enabled);
     void setSpecsRatio(int barwidth);
     void setSpecsZ(int bardepth);
     void setSpacingSpecsX(int spacing);
     void setSpacingSpecsZ(int spacing);
+    void setMarginX(int margin);
+    void setMarginZ(int margin);
     void setSampleCountX(int samples);
     void setSampleCountZ(int samples);
     void setMinX(int min);
@@ -84,43 +58,43 @@ public:
     void setMinY(int min);
     void setMaxY(int max);
     void start();
-    void restart(bool dynamicData);
+    void restart(int dynamicData);
     void selectBar();
     void swapAxis();
     void releaseAxes();
     void releaseSeries();
     void createMassiveArray();
-    void useOwnTheme();
+    void useOwnTheme(bool checked);
     void changeBaseColor(const QColor &color);
-    void changeColorStyle();
+    void changeColorStyle(bool checked);
     void showFiveSeries();
     QBarDataArray *makeDummyData();
-    void primarySeriesTest();
+    void primarySeriesTest(bool checked);
     void insertRemoveTestToggle();
-    void toggleRotation();
-    void useLogAxis();
+    void toggleRotation(bool checked);
+    void useLogAxis(bool checked);
     void changeValueAxisFormat(const QString & text);
     void changeLogBase(const QString & text);
     void setFpsLabel(QLabel *fpsLabel) { m_fpsLabel = fpsLabel; }
     void addRemoveSeries();
-    void testItemAndRowChanges();
+    void testItemAndRowChanges(bool checked);
     void reverseValueAxis(int enabled);
     void setInputHandlerRotationEnabled(int enabled);
     void setInputHandlerZoomEnabled(int enabled);
     void setInputHandlerSelectionEnabled(int enabled);
     void setInputHandlerZoomAtTargetEnabled(int enabled);
-    void setReflection(bool enabled);
+    void setReflection(int enabled);
     void setReflectivity(int value);
     void toggleCustomItem();
 
 public Q_SLOTS:
-    void flipViews();
-    void setGradient();
+    void flipViews(bool checked);
+    void setGradient(bool checked);
     void toggleMultiseriesScaling();
     void changeShadowQuality(int quality);
     void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
     void handleSelectionChange(const QPoint &position);
-    void setUseNullInputHandler(bool useNull);
+    void setUseNullInputHandler(int useNull);
     void changeValueAxisSegments(int value);
 
     void handleRowAxisChanged(QCategory3DAxis *axis);
@@ -152,9 +126,11 @@ private:
     int m_rowCount;
     float m_xRotation;
     float m_yRotation;
-    bool m_static;
+    int m_static;
     float m_barSpacingX;
     float m_barSpacingZ;
+    float m_barSeriesMarginX;
+    float m_barSeriesMarginZ;
     int m_fontSize;
     int m_segments;
     int m_subSegments;

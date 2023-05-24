@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,16 @@
 #include <utility>
 
 #include "base/atomic_sequence_num.h"
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/hash/hash.h"
 #include "base/memory/discardable_memory_allocator.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/process/memory.h"
 #include "base/trace_event/trace_event.h"
+#include "cc/paint/paint_flags.h"
 #include "cc/tiles/mipmap_util.h"
-#include "ui/gfx/skia_util.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 
 namespace cc {
 namespace {
@@ -45,11 +47,6 @@ gfx::Rect GetSrcRect(const DrawImage& image) {
   return gfx::Rect(x, y, right - x, bottom - y);
 }
 
-SkImageInfo CreateImageInfo(const SkISize& size, SkColorType color_type) {
-  return SkImageInfo::Make(size.width(), size.height(), color_type,
-                           kPremul_SkAlphaType);
-}
-
 // Does *not* return nullptr.
 std::unique_ptr<base::DiscardableMemory> AllocateDiscardable(
     const SkImageInfo& info,
@@ -71,22 +68,25 @@ SoftwareImageDecodeCacheUtils::DoDecodeImage(
     SkColorType color_type,
     PaintImage::GeneratorClientId client_id,
     base::OnceClosure on_no_memory) {
-  SkISize target_size =
+  const SkISize target_size =
       SkISize::Make(key.target_size().width(), key.target_size().height());
   DCHECK(target_size == paint_image.GetSupportedDecodeSize(target_size));
-
-  SkImageInfo target_info = CreateImageInfo(target_size, color_type);
+  sk_sp<SkColorSpace> target_color_space =
+      key.target_color_params().color_space.ToSkColorSpace();
+  SkImageInfo target_info = SkImageInfo::Make(
+      target_size, color_type, kPremul_SkAlphaType, target_color_space);
   std::unique_ptr<base::DiscardableMemory> target_pixels =
       AllocateDiscardable(target_info, std::move(on_no_memory));
   if (!target_pixels->data())
     return nullptr;
+  SkPixmap target_pixmap(target_info, target_pixels->data(),
+                         target_info.minRowBytes());
 
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cc.debug"),
                "SoftwareImageDecodeCacheUtils::DoDecodeImage - "
                "decode");
-  bool result = paint_image.Decode(target_pixels->data(), &target_info,
-                                   key.target_color_space().ToSkColorSpace(),
-                                   key.frame_key().frame_index(), client_id);
+  bool result = paint_image.Decode(target_pixmap, key.frame_key().frame_index(),
+                                   client_id);
   if (!result) {
     target_pixels->Unlock();
     return nullptr;
@@ -104,7 +104,8 @@ SoftwareImageDecodeCacheUtils::GenerateCacheEntryFromCandidate(
     SkColorType color_type) {
   SkISize target_size =
       SkISize::Make(key.target_size().width(), key.target_size().height());
-  SkImageInfo target_info = CreateImageInfo(target_size, color_type);
+  SkImageInfo target_info =
+      SkImageInfo::Make(target_size, color_type, kPremul_SkAlphaType);
   // TODO(crbug.com/983348): If this turns into a crasher, pass an actual
   // "free memory" closure.
   std::unique_ptr<base::DiscardableMemory> target_pixels =
@@ -148,14 +149,10 @@ SoftwareImageDecodeCacheUtils::GenerateCacheEntryFromCandidate(
   DCHECK(!key.is_nearest_neighbor());
   SkPixmap target_pixmap(target_info, target_pixels->data(),
                          target_info.minRowBytes());
-  SkFilterQuality filter_quality = kMedium_SkFilterQuality;
-  if (decoded_pixmap.colorType() == kRGBA_F16_SkColorType &&
-      !ImageDecodeCacheUtils::CanResizeF16Image(filter_quality)) {
-    result = ImageDecodeCacheUtils::ScaleToHalfFloatPixmapUsingN32Intermediate(
-        decoded_pixmap, &target_pixmap, filter_quality);
-  } else {
-    result = decoded_pixmap.scalePixels(target_pixmap, filter_quality);
-  }
+  PaintFlags::FilterQuality filter_quality = PaintFlags::FilterQuality::kMedium;
+  result = decoded_pixmap.scalePixels(
+      target_pixmap,
+      PaintFlags::FilterQualityToSkSamplingOptions(filter_quality));
   DCHECK(result) << key.ToString();
 
   return std::make_unique<CacheEntry>(
@@ -191,12 +188,14 @@ SoftwareImageDecodeCacheUtils::CacheKey::FromDrawImage(const DrawImage& image,
   // If the target size is empty, then we'll be skipping the decode anyway, so
   // the filter quality doesn't matter. Early out instead.
   if (target_size.IsEmpty()) {
-    return CacheKey(frame_key, stable_id, kSubrectAndScale, false, src_rect,
-                    target_size, image.target_color_space());
+    return CacheKey(frame_key, stable_id, kSubrectAndScale, false,
+                    image.paint_image().may_be_lcp_candidate(), src_rect,
+                    target_size, image.target_color_params());
   }
 
   ProcessingType type = kOriginal;
-  bool is_nearest_neighbor = image.filter_quality() == kNone_SkFilterQuality;
+  bool is_nearest_neighbor =
+      image.filter_quality() == PaintFlags::FilterQuality::kNone;
   int mip_level = MipMapUtil::GetLevelForSize(src_rect.size(), target_size);
   // If any of the following conditions hold, then use at most low filter
   // quality and adjust the target size to match the original image:
@@ -244,8 +243,9 @@ SoftwareImageDecodeCacheUtils::CacheKey::FromDrawImage(const DrawImage& image,
     }
   }
 
-  return CacheKey(frame_key, stable_id, type, is_nearest_neighbor, src_rect,
-                  target_size, image.target_color_space());
+  return CacheKey(frame_key, stable_id, type, is_nearest_neighbor,
+                  image.paint_image().may_be_lcp_candidate(), src_rect,
+                  target_size, image.target_color_params());
 }
 
 SoftwareImageDecodeCacheUtils::CacheKey::CacheKey(
@@ -253,16 +253,18 @@ SoftwareImageDecodeCacheUtils::CacheKey::CacheKey(
     PaintImage::Id stable_id,
     ProcessingType type,
     bool is_nearest_neighbor,
+    bool may_be_lcp_candidate,
     const gfx::Rect& src_rect,
     const gfx::Size& target_size,
-    const gfx::ColorSpace& target_color_space)
+    const TargetColorParams& target_color_params)
     : frame_key_(frame_key),
       stable_id_(stable_id),
       type_(type),
       is_nearest_neighbor_(is_nearest_neighbor),
+      may_be_lcp_candidate_(may_be_lcp_candidate),
       src_rect_(src_rect),
       target_size_(target_size),
-      target_color_space_(target_color_space) {
+      target_color_params_(target_color_params) {
   if (type == kOriginal) {
     hash_ = frame_key_.hash();
   } else {
@@ -280,10 +282,14 @@ SoftwareImageDecodeCacheUtils::CacheKey::CacheKey(
                            frame_key_.hash());
   }
   // Include the target color space in the hash regardless of scaling.
-  hash_ = base::HashInts(hash_, target_color_space.GetHash());
+  hash_ = base::HashInts(hash_, target_color_params.GetHash());
 }
 
 SoftwareImageDecodeCacheUtils::CacheKey::CacheKey(const CacheKey& other) =
+    default;
+
+SoftwareImageDecodeCacheUtils::CacheKey&
+SoftwareImageDecodeCacheUtils::CacheKey::operator=(const CacheKey& other) =
     default;
 
 std::string SoftwareImageDecodeCacheUtils::CacheKey::ToString() const {
@@ -302,7 +308,7 @@ std::string SoftwareImageDecodeCacheUtils::CacheKey::ToString() const {
   }
   str << "]\nis_nearest_neightbor[" << is_nearest_neighbor_ << "]\nsrc_rect["
       << src_rect_.ToString() << "]\ntarget_size[" << target_size_.ToString()
-      << "]\ntarget_color_space[" << target_color_space_.ToString()
+      << "]\ntarget_color_params[" << target_color_params_.ToString()
       << "]\nhash[" << hash_ << "]";
   return str.str();
 }

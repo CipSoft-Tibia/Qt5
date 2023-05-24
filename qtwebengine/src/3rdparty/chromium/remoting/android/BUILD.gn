@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -25,7 +25,7 @@ generate_jni("jni_headers") {
 _raw_resources_base_dir = "$target_gen_dir/credits_resources_raw/res"
 
 # The target is named this way, instead of "..._raw_resources", specifically
-# to avoid matching any of the _java_target_whitelist items in
+# to avoid matching any of the _java_resource_patterns items in
 # build/config/android/internal_rules.gni
 remoting_credits("credits_resources_raw") {
   credits_gen_dir = "$_raw_resources_base_dir/raw"
@@ -34,7 +34,7 @@ remoting_credits("credits_resources_raw") {
 
 remoting_localize("remoting_apk_manifest") {
   sources = [ "java/AndroidManifest.xml.jinja2" ]
-  locales = [ "en" ]
+  locale_list = [ "en" ]
   variables = [ rebase_path(branding_path) ]
   output = "$root_gen_dir/remoting/android/{{source_name_part}}"
 }
@@ -133,7 +133,6 @@ android_resources("remoting_android_client_java_resources") {
   deps = [
     ":credits_resources_raw",
     "//remoting/resources:strings_java",
-    "//third_party/android_deps:android_support_v7_appcompat_java",
   ]
 }
 
@@ -160,7 +159,7 @@ remoting_apk_tmpl("remoting_apk") {
 
 remoting_localize("remoting_test_apk_manifest") {
   sources = [ "javatests/AndroidManifest.xml.jinja2" ]
-  locales = [ "en" ]
+  locale_list = [ "en" ]
   variables = [ rebase_path(branding_path) ]
   output = "$root_gen_dir/remoting/android_test/{{source_name_part}}"
 }
@@ -184,8 +183,8 @@ instrumentation_test_apk("remoting_test_apk") {
     ":remoting_android_client_java",
     "//base:base_java",
     "//base:base_java_test_support",
-    "//third_party/android_deps:androidx_test_runner_java",
     "//third_party/android_support_test_runner:runner_java",
+    "//third_party/androidx:androidx_test_runner_java",
     "//third_party/junit:junit",
   ]
   if (!is_java_debug) {

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qremoteobjectsource.h"
 #include "qremoteobjectsource_p.h"
@@ -62,6 +26,108 @@ const int QRemoteObjectSourceBase::qobjectPropertyOffset = QObject::staticMetaOb
 const int QRemoteObjectSourceBase::qobjectMethodOffset = QObject::staticMetaObject.methodCount();
 static const QByteArray s_classinfoRemoteobjectSignature(QCLASSINFO_REMOTEOBJECT_SIGNATURE);
 
+namespace QtPrivate {
+
+// The stringData, methodMatch and QMetaObjectPrivate methods are modified versions of the code
+// from qmetaobject_p.h/qmetaobject.cpp.  The modifications are based on our custom need to match
+// a method name that comes from the .rep file.
+// The QMetaObjectPrivate struct should only have members appended to maintain binary compatibility,
+// so we should be fine with only the listed version with the fields we use.
+inline const QByteArray apiStringData(const QMetaObject *mo, int index)
+{
+    uint offset = mo->d.stringdata[2*index];
+    uint length = mo->d.stringdata[2*index + 1];
+    const char *string = reinterpret_cast<const char *>(mo->d.stringdata) + offset;
+    return QByteArray::fromRawData(string, length);
+}
+
+
+// From QMetaMethod in qmetaobject.h
+struct Data {
+    enum { Size = 6 };
+
+    uint name() const { return d[0]; }
+    uint argc() const { return d[1]; }
+    uint parameters() const { return d[2]; }
+    uint tag() const { return d[3]; }
+    uint flags() const { return d[4]; }
+    uint metaTypeOffset() const { return d[5]; }
+    bool operator==(const Data &other) const { return d == other.d; }
+
+    const uint *d;
+};
+
+inline bool apiMethodMatch(const QMetaObject *m, const Data &data, const QByteArray &name, int argc,
+                           const int *types)
+{
+    if (data.argc() != uint(argc))
+        return false;
+    if (apiStringData(m, data.name()) != name)
+        return false;
+    for (int i = 0; i < argc; ++i) {
+        auto mt = QMetaType(m->d.metaTypes[data.metaTypeOffset() + i + 1]);
+        if (mt != QMetaType(types[i]))
+            return false;
+    }
+    return true;
+}
+
+struct QMetaObjectPrivate
+{
+    // revision 7 is Qt 5.0 everything lower is not supported
+    // revision 8 is Qt 5.12: It adds the enum name to QMetaEnum
+    enum { OutputRevision = 8 }; // Used by moc, qmetaobjectbuilder and qdbus
+
+    int revision;
+    int className;
+    int classInfoCount, classInfoData;
+    int methodCount, methodData;
+    int propertyCount, propertyData;
+    int enumeratorCount, enumeratorData;
+    int constructorCount, constructorData;
+    int flags;
+    int signalCount;
+};
+
+inline Data fromRelativeMethodIndex(const QMetaObject *mobj, int index)
+{
+    const auto priv = reinterpret_cast<const QMetaObjectPrivate*>(mobj->d.data);
+    return { mobj->d.data + priv->methodData + index * Data::Size };
+}
+
+int qtro_method_index_impl(const QMetaObject * staticMetaObj, const char *className,
+                                      const char *methodName, int *count, int const **types)
+{
+    int result = staticMetaObj->indexOfMethod(methodName);
+    if (result >= 0)
+        return result;
+    // We can have issues, specifically with enums, since the compiler can infer the class.  Since
+    // indexOfMethod() is doing string comparisons for registered types, "MyEnum" and "MyClass::MyEnum"
+    // won't match.
+    // Below is similar to QMetaObject->indexOfMethod, but template magic has already matched parameter
+    // types, so we need to find a match for the API method name + parameters.  Neither approach works
+    // 100%, as the below code doesn't match a parameter of type "size_t" (which the template match
+    // identifies as "ulong").  These subtleties can cause the below string comparison fails.
+    // There is no known case that would fail both methods.
+    // TODO: is there a way to make this a constexpr so a failure is detected at compile time?
+    int nameLength = strchr(methodName, '(') - methodName;
+    const auto name = QByteArray::fromRawData(methodName, nameLength);
+    for (const QMetaObject *m = staticMetaObj; m; m = m->d.superdata) {
+        const auto priv = reinterpret_cast<const QMetaObjectPrivate*>(m->d.data);
+        int i = (priv->methodCount - 1);
+        const int end = priv->signalCount;
+        for (; i >= end; --i) {
+            const Data data = fromRelativeMethodIndex(m, i);
+            if (apiMethodMatch(m, data, name, *count, *types))
+                return i + m->methodOffset();
+        }
+    }
+    qWarning() << "No matching method for" << methodName << "in the provided metaclass" << className;
+    return -1;
+}
+
+} // namespace QtPrivate
+
 QByteArray QtPrivate::qtro_classinfo_signature(const QMetaObject *metaObject)
 {
     if (!metaObject)
@@ -80,13 +146,14 @@ inline bool qtro_is_cloned_method(const QMetaObject *mobj, int index)
     int local_method_index = index - mobj->methodOffset();
     if (local_method_index < 0 && mobj->superClass())
         return qtro_is_cloned_method(mobj->superClass(), index);
-    const auto priv = reinterpret_cast<const QtPrivate::QMetaObjectPrivate*>(mobj->d.data);
-    Q_ASSERT(local_method_index < priv->methodCount);
-    int handle = priv->methodData + 5 * local_method_index;
-    if (mobj->d.data[handle + 4] & 0x20 /*MethodFlags::MethodCloned*/)
+    const QtPrivate::Data data = QtPrivate::fromRelativeMethodIndex(mobj, local_method_index);
+    if (data.flags() & 0x20 /*MethodFlags::MethodCloned*/)
         return true;
     return false;
 }
+
+SourceApiMap::~SourceApiMap()
+    = default;
 
 QRemoteObjectSourceBase::QRemoteObjectSourceBase(QObject *obj, Private *d, const SourceApiMap *api,
                                                  QObject *adapter)
@@ -103,9 +170,9 @@ QRemoteObjectSourceBase::QRemoteObjectSourceBase(QObject *obj, Private *d, const
 
     setConnections();
 
-    const int nChildren = api->m_models.count() + api->m_subclasses.count();
+    const auto nChildren = api->m_models.size() + api->m_subclasses.size();
     if (nChildren > 0) {
-        QVector<int> roles;
+        QList<int> roles;
         const int numProperties = api->propertyCount();
         int modelIndex = 0, subclassIndex = 0;
         for (int i = 0; i < numProperties; ++i) {
@@ -113,8 +180,9 @@ QRemoteObjectSourceBase::QRemoteObjectSourceBase(QObject *obj, Private *d, const
                 continue;
             const int index = api->sourcePropertyIndex(i);
             const auto property = m_object->metaObject()->property(index);
-            if (QMetaType::typeFlags(property.userType()).testFlag(QMetaType::PointerToQObject)) {
-                auto propertyMeta = QMetaType::metaObjectForType(property.userType());
+            const auto metaType = property.metaType();
+            if (metaType.flags().testFlag(QMetaType::PointerToQObject)) {
+                auto propertyMeta = metaType.metaObject();
                 QObject *child = property.read(m_object).value<QObject *>();
                 const QMetaObject *meta = child ? child->metaObject() : propertyMeta;
                 if (!meta)
@@ -125,7 +193,7 @@ QRemoteObjectSourceBase::QRemoteObjectSourceBase(QObject *obj, Private *d, const
                     QAbstractItemAdapterSourceAPI<QAbstractItemModel, QAbstractItemModelSourceAdapter> *modelApi =
                         new QAbstractItemAdapterSourceAPI<QAbstractItemModel, QAbstractItemModelSourceAdapter>(modelInfo.name);
                     if (!model)
-                        m_children.insert(i, new QRemoteObjectSource(nullptr, d, modelApi, nullptr));
+                        m_children.insert(i, new QRemoteObjectSource(nullptr, d, modelApi, nullptr, api->name()));
                     else {
                         roles.clear();
                         const auto knownRoles = model->roleNames();
@@ -141,20 +209,21 @@ QRemoteObjectSourceBase::QRemoteObjectSourceBase(QObject *obj, Private *d, const
                         }
                         auto adapter = new QAbstractItemModelSourceAdapter(model, nullptr,
                                                                            roles.isEmpty() ? knownRoles.keys().toVector() : roles);
-                        m_children.insert(i, new QRemoteObjectSource(model, d, modelApi, adapter));
+                        m_children.insert(i, new QRemoteObjectSource(model, d, modelApi, adapter, api->name()));
                     }
                 } else {
                     const auto classApi = api->m_subclasses.at(subclassIndex++);
-                    m_children.insert(i, new QRemoteObjectSource(child, d, classApi, nullptr));
+                    m_children.insert(i, new QRemoteObjectSource(child, d, classApi, nullptr, api->name()));
                 }
             }
         }
     }
 }
 
-QRemoteObjectSource::QRemoteObjectSource(QObject *obj, Private *d, const SourceApiMap *api, QObject *adapter)
-    : QRemoteObjectSourceBase(obj, d, api, adapter)
-    , m_name(api->typeName() == QLatin1String("QAbstractItemModelAdapter") ? MODEL().arg(api->name()) : CLASS().arg(api->name()))
+QRemoteObjectSource::QRemoteObjectSource(QObject *obj, Private *dd, const SourceApiMap *api, QObject *adapter, const QString &parentName)
+    : QRemoteObjectSourceBase(obj, dd, api, adapter)
+    , m_name(api->typeName() == QLatin1String("QAbstractItemModelAdapter") ? MODEL().arg(parentName + QLatin1String("::") + api->name()) :
+                                                                             CLASS().arg(parentName + QLatin1String("::") + api->name()))
 {
     if (obj)
         d->m_sourceIo->registerSource(this);
@@ -203,7 +272,7 @@ void QRemoteObjectSourceBase::setConnections()
         //We know no one will inherit from this class, so no need to worry about indices from
         //derived classes.
         const auto target = isAdapter ? m_adapter : m_object;
-        if (!QMetaObject::connect(target, sourceIndex, this, QRemoteObjectSource::qobjectMethodOffset+idx, Qt::DirectConnection, 0)) {
+        if (!QMetaObject::connect(target, sourceIndex, this, QRemoteObjectSource::qobjectMethodOffset+idx, Qt::DirectConnection, nullptr)) {
             qCWarning(QT_REMOTEOBJECT) << "QRemoteObjectSourceBase: QMetaObject::connect returned false. Unable to connect.";
             return;
         }
@@ -246,7 +315,7 @@ void QRemoteObjectSourceBase::resetObject(QObject *newObject)
     if (newObject)
         setConnections();
 
-    const int nChildren = m_api->m_models.count() + m_api->m_subclasses.count();
+    const auto nChildren = m_api->m_models.size() + m_api->m_subclasses.size();
     if (nChildren == 0)
         return;
 
@@ -286,7 +355,7 @@ QRemoteObjectRootSource::~QRemoteObjectRootSource()
     // removeListener tries to modify d->m_listeners, this is O(N²),
     // so clear d->m_listeners prior to calling unregister (consume loop).
     // We can do this, because we don't care about the return value of removeListener() here.
-    for (IoDeviceBase *io : qExchange(d->m_listeners, {})) {
+    for (QtROIoDeviceBase *io : std::exchange(d->m_listeners, {})) {
         removeListener(io, true);
     }
     delete d;
@@ -296,24 +365,24 @@ QVariantList* QRemoteObjectSourceBase::marshalArgs(int index, void **a)
 {
     QVariantList &list = m_marshalledArgs;
     int N = m_api->signalParameterCount(index);
-    if (N == 1 && QMetaType::typeFlags(m_api->signalParameterType(index, 0)).testFlag(QMetaType::PointerToQObject))
+    if (N == 1 && QMetaType(m_api->signalParameterType(index, 0)).flags().testFlag(QMetaType::PointerToQObject))
         N = 0; // Don't try to send pointers, the will be handle by QRO_
     if (list.size() < N)
         list.reserve(N);
-    const int minFill = std::min(list.size(), N);
+    const int minFill = std::min(int(list.size()), N);
     for (int i = 0; i < minFill; ++i) {
         const int type = m_api->signalParameterType(index, i);
         if (type == QMetaType::QVariant)
             list[i] = *reinterpret_cast<QVariant *>(a[i + 1]);
         else
-            list[i] = QVariant(type, a[i + 1]);
+            list[i] = QVariant(QMetaType(type), a[i + 1]);
     }
-    for (int i = list.size(); i < N; ++i) {
+    for (int i = int(list.size()); i < N; ++i) {
         const int type = m_api->signalParameterType(index, i);
         if (type == QMetaType::QVariant)
             list << *reinterpret_cast<QVariant *>(a[i + 1]);
         else
-            list << QVariant(type, a[i + 1]);
+            list << QVariant(QMetaType(type), a[i + 1]);
     }
     for (int i = N; i < list.size(); ++i)
         list.removeLast();
@@ -393,47 +462,44 @@ void QRemoteObjectSourceBase::handleMetaCall(int index, QMetaObject::Call call, 
         const QMetaProperty mp = target->metaObject()->property(propertyIndex);
         qCDebug(QT_REMOTEOBJECT) << "Sending Invoke Property" << (m_api->isAdapterSignal(internalIndex) ? "via adapter" : "") << internalIndex << propertyIndex << mp.name() << mp.read(target);
 
-        serializePropertyChangePacket(this, index);
-        d->m_packet.baseAddress = d->m_packet.size;
+        d->codec->serializePropertyChangePacket(this, index);
         propertyIndex = internalIndex;
     }
 
-    qCDebug(QT_REMOTEOBJECT) << "# Listeners" << d->m_listeners.length();
+    qCDebug(QT_REMOTEOBJECT) << "# Listeners" << d->m_listeners.size();
     qCDebug(QT_REMOTEOBJECT) << "Invoke args:" << m_object
                              << (call == 0 ? QLatin1String("InvokeMetaMethod") : QStringLiteral("Non-invoked call: %d").arg(call))
                              << m_api->signalSignature(index) << *marshalArgs(index, a);
 
-    serializeInvokePacket(d->m_packet, name(), call, index, *marshalArgs(index, a), -1, propertyIndex);
-    d->m_packet.baseAddress = 0;
+    d->codec->serializeInvokePacket(name(), call, index, *marshalArgs(index, a), -1, propertyIndex);
 
-    for (IoDeviceBase *io : qAsConst(d->m_listeners))
-        io->write(d->m_packet.array, d->m_packet.size);
+    d->codec->send(d->m_listeners);
 }
 
-void QRemoteObjectRootSource::addListener(IoDeviceBase *io, bool dynamic)
+void QRemoteObjectRootSource::addListener(QtROIoDeviceBase *io, bool dynamic)
 {
     d->m_listeners.append(io);
     d->isDynamic = d->isDynamic || dynamic;
 
     if (dynamic) {
         d->sentTypes.clear();
-        serializeInitDynamicPacket(d->m_packet, this);
-        io->write(d->m_packet.array, d->m_packet.size);
+        d->codec->serializeInitDynamicPacket(this);
+        d->codec->send(io);
     } else {
-        serializeInitPacket(d->m_packet, this);
-        io->write(d->m_packet.array, d->m_packet.size);
+        d->codec->serializeInitPacket(this);
+        d->codec->send(io);
     }
 }
 
-int QRemoteObjectRootSource::removeListener(IoDeviceBase *io, bool shouldSendRemove)
+int QRemoteObjectRootSource::removeListener(QtROIoDeviceBase *io, bool shouldSendRemove)
 {
     d->m_listeners.removeAll(io);
     if (shouldSendRemove)
     {
-        serializeRemoveObjectPacket(d->m_packet, m_api->name());
-        io->write(d->m_packet.array, d->m_packet.size);
+        d->codec->serializeRemoveObjectPacket(m_api->name());
+        d->codec->send(io);
     }
-    return d->m_listeners.length();
+    return int(d->m_listeners.size());
 }
 
 int QRemoteObjectSourceBase::qt_metacall(QMetaObject::Call call, int methodId, void **a)
@@ -463,8 +529,9 @@ DynamicApiMap::DynamicApiMap(QObject *object, const QMetaObject *metaObject, con
     QSet<int> invalidSignals;
     for (int i = propOffset; i < propCount; ++i) {
         const QMetaProperty property = metaObject->property(i);
-        if (QMetaType::typeFlags(property.userType()).testFlag(QMetaType::PointerToQObject)) {
-            auto propertyMeta = QMetaType::metaObjectForType(property.userType());
+        const auto metaType = property.metaType();
+        if (metaType.flags().testFlag(QMetaType::PointerToQObject)) {
+            auto propertyMeta = metaType.metaObject();
             QObject *child = property.read(object).value<QObject *>();
             const QMetaObject *meta = child ? child->metaObject() : propertyMeta;
             if (!meta) {
@@ -475,13 +542,13 @@ DynamicApiMap::DynamicApiMap(QObject *object, const QMetaObject *metaObject, con
             }
             if (meta->inherits(&QAbstractItemModel::staticMetaObject)) {
                 const QByteArray name = QByteArray::fromRawData(property.name(),
-                                                                qstrlen(property.name()));
+                                                                qsizetype(qstrlen(property.name())));
                 const QByteArray infoName = name.toUpper() + QByteArrayLiteral("_ROLES");
                 const int infoIndex = metaObject->indexOfClassInfo(infoName.constData());
                 QByteArray roleInfo;
                 if (infoIndex >= 0) {
                     auto ci = metaObject->classInfo(infoIndex);
-                    roleInfo = QByteArray::fromRawData(ci.value(), qstrlen(ci.value()));
+                    roleInfo = QByteArray::fromRawData(ci.value(), qsizetype(qstrlen(ci.value())));
                 }
                 m_models << ModelInfo({qobject_cast<QAbstractItemModel *>(child),
                                        QString::fromLatin1(property.name()),
@@ -530,7 +597,7 @@ DynamicApiMap::DynamicApiMap(QObject *object, const QMetaObject *metaObject, con
     m_objectSignature = QtPrivate::qtro_classinfo_signature(metaObject);
 }
 
-QList<QByteArray> DynamicApiMap::signalParameterNames(int index) const
+QByteArrayList DynamicApiMap::signalParameterNames(int index) const
 {
     const int objectIndex = m_signals.at(index);
     checkCache(objectIndex);
@@ -569,11 +636,16 @@ const QByteArray DynamicApiMap::typeName(int index) const
     return m_cachedMetamethod.typeName();
 }
 
-QList<QByteArray> DynamicApiMap::methodParameterNames(int index) const
+QByteArrayList DynamicApiMap::methodParameterNames(int index) const
 {
     const int objectIndex = m_methods.at(index);
     checkCache(objectIndex);
     return m_cachedMetamethod.parameterNames();
+}
+
+QRemoteObjectSourceBase::Private::Private(QRemoteObjectSourceIo *io, QRemoteObjectRootSource *root)
+    : m_sourceIo(io), codec(io->m_codec.data()), isDynamic(false), root(root)
+{
 }
 
 QT_END_NAMESPACE

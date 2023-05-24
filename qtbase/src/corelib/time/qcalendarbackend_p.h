@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCALENDAR_BACKEND_P_H
 #define QCALENDAR_BACKEND_P_H
@@ -56,33 +20,56 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qmap.h>
+#include <QtCore/qanystringview.h>
+#include <QtCore/private/qlocale_p.h>
 
 QT_BEGIN_NAMESPACE
 
+namespace QtPrivate {
+class QCalendarRegistry;
+}
+
 // Locale-related parts, mostly handled in ../text/qlocale.cpp
-struct QLocaleDataEntry {
-    quint16 index, size;
-};
 
 struct QCalendarLocale {
-    quint16 m_language_id, m_script_id, m_country_id;
+    quint16 m_language_id, m_script_id, m_territory_id;
+
+#define rangeGetter(name) \
+    QLocaleData::DataRange name() const { return { m_ ## name ## _idx, m_ ## name ## _size }; }
+
+    rangeGetter(longMonthStandalone) rangeGetter(longMonth)
+    rangeGetter(shortMonthStandalone) rangeGetter(shortMonth)
+    rangeGetter(narrowMonthStandalone) rangeGetter(narrowMonth)
+#undef rangeGetter
+
     // Month name indexes:
-    QLocaleDataEntry m_standalone_short;
-    QLocaleDataEntry m_standalone_long;
-    QLocaleDataEntry m_standalone_narrow;
-    QLocaleDataEntry m_short;
-    QLocaleDataEntry m_long;
-    QLocaleDataEntry m_narrow;
+    quint16 m_longMonthStandalone_idx, m_longMonth_idx;
+    quint16 m_shortMonthStandalone_idx, m_shortMonth_idx;
+    quint16 m_narrowMonthStandalone_idx, m_narrowMonth_idx;
+
+    // Twelve long month names (separated by commas) can add up to more than 256
+    // QChars - e.g. kde_TZ gets to 264.
+    quint16 m_longMonthStandalone_size, m_longMonth_size;
+    quint8 m_shortMonthStandalone_size, m_shortMonth_size;
+    quint8 m_narrowMonthStandalone_size, m_narrowMonth_size;
 };
 
 // Partial implementation, of methods with common forms, in qcalendar.cpp
 class Q_CORE_EXPORT QCalendarBackend
 {
     friend class QCalendar;
+    friend class QtPrivate::QCalendarRegistry;
+    Q_DISABLE_COPY_MOVE(QCalendarBackend)
+
 public:
+    QCalendarBackend() = default;
     virtual ~QCalendarBackend();
     virtual QString name() const = 0;
-    virtual QCalendar::System calendarSystem() const;
+
+    QStringList names() const;
+
+    QCalendar::System calendarSystem() const;
+    QCalendar::SystemId calendarId() const { return m_id; }
     // Date queries:
     virtual int daysInMonth(int month, int year = QCalendar::Unspecified) const = 0;
     virtual int daysInYear(int year) const;
@@ -116,27 +103,32 @@ public:
 
     // Formatting of date-times (implemented in qlocale.cpp):
     virtual QString dateTimeToString(QStringView format, const QDateTime &datetime,
-                                     const QDate &dateOnly, const QTime &timeOnly,
+                                     QDate dateOnly, QTime timeOnly,
                                      const QLocale &locale) const;
+
+    bool isGregorian() const;
+
+    QCalendar::SystemId registerCustomBackend(const QStringList &names);
 
     // Calendar enumeration by name:
     static QStringList availableCalendars();
 
 protected:
-    QCalendarBackend(const QString &name, QCalendar::System system = QCalendar::System::User);
-
     // Locale support:
     virtual const QCalendarLocale *localeMonthIndexData() const = 0;
-    virtual const ushort *localeMonthData() const = 0;
-
-    bool registerAlias(const QString &name);
+    virtual const char16_t *localeMonthData() const = 0;
 
 private:
+    QCalendar::SystemId m_id;
+
+    void setIndex(size_t index);
+
     // QCalendar's access to its registry:
-    static const QCalendarBackend *fromName(QStringView name);
-    static const QCalendarBackend *fromName(QLatin1String name);
+    static const QCalendarBackend *fromName(QAnyStringView name);
+    static const QCalendarBackend *fromId(QCalendar::SystemId id);
     // QCalendar's access to singletons:
     static const QCalendarBackend *fromEnum(QCalendar::System system);
+    static const QCalendarBackend *gregorian();
 };
 
 QT_END_NAMESPACE

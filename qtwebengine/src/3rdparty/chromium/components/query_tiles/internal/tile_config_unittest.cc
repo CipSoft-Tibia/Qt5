@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/test/scoped_feature_list.h"
 #include "components/query_tiles/switches.h"
+#include "components/query_tiles/tile_service.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace query_tiles {
@@ -34,11 +35,13 @@ TEST(TileConfigTest, FinchConfigEnabled) {
       {kBackoffMaxDelayInMsKey, "567"}};
   feature_list.InitAndEnableFeatureWithParameters(features::kQueryTiles,
                                                   params);
-  EXPECT_EQ(TileConfig::GetQueryTilesServerUrl(),
-            "https://test.com/v1/querytiles");
+  EXPECT_EQ(TileConfig::GetQueryTilesServerUrl("", false),
+            GURL("https://test.com/v1/querytiles"));
+  EXPECT_EQ(TileConfig::GetQueryTilesServerUrl("https://xyz.com", false),
+            GURL("https://test.com/v1/querytiles"));
   EXPECT_TRUE(TileConfig::GetIsUnMeteredNetworkRequired());
-  EXPECT_EQ(TileConfig::GetExperimentTag(), "1234");
-  EXPECT_EQ(TileConfig::GetExpireDuration(), base::TimeDelta::FromSeconds(100));
+  EXPECT_EQ(TileConfig::GetExperimentTag("us"), "1234");
+  EXPECT_EQ(TileConfig::GetExpireDuration(), base::Seconds(100));
   EXPECT_EQ(TileConfig::GetScheduleIntervalInMs(), 123);
   EXPECT_EQ(TileConfig::GetMaxRandomWindowInMs(), 234);
   EXPECT_EQ(TileConfig::GetOneoffTaskWindowInMs(), 345);
@@ -50,21 +53,22 @@ TEST(TileConfigTest, FinchConfigEnabled) {
 TEST(TileConfigTest, FinchConfigDefaultParameter) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(features::kQueryTiles);
-  EXPECT_EQ(TileConfig::GetQueryTilesServerUrl(),
-            "https://chromeupboarding-pa.googleapis.com/v1/querytiles");
+  EXPECT_EQ(TileConfig::GetQueryTilesServerUrl("", true), GURL());
+  EXPECT_EQ(TileConfig::GetQueryTilesServerUrl("https://xyz.com", true),
+            GURL("https://xyz.com/v1/querytiles"));
   EXPECT_FALSE(TileConfig::GetIsUnMeteredNetworkRequired());
-  EXPECT_TRUE(TileConfig::GetExperimentTag().empty());
-  EXPECT_EQ(TileConfig::GetExpireDuration(), base::TimeDelta::FromDays(2));
+  EXPECT_TRUE(TileConfig::GetExperimentTag("us").empty());
+  EXPECT_EQ(TileConfig::GetExpireDuration(), base::Days(2));
   EXPECT_EQ(TileConfig::GetScheduleIntervalInMs(),
-            base::TimeDelta::FromHours(12).InMilliseconds());
+            base::Hours(12).InMilliseconds());
   EXPECT_EQ(TileConfig::GetMaxRandomWindowInMs(),
-            base::TimeDelta::FromHours(4).InMilliseconds());
+            base::Hours(4).InMilliseconds());
   EXPECT_EQ(TileConfig::GetOneoffTaskWindowInMs(),
-            base::TimeDelta::FromHours(2).InMilliseconds());
+            base::Hours(2).InMilliseconds());
   EXPECT_EQ(TileConfig::GetBackoffPolicyArgsInitDelayInMs(),
-            base::TimeDelta::FromSeconds(30).InMilliseconds());
+            base::Seconds(30).InMilliseconds());
   EXPECT_EQ(TileConfig::GetBackoffPolicyArgsMaxDelayInMs(),
-            base::TimeDelta::FromDays(1).InMilliseconds());
+            base::Days(1).InMilliseconds());
 }
 
 // Test to verify ImagePrefetchMode can be parsed correctly from Finch
@@ -80,6 +84,31 @@ TEST(TileConfigTest, GetImagePrefetchMode) {
                         ImagePrefetchMode::kTopLevel);
   TestImagePrefetchMode({{kImagePrefetchModeKey, "all"}},
                         ImagePrefetchMode::kAll);
+}
+
+// Test to verify the default params for enabled countries.
+TEST(TileConfigTest, ExperimentTagForEnabledCountries) {
+  base::test::ScopedFeatureList feature_list;
+  EXPECT_EQ(TileConfig::GetExperimentTag("in"),
+            "{maxLevels : 1, enableTrending : true, maxTrendingQueries : 8}");
+  EXPECT_EQ(TileConfig::GetExperimentTag("in"),
+            TileConfig::GetExperimentTag("ng"));
+  EXPECT_EQ(TileConfig::GetExperimentTag("jp"),
+            "{maxLevels : 1, rankTiles : true, enableTrending : true, "
+            "maxTrendingQueries : 8, disableEntityTranslation: true}");
+
+  // Finch params should override default values.
+  std::map<std::string, std::string> params = {
+      {kExperimentTagKey,
+       "{maxLevels : 1, enableTrending : true, rankTiles : true}"}};
+  feature_list.InitAndEnableFeatureWithParameters(features::kQueryTiles,
+                                                  params);
+  EXPECT_EQ(TileConfig::GetExperimentTag("in"),
+            "{maxLevels : 1, enableTrending : true, rankTiles : true}");
+  EXPECT_EQ(TileConfig::GetExperimentTag("in"),
+            TileConfig::GetExperimentTag("ng"));
+  EXPECT_EQ(TileConfig::GetExperimentTag("in"),
+            TileConfig::GetExperimentTag("JP"));
 }
 
 }  // namespace query_tiles

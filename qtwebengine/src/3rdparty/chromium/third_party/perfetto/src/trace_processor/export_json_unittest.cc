@@ -24,11 +24,15 @@
 #include <json/reader.h>
 #include <json/value.h>
 
+#include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/temp_file.h"
 #include "src/trace_processor/importers/common/args_tracker.h"
+#include "src/trace_processor/importers/common/event_tracker.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
 #include "src/trace_processor/importers/proto/metadata_tracker.h"
+#include "src/trace_processor/importers/proto/track_event_tracker.h"
+#include "src/trace_processor/storage/trace_storage.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 
 #include "test/gtest_and_gmock.h"
@@ -66,11 +70,14 @@ class StringOutputWriter : public OutputWriter {
 class ExportJsonTest : public ::testing::Test {
  public:
   ExportJsonTest() {
-    context_.global_args_tracker.reset(new GlobalArgsTracker(&context_));
-    context_.args_tracker.reset(new ArgsTracker(&context_));
     context_.storage.reset(new TraceStorage());
+    context_.global_args_tracker.reset(
+        new GlobalArgsTracker(context_.storage.get()));
+    context_.args_tracker.reset(new ArgsTracker(&context_));
+    context_.event_tracker.reset(new EventTracker(&context_));
     context_.track_tracker.reset(new TrackTracker(&context_));
-    context_.metadata_tracker.reset(new MetadataTracker(&context_));
+    context_.metadata_tracker.reset(
+        new MetadataTracker(context_.storage.get()));
     context_.process_tracker.reset(new ProcessTracker(&context_));
   }
 
@@ -126,11 +133,11 @@ TEST_F(ExportJsonTest, StorageWithOneSlice) {
   context_.args_tracker->Flush();  // Flush track args.
   StringId cat_id = context_.storage->InternString(base::StringView(kCategory));
   StringId name_id = context_.storage->InternString(base::StringView(kName));
+  // The thread_slice table is a sub table of slice.
   context_.storage->mutable_slice_table()->Insert(
-      {kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0});
-  context_.storage->mutable_thread_slices()->AddThreadSlice(
-      0, kThreadTimestamp, kThreadDuration, kThreadInstructionCount,
-      kThreadInstructionDelta);
+      {kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0, SliceId(0u), 0,
+       kThreadTimestamp, kThreadDuration, kThreadInstructionCount,
+       kThreadInstructionDelta});
 
   base::TempFile temp_file = base::TempFile::Create();
   FILE* output = fopen(temp_file.path().c_str(), "w+");
@@ -173,10 +180,9 @@ TEST_F(ExportJsonTest, StorageWithOneUnfinishedSlice) {
   StringId cat_id = context_.storage->InternString(base::StringView(kCategory));
   StringId name_id = context_.storage->InternString(base::StringView(kName));
   context_.storage->mutable_slice_table()->Insert(
-      {kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0});
-  context_.storage->mutable_thread_slices()->AddThreadSlice(
-      0, kThreadTimestamp, kThreadDuration, kThreadInstructionCount,
-      kThreadInstructionDelta);
+      {kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0, SliceId(0u), 0,
+       kThreadTimestamp, kThreadDuration, kThreadInstructionCount,
+       kThreadInstructionDelta});
 
   base::TempFile temp_file = base::TempFile::Create();
   FILE* output = fopen(temp_file.path().c_str(), "w+");
@@ -227,9 +233,8 @@ TEST_F(ExportJsonTest, StorageWithThreadName) {
 }
 
 TEST_F(ExportJsonTest, SystemEventsIgnored) {
-  constexpr int64_t kCookie = 22;
-  TrackId track = context_.track_tracker->InternAndroidAsyncTrack(
-      /*name=*/kNullStringId, /*upid=*/0, kCookie);
+  TrackId track = context_.track_tracker->CreateProcessAsyncTrack(
+      /*name=*/kNullStringId, /*upid=*/0, /*source=*/kNullStringId);
   context_.args_tracker->Flush();  // Flush track args.
 
   // System events have no category.
@@ -254,6 +259,7 @@ TEST_F(ExportJsonTest, StorageWithMetadata) {
   const char* kStoryName = "story name";
   const char* kStoryTag1 = "tag1";
   const char* kStoryTag2 = "tag2";
+  const char* kDynamicKey = "dyn_key1";
   const int64_t kBenchmarkStart = 1000000;
   const int64_t kStoryStart = 2000000;
   const bool kHadFailures = true;
@@ -299,6 +305,13 @@ TEST_F(ExportJsonTest, StorageWithMetadata) {
   context_.metadata_tracker->SetMetadata(metadata::benchmark_had_failures,
                                          had_failures);
 
+  // Metadata entries with dynamic keys are not currently exported from the
+  // metadata table (the Chrome metadata is exported directly from the raw
+  // table).
+  StringId dynamic_key_id =
+      context_.storage->InternString(base::StringView(kDynamicKey));
+  context_.metadata_tracker->SetDynamicMetadata(dynamic_key_id, had_failures);
+
   base::TempFile temp_file = base::TempFile::Create();
   FILE* output = fopen(temp_file.path().c_str(), "w+");
   util::Status status = ExportJson(context_.storage.get(), output);
@@ -333,6 +346,8 @@ TEST_F(ExportJsonTest, StorageWithMetadata) {
 
   EXPECT_EQ(telemetry_metadata["hadFailures"].size(), 1u);
   EXPECT_EQ(telemetry_metadata["hadFailures"][0].asBool(), kHadFailures);
+
+  EXPECT_FALSE(result["metadata"].isMember(kDynamicKey));
 }
 
 TEST_F(ExportJsonTest, StorageWithStats) {
@@ -737,14 +752,15 @@ TEST_F(ExportJsonTest, InstantEvent) {
       {kTimestamp, 0, track, cat_id, name_id, 0, 0, 0});
 
   // Global track.
-  TrackId track2 = context_.track_tracker->GetOrCreateDefaultDescriptorTrack();
+  TrackEventTracker track_event_tracker(&context_);
+  TrackId track2 = track_event_tracker.GetOrCreateDefaultDescriptorTrack();
   context_.args_tracker->Flush();  // Flush track args.
   context_.storage->mutable_slice_table()->Insert(
       {kTimestamp2, 0, track2, cat_id, name_id, 0, 0, 0});
 
   // Async event track.
-  context_.track_tracker->ReserveDescriptorChildTrack(1234, 0, kNullStringId);
-  TrackId track3 = *context_.track_tracker->GetDescriptorTrack(1234);
+  track_event_tracker.ReserveDescriptorChildTrack(1234, 0, kNullStringId);
+  TrackId track3 = *track_event_tracker.GetDescriptorTrack(1234);
   context_.args_tracker->Flush();  // Flush track args.
   context_.storage->mutable_slice_table()->Insert(
       {kTimestamp3, 0, track3, cat_id, name_id, 0, 0, 0});
@@ -814,7 +830,8 @@ TEST_F(ExportJsonTest, InstantEventOnThread) {
 
 TEST_F(ExportJsonTest, DuplicatePidAndTid) {
   UniqueTid upid1 = context_.process_tracker->StartNewProcess(
-      base::nullopt, base::nullopt, 1, kNullStringId);
+      base::nullopt, base::nullopt, 1, kNullStringId,
+      ThreadNamePriority::kTrackDescriptor);
   UniqueTid utid1a = context_.process_tracker->UpdateThread(1, 1);
   UniqueTid utid1b = context_.process_tracker->UpdateThread(2, 1);
   UniqueTid utid1c = context_.process_tracker->StartNewThread(base::nullopt, 2);
@@ -822,7 +839,8 @@ TEST_F(ExportJsonTest, DuplicatePidAndTid) {
   ASSERT_EQ(utid1c, context_.process_tracker->UpdateThread(2, 1));
 
   UniqueTid upid2 = context_.process_tracker->StartNewProcess(
-      base::nullopt, base::nullopt, 1, kNullStringId);
+      base::nullopt, base::nullopt, 1, kNullStringId,
+      ThreadNamePriority::kTrackDescriptor);
   UniqueTid utid2a = context_.process_tracker->UpdateThread(1, 1);
   UniqueTid utid2b = context_.process_tracker->UpdateThread(2, 1);
 
@@ -1050,6 +1068,151 @@ TEST_F(ExportJsonTest, AsyncEvents) {
   EXPECT_FALSE(end_event3.isMember("use_async_tts"));
 }
 
+TEST_F(ExportJsonTest, LegacyAsyncEvents) {
+  using Arg = GlobalArgsTracker::Arg;
+  const int64_t kTimestamp = 10000000;
+  const int64_t kDuration = 100000;
+  const int64_t kTimestamp2 = 10001000;
+  const int64_t kDuration2 = 0;
+  const int64_t kTimestamp3 = 10005000;
+  const int64_t kDuration3 = 100000;
+  const uint32_t kProcessID = 100;
+  const char* kCategory = "cat";
+  const char* kName = "name";
+  const char* kName2 = "name2";
+  const char* kName3 = "name3";
+
+  UniquePid upid = context_.process_tracker->GetOrCreateProcess(kProcessID);
+  StringId cat_id = context_.storage->InternString(base::StringView(kCategory));
+  StringId name_id = context_.storage->InternString(base::StringView(kName));
+  StringId name2_id = context_.storage->InternString(base::StringView(kName2));
+  StringId name3_id = context_.storage->InternString(base::StringView(kName3));
+
+  auto arg_inserter = [this](base::StringView arg_name,
+                             base::StringView arg_value,
+                             std::vector<Arg>& args) {
+    Arg arg;
+    StringId arg_key_id =
+        context_.storage->InternString(base::StringView(arg_name));
+    arg.flat_key = arg_key_id;
+    arg.key = arg_key_id;
+    StringId value_id = context_.storage->InternString(arg_value);
+    arg.value = Variadic::String(value_id);
+    args.push_back(arg);
+  };
+
+  constexpr int64_t kSourceId = 235;
+  TrackId track = context_.track_tracker->InternLegacyChromeAsyncTrack(
+      name_id, upid, kSourceId, /*source_id_is_process_scoped=*/true,
+      /*source_scope=*/kNullStringId);
+  constexpr int64_t kSourceId2 = 236;
+  TrackId track2 = context_.track_tracker->InternLegacyChromeAsyncTrack(
+      name3_id, upid, kSourceId2, /*source_id_is_process_scoped=*/true,
+      /*source_scope=*/kNullStringId);
+  context_.args_tracker->Flush();  // Flush track args.
+
+  context_.storage->mutable_slice_table()->Insert(
+      {kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0});
+  std::vector<Arg> args1;
+  arg_inserter("arg1", "value1", args1);
+  arg_inserter("legacy_event.phase", "S", args1);
+  ArgSetId arg_id1 = context_.global_args_tracker->AddArgSet(args1, 0, 2);
+  context_.storage->mutable_slice_table()->mutable_arg_set_id()->Set(0,
+                                                                     arg_id1);
+
+  // Step event with first event as parent.
+  context_.storage->mutable_slice_table()->Insert(
+      {kTimestamp2, kDuration2, track, cat_id, name2_id, 0, 0, 0});
+  std::vector<Arg> step_args;
+  arg_inserter("arg2", "value2", step_args);
+  arg_inserter("legacy_event.phase", "T", step_args);
+  arg_inserter("debug.step", "Step1", step_args);
+  ArgSetId arg_id2 = context_.global_args_tracker->AddArgSet(step_args, 0, 3);
+  context_.storage->mutable_slice_table()->mutable_arg_set_id()->Set(1,
+                                                                     arg_id2);
+
+  // Another overlapping async event on a different track.
+  context_.storage->mutable_slice_table()->Insert(
+      {kTimestamp3, kDuration3, track2, cat_id, name3_id, 0, 0, 0});
+  std::vector<Arg> args3;
+  arg_inserter("legacy_event.phase", "S", args3);
+  ArgSetId arg_id3 = context_.global_args_tracker->AddArgSet(args3, 0, 1);
+  context_.storage->mutable_slice_table()->mutable_arg_set_id()->Set(2,
+                                                                     arg_id3);
+
+  base::TempFile temp_file = base::TempFile::Create();
+  FILE* output = fopen(temp_file.path().c_str(), "w+");
+  util::Status status = ExportJson(context_.storage.get(), output);
+
+  EXPECT_TRUE(status.ok());
+
+  Json::Value result = ToJsonValue(ReadFile(output));
+  EXPECT_EQ(result["traceEvents"].size(), 5u);
+
+  // Events should be sorted by timestamp, with child slice's end before its
+  // parent.
+
+  Json::Value begin_event1 = result["traceEvents"][0];
+  EXPECT_EQ(begin_event1["ph"].asString(), "S");
+  EXPECT_EQ(begin_event1["ts"].asInt64(), kTimestamp / 1000);
+  EXPECT_EQ(begin_event1["pid"].asInt(), static_cast<int>(kProcessID));
+  EXPECT_EQ(begin_event1["id2"]["local"].asString(), "0xeb");
+  EXPECT_EQ(begin_event1["cat"].asString(), kCategory);
+  EXPECT_EQ(begin_event1["name"].asString(), kName);
+  EXPECT_FALSE(begin_event1.isMember("tts"));
+  EXPECT_FALSE(begin_event1.isMember("use_async_tts"));
+  EXPECT_EQ(begin_event1["args"].size(), 1u);
+  EXPECT_EQ(begin_event1["args"]["arg1"].asString(), "value1");
+
+  Json::Value step_event = result["traceEvents"][1];
+  EXPECT_EQ(step_event["ph"].asString(), "T");
+  EXPECT_EQ(step_event["ts"].asInt64(), kTimestamp2 / 1000);
+  EXPECT_EQ(step_event["pid"].asInt(), static_cast<int>(kProcessID));
+  EXPECT_EQ(step_event["id2"]["local"].asString(), "0xeb");
+  EXPECT_EQ(step_event["cat"].asString(), kCategory);
+  EXPECT_EQ(step_event["name"].asString(), kName2);
+  EXPECT_TRUE(step_event["args"].isObject());
+  EXPECT_EQ(step_event["args"].size(), 2u);
+  EXPECT_EQ(step_event["args"]["arg2"].asString(), "value2");
+  EXPECT_EQ(step_event["args"]["step"].asString(), "Step1");
+
+  Json::Value begin_event2 = result["traceEvents"][2];
+  EXPECT_EQ(begin_event2["ph"].asString(), "S");
+  EXPECT_EQ(begin_event2["ts"].asInt64(), kTimestamp3 / 1000);
+  EXPECT_EQ(begin_event2["pid"].asInt(), static_cast<int>(kProcessID));
+  EXPECT_EQ(begin_event2["id2"]["local"].asString(), "0xec");
+  EXPECT_EQ(begin_event2["cat"].asString(), kCategory);
+  EXPECT_EQ(begin_event2["name"].asString(), kName3);
+  EXPECT_TRUE(begin_event2["args"].isObject());
+  EXPECT_EQ(begin_event2["args"].size(), 0u);
+  EXPECT_FALSE(begin_event2.isMember("tts"));
+  EXPECT_FALSE(begin_event2.isMember("use_async_tts"));
+
+  Json::Value end_event1 = result["traceEvents"][3];
+  EXPECT_EQ(end_event1["ph"].asString(), "F");
+  EXPECT_EQ(end_event1["ts"].asInt64(), (kTimestamp + kDuration) / 1000);
+  EXPECT_EQ(end_event1["pid"].asInt(), static_cast<int>(kProcessID));
+  EXPECT_EQ(end_event1["id2"]["local"].asString(), "0xeb");
+  EXPECT_EQ(end_event1["cat"].asString(), kCategory);
+  EXPECT_EQ(end_event1["name"].asString(), kName);
+  EXPECT_TRUE(end_event1["args"].isObject());
+  EXPECT_EQ(end_event1["args"].size(), 0u);
+  EXPECT_FALSE(end_event1.isMember("tts"));
+  EXPECT_FALSE(end_event1.isMember("use_async_tts"));
+
+  Json::Value end_event3 = result["traceEvents"][4];
+  EXPECT_EQ(end_event3["ph"].asString(), "F");
+  EXPECT_EQ(end_event3["ts"].asInt64(), (kTimestamp3 + kDuration3) / 1000);
+  EXPECT_EQ(end_event3["pid"].asInt(), static_cast<int>(kProcessID));
+  EXPECT_EQ(end_event3["id2"]["local"].asString(), "0xec");
+  EXPECT_EQ(end_event3["cat"].asString(), kCategory);
+  EXPECT_EQ(end_event3["name"].asString(), kName3);
+  EXPECT_TRUE(end_event3["args"].isObject());
+  EXPECT_EQ(end_event3["args"].size(), 0u);
+  EXPECT_FALSE(end_event3.isMember("tts"));
+  EXPECT_FALSE(end_event3.isMember("use_async_tts"));
+}
+
 TEST_F(ExportJsonTest, AsyncEventWithThreadTimestamp) {
   const int64_t kTimestamp = 10000000;
   const int64_t kDuration = 100000;
@@ -1073,7 +1236,7 @@ TEST_F(ExportJsonTest, AsyncEventWithThreadTimestamp) {
   auto id_and_row =
       slices->Insert({kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0});
   context_.storage->mutable_virtual_track_slices()->AddVirtualTrackSlice(
-      id_and_row.id.value, kThreadTimestamp, kThreadDuration, 0, 0);
+      id_and_row.id, kThreadTimestamp, kThreadDuration, 0, 0);
 
   base::TempFile temp_file = base::TempFile::Create();
   FILE* output = fopen(temp_file.path().c_str(), "w+");
@@ -1130,7 +1293,7 @@ TEST_F(ExportJsonTest, UnfinishedAsyncEvent) {
           ->Insert({kTimestamp, kDuration, track, cat_id, name_id, 0, 0, 0})
           .id;
   context_.storage->mutable_virtual_track_slices()->AddVirtualTrackSlice(
-      slice_id.value, kThreadTimestamp, kThreadDuration, 0, 0);
+      slice_id, kThreadTimestamp, kThreadDuration, 0, 0);
 
   base::TempFile temp_file = base::TempFile::Create();
   FILE* output = fopen(temp_file.path().c_str(), "w+");
@@ -1387,6 +1550,12 @@ TEST_F(ExportJsonTest, CpuProfileEvent) {
   storage->mutable_cpu_profile_stack_sample_table()->Insert(
       {kTimestamp, frame_callsite_2.id, utid, kProcessPriority});
 
+  storage->mutable_cpu_profile_stack_sample_table()->Insert(
+      {kTimestamp + 10000, frame_callsite_1.id, utid, kProcessPriority});
+
+  storage->mutable_cpu_profile_stack_sample_table()->Insert(
+      {kTimestamp + 20000, frame_callsite_1.id, utid, kProcessPriority});
+
   base::TempFile temp_file = base::TempFile::Create();
   FILE* output = fopen(temp_file.path().c_str(), "w+");
   util::Status status = ExportJson(storage, output);
@@ -1395,7 +1564,10 @@ TEST_F(ExportJsonTest, CpuProfileEvent) {
 
   Json::Value result = ToJsonValue(ReadFile(output));
 
-  EXPECT_EQ(result["traceEvents"].size(), 1u);
+  // The first sample should generate only a single instant event;
+  // the two following samples should also generate an additional [b, e] pair
+  // (the async duration event).
+  EXPECT_EQ(result["traceEvents"].size(), 5u);
   Json::Value event = result["traceEvents"][0];
   EXPECT_EQ(event["ph"].asString(), "n");
   EXPECT_EQ(event["id"].asString(), "0x1");
@@ -1408,6 +1580,29 @@ TEST_F(ExportJsonTest, CpuProfileEvent) {
             "foo_func - foo_module_name [foo_module_id]\nbar_func - "
             "bar_module_name [bar_module_id]\n");
   EXPECT_EQ(event["args"]["process_priority"].asInt(), kProcessPriority);
+
+  event = result["traceEvents"][1];
+  EXPECT_EQ(event["ph"].asString(), "n");
+  EXPECT_EQ(event["id"].asString(), "0x2");
+  EXPECT_EQ(event["ts"].asInt64(), (kTimestamp + 10000) / 1000);
+
+  event = result["traceEvents"][2];
+  EXPECT_EQ(event["ph"].asString(), "n");
+  EXPECT_EQ(event["id"].asString(), "0x2");
+  EXPECT_EQ(event["ts"].asInt64(), (kTimestamp + 20000) / 1000);
+  Json::String second_callstack_ = event["args"]["frames"].asString();
+  EXPECT_EQ(second_callstack_, "foo_func - foo_module_name [foo_module_id]\n");
+
+  event = result["traceEvents"][3];
+  EXPECT_EQ(event["ph"].asString(), "b");
+  EXPECT_EQ(event["id"].asString(), "0x2");
+  EXPECT_EQ(event["ts"].asInt64(), (kTimestamp + 10000) / 1000 - 1);
+  EXPECT_EQ(event["args"]["frames"].asString(), second_callstack_);
+
+  event = result["traceEvents"][4];
+  EXPECT_EQ(event["ph"].asString(), "e");
+  EXPECT_EQ(event["id"].asString(), "0x2");
+  EXPECT_EQ(event["ts"].asInt64(), (kTimestamp + 20000) / 1000);
 }
 
 TEST_F(ExportJsonTest, ArgumentFilter) {
@@ -1555,6 +1750,260 @@ TEST_F(ExportJsonTest, LabelFilter) {
   EXPECT_EQ(result[1]["tid"].asInt(), static_cast<int>(kThreadID));
   EXPECT_EQ(result[1]["cat"].asString(), kCategory);
   EXPECT_EQ(result[1]["name"].asString(), kName);
+}
+
+TEST_F(ExportJsonTest, MemorySnapshotOsDumpEvent) {
+  const int64_t kTimestamp = 10000000;
+  const int64_t kPeakResidentSetSize = 100000;
+  const int64_t kPrivateFootprintBytes = 200000;
+  const int64_t kProtectionFlags = 1;
+  const int64_t kStartAddress = 1000000000;
+  const int64_t kSizeKb = 1000;
+  const int64_t kPrivateCleanResidentKb = 2000;
+  const int64_t kPrivateDirtyKb = 3000;
+  const int64_t kProportionalResidentKb = 4000;
+  const int64_t kSharedCleanResidentKb = 5000;
+  const int64_t kSharedDirtyResidentKb = 6000;
+  const int64_t kSwapKb = 7000;
+  const int64_t kModuleTimestamp = 20000000;
+  const uint32_t kProcessID = 100;
+  const bool kIsPeakRssResettable = true;
+  const char* kLevelOfDetail = "detailed";
+  const char* kFileName = "filename";
+  const char* kModuleDebugid = "debugid";
+  const char* kModuleDebugPath = "debugpath";
+
+  UniquePid upid = context_.process_tracker->GetOrCreateProcess(kProcessID);
+  TrackId track = context_.track_tracker->InternProcessTrack(upid);
+  StringId level_of_detail_id =
+      context_.storage->InternString(base::StringView(kLevelOfDetail));
+  auto snapshot_id = context_.storage->mutable_memory_snapshot_table()
+                         ->Insert({kTimestamp, track, level_of_detail_id})
+                         .id;
+
+  StringId peak_resident_set_size_id =
+      context_.storage->InternString("chrome.peak_resident_set_kb");
+  TrackId peak_resident_set_size_counter =
+      context_.track_tracker->InternProcessCounterTrack(
+          peak_resident_set_size_id, upid);
+  context_.event_tracker->PushCounter(kTimestamp, kPeakResidentSetSize,
+                                      peak_resident_set_size_counter);
+
+  StringId private_footprint_bytes_id =
+      context_.storage->InternString("chrome.private_footprint_kb");
+  TrackId private_footprint_bytes_counter =
+      context_.track_tracker->InternProcessCounterTrack(
+          private_footprint_bytes_id, upid);
+  context_.event_tracker->PushCounter(kTimestamp, kPrivateFootprintBytes,
+                                      private_footprint_bytes_counter);
+
+  StringId is_peak_rss_resettable_id =
+      context_.storage->InternString("is_peak_rss_resettable");
+  context_.args_tracker->AddArgsTo(upid).AddArg(
+      is_peak_rss_resettable_id, Variadic::Boolean(kIsPeakRssResettable));
+  context_.args_tracker->Flush();
+
+  context_.storage->mutable_profiler_smaps_table()->Insert(
+      {upid, kTimestamp, kNullStringId, kSizeKb, kPrivateDirtyKb, kSwapKb,
+       context_.storage->InternString(kFileName), kStartAddress,
+       kModuleTimestamp, context_.storage->InternString(kModuleDebugid),
+       context_.storage->InternString(kModuleDebugPath), kProtectionFlags,
+       kPrivateCleanResidentKb, kSharedDirtyResidentKb, kSharedCleanResidentKb,
+       0, kProportionalResidentKb});
+
+  base::TempFile temp_file = base::TempFile::Create();
+  FILE* output = fopen(temp_file.path().c_str(), "w+");
+  util::Status status = ExportJson(context_.storage.get(), output);
+
+  EXPECT_TRUE(status.ok());
+
+  Json::Value result = ToJsonValue(ReadFile(output));
+  EXPECT_EQ(result["traceEvents"].size(), 1u);
+
+  Json::Value event = result["traceEvents"][0];
+  EXPECT_EQ(event["ph"].asString(), "v");
+  EXPECT_EQ(event["cat"].asString(), "disabled-by-default-memory-infra");
+  EXPECT_EQ(event["id"].asString(), base::Uint64ToHexString(snapshot_id.value));
+  EXPECT_EQ(event["ts"].asInt64(), kTimestamp / 1000);
+  EXPECT_EQ(event["name"].asString(), "periodic_interval");
+  EXPECT_EQ(event["pid"].asUInt(), kProcessID);
+  EXPECT_EQ(event["tid"].asInt(), -1);
+
+  EXPECT_TRUE(event["args"].isObject());
+  EXPECT_EQ(event["args"]["dumps"]["level_of_detail"].asString(),
+            kLevelOfDetail);
+
+  EXPECT_EQ(event["args"]["dumps"]["process_totals"]["peak_resident_set_size"]
+                .asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kPeakResidentSetSize)));
+  EXPECT_EQ(event["args"]["dumps"]["process_totals"]["private_footprint_bytes"]
+                .asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kPrivateFootprintBytes)));
+  EXPECT_EQ(event["args"]["dumps"]["process_totals"]["is_peak_rss_resettable"]
+                .asBool(),
+            kIsPeakRssResettable);
+
+  EXPECT_TRUE(event["args"]["dumps"]["process_mmaps"]["vm_regions"].isArray());
+  EXPECT_EQ(event["args"]["dumps"]["process_mmaps"]["vm_regions"].size(), 1u);
+  Json::Value region = event["args"]["dumps"]["process_mmaps"]["vm_regions"][0];
+  EXPECT_EQ(region["mf"].asString(), kFileName);
+  EXPECT_EQ(region["pf"].asInt64(), kProtectionFlags);
+  EXPECT_EQ(region["sa"].asString(), base::Uint64ToHexStringNoPrefix(
+                                         static_cast<uint64_t>(kStartAddress)));
+  EXPECT_EQ(
+      region["sz"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(kSizeKb * 1024)));
+  EXPECT_EQ(region["id"].asString(), kModuleDebugid);
+  EXPECT_EQ(region["df"].asString(), kModuleDebugPath);
+  EXPECT_EQ(region["bs"]["pc"].asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kPrivateCleanResidentKb * 1024)));
+  EXPECT_EQ(region["bs"]["pd"].asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kPrivateDirtyKb * 1024)));
+  EXPECT_EQ(region["bs"]["pss"].asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kProportionalResidentKb * 1024)));
+  EXPECT_EQ(region["bs"]["sc"].asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kSharedCleanResidentKb * 1024)));
+  EXPECT_EQ(region["bs"]["sd"].asString(),
+            base::Uint64ToHexStringNoPrefix(
+                static_cast<uint64_t>(kSharedDirtyResidentKb * 1024)));
+  EXPECT_EQ(
+      region["bs"]["sw"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(kSwapKb * 1024)));
+}
+
+TEST_F(ExportJsonTest, MemorySnapshotChromeDumpEvent) {
+  const int64_t kTimestamp = 10000000;
+  const int64_t kSize = 1000;
+  const int64_t kEffectiveSize = 2000;
+  const int64_t kScalarAttrValue = 3000;
+  const uint32_t kOsProcessID = 100;
+  const uint32_t kChromeProcessID = 200;
+  const uint32_t kImportance = 1;
+  const char* kLevelOfDetail = "detailed";
+  const char* kPath1 = "path/to_file1";
+  const char* kPath2 = "path/to_file2";
+  const char* kScalarAttrUnits = "scalar_units";
+  const char* kStringAttrValue = "string_value";
+  const std::string kScalarAttrName = "scalar_name";
+  const std::string kStringAttrName = "string_name";
+
+  UniquePid os_upid =
+      context_.process_tracker->GetOrCreateProcess(kOsProcessID);
+  TrackId track = context_.track_tracker->InternProcessTrack(os_upid);
+  StringId level_of_detail_id =
+      context_.storage->InternString(base::StringView(kLevelOfDetail));
+  auto snapshot_id = context_.storage->mutable_memory_snapshot_table()
+                         ->Insert({kTimestamp, track, level_of_detail_id})
+                         .id;
+
+  UniquePid chrome_upid =
+      context_.process_tracker->GetOrCreateProcess(kChromeProcessID);
+  auto process_id = context_.storage->mutable_process_memory_snapshot_table()
+                        ->Insert({snapshot_id, chrome_upid})
+                        .id;
+
+  StringId path1_id = context_.storage->InternString(base::StringView(kPath1));
+  StringId path2_id = context_.storage->InternString(base::StringView(kPath2));
+  SnapshotNodeId node1_id =
+      context_.storage->mutable_memory_snapshot_node_table()
+          ->Insert(
+              {process_id, SnapshotNodeId(0), path1_id, kSize, kEffectiveSize})
+          .id;
+  SnapshotNodeId node2_id =
+      context_.storage->mutable_memory_snapshot_node_table()
+          ->Insert({process_id, SnapshotNodeId(0), path2_id, 0, 0})
+          .id;
+
+  context_.args_tracker->AddArgsTo(node1_id).AddArg(
+      context_.storage->InternString(
+          base::StringView(kScalarAttrName + ".value")),
+      Variadic::Integer(kScalarAttrValue));
+  context_.args_tracker->AddArgsTo(node1_id).AddArg(
+      context_.storage->InternString(
+          base::StringView(kScalarAttrName + ".unit")),
+      Variadic::String(context_.storage->InternString(kScalarAttrUnits)));
+  context_.args_tracker->AddArgsTo(node1_id).AddArg(
+      context_.storage->InternString(
+          base::StringView(kStringAttrName + ".value")),
+      Variadic::String(context_.storage->InternString(kStringAttrValue)));
+  context_.args_tracker->Flush();
+
+  context_.storage->mutable_memory_snapshot_edge_table()->Insert(
+      {node1_id, node2_id, kImportance});
+
+  base::TempFile temp_file = base::TempFile::Create();
+  FILE* output = fopen(temp_file.path().c_str(), "w+");
+  util::Status status = ExportJson(context_.storage.get(), output);
+
+  EXPECT_TRUE(status.ok());
+
+  Json::Value result = ToJsonValue(ReadFile(output));
+  EXPECT_EQ(result["traceEvents"].size(), 1u);
+
+  Json::Value event = result["traceEvents"][0];
+  EXPECT_EQ(event["ph"].asString(), "v");
+  EXPECT_EQ(event["cat"].asString(), "disabled-by-default-memory-infra");
+  EXPECT_EQ(event["id"].asString(), base::Uint64ToHexString(snapshot_id.value));
+  EXPECT_EQ(event["ts"].asInt64(), kTimestamp / 1000);
+  EXPECT_EQ(event["name"].asString(), "periodic_interval");
+  EXPECT_EQ(event["pid"].asUInt(), kChromeProcessID);
+  EXPECT_EQ(event["tid"].asInt(), -1);
+
+  EXPECT_TRUE(event["args"].isObject());
+  EXPECT_EQ(event["args"]["dumps"]["level_of_detail"].asString(),
+            kLevelOfDetail);
+
+  EXPECT_EQ(event["args"]["dumps"]["allocators"].size(), 2u);
+  Json::Value node1 = event["args"]["dumps"]["allocators"][kPath1];
+  EXPECT_TRUE(node1.isObject());
+  EXPECT_EQ(
+      node1["guid"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(node1_id.value)));
+  EXPECT_TRUE(node1["attrs"]["size"].isObject());
+  EXPECT_EQ(node1["attrs"]["size"]["value"].asString(),
+            base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(kSize)));
+  EXPECT_EQ(node1["attrs"]["size"]["type"].asString(), "scalar");
+  EXPECT_EQ(node1["attrs"]["size"]["units"].asString(), "bytes");
+  EXPECT_EQ(
+      node1["attrs"]["effective_size"]["value"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(kEffectiveSize)));
+  EXPECT_TRUE(node1["attrs"][kScalarAttrName].isObject());
+  EXPECT_EQ(
+      node1["attrs"][kScalarAttrName]["value"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(kScalarAttrValue)));
+  EXPECT_EQ(node1["attrs"][kScalarAttrName]["type"].asString(), "scalar");
+  EXPECT_EQ(node1["attrs"][kScalarAttrName]["units"].asString(),
+            kScalarAttrUnits);
+  EXPECT_TRUE(node1["attrs"][kStringAttrName].isObject());
+  EXPECT_EQ(node1["attrs"][kStringAttrName]["value"].asString(),
+            kStringAttrValue);
+  EXPECT_EQ(node1["attrs"][kStringAttrName]["type"].asString(), "string");
+  EXPECT_EQ(node1["attrs"][kStringAttrName]["units"].asString(), "");
+
+  Json::Value node2 = event["args"]["dumps"]["allocators"][kPath2];
+  EXPECT_TRUE(node2.isObject());
+  EXPECT_EQ(
+      node2["guid"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(node2_id.value)));
+  EXPECT_TRUE(node2["attrs"].empty());
+
+  Json::Value graph = event["args"]["dumps"]["allocators_graph"];
+  EXPECT_TRUE(graph.isArray());
+  EXPECT_EQ(graph.size(), 1u);
+  EXPECT_EQ(
+      graph[0]["source"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(node1_id.value)));
+  EXPECT_EQ(
+      graph[0]["target"].asString(),
+      base::Uint64ToHexStringNoPrefix(static_cast<uint64_t>(node2_id.value)));
+  EXPECT_EQ(graph[0]["importance"].asUInt(), kImportance);
+  EXPECT_EQ(graph[0]["type"].asString(), "ownership");
 }
 
 }  // namespace

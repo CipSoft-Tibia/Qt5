@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,6 @@
 // NOLINTNEXTLINE(build/include)
 #include "fpdfview.h"
 
-// NOLINTNEXTLINE(build/include)
-#include "fpdf_doc.h"
 // NOLINTNEXTLINE(build/include)
 #include "fpdf_formfill.h"
 
@@ -47,6 +45,7 @@ extern "C" {
 #define FPDF_ANNOT_THREED 25
 #define FPDF_ANNOT_RICHMEDIA 26
 #define FPDF_ANNOT_XFAWIDGET 27
+#define FPDF_ANNOT_REDACT 28
 
 // Refer to PDF Reference (6th edition) table 8.16 for all annotation flags.
 #define FPDF_ANNOT_FLAG_NONE 0
@@ -83,6 +82,16 @@ extern "C" {
 #define FPDF_FORMFLAG_CHOICE_EDIT (1 << 18)
 #define FPDF_FORMFLAG_CHOICE_MULTI_SELECT (1 << 21)
 
+// Additional actions type of form field:
+//   K, on key stroke, JavaScript action.
+//   F, on format, JavaScript action.
+//   V, on validate, JavaScript action.
+//   C, on calculate, JavaScript action.
+#define FPDF_ANNOT_AACTION_KEY_STROKE 12
+#define FPDF_ANNOT_AACTION_FORMAT 13
+#define FPDF_ANNOT_AACTION_VALIDATE 14
+#define FPDF_ANNOT_AACTION_CALCULATE 15
+
 typedef enum FPDFANNOT_COLORTYPE {
   FPDFANNOT_COLORTYPE_Color = 0,
   FPDFANNOT_COLORTYPE_InteriorColor
@@ -90,8 +99,19 @@ typedef enum FPDFANNOT_COLORTYPE {
 
 // Experimental API.
 // Check if an annotation subtype is currently supported for creation.
-// Currently supported subtypes: circle, highlight, ink, popup, square,
-// squiggly, stamp, strikeout, text, and underline.
+// Currently supported subtypes:
+//    - circle
+//    - freetext
+//    - highlight
+//    - ink
+//    - link
+//    - popup
+//    - square,
+//    - squiggly
+//    - stamp
+//    - strikeout
+//    - text
+//    - underline
 //
 //   subtype   - the subtype to be checked.
 //
@@ -197,8 +217,8 @@ FPDFAnnot_UpdateObject(FPDF_ANNOTATION annot, FPDF_PAGEOBJECT obj);
 // Experimental API.
 // Add a new InkStroke, represented by an array of points, to the InkList of
 // |annot|. The API creates an InkList if one doesn't already exist in |annot|.
-// This API works only for ink annotations. Please refer section 12.5.6.13 in
-// PDF 32000-1:2008 Specification.
+// This API works only for ink annotations. Please refer to ISO 32000-1:2008
+// spec, section 12.5.6.13.
 //
 //   annot       - handle to an annotation.
 //   points      - pointer to a FS_POINTF array representing input points.
@@ -395,6 +415,121 @@ FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDFAnnot_GetRect(FPDF_ANNOTATION annot,
                                                       FS_RECTF* rect);
 
 // Experimental API.
+// Get the vertices of a polygon or polyline annotation. |buffer| is an array of
+// points of the annotation. If |length| is less than the returned length, or
+// |annot| or |buffer| is NULL, |buffer| will not be modified.
+//
+//   annot  - handle to an annotation, as returned by e.g. FPDFPage_GetAnnot()
+//   buffer - buffer for holding the points.
+//   length - length of the buffer in points.
+//
+// Returns the number of points if the annotation is of type polygon or
+// polyline, 0 otherwise.
+FPDF_EXPORT unsigned long FPDF_CALLCONV
+FPDFAnnot_GetVertices(FPDF_ANNOTATION annot,
+                      FS_POINTF* buffer,
+                      unsigned long length);
+
+// Experimental API.
+// Get the number of paths in the ink list of an ink annotation.
+//
+//   annot  - handle to an annotation, as returned by e.g. FPDFPage_GetAnnot()
+//
+// Returns the number of paths in the ink list if the annotation is of type ink,
+// 0 otherwise.
+FPDF_EXPORT unsigned long FPDF_CALLCONV
+FPDFAnnot_GetInkListCount(FPDF_ANNOTATION annot);
+
+// Experimental API.
+// Get a path in the ink list of an ink annotation. |buffer| is an array of
+// points of the path. If |length| is less than the returned length, or |annot|
+// or |buffer| is NULL, |buffer| will not be modified.
+//
+//   annot  - handle to an annotation, as returned by e.g. FPDFPage_GetAnnot()
+//   path_index - index of the path
+//   buffer - buffer for holding the points.
+//   length - length of the buffer in points.
+//
+// Returns the number of points of the path if the annotation is of type ink, 0
+// otherwise.
+FPDF_EXPORT unsigned long FPDF_CALLCONV
+FPDFAnnot_GetInkListPath(FPDF_ANNOTATION annot,
+                         unsigned long path_index,
+                         FS_POINTF* buffer,
+                         unsigned long length);
+
+// Experimental API.
+// Get the starting and ending coordinates of a line annotation.
+//
+//   annot  - handle to an annotation, as returned by e.g. FPDFPage_GetAnnot()
+//   start - starting point
+//   end - ending point
+//
+// Returns true if the annotation is of type line, |start| and |end| are not
+// NULL, false otherwise.
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDFAnnot_GetLine(FPDF_ANNOTATION annot,
+                                                      FS_POINTF* start,
+                                                      FS_POINTF* end);
+
+// Experimental API.
+// Set the characteristics of the annotation's border (rounded rectangle).
+//
+//   annot              - handle to an annotation
+//   horizontal_radius  - horizontal corner radius, in default user space units
+//   vertical_radius    - vertical corner radius, in default user space units
+//   border_width       - border width, in default user space units
+//
+// Returns true if setting the border for |annot| succeeds, false otherwise.
+//
+// If |annot| contains an appearance stream that overrides the border values,
+// then the appearance stream will be removed on success.
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDFAnnot_SetBorder(FPDF_ANNOTATION annot,
+                                                        float horizontal_radius,
+                                                        float vertical_radius,
+                                                        float border_width);
+
+// Experimental API.
+// Get the characteristics of the annotation's border (rounded rectangle).
+//
+//   annot              - handle to an annotation
+//   horizontal_radius  - horizontal corner radius, in default user space units
+//   vertical_radius    - vertical corner radius, in default user space units
+//   border_width       - border width, in default user space units
+//
+// Returns true if |horizontal_radius|, |vertical_radius| and |border_width| are
+// not NULL, false otherwise.
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV
+FPDFAnnot_GetBorder(FPDF_ANNOTATION annot,
+                    float* horizontal_radius,
+                    float* vertical_radius,
+                    float* border_width);
+
+// Experimental API.
+// Get the JavaScript of an event of the annotation's additional actions.
+// |buffer| is only modified if |buflen| is large enough to hold the whole
+// JavaScript string. If |buflen| is smaller, the total size of the JavaScript
+// is still returned, but nothing is copied.  If there is no JavaScript for
+// |event| in |annot|, an empty string is written to |buf| and 2 is returned,
+// denoting the size of the null terminator in the buffer.  On other errors,
+// nothing is written to |buffer| and 0 is returned.
+//
+//    hHandle     -   handle to the form fill module, returned by
+//                    FPDFDOC_InitFormFillEnvironment().
+//    annot       -   handle to an interactive form annotation.
+//    event       -   event type, one of the FPDF_ANNOT_AACTION_* values.
+//    buffer      -   buffer for holding the value string, encoded in UTF-16LE.
+//    buflen      -   length of the buffer in bytes.
+//
+// Returns the length of the string value in bytes, including the 2-byte
+// null terminator.
+FPDF_EXPORT unsigned long FPDF_CALLCONV
+FPDFAnnot_GetFormAdditionalActionJavaScript(FPDF_FORMHANDLE hHandle,
+                                            FPDF_ANNOTATION annot,
+                                            int event,
+                                            FPDF_WCHAR* buffer,
+                                            unsigned long buflen);
+
+// Experimental API.
 // Check if |annot|'s dictionary has |key| as a key.
 //
 //   annot  - handle to an annotation.
@@ -585,6 +720,26 @@ FPDFAnnot_GetFormFieldName(FPDF_FORMHANDLE hHandle,
                            FPDF_ANNOTATION annot,
                            FPDF_WCHAR* buffer,
                            unsigned long buflen);
+
+// Experimental API.
+// Gets the alternate name of |annot|, which is an interactive form annotation.
+// |buffer| is only modified if |buflen| is longer than the length of contents.
+// In case of error, nothing will be added to |buffer| and the return value will
+// be 0. Note that return value of empty string is 2 for "\0\0".
+//
+//    hHandle     -   handle to the form fill module, returned by
+//                    FPDFDOC_InitFormFillEnvironment().
+//    annot       -   handle to an interactive form annotation.
+//    buffer      -   buffer for holding the alternate name string, encoded in
+//                    UTF-16LE.
+//    buflen      -   length of the buffer in bytes.
+//
+// Returns the length of the string value in bytes.
+FPDF_EXPORT unsigned long FPDF_CALLCONV
+FPDFAnnot_GetFormFieldAlternateName(FPDF_FORMHANDLE hHandle,
+                                    FPDF_ANNOTATION annot,
+                                    FPDF_WCHAR* buffer,
+                                    unsigned long buflen);
 
 // Experimental API.
 // Gets the form field type of |annot|, which is an interactive form annotation.
@@ -802,6 +957,16 @@ FPDFAnnot_GetFormFieldExportValue(FPDF_FORMHANDLE hHandle,
                                   FPDF_ANNOTATION annot,
                                   FPDF_WCHAR* buffer,
                                   unsigned long buflen);
+
+// Experimental API.
+// Add a URI action to |annot|, overwriting the existing action, if any.
+//
+//   annot  - handle to a link annotation.
+//   uri    - the URI to be set, encoded in 7-bit ASCII.
+//
+// Returns true if successful.
+FPDF_EXPORT FPDF_BOOL FPDF_CALLCONV FPDFAnnot_SetURI(FPDF_ANNOTATION annot,
+                                                     const char* uri);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/abstractbarchartitem_p.h>
 #include <private/bar_p.h>
@@ -42,7 +16,7 @@
 #include <QtGui/QPainter>
 #include <QtGui/QTextDocument>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 AbstractBarChartItem::AbstractBarChartItem(QAbstractBarSeries *series, QGraphicsItem* item) :
     ChartItem(series->d_func(),item),
@@ -120,7 +94,7 @@ void AbstractBarChartItem::initializeFullLayout()
     }
 }
 
-void AbstractBarChartItem::applyLayout(const QVector<QRectF> &layout)
+void AbstractBarChartItem::applyLayout(const QList<QRectF> &layout)
 {
     QSizeF size = geometry().size();
     if (geometry().size().isValid()) {
@@ -152,7 +126,7 @@ void AbstractBarChartItem::setAnimation(BarAnimation *animation)
     m_resetAnimation = true;
 }
 
-void AbstractBarChartItem::setLayout(const QVector<QRectF> &layout)
+void AbstractBarChartItem::setLayout(const QList<QRectF> &layout)
 {
     int setCount = m_series->count();
     if (layout.size() != m_layout.size() || m_barMap.size() != setCount)
@@ -199,7 +173,7 @@ void AbstractBarChartItem::handleLayoutChanged()
     if ((m_rect.width() <= 0) || (m_rect.height() <= 0))
         return; // rect size zero.
     updateBarItems();
-    QVector<QRectF> layout = calculateLayout();
+    QList<QRectF> layout = calculateLayout();
     handleUpdatedBars();
     applyLayout(layout);
 }
@@ -207,7 +181,7 @@ void AbstractBarChartItem::handleLayoutChanged()
 void AbstractBarChartItem::handleLabelsVisibleChanged(bool visible)
 {
     bool newVisible = visible && m_series->isVisible();
-    for (const QList<Bar *> &bars : qAsConst(m_barMap)) {
+    for (const QList<Bar *> &bars : std::as_const(m_barMap)) {
         for (Bar *bar :  bars) {
             QGraphicsTextItem *label = bar->labelItem();
             if (label)
@@ -265,6 +239,7 @@ void AbstractBarChartItem::handleUpdatedBars()
 
         for (int set = 0; set < setCount; set++) {
             QBarSet *barSet = m_series->d_func()->barsetAt(set);
+
             QBarSetPrivate *barSetP = barSet->d_ptr.data();
             const bool setVisualsDirty = barSetP->visualsDirty();
             const bool setLabelsDirty = barSetP->labelsDirty();
@@ -277,7 +252,11 @@ void AbstractBarChartItem::handleUpdatedBars()
                 Bar *bar = bars.at(i);
                 if (seriesVisualsDirty || setVisualsDirty || bar->visualsDirty()) {
                     bar->setPen(barSetP->m_pen);
-                    bar->setBrush(barSetP->m_brush);
+                    if (barSet->isBarSelected(i) && barSetP->m_selectedColor.isValid())
+                        bar->setBrush(barSetP->m_selectedColor);
+                    else
+                        bar->setBrush(barSetP->m_brush);
+
                     bar->setVisualsDirty(false);
                     bar->update();
                 }
@@ -374,7 +353,7 @@ void AbstractBarChartItem::positionLabels()
     }
 }
 
-void AbstractBarChartItem::handleBarValueChange(int index, QtCharts::QBarSet *barset)
+void AbstractBarChartItem::handleBarValueChange(int index, QBarSet *barset)
 {
     markLabelsDirty(barset, index, 1);
     handleLayoutChanged();
@@ -382,7 +361,7 @@ void AbstractBarChartItem::handleBarValueChange(int index, QtCharts::QBarSet *ba
 
 void AbstractBarChartItem::handleBarValueAdd(int index, int count, QBarSet *barset)
 {
-    Q_UNUSED(count)
+    Q_UNUSED(count);
 
     // Value insertions into middle of barset need to dirty the rest of the labels of the set
     markLabelsDirty(barset, index, -1);
@@ -391,14 +370,14 @@ void AbstractBarChartItem::handleBarValueAdd(int index, int count, QBarSet *bars
 
 void AbstractBarChartItem::handleBarValueRemove(int index, int count, QBarSet *barset)
 {
-    Q_UNUSED(count)
+    Q_UNUSED(count);
 
     // Value removals from the middle of barset need to dirty the rest of the labels of the set.
     markLabelsDirty(barset, index, -1);
 
     // make sure labels are not visible for removed bars
     const auto bars = m_barMap.value(barset);
-    for (int c = barset->count(); c < bars.count(); ++c) {
+    for (int c = barset->count(); c < bars.size(); ++c) {
         auto label = bars.at(c)->labelItem();
         if (label)
             label->setVisible(false);
@@ -409,7 +388,7 @@ void AbstractBarChartItem::handleBarValueRemove(int index, int count, QBarSet *b
 
 void AbstractBarChartItem::handleSeriesAdded(QAbstractSeries *series)
 {
-    Q_UNUSED(series)
+    Q_UNUSED(series);
 
     // If the parent series was added, do nothing, as series pos and width calculations will
     // happen anyway.
@@ -504,7 +483,7 @@ void AbstractBarChartItem::createLabelItems()
 
     m_labelItemsMissing = false;
 
-    for (const QList<Bar *> &bars : qAsConst(m_barMap)) {
+    for (const QList<Bar *> &bars : std::as_const(m_barMap)) {
         for (Bar *bar :  bars) {
             QGraphicsTextItem *label = bar->labelItem();
             if (!label) {
@@ -597,7 +576,7 @@ void AbstractBarChartItem::updateBarItems()
 
     int layoutSize = m_categoryCount * newSets.size();
 
-    QVector<QRectF> oldLayout = m_layout;
+    QList<QRectF> oldLayout = m_layout;
     if (layoutSize != m_layout.size())
         m_layout.resize(layoutSize);
 
@@ -628,7 +607,7 @@ void AbstractBarChartItem::updateBarItems()
         }
         // Update bar indexes
         QHash<int, Bar*> indexMap;
-        QVector<Bar *> unassignedBars(m_categoryCount, nullptr);
+        QList<Bar *> unassignedBars(m_categoryCount, nullptr);
         int unassignedIndex(0);
         QList<Bar *> newBars;
         newBars.reserve(m_categoryCount);
@@ -727,6 +706,6 @@ ChartAnimation *AbstractBarChartItem::animation() const
     return m_animation;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_abstractbarchartitem_p.cpp"

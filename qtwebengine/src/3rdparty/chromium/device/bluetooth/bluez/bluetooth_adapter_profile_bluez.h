@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "device/bluetooth/bluetooth_export.h"
 #include "device/bluetooth/bluez/bluetooth_adapter_bluez.h"
@@ -48,13 +48,17 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterProfileBlueZ
       ProfileRegisteredCallback success_callback,
       bluez::BluetoothProfileManagerClient::ErrorCallback error_callback);
 
+  BluetoothAdapterProfileBlueZ(const BluetoothAdapterProfileBlueZ&) = delete;
+  BluetoothAdapterProfileBlueZ& operator=(const BluetoothAdapterProfileBlueZ&) =
+      delete;
+
   ~BluetoothAdapterProfileBlueZ() override;
 
   // The object path of the profile.
   const dbus::ObjectPath& object_path() const { return object_path_; }
 
   // Returns the UUID of the profile
-  const device::BluetoothUUID& uuid() const { return uuid_; }
+  const device::BluetoothUUID& uuid() const { return *uuid_; }
 
   // Add a delegate for a device associated with this profile.
   // An empty |device_path| indicates a local listening service.
@@ -95,7 +99,7 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterProfileBlueZ
       delegates_;
 
   // The UUID that this profile represents.
-  const device::BluetoothUUID& uuid_;
+  const raw_ref<const device::BluetoothUUID> uuid_;
 
   // Registered dbus object path for this profile.
   dbus::ObjectPath object_path_;
@@ -106,8 +110,6 @@ class DEVICE_BLUETOOTH_EXPORT BluetoothAdapterProfileBlueZ
   // Note: This should remain the last member so it'll be destroyed and
   // invalidate its weak pointers before any other members are destroyed.
   base::WeakPtrFactory<BluetoothAdapterProfileBlueZ> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(BluetoothAdapterProfileBlueZ);
 };
 
 }  // namespace bluez

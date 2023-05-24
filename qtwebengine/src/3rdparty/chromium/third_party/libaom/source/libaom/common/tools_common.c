@@ -26,15 +26,9 @@
 #include "aom/aomdx.h"
 #endif
 
-#if defined(_WIN32) || defined(__OS2__)
+#if defined(_WIN32)
 #include <io.h>
 #include <fcntl.h>
-
-#ifdef __OS2__
-#define _setmode setmode
-#define _fileno fileno
-#define _O_BINARY O_BINARY
-#endif
 #endif
 
 #define LOG_ERROR(label)               \
@@ -50,7 +44,7 @@
 
 FILE *set_binary_mode(FILE *stream) {
   (void)stream;
-#if defined(_WIN32) || defined(__OS2__)
+#if defined(_WIN32)
   _setmode(_fileno(stream), _O_BINARY);
 #endif
   return stream;
@@ -66,7 +60,7 @@ void fatal(const char *fmt, ...) {
   exit(EXIT_FAILURE);
 }
 
-void warn(const char *fmt, ...) { LOG_ERROR("Warning"); }
+void aom_tools_warn(const char *fmt, ...) { LOG_ERROR("Warning"); }
 
 void die_codec(aom_codec_ctx_t *ctx, const char *s) {
   const char *detail = aom_codec_error_detail(ctx);
@@ -85,10 +79,12 @@ int read_yuv_frame(struct AvxInputContext *input_ctx, aom_image_t *yuv_frame) {
 
   for (plane = 0; plane < 3; ++plane) {
     uint8_t *ptr;
-    const int w = aom_img_plane_width(yuv_frame, plane);
+    int w = aom_img_plane_width(yuv_frame, plane);
     const int h = aom_img_plane_height(yuv_frame, plane);
     int r;
-
+    // Assuming that for nv12 we read all chroma data at one time
+    if (yuv_frame->fmt == AOM_IMG_FMT_NV12 && plane > 1) break;
+    if (yuv_frame->fmt == AOM_IMG_FMT_NV12 && plane == 1) w *= 2;
     /* Determine the correct plane based on the image format. The for-loop
      * always counts in Y,U,V order, but this may not match the order of
      * the data on disk.
@@ -250,24 +246,24 @@ void aom_img_write(const aom_image_t *img, FILE *file) {
   }
 }
 
-int aom_img_read(aom_image_t *img, FILE *file) {
+bool aom_img_read(aom_image_t *img, FILE *file) {
   int plane;
+  const int bytespp = (img->fmt & AOM_IMG_FMT_HIGHBITDEPTH) ? 2 : 1;
 
   for (plane = 0; plane < 3; ++plane) {
     unsigned char *buf = img->planes[plane];
     const int stride = img->stride[plane];
-    const int w = aom_img_plane_width(img, plane) *
-                  ((img->fmt & AOM_IMG_FMT_HIGHBITDEPTH) ? 2 : 1);
+    const int w = aom_img_plane_width(img, plane) * bytespp;
     const int h = aom_img_plane_height(img, plane);
     int y;
 
     for (y = 0; y < h; ++y) {
-      if (fread(buf, 1, w, file) != (size_t)w) return 0;
+      if (fread(buf, 1, w, file) != (size_t)w) return false;
       buf += stride;
     }
   }
 
-  return 1;
+  return true;
 }
 
 // TODO(dkovalev) change sse_to_psnr signature: double -> int64_t
@@ -479,7 +475,7 @@ static int img_shifted_realloc_required(const aom_image_t *img,
          required_fmt != shifted->fmt;
 }
 
-void aom_shift_img(unsigned int output_bit_depth, aom_image_t **img_ptr,
+bool aom_shift_img(unsigned int output_bit_depth, aom_image_t **img_ptr,
                    aom_image_t **img_shifted_ptr) {
   aom_image_t *img = *img_ptr;
   aom_image_t *img_shifted = *img_shifted_ptr;
@@ -499,6 +495,10 @@ void aom_shift_img(unsigned int output_bit_depth, aom_image_t **img_ptr,
     }
     if (!img_shifted) {
       img_shifted = aom_img_alloc(NULL, shifted_fmt, img->d_w, img->d_h, 16);
+      if (!img_shifted) {
+        *img_shifted_ptr = NULL;
+        return false;
+      }
       img_shifted->bit_depth = output_bit_depth;
       img_shifted->monochrome = img->monochrome;
       img_shifted->csp = img->csp;
@@ -511,6 +511,8 @@ void aom_shift_img(unsigned int output_bit_depth, aom_image_t **img_ptr,
     *img_shifted_ptr = img_shifted;
     *img_ptr = img_shifted;
   }
+
+  return true;
 }
 
 // Related to I420, NV12 format has one luma "luminance" plane Y and one plane
@@ -547,4 +549,73 @@ void aom_img_write_nv12(const aom_image_t *img, FILE *file) {
     ubuf += (stride - w * size);
     vbuf += (stride - w * size);
   }
+}
+
+size_t read_from_input(struct AvxInputContext *input_ctx, size_t n,
+                       unsigned char *buf) {
+  const size_t buffered_bytes =
+      input_ctx->detect.buf_read - input_ctx->detect.position;
+  size_t read_n;
+  if (buffered_bytes == 0) {
+    read_n = fread(buf, 1, n, input_ctx->file);
+  } else if (n <= buffered_bytes) {
+    memcpy(buf, input_ctx->detect.buf + input_ctx->detect.position, n);
+    input_ctx->detect.position += n;
+    read_n = n;
+  } else {
+    memcpy(buf, input_ctx->detect.buf + input_ctx->detect.position,
+           buffered_bytes);
+    input_ctx->detect.position += buffered_bytes;
+    read_n = buffered_bytes;
+    read_n +=
+        fread(buf + buffered_bytes, 1, n - buffered_bytes, input_ctx->file);
+  }
+  return read_n;
+}
+
+size_t input_to_detect_buf(struct AvxInputContext *input_ctx, size_t n) {
+  if (n + input_ctx->detect.position > DETECT_BUF_SZ) {
+    die("Failed to store in the detect buffer, maximum size exceeded.");
+  }
+  const size_t buffered_bytes =
+      input_ctx->detect.buf_read - input_ctx->detect.position;
+  size_t read_n;
+  if (buffered_bytes == 0) {
+    read_n = fread(input_ctx->detect.buf + input_ctx->detect.buf_read, 1, n,
+                   input_ctx->file);
+    input_ctx->detect.buf_read += read_n;
+  } else if (n <= buffered_bytes) {
+    // In this case, don't need to do anything as the data is already in
+    // the detect buffer
+    read_n = n;
+  } else {
+    read_n = fread(input_ctx->detect.buf + input_ctx->detect.buf_read, 1,
+                   n - buffered_bytes, input_ctx->file);
+    input_ctx->detect.buf_read += read_n;
+    read_n += buffered_bytes;
+  }
+  return read_n;
+}
+
+// Read from detect buffer to a buffer. If not enough, read from input and also
+// buffer them first.
+size_t buffer_input(struct AvxInputContext *input_ctx, size_t n,
+                    unsigned char *buf, bool buffered) {
+  if (!buffered) {
+    return read_from_input(input_ctx, n, buf);
+  }
+  const size_t buf_n = input_to_detect_buf(input_ctx, n);
+  if (buf_n < n) {
+    return buf_n;
+  }
+  return read_from_input(input_ctx, n, buf);
+}
+
+void rewind_detect(struct AvxInputContext *input_ctx) {
+  input_ctx->detect.position = 0;
+}
+
+bool input_eof(struct AvxInputContext *input_ctx) {
+  return feof(input_ctx->file) &&
+         input_ctx->detect.position == input_ctx->detect.buf_read;
 }

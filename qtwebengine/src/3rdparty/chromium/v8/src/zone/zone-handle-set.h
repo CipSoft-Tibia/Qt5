@@ -81,6 +81,12 @@ class ZoneHandleSet final {
     }
   }
 
+  void Union(ZoneHandleSet<T> const& other, Zone* zone) {
+    for (size_t i = 0; i < other.size(); ++i) {
+      insert(other.at(i), zone);
+    }
+  }
+
   bool contains(ZoneHandleSet<T> const& other) const {
     if (data_ == other.data_) return true;
     if (data_ == kEmptyTag) return false;
@@ -176,7 +182,7 @@ class ZoneHandleSet final {
     kTagMask = 3
   };
 
-  STATIC_ASSERT(kTagMask < kPointerAlignment);
+  static_assert(kTagMask < kPointerAlignment);
 
   Address data_;
 };
@@ -199,8 +205,8 @@ class ZoneHandleSet<T>::const_iterator {
   using reference = value_type;
   using pointer = value_type*;
 
-  const_iterator(const const_iterator& other)
-      : set_(other.set_), current_(other.current_) {}
+  const_iterator(const const_iterator& other) = default;
+  const_iterator& operator=(const const_iterator& other) = default;
 
   reference operator*() const { return (*set_)[current_]; }
   bool operator==(const const_iterator& other) const {

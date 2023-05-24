@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright 2019 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
@@ -44,7 +44,7 @@ URL_PREFIX = 'https://storage.googleapis.com'
 URL_PATH = 'openscreen-sysroots'
 
 VALID_ARCHS = ('arm', 'arm64')
-VALID_PLATFORMS = ('stretch', 'sid')
+VALID_PLATFORMS = ('stretch', 'bullseye')
 
 
 class Error(Exception):
@@ -65,8 +65,8 @@ def GetSha1(filename):
 
 
 def GetSysrootDict(target_platform, target_arch):
-    """Gets the sysroot information for a given platform and arch from the sysroots.json
-    file."""
+    """Gets the sysroot information for a given platform and arch from the
+       sysroots.json file."""
     if target_arch not in VALID_ARCHS:
         raise Error('Unknown architecture: %s' % target_arch)
 
@@ -92,7 +92,8 @@ def DownloadFile(url, local_path):
         raise Error('Failed to download %s' % url)
 
 def ValidateFile(local_path, expected_sum):
-    """Generates the SHA1 hash of a local file to compare with an expected hashsum."""
+    """Generates the SHA1 hash of a local file to compare with an expected
+       hashsum."""
     sha1sum = GetSha1(local_path)
     if sha1sum != expected_sum:
         raise Error('Tarball sha1sum is wrong.'

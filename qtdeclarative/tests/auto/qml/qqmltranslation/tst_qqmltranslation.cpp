@@ -1,45 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <QQmlEngine>
 #include <QQmlComponent>
 #include <QTranslator>
 #include <QQmlContext>
+#include <QQuickItem>
 #include <private/qqmlengine_p.h>
 #include <private/qqmltypedata_p.h>
-#include "../../shared/util.h"
+#include <private/qqmldelegatemodel_p.h>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 class tst_qqmltranslation : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qqmltranslation() {}
+    tst_qqmltranslation() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
     void translation_data();
@@ -47,6 +24,7 @@ private slots:
     void idTranslation();
     void translationChange();
     void preferJSContext();
+    void listModel();
 };
 
 void tst_qqmltranslation::translation_data()
@@ -67,7 +45,7 @@ void tst_qqmltranslation::translation()
     QFETCH(bool, verifyCompiledData);
 
     QTranslator translator;
-    translator.load(translation, dataDirectory());
+    QVERIFY(translator.load(translation, dataDirectory()));
     QCoreApplication::installTranslator(&translator);
 
     QQmlEngine engine;
@@ -79,13 +57,18 @@ void tst_qqmltranslation::translation()
         QQmlContext *context = qmlContext(object);
         QQmlEnginePrivate *engine = QQmlEnginePrivate::get(context->engine());
         QQmlRefPointer<QQmlTypeData> typeData = engine->typeLoader.getType(context->baseUrl());
+        QVERIFY(!typeData->backupSourceCode().isValid());
         QV4::CompiledData::CompilationUnit *compilationUnit = typeData->compilationUnit();
         QVERIFY(compilationUnit);
 
         QSet<QString> compiledTranslations;
         compiledTranslations << QStringLiteral("basic")
+                             << QStringLiteral("basic2")
                              << QStringLiteral("disambiguation")
-                             << QStringLiteral("singular") << QStringLiteral("plural");
+                             << QStringLiteral("disambiguation2")
+                             << QStringLiteral("singular")
+                             << QStringLiteral("plural")
+                             << QStringLiteral("emptyContext");
 
         const QV4::CompiledData::Object *rootObject
                 = compilationUnit->qmlData->objectAt(/*root object*/0);
@@ -96,13 +79,13 @@ void tst_qqmltranslation::translation()
             const bool expectCompiledTranslation = compiledTranslations.contains(propertyName);
 
             if (expectCompiledTranslation) {
-                if (binding->type != QV4::CompiledData::Binding::Type_Translation)
+                if (binding->type() != QV4::CompiledData::Binding::Type_Translation)
                     qDebug() << "binding for property" << propertyName << "is not a compiled translation";
-                QCOMPARE(quint32(binding->type), quint32(QV4::CompiledData::Binding::Type_Translation));
+                QCOMPARE(binding->type(), QV4::CompiledData::Binding::Type_Translation);
             } else {
-                if (binding->type == QV4::CompiledData::Binding::Type_Translation)
+                if (binding->type() == QV4::CompiledData::Binding::Type_Translation)
                     qDebug() << "binding for property" << propertyName << "is not supposed to be a compiled translation";
-                QVERIFY(binding->type != QV4::CompiledData::Binding::Type_Translation);
+                QVERIFY(binding->type() != QV4::CompiledData::Binding::Type_Translation);
             }
         }
     }
@@ -119,6 +102,7 @@ void tst_qqmltranslation::translation()
     QCOMPARE(object->property("singular2").toString(), QLatin1String("1 canard"));
     QCOMPARE(object->property("plural").toString(), QLatin1String("2 canards"));
     QCOMPARE(object->property("plural2").toString(), QLatin1String("2 canards"));
+    QCOMPARE(object->property("emptyContext").toString(), QLatin1String("hello"));
 
     QCoreApplication::removeTranslator(&translator);
     delete object;
@@ -127,7 +111,7 @@ void tst_qqmltranslation::translation()
 void tst_qqmltranslation::idTranslation()
 {
     QTranslator translator;
-    translator.load(QLatin1String("qmlid_fr"), dataDirectory());
+    QVERIFY(translator.load(QLatin1String("qmlid_fr"), dataDirectory()));
     QCoreApplication::installTranslator(&translator);
 
     QQmlEngine engine;
@@ -139,6 +123,7 @@ void tst_qqmltranslation::idTranslation()
         QQmlContext *context = qmlContext(object);
         QQmlEnginePrivate *engine = QQmlEnginePrivate::get(context->engine());
         QQmlRefPointer<QQmlTypeData> typeData = engine->typeLoader.getType(context->baseUrl());
+        QVERIFY(!typeData->backupSourceCode().isValid());
         QV4::CompiledData::CompilationUnit *compilationUnit = typeData->compilationUnit();
         QVERIFY(compilationUnit);
 
@@ -148,11 +133,11 @@ void tst_qqmltranslation::idTranslation()
         for (quint32 i = 0; i < rootObject->nBindings; ++i, ++binding) {
             const QString propertyName = compilationUnit->stringAt(binding->propertyNameIndex);
             if (propertyName == "idTranslation") {
-                if (binding->type != QV4::CompiledData::Binding::Type_TranslationById)
+                if (binding->type() != QV4::CompiledData::Binding::Type_TranslationById)
                     qDebug() << "binding for property" << propertyName << "is not a compiled translation";
-                QCOMPARE(quint32(binding->type), quint32(QV4::CompiledData::Binding::Type_TranslationById));
+                QCOMPARE(binding->type(), QV4::CompiledData::Binding::Type_TranslationById);
             } else {
-                QVERIFY(binding->type != QV4::CompiledData::Binding::Type_Translation);
+                QVERIFY(binding->type() != QV4::CompiledData::Binding::Type_Translation);
             }
         }
     }
@@ -164,6 +149,18 @@ void tst_qqmltranslation::idTranslation()
     QCoreApplication::removeTranslator(&translator);
     delete object;
 }
+
+class CppTranslationBase : public QQuickItem
+{
+    Q_OBJECT
+    QML_ELEMENT
+public:
+    Q_PROPERTY(QString qProperty MEMBER qProperty BINDABLE bindableQProperty)
+    QBindable<QString> bindableQProperty() {return QBindable<QString>(&qProperty); }
+private:
+
+    QProperty<QString> qProperty;
+};
 
 class DummyTranslator : public QTranslator
 {
@@ -180,6 +177,16 @@ class DummyTranslator : public QTranslator
             return QString::fromUtf8("Deutsch in mylibrary");
         if (!qstrcmp(sourceText, "English in translation") && !qstrcmp(context, "nested_js_translation"))
             return QString::fromUtf8("Deutsch in Setzung");
+        if (!qstrcmp(sourceText, "soup"))
+            return QString::fromUtf8("Suppe");
+        if (!qstrcmp(sourceText, "fish"))
+            return QString::fromUtf8("Fisch");
+        if (!qstrcmp(sourceText, "meat"))
+            return QString::fromUtf8("Fleisch");
+        if (!qstrcmp(sourceText, "bread"))
+            return QString::fromUtf8("Brot");
+        if (!qstrcmp(sourceText, "sizzling hot pebbles"))
+            return QString::fromUtf8("Eiersalat");
         return QString();
     }
 
@@ -193,27 +200,32 @@ void tst_qqmltranslation::translationChange()
 {
     QQmlEngine engine;
 
+    qmlRegisterTypesAndRevisions<CppTranslationBase>("Test", 1);
+
     QQmlComponent component(&engine, testFileUrl("translationChange.qml"));
     QScopedPointer<QObject> object(component.create());
-    QVERIFY(!object.isNull());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
 
     QCOMPARE(object->property("baseProperty").toString(), QString::fromUtf8("do not translate"));
     QCOMPARE(object->property("text1").toString(), QString::fromUtf8("translate me"));
     QCOMPARE(object->property("text2").toString(), QString::fromUtf8("translate me"));
     QCOMPARE(object->property("text3").toString(), QString::fromUtf8("translate me"));
     QCOMPARE(object->property("fromListModel").toString(), QString::fromUtf8("translate me"));
+    QCOMPARE(object->property("qProperty").toString(), QString::fromUtf8("translate me"));
 
     DummyTranslator translator;
     QCoreApplication::installTranslator(&translator);
 
     QEvent ev(QEvent::LanguageChange);
     QCoreApplication::sendEvent(&engine, &ev);
+    engine.setUiLanguage("xxx");
 
     QCOMPARE(object->property("baseProperty").toString(), QString::fromUtf8("do not translate"));
     QCOMPARE(object->property("text1").toString(), QString::fromUtf8("xxx"));
     QCOMPARE(object->property("text2").toString(), QString::fromUtf8("xxx"));
     QCOMPARE(object->property("text3").toString(), QString::fromUtf8("xxx"));
     QCOMPARE(object->property("fromListModel").toString(), QString::fromUtf8("xxx"));
+    QCOMPARE(object->property("qProperty").toString(), QString::fromUtf8("xxx"));
 
     QCoreApplication::removeTranslator(&translator);
 }
@@ -234,6 +246,37 @@ void tst_qqmltranslation::preferJSContext()
              QStringLiteral("Deutsch in mylibrary"));
 
     QCoreApplication::removeTranslator(&translator);
+}
+
+void tst_qqmltranslation::listModel()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("translatedElements.qml"));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> o(component.create());
+    QVERIFY(o);
+
+    QQmlDelegateModel *model = qobject_cast<QQmlDelegateModel *>(o.data());
+    QVERIFY(model);
+
+    QCOMPARE(model->count(), 5);
+
+    QCOMPARE(model->object(0)->property("dish").toString(), QStringLiteral("soup"));
+    QCOMPARE(model->object(1)->property("dish").toString(), QStringLiteral("fish"));
+    QCOMPARE(model->object(2)->property("dish").toString(), QStringLiteral("meat"));
+    QCOMPARE(model->object(3)->property("dish").toString(), QStringLiteral("bread"));
+    QCOMPARE(model->object(4)->property("dish").toString(), QStringLiteral("sizzling hot pebbles"));
+
+    DummyTranslator translator;
+    QCoreApplication::installTranslator(&translator);
+    engine.setUiLanguage(QStringLiteral("xxx"));
+    engine.retranslate();
+
+    QCOMPARE(model->object(0)->property("dish").toString(), QStringLiteral("Suppe"));
+    QCOMPARE(model->object(1)->property("dish").toString(), QStringLiteral("Fisch"));
+    QCOMPARE(model->object(2)->property("dish").toString(), QStringLiteral("Fleisch"));
+    QCOMPARE(model->object(3)->property("dish").toString(), QStringLiteral("Brot"));
+    QCOMPARE(model->object(4)->property("dish").toString(), QStringLiteral("Eiersalat"));
 }
 
 QTEST_MAIN(tst_qqmltranslation)

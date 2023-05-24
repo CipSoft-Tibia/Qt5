@@ -1,27 +1,31 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/child_process_launcher_helper.h"
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
-#include "base/single_thread_task_runner.h"
+#include "base/process/launch.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/task/lazy_thread_pool_task_runner.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/single_thread_task_runner_thread_mode.h"
 #include "base/task/task_traits.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "build/build_config.h"
 #include "content/browser/child_process_launcher.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/child_process_launcher_utils.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/sandboxed_process_launcher_delegate.h"
 #include "mojo/public/cpp/platform/platform_channel.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "content/browser/android/launcher_thread.h"
 #endif
 
@@ -45,25 +49,26 @@ void RecordHistogramsOnLauncherThread(base::TimeDelta launch_time) {
 
 }  // namespace
 
+ChildProcessLauncherHelper::Process::Process() = default;
+
+ChildProcessLauncherHelper::Process::~Process() = default;
+
 ChildProcessLauncherHelper::Process::Process(Process&& other)
     : process(std::move(other.process))
-#if BUILDFLAG(USE_ZYGOTE_HANDLE)
+#if BUILDFLAG(USE_ZYGOTE)
       ,
       zygote(other.zygote)
+#endif
+#if BUILDFLAG(IS_FUCHSIA)
+      ,
+      sandbox_policy(std::move(other.sandbox_policy))
 #endif
 {
 }
 
 ChildProcessLauncherHelper::Process&
 ChildProcessLauncherHelper::Process::Process::operator=(
-    ChildProcessLauncherHelper::Process&& other) {
-  DCHECK_NE(this, &other);
-  process = std::move(other.process);
-#if BUILDFLAG(USE_ZYGOTE_HANDLE)
-  zygote = other.zygote;
-#endif
-  return *this;
-}
+    ChildProcessLauncherHelper::Process&& other) = default;
 
 ChildProcessLauncherHelper::ChildProcessLauncherHelper(
     int child_process_id,
@@ -71,22 +76,22 @@ ChildProcessLauncherHelper::ChildProcessLauncherHelper(
     std::unique_ptr<SandboxedProcessLauncherDelegate> delegate,
     const base::WeakPtr<ChildProcessLauncher>& child_process_launcher,
     bool terminate_on_shutdown,
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     bool can_use_warm_up_connection,
 #endif
     mojo::OutgoingInvitation mojo_invitation,
     const mojo::ProcessErrorCallback& process_error_callback,
-    std::map<std::string, base::FilePath> files_to_preload)
+    std::unique_ptr<ChildProcessLauncherFileData> file_data)
     : child_process_id_(child_process_id),
-      client_task_runner_(base::SequencedTaskRunnerHandle::Get()),
+      client_task_runner_(base::SequencedTaskRunner::GetCurrentDefault()),
       command_line_(std::move(command_line)),
       delegate_(std::move(delegate)),
       child_process_launcher_(child_process_launcher),
       terminate_on_shutdown_(terminate_on_shutdown),
       mojo_invitation_(std::move(mojo_invitation)),
       process_error_callback_(process_error_callback),
-      files_to_preload_(std::move(files_to_preload))
-#if defined(OS_ANDROID)
+      file_data_(std::move(file_data))
+#if BUILDFLAG(IS_ANDROID)
       ,
       can_use_warm_up_connection_(can_use_warm_up_connection)
 #endif
@@ -100,14 +105,6 @@ void ChildProcessLauncherHelper::StartLaunchOnClientThread() {
 
   BeforeLaunchOnClientThread();
 
-#if defined(OS_FUCHSIA)
-  mojo_channel_.emplace();
-#else   // !defined(OS_FUCHSIA)
-  mojo_named_channel_ = CreateNamedPlatformChannelOnClientThread();
-  if (!mojo_named_channel_)
-    mojo_channel_.emplace();
-#endif  //  !defined(OS_FUCHSIA)
-
   GetProcessLauncherTaskRunner()->PostTask(
       FROM_HERE,
       base::BindOnce(&ChildProcessLauncherHelper::LaunchOnLauncherThread,
@@ -117,24 +114,49 @@ void ChildProcessLauncherHelper::StartLaunchOnClientThread() {
 void ChildProcessLauncherHelper::LaunchOnLauncherThread() {
   DCHECK(CurrentlyOnProcessLauncherTaskRunner());
 
+#if BUILDFLAG(IS_FUCHSIA)
+  mojo_channel_.emplace();
+#else   // BUILDFLAG(IS_FUCHSIA)
+  mojo_named_channel_ = CreateNamedPlatformChannelOnLauncherThread();
+  if (!mojo_named_channel_) {
+    mojo_channel_.emplace();
+  }
+#endif  //  BUILDFLAG(IS_FUCHSIA)
+
   begin_launch_time_ = base::TimeTicks::Now();
+  if (GetProcessType() == switches::kRendererProcess &&
+      base::TimeTicks::IsConsistentAcrossProcesses()) {
+    const base::TimeDelta ticks_as_delta = begin_launch_time_.since_origin();
+    command_line()->AppendSwitchASCII(
+        switches::kRendererProcessLaunchTimeTicks,
+        base::NumberToString(ticks_as_delta.InMicroseconds()));
+  }
 
   std::unique_ptr<FileMappedForLaunch> files_to_register = GetFilesToMap();
 
   bool is_synchronous_launch = true;
   int launch_result = LAUNCH_RESULT_FAILURE;
-  base::LaunchOptions options;
+  absl::optional<base::LaunchOptions> options;
+  base::LaunchOptions* options_ptr = nullptr;
+  if (IsUsingLaunchOptions()) {
+    options.emplace();
+    options_ptr = &*options;
+  }
 
   Process process;
-  if (BeforeLaunchOnLauncherThread(*files_to_register, &options)) {
+  if (BeforeLaunchOnLauncherThread(*files_to_register, options_ptr)) {
+// TODO(crbug.com/1412835): iOS is single process mode for now.
+#if !BUILDFLAG(IS_IOS)
+    base::FieldTrialList::PopulateLaunchOptionsWithFieldTrialState(
+        command_line(), options_ptr);
+#endif
     process =
-        LaunchProcessOnLauncherThread(options, std::move(files_to_register),
-#if defined(OS_ANDROID)
+        LaunchProcessOnLauncherThread(options_ptr, std::move(files_to_register),
+#if BUILDFLAG(IS_ANDROID)
                                       can_use_warm_up_connection_,
 #endif
                                       &is_synchronous_launch, &launch_result);
-
-    AfterLaunchOnLauncherThread(process, options);
+    AfterLaunchOnLauncherThread(process, options_ptr);
   }
 
   if (is_synchronous_launch) {
@@ -145,6 +167,14 @@ void ChildProcessLauncherHelper::LaunchOnLauncherThread() {
 void ChildProcessLauncherHelper::PostLaunchOnLauncherThread(
     ChildProcessLauncherHelper::Process process,
     int launch_result) {
+#if BUILDFLAG(IS_WIN)
+  // The LastError is set on the launcher thread, but needs to be transferred to
+  // the Client thread.
+  DWORD last_error = ::GetLastError();
+  const bool launch_elevated = delegate_->ShouldLaunchElevated();
+#else
+  const bool launch_elevated = false;
+#endif
   if (mojo_channel_)
     mojo_channel_->RemoteProcessLaunchAttempted();
 
@@ -156,12 +186,15 @@ void ChildProcessLauncherHelper::PostLaunchOnLauncherThread(
   // Take ownership of the broker client invitation here so it's destroyed when
   // we go out of scope regardless of the outcome below.
   mojo::OutgoingInvitation invitation = std::move(mojo_invitation_);
+  if (launch_elevated) {
+    invitation.set_extra_flags(MOJO_SEND_INVITATION_FLAG_ELEVATED);
+  }
   if (process.process.IsValid()) {
-#if !defined(OS_FUCHSIA)
+#if !BUILDFLAG(IS_FUCHSIA)
     if (mojo_named_channel_) {
       DCHECK(!mojo_channel_);
       mojo::OutgoingInvitation::Send(
-          std::move(invitation), process.process.Handle(),
+          std::move(invitation), base::kNullProcessHandle,
           mojo_named_channel_->TakeServerEndpoint(), process_error_callback_);
     } else
 #endif
@@ -178,14 +211,25 @@ void ChildProcessLauncherHelper::PostLaunchOnLauncherThread(
   client_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&ChildProcessLauncherHelper::PostLaunchOnClientThread,
-                     this, std::move(process), launch_result));
+                     this, std::move(process),
+#if BUILDFLAG(IS_WIN)
+                     last_error,
+#endif
+                     launch_result));
 }
 
 void ChildProcessLauncherHelper::PostLaunchOnClientThread(
     ChildProcessLauncherHelper::Process process,
+#if BUILDFLAG(IS_WIN)
+    DWORD last_error,
+#endif
     int error_code) {
   if (child_process_launcher_) {
-    child_process_launcher_->Notify(std::move(process), error_code);
+    child_process_launcher_->Notify(std::move(process),
+#if BUILDFLAG(IS_WIN)
+                                    last_error,
+#endif
+                                    error_code);
   } else if (process.process.IsValid() && terminate_on_shutdown_) {
     // Client is gone, terminate the process.
     ForceNormalProcessTerminationAsync(std::move(process));
@@ -216,7 +260,7 @@ void ChildProcessLauncherHelper::ForceNormalProcessTerminationAsync(
 
 // static
 base::SingleThreadTaskRunner* GetProcessLauncherTaskRunner() {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   // Android specializes Launcher thread so it is accessible in java.
   // Note Android never does clean shutdown, so shutdown use-after-free
   // concerns are not a problem in practice.
@@ -228,7 +272,7 @@ base::SingleThreadTaskRunner* GetProcessLauncherTaskRunner() {
   static base::NoDestructor<scoped_refptr<base::SingleThreadTaskRunner>>
       launcher_task_runner(android::LauncherThread::GetTaskRunner());
   return (*launcher_task_runner).get();
-#else   // defined(OS_ANDROID)
+#else   // BUILDFLAG(IS_ANDROID)
   // TODO(http://crbug.com/820200): Investigate whether we could use
   // SequencedTaskRunner on platforms other than Windows.
   static base::LazyThreadPoolSingleThreadTaskRunner launcher_task_runner =
@@ -237,7 +281,7 @@ base::SingleThreadTaskRunner* GetProcessLauncherTaskRunner() {
                            base::TaskShutdownBehavior::BLOCK_SHUTDOWN),
           base::SingleThreadTaskRunnerThreadMode::DEDICATED);
   return launcher_task_runner.Get().get();
-#endif  // defined(OS_ANDROID)
+#endif  // BUILDFLAG(IS_ANDROID)
 }
 
 // static

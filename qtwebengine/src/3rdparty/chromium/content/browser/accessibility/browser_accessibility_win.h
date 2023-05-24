@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,15 @@
 #include "content/browser/accessibility/browser_accessibility.h"
 #include "content/browser/accessibility/browser_accessibility_com_win.h"
 #include "content/common/content_export.h"
+#include "ui/accessibility/ax_node.h"
 
 namespace content {
 
 class CONTENT_EXPORT BrowserAccessibilityWin : public BrowserAccessibility {
  public:
-  BrowserAccessibilityWin();
   ~BrowserAccessibilityWin() override;
+  BrowserAccessibilityWin(const BrowserAccessibilityWin&) = delete;
+  BrowserAccessibilityWin& operator=(const BrowserAccessibilityWin&) = delete;
 
   // This is used to call UpdateStep1ComputeWinAttributes, ... above when
   // a node needs to be updated for some other reason other than via
@@ -31,26 +33,28 @@ class CONTENT_EXPORT BrowserAccessibilityWin : public BrowserAccessibility {
   bool CanFireEvents() const override;
   ui::AXPlatformNode* GetAXPlatformNode() const override;
   void OnLocationChanged() override;
-  base::string16 GetText() const override;
-  base::string16 GetHypertext() const override;
+  std::u16string GetHypertext() const override;
 
-  const std::vector<gfx::NativeViewAccessible> GetUIADescendants()
-      const override;
+  const std::vector<gfx::NativeViewAccessible> GetUIADirectChildrenInRange(
+      ui::AXPlatformNodeDelegate* start,
+      ui::AXPlatformNodeDelegate* end) override;
 
   gfx::NativeViewAccessible GetNativeViewAccessible() override;
 
   class BrowserAccessibilityComWin* GetCOM() const;
 
  protected:
+  BrowserAccessibilityWin(BrowserAccessibilityManager* manager,
+                          ui::AXNode* node);
+
   ui::TextAttributeList ComputeTextAttributes() const override;
 
   bool ShouldHideChildrenForUIA() const;
 
+  friend class BrowserAccessibility;  // Needs access to our constructor.
+
  private:
   CComObject<BrowserAccessibilityComWin>* browser_accessibility_com_;
-  // Give BrowserAccessibility::Create access to our constructor.
-  friend class BrowserAccessibility;
-  DISALLOW_COPY_AND_ASSIGN(BrowserAccessibilityWin);
 };
 
 CONTENT_EXPORT BrowserAccessibilityWin* ToBrowserAccessibilityWin(

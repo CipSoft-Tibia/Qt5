@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "driver.h"
 #include "uic.h"
@@ -38,6 +13,8 @@
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 Driver::Driver()
     : m_stdout(stdout, QFile::WriteOnly | QFile::Text)
@@ -152,7 +129,7 @@ QString Driver::normalizedName(const QString &name)
     QString result = name;
     std::replace_if(result.begin(), result.end(),
                     [] (QChar c) { return !c.isLetterOrNumber(); },
-                    QLatin1Char('_'));
+                    u'_');
     return result;
 }
 
@@ -172,7 +149,7 @@ QString Driver::unique(const QString &instanceName, const QString &className)
     } else if (!className.isEmpty()) {
         name = unique(qtify(className));
     } else {
-        name = unique(QLatin1String("var"));
+        name = unique("var"_L1);
     }
 
     if (alreadyUsed && !className.isEmpty()) {
@@ -190,7 +167,7 @@ QString Driver::qtify(const QString &name)
 {
     QString qname = name;
 
-    if (qname.at(0) == QLatin1Char('Q') || qname.at(0) == QLatin1Char('K'))
+    if (qname.at(0) == u'Q' || qname.at(0) == u'K')
         qname.remove(0, 1);
 
     for (int i = 0, size = qname.size(); i < size && qname.at(i).isUpper(); ++i)
@@ -201,8 +178,7 @@ QString Driver::qtify(const QString &name)
 
 static bool isAnsiCCharacter(QChar c)
 {
-    return (c.toUpper() >= QLatin1Char('A') && c.toUpper() <= QLatin1Char('Z'))
-           || c.isDigit() || c == QLatin1Char('_');
+    return (c.toUpper() >= u'A' && c.toUpper() <= u'Z') || c.isDigit() || c == u'_';
 }
 
 QString Driver::headerFileName() const
@@ -210,7 +186,7 @@ QString Driver::headerFileName() const
     QString name = m_option.outputFile;
 
     if (name.isEmpty()) {
-        name = QLatin1String("ui_"); // ### use ui_ as prefix.
+        name = "ui_"_L1; // ### use ui_ as prefix.
         name.append(m_option.inputFile);
     }
 
@@ -220,23 +196,23 @@ QString Driver::headerFileName() const
 QString Driver::headerFileName(const QString &fileName)
 {
     if (fileName.isEmpty())
-        return headerFileName(QLatin1String("noname"));
+        return headerFileName(u"noname"_s);
 
     QFileInfo info(fileName);
     QString baseName = info.baseName();
     // Transform into a valid C++ identifier
     if (!baseName.isEmpty() && baseName.at(0).isDigit())
-        baseName.prepend(QLatin1Char('_'));
+        baseName.prepend(u'_');
     for (int i = 0; i < baseName.size(); ++i) {
         QChar c = baseName.at(i);
         if (!isAnsiCCharacter(c)) {
             // Replace character by its unicode value
             QString hex = QString::number(c.unicode(), 16);
-            baseName.replace(i, 1, QLatin1Char('_') + hex + QLatin1Char('_'));
+            baseName.replace(i, 1, u'_' + hex + u'_');
             i += hex.size() + 1;
         }
     }
-    return baseName.toUpper() + QLatin1String("_H");
+    return baseName.toUpper() + "_H"_L1;
 }
 
 bool Driver::printDependencies(const QString &fileName)

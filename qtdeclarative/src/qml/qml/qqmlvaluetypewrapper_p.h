@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLVALUETYPEWRAPPER_P_H
 #define QQMLVALUETYPEWRAPPER_P_H
@@ -54,9 +18,15 @@
 #include <QtCore/qglobal.h>
 #include <private/qtqmlglobal_p.h>
 
-#include <private/qv4value_p.h>
-#include <private/qv4object_p.h>
+#include <private/qv4referenceobject_p.h>
 #include <private/qqmlpropertycache_p.h>
+#include <private/qqmltype_p_p.h>
+#include <private/qqmltypewrapper_p.h>
+#include <private/qv4object_p.h>
+#include <private/qv4qobjectwrapper_p.h>
+#include <private/qv4sequenceobject_p.h>
+#include <private/qv4value_p.h>
+#include <private/qv4referenceobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -66,80 +36,103 @@ namespace QV4 {
 
 namespace Heap {
 
-struct QQmlValueTypeWrapper : Object {
-    void init() { Object::init(); }
+#define QQmlValueTypeWrapperMembers(class, Member)
+
+DECLARE_HEAP_OBJECT(QQmlValueTypeWrapper, ReferenceObject) {
+    DECLARE_MARKOBJECTS(QQmlValueTypeWrapper);
+
+    void init(
+        const void *data, QMetaType metaType, const QMetaObject *metaObject,
+        Object *object, int property, Flags flags)
+    {
+        ReferenceObject::init(object, property, flags);
+        setMetaType(metaType);
+        setMetaObject(metaObject);
+        if (data)
+            setData(data);
+    }
+
+    QQmlValueTypeWrapper *detached() const;
+
     void destroy();
 
-    QQmlPropertyCache *propertyCache() const { return m_propertyCache; }
-    void setPropertyCache(QQmlPropertyCache *c) {
-        if (c)
-            c->addref();
-        if (m_propertyCache)
-            m_propertyCache->release();
-        m_propertyCache = c;
-    }
-
-    void setValueType(QQmlValueType *valueType)
+    QMetaType metaType() const
     {
-        Q_ASSERT(valueType != nullptr);
-        m_valueType = valueType;
+        Q_ASSERT(m_metaType != nullptr);
+        return QMetaType(m_metaType);
     }
 
-    QQmlValueType *valueType() const
-    {
-        Q_ASSERT(m_valueType != nullptr);
-        return m_valueType;
-    }
+    void setGadgetPtr(void *gadgetPtr) { m_gadgetPtr = gadgetPtr; }
+    void *gadgetPtr() const { return m_gadgetPtr; }
 
-    void setGadgetPtr(void *gadgetPtr) const
-    {
-        m_gadgetPtr = gadgetPtr;
-    }
+    const QMetaObject *metaObject() const { return m_metaObject; }
 
-    void *gadgetPtr() const
-    {
-        return m_gadgetPtr;
-    }
-
-    void setValue(const QVariant &value) const;
+    void setData(const void *data);
     QVariant toVariant() const;
 
+    void *storagePointer();
+    bool setVariant(const QVariant &variant);
+
+    bool readReference();
+    bool writeBack(int propertyIndex = QV4::ReferenceObject::AllProperties);
+
 private:
-    mutable void *m_gadgetPtr;
-    QQmlValueType *m_valueType;
-    QQmlPropertyCache *m_propertyCache;
+    void setMetaObject(const QMetaObject *metaObject) { m_metaObject = metaObject; }
+    void setMetaType(QMetaType metaType)
+    {
+        Q_ASSERT(metaType.isValid());
+        m_metaType = metaType.iface();
+    }
+
+    void *m_gadgetPtr;
+    const QtPrivate::QMetaTypeInterface *m_metaType;
+    const QMetaObject *m_metaObject;
 };
 
 }
 
-struct Q_QML_EXPORT QQmlValueTypeWrapper : Object
+struct Q_QML_EXPORT QQmlValueTypeWrapper : public ReferenceObject
 {
-    V4_OBJECT2(QQmlValueTypeWrapper, Object)
+    V4_OBJECT2(QQmlValueTypeWrapper, ReferenceObject)
     V4_PROTOTYPE(valueTypeWrapperPrototype)
     V4_NEEDS_DESTROY
 
 public:
 
-    static ReturnedValue create(ExecutionEngine *engine, QObject *, int, const QMetaObject *metaObject, int typeId);
-    static ReturnedValue create(ExecutionEngine *engine, const QVariant &, const QMetaObject *metaObject, int typeId);
+    static ReturnedValue create(
+            ExecutionEngine *engine, const void *data, const QMetaObject *metaObject,
+            QMetaType type, Heap::Object *object, int property, Heap::ReferenceObject::Flags flags);
+    static ReturnedValue create(
+            ExecutionEngine *engine, Heap::QQmlValueTypeWrapper *cloneFrom, Heap::Object *object);
+    static ReturnedValue create(
+            ExecutionEngine *engine, const void *, const QMetaObject *metaObject, QMetaType type);
 
     QVariant toVariant() const;
     bool toGadget(void *data) const;
     bool isEqual(const QVariant& value) const;
     int typeId() const;
+    QMetaType type() const;
     bool write(QObject *target, int propertyIndex) const;
+    bool readReferenceValue() const { return d()->readReference(); }
+    const QMetaObject *metaObject() const { return d()->metaObject(); }
+
+    QQmlPropertyData dataForPropertyKey(PropertyKey id) const;
 
     static ReturnedValue virtualGet(const Managed *m, PropertyKey id, const Value *receiver, bool *hasProperty);
     static bool virtualPut(Managed *m, PropertyKey id, const Value &value, Value *receiver);
     static bool virtualIsEqualTo(Managed *m, Managed *other);
+    static bool virtualHasProperty(const Managed *m, PropertyKey id);
     static PropertyAttributes virtualGetOwnProperty(const Managed *m, PropertyKey id, Property *p);
     static OwnPropertyKeyIterator *virtualOwnPropertyKeys(const Object *m, Value *target);
     static ReturnedValue method_toString(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue virtualResolveLookupGetter(const Object *object, ExecutionEngine *engine, Lookup *lookup);
     static bool virtualResolveLookupSetter(Object *object, ExecutionEngine *engine, Lookup *lookup, const Value &value);
     static ReturnedValue lookupGetter(Lookup *lookup, ExecutionEngine *engine, const Value &object);
+    static bool lookupSetter(QV4::Lookup *l, QV4::ExecutionEngine *engine,
+                             QV4::Value &object, const QV4::Value &value);
 
     static void initProto(ExecutionEngine *v4);
+    static int virtualMetacall(Object *object, QMetaObject::Call call, int index, void **a);
 };
 
 }

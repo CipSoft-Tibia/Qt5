@@ -1,52 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgrhitextureglyphcache_p.h"
+#include "qsgdefaultrendercontext_p.h"
 #include <qrgb.h>
 #include <private/qdrawhelper_p.h>
 
 QT_BEGIN_NAMESPACE
 
-QSGRhiTextureGlyphCache::QSGRhiTextureGlyphCache(QRhi *rhi, QFontEngine::GlyphFormat format, const QTransform &matrix,
+QSGRhiTextureGlyphCache::QSGRhiTextureGlyphCache(QSGDefaultRenderContext *rc,
+                                                 QFontEngine::GlyphFormat format, const QTransform &matrix,
                                                  const QColor &color)
     : QImageTextureGlyphCache(format, matrix, color),
-      m_rhi(rhi)
+      m_rc(rc),
+      m_rhi(rc->rhi())
 {
     // Some OpenGL implementations, for instance macOS, have issues with
     // GL_ALPHA render targets. Similarly, BGRA may be problematic on GLES 2.0.
@@ -56,25 +23,18 @@ QSGRhiTextureGlyphCache::QSGRhiTextureGlyphCache(QRhi *rhi, QFontEngine::GlyphFo
 
 QSGRhiTextureGlyphCache::~QSGRhiTextureGlyphCache()
 {
-    if (m_resourceUpdates)
-        m_resourceUpdates->release();
-
-    delete m_texture;
-
-    // should be empty, but just in case
-    qDeleteAll(m_pendingDispose);
+    m_rc->deferredReleaseGlyphCacheTexture(m_texture);
 }
 
 QRhiTexture *QSGRhiTextureGlyphCache::createEmptyTexture(QRhiTexture::Format format)
 {
     QRhiTexture *t = m_rhi->newTexture(format, m_size, 1, QRhiTexture::UsedAsTransferSource);
-    if (!t->build()) {
+    if (!t->create()) {
         qWarning("Failed to build new glyph cache texture of size %dx%d", m_size.width(), m_size.height());
         return nullptr;
     }
 
-    if (!m_resourceUpdates)
-        m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
+    QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
 
     // The new texture must be cleared to 0 always, this cannot be avoided
     // otherwise artifacts will occur around the glyphs.
@@ -85,7 +45,7 @@ QRhiTexture *QSGRhiTextureGlyphCache::createEmptyTexture(QRhiTexture::Format for
         data.fill(0, m_size.width() * m_size.height() * 4);
     QRhiTextureSubresourceUploadDescription subresDesc(data.constData(), data.size());
     subresDesc.setSourceSize(m_size);
-    m_resourceUpdates->uploadTexture(t, QRhiTextureUploadEntry(0, 0, subresDesc));
+    resourceUpdates->uploadTexture(t, QRhiTextureUploadEntry(0, 0, subresDesc));
 
     return t;
 }
@@ -116,11 +76,9 @@ void QSGRhiTextureGlyphCache::resizeTextureData(int width, int height)
         if (!t)
             return;
 
-        if (!m_resourceUpdates)
-            m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
-
+        QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
         if (m_resizeWithTextureCopy) {
-            m_resourceUpdates->copyTexture(t, m_texture);
+            resourceUpdates->copyTexture(t, m_texture);
         } else {
             QImageTextureGlyphCache::resizeTextureData(width, height);
             QImage img = image();
@@ -128,10 +86,10 @@ void QSGRhiTextureGlyphCache::resizeTextureData(int width, int height)
             QRhiTextureSubresourceUploadDescription subresDesc(img);
             const QSize oldSize = m_texture->pixelSize();
             subresDesc.setSourceSize(QSize(qMin(oldSize.width(), width), qMin(oldSize.height(), height)));
-            m_resourceUpdates->uploadTexture(t, QRhiTextureUploadEntry(0, 0, subresDesc));
+            resourceUpdates->uploadTexture(t, QRhiTextureUploadEntry(0, 0, subresDesc));
         }
 
-        m_pendingDispose.insert(m_texture);
+        m_rc->deferredReleaseGlyphCacheTexture(m_texture);
         m_texture = t;
     }
 }
@@ -184,7 +142,7 @@ void QSGRhiTextureGlyphCache::prepareGlyphImage(QImage *img)
     }
 }
 
-void QSGRhiTextureGlyphCache::fillTexture(const Coord &c, glyph_t glyph, QFixed subPixelPosition)
+void QSGRhiTextureGlyphCache::fillTexture(const Coord &c, glyph_t glyph, const QFixedPoint &subPixelPosition)
 {
     QRhiTextureSubresourceUploadDescription subresDesc;
     QImage mask;
@@ -222,18 +180,19 @@ void QSGRhiTextureGlyphCache::endFillTexture()
             return;
     }
 
-    if (!m_resourceUpdates)
-        m_resourceUpdates = m_rhi->nextResourceUpdateBatch();
-
+    QRhiResourceUpdateBatch *resourceUpdates = m_rc->glyphCacheResourceUpdates();
     QRhiTextureUploadDescription desc;
     desc.setEntries(m_uploads.cbegin(), m_uploads.cend());
-    m_resourceUpdates->uploadTexture(m_texture, desc);
+    resourceUpdates->uploadTexture(m_texture, desc);
     m_uploads.clear();
 }
 
 int QSGRhiTextureGlyphCache::glyphPadding() const
 {
-    return 1;
+    if (m_format == QFontEngine::Format_Mono)
+        return 8;
+    else
+        return 1;
 }
 
 int QSGRhiTextureGlyphCache::maxTextureWidth() const
@@ -251,17 +210,10 @@ int QSGRhiTextureGlyphCache::maxTextureHeight() const
 
 void QSGRhiTextureGlyphCache::commitResourceUpdates(QRhiResourceUpdateBatch *mergeInto)
 {
-    if (m_resourceUpdates) {
-        mergeInto->merge(m_resourceUpdates);
-        m_resourceUpdates->release();
-        m_resourceUpdates = nullptr;
+    if (QRhiResourceUpdateBatch *resourceUpdates = m_rc->maybeGlyphCacheResourceUpdates()) {
+        mergeInto->merge(resourceUpdates);
+        m_rc->resetGlyphCacheResources();
     }
-
-    // now let's assume the resource updates will be committed in this frame
-    for (QRhiTexture *t : m_pendingDispose)
-        t->releaseAndDestroyLater(); // will be releaseAndDestroyed after the frame is submitted -> safe
-
-    m_pendingDispose.clear();
 }
 
 bool QSGRhiTextureGlyphCache::eightBitFormatIsAlphaSwizzled() const

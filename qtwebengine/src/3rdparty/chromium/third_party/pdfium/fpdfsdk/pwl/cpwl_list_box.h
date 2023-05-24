@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,50 +10,29 @@
 #include <memory>
 
 #include "core/fxcrt/unowned_ptr.h"
+#include "fpdfsdk/pwl/cpwl_list_ctrl.h"
 #include "fpdfsdk/pwl/cpwl_wnd.h"
 
-class CPWL_ListCtrl;
-class CPWL_List_Notify;
-class CPWL_ListBox;
-class IPWL_Filler_Notify;
-struct CPVT_WordPlace;
+class IPWL_FillerNotify;
 
-class CPWL_List_Notify {
+class CPWL_ListBox : public CPWL_Wnd, public CPWL_ListCtrl::NotifyIface {
  public:
-  explicit CPWL_List_Notify(CPWL_ListBox* pList);
-  ~CPWL_List_Notify();
-
-  void IOnSetScrollInfoY(float fPlateMin,
-                         float fPlateMax,
-                         float fContentMin,
-                         float fContentMax,
-                         float fSmallStep,
-                         float fBigStep);
-  void IOnSetScrollPosY(float fy);
-  void IOnInvalidateRect(CFX_FloatRect* pRect);
-
- private:
-  UnownedPtr<CPWL_ListBox> m_pList;
-};
-
-class CPWL_ListBox : public CPWL_Wnd {
- public:
-  CPWL_ListBox(
-      const CreateParams& cp,
-      std::unique_ptr<IPWL_SystemHandler::PerWindowData> pAttachedData);
+  CPWL_ListBox(const CreateParams& cp,
+               std::unique_ptr<IPWL_FillerNotify::PerWindowData> pAttachedData);
   ~CPWL_ListBox() override;
 
-  // CPWL_Wnd
+  // CPWL_Wnd:
   void OnCreated() override;
   void OnDestroy() override;
   void DrawThisAppearance(CFX_RenderDevice* pDevice,
                           const CFX_Matrix& mtUser2Device) override;
-  bool OnKeyDown(uint16_t nChar, uint32_t nFlag) override;
-  bool OnChar(uint16_t nChar, uint32_t nFlag) override;
-  bool OnLButtonDown(uint32_t nFlag, const CFX_PointF& point) override;
-  bool OnLButtonUp(uint32_t nFlag, const CFX_PointF& point) override;
-  bool OnMouseMove(uint32_t nFlag, const CFX_PointF& point) override;
-  bool OnMouseWheel(uint32_t nFlag,
+  bool OnKeyDown(FWL_VKEYCODE nKeyCode, Mask<FWL_EVENTFLAG> nFlag) override;
+  bool OnChar(uint16_t nChar, Mask<FWL_EVENTFLAG> nFlag) override;
+  bool OnLButtonDown(Mask<FWL_EVENTFLAG> nFlag,
+                     const CFX_PointF& point) override;
+  bool OnLButtonUp(Mask<FWL_EVENTFLAG> nFlag, const CFX_PointF& point) override;
+  bool OnMouseMove(Mask<FWL_EVENTFLAG> nFlag, const CFX_PointF& point) override;
+  bool OnMouseWheel(Mask<FWL_EVENTFLAG> nFlag,
                     const CFX_PointF& point,
                     const CFX_Vector& delta) override;
   WideString GetText() override;
@@ -65,13 +44,22 @@ class CPWL_ListBox : public CPWL_Wnd {
   void SetFontSize(float fFontSize) override;
   float GetFontSize() const override;
 
-  bool OnNotifySelectionChanged(bool bKeyDown, uint32_t nFlag);
+  // CPWL_ListCtrl::NotifyIface:
+  void OnSetScrollInfoY(float fPlateMin,
+                        float fPlateMax,
+                        float fContentMin,
+                        float fContentMax,
+                        float fSmallStep,
+                        float fBigStep) override;
+  void OnSetScrollPosY(float fy) override;
+  void OnInvalidateRect(const CFX_FloatRect& pRect) override;
+
+  bool OnNotifySelectionChanged(bool bKeyDown, Mask<FWL_EVENTFLAG> nFlag);
 
   void AddString(const WideString& str);
   void SetTopVisibleIndex(int32_t nItemIndex);
   void ScrollToListItem(int32_t nItemIndex);
-  void ResetContent();
-  void Reset();
+
   void Select(int32_t nItemIndex);
   void Deselect(int32_t nItemIndex);
   void SetCaret(int32_t nItemIndex);
@@ -83,26 +71,14 @@ class CPWL_ListBox : public CPWL_Wnd {
   int32_t GetCurSel() const;
   bool IsItemSelected(int32_t nItemIndex) const;
   int32_t GetTopVisibleIndex() const;
-  int32_t FindNext(int32_t nIndex, wchar_t nChar) const;
   CFX_FloatRect GetContentRect() const;
   float GetFirstHeight() const;
   CFX_FloatRect GetListRect() const;
 
-  void SetFillerNotify(IPWL_Filler_Notify* pNotify) {
-    m_pFillerNotify = pNotify;
-  }
-
-  void AttachFFLData(CFFL_FormFiller* pData) { m_pFormFiller = pData; }
-
  protected:
   bool m_bMouseDown = false;
   bool m_bHoverSel = false;
-  std::unique_ptr<CPWL_List_Notify> m_pListNotify;  // Must outlive |m_pList|.
-  std::unique_ptr<CPWL_ListCtrl> m_pList;
-  UnownedPtr<IPWL_Filler_Notify> m_pFillerNotify;
-
- private:
-  UnownedPtr<CFFL_FormFiller> m_pFormFiller;
+  std::unique_ptr<CPWL_ListCtrl> m_pListCtrl;
 };
 
 #endif  // FPDFSDK_PWL_CPWL_LIST_BOX_H_

@@ -1,47 +1,13 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlowenergycharacteristic.h"
 #include "qlowenergyserviceprivate_p.h"
 #include <QHash>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QLowEnergyCharacteristic)
 
 /*!
     \class QLowEnergyCharacteristic
@@ -52,16 +18,16 @@ QT_BEGIN_NAMESPACE
     \since 5.4
 
     QLowEnergyCharacteristic provides information about a Bluetooth Low Energy
-    service characteristic's \l name(), \l uuid(), \l value(), \l properties(),
-    \l handle() and \l descriptors(). To obtain the characteristic's specification
+    service characteristic's name(), uuid(), value(), properties(), and
+    descriptors(). To obtain the characteristic's specification
     and information, it is necessary to connect to the device using the
-    \l QLowEnergyService and \l QLowEnergyController classes.
+    QLowEnergyService and QLowEnergyController classes.
 
     The characteristic value may be written via the \l QLowEnergyService instance
     that manages the service to which this characteristic belongs. The
     \l {QLowEnergyService::writeCharacteristic()} function writes the new value.
     The \l {QLowEnergyService::characteristicWritten()} signal is emitted upon success.
-    The \l value() of this object is automatically updated accordingly.
+    The value() of this object is automatically updated accordingly.
 
     Characteristics may contain none, one or more descriptors. They can be individually
     retrieved using the \l descriptor() function. The \l descriptors() function returns
@@ -88,6 +54,11 @@ QT_BEGIN_NAMESPACE
     \value WriteSigned              Permits signed writes of the GATT characteristic values.
     \value ExtendedProperty         Additional characteristic properties are defined in the characteristic's
                                     extended properties descriptor.
+
+    It is not recommended to set both Notify and Indicate properties on the same characteristic
+    as the underlying Bluetooth stack behaviors differ from platform to platform. Please see
+    \l QLowEnergyCharacteristic::clientCharacteristicConfiguration
+
 
     \sa properties()
 */
@@ -214,6 +185,8 @@ QByteArray QLowEnergyCharacteristic::value() const
 }
 
 /*!
+    \internal
+
     Returns the handle of the characteristic's value attribute;
     or \c 0 if the handle cannot be accessed on the platform or
     if the characteristic is invalid.
@@ -253,40 +226,50 @@ QLowEnergyCharacteristic &QLowEnergyCharacteristic::operator=(const QLowEnergyCh
 }
 
 /*!
-    Returns \c true if \a other is equal to this QLowEnergyCharacteristic; otherwise \c false.
+    \fn bool QLowEnergyCharacteristic::operator==(const QLowEnergyCharacteristic &a,
+                                                  const QLowEnergyCharacteristic &b)
+    \brief Returns \c true if \a a is equal to \a b, otherwise \c false.
 
     Two \l QLowEnergyCharacteristic instances are considered to be equal if they refer to
     the same characteristic on the same remote Bluetooth Low Energy device or both instances
     have been default-constructed.
  */
-bool QLowEnergyCharacteristic::operator==(const QLowEnergyCharacteristic &other) const
-{
-    if (d_ptr != other.d_ptr)
-        return false;
-
-    if ((data && !other.data) || (!data && other.data))
-        return false;
-
-    if (!data)
-        return true;
-
-    if (data->handle != other.data->handle)
-        return false;
-
-    return true;
-}
 
 /*!
-    Returns \c true if \a other is not equal to this QLowEnergyCharacteristic; otherwise \c false.
+    \fn bool QLowEnergyCharacteristic::operator!=(const QLowEnergyCharacteristic &a,
+                                                  const QLowEnergyCharacteristic &b)
+    \brief Returns \c true if \a a and \a b are not equal; otherwise \c
+    false.
 
     Two QLowEnergyCharcteristic instances are considered to be equal if they refer to
     the same characteristic on the same remote Bluetooth Low Energy device or both instances
     have been default-constructed.
  */
 
-bool QLowEnergyCharacteristic::operator!=(const QLowEnergyCharacteristic &other) const
+/*!
+    \brief Returns \c true if \a a is equal to \a b; otherwise \c false.
+    \internal
+
+    Two \l QLowEnergyCharacteristic instances are considered to be equal if they refer to
+    the same characteristic on the same remote Bluetooth Low Energy device or both instances
+    have been default-constructed.
+ */
+bool QLowEnergyCharacteristic::equals(const QLowEnergyCharacteristic &a,
+                                      const QLowEnergyCharacteristic &b)
 {
-    return !(*this == other);
+    if (a.d_ptr != b.d_ptr)
+        return false;
+
+    if ((a.data && !b.data) || (!a.data && b.data))
+        return false;
+
+    if (!a.data)
+        return true;
+
+    if (a.data->handle != b.data->handle)
+        return false;
+
+    return true;
 }
 
 /*!
@@ -333,9 +316,8 @@ QLowEnergyHandle QLowEnergyCharacteristic::attributeHandle() const
     return data->handle;
 }
 
-
 /*!
-    Returns the descriptor for \a uuid or an invalid \c QLowEnergyDescriptor instance.
+    Returns the descriptor for \a uuid or an invalid \l QLowEnergyDescriptor instance.
 
     \sa descriptors()
 */
@@ -362,6 +344,60 @@ QLowEnergyDescriptor QLowEnergyCharacteristic::descriptor(const QBluetoothUuid &
 }
 
 /*!
+    Returns the Client Characteristic Configuration Descriptor or an
+    invalid \l QLowEnergyDescriptor instance if no
+    Client Characteristic Configuration Descriptor exists.
+
+    BTLE characteristics can support notifications and/or indications.
+    In both cases, the peripheral will inform the central on
+    each change of the characteristic's value. In the BTLE
+    attribute protocol, notification messages are not confirmed
+    by the central, while indications are confirmed.
+    Notifications are considered faster, but unreliable, while
+    indications are slower and more reliable.
+
+    If a characteristic supports notification or indication,
+    these can be enabled by writing special bit patterns to the
+    Client Characteristic Configuration Descriptor.
+    For convenience, these bit patterns are provided as
+    \l QLowEnergyCharacteristic::CCCDDisable,
+    \l QLowEnergyCharacteristic::CCCDEnableNotification, and
+    \l QLowEnergyCharacteristic::CCCDEnableIndication.
+
+    Enabling e.g. notification for a characteristic named
+    \c mycharacteristic in a service called \c myservice
+    could be done using the following code.
+    \code
+    auto cccd = mycharacteristic.clientCharacteristicConfiguration();
+    if (!cccd.isValid()) {
+        // your error handling
+        return error;
+    }
+    myservice->writeDescriptor(cccd, QLowEnergyCharacteristic::CCCDEnableNotification);
+    \endcode
+
+    \note
+    Calling \c characteristic.clientCharacteristicConfiguration() is equivalent to calling
+    \c characteristic.descriptor(QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration).
+
+    \note
+    It is not recommended to use both notifications and indications on the same characteristic.
+    This applies to both server-side when setting up the characteristics, as well as client-side
+    when enabling them. The bluetooth stack behavior differs from platform to platform and the
+    cross-platform behavior will likely be inconsistent. As an example a Bluez Linux client might
+    unconditionally try to enable both mechanisms if both are supported, whereas a macOS client
+    might unconditionally enable just the notifications. If both are needed consider creating two
+    separate characteristics.
+
+    \since 6.2
+    \sa descriptor()
+*/
+QLowEnergyDescriptor QLowEnergyCharacteristic::clientCharacteristicConfiguration() const
+{
+    return descriptor(QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration);
+}
+
+/*!
     Returns the list of descriptors belonging to this characteristic; otherwise
     an empty list.
 
@@ -380,12 +416,43 @@ QList<QLowEnergyDescriptor> QLowEnergyCharacteristic::descriptors() const
 
     std::sort(descriptorKeys.begin(), descriptorKeys.end());
 
-    for (const QLowEnergyHandle descHandle : qAsConst(descriptorKeys)) {
+    for (const QLowEnergyHandle descHandle : std::as_const(descriptorKeys)) {
         QLowEnergyDescriptor descriptor(d_ptr, data->handle, descHandle);
         result.append(descriptor);
     }
 
     return result;
 }
+
+/*!
+    \variable QLowEnergyCharacteristic::CCCDDisable
+    \since 6.2
+
+    Bit pattern to write into Client Characteristic Configuration Descriptor
+    to disable both notification and indication.
+
+    \sa QLowEnergyCharacteristic::clientCharacteristicConfiguration
+*/
+/*!
+    \variable QLowEnergyCharacteristic::CCCDEnableNotification
+    \since 6.2
+
+    Bit pattern to write into Client Characteristic Configuration Descriptor
+    to enable notification.
+
+    \sa QLowEnergyCharacteristic::clientCharacteristicConfiguration
+*/
+/*!
+    \variable QLowEnergyCharacteristic::CCCDEnableIndication
+    \since 6.2
+
+    Bit pattern to write into Client Characteristic Configuration Descriptor
+    to enable indication.
+
+    \sa QLowEnergyCharacteristic::clientCharacteristicConfiguration
+*/
+const QByteArray QLowEnergyCharacteristic::CCCDDisable = QByteArray::fromHex("0000");
+const QByteArray QLowEnergyCharacteristic::CCCDEnableNotification = QByteArray::fromHex("0100");
+const QByteArray QLowEnergyCharacteristic::CCCDEnableIndication = QByteArray::fromHex("0200");
 
 QT_END_NAMESPACE

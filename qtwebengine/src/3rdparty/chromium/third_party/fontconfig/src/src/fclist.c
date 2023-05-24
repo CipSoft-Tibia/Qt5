@@ -92,14 +92,17 @@ FcObjectSetDestroy (FcObjectSet *os)
 {
     int i;
 
-    if (os->objects)
+    if (os)
     {
-	for (i = 0; i < os->nobject; i++)
-	    FcFree (os->objects[i]);
+	if (os->objects)
+	{
+	    for (i = 0; i < os->nobject; i++)
+		FcFree (os->objects[i]);
 
-	free ((void *) os->objects);
+	    free ((void *) os->objects);
+	}
+	free (os);
     }
-    free (os);
 }
 
 FcObjectSet *
@@ -222,7 +225,7 @@ FcListPatternMatchAny (const FcPattern *p,
 	if (pe->object == FC_NAMELANG_OBJECT)
 	{
 	    /* "namelang" object is the alias object to change "familylang",
-	     * "stylelang" and "fullnamelang" object alltogether. it won't be
+	     * "stylelang" and "fullnamelang" object all together. it won't be
 	     * available on the font pattern. so checking its availability
 	     * causes no results. we should ignore it here.
 	     */

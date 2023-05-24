@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,9 +11,11 @@
 #include <limits>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ref_counted.h"
+#include "base/numerics/checked_math.h"
+#include "base/trace_event/trace_event.h"
 #include "mojo/core/core.h"
 #include "mojo/core/data_pipe_control_message.h"
 #include "mojo/core/node_controller.h"
@@ -58,6 +60,9 @@ class DataPipeConsumerDispatcher::PortObserverThunk
       scoped_refptr<DataPipeConsumerDispatcher> dispatcher)
       : dispatcher_(dispatcher) {}
 
+  PortObserverThunk(const PortObserverThunk&) = delete;
+  PortObserverThunk& operator=(const PortObserverThunk&) = delete;
+
  private:
   ~PortObserverThunk() override = default;
 
@@ -65,8 +70,6 @@ class DataPipeConsumerDispatcher::PortObserverThunk
   void OnPortStatusChanged() override { dispatcher_->OnPortStatusChanged(); }
 
   scoped_refptr<DataPipeConsumerDispatcher> dispatcher_;
-
-  DISALLOW_COPY_AND_ASSIGN(PortObserverThunk);
 };
 
 // static
@@ -149,8 +152,9 @@ MojoResult DataPipeConsumerDispatcher::ReadData(
 
   uint32_t bytes_to_read = std::min(max_num_bytes_to_read, bytes_available_);
   if (bytes_to_read == 0) {
-    if (had_new_data)
+    if (had_new_data) {
       watchers_.NotifyState(GetHandleSignalsStateNoLock());
+    }
     return peer_closed_ ? MOJO_RESULT_FAILED_PRECONDITION
                         : MOJO_RESULT_SHOULD_WAIT;
   }
@@ -366,6 +370,7 @@ DataPipeConsumerDispatcher::Deserialize(const void* data,
                                         size_t num_handles) {
   if (num_ports != 1 || num_handles != 1 ||
       num_bytes != sizeof(SerializedState)) {
+    AssertNotExtractingHandlesFromMessage();
     return nullptr;
   }
 
@@ -374,26 +379,36 @@ DataPipeConsumerDispatcher::Deserialize(const void* data,
       state->options.capacity_num_bytes < state->options.element_num_bytes ||
       state->read_offset >= state->options.capacity_num_bytes ||
       state->bytes_available > state->options.capacity_num_bytes) {
+    AssertNotExtractingHandlesFromMessage();
     return nullptr;
   }
 
   NodeController* node_controller = Core::Get()->GetNodeController();
   ports::PortRef port;
-  if (node_controller->node()->GetPort(ports[0], &port) != ports::OK)
+  if (node_controller->node()->GetPort(ports[0], &port) != ports::OK) {
+    AssertNotExtractingHandlesFromMessage();
     return nullptr;
+  }
+
+  absl::optional<base::UnguessableToken> buffer_guid =
+      base::UnguessableToken::Deserialize(state->buffer_guid_high,
+                                          state->buffer_guid_low);
+  if (!buffer_guid.has_value()) {
+    AssertNotExtractingHandlesFromMessage();
+    return nullptr;
+  }
 
   auto region_handle = CreateSharedMemoryRegionHandleFromPlatformHandles(
       std::move(handles[0]), PlatformHandle());
   auto region = base::subtle::PlatformSharedMemoryRegion::Take(
       std::move(region_handle),
       base::subtle::PlatformSharedMemoryRegion::Mode::kUnsafe,
-      state->options.capacity_num_bytes,
-      base::UnguessableToken::Deserialize(state->buffer_guid_high,
-                                          state->buffer_guid_low));
+      state->options.capacity_num_bytes, buffer_guid.value());
   auto ring_buffer =
       base::UnsafeSharedMemoryRegion::Deserialize(std::move(region));
   if (!ring_buffer.IsValid()) {
     DLOG(ERROR) << "Failed to deserialize shared buffer handle.";
+    AssertNotExtractingHandlesFromMessage();
     return nullptr;
   }
 
@@ -408,10 +423,13 @@ DataPipeConsumerDispatcher::Deserialize(const void* data,
     dispatcher->bytes_available_ = state->bytes_available;
     dispatcher->new_data_available_ = state->bytes_available > 0;
     dispatcher->peer_closed_ = state->flags & kFlagPeerClosed;
-    if (!dispatcher->InitializeNoLock())
+    if (!dispatcher->InitializeNoLock()) {
+      AssertNotExtractingHandlesFromMessage();
       return nullptr;
+    }
     if (state->options.capacity_num_bytes >
         dispatcher->ring_buffer_mapping_.mapped_size()) {
+      AssertNotExtractingHandlesFromMessage();
       return nullptr;
     }
     dispatcher->UpdateSignalsStateNoLock();
@@ -448,6 +466,7 @@ bool DataPipeConsumerDispatcher::InitializeNoLock() {
   if (!ring_buffer_mapping_.IsValid()) {
     DLOG(ERROR) << "Failed to map shared buffer.";
     shared_ring_buffer_ = base::UnsafeSharedMemoryRegion();
+    is_closed_ = true;
     return false;
   }
 
@@ -570,8 +589,13 @@ void DataPipeConsumerDispatcher::UpdateSignalsStateNoLock() {
           break;
         }
 
-        if (static_cast<size_t>(bytes_available_) + m->num_bytes >
-            options_.capacity_num_bytes) {
+        TRACE_EVENT0("ipc",
+                     "DataPipeConsumerDispatcher received DATA_WAS_WRITTEN");
+
+        uint32_t new_bytes_available;
+        if (!base::CheckAdd(bytes_available_, m->num_bytes)
+                 .AssignIfValid(&new_bytes_available) ||
+            new_bytes_available > options_.capacity_num_bytes) {
           DLOG(ERROR) << "Producer claims to have written too many bytes.";
           peer_closed_ = true;
           break;
@@ -581,7 +605,7 @@ void DataPipeConsumerDispatcher::UpdateSignalsStateNoLock() {
                  << m->num_bytes << " bytes were written. [control_port="
                  << control_port_.name() << "]";
 
-        bytes_available_ += m->num_bytes;
+        bytes_available_ = new_bytes_available;
       }
     } while (message_event);
   }

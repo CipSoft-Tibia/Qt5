@@ -3,8 +3,6 @@
 <TS version="2.1" language="ko">
 <dependencies>
 <dependency catalog="qtbase_ko"/>
-<dependency catalog="qtscript_ko"/>
 <dependency catalog="qtmultimedia_ko"/>
-<dependency catalog="qtxmlpatterns_ko"/>
 </dependencies>
 </TS>

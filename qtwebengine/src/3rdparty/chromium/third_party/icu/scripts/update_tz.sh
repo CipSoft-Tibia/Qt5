@@ -10,8 +10,22 @@
 #
 # For IANA Time zone database, see https://www.iana.org/time-zones
 
+# See
+# https://stackoverflow.com/questions/160608/do-a-git-export-like-svn-export/19689284#19689284
+# about 'svn export' and github.
+
+branch="trunk"
+
+# ICU tz file is sometimes updated in the maintenance branch long before
+# being updated in trunk.
+if [ $# -ge 1 ];
+then
+  branch="branches/maint/maint-$1"
+  echo "Downloading tz files from ${branch}"
+fi
+
 datapath="source/data/misc"
-sourcedirurl="https://github.com/unicode-org/icu/trunk/icu4c/${datapath}"
+sourcedirurl="https://github.com/unicode-org/icu/${branch}/icu4c/${datapath}"
 cd "$(dirname "$0")/../${datapath}"
 
 for f in metaZones.txt timezoneTypes.txt windowsZones.txt zoneinfo64.txt

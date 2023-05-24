@@ -1,4 +1,4 @@
-# Copyright 2015 The Chromium Authors. All rights reserved.
+# Copyright 2015 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,6 +7,7 @@ import("//build/config/chrome_build.gni")
 import("//chrome/installer/setup/buildflags.gni")
 import("//chrome/process_version_rc_template.gni")
 import("//testing/test.gni")
+import("//ui/qt/qt.gni")
 
 buildflag_header("buildflags") {
   header = "buildflags.h"
@@ -25,7 +26,10 @@ if (is_win) {
       "uninstall.h",
     ]
 
-    configs -= [ "//build/config/win:console" ]
+    configs -= [
+      "//build/config/compiler:cet_shadow_stack",
+      "//build/config/win:console",
+    ]
     configs += [ "//build/config/win:windowed" ]
 
     deps = [
@@ -35,6 +39,9 @@ if (is_win) {
       "//base",
       "//build:branding_buildflags",
       "//build/win:default_exe_manifest",
+      "//chrome/browser/enterprise/connectors/device_trust/key_management/core/network",
+      "//chrome/browser/enterprise/connectors/device_trust/key_management/installer:elevated_rotation",
+      "//chrome/browser/enterprise/connectors/device_trust/key_management/installer/management_service:rotate_util",
       "//chrome/chrome_elf:constants",
       "//chrome/common:constants",
       "//chrome/install_static:install_static_util",
@@ -44,6 +51,7 @@ if (is_win) {
       "//components/crash/core/app:run_as_crashpad_handler",
       "//content/public/common:static_switches",
 #      "//rlz:rlz_lib_no_network",
+      "//url",
     ]
 
     libs = [ "netapi32.lib" ]
@@ -51,10 +59,12 @@ if (is_win) {
 
   static_library("lib") {
     sources = [
-      "${branding_path_component}_behaviors.cc",
+      "${branding_path_product}_behaviors.cc",
       "archive_patch_helper.cc",
       "archive_patch_helper.h",
       "brand_behaviors.h",
+      "downgrade_cleanup.cc",
+      "downgrade_cleanup.h",
       "install.cc",
       "install.h",
       "install_params.h",
@@ -66,6 +76,8 @@ if (is_win) {
       "installer_crash_reporting.h",
       "installer_state.cc",
       "installer_state.h",
+      "last_breaking_installer_version.cc",
+      "last_breaking_installer_version.h",
       "launch_chrome.cc",
       "launch_chrome.h",
       "modify_params.h",
@@ -79,8 +91,6 @@ if (is_win) {
       "setup_singleton.h",
       "setup_util.cc",
       "setup_util.h",
-      "uninstall_metrics.cc",
-      "uninstall_metrics.h",
       "update_active_setup_version_work_item.cc",
       "update_active_setup_version_work_item.h",
       "user_experiment.cc",
@@ -97,6 +107,7 @@ if (is_win) {
 
     deps = [
       "//build:branding_buildflags",
+      "//chrome/browser/chrome_for_testing:buildflags",
       "//chrome/common:constants",
       "//chrome/common:version_header",
       "//chrome/install_static:buildflags",
@@ -105,6 +116,7 @@ if (is_win) {
       "//components/crash/core/app",
       "//components/crash/core/common",
       "//components/metrics",
+      "//components/version_info:channel",
       "//components/zucchini:zucchini_io",
       "//components/zucchini:zucchini_lib",
       "//courgette:courgette_lib",
@@ -113,6 +125,20 @@ if (is_win) {
       "//third_party/crashpad/crashpad/util",
       "//ui/base:fullscreen_win",
     ]
+
+    if (is_chrome_branded) {
+      sources += [
+        "channel_override_work_item.cc",
+        "channel_override_work_item.h",
+      ]
+    }
+
+    if(is_qtwebengine) {
+      deps -= [
+        "//components/zucchini:zucchini_io",
+        "//components/zucchini:zucchini_lib",
+      ]
+    }
   }
 
   process_version_rc_template("setup_exe_version") {
@@ -124,6 +150,7 @@ if (is_win) {
   test("setup_unittests") {
     sources = [
       "archive_patch_helper_unittest.cc",
+      "downgrade_cleanup_unittest.cc",
       "install_unittest.cc",
       "install_worker_unittest.cc",
       "installer_state_unittest.cc",
@@ -134,7 +161,7 @@ if (is_win) {
       "setup_singleton_unittest.cc",
       "setup_util_unittest.cc",
       "setup_util_unittest.h",
-      "uninstall_metrics_unittest.cc",
+      "taskbar_util_unittest.cc",
       "update_active_setup_version_work_item_unittest.cc",
       "user_experiment_unittest.cc",
       "user_hive_visitor_unittest.cc",
@@ -147,6 +174,7 @@ if (is_win) {
       "//base/allocator:buildflags",
       "//base/test:test_support",
       "//build:branding_buildflags",
+      "//chrome/browser/chrome_for_testing:buildflags",
       "//chrome/common:constants",
       "//chrome/common:version_header",
       "//chrome/install_static:buildflags",
@@ -166,5 +194,9 @@ if (is_win) {
     ]
 
     libs = [ "netapi32.lib" ]
+
+    if (is_chrome_branded) {
+      sources += [ "channel_override_work_item_unittest.cc" ]
+    }
   }
 }

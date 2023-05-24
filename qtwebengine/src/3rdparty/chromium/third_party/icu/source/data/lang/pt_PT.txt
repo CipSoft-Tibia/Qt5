@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 pt_PT{
     Keys{
         cf{"Formato monetário"}
@@ -21,7 +22,7 @@ pt_PT{
         ar_001{"árabe moderno padrão"}
         arn{"mapuche"}
         ars{"árabe do Négede"}
-        av{"avaric"}
+        av{"avar"}
         bax{"bamun"}
         bbj{"ghomala"}
         bn{"bengalês"}
@@ -31,14 +32,13 @@ pt_PT{
         chn{"jargão chinook"}
         chr{"cherokee"}
         chy{"cheyenne"}
-        ckb{"sorani curdo"}
         co{"córsico"}
+        crr{"algonquiano de Carolina"}
         crs{"francês crioulo seselwa"}
         cs{"checo"}
         cv{"chuvash"}
         de_AT{"alemão austríaco"}
         de_CH{"alto alemão suíço"}
-        ee{"ewe"}
         efi{"efik"}
         egy{"egípcio clássico"}
         en_AU{"inglês australiano"}
@@ -49,7 +49,6 @@ pt_PT{
         es_ES{"espanhol europeu"}
         es_MX{"espanhol mexicano"}
         et{"estónio"}
-        fa_AF{"dari"}
         fon{"fon"}
         fr_CA{"francês canadiano"}
         fr_CH{"francês suíço"}
@@ -63,6 +62,7 @@ pt_PT{
         ha{"haúça"}
         hi{"hindi"}
         hy{"arménio"}
+        ikt{"inuktitut canadiano ocidental"}
         kbd{"cabardiano"}
         kl{"gronelandês"}
         krc{"carachaio-bálcaro"}
@@ -70,7 +70,9 @@ pt_PT{
         lg{"ganda"}
         lou{"crioulo de Louisiana"}
         lrc{"luri do norte"}
+        lus{"mizo"}
         mak{"makassarês"}
+        mfe{"crioulo mauriciano"}
         mk{"macedónio"}
         moh{"mohawk"}
         mr{"marata"}
@@ -79,11 +81,9 @@ pt_PT{
         nds{"baixo-alemão"}
         nds_NL{"baixo-saxão"}
         nl{"neerlandês"}
-        nl_BE{"flamengo"}
         nn{"norueguês nynorsk"}
         non{"nórdico antigo"}
         oc{"occitano"}
-        or{"oriya"}
         os{"ossético"}
         pag{"língua pangasinesa"}
         pam{"pampango"}
@@ -95,28 +95,29 @@ pt_PT{
         pt_BR{"português do Brasil"}
         pt_PT{"português europeu"}
         raj{"rajastanês"}
-        ro_MD{"moldávio"}
+        rhg{"rohingya"}
         se{"sami do norte"}
         sga{"irlandês antigo"}
         shu{"árabe do Chade"}
         sma{"sami do sul"}
         smn{"inari sami"}
         sn{"shona"}
+        st{"sesoto"}
+        str{"salish dos estreitos"}
         te{"telugu"}
         tem{"temne"}
         tg{"tajique"}
         tk{"turcomano"}
         to{"tonga"}
         tt{"tatar"}
-        tzm{"tamazight do Atlas Central"}
+        ttm{"tutchone do norte"}
+        tzm{"tamazigue do Atlas Central"}
         uz{"usbeque"}
         wo{"uólofe"}
         xh{"xosa"}
         xog{"soga"}
         yo{"ioruba"}
         zgh{"tamazight marroquino padrão"}
-        zh_Hans{"chinês simplificado"}
-        zh_Hant{"chinês tradicional"}
         zun{"zuni"}
         zza{"zaza"}
     }
@@ -132,10 +133,16 @@ pt_PT{
         az{"azeri"}
         en_GB{"inglês (RU)"}
     }
+    Languages%variant{
+        ckb{"sorani (curdo)"}
+        hi_Latn{"hinglish"}
+    }
     Scripts{
         Aran{"nasta’liq"}
         Armn{"arménio"}
         Beng{"bengalês"}
+        Cakm{"chakma"}
+        Cans{"escrita silábica unificada dos aborígenes canadianos"}
         Egyd{"egípcio demótico"}
         Egyh{"egípcio hierático"}
         Ethi{"etíope"}
@@ -145,7 +152,6 @@ pt_PT{
         Sylo{"siloti nagri"}
         Tale{"tai le"}
         Telu{"telugu"}
-        Zsye{"emoji"}
         Zsym{"símbolos"}
         Zxxx{"não escrito"}
     }
@@ -156,7 +162,7 @@ pt_PT{
             coptic{"Calendário copta"}
             dangi{"Calendário dangi"}
             ethiopic{"Calendário etíope"}
-            ethiopic-amete-alem{"Calendário Etíope Amete Alem"}
+            ethiopic-amete-alem{"Calendário etíope Amete Alem"}
             gregorian{"Calendário gregoriano"}
             hebrew{"Calendário hebraico"}
             indian{"Calendário nacional indiano"}
@@ -203,16 +209,15 @@ pt_PT{
             tertiary{"Ordenar acentos/tipo de letra/largura"}
         }
         collation{
-            dictionary{"Ordenação do dicionário"}
-            ducet{"Ordenação unicode predefinida"}
+            big5han{"Ordem do chinês tradicional - Big5"}
             eor{"Regras de ordenação europeias"}
+            gb2312han{"Ordem do chinês simplificado - GB2312"}
             phonebook{"Ordem da lista telefónica"}
-            phonetic{"Sequência de ordenação fonética"}
-            reformed{"Reforma da ordenação"}
+            pinyin{"Ordem de pinyin"}
             standard{"Ordenação padrão"}
             stroke{"Ordem por traços"}
-            traditional{"Ordem tradicional"}
             unihan{"Ordem por radical e traços"}
+            zhuyin{"Ordem de zhuyin"}
         }
         d0{
             fwidth{"Largura completa"}
@@ -255,7 +260,9 @@ pt_PT{
             khmr{"Algarismos de khmer"}
             knda{"Algarismos de canarim"}
             mlym{"Algarismos de malaiala"}
+            mtei{"Algarismos de meetei mayek"}
             mymr{"Algarismos birmaneses"}
+            olck{"Algarismos de ol chiki"}
             orya{"Algarismos de odia"}
             roman{"Numeração romana"}
             romanlow{"Numeração romana minúscula"}
@@ -271,7 +278,6 @@ pt_PT{
         MONOTON{"monotónico"}
         POLYTON{"politónico"}
     }
-    Version{"37"}
     characterLabelPattern{
         all{"{0} – tudo"}
         compatibility{"{0} – compatibilidade"}

@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusmessage.h"
 #include "qdbusmessage_p.h"
@@ -56,11 +20,15 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_STATIC_ASSERT(QDBusMessage::InvalidMessage == DBUS_MESSAGE_TYPE_INVALID);
-Q_STATIC_ASSERT(QDBusMessage::MethodCallMessage == DBUS_MESSAGE_TYPE_METHOD_CALL);
-Q_STATIC_ASSERT(QDBusMessage::ReplyMessage == DBUS_MESSAGE_TYPE_METHOD_RETURN);
-Q_STATIC_ASSERT(QDBusMessage::ErrorMessage == DBUS_MESSAGE_TYPE_ERROR);
-Q_STATIC_ASSERT(QDBusMessage::SignalMessage == DBUS_MESSAGE_TYPE_SIGNAL);
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN(QDBusMessage)
+
+static_assert(QDBusMessage::InvalidMessage == DBUS_MESSAGE_TYPE_INVALID);
+static_assert(QDBusMessage::MethodCallMessage == DBUS_MESSAGE_TYPE_METHOD_CALL);
+static_assert(QDBusMessage::ReplyMessage == DBUS_MESSAGE_TYPE_METHOD_RETURN);
+static_assert(QDBusMessage::ErrorMessage == DBUS_MESSAGE_TYPE_ERROR);
+static_assert(QDBusMessage::SignalMessage == DBUS_MESSAGE_TYPE_SIGNAL);
 
 static inline const char *data(const QByteArray &arr)
 {
@@ -112,7 +80,7 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
                                                 QDBusError *error)
 {
     if (!qdbus_loadLibDBus()) {
-        *error = QDBusError(QDBusError::Failed, QLatin1String("Could not open lidbus-1 library"));
+        *error = QDBusError(QDBusError::Failed, "Could not open lidbus-1 library"_L1);
         return nullptr;
     }
 
@@ -187,14 +155,12 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
     d_ptr->parametersValidated = true;
 
     QDBusMarshaller marshaller(capabilities);
-    QVariantList::ConstIterator it =  d_ptr->arguments.constBegin();
-    QVariantList::ConstIterator cend = d_ptr->arguments.constEnd();
     q_dbus_message_iter_init_append(msg, &marshaller.iterator);
     if (!d_ptr->message.isEmpty())
         // prepend the error message
         marshaller.append(d_ptr->message);
-    for ( ; it != cend; ++it)
-        marshaller.appendVariantInternal(*it);
+    for (const QVariant &argument : std::as_const(d_ptr->arguments))
+        marshaller.appendVariantInternal(argument);
 
     // check if everything is ok
     if (marshaller.ok)
@@ -202,7 +168,7 @@ DBusMessage *QDBusMessagePrivate::toDBusMessage(const QDBusMessage &message, QDB
 
     // not ok;
     q_dbus_message_unref(msg);
-    *error = QDBusError(QDBusError::Failed, QLatin1String("Marshalling failed: ") + marshaller.errorString);
+    *error = QDBusError(QDBusError::Failed, "Marshalling failed: "_L1 + marshaller.errorString);
     return nullptr;
 }
 
@@ -271,13 +237,11 @@ QDBusMessage QDBusMessagePrivate::makeLocal(const QDBusConnectionPrivate &conn,
 
     // determine if we are carrying any complex types
     QString computedSignature;
-    QVariantList::ConstIterator it = asSent.d_ptr->arguments.constBegin();
-    QVariantList::ConstIterator end = asSent.d_ptr->arguments.constEnd();
-    for ( ; it != end; ++it) {
-        int id = it->userType();
+    for (const QVariant &argument : std::as_const(asSent.d_ptr->arguments)) {
+        QMetaType id = argument.metaType();
         const char *signature = QDBusMetaType::typeToSignature(id);
-        if ((id != QMetaType::QStringList && id != QMetaType::QByteArray &&
-             qstrlen(signature) != 1) || id == qMetaTypeId<QDBusVariant>()) {
+        if ((id.id() != QMetaType::QStringList && id.id() != QMetaType::QByteArray &&
+             qstrlen(signature) != 1) || id == QMetaType::fromType<QDBusVariant>()) {
             // yes, we are
             // we must marshall and demarshall again so as to create QDBusArgument
             // entries for the complex types
@@ -297,7 +261,7 @@ QDBusMessage QDBusMessagePrivate::makeLocal(const QDBusConnectionPrivate &conn,
                 retval.d_ptr->service = conn.baseService;
             return retval;
         } else {
-            computedSignature += QLatin1String(signature);
+            computedSignature += QLatin1StringView(signature);
         }
     }
 
@@ -496,11 +460,7 @@ QDBusMessage QDBusMessage::createReply(const QVariantList &arguments) const
     Constructs a new DBus message representing an error reply message,
     with the given \a name and \a msg.
 */
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 QDBusMessage QDBusMessage::createErrorReply(const QString &name, const QString &msg) const
-#else
-QDBusMessage QDBusMessage::createErrorReply(const QString name, const QString &msg) const
-#endif
 {
     QDBusMessage reply = QDBusMessage::createError(name, msg);
     if (d_ptr->msg)
@@ -516,11 +476,13 @@ QDBusMessage QDBusMessage::createErrorReply(const QString name, const QString &m
 }
 
 /*!
-   \fn QDBusMessage QDBusMessage::createReply(const QVariant &argument) const
-
     Constructs a new DBus message representing a reply, with the
     given \a argument.
 */
+QDBusMessage QDBusMessage::createReply(const QVariant &argument) const
+{
+    return createReply(QList{argument});
+}
 
 /*!
     \fn QDBusMessage QDBusMessage::createErrorReply(const QDBusError &error) const
@@ -774,7 +736,6 @@ bool QDBusMessage::isInteractiveAuthorizationAllowed() const
 */
 void QDBusMessage::setArguments(const QList<QVariant> &arguments)
 {
-    // FIXME: should we detach?
     d_ptr->arguments = arguments;
 }
 
@@ -794,7 +755,6 @@ QList<QVariant> QDBusMessage::arguments() const
 
 QDBusMessage &QDBusMessage::operator<<(const QVariant &arg)
 {
-    // FIXME: should we detach?
     d_ptr->arguments.append(arg);
     return *this;
 }
@@ -840,12 +800,10 @@ static QDebug operator<<(QDebug dbg, QDBusMessage::MessageType t)
 static void debugVariantList(QDebug dbg, const QVariantList &list)
 {
     bool first = true;
-    QVariantList::ConstIterator it = list.constBegin();
-    QVariantList::ConstIterator end = list.constEnd();
-    for ( ; it != end; ++it) {
+    for (const QVariant &elem : list) {
         if (!first)
             dbg.nospace() << ", ";
-        dbg.nospace() << qPrintable(QDBusUtil::argumentToString(*it));
+        dbg.nospace() << qPrintable(QDBusUtil::argumentToString(elem));
         first = false;
     }
 }

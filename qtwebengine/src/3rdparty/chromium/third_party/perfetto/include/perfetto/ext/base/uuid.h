@@ -18,6 +18,7 @@
 #define INCLUDE_PERFETTO_EXT_BASE_UUID_H_
 
 #include <array>
+#include <cstdint>
 #include <string>
 
 #include "perfetto/ext/base/optional.h"
@@ -37,6 +38,8 @@ class Uuid {
   bool operator==(const Uuid& other) const { return data_ == other.data_; }
 
   bool operator!=(const Uuid& other) const { return !(*this == other); }
+
+  explicit operator bool() const { return *this != Uuid(); }
 
   int64_t msb() const {
     int64_t result;

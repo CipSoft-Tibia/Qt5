@@ -28,7 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "base/bind_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "build/build_config.h"
 #include "services/network/public/cpp/web_sandbox_flags.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink.h"
@@ -46,6 +46,7 @@
 #include "third_party/blink/renderer/core/frame/location.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/core/testing/mock_policy_container_host.h"
 #include "third_party/blink/renderer/platform/loader/static_data_navigation_body_loader.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
@@ -53,11 +54,22 @@
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
 
+// Note: See also test suite for MHTML document:
+// content/browser/navigation_browsertest
+// Those have the advantage of running with a real browser process.
+
 using blink::url_test_helpers::ToKURL;
 
 namespace blink {
 namespace test {
 
+const network::mojom::blink::WebSandboxFlags kMhtmlSandboxFlags =
+    ~network::mojom::blink::WebSandboxFlags::kPopups &
+    ~network::mojom::blink::WebSandboxFlags::
+        kPropagatesToAuxiliaryBrowsingContexts;
+
+// See the NavigationMhtmlBrowserTest for more up to date tests running with a
+// full browser + renderer(s) processes.
 class MHTMLLoadingTest : public testing::Test {
  public:
   MHTMLLoadingTest() = default;
@@ -75,6 +87,11 @@ class MHTMLLoadingTest : public testing::Test {
     params->response.SetMimeType("multipart/related");
     params->response.SetHttpStatusCode(200);
     params->response.SetExpectedContentLength(buffer->size());
+    MockPolicyContainerHost mock_policy_container_host;
+    params->policy_container = std::make_unique<blink::WebPolicyContainer>(
+        blink::WebPolicyContainerPolicies(),
+        mock_policy_container_host.BindNewEndpointAndPassDedicatedRemote());
+    params->policy_container->policies.sandbox_flags = kMhtmlSandboxFlags;
     auto body_loader = std::make_unique<StaticDataNavigationBodyLoader>();
     body_loader->Write(*buffer);
     body_loader->Finish();
@@ -107,6 +124,7 @@ TEST_F(MHTMLLoadingTest, CheckDomain) {
 }
 
 // Checks that full sandboxing protection has been turned on.
+// See also related test: NavigationMhtmlBrowserTest.SandboxedIframe.
 TEST_F(MHTMLLoadingTest, EnforceSandboxFlags) {
   const char kURL[] = "http://www.example.com";
 
@@ -119,11 +137,7 @@ TEST_F(MHTMLLoadingTest, EnforceSandboxFlags) {
 
   // Full sandboxing with the exception to new top-level windows should be
   // turned on.
-  EXPECT_EQ(network::mojom::blink::WebSandboxFlags::kAll &
-                ~(network::mojom::blink::WebSandboxFlags::kPopups |
-                  network::mojom::blink::WebSandboxFlags::
-                      kPropagatesToAuxiliaryBrowsingContexts),
-            window->GetSandboxFlags());
+  EXPECT_EQ(kMhtmlSandboxFlags, window->GetSandboxFlags());
 
   // MHTML document should be loaded into unique origin.
   EXPECT_TRUE(window->GetSecurityOrigin()->IsOpaque());
@@ -140,11 +154,7 @@ TEST_F(MHTMLLoadingTest, EnforceSandboxFlags) {
   LocalDOMWindow* child_window = child_frame->DomWindow();
   ASSERT_TRUE(child_window);
 
-  EXPECT_EQ(network::mojom::blink::WebSandboxFlags::kAll &
-                ~(network::mojom::blink::WebSandboxFlags::kPopups |
-                  network::mojom::blink::WebSandboxFlags::
-                      kPropagatesToAuxiliaryBrowsingContexts),
-            child_window->GetSandboxFlags());
+  EXPECT_EQ(kMhtmlSandboxFlags, child_window->GetSandboxFlags());
 
   // MHTML document should be loaded into unique origin.
   EXPECT_TRUE(child_window->GetSecurityOrigin()->IsOpaque());
@@ -167,11 +177,7 @@ TEST_F(MHTMLLoadingTest, EnforceSandboxFlagsInXSLT) {
 
   // Full sandboxing with the exception to new top-level windows should be
   // turned on.
-  EXPECT_EQ(network::mojom::blink::WebSandboxFlags::kAll &
-                ~(network::mojom::blink::WebSandboxFlags::kPopups |
-                  network::mojom::blink::WebSandboxFlags::
-                      kPropagatesToAuxiliaryBrowsingContexts),
-            window->GetSandboxFlags());
+  EXPECT_EQ(kMhtmlSandboxFlags, window->GetSandboxFlags());
 
   // MHTML document should be loaded into unique origin.
   EXPECT_TRUE(window->GetSecurityOrigin()->IsOpaque());

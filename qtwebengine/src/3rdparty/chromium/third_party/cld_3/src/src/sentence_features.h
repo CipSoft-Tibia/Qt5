@@ -20,15 +20,27 @@ limitations under the License.
 #ifndef SENTENCE_FEATURES_H_
 #define SENTENCE_FEATURES_H_
 
+#include "build/build_config.h"
+
 #include "feature_extractor.h"
 #include "cld_3/protos/sentence.pb.h"
 
 namespace chrome_lang_id {
 
 // Feature function that extracts features for the full Sentence.
-typedef FeatureFunction<Sentence> WholeSentenceFeature;
+using WholeSentenceFeature = FeatureFunction<Sentence>;
 
-typedef FeatureExtractor<Sentence> WholeSentenceExtractor;
+using WholeSentenceExtractor = FeatureExtractor<Sentence>;
+
+// Declare registry for the whole Sentence feature functions.  This is required
+// for clang's -Wundefined-var-template.  However, MSVC has a bug which treats
+// this declaration as a definition, leading to multiple definition errors, so
+// omit this on MSVC.
+#if !defined(COMPILER_MSVC)
+template <>
+WholeSentenceFeature::Registry
+    *RegisterableClass<WholeSentenceFeature>::registry_;
+#endif
 
 }  // namespace chrome_lang_id
 

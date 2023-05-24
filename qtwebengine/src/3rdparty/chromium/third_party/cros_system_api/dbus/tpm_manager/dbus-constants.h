@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium OS Authors. All rights reserved.
+// Copyright 2015 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,28 @@
 namespace tpm_manager {
 
 // D-Bus service constants.
+constexpr char kTpmManagerInterface[] = "org.chromium.TpmManager";
 constexpr char kTpmManagerServiceName[] = "org.chromium.TpmManager";
 constexpr char kTpmManagerServicePath[] = "/org/chromium/TpmManager";
 
-// Binder service constants.
-constexpr char kTpmNvramBinderName[] = "android.tpm_manager.ITpmNvram";
-constexpr char kTpmOwnershipBinderName[] = "android.tpm_manager.ITpmOwnership";
+// 5 minutes timeout for all tpm_manager calls.
+// This is a bit on the long side, but we want to be cautious.
+constexpr int kTpmManagerServiceTimeoutInMs = 5 * 60 * 1000;
+
+// Methods exported by tpm_manager.
+constexpr char kGetTpmStatus[] = "GetTpmStatus";
+constexpr char kGetTpmNonsensitiveStatus[] = "GetTpmNonsensitiveStatus";
+constexpr char kGetVersionInfo[] = "GetVersionInfo";
+constexpr char kGetSupportedFeatures[] = "GetSupportedFeatures";
+constexpr char kGetDictionaryAttackInfo[] = "GetDictionaryAttackInfo";
+constexpr char kGetRoVerificationStatus[] = "GetRoVerificationStatus";
+constexpr char kResetDictionaryAttackLock[] = "ResetDictionaryAttackLock";
+constexpr char kTakeOwnership[] = "TakeOwnership";
+constexpr char kRemoveOwnerDependency[] = "RemoveOwnerDependency";
+constexpr char kClearStoredOwnerPassword[] = "ClearStoredOwnerPassword";
+
+// Signal registered by tpm_manager ownership D-Bus interface.
+constexpr char kOwnershipTakenSignal[] = "SignalOwnershipTaken";
 
 // Default dependencies on TPM owner privilege. The TPM owner password will not
 // be destroyed until all of these dependencies have been explicitly removed
@@ -21,9 +37,12 @@ constexpr char kTpmOwnershipBinderName[] = "android.tpm_manager.ITpmOwnership";
 constexpr const char* kTpmOwnerDependency_Nvram = "TpmOwnerDependency_Nvram";
 constexpr const char* kTpmOwnerDependency_Attestation =
     "TpmOwnerDependency_Attestation";
+constexpr const char* kTpmOwnerDependency_Bootlockbox =
+    "TpmOwnerDependency_Bootlockbox";
 
 constexpr const char* kInitialTpmOwnerDependencies[] = {
-    kTpmOwnerDependency_Nvram, kTpmOwnerDependency_Attestation};
+    kTpmOwnerDependency_Nvram, kTpmOwnerDependency_Attestation,
+    kTpmOwnerDependency_Bootlockbox};
 
 }  // namespace tpm_manager
 

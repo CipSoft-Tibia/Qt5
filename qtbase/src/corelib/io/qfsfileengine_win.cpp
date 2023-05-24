@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include "private/qabstractfileengine_p.h"
+#include "private/qfiledevice_p.h"
 #include "private/qfsfileengine_p.h"
 #include "qfilesystemengine_p.h"
 #include <qdebug.h>
@@ -53,18 +18,14 @@
 #include <direct.h>
 #include <winioctl.h>
 #include <objbase.h>
-#ifndef Q_OS_WINRT
-#  include <shlobj.h>
-#  include <accctrl.h>
-#endif
+#include <shlobj.h>
+#include <accctrl.h>
 #include <initguid.h>
 #include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
-#ifndef Q_OS_WINRT
-#  define SECURITY_WIN32
-#  include <security.h>
-#endif
+#define SECURITY_WIN32
+#include <security.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX FILENAME_MAX
@@ -72,11 +33,13 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 static inline bool isUncPath(const QString &path)
 {
     // Starts with \\, but not \\.
-    return (path.startsWith(QLatin1String("\\\\"))
-            && path.size() > 2 && path.at(2) != QLatin1Char('.'));
+    return (path.startsWith("\\\\"_L1)
+            && path.size() > 2 && path.at(2) != u'.');
 }
 
 /*!
@@ -84,26 +47,23 @@ static inline bool isUncPath(const QString &path)
 */
 QString QFSFileEnginePrivate::longFileName(const QString &path)
 {
-    if (path.startsWith(QLatin1String("\\\\.\\")))
+    if (path.startsWith("\\\\.\\"_L1))
         return path;
 
     QString absPath = QFileSystemEngine::nativeAbsoluteFilePath(path);
-#if !defined(Q_OS_WINRT)
-    QString prefix = QLatin1String("\\\\?\\");
+    QString prefix = "\\\\?\\"_L1;
     if (isUncPath(absPath)) {
-        prefix.append(QLatin1String("UNC\\")); // "\\\\?\\UNC\\"
+        prefix.append("UNC\\"_L1); // "\\\\?\\UNC\\"
         absPath.remove(0, 2);
     }
     return prefix + absPath;
-#else
-    return absPath;
-#endif
 }
 
 /*
     \internal
 */
-bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode)
+bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode,
+                                      std::optional<QFile::Permissions> permissions)
 {
     Q_Q(QFSFileEngine);
 
@@ -123,22 +83,17 @@ bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode)
                                 ? OPEN_ALWAYS
                                 : OPEN_EXISTING;
     // Create the file handle.
-#ifndef Q_OS_WINRT
-    SECURITY_ATTRIBUTES securityAtts = { sizeof(SECURITY_ATTRIBUTES), NULL, FALSE };
+    QNativeFilePermissions nativePermissions(permissions, false);
+    if (!nativePermissions.isOk())
+        return false;
+
     fileHandle = CreateFile((const wchar_t*)fileEntry.nativeFilePath().utf16(),
                             accessRights,
                             shareMode,
-                            &securityAtts,
+                            nativePermissions.securityAttributes(),
                             creationDisp,
                             FILE_ATTRIBUTE_NORMAL,
                             NULL);
-#else // !Q_OS_WINRT
-    fileHandle = CreateFile2((const wchar_t*)fileEntry.nativeFilePath().utf16(),
-                             accessRights,
-                             shareMode,
-                             creationDisp,
-                             NULL);
-#endif // Q_OS_WINRT
 
     // Bail out on error.
     if (fileHandle == INVALID_HANDLE_VALUE) {
@@ -230,7 +185,7 @@ qint64 QFSFileEnginePrivate::nativeSize() const
     // ### Don't flush; for buffered files, we should get away with ftell.
     thatQ->flush();
 
-    // Always retrive the current information
+    // Always retrieve the current information
     metaData.clearFlags(QFileSystemMetaData::SizeAttribute);
     bool filled = false;
     if (fileHandle != INVALID_HANDLE_VALUE && openMode != QIODevice::NotOpen )
@@ -428,7 +383,6 @@ int QFSFileEnginePrivate::nativeHandle() const
 */
 bool QFSFileEnginePrivate::nativeIsSequential() const
 {
-#if !defined(Q_OS_WINRT)
     HANDLE handle = fileHandle;
     if (fh || fd != -1)
         handle = (HANDLE)_get_osfhandle(fh ? QT_FILENO(fh) : fd);
@@ -438,9 +392,6 @@ bool QFSFileEnginePrivate::nativeIsSequential() const
     DWORD fileType = GetFileType(handle);
     return (fileType == FILE_TYPE_CHAR)
             || (fileType == FILE_TYPE_PIPE);
-#else
-    return false;
-#endif
 }
 
 bool QFSFileEngine::caseSensitive() const
@@ -450,11 +401,10 @@ bool QFSFileEngine::caseSensitive() const
 
 QString QFSFileEngine::currentPath(const QString &fileName)
 {
-#if !defined(Q_OS_WINRT)
     QString ret;
     //if filename is a drive: then get the pwd of that drive
     if (fileName.length() >= 2 &&
-        fileName.at(0).isLetter() && fileName.at(1) == QLatin1Char(':')) {
+        fileName.at(0).isLetter() && fileName.at(1) == u':') {
         int drv = fileName.toUpper().at(0).toLatin1() - 'A' + 1;
         if (_getdrive() != drv) {
             wchar_t buf[PATH_MAX];
@@ -466,16 +416,11 @@ QString QFSFileEngine::currentPath(const QString &fileName)
         //just the pwd
         ret = QFileSystemEngine::currentPath().filePath();
     }
-    if (ret.length() >= 2 && ret[1] == QLatin1Char(':'))
+    if (ret.length() >= 2 && ret[1] == u':')
         ret[0] = ret.at(0).toUpper(); // Force uppercase drive letters.
     return ret;
-#else // !Q_OS_WINRT
-    Q_UNUSED(fileName);
-    return QFileSystemEngine::currentPath().filePath();
-#endif // Q_OS_WINRT
 }
 
-#if !defined(Q_OS_WINRT)
 // cf QStorageInfo::isReady
 static inline bool isDriveReady(const wchar_t *path)
 {
@@ -485,12 +430,10 @@ static inline bool isDriveReady(const wchar_t *path)
         || GetVolumeInformation(path, nullptr, 0, nullptr, nullptr,
                                 &fileSystemFlags, nullptr, 0) == TRUE;
 }
-#endif // !Q_OS_WINRT
 
 QFileInfoList QFSFileEngine::drives()
 {
     QFileInfoList ret;
-#if !defined(Q_OS_WINRT)
     const UINT oldErrorMode = ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     quint32 driveBits = (quint32) GetLogicalDrives() & 0x3ffffff;
     wchar_t driveName[] = L"A:\\";
@@ -503,10 +446,6 @@ QFileInfoList QFSFileEngine::drives()
     }
     ::SetErrorMode(oldErrorMode);
     return ret;
-#else // !Q_OS_WINRT
-    ret.append(QFileInfo(QLatin1String("/")));
-    return ret;
-#endif // Q_OS_WINRT
 }
 
 bool QFSFileEnginePrivate::doStat(QFileSystemMetaData::MetaDataFlags flags) const
@@ -526,59 +465,15 @@ bool QFSFileEnginePrivate::doStat(QFileSystemMetaData::MetaDataFlags flags) cons
     return metaData.exists();
 }
 
-
+// ### assume that they add .lnk to newName
 bool QFSFileEngine::link(const QString &newName)
 {
-#if !defined(Q_OS_WINRT)
-    bool ret = false;
-
-    QString linkName = newName;
-    //### assume that they add .lnk
-
-    IShellLink *psl;
-    bool neededCoInit = false;
-
-    HRESULT hres = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
-                                    reinterpret_cast<void **>(&psl));
-
-    if (hres == CO_E_NOTINITIALIZED) { // COM was not initialized
-        neededCoInit = true;
-        CoInitialize(nullptr);
-        hres = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink,
-                                reinterpret_cast<void **>(&psl));
-    }
-
-    if (SUCCEEDED(hres)) {
-        const QString nativeAbsoluteName = fileName(AbsoluteName).replace(QLatin1Char('/'), QLatin1Char('\\'));
-        hres = psl->SetPath(reinterpret_cast<const wchar_t *>(nativeAbsoluteName.utf16()));
-        if (SUCCEEDED(hres)) {
-            const QString nativeAbsolutePathName = fileName(AbsolutePathName).replace(QLatin1Char('/'), QLatin1Char('\\'));
-            hres = psl->SetWorkingDirectory(reinterpret_cast<const wchar_t *>(nativeAbsolutePathName.utf16()));
-            if (SUCCEEDED(hres)) {
-                IPersistFile *ppf;
-                hres = psl->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&ppf));
-                if (SUCCEEDED(hres)) {
-                    hres = ppf->Save(reinterpret_cast<const wchar_t *>(linkName.utf16()), TRUE);
-                    if (SUCCEEDED(hres))
-                         ret = true;
-                    ppf->Release();
-                }
-            }
-        }
-        psl->Release();
-    }
+    QSystemError error;
+    bool ret = QFileSystemEngine::createLink(QFileSystemEntry(fileName(AbsoluteName)),
+                                             QFileSystemEntry(newName), error);
     if (!ret)
-        setError(QFile::RenameError, qt_error_string());
-
-    if (neededCoInit)
-        CoUninitialize();
-
+        setError(QFile::RenameError, error.toString());
     return ret;
-#else // !Q_OS_WINRT
-    Q_UNUSED(newName);
-    Q_UNIMPLEMENTED();
-    return false;
-#endif // Q_OS_WINRT
 }
 
 /*!
@@ -600,7 +495,7 @@ QAbstractFileEngine::FileFlags QFSFileEngine::fileFlags(QAbstractFileEngine::Fil
     {
         QFileSystemMetaData::MetaDataFlags queryFlags;
 
-        queryFlags |= QFileSystemMetaData::MetaDataFlags(uint(type))
+        queryFlags |= QFileSystemMetaData::MetaDataFlags::fromInt(type.toInt())
                 & QFileSystemMetaData::Permissions;
 
         // AliasType and BundleType are 0x0
@@ -621,7 +516,7 @@ QAbstractFileEngine::FileFlags QFSFileEngine::fileFlags(QAbstractFileEngine::Fil
     }
 
     if (exists && (type & PermsMask))
-        ret |= FileFlags(uint(d->metaData.permissions()));
+        ret |= FileFlags::fromInt(d->metaData.permissions().toInt());
 
     if (type & TypesMask) {
         if ((type & LinkType) && d->metaData.isLegacyLink())
@@ -667,62 +562,74 @@ QByteArray QFSFileEngine::id() const
 QString QFSFileEngine::fileName(FileName file) const
 {
     Q_D(const QFSFileEngine);
-    if (file == BaseName) {
+    switch (file) {
+    case BaseName:
         return d->fileEntry.fileName();
-    } else if (file == PathName) {
+    case PathName:
         return d->fileEntry.path();
-    } else if (file == AbsoluteName || file == AbsolutePathName) {
-        QString ret;
-
-        if (!isRelativePath()) {
-            if (d->fileEntry.filePath().startsWith(QLatin1Char('/')) || // It's a absolute path to the current drive, so \a.txt -> Z:\a.txt
-                d->fileEntry.filePath().size() == 2 ||                  // It's a drive letter that needs to get a working dir appended
-                (d->fileEntry.filePath().size() > 2 && d->fileEntry.filePath().at(2) != QLatin1Char('/')) || // It's a drive-relative path, so Z:a.txt -> Z:\currentpath\a.txt
-                d->fileEntry.filePath().contains(QLatin1String("/../")) || d->fileEntry.filePath().contains(QLatin1String("/./")) ||
-                d->fileEntry.filePath().endsWith(QLatin1String("/..")) || d->fileEntry.filePath().endsWith(QLatin1String("/.")))
-            {
-                ret = QDir::fromNativeSeparators(QFileSystemEngine::nativeAbsoluteFilePath(d->fileEntry.filePath()));
-            } else {
-                ret = d->fileEntry.filePath();
-            }
-        } else {
-            ret = QDir::cleanPath(QDir::currentPath() + QLatin1Char('/') + d->fileEntry.filePath());
+    case AbsoluteName:
+    case AbsolutePathName: {
+        QString ret = d->fileEntry.filePath();
+        if (isRelativePath()) {
+            ret = QDir::cleanPath(QDir::currentPath() + u'/' + ret);
+        } else if (ret.startsWith(u'/') // absolute path to the current drive, so \a.txt -> Z:\a.txt
+                   || ret.size() == 2 // or a drive letter that needs to get a working dir appended
+                   // or a drive-relative path, so Z:a.txt -> Z:\currentpath\a.txt
+                   || (ret.size() > 2 && ret.at(2) != u'/')
+                   || ret.contains(QStringView(u"/../"))
+                   || ret.contains(QStringView(u"/./"))
+                   || ret.endsWith(QStringView(u"/.."))
+                   || ret.endsWith(QStringView(u"/."))) {
+            ret = QDir::fromNativeSeparators(QFileSystemEngine::nativeAbsoluteFilePath(ret));
         }
 
         // The path should be absolute at this point.
         // From the docs :
         // Absolute paths begin with the directory separator "/"
         // (optionally preceded by a drive specification under Windows).
-        if (ret.at(0) != QLatin1Char('/')) {
+        if (ret.at(0) != u'/') {
             Q_ASSERT(ret.length() >= 2);
             Q_ASSERT(ret.at(0).isLetter());
-            Q_ASSERT(ret.at(1) == QLatin1Char(':'));
+            Q_ASSERT(ret.at(1) == u':');
 
             // Force uppercase drive letters.
             ret[0] = ret.at(0).toUpper();
         }
 
         if (file == AbsolutePathName) {
-            int slash = ret.lastIndexOf(QLatin1Char('/'));
+            int slash = ret.lastIndexOf(u'/');
             if (slash < 0)
                 return ret;
-            if (ret.at(0) != QLatin1Char('/') && slash == 2)
+            if (ret.at(0) != u'/' && slash == 2)
                 return ret.left(3);      // include the slash
             return ret.left(slash > 0 ? slash : 1);
         }
         return ret;
-    } else if (file == CanonicalName || file == CanonicalPathName) {
+    }
+    case CanonicalName:
+    case CanonicalPathName: {
         if (!(fileFlags(ExistsFlag) & ExistsFlag))
             return QString();
-        QFileSystemEntry entry(QFileSystemEngine::canonicalName(QFileSystemEntry(fileName(AbsoluteName)), d->metaData));
+        const QFileSystemEntry entry =
+            QFileSystemEngine::canonicalName(QFileSystemEntry(fileName(AbsoluteName)), d->metaData);
 
         if (file == CanonicalPathName)
             return entry.path();
         return entry.filePath();
-    } else if (file == LinkName) {
+    }
+    case AbsoluteLinkTarget:
         return QFileSystemEngine::getLinkTarget(d->fileEntry, d->metaData).filePath();
-    } else if (file == BundleName) {
+    case RawLinkPath:
+        return QFileSystemEngine::getRawLinkPath(d->fileEntry, d->metaData).filePath();
+    case BundleName:
         return QString();
+    case JunctionName:
+        return QFileSystemEngine::getJunctionTarget(d->fileEntry, d->metaData).filePath();
+    case DefaultName:
+        break;
+    case NFileNames:
+        Q_ASSERT(false);
+        break;
     }
     return d->fileEntry.filePath();
 }
@@ -750,6 +657,10 @@ bool QFSFileEngine::setPermissions(uint perms)
 {
     Q_D(QFSFileEngine);
     QSystemError error;
+
+    // clear cached state (if any)
+    d->metaData.clearFlags(QFileSystemMetaData::Permissions);
+
     bool ret = QFileSystemEngine::setPermissions(d->fileEntry, QFile::Permissions(perms), error);
     if (!ret)
         setError(QFile::PermissionsError, error.toString());
@@ -880,7 +791,7 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size,
                 NULL);
         // Since this is a special case, we check if the return value was NULL and if so
         // we change it to INVALID_HANDLE_VALUE to follow the logic inside this function.
-        if(0 == handle)
+        if (!handle)
             handle = INVALID_HANDLE_VALUE;
 #endif
 
@@ -891,11 +802,7 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size,
 
         // first create the file mapping handle
         DWORD protection = (openMode & QIODevice::WriteOnly) ? PAGE_READWRITE : PAGE_READONLY;
-#ifndef Q_OS_WINRT
         mapHandle = ::CreateFileMapping(handle, 0, protection, 0, 0, 0);
-#else
-        mapHandle = ::CreateFileMappingFromApp(handle, 0, protection, 0, 0);
-#endif
         if (mapHandle == NULL) {
             q->setError(QFile::PermissionsError, qt_error_string());
 #ifdef Q_USE_DEPRECATED_MAP_API
@@ -908,24 +815,15 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size,
     DWORD offsetHi = offset >> 32;
     DWORD offsetLo = offset & Q_UINT64_C(0xffffffff);
     SYSTEM_INFO sysinfo;
-#ifndef Q_OS_WINRT
     ::GetSystemInfo(&sysinfo);
-#else
-    ::GetNativeSystemInfo(&sysinfo);
-#endif
     DWORD mask = sysinfo.dwAllocationGranularity - 1;
     DWORD extra = offset & mask;
     if (extra)
         offsetLo &= ~mask;
 
     // attempt to create the map
-#ifndef Q_OS_WINRT
     LPVOID mapAddress = ::MapViewOfFile(mapHandle, access,
                                       offsetHi, offsetLo, size + extra);
-#else
-    LPVOID mapAddress = ::MapViewOfFileFromApp(mapHandle, access,
-                                               (ULONG64(offsetHi) << 32) + offsetLo, size + extra);
-#endif
     if (mapAddress) {
         uchar *address = extra + static_cast<uchar*>(mapAddress);
         maps[address] = extra;
@@ -950,17 +848,18 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size,
 bool QFSFileEnginePrivate::unmap(uchar *ptr)
 {
     Q_Q(QFSFileEngine);
-    if (!maps.contains(ptr)) {
+    const auto it = std::as_const(maps).find(ptr);
+    if (it == maps.cend()) {
         q->setError(QFile::PermissionsError, qt_error_string(ERROR_ACCESS_DENIED));
         return false;
     }
-    uchar *start = ptr - maps[ptr];
+    uchar *start = ptr - *it;
     if (!UnmapViewOfFile(start)) {
         q->setError(QFile::PermissionsError, qt_error_string());
         return false;
     }
 
-    maps.remove(ptr);
+    maps.erase(it);
     if (maps.isEmpty()) {
         ::CloseHandle(mapHandle);
         mapHandle = NULL;

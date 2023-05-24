@@ -1,62 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#ifdef QT_ATOMIC_FORCE_CXX11
-// We need to check if this compiler has C++11 atomics and constexpr support.
-// We can't rely on qcompilerdetection.h because it forces all of qglobal.h to
-// be included, which causes qbasicatomic.h to be included too.
-// Incomplete, but ok
-#  if defined(__INTEL_COMPILER) && __INTEL_COMPILER >= 1500 && (__cplusplus >= 201103L || defined(__INTEL_CXX11_MODE__))
-#  elif defined(__clang__) && (__cplusplus >= 201103L || defined(__GXX_EXPERIMENTAL_CXX0X__))
-#    if !__has_feature(cxx_constexpr) || !__has_feature(cxx_atomic) || !__has_include(<atomic>)
-#      undef QT_ATOMIC_FORCE_CXX11
-#    endif
-#  elif defined(__GNUC__) && (__GNUC__ * 100 + __GNUC_MINOR__) >= 407 && (__cplusplus >= 201103L || defined(__GXX_EXPERIMENTAL_CXX0X__))
-#  elif defined(_MSC_VER)
-    // We need MSVC 2015 because of: atomics (2012), constexpr (2015), and unrestricted unions (2015).
-    // Support for constexpr is not working completely on MSVC 2015 but it's enough for the test.
-#  else
-#    undef QT_ATOMIC_FORCE_CXX11
-#  endif
-
-#  ifndef QT_ATOMIC_FORCE_CXX11
-#    undef QATOMIC_TEST_TYPE
-#    define QATOMIC_TEST_TYPE unsupported
-#  endif
-#endif
-
-#include <QtTest>
+#include <QTest>
 #include <QAtomicInt>
 
 #include <limits>
 #include <limits.h>
 #include <wchar.h>
 
+#if !defined(Q_ATOMIC_INT8_IS_SUPPORTED)
+#  error "QAtomicInteger for 8-bit types must be supported!"
+#endif
+#if !defined(Q_ATOMIC_INT16_IS_SUPPORTED)
+#  error "QAtomicInteger for 16-bit types must be supported!"
+#endif
 #if !defined(Q_ATOMIC_INT32_IS_SUPPORTED)
 #  error "QAtomicInteger for 32-bit types must be supported!"
 #endif
@@ -65,35 +22,21 @@
 #endif
 
 // always supported types:
+#define TYPE_SUPPORTED_char         1
+#define TYPE_SUPPORTED_uchar        1
+#define TYPE_SUPPORTED_schar        1
+#define TYPE_SUPPORTED_short        1
+#define TYPE_SUPPORTED_ushort       1
+#define TYPE_SUPPORTED_char16_t     1
+#define TYPE_SUPPORTED_wchar_t      1
 #define TYPE_SUPPORTED_int          1
 #define TYPE_SUPPORTED_uint         1
 #define TYPE_SUPPORTED_long         1
 #define TYPE_SUPPORTED_ulong        1
 #define TYPE_SUPPORTED_qptrdiff     1
 #define TYPE_SUPPORTED_quintptr     1
-#if (defined(__SIZEOF_WCHAR_T__) && (__SIZEOF_WCHAR_T__-0) > 2) \
-    || (defined(WCHAR_MAX) && (WCHAR_MAX-0 > 0x10000))
-#  define TYPE_SUPPORTED_wchar_t    1
-#endif
-#ifdef Q_COMPILER_UNICODE_STRINGS
-#  define TYPE_SUPPORTED_char32_t   1
-#endif
+#define TYPE_SUPPORTED_char32_t     1
 
-#ifdef Q_ATOMIC_INT8_IS_SUPPORTED
-#  define TYPE_SUPPORTED_char       1
-#  define TYPE_SUPPORTED_uchar      1
-#  define TYPE_SUPPORTED_schar      1
-#endif
-#ifdef Q_ATOMIC_INT16_IS_SUPPORTED
-#  define TYPE_SUPPORTED_short      1
-#  define TYPE_SUPPORTED_ushort     1
-#  ifdef Q_COMPILER_UNICODE_STRINGS
-#    define TYPE_SUPPORTED_char16_t 1
-#  endif
-#  ifndef TYPE_SUPPORTED_wchar_t
-#    define TYPE_SUPPORTED_wchar_t  1
-#  endif
-#endif
 #ifdef Q_ATOMIC_INT64_IS_SUPPORTED
 #  define TYPE_SUPPORTED_qlonglong  1
 #  define TYPE_SUPPORTED_qulonglong 1
@@ -188,7 +131,7 @@ template <bool> inline void booleanHelper() { }
 
 void tst_QAtomicIntegerXX::static_checks()
 {
-    Q_STATIC_ASSERT(sizeof(QAtomicInteger<T>) == sizeof(T));
+    static_assert(sizeof(QAtomicInteger<T>) == sizeof(T));
 
     // statements with no effect
     (void) QAtomicInteger<T>::isReferenceCountingNative();
@@ -200,17 +143,11 @@ void tst_QAtomicIntegerXX::static_checks()
     (void) QAtomicInteger<T>::isFetchAndAddNative();
     (void) QAtomicInteger<T>::isFetchAndAddWaitFree();
 
-#ifdef Q_COMPILER_CONSTEXPR
     // this is a compile-time test only
-    booleanHelper<QAtomicInteger<T>::isReferenceCountingNative()>();
     booleanHelper<QAtomicInteger<T>::isReferenceCountingWaitFree()>();
-    booleanHelper<QAtomicInteger<T>::isTestAndSetNative()>();
     booleanHelper<QAtomicInteger<T>::isTestAndSetWaitFree()>();
-    booleanHelper<QAtomicInteger<T>::isFetchAndStoreNative()>();
     booleanHelper<QAtomicInteger<T>::isFetchAndStoreWaitFree()>();
-    booleanHelper<QAtomicInteger<T>::isFetchAndAddNative()>();
     booleanHelper<QAtomicInteger<T>::isFetchAndAddWaitFree()>();
-#endif
 }
 
 void tst_QAtomicIntegerXX::addData()

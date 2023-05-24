@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Paul Lemire
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Paul Lemire
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/qentity.h>
@@ -37,7 +12,7 @@
 #include <Qt3DRender/private/entity_p.h>
 #include <Qt3DRender/qrenderaspect.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
-#include <materialparametergathererjob_p.h>
+#include <Qt3DRender/private/materialparametergathererjob_p.h>
 #include <Qt3DRender/private/technique_p.h>
 #include <Qt3DRender/private/techniquemanager_p.h>
 #include <Qt3DExtras/qphongmaterial.h>
@@ -50,13 +25,13 @@ class TestAspect : public Qt3DRender::QRenderAspect
 {
 public:
     TestAspect(Qt3DCore::QNode *root)
-        : Qt3DRender::QRenderAspect(Qt3DRender::QRenderAspect::Synchronous)
+        : Qt3DRender::QRenderAspect(Qt3DRender::QRenderAspect::Manual)
         , m_jobManager(new Qt3DCore::QAspectJobManager())
     {
         Qt3DCore::QAbstractAspectPrivate::get(this)->m_jobManager = m_jobManager.data();
         QRenderAspect::onRegistered();
 
-        QVector<Qt3DCore::NodeTreeChange> nodes;
+        QList<Qt3DCore::NodeTreeChange> nodes;
         Qt3DCore::QNodeVisitor v;
         v.traverse(root, [&nodes](Qt3DCore::QNode *node) {
             Qt3DCore::QNodePrivate *d = Qt3DCore::QNodePrivate::get(node);
@@ -90,9 +65,9 @@ public:
         return d_func()->m_renderer->nodeManagers();
     }
 
-    Render::OpenGL::MaterialParameterGathererJobPtr materialGathererJob() const
+    Render::MaterialParameterGathererJobPtr materialGathererJob() const
     {
-        Render::OpenGL::MaterialParameterGathererJobPtr job = Render::OpenGL::MaterialParameterGathererJobPtr::create();
+        Render::MaterialParameterGathererJobPtr job = Render::MaterialParameterGathererJobPtr::create();
         job->setNodeManagers(nodeManagers());
         return job;
     }
@@ -136,7 +111,7 @@ private Q_SLOTS:
         QScopedPointer<Qt3DRender::TestAspect> aspect(new Qt3DRender::TestAspect(buildTestScene(2000)));
 
         // WHEN
-        Qt3DRender::Render::OpenGL::MaterialParameterGathererJobPtr gatheringJob = aspect->materialGathererJob();
+        Qt3DRender::Render::MaterialParameterGathererJobPtr gatheringJob = aspect->materialGathererJob();
         gatheringJob->setHandles(aspect->nodeManagers()->materialManager()->activeHandles());
 
         QBENCHMARK {

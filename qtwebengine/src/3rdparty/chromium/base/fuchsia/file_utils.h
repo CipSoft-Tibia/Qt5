@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,8 @@
 #include "base/files/file_path.h"
 
 namespace base {
-namespace fuchsia {
 
-// Persisted data directory, i.e. /data . Returned as DIR_APP_DATA from
-// PathService.
+// Persisted data directory, i.e. /data .
 BASE_EXPORT extern const char kPersistedDataDirectoryPath[];
 
 // Persisted cache directory, i.e. /cache .
@@ -26,12 +24,16 @@ BASE_EXPORT extern const char kServiceDirectoryPath[];
 // Package root directory, i.e. /pkg .
 BASE_EXPORT extern const char kPackageRootDirectoryPath[];
 
-// Returns fuchsia.io.Directory for the specified |path| or null InterfaceHandle
-// if the path doesn't exist or it's not a directory.
-BASE_EXPORT fidl::InterfaceHandle<::fuchsia::io::Directory> OpenDirectory(
+// Returns a read-only fuchsia.io.Directory for the specified |path|, or an
+// invalid InterfaceHandle if the path doesn't exist or it's not a directory.
+BASE_EXPORT fidl::InterfaceHandle<::fuchsia::io::Directory> OpenDirectoryHandle(
     const base::FilePath& path);
 
-}  // namespace fuchsia
+// Returns a write-capable fuchsia.io.Directory for the specified |path| or
+// an invalid InterfaceHandle if the path doesn't exist or it's not a directory.
+BASE_EXPORT fidl::InterfaceHandle<::fuchsia::io::Directory>
+OpenWritableDirectoryHandle(const base::FilePath& path);
+
 }  // namespace base
 
 #endif  // BASE_FUCHSIA_FILE_UTILS_H_

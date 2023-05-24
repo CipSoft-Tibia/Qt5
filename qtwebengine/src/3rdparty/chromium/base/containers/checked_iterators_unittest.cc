@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,18 @@
 #include <algorithm>
 #include <iterator>
 
+#include "base/check_op.h"
+#include "base/ranges/algorithm.h"
+#include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace base {
+
+#if defined(__cpp_lib_ranges)
+TEST(CheckedContiguousIterator, SatisfiesContiguousIteratorConcept) {
+  static_assert(std::contiguous_iterator<CheckedContiguousIterator<int>>);
+}
+#endif
 
 // Checks that constexpr CheckedContiguousConstIterators can be compared at
 // compile time.
@@ -80,80 +89,87 @@ TEST(CheckedContiguousIterator, ConvertingComparisonOperators) {
   EXPECT_GE(cbegin, begin);
 }
 
+}  // namespace base
+
 #if defined(_LIBCPP_VERSION)
+
 namespace {
 
 // Helper template that wraps an iterator and disables its dereference and
 // increment operations.
+// Note: We don't simply delete these operations, because code using these
+// operations still needs to compile, even though the codepath will never be
+// taken at runtime. This will crash at runtime in case code does try to use
+// these operations.
 template <typename Iterator>
 struct DisableDerefAndIncr : Iterator {
   using Iterator::Iterator;
 
-  void operator*() = delete;
-  void operator++() = delete;
-  void operator++(int) = delete;
-};
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  constexpr DisableDerefAndIncr(const Iterator& iter) : Iterator(iter) {}
 
-template <typename Iterator>
-auto __unwrap_iter(DisableDerefAndIncr<Iterator> iter) {
-  return __unwrap_iter(static_cast<Iterator>(iter));
-}
+  constexpr typename Iterator::reference operator*() {
+    CHECK(false);
+    return Iterator::operator*();
+  }
+
+  constexpr Iterator& operator++() {
+    CHECK(false);
+    return Iterator::operator++();
+  }
+
+  constexpr Iterator operator++(int i) {
+    CHECK(false);
+    return Iterator::operator++(i);
+  }
+};
 
 }  // namespace
 
+// Inherit `__libcpp_is_contiguous_iterator` and `pointer_traits`
+// specializations from the base class.
+
+// TODO(crbug.com/1284275): Remove when C++20 is on by default, as the use
+// of `iterator_concept` should suffice.
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+// TODO(crbug.com/1449299): https://reviews.llvm.org/D150801 renamed this from
+// `__is_cpp17_contiguous_iterator` to `__libcpp_is_contiguous_iterator`. Clean
+// up the old spelling after libc++ rolls.
+template <typename Iter>
+struct __is_cpp17_contiguous_iterator<DisableDerefAndIncr<Iter>>
+    : __is_cpp17_contiguous_iterator<Iter> {};
+
+template <typename Iter>
+struct __libcpp_is_contiguous_iterator<DisableDerefAndIncr<Iter>>
+    : __libcpp_is_contiguous_iterator<Iter> {};
+
+template <typename Iter>
+struct pointer_traits<DisableDerefAndIncr<Iter>> : pointer_traits<Iter> {};
+
+_LIBCPP_END_NAMESPACE_STD
+
+namespace base {
+
 // Tests that using std::copy with CheckedContiguousIterator<int> results in an
 // optimized code-path that does not invoke the iterator's dereference and
-// increment operations. This would fail to compile if std::copy was not
+// increment operations. This would fail at runtime if std::copy was not
 // optimized.
 TEST(CheckedContiguousIterator, OptimizedCopy) {
   using Iter = DisableDerefAndIncr<CheckedContiguousIterator<int>>;
-  static_assert(std::is_same<int*, decltype(__unwrap_iter(Iter()))>::value,
-                "Error: Iter should unwrap to int*");
 
   int arr_in[5] = {1, 2, 3, 4, 5};
   int arr_out[5];
 
-  Iter begin(std::begin(arr_in), std::end(arr_in));
-  Iter end(std::begin(arr_in), std::end(arr_in), std::end(arr_in));
-  std::copy(begin, end, arr_out);
-
-  EXPECT_TRUE(std::equal(std::begin(arr_in), std::end(arr_in),
-                         std::begin(arr_out), std::end(arr_out)));
-}
-
-TEST(CheckedContiguousIterator, UnwrapIter) {
-  static_assert(
-      std::is_same<int*, decltype(__unwrap_iter(
-                             CheckedContiguousIterator<int>()))>::value,
-      "Error: CCI<int> should unwrap to int*");
-
-  static_assert(
-      std::is_same<CheckedContiguousIterator<std::string>,
-                   decltype(__unwrap_iter(
-                       CheckedContiguousIterator<std::string>()))>::value,
-      "Error: CCI<std::string> should unwrap to CCI<std::string>");
-}
-
-// While the result of std::copying into a range via a CCI can't be
-// compared to other iterators, it should be possible to re-use it in another
-// std::copy expresson.
-TEST(CheckedContiguousIterator, ReuseCopyIter) {
-  using Iter = CheckedContiguousIterator<int>;
-
-  int arr_in[5] = {1, 2, 3, 4, 5};
-  int arr_out[5];
-
-  Iter begin(std::begin(arr_in), std::end(arr_in));
-  Iter end(std::begin(arr_in), std::end(arr_in), std::end(arr_in));
+  Iter in_begin(std::begin(arr_in), std::end(arr_in));
+  Iter in_end(std::begin(arr_in), std::end(arr_in), std::end(arr_in));
   Iter out_begin(std::begin(arr_out), std::end(arr_out));
+  Iter out_end = std::copy(in_begin, in_end, out_begin);
+  EXPECT_EQ(out_end, out_begin + (in_end - in_begin));
 
-  auto out_middle = std::copy_n(begin, 3, out_begin);
-  std::copy(begin + 3, end, out_middle);
-
-  EXPECT_TRUE(std::equal(std::begin(arr_in), std::end(arr_in),
-                         std::begin(arr_out), std::end(arr_out)));
+  EXPECT_TRUE(ranges::equal(arr_in, arr_out));
 }
-
-#endif
 
 }  // namespace base
+
+#endif

@@ -1,15 +1,18 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gl/glx_util.h"
 
-#include <dlfcn.h>
+#include <unistd.h>
 
 #include "base/compiler_specific.h"
 #include "base/logging.h"
+#include "base/posix/eintr_wrapper.h"
+#include "ui/gfx/linux/native_pixmap_dmabuf.h"
+#include "ui/gfx/x/dri3.h"
+#include "ui/gfx/x/future.h"
 #include "ui/gfx/x/glx.h"
-#include "ui/gfx/x/x11_types.h"
 #include "ui/gl/gl_bindings.h"
 
 namespace gl {
@@ -28,7 +31,9 @@ x11::Glx::FbConfig GetConfigForWindow(x11::Connection* conn,
   }
 
   if (auto configs =
-          conn->glx().GetFBConfigs({conn->DefaultScreenId()}).Sync()) {
+          conn->glx()
+              .GetFBConfigs({static_cast<uint32_t>(conn->DefaultScreenId())})
+              .Sync()) {
     // The returned property_list is a table consisting of
     // 2 * num_FB_configs * num_properties uint32_t's.  Each entry in the table
     // is a key-value pair.  For example, if we have 2 FB configs and 3
@@ -63,29 +68,81 @@ x11::Glx::FbConfig GetConfigForWindow(x11::Connection* conn,
   return {};
 }
 
-NO_SANITIZE("cfi-icall")
-void XlibFree(void* data) {
-  using xfree_type = void (*)(void*);
-  auto* xfree = reinterpret_cast<xfree_type>(dlsym(RTLD_DEFAULT, "XFree"));
-  xfree(data);
+int Depth(gfx::BufferFormat format) {
+  switch (format) {
+    case gfx::BufferFormat::BGR_565:
+      return 16;
+    case gfx::BufferFormat::BGRX_8888:
+      return 24;
+    case gfx::BufferFormat::BGRA_1010102:
+    case gfx::BufferFormat::BGRA_8888:
+      return 32;
+    default:
+      NOTREACHED();
+      return 0;
+  }
+}
+
+int Bpp(gfx::BufferFormat format) {
+  switch (format) {
+    case gfx::BufferFormat::BGR_565:
+      return 16;
+    case gfx::BufferFormat::BGRX_8888:
+    case gfx::BufferFormat::BGRA_1010102:
+    case gfx::BufferFormat::BGRA_8888:
+      return 32;
+    default:
+      NOTREACHED();
+      return 0;
+  }
 }
 
 }  // namespace
 
+x11::Pixmap XPixmapFromNativePixmap(
+    const gfx::NativePixmapDmaBuf& native_pixmap,
+    gfx::BufferFormat buffer_format) {
+  int depth = Depth(buffer_format);
+  int bpp = Bpp(buffer_format);
+  auto fd = HANDLE_EINTR(dup(native_pixmap.GetDmaBufFd(0)));
+  if (fd < 0)
+    return x11::Pixmap::None;
+  x11::RefCountedFD ref_counted_fd(fd);
+
+  auto* connection = x11::Connection::Get();
+  x11::Pixmap pixmap_id = connection->GenerateId<x11::Pixmap>();
+  // This should be synced. Otherwise, glXCreatePixmap may fail on ChromeOS
+  // with "failed to create a drawable" error.
+  connection->dri3()
+      .PixmapFromBuffer(pixmap_id, connection->default_root(),
+                        native_pixmap.GetDmaBufPlaneSize(0),
+                        native_pixmap.GetBufferSize().width(),
+                        native_pixmap.GetBufferSize().height(),
+                        native_pixmap.GetDmaBufPitch(0), depth, bpp,
+                        ref_counted_fd)
+      .Sync();
+  return pixmap_id;
+}
+
 GLXFBConfig GetFbConfigForWindow(x11::Connection* connection,
                                  x11::Window window) {
-  auto xproto_config = GetConfigForWindow(connection, window);
+  return GetGlxFbConfigForXProtoFbConfig(
+      connection, GetConfigForWindow(connection, window));
+}
+
+GLXFBConfig GetGlxFbConfigForXProtoFbConfig(x11::Connection* connection,
+                                            x11::Glx::FbConfig xproto_config) {
   if (xproto_config == x11::Glx::FbConfig{})
     return nullptr;
   int attrib_list[] = {GLX_FBCONFIG_ID, static_cast<int>(xproto_config), 0};
   int nitems = 0;
   GLXFBConfig* glx_configs =
-      glXChooseFBConfig(connection->display(), connection->DefaultScreenId(),
-                        attrib_list, &nitems);
-  DCHECK_EQ(nitems, 1);
-  DCHECK(glx_configs);
+      glXChooseFBConfig(connection->GetXlibDisplay(),
+                        connection->DefaultScreenId(), attrib_list, &nitems);
+  if (!glx_configs)
+    return nullptr;
   GLXFBConfig glx_config = glx_configs[0];
-  XlibFree(glx_configs);
+  x11::XlibFree(glx_configs);
   return glx_config;
 }
 

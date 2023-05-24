@@ -47,15 +47,12 @@
 
 #include <string>
 
+#include "base/values.h"
 #include "pdf/buildflags.h"
 
 #if !BUILDFLAG(ENABLE_PDF)
 #error "PDF must be enabled"
 #endif
-
-namespace base {
-class Value;
-}
 
 namespace pdf_extension_util {
 
@@ -67,11 +64,12 @@ enum class PdfViewerContext {
 };
 
 // Adds all strings used by the PDF Viewer depending on the provided |context|.
-void AddStrings(PdfViewerContext context, base::Value* dict);
+void AddStrings(PdfViewerContext context, base::Value::Dict* dict);
 
-// Adds additional data used by the PDF Viewer UI in |dict|, for example
+// Adds additional data used by the PDF Viewer UI in `dict`, for example
 // whether certain features are enabled/disabled.
-void AddAdditionalData(base::Value* dict);
+// `enable_annotations` only applies on platforms that supports annotations.
+void AddAdditionalData(bool enable_annotations, base::Value::Dict* dict);
 
 }  // namespace pdf_extension_util
 

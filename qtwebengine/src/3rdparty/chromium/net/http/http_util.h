@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,10 +12,9 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_tokenizer.h"
+#include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "net/base/net_export.h"
 #include "net/http/http_byte_range.h"
@@ -28,6 +27,8 @@
 #define HTTP_LWS " \t"
 
 namespace net {
+
+class HttpResponseHeaders;
 
 class NET_EXPORT HttpUtil {
  public:
@@ -94,11 +95,11 @@ class NET_EXPORT HttpUtil {
   // RFC 7231).
   static bool IsMethodIdempotent(base::StringPiece method);
 
-  // Returns true if it is safe to allow users and scripts to specify the header
-  // named |name|. Returns true for headers not in the list at
-  // https://fetch.spec.whatwg.org/#forbidden-header-name. Does not check header
-  // validity.
-  static bool IsSafeHeader(base::StringPiece name);
+  // Returns true if it is safe to allow users and scripts to specify a header
+  // with a given |name| and |value|.
+  // See https://fetch.spec.whatwg.org/#forbidden-request-header.
+  // Does not check header validity.
+  static bool IsSafeHeader(base::StringPiece name, base::StringPiece value);
 
   // Returns true if |name| is a valid HTTP header name.
   static bool IsValidHeaderName(base::StringPiece name);
@@ -120,12 +121,18 @@ class NET_EXPORT HttpUtil {
   // Trim HTTP_LWS chars from the beginning and end of the string.
   static void TrimLWS(std::string::const_iterator* begin,
                       std::string::const_iterator* end);
-  static base::StringPiece TrimLWS(const base::StringPiece& string);
+  static base::StringPiece TrimLWS(base::StringPiece string);
 
   // Whether the character is a valid |tchar| as defined in RFC 7230 Sec 3.2.6.
   static bool IsTokenChar(char c);
   // Whether the string is a valid |token| as defined in RFC 7230 Sec 3.2.6.
   static bool IsToken(base::StringPiece str);
+
+  // Whether the character is a control character (CTL) as defined in RFC 5234
+  // Appendix B.1.
+  static inline bool IsControlChar(char c) {
+    return (c >= 0x00 && c <= 0x1F) || c == 0x7F;
+  }
 
   // Whether the string is a valid |parmname| as defined in RFC 5987 Sec 3.2.1.
   static bool IsParmName(base::StringPiece str);
@@ -141,8 +148,8 @@ class NET_EXPORT HttpUtil {
   // unescaped actually is a valid quoted string. Returns false for an empty
   // string, a string without quotes, a string with mismatched quotes, and
   // a string with unescaped embeded quotes.
-  static bool StrictUnquote(base::StringPiece str,
-                            std::string* out) WARN_UNUSED_RESULT;
+  [[nodiscard]] static bool StrictUnquote(base::StringPiece str,
+                                          std::string* out);
 
   // The reverse of Unquote() -- escapes and surrounds with "
   static std::string Quote(base::StringPiece str);
@@ -254,6 +261,12 @@ class NET_EXPORT HttpUtil {
   static bool ParseContentEncoding(const std::string& content_encoding,
                                    std::set<std::string>* used_encodings);
 
+  // Return true if `headers` contain multiple `field_name` fields with
+  // different values.
+  static bool HeadersContainMultipleCopiesOfField(
+      const HttpResponseHeaders& headers,
+      const std::string& field_name);
+
   // Used to iterate over the name/value pairs of HTTP headers.  To iterate
   // over the values in a multi-value header, use ValuesIterator.
   // See AssembleRawHeaders for joining line continuations (this iterator
@@ -292,7 +305,7 @@ class NET_EXPORT HttpUtil {
       return std::string(name_begin_, name_end_);
     }
     base::StringPiece name_piece() const {
-      return base::StringPiece(name_begin_, name_end_);
+      return base::MakeStringPiece(name_begin_, name_end_);
     }
 
     std::string::const_iterator values_begin() const {
@@ -305,7 +318,7 @@ class NET_EXPORT HttpUtil {
       return std::string(values_begin_, values_end_);
     }
     base::StringPiece values_piece() const {
-      return base::StringPiece(values_begin_, values_end_);
+      return base::MakeStringPiece(values_begin_, values_end_);
     }
 
    private:
@@ -349,7 +362,7 @@ class NET_EXPORT HttpUtil {
       return std::string(value_begin_, value_end_);
     }
     base::StringPiece value_piece() const {
-      return base::StringPiece(value_begin_, value_end_);
+      return base::MakeStringPiece(value_begin_, value_end_);
     }
 
    private:
@@ -409,7 +422,7 @@ class NET_EXPORT HttpUtil {
     std::string::const_iterator name_end() const { return name_end_; }
     std::string name() const { return std::string(name_begin_, name_end_); }
     base::StringPiece name_piece() const {
-      return base::StringPiece(name_begin_, name_end_);
+      return base::MakeStringPiece(name_begin_, name_end_);
     }
 
     // The value of the current name-value pair.
@@ -425,7 +438,7 @@ class NET_EXPORT HttpUtil {
     }
     base::StringPiece value_piece() const {
       return value_is_quoted_ ? unquoted_value_
-                              : base::StringPiece(value_begin_, value_end_);
+                              : base::MakeStringPiece(value_begin_, value_end_);
     }
 
     bool value_is_quoted() const { return value_is_quoted_; }
@@ -436,7 +449,7 @@ class NET_EXPORT HttpUtil {
 
    private:
     HttpUtil::ValuesIterator props_;
-    bool valid_;
+    bool valid_ = true;
 
     std::string::const_iterator name_begin_;
     std::string::const_iterator name_end_;
@@ -449,7 +462,7 @@ class NET_EXPORT HttpUtil {
     // into the original's unquoted_value_ member.
     std::string unquoted_value_;
 
-    bool value_is_quoted_;
+    bool value_is_quoted_ = false;
 
     // True if values are required for each name/value pair; false if a
     // name is permitted to appear without a corresponding value.

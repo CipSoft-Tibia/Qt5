@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,9 @@
 
 #include <stddef.h>
 
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/renderer/modules/peerconnection/mock_peer_connection_impl.h"
+#include "third_party/blink/renderer/modules/peerconnection/mock_rtc_peer_connection_handler_platform.h"
 #include "third_party/webrtc/api/media_stream_interface.h"
 #include "third_party/webrtc/api/scoped_refptr.h"
 
@@ -51,19 +52,20 @@ bool MockWebRtcAudioSource::remote() const {
 
 MockMediaStream::MockMediaStream(const std::string& id) : id_(id) {}
 
-bool MockMediaStream::AddTrack(AudioTrackInterface* track) {
-  audio_track_vector_.push_back(track);
+bool MockMediaStream::AddTrack(rtc::scoped_refptr<AudioTrackInterface> track) {
+  audio_track_vector_.emplace_back(track);
   NotifyObservers();
   return true;
 }
 
-bool MockMediaStream::AddTrack(VideoTrackInterface* track) {
-  video_track_vector_.push_back(track);
+bool MockMediaStream::AddTrack(rtc::scoped_refptr<VideoTrackInterface> track) {
+  video_track_vector_.emplace_back(track);
   NotifyObservers();
   return true;
 }
 
-bool MockMediaStream::RemoveTrack(AudioTrackInterface* track) {
+bool MockMediaStream::RemoveTrack(
+    rtc::scoped_refptr<AudioTrackInterface> track) {
   auto it = FindTrack(&audio_track_vector_, track->id());
   if (it == audio_track_vector_.end())
     return false;
@@ -72,7 +74,8 @@ bool MockMediaStream::RemoveTrack(AudioTrackInterface* track) {
   return true;
 }
 
-bool MockMediaStream::RemoveTrack(VideoTrackInterface* track) {
+bool MockMediaStream::RemoveTrack(
+    rtc::scoped_refptr<VideoTrackInterface> track) {
   auto it = FindTrack(&video_track_vector_, track->id());
   if (it == video_track_vector_.end())
     return false;
@@ -307,51 +310,6 @@ void MockWebRtcVideoTrackSource::AddOrUpdateSink(
 void MockWebRtcVideoTrackSource::RemoveSink(
     rtc::VideoSinkInterface<webrtc::VideoFrame>* sink) {}
 
-class MockSessionDescription : public SessionDescriptionInterface {
- public:
-  MockSessionDescription(const std::string& type, const std::string& sdp)
-      : type_(type), sdp_(sdp) {}
-  ~MockSessionDescription() override {}
-  cricket::SessionDescription* description() override {
-    NOTIMPLEMENTED();
-    return nullptr;
-  }
-  const cricket::SessionDescription* description() const override {
-    NOTIMPLEMENTED();
-    return nullptr;
-  }
-  std::string session_id() const override {
-    NOTIMPLEMENTED();
-    return std::string();
-  }
-  std::string session_version() const override {
-    NOTIMPLEMENTED();
-    return std::string();
-  }
-  std::string type() const override { return type_; }
-  bool AddCandidate(const IceCandidateInterface* candidate) override {
-    NOTIMPLEMENTED();
-    return false;
-  }
-  size_t number_of_mediasections() const override {
-    NOTIMPLEMENTED();
-    return 0;
-  }
-  const IceCandidateCollection* candidates(
-      size_t mediasection_index) const override {
-    NOTIMPLEMENTED();
-    return nullptr;
-  }
-
-  bool ToString(std::string* out) const override {
-    *out = sdp_;
-    return true;
-  }
-
- private:
-  std::string type_;
-  std::string sdp_;
-};
 
 class MockIceCandidate : public IceCandidateInterface {
  public:
@@ -379,11 +337,9 @@ class MockIceCandidate : public IceCandidateInterface {
 };
 
 MockPeerConnectionDependencyFactory::MockPeerConnectionDependencyFactory()
-    : blink::PeerConnectionDependencyFactory(
-          /*create_p2p_socket_dispatcher =*/false),
-      signaling_thread_("MockPCFactory WebRtc Signaling Thread") {
+    : thread_("MockPCFactory WebRtc Signaling/Networking Thread") {
   EnsureWebRtcAudioDeviceImpl();
-  CHECK(signaling_thread_.Start());
+  CHECK(thread_.Start());
 }
 
 MockPeerConnectionDependencyFactory::~MockPeerConnectionDependencyFactory() {}
@@ -392,15 +348,17 @@ scoped_refptr<webrtc::PeerConnectionInterface>
 MockPeerConnectionDependencyFactory::CreatePeerConnection(
     const webrtc::PeerConnectionInterface::RTCConfiguration& config,
     blink::WebLocalFrame* frame,
-    webrtc::PeerConnectionObserver* observer) {
+    webrtc::PeerConnectionObserver* observer,
+    ExceptionState& exception_state) {
   return new rtc::RefCountedObject<MockPeerConnectionImpl>(this, observer);
 }
 
 scoped_refptr<webrtc::VideoTrackSourceInterface>
 MockPeerConnectionDependencyFactory::CreateVideoTrackSourceProxy(
     webrtc::VideoTrackSourceInterface* source) {
-  return nullptr;
+  return source;
 }
+
 scoped_refptr<webrtc::MediaStreamInterface>
 MockPeerConnectionDependencyFactory::CreateLocalMediaStream(
     const String& label) {
@@ -416,16 +374,6 @@ MockPeerConnectionDependencyFactory::CreateLocalVideoTrack(
   return track;
 }
 
-SessionDescriptionInterface*
-MockPeerConnectionDependencyFactory::CreateSessionDescription(
-    const String& type,
-    const String& sdp,
-    webrtc::SdpParseError* error) {
-  if (fail_to_create_session_description_)
-    return nullptr;
-  return new MockSessionDescription(type.Utf8(), sdp.Utf8());
-}
-
 webrtc::IceCandidateInterface*
 MockPeerConnectionDependencyFactory::CreateIceCandidate(const String& sdp_mid,
                                                         int sdp_mline_index,
@@ -435,7 +383,12 @@ MockPeerConnectionDependencyFactory::CreateIceCandidate(const String& sdp_mid,
 
 scoped_refptr<base::SingleThreadTaskRunner>
 MockPeerConnectionDependencyFactory::GetWebRtcSignalingTaskRunner() {
-  return signaling_thread_.task_runner();
+  return thread_.task_runner();
+}
+
+scoped_refptr<base::SingleThreadTaskRunner>
+MockPeerConnectionDependencyFactory::GetWebRtcNetworkTaskRunner() {
+  return thread_.task_runner();
 }
 
 void MockPeerConnectionDependencyFactory::SetFailToCreateSessionDescription(

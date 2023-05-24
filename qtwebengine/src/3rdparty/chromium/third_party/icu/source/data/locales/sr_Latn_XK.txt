@@ -1,13 +1,13 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 sr_Latn_XK{
-    Version{"37"}
     calendar{
         generic{
             intervalFormats{
                 MMMEd{
-                    M{"E, d. MMM – E, d. MMM"}
-                    d{"E, d – E, d. MMM"}
+                    M{"E, d. MMM – E, d. MMM"}
+                    d{"E, d – E, d. MMM"}
                 }
             }
         }

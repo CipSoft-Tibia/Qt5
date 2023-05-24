@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 #
 # Copyright 2019 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
@@ -8,8 +8,6 @@ Update Chromium to ToT devtools-frontend.
 """
 
 import argparse
-import os
-import shutil
 import subprocess
 import sys
 
@@ -26,7 +24,7 @@ def update(options):
     # Update from upstream
     subprocess.check_call(['git', 'fetch', 'origin'],
                           cwd=options.chromium_dir)
-    subprocess.check_call(['git', 'checkout', 'origin/master'],
+    subprocess.check_call(['git', 'checkout', 'origin/main'],
                           cwd=options.chromium_dir)
     subprocess.check_call(['git', 'fetch', 'origin'],
                           cwd=options.devtools_dir)

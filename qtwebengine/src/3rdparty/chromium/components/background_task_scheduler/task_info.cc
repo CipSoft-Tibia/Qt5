@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,33 +18,11 @@ OneOffInfo::OneOffInfo()
 
 OneOffInfo::~OneOffInfo() = default;
 
-ExactInfo::ExactInfo() : trigger_at_ms(0) {}
-
-ExactInfo::~ExactInfo() = default;
-
 TaskInfo::TaskInfo(int task_id, const PeriodicInfo& timing_info)
-    : task_id(task_id),
-      network_type(NetworkType::NONE),
-      requires_charging(false),
-      is_persisted(false),
-      update_current(false),
-      periodic_info(timing_info) {}
+    : task_id(task_id), periodic_info(timing_info) {}
 
 TaskInfo::TaskInfo(int task_id, const OneOffInfo& timing_info)
-    : task_id(task_id),
-      network_type(NetworkType::NONE),
-      requires_charging(false),
-      is_persisted(false),
-      update_current(false),
-      one_off_info(timing_info) {}
-
-TaskInfo::TaskInfo(int task_id, const ExactInfo& timing_info)
-    : task_id(task_id),
-      network_type(NetworkType::NONE),
-      requires_charging(false),
-      is_persisted(false),
-      update_current(false),
-      exact_info(timing_info) {}
+    : task_id(task_id), one_off_info(timing_info) {}
 
 TaskInfo::~TaskInfo() = default;
 

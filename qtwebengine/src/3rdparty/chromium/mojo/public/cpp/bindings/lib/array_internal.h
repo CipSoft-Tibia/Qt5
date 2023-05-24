@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,11 +13,11 @@
 
 #include "base/check.h"
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "mojo/public/c/system/macros.h"
 #include "mojo/public/cpp/bindings/lib/bindings_internal.h"
 #include "mojo/public/cpp/bindings/lib/buffer.h"
-#include "mojo/public/cpp/bindings/lib/serialization_util.h"
+#include "mojo/public/cpp/bindings/lib/message_fragment.h"
 #include "mojo/public/cpp/bindings/lib/template_util.h"
 #include "mojo/public/cpp/bindings/lib/validate_params.h"
 #include "mojo/public/cpp/bindings/lib/validation_context.h"
@@ -47,12 +47,10 @@ struct ArrayDataTraits {
   using ConstRef = const T&;
 
   static const uint32_t kMaxNumElements =
-      (std::numeric_limits<uint32_t>::max() - sizeof(ArrayHeader)) /
-      sizeof(StorageType);
+      MessageFragmentArrayTraits<T>::kMaxNumElements;
 
   static uint32_t GetStorageSize(uint32_t num_elements) {
-    DCHECK(num_elements <= kMaxNumElements);
-    return sizeof(ArrayHeader) + sizeof(StorageType) * num_elements;
+    return MessageFragmentArrayTraits<T>::GetStorageSize(num_elements);
   }
   static Ref ToRef(StorageType* storage, size_t offset) {
     return storage[offset];
@@ -82,23 +80,24 @@ struct ArrayDataTraits<bool> {
     friend struct ArrayDataTraits<bool>;
     BitRef(uint8_t* storage, uint8_t mask);
     BitRef();
-    uint8_t* storage_;
+    raw_ptr<uint8_t> storage_;
     uint8_t mask_;
   };
 
   // Because each element consumes only 1/8 byte.
   static const uint32_t kMaxNumElements =
-      std::numeric_limits<uint32_t>::max() - 7;
+      MessageFragmentArrayTraits<bool>::kMaxNumElements;
 
   using StorageType = uint8_t;
   using Ref = BitRef;
   using ConstRef = bool;
 
   static uint32_t GetStorageSize(uint32_t num_elements) {
-    return sizeof(ArrayHeader) + ((num_elements + 7) / 8);
+    return MessageFragmentArrayTraits<bool>::GetStorageSize(num_elements);
   }
   static BitRef ToRef(StorageType* storage, size_t offset) {
-    return BitRef(&storage[offset / 8], 1 << (offset % 8));
+    return BitRef(&storage[offset / 8],
+                  static_cast<uint8_t>(1 << (offset % 8)));
   }
   static bool ToConstRef(const StorageType* storage, size_t offset) {
     return (storage[offset / 8] & (1 << (offset % 8))) != 0;
@@ -279,35 +278,6 @@ class Array_Data {
           std::is_same<T, Handle_Data>::value>;
   using Element = T;
 
-  class BufferWriter {
-   public:
-    BufferWriter() = default;
-
-    void Allocate(size_t num_elements, Buffer* buffer) {
-      CHECK_LE(num_elements, Traits::kMaxNumElements);
-
-      uint32_t num_bytes =
-          Traits::GetStorageSize(static_cast<uint32_t>(num_elements));
-      buffer_ = buffer;
-      index_ = buffer_->Allocate(num_bytes);
-      new (data())
-          Array_Data<T>(num_bytes, static_cast<uint32_t>(num_elements));
-    }
-
-    bool is_null() const { return !buffer_; }
-    Array_Data<T>* data() {
-      DCHECK(!is_null());
-      return buffer_->Get<Array_Data<T>>(index_);
-    }
-    Array_Data<T>* operator->() { return data(); }
-
-   private:
-    Buffer* buffer_ = nullptr;
-    size_t index_ = 0;
-
-    DISALLOW_COPY_AND_ASSIGN(BufferWriter);
-  };
-
   static bool Validate(const void* data,
                        ValidationContext* validation_context,
                        const ContainerValidateParams* validate_params) {
@@ -370,11 +340,12 @@ class Array_Data {
   }
 
   const StorageType* storage() const {
-    return reinterpret_cast<const StorageType*>(
-        reinterpret_cast<const char*>(this) + sizeof(*this));
+    return reinterpret_cast<const StorageType*>(this + 1);
   }
 
  private:
+  friend class MessageFragment<Array_Data>;
+
   Array_Data(uint32_t num_bytes, uint32_t num_elements) {
     header_.num_bytes = num_bytes;
     header_.num_elements = num_elements;

@@ -1,10 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <stdio.h>
 
-#include "base/bind.h"
+#include <memory>
+
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/test/launcher/unit_test_launcher.h"
@@ -24,9 +26,9 @@ class MojoEnabledTestEnvironment final : public testing::Environment {
     mojo::core::Init();
     mojo_ipc_thread_.StartWithOptions(
         base::Thread::Options(base::MessagePumpType::IO, 0));
-    mojo_ipc_support_.reset(new mojo::core::ScopedIPCSupport(
+    mojo_ipc_support_ = std::make_unique<mojo::core::ScopedIPCSupport>(
         mojo_ipc_thread_.task_runner(),
-        mojo::core::ScopedIPCSupport::ShutdownPolicy::FAST));
+        mojo::core::ScopedIPCSupport::ShutdownPolicy::FAST);
     VLOG(1) << "Mojo initialized";
   }
 

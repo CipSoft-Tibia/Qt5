@@ -6,7 +6,8 @@
 #                      \___/_/\_\ .__/ \__,_|\__|
 #                               |_| XML parser
 #
-# Copyright (c) 2019 Expat development team
+# Copyright (c) 2019-2022 Sebastian Pipping <sebastian@pipping.org>
+# Copyright (c) 2022      Rosen Penev <rosenp@gmail.com>
 # Licensed under the MIT license:
 #
 # Permission is  hereby granted,  free of charge,  to any  person obtaining
@@ -32,18 +33,30 @@ set -e
 set -u
 set -o pipefail
 
+clang-format --version
+
+clang_format_args=(
+    -i
+    -style=file
+    -verbose
+)
+
+if [[ $# -ge 1 ]]; then
+    exec clang-format "${clang_format_args[@]}" "$@"
+fi
+
 expand --tabs=2 --initial lib/siphash.h | sponge lib/siphash.h
 
-find \
+find . \
         -name '*.[ch]' \
         -o -name '*.cpp' \
         -o -name '*.cxx' \
         -o -name '*.h.cmake' \
     | sort \
-    | xargs clang-format -i -style=file -verbose
+    | xargs clang-format "${clang_format_args[@]}"
 
 sed \
         -e 's, @$,@,' \
-        -e 's,#\( \+\)cmakedefine,\1#cmakedefine,' \
+        -e 's,#\( \+\)cmakedefine,#cmakedefine,' \
         -i \
         expat_config.h.cmake

@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QLoggingCategory>
 
+#include <qfontinfo.h>
 #include <qtextdocument.h>
 #include <qtexttable.h>
 #include <qvariant.h>
@@ -40,6 +17,8 @@
 #include <qdebug.h>
 
 #include <private/qtextcursor_p.h>
+
+Q_LOGGING_CATEGORY(lcTests, "qt.gui.tests")
 
 QT_FORWARD_DECLARE_CLASS(QTextDocument)
 
@@ -110,6 +89,14 @@ private slots:
     void selectVisually();
 
     void insertText();
+#ifndef QT_NO_TEXTHTMLPARSER
+    void insertHtml_data();
+    void insertHtml();
+#endif
+#if QT_CONFIG(textmarkdownreader)
+    void insertMarkdown_data();
+    void insertMarkdown();
+#endif
 
     void insertFragmentShouldUseCurrentCharFormat();
 
@@ -708,14 +695,14 @@ void tst_QTextCursor::checkFrame1()
 {
     QCOMPARE(cursor.position(), 0);
     QPointer<QTextFrame> frame = cursor.insertFrame(QTextFrameFormat());
-    QVERIFY(frame != 0);
+    QVERIFY(frame != nullptr);
 
     QTextFrame *root = frame->parentFrame();
-    QVERIFY(root != 0);
+    QVERIFY(root != nullptr);
 
     QCOMPARE(frame->firstPosition(), 1);
     QCOMPARE(frame->lastPosition(), 1);
-    QVERIFY(frame->parentFrame() != 0);
+    QVERIFY(frame->parentFrame() != nullptr);
     QCOMPARE(root->childFrames().size(), 1);
 
     QCOMPARE(cursor.position(), 1);
@@ -1280,7 +1267,7 @@ void tst_QTextCursor::anchorInitialized1()
 void tst_QTextCursor::anchorInitialized2()
 {
     cursor.insertBlock();
-    cursor = QTextCursorPrivate::fromPosition(cursor.block().docHandle(), 1);
+    cursor = QTextCursorPrivate::fromPosition(const_cast<QTextDocumentPrivate *>(QTextDocumentPrivate::get(cursor.block())), 1);
     QCOMPARE(cursor.position(), 1);
     QCOMPARE(cursor.anchor(), 1);
     QCOMPARE(cursor.selectionStart(), 1);
@@ -1428,6 +1415,221 @@ void tst_QTextCursor::insertText()
     QCOMPARE(cursor.block().text(), QString("yoyodyne"));
 }
 
+
+#ifndef QT_NO_TEXTHTMLPARSER
+
+void tst_QTextCursor::insertHtml_data()
+{
+    QTest::addColumn<QString>("initialText");
+    QTest::addColumn<int>("expectedInitialBlockCount");
+    QTest::addColumn<bool>("insertBlock");
+    QTest::addColumn<bool>("insertAsPlainText");
+    QTest::addColumn<int>("insertPosition");
+    QTest::addColumn<QString>("insertText");
+    QTest::addColumn<QString>("expectedSelText");
+    QTest::addColumn<QString>("expectedText");
+    QTest::addColumn<QString>("expectedMarkdown");
+
+    const QString htmlHeadingString("<h1>Hello World</h1>");
+
+    QTest::newRow("insert as html at end of heading")
+            << htmlHeadingString << 1
+            << false << false << 11 << QString("Other\ntext")
+            << QString("Hello WorldOther text")
+            << QString("Hello WorldOther text")
+            << QString("# Hello WorldOther text\n\n");
+
+    QTest::newRow("insert as html in new block at end of heading")
+            << htmlHeadingString << 1
+            << false << true << 11 << QString("Other\ntext")
+            << QString("Hello WorldOther\u2029text")
+            << QString("Hello WorldOther\ntext")
+            << QString("# Hello WorldOther\n\n# text\n\n");
+
+    QTest::newRow("insert as html in middle of heading")
+            << htmlHeadingString << 1
+            << false << false << 6 << QString("\n\nOther\ntext\n\n")
+            << QString("Hello Other text World")
+            << QString("Hello Other text World")
+            << QString("# Hello Other text World\n\n");
+
+    QTest::newRow("insert as text at end of heading")
+            << htmlHeadingString << 1
+            << true << false << 11 << QString("\n\nOther\ntext")
+            << QString("Hello World\u2029Other text")
+            << QString("Hello World\nOther text")
+            << QString("# Hello World\n\nOther text\n\n");
+
+    QTest::newRow("insert as text in new block at end of heading")
+            << htmlHeadingString << 1
+            << true << true << 11 << QString("\n\nOther\ntext")
+            << QString("Hello World\u2029\u2029\u2029Other\u2029text")
+            << QString("Hello World\n\n\nOther\ntext")
+            << QString("# Hello World\n\n**Other**\n\n**text**\n\n");
+
+    QTest::newRow("insert as text in middle of heading")
+            << htmlHeadingString << 1
+            << true << false << 6 << QString("Other\ntext")
+            << QString("Hello \u2029Other textWorld")
+            << QString("Hello \nOther textWorld")
+            << QString("# Hello \n\nOther text**World**\n\n");
+}
+
+void tst_QTextCursor::insertHtml()
+{
+    QFETCH(QString, initialText);
+    QFETCH(int, expectedInitialBlockCount);
+    QFETCH(bool, insertBlock);
+    QFETCH(bool, insertAsPlainText);
+    QFETCH(int, insertPosition);
+    QFETCH(QString, insertText);
+    QFETCH(QString, expectedSelText);
+    QFETCH(QString, expectedText);
+    QFETCH(QString, expectedMarkdown);
+
+    cursor.insertHtml(initialText);
+    QCOMPARE(blockCount(), expectedInitialBlockCount);
+    cursor.setPosition(insertPosition);
+    if (insertBlock)
+        cursor.insertBlock(QTextBlockFormat());
+    qCDebug(lcTests) << "pos" << cursor.position() << "block" << cursor.blockNumber()
+                     << "heading" << cursor.blockFormat().headingLevel();
+    if (insertAsPlainText)
+        cursor.insertText(insertText);
+    else
+        cursor.insertHtml(insertText);
+    cursor.select(QTextCursor::Document);
+    qCDebug(lcTests) << "sel text after insertion" << cursor.selectedText();
+    qCDebug(lcTests) << "text after insertion" << cursor.document()->toPlainText();
+    qCDebug(lcTests) << "html after insertion" << cursor.document()->toHtml();
+    qCDebug(lcTests) << "markdown after insertion" << cursor.document()->toMarkdown();
+    QCOMPARE(cursor.selectedText(), expectedSelText);
+    QCOMPARE(cursor.document()->toPlainText(), expectedText);
+    if (auto defaultFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont); QFontInfo(defaultFont).fixedPitch()) {
+        qWarning() << defaultFont << "is QFontDatabase::GeneralFont, and is fixedPitch";
+        QSKIP("cannot reliably distinguish normal and monospace markdown spans on this system (QTBUG-103484)");
+    }
+    QCOMPARE(cursor.document()->toMarkdown(), expectedMarkdown);
+}
+
+#endif // QT_NO_TEXTHTMLPARSER
+
+#if QT_CONFIG(textmarkdownreader)
+
+void tst_QTextCursor::insertMarkdown_data()
+{
+    QTest::addColumn<QString>("initialText");
+    QTest::addColumn<int>("expectedInitialBlockCount");
+    QTest::addColumn<int>("insertPosition");
+    QTest::addColumn<QString>("insertText");
+    QTest::addColumn<QString>("expectedSelText");
+    QTest::addColumn<QString>("expectedText");
+    QTest::addColumn<QString>("expectedMarkdown");
+
+    QTest::newRow("bold fragment in italic span")
+            << "someone said *hello world*" << 1
+            << 19 << QString(" **crazy** ")
+            << QString("someone said hello crazyworld")
+            << QString("someone said hello crazyworld")
+            << QString("someone said *hello ***crazy***world*\n\n"); // explicit B+I: not necessary but OK
+
+    QTest::newRow("list in a paragraph")
+            << "hello list with 3 items" << 1
+            << 10 << QString("1. one\n2. two\n")
+            << QString("hello list\u2029one\u2029two\u2029 with 3 items")
+            << QString("hello list\none\ntwo\n with 3 items")
+            << QString("hello list\n\n1.  one\n2.  two\n3.   with 3 items\n");
+
+    QTest::newRow("list in a list")
+            << "1) bread\n2) milk\n" << 2
+            << 6 << QString("0) eggs\n1) maple syrup\n")
+            << QString("bread\u2029eggs\u2029maple syrup\u2029milk")
+            << QString("bread\neggs\nmaple syrup\nmilk")
+            << QString("1)  bread\n2)  eggs\n0)  maple syrup\n1)  milk\n");
+    // Renumbering would happen if we re-read the whole document.
+    // Currently insertion only uses the new list format after a paragraph separator.
+    // For that reason "bread" and "eggs" use the original list format, while "maple syrup" and
+    // "milk" use the format from the just inserted list.
+
+    QTest::newRow("list after a list")
+            << "1) bread\n2) milk\n\n" << 2
+            << 13 << QString("\n0) eggs\n1) maple syrup\n")
+            << QString("bread\u2029milk\u2029eggs\u2029maple syrup")
+            << QString("bread\nmilk\neggs\nmaple syrup")
+            << QString("1)  bread\n2)  milk\n3)  eggs\n0)  maple syrup\n");
+    // Same behavior as above. "eggs" uses the original list format, but "maple syrup" uses the
+    // format of the inserted list, which means "maple syrup" now has a start of 0.
+
+    const QString markdownHeadingString("# Hello\nWorld\n");
+
+    QTest::newRow("markdown heading at end of markdown heading")
+            << markdownHeadingString << 2
+            << 11 << QString("\n\n## Other text")
+            << QString("Hello\u2029World\u2029Other text")
+            << QString("Hello\nWorld\nOther text")
+            << QString("# Hello\n\nWorld\n\n## Other text\n\n");
+
+    QTest::newRow("markdown heading into middle of markdown heading")
+            << markdownHeadingString << 2
+            << 6 << QString("## Other\ntext\n\n")
+            << QString("Hello\u2029Other\u2029text\u2029World")
+            << QString("Hello\nOther\ntext\nWorld")
+            << QString("# Hello\n\n**Other**\n\ntext\n\nWorld\n\n");
+
+    QTest::newRow("markdown heading without trailing newline into middle of markdown heading")
+            << markdownHeadingString << 2
+            << 6 << QString("## Other\ntext")
+            << QString("Hello\u2029Other\u2029textWorld")
+            << QString("Hello\nOther\ntextWorld")
+            << QString("# Hello\n\n**Other**\n\ntextWorld\n\n");
+
+    QTest::newRow("text into middle of markdown heading after newline")
+            << markdownHeadingString << 2
+            << 6 << QString("Other ")
+            << QString("Hello\u2029OtherWorld")
+            << QString("Hello\nOtherWorld")
+            << QString("# Hello\n\nOtherWorld\n\n");
+
+    QTest::newRow("text into middle of markdown heading before newline")
+            << markdownHeadingString << 2
+            << 5 << QString(" Other ")
+            << QString("HelloOther\u2029World")
+            << QString("HelloOther\nWorld")
+            << QString("# HelloOther\n\nWorld\n\n");
+}
+
+void tst_QTextCursor::insertMarkdown()
+{
+    QFETCH(QString, initialText);
+    QFETCH(int, expectedInitialBlockCount);
+    QFETCH(int, insertPosition);
+    QFETCH(QString, insertText);
+    QFETCH(QString, expectedSelText);
+    QFETCH(QString, expectedText);
+    QFETCH(QString, expectedMarkdown);
+
+    cursor.insertMarkdown(initialText);
+    QCOMPARE(blockCount(), expectedInitialBlockCount);
+    cursor.setPosition(insertPosition);
+    qCDebug(lcTests) << "pos" << cursor.position() << "block" << cursor.blockNumber()
+                     << "heading" << cursor.blockFormat().headingLevel();
+    cursor.insertMarkdown(insertText);
+    cursor.select(QTextCursor::Document);
+    qCDebug(lcTests) << "sel text after insertion" << cursor.selectedText();
+    qCDebug(lcTests) << "text after insertion" << cursor.document()->toPlainText();
+    qCDebug(lcTests) << "html after insertion" << cursor.document()->toHtml();
+    qCDebug(lcTests) << "markdown after insertion" << cursor.document()->toMarkdown();
+    QCOMPARE(cursor.selectedText(), expectedSelText);
+    QCOMPARE(cursor.document()->toPlainText(), expectedText);
+    if (auto defaultFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont); QFontInfo(defaultFont).fixedPitch()) {
+        qWarning() << defaultFont << "is QFontDatabase::GeneralFont, and is fixedPitch";
+        QSKIP("cannot reliably distinguish normal and monospace markdown spans on this system (QTBUG-103484)");
+    }
+    QCOMPARE(cursor.document()->toMarkdown(), expectedMarkdown);
+}
+
+#endif // textmarkdownreader
+
 void tst_QTextCursor::insertFragmentShouldUseCurrentCharFormat()
 {
     QTextDocumentFragment fragment = QTextDocumentFragment::fromPlainText("Hello World");
@@ -1557,26 +1759,26 @@ void tst_QTextCursor::update_data()
     QTest::newRow("removeInsideSelection")
         << text
         << /*position*/ 0
-        << /*anchor*/ text.length()
+        << /*anchor*/ int(text.size())
         // delete 'big'
         << 6
         << 6 + charsToDelete
         << QString() // don't insert anything, just remove
         << /*expectedPosition*/ 0
-        << /*expectedAnchor*/ text.length() - charsToDelete
+        << /*expectedAnchor*/ int(text.size() - charsToDelete)
         ;
 
     text = "Hello big world";
     charsToDelete = 3;
     QTest::newRow("removeInsideSelectionWithSwappedAnchorAndPosition")
         << text
-        << /*position*/ text.length()
+        << /*position*/ int(text.size())
         << /*anchor*/ 0
         // delete 'big'
         << 6
         << 6 + charsToDelete
         << QString() // don't insert anything, just remove
-        << /*expectedPosition*/ text.length() - charsToDelete
+        << /*expectedPosition*/ int(text.size() - charsToDelete)
         << /*expectedAnchor*/ 0
         ;
 
@@ -1587,13 +1789,13 @@ void tst_QTextCursor::update_data()
     QTest::newRow("replaceInsideSelection")
         << text
         << /*position*/ 0
-        << /*anchor*/ text.length()
+        << /*anchor*/ int(text.size())
         // delete 'big' ...
         << 6
         << 6 + charsToDelete
         << textToInsert // ... and replace 'big' with 'small'
         << /*expectedPosition*/ 0
-        << /*expectedAnchor*/ text.length() - charsToDelete + textToInsert.length()
+        << /*expectedAnchor*/ int(text.size() - charsToDelete + textToInsert.size())
         ;
 
     text = "Hello big world";
@@ -1601,13 +1803,13 @@ void tst_QTextCursor::update_data()
     textToInsert = "small";
     QTest::newRow("replaceInsideSelectionWithSwappedAnchorAndPosition")
         << text
-        << /*position*/ text.length()
+        << /*position*/ int(text.size())
         << /*anchor*/ 0
         // delete 'big' ...
         << 6
         << 6 + charsToDelete
         << textToInsert // ... and replace 'big' with 'small'
-        << /*expectedPosition*/ text.length() - charsToDelete + textToInsert.length()
+        << /*expectedPosition*/ int(text.size() - charsToDelete + textToInsert.size())
         << /*expectedAnchor*/ 0
         ;
 
@@ -1616,14 +1818,14 @@ void tst_QTextCursor::update_data()
     charsToDelete = 3;
     QTest::newRow("removeBeforeSelection")
         << text
-        << /*position*/ text.length() - 5
-        << /*anchor*/ text.length()
+        << /*position*/ int(text.size() - 5)
+        << /*anchor*/ int(text.size())
         // delete 'big'
         << 6
         << 6 + charsToDelete
         << QString() // don't insert anything, just remove
-        << /*expectedPosition*/ text.length() - 5 - charsToDelete
-        << /*expectedAnchor*/ text.length() - charsToDelete
+        << /*expectedPosition*/ int(text.size() - 5 - charsToDelete)
+        << /*expectedAnchor*/ int(text.size() - charsToDelete)
         ;
 
     text = "Hello big world";

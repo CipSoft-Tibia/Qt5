@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2020 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Reports binary size metrics for LaCrOS build artifacts.
@@ -8,12 +8,18 @@ More information at //docs/speed/binary_size/metrics.md.
 """
 
 import argparse
+import collections
 import contextlib
 import json
 import logging
 import os
 import subprocess
 import sys
+import tempfile
+SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(SRC_DIR, 'build', 'util'))
+from lib.results import result_sink
+from lib.results import result_types
 
 
 @contextlib.contextmanager
@@ -41,6 +47,9 @@ BUILD_COMMON_PATH = os.path.join(DIR_SOURCE_ROOT, 'build', 'util', 'lib',
 TRACING_PATH = os.path.join(DIR_SOURCE_ROOT, 'third_party', 'catapult',
                             'tracing')
 
+EU_STRIP_PATH = os.path.join(DIR_SOURCE_ROOT, 'buildtools', 'third_party',
+                             'eu-strip', 'bin', 'eu-strip')
+
 with _SysPath(BUILD_COMMON_PATH):
   import perf_tests_results_helper  # pylint: disable=import-error
 
@@ -50,10 +59,14 @@ with _SysPath(TRACING_PATH):
 _BASE_CHART = {
     'format_version': '0.1',
     'benchmark_name': 'resource_sizes',
-    'benchmark_description': 'LaCrOS resource size information.',
     'trace_rerun_options': [],
     'charts': {}
 }
+
+_KEY_RAW = 'raw'
+_KEY_GZIPPED = 'gzipped'
+_KEY_STRIPPED = 'stripped'
+_KEY_STRIPPED_GZIPPED = 'stripped_then_gzipped'
 
 
 class _Group:
@@ -67,33 +80,50 @@ class _Group:
   Attributes:
     paths: A list of files or directories to be tracked together.
     title: The display name of the group.
+    track_stripped: Whether to also track summed stripped ELF sizes.
     track_compressed: Whether to also track summed compressed sizes.
   """
 
-  def __init__(self, paths, title, track_compressed=False):
+  def __init__(self, paths, title, track_stripped=False,
+               track_compressed=False):
     self.paths = paths
     self.title = title
+    self.track_stripped = track_stripped
     self.track_compressed = track_compressed
 
+  def __eq__(self, other):
+    """Overrides the default implementation"""
+    if isinstance(other, _Group):
+      return (self.paths == other.paths) & (self.title == other.title) & (
+          self.track_stripped == other.track_stripped) & (
+              self.track_compressed == other.track_compressed)
+    return False
 
-# List of disjoint build artifact groups for size tracking. This list should be
-# synched with chromeos-amd64-generic-lacros-rel builder contents (specified in
-# //infra/config/subprojects/chromium/ci.star) and
-# chromeos-amd64-generic-lacros-internal builder (specified in src-internal).
+# Common artifacts in official builder lacros-arm32 and lacros64 in
+# src-internal. The artifcts can be found in
+# chromium/src-internal/testing/buildbot/archive/lacros64.json and
+# chromium/src-internal/testing/buildbot/archive/lacros-arm32.json
+# chromium/src-internal/testing/buildbot/archive/lacros-arm64.json
 _TRACKED_GROUPS = [
-    _Group(paths=['chrome'], title='File: chrome', track_compressed=True),
-    _Group(paths=['crashpad_handler'], title='File: crashpad_handler'),
+    _Group(paths=['chrome'],
+           title='File: chrome',
+           track_stripped=True,
+           track_compressed=True),
+    _Group(paths=['chrome_crashpad_handler'],
+           title='File: chrome_crashpad_handler'),
     _Group(paths=['icudtl.dat'], title='File: icudtl.dat'),
+    _Group(paths=['icudtl.dat.hash'], title='File: icudtl.dat.hash'),
+    _Group(paths=['libEGL.so'], title='File: libEGL.so'),
+    _Group(paths=['libGLESv2.so'], title='File: libGLESv2.so'),
     _Group(paths=['nacl_helper'], title='File: nacl_helper'),
-    _Group(paths=['nacl_irt_x86_64.nexe'], title='File: nacl_irt_x86_64.nexe'),
     _Group(paths=['resources.pak'], title='File: resources.pak'),
     _Group(paths=[
-        'chrome_100_percent.pak', 'chrome_200_percent.pak', 'headless_lib.pak'
+        'chrome_100_percent.pak', 'chrome_200_percent.pak',
+        'headless_lib_data.pak', 'headless_lib_strings.pak'
     ],
            title='Group: Other PAKs'),
     _Group(paths=['snapshot_blob.bin'], title='Group: Misc'),
     _Group(paths=['locales/'], title='Dir: locales'),
-    _Group(paths=['swiftshader/'], title='Dir: swiftshader'),
     _Group(paths=['WidevineCdm/'], title='Dir: WidevineCdm'),
 ]
 
@@ -118,6 +148,17 @@ def _visit_paths(base_dir, paths):
         yield full_path
     else:
       logging.critical('Not found: %s', path)
+
+
+def _is_probably_elf(filename):
+  """Heuristically decides whether |filename| is ELF via magic signature."""
+  with open(filename, 'rb') as fh:
+    return fh.read(4) == '\x7FELF'
+
+
+def _is_unstrippable_elf(filename):
+  """Identifies known-unstrippable ELF files to denoise the system."""
+  return filename.endswith('.nexe') or filename.endswith('libwidevinecdm.so')
 
 
 def _get_filesize(filename):
@@ -152,6 +193,37 @@ def _get_gzipped_filesize(filename):
   return 0
 
 
+def _get_catagorized_filesizes(filename):
+  """Measures |filename| sizes under various transforms.
+
+  Returns: A Counter (keyed by _Key_* constants) that stores measured sizes.
+  """
+  sizes = collections.Counter()
+  sizes[_KEY_RAW] = _get_filesize(filename)
+  sizes[_KEY_GZIPPED] = _get_gzipped_filesize(filename)
+
+  # Pre-assign values for non-ELF, or in case of failure for ELF.
+  sizes[_KEY_STRIPPED] = sizes[_KEY_RAW]
+  sizes[_KEY_STRIPPED_GZIPPED] = sizes[_KEY_GZIPPED]
+
+  if _is_probably_elf(filename) and not _is_unstrippable_elf(filename):
+    try:
+      fd, temp_file = tempfile.mkstemp()
+      os.close(fd)
+      cmd = [EU_STRIP_PATH, filename, '-o', temp_file]
+      subprocess.check_output(cmd)
+      sizes[_KEY_STRIPPED] = _get_filesize(temp_file)
+      sizes[_KEY_STRIPPED_GZIPPED] = _get_gzipped_filesize(temp_file)
+      if sizes[_KEY_STRIPPED] > sizes[_KEY_RAW]:
+        # This weird case has been observed for libwidevinecdm.so.
+        logging.critical('Stripping made things worse for %s' % filename)
+    except subprocess.CalledProcessError:
+      logging.critical('Failed to strip file: %s' % filename)
+    finally:
+      os.unlink(temp_file)
+  return sizes
+
+
 def _dump_chart_json(output_dir, chartjson):
   """Writes chart histogram to JSON files.
 
@@ -181,49 +253,79 @@ def _dump_chart_json(output_dir, chartjson):
 
   histogram_path = os.path.join(output_dir, 'perf_results.json')
   logging.critical('Dumping histograms to %s', histogram_path)
-  with open(histogram_path, 'w') as json_file:
+  with open(histogram_path, 'wb') as json_file:
     json_file.write(histogram_result.stdout)
 
 
 def _run_resource_sizes(args):
   """Main flow to extract and output size data."""
   chartjson = _BASE_CHART.copy()
+  chartjson.update({
+      'benchmark_description':
+      ('LaCrOS %s resource size information.' % args.arch)
+  })
   report_func = perf_tests_results_helper.ReportPerfResult
-  total_size = 0
-  total_gzipped = 0
-  for group in _TRACKED_GROUPS:
-    group_size = sum(map(_get_filesize, _visit_paths(args.out_dir,
-                                                     group.paths)))
-    group_gzipped = sum(
-        map(_get_gzipped_filesize, _visit_paths(args.out_dir, group.paths)))
+  total_sizes = collections.Counter()
+
+  def report_sizes(sizes, title, track_stripped, track_compressed):
     report_func(chart_data=chartjson,
-                graph_title=group.title,
+                graph_title=title,
                 trace_title='size',
-                value=group_size,
+                value=sizes[_KEY_RAW],
                 units='bytes')
-    if group.track_compressed:
+
+    if track_stripped:
       report_func(chart_data=chartjson,
-                  graph_title=group.title + ' (Gzipped)',
+                  graph_title=title + ' (Stripped)',
                   trace_title='size',
-                  value=group_gzipped,
+                  value=sizes[_KEY_STRIPPED],
                   units='bytes')
-    total_size += group_size
-    # Summing compressed size of separate groups (instead of concatanating
-    # first) to get a conservative estimate. File metadata and overheads are
-    # assumed to be negligible.
-    total_gzipped += group_gzipped
 
-  report_func(chart_data=chartjson,
-              graph_title='Total',
-              trace_title='size',
-              value=total_size,
-              units='bytes')
+    if track_compressed:
+      report_func(chart_data=chartjson,
+                  graph_title=title + ' (Gzipped)',
+                  trace_title='size',
+                  value=sizes[_KEY_GZIPPED],
+                  units='bytes')
 
-  report_func(chart_data=chartjson,
-              graph_title='Total (Gzipped)',
-              trace_title='size',
-              value=total_gzipped,
-              units='bytes')
+    if track_stripped and track_compressed:
+      report_func(chart_data=chartjson,
+                  graph_title=title + ' (Stripped, Gzipped)',
+                  trace_title='size',
+                  value=sizes[_KEY_STRIPPED_GZIPPED],
+                  units='bytes')
+
+  tracked_groups = _TRACKED_GROUPS.copy()
+  # Architecture amd64 requires artifact nacl_irt_x86_64.nexe.
+  if args.arch == 'amd64':
+    tracked_groups.append(
+        _Group(paths=['nacl_irt_x86_64.nexe'],
+               title='File: nacl_irt_x86_64.nexe'))
+  # Architecture arm32 requires artifact nacl_irt_arm.nexe.
+  elif args.arch == 'arm32':
+    tracked_groups.append(
+        _Group(paths=['nacl_irt_arm.nexe'], title='File: nacl_irt_arm.nexe'))
+    tracked_groups.append(
+        _Group(paths=['nacl_helper_bootstrap'],
+               title='File: nacl_helper_bootstrap'))
+  # TODO(https://crbug.com/1356761): remove the following part once nacl files
+  # are available.
+  elif args.arch == 'arm64':
+    tracked_groups.remove(
+        _Group(paths=['nacl_helper'], title='File: nacl_helper'))
+  for g in tracked_groups:
+    sizes = sum(
+        map(_get_catagorized_filesizes, _visit_paths(args.out_dir, g.paths)),
+        collections.Counter())
+    report_sizes(sizes, g.title, g.track_stripped, g.track_compressed)
+
+    # Total compressed size is summed over individual compressed sizes, instead
+    # of concatanating first, then compress everything. This is done for
+    # simplicity. It also gives a conservative size estimate (assuming file
+    # metadata and overheads are negligible).
+    total_sizes += sizes
+
+  report_sizes(total_sizes, 'Total', True, True)
 
   _dump_chart_json(args.output_dir, chartjson)
 
@@ -237,6 +339,11 @@ def main():
                          required=True,
                          type=os.path.realpath,
                          help='Location of the build artifacts.')
+  argparser.add_argument('--arch',
+                         required=True,
+                         type=str,
+                         help='The architecture of lacros, valid values: amd64,'
+                         ' arm32, arm64')
 
   output_group = argparser.add_mutually_exclusive_group()
 
@@ -277,6 +384,14 @@ def main():
         json.dump(isolated_script_output, output_file)
       with open(args.isolated_script_test_output, 'w') as output_file:
         json.dump(isolated_script_output, output_file)
+  result_sink_client = result_sink.TryInitClient()
+  if result_sink_client:
+    status = result_types.PASS
+    if not isolated_script_output['valid']:
+      status = result_types.UNKNOWN
+    elif isolated_script_output['failures']:
+      status = result_types.FAIL
+    result_sink_client.Post(test_name, status, None, None, None)
 
 
 if __name__ == '__main__':

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qgeofiletilecache_p.h"
 
 #include "qgeotilespec_p.h"
@@ -44,9 +11,6 @@
 #include <QMetaType>
 #include <QPixmap>
 #include <QDebug>
-
-Q_DECLARE_METATYPE(QList<QGeoTileSpec>)
-Q_DECLARE_METATYPE(QSet<QGeoTileSpec>)
 
 QT_BEGIN_NAMESPACE
 
@@ -69,7 +33,7 @@ void QCache3QTileEvictionPolicy::aboutToBeRemoved(const QGeoTileSpec &key, QShar
 {
     Q_UNUSED(key);
     // set the cache pointer to zero so we can't call evictFromDiskCache
-    obj->cache = 0;
+    obj->cache = nullptr;
 }
 
 void QCache3QTileEvictionPolicy::aboutToBeEvicted(const QGeoTileSpec &key, QSharedPointer<QGeoCachedTileDisk> obj)
@@ -86,11 +50,8 @@ QGeoCachedTileDisk::~QGeoCachedTileDisk()
 }
 
 QGeoFileTileCache::QGeoFileTileCache(const QString &directory, QObject *parent)
-    : QAbstractGeoTileCache(parent), directory_(directory), minTextureUsage_(0), extraTextureUsage_(0)
-    ,costStrategyDisk_(ByteSize), costStrategyMemory_(ByteSize), costStrategyTexture_(ByteSize)
-    ,isDiskCostSet_(false), isMemoryCostSet_(false), isTextureCostSet_(false)
+    : QAbstractGeoTileCache(parent), directory_(directory)
 {
-
 }
 
 void QGeoFileTileCache::init()
@@ -103,10 +64,10 @@ void QGeoFileTileCache::init()
     QDir baseDir(basePath);
     if (baseDir.exists()) {
         const QStringList oldCacheFiles = baseDir.entryList(QDir::Files);
-        foreach (const QString& file, oldCacheFiles)
+        for (const QString& file : oldCacheFiles)
             baseDir.remove(file);
         const QStringList oldCacheDirs = { QStringLiteral("osm"), QStringLiteral("mapbox"), QStringLiteral("here") };
-        foreach (const QString& d, oldCacheDirs) {
+        for (const QString& d : oldCacheDirs) {
             QDir oldCacheDir(basePath + QLatin1Char('/') + d);
             if (oldCacheDir.exists())
                 oldCacheDir.removeRecursively();
@@ -153,7 +114,7 @@ void QGeoFileTileCache::loadTiles()
     formats << QLatin1String("*.*");
 
     QDir dir(directory_);
-    QStringList files = dir.entryList(formats, QDir::Files);
+    const QStringList files = dir.entryList(formats, QDir::Files);
 #if 0 // workaround for QTBUG-60581
     // Method:
     // 1. read each queue file then, if each file exists, deserialize the data into the appropriate
@@ -196,11 +157,11 @@ void QGeoFileTileCache::loadTiles()
     // 2. remaining tiles that aren't registered in a queue get pushed into cache here
     // this is a backup, in case the queue manifest files get deleted or out of sync due to
     // the application not closing down properly
-    for (int i = 0; i < files.size(); ++i) {
-        QGeoTileSpec spec = filenameToTileSpec(files.at(i));
+    for (const auto &file : files) {
+        QGeoTileSpec spec = filenameToTileSpec(file);
         if (spec.zoom() == -1)
             continue;
-        QString filename = dir.filePath(files.at(i));
+        QString filename = dir.filePath(file);
         addToDiskCache(spec, filename);
     }
 }
@@ -219,7 +180,7 @@ QGeoFileTileCache::~QGeoFileTileCache()
         }
         QList<QSharedPointer<QGeoCachedTileDisk> > queue;
         diskCache_.serializeQueue(i, queue);
-        foreach (const QSharedPointer<QGeoCachedTileDisk> &tile, queue) {
+        for (const QSharedPointer<QGeoCachedTileDisk> &tile : queue) {
             if (tile.isNull())
                 continue;
 
@@ -309,7 +270,7 @@ void QGeoFileTileCache::clearAll()
     QDir dir(directory_);
     dir.setNameFilters(QStringList() << QLatin1String("*-*-*-*.*"));
     dir.setFilter(QDir::Files);
-    foreach (QString dirFile, dir.entryList()) {
+    for (const QString &dirFile : dir.entryList()) {
         dir.remove(dirFile);
     }
 }
@@ -332,7 +293,7 @@ void QGeoFileTileCache::clearMapId(const int mapId)
     QDir dir(directory_);
     QStringList formats;
     formats << QLatin1String("*.*");
-    QStringList files = dir.entryList(formats, QDir::Files);
+    const QStringList files = dir.entryList(formats, QDir::Files);
     qWarning() << "Old tile data detected. Cache eviction left out "<< files.size() << "tiles";
     for (const QString &tileFileName : files) {
         QGeoTileSpec spec = filenameToTileSpec(tileFileName);
@@ -432,22 +393,22 @@ QGeoTileSpec QGeoFileTileCache::filenameToTileSpecDefault(const QString &filenam
 {
     QGeoTileSpec emptySpec;
 
-    QStringList parts = filename.split('.');
+    const QStringList parts = filename.split(QLatin1Char('.'));
 
     if (parts.length() != 2)
         return emptySpec;
 
-    QString name = parts.at(0);
-    QStringList fields = name.split('-');
+    const QString name = parts.at(0);
+    const QStringList fields = name.split(QLatin1Char('-'));
 
-    int length = fields.length();
+    qsizetype length = fields.length();
     if (length != 5 && length != 6)
         return emptySpec;
 
     QList<int> numbers;
 
     bool ok = false;
-    for (int i = 1; i < length; ++i) {
+    for (qsizetype i = 1; i < length; ++i) {
         ok = false;
         int value = fields.at(i).toInt(&ok);
         if (!ok)
@@ -555,7 +516,7 @@ QSharedPointer<QGeoTileTexture> QGeoFileTileCache::getFromMemory(const QGeoTileS
         QImage image;
         if (!image.loadFromData(tm->bytes)) {
             handleError(spec, QLatin1String("Problem with tile image"));
-            return QSharedPointer<QGeoTileTexture>(0);
+            return QSharedPointer<QGeoTileTexture>();
         }
         QSharedPointer<QGeoTileTexture> tt = addToTextureCache(spec, image);
         if (tt)
@@ -588,7 +549,7 @@ QSharedPointer<QGeoTileTexture> QGeoFileTileCache::getFromDisk(const QGeoTileSpe
         // This is a truly invalid image. The fetcher should try again.
         if (!image.loadFromData(bytes)) {
             handleError(spec, QLatin1String("Problem with tile image"));
-            return QSharedPointer<QGeoTileTexture>(0);
+            return QSharedPointer<QGeoTileTexture>();
         }
 
         // Converting it here, instead of in each QSGTexture::bind()

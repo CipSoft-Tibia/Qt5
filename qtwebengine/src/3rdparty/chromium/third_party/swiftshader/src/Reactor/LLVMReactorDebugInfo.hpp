@@ -92,11 +92,11 @@ public:
 
 	// NotifyObjectEmitted informs any attached debuggers of the JIT'd
 	// object.
-	static void NotifyObjectEmitted(const llvm::object::ObjectFile &Obj, const llvm::LoadedObjectInfo &L);
+	static void NotifyObjectEmitted(uint64_t key, const llvm::object::ObjectFile &obj, const llvm::LoadedObjectInfo &l);
 
 	// NotifyFreeingObject informs any attached debuggers that the JIT'd
 	// object is now invalid.
-	static void NotifyFreeingObject(const llvm::object::ObjectFile &Obj);
+	static void NotifyFreeingObject(uint64_t key);
 
 private:
 	struct Token
@@ -148,10 +148,10 @@ private:
 
 	llvm::DIType *getOrCreateType(llvm::Type *type);
 	llvm::DIFile *getOrCreateFile(const char *path);
-	LineTokens const *getOrParseFileTokens(const char *path);
+	const LineTokens *getOrParseFileTokens(const char *path);
 
 	// Synchronizes diScope with the current backtrace.
-	void syncScope(Backtrace const &backtrace);
+	void syncScope(const Backtrace &backtrace);
 
 	IRBuilder *builder;
 	llvm::LLVMContext *context;
@@ -166,7 +166,7 @@ private:
 	std::unordered_map<std::string, llvm::DIFile *> diFiles;
 	std::unordered_map<llvm::Type *, llvm::DIType *> diTypes;
 	std::unordered_map<std::string, std::unique_ptr<LineTokens>> fileTokens;
-	std::vector<void const *> pushed;
+	std::vector<const void *> pushed;
 };
 
 }  // namespace rr

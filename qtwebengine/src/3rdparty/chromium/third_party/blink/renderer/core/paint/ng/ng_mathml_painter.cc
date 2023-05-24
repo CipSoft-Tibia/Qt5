@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,24 +7,29 @@
 #include "third_party/blink/renderer/core/layout/ng/mathml/ng_math_layout_utils.h"
 #include "third_party/blink/renderer/core/mathml/mathml_radical_element.h"
 #include "third_party/blink/renderer/core/paint/ng/ng_box_fragment_painter.h"
+#include "third_party/blink/renderer/core/paint/paint_auto_dark_mode.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
+#include "third_party/blink/renderer/platform/fonts/ng_text_fragment_paint_info.h"
 #include "third_party/blink/renderer/platform/geometry/layout_unit.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context_state_saver.h"
 #include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
 
 namespace blink {
 
-void NGMathMLPainter::PaintBar(const PaintInfo& info, const IntRect& bar) {
+void NGMathMLPainter::PaintBar(const PaintInfo& info, const gfx::Rect& bar) {
   if (bar.IsEmpty())
     return;
 
   GraphicsContextStateSaver state_saver(info.context);
-  info.context.SetStrokeThickness(bar.Height());
+  info.context.SetStrokeThickness(bar.height());
   info.context.SetStrokeStyle(kSolidStroke);
   info.context.SetStrokeColor(
       box_fragment_.Style().VisitedDependentColor(GetCSSPropertyColor()));
-  IntPoint line_end_point = {bar.Width(), 0};
-  info.context.DrawLine(bar.Location(), bar.Location() + line_end_point);
+  gfx::Point line_end_point = {bar.width(), 0};
+  AutoDarkMode auto_dark_mode(PaintAutoDarkMode(
+      box_fragment_.Style(), DarkModeFilter::ElementRole::kForeground));
+  info.context.DrawLine(bar.origin(), line_end_point + bar.OffsetFromOrigin(),
+                        auto_dark_mode);
 }
 
 void NGMathMLPainter::PaintStretchyOrLargeOperator(
@@ -38,8 +43,11 @@ void NGMathMLPainter::PaintStretchyOrLargeOperator(
       parameters.operator_shape_result_view.get()};
   GraphicsContextStateSaver state_saver(info.context);
   info.context.SetFillColor(style.VisitedDependentColor(GetCSSPropertyColor()));
+  AutoDarkMode auto_dark_mode(
+      PaintAutoDarkMode(style, DarkModeFilter::ElementRole::kForeground));
   info.context.DrawText(style.GetFont(), text_fragment_paint_info,
-                        FloatPoint(paint_offset), kInvalidDOMNodeId);
+                        gfx::PointF(paint_offset), kInvalidDOMNodeId,
+                        auto_dark_mode);
 }
 
 void NGMathMLPainter::PaintFractionBar(
@@ -51,7 +59,7 @@ void NGMathMLPainter::PaintFractionBar(
   if (!line_thickness)
     return;
   LayoutUnit axis_height = MathAxisHeight(style);
-  if (auto baseline = box_fragment_.Baseline()) {
+  if (auto baseline = box_fragment_.FirstBaseline()) {
     auto borders = box_fragment_.Borders();
     auto padding = box_fragment_.Padding();
     PhysicalRect bar_rect = {
@@ -60,8 +68,36 @@ void NGMathMLPainter::PaintFractionBar(
             padding.HorizontalSum(),
         line_thickness};
     bar_rect.Move(paint_offset);
-    PaintBar(info, PixelSnappedIntRect(bar_rect));
+    PaintBar(info, ToPixelSnappedRect(bar_rect));
   }
+}
+
+void NGMathMLPainter::PaintOperator(const PaintInfo& info,
+                                    PhysicalOffset paint_offset) {
+  const ComputedStyle& style = box_fragment_.Style();
+  const NGMathMLPaintInfo& parameters = box_fragment_.GetMathMLPaintInfo();
+  LogicalOffset offset(LayoutUnit(), parameters.operator_ascent);
+  PhysicalOffset physical_offset = offset.ConvertToPhysical(
+      style.GetWritingDirection(),
+      PhysicalSize(box_fragment_.Size().width, box_fragment_.Size().height),
+      PhysicalSize(parameters.operator_inline_size,
+                   parameters.operator_ascent + parameters.operator_descent));
+  auto borders = box_fragment_.Borders();
+  auto padding = box_fragment_.Padding();
+  physical_offset.left += borders.left + padding.left;
+  physical_offset.top += borders.top + padding.top;
+
+  // TODO(http://crbug.com/1124301): NGMathOperatorLayoutAlgorithm::Layout
+  // passes the operator's inline size but this does not match the width of the
+  // box fragment, which relies on the min-max sizes instead. Shift the paint
+  // offset to work around that issue, splitting the size error symmetrically.
+  DCHECK(box_fragment_.Style().IsHorizontalWritingMode());
+  physical_offset.left +=
+      (box_fragment_.Size().width - borders.HorizontalSum() -
+       padding.HorizontalSum() - parameters.operator_inline_size) /
+      2;
+
+  PaintStretchyOrLargeOperator(info, paint_offset + physical_offset);
 }
 
 void NGMathMLPainter::PaintRadicalSymbol(
@@ -83,21 +119,21 @@ void NGMathMLPainter::PaintRadicalSymbol(
   auto vertical = GetRadicalVerticalParameters(style, has_index);
 
   auto radical_base_ascent =
-      base_child.Baseline().value_or(base_child.Size().height) +
+      base_child.FirstBaseline().value_or(base_child.Size().height) +
       parameters.radical_base_margins.inline_start;
   LayoutUnit block_offset =
-      box_fragment_.Baseline().value_or(box_fragment_.Size().height) -
+      box_fragment_.FirstBaseline().value_or(box_fragment_.Size().height) -
       vertical.vertical_gap - radical_base_ascent;
 
   auto borders = box_fragment_.Borders();
   auto padding = box_fragment_.Padding();
   LayoutUnit inline_offset = borders.left + padding.left;
-  inline_offset += parameters.radical_operator_inline_offset;
+  inline_offset += *parameters.radical_operator_inline_offset;
 
   LogicalOffset radical_symbol_offset(
       inline_offset, block_offset + parameters.operator_ascent);
   auto radical_symbol_physical_offset = radical_symbol_offset.ConvertToPhysical(
-      style.GetWritingMode(), style.Direction(),
+      style.GetWritingDirection(),
       PhysicalSize(box_fragment_.Size().width, box_fragment_.Size().height),
       PhysicalSize(parameters.operator_ascent,
                    parameters.operator_ascent + parameters.operator_descent));
@@ -115,13 +151,13 @@ void NGMathMLPainter::PaintRadicalSymbol(
       LogicalSize(parameters.operator_inline_size, LayoutUnit());
   LayoutSize bar_size = {base_width, rule_thickness};
   auto bar_physical_offset = bar_offset.ConvertToPhysical(
-      style.GetWritingMode(), style.Direction(),
+      style.GetWritingDirection(),
       PhysicalSize(box_fragment_.Size().width, box_fragment_.Size().height),
       PhysicalSize(bar_size));
   PhysicalRect bar_rect = {bar_physical_offset.left, bar_physical_offset.top,
                            base_width, rule_thickness};
   bar_rect.Move(paint_offset);
-  PaintBar(info, PixelSnappedIntRect(bar_rect));
+  PaintBar(info, ToPixelSnappedRect(bar_rect));
 }
 
 void NGMathMLPainter::Paint(const PaintInfo& info,
@@ -141,8 +177,14 @@ void NGMathMLPainter::Paint(const PaintInfo& info,
     return;
   }
 
-  // TODO(crbug.com/1124301): paint operator
-  PaintRadicalSymbol(info, paint_offset);
+  // Radical symbol
+  if (box_fragment_.GetMathMLPaintInfo().IsRadicalOperator()) {
+    PaintRadicalSymbol(info, paint_offset);
+    return;
+  }
+
+  // Operator
+  PaintOperator(info, paint_offset);
 }
 
 }  // namespace blink

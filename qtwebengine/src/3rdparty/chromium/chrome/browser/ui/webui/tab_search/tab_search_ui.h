@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,20 +7,19 @@
 
 #include <memory>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
+#include "base/timer/elapsed_timer.h"
+#include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search.mojom.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search_page_handler.h"
-#include "chrome/browser/ui/webui/tab_search/tab_search_ui_embedder.h"
 #include "chrome/browser/ui/webui/webui_load_timer.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
-#include "ui/webui/mojo_web_ui_controller.h"
+#include "ui/webui/mojo_bubble_web_ui_controller.h"
+#include "ui/webui/resources/js/metrics_reporter/metrics_reporter.mojom.h"
 
-class TabSearchUI : public ui::MojoWebUIController,
-                    public tab_search::mojom::PageHandlerFactory,
-                    public TabSearchPageHandler::Delegate {
+class TabSearchUI : public ui::MojoBubbleWebUIController,
+                    public tab_search::mojom::PageHandlerFactory {
  public:
   explicit TabSearchUI(content::WebUI* web_ui);
   TabSearchUI(const TabSearchUI&) = delete;
@@ -31,11 +30,12 @@ class TabSearchUI : public ui::MojoWebUIController,
   // interface passing the pending receiver that will be internally bound.
   void BindInterface(
       mojo::PendingReceiver<tab_search::mojom::PageHandlerFactory> receiver);
-  void SetEmbedder(TabSearchUIEmbedder* embedder);
+  void BindInterface(
+      mojo::PendingReceiver<metrics_reporter::mojom::PageMetricsHost> receiver);
 
-  // TabSearchPageHandler::Delegate:
-  void ShowUI() override;
-  void CloseUI() override;
+  TabSearchPageHandler* page_handler_for_testing() {
+    return page_handler_.get();
+  }
 
  private:
   // tab_search::mojom::PageHandlerFactory
@@ -44,13 +44,16 @@ class TabSearchUI : public ui::MojoWebUIController,
       mojo::PendingReceiver<tab_search::mojom::PageHandler> receiver) override;
 
   std::unique_ptr<TabSearchPageHandler> page_handler_;
+  MetricsReporter metrics_reporter_;
 
   mojo::Receiver<tab_search::mojom::PageHandlerFactory> page_factory_receiver_{
       this};
 
   WebuiLoadTimer webui_load_timer_;
 
-  TabSearchUIEmbedder* embedder_ = nullptr;
+  // A timer used to track the duration between when the WebUI is constructed
+  // and when the TabSearchPageHandler is constructed.
+  absl::optional<base::ElapsedTimer> page_handler_timer_;
 
   WEB_UI_CONTROLLER_TYPE_DECL();
 };

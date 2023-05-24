@@ -1,4 +1,4 @@
-// Copyright (c) 2010 Google Inc. All Rights Reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -10,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -42,9 +42,7 @@
 #include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
 
-using google_breakpad::scoped_ptr;
-
-namespace dwarf2reader {
+namespace google_breakpad {
 
 CULineInfoHandler::CULineInfoHandler(std::vector<SourceFileInfo>* files,
                                      std::vector<string>* dirs,
@@ -227,4 +225,4 @@ void CUFunctionInfoHandler::EndDIE(uint64_t offset) {
                                                 current_function_info_));
 }
 
-}  // namespace dwarf2reader
+}  // namespace google_breakpad

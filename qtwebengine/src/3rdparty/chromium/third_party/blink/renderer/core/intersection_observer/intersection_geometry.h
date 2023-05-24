@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,8 @@
 #include "third_party/blink/renderer/core/dom/dom_high_res_time_stamp.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_rect.h"
 #include "third_party/blink/renderer/platform/geometry/length.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/transforms/transformation_matrix.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace blink {
 
@@ -36,10 +35,14 @@ class CORE_EXPORT IntersectionGeometry {
     kShouldUseReplacedContentRect = 1 << 3,
     kShouldConvertToCSSPixels = 1 << 4,
     kShouldUseCachedRects = 1 << 5,
+    // Applies to boxes. If true, OverflowClipRect() is used if necessary
+    // instead of BorderBoundingBox().
+    kUseOverflowClipEdge = 1 << 6,
 
     // These flags will be computed
-    kRootIsImplicit = 1 << 6,
-    kIsVisible = 1 << 7
+    kRootIsImplicit = 1 << 7,
+    kDidComputeGeometry = 1 << 8,
+    kIsVisible = 1 << 9
   };
 
   struct RootGeometry {
@@ -51,7 +54,7 @@ class CORE_EXPORT IntersectionGeometry {
     float zoom;
     // The root object's content rect in the root object's own coordinate system
     PhysicalRect local_root_rect;
-    TransformationMatrix root_to_document_transform;
+    gfx::Transform root_to_document_transform;
   };
 
   struct CachedRects {
@@ -63,6 +66,8 @@ class CORE_EXPORT IntersectionGeometry {
     // True iff unscrolled_unclipped_intersection_rect actually intersects the
     // root, as defined by edge-inclusive intersection rules.
     bool does_intersect;
+    // True iff the target rect before any margins were applied was empty
+    bool pre_margin_target_rect_is_empty;
     // Invalidation flag
     bool valid;
   };
@@ -110,16 +115,17 @@ class CORE_EXPORT IntersectionGeometry {
 
   PhysicalRect RootRect() const { return root_rect_; }
 
-  IntRect IntersectionIntRect() const {
-    return PixelSnappedIntRect(intersection_rect_);
+  gfx::Rect IntersectionIntRect() const {
+    return ToPixelSnappedRect(intersection_rect_);
   }
-  IntRect TargetIntRect() const { return PixelSnappedIntRect(target_rect_); }
-  IntRect RootIntRect() const { return PixelSnappedIntRect(root_rect_); }
+  gfx::Rect TargetIntRect() const { return ToPixelSnappedRect(target_rect_); }
+  gfx::Rect RootIntRect() const { return ToPixelSnappedRect(root_rect_); }
 
   double IntersectionRatio() const { return intersection_ratio_; }
   unsigned ThresholdIndex() const { return threshold_index_; }
 
   bool RootIsImplicit() const { return flags_ & kRootIsImplicit; }
+  bool DidComputeGeometry() const { return flags_ & kDidComputeGeometry; }
   bool IsIntersecting() const { return threshold_index_ > 0; }
   bool IsVisible() const { return flags_ & kIsVisible; }
 

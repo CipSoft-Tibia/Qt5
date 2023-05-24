@@ -40,17 +40,31 @@ namespace perfetto {
 class FtraceConfigMuxer;
 class FtraceDataSource;
 class FtraceProcfs;
+class LazyKernelSymbolizer;
 class ProtoTranslationTable;
 struct FtraceStats;
 
 // Method of last resort to reset ftrace state.
-void HardResetFtraceState();
+bool HardResetFtraceState();
+
+// Stores the a snapshot of the timestamps from ftrace's trace clock
+// and CLOCK_BOOTITME.
+//
+// This is used when the "boot" (i.e. CLOCK_BOOTITME) is not available
+// for timestamping trace events (on Android O- and 3.x Linux kernels).
+// Trace processor can use this data to sync clocks just as it would
+// with ClockSnapshot packets.
+struct FtraceClockSnapshot {
+  // The timestamp according to the ftrace clock.
+  int64_t ftrace_clock_ts = 0;
+
+  // The timestamp according to CLOCK_BOOTTIME.
+  int64_t boot_clock_ts = 0;
+};
 
 // Utility class for controlling ftrace.
 class FtraceController {
  public:
-  static const char* const kTracingPaths[];
-
   class Observer {
    public:
     virtual ~Observer();
@@ -58,12 +72,13 @@ class FtraceController {
   };
 
   // The passed Observer must outlive the returned FtraceController instance.
-  static std::unique_ptr<FtraceController> Create(base::TaskRunner*, Observer*);
+  static std::unique_ptr<FtraceController> Create(base::TaskRunner*,
+                                                  Observer*,
+                                                  bool preserve_ftrace_buffer);
   virtual ~FtraceController();
 
-  void DisableAllEvents();
-  void WriteTraceMarker(const std::string& s);
   void ClearTrace();
+  bool IsTracingAvailable();
 
   bool AddDataSource(FtraceDataSource*) PERFETTO_WARN_UNUSED_RESULT;
   bool StartDataSource(FtraceDataSource*);
@@ -100,6 +115,18 @@ class FtraceController {
     size_t period_page_quota = 0;
   };
 
+  struct FtraceInstanceState {
+    FtraceInstanceState(std::unique_ptr<FtraceProcfs> ftrace_procfs,
+                        std::unique_ptr<ProtoTranslationTable> table_,
+                        std::unique_ptr<FtraceConfigMuxer> ftrace_config_muxer);
+
+    std::unique_ptr<FtraceProcfs> ftrace_procfs_;
+    std::unique_ptr<ProtoTranslationTable> table_;
+    std::unique_ptr<FtraceConfigMuxer> ftrace_config_muxer_;
+    std::vector<PerCpuState> per_cpu_;  // empty if tracing isn't active
+    std::set<FtraceDataSource*> started_data_sources_;
+  };
+
   FtraceController(const FtraceController&) = delete;
   FtraceController& operator=(const FtraceController&) = delete;
 
@@ -111,17 +138,19 @@ class FtraceController {
   void StartIfNeeded();
   void StopIfNeeded();
 
+  void MaybeSnapshotFtraceClock();
+
   base::TaskRunner* const task_runner_;
   Observer* const observer_;
   base::PagedMemory parsing_mem_;
-  std::unique_ptr<FtraceProcfs> ftrace_procfs_;
-  std::unique_ptr<ProtoTranslationTable> table_;
-  std::unique_ptr<FtraceConfigMuxer> ftrace_config_muxer_;
+  base::ScopedFile cpu_zero_stats_fd_;
+  std::unique_ptr<LazyKernelSymbolizer> symbolizer_;
+  FtraceInstanceState primary_;
+  std::unique_ptr<FtraceClockSnapshot> ftrace_clock_snapshot_;
   int generation_ = 0;
-  bool atrace_running_ = false;
-  std::vector<PerCpuState> per_cpu_;  // empty if tracing isn't active
+  bool retain_ksyms_on_stop_ = false;
   std::set<FtraceDataSource*> data_sources_;
-  std::set<FtraceDataSource*> started_data_sources_;
+  FtraceConfigId next_cfg_id_ = 1;
   base::WeakPtrFactory<FtraceController> weak_factory_;  // Keep last.
 };
 

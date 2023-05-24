@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QTimer>
+#include <QSignalSpy>
 
 #include <qcoreapplication.h>
 #include <qdebug.h>
@@ -37,6 +14,8 @@
 #include <qstyleoption.h>
 #include <qscreen.h>
 #include <qlabel.h>
+
+#include <QtWidgets/private/qapplication_p.h>
 
 class tst_QToolButton : public QObject
 {
@@ -54,12 +33,24 @@ private slots:
     void task176137_autoRepeatOfAction();
     void qtbug_26956_popupTimerDone();
     void qtbug_34759_sizeHintResetWhenSettingMenu();
+    void defaultActionSynced();
 
 protected slots:
     void sendMouseClick();
 private:
     QPointer<QWidget> m_menu;
 };
+
+class MyToolButton : public QToolButton
+{
+    friend class tst_QToolButton;
+public:
+    void initStyleOption(QStyleOptionToolButton *option) const override
+    {
+        QToolButton::initStyleOption(option);
+    }
+};
+
 
 tst_QToolButton::tst_QToolButton()
 {
@@ -129,11 +120,11 @@ void tst_QToolButton::triggered()
     toolButton->setDefaultAction(defaultAction);
 
     mainWidget.show();
-    QApplication::setActiveWindow(&mainWidget);
+    QApplicationPrivate::setActiveWindow(&mainWidget);
     QVERIFY(QTest::qWaitForWindowActive(&mainWidget));
 
     defaultAction->trigger();
-    QCOMPARE(spy.count(),1);
+    QCOMPARE(spy.size(),1);
     QCOMPARE(qvariant_cast<QAction *>(spy.at(0).at(0)), defaultAction);
 
     m_menu = menu.data();
@@ -144,22 +135,12 @@ void tst_QToolButton::triggered()
     timer->start();
     QTimer::singleShot(10000, &mainWidget, SLOT(close())); // Emergency bail-out
     toolButton->showMenu();
-    QTRY_COMPARE(spy.count(),2);
+    QTRY_COMPARE(spy.size(),2);
     QCOMPARE(qvariant_cast<QAction *>(spy.at(1).at(0)), one);
 }
 
 void tst_QToolButton::collapseTextOnPriority()
 {
-    class MyToolButton : public QToolButton
-    {
-        friend class tst_QToolButton;
-    public:
-        void initStyleOption(QStyleOptionToolButton *option)
-        {
-            QToolButton::initStyleOption(option);
-        }
-    };
-
     MyToolButton button;
     button.setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     QAction action(button.style()->standardIcon(QStyle::SP_ArrowBack), "test", 0);
@@ -178,16 +159,6 @@ void tst_QToolButton::task230994_iconSize()
 {
     //we check that the iconsize returned bu initStyleOption is valid
     //when the toolbutton has no parent
-    class MyToolButton : public QToolButton
-    {
-        friend class tst_QToolButton;
-    public:
-        void initStyleOption(QStyleOptionToolButton *option)
-        {
-            QToolButton::initStyleOption(option);
-        }
-    };
-
     MyToolButton button;
     QStyleOptionToolButton option;
     button.initStyleOption(&option);
@@ -210,26 +181,28 @@ void tst_QToolButton::task176137_autoRepeatOfAction()
     label->move(0, 50);
 
     mainWidget.show();
-    QApplication::setActiveWindow(&mainWidget);
+    QApplicationPrivate::setActiveWindow(&mainWidget);
     QVERIFY(QTest::qWaitForWindowActive(&mainWidget));
 
     QSignalSpy spy(&action,SIGNAL(triggered()));
     QTest::mousePress (toolButton, Qt::LeftButton);
-    QTest::mouseRelease (toolButton, Qt::LeftButton, {}, QPoint (), 2000);
-    QCOMPARE(spy.count(),1);
+    QTest::qWait(2000);
+    QTest::mouseRelease (toolButton, Qt::LeftButton, {}, {});
+    QCOMPARE(spy.size(),1);
 
     // try again with auto repeat
     toolButton->setAutoRepeat (true);
     QSignalSpy repeatSpy(&action,SIGNAL(triggered())); // new spy
     QTest::mousePress (toolButton, Qt::LeftButton);
-    QTest::mouseRelease (toolButton, Qt::LeftButton, {}, QPoint (), 3000);
+    QTest::qWait(3000);
+    QTest::mouseRelease (toolButton, Qt::LeftButton, {}, {});
     const qreal expected = (3000 - toolButton->autoRepeatDelay()) / toolButton->autoRepeatInterval() + 1;
     //we check that the difference is small (on some systems timers are not super accurate)
-    qreal diff = (expected - repeatSpy.count()) / expected;
+    qreal diff = (expected - repeatSpy.size()) / expected;
     QVERIFY2(qAbs(diff) < 0.2, qPrintable(
         QString("expected: %1, actual: %2, diff (fraction): %3")
             .arg(expected)
-            .arg(repeatSpy.count())
+            .arg(repeatSpy.size())
             .arg(diff)));
 }
 
@@ -278,14 +251,69 @@ void tst_QToolButton::qtbug_34759_sizeHintResetWhenSettingMenu()
     button1.show();
     button2.show();
 
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Winrt does not support more than 1 native top level widget.", Abort);
-#endif
     QVERIFY(QTest::qWaitForWindowExposed(&button1));
     QVERIFY(QTest::qWaitForWindowExposed(&button2));
 
     button1.setMenu(new QMenu(&button1));
     QTRY_COMPARE(button1.sizeHint(), button2.sizeHint());
+}
+
+void tst_QToolButton::defaultActionSynced()
+{
+    QAction a;
+    a.setCheckable(true);
+
+    QToolButton tb;
+    tb.setDefaultAction(&a);
+    QVERIFY(tb.isCheckable());
+
+    QSignalSpy tbSpy(&tb, SIGNAL(toggled(bool)));
+    QSignalSpy aSpy(&a, SIGNAL(toggled(bool)));
+
+    int tbToggledCount = 0;
+    int aToggledCount = 0;
+
+    tb.setChecked(true);
+    QVERIFY(a.isChecked());
+    QCOMPARE(tbSpy.size(), ++tbToggledCount);
+    QCOMPARE(aSpy.size(), ++aToggledCount);
+    tb.setChecked(false);
+    QVERIFY(!a.isChecked());
+    QCOMPARE(tbSpy.size(), ++tbToggledCount);
+    QCOMPARE(aSpy.size(), ++aToggledCount);
+
+    a.setChecked(true);
+    QVERIFY(tb.isChecked());
+    QCOMPARE(tbSpy.size(), ++tbToggledCount);
+    QCOMPARE(aSpy.size(), ++aToggledCount);
+    a.setChecked(false);
+    QVERIFY(!tb.isChecked());
+    QCOMPARE(tbSpy.size(), ++tbToggledCount);
+    QCOMPARE(aSpy.size(), ++aToggledCount);
+
+    QAction b;
+    QSignalSpy bSpy(&b, SIGNAL(toggled(bool)));
+    int bToggledCount = 0;
+    tb.setDefaultAction(&b);
+    QVERIFY(!tb.isCheckable());
+    b.setCheckable(true);
+    QVERIFY(tb.isCheckable());
+
+    tb.setChecked(true);
+    QVERIFY(!a.isChecked());
+    QVERIFY(b.isChecked());
+
+    QCOMPARE(tbSpy.size(), ++tbToggledCount);
+    QCOMPARE(aSpy.size(), aToggledCount);
+    QCOMPARE(bSpy.size(), ++bToggledCount);
+
+    tb.click();
+    QVERIFY(!a.isChecked());
+    QVERIFY(!tb.isChecked());
+    QVERIFY(!b.isChecked());
+    QCOMPARE(tbSpy.size(), ++tbToggledCount);
+    QCOMPARE(aSpy.size(), aToggledCount);
+    QCOMPARE(bSpy.size(), ++bToggledCount);
 }
 
 QTEST_MAIN(tst_QToolButton)

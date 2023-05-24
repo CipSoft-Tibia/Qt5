@@ -1,42 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Aaron McCarthy <mccarthy.aaron@gmail.com>
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Aaron McCarthy <mccarthy.aaron@gmail.com>
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativesupportedcategoriesmodel_p.h"
-#include "qdeclarativeplaceicon_p.h"
 #include "qgeoserviceprovider.h"
 #include "error_messages_p.h"
 #include <QtCore/private/qobject_p.h>
@@ -136,8 +102,7 @@ QT_BEGIN_NAMESPACE
 */
 
 QDeclarativeSupportedCategoriesModel::QDeclarativeSupportedCategoriesModel(QObject *parent)
-:   QAbstractItemModel(parent), m_response(0), m_plugin(0), m_hierarchical(true),
-    m_complete(false), m_status(Null)
+    : QAbstractItemModel(parent)
 {
 }
 
@@ -272,14 +237,14 @@ void QDeclarativeSupportedCategoriesModel::setPlugin(QDeclarativeGeoServiceProvi
         if (serviceProvider) {
             QPlaceManager *placeManager = serviceProvider->placeManager();
             if (placeManager) {
-                disconnect(placeManager, SIGNAL(categoryAdded(QPlaceCategory,QString)),
-                           this, SLOT(addedCategory(QPlaceCategory,QString)));
-                disconnect(placeManager, SIGNAL(categoryUpdated(QPlaceCategory,QString)),
-                           this, SLOT(updatedCategory(QPlaceCategory,QString)));
-                disconnect(placeManager, SIGNAL(categoryRemoved(QString,QString)),
-                           this, SLOT(removedCategory(QString,QString)));
-                disconnect(placeManager, SIGNAL(dataChanged()),
-                           this, SIGNAL(dataChanged()));
+                disconnect(placeManager, &QPlaceManager::categoryAdded,
+                           this, &QDeclarativeSupportedCategoriesModel::addedCategory);
+                disconnect(placeManager, &QPlaceManager::categoryUpdated,
+                           this, &QDeclarativeSupportedCategoriesModel::updatedCategory);
+                disconnect(placeManager, &QPlaceManager::categoryRemoved,
+                           this, &QDeclarativeSupportedCategoriesModel::removedCategory);
+                disconnect(placeManager, &QPlaceManager::dataChanged,
+                           this, &QDeclarativeSupportedCategoriesModel::emitDataChanged);
             }
         }
     }
@@ -292,8 +257,10 @@ void QDeclarativeSupportedCategoriesModel::setPlugin(QDeclarativeGeoServiceProvi
             connectNotificationSignals();
             update();
         } else {
-            connect(m_plugin, &QDeclarativeGeoServiceProvider::attached, this, &QDeclarativeSupportedCategoriesModel::update);
-            connect(m_plugin, &QDeclarativeGeoServiceProvider::attached, this, &QDeclarativeSupportedCategoriesModel::connectNotificationSignals);
+            connect(m_plugin, &QDeclarativeGeoServiceProvider::attached,
+                    this, &QDeclarativeSupportedCategoriesModel::update);
+            connect(m_plugin, &QDeclarativeGeoServiceProvider::attached,
+                    this, &QDeclarativeSupportedCategoriesModel::connectNotificationSignals);
         }
     }
 
@@ -344,14 +311,14 @@ void QDeclarativeSupportedCategoriesModel::replyFinished()
     if (m_response->error() == QPlaceReply::NoError) {
         m_errorString.clear();
 
-        m_response = 0;
+        m_response = nullptr;
 
         updateLayout();
         setStatus(QDeclarativeSupportedCategoriesModel::Ready);
     } else {
         const QString errorString = m_response->errorString();
 
-        m_response = 0;
+        m_response = nullptr;
 
         setStatus(Error, errorString);
     }
@@ -500,14 +467,14 @@ void QDeclarativeSupportedCategoriesModel::connectNotificationSignals()
 
     // listen for any category notifications so that we can reupdate the categories
     // model.
-    connect(placeManager, SIGNAL(categoryAdded(QPlaceCategory,QString)),
-            this, SLOT(addedCategory(QPlaceCategory,QString)));
-    connect(placeManager, SIGNAL(categoryUpdated(QPlaceCategory,QString)),
-            this, SLOT(updatedCategory(QPlaceCategory,QString)));
-    connect(placeManager, SIGNAL(categoryRemoved(QString,QString)),
-            this, SLOT(removedCategory(QString,QString)));
-    connect(placeManager, SIGNAL(dataChanged()),
-            this, SIGNAL(dataChanged()));
+    connect(placeManager, &QPlaceManager::categoryAdded,
+            this, &QDeclarativeSupportedCategoriesModel::addedCategory);
+    connect(placeManager, &QPlaceManager::categoryUpdated,
+            this, &QDeclarativeSupportedCategoriesModel::updatedCategory);
+    connect(placeManager, &QPlaceManager::categoryRemoved,
+            this, &QDeclarativeSupportedCategoriesModel::removedCategory);
+    connect(placeManager, &QPlaceManager::dataChanged,
+            this, &QDeclarativeSupportedCategoriesModel::emitDataChanged);
 }
 
 /*!
@@ -547,7 +514,8 @@ void QDeclarativeSupportedCategoriesModel::update()
 
     m_response = placeManager->initializeCategories();
     if (m_response) {
-        connect(m_response, SIGNAL(finished()), this, SLOT(replyFinished()));
+        connect(m_response, &QPlaceReply::finished,
+                this, &QDeclarativeSupportedCategoriesModel::replyFinished);
     } else {
         updateLayout();
         setStatus(Error, QCoreApplication::translate(CONTEXT_NAME,
@@ -639,7 +607,7 @@ QStringList QDeclarativeSupportedCategoriesModel::populateCategories(QPlaceManag
     auto categories = manager->childCategories(parent.categoryId());
     std::sort(categories.begin(), categories.end(), byName);
 
-    for (const auto &category : qAsConst(categories)) {
+    for (const auto &category : std::as_const(categories)) {
         auto node = new PlaceCategoryNode;
         node->parentId = parent.categoryId();
         node->declCategory = QSharedPointer<QDeclarativeCategory>(new QDeclarativeCategory(category, m_plugin ,this));
@@ -685,7 +653,7 @@ QModelIndex QDeclarativeSupportedCategoriesModel::index(const QString &categoryI
 int QDeclarativeSupportedCategoriesModel::rowToAddChild(PlaceCategoryNode *node, const QPlaceCategory &category)
 {
     Q_ASSERT(node);
-    for (int i = 0; i < node->childIds.count(); ++i) {
+    for (qsizetype i = 0; i < node->childIds.count(); ++i) {
         if (category.name() < m_categoriesTree.value(node->childIds.at(i))->declCategory->name())
             return i;
     }

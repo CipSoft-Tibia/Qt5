@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKSHADEREFFECTSOURCE_P_H
 #define QQUICKSHADEREFFECTSOURCE_P_H
@@ -78,18 +42,19 @@ class QQuickShaderEffectSourceTextureProvider;
 class Q_QUICK_PRIVATE_EXPORT QQuickShaderEffectSource : public QQuickItem, public QQuickItemChangeListener
 {
     Q_OBJECT
-    Q_PROPERTY(WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged)
-    Q_PROPERTY(QQuickItem *sourceItem READ sourceItem WRITE setSourceItem NOTIFY sourceItemChanged)
-    Q_PROPERTY(QRectF sourceRect READ sourceRect WRITE setSourceRect NOTIFY sourceRectChanged)
-    Q_PROPERTY(QSize textureSize READ textureSize WRITE setTextureSize NOTIFY textureSizeChanged)
-    Q_PROPERTY(Format format READ format WRITE setFormat NOTIFY formatChanged)
-    Q_PROPERTY(bool live READ live WRITE setLive NOTIFY liveChanged)
-    Q_PROPERTY(bool hideSource READ hideSource WRITE setHideSource NOTIFY hideSourceChanged)
-    Q_PROPERTY(bool mipmap READ mipmap WRITE setMipmap NOTIFY mipmapChanged)
-    Q_PROPERTY(bool recursive READ recursive WRITE setRecursive NOTIFY recursiveChanged)
-    Q_PROPERTY(TextureMirroring textureMirroring READ textureMirroring WRITE setTextureMirroring NOTIFY textureMirroringChanged REVISION 6)
-    Q_PROPERTY(int samples READ samples WRITE setSamples NOTIFY samplesChanged REVISION 9)
+    Q_PROPERTY(WrapMode wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged FINAL)
+    Q_PROPERTY(QQuickItem *sourceItem READ sourceItem WRITE setSourceItem NOTIFY sourceItemChanged FINAL)
+    Q_PROPERTY(QRectF sourceRect READ sourceRect WRITE setSourceRect NOTIFY sourceRectChanged FINAL)
+    Q_PROPERTY(QSize textureSize READ textureSize WRITE setTextureSize NOTIFY textureSizeChanged FINAL)
+    Q_PROPERTY(Format format READ format WRITE setFormat NOTIFY formatChanged FINAL)
+    Q_PROPERTY(bool live READ live WRITE setLive NOTIFY liveChanged FINAL)
+    Q_PROPERTY(bool hideSource READ hideSource WRITE setHideSource NOTIFY hideSourceChanged FINAL)
+    Q_PROPERTY(bool mipmap READ mipmap WRITE setMipmap NOTIFY mipmapChanged FINAL)
+    Q_PROPERTY(bool recursive READ recursive WRITE setRecursive NOTIFY recursiveChanged FINAL)
+    Q_PROPERTY(TextureMirroring textureMirroring READ textureMirroring WRITE setTextureMirroring NOTIFY textureMirroringChanged REVISION(2, 6) FINAL)
+    Q_PROPERTY(int samples READ samples WRITE setSamples NOTIFY samplesChanged REVISION(2, 9) FINAL)
     QML_NAMED_ELEMENT(ShaderEffectSource)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     enum WrapMode {
@@ -99,11 +64,16 @@ public:
         Repeat
     };
     Q_ENUM(WrapMode)
-    // Equivalents to GL_ALPHA and similar type constants.
+
     enum Format {
-        Alpha = 0x1906,
-        RGB = 0x1907,
-        RGBA = 0x1908
+        RGBA8 = 1,
+        RGBA16F,
+        RGBA32F,
+
+        // Qt 5 legacy values that were ignored starting from Qt 6.0
+        Alpha = RGBA8,
+        RGB = RGBA8,
+        RGBA = RGBA8
     };
     Q_ENUM(Format)
 

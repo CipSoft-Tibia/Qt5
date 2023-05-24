@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,10 +14,11 @@ namespace blink {
 void ConsumeSingleWhitespaceIfNext(CSSTokenizerInputStream& input) {
   // We check for \r\n and HTML spaces since we don't do preprocessing
   UChar next = input.PeekWithoutReplacement(0);
-  if (next == '\r' && input.PeekWithoutReplacement(1) == '\n')
+  if (next == '\r' && input.PeekWithoutReplacement(1) == '\n') {
     input.Advance(2);
-  else if (IsHTMLSpace(next))
+  } else if (IsHTMLSpace(next)) {
     input.Advance();
+  }
 }
 
 // https://drafts.csswg.org/css-syntax/#consume-an-escaped-code-point
@@ -38,16 +39,18 @@ UChar32 ConsumeEscape(CSSTokenizerInputStream& input) {
     };
     ConsumeSingleWhitespaceIfNext(input);
     bool ok = false;
-    UChar32 code_point = hex_chars.ToString().HexToUIntStrict(&ok);
+    UChar32 code_point = hex_chars.ReleaseString().HexToUIntStrict(&ok);
     DCHECK(ok);
     if (code_point == 0 || (0xD800 <= code_point && code_point <= 0xDFFF) ||
-        code_point > 0x10FFFF)
+        code_point > 0x10FFFF) {
       return kReplacementCharacter;
+    }
     return code_point;
   }
 
-  if (cc == kEndOfFileMarker)
+  if (cc == kEndOfFileMarker) {
     return kReplacementCharacter;
+  }
   return cc;
 }
 
@@ -66,15 +69,16 @@ String ConsumeName(CSSTokenizerInputStream& input) {
       continue;
     }
     input.PushBack(cc);
-    return result.ToString();
+    return result.ReleaseString();
   }
 }
 
 // https://drafts.csswg.org/css-syntax/#would-start-an-identifier
 bool NextCharsAreIdentifier(UChar first, const CSSTokenizerInputStream& input) {
   UChar second = input.PeekWithoutReplacement(0);
-  if (IsNameStartCodePoint(first) || TwoCharsAreValidEscape(first, second))
+  if (IsNameStartCodePoint(first) || TwoCharsAreValidEscape(first, second)) {
     return true;
+  }
 
   if (first == '-') {
     return IsNameStartCodePoint(second) || second == '-' ||

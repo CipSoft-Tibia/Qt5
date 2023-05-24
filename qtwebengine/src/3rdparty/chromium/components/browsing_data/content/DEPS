@@ -1,9 +1,13 @@
 include_rules = [
   "+components/content_settings/core/browser",
   "+components/content_settings/core/common",
+  "+components/origin_trials/browser",
+  "+components/origin_trials/common",
   "+components/prefs",
-  "+components/prerender/browser",
+  "+components/no_state_prefetch/browser",
+  "+components/services/storage/privileged",
   "+components/services/storage/public",
+  "+components/services/storage/shared_storage",
   "+components/site_isolation",
   "+content/public/browser",
   "+content/public/common",
@@ -16,4 +20,5 @@ include_rules = [
   "+storage/browser",
   "+storage/common",
   "+third_party/blink/public",
+  "+services/network",
 ]

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4STRING_H
 #define QV4STRING_H
 
@@ -77,7 +41,18 @@ struct Q_QML_PRIVATE_EXPORT StringOrSymbol : Base
         StringType_Complex = StringType_AddedString
     };
 
-    mutable QStringData *text;
+    void init() {
+        Base::init();
+        new (&textStorage) QStringPrivate;
+    }
+
+    void init(QStringPrivate text)
+    {
+        Base::init();
+        new (&textStorage) QStringPrivate(std::move(text));
+    }
+
+    mutable struct { alignas(QStringPrivate) unsigned char data[sizeof(QStringPrivate)]; } textStorage;
     mutable PropertyKey identifier;
     mutable uint subtype;
     mutable uint stringHash;
@@ -85,12 +60,11 @@ struct Q_QML_PRIVATE_EXPORT StringOrSymbol : Base
     static void markObjects(Heap::Base *that, MarkStack *markStack);
     void destroy();
 
+    QStringPrivate &text() const { return *reinterpret_cast<QStringPrivate *>(&textStorage); }
+
     inline QString toQString() const {
-        if (!text)
-            return QString();
-        QStringDataPtr ptr = { text };
-        text->ref.ref();
-        return QString(ptr);
+        QStringPrivate dd = text();
+        return QString(std::move(dd));
     }
     void createHashValue() const;
     inline unsigned hashValue() const {
@@ -113,14 +87,12 @@ struct Q_QML_PRIVATE_EXPORT String : StringOrSymbol {
     void simplifyString() const;
     int length() const;
     std::size_t retainedTextSize() const {
-        return subtype >= StringType_Complex ? 0 : (std::size_t(text->size) * sizeof(QChar));
+        return subtype >= StringType_Complex ? 0 : (std::size_t(text().size) * sizeof(QChar));
     }
     inline QString toQString() const {
         if (subtype >= StringType_Complex)
             simplifyString();
-        QStringDataPtr ptr = { text };
-        text->ref.ref();
-        return QString(ptr);
+        return StringOrSymbol::toQString();
     }
     inline bool isEqualTo(const String *other) const {
         if (this == other)
@@ -141,7 +113,7 @@ struct Q_QML_PRIVATE_EXPORT String : StringOrSymbol {
 private:
     static void append(const String *data, QChar *ch);
 };
-Q_STATIC_ASSERT(std::is_trivial< String >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<String>);
 
 struct ComplexString : String {
     void init(String *l, String *n);
@@ -154,11 +126,12 @@ struct ComplexString : String {
     };
     int len;
 };
-Q_STATIC_ASSERT(std::is_trivial< ComplexString >::value);
+Q_STATIC_ASSERT(std::is_trivial_v<ComplexString>);
 
 inline
 int String::length() const {
-    return text ? text->size : static_cast<const ComplexString *>(this)->len;
+    // TODO: ensure that our strings never actually grow larger than INT_MAX
+    return subtype < StringType_AddedString ? int(text().size) : static_cast<const ComplexString *>(this)->len;
 }
 
 }
@@ -222,6 +195,12 @@ struct Q_QML_PRIVATE_EXPORT String : public StringOrSymbol {
         return calculateHashValue(ch, end, subtype);
     }
 
+    static uint createHashValueDisallowingArrayIndex(const QChar *ch, int length, uint *subtype)
+    {
+        const QChar *end = ch + length;
+        return calculateHashValue<String::DisallowArrayIndex>(ch, end, subtype);
+    }
+
     static uint createHashValue(const char *ch, int length, uint *subtype)
     {
         const char *end = ch + length;
@@ -235,15 +214,19 @@ protected:
     static qint64 virtualGetLength(const Managed *m);
 
 public:
-    template <typename T>
+    enum IndicesBehavior {Default, DisallowArrayIndex};
+    template <IndicesBehavior Behavior = Default, typename T>
     static inline uint calculateHashValue(const T *ch, const T* end, uint *subtype)
     {
         // array indices get their number as hash value
-        uint h = stringToArrayIndex(ch, end);
-        if (h != UINT_MAX) {
-            if (subtype)
-                *subtype = Heap::StringOrSymbol::StringType_ArrayIndex;
-            return h;
+        uint h = UINT_MAX;
+        if constexpr (Behavior != DisallowArrayIndex) {
+            h = stringToArrayIndex(ch, end);
+            if (h != UINT_MAX) {
+                if (subtype)
+                    *subtype = Heap::StringOrSymbol::StringType_ArrayIndex;
+                return h;
+            }
         }
 
         while (ch < end) {
@@ -252,7 +235,7 @@ public:
         }
 
         if (subtype)
-            *subtype = (charToUInt(ch) == '@') ? Heap::StringOrSymbol::StringType_Symbol : Heap::StringOrSymbol::StringType_Regular;
+            *subtype = (ch != end && charToUInt(ch) == '@') ? Heap::StringOrSymbol::StringType_Symbol : Heap::StringOrSymbol::StringType_Regular;
         return h;
     }
 };

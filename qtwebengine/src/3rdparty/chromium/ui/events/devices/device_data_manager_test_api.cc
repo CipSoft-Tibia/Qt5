@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,6 +22,18 @@ void DeviceDataManagerTestApi::
     NotifyObserversKeyboardDeviceConfigurationChanged() {
   DeviceDataManager::instance_
       ->NotifyObserversKeyboardDeviceConfigurationChanged();
+}
+
+void DeviceDataManagerTestApi::
+    NotifyObserversMouseDeviceConfigurationChanged() {
+  DeviceDataManager::instance_
+      ->NotifyObserversMouseDeviceConfigurationChanged();
+}
+
+void DeviceDataManagerTestApi::
+    NotifyObserversPointingStickDeviceConfigurationChanged() {
+  DeviceDataManager::instance_
+      ->NotifyObserversPointingStickDeviceConfigurationChanged();
 }
 
 void DeviceDataManagerTestApi::NotifyObserversStylusStateChanged(
@@ -53,6 +65,11 @@ void DeviceDataManagerTestApi::SetKeyboardDevices(
 void DeviceDataManagerTestApi::SetMouseDevices(
     const std::vector<InputDevice>& devices) {
   DeviceDataManager::instance_->OnMouseDevicesUpdated(devices);
+}
+
+void DeviceDataManagerTestApi::SetPointingStickDevices(
+    const std::vector<InputDevice>& devices) {
+  DeviceDataManager::instance_->OnPointingStickDevicesUpdated(devices);
 }
 
 void DeviceDataManagerTestApi::SetTouchscreenDevices(

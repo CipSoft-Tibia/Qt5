@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -107,20 +107,11 @@ function sendCommand(cmd) {
   window.domAutomationController.send(cmd);
   // </if>
   // <if expr="is_ios">
-  // TODO(crbug.com/987407): Used to send commands for non-committed
-  // interstitials on iOS. Should be deleted after committed interstitials are
-  // fully launched.
-  if (!loadTimeData.getBoolean('committed_interstitials_enabled')) {
-    const iframe = document.createElement('IFRAME');
-    iframe.setAttribute('src', 'js-command:' + cmd);
-    document.documentElement.appendChild(iframe);
-    iframe.parentNode.removeChild(iframe);
-  } else {
-    // Used to send commands for iOS committed interstitials.
-    /** @suppress {undefinedVars|missingProperties} */ (function() {
-      __gCrWeb.message.invokeOnHost({'command': 'blockingPage.' + cmd});
-    })();
-  }
+  // Send commands for iOS committed interstitials.
+  /** @suppress {undefinedVars|missingProperties} */ (function() {
+    window.webkit.messageHandlers['IOSInterstitialMessage'].postMessage(
+        {'command': cmd.toString()});
+  })();
   // </if>
 }
 
@@ -129,15 +120,10 @@ function sendCommand(cmd) {
  * the page (and possibly showing a # in the link).
  */
 function preventDefaultOnPoundLinkClicks() {
-  document.addEventListener('click', function(e) {
-    const anchor = findAncestor(/** @type {Node} */ (e.target), function(el) {
-      return el.tagName === 'A';
-    });
-    // Use getAttribute() to prevent URL normalization.
-    if (anchor && anchor.getAttribute('href') === '#') {
-      e.preventDefault();
-    }
-  });
+  const anchors = document.body.querySelectorAll('a[href="#"]');
+  for (const anchor of anchors) {
+    anchor.addEventListener('click', e => e.preventDefault());
+  }
 }
 
 // <if expr="is_ios">
@@ -147,9 +133,6 @@ function preventDefaultOnPoundLinkClicks() {
  * not getting triggered.
  */
 function setupIosRefresh() {
-  if (!loadTimeData.getBoolean('committed_interstitials_enabled')) {
-    return;
-  }
   const load = () => {
     window.location.replace(loadTimeData.getString('url_to_reload'));
   };

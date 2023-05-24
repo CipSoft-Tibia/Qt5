@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "base/threading/thread_checker.h"
+#include "base/sequence_checker.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -57,6 +57,10 @@ class UsbDeviceManagerHelper {
   // Please do not create UsbDeviceManagerHelper instance from this constructor
   // directly, use static method GetInstance() instead.
   UsbDeviceManagerHelper();
+
+  UsbDeviceManagerHelper(const UsbDeviceManagerHelper&) = delete;
+  UsbDeviceManagerHelper& operator=(const UsbDeviceManagerHelper&) = delete;
+
   virtual ~UsbDeviceManagerHelper();
 
   void GetAndroidDevices(AndroidDeviceInfoListCallback callback);
@@ -72,15 +76,15 @@ class UsbDeviceManagerHelper {
   void EnsureUsbDeviceManagerConnection();
   void OnDeviceManagerConnectionError();
 
-  mojo::Remote<device::mojom::UsbDeviceManager> device_manager_;
+  mojo::Remote<device::mojom::UsbDeviceManager> device_manager_
+      GUARDED_BY_CONTEXT(sequence_checker_);
   // Just for test.
-  mojo::PendingRemote<device::mojom::UsbDeviceManager> testing_device_manager_;
+  mojo::PendingRemote<device::mojom::UsbDeviceManager> testing_device_manager_
+      GUARDED_BY_CONTEXT(sequence_checker_);
 
-  THREAD_CHECKER(thread_checker_);
+  SEQUENCE_CHECKER(sequence_checker_);
 
   base::WeakPtrFactory<UsbDeviceManagerHelper> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(UsbDeviceManagerHelper);
 };
 
 #endif  // CHROME_BROWSER_DEVTOOLS_DEVICE_USB_USB_DEVICE_MANAGER_HELPER_H_

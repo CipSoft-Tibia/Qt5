@@ -1,53 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QString>
-#include "qv4debugging_p.h"
 #include <qv4context_p.h>
 #include <qv4object_p.h>
 #include <qv4objectproto_p.h>
 #include <private/qv4mm_p.h>
 #include <qv4argumentsobject_p.h>
 #include "qv4function_p.h"
-#include "qv4errorobject_p.h"
-#include "qv4string_p.h"
-#include "qv4qmlcontext_p.h"
 #include "qv4stackframe_p.h"
 #include "qv4symbol_p.h"
 
@@ -71,8 +31,13 @@ Heap::CallContext *ExecutionContext::newBlockContext(CppStackFrame *frame, int b
 
     Heap::ExecutionContext *outer = static_cast<Heap::ExecutionContext *>(frame->context()->m());
     c->outer.set(v4, outer);
-    c->function.set(v4, static_cast<Heap::FunctionObject *>(
-                                Value::fromStaticValue(frame->jsFrame->function).m()));
+    if (frame->isJSTypesFrame()) {
+        c->function.set(v4, static_cast<Heap::FunctionObject *>(
+                            Value::fromStaticValue(
+                                static_cast<JSTypesStackFrame *>(frame)->jsFrame->function).m()));
+    } else {
+        c->function.set(v4, nullptr);
+    }
 
     c->locals.size = nLocals;
     c->locals.alloc = nLocals;
@@ -95,12 +60,12 @@ Heap::CallContext *ExecutionContext::cloneBlockContext(ExecutionEngine *engine,
     return c;
 }
 
-Heap::CallContext *ExecutionContext::newCallContext(CppStackFrame *frame)
+Heap::CallContext *ExecutionContext::newCallContext(JSTypesStackFrame *frame)
 {
     Function *function = frame->v4Function;
     Heap::ExecutionContext *outer = static_cast<Heap::ExecutionContext *>(frame->context()->m());
 
-    uint nFormals = qMax(static_cast<uint>(frame->originalArgumentsCount), function->nFormals);
+    uint nFormals = qMax(static_cast<uint>(frame->argc()), function->nFormals);
     uint localsAndFormals = function->compiledFunction->nLocals + nFormals;
     size_t requiredMemory = sizeof(CallContext::Data) - sizeof(Value) + sizeof(Value) * (localsAndFormals);
 
@@ -122,9 +87,9 @@ Heap::CallContext *ExecutionContext::newCallContext(CppStackFrame *frame)
     c->setupLocalTemporalDeadZone(compiledFunction);
 
     Value *args = c->locals.values + nLocals;
-    ::memcpy(args, frame->originalArguments, frame->originalArgumentsCount * sizeof(Value));
-    c->nArgs = frame->originalArgumentsCount;
-    for (uint i = frame->originalArgumentsCount; i < function->nFormals; ++i)
+    ::memcpy(args, frame->argv(), frame->argc() * sizeof(Value));
+    c->nArgs = frame->argc();
+    for (uint i = frame->argc(); i < function->nFormals; ++i)
         args[i] = Encode::undefined();
 
     return c;
@@ -334,9 +299,14 @@ ReturnedValue ExecutionContext::getProperty(String *name)
         case Heap::ExecutionContext::Type_CallContext: {
             Heap::CallContext *c = static_cast<Heap::CallContext *>(ctx);
 
-            uint index = c->internalClass->indexOfValueOrGetter(id);
-            if (index < UINT_MAX)
+            const uint index = c->internalClass->indexOfValueOrGetter(id);
+            if (index < c->locals.alloc)
                 return c->locals[index].asReturnedValue();
+
+            // TODO: We should look up the module imports here, but those are part of the CU:
+            //       imports[index - c->locals.size];
+            //       See QTBUG-118478
+
             Q_FALLTHROUGH();
         }
         case Heap::ExecutionContext::Type_WithContext:
@@ -384,9 +354,14 @@ ReturnedValue ExecutionContext::getPropertyAndBase(String *name, Value *base)
         case Heap::ExecutionContext::Type_CallContext: {
             Heap::CallContext *c = static_cast<Heap::CallContext *>(ctx);
 
-            uint index = c->internalClass->indexOfValueOrGetter(id);
-            if (index < UINT_MAX)
+            const uint index = c->internalClass->indexOfValueOrGetter(id);
+            if (index < c->locals.alloc)
                 return c->locals[index].asReturnedValue();
+
+            // TODO: We should look up the module imports here, but those are part of the CU:
+            //       imports[index - c->locals.size];
+            //       See QTBUG-118478
+
             Q_FALLTHROUGH();
         }
         case Heap::ExecutionContext::Type_GlobalContext: {

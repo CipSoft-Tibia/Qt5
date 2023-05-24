@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include <stddef.h>
 
-#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -15,24 +14,31 @@
 #include "base/files/file_path.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/ptr_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "components/url_formatter/url_formatter.h"
 #include "content/browser/child_process_security_policy_impl.h"
+#include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/navigation_controller_impl.h"
-#include "content/browser/web_package/web_bundle_navigation_info.h"
+#include "content/browser/renderer_host/navigation_entry_restore_context_impl.h"
+#include "content/browser/renderer_host/navigation_request.h"
+#include "content/browser/web_package/subresource_web_bundle_navigation_info.h"
 #include "content/common/content_constants_internal.h"
-#include "content/common/navigation_params.h"
-#include "content/common/page_state_serialization.h"
 #include "content/public/browser/reload_type.h"
 #include "content/public/common/content_constants.h"
 #include "content/public/common/url_constants.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/network/public/mojom/fetch_api.mojom.h"
+#include "third_party/blink/public/common/page_state/page_state_serialization.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom.h"
+#include "third_party/blink/public/mojom/navigation/navigation_params.mojom.h"
+#include "third_party/blink/public/mojom/navigation/prefetched_signed_exchange_info.mojom.h"
+#include "third_party/blink/public/mojom/runtime_feature_state/runtime_feature_state.mojom.h"
 #include "ui/gfx/text_elider.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "base/android/content_uri_utils.h"
 #endif
 
@@ -50,11 +56,13 @@ int CreateUniqueEntryID() {
 }
 
 void RecursivelyGenerateFrameEntries(
-    const ExplodedFrameState& state,
-    const std::vector<base::Optional<base::string16>>& referenced_files,
+    NavigationEntryRestoreContextImpl* context,
+    const blink::ExplodedFrameState& state,
+    const std::vector<absl::optional<std::u16string>>& referenced_files,
     NavigationEntryImpl::TreeNode* node) {
+  DCHECK(context);
   // Set a single-frame PageState on the entry.
-  ExplodedPageState page_state;
+  blink::ExplodedPageState page_state;
 
   // Copy the incoming PageState's list of referenced files into the main
   // frame's PageState.  (We don't pass the list to subframes below.)
@@ -66,55 +74,79 @@ void RecursivelyGenerateFrameEntries(
 
   page_state.top = state;
   std::string data;
-  EncodePageState(page_state, &data);
+  blink::EncodePageState(page_state, &data);
   DCHECK(!data.empty()) << "Shouldn't generate an empty PageState.";
 
-  node->frame_entry = base::MakeRefCounted<FrameNavigationEntry>(
-      UTF16ToUTF8(state.target.value_or(base::string16())),
-      state.item_sequence_number, state.document_sequence_number, nullptr,
-      nullptr, GURL(state.url_string.value_or(base::string16())),
-      // TODO(nasko): Supply valid origin once the value is persisted across
-      // session restore.
-      nullptr /* origin */,
-      Referrer(GURL(state.referrer.value_or(base::string16())),
-               state.referrer_policy),
-      state.initiator_origin, std::vector<GURL>(),
-      PageState::CreateFromEncodedData(data), "GET", -1,
-      nullptr /* blob_url_loader_factory */,
-      nullptr /* web_bundle_navigation_info */);
+  // Attempt to find an existing FrameNavigationEntry from `context`, only if it
+  // matches by ISN, URL, and target. Note that it is possible for other values
+  // to still diverge between `entry` and `state` when those match (see
+  // https://crbug.com/1354634), but these values are considered sufficient to
+  // treat the FrameNavigationEntry as shared in future sessions.
+  GURL state_url(state.url_string.value_or(std::u16string()));
+  scoped_refptr<FrameNavigationEntry> entry = context->GetFrameNavigationEntry(
+      state.item_sequence_number,
+      state.target ? base::UTF16ToUTF8(*state.target) : "", state_url);
+
+  if (!entry) {
+    absl::optional<GURL> initiator_base_url;
+    if (state.initiator_base_url_string) {
+      initiator_base_url =
+          GURL(UTF16ToUTF8(state.initiator_base_url_string.value()));
+    }
+    entry = base::MakeRefCounted<FrameNavigationEntry>(
+        UTF16ToUTF8(state.target.value_or(std::u16string())),
+        state.item_sequence_number, state.document_sequence_number,
+        UTF16ToUTF8(state.navigation_api_key.value_or(std::u16string())),
+        nullptr, nullptr, state_url,
+        // TODO(nasko): Supply valid origin once the value is persisted across
+        // session restore.
+        absl::nullopt /* origin */,
+        Referrer(GURL(state.referrer.value_or(std::u16string())),
+                 state.referrer_policy),
+        state.initiator_origin, initiator_base_url, std::vector<GURL>(),
+        blink::PageState::CreateFromEncodedData(data), "GET", -1,
+        nullptr /* blob_url_loader_factory */,
+        nullptr /* subresource_web_bundle_navigation_info */,
+        // TODO(https://crbug.com/1140393): We should restore the policy
+        // container.
+        nullptr /* policy_container_policies */,
+        state.protect_url_in_navigation_api);
+    context->AddFrameNavigationEntry(entry.get());
+  }
+  node->frame_entry = std::move(entry);
 
   // Don't pass the file list to subframes, since that would result in multiple
   // copies of it ending up in the combined list in GetPageState (via
   // RecursivelyGenerateFrameState).
-  std::vector<base::Optional<base::string16>> empty_file_list;
+  std::vector<absl::optional<std::u16string>> empty_file_list;
 
-  for (const ExplodedFrameState& child_state : state.children) {
+  for (const blink::ExplodedFrameState& child_state : state.children) {
     node->children.push_back(
         std::make_unique<NavigationEntryImpl::TreeNode>(node, nullptr));
-    RecursivelyGenerateFrameEntries(child_state, empty_file_list,
+    RecursivelyGenerateFrameEntries(context, child_state, empty_file_list,
                                     node->children.back().get());
   }
 }
 
-base::Optional<base::string16> UrlToOptionalString16(const GURL& url) {
+absl::optional<std::u16string> UrlToOptionalString16(const GURL& url) {
   if (!url.is_valid())
-    return base::nullopt;
+    return absl::nullopt;
   return base::UTF8ToUTF16(url.spec());
 }
 
 void RecursivelyGenerateFrameState(
     NavigationEntryImpl::TreeNode* node,
-    ExplodedFrameState* state,
-    std::vector<base::Optional<base::string16>>* referenced_files) {
+    blink::ExplodedFrameState* state,
+    std::vector<absl::optional<std::u16string>>* referenced_files) {
   // The FrameNavigationEntry's PageState contains just the ExplodedFrameState
   // for that particular frame.
-  ExplodedPageState exploded_page_state;
-  if (!DecodePageState(node->frame_entry->page_state().ToEncodedData(),
-                       &exploded_page_state)) {
+  blink::ExplodedPageState exploded_page_state;
+  if (!blink::DecodePageState(node->frame_entry->page_state().ToEncodedData(),
+                              &exploded_page_state)) {
     NOTREACHED();
     return;
   }
-  ExplodedFrameState frame_state = exploded_page_state.top;
+  blink::ExplodedFrameState frame_state = exploded_page_state.top;
 
   // Copy the FrameNavigationEntry's frame state into the destination state.
   *state = frame_state;
@@ -146,6 +178,13 @@ void RecursivelyGenerateFrameState(
   state->document_sequence_number =
       node->frame_entry->document_sequence_number();
   state->initiator_origin = node->frame_entry->initiator_origin();
+  state->initiator_base_url_string = UrlToOptionalString16(
+      node->frame_entry->initiator_base_url().value_or(GURL::EmptyGURL()));
+
+  // protect_url_in_navigation_api is not generated by the renderer, it is only
+  // stored on FrameNavigationEntry.
+  state->protect_url_in_navigation_api =
+      node->frame_entry->protect_url_in_navigation_api();
 
   // Copy the frame's files into the PageState's |referenced_files|.
   referenced_files->reserve(referenced_files->size() +
@@ -190,7 +229,7 @@ void RegisterOriginsRecursive(NavigationEntryImpl::TreeNode* node,
         node->frame_entry->committed_origin().value();
     SiteInstanceImpl* site_instance = node->frame_entry->site_instance();
     if (site_instance && origin == node_origin)
-      site_instance->PreventOptInOriginIsolation(node_origin);
+      site_instance->RegisterAsDefaultOriginIsolation(node_origin);
   }
 
   for (auto& child : node->children)
@@ -199,7 +238,7 @@ void RegisterOriginsRecursive(NavigationEntryImpl::TreeNode* node,
 
 }  // namespace
 
-void NavigationEntryImpl::RegisterExistingOriginToPreventOptInIsolation(
+void NavigationEntryImpl::RegisterExistingOriginAsHavingDefaultIsolation(
     const url::Origin& origin) {
   return RegisterOriginsRecursive(root_node(), origin);
 }
@@ -228,13 +267,43 @@ NavigationEntryImpl::TreeNode::CloneAndReplace(
     bool clone_children_of_target,
     FrameTreeNode* target_frame_tree_node,
     FrameTreeNode* current_frame_tree_node,
-    TreeNode* parent_node) const {
+    TreeNode* parent_node,
+    NavigationEntryRestoreContextImpl* restore_context,
+    ClonePolicy clone_policy) const {
+  // |restore_context| should only ever be used when doing a deep clone, and
+  // when there is no target.
+  if (restore_context) {
+    DCHECK(!frame_navigation_entry && !target_frame_tree_node &&
+           clone_policy == ClonePolicy::kCloneFrameEntries);
+  }
+
   // Clone this TreeNode, possibly replacing its FrameNavigationEntry.
   bool is_target_frame =
       target_frame_tree_node && MatchesFrame(target_frame_tree_node);
+
+  scoped_refptr<FrameNavigationEntry> new_entry;
+  if (is_target_frame) {
+    new_entry = frame_navigation_entry;
+  } else if (clone_policy == ClonePolicy::kShareFrameEntries) {
+    new_entry = frame_entry;
+  } else {
+    if (restore_context) {
+      // If |restore_context| is given and already has a FrameNavigationEntry
+      // for the given item sequence number and URL, share that
+      // FrameNavigationEntry rather than creating a duplicate.
+      new_entry = restore_context->GetFrameNavigationEntry(
+          frame_entry->item_sequence_number(), frame_entry->frame_unique_name(),
+          frame_entry->url());
+    }
+    if (!new_entry) {
+      new_entry = frame_entry->Clone();
+      if (restore_context)
+        restore_context->AddFrameNavigationEntry(new_entry.get());
+    }
+  }
+
   auto copy = std::make_unique<NavigationEntryImpl::TreeNode>(
-      parent_node,
-      is_target_frame ? frame_navigation_entry : frame_entry->Clone());
+      parent_node, std::move(new_entry));
 
   // Recursively clone the children if needed.
   if (!is_target_frame || clone_children_of_target) {
@@ -246,7 +315,8 @@ NavigationEntryImpl::TreeNode::CloneAndReplace(
       if (!current_frame_tree_node) {
         copy->children.push_back(child->CloneAndReplace(
             frame_navigation_entry, clone_children_of_target,
-            target_frame_tree_node, nullptr, copy.get()));
+            target_frame_tree_node, nullptr, copy.get(), restore_context,
+            clone_policy));
         continue;
       }
 
@@ -270,7 +340,7 @@ NavigationEntryImpl::TreeNode::CloneAndReplace(
           copy->children.push_back(child->CloneAndReplace(
               frame_navigation_entry, clone_children_of_target,
               target_frame_tree_node, current_frame_tree_node->child_at(index),
-              copy.get()));
+              copy.get(), restore_context, clone_policy));
           break;
         }
       }
@@ -303,57 +373,68 @@ NavigationEntryImpl::NavigationEntryImpl()
     : NavigationEntryImpl(nullptr,
                           GURL(),
                           Referrer(),
-                          base::nullopt,
-                          base::string16(),
+                          /* initiator_origin= */ absl::nullopt,
+                          /* initiator_base_url= */ absl::nullopt,
+                          std::u16string(),
                           ui::PAGE_TRANSITION_LINK,
                           false,
-                          nullptr) {}
+                          nullptr,
+                          /* is_initial_entry = */ false) {}
 
 NavigationEntryImpl::NavigationEntryImpl(
     scoped_refptr<SiteInstanceImpl> instance,
     const GURL& url,
     const Referrer& referrer,
-    const base::Optional<url::Origin>& initiator_origin,
-    const base::string16& title,
+    const absl::optional<url::Origin>& initiator_origin,
+    const absl::optional<GURL>& initiator_base_url,
+    const std::u16string& title,
     ui::PageTransition transition_type,
     bool is_renderer_initiated,
-    scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory)
+    scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory,
+    bool is_initial_entry)
     : frame_tree_(std::make_unique<TreeNode>(
           nullptr,
           base::MakeRefCounted<FrameNavigationEntry>(
               "",
               -1,
               -1,
+              "",
               std::move(instance),
               nullptr,
               url,
-              nullptr /* origin */,
+              absl::nullopt /* origin */,
               referrer,
               initiator_origin,
+              initiator_base_url,
               std::vector<GURL>(),
-              PageState(),
+              blink::PageState(),
               "GET",
               -1,
               std::move(blob_url_loader_factory),
-              nullptr /* web_bundle_navigation_info */))),
+              nullptr /* subresource_web_bundle_navigation_info */,
+              nullptr /* policy_container_policies */,
+              false /* protect_url_in_navigation_api */))),
       unique_id_(CreateUniqueEntryID()),
       page_type_(PAGE_TYPE_NORMAL),
       update_virtual_url_with_url_(false),
       title_(title),
       transition_type_(transition_type),
-      restore_type_(RestoreType::NONE),
+      restore_type_(RestoreType::kNotRestored),
       is_overriding_user_agent_(false),
       http_status_code_(0),
       is_renderer_initiated_(is_renderer_initiated),
-      should_replace_entry_(false),
       should_clear_history_list_(false),
       can_load_local_resources_(false),
-      frame_tree_node_id_(-1),
+      frame_tree_node_id_(FrameTreeNode::kFrameTreeNodeInvalidId),
       has_user_gesture_(false),
       reload_type_(ReloadType::NONE),
       started_from_context_menu_(false),
       ssl_error_(false),
-      should_skip_on_back_forward_ui_(false) {}
+      should_skip_on_back_forward_ui_(false),
+      initial_navigation_entry_state_(
+          is_initial_entry
+              ? InitialNavigationEntryState::kInitialNotForSynchronousAboutBlank
+              : InitialNavigationEntryState::kNonInitial) {}
 
 NavigationEntryImpl::~NavigationEntryImpl() {}
 
@@ -382,7 +463,7 @@ const GURL& NavigationEntryImpl::GetBaseURLForDataURL() {
   return base_url_for_data_url_;
 }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 void NavigationEntryImpl::SetDataURLAsString(
     scoped_refptr<base::RefCountedString> data_url) {
   if (data_url) {
@@ -416,17 +497,19 @@ const GURL& NavigationEntryImpl::GetVirtualURL() {
   return virtual_url_.is_empty() ? GetURL() : virtual_url_;
 }
 
-void NavigationEntryImpl::SetTitle(const base::string16& title) {
+void NavigationEntryImpl::SetTitle(const std::u16string& title) {
   title_ = title;
   cached_display_title_.clear();
 }
 
-const base::string16& NavigationEntryImpl::GetTitle() {
+const std::u16string& NavigationEntryImpl::GetTitle() {
   return title_;
 }
 
-void NavigationEntryImpl::SetPageState(const PageState& state) {
+void NavigationEntryImpl::SetPageState(const blink::PageState& state,
+                                       NavigationEntryRestoreContext* context) {
   DCHECK(state.IsValid());
+  DCHECK(context);
 
   // SetPageState should only be called before the NavigationEntry has been
   // loaded, such as for restore (when there are no subframe
@@ -440,28 +523,35 @@ void NavigationEntryImpl::SetPageState(const PageState& state) {
   if (!frame_tree_->children.empty())
     frame_tree_->children.clear();
 
-  // If the PageState can't be parsed, just store it on the main frame's
-  // FrameNavigationEntry without recursively creating subframe entries.
-  ExplodedPageState exploded_state;
-  if (!DecodePageState(state.ToEncodedData(), &exploded_state)) {
-    frame_tree_->frame_entry->SetPageState(state);
+  // If the PageState can't be parsed, store a clean PageState for the URL
+  // without recursively creating subframe entries. This ensures that the
+  // renderer and future sessions will be able to handle the history item, even
+  // if not all data can be preserved. See https://crbug.com/1196330.
+  blink::ExplodedPageState exploded_state;
+  if (!blink::DecodePageState(state.ToEncodedData(), &exploded_state)) {
+    // Replace frame_entry with a clone to avoid sharing with any other
+    // NavigationEntries, because the item sequence number will be gone.
+    frame_tree_->frame_entry = frame_tree_->frame_entry->Clone();
+    frame_tree_->frame_entry->SetPageState(
+        blink::PageState::CreateFromURL(GetURL()));
     return;
   }
 
   RecursivelyGenerateFrameEntries(
+      static_cast<NavigationEntryRestoreContextImpl*>(context),
       exploded_state.top, exploded_state.referenced_files, frame_tree_.get());
 }
 
-PageState NavigationEntryImpl::GetPageState() {
+blink::PageState NavigationEntryImpl::GetPageState() {
   // Each FrameNavigationEntry has a frame-specific PageState.  We combine these
   // into an ExplodedPageState tree and generate a full PageState from it.
-  ExplodedPageState exploded_state;
+  blink::ExplodedPageState exploded_state;
   RecursivelyGenerateFrameState(frame_tree_.get(), &exploded_state.top,
                                 &exploded_state.referenced_files);
 
   std::string encoded_data;
-  EncodePageState(exploded_state, &encoded_data);
-  return PageState::CreateFromEncodedData(encoded_data);
+  blink::EncodePageState(exploded_state, &encoded_data);
+  return blink::PageState::CreateFromEncodedData(encoded_data);
 }
 
 void NavigationEntryImpl::set_site_instance(
@@ -470,7 +560,7 @@ void NavigationEntryImpl::set_site_instance(
   frame_tree_->frame_entry->set_site_instance(std::move(site_instance));
 }
 
-const base::string16& NavigationEntryImpl::GetTitleForDisplay() {
+const std::u16string& NavigationEntryImpl::GetTitleForDisplay() {
   // Most pages have real titles. Don't even bother caching anything if this is
   // the case.
   if (!title_.empty())
@@ -482,7 +572,7 @@ const base::string16& NavigationEntryImpl::GetTitleForDisplay() {
     return cached_display_title_;
 
   // Use the virtual URL first if any, and fall back on using the real URL.
-  base::string16 title;
+  std::u16string title;
   if (!virtual_url_.is_empty()) {
     title = url_formatter::FormatUrl(virtual_url_);
   } else if (!GetURL().is_empty()) {
@@ -494,22 +584,22 @@ const base::string16& NavigationEntryImpl::GetTitleForDisplay() {
     // It is necessary to ignore the reference and query parameters or else
     // looking for slashes might accidentally return one of those values. See
     // https://crbug.com/503003.
-    base::string16::size_type refpos = title.find('#');
-    base::string16::size_type querypos = title.find('?');
-    base::string16::size_type lastpos;
-    if (refpos == base::string16::npos)
+    std::u16string::size_type refpos = title.find('#');
+    std::u16string::size_type querypos = title.find('?');
+    std::u16string::size_type lastpos;
+    if (refpos == std::u16string::npos)
       lastpos = querypos;
-    else if (querypos == base::string16::npos)
+    else if (querypos == std::u16string::npos)
       lastpos = refpos;
     else
       lastpos = (refpos < querypos) ? refpos : querypos;
-    base::string16::size_type slashpos = title.rfind('/', lastpos);
-    if (slashpos != base::string16::npos)
+    std::u16string::size_type slashpos = title.rfind('/', lastpos);
+    if (slashpos != std::u16string::npos)
       title = title.substr(slashpos + 1);
 
   } else if (GetURL().SchemeIs(kChromeUIUntrustedScheme)) {
     // For chrome-untrusted:// URLs, leave title blank until the page loads.
-    title = base::string16();
+    title = std::u16string();
 
   } else if (base::i18n::StringContainsStrongRTLChars(title)) {
     // Wrap the URL in an LTR embedding for proper handling of RTL characters.
@@ -519,9 +609,9 @@ const base::string16& NavigationEntryImpl::GetTitleForDisplay() {
     base::i18n::WrapStringWithLTRFormatting(&title);
   }
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   if (GetURL().SchemeIs(url::kContentScheme)) {
-    base::string16 file_display_name;
+    std::u16string file_display_name;
     if (base::MaybeGetFileDisplayName(base::FilePath(GetURL().spec()),
                                       &file_display_name)) {
       title = file_display_name;
@@ -624,13 +714,13 @@ const std::vector<GURL>& NavigationEntryImpl::GetRedirectChain() {
   return root_node()->frame_entry->redirect_chain();
 }
 
-const base::Optional<ReplacedNavigationEntryData>&
+const absl::optional<ReplacedNavigationEntryData>&
 NavigationEntryImpl::GetReplacedEntryData() {
   return replaced_entry_data_;
 }
 
 bool NavigationEntryImpl::IsRestored() {
-  return restore_type_ != RestoreType::NONE;
+  return restore_type_ == RestoreType::kRestored;
 }
 
 std::string NavigationEntryImpl::GetExtraHeaders() {
@@ -657,8 +747,28 @@ bool NavigationEntryImpl::GetCanLoadLocalResources() {
   return can_load_local_resources_;
 }
 
+bool NavigationEntryImpl::IsInitialEntry() {
+  return initial_navigation_entry_state_ !=
+         InitialNavigationEntryState::kNonInitial;
+}
+
 std::unique_ptr<NavigationEntryImpl> NavigationEntryImpl::Clone() const {
-  return NavigationEntryImpl::CloneAndReplace(nullptr, false, nullptr, nullptr);
+  std::unique_ptr<NavigationEntryImpl> entry =
+      CloneAndReplaceInternal(nullptr, false, nullptr, nullptr, nullptr,
+                              ClonePolicy::kShareFrameEntries);
+  // This function is only used for creating pending entries, which should not
+  // carry the "initial" status.
+  entry->set_initial_navigation_entry_state(
+      InitialNavigationEntryState::kNonInitial);
+  return entry;
+}
+
+std::unique_ptr<NavigationEntryImpl> NavigationEntryImpl::CloneWithoutSharing(
+    NavigationEntryRestoreContextImpl* restore_context) const {
+  DCHECK(restore_context);
+  return CloneAndReplaceInternal(nullptr, false, nullptr, nullptr,
+                                 restore_context,
+                                 ClonePolicy::kCloneFrameEntries);
 }
 
 std::unique_ptr<NavigationEntryImpl> NavigationEntryImpl::CloneAndReplace(
@@ -666,13 +776,26 @@ std::unique_ptr<NavigationEntryImpl> NavigationEntryImpl::CloneAndReplace(
     bool clone_children_of_target,
     FrameTreeNode* target_frame_tree_node,
     FrameTreeNode* root_frame_tree_node) const {
+  std::unique_ptr<NavigationEntryImpl> entry = CloneAndReplaceInternal(
+      frame_navigation_entry, clone_children_of_target, target_frame_tree_node,
+      root_frame_tree_node, nullptr, ClonePolicy::kShareFrameEntries);
+  return entry;
+}
+
+std::unique_ptr<NavigationEntryImpl>
+NavigationEntryImpl::CloneAndReplaceInternal(
+    scoped_refptr<FrameNavigationEntry> frame_navigation_entry,
+    bool clone_children_of_target,
+    FrameTreeNode* target_frame_tree_node,
+    FrameTreeNode* root_frame_tree_node,
+    NavigationEntryRestoreContextImpl* restore_context,
+    ClonePolicy clone_policy) const {
   auto copy = std::make_unique<NavigationEntryImpl>();
 
-  // TODO(creis): Only share the same FrameNavigationEntries if cloning within
-  // the same tab.
   copy->frame_tree_ = frame_tree_->CloneAndReplace(
       std::move(frame_navigation_entry), clone_children_of_target,
-      target_frame_tree_node, root_frame_tree_node, nullptr);
+      target_frame_tree_node, root_frame_tree_node, nullptr, restore_context,
+      clone_policy);
 
   // Copy most state over, unless cleared in ResetForCommit.
   // Don't copy unique_id_, otherwise it won't be unique.
@@ -692,7 +815,7 @@ std::unique_ptr<NavigationEntryImpl> NavigationEntryImpl::CloneAndReplace(
   // ResetForCommit: post_data_
   copy->extra_headers_ = extra_headers_;
   copy->base_url_for_data_url_ = base_url_for_data_url_;
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   copy->data_url_as_string_ = data_url_as_string_;
 #endif
   // ResetForCommit: is_renderer_initiated_
@@ -705,50 +828,64 @@ std::unique_ptr<NavigationEntryImpl> NavigationEntryImpl::CloneAndReplace(
   copy->CloneDataFrom(*this);
   copy->replaced_entry_data_ = replaced_entry_data_;
   copy->should_skip_on_back_forward_ui_ = should_skip_on_back_forward_ui_;
+  copy->initial_navigation_entry_state_ = initial_navigation_entry_state_;
 
   return copy;
 }
 
-mojom::CommonNavigationParamsPtr
+blink::mojom::CommonNavigationParamsPtr
 NavigationEntryImpl::ConstructCommonNavigationParams(
     const FrameNavigationEntry& frame_entry,
     const scoped_refptr<network::ResourceRequestBody>& post_body,
     const GURL& dest_url,
     blink::mojom::ReferrerPtr dest_referrer,
-    mojom::NavigationType navigation_type,
-    blink::PreviewsState previews_state,
+    blink::mojom::NavigationType navigation_type,
     base::TimeTicks navigation_start,
     base::TimeTicks input_start) {
-  NavigationDownloadPolicy download_policy;
-  if (IsViewSourceMode())
-    download_policy.SetDisallowed(NavigationDownloadType::kViewSource);
-
-  return mojom::CommonNavigationParams::New(
-      dest_url, frame_entry.initiator_origin(), std::move(dest_referrer),
-      GetTransitionType(), navigation_type, download_policy,
-      should_replace_entry(), GetBaseURLForDataURL(), GetHistoryURLForDataURL(),
-      previews_state, navigation_start, frame_entry.method(),
-      post_body ? post_body : post_data_, network::mojom::SourceLocation::New(),
-      has_started_from_context_menu(), has_user_gesture(),
-      false /* has_text_fragment_token */, CreateInitiatorCSPInfo(),
-      std::vector<int>(), std::string(),
-      false /* is_history_navigation_in_new_child_frame */, input_start);
+  // `base_url_for_data_url` is saved in NavigationEntry but should only be used
+  // by main frames, because loadData* navigations can only happen on the main
+  // frame.
+  bool is_for_main_frame = (root_node()->frame_entry == &frame_entry);
+  return blink::mojom::CommonNavigationParams::New(
+      dest_url, frame_entry.initiator_origin(),
+      frame_entry.initiator_base_url(), std::move(dest_referrer),
+      GetTransitionType(), navigation_type, blink::NavigationDownloadPolicy(),
+      // It's okay to pass false for `should_replace_entry` because we never
+      // replace an entry on session history / reload / restore navigation. New
+      // navigation that may use replacement create their CommonNavigationParams
+      // via NavigationRequest, for example, instead of via NavigationEntry.
+      false /* should_replace_entry */,
+      is_for_main_frame ? GetBaseURLForDataURL() : GURL(), navigation_start,
+      frame_entry.method(), post_body ? post_body : post_data_,
+      network::mojom::SourceLocation::New(), has_started_from_context_menu(),
+      has_user_gesture(), false /* has_text_fragment_token */,
+      network::mojom::CSPDisposition::CHECK, std::vector<int>(), std::string(),
+      false /* is_history_navigation_in_new_child_frame */, input_start,
+      network::mojom::RequestDestination::kEmpty,
+      false /* has_storage_access */);
 }
 
-mojom::CommitNavigationParamsPtr
+blink::mojom::CommitNavigationParamsPtr
 NavigationEntryImpl::ConstructCommitNavigationParams(
     const FrameNavigationEntry& frame_entry,
     const GURL& original_url,
-    const base::Optional<url::Origin>& origin_to_commit,
     const std::string& original_method,
     const base::flat_map<std::string, bool>& subframe_unique_names,
     bool intended_as_new_entry,
     int pending_history_list_offset,
     int current_history_list_offset,
     int current_history_list_length,
-    const blink::FramePolicy& frame_policy) {
+    const blink::FramePolicy& frame_policy,
+    bool ancestor_or_self_has_cspee,
+    absl::optional<blink::scheduler::TaskAttributionId>
+        soft_navigation_heuristics_task_id) {
   // Set the redirect chain to the navigation's redirects, unless returning to a
   // completed navigation (whose previous redirects don't apply).
+  // Note that this is actually does not work as intended right now because
+  // we're only copying the redirect URLs into the new CommitNavigationParams,
+  // keeping redirect_response and redirect_infos as empty.
+  // TODO(https://crbug.com/1171225): Save redirect_response & redirect_infos in
+  // FNE and copy them too?
   std::vector<GURL> redirects;
   if (ui::PageTransitionIsNewNavigation(GetTransitionType())) {
     redirects = frame_entry.redirect_chain();
@@ -766,35 +903,56 @@ NavigationEntryImpl::ConstructCommitNavigationParams(
     current_length_to_send = 0;
   }
 
-  mojom::CommitNavigationParamsPtr commit_params =
-      mojom::CommitNavigationParams::New(
-          origin_to_commit, GetIsOverridingUserAgent(), redirects,
-          std::vector<network::mojom::URLResponseHeadPtr>(),
+  blink::mojom::CommitNavigationParamsPtr commit_params =
+      blink::mojom::CommitNavigationParams::New(
+          absl::nullopt,
+          // The correct storage key and session storage key will be computed
+          // before committing the navigation.
+          blink::StorageKey(), blink::StorageKey(), GetIsOverridingUserAgent(),
+          redirects, std::vector<network::mojom::URLResponseHeadPtr>(),
           std::vector<net::RedirectInfo>(), std::string(), original_url,
-          original_method, GetCanLoadLocalResources(), frame_entry.page_state(),
-          GetUniqueID(), subframe_unique_names, intended_as_new_entry,
-          pending_offset_to_send, current_offset_to_send,
-          current_length_to_send, false, IsViewSourceMode(),
-          should_clear_history_list(), mojom::NavigationTiming::New(),
-          base::nullopt, mojom::WasActivatedOption::kUnknown,
+          original_method, GetCanLoadLocalResources(),
+          frame_entry.page_state().ToEncodedData(), GetUniqueID(),
+          subframe_unique_names, intended_as_new_entry, pending_offset_to_send,
+          current_offset_to_send, current_length_to_send, false,
+          IsViewSourceMode(), should_clear_history_list(),
+          blink::mojom::NavigationTiming::New(),
+          blink::mojom::WasActivatedOption::kUnknown,
           base::UnguessableToken::Create(),
-          std::vector<mojom::PrefetchedSignedExchangeInfoPtr>(),
-#if defined(OS_ANDROID)
+          std::vector<blink::mojom::PrefetchedSignedExchangeInfoPtr>(),
+#if BUILDFLAG(IS_ANDROID)
           std::string(),
 #endif
-          false, network::mojom::IPAddressSpace::kUnknown,
-          GURL() /* web_bundle_physical_url */,
-          GURL() /* base_url_override_for_web_bundle */,
+          false /* is_browser_initiated */,
           ukm::kInvalidSourceId /* document_ukm_source_id */, frame_policy,
           std::vector<std::string>() /* force_enabled_origin_trials */,
-          false /* origin_isolated */,
+          false /* origin_agent_cluster */,
+          true /* origin_agent_cluster_left_as_default */,
           std::vector<
               network::mojom::WebClientHintsType>() /* enabled_client_hints */,
-          false /* is_cross_browsing_instance */,
-          std::vector<std::string>() /* forced_content_security_policies */,
-          nullptr /* old_page_info */);
-#if defined(OS_ANDROID)
-  if (NavigationControllerImpl::ValidateDataURLAsString(GetDataURLAsString())) {
+          false /* is_cross_browsing_instance */, nullptr /* old_page_info */,
+          -1 /* http_response_code */,
+          blink::mojom::NavigationApiHistoryEntryArrays::New(),
+          std::vector<GURL>() /* early_hints_preloaded_resources */,
+          // This timestamp will be populated when the commit IPC is sent.
+          base::TimeTicks() /* commit_sent */, std::string() /* srcdoc_value */,
+          false /* should_load_data_url */, ancestor_or_self_has_cspee,
+          std::string() /* reduced_accept_language */,
+          /*navigation_delivery_type=*/
+          network::mojom::NavigationDeliveryType::kDefault,
+          /*view_transition_state=*/absl::nullopt,
+          soft_navigation_heuristics_task_id,
+          /*modified_runtime_features=*/
+          base::flat_map<::blink::mojom::RuntimeFeatureState, bool>(),
+          /*fenced_frame_properties=*/absl::nullopt,
+          /*not_restored_reasons=*/nullptr);
+#if BUILDFLAG(IS_ANDROID)
+  // `data_url_as_string` is saved in NavigationEntry but should only be used by
+  // main frames, because loadData* navigations can only happen on the main
+  // frame.
+  bool is_for_main_frame = (root_node()->frame_entry == &frame_entry);
+  if (is_for_main_frame &&
+      NavigationControllerImpl::ValidateDataURLAsString(GetDataURLAsString())) {
     commit_params->data_url_as_string = GetDataURLAsString()->data();
   }
 #endif
@@ -807,10 +965,9 @@ void NavigationEntryImpl::ResetForCommit(FrameNavigationEntry* frame_entry) {
   // TODO(creis): This state should be moved to NavigationRequest.
   SetPostData(nullptr);
   set_is_renderer_initiated(false);
-  set_should_replace_entry(false);
 
   set_should_clear_history_list(false);
-  set_frame_tree_node_id(-1);
+  set_frame_tree_node_id(FrameTreeNode::kFrameTreeNodeInvalidId);
   set_reload_type(ReloadType::NONE);
 
   if (frame_entry) {
@@ -839,36 +996,56 @@ NavigationEntryImpl::TreeNode* NavigationEntryImpl::GetTreeNode(
 
 void NavigationEntryImpl::AddOrUpdateFrameEntry(
     FrameTreeNode* frame_tree_node,
+    UpdatePolicy update_policy,
     int64_t item_sequence_number,
     int64_t document_sequence_number,
+    const std::string& navigation_api_key,
     SiteInstanceImpl* site_instance,
     scoped_refptr<SiteInstanceImpl> source_site_instance,
     const GURL& url,
-    const base::Optional<url::Origin>& origin,
+    const absl::optional<url::Origin>& origin,
     const Referrer& referrer,
-    const base::Optional<url::Origin>& initiator_origin,
+    const absl::optional<url::Origin>& initiator_origin,
+    const absl::optional<GURL>& initiator_base_url,
     const std::vector<GURL>& redirect_chain,
-    const PageState& page_state,
+    const blink::PageState& page_state,
     const std::string& method,
     int64_t post_id,
     scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory,
-    std::unique_ptr<WebBundleNavigationInfo> web_bundle_navigation_info) {
+    std::unique_ptr<SubresourceWebBundleNavigationInfo>
+        subresource_web_bundle_navigation_info,
+    std::unique_ptr<PolicyContainerPolicies> policy_container_policies) {
+  bool protect_url_in_navigation_api =
+      policy_container_policies &&
+      NavigationControllerImpl::ShouldProtectUrlInNavigationApi(
+          policy_container_policies->referrer_policy);
   // If this is called for the main frame, the FrameNavigationEntry is
   // guaranteed to exist, so just update it directly and return.
   if (frame_tree_node->IsMainFrame()) {
     // If the document of the FrameNavigationEntry is changing, we must clear
     // any child FrameNavigationEntries.
     if (root_node()->frame_entry->document_sequence_number() !=
-        document_sequence_number)
+        document_sequence_number) {
       root_node()->children.clear();
+      if (!url.is_empty()) {
+        // A cross-document navigation committed in the main frame, so the
+        // NavigationEntry loses its "initial NavigationEntry" status. Note that
+        // the initial entry creation path also goes through this function, but
+        // we know not to remove the status in that case because it uses the
+        // empty URL.
+        initial_navigation_entry_state_ =
+            InitialNavigationEntryState::kNonInitial;
+      }
+    }
 
     root_node()->frame_entry->UpdateEntry(
         frame_tree_node->unique_name(), item_sequence_number,
-        document_sequence_number, site_instance,
+        document_sequence_number, navigation_api_key, site_instance,
         std::move(source_site_instance), url, origin, referrer,
-        initiator_origin, redirect_chain, page_state, method, post_id,
-        std::move(blob_url_loader_factory),
-        std::move(web_bundle_navigation_info));
+        initiator_origin, initiator_base_url, redirect_chain, page_state,
+        method, post_id, std::move(blob_url_loader_factory),
+        std::move(subresource_web_bundle_navigation_info),
+        std::move(policy_container_policies), protect_url_in_navigation_api);
     return;
   }
 
@@ -886,6 +1063,10 @@ void NavigationEntryImpl::AddOrUpdateFrameEntry(
   const std::string& unique_name = frame_tree_node->unique_name();
   for (const auto& child : parent_node->children) {
     if (child->frame_entry->frame_unique_name() == unique_name) {
+      if (update_policy == UpdatePolicy::kReplace) {
+        RemoveEntryForFrame(frame_tree_node, false);
+        break;
+      }
       // If the document of the FrameNavigationEntry is changing, we must clear
       // any child FrameNavigationEntries.
       if (child->frame_entry->document_sequence_number() !=
@@ -895,10 +1076,12 @@ void NavigationEntryImpl::AddOrUpdateFrameEntry(
       // Update the existing FrameNavigationEntry (e.g., for replaceState).
       child->frame_entry->UpdateEntry(
           unique_name, item_sequence_number, document_sequence_number,
-          site_instance, std::move(source_site_instance), url, origin, referrer,
-          initiator_origin, redirect_chain, page_state, method, post_id,
+          navigation_api_key, site_instance, std::move(source_site_instance),
+          url, origin, referrer, initiator_origin, initiator_base_url,
+          redirect_chain, page_state, method, post_id,
           std::move(blob_url_loader_factory),
-          std::move(web_bundle_navigation_info));
+          std::move(subresource_web_bundle_navigation_info),
+          std::move(policy_container_policies), protect_url_in_navigation_api);
       return;
     }
   }
@@ -908,11 +1091,11 @@ void NavigationEntryImpl::AddOrUpdateFrameEntry(
   // or unique name.
   auto frame_entry = base::MakeRefCounted<FrameNavigationEntry>(
       unique_name, item_sequence_number, document_sequence_number,
-      site_instance, std::move(source_site_instance), url,
-      base::OptionalOrNullptr(origin), referrer, initiator_origin,
-      redirect_chain, page_state, method, post_id,
-      std::move(blob_url_loader_factory),
-      std::move(web_bundle_navigation_info));
+      navigation_api_key, site_instance, std::move(source_site_instance), url,
+      origin, referrer, initiator_origin, initiator_base_url, redirect_chain,
+      page_state, method, post_id, std::move(blob_url_loader_factory),
+      std::move(subresource_web_bundle_navigation_info),
+      std::move(policy_container_policies), protect_url_in_navigation_api);
   parent_node->children.push_back(
       std::make_unique<NavigationEntryImpl::TreeNode>(parent_node,
                                                       std::move(frame_entry)));
@@ -922,6 +1105,23 @@ FrameNavigationEntry* NavigationEntryImpl::GetFrameEntry(
     FrameTreeNode* frame_tree_node) const {
   NavigationEntryImpl::TreeNode* tree_node = GetTreeNode(frame_tree_node);
   return tree_node ? tree_node->frame_entry.get() : nullptr;
+}
+
+void NavigationEntryImpl::ForEachFrameEntry(
+    FrameEntryIterationCallback on_frame_entry) {
+  NavigationEntryImpl::TreeNode* node = nullptr;
+  base::queue<NavigationEntryImpl::TreeNode*> work_queue;
+  work_queue.push(root_node());
+  while (!work_queue.empty()) {
+    node = work_queue.front();
+    work_queue.pop();
+
+    on_frame_entry(node->frame_entry.get());
+
+    // Enqueue any children.
+    for (const auto& child : node->children)
+      work_queue.push(child.get());
+  }
 }
 
 base::flat_map<std::string, bool> NavigationEntryImpl::GetSubframeUniqueNames(
@@ -942,11 +1142,12 @@ base::flat_map<std::string, bool> NavigationEntryImpl::GetSubframeUniqueNames(
       // See RenderProcessHostImpl::FilterURL to know which URLs are rewritten.
       // See https://crbug.com/657896 for details.
       bool is_about_blank = false;
-      ExplodedPageState exploded_page_state;
-      if (DecodePageState(child->frame_entry->page_state().ToEncodedData(),
-                          &exploded_page_state)) {
-        ExplodedFrameState frame_state = exploded_page_state.top;
-        if (UTF16ToUTF8(frame_state.url_string.value_or(base::string16())) ==
+      blink::ExplodedPageState exploded_page_state;
+      if (blink::DecodePageState(
+              child->frame_entry->page_state().ToEncodedData(),
+              &exploded_page_state)) {
+        blink::ExplodedFrameState frame_state = exploded_page_state.top;
+        if (UTF16ToUTF8(frame_state.url_string.value_or(std::u16string())) ==
             url::kAboutBlankURL)
           is_about_blank = true;
       }
@@ -972,27 +1173,44 @@ void NavigationEntryImpl::RemoveEntryForFrame(FrameTreeNode* frame_tree_node,
       !InSameTreePosition(frame_tree_node, node)) {
     auto* frame_entry = node->frame_entry.get();
     if (frame_entry && frame_entry->committed_origin()) {
-      // Normally non-isolated origins are tracked through their presence in
+      // Normally default-isolated origins are tracked through their presence in
       // session history, which is consulted whenever an origin newly requests
       // isolation. If we remove a frame_entry, its origin won't be available
       // to any future global walk if the same origin later wants to opt-in. So
       // we add it to the non-opt-in list here to be spec compliant (unless it's
       // currently opted-in, in which case this call will do nothing).
       ChildProcessSecurityPolicyImpl::GetInstance()
-          ->AddNonIsolatedOriginIfNeeded(
+          ->AddDefaultIsolatedOriginIfNeeded(
               frame_entry->site_instance()->GetIsolationContext(),
               frame_entry->committed_origin().value(),
               true /* global_ walk_or_frame_removal */);
     }
     NavigationEntryImpl::TreeNode* parent_node = node->parent;
-    auto it = std::find_if(
-        parent_node->children.begin(), parent_node->children.end(),
-        [node](const std::unique_ptr<NavigationEntryImpl::TreeNode>& item) {
-          return item.get() == node;
-        });
+    auto it = base::ranges::find(
+        parent_node->children, node,
+        &std::unique_ptr<NavigationEntryImpl::TreeNode>::get);
     CHECK(it != parent_node->children.end());
     parent_node->children.erase(it);
   }
+}
+
+void NavigationEntryImpl::UpdateBackForwardCacheNotRestoredReasons(
+    NavigationRequest* navigation_request) {
+  DCHECK(BackForwardCacheMetrics::IsCrossDocumentMainFrameHistoryNavigation(
+      navigation_request));
+  if (!back_forward_cache_metrics()) {
+    // Create a metrics object if there is none.
+    FrameNavigationEntry* frame_navigation_entry =
+        GetFrameEntry(navigation_request->frame_tree_node());
+    scoped_refptr<BackForwardCacheMetrics> metrics =
+        base::WrapRefCounted(new BackForwardCacheMetrics(
+            frame_navigation_entry->document_sequence_number()));
+    set_back_forward_cache_metrics(std::move(metrics));
+  }
+  // Update NotRestoredReasons to include additional reasons only
+  // known when we navigate back to the NavigationEntry.
+  back_forward_cache_metrics()->UpdateNotRestoredReasonsForNavigation(
+      navigation_request);
 }
 
 GURL NavigationEntryImpl::GetHistoryURLForDataURL() {

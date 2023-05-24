@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
   \qmltype AbstractGraph3D
@@ -89,26 +65,19 @@
   How the graph will be rendered. Defaults to \c{RenderIndirect}.
 
   \value RenderDirectToBackground
-         Indicates that the graph will be rendered directly on the window background.
+         Indicates that the graph will be rendered directly on the window background and QML items are
+  rendered on top of it. Using non-transparent QML item as a background will hide the graph.
   Clears the whole window before rendering the graph, including the areas
-  outside the graph.
-  Since the graphs in this rendering mode are drawn on the window background under other QML
-  items, the regular QML window clearing before rendering is suppressed. The graphs handle the clearing
-  themselves instead.
-  If the surface format of the window supports antialiasing, it will be used (see
+  outside the graph. If the surface format of the window supports antialiasing, it will be used (see
   \c {QtDataVisualization::qDefaultSurfaceFormat()}).
   This rendering mode offers the best performance at the expense of non-standard QML behavior. For example,
   the graphs do not obey the z ordering of QML items and the opacity value has no effect on them.
 
+
   \value RenderDirectToBackground_NoClear
-         Similar to \c RenderDirectToBackground mode, except that the graph will not clear the whole
-  window before rendering the graph. This mode is better for windows where you have other custom items
-  besides the graphs that also draw on the window background. In that case you need to either take care
-  of the window clearing yourself or ensure that all areas of the window are fully covered with opaque
-  items.
-  If one graph in the window uses either of the direct rendering modes, then all other graphs in the
-  same window also drawn in direct modes should use the exact same direct rendering mode.
-  Otherwise some graphs may not show up, depending on the drawing order of the graphs.
+  \obsolete
+  \note This will work exactly the same way as \c RenderDirectToBackground does in Qt 6
+  as not clearing the window is not supported anymore.
 
   \value RenderIndirect
          Indicates the graph will be first rendered to an offscreen surface that
@@ -194,6 +163,12 @@
 /*!
  * \qmlmethod void AbstractGraph3D::clearSelection()
  * Clears selection from all attached series.
+ */
+
+/*!
+ * \qmlmethod bool AbstractGraph3D::hasSeries(Abstract3DSeries series)
+ * \since 6.3
+ * Returns whether the \a series has already been added to the graph.
  */
 
 /*!
@@ -309,7 +284,7 @@
  * \c selectedElementChanged signal is emitted.
  *
  * The signal can be used for example for implementing customized input
- * handling, as demonstrated by the \l {Qt Quick 2 Axis Dragging Example}.
+ * handling, as demonstrated by the \l {Axis Handling} example.
  *
  * \sa selectedLabelIndex(), selectedAxis(), selectedCustomItemIndex(), selectedCustomItem(),
  * Bars3D::selectedSeries, Scatter3D::selectedSeries, Scene3D::selectionQueryPosition,

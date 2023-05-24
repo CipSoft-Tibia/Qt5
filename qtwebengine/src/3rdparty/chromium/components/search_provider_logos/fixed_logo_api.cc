@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,12 +17,13 @@ std::unique_ptr<EncodedLogo> ParseFixedLogoResponse(
     base::Time response_time,
     bool* parsing_failed) {
   auto logo = std::make_unique<EncodedLogo>();
-  logo->encoded_image = base::RefCountedString::TakeString(response.get());
+  logo->encoded_image =
+      base::MakeRefCounted<base::RefCountedString>(std::move(*response));
 
   // If |can_show_after_expiration| is true, the |expiration_time| has little
   // effect. Set it as far as possible in the future just as an approximation.
   logo->metadata.expiration_time =
-      response_time + base::TimeDelta::FromMilliseconds(kMaxTimeToLiveMS);
+      response_time + base::Milliseconds(kMaxTimeToLiveMS);
   logo->metadata.can_show_after_expiration = true;
 
   *parsing_failed = false;

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,11 +12,12 @@ MathMLSpaceElement::MathMLSpaceElement(Document& doc)
     : MathMLElement(mathml_names::kMspaceTag, doc) {}
 
 void MathMLSpaceElement::AddMathBaselineIfNeeded(
-    ComputedStyle& style,
+    ComputedStyleBuilder& builder,
     const CSSToLengthConversionData& conversion_data) {
   if (auto length_or_percentage_value = AddMathLengthToComputedStyle(
-          conversion_data, mathml_names::kHeightAttr))
-    style.SetMathBaseline(std::move(*length_or_percentage_value));
+          conversion_data, mathml_names::kHeightAttr, AllowPercentages::kNo)) {
+    builder.SetMathBaseline(std::move(*length_or_percentage_value));
+  }
 }
 
 bool MathMLSpaceElement::IsPresentationAttribute(
@@ -32,21 +33,29 @@ void MathMLSpaceElement::CollectStyleForPresentationAttribute(
     const AtomicString& value,
     MutableCSSPropertyValueSet* style) {
   if (name == mathml_names::kWidthAttr) {
-    AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kWidth,
-                                            value);
+    if (const CSSPrimitiveValue* width_value =
+            ParseMathLength(name, AllowPercentages::kNo)) {
+      AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kWidth,
+                                              *width_value);
+    }
   } else if (name == mathml_names::kHeightAttr ||
              name == mathml_names::kDepthAttr) {
     // TODO(rbuis): this can be simplified once attr() is supported for
     // width/height.
-    String height = FastGetAttribute(mathml_names::kHeightAttr);
-    String depth = FastGetAttribute(mathml_names::kDepthAttr);
-    if (!height.IsEmpty() && !depth.IsEmpty()) {
+    const CSSPrimitiveValue* height_value =
+        ParseMathLength(mathml_names::kHeightAttr, AllowPercentages::kNo);
+    const CSSPrimitiveValue* depth_value =
+        ParseMathLength(mathml_names::kDepthAttr, AllowPercentages::kNo);
+    const CSSPrimitiveValue* attribute_value =
+        (name == mathml_names::kHeightAttr ? height_value : depth_value);
+    if (height_value && depth_value) {
       AddPropertyToPresentationAttributeStyle(
           style, CSSPropertyID::kHeight,
-          "calc(" + height + " + " + depth + ")");
-    } else {
+          "calc(" + FastGetAttribute(mathml_names::kHeightAttr) + " + " +
+              FastGetAttribute(mathml_names::kDepthAttr) + ")");
+    } else if (attribute_value) {
       AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kHeight,
-                                              value);
+                                              *attribute_value);
     }
   } else {
     MathMLElement::CollectStyleForPresentationAttribute(name, value, style);

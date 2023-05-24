@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the FOO module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore/QString>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/QCoreApplication>
 #include <QtNetwork/QAuthenticator>
 
@@ -51,6 +26,8 @@ private Q_SLOTS:
     void sha256AndMd5Digest();
 
     void equalityOperators();
+
+    void isMethodSupported();
 };
 
 tst_QAuthenticator::tst_QAuthenticator()
@@ -84,7 +61,7 @@ void tst_QAuthenticator::basicAuth()
     QCOMPARE(priv->phase, QAuthenticatorPrivate::Start);
 
     QList<QPair<QByteArray, QByteArray> > headers;
-    headers << qMakePair<QByteArray, QByteArray>(QByteArray("WWW-Authenticate"), "Basic " + data.toUtf8());
+    headers << qMakePair(QByteArray("WWW-Authenticate"), "Basic " + data.toUtf8());
     priv->parseHttpResponse(headers, /*isProxy = */ false, {});
 
     QCOMPARE(auth.realm(), realm);
@@ -95,7 +72,7 @@ void tst_QAuthenticator::basicAuth()
 
     QCOMPARE(priv->phase, QAuthenticatorPrivate::Start);
 
-    QCOMPARE(priv->calculateResponse("GET", "/", "").constData(), QByteArray("Basic " + expectedReply).constData());
+    QCOMPARE(priv->calculateResponse("GET", "/", u"").constData(), QByteArray("Basic " + expectedReply).constData());
 }
 
 void tst_QAuthenticator::ntlmAuth_data()
@@ -132,23 +109,23 @@ void tst_QAuthenticator::ntlmAuth()
     // This phase of NTLM contains no information, other than what we're willing to negotiate
     // Current implementation uses flags:
     //  NTLMSSP_NEGOTIATE_UNICODE | NTLMSSP_NEGOTIATE_NTLM | NTLMSSP_REQUEST_TARGET
-    headers << qMakePair<QByteArray, QByteArray>("WWW-Authenticate", "NTLM");
+    headers << qMakePair(QByteArrayLiteral("WWW-Authenticate"), QByteArrayLiteral("NTLM"));
     priv->parseHttpResponse(headers, /*isProxy = */ false, {});
     if (sso)
-        QVERIFY(priv->calculateResponse("GET", "/", "").startsWith("NTLM "));
+        QVERIFY(priv->calculateResponse("GET", "/", u"").startsWith("NTLM "));
     else
-        QCOMPARE(priv->calculateResponse("GET", "/", "").constData(), "NTLM TlRMTVNTUAABAAAABYIIAAAAAAAAAAAAAAAAAAAAAAA=");
+        QCOMPARE(priv->calculateResponse("GET", "/", u"").constData(), "NTLM TlRMTVNTUAABAAAABYIIAAAAAAAAAAAAAAAAAAAAAAA=");
 
     // NTLM phase 2: challenge
     headers.clear();
-    headers << qMakePair<QByteArray, QByteArray>(QByteArray("WWW-Authenticate"), "NTLM " + data.toUtf8());
+    headers << qMakePair(QByteArray("WWW-Authenticate"), "NTLM " + data.toUtf8());
     priv->parseHttpResponse(headers, /*isProxy = */ false, {});
 
     QEXPECT_FAIL("with-realm", "NTLM authentication code doesn't extract the realm", Continue);
     QEXPECT_FAIL("with-realm-sso", "NTLM authentication code doesn't extract the realm", Continue);
     QCOMPARE(auth.realm(), realm);
 
-    QVERIFY(priv->calculateResponse("GET", "/", "").startsWith("NTLM "));
+    QVERIFY(priv->calculateResponse("GET", "/", u"").startsWith("NTLM "));
 }
 
 // We don't (currently) support SHA256. So, when presented with the option of MD5 or SHA256,
@@ -163,12 +140,13 @@ void tst_QAuthenticator::sha256AndMd5Digest()
     auth.setPassword("unimportant");
 
     QAuthenticatorPrivate *priv = QAuthenticatorPrivate::getPrivate(auth);
+    QVERIFY(priv->isMethodSupported("digest")); // sanity check
 
     QCOMPARE(priv->phase, QAuthenticatorPrivate::Start);
     QList<QPair<QByteArray, QByteArray>> headers;
     // Put sha256 first, so that its parsed first...
-    headers.push_back({"WWW-Authenticate", sha256});
-    headers.push_back({"WWW-Authenticate", md5});
+    headers.emplace_back("WWW-Authenticate", sha256);
+    headers.emplace_back("WWW-Authenticate", md5);
     priv->parseHttpResponse(headers, false, QString());
 
     QByteArray response = priv->calculateResponse("GET", "/index", {});
@@ -191,6 +169,22 @@ void tst_QAuthenticator::equalityOperators()
     QVERIFY(!(s1 == s2));
     QVERIFY(s1 != s2);
     QVERIFY(s2 != s1);
+}
+
+void tst_QAuthenticator::isMethodSupported()
+{
+    QVERIFY(QAuthenticatorPrivate::isMethodSupported("basic"));
+    QVERIFY(QAuthenticatorPrivate::isMethodSupported("Basic realm=\"Shadow\""));
+    QVERIFY(QAuthenticatorPrivate::isMethodSupported("DIgesT"));
+    QVERIFY(QAuthenticatorPrivate::isMethodSupported("NTLM"));
+    QVERIFY(QAuthenticatorPrivate::isMethodSupported("ntlm"));
+#if QT_CONFIG(sspi) || QT_CONFIG(gssapi)
+    QVERIFY(QAuthenticatorPrivate::isMethodSupported("negotiate"));
+#else
+    QVERIFY(!QAuthenticatorPrivate::isMethodSupported("negotiate"));
+#endif
+
+    QVERIFY(!QAuthenticatorPrivate::isMethodSupported("Bearer"));
 }
 
 QTEST_MAIN(tst_QAuthenticator);

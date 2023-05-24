@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,64 +11,84 @@
 #include <string>
 
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
-#include "content/browser/loader/single_request_url_loader_factory.h"
 #include "content/browser/service_worker/service_worker_accessed_callback.h"
 #include "content/browser/service_worker/service_worker_main_resource_loader.h"
 #include "content/common/content_export.h"
 #include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/single_request_url_loader_factory.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom.h"
-#include "third_party/blink/public/mojom/loader/resource_load_info.mojom-shared.h"
 #include "url/gurl.h"
 
 namespace content {
 
-class ResourceContext;
 class ServiceWorkerContainerHost;
 class ServiceWorkerContextCore;
 class ServiceWorkerRegistration;
 class ServiceWorkerVersion;
 
-// Handles main resource requests for service worker clients (documents and
-// shared workers).
+// Handles a main resource request for service worker clients (documents and
+// shared workers). This manages state for a single request and does not
+// live across redirects. ServiceWorkerMainResourceLoaderInterceptor creates
+// one instance of this class for each request/redirect.
 //
-// TODO(crbug.com/824858): Merge into ServiceWorkerMainResourceLoaderInterceptor
-// after the service worker core thread changes to the UI thread.
+// This class associates the ServiceWorkerContainerHost undergoing navigation
+// with a controller service worker, after looking up the registration and
+// activating the service worker if needed.  Once ready, it creates
+// ServiceWorkerMainResourceLoader to perform the resource load.
 class CONTENT_EXPORT ServiceWorkerControlleeRequestHandler final {
  public:
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  //
+  // Only one reason is recorded even if multiple reasons are matched.
+  // The order is following:
+  // 1. kSkippedForEmptyFetchHandler
+  // 2. kMainResourceSkippedDueToOriginTrial
+  // 3. kMainResourceSkippedDueToFeatureFlag
+  // 4. kMainResourceSkippedBecauseMatchedWithAllowedScriptList
+  enum class FetchHandlerSkipReason {
+    kNoFetchHandler = 0,
+    kNotSkipped = 1,
+    kSkippedForEmptyFetchHandler = 2,
+    kMainResourceSkippedDueToOriginTrial = 3,
+    kMainResourceSkippedDueToFeatureFlag = 4,
+    // kMainResourceSkippedBecauseMatchedWithAllowedOriginList = 5,
+    kMainResourceSkippedBecauseMatchedWithAllowedScriptList = 6,
+
+    kMaxValue = kMainResourceSkippedBecauseMatchedWithAllowedScriptList,
+  };
+
   // If |skip_service_worker| is true, service workers are bypassed for
   // request interception.
   ServiceWorkerControlleeRequestHandler(
       base::WeakPtr<ServiceWorkerContextCore> context,
       base::WeakPtr<ServiceWorkerContainerHost> container_host,
-      blink::mojom::ResourceType resource_type,
+      network::mojom::RequestDestination destination,
       bool skip_service_worker,
+      int frame_tree_node_id,
       ServiceWorkerAccessedCallback service_worker_accessed_callback);
+
+  ServiceWorkerControlleeRequestHandler(
+      const ServiceWorkerControlleeRequestHandler&) = delete;
+  ServiceWorkerControlleeRequestHandler& operator=(
+      const ServiceWorkerControlleeRequestHandler&) = delete;
+
   ~ServiceWorkerControlleeRequestHandler();
 
-  // This could get called multiple times during the lifetime in redirect
-  // cases. (In fallback-to-network cases we basically forward the request
-  // to the request to the next request handler)
-  using ServiceWorkerLoaderCallback =
-      base::OnceCallback<void(SingleRequestURLLoaderFactory::RequestHandler)>;
+  // This is called only once. On redirects, a new instance of this
+  // class is created.
   void MaybeCreateLoader(
       const network::ResourceRequest& tentative_request,
+      const blink::StorageKey& storage_key,
       BrowserContext* browser_context,
-      ResourceContext* resource_context,
-      ServiceWorkerLoaderCallback callback,
+      NavigationLoaderInterceptor::LoaderCallback loader_callback,
       NavigationLoaderInterceptor::FallbackCallback fallback_callback);
-  // Returns params with the ControllerServiceWorkerInfoPtr if we have found
-  // a matching controller service worker for the |request| that is given
-  // to MaybeCreateLoader(). Otherwise this returns base::nullopt.
-  base::Optional<SubresourceLoaderParams> MaybeCreateSubresourceLoaderParams();
-
-  // Does all initialization of |container_host_| for a request.
-  bool InitializeContainerHost(
-      const network::ResourceRequest& tentative_request);
 
   // Exposed for testing.
   ServiceWorkerMainResourceLoader* loader() {
@@ -79,7 +99,15 @@ class CONTENT_EXPORT ServiceWorkerControlleeRequestHandler final {
   FRIEND_TEST_ALL_PREFIXES(ServiceWorkerControlleeRequestHandlerTest,
                            ActivateWaitingVersion);
 
+  // Does all initialization of |container_host_| for a request.
+  void InitializeContainerHost(
+      const network::ResourceRequest& tentative_request,
+      const blink::StorageKey& storage_key);
+
   void ContinueWithRegistration(
+      // True when FindRegistrationForClientUrl() is called for navigation.
+      bool is_for_navigation,
+      base::TimeTicks start_time,
       blink::ServiceWorkerStatusCode status,
       scoped_refptr<ServiceWorkerRegistration> registration);
   void ContinueWithActivatedVersion(
@@ -96,39 +124,46 @@ class CONTENT_EXPORT ServiceWorkerControlleeRequestHandler final {
       scoped_refptr<ServiceWorkerRegistration> registration,
       scoped_refptr<ServiceWorkerVersion> version);
 
-  // Sets |job_| to nullptr, and clears all extra response info associated with
-  // that job, except for timing information.
-  void ClearJob();
-
   void CompleteWithoutLoader();
 
   // Schedules a service worker update to occur shortly after the page and its
   // initial subresources load, if this handler was for a navigation.
   void MaybeScheduleUpdate();
 
+  // Runs service worker if not running.
+  void MaybeStartServiceWorker(
+      scoped_refptr<ServiceWorkerVersion> active_version);
+
+  // Runs after ServiceWorker has started.
+  // Normally ServiceWorker starts before dispatching the main resource request,
+  // but if the ServiceWorkerBypassFetchHandler feature is enabled, we bypass
+  // the main resource request and then start ServiceWorker for subresources.
+  // Also, if we decided to start the service worker for
+  // the ServiceWorkerSkipEmptyFetchHandler feature and the browser handles
+  // an empty fetch handler, this runs after the service worker starts.
+  void DidStartWorker(blink::ServiceWorkerStatusCode status);
+
   const base::WeakPtr<ServiceWorkerContextCore> context_;
   const base::WeakPtr<ServiceWorkerContainerHost> container_host_;
-  const blink::mojom::ResourceType resource_type_;
+  const network::mojom::RequestDestination destination_;
 
   // If true, service workers are bypassed for request interception.
   const bool skip_service_worker_;
 
   std::unique_ptr<ServiceWorkerMainResourceLoaderWrapper> loader_wrapper_;
-  BrowserContext* browser_context_;
-  ResourceContext* resource_context_;
+  raw_ptr<BrowserContext> browser_context_;
   GURL stripped_url_;
+  blink::StorageKey storage_key_;
   bool force_update_started_;
-  base::TimeTicks registration_lookup_start_time_;
+  const int frame_tree_node_id_;
 
-  ServiceWorkerLoaderCallback loader_callback_;
+  NavigationLoaderInterceptor::LoaderCallback loader_callback_;
   NavigationLoaderInterceptor::FallbackCallback fallback_callback_;
 
   ServiceWorkerAccessedCallback service_worker_accessed_callback_;
 
   base::WeakPtrFactory<ServiceWorkerControlleeRequestHandler> weak_factory_{
       this};
-
-  DISALLOW_COPY_AND_ASSIGN(ServiceWorkerControlleeRequestHandler);
 };
 
 }  // namespace content

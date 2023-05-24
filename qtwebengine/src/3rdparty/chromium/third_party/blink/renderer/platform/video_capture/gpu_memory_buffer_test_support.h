@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,10 @@ namespace viz {
 class TestSharedImageInterface;
 }  // namespace viz
 
+namespace gpu {
+struct Capabilities;
+}
+
 namespace blink {
 
 class FakeGpuMemoryBufferSupport : public gpu::GpuMemoryBufferSupport {
@@ -27,7 +31,10 @@ class FakeGpuMemoryBufferSupport : public gpu::GpuMemoryBufferSupport {
       const gfx::Size& size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
-      gpu::GpuMemoryBufferImpl::DestructionCallback callback) override;
+      gpu::GpuMemoryBufferImpl::DestructionCallback callback,
+      gpu::GpuMemoryBufferManager* gpu_memory_buffer_manager = nullptr,
+      scoped_refptr<base::UnsafeSharedMemoryPool> pool = nullptr,
+      base::span<uint8_t> premapped_memory = base::span<uint8_t>()) override;
 };
 
 class TestingPlatformSupportForGpuMemoryBuffer
@@ -37,10 +44,13 @@ class TestingPlatformSupportForGpuMemoryBuffer
   ~TestingPlatformSupportForGpuMemoryBuffer() override;
   media::GpuVideoAcceleratorFactories* GetGpuFactories() override;
 
+  void SetGpuCapabilities(gpu::Capabilities* capabilities);
+
  private:
   std::unique_ptr<viz::TestSharedImageInterface> sii_;
   std::unique_ptr<media::MockGpuVideoAcceleratorFactories> gpu_factories_;
   base::Thread media_thread_;
+  gpu::Capabilities* capabilities_ = nullptr;
 };
 
 }  // namespace blink

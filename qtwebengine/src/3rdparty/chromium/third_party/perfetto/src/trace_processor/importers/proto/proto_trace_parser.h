@@ -22,13 +22,10 @@
 #include <array>
 #include <memory>
 
-#include "perfetto/ext/base/optional.h"
-#include "perfetto/ext/base/string_view.h"
 #include "perfetto/protozero/field.h"
+#include "src/trace_processor/importers/common/parser_types.h"
+#include "src/trace_processor/importers/common/trace_parser.h"
 #include "src/trace_processor/storage/trace_storage.h"
-#include "src/trace_processor/timestamped_trace_piece.h"
-#include "src/trace_processor/trace_blob_view.h"
-#include "src/trace_processor/trace_parser.h"
 
 namespace perfetto {
 
@@ -40,7 +37,6 @@ class TracePacket_Decoder;
 
 namespace trace_processor {
 
-class ArgsTracker;
 class PacketSequenceState;
 class TraceProcessorContext;
 
@@ -50,36 +46,28 @@ class ProtoTraceParser : public TraceParser {
   explicit ProtoTraceParser(TraceProcessorContext*);
   ~ProtoTraceParser() override;
 
-  // TraceParser implementation.
-  void ParseTracePacket(int64_t timestamp, TimestampedTracePiece) override;
-  void ParseFtracePacket(uint32_t cpu,
-                         int64_t timestamp,
-                         TimestampedTracePiece) override;
+  void ParseTrackEvent(int64_t ts, TrackEventData data) override;
+  void ParseTracePacket(int64_t ts, TracePacketData data) override;
 
-  void ParseTracePacketImpl(int64_t ts,
-                            TimestampedTracePiece,
-                            const TracePacketData*,
-                            const protos::pbzero::TracePacket_Decoder&);
+  void ParseFtraceEvent(uint32_t cpu,
+                        int64_t /*ts*/,
+                        TracePacketData data) override;
+
+  void ParseInlineSchedSwitch(uint32_t cpu,
+                              int64_t /*ts*/,
+                              InlineSchedSwitch data) override;
+
+  void ParseInlineSchedWaking(uint32_t cpu,
+                              int64_t /*ts*/,
+                              InlineSchedWaking data) override;
 
   void ParseTraceStats(ConstBytes);
-  void ParseProfilePacket(int64_t ts,
-                          PacketSequenceStateGeneration*,
-                          uint32_t seq_id,
-                          ConstBytes);
-  void ParseDeobfuscationMapping(int64_t ts,
-                                 PacketSequenceStateGeneration*,
-                                 uint32_t seq_id,
-                                 ConstBytes);
-  void ParsePerfSample(int64_t ts, PacketSequenceStateGeneration*, ConstBytes);
-  void ParseChromeBenchmarkMetadata(ConstBytes);
   void ParseChromeEvents(int64_t ts, ConstBytes);
   void ParseMetatraceEvent(int64_t ts, ConstBytes);
-  void ParseTraceConfig(ConstBytes);
-  void ParseModuleSymbols(ConstBytes);
-  void ParseTrigger(int64_t ts, ConstBytes);
-  void ParseSmapsPacket(int64_t ts, ConstBytes);
 
  private:
+  StringId GetMetatraceInternedString(uint64_t iid);
+
   TraceProcessorContext* context_;
 
   const StringId metatrace_id_;
@@ -87,6 +75,9 @@ class ProtoTraceParser : public TraceParser {
   const StringId raw_chrome_metadata_event_id_;
   const StringId raw_chrome_legacy_system_trace_event_id_;
   const StringId raw_chrome_legacy_user_trace_event_id_;
+  const StringId missing_metatrace_interned_string_id_;
+
+  base::FlatHashMap<uint64_t, StringId> metatrace_interned_strings_;
 };
 
 }  // namespace trace_processor

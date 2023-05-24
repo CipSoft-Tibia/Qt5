@@ -1,56 +1,17 @@
-/***************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "devicefinder.h"
 #include "devicehandler.h"
 #include "deviceinfo.h"
+#include "heartrate-global.h"
+
+#include <QtBluetooth/qbluetoothdeviceinfo.h>
+
+#if QT_CONFIG(permissions)
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qpermissions.h>
+#endif
 
 DeviceFinder::DeviceFinder(DeviceHandler *handler, QObject *parent):
     BluetoothBaseClass(parent),
@@ -58,22 +19,27 @@ DeviceFinder::DeviceFinder(DeviceHandler *handler, QObject *parent):
 {
     //! [devicediscovery-1]
     m_deviceDiscoveryAgent = new QBluetoothDeviceDiscoveryAgent(this);
-    m_deviceDiscoveryAgent->setLowEnergyDiscoveryTimeout(5000);
+    m_deviceDiscoveryAgent->setLowEnergyDiscoveryTimeout(15000);
 
-    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::deviceDiscovered, this, &DeviceFinder::addDevice);
-    connect(m_deviceDiscoveryAgent, static_cast<void (QBluetoothDeviceDiscoveryAgent::*)(QBluetoothDeviceDiscoveryAgent::Error)>(&QBluetoothDeviceDiscoveryAgent::error),
+    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::deviceDiscovered,
+            this, &DeviceFinder::addDevice);
+    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::errorOccurred,
             this, &DeviceFinder::scanError);
 
-    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::finished, this, &DeviceFinder::scanFinished);
-    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::canceled, this, &DeviceFinder::scanFinished);
+    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::finished,
+            this, &DeviceFinder::scanFinished);
+    connect(m_deviceDiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::canceled,
+            this, &DeviceFinder::scanFinished);
     //! [devicediscovery-1]
 
 
-#ifdef SIMULATOR
-    m_demoTimer.setSingleShot(true);
-    m_demoTimer.setInterval(2000);
-    connect(&m_demoTimer, &QTimer::timeout, this, &DeviceFinder::scanFinished);
-#endif
+    if (simulator) {
+        m_demoTimer.setSingleShot(true);
+        m_demoTimer.setInterval(2000);
+        connect(&m_demoTimer, &QTimer::timeout, this, &DeviceFinder::scanFinished);
+    }
+
+    resetMessages();
 }
 
 DeviceFinder::~DeviceFinder()
@@ -84,6 +50,23 @@ DeviceFinder::~DeviceFinder()
 
 void DeviceFinder::startSearch()
 {
+#if QT_CONFIG(permissions)
+    //! [permissions]
+    QBluetoothPermission permission{};
+    permission.setCommunicationModes(QBluetoothPermission::Access);
+    switch (qApp->checkPermission(permission)) {
+    case Qt::PermissionStatus::Undetermined:
+        qApp->requestPermission(permission, this, &DeviceFinder::startSearch);
+        return;
+    case Qt::PermissionStatus::Denied:
+        setError(tr("Bluetooth permissions not granted!"));
+        setIcon(IconError);
+        return;
+    case Qt::PermissionStatus::Granted:
+        break; // proceed to search
+    }
+    //! [permissions]
+#endif // QT_CONFIG(permissions)
     clearMessages();
     m_deviceHandler->setDevice(nullptr);
     qDeleteAll(m_devices);
@@ -91,15 +74,17 @@ void DeviceFinder::startSearch()
 
     emit devicesChanged();
 
-#ifdef SIMULATOR
-    m_demoTimer.start();
-#else
-    //! [devicediscovery-2]
-    m_deviceDiscoveryAgent->start(QBluetoothDeviceDiscoveryAgent::LowEnergyMethod);
-    //! [devicediscovery-2]
-#endif
+    if (simulator) {
+        m_demoTimer.start();
+    }  else {
+        //! [devicediscovery-2]
+        m_deviceDiscoveryAgent->start(QBluetoothDeviceDiscoveryAgent::LowEnergyMethod);
+        //! [devicediscovery-2]
+    }
+
     emit scanningChanged();
     setInfo(tr("Scanning for devices..."));
+    setIcon(IconProgress);
 }
 
 //! [devicediscovery-3]
@@ -107,8 +92,20 @@ void DeviceFinder::addDevice(const QBluetoothDeviceInfo &device)
 {
     // If device is LowEnergy-device, add it to the list
     if (device.coreConfigurations() & QBluetoothDeviceInfo::LowEnergyCoreConfiguration) {
-        m_devices.append(new DeviceInfo(device));
+        auto devInfo = new DeviceInfo(device);
+        auto it = std::find_if(m_devices.begin(), m_devices.end(),
+                               [devInfo](DeviceInfo *dev) {
+                                   return devInfo->getAddress() == dev->getAddress();
+                               });
+        if (it == m_devices.end()) {
+            m_devices.append(devInfo);
+        } else {
+            auto oldDev = *it;
+            *it = devInfo;
+            delete oldDev;
+        }
         setInfo(tr("Low Energy device found. Scanning more..."));
+        setIcon(IconProgress);
 //! [devicediscovery-3]
         emit devicesChanged();
 //! [devicediscovery-4]
@@ -125,23 +122,34 @@ void DeviceFinder::scanError(QBluetoothDeviceDiscoveryAgent::Error error)
         setError(tr("Writing or reading from the device resulted in an error."));
     else
         setError(tr("An unknown error has occurred."));
+    setIcon(IconError);
 }
 
 void DeviceFinder::scanFinished()
 {
-#ifdef SIMULATOR
-    // Only for testing
-    for (int i = 0; i < 4; i++)
-        m_devices.append(new DeviceInfo(QBluetoothDeviceInfo()));
-#endif
+    if (simulator) {
+        // Only for testing
+        for (int i = 0; i < 4; i++)
+            m_devices.append(new DeviceInfo(QBluetoothDeviceInfo()));
+    }
 
-    if (m_devices.isEmpty())
+    if (m_devices.isEmpty()) {
         setError(tr("No Low Energy devices found."));
-    else
+        setIcon(IconError);
+    } else {
         setInfo(tr("Scanning done."));
+        setIcon(IconBluetooth);
+    }
 
     emit scanningChanged();
     emit devicesChanged();
+}
+
+void DeviceFinder::resetMessages()
+{
+    setError("");
+    setInfo(tr("Start search to find devices"));
+    setIcon(IconSearch);
 }
 
 void DeviceFinder::connectToService(const QString &address)
@@ -149,9 +157,9 @@ void DeviceFinder::connectToService(const QString &address)
     m_deviceDiscoveryAgent->stop();
 
     DeviceInfo *currentDevice = nullptr;
-    for (QObject *entry : qAsConst(m_devices)) {
+    for (QObject *entry : std::as_const(m_devices)) {
         auto device = qobject_cast<DeviceInfo *>(entry);
-        if (device && device->getAddress() == address ) {
+        if (device && device->getAddress() == address) {
             currentDevice = device;
             break;
         }
@@ -160,16 +168,14 @@ void DeviceFinder::connectToService(const QString &address)
     if (currentDevice)
         m_deviceHandler->setDevice(currentDevice);
 
-    clearMessages();
+    resetMessages();
 }
 
 bool DeviceFinder::scanning() const
 {
-#ifdef SIMULATOR
-    return m_demoTimer.isActive();
-#else
+    if (simulator)
+        return m_demoTimer.isActive();
     return m_deviceDiscoveryAgent->isActive();
-#endif
 }
 
 QVariant DeviceFinder::devices()

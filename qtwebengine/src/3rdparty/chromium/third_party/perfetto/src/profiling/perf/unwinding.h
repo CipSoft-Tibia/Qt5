@@ -17,6 +17,7 @@
 #ifndef SRC_PROFILING_PERF_UNWINDING_H_
 #define SRC_PROFILING_PERF_UNWINDING_H_
 
+#include <condition_variable>
 #include <map>
 #include <thread>
 
@@ -31,6 +32,8 @@
 #include "perfetto/ext/base/thread_checker.h"
 #include "perfetto/ext/base/unix_task_runner.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
+#include "src/kallsyms/kernel_symbol_map.h"
+#include "src/kallsyms/lazy_kernel_symbolizer.h"
 #include "src/profiling/common/unwind_support.h"
 #include "src/profiling/perf/common_types.h"
 #include "src/profiling/perf/unwind_queue.h"
@@ -38,14 +41,16 @@
 namespace perfetto {
 namespace profiling {
 
-constexpr static uint32_t kUnwindQueueCapacity = 2048;
+constexpr static uint32_t kUnwindQueueCapacity = 1024;
 
-// Unwinds callstacks based on the sampled stack and register state (see
-// |ParsedSample|). Has a single unwinding ring queue, shared across
-// all data sources.
+// Unwinds and symbolises callstacks. For userspace this uses the sampled stack
+// and register state (see |ParsedSample|). For kernelspace, the kernel itself
+// unwinds the stack (recording a list of instruction pointers), so only
+// symbolisation using /proc/kallsyms is necessary. Has a single unwinding ring
+// queue, shared across all data sources.
 //
-// Samples cannot be unwound without having /proc/<pid>/{maps,mem} file
-// descriptors for that process. This lookup can be asynchronous (e.g. on
+// Userspace samples cannot be unwound without having /proc/<pid>/{maps,mem}
+// file descriptors for that process. This lookup can be asynchronous (e.g. on
 // Android), so the unwinder might have to wait before it can process (or
 // discard) some of the enqueued samples. To avoid blocking the entire queue,
 // the unwinder is allowed to process the entries out of order.
@@ -85,14 +90,16 @@ class Unwinder {
 
   ~Unwinder() { PERFETTO_DCHECK_THREAD(thread_checker_); }
 
-  void PostStartDataSource(DataSourceInstanceID ds_id);
+  void PostStartDataSource(DataSourceInstanceID ds_id, bool kernel_frames);
   void PostAdoptProcDescriptors(DataSourceInstanceID ds_id,
                                 pid_t pid,
                                 base::ScopedFile maps_fd,
                                 base::ScopedFile mem_fd);
   void PostRecordTimedOutProcDescriptors(DataSourceInstanceID ds_id, pid_t pid);
+  void PostRecordNoUserspaceProcess(DataSourceInstanceID ds_id, pid_t pid);
   void PostProcessQueue();
   void PostInitiateDataSourceStop(DataSourceInstanceID ds_id);
+  void PostPurgeDataSource(DataSourceInstanceID ds_id);
 
   void PostClearCachedStatePeriodic(DataSourceInstanceID ds_id,
                                     uint32_t period_ms);
@@ -101,16 +108,35 @@ class Unwinder {
     return unwind_queue_;
   }
 
+  uint64_t GetEnqueuedFootprint() {
+    uint64_t freed =
+        footprint_tracker_.stack_bytes_freed.load(std::memory_order_acquire);
+    uint64_t allocated = footprint_tracker_.stack_bytes_allocated.load(
+        std::memory_order_relaxed);
+
+    // overflow not a concern in practice
+    PERFETTO_DCHECK(allocated >= freed);
+    return allocated - freed;
+  }
+
+  void IncrementEnqueuedFootprint(uint64_t increment) {
+    footprint_tracker_.stack_bytes_allocated.fetch_add(
+        increment, std::memory_order_relaxed);
+  }
+
  private:
   struct ProcessState {
-    enum class Status {
-      kResolving,  // unwinder waiting on proc-fds for the process
-      kResolved,   // proc-fds available, can unwind samples
-      kExpired     // proc-fd lookup timed out, will discard samples
-    };
+    // kInitial: unwinder waiting for more info on the process (proc-fds, their
+    //           lookup expiration, or that there is no need for them).
+    // kFdsResolved: proc-fds available, can unwind samples.
+    // kFdsTimedOut: proc-fd lookup timed out, will discard samples. Can still
+    //               transition to kFdsResolved if the fds are received later.
+    // kNoUserspace: only handling kernel callchains (the sample might
+    //               still be for a userspace process), can process samples.
+    enum class Status { kInitial, kFdsResolved, kFdsTimedOut, kNoUserspace };
 
-    Status status = Status::kResolving;
-    // Present iff status == kResolved.
+    Status status = Status::kInitial;
+    // Present iff status == kFdsResolved.
     base::Optional<UnwindingMetadata> unwind_state;
     // Used to distinguish first-time unwinding attempts for a process, for
     // logging purposes.
@@ -124,17 +150,29 @@ class Unwinder {
     std::map<pid_t, ProcessState> process_states;
   };
 
+  // Accounting for how much heap memory is attached to the enqueued samples at
+  // a given time. Read by the main thread, mutated by both threads.
+  // We track just the heap allocated for the sampled stacks, as it dominates
+  // the per-sample heap use.
+  struct QueueFootprintTracker {
+    std::atomic<uint64_t> stack_bytes_allocated;
+    std::atomic<uint64_t> stack_bytes_freed;
+  };
+
   // Must be instantiated via the |UnwinderHandle|.
   Unwinder(Delegate* delegate, base::UnixTaskRunner* task_runner);
 
   // Marks the data source as valid and active at the unwinding stage.
-  void StartDataSource(DataSourceInstanceID ds_id);
+  // Initializes kernel address symbolization if needed.
+  void StartDataSource(DataSourceInstanceID ds_id, bool kernel_frames);
 
   void AdoptProcDescriptors(DataSourceInstanceID ds_id,
                             pid_t pid,
                             base::ScopedFile maps_fd,
                             base::ScopedFile mem_fd);
-  void RecordTimedOutProcDescriptors(DataSourceInstanceID ds_id, pid_t pid);
+  void UpdateProcessStateStatus(DataSourceInstanceID ds_id,
+                                pid_t pid,
+                                ProcessState::Status new_status);
 
   // Primary task. Processes the enqueued samples using
   // |ConsumeAndUnwindReadySamples|, and re-evaluates data source state.
@@ -146,8 +184,12 @@ class Unwinder {
   base::FlatSet<DataSourceInstanceID> ConsumeAndUnwindReadySamples();
 
   CompletedSample UnwindSample(const ParsedSample& sample,
-                               UnwindingMetadata* unwind_state,
+                               UnwindingMetadata* opt_user_state,
                                bool pid_unwound_before);
+
+  // Returns a list of symbolized kernel frames in the sample (if any).
+  std::vector<unwindstack::FrameData> SymbolizeKernelCallchain(
+      const ParsedSample& sample);
 
   // Marks the data source as shutting down at the unwinding stage. It is known
   // that no new samples for this source will be pushed into the queue, but we
@@ -159,6 +201,14 @@ class Unwinder {
   // samples, and informs the service that it can continue the shutdown
   // sequence.
   void FinishDataSourceStop(DataSourceInstanceID ds_id);
+
+  // Immediately destroys the data source state, used for abrupt stops.
+  void PurgeDataSource(DataSourceInstanceID ds_id);
+
+  void DecrementEnqueuedFootprint(uint64_t decrement) {
+    footprint_tracker_.stack_bytes_freed.fetch_add(decrement,
+                                                   std::memory_order_relaxed);
+  }
 
   // Clears the parsed maps for all previously-sampled processes, and resets the
   // libunwindstack cache. This has the effect of deallocating the cached Elf
@@ -195,7 +245,9 @@ class Unwinder {
   base::UnixTaskRunner* const task_runner_;
   Delegate* const delegate_;
   UnwindQueue<UnwindEntry, kUnwindQueueCapacity> unwind_queue_;
+  QueueFootprintTracker footprint_tracker_;
   std::map<DataSourceInstanceID, DataSourceState> data_sources_;
+  LazyKernelSymbolizer kernel_symbolizer_;
 
   PERFETTO_THREAD_CHECKER(thread_checker_)
 };

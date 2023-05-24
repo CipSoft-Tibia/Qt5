@@ -44,12 +44,18 @@ enum MediaStreamTrackState {
     attribute EventHandler onunmute;
     readonly attribute MediaStreamTrackState readyState;
     attribute EventHandler onended;
+    // https://w3c.github.io/mediacapture-handle/identity/
+    [RuntimeEnabled=CaptureHandle] attribute EventHandler oncapturehandlechange;
+    [RuntimeEnabled=MediaCaptureConfigurationChange] attribute EventHandler onconfigurationchange;
 
-    [CallWith=ScriptState] MediaStreamTrack clone();
+    [CallWith=ExecutionContext] MediaStreamTrack clone();
     [ImplementedAs=stopTrack, CallWith=ExecutionContext] void stop();
 
     MediaTrackCapabilities getCapabilities();
     MediaTrackConstraints getConstraints();
     MediaTrackSettings getSettings();
-    [CallWith=ScriptState] Promise<void> applyConstraints(optional MediaTrackConstraints constraints = {});
+    // https://w3c.github.io/mediacapture-handle/identity/
+    [RuntimeEnabled=CaptureHandle, MeasureAs=CaptureHandle] CaptureHandle? getCaptureHandle();
+
+    [CallWith=ScriptState, Measure] Promise<void> applyConstraints(optional MediaTrackConstraints constraints = {});
 };

@@ -1,53 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Mobility Components.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /* Audio related snippets */
 #include <QFile>
 #include <QTimer>
 #include <QDebug>
+#include <qobject.h>
+#include <qfile.h>
 
-#include "qaudiodeviceinfo.h"
-#include "qaudioinput.h"
+#include "qaudiodevice.h"
+#include "qaudiosource.h"
 #include "qaudiooutput.h"
-#include "qaudioprobe.h"
 #include "qaudiodecoder.h"
 #include "qmediaplayer.h"
+#include "qmediadevices.h"
 
 class AudioInputExample : public QObject {
     Q_OBJECT
@@ -62,7 +28,7 @@ public Q_SLOTS:
 private:
     //! [Audio input class members]
     QFile destinationFile;   // Class member
-    QAudioInput* audio; // Class member
+    QAudioSource* audio; // Class member
     //! [Audio input class members]
 };
 
@@ -77,21 +43,17 @@ void AudioInputExample::setup()
     // Set up the desired format, for example:
     format.setSampleRate(8000);
     format.setChannelCount(1);
-    format.setSampleSize(8);
-    format.setCodec("audio/pcm");
-    format.setByteOrder(QAudioFormat::LittleEndian);
-    format.setSampleType(QAudioFormat::UnSignedInt);
+    format.setSampleFormat(QAudioFormat::UInt8);
 
-    QAudioDeviceInfo info = QAudioDeviceInfo::defaultInputDevice();
+    QAudioDevice info = QMediaDevices::defaultAudioInput();
     if (!info.isFormatSupported(format)) {
         qWarning() << "Default format not supported, trying to use the nearest.";
-        format = info.nearestFormat(format);
     }
 
-    audio = new QAudioInput(format, this);
-    connect(audio, SIGNAL(stateChanged(QAudio::State)), this, SLOT(handleStateChanged(QAudio::State)));
+    audio = new QAudioSource(format, this);
+    connect(audio, &QAudioSource::stateChanged, this, &AudioInputExample::handleStateChanged);
 
-    QTimer::singleShot(3000, this, SLOT(stopRecording()));
+    QTimer::singleShot(3000, this, &AudioInputExample::stopRecording);
     audio->start(&destinationFile);
     // Records audio for 3000ms
 }
@@ -137,11 +99,12 @@ public:
 
 public Q_SLOTS:
     void handleStateChanged(QAudio::State newState);
+    void stopAudioOutput();
 
 private:
     //! [Audio output class members]
     QFile sourceFile;   // class member.
-    QAudioOutput* audio; // class member.
+    QAudioSink* audio; // class member.
     //! [Audio output class members]
 };
 
@@ -156,22 +119,28 @@ void AudioOutputExample::setup()
     // Set up the format, eg.
     format.setSampleRate(8000);
     format.setChannelCount(1);
-    format.setSampleSize(8);
-    format.setCodec("audio/pcm");
-    format.setByteOrder(QAudioFormat::LittleEndian);
-    format.setSampleType(QAudioFormat::UnSignedInt);
+    format.setSampleFormat(QAudioFormat::UInt8);
 
-    QAudioDeviceInfo info(QAudioDeviceInfo::defaultOutputDevice());
+    QAudioDevice info(QMediaDevices::defaultAudioOutput());
     if (!info.isFormatSupported(format)) {
         qWarning() << "Raw audio format not supported by backend, cannot play audio.";
         return;
     }
 
-    audio = new QAudioOutput(format, this);
-    connect(audio, SIGNAL(stateChanged(QAudio::State)), this, SLOT(handleStateChanged(QAudio::State)));
+    audio = new QAudioSink(format, this);
+    connect(audio, QAudioSink::stateChanged, this, &AudioInputExample::handleStateChanged);
     audio->start(&sourceFile);
 }
 //! [Audio output setup]
+
+//! [Audio output stop]
+void AudioOutputExample::stopAudioOutput()
+{
+    audio->stop();
+    sourceFile.close();
+    delete audio;
+}
+//! [Audio output stop]
 
 //! [Audio output state changed]
 void AudioOutputExample::handleStateChanged(QAudio::State newState)
@@ -179,9 +148,7 @@ void AudioOutputExample::handleStateChanged(QAudio::State newState)
     switch (newState) {
         case QAudio::IdleState:
             // Finished playing (no more data)
-            audio->stop();
-            sourceFile.close();
-            delete audio;
+            AudioOutputExample::stopAudioOutput();
             break;
 
         case QAudio::StoppedState:
@@ -204,18 +171,13 @@ void AudioDeviceInfo()
     QAudioFormat format;
     format.setSampleRate(44100);
     // ... other format parameters
-    format.setSampleType(QAudioFormat::SignedInt);
-
-    QAudioDeviceInfo info(QAudioDeviceInfo::defaultOutputDevice());
-
-    if (!info.isFormatSupported(format))
-        format = info.nearestFormat(format);
+    format.setSampleFormat(QAudioFormat::Int16);
     //! [Setting audio format]
 
     //! [Dumping audio formats]
-    const auto deviceInfos = QAudioDeviceInfo::availableDevices(QAudio::AudioOutput);
-    for (const QAudioDeviceInfo &deviceInfo : deviceInfos)
-        qDebug() << "Device name: " << deviceInfo.deviceName();
+    const auto devices = QMediaDevices::audioOutputs();
+    for (const QAudioDevice &device : devices)
+        qDebug() << "Device: " << device.description();
     //! [Dumping audio formats]
 }
 
@@ -234,16 +196,14 @@ void AudioDecodingExample::decode()
     //! [Local audio decoding]
     QAudioFormat desiredFormat;
     desiredFormat.setChannelCount(2);
-    desiredFormat.setCodec("audio/x-raw");
-    desiredFormat.setSampleType(QAudioFormat::UnSignedInt);
+    desiredFormat.setSampleFormat(QAudioFormat::Int16);
     desiredFormat.setSampleRate(48000);
-    desiredFormat.setSampleSize(16);
 
     QAudioDecoder *decoder = new QAudioDecoder(this);
     decoder->setAudioFormat(desiredFormat);
-    decoder->setSourceFilename("level1.mp3");
+    decoder->setSource("level1.mp3");
 
-    connect(decoder, SIGNAL(bufferReady()), this, SLOT(readBuffer()));
+    connect(decoder, &QAudioDecoder::bufferReady, this, &AudioDecodingExample::readBuffer);
     decoder->start();
 
     // Now wait for bufferReady() signal and call decoder->read()

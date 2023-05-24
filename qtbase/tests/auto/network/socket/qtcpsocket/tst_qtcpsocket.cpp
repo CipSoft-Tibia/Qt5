@@ -1,36 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qglobal.h>
 
-// To prevent windows system header files from re-defining min/max
-#define NOMINMAX 1
 #if defined(_WIN32)
 #include <winsock2.h>
 #else
@@ -44,14 +17,15 @@
 
 #include <qplatformdefs.h>
 
-#include <QtTest/QtTest>
-
+#include <QTest>
+#include <QSignalSpy>
 #include <QAuthenticator>
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QFile>
 #include <QHostAddress>
 #include <QHostInfo>
+#include <QNetworkInterface>
 #include <QMap>
 #include <QPointer>
 #if QT_CONFIG(process)
@@ -127,9 +101,7 @@ private slots:
     void bindThenResolveHost_data();
     void bindThenResolveHost();
     void setInvalidSocketDescriptor();
-#ifndef Q_OS_WINRT
     void setSocketDescriptor();
-#endif
     void socketDescriptor();
     void blockingIMAP();
     void nonBlockingIMAP();
@@ -274,7 +246,7 @@ class SocketPair: public QObject
 public:
     QTcpSocket *endPoints[2];
 
-    SocketPair(QObject *parent = 0)
+    SocketPair(QObject *parent = nullptr)
         : QObject(parent)
     {
         endPoints[0] = endPoints[1] = 0;
@@ -309,7 +281,7 @@ tst_QTcpSocket::tst_QTcpSocket()
     tmpSocket = 0;
 
     //This code relates to the socketsConstructedBeforeEventLoop test case
-    earlyConstructedSockets = new SocketPair;
+    earlyConstructedSockets = new SocketPair(this);
     QVERIFY(earlyConstructedSockets->create());
     earlyBytesWrittenCount = 0;
     earlyReadyReadCount = 0;
@@ -358,7 +330,8 @@ void tst_QTcpSocket::initTestCase()
      //QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::firewallServerName(), 1357));
      QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::socksProxyServerName(), 1080));
      QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpServerName(), 21));
-     QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpProxyServerName(), 2121));
+    // FTP currently not supported:
+    // QVERIFY(QtNetworkSettings::verifyConnection(QtNetworkSettings::ftpProxyServerName(), 2121));
 #else
     if (!QtNetworkSettings::verifyTestNetworkSettings())
         QSKIP("No network test server available");
@@ -373,8 +346,8 @@ void tst_QTcpSocket::init()
         QFETCH_GLOBAL(int, proxyType);
         QList<QHostAddress> socks5Addresses = QHostInfo::fromName(QtNetworkSettings::socksProxyServerName()).addresses();
         QList<QHostAddress> httpProxyAddresses = QHostInfo::fromName(QtNetworkSettings::httpProxyServerName()).addresses();
-        QVERIFY2(socks5Addresses.count() > 0, "failed to get ip address for SOCKS5 proxy server");
-        QVERIFY2(httpProxyAddresses.count() > 0, "failed to get ip address for HTTP proxy server");
+        QVERIFY2(socks5Addresses.size() > 0, "failed to get ip address for SOCKS5 proxy server");
+        QVERIFY2(httpProxyAddresses.size() > 0, "failed to get ip address for HTTP proxy server");
         QString socks5Address = socks5Addresses.first().toString();
         QString httpProxyAddress = httpProxyAddresses.first().toString();
         QNetworkProxy proxy;
@@ -514,8 +487,8 @@ void tst_QTcpSocket::bind_data()
     bool testIpv6 = false;
 
     // iterate all interfaces, add all addresses on them as test data
-    QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
-    foreach (const QNetworkInterface &netinterface, interfaces) {
+    const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &netinterface : interfaces) {
         if (!netinterface.isValid())
             continue;
 
@@ -589,7 +562,7 @@ void tst_QTcpSocket::bind()
 
     std::unique_ptr<QTcpSocket> socket(newSocket());
     quint16 boundPort;
-    qintptr fd;
+    qintptr fd = 0;
 
     if (successExpected) {
         bool randomPort = port == -1;
@@ -739,7 +712,6 @@ void tst_QTcpSocket::setInvalidSocketDescriptor()
 
 //----------------------------------------------------------------------------------
 
-#ifndef Q_OS_WINRT
 void tst_QTcpSocket::setSocketDescriptor()
 {
     QFETCH_GLOBAL(bool, setProxy);
@@ -783,7 +755,6 @@ void tst_QTcpSocket::setSocketDescriptor()
     delete dummy;
 #endif
 }
-#endif // !Q_OS_WINRT
 
 //----------------------------------------------------------------------------------
 
@@ -1380,7 +1351,7 @@ public:
     }
 
 protected:
-    void run()
+    void run() override
     {
         bool timedOut = false;
         while (!quit) {
@@ -1809,7 +1780,7 @@ void tst_QTcpSocket::recursiveReadyRead()
     QVERIFY2(!timeout(),
             "Timed out when waiting for the readyRead() signal.");
 
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 
     delete testSocket;
 }
@@ -1851,7 +1822,7 @@ void tst_QTcpSocket::atEnd()
     QVERIFY2(greeting.startsWith("220 (vsFTPd 3."), qPrintable(greeting));
 #else
     // Test server must use some vsFTPd 2.x.x version
-    QVERIFY2(greeting.length() == sizeof("220 (vsFTPd 2.x.x)")-1, qPrintable(greeting));
+    QVERIFY2(greeting.size() == sizeof("220 (vsFTPd 2.x.x)")-1, qPrintable(greeting));
     QVERIFY2(greeting.startsWith("220 (vsFTPd 2."), qPrintable(greeting));
 #endif
     QVERIFY2(greeting.endsWith(QLatin1Char(')')), qPrintable(greeting));
@@ -1870,7 +1841,7 @@ public:
     }
 
 protected:
-    inline void run()
+    inline void run() override
     {
 #ifndef QT_NO_SSL
         QFETCH_GLOBAL(bool, ssl);
@@ -2034,8 +2005,8 @@ void tst_QTcpSocket::remoteCloseError()
     enterLoop(30);
     QVERIFY(!timeout());
 
-    QCOMPARE(disconnectedSpy.count(), 1);
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(disconnectedSpy.size(), 1);
+    QCOMPARE(errorSpy.size(), 1);
     QCOMPARE(clientSocket->error(), QAbstractSocket::RemoteHostClosedError);
 
     delete serverSocket;
@@ -2093,31 +2064,50 @@ void tst_QTcpSocket::nestedEventLoopInErrorSlot()
 void tst_QTcpSocket::connectToHostError_data()
 {
     QTest::addColumn<QString>("host");
-    QTest::addColumn<int>("port");
+    QTest::addColumn<quint16>("port");
     QTest::addColumn<QAbstractSocket::SocketError>("expectedError");
 
-    QTest::newRow("localhost no service") << QStringLiteral("localhost") << 31415 << QAbstractSocket::ConnectionRefusedError;
-    QTest::newRow("unreachable") << QStringLiteral("0.0.0.1") << 65000 << QAbstractSocket::NetworkError;
+    QTest::newRow("localhost no service") << QStringLiteral("localhost") << quint16(31415) << QAbstractSocket::ConnectionRefusedError;
+    QTest::newRow("unreachable") << QStringLiteral("0.0.0.1") << quint16(65000) << QAbstractSocket::NetworkError;
 }
 
 
 void tst_QTcpSocket::connectToHostError()
 {
+    // We are aware of at least one OS in our CI, that would fail
+    // the test due to timeout - it's Ubuntu 20.04 and 'connect'
+    // to 0.0.0.1 there return EINPROGRESS, with no other error
+    // ever received, so only our own internal 30 s. timer can
+    // detect a connection timeout.
+
     std::unique_ptr<QTcpSocket> socket(newSocket());
 
     QAbstractSocket::SocketError error = QAbstractSocket::UnknownSocketError;
 
-    QFETCH(QString, host);
-    QFETCH(int, port);
+    QFETCH(const QString, host);
+    QFETCH(const quint16, port);
     QFETCH(QAbstractSocket::SocketError, expectedError);
 
-    connect(socket.get(), &QAbstractSocket::errorOccurred, [&](QAbstractSocket::SocketError socketError){
+    QTestEventLoop eventLoop;
+    connect(socket.get(), &QAbstractSocket::errorOccurred, socket.get(),
+            [&](QAbstractSocket::SocketError socketError) {
         error = socketError;
+        QTimer::singleShot(0, &eventLoop, [&]{eventLoop.exitLoop();});
     });
-    socket->connectToHost(host, port); // no service running here, one suspects
-    QTRY_COMPARE_WITH_TIMEOUT(socket->state(), QTcpSocket::UnconnectedState, 7000);
+
+    socket->connectToHost(host, port);
+    eventLoop.enterLoopMSecs(10'000);
+    if (eventLoop.timeout()) {
+        // Let's at least verify it's not in connected state:
+        QVERIFY(socket->state() != QAbstractSocket::ConnectedState);
+        QSKIP("Connection to unreachable host timed out, skipping the rest of the test");
+    }
+
+    QCOMPARE(socket->state(), QTcpSocket::UnconnectedState);
+
     if (error != expectedError && error == QAbstractSocket::ConnectionRefusedError)
         QEXPECT_FAIL("unreachable", "CI firewall interfers with this test", Continue);
+
     QCOMPARE(error, expectedError);
 }
 
@@ -2147,7 +2137,7 @@ void tst_QTcpSocket::waitForConnectedInHostLookupSlot()
     if (tmpSocket->state() != QAbstractSocket::ConnectedState)
         loop.exec();
 
-    QCOMPARE(timerSpy.count(), 0);
+    QCOMPARE(timerSpy.size(), 0);
 
     delete tmpSocket;
 }
@@ -2167,7 +2157,7 @@ public:
     bool networkTimeout;
     int count;
 
-    inline Foo(QObject *parent = 0) : QObject(parent)
+    inline Foo(QObject *parent = nullptr) : QObject(parent)
     {
         attemptedToConnect = false;
         networkTimeout = false;
@@ -2201,7 +2191,7 @@ public slots:
 #if defined(Q_OS_MAC)
         pthread_yield_np();
 #elif defined Q_OS_LINUX && !defined Q_OS_ANDROID
-        pthread_yield();
+        sched_yield();
 #endif
         if (!sock->waitForConnected()) {
             networkTimeout = true;
@@ -2252,7 +2242,7 @@ void tst_QTcpSocket::readyReadSignalsAfterWaitForReadyRead()
     // Wait for the read
     QVERIFY(socket->waitForReadyRead(10000));
 
-    QCOMPARE(readyReadSpy.count(), 1);
+    QCOMPARE(readyReadSpy.size(), 1);
 
     QString s = socket->readLine();
     QVERIFY2(QtNetworkSettings::compareReplyIMAP(s.toLatin1()), s.toLatin1().constData());
@@ -2260,7 +2250,7 @@ void tst_QTcpSocket::readyReadSignalsAfterWaitForReadyRead()
 
     QCoreApplication::instance()->processEvents();
     QCOMPARE(socket->bytesAvailable(), qint64(0));
-    QCOMPARE(readyReadSpy.count(), 1);
+    QCOMPARE(readyReadSpy.size(), 1);
 
     delete socket;
 }
@@ -2269,7 +2259,7 @@ class TestThread2 : public QThread
 {
     Q_OBJECT
 public:
-    void run()
+    void run() override
     {
         QFile fileWriter("fifo");
         QVERIFY(fileWriter.open(QFile::WriteOnly));
@@ -2334,8 +2324,8 @@ void tst_QTcpSocket::abortiveClose()
 
     enterLoop(5);
 
-    QCOMPARE(readyReadSpy.count(), 0);
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(readyReadSpy.size(), 0);
+    QCOMPARE(errorSpy.size(), 1);
 
     QCOMPARE(*static_cast<const int *>(errorSpy.at(0).at(0).constData()),
              int(QAbstractSocket::RemoteHostClosedError));
@@ -2454,11 +2444,11 @@ void tst_QTcpSocket::connectionRefused()
     QCOMPARE(socket->state(), QAbstractSocket::UnconnectedState);
     QCOMPARE(socket->error(), QAbstractSocket::ConnectionRefusedError);
 
-    QCOMPARE(stateSpy.count(), 3);
+    QCOMPARE(stateSpy.size(), 3);
     QCOMPARE(qvariant_cast<QAbstractSocket::SocketState>(stateSpy.at(0).at(0)), QAbstractSocket::HostLookupState);
     QCOMPARE(qvariant_cast<QAbstractSocket::SocketState>(stateSpy.at(1).at(0)), QAbstractSocket::ConnectingState);
     QCOMPARE(qvariant_cast<QAbstractSocket::SocketState>(stateSpy.at(2).at(0)), QAbstractSocket::UnconnectedState);
-    QCOMPARE(errorSpy.count(), 1);
+    QCOMPARE(errorSpy.size(), 1);
 
     delete socket;
 }
@@ -2884,7 +2874,7 @@ public:
         lastQuery = QNetworkProxyQuery();
     }
 
-    virtual QList<QNetworkProxy> queryProxy(const QNetworkProxyQuery &query)
+    virtual QList<QNetworkProxy> queryProxy(const QNetworkProxyQuery &query) override
     {
         lastQuery = query;
         ++callCount;
@@ -2921,6 +2911,7 @@ void tst_QTcpSocket::proxyFactory_data()
         << proxyList << proxyList.at(1)
         << false << int(QAbstractSocket::UnknownSocketError);
 
+#if 0 // FTP not currently supported
     proxyList.clear();
     proxyList << QNetworkProxy(QNetworkProxy::FtpCachingProxy, QtNetworkSettings::ftpProxyServerName(), 2121)
               << QNetworkProxy(QNetworkProxy::HttpCachingProxy, QtNetworkSettings::httpProxyServerName(), 3129)
@@ -2928,6 +2919,7 @@ void tst_QTcpSocket::proxyFactory_data()
     QTest::newRow("ftp+cachinghttp+socks5")
         << proxyList << proxyList.at(2)
         << false << int(QAbstractSocket::UnknownSocketError);
+#endif
 
     // tests that fail to connect
     proxyList.clear();
@@ -2936,6 +2928,7 @@ void tst_QTcpSocket::proxyFactory_data()
         << proxyList << QNetworkProxy()
         << true << int(QAbstractSocket::UnsupportedSocketOperationError);
 
+#if 0 // FTP not currently supported
     proxyList.clear();
     proxyList << QNetworkProxy(QNetworkProxy::FtpCachingProxy, QtNetworkSettings::ftpProxyServerName(), 2121);
     QTest::newRow("ftp")
@@ -2948,6 +2941,7 @@ void tst_QTcpSocket::proxyFactory_data()
     QTest::newRow("ftp+cachinghttp")
         << proxyList << QNetworkProxy()
         << true << int(QAbstractSocket::UnsupportedSocketOperationError);
+#endif
 }
 
 void tst_QTcpSocket::proxyFactory()
@@ -3127,8 +3121,8 @@ void tst_QTcpSocket::serverDisconnectWithBuffered()
         QCOMPARE(socket->state(), QAbstractSocket::UnconnectedState);
     }
     // Test signal emitting
-    QCOMPARE(spyDisconnected.count(), 1);
-    QVERIFY(spyStateChanged.count() > 0);
+    QCOMPARE(spyDisconnected.size(), 1);
+    QVERIFY(spyStateChanged.size() > 0);
     QVERIFY(qvariant_cast<QAbstractSocket::SocketState>(spyStateChanged.last().first())
             == QAbstractSocket::UnconnectedState);
 
@@ -3217,7 +3211,7 @@ void tst_QTcpSocket::readNotificationsAfterBind()
     QTestEventLoop::instance().enterLoop(10);
     QVERIFY2(!QTestEventLoop::instance().timeout(), "Connection to closed port timed out instead of refusing, something is wrong");
     QVERIFY2(socket.state() == QAbstractSocket::UnconnectedState, "Socket connected unexpectedly!");
-    QCOMPARE(spyReadyRead.count(), 0);
+    QCOMPARE(spyReadyRead.size(), 0);
 }
 
 QTEST_MAIN(tst_QTcpSocket)

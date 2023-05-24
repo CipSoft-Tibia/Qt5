@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,11 +6,11 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
 #include "base/format_macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/strings/string_util.h"
@@ -18,8 +18,8 @@
 #include "base/values.h"
 #include "net/base/completion_repeating_callback.h"
 #include "net/base/host_port_pair.h"
+#include "net/base/isolation_info.h"
 #include "net/base/net_errors.h"
-#include "net/base/network_isolation_key.h"
 #include "net/base/request_priority.h"
 #include "net/log/net_log_capture_mode.h"
 #include "net/log/net_log_event_type.h"
@@ -32,15 +32,14 @@ namespace net {
 
 namespace {
 
-bool LooksLikePacScript(const base::string16& script) {
+bool LooksLikePacScript(const std::u16string& script) {
   // Note: this is only an approximation! It may not always work correctly,
   // however it is very likely that legitimate scripts have this exact string,
   // since they must minimally define a function of this name. Conversely, a
   // file not containing the string is not likely to be a PAC script.
   //
   // An exact test would have to load the script in a javascript evaluator.
-  return script.find(base::ASCIIToUTF16("FindProxyForURL")) !=
-         base::string16::npos;
+  return script.find(u"FindProxyForURL") != std::u16string::npos;
 }
 
 // This is the hard-coded location used by the DNS portion of web proxy
@@ -69,7 +68,7 @@ PacFileDataWithSource& PacFileDataWithSource::operator=(
 
 base::Value PacFileDecider::PacSource::NetLogParams(
     const GURL& effective_pac_url) const {
-  base::Value dict(base::Value::Type::DICTIONARY);
+  base::Value::Dict dict;
   std::string source;
   switch (type) {
     case PacSource::WPAD_DHCP:
@@ -84,8 +83,8 @@ base::Value PacFileDecider::PacSource::NetLogParams(
       source += effective_pac_url.possibly_invalid_spec();
       break;
   }
-  dict.SetStringKey("source", source);
-  return dict;
+  dict.Set("source", source);
+  return base::Value(std::move(dict));
 }
 
 PacFileDecider::PacFileDecider(PacFileFetcher* pac_file_fetcher,
@@ -93,13 +92,8 @@ PacFileDecider::PacFileDecider(PacFileFetcher* pac_file_fetcher,
                                NetLog* net_log)
     : pac_file_fetcher_(pac_file_fetcher),
       dhcp_pac_file_fetcher_(dhcp_pac_file_fetcher),
-      current_pac_source_index_(0u),
-      pac_mandatory_(false),
-      next_state_(STATE_NONE),
-      net_log_(
-          NetLogWithSource::Make(net_log, NetLogSourceType::PAC_FILE_DECIDER)),
-      fetch_pac_bytes_(false),
-      quick_check_enabled_(true) {}
+      net_log_(NetLogWithSource::Make(net_log,
+                                      NetLogSourceType::PAC_FILE_DECIDER)) {}
 
 PacFileDecider::~PacFileDecider() {
   if (next_state_ != STATE_NONE)
@@ -120,7 +114,7 @@ int PacFileDecider::Start(const ProxyConfigWithAnnotation& config,
 
   // Save the |wait_delay| as a non-negative value.
   wait_delay_ = wait_delay;
-  if (wait_delay_ < base::TimeDelta())
+  if (wait_delay_.is_negative())
     wait_delay_ = base::TimeDelta();
 
   pac_mandatory_ = config.value().pac_mandatory();
@@ -276,22 +270,28 @@ int PacFileDecider::DoQuickCheck() {
   // paths rather than WPAD-standard DNS devolution.
   parameters.source = HostResolverSource::SYSTEM;
 
+  // For most users, the WPAD DNS query will have no results. Allowing the query
+  // to go out via LLMNR or mDNS (which usually have no quick negative response)
+  // would therefore typically result in waiting the full timeout before
+  // `quick_check_timer_` fires. Given that a lot of Chrome requests could be
+  // blocked on completing these checks, it is better to avoid multicast
+  // resolution for WPAD.
+  // See crbug.com/1176970.
+  parameters.avoid_multicast_resolution = true;
+
   HostResolver* host_resolver =
       pac_file_fetcher_->GetRequestContext()->host_resolver();
-  // It's safe to use an empty NetworkIsolationKey() here, since this is only
-  // for fetching the PAC script, so can't usefully leak data to web-initiated
-  // requests (Which can't use an empty NIK for resolving IPs other than that of
-  // the proxy).
   resolve_request_ = host_resolver->CreateRequest(
-      HostPortPair(host, 80), NetworkIsolationKey(), net_log_, parameters);
+      HostPortPair(host, 80),
+      pac_file_fetcher_->isolation_info().network_anonymization_key(), net_log_,
+      parameters);
 
   CompletionRepeatingCallback callback = base::BindRepeating(
       &PacFileDecider::OnIOCompletion, base::Unretained(this));
 
   next_state_ = STATE_QUICK_CHECK_COMPLETE;
-  quick_check_timer_.Start(
-      FROM_HERE, base::TimeDelta::FromMilliseconds(kQuickCheckDelayMs),
-      base::BindOnce(callback, ERR_NAME_NOT_RESOLVED));
+  quick_check_timer_.Start(FROM_HERE, base::Milliseconds(kQuickCheckDelayMs),
+                           base::BindOnce(callback, ERR_NAME_NOT_RESOLVED));
 
   return resolve_request_->Start(callback);
 }

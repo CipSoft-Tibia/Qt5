@@ -29,14 +29,16 @@ class VertexRoutinePrototype : public VertexRoutineFunction
 {
 public:
 	VertexRoutinePrototype()
-	    : vertex(Arg<0>())
-	    , batch(Arg<1>())
-	    , task(Arg<2>())
-	    , data(Arg<3>())
+	    : device(Arg<0>())
+	    , vertex(Arg<1>())
+	    , batch(Arg<2>())
+	    , task(Arg<3>())
+	    , data(Arg<4>())
 	{}
 	virtual ~VertexRoutinePrototype() {}
 
 protected:
+	Pointer<Byte> device;
 	Pointer<Byte> vertex;
 	Pointer<UInt> batch;
 	Pointer<Byte> task;
@@ -48,8 +50,8 @@ class VertexRoutine : public VertexRoutinePrototype
 public:
 	VertexRoutine(
 	    const VertexProcessor::State &state,
-	    vk::PipelineLayout const *pipelineLayout,
-	    SpirvShader const *spirvShader);
+	    const vk::PipelineLayout *pipelineLayout,
+	    const SpirvShader *spirvShader);
 	virtual ~VertexRoutine();
 
 	void generate();
@@ -57,13 +59,13 @@ public:
 protected:
 	Pointer<Byte> constants;
 
-	Int clipFlags;
+	SIMD::Int clipFlags;
 	Int cullMask;
 
 	SpirvRoutine routine;
 
 	const VertexProcessor::State &state;
-	SpirvShader const *const spirvShader;
+	const SpirvShader *const spirvShader;
 
 private:
 	virtual void program(Pointer<UInt> &batch, UInt &vertexCount) = 0;

@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -24,10 +24,6 @@ grit("extension_resources") {
     "grit/extension_resources.rc",
   ]
   resource_ids = ""
-  grit_flags = [
-    "-E",
-    "root_gen_dir=" + rebase_path(root_gen_dir, root_build_dir),
-  ]
 }
 
 source_set("common") {
@@ -63,13 +59,31 @@ source_set("extension_lib") {
     ":common",
     "../gaiacp:util",
     "//base:base",
+    "//net:net",
   ]
   configs += [ "//build/config/win:windowed" ]
+}
+
+# This component is used for the app inventory feature.
+source_set("app_inventory") {
+  sources = [
+    "app_inventory_manager.cc",
+    "app_inventory_manager.h",
+  ]
+  public_deps = [ "../gaiacp:common" ]
+  deps = [
+    ":extension_lib",
+    "../gaiacp:mdm_utils",
+    "../gaiacp:util",
+    "//base",
+    "//url",
+  ]
 }
 
 executable("gcpw_extension") {
   sources = [ "extension_main.cc" ]
   deps = [
+    ":app_inventory",
     ":common",
     ":extension_lib",
     ":extension_resources",

@@ -1,15 +1,12 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_INFOBARS_ANDROID_INFOBAR_ANDROID_H_
 #define COMPONENTS_INFOBARS_ANDROID_INFOBAR_ANDROID_H_
 
-#include <string>
-
 #include "base/android/scoped_java_ref.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "components/infobars/core/infobar.h"
 
 namespace infobars {
@@ -32,13 +29,17 @@ class InfoBarAndroid : public InfoBar {
   // A function that maps from Chromium IDs to Drawable IDs.
   using ResourceIdMapper = base::RepeatingCallback<int(int)>;
 
-  InfoBarAndroid(std::unique_ptr<InfoBarDelegate> delegate,
-                 const ResourceIdMapper& resource_id_mapper);
+  explicit InfoBarAndroid(std::unique_ptr<InfoBarDelegate> delegate);
+
+  InfoBarAndroid(const InfoBarAndroid&) = delete;
+  InfoBarAndroid& operator=(const InfoBarAndroid&) = delete;
+
   ~InfoBarAndroid() override;
 
   // InfoBar:
   virtual base::android::ScopedJavaLocalRef<jobject> CreateRenderInfoBar(
-      JNIEnv* env) = 0;
+      JNIEnv* env,
+      const ResourceIdMapper& resource_id_mapper) = 0;
 
   virtual void SetJavaInfoBar(
       const base::android::JavaRef<jobject>& java_info_bar);
@@ -57,9 +58,6 @@ class InfoBarAndroid : public InfoBar {
 
   void CloseJavaInfoBar();
 
-  // Maps from a Chromium ID (IDR_TRANSLATE) to a Drawable ID.
-  int GetJavaIconId();
-
   // Acquire the java infobar from a different one.  This is used to do in-place
   // replacements.
   virtual void PassJavaInfoBar(InfoBarAndroid* source) {}
@@ -70,13 +68,9 @@ class InfoBarAndroid : public InfoBar {
   virtual void ProcessButton(int action) = 0;
 
   void CloseInfoBar();
-  InfoBarAndroid* infobar_android() { return this; }
 
  private:
-  ResourceIdMapper resource_id_mapper_;
   base::android::ScopedJavaGlobalRef<jobject> java_info_bar_;
-
-  DISALLOW_COPY_AND_ASSIGN(InfoBarAndroid);
 };
 
 }  // namespace infobars

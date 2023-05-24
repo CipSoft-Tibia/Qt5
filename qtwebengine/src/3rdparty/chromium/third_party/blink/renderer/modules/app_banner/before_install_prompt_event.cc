@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,34 +9,34 @@
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 
 namespace blink {
 
 BeforeInstallPromptEvent::BeforeInstallPromptEvent(
     const AtomicString& name,
-    LocalFrame& frame,
+    ExecutionContext& context,
     mojo::PendingRemote<mojom::blink::AppBannerService> service_remote,
     mojo::PendingReceiver<mojom::blink::AppBannerEvent> event_receiver,
     const Vector<String>& platforms)
     : Event(name, Bubbles::kNo, Cancelable::kYes),
-      ExecutionContextClient(&frame),
-      banner_service_remote_(frame.DomWindow()),
-      receiver_(this, frame.DomWindow()),
+      ExecutionContextClient(&context),
+      banner_service_remote_(&context),
+      receiver_(this, &context),
       platforms_(platforms),
-      user_choice_(
-          MakeGarbageCollected<UserChoiceProperty>(frame.DomWindow())) {
+      user_choice_(MakeGarbageCollected<UserChoiceProperty>(&context)) {
   banner_service_remote_.Bind(
       std::move(service_remote),
-      frame.GetTaskRunner(TaskType::kApplicationLifeCycle));
+      context.GetTaskRunner(TaskType::kApplicationLifeCycle));
   receiver_.Bind(std::move(event_receiver),
-                 frame.GetTaskRunner(TaskType::kApplicationLifeCycle));
+                 context.GetTaskRunner(TaskType::kApplicationLifeCycle));
   DCHECK(banner_service_remote_.is_bound());
   DCHECK(receiver_.is_bound());
-  UseCounter::Count(frame.GetDocument(), WebFeature::kBeforeInstallPromptEvent);
+  UseCounter::Count(context, WebFeature::kBeforeInstallPromptEvent);
 }
 
 BeforeInstallPromptEvent::BeforeInstallPromptEvent(

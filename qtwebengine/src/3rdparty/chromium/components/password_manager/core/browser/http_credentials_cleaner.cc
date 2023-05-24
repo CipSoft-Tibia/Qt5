@@ -1,10 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/http_credentials_cleaner.h"
 
-#include "base/bind.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_functions.h"
 #include "components/password_manager/core/browser/http_password_store_migrator.h"
 #include "components/password_manager/core/browser/password_manager_util.h"
@@ -15,7 +17,7 @@
 namespace password_manager {
 
 HttpCredentialCleaner::HttpCredentialCleaner(
-    scoped_refptr<PasswordStore> store,
+    scoped_refptr<PasswordStoreInterface> store,
     base::RepeatingCallback<network::mojom::NetworkContext*()>
         network_context_getter,
     PrefService* prefs)
@@ -35,7 +37,7 @@ void HttpCredentialCleaner::StartCleaning(Observer* observer) {
   DCHECK(observer);
   DCHECK(!observer_);
   observer_ = observer;
-  store_->GetAutofillableLogins(this);
+  store_->GetAutofillableLogins(weak_ptr_factory_.GetWeakPtr());
 }
 
 void HttpCredentialCleaner::OnGetPasswordStoreResults(
@@ -52,7 +54,8 @@ void HttpCredentialCleaner::OnGetPasswordStoreResults(
       PostHSTSQueryForHostAndNetworkContext(
           origin, network_context_getter_.Run(),
           base::BindOnce(&HttpCredentialCleaner::OnHSTSQueryResult,
-                         base::Unretained(this), std::move(form), form_key));
+                         weak_ptr_factory_.GetWeakPtr(), std::move(form),
+                         form_key));
       ++total_http_credentials_;
     } else {  // HTTPS
       https_credentials_map_[form_key].insert(form->password_value);
@@ -80,7 +83,7 @@ void HttpCredentialCleaner::OnHSTSQueryResult(
   if (user_it == https_credentials_map_.end()) {
     // Credentials are not migrated yet.
     base::UmaHistogramEnumeration(
-        "PasswordManager.HttpCredentials",
+        "PasswordManager.HttpCredentials2",
         is_hsts ? HttpCredentialType::kHasNoMatchingHttpsWithHsts
                 : HttpCredentialType::kHasNoMatchingHttpsWithoutHsts);
     if (is_hsts) {
@@ -96,7 +99,7 @@ void HttpCredentialCleaner::OnHSTSQueryResult(
     // The password store contains the same credentials (signon_realm, scheme,
     // username and password) on HTTPS version of the form.
     base::UmaHistogramEnumeration(
-        "PasswordManager.HttpCredentials",
+        "PasswordManager.HttpCredentials2",
         is_hsts ? HttpCredentialType::kHasEquivalentHttpsWithHsts
                 : HttpCredentialType::kHasEquivalentHttpsWithoutHsts);
     if (is_hsts) {
@@ -105,7 +108,7 @@ void HttpCredentialCleaner::OnHSTSQueryResult(
     }
   } else {
     base::UmaHistogramEnumeration(
-        "PasswordManager.HttpCredentials",
+        "PasswordManager.HttpCredentials2",
         is_hsts ? HttpCredentialType::kHasConflictingHttpsWithHsts
                 : HttpCredentialType::kHasConflictingHttpsWithoutHsts);
   }

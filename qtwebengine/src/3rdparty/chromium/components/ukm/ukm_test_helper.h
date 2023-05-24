@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "components/ukm/ukm_service.h"
 #include "services/metrics/public/cpp/ukm_source.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
@@ -55,11 +55,14 @@ class UkmTestHelper {
   // Creates a log and stores it in |ukm_service_|'s UnsentLogStore.
   void BuildAndStoreLog();
 
-  // Reeturns true if |ukm_service_| has logs to send.
+  // Returns true if |ukm_service_| has logs to send.
   bool HasUnsentLogs();
 
+  // Adds MSBB consent to the UkmService.
+  void SetMsbbConsent();
+
  private:
-  UkmService* const ukm_service_;
+  const raw_ptr<UkmService, DanglingUntriaged> ukm_service_;
 };
 
 }  // namespace ukm

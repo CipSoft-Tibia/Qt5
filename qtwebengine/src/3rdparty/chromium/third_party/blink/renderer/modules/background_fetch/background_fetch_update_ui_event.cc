@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,7 +19,7 @@
 #include "third_party/blink/renderer/modules/service_worker/wait_until_observer.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -71,16 +71,17 @@ ScriptPromise BackgroundFetchUpdateUIEvent::updateUI(
     return ScriptPromise();
   }
 
-  if (!ui_options->hasTitle() && ui_options->icons().IsEmpty()) {
+  if (!ui_options->hasTitle() && ui_options->icons().empty()) {
     // Nothing to update, just return a resolved promise.
     return ScriptPromise::CastUndefined(script_state);
   }
 
-  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
   ScriptPromise promise = resolver->Promise();
 
-  if (ui_options->icons().IsEmpty()) {
-    DidGetIcon(resolver, ui_options->title(), SkBitmap(),
+  if (ui_options->icons().empty()) {
+    DidGetIcon(ui_options->title(), resolver, SkBitmap(),
                -1 /* ideal_to_chosen_icon_size */);
   } else {
     DCHECK(!loader_);
@@ -88,23 +89,23 @@ ScriptPromise BackgroundFetchUpdateUIEvent::updateUI(
     DCHECK(loader_);
     loader_->Start(BackgroundFetchBridge::From(service_worker_registration_),
                    ExecutionContext::From(script_state), ui_options->icons(),
-                   WTF::Bind(&BackgroundFetchUpdateUIEvent::DidGetIcon,
-                             WrapPersistent(this), WrapPersistent(resolver),
-                             ui_options->title()));
+                   resolver->WrapCallbackInScriptScope(WTF::BindOnce(
+                       &BackgroundFetchUpdateUIEvent::DidGetIcon,
+                       WrapPersistent(this), ui_options->title())));
   }
 
   return promise;
 }
 
 void BackgroundFetchUpdateUIEvent::DidGetIcon(
-    ScriptPromiseResolver* resolver,
     const String& title,
+    ScriptPromiseResolver* resolver,
     const SkBitmap& icon,
     int64_t ideal_to_chosen_icon_size) {
   registration()->UpdateUI(
       title, icon,
-      WTF::Bind(&BackgroundFetchUpdateUIEvent::DidUpdateUI,
-                WrapPersistent(this), WrapPersistent(resolver)));
+      resolver->WrapCallbackInScriptScope(WTF::BindOnce(
+          &BackgroundFetchUpdateUIEvent::DidUpdateUI, WrapPersistent(this))));
 }
 
 void BackgroundFetchUpdateUIEvent::DidUpdateUI(
@@ -116,9 +117,8 @@ void BackgroundFetchUpdateUIEvent::DidUpdateUI(
       resolver->Resolve();
       return;
     case mojom::blink::BackgroundFetchError::STORAGE_ERROR:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kAbortError,
-          "Failed to update UI due to I/O error."));
+      resolver->RejectWithDOMException(DOMExceptionCode::kAbortError,
+                                       "Failed to update UI due to I/O error.");
       return;
     case mojom::blink::BackgroundFetchError::DUPLICATED_DEVELOPER_ID:
     case mojom::blink::BackgroundFetchError::INVALID_ARGUMENT:

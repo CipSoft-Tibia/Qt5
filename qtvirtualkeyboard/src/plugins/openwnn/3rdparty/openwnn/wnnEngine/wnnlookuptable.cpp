@@ -18,8 +18,10 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+
 #include "wnnlookuptable.h"
-#include <qalgorithms.h>
+#include <QString>
 #if WNN_LOOKUP_TABLE_CREATE
 #include <QFile>
 #endif
@@ -33,10 +35,12 @@ WnnLookupTable::WnnLookupTable(const char **keys, const char **values, const int
 
 const QString WnnLookupTable::value(const QString &what) const
 {
-    const char **key = qBinaryFind(keys, keys + length, what.toUtf8().constData(),
-                [] (const char *lhs, const char *rhs) { return strcmp(lhs, rhs) < 0; });
+    const auto data = what.toUtf8();
+    const char **key =
+            std::lower_bound(keys, keys + length, data.constData(),
+                             [](const char *lhs, const char *rhs) { return strcmp(lhs, rhs) < 0; });
     int index = key - keys;
-    if (index == length)
+    if (index == length || strcmp(data.constData(), *key) < 0)
         return QString();
     return QString::fromUtf8(values[index]);
 }
@@ -50,7 +54,7 @@ void WnnLookupTable::create(const QMap<QString, QString> &map, const QString &ta
         std::sort(keys.begin(), keys.end(), [] (const QString &lhs, const QString &rhs) {
             return strcmp(lhs.toUtf8().constData(), rhs.toUtf8().constData()) < 0;
         });
-        file.write(QString("static const int %1Length = %2;\n").arg(tablePrefix).arg(keys.count()).toUtf8().constData());
+        file.write(QString("static const int %1Length = %2;\n").arg(tablePrefix).arg(keys.size()).toUtf8().constData());
         file.write(QString("static const char *%1Key[%1Length];\n").arg(tablePrefix).toUtf8().constData());
         file.write(QString("static const char *%1Value[%1Length];\n").arg(tablePrefix).toUtf8().constData());
         file.write(QString("const char *%1Key[] = {\n").arg(tablePrefix).toUtf8().constData());

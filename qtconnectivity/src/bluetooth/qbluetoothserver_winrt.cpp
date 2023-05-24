@@ -1,53 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbluetoothserver.h"
 #include "qbluetoothserver_p.h"
 #include "qbluetoothsocket.h"
+#include "qbluetoothlocaldevice.h"
 #include "qbluetoothsocket_winrt_p.h"
+#include "qbluetoothutils_winrt_p.h"
 
 #include <QtCore/QLoggingCategory>
-#include <QtCore/private/qeventdispatcher_winrt_p.h>
-#ifdef CLASSIC_APP_BUILD
-#define Q_OS_WINRT
-#endif
-#include <qfunctions_winrt.h>
+#include <QtCore/private/qfunctions_winrt_p.h>
 
 #include <windows.networking.h>
 #include <windows.networking.connectivity.h>
@@ -66,33 +28,25 @@ typedef ITypedEventHandler<StreamSocketListener *, StreamSocketListenerConnectio
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(QT_BT_WINRT)
+Q_DECLARE_LOGGING_CATEGORY(QT_BT_WINDOWS)
 
 QHash<QBluetoothServerPrivate *, int> __fakeServerPorts;
 
 QBluetoothServerPrivate::QBluetoothServerPrivate(QBluetoothServiceInfo::Protocol sType,
                                                  QBluetoothServer *parent)
-    : maxPendingConnections(1), serverType(sType), m_lastError(QBluetoothServer::NoError),
-      socket(0), q_ptr(parent)
+    : serverType(sType), q_ptr(parent)
 {
-#ifdef CLASSIC_APP_BUILD
-    CoInitialize(NULL);
-#endif
-    socket = new QBluetoothSocket(QBluetoothServiceInfo::RfcommProtocol);
+    mainThreadCoInit(this);
 }
 
 QBluetoothServerPrivate::~QBluetoothServerPrivate()
 {
     deactivateActiveListening();
     __fakeServerPorts.remove(this);
-    if (socket)
-        delete socket;
-#ifdef CLASSIC_APP_BUILD
     // If we do not reset that pointer, socketListener will go out of scope after CoUninitialize was
     // called, which will lead to a crash.
     socketListener = nullptr;
-    CoUninitialize();
-#endif
+    mainThreadCoUninit(this);
 }
 
 bool QBluetoothServerPrivate::isListening() const
@@ -128,7 +82,7 @@ HRESULT QBluetoothServerPrivate::handleClientConnection(IStreamSocketListener *l
 {
     Q_Q(QBluetoothServer);
     if (!socketListener || socketListener.Get() != listener) {
-        qCDebug(QT_BT_WINRT) << "Accepting connection from wrong listener. We should not be here.";
+        qCDebug(QT_BT_WINDOWS) << "Accepting connection from wrong listener. We should not be here.";
         Q_UNREACHABLE();
         return S_OK;
     }
@@ -138,13 +92,13 @@ HRESULT QBluetoothServerPrivate::handleClientConnection(IStreamSocketListener *l
     hr = args->get_Socket(&socket);
     Q_ASSERT_SUCCEEDED(hr);
     QMutexLocker locker(&pendingConnectionsMutex);
-    if (pendingConnections.count() < maxPendingConnections) {
-        qCDebug(QT_BT_WINRT) << "Accepting connection";
+    if (pendingConnections.size() < maxPendingConnections) {
+        qCDebug(QT_BT_WINDOWS) << "Accepting connection";
         pendingConnections.append(socket);
         locker.unlock();
         q->newConnection();
     } else {
-        qCDebug(QT_BT_WINRT) << "Refusing connection";
+        qCDebug(QT_BT_WINDOWS) << "Refusing connection";
     }
 
     return S_OK;
@@ -164,24 +118,18 @@ bool QBluetoothServer::listen(const QBluetoothAddress &address, quint16 port)
     Q_D(QBluetoothServer);
     if (serverType() != QBluetoothServiceInfo::RfcommProtocol) {
         d->m_lastError = UnsupportedProtocolError;
-        emit error(d->m_lastError);
+        emit errorOccurred(d->m_lastError);
         return false;
     }
 
     if (isListening())
         return false;
 
-    HRESULT hr;
-    hr = QEventDispatcherWinRT::runOnXamlThread([d, this] ()
-    {
-        HRESULT hr = RoActivateInstance(HString::MakeReference(RuntimeClass_Windows_Networking_Sockets_StreamSocketListener).Get(),
-                                &d->socketListener);
-        Q_ASSERT_SUCCEEDED(hr);
-        hr = d->socketListener->add_ConnectionReceived(Callback<ClientConnectedHandler>(d, &QBluetoothServerPrivate::handleClientConnection).Get(),
-                                                       &d->connectionToken);
-        Q_ASSERT_SUCCEEDED(hr);
-        return S_OK;
-    });
+    HRESULT hr = RoActivateInstance(HString::MakeReference(RuntimeClass_Windows_Networking_Sockets_StreamSocketListener).Get(),
+                            &d->socketListener);
+    Q_ASSERT_SUCCEEDED(hr);
+    hr = d->socketListener->add_ConnectionReceived(Callback<ClientConnectedHandler>(d, &QBluetoothServerPrivate::handleClientConnection).Get(),
+                                                   &d->connectionToken);
     Q_ASSERT_SUCCEEDED(hr);
 
     //We can not register an actual Rfcomm port, because the platform does not allow it
@@ -198,11 +146,11 @@ bool QBluetoothServer::listen(const QBluetoothAddress &address, quint16 port)
     if (__fakeServerPorts.key(port) == 0) {
         __fakeServerPorts[d] = port;
 
-        qCDebug(QT_BT_WINRT) << "Port" << port << "registered";
+        qCDebug(QT_BT_WINDOWS) << "Port" << port << "registered";
     } else {
-        qCWarning(QT_BT_WINRT) << "server with port" << port << "already registered or port invalid";
+        qCWarning(QT_BT_WINDOWS) << "server with port" << port << "already registered or port invalid";
         d->m_lastError = ServiceAlreadyRegisteredError;
-        emit error(d->m_lastError);
+        emit errorOccurred(d->m_lastError);
         return false;
     }
 
@@ -213,8 +161,8 @@ void QBluetoothServer::setMaxPendingConnections(int numConnections)
 {
     Q_D(QBluetoothServer);
     QMutexLocker locker(&d->pendingConnectionsMutex);
-    if (d->pendingConnections.count() > numConnections) {
-        qCWarning(QT_BT_WINRT) << "There are currently more than" << numConnections << "connections"
+    if (d->pendingConnections.size() > numConnections) {
+        qCWarning(QT_BT_WINDOWS) << "There are currently more than" << numConnections << "connections"
                                << "pending. Number of maximum pending connections was not changed.";
         return;
     }
@@ -232,7 +180,7 @@ bool QBluetoothServer::hasPendingConnections() const
 QBluetoothSocket *QBluetoothServer::nextPendingConnection()
 {
     Q_D(QBluetoothServer);
-    if (d->pendingConnections.count() == 0)
+    if (d->pendingConnections.isEmpty())
         return nullptr;
 
     ComPtr<IStreamSocket> socket = d->pendingConnections.takeFirst();
@@ -249,7 +197,12 @@ QBluetoothSocket *QBluetoothServer::nextPendingConnection()
 
 QBluetoothAddress QBluetoothServer::serverAddress() const
 {
-    return QBluetoothAddress();
+    QList<QBluetoothHostInfo> hosts = QBluetoothLocalDevice::allDevices();
+
+    if (hosts.isEmpty())
+        return QBluetoothAddress();
+    else
+        return hosts.at(0).address();
 }
 
 quint16 QBluetoothServer::serverPort() const
@@ -266,7 +219,7 @@ void QBluetoothServer::setSecurityFlags(QBluetooth::SecurityFlags security)
 
 QBluetooth::SecurityFlags QBluetoothServer::securityFlags() const
 {
-    return QBluetooth::NoSecurity;
+    return QBluetooth::Security::NoSecurity;
 }
 
 QT_END_NAMESPACE

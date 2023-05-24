@@ -1,13 +1,14 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/heap_profiling/multi_process/supervisor.h"
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/no_destructor.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "components/heap_profiling/multi_process/client_connection_manager.h"
 #include "components/services/heap_profiling/heap_profiling_service.h"
@@ -86,7 +87,7 @@ void Supervisor::StartProfilingOnMemoryInfraThread(Mode mode,
   mojo::PendingRemote<memory_instrumentation::mojom::HeapProfilerHelper> helper;
   mojo::PendingRemote<memory_instrumentation::mojom::HeapProfiler> profiler;
   auto profiler_receiver = profiler.InitWithNewPipeAndPassReceiver();
-  content::GetResourceCoordinatorService()->RegisterHeapProfiler(
+  content::GetMemoryInstrumentationRegistry()->RegisterHeapProfiler(
       std::move(profiler), helper.InitWithNewPipeAndPassReceiver());
   content::GetIOThreadTaskRunner({})->PostTask(
       FROM_HERE,
@@ -130,7 +131,7 @@ void Supervisor::RequestTraceWithHeapDump(TraceFinishedCallback callback,
 
   if (content::TracingController::GetInstance()->IsTracing()) {
     DLOG(ERROR) << "Requesting heap dump when tracing has already started.";
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), false, std::string()));
     return;
   }
@@ -166,18 +167,15 @@ void Supervisor::RequestTraceWithHeapDump(TraceFinishedCallback callback,
                 base::trace_event::MemoryDumpType::EXPLICITLY_TRIGGERED,
                 base::trace_event::MemoryDumpLevelOfDetail::BACKGROUND,
                 base::trace_event::MemoryDumpDeterminism::NONE,
-                base::AdaptCallbackForRepeating(
-                    std::move(finished_dump_callback)));
+                std::move(finished_dump_callback));
       },
       std::move(finished_dump_callback));
 
   // The only reason this should return false is if tracing is already enabled,
   // which we've already checked.
-  // Use AdaptCallbackForRepeating since the argument passed to StartTracing()
-  // is intended to be a OnceCallback, but the code has not yet been migrated.
   bool result = content::TracingController::GetInstance()->StartTracing(
       GetBackgroundTracingConfig(anonymize),
-      base::AdaptCallbackForRepeating(std::move(trigger_memory_dump_callback)));
+      std::move(trigger_memory_dump_callback));
   DCHECK(result);
 }
 

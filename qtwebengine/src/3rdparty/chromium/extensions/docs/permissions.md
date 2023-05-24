@@ -26,7 +26,7 @@ multiple hosts, so a single pattern may provide access to many different domains
 (or even, every domain).  For more information, see the public
 [match pattern documentation](https://developer.chrome.com/extensions/match_patterns).
 In the codebase, match patterns are implemented as
-[URLPattern](https://chromium.googlesource.com/chromium/src/+/master/extensions/common/url_pattern.h).
+[URLPattern](https://chromium.googlesource.com/chromium/src/+/main/extensions/common/url_pattern.h).
 
 #### Explicit Hosts
 Explicit host permissions are match patterns specified in the `permissions` key
@@ -222,7 +222,7 @@ concepts.
 Withheld permissions are stored on the Extension object (as part of the
 PermissionsData class). Withheld permissions are the set of permissions that
 were listed as required permissions by the extension, but were withheld as part
-of the runtime host permissions feature. The extension does not have acccess
+of the runtime host permissions feature. The extension does not have access
 to these permissions.
 
 ### Runtime-Granted Permissions

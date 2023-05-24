@@ -2,16 +2,23 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+visibility = [ "./*" ]
+
+# TODO(https://issuetracker.google.com/255951872): Move public code into the
+# public/ folder.
 source_set("channel") {
-  sources = [
-    "channel/device_auth_namespace_handler.cc",
+  visibility += [ "*" ]
+  public = [
     "channel/device_auth_namespace_handler.h",
-    "channel/message_util.cc",
     "channel/message_util.h",
-    "channel/receiver_socket_factory.cc",
-    "channel/static_credentials.cc",
     "channel/static_credentials.h",
     "public/receiver_socket_factory.h",
+  ]
+  sources = [
+    "channel/device_auth_namespace_handler.cc",
+    "channel/message_util.cc",
+    "channel/receiver_socket_factory.cc",
+    "channel/static_credentials.cc",
   ]
 
   public_deps = [
@@ -28,12 +35,28 @@ source_set("channel") {
   ]
 }
 
+source_set("agent") {
+  visibility += [ "../standalone_receiver:*" ]
+  public = [ "application_agent.h" ]
+  sources = [ "application_agent.cc" ]
+
+  public_deps = [
+    "../../platform",
+    "../common:channel",
+    "../common:public",
+  ]
+
+  deps = [
+    ":channel",
+    "../../util",
+  ]
+}
+
 source_set("test_helpers") {
   testonly = true
-  sources = [
-    "channel/testing/device_auth_test_helpers.cc",
-    "channel/testing/device_auth_test_helpers.h",
-  ]
+  visibility += [ "../test:unittests" ]
+  public = [ "channel/testing/device_auth_test_helpers.h" ]
+  sources = [ "channel/testing/device_auth_test_helpers.cc" ]
 
   public_deps = [
     ":channel",
@@ -48,9 +71,18 @@ source_set("test_helpers") {
 
 source_set("unittests") {
   testonly = true
-  sources = [ "channel/device_auth_namespace_handler_unittest.cc" ]
+  visibility += [
+    "../..:openscreen_unittests_all",
+    "../test:unittests",
+  ]
+  public = []
+  sources = [
+    "application_agent_unittest.cc",
+    "channel/device_auth_namespace_handler_unittest.cc",
+  ]
 
   deps = [
+    ":agent",
     ":channel",
     ":test_helpers",
     "../../platform:test",

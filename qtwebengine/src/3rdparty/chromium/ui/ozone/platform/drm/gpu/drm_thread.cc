@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,32 +9,25 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/command_line.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/message_loop/message_pump_type.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/time/time.h"
+#include "base/timer/elapsed_timer.h"
 #include "base/trace_event/trace_event.h"
-#include "ui/display/types/display_mode.h"
-#include "ui/display/types/display_snapshot.h"
 #include "ui/gfx/linux/drm_util_linux.h"
-#include "ui/gfx/linux/gbm_defines.h"
 #include "ui/gfx/linux/gbm_device.h"
 #include "ui/gfx/linux/gbm_util.h"
 #include "ui/gfx/presentation_feedback.h"
 #include "ui/ozone/platform/drm/common/drm_util.h"
 #include "ui/ozone/platform/drm/gpu/crtc_controller.h"
+#include "ui/ozone/platform/drm/gpu/drm_device.h"
 #include "ui/ozone/platform/drm/gpu/drm_device_generator.h"
 #include "ui/ozone/platform/drm/gpu/drm_device_manager.h"
-#include "ui/ozone/platform/drm/gpu/drm_dumb_buffer.h"
 #include "ui/ozone/platform/drm/gpu/drm_gpu_display_manager.h"
 #include "ui/ozone/platform/drm/gpu/drm_window.h"
-#include "ui/ozone/platform/drm/gpu/drm_window_proxy.h"
 #include "ui/ozone/platform/drm/gpu/gbm_pixmap.h"
-#include "ui/ozone/platform/drm/gpu/gbm_surface_factory.h"
-#include "ui/ozone/platform/drm/gpu/proxy_helpers.h"
 #include "ui/ozone/platform/drm/gpu/screen_manager.h"
-#include "ui/ozone/public/ozone_switches.h"
 
 namespace ui {
 
@@ -88,9 +81,9 @@ void DrmThread::Start(base::OnceClosure receiver_completer,
 
   base::Thread::Options thread_options;
   thread_options.message_pump_type = base::MessagePumpType::IO;
-  thread_options.priority = base::ThreadPriority::DISPLAY;
+  thread_options.thread_type = base::ThreadType::kDisplayCritical;
 
-  if (!StartWithOptions(thread_options))
+  if (!StartWithOptions(std::move(thread_options)))
     LOG(FATAL) << "Failed to create DRM thread";
 }
 
@@ -121,6 +114,13 @@ void DrmThread::Init() {
   std::move(complete_early_receiver_requests_).Run();
 }
 
+void DrmThread::CleanUp() {
+  TRACE_EVENT0("drm", "DrmThread::CleanUp");
+  display_manager_.reset();
+  screen_manager_.reset();
+  device_manager_.reset();
+}
+
 void DrmThread::CreateBuffer(gfx::AcceleratedWidget widget,
                              const gfx::Size& size,
                              const gfx::Size& framebuffer_size,
@@ -134,15 +134,24 @@ void DrmThread::CreateBuffer(gfx::AcceleratedWidget widget,
   CHECK(drm) << "No devices available for buffer allocation.";
 
   DrmWindow* window = screen_manager_->GetWindow(widget);
-  uint32_t flags = ui::BufferUsageToGbmFlags(usage);
-  uint32_t fourcc_format = ui::GetFourCCFormatFromBufferFormat(format);
+  uint32_t flags = BufferUsageToGbmFlags(usage);
+  uint32_t fourcc_format = GetFourCCFormatFromBufferFormat(format);
 
+  // Some modifiers are incompatible with some gbm_bo_flags.  If we give
+  // modifiers to the GBM allocator, then GBM ignores the flags, and therefore
+  // may choose a modifier that's incompatible with the intended usage.
+  // Therefore, leave the modifier list empty for problematic flags.
+  //
+  // TODO(chadversary): Define GBM api that reports the modifiers compatible
+  // with a given set of use flags.
+  //
   // TODO(hoegsberg): We shouldn't really get here without a window,
   // but it happens during init. Need to figure out why.
   std::vector<uint64_t> modifiers;
   if (window && window->GetController() && !(flags & GBM_BO_USE_LINEAR) &&
+      !(flags & GBM_BO_USE_HW_VIDEO_DECODER) &&
       !(client_flags & GbmPixmap::kFlagNoModifiers)) {
-    modifiers = window->GetController()->GetFormatModifiers(fourcc_format);
+    modifiers = window->GetController()->GetSupportedModifiers(fourcc_format);
   }
 
   CreateBufferWithGbmFlags(drm, fourcc_format, size, framebuffer_size, flags,
@@ -152,7 +161,9 @@ void DrmThread::CreateBuffer(gfx::AcceleratedWidget widget,
   // explicitly set via kms on a CRTC (e.g: BufferQueue buffers), therefore
   // allocation should fail if it's not possible to allocate a BO_USE_SCANOUT
   // buffer in that case.
-  if (!*buffer && usage != gfx::BufferUsage::SCANOUT) {
+  if (!*buffer && usage != gfx::BufferUsage::SCANOUT &&
+      usage != gfx::BufferUsage::PROTECTED_SCANOUT_VDA_WRITE &&
+      usage != gfx::BufferUsage::SCANOUT_FRONT_RENDERING) {
     flags &= ~GBM_BO_USE_SCANOUT;
     CreateBufferWithGbmFlags(drm, fourcc_format, size, framebuffer_size, flags,
                              modifiers, buffer, framebuffer);
@@ -185,7 +196,7 @@ void DrmThread::CreateBufferFromHandle(
   DCHECK(drm);
 
   std::unique_ptr<GbmBuffer> buffer = drm->gbm_device()->CreateBufferFromHandle(
-      ui::GetFourCCFormatFromBufferFormat(format), size, std::move(handle));
+      GetFourCCFormatFromBufferFormat(format), size, std::move(handle));
   if (!buffer)
     return;
 
@@ -201,8 +212,8 @@ void DrmThread::CreateBufferFromHandle(
   *out_framebuffer = std::move(framebuffer);
 }
 
-void DrmThread::SetClearOverlayCacheCallback(base::RepeatingClosure callback) {
-  display_manager_->SetClearOverlayCacheCallback(std::move(callback));
+void DrmThread::SetDisplaysConfiguredCallback(base::RepeatingClosure callback) {
+  display_manager_->SetDisplaysConfiguredCallback(std::move(callback));
 }
 
 void DrmThread::SchedulePageFlip(
@@ -232,7 +243,9 @@ void DrmThread::OnPlanesReadyForPageFlip(
     window->SchedulePageFlip(std::move(planes), std::move(submission_callback),
                              std::move(presentation_callback));
   } else {
-    std::move(submission_callback).Run(gfx::SwapResult::SWAP_ACK, nullptr);
+    std::move(submission_callback)
+        .Run(gfx::SwapResult::SWAP_ACK,
+             /*release_fence=*/gfx::GpuFenceHandle());
     std::move(presentation_callback).Run(gfx::PresentationFeedback::Failure());
   }
 }
@@ -276,10 +289,9 @@ void DrmThread::SetWindowBounds(gfx::AcceleratedWidget widget,
 void DrmThread::SetCursor(gfx::AcceleratedWidget widget,
                           const std::vector<SkBitmap>& bitmaps,
                           const gfx::Point& location,
-                          int32_t frame_delay_ms) {
+                          base::TimeDelta frame_delay) {
   TRACE_EVENT0("drm", "DrmThread::SetCursor");
-  screen_manager_->GetWindow(widget)->SetCursor(bitmaps, location,
-                                                frame_delay_ms);
+  screen_manager_->GetWindow(widget)->SetCursor(bitmaps, location, frame_delay);
 }
 
 void DrmThread::MoveCursor(gfx::AcceleratedWidget widget,
@@ -304,6 +316,7 @@ void DrmThread::CheckOverlayCapabilitiesSync(
     const OverlaySurfaceCandidateList& overlays,
     std::vector<OverlayStatus>* result) {
   TRACE_EVENT0("drm,hwoverlays", "DrmThread::CheckOverlayCapabilitiesSync");
+  base::ElapsedTimer timer;
 
   DrmWindow* window = screen_manager_->GetWindow(widget);
   if (!window) {
@@ -312,6 +325,46 @@ void DrmThread::CheckOverlayCapabilitiesSync(
     return;
   }
   *result = window->TestPageFlip(overlays);
+
+  base::TimeDelta time = timer.Elapsed();
+  static constexpr base::TimeDelta kMinTime = base::Microseconds(1);
+  static constexpr base::TimeDelta kMaxTime = base::Milliseconds(10);
+  static constexpr int kTimeBuckets = 50;
+  UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+      "Compositing.Display.DrmThread.CheckOverlayCapabilitiesSyncUs", time,
+      kMinTime, kMaxTime, kTimeBuckets);
+}
+
+void DrmThread::GetHardwareCapabilities(
+    gfx::AcceleratedWidget widget,
+    HardwareCapabilitiesCallback receive_callback) {
+  TRACE_EVENT0("drm,hwoverlays", "DrmThread::GetHardwareCapabilities");
+  DCHECK(screen_manager_->GetWindow(widget));
+  DCHECK(device_manager_->GetDrmDevice(widget));
+  HardwareDisplayController* hdc =
+      screen_manager_->GetWindow(widget)->GetController();
+  HardwareDisplayPlaneManager* plane_manager =
+      device_manager_->GetDrmDevice(widget)->plane_manager();
+
+  if (!hdc || !plane_manager) {
+    HardwareCapabilities hardware_capabilities{.is_valid = false};
+    std::move(receive_callback).Run(hardware_capabilities);
+    return;
+  }
+
+  const auto& crtc_controllers = hdc->crtc_controllers();
+  // We almost always expect only one CRTC. Multiple CRTCs for one widget was
+  // the old way mirror mode was supported.
+  if (crtc_controllers.size() == 1) {
+    std::move(receive_callback)
+        .Run(plane_manager->GetHardwareCapabilities(
+            crtc_controllers[0]->crtc()));
+  } else {
+    // If there are multiple CRTCs for this widget we shouldn't rely on overlays
+    // working.
+    HardwareCapabilities hardware_capabilities{.is_valid = false};
+    std::move(receive_callback).Run(hardware_capabilities);
+  }
 }
 
 void DrmThread::GetDeviceCursor(
@@ -327,13 +380,13 @@ void DrmThread::RefreshNativeDisplays(
 
 void DrmThread::ConfigureNativeDisplays(
     const std::vector<display::DisplayConfigurationParams>& config_requests,
-    base::OnceCallback<void(const base::flat_map<int64_t, bool>&)> callback) {
+    uint32_t modeset_flag,
+    base::OnceCallback<void(bool)> callback) {
   TRACE_EVENT0("drm", "DrmThread::ConfigureNativeDisplays");
 
-  base::flat_map<int64_t, bool> statuses =
-      display_manager_->ConfigureDisplays(config_requests);
-
-  std::move(callback).Run(statuses);
+  bool config_success =
+      display_manager_->ConfigureDisplays(config_requests, modeset_flag);
+  std::move(callback).Run(config_success);
 }
 
 void DrmThread::TakeDisplayControl(base::OnceCallback<void(bool)> callback) {
@@ -348,9 +401,20 @@ void DrmThread::RelinquishDisplayControl(
   std::move(callback).Run(true);
 }
 
-void DrmThread::AddGraphicsDevice(const base::FilePath& path, base::File file) {
+void DrmThread::ShouldDisplayEventTriggerConfiguration(
+    const EventPropertyMap& event_props,
+    base::OnceCallback<void(bool)> callback) {
+  TRACE_EVENT0("drm", "DrmThread::ShouldDisplayEventTriggerConfiguration");
+  const bool should_trigger =
+      display_manager_->ShouldDisplayEventTriggerConfiguration(event_props);
+
+  std::move(callback).Run(should_trigger);
+}
+
+void DrmThread::AddGraphicsDevice(const base::FilePath& path,
+                                  mojo::PlatformHandle fd_mojo_handle) {
   TRACE_EVENT0("drm", "DrmThread::AddGraphicsDevice");
-  device_manager_->AddDrmDevice(path, std::move(file));
+  device_manager_->AddDrmDevice(path, fd_mojo_handle.TakeFD());
 
   // There might be tasks that were blocked on a DrmDevice becoming available.
   ProcessPendingTasks();
@@ -359,6 +423,14 @@ void DrmThread::AddGraphicsDevice(const base::FilePath& path, base::File file) {
 void DrmThread::RemoveGraphicsDevice(const base::FilePath& path) {
   TRACE_EVENT0("drm", "DrmThread::RemoveGraphicsDevice");
   device_manager_->RemoveDrmDevice(path);
+}
+
+void DrmThread::SetHdcpKeyProp(int64_t display_id,
+                               const std::string& key,
+                               SetHdcpKeyPropCallback callback) {
+  TRACE_EVENT0("drm", "DrmThread::SetHdcpKeyProp");
+  bool is_prop_set = display_manager_->SetHdcpKeyProp(display_id, key);
+  std::move(callback).Run(display_id, is_prop_set);
 }
 
 void DrmThread::GetHDCPState(
@@ -400,8 +472,11 @@ void DrmThread::SetGammaCorrection(
   display_manager_->SetGammaCorrection(display_id, degamma_lut, gamma_lut);
 }
 
-void DrmThread::SetPrivacyScreen(int64_t display_id, bool enabled) {
-  display_manager_->SetPrivacyScreen(display_id, enabled);
+void DrmThread::SetPrivacyScreen(int64_t display_id,
+                                 bool enabled,
+                                 base::OnceCallback<void(bool)> callback) {
+  bool success = display_manager_->SetPrivacyScreen(display_id, enabled);
+  std::move(callback).Run(success);
 }
 
 void DrmThread::AddDrmDeviceReceiver(

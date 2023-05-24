@@ -1,10 +1,11 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_AUTOFILL_IOS_BROWSER_FORM_SUGGESTION_PROVIDER_H_
 #define COMPONENTS_AUTOFILL_IOS_BROWSER_FORM_SUGGESTION_PROVIDER_H_
 
+#include "components/autofill/core/browser/ui/popup_types.h"
 #import "components/autofill/ios/browser/form_suggestion.h"
 #import "components/autofill/ios/browser/form_suggestion_provider_query.h"
 
@@ -20,9 +21,22 @@ typedef void (^SuggestionsReadyCompletion)(
     id<FormSuggestionProvider> delegate);
 typedef void (^SuggestionHandledCompletion)(void);
 
+// Different types for providers.
+typedef NS_ENUM(NSUInteger, SuggestionProviderType) {
+  SuggestionProviderTypeUnknown,
+  SuggestionProviderTypePassword,
+  SuggestionProviderTypeAutofill,
+};
+
 // Provides user-selectable suggestions for an input field of a web form
 // and handles user interaction with those suggestions.
 @protocol FormSuggestionProvider<NSObject>
+
+// The type of the suggestion provider.
+@property(nonatomic, readonly) SuggestionProviderType type;
+
+// Type of the form suggestions.
+@property(nonatomic, readonly) autofill::PopupType suggestionType;
 
 // Determines whether the receiver can provide suggestions for the specified
 // |form| and |field|, returning the result using the provided |completion|.
@@ -31,7 +45,6 @@ typedef void (^SuggestionHandledCompletion)(void);
 // are used in Autofill.
 - (void)checkIfSuggestionsAvailableForForm:
             (FormSuggestionProviderQuery*)formQuery
-                               isMainFrame:(BOOL)isMainFrame
                             hasUserGesture:(BOOL)hasUserGesture
                                   webState:(web::WebState*)webState
                          completionHandler:

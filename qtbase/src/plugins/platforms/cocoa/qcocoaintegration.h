@@ -1,46 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMINTEGRATION_COCOA_H
 #define QPLATFORMINTEGRATION_COCOA_H
-
-#include <AppKit/AppKit.h>
 
 #include "qcocoacursor.h"
 #include "qcocoawindow.h"
@@ -50,18 +12,27 @@
 #include "qcocoaclipboard.h"
 #include "qcocoadrag.h"
 #include "qcocoaservices.h"
-#include "qcocoakeymapper.h"
 #if QT_CONFIG(vulkan)
 #include "qcocoavulkaninstance.h"
 #endif
+#include "qcocoawindowmanager.h"
 
 #include <QtCore/QScopedPointer>
 #include <qpa/qplatformintegration.h>
-#include <QtFontDatabaseSupport/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qcoretextfontdatabase_p.h>
+#ifndef QT_NO_OPENGL
+#  include <QtGui/private/qopenglcontext_p.h>
+#endif
+#include <QtGui/private/qapplekeymapper_p.h>
+
+Q_FORWARD_DECLARE_OBJC_CLASS(NSToolbar);
 
 QT_BEGIN_NAMESPACE
 
 class QCocoaIntegration : public QObject, public QPlatformIntegration
+#ifndef QT_NO_OPENGL
+    , public QNativeInterface::Private::QCocoaGLIntegration
+#endif
 {
     Q_OBJECT
 public:
@@ -82,6 +53,7 @@ public:
     QPlatformOffscreenSurface *createPlatformOffscreenSurface(QOffscreenSurface *surface) const override;
 #ifndef QT_NO_OPENGL
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
+    QOpenGLContext *createOpenGLContext(NSOpenGLContext *, QOpenGLContext *shareContext) const override;
 #endif
     QPlatformBackingStore *createPlatformBackingStore(QWindow *widget) const override;
 
@@ -99,7 +71,7 @@ public:
     QCoreTextFontDatabase *fontDatabase() const override;
     QCocoaNativeInterface *nativeInterface() const override;
     QPlatformInputContext *inputContext() const override;
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QCocoaAccessibility *accessibility() const override;
 #endif
 #ifndef QT_NO_CLIPBOARD
@@ -115,20 +87,11 @@ public:
     Qt::KeyboardModifiers queryKeyboardModifiers() const override;
     QList<int> possibleKeys(const QKeyEvent *event) const override;
 
-    void setToolbar(QWindow *window, NSToolbar *toolbar);
-    NSToolbar *toolbar(QWindow *window) const;
-    void clearToolbars();
-
-    void pushPopupWindow(QCocoaWindow *window);
-    QCocoaWindow *popPopupWindow();
-    QCocoaWindow *activePopupWindow() const;
-    QList<QCocoaWindow *> *popupWindowStack();
-
     void setApplicationIcon(const QIcon &icon) const override;
+    void setApplicationBadge(qint64 number) override;
 
     void beep() const override;
-
-    void closePopups(QWindow *forWindow = nullptr);
+    void quit() const override;
 
 private Q_SLOTS:
     void focusWindowChanged(QWindow *);
@@ -140,7 +103,7 @@ private:
     QScopedPointer<QCoreTextFontDatabase> mFontDb;
 
     QScopedPointer<QPlatformInputContext> mInputContext;
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QScopedPointer<QCocoaAccessibility> mAccessibility;
 #endif
     QScopedPointer<QPlatformTheme> mPlatformTheme;
@@ -150,13 +113,13 @@ private:
     QScopedPointer<QCocoaDrag> mCocoaDrag;
     QScopedPointer<QCocoaNativeInterface> mNativeInterface;
     QScopedPointer<QCocoaServices> mServices;
-    QScopedPointer<QCocoaKeyMapper> mKeyboardMapper;
+    QScopedPointer<QAppleKeyMapper> mKeyboardMapper;
 
 #if QT_CONFIG(vulkan)
     mutable QCocoaVulkanInstance *mCocoaVulkanInstance = nullptr;
 #endif
-    QHash<QWindow *, NSToolbar *> mToolbars;
-    QList<QCocoaWindow *> m_popupWindowStack;
+
+    QCocoaWindowManager m_windowManager;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QCocoaIntegration::Options)

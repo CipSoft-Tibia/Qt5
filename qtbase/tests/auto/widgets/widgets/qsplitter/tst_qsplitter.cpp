@@ -1,33 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
+
 #include <qapplication.h>
 #include <qsplitter.h>
 #include <qstyle.h>
@@ -81,6 +58,8 @@ private slots:
     void replaceWidget();
     void replaceWidgetWithSplitterChild_data();
     void replaceWidgetWithSplitterChild();
+    void replaceWidgetWhileHidden_data();
+    void replaceWidgetWhileHidden();
     void handleMinimumWidth();
 
     // task-specific tests below me:
@@ -89,6 +68,7 @@ private slots:
     void task169702_sizes();
     void taskQTBUG_4101_ensureOneNonCollapsedWidget_data();
     void taskQTBUG_4101_ensureOneNonCollapsedWidget();
+    void taskQTBUG_102249_moveNonPressed();
     void setLayout();
     void autoAdd();
 
@@ -147,7 +127,7 @@ void tst_QSplitter::init()
 void tst_QSplitter::removeThirdWidget()
 {
     delete w3;
-    w3 = 0;
+    w3 = nullptr;
     int handleWidth = splitter->style()->pixelMetric(QStyle::PM_SplitterWidth);
     splitter->setFixedSize(400 + handleWidth, 400);
 }
@@ -302,7 +282,7 @@ class TestSplitterStyle : public QProxyStyle
 {
 public:
     TestSplitterStyle() : handleWidth(5) {}
-    int pixelMetric(PixelMetric metric, const QStyleOption *option = 0, const QWidget *widget = 0) const override
+    int pixelMetric(PixelMetric metric, const QStyleOption *option = nullptr, const QWidget *widget = nullptr) const override
     {
         if (metric == QStyle::PM_SplitterWidth)
             return handleWidth;
@@ -652,7 +632,7 @@ void tst_QSplitter::testRemoval()
 class MyFriendlySplitter : public QSplitter
 {
 public:
-    MyFriendlySplitter(QWidget *parent = 0) : QSplitter(parent) {}
+    MyFriendlySplitter(QWidget *parent = nullptr) : QSplitter(parent) {}
     void setRubberBand(int pos) { QSplitter::setRubberBand(pos); }
 
     void moveSplitter(int pos, int index) { QSplitter::moveSplitter(pos, index); }
@@ -763,7 +743,7 @@ void tst_QSplitter::replaceWidget()
     // the same size on the new widget. Because of QLabel's sizing
     // constraints (they can expand but not shrink) the easiest is
     // to set a shorter label.
-    QLabel *newWidget = new QLabel(QLatin1String("<b>NEW</b>"));
+    QLabel *newWidget = new QLabel(QLatin1String("NEW"));
 
     EventCounterSpy ef(&sp);
     ef.installEventFilter();
@@ -783,16 +763,12 @@ void tst_QSplitter::replaceWidget()
         const int expectedResizeCount = visible ? 1 : 0; // new widget only
         const int expectedPaintCount = visible && !collapsed ? 2 : 0; // splitter and new widget
         QTRY_COMPARE(ef.resizeCount, expectedResizeCount);
-#ifndef Q_OS_WINRT // QTBUG-68297
         QTRY_COMPARE(ef.paintCount, expectedPaintCount);
-#endif
         QCOMPARE(newWidget->parentWidget(), &sp);
         QCOMPARE(newWidget->isVisible(), visible);
         if (visible && !collapsed)
             QCOMPARE(newWidget->geometry(), oldGeom);
-#ifndef Q_OS_WINRT // QTBUG-68297
         QCOMPARE(newWidget->size().isEmpty(), !visible || collapsed);
-#endif
         delete res;
     }
     QCOMPARE(sp.count(), count);
@@ -844,9 +820,7 @@ void tst_QSplitter::replaceWidgetWithSplitterChild()
         QTRY_VERIFY(ef.resizeCount > 0);
         QTRY_VERIFY(ef.paintCount > 0);
         QCOMPARE(sp.count(), count + 1);
-#ifndef Q_OS_WINRT // QTBUG-68297
         QCOMPARE(sp.sizes().mid(0, count), sizes);
-#endif
         QCOMPARE(sp.sizes().last(), sibling->width());
     } else {
         // No-op for the rest
@@ -855,6 +829,47 @@ void tst_QSplitter::replaceWidgetWithSplitterChild()
         QCOMPARE(sp.count(), count);
         QCOMPARE(sp.sizes(), sizes);
     }
+}
+
+void tst_QSplitter::replaceWidgetWhileHidden_data()
+{
+    QTest::addColumn<bool>("splitterVisible");
+    QTest::addColumn<bool>("widgetVisible");
+
+    QTest::addRow("visibleToVisible") << true << true;
+    QTest::addRow("hiddenToVisible") << true << false;
+    QTest::addRow("visibleToHidden") << false << true;
+    QTest::addRow("hiddenToHidden") << false << false;
+}
+
+void tst_QSplitter::replaceWidgetWhileHidden()
+{
+    QFETCH(bool, splitterVisible);
+    QFETCH(bool, widgetVisible);
+
+    MyFriendlySplitter splitter;
+
+    splitter.addWidget(new QLabel("One"));
+    splitter.addWidget(new QLabel("Two"));
+
+    if (splitterVisible) {
+        splitter.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&splitter));
+    }
+    QWidget *newWidget = new QLabel("Three");
+    if (!widgetVisible)
+        newWidget->hide();
+
+    const bool wasExplicitHide = !widgetVisible && newWidget->testAttribute(Qt::WA_WState_ExplicitShowHide);
+    splitter.replaceWidget(1, newWidget);
+
+    QCOMPARE(!widgetVisible && newWidget->testAttribute(Qt::WA_WState_ExplicitShowHide), wasExplicitHide);
+
+    if (!splitterVisible) {
+        splitter.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&splitter));
+    }
+    QCOMPARE(widgetVisible, newWidget->isVisible());
 }
 
 void tst_QSplitter::handleMinimumWidth()
@@ -893,55 +908,56 @@ void tst_QSplitter::rubberBandNotInSplitter()
 
 void tst_QSplitter::task187373_addAbstractScrollAreas_data()
 {
-    QTest::addColumn<QString>("className");
+    QTest::addColumn<QByteArray>("className");
     QTest::addColumn<bool>("addInConstructor");
     QTest::addColumn<bool>("addOutsideConstructor");
 
-    QStringList classNames;
-    classNames << QLatin1String("QGraphicsView");
-    classNames << QLatin1String("QMdiArea");
-    classNames << QLatin1String("QScrollArea");
-    classNames << QLatin1String("QTextEdit");
-    classNames << QLatin1String("QTreeView");
+    QList<QByteArray> classNames{
+        "QGraphicsView",
+        "QMdiArea",
+        "QScrollArea",
+        "QTextEdit",
+        "QTreeView"
+    };
 
-    foreach (QString className, classNames) {
-        QTest::newRow(qPrintable(className + QLatin1String(" 1"))) << className << false << true;
-        QTest::newRow(qPrintable(className + QLatin1String(" 2"))) << className << true << false;
-        QTest::newRow(qPrintable(className + QLatin1String(" 3"))) << className << true << true;
+    for (const auto &className : std::as_const(classNames)) {
+        QTest::newRow(qPrintable(className + " 1")) << className << false << true;
+        QTest::newRow(qPrintable(className + " 2")) << className << true << false;
+        QTest::newRow(qPrintable(className + " 3")) << className << true << true;
     }
 }
 
 static QAbstractScrollArea *task187373_createScrollArea(
-    QSplitter *splitter, const QString &className, bool addInConstructor)
+    QSplitter *splitter, const QByteArray &className, bool addInConstructor)
 {
-    if (className == QLatin1String("QGraphicsView"))
+    if (className == "QGraphicsView")
         return new QGraphicsView(addInConstructor ? splitter : 0);
-    if (className == QLatin1String("QMdiArea"))
+    if (className == "QMdiArea")
         return new QMdiArea(addInConstructor ? splitter : 0);
-    if (className == QLatin1String("QScrollArea"))
+    if (className == "QScrollArea")
         return new QScrollArea(addInConstructor ? splitter : 0);
-    if (className == QLatin1String("QTextEdit"))
+    if (className == "QTextEdit")
         return new QTextEdit(addInConstructor ? splitter : 0);
-    if (className == QLatin1String("QTreeView"))
+    if (className == "QTreeView")
         return new QTreeView(addInConstructor ? splitter : 0);
     return 0;
 }
 
 void tst_QSplitter::task187373_addAbstractScrollAreas()
 {
-    QFETCH(QString, className);
+    QFETCH(QByteArray, className);
     QFETCH(bool, addInConstructor);
     QFETCH(bool, addOutsideConstructor);
     QVERIFY(addInConstructor || addOutsideConstructor);
 
-    QSplitter *splitter = new QSplitter;
-    splitter->show();
-    QVERIFY(splitter->isVisible());
+    QSplitter splitter;
+    splitter.show();
+    QVERIFY(splitter.isVisible());
 
-    QAbstractScrollArea *w = task187373_createScrollArea(splitter, className, addInConstructor);
+    QAbstractScrollArea *w = task187373_createScrollArea(&splitter, className, addInConstructor);
     QVERIFY(w);
     if (addOutsideConstructor)
-        splitter->addWidget(w);
+        splitter.addWidget(w);
 
     QTRY_VERIFY(w->isVisible());
     QVERIFY(!w->isHidden());
@@ -958,11 +974,11 @@ class MyTextEdit : public QTextEdit
         {
             setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
         }
-        virtual QSize minimumSizeHint () const
+        virtual QSize minimumSizeHint () const override
         {
             return QSize(200, 200) * m_iFactor;
         }
-        virtual QSize sizeHint() const
+        virtual QSize sizeHint() const override
         {
             return QSize(390, 390) * m_iFactor;
         }
@@ -1016,7 +1032,7 @@ void tst_QSplitter::taskQTBUG_4101_ensureOneNonCollapsedWidget()
     QFETCH(bool, testingHide);
 
     MyFriendlySplitter s;
-    QLabel *l;
+    QLabel *l = nullptr;
     for (int i = 0; i < 5; ++i) {
         l = new QLabel(QString("Label ") + QChar('A' + i));
         l->setAlignment(Qt::AlignCenter);
@@ -1030,6 +1046,24 @@ void tst_QSplitter::taskQTBUG_4101_ensureOneNonCollapsedWidget()
     else
         delete l;
     QTRY_VERIFY(s.sizes().at(0) > 0);
+}
+
+void tst_QSplitter::taskQTBUG_102249_moveNonPressed()
+{
+    QSplitter s;
+    s.setOpaqueResize(true);
+    s.addWidget(new QWidget());
+    s.addWidget(new QWidget());
+    s.show();
+
+    QSignalSpy spyMove(&s, &QSplitter::splitterMoved);
+    QPointF posOutOfWidget = QPointF(30, 30);
+    QMouseEvent me(QEvent::MouseMove,
+                   posOutOfWidget, s.mapToGlobal(posOutOfWidget),
+                   Qt::NoButton, Qt::MouseButtons(Qt::LeftButton),
+                   Qt::NoModifier);
+    qApp->sendEvent(s.handle(0), &me);
+    QCOMPARE(spyMove.size(), 0);
 }
 
 void tst_QSplitter::setLayout()

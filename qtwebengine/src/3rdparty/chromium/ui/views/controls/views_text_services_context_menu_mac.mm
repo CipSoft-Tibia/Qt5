@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -43,7 +43,7 @@ class ViewsTextServicesContextMenuMac
   bool SupportsCommand(int command_id) const override;
 
   // TextServicesContextMenu::Delegate:
-  base::string16 GetSelectedText() const override;
+  std::u16string GetSelectedText() const override;
   bool IsTextDirectionEnabled(
       base::i18n::TextDirection direction) const override;
   bool IsTextDirectionChecked(
@@ -62,15 +62,16 @@ ViewsTextServicesContextMenuMac::ViewsTextServicesContextMenuMac(
     Textfield* client)
     : ViewsTextServicesContextMenuBase(menu, client) {
   // Insert the "Look up" item in the first position.
-  const base::string16 text = GetSelectedText();
+  const std::u16string text = GetSelectedText();
   if (!text.empty()) {
     menu->InsertSeparatorAt(0, ui::NORMAL_SEPARATOR);
     menu->InsertItemAt(
         0, IDS_CONTENT_CONTEXT_LOOK_UP,
         l10n_util::GetStringFUTF16(IDS_CONTENT_CONTEXT_LOOK_UP, text));
+
+    text_services_menu_.AppendToContextMenu(menu);
   }
 
-  text_services_menu_.AppendToContextMenu(menu);
   text_services_menu_.AppendEditableItems(menu);
 }
 
@@ -103,19 +104,23 @@ bool ViewsTextServicesContextMenuMac::SupportsCommand(int command_id) const {
          ViewsTextServicesContextMenuBase::SupportsCommand(command_id);
 }
 
-base::string16 ViewsTextServicesContextMenuMac::GetSelectedText() const {
+std::u16string ViewsTextServicesContextMenuMac::GetSelectedText() const {
   return (client()->GetTextInputType() == ui::TEXT_INPUT_TYPE_PASSWORD)
-             ? base::string16()
+             ? std::u16string()
              : client()->GetSelectedText();
 }
 
 bool ViewsTextServicesContextMenuMac::IsTextDirectionEnabled(
     base::i18n::TextDirection direction) const {
+  if (client()->force_text_directionality())
+    return false;
   return direction != base::i18n::UNKNOWN_DIRECTION;
 }
 
 bool ViewsTextServicesContextMenuMac::IsTextDirectionChecked(
     base::i18n::TextDirection direction) const {
+  if (client()->force_text_directionality())
+    return direction == base::i18n::UNKNOWN_DIRECTION;
   return IsTextDirectionEnabled(direction) &&
          client()->GetTextDirection() == direction;
 }

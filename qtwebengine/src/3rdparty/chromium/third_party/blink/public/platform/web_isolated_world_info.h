@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_string.h"
-#include "v8/include/v8.h"
+#include "v8/include/v8-forward.h"
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_ISOLATED_WORLD_INFO_H_
 #define THIRD_PARTY_BLINK_PUBLIC_PLATFORM_WEB_ISOLATED_WORLD_INFO_H_
@@ -25,13 +25,8 @@ struct WebIsolatedWorldInfo {
   WebSecurityOrigin security_origin;
 
   // Associates a content security policy with an isolated world. This policy
-  // should be used when evaluating script in the isolated world, and should
-  // also replace a protected resource's CSP when evaluating resources
-  // injected into the DOM.
+  // should be used when evaluating script in the isolated world.
   //
-  // TODO(crbug.com/896041): Setting this simply bypasses the protected
-  // resource's CSP. It doesn't yet restrict the isolated world to the provided
-  // policy.
   // Note: If this is null, the content security policy for the isolated world
   // is cleared. Else if this is specified, |security_origin| must also be
   // specified.
@@ -51,11 +46,17 @@ struct WebIsolatedWorldInfo {
   WebString stable_id;
 };
 
+// The ID of the "main" execution world for a document.
+static constexpr int32_t kMainDOMWorldId = 0;
+
 // Sets up an isolated world by associating a |world_id| with |info|.
 // worldID must be > 0 (as 0 represents the main world).
 // worldID must be < kEmbedderWorldIdLimit, high number used internally.
 BLINK_EXPORT void SetIsolatedWorldInfo(int32_t world_id,
                                        const WebIsolatedWorldInfo& info);
+
+// Checks if |world_id| is equal or exceeds kEmbedderWorldIdLimit value.
+BLINK_EXPORT bool IsEqualOrExceedEmbedderWorldIdLimit(int32_t world_id);
 
 // Returns the stable ID that was set with SetIsolatedWorldInfo.
 BLINK_EXPORT WebString GetIsolatedWorldStableId(v8::Local<v8::Context>);

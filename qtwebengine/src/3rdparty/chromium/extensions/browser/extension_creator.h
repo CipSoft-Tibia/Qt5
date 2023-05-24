@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 class FilePath;
@@ -32,12 +32,16 @@ class ExtensionCreator {
  public:
   ExtensionCreator();
 
+  ExtensionCreator(const ExtensionCreator&) = delete;
+  ExtensionCreator& operator=(const ExtensionCreator&) = delete;
+
   // Settings to specify treatment of special or ignorable error conditions.
   enum RunFlags {
     kNoRunFlags = 0,
     kOverwriteCRX = 1 << 0,
     kRequireModernManifestVersion = 1 << 1,
-    kBookmarkApp = 1 << 2,
+    // DEPRECATED.
+    // kBookmarkApp = 1 << 2,
     kSystemApp = 1 << 3,
   };
 
@@ -57,6 +61,7 @@ class ExtensionCreator {
 
  private:
   friend class ExtensionCreatorTest;
+  friend class ContentVerifierTest;
 
   // Verifies input directory's existence. |extension_dir| is the source
   // directory that should contain all the extension resources. |crx_path| is
@@ -91,18 +96,28 @@ class ExtensionCreator {
                  base::FilePath* zip_path);
 
   // Creates a CRX file at |crx_path|, signed with |private_key| and with the
-  // contents of the archive at |zip_path|.
-  bool CreateCrx(const base::FilePath& zip_path,
-                 crypto::RSAPrivateKey* private_key,
-                 const base::FilePath& crx_path);
+  // contents of the archive at |zip_path|. Injects
+  // |compressed_verified_contents| in the header if it not equal to
+  // absl::nullopt.
+  bool CreateCrx(
+      const base::FilePath& zip_path,
+      crypto::RSAPrivateKey* private_key,
+      const base::FilePath& crx_path,
+      const absl::optional<std::string>& compressed_verified_contents);
+
+  // Creates a temporary directory to store zipped extension and then creates
+  // CRX using the zipped extension.
+  bool CreateCrxAndPerformCleanup(
+      const base::FilePath& extension_dir,
+      const base::FilePath& crx_path,
+      crypto::RSAPrivateKey* private_key,
+      const absl::optional<std::string>& compressed_verified_contents);
 
   // Holds a message for any error that is raised during Run(...).
   std::string error_message_;
 
   // Type of error that was raised, if any.
   ErrorType error_type_;
-
-  DISALLOW_COPY_AND_ASSIGN(ExtensionCreator);
 };
 
 }  // namespace extensions

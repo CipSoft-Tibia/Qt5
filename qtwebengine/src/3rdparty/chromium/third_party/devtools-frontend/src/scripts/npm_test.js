@@ -20,8 +20,6 @@ const IS_DEBUG_ENABLED =
 const CUSTOM_CHROMIUM_PATH = utils.parseArgs(process.argv)[Flags.CHROMIUM_PATH];
 const TARGET = utils.parseArgs(process.argv)[Flags.TARGET] || 'Release';
 
-const PYTHON = process.platform === 'win32' ? 'python.bat' : 'python';
-
 const CURRENT_PATH = process.env.PWD || process.cwd();  // Using env.PWD to account for symlinks.
 const isThirdParty = CURRENT_PATH.includes('third_party');
 const CHROMIUM_SRC_PATH = CUSTOM_CHROMIUM_PATH || getChromiumSrcPath(isThirdParty);
@@ -35,16 +33,19 @@ function main() {
     fs.mkdirSync(CACHE_PATH);
   }
 
-  const hasUserCompiledContentShell = utils.isFile(getContentShellBinaryPath(RELEASE_PATH));
+  const contentShellBinaryPath = getContentShellBinaryPath(RELEASE_PATH);
+  const hasUserCompiledContentShell = utils.isFile(contentShellBinaryPath);
   if (!hasUserCompiledContentShell) {
-    return;
+    throw new Error(
+        `${contentShellBinaryPath} not found. ` +
+        'Ensure you have built a release version of `chrome` or use ' +
+        '`--target=Debug`.');
   }
   const outDir = path.resolve(RELEASE_PATH, '..');
 
   runTests(outDir, IS_DEBUG_ENABLED);
 }
 main();
-
 
 function getChromiumSrcPath(isThirdParty) {
   if (isThirdParty)
@@ -94,7 +95,7 @@ function runTests(buildDirectoryPath, useDebugDevtools) {
 
   if (IS_DEBUG_ENABLED) {
     testArgs.push('--additional-driver-flag=--remote-debugging-port=9222');
-    testArgs.push('--time-out-ms=6000000');
+    testArgs.push('--timeout-ms=6000000');
     console.log('\n=============================================');
     const unitTest = testArgs.find(arg => arg.includes('http/tests/devtools/unit/'));
     if (unitTest) {
@@ -110,9 +111,9 @@ function runTests(buildDirectoryPath, useDebugDevtools) {
     }
     console.log('=============================================\n');
   }
-  const args = [BLINK_TEST_PATH].concat(testArgs).concat(getTestFlags());
+  const args = [...testArgs, ...getTestFlags()];
   console.log(`Running web tests with args: ${args.join(' ')}`);
-  childProcess.spawn(PYTHON, args, {stdio: 'inherit'});
+  childProcess.spawn(BLINK_TEST_PATH, args, {stdio: 'inherit'});
 }
 
 function getTestFlags() {

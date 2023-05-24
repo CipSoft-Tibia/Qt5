@@ -6,11 +6,11 @@ Item {
                 foo();
             else
                 bar();
-        } else if (x == 3) {
+        } else if (x == 3)
             stuff();
-        } else {
+        else
             foo_bar();
-        }
+
         // Same for "for"
         if (a) {
             for (x in y) {
@@ -18,6 +18,7 @@ Item {
                 y();
             }
         }
+
         // ...and while
         if (b) {
             while (y in x) {
@@ -25,5 +26,12 @@ Item {
                 x();
             }
         }
+        if (x && y)
+            if (x < y)
+                return 0;
+            else
+                return -1;
+        else
+            return y;
     }
 }

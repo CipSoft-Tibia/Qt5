@@ -1,3 +1,5 @@
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2017 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -9,11 +11,12 @@
 # This file is inspired to [1].
 # [1] - https://cs.chromium.org/chromium/src/PRESUBMIT_test_mocks.py
 
+from __future__ import absolute_import
 import os.path
 import re
 
 
-class MockInputApi(object):
+class MockInputApi:
   """Mock class for the InputApi class.
 
   This class can be used for unittests for presubmit by initializing the files
@@ -24,41 +27,45 @@ class MockInputApi(object):
     self.change = MockChange([], [])
     self.files = []
     self.presubmit_local_path = os.path.dirname(__file__)
+    self.re = re  # pylint: disable=invalid-name
 
   def AffectedSourceFiles(self, file_filter=None):
     return self.AffectedFiles(file_filter=file_filter)
 
   def AffectedFiles(self, file_filter=None, include_deletes=False):
-    # pylint: disable=unused-argument
-    return self.files
+    for f in self.files:
+      if file_filter and not file_filter(f):
+        continue
+      if not include_deletes and f.Action() == 'D':
+        continue
+      yield f
 
   @classmethod
-  def FilterSourceFile(cls, affected_file, files_to_check=(),
-                       files_to_skip=()):
+  def FilterSourceFile(cls, affected_file, files_to_check=(), files_to_skip=()):
     # pylint: disable=unused-argument
     return True
 
   def PresubmitLocalPath(self):
     return self.presubmit_local_path
 
-  def ReadFile(self, affected_file, mode='rU'):
+  def ReadFile(self, affected_file, mode='r'):
     filename = affected_file.AbsoluteLocalPath()
     for f in self.files:
       if f.LocalPath() == filename:
         with open(filename, mode) as f:
           return f.read()
     # Otherwise, file is not in our mock API.
-    raise IOError, "No such file or directory: '%s'" % filename
+    raise IOError("No such file or directory: '%s'" % filename)
 
 
-class MockOutputApi(object):
+class MockOutputApi:
   """Mock class for the OutputApi class.
 
   An instance of this class can be passed to presubmit unittests for outputing
   various types of results.
   """
 
-  class PresubmitResult(object):
+  class PresubmitResult:
     def __init__(self, message, items=None, long_text=''):
       self.message = message
       self.items = items
@@ -73,7 +80,7 @@ class MockOutputApi(object):
       self.type = 'error'
 
 
-class MockChange(object):
+class MockChange:
   """Mock class for Change class.
 
   This class can be used in presubmit unittests to mock the query of the
@@ -95,15 +102,18 @@ class MockChange(object):
     return self.tags.get(attr)
 
 
-class MockFile(object):
+class MockFile:
   """Mock class for the File class.
 
   This class can be used to form the mock list of changed files in
   MockInputApi for presubmit unittests.
   """
 
-  def __init__(self, local_path, new_contents=None, old_contents=None,
-      action='A'):
+  def __init__(self,
+               local_path,
+               new_contents=None,
+               old_contents=None,
+               action='A'):
     if new_contents is None:
       new_contents = ["Data"]
     self._local_path = local_path

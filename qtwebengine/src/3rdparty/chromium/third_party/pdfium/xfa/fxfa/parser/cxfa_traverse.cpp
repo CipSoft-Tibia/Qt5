@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,8 +12,8 @@
 namespace {
 
 const CXFA_Node::PropertyData kTraversePropertyData[] = {
-    {XFA_Element::Script, 1, 0},
-    {XFA_Element::Extras, 1, 0},
+    {XFA_Element::Script, 1, {}},
+    {XFA_Element::Extras, 1, {}},
 };
 
 const CXFA_Node::AttributeData kTraverseAttributeData[] = {
@@ -30,7 +30,7 @@ const CXFA_Node::AttributeData kTraverseAttributeData[] = {
 CXFA_Traverse::CXFA_Traverse(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Traverse,
                 kTraversePropertyData,

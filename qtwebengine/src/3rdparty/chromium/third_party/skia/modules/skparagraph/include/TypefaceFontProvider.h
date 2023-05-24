@@ -2,8 +2,8 @@
 #ifndef TypefaceFontProvider_DEFINED
 #define TypefaceFontProvider_DEFINED
 
-#include "include/private/SkTArray.h"
-#include "include/private/SkTHash.h"
+#include "include/private/base/SkTArray.h"
+#include "src/core/SkTHash.h"
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -53,9 +53,6 @@ public:
                                             SkUnichar) const override {
         return nullptr;
     }
-    SkTypeface* onMatchFaceStyle(const SkTypeface*, const SkFontStyle&) const override {
-        return nullptr;
-    }
 
     sk_sp<SkTypeface> onMakeFromData(sk_sp<SkData>, int) const override { return nullptr; }
     sk_sp<SkTypeface> onMakeFromStreamIndex(std::unique_ptr<SkStreamAsset>, int) const override {
@@ -65,7 +62,6 @@ public:
                                            const SkFontArguments&) const override {
         return nullptr;
     }
-    sk_sp<SkTypeface> onMakeFromFontData(std::unique_ptr<SkFontData>) const override;
     sk_sp<SkTypeface> onMakeFromFile(const char[], int) const override {
         return nullptr;
     }

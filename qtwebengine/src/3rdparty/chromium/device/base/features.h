@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,32 +8,23 @@
 #include "base/feature_list.h"
 #include "build/build_config.h"
 #include "device/base/device_base_export.h"
-#include "device/vr/buildflags/buildflags.h"
 
 namespace device {
 
-#if defined(OS_WIN) || defined(OS_MAC)
-DEVICE_BASE_EXPORT extern const base::Feature kNewUsbBackend;
-#endif  // defined(OS_WIN) || defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
+DEVICE_BASE_EXPORT BASE_DECLARE_FEATURE(kNewUsbBackend);
+#endif  // BUILDFLAG(IS_MAC)
 
-#if defined(OS_WIN)
-DEVICE_BASE_EXPORT extern const base::Feature kNewBLEWinImplementation;
-DEVICE_BASE_EXPORT extern const base::Feature kNewBLEGattSessionHandling;
-#endif  // defined(OS_WIN)
-
-#if BUILDFLAG(ENABLE_VR)
-DEVICE_BASE_EXPORT extern const base::Feature kWebXrOrientationSensorDevice;
-#endif  // BUILDFLAG(ENABLE_VR)
+#if BUILDFLAG(IS_WIN)
+DEVICE_BASE_EXPORT BASE_DECLARE_FEATURE(kNewBLEGattSessionHandling);
+#endif  // BUILDFLAG(IS_WIN)
 
 // New features should be added to the device::features namespace.
 
 namespace features {
-#if BUILDFLAG(ENABLE_OPENXR)
-DEVICE_BASE_EXPORT extern const base::Feature kOpenXR;
-#endif  // ENABLE_OPENXR
-#if BUILDFLAG(ENABLE_WINDOWS_MR)
-DEVICE_BASE_EXPORT extern const base::Feature kWindowsMixedReality;
-#endif  // ENABLE_WINDOWS_MR
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+DEVICE_BASE_EXPORT BASE_DECLARE_FEATURE(kWebBluetoothConfirmPairingSupport);
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
 }  // namespace features
 }  // namespace device
 

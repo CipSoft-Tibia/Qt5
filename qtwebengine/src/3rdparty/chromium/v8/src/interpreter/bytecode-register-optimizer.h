@@ -5,9 +5,12 @@
 #ifndef V8_INTERPRETER_BYTECODE_REGISTER_OPTIMIZER_H_
 #define V8_INTERPRETER_BYTECODE_REGISTER_OPTIMIZER_H_
 
+#include "src/ast/variables.h"
 #include "src/base/compiler-specific.h"
 #include "src/common/globals.h"
 #include "src/interpreter/bytecode-register-allocator.h"
+#include "src/zone/zone-containers.h"
+#include "src/zone/zone.h"
 
 namespace v8 {
 namespace internal {
@@ -25,14 +28,13 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
    public:
     BytecodeWriter() = default;
     virtual ~BytecodeWriter() = default;
+    BytecodeWriter(const BytecodeWriter&) = delete;
+    BytecodeWriter& operator=(const BytecodeWriter&) = delete;
 
     // Called to emit a register transfer bytecode.
     virtual void EmitLdar(Register input) = 0;
     virtual void EmitStar(Register output) = 0;
     virtual void EmitMov(Register input, Register output) = 0;
-
-   private:
-    DISALLOW_COPY_AND_ASSIGN(BytecodeWriter);
   };
 
   BytecodeRegisterOptimizer(Zone* zone,
@@ -40,6 +42,9 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
                             int fixed_registers_count, int parameter_count,
                             BytecodeWriter* bytecode_writer);
   ~BytecodeRegisterOptimizer() override = default;
+  BytecodeRegisterOptimizer(const BytecodeRegisterOptimizer&) = delete;
+  BytecodeRegisterOptimizer& operator=(const BytecodeRegisterOptimizer&) =
+      delete;
 
   // Perform explicit register transfer operations.
   void DoLdar(Register input) {
@@ -63,7 +68,7 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
   bool EnsureAllRegistersAreFlushed() const;
 
   // Prepares for |bytecode|.
-  template <Bytecode bytecode, AccumulatorUse accumulator_use>
+  template <Bytecode bytecode, ImplicitRegisterUse implicit_register_use>
   V8_INLINE void PrepareForBytecode() {
     if (Bytecodes::IsJump(bytecode) || Bytecodes::IsSwitch(bytecode) ||
         bytecode == Bytecode::kDebugger ||
@@ -83,13 +88,13 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
     // Materialize the accumulator if it is read by the bytecode. The
     // accumulator is special and no other register can be materialized
     // in it's place.
-    if (BytecodeOperands::ReadsAccumulator(accumulator_use)) {
+    if (BytecodeOperands::ReadsAccumulator(implicit_register_use)) {
       Materialize(accumulator_info_);
     }
 
     // Materialize an equivalent to the accumulator if it will be
     // clobbered when the bytecode is dispatched.
-    if (BytecodeOperands::WritesAccumulator(accumulator_use)) {
+    if (BytecodeOperands::WritesAccumulator(implicit_register_use)) {
       PrepareOutputRegister(accumulator_);
     }
   }
@@ -107,6 +112,15 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
   // operand.
   RegisterList GetInputRegisterList(RegisterList reg_list);
 
+  // Maintain the map between Variable and Register.
+  void SetVariableInRegister(Variable* var, Register reg);
+
+  // Get the variable in the reg.
+  Variable* GetVariableInRegister(Register reg);
+
+  // Return true if the var is in the reg.
+  bool IsVariableInRegister(Variable* var, Register reg);
+
   int maxiumum_register_index() const { return max_register_index_; }
 
  private:
@@ -118,6 +132,7 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
   void RegisterAllocateEvent(Register reg) override;
   void RegisterListAllocateEvent(RegisterList reg_list) override;
   void RegisterListFreeEvent(RegisterList reg) override;
+  void RegisterFreeEvent(Register reg) override;
 
   // Update internal state for register transfer from |input| to |output|
   void RegisterTransfer(RegisterInfo* input, RegisterInfo* output);
@@ -175,8 +190,7 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
 
   uint32_t NextEquivalenceId() {
     equivalence_id_++;
-    // TODO(rmcilroy): use the same type for these and remove static_cast.
-    CHECK_NE(static_cast<size_t>(equivalence_id_), kInvalidEquivalenceId);
+    CHECK_NE(equivalence_id_, kInvalidEquivalenceId);
     return equivalence_id_;
   }
 
@@ -196,13 +210,11 @@ class V8_EXPORT_PRIVATE BytecodeRegisterOptimizer final
   ZoneDeque<RegisterInfo*> registers_needing_flushed_;
 
   // Counter for equivalence sets identifiers.
-  int equivalence_id_;
+  uint32_t equivalence_id_;
 
   BytecodeWriter* bytecode_writer_;
   bool flush_required_;
   Zone* zone_;
-
-  DISALLOW_COPY_AND_ASSIGN(BytecodeRegisterOptimizer);
 };
 
 }  // namespace interpreter

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <qtest.h>
 #include <private/qqmllistcompositor_p.h>
 
@@ -89,14 +64,12 @@ QT_END_NAMESPACE
 static const C::Group Visible = C::Group(2);
 static const C::Group Selection = C::Group(3);
 
+constexpr auto VisibleFlag = C::Flag(0x04);
+constexpr auto SelectionFlag = C::Flag(0x08);
+
 class tst_qqmllistcompositor : public QObject
 {
     Q_OBJECT
-
-    enum {
-        VisibleFlag   = 0x04,
-        SelectionFlag = 0x08
-    };
 
     void populateChange(
             C::Change &change, int sIndex, int vIndex, int dIndex, int cIndex, int count, int flags, int moveId)
@@ -1049,7 +1022,7 @@ void tst_qqmllistcompositor::moveFromEnd()
     QVector<C::Insert> inserts;
     compositor.listItemsInserted(a, 0, 1, &inserts);
 
-    QCOMPARE(inserts.count(), 1);
+    QCOMPARE(inserts.size(), 1);
     QCOMPARE(inserts.at(0).index[1], 1);
     QCOMPARE(inserts.at(0).count, 1);
 

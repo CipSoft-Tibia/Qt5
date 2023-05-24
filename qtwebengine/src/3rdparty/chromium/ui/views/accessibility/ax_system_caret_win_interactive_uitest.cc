@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <oleacc.h>
 #include <wrl/client.h>
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/scoped_variant.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -42,8 +43,8 @@ class AXSystemCaretWinTest : public test::DesktopWidgetTest {
     widget_->SetBounds(gfx::Rect(0, 0, 200, 200));
     textfield_ = new Textfield();
     textfield_->SetBounds(0, 0, 200, 20);
-    textfield_->SetText(base::ASCIIToUTF16("Some text."));
-    widget_->GetRootView()->AddChildView(textfield_);
+    textfield_->SetText(u"Some text.");
+    widget_->GetRootView()->AddChildView(textfield_.get());
     test::WidgetActivationWaiter waiter(widget_, true);
     widget_->Show();
     waiter.Wait();
@@ -61,8 +62,8 @@ class AXSystemCaretWinTest : public test::DesktopWidgetTest {
   }
 
  protected:
-  Widget* widget_;
-  Textfield* textfield_;
+  raw_ptr<Widget> widget_;
+  raw_ptr<Textfield> textfield_;
   base::win::ScopedVariant self_;
 };
 
@@ -299,7 +300,8 @@ TEST_F(AXSystemCaretWinTest, TestMovingWindow) {
   EXPECT_EQ(height, height3);
 }
 
-TEST_F(AXSystemCaretWinTest, TestCaretMSAAEvents) {
+// TODO(https://crbug.com/1294822): This test is flaky.
+TEST_F(AXSystemCaretWinTest, DISABLED_TestCaretMSAAEvents) {
   TextfieldTestApi textfield_test_api(textfield_);
   Microsoft::WRL::ComPtr<IAccessible> caret_accessible;
   gfx::NativeWindow native_window = widget_->GetNativeWindow();
@@ -342,7 +344,7 @@ TEST_F(AXSystemCaretWinTest, TestCaretMSAAEvents) {
 
   {
     // Move focus to a button.
-    LabelButton button(nullptr, base::string16());
+    LabelButton button{Button::PressedCallback(), std::u16string()};
     button.SetBounds(500, 0, 200, 20);
     widget_->GetRootView()->AddChildView(&button);
     test::WidgetActivationWaiter waiter(widget_, true);

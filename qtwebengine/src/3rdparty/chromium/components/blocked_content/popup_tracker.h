@@ -1,19 +1,18 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_BLOCKED_CONTENT_POPUP_TRACKER_H_
 #define COMPONENTS_BLOCKED_CONTENT_POPUP_TRACKER_H_
 
-#include "base/macros.h"
-#include "base/optional.h"
-#include "base/scoped_observer.h"
+#include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "components/subresource_filter/content/browser/subresource_filter_observer.h"
 #include "components/subresource_filter/content/browser/subresource_filter_observer_manager.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/base/scoped_visibility_tracker.h"
 #include "ui/base/window_open_disposition.h"
 
@@ -43,9 +42,17 @@ class PopupTracker : public content::WebContentsObserver,
   static PopupTracker* CreateForWebContents(content::WebContents* contents,
                                             content::WebContents* opener,
                                             WindowOpenDisposition disposition);
+
+  PopupTracker(const PopupTracker&) = delete;
+  PopupTracker& operator=(const PopupTracker&) = delete;
+
   ~PopupTracker() override;
 
   void set_is_trusted(bool is_trusted) { is_trusted_ = is_trusted; }
+
+  bool has_first_load_visible_time_for_testing() const {
+    return first_load_visible_time_.has_value();
+  }
 
  private:
   friend class content::WebContentsUserData<PopupTracker>;
@@ -68,16 +75,16 @@ class PopupTracker : public content::WebContentsObserver,
           CheckResult& result) override;
   void OnSubresourceFilterGoingAway() override;
 
-  ScopedObserver<subresource_filter::SubresourceFilterObserverManager,
-                 subresource_filter::SubresourceFilterObserver>
-      scoped_observer_;
+  base::ScopedObservation<subresource_filter::SubresourceFilterObserverManager,
+                          subresource_filter::SubresourceFilterObserver>
+      scoped_observation_{this};
 
   // Will be unset until the first navigation commits. Will be set to the total
   // time the contents was visible at commit time.
-  base::Optional<base::TimeDelta> first_load_visible_time_start_;
+  absl::optional<base::TimeDelta> first_load_visible_time_start_;
   // Will be unset until the second navigation commits. Is the total time the
   // contents is visible while the first document is loading (after commit).
-  base::Optional<base::TimeDelta> first_load_visible_time_;
+  absl::optional<base::TimeDelta> first_load_visible_time_;
 
   ui::ScopedVisibilityTracker visibility_tracker_;
 
@@ -87,6 +94,10 @@ class PopupTracker : public content::WebContentsObserver,
   // user activation and gesture scroll begin events.
   int num_activation_events_ = 0;
   int num_gesture_scroll_begin_events_ = 0;
+
+  // Number of redirects taken by the pop-up during navigation.
+  int num_redirects_ = 0;
+  bool first_navigation_committed_ = false;
 
   // The id of the web contents that created the popup at the time of creation.
   // SourceIds are permanent so it's okay to use at any point so long as it's
@@ -104,8 +115,6 @@ class PopupTracker : public content::WebContentsObserver,
   const WindowOpenDisposition window_open_disposition_;
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();
-
-  DISALLOW_COPY_AND_ASSIGN(PopupTracker);
 };
 
 }  // namespace blocked_content

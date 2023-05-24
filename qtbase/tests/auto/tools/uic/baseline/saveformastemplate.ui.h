@@ -1,37 +1,14 @@
 /*
-*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the autotests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************
+
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 */
 
 /********************************************************************************
 ** Form generated from reading UI file 'saveformastemplate.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -40,6 +17,7 @@
 #define SAVEFORMASTEMPLATE_H
 
 #include <QtCore/QVariant>
+#include <QtWidgets/QAbstractButton>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
@@ -67,13 +45,13 @@ public:
     void setupUi(QDialog *SaveFormAsTemplate)
     {
         if (SaveFormAsTemplate->objectName().isEmpty())
-            SaveFormAsTemplate->setObjectName(QString::fromUtf8("SaveFormAsTemplate"));
+            SaveFormAsTemplate->setObjectName("SaveFormAsTemplate");
         vboxLayout = new QVBoxLayout(SaveFormAsTemplate);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         formLayout = new QFormLayout();
-        formLayout->setObjectName(QString::fromUtf8("formLayout"));
+        formLayout->setObjectName("formLayout");
         label = new QLabel(SaveFormAsTemplate);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
         label->setFrameShape(QFrame::NoFrame);
         label->setFrameShadow(QFrame::Plain);
         label->setTextFormat(Qt::AutoText);
@@ -81,14 +59,14 @@ public:
         formLayout->setWidget(0, QFormLayout::LabelRole, label);
 
         templateNameEdit = new QLineEdit(SaveFormAsTemplate);
-        templateNameEdit->setObjectName(QString::fromUtf8("templateNameEdit"));
+        templateNameEdit->setObjectName("templateNameEdit");
         templateNameEdit->setMinimumSize(QSize(222, 0));
         templateNameEdit->setEchoMode(QLineEdit::Normal);
 
         formLayout->setWidget(0, QFormLayout::FieldRole, templateNameEdit);
 
         label_2 = new QLabel(SaveFormAsTemplate);
-        label_2->setObjectName(QString::fromUtf8("label_2"));
+        label_2->setObjectName("label_2");
         label_2->setFrameShape(QFrame::NoFrame);
         label_2->setFrameShadow(QFrame::Plain);
         label_2->setTextFormat(Qt::AutoText);
@@ -96,7 +74,7 @@ public:
         formLayout->setWidget(1, QFormLayout::LabelRole, label_2);
 
         categoryCombo = new QComboBox(SaveFormAsTemplate);
-        categoryCombo->setObjectName(QString::fromUtf8("categoryCombo"));
+        categoryCombo->setObjectName("categoryCombo");
 
         formLayout->setWidget(1, QFormLayout::FieldRole, categoryCombo);
 
@@ -104,14 +82,14 @@ public:
         vboxLayout->addLayout(formLayout);
 
         horizontalLine = new QFrame(SaveFormAsTemplate);
-        horizontalLine->setObjectName(QString::fromUtf8("horizontalLine"));
+        horizontalLine->setObjectName("horizontalLine");
         horizontalLine->setFrameShape(QFrame::HLine);
         horizontalLine->setFrameShadow(QFrame::Sunken);
 
         vboxLayout->addWidget(horizontalLine);
 
         buttonBox = new QDialogButtonBox(SaveFormAsTemplate);
-        buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
+        buttonBox->setObjectName("buttonBox");
         buttonBox->setOrientation(Qt::Horizontal);
         buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
 
@@ -123,8 +101,8 @@ public:
 #endif // QT_CONFIG(shortcut)
 
         retranslateUi(SaveFormAsTemplate);
-        QObject::connect(buttonBox, SIGNAL(accepted()), SaveFormAsTemplate, SLOT(accept()));
-        QObject::connect(buttonBox, SIGNAL(rejected()), SaveFormAsTemplate, SLOT(reject()));
+        QObject::connect(buttonBox, &QDialogButtonBox::accepted, SaveFormAsTemplate, qOverload<>(&QDialog::accept));
+        QObject::connect(buttonBox, &QDialogButtonBox::rejected, SaveFormAsTemplate, qOverload<>(&QDialog::reject));
 
         QMetaObject::connectSlotsByName(SaveFormAsTemplate);
     } // setupUi

@@ -51,7 +51,7 @@
 
 using namespace std;
 
-bool ICU44PLUS = TRUE;
+bool ICU44PLUS = true;
 string TZ_RESOURCE_NAME = ICU_TZ_RESOURCE;
 
 //--------------------------------------------------------------------
@@ -373,7 +373,7 @@ void readzoneinfo(ifstream& file, ZoneInfo& info, bool is64bitData) {
                     }
                 } else if (transitionTimes[i] > HIGHEST_TIME32) {
                     // Skipping the rest of the transition data.  We cannot put such
-                    // transitions into zoneinfo.res, because data is limited to singed
+                    // transitions into zoneinfo.res, because data is limited to signed
                     // 32bit int by the ICU resource bundle.
                     break;
                 } else {
@@ -774,16 +774,16 @@ struct FinalRulePart {
     // wall time, local standard time, and GMT standard time.
     // Here is how the isstd & isgmt flags are set by zic:
     //| case 's':       /* Standard */
-    //|         rp->r_todisstd = TRUE;
-    //|         rp->r_todisgmt = FALSE;
+    //|         rp->r_todisstd = true;
+    //|         rp->r_todisgmt = false;
     //| case 'w':       /* Wall */
-    //|         rp->r_todisstd = FALSE;
-    //|         rp->r_todisgmt = FALSE;
+    //|         rp->r_todisstd = false;
+    //|         rp->r_todisgmt = false;
     //| case 'g':       /* Greenwich */
     //| case 'u':       /* Universal */
     //| case 'z':       /* Zulu */
-    //|         rp->r_todisstd = TRUE;
-    //|         rp->r_todisgmt = TRUE;
+    //|         rp->r_todisstd = true;
+    //|         rp->r_todisgmt = true;
     bool isstd;
     bool isgmt;
 
@@ -1047,7 +1047,7 @@ void ZoneInfo::print(ostream& os, const string& id) const {
             os << " }" << endl;
         }
 
-        // 32bit transtions
+        // 32bit transitions
         if (trn != transitions.end() && trn->time < HIGHEST_TIME32) {
             os << "    trans:intvector { ";
             for (first = true; trn != transitions.end() && trn->time < HIGHEST_TIME32; ++trn) {
@@ -1060,7 +1060,7 @@ void ZoneInfo::print(ostream& os, const string& id) const {
             os << " }" << endl;
         }
 
-        // post 32bit transitons
+        // post 32bit transitions
         if (trn != transitions.end()) {
             os << "    transPost32:intvector { ";
             for (first = true; trn != transitions.end(); ++trn) {
@@ -1431,19 +1431,19 @@ void FinalRule::print(ostream& os) const {
 
 int main(int argc, char *argv[]) {
     string rootpath, zonetab, version;
-    bool validArgs = FALSE;
+    bool validArgs = false;
 
     if (argc == 4 || argc == 5) {
-        validArgs = TRUE;
+        validArgs = true;
         rootpath = argv[1];
         zonetab = argv[2];
         version = argv[3];
         if (argc == 5) {
             if (strcmp(argv[4], "--old") == 0) {
-                ICU44PLUS = FALSE;
+                ICU44PLUS = false;
                 TZ_RESOURCE_NAME = ICU_TZ_RESOURCE_OLD;
             } else {
-                validArgs = FALSE;
+                validArgs = false;
             }
         }
     }
@@ -1781,7 +1781,6 @@ int main(int argc, char *argv[]) {
     time_t sec;
     time(&sec);
     struct tm* now = localtime(&sec);
-    int32_t thisYear = now->tm_year + 1900;
 
     string filename = TZ_RESOURCE_NAME + ".txt";
     // Write out a resource-bundle source file containing data for
@@ -1790,7 +1789,7 @@ int main(int argc, char *argv[]) {
     if (file) {
         file << "//---------------------------------------------------------" << endl
              << "// Copyright (C) 2016 and later: Unicode, Inc. and others." << endl
-             << "// License & terms of use: http://www.unicode.org/copyright.html#License" << endl
+             << "// License & terms of use: http://www.unicode.org/copyright.html" << endl
              << "//---------------------------------------------------------" << endl
              << "// Build tool:  tz2icu" << endl
              << "// Build date:  " << asctime(now) /* << endl -- asctime emits CR */

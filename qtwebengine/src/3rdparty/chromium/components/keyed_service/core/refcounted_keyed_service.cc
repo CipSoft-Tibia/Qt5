@@ -1,8 +1,9 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/keyed_service/core/refcounted_keyed_service.h"
+#include "base/task/sequenced_task_runner.h"
 
 #include <utility>
 

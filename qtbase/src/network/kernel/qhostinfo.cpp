@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //#define QHOSTINFO_DEBUG
 
@@ -43,6 +7,7 @@
 #include "qhostinfo_p.h"
 #include <qplatformdefs.h>
 
+#include "QtCore/qapplicationstatic.h"
 #include "QtCore/qscopedpointer.h"
 #include <qabstracteventdispatcher.h>
 #include <qcoreapplication.h>
@@ -51,7 +16,6 @@
 #include <qstringlist.h>
 #include <qthread.h>
 #include <qurl.h>
-#include <private/qnetworksession_p.h>
 
 #include <algorithm>
 
@@ -59,7 +23,7 @@
 #  include <unistd.h>
 #  include <netdb.h>
 #  include <netinet/in.h>
-#  if defined(AI_ADDRCONFIG)
+#  if defined(AI_ADDRCONFIG) && !defined(Q_OS_WASM)
 #    define Q_ADDRCONFIG          AI_ADDRCONFIG
 #  endif
 #elif defined Q_OS_WIN
@@ -70,7 +34,11 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 //#define QHOSTINFO_DEBUG
+
+QT_IMPL_METATYPE_EXTERN(QHostInfo)
 
 namespace {
 struct ToBeLookedUpEquals {
@@ -100,26 +68,19 @@ std::pair<OutputIt1, OutputIt2> separate_if(InputIt first, InputIt last, OutputI
     return std::make_pair(dest1, dest2);
 }
 
-QHostInfoLookupManager* theHostInfoLookupManager()
+Q_APPLICATION_STATIC(QHostInfoLookupManager, theHostInfoLookupManager)
+
+}
+
+QHostInfoResult::QHostInfoResult(const QObject *receiver, QtPrivate::SlotObjUniquePtr slot)
+    : receiver{receiver}, slotObj{std::move(slot)}, withContextObject{slotObj && receiver}
 {
-    static QHostInfoLookupManager* theManager = nullptr;
-    static QBasicMutex theMutex;
-
-    const QMutexLocker locker(&theMutex);
-    if (theManager == nullptr) {
-        theManager = new QHostInfoLookupManager();
-        Q_ASSERT(QCoreApplication::instance());
-        QObject::connect(QCoreApplication::instance(), &QCoreApplication::destroyed, [] {
-            const QMutexLocker locker(&theMutex);
-            delete theManager;
-            theManager = nullptr;
-        });
-    }
-
-    return theManager;
+    if (receiver)
+        moveToThread(receiver->thread());
 }
 
-}
+QHostInfoResult::~QHostInfoResult()
+    = default;
 
 /*
     The calling thread is likely the one that executes the lookup via
@@ -156,16 +117,8 @@ void QHostInfoResult::postResultsReady(const QHostInfo &info)
     auto result = new QHostInfoResult(this);
     Q_CHECK_PTR(result);
 
-    const int nargs = 2;
-    auto metaCallEvent = new QMetaCallEvent(slotObj, nullptr, signal_index, nargs);
+    auto metaCallEvent = QMetaCallEvent::create(std::move(slotObj), nullptr, signal_index, info);
     Q_CHECK_PTR(metaCallEvent);
-    void **args = metaCallEvent->args();
-    int *types = metaCallEvent->types();
-    types[0] = QMetaType::type("void");
-    types[1] = QMetaType::type("QHostInfo");
-    args[0] = nullptr;
-    args[1] = QMetaType::create(types[1], &info);
-    Q_CHECK_PTR(args[1]);
     qApp->postEvent(result, metaCallEvent);
 }
 
@@ -181,7 +134,6 @@ bool QHostInfoResult::event(QEvent *event)
         // we didn't have a context object, or it's still alive
         if (!withContextObject || receiver)
             slotObj->call(const_cast<QObject*>(receiver.data()), args);
-        slotObj->destroyIfLastRef();
 
         deleteLater();
         return true;
@@ -233,7 +185,7 @@ bool QHostInfoResult::event(QEvent *event)
     QHostInfo::localHostName() function.
 
     QHostInfo uses the mechanisms provided by the operating system
-    to perform the lookup. As per {https://tools.ietf.org/html/rfc6724}{RFC 6724}
+    to perform the lookup. As per \l {RFC 6724}
     there is no guarantee that all IP addresses registered for a domain or
     host will be returned.
 
@@ -244,13 +196,12 @@ bool QHostInfoResult::event(QEvent *event)
     \note Since Qt 4.6.3 QHostInfo is using a small internal 60 second DNS cache
     for performance improvements.
 
-    \sa QAbstractSocket, {http://www.rfc-editor.org/rfc/rfc3492.txt}{RFC 3492},
-    {https://tools.ietf.org/html/rfc6724}{RFC 6724}
+    \sa QAbstractSocket, {RFC 3492}, {RFC 6724}
 */
 
 static int nextId()
 {
-    static QBasicAtomicInt counter = Q_BASIC_ATOMIC_INITIALIZER(0);
+    Q_CONSTINIT static QBasicAtomicInt counter = Q_BASIC_ATOMIC_INITIALIZER(0);
     return 1 + counter.fetchAndAddRelaxed(1);
 }
 
@@ -285,7 +236,7 @@ static int nextId()
 */
 int QHostInfo::lookupHost(const QString &name, QObject *receiver, const char *member)
 {
-    return QHostInfoPrivate::lookupHostImpl(name, receiver, nullptr, member);
+    return QHostInfo::lookupHostImpl(name, receiver, nullptr, member);
 }
 
 /*!
@@ -310,7 +261,7 @@ int QHostInfo::lookupHost(const QString &name, QObject *receiver, const char *me
 */
 
 /*!
-    \fn template<typename Functor> int QHostInfo::lookupHost(const QString &name, Functor functor)
+    \fn template<typename Functor> int QHostInfo::lookupHost(const QString &name, Functor &&functor)
 
     \since 5.9
 
@@ -394,11 +345,16 @@ QHostInfo QHostInfo::fromName(const QString &name)
     qDebug("QHostInfo::fromName(\"%s\")",name.toLatin1().constData());
 #endif
 
+#ifdef Q_OS_WASM
+    return QHostInfoAgent::lookup(name);
+#else
     QHostInfo hostInfo = QHostInfoAgent::fromName(name);
     QHostInfoLookupManager* manager = theHostInfoLookupManager();
     manager->cache.put(name, hostInfo);
     return hostInfo;
+#endif
 }
+
 
 QHostInfo QHostInfoAgent::reverseLookup(const QHostAddress &address)
 {
@@ -545,7 +501,7 @@ QHostInfo QHostInfoAgent::lookup(const QString &hostName)
         QString tmp;
         QList<QHostAddress> addresses = results.addresses();
         for (int i = 0; i < addresses.count(); ++i) {
-            if (i != 0) tmp += QLatin1String(", ");
+            if (i != 0) tmp += ", "_L1;
             tmp += addresses.at(i).toString();
         }
         qDebug("QHostInfoAgent::fromName(): found %i entries for \"%s\": {%s}",
@@ -608,10 +564,11 @@ QHostInfo::QHostInfo(const QHostInfo &other)
 */
 QHostInfo &QHostInfo::operator=(const QHostInfo &other)
 {
-    if (d_ptr)
-        *d_ptr = *other.d_ptr;
-    else
-        d_ptr = new QHostInfoPrivate(*other.d_ptr);
+    if (this == &other)
+      return *this;
+
+    Q_ASSERT(d_ptr && other.d_ptr);
+    *d_ptr = *other.d_ptr;
     return *this;
 }
 
@@ -772,29 +729,24 @@ QString QHostInfo::localHostName()
     \sa hostName()
 */
 
-// ### Qt 6 merge with function below
-int QHostInfo::lookupHostImpl(const QString &name,
-                              const QObject *receiver,
-                              QtPrivate::QSlotObjectBase *slotObj)
-{
-    return QHostInfoPrivate::lookupHostImpl(name, receiver, slotObj, nullptr);
-}
-/*
+/*!
+    \internal
     Called by the various lookupHost overloads to perform the lookup.
 
-    Signals either the functor encapuslated in the \a slotObj in the context
+    Signals either the functor encapuslated in the \a slotObjRaw in the context
     of \a receiver, or the \a member slot of the \a receiver.
 
-    \a receiver might be the nullptr, but only if a \a slotObj is provided.
+    \a receiver might be the nullptr, but only if a \a slotObjRaw is provided.
 */
-int QHostInfoPrivate::lookupHostImpl(const QString &name,
-                                     const QObject *receiver,
-                                     QtPrivate::QSlotObjectBase *slotObj,
-                                     const char *member)
+int QHostInfo::lookupHostImpl(const QString &name,
+                              const QObject *receiver,
+                              QtPrivate::QSlotObjectBase *slotObjRaw,
+                              const char *member)
 {
+    QtPrivate::SlotObjUniquePtr slotObj{slotObjRaw};
 #if defined QHOSTINFO_DEBUG
-    qDebug("QHostInfoPrivate::lookupHostImpl(\"%s\", %p, %p, %s)",
-           name.toLatin1().constData(), receiver, slotObj, member ? member + 1 : 0);
+    qDebug("QHostInfo::lookupHostImpl(\"%s\", %p, %p, %s)",
+           name.toLatin1().constData(), receiver, slotObj.get(), member ? member + 1 : 0);
 #endif
     Q_ASSERT(!member != !slotObj); // one of these must be set, but not both
     Q_ASSERT(receiver || slotObj);
@@ -813,7 +765,7 @@ int QHostInfoPrivate::lookupHostImpl(const QString &name,
         hostInfo.setError(QHostInfo::HostNotFound);
         hostInfo.setErrorString(QCoreApplication::translate("QHostInfo", "No host name given"));
 
-        QHostInfoResult result(receiver, slotObj);
+        QHostInfoResult result(receiver, std::move(slotObj));
         if (receiver && member)
             QObject::connect(&result, SIGNAL(resultsReady(QHostInfo)),
                             receiver, member, Qt::QueuedConnection);
@@ -822,6 +774,20 @@ int QHostInfoPrivate::lookupHostImpl(const QString &name,
         return id;
     }
 
+#ifdef Q_OS_WASM
+    // Resolve the host name directly without using a thread or cache,
+    // since Emscripten's host lookup is fast. Emscripten maintains an internal
+    // mapping of hosts and addresses for the purposes of WebSocket socket
+    // tunnelling, and does not perform an actual host lookup.
+    QHostInfo hostInfo = QHostInfoAgent::lookup(name);
+    hostInfo.setLookupId(id);
+
+    QHostInfoResult result(receiver, std::move(slotObj));
+    if (receiver && member)
+        QObject::connect(&result, SIGNAL(resultsReady(QHostInfo)),
+                        receiver, member, Qt::QueuedConnection);
+    result.postResultsReady(hostInfo);
+#else
     QHostInfoLookupManager *manager = theHostInfoLookupManager();
 
     if (Q_LIKELY(manager)) {
@@ -832,7 +798,7 @@ int QHostInfoPrivate::lookupHostImpl(const QString &name,
             QHostInfo info = manager->cache.get(name, &valid);
             if (valid) {
                 info.setLookupId(id);
-                QHostInfoResult result(receiver, slotObj);
+                QHostInfoResult result(receiver, std::move(slotObj));
                 if (receiver && member)
                     QObject::connect(&result, SIGNAL(resultsReady(QHostInfo)),
                                     receiver, member, Qt::QueuedConnection);
@@ -842,21 +808,25 @@ int QHostInfoPrivate::lookupHostImpl(const QString &name,
         }
 
         // cache is not enabled or it was not in the cache, do normal lookup
-        QHostInfoRunnable *runnable = new QHostInfoRunnable(name, id, receiver, slotObj);
+        QHostInfoRunnable *runnable = new QHostInfoRunnable(name, id, receiver, std::move(slotObj));
         if (receiver && member)
             QObject::connect(&runnable->resultEmitter, SIGNAL(resultsReady(QHostInfo)),
                                 receiver, member, Qt::QueuedConnection);
         manager->scheduleLookup(runnable);
     }
+#endif // Q_OS_WASM
     return id;
 }
 
 QHostInfoRunnable::QHostInfoRunnable(const QString &hn, int i, const QObject *receiver,
-                                     QtPrivate::QSlotObjectBase *slotObj) :
-    toBeLookedUp(hn), id(i), resultEmitter(receiver, slotObj)
+                                     QtPrivate::SlotObjUniquePtr slotObj)
+    : toBeLookedUp{hn}, id{i}, resultEmitter{receiver, std::move(slotObj)}
 {
     setAutoDelete(true);
 }
+
+QHostInfoRunnable::~QHostInfoRunnable()
+    = default;
 
 // the QHostInfoLookupManager will at some point call this via a QThreadPool
 void QHostInfoRunnable::run()
@@ -967,7 +937,7 @@ void QHostInfoLookupManager::rescheduleWithMutexHeld()
 
     if (!finishedLookups.isEmpty()) {
         // remove ID from aborted if it is in there
-        for (int i = 0; i < finishedLookups.length(); i++) {
+        for (int i = 0; i < finishedLookups.size(); i++) {
            abortedLookups.removeAll(finishedLookups.at(i)->id);
         }
 
@@ -995,7 +965,7 @@ void QHostInfoLookupManager::rescheduleWithMutexHeld()
                                        isAlreadyRunning).second,
                            scheduledLookups.end());
 
-    const int availableThreads = threadPool.maxThreadCount() - currentLookups.size();
+    const int availableThreads = std::max(threadPool.maxThreadCount(), 1) - currentLookups.size();
     if (availableThreads > 0) {
         int readyToStartCount = qMin(availableThreads, scheduledLookups.size());
         auto it = scheduledLookups.begin();
@@ -1035,7 +1005,7 @@ void QHostInfoLookupManager::abortLookup(int id)
 
 #if QT_CONFIG(thread)
     // is postponed? delete and return
-    for (int i = 0; i < postponedLookups.length(); i++) {
+    for (int i = 0; i < postponedLookups.size(); i++) {
         if (postponedLookups.at(i)->id == id) {
             delete postponedLookups.takeAt(i);
             return;
@@ -1044,7 +1014,7 @@ void QHostInfoLookupManager::abortLookup(int id)
 #endif
 
     // is scheduled? delete and return
-    for (int i = 0; i < scheduledLookups.length(); i++) {
+    for (int i = 0; i < scheduledLookups.size(); i++) {
         if (scheduledLookups.at(i)->id == id) {
             delete scheduledLookups.takeAt(i);
             return;
@@ -1097,7 +1067,7 @@ QHostInfo qt_qhostinfo_lookup(const QString &name, QObject *receiver, const char
     }
 
     // was not in cache, trigger lookup
-    *id = QHostInfoPrivate::lookupHostImpl(name, receiver, nullptr, member);
+    *id = QHostInfo::lookupHostImpl(name, receiver, nullptr, member);
 
     // return empty response, valid==false
     return QHostInfo();
@@ -1179,3 +1149,5 @@ void QHostInfoCache::clear()
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qhostinfo_p.cpp"

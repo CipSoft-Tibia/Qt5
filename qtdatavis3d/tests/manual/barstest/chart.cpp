@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "chart.h"
 #include "custominputhandler.h"
@@ -42,8 +16,6 @@
 #include <QtCore/QElapsedTimer>
 #include <QtCore/qmath.h>
 
-using namespace QtDataVisualization;
-
 const QString celsiusString = QString(QChar(0xB0)) + "C";
 
 GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
@@ -56,6 +28,8 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
       m_static(true),
       m_barSpacingX(0.1f),
       m_barSpacingZ(0.1f),
+      m_barSeriesMarginX(0.0f),
+      m_barSeriesMarginZ(0.0f),
       m_fontSize(20),
       m_segments(10),
       m_subSegments(3),
@@ -268,7 +242,7 @@ void GraphModifier::start()
     restart(false);
 }
 
-void GraphModifier::restart(bool dynamicData)
+void GraphModifier::restart(int dynamicData)
 {
     m_static = !dynamicData;
 
@@ -343,7 +317,7 @@ void GraphModifier::releaseSeries()
         m_graph->removeSeries(series);
 }
 
-void GraphModifier::flipViews()
+void GraphModifier::flipViews(bool checked)
 {
     m_graph->scene()->setSecondarySubviewOnTop(!m_graph->scene()->isSecondarySubviewOnTop());
     qDebug() << "secondary subview on top:" << m_graph->scene()->isSecondarySubviewOnTop();
@@ -686,7 +660,9 @@ void GraphModifier::changeSelectionMode()
 {
     static int selectionMode = m_graph->selectionMode();
 
-    if (++selectionMode > (QAbstract3DGraph::SelectionItemAndColumn | QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionMultiSeries))
+    if (++selectionMode > (int)(QAbstract3DGraph::SelectionItemAndColumn |
+                                QAbstract3DGraph::SelectionSlice |
+                                QAbstract3DGraph::SelectionMultiSeries))
         selectionMode = QAbstract3DGraph::SelectionNone;
 
     m_graph->setSelectionMode((QAbstract3DGraph::SelectionFlag)selectionMode);
@@ -733,7 +709,7 @@ void GraphModifier::handleSelectionChange(const QPoint &position)
     qDebug() << "Selected bar position:" << position << "series:" << index;
 }
 
-void GraphModifier::setUseNullInputHandler(bool useNull)
+void GraphModifier::setUseNullInputHandler(int useNull)
 {
     qDebug() << "setUseNullInputHandler" << useNull;
     if (m_useNullInputHandler == useNull)
@@ -826,7 +802,7 @@ QBarDataArray *GraphModifier::makeDummyData()
 }
 
 // Executes one step of the primary series test
-void GraphModifier::primarySeriesTest()
+void GraphModifier::primarySeriesTest(bool checked)
 {
     static int nextStep = 0;
 
@@ -1048,7 +1024,7 @@ void GraphModifier::insertRemoveTestToggle()
     }
 }
 
-void GraphModifier::toggleRotation()
+void GraphModifier::toggleRotation(bool checked)
 {
     if (m_rotationTimer.isActive())
         m_rotationTimer.stop();
@@ -1056,7 +1032,7 @@ void GraphModifier::toggleRotation()
         m_rotationTimer.start(20);
 }
 
-void GraphModifier::useLogAxis()
+void GraphModifier::useLogAxis(bool checked)
 {
     static int counter = -1;
     static QLogValue3DAxisFormatter *logFormatter = 0;
@@ -1212,7 +1188,7 @@ void GraphModifier::addRemoveSeries()
     counter++;
 }
 
-void GraphModifier::testItemAndRowChanges()
+void GraphModifier::testItemAndRowChanges(bool checked)
 {
     static int counter = 0;
     const int rowCount = 12;
@@ -1602,7 +1578,7 @@ void GraphModifier::rotateY(int rotation)
     m_graph->scene()->activeCamera()->setCameraPosition(m_xRotation, m_yRotation);
 }
 
-void GraphModifier::setFpsMeasurement(bool enable)
+void GraphModifier::setFpsMeasurement(int enable)
 {
     m_graph->setMeasureFps(enable);
 }
@@ -1622,6 +1598,18 @@ void GraphModifier::setSpacingSpecsZ(int spacing)
 {
     m_barSpacingZ = (float)spacing / 100.0f;
     m_graph->setBarSpacing(QSizeF(m_barSpacingX, m_barSpacingZ));
+}
+
+void GraphModifier::setMarginX(int margin)
+{
+    m_barSeriesMarginX = (float)margin / 100.0f;
+    m_graph->setBarSeriesMargin(QSizeF(m_barSeriesMarginX, m_barSeriesMarginZ));
+}
+
+void GraphModifier::setMarginZ(int margin)
+{
+   m_barSeriesMarginZ = (float)margin / 100.0f;
+   m_graph->setBarSeriesMargin(QSizeF(m_barSeriesMarginX, m_barSeriesMarginZ));
 }
 
 void GraphModifier::setSampleCountX(int samples)
@@ -1659,7 +1647,7 @@ void GraphModifier::setMaxY(int max)
     m_maxval = max;
 }
 
-void GraphModifier::changeColorStyle()
+void GraphModifier::changeColorStyle(bool checked)
 {
     int style = m_graph->activeTheme()->colorStyle();
 
@@ -1669,7 +1657,7 @@ void GraphModifier::changeColorStyle()
     m_graph->activeTheme()->setColorStyle(Q3DTheme::ColorStyle(style));
 }
 
-void GraphModifier::useOwnTheme()
+void GraphModifier::useOwnTheme(bool checked)
 {
     // Own theme is persistent, any changes to it via UI will be remembered
     if (!m_ownTheme) {
@@ -1708,7 +1696,7 @@ void GraphModifier::changeBaseColor(const QColor &color)
     m_graph->activeTheme()->setBaseColors(colors);
 }
 
-void GraphModifier::setGradient()
+void GraphModifier::setGradient(bool checked)
 {
     QLinearGradient barGradient(0, 0, 1, 100);
     barGradient.setColorAt(1.0, Qt::lightGray);
@@ -1748,7 +1736,7 @@ void GraphModifier::toggleMultiseriesScaling()
     m_graph->setMultiSeriesUniform(!m_graph->isMultiSeriesUniform());
 }
 
-void GraphModifier::setReflection(bool enabled)
+void GraphModifier::setReflection(int enabled)
 {
     m_graph->setReflection(enabled);
 }

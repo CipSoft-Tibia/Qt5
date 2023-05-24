@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de">
+<TS version="2.1" language="de_DE">
 <context>
     <name>QBluetoothDeviceDiscoveryAgent</name>
     <message>
@@ -20,20 +20,16 @@
         <translation>Übergebene Adresse gehört zu keinem lokalen Gerät.</translation>
     </message>
     <message>
-        <source>Missing Location permission. Search is not possible.</source>
-        <translation>Die Berechtigung zur Positionsbestimmung fehlt. Es ist keine Suche möglich.</translation>
-    </message>
-    <message>
         <source>Location service turned off. Search is not possible.</source>
         <translation>Standortbestimmung abgeschaltet. Suche ist nicht möglich.</translation>
     </message>
     <message>
-        <source>Classic Discovery cannot be started</source>
-        <translation>Standardsuche kann nicht gestartet werden</translation>
+        <source>Failed to start device discovery due to missing permissions.</source>
+        <translation>Gerätesuche konnte wegen fehlender Berechtigungen nicht gestartet werden.</translation>
     </message>
     <message>
-        <source>Low Energy Discovery not supported</source>
-        <translation>Low Energy-Suche wird nicht unterstützt</translation>
+        <source>Classic Discovery cannot be started</source>
+        <translation>Standardsuche kann nicht gestartet werden</translation>
     </message>
     <message>
         <source>Device is powered off</source>
@@ -50,6 +46,10 @@
     <message>
         <source>Unknown error</source>
         <translation>Unbekannter Fehler</translation>
+    </message>
+    <message>
+        <source>Missing permission</source>
+        <translation>Fehlende Berechtigung</translation>
     </message>
     <message>
         <source>Cannot start low energy device inquiry</source>
@@ -79,6 +79,10 @@
         <source>Device discovery not supported on this platform</source>
         <translation>Gerätesuchlauf wird auf dieser Plattform nicht unterstützt</translation>
     </message>
+    <message>
+        <source>Bluetooth adapter powered off.</source>
+        <translation>Bluetooth-Adapter ausgeschaltet.</translation>
+    </message>
 </context>
 <context>
     <name>QBluetoothServiceDiscoveryAgent</name>
@@ -95,8 +99,8 @@
         <translation>Die Plattform unterstützt kein Bluetooth</translation>
     </message>
     <message>
-        <source>Android API below v15 does not support SDP discovery</source>
-        <translation>SDP-Suche erfordert Android API Version 15 oder höher</translation>
+        <source>Failed to start service discovery due to missing permissions.</source>
+        <translation>Dienstsuche konnte wegen fehlender Berechtigungen nicht gestartet werden.</translation>
     </message>
     <message>
         <source>Cannot create Android BluetoothDevice</source>
@@ -873,6 +877,10 @@
         <translation>Database Change Increment</translation>
     </message>
     <message>
+        <source>Weight Scale Feature</source>
+        <translation>Waagendaten</translation>
+    </message>
+    <message>
         <source>Server Characteristic Configuration</source>
         <translation>Charakteristische Konfiguration des Servers</translation>
     </message>
@@ -1185,10 +1193,6 @@
         <translation>Gerät ist ausgeschaltet</translation>
     </message>
     <message>
-        <source>Unable to find appointed local adapter</source>
-        <translation>Angegebene Geräteadresse konnte nicht als lokales Gerät identifiziert werden</translation>
-    </message>
-    <message>
         <source>Cannot find local Bluetooth adapter</source>
         <translation>Es konnte kein lokaler Bluetooth-Adapter gefunden werden</translation>
     </message>
@@ -1203,10 +1207,6 @@
     <message>
         <source>Unable to perform SDP scan</source>
         <translation>Es kann kein SDP-Scan durchgeführt werden</translation>
-    </message>
-    <message>
-        <source>Unable to access device</source>
-        <translation>Zugriff auf Gerät nicht möglich</translation>
     </message>
     <message>
         <source>Custom Service</source>
@@ -1269,6 +1269,10 @@
         <source>Cannot connect to %1</source>
         <comment>%1 = uuid</comment>
         <translation>Verbindung mit %1 kann nicht hergestellt werden</translation>
+    </message>
+    <message>
+        <source>Bluetooth socket connect failed due to missing permissions.</source>
+        <translation>Verbinden zum Bluetooth-Socket schlug wegen fehlender Berechtigungen fehl.</translation>
     </message>
     <message>
         <source>Input stream thread cannot be started</source>
@@ -1346,22 +1350,6 @@
         <source>Invalid Bluetooth address passed to connectToService()</source>
         <translation>Es wurde eine ungültige Bluetooth-Adresse an connectToService() übergeben</translation>
     </message>
-    <message>
-        <source>Unsupported protocol. Win32 only supports RFCOMM sockets</source>
-        <translation>Das Protokoll wird nicht unterstützt. Win32 unterstützt lediglich RFCOMM-Sockets</translation>
-    </message>
-    <message>
-        <source>Failed to create socket</source>
-        <translation>Es konnte kein Socket erzeugt werden</translation>
-    </message>
-    <message>
-        <source>Socket type not handled: %1</source>
-        <translation>Sockettyp nicht unterstützt: %1</translation>
-    </message>
-    <message>
-        <source>Logic error: more bytes sent than passed to ::send</source>
-        <translation>Logischer Fehler: Es wurden mehr Bytes versandt als an ::send übergeben</translation>
-    </message>
 </context>
 <context>
     <name>QBluetoothSocketPrivateAndroid</name>
@@ -1421,25 +1409,6 @@
     </message>
 </context>
 <context>
-    <name>QBluetoothTransferReplyBluez</name>
-    <message>
-        <source>Unknown Error</source>
-        <translation>Unbekannter Fehler</translation>
-    </message>
-    <message>
-        <source>Could not open file for sending</source>
-        <translation>Datei konnte nicht zum Senden geöffnet werden</translation>
-    </message>
-    <message>
-        <source>The transfer was canceled</source>
-        <translation>Die Übertragung wurde abgebrochen</translation>
-    </message>
-    <message>
-        <source>Operation canceled</source>
-        <translation>Operation abgebrochen</translation>
-    </message>
-</context>
-<context>
     <name>QLowEnergyController</name>
     <message>
         <source>Remote device cannot be found</source>
@@ -1458,12 +1427,24 @@
         <translation>Unbekannter Fehler</translation>
     </message>
     <message>
+        <source>Missing permission</source>
+        <translation>Fehlende Berechtigung</translation>
+    </message>
+    <message>
         <source>Error occurred trying to connect to remote device.</source>
         <translation>Beim Aufbau der Verbindung zum Gerät trat ein Fehler auf.</translation>
     </message>
     <message>
         <source>Failed to authorize on the remote device</source>
         <translation>Fehler bei Autorisierung auf dem Gerät</translation>
+    </message>
+    <message>
+        <source>Missing permissions error</source>
+        <translation>Fehler: Fehlende Berechtigungen</translation>
+    </message>
+    <message>
+        <source>Error reading RSSI value</source>
+        <translation>Fehler beim Lesen des RSSI-Werts</translation>
     </message>
     <message>
         <source>Error occurred trying to start advertising</source>

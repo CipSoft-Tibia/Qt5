@@ -1,13 +1,14 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/task/thread_pool/tracked_ref.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
-#include "base/bind.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
 #include "base/synchronization/atomic_flag.h"
 #include "base/test/test_timeouts.h"
 #include "base/threading/thread.h"
@@ -22,6 +23,8 @@ namespace {
 class ObjectWithTrackedRefs {
  public:
   ObjectWithTrackedRefs() : tracked_ref_factory_(this) {}
+  ObjectWithTrackedRefs(const ObjectWithTrackedRefs&) = delete;
+  ObjectWithTrackedRefs& operator=(const ObjectWithTrackedRefs&) = delete;
   ~ObjectWithTrackedRefs() { under_destruction_.Set(); }
 
   TrackedRef<ObjectWithTrackedRefs> GetTrackedRef() {
@@ -35,8 +38,6 @@ class ObjectWithTrackedRefs {
   AtomicFlag under_destruction_;
 
   TrackedRefFactory<ObjectWithTrackedRefs> tracked_ref_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(ObjectWithTrackedRefs);
 };
 
 }  // namespace

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 
 #include "third_party/blink/renderer/modules/mediasource/track_default.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -21,7 +22,7 @@ class TrackDefaultList final : public ScriptWrappable {
   static TrackDefaultList* Create(const HeapVector<Member<TrackDefault>>&,
                                   ExceptionState&);
 
-  TrackDefaultList();
+  TrackDefaultList() = default;
   explicit TrackDefaultList(const HeapVector<Member<TrackDefault>>&);
 
   unsigned length() const { return track_defaults_.size(); }
@@ -30,7 +31,7 @@ class TrackDefaultList final : public ScriptWrappable {
   void Trace(Visitor*) const override;
 
  private:
-  const HeapVector<Member<TrackDefault>> track_defaults_;
+  const HeapVector<Member<TrackDefault>> track_defaults_{};
 };
 
 }  // namespace blink

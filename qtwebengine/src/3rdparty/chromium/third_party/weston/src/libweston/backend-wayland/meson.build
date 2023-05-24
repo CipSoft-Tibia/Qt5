@@ -18,7 +18,8 @@ deps_wlwl = [
 	dependency('wayland-client'),
 	dependency('wayland-cursor'),
 	dep_pixman,
-	dep_libweston,
+	dep_libweston_private,
+	dep_libdrm_headers,
 	dep_lib_cairo_shared,
 ]
 
@@ -33,7 +34,7 @@ endif
 plugin_wlwl = shared_library(
 	'wayland-backend',
 	srcs_wlwl,
-	include_directories: include_directories('../..', '../../shared'),
+	include_directories: common_inc,
 	dependencies: deps_wlwl,
 	name_prefix: '',
 	install: true,

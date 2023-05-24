@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,10 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/test_mock_time_task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/offline_pages/core/background/device_conditions.h"
 #include "components/offline_pages/core/background/offliner_policy.h"
 #include "components/offline_pages/core/background/request_coordinator.h"
@@ -28,6 +29,7 @@ using GetRequestsResult = GetRequestsResult;
 using UpdateRequestResult = UpdateRequestResult;
 
 namespace {
+
 // Data for request 1.
 const int64_t kRequestId = 42;
 const ClientId kClientId("bookmark", "1234");
@@ -37,15 +39,6 @@ const ClientId kClientId2("bookmark", "567");
 const bool kUserRequested = true;
 const int64_t kRequestId3 = 99;
 const int kOneWeekInSeconds = 7 * 24 * 60 * 60;
-
-// TODO(https://crbug.com/1042727): Fix test GURL scoping and remove this getter
-// function.
-GURL Url1() {
-  return GURL("http://example.com");
-}
-GURL Url2() {
-  return GURL("http://test.com");
-}
 
 // Default request
 SavePageRequest EmptyRequest() {
@@ -150,9 +143,10 @@ class RequestQueueTest : public testing::Test {
   std::vector<std::unique_ptr<SavePageRequest>> last_requests_;
 
   std::unique_ptr<RequestQueue> queue_;
-  TestRequestQueueStore* store_;  // Owned by queue_.
+  raw_ptr<TestRequestQueueStore> store_;  // Owned by queue_.
   scoped_refptr<base::TestMockTimeTaskRunner> task_runner_;
-  base::ThreadTaskRunnerHandle task_runner_handle_;
+  base::SingleThreadTaskRunner::CurrentDefaultHandle
+      task_runner_current_default_handle_;
 };
 
 RequestQueueTest::RequestQueueTest()
@@ -160,14 +154,14 @@ RequestQueueTest::RequestQueueTest()
       last_update_result_(UpdateRequestResult::STORE_FAILURE),
       last_get_requests_result_(GetRequestsResult::STORE_FAILURE),
       task_runner_(new base::TestMockTimeTaskRunner),
-      task_runner_handle_(task_runner_) {}
+      task_runner_current_default_handle_(task_runner_) {}
 
 RequestQueueTest::~RequestQueueTest() {}
 
 void RequestQueueTest::SetUp() {
   auto store = std::make_unique<TestRequestQueueStore>();
   store_ = store.get();
-  queue_.reset(new RequestQueue(std::move(store)));
+  queue_ = std::make_unique<RequestQueue>(std::move(store));
 }
 
 void RequestQueueTest::PumpLoop() {
@@ -177,7 +171,7 @@ void RequestQueueTest::PumpLoop() {
 void RequestQueueTest::AddRequestDone(AddRequestResult result,
                                       const SavePageRequest& request) {
   last_add_result_ = result;
-  last_added_request_.reset(new SavePageRequest(request));
+  last_added_request_ = std::make_unique<SavePageRequest>(request);
 }
 
 void RequestQueueTest::GetRequestsDone(
@@ -215,8 +209,8 @@ TEST_F(RequestQueueTest, GetRequestsEmpty) {
 
 TEST_F(RequestQueueTest, AddRequest) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -234,8 +228,8 @@ TEST_F(RequestQueueTest, AddRequest) {
 
 TEST_F(RequestQueueTest, RemoveRequest) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -263,16 +257,16 @@ TEST_F(RequestQueueTest, RemoveRequest) {
 
 TEST_F(RequestQueueTest, RemoveSeveralRequests) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
   PumpLoop();
   ASSERT_EQ(kRequestId, last_added_request()->request_id());
 
-  SavePageRequest request2(kRequestId2, Url2(), kClientId2, creation_time,
-                           kUserRequested);
+  SavePageRequest request2(kRequestId2, GURL("http://test.com"), kClientId2,
+                           creation_time, kUserRequested);
   queue()->AddRequest(request2, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -312,8 +306,8 @@ TEST_F(RequestQueueTest, RemoveSeveralRequests) {
 
 TEST_F(RequestQueueTest, PauseAndResume) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -382,15 +376,15 @@ TEST_F(RequestQueueTest, PauseAndResume) {
 // listing multiple items and removing the right item.
 TEST_F(RequestQueueTest, MultipleRequestsAddGetRemove) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request1(kRequestId, Url1(), kClientId, creation_time,
-                           kUserRequested);
+  SavePageRequest request1(kRequestId, GURL("http://example.com"), kClientId,
+                           creation_time, kUserRequested);
   queue()->AddRequest(request1, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
   PumpLoop();
   ASSERT_EQ(request1.request_id(), last_added_request()->request_id());
-  SavePageRequest request2(kRequestId2, Url2(), kClientId2, creation_time,
-                           kUserRequested);
+  SavePageRequest request2(kRequestId2, GURL("http://test.com"), kClientId2,
+                           creation_time, kUserRequested);
   queue()->AddRequest(request2, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -425,8 +419,8 @@ TEST_F(RequestQueueTest, MultipleRequestsAddGetRemove) {
 TEST_F(RequestQueueTest, MarkAttemptStarted) {
   // First add a request.  Retry count will be set to 0.
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -465,8 +459,8 @@ TEST_F(RequestQueueTest, MarkAttempStartedRequestNotPresent) {
   // First add a request.  Retry count will be set to 0.
   base::Time creation_time = OfflineTimeNow();
   // This request is never put into the queue.
-  SavePageRequest request1(kRequestId, Url1(), kClientId, creation_time,
-                           kUserRequested);
+  SavePageRequest request1(kRequestId, GURL("http://example.com"), kClientId,
+                           creation_time, kUserRequested);
 
   queue()->MarkAttemptStarted(
       kRequestId, base::BindOnce(&RequestQueueTest::UpdateRequestsDone,
@@ -481,8 +475,8 @@ TEST_F(RequestQueueTest, MarkAttempStartedRequestNotPresent) {
 
 TEST_F(RequestQueueTest, MarkAttemptAborted) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -514,8 +508,8 @@ TEST_F(RequestQueueTest, MarkAttemptAbortedRequestNotPresent) {
   // First add a request.  Retry count will be set to 0.
   base::Time creation_time = OfflineTimeNow();
   // This request is never put into the queue.
-  SavePageRequest request1(kRequestId, Url1(), kClientId, creation_time,
-                           kUserRequested);
+  SavePageRequest request1(kRequestId, GURL("http://example.com"), kClientId,
+                           creation_time, kUserRequested);
 
   queue()->MarkAttemptAborted(
       kRequestId, base::BindOnce(&RequestQueueTest::UpdateRequestsDone,
@@ -530,8 +524,8 @@ TEST_F(RequestQueueTest, MarkAttemptAbortedRequestNotPresent) {
 
 TEST_F(RequestQueueTest, MarkAttemptCompleted) {
   base::Time creation_time = OfflineTimeNow();
-  SavePageRequest request(kRequestId, Url1(), kClientId, creation_time,
-                          kUserRequested);
+  SavePageRequest request(kRequestId, GURL("http://example.com"), kClientId,
+                          creation_time, kUserRequested);
   queue()->AddRequest(request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));
@@ -563,10 +557,10 @@ TEST_F(RequestQueueTest, MarkAttemptCompleted) {
 TEST_F(RequestQueueTest, CleanStaleRequests) {
   // Create a request that is already expired.
   base::Time creation_time =
-      OfflineTimeNow() - base::TimeDelta::FromSeconds(2 * kOneWeekInSeconds);
+      OfflineTimeNow() - base::Seconds(2 * kOneWeekInSeconds);
 
-  SavePageRequest original_request(kRequestId, Url1(), kClientId, creation_time,
-                                   kUserRequested);
+  SavePageRequest original_request(kRequestId, GURL("http://example.com"),
+                                   kClientId, creation_time, kUserRequested);
   queue()->AddRequest(original_request, RequestQueue::AddOptions(),
                       base::BindOnce(&RequestQueueTest::AddRequestDone,
                                      base::Unretained(this)));

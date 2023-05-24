@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGRHIATLASTEXTURE_P_H
 #define QSGRHIATLASTEXTURE_P_H
@@ -55,7 +19,7 @@
 #include <QtQuick/private/qsgplaintexture_p.h>
 #include <QtQuick/private/qsgareaallocator_p.h>
 #include <QtGui/QSurface>
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -71,7 +35,6 @@ namespace QSGRhiAtlasTexture
 
 class Texture;
 class TextureBase;
-class TextureBasePrivate;
 class Atlas;
 
 class Manager : public QObject
@@ -105,7 +68,7 @@ public:
     ~AtlasBase();
 
     void invalidate();
-    void updateRhiTexture(QRhiResourceUpdateBatch *resourceUpdates);
+    void commitTextureOperations(QRhiResourceUpdateBatch *resourceUpdates);
     void remove(TextureBase *t);
 
     QSGDefaultRenderContext *renderContext() const { return m_rc; }
@@ -153,32 +116,21 @@ private:
 
 class TextureBase : public QSGTexture
 {
-    Q_DECLARE_PRIVATE(TextureBase)
     Q_OBJECT
 public:
     TextureBase(AtlasBase *atlas, const QRect &textureRect);
     ~TextureBase();
 
-    int textureId() const override { return 0; } // not used
-    void bind() override { } // not used
+    qint64 comparisonKey() const override;
+    QRhiTexture *rhiTexture() const override;
+    void commitTextureOperations(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates) override;
 
     bool isAtlasTexture() const override { return true; }
     QRect atlasSubRect() const { return m_allocated_rect; }
 
-    QRhiResourceUpdateBatch *workResourceUpdateBatch() const;
-
 protected:
     QRect m_allocated_rect;
     AtlasBase *m_atlas;
-};
-
-class TextureBasePrivate : public QSGTexturePrivate
-{
-    Q_DECLARE_PUBLIC(TextureBase)
-public:
-    int comparisonKey() const override;
-    QRhiTexture *rhiTexture() const override;
-    void updateRhiTexture(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates) override;
 };
 
 class Texture : public TextureBase
@@ -198,7 +150,7 @@ public:
     QRect atlasSubRect() const { return m_allocated_rect; }
     QRect atlasSubRectWithoutPadding() const { return m_allocated_rect.adjusted(1, 1, -1, -1); }
 
-    QSGTexture *removedFromAtlas() const override;
+    QSGTexture *removedFromAtlas(QRhiResourceUpdateBatch *resourceUpdates) const override;
 
     void releaseImage() { m_image = QImage(); }
     const QImage &image() const { return m_image; }

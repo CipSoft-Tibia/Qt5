@@ -1,45 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickflipable_p.h"
 #include "qquickitem_p.h"
-
+#include "qquicktranslate_p.h"
 
 #include <QtQml/qqmlinfo.h>
 
@@ -70,7 +34,7 @@ class QQuickFlipablePrivate : public QQuickItemPrivate
 public:
     QQuickFlipablePrivate() : current(QQuickFlipable::Front), front(nullptr), back(nullptr), sideDirty(false) {}
 
-    void transformChanged() override;
+    bool transformChanged(QQuickItem *transformedItem) override;
     void updateSide();
     void setBackTransform();
 
@@ -219,7 +183,7 @@ QQuickFlipable::Side QQuickFlipable::side() const
     return d->current;
 }
 
-void QQuickFlipablePrivate::transformChanged()
+bool QQuickFlipablePrivate::transformChanged(QQuickItem *transformedItem)
 {
     Q_Q(QQuickFlipable);
 
@@ -228,7 +192,7 @@ void QQuickFlipablePrivate::transformChanged()
         q->polish();
     }
 
-    QQuickItemPrivate::transformChanged();
+    return QQuickItemPrivate::transformChanged(transformedItem);
 }
 
 void QQuickFlipable::updatePolish()
@@ -237,9 +201,20 @@ void QQuickFlipable::updatePolish()
     d->updateSide();
 }
 
-// determination on the currently visible side of the flipable
-// has to be done on the complete scene transform to give
-// correct results.
+/*! \internal
+    Flipable must use the complete scene transform to correctly determine the
+    currently visible side.
+
+    It must also be independent of camera distance, in case the contents are
+    too wide: for rotation transforms we simply call QMatrix4x4::rotate(),
+    whereas QQuickRotation::applyTo(QMatrix4x4*) calls
+    QMatrix4x4::projectedRotate() which by default assumes the camera distance
+    is 1024 virtual pixels. So for example if contents inside Flipable are to
+    be flipped around the y axis, and are wider than 1024*2, some of the
+    rendering goes behind the "camera". That's expected for rendering (since we
+    didn't provide API to change camera distance), but not ok for deciding when
+    to flip.
+*/
 void QQuickFlipablePrivate::updateSide()
 {
     Q_Q(QQuickFlipable);
@@ -249,34 +224,49 @@ void QQuickFlipablePrivate::updateSide()
 
     sideDirty = false;
 
-    QTransform sceneTransform;
-    itemToParentTransform(sceneTransform);
+    QMatrix4x4 sceneTransform;
 
-    QPointF p1(0, 0);
-    QPointF p2(1, 0);
-    QPointF p3(1, 1);
+    const qreal tx = x.value();
+    const qreal ty = y.value();
+    if (!qFuzzyIsNull(tx) || !qFuzzyIsNull(ty))
+        sceneTransform.translate(tx, ty);
 
-    QPointF scenep1 = sceneTransform.map(p1);
-    QPointF scenep2 = sceneTransform.map(p2);
-    QPointF scenep3 = sceneTransform.map(p3);
-#if 0
-    p1 = q->mapToParent(p1);
-    p2 = q->mapToParent(p2);
-    p3 = q->mapToParent(p3);
-#endif
-
-    qreal cross = (scenep1.x() - scenep2.x()) * (scenep3.y() - scenep2.y()) -
-                  (scenep1.y() - scenep2.y()) * (scenep3.x() - scenep2.x());
-
-    wantBackYFlipped = scenep1.x() >= scenep2.x();
-    wantBackXFlipped = scenep2.y() >= scenep3.y();
-
-    QQuickFlipable::Side newSide;
-    if (cross > 0) {
-        newSide = QQuickFlipable::Back;
-    } else {
-        newSide = QQuickFlipable::Front;
+    for (const auto *transform : std::as_const(transforms)) {
+        if (const auto *rot = qobject_cast<const QQuickRotation *>(transform)) {
+            // rotation is a special case: we want to call rotate() instead of projectedRotate()
+            const auto angle = rot->angle();
+            const auto axis = rot->axis();
+            if (!(qFuzzyIsNull(angle) || axis.isNull())) {
+                sceneTransform.translate(rot->origin());
+                sceneTransform.rotate(angle, axis.x(), axis.y(), axis.z());
+                sceneTransform.translate(-rot->origin());
+            }
+        } else {
+            transform->applyTo(&sceneTransform);
+        }
     }
+
+    const bool hasRotation = !qFuzzyIsNull(rotation());
+    const bool hasScale = !qFuzzyCompare(scale(), 1);
+    if (hasScale || hasRotation) {
+        QPointF tp = computeTransformOrigin();
+        sceneTransform.translate(tp.x(), tp.y());
+        if (hasScale)
+            sceneTransform.scale(scale(), scale());
+        if (hasRotation)
+            sceneTransform.rotate(rotation(), 0, 0, 1);
+        sceneTransform.translate(-tp.x(), -tp.y());
+    }
+
+    const QVector3D origin(sceneTransform.map(QPointF(0, 0)));
+    const QVector3D right = QVector3D(sceneTransform.map(QPointF(1, 0))) - origin;
+    const QVector3D top = QVector3D(sceneTransform.map(QPointF(0, 1))) - origin;
+
+    wantBackYFlipped = right.x() < 0;
+    wantBackXFlipped = top.y() < 0;
+
+    const QQuickFlipable::Side newSide =
+        QVector3D::crossProduct(top, right).z() > 0 ? QQuickFlipable::Back : QQuickFlipable::Front;
 
     if (newSide != current) {
         current = newSide;

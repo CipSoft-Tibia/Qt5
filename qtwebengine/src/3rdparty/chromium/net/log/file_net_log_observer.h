@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,12 @@
 #include <limits>
 #include <memory>
 
-#include "base/callback.h"
 #include "base/files/file.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
 #include "net/base/net_export.h"
 #include "net/log/net_log.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 class Value;
@@ -58,11 +57,13 @@ class NET_EXPORT FileNetLogObserver : public NetLog::ThreadSafeObserver {
   static std::unique_ptr<FileNetLogObserver> CreateBounded(
       const base::FilePath& log_path,
       uint64_t max_total_size,
+      NetLogCaptureMode capture_mode,
       std::unique_ptr<base::Value> constants);
 
   // Shortcut for calling CreateBounded() with kNoLimit.
   static std::unique_ptr<FileNetLogObserver> CreateUnbounded(
       const base::FilePath& log_path,
+      NetLogCaptureMode capture_mode,
       std::unique_ptr<base::Value> constants);
 
   // Creates a bounded log that writes to a pre-existing file (truncating
@@ -73,18 +74,23 @@ class NET_EXPORT FileNetLogObserver : public NetLog::ThreadSafeObserver {
       const base::FilePath& inprogress_dir_path,
       base::File output_file,
       uint64_t max_total_size,
+      NetLogCaptureMode capture_mode,
       std::unique_ptr<base::Value> constants);
 
   // Creates an unbounded log that writes to a pre-existing file (truncating
   // it to start with, and closing it upon completion).
   static std::unique_ptr<FileNetLogObserver> CreateUnboundedPreExisting(
       base::File output_file,
+      NetLogCaptureMode capture_mode,
       std::unique_ptr<base::Value> constants);
+
+  FileNetLogObserver(const FileNetLogObserver&) = delete;
+  FileNetLogObserver& operator=(const FileNetLogObserver&) = delete;
 
   ~FileNetLogObserver() override;
 
   // Attaches this observer to |net_log| and begins observing events.
-  void StartObserving(NetLog* net_log, NetLogCaptureMode capture_mode);
+  void StartObserving(NetLog* net_log);
 
   // Stops observing net_log() and closes the output file(s). Must be called
   // after StartObserving. Should be called before destruction of the
@@ -112,6 +118,7 @@ class NET_EXPORT FileNetLogObserver : public NetLog::ThreadSafeObserver {
       const base::FilePath& log_path,
       uint64_t max_total_size,
       size_t total_num_event_files,
+      NetLogCaptureMode capture_mode,
       std::unique_ptr<base::Value> constants);
 
  private:
@@ -121,15 +128,19 @@ class NET_EXPORT FileNetLogObserver : public NetLog::ThreadSafeObserver {
   static std::unique_ptr<FileNetLogObserver> CreateInternal(
       const base::FilePath& log_path,
       const base::FilePath& inprogress_dir_path,
-      base::Optional<base::File> pre_existing_out_file,
+      absl::optional<base::File> pre_existing_out_file,
       uint64_t max_total_size,
       size_t total_num_event_files,
+      NetLogCaptureMode capture_mode,
       std::unique_ptr<base::Value> constants);
 
   FileNetLogObserver(scoped_refptr<base::SequencedTaskRunner> file_task_runner,
                      std::unique_ptr<FileWriter> file_writer,
                      scoped_refptr<WriteQueue> write_queue,
+                     NetLogCaptureMode capture_mode,
                      std::unique_ptr<base::Value> constants);
+
+  static std::string CaptureModeToString(NetLogCaptureMode mode);
 
   scoped_refptr<base::SequencedTaskRunner> file_task_runner_;
 
@@ -147,7 +158,7 @@ class NET_EXPORT FileNetLogObserver : public NetLog::ThreadSafeObserver {
   // finished (since it is posted using base::Unretained()).
   std::unique_ptr<FileWriter> file_writer_;
 
-  DISALLOW_COPY_AND_ASSIGN(FileNetLogObserver);
+  const NetLogCaptureMode capture_mode_;
 };
 
 // Serializes |value| to a JSON string used when writing to a file.

@@ -1,29 +1,21 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIACAPTUREFROMELEMENT_HTML_VIDEO_ELEMENT_CAPTURER_SOURCE_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_MEDIACAPTUREFROMELEMENT_HTML_VIDEO_ELEMENT_CAPTURER_SOURCE_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/threading/thread_checker.h"
 #include "base/time/time.h"
-#include "media/base/video_frame_pool.h"
 #include "media/base/video_types.h"
-#include "media/capture/video_capturer_source.h"
-#include "third_party/blink/public/platform/web_size.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
-#include "third_party/skia/include/core/SkBitmap.h"
-#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/blink/renderer/platform/video_capture/video_capturer_source.h"
 
 namespace base {
 class SingleThreadTaskRunner;
 }
-
-namespace cc {
-class PaintCanvas;
-}  // namespace cc
 
 namespace blink {
 
@@ -33,7 +25,7 @@ class WebMediaPlayer;
 // blink::WebMediaPlayer on Render Main thread. The captured data is converted
 // and sent back to |io_task_runner_| via the registered |new_frame_callback_|.
 class MODULES_EXPORT HtmlVideoElementCapturerSource final
-    : public media::VideoCapturerSource {
+    : public VideoCapturerSource {
  public:
   static std::unique_ptr<HtmlVideoElementCapturerSource>
   CreateFromWebMediaPlayerImpl(
@@ -45,12 +37,19 @@ class MODULES_EXPORT HtmlVideoElementCapturerSource final
       const base::WeakPtr<blink::WebMediaPlayer>& player,
       const scoped_refptr<base::SingleThreadTaskRunner>& io_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+
+  HtmlVideoElementCapturerSource(const HtmlVideoElementCapturerSource&) =
+      delete;
+  HtmlVideoElementCapturerSource& operator=(
+      const HtmlVideoElementCapturerSource&) = delete;
+
   ~HtmlVideoElementCapturerSource() override;
 
-  // media::VideoCapturerSource Implementation.
+  // VideoCapturerSource Implementation.
   media::VideoCaptureFormats GetPreferredFormats() override;
   void StartCapture(const media::VideoCaptureParams& params,
                     const VideoCaptureDeliverFrameCB& new_frame_callback,
+                    const VideoCaptureCropVersionCB& crop_version_callback,
                     const RunningCallback& running_callback) override;
   void StopCapture() override;
 
@@ -61,16 +60,11 @@ class MODULES_EXPORT HtmlVideoElementCapturerSource final
   // it into a format suitable for MediaStreams.
   void sendNewFrame();
 
-  media::VideoFramePool frame_pool_;
-  SkBitmap bitmap_;
-  std::unique_ptr<cc::PaintCanvas> canvas_;
   gfx::Size natural_size_;
 
   const base::WeakPtr<blink::WebMediaPlayer> web_media_player_;
   const scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
   const scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
-  bool is_opaque_;
 
   // These three configuration items are passed on StartCapture();
   RunningCallback running_callback_;
@@ -88,8 +82,6 @@ class MODULES_EXPORT HtmlVideoElementCapturerSource final
 
   // Used on main render thread to schedule future capture events.
   base::WeakPtrFactory<HtmlVideoElementCapturerSource> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(HtmlVideoElementCapturerSource);
 };
 
 }  // namespace blink

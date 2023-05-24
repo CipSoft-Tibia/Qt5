@@ -55,7 +55,7 @@ static int width = 500;
 static int height = 400;
 
 /** set if window has no borders */
-static int noborder = 0;
+static bool noborder = false;
 
 /** if non-zero, maximum window width */
 static int width_max = 0;
@@ -64,25 +64,25 @@ static int width_max = 0;
 static int height_max = 0;
 
 /** set to log redrawing */
-static int log_redraw = 0;
+static bool log_redraw = false;
 
 /** set to log resizing */
-static int log_resize = 0;
+static bool log_resize = false;
 
 /** set to log keyboard focus */
-static int log_focus = 0;
+static bool log_focus = false;
 
 /** set to log key events */
-static int log_key = 0;
+static bool log_key = false;
 
 /** set to log button events */
-static int log_button = 0;
+static bool log_button = false;
 
 /** set to log axis events */
-static int log_axis = 0;
+static bool log_axis = false;
 
 /** set to log motion events */
-static int log_motion = 0;
+static bool log_motion = false;
 
 /**
  * \struct eventdemo
@@ -513,7 +513,7 @@ main(int argc, char *argv[])
 	if (!log_redraw && !log_resize && !log_focus && !log_key &&
 	    !log_button && !log_axis && !log_motion)
 	  log_redraw = log_resize = log_focus = log_key =
-	    log_button = log_axis = log_motion = 1;
+	    log_button = log_axis = log_motion = true;
 
 	/* Connect to the display and have the arguments parsed */
 	d = display_create(&argc, argv);

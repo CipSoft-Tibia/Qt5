@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qabstracttextdocumentlayout.h>
 #include <qtextformat.h>
@@ -53,7 +17,6 @@ QAbstractTextDocumentLayoutPrivate::~QAbstractTextDocumentLayoutPrivate()
 
 QTextObjectInterface::~QTextObjectInterface()
 {
-    // must be empty until ### Qt 6
 }
 
 /*!
@@ -358,7 +321,7 @@ QTextObjectInterface::~QTextObjectInterface()
     \brief the collection of selections that will be rendered when passing this
     paint context to QAbstractTextDocumentLayout's draw() function.
 
-    The default value is an empty vector indicating no selection.
+    The default value is an empty list indicating no selection.
 */
 
 /*!
@@ -436,7 +399,8 @@ void QAbstractTextDocumentLayout::registerHandler(int objectType, QObject *compo
     if (!iface)
         return; // ### print error message on terminal?
 
-    connect(component, SIGNAL(destroyed(QObject*)), this, SLOT(_q_handlerDestroyed(QObject*)));
+    QObjectPrivate::connect(component, &QObject::destroyed, d,
+                            &QAbstractTextDocumentLayoutPrivate::_q_handlerDestroyed);
 
     QTextObjectHandler h;
     h.iface = iface;
@@ -457,7 +421,8 @@ void QAbstractTextDocumentLayout::unregisterHandler(int objectType, QObject *com
     const auto it = d->handlers.constFind(objectType);
     if (it != d->handlers.cend() && (!component || component == it->component)) {
         if (component)
-            disconnect(component, SIGNAL(destroyed(QObject*)), this, SLOT(_q_handlerDestroyed(QObject*)));
+            QObjectPrivate::disconnect(component, &QObject::destroyed, d,
+                                       &QAbstractTextDocumentLayoutPrivate::_q_handlerDestroyed);
         d->handlers.erase(it);
     }
 }
@@ -568,7 +533,7 @@ void QAbstractTextDocumentLayoutPrivate::_q_handlerDestroyed(QObject *obj)
 */
 int QAbstractTextDocumentLayout::formatIndex(int pos)
 {
-    QTextDocumentPrivate *pieceTable = qobject_cast<QTextDocument *>(parent())->docHandle();
+    QTextDocumentPrivate *pieceTable = QTextDocumentPrivate::get(qobject_cast<QTextDocument *>(parent()));
     return pieceTable->find(pos).value()->format;
 }
 
@@ -579,7 +544,7 @@ int QAbstractTextDocumentLayout::formatIndex(int pos)
 */
 QTextCharFormat QAbstractTextDocumentLayout::format(int pos)
 {
-    QTextDocumentPrivate *pieceTable = qobject_cast<QTextDocument *>(parent())->docHandle();
+    QTextDocumentPrivate *pieceTable = QTextDocumentPrivate::get(qobject_cast<QTextDocument *>(parent()));
     int idx = pieceTable->find(pos).value()->format;
     return pieceTable->formatCollection()->charFormat(idx);
 }
@@ -637,7 +602,7 @@ QTextFormat QAbstractTextDocumentLayout::formatAt(const QPointF &pos) const
         if (blockBr.contains(pos)) {
             QTextLayout *layout = block.layout();
             int relativeCursorPos = cursorPos - block.position();
-            const int preeditLength = layout ? layout->preeditAreaText().length() : 0;
+            const int preeditLength = layout ? layout->preeditAreaText().size() : 0;
             if (preeditLength > 0 && relativeCursorPos > layout->preeditAreaPosition())
                 cursorPos -= qMin(cursorPos - layout->preeditAreaPosition(), preeditLength);
             break;
@@ -645,7 +610,7 @@ QTextFormat QAbstractTextDocumentLayout::formatAt(const QPointF &pos) const
         block = block.next();
     }
 
-    QTextDocumentPrivate *pieceTable = qobject_cast<const QTextDocument *>(parent())->docHandle();
+    const QTextDocumentPrivate *pieceTable = QTextDocumentPrivate::get(qobject_cast<const QTextDocument *>(parent()));
     QTextDocumentPrivate::FragmentIterator it = pieceTable->find(cursorPos);
     return pieceTable->formatCollection()->format(it->format);
 }

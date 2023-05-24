@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,13 @@
 #define BASE_PROFILER_STACK_SAMPLING_PROFILER_TEST_UTIL_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/callback.h"
+#include "base/base_export.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/native_library.h"
 #include "base/profiler/frame.h"
 #include "base/profiler/sampling_profiler_thread_token.h"
@@ -24,8 +28,15 @@ class ModuleCache;
 // A thread to target for profiling that will run the supplied closure.
 class TargetThread : public PlatformThread::Delegate {
  public:
-  TargetThread(OnceClosure to_run);
+  explicit TargetThread(OnceClosure to_run);
+
+  TargetThread(const TargetThread&) = delete;
+  TargetThread& operator=(const TargetThread&) = delete;
+
   ~TargetThread() override;
+
+  void Start();
+  void Join();
 
   // PlatformThread::Delegate:
   void ThreadMain() override;
@@ -35,14 +46,15 @@ class TargetThread : public PlatformThread::Delegate {
  private:
   SamplingProfilerThreadToken thread_token_ = {0};
   OnceClosure to_run_;
-
-  DISALLOW_COPY_AND_ASSIGN(TargetThread);
+  PlatformThreadHandle target_thread_handle_;
 };
 
 // Addresses near the start and end of a function.
 struct FunctionAddressRange {
-  const void* start;
-  const void* end;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #in-out-param-ref
+  RAW_PTR_EXCLUSION const void* start;
+  raw_ptr<const void> end;
 };
 
 // Represents a stack unwind scenario to be sampled by the
@@ -90,6 +102,34 @@ class UnwindScenario {
   const SetupFunction setup_function_;
 };
 
+class TestModule : public ModuleCache::Module {
+ public:
+  explicit TestModule(uintptr_t base_address = 0,
+                      size_t size = 0,
+                      bool is_native = true)
+      : base_address_(base_address), size_(size), is_native_(is_native) {}
+
+  uintptr_t GetBaseAddress() const override;
+  std::string GetId() const override;
+  FilePath GetDebugBasename() const override;
+  size_t GetSize() const override;
+  bool IsNative() const override;
+
+  void set_id(const std::string& id) { id_ = id; }
+  void set_debug_basename(const FilePath& basename) {
+    debug_basename_ = basename;
+  }
+
+ private:
+  const uintptr_t base_address_;
+  const size_t size_;
+  const bool is_native_;
+  std::string id_;
+  FilePath debug_basename_;
+};
+
+bool operator==(const Frame& a, const Frame& b);
+
 // UnwindScenario setup function that calls into |wait_for_sample| without doing
 // any special unwinding setup, to exercise the "normal" unwind scenario.
 FunctionAddressRange CallWithPlainFunction(OnceClosure wait_for_sample);
@@ -128,6 +168,10 @@ std::string FormatSampleForDiagnosticOutput(const std::vector<Frame>& sample);
 // ranges, in the specified order.
 void ExpectStackContains(const std::vector<Frame>& stack,
                          const std::vector<FunctionAddressRange>& functions);
+
+// Expects that the stack contains the function names in the specified order.
+void ExpectStackContainsNames(const std::vector<Frame>& stack,
+                              const std::vector<std::string>& function_names);
 
 // Expects that the stack does not contain the functions with the specified
 // address ranges.

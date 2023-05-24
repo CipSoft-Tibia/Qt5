@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,12 @@
 
 #include <stdint.h>
 
-#include <list>
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "base/callback.h"
 #include "base/files/scoped_file.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/sequence_checker.h"
 #include "build/build_config.h"
 #include "services/device/usb/scoped_libusb_device_ref.h"
@@ -37,18 +35,21 @@ class UsbDeviceImpl : public UsbDevice {
   UsbDeviceImpl(ScopedLibusbDeviceRef platform_device,
                 const libusb_device_descriptor& descriptor);
 
+  UsbDeviceImpl(const UsbDeviceImpl&) = delete;
+  UsbDeviceImpl& operator=(const UsbDeviceImpl&) = delete;
+
   // UsbDevice implementation:
   void Open(OpenCallback callback) override;
 
   // These functions are used during enumeration only. The values must not
   // change during the object's lifetime.
-  void set_manufacturer_string(const base::string16& value) {
+  void set_manufacturer_string(const std::u16string& value) {
     device_info_->manufacturer_name = value;
   }
-  void set_product_string(const base::string16& value) {
+  void set_product_string(const std::u16string& value) {
     device_info_->product_name = value;
   }
-  void set_serial_number(const base::string16& value) {
+  void set_serial_number(const std::u16string& value) {
     device_info_->serial_number = value;
   }
   void set_webusb_landing_page(const GURL& url) {
@@ -84,8 +85,6 @@ class UsbDeviceImpl : public UsbDevice {
   bool visited_ = false;
 
   const ScopedLibusbDeviceRef platform_device_;
-
-  DISALLOW_COPY_AND_ASSIGN(UsbDeviceImpl);
 };
 
 }  // namespace device

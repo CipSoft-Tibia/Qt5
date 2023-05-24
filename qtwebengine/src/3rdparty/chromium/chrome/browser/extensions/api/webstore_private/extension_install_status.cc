@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -78,7 +78,8 @@ ExtensionInstallStatus GetWebstoreExtensionInstallStatus(
     const ExtensionId& extension_id,
     Profile* profile,
     const Manifest::Type manifest_type,
-    const PermissionSet& required_permission_set) {
+    const PermissionSet& required_permission_set,
+    int manifest_version) {
   DCHECK(crx_file::id_util::IdIsValid(extension_id));
 
   if (ExtensionPrefs::Get(profile)->HasDisableReason(
@@ -111,6 +112,13 @@ ExtensionInstallStatus GetWebstoreExtensionInstallStatus(
   if (registry->blocklisted_extensions().Contains(extension_id))
     return kBlocklisted;
 
+  // When manifest version is not allowed, the extension is blocked and can't be
+  // requested.
+  if (!extension_management->IsAllowedManifestVersion(
+          manifest_version, extension_id, manifest_type)) {
+    return kBlockedByPolicy;
+  }
+
   // If an installed extension is disabled due to policy, returns
   // kBlockedByPolicy, kCanRequest or kRequestPending instead of kDisabled.
   // By doing so, user can still request an installed and policy blocked
@@ -134,8 +142,8 @@ ExtensionInstallStatus GetWebstoreExtensionInstallStatus(
     return kBlockedByPolicy;
 
   if (profile->GetPrefs()
-          ->GetDictionary(prefs::kCloudExtensionRequestIds)
-          ->FindKey(extension_id)) {
+          ->GetDict(prefs::kCloudExtensionRequestIds)
+          .Find(extension_id)) {
     return kRequestPending;
   }
 

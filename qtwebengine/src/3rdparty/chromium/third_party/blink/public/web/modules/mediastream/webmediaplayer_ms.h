@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,14 +8,17 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_checker.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "media/renderers/paint_canvas_video_renderer.h"
 #include "media/video/gpu_video_accelerator_factories.h"
+#include "third_party/blink/public/common/media/display_type.h"
+#include "third_party/blink/public/common/media/watch_time_reporter.h"
 #include "third_party/blink/public/platform/media/webmediaplayer_delegate.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream.h"
 #include "third_party/blink/public/platform/web_common.h"
@@ -31,12 +34,6 @@ namespace cc {
 class VideoLayer;
 }
 
-namespace gpu {
-namespace gles2 {
-class GLES2Interface;
-}
-}  // namespace gpu
-
 namespace blink {
 using CreateSurfaceLayerBridgeCB =
     base::OnceCallback<std::unique_ptr<WebSurfaceLayerBridge>(
@@ -44,7 +41,7 @@ using CreateSurfaceLayerBridgeCB =
         cc::UpdateSubmissionStateCB)>;
 
 class MediaStreamInternalFrameWrapper;
-template <typename TimerFiredClass, bool>
+template <typename TimerFiredClass>
 class TaskRunnerTimer;
 class TimerBase;
 class WebLocalFrame;
@@ -84,21 +81,25 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
       WebMediaPlayerDelegate* delegate,
       std::unique_ptr<media::MediaLog> media_log,
       scoped_refptr<base::SingleThreadTaskRunner> main_render_task_runner,
-      scoped_refptr<base::SingleThreadTaskRunner> io_task_runner,
+      scoped_refptr<base::SequencedTaskRunner> video_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner,
-      scoped_refptr<base::SingleThreadTaskRunner> media_task_runner,
+      scoped_refptr<base::SequencedTaskRunner> media_task_runner,
       scoped_refptr<base::TaskRunner> worker_task_runner,
       media::GpuVideoAcceleratorFactories* gpu_factories,
       const WebString& sink_id,
       CreateSurfaceLayerBridgeCB create_bridge_callback,
       std::unique_ptr<WebVideoFrameSubmitter> submitter_,
-      WebMediaPlayer::SurfaceLayerMode surface_layer_mode);
+      bool use_surface_layer);
+
+  WebMediaPlayerMS(const WebMediaPlayerMS&) = delete;
+  WebMediaPlayerMS& operator=(const WebMediaPlayerMS&) = delete;
 
   ~WebMediaPlayerMS() override;
 
   WebMediaPlayer::LoadTiming Load(LoadType load_type,
                                   const WebMediaPlayerSource& source,
-                                  CorsMode cors_mode) override;
+                                  CorsMode cors_mode,
+                                  bool is_cache_disabled) override;
 
   // WebSurfaceLayerBridgeObserver implementation.
   void OnWebLayerUpdated() override;
@@ -114,21 +115,23 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   void SetVolume(double volume) override;
   void SetLatencyHint(double seconds) override;
   void SetPreservesPitch(bool preserves_pitch) override;
+  void SetWasPlayedWithUserActivation(
+      bool was_played_with_user_activation) override;
   void OnRequestPictureInPicture() override;
-  void OnPictureInPictureAvailabilityChanged(bool available) override;
-  void SetSinkId(const WebString& sink_id,
+  bool SetSinkId(const WebString& sink_id,
                  WebSetSinkIdCompleteCallback completion_callback) override;
   void SetPreload(WebMediaPlayer::Preload preload) override;
   WebTimeRanges Buffered() const override;
   WebTimeRanges Seekable() const override;
+  void OnFrozen() override;
 
   // Methods for painting.
   void Paint(cc::PaintCanvas* canvas,
-             const WebRect& rect,
-             cc::PaintFlags& flags,
-             int already_uploaded_id,
-             VideoFrameUploadMetadata* out_metadata) override;
-  media::PaintCanvasVideoRenderer* GetPaintCanvasVideoRenderer();
+             const gfx::Rect& rect,
+             cc::PaintFlags& flags) override;
+  scoped_refptr<media::VideoFrame> GetCurrentFrameThenUpdate() override;
+  absl::optional<media::VideoFrame::ID> CurrentFrameId() const override;
+  media::PaintCanvasVideoRenderer* GetPaintCanvasVideoRenderer() override;
   void ResetCanvasCache();
 
   // Methods to trigger resize event.
@@ -154,8 +157,6 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   WebMediaPlayer::NetworkState GetNetworkState() const override;
   WebMediaPlayer::ReadyState GetReadyState() const override;
 
-  WebMediaPlayer::SurfaceLayerMode GetVideoSurfaceLayerMode() const override;
-
   WebString GetErrorMessage() const override;
   bool DidLoadingProgress() override;
 
@@ -168,95 +169,55 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   uint64_t AudioDecodedByteCount() const override;
   uint64_t VideoDecodedByteCount() const override;
 
+  // WebRTC doesn't need TAO checks, as the timing is already available through
+  // getStats().
+  bool PassedTimingAllowOriginCheck() const override { return true; }
   bool HasAvailableVideoFrame() const override;
+
+  void SetVolumeMultiplier(double multiplier) override;
+  void SuspendForFrameClosed() override;
 
   // WebMediaPlayerDelegate::Observer implementation.
   void OnFrameHidden() override;
-  void OnFrameClosed() override;
   void OnFrameShown() override;
   void OnIdleTimeout() override;
-  void OnPlay() override;
-  void OnPause() override;
-  void OnMuted(bool muted) override;
-  void OnSeekForward(double seconds) override;
-  void OnSeekBackward(double seconds) override;
-  void OnEnterPictureInPicture() override;
-  void OnExitPictureInPicture() override;
-  void OnSetAudioSink(const std::string& sink_id) override;
-  void OnVolumeMultiplierUpdate(double multiplier) override;
-  void OnBecamePersistentVideo(bool value) override;
 
-  void OnFirstFrameReceived(media::VideoRotation video_rotation,
+  void OnFirstFrameReceived(media::VideoTransformation video_transform,
                             bool is_opaque);
   void OnOpacityChanged(bool is_opaque);
-  void OnRotationChanged(media::VideoRotation video_rotation);
-
-  bool CopyVideoTextureToPlatformTexture(
-      gpu::gles2::GLES2Interface* gl,
-      unsigned target,
-      unsigned int texture,
-      unsigned internal_format,
-      unsigned format,
-      unsigned type,
-      int level,
-      bool premultiply_alpha,
-      bool flip_y,
-      int already_uploaded_id,
-      VideoFrameUploadMetadata* out_metadata) override;
-
-  bool CopyVideoYUVDataToPlatformTexture(
-      gpu::gles2::GLES2Interface* gl,
-      unsigned target,
-      unsigned int texture,
-      unsigned internal_format,
-      unsigned format,
-      unsigned type,
-      int level,
-      bool premultiply_alpha,
-      bool flip_y,
-      int already_uploaded_id,
-      VideoFrameUploadMetadata* out_metadata) override;
-
-  bool TexImageImpl(TexImageFunctionID functionID,
-                    unsigned target,
-                    gpu::gles2::GLES2Interface* gl,
-                    unsigned int texture,
-                    int level,
-                    int internalformat,
-                    unsigned format,
-                    unsigned type,
-                    int xoffset,
-                    int yoffset,
-                    int zoffset,
-                    bool flip_y,
-                    bool premultiply_alpha) override;
+  void OnTransformChanged(media::VideoTransformation video_transform);
 
   // WebMediaStreamObserver implementation
   void TrackAdded(const WebString& track_id) override;
   void TrackRemoved(const WebString& track_id) override;
   void ActiveStateChanged(bool is_active) override;
   int GetDelegateId() override;
-  base::Optional<viz::SurfaceId> GetSurfaceId() override;
+  absl::optional<viz::SurfaceId> GetSurfaceId() override;
 
   base::WeakPtr<WebMediaPlayer> AsWeakPtr() override;
 
-  void OnDisplayTypeChanged(WebMediaPlayer::DisplayType) override;
+  void OnDisplayTypeChanged(DisplayType) override;
 
   void RequestVideoFrameCallback() override;
   std::unique_ptr<WebMediaPlayer::VideoFramePresentationMetadata>
   GetVideoFramePresentationMetadata() override;
 
+  void RegisterFrameSinkHierarchy() override;
+  void UnregisterFrameSinkHierarchy() override;
+
  private:
   friend class WebMediaPlayerMSTest;
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   static const gfx::Size kUseGpuMemoryBufferVideoFramesMinResolution;
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
+
+  void ReplaceCurrentFrameWithACopy();
 
   bool IsInPictureInPicture() const;
 
   // Switch to SurfaceLayer, either initially or from VideoLayer.
-  void ActivateSurfaceLayerForVideo();
+  void ActivateSurfaceLayerForVideo(media::VideoTransformation video_transform);
 
   // Need repaint due to state change.
   void RepaintInternal();
@@ -290,6 +251,13 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
 
   void StopForceBeginFrames(TimerBase*);
 
+  void MaybeCreateWatchTimeReporter();
+  void UpdateWatchTimeReporterSecondaryProperties();
+  base::TimeDelta GetCurrentTimeInterval();
+  media::PipelineStatistics GetPipelineStatistics();
+
+  absl::optional<media::mojom::MediaStreamType> GetMediaStreamType();
+
   std::unique_ptr<MediaStreamInternalFrameWrapper> internal_frame_;
 
   WebMediaPlayer::NetworkState network_state_;
@@ -305,11 +273,12 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   // via the WebMediaPlayerDelegate::Observer interface after
   // registration.
   //
-  // NOTE: HTMLMediaElement is a PausableObject, and will receive a
-  // call to contextDestroyed() when Document::shutdown() is called.
-  // Document::shutdown() is called before the frame detaches (and before the
-  // frame is destroyed). RenderFrameImpl owns of |delegate_|, and is guaranteed
-  // to outlive |this|. It is therefore safe use a raw pointer directly.
+  // NOTE: HTMLMediaElement is a blink::ExecutionContextLifecycleObserver, and
+  // will receive a call to contextDestroyed() when Document::shutdown() is
+  // called. Document::shutdown() is called before the frame detaches (and
+  // before the frame is destroyed). RenderFrameImpl owns of |delegate_|, and is
+  // guaranteed to outlive |this|. It is therefore safe use a raw pointer
+  // directly.
   WebMediaPlayerDelegate* delegate_;
   int delegate_id_;
 
@@ -331,16 +300,15 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   bool pending_rvfc_request_ = false;
 
   bool paused_;
-  media::VideoTransformation video_transformation_;
 
   std::unique_ptr<media::MediaLog> media_log_;
 
   std::unique_ptr<MediaStreamRendererFactory> renderer_factory_;
 
   const scoped_refptr<base::SingleThreadTaskRunner> main_render_task_runner_;
-  const scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> video_task_runner_;
   const scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner_;
-  const scoped_refptr<base::SingleThreadTaskRunner> media_task_runner_;
+  const scoped_refptr<base::SequencedTaskRunner> media_task_runner_;
 
   const scoped_refptr<base::TaskRunner> worker_task_runner_;
   media::GpuVideoAcceleratorFactories* gpu_factories_;
@@ -348,12 +316,12 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
   // Used for DCHECKs to ensure methods calls executed in the correct thread.
   THREAD_CHECKER(thread_checker_);
 
-  scoped_refptr<WebMediaPlayerMSCompositor> compositor_;
+  std::unique_ptr<WebMediaPlayerMSCompositor> compositor_;
 
   const WebString initial_audio_output_device_id_;
 
   // The last volume received by setVolume() and the last volume multiplier from
-  // OnVolumeMultiplierUpdate().  The multiplier is typical 1.0, but may be less
+  // SetVolumeMultiplier().  The multiplier is typical 1.0, but may be less
   // if the WebMediaPlayerDelegate has requested a volume reduction
   // (ducking) for a transient sound.  Playout volume is derived by volume *
   // multiplier.
@@ -372,14 +340,13 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
 
   // Resets the ForceBeginFrames flag once we stop receiving calls to
   // requestVideoFrameCallback().
-  std::unique_ptr<TaskRunnerTimer<WebMediaPlayerMS, false>>
+  std::unique_ptr<TaskRunnerTimer<WebMediaPlayerMS>>
       stop_force_begin_frames_timer_;
 
   std::unique_ptr<WebVideoFrameSubmitter> submitter_;
 
   // Whether the use of a surface layer instead of a video layer is enabled.
-  WebMediaPlayer::SurfaceLayerMode surface_layer_mode_ =
-      WebMediaPlayer::SurfaceLayerMode::kNever;
+  bool use_surface_layer_ = false;
 
   // Owns the weblayer and obtains/maintains SurfaceIds for
   // kUseSurfaceLayerForVideo feature.
@@ -390,10 +357,15 @@ class BLINK_MODULES_EXPORT WebMediaPlayerMS
 
   bool has_first_frame_ = false;
 
+  // Monitors the duration of the media stream.
+  std::unique_ptr<WatchTimeReporter> watch_time_reporter_;
+  base::TimeDelta compositor_initial_time_;
+  base::TimeDelta compositor_last_time_;
+  base::TimeDelta audio_initial_time_;
+  base::TimeDelta audio_last_time_;
+
   base::WeakPtr<WebMediaPlayerMS> weak_this_;
   base::WeakPtrFactory<WebMediaPlayerMS> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(WebMediaPlayerMS);
 };
 
 }  // namespace blink

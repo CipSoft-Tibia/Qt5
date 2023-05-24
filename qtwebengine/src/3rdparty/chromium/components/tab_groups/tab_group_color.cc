@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #include "base/no_destructor.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/strings/grit/components_strings.h"
-#include "third_party/skia/include/utils/SkRandom.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace tab_groups {
@@ -30,7 +29,9 @@ const ColorLabelMap& GetTabGroupColorLabelMap() {
        {TabGroupColorId::kPurple,
         l10n_util::GetStringUTF16(IDS_TAB_GROUP_COLOR_PURPLE)},
        {TabGroupColorId::kCyan,
-        l10n_util::GetStringUTF16(IDS_TAB_GROUP_COLOR_CYAN)}});
+        l10n_util::GetStringUTF16(IDS_TAB_GROUP_COLOR_CYAN)},
+       {TabGroupColorId::kOrange,
+        l10n_util::GetStringUTF16(IDS_TAB_GROUP_COLOR_ORANGE)}});
   return *kTabGroupColors;
 }
 

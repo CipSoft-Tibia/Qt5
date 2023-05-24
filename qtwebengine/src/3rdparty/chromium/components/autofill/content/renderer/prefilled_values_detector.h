@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,14 +7,17 @@
 
 #include <string>
 
-#include "base/containers/flat_set.h"
+#include "base/containers/span.h"
+#include "base/strings/string_piece.h"
 
 namespace autofill {
 
-// Returns a set of known username placeholders, all guaranteed to be lower
+#if !defined(TOOLKIT_QT)
+// Returns a list of known username placeholders, all guaranteed to be lower
 // case.
 // This is only exposed for testing.
-const base::flat_set<std::string, std::less<>>& KnownUsernamePlaceholders();
+base::span<const base::StringPiece> KnownUsernamePlaceholders();
+#endif
 
 // Checks if the prefilled value of the username element is one of the known
 // values possibly used as placeholders. The list of possible placeholder

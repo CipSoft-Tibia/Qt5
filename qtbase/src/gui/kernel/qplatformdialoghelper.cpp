@@ -1,60 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdialoghelper.h"
 
 #include <QtCore/QCoreApplication>
-#include <QtCore/QVariant>
+#include <QtCore/QList>
 #if QT_CONFIG(regularexpression)
 #include <QtCore/QRegularExpression>
 #endif
-#include <QtCore/QSharedData>
 #if QT_CONFIG(settings)
 #include <QtCore/QSettings>
 #endif
+#include <QtCore/QSharedData>
 #include <QtCore/QUrl>
-#include <QtCore/QVector>
+#include <QtCore/QVariant>
 #include <QtGui/QColor>
+#include <QtGui/QPixmap>
 
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QPlatformDialogHelper::StandardButton,
+                               QPlatformDialogHelper__StandardButton)
+QT_IMPL_METATYPE_EXTERN_TAGGED(QPlatformDialogHelper::ButtonRole,
+                               QPlatformDialogHelper__ButtonRole)
 
 /*!
     \class QPlatformDialogHelper
@@ -107,11 +79,6 @@ static const int buttonRoleLayouts[2][6][14] =
           QPlatformDialogHelper::AcceptRole | QPlatformDialogHelper::Reverse, QPlatformDialogHelper::NoRole | QPlatformDialogHelper::Reverse,
           QPlatformDialogHelper::YesRole | QPlatformDialogHelper::Reverse, QPlatformDialogHelper::EOL },
 
-        // MacModelessLayout
-        { QPlatformDialogHelper::ResetRole, QPlatformDialogHelper::ApplyRole, QPlatformDialogHelper::ActionRole, QPlatformDialogHelper::Stretch,
-          QPlatformDialogHelper::HelpRole, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL,
-          QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL },
-
           // AndroidLayout (neutral, stretch, dismissive, affirmative)
           // https://material.io/guidelines/components/dialogs.html#dialogs-specs
         { QPlatformDialogHelper::HelpRole, QPlatformDialogHelper::ResetRole, QPlatformDialogHelper::ApplyRole, QPlatformDialogHelper::ActionRole,
@@ -142,11 +109,6 @@ static const int buttonRoleLayouts[2][6][14] =
         { QPlatformDialogHelper::YesRole, QPlatformDialogHelper::NoRole, QPlatformDialogHelper::AcceptRole, QPlatformDialogHelper::RejectRole,
           QPlatformDialogHelper::AlternateRole, QPlatformDialogHelper::DestructiveRole, QPlatformDialogHelper::ApplyRole, QPlatformDialogHelper::ActionRole, QPlatformDialogHelper::Stretch,
           QPlatformDialogHelper::ResetRole, QPlatformDialogHelper::HelpRole, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL },
-
-        // MacModelessLayout
-        { QPlatformDialogHelper::ActionRole, QPlatformDialogHelper::ApplyRole, QPlatformDialogHelper::ResetRole, QPlatformDialogHelper::Stretch,
-          QPlatformDialogHelper::HelpRole, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL,
-          QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL, QPlatformDialogHelper::EOL },
 
           // AndroidLayout
           // (affirmative
@@ -304,7 +266,7 @@ void QColorDialogStaticData::readSettings()
 #if QT_CONFIG(settings)
     const QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
     for (int i = 0; i < int(CustomColorCount); ++i) {
-        const QVariant v = settings.value(QLatin1String("Qt/customColors/") + QString::number(i));
+        const QVariant v = settings.value("Qt/customColors/"_L1 + QString::number(i));
         if (v.isValid())
             customRgb[i] = v.toUInt();
     }
@@ -318,7 +280,7 @@ void QColorDialogStaticData::writeSettings() const
         const_cast<QColorDialogStaticData*>(this)->customSet = false;
         QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
         for (int i = 0; i < int(CustomColorCount); ++i)
-            settings.setValue(QLatin1String("Qt/customColors/") + QString::number(i), customRgb[i]);
+            settings.setValue("Qt/customColors/"_L1 + QString::number(i), customRgb[i]);
     }
 #endif
 }
@@ -653,7 +615,7 @@ QStringList QFileDialogOptions::mimeTypeFilters() const
 void QFileDialogOptions::setDefaultSuffix(const QString &suffix)
 {
     d->defaultSuffix = suffix;
-    if (d->defaultSuffix.size() > 1 && d->defaultSuffix.startsWith(QLatin1Char('.')))
+    if (d->defaultSuffix.size() > 1 && d->defaultSuffix.startsWith(u'.'))
         d->defaultSuffix.remove(0, 1); // Silently change ".txt" -> "txt".
 }
 
@@ -741,7 +703,7 @@ QStringList QFileDialogOptions::supportedSchemes() const
 
 void QPlatformFileDialogHelper::selectMimeTypeFilter(const QString &filter)
 {
-    Q_UNUSED(filter)
+    Q_UNUSED(filter);
 }
 
 QString QPlatformFileDialogHelper::selectedMimeTypeFilter() const
@@ -781,15 +743,15 @@ const char QPlatformFileDialogHelper::filterRegExp[] =
 QStringList QPlatformFileDialogHelper::cleanFilterList(const QString &filter)
 {
 #if QT_CONFIG(regularexpression)
-    QRegularExpression regexp(QString::fromLatin1(filterRegExp));
+    static const QRegularExpression regexp(QString::fromLatin1(filterRegExp));
     Q_ASSERT(regexp.isValid());
     QString f = filter;
-    QRegularExpressionMatch match;
-    filter.indexOf(regexp, 0, &match);
+    QRegularExpressionMatch match = regexp.match(filter);
     if (match.hasMatch())
         f = match.captured(2);
-    return f.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    return f.split(u' ', Qt::SkipEmptyParts);
 #else
+    Q_UNUSED(filter);
     return QStringList();
 #endif
 }
@@ -806,13 +768,19 @@ public:
     {}
 
     QString windowTitle;
-    QMessageDialogOptions::Icon icon;
+    QMessageDialogOptions::StandardIcon icon;
     QString text;
     QString informativeText;
     QString detailedText;
     QPlatformDialogHelper::StandardButtons buttons;
-    QVector<QMessageDialogOptions::CustomButton> customButtons;
+    QList<QMessageDialogOptions::CustomButton> customButtons;
     int nextCustomButtonId;
+    QPixmap iconPixmap;
+    QString checkBoxLabel;
+    Qt::CheckState checkBoxState = Qt::Unchecked;
+    int defaultButtonId = 0;
+    int escapeButtonId = 0;
+    QMessageDialogOptions::Options options;
 };
 
 QMessageDialogOptions::QMessageDialogOptions(QMessageDialogOptionsPrivate *dd)
@@ -854,14 +822,24 @@ void QMessageDialogOptions::setWindowTitle(const QString &title)
     d->windowTitle = title;
 }
 
-QMessageDialogOptions::Icon QMessageDialogOptions::icon() const
+QMessageDialogOptions::StandardIcon QMessageDialogOptions::standardIcon() const
 {
     return d->icon;
 }
 
-void QMessageDialogOptions::setIcon(Icon icon)
+void QMessageDialogOptions::setStandardIcon(StandardIcon icon)
 {
     d->icon = icon;
+}
+
+void QMessageDialogOptions::setIconPixmap(const QPixmap &pixmap)
+{
+    d->iconPixmap = pixmap;
+}
+
+QPixmap QMessageDialogOptions::iconPixmap() const
+{
+    return d->iconPixmap;
 }
 
 QString QMessageDialogOptions::text() const
@@ -905,9 +883,9 @@ QPlatformDialogHelper::StandardButtons QMessageDialogOptions::standardButtons() 
 }
 
 int QMessageDialogOptions::addButton(const QString &label, QPlatformDialogHelper::ButtonRole role,
-                                     void *buttonImpl)
+                                     void *buttonImpl, int buttonId)
 {
-    const CustomButton b(d->nextCustomButtonId++, label, role, buttonImpl);
+    const CustomButton b(buttonId ? buttonId : d->nextCustomButtonId++, label, role, buttonImpl);
     d->customButtons.append(b);
     return b.id;
 }
@@ -922,16 +900,80 @@ void QMessageDialogOptions::removeButton(int id)
     d->customButtons.removeOne(CustomButton(id));
 }
 
-const QVector<QMessageDialogOptions::CustomButton> &QMessageDialogOptions::customButtons()
+const QList<QMessageDialogOptions::CustomButton> &QMessageDialogOptions::customButtons()
 {
     return d->customButtons;
 }
 
+void QMessageDialogOptions::clearCustomButtons()
+{
+    d->customButtons.clear();
+}
+
 const QMessageDialogOptions::CustomButton *QMessageDialogOptions::customButton(int id)
 {
-    int i = d->customButtons.indexOf(CustomButton(id));
+    const int i = int(d->customButtons.indexOf(CustomButton(id)));
     return (i < 0 ? nullptr : &d->customButtons.at(i));
 }
+
+void QMessageDialogOptions::setCheckBox(const QString &label, Qt::CheckState state)
+{
+    d->checkBoxLabel = label;
+    d->checkBoxState = state;
+}
+
+QString QMessageDialogOptions::checkBoxLabel() const
+{
+    return d->checkBoxLabel;
+}
+
+Qt::CheckState QMessageDialogOptions::checkBoxState() const
+{
+    return d->checkBoxState;
+}
+
+void QMessageDialogOptions::setDefaultButton(int id)
+{
+    d->defaultButtonId = id;
+}
+
+int QMessageDialogOptions::defaultButton() const
+{
+    return d->defaultButtonId;
+}
+
+void QMessageDialogOptions::setEscapeButton(int id)
+{
+    d->escapeButtonId = id;
+}
+
+int QMessageDialogOptions::escapeButton() const
+{
+    return d->escapeButtonId;
+}
+
+void QMessageDialogOptions::setOption(QMessageDialogOptions::Option option, bool on)
+{
+    if (!(d->options & option) != !on)
+        setOptions(d->options ^ option);
+}
+
+bool QMessageDialogOptions::testOption(QMessageDialogOptions::Option option) const
+{
+    return d->options & option;
+}
+
+void QMessageDialogOptions::setOptions(QMessageDialogOptions::Options options)
+{
+    if (options != d->options)
+        d->options = options;
+}
+
+QMessageDialogOptions::Options QMessageDialogOptions::options() const
+{
+    return d->options;
+}
+
 
 QPlatformDialogHelper::ButtonRole QPlatformDialogHelper::buttonRole(QPlatformDialogHelper::StandardButton button)
 {
@@ -1012,3 +1054,5 @@ void QPlatformMessageDialogHelper::setOptions(const QSharedPointer<QMessageDialo
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qplatformdialoghelper.cpp"

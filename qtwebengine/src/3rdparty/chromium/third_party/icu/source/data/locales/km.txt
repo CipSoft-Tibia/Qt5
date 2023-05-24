@@ -1,5 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 km{
     AuxExemplarCharacters{"[\u17B4\u17B5\u200B \u17CC \u17CE \u17CF \u17D1 ឝ ឞ]"}
     Ellipsis{
@@ -15,6 +16,10 @@ km{
         "ន ប ផ ព ភ ម យ រ ឫ ឬ ល ឭ ឮ វ ស ហ ឡ អ {អា} ឥ ឦ ឧ {ឧក} ឩ ឪ ឯ ឰ ឱ ឲ ឳ ា \u17B7 "
         "\u17B8 \u17B9 \u17BA \u17BB \u17BC \u17BD ើ ឿ ៀ េ ែ ៃ ោ ៅ \u17C6 ះ \u17D2]"
     }
+    ExemplarCharactersIndex{
+        "[ក ខ គ ឃ ង ច ឆ ជ ឈ ញ ដ ឋ ឌ ឍ ណ ត ថ ទ ធ ន ប ផ ព ភ ម យ រ ឫ ឬ ល ឭ ឮ វ ស ហ ឡ អ ឥ"
+        " ឦ ឧ ឩ ឪ ឯ ឰ ឱ ឳ]"
+    }
     ExemplarCharactersNumbers{"[\\- ‑ , . % ‰ + 0 1 2 3 4 5 6 7 8 9]"}
     ExemplarCharactersPunctuation{"[\\- ‑ , ៖ ! ? . ។ ៕ ‘ ’ \u0022 “ ” ( ) \\[ \\] \\{ \\} ៙ ៚]"}
     MoreInformation{"?"}
@@ -29,6 +34,8 @@ km{
             }
             patterns{
                 accountingFormat{"#,##0.00¤;(#,##0.00¤)"}
+                accountingFormat%alphaNextToNumber{"#,##0.00 ¤;(#,##0.00 ¤)"}
+                accountingFormat%noCurrency{"#,##0.00;(#,##0.00)"}
                 currencyFormat{"#,##0.00¤"}
                 decimalFormat{"#,##0.###"}
                 percentFormat{"#,##0%"}
@@ -113,6 +120,44 @@ km{
                         other{"¤000 ទ្រីលាន"}
                     }
                 }
+                currencyFormat%alphaNextToNumber{
+                    1000{
+                        other{"¤ 0 ពាន់"}
+                    }
+                    10000{
+                        other{"¤ 00 ពាន់"}
+                    }
+                    100000{
+                        other{"¤ 000 ពាន់"}
+                    }
+                    1000000{
+                        other{"¤ 0 លាន"}
+                    }
+                    10000000{
+                        other{"¤ 00 លាន"}
+                    }
+                    100000000{
+                        other{"¤ 000 លាន"}
+                    }
+                    1000000000{
+                        other{"¤ 0 ប៊ីលាន"}
+                    }
+                    10000000000{
+                        other{"¤ 00 ប៊ីលាន"}
+                    }
+                    100000000000{
+                        other{"¤ 000 ប៊ីលាន"}
+                    }
+                    1000000000000{
+                        other{"¤ 0 ទ្រីលាន"}
+                    }
+                    10000000000000{
+                        other{"¤ 00 ទ្រីលាន"}
+                    }
+                    100000000000000{
+                        other{"¤ 000 ទ្រីលាន"}
+                    }
+                }
                 decimalFormat{
                     1000{
                         other{"0ពាន់"}
@@ -178,7 +223,6 @@ km{
         minimumGroupingDigits{"1"}
         native{"khmr"}
     }
-    Version{"37"}
     calendar{
         generic{
             DateTimePatterns{
@@ -191,10 +235,26 @@ km{
                 "d MMM y G",
                 "d/M/y GGGGG",
                 "{1}, {0}",
+                "{1}, {0}",
+                "{1}, {0}",
+                "{1}, {0}",
+                "{1}, {0}",
+            }
+            DateTimePatterns%atTime{
                 "{1} នៅ​ម៉ោង {0}",
                 "{1} នៅ​ម៉ោង {0}",
                 "{1}, {0}",
                 "{1}, {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "GyMMMMEEEEd",
+                "GyMMMMd",
+                "GyMMMd",
+                "GGGGGyMd",
             }
             availableFormats{
                 Bh{"h B"}
@@ -403,10 +463,26 @@ km{
                 "d MMM y",
                 "d/M/yy",
                 "{1}, {0}",
+                "{1}, {0}",
+                "{1}, {0}",
+                "{1}, {0}",
+                "{1}, {0}",
+            }
+            DateTimePatterns%atTime{
                 "{1} នៅ​ម៉ោង {0}",
                 "{1} នៅ​ម៉ោង {0}",
                 "{1}, {0}",
                 "{1}, {0}",
+            }
+            DateTimeSkeletons{
+                "ahmmsszzzz",
+                "ahmmssz",
+                "ahmmss",
+                "ahmm",
+                "yMMMMEEEEd",
+                "yMMMMd",
+                "yMMMd",
+                "yyMd",
             }
             appendItems{
                 Timezone{"{0} {1}"}
@@ -1767,5 +1843,17 @@ km{
         UK{"ចក្រភព​អង់គ្លេស"}
         US{"សហរដ្ឋអាមេរិក"}
         metric{"រង្វាស់​ប្រវែង"}
+    }
+    personNames{
+        nameOrderLocales{
+            givenFirst{"und"}
+            surnameFirst{
+                "km",
+                "ko",
+                "vi",
+                "yue",
+                "zh",
+            }
+        }
     }
 }

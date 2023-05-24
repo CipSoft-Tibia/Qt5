@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4COMPILERCONTEXT_P_H
 #define QV4COMPILERCONTEXT_P_H
 
@@ -56,6 +20,11 @@
 #include <QtCore/QDateTime>
 #include <QtCore/QStack>
 #include <QtCore/QHash>
+#include <QtCore/QMap>
+#include <QtCore/QSet>
+#include <QtCore/QVarLengthArray>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -177,13 +146,24 @@ struct Context {
         FunctionDefinition
     };
 
+    struct SourceLocationTable
+    {
+        struct Entry
+        {
+            quint32 offset;
+            QQmlJS::SourceLocation location;
+        };
+        QVector<Entry> entries;
+    };
+
     struct Member {
         MemberType type = UndefinedMember;
         int index = -1;
         QQmlJS::AST::VariableScope scope = QQmlJS::AST::VariableScope::Var;
         mutable bool canEscape = false;
+        bool isInjected = false;
         QQmlJS::AST::FunctionExpression *function = nullptr;
-        QQmlJS::SourceLocation endOfInitializerLocation;
+        QQmlJS::SourceLocation declarationLocation;
 
         bool isLexicallyScoped() const { return this->scope != QQmlJS::AST::VariableScope::Var; }
         bool requiresTDZCheck(const QQmlJS::SourceLocation &accessLocation, bool accessAcrossContextBoundaries) const;
@@ -194,7 +174,7 @@ struct Context {
     QSet<QString> usedVariables;
     QQmlJS::AST::FormalParameterList *formals = nullptr;
     QQmlJS::AST::BoundNames arguments;
-    QString returnType;
+    QQmlJS::AST::Type *returnType = nullptr;
     QStringList locals;
     QStringList moduleRequests;
     QVector<ImportEntry> importEntries;
@@ -204,7 +184,8 @@ struct Context {
 
     ControlFlow *controlFlow = nullptr;
     QByteArray code;
-    QVector<CompiledData::CodeOffsetToLine> lineNumberMapping;
+    QVector<CompiledData::CodeOffsetToLineAndStatement> lineAndStatementNumberMapping;
+    std::unique_ptr<SourceLocationTable> sourceLocationTable;
     std::vector<unsigned> labelInfo;
 
     int nRegisters = 0;
@@ -289,12 +270,20 @@ struct Context {
             isStrict = true;
     }
 
-    int findArgument(const QString &name) const
+    bool hasArgument(const QString &name) const
+    {
+        return arguments.contains(name);
+    }
+
+    int findArgument(const QString &name, bool *isInjected) const
     {
         // search backwards to handle duplicate argument names correctly
         for (int i = arguments.size() - 1; i >= 0; --i) {
-            if (arguments.at(i).id == name)
+            const auto &arg = arguments.at(i);
+            if (arg.id == name) {
+                *isInjected = arg.isInjected();
                 return i;
+            }
         }
         return -1;
     }
@@ -330,8 +319,11 @@ struct Context {
         usedVariables.insert(name);
     }
 
-    bool addLocalVar(const QString &name, MemberType contextType, QQmlJS::AST::VariableScope scope, QQmlJS::AST::FunctionExpression *function = nullptr,
-                     const QQmlJS::SourceLocation &endOfInitializer = QQmlJS::SourceLocation());
+    bool addLocalVar(
+            const QString &name, MemberType contextType, QQmlJS::AST::VariableScope scope,
+            QQmlJS::AST::FunctionExpression *function = nullptr,
+            const QQmlJS::SourceLocation &declarationLocation = QQmlJS::SourceLocation(),
+            bool isInjected = false);
 
     struct ResolvedName {
         enum Type {
@@ -346,9 +338,10 @@ struct Context {
         bool isArgOrEval = false;
         bool isConst = false;
         bool requiresTDZCheck = false;
+        bool isInjected = false;
         int scope = -1;
         int index = -1;
-        QQmlJS::SourceLocation endOfDeclarationLocation;
+        QQmlJS::SourceLocation declarationLocation;
         bool isValid() const { return type != Unresolved; }
     };
     ResolvedName resolveName(const QString &name, const QQmlJS::SourceLocation &accessLocation);
@@ -366,6 +359,11 @@ struct Context {
         if (contextType == ContextType::Block && parent)
             return parent->canHaveTailCalls();
         return false;
+    }
+
+    bool isCaseBlock() const
+    {
+        return contextType == ContextType::Block && name == u"%CaseBlock";
     }
 };
 

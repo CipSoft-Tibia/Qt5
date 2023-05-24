@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,11 +29,8 @@ enum RTCIceGatheringState {
 // https://w3c.github.io/webrtc-pc/#rtcicetransport
 [
    ActiveScriptWrappable,
-   Exposed=Window,
-   SecureContext
+   Exposed=Window
 ] interface RTCIceTransport : EventTarget {
-    // Constructor from https://w3c.github.io/webrtc-ice/#rtcicetransport*
-    [CallWith=ExecutionContext, Measure] constructor();
     // TODO(github.com/w3c/webrtc-ice/issues/4): role is non-null in the
     // WebRTC-PC specification.
     [Measure] readonly attribute RTCIceRole? role;

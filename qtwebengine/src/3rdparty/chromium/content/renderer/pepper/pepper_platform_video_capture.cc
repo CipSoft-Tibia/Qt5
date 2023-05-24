@@ -1,18 +1,18 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/renderer/pepper/pepper_platform_video_capture.h"
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
 #include "base/notreached.h"
+#include "base/task/bind_post_task.h"
 #include "content/renderer/pepper/pepper_media_device_manager.h"
 #include "content/renderer/pepper/pepper_video_capture_host.h"
 #include "content/renderer/render_frame_impl.h"
 #include "content/renderer/render_thread_impl.h"
-#include "media/base/bind_to_current_loop.h"
 #include "media/base/video_frame.h"
 #include "third_party/blink/public/platform/modules/video_capture/web_video_capture_impl_manager.h"
 
@@ -46,14 +46,15 @@ void PepperPlatformVideoCapture::StartCapture(
     return;
   blink::WebVideoCaptureImplManager* manager =
       RenderThreadImpl::current()->video_capture_impl_manager();
-  stop_capture_cb_ =
-      manager->StartCapture(session_id_, params,
-                            media::BindToCurrentLoop(base::BindRepeating(
-                                &PepperPlatformVideoCapture::OnStateUpdate,
-                                weak_factory_.GetWeakPtr())),
-                            media::BindToCurrentLoop(base::BindRepeating(
-                                &PepperPlatformVideoCapture::OnFrameReady,
-                                weak_factory_.GetWeakPtr())));
+  stop_capture_cb_ = manager->StartCapture(
+      session_id_, params,
+      base::BindPostTaskToCurrentDefault(
+          base::BindRepeating(&PepperPlatformVideoCapture::OnStateUpdate,
+                              weak_factory_.GetWeakPtr())),
+      base::BindPostTaskToCurrentDefault(
+          base::BindRepeating(&PepperPlatformVideoCapture::OnFrameReady,
+                              weak_factory_.GetWeakPtr())),
+      /*crop_version_cb=*/base::DoNothing());
 }
 
 void PepperPlatformVideoCapture::StopCapture() {
@@ -94,6 +95,14 @@ PepperPlatformVideoCapture::~PepperPlatformVideoCapture() {
 void PepperPlatformVideoCapture::OnDeviceOpened(int request_id,
                                                 bool succeeded,
                                                 const std::string& label) {
+  RenderFrameImpl* render_frame =
+      RenderFrameImpl::FromRoutingID(render_frame_id_);
+  if (!render_frame) {
+    if (handler_)
+      handler_->OnInitialized(false);
+    return;
+  }
+
   pending_open_device_ = false;
   pending_open_device_id_ = -1;
 
@@ -105,7 +114,8 @@ void PepperPlatformVideoCapture::OnDeviceOpened(int request_id,
         PP_DEVICETYPE_DEV_VIDEOCAPTURE, label);
     blink::WebVideoCaptureImplManager* manager =
         RenderThreadImpl::current()->video_capture_impl_manager();
-    release_device_cb_ = manager->UseDevice(session_id_);
+    release_device_cb_ = manager->UseDevice(
+        session_id_, render_frame->GetBrowserInterfaceBroker());
   }
 
   if (handler_)
@@ -134,10 +144,13 @@ void PepperPlatformVideoCapture::OnStateUpdate(blink::VideoCaptureState state) {
 }
 
 void PepperPlatformVideoCapture::OnFrameReady(
-    scoped_refptr<media::VideoFrame> frame,
+    scoped_refptr<media::VideoFrame> video_frame,
+    std::vector<scoped_refptr<media::VideoFrame>> /*scaled_video_frames*/,
     base::TimeTicks estimated_capture_time) {
-  if (handler_ && stop_capture_cb_)
-    handler_->OnFrameReady(*frame);
+  if (handler_ && stop_capture_cb_) {
+    // The scaled video frames are ignored by Pepper.
+    handler_->OnFrameReady(std::move(video_frame));
+  }
 }
 
 PepperMediaDeviceManager* PepperPlatformVideoCapture::GetMediaDeviceManager() {

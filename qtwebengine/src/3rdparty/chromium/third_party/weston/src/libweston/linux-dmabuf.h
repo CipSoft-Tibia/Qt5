@@ -75,10 +75,16 @@ struct linux_dmabuf_buffer {
 	 * feasible to scan it out directly. This would improve the
 	 * possibilities to successfully scan out, avoiding compositing.
 	 */
+
+	/**< marked as scan-out capable, avoids any composition */
+	bool direct_display;
 };
 
 int
 linux_dmabuf_setup(struct weston_compositor *compositor);
+
+int
+weston_direct_display_setup(struct weston_compositor *compositor);
 
 struct linux_dmabuf_buffer *
 linux_dmabuf_buffer_get(struct wl_resource *resource);

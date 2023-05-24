@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/modules/presentation/presentation_connection.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -32,13 +32,13 @@ class MODULES_EXPORT PresentationConnectionList final
   }
 
   // PresentationConnectionList.idl implementation.
-  const HeapVector<Member<ReceiverPresentationConnection>>& connections() const;
+  const HeapVector<Member<PresentationConnection>>& connections() const;
   DEFINE_ATTRIBUTE_EVENT_LISTENER(connectionavailable, kConnectionavailable)
 
-  void AddConnection(ReceiverPresentationConnection*);
+  void AddConnection(PresentationConnection*);
   // Remove connection from connection list. Returns true if connection is
   // successfully removed; Returns false if connection does not exist.
-  bool RemoveConnection(ReceiverPresentationConnection*);
+  bool RemoveConnection(PresentationConnection*);
   void DispatchConnectionAvailableEvent(PresentationConnection*);
   bool IsEmpty();
 
@@ -52,7 +52,7 @@ class MODULES_EXPORT PresentationConnectionList final
  private:
   friend class PresentationReceiverTest;
 
-  HeapVector<Member<ReceiverPresentationConnection>> connections_;
+  HeapVector<Member<PresentationConnection>> connections_;
 };
 
 }  // namespace blink

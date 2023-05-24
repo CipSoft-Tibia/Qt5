@@ -1,15 +1,16 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/payments/can_make_payment_event.h"
 
-#include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/core/dom/dom_exception.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
 #include "third_party/blink/renderer/core/workers/worker_location.h"
 #include "third_party/blink/renderer/modules/payments/can_make_payment_respond_with_observer.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
+#include "third_party/blink/renderer/platform/bindings/v8_binding.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 
 namespace blink {
@@ -57,20 +58,18 @@ CanMakePaymentEvent::modifiers() const {
 void CanMakePaymentEvent::respondWith(ScriptState* script_state,
                                       ScriptPromise script_promise,
                                       ExceptionState& exception_state) {
-  RespondToCanMakePaymentEvent(script_state, script_promise, exception_state,
-                               /*is_minimal_ui=*/false);
-}
+  if (!isTrusted()) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kInvalidStateError,
+        "Cannot respond with data when the event is not trusted");
+    return;
+  }
 
-const String& CanMakePaymentEvent::currency() const {
-  return currency_;
-}
-
-void CanMakePaymentEvent::respondWithMinimalUI(
-    ScriptState* script_state,
-    ScriptPromise script_promise,
-    ExceptionState& exception_state) {
-  RespondToCanMakePaymentEvent(script_state, script_promise, exception_state,
-                               /*is_minimal_ui=*/true);
+  stopImmediatePropagation();
+  if (observer_) {
+    observer_->ObservePromiseResponse(script_state, script_promise,
+                                      exception_state);
+  }
 }
 
 void CanMakePaymentEvent::Trace(Visitor* visitor) const {
@@ -98,27 +97,6 @@ CanMakePaymentEvent::CanMakePaymentEvent(
       modifiers_(initializer->hasModifiers()
                      ? initializer->modifiers()
                      : HeapVector<Member<PaymentDetailsModifier>>()),
-      currency_(initializer->hasCurrency() ? initializer->currency()
-                                           : String()),
       observer_(respond_with_observer) {}
-
-void CanMakePaymentEvent::RespondToCanMakePaymentEvent(
-    ScriptState* script_state,
-    ScriptPromise script_promise,
-    ExceptionState& exception_state,
-    bool is_minimal_ui) {
-  if (!isTrusted()) {
-    exception_state.ThrowDOMException(
-        DOMExceptionCode::kInvalidStateError,
-        "Cannot respond with data when the event is not trusted");
-    return;
-  }
-
-  stopImmediatePropagation();
-  if (observer_) {
-    observer_->ObservePromiseResponse(script_state, script_promise,
-                                      exception_state, is_minimal_ui);
-  }
-}
 
 }  // namespace blink

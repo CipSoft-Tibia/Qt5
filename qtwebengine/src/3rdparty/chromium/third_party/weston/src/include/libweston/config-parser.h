@@ -30,6 +30,7 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define WESTON_CONFIG_FILE_ENV_VAR "WESTON_CONFIG_FILE"
@@ -102,7 +103,7 @@ weston_config_section_get_string(struct weston_config_section *section,
 int
 weston_config_section_get_bool(struct weston_config_section *section,
 			       const char *key,
-			       int *value, int default_value);
+			       bool *value, bool default_value);
 
 const char *
 weston_config_get_name_from_env(void);

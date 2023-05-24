@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickitemparticle_p.h"
 #include <QtQuick/qsgnode.h>
@@ -130,7 +94,11 @@ QQuickItemParticle::QQuickItemParticle(QQuickItem *parent) :
 {
     setFlag(QQuickItem::ItemHasContents);
     clock = new Clock(this);
-    clock->start();
+    connect(this, &QQuickItemParticle::systemChanged, this, &QQuickItemParticle::reconnectSystem);
+    connect(this, &QQuickItemParticle::parentChanged, this, &QQuickItemParticle::reconnectParent);
+    connect(this, &QQuickItemParticle::enabledChanged, this, &QQuickItemParticle::updateClock);
+    reconnectSystem(m_system);
+    reconnectParent(parent);
 }
 
 QQuickItemParticle::~QQuickItemParticle()
@@ -161,7 +129,7 @@ void QQuickItemParticle::take(QQuickItem *item, bool prioritize)
 void QQuickItemParticle::give(QQuickItem *item)
 {
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* data : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* data : std::as_const(m_system->groupData[groupId]->data)) {
             if (data->delegate == item){
                 m_deletables << item;
                 data->delegate = nullptr;
@@ -209,7 +177,7 @@ void QQuickItemParticle::tick(int time)
     Q_UNUSED(time);//only needed because QTickAnimationProxy expects one
     processDeletables();
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* d : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* d : std::as_const(m_system->groupData[groupId]->data)) {
             if (!d->delegate && d->t != -1 && d->stillAlive(m_system)) {
                 QQuickItem* parentItem = nullptr;
                 if (!m_pendingItems.isEmpty()){
@@ -250,7 +218,7 @@ void QQuickItemParticle::reset()
     // but leave it alone if the logical particle is maintained
     QSet<QQuickItem*> lost = QSet<QQuickItem*>(m_managed.cbegin(), m_managed.cend());
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* d : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* d : std::as_const(m_system->groupData[groupId]->data)) {
             lost.remove(d->delegate);
         }
     }
@@ -266,9 +234,10 @@ QSGNode* QQuickItemParticle::updatePaintNode(QSGNode* n, UpdatePaintNodeData* d)
     if (m_pleaseReset)
         m_pleaseReset = false;
 
-    prepareNextFrame();
-
-    update();//Get called again
+    if (clockShouldUpdate()) {
+        prepareNextFrame();
+        update(); //Get called again
+    }
     if (n)
         n->markDirty(QSGNode::DirtyMaterial);
     return QQuickItem::updatePaintNode(n,d);
@@ -287,7 +256,7 @@ void QQuickItemParticle::prepareNextFrame()
 
     //TODO: Size, better fade?
     for (auto groupId : groupIds()) {
-        for (QQuickParticleData* data : qAsConst(m_system->groupData[groupId]->data)) {
+        for (QQuickParticleData* data : std::as_const(m_system->groupData[groupId]->data)) {
             QQuickItem* item = data->delegate;
             if (!item)
                 continue;
@@ -319,6 +288,52 @@ void QQuickItemParticle::prepareNextFrame()
 QQuickItemParticleAttached *QQuickItemParticle::qmlAttachedProperties(QObject *object)
 {
     return new QQuickItemParticleAttached(object);
+}
+
+bool QQuickItemParticle::clockShouldUpdate() const
+{
+    QQuickItem *parentItem = qobject_cast<QQuickItem *>(parent());
+    return (m_system && m_system->isRunning() && !m_system->isPaused() && m_system->isEnabled()
+            && ((parentItem && parentItem->isEnabled()) || !parentItem) && isEnabled());
+}
+
+void QQuickItemParticle::reconnectParent(QQuickItem *parentItem)
+{
+    updateClock();
+    disconnect(m_parentEnabledStateConnection);
+    if (parentItem) {
+        m_parentEnabledStateConnection = connect(parentItem, &QQuickParticleSystem::enabledChanged,
+                                                 this, &QQuickItemParticle::updateClock);
+    }
+}
+
+void QQuickItemParticle::reconnectSystem(QQuickParticleSystem *system)
+{
+    updateClock();
+    disconnect(m_systemRunStateConnection);
+    disconnect(m_systemPauseStateConnection);
+    disconnect(m_systemEnabledStateConnection);
+    if (system) {
+        m_systemRunStateConnection = connect(m_system, &QQuickParticleSystem::runningChanged, this, [this](){
+            QQuickItemParticle::updateClock();
+        });
+        m_systemPauseStateConnection = connect(m_system, &QQuickParticleSystem::pausedChanged, this, [this](){
+            QQuickItemParticle::updateClock();
+        });
+        m_systemEnabledStateConnection = connect(m_system, &QQuickParticleSystem::enabledChanged, this,
+                                                 &QQuickItemParticle::updateClock);
+    }
+}
+
+void QQuickItemParticle::updateClock()
+{
+    if (clockShouldUpdate()) {
+        if (!clock->isRunning())
+            clock->start();
+    } else {
+        if (clock->isRunning())
+            clock->pause();
+    }
 }
 
 QT_END_NAMESPACE

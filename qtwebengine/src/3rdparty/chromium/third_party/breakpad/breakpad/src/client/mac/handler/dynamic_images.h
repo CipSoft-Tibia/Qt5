@@ -1,5 +1,4 @@
-// Copyright (c) 2007, Google Inc.
-// All rights reserved.
+// Copyright 2007 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -207,7 +206,8 @@ class DynamicImageRef {
  public:
   explicit DynamicImageRef(DynamicImage* inP) : p(inP) {}
   // The copy constructor is required by STL
-  DynamicImageRef(const DynamicImageRef& inRef) : p(inRef.p) {}
+  DynamicImageRef(const DynamicImageRef& inRef) = default;
+  DynamicImageRef& operator=(const DynamicImageRef& inRef) = default;
 
   bool operator<(const DynamicImageRef& inRef) const {
     return (*const_cast<DynamicImageRef*>(this)->p)

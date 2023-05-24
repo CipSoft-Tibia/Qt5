@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QChart>
 #include <private/qchart_p.h>
@@ -40,7 +14,7 @@
 #include <QtWidgets/QGraphicsScene>
 #include <QGraphicsSceneResizeEvent>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
  \enum QChart::ChartTheme
@@ -49,7 +23,7 @@ QT_CHARTS_BEGIN_NAMESPACE
 
  A theme is a built-in collection of UI style related settings applied to all
  the visual elements of a chart, such as colors, pens, brushes, and fonts of
- series, as well as axes, title, and legend. The \l {Chart themes example}
+ series, as well as axes, title, and legend. The \l {Charts with Widgets Gallery}
  illustrates how to use themes.
 
  \note Changing the theme will overwrite all customizations previously applied
@@ -477,7 +451,7 @@ bool QChart::isZoomed()
 QAbstractAxis *QChart::axisX(QAbstractSeries *series) const
 {
     QList<QAbstractAxis *> axisList = axes(Qt::Horizontal, series);
-    if (axisList.count())
+    if (axisList.size())
         return axisList[0];
     return 0;
 }
@@ -494,7 +468,7 @@ QAbstractAxis *QChart::axisX(QAbstractSeries *series) const
 QAbstractAxis *QChart::axisY(QAbstractSeries *series) const
 {
     QList<QAbstractAxis *> axisList = axes(Qt::Vertical, series);
-    if (axisList.count())
+    if (axisList.size())
         return axisList[0];
     return 0;
 }
@@ -965,6 +939,6 @@ void QChartPrivate::scroll(qreal dx, qreal dy)
     m_presenter->setState(ChartPresenter::ShowState,QPointF());
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qchart.cpp"

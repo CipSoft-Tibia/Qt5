@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_promotion_p.h"
 #include "widgetdatabase_p.h"
@@ -44,19 +19,20 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 namespace {
     // Return a set of on-promotable classes
     const QSet<QString> &nonPromotableClasses() {
-        static QSet<QString> rc;
-        if (rc.isEmpty()) {
-            rc.insert(QStringLiteral("Line"));
-            rc.insert(QStringLiteral("QAction"));
-            rc.insert(QStringLiteral("Spacer"));
-            rc.insert(QStringLiteral("QMainWindow"));
-            rc.insert(QStringLiteral("QDialog"));
-            rc.insert(QStringLiteral("QMdiArea"));
-            rc.insert(QStringLiteral("QMdiSubWindow"));
-        }
+        static const QSet<QString> rc = {
+            u"Line"_s,
+            u"QAction"_s,
+            u"Spacer"_s,
+            u"QMainWindow"_s,
+            u"QDialog"_s,
+            u"QMdiArea"_s,
+            u"QMdiSubWindow"_s
+        };
         return rc;
     }
 
@@ -84,13 +60,14 @@ namespace {
     }
 
     // extract class name from xml  "<widget class="QWidget" ...>". Quite a hack.
-    QString classNameFromXml(QString xml) {
-        static const QString tag = QStringLiteral("class=\"");
+    QString classNameFromXml(QString xml)
+    {
+        constexpr auto tag = "class=\""_L1;
         const int pos = xml.indexOf(tag);
         if (pos == -1)
             return QString();
         xml.remove(0, pos + tag.size());
-        const int closingPos = xml.indexOf(QLatin1Char('"'));
+        const auto closingPos = xml.indexOf(u'"');
         if (closingPos == -1)
             return QString();
         xml.remove(closingPos, xml.size() - closingPos);
@@ -193,8 +170,7 @@ namespace qdesigner_internal {
         if (nonPromotableClasses().contains(name))
             return false;
 
-        if (name.startsWith(QStringLiteral("QDesigner")) ||
-            name.startsWith(QStringLiteral("QLayout")))
+        if (name.startsWith("QDesigner"_L1) || name.startsWith("QLayout"_L1))
             return false;
 
         return true;
@@ -204,9 +180,7 @@ namespace qdesigner_internal {
     {
         using ClassNameItemMap = QMap<QString, QDesignerWidgetDataBaseItemInterface *>;
         // A map containing base classes and their promoted classes.
-        using BaseClassPromotedMap = QMap<QString, ClassNameItemMap>;
-
-        BaseClassPromotedMap baseClassPromotedMap;
+        QMap<QString, ClassNameItemMap> baseClassPromotedMap;
 
         QDesignerWidgetDataBaseInterface *widgetDataBase = m_core->widgetDataBase();
         // Look for promoted classes and insert into map according to base class.
@@ -215,7 +189,7 @@ namespace qdesigner_internal {
             QDesignerWidgetDataBaseItemInterface *dbItem = widgetDataBase->item(i);
             if (dbItem->isPromoted()) {
                 const QString baseClassName = dbItem->extends();
-                BaseClassPromotedMap::iterator it = baseClassPromotedMap.find(baseClassName);
+                auto it = baseClassPromotedMap.find(baseClassName);
                 if (it == baseClassPromotedMap.end()) {
                     it = baseClassPromotedMap.insert(baseClassName, ClassNameItemMap());
                 }
@@ -228,14 +202,12 @@ namespace qdesigner_internal {
         if (baseClassPromotedMap.isEmpty())
             return rc;
 
-        const BaseClassPromotedMap::const_iterator bcend = baseClassPromotedMap.constEnd();
-        for (BaseClassPromotedMap::const_iterator bit = baseClassPromotedMap.constBegin(); bit !=  bcend; ++bit) {
+        for (auto bit = baseClassPromotedMap.cbegin(), bcend = baseClassPromotedMap.cend(); bit != bcend; ++bit) {
             const int baseIndex = widgetDataBase->indexOfClassName(bit.key());
             Q_ASSERT(baseIndex >= 0);
             QDesignerWidgetDataBaseItemInterface *baseItem = widgetDataBase->item(baseIndex);
             // promoted
-            const ClassNameItemMap::const_iterator pcend = bit.value().constEnd();
-            for (ClassNameItemMap::const_iterator pit = bit.value().constBegin(); pit != pcend; ++pit) {
+            for (auto pit = bit.value().cbegin(), pcend = bit.value().cend(); pit != pcend; ++pit) {
                 PromotedClass item;
                 item.baseItem = baseItem;
                 item.promotedItem = pit.value();
@@ -265,11 +237,10 @@ namespace qdesigner_internal {
             if (!scratchPadClasses.isEmpty()) {
                 // Check whether these are actually promoted
                 QDesignerWidgetDataBaseInterface *widgetDataBase = m_core->widgetDataBase();
-                QStringList::const_iterator cend = scratchPadClasses.constEnd();
-                for (QStringList::const_iterator it = scratchPadClasses.constBegin(); it != cend; ++it ) {
-                    const int index = widgetDataBase->indexOfClassName(*it);
+                for (const auto &scItem : scratchPadClasses) {
+                    const int index = widgetDataBase->indexOfClassName(scItem);
                     if (index != -1 && widgetDataBase->item(index)->isPromoted())
-                        rc += *it;
+                        rc.insert(scItem);
                 }
             }
         }
@@ -301,12 +272,12 @@ namespace qdesigner_internal {
         // class B will depend on it. When removing QWebView, the base class of B will
         // be changed to that of QWebView by the below code.
         const PromotedClasses promotedList = promotedClasses();
-        for (PromotedClasses::const_iterator it = promotedList.constBegin(), end = promotedList.constEnd(); it != end; ++it) {
-            if (it->baseItem->name() == className) {
+        for (const auto &pc : promotedList) {
+            if (pc.baseItem->name() == className) {
                 const QString extends = widgetDataBase->item(index)->extends();
-                qWarning().nospace() << "Warning: Promoted class " << it->promotedItem->name()
+                qWarning().nospace() << "Warning: Promoted class " << pc.promotedItem->name()
                     << " extends " << className << ", changing its base class to " <<  extends << '.';
-                it->promotedItem->setExtends(extends);
+                pc.promotedItem->setExtends(extends);
             }
         }
         widgetDataBase->remove(index);

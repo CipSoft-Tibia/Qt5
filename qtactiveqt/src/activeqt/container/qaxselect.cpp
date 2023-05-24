@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the ActiveQt framework of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qaxselect.h"
 
@@ -77,6 +30,8 @@ QT_BEGIN_NAMESPACE
     \value SandboxingNone No specific sandboxing desired
     \value SandboxingProcess Run ActiveX control in a separate process
     \value SandboxingLowIntegrity Run ActiveX control in a separate low-integrity process
+    \value SandboxingAppContainer [since 6.5] Run ActiveX control in a separate
+           AppContainer-isolated process
 
     Sandboxing requires that the ActiveX is either built as an EXE, or as a DLL with AppID "DllSurrogate" enabled.
 */
@@ -148,7 +103,7 @@ static QString replaceEnvironmentVariables(QString in)
         const int closingPercentPos = in.indexOf(QLatin1Char('%'), openInPercentPos + 1);
         if (closingPercentPos < 0)
             break;
-        const QStringRef varName = in.midRef(openInPercentPos + 1, closingPercentPos - openInPercentPos - 1);
+        const QStringView varName = QStringView{in}.mid(openInPercentPos + 1, closingPercentPos - openInPercentPos - 1);
         const QString contents = QString::fromLocal8Bit(qgetenv(varName.toLocal8Bit()));
         in.replace(openInPercentPos, closingPercentPos - openInPercentPos + 1, contents);
     }
@@ -208,9 +163,9 @@ static bool querySubKeyValue(HKEY hKey, const QString &subKeyName,  LPBYTE lpDat
     return result;
 }
 
-static QVector<Control> readControls(const wchar_t *rootKey, unsigned wordSize)
+static QList<Control> readControls(const wchar_t *rootKey, unsigned wordSize)
 {
-    QVector<Control> controls;
+    QList<Control> controls;
     HKEY classesKey;
     RegOpenKeyEx(HKEY_CLASSES_ROOT, rootKey, 0, KEY_READ, &classesKey);
     if (!classesKey) {
@@ -277,12 +232,12 @@ public:
         std::sort(m_controls.begin(), m_controls.end());
     }
 
-    int rowCount(const QModelIndex & = QModelIndex()) const override { return m_controls.count(); }
+    int rowCount(const QModelIndex & = QModelIndex()) const override { return m_controls.size(); }
     QVariant data(const QModelIndex &index, int role) const override ;
     Qt::ItemFlags flags(const QModelIndex &index) const override ;
 
 private:
-    QVector<Control> m_controls;
+    QList<Control> m_controls;
 };
 
 QVariant ControlList::data(const QModelIndex &index, int role) const
@@ -374,7 +329,8 @@ QAxSelect::QAxSelect(QWidget *parent, Qt::WindowFlags flags)
     d->filterModel->setSourceModel(new ControlList(this));
     d->selectUi.ActiveXList->setModel(d->filterModel);
 
-    QStringList sandboxingOptions = { QLatin1String("None"), QLatin1String("Process isolation"), QLatin1String("Low integrity process") };
+    QStringList sandboxingOptions = { QLatin1String("None"), QLatin1String("Process isolation"),
+                                      QLatin1String("Low integrity process"), QLatin1String("AppContainer process") };
     d->selectUi.SandboxingCombo->addItems(sandboxingOptions);
 
     connect(d->selectUi.ActiveXList->selectionModel(), &QItemSelectionModel::currentChanged,
@@ -420,6 +376,8 @@ QAxSelect::SandboxingLevel QAxSelect::sandboxingLevel() const
         return SandboxingProcess;
     case 2:
         return SandboxingLowIntegrity;
+    case 3:
+        return SandboxingAppContainer;
     default:
         break;
     }

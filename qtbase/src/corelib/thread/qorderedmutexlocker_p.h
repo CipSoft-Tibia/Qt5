@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QORDEREDMUTEXLOCKER_P_H
 #define QORDEREDMUTEXLOCKER_P_H
@@ -67,6 +31,7 @@ QT_BEGIN_NAMESPACE
 class QOrderedMutexLocker
 {
 public:
+    Q_NODISCARD_CTOR
     QOrderedMutexLocker(QBasicMutex *m1, QBasicMutex *m2)
         : mtx1((m1 == m2) ? m1 : (std::less<QBasicMutex *>()(m1, m2) ? m1 : m2)),
           mtx2((m1 == m2) ?  nullptr : (std::less<QBasicMutex *>()(m1, m2) ? m2 : m1)),
@@ -84,12 +49,9 @@ public:
         qSwap(this->locked, other.locked);
     }
 
-    QOrderedMutexLocker  &operator=(QOrderedMutexLocker &&other) noexcept {
-        QOrderedMutexLocker moved(std::move(other));
-        swap(moved);
-        return *this;
-    }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QOrderedMutexLocker)
 
+    Q_NODISCARD_CTOR
     QOrderedMutexLocker(QOrderedMutexLocker &&other) noexcept
         : mtx1(std::exchange(other.mtx1, nullptr))
         , mtx2(std::exchange(other.mtx2, nullptr))
@@ -156,42 +118,15 @@ private:
     bool locked;
 };
 
-class QBasicMutexLocker
-{
-public:
-    inline explicit QBasicMutexLocker(QBasicMutex *m) QT_MUTEX_LOCK_NOEXCEPT
-        : m(m), isLocked(true)
-    {
-        m->lock();
-    }
-    inline ~QBasicMutexLocker() { if (isLocked) unlock(); }
-
-    inline void unlock() noexcept
-    {
-        isLocked = false;
-        m->unlock();
-    }
-
-    inline void relock() QT_MUTEX_LOCK_NOEXCEPT
-    {
-        isLocked = true;
-        m->lock();
-    }
-
-private:
-    Q_DISABLE_COPY(QBasicMutexLocker)
-
-    QBasicMutex *m;
-    bool isLocked;
-};
-
 #else
 
 class QOrderedMutexLocker
 {
 public:
     Q_DISABLE_COPY(QOrderedMutexLocker)
+    Q_NODISCARD_CTOR
     QOrderedMutexLocker(QBasicMutex *, QBasicMutex *) {}
+    Q_NODISCARD_CTOR
     QOrderedMutexLocker(QOrderedMutexLocker &&) = default;
     QOrderedMutexLocker& operator=(QOrderedMutexLocker &&other) = default;
     ~QOrderedMutexLocker() {}
@@ -202,8 +137,6 @@ public:
 
     static bool relock(QBasicMutex *, QBasicMutex *) { return false; }
 };
-
-using QBasicMutexLocker = QMutexLocker;
 
 #endif
 

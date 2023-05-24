@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,16 +6,14 @@
 
 #include <memory>
 #include <utility>
-#include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/memory/singleton.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/observer_list.h"
 #include "base/process/process.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
-#include "build/branding_buildflags.h"
 #include "components/dbus/properties/dbus_properties.h"
 #include "components/dbus/properties/success_barrier_callback.h"
 #include "components/dbus/thread_linux/dbus_thread_linux.h"
@@ -25,17 +23,16 @@
 #include "dbus/message.h"
 #include "dbus/object_path.h"
 #include "dbus/property.h"
-#include "dbus/string_util.h"
-#include "media/audio/audio_manager.h"
 
 namespace system_media_controls {
 
 // static
-SystemMediaControls* SystemMediaControls::GetInstance() {
-  internal::SystemMediaControlsLinux* service =
-      internal::SystemMediaControlsLinux::GetInstance();
+std::unique_ptr<SystemMediaControls> SystemMediaControls::Create(
+    const std::string& product_name) {
+  auto service =
+      std::make_unique<internal::SystemMediaControlsLinux>(product_name);
   service->StartService();
-  return service;
+  return std::move(service);
 }
 
 namespace internal {
@@ -44,41 +41,27 @@ namespace {
 
 constexpr int kNumMethodsToExport = 11;
 
-#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-const char kMprisAPIServiceNameFallback[] =
-    "chrome";
-#else
-const char kMprisAPIServiceNameFallback[] =
-    "chromium";
-#endif
+constexpr base::TimeDelta kUpdatePositionInterval = base::Milliseconds(100);
+
+const char kMprisAPINoTrackPath[] = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
+
+const char kMprisAPICurrentTrackPathFormatString[] =
+    "/org/chromium/MediaPlayer2/TrackList/Track%s";
 
 }  // namespace
 
-const char kMprisAPIServiceNamePrefix[] =
-    "org.mpris.MediaPlayer2.";
-
+const char kMprisAPIServiceNameFormatString[] =
+    "org.mpris.MediaPlayer2.chromium.instance%i";
 const char kMprisAPIObjectPath[] = "/org/mpris/MediaPlayer2";
 const char kMprisAPIInterfaceName[] = "org.mpris.MediaPlayer2";
 const char kMprisAPIPlayerInterfaceName[] = "org.mpris.MediaPlayer2.Player";
+const char kMprisAPISignalSeeked[] = "Seeked";
 
-// static
-SystemMediaControlsLinux* SystemMediaControlsLinux::GetInstance() {
-  return base::Singleton<SystemMediaControlsLinux>::get();
-}
-
-static std::string MakeServiceName() {
-  std::string baseName = media::AudioManager::GetGlobalAppName();
-  if (baseName.size() > 100 || !dbus::IsValidServiceNameElement(baseName))
-    baseName = kMprisAPIServiceNameFallback;
-  return std::string(kMprisAPIServiceNamePrefix) + baseName +
-      std::string(".instance") +
-      base::NumberToString(base::Process::Current().Pid());
-}
-
-SystemMediaControlsLinux::SystemMediaControlsLinux()
-    : service_name_(MakeServiceName())
-{
-}
+SystemMediaControlsLinux::SystemMediaControlsLinux(
+    const std::string& product_name)
+    : product_name_(product_name),
+      service_name_(base::StringPrintf(kMprisAPIServiceNameFormatString,
+                                       base::Process::Current().Pid())) {}
 
 SystemMediaControlsLinux::~SystemMediaControlsLinux() {
   if (bus_) {
@@ -125,6 +108,11 @@ void SystemMediaControlsLinux::SetIsPlayPauseEnabled(bool value) {
                            DbusBoolean(value));
 }
 
+void SystemMediaControlsLinux::SetIsSeekToEnabled(bool value) {
+  properties_->SetProperty(kMprisAPIPlayerInterfaceName, "CanSeek",
+                           DbusBoolean(value));
+}
+
 void SystemMediaControlsLinux::SetPlaybackStatus(PlaybackStatus value) {
   auto status = [&]() {
     switch (value) {
@@ -138,28 +126,58 @@ void SystemMediaControlsLinux::SetPlaybackStatus(PlaybackStatus value) {
   };
   properties_->SetProperty(kMprisAPIPlayerInterfaceName, "PlaybackStatus",
                            status());
+
+  playing_ = (value == PlaybackStatus::kPlaying);
+  if (playing_ && position_.has_value())
+    StartPositionUpdateTimer();
+  else
+    StopPositionUpdateTimer();
 }
 
-void SystemMediaControlsLinux::SetTitle(const base::string16& value) {
+void SystemMediaControlsLinux::SetID(const std::string* value) {
+  if (!value) {
+    ClearTrackId();
+    return;
+  }
+
+  const std::string track_id =
+      base::StringPrintf(kMprisAPICurrentTrackPathFormatString, value->c_str());
+  SetMetadataPropertyInternal(
+      "mpris:trackid",
+      MakeDbusVariant(DbusObjectPath(dbus::ObjectPath(track_id))));
+}
+
+void SystemMediaControlsLinux::SetTitle(const std::u16string& value) {
   SetMetadataPropertyInternal(
       "xesam:title", MakeDbusVariant(DbusString(base::UTF16ToUTF8(value))));
 }
 
-void SystemMediaControlsLinux::SetArtist(const base::string16& value) {
+void SystemMediaControlsLinux::SetArtist(const std::u16string& value) {
   SetMetadataPropertyInternal(
       "xesam:artist",
       MakeDbusVariant(MakeDbusArray(DbusString(base::UTF16ToUTF8(value)))));
 }
 
-void SystemMediaControlsLinux::SetAlbum(const base::string16& value) {
+void SystemMediaControlsLinux::SetAlbum(const std::u16string& value) {
   SetMetadataPropertyInternal(
       "xesam:album", MakeDbusVariant(DbusString(base::UTF16ToUTF8(value))));
 }
 
+void SystemMediaControlsLinux::SetPosition(
+    const media_session::MediaPosition& position) {
+  position_ = position;
+  UpdatePosition(/*emit_signal=*/true);
+
+  if (playing_)
+    StartPositionUpdateTimer();
+}
+
 void SystemMediaControlsLinux::ClearMetadata() {
-  SetTitle(base::string16());
-  SetArtist(base::string16());
-  SetAlbum(base::string16());
+  SetTitle(std::u16string());
+  SetArtist(std::u16string());
+  SetAlbum(std::u16string());
+  ClearTrackId();
+  ClearPosition();
 }
 
 std::string SystemMediaControlsLinux::GetServiceName() const {
@@ -170,13 +188,13 @@ void SystemMediaControlsLinux::InitializeProperties() {
   // org.mpris.MediaPlayer2 interface properties.
   auto set_property = [&](const std::string& property_name, auto&& value) {
     properties_->SetProperty(kMprisAPIInterfaceName, property_name,
-                             std::move(value), false);
+                             std::forward<decltype(value)>(value), false);
   };
   set_property("CanQuit", DbusBoolean(false));
   set_property("CanRaise", DbusBoolean(false));
   set_property("HasTrackList", DbusBoolean(false));
 
-  set_property("Identity", DbusString(media::AudioManager::GetGlobalAppName()));
+  set_property("Identity", DbusString(product_name_));
   set_property("SupportedUriSchemes", DbusArray<DbusString>());
   set_property("SupportedMimeTypes", DbusArray<DbusString>());
 
@@ -184,7 +202,7 @@ void SystemMediaControlsLinux::InitializeProperties() {
   auto set_player_property = [&](const std::string& property_name,
                                  auto&& value) {
     properties_->SetProperty(kMprisAPIPlayerInterfaceName, property_name,
-                             std::move(value), false);
+                             std::forward<decltype(value)>(value), false);
   };
   set_player_property("PlaybackStatus", DbusString("Stopped"));
   set_player_property("Rate", DbusDouble(1.0));
@@ -270,8 +288,12 @@ void SystemMediaControlsLinux::InitializeDbusInterface() {
   export_method(kMprisAPIPlayerInterfaceName, "Play",
                 base::BindRepeating(&SystemMediaControlsLinux::Play,
                                     base::Unretained(this)));
-  export_unhandled_method(kMprisAPIPlayerInterfaceName, "Seek");
-  export_unhandled_method(kMprisAPIPlayerInterfaceName, "SetPosition");
+  export_method(kMprisAPIPlayerInterfaceName, "Seek",
+                base::BindRepeating(&SystemMediaControlsLinux::Seek,
+                                    base::Unretained(this)));
+  export_method(kMprisAPIPlayerInterfaceName, "SetPosition",
+                base::BindRepeating(&SystemMediaControlsLinux::SetPositionMpris,
+                                    base::Unretained(this)));
   export_unhandled_method(kMprisAPIPlayerInterfaceName, "OpenUri");
 
   DCHECK_EQ(kNumMethodsToExport, num_methods_attempted_to_export);
@@ -351,6 +373,45 @@ void SystemMediaControlsLinux::Play(
   std::move(response_sender).Run(dbus::Response::FromMethodCall(method_call));
 }
 
+void SystemMediaControlsLinux::Seek(
+    dbus::MethodCall* method_call,
+    dbus::ExportedObject::ResponseSender response_sender) {
+  int64_t offset;
+  dbus::MessageReader reader(method_call);
+  if (!reader.PopInt64(&offset)) {
+    std::move(response_sender).Run(dbus::Response::FromMethodCall(method_call));
+    return;
+  }
+
+  for (SystemMediaControlsObserver& obs : observers_)
+    obs.OnSeek(base::Microseconds(offset));
+
+  std::move(response_sender).Run(dbus::Response::FromMethodCall(method_call));
+}
+
+void SystemMediaControlsLinux::SetPositionMpris(
+    dbus::MethodCall* method_call,
+    dbus::ExportedObject::ResponseSender response_sender) {
+  dbus::ObjectPath track_id;
+  int64_t position;
+  dbus::MessageReader reader(method_call);
+
+  if (!reader.PopObjectPath(&track_id)) {
+    std::move(response_sender).Run(dbus::Response::FromMethodCall(method_call));
+    return;
+  }
+
+  if (!reader.PopInt64(&position)) {
+    std::move(response_sender).Run(dbus::Response::FromMethodCall(method_call));
+    return;
+  }
+
+  for (SystemMediaControlsObserver& obs : observers_)
+    obs.OnSeekTo(base::Microseconds(position));
+
+  std::move(response_sender).Run(dbus::Response::FromMethodCall(method_call));
+}
+
 void SystemMediaControlsLinux::DoNothing(
     dbus::MethodCall* method_call,
     dbus::ExportedObject::ResponseSender response_sender) {
@@ -367,6 +428,66 @@ void SystemMediaControlsLinux::SetMetadataPropertyInternal(
   DCHECK(dictionary);
   if (dictionary->Put(property_name, std::move(new_value)))
     properties_->PropertyUpdated(kMprisAPIPlayerInterfaceName, "Metadata");
+}
+
+void SystemMediaControlsLinux::ClearTrackId() {
+  SetMetadataPropertyInternal(
+      "mpris:trackid",
+      MakeDbusVariant(DbusObjectPath(dbus::ObjectPath(kMprisAPINoTrackPath))));
+}
+
+void SystemMediaControlsLinux::ClearPosition() {
+  position_ = absl::nullopt;
+  StopPositionUpdateTimer();
+  UpdatePosition(/*emit_signal=*/true);
+}
+
+void SystemMediaControlsLinux::UpdatePosition(bool emit_signal) {
+  int64_t position = 0;
+  double rate = 1.0;
+  int64_t duration = 0;
+
+  if (position_.has_value()) {
+    position = position_->GetPosition().InMicroseconds();
+    rate = position_->playback_rate();
+    duration = position_->duration().InMicroseconds();
+  }
+
+  // We never emit a PropertiesChanged signal for the "Position" property. We
+  // only emit "Seeked" signals.
+  properties_->SetProperty(kMprisAPIPlayerInterfaceName, "Position",
+                           DbusInt64(position), /*emit_signal=*/false);
+
+  properties_->SetProperty(kMprisAPIPlayerInterfaceName, "Rate",
+                           DbusDouble(rate), emit_signal);
+  SetMetadataPropertyInternal("mpris:length",
+                              MakeDbusVariant(DbusInt64(duration)));
+
+  if (!service_ready_ || !emit_signal || !position_.has_value())
+    return;
+
+  dbus::Signal seeked_signal(kMprisAPIPlayerInterfaceName,
+                             kMprisAPISignalSeeked);
+  dbus::MessageWriter writer(&seeked_signal);
+  writer.AppendInt64(position);
+  exported_object_->SendSignal(&seeked_signal);
+}
+
+void SystemMediaControlsLinux::StartPositionUpdateTimer() {
+  // The timer should only run when the media is playing and has a position.
+  DCHECK(playing_);
+  DCHECK(position_.has_value());
+
+  // base::Unretained(this) is safe here since |this| owns
+  // |position_update_timer_|.
+  position_update_timer_.Start(
+      FROM_HERE, kUpdatePositionInterval,
+      base::BindRepeating(&SystemMediaControlsLinux::UpdatePosition,
+                          base::Unretained(this), /*emit_signal=*/false));
+}
+
+void SystemMediaControlsLinux::StopPositionUpdateTimer() {
+  position_update_timer_.Stop();
 }
 
 }  // namespace internal

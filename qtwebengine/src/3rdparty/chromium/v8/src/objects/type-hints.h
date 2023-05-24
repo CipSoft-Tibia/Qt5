@@ -16,11 +16,11 @@ enum class BinaryOperationHint : uint8_t {
   kNone,
   kSignedSmall,
   kSignedSmallInputs,
-  kSigned32,
   kNumber,
   kNumberOrOddball,
   kString,
   kBigInt,
+  kBigInt64,
   kAny
 };
 
@@ -41,6 +41,7 @@ enum class CompareOperationHint : uint8_t {
   kString,
   kSymbol,
   kBigInt,
+  kBigInt64,
   kReceiver,
   kReceiverOrNullOrUndefined,
   kAny

@@ -26,22 +26,13 @@ const JOB_TYPES = [
   { id: 'linux-clang-x86-asan_lsan', label: 'x86 {a,l}san' },
   { id: 'linux-clang-x86_64-libfuzzer', label: 'fuzzer' },
   { id: 'linux-clang-x86_64-bazel', label: 'bazel' },
-  { id: 'ui-clang-x86_64-debug', label: 'dbg' },
   { id: 'ui-clang-x86_64-release', label: 'rel' },
   { id: 'android-clang-arm-release', label: 'rel' },
   { id: 'android-clang-arm-asan', label: 'asan' },
 ];
 
-// Chart IDs from the Stackdriver daashboard
-// https://app.google.stackdriver.com/dashboards/5008687313278081798?project=perfetto-ci.
-const STATS_CHART_IDS = [
-  '2617092544855936024',   // Job queue len.
-  '15349606823829051218',  // Workers CPU usage
-  '2339121267466167448',   // E2E CL test time (median).
-  '6055813426334723906',   // Job run time (median).
-  '13112965165933080534',  // Job queue time (P95).
-  '2617092544855936456',   // Job run time (P95).
-];
+const STATS_LINK =
+    'https://app.google.stackdriver.com/dashboards/5008687313278081798?project=perfetto-ci';
 
 const state = {
   // An array of recent CL objects retrieved from Gerrit.
@@ -101,11 +92,11 @@ const state = {
 };
 
 let term = undefined;
+let fitAddon = undefined;
+let searchAddon = undefined;
 
 function main() {
   firebase.initializeApp({ databaseURL: cfg.DB_ROOT });
-  Terminal.applyAddon(fit);
-  Terminal.applyAddon(search);
 
   m.route(document.body, '/cls', {
     '/cls': CLsPageRenderer,
@@ -113,7 +104,6 @@ function main() {
     '/logs/:jobId': LogsPageRenderer,
     '/jobs': JobsPageRenderer,
     '/jobs/:jobId': JobsPageRenderer,
-    '/stats/:period': StatsPageRenderer,
   });
 
   setInterval(fetchGerritCLs, 15000);
@@ -130,20 +120,25 @@ function renderHeader() {
   const logUrl = 'https://goto.google.com/perfetto-ci-logs-';
   const docsUrl =
       'https://perfetto.dev/docs/design-docs/continuous-integration';
-  return m('header',
-    m('a[href=/#!/cls]', m('h1', 'Perfetto ', m('span', 'CI'))),
-    m('nav',
-      m(`div${active('cls')}`, m('a[href=/#!/cls]', 'CLs')),
-      m(`div${active('jobs')}`, m('a[href=/#!/jobs]', 'Jobs')),
-      m(`div${active('stats')}`, m('a[href=/#!/stats/1d]', 'Stats')),
-      m(`div`, m(`a[href=${docsUrl}][target=_blank]`, 'Docs')),
-      m(`div.logs`, 'Logs',
-        m('div', m(`a[href=${logUrl}controller][target=_blank]`, 'Controller')),
-        m('div', m(`a[href=${logUrl}workers][target=_blank]`, 'Workers')),
-        m('div', m(`a[href=${logUrl}frontend][target=_blank]`, 'Frontend')),
-      ),
-    )
-  );
+  return m(
+      'header', m('a[href=/#!/cls]', m('h1', 'Perfetto ', m('span', 'CI'))),
+      m(
+          'nav',
+          m(`div${active('cls')}`, m('a[href=/#!/cls]', 'CLs')),
+          m(`div${active('jobs')}`, m('a[href=/#!/jobs]', 'Jobs')),
+          m(`div${active('stats')}`,
+            m(`a[href=${STATS_LINK}][target=_blank]`, 'Stats')),
+          m(`div`, m(`a[href=${docsUrl}][target=_blank]`, 'Docs')),
+          m(
+              `div.logs`,
+              'Logs',
+              m('div',
+                m(`a[href=${logUrl}controller][target=_blank]`, 'Controller')),
+              m('div', m(`a[href=${logUrl}workers][target=_blank]`, 'Workers')),
+              m('div',
+                m(`a[href=${logUrl}frontend][target=_blank]`, 'Frontend')),
+              ),
+          ));
 }
 
 var CLsPageRenderer = {
@@ -198,16 +193,16 @@ var CLsPageRenderer = {
                 m('td[rowspan=4]', 'Status'),
                 m('td[rowspan=4]', 'Owner'),
                 m('td[rowspan=4]', 'Updated'),
-                m('td[colspan=12]', 'Bots'),
+                m('td[colspan=11]', 'Bots'),
               ),
               m('tr',
-                m('td[colspan=10]', 'linux'),
+                m('td[colspan=9]', 'linux'),
                 m('td[colspan=2]', 'android'),
               ),
               m('tr',
                 m('td', 'gcc7'),
                 m('td[colspan=7]', 'clang'),
-                m('td[colspan=2]', 'ui'),
+                m('td[colspan=1]', 'ui'),
                 m('td[colspan=2]', 'clang-arm'),
               ),
               m('tr#cls_header',
@@ -259,7 +254,7 @@ function renderCLRow(cl) {
         `${cl.subject}`, m('span.ps', `#${cl.psNum}`))
     ),
     m('td', cl.status),
-    m('td', stripEmail(cl.owner)),
+    m('td', stripEmail(cl.owner || '')),
     m('td', getLastUpdate(cl.lastUpdate)),
     JOB_TYPES.map(x => renderClJobCell(`cls/${cl.num}-${cl.psNum}`, x.id))
   ));
@@ -372,20 +367,33 @@ function renderClJobCell(src, jobType) {
 }
 
 const TermRenderer = {
-  oncreate: function (vnode) {
+  oncreate: function(vnode) {
     console.log('Creating terminal object');
-    term = new Terminal(
-        {rows: 6, fontFamily: 'monospace', fontSize: 12, scrollback: 100000});
+    fitAddon = new FitAddon.FitAddon();
+    searchAddon = new SearchAddon.SearchAddon();
+    term = new Terminal({
+      rows: 6,
+      fontFamily: 'monospace',
+      fontSize: 12,
+      scrollback: 100000,
+      disableStdin: true,
+    });
+    term.loadAddon(fitAddon);
+    term.loadAddon(searchAddon);
     term.open(vnode.dom);
-    term.fit();
-    if (vnode.attrs.focused) term.focus();
+    fitAddon.fit();
+    if (vnode.attrs.focused)
+      term.focus();
   },
-  onremove: function (vnode) {
-    term.destroy();
+  onremove: function(vnode) {
+    term.dispose();
+    fitAddon.dispose();
+    searchAddon.dispose();
   },
-  onupdate: function (vnode) {
+  onupdate: function(vnode) {
+    fitAddon.fit();
     if (state.termClear) {
-      term.clear()
+      term.clear();
       state.termClear = false;
     }
     for (const line of state.termLines) {
@@ -393,7 +401,7 @@ const TermRenderer = {
     }
     state.termLines = [];
   },
-  view: function () {
+  view: function() {
     return m('.term-container',
       {
         onkeydown: (e) => {
@@ -407,9 +415,9 @@ const TermRenderer = {
         onkeydown: (e) => {
           if (e.key !== 'Enter') return;
           if (e.shiftKey) {
-            term.findNext(e.target.value);
+            searchAddon.findNext(e.target.value);
           } else {
-            term.findPrevious(e.target.value);
+            searchAddon.findPrevious(e.target.value);
           }
           e.stopPropagation();
           e.preventDefault();
@@ -536,28 +544,6 @@ const JobsPageRenderer = {
   }
 };
 
-const StatsPageRenderer = {
-  view: function (vnode) {
-    const makeIframe = id => {
-      let url = 'https://public.google.stackdriver.com/public/chart';
-      url += `/${id}?timeframe=${vnode.attrs.period}`;
-      url += '&drawMode=color&showLegend=false&theme=light';
-      return m('iframe', {
-        src: url,
-        scrolling: 'no',
-        seamless: 'seamless',
-      });
-    };
-
-    return [
-      renderHeader(),
-      m('main#stats',
-        m('.stats-grid', STATS_CHART_IDS.map(makeIframe))
-      )
-    ];
-  }
-}
-
 // -----------------------------------------------------------------------------
 // Business logic (handles fetching from Gerrit and Firebase DB).
 // -----------------------------------------------------------------------------
@@ -576,16 +562,15 @@ function stripEmail(email) {
 async function fetchGerritCLs() {
   console.log('Fetching CL list from Gerrit');
   let uri = '/gerrit/changes/?-age:7days';
-  uri += '+-is:abandoned&o=DETAILED_ACCOUNTS&o=CURRENT_REVISION';
+  uri += '+-is:abandoned+branch:master&o=DETAILED_ACCOUNTS&o=CURRENT_REVISION';
   const response = await fetch(uri);
   state.gerritCls = [];
-  let json = '';
   if (response.status !== 200) {
     setTimeout(fetchGerritCLs, 3000);  // Retry.
     return;
   }
 
-  json = (await response.text());
+  const json = (await response.text());
   const cls = [];
   for (const e of JSON.parse(json)) {
     const revHash = Object.keys(e.revisions)[0];

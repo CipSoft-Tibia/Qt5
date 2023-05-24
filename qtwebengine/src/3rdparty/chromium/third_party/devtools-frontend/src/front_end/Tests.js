@@ -32,16 +32,13 @@
 /**
  * @fileoverview This file contains small testing framework along with the
  * test suite for the frontend. These tests are a part of the continues build
- * and are executed by the devtools_sanity_unittest.cc as a part of the
+ * and are executed by the devtools_browsertest.cc as a part of the
  * Interactive UI Test suite.
  * FIXME: change field naming style to use trailing underscore.
  */
 
 (function createTestSuite(window) {
 
-  /**
-   * @unrestricted
-   */
   const TestSuite = class {
     /**
      * Test suite for interactive UI tests.
@@ -96,19 +93,22 @@
    * @param {string} opt_message User message to print if the test fails.
    */
   TestSuite.prototype.assertTrue = function(value, opt_message) {
-    this.assertEquals(true, !!value, opt_message);
+    this.assertEquals(true, Boolean(value), opt_message);
   };
 
   /**
    * Takes control over execution.
+   * @param {{slownessFactor:number}=} options
    */
-  TestSuite.prototype.takeControl = function() {
+  TestSuite.prototype.takeControl = function(options) {
+    const {slownessFactor} = {slownessFactor: 1, ...options};
     this.controlTaken_ = true;
     // Set up guard timer.
     const self = this;
+    const timeoutInSec = 20 * slownessFactor;
     this.timerId_ = setTimeout(function() {
-      self.reportFailure_('Timeout exceeded: 20 sec');
-    }, 20000);
+      self.reportFailure_(`Timeout exceeded: ${timeoutInSec} sec`);
+    }, timeoutInSec * 1000);
   };
 
   /**
@@ -141,14 +141,29 @@
     this.domAutomationController_.send('[FAILED] ' + error);
   };
 
+  TestSuite.prototype.setupLegacyFilesForTest = async function() {
+    try {
+      await Promise.all([
+        self.runtime.loadLegacyModule('core/common/common-legacy.js'),
+        self.runtime.loadLegacyModule('core/sdk/sdk-legacy.js'),
+        self.runtime.loadLegacyModule('core/host/host-legacy.js'),
+        self.runtime.loadLegacyModule('ui/legacy/legacy-legacy.js'),
+        self.runtime.loadLegacyModule('models/workspace/workspace-legacy.js'),
+      ]);
+      this.reportOk_();
+    } catch (e) {
+      this.reportFailure_(e);
+    }
+  };
+
   /**
    * Run specified test on a fresh instance of the test suite.
    * @param {Array<string>} args method name followed by its parameters.
    */
-  TestSuite.prototype.dispatchOnTestSuite = function(args) {
+  TestSuite.prototype.dispatchOnTestSuite = async function(args) {
     const methodName = args.shift();
     try {
-      this[methodName].apply(this, args);
+      await this[methodName].apply(this, args);
       if (!this.controlTaken_) {
         this.reportOk_();
       }
@@ -224,7 +239,7 @@
         return;
       }
 
-      test.addSniffer(throttler, '_processCompletedForTests', checkState);
+      test.addSniffer(throttler, 'processCompletedForTests', checkState);
     }
 
     function onSchedule() {
@@ -256,34 +271,6 @@
         test.releaseControl();
       });
     }.bind(this));
-    // Wait until all scripts are added to the debugger.
-    this.takeControl();
-  };
-
-  /**
-   * Tests that scripts tab is populated with inspected scripts even if it
-   * hadn't been shown by the moment inspected paged refreshed.
-   * @see http://crbug.com/26312
-   */
-  TestSuite.prototype.testScriptsTabIsPopulatedOnInspectedPageRefresh = function() {
-    const test = this;
-    const debuggerModel = self.SDK.targetManager.mainTarget().model(SDK.DebuggerModel);
-    debuggerModel.addEventListener(SDK.DebuggerModel.Events.GlobalObjectCleared, waitUntilScriptIsParsed);
-
-    this.showPanel('elements').then(function() {
-      // Reload inspected page. It will reset the debugger agent.
-      test.evaluateInConsole_('window.location.reload(true);', function(resultText) {});
-    });
-
-    function waitUntilScriptIsParsed() {
-      debuggerModel.removeEventListener(SDK.DebuggerModel.Events.GlobalObjectCleared, waitUntilScriptIsParsed);
-      test.showPanel('sources').then(function() {
-        test._waitUntilScriptsAreParsed(['debugger_test_page.html'], function() {
-          test.releaseControl();
-        });
-      });
-    }
-
     // Wait until all scripts are added to the debugger.
     this.takeControl();
   };
@@ -346,7 +333,7 @@
     });
 
     // Wait until all scripts are added to the debugger.
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
   };
 
   // Tests that debugger works correctly if pause event occurs when DevTools
@@ -366,31 +353,6 @@
     this.takeControl();
   };
 
-  // Tests that pressing "Pause" will pause script execution if the script
-  // is already running.
-  TestSuite.prototype.testPauseWhenScriptIsRunning = function() {
-    this.showPanel('sources').then(function() {
-      this.evaluateInConsole_('setTimeout("handleClick()", 0)', didEvaluateInConsole.bind(this));
-    }.bind(this));
-
-    function didEvaluateInConsole(resultText) {
-      this.assertTrue(!isNaN(resultText), 'Failed to get timer id: ' + resultText);
-      // Wait for some time to make sure that inspected page is running the
-      // infinite loop.
-      setTimeout(testScriptPause.bind(this), 300);
-    }
-
-    function testScriptPause() {
-      // The script should be in infinite loop. Click "Pause" button to
-      // pause it and wait for the result.
-      UI.panels.sources._togglePause();
-
-      this._waitForScriptPause(this.releaseControl.bind(this));
-    }
-
-    this.takeControl();
-  };
-
   /**
    * Tests network size.
    */
@@ -402,12 +364,12 @@
       test.releaseControl();
     }
 
-    this.addSniffer(SDK.NetworkDispatcher.prototype, '_finishNetworkRequest', finishRequest);
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'finishNetworkRequest', finishRequest);
 
     // Reload inspected page to sniff network events
     test.evaluateInConsole_('window.location.reload(true);', function(resultText) {});
 
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
   };
 
   /**
@@ -421,13 +383,13 @@
       test.releaseControl();
     }
 
-    this.addSniffer(SDK.NetworkDispatcher.prototype, '_finishNetworkRequest', finishRequest);
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'finishNetworkRequest', finishRequest);
 
     // Send synchronous XHR to sniff network events
     test.evaluateInConsole_(
         'let xhr = new XMLHttpRequest(); xhr.open("GET", "chunked", false); xhr.send(null);', function() {});
 
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
   };
 
   /**
@@ -446,12 +408,12 @@
       test.releaseControl();
     }
 
-    this.addSniffer(SDK.NetworkDispatcher.prototype, '_finishNetworkRequest', finishRequest);
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'finishNetworkRequest', finishRequest);
 
     // Reload inspected page to sniff network events
     test.evaluateInConsole_('window.location.reload(true);', function(resultText) {});
 
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
   };
 
   /**
@@ -481,12 +443,12 @@
       test.releaseControl();
     }
 
-    this.addSniffer(SDK.NetworkDispatcher.prototype, '_finishNetworkRequest', finishRequest);
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'finishNetworkRequest', finishRequest);
 
     // Reload inspected page to sniff network events
     test.evaluateInConsole_('window.location.reload(true);', function(resultText) {});
 
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
   };
 
   TestSuite.prototype.testPushTimes = function(url) {
@@ -514,7 +476,7 @@
       }
     }
 
-    this.addSniffer(SDK.NetworkDispatcher.prototype, '_finishNetworkRequest', finishRequest, true);
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'finishNetworkRequest', finishRequest, true);
 
     test.evaluateInConsole_('addImage(\'' + url + '\')', function(resultText) {});
     test.evaluateInConsole_('addImage(\'' + url + '?pushUseNullEndTime\')', function(resultText) {});
@@ -524,7 +486,7 @@
   TestSuite.prototype.testConsoleOnNavigateBack = function() {
 
     function filteredMessages() {
-      return self.SDK.consoleModel.messages().filter(a => a.source !== SDK.ConsoleMessage.MessageSource.Violation);
+      return self.SDK.consoleModel.messages().filter(a => a.source !== Protocol.Log.LogEntrySource.Violation);
     }
 
     if (filteredMessages().length === 1) {
@@ -533,9 +495,8 @@
       self.SDK.consoleModel.addEventListener(SDK.ConsoleModel.Events.MessageAdded, firstConsoleMessageReceived, this);
     }
 
-
     function firstConsoleMessageReceived(event) {
-      if (event && event.data.source === SDK.ConsoleMessage.MessageSource.Violation) {
+      if (event && event.data.source === Protocol.Log.LogEntrySource.Violation) {
         return;
       }
       self.SDK.consoleModel.removeEventListener(
@@ -650,7 +611,7 @@
 
       function checkMetrics(consoleResult) {
         test.assertEquals(
-            '"' + JSON.stringify(metrics) + '"', consoleResult, 'Wrong metrics for params: ' + JSON.stringify(params));
+            `'${JSON.stringify(metrics)}'`, consoleResult, 'Wrong metrics for params: ' + JSON.stringify(params));
         callback();
       }
     }
@@ -708,8 +669,8 @@
     }
 
     function onResultOfInput(value) {
-      // Console adds "" around the response.
-      test.assertEquals('"Abbf"', value);
+      // Console adds '' around the response.
+      test.assertEquals('\'Abbf\'', value);
       test.releaseControl();
     }
 
@@ -725,7 +686,7 @@
       }
     }
 
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
 
     // It is possible for the ready console messagage to be already received but not handled
     // or received later. This ensures we can catch both cases.
@@ -773,7 +734,7 @@
   TestSuite.prototype.testForwardedKeysChanged = function() {
     this.takeControl();
 
-    this.addSniffer(self.UI.shortcutRegistry, '_registerBindings', () => {
+    this.addSniffer(self.UI.shortcutRegistry, 'registerBindings', () => {
       self.SDK.targetManager.mainTarget().inputAgent().invoke_dispatchKeyEvent(
           {type: 'rawKeyDown', key: 'F1', windowsVirtualKeyCode: 112, nativeVirtualKeyCode: 112});
     });
@@ -875,7 +836,7 @@
     ]);
   };
 
-  // Simple sanity check to make sure network throttling is wired up
+  // Simple check to make sure network throttling is wired up
   // See crbug.com/747724
   TestSuite.prototype.testOfflineNetworkConditions = async function() {
     const test = this;
@@ -887,10 +848,10 @@
       test.releaseControl();
     }
 
-    this.addSniffer(SDK.NetworkDispatcher.prototype, '_finishNetworkRequest', finishRequest);
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'finishNetworkRequest', finishRequest);
 
     test.takeControl();
-    test.evaluateInConsole_('window.location.reload(true);', function(resultText) {});
+    test.evaluateInConsole_('await fetch("/");', function(resultText) {});
   };
 
   TestSuite.prototype.testEmulateNetworkConditions = function() {
@@ -932,7 +893,7 @@
           MobileThrottling.networkPresets[1],
           [
             'online event: online = true',
-            'connection change event: type = cellular; downlinkMax = 0.390625; effectiveType = 2g'
+            'connection change event: type = cellular; downlinkMax = 0.3814697265625; effectiveType = 2g'
           ],
           step3);
     }
@@ -940,7 +901,7 @@
     function step3() {
       testPreset(
           MobileThrottling.networkPresets[0],
-          ['connection change event: type = cellular; downlinkMax = 1.4400000000000002; effectiveType = 3g'],
+          ['connection change event: type = cellular; downlinkMax = 1.373291015625; effectiveType = 3g'],
           test.releaseControl.bind(test));
     }
   };
@@ -987,7 +948,7 @@
 
       function onGotImageData(data) {
         const image = new Image();
-        test.assertTrue(!!data, 'No image data for frame');
+        test.assertTrue(Boolean(data), 'No image data for frame');
         image.addEventListener('load', onLoad);
         image.src = 'data:image/jpg;base64,' + data;
       }
@@ -1025,7 +986,7 @@
           test.fail('Unexpected color: ' + color);
         }
       }
-      test.assertTrue(redCount && greenCount && blueCount, 'Color sanity check failed');
+      test.assertTrue(redCount && greenCount && blueCount, 'Color check failed');
       test.releaseControl();
     }
 
@@ -1052,7 +1013,7 @@
     }
 
     function gotPreferences(prefs) {
-      Main.Main._instanceForTest._createSettings(prefs);
+      Main.Main.instanceForTest.createSettings(prefs);
 
       const localSetting = self.Common.settings.createLocalSetting('local', undefined);
       test.assertEquals('object', typeof localSetting.get());
@@ -1091,9 +1052,9 @@
 
     function onExecutionContexts() {
       const consoleView = Console.ConsoleView.instance();
-      const selector = consoleView._consoleContextSelector;
+      const selector = consoleView.consoleContextSelector;
       const values = [];
-      for (const item of selector._items) {
+      for (const item of selector.items) {
         values.push(selector.titleFor(item));
       }
       test.assertEquals('top', values[0]);
@@ -1104,7 +1065,7 @@
 
   TestSuite.prototype.testRawHeadersWithHSTS = function(url) {
     const test = this;
-    test.takeControl();
+    test.takeControl({slownessFactor: 10});
     self.SDK.targetManager.addModelListener(
         SDK.NetworkManager, SDK.NetworkManager.Events.ResponseReceived, onResponseReceived);
 
@@ -1175,7 +1136,7 @@
     }
 
     self.SDK.consoleModel.addEventListener(SDK.ConsoleModel.Events.MessageAdded, onConsoleMessage, this);
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
   };
 
   TestSuite.prototype.waitForTestResultsAsMessage = function() {
@@ -1217,7 +1178,7 @@
     const test = this;
     this.showPanel('timeline').then(function() {
       const timeline = UI.panels.timeline;
-      test._overrideMethod(timeline, '_recordingStarted', callback);
+      test._overrideMethod(timeline, 'recordingStarted', callback);
       timeline._toggleRecording();
     });
   };
@@ -1291,11 +1252,11 @@
 
   TestSuite.prototype.testInspectedElementIs = async function(nodeName) {
     this.takeControl();
-    await self.runtime.loadModulePromise('elements');
-    if (!Elements.ElementsPanel._firstInspectElementNodeNameForTest) {
-      await new Promise(f => this.addSniffer(Elements.ElementsPanel, '_firstInspectElementCompletedForTest', f));
+    await self.runtime.loadLegacyModule('panels/elements/elements-legacy.js');
+    if (!Elements.ElementsPanel.firstInspectElementNodeNameForTest) {
+      await new Promise(f => this.addSniffer(Elements.ElementsPanel, 'firstInspectElementCompletedForTest', f));
     }
-    this.assertEquals(nodeName, Elements.ElementsPanel._firstInspectElementNodeNameForTest);
+    this.assertEquals(nodeName, Elements.ElementsPanel.firstInspectElementNodeNameForTest);
     this.releaseControl();
   };
 
@@ -1318,8 +1279,8 @@
     const {browserContextId} = await targetAgent.invoke_createBrowserContext();
 
     // Cause a Browser to be created with the temp profile.
-    const {targetId} =
-        await targetAgent.invoke_createTarget({url: 'data:text/html,', browserContextId, newWindow: true});
+    const {targetId} = await targetAgent.invoke_createTarget(
+        {url: 'data:text/html,<!DOCTYPE html>', browserContextId, newWindow: true});
     await targetAgent.invoke_attachToTarget({targetId, flatten: true});
 
     // Destroy the temp profile.
@@ -1333,8 +1294,8 @@
     const browserContextIds = [];
     const targetAgent = self.SDK.targetManager.mainTarget().targetAgent();
 
-    const target1 = await createIsolatedTarget(url);
-    const target2 = await createIsolatedTarget(url);
+    const target1 = await createIsolatedTarget(url, browserContextIds);
+    const target2 = await createIsolatedTarget(url, browserContextIds);
 
     const response = await targetAgent.invoke_getBrowserContexts();
     this.assertEquals(response.browserContextIds.length, 2);
@@ -1358,34 +1319,37 @@
     this.assertEquals(removedTargets.indexOf(target2) !== -1, true);
 
     this.releaseControl();
-
-    /**
-     * @param {string} url
-     * @return {!Promise<!SDK.Target>}
-     */
-    async function createIsolatedTarget(url) {
-      const {browserContextId} = await targetAgent.invoke_createBrowserContext();
-      browserContextIds.push(browserContextId);
-
-      const {targetId} = await targetAgent.invoke_createTarget({url: 'about:blank', browserContextId});
-      await targetAgent.invoke_attachToTarget({targetId, flatten: true});
-
-      const target = self.SDK.targetManager.targets().find(target => target.id() === targetId);
-      const pageAgent = target.pageAgent();
-      await pageAgent.invoke_enable();
-      await pageAgent.invoke_navigate({url});
-      return target;
-    }
-
-    async function disposeBrowserContext(browserContextId) {
-      const targetAgent = self.SDK.targetManager.mainTarget().targetAgent();
-      await targetAgent.invoke_disposeBrowserContext({browserContextId});
-    }
-
-    async function evalCode(target, code) {
-      return (await target.runtimeAgent().invoke_evaluate({expression: code})).result.value;
-    }
   };
+
+  /**
+   * @param {string} url
+   * @return {!Promise<!SDK.Target>}
+   */
+  async function createIsolatedTarget(url, opt_browserContextIds) {
+    const targetAgent = self.SDK.targetManager.mainTarget().targetAgent();
+    const {browserContextId} = await targetAgent.invoke_createBrowserContext();
+    if (opt_browserContextIds) {
+      opt_browserContextIds.push(browserContextId);
+    }
+
+    const {targetId} = await targetAgent.invoke_createTarget({url: 'about:blank', browserContextId});
+    await targetAgent.invoke_attachToTarget({targetId, flatten: true});
+
+    const target = self.SDK.targetManager.targets().find(target => target.id() === targetId);
+    const pageAgent = target.pageAgent();
+    await pageAgent.invoke_enable();
+    await pageAgent.invoke_navigate({url});
+    return target;
+  }
+
+  async function disposeBrowserContext(browserContextId) {
+    const targetAgent = self.SDK.targetManager.mainTarget().targetAgent();
+    await targetAgent.invoke_disposeBrowserContext({browserContextId});
+  }
+
+  async function evalCode(target, code) {
+    return (await target.runtimeAgent().invoke_evaluate({expression: code})).result.value;
+  }
 
   TestSuite.prototype.testInputDispatchEventsToOOPIF = async function() {
     this.takeControl();
@@ -1393,14 +1357,12 @@
     await new Promise(callback => this._waitForTargets(2, callback));
 
     async function takeLogs(target) {
-      const code = `
+      return await evalCode(target, `
         (function() {
           var result = window.logs.join(' ');
           window.logs = [];
           return result;
-        })()
-      `;
-      return (await target.runtimeAgent().invoke_evaluate({expression: code})).result.value;
+        })()`);
     }
 
     let parentFrameOutput;
@@ -1418,7 +1380,6 @@
     this.assertEquals(parentFrameOutput, await takeLogs(self.SDK.targetManager.targets()[0]));
     childFrameOutput = 'Event type: mousedown button: 0 x: 30 y: 40 Event type: mouseup button: 0 x: 30 y: 50';
     this.assertEquals(childFrameOutput, await takeLogs(self.SDK.targetManager.targets()[1]));
-
 
     await inputAgent.invoke_dispatchKeyEvent({type: 'keyDown', key: 'a'});
     await runtimeAgent.invoke_evaluate({expression: "document.querySelector('iframe').focus()"});
@@ -1465,7 +1426,7 @@
       });
     }
 
-    this.takeControl();
+    this.takeControl({slownessFactor: 10});
     await testCase(baseURL + 'non-existent.html', undefined, 404, [], '');
     await testCase(baseURL + 'hello.html', undefined, 200, [], '<!doctype html>\n<p>hello</p>\n');
     await testCase(baseURL + 'echoheader?x-devtools-test', {'x-devtools-test': 'Foo'}, 200, ['cache-control'], 'Foo');
@@ -1486,7 +1447,7 @@
     await testCase(
         baseURL + 'echoheader?Cookie', undefined, 200, ['cache-control'], 'devtools-test-cookie=same-site-cookie');
     await testCase('data:text/html,<body>hello</body>', undefined, 200, [], '<body>hello</body>');
-    await testCase(fileURL, undefined, 200, [], '<html>\n<body>\nDummy page.\n</body>\n</html>\n');
+    await testCase(fileURL, undefined, 200, [], '<!DOCTYPE html>\n<html>\n<body>\nDummy page.\n</body>\n</html>\n');
     await testCase(fileURL + 'thisfileshouldnotbefound', undefined, 404, [], '');
 
     this.releaseControl();
@@ -1522,6 +1483,19 @@
     this.evaluateInConsole_(`new WebSocket('ws://127.0.0.1:${websocketPort}')`, () => {});
   };
 
+  TestSuite.prototype.testExtensionWebSocketOfflineNetworkConditions = async function(websocketPort) {
+    self.SDK.multitargetNetworkManager.setNetworkConditions(SDK.NetworkManager.OfflineConditions);
+
+    // TODO(crbug.com/1263900): Currently we don't send loadingFailed for web sockets.
+    // Update this once we do.
+    this.addSniffer(SDK.NetworkDispatcher.prototype, 'webSocketClosed', () => {
+      this.releaseControl();
+    });
+
+    this.takeControl();
+    this.evaluateInConsole_(`new WebSocket('ws://127.0.0.1:${websocketPort}/echo-with-no-extension')`, () => {});
+  };
+
   /**
    * Serializes array of uiSourceCodes to string.
    * @param {!Array.<!Workspace.UISourceCode>} uiSourceCodes
@@ -1533,6 +1507,30 @@
       names.push('"' + uiSourceCodes[i].url() + '"');
     }
     return names.join(',');
+  };
+
+  TestSuite.prototype.testSourceMapsFromExtension = function(extensionId) {
+    this.takeControl();
+    const debuggerModel = self.SDK.targetManager.mainTarget().model(SDK.DebuggerModel);
+    debuggerModel.sourceMapManager().addEventListener(
+        SDK.SourceMapManager.Events.SourceMapAttached, this.releaseControl.bind(this));
+
+    this.evaluateInConsole_(
+        `console.log(1) //# sourceMappingURL=chrome-extension://${extensionId}/source.map`, () => {});
+  };
+
+  TestSuite.prototype.testSourceMapsFromDevtools = function() {
+    this.takeControl();
+    const debuggerModel = self.SDK.targetManager.mainTarget().model(SDK.DebuggerModel);
+    debuggerModel.sourceMapManager().addEventListener(
+        SDK.SourceMapManager.Events.SourceMapWillAttach, this.releaseControl.bind(this));
+
+    this.evaluateInConsole_(
+        'console.log(1) //# sourceMappingURL=devtools://devtools/bundled/devtools_compatibility.js', () => {});
+  };
+
+  TestSuite.prototype.testDoesNotCrashOnSourceMapsFromUnknownScheme = function() {
+    this.evaluateInConsole_('console.log(1) //# sourceMappingURL=invalid-scheme://source.map', () => {});
   };
 
   /**
@@ -1561,9 +1559,9 @@
     function innerEvaluate() {
       self.UI.context.removeFlavorChangeListener(SDK.ExecutionContext, showConsoleAndEvaluate, this);
       const consoleView = Console.ConsoleView.instance();
-      consoleView._prompt._appendCommand(code);
+      consoleView.prompt.appendCommand(code);
 
-      this.addSniffer(Console.ConsoleView.prototype, '_consoleMessageAddedForTest', function(viewMessage) {
+      this.addSniffer(Console.ConsoleView.prototype, 'consoleMessageAddedForTest', function(viewMessage) {
         callback(viewMessage.toMessageElement().deepTextContent());
       }.bind(this));
     }
@@ -1607,7 +1605,7 @@
    * @param {function():void} callback
    */
   TestSuite.prototype._waitForScriptPause = function(callback) {
-    this.addSniffer(SDK.DebuggerModel.prototype, '_pausedScript', callback);
+    this.addSniffer(SDK.DebuggerModel.prototype, 'pausedScript', callback);
   };
 
   /**
@@ -1620,7 +1618,7 @@
       if (test._scriptsAreParsed(expectedScripts)) {
         callback();
       } else {
-        test.addSniffer(UI.panels.sources.sourcesView(), '_addUISourceCode', waitForAllScripts);
+        test.addSniffer(UI.panels.sources.sourcesView(), 'addUISourceCode', waitForAllScripts);
       }
     }
 
@@ -1647,11 +1645,10 @@
       if (runtimeModel.executionContexts().length >= n) {
         callback.call(null);
       } else {
-        this.addSniffer(SDK.RuntimeModel.prototype, '_executionContextCreated', checkForExecutionContexts.bind(this));
+        this.addSniffer(SDK.RuntimeModel.prototype, 'executionContextCreated', checkForExecutionContexts.bind(this));
       }
     }
   };
-
 
   window.uiTests = new TestSuite(window.domAutomationController);
 })(window);

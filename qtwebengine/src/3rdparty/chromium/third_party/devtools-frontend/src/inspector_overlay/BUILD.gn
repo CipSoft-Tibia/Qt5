@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//third_party/blink/public/public_features.gni")
+import("../scripts/build/ninja/vars.gni")
 import("../third_party/typescript/typescript.gni")
 
 resources_out_dir = "$root_out_dir/resources/inspector_overlay"
@@ -14,68 +14,42 @@ action("build_inspector_overlay") {
     "$target_gen_dir/common.css",
     "$target_gen_dir/common.js",
     "$target_gen_dir/css_grid_label_helpers.js",
+    "$target_gen_dir/drag_resize_handler.js",
     "$target_gen_dir/highlight_common.js",
+    "$target_gen_dir/highlight_container_query.js",
+    "$target_gen_dir/highlight_flex_common.js",
     "$target_gen_dir/highlight_grid_common.js",
-    "$target_gen_dir/tool_distances_impl.js",
+    "$target_gen_dir/highlight_isolated_element.js",
+    "$target_gen_dir/highlight_scroll_snap.js",
     "$target_gen_dir/tool_distances.js",
-    "$target_gen_dir/tool_highlight_grid_impl.js",
-    "$target_gen_dir/tool_highlight_grid.css",
-    "$target_gen_dir/tool_highlight_grid.js",
-    "$target_gen_dir/tool_highlight_impl.js",
-    "$target_gen_dir/tool_highlight.css",
+    "$target_gen_dir/tool_persistent.js",
+    "$target_gen_dir/tool_grid.css",
     "$target_gen_dir/tool_highlight.js",
-    "$target_gen_dir/tool_paused_impl.js",
-    "$target_gen_dir/tool_paused.css",
+    "$target_gen_dir/tool_highlight.css",
     "$target_gen_dir/tool_paused.js",
-    "$target_gen_dir/tool_screenshot_impl.js",
-    "$target_gen_dir/tool_screenshot.css",
+    "$target_gen_dir/tool_paused.css",
     "$target_gen_dir/tool_screenshot.js",
-    "$target_gen_dir/tool_source_order_impl.js",
-    "$target_gen_dir/tool_source_order.css",
+    "$target_gen_dir/tool_screenshot.css",
     "$target_gen_dir/tool_source_order.js",
-    "$target_gen_dir/tool_viewport_size_impl.js",
+    "$target_gen_dir/tool_source_order.css",
     "$target_gen_dir/tool_viewport_size.js",
+    "$target_gen_dir/main.js",
+    devtools_location_prepend + "inspector_overlay/loadCSS.rollup.js",
+    devtools_location_prepend + "node_modules/rollup/dist/bin/rollup",
   ]
 
-  outputs = [
-    "$resources_out_dir/common.css",
-    "$resources_out_dir/tool_distances.js",
-    "$resources_out_dir/tool_highlight_grid.js",
-    "$resources_out_dir/tool_highlight.js",
-    "$resources_out_dir/tool_paused.js",
-    "$resources_out_dir/tool_screenshot.js",
-    "$resources_out_dir/tool_source_order.js",
-    "$resources_out_dir/tool_viewport_size.js",
-  ]
+  outputs = [ "$resources_out_dir/main.js" ]
 
   args = [
-    "common.css",
-    "1200",  # max_size in bytes
-    "tool_highlight.js",
-    "90000",  # max_size in bytes
-    "tool_highlight_grid.js",
-    "70000",  # max_size in bytes
-    "tool_distances.js",
-    "5000",  # max_size in bytes
-    "tool_paused.js",
-    "10000",  # max_size in bytes
-    "tool_screenshot.js",
-    "5000",  # max_size in bytes
-    "tool_viewport_size.js",
-    "5000",  # max_size in bytes
-    "tool_source_order.js",
-    "11000",  # max_size in bytes
+    "main.js",
+    "80000",  # max_size in bytes
     "--input_path",
     rebase_path(target_gen_dir, root_build_dir),
     "--output_path",
     rebase_path(resources_out_dir, root_build_dir),
+    "--rollup_plugin",
+    rebase_path("loadCSS.rollup.js", root_build_dir),
   ]
-  if (use_rollup) {
-    args += [
-      "--rollup_plugin",
-      rebase_path("loadCSS.rollup.js", root_build_dir),
-    ]
-  }
 
   public_deps = [
     ":copy_css_to_gen",
@@ -92,8 +66,8 @@ copy("copy_resources") {
 copy("copy_css_to_gen") {
   sources = [
     "common.css",
+    "tool_grid.css",
     "tool_highlight.css",
-    "tool_highlight_grid.css",
     "tool_paused.css",
     "tool_screenshot.css",
     "tool_source_order.css",
@@ -103,24 +77,24 @@ copy("copy_css_to_gen") {
 
 ts_library("inspector_overlay") {
   sources = [
-    "common.js",
-    "css_grid_label_helpers.js",
-    "highlight_common.js",
-    "highlight_grid_common.js",
+    "common.ts",
+    "css_grid_label_helpers.ts",
+    "drag_resize_handler.ts",
+    "highlight_common.ts",
+    "highlight_container_query.ts",
+    "highlight_flex_common.ts",
+    "highlight_grid_common.ts",
+    "highlight_isolated_element.ts",
+    "highlight_scroll_snap.ts",
+    "main.ts",
     "tool_distances.ts",
-    "tool_distances_impl.ts",
-    "tool_highlight.js",
-    "tool_highlight_grid.js",
-    "tool_highlight_grid_impl.js",
-    "tool_highlight_impl.js",
-    "tool_paused.js",
-    "tool_paused_impl.js",
-    "tool_screenshot.js",
-    "tool_screenshot_impl.js",
+    "tool_highlight.ts",
+    "tool_paused.ts",
+    "tool_persistent.ts",
+    "tool_screenshot.ts",
     "tool_source_order.ts",
-    "tool_source_order_impl.ts",
-    "tool_viewport_size.js",
-    "tool_viewport_size_impl.js",
+    "tool_viewport_size.ts",
   ]
-  deps = [ "../front_end/common:bundle" ]
+
+  deps = [ "../front_end/core/common:ColorUtils" ]
 }

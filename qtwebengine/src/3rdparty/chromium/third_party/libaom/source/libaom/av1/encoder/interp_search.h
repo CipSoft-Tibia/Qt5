@@ -37,7 +37,7 @@ typedef struct {
 
 /*!\brief Miscellaneous arguments for inter mode search.
  */
-typedef struct {
+typedef struct HandleInterModeArgs {
   /*!
    * Buffer for the above predictor in OBMC
    */
@@ -119,10 +119,52 @@ typedef struct {
    * as a previous search.
    */
   INTERPOLATION_FILTER_STATS interp_filter_stats[MAX_INTERP_FILTER_STATS];
+
+  /*!
+   * Stack to store full pixel search start mv of NEWMV mode.
+   */
+  FULLPEL_MV start_mv_stack[(MAX_REF_MV_SEARCH - 1) * 2];
+
+  /*!
+   * Count of mvs in start mv stack.
+   */
+  int start_mv_cnt;
+
   /*!
    * Index of the last set of saved stats in the interp_filter_stats array.
    */
   int interp_filter_stats_idx;
+  /*!
+   * Estimated wedge index.
+   */
+  int wedge_index;
+  /*!
+   * Estimated wedge sign.
+   */
+  int wedge_sign;
+  /*!
+   * Estimated diff wtd index.
+   */
+  int diffwtd_index;
+  /*!
+   * Estimated cmp mode.
+   */
+  int cmp_mode[MODE_CTX_REF_FRAMES];
+  /*!
+   * The best sse during single new_mv search. Note that the sse here comes from
+   * single_motion_search, and not from interpolation_filter_search. This has
+   * two implications:
+   * 1. The mv used to calculate the sse here does not have to be the best sse
+   *    found in handle_inter_mode.
+   * 2. Even if the mvs agree, the sse here can differ from the sse in \ref
+   *    MACROBLOCK::pred_sse due to different interpolation filter used.
+   */
+  unsigned int best_single_sse_in_refs[REF_FRAMES];
+  /*!
+   * Holds the sse of best mode so far in the mode evaluation process. This is
+   * used in intermediate termination of NEWMV mode evaluation.
+   */
+  unsigned int best_pred_sse;
 } HandleInterModeArgs;
 
 /*!\cond */

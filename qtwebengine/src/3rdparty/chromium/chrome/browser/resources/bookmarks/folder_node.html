@@ -1,25 +1,34 @@
-<style include="shared-style">
+<style include="cr-shared-style shared-style cr-nav-menu-item-style">
   :host {
     display: block;
+    --cr-vertical-tab-height: 33px;
   }
 
-  #container {
+  .cr-nav-menu-item {
+    color: var(--folder-inactive-color);
+    /* Add enough space at the end for the focus outline to not be cropped. */
+    margin-inline-end: 3px;
+    padding: 0;
+  }
+
+  #inner-container {
     align-items: center;
     cursor: pointer;
     display: grid;
+    flex: 1;
     grid-template-areas: 'arrow folder label';
-    grid-template-columns: 24px 24px auto;
-    min-height: 40px;
+    grid-template-columns: 40px 24px auto;
+    min-height: 0;
     min-width: fit-content;
     overflow: hidden;
-    padding-inline-start: calc(var(--node-depth, 0) * 15px);
+    padding-inline-start: calc(var(--node-depth, 0) * 15px + 4px);
   }
 
   #arrow {
+    --cr-icon-button-size: 40px;
     grid-area: arrow;
     justify-self: center;
     margin: 0;
-    --cr-icon-button-size: 40px;
   }
 
   #arrow:not([is-open]) {
@@ -33,23 +42,15 @@
   }
 
   .menu-label {
-    color: var(--folder-inactive-color);
     font-weight: 500;
     grid-area: label;
     padding: 0 6px;
     white-space: nowrap;
   }
 
-  :host([is-selected-folder_]) .menu-label,
-  :host([is-selected-folder_]) .folder-icon {
-    color: var(--interactive-color);
-  }
-
   @media (prefers-color-scheme: dark) {
-    .drag-on .menu-label,
-    .drag-on .folder-icon,
-    .drag-on #arrow {
-      color: var(--google-grey-refresh-700);
+    .cr-nav-menu-item.drag-on {
+      color: var(--google-grey-700);
     }
   }
 
@@ -60,28 +61,55 @@
   #arrow[is-open] {
     transform: initial;
   }
+
+  .cr-vertical-tab::before {
+    display: none;
+  }
+
+  #container {
+    min-width: fit-content;
+    padding-inline-end: 10px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .cr-nav-menu-item[selected] #arrow,
+    .cr-nav-menu-item.drag-on #arrow {
+      --cr-icon-button-fill-color: black;
+    }
+
+    .cr-nav-menu-item.drag-on {
+      --iron-icon-fill-color: black;
+      background: var(--google-blue-300);
+      color: var(--google-grey-900);
+    }
+  }
 </style>
 
 <div id="container"
+    class$="cr-vertical-tab cr-nav-menu-item [[getContainerClass_(isSelectedFolder_)]]"
+    hidden="[[isRootFolder_(depth)]]"
+    role="treeitem"
+    aria-owns="descendants"
+    tabindex$="[[getTabIndex_(selectedFolder_, itemId)]]"
     on-click="selectFolder_"
     on-dblclick="toggleFolder_"
     on-contextmenu="onContextMenu_"
-    tabindex$="[[getTabIndex_(selectedFolder_, itemId)]]"
-    hidden="[[isRootFolder_(depth)]]"
-    role="treeitem"
-    aria-owns="descendants">
-  <template is="dom-if" if="[[hasChildFolder_]]">
-    <cr-icon-button id="arrow" iron-icon="cr:arrow-drop-down"
-        on-click="toggleFolder_" on-mousedown="preventDefault_"
-        tabindex="-1" is-open$="[[isOpen]]" noink aria-hidden="true">
-    </cr-icon-button>
-  </template>
-  <div class="folder-icon"
-      open$="[[isSelectedFolder_]]"
-      no-children$="[[!hasChildFolder_]]">
-  </div>
-  <div class="menu-label" title="[[item_.title]]">
-    [[item_.title]]
+    selected$="[[isSelectedFolder_]]">
+  <div id="inner-container">
+    <template is="dom-if" if="[[hasChildFolder_]]">
+      <cr-icon-button id="arrow" iron-icon="cr:arrow-drop-down"
+          on-click="toggleFolder_" on-mousedown="preventDefault_"
+          tabindex="-1" is-open$="[[isOpen]]" noink aria-hidden="true">
+      </cr-icon-button>
+    </template>
+    <div class="folder-icon icon-folder-open"
+        open$="[[isSelectedFolder_]]"
+        no-children$="[[!hasChildFolder_]]">
+    </div>
+    <div class="menu-label" title="[[item_.title]]">
+      [[item_.title]]
+    </div>
+    <paper-ripple></paper-ripple>
   </div>
 </div>
 <div id="descendants" role="group">

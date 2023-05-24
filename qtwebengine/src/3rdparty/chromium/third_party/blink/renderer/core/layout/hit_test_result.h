@@ -22,19 +22,26 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_HIT_TEST_RESULT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_HIT_TEST_RESULT_H_
 
+#include <tuple>
+
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/layout/geometry/physical_offset.h"
 #include "third_party/blink/renderer/core/layout/hit_test_location.h"
 #include "third_party/blink/renderer/core/layout/hit_test_request.h"
-#include "third_party/blink/renderer/platform/geometry/float_quad.h"
-#include "third_party/blink/renderer/platform/geometry/float_rect.h"
 #include "third_party/blink/renderer/platform/graphics/compositor_element_id.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_linked_hash_set.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector_traits.h"
+#include "ui/gfx/geometry/quad_f.h"
+#include "ui/gfx/geometry/rect_f.h"
+
+namespace cc {
+class Region;
+}
 
 namespace blink {
 
@@ -44,10 +51,10 @@ class HTMLAreaElement;
 class HTMLMediaElement;
 class Image;
 class KURL;
+class MediaSourceHandle;
 class MediaStreamDescriptor;
+class NGPhysicalBoxFragment;
 class Node;
-class LayoutObject;
-class Region;
 class Scrollbar;
 struct PhysicalOffset;
 
@@ -83,7 +90,6 @@ class CORE_EXPORT HitTestResult {
   // FIXME: Make these less error-prone for rect-based hit tests (center point
   // or fail).
   Node* InnerNode() const { return inner_node_.Get(); }
-  Node* InertNode() const { return inert_node_.Get(); }
   Node* InnerPossiblyPseudoNode() const {
     return inner_possibly_pseudo_node_.Get();
   }
@@ -108,42 +114,59 @@ class CORE_EXPORT HitTestResult {
   void SetPointInInnerNodeFrame(const PhysicalOffset& point) {
     point_in_inner_node_frame_ = point;
   }
-  IntPoint RoundedPointInInnerNodeFrame() const {
-    return RoundedIntPoint(PointInInnerNodeFrame());
+  gfx::Point RoundedPointInInnerNodeFrame() const {
+    return ToRoundedPoint(PointInInnerNodeFrame());
   }
   LocalFrame* InnerNodeFrame() const;
 
-  // The hit-tested point in the coordinates of the inner node.
+  // The hit-tested point in the coordinates of the
+  // |inner_possibly_pseudo_node_|.
   const PhysicalOffset& LocalPoint() const { return local_point_; }
   void SetNodeAndPosition(Node* node, const PhysicalOffset& p) {
     local_point_ = p;
     SetInnerNode(node);
   }
+  void SetNodeAndPosition(Node*,
+                          const NGPhysicalBoxFragment*,
+                          const PhysicalOffset&);
+
+  // Override an inner node previously set. The new node needs to be monolithic
+  // (or at least only consist of one fragment).
+  //
+  // TODO(layout-dev): Figure out if we really need this. Why can't we just
+  // hit-test correctly in the first place instead?
+  void OverrideNodeAndPosition(Node*, PhysicalOffset);
 
   PositionWithAffinity GetPosition() const;
-  LayoutObject* GetLayoutObject() const;
+  PositionWithAffinity GetPositionForInnerNodeOrImageMapImage() const;
 
   void SetToShadowHostIfInRestrictedShadowRoot();
 
   const HitTestRequest& GetHitTestRequest() const { return hit_test_request_; }
 
   void SetInnerNode(Node*);
-  void SetInertNode(Node*);
   HTMLAreaElement* ImageAreaForImage() const;
   void SetURLElement(Element*);
   void SetScrollbar(Scrollbar*);
   void SetIsOverEmbeddedContentView(bool b) {
     is_over_embedded_content_view_ = b;
   }
+  void SetIsOverResizer(bool is_over_resizer) {
+    is_over_resizer_ = is_over_resizer;
+  }
+  bool IsOverResizer() const { return is_over_resizer_; }
 
   bool IsSelected(const HitTestLocation& location) const;
   String Title(TextDirection&) const;
   const AtomicString& AltDisplayString() const;
+  static Image* GetImage(const Node* node);
   Image* GetImage() const;
-  IntRect ImageRect() const;
+  gfx::Rect ImageRect() const;
+  static KURL AbsoluteImageURL(const Node* node);
   KURL AbsoluteImageURL() const;
   KURL AbsoluteMediaURL() const;
   MediaStreamDescriptor* GetMediaStreamDescriptor() const;
+  MediaSourceHandle* GetMediaSourceHandle() const;
   KURL AbsoluteLinkURL() const;
   String TextContent() const;
   bool IsLiveLink() const;
@@ -167,9 +190,16 @@ class CORE_EXPORT HitTestResult {
       const PhysicalRect& = PhysicalRect());
   ListBasedHitTestBehavior AddNodeToListBasedTestResult(Node*,
                                                         const HitTestLocation&,
-                                                        const Region&);
+                                                        const gfx::QuadF& quad);
+  ListBasedHitTestBehavior AddNodeToListBasedTestResult(Node*,
+                                                        const HitTestLocation&,
+                                                        const cc::Region&);
 
   void Append(const HitTestResult&);
+
+  bool HasListBasedResult() const {
+    return GetHitTestRequest().ListBased() && InnerNode();
+  }
 
   // If m_listBasedTestResult is 0 then set it to a new NodeSet. Return
   // *m_listBasedTestResult. Lazy allocation makes sense because the NodeSet is
@@ -187,19 +217,22 @@ class CORE_EXPORT HitTestResult {
  private:
   NodeSet& MutableListBasedTestResult();  // See above.
   HTMLMediaElement* MediaElement() const;
+  std::tuple<bool, ListBasedHitTestBehavior>
+  AddNodeToListBasedTestResultInternal(Node* node,
+                                       const HitTestLocation& location);
 
   HitTestRequest hit_test_request_;
   bool cacheable_;
 
   Member<Node> inner_node_;
-  Member<Node> inert_node_;
   // This gets calculated in the first call to InnerElement function.
   Member<Element> inner_element_;
   Member<Node> inner_possibly_pseudo_node_;
   // FIXME: Nothing changes this to a value different from m_hitTestLocation!
   // The hit-tested point in innerNode frame coordinates.
   PhysicalOffset point_in_inner_node_frame_;
-  // A point in the local coordinate space of m_innerNode's layoutObject.Allows
+  // A point in the local coordinate space of |inner_possibly_pseudo_node_|'s
+  // layoutObject, or its containing block when it is an inline object. Allows
   // us to efficiently determine where inside the layoutObject we hit on
   // subsequent operations.
   PhysicalOffset local_point_;
@@ -209,6 +242,11 @@ class CORE_EXPORT HitTestResult {
   // Returns true if we are over a EmbeddedContentView (and not in the
   // border/padding area of a LayoutEmbeddedContent for example).
   bool is_over_embedded_content_view_;
+  // This is true if the location is over the bottom right of a resizable
+  // object, where resize controls are located. See
+  // PaintLayerScrollableArea::IsAbsolutePointInResizeControl for how that is
+  // tested.
+  bool is_over_resizer_ = false;
 
   mutable Member<NodeSet> list_based_test_result_;
   String canvas_region_id_;

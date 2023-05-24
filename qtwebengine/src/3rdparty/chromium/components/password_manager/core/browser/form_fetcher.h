@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,19 +6,18 @@
 #define COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_FORM_FETCHER_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/containers/span.h"
-#include "base/macros.h"
 #include "base/observer_list_types.h"
-#include "base/strings/string16.h"
 #include "components/autofill/core/common/gaia_id_hash.h"
-#include "components/password_manager/core/browser/password_form_forward.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_store_util.h"
 
 namespace password_manager {
 
-struct CompromisedCredentials;
 struct InteractionsStats;
+struct PasswordForm;
 
 // This is an API for providing stored credentials to PasswordFormManager (PFM),
 // so that PFM instances do not have to talk to PasswordStore directly. This
@@ -41,6 +40,9 @@ class FormFetcher {
   };
 
   FormFetcher() = default;
+
+  FormFetcher(const FormFetcher&) = delete;
+  FormFetcher& operator=(const FormFetcher&) = delete;
 
   virtual ~FormFetcher() = default;
 
@@ -65,35 +67,38 @@ class FormFetcher {
   virtual const std::vector<InteractionsStats>& GetInteractionsStats()
       const = 0;
 
-  // Compromised records for the current site.
-  virtual base::span<const CompromisedCredentials> GetCompromisedCredentials()
-      const = 0;
+  // Returns all PasswordForm entries that have insecure features.
+  // Do not store the result of this call. The pointers become invalid if `this`
+  // receives new results from a password store.
+  virtual std::vector<const PasswordForm*> GetInsecureCredentials() const = 0;
 
-  // Non-federated matches obtained from the backend. Valid only if GetState()
-  // returns NOT_WAITING.
+  // Non-federated matches obtained from the backend.
+  // Do not store the result of this call. The pointers become invalid if `this`
+  // receives new results from a password store.
   virtual std::vector<const PasswordForm*> GetNonFederatedMatches() const = 0;
 
-  // Federated matches obtained from the backend. Valid only if GetState()
-  // returns NOT_WAITING.
+  // Federated matches obtained from the backend.
+  // Do not store the result of this call. The pointers become invalid if `this`
+  // receives new results from a password store.
   virtual std::vector<const PasswordForm*> GetFederatedMatches() const = 0;
 
-  // Whether there are blacklisted matches in the backend. Valid only if
+  // Whether there are blocklisted matches in the backend. Valid only if
   // GetState() returns NOT_WAITING.
-  virtual bool IsBlacklisted() const = 0;
+  virtual bool IsBlocklisted() const = 0;
 
   // Whether moving the credentials with |username| from the
   // local store to the account store for the user with
   // |destination| GaiaIdHash is blocked. This is relevant only for account
   // store users.
   virtual bool IsMovingBlocked(const autofill::GaiaIdHash& destination,
-                               const base::string16& username) const = 0;
+                               const std::u16string& username) const = 0;
 
   // Non-federated matches obtained from the backend that have the same scheme
   // of this form.
   virtual const std::vector<const PasswordForm*>& GetAllRelevantMatches()
       const = 0;
 
-  // Nonblacklisted matches obtained from the backend.
+  // Nonblocklisted matches obtained from the backend.
   virtual const std::vector<const PasswordForm*>& GetBestMatches() const = 0;
 
   // Pointer to a preferred entry in the vector returned by GetBestMatches().
@@ -103,8 +108,10 @@ class FormFetcher {
   // need for calling Fetch().
   virtual std::unique_ptr<FormFetcher> Clone() = 0;
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(FormFetcher);
+  // Returns an error if it occurred during login retrieval from the
+  // profile store.
+  virtual absl::optional<PasswordStoreBackendError>
+  GetProfileStoreBackendError() const = 0;
 };
 
 }  // namespace password_manager

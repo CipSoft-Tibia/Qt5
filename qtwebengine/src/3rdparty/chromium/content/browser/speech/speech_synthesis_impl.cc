@@ -1,10 +1,12 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/speech/speech_synthesis_impl.h"
 
+#include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/speech/tts_utterance_impl.h"
+#include "content/public/browser/web_contents.h"
 
 namespace content {
 namespace {
@@ -34,10 +36,16 @@ class EventThunk : public UtteranceEventDelegate {
         client_->OnStartedSpeaking();
         break;
       case TTS_EVENT_END:
+        client_->OnFinishedSpeaking(
+            blink::mojom::SpeechSynthesisErrorCode::kNoError);
+        break;
       case TTS_EVENT_INTERRUPTED:
+        client_->OnFinishedSpeaking(
+            blink::mojom::SpeechSynthesisErrorCode::kInterrupted);
+        break;
       case TTS_EVENT_CANCELLED:
-        // The web platform API does not differentiate these events.
-        client_->OnFinishedSpeaking();
+        client_->OnFinishedSpeaking(
+            blink::mojom::SpeechSynthesisErrorCode::kCancelled);
         break;
       case TTS_EVENT_WORD:
         client_->OnEncounteredWordBoundary(char_index, char_length);
@@ -88,8 +96,9 @@ void SendVoiceListToObserver(
 }  // namespace
 
 SpeechSynthesisImpl::SpeechSynthesisImpl(BrowserContext* browser_context,
-                                         WebContents* web_contents)
-    : browser_context_(browser_context), web_contents_(web_contents) {
+                                         RenderFrameHostImpl* rfh)
+    : browser_context_(browser_context),
+      web_contents_(WebContents::FromRenderFrameHost((rfh))) {
   DCHECK(browser_context_);
   DCHECK(web_contents_);
   TtsController::GetInstance()->AddVoicesChangedDelegate(this);
@@ -115,7 +124,7 @@ void SpeechSynthesisImpl::AddVoiceListObserver(
       std::move(pending_observer));
 
   std::vector<VoiceData> voices;
-  TtsController::GetInstance()->GetVoices(browser_context_, &voices);
+  TtsController::GetInstance()->GetVoices(browser_context_, GURL(), &voices);
   SendVoiceListToObserver(observer.get(), voices);
 
   observer_set_.Add(std::move(observer));
@@ -124,12 +133,15 @@ void SpeechSynthesisImpl::AddVoiceListObserver(
 void SpeechSynthesisImpl::Speak(
     blink::mojom::SpeechSynthesisUtterancePtr utterance,
     mojo::PendingRemote<blink::mojom::SpeechSynthesisClient> client) {
+  if (web_contents_->IsAudioMuted())
+    return;
+
   std::unique_ptr<TtsUtterance> tts_utterance =
       std::make_unique<TtsUtteranceImpl>(browser_context_, web_contents_);
   tts_utterance->SetText(utterance->text);
   tts_utterance->SetLang(utterance->lang);
   tts_utterance->SetVoiceName(utterance->voice);
-  tts_utterance->SetCanEnqueue(true);
+  tts_utterance->SetShouldClearQueue(false);
   tts_utterance->SetContinuousParameters(utterance->rate, utterance->pitch,
                                          utterance->volume);
 
@@ -153,7 +165,7 @@ void SpeechSynthesisImpl::Cancel() {
 
 void SpeechSynthesisImpl::OnVoicesChanged() {
   std::vector<VoiceData> voices;
-  TtsController::GetInstance()->GetVoices(browser_context_, &voices);
+  TtsController::GetInstance()->GetVoices(browser_context_, GURL(), &voices);
   for (auto& observer : observer_set_)
     SendVoiceListToObserver(observer.get(), voices);
 }

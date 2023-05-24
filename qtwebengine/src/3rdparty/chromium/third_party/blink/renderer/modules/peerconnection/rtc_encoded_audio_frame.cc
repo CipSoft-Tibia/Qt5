@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,29 +18,31 @@ RTCEncodedAudioFrame::RTCEncodedAudioFrame(
     std::unique_ptr<webrtc::TransformableFrameInterface> webrtc_frame)
     : delegate_(base::MakeRefCounted<RTCEncodedAudioFrameDelegate>(
           std::move(webrtc_frame),
-          Vector<uint32_t>())) {}
+          Vector<uint32_t>(),
+          absl::nullopt)) {}
 
 RTCEncodedAudioFrame::RTCEncodedAudioFrame(
     std::unique_ptr<webrtc::TransformableAudioFrameInterface>
         webrtc_audio_frame) {
   Vector<uint32_t> contributing_sources;
+  absl::optional<uint16_t> sequence_number;
   if (webrtc_audio_frame) {
-    wtf_size_t num_csrcs = webrtc_audio_frame->GetHeader().numCSRCs;
-    contributing_sources.ReserveInitialCapacity(num_csrcs);
-    for (wtf_size_t i = 0; i < num_csrcs; i++) {
-      contributing_sources.push_back(
-          webrtc_audio_frame->GetHeader().arrOfCSRCs[i]);
+    contributing_sources.assign(webrtc_audio_frame->GetContributingSources());
+    if (webrtc_audio_frame->GetDirection() ==
+        webrtc::TransformableFrameInterface::Direction::kReceiver) {
+      sequence_number = webrtc_audio_frame->GetHeader().sequenceNumber;
     }
   }
   delegate_ = base::MakeRefCounted<RTCEncodedAudioFrameDelegate>(
-      std::move(webrtc_audio_frame), std::move(contributing_sources));
+      std::move(webrtc_audio_frame), std::move(contributing_sources),
+      sequence_number);
 }
 
 RTCEncodedAudioFrame::RTCEncodedAudioFrame(
     scoped_refptr<RTCEncodedAudioFrameDelegate> delegate)
     : delegate_(std::move(delegate)) {}
 
-uint64_t RTCEncodedAudioFrame::timestamp() const {
+uint32_t RTCEncodedAudioFrame::timestamp() const {
   return delegate_->Timestamp();
 }
 
@@ -54,33 +56,29 @@ DOMArrayBuffer* RTCEncodedAudioFrame::data() const {
 RTCEncodedAudioFrameMetadata* RTCEncodedAudioFrame::getMetadata() const {
   RTCEncodedAudioFrameMetadata* metadata =
       RTCEncodedAudioFrameMetadata::Create();
-  metadata->setSynchronizationSource(delegate_->Ssrc());
+  if (delegate_->Ssrc()) {
+    metadata->setSynchronizationSource(*delegate_->Ssrc());
+  }
   metadata->setContributingSources(delegate_->ContributingSources());
+  if (delegate_->PayloadType()) {
+    metadata->setPayloadType(*delegate_->PayloadType());
+  }
+  if (delegate_->SequenceNumber()) {
+    metadata->setSequenceNumber(*delegate_->SequenceNumber());
+  }
   return metadata;
-}
-
-DOMArrayBuffer* RTCEncodedAudioFrame::additionalData() const {
-  return nullptr;
 }
 
 void RTCEncodedAudioFrame::setData(DOMArrayBuffer* data) {
   frame_data_ = data;
 }
 
-uint32_t RTCEncodedAudioFrame::synchronizationSource() const {
-  return delegate_->Ssrc();
-}
-
-Vector<uint32_t> RTCEncodedAudioFrame::contributingSources() const {
-  return delegate_->ContributingSources();
-}
-
 String RTCEncodedAudioFrame::toString() const {
   StringBuilder sb;
-  sb.Append("RTCEncodedAudioFrame{timestamp: ");
-  sb.AppendNumber(timestamp());
-  sb.Append("us, size: ");
-  sb.AppendNumber(data() ? data()->ByteLengthAsSizeT() : 0);
+  sb.Append("RTCEncodedAudioFrame{rtpTimestamp: ");
+  sb.AppendNumber(delegate_->Timestamp());
+  sb.Append(", size: ");
+  sb.AppendNumber(data() ? data()->ByteLength() : 0);
   sb.Append("}");
   return sb.ToString();
 }

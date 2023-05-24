@@ -1,12 +1,18 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/tiles/image_decode_cache.h"
 
+#include <limits>
+#include <utility>
+
+#include "base/check_op.h"
 #include "cc/raster/tile_task.h"
 
 namespace cc {
+
+const ImageDecodeCache::ClientId ImageDecodeCache::kDefaultClientId = 1;
 
 ImageDecodeCache::TaskResult::TaskResult(
     bool need_unref,
@@ -29,5 +35,10 @@ ImageDecodeCache::TaskResult::TaskResult(
 ImageDecodeCache::TaskResult::TaskResult(const TaskResult& result) = default;
 
 ImageDecodeCache::TaskResult::~TaskResult() = default;
+
+ImageDecodeCache::ClientId ImageDecodeCache::GenerateClientId() {
+  DCHECK_LT(next_available_id_, std::numeric_limits<uint32_t>::max());
+  return ++next_available_id_;
+}
 
 }  // namespace cc

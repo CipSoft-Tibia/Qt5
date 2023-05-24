@@ -1,42 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore/QDir>
 #include <QtCore/QString>
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtCore/QProcess>
 #include <QtCore/QByteArray>
 #include <QtCore/QLibraryInfo>
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QStandardPaths>
-#include <QtCore/QVector>
+#include <QtCore/QList>
 
 #include <cstdio>
 
@@ -67,7 +42,7 @@ class tst_uic : public QObject
     Q_OBJECT
 
 public:
-    using TestEntries = QVector<TestEntry>;
+    using TestEntries = QList<TestEntry>;
 
     tst_uic();
 
@@ -105,7 +80,7 @@ static const char versionRegexp[] =
     R"([*#][*#] Created by: Qt User Interface Compiler version \d{1,2}\.\d{1,2}\.\d{1,2})";
 
 tst_uic::tst_uic()
-    : m_command(QLibraryInfo::location(QLibraryInfo::BinariesPath) + QLatin1String("/uic"))
+    : m_command(QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath) + QLatin1String("/uic"))
     , m_versionRegexp(QLatin1String(versionRegexp))
 {
 }
@@ -117,7 +92,7 @@ static QByteArray msgProcessStartFailed(const QString &command, const QString &w
     return result.toLocal8Bit();
 }
 
-// Locate Python and check whether PySide2 is installed
+// Locate Python and check whether Qt for Python is installed
 static QString locatePython(QTemporaryDir &generatedDir)
 {
     QString python = QStandardPaths::findExecutable(QLatin1String("python"));
@@ -128,7 +103,9 @@ static QString locatePython(QTemporaryDir &generatedDir)
     QFile importTestFile(generatedDir.filePath(QLatin1String("import_test.py")));
     if (!importTestFile.open(QIODevice::WriteOnly| QIODevice::Text))
         return QString();
-    importTestFile.write("import PySide2.QtCore\n");
+    importTestFile.write("import PySide");
+    importTestFile.write(QByteArray::number(QT_VERSION_MAJOR));
+    importTestFile.write(".QtCore\n");
     importTestFile.close();
     QProcess process;
     process.start(python, {importTestFile.fileName()});
@@ -136,7 +113,7 @@ static QString locatePython(QTemporaryDir &generatedDir)
         return QString();
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         const QString stdErr = QString::fromLocal8Bit(process.readAllStandardError()).simplified();
-        qWarning("PySide2 is not installed (%s)", qPrintable(stdErr));
+        qWarning("PySide6 is not installed (%s)", qPrintable(stdErr));
         return QString();
     }
     importTestFile.remove();

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,12 @@
 #include <memory>
 #include <set>
 
-#include "base/feature_list.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/discardable_memory_allocator.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/ref_counted_delete_on_sequence.h"
 #include "base/memory/unsafe_shared_memory_region.h"
 #include "base/synchronization/lock.h"
+#include "base/threading/thread_checker.h"
 #include "base/trace_event/memory_dump_provider.h"
 #include "components/discardable_memory/common/discardable_memory_export.h"
 #include "components/discardable_memory/common/discardable_shared_memory_heap.h"
@@ -28,28 +29,38 @@ class SingleThreadTaskRunner;
 
 namespace discardable_memory {
 
-DISCARDABLE_MEMORY_EXPORT extern const base::Feature kSchedulePeriodicPurge;
-
 // Implementation of DiscardableMemoryAllocator that allocates
 // discardable memory segments through the browser process.
 class DISCARDABLE_MEMORY_EXPORT ClientDiscardableSharedMemoryManager
     : public base::DiscardableMemoryAllocator,
-      public base::trace_event::MemoryDumpProvider {
+      public base::trace_event::MemoryDumpProvider,
+      public base::RefCountedDeleteOnSequence<
+          ClientDiscardableSharedMemoryManager> {
  public:
   ClientDiscardableSharedMemoryManager(
       mojo::PendingRemote<mojom::DiscardableSharedMemoryManager> manager,
-      scoped_refptr<base::SingleThreadTaskRunner> io_task_runner,
-      scoped_refptr<base::SingleThreadTaskRunner> periodic_purge_task_runner =
-          nullptr);
-  ~ClientDiscardableSharedMemoryManager() override;
+      scoped_refptr<base::SingleThreadTaskRunner> io_task_runner);
+
+  ClientDiscardableSharedMemoryManager(
+      const ClientDiscardableSharedMemoryManager&) = delete;
+  ClientDiscardableSharedMemoryManager& operator=(
+      const ClientDiscardableSharedMemoryManager&) = delete;
 
   // Overridden from base::DiscardableMemoryAllocator:
   std::unique_ptr<base::DiscardableMemory> AllocateLockedDiscardableMemory(
-      size_t size) override;
+      size_t size) override LOCKS_EXCLUDED(lock_);
+
+  // Overridden from base::DiscardableMemoryAllocator:
+  size_t GetBytesAllocated() const override LOCKS_EXCLUDED(lock_);
+
+  // Overridden from base::DiscardableMemoryAllocator:
+  // Release memory and associated resources that have been purged.
+  void ReleaseFreeMemory() override LOCKS_EXCLUDED(lock_);
 
   // Overridden from base::trace_event::MemoryDumpProvider:
   bool OnMemoryDump(const base::trace_event::MemoryDumpArgs& args,
-                    base::trace_event::ProcessMemoryDump* pmd) override;
+                    base::trace_event::ProcessMemoryDump* pmd) override
+      LOCKS_EXCLUDED(lock_);
 
   // Purge all unlocked memory that was allocated by this manager.
   void BackgroundPurge();
@@ -63,48 +74,38 @@ class DISCARDABLE_MEMORY_EXPORT ClientDiscardableSharedMemoryManager
   void OnForegrounded();
   void OnBackgrounded();
 
-  // Release memory and associated resources that have been purged.
-  void ReleaseFreeMemory() override;
-
-  bool LockSpan(DiscardableSharedMemoryHeap::Span* span)
-      EXCLUSIVE_LOCKS_REQUIRED(GetLock());
-  void UnlockSpan(DiscardableSharedMemoryHeap::Span* span)
-      EXCLUSIVE_LOCKS_REQUIRED(GetLock());
-
-  base::trace_event::MemoryAllocatorDump* CreateMemoryAllocatorDump(
-      DiscardableSharedMemoryHeap::Span* span,
-      const char* name,
-      base::trace_event::ProcessMemoryDump* pmd) const;
-
-  void StartScheduledPurging();
-  void StopScheduledPurging();
-
-  struct Statistics {
-    size_t total_size;
-    size_t freelist_size;
-  };
-
-  // Overridden from base::DiscardableMemoryAllocator:
-  size_t GetBytesAllocated() const override;
   void SetBytesAllocatedLimitForTesting(size_t limit) {
     bytes_allocated_limit_for_testing_ = limit;
   }
 
-  static constexpr base::TimeDelta kMinAgeForScheduledPurge =
-      base::TimeDelta::FromMinutes(5);
+  // Anything younger than |kMinAgeForScheduledPurge| is not discarded when we
+  // do our periodic purge.
+  static constexpr base::TimeDelta kMinAgeForScheduledPurge = base::Minutes(5);
+
+  // The expected cost of purging should be very small (< 1ms), so it can be
+  // scheduled frequently. However, we don't purge memory that has been touched
+  // recently (see: |BackgroundPurge()| and |kMinAgeForScheduledPurge|), so
+  // there is no benefit to scheduling this more than once per minute.
+  static constexpr base::TimeDelta kScheduledPurgeInterval = base::Minutes(1);
 
   // These fields are only protected for testing, they would otherwise be
   // private. Everything else should be either public or private.
  protected:
-  ClientDiscardableSharedMemoryManager(
-      scoped_refptr<base::SingleThreadTaskRunner> io_task_runner,
-      scoped_refptr<base::SingleThreadTaskRunner> periodic_purge_task_runner);
-  std::unique_ptr<DiscardableSharedMemoryHeap> heap_ GUARDED_BY(lock_);
+  friend class base::RefCountedDeleteOnSequence<
+      ClientDiscardableSharedMemoryManager>;
+  friend class base::DeleteHelper<ClientDiscardableSharedMemoryManager>;
+
+  ~ClientDiscardableSharedMemoryManager() override;
+  explicit ClientDiscardableSharedMemoryManager(
+      scoped_refptr<base::SingleThreadTaskRunner> io_task_runner);
+
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
   mutable base::Lock lock_;
-  std::unique_ptr<base::RepeatingTimer> timer_ GUARDED_BY(lock_);
-  scoped_refptr<base::SingleThreadTaskRunner> periodic_purge_task_runner_;
+  std::unique_ptr<DiscardableSharedMemoryHeap> heap_ GUARDED_BY(lock_);
+  bool is_purge_scheduled_ GUARDED_BY(lock_) = false;
 
  private:
+  friend class TestClientDiscardableSharedMemoryManager;
   class DiscardableMemoryImpl : public base::DiscardableMemory {
    public:
     DiscardableMemoryImpl(
@@ -116,10 +117,10 @@ class DISCARDABLE_MEMORY_EXPORT ClientDiscardableSharedMemoryManager
     DiscardableMemoryImpl& operator=(const DiscardableMemoryImpl&) = delete;
 
     // Overridden from base::DiscardableMemory:
-    bool Lock() override;
-    void Unlock() override;
-    void* data() const override;
-    void DiscardForTesting() override;
+    bool Lock() override LOCKS_EXCLUDED(manager_->lock_);
+    void Unlock() override LOCKS_EXCLUDED(manager_->lock_);
+    void* data() const override LOCKS_EXCLUDED(manager_->lock_);
+    void DiscardForTesting() override LOCKS_EXCLUDED(manager_->lock_);
     base::trace_event::MemoryAllocatorDump* CreateMemoryAllocatorDump(
         const char* name,
         base::trace_event::ProcessMemoryDump* pmd) const override;
@@ -127,23 +128,35 @@ class DISCARDABLE_MEMORY_EXPORT ClientDiscardableSharedMemoryManager
     // Returns |span_| if it has been unlocked since at least |min_ticks|,
     // otherwise nullptr.
     std::unique_ptr<DiscardableSharedMemoryHeap::Span> Purge(
-        base::TimeTicks min_ticks)
-        EXCLUSIVE_LOCKS_REQUIRED(manager_->GetLock());
+        base::TimeTicks min_ticks) EXCLUSIVE_LOCKS_REQUIRED(manager_->lock_);
 
    private:
-    bool is_locked() const EXCLUSIVE_LOCKS_REQUIRED(manager_->GetLock());
+    bool is_locked() const EXCLUSIVE_LOCKS_REQUIRED(manager_->lock_);
 
     friend class ClientDiscardableSharedMemoryManager;
-    ClientDiscardableSharedMemoryManager* const manager_;
+    // We need to ensure that |manager_| outlives |this|, to avoid a
+    // use-after-free.
+    scoped_refptr<ClientDiscardableSharedMemoryManager> const manager_;
     std::unique_ptr<DiscardableSharedMemoryHeap::Span> span_;
     // Set to an invalid base::TimeTicks when |this| is Lock()-ed, and to
     // |TimeTicks::Now()| each time |this| is Unlock()-ed.
-    base::TimeTicks last_locked_ GUARDED_BY(manager_->GetLock());
+    base::TimeTicks last_locked_ GUARDED_BY(manager_->lock_);
   };
+
+  struct Statistics {
+    size_t total_size;
+    size_t freelist_size;
+  };
+
+  base::trace_event::MemoryAllocatorDump* CreateMemoryAllocatorDump(
+      DiscardableSharedMemoryHeap::Span* span,
+      const char* name,
+      base::trace_event::ProcessMemoryDump* pmd) const
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Purge any unlocked memory from foreground that hasn't been touched in a
   // while.
-  void ScheduledPurge();
+  void ScheduledPurge() LOCKS_EXCLUDED(lock_);
 
   // This is only virtual for testing.
   virtual std::unique_ptr<base::DiscardableSharedMemory>
@@ -162,14 +175,20 @@ class DISCARDABLE_MEMORY_EXPORT ClientDiscardableSharedMemoryManager
                           size_t new_bytes_free) const;
 
   // Releases all unlocked memory that was last locked at least |min_age| ago.
-  void PurgeUnlockedMemory(base::TimeDelta min_age);
-  void ReleaseFreeMemoryImpl();
-  void ReleaseMemory(DiscardableMemoryImpl* memory,
-                     std::unique_ptr<DiscardableSharedMemoryHeap::Span> span)
+  void PurgeUnlockedMemory(base::TimeDelta min_age) LOCKS_EXCLUDED(lock_);
+
+  bool LockSpan(DiscardableSharedMemoryHeap::Span* span)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void UnlockSpan(DiscardableSharedMemoryHeap::Span* span)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void UnlockAndReleaseMemory(
+      DiscardableMemoryImpl* memory,
+      std::unique_ptr<DiscardableSharedMemoryHeap::Span> span)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void ReleaseSpan(std::unique_ptr<DiscardableSharedMemoryHeap::Span> span)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  base::Lock& GetLock() { return lock_; }
+
+  size_t GetBytesAllocatedLocked() const EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   scoped_refptr<base::SingleThreadTaskRunner> io_task_runner_;
   // TODO(penghuang): Switch to SharedRemote when it starts supporting
@@ -187,10 +206,7 @@ class DISCARDABLE_MEMORY_EXPORT ClientDiscardableSharedMemoryManager
   // RenderThreadImpl.
   bool foregrounded_ = false;
 
-  base::WeakPtrFactory<ClientDiscardableSharedMemoryManager> weak_factory_{
-      this};
-
-  DISALLOW_COPY_AND_ASSIGN(ClientDiscardableSharedMemoryManager);
+  THREAD_CHECKER(thread_checker_);
 };
 
 }  // namespace discardable_memory

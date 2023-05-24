@@ -83,6 +83,7 @@ static int get_frame_stats(aom_codec_ctx_t *ctx, const aom_image_t *img,
       const uint8_t *const pkt_buf = pkt->data.twopass_stats.buf;
       const size_t pkt_size = pkt->data.twopass_stats.sz;
       stats->buf = realloc(stats->buf, stats->sz + pkt_size);
+      if (!stats->buf) die("Failed to allocate frame stats buffer.");
       memcpy((uint8_t *)stats->buf + stats->sz, pkt_buf, pkt_size);
       stats->sz += pkt_size;
     }
@@ -218,7 +219,7 @@ int main(int argc, char **argv) {
     die("Invalid frame size: %dx%d", w, h);
 
   if (!aom_img_alloc(&raw, AOM_IMG_FMT_I420, w, h, 1))
-    die("Failed to allocate image", w, h);
+    die("Failed to allocate image (%dx%d)", w, h);
 
   printf("Using %s\n", aom_codec_iface_name(encoder));
 

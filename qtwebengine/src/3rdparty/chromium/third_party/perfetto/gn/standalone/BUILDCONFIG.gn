@@ -32,14 +32,16 @@ if (current_os == "") {
 }
 
 is_android = current_os == "android"
+is_chromeos = current_os == "chromeos"
 is_linux = current_os == "linux"
 is_linux_host = host_os == "linux"
 is_mac = current_os == "mac"
 is_mac_host = host_os == "mac"
+is_win = current_os == "win"
+is_win_host = host_os == "win"
 
 # Building with Windows/Fuchsia/nacl is currently only supported in the Chromium
 # tree so always set this to false.
-is_win = false
 is_fuchsia = false
 is_nacl = false
 
@@ -53,20 +55,28 @@ if (current_cpu == "") {
   current_cpu = target_cpu
 }
 
-is_cross_compiling =
-    target_cpu != host_cpu || target_os != host_os || target_triplet != ""
-
+declare_args() {
+  # the ossfuzz sanitizer overrides this to true. In that config the
+  # host/target cpu and arch are identical, but we want to build only the
+  # targets with the sanitizer/fuzzer flags
+  is_cross_compiling =
+      target_cpu != host_cpu || target_os != host_os || target_triplet != ""
+}
 default_configs = [
   "//gn/standalone:debug_symbols",
   "//gn/standalone:default",
-  "//gn/standalone:c++11",
   "//gn/standalone:extra_warnings",
   "//gn/standalone:no_exceptions",
   "//gn/standalone:no_rtti",
   "//gn/standalone:visibility_hidden",
   "//gn/standalone/libc++:config",
   "//gn/standalone/sanitizers:sanitizers_cflags",
+  "//gn/standalone:c++17",
 ]
+
+if (is_win) {
+  default_configs += [ "//gn/standalone:win32_lean_and_mean" ]
+}
 
 if (!is_debug) {
   default_configs -= [ "//gn/standalone:debug_symbols" ]
@@ -100,7 +110,11 @@ set_defaults("executable") {
   configs += [ "//gn/standalone:android_liblog" ]
 }
 
-_default_toolchain = "//gn/standalone/toolchain:gcc_like"
+if (is_win) {
+  _default_toolchain = "//gn/standalone/toolchain:msvc"
+} else {
+  _default_toolchain = "//gn/standalone/toolchain:gcc_like"
+}
 set_default_toolchain(_default_toolchain)
 
 if (is_cross_compiling) {

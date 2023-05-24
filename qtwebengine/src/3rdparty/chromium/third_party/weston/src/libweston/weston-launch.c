@@ -295,6 +295,19 @@ setenv_fd(const char *env, int fd)
 }
 
 static int
+open_tty_by_number(int ttynr)
+{
+	int ret;
+	char filename[16];
+
+	ret = snprintf(filename, sizeof filename, "/dev/tty%d", ttynr);
+	if (ret < 0)
+		return -1;
+
+	return open(filename, O_RDWR | O_NOCTTY);
+}
+
+static int
 send_reply(struct weston_launch *wl, int reply)
 {
 	int len;
@@ -386,6 +399,22 @@ err0:
 	return 0;
 }
 
+static void
+close_input_fds(struct weston_launch *wl)
+{
+	struct stat s;
+	int fd;
+
+	for (fd = 3; fd <= wl->last_input_fd; fd++) {
+		if (fstat(fd, &s) == 0 && major(s.st_rdev) == INPUT_MAJOR) {
+			/* EVIOCREVOKE may fail if the kernel doesn't
+			 * support it, but all we can do is ignore it. */
+			ioctl(fd, EVIOCREVOKE, 0);
+			close(fd);
+		}
+	}
+}
+
 static int
 handle_socket_msg(struct weston_launch *wl)
 {
@@ -417,6 +446,11 @@ handle_socket_msg(struct weston_launch *wl)
 	case WESTON_LAUNCHER_OPEN:
 		ret = handle_open(wl, &msg, len);
 		break;
+	case WESTON_LAUNCHER_DEACTIVATE_DONE:
+		close_input_fds(wl);
+		drmDropMaster(wl->drm_fd);
+		ioctl(wl->tty, VT_RELDISP, 1);
+		break;
 	}
 
 	return ret;
@@ -427,6 +461,7 @@ quit(struct weston_launch *wl, int status)
 {
 	struct vt_mode mode = { 0 };
 	int err;
+	int oldtty;
 
 	close(wl->signalfd);
 	close(wl->sock[0]);
@@ -438,6 +473,19 @@ quit(struct weston_launch *wl, int status)
 				err, pam_strerror(wl->ph, err));
 		pam_end(wl->ph, err);
 	}
+
+	/*
+	 * Get a fresh handle to the tty as the previous one is in
+	 * hang-up state since weston (the controlling process for
+	 * the tty) exit at this point. Reopen before closing the
+	 * file descriptor to avoid a potential race condition.
+	 *
+	 * A similar fix exists in logind, see:
+	 * https://github.com/systemd/systemd/pull/990
+	 */
+	oldtty = wl->tty;
+	wl->tty = open_tty_by_number(wl->ttynr);
+	close(oldtty);
 
 	if (ioctl(wl->tty, KDSKBMUTE, 0) &&
 	    ioctl(wl->tty, KDSKBMODE, wl->kb_mode))
@@ -457,23 +505,10 @@ quit(struct weston_launch *wl, int status)
 	if (ioctl(wl->tty, VT_SETMODE, &mode) < 0)
 		fprintf(stderr, "could not reset vt handling\n");
 
+	if (wl->tty != STDIN_FILENO)
+		close(wl->tty);
+
 	exit(status);
-}
-
-static void
-close_input_fds(struct weston_launch *wl)
-{
-	struct stat s;
-	int fd;
-
-	for (fd = 3; fd <= wl->last_input_fd; fd++) {
-		if (fstat(fd, &s) == 0 && major(s.st_rdev) == INPUT_MAJOR) {
-			/* EVIOCREVOKE may fail if the kernel doesn't
-			 * support it, but all we can do is ignore it. */
-			ioctl(fd, EVIOCREVOKE, 0);
-			close(fd);
-		}
-	}
 }
 
 static int
@@ -510,14 +545,17 @@ handle_signal(struct weston_launch *wl)
 		break;
 	case SIGTERM:
 	case SIGINT:
-		if (wl->child)
-			kill(wl->child, sig.ssi_signo);
+		if (!wl->child)
+			break;
+
+		if (wl->verbose)
+			fprintf(stderr, "weston-launch: sending %s to pid %d\n",
+				strsignal(sig.ssi_signo), wl->child);
+
+		kill(wl->child, sig.ssi_signo);
 		break;
 	case SIGUSR1:
 		send_reply(wl, WESTON_LAUNCHER_DEACTIVATE);
-		close_input_fds(wl);
-		drmDropMaster(wl->drm_fd);
-		ioctl(wl->tty, VT_RELDISP, 1);
 		break;
 	case SIGUSR2:
 		ioctl(wl->tty, VT_RELDISP, VT_ACKACQ);
@@ -548,7 +586,6 @@ setup_tty(struct weston_launch *wl, const char *tty)
 			wl->tty = open(tty, O_RDWR | O_NOCTTY);
 	} else {
 		int tty0 = open("/dev/tty0", O_WRONLY | O_CLOEXEC);
-		char filename[16];
 
 		if (tty0 < 0) {
 			fprintf(stderr, "weston: could not open tty0: %s\n",
@@ -563,8 +600,7 @@ setup_tty(struct weston_launch *wl, const char *tty)
 			return -1;
 		}
 
-		snprintf(filename, sizeof filename, "/dev/tty%d", wl->ttynr);
-		wl->tty = open(filename, O_RDWR | O_NOCTTY);
+		wl->tty = open_tty_by_number(wl->ttynr);
 		close(tty0);
 	}
 
@@ -580,7 +616,7 @@ setup_tty(struct weston_launch *wl, const char *tty)
 		return -1;
 	}
 
-	if (tty) {
+	if (!wl->new_user || tty) {
 		if (fstat(wl->tty, &buf) < 0) {
 			fprintf(stderr, "weston: stat %s failed: %s\n", tty,
 				strerror(errno));
@@ -596,9 +632,23 @@ setup_tty(struct weston_launch *wl, const char *tty)
 		wl->ttynr = minor(buf.st_rdev);
 	}
 
+	if (ioctl(wl->tty, VT_ACTIVATE, wl->ttynr) < 0) {
+		fprintf(stderr,
+			"weston: failed to activate VT: %s\n",
+			strerror(errno));
+		return -1;
+	}
+
+	if (ioctl(wl->tty, VT_WAITACTIVE, wl->ttynr) < 0) {
+		fprintf(stderr,
+			"weston: failed to wait for VT to be active: %s\n",
+			strerror(errno));
+		return -1;
+	}
+
 	if (ioctl(wl->tty, KDGKBMODE, &wl->kb_mode)) {
 		fprintf(stderr,
-			"weston: failed to get current keyboard mode: %s",
+			"weston: failed to get current keyboard mode: %s\n",
 			strerror(errno));
 		return -1;
 	}
@@ -676,7 +726,7 @@ setup_session(struct weston_launch *wl, char **child_argv)
 	child_argv[0] = "/bin/sh";
 	child_argv[1] = "-l";
 	child_argv[2] = "-c";
-	child_argv[3] = BINDIR "/weston \"$@\"";
+	child_argv[3] = "exec " BINDIR "/weston \"$@\"";
 	child_argv[4] = "weston";
 	return 5;
 }
@@ -841,8 +891,6 @@ main(int argc, char *argv[])
 		launch_compositor(&wl, argc - optind, argv + optind);
 
 	close(wl.sock[1]);
-	if (wl.tty != STDIN_FILENO)
-		close(wl.tty);
 
 	while (1) {
 		struct pollfd fds[2];

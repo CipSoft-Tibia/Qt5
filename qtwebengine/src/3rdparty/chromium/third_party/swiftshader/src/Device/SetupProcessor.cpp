@@ -14,7 +14,6 @@
 
 #include "SetupProcessor.hpp"
 
-#include "Context.hpp"
 #include "Polygon.hpp"
 #include "Primitive.hpp"
 #include "Renderer.hpp"
@@ -22,6 +21,7 @@
 #include "Pipeline/SetupRoutine.hpp"
 #include "Pipeline/SpirvShader.hpp"
 #include "System/Debug.hpp"
+#include "Vulkan/VkImageView.hpp"
 
 #include <cstring>
 
@@ -55,35 +55,45 @@ SetupProcessor::SetupProcessor()
 	setRoutineCacheSize(1024);
 }
 
-SetupProcessor::State SetupProcessor::update(const sw::Context *context) const
+SetupProcessor::State SetupProcessor::update(const vk::GraphicsState &pipelineState, const sw::SpirvShader *fragmentShader, const sw::SpirvShader *vertexShader, const vk::Attachments &attachments) const
 {
+	const vk::VertexInputInterfaceState &vertexInputInterfaceState = pipelineState.getVertexInputInterfaceState();
+	const vk::PreRasterizationState &preRasterizationState = pipelineState.getPreRasterizationState();
+	const vk::FragmentState &fragmentState = pipelineState.getFragmentState();
+	const vk::FragmentOutputInterfaceState &fragmentOutputInterfaceState = pipelineState.getFragmentOutputInterfaceState();
+
 	State state;
 
-	bool vPosZW = (context->pixelShader && context->pixelShader->hasBuiltinInput(spv::BuiltInFragCoord));
+	bool vPosZW = (fragmentShader && fragmentShader->hasBuiltinInput(spv::BuiltInFragCoord));
 
-	state.isDrawPoint = context->isDrawPoint(true);
-	state.isDrawLine = context->isDrawLine(true);
-	state.isDrawTriangle = context->isDrawTriangle(true);
-	state.applySlopeDepthBias = context->isDrawTriangle(false) && (context->slopeDepthBias != 0.0f);
-	state.applyDepthBiasClamp = context->isDrawTriangle(false) && (context->depthBiasClamp != 0.0f);
-	state.interpolateZ = context->depthBufferActive() || vPosZW;
-	state.interpolateW = context->pixelShader != nullptr;
-	state.frontFace = context->frontFace;
-	state.cullMode = context->cullMode;
+	const VkPolygonMode polygonMode = preRasterizationState.getPolygonMode();
 
-	state.multiSampleCount = context->sampleCount;
-	state.enableMultiSampling = (state.multiSampleCount > 1) &&
-	                            !(context->isDrawLine(true) && (context->lineRasterizationMode == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT));
-	state.rasterizerDiscard = context->rasterizerDiscard;
+	state.isDrawPoint = vertexInputInterfaceState.isDrawPoint(true, polygonMode);
+	state.isDrawLine = vertexInputInterfaceState.isDrawLine(true, polygonMode);
+	state.isDrawTriangle = vertexInputInterfaceState.isDrawTriangle(true, polygonMode);
+	state.fixedPointDepthBuffer = attachments.depthBuffer && !attachments.depthBuffer->getFormat(VK_IMAGE_ASPECT_DEPTH_BIT).isFloatFormat();
+	state.applyConstantDepthBias = vertexInputInterfaceState.isDrawTriangle(false, polygonMode) && (preRasterizationState.getConstantDepthBias() != 0.0f);
+	state.applySlopeDepthBias = vertexInputInterfaceState.isDrawTriangle(false, polygonMode) && (preRasterizationState.getSlopeDepthBias() != 0.0f);
+	state.applyDepthBiasClamp = vertexInputInterfaceState.isDrawTriangle(false, polygonMode) && (preRasterizationState.getDepthBiasClamp() != 0.0f);
+	state.interpolateZ = fragmentState.depthTestActive(attachments) || vPosZW;
+	state.interpolateW = fragmentShader != nullptr;
+	state.frontFace = preRasterizationState.getFrontFace();
+	state.cullMode = preRasterizationState.getCullMode();
 
-	state.numClipDistances = context->vertexShader->getNumOutputClipDistances();
-	state.numCullDistances = context->vertexShader->getNumOutputCullDistances();
+	const bool isBresenhamLine = vertexInputInterfaceState.isDrawLine(true, preRasterizationState.getPolygonMode()) &&
+	                             preRasterizationState.getLineRasterizationMode() == VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
 
-	if(context->pixelShader)
+	state.multiSampleCount = fragmentOutputInterfaceState.getSampleCount();
+	state.enableMultiSampling = state.multiSampleCount > 1 && !isBresenhamLine;
+
+	state.numClipDistances = vertexShader->getNumOutputClipDistances();
+	state.numCullDistances = vertexShader->getNumOutputCullDistances();
+
+	if(fragmentShader)
 	{
 		for(int interpolant = 0; interpolant < MAX_INTERFACE_COMPONENTS; interpolant++)
 		{
-			state.gradient[interpolant] = context->pixelShader->inputs[interpolant];
+			state.gradient[interpolant] = fragmentShader->inputs[interpolant];
 		}
 	}
 

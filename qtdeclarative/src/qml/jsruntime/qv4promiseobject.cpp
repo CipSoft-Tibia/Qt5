@@ -1,46 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include <QCoreApplication>
 
 #include <private/qv4promiseobject_p.h>
 #include <private/qv4symbol_p.h>
 #include "qv4jscall_p.h"
+
+QT_BEGIN_NAMESPACE
 
 using namespace QV4;
 using namespace QV4::Promise;
@@ -81,7 +47,6 @@ void dropException(QV4::ExecutionEngine* e)
 }
 }
 
-QT_BEGIN_NAMESPACE
 namespace QV4 {
 namespace Promise {
 
@@ -114,7 +79,6 @@ struct ResolveThenableEvent : public QEvent
 
 } // namespace Promise
 } // namespace QV4
-QT_END_NAMESPACE
 
 ReactionHandler::ReactionHandler(QObject *parent)
     : QObject(parent)
@@ -227,17 +191,17 @@ public:
 void ReactionHandler::executeResolveThenable(ResolveThenableEvent *event)
 {
     Scope scope(event->then.engine());
-    JSCallData jsCallData(scope, 2);
+    JSCallArguments jsCallData(scope, 2);
     PromiseObject *promise = event->promise.as<PromiseObject>();
     ScopedFunctionObject resolve {scope, FunctionBuilder::makeResolveFunction(scope.engine, promise->d())};
     ScopedFunctionObject reject {scope, FunctionBuilder::makeRejectFunction(scope.engine, promise->d())};
-    jsCallData->args[0] = resolve;
+    jsCallData.args[0] = resolve;
     jsCallData.args[1] = reject;
-    jsCallData->thisObject = event->thenable.as<QV4::Object>();
+    jsCallData.thisObject = event->thenable.as<QV4::Object>();
     event->then.as<const FunctionObject>()->call(jsCallData);
-    if (scope.engine->hasException) {
-        JSCallData rejectCallData(scope, 1);
-        rejectCallData->args[0] = scope.engine->catchException();
+    if (scope.hasException()) {
+        JSCallArguments rejectCallData(scope, 1);
+        rejectCallData.args[0] = scope.engine->catchException();
         Scoped<RejectWrapper> reject {scope, scope.engine->memoryManager->allocate<QV4::RejectWrapper>()};
         reject->call(rejectCallData);
     }
@@ -428,7 +392,7 @@ ReturnedValue PromiseCtor::virtualCallAsConstructor(const FunctionObject *f, con
         THROW_TYPE_ERROR(); // throw a TypeError exception
 
     Scoped<PromiseObject> a(scope, scope.engine->newPromiseObject());
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return Encode::undefined();
 
     a->d()->state = Heap::PromiseObject::Pending;  //4. Set promise.[[PromiseState]] to "pending"
@@ -440,16 +404,16 @@ ReturnedValue PromiseCtor::virtualCallAsConstructor(const FunctionObject *f, con
     ScopedFunctionObject resolve(scope, FunctionBuilder::makeResolveFunction(scope.engine, a->d()));
     ScopedFunctionObject reject(scope, FunctionBuilder::makeRejectFunction(scope.engine, a->d()));
 
-    JSCallData jsCallData(scope, 2);
-    jsCallData->args[0] = resolve;
-    jsCallData->args[1] = reject;
-    //jsCallData->thisObject = a; VERIFY corretness, but this should be undefined (see below)
+    JSCallArguments jsCallData(scope, 2);
+    jsCallData.args[0] = resolve;
+    jsCallData.args[1] = reject;
+    //jsCallData.thisObject = a; VERIFY corretness, but this should be undefined (see below)
 
     executor->call(jsCallData); // 9. Let completion be Call(executor, undefined, « resolvingFunctions.[[Resolve]], resolvingFunctions.[[Reject]] »).
 
-    if (scope.engine->hasException) {
+    if (scope.hasException()) {
         ScopedValue exception {scope, scope.engine->catchException()};
-        JSCallData callData {scope, 1};
+        JSCallArguments callData {scope, 1};
         callData.args[0] = exception;
         reject->call(callData);
     }
@@ -649,10 +613,10 @@ ReturnedValue PromiseCtor::method_all(const FunctionObject *f, const Value *this
 
         ScopedFunctionObject resolveElement(scope, FunctionBuilder::makeResolveElementFunction(e, index, executionState->d()));
 
-        JSCallData jsCallData(scope, 2);
-        jsCallData->args[0] = resolveElement;
-        jsCallData->args[1] = reject;
-        jsCallData->thisObject = nextPromise;
+        JSCallArguments jsCallData(scope, 2);
+        jsCallData.args[0] = resolveElement;
+        jsCallData.args[1] = reject;
+        jsCallData.thisObject = nextPromise;
 
         then->call(jsCallData);
         if (scope.hasException()) {
@@ -793,10 +757,10 @@ ReturnedValue PromiseCtor::method_race(const FunctionObject *f, const Value *thi
 
         ScopedFunctionObject resolveOriginalPromise(scope, capability->d()->resolve);
 
-        JSCallData jsCallData(scope, 2);
-        jsCallData->args[0] = resolveOriginalPromise;
-        jsCallData->args[1] = reject;
-        jsCallData->thisObject = nextPromise;
+        JSCallArguments jsCallData(scope, 2);
+        jsCallData.args[0] = resolveOriginalPromise;
+        jsCallData.args[1] = reject;
+        jsCallData.thisObject = nextPromise;
 
         then->call(jsCallData);
         if (scope.hasException()) {
@@ -927,10 +891,10 @@ ReturnedValue PromisePrototype::method_catch(const FunctionObject *f, const Valu
         onRejected = argv[0];
     }
 
-    JSCallData jsCallData(scope, 2);
-    jsCallData->args[0] = Encode::undefined();
-    jsCallData->args[1] = onRejected;
-    jsCallData->thisObject = promise;
+    JSCallArguments jsCallData(scope, 2);
+    jsCallData.args[0] = Encode::undefined();
+    jsCallData.args[1] = onRejected;
+    jsCallData.thisObject = promise;
 
     ScopedString thenName(scope, scope.engine->newIdentifier(QStringLiteral("then")));
     ScopedFunctionObject then(scope, promise->get(thenName));
@@ -1032,7 +996,7 @@ ReturnedValue ResolveWrapper::virtualCall(const FunctionObject *f, const Value *
         // 8. Let then be Get(resolution, then)
         ScopedFunctionObject thenAction { scope, resolutionObject->get(thenName)};
         // 9. If then is an abrupt completion, then
-        if (scope.engine->hasException) {
+        if (scope.hasException()) {
             // Return RecjectPromise(promise, then.[[Value]]
             ScopedValue thenValue {scope, scope.engine->catchException()};
             promise->d()->setState(Heap::PromiseObject::Rejected);
@@ -1084,13 +1048,17 @@ ReturnedValue RejectWrapper::virtualCall(const FunctionObject *f, const Value *t
         ScopedString thenName(scope, scope.engine->newIdentifier(QStringLiteral("catch")));
 
         ScopedFunctionObject then(scope, promise->get(thenName));
-        JSCallData jsCallData(scope, 2);
-        jsCallData->args[0] = *f;
-        jsCallData->args[1] = Encode::undefined();
-        jsCallData->thisObject = value;
+        JSCallArguments jsCallData(scope, 2);
+        jsCallData.args[0] = *f;
+        jsCallData.args[1] = Encode::undefined();
+        jsCallData.thisObject = value;
 
         then->call(jsCallData);
     }
 
     return Encode::undefined();
 }
+
+QT_END_NAMESPACE
+
+#include "moc_qv4promiseobject_p.cpp"

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "base/run_loop.h"
 #include "base/synchronization/lock.h"
 #include "base/test/task_environment.h"
@@ -33,6 +32,9 @@ class FakeMidiManagerClient : public MidiManagerClient {
         wait_for_result_(true),
         wait_for_port_(true),
         unexpected_callback_(false) {}
+
+  FakeMidiManagerClient(const FakeMidiManagerClient&) = delete;
+  FakeMidiManagerClient& operator=(const FakeMidiManagerClient&) = delete;
 
   // MidiManagerClient implementation.
   void AddInputPort(const mojom::PortInfo& info) override {}
@@ -105,13 +107,15 @@ class FakeMidiManagerClient : public MidiManagerClient {
   mojom::PortInfo info_;
   bool wait_for_port_;
   bool unexpected_callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeMidiManagerClient);
 };
 
 class MidiManagerMacTest : public ::testing::Test {
  public:
   MidiManagerMacTest() : service_(std::make_unique<MidiService>()) {}
+
+  MidiManagerMacTest(const MidiManagerMacTest&) = delete;
+  MidiManagerMacTest& operator=(const MidiManagerMacTest&) = delete;
+
   ~MidiManagerMacTest() override {
     service_->Shutdown();
     base::RunLoop run_loop;
@@ -127,12 +131,16 @@ class MidiManagerMacTest : public ::testing::Test {
  private:
   std::unique_ptr<MidiService> service_;
   base::test::SingleThreadTaskEnvironment task_environment_;
-
-  DISALLOW_COPY_AND_ASSIGN(MidiManagerMacTest);
 };
 
-
-TEST_F(MidiManagerMacTest, MidiNotification) {
+// TODO(crbug.com/1413900): The created device isn't notified to
+// MidiManagerMac on iOS.
+#if BUILDFLAG(IS_IOS)
+#define MAYBE_MidiNotification DISABLED_MidiNotification
+#else
+#define MAYBE_MidiNotification MidiNotification
+#endif
+TEST_F(MidiManagerMacTest, MAYBE_MidiNotification) {
   std::unique_ptr<FakeMidiManagerClient> client(new FakeMidiManagerClient);
   StartSession(client.get());
 

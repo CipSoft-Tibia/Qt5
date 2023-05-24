@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Stephen Kelly <stephen.kelly@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QLibraryInfo>
+#include <QProcess>
+
+#include <QtDBus/QDBusConnection>
+#include <QtDBus/private/dbus_minimal_p.h>
 
 #include "test1.h"
 
-#include <QtDBus/QDBusConnection>
 
 // in qdbusxmlgenerator.cpp
 QT_BEGIN_NAMESPACE
@@ -55,6 +34,8 @@ class tst_qdbuscpp2xml : public QObject
 private slots:
     void qdbuscpp2xml_data();
     void qdbuscpp2xml();
+    void qtdbusTypes_data();
+    void qtdbusTypes();
 
     void initTestCase();
     void cleanupTestCase();
@@ -78,7 +59,7 @@ void tst_qdbuscpp2xml::qdbuscpp2xml_data()
     QTest::addColumn<QString>("inputfile");
     QTest::addColumn<int>("flags");
 
-    QBitArray doneFlags(QDBusConnection::ExportAllContents + 1);
+    QBitArray doneFlags(int(QDBusConnection::ExportAllContents) + 1);
     for (int flag = 0x10; flag < QDBusConnection::ExportScriptableContents; flag += 0x10) {
         QTest::newRow("xmlgenerator-" + QByteArray::number(flag)) << "test1" << flag;
         doneFlags.setBit(flag);
@@ -129,7 +110,7 @@ void tst_qdbuscpp2xml::qdbuscpp2xml()
     }
 
     // Launch
-    const QString binpath = QLibraryInfo::location(QLibraryInfo::BinariesPath);
+    const QString binpath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
     const QString command = binpath + QLatin1String("/qdbuscpp2xml");
     QProcess process;
     process.start(command, QStringList() << options << (QFINDTESTDATA(inputfile + QStringLiteral(".h"))));
@@ -162,6 +143,77 @@ void tst_qdbuscpp2xml::qdbuscpp2xml()
     expected = addXmlHeader(expected);
 
     QCOMPARE(out, expected);
+}
+
+void tst_qdbuscpp2xml::qtdbusTypes_data()
+{
+    QTest::addColumn<QByteArray>("type");
+    QTest::addColumn<QByteArray>("expectedSignature");
+    auto addRow = [](QByteArray type, QByteArray signature) {
+        QTest::addRow("%s", type.constData()) << type << signature;
+
+        // lists and vectors
+        QTest::addRow("QList-%s", type.constData())
+                << "QList<" + type + '>' << DBUS_TYPE_ARRAY + signature;
+        QTest::addRow("QVector-%s", type.constData())
+                << "QVector<" + type + '>' << DBUS_TYPE_ARRAY + signature;
+    };
+    addRow("QDBusVariant", DBUS_TYPE_VARIANT_AS_STRING);
+    addRow("QDBusObjectPath", DBUS_TYPE_OBJECT_PATH_AS_STRING);
+    addRow("QDBusSignature", DBUS_TYPE_SIGNATURE_AS_STRING);
+    addRow("QDBusUnixFileDescriptor", DBUS_TYPE_UNIX_FD_AS_STRING);
+
+    // QDBusMessage is not a type, but must be recognized
+    QTest::newRow("QDBusMessage") << QByteArray("QDBusMessage") << QByteArray();
+}
+
+void tst_qdbuscpp2xml::qtdbusTypes()
+{
+    static const char cppSkeleton[] = R"(
+class QDBusVariantBugRepro : public QDBusAbstractAdaptor
+{
+   Q_OBJECT
+   Q_CLASSINFO("D-Bus Interface", "org.qtproject.test")
+public Q_SLOTS:
+   void method(const @TYPE@ &);
+};)";
+    static const char methodXml[] = R"(<method name="method")";
+    static const char expectedSkeleton[] = R"(<arg type="@S@" direction="in"/>)";
+
+    QFETCH(QByteArray, type);
+    QFETCH(QByteArray, expectedSignature);
+
+    const QString binpath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
+    const QString command = binpath + QLatin1String("/qdbuscpp2xml");
+    QProcess process;
+    process.start(command);
+
+    process.write(QByteArray(cppSkeleton).replace("@TYPE@", type));
+    process.closeWriteChannel();
+
+    if (!process.waitForStarted()) {
+        const QString path = QString::fromLocal8Bit(qgetenv("PATH"));
+        QString message = QString::fromLatin1("'%1' could not be found when run from '%2'. Path: '%3' ").
+                          arg(command, QDir::currentPath(), path);
+        QFAIL(qPrintable(message));
+    }
+    QVERIFY2(process.waitForFinished(), qPrintable(process.errorString()));
+
+    // verify nothing was printed on stderr
+    QCOMPARE(process.readAllStandardError(), QString());
+
+    // we don't do a full XML parsing here...
+    QByteArray output = process.readAll().simplified();
+    QVERIFY2(output.contains("<node>") && output.contains("</node>"), "Output was: " + output);
+    output = output.mid(output.indexOf("<node>") + strlen("<node>"));
+    output = output.left(output.indexOf("</node>"));
+
+    QVERIFY2(output.contains(methodXml), "Output was: " + output);
+
+    if (!expectedSignature.isEmpty()) {
+        QByteArray expected = QByteArray(expectedSkeleton).replace("@S@", expectedSignature);
+        QVERIFY2(output.contains(expected), "Expected: '" + expected + "'; got: '" + output + '\'');
+    }
 }
 
 QTEST_APPLESS_MAIN(tst_qdbuscpp2xml)

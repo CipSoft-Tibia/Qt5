@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2017 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,14 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package login_manager;
+option go_package = "chromiumos/system_api/login_manager_proto";
 
 // Specifies the account type that the |account_id| in PolicyDescriptor
 // references.
 enum PolicyAccountType {
+  // Was ACCOUNT_TYPE_SESSIONLESS_USER.
+  reserved 2;
+
   // |account_id| must be empty. Policy is stored in a device-wide root-owned
   // location.
   ACCOUNT_TYPE_DEVICE = 0;
@@ -18,11 +22,6 @@ enum PolicyAccountType {
   // |account_id| references a user account. Policy is stored on the user's
   // cryptohome.
   ACCOUNT_TYPE_USER = 1;
-
-  // |account_id| references a user account where the user session hasn't been
-  // added to Session Manager yet. Special case to retrieve user policy on the
-  // login screen.
-  ACCOUNT_TYPE_SESSIONLESS_USER = 2;
 
   // |account_id| references a device local account. Policy is stored in a
   // device-wide root-owned location in a folder that depends on |account_id|.

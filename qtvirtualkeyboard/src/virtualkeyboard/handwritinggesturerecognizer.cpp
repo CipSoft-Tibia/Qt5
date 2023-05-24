@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/private/handwritinggesturerecognizer_p.h>
 
@@ -53,7 +27,7 @@ int HandwritingGestureRecognizer::dpi() const
 
 QVariantMap HandwritingGestureRecognizer::recognize(const QList<QVirtualKeyboardTrace *> traceList)
 {
-    if (traceList.count() > 0 && traceList.count() < 3) {
+    if (traceList.size() > 0 && traceList.size() < 3) {
 
         // Swipe gesture detection
         // =======================
@@ -90,7 +64,7 @@ QVariantMap HandwritingGestureRecognizer::recognize(const QList<QVirtualKeyboard
             const QVirtualKeyboardTrace *trace = traceList.at(traceIndex);
             const QVariantList &points = trace->points();
             QVector2D swipeVector;
-            const int pointCount = points.count();
+            const int pointCount = points.size();
             int pointIndex = 0;
             if (pointCount >= 2) {
 
@@ -136,7 +110,7 @@ QVariantMap HandwritingGestureRecognizer::recognize(const QList<QVirtualKeyboard
                         bool matchesToExisting = true;
                         const qreal minimumSwipeLength = (swipeLength * (100.0 - MAXIMUM_WIDTH_VARIANCE) / 100.0);
                         const qreal maximumSwipeLength = (swipeLength * (100.0 + MAXIMUM_WIDTH_VARIANCE) / 100.0);
-                        for (const QVector2D &otherSwipeVector : qAsConst(swipeVectors)) {
+                        for (const QVector2D &otherSwipeVector : std::as_const(swipeVectors)) {
                             const qreal otherSwipeLength = otherSwipeVector.length();
                             const qreal theta = qAcos(QVector2D::dotProduct(swipeVector, otherSwipeVector) / (swipeLength * otherSwipeLength));
 

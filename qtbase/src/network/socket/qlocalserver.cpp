@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlocalserver.h"
 #include "qlocalserver_p.h"
@@ -46,6 +10,8 @@
 #endif
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
     \class QLocalServer
@@ -90,6 +56,8 @@ QT_BEGIN_NAMESPACE
     socket. This changes the access permissions on platforms (Linux, Windows)
     that support access permissions on the socket. Both GroupAccess and OtherAccess
     may vary slightly in meanings depending on the platform.
+    On Linux and Android it is possible to use sockets with abstract addresses;
+    socket permissions have no meaning for such sockets.
 
     \value NoOptions No access restrictions have been set.
     \value UserAccessOption
@@ -102,6 +70,10 @@ QT_BEGIN_NAMESPACE
     Access is available to everyone on Windows.
     \value WorldAccessOption
     No access restrictions.
+    \value AbstractNamespaceOption
+    The listening socket will be created in the abstract namespace. This flag is specific to Linux.
+    In case of other platforms, for the sake of code portability, this flag is equivalent
+    to WorldAccessOption.
 
     \sa socketOptions
 */
@@ -138,8 +110,9 @@ QLocalServer::~QLocalServer()
     \property QLocalServer::socketOptions
     \since 5.0
 
-    The setSocketOptions method controls how the socket operates.
-    For example the socket may restrict access to what user ids can
+    \brief the socket options that control how the socket operates.
+
+    For example, the socket may restrict access to what user ids can
     connect to the socket.
 
     These options must be set before listen() is called.
@@ -147,7 +120,7 @@ QLocalServer::~QLocalServer()
     In some cases, such as with Unix domain sockets on Linux, the
     access to the socket will be determined by file system permissions,
     and are created based on the umask. Setting the access flags will
-    overide this and will restrict or permit access as specified.
+    override this and will restrict or permit access as specified.
 
     Other Unix-based operating systems, such as \macos, do not
     honor file permissions for Unix domain sockets and by default
@@ -159,6 +132,11 @@ QLocalServer::~QLocalServer()
     refers to the primary group of the process (see TokenPrimaryGroup
     in the Windows documentation). OtherAccessOption refers to
     the well known "Everyone" group.
+
+    On Linux platforms it is possible to create a socket in the abstract
+    namespace, which is independent of the filesystem. Using this kind
+    of socket implies ignoring permission options. On other platforms
+    AbstractNamespaceOption is equivalent to WorldAccessOption.
 
     By default none of the flags are set, access permissions
     are the platform default.
@@ -184,6 +162,12 @@ QLocalServer::SocketOptions QLocalServer::socketOptions() const
     return d->socketOptions;
 }
 
+QBindable<QLocalServer::SocketOptions> QLocalServer::bindableSocketOptions()
+{
+    Q_D(QLocalServer);
+    return &d->socketOptions;
+}
+
 /*!
     \since 5.10
     Returns the native socket descriptor the server uses to listen
@@ -192,10 +176,9 @@ QLocalServer::SocketOptions QLocalServer::socketOptions() const
     The type of the descriptor depends on the platform:
     \list
         \li On Windows, the returned value is a
-        \l{https://msdn.microsoft.com/en-us/library/windows/desktop/ms740522(v=vs.85).aspx}
-        {Winsock 2 Socket Handle}.
+        \l{Winsock 2 Socket Handle}.
 
-        \li With WinRT and on INTEGRITY, the returned value is the
+        \li On INTEGRITY, the returned value is the
         QTcpServer socket descriptor and the type is defined by
         \l{QTcpServer::socketDescriptor}{socketDescriptor}.
 
@@ -331,7 +314,7 @@ bool QLocalServer::listen(const QString &name)
 
     if (name.isEmpty()) {
         d->error = QAbstractSocket::HostNotFoundError;
-        QString function = QLatin1String("QLocalServer::listen");
+        QString function = "QLocalServer::listen"_L1;
         d->errorString = tr("%1: Name error").arg(function);
         return false;
     }
@@ -358,7 +341,9 @@ bool QLocalServer::listen(const QString &name)
 
     serverName(), fullServerName() may return a string with
     a name if this option is supported by the platform;
-    otherwise, they return an empty QString.
+    otherwise, they return an empty QString. In particular, the addresses
+    of sockets in the abstract namespace supported by Linux will
+    not yield useful names if they contain unprintable characters.
 
     \sa isListening(), close()
  */
@@ -532,6 +517,36 @@ bool QLocalServer::waitForNewConnection(int msec, bool *timedOut)
     d->waitForNewConnection(msec, timedOut);
 
     return !d->pendingConnections.isEmpty();
+}
+
+/*!
+    Sets the backlog queue size of to be accepted connections to \a
+    size. The operating system might reduce or ignore this value.
+    By default, the queue size is 50.
+
+    \note This property must be set prior to calling listen().
+
+    \since 6.3
+
+    \sa listenBacklogSize()
+*/
+void QLocalServer::setListenBacklogSize(int size)
+{
+    Q_D(QLocalServer);
+    d->listenBacklog = size;
+}
+
+/*!
+    Returns the backlog queue size of to be accepted connections.
+
+    \since 6.3
+
+    \sa setListenBacklogSize()
+*/
+int QLocalServer::listenBacklogSize() const
+{
+    Q_D(const QLocalServer);
+    return d->listenBacklog;
 }
 
 QT_END_NAMESPACE

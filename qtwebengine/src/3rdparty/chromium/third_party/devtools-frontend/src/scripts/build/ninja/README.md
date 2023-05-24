@@ -3,6 +3,17 @@
 The DevTools build system contains several templates to integrate files in the build system.
 Below you can find an overview of which template/combination of templates you need to use and when.
 
+## General guidance
+
+Whenever you are implementing a template, take into account that GN expects the source folder structure to be [mirrored](https://chromium.googlesource.com/chromium/src/+/HEAD/build/docs/writing_gn_templates.md#where-to-place-outputs) in the out-directory.
+Historically, DevTools used the location-agnostic [`out/Default/resources/inspector`](https://groups.google.com/a/chromium.org/g/devtools-dev/c/BENZ8ZTW0Ls/m/W7BhAvOzBAAJ) folder, but we have since adopted the GN guidelines for mirroring our source folder.
+Primary motivations are the instability of the separate folder, as well as required hacks to compute "relative" sub-folders in GN.
+Since GN has no notion of a "root" folder for DevTools, computation of sub-folders can only be done based on heuristics, which will fail sooner rather than later.
+
+Additionally, GN is a [timestamp-based build system](https://gn.googlesource.com/gn/+/master/docs/reference.md#target-declarations-action_declare-a-target-that-runs-a-script-a-single-time-outputs) when checking for correctness.
+This means that you want to avoid writing to the file system if the content stays the same.
+For Node scripts, use the `writeIfChanged` function from [write-if-changed.js](./write-if-changed.js) to integrate nicely with GN.
+
 ## Entrypoints and modules
 
 The buildsystem has a concept of "entrypoints" and "modules".
@@ -57,46 +68,6 @@ devtools_entrypoint("bundle") {
 
 > Rule: `devtools_entrypoints` is named "bundle", as in a release build it bundles with Rollup
 
-### Legacy: Non-TypeScript entrypoints
-
-Not all modules are currently typechecked only by TypeScript.
-There are two other options, related to the legacy Closure Compiler.
-
-#### Typescriptified modules (e.g. TypeScript + Closure Compiler)
-
-Any module that is fully typescriptified (e.g. a JavaScript file that is typechecked by both TypeScript and Compiler Compiler) can be imported from both TypeScript modules and Closure Compile-checked modules.
-
-> Rule: Any typescriptified module can never contain an entrypoint or source file in their implementation that is TypeScript-authored. In practice this rule comes down to: you can only have a TypeScript-authored implementation file if the corresponding entrypoint is also TypeScript-authored.
-
-As such, the following layout is used for TypeScriptified modules:
-
-```python
-import("../../scripts/build/ninja/devtools_entrypoint.gni")
-import("../../scripts/build/ninja/devtools_module.gni")
-
-devtools_module("my_module") {
-  sources = [
-    "implementation_detail.js",
-    "some_other_file.js",
-  ]
-
-  deps = [
-    "../other_dependency:bundle",
-  ]
-}
-
-devtools_entrypoint("bundle") {
-  entrypoint = "my_module.js"
-
-  deps = [
-    ":my_module",
-  ]
-}
-```
-
-Here, both the entrypoint and the sources of the module are all JavaScript files.
-All of these files are typechecked by Closure Compiler and TypeScript.
-
 ## GRD file generation
 
 To make sure that files are loaded in Chromium, DevTools generates a GRD file that includes all files that are allowed to be loaded by the backend.
@@ -104,18 +75,12 @@ To generate the GRD, there are numerous variables that list all kinds of files.
 
 ### Entrypoints
 
-All entrypoints are listed in `/devtools_module_entrypoints.gni`.
+All entrypoints are listed in `grd_files_release_sources` specified in `/config/gni/devtools_grd_files.gni`.
 
 > Rule: in both release and debug builds, entrypoints are always included in the GRD file
 
-> Rule: all entrypoints that are checked by TypeScript (this includes typescriptified entrypoints) or implicitly typechecked by TypeScript (e.g. `third_party` packages) are listed in `generated_typescript_entrypoint_sources`
-
-> Rule: all entrypoints that are **only** checked by Closure Compiler and are not part of `devtools_entrypoint` or `devtools_pre_built` are listed in `devtools_module_entrypoint_sources`. This includes the `-legacy.js` files
-
 ### Module implementation files
 
-All implementation files for components are listed in `/all_devtools_modules.gni`.
+All implementation files for components are listed in `grd_files_debug_sources` specified in `/config/gni/devtools_grd_files.gni`.
 
 > Rule: the implementation files are only present in the GRD file in a debug build, because the release build bundles all files into the respective entrypoint
-
-> Rule: all implementation files that are checked by TypeScript (this includes typescriptified implementaion files) or are copied with `devtools_pre_built` are listed in `all_typescript_module_sources`

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QXCBINTEGRATION_H
 #define QXCBINTEGRATION_H
@@ -43,6 +7,7 @@
 #include <QtGui/private/qtguiglobal_p.h>
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformscreen.h>
+#include <qpa/qplatformopenglcontext.h>
 
 #include "qxcbexport.h"
 
@@ -55,6 +20,14 @@ class QAbstractEventDispatcher;
 class QXcbNativeInterface;
 
 class Q_XCB_EXPORT QXcbIntegration : public QPlatformIntegration
+#ifndef QT_NO_OPENGL
+# if QT_CONFIG(xcb_glx_plugin)
+    , public QNativeInterface::Private::QGLXIntegration
+# endif
+# if QT_CONFIG(egl)
+    , public QNativeInterface::Private::QEGLIntegration
+# endif
+#endif
 {
 public:
     QXcbIntegration(const QStringList &parameters, int &argc, char **argv);
@@ -65,6 +38,12 @@ public:
     QPlatformWindow *createForeignWindow(QWindow *window, WId nativeHandle) const override;
 #ifndef QT_NO_OPENGL
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
+# if QT_CONFIG(xcb_glx_plugin)
+    QOpenGLContext *createOpenGLContext(GLXContext context, void *visualInfo, QOpenGLContext *shareContext) const override;
+# endif
+# if QT_CONFIG(egl)
+    QOpenGLContext *createOpenGLContext(EGLContext context, EGLDisplay display, QOpenGLContext *shareContext) const override;
+# endif
 #endif
     QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override;
 
@@ -89,7 +68,7 @@ public:
 
     QPlatformInputContext *inputContext() const override;
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     QPlatformAccessibility *accessibility() const override;
 #endif
 
@@ -102,8 +81,8 @@ public:
     QPlatformTheme *createPlatformTheme(const QString &name) const override;
     QVariant styleHint(StyleHint hint) const override;
 
-    bool hasDefaultConnection() const { return !m_connections.isEmpty(); }
-    QXcbConnection *defaultConnection() const { return m_connections.first(); }
+    bool hasConnection() const { return m_connection; }
+    QXcbConnection *connection() const { return m_connection; }
 
     QByteArray wmClass() const;
 
@@ -123,15 +102,17 @@ public:
 
     static QXcbIntegration *instance() { return m_instance; }
 
+    void setApplicationBadge(qint64 number) override;
+
 private:
-    QList<QXcbConnection *> m_connections;
+    QXcbConnection *m_connection = nullptr;
 
     QScopedPointer<QPlatformFontDatabase> m_fontDatabase;
     QScopedPointer<QXcbNativeInterface> m_nativeInterface;
 
     QScopedPointer<QPlatformInputContext> m_inputContext;
 
-#ifndef QT_NO_ACCESSIBILITY
+#if QT_CONFIG(accessibility)
     mutable QScopedPointer<QPlatformAccessibility> m_accessibility;
 #endif
 

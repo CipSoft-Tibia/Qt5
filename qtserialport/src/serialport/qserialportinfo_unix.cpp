@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2011-2012 Denis Shienkov <denis.shienkov@gmail.com>
-** Copyright (C) 2011 Sergey Belyashov <Sergey.Belyashov@gmail.com>
-** Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSerialPort module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011-2012 Denis Shienkov <denis.shienkov@gmail.com>
+// Copyright (C) 2011 Sergey Belyashov <Sergey.Belyashov@gmail.com>
+// Copyright (C) 2012 Laszlo Papp <lpapp@kde.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qserialportinfo.h"
 #include "qserialportinfo_p.h"
@@ -46,9 +10,10 @@
 #include <QtCore/qlockfile.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qdir.h>
-#include <QtCore/qscopedpointer.h>
 
 #include <private/qcore_unix_p.h>
+
+#include <memory>
 
 #include <errno.h>
 #include <sys/types.h> // kill
@@ -151,13 +116,13 @@ static bool isValidSerial8250(const QString &systemLocation)
     return false;
 }
 
-static bool isRfcommDevice(const QString &portName)
+static bool isRfcommDevice(QStringView portName)
 {
     if (!portName.startsWith(QLatin1String("rfcomm")))
         return false;
 
     bool ok;
-    const int portNumber = portName.midRef(6).toInt(&ok);
+    const int portNumber = portName.mid(6).toInt(&ok);
     if (!ok || (portNumber < 0) || (portNumber > 255))
         return false;
     return true;
@@ -313,29 +278,22 @@ QList<QSerialPortInfo> availablePortsBySysfs(bool &ok)
     return serialPortInfoList;
 }
 
-struct ScopedPointerUdevDeleter
-{
-    static inline void cleanup(struct ::udev *pointer)
+struct udev_deleter {
+    void operator()(struct ::udev *pointer) const
     {
         ::udev_unref(pointer);
     }
-};
-
-struct ScopedPointerUdevEnumeratorDeleter
-{
-    static inline void cleanup(struct ::udev_enumerate *pointer)
+    void operator()(struct ::udev_enumerate *pointer) const
     {
         ::udev_enumerate_unref(pointer);
     }
-};
-
-struct ScopedPointerUdevDeviceDeleter
-{
-    static inline void cleanup(struct ::udev_device *pointer)
+    void operator()(struct ::udev_device *pointer) const
     {
         ::udev_device_unref(pointer);
     }
 };
+template <typename T>
+using udev_ptr = std::unique_ptr<T, udev_deleter>;
 
 #ifndef LINK_LIBUDEV
     Q_GLOBAL_STATIC(QLibrary, udevLibrary)
@@ -396,21 +354,20 @@ QList<QSerialPortInfo> availablePortsByUdev(bool &ok)
         return QList<QSerialPortInfo>();
 #endif
 
-    QScopedPointer<struct ::udev, ScopedPointerUdevDeleter> udev(::udev_new());
+    const udev_ptr<struct ::udev> udev(::udev_new());
 
     if (!udev)
         return QList<QSerialPortInfo>();
 
-    QScopedPointer<udev_enumerate, ScopedPointerUdevEnumeratorDeleter>
-            enumerate(::udev_enumerate_new(udev.data()));
+    const udev_ptr<udev_enumerate> enumerate(::udev_enumerate_new(udev.get()));
 
     if (!enumerate)
         return QList<QSerialPortInfo>();
 
-    ::udev_enumerate_add_match_subsystem(enumerate.data(), "tty");
-    ::udev_enumerate_scan_devices(enumerate.data());
+    ::udev_enumerate_add_match_subsystem(enumerate.get(), "tty");
+    ::udev_enumerate_scan_devices(enumerate.get());
 
-    udev_list_entry *devices = ::udev_enumerate_get_list_entry(enumerate.data());
+    udev_list_entry *devices = ::udev_enumerate_get_list_entry(enumerate.get());
 
     QList<QSerialPortInfo> serialPortInfoList;
     udev_list_entry *dev_list_entry;
@@ -418,29 +375,29 @@ QList<QSerialPortInfo> availablePortsByUdev(bool &ok)
 
         ok = true;
 
-        QScopedPointer<udev_device, ScopedPointerUdevDeviceDeleter>
+        const udev_ptr<udev_device>
                 dev(::udev_device_new_from_syspath(
-                        udev.data(), ::udev_list_entry_get_name(dev_list_entry)));
+                        udev.get(), ::udev_list_entry_get_name(dev_list_entry)));
 
         if (!dev)
             return serialPortInfoList;
 
         QSerialPortInfoPrivate priv;
 
-        priv.device = deviceLocation(dev.data());
-        priv.portName = deviceName(dev.data());
+        priv.device = deviceLocation(dev.get());
+        priv.portName = deviceName(dev.get());
 
-        udev_device *parentdev = ::udev_device_get_parent(dev.data());
+        udev_device *parentdev = ::udev_device_get_parent(dev.get());
 
         if (parentdev) {
             const QString driverName = deviceDriver(parentdev);
             if (isSerial8250Driver(driverName) && !isValidSerial8250(priv.device))
                 continue;
-            priv.description = deviceDescription(dev.data());
-            priv.manufacturer = deviceManufacturer(dev.data());
-            priv.serialNumber = deviceSerialNumber(dev.data());
-            priv.vendorIdentifier = deviceVendorIdentifier(dev.data(), priv.hasVendorIdentifier);
-            priv.productIdentifier = deviceProductIdentifier(dev.data(), priv.hasProductIdentifier);
+            priv.description = deviceDescription(dev.get());
+            priv.manufacturer = deviceManufacturer(dev.get());
+            priv.serialNumber = deviceSerialNumber(dev.get());
+            priv.vendorIdentifier = deviceVendorIdentifier(dev.get(), priv.hasVendorIdentifier);
+            priv.productIdentifier = deviceProductIdentifier(dev.get(), priv.hasProductIdentifier);
         } else {
             if (!isRfcommDevice(priv.portName)
                     && !isVirtualNullModemDevice(priv.portName)
@@ -471,39 +428,6 @@ QList<QSerialPortInfo> QSerialPortInfo::availablePorts()
 
     return serialPortInfoList;
 }
-
-#if QT_DEPRECATED_SINCE(5, 6)
-bool QSerialPortInfo::isBusy() const
-{
-    QString lockFilePath = serialPortLockFilePath(portName());
-    if (lockFilePath.isEmpty())
-        return false;
-
-    QFile reader(lockFilePath);
-    if (!reader.open(QIODevice::ReadOnly))
-        return false;
-
-    QByteArray pidLine = reader.readLine();
-    pidLine.chop(1);
-    if (pidLine.isEmpty())
-        return false;
-
-    qint64 pid = pidLine.toLongLong();
-
-    if (pid && (::kill(pid, 0) == -1) && (errno == ESRCH))
-        return false; // PID doesn't exist anymore
-
-    return true;
-}
-#endif // QT_DEPRECATED_SINCE(5, 6)
-
-#if QT_DEPRECATED_SINCE(5, 2)
-bool QSerialPortInfo::isValid() const
-{
-    QFile f(systemLocation());
-    return f.exists();
-}
-#endif // QT_DEPRECATED_SINCE(5, 2)
 
 QString QSerialPortInfoPrivate::portNameToSystemLocation(const QString &source)
 {

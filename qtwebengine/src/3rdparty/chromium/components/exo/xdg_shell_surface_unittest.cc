@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,7 +27,6 @@ class XdgShellSurfaceTest : public test::ExoTestBase {
     auto surface = std::make_unique<Surface>();
     auto shell_surface = std::make_unique<XdgShellSurface>(
         surface.get(), gfx::Point{0, 0},
-        /*activatable=*/true,
         /*can_minimize=*/true, ash::desks_util::GetActiveDeskContainerId());
     auto buffer = std::make_unique<Buffer>(
         exo_test_helper()->CreateGpuMemoryBuffer({w, h}));

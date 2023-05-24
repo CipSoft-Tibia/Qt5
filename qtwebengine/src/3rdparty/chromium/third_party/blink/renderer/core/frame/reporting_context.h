@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,8 @@
 #include "third_party/blink/public/mojom/reporting/reporting.mojom-blink.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_linked_hash_set.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
 #include "third_party/blink/renderer/platform/supplementable.h"
@@ -22,10 +24,9 @@ class ReportingObserver;
 
 // ReportingContext processes all reports for an ExecutionContext, and serves as
 // a container for all active ReportingObservers on that ExecutionContext.
-class CORE_EXPORT ReportingContext final
-    : public GarbageCollected<ReportingContext>,
-      public mojom::blink::ReportingObserver,
-      public Supplement<ExecutionContext> {
+class CORE_EXPORT ReportingContext : public GarbageCollected<ReportingContext>,
+                                     public mojom::blink::ReportingObserver,
+                                     public Supplement<ExecutionContext> {
  public:
   static const char kSupplementName[];
 
@@ -40,7 +41,8 @@ class CORE_EXPORT ReportingContext final
   void Bind(mojo::PendingReceiver<mojom::blink::ReportingObserver> receiver);
 
   // Queues a report for the Reporting API and in all registered observers.
-  void QueueReport(Report*, const Vector<String>& endpoints = {"default"});
+  virtual void QueueReport(Report*,
+                           const Vector<String>& endpoints = {"default"});
 
   void RegisterObserver(blink::ReportingObserver*);
   void UnregisterObserver(blink::ReportingObserver*);
@@ -61,8 +63,8 @@ class CORE_EXPORT ReportingContext final
   // Send |report| via the Reporting API to |endpoint|.
   void SendToReportingAPI(Report* report, const String& endpoint) const;
 
-  HeapListHashSet<Member<blink::ReportingObserver>> observers_;
-  HeapHashMap<String, Member<HeapListHashSet<Member<Report>>>> report_buffer_;
+  HeapLinkedHashSet<Member<blink::ReportingObserver>> observers_;
+  HeapHashMap<String, Member<HeapLinkedHashSet<Member<Report>>>> report_buffer_;
   Member<ExecutionContext> execution_context_;
 
   // This is declared mutable so that the service endpoint can be cached by

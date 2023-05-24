@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <vector>
+
 #include "base/files/file_path.h"
 #include "base/logging.h"
 #include "base/mac/bundle_locations.h"
@@ -15,22 +17,19 @@
 #include "base/notreached.h"
 #include "base/numerics/checked_math.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/stl_util.h"
 #include "base/strings/sys_string_conversions.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
 #import <AppKit/AppKit.h>
 #endif
 
 extern "C" {
 CFTypeID SecKeyGetTypeID();
-#if !defined(OS_IOS)
-CFTypeID SecACLGetTypeID();
-CFTypeID SecTrustedApplicationGetTypeID();
+#if !BUILDFLAG(IS_IOS)
 // The NSFont/CTFont toll-free bridging is broken before 10.15.
-// http://www.openradar.me/15341349 rdar://15341349
+// https://openradar.appspot.com/15341349
 //
 // TODO(https://crbug.com/1076527): This is fixed in 10.15. When 10.15 is the
 // minimum OS for Chromium, remove this SPI declaration.
@@ -38,8 +37,7 @@ Boolean _CFIsObjC(CFTypeID typeID, CFTypeRef obj);
 #endif
 }  // extern "C"
 
-namespace base {
-namespace mac {
+namespace base::mac {
 
 namespace {
 
@@ -49,7 +47,7 @@ bool g_override_am_i_bundled = false;
 bool g_override_am_i_bundled_value = false;
 
 bool UncachedAmIBundled() {
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // All apps are bundled on iOS.
   return true;
 #else
@@ -79,7 +77,7 @@ bool AmIBundled() {
 }
 
 void SetOverrideAmIBundled(bool value) {
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // It doesn't make sense not to be bundled on iOS.
   if (!value)
     NOTREACHED();
@@ -100,11 +98,11 @@ bool IsBackgroundOnlyProcess() {
   return [info_dictionary[@"LSUIElement"] boolValue] != NO;
 }
 
-FilePath PathForFrameworkBundleResource(CFStringRef resourceName) {
+FilePath PathForFrameworkBundleResource(const char* resource_name) {
   NSBundle* bundle = base::mac::FrameworkBundle();
-  NSString* resourcePath = [bundle pathForResource:(NSString*)resourceName
-                                            ofType:nil];
-  return NSStringToFilePath(resourcePath);
+  NSURL* resource_url = [bundle URLForResource:@(resource_name)
+                                 withExtension:nil];
+  return NSURLToFilePath(resource_url);
 }
 
 OSType CreatorCodeForCFBundleRef(CFBundleRef bundle) {
@@ -157,11 +155,10 @@ FilePath GetUserLibraryPath() {
 //   returns - path to the application bundle, or empty on error
 FilePath GetAppBundlePath(const FilePath& exec_name) {
   const char kExt[] = ".app";
-  const size_t kExtLength = base::size(kExt) - 1;
+  const size_t kExtLength = std::size(kExt) - 1;
 
   // Split the path into components.
-  std::vector<std::string> components;
-  exec_name.GetComponents(&components);
+  std::vector<std::string> components = exec_name.GetComponents();
 
   // It's an error if we don't get any components.
   if (components.empty())
@@ -222,23 +219,14 @@ TYPE_NAME_FOR_CF_TYPE_DEFN(CGColor)
 TYPE_NAME_FOR_CF_TYPE_DEFN(CTFont)
 TYPE_NAME_FOR_CF_TYPE_DEFN(CTRun)
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
+TYPE_NAME_FOR_CF_TYPE_DEFN(SecAccessControl)
 TYPE_NAME_FOR_CF_TYPE_DEFN(SecCertificate)
 TYPE_NAME_FOR_CF_TYPE_DEFN(SecKey)
 TYPE_NAME_FOR_CF_TYPE_DEFN(SecPolicy)
 #endif
 
 #undef TYPE_NAME_FOR_CF_TYPE_DEFN
-
-void NSObjectRetain(void* obj) {
-  id<NSObject> nsobj = static_cast<id<NSObject> >(obj);
-  [nsobj retain];
-}
-
-void NSObjectRelease(void* obj) {
-  id<NSObject> nsobj = static_cast<id<NSObject> >(obj);
-  [nsobj release];
-}
 
 static const char* base_bundle_id;
 
@@ -312,11 +300,11 @@ CF_TO_NS_CAST_DEFN(CFWriteStream, NSOutputStream)
 CF_TO_NS_MUTABLE_CAST_DEFN(String)
 CF_TO_NS_CAST_DEFN(CFURL, NSURL)
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 CF_TO_NS_CAST_DEFN(CTFont, UIFont)
 #else
 // The NSFont/CTFont toll-free bridging is broken before 10.15.
-// http://www.openradar.me/15341349 rdar://15341349
+// https://openradar.appspot.com/15341349
 //
 // TODO(https://crbug.com/1076527): This is fixed in 10.15. When 10.15 is the
 // minimum OS for Chromium, remove this specialization and replace it with just:
@@ -381,11 +369,11 @@ CF_CAST_DEFN(CGColor)
 CF_CAST_DEFN(CTFontDescriptor)
 CF_CAST_DEFN(CTRun)
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 CF_CAST_DEFN(CTFont)
 #else
 // The NSFont/CTFont toll-free bridging is broken before 10.15.
-// http://www.openradar.me/15341349 rdar://15341349
+// https://openradar.appspot.com/15341349
 //
 // TODO(https://crbug.com/1076527): This is fixed in 10.15. When 10.15 is the
 // minimum OS for Chromium, remove this specialization and the #if IOS above,
@@ -417,12 +405,11 @@ CFCastStrict<CTFontRef>(const CFTypeRef& cf_val) {
 }
 #endif
 
-#if !defined(OS_IOS)
-CF_CAST_DEFN(SecACL)
+#if !BUILDFLAG(IS_IOS)
+CF_CAST_DEFN(SecAccessControl)
 CF_CAST_DEFN(SecCertificate)
 CF_CAST_DEFN(SecKey)
 CF_CAST_DEFN(SecPolicy)
-CF_CAST_DEFN(SecTrustedApplication)
 #endif
 
 #undef CF_CAST_DEFN
@@ -458,6 +445,12 @@ FilePath NSStringToFilePath(NSString* str) {
   return FilePath([str fileSystemRepresentation]);
 }
 
+FilePath NSURLToFilePath(NSURL* url) {
+  if (![url isFileURL])
+    return FilePath();
+  return NSStringToFilePath([url path]);
+}
+
 base::ScopedCFTypeRef<CFURLRef> FilePathToCFURL(const FilePath& path) {
   DCHECK(!path.empty());
 
@@ -467,7 +460,7 @@ base::ScopedCFTypeRef<CFURLRef> FilePathToCFURL(const FilePath& path) {
   const std::string& path_string = path.value();
   base::ScopedCFTypeRef<CFStringRef> path_cfstring(CFStringCreateWithBytes(
       kCFAllocatorDefault, reinterpret_cast<const UInt8*>(path_string.data()),
-      path_string.length(), kCFStringEncodingUTF8,
+      checked_cast<CFIndex>(path_string.length()), kCFStringEncodingUTF8,
       /*isExternalRepresentation=*/FALSE));
   if (!path_cfstring)
     return base::ScopedCFTypeRef<CFURLRef>();
@@ -478,21 +471,19 @@ base::ScopedCFTypeRef<CFURLRef> FilePathToCFURL(const FilePath& path) {
 }
 
 bool CFRangeToNSRange(CFRange range, NSRange* range_out) {
-  decltype(range_out->location) end;
-  if (base::IsValueInRangeForNumericType<decltype(range_out->location)>(
-          range.location) &&
-      base::IsValueInRangeForNumericType<decltype(range_out->length)>(
-          range.length) &&
+  NSUInteger end;
+  if (base::IsValueInRangeForNumericType<NSUInteger>(range.location) &&
+      base::IsValueInRangeForNumericType<NSUInteger>(range.length) &&
       base::CheckAdd(range.location, range.length).AssignIfValid(&end) &&
-      base::IsValueInRangeForNumericType<decltype(range_out->location)>(end)) {
-    *range_out = NSMakeRange(range.location, range.length);
+      base::IsValueInRangeForNumericType<NSUInteger>(end)) {
+    *range_out = NSMakeRange(static_cast<NSUInteger>(range.location),
+                             static_cast<NSUInteger>(range.length));
     return true;
   }
   return false;
 }
 
-}  // namespace mac
-}  // namespace base
+}  // namespace base::mac
 
 std::ostream& operator<<(std::ostream& o, const CFStringRef string) {
   return o << base::SysCFStringRefToUTF8(string);
@@ -516,7 +507,9 @@ std::ostream& operator<<(std::ostream& o, const CFErrorRef err) {
 }
 
 std::ostream& operator<<(std::ostream& o, CFRange range) {
-  return o << NSStringFromRange(NSMakeRange(range.location, range.length));
+  return o << NSStringFromRange(
+             NSMakeRange(static_cast<NSUInteger>(range.location),
+                         static_cast<NSUInteger>(range.length)));
 }
 
 std::ostream& operator<<(std::ostream& o, id obj) {
@@ -531,7 +524,7 @@ std::ostream& operator<<(std::ostream& o, SEL selector) {
   return o << NSStringFromSelector(selector);
 }
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
 std::ostream& operator<<(std::ostream& o, NSPoint point) {
   return o << NSStringFromPoint(point);
 }

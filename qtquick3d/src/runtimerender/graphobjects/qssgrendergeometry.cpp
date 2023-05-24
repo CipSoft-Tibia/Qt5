@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qssgrendergeometry_p.h"
 #include "qssgrendermesh_p.h"
@@ -34,12 +8,10 @@
 QSSGRenderGeometry::QSSGRenderGeometry()
     : QSSGRenderGraphObject(QSSGRenderGraphObject::Type::Geometry)
 {
-
 }
 
 QSSGRenderGeometry::~QSSGRenderGeometry()
 {
-
 }
 
 const QByteArray &QSSGRenderGeometry::vertexBuffer() const
@@ -82,14 +54,9 @@ int QSSGRenderGeometry::stride() const
     return m_meshData.m_stride;
 }
 
-QString QSSGRenderGeometry::path() const
+QSSGMesh::Mesh::DrawMode QSSGRenderGeometry::primitiveType() const
 {
-    return m_meshPath.path;
-}
-
-QSSGRenderGeometry::PrimitiveType QSSGRenderGeometry::primitiveType() const
-{
-    return static_cast<QSSGRenderGeometry::PrimitiveType>(m_meshData.m_primitiveType);
+    return m_meshData.m_primitiveType;
 }
 
 QSSGRenderGeometry::Attribute QSSGRenderGeometry::attribute(int idx) const
@@ -97,14 +64,14 @@ QSSGRenderGeometry::Attribute QSSGRenderGeometry::attribute(int idx) const
     Attribute attr;
     const auto &mattr = m_meshData.m_attributes[idx];
     attr.offset = mattr.offset;
-    attr.semantic = static_cast<QSSGRenderGeometry::Attribute::Semantic>(mattr.semantic);
-    attr.componentType
-            = static_cast<QSSGRenderGeometry::Attribute::ComponentType>(mattr.componentType);
+    attr.semantic = mattr.semantic;
+    attr.componentType = mattr.componentType;
     return attr;
 }
 
-void QSSGRenderGeometry::addAttribute(Attribute::Semantic semantic, int offset,
-                                      Attribute::ComponentType componentType)
+void QSSGRenderGeometry::addAttribute(QSSGMesh::RuntimeMeshData::Attribute::Semantic semantic,
+                                      int offset,
+                                      QSSGMesh::Mesh::ComponentType componentType)
 {
     Attribute attr;
     attr.semantic = semantic;
@@ -115,40 +82,93 @@ void QSSGRenderGeometry::addAttribute(Attribute::Semantic semantic, int offset,
 
 void QSSGRenderGeometry::addAttribute(const Attribute &att)
 {
-    int index = m_meshData.m_attributeCount;
+    const int index = m_meshData.m_attributeCount;
+    if (index == QSSGMesh::RuntimeMeshData::MAX_ATTRIBUTES) {
+        qWarning("Maximum number (%d) of vertex attributes in custom geometry has been reached; ignoring extra attributes",
+                 QSSGMesh::RuntimeMeshData::MAX_ATTRIBUTES);
+        return;
+    }
     m_meshData.m_attributes[index].semantic
-            = static_cast<QSSGMeshUtilities::MeshData::Attribute::Semantic>(att.semantic);
+            = static_cast<QSSGMesh::RuntimeMeshData::Attribute::Semantic>(att.semantic);
     m_meshData.m_attributes[index].offset = att.offset;
-    m_meshData.m_attributes[index].componentType
-            = static_cast<QSSGMeshUtilities::MeshData::Attribute::ComponentType>(att.componentType);
+    m_meshData.m_attributes[index].componentType = att.componentType;
     ++m_meshData.m_attributeCount;
-    m_dirty = true;
+    markDirty();
+}
+
+void QSSGRenderGeometry::addTargetAttribute(quint32 targetId,
+                                            QSSGMesh::RuntimeMeshData::Attribute::Semantic semantic,
+                                            int offset,
+                                            int stride)
+{
+    TargetAttribute tAttr;
+    tAttr.targetId = targetId;
+    tAttr.attr.semantic = semantic;
+    tAttr.attr.offset = offset;
+    tAttr.stride = stride;
+    addTargetAttribute(tAttr);
+}
+
+void QSSGRenderGeometry::addTargetAttribute(const TargetAttribute &att)
+{
+    const int index = m_meshData.m_targetAttributeCount;
+    if (index == QSSGMesh::RuntimeMeshData::MAX_TARGET_ATTRIBUTES) {
+        qWarning("Maximum number (%d) of morph target attributes in custom geometry has been reached; ignoring extra attributes",
+                 QSSGMesh::RuntimeMeshData::MAX_TARGET_ATTRIBUTES);
+        return;
+    }
+    m_meshData.m_targetAttributes[index].attr.semantic
+            = static_cast<QSSGMesh::RuntimeMeshData::Attribute::Semantic>(att.attr.semantic);
+    m_meshData.m_targetAttributes[index].attr.offset = att.attr.offset;
+    m_meshData.m_targetAttributes[index].targetId = att.targetId;
+    m_meshData.m_targetAttributes[index].stride = att.stride;
+    ++m_meshData.m_targetAttributeCount;
+    markDirty();
+}
+
+void QSSGRenderGeometry::addSubset(quint32 offset, quint32 count, const QVector3D &boundsMin, const QVector3D &boundsMax, const QString &name)
+{
+    m_meshData.m_subsets.append({name, {boundsMin, boundsMax}, count, offset, {}, {}});
 }
 
 void QSSGRenderGeometry::setStride(int stride)
 {
     m_meshData.m_stride = stride;
-    m_dirty = true;
+    markDirty();
 }
 
-void QSSGRenderGeometry::setPrimitiveType(PrimitiveType type)
+void QSSGRenderGeometry::setPrimitiveType(QSSGMesh::Mesh::DrawMode type)
 {
-    m_meshData.m_primitiveType
-            = static_cast<QSSGMeshUtilities::MeshData::PrimitiveType>(type);
-    m_dirty = true;
+    m_meshData.m_primitiveType = type;
+    markDirty();
 }
 
 void QSSGRenderGeometry::setBounds(const QVector3D &min, const QVector3D &max)
 {
     m_bounds = QSSGBounds3(min, max);
-    m_dirty = true;
+    markDirty();
 }
 
 void QSSGRenderGeometry::clear()
 {
-    m_meshData.clear();
-    m_bounds = QSSGBounds3::empty();
-    m_dirty = true;
+    m_meshData.clearVertexAndIndex();
+    m_meshData.clearTarget();
+    m_bounds.setEmpty();
+    markDirty();
+}
+
+void QSSGRenderGeometry::clearVertexAndIndex()
+{
+    m_meshData.clearVertexAndIndex();
+    m_bounds.setEmpty();
+    markDirty();
+}
+
+
+void QSSGRenderGeometry::clearTarget()
+{
+    m_meshData.clearTarget();
+    markDirty();
 }
 
 void QSSGRenderGeometry::clearAttributes()
@@ -156,36 +176,35 @@ void QSSGRenderGeometry::clearAttributes()
     m_meshData.m_attributeCount = 0;
 }
 
-void QSSGRenderGeometry::setPath(const QString &path)
+uint32_t QSSGRenderGeometry::generationId() const
 {
-    m_meshPath = QSSGRenderMeshPath::create(path);
-    m_dirty = true;
+    return m_generationId;
+}
+
+const QSSGMesh::RuntimeMeshData &QSSGRenderGeometry::meshData() const
+{
+    return m_meshData;
 }
 
 void QSSGRenderGeometry::setVertexData(const QByteArray &data)
 {
     m_meshData.m_vertexBuffer = data;
-    m_dirty = true;
+    markDirty();
 }
 
 void QSSGRenderGeometry::setIndexData(const QByteArray &data)
 {
     m_meshData.m_indexBuffer = data;
-    m_dirty = true;
+    markDirty();
 }
 
-QSSGRenderMesh *QSSGRenderGeometry::createOrUpdate(const QSSGRef<QSSGBufferManager> &bufferManager)
+void QSSGRenderGeometry::setTargetData(const QByteArray &data)
 {
-    if (!m_meshBuilder)
-        m_meshBuilder = QSSGMeshUtilities::QSSGMeshBuilder::createMeshBuilder();
+    m_meshData.m_targetBuffer = data;
+    markDirty();
+}
 
-    if (m_dirty) {
-        QString error;
-        auto mesh = m_meshBuilder->buildMesh(m_meshData, error, m_bounds);
-        bufferManager->loadCustomMesh(m_meshPath, mesh, true);
-        m_meshBuilder->reset();
-        m_dirty = false;
-    }
-
-    return bufferManager->loadMesh(m_meshPath);
+void QSSGRenderGeometry::markDirty()
+{
+    m_generationId++;
 }

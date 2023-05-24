@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,24 +6,37 @@
 #define SERVICES_VIZ_PUBLIC_CPP_COMPOSITING_TRANSFERABLE_RESOURCE_MOJOM_TRAITS_H_
 
 #include "build/build_config.h"
+#include "components/viz/common/resources/resource_id.h"
 #include "components/viz/common/resources/transferable_resource.h"
 #include "gpu/ipc/common/vulkan_ycbcr_info.h"
 #include "gpu/ipc/common/vulkan_ycbcr_info_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/shared_image_format_mojom_traits.h"
 #include "services/viz/public/mojom/compositing/transferable_resource.mojom-shared.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/ipc/color/gfx_param_traits.h"
 
 namespace mojo {
 
 template <>
+struct EnumTraits<viz::mojom::SynchronizationType,
+                  viz::TransferableResource::SynchronizationType> {
+  static viz::mojom::SynchronizationType ToMojom(
+      viz::TransferableResource::SynchronizationType type);
+
+  static bool FromMojom(viz::mojom::SynchronizationType input,
+                        viz::TransferableResource::SynchronizationType* out);
+};
+
+template <>
 struct StructTraits<viz::mojom::TransferableResourceDataView,
                     viz::TransferableResource> {
-  static uint32_t id(const viz::TransferableResource& resource) {
+  static const viz::ResourceId& id(const viz::TransferableResource& resource) {
     return resource.id;
   }
 
-  static viz::mojom::ResourceFormat format(
+  static viz::SharedImageFormat format(
       const viz::TransferableResource& resource) {
-    return static_cast<viz::mojom::ResourceFormat>(resource.format);
+    return resource.format;
   }
 
   static uint32_t filter(const viz::TransferableResource& resource) {
@@ -39,9 +52,9 @@ struct StructTraits<viz::mojom::TransferableResourceDataView,
     return resource.mailbox_holder;
   }
 
-  static bool read_lock_fences_enabled(
+  static viz::TransferableResource::SynchronizationType synchronization_type(
       const viz::TransferableResource& resource) {
-    return resource.read_lock_fences_enabled;
+    return resource.synchronization_type;
   }
 
   static bool is_software(const viz::TransferableResource& resource) {
@@ -54,7 +67,7 @@ struct StructTraits<viz::mojom::TransferableResourceDataView,
 
   static bool is_backed_by_surface_texture(
       const viz::TransferableResource& resource) {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     // TransferableResource has this in an #ifdef, but mojo doesn't let us.
     // TODO(https://crbug.com/671901)
     return resource.is_backed_by_surface_texture;
@@ -64,7 +77,7 @@ struct StructTraits<viz::mojom::TransferableResourceDataView,
   }
 
   static bool wants_promotion_hint(const viz::TransferableResource& resource) {
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN)
     // TransferableResource has this in an #ifdef, but mojo doesn't let us.
     // TODO(https://crbug.com/671901)
     return resource.wants_promotion_hint;
@@ -78,7 +91,17 @@ struct StructTraits<viz::mojom::TransferableResourceDataView,
     return resource.color_space;
   }
 
-  static const base::Optional<gpu::VulkanYCbCrInfo>& ycbcr_info(
+  static const absl::optional<gfx::ColorSpace>& color_space_when_sampled(
+      const viz::TransferableResource& resource) {
+    return resource.color_space_when_sampled;
+  }
+
+  static const absl::optional<gfx::HDRMetadata>& hdr_metadata(
+      const viz::TransferableResource& resource) {
+    return resource.hdr_metadata;
+  }
+
+  static const absl::optional<gpu::VulkanYCbCrInfo>& ycbcr_info(
       const viz::TransferableResource& resource) {
     return resource.ycbcr_info;
   }

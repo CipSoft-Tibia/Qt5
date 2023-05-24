@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 namespace gfx {
 class ColorSpace;
 class GpuFence;
+class Transform;
 }  // namespace gfx
 
 namespace gl {
@@ -54,6 +55,9 @@ class MailboxToSurfaceBridge {
   // won't get a new frame on the SurfaceTexture.
   virtual bool CopyMailboxToSurfaceAndSwap(
       const gpu::MailboxHolder& mailbox) = 0;
+  virtual bool CopyMailboxToSurfaceAndSwap(
+      const gpu::MailboxHolder& mailbox,
+      const gfx::Transform& uv_transform) = 0;
 
   virtual void GenSyncToken(gpu::SyncToken* out_sync_token) = 0;
 
@@ -61,7 +65,7 @@ class MailboxToSurfaceBridge {
 
   // Copies a GpuFence from the local context to the GPU process,
   // and issues a server wait for it.
-  virtual void WaitForClientGpuFence(gfx::GpuFence*) = 0;
+  virtual void WaitForClientGpuFence(gfx::GpuFence&) = 0;
 
   // Creates a GpuFence in the GPU process after the supplied sync_token
   // completes, and copies it for use in the local context. This is

@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,20 +23,22 @@ class CXFA_ImageRenderer {
  public:
   CXFA_ImageRenderer(CFX_RenderDevice* pDevice,
                      const RetainPtr<CFX_DIBBase>& pDIBBase,
-                     const CFX_Matrix* pImage2Device);
+                     const CFX_Matrix& mtImage2Device);
   ~CXFA_ImageRenderer();
 
   bool Start();
   bool Continue();
 
  private:
+  enum class State : uint8_t { kInitial = 0, kTransforming, kStarted };
+
   void CompositeDIBitmap(const RetainPtr<CFX_DIBitmap>& pDIBitmap,
                          int left,
                          int top);
 
-  UnownedPtr<CFX_RenderDevice> m_pDevice;
-  int m_Status = 0;
+  State m_State = State::kInitial;
   CFX_Matrix m_ImageMatrix;
+  UnownedPtr<CFX_RenderDevice> m_pDevice;
   RetainPtr<CFX_DIBBase> m_pDIBBase;
   RetainPtr<CFX_DIBitmap> m_pCloneConvert;
   std::unique_ptr<CFX_ImageTransformer> m_pTransformer;

@@ -46,17 +46,11 @@ class PLATFORM_EXPORT ScaleTransformOperation final
     return base::AdoptRef(new ScaleTransformOperation(sx, sy, sz, type));
   }
 
-  bool operator==(const ScaleTransformOperation& other) const {
-    return *this == static_cast<const TransformOperation&>(other);
-  }
-
   double X() const { return x_; }
   double Y() const { return y_; }
   double Z() const { return z_; }
 
-  bool CanBlendWith(const TransformOperation& other) const override;
-
-  void Apply(TransformationMatrix& transform, const FloatSize&) const override {
+  void Apply(gfx::Transform& transform, const gfx::SizeF&) const override {
     transform.Scale3d(x_, y_, z_);
   }
   scoped_refptr<TransformOperation> Accumulate(
@@ -74,20 +68,26 @@ class PLATFORM_EXPORT ScaleTransformOperation final
   OperationType GetType() const override { return type_; }
   OperationType PrimitiveType() const final { return kScale3D; }
 
- private:
-  bool operator==(const TransformOperation& o) const override {
-    if (!IsSameType(o))
-      return false;
+ protected:
+  bool IsEqualAssumingSameType(const TransformOperation& o) const override {
     const ScaleTransformOperation* s =
         static_cast<const ScaleTransformOperation*>(&o);
     return x_ == s->x_ && y_ == s->y_ && z_ == s->z_;
   }
 
+ private:
   bool HasNonTrivial3DComponent() const override { return z_ != 1.0; }
+
+  void CommonPrimitiveForInterpolation(
+      const TransformOperation* from,
+      TransformOperation::OperationType& common_type) const;
 
   scoped_refptr<TransformOperation> Zoom(double factor) final { return this; }
 
   bool PreservesAxisAlignment() const final { return true; }
+  bool IsIdentityOrTranslation() const final {
+    return x_ == 1.0 && y_ == 1.0 && z_ == 1.0;
+  }
 
   ScaleTransformOperation(double sx, double sy, double sz, OperationType type)
       : x_(sx), y_(sy), z_(sz), type_(type) {

@@ -22,25 +22,26 @@
 
 #include "third_party/blink/renderer/core/aom/accessible_node.h"
 #include "third_party/blink/renderer/core/html/html_progress_element.h"
-#include "third_party/blink/renderer/core/layout/layout_progress.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object_cache_impl.h"
 #include "third_party/blink/renderer/platform/wtf/math_extras.h"
 
 namespace blink {
 
-AXProgressIndicator::AXProgressIndicator(LayoutProgress* layout_object,
+// We can't assume that layout_object is always a `LayoutProgress`.
+// Depending on CSS styles, a <progress> element may
+// instead have a generic `LayoutObject`.
+// See the `HTMLProgressElement` class for more information.
+AXProgressIndicator::AXProgressIndicator(LayoutObject* layout_object,
                                          AXObjectCacheImpl& ax_object_cache)
-    : AXLayoutObject(layout_object, ax_object_cache) {}
-
-ax::mojom::Role AXProgressIndicator::DetermineAccessibilityRole() {
-  if ((aria_role_ = DetermineAriaRoleAttribute()) != ax::mojom::Role::kUnknown)
-    return aria_role_;
-  return ax::mojom::Role::kProgressIndicator;
+    : AXLayoutObject(layout_object, ax_object_cache) {
+  DCHECK(layout_object);
+  DCHECK(IsA<HTMLProgressElement>(layout_object->GetNode()))
+      << "The layout object's node isn't an HTMLProgressElement.";
 }
 
-bool AXProgressIndicator::ComputeAccessibilityIsIgnored(
-    IgnoredReasons* ignored_reasons) const {
-  return AccessibilityIsIgnoredByDefault(ignored_reasons);
+ax::mojom::blink::Role AXProgressIndicator::NativeRoleIgnoringAria() const {
+  return ax::mojom::blink::Role::kProgressIndicator;
 }
 
 bool AXProgressIndicator::ValueForRange(float* out_value) const {
@@ -51,7 +52,7 @@ bool AXProgressIndicator::ValueForRange(float* out_value) const {
   }
 
   if (GetProgressElement()->position() >= 0) {
-    *out_value = clampTo<float>(GetProgressElement()->value());
+    *out_value = ClampTo<float>(GetProgressElement()->value());
     return true;
   }
   // Indeterminate progress bar has no value.
@@ -65,7 +66,7 @@ bool AXProgressIndicator::MaxValueForRange(float* out_value) const {
     return true;
   }
 
-  *out_value = clampTo<float>(GetProgressElement()->max());
+  *out_value = ClampTo<float>(GetProgressElement()->max());
   return true;
 }
 
@@ -81,7 +82,9 @@ bool AXProgressIndicator::MinValueForRange(float* out_value) const {
 }
 
 HTMLProgressElement* AXProgressIndicator::GetProgressElement() const {
-  return ToLayoutProgress(layout_object_)->ProgressElement();
+  LayoutObject* layout = layout_object_.Get();
+  DCHECK(layout);
+  return DynamicTo<HTMLProgressElement>(layout->GetNode());
 }
 
 }  // namespace blink

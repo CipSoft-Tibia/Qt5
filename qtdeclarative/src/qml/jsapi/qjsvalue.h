@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QJSVALUE_H
 #define QJSVALUE_H
@@ -53,11 +17,15 @@ class QVariant;
 class QObject;
 struct QMetaObject;
 class QDateTime;
+class QJSPrimitiveValue;
 
 typedef QList<QJSValue> QJSValueList;
 namespace QV4 {
     struct ExecutionEngine;
 }
+
+class QJSPrimitiveValue;
+class QJSManagedValue;
 
 class Q_QML_EXPORT QJSValue
 {
@@ -78,16 +46,19 @@ public:
         URIError
     };
 
+    enum ObjectConversionBehavior {
+        ConvertJSObjects,
+        RetainJSObjects
+    };
+
 public:
     QJSValue(SpecialValue value = UndefinedValue);
     ~QJSValue();
     QJSValue(const QJSValue &other);
 
-#ifdef Q_COMPILER_RVALUE_REFS
     inline QJSValue(QJSValue && other) : d(other.d) { other.d = 0; }
     inline QJSValue &operator=(QJSValue &&other)
-    { qSwap(d, other.d); return *this; }
-#endif
+    { std::swap(d, other.d); return *this; }
 
     QJSValue(bool value);
     QJSValue(int value);
@@ -100,6 +71,9 @@ public:
 #endif
 
     QJSValue &operator=(const QJSValue &other);
+
+    explicit QJSValue(QJSPrimitiveValue &&value);
+    explicit QJSValue(QJSManagedValue &&value);
 
     bool isBool() const;
     bool isNumber() const;
@@ -114,13 +88,18 @@ public:
     bool isRegExp() const;
     bool isArray() const;
     bool isError() const;
+    bool isUrl() const;
 
     QString toString() const;
     double toNumber() const;
     qint32 toInt() const;
     quint32 toUInt() const;
     bool toBool() const;
+
     QVariant toVariant() const;
+    QVariant toVariant(ObjectConversionBehavior behavior) const;
+    QJSPrimitiveValue toPrimitive() const;
+
     QObject *toQObject() const;
     const QMetaObject *toQMetaObject() const;
     QDateTime toDateTime() const;
@@ -143,23 +122,24 @@ public:
     bool deleteProperty(const QString &name);
 
     bool isCallable() const;
-    QJSValue call(const QJSValueList &args = QJSValueList()); // ### Qt6: Make const
-    QJSValue callWithInstance(const QJSValue &instance, const QJSValueList &args = QJSValueList()); // ### Qt6: Make const
-    QJSValue callAsConstructor(const QJSValueList &args = QJSValueList()); // ### Qt6: Make const
+    QJSValue call(const QJSValueList &args = QJSValueList()) const;
+    QJSValue callWithInstance(const QJSValue &instance, const QJSValueList &args = QJSValueList()) const;
+    QJSValue callAsConstructor(const QJSValueList &args = QJSValueList()) const;
 
     ErrorType errorType() const;
-#ifdef QT_DEPRECATED
-    QT_DEPRECATED QJSEngine *engine() const;
-#endif
 
-    QJSValue(QV4::ExecutionEngine *e, quint64 val);
 private:
     friend class QJSValuePrivate;
     // force compile error, prevent QJSValue(bool) to be called
-    QJSValue(void *) Q_DECL_EQ_DELETE;
+    QJSValue(void *) = delete;
 
-    mutable quintptr d;
+    quint64 d;
 };
+
+#ifndef QT_NO_DATASTREAM
+Q_QML_EXPORT QDataStream &operator<<(QDataStream &, const QJSValue &);
+Q_QML_EXPORT QDataStream &operator>>(QDataStream &, QJSValue &);
+#endif
 
 QT_END_NAMESPACE
 

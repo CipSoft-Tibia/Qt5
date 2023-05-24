@@ -48,6 +48,7 @@
 #include "absl/base/optimization.h"
 #include "absl/synchronization/internal/kernel_timeout.h"
 
+
 namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace synchronization_internal {
@@ -66,83 +67,15 @@ static void MaybeBecomeIdle() {
 
 #if ABSL_WAITER_MODE == ABSL_WAITER_MODE_FUTEX
 
-// Some Android headers are missing these definitions even though they
-// support these futex operations.
-#ifdef __BIONIC__
-#ifndef SYS_futex
-#define SYS_futex __NR_futex
-#endif
-#ifndef FUTEX_WAIT_BITSET
-#define FUTEX_WAIT_BITSET 9
-#endif
-#ifndef FUTEX_PRIVATE_FLAG
-#define FUTEX_PRIVATE_FLAG 128
-#endif
-#ifndef FUTEX_CLOCK_REALTIME
-#define FUTEX_CLOCK_REALTIME 256
-#endif
-#ifndef FUTEX_BITSET_MATCH_ANY
-#define FUTEX_BITSET_MATCH_ANY 0xFFFFFFFF
-#endif
-#endif
+Waiter::Waiter() : futex_(0) {}
 
-#if defined(__NR_futex_time64) && !defined(SYS_futex_time64)
-#define SYS_futex_time64 __NR_futex_time64
-#endif
-
-#if defined(SYS_futex_time64) && !defined(SYS_futex)
-#define SYS_futex SYS_futex_time64
-#endif
-
-class Futex {
- public:
-  static int WaitUntil(std::atomic<int32_t> *v, int32_t val,
-                       KernelTimeout t) {
-    int err = 0;
-    if (t.has_timeout()) {
-      // https://locklessinc.com/articles/futex_cheat_sheet/
-      // Unlike FUTEX_WAIT, FUTEX_WAIT_BITSET uses absolute time.
-      struct timespec abs_timeout = t.MakeAbsTimespec();
-      // Atomically check that the futex value is still 0, and if it
-      // is, sleep until abs_timeout or until woken by FUTEX_WAKE.
-      err = syscall(
-          SYS_futex, reinterpret_cast<int32_t *>(v),
-          FUTEX_WAIT_BITSET | FUTEX_PRIVATE_FLAG | FUTEX_CLOCK_REALTIME, val,
-          &abs_timeout, nullptr, FUTEX_BITSET_MATCH_ANY);
-    } else {
-      // Atomically check that the futex value is still 0, and if it
-      // is, sleep until woken by FUTEX_WAKE.
-      err = syscall(SYS_futex, reinterpret_cast<int32_t *>(v),
-                    FUTEX_WAIT | FUTEX_PRIVATE_FLAG, val, nullptr);
-    }
-    if (err != 0) {
-      err = -errno;
-    }
-    return err;
-  }
-
-  static int Wake(std::atomic<int32_t> *v, int32_t count) {
-    int err = syscall(SYS_futex, reinterpret_cast<int32_t *>(v),
-                      FUTEX_WAKE | FUTEX_PRIVATE_FLAG, count);
-    if (ABSL_PREDICT_FALSE(err < 0)) {
-      err = -errno;
-    }
-    return err;
-  }
-};
-
-Waiter::Waiter() {
-  futex_.store(0, std::memory_order_relaxed);
-}
-
-Waiter::~Waiter() = default;
-
-bool Waiter::Wait(KernelTimeout t) {
+bool Waiter::WaitAbsoluteTimeout(KernelTimeout t) {
   // Loop until we can atomically decrement futex from a positive
   // value, waiting on a futex while we believe it is zero.
   // Note that, since the thread ticker is just reset, we don't need to check
   // whether the thread is idle on the very first pass of the loop.
   bool first_pass = true;
+
   while (true) {
     int32_t x = futex_.load(std::memory_order_relaxed);
     while (x != 0) {
@@ -154,9 +87,9 @@ bool Waiter::Wait(KernelTimeout t) {
       return true;  // Consumed a wakeup, we are done.
     }
 
-
     if (!first_pass) MaybeBecomeIdle();
-    const int err = Futex::WaitUntil(&futex_, 0, t);
+    auto abs_timeout = t.MakeAbsTimespec();
+    const int err = Futex::WaitAbsoluteTimeout(&futex_, 0, &abs_timeout);
     if (err != 0) {
       if (err == -EINTR || err == -EWOULDBLOCK) {
         // Do nothing, the loop will retry.
@@ -168,6 +101,103 @@ bool Waiter::Wait(KernelTimeout t) {
     }
     first_pass = false;
   }
+}
+
+#ifdef CLOCK_MONOTONIC
+
+// Subtracts the timespec `sub` from `in` if the result would not be negative,
+// and returns true.  Returns false if the result would be negative, and leaves
+// `in` unchanged.
+static bool TimespecSubtract(struct timespec& in, const struct timespec& sub) {
+  if (in.tv_sec < sub.tv_sec) {
+    return false;
+  }
+  if (in.tv_nsec < sub.tv_nsec) {
+    if (in.tv_sec == sub.tv_sec) {
+      return false;
+    }
+    // Borrow from tv_sec.
+    in.tv_sec -= 1;
+    in.tv_nsec += 1'000'000'000;
+  }
+  in.tv_sec -= sub.tv_sec;
+  in.tv_nsec -= sub.tv_nsec;
+  return true;
+}
+
+// On some platforms a background thread periodically calls `Poke()` to briefly
+// wake waiter threads so that they may call `MaybeBecomeIdle()`. This means
+// that `WaitRelativeTimeout()` differs slightly from `WaitAbsoluteTimeout()`
+// because it must adjust the timeout by the amount of time that it has already
+// slept.
+bool Waiter::WaitRelativeTimeout(KernelTimeout t) {
+  struct timespec start;
+  ABSL_RAW_CHECK(clock_gettime(CLOCK_MONOTONIC, &start) == 0,
+                 "clock_gettime() failed");
+
+  // Loop until we can atomically decrement futex from a positive
+  // value, waiting on a futex while we believe it is zero.
+  // Note that, since the thread ticker is just reset, we don't need to check
+  // whether the thread is idle on the very first pass of the loop.
+  bool first_pass = true;
+
+  while (true) {
+    int32_t x = futex_.load(std::memory_order_relaxed);
+    while (x != 0) {
+      if (!futex_.compare_exchange_weak(x, x - 1,
+                                        std::memory_order_acquire,
+                                        std::memory_order_relaxed)) {
+        continue;  // Raced with someone, retry.
+      }
+      return true;  // Consumed a wakeup, we are done.
+    }
+
+    auto relative_timeout = t.MakeRelativeTimespec();
+    if (!first_pass) {
+      MaybeBecomeIdle();
+
+      // Adjust relative_timeout for `Poke()`s.
+      struct timespec now;
+      ABSL_RAW_CHECK(clock_gettime(CLOCK_MONOTONIC, &now) == 0,
+                     "clock_gettime() failed");
+      // If TimespecSubstract(now, start) returns false, then the clock isn't
+      // truly monotonic.
+      if (TimespecSubtract(now, start)) {
+        if (!TimespecSubtract(relative_timeout, now)) {
+          return false;  // Timeout.
+        }
+      }
+    }
+
+    const int err = Futex::WaitRelativeTimeout(&futex_, 0, &relative_timeout);
+    if (err != 0) {
+      if (err == -EINTR || err == -EWOULDBLOCK) {
+        // Do nothing, the loop will retry.
+      } else if (err == -ETIMEDOUT) {
+        return false;
+      } else {
+        ABSL_RAW_LOG(FATAL, "Futex operation failed with error %d\n", err);
+      }
+    }
+    first_pass = false;
+  }
+}
+
+#else  // CLOCK_MONOTONIC
+
+// No support for CLOCK_MONOTONIC.
+// KernelTimeout will automatically convert to an absolute timeout.
+bool Waiter::WaitRelativeTimeout(KernelTimeout t) {
+  return WaitAbsoluteTimeout(t);
+}
+
+#endif  // CLOCK_MONOTONIC
+
+bool Waiter::Wait(KernelTimeout t) {
+  if (t.is_absolute_timeout()) {
+    return WaitAbsoluteTimeout(t);
+  }
+  return WaitRelativeTimeout(t);
 }
 
 void Waiter::Post() {
@@ -223,18 +253,6 @@ Waiter::Waiter() {
 
   waiter_count_ = 0;
   wakeup_count_ = 0;
-}
-
-Waiter::~Waiter() {
-  const int err = pthread_mutex_destroy(&mu_);
-  if (err != 0) {
-    ABSL_RAW_LOG(FATAL, "pthread_mutex_destroy failed: %d", err);
-  }
-
-  const int err2 = pthread_cond_destroy(&cv_);
-  if (err2 != 0) {
-    ABSL_RAW_LOG(FATAL, "pthread_cond_destroy failed: %d", err2);
-  }
 }
 
 bool Waiter::Wait(KernelTimeout t) {
@@ -302,12 +320,6 @@ Waiter::Waiter() {
     ABSL_RAW_LOG(FATAL, "sem_init failed with errno %d\n", errno);
   }
   wakeups_.store(0, std::memory_order_relaxed);
-}
-
-Waiter::~Waiter() {
-  if (sem_destroy(&sem_) != 0) {
-    ABSL_RAW_LOG(FATAL, "sem_destroy failed with errno %d\n", errno);
-  }
 }
 
 bool Waiter::Wait(KernelTimeout t) {
@@ -426,11 +438,6 @@ Waiter::Waiter() {
   waiter_count_ = 0;
   wakeup_count_ = 0;
 }
-
-// SRW locks and condition variables do not need to be explicitly destroyed.
-// https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-initializesrwlock
-// https://stackoverflow.com/questions/28975958/why-does-windows-have-no-deleteconditionvariable-function-to-go-together-with
-Waiter::~Waiter() = default;
 
 bool Waiter::Wait(KernelTimeout t) {
   SRWLOCK *mu = WinHelper::GetLock(this);

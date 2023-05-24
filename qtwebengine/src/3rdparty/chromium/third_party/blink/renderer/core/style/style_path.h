@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,8 @@ class SVGPathByteStream;
 
 class StylePath final : public BasicShape {
  public:
-  static scoped_refptr<StylePath> Create(std::unique_ptr<SVGPathByteStream>);
+  static scoped_refptr<StylePath> Create(std::unique_ptr<SVGPathByteStream>,
+                                         WindRule wind_rule = RULE_NONZERO);
   ~StylePath() override;
 
   static const StylePath* EmptyPath();
@@ -31,17 +32,21 @@ class StylePath final : public BasicShape {
 
   CSSValue* ComputedCSSValue() const;
 
-  void GetPath(Path&, const FloatRect&) override;
-  bool operator==(const BasicShape&) const override;
+  void GetPath(Path&, const gfx::RectF&, float zoom) override;
+  WindRule GetWindRule() const override { return wind_rule_; }
 
   ShapeType GetType() const override { return kStylePathType; }
 
+ protected:
+  bool IsEqualAssumingSameType(const BasicShape&) const override;
+
  private:
-  explicit StylePath(std::unique_ptr<SVGPathByteStream>);
+  explicit StylePath(std::unique_ptr<SVGPathByteStream>, WindRule wind_rule);
 
   std::unique_ptr<SVGPathByteStream> byte_stream_;
   mutable std::unique_ptr<Path> path_;
   mutable float path_length_;
+  WindRule wind_rule_;
 };
 
 template <>

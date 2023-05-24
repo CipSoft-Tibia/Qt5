@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsize.h"
 #include "qdatastream.h"
@@ -302,37 +266,32 @@ QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const noexcept
 */
 
 /*!
-    \fn bool operator==(const QSize &s1, const QSize &s2)
-    \relates QSize
+    \fn bool QSize::operator==(const QSize &s1, const QSize &s2)
 
     Returns \c true if \a s1 and \a s2 are equal; otherwise returns \c false.
 */
 
 /*!
-    \fn bool operator!=(const QSize &s1, const QSize &s2)
-    \relates QSize
+    \fn bool QSize::operator!=(const QSize &s1, const QSize &s2)
 
     Returns \c true if \a s1 and \a s2 are different; otherwise returns \c false.
 */
 
 /*!
-    \fn const QSize operator+(const QSize &s1, const QSize &s2)
-    \relates QSize
+    \fn QSize QSize::operator+(const QSize &s1, const QSize &s2)
 
     Returns the sum of \a s1 and \a s2; each component is added separately.
 */
 
 /*!
-    \fn const QSize operator-(const QSize &s1, const QSize &s2)
-    \relates QSize
+    \fn QSize QSize::operator-(const QSize &s1, const QSize &s2)
 
     Returns \a s2 subtracted from \a s1; each component is subtracted
     separately.
 */
 
 /*!
-    \fn const QSize operator*(const QSize &size, qreal factor)
-    \relates QSize
+    \fn QSize QSize::operator*(const QSize &size, qreal factor)
 
     Multiplies the given \a size by the given \a factor, and returns
     the result rounded to the nearest integer.
@@ -341,9 +300,8 @@ QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const noexcept
 */
 
 /*!
-    \fn const QSize operator*(qreal factor, const QSize &size)
+    \fn QSize QSize::operator*(qreal factor, const QSize &size)
     \overload
-    \relates QSize
 
     Multiplies the given \a size by the given \a factor, and returns
     the result rounded to the nearest integer.
@@ -362,8 +320,7 @@ QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const noexcept
 */
 
 /*!
-    \fn const QSize operator/(const QSize &size, qreal divisor)
-    \relates QSize
+    \fn QSize QSize::operator/(const QSize &size, qreal divisor)
     \overload
 
     Divides the given \a size by the given \a divisor, and returns the
@@ -408,6 +365,15 @@ QSize QSize::scaled(const QSize &s, Qt::AspectRatioMode mode) const noexcept
     Returns the size that results from shrinking this size by \a margins.
 
     \sa grownBy()
+*/
+
+/*!
+    \fn QSize::toSizeF() const
+    \since 6.4
+
+    Returns this size as a size with floating point accuracy.
+
+    \sa QSizeF::toSize()
 */
 
 /*****************************************************************************
@@ -527,13 +493,13 @@ QDebug operator<<(QDebug dbg, const QSize &s)
     Constructs a size with floating point accuracy from the given \a
     size.
 
-    \sa toSize()
+    \sa toSize(), QSize::toSizeF()
 */
 
 /*!
     \fn QSizeF::QSizeF(qreal width, qreal height)
 
-    Constructs a size with the given \a width and \a height.
+    Constructs a size with the given finite \a width and \a height.
 */
 
 /*!
@@ -557,7 +523,7 @@ QDebug operator<<(QDebug dbg, const QSize &s)
 /*!
     \fn bool QSizeF::isValid() const
 
-    Returns \c true if both the width and height is equal to or greater
+    Returns \c true if both the width and height are equal to or greater
     than 0; otherwise returns \c false.
 
     \sa isNull(), isEmpty()
@@ -582,7 +548,7 @@ QDebug operator<<(QDebug dbg, const QSize &s)
 /*!
     \fn void QSizeF::setWidth(qreal width)
 
-    Sets the width to the given \a width.
+    Sets the width to the given finite \a width.
 
     \sa width(), rwidth(), setHeight()
 */
@@ -590,7 +556,7 @@ QDebug operator<<(QDebug dbg, const QSize &s)
 /*!
     \fn void QSizeF::setHeight(qreal height)
 
-    Sets the height to the given \a height.
+    Sets the height to the given finite \a height.
 
     \sa height(), rheight(), setWidth()
 */
@@ -603,7 +569,7 @@ QDebug operator<<(QDebug dbg, const QSize &s)
     Note that the coordinates in the returned size will be rounded to
     the nearest integer.
 
-    \sa QSizeF()
+    \sa QSizeF(), QSize::toSizeF()
 */
 
 /*!
@@ -741,15 +707,14 @@ QSizeF QSizeF::scaled(const QSizeF &s, Qt::AspectRatioMode mode) const noexcept
     \fn QSizeF &QSizeF::operator*=(qreal factor)
     \overload
 
-    Multiplies both the width and height by the given \a factor and
+    Multiplies both the width and height by the given finite \a factor and
     returns a reference to the size.
 
     \sa scale()
 */
 
 /*!
-    \fn bool operator==(const QSizeF &s1, const QSizeF &s2)
-    \relates QSizeF
+    \fn bool QSizeF::operator==(const QSizeF &s1, const QSizeF &s2)
 
     Returns \c true if \a s1 and \a s2 are approximately equal; otherwise
     returns false.
@@ -761,8 +726,7 @@ QSizeF QSizeF::scaled(const QSizeF &s, Qt::AspectRatioMode mode) const noexcept
 */
 
 /*!
-    \fn bool operator!=(const QSizeF &s1, const QSizeF &s2)
-    \relates QSizeF
+    \fn bool QSizeF::operator!=(const QSizeF &s1, const QSizeF &s2)
 
     Returns \c true if \a s1 and \a s2 are sufficiently different; otherwise
     returns \c false.
@@ -772,39 +736,35 @@ QSizeF QSizeF::scaled(const QSizeF &s, Qt::AspectRatioMode mode) const noexcept
 */
 
 /*!
-    \fn const QSizeF operator+(const QSizeF &s1, const QSizeF &s2)
-    \relates QSizeF
+    \fn QSizeF QSizeF::operator+(const QSizeF &s1, const QSizeF &s2)
 
     Returns the sum of \a s1 and \a s2; each component is added separately.
 */
 
 /*!
-    \fn const QSizeF operator-(const QSizeF &s1, const QSizeF &s2)
-    \relates QSizeF
+    \fn QSizeF QSizeF::operator-(const QSizeF &s1, const QSizeF &s2)
 
     Returns \a s2 subtracted from \a s1; each component is subtracted
     separately.
 */
 
 /*!
-    \fn const QSizeF operator*(const QSizeF &size, qreal factor)
+    \fn QSizeF QSizeF::operator*(const QSizeF &size, qreal factor)
 
     \overload
-    \relates QSizeF
 
-    Multiplies the given \a size by the given \a factor and returns
+    Multiplies the given \a size by the given finite \a factor and returns
     the result.
 
     \sa QSizeF::scale()
 */
 
 /*!
-    \fn const QSizeF operator*(qreal factor, const QSizeF &size)
+    \fn QSizeF QSizeF::operator*(qreal factor, const QSizeF &size)
 
     \overload
-    \relates QSizeF
 
-    Multiplies the given \a size by the given \a factor and returns
+    Multiplies the given \a size by the given finite \a factor and returns
     the result.
 */
 
@@ -813,20 +773,19 @@ QSizeF QSizeF::scaled(const QSizeF &s, Qt::AspectRatioMode mode) const noexcept
 
     \overload
 
-    Divides both the width and height by the given \a divisor and
-    returns a reference to the size.
+    Divides both the width and height by the given \a divisor and returns a
+    reference to the size. The \a divisor must not be either zero or NaN.
 
     \sa scale()
 */
 
 /*!
-    \fn const QSizeF operator/(const QSizeF &size, qreal divisor)
+    \fn QSizeF QSizeF::operator/(const QSizeF &size, qreal divisor)
 
-    \relates QSizeF
     \overload
 
     Divides the given \a size by the given \a divisor and returns the
-    result.
+    result. The \a divisor must not be either zero or NaN.
 
     \sa QSizeF::scale()
 */

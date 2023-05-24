@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVEQGEOSERVICEPROVIDER_H
 #define QDECLARATIVEQGEOSERVICEPROVIDER_H
@@ -64,9 +31,20 @@ QT_BEGIN_NAMESPACE
 
 class QDeclarativeGeoServiceProviderRequirements;
 
+// From QtPositioning, needs to be registered in the Location module as well.
+// Can probably just be a QVariantMap?
+class QDeclarativePluginParameterForeign
+{
+    Q_GADGET
+    QML_FOREIGN(QDeclarativePluginParameter)
+    QML_NAMED_ELEMENT(PluginParameter)
+};
+
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoServiceProvider : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(Plugin)
+    QML_ADDED_IN_VERSION(5, 0)
     Q_ENUMS(RoutingFeature)
     Q_ENUMS(GeocodingFeature)
     Q_ENUMS(MappingFeature)
@@ -155,8 +133,8 @@ public:
     Q_FLAGS(NavigationFeatures)
 
     // From QQmlParserStatus
-    virtual void classBegin() {}
-    virtual void componentComplete();
+    void classBegin() override {}
+    void componentComplete() override;
 
     void setName(const QString &name);
     QString name() const;
@@ -199,16 +177,16 @@ private:
     bool parametersReady();
     void tryAttach();
     static void parameter_append(QQmlListProperty<QDeclarativePluginParameter> *prop, QDeclarativePluginParameter *mapObject);
-    static int parameter_count(QQmlListProperty<QDeclarativePluginParameter> *prop);
-    static QDeclarativePluginParameter *parameter_at(QQmlListProperty<QDeclarativePluginParameter> *prop, int index);
+    static qsizetype parameter_count(QQmlListProperty<QDeclarativePluginParameter> *prop);
+    static QDeclarativePluginParameter *parameter_at(QQmlListProperty<QDeclarativePluginParameter> *prop, qsizetype index);
     static void parameter_clear(QQmlListProperty<QDeclarativePluginParameter> *prop);
 
-    QGeoServiceProvider *sharedProvider_;
+    std::unique_ptr<QGeoServiceProvider> sharedProvider_;
     QString name_;
     QList<QDeclarativePluginParameter *> parameters_;
-    QDeclarativeGeoServiceProviderRequirements *required_;
-    bool complete_;
-    bool experimental_;
+    std::unique_ptr<QDeclarativeGeoServiceProviderRequirements> required_;
+    bool complete_ = false;
+    bool experimental_ = false;
     QStringList locales_;
     QStringList prefer_;
     Q_DISABLE_COPY(QDeclarativeGeoServiceProvider)
@@ -217,6 +195,9 @@ private:
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoServiceProviderRequirements : public QObject
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(PluginRequirements)
+    QML_UNCREATABLE("PluginRequirements is not intended instantiable by developer.")
+    QML_ADDED_IN_VERSION(5, 0)
     Q_PROPERTY(QDeclarativeGeoServiceProvider::MappingFeatures mapping
                READ mappingRequirements WRITE setMappingRequirements
                NOTIFY mappingRequirementsChanged)
@@ -234,7 +215,7 @@ class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoServiceProviderRequirements : pub
                NOTIFY navigationRequirementsChanged)
 
 public:
-    explicit QDeclarativeGeoServiceProviderRequirements(QObject *parent = 0);
+    explicit QDeclarativeGeoServiceProviderRequirements(QObject *parent = nullptr);
     ~QDeclarativeGeoServiceProviderRequirements();
 
     QDeclarativeGeoServiceProvider::MappingFeatures mappingRequirements() const;
@@ -266,11 +247,11 @@ Q_SIGNALS:
     void requirementsChanged();
 
 private:
-    QDeclarativeGeoServiceProvider::MappingFeatures mapping_;
-    QDeclarativeGeoServiceProvider::RoutingFeatures routing_;
-    QDeclarativeGeoServiceProvider::GeocodingFeatures geocoding_;
-    QDeclarativeGeoServiceProvider::PlacesFeatures places_;
-    QDeclarativeGeoServiceProvider::NavigationFeatures navigation_;
+    QDeclarativeGeoServiceProvider::MappingFeatures mapping_ = QDeclarativeGeoServiceProvider::NoMappingFeatures;
+    QDeclarativeGeoServiceProvider::RoutingFeatures routing_ = QDeclarativeGeoServiceProvider::NoRoutingFeatures;
+    QDeclarativeGeoServiceProvider::GeocodingFeatures geocoding_ = QDeclarativeGeoServiceProvider::NoGeocodingFeatures;
+    QDeclarativeGeoServiceProvider::PlacesFeatures places_ = QDeclarativeGeoServiceProvider::NoPlacesFeatures;
+    QDeclarativeGeoServiceProvider::NavigationFeatures navigation_ = QDeclarativeGeoServiceProvider::NoNavigationFeatures;
 };
 
 QT_END_NAMESPACE

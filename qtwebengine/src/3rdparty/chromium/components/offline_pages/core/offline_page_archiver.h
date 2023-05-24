@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,8 @@
 #include <cstdint>
 #include <string>
 
-#include "base/callback.h"
 #include "base/files/file_path.h"
-#include "base/strings/string16.h"
+#include "base/functional/callback.h"
 #include "components/offline_pages/core/offline_page_item.h"
 #include "components/offline_pages/core/offline_page_types.h"
 #include "url/gurl.h"
@@ -69,12 +68,6 @@ class OfflinePageArchiver {
 
     // Whether to remove popup overlay that obstructs viewing normal content.
     bool remove_popup_overlay = false;
-
-    // Run page problem detectors while generating MTHML if true.
-    bool use_page_problem_detectors = false;
-
-    // Whether to enable on-the-fly hash computation.
-    bool use_on_the_fly_hash_computation = false;
   };
 
   // Callback for the final result of an attempt to generate of offline page
@@ -84,7 +77,7 @@ class OfflinePageArchiver {
       base::OnceCallback<void(ArchiverResult /* result */,
                               const GURL& /* url */,
                               const base::FilePath& /* file_path */,
-                              const base::string16& /* title */,
+                              const std::u16string& /* title */,
                               int64_t /* file_size */,
                               const std::string& /* digest */)>;
 

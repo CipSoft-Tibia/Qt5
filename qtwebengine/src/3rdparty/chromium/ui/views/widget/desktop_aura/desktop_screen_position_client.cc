@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ namespace {
 // Returns true if bounds passed to window in SetBounds should be treated as
 // though they are in screen coordinates.
 bool PositionWindowInScreenCoordinates(aura::Window* window) {
-  if (window->type() == aura::client::WINDOW_TYPE_POPUP)
+  if (window->GetType() == aura::client::WINDOW_TYPE_POPUP)
     return true;
 
   Widget* widget = Widget::GetWidgetForNativeView(window);
@@ -46,7 +46,7 @@ void DesktopScreenPositionClient::SetBounds(aura::Window* window,
     gfx::Point origin = bounds.origin();
     aura::Window::ConvertPointToTarget(window->parent(), root, &origin);
 
-    gfx::Point host_origin = GetOriginInScreen(root);
+    gfx::Point host_origin = GetRootWindowOriginInScreen(root);
     origin.Offset(-host_origin.x(), -host_origin.y());
     window->SetBounds(gfx::Rect(origin, bounds.size()));
     return;

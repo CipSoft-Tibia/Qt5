@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,18 @@
 
 #include <stdint.h>
 
-#include "base/callback.h"
+#include <memory>
+
 #include "base/files/file_path.h"
-#include "base/macros.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
 #include "components/download/public/common/download_export.h"
 #include "components/download/public/common/download_item.h"
-#include "components/download/public/common/download_schedule.h"
 #include "components/download/public/common/download_url_parameters.h"
 #include "components/download/public/common/quarantine_connection.h"
 #include "components/services/quarantine/public/mojom/quarantine.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "services/device/public/mojom/wake_lock_provider.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace download {
 class DownloadItemImpl;
@@ -34,6 +34,10 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImplDelegate {
   using ShouldOpenDownloadCallback = base::OnceCallback<void(bool)>;
 
   DownloadItemImplDelegate();
+
+  DownloadItemImplDelegate(const DownloadItemImplDelegate&) = delete;
+  DownloadItemImplDelegate& operator=(const DownloadItemImplDelegate&) = delete;
+
   virtual ~DownloadItemImplDelegate();
 
   // Used for catching use-after-free errors.
@@ -44,9 +48,10 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImplDelegate {
       const base::FilePath& target_path,
       DownloadItem::TargetDisposition disposition,
       DownloadDangerType danger_type,
-      DownloadItem::MixedContentStatus mixed_content_status,
+      DownloadItem::InsecureDownloadStatus insecure_download_status,
       const base::FilePath& intermediate_path,
-      base::Optional<DownloadSchedule> download_schedule,
+      const base::FilePath& display_name,
+      const std::string& mime_type,
       DownloadInterruptReason interrupt_reason)>;
   // Request determination of the download target from the delegate.
   virtual void DetermineDownloadTarget(DownloadItemImpl* download,
@@ -90,7 +95,7 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImplDelegate {
   // Called when an interrupted download is resumed.
   virtual void ResumeInterruptedDownload(
       std::unique_ptr<DownloadUrlParameters> params,
-      const GURL& site_url);
+      const std::string& serialized_embedder_data);
 
   // Update the persistent store with our information.
   virtual void UpdatePersistence(DownloadItemImpl* download);
@@ -127,8 +132,6 @@ class COMPONENTS_DOWNLOAD_EXPORT DownloadItemImplDelegate {
  private:
   // For "Outlives attached DownloadItemImpl" invariant assertion.
   int count_;
-
-  DISALLOW_COPY_AND_ASSIGN(DownloadItemImplDelegate);
 };
 
 }  // namespace download

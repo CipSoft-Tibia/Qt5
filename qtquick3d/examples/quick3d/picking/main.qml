@@ -1,97 +1,106 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.15
-import QtQuick.Window 2.14
-import QtQuick.Controls 2.14
-import QtQuick3D 1.15
+import QtQuick
+import QtQuick.Controls
+import QtQuick3D
 
 Window {
     visible: true
-    width: 1280
-    height: 720
+    width: 800
+    height: 500
     title: qsTr("Picking Example")
+    color: "#848895"
 
     Row {
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 20
-        Label {
-            id: pickName
-            color: "#222840"
-            font.pointSize: 14
-            text: "Last Pick: None"
+        anchors.left: parent.left
+        anchors.leftMargin: 8
+        spacing: 10
+        Column {
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "Last Pick:"
+            }
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "Screen Position:"
+            }
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "UV Position:"
+            }
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "Distance:"
+            }
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "World Position:"
+            }
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "Local Position:"
+            }
+
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "World Normal:"
+            }
+            Label {
+                color: "white"
+                font.pointSize: 14
+                text: "Local Normal:"
+            }
         }
-        Label {
-            id: pickPosition
-            color: "#222840"
-            font.pointSize: 14
-            text: "Screen Position: (0, 0)"
-        }
-        Label {
-            id: uvPosition
-            color: "#222840"
-            font.pointSize: 14
-            text: "UV Position: (0.00, 0.00)"
-        }
-        Label {
-            id: distance
-            color: "#222840"
-            font.pointSize: 14
-            text: "Distance: 0.00"
-        }
-        Label {
-            id: scenePosition
-            color: "#222840"
-            font.pointSize: 14
-            text: "World Position: (0.00, 0.00)"
+        Column {
+            Label {
+                id: pickName
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: pickPosition
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: uvPosition
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: distance
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: scenePosition
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: localPosition
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: worldNormal
+                color: "white"
+                font.pointSize: 14
+            }
+            Label {
+                id: localNormal
+                color: "white"
+                font.pointSize: 14
+            }
+
         }
     }
 
@@ -105,16 +114,11 @@ Window {
             y: 200
             z: 300
             quadraticFade: 0
-            brightness: 150
+            brightness: 1.5
         }
 
         PerspectiveCamera {
             z: 500
-        }
-
-        environment: SceneEnvironment {
-            clearColor: "#848895"
-            backgroundMode: SceneEnvironment.Color
         }
 
         //! [pickable model]
@@ -167,7 +171,7 @@ Window {
             scale.z: 2
 
             materials: DefaultMaterial {
-                diffuseColor: coneModel.isPicked ? "#53586b" : "#21be2b"
+                diffuseColor: coneModel.isPicked ? "#21be2b" : "#53586b"
                 specularAmount: 1
                 specularRoughness: 0.1
                 roughnessMap: Texture { source: "maps/roughness.jpg" }
@@ -223,9 +227,9 @@ Window {
         anchors.fill: view
         //! [mouse area]
 
-        onClicked: {
+        onClicked: (mouse) => {
             // Get screen coordinates of the click
-            pickPosition.text = "Screen Position: (" + mouse.x + ", " + mouse.y + ")"
+            pickPosition.text = "(" + mouse.x + ", " + mouse.y + ")"
             //! [pick result]
             var result = view.pick(mouse.x, mouse.y);
             //! [pick result]
@@ -235,18 +239,37 @@ Window {
                 // Toggle the isPicked property for the model
                 pickedObject.isPicked = !pickedObject.isPicked;
                 // Get picked model name
-                pickName.text = "Last Pick: " + pickedObject.objectName;
+                pickName.text = pickedObject.objectName;
                 // Get other pick specifics
-                uvPosition.text = "UV Position: ("
+                uvPosition.text = "("
                         + result.uvPosition.x.toFixed(2) + ", "
                         + result.uvPosition.y.toFixed(2) + ")";
-                distance.text = "Distance: " + result.distance.toFixed(2);
-                scenePosition.text = "World Position: ("
+                distance.text = result.distance.toFixed(2);
+                scenePosition.text = "("
                         + result.scenePosition.x.toFixed(2) + ", "
-                        + result.scenePosition.y.toFixed(2) + ")";
+                        + result.scenePosition.y.toFixed(2) + ", "
+                        + result.scenePosition.z.toFixed(2) + ")";
+                localPosition.text = "("
+                        + result.position.x.toFixed(2) + ", "
+                        + result.position.y.toFixed(2) + ", "
+                        + result.position.z.toFixed(2) + ")";
+                worldNormal.text = "("
+                        + result.sceneNormal.x.toFixed(2) + ", "
+                        + result.sceneNormal.y.toFixed(2) + ", "
+                        + result.sceneNormal.z.toFixed(2) + ")";
+                localNormal.text = "("
+                        + result.normal.x.toFixed(2) + ", "
+                        + result.normal.y.toFixed(2) + ", "
+                        + result.normal.z.toFixed(2) + ")";
                 //! [pick specifics]
             } else {
-                pickName.text = "Last Pick: None";
+                pickName.text = "None";
+                uvPosition.text = "";
+                distance.text = "";
+                scenePosition.text = "";
+                localPosition.text = "";
+                worldNormal.text = "";
+                localNormal.text = "";
             }
         }
     }

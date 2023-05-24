@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,13 +10,13 @@
 #include <map>
 
 #include "base/memory/weak_ptr.h"
-#include "base/scoped_observer.h"
-#include "chromeos/network/firewall_hole.h"
+#include "base/scoped_observation.h"
 #include "extensions/browser/app_window/app_window_registry.h"
 
 namespace content {
 class BrowserContext;
-}
+class FirewallHoleProxy;
+}  // namespace content
 
 namespace extensions {
 
@@ -27,12 +27,10 @@ class AppFirewallHoleManager;
 // closed on destruction.
 class AppFirewallHole {
  public:
-  using PortType = chromeos::FirewallHole::PortType;
+  enum class PortType { kTcp, kUdp };
 
   ~AppFirewallHole();
 
-  PortType type() const { return type_; }
-  uint16_t port() const { return port_; }
   const std::string& extension_id() const { return extension_id_; }
 
  private:
@@ -45,7 +43,7 @@ class AppFirewallHole {
 
   void SetVisible(bool app_visible);
   void OnFirewallHoleOpened(
-      std::unique_ptr<chromeos::FirewallHole> firewall_hole);
+      std::unique_ptr<content::FirewallHoleProxy> firewall_hole);
 
   PortType type_;
   uint16_t port_;
@@ -54,8 +52,8 @@ class AppFirewallHole {
 
   base::WeakPtr<AppFirewallHoleManager> manager_;
 
-  // This will hold the FirewallHole object if one is opened.
-  std::unique_ptr<chromeos::FirewallHole> firewall_hole_;
+  // This will hold the FirewallHoleProxy object if one is opened.
+  std::unique_ptr<content::FirewallHoleProxy> firewall_hole_;
 
   base::WeakPtrFactory<AppFirewallHole> weak_factory_{this};
 };
@@ -78,6 +76,8 @@ class AppFirewallHoleManager : public KeyedService,
                                         uint16_t port,
                                         const std::string& extension_id);
 
+  static void EnsureFactoryBuilt();
+
  private:
   friend class AppFirewallHole;
 
@@ -88,8 +88,9 @@ class AppFirewallHoleManager : public KeyedService,
   void OnAppWindowHidden(AppWindow* app_window) override;
   void OnAppWindowShown(AppWindow* app_window, bool was_hidden) override;
 
-  content::BrowserContext* context_;
-  ScopedObserver<AppWindowRegistry, AppWindowRegistry::Observer> observer_;
+  raw_ptr<content::BrowserContext> context_;
+  base::ScopedObservation<AppWindowRegistry, AppWindowRegistry::Observer>
+      observation_{this};
   std::multimap<std::string, AppFirewallHole*> tracked_holes_;
 
   base::WeakPtrFactory<AppFirewallHoleManager> weak_factory_{this};

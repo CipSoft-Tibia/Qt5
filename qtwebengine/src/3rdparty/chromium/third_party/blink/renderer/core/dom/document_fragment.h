@@ -26,6 +26,7 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/container_node.h"
+#include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/parser_content_policy.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 
@@ -37,7 +38,7 @@ class CORE_EXPORT DocumentFragment : public ContainerNode {
  public:
   static DocumentFragment* Create(Document&);
 
-  DocumentFragment(Document*, ConstructionType = kCreateContainer);
+  DocumentFragment(Document*, ConstructionType);
 
   void ParseHTML(const String&,
                  Element* context_element,
@@ -49,16 +50,15 @@ class CORE_EXPORT DocumentFragment : public ContainerNode {
   bool CanContainRangeEndPoint() const final { return true; }
   virtual bool IsTemplateContent() const { return false; }
 
+  // This will catch anyone doing an unnecessary check.
+  bool IsDocumentFragment() const = delete;
+
  protected:
   String nodeName() const final;
 
  private:
-  NodeType getNodeType() const final;
   Node* Clone(Document&, CloneChildrenFlag) const override;
   bool ChildTypeAllowed(NodeType) const override;
-
-  bool IsDocumentFragment() const =
-      delete;  // This will catch anyone doing an unnecessary check.
 };
 
 template <>

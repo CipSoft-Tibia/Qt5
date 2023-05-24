@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,7 @@ class FilePath;
 namespace spellcheck {
 
 // Short type for holding word replacements per individual language.
-using PerLanguageSuggestions = std::vector<std::vector<base::string16>>;
+using PerLanguageSuggestions = std::vector<std::vector<std::u16string>>;
 
 // Max number of dictionary suggestions.
 static const int kMaxSuggestions = 5;
@@ -63,8 +63,8 @@ void GetISOLanguageCountryCodeFromLocale(const std::string& locale,
 // suggestion from the i-th language's suggestions. |optional_suggestions|
 // cannot be null.
 void FillSuggestions(
-    const std::vector<std::vector<base::string16>>& suggestions_list,
-    std::vector<base::string16>* optional_suggestions);
+    const std::vector<std::vector<std::u16string>>& suggestions_list,
+    std::vector<std::u16string>* optional_suggestions);
 
 }  // namespace spellcheck
 

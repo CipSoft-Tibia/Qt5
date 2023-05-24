@@ -1,28 +1,14 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+load("//console-header.star", "HEADER")
+
 luci.console_view(
     name = "chromium.goma",
-    header = "//chromium-header.textpb",
-    include_experimental_builds = True,
     repo = "https://chromium.googlesource.com/chromium/src",
+    header = HEADER,
     entries = [
-        luci.console_view_entry(
-            builder = "goma/Chromium Linux Goma Staging",
-            category = "clients5",
-            short_name = "lnx",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Chromium Mac Goma Staging",
-            category = "clients5",
-            short_name = "mac",
-        ),
-        luci.console_view_entry(
-            builder = "goma/CrWinGomaStaging",
-            category = "clients5",
-            short_name = "win",
-        ),
         luci.console_view_entry(
             builder = "goma/Chromium Linux Goma RBE ToT",
             category = "rbe|tot|linux|rel",
@@ -39,6 +25,11 @@ luci.console_view(
         luci.console_view_entry(
             builder = "goma/Chromium Win Goma RBE ToT",
             category = "rbe|tot|win|rel",
+        ),
+        luci.console_view_entry(
+            builder = "goma/Chromium Win Goma RBE ATS ToT",
+            category = "rbe|tot|win|rel",
+            short_name = "ats",
         ),
         luci.console_view_entry(
             builder = "goma/Chromium iOS Goma RBE ToT",
@@ -93,9 +84,19 @@ luci.console_view(
             category = "rbe|staging|win|rel",
         ),
         luci.console_view_entry(
+            builder = "goma/Chromium Win Goma RBE ATS Staging",
+            category = "rbe|staging|win|rel",
+            short_name = "ats",
+        ),
+        luci.console_view_entry(
             builder = "goma/Chromium Win Goma RBE Staging (clobber)",
             category = "rbe|staging|win|rel",
             short_name = "clb",
+        ),
+        luci.console_view_entry(
+            builder = "goma/Chromium Win Goma RBE ATS Staging (clobber)",
+            category = "rbe|staging|win|rel",
+            short_name = "ats",
         ),
         luci.console_view_entry(
             builder = "goma/Chromium Android ARM 32-bit Goma RBE Staging",
@@ -106,4 +107,5 @@ luci.console_view(
             category = "rbe|staging|cros|rel",
         ),
     ],
+    include_experimental_builds = True,
 )

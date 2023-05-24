@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Paul Lemire paul.lemire350@gmail.com
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Paul Lemire paul.lemire350@gmail.com
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "trianglesvisitor_p.h"
 #include <Qt3DCore/qentity.h>
@@ -43,6 +7,7 @@
 #include <Qt3DRender/private/managers_p.h>
 #include <Qt3DRender/private/nodemanagers_p.h>
 #include <Qt3DRender/private/buffermanager_p.h>
+#include <Qt3DRender/private/pickingproxy_p.h>
 #include <Qt3DRender/private/geometryrenderer_p.h>
 #include <Qt3DRender/private/geometryrenderermanager_p.h>
 #include <Qt3DRender/private/geometry_p.h>
@@ -53,13 +18,15 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt3DCore;
+
 namespace Qt3DRender {
 
 namespace Render {
 
 namespace {
 
-bool isTriangleBased(Qt3DRender::QGeometryRenderer::PrimitiveType type) Q_DECL_NOTHROW
+bool isTriangleBased(Qt3DRender::QGeometryRenderer::PrimitiveType type) noexcept
 {
     switch (type) {
     case Qt3DRender::QGeometryRenderer::Triangles:
@@ -471,8 +438,17 @@ void TrianglesVisitor::apply(const GeometryRenderer *renderer, const Qt3DCore::Q
 {
     m_nodeId = id;
     if (renderer && renderer->instanceCount() == 1 && isTriangleBased(renderer->primitiveType())) {
-        Visitor::visitPrimitives<VertexExecutor<TrianglesVisitor>,
+        Visitor::visitPrimitives<GeometryRenderer, VertexExecutor<TrianglesVisitor>,
                 IndexExecutor<TrianglesVisitor>, TrianglesVisitor>(m_manager, renderer, this);
+    }
+}
+
+void TrianglesVisitor::apply(const PickingProxy *proxy, const QNodeId id)
+{
+    m_nodeId = id;
+    if (proxy && proxy->instanceCount() == 1 && isTriangleBased(static_cast<Qt3DRender::QGeometryRenderer::PrimitiveType>(proxy->primitiveType()))) {
+        Visitor::visitPrimitives<PickingProxy, VertexExecutor<TrianglesVisitor>,
+                                 IndexExecutor<TrianglesVisitor>, TrianglesVisitor>(m_manager, proxy, this);
     }
 }
 
@@ -491,7 +467,7 @@ bool CoordinateReader::setGeometry(const GeometryRenderer *renderer, const QStri
     Attribute *attribute = nullptr;
 
     const auto attrIds = geom->attributes();
-    for (const Qt3DCore::QNodeId attrId : attrIds) {
+    for (const Qt3DCore::QNodeId &attrId : attrIds) {
         attribute = m_manager->lookupResource<Attribute, AttributeManager>(attrId);
         if (attribute){
             if (attribute->name() == attributeName

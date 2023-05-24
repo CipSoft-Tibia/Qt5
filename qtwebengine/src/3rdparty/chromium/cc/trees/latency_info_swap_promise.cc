@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "base/check.h"
+#include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "services/tracing/public/cpp/perfetto/flow_event_utils.h"
 #include "services/tracing/public/cpp/perfetto/macros.h"
@@ -26,7 +27,8 @@ void LatencyInfoSwapPromise::WillSwap(viz::CompositorFrameMetadata* metadata) {
 void LatencyInfoSwapPromise::DidSwap() {}
 
 SwapPromise::DidNotSwapAction LatencyInfoSwapPromise::DidNotSwap(
-    DidNotSwapReason reason) {
+    DidNotSwapReason reason,
+    base::TimeTicks ts) {
   latency_.Terminate();
   // TODO(miletus): Turn this back on once per-event LatencyInfo tracking
   // is enabled in GPU side.
@@ -34,7 +36,7 @@ SwapPromise::DidNotSwapAction LatencyInfoSwapPromise::DidNotSwap(
   return DidNotSwapAction::BREAK_PROMISE;
 }
 
-int64_t LatencyInfoSwapPromise::TraceId() const {
+int64_t LatencyInfoSwapPromise::GetTraceId() const {
   return latency_.trace_id();
 }
 
@@ -43,15 +45,15 @@ void LatencyInfoSwapPromise::OnCommit() {
   using perfetto::protos::pbzero::ChromeLatencyInfo;
   using perfetto::protos::pbzero::TrackEvent;
 
-  TRACE_EVENT("input,benchmark", "LatencyInfo.Flow",
+  TRACE_EVENT("input,benchmark,latencyInfo", "LatencyInfo.Flow",
               [this](perfetto::EventContext ctx) {
                 ChromeLatencyInfo* latency_info =
                     ctx.event()->set_chrome_latency_info();
-                latency_info->set_trace_id(TraceId());
+                latency_info->set_trace_id(GetTraceId());
                 latency_info->set_step(
                     ChromeLatencyInfo::STEP_HANDLE_INPUT_EVENT_MAIN_COMMIT);
                 tracing::FillFlowEvent(ctx, TrackEvent::LegacyEvent::FLOW_INOUT,
-                                       TraceId());
+                                       GetTraceId());
               });
 }
 

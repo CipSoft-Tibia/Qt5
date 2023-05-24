@@ -1,47 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtoolbar.h"
 
 #include <qapplication.h>
 #if QT_CONFIG(combobox)
 #include <qcombobox.h>
+#endif
+#if QT_CONFIG(draganddrop)
+#include <qdrag.h>
 #endif
 #include <qevent.h>
 #include <qlayout.h>
@@ -50,6 +17,7 @@
 #if QT_CONFIG(menubar)
 #include <qmenubar.h>
 #endif
+#include <qmimedata.h>
 #if QT_CONFIG(rubberband)
 #include <qrubberband.h>
 #endif
@@ -60,6 +28,7 @@
 #include <qtimer.h>
 #include <private/qwidgetaction_p.h>
 #include <private/qmainwindowlayout_p.h>
+#include <private/qhighdpiscaling_p.h>
 
 #ifdef Q_OS_MACOS
 #include <qpa/qplatformnativeinterface.h>
@@ -74,6 +43,8 @@
 #define POPUP_TIMER_INTERVAL 500
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // qmainwindow.cpp
 extern QMainWindowLayout *qt_mainwindow_layout(const QMainWindow *window);
@@ -140,7 +111,9 @@ void QToolBarPrivate::updateWindowFlags(bool floating, bool unplug)
 
     flags |= Qt::FramelessWindowHint;
 
-    if (unplug)
+    // If we are performing a platform drag the flag is not needed and we want to avoid recreating
+    // the platform window when it would be removed later
+    if (unplug && !QMainWindowLayout::needsPlatformDrag())
         flags |= Qt::X11BypassWindowManagerHint;
 
     q->setWindowFlags(flags);
@@ -151,8 +124,6 @@ void QToolBarPrivate::setWindowState(bool floating, bool unplug, const QRect &re
     Q_Q(QToolBar);
     bool visible = !q->isHidden();
     bool wasFloating = q->isFloating(); // ...is also currently using popup menus
-
-    q->hide();
 
     updateWindowFlags(floating, unplug);
 
@@ -207,12 +178,27 @@ void QToolBarPrivate::startDrag(bool moving)
     QMainWindowLayout *layout = qt_mainwindow_layout(win);
     Q_ASSERT(layout != nullptr);
 
+    const bool wasFloating = q->isFloating();
+
     if (!moving) {
-        state->widgetItem = layout->unplug(q);
+        state->widgetItem = layout->unplug(q, QDockWidgetPrivate::DragScope::Group);
         Q_ASSERT(state->widgetItem != nullptr);
     }
     state->dragging = !moving;
     state->moving = moving;
+
+#if QT_CONFIG(draganddrop)
+    if (QMainWindowLayout::needsPlatformDrag() && state->dragging) {
+        auto result = layout->performPlatformWidgetDrag(state->widgetItem, state->pressPos);
+        if (result == Qt::IgnoreAction && !wasFloating) {
+            layout->revert(state->widgetItem);
+            delete state;
+            state = nullptr;
+        } else {
+            endDrag();
+        }
+    }
+#endif
 }
 
 void QToolBarPrivate::endDrag()
@@ -247,7 +233,7 @@ bool QToolBarPrivate::mousePressEvent(QMouseEvent *event)
     Q_Q(QToolBar);
     QStyleOptionToolBar opt;
     q->initStyleOption(&opt);
-    if (q->style()->subElementRect(QStyle::SE_ToolBarHandle, &opt, q).contains(event->pos()) == false) {
+    if (q->style()->subElementRect(QStyle::SE_ToolBarHandle, &opt, q).contains(event->position().toPoint()) == false) {
 #ifdef Q_OS_MACOS
         // When using the unified toolbar on OS X, the user can click and
         // drag between toolbar contents to move the window. Make this work by
@@ -272,12 +258,17 @@ bool QToolBarPrivate::mousePressEvent(QMouseEvent *event)
     if (!layout->movable())
         return true;
 
-    initDrag(event->pos());
+    initDrag(event->position().toPoint());
     return true;
 }
 
 bool QToolBarPrivate::mouseReleaseEvent(QMouseEvent*)
 {
+    // if we are peforming a platform drag ignore the release here and  end the drag when the actual
+    // drag ends.
+    if (QMainWindowLayout::needsPlatformDrag())
+        return false;
+
     if (state != nullptr) {
         endDrag();
         return true;
@@ -317,19 +308,24 @@ bool QToolBarPrivate::mouseMoveEvent(QMouseEvent *event)
     Q_ASSERT(layout != nullptr);
 
     if (layout->pluggingWidget == nullptr
-        && (event->pos() - state->pressPos).manhattanLength() > QApplication::startDragDistance()) {
+        && (event->position().toPoint() - state->pressPos).manhattanLength() > QApplication::startDragDistance()) {
             const bool wasDragging = state->dragging;
             const bool moving = !q->isWindow() && (orientation == Qt::Vertical ?
-                event->x() >= 0 && event->x() < q->width() :
-                event->y() >= 0 && event->y() < q->height());
+                event->position().toPoint().x() >= 0 && event->position().toPoint().x() < q->width() :
+                event->position().toPoint().y() >= 0 && event->position().toPoint().y() < q->height());
 
             startDrag(moving);
             if (!moving && !wasDragging)
                 q->grabMouse();
     }
 
+    if (!state) {
+        q->releaseMouse();
+        return true;
+    }
+
     if (state->dragging) {
-        QPoint pos = event->globalPos();
+        QPoint pos = event->globalPosition().toPoint();
         // if we are right-to-left, we move so as to keep the right edge the same distance
         // from the mouse
         if (q->isLeftToRight())
@@ -338,14 +334,19 @@ bool QToolBarPrivate::mouseMoveEvent(QMouseEvent *event)
             pos += QPoint(state->pressPos.x() - q->width(), -state->pressPos.y());
 
         q->move(pos);
-        layout->hover(state->widgetItem, event->globalPos());
+        layout->hover(state->widgetItem, event->globalPosition().toPoint());
     } else if (state->moving) {
 
         const QPoint rtl(q->width() - state->pressPos.x(), state->pressPos.y()); //for RTL
         const QPoint globalPressPos = q->mapToGlobal(q->isRightToLeft() ? rtl : state->pressPos);
         int pos = 0;
 
-        QPoint delta = event->globalPos() - globalPressPos;
+        const QWindow *handle = q->window() ? q->window()->windowHandle() : nullptr;
+        const QPoint delta = handle
+                ? QHighDpi::fromNativePixels(event->globalPosition(), handle).toPoint()
+                  - QHighDpi::fromNativePixels(globalPressPos, handle)
+                : event->globalPosition().toPoint() - globalPressPos;
+
         if (orientation == Qt::Vertical) {
             pos = q->y() + delta.y();
         } else {
@@ -388,6 +389,10 @@ void QToolBarPrivate::plug(const QRect &r)
     \ingroup mainwindow-classes
     \inmodule QtWidgets
 
+    A toolbar is typically created by calling
+    \l QMainWindow::addToolBar(const QString &title), but it can also
+    be added as the first widget in a QVBoxLayout, for example.
+
     Toolbar buttons are added by adding \e actions, using addAction()
     or insertAction(). Groups of buttons can be separated using
     addSeparator() or insertSeparator(). If a toolbar button is not
@@ -411,7 +416,7 @@ void QToolBarPrivate::plug(const QRect &r)
     addWidget(). Please use widget actions created by inheriting QWidgetAction
     and implementing QWidgetAction::createWidget() instead.
 
-    \sa QToolButton, QMenu, QAction, {Application Example}
+    \sa QToolButton, QMenu, QAction
 */
 
 /*!
@@ -737,117 +742,6 @@ void QToolBar::clear()
 }
 
 /*!
-    Creates a new action with the given \a text. This action is added to
-    the end of the toolbar.
-*/
-QAction *QToolBar::addAction(const QString &text)
-{
-    QAction *action = new QAction(text, this);
-    addAction(action);
-    return action;
-}
-
-/*!
-    \overload
-
-    Creates a new action with the given \a icon and \a text. This
-    action is added to the end of the toolbar.
-*/
-QAction *QToolBar::addAction(const QIcon &icon, const QString &text)
-{
-    QAction *action = new QAction(icon, text, this);
-    addAction(action);
-    return action;
-}
-
-/*!
-    \overload
-
-    Creates a new action with the given \a text. This action is added to
-    the end of the toolbar. The action's \l{QAction::triggered()}{triggered()}
-    signal is connected to \a member in \a receiver.
-*/
-QAction *QToolBar::addAction(const QString &text,
-                             const QObject *receiver, const char* member)
-{
-    QAction *action = new QAction(text, this);
-    QObject::connect(action, SIGNAL(triggered(bool)), receiver, member);
-    addAction(action);
-    return action;
-}
-
-/*!
-    \overload
-
-    Creates a new action with the given \a icon and \a text. This
-    action is added to the end of the toolbar. The action's
-    \l{QAction::triggered()}{triggered()} signal is connected to \a
-    member in \a receiver.
-*/
-QAction *QToolBar::addAction(const QIcon &icon, const QString &text,
-                             const QObject *receiver, const char* member)
-{
-    QAction *action = new QAction(icon, text, this);
-    QObject::connect(action, SIGNAL(triggered(bool)), receiver, member);
-    addAction(action);
-    return action;
-}
-
-/*!\fn template<typename Functor> QAction *QToolBar::addAction(const QString &text, Functor functor)
-
-    \since 5.6
-
-    \overload
-
-    Creates a new action with the given \a text. This action is added to
-    the end of the toolbar. The action's
-    \l{QAction::triggered()}{triggered()} signal is connected to the
-    \a functor.
-*/
-
-/*!\fn template<typename Functor> QAction *QToolBar::addAction(const QString &text, const QObject *context, Functor functor)
-
-    \since 5.6
-
-    \overload
-
-    Creates a new action with the given \a text. This action is added
-    to the end of the toolbar. The action's
-    \l{QAction::triggered()}{triggered()} signal is connected to the
-    \a functor. The \a functor can be a pointer to a member function
-    in the \a context object.
-
-    If the \a context object is destroyed, the \a functor will not be called.
-*/
-
-/*!\fn template<typename Functor> QAction *QToolBar::addAction(const QIcon &icon, const QString &text, Functor functor)
-
-    \since 5.6
-
-    \overload
-
-    Creates a new action with the given \a icon and \a text. This
-    action is added to the end of the toolbar. The action's
-    \l{QAction::triggered()}{triggered()} signal is connected to the
-    \a functor.
-*/
-
-/*!\fn template<typename Functor> QAction *QToolBar::addAction(const QIcon &icon, const QString &text, const QObject *context, Functor functor)
-
-    \since 5.6
-
-    \overload
-
-    Creates a new action with the given \a icon and \a text. This
-    action is added to the end of the toolbar. The action's
-    \l{QAction::triggered()}{triggered()} signal is connected to the
-    \a functor. The \a functor can be a pointer to a member function
-    of the \a context object.
-
-    If the \a context object is destroyed, the \a functor will not be called.
-*/
-
-/*!
      Adds a separator to the end of the toolbar.
 
      \sa insertSeparator()
@@ -961,7 +855,7 @@ QAction *QToolBar::actionAt(const QPoint &p) const
 void QToolBar::actionEvent(QActionEvent *event)
 {
     Q_D(QToolBar);
-    QAction *action = event->action();
+    auto action = static_cast<QAction *>(event->action());
     QWidgetAction *widgetAction = qobject_cast<QWidgetAction *>(action);
 
     switch (event->type()) {
@@ -1073,11 +967,12 @@ static bool waitForPopup(QToolBar *tb, QWidget *popup)
     if (menu == nullptr)
         return false;
 
-    QAction *action = menu->menuAction();
-    QList<QWidget*> widgets = action->associatedWidgets();
-    for (int i = 0; i < widgets.count(); ++i) {
-        if (waitForPopup(tb, widgets.at(i)))
-            return true;
+    const QAction *action = menu->menuAction();
+    for (auto object : action->associatedObjects()) {
+        if (QWidget *widget = qobject_cast<QWidget*>(object)) {
+            if (waitForPopup(tb, widget))
+                return true;
+        }
     }
 
     return false;
@@ -1149,7 +1044,7 @@ bool QToolBar::event(QEvent *event)
         QHoverEvent *e = static_cast<QHoverEvent*>(event);
         QStyleOptionToolBar opt;
         initStyleOption(&opt);
-        if (style()->subElementRect(QStyle::SE_ToolBarHandle, &opt, this).contains(e->pos()))
+        if (style()->subElementRect(QStyle::SE_ToolBarHandle, &opt, this).contains(e->position().toPoint()))
             setCursor(Qt::SizeAllCursor);
         else
             unsetCursor();
@@ -1163,7 +1058,7 @@ bool QToolBar::event(QEvent *event)
     case QEvent::Leave:
         if (d->state != nullptr && d->state->dragging) {
 #ifdef Q_OS_WIN
-            // This is a workaround for loosing the mouse on Vista.
+            // This is a workaround for losing the mouse on Vista.
             QPoint pos = QCursor::pos();
             QMouseEvent fake(QEvent::MouseMove, mapFromGlobal(pos), pos, Qt::NoButton,
                              QGuiApplication::mouseButtons(), QGuiApplication::keyboardModifiers());

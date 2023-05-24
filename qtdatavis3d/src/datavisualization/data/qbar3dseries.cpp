@@ -1,37 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qbar3dseries_p.h"
 #include "bars3dcontroller_p.h"
 #include <QtCore/qmath.h>
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 /*!
  * \class QBar3DSeries
@@ -144,6 +118,18 @@ QT_BEGIN_NAMESPACE_DATAVISUALIZATION
  * using floating point precision and always returns a value from zero to 360 degrees.
  *
  * \sa {Abstract3DSeries::meshRotation}{Abstract3DSeries.meshRotation}
+ */
+
+/*!
+ * \qmlproperty list<ThemeColor> Bar3DSeries::rowColors
+ * \since 6.3
+ * This property can be used to draw the rows of the series in different colors.
+ * The \l{Theme3D::colorStyle}{Theme3D.colorStyle} must be set to
+ * \c ColorStyleUniform to use this property.
+ * \note If the property is set and the theme is changed,
+ * the rowColors list is not cleared automatically.
+ *
+ * \sa Q3DTheme::ColorStyleUniform
  */
 
 /*!
@@ -282,6 +268,27 @@ float QBar3DSeries::meshAngle() const
 }
 
 /*!
+ * \property QBar3DSeries::rowColors
+ * \since 6.3
+ *
+ * \brief The list of row colors in the series.
+ *
+ * This property can be used to color
+ * the rows of the series in different colors.
+ * The Q3DTheme::ColorStyle must be set to
+ * Q3DTheme::ColorStyleUniform to use this property.
+ *
+ * \sa Q3DTheme::ColorStyleUniform
+ */
+void QBar3DSeries::setRowColors(const QList<QColor> &colors)
+{
+    dptr()->setRowColors(colors);
+}
+QList<QColor> QBar3DSeries::rowColors() const
+{
+    return dptrc()->m_rowColors;
+}
+/*!
  * \internal
  */
 QBar3DSeriesPrivate *QBar3DSeries::dptr()
@@ -355,6 +362,8 @@ void QBar3DSeriesPrivate::connectControllerAndProxy(Abstract3DController *newCon
                          &Bars3DController::handleDataColumnLabelsChanged);
         QObject::connect(qptr(), &QBar3DSeries::dataProxyChanged, controller,
                          &Bars3DController::handleArrayReset);
+        QObject::connect(qptr(), &QBar3DSeries::rowColorsChanged, controller,
+                         &Bars3DController::handleRowColorsChanged);
     }
 }
 
@@ -432,4 +441,12 @@ void QBar3DSeriesPrivate::connectSignals()
                      &QBar3DSeriesPrivate::handleMeshRotationChanged);
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+void QBar3DSeriesPrivate::setRowColors(const QList<QColor> &colors)
+{
+    if (m_rowColors != colors) {
+        m_rowColors = colors;
+        emit qptr()->rowColorsChanged(m_rowColors);
+    }
+}
+
+QT_END_NAMESPACE

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtextbrowser.h"
 #include "qtextedit_p.h"
@@ -44,13 +8,9 @@
 #include <qapplication.h>
 #include <private/qapplication_p.h>
 #include <qevent.h>
-#include <qdesktopwidget.h>
 #include <qdebug.h>
 #include <qabstracttextdocumentlayout.h>
 #include "private/qtextdocumentlayout_p.h"
-#if QT_CONFIG(textcodec)
-#include <qtextcodec.h>
-#endif
 #include <qpainter.h>
 #include <qdir.h>
 #if QT_CONFIG(whatsthis)
@@ -58,8 +18,20 @@
 #endif
 #include <qtextobject.h>
 #include <qdesktopservices.h>
+#include <qstringconverter.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+static inline bool shouldEnableInputMethod(QTextBrowser *texbrowser)
+{
+#if defined (Q_OS_ANDROID)
+    return !texbrowser->isReadOnly() || (texbrowser->textInteractionFlags() & Qt::TextSelectableByMouse);
+#else
+    return !texbrowser->isReadOnly();
+#endif
+}
 
 Q_LOGGING_CATEGORY(lcBrowser, "qt.text.browser")
 
@@ -92,13 +64,13 @@ public:
     HistoryEntry history(int i) const
     {
         if (i <= 0)
-            if (-i < stack.count())
-                return stack[stack.count()+i-1];
+            if (-i < stack.size())
+                return stack[stack.size()+i-1];
             else
                 return HistoryEntry();
         else
-            if (i <= forwardStack.count())
-                return forwardStack[forwardStack.count()-i];
+            if (i <= forwardStack.size())
+                return forwardStack[forwardStack.size()-i];
             else
                 return HistoryEntry();
     }
@@ -156,26 +128,21 @@ public:
     {
         Q_Q(QTextBrowser);
         emit q->highlighted(url);
-#if QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        emit q->highlighted(url.toString());
-#endif
     }
 };
-Q_DECLARE_TYPEINFO(QTextBrowserPrivate::HistoryEntry, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QTextBrowserPrivate::HistoryEntry, Q_RELOCATABLE_TYPE);
 
 QString QTextBrowserPrivate::findFile(const QUrl &name) const
 {
     QString fileName;
-    if (name.scheme() == QLatin1String("qrc")) {
-        fileName = QLatin1String(":/") + name.path();
+    if (name.scheme() == "qrc"_L1) {
+        fileName = ":/"_L1 + name.path();
     } else if (name.scheme().isEmpty()) {
         fileName = name.path();
     } else {
 #if defined(Q_OS_ANDROID)
-        if (name.scheme() == QLatin1String("assets"))
-            fileName = QLatin1String("assets:") + name.path();
+        if (name.scheme() == "assets"_L1)
+            fileName = "assets:"_L1 + name.path();
         else
 #endif
             fileName = name.toLocalFile();
@@ -187,9 +154,9 @@ QString QTextBrowserPrivate::findFile(const QUrl &name) const
     if (QFileInfo(fileName).isAbsolute())
         return fileName;
 
-    for (QString path : qAsConst(searchPaths)) {
-        if (!path.endsWith(QLatin1Char('/')))
-            path.append(QLatin1Char('/'));
+    for (QString path : std::as_const(searchPaths)) {
+        if (!path.endsWith(u'/'))
+            path.append(u'/');
         path.append(fileName);
         if (QFileInfo(path).isReadable())
             return path;
@@ -206,7 +173,7 @@ QUrl QTextBrowserPrivate::resolveUrl(const QUrl &url) const
     // For the second case QUrl can merge "#someanchor" with "foo.html"
     // correctly to "foo.html#someanchor"
     if (!(currentURL.isRelative()
-          || (currentURL.scheme() == QLatin1String("file")
+          || (currentURL.scheme() == "file"_L1
               && !QFileInfo(currentURL.toLocalFile()).isAbsolute()))
           || (url.hasFragment() && url.path().isEmpty())) {
         return currentURL.resolved(url);
@@ -244,11 +211,11 @@ void QTextBrowserPrivate::_q_activateAnchor(const QString &href)
 
 #ifndef QT_NO_DESKTOPSERVICES
     bool isFileScheme =
-            url.scheme() == QLatin1String("file")
+            url.scheme() == "file"_L1
 #if defined(Q_OS_ANDROID)
-            || url.scheme() == QLatin1String("assets")
+            || url.scheme() == "assets"_L1
 #endif
-            || url.scheme() == QLatin1String("qrc");
+            || url.scheme() == "qrc"_L1;
     if ((openExternalLinks && !isFileScheme && !url.isRelative())
         || (url.isRelative() && !currentURL.isRelative() && !isFileScheme)) {
         QDesktopServices::openUrl(url);
@@ -303,9 +270,9 @@ void QTextBrowserPrivate::setSource(const QUrl &url, QTextDocument::ResourceType
     QString fileName = url.fileName();
     if (type == QTextDocument::UnknownResource) {
 #if QT_CONFIG(textmarkdownreader)
-        if (fileName.endsWith(QLatin1String(".md")) ||
-                fileName.endsWith(QLatin1String(".mkd")) ||
-                fileName.endsWith(QLatin1String(".markdown")))
+        if (fileName.endsWith(".md"_L1) ||
+                fileName.endsWith(".mkd"_L1) ||
+                fileName.endsWith(".markdown"_L1))
             type = QTextDocument::MarkdownResource;
         else
 #endif
@@ -319,24 +286,23 @@ void QTextBrowserPrivate::setSource(const QUrl &url, QTextDocument::ResourceType
         if (data.userType() == QMetaType::QString) {
             txt = data.toString();
         } else if (data.userType() == QMetaType::QByteArray) {
+            QByteArray ba = data.toByteArray();
             if (type == QTextDocument::HtmlResource) {
-#if QT_CONFIG(textcodec)
-                QByteArray ba = data.toByteArray();
-                QTextCodec *codec = Qt::codecForHtml(ba);
-                txt = codec->toUnicode(ba);
-#else
-                txt = data.toString();
-#endif
+                auto decoder = QStringDecoder::decoderForHtml(ba);
+                if (!decoder.isValid())
+                    // fall back to utf8
+                    decoder = QStringDecoder(QStringDecoder::Utf8);
+                txt = decoder(ba);
             } else {
-                txt = QString::fromUtf8(data.toByteArray());
+                txt = QString::fromUtf8(ba);
             }
         }
         if (Q_UNLIKELY(txt.isEmpty()))
             qWarning("QTextBrowser: No document for %s", url.toString().toLatin1().constData());
 
         if (q->isVisible()) {
-            const QStringRef firstTag = txt.leftRef(txt.indexOf(QLatin1Char('>')) + 1);
-            if (firstTag.startsWith(QLatin1String("<qt")) && firstTag.contains(QLatin1String("type")) && firstTag.contains(QLatin1String("detail"))) {
+            const QStringView firstTag = QStringView{txt}.left(txt.indexOf(u'>') + 1);
+            if (firstTag.startsWith("<qt"_L1) && firstTag.contains("type"_L1) && firstTag.contains("detail"_L1)) {
 #ifndef QT_NO_CURSOR
                 QGuiApplication::restoreOverrideCursor();
 #endif
@@ -511,7 +477,7 @@ void QTextBrowserPrivate::keypadMove(bool next)
         // up e.g. 110%
         // Obviously if a link is entirely visible, we still
         // focus it.
-        if(bothViewRects.contains(desiredRect)
+        if (bothViewRects.contains(desiredRect)
                 || bothViewRects.adjusted(0, visibleLinkAmount, 0, -visibleLinkAmount).intersects(desiredRect)) {
             focusIt = true;
 
@@ -540,7 +506,7 @@ void QTextBrowserPrivate::keypadMove(bool next)
     if (!focusIt && prevFocus.hasSelection()) {
         QRectF desiredRect = control->selectionRect(prevFocus);
         // XXX this may be better off also using the visibleLinkAmount value
-        if(newViewRect.intersects(desiredRect)) {
+        if (newViewRect.intersects(desiredRect)) {
             focusedPos = scrollYOffset;
             focusIt = true;
             anchorToFocus = prevFocus;
@@ -701,7 +667,7 @@ void QTextBrowserPrivate::init()
 #ifndef QT_NO_CURSOR
     viewport->setCursor(oldCursor);
 #endif
-    q->setAttribute(Qt::WA_InputMethodEnabled, !q->isReadOnly());
+    q->setAttribute(Qt::WA_InputMethodEnabled, shouldEnableInputMethod(q));
     q->setUndoRedoEnabled(false);
     viewport->setMouseTracking(true);
     QObject::connect(q->document(), SIGNAL(contentsChanged()), q, SLOT(_q_documentModified()));
@@ -815,13 +781,6 @@ void QTextBrowser::reload()
     setSource(s, d->currentType);
 }
 
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-void QTextBrowser::setSource(const QUrl &url)
-{
-    setSource(url, QTextDocument::UnknownResource);
-}
-#endif
-
 /*!
     Attempts to load the document at the given \a url with the specified \a type.
 
@@ -837,14 +796,12 @@ void QTextBrowser::setSource(const QUrl &url, QTextDocument::ResourceType type)
     doSetSource(url, type);
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 /*!
     Attempts to load the document at the given \a url with the specified \a type.
 
     setSource() calls doSetSource.  In Qt 5, setSource(const QUrl &url) was virtual.
     In Qt 6, doSetSource() is virtual instead, so that it can be overridden in subclasses.
 */
-#endif
 void QTextBrowser::doSetSource(const QUrl &url, QTextDocument::ResourceType type)
 {
     Q_D(QTextBrowser);
@@ -871,11 +828,11 @@ void QTextBrowser::doSetSource(const QUrl &url, QTextDocument::ResourceType type
     entry.vpos = 0;
     d->stack.push(entry);
 
-    emit backwardAvailable(d->stack.count() > 1);
+    emit backwardAvailable(d->stack.size() > 1);
 
     if (!d->forwardStack.isEmpty() && d->forwardStack.top().url == url) {
         d->forwardStack.pop();
-        emit forwardAvailable(d->forwardStack.count() > 0);
+        emit forwardAvailable(d->forwardStack.size() > 0);
     } else {
         d->forwardStack.clear();
         emit forwardAvailable(false);
@@ -916,7 +873,7 @@ void QTextBrowser::doSetSource(const QUrl &url, QTextDocument::ResourceType type
     being the new source.
 
     Source changes happen both programmatically when calling
-    setSource(), forward(), backword() or home() or when the user
+    setSource(), forward(), backward() or home() or when the user
     clicks on links or presses the equivalent key sequences.
 */
 
@@ -926,16 +883,6 @@ void QTextBrowser::doSetSource(const QUrl &url, QTextDocument::ResourceType type
     activated an anchor in the document. The URL referred to by the
     anchor is passed in \a link.
 */
-
-/*!  \fn void QTextBrowser::highlighted(const QString &link)
-     \overload
-     \obsolete
-
-     Convenience signal that allows connecting to a slot
-     that takes just a QString, like for example QStatusBar's
-     message().
-*/
-
 
 /*!
     \fn void QTextBrowser::anchorClicked(const QUrl &link)
@@ -959,14 +906,14 @@ void QTextBrowser::doSetSource(const QUrl &url, QTextDocument::ResourceType type
 void QTextBrowser::backward()
 {
     Q_D(QTextBrowser);
-    if (d->stack.count() <= 1)
+    if (d->stack.size() <= 1)
         return;
 
     // Update the history entry
     d->forwardStack.push(d->createHistoryEntry());
     d->stack.pop(); // throw away the old version of the current entry
     d->restoreHistoryEntry(d->stack.top()); // previous entry
-    emit backwardAvailable(d->stack.count() > 1);
+    emit backwardAvailable(d->stack.size() > 1);
     emit forwardAvailable(true);
     emit historyChanged();
 }
@@ -1172,7 +1119,7 @@ void QTextBrowser::paintEvent(QPaintEvent *e)
     depending on the resource type:
 
     \table
-    \header \li ResourceType  \li QVariant::Type
+    \header \li ResourceType  \li QMetaType::Type
     \row    \li QTextDocument::HtmlResource  \li QString or QByteArray
     \row    \li QTextDocument::ImageResource \li QImage, QPixmap or QByteArray
     \row    \li QTextDocument::StyleSheetResource \li QString or QByteArray
@@ -1209,7 +1156,7 @@ QVariant QTextBrowser::loadResource(int /*type*/, const QUrl &name)
 bool QTextBrowser::isBackwardAvailable() const
 {
     Q_D(const QTextBrowser);
-    return d->stack.count() > 1;
+    return d->stack.size() > 1;
 }
 
 /*!
@@ -1296,7 +1243,7 @@ QString QTextBrowser::historyTitle(int i) const
 int QTextBrowser::forwardHistoryCount() const
 {
     Q_D(const QTextBrowser);
-    return d->forwardStack.count();
+    return d->forwardStack.size();
 }
 
 /*!
@@ -1307,7 +1254,7 @@ int QTextBrowser::forwardHistoryCount() const
 int QTextBrowser::backwardHistoryCount() const
 {
     Q_D(const QTextBrowser);
-    return d->stack.count()-1;
+    return d->stack.size()-1;
 }
 
 /*!

@@ -34,7 +34,7 @@ class SVGSVGElement;
 class LayoutSVGViewportContainer final : public LayoutSVGContainer {
  public:
   explicit LayoutSVGViewportContainer(SVGSVGElement*);
-  FloatRect Viewport() const {
+  gfx::RectF Viewport() const {
     NOT_DESTROYED();
     return viewport_;
   }
@@ -70,18 +70,22 @@ class LayoutSVGViewportContainer final : public LayoutSVGContainer {
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset& accumulated_offset,
-                   HitTestAction) final;
+                   HitTestPhase) final;
 
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
 
-  FloatRect viewport_;
+  gfx::RectF viewport_;
   mutable AffineTransform local_to_parent_transform_;
   bool is_layout_size_changed_ : 1;
   bool needs_transform_update_ : 1;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutSVGViewportContainer,
-                                IsSVGViewportContainer());
+template <>
+struct DowncastTraits<LayoutSVGViewportContainer> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsSVGViewportContainer();
+  }
+};
 
 }  // namespace blink
 

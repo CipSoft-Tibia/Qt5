@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,7 +23,7 @@ AccessibilityAlertWindow::AccessibilityAlertWindow(aura::Window* parent,
   alert_window_->Init(ui::LayerType::LAYER_NOT_DRAWN);
   alert_window_->SetProperty(ui::kAXRoleOverride, ax::mojom::Role::kAlert);
   parent->AddChild(alert_window_.get());
-  observer_.Add(aura::Env::GetInstance());
+  observation_.Observe(aura::Env::GetInstance());
 }
 
 AccessibilityAlertWindow::~AccessibilityAlertWindow() = default;
@@ -38,7 +38,7 @@ void AccessibilityAlertWindow::HandleAlert(const std::string& alert_string) {
 }
 
 void AccessibilityAlertWindow::OnWillDestroyEnv() {
-  observer_.RemoveAll();
+  observation_.Reset();
   alert_window_.reset();
 }
 

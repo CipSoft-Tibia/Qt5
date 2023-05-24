@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,6 @@
 
 #include <stdint.h>
 
-#include <string>
-
-#include "base/macros.h"
-#include "ui/events/platform/x11/x11_event_source.h"
 #include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/event.h"
 #include "ui/gl/gl_export.h"
@@ -20,9 +16,9 @@ namespace gl {
 
 // Encapsulates an EGL surface bound to a view using the X Window System.
 class GL_EXPORT NativeViewGLSurfaceEGLX11 : public NativeViewGLSurfaceEGL,
-                                            public ui::XEventDispatcher {
+                                            public x11::EventObserver {
  public:
-  explicit NativeViewGLSurfaceEGLX11(x11::Window window);
+  NativeViewGLSurfaceEGLX11(GLDisplayEGL* display, x11::Window window);
   NativeViewGLSurfaceEGLX11(const NativeViewGLSurfaceEGLX11& other) = delete;
   NativeViewGLSurfaceEGLX11& operator=(const NativeViewGLSurfaceEGLX11& rhs) =
       delete;
@@ -30,7 +26,9 @@ class GL_EXPORT NativeViewGLSurfaceEGLX11 : public NativeViewGLSurfaceEGL,
   // NativeViewGLSurfaceEGL overrides.
   bool Initialize(GLSurfaceFormat format) override;
   void Destroy() override;
-  gfx::SwapResult SwapBuffers(PresentationCallback callback) override;
+  gfx::SwapResult SwapBuffers(PresentationCallback callback,
+                              gfx::FrameData data) override;
+  EGLint GetNativeVisualID() const override;
 
  protected:
   ~NativeViewGLSurfaceEGLX11() override;
@@ -41,8 +39,8 @@ class GL_EXPORT NativeViewGLSurfaceEGLX11 : public NativeViewGLSurfaceEGL,
   // NativeViewGLSurfaceEGL overrides:
   std::unique_ptr<gfx::VSyncProvider> CreateVsyncProviderInternal() override;
 
-  // XEventDispatcher:
-  bool DispatchXEvent(x11::Event* xev) override;
+  // x11::EventObserver:
+  void OnEvent(const x11::Event& xev) override;
 
   std::vector<x11::Window> children_;
 

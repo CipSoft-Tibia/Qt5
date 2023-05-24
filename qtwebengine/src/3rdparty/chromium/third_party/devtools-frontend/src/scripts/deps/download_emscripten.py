@@ -9,18 +9,12 @@ testing DevTools with emscripten generated Wasm binaries.
 """
 
 import argparse
-import platform
 import os
-import subprocess
+import platform
 import sys
 import tarfile
-import tempfile
+import urllib.request
 import zipfile
-
-if sys.version_info >= (3, ):
-    from urllib.request import urlretrieve
-else:
-    from urllib import urlretrieve
 
 BS = 8192
 STAMP_FILE = 'build-revision'
@@ -28,11 +22,11 @@ DOWNLOAD_URL = "https://storage.googleapis.com/webassembly/emscripten-releases-b
 
 
 def check_stamp_file(options):
-    try:
-        with open(os.path.join(options.dest, STAMP_FILE)) as f:
-            return options.tag == f.read().strip()
-    except Exception:
+    file_name = os.path.join(options.dest, STAMP_FILE)
+    if not os.path.isfile(file_name):
         return False
+    with open(file_name) as f:
+        return options.tag == f.read().strip()
 
 
 def write_stamp_file(options):
@@ -67,18 +61,18 @@ def script_main(args):
     url = DOWNLOAD_URL % (os_name, options.tag,
                           'zip' if os_name == 'win' else 'tbz2')
 
-    download_size = 0
     try:
-        filename, _ = urlretrieve(url)
+        filename, _ = urllib.request.urlretrieve(url)
 
         unzip(os_name, filename, options.dest)
 
         write_stamp_file(options)
-
     except Exception as e:
         sys.stderr.write('Error Downloading URL "{url}": {e}\n'.format(url=url,
                                                                        e=e))
         return 1
+    finally:
+        urllib.request.urlcleanup()
 
 
 if __name__ == '__main__':

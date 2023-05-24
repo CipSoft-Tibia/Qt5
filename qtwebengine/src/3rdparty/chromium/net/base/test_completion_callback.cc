@@ -1,12 +1,12 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/base/test_completion_callback.h"
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/compiler_specific.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "net/base/io_buffer.h"
 
@@ -32,9 +32,8 @@ void TestCompletionCallbackBaseInternal::WaitForResult() {
   have_result_ = false;  // Auto-reset for next callback.
 }
 
-TestCompletionCallbackBaseInternal::TestCompletionCallbackBaseInternal()
-    : have_result_(false) {
-}
+TestCompletionCallbackBaseInternal::TestCompletionCallbackBaseInternal() =
+    default;
 
 TestCompletionCallbackBaseInternal::~TestCompletionCallbackBaseInternal() =
     default;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSTRINGALGORITHMS_P_H
 #define QSTRINGALGORITHMS_P_H
@@ -83,8 +47,7 @@ template <typename StringType> struct QStringAlgorithms
     static inline StringType trimmed_helper_inplace(const NakedStringType &, const Char *, const Char *)
     {
         // can't happen
-        Q_UNREACHABLE();
-        return StringType();
+        Q_UNREACHABLE_RETURN(StringType());
     }
 
     static inline void trimmed_helper_positions(const Char *&begin, const Char *&end)
@@ -137,7 +100,7 @@ template <typename StringType> struct QStringAlgorithms
         if (ptr != dst && ptr[-1] == QChar::Space)
             --ptr;
 
-        int newlen = ptr - dst;
+        qsizetype newlen = ptr - dst;
         if (isConst && newlen == str.size() && unmodified) {
             // nothing happened, return the original
             return str;

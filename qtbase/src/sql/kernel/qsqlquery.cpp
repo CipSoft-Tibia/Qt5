@@ -1,56 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2022 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsqlquery.h"
 
 //#define QT_DEBUG_SQL
 
-#include "qdebug.h"
-#include "qelapsedtimer.h"
 #include "qatomic.h"
+#include "qdebug.h"
 #include "qsqlrecord.h"
 #include "qsqlresult.h"
 #include "qsqldriver.h"
 #include "qsqldatabase.h"
 #include "private/qsqlnulldriver_p.h"
-#include "qvector.h"
-#include "qmap.h"
+
+#ifdef QT_DEBUG_SQL
+#include "qelapsedtimer.h"
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -65,7 +30,7 @@ public:
     static QSqlQueryPrivate* shared_null();
 };
 
-Q_GLOBAL_STATIC_WITH_ARGS(QSqlQueryPrivate, nullQueryPrivate, (0))
+Q_GLOBAL_STATIC_WITH_ARGS(QSqlQueryPrivate, nullQueryPrivate, (nullptr))
 Q_GLOBAL_STATIC(QSqlNullDriver, nullDriver)
 Q_GLOBAL_STATIC_WITH_ARGS(QSqlNullResult, nullResult, (nullDriver()))
 
@@ -180,7 +145,7 @@ QSqlQueryPrivate::~QSqlQueryPrivate()
     them in the same query.
 
     You can retrieve the values of all the fields in a single variable
-    (a map) using boundValues().
+    using boundValues().
 
     \note Not all SQL operations support binding values. Refer to your database
     system's documentation to check their availability.
@@ -244,12 +209,18 @@ QSqlQuery::QSqlQuery(QSqlResult *result)
 
 QSqlQuery::~QSqlQuery()
 {
-    if (!d->ref.deref())
+    if (d && !d->ref.deref())
         delete d;
 }
 
+#if QT_DEPRECATED_SINCE(6, 2)
 /*!
     Constructs a copy of \a other.
+
+    \deprecated QSqlQuery cannot be meaningfully copied. Prepared
+    statements, bound values and so on will not work correctly, depending
+    on your database driver (for instance, changing the copy will affect
+    the original). Treat QSqlQuery as a move-only type instead.
 */
 
 QSqlQuery::QSqlQuery(const QSqlQuery& other)
@@ -259,16 +230,53 @@ QSqlQuery::QSqlQuery(const QSqlQuery& other)
 }
 
 /*!
+    Assigns \a other to this object.
+
+    \deprecated QSqlQuery cannot be meaningfully copied. Prepared
+    statements, bound values and so on will not work correctly, depending
+    on your database driver (for instance, changing the copy will affect
+    the original). Treat QSqlQuery as a move-only type instead.
+*/
+
+QSqlQuery& QSqlQuery::operator=(const QSqlQuery& other)
+{
+    qAtomicAssign(d, other.d);
+    return *this;
+}
+#endif
+
+/*!
+    \fn QSqlQuery::QSqlQuery(QSqlQuery &&other) noexcept
+    \since 6.2
+    Move-constructs a QSqlQuery from \a other.
+*/
+
+/*!
+    \fn QSqlQuery &QSqlQuery::operator=(QSqlQuery &&other) noexcept
+    \since 6.2
+    Move-assigns \a other to this object.
+*/
+
+/*!
+    \fn void QSqlQuery::swap(QSqlQuery &other) noexcept
+    \since 6.2
+    Swaps \a other to this object. This operation is very
+    fast and never fails.
+*/
+
+/*!
     \internal
 */
-static void qInit(QSqlQuery *q, const QString& query, QSqlDatabase db)
+static void qInit(QSqlQuery *q, const QString& query, const QSqlDatabase &db)
 {
     QSqlDatabase database = db;
-    if (!database.isValid())
-        database = QSqlDatabase::database(QLatin1String(QSqlDatabase::defaultConnection), false);
-    if (database.isValid()) {
-        *q = QSqlQuery(database.driver()->createResult());
+    if (!database.isValid()) {
+        database =
+                QSqlDatabase::database(QLatin1StringView(QSqlDatabase::defaultConnection), false);
     }
+    if (database.isValid())
+        *q = QSqlQuery(database.driver()->createResult());
+
     if (!query.isEmpty())
         q->exec(query);
 }
@@ -281,7 +289,7 @@ static void qInit(QSqlQuery *q, const QString& query, QSqlDatabase db)
 
     \sa QSqlDatabase
 */
-QSqlQuery::QSqlQuery(const QString& query, QSqlDatabase db)
+QSqlQuery::QSqlQuery(const QString& query, const QSqlDatabase &db)
 {
     d = QSqlQueryPrivate::shared_null();
     qInit(this, query, db);
@@ -294,21 +302,10 @@ QSqlQuery::QSqlQuery(const QString& query, QSqlDatabase db)
     \sa QSqlDatabase
 */
 
-QSqlQuery::QSqlQuery(QSqlDatabase db)
+QSqlQuery::QSqlQuery(const QSqlDatabase &db)
 {
     d = QSqlQueryPrivate::shared_null();
     qInit(this, QString(), db);
-}
-
-
-/*!
-    Assigns \a other to this object.
-*/
-
-QSqlQuery& QSqlQuery::operator=(const QSqlQuery& other)
-{
-    qAtomicAssign(d, other.d);
-    return *this;
 }
 
 /*!
@@ -339,7 +336,7 @@ bool QSqlQuery::isNull(int field) const
 
 bool QSqlQuery::isNull(const QString &name) const
 {
-    int index = d->sqlResult->record().indexOf(name);
+    qsizetype index = d->sqlResult->record().indexOf(name);
     if (index > -1)
         return isNull(index);
     qWarning("QSqlQuery::isNull: unknown field name '%s'", qPrintable(name));
@@ -450,7 +447,7 @@ QVariant QSqlQuery::value(int index) const
 
 QVariant QSqlQuery::value(const QString& name) const
 {
-    int index = d->sqlResult->record().indexOf(name);
+    qsizetype index = d->sqlResult->record().indexOf(name);
     if (index > -1)
         return value(index);
     qWarning("QSqlQuery::value: unknown field name '%s'", qPrintable(name));
@@ -923,7 +920,7 @@ QSqlRecord QSqlQuery::record() const
     QSqlRecord rec = d->sqlResult->record();
 
     if (isValid()) {
-        for (int i = 0; i < rec.count(); ++i)
+        for (qsizetype i = 0; i < rec.count(); ++i)
             rec.setValue(i, value(i));
     }
     return rec;
@@ -1052,8 +1049,8 @@ bool QSqlQuery::exec()
 
   To bind NULL values, a null QVariant of the relevant type has to be
   added to the bound QVariantList; for example, \c
-  {QVariant(QVariant::String)} should be used if you are using
-  strings.
+  {QVariant(QMetaType::fromType<QString>())} should be used if you are
+  using strings.
 
   \note Every bound QVariantList must contain the same amount of
   variants.
@@ -1090,7 +1087,7 @@ bool QSqlQuery::execBatch(BatchExecutionMode mode)
   the result into.
 
   To bind a NULL value, use a null QVariant; for example, use
-  \c {QVariant(QVariant::String)} if you are binding a string.
+  \c {QVariant(QMetaType::fromType<QString>())} if you are binding a string.
 
   \sa addBindValue(), prepare(), exec(), boundValue(), boundValues()
 */
@@ -1120,7 +1117,7 @@ void QSqlQuery::bindValue(int pos, const QVariant& val, QSql::ParamType paramTyp
   overwritten with data from the database after the exec() call.
 
   To bind a NULL value, use a null QVariant; for example, use \c
-  {QVariant(QVariant::String)} if you are binding a string.
+  {QVariant(QMetaType::fromType<QString>())} if you are binding a string.
 
   \sa bindValue(), prepare(), exec(), boundValue(), boundValues()
 */
@@ -1141,6 +1138,7 @@ QVariant QSqlQuery::boundValue(const QString& placeholder) const
 
 /*!
   Returns the value for the placeholder at position \a pos.
+  \sa boundValues()
 */
 QVariant QSqlQuery::boundValue(int pos) const
 {
@@ -1148,27 +1146,54 @@ QVariant QSqlQuery::boundValue(int pos) const
 }
 
 /*!
-  Returns a map of the bound values.
+  \since 6.0
 
-  With named binding, the bound values can be examined in the
-  following ways:
+  Returns a list of bound values.
+
+  The order of the list is in binding order, irrespective of whether
+  named or positional binding is used.
+
+  The bound values can be examined in the following way:
 
   \snippet sqldatabase/sqldatabase.cpp 14
 
-  With positional binding, the code becomes:
-
-  \snippet sqldatabase/sqldatabase.cpp 15
-
-  \sa boundValue(), bindValue(), addBindValue()
+  \sa boundValue(), bindValue(), addBindValue(), boundValueNames()
 */
-QMap<QString,QVariant> QSqlQuery::boundValues() const
-{
-    QMap<QString,QVariant> map;
 
-    const QVector<QVariant> values(d->sqlResult->boundValues());
-    for (int i = 0; i < values.count(); ++i)
-        map[d->sqlResult->boundValueName(i)] = values.at(i);
-    return map;
+QVariantList QSqlQuery::boundValues() const
+{
+    const QVariantList values(d->sqlResult->boundValues());
+    return values;
+}
+
+/*!
+  \since 6.6
+
+  Returns the names of all bound values.
+
+  The order of the list is in binding order, irrespective of whether
+  named or positional binding is used.
+
+  \sa boundValues(), boundValueName()
+*/
+QStringList QSqlQuery::boundValueNames() const
+{
+    return d->sqlResult->boundValueNames();
+}
+
+/*!
+  \since 6.6
+
+  Returns the bound value name at position \a pos.
+
+  The order of the list is in binding order, irrespective of whether
+  named or positional binding is used.
+
+  \sa boundValueNames()
+*/
+QString QSqlQuery::boundValueName(int pos) const
+{
+    return d->sqlResult->boundValueName(pos);
 }
 
 /*!
@@ -1197,7 +1222,7 @@ QString QSqlQuery::executedQuery() const
 
   For MySQL databases the row's auto-increment field will be returned.
 
-  \note For this function to work in PSQL, the table table must
+  \note For this function to work in PSQL, the table must
   contain OIDs, which may not have been created by default.  Check the
   \c default_with_oids configuration variable to be sure.
 

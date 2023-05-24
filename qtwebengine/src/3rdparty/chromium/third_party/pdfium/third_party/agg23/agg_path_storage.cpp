@@ -28,6 +28,8 @@
 #include "agg_math.h"
 #include "core/fxcrt/fx_memory.h"
 
+namespace pdfium
+{
 namespace agg
 {
 path_storage::~path_storage()
@@ -41,14 +43,20 @@ path_storage::~path_storage()
         FX_Free(m_coord_blocks);
     }
 }
-path_storage::path_storage() :
-    m_total_vertices(0),
-    m_total_blocks(0),
-    m_max_blocks(0),
-    m_coord_blocks(0),
-    m_cmd_blocks(0),
-    m_iterator(0)
-{
+path_storage::path_storage() = default;
+path_storage::path_storage(path_storage&& other) {
+    m_total_vertices = other.m_total_vertices;
+    m_total_blocks = other.m_total_blocks;
+    m_max_blocks = other.m_max_blocks;
+    m_coord_blocks = other.m_coord_blocks;
+    m_cmd_blocks = other.m_cmd_blocks;
+    m_iterator = other.m_iterator;
+    other.m_total_vertices = 0;
+    other.m_total_blocks = 0;
+    other.m_max_blocks = 0;
+    other.m_coord_blocks = nullptr;
+    other.m_cmd_blocks = nullptr;
+    other.m_iterator = 0;
 }
 void path_storage::allocate_block(unsigned nb)
 {
@@ -90,8 +98,9 @@ void path_storage::end_poly()
 {
     if(m_total_vertices) {
         if(is_vertex(command(m_total_vertices - 1))) {
-            add_vertex(0, 0, path_cmd_end_poly | path_flags_close);
+            add_vertex(0, 0, unsigned{path_cmd_end_poly} | path_flags_close);
         }
     }
 }
 }
+}  // namespace pdfium

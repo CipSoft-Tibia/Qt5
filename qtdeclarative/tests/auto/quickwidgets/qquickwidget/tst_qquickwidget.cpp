@@ -1,40 +1,19 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qtest.h>
 #include <qtesttouch.h>
 #include <QtTest/QSignalSpy>
+#include <QtTest/private/qtesthelpers_p.h>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlcontext.h>
 #include <QtQuick/qquickview.h>
 #include <QtQuick/qquickitem.h>
 #include <QtQuick/private/qquickitem_p.h>
-#include "../../shared/util.h"
+#include <QtQuick/private/qquickmousearea_p.h>
+#include <QtQuick/private/qquicktaphandler_p.h>
+#include <QtQuickTemplates2/private/qquickbutton_p.h>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QtGui/QWindow>
 #include <QtGui/QScreen>
 #include <QtGui/QImage>
@@ -45,9 +24,14 @@
 #include <QtGui/qstylehints.h>
 #include <QtWidgets/QBoxLayout>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/private/qapplication_p.h>
 
 #include <QtQuickWidgets/QQuickWidget>
 
+#if QT_CONFIG(graphicsview)
+# include <QtWidgets/QGraphicsView>
+# include <QtWidgets/QGraphicsProxyWidget>
+#endif
 Q_LOGGING_CATEGORY(lcTests, "qt.quick.tests")
 
 class MouseRecordingQQWidget : public QQuickWidget
@@ -60,60 +44,61 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *event) override {
         qCDebug(lcTests) << event;
-        m_mouseEvents << *event;
+        m_mouseEvents << event->source();
         QQuickWidget::mousePressEvent(event);
     }
     void mouseMoveEvent(QMouseEvent *event) override {
         qCDebug(lcTests) << event;
-        m_mouseEvents << *event;
+        m_mouseEvents << event->source();
         QQuickWidget::mouseMoveEvent(event);
     }
     void mouseReleaseEvent(QMouseEvent *event) override {
         qCDebug(lcTests) << event;
-        m_mouseEvents << *event;
+        m_mouseEvents << event->source();
         QQuickWidget::mouseReleaseEvent(event);
     }
 
 public:
-    QList<QMouseEvent> m_mouseEvents;
+    QList<Qt::MouseEventSource> m_mouseEvents;
 };
 
 class MouseRecordingItem : public QQuickItem
 {
 public:
-    MouseRecordingItem(bool acceptTouch, QQuickItem *parent = nullptr)
+    MouseRecordingItem(bool acceptTouch, bool acceptTouchPress, QQuickItem *parent = nullptr)
         : QQuickItem(parent)
-        , m_acceptTouch(acceptTouch)
+        , m_acceptTouchPress(acceptTouchPress)
     {
         setSize(QSizeF(300, 300));
         setAcceptedMouseButtons(Qt::LeftButton);
+        setAcceptTouchEvents(acceptTouch);
     }
 
 protected:
     void touchEvent(QTouchEvent* event) override {
-        event->setAccepted(m_acceptTouch);
-        m_touchEvents << *event;
+        event->setAccepted(m_acceptTouchPress);
+        m_touchEvents << event->type();
         qCDebug(lcTests) << "accepted?" << event->isAccepted() << event;
     }
     void mousePressEvent(QMouseEvent *event) override {
         qCDebug(lcTests) << event;
-        m_mouseEvents << *event;
+        m_mouseEvents << event->source();
     }
     void mouseMoveEvent(QMouseEvent *event) override {
         qCDebug(lcTests) << event;
-        m_mouseEvents << *event;
+        m_mouseEvents << event->source();
     }
     void mouseReleaseEvent(QMouseEvent *event) override {
         qCDebug(lcTests) << event;
-        m_mouseEvents << *event;
+        m_mouseEvents << event->source();
     }
 
 public:
-    QList<QMouseEvent> m_mouseEvents;
-    QList<QTouchEvent> m_touchEvents;
+    QList<Qt::MouseEventSource> m_mouseEvents;
+    QList<QEvent::Type> m_touchEvents;
 
 private:
-    bool m_acceptTouch;
+    bool m_acceptTouchPress;
 };
 
 class tst_qquickwidget : public QQmlDataTest
@@ -142,15 +127,29 @@ private slots:
     void mouseEventWindowPos();
     void synthMouseFromTouch_data();
     void synthMouseFromTouch();
+    void touchTapMouseArea();
+    void touchTapButton();
+    void touchTapHandler_data();
+    void touchTapHandler();
+    void touchMultipleWidgets();
     void tabKey();
     void resizeOverlay();
+    void controls();
+    void focusOnClick();
+#if QT_CONFIG(graphicsview)
+    void focusOnClickInProxyWidget();
+#endif
+    void focusPreserved();
+    void accessibilityHandlesViewChange();
+    void cleanupRhi();
 
 private:
-    QTouchDevice *device = QTest::createTouchDevice();
+    QPointingDevice *device = QTest::createTouchDevice();
     const QRect m_availableGeometry = QGuiApplication::primaryScreen()->availableGeometry();
 };
 
 tst_qquickwidget::tst_qquickwidget()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 }
 
@@ -353,7 +352,7 @@ void tst_qquickwidget::errors()
     QQmlTestMessageHandler messageHandler;
     view->setSource(testFileUrl("error1.qml"));
     QCOMPARE(view->status(), QQuickWidget::Error);
-    QCOMPARE(view->errors().count(), 1);
+    QCOMPARE(view->errors().size(), 1);
 }
 
 void tst_qquickwidget::engine()
@@ -369,8 +368,6 @@ void tst_qquickwidget::engine()
 
 void tst_qquickwidget::readback()
 {
-    QWidget window;
-
     QScopedPointer<QQuickWidget> view(new QQuickWidget);
     view->setSource(testFileUrl("rectangle.qml"));
 
@@ -379,8 +376,8 @@ void tst_qquickwidget::readback()
 
     QImage img = view->grabFramebuffer();
     QVERIFY(!img.isNull());
-    QCOMPARE(img.width(), view->width());
-    QCOMPARE(img.height(), view->height());
+    QCOMPARE(img.width(), qCeil(view->width() * view->devicePixelRatio()));
+    QCOMPARE(img.height(), qCeil(view->height() * view->devicePixelRatio()));
 
     QRgb pix = img.pixel(5, 5);
     QCOMPARE(pix, qRgb(255, 0, 0));
@@ -437,6 +434,9 @@ void tst_qquickwidget::grabBeforeShow()
 
 void tst_qquickwidget::reparentToNewWindow()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("This test crashes on Android (see QTBUG-100173)");
+#endif
     QWidget window1;
     QWidget window2;
 
@@ -447,13 +447,15 @@ void tst_qquickwidget::reparentToNewWindow()
     window2.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window2));
 
-    QSignalSpy afterRenderingSpy(qqw->quickWindow(), &QQuickWindow::afterRendering);
     qqw->setParent(&window2);
+
+    QSignalSpy afterRenderingSpy(qqw->quickWindow(), &QQuickWindow::afterRendering);
     qqw->show();
 
     QTRY_VERIFY(afterRenderingSpy.size() > 0);
 
     QImage img = qqw->grabFramebuffer();
+
     QCOMPARE(img.pixel(5, 5), qRgb(255, 0, 0));
 }
 
@@ -530,6 +532,9 @@ void tst_qquickwidget::shortcuts()
 
 void tst_qquickwidget::enterLeave()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("Android has no cursor");
+#endif
     QQuickWidget view;
     view.setSource(testFileUrl("enterleave.qml"));
 
@@ -605,7 +610,7 @@ void tst_qquickwidget::synthMouseFromTouch()
     QWidget window;
     window.setAttribute(Qt::WA_AcceptTouchEvents);
     QScopedPointer<MouseRecordingQQWidget> childView(new MouseRecordingQQWidget(&window));
-    MouseRecordingItem *item = new MouseRecordingItem(acceptTouch, nullptr);
+    MouseRecordingItem *item = new MouseRecordingItem(!synthMouse, acceptTouch, nullptr);
     childView->setContent(QUrl(), nullptr, item);
     window.resize(300, 300);
     childView->resize(300, 300);
@@ -620,11 +625,147 @@ void tst_qquickwidget::synthMouseFromTouch()
     QTest::touchEvent(&window, device).move(0, p2, &window);
     QTest::touchEvent(&window, device).release(0, p2, &window);
 
-    QCOMPARE(item->m_touchEvents.count(), !synthMouse && !acceptTouch ? 1 : 3);
-    QCOMPARE(item->m_mouseEvents.count(), (acceptTouch || !synthMouse) ? 0 : 3);
-    QCOMPARE(childView->m_mouseEvents.count(), 0);
-    for (const QMouseEvent &ev : item->m_mouseEvents)
-        QCOMPARE(ev.source(), Qt::MouseEventSynthesizedByQt);
+    qCDebug(lcTests) << item->m_touchEvents << item->m_mouseEvents;
+    QCOMPARE(item->m_touchEvents.size(), synthMouse ? 0 : (acceptTouch ? 3 : 1));
+    QCOMPARE(item->m_mouseEvents.size(), synthMouse ? 3 : 0);
+    QCOMPARE(childView->m_mouseEvents.size(), 0);
+    for (const auto &ev : item->m_mouseEvents)
+        QCOMPARE(ev, Qt::MouseEventSynthesizedByQt);
+}
+
+void tst_qquickwidget::touchTapMouseArea()
+{
+    QWidget window;
+    window.resize(100, 100);
+    window.setObjectName("window widget");
+    window.setAttribute(Qt::WA_AcceptTouchEvents);
+    QVERIFY(QCoreApplication::testAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents));
+    QQuickWidget *quick = new QQuickWidget(&window);
+    quick->setSource(testFileUrl("mouse.qml"));
+    quick->move(50, 50);
+    quick->setObjectName("quick widget");
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QQuickItem *rootItem = quick->rootObject();
+    QVERIFY(rootItem);
+    QQuickMouseArea *ma = rootItem->findChild<QQuickMouseArea *>();
+    QVERIFY(ma);
+
+    QPoint p1 = QPoint(70, 70);
+    QTest::touchEvent(&window, device).press(0, p1, &window);
+    QTRY_COMPARE(ma->isPressed(), true);
+    QTest::touchEvent(&window, device).move(0, p1, &window);
+    QTest::touchEvent(&window, device).release(0, p1, &window);
+    QTRY_COMPARE(ma->isPressed(), false);
+    QVERIFY(rootItem->property("wasClicked").toBool());
+}
+
+void tst_qquickwidget::touchTapButton()
+{
+    QWidget window;
+    QQuickWidget *quick = new QQuickWidget;
+    quick->setSource(testFileUrl("button.qml"));
+
+    QHBoxLayout hbox;
+    hbox.addWidget(quick);
+    window.setLayout(&hbox);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *rootItem = quick->rootObject();
+    QVERIFY(rootItem);
+    QQuickButton *button = rootItem->findChild<QQuickButton *>("button");
+    QVERIFY(button);
+
+    const QPoint point = quick->mapTo(&window, button->mapToScene(button->boundingRect().center()).toPoint());
+    QTest::touchEvent(&window, device).press(0, point, &window).commit();
+    QTRY_VERIFY(rootItem->property("wasPressed").toBool());
+    QTest::touchEvent(&window, device).release(0, point, &window).commit();
+    QTRY_VERIFY(rootItem->property("wasReleased").toBool());
+    QTRY_VERIFY(rootItem->property("wasClicked").toBool());
+}
+
+void tst_qquickwidget::touchTapHandler_data()
+{
+    QTest::addColumn<bool>("guiSynthMouse"); // AA_SynthesizeMouseForUnhandledTouchEvents
+    QTest::addColumn<QQuickTapHandler::GesturePolicy>("gesturePolicy");
+
+    // QTest::newRow("nosynth: passive grab") << false << QQuickTapHandler::DragThreshold; // still failing
+    QTest::newRow("nosynth: exclusive grab") << false << QQuickTapHandler::ReleaseWithinBounds;
+    QTest::newRow("allowsynth: passive grab") << true << QQuickTapHandler::DragThreshold; // QTBUG-113558
+    QTest::newRow("allowsynth: exclusive grab") << true << QQuickTapHandler::ReleaseWithinBounds;
+}
+
+void tst_qquickwidget::touchTapHandler()
+{
+    QFETCH(bool, guiSynthMouse);
+    QFETCH(QQuickTapHandler::GesturePolicy, gesturePolicy);
+
+    QCoreApplication::setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents, guiSynthMouse);
+    QQuickWidget quick;
+    if (!quick.testAttribute(Qt::WA_AcceptTouchEvents))
+        QSKIP("irrelevant on non-touch platforms");
+
+    quick.setSource(testFileUrl("tapHandler.qml"));
+    quick.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&quick));
+
+    QQuickItem *rootItem = quick.rootObject();
+    QVERIFY(rootItem);
+    QQuickTapHandler *th = rootItem->findChild<QQuickTapHandler *>();
+    QVERIFY(th);
+    th->setGesturePolicy(gesturePolicy);
+    QSignalSpy tappedSpy(th, &QQuickTapHandler::tapped);
+
+    const QPoint p(50, 50);
+    QTest::touchEvent(&quick, device).press(0, p, &quick);
+    QTRY_COMPARE(th->isPressed(), true);
+    QTest::touchEvent(&quick, device).release(0, p, &quick);
+    QTRY_COMPARE(tappedSpy.size(), 1);
+    QCOMPARE(th->isPressed(), false);
+}
+
+void tst_qquickwidget::touchMultipleWidgets()
+{
+    QWidget window;
+    QQuickWidget *leftQuick = new QQuickWidget;
+    leftQuick->setSource(testFileUrl("button.qml"));
+    if (!leftQuick->testAttribute(Qt::WA_AcceptTouchEvents))
+        QSKIP("irrelevant on non-touch platforms");
+
+    QQuickWidget *rightQuick = new QQuickWidget;
+    rightQuick->setSource(testFileUrl("button.qml"));
+
+    QHBoxLayout hbox;
+    hbox.addWidget(leftQuick);
+    hbox.addWidget(rightQuick);
+    window.setLayout(&hbox);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QQuickItem *leftRootItem = leftQuick->rootObject();
+    QQuickItem *rightRootItem = rightQuick->rootObject();
+    QVERIFY(leftRootItem);
+    QVERIFY(rightRootItem);
+    QQuickButton *leftButton = leftRootItem->findChild<QQuickButton *>("button");
+    QQuickButton *rightButton = rightRootItem->findChild<QQuickButton *>("button");
+    QVERIFY(leftButton);
+    QVERIFY(rightButton);
+
+    const QPoint leftPoint = leftQuick->mapTo(&window, leftButton->mapToScene(
+                                              leftButton->boundingRect().center()).toPoint());
+    const QPoint rightPoint = rightQuick->mapTo(&window, rightButton->mapToScene(
+                                                rightButton->boundingRect().center()).toPoint());
+    QTest::touchEvent(&window, device).press(0, leftPoint, &window).commit();
+    QTRY_VERIFY(leftRootItem->property("wasPressed").toBool());
+    QTest::touchEvent(&window, device).press(1, rightPoint, &window).commit();
+    QTRY_VERIFY(rightRootItem->property("wasPressed").toBool());
+    QTest::touchEvent(&window, device).release(1, rightPoint, &window).commit();
+    QTRY_VERIFY(rightRootItem->property("wasReleased").toBool());
+    QVERIFY(rightRootItem->property("wasClicked").toBool());
+    QTest::touchEvent(&window, device).release(0, leftPoint, &window).commit();
+    QTRY_VERIFY(leftRootItem->property("wasReleased").toBool());
+    QVERIFY(leftRootItem->property("wasClicked").toBool());
 }
 
 void tst_qquickwidget::tabKey()
@@ -684,7 +825,7 @@ public:
     }
 
 private:
-    virtual void itemGeometryChanged(QQuickItem *, QQuickGeometryChange, const QRectF &/*oldGeometry*/) override
+    void itemGeometryChanged(QQuickItem *, QQuickGeometryChange, const QRectF &/*oldGeometry*/) override
     {
         auto window = QQuickItemPrivate::get(this)->window;
         if (!window)
@@ -701,7 +842,7 @@ void tst_qquickwidget::resizeOverlay()
 {
     QWidget widget;
     auto contentVerticalLayout = new QVBoxLayout(&widget);
-    contentVerticalLayout->setMargin(0);
+    contentVerticalLayout->setContentsMargins(0, 0, 0, 0);
 
     qmlRegisterType<Overlay>("Test", 1, 0, "Overlay");
 
@@ -719,7 +860,7 @@ void tst_qquickwidget::resizeOverlay()
     overlay->startListening();
 
     widget.resize(200, 200);
-    widget.show();
+    QTestPrivate::androidCompatibleShow(&widget);
     QCOMPARE(rootItem->width(), 200);
     QCOMPARE(rootItem->height(), 200);
     QCOMPARE(overlay->width(), rootItem->width());
@@ -730,6 +871,229 @@ void tst_qquickwidget::resizeOverlay()
     QCOMPARE(rootItem->height(), 300);
     QCOMPARE(overlay->width(), rootItem->width());
     QCOMPARE(overlay->height(), rootItem->height());
+}
+
+void tst_qquickwidget::controls()
+{
+    // Smoke test for having some basic Quick Controls in a scene in a QQuickWidget.
+    QWidget widget;
+    QVBoxLayout *contentVerticalLayout = new QVBoxLayout(&widget);
+    QQuickWidget *quickWidget = new QQuickWidget(testFileUrl("controls.qml"), &widget);
+    QCOMPARE(quickWidget->status(), QQuickWidget::Ready);
+    quickWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    contentVerticalLayout->addWidget(quickWidget);
+
+    widget.resize(400, 400);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    QQuickItem *rootItem = qobject_cast<QQuickItem *>(quickWidget->rootObject());
+    QVERIFY(rootItem);
+    QCOMPARE(rootItem->size(), quickWidget->size());
+    QSize oldSize = quickWidget->size();
+
+    // Verify that QTBUG-95937 no longer occurs. (on Windows with the default
+    // native windows style this used to assert in debug builds)
+    widget.resize(300, 300);
+    QTRY_VERIFY(quickWidget->width() < oldSize.width());
+    QTRY_COMPARE(rootItem->size(), quickWidget->size());
+
+    widget.hide();
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+}
+
+void tst_qquickwidget::focusOnClick()
+{
+    QQuickWidget quick;
+    quick.setSource(testFileUrl("FocusOnClick.qml"));
+    quick.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&quick));
+    QQuickItem *rootItem = quick.rootObject();
+    QVERIFY(rootItem);
+    QWindow *window = quick.windowHandle();
+    QVERIFY(window);
+
+    QQuickItem *text1 = rootItem->findChild<QQuickItem *>("text1");
+    QVERIFY(text1);
+    QQuickItem *text2 = rootItem->findChild<QQuickItem *>("text2");
+    QVERIFY(text2);
+
+    QTest::mouseClick(window, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 25));
+    QTRY_VERIFY(text1->hasActiveFocus());
+    QVERIFY(!text2->hasActiveFocus());
+
+    QTest::mouseClick(window, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 75));
+    QTRY_VERIFY(text2->hasActiveFocus());
+    QVERIFY(!text1->hasActiveFocus());
+
+}
+
+#if QT_CONFIG(graphicsview)
+void tst_qquickwidget::focusOnClickInProxyWidget()
+{
+    QGraphicsScene scene(0,0,400,400);
+
+    QGraphicsView view1(&scene);
+    view1.setFrameStyle(QFrame::NoFrame);
+    view1.resize(400,400);
+    QTestPrivate::androidCompatibleShow(&view1);
+
+
+
+    QQuickWidget* quick = new QQuickWidget(testFileUrl("FocusOnClick.qml"));
+    quick->resize(300,100);
+    quick->setAttribute(Qt::WA_AcceptTouchEvents);
+    QGraphicsProxyWidget* proxy =  scene.addWidget(quick);
+    proxy->setAcceptTouchEvents(true);
+
+   // QTRY_VERIFY(quick->rootObject());
+    QQuickItem *rootItem = quick->rootObject();
+    QVERIFY(rootItem);
+    QQuickItem *text1 = rootItem->findChild<QQuickItem *>("text1");
+    QVERIFY(text1);
+    QQuickItem *text2 = rootItem->findChild<QQuickItem *>("text2");
+    QVERIFY(text2);
+
+    QVERIFY(QTest::qWaitForWindowExposed(&view1));
+    QWindow *window1 = view1.windowHandle();
+    QVERIFY(window1);
+
+    // Click in the QGraphicsView, outside the QuickWidget
+    QTest::mouseClick(window1, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(300, 300));
+    QTRY_VERIFY(!text1->hasActiveFocus());
+    QTRY_VERIFY(!text2->hasActiveFocus());
+
+    // Click on text1
+    QTest::mouseClick(window1, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 25));
+    QTRY_VERIFY(text1->hasActiveFocus());
+    QVERIFY(!text2->hasActiveFocus());
+
+
+    // Now create a second view and repeat, in order to verify that we handle one QQuickItem being in multiple windows
+    QGraphicsView view2(&scene);
+    view2.resize(400,400);
+    QTestPrivate::androidCompatibleShow(&view2);
+
+    QVERIFY(QTest::qWaitForWindowExposed(&view2));
+    QWindow *window2 = view2.windowHandle();
+    QVERIFY(window2);
+
+    QTest::mouseClick(window2, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(300, 300));
+    QTRY_VERIFY(!text1->hasActiveFocus());
+    QTRY_VERIFY(!text2->hasActiveFocus());
+
+    QTest::mouseClick(window2, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(75, 25));
+    QTRY_VERIFY(text1->hasActiveFocus());
+    QVERIFY(!text2->hasActiveFocus());
+}
+#endif
+
+void tst_qquickwidget::focusPreserved()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("Window Activation is not supported.");
+    if (QGuiApplication::platformName() == "android")
+        QSKIP("Test doesn't exit cleanly on Android and generates many warnings - QTBUG-112696");
+
+    QScopedPointer<QWidget> widget(new QWidget());
+    QScopedPointer<QQuickWidget> quick(new QQuickWidget());
+    QQuickItem *root = new QQuickItem(); // will be owned by quick after setContent
+    QScopedPointer<QQuickItem> content(new QQuickItem());
+    content->setActiveFocusOnTab(true);
+    content->setFocus(true);
+    quick->setFocusPolicy(Qt::StrongFocus);
+    quick->setContent(QUrl(), nullptr, root);
+    root->setFlag(QQuickItem::ItemHasContents);
+    content->setParentItem(root);
+
+    quick->setGeometry(0, 0, 200, 200);
+    quick->show();
+    quick->setFocus();
+    quick->activateWindow();
+    QVERIFY(QTest::qWaitForWindowExposed(quick.get()));
+    QTRY_VERIFY(quick->hasFocus());
+    QTRY_VERIFY(content->hasFocus());
+    QTRY_VERIFY(content->hasActiveFocus());
+
+    widget->show();
+    widget->setFocus();
+    widget->activateWindow();
+    QVERIFY(QTest::qWaitForWindowExposed(widget.get()));
+    QTRY_VERIFY(widget->hasFocus());
+
+    quick->setParent(widget.get());
+
+    quick->show();
+    quick->setFocus();
+    quick->activateWindow();
+    QTRY_VERIFY(quick->hasFocus());
+    QTRY_VERIFY(content->hasFocus());
+    QTRY_VERIFY(content->hasActiveFocus());
+}
+
+/*
+    Reparenting the QQuickWidget recreates the offscreen QQuickWindow.
+    Since the accessible interface that is cached for the QQuickWidget dispatches
+    all calls to the offscreen QQuickWindow, it must fix itself when the offscreen
+    view changes. QTBUG-108226
+*/
+void tst_qquickwidget::accessibilityHandlesViewChange()
+{
+    if (QGuiApplication::platformName() == "offscreen")
+        QSKIP("Doesn't test anything on offscreen platform.");
+    if (QGuiApplication::platformName() == "android")
+        QSKIP("Test doesn't exit cleanly on Android and generates many warnings - QTBUG-112696");
+
+    QWidget window;
+
+    QPointer<QQuickWindow> backingScene;
+
+    QQuickWidget *childView = new QQuickWidget(&window);
+    childView->setSource(testFileUrl("rectangle.qml"));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    backingScene = childView->quickWindow();
+    QVERIFY(backingScene);
+
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(childView);
+    QVERIFY(iface);
+    (void)iface->child(0);
+
+    std::unique_ptr<QQuickWidget> quickWidget(childView);
+    childView->setParent(nullptr);
+    childView->show();
+    QVERIFY(QTest::qWaitForWindowExposed(childView));
+    QVERIFY(!backingScene); // the old QQuickWindow should be gone now
+    QVERIFY(childView->quickWindow()); // long live the new QQuickWindow
+
+    iface = QAccessible::queryAccessibleInterface(childView);
+    QVERIFY(iface);
+    // this would crash if QAccessibleQuickWidget hadn't repaired itself to
+    // delegate calls to the new (or at least not the old, destroyed) QQuickWindow.
+    (void)iface->child(0);
+}
+
+class CreateDestroyWidget : public QWidget
+{
+public:
+    using QWidget::create;
+    using QWidget::destroy;
+};
+
+void tst_qquickwidget::cleanupRhi()
+{
+#ifdef Q_OS_ANDROID
+    QSKIP("This test crashes on Android (QTBUG-121133)");
+#endif
+    CreateDestroyWidget topLevel;
+    QQuickWidget quickWidget(&topLevel);
+    quickWidget.setSource(testFileUrl("rectangle.qml"));
+    topLevel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevel));
+
+    topLevel.destroy();
+    topLevel.create();
 }
 
 QTEST_MAIN(tst_qquickwidget)

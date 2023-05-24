@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,13 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
-#include "base/stl_util.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_blocking_call.h"
+#include "net/cert/nss_cert_database.h"
 
 namespace net {
 
@@ -70,13 +70,35 @@ void NSSCertDatabaseChromeOS::ListModules(
     bool need_rw) const {
   NSSCertDatabase::ListModules(modules, need_rw);
 
-  size_t pre_size = modules->size();
   const NSSProfileFilterChromeOS& profile_filter = profile_filter_;
   base::EraseIf(*modules, [&profile_filter](crypto::ScopedPK11Slot& module) {
     return !profile_filter.IsModuleAllowed(module.get());
   });
-  DVLOG(1) << "filtered " << pre_size - modules->size() << " of " << pre_size
-           << " modules";
+}
+
+bool NSSCertDatabaseChromeOS::SetCertTrust(CERTCertificate* cert,
+                                           CertType type,
+                                           TrustBits trust_bits) {
+  crypto::ScopedPK11Slot public_slot = GetPublicSlot();
+
+  // Ensure that the certificate exists on the public slot so NSS puts the trust
+  // settings there (https://crbug.com/1132030).
+  if (public_slot == GetSystemSlot()) {
+    // Never attempt to store trust setting on the system slot.
+    return false;
+  }
+
+  if (!IsCertificateOnSlot(cert, public_slot.get())) {
+    // Copy the certificate to the public slot.
+    SECStatus srv =
+        PK11_ImportCert(public_slot.get(), cert, CK_INVALID_HANDLE,
+                        cert->nickname, PR_FALSE /* includeTrust (unused) */);
+    if (srv != SECSuccess) {
+      LOG(ERROR) << "Failed to import certificate onto public slot.";
+      return false;
+    }
+  }
+  return NSSCertDatabase::SetCertTrust(cert, type, trust_bits);
 }
 
 // static
@@ -104,12 +126,9 @@ NSSCertDatabase::CertInfoList NSSCertDatabaseChromeOS::ListCertsInfoImpl(
       crypto::ScopedPK11Slot(), add_certs_info));
 
   // Filter certificate information according to user profile.
-  size_t pre_size = certs_info.size();
   base::EraseIf(certs_info, [&profile_filter](CertInfo& cert_info) {
     return !profile_filter.IsCertAllowed(cert_info.cert.get());
   });
-  DVLOG(1) << "filtered " << pre_size - certs_info.size() << " of " << pre_size
-           << " certs";
 
   if (add_certs_info) {
     // Add Chrome OS specific information.

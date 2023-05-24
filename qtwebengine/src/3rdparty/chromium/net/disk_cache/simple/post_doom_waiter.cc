@@ -1,17 +1,17 @@
-// Copyright (c) 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "net/disk_cache/simple/post_doom_waiter.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "net/disk_cache/simple/simple_histogram_macros.h"
 
 namespace disk_cache {
 
-SimplePostDoomWaiter::SimplePostDoomWaiter() {}
+SimplePostDoomWaiter::SimplePostDoomWaiter() = default;
 
 SimplePostDoomWaiter::SimplePostDoomWaiter(base::OnceClosure to_run_post_doom)
     : run_post_doom(std::move(to_run_post_doom)) {}
@@ -20,7 +20,7 @@ SimplePostDoomWaiter::SimplePostDoomWaiter(SimplePostDoomWaiter&& other) =
     default;
 SimplePostDoomWaiter& SimplePostDoomWaiter::operator=(
     SimplePostDoomWaiter&& other) = default;
-SimplePostDoomWaiter::~SimplePostDoomWaiter() {}
+SimplePostDoomWaiter::~SimplePostDoomWaiter() = default;
 
 SimplePostDoomWaiterTable::SimplePostDoomWaiterTable(net::CacheType cache_type)
     : cache_type_(cache_type) {}

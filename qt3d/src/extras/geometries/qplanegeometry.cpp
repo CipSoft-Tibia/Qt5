@@ -1,54 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplanegeometry.h"
 #include "qplanegeometry_p.h"
 
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
 
 #include <limits>
 
 QT_BEGIN_NAMESPACE
 
-using namespace Qt3DRender;
+using namespace Qt3DCore;
 
 namespace  Qt3DExtras {
 
@@ -117,7 +80,7 @@ QByteArray createPlaneIndexData(const QSize &resolution)
 {
     // Create the index data. 2 triangles per rectangular face
     const int faces = 2 * (resolution.width() - 1) * (resolution.height() - 1);
-    const int indices = 3 * faces;
+    const qsizetype indices = 3 * faces;
     Q_ASSERT(indices < std::numeric_limits<quint16>::max());
     QByteArray indexBytes;
     indexBytes.resize(indices * sizeof(quint16));
@@ -145,71 +108,6 @@ QByteArray createPlaneIndexData(const QSize &resolution)
 }
 
 } // anonymous
-
-class PlaneVertexBufferFunctor : public QBufferDataGenerator
-{
-public:
-    explicit PlaneVertexBufferFunctor(float w, float h, const QSize &resolution, bool mirrored)
-        : m_width(w)
-        , m_height(h)
-        , m_resolution(resolution)
-        , m_mirrored(mirrored)
-    {}
-
-    ~PlaneVertexBufferFunctor() {}
-
-    QByteArray operator()() final
-    {
-        return createPlaneVertexData(m_width, m_height, m_resolution, m_mirrored);
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const final
-    {
-        const PlaneVertexBufferFunctor *otherFunctor = functor_cast<PlaneVertexBufferFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_width == m_width &&
-                    otherFunctor->m_height == m_height &&
-                    otherFunctor->m_resolution == m_resolution &&
-                    otherFunctor->m_mirrored == m_mirrored);
-        return false;
-    }
-
-    QT3D_FUNCTOR(PlaneVertexBufferFunctor)
-
-    private:
-        float m_width;
-    float m_height;
-    QSize m_resolution;
-    bool m_mirrored;
-};
-
-class PlaneIndexBufferFunctor : public QBufferDataGenerator
-{
-public:
-    explicit PlaneIndexBufferFunctor(const QSize &resolution)
-        : m_resolution(resolution)
-    {}
-
-    ~PlaneIndexBufferFunctor() {}
-
-    QByteArray operator()() final
-    {
-        return createPlaneIndexData(m_resolution);
-    }
-
-    bool operator ==(const QBufferDataGenerator &other) const final
-    {
-        const PlaneIndexBufferFunctor *otherFunctor = functor_cast<PlaneIndexBufferFunctor>(&other);
-        if (otherFunctor != nullptr)
-            return (otherFunctor->m_resolution == m_resolution);
-        return false;
-    }
-
-    QT3D_FUNCTOR(PlaneIndexBufferFunctor)
-
-    private:
-        QSize m_resolution;
-};
 
 /*!
  * \qmltype PlaneGeometry
@@ -278,7 +176,7 @@ public:
 
 /*!
  * \class Qt3DExtras::QPlaneGeometry
-   \ingroup qt3d-extras-geometries
+ * \ingroup qt3d-extras-geometries
  * \inheaderfile Qt3DExtras/QPlaneGeometry
  * \inmodule Qt3DExtras
  * \brief The QPlaneGeometry class allows creation of a plane in 3D space.
@@ -330,7 +228,7 @@ void QPlaneGeometry::updateVertices()
     d->m_normalAttribute->setCount(nVerts);
     d->m_texCoordAttribute->setCount(nVerts);
     d->m_tangentAttribute->setCount(nVerts);
-    d->m_vertexBuffer->setDataGenerator(QSharedPointer<PlaneVertexBufferFunctor>::create(d->m_width, d->m_height, d->m_meshResolution, d->m_mirrored));
+    d->m_vertexBuffer->setData(d->generateVertexData());
 }
 
 /*!
@@ -342,7 +240,7 @@ void QPlaneGeometry::updateIndices()
     const int faces = 2 * (d->m_meshResolution.width() - 1) * (d->m_meshResolution.height() - 1);
     // Each primitive has 3 vertices
     d->m_indexAttribute->setCount(faces * 3);
-    d->m_indexBuffer->setDataGenerator(QSharedPointer<PlaneIndexBufferFunctor>::create(d->m_meshResolution));
+    d->m_indexBuffer->setData(d->generateIndexData());
 
 }
 
@@ -511,8 +409,8 @@ void QPlaneGeometryPrivate::init()
     m_texCoordAttribute = new QAttribute(q);
     m_tangentAttribute = new QAttribute(q);
     m_indexAttribute = new QAttribute(q);
-    m_vertexBuffer = new Qt3DRender::QBuffer(q);
-    m_indexBuffer = new Qt3DRender::QBuffer(q);
+    m_vertexBuffer = new Qt3DCore::QBuffer(q);
+    m_indexBuffer = new Qt3DCore::QBuffer(q);
 
     const int nVerts = m_meshResolution.width() * m_meshResolution.height();
     const int stride = (3 + 2 + 3 + 4) * sizeof(float);
@@ -560,8 +458,8 @@ void QPlaneGeometryPrivate::init()
     // Each primitive has 3 vertives
     m_indexAttribute->setCount(faces * 3);
 
-    m_vertexBuffer->setDataGenerator(QSharedPointer<PlaneVertexBufferFunctor>::create(m_width, m_height, m_meshResolution, m_mirrored));
-    m_indexBuffer->setDataGenerator(QSharedPointer<PlaneIndexBufferFunctor>::create(m_meshResolution));
+    m_vertexBuffer->setData(generateVertexData());
+    m_indexBuffer->setData(generateIndexData());
 
     q->addAttribute(m_positionAttribute);
     q->addAttribute(m_texCoordAttribute);
@@ -570,6 +468,18 @@ void QPlaneGeometryPrivate::init()
     q->addAttribute(m_indexAttribute);
 }
 
+QByteArray QPlaneGeometryPrivate::generateVertexData() const
+{
+    return createPlaneVertexData(m_width, m_height, m_meshResolution, m_mirrored);
+}
+
+QByteArray QPlaneGeometryPrivate::generateIndexData() const
+{
+    return createPlaneIndexData(m_meshResolution);
+}
+
 } //  Qt3DExtras
 
 QT_END_NAMESPACE
+
+#include "moc_qplanegeometry.cpp"

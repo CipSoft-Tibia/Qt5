@@ -42,6 +42,9 @@ struct fullscreen_shell {
 	struct wl_client *client;
 	struct wl_listener client_destroyed;
 	struct weston_compositor *compositor;
+	/* XXX: missing compositor destroy listener
+	 * https://gitlab.freedesktop.org/wayland/weston/issues/299
+	 */
 
 	struct weston_layer layer;
 	struct wl_list output_list;
@@ -928,7 +931,7 @@ wet_shell_init(struct weston_compositor *compositor,
 	wl_signal_add(&compositor->seat_created_signal,
 		      &shell->seat_created_listener);
 	wl_list_for_each(seat, &compositor->seat_list, link)
-		seat_created(NULL, seat);
+		seat_created(&shell->seat_created_listener, seat);
 
 	wl_global_create(compositor->wl_display,
 			 &zwp_fullscreen_shell_v1_interface, 1, shell,

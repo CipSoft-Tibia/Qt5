@@ -1,5 +1,4 @@
-// Copyright (c) 2006, Google Inc.
-// All rights reserved.
+// Copyright 2006 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -49,6 +48,7 @@
 #include "third_party/lss/linux_syscall_support.h"
 
 namespace google_breakpad {
+namespace elf {
 
 // Used in a few places for backwards-compatibility.
 const size_t kMDGUIDSize = sizeof(MDGUID);
@@ -198,4 +198,5 @@ string FileID::ConvertIdentifierToString(
   return bytes_to_hex_string(&identifier[0], identifier.size());
 }
 
+}  // elf
 }  // namespace google_breakpad

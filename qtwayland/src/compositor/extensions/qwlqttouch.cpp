@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwlqttouch_p.h"
 #include "qwaylandview.h"
+#include <QPointingDevice>
 #include <QTouchEvent>
 #include <QWindow>
 
@@ -57,14 +32,14 @@ static inline int toFixed(qreal f)
 
 bool TouchExtensionGlobal::postTouchEvent(QTouchEvent *event, QWaylandSurface *surface)
 {
-    const QList<QTouchEvent::TouchPoint> points = event->touchPoints();
-    const int pointCount = points.count();
+    const QList<QTouchEvent::TouchPoint> points = event->points();
+    const int pointCount = points.size();
     if (!pointCount)
         return false;
 
     wl_client *surfaceClient = surface->client()->client();
     uint32_t time = m_compositor->currentTimeMsecs();
-    const int rescount = m_resources.count();
+    const int rescount = m_resources.size();
 
     for (int res = 0; res < rescount; ++res) {
         Resource *target = m_resources.at(res);
@@ -76,24 +51,24 @@ bool TouchExtensionGlobal::postTouchEvent(QTouchEvent *event, QWaylandSurface *s
         // included in the touch point events.
         int sentPointCount = 0;
         for (int i = 0; i < pointCount; ++i) {
-            if (points.at(i).state() != Qt::TouchPointStationary)
+            if (points.at(i).state() != QEventPoint::Stationary)
                 ++sentPointCount;
         }
 
         for (int i = 0; i < pointCount; ++i) {
             const QTouchEvent::TouchPoint &tp(points.at(i));
             // Stationary points are never sent. They are cached on client side.
-            if (tp.state() == Qt::TouchPointStationary)
+            if (tp.state() == QEventPoint::Stationary)
                 continue;
 
             uint32_t id = tp.id();
             uint32_t state = (tp.state() & 0xFFFF) | (sentPointCount << 16);
-            uint32_t flags = (tp.flags() & 0xFFFF) | (int(event->device()->capabilities()) << 16);
+            uint32_t flags = (int(event->pointingDevice()->capabilities()) << 16);
 
-            int x = toFixed(tp.pos().x());
-            int y = toFixed(tp.pos().y());
-            int nx = toFixed(tp.normalizedPos().x());
-            int ny = toFixed(tp.normalizedPos().y());
+            int x = toFixed(tp.position().x());
+            int y = toFixed(tp.position().y());
+            int nx = toFixed(tp.normalizedPosition().x());
+            int ny = toFixed(tp.normalizedPosition().y());
             int w = toFixed(tp.ellipseDiameters().width());
             int h = toFixed(tp.ellipseDiameters().height());
             int vx = toFixed(tp.velocity().x());
@@ -101,22 +76,6 @@ bool TouchExtensionGlobal::postTouchEvent(QTouchEvent *event, QWaylandSurface *s
             uint32_t pressure = uint32_t(tp.pressure() * 255);
 
             QByteArray rawData;
-            QVector<QPointF> rawPosList = tp.rawScreenPositions();
-            int rawPosCount = rawPosList.count();
-            if (rawPosCount) {
-                rawPosCount = qMin(maxRawPos, rawPosCount);
-                QVector<float>::iterator iter = m_posData.begin();
-                for (int rpi = 0; rpi < rawPosCount; ++rpi) {
-                    const QPointF &rawPos(rawPosList.at(rpi));
-                    // This will stay in screen coordinates for performance
-                    // reasons, clients using this data will presumably know
-                    // what they are doing.
-                    *iter++ = static_cast<float>(rawPos.x());
-                    *iter++ = static_cast<float>(rawPos.y());
-                }
-                rawData = QByteArray::fromRawData(reinterpret_cast<const char*>(m_posData.constData()), sizeof(float) * rawPosCount * 2);
-            }
-
             send_touch(target->handle,
                        time, id, state,
                        x, y, nx, ny, w, h,
@@ -153,3 +112,5 @@ void TouchExtensionGlobal::touch_extension_destroy_resource(Resource *resource)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwlqttouch_p.cpp"

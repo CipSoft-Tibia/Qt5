@@ -1,35 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mockcompositor.h"
 
 #include <QtGui/QRasterWindow>
-#include <QtGui/QOpenGLWindow>
 #include <QtGui/QClipboard>
 #include <QtGui/QDrag>
 
@@ -57,6 +31,8 @@ private slots:
     void initTestCase();
     void pasteAscii();
     void pasteUtf8();
+    void pasteMozUrl();
+    void pasteSingleUtf8MozUrl();
     void destroysPreviousSelection();
     void destroysSelectionWithSurface();
     void destroysSelectionOnLeave();
@@ -66,9 +42,6 @@ private slots:
 void tst_datadevicev1::initTestCase()
 {
     QCOMPOSITOR_TRY_VERIFY(pointer());
-    QCOMPOSITOR_TRY_VERIFY(!pointer()->resourceMap().empty());
-    QCOMPOSITOR_TRY_COMPARE(pointer()->resourceMap().first()->version(), 5);
-
     QCOMPOSITOR_TRY_VERIFY(keyboard());
 
     QCOMPOSITOR_TRY_VERIFY(dataDevice());
@@ -150,6 +123,90 @@ void tst_datadevicev1::pasteUtf8()
         pointer()->sendFrame(client);
     });
     QTRY_COMPARE(window.m_text, "face with tears of joy: 😂");
+}
+
+void tst_datadevicev1::pasteMozUrl()
+{
+    class Window : public QRasterWindow {
+    public:
+        void mousePressEvent(QMouseEvent *) override { m_urls = QGuiApplication::clipboard()->mimeData()->urls(); }
+        QList<QUrl> m_urls;
+    };
+
+    Window window;
+    window.resize(64, 64);
+    window.show();
+
+    QCOMPOSITOR_TRY_VERIFY(xdgSurface() && xdgSurface()->m_committedConfigureSerial);
+    exec([&] {
+        auto *client = xdgSurface()->resource()->client();
+        auto *offer = dataDevice()->sendDataOffer(client, {"text/x-moz-url"});
+        connect(offer, &DataOffer::receive, [](QString mimeType, int fd) {
+            QFile file;
+            file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle);
+            QCOMPARE(mimeType, "text/x-moz-url");
+            const QString content("https://www.qt.io/\nQt\nhttps://www.example.com/\nExample Website");
+            // Need UTF-16.
+            file.write(reinterpret_cast<const char *>(content.data()), content.size() * 2);
+            file.close();
+        });
+        dataDevice()->sendSelection(offer);
+
+        auto *surface = xdgSurface()->m_surface;
+        keyboard()->sendEnter(surface); // Need to set keyboard focus according to protocol
+
+        pointer()->sendEnter(surface, {32, 32});
+        pointer()->sendFrame(client);
+        pointer()->sendButton(client, BTN_LEFT, 1);
+        pointer()->sendFrame(client);
+        pointer()->sendButton(client, BTN_LEFT, 0);
+        pointer()->sendFrame(client);
+    });
+
+    QTRY_COMPARE(window.m_urls.count(), 2);
+    QCOMPARE(window.m_urls.at(0), QUrl("https://www.qt.io/"));
+    QCOMPARE(window.m_urls.at(1), QUrl("https://www.example.com/"));
+}
+
+void tst_datadevicev1::pasteSingleUtf8MozUrl()
+{
+    class Window : public QRasterWindow {
+    public:
+        void mousePressEvent(QMouseEvent *) override { m_urls = QGuiApplication::clipboard()->mimeData()->urls(); }
+        QList<QUrl> m_urls;
+    };
+
+    Window window;
+    window.resize(64, 64);
+    window.show();
+
+    QCOMPOSITOR_TRY_VERIFY(xdgSurface() && xdgSurface()->m_committedConfigureSerial);
+    exec([&] {
+        auto *client = xdgSurface()->resource()->client();
+        auto *offer = dataDevice()->sendDataOffer(client, {"text/x-moz-url"});
+        connect(offer, &DataOffer::receive, [](QString mimeType, int fd) {
+            QFile file;
+            file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle);
+            QCOMPARE(mimeType, "text/x-moz-url");
+            const QString content("https://www.qt.io/");
+            file.write(content.toUtf8());
+            file.close();
+        });
+        dataDevice()->sendSelection(offer);
+
+        auto *surface = xdgSurface()->m_surface;
+        keyboard()->sendEnter(surface); // Need to set keyboard focus according to protocol
+
+        pointer()->sendEnter(surface, {32, 32});
+        pointer()->sendFrame(client);
+        pointer()->sendButton(client, BTN_LEFT, 1);
+        pointer()->sendFrame(client);
+        pointer()->sendButton(client, BTN_LEFT, 0);
+        pointer()->sendFrame(client);
+    });
+
+    QTRY_COMPARE(window.m_urls.count(), 1);
+    QCOMPARE(window.m_urls.at(0), QUrl("https://www.qt.io/"));
 }
 
 void tst_datadevicev1::destroysPreviousSelection()
@@ -241,7 +298,7 @@ void tst_datadevicev1::destroysSelectionOnLeave()
         keyboard()->sendLeave(surface);
     });
 
-    QTRY_COMPARE(dataChangedSpy.count(), 1);
+    QTRY_COMPARE(dataChangedSpy.size(), 1);
     QVERIFY(!QGuiApplication::clipboard()->mimeData(QClipboard::Clipboard)->hasText());
 }
 

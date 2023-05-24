@@ -1,17 +1,12 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//mojo/public/tools/bindings/mojom.gni")
-import("//third_party/closure_compiler/compile_js.gni")
-import("//tools/polymer/html_to_js.gni")
+import("//ui/webui/webui_features.gni")
+import("../../tools/build_cr_component.gni")
 
-group("web_components") {
-  public_deps = [
-    ":mojom_js",
-    ":web_components_local",
-  ]
-}
+assert(!is_android && !is_ios)
 
 mojom("mojom") {
   sources = [ "customize_themes.mojom" ]
@@ -20,45 +15,38 @@ mojom("mojom") {
     "//mojo/public/mojom/base",
     "//skia/public/mojom",
   ]
+
+  webui_module_path = "chrome://resources/cr_components/customize_themes/"
+  use_typescript_sources = true
 }
 
-html_to_js("web_components_local") {
-  js_files = [
-    "customize_themes.js",
-    "theme_icon.js",
-  ]
-}
+build_cr_component("build") {
+  grd_prefix = "cr_components_customize_themes"
 
-js_type_check("closure_compile") {
-  is_polymer3 = true
-  deps = [
-    ":browser_proxy",
-    ":customize_themes",
-    ":theme_icon",
+  static_files = [
+    "colorize.svg",
+    "brush.svg",
   ]
-}
 
-js_library("customize_themes") {
-  deps = [
-    ":browser_proxy",
-    ":mojom_js_library_for_compile",
-    ":theme_icon",
-    "//skia/public/mojom:mojom_js_library_for_compile",
-    "//third_party/polymer/v3_0/components-chromium/polymer:polymer_bundled",
-    "//ui/webui/resources/cr_elements/cr_grid",
-    "//ui/webui/resources/js:i18n_behavior.m",
+  web_component_files = [
+    "customize_themes.ts",
+    "theme_icon.ts",
   ]
-}
 
-js_library("theme_icon") {
-  deps = [
-    "//third_party/polymer/v3_0/components-chromium/polymer:polymer_bundled",
-  ]
-}
+  non_web_component_files = [ "browser_proxy.ts" ]
 
-js_library("browser_proxy") {
-  deps = [
-    ":mojom_js_library_for_compile",
-    "//ui/webui/resources/js:cr.m",
+  mojo_files_deps = [ ":mojom_ts__generator" ]
+  mojo_files = [ "$target_gen_dir/customize_themes.mojom-webui.ts" ]
+
+  tsc_dir =
+      "$root_gen_dir/ui/webui/resources/tsc/cr_components/customize_themes"
+  ts_deps = [
+    "../managed_dialog:build_ts",
+    "//third_party/polymer/v3_0:library",
+    "//ui/webui/resources/cr_elements:build_ts",
+    "//ui/webui/resources/js:build_ts",
+    "//ui/webui/resources/mojo:library",
   ]
+
+  optimize = optimize_webui
 }

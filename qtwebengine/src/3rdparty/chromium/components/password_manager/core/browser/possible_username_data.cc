@@ -1,54 +1,61 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/possible_username_data.h"
 
-#include "base/strings/string_util.h"
+#include <string>
 
-using base::char16;
-using base::TimeDelta;
+#include "base/strings/string_piece.h"
+#include "components/password_manager/core/browser/leak_detection/encryption_utils.h"
+
 
 namespace password_manager {
+
+namespace {
+
+// Find a field in |predictions| with given renderer id.
+const PasswordFieldPrediction* FindFieldPrediction(
+    const FormPredictions& predictions,
+    autofill::FieldRendererId field_renderer_id) {
+  for (const auto& field : predictions.fields) {
+    if (field.renderer_id == field_renderer_id)
+      return &field;
+  }
+  return nullptr;
+}
+
+}  // namespace
 
 PossibleUsernameData::PossibleUsernameData(
     std::string signon_realm,
     autofill::FieldRendererId renderer_id,
-    base::string16 value,
+    const std::u16string& field_name,
+    const std::u16string& value,
     base::Time last_change,
     int driver_id)
     : signon_realm(std::move(signon_realm)),
       renderer_id(renderer_id),
-      value(std::move(value)),
+      field_name(field_name),
+      value(value),
       last_change(last_change),
       driver_id(driver_id) {}
 PossibleUsernameData::PossibleUsernameData(const PossibleUsernameData&) =
     default;
 PossibleUsernameData::~PossibleUsernameData() = default;
 
-bool IsPossibleUsernameValid(const PossibleUsernameData& possible_username,
-                             const std::string& submitted_signon_realm,
-                             const base::Time now) {
-  if (submitted_signon_realm != possible_username.signon_realm)
-    return false;
-  // The goal is to avoid false positives in considering which strings might be
-  // username. In the initial version of the username first flow it is better to
-  // be conservative in that.
-  // TODO(https://crbug.com/959776): Reconsider allowing non-ascii symbols in
-  // username for the username first flow.
-  if (!base::IsStringASCII(possible_username.value))
-    return false;
-  for (char16 c : possible_username.value) {
-    if (base::IsUnicodeWhitespace(c))
-      return false;
-  }
+bool PossibleUsernameData::IsStale() const {
+  return base::Time::Now() - last_change > kPossibleUsernameExpirationTimeout;
+}
 
-  if (now - possible_username.last_change >
-      kMaxDelayBetweenTypingUsernameAndSubmission) {
+bool PossibleUsernameData::HasSingleUsernameServerPrediction() const {
+  // Check if there is a server prediction.
+  if (!form_predictions)
     return false;
-  }
-
-  return true;
+  const PasswordFieldPrediction* field_prediction =
+      FindFieldPrediction(*form_predictions, renderer_id);
+  return field_prediction &&
+         field_prediction->type == autofill::SINGLE_USERNAME;
 }
 
 }  // namespace password_manager

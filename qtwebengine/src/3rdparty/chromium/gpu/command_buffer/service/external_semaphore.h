@@ -1,13 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GPU_COMMAND_BUFFER_SERVICE_EXTERNAL_SEMAPHORE_H_
 #define GPU_COMMAND_BUFFER_SERVICE_EXTERNAL_SEMAPHORE_H_
 
-#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
-#include "base/util/type_safety/pass_key.h"
+#include "base/memory/raw_ptr.h"
+#include "base/types/pass_key.h"
+#include "gpu/gpu_gles2_export.h"
 #include "gpu/vulkan/semaphore_handle.h"
 
 namespace viz {
@@ -16,7 +18,7 @@ class VulkanContextProvider;
 
 namespace gpu {
 
-class ExternalSemaphore {
+class GPU_GLES2_EXPORT ExternalSemaphore {
  public:
   static ExternalSemaphore Create(viz::VulkanContextProvider* context_provider);
 
@@ -26,7 +28,7 @@ class ExternalSemaphore {
 
   ExternalSemaphore();
   ExternalSemaphore(ExternalSemaphore&& other);
-  ExternalSemaphore(util::PassKey<ExternalSemaphore>,
+  ExternalSemaphore(base::PassKey<ExternalSemaphore>,
                     viz::VulkanContextProvider* context_provider,
                     VkSemaphore semaphore,
                     SemaphoreHandle handle);
@@ -48,8 +50,11 @@ class ExternalSemaphore {
   bool is_valid() const { return context_provider_ && handle_.is_valid(); }
   SemaphoreHandle handle() { return handle_.Duplicate(); }
 
+  // Take ownership of semaphore handle and then calls Reset().
+  SemaphoreHandle TakeSemaphoreHandle();
+
  private:
-  viz::VulkanContextProvider* context_provider_ = nullptr;
+  raw_ptr<viz::VulkanContextProvider> context_provider_ = nullptr;
   VkSemaphore semaphore_ = VK_NULL_HANDLE;
   SemaphoreHandle handle_;
   unsigned int gl_semaphore_ = 0;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QCOLORMATRIX_H
 #define QCOLORMATRIX_H
@@ -53,6 +17,7 @@
 
 #include <QtGui/qtguiglobal.h>
 #include <QtCore/qpoint.h>
+#include <QtCore/private/qglobal_p.h>
 #include <cmath>
 
 QT_BEGIN_NAMESPACE
@@ -62,8 +27,8 @@ class QColorVector
 {
 public:
     QColorVector() = default;
-    Q_DECL_CONSTEXPR QColorVector(float x, float y, float z) : x(x), y(y), z(z) { }
-    explicit Q_DECL_CONSTEXPR QColorVector(const QPointF &chr) // from XY chromaticity
+    constexpr QColorVector(float x, float y, float z) : x(x), y(y), z(z) { }
+    explicit constexpr QColorVector(const QPointF &chr) // from XY chromaticity
             : x(chr.x() / chr.y())
             , y(1.0f)
             , z((1.0 - chr.x() - chr.y()) / chr.y())
@@ -92,10 +57,10 @@ public:
     }
 
     // Common whitepoints:
-    static Q_DECL_CONSTEXPR QPointF D50Chromaticity() { return QPointF(0.34567, 0.35850); }
-    static Q_DECL_CONSTEXPR QPointF D65Chromaticity() { return QPointF(0.31271, 0.32902); }
-    static Q_DECL_CONSTEXPR QColorVector D50() { return QColorVector(D50Chromaticity()); }
-    static Q_DECL_CONSTEXPR QColorVector D65() { return QColorVector(D65Chromaticity()); }
+    static constexpr QPointF D50Chromaticity() { return QPointF(0.34567, 0.35850); }
+    static constexpr QPointF D65Chromaticity() { return QPointF(0.31271, 0.32902); }
+    static constexpr QColorVector D50() { return QColorVector(D50Chromaticity()); }
+    static constexpr QColorVector D65() { return QColorVector(D65Chromaticity()); }
 };
 
 inline bool operator==(const QColorVector &v1, const QColorVector &v2)
@@ -112,7 +77,7 @@ inline bool operator!=(const QColorVector &v1, const QColorVector &v2)
 
 
 // A matrix mapping 3 value colors.
-// Not using QMatrix because only floats are needed and performance is critical.
+// Not using QTransform because only floats are needed and performance is critical.
 class QColorMatrix
 {
 public:
@@ -135,6 +100,10 @@ public:
                     r.y * (b.z * g.x - g.z * b.x) +
                     r.z * (b.y * g.x - g.y * b.x);
         return !qFuzzyIsNull(det);
+    }
+    bool isIdentity() const noexcept
+    {
+        return *this == identity();
     }
 
     QColorMatrix inverted() const

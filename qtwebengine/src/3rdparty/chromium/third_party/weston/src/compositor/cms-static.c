@@ -105,8 +105,13 @@ wet_module_init(struct weston_compositor *ec,
 		return -1;
 
 	cms->ec = ec;
-	cms->destroy_listener.notify = cms_notifier_destroy;
-	wl_signal_add(&ec->destroy_signal, &cms->destroy_listener);
+
+	if (!weston_compositor_add_destroy_listener_once(ec,
+							 &cms->destroy_listener,
+							 cms_notifier_destroy)) {
+		free(cms);
+		return 0;
+	}
 
 	cms->output_created_listener.notify = cms_notifier_output_created;
 	wl_signal_add(&ec->output_created_signal, &cms->output_created_listener);

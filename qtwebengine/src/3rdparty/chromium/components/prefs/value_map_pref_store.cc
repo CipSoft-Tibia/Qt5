@@ -1,24 +1,26 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/prefs/value_map_pref_store.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 
-#include "base/stl_util.h"
+#include "base/observer_list.h"
+#include "base/strings/string_piece.h"
 #include "base/values.h"
 
 ValueMapPrefStore::ValueMapPrefStore() {}
 
-bool ValueMapPrefStore::GetValue(const std::string& key,
+bool ValueMapPrefStore::GetValue(base::StringPiece key,
                                  const base::Value** value) const {
   return prefs_.GetValue(key, value);
 }
 
-std::unique_ptr<base::DictionaryValue> ValueMapPrefStore::GetValues() const {
-  return prefs_.AsDictionaryValue();
+base::Value::Dict ValueMapPrefStore::GetValues() const {
+  return prefs_.AsDict();
 }
 
 void ValueMapPrefStore::AddObserver(PrefStore::Observer* observer) {
@@ -30,14 +32,13 @@ void ValueMapPrefStore::RemoveObserver(PrefStore::Observer* observer) {
 }
 
 bool ValueMapPrefStore::HasObservers() const {
-  return observers_.might_have_observers();
+  return !observers_.empty();
 }
 
 void ValueMapPrefStore::SetValue(const std::string& key,
-                                 std::unique_ptr<base::Value> value,
+                                 base::Value value,
                                  uint32_t flags) {
-  DCHECK(value);
-  if (prefs_.SetValue(key, base::Value::FromUniquePtrValue(std::move(value)))) {
+  if (prefs_.SetValue(key, std::move(value))) {
     for (Observer& observer : observers_)
       observer.OnPrefValueChanged(key);
   }
@@ -62,10 +63,9 @@ void ValueMapPrefStore::ReportValueChanged(const std::string& key,
 }
 
 void ValueMapPrefStore::SetValueSilently(const std::string& key,
-                                         std::unique_ptr<base::Value> value,
+                                         base::Value value,
                                          uint32_t flags) {
-  DCHECK(value);
-  prefs_.SetValue(key, base::Value::FromUniquePtrValue(std::move(value)));
+  prefs_.SetValue(key, std::move(value));
 }
 
 ValueMapPrefStore::~ValueMapPrefStore() {}

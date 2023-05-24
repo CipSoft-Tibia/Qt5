@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qaspectmanager_p.h"
 
@@ -51,6 +15,7 @@
 #include <Qt3DCore/private/qabstractaspect_p.h>
 #include <Qt3DCore/private/qabstractaspectjobmanager_p.h>
 #include <Qt3DCore/private/qabstractframeadvanceservice_p.h>
+#include <Qt3DCore/private/qaspectengine_p.h>
 // TODO Make the kind of job manager configurable (e.g. ThreadWeaver vs Intel TBB)
 #include <Qt3DCore/private/qaspectjobmanager_p.h>
 #include <Qt3DCore/private/qaspectjob_p.h>
@@ -64,9 +29,12 @@
 #include <Qt3DCore/private/qnodevisitor_p.h>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
+#include <Qt3DCore/private/vector_helper_p.h>
 
 #include <QtCore/QCoreApplication>
+#if QT_CONFIG(animation)
 #include <QtCore/QAbstractAnimation>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -84,7 +52,7 @@ public:
     ~RequestFrameAnimation() override;
 
     int duration() const override { return 1; }
-    void updateCurrentTime(int currentTime) override { Q_UNUSED(currentTime) }
+    void updateCurrentTime(int currentTime) override { Q_UNUSED(currentTime); }
 };
 
 RequestFrameAnimation::~RequestFrameAnimation() = default;
@@ -163,7 +131,7 @@ void QAspectManager::enterSimulationLoop()
     // We are about to enter the simulation loop. Give aspects a chance to do any last
     // pieces of initialization
     qCDebug(Aspects) << "Calling onEngineStartup() for each aspect";
-    for (QAbstractAspect *aspect : qAsConst(m_aspects)) {
+    for (QAbstractAspect *aspect : std::as_const(m_aspects)) {
         qCDebug(Aspects) << "\t" << aspect->objectName();
         aspect->onEngineStartup();
     }
@@ -215,16 +183,13 @@ void QAspectManager::exitSimulationLoop()
     // This is because we call this function from the main thread and the
     // logic aspect is waiting for the main thread to execute the
     // QLogicComponent::onFrameUpdate() callback.
-    for (QAbstractAspect *aspect : qAsConst(m_aspects))
+    for (QAbstractAspect *aspect : std::as_const(m_aspects))
         aspect->d_func()->onEngineAboutToShutdown();
-
-    // Process any pending changes from the frontend before we shut the aspects down
-    m_changeArbiter->syncChanges();
 
     // Give aspects a chance to perform any shutdown actions. This may include unqueuing
     // any blocking work on the main thread that could potentially deadlock during shutdown.
     qCDebug(Aspects) << "Calling onEngineShutdown() for each aspect";
-    for (QAbstractAspect *aspect : qAsConst(m_aspects)) {
+    for (QAbstractAspect *aspect : std::as_const(m_aspects)) {
         qCDebug(Aspects) << "\t" << aspect->objectName();
         aspect->onEngineShutdown();
     }
@@ -250,7 +215,6 @@ void QAspectManager::initialize()
     qCDebug(Aspects) << Q_FUNC_INFO;
     m_jobManager->initialize();
     m_scheduler->setAspectManager(this);
-    m_changeArbiter->initialize(m_jobManager);
 }
 
 /*!
@@ -267,7 +231,7 @@ void QAspectManager::shutdown()
 }
 
 // MainThread called by QAspectEngine::setRootEntity
-void QAspectManager::setRootEntity(Qt3DCore::QEntity *root, const QVector<QNode *> &nodes)
+void QAspectManager::setRootEntity(Qt3DCore::QEntity *root, const QList<QNode *> &nodes)
 {
     qCDebug(Aspects) << Q_FUNC_INFO;
 
@@ -283,7 +247,7 @@ void QAspectManager::setRootEntity(Qt3DCore::QEntity *root, const QVector<QNode 
 
     if (m_root) {
 
-        QVector<NodeTreeChange> nodeTreeChanges;
+        QList<NodeTreeChange> nodeTreeChanges;
         nodeTreeChanges.reserve(nodes.size());
 
         for (QNode *n : nodes) {
@@ -295,21 +259,21 @@ void QAspectManager::setRootEntity(Qt3DCore::QEntity *root, const QVector<QNode 
                                       });
         }
 
-        for (QAbstractAspect *aspect : qAsConst(m_aspects))
+        for (QAbstractAspect *aspect : std::as_const(m_aspects))
             aspect->d_func()->setRootAndCreateNodes(m_root, nodeTreeChanges);
     }
 }
 
 
 // Main Thread -> immediately following node insertion
-void QAspectManager::addNodes(const QVector<QNode *> &nodes)
+void QAspectManager::addNodes(const QList<QNode *> &nodes)
 {
     // We record the nodes added information, which we will actually use when
     // processFrame is called (later but within the same loop of the even loop
     // as this call) The idea is we want to avoid modifying the backend tree if
     // the Renderer hasn't allowed processFrame to continue yet
 
-    QVector<NodeTreeChange> treeChanges;
+    QList<NodeTreeChange> treeChanges;
     treeChanges.reserve(nodes.size());
 
     for (QNode *node : nodes) {
@@ -323,7 +287,7 @@ void QAspectManager::addNodes(const QVector<QNode *> &nodes)
 }
 
 // Main Thread -> immediately following node destruction (call from QNode dtor)
-void QAspectManager::removeNodes(const QVector<QNode *> &nodes)
+void QAspectManager::removeNodes(const QList<QNode *> &nodes)
 {
     // We record the nodes removed information, which we will actually use when
     // processFrame is called (later but within the same loop of the even loop
@@ -392,9 +356,24 @@ void QAspectManager::unregisterAspect(Qt3DCore::QAbstractAspect *aspect)
     qCDebug(Aspects) << "Completed unregistering aspect";
 }
 
-const QVector<QAbstractAspect *> &QAspectManager::aspects() const
+const QList<QAbstractAspect *> &QAspectManager::aspects() const
 {
     return m_aspects;
+}
+
+QAbstractAspect *QAspectManager::aspect(const QString &name) const
+{
+    auto dengine = QAspectEnginePrivate::get(m_engine);
+    return dengine->m_namedAspects.value(name, nullptr);
+}
+
+QAbstractAspect *QAspectManager::aspect(const QMetaObject *metaType) const
+{
+    for (auto *a: m_aspects) {
+        if (a->metaObject() == metaType)
+            return a;
+    }
+    return nullptr;
 }
 
 QAbstractAspectJobManager *QAspectManager::jobManager() const
@@ -426,13 +405,22 @@ QNode *QAspectManager::lookupNode(QNodeId id) const
     return d->m_scene ? d->m_scene->lookupNode(id) : nullptr;
 }
 
-QVector<QNode *> QAspectManager::lookupNodes(const QVector<QNodeId> &ids) const
+QList<QNode *> QAspectManager::lookupNodes(const QList<QNodeId> &ids) const
 {
     if (!m_root)
         return {};
 
     QNodePrivate *d = QNodePrivate::get(m_root);
-    return d->m_scene ? d->m_scene->lookupNodes(ids) : QVector<QNode *>{};
+    return d->m_scene ? d->m_scene->lookupNodes(ids) : QList<QNode *>{};
+}
+
+QScene *QAspectManager::scene() const
+{
+    if (!m_root)
+        return nullptr;
+
+    QNodePrivate *d = QNodePrivate::get(m_root);
+    return d->m_scene;
 }
 
 void QAspectManager::dumpJobsOnNextFrame()
@@ -505,12 +493,12 @@ void QAspectManager::processFrame()
         m_postConstructorInit->processNodes();
 
         // Add and Remove Nodes
-        const QVector<NodeTreeChange> nodeTreeChanges = std::move(m_nodeTreeChanges);
+        const QList<NodeTreeChange> nodeTreeChanges = Qt3DCore::moveAndClear(m_nodeTreeChanges);
         for (const NodeTreeChange &change : nodeTreeChanges) {
             // Buckets ensure that even if we have intermingled node added / removed
             // buckets, we preserve the order of the sequences
 
-            for (QAbstractAspect *aspect : qAsConst(m_aspects)) {
+            for (QAbstractAspect *aspect : std::as_const(m_aspects)) {
                 switch (change.type) {
                 case NodeTreeChange::Added:
                     aspect->d_func()->createBackendNode(change);
@@ -523,21 +511,16 @@ void QAspectManager::processFrame()
         }
 
         // Sync node / subnode relationship changes
-        const auto dirtySubNodes = m_changeArbiter->takeDirtyFrontEndSubNodes();
+        const auto dirtySubNodes = m_changeArbiter->takeDirtyEntityComponentNodes();
         if (dirtySubNodes.size())
-            for (QAbstractAspect *aspect : qAsConst(m_aspects))
-                QAbstractAspectPrivate::get(aspect)->syncDirtyFrontEndSubNodes(dirtySubNodes);
+            for (QAbstractAspect *aspect : std::as_const(m_aspects))
+                QAbstractAspectPrivate::get(aspect)->syncDirtyEntityComponentNodes(dirtySubNodes);
 
         // Sync property updates
         const auto dirtyFrontEndNodes = m_changeArbiter->takeDirtyFrontEndNodes();
         if (dirtyFrontEndNodes.size())
-            for (QAbstractAspect *aspect : qAsConst(m_aspects))
+            for (QAbstractAspect *aspect : std::as_const(m_aspects))
                 QAbstractAspectPrivate::get(aspect)->syncDirtyFrontEndNodes(dirtyFrontEndNodes);
-
-        // TO DO: Having this done in the main thread actually means aspects could just
-        // as simply read info out of the Frontend classes without risk of introducing
-        // races. This could therefore be removed for Qt 6.
-        m_changeArbiter->syncChanges();
     }
 
     // For each Aspect
@@ -547,10 +530,12 @@ void QAspectManager::processFrame()
     m_dumpJobs = false;
 
     // Tell the aspect the frame is complete (except rendering)
-    for (QAbstractAspect *aspect : qAsConst(m_aspects))
-        QAbstractAspectPrivate::get(aspect)->frameDone();
+    for (QAbstractAspect *aspect : std::as_const(m_aspects))
+        aspect->frameDone();
 }
 
 } // namespace Qt3DCore
 
 QT_END_NAMESPACE
+
+#include "moc_qaspectmanager_p.cpp"

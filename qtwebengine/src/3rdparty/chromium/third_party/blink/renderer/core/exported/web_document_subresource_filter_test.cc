@@ -1,13 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/platform/web_document_subresource_filter.h"
 
+#include "base/containers/contains.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/web_cache.h"
-#include "third_party/blink/public/platform/web_url_loader_mock_factory.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_element.h"
 #include "third_party/blink/public/web/web_local_frame.h"
@@ -16,6 +17,7 @@
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 
 namespace blink {
@@ -28,11 +30,9 @@ class TestDocumentSubresourceFilter : public WebDocumentSubresourceFilter {
       : load_policy_(policy) {}
 
   LoadPolicy GetLoadPolicy(const WebURL& resource_url,
-                           mojom::RequestContextType) override {
+                           mojom::blink::RequestContextType) override {
     String resource_path = KURL(resource_url).GetPath();
-    if (std::find(queried_subresource_paths_.begin(),
-                  queried_subresource_paths_.end(),
-                  resource_path) == queried_subresource_paths_.end()) {
+    if (!base::Contains(queried_subresource_paths_, resource_path)) {
       queried_subresource_paths_.push_back(resource_path);
     }
     String resource_string = resource_url.GetString();
@@ -44,6 +44,10 @@ class TestDocumentSubresourceFilter : public WebDocumentSubresourceFilter {
   }
 
   LoadPolicy GetLoadPolicyForWebSocketConnect(const WebURL& url) override {
+    return kAllow;
+  }
+
+  LoadPolicy GetLoadPolicyForWebTransportConnect(const WebURL&) override {
     return kAllow;
   }
 
@@ -69,9 +73,11 @@ class TestDocumentSubresourceFilter : public WebDocumentSubresourceFilter {
 class SubresourceFilteringWebFrameClient
     : public frame_test_helpers::TestWebFrameClient {
  public:
-  void DidCommitNavigation(const WebHistoryItem&,
-                           WebHistoryCommitType,
-                           bool) override {
+  void DidCommitNavigation(
+      WebHistoryCommitType commit_type,
+      bool should_reset_browser_interface_broker,
+      const ParsedPermissionsPolicy& permissions_policy_header,
+      const DocumentPolicyFeatureState& document_policy_header) override {
     subresource_filter_ =
         new TestDocumentSubresourceFilter(load_policy_for_next_load_);
     subresource_filter_->AddToBlocklist("1x1.png");

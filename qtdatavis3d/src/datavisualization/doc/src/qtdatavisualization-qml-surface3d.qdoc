@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
   \qmltype Surface3D
@@ -33,7 +9,7 @@
   \ingroup datavisualization_qml
   \brief Describes the usage of the 3D surface graph.
 
-  This type enables developers to render surface plots in 3D with Qt Quick 2.
+  This type enables developers to render surface plots in 3D with Qt Quick.
 
   You will need to import the data visualization module to use this type:
 
@@ -43,7 +19,7 @@
 
   \snippet doc_src_qmldatavisualization.cpp 3
 
-  See \l{Qt Quick 2 Surface Example} for more thorough usage example.
+  See \l{Surface Graph Gallery} for more thorough usage example.
 
   \sa Surface3DSeries, ItemModelSurfaceDataProxy, Bars3D, Scatter3D, {Qt Data Visualization C++ Classes}
  */
@@ -83,7 +59,7 @@
 
 /*!
  * \qmlproperty list<Surface3DSeries> Surface3D::seriesList
- * \default
+ * \qmldefault
  * This property holds the series of the graph.
  * By default, this property contains an empty list.
  * To set the series, either use the addSeries() function or define them as children of the graph.
@@ -108,9 +84,11 @@
 /*!
  * \qmlmethod void Surface3D::addSeries(Surface3DSeries series)
  * Adds the \a series to the graph.
+ * \sa AbstractGraph3D::hasSeries()
  */
 
 /*!
  * \qmlmethod void Surface3D::removeSeries(Surface3DSeries series)
  * Removes the \a series from the graph.
+ * \sa AbstractGraph3D::hasSeries()
  */

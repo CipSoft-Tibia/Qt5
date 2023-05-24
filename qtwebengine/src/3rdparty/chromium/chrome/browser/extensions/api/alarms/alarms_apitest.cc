@@ -1,12 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/test/metrics/histogram_tester.h"
 #include "chrome/browser/extensions/extension_apitest.h"
 #include "content/public/test/browser_test.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/common/api/test.h"
-#include "extensions/common/scoped_worker_based_extensions_channel.h"
 #include "extensions/test/extension_test_message_listener.h"
 #include "extensions/test/result_catcher.h"
 #include "net/dns/mock_host_resolver.h"
@@ -21,19 +21,28 @@ using ContextType = ExtensionApiTest::ContextType;
 class AlarmsApiTest : public ExtensionApiTest,
                       public testing::WithParamInterface<ContextType> {
  public:
+  AlarmsApiTest() : ExtensionApiTest(GetParam()) {}
+  ~AlarmsApiTest() override = default;
+  AlarmsApiTest& operator=(const AlarmsApiTest&) = delete;
+  AlarmsApiTest(const AlarmsApiTest&) = delete;
+
+  void SetUp() override {
+    histogram_tester_ = std::make_unique<base::HistogramTester>();
+    ExtensionApiTest::SetUp();
+  }
+
+  void TearDown() override {
+    histogram_tester_.release();
+    ExtensionApiTest::TearDown();
+  }
+
   void SetUpOnMainThread() override {
     ExtensionApiTest::SetUpOnMainThread();
     host_resolver()->AddRule("*", "127.0.0.1");
     ASSERT_TRUE(StartEmbeddedTestServer());
-
-    // Service Workers are currently only available on certain channels, so set
-    // the channel for those tests.
-    if (GetParam() == ContextType::kServiceWorker)
-      current_channel_ = std::make_unique<ScopedWorkerBasedExtensionsChannel>();
   }
 
-  static std::unique_ptr<base::ListValue> BuildEventArguments(
-      const bool last_message) {
+  static base::Value::List BuildEventArguments(bool last_message) {
     api::test::OnMessage::Info info;
     info.data = "";
     info.last_message = last_message;
@@ -41,16 +50,12 @@ class AlarmsApiTest : public ExtensionApiTest,
   }
 
   const Extension* LoadAlarmsExtensionIncognito(const char* path) {
-    int flags = kFlagEnableFileAccess | kFlagEnableIncognito;
-    if (GetParam() == ContextType::kServiceWorker)
-      flags |= kFlagRunAsServiceWorkerBasedExtension;
-
-    return LoadExtensionWithFlags(
-        test_data_dir_.AppendASCII("alarms").AppendASCII(path), flags);
+    return LoadExtension(test_data_dir_.AppendASCII("alarms").AppendASCII(path),
+                         {.allow_in_incognito = true});
   }
 
- private:
-  std::unique_ptr<ScopedWorkerBasedExtensionsChannel> current_channel_;
+ protected:
+  std::unique_ptr<base::HistogramTester> histogram_tester_;
 };
 
 INSTANTIATE_TEST_SUITE_P(EventPage,
@@ -65,16 +70,17 @@ INSTANTIATE_TEST_SUITE_P(ServiceWorker,
 IN_PROC_BROWSER_TEST_P(AlarmsApiTest, IncognitoSplit) {
   // We need 2 ResultCatchers because we'll be running the same test in both
   // regular and incognito mode.
-  Profile* incognito_profile = browser()->profile()->GetPrimaryOTRProfile();
+  Profile* incognito_profile =
+      browser()->profile()->GetPrimaryOTRProfile(/*create_if_needed=*/true);
   ResultCatcher catcher_incognito;
   catcher_incognito.RestrictToBrowserContext(incognito_profile);
   ResultCatcher catcher;
   catcher.RestrictToBrowserContext(browser()->profile());
   EventRouter* event_router = EventRouter::Get(incognito_profile);
 
-  ExtensionTestMessageListener listener("ready: false", false);
+  ExtensionTestMessageListener listener("ready: false");
 
-  ExtensionTestMessageListener listener_incognito("ready: true", false);
+  ExtensionTestMessageListener listener_incognito("ready: true");
 
   ASSERT_TRUE(LoadAlarmsExtensionIncognito("split"));
 
@@ -104,6 +110,27 @@ IN_PROC_BROWSER_TEST_P(AlarmsApiTest, IncognitoSpanning) {
   OpenURLOffTheRecord(browser()->profile(), GURL("about:blank"));
 
   EXPECT_TRUE(catcher.GetNextResult()) << catcher.message();
+}
+
+// Test that the histogram for counting the number of alarms for an extension
+// is working properly. The PRE step installs the alarms and we'll check the
+// histogram in the main part of the test.
+IN_PROC_BROWSER_TEST_P(AlarmsApiTest, PRE_Count) {
+  EXPECT_TRUE(RunExtensionTest("alarms/count")) << message_;
+}
+
+// TODO(crbug.com/1405713): Fix failing test on Mac builders.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_Count DISABLED_Count
+#else
+#define MAYBE_Count Count
+#endif
+IN_PROC_BROWSER_TEST_P(AlarmsApiTest, MAYBE_Count) {
+  // The histogram will be updated when the extension is loaded during
+  // startup. This will happen before we enter the test, so just check
+  // that the update is present.
+  histogram_tester_->ExpectUniqueSample(
+      "Extensions.AlarmManager.AlarmsLoadedCount", 100, 1);
 }
 
 }  // namespace extensions

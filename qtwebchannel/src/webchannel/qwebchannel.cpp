@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebChannel module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Milian Wolff <milian.wolff@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwebchannel.h"
 #include "qwebchannel_p.h"
@@ -66,6 +30,15 @@ QT_BEGIN_NAMESPACE
     On the client side, a JavaScript object will be created for any published C++ QObject. It mirrors the
     C++ object's API and thus is intuitively useable.
 
+    QWebChannel transparently supports QFuture. When a client calls a method that returns a QFuture,
+    QWebChannel will send a response with the QFuture result only after the QFuture has finished.
+
+    Custom conversion of types to and from JSON is supported by defining converters with
+    QMetaType::registerConverter() to and from QJsonValue. Note that custom converters from QJsonValue to a concrete
+    type must fail if the QJsonValue does not match the expected format. Otherwise QWebChannel cannot fall back to its
+    default conversion mechanisms.
+    Custom converters are also available on \l{Qt WebChannel JavaScript API}{the JavaScript side}.
+
     The C++ QWebChannel API makes it possible to talk to any HTML client, which could run on a local
     or even remote machine. The only limitation is that the HTML client supports the JavaScript
     features used by \c{qwebchannel.js}. As such, one can interact
@@ -73,7 +46,8 @@ QT_BEGIN_NAMESPACE
 
     There also exists a declarative \l{Qt WebChannel QML Types}{WebChannel API}.
 
-    \sa {Qt WebChannel Standalone Example}, {Qt WebChannel JavaScript API}{JavaScript API}
+    \sa {Qt WebChannel Standalone Example}, {Qt WebChannel JavaScript API}{JavaScript API},
+        QMetaType::registerConverter()
 */
 
 /*!
@@ -175,6 +149,9 @@ QHash<QString, QObject *> QWebChannel::registeredObjects() const
     The properties, signals and public methods of the \a object are published to the remote clients.
     There, an object with the identifier \a id is then constructed.
 
+    \note A property that is \c BINDABLE but does not have a \c NOTIFY signal will have working property
+          updates on the client side, but no mechanism to register a callback for the change notifications.
+
     \note A current limitation is that objects must be registered before any client is initialized.
 
     \sa QWebChannel::registerObjects(), QWebChannel::deregisterObject(), QWebChannel::registeredObjects()
@@ -212,13 +189,49 @@ void QWebChannel::deregisterObject(QObject *object)
 bool QWebChannel::blockUpdates() const
 {
     Q_D(const QWebChannel);
-    return d->publisher->blockUpdates;
+    return d->publisher->blockUpdates();
 }
 
 void QWebChannel::setBlockUpdates(bool block)
 {
     Q_D(QWebChannel);
     d->publisher->setBlockUpdates(block);
+}
+
+QBindable<bool> QWebChannel::bindableBlockUpdates()
+{
+    Q_D(QWebChannel);
+    return &d->publisher->blockUpdatesStatus;
+}
+
+/*!
+    \property QWebChannel::propertyUpdateInterval
+
+    \brief The property update interval.
+
+    This interval can be changed to a different interval in milliseconds by
+    setting it to a positive value. Property updates are batched and sent out
+    after the interval expires. If set to zero, the updates occurring within a
+    single event loop run are batched and sent out on the next run.
+    If negative, updates will be sent immediately.
+    Default value is 50 milliseconds.
+*/
+int QWebChannel::propertyUpdateInterval() const
+{
+    Q_D(const QWebChannel);
+    return d->publisher->propertyUpdateInterval();
+}
+
+void QWebChannel::setPropertyUpdateInterval(int ms)
+{
+    Q_D(QWebChannel);
+    d->publisher->setPropertyUpdateInterval(ms);
+}
+
+QBindable<int> QWebChannel::bindablePropertyUpdateInterval()
+{
+    Q_D(QWebChannel);
+    return &d->publisher->propertyUpdateIntervalTime;
 }
 
 /*!

@@ -29,7 +29,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBDATABASE_DATABASE_CONTEXT_H_
 
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -46,7 +46,7 @@ class DatabaseContext final : public GarbageCollected<DatabaseContext>,
   static DatabaseContext* Create(ExecutionContext*);
 
   explicit DatabaseContext(ExecutionContext*);
-  ~DatabaseContext();
+  ~DatabaseContext() override;
   void Trace(Visitor*) const override;
 
   // For life-cycle management (inherited from

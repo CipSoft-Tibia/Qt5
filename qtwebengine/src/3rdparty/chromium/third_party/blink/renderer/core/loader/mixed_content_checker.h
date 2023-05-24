@@ -32,17 +32,18 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_MIXED_CONTENT_CHECKER_H_
 
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/loader/content_security_notifier.mojom-blink-forward.h"
-#include "third_party/blink/public/platform/web_mixed_content.h"
-#include "third_party/blink/public/platform/web_mixed_content_context_type.h"
+#include "third_party/blink/public/mojom/loader/mixed_content.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
 #include "third_party/blink/renderer/platform/loader/fetch/https_state.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_request.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
+#include "third_party/blink/renderer/platform/loader/mixed_content.h"
 #include "third_party/blink/renderer/platform/weborigin/reporting_disposition.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -75,15 +76,16 @@ class CORE_EXPORT MixedContentChecker final {
  public:
   static bool ShouldBlockFetch(LocalFrame* frame,
                                mojom::blink::RequestContextType request_context,
+                               network::mojom::blink::IPAddressSpace,
                                const KURL& url_before_redirects,
                                ResourceRequest::RedirectStatus redirect_status,
                                const KURL& url,
-                               const base::Optional<String>& devtools_id,
+                               const absl::optional<String>& devtools_id,
                                ReportingDisposition reporting_disposition,
                                mojom::blink::ContentSecurityNotifier& notifier);
 
   static bool ShouldBlockFetchOnWorker(WorkerFetchContext&,
-                                       mojom::RequestContextType,
+                                       mojom::blink::RequestContextType,
                                        const KURL& url_before_redirects,
                                        ResourceRequest::RedirectStatus,
                                        const KURL&,
@@ -103,35 +105,38 @@ class CORE_EXPORT MixedContentChecker final {
       const KURL&,
       ReportingDisposition = ReportingDisposition::kReport);
 
-  static bool ShouldAutoupgrade(HttpsState context_https_state,
-                                mojom::RequestContextType type,
-                                WebContentSettingsClient* settings_client,
-                                const KURL& url);
+  static bool ShouldAutoupgrade(
+      const FetchClientSettingsObject* fetch_client_settings_object,
+      mojom::blink::RequestContextType type,
+      WebContentSettingsClient* settings_client,
+      const ResourceRequest& resource_request,
+      ExecutionContext* execution_context_for_logging);
 
-  static void CheckMixedPrivatePublic(LocalFrame*,
-                                      const ResourceResponse& response);
-
-  static WebMixedContentContextType ContextTypeForInspector(
+  static mojom::blink::MixedContentContextType ContextTypeForInspector(
       LocalFrame*,
       const ResourceRequest&);
 
   static void HandleCertificateError(
       const ResourceResponse&,
-      mojom::RequestContextType,
-      WebMixedContent::CheckModeForPlugin,
+      mojom::blink::RequestContextType,
+      MixedContent::CheckModeForPlugin,
       mojom::blink::ContentSecurityNotifier& notifier);
 
   // Receive information about mixed content found externally.
   static void MixedContentFound(LocalFrame*,
                                 const KURL& main_resource_url,
                                 const KURL& mixed_content_url,
-                                mojom::RequestContextType,
+                                mojom::blink::RequestContextType,
                                 bool was_allowed,
                                 const KURL& url_before_redirects,
                                 bool had_redirect,
                                 std::unique_ptr<SourceLocation>);
 
   static ConsoleMessage* CreateConsoleMessageAboutFetchAutoupgrade(
+      const KURL& main_resource_url,
+      const KURL& mixed_content_url);
+
+  static ConsoleMessage* CreateConsoleMessageAboutFetchIPAddressNoAutoupgrade(
       const KURL& main_resource_url,
       const KURL& mixed_content_url);
 
@@ -147,8 +152,10 @@ class CORE_EXPORT MixedContentChecker final {
       mojom::RequestContextFrameType,
       WebContentSettingsClient* settings_client);
 
-  static WebMixedContent::CheckModeForPlugin DecideCheckModeForPlugin(
-      Settings*);
+  static MixedContent::CheckModeForPlugin DecideCheckModeForPlugin(Settings*);
+
+  MixedContentChecker(const MixedContentChecker&) = delete;
+  MixedContentChecker& operator=(const MixedContentChecker&) = delete;
 
  private:
   FRIEND_TEST_ALL_PREFIXES(MixedContentCheckerTest, HandleCertificateError);
@@ -158,15 +165,15 @@ class CORE_EXPORT MixedContentChecker final {
   static ConsoleMessage* CreateConsoleMessageAboutFetch(
       const KURL&,
       const KURL&,
-      mojom::RequestContextType,
+      mojom::blink::RequestContextType,
       bool allowed,
       std::unique_ptr<SourceLocation>);
   static ConsoleMessage* CreateConsoleMessageAboutWebSocket(const KURL&,
                                                             const KURL&,
                                                             bool allowed);
-  static void Count(Frame*, mojom::RequestContextType, const LocalFrame*);
-
-  DISALLOW_COPY_AND_ASSIGN(MixedContentChecker);
+  static void Count(Frame*,
+                    mojom::blink::RequestContextType,
+                    const LocalFrame*);
 };
 
 }  // namespace blink

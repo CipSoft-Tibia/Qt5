@@ -1,10 +1,12 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "core/fxcrt/fx_number.h"
+
+#include <ctype.h>
 
 #include <limits>
 
@@ -50,9 +52,9 @@ FX_Number::FX_Number(ByteStringView strc)
     cc++;
   }
 
-  for (; cc < strc.GetLength() && std::isdigit(strc[cc]); ++cc) {
+  for (; cc < strc.GetLength() && isdigit(strc[cc]); ++cc) {
     // Deliberately not using FXSYS_DecimalCharToInt() in a tight loop to avoid
-    // a duplicate std::isdigit() call. Note that the order of operation is
+    // a duplicate isdigit() call. Note that the order of operation is
     // important to avoid unintentional overflows.
     unsigned_val = unsigned_val * 10 + (strc[cc] - '0');
   }

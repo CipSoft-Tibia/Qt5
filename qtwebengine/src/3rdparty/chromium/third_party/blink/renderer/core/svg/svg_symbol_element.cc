@@ -33,14 +33,15 @@ void SVGSymbolElement::Trace(Visitor* visitor) const {
   SVGFitToViewBox::Trace(visitor);
 }
 
-void SVGSymbolElement::SvgAttributeChanged(const QualifiedName& attr_name) {
-  if (SVGFitToViewBox::IsKnownAttribute(attr_name))
+void SVGSymbolElement::SvgAttributeChanged(
+    const SvgAttributeChangedParams& params) {
+  if (SVGFitToViewBox::IsKnownAttribute(params.name))
     InvalidateInstances();
 }
 
 LayoutObject* SVGSymbolElement::CreateLayoutObject(const ComputedStyle&,
                                                    LegacyLayout) {
-  return new LayoutSVGHiddenContainer(this);
+  return MakeGarbageCollected<LayoutSVGHiddenContainer>(this);
 }
 
 }  // namespace blink

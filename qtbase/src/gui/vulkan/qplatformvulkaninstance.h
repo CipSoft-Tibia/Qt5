@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMVULKANINSTANCE_H
 #define QPLATFORMVULKANINSTANCE_H
@@ -51,7 +15,7 @@
 
 #include <QtGui/qtguiglobal.h>
 
-#if QT_CONFIG(vulkan) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(vulkan) || defined(Q_QDOC)
 
 #include <qvulkaninstance.h>
 
@@ -69,6 +33,7 @@ public:
 
     virtual QVulkanInfoVector<QVulkanLayer> supportedLayers() const = 0;
     virtual QVulkanInfoVector<QVulkanExtension> supportedExtensions() const = 0;
+    virtual QVersionNumber supportedApiVersion() const = 0;
     virtual void createOrAdoptInstance() = 0;
     virtual bool isValid() const = 0;
     virtual VkResult errorCode() const = 0;
@@ -79,7 +44,10 @@ public:
     virtual bool supportsPresent(VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex, QWindow *window) = 0;
     virtual void presentAboutToBeQueued(QWindow *window);
     virtual void presentQueued(QWindow *window);
-    virtual void setDebugFilters(const QVector<QVulkanInstance::DebugFilter> &filters);
+    virtual void setDebugFilters(const QList<QVulkanInstance::DebugFilter> &filters);
+    virtual void setDebugUtilsFilters(const QList<QVulkanInstance::DebugUtilsFilter> &filters);
+    virtual void beginFrame(QWindow *window);
+    virtual void endFrame(QWindow *window);
 
 private:
     QScopedPointer<QPlatformVulkanInstancePrivate> d_ptr;
@@ -90,7 +58,7 @@ QT_END_NAMESPACE
 
 #endif // QT_CONFIG(vulkan)
 
-#if defined(Q_CLANG_QDOC)
+#if defined(Q_QDOC)
 /*
   The following include file did not exist for clang-qdoc running
   in macOS, but the classes are documented in qvulkanfunctions.cpp.
@@ -104,7 +72,7 @@ QT_END_NAMESPACE
 
 #include <QtGui/qtguiglobal.h>
 
-#if QT_CONFIG(vulkan) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(vulkan) || defined(Q_QDOC)
 
 #ifndef VK_NO_PROTOTYPES
 #define VK_NO_PROTOTYPES
@@ -147,8 +115,8 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QT_CONFIG(vulkan) || defined(Q_CLANG_QDOC)
+#endif // QT_CONFIG(vulkan) || defined(Q_QDOC)
 #endif // QVULKANFUNCTIONS_H;
-#endif // Q_CLANG_QDOC
+#endif // Q_QDOC
 
 #endif // QPLATFORMVULKANINSTANCE_H

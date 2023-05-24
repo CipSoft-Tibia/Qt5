@@ -1,40 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DCore/private/qnode_p.h>
 #include <Qt3DCore/private/qscene_p.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 
 #include <Qt3DRender/QBlitFramebuffer>
 #include <Qt3DRender/private/qblitframebuffer_p.h>
 
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class tst_QBlitFrameBuffer: public QObject
 {
@@ -75,37 +49,6 @@ private Q_SLOTS:
         QCOMPARE(blitFramebuffer.interpolationMethod(), Qt3DRender::QBlitFramebuffer::Linear);
     }
 
-    void checkCreationData()
-    {
-        // GIVEN
-        QFETCH(Qt3DRender::QBlitFramebuffer *, blitFramebuffer);
-
-        // WHEN
-        Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(blitFramebuffer);
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges = creationChangeGenerator.creationChanges();
-
-        // THEN
-        QCOMPARE(creationChanges.size(), 3); // 3 due to automatic parenting
-
-        const Qt3DCore::QNodeCreatedChangePtr<Qt3DRender::QBlitFramebufferData> creationChangeData =
-                qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QBlitFramebufferData>>(creationChanges.first());
-        const Qt3DRender::QBlitFramebufferData &cloneData = creationChangeData->data;
-
-        // THEN
-        QCOMPARE(blitFramebuffer->id(), creationChangeData->subjectId());
-        QCOMPARE(blitFramebuffer->isEnabled(), creationChangeData->isNodeEnabled());
-        QCOMPARE(blitFramebuffer->metaObject(), creationChangeData->metaObject());
-        QCOMPARE(blitFramebuffer->source()->id(), cloneData.m_sourceRenderTargetId);
-        QCOMPARE(blitFramebuffer->destination()->id(), cloneData.m_destinationRenderTargetId);
-        QCOMPARE(blitFramebuffer->sourceRect(), cloneData.m_sourceRect);
-        QCOMPARE(blitFramebuffer->destinationRect(), cloneData.m_destinationRect);
-        QCOMPARE(blitFramebuffer->sourceAttachmentPoint(), cloneData.m_sourceAttachmentPoint);
-        QCOMPARE(blitFramebuffer->destinationAttachmentPoint(), cloneData.m_destinationAttachmentPoint);
-
-
-        delete blitFramebuffer;
-    }
-
     void checkPropertyUpdate()
     {
         // GIVEN
@@ -121,167 +64,149 @@ private Q_SLOTS:
         blitFramebuffer->setSource(sourceRenderTarget);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         blitFramebuffer->setSource(sourceRenderTarget);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         blitFramebuffer->setSource(nullptr);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // destinationRenderTarget
         // WHEN
         blitFramebuffer->setDestination(destinationRenderTarget);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         blitFramebuffer->setDestination(destinationRenderTarget);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         blitFramebuffer->setDestination(nullptr);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // sourceRect
         // WHEN
         blitFramebuffer->setSourceRect(QRect(0,0,1,1));
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         blitFramebuffer->setSourceRect(QRect(0,0,1,1));
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         blitFramebuffer->setSourceRect(QRect());
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // destinationRect
         blitFramebuffer->setDestinationRect(QRect(0,0,1,1));
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         blitFramebuffer->setDestinationRect(QRect(0,0,1,1));
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         blitFramebuffer->setDestinationRect(QRect());
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // sourceAttachmentPoint
         // WHEN
         blitFramebuffer->setSourceAttachmentPoint(Qt3DRender::QRenderTargetOutput::Color1);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         blitFramebuffer->setSourceAttachmentPoint(Qt3DRender::QRenderTargetOutput::Color1);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         blitFramebuffer->setSourceAttachmentPoint(Qt3DRender::QRenderTargetOutput::Color0);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // destinationAttachmentPoint
         // WHEN
         blitFramebuffer->setDestinationAttachmentPoint(Qt3DRender::QRenderTargetOutput::Color1);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
 
         // WHEN
         blitFramebuffer->setDestinationAttachmentPoint(Qt3DRender::QRenderTargetOutput::Color1);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 0);
+        QCOMPARE(arbiter.dirtyNodes().size(), 0);
 
         // WHEN
         blitFramebuffer->setDestinationAttachmentPoint(Qt3DRender::QRenderTargetOutput::Color0);
 
         // THEN
-        QCOMPARE(arbiter.events.size(), 0);
-        QCOMPARE(arbiter.dirtyNodes.size(), 1);
-        QCOMPARE(arbiter.dirtyNodes.front(), blitFramebuffer.data());
+        QCOMPARE(arbiter.dirtyNodes().size(), 1);
+        QCOMPARE(arbiter.dirtyNodes().front(), blitFramebuffer.data());
 
-        arbiter.dirtyNodes.clear();
+        arbiter.clear();
     }
 
     void checkSourceDestReset()

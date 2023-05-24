@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,13 +19,13 @@
 #include <vector>
 
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
 #include "gpu/config/gpu_preferences.h"
 #include "media/base/video_color_space.h"
-#include "media/base/win/mf_initializer.h"
 #include "media/gpu/gpu_video_decode_accelerator_helpers.h"
 #include "media/gpu/media_gpu_export.h"
 #include "media/gpu/windows/d3d11_com_defs.h"
@@ -39,6 +39,7 @@ interface IDirect3DSurface9;
 
 namespace gl {
 class GLContext;
+class GLImageEGLStream;
 }
 
 namespace gpu {
@@ -65,6 +66,8 @@ class ConfigChangeDetector {
       const gfx::Rect& container_visible_rect) const = 0;
   virtual VideoColorSpace current_color_space(
       const VideoColorSpace& container_color_space) const = 0;
+  virtual bool IsYUV420() const;
+  virtual bool is_vp9_resilient_mode() const;
   bool config_changed() const { return config_changed_; }
 
  protected:
@@ -85,7 +88,6 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
     kResetting,      // upon received Reset(), before ResetDone()
     kStopped,        // upon output EOS received.
     kFlushing,       // upon flush request received.
-    kConfigChange,   // stream configuration change detected.
   };
 
   // Does not take ownership of |client| which must outlive |*this|.
@@ -96,6 +98,11 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
       const gpu::GpuDriverBugWorkarounds& workarounds,
       const gpu::GpuPreferences& gpu_preferences,
       MediaLog* media_log);
+
+  DXVAVideoDecodeAccelerator(const DXVAVideoDecodeAccelerator&) = delete;
+  DXVAVideoDecodeAccelerator& operator=(const DXVAVideoDecodeAccelerator&) =
+      delete;
+
   ~DXVAVideoDecodeAccelerator() override;
 
   // VideoDecodeAccelerator implementation.
@@ -108,11 +115,12 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   void Flush() override;
   void Reset() override;
   void Destroy() override;
-  bool TryToSetupDecodeOnSeparateThread(
+  bool TryToSetupDecodeOnSeparateSequence(
       const base::WeakPtr<Client>& decode_client,
-      const scoped_refptr<base::SingleThreadTaskRunner>& decode_task_runner)
+      const scoped_refptr<base::SequencedTaskRunner>& decode_task_runner)
       override;
   GLenum GetSurfaceInternalFormat() const override;
+  bool SupportsSharedImagePictureBuffers() const override;
 
   static VideoDecodeAccelerator::SupportedProfiles GetSupportedProfiles(
       const gpu::GpuPreferences& gpu_preferences,
@@ -142,8 +150,8 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
 
     // Bind the resulting GLImage to the NV12 texture. If the texture's used
     // in a an overlay than use it directly, otherwise copy it to another NV12
-    // texture when necessary.
-    DELAYED_COPY_TO_NV12 = 2,
+    // texture when necessary -- no longer used
+    // DELAYED_COPY_TO_NV12 = 2,
 
     // Bind the NV12 decoder texture directly to the texture used in ANGLE.
     BIND = 3,
@@ -153,20 +161,6 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
     // update this to be the last one.
     kMaxValue = BIND
   };
-
-  enum class DXVALifetimeProgression {
-    kInitializeStarted = 0,
-    kInitializeSucceeded = 1,
-    kPlaybackSucceeded = 2,
-
-    // For UMA. Must be the last entry. It should be initialized to the
-    // numerically largest value above; if you add more entries, then please
-    // update this to the last one.
-    kMaxValue = kPlaybackSucceeded
-  };
-
-  // Log UMA progression state.
-  void AddLifetimeProgressionStage(DXVALifetimeProgression stage);
 
   // Creates and initializes an instance of the D3D device and the
   // corresponding device manager. The device manager instance is eventually
@@ -226,7 +220,7 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
 
   // Transitions the decoder to the uninitialized state. The decoder will stop
   // accepting requests in this state.
-  void Invalidate();
+  void Invalidate(bool for_config_change = false);
 
   // Stop and join on the decoder thread.
   void StopDecoderThread();
@@ -249,7 +243,9 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
                           int input_buffer_id,
                           const gfx::Rect& visible_rect,
                           const gfx::ColorSpace& color_space,
-                          bool allow_overlay);
+                          bool allow_overlay,
+                          std::vector<scoped_refptr<Picture::ScopedSharedImage>>
+                              shared_images = {});
 
   // Sends pending input buffer processed acks to the client if we don't have
   // output samples waiting to be processed.
@@ -386,6 +382,13 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   // |num_picture_buffers_requested_|.
   void DisableSharedTextureSupport();
 
+  // Creates ScopedSharedImages for the provided PictureBuffer. If the buffer
+  // has a GLImageEGLStream this function will create D3DImageBacking using the
+  // DX11 texture. Otherwise it will create thin GLImageBacking
+  // wrappers around the existing textures in |picture_buffer|.
+  std::vector<scoped_refptr<Picture::ScopedSharedImage>>
+  GetSharedImagesFromPictureBuffer(DXVAPictureBuffer* picture_buffer);
+
   uint32_t GetTextureTarget() const;
 
   PictureBufferMechanism GetPictureBufferMechanism() const;
@@ -393,10 +396,7 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   ID3D11Device* D3D11Device() const;
 
   // To expose client callbacks from VideoDecodeAccelerator.
-  VideoDecodeAccelerator::Client* client_;
-
-  // MediaFoundation session, calls MFShutdown on deletion.
-  MFSessionLifetime session_;
+  raw_ptr<VideoDecodeAccelerator::Client> client_;
 
   Microsoft::WRL::ComPtr<IMFTransform> decoder_;
 
@@ -419,6 +419,9 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
 
   int processor_width_ = 0;
   int processor_height_ = 0;
+
+  // Used for lifetime progression logging.  Have we logged that initialization
+  // was successful, and nothing since?
   bool already_initialized_ = false;
 
   Microsoft::WRL::ComPtr<IDirectXVideoProcessorService>
@@ -509,7 +512,7 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   BindGLImageCallback bind_image_cb_;
 
   // This may be null, e.g. when not using MojoVideoDecoder.
-  MediaLog* const media_log_;
+  const raw_ptr<MediaLog> media_log_;
 
   // Which codec we are decoding with hardware acceleration.
   VideoCodec codec_;
@@ -551,9 +554,6 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   // ANGLE.
   bool support_copy_nv12_textures_;
 
-  // Supports copying NV12 textures on the main thread to use in ANGLE.
-  bool support_delayed_copy_nv12_textures_;
-
   // Copy video to FP16 scRGB textures.
   bool use_fp16_ = false;
 
@@ -589,6 +589,8 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   const bool enable_accelerated_vp8_decode_;
   const bool enable_accelerated_vp9_decode_;
 
+  const bool disallow_vp9_resilient_dxva_decoding_;
+
   // The media foundation H.264 decoder has problems handling changes like
   // resolution change, bitrate change etc. If we reinitialize the decoder
   // when these changes occur then, the decoder works fine. The
@@ -607,16 +609,17 @@ class MEDIA_GPU_EXPORT DXVAVideoDecodeAccelerator
   gfx::Rect current_visible_rect_;
   VideoColorSpace current_color_space_;
 
-  base::Optional<gl::HDRMetadataHelperWin> hdr_metadata_helper_;
+  absl::optional<gl::HDRMetadataHelperWin> hdr_metadata_helper_;
   bool use_empty_video_hdr_metadata_ = false;
+
+  // Have we delivered any decoded frames since the last call to Initialize()?
+  bool decoded_any_frames_ = false;
 
   // WeakPtrFactory for posting tasks back to |this|.
   base::WeakPtrFactory<DXVAVideoDecodeAccelerator> weak_this_factory_{this};
 
   // Function pointer for the MFCreateDXGIDeviceManager API.
   static CreateDXGIDeviceManager create_dxgi_device_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(DXVAVideoDecodeAccelerator);
 };
 
 }  // namespace media

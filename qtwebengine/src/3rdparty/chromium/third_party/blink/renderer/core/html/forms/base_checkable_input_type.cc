@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/html/forms/base_checkable_input_type.h"
 
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
 #include "third_party/blink/renderer/core/events/keyboard_event.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/forms/form_controller.h"
@@ -52,17 +53,17 @@ InputTypeView* BaseCheckableInputType::CreateView() {
 }
 
 FormControlState BaseCheckableInputType::SaveFormControlState() const {
-  return FormControlState(GetElement().checked() ? "on" : "off");
+  return FormControlState(GetElement().Checked() ? "on" : "off");
 }
 
 void BaseCheckableInputType::RestoreFormControlState(
     const FormControlState& state) {
-  GetElement().setChecked(state[0] == "on");
+  GetElement().SetChecked(state[0] == "on");
 }
 
 void BaseCheckableInputType::AppendToFormData(FormData& form_data) const {
-  if (GetElement().checked())
-    form_data.AppendFromElement(GetElement().GetName(), GetElement().value());
+  if (GetElement().Checked())
+    form_data.AppendFromElement(GetElement().GetName(), GetElement().Value());
 }
 
 void BaseCheckableInputType::HandleKeydownEvent(KeyboardEvent& event) {
@@ -87,11 +88,10 @@ bool BaseCheckableInputType::CanSetStringValue() const {
 
 // FIXME: Could share this with KeyboardClickableInputTypeView and
 // RangeInputType if we had a common base class.
-void BaseCheckableInputType::AccessKeyAction(bool send_mouse_events) {
-  InputTypeView::AccessKeyAction(send_mouse_events);
-
-  GetElement().DispatchSimulatedClick(
-      nullptr, send_mouse_events ? kSendMouseUpDownEvents : kSendNoEvents);
+void BaseCheckableInputType::AccessKeyAction(
+    SimulatedClickCreationScope creation_scope) {
+  InputTypeView::AccessKeyAction(creation_scope);
+  GetElement().DispatchSimulatedClick(nullptr, creation_scope);
 }
 
 bool BaseCheckableInputType::MatchesDefaultPseudoClass() {
@@ -119,6 +119,10 @@ void BaseCheckableInputType::ReadingChecked() const {
 
 bool BaseCheckableInputType::IsCheckable() {
   return true;
+}
+
+void BaseCheckableInputType::HandleBlurEvent() {
+  GetElement().SetActive(false);
 }
 
 }  // namespace blink

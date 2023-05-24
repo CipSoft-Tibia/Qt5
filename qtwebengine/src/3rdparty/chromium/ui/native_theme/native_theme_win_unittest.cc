@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,27 +15,27 @@ using SystemThemeColor = NativeTheme::SystemThemeColor;
 class TestNativeThemeWin : public NativeThemeWin {
  public:
   TestNativeThemeWin() : NativeThemeWin(false, false) {}
+  TestNativeThemeWin& operator=(const TestNativeThemeWin&) = delete;
+
   ~TestNativeThemeWin() override = default;
 
   // NativeTheme:
   void SetSystemColor(SystemThemeColor system_color, SkColor color) {
     system_colors_[system_color] = color;
   }
-
-  DISALLOW_COPY_AND_ASSIGN(TestNativeThemeWin);
 };
 
 TEST(NativeThemeWinTest, CalculatePreferredColorScheme) {
   TestNativeThemeWin theme;
 
-  theme.set_high_contrast(false);
+  theme.set_forced_colors(false);
   theme.set_use_dark_colors(true);
   EXPECT_EQ(theme.CalculatePreferredColorScheme(), PrefScheme::kDark);
 
   theme.set_use_dark_colors(false);
   EXPECT_EQ(theme.CalculatePreferredColorScheme(), PrefScheme::kLight);
 
-  theme.set_high_contrast(true);
+  theme.set_forced_colors(true);
   theme.SetSystemColor(SystemThemeColor::kWindow, SK_ColorBLACK);
   EXPECT_EQ(theme.CalculatePreferredColorScheme(), PrefScheme::kDark);
 
@@ -48,22 +48,49 @@ TEST(NativeThemeWinTest, CalculatePreferredColorScheme) {
   theme.SetSystemColor(SystemThemeColor::kWindow, SK_ColorYELLOW);
   EXPECT_EQ(theme.CalculatePreferredColorScheme(), PrefScheme::kLight);
 
-  theme.set_high_contrast(false);
+  theme.set_forced_colors(false);
   EXPECT_EQ(theme.CalculatePreferredColorScheme(), PrefScheme::kLight);
+}
+
+TEST(NativeThemeWinTest, CalculatePreferredContrast) {
+  using PrefContrast = NativeTheme::PreferredContrast;
+
+  TestNativeThemeWin theme;
+
+  theme.set_forced_colors(false);
+  EXPECT_EQ(theme.CalculatePreferredContrast(), PrefContrast::kNoPreference);
+
+  theme.set_forced_colors(true);
+  theme.SetSystemColor(SystemThemeColor::kWindow, SK_ColorBLACK);
+  theme.SetSystemColor(SystemThemeColor::kWindowText, SK_ColorWHITE);
+  EXPECT_EQ(theme.CalculatePreferredContrast(), PrefContrast::kMore);
+
+  theme.SetSystemColor(SystemThemeColor::kWindow, SK_ColorWHITE);
+  theme.SetSystemColor(SystemThemeColor::kWindowText, SK_ColorBLACK);
+  EXPECT_EQ(theme.CalculatePreferredContrast(), PrefContrast::kMore);
+
+  theme.SetSystemColor(SystemThemeColor::kWindowText, SK_ColorRED);
+  EXPECT_EQ(theme.CalculatePreferredContrast(), PrefContrast::kCustom);
+
+  theme.SetSystemColor(SystemThemeColor::kWindowText, SK_ColorYELLOW);
+  EXPECT_EQ(theme.CalculatePreferredContrast(), PrefContrast::kLess);
+
+  theme.set_forced_colors(false);
+  EXPECT_EQ(theme.CalculatePreferredContrast(), PrefContrast::kNoPreference);
 }
 
 TEST(NativeThemeWinTest, GetDefaultSystemColorScheme) {
   using ColorScheme = NativeTheme::ColorScheme;
 
   TestNativeThemeWin theme;
-  theme.set_high_contrast(false);
+  theme.set_forced_colors(false);
   theme.set_use_dark_colors(true);
   EXPECT_EQ(theme.GetDefaultSystemColorScheme(), ColorScheme::kDark);
 
   theme.set_use_dark_colors(false);
   EXPECT_EQ(theme.GetDefaultSystemColorScheme(), ColorScheme::kLight);
 
-  theme.set_high_contrast(true);
+  theme.set_forced_colors(true);
   theme.SetSystemColor(SystemThemeColor::kWindow, SK_ColorBLACK);
   theme.SetSystemColor(SystemThemeColor::kWindowText, SK_ColorWHITE);
   EXPECT_EQ(theme.GetDefaultSystemColorScheme(),
@@ -78,61 +105,29 @@ TEST(NativeThemeWinTest, GetDefaultSystemColorScheme) {
   EXPECT_EQ(theme.GetDefaultSystemColorScheme(),
             ColorScheme::kPlatformHighContrast);
 
-  theme.set_high_contrast(false);
+  theme.set_forced_colors(false);
   EXPECT_EQ(theme.GetDefaultSystemColorScheme(), ColorScheme::kLight);
-}
-
-TEST(NativeThemeWinTest, GetPlatformHighContrastColor) {
-  using ColorId = NativeTheme::ColorId;
-
-  // These specific colors don't matter, but should be unique.
-  constexpr SkColor kWindowTextColor = SK_ColorGREEN;
-  constexpr SkColor kHighlightColor = SK_ColorYELLOW;
-  constexpr SkColor kHighlightTextColor = SK_ColorBLUE;
-
-  TestNativeThemeWin theme;
-  theme.SetSystemColor(SystemThemeColor::kWindowText, kWindowTextColor);
-  theme.SetSystemColor(SystemThemeColor::kHighlight, kHighlightColor);
-  theme.SetSystemColor(SystemThemeColor::kHighlightText, kHighlightTextColor);
-
-  // Test that we get regular colors when HC is off.
-  theme.set_high_contrast(false);
-  EXPECT_NE(theme.GetSystemColor(ColorId::kColorId_LabelEnabledColor),
-            kWindowTextColor);
-  EXPECT_NE(theme.GetSystemColor(ColorId::kColorId_ProminentButtonColor),
-            kHighlightColor);
-  EXPECT_NE(theme.GetSystemColor(ColorId::kColorId_TextOnProminentButtonColor),
-            kHighlightTextColor);
-
-  // Test that we get HC colors when HC is on.
-  theme.set_high_contrast(true);
-  EXPECT_EQ(theme.GetSystemColor(ColorId::kColorId_LabelEnabledColor),
-            kWindowTextColor);
-  EXPECT_EQ(theme.GetSystemColor(ColorId::kColorId_ProminentButtonColor),
-            kHighlightColor);
-  EXPECT_EQ(theme.GetSystemColor(ColorId::kColorId_TextOnProminentButtonColor),
-            kHighlightTextColor);
 }
 
 TEST(NativeThemeWinTest, GetPlatformHighContrastColorScheme) {
   using HCColorScheme = NativeTheme::PlatformHighContrastColorScheme;
 
   TestNativeThemeWin theme;
-  theme.set_high_contrast(false);
+  theme.set_forced_colors(false);
   theme.set_preferred_color_scheme(PrefScheme::kDark);
   EXPECT_EQ(theme.GetPlatformHighContrastColorScheme(), HCColorScheme::kNone);
 
   theme.set_preferred_color_scheme(PrefScheme::kLight);
   EXPECT_EQ(theme.GetPlatformHighContrastColorScheme(), HCColorScheme::kNone);
 
-  theme.set_high_contrast(true);
+  theme.set_forced_colors(true);
   theme.set_preferred_color_scheme(PrefScheme::kDark);
   EXPECT_EQ(theme.GetPlatformHighContrastColorScheme(), HCColorScheme::kDark);
 
   theme.set_preferred_color_scheme(PrefScheme::kLight);
   EXPECT_EQ(theme.GetPlatformHighContrastColorScheme(), HCColorScheme::kLight);
 
-  theme.set_high_contrast(false);
+  theme.set_forced_colors(false);
   EXPECT_EQ(theme.GetPlatformHighContrastColorScheme(), HCColorScheme::kNone);
 }
 

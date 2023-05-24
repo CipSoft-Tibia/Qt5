@@ -12,7 +12,7 @@ package org.webrtc;
 
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
-import android.support.annotation.Nullable;
+import androidx.annotation.Nullable;
 import java.nio.FloatBuffer;
 import org.webrtc.GlShader;
 import org.webrtc.GlUtil;
@@ -219,11 +219,14 @@ class GlGenericDrawer implements RendererCommon.GlDrawer {
       shader = currentShader;
     } else {
       // Allocate new shader.
-      currentShaderType = shaderType;
+      currentShaderType = null;
       if (currentShader != null) {
         currentShader.release();
+        currentShader = null;
       }
+
       shader = createShader(shaderType);
+      currentShaderType = shaderType;
       currentShader = shader;
 
       shader.useProgram();

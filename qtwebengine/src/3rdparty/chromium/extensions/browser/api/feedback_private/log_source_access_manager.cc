@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,9 @@
 #include <algorithm>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_split.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "base/time/default_tick_clock.h"
 #include "extensions/browser/api/api_resource_manager.h"
 #include "extensions/browser/api/extensions_api_client.h"
@@ -33,7 +31,7 @@ constexpr int kDefaultMaxNumBurstAccesses = 10;
 // The minimum time between consecutive reads of a log source by a particular
 // extension.
 constexpr base::TimeDelta kDefaultRateLimitingTimeout =
-    base::TimeDelta::FromMilliseconds(1000);
+    base::Milliseconds(1000);
 
 // The maximum number of accesses on a single log source that can be allowed
 // before the next recharge increment. See access_rate_limiter.h for more info.
@@ -63,9 +61,9 @@ void GetLogLinesFromSystemLogsResponse(const SystemLogsResponse& response,
 
 // Redacts the strings in |result|.
 void RedactResults(
-    scoped_refptr<feedback::RedactionToolContainer> redactor_container,
+    scoped_refptr<redaction::RedactionToolContainer> redactor_container,
     ReadLogSourceResult* result) {
-  feedback::RedactionTool* redactor = redactor_container->Get();
+  redaction::RedactionTool* redactor = redactor_container->Get();
   for (std::string& line : result->log_lines)
     line = redactor->Redact(line);
 }
@@ -81,11 +79,11 @@ LogSourceAccessManager::LogSourceAccessManager(content::BrowserContext* context)
           {base::TaskPriority::USER_VISIBLE,
            base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN})),
       redactor_container_(
-          base::MakeRefCounted<feedback::RedactionToolContainer>(
+          base::MakeRefCounted<redaction::RedactionToolContainer>(
               task_runner_for_redactor_,
               /* first_party_extension_ids= */ nullptr)) {}
 
-LogSourceAccessManager::~LogSourceAccessManager() {}
+LogSourceAccessManager::~LogSourceAccessManager() = default;
 
 // static
 void LogSourceAccessManager::SetMaxNumBurstAccessesForTesting(
@@ -223,8 +221,8 @@ LogSourceAccessManager::ResourceId LogSourceAccessManager::CreateResource(
   // passed in as part of a callback.
   resource_manager->Get(extension_id, resource_id)
       ->set_unregister_callback(
-          base::Bind(&LogSourceAccessManager::RemoveHandle,
-                     weak_factory_.GetWeakPtr(), resource_id));
+          base::BindOnce(&LogSourceAccessManager::RemoveHandle,
+                         weak_factory_.GetWeakPtr(), resource_id));
 
   open_handles_.emplace(
       resource_id, std::make_unique<SourceAndExtension>(source, extension_id));

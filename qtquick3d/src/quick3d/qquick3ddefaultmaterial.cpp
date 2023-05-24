@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qquick3ddefaultmaterial_p.h"
 #include "qquick3dobject_p.h"
 
 #include <QtQuick3DRuntimeRender/private/qssgrenderdefaultmaterial_p.h>
+#include <QtQuick3DUtils/private/qssgutils_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -39,18 +14,46 @@ QT_BEGIN_NAMESPACE
     \qmltype DefaultMaterial
     \inherits Material
     \inqmlmodule QtQuick3D
-    \brief Defines a Material generated depending on which properties are set.
+    \brief Lets you define a material for 3D items using the specular/glossiness workflow.
 
-    Before a Model can be rendered in a scene, it must have at least one
-    material to define how the mesh is shaded. The DefaultMaterial is the
-    easiest way to define such a material. Even if you define a
-    DefaultMaterial with no properties set, a valid mesh will be rendered,
-    because the mesh defines some sensible defaults.
+    \deprecated [6.4] Prefer using the \l PrincipledMaterial or \l SpecularGlossyMaterial instead.
 
-    As you change the properties of the DefaultMaterial, behind the scenes
-    new shaders are generated, and the property values are bound. The
-    complexity of a shader depends on a combination of the properties that
-    are set on it, and the context of the scene itself.
+    \warning This material is only provided for compatibility reasons, and should not be used in new code.
+    Prefer using the \l SpecularGlossyMaterial for creating materials using the specular/glossiness
+    workflow or the \l PrincipledMaterial for creating materials using the metal/roughness workflow.
+
+    Before a Model can be rendered in a scene, it must have at least one material attached
+    to it that describes how the mesh should be shaded. The DefaultMaterial is an easy to
+    use material that lets you describe your material using a specular/glossiness type workflow.
+    The material has sensible default and can be used to shade a model without changing any properties.
+
+    \section1 Specular/Glossiness workflow
+
+    The Default material provides a way to create materials using a specular/glossiness
+    type workflow. The main properties of the material are controlled through the
+    \l {DefaultMaterial::specularMap} {specular}, \l {DefaultMaterial::roughnessMap} {roughness},
+    and the \l {DefaultMaterial::diffuseMap} {diffuse color} property.
+
+    \section2 Specular
+
+    The \l {DefaultMaterial::specularMap} {specular reflectivity} describes the specular
+    amount and color of an object's surface. For reflective materials the main color
+    contribution, comes from this property.
+
+    \section2 Glossiness (Roughness)
+
+    The glossiness of a surface depends on how smooth or irregular the surface is.
+    A smooth surface will have a more intense light reflection then a rough surface, where
+    the light reflection will be more spread out. In the Default material the material's glossiness
+    is controlled through the \l {DefaultMaterial::roughnessMap} {roughness} property.
+
+    \section2 Diffuse color
+
+    The \l {DefaultMaterial::diffuseMap} {diffuse color} property describes the basic color
+    of the material, and unlike the \l {PrincipledMaterial}'s base color, the diffuse color
+    does not contain any information about the material reflectance. However, for
+    reflective surfaces the diffuse color should be set to a black tint, as that will allow
+    for the specular color to contribute.
 */
 
 /*!
@@ -79,29 +82,36 @@ QT_BEGIN_NAMESPACE
     This property determines how the colors of the model rendered blend with
     those behind it.
 
-    \value DefaultMaterial.SourceOver Default blend mode. Opaque objects occlude
-        objects behind them.
-    \value DefaultMaterial.Screen Colors are blended using an inverted multiply,
-        producing a lighter result. This blend mode is order-independent; if you are
-        using semi-opaque objects and experiencing \e popping as faces or models sort
-        differently, using Screen blending is one way to produce results without
-        popping.
-    \value DefaultMaterial.Multiply Colors are blended using a multiply,
-        producing a darker result. This blend mode is also order-independent.
-    \value DefaultMaterial.Overlay A mix of Multiply and Screen modes, producing
-        a result with higher contrast.
-    \value DefaultMaterial.ColorBurn Colors are blended by inverted division where
-        the result also is inverted, producing a darker result. Darker than Multiply.
-    \value DefaultMaterial.ColorDodge Colors are blended by inverted division,
-        producing a lighter result. Lighter than Screen.
+    \value DefaultMaterial.SourceOver Default blend mode. Opaque objects
+    occlude objects behind them. This default mode does not guarantee alpha
+    blending in the rendering pipeline on its own for models that use this
+    material, but rather makes the decision dependent on a number of factors:
+    if the object's and material's total opacity is \c{1.0} and there are no
+    texture maps in the material with semi-transparent pixels in them, then the
+    model is treated as opaque, meaning it is rendered with depth testing and
+    depth write enabled, together with other opaque objects, with blending
+    disabled. Otherwise the model is treated as semi-transparent, and is
+    rendered after the opaque objects, together with other semi-transparent
+    objects in a back-to-front order based on their center's distance from the
+    camera, with alpha blending enabled.
 
+    \value DefaultMaterial.Screen Colors are blended using an inverted
+    multiply, producing a lighter result. This blend mode is order-independent;
+    if you are using semi-opaque objects and experiencing \e popping as faces
+    or models sort differently, using Screen blending is one way to produce
+    results without popping.
+
+    \value DefaultMaterial.Multiply Colors are blended using a multiply,
+    producing a darker result. This blend mode is also order-independent.
+
+    \sa {Qt Quick 3D Architecture}
 */
 
 /*!
     \qmlproperty color DefaultMaterial::diffuseColor
 
-    This property determines the base color for the material. Set to black to
-    create a purely-specular material (e.g. metals or mirrors).
+    This property determines the diffuse color (albedo) for the material. Setting the
+    diffuse color to a black tint will create a purely-specular material (e.g. metals or mirrors).
  */
 
 /*!
@@ -112,47 +122,53 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
-    \qmlproperty real DefaultMaterial::emissiveFactor
+    \qmlproperty vector3d DefaultMaterial::emissiveFactor
 
-    This property determines the amount of self-illumination from the material.
-    In a scene with black ambient lighting, a material with an emissive factor of 0
-    will appear black wherever the light does not shine on it. Turning the emissive
-    factor to 1 will cause the material to appear in its diffuse color instead.
+    This property determines the color of self-illumination for this material.
+    If an emissive map is set, the x, y, and z components are used as factors
+    (multipliers) for the R, G and B channels of the texture, respectively.
+    The default value is (0, 0, 0) and it means no emissive contribution at all.
 
-    \note When you want a material to not be affected by lighting, instead of
-    using 100% emissiveFactor consider setting the lightingMode to
-    /c DefaultMaterial.NoLighting for a performance benefit.
+    \note Setting the lightingMode to DefaultMaterial.NoLighting means emissive
+    Factor does not have an effect on the scene.
 */
 
 /*!
     \qmlproperty Texture DefaultMaterial::emissiveMap
 
-    This property sets a Texture to be used to set the emissive factor for
-    different parts of the material. Using a grayscale image will not affect the
-    color of the result, while using a color image will produce glowing regions
-    with the color affected by the emissive map.
-*/
+    This property sets a RGB Texture to be used to specify the intensity of the
+    emissive color.
 
-/*!
-    \qmlproperty color DefaultMaterial::emissiveColor
-
-    This property determines the color of self-illumination for this material.
+    \sa emissiveFactor
 */
 
 /*!
     \qmlproperty Texture DefaultMaterial::specularReflectionMap
 
     This property sets a Texture used for specular highlights on the material.
-    By default the Texture is applied using environmental mapping (not UV
-    mapping): as you rotate the model the map will appear as though it is
-    reflecting from the environment. Specular Reflection maps are an easy way to
-    add a high-quality look with relatively low cost.
 
-    \note Using a Light Probe in your SceneEnvironment for image-based lighting
-    will automatically use that image as the specular reflection.
+    This is typically used to perform environment mapping: as the model is
+    rotated, the map will appear as though it is reflecting from the
+    environment. For this to work as expected, the Texture's
+    \l{Texture::mappingMode}{mappingMode} needs to be set to
+    Texture.Environment. Specular reflection maps are an easy way to add a
+    high-quality look with a relatively low cost.
 
-    \note Crisp images cause your material to look very glossy. The more you
-    blur your image, the softer your material will appear.
+    \note Associating a \l{SceneEnvironment::lightProbe}{light probe} with the
+    \l SceneEnvironment, and thus relying on image-based lighting, can achieve
+    similar environmental reflection effects. Light probes are however a
+    conceptually different, and when it comes to performance, potentially more
+    expensive solution. Each approaches have their own specific uses, and the
+    one to use needs to be decided on a case by case basis. When it comes to
+    the Texture set to the property, specularReflectionMap has an advantage,
+    because it presents no limitations and supports all types of textures,
+    including ones that source their data from a Qt Quick sub-scene via
+    \l{Texture::sourceItem}{sourceItem}.
+
+    \note Crisp images cause your material to look very glossy; the more you
+    blur your image the softer your material will appear.
+
+    \sa Texture::mappingMode
 */
 
 /*!
@@ -171,11 +187,10 @@ QT_BEGIN_NAMESPACE
 
     \value DefaultMaterial.Default Specular lighting uses default lighting model.
     \value DefaultMaterial.KGGX Specular lighting uses GGX lighting model.
-    \value DefaultMaterial.KWard Specular lighting uses Ward lighting model.
 */
 
 /*!
-    \qmlproperty real DefaultMaterial::specularTint
+    \qmlproperty color DefaultMaterial::specularTint
 
     This property defines a color used to adjust the specular reflections.
     Use white for no effect
@@ -217,6 +232,7 @@ QT_BEGIN_NAMESPACE
     This property controls the size of the specular highlight generated from
     lights, and the clarity of reflections in general. Larger values increase
     the roughness, softening specular highlights and blurring reflections.
+    The range is [0.0, 1.0]. The default value is 0.
 */
 
 /*!
@@ -273,8 +289,7 @@ QT_BEGIN_NAMESPACE
     raised regions. The amount of the effect is controlled by the
     \l bumpAmount property.
 
-    \note bump maps will not affect the silhouette of a model. Use a
-    displacementMap if this is required.
+    \note bump maps will not affect the silhouette of a model.
 
 */
 
@@ -295,8 +310,7 @@ QT_BEGIN_NAMESPACE
     XYZ normal deviations. The amount of the effect is controlled by the
     \l bumpAmount property.
 
-    \note Normal maps will not affect the silhouette of a model. Use a
-    displacementMap if this is required.
+    \note Normal maps will not affect the silhouette of a model.
 */
 
 /*!
@@ -341,17 +355,49 @@ QT_BEGIN_NAMESPACE
     material.
 */
 
+/*!
+    \qmlproperty real DefaultMaterial::pointSize
+
+    This property determines the size of the points rendered, when the geometry
+    is using a primitive type of points. The default value is 1.0. This
+    property is not relevant when rendering other types of geometry, such as,
+    triangle meshes.
+
+    \warning Point sizes other than 1 may not be supported at run time,
+    depending on the underyling graphics API. For example, setting a size other
+    than 1 has no effect with Direct 3D.
+*/
+
+/*!
+    \qmlproperty real DefaultMaterial::lineWidth
+
+    This property determines the width of the lines rendered, when the geometry
+    is using a primitive type of lines or line strips. The default value is
+    1.0. This property is not relevant when rendering other types of geometry,
+    such as, triangle meshes.
+
+    \warning Line widths other than 1 may not be suported at run time,
+    depending on the underlying graphics API. When that is the case, the
+    request to change the width is ignored. For example, none of the following
+    can be expected to support wide lines: Direct3D, Metal, OpenGL with core
+    profile contexts.
+
+    \note Unlike most other material properties, the line width is under the
+    hood baked in to a graphics pipeline object, similarly to blendMode.
+    Therefore, a different value leads to having to create a new pipeline
+    object, which over time can become costly (performance and resource usage)
+    if the property is frequently changed to many different values. For
+    example, animating this property is possible, but should be avoided.
+ */
+
 QQuick3DDefaultMaterial::QQuick3DDefaultMaterial(QQuick3DObject *parent)
     : QQuick3DMaterial(*(new QQuick3DObjectPrivate(QQuick3DObjectPrivate::Type::DefaultMaterial)), parent)
     , m_diffuseColor(Qt::white)
-    , m_emissiveColor(Qt::white)
     , m_specularTint(Qt::white)
 {}
 
 QQuick3DDefaultMaterial::~QQuick3DDefaultMaterial()
 {
-    for (const auto &connection : m_connections.values())
-        disconnect(connection);
 }
 
 QQuick3DDefaultMaterial::Lighting QQuick3DDefaultMaterial::lighting() const
@@ -374,7 +420,7 @@ QQuick3DTexture *QQuick3DDefaultMaterial::diffuseMap() const
     return m_diffuseMap;
 }
 
-float QQuick3DDefaultMaterial::emissiveFactor() const
+QVector3D QQuick3DDefaultMaterial::emissiveFactor() const
 {
     return m_emissiveFactor;
 }
@@ -382,11 +428,6 @@ float QQuick3DDefaultMaterial::emissiveFactor() const
 QQuick3DTexture *QQuick3DDefaultMaterial::emissiveMap() const
 {
     return m_emissiveMap;
-}
-
-QColor QQuick3DDefaultMaterial::emissiveColor() const
-{
-    return m_emissiveColor;
 }
 
 QQuick3DTexture *QQuick3DDefaultMaterial::specularReflectionMap() const
@@ -494,6 +535,16 @@ QQuick3DMaterial::TextureChannelMapping QQuick3DDefaultMaterial::translucencyCha
     return m_translucencyChannel;
 }
 
+float QQuick3DDefaultMaterial::pointSize() const
+{
+    return m_pointSize;
+}
+
+float QQuick3DDefaultMaterial::lineWidth() const
+{
+    return m_lineWidth;
+}
+
 void QQuick3DDefaultMaterial::markAllDirty()
 {
     m_dirtyAttributes = 0xffffffff;
@@ -536,19 +587,16 @@ void QQuick3DDefaultMaterial::setDiffuseMap(QQuick3DTexture *diffuseMap)
     if (m_diffuseMap == diffuseMap)
         return;
 
-    updatePropertyListener(diffuseMap, m_diffuseMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("diffuseMap"), m_connections, [this](QQuick3DObject *n) {
-        setDiffuseMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setDiffuseMap, diffuseMap, m_diffuseMap);
 
     m_diffuseMap = diffuseMap;
     emit diffuseMapChanged(m_diffuseMap);
     markDirty(DiffuseDirty);
 }
 
-void QQuick3DDefaultMaterial::setEmissiveFactor(float emissiveFactor)
+void QQuick3DDefaultMaterial::setEmissiveFactor(QVector3D emissiveFactor)
 {
-    emissiveFactor = qBound(0.0f, emissiveFactor, 1.0f);
-    if (qFuzzyCompare(m_emissiveFactor, emissiveFactor))
+    if (m_emissiveFactor == emissiveFactor)
         return;
 
     m_emissiveFactor = emissiveFactor;
@@ -561,22 +609,10 @@ void QQuick3DDefaultMaterial::setEmissiveMap(QQuick3DTexture *emissiveMap)
     if (m_emissiveMap == emissiveMap)
         return;
 
-    updatePropertyListener(emissiveMap, m_emissiveMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("emissiveMap"), m_connections, [this](QQuick3DObject *n) {
-        setEmissiveMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setEmissiveMap, emissiveMap, m_emissiveMap);
 
     m_emissiveMap = emissiveMap;
     emit emissiveMapChanged(m_emissiveMap);
-    markDirty(EmissiveDirty);
-}
-
-void QQuick3DDefaultMaterial::setEmissiveColor(QColor emissiveColor)
-{
-    if (m_emissiveColor == emissiveColor)
-        return;
-
-    m_emissiveColor = emissiveColor;
-    emit emissiveColorChanged(m_emissiveColor);
     markDirty(EmissiveDirty);
 }
 
@@ -585,9 +621,7 @@ void QQuick3DDefaultMaterial::setSpecularReflectionMap(QQuick3DTexture *specular
     if (m_specularReflectionMap == specularReflectionMap)
         return;
 
-    updatePropertyListener(specularReflectionMap, m_specularReflectionMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("specularReflectionMap"), m_connections, [this](QQuick3DObject *n) {
-        setSpecularReflectionMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setSpecularReflectionMap, specularReflectionMap, m_specularReflectionMap);
 
     m_specularReflectionMap = specularReflectionMap;
     emit specularReflectionMapChanged(m_specularReflectionMap);
@@ -599,9 +633,7 @@ void QQuick3DDefaultMaterial::setSpecularMap(QQuick3DTexture *specularMap)
     if (m_specularMap == specularMap)
         return;
 
-    updatePropertyListener(specularMap, m_specularMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("specularMap"), m_connections, [this](QQuick3DObject *n) {
-        setSpecularMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setSpecularMap, specularMap, m_specularMap);
 
     m_specularMap = specularMap;
     emit specularMapChanged(m_specularMap);
@@ -673,10 +705,7 @@ void QQuick3DDefaultMaterial::setRoughnessMap(QQuick3DTexture *roughnessMap)
     if (m_roughnessMap == roughnessMap)
         return;
 
-    updatePropertyListener(roughnessMap, m_roughnessMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("roughnessMap"),  m_connections, [this](QQuick3DObject *n) {
-        setRoughnessMap(qobject_cast<QQuick3DTexture *>(n));
-    });
-
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setRoughnessMap, roughnessMap, m_roughnessMap);
 
     m_roughnessMap = roughnessMap;
     emit roughnessMapChanged(m_roughnessMap);
@@ -704,9 +733,7 @@ void QQuick3DDefaultMaterial::setOpacityMap(QQuick3DTexture *opacityMap)
     if (m_opacityMap == opacityMap)
         return;
 
-    updatePropertyListener(opacityMap, m_opacityMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("opacityMap"), m_connections, [this](QQuick3DObject *n) {
-        setOpacityMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setOpacityMap, opacityMap, m_opacityMap);
 
     m_opacityMap = opacityMap;
     emit opacityMapChanged(m_opacityMap);
@@ -718,9 +745,7 @@ void QQuick3DDefaultMaterial::setBumpMap(QQuick3DTexture *bumpMap)
     if (m_bumpMap == bumpMap)
         return;
 
-    updatePropertyListener(bumpMap, m_bumpMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("bumpMap"), m_connections, [this](QQuick3DObject *n) {
-        setBumpMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setBumpMap, bumpMap, m_bumpMap);
 
     m_bumpMap = bumpMap;
     emit bumpMapChanged(m_bumpMap);
@@ -742,9 +767,7 @@ void QQuick3DDefaultMaterial::setNormalMap(QQuick3DTexture *normalMap)
     if (m_normalMap == normalMap)
         return;
 
-    updatePropertyListener(normalMap, m_normalMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("normalMap"), m_connections, [this](QQuick3DObject *n) {
-        setNormalMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setNormalMap, normalMap, m_normalMap);
 
     m_normalMap = normalMap;
     emit normalMapChanged(m_normalMap);
@@ -756,9 +779,7 @@ void QQuick3DDefaultMaterial::setTranslucencyMap(QQuick3DTexture *translucencyMa
     if (m_translucencyMap == translucencyMap)
         return;
 
-    updatePropertyListener(translucencyMap, m_translucencyMap, QQuick3DObjectPrivate::get(this)->sceneManager, QByteArrayLiteral("translucencyMap"), m_connections, [this](QQuick3DObject *n) {
-        setTranslucencyMap(qobject_cast<QQuick3DTexture *>(n));
-    });
+    QQuick3DObjectPrivate::attachWatcher(this, &QQuick3DDefaultMaterial::setTranslucencyMap, translucencyMap, m_translucencyMap);
 
     m_translucencyMap = translucencyMap;
     emit translucencyMapChanged(m_translucencyMap);
@@ -822,6 +843,23 @@ void QQuick3DDefaultMaterial::setTranslucencyChannel(TextureChannelMapping chann
     markDirty(TranslucencyDirty);
 }
 
+void QQuick3DDefaultMaterial::setPointSize(float size)
+{
+    if (qFuzzyCompare(m_pointSize, size))
+        return;
+    m_pointSize = size;
+    emit pointSizeChanged();
+    markDirty(PointSizeDirty);
+}
+
+void QQuick3DDefaultMaterial::setLineWidth(float width)
+{
+    if (qFuzzyCompare(m_lineWidth, width))
+        return;
+    m_lineWidth = width;
+    emit lineWidthChanged();
+    markDirty(LineWidthDirty);
+}
 
 QSSGRenderGraphObject *QQuick3DDefaultMaterial::updateSpatialNode(QSSGRenderGraphObject *node)
 {
@@ -849,7 +887,7 @@ QSSGRenderGraphObject *QQuick3DDefaultMaterial::updateSpatialNode(QSSGRenderGrap
         material->blendMode = QSSGRenderDefaultMaterial::MaterialBlendMode(m_blendMode);
 
     if (m_dirtyAttributes & DiffuseDirty) {
-        material->color = QVector4D(m_diffuseColor.redF(), m_diffuseColor.greenF(), m_diffuseColor.blueF(), m_diffuseColor.alphaF());
+        material->color = QSSGUtils::color::sRGBToLinear(m_diffuseColor);
         if (!m_diffuseMap)
             material->colorMap = nullptr;
         else
@@ -864,8 +902,7 @@ QSSGRenderGraphObject *QQuick3DDefaultMaterial::updateSpatialNode(QSSGRenderGrap
         else
             material->emissiveMap = m_emissiveMap->getRenderImage();
 
-        const float emissiveFactor = (m_lighting == NoLighting) ? 1.0f : m_emissiveFactor;
-        material->emissiveColor = QVector3D(m_emissiveColor.redF(), m_emissiveColor.greenF(), m_emissiveColor.blueF()) * emissiveFactor;
+        material->emissiveColor = m_emissiveFactor;
     }
 
     if (m_dirtyAttributes & SpecularDirty) {
@@ -880,7 +917,7 @@ QSSGRenderGraphObject *QQuick3DDefaultMaterial::updateSpatialNode(QSSGRenderGrap
             material->specularMap = m_specularMap->getRenderImage();
 
         material->specularModel = QSSGRenderDefaultMaterial::MaterialSpecularModel(m_specularModel);
-        material->specularTint = QVector3D(m_specularTint.redF(), m_specularTint.greenF(), m_specularTint.blueF());
+        material->specularTint = QSSGUtils::color::sRGBToLinear(m_specularTint).toVector3D();
         material->ior = m_indexOfRefraction;
         material->fresnelPower = m_fresnelPower;
         material->specularAmount = m_specularAmount;
@@ -929,6 +966,12 @@ QSSGRenderGraphObject *QQuick3DDefaultMaterial::updateSpatialNode(QSSGRenderGrap
     if (m_dirtyAttributes & VertexColorsDirty)
         material->vertexColorsEnabled = m_vertexColorsEnabled;
 
+    if (m_dirtyAttributes & PointSizeDirty)
+        material->pointSize = m_pointSize;
+
+    if (m_dirtyAttributes & LineWidthDirty)
+        material->lineWidth = m_lineWidth;
+
     m_dirtyAttributes = 0;
 
     return node;
@@ -940,19 +983,19 @@ void QQuick3DDefaultMaterial::itemChange(QQuick3DObject::ItemChange change, cons
         updateSceneManager(value.sceneManager);
 }
 
-void QQuick3DDefaultMaterial::updateSceneManager(const QSharedPointer<QQuick3DSceneManager> &sceneManager)
+void QQuick3DDefaultMaterial::updateSceneManager(QQuick3DSceneManager *sceneManager)
 {
     // Check all the resource value's windows, and update as necessary
     if (sceneManager) {
-        QQuick3DObjectPrivate::refSceneManager(m_diffuseMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_emissiveMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_specularReflectionMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_specularMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_roughnessMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_opacityMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_bumpMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_normalMap, sceneManager);
-        QQuick3DObjectPrivate::refSceneManager(m_translucencyMap, sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_diffuseMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_emissiveMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_specularReflectionMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_specularMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_roughnessMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_opacityMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_bumpMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_normalMap, *sceneManager);
+        QQuick3DObjectPrivate::refSceneManager(m_translucencyMap, *sceneManager);
     } else {
         QQuick3DObjectPrivate::derefSceneManager(m_diffuseMap);
         QQuick3DObjectPrivate::derefSceneManager(m_emissiveMap);

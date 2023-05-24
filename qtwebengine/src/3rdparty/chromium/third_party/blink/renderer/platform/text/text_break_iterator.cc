@@ -23,14 +23,13 @@
 
 #include "third_party/blink/renderer/platform/text/text_break_iterator.h"
 
-#include "base/stl_util.h"
-#include "third_party/blink/renderer/platform/text/character.h"
+#include <unicode/uchar.h>
+#include <unicode/uvernum.h>
+
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/ascii_ctype.h"
 #include "third_party/blink/renderer/platform/wtf/text/character_names.h"
-
-#include <unicode/uchar.h>
-#include <unicode/uvernum.h>
+#include "third_party/blink/renderer/platform/wtf/text/unicode.h"
 
 namespace blink {
 
@@ -162,7 +161,9 @@ static const unsigned char kAsciiLineBreakTable[][(kAsciiLineBreakTableLastChar 
 };
 // clang-format on
 
-#if U_ICU_VERSION_MAJOR_NUM >= 58
+#if U_ICU_VERSION_MAJOR_NUM >= 74
+#define BA_LB_COUNT (U_LB_COUNT - 8)
+#elif U_ICU_VERSION_MAJOR_NUM >= 58
 #define BA_LB_COUNT (U_LB_COUNT - 3)
 #else
 #define BA_LB_COUNT U_LB_COUNT
@@ -224,11 +225,11 @@ static const unsigned char kBreakAllLineBreakClassTable[][BA_LB_COUNT / 8 + 1] =
 #undef DI
 #undef AL
 
-static_assert(base::size(kAsciiLineBreakTable) ==
+static_assert(std::size(kAsciiLineBreakTable) ==
                   kAsciiLineBreakTableLastChar - kAsciiLineBreakTableFirstChar +
                       1,
               "asciiLineBreakTable should be consistent");
-static_assert(base::size(kBreakAllLineBreakClassTable) == BA_LB_COUNT,
+static_assert(std::size(kBreakAllLineBreakClassTable) == BA_LB_COUNT,
               "breakAllLineBreakClassTable should be consistent");
 
 static inline bool ShouldBreakAfter(UChar last_ch, UChar ch, UChar next_ch) {
@@ -321,7 +322,7 @@ inline int LazyLineBreakIterator::NextBreakablePosition(
     is_space = IsBreakableSpace(ch);
     switch (break_space) {
       case BreakSpaceType::kBeforeEverySpace:
-        if (is_space)
+        if (is_space || IsOtherSpaceSeparator<CharacterType>(ch))
           return i;
         break;
       case BreakSpaceType::kBeforeSpaceRun:
@@ -341,10 +342,11 @@ inline int LazyLineBreakIterator::NextBreakablePosition(
           return i;
         break;
       case BreakSpaceType::kAfterEverySpace:
-        if (is_last_space)
+        if (is_last_space || IsOtherSpaceSeparator<CharacterType>(last_ch))
           return i;
-        if (is_space)
-          continue;
+        if ((is_space || IsOtherSpaceSeparator<CharacterType>(ch)) &&
+            i + 1 < len)
+          return i + 1;
         break;
     }
 

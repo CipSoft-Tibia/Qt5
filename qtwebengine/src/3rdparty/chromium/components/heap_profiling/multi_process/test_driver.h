@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,17 +7,13 @@
 
 #include <vector>
 
-#include "base/allocator/partition_allocator/partition_alloc.h"
-#include "base/macros.h"
+#include "base/allocator/partition_allocator/partition_alloc_for_testing.h"  // nogncheck
 #include "base/memory/ref_counted_memory.h"
 #include "base/process/process_handle.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/values.h"
 #include "components/services/heap_profiling/public/cpp/settings.h"
 #include "components/services/heap_profiling/public/mojom/heap_profiling_client.mojom.h"
-
-namespace base {
-class Value;
-}  // namespace base
 
 namespace heap_profiling {
 
@@ -56,6 +52,10 @@ class TestDriver {
   };
 
   TestDriver();
+
+  TestDriver(const TestDriver&) = delete;
+  TestDriver& operator=(const TestDriver&) = delete;
+
   ~TestDriver();
 
   // If this is called on the content::BrowserThread::UI thread, then the
@@ -101,13 +101,12 @@ class TestDriver {
                      bool success,
                      std::string trace_json);
 
-  bool ValidateBrowserAllocations(base::Value* dump_json);
-  bool ValidateRendererAllocations(base::Value* dump_json);
+  bool ValidateBrowserAllocations(const base::Value::Dict& dump_json);
+  bool ValidateRendererAllocations(const base::Value::Dict& dump_json);
 
   bool ShouldProfileBrowser();
   bool ShouldProfileRenderer();
   bool ShouldIncludeNativeThreadNames();
-  bool HasPseudoFrames();
   bool HasNativeFrames();
 
   void WaitForProfilingToStartForBrowserUIThread();
@@ -129,7 +128,7 @@ class TestDriver {
   size_t total_variadic_allocations_ = 0;
 
   // Use to make PA allocations, which should also be shimmed.
-  base::PartitionAllocator partition_allocator_;
+  partition_alloc::PartitionAllocatorForTesting partition_allocator_;
 
   // Contains nothing until |CollectResults| has been called.
   std::string serialized_trace_;
@@ -148,8 +147,6 @@ class TestDriver {
   bool wait_for_profiling_to_start_ = false;
 
   base::WaitableEvent wait_for_ui_thread_;
-
-  DISALLOW_COPY_AND_ASSIGN(TestDriver);
 };
 
 }  // namespace heap_profiling

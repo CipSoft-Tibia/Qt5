@@ -76,7 +76,7 @@ occupying the View's entire content bounds. [FlexLayout] provides a CSS-like
 layout for horizontal and vertical arrangements of views.
 
 Other commonly-used layouts managers are [BoxLayout], a predecessor of
-FlexLayout, and [GridLayout], which provides a flexible row-and-column
+FlexLayout, and [TableLayout], which provides a flexible row-and-column
 system.
 
 ### Painting
@@ -132,7 +132,7 @@ affecting the client view.
 
 The overall structure of a Widget and its helper Views looks like this:
 
-![views](views.png)
+![views](images/views.png)
 
 ## Dialogs
 
@@ -159,8 +159,9 @@ NonClientFrameView.
 [DialogDelegate]: https://cs.chromium.org/chromium/src/ui/views/window/dialog_delegate.h
 [DialogDelegateView]: https://cs.chromium.org/chromium/src/ui/views/window/dialog_delegate.h
 [FillLayout]: https://cs.chromium.org/chromium/src/ui/views/layout/fill_layout.h
+[FlexLayout]: https://cs.chromium.org/chromium/src/ui/views/layout/flex_layout.h
 [FocusManager]: https://cs.chromium.org/chromium/src/ui/views/focus/focus_manager.h
-[GridLayout]: https://cs.chromium.org/chromium/src/ui/views/layout/grid_layout.h
+[TableLayout]: https://cs.chromium.org/chromium/src/ui/views/layout/table_layout.h
 
 [NonClientView]: https://cs.chromium.org/chromium/src/ui/views/window/non_client_view.h
 [NonClientFrameView]: https://cs.chromium.org/chromium/src/ui/views/window/non_client_view.h

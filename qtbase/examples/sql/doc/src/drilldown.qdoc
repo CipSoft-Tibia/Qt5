@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example drilldown
     \title Drill Down Example
     \ingroup sql_examples
+    \examplecategory {Data Processing & I/O}
 
     \brief The Drill Down example shows how to read data from a database as
     well as submit changes, using the QSqlRelationalTableModel and
@@ -307,7 +284,7 @@
 
     The \c findWindow() function, on the other hand, is frequently
     used. It is called from the \c showInformation() function to
-    detemine whether a window is already created for the given
+    determine whether a window is already created for the given
     item (whenever we create an \c InformationWindow object, we
     store a reference to it in the \c informationWindows list). The
     latter function is in turn called from our custom \c
@@ -438,7 +415,7 @@
     \snippet drilldown/imageitem.h 0
 
     We declare a \c Type enum value for our custom item and reimplement
-    \l{QGreaphicsItem::}{type()}. This is done so we can safely use
+    \l{QGraphicsItem::}{type()}. This is done so we can safely use
     qgraphicsitem_cast().
     In addition, we implement a public \c id() function to be able to
     identify the associated location and a public \c adjust() function

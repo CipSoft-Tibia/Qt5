@@ -1,36 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 #include <QMutex>
 #include <QWaitCondition>
 #include <QThread>
-#include <renderqueue_p.h>
+#include <Qt3DRender/private/renderqueue_p.h>
 #include <renderview_p.h>
 
 class tst_RenderQueue : public QObject
@@ -53,7 +28,7 @@ private Q_SLOTS:
 void tst_RenderQueue::setRenderViewCount()
 {
     // GIVEN
-    Qt3DRender::Render::OpenGL::RenderQueue renderQueue;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> renderQueue;
 
     // THEN
     QCOMPARE(renderQueue.wasReset(), true);
@@ -70,7 +45,7 @@ void tst_RenderQueue::setRenderViewCount()
 void tst_RenderQueue::circleQueues()
 {
     // GIVEN
-    Qt3DRender::Render::OpenGL::RenderQueue renderQueue;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> renderQueue;
     renderQueue.setTargetRenderViewCount(7);
 
     // WHEN
@@ -99,7 +74,7 @@ void tst_RenderQueue::circleQueues()
 void tst_RenderQueue::checkOrder()
 {
     // GIVEN
-    Qt3DRender::Render::OpenGL::RenderQueue renderQueue;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> renderQueue;
     renderQueue.setTargetRenderViewCount(7);
     QVector<Qt3DRender::Render::OpenGL::RenderView *> renderViews(7);
 
@@ -111,7 +86,7 @@ void tst_RenderQueue::checkOrder()
     }
 
     // THEN
-    QVector<Qt3DRender::Render::OpenGL::RenderView *> frame = renderQueue.nextFrameQueue();
+    const std::vector<Qt3DRender::Render::OpenGL::RenderView *> &frame = renderQueue.nextFrameQueue();
     for (int i = 0; i < 7; ++i) {
         QVERIFY(frame[i] == renderViews[i]);
     }
@@ -120,7 +95,7 @@ void tst_RenderQueue::checkOrder()
 void tst_RenderQueue::checkTimeToSubmit()
 {
     // GIVEN
-    Qt3DRender::Render::OpenGL::RenderQueue renderQueue;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> renderQueue;
     renderQueue.setTargetRenderViewCount(7);
     QVector<Qt3DRender::Render::OpenGL::RenderView *> renderViews(7);
 
@@ -144,7 +119,7 @@ class SimpleWorker : public QThread
 public:
     QSemaphore m_waitSubmit;
     QSemaphore m_waitQueue;
-    Qt3DRender::Render::OpenGL::RenderQueue *m_renderQueues;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> *m_renderQueues;
 
 public Q_SLOTS:
 
@@ -178,7 +153,7 @@ public Q_SLOTS:
 void tst_RenderQueue::concurrentQueueAccess()
 {
     // GIVEN
-    Qt3DRender::Render::OpenGL::RenderQueue *renderQueue = new Qt3DRender::Render::OpenGL::RenderQueue;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView>*renderQueue = new Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView>();
 
     SimpleWorker *jobsThread = new SimpleWorker();
     renderQueue->setTargetRenderViewCount(7);
@@ -199,7 +174,8 @@ void tst_RenderQueue::concurrentQueueAccess()
         // WHEN unlocked
         // THEN
         QVERIFY (renderQueue->isFrameQueueComplete());
-        QCOMPARE(renderQueue->nextFrameQueue().size(), renderQueue->targetRenderViewCount());
+        QCOMPARE(renderQueue->nextFrameQueue().size(),
+                 size_t(renderQueue->targetRenderViewCount()));
 
         // reset queue for next frame
         renderQueue->reset();
@@ -212,7 +188,7 @@ void tst_RenderQueue::concurrentQueueAccess()
 void tst_RenderQueue::resetQueue()
 {
     // GIVEN
-    Qt3DRender::Render::OpenGL::RenderQueue renderQueue;
+    Qt3DRender::Render::RenderQueue<Qt3DRender::Render::OpenGL::RenderView> renderQueue;
 
     for (int j = 0; j < 5; j++) {
         // WHEN

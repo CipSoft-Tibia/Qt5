@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QSSG_RENDER_EFFECT_H
 #define QSSG_RENDER_EFFECT_H
@@ -45,32 +19,39 @@
 #include <QtQuick3DRuntimeRender/private/qssgrendernode_p.h>
 
 #include <QtQuick3DRuntimeRender/private/qssgrenderimage_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrendershaderlibrarymanager_p.h>
+
+#include <QtCore/QVariant>
 
 QT_BEGIN_NAMESPACE
+
 struct QSSGRenderLayer;
-struct QSSGEffectContext;
-class QSSGEffectSystem;
-
-namespace dynamic
-{
 struct QSSGCommand;
-}
+class QSSGRenderContextInterface;
 
-// Effects are post-render effect applied to the layer.  There can be more than one of
-// them and they have completely variable properties.
 struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderEffect : public QSSGRenderGraphObject
 {
     QSSGRenderEffect();
     ~QSSGRenderEffect();
 
+    void finalizeShaders(const QSSGRenderLayer &layer, QSSGRenderContextInterface *renderContext);
+
+    enum class Flags : quint8
+    {
+        Dirty = 0x1u
+    };
+    using FlagT = std::underlying_type_t<Flags>;
+
     struct TextureProperty
     {
         QSSGRenderImage *texImage = nullptr;
         QByteArray name;
-        QSSGRenderShaderDataType shaderDataType;
-        QSSGRenderTextureMagnifyingOp magFilterType = QSSGRenderTextureMagnifyingOp::Linear;
-        QSSGRenderTextureMinifyingOp minFilterType = QSSGRenderTextureMinifyingOp::Linear;
-        QSSGRenderTextureCoordOp clampType = QSSGRenderTextureCoordOp::ClampToEdge;
+        QSSGRenderShaderValue::Type shaderDataType;
+        QSSGRenderTextureFilterOp minFilterType = QSSGRenderTextureFilterOp::Linear;
+        QSSGRenderTextureFilterOp magFilterType = QSSGRenderTextureFilterOp::Linear;
+        QSSGRenderTextureFilterOp mipFilterType = QSSGRenderTextureFilterOp::Linear;
+        QSSGRenderTextureCoordOp horizontalClampType = QSSGRenderTextureCoordOp::ClampToEdge;
+        QSSGRenderTextureCoordOp verticalClampType = QSSGRenderTextureCoordOp::ClampToEdge;
         QSSGRenderTextureTypeValue usageType;
     };
 
@@ -79,42 +60,54 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderEffect : public QSSGRenderGraphOb
     struct Property
     {
         Property() = default;
-        Property(const QByteArray &name, const QVariant &value, QSSGRenderShaderDataType shaderDataType, int pid = -1)
-            : name(name), value(value), shaderDataType(shaderDataType), pid(pid)
+        Property(const QByteArray &name, const QByteArray &typeName, const QVariant &value, QSSGRenderShaderValue::Type shaderDataType, int pid = -1)
+            : name(name), typeName(typeName), value(value), shaderDataType(shaderDataType), pid(pid)
         { }
         QByteArray name;
+        QByteArray typeName;
         mutable QVariant value;
-        QSSGRenderShaderDataType shaderDataType;
+        QSSGRenderShaderValue::Type shaderDataType;
         int pid;
     };
 
     QVector<Property> properties;
 
-    QSSGRenderLayer *m_layer;
-    QSSGRenderEffect *m_nextEffect;
-    // Opaque pointer to context type implemented by the effect system.
-    // May be null in which case the effect system will generate a new context
-    // the first time it needs to render this effect.
-    QSSGEffectContext *m_context = nullptr;
+    QSSGRenderEffect *m_nextEffect = nullptr;
 
-    void initialize();
+    void markDirty();
+    void clearDirty();
+    [[nodiscard]] inline bool isDirty() const { return ((flags & FlagT(Flags::Dirty)) != 0); }
 
-    // If our active flag value changes, then we ask the effect manager
-    // to reset our context.
-    void setActive(bool inActive, QSSGEffectSystem &inSystem);
+    struct Command {
+        QSSGCommand *command;
+        quint8 own : 1;
+    };
+    QVector<Command> commands;
 
-    void reset(QSSGEffectSystem &inSystem);
+    void resetCommands();
 
-    using Flag = QSSGRenderNode::Flag;
-    Q_DECLARE_FLAGS(Flags, Flag)
-
-    QVector<dynamic::QSSGCommand *> commands;
-
-    Flags flags;
     const char *className = nullptr;
+    FlagT flags = FlagT(Flags::Dirty);
     bool requiresDepthTexture = false;
-    bool requiresCompilation = true;
+    bool incompleteBuildTimeObject = false; // Used by the shadergen tool
     QSSGRenderTextureFormat::Format outputFormat = QSSGRenderTextureFormat::Unknown;
+
+    struct ShaderPrepPassData
+    {
+        QByteArray shaderPathKeyPrefix; // to be completed in finalizeShaders
+        QByteArray vertexShaderCode; // without main(), to be completed in finalizeShaders
+        QByteArray fragmentShaderCode; // same here
+        QSSGCustomShaderMetaData vertexMetaData;
+        QSSGCustomShaderMetaData fragmentMetaData;
+        int bindShaderCmdIndex = 0;
+    };
+
+    struct {
+        bool valid = false;
+        QVector<ShaderPrepPassData> passes;
+    } shaderPrepData;
+
+    QString debugObjectName;
 };
 
 QT_END_NAMESPACE

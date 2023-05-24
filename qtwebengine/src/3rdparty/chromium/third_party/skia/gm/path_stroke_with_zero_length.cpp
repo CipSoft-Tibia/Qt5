@@ -117,22 +117,28 @@ static const int kCellWidth = 50;
 static const int kCellHeight = 20;
 static const int kCellPad = 2;
 
-static const int kNumRows = SK_ARRAY_COUNT(kCaps) * SK_ARRAY_COUNT(kWidths);
-static const int kNumColumns = SK_ARRAY_COUNT(kAllVerbs);
+static const int kNumRows = std::size(kCaps) * std::size(kWidths);
+static const int kNumColumns = std::size(kAllVerbs);
 static const int kTotalWidth = kNumColumns * (kCellWidth + kCellPad) + kCellPad;
 static const int kTotalHeight = kNumRows * (kCellHeight + kCellPad) + kCellPad;
 
-static const int kDblContourNumColums = SK_ARRAY_COUNT(kSomeVerbs) * SK_ARRAY_COUNT(kSomeVerbs);
+static const int kDblContourNumColums = std::size(kSomeVerbs) * std::size(kSomeVerbs);
 static const int kDblContourTotalWidth = kDblContourNumColums * (kCellWidth + kCellPad) + kCellPad;
 
 // 50% transparent versions of the colors used for positive/negative triage icons on gold.skia.org
 static const SkColor kFailureRed = 0x7FE7298A;
 static const SkColor kSuccessGreen = 0x7F1B9E77;
 
-static void draw_zero_length_capped_paths(SkCanvas* canvas, bool aa) {
+static skiagm::DrawResult draw_zero_length_capped_paths(SkCanvas* canvas, bool aa,
+                                                        SkString* errorMsg) {
     auto rContext = canvas->recordingContext();
     auto dContext = GrAsDirectContext(rContext);
-    SkASSERT(dContext || !rContext); // not supported in DDL.
+
+    if (!dContext && rContext) {
+        *errorMsg = "Not supported in DDL mode";
+        return skiagm::DrawResult::kSkip;
+    }
+
     canvas->translate(kCellPad, kCellPad);
 
     SkImageInfo info = canvas->imageInfo().makeWH(kCellWidth, kCellHeight);
@@ -182,20 +188,28 @@ static void draw_zero_length_capped_paths(SkCanvas* canvas, bool aa) {
     }
 
     canvas->drawColor(numFailedTests > 0 ? kFailureRed : kSuccessGreen);
+    return skiagm::DrawResult::kOk;
 }
 
-DEF_SIMPLE_GM_BG(zero_length_paths_aa, canvas, kTotalWidth, kTotalHeight, SK_ColorBLACK) {
-    draw_zero_length_capped_paths(canvas, true);
+DEF_SIMPLE_GM_BG_CAN_FAIL(zero_length_paths_aa, canvas, errorMsg,
+                          kTotalWidth, kTotalHeight, SK_ColorBLACK) {
+    return draw_zero_length_capped_paths(canvas, true, errorMsg);
 }
 
-DEF_SIMPLE_GM_BG(zero_length_paths_bw, canvas, kTotalWidth, kTotalHeight, SK_ColorBLACK) {
-    draw_zero_length_capped_paths(canvas, false);
+DEF_SIMPLE_GM_BG_CAN_FAIL(zero_length_paths_bw, canvas, errorMsg,
+                          kTotalWidth, kTotalHeight, SK_ColorBLACK) {
+    return draw_zero_length_capped_paths(canvas, false, errorMsg);
 }
 
-static void draw_zero_length_capped_paths_dbl_contour(SkCanvas* canvas, bool aa) {
+static skiagm::DrawResult draw_zero_length_capped_paths_dbl_contour(SkCanvas* canvas, bool aa,
+                                                                    SkString* errorMsg) {
     auto rContext = canvas->recordingContext();
     auto dContext = GrAsDirectContext(rContext);
-    SkASSERT(dContext || !rContext); // not supported in DDL.
+
+    if (!dContext && rContext) {
+        *errorMsg = "Not supported in DDL mode";
+        return skiagm::DrawResult::kSkip;
+    }
     canvas->translate(kCellPad, kCellPad);
 
     SkImageInfo info = canvas->imageInfo().makeWH(kCellWidth, kCellHeight);
@@ -255,14 +269,15 @@ static void draw_zero_length_capped_paths_dbl_contour(SkCanvas* canvas, bool aa)
     }
 
     canvas->drawColor(numFailedTests > 0 ? kFailureRed : kSuccessGreen);
+    return skiagm::DrawResult::kOk;
 }
 
-DEF_SIMPLE_GM_BG(zero_length_paths_dbl_aa, canvas, kDblContourTotalWidth, kTotalHeight,
-                 SK_ColorBLACK) {
-    draw_zero_length_capped_paths_dbl_contour(canvas, true);
+DEF_SIMPLE_GM_BG_CAN_FAIL(zero_length_paths_dbl_aa, canvas, errorMsg,
+                          kDblContourTotalWidth, kTotalHeight, SK_ColorBLACK) {
+    return draw_zero_length_capped_paths_dbl_contour(canvas, true, errorMsg);
 }
 
-DEF_SIMPLE_GM_BG(zero_length_paths_dbl_bw, canvas, kDblContourTotalWidth, kTotalHeight,
-                 SK_ColorBLACK) {
-    draw_zero_length_capped_paths_dbl_contour(canvas, false);
+DEF_SIMPLE_GM_BG_CAN_FAIL(zero_length_paths_dbl_bw, canvas, errorMsg,
+                          kDblContourTotalWidth, kTotalHeight, SK_ColorBLACK) {
+    return draw_zero_length_capped_paths_dbl_contour(canvas, false, errorMsg);
 }

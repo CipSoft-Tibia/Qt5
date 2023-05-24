@@ -1,12 +1,6 @@
 #define IN_LIBEXSLT
 #include "libexslt/libexslt.h"
 
-#if defined(_WIN32) && !defined (__CYGWIN__) && (!__MINGW32__)
-#include <win32config.h>
-#else
-#include "config.h"
-#endif
-
 #include <string.h>
 
 #include <libxml/tree.h>
@@ -472,9 +466,6 @@ exsltFuncFunctionFunction (xmlXPathParserContextPtr ctxt, int nargs) {
      * the generation of result nodes.
      */
     if (fake->children != NULL) {
-#ifdef LIBXML_DEBUG_ENABLED
-	xmlDebugDumpNode (stderr, fake, 1);
-#endif
 	xsltGenericError(xsltGenericErrorContext,
 			 "{%s}%s: cannot write to result tree while "
 			 "executing a function\n",
@@ -781,7 +772,7 @@ exsltFuncResultElem (xsltTransformContextPtr ctxt,
 	}
         /* Mark as function result. */
         xsltRegisterLocalRVT(ctxt, container);
-        container->psvi = XSLT_RVT_FUNC_RESULT;
+        container->compression = XSLT_RVT_FUNC_RESULT;
 
 	oldInsert = ctxt->insert;
 	ctxt->insert = (xmlNodePtr) container;

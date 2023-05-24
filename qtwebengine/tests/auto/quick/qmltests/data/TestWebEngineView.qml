@@ -1,53 +1,38 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-import QtQuick 2.0
-import QtTest 1.1
-import QtWebEngine 1.7
+import QtQuick
+import QtTest
+import QtWebEngine
 
 WebEngineView {
     property var loadStatus: null
     property bool windowCloseRequestedSignalEmitted: false
     settings.focusOnNavigationEnabled: true
 
-    function waitForLoadSucceeded(timeout) {
-        var success = _waitFor(function() { return loadStatus == WebEngineView.LoadSucceededStatus }, timeout)
+    function loadSucceeded() { return loadStatus == WebEngineView.LoadSucceededStatus }
+    function loadFailed() { return loadStatus == WebEngineView.LoadFailedStatus }
+    function loadStopped() { return loadStatus == WebEngineView.LoadStoppedStatus }
+
+    function waitForLoadResult(timeout) {
         loadStatus = null
+        var r = _waitFor(function() { return loadStatus != null && loadStatus != WebEngineView.LoadStartedStatus }, timeout)
+        return r
+    }
+
+    function waitForLoadSucceeded(timeout) {
+        loadStatus = null
+        var success = _waitFor(function() { return loadStatus == WebEngineView.LoadSucceededStatus }, timeout)
         return success
     }
     function waitForLoadFailed(timeout) {
-        var failure = _waitFor(function() { return loadStatus == WebEngineView.LoadFailedStatus }, timeout)
         loadStatus = null
+        var failure = _waitFor(function() { return loadStatus == WebEngineView.LoadFailedStatus }, timeout)
         return failure
     }
     function waitForLoadStopped(timeout) {
-        var stop = _waitFor(function() { return loadStatus == WebEngineView.LoadStoppedStatus }, timeout)
         loadStatus = null
+        var stop = _waitFor(function() { return loadStatus == WebEngineView.LoadStoppedStatus }, timeout)
         return stop
     }
     function waitForWindowCloseRequested() {
@@ -55,7 +40,7 @@ WebEngineView {
     }
     function _waitFor(predicate, timeout) {
         if (timeout === undefined)
-            timeout = 12000;
+            timeout = 30000;
         var i = 0
         while (i < timeout && !predicate()) {
             testResult.wait(50)
@@ -103,10 +88,25 @@ WebEngineView {
         return textSelection;
     }
 
+    function getElementValue(element) {
+        var elementValue;
+        runJavaScript("document.getElementById('" + element + "').value", function(result) {
+            elementValue = result;
+        });
+        testCase.tryVerify(function() { return elementValue != undefined; });
+        return elementValue;
+    }
+
+    function compareElementValue(element, expected) {
+        testCase.tryVerify(function() { return expected == getElementValue(element); }, 5000,
+            "Value of element \"" + element + "\" is \"" + expected + "\"");
+    }
+
+
     TestResult { id: testResult }
 
-    onLoadingChanged: {
-        loadStatus = loadRequest.status
+    onLoadingChanged: function(load) {
+        loadStatus = load.status
     }
 
     onWindowCloseRequested: {
@@ -118,6 +118,39 @@ WebEngineView {
         runJavaScript('document.body.innerText', function(t) { text = t })
         testCase.tryVerify(function() { return text !== undefined })
         return text
+    }
+
+    function getItemPixel(item) {
+        var grabImage = Qt.createQmlObject("
+                import QtQuick\n
+                Image { }", testCase)
+        var itemCanvas = Qt.createQmlObject("
+                import QtQuick\n
+                Canvas { }", testCase)
+
+        // Mark QML images with objectName: "image" to be able to check if the image is loaded.
+        if (item.objectName === "image") {
+            testCase.tryVerify(function() { return item.status === Image.Ready });
+        }
+
+        item.grabToImage(function(result) {
+                grabImage.source = result.url
+            });
+        testCase.tryVerify(function() { return grabImage.status === Image.Ready });
+
+        itemCanvas.width = item.width;
+        itemCanvas.height = item.height;
+        var ctx = itemCanvas.getContext("2d");
+        ctx.drawImage(grabImage, 0, 0, grabImage.width, grabImage.height);
+        var imageData = ctx.getImageData(Math.round(itemCanvas.width/2),
+                                         Math.round(itemCanvas.height/2),
+                                         itemCanvas.width,
+                                         itemCanvas.height);
+
+        grabImage.destroy();
+        itemCanvas.destroy();
+
+        return imageData.data;
     }
 }
 

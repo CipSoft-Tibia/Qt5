@@ -1,40 +1,20 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tst_qcoreapplication.h"
 
 #include <QtCore/QtCore>
-#include <QtTest/QtTest>
+#include <QTest>
 
+#include <private/qabstracteventdispatcher_p.h> // for qGlobalPostedEventsCount()
 #include <private/qcoreapplication_p.h>
 #include <private/qeventloop_p.h>
 #include <private/qthread_p.h>
+
+#ifdef Q_OS_WIN
+#include <QtCore/qt_windows.h>
+#endif
 
 typedef QCoreApplication TestApplication;
 
@@ -44,7 +24,7 @@ class EventSpy : public QObject
 
 public:
     QList<int> recordedEvents;
-    bool eventFilter(QObject *, QEvent *event)
+    bool eventFilter(QObject *, QEvent *event) override
     {
         recordedEvents.append(event->type());
         return false;
@@ -119,7 +99,7 @@ void tst_QCoreApplication::getSetCheck()
 
 void tst_QCoreApplication::qAppName()
 {
-#ifdef QT_GUI_LIB
+#ifdef QT_QGUIAPPLICATIONTEST
     const char* appName = "tst_qguiapplication";
 #else
     const char* appName = "tst_qcoreapplication";
@@ -155,9 +135,7 @@ void tst_QCoreApplication::qAppName()
 
 void tst_QCoreApplication::qAppVersion()
 {
-#if defined(Q_OS_WINRT)
-    const char appVersion[] = "1.0.0.0";
-#elif defined(Q_OS_WIN)
+#if defined(Q_OS_WIN)
     const char appVersion[] = "1.2.3.4";
 #elif defined(Q_OS_DARWIN) || defined(Q_OS_ANDROID)
     const char appVersion[] = "1.2.3";
@@ -192,15 +170,12 @@ void tst_QCoreApplication::qAppVersion()
 
 void tst_QCoreApplication::argc()
 {
-#if defined(Q_OS_WINRT)
-    QSKIP("QCoreApplication::arguments() parses arguments from actual command line on this platform.");
-#endif
     {
         int argc = 1;
         char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
         TestApplication app(argc, argv);
         QCOMPARE(argc, 1);
-        QCOMPARE(app.arguments().count(), 1);
+        QCOMPARE(app.arguments().size(), 1);
     }
 
     {
@@ -211,7 +186,7 @@ void tst_QCoreApplication::argc()
                          const_cast<char*>("arg3") };
         TestApplication app(argc, argv);
         QCOMPARE(argc, 4);
-        QCOMPARE(app.arguments().count(), 4);
+        QCOMPARE(app.arguments().size(), 4);
     }
 
     {
@@ -219,7 +194,7 @@ void tst_QCoreApplication::argc()
         char **argv = 0;
         TestApplication app(argc, argv);
         QCOMPARE(argc, 0);
-        QCOMPARE(app.arguments().count(), 0);
+        QCOMPARE(app.arguments().size(), 0);
     }
 
     {
@@ -228,7 +203,7 @@ void tst_QCoreApplication::argc()
                          const_cast<char*>("-qmljsdebugger=port:3768,block") };
         TestApplication app(argc, argv);
         QCOMPARE(argc, 1);
-        QCOMPARE(app.arguments().count(), 1);
+        QCOMPARE(app.arguments().size(), 1);
     }
 }
 
@@ -239,7 +214,7 @@ class EventGenerator : public QObject
 public:
     QObject *other;
 
-    bool event(QEvent *e)
+    bool event(QEvent *e) override
     {
         if (e->type() == QEvent::MaxUser) {
             QCoreApplication::sendPostedEvents(other, 0);
@@ -429,7 +404,7 @@ signals:
     void progress(int);
 
 protected:
-    void run()
+    void run() override
     {
         emit progress(1);
         emit progress(2);
@@ -497,7 +472,7 @@ public slots:
     }
 
 public:
-    bool event(QEvent *event)
+    bool event(QEvent *event) override
     {
         switch (event->type()) {
         case QEvent::User:
@@ -539,18 +514,15 @@ void tst_QCoreApplication::applicationPid()
     QVERIFY(QCoreApplication::applicationPid() > 0);
 }
 
-QT_BEGIN_NAMESPACE
-Q_CORE_EXPORT uint qGlobalPostedEventsCount();
-QT_END_NAMESPACE
-
+#ifdef QT_BUILD_INTERNAL
 class GlobalPostedEventsCountObject : public QObject
 {
     Q_OBJECT
 
 public:
-    QList<int> globalPostedEventsCount;
+    QList<qsizetype> globalPostedEventsCount;
 
-    bool event(QEvent *event)
+    bool event(QEvent *event) override
     {
         if (event->type() == QEvent::User)
             globalPostedEventsCount.append(qGlobalPostedEventsCount());
@@ -565,7 +537,7 @@ void tst_QCoreApplication::globalPostedEventsCount()
     TestApplication app(argc, argv);
 
     QCoreApplication::sendPostedEvents();
-    QCOMPARE(qGlobalPostedEventsCount(), 0u);
+    QCOMPARE(qGlobalPostedEventsCount(), qsizetype(0));
 
     GlobalPostedEventsCountObject x;
     QCoreApplication::postEvent(&x, new QEvent(QEvent::User));
@@ -573,19 +545,15 @@ void tst_QCoreApplication::globalPostedEventsCount()
     QCoreApplication::postEvent(&x, new QEvent(QEvent::User));
     QCoreApplication::postEvent(&x, new QEvent(QEvent::User));
     QCoreApplication::postEvent(&x, new QEvent(QEvent::User));
-    QCOMPARE(qGlobalPostedEventsCount(), 5u);
+    QCOMPARE(qGlobalPostedEventsCount(), qsizetype(5));
 
     QCoreApplication::sendPostedEvents();
-    QCOMPARE(qGlobalPostedEventsCount(), 0u);
+    QCOMPARE(qGlobalPostedEventsCount(), qsizetype(0));
 
-    QList<int> expected = QList<int>()
-                          << 4
-                          << 3
-                          << 2
-                          << 1
-                          << 0;
+    const QList<qsizetype> expected = {4, 3, 2, 1, 0};
     QCOMPARE(x.globalPostedEventsCount, expected);
 }
+#endif // QT_BUILD_INTERNAL
 
 class ProcessEventsAlwaysSendsPostedEventsObject : public QObject
 {
@@ -596,7 +564,7 @@ public:
         : counter(0)
     { }
 
-    bool event(QEvent *event)
+    bool event(QEvent *event) override
     {
         if (event->type() == QEvent::User)
             ++counter;
@@ -620,6 +588,108 @@ void tst_QCoreApplication::processEventsAlwaysSendsPostedEvents()
         QCOMPARE(object.counter, i);
         ++i;
     } while (t.elapsed() < 1000);
+}
+
+#ifdef Q_OS_WIN
+void tst_QCoreApplication::sendPostedEventsInNativeLoop()
+{
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    TestApplication app(argc, argv);
+
+    bool signalReceived = false;
+
+    // Post a message to the queue
+    QMetaObject::invokeMethod(this, [&signalReceived]() {
+        signalReceived = true;
+    }, Qt::QueuedConnection);
+
+    QElapsedTimer elapsedTimer;
+    elapsedTimer.start();
+
+    // Exec own message loop
+    MSG msg;
+    forever {
+        if (elapsedTimer.hasExpired(3000) || signalReceived)
+            break;
+
+        if (!::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            QThread::msleep(100);
+            continue;
+        }
+
+        ::TranslateMessage(&msg);
+        ::DispatchMessage(&msg);
+    }
+
+    QVERIFY(signalReceived);
+}
+#endif // Q_OS_WIN
+
+class QuitBlocker : public QObject
+{
+   Q_OBJECT
+
+public:
+    bool eventFilter(QObject *, QEvent *event) override
+    {
+        if (event->type() == QEvent::Quit) {
+            event->ignore();
+            return true;
+        }
+
+        return false;
+    }
+};
+
+void tst_QCoreApplication::quit()
+{
+    TestApplication::quit(); // Should not do anything
+
+    {
+        int argc = 1;
+        char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+        TestApplication app(argc, argv);
+
+        EventSpy spy;
+        app.installEventFilter(&spy);
+
+        {
+            QTimer::singleShot(0, &app, SLOT(quit()));
+            app.exec();
+            QVERIFY(spy.recordedEvents.contains(QEvent::Quit));
+        }
+
+        spy.recordedEvents.clear();
+
+        {
+            QTimer::singleShot(0, qApp, SLOT(quit()));
+            app.exec();
+            QVERIFY(spy.recordedEvents.contains(QEvent::Quit));
+        }
+
+        spy.recordedEvents.clear();
+
+        {
+            QTimer::singleShot(0, [&]{ TestApplication::quit(); });
+            app.exec();
+            QVERIFY(spy.recordedEvents.contains(QEvent::Quit));
+        }
+
+        spy.recordedEvents.clear();
+
+        {
+            QuitBlocker quitBlocker;
+            app.installEventFilter(&quitBlocker);
+
+            QTimer::singleShot(0, [&]{ TestApplication::quit(); });
+            QTimer::singleShot(200, [&]{ TestApplication::exit(); });
+            app.exec();
+            QVERIFY(!spy.recordedEvents.contains(QEvent::Quit));
+        }
+    }
+
+    TestApplication::quit(); // Should not do anything
 }
 
 void tst_QCoreApplication::reexec()
@@ -667,25 +737,21 @@ void tst_QCoreApplication::eventLoopExecAfterExit()
 class DummyEventDispatcher : public QAbstractEventDispatcher {
 public:
     DummyEventDispatcher() : QAbstractEventDispatcher(), visited(false) {}
-    bool processEvents(QEventLoop::ProcessEventsFlags) {
+    bool processEvents(QEventLoop::ProcessEventsFlags) override {
         visited = true;
         emit awake();
         QCoreApplication::sendPostedEvents();
         return false;
     }
-    bool hasPendingEvents() {
-        return qGlobalPostedEventsCount();
-    }
-    void registerSocketNotifier(QSocketNotifier *) {}
-    void unregisterSocketNotifier(QSocketNotifier *) {}
-    void registerTimer(int , int , Qt::TimerType, QObject *) {}
-    bool unregisterTimer(int ) { return false; }
-    bool unregisterTimers(QObject *) { return false; }
-    QList<TimerInfo> registeredTimers(QObject *) const { return QList<TimerInfo>(); }
-    int remainingTime(int) { return 0; }
-    void wakeUp() {}
-    void interrupt() {}
-    void flush() {}
+    void registerSocketNotifier(QSocketNotifier *) override {}
+    void unregisterSocketNotifier(QSocketNotifier *) override {}
+    void registerTimer(int , qint64 , Qt::TimerType, QObject *) override {}
+    bool unregisterTimer(int ) override { return false; }
+    bool unregisterTimers(QObject *) override { return false; }
+    QList<TimerInfo> registeredTimers(QObject *) const override { return QList<TimerInfo>(); }
+    int remainingTime(int) override { return 0; }
+    void wakeUp() override {}
+    void interrupt() override {}
 
 #ifdef Q_OS_WIN
     bool registerEventNotifier(QWinEventNotifier *) { return false; }
@@ -727,13 +793,13 @@ class JobObject : public QObject
     Q_OBJECT
 public:
 
-    explicit JobObject(QEventLoop *loop, QObject *parent = 0)
+    explicit JobObject(QEventLoop *loop, QObject *parent = nullptr)
         : QObject(parent), locker(loop)
     {
         QTimer::singleShot(1000, this, SLOT(timeout()));
     }
 
-    explicit JobObject(QObject *parent = 0)
+    explicit JobObject(QObject *parent = nullptr)
         : QObject(parent)
     {
         QTimer::singleShot(1000, this, SLOT(timeout()));
@@ -763,7 +829,7 @@ class QuitTester : public QObject
 {
     Q_OBJECT
 public:
-    QuitTester(QObject *parent = 0)
+    QuitTester(QObject *parent = nullptr)
       : QObject(parent)
     {
         QTimer::singleShot(0, this, SLOT(doTest()));
@@ -955,7 +1021,7 @@ void tst_QCoreApplication::addRemoveLibPaths()
     TestApplication app(argc, argv);
 
     // If libraryPaths only contains currentDir, neither will be in libraryPaths now.
-    if (paths.length() != 1 && currentDir != paths[0]) {
+    if (paths.size() != 1 && currentDir != paths[0]) {
         // Check that modifications stay alive across the creation of an application.
         QVERIFY(QCoreApplication::libraryPaths().contains(currentDir));
         QVERIFY(!QCoreApplication::libraryPaths().contains(paths[0]));
@@ -968,20 +1034,54 @@ void tst_QCoreApplication::addRemoveLibPaths()
 }
 #endif
 
+static bool theMainThreadIsSet()
+{
+    // QCoreApplicationPrivate::mainThread() has a Q_ASSERT we'd trigger
+    return QCoreApplicationPrivate::theMainThread.loadRelaxed() != nullptr;
+}
+
+static bool theMainThreadWasUnset = !theMainThreadIsSet(); // global static
+void tst_QCoreApplication::theMainThread()
+{
+    QVERIFY2(theMainThreadWasUnset, "Something set the theMainThread before main()");
+    QVERIFY(theMainThreadIsSet()); // we have at LEAST one QObject alive: tst_QCoreApplication
+
+    int argc = 1;
+    char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
+    TestApplication app(argc, argv);
+    QVERIFY(QCoreApplicationPrivate::theMainThread.loadRelaxed());
+    QCOMPARE(QCoreApplicationPrivate::theMainThread.loadRelaxed(), thread());
+    QCOMPARE(app.thread(), thread());
+    QCOMPARE(app.thread(), QThread::currentThread());
+}
+
 static void createQObjectOnDestruction()
 {
-    // Make sure that we can create a QObject after the last QObject has been
-    // destroyed (especially after QCoreApplication has).
-    //
+    // Make sure that we can create a QObject (and thus have an associated
+    // QThread) after the last QObject has been destroyed (especially after
+    // QCoreApplication has).
+
+#if !defined(QT_QGUIAPPLICATIONTEST) && !defined(Q_OS_WIN)
+    // QCoreApplicationData's global static destructor has run and cleaned up
+    // the QAdoptedThrad.
+    if (theMainThreadIsSet())
+        qFatal("theMainThreadIsSet() returned true; some QObject must have leaked");
+#endif
+
     // Before the fixes, this would cause a dangling pointer dereference. If
     // the problem comes back, it's possible that the following causes no
     // effect.
     QObject obj;
     obj.thread()->setProperty("testing", 1);
+    if (!theMainThreadIsSet())
+        qFatal("theMainThreadIsSet() returned false");
+
+    // because we created a QObject after QCoreApplicationData was destroyed,
+    // the QAdoptedThread won't get cleaned up
 }
 Q_DESTRUCTOR_FUNCTION(createQObjectOnDestruction)
 
-#ifndef QT_GUI_LIB
+#ifndef QT_QGUIAPPLICATIONTEST
 QTEST_APPLESS_MAIN(tst_QCoreApplication)
 #endif
 

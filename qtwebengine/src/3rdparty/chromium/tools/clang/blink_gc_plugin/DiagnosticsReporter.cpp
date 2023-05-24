@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -58,6 +58,24 @@ const char kReferencePtrToGCManagedClassNote[] =
 
 const char kUniquePtrToGCManagedClassNote[] =
     "[blink-gc] std::unique_ptr field %0 to a GC managed class declared here:";
+
+const char kTaskRunnerInGCManagedClassNote[] =
+    "[blink-gc] TaskRunnerTimer field %0 used within a garbage collected "
+    "context. "
+    "Consider using HeapTaskRunnerTimer instead.";
+
+const char kMojoRemoteInGCManagedClassNote[] =
+    "[blink-gc] mojo::Remote field %0 used within a garbage collected "
+    "context. "
+    "Consider using blink::HeapMojoRemote instead.";
+
+const char kMojoReceiverInGCManagedClassNote[] =
+    "[blink-gc] mojo::Receiver field %0 used within a garbage collected "
+    "context. "
+    "Consider using blink::HeapMojoReceiver instead.";
+
+const char kForbiddenFieldPartObjectClassNote[] =
+    "[blink-gc] From part object field %0 here:";
 
 const char kMemberToGCUnmanagedClassNote[] =
     "[blink-gc] Member field %0 to non-GC managed class declared here:";
@@ -137,13 +155,31 @@ const char kMemberInStackAllocated[] =
     "[blink-gc] Member field %0 in stack allocated class declared here (use "
     "raw pointer or reference instead):";
 
+const char kMemberOnStack[] =
+    "[blink-gc] Member variable %0 declared on stack here (use raw pointer or "
+    "reference instead):";
+
+const char kAdditionalPadding[] =
+    "[blink-gc] Additional padding causes the sizeof(%0) to grow by %1. "
+    "Consider reordering fields.";
+
 const char kUniquePtrUsedWithGC[] =
     "[blink-gc] Disallowed use of %0 found; %1 is a garbage-collected type. "
     "std::unique_ptr cannot hold garbage-collected objects.";
 
-const char kOptionalUsedWithGC[] =
+const char kOptionalFieldUsedWithGC[] =
+    "[blink-gc] Disallowed optional field of %0 found; %1 is a "
+    "garbage-collected "
+    "type. Optional fields cannot hold garbage-collected objects.";
+
+const char kOptionalNewExprUsedWithGC[] =
+    "[blink-gc] Disallowed new-expression of %0 found; %1 is a "
+    "garbage-collected "
+    "type. GCed types cannot be created with new.";
+
+const char kVariantUsedWithGC[] =
     "[blink-gc] Disallowed construction of %0 found; %1 is a garbage-collected "
-    "type. optional cannot hold garbage-collected objects.";
+    "type. absl::variant cannot hold garbage-collected objects.";
 
 } // namespace
 
@@ -205,7 +241,10 @@ DiagnosticsReporter::DiagnosticsReporter(
       getErrorLevel(), kTraceMethodOfStackAllocatedParentNote);
   diag_member_in_stack_allocated_class_ =
       diagnostic_.getCustomDiagID(getErrorLevel(), kMemberInStackAllocated);
-
+  diag_member_on_stack_ =
+      diagnostic_.getCustomDiagID(getErrorLevel(), kMemberOnStack);
+  diag_additional_padding_ =
+      diagnostic_.getCustomDiagID(getErrorLevel(), kAdditionalPadding);
   // Register note messages.
   diag_base_requires_tracing_note_ = diagnostic_.getCustomDiagID(
       DiagnosticsEngine::Note, kBaseRequiresTracingNote);
@@ -221,6 +260,14 @@ DiagnosticsReporter::DiagnosticsReporter(
       DiagnosticsEngine::Note, kWeakPtrToGCManagedClassNote);
   diag_reference_ptr_to_gc_managed_class_note_ = diagnostic_.getCustomDiagID(
       DiagnosticsEngine::Note, kReferencePtrToGCManagedClassNote);
+  diag_task_runner_timer_in_gc_class_note = diagnostic_.getCustomDiagID(
+      DiagnosticsEngine::Note, kTaskRunnerInGCManagedClassNote);
+  diag_mojo_remote_in_gc_class_note = diagnostic_.getCustomDiagID(
+      DiagnosticsEngine::Note, kMojoRemoteInGCManagedClassNote);
+  diag_mojo_receiver_in_gc_class_note = diagnostic_.getCustomDiagID(
+      DiagnosticsEngine::Note, kMojoReceiverInGCManagedClassNote);
+  diag_forbidden_field_part_object_class_note = diagnostic_.getCustomDiagID(
+      DiagnosticsEngine::Note, kForbiddenFieldPartObjectClassNote);
   diag_unique_ptr_to_gc_managed_class_note_ = diagnostic_.getCustomDiagID(
       DiagnosticsEngine::Note, kUniquePtrToGCManagedClassNote);
   diag_member_to_gc_unmanaged_class_note_ = diagnostic_.getCustomDiagID(
@@ -244,8 +291,12 @@ DiagnosticsReporter::DiagnosticsReporter(
 
   diag_unique_ptr_used_with_gc_ =
       diagnostic_.getCustomDiagID(getErrorLevel(), kUniquePtrUsedWithGC);
-  diag_optional_used_with_gc_ =
-      diagnostic_.getCustomDiagID(getErrorLevel(), kOptionalUsedWithGC);
+  diag_optional_field_used_with_gc_ =
+      diagnostic_.getCustomDiagID(getErrorLevel(), kOptionalFieldUsedWithGC);
+  diag_optional_new_expr_used_with_gc_ =
+      diagnostic_.getCustomDiagID(getErrorLevel(), kOptionalNewExprUsedWithGC);
+  diag_variant_used_with_gc_ =
+      diagnostic_.getCustomDiagID(getErrorLevel(), kVariantUsedWithGC);
 }
 
 bool DiagnosticsReporter::hasErrorOccurred() const
@@ -362,6 +413,36 @@ void DiagnosticsReporter::ClassContainsGCRoots(
       point = path;
     }
     NoteFieldContainsGCRoot(point);
+  }
+}
+
+void DiagnosticsReporter::ClassContainsForbiddenFields(
+    RecordInfo* info,
+    const CheckForbiddenFieldsVisitor::Errors& errors) {
+  ReportDiagnostic(info->record()->getBeginLoc(),
+                   diag_class_contains_invalid_fields_)
+      << info->record();
+  for (const auto& error : errors) {
+    for (FieldPoint* field : error.first) {
+      if (field == error.first.back()) {
+        break;
+      }
+      NoteField(field, diag_forbidden_field_part_object_class_note);
+    }
+    unsigned note;
+    if (error.second ==
+        CheckForbiddenFieldsVisitor::Error::kTaskRunnerInGCManaged) {
+      note = diag_task_runner_timer_in_gc_class_note;
+    } else if (error.second ==
+               CheckForbiddenFieldsVisitor::Error::kMojoRemoteInGCManaged) {
+      note = diag_mojo_remote_in_gc_class_note;
+    } else if (error.second ==
+               CheckForbiddenFieldsVisitor::Error::kMojoReceiverInGCManaged) {
+      note = diag_mojo_receiver_in_gc_class_note;
+    } else {
+      llvm_unreachable("Unknown field error.");
+    }
+    NoteField(error.first.back(), note);
   }
 }
 
@@ -534,10 +615,37 @@ void DiagnosticsReporter::UniquePtrUsedWithGC(
       << bad_function << gc_type << expr->getSourceRange();
 }
 
-void DiagnosticsReporter::OptionalUsedWithGC(
+void DiagnosticsReporter::OptionalFieldUsedWithGC(
+    const clang::FieldDecl* field,
+    const clang::CXXRecordDecl* optional,
+    const clang::CXXRecordDecl* gc_type) {
+  ReportDiagnostic(field->getBeginLoc(), diag_optional_field_used_with_gc_)
+      << optional << gc_type << field->getSourceRange();
+}
+
+void DiagnosticsReporter::OptionalNewExprUsedWithGC(
     const clang::Expr* expr,
     const clang::CXXRecordDecl* optional,
     const clang::CXXRecordDecl* gc_type) {
-  ReportDiagnostic(expr->getBeginLoc(), diag_optional_used_with_gc_)
+  ReportDiagnostic(expr->getBeginLoc(), diag_optional_new_expr_used_with_gc_)
       << optional << gc_type << expr->getSourceRange();
+}
+
+void DiagnosticsReporter::VariantUsedWithGC(
+    const clang::Expr* expr,
+    const clang::CXXRecordDecl* variant,
+    const clang::CXXRecordDecl* gc_type) {
+  ReportDiagnostic(expr->getBeginLoc(), diag_variant_used_with_gc_)
+      << variant << gc_type << expr->getSourceRange();
+}
+
+void DiagnosticsReporter::MemberOnStack(const clang::VarDecl* var) {
+  ReportDiagnostic(var->getBeginLoc(), diag_member_on_stack_)
+      << var->getName() << var->getSourceRange();
+}
+
+void DiagnosticsReporter::AdditionalPadding(const clang::RecordDecl* record,
+                                            size_t padding_size) {
+  ReportDiagnostic(record->getBeginLoc(), diag_additional_padding_)
+      << record->getName() << padding_size << record->getSourceRange();
 }

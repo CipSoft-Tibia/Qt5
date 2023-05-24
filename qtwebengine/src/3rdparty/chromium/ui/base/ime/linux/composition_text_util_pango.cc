@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,10 @@
 #include <pango/pango-attributes.h>
 #include <stddef.h>
 
+#include <string>
+
+#include "base/cxx17_backports.h"
 #include "base/i18n/char_iterator.h"
-#include "base/numerics/ranges.h"
-#include "base/strings/string16.h"
 #include "base/strings/utf_string_conversions.h"
 #include "ui/base/ime/composition_text.h"
 
@@ -30,10 +31,10 @@ void ExtractCompositionTextFromGtkPreedit(const char* utf8_text,
   // conversion here.
   std::vector<size_t> char16_offsets;
   size_t length = composition->text.length();
-  base::i18n::UTF16CharIterator char_iterator(&composition->text);
-  do {
+  for (base::i18n::UTF16CharIterator char_iterator(composition->text);
+       !char_iterator.end(); char_iterator.Advance()) {
     char16_offsets.push_back(char_iterator.array_pos());
-  } while (char_iterator.Advance());
+  }
 
   // The text length in Unicode characters.
   int char_length = static_cast<int>(char16_offsets.size());
@@ -41,7 +42,7 @@ void ExtractCompositionTextFromGtkPreedit(const char* utf8_text,
   char16_offsets.push_back(length);
 
   size_t cursor_offset =
-      char16_offsets[base::ClampToRange(cursor_position, 0, char_length)];
+      char16_offsets[base::clamp(cursor_position, 0, char_length)];
 
   composition->selection = gfx::Range(cursor_offset);
 

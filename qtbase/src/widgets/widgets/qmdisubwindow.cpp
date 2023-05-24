@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 /*!
     \class QMdiSubWindow
@@ -154,7 +118,9 @@
 #if QT_CONFIG(whatsthis)
 #include <QWhatsThis>
 #endif
+#if QT_CONFIG(tooltip)
 #include <QToolTip>
+#endif
 #if QT_CONFIG(mainwindow)
 #include <QMainWindow>
 #endif
@@ -162,13 +128,17 @@
 #include <QDebug>
 #include <QMdiArea>
 #include <QScopedValueRollback>
-#include <QAction>
+#if QT_CONFIG(action)
+#  include <qaction.h>
+#endif
 #if QT_CONFIG(menu)
 #include <QMenu>
 #endif
 #include <QProxyStyle>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 using namespace QMdi;
 
@@ -282,7 +252,7 @@ QString QMdiSubWindowPrivate::originalWindowTitle()
     if (originalTitle.isNull()) {
         originalTitle = originalWindowTitleHelper();
         if (originalTitle.isNull())
-            originalTitle = QLatin1String("");
+            originalTitle = ""_L1;
     }
     return originalTitle;
 }
@@ -314,7 +284,7 @@ static inline bool isHoverControl(QStyle::SubControl control)
     return control != QStyle::SC_None && control != QStyle::SC_TitleBarLabel;
 }
 
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
 static void showToolTip(QHelpEvent *helpEvent, QWidget *widget, const QStyleOptionComplex &opt,
                         QStyle::ComplexControl complexControl, QStyle::SubControl subControl)
 {
@@ -379,7 +349,7 @@ static void showToolTip(QHelpEvent *helpEvent, QWidget *widget, const QStyleOpti
     const QRect rect = widget->style()->subControlRect(complexControl, &opt, subControl, widget);
     QToolTip::showText(helpEvent->globalPos(), toolTip, widget, rect);
 }
-#endif // QT_NO_TOOLTIP
+#endif // QT_CONFIG(tooltip)
 
 namespace QMdi {
 /*
@@ -418,7 +388,7 @@ ControlLabel::ControlLabel(QMdiSubWindow *subWindow, QWidget *parent)
     Q_UNUSED(subWindow);
     setFocusPolicy(Qt::NoFocus);
     updateWindowIcon();
-    setFixedSize(label.size() / label.devicePixelRatio());
+    setFixedSize(label.deviceIndependentSize().toSize());
 }
 
 /*
@@ -426,7 +396,7 @@ ControlLabel::ControlLabel(QMdiSubWindow *subWindow, QWidget *parent)
 */
 QSize ControlLabel::sizeHint() const
 {
-    return label.size() / label.devicePixelRatio();
+    return label.deviceIndependentSize().toSize();
 }
 
 /*
@@ -440,7 +410,7 @@ bool ControlLabel::event(QEvent *event)
         updateWindowIcon();
         setFixedSize(label.size());
     }
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     else if (event->type() == QEvent::ToolTip) {
         QStyleOptionTitleBar options;
         options.initFrom(this);
@@ -635,7 +605,7 @@ void ControllerWidget::mousePressEvent(QMouseEvent *event)
         event->ignore();
         return;
     }
-    activeControl = getSubControl(event->pos());
+    activeControl = getSubControl(event->position().toPoint());
     update();
 }
 
@@ -649,7 +619,7 @@ void ControllerWidget::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
 
-    QStyle::SubControl under_mouse = getSubControl(event->pos());
+    QStyle::SubControl under_mouse = getSubControl(event->position().toPoint());
     if (under_mouse == activeControl) {
         switch (activeControl) {
         case QStyle::SC_MdiCloseButton:
@@ -675,7 +645,7 @@ void ControllerWidget::mouseReleaseEvent(QMouseEvent *event)
 */
 void ControllerWidget::mouseMoveEvent(QMouseEvent *event)
 {
-    QStyle::SubControl under_mouse = getSubControl(event->pos());
+    QStyle::SubControl under_mouse = getSubControl(event->position().toPoint());
     //test if hover state changes
     if (hoverControl != under_mouse) {
         hoverControl = under_mouse;
@@ -697,14 +667,14 @@ void ControllerWidget::leaveEvent(QEvent * /*event*/)
 */
 bool ControllerWidget::event(QEvent *event)
 {
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     if (event->type() == QEvent::ToolTip) {
         QStyleOptionComplex opt;
         initStyleOption(&opt);
         QHelpEvent *helpEvent = static_cast<QHelpEvent *>(event);
         showToolTip(helpEvent, this, opt, QStyle::CC_MdiControls, getSubControl(helpEvent->pos()));
     }
-#endif // QT_NO_TOOLTIP
+#endif // QT_CONFIG(tooltip)
     return QWidget::event(event);
 }
 
@@ -763,7 +733,7 @@ ControlContainer::~ControlContainer()
 QMenuBar *QMdiSubWindowPrivate::menuBar() const
 {
 #if !QT_CONFIG(mainwindow)
-    return 0;
+    return nullptr;
 #else
     Q_Q(const QMdiSubWindow);
     if (!q->isMaximized() || drawTitleBarWhenMaximized() || isChildOfTabbedQMdiArea(q))
@@ -921,7 +891,7 @@ QMdiSubWindowPrivate::QMdiSubWindowPrivate()
 */
 void QMdiSubWindowPrivate::_q_updateStaysOnTopHint()
 {
-#ifndef QT_NO_ACTION
+#if QT_CONFIG(action)
     Q_Q(QMdiSubWindow);
     if (QAction *senderAction = qobject_cast<QAction *>(q->sender())) {
         if (senderAction->isChecked()) {
@@ -932,7 +902,7 @@ void QMdiSubWindowPrivate::_q_updateStaysOnTopHint()
             q->lower();
         }
     }
-#endif // QT_NO_ACTION
+#endif // QT_CONFIG(action)
 }
 
 /*!
@@ -1915,7 +1885,7 @@ void QMdiSubWindowPrivate::enterRubberBandMode()
     if (!rubberBand) {
         rubberBand = new QRubberBand(QRubberBand::Rectangle, q->parentWidget());
         // For accessibility to identify this special widget.
-        rubberBand->setObjectName(QLatin1String("qt_rubberband"));
+        rubberBand->setObjectName("qt_rubberband"_L1);
     }
     QPoint rubberBandPos = q->mapToParent(QPoint(0, 0));
     rubberBand->setGeometry(rubberBandPos.x(), rubberBandPos.y(),
@@ -1944,20 +1914,16 @@ QPalette QMdiSubWindowPrivate::desktopPalette() const
     Q_Q(const QMdiSubWindow);
     QPalette newPalette = q->palette();
 
-    bool colorsInitialized = false;
-
-    if (!colorsInitialized) {
-        newPalette.setColor(QPalette::Active, QPalette::Highlight,
-                            newPalette.color(QPalette::Active, QPalette::Highlight));
-        newPalette.setColor(QPalette::Active, QPalette::Base,
-                            newPalette.color(QPalette::Active, QPalette::Highlight));
-        newPalette.setColor(QPalette::Inactive, QPalette::Highlight,
-                            newPalette.color(QPalette::Inactive, QPalette::Dark));
-        newPalette.setColor(QPalette::Inactive, QPalette::Base,
-                            newPalette.color(QPalette::Inactive, QPalette::Dark));
-        newPalette.setColor(QPalette::Inactive, QPalette::HighlightedText,
-                            newPalette.color(QPalette::Inactive, QPalette::Window));
-    }
+    newPalette.setColor(QPalette::Active, QPalette::Highlight,
+                        newPalette.color(QPalette::Active, QPalette::Highlight));
+    newPalette.setColor(QPalette::Active, QPalette::Base,
+                        newPalette.color(QPalette::Active, QPalette::Highlight));
+    newPalette.setColor(QPalette::Inactive, QPalette::Highlight,
+                        newPalette.color(QPalette::Inactive, QPalette::Dark));
+    newPalette.setColor(QPalette::Inactive, QPalette::Base,
+                        newPalette.color(QPalette::Inactive, QPalette::Dark));
+    newPalette.setColor(QPalette::Inactive, QPalette::HighlightedText,
+                        newPalette.color(QPalette::Inactive, QPalette::Window));
 
     return newPalette;
 }
@@ -2212,7 +2178,7 @@ void QMdiSubWindowPrivate::updateInternalWindowTitle()
     Q_Q(QMdiSubWindow);
     if (q->isWindowModified()) {
         windowTitle = q->windowTitle();
-        windowTitle.replace(QLatin1String("[*]"), QLatin1String("*"));
+        windowTitle.replace("[*]"_L1, "*"_L1);
     } else {
         windowTitle = qt_setWindowTitle_helperHelper(q->windowTitle(), q);
     }
@@ -2330,10 +2296,8 @@ void QMdiSubWindow::setWidget(QWidget *widget)
         d->updateWindowTitle(true);
         isWindowModified = d->baseWidget->isWindowModified();
     }
-    if (!this->isWindowModified() && isWindowModified
-            && windowTitle().contains(QLatin1String("[*]"))) {
+    if (!this->isWindowModified() && isWindowModified && windowTitle().contains("[*]"_L1))
         setWindowModified(isWindowModified);
-    }
     d->lastChildWindowTitle = d->baseWidget->windowTitle();
     d->ignoreWindowTitleChange = false;
 
@@ -2681,12 +2645,12 @@ bool QMdiSubWindow::eventFilter(QObject *object, QEvent *event)
     if (d->systemMenu && d->systemMenu == object) {
         if (event->type() == QEvent::MouseButtonDblClick) {
             const QMouseEvent *mouseEvent = static_cast<const QMouseEvent *>(event);
-            const QAction *action = d->systemMenu->actionAt(mouseEvent->pos());
+            const QAction *action = d->systemMenu->actionAt(mouseEvent->position().toPoint());
             if (!action || action->isEnabled())
                 close();
         } else if (event->type() == QEvent::MouseMove) {
             QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-            d->hoveredSubControl = d->getSubControl(mapFromGlobal(mouseEvent->globalPos()));
+            d->hoveredSubControl = d->getSubControl(mapFromGlobal(mouseEvent->globalPosition().toPoint()));
         } else if (event->type() == QEvent::Hide) {
             d->activeSubControl = QStyle::SC_None;
             update(QRegion(0, 0, width(), d->titleBarHeight()));
@@ -2700,7 +2664,7 @@ bool QMdiSubWindow::eventFilter(QObject *object, QEvent *event)
         if (event->type() != QEvent::MouseButtonPress || !testOption(QMdiSubWindow::RubberBandResize))
             return QWidget::eventFilter(object, event);
         const QMouseEvent *mouseEvent = static_cast<QMouseEvent *>(event);
-        d->mousePressPosition = parentWidget()->mapFromGlobal(mouseEvent->globalPos());
+        d->mousePressPosition = parentWidget()->mapFromGlobal(mouseEvent->globalPosition().toPoint());
         d->oldGeometry = geometry();
         d->currentOperation = isLeftToRight() ? QMdiSubWindowPrivate::BottomRightResize
                                               : QMdiSubWindowPrivate::BottomLeftResize;
@@ -2766,7 +2730,7 @@ bool QMdiSubWindow::eventFilter(QObject *object, QEvent *event)
         bool windowModified = d->baseWidget->isWindowModified();
         if (!windowModified && d->baseWidget->windowTitle() != windowTitle())
             break;
-        if (windowTitle().contains(QLatin1String("[*]")))
+        if (windowTitle().contains("[*]"_L1))
             setWindowModified(windowModified);
         break;
     }
@@ -2867,7 +2831,7 @@ bool QMdiSubWindow::event(QEvent *event)
         d->updateInternalWindowTitle();
         break;
     case QEvent::ModifiedChange:
-        if (!windowTitle().contains(QLatin1String("[*]")))
+        if (!windowTitle().contains("[*]"_L1))
             break;
 #if QT_CONFIG(menubar)
         if (maximizedButtonsWidget() && d->controlContainer->menuBar() && d->controlContainer->menuBar()
@@ -2898,7 +2862,7 @@ bool QMdiSubWindow::event(QEvent *event)
     case QEvent::FontChange:
         d->font = font();
         break;
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
     case QEvent::ToolTip:
         showToolTip(static_cast<QHelpEvent *>(event), this, d->titleBarOptions(),
                     QStyle::CC_TitleBar, d->hoveredSubControl);
@@ -3195,7 +3159,7 @@ void QMdiSubWindow::mousePressEvent(QMouseEvent *mouseEvent)
 
     if (d->currentOperation != QMdiSubWindowPrivate::None) {
         d->updateCursor();
-        d->mousePressPosition = mapToParent(mouseEvent->pos());
+        d->mousePressPosition = mapToParent(mouseEvent->position().toPoint());
         if (d->resizeEnabled || d->moveEnabled)
             d->oldGeometry = geometry();
 #if QT_CONFIG(rubberband)
@@ -3286,10 +3250,10 @@ void QMdiSubWindow::mouseReleaseEvent(QMouseEvent *mouseEvent)
             d->oldGeometry = geometry();
     }
 
-    d->currentOperation = d->getOperation(mouseEvent->pos());
+    d->currentOperation = d->getOperation(mouseEvent->position().toPoint());
     d->updateCursor();
 
-    d->hoveredSubControl = d->getSubControl(mouseEvent->pos());
+    d->hoveredSubControl = d->getSubControl(mouseEvent->position().toPoint());
     if (d->activeSubControl != QStyle::SC_None
             && d->activeSubControl == d->hoveredSubControl) {
         d->processClickedSubControl();
@@ -3314,7 +3278,7 @@ void QMdiSubWindow::mouseMoveEvent(QMouseEvent *mouseEvent)
         // Find previous and current hover region.
         const QStyleOptionTitleBar options = d->titleBarOptions();
         QStyle::SubControl oldHover = d->hoveredSubControl;
-        d->hoveredSubControl = d->getSubControl(mouseEvent->pos());
+        d->hoveredSubControl = d->getSubControl(mouseEvent->position().toPoint());
         QRegion hoverRegion;
         if (isHoverControl(oldHover) && oldHover != d->hoveredSubControl)
             hoverRegion += style()->subControlRect(QStyle::CC_TitleBar, &options, oldHover, this);
@@ -3334,13 +3298,13 @@ void QMdiSubWindow::mouseMoveEvent(QMouseEvent *mouseEvent)
         if ((d->isResizeOperation() && d->resizeEnabled) || (d->isMoveOperation() && d->moveEnabled)) {
             // As setNewGeometry moves the window, it invalidates the pos() value of any mouse move events that are
             // currently queued in the event loop. Map to parent using globalPos() instead.
-            d->setNewGeometry(parentWidget()->mapFromGlobal(mouseEvent->globalPos()));
+            d->setNewGeometry(parentWidget()->mapFromGlobal(mouseEvent->globalPosition().toPoint()));
         }
         return;
     }
 
     // Do not resize/move if not allowed.
-    d->currentOperation = d->getOperation(mouseEvent->pos());
+    d->currentOperation = d->getOperation(mouseEvent->position().toPoint());
     if ((d->isResizeOperation() && !d->resizeEnabled) || (d->isMoveOperation() && !d->moveEnabled))
         d->currentOperation = QMdiSubWindowPrivate::None;
     d->updateCursor();
@@ -3540,7 +3504,7 @@ QSize QMdiSubWindow::minimumSizeHint() const
     minHeight = qMax(minHeight, decorationHeight + sizeGripHeight);
 #endif
 
-    return QSize(minWidth, minHeight).expandedTo(QApplication::globalStrut());
+    return QSize(minWidth, minHeight);
 }
 
 QT_END_NAMESPACE

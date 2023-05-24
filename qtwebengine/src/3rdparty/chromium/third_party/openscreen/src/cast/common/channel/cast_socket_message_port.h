@@ -24,14 +24,16 @@ class CastSocketMessagePort : public MessagePort, public CastMessageHandler {
   explicit CastSocketMessagePort(VirtualConnectionRouter* router);
   ~CastSocketMessagePort() override;
 
+  const std::string& source_id() const { return source_id_; }
+
   void SetSocket(WeakPtr<CastSocket> socket);
 
-  // Returns current socket identifier, or -1 if not connected.
+  // Returns current socket identifier, or ToCastSocketId(nullptr) if not
+  // connected.
   int GetSocketId();
 
   // MessagePort overrides.
-  void SetClient(MessagePort::Client* client,
-                 std::string client_sender_id) override;
+  void SetClient(MessagePort::Client& client) override;
   void ResetClient() override;
   void PostMessage(const std::string& destination_sender_id,
                    const std::string& message_namespace,
@@ -44,7 +46,7 @@ class CastSocketMessagePort : public MessagePort, public CastMessageHandler {
 
  private:
   VirtualConnectionRouter* const router_;
-  std::string client_sender_id_;
+  std::string source_id_;
   MessagePort::Client* client_ = nullptr;
   WeakPtr<CastSocket> socket_;
 };

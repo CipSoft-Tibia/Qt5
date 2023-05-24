@@ -1,17 +1,17 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <string>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/gtest_mac.h"
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 #include "base/ios/weak_nsobject.h"
 #endif
 
@@ -133,7 +133,7 @@ TEST(BindObjcBlockTest, TestBlockDeallocation) {
   EXPECT_TRUE(invoked_block);
 }
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 
 TEST(BindObjcBlockTest, TestBlockReleased) {
   base::WeakNSObject<NSObject> weak_nsobject;

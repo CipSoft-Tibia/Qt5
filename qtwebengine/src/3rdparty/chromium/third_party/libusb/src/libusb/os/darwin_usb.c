@@ -22,13 +22,13 @@
 #include <ctype.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <libkern/OSAtomic.h>
 
 #include <mach/clock.h>
 #include <mach/clock_types.h>
@@ -42,6 +42,9 @@
 
 #include "darwin_usb.h"
 
+/* Both kIOMasterPortDefault or kIOMainPortDefault are synonyms for 0. */
+static const mach_port_t darwin_default_master_port = 0;
+
 /* async event thread */
 static pthread_mutex_t libusb_darwin_at_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  libusb_darwin_at_cond = PTHREAD_COND_INITIALIZER;
@@ -50,7 +53,7 @@ static clock_serv_t clock_realtime;
 static clock_serv_t clock_monotonic;
 
 static CFRunLoopRef libusb_darwin_acfl = NULL; /* event cf loop */
-static volatile int32_t initCount = 0;
+_Atomic int32_t initCount = ATOMIC_VAR_INIT(0);
 
 static usbi_mutex_t darwin_cached_devices_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct list_head darwin_cached_devices = {&darwin_cached_devices, &darwin_cached_devices};
@@ -207,7 +210,7 @@ static int usb_setup_device_iterator (io_iterator_t *deviceIterator, UInt32 loca
     /* else we can still proceed as long as the caller accounts for the possibility of other devices in the iterator */
   }
 
-  return IOServiceGetMatchingServices(kIOMasterPortDefault, matchingDict, deviceIterator);
+  return IOServiceGetMatchingServices(darwin_default_master_port, matchingDict, deviceIterator);
 }
 
 /* Returns 1 on success, 0 on failure. */
@@ -336,7 +339,7 @@ static void *darwin_event_thread_main (void *arg0) {
   CFRetain (runloop);
 
   /* add the notification port to the run loop */
-  libusb_notification_port     = IONotificationPortCreate (kIOMasterPortDefault);
+  libusb_notification_port     = IONotificationPortCreate (darwin_default_master_port);
   libusb_notification_cfsource = IONotificationPortGetRunLoopSource (libusb_notification_port);
   CFRunLoopAddSource(runloop, libusb_notification_cfsource, kCFRunLoopDefaultMode);
 
@@ -418,7 +421,7 @@ static int darwin_init(struct libusb_context *ctx) {
     return rc;
   }
 
-  if (OSAtomicIncrement32Barrier(&initCount) == 1) {
+  if (atomic_fetch_add(&initCount, 1) == 0) {
     /* create the clocks that will be used */
 
     if (!initted) {
@@ -443,7 +446,7 @@ static int darwin_init(struct libusb_context *ctx) {
 }
 
 static void darwin_exit (void) {
-  if (OSAtomicDecrement32Barrier(&initCount) == 0) {
+  if (atomic_fetch_sub(&initCount, 1) == 1) {
     mach_port_deallocate(mach_task_self(), clock_realtime);
     mach_port_deallocate(mach_task_self(), clock_monotonic);
 

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVECATEGORY_P_H
 #define QDECLARATIVECATEGORY_P_H
@@ -54,18 +21,20 @@
 #include <QObject>
 
 #include <QtLocation/qplacecategory.h>
+#include <QtLocation/qplaceicon.h>
 
 #include <QtLocation/private/qdeclarativegeoserviceprovider_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QDeclarativePlaceIcon;
 class QPlaceReply;
 class QPlaceManager;
 
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeCategory : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(Category)
+    QML_ADDED_IN_VERSION(5, 0)
 
     Q_ENUMS(Status Visibility)
 
@@ -75,14 +44,14 @@ class Q_LOCATION_PRIVATE_EXPORT QDeclarativeCategory : public QObject, public QQ
     Q_PROPERTY(QString categoryId READ categoryId WRITE setCategoryId NOTIFY categoryIdChanged)
     Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
     Q_PROPERTY(Visibility visibility READ visibility WRITE setVisibility NOTIFY visibilityChanged)
-    Q_PROPERTY(QDeclarativePlaceIcon *icon READ icon WRITE setIcon NOTIFY iconChanged)
+    Q_PROPERTY(QPlaceIcon icon READ icon WRITE setIcon NOTIFY iconChanged)
     Q_PROPERTY(Status status READ status NOTIFY statusChanged)
 
     Q_INTERFACES(QQmlParserStatus)
 
 public:
-    explicit QDeclarativeCategory(QObject *parent = 0);
-    QDeclarativeCategory(const QPlaceCategory &category, QDeclarativeGeoServiceProvider *plugin, QObject *parent = 0);
+    explicit QDeclarativeCategory(QObject *parent = nullptr);
+    QDeclarativeCategory(const QPlaceCategory &category, QDeclarativeGeoServiceProvider *plugin, QObject *parent = nullptr);
     ~QDeclarativeCategory();
 
     enum Visibility {
@@ -94,8 +63,8 @@ public:
     enum Status {Ready, Saving, Removing, Error};
 
     //From QQmlParserStatus
-    virtual void classBegin() {}
-    virtual void componentComplete();
+    void classBegin() override {}
+    void componentComplete() override;
 
     void setPlugin(QDeclarativeGeoServiceProvider *plugin);
     QDeclarativeGeoServiceProvider *plugin() const;
@@ -111,8 +80,8 @@ public:
     Visibility visibility() const;
     void setVisibility(Visibility visibility);
 
-    QDeclarativePlaceIcon *icon() const;
-    void setIcon(QDeclarativePlaceIcon *icon);
+    QPlaceIcon icon() const;
+    void setIcon(const QPlaceIcon &icon);
 
     Q_INVOKABLE QString errorString() const;
 
@@ -138,11 +107,10 @@ private:
     QPlaceManager *manager();
 
     QPlaceCategory m_category;
-    QDeclarativePlaceIcon *m_icon;
-    QDeclarativeGeoServiceProvider *m_plugin;
-    QPlaceReply *m_reply;
-    bool m_complete;
-    Status m_status;
+    QDeclarativeGeoServiceProvider *m_plugin = nullptr;
+    QPlaceReply *m_reply = nullptr;
+    bool m_complete = false;
+    Status m_status = Ready;
     QString m_errorString;
 };
 

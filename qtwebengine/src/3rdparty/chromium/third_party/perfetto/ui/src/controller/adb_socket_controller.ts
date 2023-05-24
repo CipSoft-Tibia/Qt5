@@ -16,7 +16,7 @@ import * as protobuf from 'protobufjs/minimal';
 
 import {perfetto} from '../gen/protos';
 
-import {AdbAuthState, AdbBaseConsumerPort} from './adb_base_controller';
+import {AdbBaseConsumerPort, AdbConnectionState} from './adb_base_controller';
 import {Adb, AdbStream} from './adb_interfaces';
 import {
   isReadBuffersResponse,
@@ -84,7 +84,7 @@ export class AdbSocketConsumerPort extends AdbBaseConsumerPort {
 
   async invoke(method: string, params: Uint8Array) {
     // ADB connection & authentication is handled by the superclass.
-    console.assert(this.state === AdbAuthState.CONNECTED);
+    console.assert(this.state === AdbConnectionState.CONNECTED);
     this.socketCommandQueue.push({method, params});
 
     if (this.socketState === SocketState.BINDING_IN_PROGRESS) return;
@@ -118,7 +118,7 @@ export class AdbSocketConsumerPort extends AdbBaseConsumerPort {
     const frame = new perfetto.protos.IPCFrame({
       requestId,
       msgInvokeMethod: new perfetto.protos.IPCFrame.InvokeMethod(
-          {serviceId: this.serviceId, methodId, argsProto})
+          {serviceId: this.serviceId, methodId, argsProto}),
     });
     this.requestMethods.set(requestId, method);
     this.sendFrame(frame);
@@ -161,7 +161,11 @@ export class AdbSocketConsumerPort extends AdbBaseConsumerPort {
   }
 
   private parseMessage(frameBuffer: Uint8Array) {
-    const frame = perfetto.protos.IPCFrame.decode(frameBuffer);
+    // Copy message to new array:
+    const buf = new ArrayBuffer(frameBuffer.byteLength);
+    const arr = new Uint8Array(buf);
+    arr.set(frameBuffer);
+    const frame = perfetto.protos.IPCFrame.decode(arr);
     this.handleIncomingFrame(frame);
   }
 
@@ -296,9 +300,9 @@ export class AdbSocketConsumerPort extends AdbBaseConsumerPort {
     const frame = new perfetto.protos.IPCFrame({
       requestId,
       msgBindService: new perfetto.protos.IPCFrame.BindService(
-          {serviceName: 'ConsumerPort'})
+          {serviceName: 'ConsumerPort'}),
     });
-    return new Promise((resolve, _) => {
+    return new Promise<void>((resolve, _) => {
       this.resolveBindingPromise = resolve;
       this.sendFrame(frame);
     });

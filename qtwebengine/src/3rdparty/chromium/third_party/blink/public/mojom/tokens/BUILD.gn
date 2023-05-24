@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -14,6 +14,12 @@ mojom_component("tokens") {
   shared_cpp_typemaps = [
     {
       types = [
+        # DOCUMENT TOKENS
+        {
+          mojom = "blink.mojom.DocumentToken"
+          cpp = "::blink::DocumentToken"
+        },
+
         # FRAME TOKENS
         {
           mojom = "blink.mojom.LocalFrameToken"
@@ -64,6 +70,12 @@ mojom_component("tokens") {
           cpp = "::blink::WorkletToken"
         },
 
+        # SHADOW REALM TOKENS
+        {
+          mojom = "blink.mojom.ShadowRealmToken"
+          cpp = "::blink::ShadowRealmToken"
+        },
+
         # OTHER TOKENS
         #
         # Keep this section last.
@@ -71,6 +83,14 @@ mojom_component("tokens") {
         # If you have multiple tokens that make a thematic group, please lift
         # them to their own section, in alphabetical order. If adding a new
         # token here, please keep the following list in alphabetic order.
+        {
+          mojom = "blink.mojom.AttributionSrcToken"
+          cpp = "::blink::AttributionSrcToken"
+        },
+        {
+          mojom = "blink.mojom.ClipboardSequenceNumberToken"
+          cpp = "::blink::ClipboardSequenceNumberToken"
+        },
         {
           mojom = "blink.mojom.ExecutionContextToken"
           cpp = "::blink::ExecutionContextToken"
@@ -83,9 +103,16 @@ mojom_component("tokens") {
           mojom = "blink.mojom.V8ContextToken"
           cpp = "::blink::V8ContextToken"
         },
+        {
+          mojom = "blink.mojom.WebGPUExecutionContextToken"
+          cpp = "::blink::WebGPUExecutionContextToken"
+        },
       ]
-      traits_headers =
-          [ "//third_party/blink/public/common/tokens/tokens_mojom_traits.h" ]
+      traits_headers = [
+        "//third_party/blink/public/common/tokens/token_mojom_traits_helper.h",
+        "//third_party/blink/public/common/tokens/tokens_mojom_traits.h",
+      ]
+      traits_public_deps = [ ":tokens_traits" ]
     },
   ]
 
@@ -103,4 +130,26 @@ mojom_component("tokens") {
   export_header_blink = "third_party/blink/renderer/platform/platform_export.h"
 
   generate_java = true
+}
+
+source_set("tokens_traits_headers") {
+  configs += [ "//third_party/blink/common:blink_common_implementation" ]
+
+  sources = [
+    "//third_party/blink/public/common/tokens/token_mojom_traits_helper.h",
+    "//third_party/blink/public/common/tokens/tokens_mojom_traits.h",
+  ]
+
+  public_deps = [
+    ":tokens_shared",
+    "//third_party/blink/public/common/tokens:tokens_headers",
+  ]
+}
+
+component("tokens_traits") {
+  configs += [ "//third_party/blink/common:blink_common_implementation" ]
+
+  sources = [ "//third_party/blink/common/tokens/tokens_mojom_traits.cc" ]
+
+  public_deps = [ ":tokens_traits_headers" ]
 }

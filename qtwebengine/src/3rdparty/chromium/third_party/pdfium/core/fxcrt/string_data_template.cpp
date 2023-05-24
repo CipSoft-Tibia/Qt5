@@ -1,4 +1,4 @@
-// Copyright 2020 PDFium Authors. All rights reserved.
+// Copyright 2020 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,14 @@
 
 #include "core/fxcrt/string_data_template.h"
 
+#include <string.h>
+
+#include <new>
+
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
-#include "third_party/base/allocator/partition_allocator/partition_alloc.h"
+#include "third_party/base/check.h"
+#include "third_party/base/check_op.h"
 
 namespace fxcrt {
 
@@ -16,7 +21,7 @@ namespace fxcrt {
 template <typename CharType>
 StringDataTemplate<CharType>* StringDataTemplate<CharType>::Create(
     size_t nLen) {
-  ASSERT(nLen > 0);
+  DCHECK_GT(nLen, 0);
 
   // Calculate space needed for the fixed portion of the struct plus the
   // NUL char that is not included in |m_nAllocLength|.
@@ -33,10 +38,9 @@ StringDataTemplate<CharType>* StringDataTemplate<CharType>::Create(
   nSize &= ~15;
   size_t totalSize = nSize.ValueOrDie();
   size_t usableLen = (totalSize - overhead) / sizeof(CharType);
-  ASSERT(usableLen >= nLen);
+  DCHECK(usableLen >= nLen);
 
-  void* pData = GetStringPartitionAllocator().root()->Alloc(
-      totalSize, "StringDataTemplate");
+  void* pData = FX_StringAlloc(char, totalSize);
   return new (pData) StringDataTemplate(nLen, usableLen);
 }
 
@@ -53,13 +57,13 @@ StringDataTemplate<CharType>* StringDataTemplate<CharType>::Create(
 template <typename CharType>
 void StringDataTemplate<CharType>::Release() {
   if (--m_nRefs <= 0)
-    GetStringPartitionAllocator().root()->Free(this);
+    FX_Free(this);
 }
 
 template <typename CharType>
 void StringDataTemplate<CharType>::CopyContents(
     const StringDataTemplate& other) {
-  ASSERT(other.m_nDataLength <= m_nAllocLength);
+  DCHECK(other.m_nDataLength <= m_nAllocLength);
   memcpy(m_String, other.m_String,
          (other.m_nDataLength + 1) * sizeof(CharType));
 }
@@ -67,9 +71,8 @@ void StringDataTemplate<CharType>::CopyContents(
 template <typename CharType>
 void StringDataTemplate<CharType>::CopyContents(const CharType* pStr,
                                                 size_t nLen) {
-  ASSERT(nLen >= 0);
-  ASSERT(nLen <= m_nAllocLength);
-
+  DCHECK_GE(nLen, 0);
+  DCHECK_LE(nLen, m_nAllocLength);
   memcpy(m_String, pStr, nLen * sizeof(CharType));
   m_String[nLen] = 0;
 }
@@ -78,10 +81,9 @@ template <typename CharType>
 void StringDataTemplate<CharType>::CopyContentsAt(size_t offset,
                                                   const CharType* pStr,
                                                   size_t nLen) {
-  ASSERT(offset >= 0);
-  ASSERT(nLen >= 0);
-  ASSERT(offset + nLen <= m_nAllocLength);
-
+  DCHECK_GE(offset, 0);
+  DCHECK_GE(nLen, 0);
+  DCHECK_LE(offset + nLen, m_nAllocLength);
   memcpy(m_String + offset, pStr, nLen * sizeof(CharType));
   m_String[offset + nLen] = 0;
 }
@@ -89,9 +91,9 @@ void StringDataTemplate<CharType>::CopyContentsAt(size_t offset,
 template <typename CharType>
 StringDataTemplate<CharType>::StringDataTemplate(size_t dataLen,
                                                  size_t allocLen)
-    : m_nRefs(0), m_nDataLength(dataLen), m_nAllocLength(allocLen) {
-  ASSERT(dataLen >= 0);
-  ASSERT(dataLen <= allocLen);
+    : m_nDataLength(dataLen), m_nAllocLength(allocLen) {
+  DCHECK_GE(dataLen, 0);
+  DCHECK_LE(dataLen, allocLen);
   m_String[dataLen] = 0;
 }
 

@@ -1,8 +1,7 @@
 include(../../spectrum.pri)
 
-static: error(This library cannot be built for static linkage)
-
 TEMPLATE = lib
+CONFIG  += static
 TARGET   = fftreal
 
 # FFTReal
@@ -24,18 +23,14 @@ HEADERS  += Array.h \
             OscSinCos.h \
             OscSinCos.hpp \
             def.h
-	    
+
 # Wrapper used to export the required instantiation of the FFTRealFixLen template
 HEADERS  += fftreal_wrapper.h
 SOURCES  += fftreal_wrapper.cpp
 
 DEFINES  += FFTREAL_LIBRARY
 
-macx {
-    CONFIG += lib_bundle
-} else {
-    DESTDIR = ../..$${spectrum_build_dir}
-}
+DESTDIR = ../..$${spectrum_build_dir}
 
 EXAMPLE_FILES = bwins/fftreal.def eabi/fftreal.def readme.txt license.txt
 

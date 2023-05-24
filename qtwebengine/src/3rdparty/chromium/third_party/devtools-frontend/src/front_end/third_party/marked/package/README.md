@@ -8,8 +8,6 @@
 [![gzip size](https://badgen.net/badgesize/gzip/https://cdn.jsdelivr.net/npm/marked/marked.min.js)](https://cdn.jsdelivr.net/npm/marked/marked.min.js)
 [![install size](https://badgen.net/packagephobia/install/marked)](https://packagephobia.now.sh/result?p=marked)
 [![downloads](https://badgen.net/npm/dt/marked)](https://www.npmjs.com/package/marked)
-[![dep](https://badgen.net/david/dep/markedjs/marked?label=deps)](https://david-dm.org/markedjs/marked)
-[![dev dep](https://badgen.net/david/dev/markedjs/marked?label=devDeps)](https://david-dm.org/markedjs/marked?type=dev)
 [![github actions](https://github.com/markedjs/marked/workflows/Tests/badge.svg)](https://github.com/markedjs/marked/actions)
 [![snyk](https://snyk.io/test/npm/marked/badge.svg)](https://snyk.io/test/npm/marked)
 
@@ -30,6 +28,12 @@ Also read about:
 
 * [Options](https://marked.js.org/#/USING_ADVANCED.md)
 * [Extensibility](https://marked.js.org/#/USING_PRO.md)
+
+## Compatibility
+
+**Node.js:** Only [current and LTS](https://nodejs.org/en/about/releases/) Node.js versions are supported. End of life Node.js versions may become incompatible with Marked at any point in time.
+
+**Browser:** Not IE11 :)
 
 ## Installation
 
@@ -65,7 +69,7 @@ $ cat hello.html
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     document.getElementById('content').innerHTML =
-      marked('# Marked in the browser\n\nRendered by **marked**.');
+      marked.parse('# Marked in the browser\n\nRendered by **marked**.');
   </script>
 </body>
 </html>

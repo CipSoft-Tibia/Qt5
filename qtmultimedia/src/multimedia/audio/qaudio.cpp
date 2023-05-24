@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include <qaudio.h>
@@ -45,17 +9,6 @@
 QT_BEGIN_NAMESPACE
 
 #define LOG100 4.60517018599
-
-static void qRegisterAudioMetaTypes()
-{
-    qRegisterMetaType<QAudio::Error>();
-    qRegisterMetaType<QAudio::State>();
-    qRegisterMetaType<QAudio::Mode>();
-    qRegisterMetaType<QAudio::Role>();
-    qRegisterMetaType<QAudio::VolumeScale>();
-}
-
-Q_CONSTRUCTOR_FUNCTION(qRegisterAudioMetaTypes)
 
 /*!
     \namespace QAudio
@@ -88,37 +41,6 @@ Q_CONSTRUCTOR_FUNCTION(qRegisterAudioMetaTypes)
     \value StoppedState      The audio device is closed, and is not processing any audio data
     \value IdleState         The QIODevice passed in has no data and audio system's buffer is empty, this state
                              is set after start() is called and while no audio data is available to be processed.
-    \value InterruptedState  This stream is in a suspended state because another higher priority stream currently
-                             has control of the audio device.  Playback cannot resume until the higher priority
-                             stream relinquishes control of the audio device.
-*/
-
-/*!
-    \enum QAudio::Mode
-
-    \value AudioOutput   audio output device
-    \value AudioInput    audio input device
-*/
-
-/*!
-    \enum QAudio::Role
-
-    This enum describes the role of an audio stream.
-
-    \value UnknownRole              The role is unknown or undefined
-    \value MusicRole                Music
-    \value VideoRole                Soundtrack from a movie or a video
-    \value VoiceCommunicationRole   Voice communications, such as telephony
-    \value AlarmRole                Alarm
-    \value NotificationRole         Notification, such as an incoming e-mail or a chat request
-    \value RingtoneRole             Ringtone
-    \value AccessibilityRole        For accessibility, such as with a screen reader
-    \value SonificationRole         Sonification, such as with user interface sounds
-    \value GameRole                 Game audio
-    \value CustomRole               The role is specified by QMediaPlayer::customAudioRole()
-
-    \since 5.6
-    \sa QMediaPlayer::setAudioRole()
 */
 
 /*!
@@ -145,8 +67,6 @@ namespace QAudio
 {
 
 /*!
-    \fn qreal QAudio::convertVolume(qreal volume, VolumeScale from, VolumeScale to)
-
     Converts an audio \a volume \a from a volume scale \a to another, and returns the result.
 
     Depending on the context, different scales are used to represent audio volume. All Qt Multimedia
@@ -165,30 +85,30 @@ namespace QAudio
     \snippet multimedia-snippets/audio.cpp Volume conversion
 
     \since 5.8
-    \sa VolumeScale, QMediaPlayer::setVolume(), QAudioOutput::setVolume(),
-        QAudioInput::setVolume(), QSoundEffect::setVolume(), QMediaRecorder::setVolume()
+    \sa VolumeScale, QAudioSink::setVolume(), QAudioSource::setVolume(),
+    QSoundEffect::setVolume()
 */
-qreal convertVolume(qreal volume, VolumeScale from, VolumeScale to)
+float convertVolume(float volume, VolumeScale from, VolumeScale to)
 {
     switch (from) {
     case LinearVolumeScale:
-        volume = qMax(qreal(0), volume);
+        volume = qMax(float(0), volume);
         switch (to) {
         case LinearVolumeScale:
             return volume;
         case CubicVolumeScale:
-            return qPow(volume, qreal(1 / 3.0));
+            return qPow(volume, float(1 / 3.0));
         case LogarithmicVolumeScale:
             return 1 - std::exp(-volume * LOG100);
         case DecibelVolumeScale:
             if (volume < 0.001)
-                return qreal(-200);
+                return float(-200);
             else
-                return qreal(20.0) * std::log10(volume);
+                return float(20.0) * std::log10(volume);
         }
         break;
     case CubicVolumeScale:
-        volume = qMax(qreal(0), volume);
+        volume = qMax(float(0), volume);
         switch (to) {
         case LinearVolumeScale:
             return volume * volume * volume;
@@ -198,13 +118,13 @@ qreal convertVolume(qreal volume, VolumeScale from, VolumeScale to)
             return 1 - std::exp(-volume * volume * volume * LOG100);
         case DecibelVolumeScale:
             if (volume < 0.001)
-                return qreal(-200);
+                return float(-200);
             else
-                return qreal(3.0 * 20.0) * std::log10(volume);
+                return float(3.0 * 20.0) * std::log10(volume);
         }
         break;
     case LogarithmicVolumeScale:
-        volume = qMax(qreal(0), volume);
+        volume = qMax(float(0), volume);
         switch (to) {
         case LinearVolumeScale:
             if (volume > 0.99)
@@ -215,29 +135,29 @@ qreal convertVolume(qreal volume, VolumeScale from, VolumeScale to)
             if (volume > 0.99)
                 return 1;
             else
-                return qPow(-std::log(1 - volume) / LOG100, qreal(1 / 3.0));
+                return qPow(-std::log(1 - volume) / LOG100, float(1 / 3.0));
         case LogarithmicVolumeScale:
             return volume;
         case DecibelVolumeScale:
             if (volume < 0.001)
-                return qreal(-200);
+                return float(-200);
             else if (volume > 0.99)
                 return 0;
             else
-                return qreal(20.0) * std::log10(-std::log(1 - volume) / LOG100);
+                return float(20.0) * std::log10(-std::log(1 - volume) / LOG100);
         }
         break;
     case DecibelVolumeScale:
         switch (to) {
         case LinearVolumeScale:
-            return qPow(qreal(10.0), volume / qreal(20.0));
+            return qPow(float(10.0), volume / float(20.0));
         case CubicVolumeScale:
-            return qPow(qreal(10.0), volume / qreal(3.0 * 20.0));
+            return qPow(float(10.0), volume / float(3.0 * 20.0));
         case LogarithmicVolumeScale:
             if (qFuzzyIsNull(volume))
                 return 1;
             else
-                return 1 - std::exp(-qPow(qreal(10.0), volume / qreal(20.0)) * LOG100);
+                return 1 - std::exp(-qPow(float(10.0), volume / float(20.0)) * LOG100);
         case DecibelVolumeScale:
             return volume;
         }
@@ -291,66 +211,6 @@ QDebug operator<<(QDebug dbg, QAudio::State state)
         case QAudio::IdleState:
             dbg << "IdleState";
             break;
-        case QAudio::InterruptedState:
-            dbg << "InterruptedState";
-            break;
-    }
-    return dbg;
-}
-
-QDebug operator<<(QDebug dbg, QAudio::Mode mode)
-{
-    QDebugStateSaver saver(dbg);
-    dbg.nospace();
-    switch (mode) {
-        case QAudio::AudioInput:
-            dbg << "AudioInput";
-            break;
-        case QAudio::AudioOutput:
-            dbg << "AudioOutput";
-            break;
-    }
-    return dbg;
-}
-
-QDebug operator<<(QDebug dbg, QAudio::Role role)
-{
-    QDebugStateSaver saver(dbg);
-    dbg.nospace();
-    switch (role) {
-    case QAudio::UnknownRole:
-        dbg << "UnknownRole";
-        break;
-    case QAudio::AccessibilityRole:
-        dbg << "AccessibilityRole";
-        break;
-    case QAudio::AlarmRole:
-        dbg << "AlarmRole";
-        break;
-    case QAudio::GameRole:
-        dbg << "GameRole";
-        break;
-    case QAudio::MusicRole:
-        dbg << "MusicRole";
-        break;
-    case QAudio::NotificationRole:
-        dbg << "NotificationRole";
-        break;
-    case QAudio::RingtoneRole:
-        dbg << "RingtoneRole";
-        break;
-    case QAudio::SonificationRole:
-        dbg << "SonificationRole";
-        break;
-    case QAudio::VideoRole:
-        dbg << "VideoRole";
-        break;
-    case QAudio::VoiceCommunicationRole:
-        dbg << "VoiceCommunicationRole";
-        break;
-    case QAudio::CustomRole:
-        dbg << "CustomRole";
-        break;
     }
     return dbg;
 }

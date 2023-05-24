@@ -1,9 +1,10 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Methods for converting model objects to human-readable formats."""
 
 import abc
+import data_quality
 import io
 import collections
 import csv
@@ -23,9 +24,9 @@ def _PrettySize(size):
   size /= 1024.0
   if abs(size) < 10:
     return '%.2fkb' % size
-  elif abs(size) < 100:
+  if abs(size) < 100:
     return '%.1fkb' % size
-  elif abs(size) < 1024:
+  if abs(size) < 1024:
     return '%dkb' % size
   size /= 1024.0
   if abs(size) < 10:
@@ -73,7 +74,7 @@ def _GetSectionSizeInfo(unsummed_sections, summed_sections, section_sizes):
   return (total_bytes, section_names)
 
 
-class Histogram(object):
+class Histogram:
   BUCKET_NAMES_FOR_SMALL_VALUES = {-1: '(-1,0)', 0: '{0}', 1: '(0,1)'}
 
   def __init__(self):
@@ -126,7 +127,7 @@ class Histogram(object):
       yield line.rstrip()
 
 
-class Describer(object):
+class Describer:
   def __init__(self):
     pass
 
@@ -172,7 +173,7 @@ class Describer(object):
 
 class DescriberText(Describer):
   def __init__(self, verbose=False, recursive=False, summarize=True):
-    super(DescriberText, self).__init__()
+    super().__init__()
     self.verbose = verbose
     self.recursive = recursive
     self.summarize = summarize
@@ -445,15 +446,15 @@ class DescriberText(Describer):
     yield '{} paths added, {} removed, {} changed'.format(
         len(added), len(removed), len(changed))
 
-    if self.verbose and len(added):
+    if self.verbose and added:
       yield 'Added files:'
       for p in sorted(added):
         yield '  ' + p
-    if self.verbose and len(removed):
+    if self.verbose and removed:
       yield 'Removed files:'
       for p in sorted(removed):
         yield '  ' + p
-    if self.verbose and len(changed):
+    if self.verbose and changed:
       yield 'Changed files:'
       for p in sorted(changed):
         yield '  ' + p
@@ -534,17 +535,12 @@ class DescriberText(Describer):
           self._DescribeDeltaDict('Build config', diff.before.build_config,
                                   diff.after.build_config))
       for c in diff.containers:
-        name = c.name
         desc_list.append(('', ))
-        desc_list.append(('Container: <%s>' % name, ))
-        c_before = diff.before.ContainerForName(
-            name, default=models.Container.Empty())
-        c_after = diff.after.ContainerForName(name,
-                                              default=models.Container.Empty())
+        desc_list.append(('Container<%s>: %s' % (c.short_name, c.name), ))
         desc_list.append(
             self._DescribeDeltaDict('Metadata',
-                                    c_before.metadata,
-                                    c_after.metadata,
+                                    c.before.metadata,
+                                    c.after.metadata,
                                     indent='    '))
         unsummed_sections, summed_sections = c.ClassifySections()
         desc_list.append(
@@ -577,14 +573,16 @@ class DescriberText(Describer):
       containers = size_info.containers
     else:
       containers = [
-          models.Container(name='',
-                           metadata=size_info.metadata_legacy,
-                           section_sizes=size_info.containers[0].section_sizes)
+          models.Container(
+              name='',
+              metadata=size_info.metadata_legacy,
+              section_sizes=size_info.containers[0].section_sizes,
+              metrics_by_file=size_info.containers[0].metrics_by_file)
       ]
     for c in containers:
       if c.name:
         desc_list.append(('', ))
-        desc_list.append(('Container <%s>' % c.name, ))
+        desc_list.append(('Container<%s>: %s' % (c.short_name, c.name), ))
       desc_list.append(('Metadata:', ))
       desc_list.append('    %s' % line for line in DescribeDict(c.metadata))
       unsummed_sections, summed_sections = c.ClassifySections()
@@ -594,120 +592,15 @@ class DescriberText(Describer):
 
     if self.verbose:
       desc_list.append(('', ))
-      desc_list.append(DescribeSizeInfoCoverage(size_info))
+      desc_list.append(data_quality.DescribeSizeInfoCoverage(size_info))
     desc_list.append(('', ))
     desc_list.append(self.GenerateLines(size_info.symbols))
     return itertools.chain.from_iterable(desc_list)
 
 
-def _DescribeSizeInfoContainerCoverage(raw_symbols, container):
-  """Yields lines describing how accurate |size_info| is."""
-  for section, section_name in models.SECTION_TO_SECTION_NAME.items():
-    expected_size = container.section_sizes.get(section_name)
-    in_section = raw_symbols.WhereInSection(section_name, container=container)
-    actual_size = in_section.size
-
-    if expected_size is None:
-      yield 'Section {}: {} bytes from {} symbols.'.format(
-          section_name, actual_size, len(in_section))
-    else:
-      size_percent = _Divide(actual_size, expected_size)
-      yield ('Section {}: has {:.1%} of {} bytes accounted for from '
-             '{} symbols. {} bytes are unaccounted for.').format(
-                 section_name, size_percent, actual_size, len(in_section),
-                 expected_size - actual_size)
-
-    padding = in_section.padding
-    yield '* Padding accounts for {} bytes ({:.1%})'.format(
-        padding, _Divide(padding, actual_size))
-
-    def size_msg(syms, padding=False):
-      size = syms.size if not padding else syms.size_without_padding
-      size_msg = 'Accounts for {} bytes ({:.1%}).'.format(
-          size, _Divide(size, actual_size))
-      if padding:
-        size_msg = size_msg[:-1] + ' padding is {} bytes.'.format(syms.padding)
-      return size_msg
-
-    syms = in_section.Filter(lambda s: s.source_path)
-    yield '* {} have source paths. {}'.format(len(syms), size_msg(syms))
-    syms = in_section.WhereHasComponent()
-    yield '* {} have a component assigned. {}'.format(len(syms), size_msg(syms))
-
-    syms = in_section.WhereNameMatches(r'^\*')
-    if len(syms):
-      yield '* {} placeholders exist (symbols that start with **). {}'.format(
-          len(syms), size_msg(syms))
-
-    syms = syms.Inverted().WhereHasAnyAttribution().Inverted()
-    if syms:
-      yield '* {} symbols have no name or path. {}'.format(
-          len(syms), size_msg(syms))
-
-    if section == 'r':
-      syms = in_section.Filter(lambda s: s.IsStringLiteral())
-      yield '* {} string literals exist. {}'.format(
-          len(syms), size_msg(syms, padding=True))
-
-    syms = in_section.Filter(lambda s: s.aliases)
-    if len(syms):
-      uniques = sum(1 for s in syms.IterUniqueSymbols())
-      saved = sum(s.size_without_padding * (s.num_aliases - 1)
-                  for s in syms.IterUniqueSymbols())
-      yield ('* {} aliases exist, mapped to {} unique addresses '
-             '({} bytes saved)').format(len(syms), uniques, saved)
-
-    syms = in_section.WhereObjectPathMatches('{shared}')
-    if len(syms):
-      yield '* {} symbols have shared ownership. {}'.format(
-          len(syms), size_msg(syms))
-    else:
-      yield '* 0 symbols have shared ownership.'
-
-    for flag, desc in (
-        (models.FLAG_HOT, 'marked as "hot"'),
-        (models.FLAG_UNLIKELY, 'marked as "unlikely"'),
-        (models.FLAG_STARTUP, 'marked as "startup"'),
-        (models.FLAG_CLONE, 'clones'),
-        (models.FLAG_GENERATED_SOURCE, 'from generated sources')):
-      syms = in_section.WhereHasFlag(flag)
-      if len(syms):
-        yield '* {} symbols are {}. {}'.format(len(syms), desc, size_msg(syms))
-
-    # These thresholds were found by experimenting with arm32 Chrome.
-    # E.g.: Set them to 0 and see what warnings get logged, then take max value.
-    spam_counter = 0
-    for i in range(len(in_section) - 1):
-      sym = in_section[i + 1]
-      if (not sym.full_name.startswith('*')
-          and not sym.source_path.endswith('.S')  # Assembly symbol are iffy.
-          and not sym.IsStringLiteral()
-          and ((sym.section in 'rd' and sym.padding >= 256) or
-               (sym.section in 't' and sym.padding >= 64))):
-        # TODO(crbug.com/959906): We should synthesize symbols for these gaps
-        #     rather than attribute them as padding.
-        spam_counter += 1
-        if spam_counter <= 5:
-          yield 'Large padding of {} between:'.format(sym.padding)
-          yield '  A) ' + repr(in_section[i])
-          yield '  B) ' + repr(sym)
-
-
-def DescribeSizeInfoCoverage(size_info):
-  for i, container in enumerate(size_info.containers):
-    if i > 0:
-      yield ''
-    if container.name:
-      yield 'Container <%s>' % container.name
-    # TODO(huangs): Change to use "yield from" once linters allow this.
-    for line in _DescribeSizeInfoContainerCoverage(size_info.raw_symbols,
-                                                   container):
-      yield line
-
-
 class DescriberCsv(Describer):
   def __init__(self, verbose=False):
-    super(DescriberCsv, self).__init__()
+    super().__init__()
     self.verbose = verbose
     self.stringio = io.StringIO()
     self.csv_writer = csv.writer(self.stringio)

@@ -5,14 +5,16 @@ endif
 config_h.set('ENABLE_EGL', '1')
 
 srcs_renderer_gl = [
+	'egl-glue.c',
 	'gl-renderer.c',
 	linux_dmabuf_unstable_v1_protocol_c,
 	linux_dmabuf_unstable_v1_server_protocol_h,
 ]
 
 deps_renderer_gl = [
+	dep_libm,
 	dep_pixman,
-	dep_libweston,
+	dep_libweston_private,
 	dep_libdrm_headers,
 	dep_vertex_clipping
 ]
@@ -28,7 +30,7 @@ endforeach
 plugin_gl = shared_library(
 	'gl-renderer',
 	srcs_renderer_gl,
-	include_directories: include_directories('../..', '../../shared'),
+	include_directories: common_inc,
 	dependencies: deps_renderer_gl,
 	name_prefix: '',
 	install: true,

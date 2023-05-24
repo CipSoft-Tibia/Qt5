@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,11 +9,13 @@
 #include <vector>
 
 #include "base/gtest_prod_util.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "ui/gfx/gfx_export.h"
-#include "ui/gfx/image/image_skia_rep.h"
+
+class SkBitmap;
 
 namespace gfx {
+class ImageSkiaRep;
 class ImageSkiaSource;
 class Size;
 
@@ -53,6 +55,10 @@ class GFX_EXPORT ImageSkia {
   // at |scale| and uses its dimensions to calculate the size in DIP.
   ImageSkia(std::unique_ptr<ImageSkiaSource> source, float scale);
 
+  // This constructor is explicitly deleted to ensure callers don't accidentally
+  // pass an int and have it converted to float.
+  ImageSkia(std::unique_ptr<ImageSkiaSource> source, int dont_use) = delete;
+
   explicit ImageSkia(const gfx::ImageSkiaRep& image_rep);
 
   // Copies a reference to |other|'s storage.
@@ -73,9 +79,21 @@ class GFX_EXPORT ImageSkia {
   // Returns the maximum scale supported by this platform.
   static float GetMaxSupportedScale();
 
-  // Creates an image from the passed in bitmap.
-  // DIP width and height are based on scale factor of 1x.
-  // Adds ref to passed in bitmap.
+  // Creates an image from the passed in bitmap, which is designed for display
+  // at the device scale factor given in `scale`. The DIP width and height will
+  // be based on that scale factor. A scale factor of 0 is equivalent to
+  // calling CreateFrom1xBitmap(), which indicates the bitmap is not scaled.
+  // The `bitmap`, if present, will be made immutable. If the `bitmap` is
+  // uninitialized, empty, or null then the returned ImageSkia will be
+  // default-constructed and empty.
+  // WARNING: If the device scale factory differs from the scale given here,
+  // the resulting image will be pixelated when displayed.
+  static ImageSkia CreateFromBitmap(const SkBitmap& bitmap, float scale);
+
+  // Creates an image from the passed in bitmap. The DIP width and height will
+  // be based on scale factor of 1x. The `bitmap`, if present, will be made
+  // immutable. If the bitmap is uninitialized, empty, or null then the
+  // returned ImageSkia will be default-constructed and empty.
   // WARNING: The resulting image will be pixelated when painted on a high
   // density display.
   static ImageSkia CreateFrom1xBitmap(const SkBitmap& bitmap);

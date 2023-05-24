@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,13 @@
 
 #include "services/network/public/mojom/fetch_api.mojom-blink.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
-#include "third_party/blink/public/mojom/web_feature/web_feature.mojom-blink.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/loader/fetch/console_logger.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
 #include "third_party/blink/renderer/platform/network/mime/mime_type_registry.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 
 namespace blink {
 
@@ -56,6 +57,16 @@ const WebFeature kTextXmlFeatures[2] = {
     WebFeature::kSameOriginTextXml,
 };
 
+const WebFeature kJsonFeatures[2] = {
+    WebFeature::kCrossOriginJsonTypeForScript,
+    WebFeature::kSameOriginJsonTypeForScript,
+};
+
+const WebFeature kUnknownFeatures[2] = {
+    WebFeature::kCrossOriginStrictNosniffWouldBlock,
+    WebFeature::kSameOriginStrictNosniffWouldBlock,
+};
+
 // Helper function to decide what to do with with a given mime type. This takes
 // - a mime type
 // - inputs that affect the decision (is_same_origin, mime_type_check_mode).
@@ -70,6 +81,13 @@ bool AllowMimeTypeAsScript(const String& mime_type,
                            AllowedByNosniff::MimeTypeCheck mime_type_check_mode,
                            WebFeature& counter) {
   using MimeTypeCheck = AllowedByNosniff::MimeTypeCheck;
+
+  // If strict mime type checking for workers is enabled, we'll treat all
+  // "lax" for worker cases as strict.
+  if (mime_type_check_mode == MimeTypeCheck::kLaxForWorker &&
+      RuntimeEnabledFeatures::StrictMimeTypesForWorkersEnabled()) {
+    mime_type_check_mode = MimeTypeCheck::kStrict;
+  }
 
   // The common case: A proper JavaScript MIME type
   if (MIMETypeRegistry::IsSupportedJavaScriptMIMEType(mime_type))
@@ -105,9 +123,10 @@ bool AllowMimeTypeAsScript(const String& mime_type,
   // we still wish to accept them (or log them using UseCounter, or add a
   // deprecation warning to the console).
 
-  if (mime_type.StartsWithIgnoringASCIICase("text/") &&
-      MIMETypeRegistry::IsLegacySupportedJavaScriptLanguage(
-          mime_type.Substring(5))) {
+  if (EqualIgnoringASCIICase(mime_type, "text/javascript1.6") ||
+      EqualIgnoringASCIICase(mime_type, "text/javascript1.7")) {
+    // We've been excluding these legacy values from UseCounter stats since
+    // before.
     return true;
   }
 
@@ -121,6 +140,11 @@ bool AllowMimeTypeAsScript(const String& mime_type,
     counter = kTextPlainFeatures[same_origin];
   } else if (mime_type.StartsWithIgnoringCase("text/xml")) {
     counter = kTextXmlFeatures[same_origin];
+  } else if (mime_type.StartsWithIgnoringCase("text/json") ||
+             mime_type.StartsWithIgnoringCase("application/json")) {
+    counter = kJsonFeatures[same_origin];
+  } else {
+    counter = kUnknownFeatures[same_origin];
   }
 
   return true;

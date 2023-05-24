@@ -7,8 +7,9 @@
 <translation id="1555130319947370107">Urdina</translation>
 <translation id="1588438908519853928">Arrunta</translation>
 <translation id="1591070050619849194">Desgaitu animazio guztiak.</translation>
-<translation id="1703735871906654364">Testu-kurtsorearen bidez arakatzeko aplikazioa</translation>
+<translation id="1703735871906654364">Testu-kurtsorearen bidez arakatzea</translation>
 <translation id="1791496371305830581">Onartu animazio guztiak.</translation>
+<translation id="1974060860693918893">Aurreratuak</translation>
 <translation id="1996252509865389616">Gaitu nahi duzu?</translation>
 <translation id="2079545284768500474">Desegin</translation>
 <translation id="2179565792157161713">Ireki azalpen luzea beste fitxa batean</translation>
@@ -18,7 +19,7 @@
 <translation id="2648340354586434750">Eduki sakatuta &lt;span class='key'&gt;Aukera&lt;/span&gt; hitz batetik bestera mugitzeko.</translation>
 <translation id="2795227192542594043">Luzapenak kurtsore mugikorra jartzen du webgunean testua teklatuarekin hautatu ahal izateko.</translation>
 <translation id="2808027189040546825">1. urratsa: hautatu izar lausoenak dituen errenkada:</translation>
-<translation id="2965611304828530558">&lt;p&gt;Estekara edo kontrolera iristean, automatikoki fokuratzen da. Sakatu &lt;span class='key'&gt;Sartu&lt;/span&gt; estekan edo botoian klik egitean. &lt;/p&gt; &lt;p&gt;Fokuratutako kontrolak (adibidez, testu-koadroak edo zerrenda-koadroak) gezi-teklak hartzen dituenean, sakatu &lt;span class='key'&gt;Esc&lt;/span&gt; eta, ondoren, Ezkerrera edo Eskuinera gezia, testu-kurtsorearen bidez arakatzen jarraitzeko. &lt;/p&gt; &lt;p&gt;Horren ordez, sakatu &lt;span class='key'&gt;Fitxa&lt;/span&gt; fokura daitekeen hurrengo kontrolera joateko. &lt;/p&gt;</translation>
+<translation id="2965611304828530558">&lt;p&gt;Estekara edo kontrolera iristean, automatikoki fokuratzen da. Sakatu &lt;span class='key'&gt;Sartu&lt;/span&gt; estekan edo botoian klik egitean. &lt;/p&gt; &lt;p&gt;Fokuratutako kontrolak (adibidez, testu-koadroak edo zerrenda-koadroak) gezi-teklak hartzen dituenean, sakatu &lt;span class='key'&gt;Esc&lt;/span&gt; eta, ondoren, Ezkerrera edo Eskuinera gezia, testu-kurtsorearen bidez arakatzeko eginbidea erabiltzen jarraitzeko. &lt;/p&gt; &lt;p&gt;Horren ordez, sakatu &lt;span class='key'&gt;Fitxa&lt;/span&gt; fokura daitekeen hurrengo kontrolera joateko. &lt;/p&gt;</translation>
 <translation id="3252573918265662711">Konfigurazioa</translation>
 <translation id="3410969471888629217">Ahaztu webgunearen pertsonalizazioak</translation>
 <translation id="3435896845095436175">Gaitu</translation>
@@ -51,6 +52,7 @@
 <translation id="6170146920149900756">Kolore-hobekuntza</translation>
 <translation id="633394792577263429">Eduki sakatuta &lt;span class='key'&gt;Kontrola&lt;/span&gt; hitz batetik bestera mugitzeko.</translation>
 <translation id="6550675742724504774">Aukerak</translation>
+<translation id="6699630355767768222">3. urratsa: ordeztu kolore-ardatza koloreak zuzentzeko</translation>
 <translation id="6838518108677880446">Konfigurazioa:</translation>
 <translation id="690628312087070417">Testu-kurtsoreak urrun salto egiten duenean:</translation>
 <translation id="6965382102122355670">Ados</translation>
@@ -64,5 +66,6 @@
 <translation id="8321034316479930120">Animazioen gidalerroak</translation>
 <translation id="8480209185614411573">Kontraste handia</translation>
 <translation id="8609925175482059018">Sakatu &lt;span class='key'&gt;F7&lt;/span&gt; testu-kurtsorearen bidez arakatzeko eginbidea aktibatzeko. Saka ezazu berriro desaktibatzeko.</translation>
+<translation id="8798099450830957504">Lehenetsia</translation>
 <translation id="894241283505723656">Laster-menuko azalpen luzeak</translation>
 </translationbundle>

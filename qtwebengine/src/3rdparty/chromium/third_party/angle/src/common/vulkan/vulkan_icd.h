@@ -27,7 +27,13 @@ enum class ICD
     SwiftShader,
 };
 
-class ScopedVkLoaderEnvironment : angle::NonCopyable
+struct SimpleDisplayWindow
+{
+    uint16_t width;
+    uint16_t height;
+};
+
+class [[nodiscard]] ScopedVkLoaderEnvironment : angle::NonCopyable
 {
   public:
     ScopedVkLoaderEnvironment(bool enableValidationLayers, vk::ICD icd);
@@ -47,10 +53,15 @@ class ScopedVkLoaderEnvironment : angle::NonCopyable
     bool mChangedICDEnv;
     Optional<std::string> mPreviousICDEnv;
     Optional<std::string> mPreviousCustomExtensionsEnv;
+    bool mChangedNoDeviceSelect;
+    Optional<std::string> mPreviousNoDeviceSelectEnv;
 };
 
-void ChoosePhysicalDevice(const std::vector<VkPhysicalDevice> &physicalDevices,
+void ChoosePhysicalDevice(PFN_vkGetPhysicalDeviceProperties pGetPhysicalDeviceProperties,
+                          const std::vector<VkPhysicalDevice> &physicalDevices,
                           vk::ICD preferredICD,
+                          uint32_t preferredVendorID,
+                          uint32_t preferredDeviceID,
                           VkPhysicalDevice *physicalDeviceOut,
                           VkPhysicalDeviceProperties *physicalDevicePropertiesOut);
 

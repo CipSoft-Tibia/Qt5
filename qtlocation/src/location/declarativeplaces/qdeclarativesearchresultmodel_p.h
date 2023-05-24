@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QDECLARATIVESEARCHRESULTMODEL_P_H
 #define QDECLARATIVESEARCHRESULTMODEL_P_H
@@ -52,15 +19,17 @@
 #include <QtLocation/private/qdeclarativesearchmodelbase_p.h>
 #include <QtLocation/private/qdeclarativecategory_p.h>
 #include <QtLocation/private/qdeclarativeplace_p.h>
-#include <QtLocation/private/qdeclarativeplaceicon_p.h>
 
 QT_BEGIN_NAMESPACE
 
+class QPlaceIcon;
 class QDeclarativeGeoServiceProvider;
 
 class Q_LOCATION_PRIVATE_EXPORT QDeclarativeSearchResultModel : public QDeclarativeSearchModelBase
 {
     Q_OBJECT
+    QML_NAMED_ELEMENT(PlaceSearchModel)
+    QML_ADDED_IN_VERSION(5, 0)
 
     Q_PROPERTY(QString searchTerm READ searchTerm WRITE setSearchTerm NOTIFY searchTermChanged)
     Q_PROPERTY(QQmlListProperty<QDeclarativeCategory> categories READ categories NOTIFY categoriesChanged)
@@ -72,7 +41,7 @@ class Q_LOCATION_PRIVATE_EXPORT QDeclarativeSearchResultModel : public QDeclarat
     Q_PROPERTY(QDeclarativeGeoServiceProvider *favoritesPlugin READ favoritesPlugin WRITE setFavoritesPlugin NOTIFY favoritesPluginChanged)
     Q_PROPERTY(QVariantMap favoritesMatchParameters READ favoritesMatchParameters WRITE setFavoritesMatchParameters NOTIFY favoritesMatchParametersChanged)
 
-    Q_PROPERTY(bool incremental MEMBER m_incremental NOTIFY incrementalChanged REVISION 12)
+    Q_PROPERTY(bool incremental MEMBER m_incremental NOTIFY incrementalChanged REVISION(5, 12))
 
     Q_ENUMS(SearchResultType RelevanceHint)
 
@@ -89,7 +58,7 @@ public:
         LexicalPlaceNameHint = QPlaceSearchRequest::LexicalPlaceNameHint
     };
 
-    explicit QDeclarativeSearchResultModel(QObject *parent = 0);
+    explicit QDeclarativeSearchResultModel(QObject *parent = nullptr);
     ~QDeclarativeSearchResultModel();
 
     QString searchTerm() const;
@@ -98,8 +67,8 @@ public:
     QQmlListProperty<QDeclarativeCategory> categories();
     static void categories_append(QQmlListProperty<QDeclarativeCategory> *list,
                                   QDeclarativeCategory *category);
-    static int categories_count(QQmlListProperty<QDeclarativeCategory> *list);
-    static QDeclarativeCategory *category_at(QQmlListProperty<QDeclarativeCategory> *list, int index);
+    static qsizetype categories_count(QQmlListProperty<QDeclarativeCategory> *list);
+    static QDeclarativeCategory *category_at(QQmlListProperty<QDeclarativeCategory> *list, qsizetype index);
     static void categories_clear(QQmlListProperty<QDeclarativeCategory> *list);
 
     QString recommendationId() const;
@@ -119,7 +88,7 @@ public:
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
-    virtual void clearData(bool suppressSignal = false) override;
+    void clearData(bool suppressSignal = false) override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
     Q_INVOKABLE QVariant data(int index, const QString &roleName) const;
     QHash<int, QByteArray> roleNames() const override;
@@ -143,11 +112,11 @@ Q_SIGNALS:
 
 protected:
     QPlaceReply *sendQuery(QPlaceManager *manager, const QPlaceSearchRequest &request) override;
-    virtual void initializePlugin(QDeclarativeGeoServiceProvider *plugin) override;
+    void initializePlugin(QDeclarativeGeoServiceProvider *plugin) override;
 
 protected Q_SLOTS:
-    virtual void queryFinished() override;
-    virtual void onContentUpdated() override;
+    void queryFinished() override;
+    void onContentUpdated() override;
 
 private Q_SLOTS:
     void updateLayout(const QList<QPlace> &favoritePlaces = QList<QPlace>());
@@ -170,15 +139,15 @@ private:
     void removePageRow(int row);
 
     QList<QDeclarativeCategory *> m_categories;
-    QLocation::VisibilityScope m_visibilityScope;
+    QLocation::VisibilityScope m_visibilityScope = QLocation::UnspecifiedVisibility;
 
     QMap<int, QList<QPlaceSearchResult>> m_pages;
     QList<QPlaceSearchResult> m_results;
     QList<QPlaceSearchResult> m_resultsBuffer;
     QList<QDeclarativePlace *> m_places;
-    QList<QDeclarativePlaceIcon *> m_icons;
+    QList<QPlaceIcon> m_icons;
 
-    QDeclarativeGeoServiceProvider *m_favoritesPlugin;
+    QDeclarativeGeoServiceProvider *m_favoritesPlugin = nullptr;
     QVariantMap m_matchParameters;
     bool m_incremental = false;
 };

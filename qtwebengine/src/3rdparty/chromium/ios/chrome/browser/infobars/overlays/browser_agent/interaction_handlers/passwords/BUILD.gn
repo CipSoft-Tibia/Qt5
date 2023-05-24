@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -7,17 +7,15 @@ source_set("passwords") {
   sources = [
     "password_infobar_banner_interaction_handler.h",
     "password_infobar_banner_interaction_handler.mm",
-    "password_infobar_interaction_handler.h",
-    "password_infobar_interaction_handler.mm",
     "password_infobar_modal_interaction_handler.h",
     "password_infobar_modal_interaction_handler.mm",
     "password_infobar_modal_overlay_request_callback_installer.h",
     "password_infobar_modal_overlay_request_callback_installer.mm",
-    "update_password_infobar_interaction_handler.h",
-    "update_password_infobar_interaction_handler.mm",
   ]
   deps = [
     "//base",
+    "//components/password_manager/core/browser",
+    "//ios/chrome/browser/credential_provider_promo:features",
     "//ios/chrome/browser/infobars",
     "//ios/chrome/browser/infobars:public",
     "//ios/chrome/browser/infobars/overlays",
@@ -44,9 +42,9 @@ source_set("unit_tests") {
   deps = [
     ":passwords",
     "//base/test:test_support",
-    "//components/infobars/core:feature_flags",
     "//components/password_manager/core/browser:test_support",
     "//ios/chrome/browser/browser_state:test_support",
+    "//ios/chrome/browser/credential_provider_promo:features",
     "//ios/chrome/browser/infobars",
     "//ios/chrome/browser/infobars:public",
     "//ios/chrome/browser/infobars/overlays",
@@ -62,7 +60,6 @@ source_set("unit_tests") {
     "//ios/chrome/browser/passwords:infobar_delegates",
     "//ios/chrome/browser/passwords/test",
     "//ios/chrome/browser/ui/commands",
-    "//ios/chrome/browser/ui/infobars:feature_flags",
     "//ios/chrome/browser/ui/infobars/test",
     "//ios/chrome/browser/web_state_list",
     "//ios/chrome/browser/web_state_list:test_support",

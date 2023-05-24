@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,56 +8,29 @@
 #define FPDFSDK_PWL_CPWL_COMBO_BOX_H_
 
 #include <memory>
-#include <utility>
 
 #include "core/fxcrt/unowned_ptr.h"
-#include "fpdfsdk/pwl/cpwl_edit.h"
-#include "fpdfsdk/pwl/cpwl_list_box.h"
 #include "fpdfsdk/pwl/cpwl_wnd.h"
+#include "fpdfsdk/pwl/ipwl_fillernotify.h"
 
-class CPWL_CBListBox final : public CPWL_ListBox {
- public:
-  CPWL_CBListBox(
-      const CreateParams& cp,
-      std::unique_ptr<IPWL_SystemHandler::PerWindowData> pAttachedData);
-  ~CPWL_CBListBox() override;
-
-  // CPWL_ListBox
-  bool OnLButtonUp(uint32_t nFlag, const CFX_PointF& point) override;
-
-  bool IsMovementKey(uint16_t nChar) const;
-  bool OnMovementKeyDown(uint16_t nChar, uint32_t nFlag);
-  bool IsChar(uint16_t nChar, uint32_t nFlag) const;
-  bool OnCharNotify(uint16_t nChar, uint32_t nFlag);
-};
-
-class CPWL_CBButton final : public CPWL_Wnd {
- public:
-  CPWL_CBButton(
-      const CreateParams& cp,
-      std::unique_ptr<IPWL_SystemHandler::PerWindowData> pAttachedData);
-  ~CPWL_CBButton() override;
-
-  // CPWL_Wnd
-  void DrawThisAppearance(CFX_RenderDevice* pDevice,
-                          const CFX_Matrix& mtUser2Device) override;
-  bool OnLButtonDown(uint32_t nFlag, const CFX_PointF& point) override;
-  bool OnLButtonUp(uint32_t nFlag, const CFX_PointF& point) override;
-};
+class CPWL_Edit;
+class CPWL_CBButton;
+class CPWL_CBListBox;
+class IPWL_FillerNotify;
 
 class CPWL_ComboBox final : public CPWL_Wnd {
  public:
   CPWL_ComboBox(
       const CreateParams& cp,
-      std::unique_ptr<IPWL_SystemHandler::PerWindowData> pAttachedData);
+      std::unique_ptr<IPWL_FillerNotify::PerWindowData> pAttachedData);
   ~CPWL_ComboBox() override;
 
-  CPWL_Edit* GetEdit() const { return m_pEdit.Get(); }
+  CPWL_Edit* GetEdit() const { return m_pEdit; }
 
   // CPWL_Wnd:
   void OnDestroy() override;
-  bool OnKeyDown(uint16_t nChar, uint32_t nFlag) override;
-  bool OnChar(uint16_t nChar, uint32_t nFlag) override;
+  bool OnKeyDown(FWL_VKEYCODE nKeyCode, Mask<FWL_EVENTFLAG> nFlag) override;
+  bool OnChar(uint16_t nChar, Mask<FWL_EVENTFLAG> nFlag) override;
   void NotifyLButtonDown(CPWL_Wnd* child, const CFX_PointF& pos) override;
   void NotifyLButtonUp(CPWL_Wnd* child, const CFX_PointF& pos) override;
   void CreateChildWnd(const CreateParams& cp) override;
@@ -67,6 +40,7 @@ class CPWL_ComboBox final : public CPWL_Wnd {
   void KillFocus() override;
   WideString GetText() override;
   WideString GetSelectedText() override;
+  void ReplaceAndKeepSelection(const WideString& text) override;
   void ReplaceSelection(const WideString& text) override;
   bool SelectAllText() override;
   bool CanUndo() override;
@@ -74,20 +48,16 @@ class CPWL_ComboBox final : public CPWL_Wnd {
   bool Undo() override;
   bool Redo() override;
 
-  void SetFillerNotify(IPWL_Filler_Notify* pNotify);
-
   void SetText(const WideString& text);
   void AddString(const WideString& str);
   int32_t GetSelect() const;
   void SetSelect(int32_t nItemIndex);
 
   void SetEditSelection(int32_t nStartChar, int32_t nEndChar);
-  std::pair<int32_t, int32_t> GetEditSelection() const;
   void ClearSelection();
   void SelectAll();
   bool IsPopup() const;
   void SetSelectText();
-  void AttachFFLData(CFFL_FormFiller* pData) { m_pFormFiller = pData; }
 
  private:
   void CreateEdit(const CreateParams& cp);
@@ -95,7 +65,7 @@ class CPWL_ComboBox final : public CPWL_Wnd {
   void CreateListBox(const CreateParams& cp);
 
   // Returns |true| iff this instance is still allocated.
-  bool SetPopup(bool bPopup);
+  [[nodiscard]] bool SetPopup(bool bPopup);
 
   UnownedPtr<CPWL_Edit> m_pEdit;
   UnownedPtr<CPWL_CBButton> m_pButton;
@@ -104,8 +74,6 @@ class CPWL_ComboBox final : public CPWL_Wnd {
   bool m_bPopup = false;
   bool m_bBottom = true;
   int32_t m_nSelectItem = -1;
-  UnownedPtr<IPWL_Filler_Notify> m_pFillerNotify;
-  UnownedPtr<CFFL_FormFiller> m_pFormFiller;
 };
 
 #endif  // FPDFSDK_PWL_CPWL_COMBO_BOX_H_

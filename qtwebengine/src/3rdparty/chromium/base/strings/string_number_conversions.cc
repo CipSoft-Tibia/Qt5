@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include "base/containers/span.h"
 #include "base/logging.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_number_conversions_internal.h"
 #include "base/strings/string_piece.h"
 
@@ -19,56 +18,56 @@ std::string NumberToString(int value) {
   return internal::IntToStringT<std::string>(value);
 }
 
-string16 NumberToString16(int value) {
-  return internal::IntToStringT<string16>(value);
+std::u16string NumberToString16(int value) {
+  return internal::IntToStringT<std::u16string>(value);
 }
 
 std::string NumberToString(unsigned value) {
   return internal::IntToStringT<std::string>(value);
 }
 
-string16 NumberToString16(unsigned value) {
-  return internal::IntToStringT<string16>(value);
+std::u16string NumberToString16(unsigned value) {
+  return internal::IntToStringT<std::u16string>(value);
 }
 
 std::string NumberToString(long value) {
   return internal::IntToStringT<std::string>(value);
 }
 
-string16 NumberToString16(long value) {
-  return internal::IntToStringT<string16>(value);
+std::u16string NumberToString16(long value) {
+  return internal::IntToStringT<std::u16string>(value);
 }
 
 std::string NumberToString(unsigned long value) {
   return internal::IntToStringT<std::string>(value);
 }
 
-string16 NumberToString16(unsigned long value) {
-  return internal::IntToStringT<string16>(value);
+std::u16string NumberToString16(unsigned long value) {
+  return internal::IntToStringT<std::u16string>(value);
 }
 
 std::string NumberToString(long long value) {
   return internal::IntToStringT<std::string>(value);
 }
 
-string16 NumberToString16(long long value) {
-  return internal::IntToStringT<string16>(value);
+std::u16string NumberToString16(long long value) {
+  return internal::IntToStringT<std::u16string>(value);
 }
 
 std::string NumberToString(unsigned long long value) {
   return internal::IntToStringT<std::string>(value);
 }
 
-string16 NumberToString16(unsigned long long value) {
-  return internal::IntToStringT<string16>(value);
+std::u16string NumberToString16(unsigned long long value) {
+  return internal::IntToStringT<std::u16string>(value);
 }
 
 std::string NumberToString(double value) {
   return internal::DoubleToStringT<std::string>(value);
 }
 
-string16 NumberToString16(double value) {
-  return internal::DoubleToStringT<string16>(value);
+std::u16string NumberToString16(double value) {
+  return internal::DoubleToStringT<std::u16string>(value);
 }
 
 bool StringToInt(StringPiece input, int* output) {
@@ -156,19 +155,21 @@ bool HexStringToUInt64(StringPiece input, uint64_t* output) {
 
 bool HexStringToBytes(StringPiece input, std::vector<uint8_t>* output) {
   DCHECK(output->empty());
-  return internal::HexStringToByteContainer(input, std::back_inserter(*output));
+  return internal::HexStringToByteContainer<uint8_t>(
+      input, std::back_inserter(*output));
 }
 
 bool HexStringToString(StringPiece input, std::string* output) {
   DCHECK(output->empty());
-  return internal::HexStringToByteContainer(input, std::back_inserter(*output));
+  return internal::HexStringToByteContainer<char>(input,
+                                                  std::back_inserter(*output));
 }
 
 bool HexStringToSpan(StringPiece input, base::span<uint8_t> output) {
   if (input.size() / 2 != output.size())
     return false;
 
-  return internal::HexStringToByteContainer(input, output.begin());
+  return internal::HexStringToByteContainer<uint8_t>(input, output.begin());
 }
 
 }  // namespace base

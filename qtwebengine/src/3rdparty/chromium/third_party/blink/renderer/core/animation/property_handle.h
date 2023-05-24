@@ -1,10 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_PROPERTY_HANDLE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_PROPERTY_HANDLE_H_
 
+#include "base/check_op.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
 #include "third_party/blink/renderer/core/css/css_property_names.h"
@@ -27,10 +28,22 @@ class CORE_EXPORT PropertyHandle {
     DCHECK_NE(CSSPropertyID::kVariable, property.PropertyID());
   }
 
+  // TODO(crbug.com/980160): Eliminate call to GetCSSPropertyVariable().
   explicit PropertyHandle(const AtomicString& property_name)
       : handle_type_(kHandleCSSCustomProperty),
         css_property_(&GetCSSPropertyVariable()),
         property_name_(property_name) {}
+
+  // TODO(crbug.com/980160): Eliminate call to GetCSSPropertyVariable().
+  explicit PropertyHandle(const CSSPropertyName& property_name)
+      : handle_type_(property_name.IsCustomProperty() ? kHandleCSSCustomProperty
+                                                      : kHandleCSSProperty),
+        css_property_(property_name.IsCustomProperty()
+                          ? &GetCSSPropertyVariable()
+                          : &CSSProperty::Get(property_name.Id())),
+        property_name_(property_name.IsCustomProperty()
+                           ? property_name.ToAtomicString()
+                           : g_null_atom) {}
 
   explicit PropertyHandle(const QualifiedName& attribute_name)
       : handle_type_(kHandleSVGAttribute), svg_attribute_(&attribute_name) {}
@@ -119,28 +132,14 @@ class CORE_EXPORT PropertyHandle {
 namespace WTF {
 
 template <>
-struct DefaultHash<blink::PropertyHandle> {
-  struct Hash {
-    STATIC_ONLY(Hash);
-    static unsigned GetHash(const blink::PropertyHandle& handle) {
-      return handle.GetHash();
-    }
-
-    static bool Equal(const blink::PropertyHandle& a,
-                      const blink::PropertyHandle& b) {
-      return a == b;
-    }
-
-    static const bool safe_to_compare_to_empty_or_deleted = true;
-  };
-};
-
-template <>
 struct HashTraits<blink::PropertyHandle>
     : SimpleClassHashTraits<blink::PropertyHandle> {
-  static const bool kNeedsDestruction = true;
-  static void ConstructDeletedValue(blink::PropertyHandle& slot, bool) {
-    new (NotNull, &slot) blink::PropertyHandle(
+  static unsigned GetHash(const blink::PropertyHandle& handle) {
+    return handle.GetHash();
+  }
+
+  static void ConstructDeletedValue(blink::PropertyHandle& slot) {
+    new (NotNullTag::kNotNull, &slot) blink::PropertyHandle(
         blink::PropertyHandle::DeletedValueForHashTraits());
   }
   static bool IsDeletedValue(const blink::PropertyHandle& value) {

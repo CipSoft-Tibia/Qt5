@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,6 @@ module blink.mojom;
 import "mojo/public/mojom/base/time.mojom";
 import "mojo/public/mojom/base/string16.mojom";
 import "services/media_session/public/mojom/media_session.mojom";
-import "ui/gfx/geometry/mojom/geometry.mojom";
-import "url/mojom/url.mojom";
 
 enum MediaSessionPlaybackState {
      NONE,
@@ -58,6 +56,12 @@ interface MediaSessionService {
   // Notifies the browser that the metadata is set, |metadata| will be displayed
   // on the UI.
   SetMetadata(SpecMediaMetadata? metadata);
+
+  // Notifies the browser that the page specified its current microphone state.
+  SetMicrophoneState(media_session.mojom.MicrophoneState microphone_state);
+
+  // Notifies the browser that the page specified its current camera state.
+  SetCameraState(media_session.mojom.CameraState camera_state);
 
   // Notifies the browser that the event handler for |action| has been set,
   // browser needs to show a media button in the UI or register listeners to the

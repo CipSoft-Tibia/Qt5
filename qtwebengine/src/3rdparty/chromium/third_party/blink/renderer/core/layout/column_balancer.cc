@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -70,7 +70,7 @@ void ColumnBalancer::TraverseChildren(const LayoutObject& object) {
       continue;
     }
 
-    const LayoutBox& child_box = ToLayoutBox(*child);
+    const auto& child_box = To<LayoutBox>(*child);
 
     LayoutUnit border_edge_offset;
     LayoutUnit logical_top = child_box.LogicalTop();
@@ -109,7 +109,7 @@ void ColumnBalancer::TraverseChildren(const LayoutObject& object) {
     // Tables are wicked. Both table rows and table cells are relative to their
     // table section.
     LayoutUnit offset_for_this_child =
-        child_box.IsTableRow() ? LayoutUnit() : logical_top;
+        child_box.IsLegacyTableRow() ? LayoutUnit() : logical_top;
 
     // Include this child's offset in the flow thread offset. Note that rather
     // than subtracting the offset again when done, we set it back to the old
@@ -128,10 +128,10 @@ void ColumnBalancer::TraverseChildren(const LayoutObject& object) {
       // We need to get to the border edge before processing content inside
       // this child. If the child is floated, we're currently at the margin
       // edge.
-      auto old_flow_thread_offset = flow_thread_offset_;
+      auto old_flow_thread_child_offset = flow_thread_offset_;
       flow_thread_offset_ += border_edge_offset;
       TraverseSubtree(child_box);
-      flow_thread_offset_ = old_flow_thread_offset;
+      flow_thread_offset_ = old_flow_thread_child_offset;
     }
     previous_break_after_value = child_box.BreakAfter();
     ExamineBoxBeforeLeaving(child_box, logical_height);
@@ -301,7 +301,7 @@ LayoutUnit InitialColumnHeightFinder::SpaceUsedByStrutsAt(
 void InitialColumnHeightFinder::AddContentRun(
     LayoutUnit end_offset_in_flow_thread) {
   end_offset_in_flow_thread -= SpaceUsedByStrutsAt(end_offset_in_flow_thread);
-  if (!content_runs_.IsEmpty() &&
+  if (!content_runs_.empty() &&
       end_offset_in_flow_thread <= content_runs_.back().BreakOffset())
     return;
   // Append another item as long as we haven't exceeded used column count. What
@@ -322,9 +322,9 @@ unsigned InitialColumnHeightFinder::ContentRunIndexWithTallestColumns() const {
   unsigned index_with_largest_height = 0;
   LayoutUnit largest_height;
   LayoutUnit previous_offset = LogicalTopInFlowThread();
-  size_t run_count = content_runs_.size();
+  wtf_size_t run_count = content_runs_.size();
   DCHECK(run_count);
-  for (size_t i = FirstContentRunIndexInLastRow(); i < run_count; i++) {
+  for (unsigned i = FirstContentRunIndexInLastRow(); i < run_count; i++) {
     const ContentRun& run = content_runs_[i];
     LayoutUnit height = run.ColumnLogicalHeight(previous_offset);
     if (largest_height < height) {

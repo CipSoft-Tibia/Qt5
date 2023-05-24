@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -25,6 +25,10 @@ class InternalsMediaStream {
                                      const MediaDeviceInfo*,
                                      const MediaTrackConstraints* capabilities,
                                      const MediaStreamTrack* data_source);
+
+  // Trigger a fake device capture configuration change on video track source.
+  static void fakeCaptureConfigurationChanged(Internals&,
+                                              MediaStreamTrack* track);
 };
 
 }  // namespace blink

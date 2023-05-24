@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,11 +10,6 @@
 
 namespace blink {
 
-// NOTE: In the future there may be a third state "normal", this will mean that
-// not everything is blockified, (e.g. root inline boxes, so that line-by-line
-// layout can be performed).
-enum LayoutNGCustomState { kUnloaded, kBlock };
-
 // The LayoutObject for elements which have "display: layout(foo);" specified.
 // https://drafts.css-houdini.org/css-layout-api/
 //
@@ -23,25 +18,45 @@ enum LayoutNGCustomState { kUnloaded, kBlock };
 // block-flow layout algorithm.
 class LayoutNGCustom final : public LayoutNGBlockFlow {
  public:
+  // NOTE: In the future there may be a third state "normal", this will mean
+  // that not everything is blockified, (e.g. root inline boxes, so that
+  // line-by-line layout can be performed).
+  enum State { kUnloaded, kBlock };
+
   explicit LayoutNGCustom(Element*);
 
-  const char* GetName() const override { return "LayoutNGCustom"; }
-  bool CreatesNewFormattingContext() const override { return true; }
+  const char* GetName() const override {
+    NOT_DESTROYED();
+    return "LayoutNGCustom";
+  }
+  bool CreatesNewFormattingContext() const override {
+    NOT_DESTROYED();
+    return true;
+  }
 
-  bool IsLoaded() { return state_ != kUnloaded; }
+  bool IsLoaded() {
+    NOT_DESTROYED();
+    return state_ != kUnloaded;
+  }
 
   void AddChild(LayoutObject* new_child, LayoutObject* before_child) override;
   void RemoveChild(LayoutObject* child) override;
 
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
 
- private:
-  bool IsOfType(LayoutObjectType type) const override {
-    return type == kLayoutObjectLayoutNGCustom ||
-           LayoutNGBlockFlow::IsOfType(type);
+  PaginationBreakability GetPaginationBreakability(
+      FragmentationEngine) const final {
+    NOT_DESTROYED();
+    return kForbidBreaks;
   }
 
-  LayoutNGCustomState state_;
+ private:
+  bool IsOfType(LayoutObjectType type) const override {
+    NOT_DESTROYED();
+    return type == kLayoutObjectNGCustom || LayoutNGBlockFlow::IsOfType(type);
+  }
+
+  State state_;
 };
 
 template <>

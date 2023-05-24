@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,17 +9,16 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/values.h"
 #include "extensions/common/event_filter.h"
 #include "extensions/common/extension_id.h"
-#include "third_party/blink/public/mojom/service_worker/service_worker_registration.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_database.mojom-forward.h"
 #include "url/gurl.h"
-
-namespace base {
-class DictionaryValue;
-}
 
 namespace content {
 class BrowserContext;
@@ -54,12 +53,12 @@ class EventListener {
       const std::string& event_name,
       const std::string& extension_id,
       content::RenderProcessHost* process,
-      std::unique_ptr<base::DictionaryValue> filter);
+      absl::optional<base::Value::Dict> filter);
   static std::unique_ptr<EventListener> ForURL(
       const std::string& event_name,
       const GURL& listener_url,
       content::RenderProcessHost* process,
-      std::unique_ptr<base::DictionaryValue> filter);
+      absl::optional<base::Value::Dict> filter);
   // Constructs EventListener for an Extension service worker.
   // Similar to ForExtension above with the only difference that
   // |worker_thread_id_| contains a valid worker thread, as opposed to
@@ -69,10 +68,26 @@ class EventListener {
       const std::string& event_name,
       const std::string& extension_id,
       content::RenderProcessHost* process,
+      content::BrowserContext* browser_context,
       const GURL& service_worker_scope,
       int64_t service_worker_version_id,
       int worker_thread_id,
-      std::unique_ptr<base::DictionaryValue> filter);
+      absl::optional<base::Value::Dict> filter);
+  // Constructs a lazy listener, for an extension service worker or event page.
+  // A lazy listener has these properties:
+  // |process_| = nullptr
+  // |service_worker_version_id_| = blink::mojom::kInvalidServiceWorkerVersionId
+  // |worker_thread_id_| = kMainThreadId
+  static std::unique_ptr<EventListener> CreateLazyListener(
+      const std::string& event_name,
+      const std::string& extension_id,
+      content::BrowserContext* browser_context,
+      bool is_for_service_worker,
+      const GURL& service_worker_scope,
+      absl::optional<base::Value::Dict> filter);
+
+  EventListener(const EventListener&) = delete;
+  EventListener& operator=(const EventListener&) = delete;
 
   ~EventListener();
 
@@ -91,15 +106,14 @@ class EventListener {
   // Modifies this listener to be a lazy listener, clearing process references.
   void MakeLazy();
 
-  // Returns the browser context associated with the listener, or NULL if
-  // IsLazy.
-  content::BrowserContext* GetBrowserContext() const;
-
   const std::string& event_name() const { return event_name_; }
   const std::string& extension_id() const { return extension_id_; }
   const GURL& listener_url() const { return listener_url_; }
   content::RenderProcessHost* process() const { return process_; }
-  base::DictionaryValue* filter() const { return filter_.get(); }
+  content::BrowserContext* browser_context() const { return browser_context_; }
+  const base::Value::Dict* filter() const {
+    return filter_.has_value() ? &*filter_ : nullptr;
+  }
   EventFilter::MatcherID matcher_id() const { return matcher_id_; }
   void set_matcher_id(EventFilter::MatcherID id) { matcher_id_ = id; }
   int64_t service_worker_version_id() const {
@@ -112,15 +126,17 @@ class EventListener {
                 const std::string& extension_id,
                 const GURL& listener_url,
                 content::RenderProcessHost* process,
+                content::BrowserContext* browser_context,
                 bool is_for_service_worker,
                 int64_t service_worker_version_id,
                 int worker_thread_id,
-                std::unique_ptr<base::DictionaryValue> filter);
+                absl::optional<base::Value::Dict> filter);
 
   const std::string event_name_;
   const std::string extension_id_;
   const GURL listener_url_;
-  content::RenderProcessHost* process_ = nullptr;
+  raw_ptr<content::RenderProcessHost> process_ = nullptr;
+  raw_ptr<content::BrowserContext> browser_context_ = nullptr;
 
   const bool is_for_service_worker_ = false;
 
@@ -133,10 +149,8 @@ class EventListener {
   // worker events, this will be kMainThreadId.
   int worker_thread_id_;
 
-  std::unique_ptr<base::DictionaryValue> filter_;
-  EventFilter::MatcherID matcher_id_;  // -1 if unset.
-
-  DISALLOW_COPY_AND_ASSIGN(EventListener);
+  absl::optional<base::Value::Dict> filter_;
+  EventFilter::MatcherID matcher_id_ = -1;
 };
 
 // Holds listeners for extension events and can answer questions about which
@@ -155,6 +169,10 @@ class EventListenerMap {
   };
 
   explicit EventListenerMap(Delegate* delegate);
+
+  EventListenerMap(const EventListenerMap&) = delete;
+  EventListenerMap& operator=(const EventListenerMap&) = delete;
+
   ~EventListenerMap();
 
   // Add a listener for a particular event. GetEventListeners() will include a
@@ -189,6 +207,9 @@ class EventListenerMap {
   bool HasListenerForExtension(const std::string& extension_id,
                                const std::string& event_name) const;
 
+  // Returns true if there are any listeners on |event_name| from |url|.
+  bool HasListenerForURL(const GURL& url, const std::string& event_name) const;
+
   // Returns true if this map contains an EventListener that .Equals()
   // |listener|.
   bool HasListener(const EventListener* listener) const;
@@ -207,30 +228,32 @@ class EventListenerMap {
   // |event_names| the names of the lazy events.
   // Note that we can only load lazy listeners in this fashion, because there
   // is no way to serialise a RenderProcessHost*.
-  void LoadUnfilteredLazyListeners(const std::string& extension_id,
+  void LoadUnfilteredLazyListeners(content::BrowserContext* browser_context,
+                                   const std::string& extension_id,
+                                   bool is_for_service_worker,
                                    const std::set<std::string>& event_names);
   // Similar as above, but applies to extension service workers.
-  void LoadUnfilteredWorkerListeners(const std::string& extension_id,
+  void LoadUnfilteredWorkerListeners(content::BrowserContext* browser_context,
+                                     const std::string& extension_id,
                                      const std::set<std::string>& event_names);
 
   // Adds filtered lazy listeners as described their serialised descriptions.
-  // |is_for_service_worker| is true for extension service worker event
-  // listeners.
   // |filtered| contains a map from event names to filters, each pairing
   // defining a lazy filtered listener.
-  void LoadFilteredLazyListeners(const std::string& extension_id,
+  void LoadFilteredLazyListeners(content::BrowserContext* browser_context,
+                                 const std::string& extension_id,
                                  bool is_for_service_worker,
-                                 const base::DictionaryValue& filtered);
+                                 const base::Value::Dict& filtered);
 
  private:
 
   void CleanupListener(EventListener* listener);
   bool IsFilteredEvent(const Event& event) const;
   std::unique_ptr<EventMatcher> ParseEventMatcher(
-      base::DictionaryValue* filter_dict);
+      const base::Value::Dict& filter_dict);
 
   // Listens for removals from this map.
-  Delegate* const delegate_;
+  const raw_ptr<Delegate> delegate_;
 
   std::set<std::string> filtered_events_;
   ListenerMap listeners_;
@@ -238,8 +261,6 @@ class EventListenerMap {
   std::map<EventFilter::MatcherID, EventListener*> listeners_by_matcher_id_;
 
   EventFilter event_filter_;
-
-  DISALLOW_COPY_AND_ASSIGN(EventListenerMap);
 };
 
 }  // namespace extensions

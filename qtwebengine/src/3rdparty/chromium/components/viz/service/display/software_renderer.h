@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,18 +6,17 @@
 #define COMPONENTS_VIZ_SERVICE_DISPLAY_SOFTWARE_RENDERER_H_
 
 #include <memory>
-#include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "components/viz/common/quads/aggregated_render_pass.h"
 #include "components/viz/service/display/direct_renderer.h"
+#include "components/viz/service/display/display_resource_provider_software.h"
 #include "components/viz/service/viz_service_export.h"
 #include "ui/latency/latency_info.h"
 
 namespace viz {
 class DebugBorderDrawQuad;
-class DisplayResourceProvider;
 class OutputSurface;
 class PictureDrawQuad;
 class AggregatedRenderPassDrawQuad;
@@ -31,8 +30,11 @@ class VIZ_SERVICE_EXPORT SoftwareRenderer : public DirectRenderer {
   SoftwareRenderer(const RendererSettings* settings,
                    const DebugRendererSettings* debug_settings,
                    OutputSurface* output_surface,
-                   DisplayResourceProvider* resource_provider,
+                   DisplayResourceProviderSoftware* resource_provider,
                    OverlayProcessorInterface* overlay_processor);
+
+  SoftwareRenderer(const SoftwareRenderer&) = delete;
+  SoftwareRenderer& operator=(const SoftwareRenderer&) = delete;
 
   ~SoftwareRenderer() override;
 
@@ -77,7 +79,7 @@ class VIZ_SERVICE_EXPORT SoftwareRenderer : public DirectRenderer {
   void ClearFramebuffer();
   void SetClipRect(const gfx::Rect& rect);
   void SetClipRRect(const gfx::RRectF& rrect);
-  bool IsSoftwareResource(ResourceId resource_id) const;
+  bool IsSoftwareResource(ResourceId resource_id);
 
   void DrawDebugBorderQuad(const DebugBorderDrawQuad* quad);
   void DrawPictureQuad(const PictureDrawQuad* quad);
@@ -97,16 +99,20 @@ class VIZ_SERVICE_EXPORT SoftwareRenderer : public DirectRenderer {
   gfx::Rect GetBackdropBoundingBoxForRenderPassQuad(
       const AggregatedRenderPassDrawQuad* quad,
       const cc::FilterOperations* backdrop_filters,
-      base::Optional<gfx::RRectF> backdrop_filter_bounds_input,
+      absl::optional<gfx::RRectF> backdrop_filter_bounds_input,
       gfx::Transform contents_device_transform,
       gfx::Transform* backdrop_filter_bounds_transform,
-      base::Optional<gfx::RRectF>* backdrop_filter_bounds,
+      absl::optional<gfx::RRectF>* backdrop_filter_bounds,
       gfx::Rect* unclipped_rect) const;
 
   SkBitmap GetBackdropBitmap(const gfx::Rect& bounding_rect) const;
   sk_sp<SkShader> GetBackdropFilterShader(
       const AggregatedRenderPassDrawQuad* quad,
       SkTileMode content_tile_mode) const;
+
+  DisplayResourceProviderSoftware* resource_provider() {
+    return static_cast<DisplayResourceProviderSoftware*>(resource_provider_);
+  }
 
   // A map from RenderPass id to the bitmap used to draw the RenderPass from.
   base::flat_map<AggregatedRenderPassId, SkBitmap> render_pass_bitmaps_;
@@ -116,13 +122,12 @@ class VIZ_SERVICE_EXPORT SoftwareRenderer : public DirectRenderer {
   bool is_scissor_enabled_ = false;
   gfx::Rect scissor_rect_;
 
-  SoftwareOutputDevice* output_device_;
-  SkCanvas* root_canvas_ = nullptr;
-  SkCanvas* current_canvas_ = nullptr;
+  raw_ptr<SoftwareOutputDevice> output_device_;
+  raw_ptr<SkCanvas, DanglingUntriaged> root_canvas_ = nullptr;
+  raw_ptr<SkCanvas, DanglingUntriaged> current_canvas_ = nullptr;
   SkPaint current_paint_;
+  SkSamplingOptions current_sampling_;
   std::unique_ptr<SkCanvas> current_framebuffer_canvas_;
-
-  DISALLOW_COPY_AND_ASSIGN(SoftwareRenderer);
 };
 
 }  // namespace viz

@@ -1,12 +1,12 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "device/fido/win/discovery.h"
 
-#include "base/bind.h"
 #include "base/check.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "device/fido/win/webauthn_api.h"
 
 namespace device {
@@ -14,7 +14,7 @@ namespace device {
 WinWebAuthnApiAuthenticatorDiscovery::WinWebAuthnApiAuthenticatorDiscovery(
     HWND parent_window,
     WinWebAuthnApi* api)
-    : FidoDiscoveryBase(FidoTransportProtocol::kUsbHumanInterfaceDevice),
+    : FidoDiscoveryBase(FidoTransportProtocol::kInternal),
       parent_window_(parent_window),
       api_(api) {}
 
@@ -31,7 +31,7 @@ void WinWebAuthnApiAuthenticatorDiscovery::Start() {
   // FidoRequestHandler ctor. Invoke AddAuthenticator() asynchronously
   // to avoid hairpinning FidoRequestHandler::AuthenticatorAdded()
   // before the request handler has an observer.
-  base::SequencedTaskRunnerHandle::Get()->PostTask(
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE,
       base::BindOnce(&WinWebAuthnApiAuthenticatorDiscovery::AddAuthenticator,
                      weak_factory_.GetWeakPtr()));

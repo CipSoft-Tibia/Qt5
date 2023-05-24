@@ -1,5 +1,5 @@
 /*
- * Copyright © 2016 Collabora, Ltd.
+ * Copyright © 2016, 2019 Collabora, Ltd.
  * Copyright (c) 2018 DisplayLink (UK) Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -34,7 +34,7 @@
 #include <drm_fourcc.h>
 #include <wayland-client-protocol.h>
 
-#include "helpers.h"
+#include "shared/helpers.h"
 #include "wayland-util.h"
 #include "pixel-formats.h"
 
@@ -53,8 +53,14 @@
 #endif
 
 #define DRM_FORMAT(f) .format = DRM_FORMAT_ ## f, .drm_format_name = #f
+#define BITS_RGBA_FIXED(r_, g_, b_, a_) \
+	.bits.r = r_, \
+	.bits.g = g_, \
+	.bits.b = b_, \
+	.bits.a = a_, \
+	.component_type = PIXEL_COMPONENT_TYPE_FIXED
 
-#include "weston-egl-ext.h"
+#include "shared/weston-egl-ext.h"
 
 /**
  * Table of DRM formats supported by Weston; RGB, ARGB and YUV formats are
@@ -64,20 +70,25 @@
 static const struct pixel_format_info pixel_format_table[] = {
 	{
 		DRM_FORMAT(XRGB4444),
+		BITS_RGBA_FIXED(4, 4, 4, 0),
 	},
 	{
 		DRM_FORMAT(ARGB4444),
+		BITS_RGBA_FIXED(4, 4, 4, 4),
 		.opaque_substitute = DRM_FORMAT_XRGB4444,
 	},
 	{
 		DRM_FORMAT(XBGR4444),
+		BITS_RGBA_FIXED(4, 4, 4, 0),
 	},
 	{
 		DRM_FORMAT(ABGR4444),
+		BITS_RGBA_FIXED(4, 4, 4, 4),
 		.opaque_substitute = DRM_FORMAT_XBGR4444,
 	},
 	{
 		DRM_FORMAT(RGBX4444),
+		BITS_RGBA_FIXED(4, 4, 4, 0),
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 		GL_FORMAT(GL_RGBA),
 		GL_TYPE(GL_UNSIGNED_SHORT_4_4_4_4),
@@ -85,6 +96,7 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(RGBA4444),
+		BITS_RGBA_FIXED(4, 4, 4, 4),
 		.opaque_substitute = DRM_FORMAT_RGBX4444,
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 		GL_FORMAT(GL_RGBA),
@@ -93,29 +105,36 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(BGRX4444),
+		BITS_RGBA_FIXED(4, 4, 4, 0),
 	},
 	{
 		DRM_FORMAT(BGRA4444),
+		BITS_RGBA_FIXED(4, 4, 4, 4),
 		.opaque_substitute = DRM_FORMAT_BGRX4444,
 	},
 	{
 		DRM_FORMAT(XRGB1555),
+		BITS_RGBA_FIXED(5, 5, 5, 0),
 		.depth = 15,
 		.bpp = 16,
 	},
 	{
 		DRM_FORMAT(ARGB1555),
+		BITS_RGBA_FIXED(5, 5, 5, 1),
 		.opaque_substitute = DRM_FORMAT_XRGB1555,
 	},
 	{
 		DRM_FORMAT(XBGR1555),
+		BITS_RGBA_FIXED(5, 5, 5, 0),
 	},
 	{
 		DRM_FORMAT(ABGR1555),
+		BITS_RGBA_FIXED(5, 5, 5, 1),
 		.opaque_substitute = DRM_FORMAT_XBGR1555,
 	},
 	{
 		DRM_FORMAT(RGBX5551),
+		BITS_RGBA_FIXED(5, 5, 5, 0),
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 		GL_FORMAT(GL_RGBA),
 		GL_TYPE(GL_UNSIGNED_SHORT_5_5_5_1),
@@ -123,6 +142,7 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(RGBA5551),
+		BITS_RGBA_FIXED(5, 5, 5, 1),
 		.opaque_substitute = DRM_FORMAT_RGBX5551,
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 		GL_FORMAT(GL_RGBA),
@@ -131,13 +151,16 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(BGRX5551),
+		BITS_RGBA_FIXED(5, 5, 5, 0),
 	},
 	{
 		DRM_FORMAT(BGRA5551),
+		BITS_RGBA_FIXED(5, 5, 5, 1),
 		.opaque_substitute = DRM_FORMAT_BGRX5551,
 	},
 	{
 		DRM_FORMAT(RGB565),
+		BITS_RGBA_FIXED(5, 6, 5, 0),
 		.depth = 16,
 		.bpp = 16,
 # if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -147,17 +170,21 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(BGR565),
+		BITS_RGBA_FIXED(5, 6, 5, 0),
 	},
 	{
 		DRM_FORMAT(RGB888),
+		BITS_RGBA_FIXED(8, 8, 8, 0),
 	},
 	{
 		DRM_FORMAT(BGR888),
+		BITS_RGBA_FIXED(8, 8, 8, 0),
 		GL_FORMAT(GL_RGB),
 		GL_TYPE(GL_UNSIGNED_BYTE),
 	},
 	{
 		DRM_FORMAT(XRGB8888),
+		BITS_RGBA_FIXED(8, 8, 8, 0),
 		.depth = 24,
 		.bpp = 32,
 		GL_FORMAT(GL_BGRA_EXT),
@@ -165,6 +192,7 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(ARGB8888),
+		BITS_RGBA_FIXED(8, 8, 8, 8),
 		.opaque_substitute = DRM_FORMAT_XRGB8888,
 		.depth = 32,
 		.bpp = 32,
@@ -173,40 +201,49 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(XBGR8888),
+		BITS_RGBA_FIXED(8, 8, 8, 0),
 		GL_FORMAT(GL_RGBA),
 		GL_TYPE(GL_UNSIGNED_BYTE),
 	},
 	{
 		DRM_FORMAT(ABGR8888),
+		BITS_RGBA_FIXED(8, 8, 8, 8),
 		.opaque_substitute = DRM_FORMAT_XBGR8888,
 		GL_FORMAT(GL_RGBA),
 		GL_TYPE(GL_UNSIGNED_BYTE),
 	},
 	{
 		DRM_FORMAT(RGBX8888),
+		BITS_RGBA_FIXED(8, 8, 8, 0),
 	},
 	{
 		DRM_FORMAT(RGBA8888),
+		BITS_RGBA_FIXED(8, 8, 8, 8),
 		.opaque_substitute = DRM_FORMAT_RGBX8888,
 	},
 	{
 		DRM_FORMAT(BGRX8888),
+		BITS_RGBA_FIXED(8, 8, 8, 0),
 	},
 	{
 		DRM_FORMAT(BGRA8888),
+		BITS_RGBA_FIXED(8, 8, 8, 8),
 		.opaque_substitute = DRM_FORMAT_BGRX8888,
 	},
 	{
 		DRM_FORMAT(XRGB2101010),
+		BITS_RGBA_FIXED(10, 10, 10, 0),
 		.depth = 30,
 		.bpp = 32,
 	},
 	{
 		DRM_FORMAT(ARGB2101010),
+		BITS_RGBA_FIXED(10, 10, 10, 2),
 		.opaque_substitute = DRM_FORMAT_XRGB2101010,
 	},
 	{
 		DRM_FORMAT(XBGR2101010),
+		BITS_RGBA_FIXED(10, 10, 10, 0),
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 		GL_FORMAT(GL_RGBA),
 		GL_TYPE(GL_UNSIGNED_INT_2_10_10_10_REV_EXT),
@@ -214,6 +251,7 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(ABGR2101010),
+		BITS_RGBA_FIXED(10, 10, 10, 2),
 		.opaque_substitute = DRM_FORMAT_XBGR2101010,
 # if __BYTE_ORDER == __LITTLE_ENDIAN
 		GL_FORMAT(GL_RGBA),
@@ -222,16 +260,20 @@ static const struct pixel_format_info pixel_format_table[] = {
 	},
 	{
 		DRM_FORMAT(RGBX1010102),
+		BITS_RGBA_FIXED(10, 10, 10, 0),
 	},
 	{
 		DRM_FORMAT(RGBA1010102),
+		BITS_RGBA_FIXED(10, 10, 10, 2),
 		.opaque_substitute = DRM_FORMAT_RGBX1010102,
 	},
 	{
 		DRM_FORMAT(BGRX1010102),
+		BITS_RGBA_FIXED(10, 10, 10, 0),
 	},
 	{
 		DRM_FORMAT(BGRA1010102),
+		BITS_RGBA_FIXED(10, 10, 10, 2),
 		.opaque_substitute = DRM_FORMAT_BGRX1010102,
 	},
 	{
@@ -434,6 +476,19 @@ pixel_format_get_opaque_substitute(const struct pixel_format_info *info)
 		return info;
 	else
 		return pixel_format_get_info(info->opaque_substitute);
+}
+
+WL_EXPORT const struct pixel_format_info *
+pixel_format_get_info_by_opaque_substitute(uint32_t format)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_LENGTH(pixel_format_table); i++) {
+		if (pixel_format_table[i].opaque_substitute == format)
+			return &pixel_format_table[i];
+	}
+
+	return NULL;
 }
 
 WL_EXPORT unsigned int

@@ -1,11 +1,14 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Functions for extracting emails and components from OWNERS files."""
 
 import extract_histograms
+import json
 import os
+import subprocess
+import sys
 import re
 
 _EMAIL_PATTERN = r'^[\w\-\+\%\.]+\@[\w\-\+\%\.]+$'
@@ -14,8 +17,8 @@ _OWNERS = 'OWNERS'
 # module's directory, histograms, and the directory above tools, which may or
 # may not be src depending on the machine running the code, is up three
 # directory levels from the histograms directory.
-_DIR_ABOVE_TOOLS = [os.path.dirname(__file__), '..', '..', '..']
-_SRC = 'src/'
+DIR_ABOVE_TOOLS = [os.path.dirname(__file__), '..', '..', '..']
+SRC = 'src/'
 
 
 class Error(Exception):
@@ -75,8 +78,9 @@ def _IsEmailOrPlaceholder(is_first_owner, owner_tag_text, histogram_name,
 
   if should_check_owner_email and not _IsValidPrimaryOwnerEmail(owner_tag_text):
     raise Error(
-        'The histogram {} must have a valid primary owner, i.e. a '
-        'person with an @google.com or @chromium.org email address.'.format(
+        'The histogram {} must have a valid primary owner, i.e. a Googler '
+        'with an @google.com or @chromium.org email address. Please '
+        'manually update the histogram with a valid primary owner.'.format(
             histogram_name))
 
   return is_email or is_placeholder
@@ -88,7 +92,7 @@ def _IsWellFormattedFilePath(path):
   Args:
     path: The path to an OWNERS file, e.g. 'src/gin/OWNERS'.
   """
-  return path.startswith(_SRC) and path.endswith(_OWNERS)
+  return path.startswith(SRC) and path.endswith(_OWNERS)
 
 
 def _GetHigherLevelOwnersFilePath(path):
@@ -108,7 +112,7 @@ def _GetHigherLevelOwnersFilePath(path):
   # The highest directory that is searched for component information is one
   # directory lower than the directory above tools. Depending on the machine
   # running this code, the directory above tools may or may not be src.
-  path_to_limiting_dir = os.path.abspath(os.path.join(*_DIR_ABOVE_TOOLS))
+  path_to_limiting_dir = os.path.abspath(os.path.join(*DIR_ABOVE_TOOLS))
   limiting_dir = path_to_limiting_dir.split(os.sep)[-1]
   owners_file_limit = (os.sep).join([limiting_dir, _OWNERS])
   if path.endswith(owners_file_limit):
@@ -135,14 +139,14 @@ def _GetOwnersFilePath(path):
   if _IsWellFormattedFilePath(path):
     # _SRC is removed because the file system on the machine running the code
     # may not have a(n) src directory.
-    path_without_src = path[len(_SRC):]
+    path_without_src = path[len(SRC):]
 
     return os.path.abspath(
-        os.path.join(*(_DIR_ABOVE_TOOLS + path_without_src.split(os.sep))))
-  else:
-    raise Error('The given path {} is not well-formatted.'
-                'Well-formatted paths begin with "src/" and end with "OWNERS"'
-                .format(path))
+        os.path.join(*(DIR_ABOVE_TOOLS + path_without_src.split(os.sep))))
+
+  raise Error(
+      'The given path {} is not well-formatted. Well-formatted paths begin '
+      'with "src/" and end with "OWNERS"'.format(path))
 
 
 def _ExtractEmailAddressesFromOWNERS(path, depth=0):
@@ -181,7 +185,7 @@ def _ExtractEmailAddressesFromOWNERS(path, depth=0):
 
       elif first_word.startswith(directive):
         next_path = _GetOwnersFilePath(
-          os.path.join(_SRC, first_word[len(directive):]))
+            os.path.join(SRC, first_word[len(directive):]))
 
         if os.path.exists(next_path) and os.path.isfile(next_path):
           extracted_emails.extend(
@@ -193,35 +197,73 @@ def _ExtractEmailAddressesFromOWNERS(path, depth=0):
   return extracted_emails
 
 
-def _ExtractComponentFromOWNERS(path):
-  """Returns the string component associated with the file at the given path.
+def _ComponentFromDirmd(json_data, subpath):
+  """Returns the component for a subpath based on dirmd output.
+
+  Returns an empty string if no component can be extracted
+
+  Args:
+    json_data: json object output from dirmd.
+    subpath: The subpath for the directory being queried, e.g. src/storage'.
+  """
+  # If no component exists for the directory, or if METADATA migration is
+  # incomplete there will be no component information.
+  return json_data.get('dirs', {}).get(subpath,
+                                       {}).get('monorail',
+                                               {}).get('component', '')
+
+
+# Memoize decorator from: https://stackoverflow.com/a/1988826
+# TODO(asvitkine): Replace with @functools.cache once we're on Python 3.9+.
+class Memoize:
+  def __init__(self, f):
+    self.f = f
+    self.memo = {}
+
+  def __call__(self, *args):
+    if not args in self.memo:
+      self.memo[args] = self.f(*args)
+    return self.memo[args]
+
+
+@Memoize
+def _ExtractComponentViaDirmd(path):
+  """Returns the component for monorail issues at the given path.
 
   Examples are 'Blink>Storage>FileAPI' and 'UI'.
 
-  Returns an empty string if no component can be extracted from the OWNERS file
-  located at path or OWNERS files in higher level directories.
+  Uses dirmd in third_party/depot_tools to parse metadata and walk parent
+  directories up to the top level of the repo.
+
+  Returns an empty string if no component can be extracted.
 
   Args:
-    path: The path to an OWNERS file, e.g. 'src/storage/OWNERS'.
+    path: The path to a directory to query, e.g. 'src/storage'.
   """
-  with open(path, 'r') as owners_file:
-    for line in [line.lstrip()
-                 for line in owners_file.read().splitlines() if line]:
-      if line.startswith('# COMPONENT: '):
-        # A typical line is '# COMPONENT: UI>Browser>Bubbles''. The colon is
-        # always followed by exactly one space. And the symbol >, if present,
-        # is never preceded or followed by any spaces.
-        words = line.split(': ')
-        if len(words) == 2:
-          return words[1].rstrip()
-        raise Error('The component info in {} is poorly formatted.'
-                    .format(path))
-
-    higher_level_owners_file_path = _GetHigherLevelOwnersFilePath(path)
-    if higher_level_owners_file_path:
-      return _ExtractComponentFromOWNERS(higher_level_owners_file_path)
-
-  return ''
+  # Verify that the paths are absolute and the root is a parent of the
+  # passed in path.
+  root_path = os.path.abspath(os.path.join(*DIR_ABOVE_TOOLS))
+  path = os.path.abspath(path)
+  if not path.startswith(root_path):
+    raise Error('Path {} is not a subpath of the root path {}.'.format(
+        path, root_path))
+  subpath = path[len(root_path) + 1:] or '.'  # E.g. content/public.
+  dirmd_exe = 'dirmd'
+  if sys.platform == 'win32':
+    dirmd_exe = 'dirmd.bat'
+  dirmd_path = os.path.join(*(DIR_ABOVE_TOOLS +
+                              ['third_party', 'depot_tools', dirmd_exe]))
+  dirmd_command = [dirmd_path, 'read', '-form', 'sparse', root_path, path]
+  dirmd = subprocess.Popen(
+      dirmd_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  if dirmd.wait() != 0:
+    raise Error('dirmd failed: "' + ' '.join(dirmd_command) + '": ' +
+                dirmd.stderr.read().decode('utf-8'))
+  json_out = json.load(dirmd.stdout)
+  # On Windows, dirmd output still uses Unix path separators.
+  if sys.platform == 'win32':
+    subpath = subpath.replace('\\', '/')
+  return _ComponentFromDirmd(json_out, subpath)
 
 
 def _MakeOwners(document, path, emails_with_dom_elements):
@@ -289,7 +331,7 @@ def _UpdateHistogramOwners(histogram, owner_to_replace, owners_to_add):
       histogram.insertBefore(owner_to_add, node_after_owners_file)
 
 
-def _AddHistogramComponent(histogram, component):
+def AddHistogramComponent(histogram, component):
   """Makes a DOM Element for the component and adds it to the given histogram.
 
   Args:
@@ -361,7 +403,7 @@ def ExpandHistogramsOWNERS(histograms):
 
       _UpdateHistogramOwners(histogram, owner, owners_to_add)
 
-      component = _ExtractComponentFromOWNERS(path)
+      component = _ExtractComponentViaDirmd(os.path.dirname(path))
       if component and component not in components_with_dom_elements:
         components_with_dom_elements.add(component)
-        _AddHistogramComponent(histogram, component)
+        AddHistogramComponent(histogram, component)

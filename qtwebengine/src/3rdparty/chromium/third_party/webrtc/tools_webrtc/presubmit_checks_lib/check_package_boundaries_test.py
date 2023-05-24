@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 
 # Copyright (c) 2017 The WebRTC project authors. All Rights Reserved.
 #
@@ -12,9 +12,7 @@ import ast
 import os
 import unittest
 
-#pylint: disable=relative-import
-from check_package_boundaries import CheckPackageBoundaries
-
+import check_package_boundaries
 
 MSG_FORMAT = 'ERROR:check_package_boundaries.py: Unexpected %s.'
 TESTDATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -33,7 +31,8 @@ class UnitTest(unittest.TestCase):
       build_files = None
 
     messages = []
-    for violation in CheckPackageBoundaries(test_dir, build_files):
+    for violation in check_package_boundaries.CheckPackageBoundaries(
+        test_dir, build_files):
       build_file_path = os.path.relpath(violation.build_file_path, test_dir)
       build_file_path = build_file_path.replace(os.path.sep, '/')
       messages.append(violation._replace(build_file_path=build_file_path))
@@ -65,7 +64,7 @@ class UnitTest(unittest.TestCase):
   def testRelativeFilename(self):
     test_dir = os.path.join(TESTDATA_DIR, 'all_build_files')
     with self.assertRaises(AssertionError):
-      CheckPackageBoundaries(test_dir, ["BUILD.gn"])
+      check_package_boundaries.CheckPackageBoundaries(test_dir, ["BUILD.gn"])
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,28 +11,16 @@
 #include "base/mac/mac_util.h"
 #include "base/mac/scoped_cftyperef.h"
 #include "base/memory/ptr_util.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/sys_string_conversions.h"
 #include "device/bluetooth/bluetooth_adapter_mac.h"
-#include "device/bluetooth/bluetooth_adapter_mac_metrics.h"
 #include "device/bluetooth/bluetooth_device.h"
 #include "device/bluetooth/bluetooth_low_energy_peripheral_delegate.h"
 #include "device/bluetooth/bluetooth_remote_gatt_characteristic_mac.h"
 #include "device/bluetooth/bluetooth_remote_gatt_descriptor_mac.h"
 #include "device/bluetooth/bluetooth_remote_gatt_service_mac.h"
 #include "device/bluetooth/public/cpp/bluetooth_address.h"
-
-// Remove when Chrome no longer supports 10.12.
-#if defined(MAC_OS_X_VERSION_10_13)
-
-// In the 10.13 SDK, CBPeripheral became a subclass of CBPeer, which defines
-// -[CBPeer identifier] as partially available. Pretend it still exists on
-// CBPeripheral. At runtime the implementation on CBPeer will be invoked.
-@interface CBPeripheral (HighSierraSDK)
-@property(readonly, nonatomic) NSUUID* identifier;
-@end
-
-#endif  // MAC_OS_X_VERSION_10_13
 
 namespace device {
 
@@ -102,10 +90,10 @@ uint16_t BluetoothLowEnergyDeviceMac::GetAppearance() const {
   return 0;
 }
 
-base::Optional<std::string> BluetoothLowEnergyDeviceMac::GetName() const {
+absl::optional<std::string> BluetoothLowEnergyDeviceMac::GetName() const {
   if ([peripheral_ name])
     return base::SysNSStringToUTF8([peripheral_ name]);
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 bool BluetoothLowEnergyDeviceMac::IsPaired() const {
@@ -159,8 +147,7 @@ void BluetoothLowEnergyDeviceMac::SetConnectionLatency(
 }
 
 void BluetoothLowEnergyDeviceMac::Connect(PairingDelegate* pairing_delegate,
-                                          base::OnceClosure callback,
-                                          ConnectErrorCallback error_callback) {
+                                          ConnectCallback callback) {
   NOTIMPLEMENTED();
 }
 
@@ -208,8 +195,12 @@ void BluetoothLowEnergyDeviceMac::ConnectToServiceInsecurely(
   NOTIMPLEMENTED();
 }
 
+bool BluetoothLowEnergyDeviceMac::IsLowEnergyDevice() {
+  return true;
+}
+
 void BluetoothLowEnergyDeviceMac::CreateGattConnectionImpl(
-    base::Optional<BluetoothUUID> serivce_uuid) {
+    absl::optional<BluetoothUUID> serivce_uuid) {
   if (!IsGattConnected()) {
     GetMacAdapter()->CreateGattConnection(this);
   }
@@ -230,7 +221,6 @@ void BluetoothLowEnergyDeviceMac::DidDiscoverPrimaryServices(NSError* error) {
     discovery_pending_count_ = 0;
     return;
   }
-  RecordDidDiscoverPrimaryServicesResult(error);
   if (error) {
     // TODO(http://crbug.com/609320): Need to pass the error.
     // TODO(http://crbug.com/609844): Decide what to do if discover failed
@@ -277,7 +267,6 @@ void BluetoothLowEnergyDeviceMac::DidDiscoverPrimaryServices(NSError* error) {
 void BluetoothLowEnergyDeviceMac::DidDiscoverCharacteristics(
     CBService* cb_service,
     NSError* error) {
-  RecordDidDiscoverCharacteristicsResult(error);
   if (error) {
     // TODO(http://crbug.com/609320): Need to pass the error.
     // TODO(http://crbug.com/609844): Decide what to do if discover failed
@@ -357,7 +346,6 @@ void BluetoothLowEnergyDeviceMac::DidUpdateNotificationState(
 void BluetoothLowEnergyDeviceMac::DidDiscoverDescriptors(
     CBCharacteristic* cb_characteristic,
     NSError* error) {
-  RecordDidDiscoverDescriptorsResult(error);
   if (error) {
     // TODO(http://crbug.com/609320): Need to pass the error.
     // TODO(http://crbug.com/609844): Decide what to do if discover failed
@@ -429,7 +417,7 @@ void BluetoothLowEnergyDeviceMac::DidConnectPeripheral() {
   DVLOG(1) << *this << ": GATT connected.";
   if (!connected_) {
     connected_ = true;
-    DidConnectGatt();
+    DidConnectGatt(/*error_code=*/absl::nullopt);
     DiscoverPrimaryServices();
   } else {
     // -[<CBCentralManagerDelegate> centralManager:didConnectPeripheral:] can be
@@ -451,13 +439,12 @@ void BluetoothLowEnergyDeviceMac::SendNotificationIfDiscoveryComplete() {
   // Notify when all services have been discovered.
   bool discovery_complete =
       discovery_pending_count_ == 0 &&
-      std::find_if_not(
-          gatt_services_.begin(),
-          gatt_services_.end(), [](GattServiceMap::value_type & pair) {
+      base::ranges::all_of(
+          gatt_services_, [](GattServiceMap::value_type& pair) {
             BluetoothRemoteGattService* gatt_service = pair.second.get();
             return static_cast<BluetoothRemoteGattServiceMac*>(gatt_service)
                 ->IsDiscoveryComplete();
-          }) == gatt_services_.end();
+          });
   if (discovery_complete) {
     DVLOG(1) << *this << ": Discovery complete.";
     device_uuids_.ReplaceServiceUUIDs(gatt_services_);
@@ -520,7 +507,6 @@ BluetoothLowEnergyDeviceMac::GetBluetoothRemoteGattDescriptorMac(
 void BluetoothLowEnergyDeviceMac::DidDisconnectPeripheral(NSError* error) {
   connected_ = false;
   DVLOG(1) << *this << ": Disconnected from peripheral.";
-  RecordDidDisconnectPeripheralResult(error);
   if (error) {
     DVLOG(1) << *this
              << ": Bluetooth error: " << BluetoothAdapterMac::String(error);
@@ -536,21 +522,21 @@ void BluetoothLowEnergyDeviceMac::DidDisconnectPeripheral(NSError* error) {
   //   1. When the connection to the device breaks (either because
   //      we closed it or the device closed it).
   //   2. When we cancel a pending connection request.
-  if (create_gatt_connection_error_callbacks_.empty()) {
+  if (create_gatt_connection_callbacks_.empty()) {
     // If there are no pending callbacks then the connection broke (#1).
     DidDisconnectGatt();
     return;
   }
   // Else we canceled the connection request (#2).
   // TODO(http://crbug.com/585897): Need to pass the error.
-  DidFailToConnectGatt(BluetoothDevice::ConnectErrorCode::ERROR_FAILED);
+  DidConnectGatt(BluetoothDevice::ConnectErrorCode::ERROR_FAILED);
 }
 
 std::ostream& operator<<(std::ostream& out,
                          const BluetoothLowEnergyDeviceMac& device) {
   // TODO(crbug.com/703878): Should use
   // BluetoothLowEnergyDeviceMac::GetNameForDisplay() instead.
-  base::Optional<std::string> name = device.GetName();
+  absl::optional<std::string> name = device.GetName();
   const char* is_gatt_connected =
       device.IsGattConnected() ? "GATT connected" : "GATT disconnected";
   return out << "<BluetoothLowEnergyDeviceMac " << device.GetAddress() << "/"

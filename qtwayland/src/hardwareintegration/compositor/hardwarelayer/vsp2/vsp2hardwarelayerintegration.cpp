@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "vsp2hardwarelayerintegration.h"
 
@@ -41,7 +15,9 @@ extern "C" {
 #include <QWaylandQuickOutput>
 #include <QQuickWindow>
 
-#include <QtPlatformHeaders/qeglfsfunctions.h>
+#include <qpa/qlatformscreen_p.h>
+
+using namespace QNativeInterface::Private;
 
 QT_BEGIN_NAMESPACE
 
@@ -56,13 +32,17 @@ Vsp2Buffer::Vsp2Buffer(wl_kms_buffer *kmsBuffer)
 Vsp2Layer::Vsp2Layer(QWaylandQuickHardwareLayer *hwLayer, Vsp2HardwareLayerIntegration *integration)
     : m_hwLayer(hwLayer)
 {
+    auto *wlItem = m_hwLayer->waylandItem();
+    m_screen = dynamic_cast<QVsp2Screen*>(wlItem->window()->screen()->handle());
+    Q_ASSERT(m_screen);
+
     connect(hwLayer, &QWaylandQuickHardwareLayer::stackingLevelChanged, this, [integration](){
         integration->recreateVspLayers();
     });
     connect(hwLayer->waylandItem(), &QWaylandQuickItem::surfaceChanged, this, &Vsp2Layer::handleSurfaceChanged);
     connect(hwLayer->waylandItem(), &QQuickItem::opacityChanged, this, &Vsp2Layer::updateOpacity);
     connect(hwLayer->waylandItem()->window(), &QQuickWindow::afterSynchronizing, this, &Vsp2Layer::updatePosition);
-    hwLayer->disableSceneGraphPainting();
+    hwLayer->setSceneGraphPainting(false);
     QWaylandViewPrivate::get(hwLayer->waylandItem()->view())->independentFrameCallback = true;
     handleSurfaceChanged();
 }
@@ -76,16 +56,17 @@ void Vsp2Layer::enableVspLayer()
 
     m_buffer = Vsp2Buffer(kmsBuffer);
     updatePosition();
+
+    m_layerIndex = m_screen->addLayer(m_buffer.dmabufFd, m_buffer.size, m_position, m_buffer.drmPixelFormat, m_buffer.bytesPerLine);
+
     auto *wlItem = m_hwLayer->waylandItem();
-    m_screen = wlItem->window()->screen();
-    m_layerIndex = QEglFSFunctions::vsp2AddLayer(m_screen, m_buffer.dmabufFd, m_buffer.size, m_position, m_buffer.drmPixelFormat, m_buffer.bytesPerLine);
     wlItem->surface()->frameStarted();
     updateOpacity();
 }
 
 void Vsp2Layer::disableVspLayer()
 {
-    QEglFSFunctions::vsp2RemoveLayer(m_screen, m_layerIndex);
+    m_screen->removeLayer(m_layerIndex);
     m_layerIndex = -1;
     m_screen = nullptr;
 }
@@ -112,9 +93,9 @@ void Vsp2Layer::handleBufferCommitted()
     }
 
     m_buffer = newBuffer;
+    m_screen->setLayerBuffer(m_layerIndex, m_buffer.dmabufFd);
+
     auto *wlItem = m_hwLayer->waylandItem();
-    m_screen = wlItem->window()->screen();
-    QEglFSFunctions::vsp2SetLayerBuffer(m_screen, m_layerIndex, m_buffer.dmabufFd);
     wlItem->surface()->frameStarted();
 }
 
@@ -147,14 +128,14 @@ void Vsp2Layer::updatePosition()
 
     m_position = globalGeometry.topLeft().toPoint();
     if (isEnabled())
-        QEglFSFunctions::vsp2SetLayerPosition(m_screen, m_layerIndex, m_position);
+        m_screen->setLayerPosition(m_layerIndex, m_position);
 }
 
 void Vsp2Layer::updateOpacity()
 {
     if (isEnabled()) {
         qreal opacity = m_hwLayer->waylandItem()->opacity();
-        QEglFSFunctions::vsp2SetLayerAlpha(m_screen, m_layerIndex, opacity);
+        m_screen->setLayerAlpha(m_layerIndex, opacity);
     }
 }
 
@@ -181,7 +162,7 @@ wl_kms_buffer *Vsp2Layer::nextKmsBuffer()
 
 void Vsp2HardwareLayerIntegration::enableVspLayers()
 {
-    for (auto &layer : qAsConst(m_layers)) {
+    for (auto &layer : std::as_const(m_layers)) {
         Q_ASSERT(!layer->isEnabled());
         layer->enableVspLayer();
     }
@@ -216,7 +197,8 @@ Vsp2HardwareLayerIntegration::Vsp2HardwareLayerIntegration()
                    << "You need to set QT_QPA_PLATFORM=eglfs and QT_QPA_EGLFS_INTEGRATION=eglfs_kms_vsp2";
     }
     static Vsp2HardwareLayerIntegration *s_instance = this;
-    QEglFSFunctions::vsp2AddBlendListener(QGuiApplication::primaryScreen(), [](){
+    auto screen = dynamic_cast<QVsp2Screen*>(QGuiApplication::primaryScreen()->handle());
+    screen->addBlendListener([](){
         s_instance->sendFrameCallbacks();
     });
 }
@@ -243,7 +225,7 @@ void Vsp2HardwareLayerIntegration::remove(QWaylandQuickHardwareLayer *hwLayer)
 
 void Vsp2HardwareLayerIntegration::sendFrameCallbacks()
 {
-    for (auto &layer : qAsConst(m_layers)) {
+    for (auto &layer : std::as_const(m_layers)) {
         if (auto *surface = layer->hwLayer()->waylandItem()->surface())
             surface->sendFrameCallbacks();
     }

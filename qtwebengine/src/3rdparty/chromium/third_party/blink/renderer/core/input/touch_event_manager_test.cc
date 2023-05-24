@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -48,7 +48,7 @@ class CheckEventListenerCallback final : public NativeEventListener {
 };
 
 TEST_F(TouchEventManagerTest, LostTouchDueToInnerIframeRemove) {
-  WebView().MainFrameWidget()->Resize(WebSize(400, 400));
+  WebView().MainFrameViewWidget()->Resize(gfx::Size(400, 400));
   SimRequest request("https://example.com/test.html", "text/html");
   LoadURL("https://example.com/test.html");
   request.Complete(R"HTML(
@@ -81,7 +81,7 @@ TEST_F(TouchEventManagerTest, LostTouchDueToInnerIframeRemove) {
 }
 
 TEST_F(TouchEventManagerTest, AbosolutePosWithScrollAndZoom) {
-  WebView().MainFrameWidget()->Resize(WebSize(400, 400));
+  WebView().MainFrameViewWidget()->Resize(gfx::Size(400, 400));
   SimRequest request("https://example.com/test.html", "text/html");
   LoadURL("https://example.com/test.html");
   request.Complete(R"HTML(
@@ -102,7 +102,7 @@ TEST_F(TouchEventManagerTest, AbosolutePosWithScrollAndZoom) {
       To<HTMLInputElement>(GetDocument().getElementById("slideElement"));
   // Allow off by 1 error because it may result in different value in some
   // platform.
-  EXPECT_NEAR(23, ParseToDoubleForNumberType(input->value()), 1);
+  EXPECT_NEAR(23, ParseToDoubleForNumberType(input->Value()), 1);
 }
 
 }  // namespace blink

@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/values.h"
 #include "gpu/config/gpu_info.h"
 #include "gpu/gpu_export.h"
@@ -31,6 +33,7 @@ class GPU_EXPORT GpuControlList {
     kOsChromeOS,
     kOsAndroid,
     kOsFuchsia,
+    kOsIOS,
     kOsAny
   };
 
@@ -138,7 +141,7 @@ class GPU_EXPORT GpuControlList {
     const char* driver_vendor;
     Version driver_version;
 
-    bool Contains(const GPUInfo& gpu_info) const;
+    bool Contains(const std::vector<GPUInfo::GPUDevice>& gpus) const;
   };
 
   struct GPU_EXPORT GLStrings {
@@ -152,7 +155,9 @@ class GPU_EXPORT GpuControlList {
 
   struct GPU_EXPORT MachineModelInfo {
     size_t machine_model_name_size;
-    const char* const* machine_model_names;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const char* const* machine_model_names;
     Version machine_model_version;
 
     bool Contains(const GPUInfo& gpu_info) const;
@@ -195,16 +200,28 @@ class GPU_EXPORT GpuControlList {
     Version os_version;
     uint32_t vendor_id;
     size_t device_size;
-    const Device* devices;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const Device* devices;
     MultiGpuCategory multi_gpu_category;
     MultiGpuStyle multi_gpu_style;
-    const DriverInfo* driver_info;
-    const GLStrings* gl_strings;
-    const MachineModelInfo* machine_model_info;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const DriverInfo* driver_info;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const GLStrings* gl_strings;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const MachineModelInfo* machine_model_info;
     size_t intel_gpu_series_list_size;
-    const IntelGpuSeriesType* intel_gpu_series_list;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const IntelGpuSeriesType* intel_gpu_series_list;
     Version intel_gpu_generation;
-    const More* more;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #global-scope
+    RAW_PTR_EXCLUSION const More* more;
 
     bool Contains(OsType os_type,
                   const std::string& os_version,
@@ -219,16 +236,26 @@ class GPU_EXPORT GpuControlList {
     uint32_t id;
     const char* description;
     size_t feature_size;
-    const int* features;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #reinterpret-cast-trivial-type, #global-scope
+    RAW_PTR_EXCLUSION const int* features;
     size_t disabled_extension_size;
-    const char* const* disabled_extensions;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #reinterpret-cast-trivial-type, #global-scope
+    RAW_PTR_EXCLUSION const char* const* disabled_extensions;
     size_t disabled_webgl_extension_size;
-    const char* const* disabled_webgl_extensions;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #reinterpret-cast-trivial-type, #global-scope
+    RAW_PTR_EXCLUSION const char* const* disabled_webgl_extensions;
     size_t cr_bug_size;
-    const uint32_t* cr_bugs;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #reinterpret-cast-trivial-type, #global-scope
+    RAW_PTR_EXCLUSION const uint32_t* cr_bugs;
     Conditions conditions;
     size_t exception_size;
-    const Conditions* exceptions;
+    // This field is not a raw_ptr<> because it was filtered by the rewriter
+    // for: #reinterpret-cast-trivial-type, #global-scope
+    RAW_PTR_EXCLUSION const Conditions* exceptions;
 
     bool Contains(OsType os_type,
                   const std::string& os_version,
@@ -240,8 +267,7 @@ class GPU_EXPORT GpuControlList {
     // decision.  It should only be checked if Contains() returns true.
     bool NeedsMoreInfo(const GPUInfo& gpu_info, bool consider_exceptions) const;
 
-    void GetFeatureNames(base::ListValue* feature_names,
-                         const FeatureMap& feature_map) const;
+    base::Value::List GetFeatureNames(const FeatureMap& feature_map) const;
 
     // Logs a control list match for this rule in the list identified by
     // |control_list_logging_name|.
@@ -287,7 +313,7 @@ class GPU_EXPORT GpuControlList {
   // }
   // The use case is we compute the entries from GPU process and send them to
   // browser process, and call GetReasons() in browser process.
-  void GetReasons(base::ListValue* problem_list,
+  void GetReasons(base::Value::List& problem_list,
                   const std::string& tag,
                   const std::vector<uint32_t>& entries) const;
 
@@ -324,7 +350,7 @@ class GPU_EXPORT GpuControlList {
   static OsType GetOsType();
 
   size_t entry_count_;
-  const Entry* entries_;
+  raw_ptr<const Entry> entries_;
   // This records all the entries that are appliable to the current user
   // machine.  It is updated everytime MakeDecision() is called and is used
   // later by GetDecisionEntries().
@@ -343,7 +369,7 @@ class GPU_EXPORT GpuControlList {
 
 struct GPU_EXPORT GpuControlListData {
   size_t entry_count;
-  const GpuControlList::Entry* entries;
+  raw_ptr<const GpuControlList::Entry> entries;
 
   GpuControlListData() : entry_count(0u), entries(nullptr) {}
 

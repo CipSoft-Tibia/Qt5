@@ -1,14 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_BASE_COCOA_TEXT_SERVICES_CONTEXT_MENU_H_
 #define UI_BASE_COCOA_TEXT_SERVICES_CONTEXT_MENU_H_
 
+#include <string>
+
 #include "base/component_export.h"
 #include "base/i18n/rtl.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/base/models/simple_menu_model.h"
 
 namespace ui {
@@ -37,7 +38,7 @@ class COMPONENT_EXPORT(UI_BASE) TextServicesContextMenu
   class COMPONENT_EXPORT(UI_BASE) Delegate {
    public:
     // Returns the selected text.
-    virtual base::string16 GetSelectedText() const = 0;
+    virtual std::u16string GetSelectedText() const = 0;
 
     // Returns true if |direction| should be enabled in the BiDi submenu.
     virtual bool IsTextDirectionEnabled(
@@ -53,8 +54,11 @@ class COMPONENT_EXPORT(UI_BASE) TextServicesContextMenu
 
   explicit TextServicesContextMenu(Delegate* delegate);
 
+  TextServicesContextMenu(const TextServicesContextMenu&) = delete;
+  TextServicesContextMenu& operator=(const TextServicesContextMenu&) = delete;
+
   // Methods for speaking.
-  static void SpeakText(const base::string16& text);
+  static void SpeakText(const std::u16string& text);
   static void StopSpeaking();
   static bool IsSpeaking();
 
@@ -81,9 +85,7 @@ class COMPONENT_EXPORT(UI_BASE) TextServicesContextMenu
   // Model for the BiDi input submenu.
   ui::SimpleMenuModel bidi_submenu_model_;
 
-  Delegate* delegate_;  // Weak.
-
-  DISALLOW_COPY_AND_ASSIGN(TextServicesContextMenu);
+  raw_ptr<Delegate> delegate_;  // Weak.
 };
 
 }  // namespace ui

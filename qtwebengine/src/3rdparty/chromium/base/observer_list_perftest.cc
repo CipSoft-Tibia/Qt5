@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -37,7 +37,9 @@ class ObserverInterface {
   ObserverInterface(const ObserverInterface&) = delete;
   ObserverInterface& operator=(const ObserverInterface&) = delete;
   virtual ~ObserverInterface() = default;
-  virtual void Observe() const { ++g_observer_list_perf_test_counter; }
+  virtual void Observe() const {
+    g_observer_list_perf_test_counter = g_observer_list_perf_test_counter + 1;
+  }
 };
 
 class UnsafeObserver : public ObserverInterface {};
@@ -109,7 +111,7 @@ TYPED_TEST(ObserverListPerfTest, NotifyPerformance) {
 
     EXPECT_EQ(observer_count * weighted_laps,
               g_observer_list_perf_test_counter);
-    EXPECT_TRUE(observer_count == 0 || list.might_have_observers());
+    EXPECT_TRUE(observer_count == 0 || !list.empty());
 
     std::string story_name =
         base::StringPrintf("%s_%d", Pick<TypeParam>::GetName(), observer_count);

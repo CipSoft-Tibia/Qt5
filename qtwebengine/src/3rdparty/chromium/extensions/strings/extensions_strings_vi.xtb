@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Gói không hợp lệ: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Máy ảnh mặt sau</translation>
 <translation id="1196338895211115272">Không thể xuất khóa cá nhân.</translation>
+<translation id="132960226125594336">Không thể tải tệp "<ph name="RELATIVE_PATH" />" cho tập lệnh nội dung vì tệp này vượt quá kích thước tập lệnh tối đa hoặc tổng kích thước tập lệnh nội dung tối đa của tiện ích.</translation>
 <translation id="1420684932347524586">Rất tiếc! Không thể tạo khóa cá nhân RSA ngẫu nhiên.</translation>
 <translation id="1445572445564823378">Tiện ích này đang làm chậm <ph name="PRODUCT_NAME" />. Bạn phải tắt tiện ích để khôi phục hiệu suất của <ph name="PRODUCT_NAME" />.</translation>
 <translation id="1468038450257740950">WebGL không được hỗ trợ.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">Gói không hợp lệ. Chi tiết: '<ph name="ERROR_MESSAGE" />'.</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" đang yêu cầu quyền truy cập vào một trong các thiết bị của bạn:</translation>
 <translation id="8885905466771744233">Khoá cá nhân cho tiện ích chỉ định đã tồn tại. Hãy sử dụng lại hoặc xóa khóa đó trước tiên.</translation>
+<translation id="9039223174332979184">Quản trị viên của máy này yêu cầu <ph name="EXTENSION_NAME" /> có phiên bản tệp kê khai tối thiểu là 3.</translation>
 <translation id="907841381057066561">Không thể tạo tệp nén tạm thời khi đóng gói.</translation>
 <translation id="941543339607623937">Khoá cá nhân không hợp lệ.</translation>
 </translationbundle>

@@ -1,48 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtConcurrent module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTCONCURRENT_THREADENGINE_H
 #define QTCONCURRENT_THREADENGINE_H
 
 #include <QtConcurrent/qtconcurrent_global.h>
 
-#if !defined(QT_NO_CONCURRENT) ||defined(Q_CLANG_QDOC)
+#if !defined(QT_NO_CONCURRENT) ||defined(Q_QDOC)
 
 #include <QtCore/qthreadpool.h>
 #include <QtCore/qfuture.h>
@@ -88,10 +52,9 @@ class Q_CONCURRENT_EXPORT ThreadEngineBase: public QRunnable
 {
 public:
     // Public API:
-    ThreadEngineBase();
+    ThreadEngineBase(QThreadPool *pool);
     virtual ~ThreadEngineBase();
     void startSingleThreaded();
-    void startBlocking();
     void startThread();
     bool isCanceled();
     void waitForResume();
@@ -99,13 +62,19 @@ public:
     void setProgressValue(int progress);
     void setProgressRange(int minimum, int maximum);
     void acquireBarrierSemaphore();
+    void reportIfSuspensionDone() const;
 
 protected: // The user overrides these:
     virtual void start() {}
     virtual void finish() {}
     virtual ThreadFunctionResult threadFunction() { return ThreadFinished; }
-    virtual bool shouldStartThread() { return futureInterface ? !futureInterface->isPaused() : true; }
-    virtual bool shouldThrottleThread() { return futureInterface ? futureInterface->isPaused() : false; }
+    virtual bool shouldStartThread() { return !shouldThrottleThread(); }
+    virtual bool shouldThrottleThread()
+    {
+        return futureInterface ? (futureInterface->isSuspending() || futureInterface->isSuspended())
+                               : false;
+    }
+
 private:
     bool startThreadInternal();
     void startThreads();
@@ -121,14 +90,17 @@ protected:
     QThreadPool *threadPool;
     ThreadEngineBarrier barrier;
     QtPrivate::ExceptionStore exceptionStore;
+    QBasicMutex mutex;
 };
 
 
 template <typename T>
-class ThreadEngine : public virtual ThreadEngineBase
+class ThreadEngine : public ThreadEngineBase
 {
 public:
     typedef T ResultType;
+
+    ThreadEngine(QThreadPool *pool) : ThreadEngineBase(pool) {}
 
     virtual T *result() { return nullptr; }
 
@@ -141,15 +113,6 @@ public:
     T *startSingleThreaded()
     {
         ThreadEngineBase::startSingleThreaded();
-        return result();
-    }
-
-    // Runs the user algorithm using multiple threads.
-    // This function blocks until the algorithm is finished,
-    // and then returns the result.
-    T *startBlocking()
-    {
-        ThreadEngineBase::startBlocking();
         return result();
     }
 
@@ -186,7 +149,7 @@ public:
             futureInterfaceTyped()->reportResult(_result, index);
     }
 
-    void reportResults(const QVector<T> &_result, int index = -1, int count = -1)
+    void reportResults(const QList<T> &_result, int index = -1, int count = -1)
     {
         if (futureInterface)
             futureInterfaceTyped()->reportResults(_result, index, count);
@@ -233,13 +196,6 @@ class ThreadEngineStarter : public ThreadEngineStarterBase<T>
 public:
     ThreadEngineStarter(TypedThreadEngine *eng)
         : Base(eng) { }
-
-    T startBlocking()
-    {
-        T t = *this->threadEngine->startBlocking();
-        delete this->threadEngine;
-        return t;
-    }
 };
 
 // Full template specialization where T is void.
@@ -249,12 +205,6 @@ class ThreadEngineStarter<void> : public ThreadEngineStarterBase<void>
 public:
     ThreadEngineStarter(ThreadEngine<void> *_threadEngine)
         : ThreadEngineStarterBase<void>(_threadEngine) {}
-
-    void startBlocking()
-    {
-        this->threadEngine->startBlocking();
-        delete this->threadEngine;
-    }
 };
 
 //! [qtconcurrentthreadengine-1]

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,18 +23,17 @@ class CAPTURE_EXPORT VideoFrameReceiverOnTaskRunner
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
   ~VideoFrameReceiverOnTaskRunner() override;
 
+  void OnCaptureConfigurationChanged() override;
   void OnNewBuffer(int32_t buffer_id,
                    media::mojom::VideoBufferHandlePtr buffer_handle) override;
   void OnFrameReadyInBuffer(
-      int buffer_id,
-      int frame_feedback_id,
-      std::unique_ptr<
-          VideoCaptureDevice::Client::Buffer::ScopedAccessPermission>
-          buffer_read_permission,
-      mojom::VideoFrameInfoPtr frame_info) override;
+      ReadyFrameInBuffer frame,
+      std::vector<ReadyFrameInBuffer> scaled_frames) override;
   void OnBufferRetired(int buffer_id) override;
   void OnError(VideoCaptureError error) override;
   void OnFrameDropped(VideoCaptureFrameDropReason reason) override;
+  void OnNewCropVersion(uint32_t crop_version) override;
+  void OnFrameWithEmptyRegionCapture() override;
   void OnLog(const std::string& message) override;
   void OnStarted() override;
   void OnStartedUsingGpuDecode() override;

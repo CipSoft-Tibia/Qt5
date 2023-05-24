@@ -1,15 +1,16 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_WEB_CONTENTS_WEB_DRAG_DEST_MAC_H_
 #define CONTENT_BROWSER_WEB_CONTENTS_WEB_DRAG_DEST_MAC_H_
 
+#include "base/memory/raw_ptr.h"
+
 #import <Cocoa/Cocoa.h>
 
 #include <memory>
 
-#include "base/strings/string16.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/common/drop_data.h"
@@ -23,13 +24,11 @@ class WebDragDestDelegate;
 }  // namespace content
 
 // A typedef for a RenderViewHost used for comparison purposes only.
-typedef content::RenderViewHost* RenderViewHostIdentifier;
+using RenderViewHostIdentifier = content::RenderViewHost*;
 
-namespace remote_cocoa {
-namespace mojom {
+namespace remote_cocoa::mojom {
 class DraggingInfo;
-}  // namespace mojom
-}  // namespace remote_cocoa
+}  // namespace remote_cocoa::mojom
 
 namespace content {
 class WebContentsViewDelegate;
@@ -38,26 +37,26 @@ class WebContentsViewDelegate;
 // operation. This is required because some drop event data can change before
 // completeDropAsync is called.
 struct DropContext {
-  DropContext(const content::DropData drop_data,
+  DropContext(const DropData drop_data,
               const gfx::PointF client_pt,
               const gfx::PointF screen_pt,
               int modifier_flags,
-              base::WeakPtr<content::RenderWidgetHostImpl> target_rwh);
+              base::WeakPtr<RenderWidgetHostImpl> target_rwh);
   DropContext(const DropContext& other);
+  DropContext(DropContext&& other);
   ~DropContext();
 
-  const content::DropData drop_data;
+  DropData drop_data;
   const gfx::PointF client_pt;
   const gfx::PointF screen_pt;
   const int modifier_flags;
-  base::WeakPtr<content::RenderWidgetHostImpl> target_rwh;
+  base::WeakPtr<RenderWidgetHostImpl> target_rwh;
 };
 
-// Given |data|, which should not be nil, fill it in using the contents of the
-// given pasteboard. The types handled by this method should be kept in sync
-// with [WebContentsViewCocoa registerDragTypes].
-void CONTENT_EXPORT PopulateDropDataFromPasteboard(content::DropData* data,
-                                                   NSPasteboard* pboard);
+// Given a pasteboard, returns a `DropData` filled using its contents. The types
+// handled by this method must be kept in sync with `-[WebContentsViewCocoa
+// registerDragTypes]`.
+DropData CONTENT_EXPORT PopulateDropDataFromPasteboard(NSPasteboard* pboard);
 
 }  // namespace content
 
@@ -68,10 +67,10 @@ CONTENT_EXPORT
 @interface WebDragDest : NSObject {
  @private
   // Our associated WebContentsImpl. Weak reference.
-  content::WebContentsImpl* _webContents;
+  raw_ptr<content::WebContentsImpl, DanglingUntriaged> _webContents;
 
   // Delegate; weak.
-  content::WebDragDestDelegate* _delegate;
+  raw_ptr<content::WebDragDestDelegate, DanglingUntriaged> _delegate;
 
   // Updated asynchronously during a drag to tell us whether or not we should
   // allow the drop.
@@ -118,7 +117,7 @@ CONTENT_EXPORT
 // next time |-draggingUpdated:| is called.
 - (void)setCurrentOperation:(NSDragOperation)operation;
 
-// Messages to send during the tracking of a drag, ususally upon receiving
+// Messages to send during the tracking of a drag, usually upon receiving
 // calls from the view system. Communicates the drag messages to WebCore.
 - (void)setDropData:(const content::DropData&)dropData;
 - (NSDragOperation)draggingEntered:
@@ -129,7 +128,7 @@ CONTENT_EXPORT
 - (BOOL)performDragOperation:(const remote_cocoa::mojom::DraggingInfo*)info
     withWebContentsViewDelegate:
         (content::WebContentsViewDelegate*)webContentsViewDelegate;
-- (void)completeDropAsync:(BOOL)success
+- (void)completeDropAsync:(absl::optional<content::DropData>)dropData
               withContext:(const content::DropContext)context;
 
 // Helper to call WebWidgetHostInputEventRouter::GetRenderWidgetHostAtPoint().
@@ -139,6 +138,7 @@ CONTENT_EXPORT
 
 // Sets |dragStartProcessID_| and |dragStartViewID_|.
 - (void)setDragStartTrackersForProcess:(int)processID;
+- (void)resetDragStartTrackers;
 
 // Returns whether |targetRWH| is a valid RenderWidgetHost to be dragging
 // over. This enforces that same-page, cross-site drags are not allowed. See
@@ -148,7 +148,7 @@ CONTENT_EXPORT
 @end
 
 // Public use only for unit tests.
-@interface WebDragDest(Testing)
+@interface WebDragDest (Testing)
 // Given a point in window coordinates and a view in that window, return a
 // flipped point in the coordinate system of |view|.
 - (NSPoint)flipWindowPointToView:(const NSPoint&)windowPoint

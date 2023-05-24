@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -40,11 +14,17 @@
 #define QXYSERIES_P_H
 
 #include <private/qabstractseries_p.h>
+#include <private/qxyseries_p.h>
 #include <QtCharts/private/qchartglobal_p.h>
+#include <QtCore/qvariant.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qset.h>
+#include <QtGui/qcolor.h>
+#include <QtGui/qpen.h>
+#include <QtCore/qlist.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
-class QXYSeries;
 class QAbstractAxis;
 
 class Q_CHARTS_PRIVATE_EXPORT QXYSeriesPrivate: public QAbstractSeriesPrivate
@@ -54,25 +34,45 @@ class Q_CHARTS_PRIVATE_EXPORT QXYSeriesPrivate: public QAbstractSeriesPrivate
 public:
     QXYSeriesPrivate(QXYSeries *q);
 
-    void initializeDomain();
-    void initializeAxes();
-    void initializeAnimations(QtCharts::QChart::AnimationOptions options, int duration,
-                              QEasingCurve &curve);
+    void initializeDomain() override;
+    void initializeAxes() override;
+    void initializeAnimations(QChart::AnimationOptions options, int duration,
+                              QEasingCurve &curve) override;
 
-    QList<QLegendMarker*> createLegendMarkers(QLegend* legend);
+    QList<QLegendMarker*> createLegendMarkers(QLegend* legend) override;
 
-    QAbstractAxis::AxisType defaultAxisType(Qt::Orientation orientation) const;
-    QAbstractAxis* createDefaultAxis(Qt::Orientation orientation) const;
+    QAbstractAxis::AxisType defaultAxisType(Qt::Orientation orientation) const override;
+    QAbstractAxis* createDefaultAxis(Qt::Orientation orientation) const override;
 
-    void drawSeriesPointLabels(QPainter *painter, const QVector<QPointF> &points,
-                               const int offset = 0);
+    void drawPointLabels(QPainter *painter, const QList<QPointF> &allPoints, const int offset = 0);
+    void drawSeriesPointLabels(QPainter *painter, const QList<QPointF> &points,
+                               const int offset = 0, const QHash<int, int> &offsets = {},
+                               const QList<int> &indexesToSkip = {},
+                               const QHash<int, QString> &customLabels = {});
+
+    void drawBestFitLine(QPainter *painter, const QRectF &clipRect);
+    QPair<qreal, qreal> bestFitLineEquation(bool &ok) const;
+
+    void setPointSelected(int index, bool selected, bool &callSignal);
+    bool isPointSelected(int index);
+
+    bool isMarkerSizeDefault();
+    void setMarkerSize(qreal markerSize);
+
+    QList<qreal> colorByData() const;
+
+    bool setPointConfiguration(const int index, const QXYSeries::PointConfiguration key,
+                               const QVariant &value);
+
 
 Q_SIGNALS:
-    void updated();
+    void seriesUpdated();
 
 protected:
-    QVector<QPointF> m_points;
+    QList<QPointF> m_points;
+    QSet<int> m_selectedPoints;
     QPen m_pen;
+    QColor m_selectedColor;
     QBrush m_brush;
     bool m_pointsVisible;
     QString m_pointLabelsFormat;
@@ -80,12 +80,21 @@ protected:
     QFont m_pointLabelsFont;
     QColor m_pointLabelsColor;
     bool m_pointLabelsClipping;
+    QImage m_lightMarker;
+    QImage m_selectedLightMarker;
+    QPen m_bestFitLinePen;
+    bool m_bestFitLineVisible;
+    qreal m_markerSize;
+    bool m_markerSizeDefault = true;
+
+    QHash<int, QHash<QXYSeries::PointConfiguration, QVariant>> m_pointsConfiguration;
+    QList<qreal> m_colorByData;
 
 private:
     Q_DECLARE_PUBLIC(QXYSeries)
     friend class QScatterSeries;
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif

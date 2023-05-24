@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include <memory>
 #include <string>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/time/time.h"
 #include "components/security_interstitials/content/ssl_blocking_page_base.h"
 #include "components/security_interstitials/content/ssl_cert_reporter.h"
@@ -42,11 +41,15 @@ class BadClockBlockingPage : public SSLBlockingPageBase {
       const net::SSLInfo& ssl_info,
       const GURL& request_url,
       const base::Time& time_triggered,
+      bool can_show_enhanced_protection_message,
       ssl_errors::ClockState clock_state,
       std::unique_ptr<SSLCertReporter> ssl_cert_reporter,
       std::unique_ptr<
           security_interstitials::SecurityInterstitialControllerClient>
           controller_client);
+
+  BadClockBlockingPage(const BadClockBlockingPage&) = delete;
+  BadClockBlockingPage& operator=(const BadClockBlockingPage&) = delete;
 
   ~BadClockBlockingPage() override;
 
@@ -57,15 +60,12 @@ class BadClockBlockingPage : public SSLBlockingPageBase {
  protected:
   // SecurityInterstitialPage implementation:
   void CommandReceived(const std::string& command) override;
-  void PopulateInterstitialStrings(
-      base::DictionaryValue* load_time_data) override;
+  void PopulateInterstitialStrings(base::Value::Dict& load_time_data) override;
 
  private:
   const net::SSLInfo ssl_info_;
 
   const std::unique_ptr<security_interstitials::BadClockUI> bad_clock_ui_;
-
-  DISALLOW_COPY_AND_ASSIGN(BadClockBlockingPage);
 };
 
 #endif  // COMPONENTS_SECURITY_INTERSTITIALS_CONTENT_BAD_CLOCK_BLOCKING_PAGE_H_

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,14 @@
 
 namespace blink {
 
-VisibilityStateEntry::VisibilityStateEntry(AtomicString name, double start_time)
-    : PerformanceEntry(name, start_time, start_time) {}
+VisibilityStateEntry::VisibilityStateEntry(AtomicString name,
+                                           double start_time,
+                                           DOMWindow* source)
+    : PerformanceEntry(name, start_time, start_time, source) {}
 
 VisibilityStateEntry::~VisibilityStateEntry() = default;
 
-AtomicString VisibilityStateEntry::entryType() const {
+const AtomicString& VisibilityStateEntry::entryType() const {
   return performance_entry_names::kVisibilityState;
 }
 

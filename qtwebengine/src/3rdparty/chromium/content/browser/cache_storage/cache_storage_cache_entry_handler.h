@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,19 +8,20 @@
 #include <memory>
 #include <set>
 
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/util/type_safety/pass_key.h"
+#include "base/types/pass_key.h"
+#include "components/services/storage/public/mojom/cache_storage_control.mojom.h"
+#include "content/browser/cache_storage/blob_storage_context_wrapper.h"
 #include "content/browser/cache_storage/cache_storage_cache.h"
 #include "content/browser/cache_storage/cache_storage_cache_handle.h"
 #include "content/browser/cache_storage/cache_storage_manager.h"
 #include "content/browser/cache_storage/scoped_writable_entry.h"
-#include "content/common/content_export.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "net/disk_cache/disk_cache.h"
 #include "storage/browser/blob/blob_data_builder.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/cache_storage/cache_storage.mojom.h"
 
 namespace storage {
@@ -28,8 +29,6 @@ class BlobStorageContext;
 }  // namespace storage
 
 namespace content {
-
-enum class CacheStorageOwner;
 
 // The state needed to pass when writing to a cache.
 struct PutContext {
@@ -43,6 +42,9 @@ struct PutContext {
              mojo::PendingRemote<blink::mojom::Blob> side_data_blob,
              uint64_t side_data_blob_size,
              int64_t trace_id);
+
+  PutContext(const PutContext&) = delete;
+  PutContext& operator=(const PutContext&) = delete;
 
   ~PutContext();
 
@@ -58,12 +60,9 @@ struct PutContext {
   // Provided while writing to the cache.
   ErrorCallback callback;
   ScopedWritableEntry cache_entry;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(PutContext);
 };
 
-class CONTENT_EXPORT CacheStorageCacheEntryHandler {
+class CacheStorageCacheEntryHandler {
  public:
   // The DiskCacheBlobEntry is a ref-counted object containing both
   // a disk_cache Entry and a Handle to the cache in which it lives.  This
@@ -72,10 +71,13 @@ class CONTENT_EXPORT CacheStorageCacheEntryHandler {
    public:
     // Use |CacheStorageCacheEntryHandler::CreateDiskCacheBlobEntry|.
     DiskCacheBlobEntry(
-        util::PassKey<CacheStorageCacheEntryHandler> key,
+        base::PassKey<CacheStorageCacheEntryHandler> key,
         base::WeakPtr<CacheStorageCacheEntryHandler> entry_handler,
         CacheStorageCacheHandle cache_handle,
         disk_cache::ScopedEntryPtr disk_cache_entry);
+
+    DiskCacheBlobEntry(const DiskCacheBlobEntry&) = delete;
+    DiskCacheBlobEntry& operator=(const DiskCacheBlobEntry&) = delete;
 
     int Read(scoped_refptr<net::IOBuffer> dst_buffer,
              CacheStorageCache::EntryIndex disk_cache_index,
@@ -94,17 +96,19 @@ class CONTENT_EXPORT CacheStorageCacheEntryHandler {
     ~DiskCacheBlobEntry();
 
     base::WeakPtr<CacheStorageCacheEntryHandler> entry_handler_;
-    base::Optional<CacheStorageCacheHandle> cache_handle_;
+    absl::optional<CacheStorageCacheHandle> cache_handle_;
     disk_cache::ScopedEntryPtr disk_cache_entry_;
 
     SEQUENCE_CHECKER(sequence_checker_);
-
-    DISALLOW_COPY_AND_ASSIGN(DiskCacheBlobEntry);
   };
 
   scoped_refptr<DiskCacheBlobEntry> CreateDiskCacheBlobEntry(
       CacheStorageCacheHandle cache_handle,
       disk_cache::ScopedEntryPtr disk_cache_entry);
+
+  CacheStorageCacheEntryHandler(const CacheStorageCacheEntryHandler&) = delete;
+  CacheStorageCacheEntryHandler& operator=(
+      const CacheStorageCacheEntryHandler&) = delete;
 
   virtual ~CacheStorageCacheEntryHandler();
 
@@ -119,7 +123,7 @@ class CONTENT_EXPORT CacheStorageCacheEntryHandler {
                                    blink::mojom::FetchAPIRequest* request) = 0;
 
   static std::unique_ptr<CacheStorageCacheEntryHandler> CreateCacheEntryHandler(
-      CacheStorageOwner owner,
+      storage::mojom::CacheStorageOwner owner,
       scoped_refptr<BlobStorageContextWrapper> blob_storage_context);
 
   void InvalidateDiskCacheBlobEntrys();
@@ -155,7 +159,6 @@ class CONTENT_EXPORT CacheStorageCacheEntryHandler {
   std::set<DiskCacheBlobEntry*> blob_entries_;
 
   SEQUENCE_CHECKER(sequence_checker_);
-  DISALLOW_COPY_AND_ASSIGN(CacheStorageCacheEntryHandler);
 };
 
 }  // namespace content

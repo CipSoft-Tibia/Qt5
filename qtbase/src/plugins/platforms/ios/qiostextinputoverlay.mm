@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #import <UIKit/UIGestureRecognizerSubclass.h>
 #import <UIKit/UITextView.h>
@@ -67,7 +31,7 @@ static SelectionPair querySelection()
     QGuiApplication::sendEvent(QGuiApplication::focusObject(), &query);
     int anchorPos = query.value(Qt::ImAnchorPosition).toInt();
     int cursorPos = query.value(Qt::ImCursorPosition).toInt();
-    return qMakePair<int, int>(anchorPos, cursorPos);
+    return qMakePair(anchorPos, cursorPos);
 }
 
 static bool hasSelection()
@@ -87,7 +51,7 @@ static void executeBlockWithoutAnimation(Block block)
 // -------------------------------------------------------------------------
 /**
   QIOSEditMenu is just a wrapper class around UIMenuController to
-  ease showing and hiding it correcly.
+  ease showing and hiding it correctly.
   */
 @interface QIOSEditMenu : NSObject
 @property (nonatomic, assign) BOOL visible;
@@ -152,8 +116,9 @@ static void executeBlockWithoutAnimation(Block block)
         _shownByUs = YES;
         // Note that the contents of the edit menu is decided by
         // first responder, which is normally QIOSTextResponder.
-        QRectF cr = qApp->inputMethod()->cursorRectangle();
-        QRectF ar = qApp->inputMethod()->anchorRectangle();
+        QRectF cr = QPlatformInputContext::cursorRectangle();
+        QRectF ar = QPlatformInputContext::anchorRectangle();
+
         CGRect targetRect = cr.united(ar).toCGRect();
         UIView *focusView = reinterpret_cast<UIView *>(qApp->focusWindow()->winId());
         [[UIMenuController sharedMenuController] setTargetRect:targetRect inView:focusView];
@@ -595,7 +560,7 @@ static void executeBlockWithoutAnimation(Block block)
 
 - (BOOL)acceptTouchesBegan:(QPointF)touchPoint
 {
-    Q_UNUSED(touchPoint)
+    Q_UNUSED(touchPoint);
     Q_UNREACHABLE();
     return NO;
 }
@@ -608,7 +573,7 @@ static void executeBlockWithoutAnimation(Block block)
 
 - (void)updateFocalPoint:(QPointF)touchPoint
 {
-    Q_UNUSED(touchPoint)
+    Q_UNUSED(touchPoint);
     Q_UNREACHABLE();
 }
 
@@ -633,14 +598,18 @@ static void executeBlockWithoutAnimation(Block block)
 
 - (BOOL)acceptTouchesBegan:(QPointF)touchPoint
 {
-    QRectF inputRect = QGuiApplication::inputMethod()->inputItemClipRectangle();
+    QRectF inputRect = QPlatformInputContext::inputItemRectangle();
     return !hasSelection() && inputRect.contains(touchPoint);
 }
 
 - (void)updateFocalPoint:(QPointF)touchPoint
 {
-    platformInputContext()->setSelectionOnFocusObject(touchPoint, touchPoint);
     self.focalPoint = touchPoint;
+
+    const int currentCursorPos = QInputMethod::queryFocusObject(Qt::ImCursorPosition, QVariant()).toInt();
+    const int newCursorPos = QPlatformInputContext::queryFocusObject(Qt::ImCursorPosition, touchPoint).toInt();
+    if (newCursorPos != currentCursorPos)
+        QPlatformInputContext::setSelectionOnFocusObject(touchPoint, touchPoint);
 }
 
 @end
@@ -792,8 +761,8 @@ static void executeBlockWithoutAnimation(Block block)
 
     // Accept the touch if it "overlaps" with any of the handles
     const int handleRadius = 50;
-    QPointF cursorCenter = qApp->inputMethod()->cursorRectangle().center();
-    QPointF anchorCenter = qApp->inputMethod()->anchorRectangle().center();
+    QPointF cursorCenter = QPlatformInputContext::cursorRectangle().center();
+    QPointF anchorCenter = QPlatformInputContext::anchorRectangle().center();
     QPointF cursorOffset = QPointF(cursorCenter.x() - touchPoint.x(), cursorCenter.y() - touchPoint.y());
     QPointF anchorOffset = QPointF(anchorCenter.x() - touchPoint.x(), anchorCenter.y() - touchPoint.y());
     double cursorDist = hypot(cursorOffset.x(), cursorOffset.y());
@@ -821,10 +790,9 @@ static void executeBlockWithoutAnimation(Block block)
 
     // Get the text position under the touch
     SelectionPair selection = querySelection();
-    const QTransform mapToLocal = QGuiApplication::inputMethod()->inputItemTransform().inverted();
-    int touchTextPos = QInputMethod::queryFocusObject(Qt::ImCursorPosition, touchPoint * mapToLocal).toInt();
+    int touchTextPos = QPlatformInputContext::queryFocusObject(Qt::ImCursorPosition, touchPoint).toInt();
 
-    // Ensure that the handels cannot be dragged past each other
+    // Ensure that the handles cannot be dragged past each other
     if (_dragOnCursor)
         selection.second = (touchTextPos > selection.first) ? touchTextPos : selection.first + 1;
     else
@@ -839,8 +807,8 @@ static void executeBlockWithoutAnimation(Block block)
 
     // Move loupe to new position
     QRectF handleRect = _dragOnCursor ?
-        qApp->inputMethod()->cursorRectangle() :
-        qApp->inputMethod()->anchorRectangle();
+        QPlatformInputContext::cursorRectangle() :
+        QPlatformInputContext::anchorRectangle();
     self.focalPoint = QPointF(touchPoint.x(), handleRect.center().y());
 }
 
@@ -856,12 +824,6 @@ static void executeBlockWithoutAnimation(Block block)
         return;
     }
 
-    if (_dragOnCursor || _dragOnAnchor) {
-        // Ensure that the edit menu is hidden while
-        // the user drags on any of the handles.
-        QIOSTextInputOverlay::s_editMenu.visible = NO;
-    }
-
     if (!_cursorLayer.visible && QIOSTextInputOverlay::s_editMenu.isHiding) {
         // Since the edit menu is hiding and this is the first selection thereafter, we
         // assume that the selection came from the user tapping on a menu item. In that
@@ -871,9 +833,9 @@ static void executeBlockWithoutAnimation(Block block)
     }
 
     // Adjust handles and input rect to match the new selection
-    QRectF inputRect = QGuiApplication::inputMethod()->inputItemClipRectangle();
-    CGRect cursorRect = QGuiApplication::inputMethod()->cursorRectangle().toCGRect();
-    CGRect anchorRect = QGuiApplication::inputMethod()->anchorRectangle().toCGRect();
+    QRectF inputRect = QPlatformInputContext::inputItemClipRectangle();
+    CGRect cursorRect = QPlatformInputContext::cursorRectangle().toCGRect();
+    CGRect anchorRect = QPlatformInputContext::anchorRectangle().toCGRect();
 
     if (!_multiLine) {
         // Resize the layer a bit bigger to ensure that the handles are
@@ -937,7 +899,7 @@ static void executeBlockWithoutAnimation(Block block)
 {
     [super touchesBegan:touches withEvent:event];
 
-    QRectF inputRect = QGuiApplication::inputMethod()->inputItemClipRectangle();
+    QRectF inputRect = QPlatformInputContext::inputItemClipRectangle();
     QPointF touchPos = QPointF::fromCGPoint([static_cast<UITouch *>([touches anyObject]) locationInView:_focusView]);
     const bool touchInsideInputArea = inputRect.contains(touchPos);
 
@@ -958,7 +920,7 @@ static void executeBlockWithoutAnimation(Block block)
         // But note, we only want to hide the menu, and not clear the selection.
         // Only when the user taps inside the input area do we want to clear the
         // selection as well. This is different from native behavior, but done so
-        // deliberatly for cross-platform consistency. This will let the user click on
+        // deliberately for cross-platform consistency. This will let the user click on
         // e.g "Bold" and "Italic" buttons elsewhere in the UI to modify the selected text.
         return;
     }
@@ -971,7 +933,7 @@ static void executeBlockWithoutAnimation(Block block)
     }
 
     // When no menu is showing, and the touch is inside the input
-    // area, we check if we should show it. We wan't to do so if
+    // area, we check if we should show it. We want to do so if
     // the tap doesn't result in the cursor changing position.
     _cursorPosOnPress = QInputMethod::queryFocusObject(Qt::ImCursorPosition, QVariant()).toInt();
 }
@@ -982,11 +944,20 @@ static void executeBlockWithoutAnimation(Block block)
         _menuShouldBeVisible = false;
     } else {
         QPointF touchPos = QPointF::fromCGPoint([static_cast<UITouch *>([touches anyObject]) locationInView:_focusView]);
-        const QTransform mapToLocal = QGuiApplication::inputMethod()->inputItemTransform().inverted();
-        int cursorPosOnRelease = QInputMethod::queryFocusObject(Qt::ImCursorPosition, touchPos * mapToLocal).toInt();
+        int cursorPosOnRelease = QPlatformInputContext::queryFocusObject(Qt::ImCursorPosition, touchPos).toInt();
 
         if (cursorPosOnRelease == _cursorPosOnPress) {
+            // We've recognized a gesture to open the menu, but we don't know
+            // whether the user tapped a control that was overlaid our input
+            // area, since we don't do any granular hit-testing in touchesBegan.
+            // To ensure that the gesture doesn't eat touch events that should
+            // have reached another UI control we report the gesture as failed
+            // here, and then manually show the menu at the next runloop pass.
             _menuShouldBeVisible = true;
+            self.state = UIGestureRecognizerStateFailed;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                QIOSTextInputOverlay::s_editMenu.visible = _menuShouldBeVisible;
+            });
         } else {
             // The menu is hidden, and the cursor will change position once
             // Qt receive the touch release. We therefore fail so that we
@@ -1035,30 +1006,61 @@ QIOSTextInputOverlay::~QIOSTextInputOverlay()
 
 void QIOSTextInputOverlay::updateFocusObject()
 {
+    // Destroy old recognizers since they were created with
+    // dependencies to the old focus object (focus view).
     if (m_cursorRecognizer) {
-        // Destroy old recognizers since they were created with
-        // dependencies to the old focus object (focus view).
         m_cursorRecognizer.enabled = NO;
-        m_selectionRecognizer.enabled = NO;
-        m_openMenuOnTapRecognizer.enabled = NO;
         [m_cursorRecognizer release];
-        [m_selectionRecognizer release];
-        [m_openMenuOnTapRecognizer release];
-        [s_editMenu release];
         m_cursorRecognizer = nullptr;
+    }
+    if (m_selectionRecognizer) {
+        m_selectionRecognizer.enabled = NO;
+        [m_selectionRecognizer release];
         m_selectionRecognizer = nullptr;
+    }
+    if (m_openMenuOnTapRecognizer) {
+        m_openMenuOnTapRecognizer.enabled = NO;
+        [m_openMenuOnTapRecognizer release];
         m_openMenuOnTapRecognizer = nullptr;
+    }
+
+    if (s_editMenu) {
+        [s_editMenu release];
         s_editMenu = nullptr;
     }
 
-    if (platformInputContext()->inputMethodAccepted()) {
-        s_editMenu = [QIOSEditMenu new];
-        m_cursorRecognizer = [QIOSCursorRecognizer new];
+    const QVariant hintsVariant = QGuiApplication::inputMethod()->queryFocusObject(Qt::ImHints, QVariant());
+    const Qt::InputMethodHints hints = Qt::InputMethodHints(hintsVariant.toUInt());
+    if (hints & Qt::ImhNoTextHandles)
+        return;
+
+    // The focus object can emit selection updates (e.g from mouse drag), and
+    // accept modifying it through IM when dragging on the handles, even if it
+    // doesn't accept text input and IM in general (and hence return false from
+    // inputMethodAccepted()). This is the case for read-only text fields.
+    // Therefore, listen for selection changes also when the focus object
+    // reports that it's ImReadOnly (which we take as a hint that it's actually
+    // a text field, and that selections therefore might happen). But since
+    // we have no guarantee that the focus object can actually accept new selections
+    // through IM (and since we also need to respect if the input accepts selections
+    // in the first place), we only support selections started by the text field (e.g from
+    // mouse drag), even if we in theory could also start selections from a loupe.
+
+    const bool inputAccepted = platformInputContext()->inputMethodAccepted();
+    const bool readOnly = QGuiApplication::inputMethod()->queryFocusObject(Qt::ImReadOnly, QVariant()).toBool();
+
+    if (inputAccepted || readOnly) {
+        if (!(hints & Qt::ImhNoEditMenu))
+            s_editMenu = [QIOSEditMenu new];
         m_selectionRecognizer = [QIOSSelectionRecognizer new];
         m_openMenuOnTapRecognizer = [QIOSTapRecognizer new];
-        m_cursorRecognizer.enabled = YES;
         m_selectionRecognizer.enabled = YES;
         m_openMenuOnTapRecognizer.enabled = YES;
+    }
+
+    if (inputAccepted) {
+        m_cursorRecognizer = [QIOSCursorRecognizer new];
+        m_cursorRecognizer.enabled = YES;
     }
 }
 

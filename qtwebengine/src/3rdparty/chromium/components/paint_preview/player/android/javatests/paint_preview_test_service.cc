@@ -1,10 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/paint_preview/player/android/javatests/paint_preview_test_service.h"
 
 #include <memory>
+#include <utility>
 
 #include "base/android/jni_android.h"
 #include "base/android/jni_array.h"
@@ -13,6 +14,7 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/strings/strcat.h"
+#include "base/threading/thread_restrictions.h"
 #include "components/paint_preview/browser/paint_preview_base_service.h"
 #include "components/paint_preview/browser/test_paint_preview_policy.h"
 #include "components/paint_preview/common/file_stream.h"
@@ -84,7 +86,8 @@ bool WriteSkp(sk_sp<SkPicture> skp,
       skp_path, base::File::FLAG_CREATE_ALWAYS | base::File::FLAG_WRITE));
   TypefaceUsageMap typeface_map;
   TypefaceSerializationContext tctx(&typeface_map);
-  auto procs = MakeSerialProcs(pctx, &tctx);
+  ImageSerializationContext ictx;
+  auto procs = MakeSerialProcs(pctx, &tctx, &ictx);
   skp->serialize(&wstream, &procs);
   wstream.Close();
   if (wstream.DidWriteFail()) {
@@ -106,14 +109,19 @@ jlong JNI_PaintPreviewTestService_GetInstance(
 }
 
 PaintPreviewTestService::PaintPreviewTestService(const base::FilePath& path)
-    : PaintPreviewBaseService(path,
-                              kTestDirName,
-                              std::make_unique<TestPaintPreviewPolicy>(),
-                              false),
+    : PaintPreviewBaseService(
+          std::make_unique<PaintPreviewFileMixin>(path, kTestDirName),
+          std::make_unique<TestPaintPreviewPolicy>(),
+          false),
       test_data_dir_(
           path.AppendASCII(kPaintPreviewDir).AppendASCII(kTestDirName)) {}
 
 PaintPreviewTestService::~PaintPreviewTestService() = default;
+
+jlong PaintPreviewTestService::GetBaseService(JNIEnv* env) {
+  return reinterpret_cast<intptr_t>(
+      static_cast<PaintPreviewBaseService*>(this));
+}
 
 base::android::ScopedJavaLocalRef<jintArray>
 PaintPreviewTestService::CreateSingleSkp(
@@ -177,9 +185,9 @@ PaintPreviewTestService::CreateSingleSkp(
   for (size_t i = 0; i < child_rects.size() / 4; ++i) {
     const int x = child_rects[i * 4];
     const int y = child_rects[i * 4 + 1];
-    const int width = child_rects[i * 4 + 2];
-    const int height = child_rects[i * 4 + 3];
-    auto rect = SkRect::MakeXYWH(x, y, width, height);
+    const int w = child_rects[i * 4 + 2];
+    const int h = child_rects[i * 4 + 3];
+    auto rect = SkRect::MakeXYWH(x, y, w, h);
     auto sub_pic = SkPicture::MakePlaceholder(rect);
     SkMatrix matrix = SkMatrix::Translate(x, y);
     uint32_t sub_id = sub_pic->uniqueID();

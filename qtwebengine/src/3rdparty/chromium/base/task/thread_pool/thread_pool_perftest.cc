@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,10 @@
 #include <vector>
 
 #include "base/barrier_closure.h"
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
-#include "base/optional.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/task/thread_pool.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
@@ -19,6 +19,7 @@
 #include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/perf/perf_result_reporter.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 namespace internal {
@@ -73,6 +74,8 @@ class PostingThread : public SimpleThread {
         completion_(std::move(completion)) {
     Start();
   }
+  PostingThread(const PostingThread&) = delete;
+  PostingThread& operator=(const PostingThread&) = delete;
 
   void Run() override {
     start_event_->Wait();
@@ -81,15 +84,16 @@ class PostingThread : public SimpleThread {
   }
 
  private:
-  WaitableEvent* const start_event_;
+  const raw_ptr<WaitableEvent> start_event_;
   base::OnceClosure action_;
   base::OnceClosure completion_;
-
-  DISALLOW_COPY_AND_ASSIGN(PostingThread);
 };
 
 class ThreadPoolPerfTest : public testing::Test {
  public:
+  ThreadPoolPerfTest(const ThreadPoolPerfTest&) = delete;
+  ThreadPoolPerfTest& operator=(const ThreadPoolPerfTest&) = delete;
+
   // Posting actions:
 
   void ContinuouslyBindAndPostNoOpTasks(size_t num_tasks) {
@@ -124,8 +128,8 @@ class ThreadPoolPerfTest : public testing::Test {
     base::RepeatingClosure closure = base::BindRepeating(
         [](std::atomic_size_t* num_task_pending, base::TimeDelta duration) {
           base::TimeTicks end_time = base::TimeTicks::Now() + duration;
-          while (base::TimeTicks::Now() < end_time)
-            ;
+          while (base::TimeTicks::Now() < end_time) {
+          }
           (*num_task_pending)--;
         },
         Unretained(&num_tasks_pending_), duration);
@@ -160,7 +164,7 @@ class ThreadPoolPerfTest : public testing::Test {
   void OnCompletePostingTasks() { complete_posting_tasks_.Signal(); }
 
   void Benchmark(const std::string& story_name, ExecutionMode execution_mode) {
-    base::Optional<ThreadPoolInstance::ScopedExecutionFence> execution_fence;
+    absl::optional<ThreadPoolInstance::ScopedExecutionFence> execution_fence;
     if (execution_mode == ExecutionMode::kPostThenRun) {
       execution_fence.emplace();
     }
@@ -206,8 +210,6 @@ class ThreadPoolPerfTest : public testing::Test {
   std::atomic_size_t num_posted_tasks_{0};
 
   std::vector<std::unique_ptr<PostingThread>> threads_;
-
-  DISALLOW_COPY_AND_ASSIGN(ThreadPoolPerfTest);
 };
 
 }  // namespace
@@ -260,8 +262,7 @@ TEST_F(ThreadPoolPerfTest, PostRunBusyTasksManyThreads) {
   StartThreadPool(
       4, 4,
       BindRepeating(&ThreadPoolPerfTest::ContinuouslyPostBusyWaitTasks,
-                    Unretained(this), 10000,
-                    base::TimeDelta::FromMicroseconds(200)));
+                    Unretained(this), 10000, base::Microseconds(200)));
   Benchmark(kStoryPostRunBusyManyThreads, ExecutionMode::kPostAndRun);
 }
 

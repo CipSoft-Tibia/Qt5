@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,9 @@
 
 #include "fxbarcode/qrcode/BC_QRCoderECBlocksData.h"
 
-const CBC_QRCoderECBlockData g_ECBData[40][4] = {
+namespace fxbarcode {
+
+const CBC_QRCoderECBlockData kECBData[40][4] = {
     {{7, 1, 19, 0, 0}, {10, 1, 16, 0, 0}, {13, 1, 13, 0, 0}, {17, 1, 9, 0, 0}},
     {{10, 1, 34, 0, 0},
      {16, 1, 28, 0, 0},
@@ -178,3 +180,5 @@ const CBC_QRCoderECBlockData g_ECBData[40][4] = {
      {30, 34, 24, 34, 25},
      {30, 20, 15, 61, 16}},
 };
+
+}  // namespace fxbarcode

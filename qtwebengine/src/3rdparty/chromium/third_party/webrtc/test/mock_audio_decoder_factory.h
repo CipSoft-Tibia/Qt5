@@ -16,8 +16,8 @@
 
 #include "api/audio_codecs/audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
+#include "api/make_ref_counted.h"
 #include "api/scoped_refptr.h"
-#include "rtc_base/ref_counted_object.h"
 #include "test/gmock.h"
 
 namespace webrtc {
@@ -52,7 +52,7 @@ class MockAudioDecoderFactory : public AudioDecoderFactory {
     using ::testing::Return;
 
     rtc::scoped_refptr<webrtc::MockAudioDecoderFactory> factory =
-        new rtc::RefCountedObject<webrtc::MockAudioDecoderFactory>;
+        rtc::make_ref_counted<webrtc::MockAudioDecoderFactory>();
     ON_CALL(*factory.get(), GetSupportedDecoders())
         .WillByDefault(Return(std::vector<webrtc::AudioCodecSpec>()));
     EXPECT_CALL(*factory.get(), GetSupportedDecoders()).Times(AnyNumber());
@@ -73,7 +73,7 @@ class MockAudioDecoderFactory : public AudioDecoderFactory {
     using ::testing::SetArgPointee;
 
     rtc::scoped_refptr<webrtc::MockAudioDecoderFactory> factory =
-        new rtc::RefCountedObject<webrtc::MockAudioDecoderFactory>;
+        rtc::make_ref_counted<webrtc::MockAudioDecoderFactory>();
     ON_CALL(*factory.get(), GetSupportedDecoders())
         .WillByDefault(Return(std::vector<webrtc::AudioCodecSpec>()));
     EXPECT_CALL(*factory.get(), GetSupportedDecoders()).Times(AnyNumber());

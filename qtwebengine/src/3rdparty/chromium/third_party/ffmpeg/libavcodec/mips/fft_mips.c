@@ -48,6 +48,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 #include "config.h"
+#include "libavutil/attributes.h"
 #include "libavcodec/fft.h"
 #include "libavcodec/fft_table.h"
 #include "libavutil/mips/asmdefs.h"
@@ -500,9 +501,7 @@ static void ff_imdct_calc_mips(FFTContext *s, FFTSample *output, const FFTSample
 
 av_cold void ff_fft_init_mips(FFTContext *s)
 {
-    int n=0;
-
-    ff_fft_lut_init(ff_fft_offsets_lut, 0, 1 << 17, &n);
+    ff_fft_lut_init();
     ff_init_ff_cos_tabs(17);
 
 #if HAVE_INLINE_ASM

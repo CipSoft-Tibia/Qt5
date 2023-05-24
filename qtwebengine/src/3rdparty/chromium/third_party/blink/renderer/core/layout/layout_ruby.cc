@@ -39,15 +39,13 @@ namespace blink {
 // === generic helper functions to avoid excessive code duplication ===
 
 static LayoutRubyRun* LastRubyRun(const LayoutObject* ruby) {
-  LayoutObject* child = ruby->SlowLastChild();
-  DCHECK(!child || child->IsRubyRun());
-  return ToLayoutRubyRun(child);
+  return To<LayoutRubyRun>(ruby->SlowLastChild());
 }
 
 static inline LayoutRubyRun* FindRubyRunParent(LayoutObject* child) {
   while (child && !child->IsRubyRun())
     child = child->Parent();
-  return ToLayoutRubyRun(child);
+  return To<LayoutRubyRun>(child);
 }
 
 // === ruby as inline object ===
@@ -82,12 +80,12 @@ void LayoutRubyAsInline::AddChild(LayoutObject* child,
       run = run->Parent();
     if (run) {
       if (before_child == run)
-        before_child = ToLayoutRubyRun(before_child)->FirstChild();
+        before_child = To<LayoutRubyRun>(before_child)->FirstChild();
       DCHECK(!before_child || before_child->IsDescendantOf(run));
       run->AddChild(child, before_child);
       return;
     }
-    NOTREACHED();  // beforeChild should always have a run as parent!
+    NOTREACHED();  // before_child should always have a run as parent!
                    // Emergency fallback: fall through and just append.
   }
 
@@ -96,8 +94,9 @@ void LayoutRubyAsInline::AddChild(LayoutObject* child,
   // (The LayoutRubyRun object will handle the details)
   LayoutRubyRun* last_run = LastRubyRun(this);
   if (!last_run || last_run->HasRubyText()) {
-    last_run = LayoutRubyRun::StaticCreateRubyRun(this, *ContainingBlock());
+    last_run = &LayoutRubyRun::Create(this, *ContainingBlock());
     LayoutInline::AddChild(last_run, before_child);
+    last_run->EnsureRubyBase();
   }
   last_run->AddChild(child);
 }
@@ -120,8 +119,8 @@ void LayoutRubyAsInline::RemoveChild(LayoutObject* child) {
 
 // === ruby as block object ===
 
-LayoutRubyAsBlock::LayoutRubyAsBlock(Element* element)
-    : LayoutBlockFlow(element) {
+LayoutRubyAsBlock::LayoutRubyAsBlock(ContainerNode* node)
+    : LayoutBlockFlow(node) {
   UseCounter::Count(GetDocument(), WebFeature::kRenderRuby);
 }
 
@@ -150,12 +149,12 @@ void LayoutRubyAsBlock::AddChild(LayoutObject* child,
       run = run->Parent();
     if (run) {
       if (before_child == run)
-        before_child = ToLayoutRubyRun(before_child)->FirstChild();
+        before_child = To<LayoutRubyRun>(before_child)->FirstChild();
       DCHECK(!before_child || before_child->IsDescendantOf(run));
       run->AddChild(child, before_child);
       return;
     }
-    NOTREACHED();  // beforeChild should always have a run as parent!
+    NOTREACHED();  // before_child should always have a run as parent!
                    // Emergency fallback: fall through and just append.
   }
 
@@ -164,8 +163,9 @@ void LayoutRubyAsBlock::AddChild(LayoutObject* child,
   // (The LayoutRubyRun object will handle the details)
   LayoutRubyRun* last_run = LastRubyRun(this);
   if (!last_run || last_run->HasRubyText()) {
-    last_run = LayoutRubyRun::StaticCreateRubyRun(this, *this);
+    last_run = &LayoutRubyRun::Create(this, *this);
     LayoutBlockFlow::AddChild(last_run, before_child);
+    last_run->EnsureRubyBase();
   }
   last_run->AddChild(child);
 }

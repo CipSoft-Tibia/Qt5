@@ -1,8 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gfx/mojom/display_color_spaces_mojom_traits.h"
+
+#include "skia/public/mojom/skcolorspace_primaries_mojom_traits.h"
 
 namespace mojo {
 
@@ -45,14 +47,14 @@ bool EnumTraits<gfx::mojom::ContentColorUsage, gfx::ContentColorUsage>::
 base::span<const gfx::ColorSpace>
 StructTraits<gfx::mojom::DisplayColorSpacesDataView, gfx::DisplayColorSpaces>::
     color_spaces(const gfx::DisplayColorSpaces& input) {
-  return base::span<const gfx::ColorSpace>(input.color_spaces_);
+  return input.color_spaces_;
 }
 
 // static
 base::span<const gfx::BufferFormat>
 StructTraits<gfx::mojom::DisplayColorSpacesDataView, gfx::DisplayColorSpaces>::
     buffer_formats(const gfx::DisplayColorSpaces& input) {
-  return base::span<const gfx::BufferFormat>(input.buffer_formats_);
+  return input.buffer_formats_;
 }
 
 // static
@@ -68,7 +70,14 @@ bool StructTraits<
   if (!input.ReadColorSpaces(&color_spaces))
     return false;
 
-  out->SetSDRWhiteLevel(input.sdr_white_level());
+  SkColorSpacePrimaries primaries = {0.f};
+  if (!input.ReadPrimaries(&primaries))
+    return false;
+  out->SetPrimaries(primaries);
+
+  out->SetSDRMaxLuminanceNits(input.sdr_max_luminance_nits());
+  out->SetHDRMaxLuminanceRelative(input.hdr_max_luminance_relative());
+
   return true;
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,15 +10,21 @@
 #include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/optional.h"
+#include "base/functional/callback_forward.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
 namespace extensions {
 
-// Note: enum used for UMA. Do NOT reorder or remove entries. Don't forget to
-// update enums.xml (name: ManifestInvalidError) when adding new
-// entries. Some errors are common for the entire fetched update manifest which
+// Note: enum used for UMA. Do NOT reorder or remove entries.
+// 1) Don't forget to update enums.xml (name: ManifestInvalidError) when adding
+// new entries.
+// 2) Don't forget to update device_management_backend.proto (name:
+// ExtensionInstallReportLogEvent::ManifestInvalidError) when adding new
+// entries.
+// 3) Don't forget to update ConvertManifestInvalidErrorToProto method in
+// ExtensionInstallEventLogCollector.
+// Some errors are common for the entire fetched update manifest which
 // contains manifests of different extensions, while some errors are per
 // extension basis.
 enum class ManifestInvalidError {
@@ -64,12 +70,12 @@ struct UpdateManifestResult {
   std::string app_status;
 
   // Error occurred while parsing manifest.
-  base::Optional<ManifestParseFailure> parse_error;
+  absl::optional<ManifestParseFailure> parse_error;
 
   // Attribute for no update: server may provide additional info about why there
   // is no updates, eg. “bandwidth limit” if client is downloading extensions
   // too aggressive.
-  base::Optional<std::string> info;
+  absl::optional<std::string> info;
 
   // Indicates the outcome of the update check.
   std::string status;
@@ -135,7 +141,7 @@ struct UpdateManifestResults {
 // The result of parsing one <app> tag in an xml update check manifest.
 using ParseUpdateManifestCallback = base::OnceCallback<void(
     std::unique_ptr<UpdateManifestResults> results,
-    const base::Optional<ManifestParseFailure>& failure)>;
+    const absl::optional<ManifestParseFailure>& failure)>;
 void ParseUpdateManifest(const std::string& xml,
                          ParseUpdateManifestCallback callback);
 

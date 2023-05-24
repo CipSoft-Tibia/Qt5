@@ -1,9 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/shell/browser/shell_app_delegate.h"
 
+#include "content/public/browser/color_chooser.h"
 #include "content/public/browser/file_select_listener.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
@@ -23,11 +24,16 @@ void ShellAppDelegate::InitWebContents(content::WebContents* web_contents) {
   ShellExtensionWebContentsObserver::CreateForWebContents(web_contents);
 }
 
-void ShellAppDelegate::RenderViewCreated(
-    content::RenderViewHost* render_view_host) {
-  // The views implementation of AppWindow takes focus via SetInitialFocus()
-  // and views::WebView but app_shell is aura-only and must do it manually.
-  content::WebContents::FromRenderViewHost(render_view_host)->Focus();
+void ShellAppDelegate::RenderFrameCreated(
+    content::RenderFrameHost* frame_host) {
+  // Only do this for the primary main frame.
+  if (frame_host->IsInPrimaryMainFrame()) {
+    // The views implementation of AppWindow takes focus via SetInitialFocus()
+    // and views::WebView but app_shell is aura-only and must do it manually.
+    content::WebContents* contents =
+        content::WebContents::FromRenderFrameHost(frame_host);
+    contents->Focus();
+  }
 }
 
 void ShellAppDelegate::ResizeWebContents(content::WebContents* web_contents,
@@ -40,7 +46,7 @@ content::WebContents* ShellAppDelegate::OpenURLFromTab(
     content::WebContents* source,
     const content::OpenURLParams& params) {
   NOTIMPLEMENTED();
-  return NULL;
+  return nullptr;
 }
 
 void ShellAppDelegate::AddNewContents(
@@ -48,16 +54,9 @@ void ShellAppDelegate::AddNewContents(
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
     WindowOpenDisposition disposition,
-    const gfx::Rect& initial_rect,
+    const blink::mojom::WindowFeatures& window_features,
     bool user_gesture) {
   NOTIMPLEMENTED();
-}
-
-content::ColorChooser* ShellAppDelegate::ShowColorChooser(
-    content::WebContents* web_contents,
-    SkColor initial_color) {
-  NOTIMPLEMENTED();
-  return NULL;
 }
 
 void ShellAppDelegate::RunFileChooser(
@@ -112,9 +111,7 @@ bool ShellAppDelegate::TakeFocus(content::WebContents* web_contents,
 }
 
 content::PictureInPictureResult ShellAppDelegate::EnterPictureInPicture(
-    content::WebContents* web_contents,
-    const viz::SurfaceId& surface_id,
-    const gfx::Size& natural_size) {
+    content::WebContents* web_contents) {
   NOTREACHED();
   return content::PictureInPictureResult::kNotSupported;
 }

@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qfile.h>
 #include <qpainterpath.h>
@@ -106,6 +81,8 @@ private slots:
 
     void intersectionEquality();
     void intersectionPointOnEdge();
+
+    void boundsAtStartPoint();
 };
 
 void tst_QPainterPath::cleanupTestCase()
@@ -410,11 +387,11 @@ void tst_QPainterPath::contains_QRectF_data()
     QTest::newRow("inside 2 rects (winding)") << path << QRectF(51, 51, 48, 48) << true;
 
     path.addEllipse(0, 0, 150, 150);
-    QTest::newRow("topRight 2 rects") << path << QRectF(100, 25, 24, 24) << true;
-    QTest::newRow("bottomLeft 2 rects") << path << QRectF(25, 100, 24, 24) << true;
+    QTest::newRow("topRight rects+circle") << path << QRectF(100, 25, 24, 24) << true;
+    QTest::newRow("bottomLeft rects+circle") << path << QRectF(25, 100, 24, 24) << true;
 
     path.setFillRule(Qt::OddEvenFill);
-    QTest::newRow("inside 2 rects") << path << QRectF(50, 50, 49, 49) << false;
+    QTest::newRow("inside rects+circle") << path << QRectF(50, 50, 49, 49) << false;
 }
 
 void tst_QPainterPath::contains_QRectF()
@@ -788,6 +765,21 @@ void tst_QPainterPath::testOperatorDatastream()
     }
 
     QCOMPARE(other, path);
+
+    // Check reset & detach
+    QPainterPath p3;
+    p3.lineTo(1, 1);
+    QCOMPARE(p3.elementCount(), 2);
+    QPainterPath p4 = p3;
+    QCOMPARE(p4.elementCount(), 2);
+    {
+        QFile data(tempDir.path() + "/data");
+        QVERIFY(data.open(QFile::ReadOnly));
+        QDataStream stream(&data);
+        stream >> p3;
+    }
+    QCOMPARE(p3.elementCount(), path.elementCount());
+    QCOMPARE(p4.elementCount(), 2);
 }
 
 void tst_QPainterPath::closing()
@@ -912,23 +904,23 @@ void tst_QPainterPath::testArcMoveTo_data()
     QTest::addColumn<QRectF>("rect");
     QTest::addColumn<qreal>("angle");
 
-    static Q_CONSTEXPR QRectF rects[] = {
+    static constexpr QRectF rects[] = {
         QRectF(100, 100, 100, 100),
         QRectF(100, 100, -100, 100),
         QRectF(100, 100, 100, -100),
         QRectF(100, 100, -100, -100),
     };
+    constexpr qreal tinyAngle = 1e-10;
 
-    for (uint domain = 0; domain < sizeof rects / sizeof *rects; ++domain) {
-        const QByteArray dB = QByteArray::number(domain);
-        for (int i=-360; i<=360; ++i) {
-            QTest::newRow(("test " + dB + ' ' + QByteArray::number(i)).constData())
-                << rects[domain] << (qreal) i;
-        }
+    int index = 0;
+    for (const auto &rect : rects) {
+        for (int i = -360; i <= 360; ++i)
+            QTest::addRow("test %d %d", index, i) << rect << qreal(i);
 
         // test low angles
-        QTest::newRow("low angles 1") << rects[domain] << (qreal) 1e-10;
-        QTest::newRow("low angles 2") << rects[domain] << (qreal)-1e-10;
+        QTest::addRow("low +angle %d", index) << rect << tinyAngle;
+        QTest::addRow("low -angle %d", index) << rect << -tinyAngle;
+        ++index;
     }
 }
 
@@ -965,17 +957,11 @@ void tst_QPainterPath::operators()
     QCOMPARE(test, expected);
 }
 
-static inline bool pathFuzzyCompare(double p1, double p2)
+template <typename T>
+static inline bool pathFuzzyCompare(T p1, T p2)
 {
     return qAbs(p1 - p2) < 0.001;
 }
-
-
-static inline bool pathFuzzyCompare(float p1, float p2)
-{
-    return qAbs(p1 - p2) < 0.001;
-}
-
 
 void tst_QPainterPath::testArcMoveTo()
 {
@@ -1251,38 +1237,65 @@ void tst_QPainterPath::testNaNandInfinites()
     QPointF p3 = QPointF(qQNaN(), 1);
     QPointF pInf = QPointF(qInf(), 1);
 
-    // all these operations with NaN/Inf should be ignored
-    // can't test operator>> reliably, as we can't create a path with NaN to << later
+    // All these operations with NaN/Inf should be ignored.
+    // Can't test operator>> reliably, as we can't create a path with NaN to << later.
+#ifdef QT_NO_DEBUG
+#  define WARNS(name)
+#else
+#  define WARNS(name) \
+    QTest::ignoreMessage(QtWarningMsg, "QPainterPath::" #name ": " \
+                         "Adding point with invalid coordinates, ignoring call")
+#endif
 
+    WARNS(moveTo);
     path1.moveTo(p1);
+    WARNS(moveTo);
     path1.moveTo(qSNaN(), qQNaN());
+    WARNS(moveTo);
     path1.moveTo(pInf);
 
+    WARNS(lineTo);
     path1.lineTo(p1);
+    WARNS(lineTo);
     path1.lineTo(qSNaN(), qQNaN());
+    WARNS(lineTo);
     path1.lineTo(pInf);
 
+    WARNS(cubicTo);
     path1.cubicTo(p1, p2, p3);
+    WARNS(cubicTo);
     path1.cubicTo(p1, QPointF(1, 1), QPointF(2, 2));
+    WARNS(cubicTo);
     path1.cubicTo(pInf, QPointF(10, 10), QPointF(5, 1));
 
+    WARNS(quadTo);
     path1.quadTo(p1, p2);
+    WARNS(quadTo);
     path1.quadTo(QPointF(1, 1), p3);
+    WARNS(quadTo);
     path1.quadTo(QPointF(1, 1), pInf);
 
+    WARNS(arcTo);
     path1.arcTo(QRectF(p1, p2), 5, 5);
+    WARNS(arcTo);
     path1.arcTo(QRectF(pInf, QPointF(1, 1)), 5, 5);
 
+    WARNS(addRect);
     path1.addRect(QRectF(p1, p2));
+    WARNS(addRect);
     path1.addRect(QRectF(pInf, QPointF(1, 1)));
 
+    WARNS(addEllipse);
     path1.addEllipse(QRectF(p1, p2));
+    WARNS(addEllipse);
     path1.addEllipse(QRectF(pInf, QPointF(1, 1)));
+
+#undef WARNS
 
     QCOMPARE(path1, path2);
 
     path1.lineTo(QPointF(1, 1));
-    QVERIFY(path1 != path2);
+    QCOMPARE_NE(path1, path2);
 }
 #endif // signaling_nan
 
@@ -1355,7 +1368,7 @@ void tst_QPainterPath::translate()
     shape -= QRect(225, 175, 50, 50);
     QPainterPath complexPath;
     complexPath.addRegion(shape);
-    QVector<QPointF> untranslatedElements;
+    QList<QPointF> untranslatedElements;
     for (int i = 0; i < complexPath.elementCount(); ++i)
         untranslatedElements.append(QPointF(complexPath.elementAt(i)));
 
@@ -1444,6 +1457,32 @@ void tst_QPainterPath::intersectionPointOnEdge()
     QVERIFY(!p.intersected(rp).isEmpty());
     QVERIFY(p.intersects(rp));
     QVERIFY(p.intersects(r));
+}
+
+void tst_QPainterPath::boundsAtStartPoint()
+{
+    const QPointF startPoint(10, 10);
+    const QPainterPath constructedPath(startPoint);
+    {
+        const auto boundingRect = constructedPath.boundingRect();
+        const auto topLeft = boundingRect.topLeft();
+        QCOMPARE(topLeft, startPoint);
+        QCOMPARE(topLeft, constructedPath.elementAt(0));
+        QCOMPARE(boundingRect, constructedPath.controlPointRect());
+    }
+
+    QPainterPath defaultPath;
+    defaultPath.moveTo(startPoint);
+    {
+        const auto boundingRect = defaultPath.boundingRect();
+        const auto topLeft = boundingRect.topLeft();
+        QCOMPARE(topLeft, startPoint);
+        QCOMPARE(topLeft, defaultPath.elementAt(0));
+        QCOMPARE(boundingRect, defaultPath.controlPointRect());
+    }
+
+    QCOMPARE(constructedPath.boundingRect(), defaultPath.boundingRect());
+    QCOMPARE(constructedPath.controlPointRect(), defaultPath.controlPointRect());
 }
 
 QTEST_APPLESS_MAIN(tst_QPainterPath)

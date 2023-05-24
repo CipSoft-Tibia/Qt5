@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDTABLETV2_P_H
 #define QWAYLANDTABLETV2_P_H
@@ -55,10 +19,11 @@
 
 #include <QtWaylandClient/private/qtwaylandclientglobal_p.h>
 
-#include <QtGui/QTabletEvent>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
 #include <QtCore/QPointF>
+#include <QtGui/QPointingDevice>
+#include <QtGui/QInputDevice>
 
 QT_BEGIN_NAMESPACE
 
@@ -73,19 +38,21 @@ class QWaylandTabletV2;
 class QWaylandTabletToolV2;
 class QWaylandTabletPadV2;
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandTabletManagerV2 : public QtWayland::zwp_tablet_manager_v2
+class Q_WAYLANDCLIENT_EXPORT QWaylandTabletManagerV2 : public QtWayland::zwp_tablet_manager_v2
 {
 public:
     explicit QWaylandTabletManagerV2(QWaylandDisplay *display, uint id, uint version);
     QWaylandTabletSeatV2 *createTabletSeat(QWaylandInputDevice *seat);
 };
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandTabletSeatV2 : public QObject, public QtWayland::zwp_tablet_seat_v2
+class Q_WAYLANDCLIENT_EXPORT QWaylandTabletSeatV2 : public QObject, public QtWayland::zwp_tablet_seat_v2
 {
     Q_OBJECT
 public:
     explicit QWaylandTabletSeatV2(QWaylandTabletManagerV2 *manager, QWaylandInputDevice *seat);
     ~QWaylandTabletSeatV2() override;
+
+    QWaylandInputDevice *seat() const { return m_seat; }
 
 protected:
     void zwp_tablet_seat_v2_tablet_added(struct ::zwp_tablet_v2 *id) override;
@@ -93,12 +60,13 @@ protected:
     void zwp_tablet_seat_v2_pad_added(struct ::zwp_tablet_pad_v2 *id) override;
 
 private:
-    QVector<QWaylandTabletV2 *> m_tablets;
-    QVector<QWaylandTabletToolV2 *> m_tools;
-    QVector<QWaylandTabletPadV2 *> m_pads;
+    QWaylandInputDevice *m_seat;
+    QList<QWaylandTabletV2 *> m_tablets;
+    QList<QWaylandTabletToolV2 *> m_tools;
+    QList<QWaylandTabletPadV2 *> m_pads;
 };
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandTabletV2 : public QObject, public QtWayland::zwp_tablet_v2
+class Q_WAYLANDCLIENT_EXPORT QWaylandTabletV2 : public QObject, public QtWayland::zwp_tablet_v2
 {
     Q_OBJECT
 public:
@@ -112,11 +80,11 @@ protected:
     void zwp_tablet_v2_removed() override;
 };
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandTabletToolV2 : public QObject, public QtWayland::zwp_tablet_tool_v2
+class Q_WAYLANDCLIENT_EXPORT QWaylandTabletToolV2 : public QObject, public QtWayland::zwp_tablet_tool_v2
 {
     Q_OBJECT
 public:
-    explicit QWaylandTabletToolV2(::zwp_tablet_tool_v2 *tool);
+    QWaylandTabletToolV2(QWaylandTabletSeatV2 *tabletSeat, ::zwp_tablet_tool_v2 *tool);
 
 protected:
     void zwp_tablet_tool_v2_type(uint32_t tool_type) override;
@@ -140,10 +108,11 @@ protected:
     void zwp_tablet_tool_v2_frame(uint32_t time) override;
 
 private:
+    QWaylandTabletSeatV2 *m_tabletSeat;
 
     // Static state (sent before done event)
-    QTabletEvent::PointerType m_pointerType = QTabletEvent::PointerType::UnknownPointer;
-    QTabletEvent::TabletDevice m_tabletDevice = QTabletEvent::TabletDevice::NoDevice;
+    QPointingDevice::PointerType m_pointerType = QPointingDevice::PointerType::Unknown;
+    QInputDevice::DeviceType m_tabletDevice = QInputDevice::DeviceType::Unknown;
     type m_toolType = type_pen;
     bool m_hasRotation = false;
     quint64 m_uid = 0;
@@ -167,7 +136,7 @@ private:
 };
 
 // We don't actually use this, but need to handle the "removed" event to comply with the protocol
-class Q_WAYLAND_CLIENT_EXPORT QWaylandTabletPadV2 : public QObject, public QtWayland::zwp_tablet_pad_v2
+class Q_WAYLANDCLIENT_EXPORT QWaylandTabletPadV2 : public QObject, public QtWayland::zwp_tablet_pad_v2
 {
     Q_OBJECT
 public:

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmldirparser_p.h"
 
@@ -43,34 +7,34 @@
 
 QT_BEGIN_NAMESPACE
 
-static int parseInt(const QStringRef &str, bool *ok)
+static int parseInt(QStringView str, bool *ok)
 {
     int pos = 0;
     int number = 0;
-    while (pos < str.length() && str.at(pos).isDigit()) {
+    while (pos < str.size() && str.at(pos).isDigit()) {
         if (pos != 0)
             number *= 10;
         number += str.at(pos).unicode() - '0';
         ++pos;
     }
-    if (pos != str.length())
+    if (pos != str.size())
         *ok = false;
     else
         *ok = true;
     return number;
 }
 
-static bool parseVersion(const QString &str, int *major, int *minor)
+static QTypeRevision parseVersion(const QString &str)
 {
     const int dotIndex = str.indexOf(QLatin1Char('.'));
     if (dotIndex != -1 && str.indexOf(QLatin1Char('.'), dotIndex + 1) == -1) {
         bool ok = false;
-        *major = parseInt(QStringRef(&str, 0, dotIndex), &ok);
-        if (ok)
-            *minor = parseInt(QStringRef(&str, dotIndex + 1, str.length() - dotIndex - 1), &ok);
-        return ok;
+        const int major = parseInt(QStringView(str).left(dotIndex), &ok);
+        if (!ok) return QTypeRevision();
+        const int minor = parseInt(QStringView(str).mid(dotIndex + 1, str.size() - dotIndex - 1), &ok);
+        return ok ? QTypeRevision::fromVersion(major, minor) : QTypeRevision();
     }
-    return false;
+    return QTypeRevision();
 }
 
 void QQmlDirParser::clear()
@@ -84,7 +48,8 @@ void QQmlDirParser::clear()
     _plugins.clear();
     _designerSupported = false;
     _typeInfos.clear();
-    _className.clear();
+    _classNames.clear();
+    _linkTarget.clear();
 }
 
 inline static void scanSpace(const QChar *&ch) {
@@ -109,6 +74,50 @@ bool QQmlDirParser::parse(const QString &source)
 {
     quint16 lineNumber = 0;
     bool firstLine = true;
+
+    auto readImport = [&](const QString *sections, int sectionCount, Import::Flags flags) {
+        Import import;
+        if (sectionCount == 2) {
+            import = Import(sections[1], QTypeRevision(), flags);
+        } else if (sectionCount == 3) {
+            if (sections[2] == QLatin1String("auto")) {
+                import = Import(sections[1], QTypeRevision(), flags | Import::Auto);
+            } else {
+                const auto version = parseVersion(sections[2]);
+                if (version.isValid()) {
+                    import = Import(sections[1], version, flags);
+                } else {
+                    reportError(lineNumber, 0,
+                                QStringLiteral("invalid version %1, expected <major>.<minor>")
+                                .arg(sections[2]));
+                    return false;
+                }
+            }
+        } else {
+            reportError(lineNumber, 0,
+                        QStringLiteral("%1 requires 1 or 2 arguments, but %2 were provided")
+                        .arg(sections[0]).arg(sectionCount - 1));
+            return false;
+        }
+        if (sections[0] == QStringLiteral("import"))
+            _imports.append(import);
+        else
+            _dependencies.append(import);
+        return true;
+    };
+
+    auto readPlugin = [&](const QString *sections, int sectionCount, bool isOptional) {
+        if (sectionCount < 2 || sectionCount > 3) {
+            reportError(lineNumber, 0, QStringLiteral("plugin directive requires one or two "
+                                                      "arguments, but %1 were provided")
+                        .arg(sectionCount - 1));
+            return false;
+        }
+
+        const Plugin entry(sections[1], sections[2], isOptional);
+        _plugins.append(entry);
+        return true;
+    };
 
     const QChar *ch = source.constData();
     while (!ch->isNull()) {
@@ -176,17 +185,43 @@ bool QQmlDirParser::parse(const QString &source)
             _typeNamespace = sections[1];
 
         } else if (sections[0] == QLatin1String("plugin")) {
-            if (sectionCount < 2 || sectionCount > 3) {
-                reportError(lineNumber, 0,
-                            QStringLiteral("plugin directive requires one or two arguments, but %1 were provided").arg(sectionCount - 1));
-
+            if (!readPlugin(sections, sectionCount, false))
+                continue;
+        } else if (sections[0] == QLatin1String("optional")) {
+            if (sectionCount < 2) {
+                reportError(lineNumber, 0, QStringLiteral("optional directive requires further "
+                                                          "arguments, but none were provided."));
                 continue;
             }
 
-            const Plugin entry(sections[1], sections[2]);
-
-            _plugins.append(entry);
-
+            if (sections[1] == QStringLiteral("plugin")) {
+                if (!readPlugin(sections + 1, sectionCount - 1, true))
+                    continue;
+            } else if (sections[1] == QLatin1String("import")) {
+                if (!readImport(sections + 1, sectionCount - 1, Import::Optional))
+                    continue;
+            } else {
+                reportError(lineNumber, 0, QStringLiteral("only import and plugin can be optional, "
+                                                          "not %1.").arg(sections[1]));
+                continue;
+            }
+        } else if (sections[0] == QLatin1String("default")) {
+            if (sectionCount < 2) {
+                reportError(lineNumber, 0,
+                            QStringLiteral("default directive requires further "
+                                           "arguments, but none were provided."));
+                continue;
+            }
+            if (sections[1] == QLatin1String("import")) {
+                if (!readImport(sections + 1, sectionCount - 1,
+                                Import::Flags({ Import::Optional, Import::OptionalDefault })))
+                    continue;
+            } else {
+                reportError(lineNumber, 0,
+                            QStringLiteral("only optional imports can have a default, "
+                                           "not %1.")
+                                    .arg(sections[1]));
+            }
         } else if (sections[0] == QLatin1String("classname")) {
             if (sectionCount < 2) {
                 reportError(lineNumber, 0,
@@ -195,17 +230,31 @@ bool QQmlDirParser::parse(const QString &source)
                 continue;
             }
 
-            _className = sections[1];
+            _classNames.append(sections[1]);
 
         } else if (sections[0] == QLatin1String("internal")) {
-            if (sectionCount != 3) {
+            if (sectionCount == 3) {
+                Component entry(sections[1], sections[2], QTypeRevision());
+                entry.internal = true;
+                _components.insert(entry.typeName, entry);
+            } else if (sectionCount == 4) {
+                const QTypeRevision version = parseVersion(sections[2]);
+                if (version.isValid()) {
+                    Component entry(sections[1], sections[3], version);
+                    entry.internal = true;
+                    _components.insert(entry.typeName, entry);
+                } else {
+                    reportError(lineNumber, 0,
+                                QStringLiteral("invalid version %1, expected <major>.<minor>")
+                                    .arg(sections[2]));
+                    continue;
+                }
+            } else {
                 reportError(lineNumber, 0,
-                            QStringLiteral("internal types require 2 arguments, but %1 were provided").arg(sectionCount - 1));
+                            QStringLiteral("internal types require 2 or 3 arguments, "
+                                           "but %1 were provided").arg(sectionCount - 1));
                 continue;
             }
-            Component entry(sections[1], sections[2], -1, -1);
-            entry.internal = true;
-            _components.insert(entry.typeName, entry);
         } else if (sections[0] == QLatin1String("singleton")) {
             if (sectionCount < 3 || sectionCount > 4) {
                 reportError(lineNumber, 0,
@@ -214,16 +263,16 @@ bool QQmlDirParser::parse(const QString &source)
             } else if (sectionCount == 3) {
                 // handle qmldir directory listing case where singleton is defined in the following pattern:
                 // singleton TestSingletonType TestSingletonType.qml
-                Component entry(sections[1], sections[2], -1, -1);
+                Component entry(sections[1], sections[2], QTypeRevision());
                 entry.singleton = true;
                 _components.insert(entry.typeName, entry);
             } else {
                 // handle qmldir module listing case where singleton is defined in the following pattern:
                 // singleton TestSingletonType 2.0 TestSingletonType20.qml
-                int major, minor;
-                if (parseVersion(sections[2], &major, &minor)) {
+                const QTypeRevision version = parseVersion(sections[2]);
+                if (version.isValid()) {
                     const QString &fileName = sections[3];
-                    Component entry(sections[1], fileName, major, minor);
+                    Component entry(sections[1], fileName, version);
                     entry.singleton = true;
                     _components.insert(entry.typeName, entry);
                 } else {
@@ -236,53 +285,81 @@ bool QQmlDirParser::parse(const QString &source)
                             QStringLiteral("typeinfo requires 1 argument, but %1 were provided").arg(sectionCount - 1));
                 continue;
             }
-#ifdef QT_CREATOR
-            TypeInfo typeInfo(sections[1]);
-            _typeInfos.append(typeInfo);
-#endif
-
+            _typeInfos.append(sections[1]);
         } else if (sections[0] == QLatin1String("designersupported")) {
             if (sectionCount != 1)
                 reportError(lineNumber, 0, QStringLiteral("designersupported does not expect any argument"));
             else
                 _designerSupported = true;
-        } else if (sections[0] == QLatin1String("depends")) {
-            if (sectionCount != 3) {
+        } else if (sections[0] == QLatin1String("static")) {
+            if (sectionCount != 1)
+                reportError(lineNumber, 0, QStringLiteral("static does not expect any argument"));
+            else
+                _isStaticModule = true;
+        } else if (sections[0] == QLatin1String("system")) {
+            if (sectionCount != 1)
+                reportError(lineNumber, 0, QStringLiteral("system does not expect any argument"));
+            else
+                _isSystemModule = true;
+        } else if (sections[0] == QLatin1String("import")
+                   || sections[0] == QLatin1String("depends")) {
+            if (!readImport(sections, sectionCount, Import::Default))
+                continue;
+        } else if (sections[0] == QLatin1String("prefer")) {
+            if (sectionCount < 2) {
                 reportError(lineNumber, 0,
-                            QStringLiteral("depends requires 2 arguments, but %1 were provided").arg(sectionCount - 1));
+                            QStringLiteral("prefer directive requires one argument, "
+                                           "but %1 were provided").arg(sectionCount - 1));
                 continue;
             }
 
-            int major, minor;
-            if (parseVersion(sections[2], &major, &minor)) {
-                Component entry(sections[1], QString(), major, minor);
-                entry.internal = true;
-                _dependencies.insert(entry.typeName, entry);
-            } else {
-                reportError(lineNumber, 0, QStringLiteral("invalid version %1, expected <major>.<minor>").arg(sections[2]));
-            }
-        } else if (sections[0] == QLatin1String("import")) {
-            if (sectionCount != 2) {
-                reportError(lineNumber, 0,
-                            QStringLiteral("import requires 2 arguments, but %1 were provided").arg(sectionCount - 1));
+            if (!_preferredPath.isEmpty()) {
+                reportError(lineNumber, 0, QStringLiteral(
+                                "only one prefer directive may be defined in a qmldir file"));
                 continue;
             }
-            _imports << sections[1];
+
+            if (!sections[1].endsWith(u'/')) {
+                // Yes. People should realize it's a directory.
+                reportError(lineNumber, 0, QStringLiteral(
+                                "the preferred directory has to end with a '/'"));
+                continue;
+            }
+
+            _preferredPath = sections[1];
+        } else if (sections[0] == QLatin1String("linktarget")) {
+            if (sectionCount < 2) {
+                reportError(lineNumber, 0,
+                            QStringLiteral("linktarget directive requires an argument, "
+                                           "but %1 were provided")
+                                    .arg(sectionCount - 1));
+                continue;
+            }
+
+            if (!_linkTarget.isEmpty()) {
+                reportError(
+                        lineNumber, 0,
+                        QStringLiteral(
+                                "only one linktarget directive may be defined in a qmldir file"));
+                continue;
+            }
+
+            _linkTarget = sections[1];
         } else if (sectionCount == 2) {
             // No version specified (should only be used for relative qmldir files)
-            const Component entry(sections[0], sections[1], -1, -1);
+            const Component entry(sections[0], sections[1], QTypeRevision());
             _components.insert(entry.typeName, entry);
         } else if (sectionCount == 3) {
-            int major, minor;
-            if (parseVersion(sections[1], &major, &minor)) {
+            const QTypeRevision version = parseVersion(sections[1]);
+            if (version.isValid()) {
                 const QString &fileName = sections[2];
 
                 if (fileName.endsWith(QLatin1String(".js")) || fileName.endsWith(QLatin1String(".mjs"))) {
                     // A 'js' extension indicates a namespaced script import
-                    const Script entry(sections[0], fileName, major, minor);
+                    const Script entry(sections[0], fileName, version);
                     _scripts.append(entry);
                 } else {
-                    const Component entry(sections[0], fileName, major, minor);
+                    const Component entry(sections[0], fileName, version);
                     _components.insert(entry.typeName, entry);
                 }
             } else {
@@ -299,6 +376,129 @@ bool QQmlDirParser::parse(const QString &source)
     return hasError();
 }
 
+/* removes all file selector occurrences in path
+   firstPlus is the position of the initial '+' in the path
+   which we always have as we check for '+' to decide whether
+   we need to do some work at all
+*/
+static QString pathWithoutFileSelectors(QString path, // we want a copy of path
+                                        qsizetype firstPlus)
+{
+    do {
+        Q_ASSERT(path.at(firstPlus) == u'+');
+        const auto eos = path.size();
+        qsizetype terminatingSlashPos = firstPlus + 1;
+        while (terminatingSlashPos != eos && path.at(terminatingSlashPos) != u'/')
+            ++terminatingSlashPos;
+        path.remove(firstPlus, terminatingSlashPos - firstPlus + 1);
+        firstPlus = path.indexOf(u'+', firstPlus);
+    } while (firstPlus != -1);
+    return path;
+}
+
+static bool canDisambiguate(
+        const QString &fileName1, const QString &fileName2, QString *correctedFileName)
+{
+    // If the entries are exactly the same we can delete one without losing anything.
+    if (fileName1 == fileName2)
+        return true;
+
+    // If we detect conflicting paths, we check if they agree when we remove anything
+    // looking like a file selector.
+
+    // ugly heuristic to deal with file selectors
+    const qsizetype file2PotentialFileSelectorPos = fileName2.indexOf(u'+');
+    const bool file2MightHaveFileSelector = file2PotentialFileSelectorPos != -1;
+
+    if (const qsizetype fileSelectorPos1 = fileName1.indexOf(u'+'); fileSelectorPos1 != -1) {
+        // existing entry was file selector entry, fix it up
+        // it could also be the case that _both_ are using file selectors
+        const QString baseName = file2MightHaveFileSelector
+                ? pathWithoutFileSelectors(fileName2, file2PotentialFileSelectorPos)
+                : fileName2;
+
+        if (pathWithoutFileSelectors(fileName1, fileSelectorPos1) != baseName)
+            return false;
+
+        *correctedFileName = baseName;
+        return true;
+    }
+
+    // new entry contains file selector (and we know that fileName1 did not)
+    if (file2MightHaveFileSelector
+            && pathWithoutFileSelectors(fileName2, file2PotentialFileSelectorPos) == fileName1) {
+        *correctedFileName = fileName1;
+        return true;
+    }
+
+    return false;
+}
+
+static void disambiguateFileSelectedComponents(QQmlDirComponents *components)
+{
+    using ConstIterator = QQmlDirComponents::const_iterator;
+
+    // end iterator may get invalidated by the erasing below.
+    // Therefore, refetch it on each iteration.
+    for (ConstIterator cit = components->constBegin(); cit != components->constEnd();) {
+
+        // We can erase and re-assign cit if we immediately forget cit2.
+        // But we cannot erase cit2 without potentially invalidating cit.
+
+        bool doErase = false;
+        const ConstIterator cend = components->constEnd();
+        for (ConstIterator cit2 = ++ConstIterator(cit); cit2 != cend; ++cit2) {
+            if (cit2.key() != cit.key())
+                break;
+
+            Q_ASSERT(cit2->typeName == cit->typeName);
+
+            if (cit2->version != cit->version
+                || cit2->internal != cit->internal
+                || cit2->singleton != cit->singleton) {
+                continue;
+            }
+
+            // The two components may differ only by fileName now.
+
+            if (canDisambiguate(cit->fileName, cit2->fileName, &(cit2->fileName))) {
+                doErase = true;
+                break;
+            }
+        }
+
+        if (doErase)
+            cit = components->erase(cit);
+        else
+            ++cit;
+    }
+}
+
+static void disambiguateFileSelectedScripts(QQmlDirScripts *scripts)
+{
+    using Iterator = QQmlDirScripts::iterator;
+
+    Iterator send = scripts->end();
+
+    for (Iterator sit = scripts->begin(); sit != send; ++sit) {
+        send = std::remove_if(++Iterator(sit), send, [sit](const QQmlDirParser::Script &script2) {
+            if (sit->nameSpace != script2.nameSpace || sit->version != script2.version)
+                return false;
+
+            // The two scripts may differ only by fileName now.
+            return canDisambiguate(sit->fileName, script2.fileName, &(sit->fileName));
+        });
+    }
+
+    scripts->erase(send, scripts->end());
+}
+
+void QQmlDirParser::disambiguateFileSelectors()
+{
+    disambiguateFileSelectedComponents(&_components);
+    disambiguateFileSelectedScripts(&_scripts);
+}
+
 void QQmlDirParser::reportError(quint16 line, quint16 column, const QString &description)
 {
     QQmlJS::DiagnosticMessage error;
@@ -306,14 +506,6 @@ void QQmlDirParser::reportError(quint16 line, quint16 column, const QString &des
     error.loc.startColumn = column;
     error.message = description;
     _errors.append(error);
-}
-
-bool QQmlDirParser::hasError() const
-{
-    if (! _errors.isEmpty())
-        return true;
-
-    return false;
 }
 
 void QQmlDirParser::setError(const QQmlJS::DiagnosticMessage &e)
@@ -335,67 +527,19 @@ QList<QQmlJS::DiagnosticMessage> QQmlDirParser::errors(const QString &uri) const
     return errors;
 }
 
-QString QQmlDirParser::typeNamespace() const
-{
-    return _typeNamespace;
-}
-
-void QQmlDirParser::setTypeNamespace(const QString &s)
-{
-    _typeNamespace = s;
-}
-
-QList<QQmlDirParser::Plugin> QQmlDirParser::plugins() const
-{
-    return _plugins;
-}
-
-QMultiHash<QString, QQmlDirParser::Component> QQmlDirParser::components() const
-{
-    return _components;
-}
-
-QHash<QString, QQmlDirParser::Component> QQmlDirParser::dependencies() const
-{
-    return _dependencies;
-}
-
-QStringList QQmlDirParser::imports() const
-{
-    return _imports;
-}
-
-QList<QQmlDirParser::Script> QQmlDirParser::scripts() const
-{
-    return _scripts;
-}
-
-QList<QQmlDirParser::TypeInfo> QQmlDirParser::typeInfos() const
-{
-    return _typeInfos;
-}
-
-bool QQmlDirParser::designerSupported() const
-{
-    return _designerSupported;
-}
-
-QString QQmlDirParser::className() const
-{
-    return _className;
-}
-
 QDebug &operator<< (QDebug &debug, const QQmlDirParser::Component &component)
 {
-    const QString output = QStringLiteral("{%1 %2.%3}").
-        arg(component.typeName).arg(component.majorVersion).arg(component.minorVersion);
+    const QString output = QStringLiteral("{%1 %2.%3}")
+            .arg(component.typeName).arg(component.version.majorVersion())
+            .arg(component.version.minorVersion());
     return debug << qPrintable(output);
 }
 
 QDebug &operator<< (QDebug &debug, const QQmlDirParser::Script &script)
 {
-    const QString output = QStringLiteral("{%1 %2.%3}").
-        arg(script.nameSpace).arg(script.majorVersion).arg(script.minorVersion);
+    const QString output = QStringLiteral("{%1 %2.%3}")
+            .arg(script.nameSpace).arg(script.version.majorVersion())
+            .arg(script.version.minorVersion());
     return debug << qPrintable(output);
 }
 

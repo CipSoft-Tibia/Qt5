@@ -1,34 +1,30 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
 
+#include "base/observer_list.h"
 #include "build/build_config.h"
-#include "chrome/browser/browser_process.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/profiles/profile_attributes_entry.h"
-#include "chrome/browser/profiles/profile_attributes_storage.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window.h"
-#include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
 #include "chrome/common/url_constants.h"
 
-#if !defined(OS_CHROMEOS)
-#include "chrome/browser/ui/user_manager.h"
-#endif  // !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/ui/profile_picker.h"
+#endif  // !BUILDFLAG(IS_CHROMEOS_ASH)
 
 LoginUIService::LoginUIService(Profile* profile)
-#if !defined(OS_CHROMEOS)
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
     : profile_(profile)
 #endif
 {
 }
 
-LoginUIService::~LoginUIService() {}
+LoginUIService::~LoginUIService() = default;
 
 void LoginUIService::AddObserver(LoginUIService::Observer* observer) {
   observer_list_.AddObserver(observer);
@@ -57,82 +53,37 @@ void LoginUIService::SyncConfirmationUIClosed(
     observer.OnSyncConfirmationUIClosed(result);
 }
 
-void LoginUIService::ShowExtensionLoginPrompt(bool enable_sync,
-                                              const std::string& email_hint) {
-#if defined(OS_CHROMEOS)
-  NOTREACHED();
-#else
-  // There is no sign-in flow for guest or system profile.
-  if (profile_->IsGuestSession() || profile_->IsSystemProfile())
-    return;
-  // Locked profile should be unlocked with UserManager only.
-  ProfileAttributesEntry* entry;
-  if (g_browser_process->profile_manager()
-          ->GetProfileAttributesStorage()
-          .GetProfileAttributesWithPath(profile_->GetPath(), &entry) &&
-      entry->IsSigninRequired()) {
-    return;
-  }
-
-  // This may be called in incognito. Redirect to the original profile.
-  chrome::ScopedTabbedBrowserDisplayer displayer(
-      profile_->GetOriginalProfile());
-  Browser* browser = displayer.browser();
-
-  if (enable_sync) {
-    // Set a primary account.
-    browser->signin_view_controller()->ShowDiceEnableSyncTab(
-        signin_metrics::AccessPoint::ACCESS_POINT_EXTENSIONS,
-        signin_metrics::PromoAction::PROMO_ACTION_NO_SIGNIN_PROMO, email_hint);
-  } else {
-    // Add an account to the web without setting a primary account.
-    browser->signin_view_controller()->ShowDiceAddAccountTab(
-        signin_metrics::AccessPoint::ACCESS_POINT_EXTENSIONS, email_hint);
-  }
-#endif
-}
-
 void LoginUIService::DisplayLoginResult(Browser* browser,
-                                        const base::string16& error_message,
-                                        const base::string16& email) {
-#if defined(OS_CHROMEOS)
+                                        const SigninUIError& error,
+                                        bool from_profile_picker) {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   // ChromeOS doesn't have the avatar bubble so it never calls this function.
   NOTREACHED();
 #else
-  is_displaying_profile_blocking_error_message_ = false;
-  last_login_result_ = error_message;
-  last_login_error_email_ = email;
-  if (!error_message.empty()) {
+  last_login_error_ = error;
+  // TODO(crbug.com/1326904): Check if the condition should be `!error.IsOk()`
+  if (!error.message().empty()) {
     if (browser) {
       browser->signin_view_controller()->ShowModalSigninErrorDialog();
-    } else if (profile_->GetPath() == UserManager::GetSigninProfilePath()) {
-      UserManagerProfileDialog::DisplayErrorMessage();
+    } else if (from_profile_picker) {
+      ProfilePickerForceSigninDialog::DisplayErrorMessage();
     } else {
-      LOG(ERROR) << "Unable to show Login error message: " << error_message;
+      LOG(ERROR) << "Unable to show Login error message: " << error.message();
     }
-  } else if (browser) {
-    browser->window()->ShowAvatarBubbleFromAvatarButton(
-        BrowserWindow::AVATAR_BUBBLE_MODE_CONFIRM_SIGNIN,
-
-        signin_metrics::AccessPoint::ACCESS_POINT_EXTENSIONS, false);
   }
 #endif
 }
 
 void LoginUIService::SetProfileBlockingErrorMessage() {
-  last_login_result_ = base::string16();
-  last_login_error_email_ = base::string16();
-  is_displaying_profile_blocking_error_message_ = true;
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  NOTREACHED();
+#else
+  last_login_error_ = SigninUIError::ProfileIsBlocked();
+#endif
 }
 
-bool LoginUIService::IsDisplayingProfileBlockedErrorMessage() const {
-  return is_displaying_profile_blocking_error_message_;
+#if !BUILDFLAG(IS_CHROMEOS_ASH)
+const SigninUIError& LoginUIService::GetLastLoginError() const {
+  return last_login_error_;
 }
-
-const base::string16& LoginUIService::GetLastLoginResult() const {
-  return last_login_result_;
-}
-
-const base::string16& LoginUIService::GetLastLoginErrorEmail() const {
-  return last_login_error_email_;
-}
+#endif

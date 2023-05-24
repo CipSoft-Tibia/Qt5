@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,6 @@
 
 #include "core/fpdfapi/font/cpdf_cmap.h"
 
-#include <memory>
 #include <utility>
 #include <vector>
 
@@ -14,6 +13,7 @@
 #include "core/fpdfapi/font/cpdf_cmapparser.h"
 #include "core/fpdfapi/font/cpdf_fontglobals.h"
 #include "core/fpdfapi/parser/cpdf_simple_parser.h"
+#include "third_party/base/check.h"
 
 namespace {
 
@@ -34,151 +34,176 @@ struct PredefinedCMap {
 constexpr PredefinedCMap kPredefinedCMaps[] = {
     {"GB-EUC",
      CIDSET_GB1,
-     CIDCODING_GB,
+     CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfe}}},
     {"GBpc-EUC",
      CIDSET_GB1,
-     CIDCODING_GB,
+     CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfc}}},
     {"GBK-EUC",
      CIDSET_GB1,
-     CIDCODING_GB,
+     CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x81, 0xfe}}},
     {"GBKp-EUC",
      CIDSET_GB1,
-     CIDCODING_GB,
+     CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x81, 0xfe}}},
     {"GBK2K-EUC",
      CIDSET_GB1,
-     CIDCODING_GB,
+     CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x81, 0xfe}}},
     {"GBK2K",
      CIDSET_GB1,
-     CIDCODING_GB,
+     CIDCoding::kGB,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x81, 0xfe}}},
-    {"UniGB-UCS2", CIDSET_GB1, CIDCODING_UCS2, CPDF_CMap::TwoBytes, 0, {}},
-    {"UniGB-UTF16", CIDSET_GB1, CIDCODING_UTF16, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniGB-UCS2", CIDSET_GB1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniGB-UTF16", CIDSET_GB1, CIDCoding::kUTF16, CPDF_CMap::TwoBytes, 0, {}},
     {"B5pc",
      CIDSET_CNS1,
-     CIDCODING_BIG5,
+     CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfc}}},
     {"HKscs-B5",
      CIDSET_CNS1,
-     CIDCODING_BIG5,
+     CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x88, 0xfe}}},
     {"ETen-B5",
      CIDSET_CNS1,
-     CIDCODING_BIG5,
+     CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfe}}},
     {"ETenms-B5",
      CIDSET_CNS1,
-     CIDCODING_BIG5,
+     CIDCoding::kBIG5,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfe}}},
-    {"UniCNS-UCS2", CIDSET_CNS1, CIDCODING_UCS2, CPDF_CMap::TwoBytes, 0, {}},
-    {"UniCNS-UTF16", CIDSET_CNS1, CIDCODING_UTF16, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniCNS-UCS2", CIDSET_CNS1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniCNS-UTF16",
+     CIDSET_CNS1,
+     CIDCoding::kUTF16,
+     CPDF_CMap::TwoBytes,
+     0,
+     {}},
     {"83pv-RKSJ",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"90ms-RKSJ",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"90msp-RKSJ",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"90pv-RKSJ",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"Add-RKSJ",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
     {"EUC",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x8e, 0x8e}, {0xa1, 0xfe}}},
-    {"H", CIDSET_JAPAN1, CIDCODING_JIS, CPDF_CMap::TwoBytes, 1, {{0x21, 0x7e}}},
-    {"V", CIDSET_JAPAN1, CIDCODING_JIS, CPDF_CMap::TwoBytes, 1, {{0x21, 0x7e}}},
+    {"H",
+     CIDSET_JAPAN1,
+     CIDCoding::kJIS,
+     CPDF_CMap::TwoBytes,
+     1,
+     {{0x21, 0x7e}}},
+    {"V",
+     CIDSET_JAPAN1,
+     CIDCoding::kJIS,
+     CPDF_CMap::TwoBytes,
+     1,
+     {{0x21, 0x7e}}},
     {"Ext-RKSJ",
      CIDSET_JAPAN1,
-     CIDCODING_JIS,
+     CIDCoding::kJIS,
      CPDF_CMap::MixedTwoBytes,
      2,
      {{0x81, 0x9f}, {0xe0, 0xfc}}},
-    {"UniJIS-UCS2", CIDSET_JAPAN1, CIDCODING_UCS2, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniJIS-UCS2",
+     CIDSET_JAPAN1,
+     CIDCoding::kUCS2,
+     CPDF_CMap::TwoBytes,
+     0,
+     {}},
     {"UniJIS-UCS2-HW",
      CIDSET_JAPAN1,
-     CIDCODING_UCS2,
+     CIDCoding::kUCS2,
      CPDF_CMap::TwoBytes,
      0,
      {}},
     {"UniJIS-UTF16",
      CIDSET_JAPAN1,
-     CIDCODING_UTF16,
+     CIDCoding::kUTF16,
      CPDF_CMap::TwoBytes,
      0,
      {}},
     {"KSC-EUC",
      CIDSET_KOREA1,
-     CIDCODING_KOREA,
+     CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfe}}},
     {"KSCms-UHC",
      CIDSET_KOREA1,
-     CIDCODING_KOREA,
+     CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x81, 0xfe}}},
     {"KSCms-UHC-HW",
      CIDSET_KOREA1,
-     CIDCODING_KOREA,
+     CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0x81, 0xfe}}},
     {"KSCpc-EUC",
      CIDSET_KOREA1,
-     CIDCODING_KOREA,
+     CIDCoding::kKOREA,
      CPDF_CMap::MixedTwoBytes,
      1,
      {{0xa1, 0xfd}}},
-    {"UniKS-UCS2", CIDSET_KOREA1, CIDCODING_UCS2, CPDF_CMap::TwoBytes, 0, {}},
-    {"UniKS-UTF16", CIDSET_KOREA1, CIDCODING_UTF16, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniKS-UCS2", CIDSET_KOREA1, CIDCoding::kUCS2, CPDF_CMap::TwoBytes, 0, {}},
+    {"UniKS-UTF16",
+     CIDSET_KOREA1,
+     CIDCoding::kUTF16,
+     CPDF_CMap::TwoBytes,
+     0,
+     {}},
 };
 
 const PredefinedCMap* GetPredefinedCMap(ByteStringView cmapid) {
@@ -255,12 +280,21 @@ size_t GetFourByteCharSizeImpl(
   return 1;
 }
 
+const FXCMAP_CMap* FindEmbeddedCMap(pdfium::span<const FXCMAP_CMap> pCMaps,
+                                    ByteStringView bsName) {
+  for (size_t i = 0; i < pCMaps.size(); i++) {
+    if (bsName == pCMaps[i].m_Name)
+      return &pCMaps[i];
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 CPDF_CMap::CPDF_CMap(ByteStringView bsPredefinedName)
     : m_bVertical(bsPredefinedName.Back() == 'V') {
   if (bsPredefinedName == "Identity-H" || bsPredefinedName == "Identity-V") {
-    m_Coding = CIDCODING_CID;
+    m_Coding = CIDCoding::kCID;
     m_bLoaded = true;
     return;
   }
@@ -284,10 +318,10 @@ CPDF_CMap::CPDF_CMap(ByteStringView bsPredefinedName)
 }
 
 CPDF_CMap::CPDF_CMap(pdfium::span<const uint8_t> spEmbeddedData)
-    : m_DirectCharcodeToCIDTable(65536) {
+    : m_DirectCharcodeToCIDTable(kDirectMapTableSize) {
   CPDF_CMapParser parser(this);
   CPDF_SimpleParser syntax(spEmbeddedData);
-  while (1) {
+  while (true) {
     ByteStringView word = syntax.GetWord();
     if (word.IsEmpty())
       break;
@@ -299,17 +333,18 @@ CPDF_CMap::CPDF_CMap(pdfium::span<const uint8_t> spEmbeddedData)
 CPDF_CMap::~CPDF_CMap() = default;
 
 uint16_t CPDF_CMap::CIDFromCharCode(uint32_t charcode) const {
-  if (m_Coding == CIDCODING_CID)
+  if (m_Coding == CIDCoding::kCID)
     return static_cast<uint16_t>(charcode);
 
   if (m_pEmbedMap)
-    return ::CIDFromCharCode(m_pEmbedMap.Get(), charcode);
+    return ::CIDFromCharCode(m_pEmbedMap, charcode);
 
   if (m_DirectCharcodeToCIDTable.empty())
     return static_cast<uint16_t>(charcode);
 
-  if (charcode < 0x10000)
-    return m_DirectCharcodeToCIDTable[charcode];
+  auto table_span = m_DirectCharcodeToCIDTable.span();
+  if (charcode < table_span.size())
+    return table_span[charcode];
 
   auto it = std::lower_bound(m_AdditionalCharcodeToCIDMappings.begin(),
                              m_AdditionalCharcodeToCIDMappings.end(), charcode,
@@ -346,7 +381,7 @@ uint32_t CPDF_CMap::GetNextChar(ByteStringView pString, size_t* pOffset) const {
       uint8_t codes[4];
       int char_size = 1;
       codes[0] = offset < pBytes.size() ? pBytes[offset++] : 0;
-      while (1) {
+      while (true) {
         int ret = CheckFourByteCodeRange(codes, char_size,
                                          m_MixedFourByteLeadingRanges);
         if (ret == 0)
@@ -361,7 +396,6 @@ uint32_t CPDF_CMap::GetNextChar(ByteStringView pString, size_t* pOffset) const {
           return 0;
         codes[char_size++] = pBytes[offset++];
       }
-      break;
     }
   }
   return 0;
@@ -466,7 +500,7 @@ int CPDF_CMap::AppendChar(char* str, uint32_t charcode) const {
 }
 
 void CPDF_CMap::SetAdditionalMappings(std::vector<CIDRange> mappings) {
-  ASSERT(m_AdditionalCharcodeToCIDMappings.empty());
+  DCHECK(m_AdditionalCharcodeToCIDMappings.empty());
   if (m_CodingScheme != MixedFourBytes || mappings.empty())
     return;
 

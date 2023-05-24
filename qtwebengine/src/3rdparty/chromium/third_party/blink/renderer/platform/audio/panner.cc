@@ -29,6 +29,8 @@
 #include "third_party/blink/renderer/platform/audio/panner.h"
 
 #include <memory>
+
+#include "base/notreached.h"
 #include "third_party/blink/renderer/platform/audio/equal_power_panner.h"
 #include "third_party/blink/renderer/platform/audio/hrtf_panner.h"
 
@@ -36,13 +38,15 @@ namespace blink {
 
 std::unique_ptr<Panner> Panner::Create(PanningModel model,
                                        float sample_rate,
+                                       unsigned render_quantum_frames,
                                        HRTFDatabaseLoader* database_loader) {
   switch (model) {
     case PanningModel::kEqualPower:
       return std::make_unique<EqualPowerPanner>(sample_rate);
 
     case PanningModel::kHRTF:
-      return std::make_unique<HRTFPanner>(sample_rate, database_loader);
+      return std::make_unique<HRTFPanner>(sample_rate, render_quantum_frames,
+                                          database_loader);
   }
   NOTREACHED();
   return nullptr;

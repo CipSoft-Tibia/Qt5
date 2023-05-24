@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QJNIHELPERS_H
 #define QJNIHELPERS_H
@@ -54,13 +18,13 @@
 #include <jni.h>
 #include <functional>
 #include <QtCore/private/qglobal_p.h>
-#include <QHash>
-#include <QMetaType>
+#include <QtCore/qcoreapplication_platform.h>
+#include <QtCore/QJniEnvironment>
 
 QT_BEGIN_NAMESPACE
 
-class QRunnable;
-class QStringList;
+Q_DECLARE_JNI_TYPE(Activity, "Landroid/app/Activity;")
+Q_DECLARE_JNI_TYPE(Service, "Landroid/app/Service;")
 
 namespace QtAndroidPrivate
 {
@@ -107,28 +71,18 @@ namespace QtAndroidPrivate
         virtual jobject onBind(jobject intent) = 0;
     };
 
-    enum class PermissionsResult {
-        Granted,
-        Denied
-    };
-    typedef QHash<QString,  QtAndroidPrivate::PermissionsResult> PermissionsHash;
-    typedef std::function<void()> Runnable;
-    typedef std::function<void(const PermissionsHash &)> PermissionsResultFunc;
-
-    Q_CORE_EXPORT jobject activity();
-    Q_CORE_EXPORT jobject service();
-    Q_CORE_EXPORT jobject context();
+    Q_CORE_EXPORT QtJniTypes::Activity activity();
+    Q_CORE_EXPORT QtJniTypes::Service service();
+    Q_CORE_EXPORT QtJniTypes::Context context();
     Q_CORE_EXPORT JavaVM *javaVM();
     Q_CORE_EXPORT jint initJNI(JavaVM *vm, JNIEnv *env);
+    Q_CORE_EXPORT jclass findClass(const char *className, JNIEnv *env);
     jobject classLoader();
     Q_CORE_EXPORT jint androidSdkVersion();
-    Q_CORE_EXPORT void runOnAndroidThread(const Runnable &runnable, JNIEnv *env);
-    Q_CORE_EXPORT void runOnAndroidThreadSync(const Runnable &runnable, JNIEnv *env, int timeoutMs = INT_MAX);
-    Q_CORE_EXPORT void runOnUiThread(QRunnable *runnable, JNIEnv *env);
-    Q_CORE_EXPORT void requestPermissions(JNIEnv *env, const QStringList &permissions, const PermissionsResultFunc &callbackFunc, bool directCall = false);
-    Q_CORE_EXPORT PermissionsHash requestPermissionsSync(JNIEnv *env, const QStringList &permissions, int timeoutMs = INT_MAX);
-    Q_CORE_EXPORT PermissionsResult checkPermission(const QString &permission);
-    Q_CORE_EXPORT bool shouldShowRequestPermissionRationale(const QString &permission);
+
+    bool registerPermissionNatives(QJniEnvironment &env);
+    bool registerNativeInterfaceNatives(QJniEnvironment &env);
+    bool registerExtrasNatives(QJniEnvironment &env);
 
     Q_CORE_EXPORT void handleActivityResult(jint requestCode, jint resultCode, jobject data);
     Q_CORE_EXPORT void registerActivityResultListener(ActivityResultListener *listener);
@@ -149,18 +103,54 @@ namespace QtAndroidPrivate
     Q_CORE_EXPORT void registerKeyEventListener(KeyEventListener *listener);
     Q_CORE_EXPORT void unregisterKeyEventListener(KeyEventListener *listener);
 
-    Q_CORE_EXPORT void hideSplashScreen(JNIEnv *env, int duration = 0);
-
-
     Q_CORE_EXPORT void waitForServiceSetup();
     Q_CORE_EXPORT int acuqireServiceSetup(int flags);
     Q_CORE_EXPORT void setOnBindListener(OnBindListener *listener);
     Q_CORE_EXPORT jobject callOnBindListener(jobject intent);
 
+    Q_CORE_EXPORT bool acquireAndroidDeadlockProtector();
+    Q_CORE_EXPORT void releaseAndroidDeadlockProtector();
 }
 
-QT_END_NAMESPACE
+#define Q_JNI_FIND_AND_CHECK_CLASS(CLASS_NAME) \
+    clazz = env.findClass(CLASS_NAME); \
+    if (!clazz) { \
+        __android_log_print(ANDROID_LOG_FATAL, m_qtTag, QtAndroid::classErrorMsgFmt(), CLASS_NAME);\
+        return JNI_FALSE; \
+    }
 
-Q_DECLARE_METATYPE(QtAndroidPrivate::PermissionsHash)
+#define Q_JNI_GET_AND_CHECK_METHOD(ID, CLASS, METHOD_NAME, METHOD_SIGNATURE) \
+    ID = env.findMethod(CLASS, METHOD_NAME, METHOD_SIGNATURE); \
+    if (!ID) { \
+        __android_log_print(ANDROID_LOG_FATAL, m_qtTag, QtAndroid::methodErrorMsgFmt(), \
+                            METHOD_NAME, METHOD_SIGNATURE); \
+        return JNI_FALSE; \
+    }
+
+#define Q_JNI_GET_AND_CHECK_STATIC_METHOD(ID, CLASS, METHOD_NAME, METHOD_SIGNATURE) \
+    ID = env.findStaticMethod(CLASS, METHOD_NAME, METHOD_SIGNATURE); \
+    if (!ID) { \
+        __android_log_print(ANDROID_LOG_FATAL, m_qtTag, QtAndroid::methodErrorMsgFmt(), \
+                            METHOD_NAME, METHOD_SIGNATURE); \
+        return JNI_FALSE; \
+    }
+
+#define Q_JNI_GET_AND_CHECK_FIELD(ID, CLASS, FIELD_NAME, FIELD_SIGNATURE) \
+    ID = env.findField(CLASS, FIELD_NAME, FIELD_SIGNATURE); \
+    if (!ID) { \
+        __android_log_print(ANDROID_LOG_FATAL, m_qtTag, QtAndroid::fieldErrorMsgFmt(), \
+                            FIELD_NAME, FIELD_SIGNATURE); \
+        return JNI_FALSE; \
+    }
+
+#define Q_JNI_GET_AND_CHECK_STATIC_FIELD(ID, CLASS, FIELD_NAME, FIELD_SIGNATURE) \
+    ID = env.findStaticField(CLASS, FIELD_NAME, FIELD_SIGNATURE); \
+    if (!ID) { \
+        __android_log_print(ANDROID_LOG_FATAL, m_qtTag, QtAndroid::fieldErrorMsgFmt(), \
+                            FIELD_NAME, FIELD_SIGNATURE); \
+        return JNI_FALSE; \
+    }
+
+QT_END_NAMESPACE
 
 #endif // QJNIHELPERS_H

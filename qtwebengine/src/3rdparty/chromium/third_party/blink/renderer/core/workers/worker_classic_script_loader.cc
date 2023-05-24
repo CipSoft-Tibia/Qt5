@@ -29,8 +29,8 @@
 
 #include <memory>
 #include "base/memory/scoped_refptr.h"
-#include "services/network/public/mojom/ip_address_space.mojom-blink.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/csp/content_security_policy.h"
 #include "third_party/blink/renderer/core/html/parser/text_resource_decoder.h"
@@ -49,7 +49,7 @@
 #include "third_party/blink/renderer/platform/network/content_security_policy_response_headers.h"
 #include "third_party/blink/renderer/platform/network/http_names.h"
 #include "third_party/blink/renderer/platform/network/network_utils.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/weborigin/referrer.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 
 namespace blink {
@@ -98,14 +98,13 @@ String CheckSameOriginEnforcement(const KURL& request_url,
 
 }  // namespace
 
-WorkerClassicScriptLoader::WorkerClassicScriptLoader()
-    : response_address_space_(network::mojom::IPAddressSpace::kPublic) {}
+WorkerClassicScriptLoader::WorkerClassicScriptLoader() {}
 
 void WorkerClassicScriptLoader::LoadSynchronously(
     ExecutionContext& execution_context,
     ResourceFetcher* fetch_client_settings_object_fetcher,
     const KURL& url,
-    mojom::RequestContextType request_context,
+    mojom::blink::RequestContextType request_context,
     network::mojom::RequestDestination destination) {
   DCHECK(fetch_client_settings_object_fetcher);
   url_ = url;
@@ -113,10 +112,6 @@ void WorkerClassicScriptLoader::LoadSynchronously(
 
   ResourceRequest request(url);
   request.SetHttpMethod(http_names::kGET);
-  request.SetExternalRequestStateFromRequestorAddressSpace(
-      fetch_client_settings_object_fetcher_->GetProperties()
-          .GetFetchClientSettingsObject()
-          .GetAddressSpace());
   request.SetRequestContext(request_context);
   request.SetRequestDestination(destination);
 
@@ -140,9 +135,7 @@ void WorkerClassicScriptLoader::LoadTopLevelScriptAsynchronously(
     const KURL& url,
     std::unique_ptr<WorkerMainScriptLoadParameters>
         worker_main_script_load_params,
-    CrossVariantMojoRemote<mojom::ResourceLoadInfoNotifierInterfaceBase>
-        resource_load_info_notifier,
-    mojom::RequestContextType request_context,
+    mojom::blink::RequestContextType request_context,
     network::mojom::RequestDestination destination,
     network::mojom::RequestMode request_mode,
     network::mojom::CredentialsMode credentials_mode,
@@ -150,7 +143,8 @@ void WorkerClassicScriptLoader::LoadTopLevelScriptAsynchronously(
     base::OnceClosure finished_callback,
     RejectCoepUnsafeNone reject_coep_unsafe_none,
     mojo::PendingRemote<network::mojom::blink::URLLoaderFactory>
-        blob_url_loader_factory) {
+        blob_url_loader_factory,
+    absl::optional<uint64_t> main_script_identifier) {
   DCHECK(fetch_client_settings_object_fetcher);
   DCHECK(response_callback || finished_callback);
   response_callback_ = std::move(response_callback);
@@ -160,10 +154,6 @@ void WorkerClassicScriptLoader::LoadTopLevelScriptAsynchronously(
   is_top_level_script_ = true;
   ResourceRequest request(url);
   request.SetHttpMethod(http_names::kGET);
-  request.SetExternalRequestStateFromRequestorAddressSpace(
-      fetch_client_settings_object_fetcher_->GetProperties()
-          .GetFetchClientSettingsObject()
-          .GetAddressSpace());
   request.SetRequestContext(request_context);
   request.SetRequestDestination(destination);
   request.SetMode(request_mode);
@@ -172,7 +162,15 @@ void WorkerClassicScriptLoader::LoadTopLevelScriptAsynchronously(
   // Use WorkerMainScriptLoader to load the main script for dedicated workers
   // (PlzDedicatedWorker) and shared workers.
   if (worker_main_script_load_params) {
-    request.SetInspectorId(CreateUniqueIdentifier());
+    auto* worker_global_scope = DynamicTo<WorkerGlobalScope>(execution_context);
+    DCHECK(worker_global_scope);
+    if (main_script_identifier.has_value()) {
+      worker_global_scope->SetMainResoureIdentifier(
+          main_script_identifier.value());
+      request.SetInspectorId(main_script_identifier.value());
+    } else {
+      request.SetInspectorId(CreateUniqueIdentifier());
+    }
     request.SetReferrerString(Referrer::NoReferrer());
     request.SetPriority(ResourceLoadPriority::kHigh);
     FetchParameters fetch_params(
@@ -182,8 +180,7 @@ void WorkerClassicScriptLoader::LoadTopLevelScriptAsynchronously(
     worker_main_script_loader_->Start(
         fetch_params, std::move(worker_main_script_load_params),
         &fetch_client_settings_object_fetcher_->Context(),
-        fetch_client_settings_object_fetcher->GetResourceLoadObserver(),
-        std::move(resource_load_info_notifier), this);
+        fetch_client_settings_object_fetcher->GetResourceLoadObserver(), this);
     return;
   }
 
@@ -241,8 +238,6 @@ void WorkerClassicScriptLoader::DidReceiveResponse(
   identifier_ = identifier;
   response_url_ = response.ResponseUrl();
   response_encoding_ = response.TextEncodingName();
-  app_cache_id_ = response.AppCacheID();
-  response_address_space_ = response.AddressSpace();
 
   referrer_policy_ = response.HttpHeaderField(http_names::kReferrerPolicy);
   ProcessContentSecurityPolicy(response);
@@ -260,8 +255,8 @@ void WorkerClassicScriptLoader::DidReceiveData(const char* data, unsigned len) {
   if (!decoder_) {
     decoder_ = std::make_unique<TextResourceDecoder>(TextResourceDecoderOptions(
         TextResourceDecoderOptions::kPlainTextContent,
-        response_encoding_.IsEmpty() ? UTF8Encoding()
-                                     : WTF::TextEncoding(response_encoding_)));
+        response_encoding_.empty() ? UTF8Encoding()
+                                   : WTF::TextEncoding(response_encoding_)));
   }
 
   if (!len)
@@ -270,10 +265,10 @@ void WorkerClassicScriptLoader::DidReceiveData(const char* data, unsigned len) {
   source_text_.Append(decoder_->Decode(data, len));
 }
 
-void WorkerClassicScriptLoader::DidReceiveCachedMetadata(const char* data,
-                                                         int size) {
-  cached_metadata_ = std::make_unique<Vector<uint8_t>>(size);
-  memcpy(cached_metadata_->data(), data, size);
+void WorkerClassicScriptLoader::DidReceiveCachedMetadata(
+    mojo_base::BigBuffer data) {
+  cached_metadata_ = std::make_unique<Vector<uint8_t>>(data.size());
+  memcpy(cached_metadata_->data(), data.data(), data.size());
 }
 
 void WorkerClassicScriptLoader::DidFinishLoading(uint64_t identifier) {
@@ -284,13 +279,13 @@ void WorkerClassicScriptLoader::DidFinishLoading(uint64_t identifier) {
   NotifyFinished();
 }
 
-void WorkerClassicScriptLoader::DidFail(const ResourceError& error) {
+void WorkerClassicScriptLoader::DidFail(uint64_t, const ResourceError& error) {
   need_to_cancel_ = false;
   canceled_ = error.IsCancellation();
   NotifyError();
 }
 
-void WorkerClassicScriptLoader::DidFailRedirectCheck() {
+void WorkerClassicScriptLoader::DidFailRedirectCheck(uint64_t) {
   // When didFailRedirectCheck() is called, the ResourceLoader for the script
   // is not canceled yet. So we don't reset |m_needToCancel| here.
   NotifyError();
@@ -370,10 +365,8 @@ void WorkerClassicScriptLoader::ProcessContentSecurityPolicy(
       !response.CurrentRequestUrl().ProtocolIs("file") &&
       !response.CurrentRequestUrl().ProtocolIs("filesystem")) {
     content_security_policy_ = MakeGarbageCollected<ContentSecurityPolicy>();
-    content_security_policy_->SetOverrideURLForSelf(
-        response.CurrentRequestUrl());
-    content_security_policy_->DidReceiveHeaders(
-        ContentSecurityPolicyResponseHeaders(response));
+    content_security_policy_->AddPolicies(ParseContentSecurityPolicyHeaders(
+        ContentSecurityPolicyResponseHeaders(response)));
   }
 }
 

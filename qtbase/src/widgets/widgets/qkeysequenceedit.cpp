@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2013 Ivan Komissarov.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2013 Ivan Komissarov.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qkeysequenceedit.h"
 #include "qkeysequenceedit_p.h"
@@ -47,7 +11,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_STATIC_ASSERT(QKeySequencePrivate::MaxKeyCount == 4); // assumed by the code around here
+static_assert(QKeySequencePrivate::MaxKeyCount == 4); // assumed by the code around here
 
 void QKeySequenceEditPrivate::init()
 {
@@ -55,15 +19,23 @@ void QKeySequenceEditPrivate::init()
 
     lineEdit = new QLineEdit(q);
     lineEdit->setObjectName(QStringLiteral("qt_keysequenceedit_lineedit"));
+    lineEdit->setClearButtonEnabled(false);
+    q->connect(lineEdit, &QLineEdit::textChanged, [q](const QString& text) {
+        // Clear the shortcut if the user clicked on the clear icon
+        if (text.isEmpty())
+            q->clear();
+    });
+
     keyNum = 0;
     prevKey = -1;
     releaseTimer = 0;
+    finishingKeyCombinations = {Qt::Key_Tab, Qt::Key_Backtab};
 
     QVBoxLayout *layout = new QVBoxLayout(q);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(lineEdit);
 
-    key[0] = key[1] = key[2] = key[3] = 0;
+    std::fill_n(key, QKeySequencePrivate::MaxKeyCount, QKeyCombination::fromCombined(0));
 
     lineEdit->setFocusProxy(q);
     lineEdit->installEventFilter(q);
@@ -73,8 +45,6 @@ void QKeySequenceEditPrivate::init()
     q->setFocusPolicy(Qt::StrongFocus);
     q->setAttribute(Qt::WA_MacShowFocusRect, true);
     q->setAttribute(Qt::WA_InputMethodEnabled, false);
-
-    // TODO: add clear button
 }
 
 int QKeySequenceEditPrivate::translateModifiers(Qt::KeyboardModifiers state, const QString &text)
@@ -167,12 +137,98 @@ QKeySequenceEdit::~QKeySequenceEdit()
     \brief This property contains the currently chosen key sequence.
 
     The shortcut can be changed by the user or via setter function.
+
+    \note If the QKeySequence is longer than the maximumSequenceLength
+    property, the key sequence is truncated.
 */
 QKeySequence QKeySequenceEdit::keySequence() const
 {
     Q_D(const QKeySequenceEdit);
 
     return d->keySequence;
+}
+
+/*!
+    \property QKeySequenceEdit::clearButtonEnabled
+    \brief Whether the key sequence edit displays a clear button when it is not
+    empty.
+
+    If enabled, the key sequence edit displays a trailing \e clear button when
+    it contains some text, otherwise the line edit does not show a clear button
+    (the default).
+
+    \since 6.4
+*/
+void QKeySequenceEdit::setClearButtonEnabled(bool enable)
+{
+    Q_D(QKeySequenceEdit);
+
+    d->lineEdit->setClearButtonEnabled(enable);
+}
+
+bool QKeySequenceEdit::isClearButtonEnabled() const
+{
+    Q_D(const QKeySequenceEdit);
+
+    return d->lineEdit->isClearButtonEnabled();
+}
+
+/*!
+    \property QKeySequenceEdit::maximumSequenceLength
+    \brief The maximum sequence length.
+
+    The maximum number of key sequences a user can enter. The value needs to
+    be between 1 and 4, with 4 being the default.
+
+    \since 6.5
+*/
+qsizetype QKeySequenceEdit::maximumSequenceLength() const
+{
+    Q_D(const QKeySequenceEdit);
+    return d->maximumSequenceLength;
+}
+
+void QKeySequenceEdit::setMaximumSequenceLength(qsizetype count)
+{
+    Q_D(QKeySequenceEdit);
+
+    if (count < 1 || count > QKeySequencePrivate::MaxKeyCount) {
+        qWarning("QKeySequenceEdit: maximumSequenceLength %lld is out of range (1..%d)",
+                 qlonglong(count), QKeySequencePrivate::MaxKeyCount);
+        return;
+    }
+    d->maximumSequenceLength = int(count);
+    if (d->keyNum > count) {
+        for (qsizetype i = d->keyNum; i < count; ++i)
+            d->key[i] = QKeyCombination::fromCombined(0);
+        d->keyNum = count;
+        d->rebuildKeySequence();
+    }
+}
+
+/*!
+    \property QKeySequenceEdit::finishingKeyCombinations
+    \brief The list of key combinations that finish editing the key sequences.
+
+    Any combination in the list will finish the editing of key sequences.
+    All other key combinations can be recorded as part of a key sequence. By
+    default, Qt::Key_Tab and Qt::Key_Backtab will finish recording the key
+    sequence.
+
+    \since 6.5
+*/
+void QKeySequenceEdit::setFinishingKeyCombinations(const QList<QKeyCombination> &finishingKeyCombinations)
+{
+    Q_D(QKeySequenceEdit);
+
+    d->finishingKeyCombinations = finishingKeyCombinations;
+}
+
+QList<QKeyCombination> QKeySequenceEdit::finishingKeyCombinations() const
+{
+    Q_D(const QKeySequenceEdit);
+
+    return d->finishingKeyCombinations;
 }
 
 void QKeySequenceEdit::setKeySequence(const QKeySequence &keySequence)
@@ -184,16 +240,24 @@ void QKeySequenceEdit::setKeySequence(const QKeySequence &keySequence)
     if (d->keySequence == keySequence)
         return;
 
-    d->keySequence = keySequence;
+    const auto desiredCount = keySequence.count();
+    if (desiredCount > d->maximumSequenceLength) {
+        qWarning("QKeySequenceEdit: setting a key sequence of length %d "
+                 "when maximumSequenceLength is %d, truncating.",
+                 desiredCount, d->maximumSequenceLength);
+    }
 
-    d->key[0] = d->key[1] = d->key[2] = d->key[3] = 0;
-    d->keyNum = keySequence.count();
+    d->keyNum = std::min(desiredCount, d->maximumSequenceLength);
     for (int i = 0; i < d->keyNum; ++i)
         d->key[i] = keySequence[i];
+    for (int i = d->keyNum; i < QKeySequencePrivate::MaxKeyCount; ++i)
+        d->key[i] = QKeyCombination::fromCombined(0);
 
-    d->lineEdit->setText(keySequence.toString(QKeySequence::NativeText));
+    d->rebuildKeySequence();
 
-    emit keySequenceChanged(keySequence);
+    d->lineEdit->setText(d->keySequence.toString(QKeySequence::NativeText));
+
+    emit keySequenceChanged(d->keySequence);
 }
 
 /*!
@@ -218,13 +282,23 @@ void QKeySequenceEdit::clear()
 */
 bool QKeySequenceEdit::event(QEvent *e)
 {
+    Q_D(const QKeySequenceEdit);
+
     switch (e->type()) {
     case QEvent::Shortcut:
         return true;
     case QEvent::ShortcutOverride:
         e->accept();
         return true;
-    default :
+    case QEvent::KeyPress: {
+            QKeyEvent *ke = static_cast<QKeyEvent *>(e);
+            if (!d->finishingKeyCombinations.contains(ke->keyCombination())) {
+                keyPressEvent(ke);
+                return true;
+            }
+        }
+        break;
+    default:
         break;
     }
 
@@ -237,6 +311,11 @@ bool QKeySequenceEdit::event(QEvent *e)
 void QKeySequenceEdit::keyPressEvent(QKeyEvent *e)
 {
     Q_D(QKeySequenceEdit);
+
+    if (d->finishingKeyCombinations.contains(e->keyCombination())) {
+        d->finishEditing();
+        return;
+    }
 
     int nextKey = e->key();
 
@@ -261,12 +340,12 @@ void QKeySequenceEdit::keyPressEvent(QKeyEvent *e)
             return;
     }
 
-    if (d->keyNum >= QKeySequencePrivate::MaxKeyCount)
+    if (d->keyNum >= d->maximumSequenceLength)
         return;
 
     if (e->modifiers() & Qt::ShiftModifier) {
         QList<int> possibleKeys = QKeyMapper::possibleKeys(e);
-        int pkTotal = possibleKeys.count();
+        int pkTotal = possibleKeys.size();
         if (!pkTotal)
             return;
         bool found = false;
@@ -286,13 +365,12 @@ void QKeySequenceEdit::keyPressEvent(QKeyEvent *e)
     }
 
 
-    d->key[d->keyNum] = nextKey;
+    d->key[d->keyNum] = QKeyCombination::fromCombined(nextKey);
     d->keyNum++;
 
-    QKeySequence key(d->key[0], d->key[1], d->key[2], d->key[3]);
-    d->keySequence = key;
-    QString text = key.toString(QKeySequence::NativeText);
-    if (d->keyNum < QKeySequencePrivate::MaxKeyCount) {
+    d->rebuildKeySequence();
+    QString text = d->keySequence.toString(QKeySequence::NativeText);
+    if (d->keyNum < d->maximumSequenceLength) {
         //: This text is an "unfinished" shortcut, expands like "Ctrl+A, ..."
         text = tr("%1, ...").arg(text);
     }
@@ -308,7 +386,7 @@ void QKeySequenceEdit::keyReleaseEvent(QKeyEvent *e)
     Q_D(QKeySequenceEdit);
 
     if (d->prevKey == e->key()) {
-        if (d->keyNum < QKeySequencePrivate::MaxKeyCount)
+        if (d->keyNum < d->maximumSequenceLength)
             d->releaseTimer = startTimer(1000);
         else
             d->finishEditing();
@@ -328,6 +406,17 @@ void QKeySequenceEdit::timerEvent(QTimerEvent *e)
     }
 
     QWidget::timerEvent(e);
+}
+
+/*!
+    \reimp
+*/
+void QKeySequenceEdit::focusOutEvent(QFocusEvent *e)
+{
+    Q_D(QKeySequenceEdit);
+    if (e->reason() != Qt::PopupFocusReason)
+        d->finishEditing();
+    QWidget::focusOutEvent(e);
 }
 
 QT_END_NAMESPACE

@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-    \page qtcharts-overview.html overview
+    \page qtcharts-overview.html
     \title Qt Charts Overview
     \brief Visualizing data as 2D charts.
+    \ingroup explanations-graphicsandmultimedia
 
     Qt Charts enables creating stylish, interactive, data centric user
     interfaces. Qt Charts uses the \l {Graphics View Framework} for ease of
@@ -85,9 +62,8 @@
 
     Or, in QML:
 
-    \snippet qmlpiechart/qml/qmlpiechart/main.qml 1
-    \snippet qmlpiechart/qml/qmlpiechart/main.qml 2
-    \snippet qmlpiechart/qml/qmlpiechart/main.qml 3
+    \snippet qmlchartsgallery/qml/PieChart.qml 1
+    \snippet qmlchartsgallery/qml/PieChart.qml 2
 
     You can combine different types of series in one chart.
 
@@ -108,10 +84,9 @@
     A spline chart is implemented by using the QSplineSeries class
     that inherits QLineSeries or the SplineSeries type that inherits LineSeries.
 
-    For more information, see \l{LineChart Example}, \l{SplineChart Example},
-    and \l{Dynamic Spline Example}.
+    For more information, see \l{Creating Line Charts} and \l{Creating Spline Charts}.
     For an example of combining a line chart with a bar chart and using a common
-    axis for both, see \l{Line and BarChart Example}.
+    axis for both, see \l{Combining Line and BarChart}.
 
     \section2 Area and Scatter Charts
 
@@ -130,8 +105,9 @@
     A scatter chart is implemented by using the QScatterSeries class or the
     ScatterSeries QML type.
 
-    For more information, see \l{AreaChart Example}, \l{ScatterChart Example},
-    and \l{Scatter Interactions Example}.
+    For more information, see \l{Creating Area Charts} and
+    \l{Creating Scatter Charts}.
+
 
     \section2 Bar Charts
 
@@ -168,10 +144,9 @@
     \inlineimage examples_horizontalpercentbarchart.png
 
 
-    For more information, see \l{BarChart Example},
-    \l{HorizontalBarChart Example}, \l{StackedBarChart Example},
-    \l{HorizontalStackedBarChart Example}, \l{PercentBarChart Example}, and
-    \l{HorizontalPercentBarChart Example}.
+    For more information, see \l{Creating Bar Charts},
+    \l{Creating Horizontal Stacked Bar Charts}, \l{Creating Horizontal Bar Charts},
+    and \l{Creating Horizontal Percent Bar Charts}.
 
     \section2 Pie Charts
 
@@ -186,9 +161,8 @@
     \inlineimage examples_donutchart.png
 
 
-    For more information, see \l{PieChart Example},
-    \l{Pie Chart Customization Example}, \l{DonutChart Example},
-    \l{Donut Chart Breakdown Example}, and \l{Nested Donuts Example}.
+    For more information, see \l{Charts with Widgets Gallery},
+    \l{Creating a Donut Breakdown Chart}, and \l{Creating Nested Donut Charts}.
 
     \section2 Box-and-Whiskers Charts
 
@@ -203,7 +177,7 @@
 
     \image examples_boxplotchart.png
 
-    For more information, see \l{Box and Whiskers Example}.
+    For more information, see \l{Creating Box-and-Whiskers Charts}.
 
     \section2 Candlestick Charts
 
@@ -228,7 +202,7 @@
     supported by them. The axis can be used either as a radial or an angular
     axis. In QML, the corresponding type is PolarChartView.
 
-    For more information, see \l{Polar Chart Example} and \l{Qml Polar Chart}.
+    For more information, see \l{Creating Polar Charts} and \l{Using Polar Charts with QML}.
 
     \section1 Axes
 
@@ -272,8 +246,8 @@
     supported, such as specifying QValueAxis and QLogValueAxis on the same
     orientation.
 
-    For more information, see \l{DateTimeAxis Example},
-    \l{Logarithmic Axis Example}, \l{Multiple Axes Example}, and \l{Qml Axes}.
+    For more information, see \l{Line Charts with Date and Time Axes},
+    \l{Using Logarithmic Value Axes}, \l{Using Multiple Axes}, and \l{Using Axes with QML}.
 
     \section1 Legend
 
@@ -294,7 +268,7 @@
     QBoxPlotLegendMarker, QCandlestickLegendMarker, and QXYLegendMarker.
 
     In QML, legend markers can be modified by creating custom legends, as
-    illustrated by the \l{Qml Custom Legend} example.
+    illustrated by the \l{Customizing Legends} example.
 
     \section1 Interacting with Charts
 
@@ -307,7 +281,7 @@
     It is possible to add data to charts dynamically and to make the chart view
     scroll automatically to display the new data.
 
-    For more information, see \l{Dynamic Spline Example}.
+    For more information, see \l{Creating Spline Charts}.
 
     \section2 Drilling Down into Data
 
@@ -316,8 +290,7 @@
     item is displayed. This is implemented by deleting the first series and
     adding another one.
 
-    For more information, see \l{StackedBarChart Drilldown Example} and
-    \l{PieChart Drilldown Example}.
+    For more information, see \l{Implementing Drilldown}.
 
     \section2 Zooming and Scrolling
 
@@ -336,7 +309,7 @@
     charts or hover the mouse over them. This enables you to add elements, such
     as callouts, to the charts.
 
-    For more information, see \l{Callout Example}.
+    For more information, see \l{Drawing a Callout on Top of a Chart}.
 
     \section1 Themes
 
@@ -365,5 +338,5 @@
     \note Changing the theme will overwrite all customization previously applied
     to the series.
 
-    For more information, see the \l {Chart themes example}.
+    For more information, see the \l {Creating Charts With Themes}.
 */

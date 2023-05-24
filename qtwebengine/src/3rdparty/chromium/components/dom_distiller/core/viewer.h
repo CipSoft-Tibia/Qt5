@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include <string>
 
 #include "base/compiler_specific.h"
-#include "base/strings/string16.h"
 #include "components/dom_distiller/core/distilled_page_prefs.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/gurl.h"
@@ -28,7 +27,8 @@ namespace viewer {
 // parameters. Information from the original article has not yet been inserted,
 // so the returned HTML should be safe.
 const std::string GetArticleTemplateHtml(mojom::Theme theme,
-                                         mojom::FontFamily font_family);
+                                         mojom::FontFamily font_family,
+                                         const std::string& csp_nonce);
 
 // Returns the JavaScript to place a full article's HTML on the page. The
 // returned HTML should be considered unsafe, so callers must ensure

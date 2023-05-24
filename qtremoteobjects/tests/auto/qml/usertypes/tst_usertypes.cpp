@@ -1,36 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QString>
 #include <QtTest>
 #include <qqmlengine.h>
 #include <qqmlcomponent.h>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+
 #include "rep_usertypes_merged.h"
+
+#include "../../../shared/testutils.h"
 
 class TypeWithReply : public TypeWithReplySimpleSource
 {
@@ -47,7 +26,7 @@ public:
     }
 };
 
-class tst_usertypes : public QObject
+class tst_usertypes : public QQmlDataTest
 {
     Q_OBJECT
 
@@ -68,7 +47,7 @@ private Q_SLOTS:
     void remoteCompositeType();
 };
 
-tst_usertypes::tst_usertypes()
+tst_usertypes::tst_usertypes() : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
     qmlRegisterType<ComplexTypeReplica>("usertypes", 1, 0, "ComplexTypeReplica");
 }
@@ -77,39 +56,39 @@ void tst_usertypes::extraPropertyInQml()
 {
     qmlRegisterType<SimpleClockReplica>("usertypes", 1, 0, "SimpleClockReplica");
 
-    QRemoteObjectRegistryHost host(QUrl("local:test"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":test"));
     SimpleClockSimpleSource clock;
     host.enableRemoting(&clock);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/extraprop.qml");
+    QQmlComponent c(&e, testFileUrl("extraprop.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
-    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").value<int>(), 10, 300);
+    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").value<int>(), 10, 1000);
 }
 
 void tst_usertypes::extraPropertyInQml2()
 {
     qmlRegisterType<SimpleClockReplica>("usertypes", 1, 0, "SimpleClockReplica");
 
-    QRemoteObjectRegistryHost host(QUrl("local:test2"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":test2"));
     SimpleClockSimpleSource clock;
     clock.setHour(10);
     host.enableRemoting(&clock);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/extraprop2.qml");
+    QQmlComponent c(&e, testFileUrl("extraprop2.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
-    QTRY_COMPARE_WITH_TIMEOUT(obj->property("hour").value<int>(), 10, 300);
+    QTRY_COMPARE_WITH_TIMEOUT(obj->property("hour").value<int>(), 10, 1000);
     QCOMPARE(obj->property("result").value<int>(), 10);
 }
 
 void tst_usertypes::extraPropertyInQmlComplex()
 {
-    QRemoteObjectRegistryHost host(QUrl("local:testExtraComplex"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":testExtraComplex"));
 
     SimpleClockSimpleSource clock;
     QStringListModel *model = new QStringListModel();
@@ -120,7 +99,7 @@ void tst_usertypes::extraPropertyInQmlComplex()
     host.enableRemoting(&source);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/extraPropComplex.qml");
+    QQmlComponent c(&e, testFileUrl("extraPropComplex.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
@@ -128,14 +107,14 @@ void tst_usertypes::extraPropertyInQmlComplex()
     QVERIFY(rep);
 
     // don't crash
-    QTRY_VERIFY_WITH_TIMEOUT(rep->isInitialized(), 300);
+    QTRY_VERIFY_WITH_TIMEOUT(rep->isInitialized(), 1000);
 }
 
 void tst_usertypes::modelInQml()
 {
     qmlRegisterType<TypeWithModelReplica>("usertypes", 1, 0, "TypeWithModelReplica");
 
-    QRemoteObjectRegistryHost host(QUrl("local:testModel"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":testModel"));
 
     QStringListModel *model = new QStringListModel();
     model->setStringList(QStringList() << "Track1" << "Track2" << "Track3");
@@ -144,13 +123,13 @@ void tst_usertypes::modelInQml()
     host.enableRemoting<TypeWithModelSourceAPI>(&source);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/model.qml");
+    QQmlComponent c(&e, testFileUrl("model.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
-    QTRY_VERIFY_WITH_TIMEOUT(obj->property("tracks").value<QAbstractItemModelReplica*>() != nullptr, 300);
+    QTRY_VERIFY_WITH_TIMEOUT(obj->property("tracks").value<QAbstractItemModelReplica*>() != nullptr, 1000);
     auto tracks = obj->property("tracks").value<QAbstractItemModelReplica*>();
-    QTRY_VERIFY_WITH_TIMEOUT(tracks->isInitialized(), 300);
+    QTRY_VERIFY_WITH_TIMEOUT(tracks->isInitialized(), 1000);
 
     TypeWithModelReplica *rep = qobject_cast<TypeWithModelReplica *>(obj);
     QVERIFY(rep->isInitialized());
@@ -160,7 +139,7 @@ void tst_usertypes::subObjectInQml()
 {
     qmlRegisterType<TypeWithSubObjectReplica>("usertypes", 1, 0, "TypeWithSubObjectReplica");
 
-    QRemoteObjectRegistryHost host(QUrl("local:testSubObject"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":testSubObject"));
 
     SimpleClockSimpleSource clock;
     TypeWithSubObjectSimpleSource source;
@@ -168,15 +147,15 @@ void tst_usertypes::subObjectInQml()
     host.enableRemoting(&source);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/subObject.qml");
+    QQmlComponent c(&e, testFileUrl("subObject.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
     TypeWithSubObjectReplica *replica = obj->property("replica").value<TypeWithSubObjectReplica*>();
     QVERIFY(replica);
 
-    QTRY_VERIFY_WITH_TIMEOUT(replica->property("clock").value<SimpleClockReplica*>() != nullptr, 300);
-    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").toInt(), 7, 300);
+    QTRY_VERIFY_WITH_TIMEOUT(replica->property("clock").value<SimpleClockReplica*>() != nullptr, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").toInt(), 7, 1000);
 }
 
 void tst_usertypes::complexInQml_data()
@@ -194,7 +173,7 @@ void tst_usertypes::complexInQml()
     QFETCH(bool, templated);
     QFETCH(bool, nullobject);
 
-    QRemoteObjectRegistryHost host(QUrl("local:testModel"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":testModel"));
 
     QStringListModel *model = new QStringListModel();
     model->setStringList(QStringList() << "Track1" << "Track2" << "Track3");
@@ -210,13 +189,13 @@ void tst_usertypes::complexInQml()
         host.enableRemoting(&source);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/complex.qml");
+    QQmlComponent c(&e, testFileUrl("complex.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
-    QTRY_VERIFY_WITH_TIMEOUT(obj->property("tracks").value<QAbstractItemModelReplica*>() != nullptr, 300);
+    QTRY_VERIFY_WITH_TIMEOUT(obj->property("tracks").value<QAbstractItemModelReplica*>() != nullptr, 1000);
     auto tracks = obj->property("tracks").value<QAbstractItemModelReplica*>();
-    QTRY_VERIFY_WITH_TIMEOUT(tracks->isInitialized(), 300);
+    QTRY_VERIFY_WITH_TIMEOUT(tracks->isInitialized(), 1000);
     ComplexTypeReplica *rep = qobject_cast<ComplexTypeReplica *>(obj);
     QVERIFY(rep->waitForSource(300));
     QCOMPARE(rep->property("before").value<int>(), 0);
@@ -234,16 +213,16 @@ void tst_usertypes::watcherInQml()
 {
     qmlRegisterType<TypeWithReplyReplica>("usertypes", 1, 0, "TypeWithReplyReplica");
 
-    QRemoteObjectRegistryHost host(QUrl("local:testWatcher"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":testWatcher"));
     TypeWithReply source;
     host.enableRemoting(&source);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/watcher.qml");
+    QQmlComponent c(&e, testFileUrl("watcher.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
-    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").value<QString>(), QString::fromLatin1("HELLO"), 300);
+    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").value<QString>(), QString::fromLatin1("HELLO"), 1000);
     QCOMPARE(obj->property("hasError").value<bool>(), false);
 
     QMetaObject::invokeMethod(obj, "callSlowFunction");
@@ -251,7 +230,7 @@ void tst_usertypes::watcherInQml()
     QVERIFY(obj->property("result").value<int>() != 10);
 
     QMetaObject::invokeMethod(obj, "callComplexFunction");
-    QTRY_VERIFY_WITH_TIMEOUT(!obj->property("result").isNull(), 300);
+    QTRY_VERIFY_WITH_TIMEOUT(!obj->property("result").isNull(), 1000);
     auto map = obj->property("result").value<QMap<QString,QString>>();
     QCOMPARE(map.value("one"), QString::fromLatin1("1"));
     QCOMPARE(obj->property("hasError").value<bool>(), false);
@@ -262,46 +241,46 @@ void tst_usertypes::hostInQml()
     qmlRegisterType<SimpleClockSimpleSource>("usertypes", 1, 0, "SimpleClockSimpleSource");
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/hosted.qml");
+    QQmlComponent c(&e, testFileUrl("hosted.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
     QRemoteObjectNode node;
-    node.connectToNode(QUrl("local:testHost"));
+    node.connectToNode(QUrl(LOCAL_SOCKET ":testHost"));
     SimpleClockReplica *replica = node.acquire<SimpleClockReplica>();
-    QTRY_COMPARE_WITH_TIMEOUT(replica->state(), QRemoteObjectReplica::Valid, 300);
+    QTRY_COMPARE_WITH_TIMEOUT(replica->state(), QRemoteObjectReplica::Valid, 1000);
 
     QSignalSpy spy(replica, &SimpleClockReplica::timeUpdated);
     spy.wait();
-    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.size(), 1);
 }
 
 void tst_usertypes::twoReplicas()
 {
     qmlRegisterType<SimpleClockReplica>("usertypes", 1, 0, "SimpleClockReplica");
 
-    QRemoteObjectRegistryHost host(QUrl("local:testTwoReplicas"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":testTwoReplicas"));
     SimpleClockSimpleSource clock;
     clock.setHour(7);
     host.enableRemoting(&clock);
 
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/twoReplicas.qml");
+    QQmlComponent c(&e, testFileUrl("twoReplicas.qml"));
     QObject *obj = c.create();
     QVERIFY(obj);
 
-    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").value<int>(), 7, 300);
-    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result2").value<int>(), 7, 500);
+    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result").value<int>(), 7, 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(obj->property("result2").value<int>(), 7, 1000);
 }
 
 void tst_usertypes::remoteCompositeType()
 {
     QQmlEngine e;
-    QQmlComponent c(&e, SRCDIR "data/composite.qml");
+    QQmlComponent c(&e, testFileUrl("composite.qml"));
     QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QRemoteObjectRegistryHost host(QUrl("local:remoteCompositeType"));
+    QRemoteObjectRegistryHost host(QUrl(LOCAL_SOCKET ":remoteCompositeType"));
     host.enableRemoting(obj.data(), "composite");
 }
 

@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -17,7 +17,7 @@ template("remoting_credits") {
     _credits_html_file = "$target_gen_dir/$target_name/credits.html"
     _credits_template = "$_credits_source_dir/credits.tmpl"
     _credits_entry_template = "$_credits_source_dir/credits_entry.tmpl"
-    script = "//tools/licenses.py"
+    script = "//tools/licenses/licenses.py"
     depfile = "$target_gen_dir/$target_name.d"
     inputs = [
       _credits_template,

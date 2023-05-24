@@ -2,187 +2,6 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
 <context>
-    <name>AudioContainerControl</name>
-    <message>
-        <source>RAW (headerless) file format</source>
-        <translation>RAW (fejléc nélküli) fájlformátum</translation>
-    </message>
-    <message>
-        <source>WAV file format</source>
-        <translation>WAV fájlformátum</translation>
-    </message>
-</context>
-<context>
-    <name>AudioEncoderControl</name>
-    <message>
-        <source>Linear PCM audio data</source>
-        <translation>Lineáris PCM hangadatok</translation>
-    </message>
-</context>
-<context>
-    <name>BbCameraAudioEncoderSettingsControl</name>
-    <message>
-        <source>No compression</source>
-        <translation>Nincs tömörítés</translation>
-    </message>
-    <message>
-        <source>AAC compression</source>
-        <translation>AAC tömörítés</translation>
-    </message>
-    <message>
-        <source>PCM uncompressed</source>
-        <translation>PCM tömörítetlen</translation>
-    </message>
-</context>
-<context>
-    <name>BbCameraMediaRecorderControl</name>
-    <message>
-        <source>Unable to retrieve mute status</source>
-        <translation>Nem lehet lekérni a némítási állapotot</translation>
-    </message>
-    <message>
-        <source>Unable to retrieve audio input volume</source>
-        <translation>Nem lehet lekérni a hangbemenet hangerejét</translation>
-    </message>
-    <message>
-        <source>Unable to set mute status</source>
-        <translation>Nem állítható be a némítási állapot</translation>
-    </message>
-    <message>
-        <source>Unable to set audio input volume</source>
-        <translation>Nem állítható be a hangbemenet hangereje</translation>
-    </message>
-</context>
-<context>
-    <name>BbCameraSession</name>
-    <message>
-        <source>Camera provides image in unsupported format</source>
-        <translation>A kamera nem támogatott formátumban szolgáltatja a képet</translation>
-    </message>
-    <message>
-        <source>Could not load JPEG data from frame</source>
-        <translation>Nem sikerült betölteni a JPEG adatokat a keretből</translation>
-    </message>
-    <message>
-        <source>Camera not ready</source>
-        <translation>A kamera nem áll készen</translation>
-    </message>
-    <message>
-        <source>Unable to apply video settings</source>
-        <translation>Nem alkalmazhatók a videobeállítások</translation>
-    </message>
-    <message>
-        <source>Could not open destination file:
-%1</source>
-        <translation>Nem sikerült megnyitni a célfájlt:
-%1</translation>
-    </message>
-    <message>
-        <source>Unable to open camera</source>
-        <translation>Nem nyitható meg a kamera</translation>
-    </message>
-    <message>
-        <source>Unable to retrieve native camera orientation</source>
-        <translation>Nem lehet lekérni a natív kameratájolást</translation>
-    </message>
-    <message>
-        <source>Unable to close camera</source>
-        <translation>Nem zárható be a kamera</translation>
-    </message>
-    <message>
-        <source>Unable to start video recording</source>
-        <translation>Nem indítható el a videorögzítés</translation>
-    </message>
-    <message>
-        <source>Unable to stop video recording</source>
-        <translation>Nem állítható le a videorögzítés</translation>
-    </message>
-</context>
-<context>
-    <name>BbCameraVideoEncoderSettingsControl</name>
-    <message>
-        <source>No compression</source>
-        <translation>Nincs tömörítés</translation>
-    </message>
-    <message>
-        <source>AVC1 compression</source>
-        <translation>AVC1 tömörítés</translation>
-    </message>
-    <message>
-        <source>H264 compression</source>
-        <translation>H264 tömörítés</translation>
-    </message>
-</context>
-<context>
-    <name>BbImageEncoderControl</name>
-    <message>
-        <source>JPEG image</source>
-        <translation>JPEG-kép</translation>
-    </message>
-</context>
-<context>
-    <name>BbVideoDeviceSelectorControl</name>
-    <message>
-        <source>Front Camera</source>
-        <translation>Előlapi kamera</translation>
-    </message>
-    <message>
-        <source>Rear Camera</source>
-        <translation>Hátsó kamera</translation>
-    </message>
-    <message>
-        <source>Desktop Camera</source>
-        <translation>Asztali kamera</translation>
-    </message>
-</context>
-<context>
-    <name>CameraBinImageCapture</name>
-    <message>
-        <source>Camera not ready</source>
-        <translation>A kamera nem áll készen</translation>
-    </message>
-</context>
-<context>
-    <name>CameraBinImageEncoder</name>
-    <message>
-        <source>JPEG image</source>
-        <translation>JPEG-kép</translation>
-    </message>
-</context>
-<context>
-    <name>CameraBinRecorder</name>
-    <message>
-        <source>QMediaRecorder::pause() is not supported by camerabin2.</source>
-        <translation>A camerabin2 nem támogatja a QMediaRecorder::pause() függvényt.</translation>
-    </message>
-    <message>
-        <source>Service has not been started</source>
-        <translation>A szolgáltatás nem indult el</translation>
-    </message>
-    <message>
-        <source>Recording permissions are not available</source>
-        <translation>A felvételi jogosultságok nem érhetők el</translation>
-    </message>
-</context>
-<context>
-    <name>CameraBinSession</name>
-    <message>
-        <source>Camera error</source>
-        <translation>Kamerahiba</translation>
-    </message>
-</context>
-<context>
-    <name>DSCameraSession</name>
-    <message>
-        <source>Camera not ready for capture</source>
-        <translation>A kamera nem áll készen a felvételhez</translation>
-    </message>
-    <message>
-        <source>Could not save image to file.</source>
-        <translation>Nem sikerült elmenteni a képet fájlba.</translation>
-    </message>
-</context>
-<context>
     <name>MFPlayerSession</name>
     <message>
         <source>Invalid stream source.</source>
@@ -203,6 +22,14 @@
     <message>
         <source>Unsupported media type.</source>
         <translation>Nem támogatott médiatípus.</translation>
+    </message>
+    <message>
+        <source>Unsupported URL scheme.</source>
+        <translation>Nem támogatot URL-séma.</translation>
+    </message>
+    <message>
+        <source>Connection to server could not be established.</source>
+        <translation>Nem sikerült létrehozni a kapcsolatot a kiszolgálóval.</translation>
     </message>
     <message>
         <source>Failed to load source.</source>
@@ -265,6 +92,22 @@
         <translation>Nem végzetes média-munkamenet hiba.</translation>
     </message>
     <message>
+        <source>Error reading from the network.</source>
+        <translation>Hiba a hálózatról olvasáskor.</translation>
+    </message>
+    <message>
+        <source>Error writing to the network.</source>
+        <translation>Hiba a hálózatra íráskor.</translation>
+    </message>
+    <message>
+        <source>Network packets might be blocked by a firewall.</source>
+        <translation>A tűzfal blokkolhatja a hálózati csomagokat.</translation>
+    </message>
+    <message>
+        <source>Media session state error.</source>
+        <translation>Média-munkamenet állapothiba.</translation>
+    </message>
+    <message>
         <source>Media session serious error.</source>
         <translation>Komoly média-munkamenet hiba.</translation>
     </message>
@@ -274,35 +117,7 @@
     </message>
 </context>
 <context>
-    <name>QAndroidAudioEncoderSettingsControl</name>
-    <message>
-        <source>Adaptive Multi-Rate Narrowband (AMR-NB) audio codec</source>
-        <translation>Alkalmazkodó többes gyakoriságú keskeny sávú (AMR-NB) hangkodek</translation>
-    </message>
-    <message>
-        <source>Adaptive Multi-Rate Wideband (AMR-WB) audio codec</source>
-        <translation>Alkalmazkodó többes gyakoriságú széles sávú (AMR-WB) hangkodek</translation>
-    </message>
-    <message>
-        <source>AAC Low Complexity (AAC-LC) audio codec</source>
-        <translation>AAC alacsony bonyolultságú (AAC-LC) hangkodek</translation>
-    </message>
-</context>
-<context>
     <name>QAndroidCameraSession</name>
-    <message>
-        <source>Camera cannot be started without a viewfinder.</source>
-        <translation>A kamerát nem lehet elindítani a fényképező keresője nélkül.</translation>
-    </message>
-    <message>
-        <source>Camera not ready</source>
-        <translation>A kamera nem áll készen</translation>
-    </message>
-    <message>
-        <source>Drive mode not supported</source>
-        <extracomment>Drive mode is the camera&apos;s shutter mode, for example single shot, continuos exposure, etc.</extracomment>
-        <translation>A meghajtómód nem támogatott</translation>
-    </message>
     <message>
         <source>Failed to capture image</source>
         <translation>A kép rögzítése sikertelen</translation>
@@ -312,174 +127,19 @@
         <translation>A kamera előnézetének indítása sikertelen.</translation>
     </message>
     <message>
-        <source>Could not open destination file: %1</source>
-        <translation>Nem sikerült megnyitni a célfájlt: %1</translation>
-    </message>
-</context>
-<context>
-    <name>QAndroidImageEncoderControl</name>
-    <message>
-        <source>JPEG image</source>
-        <translation>JPEG-kép</translation>
-    </message>
-</context>
-<context>
-    <name>QAndroidMediaContainerControl</name>
-    <message>
-        <source>MPEG4 media file format</source>
-        <translation>MPEG4 médiafájl-formátum</translation>
+        <source>File is not available: %1</source>
+        <translation>A fájl nem érhető el: %1</translation>
     </message>
     <message>
-        <source>3GPP media file format</source>
-        <translation>3GPP médiafájl-formátum</translation>
-    </message>
-    <message>
-        <source>AMR NB file format</source>
-        <translation>AMR NB fájlformátum</translation>
-    </message>
-    <message>
-        <source>AMR WB file format</source>
-        <translation>AMR WB fájlformátum</translation>
-    </message>
-</context>
-<context>
-    <name>QAndroidVideoEncoderSettingsControl</name>
-    <message>
-        <source>H.263 compression</source>
-        <translation>H.263 tömörítés</translation>
-    </message>
-    <message>
-        <source>H.264 compression</source>
-        <translation>H.264 tömörítés</translation>
-    </message>
-    <message>
-        <source>MPEG-4 SP compression</source>
-        <translation>MPEG-4 SP tömörítés</translation>
+        <source>Could not save to file: %1</source>
+        <translation>Nem sikerült elmenteni a fájlba: %1</translation>
     </message>
 </context>
 <context>
     <name>QAudioDecoder</name>
     <message>
-        <source>The QAudioDecoder object does not have a valid service</source>
-        <translation>A QAudioDecoder objektumnak nincs érvényes szolgáltatása</translation>
-    </message>
-</context>
-<context>
-    <name>QCamera</name>
-    <message>
-        <source>The camera service is missing</source>
-        <translation>A kameraszolgáltatás hiányzik</translation>
-    </message>
-</context>
-<context>
-    <name>QCameraImageCapture</name>
-    <message>
-        <source>Device does not support images capture.</source>
-        <translation>Az eszköz nem támogatja a képek rögzítését.</translation>
-    </message>
-</context>
-<context>
-    <name>QDeclarativeAudio</name>
-    <message>
-        <source>volume should be between 0.0 and 1.0</source>
-        <translation>a hangerőnek 0,0 és 1,0 között kell lennie</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerAudioDecoderSession</name>
-    <message>
-        <source>Cannot play stream of type: &lt;unknown&gt;</source>
-        <translation>Nem lehet lejátszani az ilyen típusú adatfolyamot: &lt;ismeretlen&gt;</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerAudioEncode</name>
-    <message>
-        <source>Raw PCM audio</source>
-        <translation>Nyers PCM hang</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerAudioInputSelector</name>
-    <message>
-        <source>System default device</source>
-        <translation>A rendszer alapértelmezett eszköze</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerCameraControl</name>
-    <message>
-        <source>State not supported.</source>
-        <translation>Az állapot nem támogatott.</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerCaptureSession</name>
-    <message>
-        <source>Could not create an audio source element</source>
-        <translation>Nem sikerült létrehozni egy hangforrás elemet</translation>
-    </message>
-    <message>
-        <source>Failed to build media capture pipeline.</source>
-        <translation>A médiarögzítés csővezeték összeállítása sikertelen.</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerImageCaptureControl</name>
-    <message>
-        <source>Not ready to capture</source>
-        <translation>Nem áll készen a rögzítésre</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerImageEncode</name>
-    <message>
-        <source>JPEG image encoder</source>
-        <translation>JPEG-kép kódoló</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerPlayerControl</name>
-    <message>
-        <source>Attempting to play invalid user stream</source>
-        <translation>Érvénytelen felhasználói adatfolyam lejátszásának kísérlete</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerPlayerSession</name>
-    <message>
-        <source>Cannot play stream of type: &lt;unknown&gt;</source>
-        <translation>Nem lehet lejátszani az ilyen típusú adatfolyamot: &lt;ismeretlen&gt;</translation>
-    </message>
-    <message>
-        <source>UDP source timeout</source>
-        <translation>UDP forrás időtúllépés</translation>
-    </message>
-    <message>
-        <source>Media is loaded as a playlist</source>
-        <translation>A média betöltve lejátszólistaként</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerRecorderControl</name>
-    <message>
-        <source>Service has not been started</source>
-        <translation>A szolgáltatás nem indult el</translation>
-    </message>
-    <message>
-        <source>Not compatible codecs and container format.</source>
-        <translation>Nem összeegyeztethető kodekek és konténerformátum.</translation>
-    </message>
-</context>
-<context>
-    <name>QGstreamerVideoInputDeviceControl</name>
-    <message>
-        <source>Main camera</source>
-        <translation>Fő kamera</translation>
-    </message>
-    <message>
-        <source>Front camera</source>
-        <translation>Előlapi kamera</translation>
+        <source>QAudioDecoder not supported.</source>
+        <translation>A QAudioDecoder nem támogatott.</translation>
     </message>
 </context>
 <context>
@@ -489,99 +149,385 @@
         <translation>Érvénytelen Qt erőforrás lejátszásának kísérlete</translation>
     </message>
     <message>
-        <source>The QMediaPlayer object does not have a valid service</source>
-        <translation>A QMediaPlayer objektumnak nincs érvényes szolgáltatása</translation>
+        <source>Could not open file</source>
+        <translation>Nem sikerült megnyitni a fájlt</translation>
+    </message>
+    <message>
+        <source>Could not find stream information for media file</source>
+        <translation>Nem sikerült adatfolyam-információt találni a médiafájlhoz</translation>
     </message>
 </context>
 <context>
-    <name>QMediaPlaylist</name>
+    <name>QImageCapture</name>
     <message>
-        <source>Could not add items to read only playlist.</source>
-        <translation>Nem sikerült elemeket hozzáadni egy csak olvasható lejátszólistához.</translation>
+        <source>Could not capture in stopped state</source>
+        <translation>Nem sikerült rögzíteni leállított állapotban</translation>
     </message>
     <message>
-        <source>Playlist format is not supported</source>
-        <translation>A lejátszólista formátuma nem támogatott</translation>
+        <source>Camera is not ready.</source>
+        <translation>A kamera nem áll készen.</translation>
     </message>
     <message>
-        <source>The file could not be accessed.</source>
-        <translation>A fájlt nem sikerült elérni.</translation>
-    </message>
-    <message>
-        <source>Playlist format is not supported.</source>
-        <translation>A lejátszólista formátuma nem támogatott.</translation>
+        <source>No instance of QImageCapture set on QMediaCaptureSession.</source>
+        <translation>Nincs beállítva QImageCapture példány a QMediaCaptureSessionre.</translation>
     </message>
 </context>
 <context>
-    <name>QMultimediaDeclarativeModule</name>
+    <name>QMediaRecorder</name>
     <message>
-        <source>CameraCapture is provided by Camera</source>
-        <translation>A CameraCapture értéket a kamera biztosítja</translation>
+        <source>Pause not supported</source>
+        <translation>A szüneteltetés nem támogatott</translation>
     </message>
     <message>
-        <source>CameraRecorder is provided by Camera</source>
-        <translation>A CameraRecorder értéket a kamera biztosítja</translation>
+        <source>Resume not supported</source>
+        <translation>A folytatás nem támogatott</translation>
     </message>
     <message>
-        <source>CameraExposure is provided by Camera</source>
-        <translation>A CameraExposure értéket a kamera biztosítja</translation>
+        <source>Failed to start recording</source>
+        <translation>A rögzítés indítása sikertelen</translation>
     </message>
     <message>
-        <source>CameraFocus is provided by Camera</source>
-        <translation>A CameraFocus értéket a kamera biztosítja</translation>
+        <source>Output location not writable</source>
+        <translation>A kimeneti hely nem írható</translation>
     </message>
     <message>
-        <source>CameraFlash is provided by Camera</source>
-        <translation>A CameraFlash értéket a kamera biztosítja</translation>
+        <source>No video or audio input</source>
+        <translation>Nincs video- vagy hangbemenet</translation>
     </message>
     <message>
-        <source>CameraImageProcessing is provided by Camera</source>
-        <translation>A CameraImageProcessing értéket a kamera biztosítja</translation>
-    </message>
-    <message>
-        <source>CameraViewfinder is provided by Camera</source>
-        <translation>A CameraViewfinder értéket a kamera biztosítja</translation>
+        <source>No camera or audio input</source>
+        <translation>Nincs kamera- vagy hangbemenet</translation>
     </message>
 </context>
 <context>
-    <name>QPlaylistFileParser</name>
+    <name>QMediaMetaData</name>
     <message>
-        <source>%1 playlist type is unknown</source>
-        <translation>%1 lejátszólista-típus ismeretlen</translation>
+        <source>Title</source>
+        <translation>Cím</translation>
     </message>
     <message>
-        <source>invalid line in playlist file</source>
-        <translation>érvénytelen sor a lejátszólista fájlban</translation>
+        <source>Author</source>
+        <translation>Szerző</translation>
     </message>
     <message>
-        <source>Empty file provided</source>
-        <translation>Üres fájl lett megadva</translation>
+        <source>Comment</source>
+        <translation>Megjegyzés</translation>
     </message>
     <message>
-        <source>%1 does not exist</source>
-        <translation>%1 nem létezik</translation>
+        <source>Description</source>
+        <translation>Leírás</translation>
+    </message>
+    <message>
+        <source>Genre</source>
+        <translation>Műfaj</translation>
+    </message>
+    <message>
+        <source>Date</source>
+        <translation>Dátum</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>Nyelv</translation>
+    </message>
+    <message>
+        <source>Publisher</source>
+        <translation>Kiadó</translation>
+    </message>
+    <message>
+        <source>Copyright</source>
+        <translation>Copyright</translation>
+    </message>
+    <message>
+        <source>Url</source>
+        <translation>URL</translation>
+    </message>
+    <message>
+        <source>Duration</source>
+        <translation>Időtartam</translation>
+    </message>
+    <message>
+        <source>Media type</source>
+        <translation>Médiatípus</translation>
+    </message>
+    <message>
+        <source>Container Format</source>
+        <translation>Konténerformátum</translation>
+    </message>
+    <message>
+        <source>Audio bit rate</source>
+        <translation>Hang bitsebessége</translation>
+    </message>
+    <message>
+        <source>Audio codec</source>
+        <translation>Hangkodek</translation>
+    </message>
+    <message>
+        <source>Video bit rate</source>
+        <translation>Videó bitsebessége</translation>
+    </message>
+    <message>
+        <source>Video codec</source>
+        <translation>Videókodek</translation>
+    </message>
+    <message>
+        <source>Video frame rate</source>
+        <translation>Képkockasebesség</translation>
+    </message>
+    <message>
+        <source>Album title</source>
+        <translation>Album címe</translation>
+    </message>
+    <message>
+        <source>Album artist</source>
+        <translation>Album előadója</translation>
+    </message>
+    <message>
+        <source>Contributing artist</source>
+        <translation>Közreműködők</translation>
+    </message>
+    <message>
+        <source>Track number</source>
+        <translation>Dalszám</translation>
+    </message>
+    <message>
+        <source>Composer</source>
+        <translation>Zeneszerző</translation>
+    </message>
+    <message>
+        <source>Thumbnail image</source>
+        <translation>Bélyegkép</translation>
+    </message>
+    <message>
+        <source>Cover art image</source>
+        <translation>Borítókép</translation>
+    </message>
+    <message>
+        <source>Orientation</source>
+        <translation>Tájolás</translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation>Felbontás</translation>
+    </message>
+    <message>
+        <source>Lead performer</source>
+        <translation>Vezető előadó</translation>
     </message>
 </context>
 <context>
-    <name>QWinRTCameraImageCaptureControl</name>
+    <name>Decoder</name>
     <message>
-        <source>Camera not ready</source>
-        <translation>A kamera nem áll készen</translation>
+        <source>Cannot set source, invalid mime type for the source provided.</source>
+        <translation>Nem lehet megadni forrást, a forráshoz érvénytelen MIME-típust adtak meg.</translation>
     </message>
     <message>
-        <source>Invalid photo data length.</source>
-        <translation>Érvénytelen fényképadathossz.</translation>
+        <source>Cannot open the file</source>
+        <translation>Nem lehet megnyitni a fájlt</translation>
     </message>
     <message>
-        <source>Image saving failed</source>
-        <translation>A képmentés sikertelen</translation>
+        <source>Invalid fileDescriptor for source.</source>
+        <translation>Érvénytelen fájlleíró a forráshoz.</translation>
+    </message>
+    <message>
+        <source>Setting source for Audio Decoder failed.</source>
+        <translation>A hangdekódoló forrásának beállítása sikertelen.</translation>
+    </message>
+    <message>
+        <source>Format not supported by Audio Decoder.</source>
+        <translation>A hangdekódoló nem támogatja a formátumot.</translation>
+    </message>
+    <message>
+        <source>Cannot decode, source not set.</source>
+        <translation>Nem lehet dekódolni, a forrás nincs beállítva.</translation>
+    </message>
+    <message>
+        <source>Audio Decoder could not be created.</source>
+        <translation>Nem sikerült létrehozni hangdekódolót.</translation>
+    </message>
+    <message>
+        <source>Audio Decoder failed configuration.</source>
+        <translation>A hangdekódoló beállítása sikertelen.</translation>
+    </message>
+    <message>
+        <source>Audio Decoder failed to start.</source>
+        <translation>A hangdekódoló indítása sikertelen.</translation>
     </message>
 </context>
 <context>
-    <name>QWinRTImageEncoderControl</name>
+    <name>QAndroidAudioDecoder</name>
     <message>
-        <source>JPEG image</source>
-        <translation>JPEG-kép</translation>
+        <source>Error opening temporary file: %1</source>
+        <translation>Hiba az átmeneti fájl megnyitásakor: %1</translation>
+    </message>
+    <message>
+        <source>Error while writing data to temporary file</source>
+        <translation>Hiba az adatok átmeneti fájlba írásakor</translation>
+    </message>
+</context>
+<context>
+    <name>AVFAudioDecoder</name>
+    <message>
+        <source>Unable to read from specified device</source>
+        <translation>Nem lehet olvasni a megadott eszközről</translation>
+    </message>
+    <message>
+        <source>Could not load media source&apos;s tracks</source>
+        <translation>Nem sikerült betölteni a médiaforrás sávjait</translation>
+    </message>
+    <message>
+        <source>No audio tracks found</source>
+        <translation>Nem találhatók hangsávok</translation>
+    </message>
+    <message>
+        <source>Unsupported source format</source>
+        <translation>Nem támogatott forrásformátum</translation>
+    </message>
+    <message>
+        <source>Failed to add asset reader output</source>
+        <translation>Az eszközolvasó kimenetének hozzáadása sikertelen</translation>
+    </message>
+    <message>
+        <source>Could not start reading</source>
+        <translation>Nem sikerült elindítani a rögzítést</translation>
+    </message>
+</context>
+<context>
+    <name>AVFCameraSession</name>
+    <message>
+        <source>Runtime camera error</source>
+        <translation>Futásidejű kamerahiba</translation>
+    </message>
+</context>
+<context>
+    <name>AVFImageCapture</name>
+    <message>
+        <source>Could not open destination file:
+%1</source>
+        <translation>Nem sikerült megnyitni a célfájlt:
+%1</translation>
+    </message>
+</context>
+<context>
+    <name>AVFMediaEncoder</name>
+    <message>
+        <source>No inputs specified</source>
+        <translation>Nincsenek megadva bemenetek</translation>
+    </message>
+    <message>
+        <source>Invalid output file URL</source>
+        <translation>A kimeneti fájl URL-je érvénytelen</translation>
+    </message>
+    <message>
+        <source>Non-writeable file location</source>
+        <translation>A fájl helye nem írható</translation>
+    </message>
+    <message>
+        <source>File already exists</source>
+        <translation>A fájl már létezik</translation>
+    </message>
+</context>
+<context>
+    <name>AVFMediaPlayer</name>
+    <message>
+        <source>Failed to load media</source>
+        <translation>A média betöltése sikertelen</translation>
+    </message>
+</context>
+<context>
+    <name>QFFmpegImageCapture</name>
+    <message>
+        <source>No camera available.</source>
+        <translation>Nem érhető el kamera.</translation>
+    </message>
+</context>
+<context>
+    <name>QV4L2Camera</name>
+    <message>
+        <source>Camera is in use.</source>
+        <translation>A kamera használatban van.</translation>
+    </message>
+</context>
+<context>
+    <name>QGstreamerAudioDecoder</name>
+    <message>
+        <source>Cannot play stream of type: &lt;unknown&gt;</source>
+        <translation>Nem lehet lejátszani az ilyen típusú adatfolyamot: &lt;ismeretlen&gt;</translation>
+    </message>
+</context>
+<context>
+    <name>QGstreamerMediaPlayer</name>
+    <message>
+        <source>Cannot play stream of type: &lt;unknown&gt;</source>
+        <translation>Nem lehet lejátszani az ilyen típusú adatfolyamot: &lt;ismeretlen&gt;</translation>
+    </message>
+</context>
+<context>
+    <name>QGstreamerImageCapture</name>
+    <message>
+        <source>No camera available.</source>
+        <translation>Nem érhető el kamera.</translation>
+    </message>
+</context>
+<context>
+    <name>MFAudioDecoderControl</name>
+    <message>
+        <source>Unsupported media type</source>
+        <translation>Nem támogatott médiatípus</translation>
+    </message>
+    <message>
+        <source>Media not found</source>
+        <translation>A média nem található</translation>
+    </message>
+    <message>
+        <source>Unable to load specified URL</source>
+        <translation>Nem lehet betölteni a megadott URL-t</translation>
+    </message>
+    <message>
+        <source>Could not instantiate MFDecoderSourceReader</source>
+        <translation>Nem sikerült példányosítani az MFDecoderSourceReadert</translation>
+    </message>
+    <message>
+        <source>Invalid media format</source>
+        <translation>Érvénytelen médiaformátum</translation>
+    </message>
+    <message>
+        <source>Unable to read from specified device</source>
+        <translation>Nem lehet olvasni a megadott eszközről</translation>
+    </message>
+    <message>
+        <source>No media source specified</source>
+        <translation>Nincs megadva médiaforrás</translation>
+    </message>
+    <message>
+        <source>Failed processing a sample</source>
+        <translation>Egy minta feldolgozása sikertelen</translation>
+    </message>
+</context>
+<context>
+    <name>QWindowsMediaEncoder</name>
+    <message>
+        <source>Failed to pause recording</source>
+        <translation>A rögzítés szüneteltetése sikertelen</translation>
+    </message>
+    <message>
+        <source>Failed to resume recording</source>
+        <translation>A rögzítés folytatása sikertelen</translation>
+    </message>
+    <message>
+        <source>Camera is no longer present</source>
+        <translation>A kamera már nincs jelen</translation>
+    </message>
+    <message>
+        <source>Audio input is no longer present</source>
+        <translation>A hangbemenet már nincs jelen</translation>
+    </message>
+    <message>
+        <source>Streaming error</source>
+        <translation>Közvetítési hiba</translation>
+    </message>
+    <message>
+        <source>Recording error</source>
+        <translation>Rögzítési hiba</translation>
     </message>
 </context>
 </TS>

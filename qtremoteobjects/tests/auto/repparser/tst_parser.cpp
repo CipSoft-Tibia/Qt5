@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "repparser.h"
 
@@ -49,8 +24,12 @@ private Q_SLOTS:
     void testSignals();
     void testPods_data();
     void testPods();
+    void testPods2_data();
+    void testPods2();
     void testEnums_data();
     void testEnums();
+    void testTypedEnums_data();
+    void testTypedEnums();
     void testModels_data();
     void testModels();
     void testClasses_data();
@@ -72,6 +51,7 @@ void tst_Parser::testBasic_data()
     QTest::newRow("enum") << "ENUM MyEnum {test}";
     QTest::newRow("empty class with comment") << "class MyClass {\n//comment\n}";
     QTest::newRow("comment, class") << "//comment\nclass MyClass {}";
+    QTest::newRow("multicomment, class") << "/* row1\n row2\n */\nclass MyClass {}";
     QTest::newRow("include, comment, class") << "#include \"foo\"\n//comment\nclass MyClass {}";
 }
 
@@ -82,7 +62,7 @@ void tst_Parser::testBasic()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << content << endl;
+    stream << content << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
@@ -123,8 +103,8 @@ void tst_Parser::testProperties_data()
     QTest::newRow("defaultWithValueWhitespaces") << "PROP(  int foo  = 1 )" << "int" << "foo" << "1" << ASTProperty::ReadPush << false;
     QTest::newRow("readonlyWithValueWhitespaces") << "PROP(  int foo = 1 READONLY  )" << "int" << "foo" << "1" << ASTProperty::ReadOnly << false;
     QTest::newRow("constantWithValueWhitespaces") << "PROP(  int foo = 1 CONSTANT )" << "int" << "foo" << "1" << ASTProperty::Constant << false;
-    QTest::newRow("templatetype") << "PROP(QVector<int> bar)" << "QVector<int>" << "bar" << QString() << ASTProperty::ReadPush << false;
-    QTest::newRow("nested templatetype") << "PROP(QMap<int, QVector<int> > bar)" << "QMap<int, QVector<int> >" << "bar" << QString() << ASTProperty::ReadPush << false;
+    QTest::newRow("templatetype") << "PROP(QList<int> bar)" << "QList<int>" << "bar" << QString() << ASTProperty::ReadPush << false;
+    QTest::newRow("nested templatetype") << "PROP(QMap<int, QList<int>> bar)" << "QMap<int, QList<int>>" << "bar" << QString() << ASTProperty::ReadPush << false;
     QTest::newRow("non-int default value") << "PROP(double foo=1.1 CONSTANT)" << "double" << "foo" << "1.1" << ASTProperty::Constant << false;
     QTest::newRow("tab") << "PROP(double\tfoo)" << "double" << "foo" << "" << ASTProperty::ReadPush << false;
     QTest::newRow("two tabs") << "PROP(double\t\tfoo)" << "double" << "foo" << "" << ASTProperty::ReadPush << false;
@@ -153,21 +133,21 @@ void tst_Parser::testProperties()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << "class TestClass" << endl;
-    stream << "{" << endl;
-    stream << propertyDeclaration << endl;
-    stream << "};" << endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << propertyDeclaration << Qt::endl;
+    stream << "};" << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 1);
+    QCOMPARE(ast.classes.size(), 1);
 
     const ASTClass astClass = ast.classes.first();
-    const QVector<ASTProperty> properties = astClass.properties;
-    QCOMPARE(properties.count(), 1);
+    const QList<ASTProperty> properties = astClass.properties;
+    QCOMPARE(properties.size(), 1);
 
     const ASTProperty property = properties.first();
     QCOMPARE(property.type, expectedType);
@@ -183,6 +163,9 @@ void tst_Parser::testSlots_data()
     QTest::addColumn<QString>("expectedSlot");
     QTest::addColumn<bool>("voidWarning");
     QTest::newRow("slotwithoutspacebeforeparentheses") << "SLOT(test())" << "void test()" << true;
+    QTest::newRow("slotwithoutspacebeforeparentheses with comment") << "SLOT(test()) // my slot" << "void test()" << true;
+    QTest::newRow("slotwithoutspacebeforeparentheses with comment above") << "// my slot\nSLOT(test())" << "void test()" << true;
+    QTest::newRow("slotwithoutspacebeforeparentheses with indented comment above") << "    // my slot\nSLOT(test())" << "void test()" << true;
     QTest::newRow("slotwithspacebeforeparentheses") << "SLOT (test())" << "void test()" << true;
     QTest::newRow("slotwitharguments") << "SLOT(void test(QString value, int number))" << "void test(QString value, int number)" << false;
     QTest::newRow("slotwithunnamedarguments") << "SLOT(void test(QString, int))" << "void test(QString __repc_variable_1, int __repc_variable_2)" << false;
@@ -206,10 +189,10 @@ void tst_Parser::testSlots()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << "class TestClass" << endl;
-    stream << "{" << endl;
-    stream << slotDeclaration << endl;
-    stream << "};" << endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << slotDeclaration << Qt::endl;
+    stream << "};" << Qt::endl;
     file.seek(0);
 
     if (voidWarning)
@@ -218,11 +201,11 @@ void tst_Parser::testSlots()
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 1);
+    QCOMPARE(ast.classes.size(), 1);
 
     const ASTClass astClass = ast.classes.first();
-    const QVector<ASTFunction> slotsList = astClass.slotsList;
-    QCOMPARE(slotsList.count(), 1);
+    const QList<ASTFunction> slotsList = astClass.slotsList;
+    QCOMPARE(slotsList.size(), 1);
     ASTFunction slot = slotsList.first();
     QCOMPARE(QString("%1 %2(%3)").arg(slot.returnType).arg(slot.name).arg(slot.paramsAsString()), expectedSlot);
 }
@@ -232,6 +215,9 @@ void tst_Parser::testSignals_data()
     QTest::addColumn<QString>("signalDeclaration");
     QTest::addColumn<QString>("expectedSignal");
     QTest::newRow("signalwithoutspacebeforeparentheses") << "SIGNAL(test())" << "test()";
+    QTest::newRow("signalwithoutspacebeforeparentheses with comment") << "SIGNAL(test()) // my signal" << "test()";
+    QTest::newRow("signalwithoutspacebeforeparentheses with comment above") << "// my signal\nSIGNAL(test())" << "test()";
+    QTest::newRow("signalwithoutspacebeforeparentheses with indented comment above") << "    // my signal\nSIGNAL(test())" << "test()";
     QTest::newRow("signalwithspacebeforeparentheses") << "SIGNAL (test())" << "test()";
     QTest::newRow("signalwitharguments") << "SIGNAL(test(QString value, int value))" << "test(QString value, int value)";
     QTest::newRow("signalwithtemplates") << "SIGNAL(test(QMap<QString,int> foo))" << "test(QMap<QString,int> foo)";
@@ -248,20 +234,20 @@ void tst_Parser::testSignals()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << "class TestClass" << endl;
-    stream << "{" << endl;
-    stream << signalDeclaration << endl;
-    stream << "};" << endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << signalDeclaration << Qt::endl;
+    stream << "};" << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 1);
+    QCOMPARE(ast.classes.size(), 1);
 
     const ASTClass astClass = ast.classes.first();
-    const QVector<ASTFunction> signalsList = astClass.signalsList;
+    const QList<ASTFunction> signalsList = astClass.signalsList;
     ASTFunction signal = signalsList.first();
     QCOMPARE(QString("%1(%2)").arg(signal.name).arg(signal.paramsAsString()), expectedSignal);
 }
@@ -274,9 +260,13 @@ void tst_Parser::testPods_data()
 
     //Variable/Type separate by ";"
     QTest::newRow("one pod") << "POD preset(int presetNumber)" << "int" << "presetNumber";
+    QTest::newRow("one pod with comment") << "POD preset(int presetNumber) // my pod" << "int" << "presetNumber";
+    QTest::newRow("one pod with comment above") << "// my pod\nPOD preset(int presetNumber)" << "int" << "presetNumber";
+    QTest::newRow("one pod with indented comment above") << "    // my pod\nPOD preset(int presetNumber)" << "int" << "presetNumber";
     QTest::newRow("two pod") << "POD preset(int presetNumber, double foo)" << "int;double" << "presetNumber;foo";
     QTest::newRow("two pod with space") << "POD preset ( int presetNumber , double foo ) " << "int;double" << "presetNumber;foo";
     QTest::newRow("two pod multiline") << "POD preset(\nint presetNumber,\ndouble foo\n)" << "int;double" << "presetNumber;foo";
+    QTest::newRow("two pod multiline with comments") << "POD preset(// this is a pod\nint presetNumber, // presetNumber\ndouble foo // foo\n)" << "int;double" << "presetNumber;foo";
     //Template
     QTest::newRow("pod template") << "POD preset(QMap<QString,int> foo) " << "QMap<QString,int>" << "foo";
     QTest::newRow("pod template (QList)") << "POD preset(QList<QString> foo) " << "QList<QString>" << "foo";
@@ -294,26 +284,84 @@ void tst_Parser::testPods()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << podsdeclaration << endl;
-    stream << "class TestClass" << endl;
-    stream << "{" << endl;
-    stream << "};" << endl;
+    stream << podsdeclaration << Qt::endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << "};" << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 1);
+    QCOMPARE(ast.classes.size(), 1);
 
-    QCOMPARE(ast.pods.count(), 1);
+    QCOMPARE(ast.pods.size(), 1);
+    const POD pods = ast.pods.first();
+    const QList<PODAttribute> podsList = pods.attributes;
+    const QStringList typeList = expectedtypes.split(QLatin1Char(';'));
+    const QStringList variableList = expectedvariables.split(QLatin1Char(';'));
+    QVERIFY(typeList.size() == variableList.size());
+    QVERIFY(podsList.size() == variableList.size());
+    for (int i=0; i < podsList.size(); ++i) {
+        QCOMPARE(podsList.at(i).name, variableList.at(i));
+        QCOMPARE(podsList.at(i).type, typeList.at(i));
+    }
+}
+
+void tst_Parser::testPods2_data()
+{
+    QTest::addColumn<QString>("podsdeclaration");
+    QTest::addColumn<QString>("expectedtypes");
+    QTest::addColumn<QString>("expectedvariables");
+
+    //Variable/Type separate by ";"
+    QTest::newRow("one pod") << "POD preset{int presetNumber}" << "int" << "presetNumber";
+    QTest::newRow("one pod with comment") << "POD preset{int presetNumber} // my pod" << "int" << "presetNumber";
+    QTest::newRow("one pod with comment above") << "// my pod\nPOD preset{int presetNumber}" << "int" << "presetNumber";
+    QTest::newRow("one pod with indented comment above") << "    // my pod\nPOD preset{int presetNumber}" << "int" << "presetNumber";
+    QTest::newRow("two pod") << "POD preset{int presetNumber, double foo}" << "int;double" << "presetNumber;foo";
+    QTest::newRow("two pod with space") << "POD preset { int presetNumber , double foo } " << "int;double" << "presetNumber;foo";
+    QTest::newRow("two pod multiline") << "POD preset{\nint presetNumber,\ndouble foo\n}" << "int;double" << "presetNumber;foo";
+    //Template
+    QTest::newRow("pod template") << "POD preset{QMap<QString,int> foo} " << "QMap<QString,int>" << "foo";
+    QTest::newRow("pod template (QList)") << "POD preset{QList<QString> foo} " << "QList<QString>" << "foo";
+    QTest::newRow("two pod template") << "POD preset{QMap<QString,int> foo, QMap<double,int> bla} " << "QMap<QString,int>;QMap<double,int>" << "foo;bla";
+    QTest::newRow("two pod template with space") << "POD preset{ QMap<QString  ,  int >  foo ,   QMap<  double , int > bla } " << "QMap<QString,int>;QMap<double,int>" << "foo;bla";
+    //Enum
+    QTest::newRow("enum multiline") << "POD preset{ENUM val {val1 = 1,\nval2,\nval3=12}\nval value,\ndouble foo\n}" << "val;double" << "value;foo";
+
+}
+
+void tst_Parser::testPods2()
+{
+    QFETCH(QString, podsdeclaration);
+    QFETCH(QString, expectedtypes);
+    QFETCH(QString, expectedvariables);
+
+    QTemporaryFile file;
+    file.open();
+    QTextStream stream(&file);
+    stream << podsdeclaration << Qt::endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << "};" << Qt::endl;
+    file.seek(0);
+
+    RepParser parser(file);
+    QVERIFY(parser.parse());
+
+    const AST ast = parser.ast();
+    QCOMPARE(ast.classes.size(), 1);
+
+    QCOMPARE(ast.pods.size(), 1);
     const POD pods = ast.pods.first();
     const QVector<PODAttribute> podsList = pods.attributes;
     const QStringList typeList = expectedtypes.split(QLatin1Char(';'));
     const QStringList variableList = expectedvariables.split(QLatin1Char(';'));
-    QVERIFY(typeList.count() == variableList.count());
-    QVERIFY(podsList.count() == variableList.count());
-    for (int i=0; i < podsList.count(); ++i) {
+    QVERIFY(typeList.size() == variableList.size());
+    QVERIFY(podsList.size() == variableList.size());
+    for (int i=0; i < podsList.size(); ++i) {
         QCOMPARE(podsList.at(i).name, variableList.at(i));
         QCOMPARE(podsList.at(i).type, typeList.at(i));
     }
@@ -333,6 +381,9 @@ void tst_Parser::testEnums_data()
         QString identifier = inclass ? QLatin1String("%1 in class") : QLatin1String("%1 outside class");
         //Separate by ";"
         QTest::newRow(identifier.arg("one enum val").toLatin1()) << "ENUM preset {presetNumber}" << "presetNumber" << (QList<int>() << 0) << 0 << false << inclass;
+        QTest::newRow(identifier.arg("one enum val with comment").toLatin1()) << "ENUM preset {presetNumber} // my enum" << "presetNumber" << (QList<int>() << 0) << 0 << false << inclass;
+        QTest::newRow(identifier.arg("one enum val with comment above").toLatin1()) << "// my enum\nENUM preset {presetNumber}" << "presetNumber" << (QList<int>() << 0) << 0 << false << inclass;
+        QTest::newRow(identifier.arg("one enum val with indented comment above").toLatin1()) << "    // my enum\nENUM preset {presetNumber}" << "presetNumber" << (QList<int>() << 0) << 0 << false << inclass;
         QTest::newRow(identifier.arg("two enum val").toLatin1()) << "ENUM preset {presetNumber, foo}" << "presetNumber;foo" << (QList<int>() << 0 << 1) << 1 << false << inclass;
         QTest::newRow(identifier.arg("two enum val -1 2nd").toLatin1()) << "ENUM preset {presetNumber, foo = -1}" << "presetNumber;foo" << (QList<int>() << 0 << -1) << 1 << true << inclass;
         QTest::newRow(identifier.arg("two enum val -1 1st").toLatin1()) << "ENUM preset {presetNumber=-1, foo}" << "presetNumber;foo" << (QList<int>() << -1 << 0) << 1 << true << inclass;
@@ -358,33 +409,35 @@ void tst_Parser::testEnums()
     file.open();
     QTextStream stream(&file);
     if (!inclass)
-        stream << enumdeclaration << endl;
-    stream << "class TestClass" << endl;
-    stream << "{" << endl;
+        stream << enumdeclaration << Qt::endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
     if (inclass)
-        stream << enumdeclaration << endl;
-    stream << "};" << endl;
+        stream << enumdeclaration << Qt::endl;
+    stream << "};" << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 1);
+    QCOMPARE(ast.classes.size(), 1);
     ASTEnum enums;
     if (inclass) {
         const ASTClass astClass = ast.classes.first();
-        QCOMPARE(astClass.enums.count(), 1);
+        QCOMPARE(astClass.enums.size(), 1);
         enums = astClass.enums.first();
     } else {
-        QCOMPARE(ast.enums.count(), 1);
+        QCOMPARE(ast.enums.size(), 1);
         enums = ast.enums.first();
     }
-    const QVector<ASTEnumParam> paramList = enums.params;
+    QVERIFY(enums.isScoped == false);
+    QVERIFY(enums.type.isEmpty());
+    const QList<ASTEnumParam> paramList = enums.params;
     const QStringList nameList = expectednames.split(QLatin1Char(';'));
-    QVERIFY(nameList.count() == expectedvalues.count());
-    QVERIFY(paramList.count() == expectedvalues.count());
-    for (int i=0; i < paramList.count(); ++i) {
+    QVERIFY(nameList.size() == expectedvalues.size());
+    QVERIFY(paramList.size() == expectedvalues.size());
+    for (int i=0; i < paramList.size(); ++i) {
         QCOMPARE(paramList.at(i).name, nameList.at(i));
         QCOMPARE(paramList.at(i).value, expectedvalues.at(i));
     }
@@ -392,35 +445,129 @@ void tst_Parser::testEnums()
     QCOMPARE(enums.isSigned, expectedsigned);
 }
 
-void tst_Parser::testModels_data()
+void tst_Parser::testTypedEnums_data()
 {
-    QTest::addColumn<QString>("modelDeclaration");
-    QTest::addColumn<QString>("expectedModel");
-    QTest::addColumn<QVector<ASTModelRole>>("expectedRoles");
-    QTest::newRow("basicmodel") << "MODEL test(display)" << "test" << QVector<ASTModelRole>({{"display"}});
-    QTest::newRow("basicmodelsemicolon") << "MODEL test(display);" << "test" << QVector<ASTModelRole>({{"display"}});
+    QTest::addColumn<QString>("enumdeclaration");
+    QTest::addColumn<QString>("expectedtype");
+    QTest::addColumn<bool>("inclass");
+    QTest::addColumn<bool>("isscoped");
+    QTest::addColumn<bool>("isflag");
+
+    for (int i = 0; i <= 7; ++i) {
+        bool inclass = i % 2 == 1;
+        bool isscoped = i % 4 > 1;
+        bool isflag = i > 3;
+        QString identifier = inclass ? QLatin1String("%1 %2 %3 in class") : QLatin1String("%1 %2 %3 outside class");
+        QString scopeString = isscoped ? QLatin1String("Scoped") : QLatin1String("Non-scoped");
+        QString flagString = isflag ? QLatin1String("Flag") : QLatin1String("Enum");
+        QTest::newRow(identifier.arg(scopeString, flagString, "no type").toLatin1()) << "preset {presetNumber}" << QString() << inclass << isscoped << isflag;
+        QTest::newRow(identifier.arg(scopeString, flagString, "quint16").toLatin1()) << "preset : quint16 {presetNumber}" << "quint16" << inclass << isscoped << isflag;
+        QTest::newRow(identifier.arg(scopeString, flagString, "qint64").toLatin1()) << "preset : qint64 {presetNumber}" << "qint64" << inclass << isscoped << isflag;
+        QTest::newRow(identifier.arg(scopeString, flagString, "unsigned char").toLatin1()) << "preset: unsigned char {presetNumber}" << "unsigned char" << inclass << isscoped << isflag;
+    }
 }
 
-void tst_Parser::testModels()
+void tst_Parser::testTypedEnums()
 {
-    QFETCH(QString, modelDeclaration);
-    QFETCH(QString, expectedModel);
-    QFETCH(QVector<ASTModelRole>, expectedRoles);
+    QFETCH(QString, enumdeclaration);
+    QFETCH(QString, expectedtype);
+    QFETCH(bool, inclass);
+    QFETCH(bool, isscoped);
+    QFETCH(bool, isflag);
 
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << "class TestClass" << endl;
-    stream << "{" << endl;
-    stream << modelDeclaration << endl;
-    stream << "};" << endl;
+    if (!inclass) {
+        stream << " // comment 1" << Qt::endl;
+        stream << "ENUM " << (isscoped ? "class " : "") << enumdeclaration
+               << " // comment 2" << Qt::endl;
+        if (isflag)
+            stream << "//comment 3" << Qt::endl << "FLAG(MyFlags preset) // comment4" << Qt::endl;
+    }
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    if (inclass) {
+        stream << " // comment" << Qt::endl;
+        stream << "ENUM " << (isscoped ? "class " : "") << enumdeclaration
+               << " // comment 2" << Qt::endl;
+        if (isflag)
+            stream << "//comment 3" << Qt::endl << "FLAG(MyFlags preset) // comment4" << Qt::endl;
+    }
+    stream << "};" << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 1);
+    QCOMPARE(ast.classes.size(), 1);
+    ASTEnum enums;
+    ASTFlag flags;
+    if (inclass) {
+        const ASTClass astClass = ast.classes.first();
+        QCOMPARE(astClass.enums.size(), 1);
+        enums = astClass.enums.first();
+        if (isflag)
+            flags = astClass.flags.first();
+    } else {
+        QCOMPARE(ast.enums.size(), 1);
+        enums = ast.enums.first();
+        if (isflag)
+            flags = ast.flags.first();
+    }
+    QVERIFY(enums.isScoped == isscoped);
+    QVERIFY(enums.flagIndex == (isflag ? 0 : -1));
+    QVERIFY(flags.name == (isflag ? "MyFlags" : QString{}));
+    QVERIFY(flags._enum == (isflag ? "preset" : QString{}));
+    QCOMPARE(enums.type, expectedtype);
+    const QList<ASTEnumParam> paramList = enums.params;
+    QVERIFY(paramList.size() == 1);
+    for (int i=0; i < paramList.size(); ++i) {
+        QCOMPARE(paramList.at(i).name, "presetNumber");
+        QCOMPARE(paramList.at(i).value, 0);
+    }
+    QCOMPARE(enums.max, 0);
+    QCOMPARE(enums.isSigned, false);
+}
+
+void tst_Parser::testModels_data()
+{
+    QTest::addColumn<QString>("modelDeclaration");
+    QTest::addColumn<QString>("expectedModel");
+    QTest::addColumn<QList<ASTModelRole>>("expectedRoles");
+    QTest::newRow("basicmodel") << "MODEL test(display)" << "test" << QList<ASTModelRole>({{"display"}});
+    QTest::newRow("basicmodelsemicolon") << "MODEL test(display);" << "test" << QList<ASTModelRole>({{"display"}});
+}
+
+void tst_Parser::testModels()
+{
+    QFETCH(QString, modelDeclaration);
+    QFETCH(QString, expectedModel);
+    QFETCH(QList<ASTModelRole>, expectedRoles);
+
+    QTemporaryFile file;
+    file.open();
+    QTextStream stream(&file);
+    stream << " // comment 1" << Qt::endl;
+    stream << " // comment 2" << Qt::endl;
+    stream << "class TestClass" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << "    // comment 3" << Qt::endl;
+    stream << "    // comment 4" << Qt::endl;
+    stream << modelDeclaration << " // comment 5" << Qt::endl;
+    stream << "    // comment 6" << Qt::endl;
+    stream << "    // comment 7" << Qt::endl;
+    stream << "};" << Qt::endl;
+    stream << " // comment 8" << Qt::endl;
+    stream << " // comment 9" << Qt::endl;
+    file.seek(0);
+
+    RepParser parser(file);
+    QVERIFY(parser.parse());
+
+    const AST ast = parser.ast();
+    QCOMPARE(ast.classes.size(), 1);
 
     const ASTClass astClass = ast.classes.first();
     ASTModel model = astClass.modelMetadata.first();
@@ -450,21 +597,35 @@ void tst_Parser::testClasses()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << "class subObject" << endl;
-    stream << "{" << endl;
-    stream << "    PROP(int value)" << endl;
-    stream << "};" << endl;
-    stream << "class parentObject" << endl;
-    stream << "{" << endl;
-    stream << classDeclaration << endl;
-    stream << "};" << endl;
+    stream << " // comment 1" << Qt::endl;
+    stream << " // comment 2" << Qt::endl;
+    stream << "class subObject" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << "    // comment 3" << Qt::endl;
+    stream << "    // comment 4" << Qt::endl;
+    stream << "    PROP(int value) // comment 5" << Qt::endl;
+    stream << "    // comment 6" << Qt::endl;
+    stream << "    // comment 7" << Qt::endl;
+    stream << "};" << Qt::endl;
+    stream << " // comment 8" << Qt::endl;
+    stream << " // comment 9" << Qt::endl;
+    stream << "class parentObject" << Qt::endl;
+    stream << "{" << Qt::endl;
+    stream << "    // comment 10" << Qt::endl;
+    stream << "    // comment 11" << Qt::endl;
+    stream << classDeclaration << " // comment 12" << Qt::endl;
+    stream << "    // comment 13" << Qt::endl;
+    stream << "    // comment 14" << Qt::endl;
+    stream << "};" << Qt::endl;
+    stream << " // comment 15" << Qt::endl;
+    stream << " // comment 16" << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);
     QVERIFY(parser.parse());
 
     const AST ast = parser.ast();
-    QCOMPARE(ast.classes.count(), 2);
+    QCOMPARE(ast.classes.size(), 2);
 
     const ASTClass astSub = ast.classes.value(0);
     const ASTClass astObj = ast.classes.value(1);
@@ -506,7 +667,7 @@ void tst_Parser::testInvalid()
     QTemporaryFile file;
     file.open();
     QTextStream stream(&file);
-    stream << content << endl;
+    stream << content << Qt::endl;
     file.seek(0);
 
     RepParser parser(file);

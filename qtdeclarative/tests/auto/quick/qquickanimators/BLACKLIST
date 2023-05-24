@@ -1,0 +1,4 @@
+# QTBUG-89023
+[testTransitionsWithImplicitFrom]
+ubuntu-22.04
+opensuse-leap

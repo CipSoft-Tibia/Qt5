@@ -1,34 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/QCoreApplication>
 #include <QtNetwork/QtNetwork>
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include "../../../network-settings.h"
 
@@ -70,7 +45,7 @@ private:
 
 void tst_QIODevice::initTestCase()
 {
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
     QVERIFY(QFileInfo(QStringLiteral("./tst_qiodevice.cpp")).exists()
             || QFile::copy(QStringLiteral(":/tst_qiodevice.cpp"), QStringLiteral("./tst_qiodevice.cpp")));
 #endif
@@ -104,18 +79,20 @@ void tst_QIODevice::getSetCheck()
 //----------------------------------------------------------------------------------
 void tst_QIODevice::constructing_QTcpSocket()
 {
-#if defined(Q_OS_WINRT)
-    QSKIP("Synchronous socket calls are broken on winrt. See QTBUG-40922");
-#endif
+#ifdef QT_TEST_SERVER
+    if (!QtNetworkSettings::verifyConnection(QtNetworkSettings::imapServerName(), 143))
+        QSKIP("No network test server available");
+#else
     if (!QtNetworkSettings::verifyTestNetworkSettings())
         QSKIP("No network test server available");
+#endif
 
     QTcpSocket socket;
     QIODevice *device = &socket;
 
     QVERIFY(!device->isOpen());
 
-    socket.connectToHost(QtNetworkSettings::serverName(), 143);
+    socket.connectToHost(QtNetworkSettings::imapServerName(), 143);
     QVERIFY(socket.waitForConnected(30000));
     QVERIFY(device->isOpen());
     QCOMPARE(device->readChannelCount(), 1);
@@ -133,7 +110,7 @@ void tst_QIODevice::constructing_QTcpSocket()
     socket.close();
     QCOMPARE(socket.readChannelCount(), 0);
     QCOMPARE(socket.writeChannelCount(), 0);
-    socket.connectToHost(QtNetworkSettings::serverName(), 143);
+    socket.connectToHost(QtNetworkSettings::imapServerName(), 143);
     QVERIFY(socket.waitForConnected(30000));
     QVERIFY(device->isOpen());
 
@@ -197,13 +174,13 @@ void tst_QIODevice::read_QByteArray()
     f.open(QIODevice::ReadOnly);
 
     QByteArray b = f.read(10);
-    QCOMPARE(b.length(), 10);
+    QCOMPARE(b.size(), 10);
 
     b = f.read(256);
-    QCOMPARE(b.length(), 256);
+    QCOMPARE(b.size(), 256);
 
     b = f.read(0);
-    QCOMPARE(b.length(), 0);
+    QCOMPARE(b.size(), 0);
 }
 
 //--------------------------------------------------------------------
@@ -263,9 +240,6 @@ void tst_QIODevice::unget()
     buffer.ungetChar('Q');
     QCOMPARE(buffer.readLine(buf, 3), qint64(1));
 
-#if defined(Q_OS_WINRT)
-    QSKIP("Synchronous socket calls are broken on winrt. See QTBUG-40922");
-#endif
     for (int i = 0; i < 2; ++i) {
         QTcpSocket socket;
         QIODevice *dev;
@@ -276,9 +250,17 @@ void tst_QIODevice::unget()
             result = QByteArray("ZXCV");
             lineResult = "ZXCV";
         } else {
-            if (!QtNetworkSettings::verifyTestNetworkSettings())
-                QSKIP("No network test server available");
-            socket.connectToHost(QtNetworkSettings::serverName(), 80);
+#ifdef QT_TEST_SERVER
+            const bool hasNetworkServer =
+                    QtNetworkSettings::verifyConnection(QtNetworkSettings::httpServerName(), 80);
+#else
+            const bool hasNetworkServer = QtNetworkSettings::verifyTestNetworkSettings();
+#endif
+            if (!hasNetworkServer) {
+                qInfo("No network test server: skipping QTcpSocket part of test.");
+                continue;
+            }
+            socket.connectToHost(QtNetworkSettings::httpServerName(), 80);
             socket.write("GET / HTTP/1.0\r\n\r\n");
             QVERIFY(socket.waitForReadyRead());
             dev = &socket;
@@ -412,6 +394,9 @@ void tst_QIODevice::readLine()
     QBuffer buffer(&data);
     QVERIFY(buffer.open(QIODevice::ReadWrite));
     QVERIFY(buffer.canReadLine());
+
+    QTest::ignoreMessage(QtWarningMsg, "QIODevice::readLine (QBuffer): Called with maxSize < 2");
+    QCOMPARE(buffer.readLine(nullptr, 0), qint64(-1));
 
     int linelen = data.indexOf('\n') + 1;
     QByteArray line;
@@ -655,11 +640,12 @@ void tst_QIODevice::skip_data()
     do {
         QByteArray devName(sequential ? "sequential" : "random-access");
 
-        QTest::newRow(qPrintable(devName + "-small_data")) << true  << QByteArray("abcdefghij")
+        QTest::newRow(qPrintable(devName + "-small_data")) << sequential
+                                                           << QByteArray("abcdefghij")
                                                            << 3 << 6 << 6 << 'j';
-        QTest::newRow(qPrintable(devName + "-big_data")) << true  << bigData
+        QTest::newRow(qPrintable(devName + "-big_data")) << sequential << bigData
                                                          << 1 << 10000 << 10000 << 'x';
-        QTest::newRow(qPrintable(devName + "-beyond_the_end")) << true  << bigData
+        QTest::newRow(qPrintable(devName + "-beyond_the_end")) << sequential << bigData
                                                                << 1 << 20000 << 19999 << '\0';
 
         sequential = !sequential;

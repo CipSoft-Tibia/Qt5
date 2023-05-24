@@ -26,7 +26,7 @@
 #include "config.h"
 
 #include <libweston/weston-log.h>
-#include "helpers.h"
+#include "shared/helpers.h"
 #include <libweston/libweston.h>
 
 #include "weston-log-internal.h"
@@ -54,14 +54,23 @@ weston_log_file_write(struct weston_log_subscriber *sub,
 	fwrite(data, len, 1, stream->file);
 }
 
+static void
+weston_log_subscriber_destroy_log(struct weston_log_subscriber *subscriber)
+{
+	struct weston_debug_log_file *file = to_weston_debug_log_file(subscriber);
+
+	weston_log_subscriber_release(subscriber);
+	free(file);
+}
+
 /** Creates a file type of subscriber
  *
- * Should be destroyed using weston_log_subscriber_destroy_log()
+ * Should be destroyed using weston_log_subscriber_destroy()
  *
  * @param dump_to if specified, used for writing data to
  * @returns a weston_log_subscriber object or NULL in case of failure
  *
- * @sa weston_log_subscriber_destroy_log
+ * @sa weston_log_subscriber_destroy
  *
  */
 WL_EXPORT struct weston_log_subscriber *
@@ -79,22 +88,11 @@ weston_log_subscriber_create_log(FILE *dump_to)
 
 
 	file->base.write = weston_log_file_write;
-	file->base.destroy = NULL;
+	file->base.destroy = weston_log_subscriber_destroy_log;
+	file->base.destroy_subscription = NULL;
 	file->base.complete = NULL;
 
 	wl_list_init(&file->base.subscription_list);
 
 	return &file->base;
-}
-
-/** Destroy the subscriber created with weston_log_subscriber_create_log
- *
- * @param subscriber the weston_log_subscriber object to destroy
- *
- */
-WL_EXPORT void
-weston_log_subscriber_destroy_log(struct weston_log_subscriber *subscriber)
-{
-	struct weston_debug_log_file *file = to_weston_debug_log_file(subscriber);
-	free(file);
 }

@@ -1,46 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "waylandeglstreamintegration.h"
 #include "waylandeglstreamcontroller.h"
 
 #include <QtWaylandCompositor/QWaylandCompositor>
+#include <QtOpenGL/QOpenGLTexture>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLTexture>
 #include <QtGui/QOffscreenSurface>
+#include <QtCore/QMutexLocker>
 
-#include <QtEglSupport/private/qeglstreamconvenience_p.h>
+#include <QtGui/private/qeglstreamconvenience_p.h>
 #include <qpa/qplatformnativeinterface.h>
 
 #include <QtWaylandCompositor/private/qwaylandcompositor_p.h>
 #include <QtWaylandCompositor/private/qwlbuffermanager_p.h>
+#include <QtWaylandCompositor/private/qwltextureorphanage_p.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -135,7 +111,11 @@ struct BufferState
     BufferState() = default;
 
     EGLint egl_format = EGL_TEXTURE_EXTERNAL_WL;
-    QOpenGLTexture *textures[3] = {};
+    QOpenGLTexture *textures[3] = {nullptr, nullptr, nullptr};
+    QOpenGLContext *texturesContext[3] = {nullptr, nullptr, nullptr};
+    QMetaObject::Connection texturesAboutToBeDestroyedConnection[3] = {QMetaObject::Connection(), QMetaObject::Connection(), QMetaObject::Connection()};
+    QMutex texturesLock;
+
     EGLStreamKHR egl_stream = EGL_NO_STREAM_KHR;
 
     bool isYInverted = false;
@@ -149,15 +129,14 @@ public:
 
     bool ensureContext();
     bool initEglStream(WaylandEglStreamClientBuffer *buffer, struct ::wl_resource *bufferHandle);
+    void setupBufferAndCleanup(BufferState *bs, QOpenGLTexture *texture, int plane);
     void handleEglstreamTexture(WaylandEglStreamClientBuffer *buffer);
-    void deleteGLTextureWhenPossible(QOpenGLTexture *texture) { orphanedTextures << texture; }
-    void deleteOrphanedTextures();
 
     EGLDisplay egl_display = EGL_NO_DISPLAY;
     bool display_bound = false;
+    ::wl_display *wlDisplay = nullptr;
     QOffscreenSurface *offscreenSurface = nullptr;
     QOpenGLContext *localContext = nullptr;
-    QVector<QOpenGLTexture *> orphanedTextures;
 
     WaylandEglStreamController *eglStreamController = nullptr;
 
@@ -174,13 +153,6 @@ public:
 };
 
 bool WaylandEglStreamClientBufferIntegrationPrivate::shuttingDown = false;
-
-void WaylandEglStreamClientBufferIntegrationPrivate::deleteOrphanedTextures()
-{
-    Q_ASSERT(QOpenGLContext::currentContext());
-    qDeleteAll(orphanedTextures);
-    orphanedTextures.clear();
-}
 
 bool WaylandEglStreamClientBufferIntegrationPrivate::ensureContext()
 {
@@ -204,6 +176,49 @@ bool WaylandEglStreamClientBufferIntegrationPrivate::ensureContext()
     return localContextNeeded;
 }
 
+
+void WaylandEglStreamClientBufferIntegrationPrivate::setupBufferAndCleanup(BufferState *bs, QOpenGLTexture *texture, int plane)
+{
+    QMutexLocker locker(&bs->texturesLock);
+
+    bs->textures[plane] = texture;
+    bs->texturesContext[plane] = QOpenGLContext::currentContext();
+
+    Q_ASSERT(bs->texturesContext[plane] != nullptr);
+
+    qCDebug(qLcWaylandCompositorHardwareIntegration)
+            << Q_FUNC_INFO
+            << "(eglstream) creating a cleanup-lambda for QOpenGLContext::aboutToBeDestroyed!"
+            << ", texture: " << bs->textures[plane]
+            << ", ctx: " << (void*)bs->texturesContext[plane];
+
+    bs->texturesAboutToBeDestroyedConnection[plane] =
+            QObject::connect(bs->texturesContext[plane], &QOpenGLContext::aboutToBeDestroyed,
+                             bs->texturesContext[plane], [bs, plane]() {
+
+        QMutexLocker locker(&bs->texturesLock);
+
+        // See above lock - there is a chance that this has already been removed from textures[plane]!
+        // Furthermore, we can trust that all the rest (e.g. disconnect) has also been properly executed!
+        if (bs->textures[plane] == nullptr)
+            return;
+
+        delete bs->textures[plane];
+
+        qCDebug(qLcWaylandCompositorHardwareIntegration)
+                << Q_FUNC_INFO
+                << "texture deleted due to QOpenGLContext::aboutToBeDestroyed!"
+                << "Pointer (now dead) was:" << (void*)(bs->textures[plane])
+                << "  Associated context (about to die too) is: " << (void*)(bs->texturesContext[plane]);
+
+        bs->textures[plane] = nullptr;
+        bs->texturesContext[plane] = nullptr;
+
+        QObject::disconnect(bs->texturesAboutToBeDestroyedConnection[plane]);
+        bs->texturesAboutToBeDestroyedConnection[plane] = QMetaObject::Connection();
+
+    }, Qt::DirectConnection);
+}
 
 bool WaylandEglStreamClientBufferIntegrationPrivate::initEglStream(WaylandEglStreamClientBuffer *buffer, wl_resource *bufferHandle)
 {
@@ -235,7 +250,7 @@ bool WaylandEglStreamClientBufferIntegrationPrivate::initEglStream(WaylandEglStr
 
     auto texture = new QOpenGLTexture(static_cast<QOpenGLTexture::Target>(GL_TEXTURE_EXTERNAL_OES));
     texture->create();
-    state.textures[0] = texture; // TODO: support multiple planes
+    setupBufferAndCleanup(buffer->d, texture, 0);
 
     texture->bind();
 
@@ -282,7 +297,13 @@ WaylandEglStreamClientBufferIntegration::WaylandEglStreamClientBufferIntegration
 
 WaylandEglStreamClientBufferIntegration::~WaylandEglStreamClientBufferIntegration()
 {
+    Q_D(WaylandEglStreamClientBufferIntegration);
     WaylandEglStreamClientBufferIntegrationPrivate::shuttingDown = true;
+    if (d->egl_unbind_wayland_display != nullptr && d->display_bound) {
+        Q_ASSERT(d->wlDisplay != nullptr);
+        if (!d->egl_unbind_wayland_display(d->egl_display, d->wlDisplay))
+            qCWarning(qLcWaylandCompositorHardwareIntegration) << "eglUnbindWaylandDisplayWL failed";
+    }
 }
 
 void WaylandEglStreamClientBufferIntegration::attachEglStreamConsumer(struct ::wl_resource *wl_surface, struct ::wl_resource *wl_buffer)
@@ -290,10 +311,9 @@ void WaylandEglStreamClientBufferIntegration::attachEglStreamConsumer(struct ::w
     Q_D(WaylandEglStreamClientBufferIntegration);
     Q_UNUSED(wl_surface);
 
-    // NOTE: must use getBuffer to create the buffer here, so the buffer will end up in the buffer manager's hash
-
+    auto *clientBuffer = new WaylandEglStreamClientBuffer(this, wl_buffer);
     auto *bufferManager = QWaylandCompositorPrivate::get(m_compositor)->bufferManager();
-    auto *clientBuffer = static_cast<WaylandEglStreamClientBuffer*>(bufferManager->getBuffer(wl_buffer));
+    bufferManager->registerBuffer(wl_buffer, clientBuffer);
 
     d->initEglStream(clientBuffer, wl_buffer);
 }
@@ -337,14 +357,10 @@ void WaylandEglStreamClientBufferIntegration::initializeHardware(struct wl_displ
 
     if (d->egl_bind_wayland_display && d->egl_unbind_wayland_display) {
         d->display_bound = d->egl_bind_wayland_display(d->egl_display, display);
-        if (!d->display_bound) {
-            if (!ignoreBindDisplay) {
-                qWarning("QtCompositor: Failed to initialize EGL display. Could not bind Wayland display.");
-                return;
-            } else {
-                qWarning("QtCompositor: Could not bind Wayland display. Ignoring.");
-            }
-        }
+        if (!d->display_bound)
+            qCDebug(qLcWaylandCompositorHardwareIntegration) << "Wayland display already bound by other client buffer integration.";
+
+        d->wlDisplay = display;
     }
 
     d->eglStreamController = new WaylandEglStreamController(display, this);
@@ -383,10 +399,29 @@ WaylandEglStreamClientBuffer::~WaylandEglStreamClientBuffer()
     if (p) {
         if (d->egl_stream)
             p->funcs->destroy_stream(p->egl_display, d->egl_stream);
-
-        for (auto *texture : d->textures)
-            p->deleteGLTextureWhenPossible(texture);
     }
+
+    {
+        QMutexLocker locker(&d->texturesLock);
+
+        for (int i=0; i<3; i++) {
+            if (d->textures[i] != nullptr) {
+
+                qCDebug(qLcWaylandCompositorHardwareIntegration)
+                        << Q_FUNC_INFO << " handing over texture!"
+                        << (void*)d->textures[i] << "; " << (void*)d->texturesContext[i]
+                        <<  " ... current context might be the same: " << QOpenGLContext::currentContext();
+
+                QtWayland::QWaylandTextureOrphanage::instance()->admitTexture(
+                        d->textures[i], d->texturesContext[i]);
+                d->textures[i] = nullptr;               // in case the aboutToBeDestroyed lambda is called while we where here
+                d->texturesContext[i] = nullptr;
+                QObject::disconnect(d->texturesAboutToBeDestroyedConnection[i]);
+                d->texturesAboutToBeDestroyedConnection[i] = QMetaObject::Connection();
+            }
+        }
+    }
+
     delete d;
 }
 
@@ -409,9 +444,8 @@ QWaylandSurface::Origin WaylandEglStreamClientBuffer::origin() const
 
 QOpenGLTexture *WaylandEglStreamClientBuffer::toOpenGlTexture(int plane)
 {
-    auto *p = WaylandEglStreamClientBufferIntegrationPrivate::get(m_integration);
     // At this point we should have a valid OpenGL context, so it's safe to destroy textures
-    p->deleteOrphanedTextures();
+    QtWayland::QWaylandTextureOrphanage::instance()->deleteTextures();
 
     if (!m_buffer)
         return nullptr;

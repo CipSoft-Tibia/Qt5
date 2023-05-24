@@ -1,4 +1,4 @@
-// Copyright 2018 the chromium authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,19 +24,20 @@ namespace blink {
 namespace {
 
 class StylePropertyMapIterationSource final
-    : public PairIterable<String, CSSStyleValueVector>::IterationSource {
+    : public PairSyncIterable<StylePropertyMapReadOnly>::IterationSource {
  public:
   explicit StylePropertyMapIterationSource(
       HeapVector<StylePropertyMapReadOnlyMainThread::StylePropertyMapEntry>
           values)
       : index_(0), values_(values) {}
 
-  bool Next(ScriptState*,
-            String& key,
-            CSSStyleValueVector& value,
-            ExceptionState&) override {
-    if (index_ >= values_.size())
+  bool FetchNextItem(ScriptState*,
+                     String& key,
+                     CSSStyleValueVector& value,
+                     ExceptionState&) override {
+    if (index_ >= values_.size()) {
       return false;
+    }
 
     const StylePropertyMapReadOnlyMainThread::StylePropertyMapEntry& pair =
         values_.at(index_++);
@@ -47,7 +48,7 @@ class StylePropertyMapIterationSource final
 
   void Trace(Visitor* visitor) const override {
     visitor->Trace(values_);
-    PairIterable<String, CSSStyleValueVector>::IterationSource::Trace(visitor);
+    PairSyncIterable<StylePropertyMapReadOnly>::IterationSource::Trace(visitor);
   }
 
  private:
@@ -62,7 +63,7 @@ CSSStyleValue* StylePropertyMapReadOnlyMainThread::get(
     const ExecutionContext* execution_context,
     const String& property_name,
     ExceptionState& exception_state) const {
-  base::Optional<CSSPropertyName> name =
+  absl::optional<CSSPropertyName> name =
       CSSPropertyName::From(execution_context, property_name);
 
   if (!name) {
@@ -70,22 +71,23 @@ CSSStyleValue* StylePropertyMapReadOnlyMainThread::get(
     return nullptr;
   }
 
-  const CSSProperty& property = CSSProperty::Get(name->Id());
-  if (property.IsShorthand())
-    return GetShorthandProperty(property);
+  if (CSSProperty::IsShorthand(*name)) {
+    return GetShorthandProperty(*name);
+  }
 
   const CSSValue* value = (name->IsCustomProperty())
                               ? GetCustomProperty(name->ToAtomicString())
                               : GetProperty(name->Id());
-  if (!value)
+  if (!value) {
     return nullptr;
+  }
 
   // Custom properties count as repeated whenever we have a CSSValueList.
-  if (property.IsRepeated() ||
+  if (CSSProperty::IsRepeated(*name) ||
       (name->IsCustomProperty() && value->IsValueList())) {
     CSSStyleValueVector values =
         StyleValueFactory::CssValueToStyleValueVector(*name, *value);
-    return values.IsEmpty() ? nullptr : values[0];
+    return values.empty() ? nullptr : values[0];
   }
 
   return StyleValueFactory::CssValueToStyleValue(*name, *value);
@@ -95,7 +97,7 @@ CSSStyleValueVector StylePropertyMapReadOnlyMainThread::getAll(
     const ExecutionContext* execution_context,
     const String& property_name,
     ExceptionState& exception_state) const {
-  base::Optional<CSSPropertyName> name =
+  absl::optional<CSSPropertyName> name =
       CSSPropertyName::From(execution_context, property_name);
 
   if (!name) {
@@ -103,19 +105,20 @@ CSSStyleValueVector StylePropertyMapReadOnlyMainThread::getAll(
     return CSSStyleValueVector();
   }
 
-  const CSSProperty& property = CSSProperty::Get(name->Id());
-  if (property.IsShorthand()) {
+  if (CSSProperty::IsShorthand(*name)) {
     CSSStyleValueVector values;
-    if (CSSStyleValue* value = GetShorthandProperty(property))
+    if (CSSStyleValue* value = GetShorthandProperty(*name)) {
       values.push_back(value);
+    }
     return values;
   }
 
   const CSSValue* value = (name->IsCustomProperty())
                               ? GetCustomProperty(name->ToAtomicString())
                               : GetProperty(name->Id());
-  if (!value)
+  if (!value) {
     return CSSStyleValueVector();
+  }
 
   return StyleValueFactory::CssValueToStyleValueVector(*name, *value);
 }
@@ -124,12 +127,13 @@ bool StylePropertyMapReadOnlyMainThread::has(
     const ExecutionContext* execution_context,
     const String& property_name,
     ExceptionState& exception_state) const {
-  return !getAll(execution_context, property_name, exception_state).IsEmpty();
+  return !getAll(execution_context, property_name, exception_state).empty();
 }
 
 StylePropertyMapReadOnlyMainThread::IterationSource*
-StylePropertyMapReadOnlyMainThread::StartIteration(ScriptState* script_state,
-                                                   ExceptionState&) {
+StylePropertyMapReadOnlyMainThread::CreateIterationSource(
+    ScriptState* script_state,
+    ExceptionState&) {
   HeapVector<StylePropertyMapReadOnlyMainThread::StylePropertyMapEntry> result;
 
   ForEachProperty([&result](const CSSPropertyName& name,
@@ -142,11 +146,13 @@ StylePropertyMapReadOnlyMainThread::StartIteration(ScriptState* script_state,
 }
 
 CSSStyleValue* StylePropertyMapReadOnlyMainThread::GetShorthandProperty(
-    const CSSProperty& property) const {
-  DCHECK(property.IsShorthand());
+    const CSSPropertyName& name) const {
+  DCHECK(CSSProperty::IsShorthand(name));
+  const CSSProperty& property = CSSProperty::Get(name.Id());
   const auto serialization = SerializationForShorthand(property);
-  if (serialization.IsEmpty())
+  if (serialization.empty()) {
     return nullptr;
+  }
   return MakeGarbageCollected<CSSUnsupportedStyleValue>(
       CSSPropertyName(property.PropertyID()), serialization);
 }

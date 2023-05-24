@@ -1,52 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwineventnotifier_p.h"
 
-#ifdef Q_OS_WINRT
-#include "qeventdispatcher_winrt_p.h"
-#else
-#include "qeventdispatcher_win_p.h"
-#endif
 #include "qcoreapplication.h"
-
-#include <private/qthread_p.h>
+#include "qthread.h"
+#include <QPointer>
 
 QT_BEGIN_NAMESPACE
 
@@ -123,14 +82,7 @@ QWinEventNotifier::QWinEventNotifier(QObject *parent)
 QWinEventNotifier::QWinEventNotifier(HANDLE hEvent, QObject *parent)
  : QObject(*new QWinEventNotifierPrivate(hEvent, false), parent)
 {
-    Q_D(QWinEventNotifier);
-    QAbstractEventDispatcher *eventDispatcher = d->threadData.loadRelaxed()->eventDispatcher.loadRelaxed();
-    if (Q_UNLIKELY(!eventDispatcher)) {
-        qWarning("QWinEventNotifier: Can only be used with threads started with QThread");
-        return;
-    }
-    eventDispatcher->registerEventNotifier(this);
-    d->enabled = true;
+    setEnabled(true);
 }
 
 /*!
@@ -197,19 +149,31 @@ void QWinEventNotifier::setEnabled(bool enable)
         return;
     d->enabled = enable;
 
-    QAbstractEventDispatcher *eventDispatcher = d->threadData.loadRelaxed()->eventDispatcher.loadRelaxed();
-    if (!eventDispatcher) // perhaps application is shutting down
-        return;
     if (Q_UNLIKELY(thread() != QThread::currentThread())) {
         qWarning("QWinEventNotifier: Event notifiers cannot be enabled or disabled from another thread");
         return;
     }
 
     if (enable) {
-        d->signaledCount = 0;
-        eventDispatcher->registerEventNotifier(this);
-    } else {
-        eventDispatcher->unregisterEventNotifier(this);
+        // It is possible that the notifier was disabled after an event was already
+        // posted. In that case we set a state that indicates that such an obsolete
+        // event shall be ignored.
+        d->winEventActPosted.testAndSetRelaxed(QWinEventNotifierPrivate::Posted,
+                                               QWinEventNotifierPrivate::IgnorePosted);
+        // The notifier can't be registered, if 'enabled' flag was false.
+        // The code in the else branch ensures that.
+        Q_ASSERT(!d->registered);
+        SetThreadpoolWait(d->waitObject, d->handleToEvent, NULL);
+        d->registered = true;
+    } else if (d->registered) {
+        // Stop waiting for an event. However, there may be a callback queued
+        // already after the call.
+        SetThreadpoolWait(d->waitObject, NULL, NULL);
+        // So, to avoid a race condition after a possible call to
+        // setEnabled(true), wait for a possibly outstanding callback
+        // to complete.
+        WaitForThreadpoolWaitCallbacks(d->waitObject, TRUE);
+        d->registered = false;
     }
 }
 
@@ -220,73 +184,67 @@ void QWinEventNotifier::setEnabled(bool enable)
 bool QWinEventNotifier::event(QEvent * e)
 {
     Q_D(QWinEventNotifier);
-    if (e->type() == QEvent::ThreadChange) {
+
+    switch (e->type()) {
+    case QEvent::ThreadChange:
         if (d->enabled) {
             QMetaObject::invokeMethod(this, "setEnabled", Qt::QueuedConnection,
                                       Q_ARG(bool, true));
             setEnabled(false);
         }
-    }
-    QObject::event(e);                        // will activate filters
-    if (e->type() == QEvent::WinEventAct) {
-        emit activated(d->handleToEvent, QPrivateSignal());
+        break;
+    case QEvent::WinEventAct:
+        // Emit notification, but only if the event has not been invalidated
+        // since by the notifier being disabled, even if it was re-enabled
+        // again.
+        if (d->winEventActPosted.fetchAndStoreRelaxed(QWinEventNotifierPrivate::NotPosted)
+            == QWinEventNotifierPrivate::Posted && d->enabled) {
+            // Clear the flag, as the wait object is implicitly unregistered
+            // when the callback is queued.
+            d->registered = false;
+
+            QPointer<QWinEventNotifier> alive(this);
+            emit activated(d->handleToEvent, QPrivateSignal());
+
+            if (alive && d->enabled && !d->registered) {
+                SetThreadpoolWait(d->waitObject, d->handleToEvent, NULL);
+                d->registered = true;
+            }
+        }
         return true;
+    default:
+        break;
     }
-    return false;
+    return QObject::event(e);
 }
 
-#if defined(Q_OS_WINRT)
-
-bool QWinEventNotifierPrivate::registerWaitObject()
+QWinEventNotifierPrivate::QWinEventNotifierPrivate(HANDLE h, bool e)
+    : handleToEvent(h), enabled(e), registered(false)
 {
-    Q_UNIMPLEMENTED();
-    return false;
+    waitObject = CreateThreadpoolWait(waitCallback, this, NULL);
+    if (waitObject == NULL)
+        qErrnoWarning("QWinEventNotifier:: CreateThreadpollWait failed.");
 }
 
-void QWinEventNotifierPrivate::unregisterWaitObject()
+QWinEventNotifierPrivate::~QWinEventNotifierPrivate()
 {
-    Q_UNIMPLEMENTED();
+    CloseThreadpoolWait(waitObject);
 }
 
-#else // defined(Q_OS_WINRT)
-
-static void CALLBACK wfsoCallback(void *context, BOOLEAN /*ignore*/)
+void QWinEventNotifierPrivate::waitCallback(PTP_CALLBACK_INSTANCE instance, PVOID context,
+                                            PTP_WAIT wait, TP_WAIT_RESULT waitResult)
 {
+    Q_UNUSED(instance);
+    Q_UNUSED(wait);
+    Q_UNUSED(waitResult);
     QWinEventNotifierPrivate *nd = reinterpret_cast<QWinEventNotifierPrivate *>(context);
-    QAbstractEventDispatcher *eventDispatcher = nd->threadData.loadRelaxed()->eventDispatcher.loadRelaxed();
 
-    // Happens when Q(Core)Application is destroyed before QWinEventNotifier.
-    // https://bugreports.qt.io/browse/QTBUG-70214
-    if (!eventDispatcher) { // perhaps application is shutting down
-        qWarning("QWinEventNotifier: no event dispatcher, application shutting down? Cannot deliver event.");
-        return;
+    // Do not post an event, if an event is already in the message queue. Note
+    // that an event that was previously invalidated will be reactivated.
+    if (nd->winEventActPosted.fetchAndStoreRelaxed(QWinEventNotifierPrivate::Posted)
+        == QWinEventNotifierPrivate::NotPosted) {
+        QCoreApplication::postEvent(nd->q_func(), new QEvent(QEvent::WinEventAct));
     }
-
-    QEventDispatcherWin32Private *edp = QEventDispatcherWin32Private::get(
-                static_cast<QEventDispatcherWin32 *>(eventDispatcher));
-    ++nd->signaledCount;
-    SetEvent(edp->winEventNotifierActivatedEvent);
 }
-
-bool QWinEventNotifierPrivate::registerWaitObject()
-{
-    if (RegisterWaitForSingleObject(&waitHandle, handleToEvent, wfsoCallback, this,
-                                    INFINITE, WT_EXECUTEONLYONCE) == 0) {
-        qErrnoWarning("QWinEventNotifier: RegisterWaitForSingleObject failed.");
-        return false;
-    }
-    return true;
-}
-
-void QWinEventNotifierPrivate::unregisterWaitObject()
-{
-    // Unregister the wait handle and wait for pending callbacks to finish.
-    if (UnregisterWaitEx(waitHandle, INVALID_HANDLE_VALUE))
-        waitHandle = NULL;
-    else
-        qErrnoWarning("QWinEventNotifier: UnregisterWaitEx failed.");
-}
-
-#endif // !defined(Q_OS_WINRT)
 
 QT_END_NAMESPACE

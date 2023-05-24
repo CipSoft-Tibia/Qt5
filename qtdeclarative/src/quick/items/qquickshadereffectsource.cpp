@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickshadereffectsource_p.h"
 
@@ -184,7 +148,7 @@ QQuickShaderEffectSource::QQuickShaderEffectSource(QQuickItem *parent)
     , m_wrapMode(ClampToEdge)
     , m_sourceItem(nullptr)
     , m_textureSize(0, 0)
-    , m_format(RGBA)
+    , m_format(RGBA8)
     , m_samples(0)
     , m_live(true)
     , m_hideSource(false)
@@ -267,12 +231,10 @@ QSGTextureProvider *QQuickShaderEffectSource::textureProvider() const
 
     The default value is \c{ShaderEffectSource.ClampToEdge}.
 
-    \list
-    \li ShaderEffectSource.ClampToEdge - GL_CLAMP_TO_EDGE both horizontally and vertically
-    \li ShaderEffectSource.RepeatHorizontally - GL_REPEAT horizontally, GL_CLAMP_TO_EDGE vertically
-    \li ShaderEffectSource.RepeatVertically - GL_CLAMP_TO_EDGE horizontally, GL_REPEAT vertically
-    \li ShaderEffectSource.Repeat - GL_REPEAT both horizontally and vertically
-    \endlist
+    \value ShaderEffectSource.ClampToEdge           GL_CLAMP_TO_EDGE both horizontally and vertically
+    \value ShaderEffectSource.RepeatHorizontally    GL_REPEAT horizontally, GL_CLAMP_TO_EDGE vertically
+    \value ShaderEffectSource.RepeatVertically      GL_CLAMP_TO_EDGE horizontally, GL_REPEAT vertically
+    \value ShaderEffectSource.Repeat                GL_REPEAT both horizontally and vertically
 
     \note Some OpenGL ES 2 implementations do not support the GL_REPEAT
     wrap mode with non-power-of-two textures.
@@ -389,8 +351,11 @@ void QQuickShaderEffectSource::setSourceRect(const QRectF &rect)
 /*!
     \qmlproperty size QtQuick::ShaderEffectSource::textureSize
 
-    This property holds the requested size of the texture. If it is empty,
-    which is the default, the size of the source rectangle is used.
+    This property holds the requested pixel size of the texture. If it is
+    empty, which is the default, the size of the source rectangle is used.
+
+    \note This value is in pixels since it directly controls the size of a
+    texture object.
 
     \note Some platforms have a limit on how small framebuffer objects can be,
     which means the actual texture size might be larger than the requested
@@ -414,18 +379,16 @@ void QQuickShaderEffectSource::setTextureSize(const QSize &size)
 /*!
     \qmlproperty enumeration QtQuick::ShaderEffectSource::format
 
-    This property defines the internal OpenGL format of the texture.
+    This property defines the format of the backing texture.
     Modifying this property makes most sense when the item is used as a
-    source texture of a \l ShaderEffect. Depending on the OpenGL
-    implementation, this property might allow you to save some texture memory.
+    source texture of a \l ShaderEffect.
 
-    \list
-    \li ShaderEffectSource.Alpha - GL_ALPHA
-    \li ShaderEffectSource.RGB - GL_RGB
-    \li ShaderEffectSource.RGBA - GL_RGBA
-    \endlist
-
-    \note Some OpenGL implementations do not support the GL_ALPHA format.
+    \value ShaderEffectSource.RGBA8
+    \value ShaderEffectSource.RGBA16F
+    \value ShaderEffectSource.RGBA32F
+    \value ShaderEffectSource.Alpha     Starting with Qt 6.0, this value is not in use and has the same effect as \c RGBA8 in practice.
+    \value ShaderEffectSource.RGB       Starting with Qt 6.0, this value is not in use and has the same effect as \c RGBA8 in practice.
+    \value ShaderEffectSource.RGBA      Starting with Qt 6.0, this value is not in use and has the same effect as \c RGBA8 in practice.
 */
 
 QQuickShaderEffectSource::Format QQuickShaderEffectSource::format() const
@@ -557,11 +520,9 @@ void QQuickShaderEffectSource::setRecursive(bool enabled)
     such as those specified by ShaderEffect. Mirroring has no effect on the UI representation of
     the ShaderEffectSource item itself.
 
-    \list
-    \li ShaderEffectSource.NoMirroring - No mirroring
-    \li ShaderEffectSource.MirrorHorizontally - The generated texture is flipped along X-axis.
-    \li ShaderEffectSource.MirrorVertically - The generated texture is flipped along Y-axis.
-    \endlist
+    \value ShaderEffectSource.NoMirroring           No mirroring
+    \value ShaderEffectSource.MirrorHorizontally    The generated texture is flipped along X-axis.
+    \value ShaderEffectSource.MirrorVertically      The generated texture is flipped along Y-axis.
 */
 
 QQuickShaderEffectSource::TextureMirroring QQuickShaderEffectSource::textureMirroring() const
@@ -676,6 +637,20 @@ public:
     }
 };
 
+static QSGLayer::Format toLayerFormat(QQuickShaderEffectSource::Format format)
+{
+    switch (format) {
+    case QQuickShaderEffectSource::RGBA8:
+        return QSGLayer::RGBA8;
+    case QQuickShaderEffectSource::RGBA16F:
+        return QSGLayer::RGBA16F;
+    case QQuickShaderEffectSource::RGBA32F:
+        return QSGLayer::RGBA32F;
+    default:
+        return QSGLayer::RGBA8;
+    }
+}
+
 QSGNode *QQuickShaderEffectSource::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
 {
     if (!m_sourceItem || m_sourceItem->width() <= 0 || m_sourceItem->height() <= 0) {
@@ -693,16 +668,12 @@ QSGNode *QQuickShaderEffectSource::updatePaintNode(QSGNode *oldNode, UpdatePaint
                       ? QRectF(0, 0, m_sourceItem->width(), m_sourceItem->height())
                       : m_sourceRect;
     m_texture->setRect(sourceRect);
-    QSize textureSize = m_textureSize.isEmpty()
-                      ? QSize(qCeil(qAbs(sourceRect.width())), qCeil(qAbs(sourceRect.height())))
-                      : m_textureSize;
-    Q_ASSERT(!textureSize.isEmpty());
-
     QQuickItemPrivate *d = static_cast<QQuickItemPrivate *>(QObjectPrivate::get(this));
-
-    // Crate large textures on high-dpi displays.
-    if (sourceItem())
-        textureSize *= d->window->effectiveDevicePixelRatio();
+    const float dpr = d->window->effectiveDevicePixelRatio();
+    QSize textureSize = m_textureSize.isEmpty()
+            ? QSize(qCeil(qAbs(sourceRect.width())), qCeil(qAbs(sourceRect.height()))) * dpr
+            : m_textureSize;
+    Q_ASSERT(!textureSize.isEmpty());
 
     const QSize minTextureSize = d->sceneGraphContext()->minimumFBOSize();
     // Keep power-of-two by doubling the size.
@@ -714,7 +685,7 @@ QSGNode *QQuickShaderEffectSource::updatePaintNode(QSGNode *oldNode, UpdatePaint
     m_texture->setDevicePixelRatio(d->window->effectiveDevicePixelRatio());
     m_texture->setSize(textureSize);
     m_texture->setRecursive(m_recursive);
-    m_texture->setFormat(m_format);
+    m_texture->setFormat(toLayerFormat(m_format));
     m_texture->setHasMipmaps(m_mipmap);
     m_texture->setMirrorHorizontal(m_textureMirroring & MirrorHorizontally);
     m_texture->setMirrorVertical(m_textureMirroring & MirrorVertically);
@@ -791,7 +762,7 @@ void QQuickShaderEffectSource::itemChange(ItemChange change, const ItemChangeDat
     QQuickItem::itemChange(change, value);
 }
 
+QT_END_NAMESPACE
+
 #include "qquickshadereffectsource.moc"
 #include "moc_qquickshadereffectsource_p.cpp"
-
-QT_END_NAMESPACE

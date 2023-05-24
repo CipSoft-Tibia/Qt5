@@ -1,48 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Pelagicore AG
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Pelagicore AG
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qeglfskmsgbmdevice.h"
-#include "qeglfskmsgbmscreen.h"
+#include "qeglfskmsgbmdevice_p.h"
+#include "qeglfskmsgbmscreen_p.h"
 
-#include "qeglfsintegration_p.h"
+#include <private/qeglfsintegration_p.h>
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/private/qcore_unix_p.h>
@@ -83,7 +47,13 @@ bool QEglFSKmsGbmDevice::open()
 
     setFd(fd);
 
-    m_eventReader.create(this);
+    if (usesEventReader()) {
+        qCDebug(qLcEglfsKmsDebug, "Using dedicated drm event reading thread");
+        m_eventReader.create(this);
+    } else {
+        qCDebug(qLcEglfsKmsDebug, "Not using dedicated drm event reading thread; "
+                "threaded multi-screen setups may experience problems");
+    }
 
     return true;
 }
@@ -92,7 +62,8 @@ void QEglFSKmsGbmDevice::close()
 {
     // Note: screens are gone at this stage.
 
-    m_eventReader.destroy();
+    if (usesEventReader())
+        m_eventReader.destroy();
 
     if (m_gbm_device) {
         gbm_device_destroy(m_gbm_device);
@@ -131,14 +102,19 @@ void QEglFSKmsGbmDevice::destroyGlobalCursor()
     }
 }
 
-QPlatformScreen *QEglFSKmsGbmDevice::createScreen(const QKmsOutput &output)
+void QEglFSKmsGbmDevice::createGlobalCursor(QEglFSKmsGbmScreen *screen)
 {
-    QEglFSKmsGbmScreen *screen = new QEglFSKmsGbmScreen(this, output, false);
-
     if (!m_globalCursor && screenConfig()->hwCursor()) {
         qCDebug(qLcEglfsKmsDebug, "Creating new global GBM mouse cursor");
         m_globalCursor = new QEglFSKmsGbmCursor(screen);
     }
+}
+
+QPlatformScreen *QEglFSKmsGbmDevice::createScreen(const QKmsOutput &output)
+{
+    QEglFSKmsGbmScreen *screen = new QEglFSKmsGbmScreen(this, output, false);
+
+    createGlobalCursor(screen);
 
     return screen;
 }
@@ -150,7 +126,7 @@ QPlatformScreen *QEglFSKmsGbmDevice::createHeadlessScreen()
 
 void QEglFSKmsGbmDevice::registerScreenCloning(QPlatformScreen *screen,
                                                QPlatformScreen *screenThisScreenClones,
-                                               const QVector<QPlatformScreen *> &screensCloningThisScreen)
+                                               const QList<QPlatformScreen *> &screensCloningThisScreen)
 {
     if (!screenThisScreenClones && screensCloningThisScreen.isEmpty())
         return;
@@ -167,6 +143,12 @@ void QEglFSKmsGbmDevice::registerScreen(QPlatformScreen *screen,
     QEglFSKmsDevice::registerScreen(screen, isPrimary, virtualPos, virtualSiblings);
     if (screenConfig()->hwCursor() && m_globalCursor)
         m_globalCursor->reevaluateVisibilityForScreens();
+}
+
+bool QEglFSKmsGbmDevice::usesEventReader() const
+{
+    static const bool eventReaderThreadDisabled = qEnvironmentVariableIntValue("QT_QPA_EGLFS_KMS_NO_EVENT_READER_THREAD");
+    return !eventReaderThreadDisabled;
 }
 
 QT_END_NAMESPACE

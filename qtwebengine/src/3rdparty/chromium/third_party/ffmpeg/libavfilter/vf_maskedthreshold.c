@@ -32,6 +32,7 @@ typedef struct MaskedThresholdContext {
 
     int threshold;
     int planes;
+    int mode;
 
     int linesize[4];
     int planewidth[4], planeheight[4];
@@ -43,6 +44,7 @@ typedef struct MaskedThresholdContext {
 } MaskedThresholdContext;
 
 #define OFFSET(x) offsetof(MaskedThresholdContext, x)
+#define TFLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 typedef struct ThreadData {
@@ -50,45 +52,59 @@ typedef struct ThreadData {
 } ThreadData;
 
 static const AVOption maskedthreshold_options[] = {
-    { "threshold", "set threshold", OFFSET(threshold), AV_OPT_TYPE_INT, {.i64=1},   0, UINT16_MAX, FLAGS },
-    { "planes",    "set planes",    OFFSET(planes),    AV_OPT_TYPE_INT, {.i64=0xF}, 0, 0xF,        FLAGS },
+    { "threshold", "set threshold", OFFSET(threshold), AV_OPT_TYPE_INT, {.i64=1},   0, UINT16_MAX, TFLAGS },
+    { "planes",    "set planes",    OFFSET(planes),    AV_OPT_TYPE_INT, {.i64=0xF}, 0, 0xF,        TFLAGS },
+    { "mode",      "set mode",      OFFSET(mode),      AV_OPT_TYPE_INT, {.i64=0},   0, 1,          FLAGS, "mode" },
+    { "abs",       "",              0,                 AV_OPT_TYPE_CONST, {.i64=0}, 0, 0,          FLAGS, "mode" },
+    { "diff",      "",              0,                 AV_OPT_TYPE_CONST, {.i64=1}, 0, 0,          FLAGS, "mode" },
     { NULL }
 };
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
-        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
-        AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
-        AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
-        AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
-        AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
-        AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
-        AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
-        AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
-        AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
-        AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
-        AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
-        AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
-        AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_NONE
-    };
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV440P,
+    AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUVA420P, AV_PIX_FMT_YUV420P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV410P,
+    AV_PIX_FMT_YUV420P9, AV_PIX_FMT_YUV422P9, AV_PIX_FMT_YUV444P9,
+    AV_PIX_FMT_YUV420P10, AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+    AV_PIX_FMT_YUV420P12, AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUV440P12,
+    AV_PIX_FMT_YUV420P14, AV_PIX_FMT_YUV422P14, AV_PIX_FMT_YUV444P14,
+    AV_PIX_FMT_YUV420P16, AV_PIX_FMT_YUV422P16, AV_PIX_FMT_YUV444P16,
+    AV_PIX_FMT_YUVA420P9, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA444P9,
+    AV_PIX_FMT_YUVA420P10, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA444P10,
+    AV_PIX_FMT_YUVA422P12, AV_PIX_FMT_YUVA444P12,
+    AV_PIX_FMT_YUVA420P16, AV_PIX_FMT_YUVA422P16, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_GBRP, AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10,
+    AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
+    AV_PIX_FMT_GBRAP, AV_PIX_FMT_GBRAP10, AV_PIX_FMT_GBRAP12, AV_PIX_FMT_GBRAP16,
+    AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
+    AV_PIX_FMT_NONE
+};
 
-    return ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
+static void threshold8_diff(const uint8_t *src, const uint8_t *ref, uint8_t *dst, int threshold, int w)
+{
+    for (int x = 0; x < w; x++)
+        dst[x] = (ref[x] - src[x] <= threshold) ? FFMAX(ref[x] - threshold, 0): src[x];
 }
 
-static void threshold8(const uint8_t *src, const uint8_t *ref, uint8_t *dst, int threshold, int w)
+static void threshold8_abs(const uint8_t *src, const uint8_t *ref, uint8_t *dst, int threshold, int w)
 {
     for (int x = 0; x < w; x++)
         dst[x] = FFABS(src[x] - ref[x]) <= threshold ? src[x] : ref[x];
 }
 
-static void threshold16(const uint8_t *ssrc, const uint8_t *rref, uint8_t *ddst, int threshold, int w)
+static void threshold16_diff(const uint8_t *ssrc, const uint8_t *rref, uint8_t *ddst, int threshold, int w)
+{
+    const uint16_t *src = (const uint16_t *)ssrc;
+    const uint16_t *ref = (const uint16_t *)rref;
+    uint16_t *dst = (uint16_t *)ddst;
+
+    for (int x = 0; x < w; x++)
+        dst[x] = (ref[x] - src[x] <= threshold) ? FFMAX(ref[x] - threshold, 0): src[x];
+}
+
+static void threshold16_abs(const uint8_t *ssrc, const uint8_t *rref, uint8_t *ddst, int threshold, int w)
 {
     const uint16_t *src = (const uint16_t *)ssrc;
     const uint16_t *ref = (const uint16_t *)rref;
@@ -120,9 +136,9 @@ static int config_input(AVFilterLink *inlink)
     s->depth = desc->comp[0].depth;
 
     if (desc->comp[0].depth == 8)
-        s->maskedthreshold = threshold8;
+        s->maskedthreshold = s->mode ? threshold8_diff : threshold8_abs;
     else
-        s->maskedthreshold = threshold16;
+        s->maskedthreshold = s->mode ? threshold16_diff : threshold16_abs;
 
     return 0;
 }
@@ -191,8 +207,8 @@ static int process_frame(FFFrameSync *fs)
         td.ref = ref;
         td.dst = out;
 
-        ctx->internal->execute(ctx, threshold_slice, &td, NULL, FFMIN(s->planeheight[2],
-                                                                ff_filter_get_nb_threads(ctx)));
+        ff_filter_execute(ctx, threshold_slice, &td, NULL,
+                          FFMIN(s->planeheight[2], ff_filter_get_nb_threads(ctx)));
     }
     out->pts = av_rescale_q(s->fs.pts, s->fs.time_base, outlink->time_base);
 
@@ -208,10 +224,6 @@ static int config_output(AVFilterLink *outlink)
     FFFrameSyncIn *in;
     int ret;
 
-    if (source->format != ref->format) {
-        av_log(ctx, AV_LOG_ERROR, "inputs must be of same pixel format\n");
-        return AVERROR(EINVAL);
-    }
     if (source->w != ref->w || source->h != ref->h) {
         av_log(ctx, AV_LOG_ERROR, "First input link %s parameters "
                "(size %dx%d) do not match the corresponding "
@@ -270,7 +282,6 @@ static const AVFilterPad maskedthreshold_inputs[] = {
         .name         = "reference",
         .type         = AVMEDIA_TYPE_VIDEO,
     },
-    { NULL }
 };
 
 static const AVFilterPad maskedthreshold_outputs[] = {
@@ -279,20 +290,20 @@ static const AVFilterPad maskedthreshold_outputs[] = {
         .type          = AVMEDIA_TYPE_VIDEO,
         .config_props  = config_output,
     },
-    { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(maskedthreshold);
 
-AVFilter ff_vf_maskedthreshold = {
+const AVFilter ff_vf_maskedthreshold = {
     .name          = "maskedthreshold",
     .description   = NULL_IF_CONFIG_SMALL("Pick pixels comparing absolute difference of two streams with threshold."),
     .priv_class    = &maskedthreshold_class,
     .priv_size     = sizeof(MaskedThresholdContext),
     .uninit        = uninit,
     .activate      = activate,
-    .query_formats = query_formats,
-    .inputs        = maskedthreshold_inputs,
-    .outputs       = maskedthreshold_outputs,
+    FILTER_INPUTS(maskedthreshold_inputs),
+    FILTER_OUTPUTS(maskedthreshold_outputs),
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
+    .process_command = ff_filter_process_command,
 };

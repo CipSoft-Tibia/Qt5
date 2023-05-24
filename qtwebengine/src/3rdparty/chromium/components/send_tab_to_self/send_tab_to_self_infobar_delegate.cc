@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,10 +22,10 @@ SendTabToSelfInfoBarDelegate::Create(content::WebContents* web_contents,
 
 SendTabToSelfInfoBarDelegate::~SendTabToSelfInfoBarDelegate() {}
 
-base::string16 SendTabToSelfInfoBarDelegate::GetInfobarMessage() const {
+std::u16string SendTabToSelfInfoBarDelegate::GetInfobarMessage() const {
   // TODO(crbug.com/944602): Define real string.
   NOTIMPLEMENTED();
-  return base::UTF8ToUTF16("Open");
+  return u"Open";
 }
 
 void SendTabToSelfInfoBarDelegate::OpenTab() {

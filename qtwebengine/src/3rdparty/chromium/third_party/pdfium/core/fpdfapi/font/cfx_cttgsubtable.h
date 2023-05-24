@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,9 @@
 #include <set>
 #include <vector>
 
-#include "core/fxcrt/fx_memory_wrappers.h"
-#include "core/fxge/fx_freetype.h"
+#include "core/fxcrt/data_vector.h"
+#include "core/fxge/freetype/fx_freetype.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class CFX_CTTGSUBTable {
  public:
@@ -28,18 +29,18 @@ class CFX_CTTGSUBTable {
     TLangSysRecord();
     ~TLangSysRecord();
 
-    uint32_t LangSysTag;
-    uint16_t LookupOrder;
-    uint16_t ReqFeatureIndex;
-    std::vector<uint16_t, FxAllocAllocator<uint16_t>> FeatureIndices;
+    uint32_t LangSysTag = 0;
+    uint16_t LookupOrder = 0;
+    uint16_t ReqFeatureIndex = 0;
+    DataVector<uint16_t> FeatureIndices;
   };
 
   struct TScriptRecord {
     TScriptRecord();
     ~TScriptRecord();
 
-    uint32_t ScriptTag;
-    uint16_t DefaultLangSys;
+    uint32_t ScriptTag = 0;
+    uint16_t DefaultLangSys = 0;
     std::vector<TLangSysRecord> LangSysRecords;
   };
 
@@ -47,74 +48,76 @@ class CFX_CTTGSUBTable {
     TFeatureRecord();
     ~TFeatureRecord();
 
-    uint32_t FeatureTag;
-    uint16_t FeatureParams;
-    std::vector<uint16_t, FxAllocAllocator<uint16_t>> LookupListIndices;
+    uint32_t FeatureTag = 0;
+    uint16_t FeatureParams = 0;
+    DataVector<uint16_t> LookupListIndices;
   };
 
   struct TRangeRecord {
     TRangeRecord();
 
-    uint16_t Start;
-    uint16_t End;
-    uint16_t StartCoverageIndex;
+    uint16_t Start = 0;
+    uint16_t End = 0;
+    uint16_t StartCoverageIndex = 0;
   };
 
   struct TCoverageFormatBase {
+    explicit TCoverageFormatBase(uint16_t format) : CoverageFormat(format) {}
     virtual ~TCoverageFormatBase() = default;
-    uint16_t CoverageFormat;
+
+    const uint16_t CoverageFormat;
   };
 
   struct TCoverageFormat1 final : public TCoverageFormatBase {
-    TCoverageFormat1();
+    explicit TCoverageFormat1(size_t initial_size);
     ~TCoverageFormat1() override;
 
-    std::vector<uint16_t, FxAllocAllocator<uint16_t>> GlyphArray;
+    DataVector<uint16_t> GlyphArray;
   };
 
   struct TCoverageFormat2 final : public TCoverageFormatBase {
-    TCoverageFormat2();
+    explicit TCoverageFormat2(size_t initial_size);
     ~TCoverageFormat2() override;
 
     std::vector<TRangeRecord> RangeRecords;
   };
 
   struct TDevice {
-    TDevice() : StartSize(0), EndSize(0), DeltaFormat(0) {}
+    TDevice();
 
-    uint16_t StartSize;
-    uint16_t EndSize;
-    uint16_t DeltaFormat;
+    uint16_t StartSize = 0;
+    uint16_t EndSize = 0;
+    uint16_t DeltaFormat = 0;
   };
 
   struct TSubTableBase {
-    TSubTableBase();
+    explicit TSubTableBase(uint16_t format);
     virtual ~TSubTableBase();
 
+    const uint16_t SubstFormat;
     std::unique_ptr<TCoverageFormatBase> Coverage;
-    uint16_t SubstFormat;
   };
 
   struct TSubTable1 final : public TSubTableBase {
     TSubTable1();
     ~TSubTable1() override;
 
-    int16_t DeltaGlyphID;
+    int16_t DeltaGlyphID = 0;
   };
 
   struct TSubTable2 final : public TSubTableBase {
     TSubTable2();
     ~TSubTable2() override;
 
-    std::vector<uint16_t, FxAllocAllocator<uint16_t>> Substitutes;
+    DataVector<uint16_t> Substitutes;
   };
 
   struct TLookup {
     TLookup();
     ~TLookup();
 
-    uint16_t LookupType;
-    uint16_t LookupFlag;
+    uint16_t LookupType = 0;
+    uint16_t LookupFlag = 0;
     std::vector<std::unique_ptr<TSubTableBase>> SubTables;
   };
 
@@ -128,18 +131,16 @@ class CFX_CTTGSUBTable {
   void ParseLookupList(FT_Bytes raw);
   void ParseLookup(FT_Bytes raw, TLookup* rec);
   std::unique_ptr<TCoverageFormatBase> ParseCoverage(FT_Bytes raw);
-  void ParseCoverageFormat1(FT_Bytes raw, TCoverageFormat1* rec);
-  void ParseCoverageFormat2(FT_Bytes raw, TCoverageFormat2* rec);
-  void ParseSingleSubst(FT_Bytes raw, std::unique_ptr<TSubTableBase>* rec);
-  void ParseSingleSubstFormat1(FT_Bytes raw, TSubTable1* rec);
-  void ParseSingleSubstFormat2(FT_Bytes raw, TSubTable2* rec);
+  std::unique_ptr<TCoverageFormat1> ParseCoverageFormat1(FT_Bytes raw);
+  std::unique_ptr<TCoverageFormat2> ParseCoverageFormat2(FT_Bytes raw);
+  std::unique_ptr<TSubTableBase> ParseSingleSubst(FT_Bytes raw);
+  std::unique_ptr<TSubTable1> ParseSingleSubstFormat1(FT_Bytes raw);
+  std::unique_ptr<TSubTable2> ParseSingleSubstFormat2(FT_Bytes raw);
 
-  bool GetVerticalGlyphSub(const TFeatureRecord& feature,
-                           uint32_t glyphnum,
-                           uint32_t* vglyphnum) const;
-  bool GetVerticalGlyphSub2(const TLookup& lookup,
-                            uint32_t glyphnum,
-                            uint32_t* vglyphnum) const;
+  absl::optional<uint32_t> GetVerticalGlyphSub(const TFeatureRecord& feature,
+                                               uint32_t glyphnum) const;
+  absl::optional<uint32_t> GetVerticalGlyphSub2(const TLookup& lookup,
+                                                uint32_t glyphnum) const;
   int GetCoverageIndex(TCoverageFormatBase* Coverage, uint32_t g) const;
 
   uint8_t GetUInt8(FT_Bytes& p) const;

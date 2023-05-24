@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,7 +27,6 @@ struct TransportSecurityStateSource {
   const uint8_t* preloaded_data;
   size_t preloaded_bits;
   size_t root_position;
-  const char* const* expect_ct_report_uris;
   const Pinset* pinsets;
   size_t pinsets_count;
 };

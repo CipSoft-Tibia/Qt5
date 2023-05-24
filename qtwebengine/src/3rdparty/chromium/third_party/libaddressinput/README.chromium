@@ -1,8 +1,7 @@
 Name: libaddressinput
-URL: https://github.com/googlei18n/libaddressinput
-Version: 0
-Date: 21 February 2019
-Revision: 81e7ead903f5b71a326e0584f4325f106c804df1
+URL: https://github.com/google/libaddressinput
+Version: e8712e415627f22d0b00ebee8db99547077f39bd
+Date: 2022-12-22
 License: Apache 2.0
 License File: LICENSE
 Security Critical: yes
@@ -20,6 +19,8 @@ Local Modifications:
 - Use Chrome's version of loose string comparison in chromium/string_compare.cc.
 - fuzz/: Added fuzz targets.
 - Use base/check_op.h in chromium/input_suggester.cc.
+- Use base::Value::is_string() and base::Value::GetString instead of
+  base::Value::GetAsString() in chromium/chrome_storage_impl.cc.
 
 Note:
 

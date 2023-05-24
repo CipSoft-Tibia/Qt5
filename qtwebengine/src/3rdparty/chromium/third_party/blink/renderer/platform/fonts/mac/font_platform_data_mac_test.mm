@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #include "third_party/blink/renderer/platform/fonts/mac/font_matcher_mac.h"
 
 #include "base/mac/foundation_util.h"
-#include "base/mac/mac_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/platform/font_family_names.h"
 
@@ -33,9 +32,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
 
   // Below the 11.0 axis minimum.
   sk_sp<SkTypeface> system_font(MakeSystemFontOfSize(12));
-  // TODO(https://crbug.com/1115294, https://crbug.com/1105187): Switch back to
-  // @available when it works.
-  if (base::mac::IsOS11()) {
+  if (@available(macOS 11.0, *)) {
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -48,7 +45,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 72));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 96));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 97));
-  } else if (base::mac::IsOS10_15()) {
+  } else if (@available(macOS 10.15, *)) {
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -78,7 +75,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
 
   // Just smaller than the switch-over size in 10.15, which is 19.9.
   system_font = MakeSystemFontOfSize(19);
-  if (base::mac::IsOS11()) {
+  if (@available(macOS 11.0, *)) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -91,7 +88,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 72));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 96));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 97));
-  } else if (base::mac::IsOS10_15()) {
+  } else if (@available(macOS 10.15, *)) {
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -121,7 +118,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
 
   // Just larger than the switch-over size in 10.15, which is 19.9.
   system_font = MakeSystemFontOfSize(20);
-  if (base::mac::IsOS11()) {
+  if (@available(macOS 11.0, *)) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -134,7 +131,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 72));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 96));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 97));
-  } else if (base::mac::IsOS10_15()) {
+  } else if (@available(macOS 10.15, *)) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -164,7 +161,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
 
   // Above the 11.0 axis maximum.
   system_font = MakeSystemFontOfSize(128);
-  if (base::mac::IsOS11()) {
+  if (@available(macOS 11.0, *)) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -177,7 +174,7 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 72));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 96));
     EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 97));
-  } else if (base::mac::IsOS10_15()) {
+  } else if (@available(macOS 10.15, *)) {
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 6));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 12));
     EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kOpszTag, 17));
@@ -207,50 +204,41 @@ TEST(FontPlatformDataMacTest, VariableOpticalSizingThreshold) {
 }
 
 TEST(FontPlatformDataMacTest, VariableWeight) {
-  if (@available(macOS 10.13, *)) {
-    sk_sp<SkTypeface> system_font(MakeSystemFontOfSize(19));
-    EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 400));
-    EXPECT_TRUE(
-        VariableAxisChangeEffective(system_font.get(), kWghtTag, 400.5));
-    EXPECT_TRUE(
-        VariableAxisChangeEffective(system_font.get(), kWghtTag, 395.5));
-    EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 2000));
-    EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 0));
-  }
+  sk_sp<SkTypeface> system_font(MakeSystemFontOfSize(19));
+  EXPECT_FALSE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 400));
+  EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 400.5));
+  EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 395.5));
+  EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 2000));
+  EXPECT_TRUE(VariableAxisChangeEffective(system_font.get(), kWghtTag, 0));
 }
 
 TEST(FontPlatformDataMacTest, VariableWeightClamped) {
-  if (@available(macOS 10.13, *)) {
-    sk_sp<SkTypeface> system_font(MakeSystemFontOfSize(19));
+  sk_sp<SkTypeface> system_font(MakeSystemFontOfSize(19));
 
-    SkFontArguments::VariationPosition::Coordinate coordinates[1] = {
-        {kWghtTag, 1000}};
+  SkFontArguments::VariationPosition::Coordinate coordinates[1] = {
+      {kWghtTag, 1000}};
 
-    SkFontArguments::VariationPosition variation_design_position_black{
-        coordinates, 1};
-    sk_sp<SkTypeface> black_typeface(
-        system_font->makeClone(SkFontArguments().setVariationDesignPosition(
-            variation_design_position_black)));
+  SkFontArguments::VariationPosition variation_design_position_black{
+      coordinates, 1};
+  sk_sp<SkTypeface> black_typeface(
+      system_font->makeClone(SkFontArguments().setVariationDesignPosition(
+          variation_design_position_black)));
 
-    EXPECT_FALSE(
-        VariableAxisChangeEffective(black_typeface.get(), kWghtTag, 1001));
-    EXPECT_FALSE(
-        VariableAxisChangeEffective(black_typeface.get(), kWghtTag, 10000));
-    EXPECT_TRUE(
-        VariableAxisChangeEffective(black_typeface.get(), kWghtTag, 999));
+  EXPECT_FALSE(
+      VariableAxisChangeEffective(black_typeface.get(), kWghtTag, 1001));
+  EXPECT_FALSE(
+      VariableAxisChangeEffective(black_typeface.get(), kWghtTag, 10000));
+  EXPECT_TRUE(VariableAxisChangeEffective(black_typeface.get(), kWghtTag, 999));
 
-    coordinates[0].value = 1;
-    SkFontArguments::VariationPosition variation_design_position_thin{
-        coordinates, 1};
-    sk_sp<SkTypeface> thin_typeface(
-        system_font->makeClone(SkFontArguments().setVariationDesignPosition(
-            variation_design_position_thin)));
+  coordinates[0].value = 1;
+  SkFontArguments::VariationPosition variation_design_position_thin{coordinates,
+                                                                    1};
+  sk_sp<SkTypeface> thin_typeface(
+      system_font->makeClone(SkFontArguments().setVariationDesignPosition(
+          variation_design_position_thin)));
 
-    EXPECT_FALSE(VariableAxisChangeEffective(thin_typeface.get(), kWghtTag, 0));
-    EXPECT_FALSE(
-        VariableAxisChangeEffective(thin_typeface.get(), kWghtTag, -1));
-    EXPECT_TRUE(VariableAxisChangeEffective(thin_typeface.get(), kWghtTag, 2));
-  }
+  EXPECT_FALSE(VariableAxisChangeEffective(thin_typeface.get(), kWghtTag, 0));
+  EXPECT_FALSE(VariableAxisChangeEffective(thin_typeface.get(), kWghtTag, -1));
+  EXPECT_TRUE(VariableAxisChangeEffective(thin_typeface.get(), kWghtTag, 2));
 }
-
 }

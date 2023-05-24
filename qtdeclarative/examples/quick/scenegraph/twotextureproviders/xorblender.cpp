@@ -1,59 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Gunnar Sletta <gunnar@sletta.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Gunnar Sletta <gunnar@sletta.org>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "xorblender.h"
 
 #include <QtCore/QPointer>
-
-#include <QtGui/QOpenGLContext>
-#include <QtGui/QOpenGLFunctions>
 
 #include <QtQuick/QSGMaterial>
 #include <QtQuick/QSGTexture>
@@ -72,7 +22,7 @@ class XorBlendMaterial : public QSGMaterial
 public:
     XorBlendMaterial();
     QSGMaterialType *type() const override;
-    QSGMaterialShader *createShader() const override;
+    QSGMaterialShader *createShader(QSGRendererInterface::RenderMode renderMode) const override;
     int compare(const QSGMaterial *other) const override;
 
     struct {
@@ -81,20 +31,7 @@ public:
     } state;
 };
 
-class XorBlendShader : public QSGMaterialShader // for when the scenegraph is using OpenGL directly
-{
-public:
-    XorBlendShader();
-    void initialize() override;
-    char const *const *attributeNames() const override;
-    void updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *oldEffect) override;
-
-private:
-    int m_matrix_id;
-    int m_opacity_id;
-};
-
-class XorBlendRhiShader : public QSGMaterialRhiShader // for when the scenegraph is using QRhi
+class XorBlendRhiShader : public QSGMaterialShader
 {
 public:
     XorBlendRhiShader();
@@ -106,16 +43,12 @@ public:
 
 XorBlendMaterial::XorBlendMaterial()
 {
-    setFlag(SupportsRhiShader);
     setFlag(Blending);
 }
 
-QSGMaterialShader *XorBlendMaterial::createShader() const
+QSGMaterialShader *XorBlendMaterial::createShader(QSGRendererInterface::RenderMode) const
 {
-    if (flags().testFlag(RhiShaderWanted))
-        return new XorBlendRhiShader;
-    else
-        return new XorBlendShader;
+    return new XorBlendRhiShader;
 }
 
 QSGMaterialType *XorBlendMaterial::type() const
@@ -135,62 +68,18 @@ int XorBlendMaterial::compare(const QSGMaterial *o) const
     if (!state.texture2 || !other->state.texture2)
         return state.texture2 ? -1 : 1;
 
-    if (int diff = state.texture1->comparisonKey() - other->state.texture1->comparisonKey())
-        return diff;
+    qint64 diff = state.texture1->comparisonKey() - other->state.texture1->comparisonKey();
+    if (diff != 0)
+        return diff < 0 ? -1 : 1;
 
-    if (int diff = state.texture2->comparisonKey() - other->state.texture2->comparisonKey())
-        return diff;
-
-    return 0;
-}
-
-XorBlendShader::XorBlendShader()
-{
-    setShaderSourceFile(QOpenGLShader::Vertex, QLatin1String(":/scenegraph/twotextureproviders/shaders/xorblender.vert"));
-    setShaderSourceFile(QOpenGLShader::Fragment, QLatin1String(":/scenegraph/twotextureproviders/shaders/xorblender.frag"));
-}
-
-void XorBlendShader::initialize()
-{
-    m_matrix_id = program()->uniformLocation("qt_Matrix");
-    m_opacity_id  = program()->uniformLocation("qt_Opacity");
-    // The texture units never change, only the textures we bind to them so
-    // we set these once and for all here.
-    program()->setUniformValue("uSource1", 0); // GL_TEXTURE0
-    program()->setUniformValue("uSource2", 1); // GL_TEXTURE1
-}
-
-char const *const *XorBlendShader::attributeNames() const
-{
-    static char const *const attr[] = { "aVertex", "aTexCoord", nullptr };
-    return attr;
-}
-
-void XorBlendShader::updateState(const RenderState &state, QSGMaterial *newEffect, QSGMaterial *)
-{
-    XorBlendMaterial *material = static_cast<XorBlendMaterial *>(newEffect);
-
-    if (state.isMatrixDirty())
-        program()->setUniformValue(m_matrix_id, state.combinedMatrix());
-
-    if (state.isOpacityDirty())
-        program()->setUniformValue(m_opacity_id, state.opacity());
-
-    QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
-    // We bind the textures in inverse order so that we leave the updateState
-    // function with GL_TEXTURE0 as the active texture unit. This is maintain
-    // the "contract" that updateState should not mess up the GL state beyond
-    // what is needed for this material.
-    f->glActiveTexture(GL_TEXTURE1);
-    material->state.texture2->bind();
-    f->glActiveTexture(GL_TEXTURE0);
-    material->state.texture1->bind();
+    diff = state.texture2->comparisonKey() - other->state.texture2->comparisonKey();
+    return diff < 0 ? -1 : (diff > 0 ? 1 : 0);
 }
 
 XorBlendRhiShader::XorBlendRhiShader()
 {
-    setShaderFileName(VertexStage, QLatin1String(":/scenegraph/twotextureproviders/shaders/+qsb/xorblender.vert"));
-    setShaderFileName(FragmentStage, QLatin1String(":/scenegraph/twotextureproviders/shaders/+qsb/xorblender.frag"));
+    setShaderFileName(VertexStage, QLatin1String(":/scenegraph/twotextureproviders/shaders/xorblender.vert.qsb"));
+    setShaderFileName(FragmentStage, QLatin1String(":/scenegraph/twotextureproviders/shaders/xorblender.frag.qsb"));
 }
 
 bool XorBlendRhiShader::updateUniformData(RenderState &state, QSGMaterial *, QSGMaterial *)

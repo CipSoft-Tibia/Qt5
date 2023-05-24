@@ -18,21 +18,25 @@ set(ROOT_PROJECT_COMPILE_OPTIONS
 )
 
 set(REACTOR_SRC_FILES
+    Assert.cpp
+    Assert.hpp
     Debug.cpp
     Debug.hpp
-    EmulatedIntrinsics.cpp
-    EmulatedIntrinsics.hpp
     ExecutableMemory.cpp
     ExecutableMemory.hpp
     Nucleus.hpp
-    OptimalIntrinsics.cpp
-    OptimalIntrinsics.hpp
+    Pragma.cpp
+    Pragma.hpp
+    PragmaInternals.hpp
     Print.hpp
     Reactor.cpp
     Reactor.hpp
     ReactorDebugInfo.cpp
     ReactorDebugInfo.hpp
     Routine.hpp
+    SIMD.cpp
+    SIMD.hpp
+    Swizzle.hpp
 )
 
 set(SUBZERO_SRC_FILES
@@ -43,6 +47,8 @@ set(SUBZERO_SRC_FILES
 set(LLVM_SRC_FILES
     CPUID.cpp
     CPUID.hpp
+    LLVMAsm.cpp
+    LLVMAsm.hpp
     LLVMJIT.cpp
     LLVMReactor.cpp
     LLVMReactor.hpp
@@ -64,6 +70,7 @@ if(REACTOR_EMIT_DEBUG_INFO)
     list(APPEND REACTOR_PRIVATE_LINK_LIBRARIES Boost::boost)
 endif(REACTOR_EMIT_DEBUG_INFO)
 
+list(APPEND REACTOR_PRIVATE_COMPILE_DEFINITIONS "REACTOR_ANONYMOUS_MMAP_NAME=swiftshader_jit")
 
 # SubzeroReactor library
 
@@ -83,6 +90,8 @@ target_include_directories(ReactorSubzero
 )
 
 target_compile_definitions(ReactorSubzero
+    PUBLIC
+        ${REACTOR_PUBLIC_COMPILE_DEFINITIONS}
     PRIVATE
         ${REACTOR_PRIVATE_COMPILE_DEFINITIONS}
 )
@@ -98,7 +107,6 @@ target_link_libraries(ReactorSubzero
         marl
         ${REACTOR_PRIVATE_LINK_LIBRARIES}
 )
-
 
 # ReactorLLVM library
 
@@ -118,6 +126,8 @@ target_include_directories(ReactorLLVM
 )
 
 target_compile_definitions(ReactorLLVM
+    PUBLIC
+        ${REACTOR_PUBLIC_COMPILE_DEFINITIONS}
     PRIVATE
         ${REACTOR_PRIVATE_COMPILE_DEFINITIONS}
 )
@@ -130,5 +140,42 @@ target_compile_options(ReactorLLVM
 target_link_libraries(ReactorLLVM
     PRIVATE
         llvm
+        ${REACTOR_PRIVATE_LINK_LIBRARIES}
+)
+
+# ReactorLLVMSubmodule library
+
+add_library(ReactorLLVMSubmodule STATIC EXCLUDE_FROM_ALL
+    ${REACTOR_SRC_FILES}
+    ${LLVM_SRC_FILES}
+)
+
+set_target_properties(ReactorLLVMSubmodule PROPERTIES
+    POSITION_INDEPENDENT_CODE 1
+    FOLDER "Reactor"
+)
+
+target_include_directories(ReactorLLVMSubmodule
+    PUBLIC
+        .
+        "${THIRD_PARTY_DIR}/llvm-project/llvm/include"
+        "${CMAKE_BINARY_DIR}/third_party/llvm-project/llvm/include"
+)
+
+target_compile_definitions(ReactorLLVMSubmodule
+    PUBLIC
+        ${REACTOR_PUBLIC_COMPILE_DEFINITIONS}
+    PRIVATE
+        ${REACTOR_PRIVATE_COMPILE_DEFINITIONS}
+)
+
+target_compile_options(ReactorLLVMSubmodule
+    PRIVATE
+        ${ROOT_PROJECT_COMPILE_OPTIONS}
+)
+
+target_link_libraries(ReactorLLVMSubmodule
+    PRIVATE
+        ${llvm_libs}
         ${REACTOR_PRIVATE_LINK_LIBRARIES}
 )

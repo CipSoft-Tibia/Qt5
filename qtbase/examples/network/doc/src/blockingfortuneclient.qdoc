@@ -1,33 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example blockingfortuneclient
-    \title Blocking Fortune Client Example
+    \title Blocking Fortune Client
+    \examplecategory {Networking}
+    \meta tags {tcp,network,threading,synchronous-io}
     \ingroup examples-network
     \brief Demonstrates how to create a client for a network service.
 
@@ -131,7 +109,7 @@
 
     Now we can create a QDataStream object, passing the socket to
     QDataStream's constructor, and as in the other client examples we set
-    the stream protocol version to QDataStream::Qt_4_0.
+    the stream protocol version to QDataStream::Qt_6_5.
 
     \snippet blockingfortuneclient/fortunethread.cpp 12
 
@@ -147,7 +125,7 @@
     The final part of our loop is that we acquire the mutex so that we can
     safely read from our member data. We then let the thread go to sleep by
     calling QWaitCondition::wait(). At this point, we can go back to
-    requestNewFortune() and look closed at the call to wakeOne():
+    requestNewFortune() and look closely at the call to wakeOne():
 
     \snippet blockingfortuneclient/fortunethread.cpp 1
     \dots
@@ -184,7 +162,7 @@
     \snippet blockingfortuneclient/blockingclient.cpp 1
 
     The requestNewFortune() slot calls FortuneThread::requestNewFortune(),
-    which \e shedules the request. When the thread has received a new fortune
+    which \e schedules the request. When the thread has received a new fortune
     and emits newFortune(), our showFortune() slot is called:
 
     \snippet blockingfortuneclient/blockingclient.cpp 2
@@ -193,5 +171,5 @@
 
     Here, we simply display the fortune we received as the argument.
 
-    \sa {Fortune Client Example}, {Fortune Server Example}
+    \sa {Fortune Client}, {Fortune Server}
 */

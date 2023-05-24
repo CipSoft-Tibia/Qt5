@@ -280,6 +280,9 @@ key_handler(struct window *window, struct input *input, uint32_t time,
 		break;
 
 	case XKB_KEY_z:
+		if (fullscreen->fullscreen)
+			break;
+
 		current_size = (current_size + 1) % 4;
 		fullscreen->width = widths[current_size];
 		fullscreen->height = heights[current_size];

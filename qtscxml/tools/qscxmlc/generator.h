@@ -1,60 +1,46 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef GENERATOR_H
 #define GENERATOR_H
 
 #include "moc.h"
+
+// -- QtScxml
 #include <QtCore/qhash.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qiodevice.h>
+// -- QtScxml
 
 QT_BEGIN_NAMESPACE
 
 class Generator
 {
-    QIODevice &out;
+    QIODevice &out; // -- QtScxml
     ClassDef *cdef;
-    QVector<uint> meta_data;
+    QList<uint> meta_data;
+
 public:
-    Generator(ClassDef *classDef, const QList<QByteArray> &metaTypes, const QHash<QByteArray,
-              QByteArray> &knownQObjectClasses, const QHash<QByteArray, QByteArray> &knownGadgets,
-              QIODevice &outfile);
+    Generator(ClassDef *classDef, const QList<QByteArray> &metaTypes,
+              const QHash<QByteArray, QByteArray> &knownQObjectClasses,
+              const QHash<QByteArray, QByteArray> &knownGadgets,
+              QIODevice &outfile, // -- QtScxml
+              bool requireCompleteTypes = false);
     void generateCode();
+
+// -- QtScxml
     void generateAccessorDefs();
     void generateSignalDefs();
+// -- QtScxml
 
 private:
     bool registerableMetaType(const QByteArray &propertyType);
     void registerClassInfoStrings();
     void generateClassInfos();
     void registerFunctionStrings(const QList<FunctionDef> &list);
-    void generateFunctions(const QList<FunctionDef> &list, const char *functype, int type, int &paramsIndex);
+    void registerByteArrayVector(const QList<QByteArray> &list);
+    void generateFunctions(const QList<FunctionDef> &list, const char *functype, int type,
+                           int &paramsIndex, int &initialMetatypeOffset);
     void generateFunctionRevisions(const QList<FunctionDef> &list, const char *functype);
     void generateFunctionParameters(const QList<FunctionDef> &list, const char *functype);
     void generateTypeInfo(const QByteArray &typeName, bool allowEmptyName = false);
@@ -65,9 +51,13 @@ private:
     void generateMetacall();
     void generateStaticMetacall();
     void generateSignal(FunctionDef *def, int index);
-//    void generatePluginMetaData();
+    void generateQPropertyApi();
+#if 0 // -- QtScxml
+    void generatePluginMetaData();
+#endif // -- QtScxml
     QMultiMap<QByteArray, int> automaticPropertyMetaTypesHelper();
-    QMap<int, QMultiMap<QByteArray, int> > methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);
+    QMap<int, QMultiMap<QByteArray, int>>
+    methodsWithAutomaticTypesHelper(const QList<FunctionDef> &methodList);
 
     void strreg(const QByteArray &); // registers a string
     int stridx(const QByteArray &); // returns a string's id
@@ -76,6 +66,7 @@ private:
     QList<QByteArray> metaTypes;
     QHash<QByteArray, QByteArray> knownQObjectClasses;
     QHash<QByteArray, QByteArray> knownGadgets;
+    bool requireCompleteTypes;
 };
 
 QT_END_NAMESPACE

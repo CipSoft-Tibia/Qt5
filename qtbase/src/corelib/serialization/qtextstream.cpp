@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //#define QTEXTSTREAM_DEBUG
 static const int QTEXTSTREAM_BUFFERSIZE = 16384;
@@ -50,6 +14,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 
     \ingroup io
     \ingroup string-processing
+    \ingroup qtserialization
     \reentrant
 
     QTextStream can operate on a QIODevice, a QByteArray or a
@@ -62,7 +27,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 
     It's also common to use QTextStream to read console input and write
     console output. QTextStream is locale aware, and will automatically decode
-    standard input using the correct codec. Example:
+    standard input using the correct encoding. Example:
 
     \snippet code/src_corelib_io_qtextstream.cpp 1
 
@@ -74,16 +39,16 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
     buffer into the device and call flush() on the device.
 
     Internally, QTextStream uses a Unicode based buffer, and
-    QTextCodec is used by QTextStream to automatically support
-    different character sets. By default, QTextCodec::codecForLocale()
-    is used for reading and writing, but you can also set the codec by
-    calling setCodec(). Automatic Unicode detection is also
+    QStringConverter is used by QTextStream to automatically support
+    different encodings. By default, UTF-8
+    is used for reading and writing, but you can also set the encoding by
+    calling setEncoding(). Automatic Unicode detection is also
     supported. When this feature is enabled (the default behavior),
-    QTextStream will detect the UTF-16 or the UTF-32 BOM (Byte Order Mark) and
-    switch to the appropriate UTF codec when reading. QTextStream
+    QTextStream will detect the UTF-8, UTF-16 or the UTF-32 BOM (Byte Order Mark) and
+    switch to the appropriate UTF encoding when reading. QTextStream
     does not write a BOM by default, but you can enable this by calling
     setGenerateByteOrderMark(true). When QTextStream operates on a QString
-    directly, the codec is disabled.
+    directly, the encoding is disabled.
 
     There are three general ways to use QTextStream when reading text
     files:
@@ -165,7 +130,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
     parameter: qSetFieldWidth(), qSetPadChar(), and
     qSetRealNumberPrecision().
 
-    \sa QDataStream, QIODevice, QFile, QBuffer, QTcpSocket, {Text Codecs Example}
+    \sa QDataStream, QIODevice, QFile, QBuffer, QTcpSocket
 */
 
 /*! \enum QTextStream::RealNumberNotation
@@ -230,55 +195,16 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 #include "qfile.h"
 #include "qnumeric.h"
 #include "qvarlengtharray.h"
+#include <private/qdebug_p.h>
+#include <private/qtools_p.h>
 
 #include <locale.h>
 #include "private/qlocale_p.h"
+#include "private/qstringconverter_p.h"
 
 #include <stdlib.h>
 #include <limits.h>
 #include <new>
-
-#if defined QTEXTSTREAM_DEBUG
-#include <ctype.h>
-#include "private/qtools_p.h"
-
-QT_BEGIN_NAMESPACE
-
-// Returns a human readable representation of the first \a len
-// characters in \a data.
-static QByteArray qt_prettyDebug(const char *data, int len, int maxSize)
-{
-    if (!data) return "(null)";
-    QByteArray out;
-    for (int i = 0; i < len; ++i) {
-        char c = data[i];
-        if (isprint(int(uchar(c)))) {
-            out += c;
-        } else switch (c) {
-        case '\n': out += "\\n"; break;
-        case '\r': out += "\\r"; break;
-        case '\t': out += "\\t"; break;
-        default: {
-            const char buf[] = {
-                '\\',
-                'x',
-                QtMiscUtils::toHexLower(uchar(c) / 16),
-                QtMiscUtils::toHexLower(uchar(c) % 16),
-                0
-            };
-            out += buf;
-            }
-        }
-    }
-
-    if (len < maxSize)
-        out += "...";
-
-    return out;
-}
-QT_END_NAMESPACE
-
-#endif
 
 // A precondition macro
 #define Q_VOID
@@ -319,18 +245,17 @@ QT_END_NAMESPACE
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+using namespace QtMiscUtils;
+
 //-------------------------------------------------------------------
 
 /*!
     \internal
 */
 QTextStreamPrivate::QTextStreamPrivate(QTextStream *q_ptr)
-    :
-#if QT_CONFIG(textcodec)
-    readConverterSavedState(nullptr),
-#endif
-    readConverterSavedStateOffset(0),
-    locale(QLocale::c())
+    : readConverterSavedStateOffset(0),
+      locale(QLocale::c())
 {
     this->q_ptr = q_ptr;
     reset();
@@ -347,38 +272,14 @@ QTextStreamPrivate::~QTextStreamPrivate()
 #endif
         delete device;
     }
-#if QT_CONFIG(textcodec)
-    delete readConverterSavedState;
-#endif
 }
-
-#if QT_CONFIG(textcodec)
-static void resetCodecConverterStateHelper(QTextCodec::ConverterState *state)
-{
-    state->~ConverterState();
-    new (state) QTextCodec::ConverterState;
-}
-
-static void copyConverterStateHelper(QTextCodec::ConverterState *dest,
-    const QTextCodec::ConverterState *src)
-{
-    // ### QTextCodec::ConverterState's copy constructors and assignments are
-    // private. This function copies the structure manually.
-    Q_ASSERT(!src->d);
-    dest->flags = src->flags;
-    dest->invalidChars = src->invalidChars;
-    dest->state_data[0] = src->state_data[0];
-    dest->state_data[1] = src->state_data[1];
-    dest->state_data[2] = src->state_data[2];
-}
-#endif
 
 void QTextStreamPrivate::Params::reset()
 {
     realNumberPrecision = 6;
     integerBase = 0;
     fieldWidth = 0;
-    padChar = QLatin1Char(' ');
+    padChar = u' ';
     fieldAlignment = QTextStream::AlignRight;
     realNumberNotation = QTextStream::SmartNotation;
     numberFlags = { };
@@ -395,21 +296,18 @@ void QTextStreamPrivate::reset()
     deleteDevice = false;
     string = nullptr;
     stringOffset = 0;
-    stringOpenMode = QIODevice::NotOpen;
+    stringOpenMode = QTextStream::NotOpen;
 
     readBufferOffset = 0;
     readBufferStartDevicePos = 0;
     lastTokenSize = 0;
 
-#if QT_CONFIG(textcodec)
-    codec = QTextCodec::codecForLocale();
-    resetCodecConverterStateHelper(&readConverterState);
-    resetCodecConverterStateHelper(&writeConverterState);
-    delete readConverterSavedState;
-    readConverterSavedState = nullptr;
-    writeConverterState.flags |= QTextCodec::IgnoreHeader;
+    hasWrittenData = false;
+    generateBOM = false;
+    encoding = QStringConverter::Utf8;
+    toUtf16 = QStringDecoder(encoding);
+    fromUtf16 = QStringEncoder(encoding);
     autoDetectUnicode = true;
-#endif
 }
 
 /*!
@@ -461,41 +359,32 @@ bool QTextStreamPrivate::fillReadBuffer(qint64 maxBytes)
     if (bytesRead <= 0)
         return false;
 
-#if QT_CONFIG(textcodec)
-    // codec auto detection, explicitly defaults to locale encoding if the
-    // codec has been set to 0.
-    if (!codec || autoDetectUnicode) {
+    if (autoDetectUnicode) {
         autoDetectUnicode = false;
 
-        codec = QTextCodec::codecForUtfText(QByteArray::fromRawData(buf, bytesRead), codec);
-        if (!codec) {
-            codec = QTextCodec::codecForLocale();
-            writeConverterState.flags |= QTextCodec::IgnoreHeader;
+        auto e = QStringConverter::encodingForData(QByteArrayView(buf, bytesRead));
+        // QStringConverter::Locale implies unknown, so keep the current encoding
+        if (e) {
+            encoding = *e;
+            toUtf16 = QStringDecoder(encoding);
+            fromUtf16 = QStringEncoder(encoding);
         }
     }
 #if defined (QTEXTSTREAM_DEBUG)
-    qDebug("QTextStreamPrivate::fillReadBuffer(), using %s codec",
-           codec ? codec->name().constData() : "no");
-#endif
+    qDebug("QTextStreamPrivate::fillReadBuffer(), using %s encoding", QStringConverter::nameForEncoding(encoding));
 #endif
 
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::fillReadBuffer(), device->read(\"%s\", %d) == %d",
-           qt_prettyDebug(buf, qMin(32,int(bytesRead)) , int(bytesRead)).constData(), int(sizeof(buf)), int(bytesRead));
+           QtDebugUtils::toPrintable(buf, bytesRead, 32).constData(), int(sizeof(buf)), int(bytesRead));
 #endif
 
     int oldReadBufferSize = readBuffer.size();
-#if QT_CONFIG(textcodec)
-    // convert to unicode
-    readBuffer += Q_LIKELY(codec) ? codec->toUnicode(buf, bytesRead, &readConverterState)
-                                  : QString::fromLatin1(buf, bytesRead);
-#else
-    readBuffer += QString::fromLatin1(buf, bytesRead);
-#endif
+    readBuffer += toUtf16(QByteArrayView(buf, bytesRead));
 
     // remove all '\r\n' in the string.
     if (readBuffer.size() > oldReadBufferSize && textModeEnabled) {
-        QChar CR = QLatin1Char('\r');
+        QChar CR = u'\r';
         QChar *writePtr = readBuffer.data() + oldReadBufferSize;
         QChar *readPtr = readBuffer.data() + oldReadBufferSize;
         QChar *endPtr = readBuffer.data() + readBuffer.size();
@@ -525,7 +414,7 @@ bool QTextStreamPrivate::fillReadBuffer(qint64 maxBytes)
 
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::fillReadBuffer() read %d bytes from device. readBuffer = [%s]", int(bytesRead),
-           qt_prettyDebug(readBuffer.toLatin1(), readBuffer.size(), readBuffer.size()).data());
+           QtDebugUtils::toPrintable(readBuffer.toLatin1(), readBuffer.size(), readBuffer.size()).constData());
 #endif
     return true;
 }
@@ -563,33 +452,19 @@ void QTextStreamPrivate::flushWriteBuffer()
     bool textModeEnabled = device->isTextModeEnabled();
     if (textModeEnabled) {
         device->setTextModeEnabled(false);
-        writeBuffer.replace(QLatin1Char('\n'), QLatin1String("\r\n"));
+        writeBuffer.replace(u'\n', "\r\n"_L1);
     }
 #endif
 
-#if QT_CONFIG(textcodec)
-    if (!codec)
-        codec = QTextCodec::codecForLocale();
-#if defined (QTEXTSTREAM_DEBUG)
-    qDebug("QTextStreamPrivate::flushWriteBuffer(), using %s codec (%s generating BOM)",
-           codec ? codec->name().constData() : "no",
-           !codec || (writeConverterState.flags & QTextCodec::IgnoreHeader) ? "not" : "");
-#endif
-
-    // convert from unicode to raw data
-    // codec might be null if we're already inside global destructors (QTestCodec::codecForLocale returned null)
-    QByteArray data = Q_LIKELY(codec) ? codec->fromUnicode(writeBuffer.data(), writeBuffer.size(), &writeConverterState)
-                                      : writeBuffer.toLatin1();
-#else
-    QByteArray data = writeBuffer.toLatin1();
-#endif
+    QByteArray data = fromUtf16(writeBuffer);
     writeBuffer.clear();
+    hasWrittenData = true;
 
     // write raw data to the device
     qint64 bytesWritten = device->write(data);
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::flushWriteBuffer(), device->write(\"%s\") == %d",
-           qt_prettyDebug(data.constData(), qMin(data.size(),32), data.size()).constData(), int(bytesWritten));
+           QtDebugUtils::toPrintable(data.constData(), data.size(), 32).constData(), int(bytesWritten));
 #endif
 
 #if defined (Q_OS_WIN)
@@ -654,7 +529,6 @@ bool QTextStreamPrivate::scan(const QChar **ptr, int *length, int maxlen, TokenD
     int startOffset = device ? readBufferOffset : stringOffset;
     QChar lastChar;
 
-    bool canStillReadFromDevice = true;
     do {
         int endOffset;
         const QChar *chPtr;
@@ -685,9 +559,9 @@ bool QTextStreamPrivate::scan(const QChar **ptr, int *length, int maxlen, TokenD
                 }
                 break;
             case EndOfLine:
-                if (ch == QLatin1Char('\n')) {
+                if (ch == u'\n') {
                     foundToken = true;
-                    delimSize = (lastChar == QLatin1Char('\r')) ? 2 : 1;
+                    delimSize = (lastChar == u'\r') ? 2 : 1;
                     consumeDelimiter = true;
                 }
                 lastChar = ch;
@@ -696,7 +570,7 @@ bool QTextStreamPrivate::scan(const QChar **ptr, int *length, int maxlen, TokenD
         }
     } while (!foundToken
              && (!maxlen || totalSize < maxlen)
-             && (device && (canStillReadFromDevice = fillReadBuffer())));
+             && device && fillReadBuffer());
 
     if (totalSize == 0) {
 #if defined (QTEXTSTREAM_DEBUG)
@@ -709,7 +583,7 @@ bool QTextStreamPrivate::scan(const QChar **ptr, int *length, int maxlen, TokenD
     // don't make it part of the line.
     if (delimiter == EndOfLine && totalSize > 0 && !foundToken) {
         if (((string && stringOffset + totalSize == string->size()) || (device && device->atEnd()))
-            && lastChar == QLatin1Char('\r')) {
+            && lastChar == u'\r') {
             consumeDelimiter = true;
             ++delimSize;
         }
@@ -786,18 +660,8 @@ inline void QTextStreamPrivate::consume(int size)
 */
 inline void QTextStreamPrivate::saveConverterState(qint64 newPos)
 {
-#if QT_CONFIG(textcodec)
-    if (readConverterState.d) {
-        // converter cannot be copied, so don't save anything
-        // don't update readBufferStartDevicePos either
-        return;
-    }
-
-    if (!readConverterSavedState)
-        readConverterSavedState = new QTextCodec::ConverterState;
-    copyConverterStateHelper(readConverterSavedState, &readConverterState);
-#endif
-
+    // ### Hack, FIXME
+    memcpy((void *)&savedToUtf16, (void *)&toUtf16, sizeof(QStringDecoder));
     readBufferStartDevicePos = newPos;
     readConverterSavedStateOffset = 0;
 }
@@ -807,23 +671,17 @@ inline void QTextStreamPrivate::saveConverterState(qint64 newPos)
 */
 inline void QTextStreamPrivate::restoreToSavedConverterState()
 {
-#if QT_CONFIG(textcodec)
-    if (readConverterSavedState) {
-        // we have a saved state
-        // that means the converter can be copied
-        copyConverterStateHelper(&readConverterState, readConverterSavedState);
-    } else {
-        // the only state we could save was the initial
-        // so reset to that
-        resetCodecConverterStateHelper(&readConverterState);
-    }
-#endif
+    if (savedToUtf16.isValid())
+        memcpy((void *)&toUtf16, (void *)&savedToUtf16, sizeof(QStringDecoder));
+    else
+        toUtf16.resetState();
+    savedToUtf16 = QStringDecoder();
 }
 
 /*!
     \internal
 */
-void QTextStreamPrivate::write(const QChar *data, int len)
+void QTextStreamPrivate::write(const QChar *data, qsizetype len)
 {
     if (string) {
         // ### What about seek()??
@@ -853,7 +711,7 @@ inline void QTextStreamPrivate::write(QChar ch)
 /*!
     \internal
 */
-void QTextStreamPrivate::write(QLatin1String data)
+void QTextStreamPrivate::write(QLatin1StringView data)
 {
     if (string) {
         // ### What about seek()??
@@ -868,7 +726,7 @@ void QTextStreamPrivate::write(QLatin1String data)
 /*!
     \internal
 */
-void QTextStreamPrivate::writePadding(int len)
+void QTextStreamPrivate::writePadding(qsizetype len)
 {
     if (string) {
         // ### What about seek()??
@@ -933,7 +791,7 @@ inline void QTextStreamPrivate::putChar(QChar ch)
 /*!
     \internal
 */
-QTextStreamPrivate::PaddingResult QTextStreamPrivate::padding(int len) const
+QTextStreamPrivate::PaddingResult QTextStreamPrivate::padding(qsizetype len) const
 {
     Q_ASSERT(params.fieldWidth > len); // calling padding() when no padding is needed is an error
 
@@ -960,7 +818,7 @@ QTextStreamPrivate::PaddingResult QTextStreamPrivate::padding(int len) const
 /*!
     \internal
 */
-void QTextStreamPrivate::putString(const QChar *data, int len, bool number)
+void QTextStreamPrivate::putString(const QChar *data, qsizetype len, bool number)
 {
     if (Q_UNLIKELY(params.fieldWidth > len)) {
 
@@ -989,7 +847,7 @@ void QTextStreamPrivate::putString(const QChar *data, int len, bool number)
 /*!
     \internal
 */
-void QTextStreamPrivate::putString(QLatin1String data, bool number)
+void QTextStreamPrivate::putString(QLatin1StringView data, bool number)
 {
     if (Q_UNLIKELY(params.fieldWidth > data.size())) {
 
@@ -1002,7 +860,7 @@ void QTextStreamPrivate::putString(QLatin1String data, bool number)
             if (sign == locale.negativeSign() || sign == locale.positiveSign()) {
                 // write the sign before the padding, then skip it later
                 write(&sign, 1);
-                data = QLatin1String(data.data() + 1, data.size() - 1);
+                data = QLatin1StringView(data.data() + 1, data.size() - 1);
             }
         }
 
@@ -1012,6 +870,11 @@ void QTextStreamPrivate::putString(QLatin1String data, bool number)
     } else {
         write(data);
     }
+}
+
+void QTextStreamPrivate::putString(QUtf8StringView data, bool number)
+{
+    putString(data.toString(), number);
 }
 
 /*!
@@ -1052,7 +915,7 @@ QTextStream::QTextStream(QIODevice *device)
     Constructs a QTextStream that operates on \a string, using \a
     openMode to define the open mode.
 */
-QTextStream::QTextStream(QString *string, QIODevice::OpenMode openMode)
+QTextStream::QTextStream(QString *string, OpenMode openMode)
     : d_ptr(new QTextStreamPrivate(this))
 {
 #if defined (QTEXTSTREAM_DEBUG)
@@ -1070,7 +933,7 @@ QTextStream::QTextStream(QString *string, QIODevice::OpenMode openMode)
     openMode to define the open mode. Internally, the array is wrapped
     by a QBuffer.
 */
-QTextStream::QTextStream(QByteArray *array, QIODevice::OpenMode openMode)
+QTextStream::QTextStream(QByteArray *array, OpenMode openMode)
     : d_ptr(new QTextStreamPrivate(this))
 {
 #if defined (QTEXTSTREAM_DEBUG)
@@ -1097,7 +960,7 @@ QTextStream::QTextStream(QByteArray *array, QIODevice::OpenMode openMode)
 
     \snippet code/src_corelib_io_qtextstream.cpp 3
 */
-QTextStream::QTextStream(const QByteArray &array, QIODevice::OpenMode openMode)
+QTextStream::QTextStream(const QByteArray &array, OpenMode openMode)
     : d_ptr(new QTextStreamPrivate(this))
 {
 #if defined (QTEXTSTREAM_DEBUG)
@@ -1128,7 +991,7 @@ QTextStream::QTextStream(const QByteArray &array, QIODevice::OpenMode openMode)
     \snippet code/src_corelib_io_qtextstream.cpp 4
 */
 
-QTextStream::QTextStream(FILE *fileHandle, QIODevice::OpenMode openMode)
+QTextStream::QTextStream(FILE *fileHandle, OpenMode openMode)
     : d_ptr(new QTextStreamPrivate(this))
 {
 #if defined (QTEXTSTREAM_DEBUG)
@@ -1202,14 +1065,8 @@ bool QTextStream::seek(qint64 pos)
             return false;
         d->resetReadBuffer();
 
-#if QT_CONFIG(textcodec)
-        // Reset the codec converter states.
-        resetCodecConverterStateHelper(&d->readConverterState);
-        resetCodecConverterStateHelper(&d->writeConverterState);
-        delete d->readConverterSavedState;
-        d->readConverterSavedState = nullptr;
-        d->writeConverterState.flags |= QTextCodec::IgnoreHeader;
-#endif
+        d->toUtf16.resetState();
+        d->fromUtf16.resetState();
         return true;
     }
 
@@ -1253,11 +1110,9 @@ qint64 QTextStream::pos() const
         QTextStreamPrivate *thatd = const_cast<QTextStreamPrivate *>(d);
         thatd->readBuffer.clear();
 
-#if QT_CONFIG(textcodec)
         thatd->restoreToSavedConverterState();
         if (d->readBufferStartDevicePos == 0)
             thatd->autoDetectUnicode = true;
-#endif
 
         // Rewind the device to get to the current position Ensure that
         // readBufferOffset is unaffected by fillReadBuffer()
@@ -1305,7 +1160,7 @@ void QTextStream::skipWhiteSpace()
     replaced.
 
     \note This function resets locale to the default locale ('C')
-    and codec to the default codec, QTextCodec::codecForLocale().
+    and encoding to the default encoding, UTF-8.
 
     \sa device(), setString()
 */
@@ -1349,7 +1204,7 @@ QIODevice *QTextStream::device() const
 
     \sa string(), setDevice()
 */
-void QTextStream::setString(QString *string, QIODevice::OpenMode openMode)
+void QTextStream::setString(QString *string, OpenMode openMode)
 {
     Q_D(QTextStream);
     flush();
@@ -1547,7 +1402,8 @@ QTextStream::RealNumberNotation QTextStream::realNumberNotation() const
 /*!
     Sets the precision of real numbers to \a precision. This value
     describes the number of fraction digits QTextStream should
-    write when generating real numbers.
+    write when generating real numbers (FixedNotation, ScientificNotation), or
+    the maximum number of significant digits (SmartNotation).
 
     The precision cannot be a negative value. The default value is 6.
 
@@ -1566,7 +1422,9 @@ void QTextStream::setRealNumberPrecision(int precision)
 
 /*!
     Returns the current real number precision, or the number of fraction
-    digits QTextStream will write when generating real numbers.
+    digits QTextStream will write when generating real numbers
+    (FixedNotation, ScientificNotation), or the maximum number of significant
+    digits (SmartNotation).
 
     \sa setRealNumberNotation(), realNumberNotation(), numberFlags(), integerBase()
 */
@@ -1760,7 +1618,7 @@ QTextStreamPrivate::NumberParsingStatus QTextStreamPrivate::getNumber(qulonglong
         QChar ch;
         if (!getChar(&ch))
             return npsInvalidPrefix;
-        if (ch == QLatin1Char('0')) {
+        if (ch == u'0') {
             QChar ch2;
             if (!getChar(&ch2)) {
                 // Result is the number 0
@@ -1769,9 +1627,9 @@ QTextStreamPrivate::NumberParsingStatus QTextStreamPrivate::getNumber(qulonglong
             }
             ch2 = ch2.toLower();
 
-            if (ch2 == QLatin1Char('x')) {
+            if (ch2 == u'x') {
                 base = 16;
-            } else if (ch2 == QLatin1Char('b')) {
+            } else if (ch2 == u'b') {
                 base = 2;
             } else if (ch2.isDigit() && ch2.digitValue() >= 0 && ch2.digitValue() <= 7) {
                 base = 8;
@@ -1796,9 +1654,9 @@ QTextStreamPrivate::NumberParsingStatus QTextStreamPrivate::getNumber(qulonglong
     case 2: {
         QChar pf1, pf2, dig;
         // Parse prefix '0b'
-        if (!getChar(&pf1) || pf1 != QLatin1Char('0'))
+        if (!getChar(&pf1) || pf1 != u'0')
             return npsInvalidPrefix;
-        if (!getChar(&pf2) || pf2.toLower() != QLatin1Char('b'))
+        if (!getChar(&pf2) || pf2.toLower() != u'b')
             return npsInvalidPrefix;
         // Parse digits
         int ndigits = 0;
@@ -1824,13 +1682,13 @@ QTextStreamPrivate::NumberParsingStatus QTextStreamPrivate::getNumber(qulonglong
     case 8: {
         QChar pf, dig;
         // Parse prefix '0'
-        if (!getChar(&pf) || pf != QLatin1Char('0'))
+        if (!getChar(&pf) || pf != u'0')
             return npsInvalidPrefix;
         // Parse digits
         int ndigits = 0;
         while (getChar(&dig)) {
             int n = dig.toLower().unicode();
-            if (n >= '0' && n <= '7') {
+            if (isOctalDigit(n)) {
                 val *= 8;
                 val += n - '0';
             } else {
@@ -1887,20 +1745,17 @@ QTextStreamPrivate::NumberParsingStatus QTextStreamPrivate::getNumber(qulonglong
     case 16: {
         QChar pf1, pf2, dig;
         // Parse prefix ' 0x'
-        if (!getChar(&pf1) || pf1 != QLatin1Char('0'))
+        if (!getChar(&pf1) || pf1 != u'0')
             return npsInvalidPrefix;
-        if (!getChar(&pf2) || pf2.toLower() != QLatin1Char('x'))
+        if (!getChar(&pf2) || pf2.toLower() != u'x')
             return npsInvalidPrefix;
         // Parse digits
         int ndigits = 0;
         while (getChar(&dig)) {
-            int n = dig.toLower().unicode();
-            if (n >= '0' && n <= '9') {
+            const int h = fromHex(dig.unicode());
+            if (h != -1) {
                 val <<= 4;
-                val += n - '0';
-            } else if (n >= 'a' && n <= 'f') {
-                val <<= 4;
-                val += 10 + (n - 'a');
+                val += h;
             } else {
                 ungetChar(dig);
                 break;
@@ -2094,7 +1949,7 @@ QTextStream &QTextStream::operator>>(QChar &c)
     \overload
 
     Reads a character from the stream and stores it in \a c. The
-    character from the stream is converted to ISO-5589-1 before it is
+    character from the stream is converted to ISO-8859-1 before it is
     stored.
 
     \sa QChar::toLatin1()
@@ -2106,6 +1961,14 @@ QTextStream &QTextStream::operator>>(char &c)
     c = ch.toLatin1();
     return *this;
 }
+
+/*!
+    \fn QTextStream &QTextStream::operator>>(char16_t &c)
+    \overload
+    \since 6.4
+
+    Reads a character from the stream and stores it in \a c.
+*/
 
 /*!
     Reads an integer from the stream and stores it in \a i, then
@@ -2263,7 +2126,7 @@ QTextStream &QTextStream::operator>>(QString &str)
 /*!
     \overload
 
-    Converts the word to ISO-8859-1, then stores it in \a array.
+    Converts the word to UTF-8, then stores it in \a array.
 
     \sa QString::toLatin1()
 */
@@ -2272,7 +2135,6 @@ QTextStream &QTextStream::operator>>(QByteArray &array)
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
 
-    array.clear();
     d->scan(nullptr, nullptr, 0, QTextStreamPrivate::NotSpace);
     d->consumeLastToken();
 
@@ -2280,11 +2142,11 @@ QTextStream &QTextStream::operator>>(QByteArray &array)
     int length;
     if (!d->scan(&ptr, &length, 0, QTextStreamPrivate::Space)) {
         setStatus(ReadPastEnd);
+        array.clear();
         return *this;
     }
 
-    for (int i = 0; i < length; ++i)
-        array += ptr[i].toLatin1();
+    array = QStringView(ptr, length).toUtf8();
 
     d->consumeLastToken();
     return *this;
@@ -2293,13 +2155,14 @@ QTextStream &QTextStream::operator>>(QByteArray &array)
 /*!
     \overload
 
-    Stores the word in \a c, terminated by a '\\0' character. If no word is
-    available, only the '\\0' character is stored.
+    Converts the word to UTF-8 and stores it in \a c, terminated by a '\\0'
+    character. If no word is available, only the '\\0' character is stored.
 
     Warning: Although convenient, this operator is dangerous and must
     be used with care. QTextStream assumes that \a c points to a
     buffer with enough space to hold the word. If the buffer is too
-    small, your application may crash.
+    small, your application may crash. For a word consisting of \c{n} QChars,
+    the buffer needs to be at least \c{3*n+1} characters long.
 
     If possible, use the QByteArray operator instead.
 */
@@ -2318,9 +2181,9 @@ QTextStream &QTextStream::operator>>(char *c)
         return *this;
     }
 
-    for (int i = 0; i < length; ++i)
-        *c++ = ptr[i].toLatin1();
-    *c = '\0';
+    QStringEncoder encoder(QStringConverter::Utf8);
+    char *e = encoder.appendToBuffer(c, QStringView(ptr, length));
+    *e = '\0';
     d->consumeLastToken();
     return *this;
 }
@@ -2346,7 +2209,7 @@ void QTextStreamPrivate::putNumber(qulonglong number, bool negative)
     // add thousands group separators. For backward compatibility we
     // don't add a group separator for C locale.
     if (locale != QLocale::c() && !locale.numberOptions().testFlag(QLocale::OmitGroupSeparator))
-        flags |= QLocaleData::ThousandsGroup;
+        flags |= QLocaleData::GroupDigits;
 
     const QLocaleData *dd = locale.d->m_data;
     int base = params.integerBase ? params.integerBase : 10;
@@ -2365,8 +2228,8 @@ void QTextStreamPrivate::putNumber(qulonglong number, bool negative)
         // workaround for backward compatibility - in octal form with
         // ShowBase flag set zero should be written as '00'
         if (number == 0 && base == 8 && params.numberFlags & QTextStream::ShowBase
-            && result == QLatin1String("0")) {
-            result.prepend(QLatin1Char('0'));
+            && result == "0"_L1) {
+            result.prepend(u'0');
         }
     }
     putString(result, true);
@@ -2398,6 +2261,15 @@ QTextStream &QTextStream::operator<<(char c)
     d->putChar(QChar::fromLatin1(c));
     return *this;
 }
+
+/*!
+    \fn QTextStream &QTextStream::operator<<(char16_t c)
+    \overload
+    \since 6.3.1
+
+    Writes the Unicode character \a c to the stream, then returns a
+    reference to the QTextStream.
+*/
 
 /*!
     Writes the integer number \a i to the stream, then returns a
@@ -2562,7 +2434,7 @@ QTextStream &QTextStream::operator<<(double f)
         flags |= QLocaleData::AddTrailingZeroes | QLocaleData::ShowBase;
     }
     if (locale() != QLocale::c() && !(numberOptions & QLocale::OmitGroupSeparator))
-        flags |= QLocaleData::ThousandsGroup;
+        flags |= QLocaleData::GroupDigits;
     if (!(numberOptions & QLocale::OmitLeadingZeroInExponent))
         flags |= QLocaleData::ZeroPadExponent;
     if (numberOptions & QLocale::IncludeTrailingZeroesAfterDot)
@@ -2577,10 +2449,9 @@ QTextStream &QTextStream::operator<<(double f)
 /*!
     Writes the string \a string to the stream, and returns a reference
     to the QTextStream. The string is first encoded using the assigned
-    codec (the default codec is QTextCodec::codecForLocale()) before
-    it is written to the stream.
+    encoding (the default is UTF-8) before it is written to the stream.
 
-    \sa setFieldWidth(), setCodec()
+    \sa setFieldWidth(), setEncoding()
 */
 QTextStream &QTextStream::operator<<(const QString &string)
 {
@@ -2611,26 +2482,11 @@ QTextStream &QTextStream::operator<<(QStringView string)
     Writes \a string to the stream, and returns a reference to the
     QTextStream.
 */
-QTextStream &QTextStream::operator<<(QLatin1String string)
+QTextStream &QTextStream::operator<<(QLatin1StringView string)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
     d->putString(string);
-    return *this;
-}
-
-/*!
-    \since 5.6
-    \overload
-
-    Writes \a string to the stream, and returns a reference to the
-    QTextStream.
-*/
-QTextStream &QTextStream::operator<<(const QStringRef &string)
-{
-    Q_D(QTextStream);
-    CHECK_VALID_STREAM(*this);
-    d->putString(string.data(), string.size());
     return *this;
 }
 
@@ -2644,7 +2500,7 @@ QTextStream &QTextStream::operator<<(const QByteArray &array)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putString(QString::fromUtf8(array.constData(), array.length()));
+    d->putString(QString::fromUtf8(array.constData(), array.size()));
     return *this;
 }
 
@@ -2652,7 +2508,7 @@ QTextStream &QTextStream::operator<<(const QByteArray &array)
     \overload
 
     Writes the constant string pointed to by \a string to the stream. \a
-    string is assumed to be in ISO-8859-1 encoding. This operator
+    string is assumed to be in UTF-8 encoding. This operator
     is convenient when working with constant string data. Example:
 
     \snippet code/src_corelib_io_qtextstream.cpp 8
@@ -2665,8 +2521,7 @@ QTextStream &QTextStream::operator<<(const char *string)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    // ### Qt6: consider changing to UTF-8
-    d->putString(QLatin1String(string));
+    d->putString(QUtf8StringView(string));
     return *this;
 }
 
@@ -2689,144 +2544,6 @@ QTextStream &QTextStream::operator<<(const void *ptr)
     d->params.numberFlags = oldFlags;
     return *this;
 }
-
-/*!
-    \fn QTextStream &bin(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::bin() instead.
-*/
-
-/*!
-    \fn QTextStream &oct(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::oct() instead.
-*/
-
-/*!
-    \fn QTextStream &dec(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::dec() instead.
-*/
-
-/*!
-    \fn QTextStream &hex(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::hex() instead.
-*/
-
-/*!
-    \fn QTextStream &showbase(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::showbase() instead.
-*/
-
-/*!
-    \fn QTextStream &forcesign(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::forcesign() instead.
-*/
-
-/*!
-    \fn QTextStream &forcepoint(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::forcepoint() instead.
-*/
-
-/*!
-    \fn QTextStream &noshowbase(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::noshowbase() instead.
-*/
-
-/*!
-    \fn QTextStream &noforcesign(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::noforcesign() instead.
-*/
-
-/*!
-    \fn QTextStream &noforcepoint(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::noforcepoint() instead.
-*/
-
-/*!
-    \fn QTextStream &uppercasebase(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::uppercasebase() instead.
-*/
-
-/*!
-    \fn QTextStream &uppercasedigits(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::uppercasedigits() instead.
-*/
-
-/*!
-    \fn QTextStream &lowercasebase(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::lowercasebase() instead.
-*/
-
-/*!
-    \fn QTextStream &lowercasedigits(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::lowercasedigits() instead.
-*/
-
-/*!
-    \fn QTextStream &fixed(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::fixed() instead.
-*/
-
-/*!
-    \fn QTextStream &scientific(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::scientific() instead.
-*/
-
-/*!
-    \fn QTextStream &left(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::left() instead.
-*/
-
-/*!
-    \fn QTextStream &right(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::right() instead.
-*/
-
-/*!
-    \fn QTextStream &center(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::center() instead.
-*/
-
-/*!
-    \fn QTextStream &endl(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::endl() instead.
-*/
-
-/*!
-    \fn QTextStream &flush(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::flush() instead.
-*/
-
-/*!
-    \fn QTextStream &reset(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::reset() instead.
-*/
-
-/*!
-    \fn QTextStream &ws(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::ws() instead.
-*/
 
 namespace Qt {
 
@@ -3113,7 +2830,7 @@ QTextStream &center(QTextStream &stream)
 */
 QTextStream &endl(QTextStream &stream)
 {
-    return stream << QLatin1Char('\n') << Qt::flush;
+    return stream << '\n'_L1 << Qt::flush;
 }
 
 /*!
@@ -3178,17 +2895,11 @@ QTextStream &ws(QTextStream &stream)
     Equivalent to QTextStream::setRealNumberPrecision(\a precision).
 */
 
-#if QT_CONFIG(textcodec)
-/*!
-    \fn QTextStream &bom(QTextStream &stream)
-    \relates QTextStream
-    \obsolete Use Qt::bom() instead.
-*/
 
 namespace Qt {
 /*!
     Toggles insertion of the Byte Order Mark on \a stream when QTextStream is
-    used with a UTF codec.
+    used with a UTF encoding.
 
     \since 5.14
 
@@ -3202,75 +2913,66 @@ QTextStream &bom(QTextStream &stream)
 
 } // namespace Qt
 
+
 /*!
-    Sets the codec for this stream to \a codec. The codec is used for
+    Sets the encoding for this stream to \a encoding. The encoding is used for
     decoding any data that is read from the assigned device, and for
     encoding any data that is written. By default,
-    QTextCodec::codecForLocale() is used, and automatic unicode
+    QStringConverter::Utf8 is used, and automatic unicode
     detection is enabled.
 
     If QTextStream operates on a string, this function does nothing.
 
     \warning If you call this function while the text stream is reading
     from an open sequential socket, the internal buffer may still contain
-    text decoded using the old codec.
+    text decoded using the old encoding.
 
-    \sa codec(), setAutoDetectUnicode(), setLocale()
+    \sa encoding(), setAutoDetectUnicode(), setLocale()
 */
-void QTextStream::setCodec(QTextCodec *codec)
+void QTextStream::setEncoding(QStringConverter::Encoding encoding)
 {
     Q_D(QTextStream);
+    if (d->encoding == encoding)
+        return;
+
     qint64 seekPos = -1;
     if (!d->readBuffer.isEmpty()) {
         if (!d->device->isSequential()) {
             seekPos = pos();
         }
     }
-    d->codec = codec;
+
+    d->encoding = encoding;
+    d->toUtf16 = QStringDecoder(d->encoding);
+    bool generateBOM = !d->hasWrittenData && d->generateBOM;
+    d->fromUtf16 = QStringEncoder(d->encoding,
+                                  generateBOM ? QStringEncoder::Flag::WriteBom : QStringEncoder::Flag::Default);
+
     if (seekPos >=0 && !d->readBuffer.isEmpty())
         seek(seekPos);
 }
 
 /*!
-    Sets the codec for this stream to the QTextCodec for the encoding
-    specified by \a codecName. Common values for \c codecName include
-    "ISO 8859-1", "UTF-8", and "UTF-16". If the encoding isn't
-    recognized, nothing happens.
+    Returns the encoding that is current assigned to the stream.
 
-    Example:
-
-    \snippet code/src_corelib_io_qtextstream.cpp 10
-
-    \sa QTextCodec::codecForName(), setLocale()
+    \sa setEncoding(), setAutoDetectUnicode(), locale()
 */
-void QTextStream::setCodec(const char *codecName)
-{
-    QTextCodec *codec = QTextCodec::codecForName(codecName);
-    if (codec)
-        setCodec(codec);
-}
-
-/*!
-    Returns the codec that is current assigned to the stream.
-
-    \sa setCodec(), setAutoDetectUnicode(), locale()
-*/
-QTextCodec *QTextStream::codec() const
+QStringConverter::Encoding QTextStream::encoding() const
 {
     Q_D(const QTextStream);
-    return d->codec;
+    return d->encoding;
 }
 
 /*!
     If \a enabled is true, QTextStream will attempt to detect Unicode encoding
     by peeking into the stream data to see if it can find the UTF-8, UTF-16, or
     UTF-32 Byte Order Mark (BOM). If this mark is found, QTextStream will
-    replace the current codec with the UTF codec.
+    replace the current encoding with the UTF encoding.
 
-    This function can be used together with setCodec(). It is common
-    to set the codec to UTF-8, and then enable UTF-16 detection.
+    This function can be used together with setEncoding(). It is common
+    to set the encoding to UTF-8, and then enable UTF-16 detection.
 
-    \sa autoDetectUnicode(), setCodec(), QTextCodec::codecForUtfText()
+    \sa autoDetectUnicode(), setEncoding()
 */
 void QTextStream::setAutoDetectUnicode(bool enabled)
 {
@@ -3282,7 +2984,7 @@ void QTextStream::setAutoDetectUnicode(bool enabled)
     Returns \c true if automatic Unicode detection is enabled, otherwise
     returns \c false. Automatic Unicode detection is enabled by default.
 
-    \sa setAutoDetectUnicode(), setCodec(), QTextCodec::codecForUtfText()
+    \sa setAutoDetectUnicode(), setEncoding()
 */
 bool QTextStream::autoDetectUnicode() const
 {
@@ -3291,7 +2993,7 @@ bool QTextStream::autoDetectUnicode() const
 }
 
 /*!
-    If \a generate is true and a UTF codec is used, QTextStream will insert
+    If \a generate is true and a UTF encoding is used, QTextStream will insert
     the BOM (Byte Order Mark) before any data has been written to the
     device. If \a generate is false, no BOM will be inserted. This function
     must be called before any data is written. Otherwise, it does nothing.
@@ -3301,14 +3003,16 @@ bool QTextStream::autoDetectUnicode() const
 void QTextStream::setGenerateByteOrderMark(bool generate)
 {
     Q_D(QTextStream);
-    if (d->writeBuffer.isEmpty()) {
-        d->writeConverterState.flags.setFlag(QTextCodec::IgnoreHeader, !generate);
-    }
+    if (d->hasWrittenData || d->generateBOM == generate)
+        return;
+
+    d->generateBOM = generate;
+    d->fromUtf16 = QStringEncoder(d->encoding, generate ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default);
 }
 
 /*!
     Returns \c true if QTextStream is set to generate the UTF BOM (Byte Order
-    Mark) when using a UTF codec; otherwise returns \c false. UTF BOM generation is
+    Mark) when using a UTF encoding; otherwise returns \c false. UTF BOM generation is
     set to false by default.
 
     \sa setGenerateByteOrderMark()
@@ -3316,10 +3020,8 @@ void QTextStream::setGenerateByteOrderMark(bool generate)
 bool QTextStream::generateByteOrderMark() const
 {
     Q_D(const QTextStream);
-    return (d->writeConverterState.flags & QTextCodec::IgnoreHeader) == 0;
+    return d->generateBOM;
 }
-
-#endif
 
 /*!
     \since 4.5
@@ -3350,82 +3052,6 @@ QLocale QTextStream::locale() const
     Q_D(const QTextStream);
     return d->locale;
 }
-
-#if QT_DEPRECATED_SINCE(5, 15) && !defined(Q_QDOC)
-// Deprecated source compatible migration versions:
-namespace QTextStreamFunctions {
-QTextStream &bin(QTextStream &s) { return Qt::bin(s); }
-QTextStream &oct(QTextStream &s) { return Qt::oct(s); }
-QTextStream &dec(QTextStream &s) { return Qt::dec(s); }
-QTextStream &hex(QTextStream &s) { return Qt::hex(s); }
-
-QTextStream &showbase(QTextStream &s) { return Qt::showbase(s); }
-QTextStream &forcesign(QTextStream &s) { return Qt::forcesign(s); }
-QTextStream &forcepoint(QTextStream &s) { return Qt::forcepoint(s); }
-QTextStream &noshowbase(QTextStream &s) { return Qt::noshowbase(s); }
-QTextStream &noforcesign(QTextStream &s) { return Qt::noforcesign(s); }
-QTextStream &noforcepoint(QTextStream &s) { return Qt::noforcepoint(s); }
-
-QTextStream &uppercasebase(QTextStream &s) { return Qt::uppercasebase(s); }
-QTextStream &uppercasedigits(QTextStream &s) { return Qt::uppercasedigits(s); }
-QTextStream &lowercasebase(QTextStream &s) { return Qt::lowercasebase(s); }
-QTextStream &lowercasedigits(QTextStream &s) { return Qt::lowercasedigits(s); }
-
-QTextStream &fixed(QTextStream &s) { return Qt::fixed(s); }
-QTextStream &scientific(QTextStream &s) { return Qt::scientific(s); }
-
-QTextStream &left(QTextStream &s) { return Qt::left(s); }
-QTextStream &right(QTextStream &s) { return Qt::right(s); }
-QTextStream &center(QTextStream &s) { return Qt::center(s); }
-
-QTextStream &endl(QTextStream &s) { return Qt::endl(s); }
-QTextStream &flush(QTextStream &s) { return Qt::flush(s); }
-QTextStream &reset(QTextStream &s) { return Qt::reset(s); }
-
-QTextStream &ws(QTextStream &s) { return Qt::ws(s); }
-
-#if QT_CONFIG(textcodec)
-QTextStream &bom(QTextStream &s) { return Qt::bom(s); }
-#endif
-} // namespace QTextStreamFunctions
-#endif
-
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) && !defined(Q_QDOC)
-// Binary compatible definitions for Qt<5.14
-Q_CORE_EXPORT QTextStream &bin(QTextStream &s) { return Qt::bin(s); }
-Q_CORE_EXPORT QTextStream &oct(QTextStream &s) { return Qt::oct(s); }
-Q_CORE_EXPORT QTextStream &dec(QTextStream &s) { return Qt::dec(s); }
-Q_CORE_EXPORT QTextStream &hex(QTextStream &s) { return Qt::hex(s); }
-
-Q_CORE_EXPORT QTextStream &showbase(QTextStream &s) { return Qt::showbase(s); }
-Q_CORE_EXPORT QTextStream &forcesign(QTextStream &s) { return Qt::forcesign(s); }
-Q_CORE_EXPORT QTextStream &forcepoint(QTextStream &s) { return Qt::forcepoint(s); }
-Q_CORE_EXPORT QTextStream &noshowbase(QTextStream &s) { return Qt::noshowbase(s); }
-Q_CORE_EXPORT QTextStream &noforcesign(QTextStream &s) { return Qt::noforcesign(s); }
-Q_CORE_EXPORT QTextStream &noforcepoint(QTextStream &s) { return Qt::noforcepoint(s); }
-
-Q_CORE_EXPORT QTextStream &uppercasebase(QTextStream &s) { return Qt::uppercasebase(s); }
-Q_CORE_EXPORT QTextStream &uppercasedigits(QTextStream &s) { return Qt::uppercasedigits(s); }
-Q_CORE_EXPORT QTextStream &lowercasebase(QTextStream &s) { return Qt::lowercasebase(s); }
-Q_CORE_EXPORT QTextStream &lowercasedigits(QTextStream &s) { return Qt::lowercasedigits(s); }
-
-Q_CORE_EXPORT QTextStream &fixed(QTextStream &s) { return Qt::fixed(s); }
-Q_CORE_EXPORT QTextStream &scientific(QTextStream &s) { return Qt::scientific(s); }
-
-Q_CORE_EXPORT QTextStream &left(QTextStream &s) { return Qt::left(s); }
-Q_CORE_EXPORT QTextStream &right(QTextStream &s) { return Qt::right(s); }
-Q_CORE_EXPORT QTextStream &center(QTextStream &s) { return Qt::center(s); }
-
-Q_CORE_EXPORT QTextStream &endl(QTextStream &s) { return Qt::endl(s); }
-Q_CORE_EXPORT QTextStream &flush(QTextStream &s) { return Qt::flush(s); }
-Q_CORE_EXPORT QTextStream &reset(QTextStream &s) { return Qt::reset(s); }
-
-Q_CORE_EXPORT QTextStream &ws(QTextStream &s) { return Qt::ws(s); }
-
-#if QT_CONFIG(textcodec)
-Q_CORE_EXPORT QTextStream &bom(QTextStream &s) { return Qt::bom(s); }
-#endif
-#endif
 
 QT_END_NAMESPACE
 

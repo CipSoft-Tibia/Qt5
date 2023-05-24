@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@
 #include "base/containers/circular_deque.h"
 #include "base/files/file_path.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -27,11 +27,10 @@
 #include "content/common/content_export.h"
 #include "content/public/browser/download_manager_delegate.h"
 #include "content/public/browser/save_page_type.h"
-#include "content/public/browser/web_contents_observer.h"
 #include "content/public/common/referrer.h"
 #include "net/base/net_errors.h"
-#include "services/data_decoder/public/mojom/web_bundler.mojom.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
+#include "third_party/blink/public/mojom/frame/frame.mojom-forward.h"
 #include "url/gurl.h"
 
 class GURL;
@@ -42,12 +41,12 @@ class DownloadItemImpl;
 
 namespace content {
 class DownloadManagerImpl;
+class PageImpl;
 class FrameTreeNode;
 class RenderFrameHostImpl;
 class SaveFileManager;
 class SaveItem;
 class SavePackage;
-class WebContents;
 
 // SavePackage manages the process of saving a page as only-HTML, complete-HTML
 // or MHTML and provides status information about the job.
@@ -65,7 +64,6 @@ class WebContents;
 // saving job, and exist for the duration of one contents's life time.
 class CONTENT_EXPORT SavePackage
     : public base::RefCountedThreadSafe<SavePackage>,
-      public WebContentsObserver,
       public base::SupportsWeakPtr<SavePackage> {
  public:
   enum WaitState {
@@ -90,7 +88,10 @@ class CONTENT_EXPORT SavePackage
   // Constructor for user initiated page saving. This constructor results in a
   // SavePackage that will generate and sanitize a suggested name for the user
   // in the "Save As" dialog box.
-  explicit SavePackage(WebContents* web_contents);
+  explicit SavePackage(PageImpl& page);
+
+  SavePackage(const SavePackage&) = delete;
+  SavePackage& operator=(const SavePackage&) = delete;
 
   // Initialize the SavePackage. Returns true if it initializes properly.  Need
   // to make sure that this method must be called in the UI thread because using
@@ -145,8 +146,11 @@ class CONTENT_EXPORT SavePackage
   friend class WebContentsImpl;
   FRIEND_TEST_ALL_PREFIXES(SavePackageTest, TestSuggestedSaveNames);
   FRIEND_TEST_ALL_PREFIXES(SavePackageTest, TestLongSafePureFilename);
+  FRIEND_TEST_ALL_PREFIXES(SavePackageFencedFrameTest,
+                           DontRequestSavableResourcesFromFencedFrames);
   FRIEND_TEST_ALL_PREFIXES(SavePackageBrowserTest, ImplicitCancel);
   FRIEND_TEST_ALL_PREFIXES(SavePackageBrowserTest, ExplicitCancel);
+  FRIEND_TEST_ALL_PREFIXES(SavePackageBrowserTest, Reload);
   FRIEND_TEST_ALL_PREFIXES(SavePackageBrowserTest, DownloadItemDestroyed);
 
   // Map from SaveItem::id() (aka save_item_id) into a SaveItem.
@@ -162,30 +166,37 @@ class CONTENT_EXPORT SavePackage
 
   // Used only for testing. Bypasses the file and directory name generation /
   // sanitization by providing well known paths better suited for tests.
-  SavePackage(WebContents* web_contents,
+  SavePackage(PageImpl& page,
               SavePageType save_type,
               const base::FilePath& file_full_path,
               const base::FilePath& directory_full_path);
 
-  ~SavePackage() override;
+  ~SavePackage();
 
   void InitWithDownloadItem(
       SavePackageDownloadCreatedCallback download_created_callback,
       download::DownloadItemImpl* item);
 
-  // Callback for WebContents::GenerateMHTML() and
-  // WebContents::GenerateWebBundle().
-  void OnMHTMLOrWebBundleGenerated(int64_t size);
-
-  // Callback for WebContents::GenerateWebBundle().
-  void OnWebBundleGenerated(uint64_t size,
-                            data_decoder::mojom::WebBundlerError error);
+  // Callback for WebContents::GenerateMHTML().
+  void OnMHTMLGenerated(int64_t size);
 
   // Notes from Init() above applies here as well.
   void InternalInit();
 
   void Stop(bool cancel_download_item);
   void CheckFinish();
+
+  // Callback used to check if renaming is allowed once paths to saved filed
+  // have been obtained from `file_manager`.
+  void CheckRenameAllowedForPaths(
+      base::flat_map<base::FilePath, base::FilePath> tmp_paths_to_final_paths);
+
+  // Called by CheckRenameAllowedForPaths after checking if the final renaming
+  // step should happen or not.
+  void RenameIfAllowed(bool allowed);
+
+  // Clears the associated page.
+  void ClearPage();
 
   // Initiate a saving job of a specific URL. We send the request to
   // SaveFileManager, which will dispatch it to different approach according to
@@ -244,6 +255,7 @@ class CONTENT_EXPORT SavePackage
   // with the help of CreatePendingSaveItem, EnqueueSavableResource,
   // EnqueueFrame.
   void GetSavableResourceLinks();
+  void GetSavableResourceLinksForRenderFrameHost(RenderFrameHostImpl* rfh);
 
   // Helper for finding or creating a SaveItem with the given parameters.
   SaveItem* CreatePendingSaveItem(
@@ -308,11 +320,11 @@ class CONTENT_EXPORT SavePackage
   // Remove SaveItem from in progress map and put it to saved map.
   void PutInProgressItemToSavedMap(SaveItem* save_item);
 
-  // Retrieves the URL to be saved from the WebContents.
-  static GURL GetUrlToBeSaved(WebContents* web_contents);
+  // Retrieves the URL to be saved from the main frame.
+  static GURL GetUrlToBeSaved(RenderFrameHost* main_frame);
 
   static base::FilePath CreateDirectoryOnFileThread(
-      const base::string16& title,
+      const std::u16string& title,
       const GURL& page_url,
       bool can_save_as_complete,
       const std::string& mime_type,
@@ -342,6 +354,10 @@ class CONTENT_EXPORT SavePackage
   // which is not correct but matches the way the total and received number of
   // files is presented as the total and received bytes.
   int64_t CurrentSpeed() const;
+
+  // The current page, may be null if the primary page has been navigated away
+  // or destroyed.
+  base::WeakPtr<PageImpl> page_;
 
   // A queue for items we are about to start saving.
   base::circular_deque<std::unique_ptr<SaveItem>> waiting_item_queue_;
@@ -379,11 +395,11 @@ class CONTENT_EXPORT SavePackage
   SaveItemIdMap saved_success_items_;
 
   // Non-owning pointer for handling file writing on the download sequence.
-  SaveFileManager* file_manager_ = nullptr;
+  raw_ptr<SaveFileManager> file_manager_ = nullptr;
 
   // DownloadManager owns the download::DownloadItem and handles history and UI.
-  DownloadManagerImpl* download_manager_ = nullptr;
-  download::DownloadItemImpl* download_ = nullptr;
+  raw_ptr<DownloadManagerImpl> download_manager_ = nullptr;
+  raw_ptr<download::DownloadItemImpl> download_ = nullptr;
 
   // The URL of the page the user wants to save.
   const GURL page_url_;
@@ -391,7 +407,7 @@ class CONTENT_EXPORT SavePackage
   base::FilePath saved_main_directory_path_;
 
   // The title of the page the user wants to save.
-  const base::string16 title_;
+  const std::u16string title_;
 
   // Used to calculate package download speed (in files per second).
   const base::TimeTicks start_tick_;
@@ -432,8 +448,6 @@ class CONTENT_EXPORT SavePackage
   // UKM IDs for reporting.
   ukm::SourceId ukm_source_id_;
   uint64_t ukm_download_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(SavePackage);
 };
 
 }  // namespace content

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4COMPILERSCANFUNCTIONS_P_H
 #define QV4COMPILERSCANFUNCTIONS_P_H
 
@@ -96,15 +60,25 @@ public:
     void leaveEnvironment();
 
     void enterQmlFunction(QQmlJS::AST::FunctionExpression *ast)
-    { enterFunction(ast, false); }
+    { enterFunction(ast, FunctionNameContext::None); }
 
 protected:
+    // Function declarations add their name to the outer scope, but not the
+    // inner scope. Function expressions add their name to the inner scope,
+    // unless the name is actually picked from the outer scope rather than
+    // given after the function token. QML functions don't add their name
+    // anywhere because the name is already recorded in the QML element.
+    // This enum is used to control the behavior of enterFunction().
+    enum class FunctionNameContext {
+        None, Inner, Outer
+    };
+
     using Visitor::visit;
     using Visitor::endVisit;
 
     void checkDirectivePrologue(QQmlJS::AST::StatementList *ast);
 
-    void checkName(const QStringRef &name, const QQmlJS::SourceLocation &loc);
+    void checkName(QStringView name, const QQmlJS::SourceLocation &loc);
 
     bool visit(QQmlJS::AST::Program *ast) override;
     void endVisit(QQmlJS::AST::Program *) override;
@@ -125,7 +99,8 @@ protected:
     bool visit(QQmlJS::AST::FieldMemberExpression *) override;
     bool visit(QQmlJS::AST::ArrayPattern *) override;
 
-    bool enterFunction(QQmlJS::AST::FunctionExpression *ast, bool enterName);
+    bool enterFunction(QQmlJS::AST::FunctionExpression *ast,
+                       FunctionNameContext nameContext);
 
     void endVisit(QQmlJS::AST::FunctionExpression *) override;
 
@@ -168,7 +143,7 @@ protected:
 protected:
     bool enterFunction(QQmlJS::AST::Node *ast, const QString &name,
                        QQmlJS::AST::FormalParameterList *formals,
-                       QQmlJS::AST::StatementList *body, bool enterName);
+                       QQmlJS::AST::StatementList *body, FunctionNameContext nameContext);
 
     void calcEscapingVariables();
 // fields:

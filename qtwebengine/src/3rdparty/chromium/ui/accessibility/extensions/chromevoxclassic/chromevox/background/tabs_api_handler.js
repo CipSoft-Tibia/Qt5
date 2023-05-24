@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -208,15 +208,6 @@ cvox.TabsApiHandler.prototype = {
    * @private
    */
   refreshAutomationHandler_: function(tabId) {
-    if (!cvox.ChromeVox.isMac)
-      return;
-
-    chrome.automation.getTree(tabId, function(node) {
-      if (this.handler_)
-        this.handler_.removeAllListeners();
-
-      this.handler_ = new TabsAutomationHandler(node);
-    }.bind(this));
   },
 
   /**

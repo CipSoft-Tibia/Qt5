@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -98,13 +98,6 @@ InputMethodPrivate.prototype = {
    *     completes with a boolean indicating if the text was accepted or not.
    */
   setSelectionRange: function(parameters, callback) {},
-
-  /**
-   * Fires the input.ime.onMenuItemActivated event.
-   * @param {string} engineID ID of the engine to use.
-   * @param {string} name Name of the MenuItem which was activated
-   */
-  notifyImeMenuItemActivated: function(engineID, name) {},
 
   /**
    * Shows the input view window. If the input view window is already shown,
@@ -216,12 +209,6 @@ InputMethodPrivate.prototype = {
  * @type {!ChromeEvent}
  */
 InputMethodPrivate.prototype.onChanged;
-
-/**
- * Fired when the composition bounds or cursor bounds are changed.
- * @type {!ChromeEvent}
- */
-InputMethodPrivate.prototype.onCompositionBoundsChanged;
 
 /**
  * Fired when the custom spelling dictionary is loaded.

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QDirIterator>
@@ -52,13 +27,19 @@ private slots:
     void webXmlFromCpp();
     void webXmlFromQml();
     void webXmlFromCppBug80259();
+    void illformated_documentation();
 
-    // DocBook generator
+    // DocBook generator (wiht and without extensions)
     void docBookFromQDocFile();
     void docBookFromCpp();
     void docBookFromQml();
+    void docBookWithExtensionsFromQDocFile();
+    void docBookWithExtensionsFromCpp();
+    void docBookWithExtensionsFromQml();
 
     // Output format independent tests
+    void autoNavigation();
+    void tocBreadcrumbs();
     void examplesManifestXmlAndQhp();
     void ignoresinceVariable();
     void templateParameters();
@@ -66,6 +47,7 @@ private slots:
     void dontDocument();
     void inheritedQmlPropertyGroups();
     void crossModuleLinking();
+    void indexLinking();
     void includeFromExampleDirs();
     void singleExec();
     void preparePhase();
@@ -73,11 +55,22 @@ private slots:
     void noAutoList();
     void nestedMacro();
     void headerFile();
+    void usingDirective();
+    void properties();
+    void testTagFile();
+    void testGlobalFunctions();
+    void proxyPage();
+    void nonAsciiCharacterInput();
+    void lineComments();
+    void tableAfterValue();
+    void trailingBackslashes();
+    void modulestateCommand();
 
 private:
     QScopedPointer<QTemporaryDir> m_outputDir;
     QString m_qdoc;
     QDir m_expectedDir;
+    QString m_extraParams;
     bool m_regen = false;
 
     void runQDocProcess(const QStringList &arguments);
@@ -90,10 +83,20 @@ private:
 void tst_generatedOutput::initTestCase()
 {
     // Build the path to the QDoc binary the same way moc tests do for moc.
-    const auto binpath = QLibraryInfo::location(QLibraryInfo::BinariesPath);
+    const auto binpath = QLibraryInfo::path(QLibraryInfo::BinariesPath);
     const auto extension = QSysInfo::productType() == "windows" ? ".exe" : "";
     m_qdoc = binpath + QLatin1String("/qdoc") + extension;
-    m_expectedDir.setPath(QFINDTESTDATA(".") + QLatin1String("/expected_output"));
+    m_expectedDir.setPath(QFINDTESTDATA("expected_output"));
+
+    // Resolve the path to the file containing extra parameters
+    m_extraParams = QFileInfo(QTest::currentAppName()).dir().filePath("qdocincludepaths.inc");
+    if (!QFileInfo::exists(m_extraParams)) {
+        qWarning().nospace() << QStringLiteral("Cannot locate")
+                             << qUtf8Printable(m_extraParams);
+        m_extraParams.clear();
+    } else {
+        m_extraParams.insert(0, '@');
+    }
 }
 
 void tst_generatedOutput::init()
@@ -111,22 +114,23 @@ void tst_generatedOutput::runQDocProcess(const QStringList &arguments)
     QProcess qdocProcess;
     qdocProcess.setProgram(m_qdoc);
     qdocProcess.setArguments(arguments);
+
+    auto failQDoc = [&](QProcess::ProcessError) {
+        QFAIL(qPrintable(QStringLiteral("Running qdoc failed with exit code %1: %2")
+                .arg(qdocProcess.exitCode()).arg(qdocProcess.errorString())));
+    };
+    QObject::connect(&qdocProcess, &QProcess::errorOccurred, failQDoc);
+
     qdocProcess.start();
     qdocProcess.waitForFinished();
-
     if (qdocProcess.exitCode() == 0)
         return;
 
-    QString output = qdocProcess.readAllStandardOutput();
     QString errors = qdocProcess.readAllStandardError();
-
-    qInfo() << "QDoc exited with exit code" << qdocProcess.exitCode();
-    if (output.size() > 0)
-        qInfo() << "Received output:\n" << output;
-    if (errors.size() > 0)
-        qInfo() << "Received errors:\n" << errors;
-
-    QFAIL("Running QDoc failed. See output above.");
+    if (!errors.isEmpty())
+        qInfo().nospace() << "Received errors:\n" << qUtf8Printable(errors);
+    if (!QTest::currentTestFailed())
+        failQDoc(QProcess::UnknownError);
 }
 
 void tst_generatedOutput::compareLineByLine(const QStringList &expectedFiles)
@@ -137,12 +141,12 @@ void tst_generatedOutput::compareLineByLine(const QStringList &expectedFiles)
 
         QFile expectedFile(expected);
         if (!expectedFile.open(QIODevice::ReadOnly))
-            QFAIL("Cannot open expected data file!");
+            QFAIL(qPrintable(QString("Cannot open expected data file: %1").arg(expected)));
         QTextStream expectedIn(&expectedFile);
 
         QFile actualFile(actual);
         if (!actualFile.open(QIODevice::ReadOnly))
-            QFAIL("Cannot open actual data file!");
+            QFAIL(qPrintable(QString("Cannot open actual data file: %1").arg(actual)));
         QTextStream actualIn(&actualFile);
 
         const QLatin1String delim(": ");
@@ -177,15 +181,14 @@ void tst_generatedOutput::testAndCompare(const char *input, const char *outNames
 
     if (m_regen) {
         QVERIFY(m_expectedDir.mkpath(m_expectedDir.path()));
-        for (const auto &file : qAsConst(expectedOuts)) {
+        for (const auto &file : std::as_const(expectedOuts)) {
             QFileInfo fileInfo(m_expectedDir.filePath(file));
             fileInfo.dir().remove(fileInfo.fileName()); // Allowed to fail
             QVERIFY(m_expectedDir.mkpath(fileInfo.dir().path()));
-            QVERIFY(QFile::copy(m_outputDir->filePath(file),
-                                fileInfo.filePath()));
+            QVERIFY2(QFile::copy(m_outputDir->filePath(file), fileInfo.filePath()),
+                     qPrintable(QStringLiteral("Failed to copy '%1'").arg(file)));
         }
         QSKIP("Regenerated expected output only.");
-        return;
     }
 
     compareLineByLine(expectedOuts);
@@ -209,7 +212,10 @@ void tst_generatedOutput::htmlFromQDocFile()
 {
     testAndCompare("testdata/configs/test.qdocconf",
                    "qdoctests-qdocfileoutput.html "
-                   "qdoctests-qdocfileoutput-linking.html");
+                   "qdoctests-qdocfileoutput-linking.html "
+                   "qdoctests-qdocmanuallikefileoutput.html "
+                   "qdoctests-qdocfileoutput-exhaustive.html "
+                   "toc.html");
 }
 
 void tst_generatedOutput::htmlFromCpp()
@@ -218,24 +224,35 @@ void tst_generatedOutput::htmlFromCpp()
                    "testcpp-module.html "
                    "testqdoc-test.html "
                    "testqdoc-test-members.html "
+                   "testqdoc-test-obsolete.html "
                    "testqdoc-testderived.html "
                    "testqdoc-testderived-members.html "
                    "testqdoc-testderived-obsolete.html "
+                   "obsolete-classes.html "
+                   "autolinking.html "
+                   "cpptypes.html "
                    "testqdoc.html");
 }
 
 void tst_generatedOutput::htmlFromQml()
 {
     testAndCompare("testdata/configs/testqml.qdocconf",
+                   "qmlmodules.html "
                    "test-componentset-example.html "
                    "test-cmaketest-example.html "
                    "uicomponents-qmlmodule.html "
                    "qdoc-test-qmlmodule.html "
+                   "test-nover-qmlmodule.html "
                    "qml-qdoc-test-abstractparent.html "
                    "qml-qdoc-test-child.html "
+                   "qml-qdoc-test-yetanotherchild.html "
                    "qml-qdoc-test-doctest.html "
                    "qml-qdoc-test-type-members.html "
+                   "qml-qdoc-test-type-obsolete.html "
                    "qml-qdoc-test-type.html "
+                   "qml-qdoc-test-oldtype.html "
+                   "qml-test-nover-typenoversion.html "
+                   "qml-test-nover-typenoversion-members.html "
                    "qml-uicomponents-progressbar.html "
                    "qml-uicomponents-switch.html "
                    "qml-uicomponents-tabwidget.html "
@@ -255,7 +272,9 @@ void tst_generatedOutput::webXmlFromQDocFile()
 {
     testAndCompare("testdata/configs/webxml_test.qdocconf",
                    "html/qdoctests-qdocfileoutput.webxml "
-                   "html/qdoctests-qdocfileoutput-linking.webxml");
+                   "html/qdoctests-qdocmanuallikefileoutput.webxml "
+                   "html/qdoctests-qdocfileoutput-linking.webxml "
+                   "html/qdoctests-qdocfileoutput-exhaustive.webxml");
 }
 
 void tst_generatedOutput::webXmlFromCpp()
@@ -270,6 +289,7 @@ void tst_generatedOutput::webXmlFromQml()
 {
     testAndCompare("testdata/configs/webxml_testqml.qdocconf",
                    "html/test-componentset-example.webxml "
+                   "html/test-nover-qmlmodule.webxml "
                    "html/uicomponents-qmlmodule.webxml");
 }
 
@@ -282,11 +302,36 @@ void tst_generatedOutput::webXmlFromCppBug80259()
                    "html/index.webxml");
 }
 
+void tst_generatedOutput::illformated_documentation()
+{
+    testAndCompare("testdata/illformatted_documentation/illformatted_documentation.qdocconf",
+                   "html/illformatted-examples.webxml "
+                   "html/illformatteddocumentation-someexample-example.webxml "
+                   "html/illformatteddocumentation.index "
+                   "page-with-an-image-at-the-top.html "
+                   "page-with-comment-after-brief.html "
+                   "another-page-with-comments-in-the-brief.html "
+                   "page-with-comment-in-brief.html "
+                   "brief-adventures.html");
+}
+
+void tst_generatedOutput::tableAfterValue()
+{
+    testAndCompare("testdata/tables/table-after-value.qdocconf",
+                   "tableaftervalue/tableaftervalue-members.html "
+                   "tableaftervalue/tableaftervalue.html "
+                   "tableaftervalue/tableaftervalue.index "
+                   "tableaftervalue/tableaftervalue.webxml "
+                   "tableaftervalue/tableaftervalue.xml");
+}
+
 void tst_generatedOutput::docBookFromQDocFile()
 {
     testAndCompare("testdata/configs/docbook_test.qdocconf",
                    "docbook/qdoctests-qdocfileoutput.xml "
-                   "docbook/qdoctests-qdocfileoutput-linking.xml");
+                   "docbook/qdoctests-qdocmanuallikefileoutput.xml "
+                   "docbook/qdoctests-qdocfileoutput-linking.xml "
+                   "docbook/qdoctests-qdocfileoutput-exhaustive.xml");
 }
 
 void tst_generatedOutput::docBookFromCpp()
@@ -295,6 +340,7 @@ void tst_generatedOutput::docBookFromCpp()
                    "docbook/testcpp-module.xml "
                    "docbook/testqdoc-test.xml "
                    "docbook/testqdoc-testderived.xml "
+                   "docbook/cpptypes.xml "
                    "docbook/testqdoc.xml");
 }
 
@@ -304,21 +350,82 @@ void tst_generatedOutput::docBookFromQml()
                    "docbook/test-componentset-example.xml "
                    "docbook/uicomponents-qmlmodule.xml "
                    "docbook/qdoc-test-qmlmodule.xml "
+                   "docbook/test-nover-qmlmodule.xml "
                    "docbook/qml-qdoc-test-abstractparent.xml "
                    "docbook/qml-qdoc-test-child.xml "
+                   "docbook/qml-qdoc-test-yetanotherchild.xml "
                    "docbook/qml-qdoc-test-doctest.xml "
                    "docbook/qml-qdoc-test-type.xml "
+                   "docbook/qml-qdoc-test-oldtype.xml "
+                   "docbook/qml-test-nover-typenoversion.xml "
                    "docbook/qml-uicomponents-progressbar.xml "
                    "docbook/qml-uicomponents-switch.xml "
                    "docbook/qml-uicomponents-tabwidget.xml "
                    "docbook/qml-int.xml");
 }
 
+void tst_generatedOutput::docBookWithExtensionsFromQDocFile()
+{
+    testAndCompare("testdata/configs/docbookext_test.qdocconf",
+                   "docbookext/qdoctests-qdocfileoutput.xml "
+                   "docbookext/qdoctests-qdocmanuallikefileoutput.xml "
+                   "docbookext/qdoctests-qdocfileoutput-linking.xml "
+                   "docbookext/qdoctests-qdocfileoutput-exhaustive.xml");
+}
+
+void tst_generatedOutput::docBookWithExtensionsFromCpp()
+{
+    testAndCompare("testdata/configs/docbookext_testcpp.qdocconf",
+                   "docbookext/testcpp-module.xml "
+                   "docbookext/testqdoc-test.xml "
+                   "docbookext/testqdoc-testderived.xml "
+                   "docbookext/testqdoc.xml");
+}
+
+void tst_generatedOutput::docBookWithExtensionsFromQml()
+{
+    testAndCompare("testdata/configs/docbookext_testqml.qdocconf",
+                   "docbookext/test-componentset-example.xml "
+                   "docbookext/uicomponents-qmlmodule.xml "
+                   "docbookext/qdoc-test-qmlmodule.xml "
+                   "docbookext/test-nover-qmlmodule.xml "
+                   "docbookext/qml-qdoc-test-abstractparent.xml "
+                   "docbookext/qml-qdoc-test-child.xml "
+                   "docbookext/qml-qdoc-test-yetanotherchild.xml "
+                   "docbookext/qml-qdoc-test-doctest.xml "
+                   "docbookext/qml-qdoc-test-type.xml "
+                   "docbookext/qml-test-nover-typenoversion.xml "
+                   "docbookext/qml-uicomponents-progressbar.xml "
+                   "docbookext/qml-uicomponents-switch.xml "
+                   "docbookext/qml-uicomponents-tabwidget.xml "
+                   "docbookext/qml-int.xml");
+}
+
+void tst_generatedOutput::autoNavigation()
+{
+    // Same expected files as htmlFromQdocFile, but with auto-generated navigation links
+    testAndCompare("testdata/configs/tocnavigation.qdocconf",
+                   "qdoctests-qdocfileoutput.html "
+                   "qdoctests-qdocfileoutput-linking.html "
+                   "qdoctests-qdocfileoutput-exhaustive.html "
+                   "toc.html");
+}
+
+void tst_generatedOutput::tocBreadcrumbs()
+{
+    testAndCompare("testdata/configs/tocbreadcrumbs.qdocconf",
+                   "tocbreadcrumbs/qdoctests-qdocfileoutput.html "
+                   "tocbreadcrumbs/qdoctests-qdocfileoutput-linking.html "
+                   "tocbreadcrumbs/qdoctests-qdocfileoutput-exhaustive.html "
+                   "tocbreadcrumbs/toc-test.html");
+}
+
+
 void tst_generatedOutput::examplesManifestXmlAndQhp()
 {
     testAndCompare("testdata/configs/examples-qhp.qdocconf",
                    "examples-manifest.xml "
-                   "demos-manifest.xml "
+                   "test-demos-demo-example.html "
                    "test.qhp");
 }
 
@@ -334,6 +441,7 @@ void tst_generatedOutput::templateParameters()
     testAndCompare("testdata/configs/testtemplate.qdocconf",
                    "template/testqdoc-test.html "
                    "template/testqdoc-test-struct.html "
+                   "template/testqdoc-vec.html "
                    "template/foo.html "
                    "template/bar.html "
                    "template/baz.html");
@@ -343,6 +451,9 @@ void tst_generatedOutput::scopedEnum()
 {
     testAndCompare("testdata/configs/scopedenum.qdocconf",
                    "scopedenum/testqdoc-test.html "
+                   "scopedenum/scoped-enum-linking.html "
+                   "scopedenum/whatsnew.html "
+                   "scopedenum-docbook/scoped-enum-linking.xml "
                    "scopedenum-docbook/testqdoc-test.xml");
 }
 
@@ -357,17 +468,37 @@ void tst_generatedOutput::dontDocument()
 void tst_generatedOutput::inheritedQmlPropertyGroups()
 {
     testAndCompare("testdata/qmlpropertygroups/qmlpropertygroups.qdocconf",
-                   "qmlpropertygroups/qml-qdoc-test-anotherchild-members.html");
+                   "qmlpropertygroups/qml-qdoc-test-anotherchild-members.html "
+                   "qmlpropertygroups/qml-qdoc-test-parent.html "
+                   "qmlpropertygroups-docbook/qml-qdoc-test-parent.xml");
+}
+
+void tst_generatedOutput::indexLinking()
+{
+    {
+        QScopedValueRollback<bool> skipRegen(m_regen, false);
+        inheritedQmlPropertyGroups();
+    }
+    copyIndexFiles();
+    QString indexDir = QLatin1String("-indexdir ") +  m_outputDir->path();
+    testAndCompare("testdata/indexlinking/indexlinking.qdocconf",
+                   "index-linking.html "
+                   "qml-linkmodule-grandchild-members.html",
+                   indexDir.toLatin1().data());
 }
 
 void tst_generatedOutput::crossModuleLinking()
 {
-    htmlFromCpp();
+    {
+        QScopedValueRollback<bool> skipRegen(m_regen, false);
+        htmlFromCpp();
+    }
     copyIndexFiles();
     QString indexDir = QLatin1String("-indexdir ") +  m_outputDir->path();
     testAndCompare("testdata/crossmodule/crossmodule.qdocconf",
                    "crossmodule/testtype.html "
-                   "crossmodule/testtype-members.html",
+                   "crossmodule/testtype-members.html "
+                   "crossmodule/crossmoduleref-sub-crossmodule.html",
                    indexDir.toLatin1().data());
 }
 
@@ -387,6 +518,8 @@ void tst_generatedOutput::singleExec()
                    "testqdoc-test.html "
                    "testqdoc-test-members.html "
                    "testqdoc.html "
+                   "crossmoduleref.html "
+                   "crossmodule/all-namespaces.html "
                    "crossmodule/testtype.html "
                    "crossmodule/testtype-members.html",
                    "-single-exec");
@@ -423,7 +556,8 @@ void tst_generatedOutput::noAutoList()
 void tst_generatedOutput::nestedMacro()
 {
     testAndCompare("testdata/configs/nestedmacro.qdocconf",
-                   "nestedmacro/testcpp-module.html");
+                   "nestedmacro/testcpp-module.html "
+                   "docbook-nestedmacro/testcpp-module.xml");
 }
 
 void tst_generatedOutput::headerFile()
@@ -433,6 +567,103 @@ void tst_generatedOutput::headerFile()
                    "headerfile/headers.html "
                    "headerfile-docbook/testheader.xml "
                    "headerfile-docbook/headers.xml");
+}
+
+void tst_generatedOutput::usingDirective()
+{
+    testAndCompare("testdata/configs/usingdirective.qdocconf", "space.html");
+}
+
+void tst_generatedOutput::properties()
+{
+    if (m_extraParams.isEmpty() && !m_regen) {
+        QSKIP("Required include paths not available");
+    }
+
+    testAndCompare("testdata/configs/properties.qdocconf",
+                   "properties/testqdoc-testderived.html "
+                   "properties/testqdoc-testderived-members.html "
+                   "properties/qml-thetype.html "
+                   "properties/testcpp.index "
+                   "properties-docbook/testqdoc-testderived.xml",
+                   m_extraParams.toLatin1().data());
+}
+
+void tst_generatedOutput::testTagFile()
+{
+    testAndCompare("testdata/configs/tagfiles.qdocconf", "testtagfile.tags");
+}
+
+void tst_generatedOutput::testGlobalFunctions()
+{
+    testAndCompare("testdata/configs/testglobals.qdocconf", "globals.html");
+}
+
+void tst_generatedOutput::proxyPage()
+{
+    testAndCompare("testdata/proxypage/proxypage.qdocconf",
+                   "proxypage/stdpair-proxypage-proxy.html "
+                   "proxypage-docbook/stdpair-proxypage-proxy.xml");
+}
+
+void tst_generatedOutput::nonAsciiCharacterInput()
+{
+    testAndCompare(
+            "testdata/non_ascii_character_input/non_ascii_character_input.qdocconf",
+            "html/nonasciicharacterinput.index "
+            "html/mozzarella-7c883eff.webxml "
+            "html/santa-14209312.webxml "
+            "html/seite-mit-ausschlie-lich-gro-buchstaben-im-titel-berschrift-htm-bfa91582.webxml "
+            "html/8b5c72eb.webxml "
+            "html/e85685de.webxml "
+            "seite-mit-ausschlie-lich-gro-buchstaben-im-titel-berschrift-htm-bfa91582.html "
+            "mozzarella-7c883eff.html "
+            "santa-14209312.html "
+            "8b5c72eb.html "
+            "e85685de.html "
+            "adventures-with-non-ascii-characters.html");
+}
+
+void tst_generatedOutput::lineComments()
+{
+    testAndCompare(
+       "testdata/line_comments/line_comments.qdocconf",
+
+   "linecomments/a-page-with-a-line-comment-in-the-see-also-command.html "
+            "linecomments/a-page-with-a-line-comment-in-the-see-also-command.webxml "
+            "linecomments/a-page-with-a-line-comment-in-the-see-also-command.xml "
+            "linecomments/another-page-with-an-image-at-the-top.html "
+            "linecomments/another-page-with-an-image-at-the-top.webxml "
+            "linecomments/another-page-with-an-image-at-the-top.xml "
+            "linecomments/line-comment-adventures.html "
+            "linecomments/line-comment-adventures.webxml "
+            "linecomments/line-comment-adventures.xml"
+    );
+}
+
+void tst_generatedOutput::trailingBackslashes()
+{
+    testAndCompare("testdata/trailing_backslashes/trailingbackslashes.qdocconf",
+                   "trailingbackslashes/struct-members.html "
+                   "trailingbackslashes/struct.html "
+                   "trailingbackslashes/struct.webxml "
+                   "trailingbackslashes/struct.xml "
+                   "trailingbackslashes/trailingbackslashes.index");
+}
+
+void tst_generatedOutput::modulestateCommand()
+{
+    testAndCompare("testdata/modulestate/modulestate.qdocconf",
+                   "modulestate/boringclass.html "
+                   "modulestate/boringclass.webxml "
+                   "modulestate/boringclass.xml "
+                   "modulestate/excitingclass.html "
+                   "modulestate/excitingclass.webxml "
+                   "modulestate/excitingclass.xml "
+                   "modulestate/moduleinstate-module.html "
+                   "modulestate/moduleinstate-module.webxml "
+                   "modulestate/moduleinstate-module.xml "
+                   "modulestate/modulestate.index");
 }
 
 int main(int argc, char *argv[])

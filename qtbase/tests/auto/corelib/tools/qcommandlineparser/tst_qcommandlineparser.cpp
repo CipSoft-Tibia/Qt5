@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 David Faure <faure@kde.org>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 David Faure <faure@kde.org>
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#if QT_CONFIG(process)
+#include <QProcess>
+#endif
 #include <QtCore/QCommandLineParser>
 
 Q_DECLARE_METATYPE(char**)
@@ -63,6 +42,7 @@ private slots:
     void testDefaultValue();
     void testProcessNotCalled();
     void testEmptyArgsList();
+    void testNoApplication();
     void testMissingOptionValue();
     void testStdinArgument_data();
     void testStdinArgument();
@@ -392,6 +372,34 @@ void tst_QCommandLineParser::testEmptyArgsList()
     QVERIFY(!parser.parse(QStringList())); // invalid call, argv[0] is missing
 }
 
+void tst_QCommandLineParser::testNoApplication()
+{
+    QCommandLineOption option(QStringLiteral("param"), QStringLiteral("Pass parameter to the backend."));
+    option.setValueName("key=value");
+    QCommandLineParser parser;
+    QVERIFY(parser.addOption(option));
+    {
+        QVERIFY(parser.parse(QStringList() << "tst" << "--param" << "key1=value1"));
+        QVERIFY(parser.isSet("param"));
+        QCOMPARE(parser.values("param"), QStringList() << "key1=value1");
+        QCOMPARE(parser.value("param"), QString("key1=value1"));
+    }
+    {
+        QVERIFY(parser.parse(QStringList() << "tst" << "--param" << "key1=value1" << "--param" << "key2=value2"));
+        QVERIFY(parser.isSet("param"));
+        QCOMPARE(parser.values("param"), QStringList() << "key1=value1" << "key2=value2");
+        QCOMPARE(parser.value("param"), QString("key2=value2"));
+    }
+
+    const QString expected =
+        "Usage: <executable_name> [options]\n"
+        "\n"
+        "Options:\n"
+        "  --param <key=value>  Pass parameter to the backend.\n";
+
+    QCOMPARE(parser.helpText(), expected);
+}
+
 void tst_QCommandLineParser::testMissingOptionValue()
 {
     QCoreApplication app(empty_argc, empty_argv);
@@ -495,7 +503,7 @@ void tst_QCommandLineParser::testSingleDashWordOptionModes()
     QVERIFY(parser.addOption(forceShort));
     QVERIFY(parser.parse(commandLine));
     QCOMPARE(parser.optionNames(), expectedOptionNames);
-    for (int i = 0; i < expectedOptionValues.count(); ++i)
+    for (int i = 0; i < expectedOptionValues.size(); ++i)
         QCOMPARE(parser.value(parser.optionNames().at(i)), expectedOptionValues.at(i));
     QCOMPARE(parser.unknownOptionNames(), QStringList());
 }
@@ -525,10 +533,9 @@ void tst_QCommandLineParser::testVersionOption()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#else
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#elif defined(Q_OS_ANDROID)
     QSKIP("Deploying executable applications to file system on Android not supported.");
-#endif
+#else
 
     QCoreApplication app(empty_argc, empty_argv);
     QProcess process;
@@ -546,7 +553,7 @@ void tst_QCommandLineParser::testVersionOption()
 static const char expectedOptionsHelp[] =
         "Options:\n"
         "  -h, --help                  Displays help on commandline options.\n"
-        "  --help-all                  Displays help including Qt specific options.\n"
+        "  --help-all                  Displays help, including generic Qt options.\n"
         "  -v, --version               Displays version information.\n"
         "  --load <url>                Load file from URL.\n"
         "  -o, --output <file>         Set output file.\n"
@@ -593,10 +600,9 @@ void tst_QCommandLineParser::testHelpOption()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#else
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#elif defined(Q_OS_ANDROID)
     QSKIP("Deploying executable applications to file system on Android not supported.");
-#endif
+#else
 
     QFETCH(QCommandLineParser::SingleDashWordOptionMode, parsingMode);
     QFETCH(QString, expectedHelpOutput);
@@ -641,7 +647,7 @@ void tst_QCommandLineParser::testQuoteEscaping()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#elif defined(Q_OS_ANDROID)
     QSKIP("Deploying executable applications to file system on Android not supported.");
 #else
     QCoreApplication app(empty_argc, empty_argv);
@@ -667,7 +673,7 @@ void tst_QCommandLineParser::testUnknownOption()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#elif defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#elif defined(Q_OS_ANDROID)
     QSKIP("Deploying executable applications to file system on Android not supported.");
 #else
     QCoreApplication app(empty_argc, empty_argv);
@@ -718,7 +724,7 @@ void tst_QCommandLineParser::testHelpAll()
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
 #else
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#ifdef Q_OS_ANDROID
     QSKIP("Deploying executable applications to file system on Android not supported.");
 #endif
 
@@ -742,10 +748,9 @@ void tst_QCommandLineParser::testVeryLongOptionNames()
 {
 #if !QT_CONFIG(process)
     QSKIP("This test requires QProcess support");
-#else
-#if defined(Q_OS_ANDROID) && !defined(Q_OS_ANDROID_EMBEDDED)
+#elif defined(Q_OS_ANDROID)
     QSKIP("Deploying executable applications to file system on Android not supported.");
-#endif
+#else
 
     QCoreApplication app(empty_argc, empty_argv);
     QProcess process;
@@ -757,7 +762,7 @@ void tst_QCommandLineParser::testVeryLongOptionNames()
     output.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
 #endif
     const QStringList lines = output.split('\n');
-    const int last = lines.count() - 1;
+    const int last = lines.size() - 1;
     // Let's not compare everything, just the final parts.
     QCOMPARE(lines.at(last - 7), "                                                     cdefghijklmnopqrstuvwxyz");
     QCOMPARE(lines.at(last - 6), "  --looooooooooooong-option, --looooong-opt-alias <l Short description");

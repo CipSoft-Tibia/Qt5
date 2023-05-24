@@ -1,40 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-import QtTest 1.0
-import QtQuick 2.0
-import QtQuick.Window 2.3
+import QtTest
+import QtQuick
+import QtQuick.Window
+import "inputpanel/utils.js" as Utils
 
 Rectangle {
     id: container
-    width: 400
-    height: 400
+    width: 800
+    height: 640
     color: "blue"
 
     Component {
@@ -79,12 +54,19 @@ Rectangle {
         }
 
         function prepareTest(data, skipIfFail) {
+            // Skip hwr tests early if handwriting feature is not available
+            if (data !== undefined && data.hasOwnProperty("initHwrMode") && data.initHwrMode) {
+                if (!inputPanel.isHandwritingFeatureAvailable())
+                    skip("Handwriting feature not available")
+            }
+
             inputPanel.setWclAutoHideDelay(data !== undefined && data.hasOwnProperty("wclAutoHideDelay") ? data.wclAutoHideDelay : 5000)
             inputPanel.setWclAlwaysVisible(data !== undefined && data.hasOwnProperty("wclAlwaysVisible") && data.wclAlwaysVisible)
             inputPanel.setWclAutoCommitWord(data !== undefined && data.hasOwnProperty("wclAutoCommitWord") && data.wclAutoCommitWord)
             inputPanel.setFullScreenMode(data !== undefined && data.hasOwnProperty("fullScreenMode") && data.fullScreenMode)
             inputPanel.setExternalLanguageSwitchEnabled(data !== undefined && data.hasOwnProperty("externalLanguageSwitchEnabled") && data.externalLanguageSwitchEnabled)
             inputPanel.setLayoutMirroring(data !== undefined && data.hasOwnProperty("layoutMirroring") && data.layoutMirroring)
+            inputPanel.setVisibleFunctionKeys(data !== undefined && data.hasOwnProperty("visibleFunctionKeys") ? data.visibleFunctionKeys : ["All"])
 
             var window = container.Window.window
             verify(window)
@@ -93,7 +75,6 @@ Rectangle {
             tryCompare(window, "active", true)
 
             container.forceActiveFocus()
-            waitForRendering(container)
             if (data !== undefined && data.hasOwnProperty("initText")) {
                 textInput.text = data.initText
                 textInput.cursorPosition = data.hasOwnProperty("initCursorPosition") ? data.initCursorPosition : textInput.text.length
@@ -108,7 +89,6 @@ Rectangle {
             handwritingInputPanel.available = false
             inputPanel.setHandwritingMode(false)
             textInput.forceActiveFocus()
-            waitForRendering(inputPanel)
             var activeLocales = data !== undefined && data.hasOwnProperty("activeLocales") ? data.activeLocales : []
             inputPanel.setActiveLocales(activeLocales)
             var locale = data !== undefined && data.hasOwnProperty("initLocale") ? data.initLocale : "en_GB"
@@ -138,6 +118,7 @@ Rectangle {
                 }
                 verify(inputPanel.setInputMode(inputMode))
             }
+            waitForRendering(inputPanel)
             verify(inputPanel.visible === true)
             verify(textInput.activeFocus === true)
         }
@@ -212,6 +193,20 @@ Rectangle {
                                property var wclAlwaysVisible: VirtualKeyboardSettings.wordCandidateList.alwaysVisible; \
                                property var wclAutoCommitWord: VirtualKeyboardSettings.wordCandidateList.autoCommitWord; \
                                property var fullScreenMode: VirtualKeyboardSettings.fullScreenMode; }" },
+                // without versions
+                { qml: "import QtQuick; \
+                        import QtQuick.VirtualKeyboard; \
+                        import QtQuick.VirtualKeyboard.Styles; \
+                        import QtQuick.VirtualKeyboard.Settings; \
+                        import QtQuick.VirtualKeyboard.Plugins; \
+                        Item {}" },
+                // virtual keyboard 5.15
+                { qml: "import QtQuick 2.7; \
+                        import QtQuick.VirtualKeyboard 2.3; \
+                        import QtQuick.VirtualKeyboard.Styles 2.1; \
+                        import QtQuick.VirtualKeyboard.Settings 2.2; \
+                        import QtQuick.VirtualKeyboard.Plugins 2.3; \
+                        Item {}" },
             ]
         }
 
@@ -251,7 +246,13 @@ Rectangle {
             Qt.inputMethod.hide()
             verify(inputPanel.visible === false)
 
+            // Should not become visible because the active focus is set to container
             Qt.inputMethod.show()
+            waitForRendering(inputPanel)
+            verify(inputPanel.visible === false)
+
+            // Should become visible because of previously called show() and focus set to input control
+            textInput.forceActiveFocus()
             waitForRendering(inputPanel)
             verify(inputPanel.visible === true)
 
@@ -391,7 +392,6 @@ Rectangle {
                 { initLocale: "pt_BR", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "ol\u00E1", outputText: "Ol\u00E1" },
                 { initLocale: "pt_PT", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "ol\u00E1", outputText: "Ol\u00E1" },
                 { initLocale: "ru_RU", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "\u043F\u0440\u0438\u0432\u0435\u0442", outputText: "\u041F\u0440\u0438\u0432\u0435\u0442" },
-                { initLocale: "ru_RU", initInputMethodHints: Qt.ImhNoPredictiveText, initInputMode: "Latin", inputSequence: "hello", outputText: "Hello" },
                 { initLocale: "sr_SP", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "\u0437\u0434\u0440\u0430\u0432\u043E", outputText: "\u0417\u0434\u0440\u0430\u0432\u043E" },
                 { initLocale: "sv_SE", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "hall\u00E5", outputText: "Hall\u00E5" },
                 { initLocale: "sq_AL", initInputMethodHints: Qt.ImhNoPredictiveText, inputSequence: "përshëndetje", outputText: "Përshëndetje" },
@@ -412,7 +412,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -441,7 +440,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -473,7 +471,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -519,7 +516,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -624,16 +620,13 @@ Rectangle {
 
             inputPanel.setStyle("retro")
             inputPanel.styleSpy.wait()
-            waitForRendering(inputPanel)
 
             inputPanel.setStyle("default")
             inputPanel.styleSpy.wait()
-            waitForRendering(inputPanel)
 
             compare(inputPanel.styleSpy.count, 2)
 
             inputPanel.setStyle(origStyle)
-            waitForRendering(inputPanel)
         }
 
         function test_soundEffects() {
@@ -653,9 +646,9 @@ Rectangle {
 
         function test_navigationKeyInputSequence_data() {
             return [
-                { initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: "\u00E1\u017C", outputText: "\u00E1\u017C" },
-                { initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: "~123qwe", outputText: "~123qwe" },
-                { initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: [ Qt.Key_Shift, Qt.Key_V, Qt.Key_K, Qt.Key_B, Qt.Key_Return ], outputText: "VKB\n" },
+                { initialKey: Qt.Key_Space, initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: "\u00E1\u017C", outputText: "\u00E1\u017C" },
+                { initialKey: Qt.Key_Space, initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: "~123qwe", outputText: "~123qwe" },
+                { initialKey: Qt.Key_Space, initInputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase, inputSequence: [ Qt.Key_Shift, Qt.Key_Shift, Qt.Key_V, Qt.Key_K, Qt.Key_B, Qt.Key_Return ], outputText: "VKB\n" },
             ]
         }
 
@@ -666,20 +659,20 @@ Rectangle {
                 skip("Arrow key navigation not enabled")
 
             verify(inputPanel.naviationHighlight.visible)
+            verify(inputPanel.navigateToKey(data.initialKey))
 
             for (var inputIndex in data.inputSequence) {
                 verify(inputPanel.navigationKeyClick(data.inputSequence[inputIndex]))
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
         function test_navigationCursorWrap_data() {
             return [
-                { initialKey: Qt.Key_Q, navigationKey: Qt.Key_Up, navigationKeyRepeat: 4 },
-                { initialKey: Qt.Key_Q, navigationKey: Qt.Key_Down, navigationKeyRepeat: 4 },
+                { initialKey: Qt.Key_W, navigationKey: Qt.Key_Up, navigationKeyRepeat: 4 },
+                { initialKey: Qt.Key_W, navigationKey: Qt.Key_Down, navigationKeyRepeat: 4 },
                 { initialKey: Qt.Key_T, navigationKey: Qt.Key_Up, navigationKeyRepeat: 4 },
                 { initialKey: Qt.Key_T, navigationKey: Qt.Key_Down, navigationKeyRepeat: 4 },
                 { initialKey: Qt.Key_Backspace, navigationKey: Qt.Key_Up, navigationKeyRepeat: 4 },
@@ -712,7 +705,7 @@ Rectangle {
                 }
             }
 
-            verify(inputPanel.keyboardInputArea.initialKey === initialKeyObj)
+            compare(inputPanel.keyboardInputArea.initialKey, initialKeyObj)
         }
 
         function test_navigationCursorAndWordCandidateView() {
@@ -752,7 +745,10 @@ Rectangle {
 
             // Move focus to the next item in the list
             var previousHighlightIndex = inputPanel.wordCandidateView.currentIndex
+            inputPanel.wordCandidateListCurrentIndexSpy.clear()
             inputPanel.emulateNavigationKeyClick(Qt.Key_Right)
+            inputPanel.wordCandidateListCurrentIndexSpy.wait()
+            compare(inputPanel.wordCandidateListCurrentIndexSpy.count, 1)
             compare(inputPanel.wordCandidateView.currentIndex, previousHighlightIndex + 1)
 
             // Move focus to previously focused key on keyboard and back
@@ -768,7 +764,10 @@ Rectangle {
             for (previousHighlightIndex = inputPanel.wordCandidateView.currentIndex;
                  previousHighlightIndex < inputPanel.wordCandidateView.count - 1;
                  previousHighlightIndex++) {
+                inputPanel.wordCandidateListCurrentIndexSpy.clear()
                 inputPanel.emulateNavigationKeyClick(Qt.Key_Right)
+                inputPanel.wordCandidateListCurrentIndexSpy.wait()
+                compare(inputPanel.wordCandidateListCurrentIndexSpy.count, 1)
                 compare(inputPanel.wordCandidateView.currentIndex, previousHighlightIndex + 1)
             }
 
@@ -828,7 +827,7 @@ Rectangle {
 
             var keysTraversed = []
             do {
-                verify(keysTraversed.indexOf(inputPanel.keyboardInputArea.initialKey) === -1)
+                compare(keysTraversed.indexOf(inputPanel.keyboardInputArea.initialKey), -1)
                 var currentKey = inputPanel.keyboardInputArea.initialKey
                 keysTraversed.push(currentKey)
                 inputPanel.emulateNavigationKeyClick(Qt.Key_Right)
@@ -863,7 +862,6 @@ Rectangle {
             for (var inputIndex in data.inputSequence) {
                 verify(inputPanel.virtualKeyClick(data.inputSequence[inputIndex]))
             }
-            waitForRendering(inputPanel)
 
             if (inputPanel.wordCandidateListVisibleHint) {
                 if (data.hasOwnProperty("expectedSuggestion")) {
@@ -885,16 +883,13 @@ Rectangle {
         function test_spellCorrectionAutomaticSpaceInsertion_data() {
             return [
                 { inputSequence: ['h','e','l','l','o',Qt.Key_Select,'w','o','r','l','d'], outputText: "Hello world" },
-                { inputSequence: ['h','e','l','l','o','\'','s',Qt.Key_Select,'w','o','r','l','d'], outputText: "Hello's world" },
+                { inputSequence: ['k','e','l','l','y','\'','s',Qt.Key_Select,'w','o','r','l','d'], outputText: "Kelly's world" },
                 { inputSequence: ['h','e','l','l','o','s','\'',Qt.Key_Select,'w','o','r','l','d'], outputText: "Hellos' world" },
                 { inputSequence: ['h','e','l','l','o','-','w','o','r','l','d'], outputText: "Hello-world" },
                 { inputSequence: ['h','e','l','l','o',Qt.Key_Select,'.','w','o','r','l','d'], outputText: "Hello. World" },
                 { inputSequence: ['h','e','l','l','o',Qt.Key_Select,',','w','o','r','l','d'], outputText: "Hello, world" },
                 { inputSequence: ['h','e','l','l','o','.',Qt.Key_Backspace,'w','o','r','l','d'], outputText: "Helloworld" },
                 { inputSequence: ['h','e','l','l','o',' ',Qt.Key_Backspace,'w','o','r','l','d'], outputText: "Helloworld" },
-                { inputSequence: ['h','e','l','l','o',Qt.Key_Select,'w','o','r','l','d',':-)'], outputText: "Hello world :-)" },
-                { inputSequence: ['h','e','l','l','o',Qt.Key_Select,'w','o','r','l','d',':-)',':-)'], outputText: "Hello world :-) :-)" },
-                { inputSequence: ['h','e','l','l','o',Qt.Key_Select,':-)'], outputText: "Hello :-)" },
                 { initText: "Hekko world", selectionStart: 2, selectionEnd: 4, inputSequence: ['l','l'], outputText: "Hello world" },
             ]
         }
@@ -912,7 +907,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             if (!inputPanel.wordCandidateListVisibleHint && textInput.text !== data.outputText)
                 expectFail("", "Prediction/spell correction not enabled")
             compare(textInput.text, data.outputText)
@@ -956,14 +950,13 @@ Rectangle {
             for (var inputIndex in data.inputSequence) {
                 verify(inputPanel.virtualKeyClick(data.inputSequence[inputIndex]))
             }
-            waitForRendering(inputPanel)
 
             for (var candidateIndex in data.expectedCandidates) {
                 verify(inputPanel.selectionListSearchSuggestion(data.expectedCandidates[candidateIndex]))
                 verify(inputPanel.selectionListSelectCurrentItem())
             }
 
-            compare(textInput.text, data.outputText)
+            compare(Utils.toUnicodeHex(textInput.text), Utils.toUnicodeHex(data.outputText))
         }
 
         function test_cangjieInputMethod_data() {
@@ -1002,6 +995,9 @@ Rectangle {
         function test_cangjieInputMethod(data) {
             prepareTest(data, true)
 
+            if (!inputPanel.inputMethod.hasOwnProperty("simplified"))
+                skip("Input method does not support simplified mode")
+
             if (data.hasOwnProperty("initSimplified")) {
                 if (inputPanel.inputMethod.simplified !== data.initSimplified)
                     verify(inputPanel.virtualKeyClick(Qt.Key_Mode_switch))
@@ -1015,7 +1011,6 @@ Rectangle {
                 else
                     verify(inputPanel.virtualKeyClick(key))
             }
-            waitForRendering(inputPanel)
 
             if (data.expectedCandidates) {
                 for (var candidateIndex in data.expectedCandidates) {
@@ -1095,8 +1090,6 @@ Rectangle {
                         verify(inputPanel.virtualKeyClick(inputSequence[charIndex]))
                     }
 
-                    waitForRendering(inputPanel)
-
                     if (data.expectedCandidates && inputIndex < data.expectedCandidates.length && data.expectedCandidates[inputIndex].length > 0) {
                         verify(inputPanel.selectionListSearchSuggestion(data.expectedCandidates[inputIndex]))
                         verify(inputPanel.selectionListSelectCurrentItem())
@@ -1105,7 +1098,6 @@ Rectangle {
                     verify(inputPanel.virtualKeyClick(data.inputSequence[inputIndex]))
                 }
             }
-            waitForRendering(inputPanel)
 
             if (!Array.isArray(data.inputSequence) && data.expectedCandidates) {
                 verify(inputPanel.selectionListSearchSuggestion(data.expectedCandidates))
@@ -1143,7 +1135,7 @@ Rectangle {
                 { initLocale: "ko_KR", inputSequence: "\u3131\u314F\u3139\u314D", outputText: "\uAC0E" },
                 { initLocale: "ko_KR", inputSequence: "\u3131\u314F\u3139\u314E", outputText: "\uAC0F" },
                 { initLocale: "ko_KR", inputSequence: "\u3131\u314F\u3142\u3145", outputText: "\uAC12" },
-                { initLocale: "ko_KR", inputSequence: "\u3131\u314F\u3145\u3145", outputText: "\uAC14" },
+                //{ initLocale: "ko_KR", inputSequence: "\u3131\u314F\u3145\u3145", outputText: "\uAC14" },   // Actually not standard
                 // Test using the final Jamo of the first syllable as an initial
                 // Jamo of the following syllable
                 { initLocale: "ko_KR", inputSequence: "\u3131\u314F\u3131\u314F", outputText: "\uAC00\uAC00" },
@@ -1160,24 +1152,30 @@ Rectangle {
 
             compare(Qt.inputMethod.locale.name, Qt.locale(data.initLocale).name)
 
+            function textInputContents() {
+                return textInput.text.substring(0, textInput.cursorPosition) +
+                        textInput.preeditText +
+                        textInput.text.substring(textInput.cursorPosition)
+            }
+
             // Add Jamos one by one
             var intermediateResult = []
             for (var inputIndex in data.inputSequence) {
                 verify(inputPanel.virtualKeyClick(data.inputSequence[inputIndex]))
-                intermediateResult.push(textInput.text)
+                intermediateResult.push(textInputContents())
             }
 
-            compare(textInput.text, data.outputText)
+            compare(Utils.toUnicodeHex(textInputContents()), Utils.toUnicodeHex(data.outputText))
 
             // Remove Jamos one by one.
             // The number of removed characters must match to the number of Jamos entered.
             for (inputIndex = data.inputSequence.length - 1; inputIndex >= 0; inputIndex--) {
-                compare(textInput.text, intermediateResult.pop())
+                compare(Utils.toUnicodeHex(textInputContents()), Utils.toUnicodeHex(intermediateResult.pop()))
                 inputPanel.virtualKeyClick(Qt.Key_Backspace)
             }
 
-            waitForRendering(inputPanel)
-            compare(textInput.text, data.initText !== undefined ? data.initText : "")
+            compare(Utils.toUnicodeHex(textInputContents()),
+                    Utils.toUnicodeHex(data.initText !== undefined ? data.initText : ""))
         }
 
         function test_japaneseInputModes_data() {
@@ -1186,8 +1184,6 @@ Rectangle {
                 { initLocale: "ja_JP", initInputMode: "Hiragana", inputSequence: ["n","i","h","o","n","g","o",Qt.Key_Return], outputText: "\u306B\u307B\u3093\u3054" },
                 // Hiragana to Kanjie conversion
                 { initLocale: "ja_JP", initInputMode: "Hiragana", inputSequence: ["n","i","h","o","n","g","o",Qt.Key_Space,Qt.Key_Return], outputText: "\u65E5\u672C\u8A9E" },
-                // Hiragana to Kanjie conversion plus a smiley
-                { initLocale: "ja_JP", initInputMode: "Hiragana", inputSequence: ["n","i","h","o","n","g","o",0xE000,Qt.Key_Space,Qt.Key_Return,Qt.Key_Return], outputText: "\u65E5\u672C\u8A9E\uFF1A\u30FC\uFF09" },
                 // Correction to Hiragana sequence using exact match mode
                 { initLocale: "ja_JP", initInputMode: "Hiragana", inputSequence: [
                                 // Write part of the text leaving out "ni" from the beginning
@@ -1222,7 +1218,6 @@ Rectangle {
                 verify(inputPanel.virtualKeyClick(data.inputSequence[inputIndex]))
             }
 
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
 
             if (data.hasOwnProperty("expectedCursorPosition"))
@@ -1252,7 +1247,6 @@ Rectangle {
             for (var inputIndex in data.inputSequence) {
                 verify(inputPanel.virtualKeyClick(data.inputSequence[inputIndex]))
             }
-            waitForRendering(inputPanel)
 
             for (var candidateIndex in data.expectedCandidates) {
                 verify(inputPanel.selectionListSearchSuggestion(data.expectedCandidates[candidateIndex]))
@@ -1279,6 +1273,8 @@ Rectangle {
             // The Japanese keyboard uses the BaseKey.noModifier flag for the arrow keys.
             // Without this flag the arrow key + shift would extend the text selection.
             prepareTest({ initLocale: "ja_JP", initInputMethodHints: Qt.ImhLatinOnly })
+            if (!inputPanel.findVirtualKey(Qt.Key_Left) || inputPanel.virtualKeyClick(Qt.Key_Right))
+                skip("Custom layout detected")
             verify(inputPanel.virtualKeyClick("a"))
             verify(inputPanel.virtualKeyClick(Qt.Key_Left))
             compare(textInput.cursorPosition, 0)
@@ -1305,7 +1301,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -1349,7 +1344,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -1395,7 +1389,6 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
         }
 
@@ -1429,12 +1422,10 @@ Rectangle {
             }
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
 
             var inputMode = inputPanel.inputMode
             verify(inputPanel.virtualKeyClick(Qt.Key_Mode_switch))
-            waitForRendering(inputPanel)
             compare(inputPanel.inputMode !== inputMode, data.modeSwitchAllowed)
         }
 
@@ -1458,7 +1449,6 @@ Rectangle {
             for (var inputIndex in data.inputSequence) {
                 verify(inputPanel.emulateHandwriting(data.inputSequence.charAt(inputIndex), true))
             }
-            waitForRendering(inputPanel)
 
             if (inputPanel.wordCandidateListVisibleHint) {
                 if (data.hasOwnProperty("expectedSuggestion")) {
@@ -1637,7 +1627,6 @@ Rectangle {
             for (var inputIndex in data.inputSequence) {
                 verify(handwritingInputPanel.emulateHandwriting(data.inputSequence.charAt(inputIndex), true))
             }
-            waitForRendering(handwritingInputPanel)
 
             if (data.popupFlipped) {
                 verify(handwritingInputPanel.wordCandidatePopupList.y + handwritingInputPanel.wordCandidatePopupList.height <= Qt.inputMethod.cursorRectangle.y)
@@ -1670,7 +1659,6 @@ Rectangle {
                 else
                     expectedResult = (inputPanel.activeLocales.length === 0 || inputPanel.activeLocales.indexOf(locale) !== -1) && inputPanel.availableLocales.indexOf(locale) !== -1
                 inputPanel.setLocale(locale)
-                waitForRendering(inputPanel)
                 compare(inputPanel.locale === locale, expectedResult, "Test locale %1".arg(locale))
             }
         }
@@ -1704,6 +1692,9 @@ Rectangle {
                 { initText: "aa http://www.example.com bb", initInputMethodHints: Qt.ImhUrlCharactersOnly, clickPositions: [4], expectedPreeditText: "http://www.example.com", expectedCursorPosition: 3, expectedText: "aa  bb" },
                 { initText: "aa username@example.com bb", clickPositions: [4], expectedPreeditText: "username", expectedCursorPosition: 3, expectedText: "aa @example.com bb" },
                 { initText: "aa username@example.com bb", initInputMethodHints: Qt.ImhEmailCharactersOnly, clickPositions: [4], expectedPreeditText: "username@example.com", expectedCursorPosition: 3, expectedText: "aa  bb" },
+                // 23
+                // Verify that word reselect is not activated during initial focus
+                { initText: "hello", clickPositions: [], initCursorPosition: 2, expectedPreeditText: "", expectedCursorPosition: 2, expectedText: "hello" },
             ]
         }
 
@@ -1718,7 +1709,6 @@ Rectangle {
                 var cursorRect = cursorRects[i]
                 mousePress(textInput, cursorRect.x, cursorRect.y + cursorRect.height / 2, Qt.LeftButton, Qt.NoModifier, 20)
                 mouseRelease(textInput, cursorRect.x, cursorRect.y + cursorRect.height / 2, Qt.LeftButton, Qt.NoModifier, 20)
-                waitForRendering(textInput)
             }
 
             if (!inputPanel.wordCandidateListVisibleHint && inputPanel.preeditText !== data.expectedPreeditText)
@@ -1780,7 +1770,6 @@ Rectangle {
                 var cursorRect = cursorRects[i]
                 mousePress(textInput, cursorRect.x, cursorRect.y + cursorRect.height / 2, Qt.LeftButton, Qt.NoModifier, 20)
                 mouseRelease(textInput, cursorRect.x, cursorRect.y + cursorRect.height / 2, Qt.LeftButton, Qt.NoModifier, 20)
-                waitForRendering(textInput)
             }
 
             if (!inputPanel.wordCandidateListVisibleHint && inputPanel.preeditText !== data.expectedPreeditText)
@@ -1806,7 +1795,6 @@ Rectangle {
         }
 
         function test_selection(data) {
-            waitForRendering(textInput)
             prepareTest(data)
             compare(inputPanel.cursorHandle.visible, data.expectHandlesToBeVisible)
             compare(inputPanel.anchorHandle.visible, data.expectHandlesToBeVisible)
@@ -1835,13 +1823,12 @@ Rectangle {
             prepareTest(data)
             if (inputPanel.availableLocales.length < 2)
                 skip("Input language can not be changed")
-            var changeLanguageKey = inputPanel.findObjectByName("changeLanguageKey")
             var languagePopupList = inputPanel.findObjectByName("languagePopupList")
             inputPanel.externalLanguageSwitchSpy.clear()
-            inputPanel.virtualKeyClick(changeLanguageKey)
+            inputPanel.doKeyboardFunction("ChangeLanguage")
             compare(languagePopupList.visible, !data.externalLanguageSwitchEnabled)
             compare(inputPanel.externalLanguageSwitchSpy.count, data.externalLanguageSwitchEnabled ? 1 : 0)
-            inputPanel.virtualKeyClick(changeLanguageKey)
+            inputPanel.doKeyboardFunction("ChangeLanguage")
             compare(languagePopupList.visible, false)
         }
 
@@ -1849,9 +1836,8 @@ Rectangle {
             prepareTest()
             if (inputPanel.availableLocales.length < 2)
                 skip("Input language can not be changed")
-            var changeLanguageKey = inputPanel.findObjectByName("changeLanguageKey")
             var languagePopupList = inputPanel.findObjectByName("languagePopupList")
-            inputPanel.virtualKeyClick(changeLanguageKey)
+            inputPanel.doKeyboardFunction("ChangeLanguage")
             compare(languagePopupList.visible, true)
             container.forceActiveFocus()
             textInput.forceActiveFocus()
@@ -1862,9 +1848,8 @@ Rectangle {
             prepareTest()
             if (inputPanel.availableLocales.length < 2)
                 skip("Input language can not be changed")
-            var changeLanguageKey = inputPanel.findObjectByName("changeLanguageKey")
             var languagePopupList = inputPanel.findObjectByName("languagePopupList")
-            inputPanel.virtualKeyClick(changeLanguageKey)
+            inputPanel.doKeyboardFunction("ChangeLanguage")
             compare(languagePopupList.visible, true)
             Qt.inputMethod.hide()
             Qt.inputMethod.show()
@@ -1888,9 +1873,8 @@ Rectangle {
                 }
             }
 
-            var changeLanguageKey = inputPanel.findObjectByName("changeLanguageKey")
             var languagePopupList = inputPanel.findObjectByName("languagePopupList")
-            inputPanel.virtualKeyClick(changeLanguageKey)
+            inputPanel.doKeyboardFunction("ChangeLanguage")
 
             compare(languagePopupList.visible, data.languagePopupVisible)
             if (!data.languagePopupVisible)
@@ -1912,10 +1896,33 @@ Rectangle {
                 }
                 compare(inputPanel.locale, data.selectLocale, "Language popup select %1".arg(data.selectLocale))
             } else {
-                inputPanel.virtualKeyClick(changeLanguageKey)
+                inputPanel.doKeyboardFunction("ChangeLanguage")
             }
 
             compare(languagePopupList.visible, false)
+        }
+
+        function test_languagePopupListSortOrder_data() {
+            return [
+                { activeLocales: ["fi_FI", "foo", "en_GB", "bar", "ar_AR", "baz"] },
+            ]
+        }
+
+        function test_languagePopupListSortOrder(data) {
+            prepareTest(data)
+
+            if (!inputPanel.keyboard.style.languagePopupListEnabled)
+                skip("The language popup is disabled (!style.languagePopupListEnabled)")
+
+            var languagePopupList = inputPanel.findObjectByName("languagePopupList")
+            inputPanel.doKeyboardFunction("ChangeLanguage")
+
+            var previousIndex = -1
+            for (var i = 0; i < languagePopupList.model.count; ++i) {
+                var currentIndex = data.activeLocales.indexOf(languagePopupList.model.get(i).localeName)
+                verify(currentIndex > previousIndex)
+                previousIndex = currentIndex
+            }
         }
 
         function test_wclAutoHide_data() {
@@ -1930,13 +1937,11 @@ Rectangle {
             prepareTest(data)
             inputPanel.wordCandidateListChangedSpy.clear()
             Qt.inputMethod.show()
-            waitForRendering(inputPanel)
             compare(inputPanel.wordCandidateView.visibleCondition, data.wclAlwaysVisible)
             inputPanel.virtualKeyClick("a")
             inputPanel.virtualKeyClick("u")
             inputPanel.virtualKeyClick("t")
             inputPanel.virtualKeyClick("o")
-            waitForRendering(inputPanel)
             if (!inputPanel.wordCandidateListVisibleHint)
                 skip("Prediction/spell correction not enabled")
             inputPanel.wordCandidateListChangedSpy.wait(1000)
@@ -1947,7 +1952,6 @@ Rectangle {
                 wait(data.wclAutoHideDelay + 250)
             else
                 inputPanel.wordCandidateListVisibleSpy.wait(data.wclAutoHideDelay + 500)
-            waitForRendering(inputPanel)
             compare(inputPanel.wordCandidateView.visibleCondition, data.wclAlwaysVisible)
         }
 
@@ -1964,20 +1968,19 @@ Rectangle {
             if (!inputPanel.wordCandidateListVisibleHint)
                 skip("Prediction/spell correction not enabled")
 
+            inputPanel.wordCandidateListItemSelectedSpy.clear()
             for (var len = 1; len <= 5; ++len) {
                 inputPanel.virtualKeyClick("z")
-                if (len >= 2) {
-                    inputPanel.inputMethodSelectionListChangedSpy.clear()
-                    inputPanel.inputMethodSelectionListChangedSpy.wait()
-                    if (inputPanel.wordCandidateView.model.count <= 1)
-                        break
+                wait(200)
+                if (inputPanel.wordCandidateListItemSelectedSpy.count > 0) {
+                    break
                 }
             }
 
             if (data.wclAutoCommitWord)
-                compare(inputPanel.wordCandidateView.model.count, 0)
+                compare(inputPanel.wordCandidateListItemSelectedSpy.count, 1)
             else
-                verify(inputPanel.wordCandidateView.model.count >= 1)
+                compare(inputPanel.wordCandidateListItemSelectedSpy.count, 0)
         }
 
         function test_fullScreenModeActivation() {
@@ -1987,14 +1990,12 @@ Rectangle {
 
             inputPanel.shadowInputControlVisibleSpy.clear()
             inputPanel.setFullScreenMode(true)
-            waitForRendering(inputPanel)
             inputPanel.shadowInputControlVisibleSpy.wait()
 
             compare(inputPanel.shadowInput.text, textInput.text)
 
             inputPanel.shadowInputControlVisibleSpy.clear()
             inputPanel.setFullScreenMode(false)
-            waitForRendering(inputPanel)
             inputPanel.shadowInputControlVisibleSpy.wait()
         }
 
@@ -2016,7 +2017,6 @@ Rectangle {
             compare(inputPanel.shadowInput.preeditText, textInput.preeditText)
 
             Qt.inputMethod.commit()
-            waitForRendering(inputPanel)
             compare(textInput.text, data.outputText)
             compare(inputPanel.shadowInput.text, textInput.text)
             compare(inputPanel.shadowInput.cursorPosition, textInput.cursorPosition)
@@ -2035,7 +2035,6 @@ Rectangle {
             prepareTest(data)
 
             data.select()
-            waitForRendering(textInput)
             compare(inputPanel.shadowInput.text, textInput.text)
             compare(inputPanel.shadowInput.cursorPosition, textInput.cursorPosition)
             compare(inputPanel.shadowInput.selectedText, textInput.selectedText)
@@ -2072,6 +2071,7 @@ Rectangle {
                 { initText: "aa http://www.example.com bb", initInputMethodHints: Qt.ImhUrlCharactersOnly, clickPositions: [4], expectedPreeditText: "http://www.example.com", expectedCursorPosition: 3, expectedText: "aa  bb" },
                 { initText: "aa username@example.com bb", clickPositions: [4], expectedPreeditText: "username", expectedCursorPosition: 3, expectedText: "aa @example.com bb" },
                 { initText: "aa username@example.com bb", initInputMethodHints: Qt.ImhEmailCharactersOnly, clickPositions: [4], expectedPreeditText: "username@example.com", expectedCursorPosition: 3, expectedText: "aa  bb" },
+                { initText: "hello world", clickPositions: [1], expectedPreeditText: "hello", expectedCursorPosition: 0, expectedText: " world" },
             ]
         }
 
@@ -2091,7 +2091,6 @@ Rectangle {
                 var cursorRect = cursorRects[i]
                 mousePress(inputPanel.shadowInput, cursorRect.x, cursorRect.y + cursorRect.height / 2, Qt.LeftButton, Qt.NoModifier, 20)
                 mouseRelease(inputPanel.shadowInput, cursorRect.x, cursorRect.y + cursorRect.height / 2, Qt.LeftButton, Qt.NoModifier, 20)
-                waitForRendering(inputPanel.shadowInput)
             }
 
             if (!inputPanel.wordCandidateListVisibleHint && inputPanel.preeditText !== data.expectedPreeditText)
@@ -2176,21 +2175,21 @@ Rectangle {
                 { inputSequence: ['a','s','d'], initShift: false, expectedSuggestion: "asdf", suggestionIsFromUserDictionary: true },
                 { inputSequence: ['a','s','d'], initShift: true, expectedSuggestion: "Asdf", suggestionIsFromUserDictionary: true },
                 //
-                { inputSequence: ['s','d','f','a'], initShift: true },
-                { inputSequence: ['s','d','f'], initShift: true, expectedSuggestion: "Sdfa", suggestionIsFromUserDictionary: true },
+                { inputSequence: ['S','d','f','a'], initShift: true },
+                { inputSequence: ['S','d','f'], initShift: true, expectedSuggestion: "Sdfa", suggestionIsFromUserDictionary: true },
                 { inputSequence: ['s','d','f'], initShift: false, expectedSuggestion: "sdfa", suggestionIsFromUserDictionary: true, removeSuggestion: true },
                 //
-                { inputSequence: ['d','f','a','s'], initCapsLock: true },
-                { inputSequence: ['d','f','a'], initCapsLock: true, expectedSuggestion: "DFAS", suggestionIsFromUserDictionary: true },
+                { inputSequence: ['D','F','A','S'], initCapsLock: true },
+                { inputSequence: ['D','F','A'], initCapsLock: true, expectedSuggestion: "DFAS", suggestionIsFromUserDictionary: true },
                 { inputSequence: ['d','f','a'], initShift: false, unexpectedSuggestion: "dfas", suggestionIsFromUserDictionary: true },
                 //
                 { inputSequence: ['f','a','s','d'], initShift: false, initInputMethodHints: Qt.ImhSensitiveData },
                 { inputSequence: ['f','a','s'], initShift: false, unexpectedSuggestion: "fasd" },
-                { inputSequence: ['f','a','s'], initShift: true, unexpectedSuggestion: "Fasd"},
+                { inputSequence: ['F','a','s'], initShift: true, unexpectedSuggestion: "Fasd"},
                 //
-                { initLocale: "en_GB", inputSequence: "windo", expectedSuggestion: "Window", suggestionIsFromUserDictionary: false, removeSuggestion: true },
-                { initLocale: "en_GB", inputSequence: "window", },
-                { initLocale: "en_GB", inputSequence: "windo", expectedSuggestion: "Window", suggestionIsFromUserDictionary: false },
+                { initLocale: "en_GB", inputSequence: "windo", initShift: false, expectedSuggestion: "window", suggestionIsFromUserDictionary: false, removeSuggestion: true },
+                { initLocale: "en_GB", inputSequence: "window",initShift: false,  },
+                { initLocale: "en_GB", inputSequence: "windo", initShift: false, expectedSuggestion: "window", suggestionIsFromUserDictionary: false },
             ]
         }
 
@@ -2205,11 +2204,14 @@ Rectangle {
             if (data.hasOwnProperty("initCapsLock"))
                 inputPanel.setCapsLockActive(data.initCapsLock)
 
-            for (var inputIndex in data.inputSequence)
+            var exactWord = ""
+            for (var inputIndex in data.inputSequence) {
                 inputPanel.virtualKeyClick(data.inputSequence[inputIndex])
+                exactWord += data.inputSequence[inputIndex]
+            }
 
             if (data.hasOwnProperty("expectedSuggestion")) {
-                tryVerify(function() {return inputPanel.selectionListSearchSuggestion(data.expectedSuggestion)}, 1000, "The expected spell correction suggestion \"%1\" was not found".arg(data.expectedSuggestion))
+                tryVerify(function() {return inputPanel.selectionListSearchSuggestion(data.expectedSuggestion)}, 10000, "The expected spell correction suggestion \"%1\" was not found".arg(data.expectedSuggestion))
                 verify(inputPanel.selectionListCurrentIndex() > 0)
                 if (data.hasOwnProperty("suggestionIsFromUserDictionary"))
                     compare(inputPanel.selectionListSuggestionIsFromUserDictionary(), data.suggestionIsFromUserDictionary)
@@ -2218,19 +2220,65 @@ Rectangle {
                     inputPanel.wordCandidateListChangedSpy.clear()
                     verify(inputPanel.selectItemFromWordCandidateContextMenu(0))
                     inputPanel.wordCandidateListChangedSpy.wait()
-                    tryVerify(function() {return !inputPanel.selectionListSearchSuggestion(data.expectedSuggestion)}, 1000, "An unexpected spell correction suggestion \"%1\" was found".arg(data.unexpectedSuggestion))
+                    tryVerify(function() {return !inputPanel.selectionListSearchSuggestion(data.expectedSuggestion)}, 10000, "An unexpected spell correction suggestion \"%1\" was found".arg(data.unexpectedSuggestion))
                 } else {
                     inputPanel.selectionListSelectCurrentItem()
                 }
             } else if (data.hasOwnProperty("unexpectedSuggestion")) {
                 var oldIndex = inputPanel.selectionListCurrentIndex()
-                tryVerify(function() {return !inputPanel.selectionListSearchSuggestion(data.unexpectedSuggestion)}, 1000, "An unexpected spell correction suggestion \"%1\" was found".arg(data.unexpectedSuggestion))
+                tryVerify(function() {return !inputPanel.selectionListSearchSuggestion(data.unexpectedSuggestion)}, 10000, "An unexpected spell correction suggestion \"%1\" was found".arg(data.unexpectedSuggestion))
                 compare(inputPanel.selectionListCurrentIndex(), oldIndex)
             } else {
+                tryVerify(function() {return inputPanel.selectionListSearchSuggestion(exactWord)}, 1000, "The exact word \"%1\" was not found".arg(exactWord))
                 inputPanel.selectionListSelectCurrentItem()
             }
 
             Qt.inputMethod.reset()
+        }
+
+        function test_visibleFunctionKey_data() {
+            return [
+                { initLocale: "en_GB", functionKeysAlwaysVisible: false },
+                // Number and digits layouts must always have the function keys, because otherwise the layout design looks bad
+                { initLocale: "en_GB", functionKeysAlwaysVisible: true, initInputMethodHints: Qt.ImhFormattedNumbersOnly },
+                { initLocale: "en_GB", functionKeysAlwaysVisible: true, initInputMethodHints: Qt.ImhDigitsOnly },
+                // Symbol layout follow the main layout
+                { initLocale: "en_GB", functionKeysAlwaysVisible: false, initInputMethodHints: Qt.ImhPreferNumbers },
+            ]
+        }
+
+        function test_visibleFunctionKey(data) {
+            prepareTest(data, true)
+
+            const changeLanguageKey = inputPanel.findKeyByKeyType("ChangeLanguageKey")
+            verify(!!changeLanguageKey)
+            const hideKeyboardKey = inputPanel.findKeyByKeyType("HideKeyboardKey")
+            verify(!!hideKeyboardKey)
+
+            for (const functionKeyName of [
+                     "None",
+                     "Hide",
+                     "Language",
+                     "All"
+                 ]) {
+                inputPanel.setVisibleFunctionKeys([functionKeyName])
+                if (data.functionKeysAlwaysVisible) {
+                    compare(changeLanguageKey.visible, true)
+                    compare(hideKeyboardKey.visible, true)
+                } else if (functionKeyName === "None") {
+                    compare(changeLanguageKey.visible, false)
+                    compare(hideKeyboardKey.visible, false)
+                } else if (functionKeyName === "Hide") {
+                    compare(changeLanguageKey.visible, false)
+                    compare(hideKeyboardKey.visible, true)
+                } else if (functionKeyName === "Language") {
+                    compare(changeLanguageKey.visible, true)
+                    compare(hideKeyboardKey.visible, false)
+                } else if (functionKeyName === "All") {
+                    compare(changeLanguageKey.visible, true)
+                    compare(hideKeyboardKey.visible, true)
+                }
+            }
         }
     }
 }

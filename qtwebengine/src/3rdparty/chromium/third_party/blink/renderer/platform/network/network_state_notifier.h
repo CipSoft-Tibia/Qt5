@@ -28,10 +28,11 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "base/optional.h"
+#include "base/notreached.h"
 #include "base/rand_util.h"
-#include "base/single_thread_task_runner.h"
+#include "base/synchronization/lock.h"
+#include "base/task/single_thread_task_runner.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/web_connection_type.h"
 #include "third_party/blink/public/platform/web_effective_connection_type.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
@@ -41,6 +42,8 @@
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/threading_primitives.h"
 
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace blink {
@@ -58,30 +61,41 @@ class PLATFORM_EXPORT NetworkStateNotifier {
     double max_bandwidth_mbps = kInvalidMaxBandwidth;
     WebEffectiveConnectionType effective_type =
         WebEffectiveConnectionType::kTypeUnknown;
-    base::Optional<base::TimeDelta> http_rtt;
-    base::Optional<base::TimeDelta> transport_rtt;
-    base::Optional<double> downlink_throughput_mbps;
+    absl::optional<base::TimeDelta> http_rtt;
+    absl::optional<base::TimeDelta> transport_rtt;
+    absl::optional<double> downlink_throughput_mbps;
     bool save_data = false;
 
     // If set, then network quality corresponding to
     // |network_quality_web_holdback| should be returned to the web consumers.
     // Consumers within Blink should still receive the actual network quality
     // values.
-    base::Optional<WebEffectiveConnectionType> network_quality_web_holdback;
+    absl::optional<WebEffectiveConnectionType> network_quality_web_holdback;
   };
 
   class NetworkStateObserver {
    public:
+    NetworkStateObserver(const NetworkStateObserver&) = delete;
+    NetworkStateObserver& operator=(const NetworkStateObserver&) = delete;
+
     // Will be called on the task runner that is passed in add*Observer.
     virtual void ConnectionChange(
         WebConnectionType,
         double max_bandwidth_mbps,
         WebEffectiveConnectionType,
-        const base::Optional<base::TimeDelta>& http_rtt,
-        const base::Optional<base::TimeDelta>& transport_rtt,
-        const base::Optional<double>& downlink_throughput_mbps,
+        const absl::optional<base::TimeDelta>& http_rtt,
+        const absl::optional<base::TimeDelta>& transport_rtt,
+        const absl::optional<double>& downlink_throughput_mbps,
         bool save_data) {}
     virtual void OnLineStateChange(bool on_line) {}
+
+   protected:
+    NetworkStateObserver() = default;
+
+    // We don't delete these objects via the base class, so a virtual destructor
+    // isn't necessary, but protect the destructor to make sure we don't call it
+    // by accident.
+    ~NetworkStateObserver() = default;
   };
 
   enum class ObserverType {
@@ -97,6 +111,9 @@ class PLATFORM_EXPORT NetworkStateNotifier {
                                ObserverType,
                                NetworkStateObserver*,
                                scoped_refptr<base::SingleThreadTaskRunner>);
+    NetworkStateObserverHandle(const NetworkStateObserverHandle&) = delete;
+    NetworkStateObserverHandle& operator=(const NetworkStateObserverHandle&) =
+        delete;
     ~NetworkStateObserverHandle();
 
    private:
@@ -104,20 +121,20 @@ class PLATFORM_EXPORT NetworkStateNotifier {
     ObserverType type_;
     NetworkStateObserver* observer_;
     scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
-
-    DISALLOW_COPY_AND_ASSIGN(NetworkStateObserverHandle);
   };
 
   NetworkStateNotifier() : has_override_(false) {}
+  NetworkStateNotifier(const NetworkStateNotifier&) = delete;
+  NetworkStateNotifier& operator=(const NetworkStateNotifier&) = delete;
 
   ~NetworkStateNotifier() {
-    DCHECK(connection_observers_.IsEmpty());
-    DCHECK(on_line_state_observers_.IsEmpty());
+    DCHECK(connection_observers_.empty());
+    DCHECK(on_line_state_observers_.empty());
   }
 
   // Can be called on any thread.
   bool OnLine() const {
-    MutexLocker locker(mutex_);
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     DCHECK(state.on_line_initialized);
     return state.on_line;
@@ -127,7 +144,7 @@ class PLATFORM_EXPORT NetworkStateNotifier {
   // whose typical performance is most similar to the measured performance of
   // the network in use.
   WebEffectiveConnectionType EffectiveType() const {
-    MutexLocker locker(mutex_);
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     // TODO (tbansal): Add a DCHECK to check that |state.on_line_initialized| is
     // true once https://crbug.com/728771 is fixed.
@@ -136,8 +153,8 @@ class PLATFORM_EXPORT NetworkStateNotifier {
 
   // Returns the current HTTP RTT estimate. If the estimate is unavailable, the
   // returned optional value is null.
-  base::Optional<base::TimeDelta> HttpRtt() const {
-    MutexLocker locker(mutex_);
+  absl::optional<base::TimeDelta> HttpRtt() const {
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     // TODO (tbansal): Add a DCHECK to check that |state.on_line_initialized| is
     // true once https://crbug.com/728771 is fixed.
@@ -146,8 +163,8 @@ class PLATFORM_EXPORT NetworkStateNotifier {
 
   // Returns the current transport RTT estimate. If the estimate is unavailable,
   // the returned optional value is null.
-  base::Optional<base::TimeDelta> TransportRtt() const {
-    MutexLocker locker(mutex_);
+  absl::optional<base::TimeDelta> TransportRtt() const {
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     DCHECK(state.on_line_initialized);
     return state.transport_rtt;
@@ -155,8 +172,8 @@ class PLATFORM_EXPORT NetworkStateNotifier {
 
   // Returns the current throughput estimate (in megabits per second). If the
   // estimate is unavailable, the returned optional value is null.
-  base::Optional<double> DownlinkThroughputMbps() const {
-    MutexLocker locker(mutex_);
+  absl::optional<double> DownlinkThroughputMbps() const {
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     // TODO (tbansal): Add a DCHECK to check that |state.on_line_initialized| is
     // true once https://crbug.com/728771 is fixed.
@@ -167,7 +184,7 @@ class PLATFORM_EXPORT NetworkStateNotifier {
   // The returned value does not account for any holdback experiments that may
   // be enabled.
   bool SaveDataEnabled() const {
-    MutexLocker locker(mutex_);
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     // TODO (tbansal): Add a DCHECK to check that |state.on_line_initialized| is
     // true once https://crbug.com/728771 is fixed.
@@ -178,7 +195,7 @@ class PLATFORM_EXPORT NetworkStateNotifier {
 
   // Can be called on any thread.
   WebConnectionType ConnectionType() const {
-    MutexLocker locker(mutex_);
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     DCHECK(state.connection_initialized);
     return state.type;
@@ -206,7 +223,7 @@ class PLATFORM_EXPORT NetworkStateNotifier {
 
   // Can be called on any thread.
   double MaxBandwidth() const {
-    MutexLocker locker(mutex_);
+    base::AutoLock locker(lock_);
     const NetworkState& state = has_override_ ? override_ : state_;
     DCHECK(state.connection_initialized);
     return state.max_bandwidth_mbps;
@@ -233,7 +250,7 @@ class PLATFORM_EXPORT NetworkStateNotifier {
   void SetNetworkConnectionInfoOverride(
       bool on_line,
       WebConnectionType,
-      base::Optional<WebEffectiveConnectionType> effective_type,
+      absl::optional<WebEffectiveConnectionType> effective_type,
       int64_t http_rtt_msec,
       double max_bandwidth_mbps);
   void SetSaveDataEnabledOverride(bool enabled);
@@ -256,12 +273,12 @@ class PLATFORM_EXPORT NetworkStateNotifier {
   // Returns |rtt| after adding host-specific random noise, and rounding it as
   // per the NetInfo spec to improve privacy.
   uint32_t RoundRtt(const String& host,
-                    const base::Optional<base::TimeDelta>& rtt) const;
+                    const absl::optional<base::TimeDelta>& rtt) const;
 
   // Returns |downlink_mbps| after adding host-specific random noise, and
   // rounding it as per the NetInfo spec and to improve privacy.
   double RoundMbps(const String& host,
-                   const base::Optional<double>& downlink_mbps) const;
+                   const absl::optional<double>& downlink_mbps) const;
 
   // Returns the randomization salt (weak and insecure) that should be used when
   // adding noise to the network quality metrics. This is known only to the
@@ -273,20 +290,20 @@ class PLATFORM_EXPORT NetworkStateNotifier {
   // the web consumers. If the returned value is null, then the actual network
   // quality value should be returned to the web consumers.
   // Consumers within Blink should not call this API.
-  base::Optional<WebEffectiveConnectionType> GetWebHoldbackEffectiveType()
+  absl::optional<WebEffectiveConnectionType> GetWebHoldbackEffectiveType()
       const;
 
   // Returns the overriding HTTP RTT estimate that should be returned to
   // the web consumers. If the returned value is null, then the actual network
   // quality value should be returned to the web consumers.
   // Consumers within Blink should not call this API.
-  base::Optional<base::TimeDelta> GetWebHoldbackHttpRtt() const;
+  absl::optional<base::TimeDelta> GetWebHoldbackHttpRtt() const;
 
   // Returns the overriding HTTP RTT estimate that should be returned to
   // the web consumers. If the returned value is null, then the actual network
   // quality value should be returned to the web consumers.
   // Consumers within Blink should not call this API.
-  base::Optional<double> GetWebHoldbackDownlinkThroughputMbps() const;
+  absl::optional<double> GetWebHoldbackDownlinkThroughputMbps() const;
 
   // Sets the metrics of all the values while taking into account any network
   // quality web holdbacks in place. The caller must guarantee that all pointers
@@ -294,19 +311,12 @@ class PLATFORM_EXPORT NetworkStateNotifier {
   void GetMetricsWithWebHoldback(WebConnectionType* type,
                                  double* downlink_max_mbps,
                                  WebEffectiveConnectionType* effective_type,
-                                 base::Optional<base::TimeDelta>* http_rtt,
-                                 base::Optional<double>* downlink_mbps,
+                                 absl::optional<base::TimeDelta>* http_rtt,
+                                 absl::optional<double>* downlink_mbps,
                                  bool* save_data) const;
 
  private:
   friend class NetworkStateObserverHandle;
-
-  struct ObserverList {
-    ObserverList() : iterating(false) {}
-    bool iterating;
-    Vector<NetworkStateObserver*> observers;
-    Vector<wtf_size_t> zeroed_observers;  // Indices in observers that are 0.
-  };
 
   // This helper scope issues required notifications when mutating the state if
   // something has changed.  It's only possible to mutate the state on the main
@@ -326,52 +336,35 @@ class PLATFORM_EXPORT NetworkStateNotifier {
 
   // The ObserverListMap is cross-thread accessed, adding/removing Observers
   // running on a task runner.
-  using ObserverListMap = HashMap<scoped_refptr<base::SingleThreadTaskRunner>,
-                                  std::unique_ptr<ObserverList>>;
+  using ObserverListMap = HashMap<NetworkStateObserver*,
+                                  scoped_refptr<base::SingleThreadTaskRunner>>;
 
   void NotifyObservers(ObserverListMap&, ObserverType, const NetworkState&);
-  void NotifyObserversOnTaskRunner(ObserverListMap*,
-                                   ObserverType,
-                                   scoped_refptr<base::SingleThreadTaskRunner>,
-                                   const NetworkState&);
-
+  void NotifyObserverOnTaskRunner(MayBeDangling<NetworkStateObserver>,
+                                  ObserverType,
+                                  const NetworkState&);
+  ObserverListMap& GetObserverMapFor(ObserverType);
   void AddObserverToMap(ObserverListMap&,
                         NetworkStateObserver*,
                         scoped_refptr<base::SingleThreadTaskRunner>);
   void RemoveObserver(ObserverType,
                       NetworkStateObserver*,
                       scoped_refptr<base::SingleThreadTaskRunner>);
-  void RemoveObserverFromMap(ObserverListMap&,
-                             NetworkStateObserver*,
-                             scoped_refptr<base::SingleThreadTaskRunner>);
-
-  ObserverList* LockAndFindObserverList(
-      ObserverListMap&,
-      scoped_refptr<base::SingleThreadTaskRunner>);
-
-  // Removed observers are nulled out in the list in case the list is being
-  // iterated over. Once done iterating, call this to clean up nulled
-  // observers.
-  void CollectZeroedObservers(ObserverListMap&,
-                              ObserverList*,
-                              scoped_refptr<base::SingleThreadTaskRunner>);
 
   // A random number by which the RTT and downlink estimates are multiplied
   // with. The returned random multiplier is a function of the hostname.
   // Adding this noise reduces the chances of cross-origin fingerprinting.
   double GetRandomMultiplier(const String& host) const;
 
-  mutable Mutex mutex_;
-  NetworkState state_ GUARDED_BY(mutex_);
-  bool has_override_ GUARDED_BY(mutex_);
-  NetworkState override_ GUARDED_BY(mutex_);
+  mutable base::Lock lock_;
+  NetworkState state_ GUARDED_BY(lock_);
+  bool has_override_ GUARDED_BY(lock_);
+  NetworkState override_ GUARDED_BY(lock_);
 
   ObserverListMap connection_observers_;
   ObserverListMap on_line_state_observers_;
 
   const uint8_t randomization_salt_ = base::RandInt(1, 20);
-
-  DISALLOW_COPY_AND_ASSIGN(NetworkStateNotifier);
 };
 
 PLATFORM_EXPORT NetworkStateNotifier& GetNetworkStateNotifier();

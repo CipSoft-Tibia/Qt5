@@ -1,35 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
     \title Qt Quick Examples - Window and Screen
     \example window
     \brief This example demonstrates the Window and Screen types in QML.
     \image qml-window-example.png
     \ingroup qtquickexamples
+    \examplecategory {Graphics & Multimedia}
 
     \e{Window and Screen} shows how to:
 
@@ -74,7 +51,8 @@
     applications which need to rotate some content when the screen orientation
     changes, to position windows on the screen or to convert real units to
     logical pixel units.  CurrentScreen.qml (which is displayed inline in
-    window.qml, or can be run by itself with qmlscene) simply displays the
+    window.qml, or can be run by itself with the
+    \l {Prototyping with the QML Runtime Tool}{qml tool}) simply displays the
     property values, while the splash screen uses them to center the window on
     the screen.
 

@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'downloads.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -36,26 +36,26 @@ public:
     void setupUi(QDialog *DownloadDialog)
     {
         if (DownloadDialog->objectName().isEmpty())
-            DownloadDialog->setObjectName(QString::fromUtf8("DownloadDialog"));
+            DownloadDialog->setObjectName("DownloadDialog");
         DownloadDialog->resize(332, 252);
         gridLayout = new QGridLayout(DownloadDialog);
         gridLayout->setSpacing(0);
         gridLayout->setContentsMargins(0, 0, 0, 0);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         downloadsView = new EditTableView(DownloadDialog);
-        downloadsView->setObjectName(QString::fromUtf8("downloadsView"));
+        downloadsView->setObjectName("downloadsView");
 
         gridLayout->addWidget(downloadsView, 0, 0, 1, 3);
 
         horizontalLayout = new QHBoxLayout();
-        horizontalLayout->setObjectName(QString::fromUtf8("horizontalLayout"));
+        horizontalLayout->setObjectName("horizontalLayout");
         cleanupButton = new QPushButton(DownloadDialog);
-        cleanupButton->setObjectName(QString::fromUtf8("cleanupButton"));
+        cleanupButton->setObjectName("cleanupButton");
         cleanupButton->setEnabled(false);
 
         horizontalLayout->addWidget(cleanupButton);
 
-        spacerItem = new QSpacerItem(58, 24, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(58, 24, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(spacerItem);
 
@@ -63,11 +63,11 @@ public:
         gridLayout->addLayout(horizontalLayout, 1, 0, 1, 1);
 
         itemCount = new QLabel(DownloadDialog);
-        itemCount->setObjectName(QString::fromUtf8("itemCount"));
+        itemCount->setObjectName("itemCount");
 
         gridLayout->addWidget(itemCount, 1, 1, 1, 1);
 
-        horizontalSpacer = new QSpacerItem(148, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer = new QSpacerItem(148, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(horizontalSpacer, 1, 2, 1, 1);
 

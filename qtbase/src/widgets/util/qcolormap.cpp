@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcolormap.h"
 #include "qcolor.h"
@@ -175,12 +139,6 @@ uint QColormap::pixel(const QColor &color) const
             const int green_mask = 0x00ff00;
             const int blue_mask  = 0x0000ff;
             const int tg = g << green_shift;
-#ifdef QT_QWS_DEPTH_32_BGR
-            if (qt_screen->pixelType() == QScreen::BGRPixel) {
-                const int tb = b << red_shift;
-                return 0xff000000 | (r & blue_mask) | (tg & green_mask) | (tb & red_mask);
-            }
-#endif
             const int tr = r << red_shift;
             return 0xff000000 | (b & blue_mask) | (tg & green_mask) | (tr & red_mask);
         }
@@ -202,13 +160,6 @@ const QColor QColormap::colorAt(uint pixel) const
         const int red_mask   = 0xff0000;
         const int green_mask = 0x00ff00;
         const int blue_mask  = 0x0000ff;
-#ifdef QT_QWS_DEPTH_32_BGR
-        if (qt_screen->pixelType() == QScreen::BGRPixel) {
-            return QColor((pixel & blue_mask),
-                          (pixel & green_mask) >> green_shift,
-                          (pixel & red_mask) >> red_shift);
-        }
-#endif
         return QColor((pixel & red_mask) >> red_shift,
                       (pixel & green_mask) >> green_shift,
                       (pixel & blue_mask));
@@ -220,9 +171,9 @@ const QColor QColormap::colorAt(uint pixel) const
     return QColor();
 }
 
-const QVector<QColor> QColormap::colormap() const
+const QList<QColor> QColormap::colormap() const
 {
-    return QVector<QColor>();
+    return QList<QColor>();
 }
 
 QColormap &QColormap::operator=(const QColormap &colormap)

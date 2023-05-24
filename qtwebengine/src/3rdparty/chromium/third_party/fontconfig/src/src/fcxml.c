@@ -22,11 +22,14 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <string.h>
 #include "fcint.h"
+#include <string.h>
 #include <fcntl.h>
 #include <stdarg.h>
+
+#ifdef HAVE_DIRENT_H
 #include <dirent.h>
+#endif
 
 #ifdef ENABLE_LIBXML2
 
@@ -56,6 +59,10 @@
 #ifdef _WIN32
 #include <mbstring.h>
 extern FcChar8 fontconfig_instprefix[];
+pfnGetSystemWindowsDirectory pGetSystemWindowsDirectory = NULL;
+pfnSHGetFolderPathA pSHGetFolderPathA = NULL;
+static void
+_ensureWin32GettersReady();
 #endif
 
 static FcChar8  *__fc_userdir = NULL;
@@ -360,7 +367,7 @@ typedef enum _FcElement {
     FcElementDescription,
     FcElementRemapDir,
     FcElementResetDirs,
-	
+
     FcElementRescan,
 
     FcElementPrefer,
@@ -724,7 +731,7 @@ FcTypecheckExpr (FcConfigParse *parse, FcExpr *expr, FcType type)
 	    if (o)
 		FcTypecheckValue (parse, o->type, type);
 	}
-        else
+	else
             FcConfigMessage (parse, FcSevereWarning,
                              "invalid constant used : %s",
                              expr->u.constant);
@@ -787,7 +794,7 @@ FcTestCreate (FcConfigParse *parse,
     if (test)
     {
 	const FcObjectType	*o;
-	
+
 	test->kind = kind;
 	test->qual = qual;
 	test->object = FcObjectFromName ((const char *) field);
@@ -1207,7 +1214,7 @@ FcPStackPop (FcConfigParse *parse)
 	{
 	    if (attrs[0][0])
 	    {
-		FcConfigMessage (parse, FcSevereError, "invalid attribute '%s'", attrs[0]);
+		FcConfigMessage (parse, FcSevereWarning, "invalid attribute '%s'", attrs[0]);
 	    }
 	    attrs += 2;
 	}
@@ -1282,13 +1289,14 @@ FcConfigGetAttribute (FcConfigParse *parse, const char *attr)
     return 0;
 }
 
-static FcChar8 *
-_get_real_path_from_prefix(FcConfigParse *parse, const FcChar8 *path, const FcChar8 *prefix)
+static FcStrSet *
+_get_real_paths_from_prefix(FcConfigParse *parse, const FcChar8 *path, const FcChar8 *prefix)
 {
 #ifdef _WIN32
     FcChar8 buffer[1000] = { 0 };
 #endif
     FcChar8 *parent = NULL, *retval = NULL;
+    FcStrSet *e = NULL;
 
     if (prefix)
     {
@@ -1300,6 +1308,12 @@ _get_real_path_from_prefix(FcConfigParse *parse, const FcChar8 *path, const FcCh
 		/* Home directory might be disabled */
 		return NULL;
 	    }
+	    e = FcConfigXdgDataDirs ();
+	    if (!e)
+	    {
+		FcStrFree (parent);
+		return NULL;
+	    }
 	}
 	else if (FcStrCmp (prefix, (const FcChar8 *) "default") == 0 ||
 		 FcStrCmp (prefix, (const FcChar8 *) "cwd") == 0)
@@ -1308,9 +1322,16 @@ _get_real_path_from_prefix(FcConfigParse *parse, const FcChar8 *path, const FcCh
 	}
 	else if (FcStrCmp (prefix, (const FcChar8 *) "relative") == 0)
 	{
-	    parent = FcStrDirname (parse->name);
-	    if (!parent)
+	    FcChar8 *p = FcStrRealPath (parse->name);
+
+	    if (!p)
 		return NULL;
+	    parent = FcStrDirname (p);
+	    if (!parent)
+	    {
+		free (p);
+		return NULL;
+	    }
 	}
     }
 #ifndef _WIN32
@@ -1353,10 +1374,21 @@ _get_real_path_from_prefix(FcConfigParse *parse, const FcChar8 *path, const FcCh
 	if (p) *p = '\0';
 	strcat ((char *) path, "\\..\\share\\fonts");
     }
+    else if (strcmp ((const char *) path, "WINDOWSUSERFONTDIR") == 0)
+    {
+        path = buffer;
+        if (!(pSHGetFolderPathA && SUCCEEDED(pSHGetFolderPathA(NULL, /* CSIDL_LOCAL_APPDATA */ 28, NULL, 0, (char *) buffer))))
+        {
+            FcConfigMessage(parse, FcSevereError, "SHGetFolderPathA failed");
+            return NULL;
+        }
+        strcat((char *) path, "\\Microsoft\\Windows\\Fonts");
+    }
     else if (strcmp ((const char *) path, "WINDOWSFONTDIR") == 0)
     {
 	int rc;
 	path = buffer;
+	_ensureWin32GettersReady();
 	rc = pGetSystemWindowsDirectory ((LPSTR) buffer, sizeof (buffer) - 20);
 	if (rc == 0 || rc > sizeof (buffer) - 20)
 	{
@@ -1385,8 +1417,28 @@ _get_real_path_from_prefix(FcConfigParse *parse, const FcChar8 *path, const FcCh
     {
 	retval = FcStrdup (path);
     }
+    if (!e)
+	e = FcStrSetCreate ();
+    else
+    {
+	FcChar8 *s;
+	int i;
 
-    return retval;
+	for (i = 0; i < e->num; i++)
+	{
+	    s = FcStrBuildFilename (e->strs[i], path, NULL);
+	    FcStrFree (e->strs[i]);
+	    e->strs[i] = s;
+	}
+    }
+    if (!FcStrSetInsert (e, retval, 0))
+    {
+	FcStrSetDestroy (e);
+	e = NULL;
+    }
+    FcStrFree (retval);
+
+    return e;
 }
 
 static void
@@ -1481,7 +1533,7 @@ FcStrtod (char *s, char **end)
     {
 	char	buf[128];
 	int	slen = strlen (s);
-	
+
 	if (slen + dlen > (int) sizeof (buf))
 	{
 	    if (end)
@@ -2059,7 +2111,7 @@ static void
 FcParseRemapDir (FcConfigParse *parse)
 {
     const FcChar8 *path, *attr, *data, *salt;
-    FcChar8 *prefix = NULL;
+    FcStrSet *prefix_dirs = NULL;
 
     data = FcStrBufDoneStatic (&parse->pstack->str);
     if (!data)
@@ -2080,20 +2132,28 @@ FcParseRemapDir (FcConfigParse *parse)
     }
     attr = FcConfigGetAttribute (parse, "prefix");
     salt = FcConfigGetAttribute (parse, "salt");
-    prefix = _get_real_path_from_prefix (parse, data, attr);
-    if (!prefix || prefix[0] == 0)
+    prefix_dirs = _get_real_paths_from_prefix (parse, data, attr);
+    if (prefix_dirs)
     {
-	/* nop */
-    }
-    else if (!parse->scanOnly && (!FcStrUsesHome (prefix) || FcConfigHome ()))
-    {
-	if (!FcConfigAddFontDir (parse->config, prefix, path, salt))
-	    FcConfigMessage (parse, FcSevereError, "out of memory; cannot create remap data for %s as %s", prefix, path);
-    }
-    FcStrBufDestroy (&parse->pstack->str);
+	FcStrList *l = FcStrListCreate (prefix_dirs);
+	FcChar8 *prefix;
 
-    if (prefix)
-	FcStrFree (prefix);
+	FcStrSetDestroy (prefix_dirs);
+	while ((prefix = FcStrListNext (l)))
+	{
+	    if (!prefix || prefix[0] == 0)
+	    {
+		/* nop */
+	    }
+	    else if (!parse->scanOnly && (!FcStrUsesHome (prefix) || FcConfigHome ()))
+	    {
+		if (!FcConfigAddFontDir (parse->config, prefix, path, salt))
+		    FcConfigMessage (parse, FcSevereError, "out of memory; cannot create remap data for %s as %s", prefix, path);
+	    }
+	    FcStrBufDestroy (&parse->pstack->str);
+	}
+	FcStrListDone (l);
+    }
 }
 
 static void
@@ -2247,7 +2307,7 @@ static void
 FcParseDir (FcConfigParse *parse)
 {
     const FcChar8 *attr, *data, *salt;
-    FcChar8 *prefix = NULL;
+    FcStrSet *prefix_dirs = NULL;
 
     data = FcStrBufDoneStatic (&parse->pstack->str);
     if (!data)
@@ -2262,20 +2322,28 @@ FcParseDir (FcConfigParse *parse)
     }
     attr = FcConfigGetAttribute (parse, "prefix");
     salt = FcConfigGetAttribute (parse, "salt");
-    prefix = _get_real_path_from_prefix (parse, data, attr);
-    if (!prefix || prefix[0] == 0)
+    prefix_dirs = _get_real_paths_from_prefix (parse, data, attr);
+    if (prefix_dirs)
     {
-	/* nop */
-    }
-    else if (!parse->scanOnly && (!FcStrUsesHome (prefix) || FcConfigHome ()))
-    {
-	if (!FcConfigAddFontDir (parse->config, prefix, NULL, salt))
-	    FcConfigMessage (parse, FcSevereError, "out of memory; cannot add directory %s", prefix);
-    }
-    FcStrBufDestroy (&parse->pstack->str);
+	FcStrList *l = FcStrListCreate (prefix_dirs);
+	FcChar8 *prefix;
 
-    if (prefix)
-	FcStrFree (prefix);
+	FcStrSetDestroy (prefix_dirs);
+	while ((prefix = FcStrListNext (l)))
+	{
+	    if (!prefix || prefix[0] == 0)
+	    {
+		/* nop */
+	    }
+	    else if (!parse->scanOnly && (!FcStrUsesHome (prefix) || FcConfigHome ()))
+	    {
+		if (!FcConfigAddFontDir (parse->config, prefix, NULL, salt))
+		    FcConfigMessage (parse, FcSevereError, "out of memory; cannot add directory %s", prefix);
+	    }
+	    FcStrBufDestroy (&parse->pstack->str);
+	}
+	FcStrListDone (l);
+    }
 }
 
 static void
@@ -2304,7 +2372,9 @@ FcParseCacheDir (FcConfigParse *parse)
     if (data[0] == 0)
     {
 	FcConfigMessage (parse, FcSevereWarning, "empty cache directory name ignored");
-	return;
+	FcStrFree (data);
+	data = prefix;
+	goto bail;
     }
     if (prefix)
     {
@@ -2890,7 +2960,10 @@ FcParseAcceptRejectFont (FcConfigParse *parse, FcElement element)
 						      vstack->u.string,
 						      element == FcElementAcceptfont))
 	    {
-		FcConfigMessage (parse, FcSevereError, "out of memory");
+			if (FcStrUsesHome(vstack->u.string) && FcConfigHome() == NULL)
+				FcConfigMessage (parse, FcSevereWarning, "Home is disabled");
+			else
+				FcConfigMessage (parse, FcSevereError, "out of memory");
 	    }
 	    else
 	    {
@@ -3031,7 +3104,7 @@ FcParsePattern (FcConfigParse *parse)
 	FcConfigMessage (parse, FcSevereError, "out of memory");
 	return;
     }
-	
+
     while ((vstack = FcVStackPeek (parse)))
     {
 	switch ((int) vstack->tag) {
@@ -3106,7 +3179,7 @@ FcEndElement(void *userData, const XML_Char *name FC_UNUSED)
     case FcElementRescan:
 	FcParseRescan (parse);
 	break;
-	
+
     case FcElementPrefer:
 	FcParseFamilies (parse, FcVStackPrefer);
 	break;
@@ -3386,11 +3459,6 @@ bail0:
     return ret || !complain;
 }
 
-#ifdef _WIN32
-pfnGetSystemWindowsDirectory pGetSystemWindowsDirectory = NULL;
-pfnSHGetFolderPathA pSHGetFolderPathA = NULL;
-#endif
-
 static FcBool
 FcConfigParseAndLoadFromMemoryInternal (FcConfig       *config,
 					const FcChar8  *filename,
@@ -3447,7 +3515,7 @@ FcConfigParseAndLoadFromMemoryInternal (FcConfig       *config,
     XML_SetDoctypeDeclHandler (p, FcStartDoctypeDecl, FcEndDoctypeDecl);
     XML_SetElementHandler (p, FcStartElement, FcEndElement);
     XML_SetCharacterDataHandler (p, FcCharacterData);
-	
+
 #endif /* ENABLE_LIBXML2 */
 
 #ifndef ENABLE_LIBXML2
@@ -3536,19 +3604,7 @@ _FcConfigParse (FcConfig	*config,
 
     FcStrBufInit (&reason, NULL, 0);
 #ifdef _WIN32
-    if (!pGetSystemWindowsDirectory)
-    {
-        HMODULE hk32 = GetModuleHandleA("kernel32.dll");
-        if (!(pGetSystemWindowsDirectory = (pfnGetSystemWindowsDirectory) GetProcAddress(hk32, "GetSystemWindowsDirectoryA")))
-            pGetSystemWindowsDirectory = (pfnGetSystemWindowsDirectory) GetWindowsDirectory;
-    }
-    if (!pSHGetFolderPathA)
-    {
-        HMODULE hSh = LoadLibraryA("shfolder.dll");
-        /* the check is done later, because there is no provided fallback */
-        if (hSh)
-            pSHGetFolderPathA = (pfnSHGetFolderPathA) GetProcAddress(hSh, "SHGetFolderPathA");
-    }
+    _ensureWin32GettersReady();
 #endif
 
     filename = FcConfigGetFilename (config, name);
@@ -3610,7 +3666,7 @@ _FcConfigParse (FcConfig	*config,
 #elif HAVE_STRERROR
 	    char *tmp = strerror (errno_);
 	    size_t len = strlen (tmp);
-	    strncpy (ebuf, tmp, FC_MIN (BUFSIZ, len));
+	    memcpy (ebuf, tmp, FC_MIN (BUFSIZ, len));
 	    ebuf[FC_MIN (BUFSIZ, len)] = 0;
 #else
 	    ebuf[0] = 0;
@@ -3670,6 +3726,26 @@ FcConfigParseAndLoadFromMemory (FcConfig       *config,
 {
     return FcConfigParseAndLoadFromMemoryInternal (config, (const FcChar8 *)"memory", buffer, complain, FcTrue);
 }
+
+#ifdef _WIN32
+static void
+_ensureWin32GettersReady()
+{
+    if (!pGetSystemWindowsDirectory)
+    {
+        HMODULE hk32 = GetModuleHandleA("kernel32.dll");
+        if (!(pGetSystemWindowsDirectory = (pfnGetSystemWindowsDirectory)GetProcAddress(hk32, "GetSystemWindowsDirectoryA")))
+            pGetSystemWindowsDirectory = (pfnGetSystemWindowsDirectory)GetWindowsDirectory;
+    }
+    if (!pSHGetFolderPathA)
+    {
+        HMODULE hSh = LoadLibraryA("shfolder.dll");
+        /* the check is done later, because there is no provided fallback */
+        if (hSh)
+            pSHGetFolderPathA = (pfnSHGetFolderPathA)GetProcAddress(hSh, "SHGetFolderPathA");
+    }
+}
+#endif // _WIN32
 
 #define __fcxml__
 #include "fcaliastail.h"

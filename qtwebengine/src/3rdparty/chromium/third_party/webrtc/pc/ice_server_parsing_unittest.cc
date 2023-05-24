@@ -23,7 +23,7 @@ namespace webrtc {
 class IceServerParsingTest : public ::testing::Test {
  public:
   // Convenience functions for parsing a single URL. Result is stored in
-  // |stun_servers_| and |turn_servers_|.
+  // `stun_servers_` and `turn_servers_`.
   bool ParseUrl(const std::string& url) {
     return ParseUrl(url, std::string(), std::string());
   }
@@ -62,8 +62,9 @@ class IceServerParsingTest : public ::testing::Test {
     server.tls_cert_policy = tls_certificate_policy;
     server.hostname = hostname;
     servers.push_back(server);
-    return webrtc::ParseIceServers(servers, &stun_servers_, &turn_servers_) ==
-           webrtc::RTCErrorType::NONE;
+    return webrtc::ParseIceServersOrError(servers, &stun_servers_,
+                                          &turn_servers_)
+        .ok();
   }
 
  protected:
@@ -182,6 +183,11 @@ TEST_F(IceServerParsingTest, ParseHostnameAndPort) {
   EXPECT_FALSE(ParseUrl("stun:[1:2:3:4:5:6:7:8]junk:1000"));
   EXPECT_FALSE(ParseUrl("stun::5555"));
   EXPECT_FALSE(ParseUrl("stun:"));
+  // Test illegal URLs according to RFC 3986 (URI generic syntax)
+  // and RFC 7064 (URI schemes for STUN and TURN)
+  EXPECT_FALSE(ParseUrl("stun:/hostname"));  // / is not allowed
+  EXPECT_FALSE(ParseUrl("stun:?hostname"));  // ? is not allowed
+  EXPECT_FALSE(ParseUrl("stun:#hostname"));  // # is not allowed
 }
 
 // Test parsing the "?transport=xxx" part of the URL.
@@ -224,26 +230,11 @@ TEST_F(IceServerParsingTest, ParseMultipleUrls) {
   server.username = "foo";
   server.password = "bar";
   servers.push_back(server);
-  EXPECT_EQ(webrtc::RTCErrorType::NONE,
-            webrtc::ParseIceServers(servers, &stun_servers_, &turn_servers_));
+  EXPECT_TRUE(
+      webrtc::ParseIceServersOrError(servers, &stun_servers_, &turn_servers_)
+          .ok());
   EXPECT_EQ(1U, stun_servers_.size());
   EXPECT_EQ(1U, turn_servers_.size());
-}
-
-// Ensure that TURN servers are given unique priorities,
-// so that their resulting candidates have unique priorities.
-TEST_F(IceServerParsingTest, TurnServerPrioritiesUnique) {
-  PeerConnectionInterface::IceServers servers;
-  PeerConnectionInterface::IceServer server;
-  server.urls.push_back("turn:hostname");
-  server.urls.push_back("turn:hostname2");
-  server.username = "foo";
-  server.password = "bar";
-  servers.push_back(server);
-  EXPECT_EQ(webrtc::RTCErrorType::NONE,
-            webrtc::ParseIceServers(servers, &stun_servers_, &turn_servers_));
-  EXPECT_EQ(2U, turn_servers_.size());
-  EXPECT_NE(turn_servers_[0].priority, turn_servers_[1].priority);
 }
 
 }  // namespace webrtc

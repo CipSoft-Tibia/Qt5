@@ -9,6 +9,7 @@
 <translation id="1591070050619849194">השבתת האנימציה בתמונות.</translation>
 <translation id="1703735871906654364">דפדוף עם סמן</translation>
 <translation id="1791496371305830581">הפעלת כל התמונות המכילות אנימציה.</translation>
+<translation id="1974060860693918893">מתקדם</translation>
 <translation id="1996252509865389616">האם להפעיל?</translation>
 <translation id="2079545284768500474">ביטול הפעולה</translation>
 <translation id="2179565792157161713">פתיחת תיאור ארוך בכרטיסייה חדשה</translation>
@@ -24,7 +25,7 @@
 <translation id="3435896845095436175">הפעלה</translation>
 <translation id="3622586652998721735">הגדרה כברירת מחדל של ערכת צבעים</translation>
 <translation id="3812541808639806898">‏מציג טקסט Alt של תמונה</translation>
-<translation id="381767806621926835">‏לחץ לחיצה ארוכה על כל פריט עם המאפיין "longdesc" או "aria-describedat" כדי לגשת לתיאור הארוך שלו.</translation>
+<translation id="381767806621926835">‏כדי לגשת לתיאור הארוך יש ללחוץ לחיצה ארוכה על הפריט עם המאפיין "longdesc" או "aria-describedat".</translation>
 <translation id="4023902424053835668">דפדף בטקסט של דפי אינטרנט באמצעות מקשי החצים.</translation>
 <translation id="4388820049312272371">הדגשת מיקום הסמן באמצעות הבהוב מהיר.</translation>
 <translation id="4394049700291259645">השבתה</translation>
@@ -51,6 +52,7 @@
 <translation id="6170146920149900756">Color Enhancer</translation>
 <translation id="633394792577263429">‏יש ללחוץ לחיצה ארוכה על ‎&lt;span class='key'&gt;Control&lt;/span&gt;‎ כדי לעבור לפי מילים.</translation>
 <translation id="6550675742724504774">אפשרויות</translation>
+<translation id="6699630355767768222">שלב 3: שינוי של ציר הצבע מברירת המחדל בתיקון.</translation>
 <translation id="6838518108677880446">הגדרה:</translation>
 <translation id="690628312087070417">כאשר הסמן קופץ למרחק רב:</translation>
 <translation id="6965382102122355670">אישור</translation>
@@ -64,5 +66,6 @@
 <translation id="8321034316479930120">מדיניות בנושא אנימציה</translation>
 <translation id="8480209185614411573">ניגודיות גבוהה</translation>
 <translation id="8609925175482059018">‏יש להקיש על ‎&lt;span class='key'&gt;F7&lt;/span&gt;‎ כדי להפעיל דפדוף עם סמן טקסט. כדי להשבית אותו, יש להקיש שוב על מקש זה.</translation>
+<translation id="8798099450830957504">ברירת מחדל</translation>
 <translation id="894241283505723656">תיאורים ארוכים בתפריט הקשר</translation>
 </translationbundle>

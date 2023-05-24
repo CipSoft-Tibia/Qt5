@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "base/scoped_observer.h"
-#include "components/arc/arc_export.h"
+#include "ash/components/arc/arc_export.h"
+#include "base/scoped_observation.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_observer.h"
 #include "ui/gfx/native_widget_types.h"
@@ -53,10 +52,10 @@ class ARC_EXPORT CustomTab : public aura::WindowObserver {
   std::unique_ptr<views::NativeViewHost> host_ =
       std::make_unique<views::NativeViewHost>();
   aura::Window* const arc_app_window_;
-  ScopedObserver<aura::Window, aura::WindowObserver> arc_app_window_observer_{
-      this};
-  ScopedObserver<aura::Window, aura::WindowObserver> other_windows_observer_{
-      this};
+  base::ScopedObservation<aura::Window, aura::WindowObserver>
+      arc_app_window_observation_{this};
+  base::ScopedObservation<aura::Window, aura::WindowObserver>
+      other_windows_observation_{this};
   base::WeakPtrFactory<CustomTab> weak_ptr_factory_{this};
 };
 

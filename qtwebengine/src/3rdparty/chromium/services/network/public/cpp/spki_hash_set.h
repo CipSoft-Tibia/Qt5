@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,8 @@
 
 #include "base/component_export.h"
 #include "base/containers/flat_set.h"
+
+#include <string>
 
 namespace net {
 struct SHA256HashValue;

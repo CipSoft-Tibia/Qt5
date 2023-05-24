@@ -1,35 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
+#include <QtCore/QScopedPointer>
 #include <QtQml/qqmlcomponent.h>
 #include <QtQml/qqmlengine.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
 
 Q_DECLARE_METATYPE(QMetaMethod::MethodType)
 
@@ -42,8 +18,12 @@ QML_DECLARE_TYPE(MyQmlObject)
 class tst_QQmlMetaObject : public QQmlDataTest
 {
     Q_OBJECT
+
+public:
+    tst_QQmlMetaObject();
+
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 
     void property_data();
     void property();
@@ -53,6 +33,11 @@ private slots:
 private:
     MyQmlObject myQmlObject;
 };
+
+tst_QQmlMetaObject::tst_QQmlMetaObject()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
+{
+}
 
 void tst_QQmlMetaObject::initTestCase()
 {
@@ -115,12 +100,6 @@ void tst_QQmlMetaObject::property_data()
             << QVariant(QDate(2012, 2, 7).startOfDay())
             << true // writable
             << QVariant(QDate(2010, 7, 2).startOfDay());
-    QTest::newRow("variant") << "property.variant.qml"
-            << QByteArray("QVariant") << int(QMetaType::QVariant)
-            << true // default
-            << QVariant(QPointF(12, 34))
-            << true // writable
-            << QVariant(QSizeF(45, 67));
     QTest::newRow("var") << "property.var.qml"
             << QByteArray("QVariant") << int(QMetaType::QVariant)
             << false // default
@@ -185,8 +164,9 @@ void tst_QQmlMetaObject::property()
 
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl(testFile));
-    QObject *object = component.create();
-    QVERIFY(object != nullptr);
+    QScopedPointer<QObject> obj(component.create());
+    QVERIFY(obj);
+    QObject *object = obj.get();
 
     const QMetaObject *mo = object->metaObject();
     QVERIFY(mo->superClass() != nullptr);
@@ -198,11 +178,7 @@ void tst_QQmlMetaObject::property()
     QCOMPARE(prop.name(), "test");
 
     QCOMPARE(QByteArray(prop.typeName()), cppTypeName);
-    if (prop.userType() < QMetaType::User)
-        QCOMPARE(prop.type(), QVariant::Type(cppType));
-    else
-        QCOMPARE(prop.type(), QVariant::UserType);
-    QCOMPARE(prop.userType(), cppType);
+    QCOMPARE(prop.metaType().id(), cppType);
 
     QVERIFY(!prop.isConstant());
     QVERIFY(!prop.isDesignable());
@@ -251,21 +227,19 @@ void tst_QQmlMetaObject::property()
         QCOMPARE(value, expectedValue);
     else
         QVERIFY(value.isValid());
-    QCOMPARE(changedSpy.count(), 0);
+    QCOMPARE(changedSpy.size(), 0);
 
     if (isWritable) {
         QVERIFY(prop.write(object, newValue));
-        QCOMPARE(changedSpy.count(), 1);
+        QCOMPARE(changedSpy.size(), 1);
         QVariant value = prop.read(object);
         if (value.userType() == qMetaTypeId<QJSValue>())
             value = value.value<QJSValue>().toVariant();
         QCOMPARE(value, newValue);
     } else {
         QVERIFY(!prop.write(object, prop.read(object)));
-        QCOMPARE(changedSpy.count(), 0);
+        QCOMPARE(changedSpy.size(), 0);
     }
-
-    delete object;
 }
 
 void tst_QQmlMetaObject::method_data()
@@ -360,8 +334,9 @@ void tst_QQmlMetaObject::method()
 
     QQmlEngine engine;
     QQmlComponent component(&engine, testFileUrl(testFile));
-    QObject *object = component.create();
-    QVERIFY(object != nullptr);
+    QScopedPointer<QObject> obj(component.create());
+    QVERIFY(obj);
+    QObject *object = obj.get();
 
     const QMetaObject *mo = object->metaObject();
     QVERIFY(mo->superClass() != nullptr);
@@ -385,8 +360,6 @@ void tst_QQmlMetaObject::method()
 
     QCOMPARE(QString::fromUtf8(method.typeName()), returnTypeName);
     QCOMPARE(method.returnType(), returnType);
-
-    delete object;
 }
 
 QTEST_MAIN(tst_QQmlMetaObject)

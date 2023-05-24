@@ -165,6 +165,7 @@ Running test with C code:
     ninja -C out/Debug libyuv_unittest
     ninja -C out/Debug compare
     ninja -C out/Debug yuvconvert
+    ninja -C out/Debug yuvconstants
     ninja -C out/Debug psnr
     ninja -C out/Debug cpuid
 
@@ -179,8 +180,8 @@ Running test with C code:
 
 mips
 
-   gn gen out/Release "--args=is_debug=false target_os=\"linux\" target_cpu=\"mips64el\" mips_arch_variant=\"loongson3\" mips_use_mmi=true is_component_build=false use_sysroot=false use_gold=false"
-   gn gen out/Debug "--args=is_debug=true target_os=\"linux\" target_cpu=\"mips64el\" mips_arch_variant=\"loongson3\" mips_use_mmi=true is_component_build=false use_sysroot=false use_gold=false"
+   gn gen out/Release "--args=is_debug=false target_os=\"linux\" target_cpu=\"mips64el\" mips_arch_variant=\"loongson3\" is_component_build=false use_sysroot=false use_gold=false"
+   gn gen out/Debug "--args=is_debug=true target_os=\"linux\" target_cpu=\"mips64el\" mips_arch_variant=\"loongson3\" is_component_build=false use_sysroot=false use_gold=false"
    ninja -v -C out/Debug libyuv_unittest
    ninja -v -C out/Release libyuv_unittest
 

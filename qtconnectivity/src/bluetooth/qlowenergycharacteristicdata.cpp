@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlowenergycharacteristicdata.h"
 
@@ -140,6 +104,9 @@ QLowEnergyCharacteristic::PropertyTypes QLowEnergyCharacteristicData::properties
 /*! Sets the properties of this characteristic to \a properties. */
 void QLowEnergyCharacteristicData::setProperties(QLowEnergyCharacteristic::PropertyTypes properties)
 {
+    if ((properties & QLowEnergyCharacteristic::PropertyType::Notify) &&
+            (properties &  QLowEnergyCharacteristic::PropertyType::Indicate))
+        qCWarning(QT_BT) << "Both NTF and IND properties set for characteristic" << d->uuid;
     d->properties = properties;
 }
 
@@ -254,27 +221,34 @@ bool QLowEnergyCharacteristicData::isValid() const
  */
 
 /*!
-   Returns \c true if \a cd1 and \a cd2 are equal with respect to their public state,
-   otherwise returns \c false.
+    \brief Returns \c true if \a a and \a b are equal with respect to their public state,
+    otherwise returns \c false.
+    \internal
  */
-bool operator==(const QLowEnergyCharacteristicData &cd1, const QLowEnergyCharacteristicData &cd2)
+bool QLowEnergyCharacteristicData::equals(const QLowEnergyCharacteristicData &a,
+                                          const QLowEnergyCharacteristicData &b)
 {
-    return cd1.d == cd2.d || (
-                cd1.uuid() == cd2.uuid()
-                && cd1.properties() == cd2.properties()
-                && cd1.descriptors() == cd2.descriptors()
-                && cd1.value() == cd2.value()
-                && cd1.readConstraints() == cd2.readConstraints()
-                && cd1.writeConstraints() == cd2.writeConstraints()
-                && cd1.minimumValueLength() == cd2.maximumValueLength()
-                && cd1.maximumValueLength() == cd2.maximumValueLength());
+    return a.d == b.d
+            || (a.uuid() == b.uuid() && a.properties() == b.properties()
+                && a.descriptors() == b.descriptors() && a.value() == b.value()
+                && a.readConstraints() == b.readConstraints()
+                && a.writeConstraints() == b.writeConstraints()
+                && a.minimumValueLength() == b.maximumValueLength()
+                && a.maximumValueLength() == b.maximumValueLength());
 }
 
 /*!
-   \fn bool operator!=(const QLowEnergyCharacteristicData &cd1,
-                       const QLowEnergyCharacteristicData &cd2)
-   Returns \c true if \a cd1 and \a cd2 are not equal with respect to their public state,
-   otherwise returns \c false.
+    \fn bool QLowEnergyCharacteristicData::operator==(const QLowEnergyCharacteristicData &a,
+                                                      const QLowEnergyCharacteristicData &b)
+    \brief Returns \c true if \a a and \a b are equal with respect to their public state,
+    otherwise returns \c false.
+ */
+
+/*!
+    \fn bool QLowEnergyCharacteristicData::operator!=(const QLowEnergyCharacteristicData &a,
+                                                      const QLowEnergyCharacteristicData &b)
+    \brief Returns \c true if \a a and \a b are not equal with respect to their public state,
+    otherwise returns \c false.
  */
 
 QT_END_NAMESPACE

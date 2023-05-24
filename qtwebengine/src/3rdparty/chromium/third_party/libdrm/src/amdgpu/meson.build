@@ -21,7 +21,7 @@
 
 datadir_amdgpu = join_paths(get_option('prefix'), get_option('datadir'), 'libdrm')
 
-libdrm_amdgpu = shared_library(
+libdrm_amdgpu = library(
   'drm_amdgpu',
   [
     files(
@@ -36,7 +36,7 @@ libdrm_amdgpu = shared_library(
   ],
   include_directories : [inc_root, inc_drm],
   link_with : libdrm,
-  dependencies : [dep_pthread_stubs, dep_atomic_ops],
+  dependencies : [dep_pthread_stubs, dep_atomic_ops, dep_rt],
   version : '1.0.0',
   install : true,
 )
@@ -44,11 +44,9 @@ libdrm_amdgpu = shared_library(
 install_headers('amdgpu.h', subdir : 'libdrm')
 
 pkg.generate(
+  libdrm_amdgpu,
   name : 'libdrm_amdgpu',
-  libraries : libdrm_amdgpu,
   subdirs : ['.', 'libdrm'],
-  version : meson.project_version(),
-  requires_private : 'libdrm',
   description : 'Userspace interface to kernel DRM services for amdgpu',
 )
 
@@ -57,9 +55,16 @@ ext_libdrm_amdgpu = declare_dependency(
   include_directories : [inc_drm, include_directories('.')],
 )
 
+if meson.version().version_compare('>= 0.54.0')
+  meson.override_dependency('libdrm_amdgpu', ext_libdrm_amdgpu)
+endif
+
 test(
-  'amdgpu-symbol-check',
-  find_program('amdgpu-symbol-check'),
-  env : env_test,
-  args : libdrm_amdgpu,
+  'amdgpu-symbols-check',
+  symbols_check,
+  args : [
+    '--lib', libdrm_amdgpu,
+    '--symbols-file', files('amdgpu-symbols.txt'),
+    '--nm', prog_nm.path(),
+  ],
 )

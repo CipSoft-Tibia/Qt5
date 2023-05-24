@@ -33,7 +33,7 @@
 
 #include <memory>
 
-#include "base/macros.h"
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "third_party/blink/public/mojom/cache_storage/cache_storage.mojom-blink-forward.h"
 #include "third_party/blink/public/web/web_embedded_worker.h"
@@ -42,7 +42,7 @@
 #include "third_party/blink/renderer/core/workers/worker_clients.h"
 #include "third_party/blink/renderer/modules/modules_export.h"
 #include "third_party/blink/renderer/modules/service_worker/service_worker_content_settings_proxy.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -51,15 +51,18 @@ class ServiceWorkerThread;
 struct CrossThreadFetchClientSettingsObjectData;
 
 // The implementation of WebEmbeddedWorker. This is responsible for starting
-// and terminating a service worker thread.
+// and terminating a service worker thread. Lives on a ThreadPool background
+// thread.
 //
-// Currently this starts the worker thread on the main thread. Future plan is to
-// start the worker thread off the main thread. This means that
-// WebEmbeddedWorkerImpl shouldn't create garbage-collected objects during
-// worker startup. See https://crbug.com/988335 for details.
+// Because it lives on a ThreadPool thread, this class does not make
+// GarbageCollected objects (https://crbug.com/988335).
 class MODULES_EXPORT WebEmbeddedWorkerImpl final : public WebEmbeddedWorker {
  public:
   explicit WebEmbeddedWorkerImpl(WebServiceWorkerContextClient*);
+
+  WebEmbeddedWorkerImpl(const WebEmbeddedWorkerImpl&) = delete;
+  WebEmbeddedWorkerImpl& operator=(const WebEmbeddedWorkerImpl&) = delete;
+
   ~WebEmbeddedWorkerImpl() override;
 
   // WebEmbeddedWorker overrides.
@@ -73,6 +76,7 @@ class MODULES_EXPORT WebEmbeddedWorkerImpl final : public WebEmbeddedWorker {
           cache_storage,
       CrossVariantMojoRemote<mojom::blink::BrowserInterfaceBrokerInterfaceBase>
           browser_interface_broker,
+      InterfaceRegistry* interface_registry,
       scoped_refptr<base::SingleThreadTaskRunner> initiator_thread_task_runner)
       override;
   void TerminateWorkerContext() override;
@@ -86,6 +90,7 @@ class MODULES_EXPORT WebEmbeddedWorkerImpl final : public WebEmbeddedWorker {
       std::unique_ptr<ServiceWorkerContentSettingsProxy>,
       mojo::PendingRemote<mojom::blink::CacheStorage>,
       mojo::PendingRemote<mojom::blink::BrowserInterfaceBroker>,
+      InterfaceRegistry* interface_registry,
       scoped_refptr<base::SingleThreadTaskRunner> initiator_thread_task_runner);
 
   // Creates a cross-thread copyable outside settings object for top-level
@@ -95,7 +100,6 @@ class MODULES_EXPORT WebEmbeddedWorkerImpl final : public WebEmbeddedWorker {
       const KURL& script_url,
       const SecurityOrigin*,
       const HttpsState&,
-      network::mojom::IPAddressSpace,
       const WebFetchClientSettingsObject& passed_settings_object);
 
   // Client must remain valid through the entire life time of the worker.
@@ -104,8 +108,6 @@ class MODULES_EXPORT WebEmbeddedWorkerImpl final : public WebEmbeddedWorker {
   std::unique_ptr<ServiceWorkerThread> worker_thread_;
 
   bool asked_to_terminate_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(WebEmbeddedWorkerImpl);
 };
 
 }  // namespace blink

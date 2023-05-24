@@ -24,7 +24,7 @@
 #include "third_party/blink/renderer/core/svg/svg_animated_string.h"
 #include "third_party/blink/renderer/core/svg_names.h"
 #include "third_party/blink/renderer/platform/graphics/filters/fe_tile.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -39,14 +39,15 @@ void SVGFETileElement::Trace(Visitor* visitor) const {
   SVGFilterPrimitiveStandardAttributes::Trace(visitor);
 }
 
-void SVGFETileElement::SvgAttributeChanged(const QualifiedName& attr_name) {
-  if (attr_name == svg_names::kInAttr) {
+void SVGFETileElement::SvgAttributeChanged(
+    const SvgAttributeChangedParams& params) {
+  if (params.name == svg_names::kInAttr) {
     SVGElement::InvalidationGuard invalidation_guard(this);
     Invalidate();
     return;
   }
 
-  SVGFilterPrimitiveStandardAttributes::SvgAttributeChanged(attr_name);
+  SVGFilterPrimitiveStandardAttributes::SvgAttributeChanged(params);
 }
 
 FilterEffect* SVGFETileElement::Build(SVGFilterBuilder* filter_builder,

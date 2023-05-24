@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,36 +14,49 @@ namespace content {
 SyntheticTapGesture::SyntheticTapGesture(
     const SyntheticTapGestureParams& params)
     : params_(params),
-      gesture_source_type_(SyntheticGestureParams::DEFAULT_INPUT),
+      gesture_source_type_(content::mojom::GestureSourceType::kDefaultInput),
       state_(SETUP) {
   DCHECK_GE(params_.duration_ms, 0);
-  if (params_.gesture_source_type == SyntheticGestureParams::DEFAULT_INPUT)
-    params_.gesture_source_type = SyntheticGestureParams::TOUCH_INPUT;
+  if (params_.gesture_source_type ==
+      content::mojom::GestureSourceType::kDefaultInput)
+    params_.gesture_source_type =
+        content::mojom::GestureSourceType::kTouchInput;
 }
 
 SyntheticTapGesture::~SyntheticTapGesture() {}
 
 SyntheticGesture::Result SyntheticTapGesture::ForwardInputEvents(
     const base::TimeTicks& timestamp, SyntheticGestureTarget* target) {
+  DCHECK(dispatching_controller_);
   if (state_ == SETUP) {
     gesture_source_type_ = params_.gesture_source_type;
-    if (gesture_source_type_ == SyntheticGestureParams::DEFAULT_INPUT)
+    if (gesture_source_type_ ==
+        content::mojom::GestureSourceType::kDefaultInput)
       gesture_source_type_ = target->GetDefaultSyntheticGestureSourceType();
 
     state_ = PRESS;
   }
 
-  DCHECK_NE(gesture_source_type_, SyntheticGestureParams::DEFAULT_INPUT);
+  DCHECK_NE(gesture_source_type_,
+            content::mojom::GestureSourceType::kDefaultInput);
 
   if (!synthetic_pointer_driver_)
-    synthetic_pointer_driver_ =
-        SyntheticPointerDriver::Create(gesture_source_type_);
+    synthetic_pointer_driver_ = SyntheticPointerDriver::Create(
+        gesture_source_type_, params_.from_devtools_debugger);
 
-  if (gesture_source_type_ == SyntheticGestureParams::TOUCH_INPUT ||
-      gesture_source_type_ == SyntheticGestureParams::MOUSE_INPUT)
+  if (gesture_source_type_ == content::mojom::GestureSourceType::kTouchInput ||
+      gesture_source_type_ == content::mojom::GestureSourceType::kMouseInput) {
     ForwardTouchOrMouseInputEvents(timestamp, target);
-  else
+
+    if (!dispatching_controller_) {
+      // ForwardTouchOrMouseInputEvents may cause the controller (and therefore
+      // `this`) to be synchronously deleted (e.g. tapping tab-close). Return
+      // immediately in this case.
+      return SyntheticGesture::GESTURE_ABORT;
+    }
+  } else {
     return SyntheticGesture::GESTURE_SOURCE_TYPE_NOT_IMPLEMENTED;
+  }
 
   return (state_ == DONE) ? SyntheticGesture::GESTURE_FINISHED
                           : SyntheticGesture::GESTURE_RUNNING;
@@ -60,6 +73,7 @@ bool SyntheticTapGesture::AllowHighFrequencyDispatch() const {
   return false;
 }
 
+// CAUTION: Dispatching press/release events can cause `this` to be deleted.
 void SyntheticTapGesture::ForwardTouchOrMouseInputEvents(
     const base::TimeTicks& timestamp, SyntheticGestureTarget* target) {
   switch (state_) {
@@ -67,10 +81,16 @@ void SyntheticTapGesture::ForwardTouchOrMouseInputEvents(
       synthetic_pointer_driver_->Press(params_.position.x(),
                                        params_.position.y());
       synthetic_pointer_driver_->DispatchEvent(target, timestamp);
+      if (!dispatching_controller_) {
+        return;
+      }
       // Release immediately if duration is 0.
       if (params_.duration_ms == 0) {
         synthetic_pointer_driver_->Release();
         synthetic_pointer_driver_->DispatchEvent(target, timestamp);
+        if (!dispatching_controller_) {
+          return;
+        }
         state_ = DONE;
       } else {
         start_time_ = timestamp;
@@ -82,6 +102,9 @@ void SyntheticTapGesture::ForwardTouchOrMouseInputEvents(
         synthetic_pointer_driver_->Release();
         synthetic_pointer_driver_->DispatchEvent(target,
                                                  start_time_ + GetDuration());
+        if (!dispatching_controller_) {
+          return;
+        }
         state_ = DONE;
       }
       break;
@@ -95,7 +118,7 @@ void SyntheticTapGesture::ForwardTouchOrMouseInputEvents(
 }
 
 base::TimeDelta SyntheticTapGesture::GetDuration() const {
-  return base::TimeDelta::FromMilliseconds(params_.duration_ms);
+  return base::Milliseconds(params_.duration_ms);
 }
 
 }  // namespace content

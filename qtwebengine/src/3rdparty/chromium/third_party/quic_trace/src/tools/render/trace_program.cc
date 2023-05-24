@@ -14,17 +14,18 @@
 
 #include "tools/render/trace_program.h"
 
-#include "gflags/gflags.h"
+#include "absl/flags/flag.h"
 #include "absl/time/clock.h"
 #include "tools/render/layout_constants.h"
 
-DEFINE_bool(show_fps, false, "Show the current framerate of the program");
-DEFINE_bool(vsync, true, "Enables vsync");
+ABSL_FLAG(bool, show_fps, false, "Show the current framerate of the program");
+ABSL_FLAG(bool, vsync, true, "Enables vsync");
 
-DEFINE_double(mouseover_threshold,
-              3.0,
-              "The minimum size of a single packet (in fractional pixels) that "
-              "causes the packet information box being showed");
+ABSL_FLAG(double,
+          mouseover_threshold,
+          3.0,
+          "The minimum size of a single packet (in fractional pixels) that "
+          "causes the packet information box being showed");
 
 namespace quic_trace {
 namespace render {
@@ -39,15 +40,15 @@ TraceProgram::TraceProgram()
           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI)),
       context_(*window_) {
   UpdateWindowSize();
-  state_buffer_ = absl::make_unique<ProgramState>(&state_);
-  renderer_ = absl::make_unique<TraceRenderer>(state_buffer_.get());
-  text_renderer_ = absl::make_unique<TextRenderer>(state_buffer_.get());
-  axis_renderer_ = absl::make_unique<AxisRenderer>(text_renderer_.get(),
+  state_buffer_ = std::make_unique<ProgramState>(&state_);
+  renderer_ = std::make_unique<TraceRenderer>(state_buffer_.get());
+  text_renderer_ = std::make_unique<TextRenderer>(state_buffer_.get());
+  axis_renderer_ = std::make_unique<AxisRenderer>(text_renderer_.get(),
                                                    state_buffer_.get());
   rectangle_renderer_ =
-      absl::make_unique<RectangleRenderer>(state_buffer_.get());
+      std::make_unique<RectangleRenderer>(state_buffer_.get());
 
-  SDL_GL_SetSwapInterval(FLAGS_vsync ? 1 : 0);
+  SDL_GL_SetSwapInterval(absl::GetFlag(FLAGS_vsync) ? 1 : 0);
   SDL_SetWindowMinimumSize(*window_, 640, 480);
 
   glEnable(GL_BLEND);
@@ -58,7 +59,7 @@ void TraceProgram::LoadTrace(std::unique_ptr<Trace> trace) {
   std::stable_sort(
       trace->mutable_events()->begin(), trace->mutable_events()->end(),
       [](const Event& a, const Event& b) { return a.time_us() < b.time_us(); });
-  trace_ = absl::make_unique<ProcessedTrace>(std::move(trace), renderer_.get());
+  trace_ = std::make_unique<ProcessedTrace>(std::move(trace), renderer_.get());
   state_.viewport.x = renderer_->max_x();
   state_.viewport.y = renderer_->max_y();
 }
@@ -315,7 +316,7 @@ void TraceProgram::HandleMouseover(int x, int y) {
 
   float packet_size_in_pixels =
       kSentPacketDurationMs / state_.viewport.x * state_.window.x;
-  if (packet_size_in_pixels < FLAGS_mouseover_threshold) {
+  if (packet_size_in_pixels < absl::GetFlag(FLAGS_mouseover_threshold)) {
     renderer_->set_highlighted_packet(-1);
     return;
   }
@@ -393,7 +394,7 @@ Box TraceProgram::TraceBounds() {
 }
 
 void TraceProgram::MaybeShowFramerate() {
-  if (!FLAGS_show_fps) {
+  if (!absl::GetFlag(FLAGS_show_fps)) {
     return;
   }
 

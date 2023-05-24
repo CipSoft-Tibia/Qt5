@@ -9,7 +9,7 @@
 #define TouchGesture_DEFINED
 
 #include "include/core/SkMatrix.h"
-#include "include/private/SkTDArray.h"
+#include "include/private/base/SkTDArray.h"
 
 class TouchGesture {
 public:
@@ -89,7 +89,6 @@ private:
     int findRec(void* owner) const;
     void appendNewRec(void* owner, float x, float y);
     float computePinch(const Rec&, const Rec&);
-    float limitTotalZoom(float scale) const;
     bool handleDblTap(float, float);
 };
 

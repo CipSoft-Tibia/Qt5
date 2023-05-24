@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QString>
 #include <QtTest/QtTest>
@@ -38,7 +12,7 @@
 #include <QtCharts/QHBarModelMapper>
 #include <QtGui/QStandardItemModel>
 
-QT_CHARTS_USE_NAMESPACE
+QT_USE_NAMESPACE
 
 class tst_qbarmodelmapper : public QObject
 {
@@ -376,7 +350,7 @@ void tst_qbarmodelmapper::seriesUpdated()
     QList<qreal> newValues;
     newValues << 15 << 27 << 35 << 49;
     m_series->barSets().first()->append(newValues);
-    QCOMPARE(m_model->rowCount(), 1 + newValues.count());
+    QCOMPARE(m_model->rowCount(), 1 + newValues.size());
 
     QList<QBarSet* > newBarSets;
     QBarSet* newBarSet_1 = new QBarSet("New_1");
@@ -392,7 +366,7 @@ void tst_qbarmodelmapper::seriesUpdated()
     newBarSets.append(newBarSet_2);
 
     m_series->append(newBarSets);
-    QCOMPARE(m_model->columnCount(), m_modelColumnCount + newBarSets.count());
+    QCOMPARE(m_model->columnCount(), m_modelColumnCount + newBarSets.size());
 }
 
 void tst_qbarmodelmapper::verticalModelInsertRows()
@@ -647,12 +621,12 @@ void tst_qbarmodelmapper::verticalMapperSignals()
     mapper->setFirstRow(1);
     mapper->setRowCount(5);
 
-    QCOMPARE(spy0.count(), 1);
-    QCOMPARE(spy1.count(), 1);
-    QCOMPARE(spy2.count(), 1);
-    QCOMPARE(spy3.count(), 1);
-    QCOMPARE(spy4.count(), 1);
-    QCOMPARE(spy5.count(), 1);
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy3.size(), 1);
+    QCOMPARE(spy4.size(), 1);
+    QCOMPARE(spy5.size(), 1);
 
     delete mapper;
 }
@@ -675,12 +649,12 @@ void tst_qbarmodelmapper::horizontalMapperSignals()
     mapper->setFirstColumn(1);
     mapper->setColumnCount(5);
 
-    QCOMPARE(spy0.count(), 1);
-    QCOMPARE(spy1.count(), 1);
-    QCOMPARE(spy2.count(), 1);
-    QCOMPARE(spy3.count(), 1);
-    QCOMPARE(spy4.count(), 1);
-    QCOMPARE(spy5.count(), 1);
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy3.size(), 1);
+    QCOMPARE(spy4.size(), 1);
+    QCOMPARE(spy5.size(), 1);
 
     delete mapper;
 }

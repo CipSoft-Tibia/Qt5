@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \externalpage https://en.wikipedia.org/wiki/Domain-specific_language
@@ -46,8 +22,8 @@
     files are processed by repc, repc generates both \l {Source} and \l
     {Replica} header files.
 
-    The Qt Remote Objects module also includes qmake variables (\l REPC_SOURCE, \l
-    REPC_REPLICA, and \l REPC_MERGED) that can be added to your project file to automatically run
+    The Qt Remote Objects module also includes \l {CMake functions} and
+    \l {qmake variables} that can be added to your project file to automatically run
     repc, and add the resulting files to the list of files processed by
     \l{moc}{Meta Object Compiler} during the build process, making use of Qt
     Remote Objects in your projects simple.
@@ -378,6 +354,12 @@
     end-of-line and adds that to the generated files. So multi-line
     #if/#else/#endif statements and multi-line macros are not supported.
 
+    \section1 CMake functions
+
+    The CMake functions for generating source and replica types are listed below.
+
+    \annotatedlist cmake-macros-qtremoteobjects
+
     \section1 qmake variables
     \section2 REPC_REPLICA
 
@@ -414,12 +396,12 @@
     \code
     REPC_MERGED = media.rep \
                   location.rep
+    \endcode
 
     The generated file(s) will be of the form \c {rep_<replica file base>_merged.h}.
 
     \note Typically sources and replicas live in separate processes or devices, so this variable
     is not commonly used.
-    \endcode
 
     \section2 QOBJECT_REP
 

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKSTATE_P_H
 #define QQUICKSTATE_P_H
@@ -76,9 +40,7 @@ public:
         m_event = a.event;
         if (state == StartState) {
             m_value = a.fromValue;
-            if (QQmlPropertyPrivate::binding(m_property)) {
-                m_binding = QQmlPropertyPrivate::binding(m_property);
-            }
+            m_binding = QQmlAnyBinding::ofProperty(m_property);
             m_reverseEvent = true;
         } else {
             m_value = a.toValue;
@@ -135,14 +97,14 @@ public:
         return m_value;
     }
 
-    void setBinding(QQmlAbstractBinding *binding)
+    void setBinding(QQmlAnyBinding binding)
     {
         m_binding = binding;
     }
 
-    QQmlAbstractBinding *binding() const
+    QQmlAnyBinding binding() const
     {
-        return m_binding.data();
+        return m_binding;
     }
 
     QObject *specifiedObject() const
@@ -168,7 +130,7 @@ public:
 private:
     QQmlProperty m_property;
     QVariant m_value;
-    QQmlAbstractBinding::Ptr m_binding;
+    QQmlAnyBinding m_binding;
     QObject *m_specifiedObject;
     QString m_specifiedProperty;
     QQuickStateActionEvent *m_event;
@@ -214,13 +176,19 @@ public:
 
     struct OperationGuard : public QQmlGuard<QQuickStateOperation>
     {
-        OperationGuard(QObject *obj, QList<OperationGuard> *l) : list(l) {
+        OperationGuard(QObject *obj, QList<OperationGuard> *l) : QQmlGuard<QQuickStateOperation>(
+                                                                     OperationGuard::objectDestroyedImpl, nullptr)
+                                                               ,list(l)
+        {
             setObject(static_cast<QQuickStateOperation *>(obj));
         }
         QList<OperationGuard> *list;
-        void objectDestroyed(QQuickStateOperation *) override {
+
+    private:
+        static void objectDestroyedImpl(QQmlGuardImpl *guard) {
+            auto This = static_cast<OperationGuard *>(guard);
             // we assume priv will always be destroyed after objectDestroyed calls
-            list->removeOne(*this);
+            This->list->removeOne(*This);
         }
     };
     QList<OperationGuard> operations;
@@ -236,15 +204,15 @@ public:
             e->setState(nullptr);
         list->clear();
     }
-    static int operations_count(QQmlListProperty<QQuickStateOperation> *prop) {
+    static qsizetype operations_count(QQmlListProperty<QQuickStateOperation> *prop) {
         QList<OperationGuard> *list = static_cast<QList<OperationGuard> *>(prop->data);
-        return list->count();
+        return list->size();
     }
-    static QQuickStateOperation *operations_at(QQmlListProperty<QQuickStateOperation> *prop, int index) {
+    static QQuickStateOperation *operations_at(QQmlListProperty<QQuickStateOperation> *prop, qsizetype index) {
         QList<OperationGuard> *list = static_cast<QList<OperationGuard> *>(prop->data);
         return list->at(index);
     }
-    static void operations_replace(QQmlListProperty<QQuickStateOperation> *prop, int index,
+    static void operations_replace(QQmlListProperty<QQuickStateOperation> *prop, qsizetype index,
                                    QQuickStateOperation *op) {
         QList<OperationGuard> *list = static_cast<QList<OperationGuard> *>(prop->data);
         auto &guard = list->at(index);

@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,10 @@
 
 #include "xfa/fxfa/cxfa_ffimageedit.h"
 
+#include <utility>
+
 #include "core/fxge/dib/cfx_dibitmap.h"
+#include "third_party/base/check.h"
 #include "v8/include/cppgc/visitor.h"
 #include "xfa/fwl/cfwl_app.h"
 #include "xfa/fwl/cfwl_messagemouse.h"
@@ -27,8 +30,7 @@ CXFA_FFImageEdit::CXFA_FFImageEdit(CXFA_Node* pNode) : CXFA_FFField(pNode) {}
 CXFA_FFImageEdit::~CXFA_FFImageEdit() = default;
 
 void CXFA_FFImageEdit::PreFinalize() {
-  m_pNode->SetImageEditImage(nullptr);
-  CXFA_FFField::PreFinalize();
+  m_pNode->SetEditImage(nullptr);
 }
 
 void CXFA_FFImageEdit::Trace(cppgc::Visitor* visitor) const {
@@ -37,7 +39,7 @@ void CXFA_FFImageEdit::Trace(cppgc::Visitor* visitor) const {
 }
 
 bool CXFA_FFImageEdit::LoadWidget() {
-  ASSERT(!IsLoaded());
+  DCHECK(!IsLoaded());
 
   CFWL_PictureBox* pPictureBox = cppgc::MakeGarbageCollected<CFWL_PictureBox>(
       GetFWLApp()->GetHeap()->GetAllocationHandle(), GetFWLApp());
@@ -50,13 +52,13 @@ bool CXFA_FFImageEdit::LoadWidget() {
   pPictureBox->SetDelegate(this);
 
   CXFA_FFField::LoadWidget();
-  if (!m_pNode->GetImageEditImage())
+  if (!m_pNode->GetEditImage())
     UpdateFWLData();
 
   return true;
 }
 
-void CXFA_FFImageEdit::RenderWidget(CXFA_Graphics* pGS,
+void CXFA_FFImageEdit::RenderWidget(CFGAS_GEGraphics* pGS,
                                     const CFX_Matrix& matrix,
                                     HighlightOption highlight) {
   if (!HasVisibleStatus())
@@ -67,8 +69,8 @@ void CXFA_FFImageEdit::RenderWidget(CXFA_Graphics* pGS,
 
   CXFA_FFWidget::RenderWidget(pGS, mtRotate, highlight);
   DrawBorder(pGS, m_pNode->GetUIBorder(), m_UIRect, mtRotate);
-  RenderCaption(pGS, &mtRotate);
-  RetainPtr<CFX_DIBitmap> pDIBitmap = m_pNode->GetImageEditImage();
+  RenderCaption(pGS, mtRotate);
+  RetainPtr<CFX_DIBitmap> pDIBitmap = m_pNode->GetEditImage();
   if (!pDIBitmap)
     return;
 
@@ -89,14 +91,15 @@ void CXFA_FFImageEdit::RenderWidget(CXFA_Graphics* pGS,
       iAspect = image->GetAspect();
   }
 
-  XFA_DrawImage(pGS, rtImage, mtRotate, pDIBitmap, iAspect,
-                m_pNode->GetImageEditDpi(), iHorzAlign, iVertAlign);
+  XFA_DrawImage(pGS, rtImage, mtRotate, std::move(pDIBitmap), iAspect,
+                m_pNode->GetEditImageDpi(), iHorzAlign, iVertAlign);
 }
 
-bool CXFA_FFImageEdit::AcceptsFocusOnButtonDown(uint32_t dwFlags,
-                                                const CFX_PointF& point,
-                                                FWL_MouseCommand command) {
-  if (command != FWL_MouseCommand::LeftButtonDown)
+bool CXFA_FFImageEdit::AcceptsFocusOnButtonDown(
+    Mask<XFA_FWL_KeyFlag> dwFlags,
+    const CFX_PointF& point,
+    CFWL_MessageMouse::MouseCommand command) {
+  if (command != CFWL_MessageMouse::MouseCommand::kLeftButtonDown)
     return CXFA_FFField::AcceptsFocusOnButtonDown(dwFlags, point, command);
 
   if (!m_pNode->IsOpenAccess())
@@ -107,10 +110,11 @@ bool CXFA_FFImageEdit::AcceptsFocusOnButtonDown(uint32_t dwFlags,
   return true;
 }
 
-bool CXFA_FFImageEdit::OnLButtonDown(uint32_t dwFlags,
+bool CXFA_FFImageEdit::OnLButtonDown(Mask<XFA_FWL_KeyFlag> dwFlags,
                                      const CFX_PointF& point) {
   SetButtonDown(true);
-  CFWL_MessageMouse msg(GetNormalWidget(), FWL_MouseCommand::LeftButtonDown,
+  CFWL_MessageMouse msg(GetNormalWidget(),
+                        CFWL_MessageMouse::MouseCommand::kLeftButtonDown,
                         dwFlags, FWLToClient(point));
   SendMessageToFWLWidget(&msg);
   return true;
@@ -132,8 +136,8 @@ bool CXFA_FFImageEdit::CommitData() {
 }
 
 bool CXFA_FFImageEdit::UpdateFWLData() {
-  m_pNode->SetImageEditImage(nullptr);
-  m_pNode->LoadImageEditImage(GetDoc());
+  m_pNode->SetEditImage(nullptr);
+  m_pNode->LoadEditImage(GetDoc());
   return true;
 }
 
@@ -146,7 +150,7 @@ void CXFA_FFImageEdit::OnProcessEvent(CFWL_Event* pEvent) {
   m_pOldDelegate->OnProcessEvent(pEvent);
 }
 
-void CXFA_FFImageEdit::OnDrawWidget(CXFA_Graphics* pGraphics,
+void CXFA_FFImageEdit::OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                                     const CFX_Matrix& matrix) {
   m_pOldDelegate->OnDrawWidget(pGraphics, matrix);
 }

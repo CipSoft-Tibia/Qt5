@@ -11,8 +11,7 @@
 #include "modules/skottie/src/SkottieValue.h"
 #include "modules/sksg/include/SkSGTransform.h"
 
-namespace skottie {
-namespace internal {
+namespace skottie::internal {
 
 namespace  {
 
@@ -56,10 +55,10 @@ private:
                                { fUR.x, fUR.y},
                                { fLR.x, fLR.y},
                                { fLL.x, fLL.y}};
-        static_assert(SK_ARRAY_COUNT(src) == SK_ARRAY_COUNT(dst), "");
+        static_assert(std::size(src) == std::size(dst));
 
         SkMatrix m;
-        if (m.setPolyToPoly(src, dst, SK_ARRAY_COUNT(src))) {
+        if (m.setPolyToPoly(src, dst, std::size(src))) {
             fMatrixNode->setMatrix(m);
         }
     }
@@ -83,4 +82,4 @@ sk_sp<sksg::RenderNode> EffectBuilder::attachCornerPinEffect(const skjson::Array
     return sksg::TransformEffect::Make(std::move(layer), std::move(matrix_node));
 }
 
-}} // namespace skottie::internal
+} // namespace skottie::internal

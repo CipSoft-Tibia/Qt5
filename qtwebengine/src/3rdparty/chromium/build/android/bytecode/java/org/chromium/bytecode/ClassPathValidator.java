@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  */
 public class ClassPathValidator {
     // Number of warnings to print.
-    private static final int MAX_MISSING_CLASS_WARNINGS = 4;
+    private static final int MAX_MISSING_CLASS_WARNINGS = 10;
     // Number of missing classes to show per missing jar.
     private static final int MAX_ERRORS_PER_JAR = 2;
     // Map of missing .jar -> Missing class -> Classes that failed.
@@ -69,6 +69,11 @@ public class ClassPathValidator {
         if (className.matches("^libcore\\b.*")) {
             // libcore exists on devices, but is not included in the Android sdk as it is a private
             // API.
+            return;
+        }
+        if (className.matches("^android\\b.*")) {
+            // OS APIs sometime pop up in prebuilts. Rather than force prebuilt targets to set a
+            // proper alternative_android_sdk_dep, just ignore android.*
             return;
         }
         try {

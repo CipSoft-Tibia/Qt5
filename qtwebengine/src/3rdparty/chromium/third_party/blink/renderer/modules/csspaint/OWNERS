@@ -1,6 +1,4 @@
-flackr@chromium.org
-ikilpatrick@chromium.org
-xidachen@chromium.org
+# The paint worklet code makes heavy use of canvas interfaces.
+file://third_party/blink/renderer/modules/canvas/OWNERS
 
-# TEAM: layout-dev@chromium.org
-# COMPONENT: Blink>CSS
+flackr@chromium.org

@@ -30,30 +30,24 @@
 
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
 
-#include <algorithm>
 #include <memory>
 
 #include "base/numerics/checked_math.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/ranges/algorithm.h"
 #include "base/sys_byteorder.h"
 #include "third_party/blink/public/web/web_serialized_script_value_version.h"
 #include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/bindings/core/v8/native_value_traits_impl.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialization_tag.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value_factory.h"
+#include "third_party/blink/renderer/bindings/core/v8/serialization/trailer_reader.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/transferables.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/unpacked_serialized_script_value.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_array_buffer.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_image_bitmap.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_message_port.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_mojo_handle.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_offscreen_canvas.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_readable_stream.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_shared_array_buffer.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_transform_stream.h"
-#include "third_party/blink/renderer/bindings/core/v8/v8_writable_stream.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/imagebitmap/image_bitmap.h"
 #include "third_party/blink/renderer/core/messaging/message_port.h"
+#include "third_party/blink/renderer/core/offscreencanvas/offscreen_canvas.h"
 #include "third_party/blink/renderer/core/streams/readable_stream.h"
 #include "third_party/blink/renderer/core/streams/transform_stream.h"
 #include "third_party/blink/renderer/core/streams/writable_stream.h"
@@ -64,9 +58,7 @@
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/blob/blob_data.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
-#include "third_party/blink/renderer/platform/wtf/assertions.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_buffer.h"
@@ -75,6 +67,16 @@
 #include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
 
 namespace blink {
+
+namespace {
+
+SerializedScriptValue::CanDeserializeInCallback& GetCanDeserializeInCallback() {
+  DEFINE_THREAD_SAFE_STATIC_LOCAL(
+      SerializedScriptValue::CanDeserializeInCallback, g_callback, ());
+  return g_callback;
+}
+
+}  // namespace
 
 scoped_refptr<SerializedScriptValue> SerializedScriptValue::Serialize(
     v8::Isolate* isolate,
@@ -115,6 +117,28 @@ scoped_refptr<SerializedScriptValue> SerializedScriptValue::Create(
       std::move(data_buffer), data_buffer_size.ValueOrDie()));
 }
 
+// Returns whether `tag` was a valid tag in the v0 serialization format.
+inline static constexpr bool IsV0VersionTag(uint8_t tag) {
+  // There were 13 tags supported in version 0:
+  //
+  //  35 - 0x23 - # - ImageDataTag
+  //  64 - 0x40 - @ - SparseArrayTag
+  //  68 - 0x44 - D - DateTag
+  //  73 - 0x49 - I - Int32Tag
+  //  78 - 0x4E - N - NumberTag
+  //  82 - 0x52 - R - RegExpTag
+  //  83 - 0x53 - S - StringTag
+  //  85 - 0x55 - U - Uint32Tag
+  //  91 - 0x5B - [ - ArrayTag
+  //  98 - 0x62 - b - BlobTag
+  // 102 - 0x66 - f - FileTag
+  // 108 - 0x6C - l - FileListTag
+  // 123 - 0x7B - { - ObjectTag
+  return tag == 35 || tag == 64 || tag == 68 || tag == 73 || tag == 78 ||
+         tag == 82 || tag == 83 || tag == 85 || tag == 91 || tag == 98 ||
+         tag == 102 || tag == 108 || tag == 123;
+}
+
 // Versions 16 and below (prior to April 2017) used ntohs() to byte-swap SSV
 // data when converting it to the wire format. This was a historical accient.
 //
@@ -141,22 +165,8 @@ inline static bool IsByteSwappedWiredData(const uint8_t* data, size_t length) {
     // The only case where byte-swapped data can have 0xFF in byte zero is
     // version 0. This can only happen if byte one is a tag (supported in
     // version 0) that takes in extra data, and the first byte of extra data is
-    // 0xFF. There are 13 such tags, listed below. These tags cannot be used as
-    // version numbers in the Blink-side SSV envelope.
-    //
-    //  35 - 0x23 - # - ImageDataTag
-    //  64 - 0x40 - @ - SparseArrayTag
-    //  68 - 0x44 - D - DateTag
-    //  73 - 0x49 - I - Int32Tag
-    //  78 - 0x4E - N - NumberTag
-    //  82 - 0x52 - R - RegExpTag
-    //  83 - 0x53 - S - StringTag
-    //  85 - 0x55 - U - Uint32Tag
-    //  91 - 0x5B - [ - ArrayTag
-    //  98 - 0x62 - b - BlobTag
-    // 102 - 0x66 - f - FileTag
-    // 108 - 0x6C - l - FileListTag
-    // 123 - 0x7B - { - ObjectTag
+    // 0xFF. These tags cannot be used as version numbers in the Blink-side SSV
+    // envelope.
     //
     // Why we care about version 0:
     //
@@ -168,36 +178,10 @@ inline static bool IsByteSwappedWiredData(const uint8_t* data, size_t length) {
     // SSV version 1 was added in WebKit r91698, which was shipped in Chrome 14,
     // which was released on September 16, 2011.
     static_assert(
-        SerializedScriptValue::kWireFormatVersion != 35 &&
-            SerializedScriptValue::kWireFormatVersion != 64 &&
-            SerializedScriptValue::kWireFormatVersion != 68 &&
-            SerializedScriptValue::kWireFormatVersion != 73 &&
-            SerializedScriptValue::kWireFormatVersion != 78 &&
-            SerializedScriptValue::kWireFormatVersion != 82 &&
-            SerializedScriptValue::kWireFormatVersion != 83 &&
-            SerializedScriptValue::kWireFormatVersion != 85 &&
-            SerializedScriptValue::kWireFormatVersion != 91 &&
-            SerializedScriptValue::kWireFormatVersion != 98 &&
-            SerializedScriptValue::kWireFormatVersion != 102 &&
-            SerializedScriptValue::kWireFormatVersion != 108 &&
-            SerializedScriptValue::kWireFormatVersion != 123,
+        !IsV0VersionTag(SerializedScriptValue::kWireFormatVersion),
         "Using a burned version will prevent us from reading SSV version 0");
-
-    // Fast path until the Blink-side SSV envelope reaches version 35.
-    if (SerializedScriptValue::kWireFormatVersion < 35) {
-      if (data[1] < 35)
-        return false;
-
-      // TODO(pwnall): Add UMA metric here.
-      return true;
-    }
-
-    // Slower path that would kick in after version 35, assuming we don't remove
-    // support for SSV version 0 by then.
-    static constexpr uint8_t version0Tags[] = {35, 64, 68, 73,  78,  82, 83,
-                                               85, 91, 98, 102, 108, 123};
-    return std::find(std::begin(version0Tags), std::end(version0Tags),
-                     data[1]) != std::end(version0Tags);
+    // TODO(pwnall): Add UMA metric here.
+    return IsV0VersionTag(data[1]);
   }
 
   if (data[1] == kVersionTag) {
@@ -227,17 +211,16 @@ static void SwapWiredDataIfNeeded(uint8_t* buffer, size_t buffer_size) {
 }
 
 scoped_refptr<SerializedScriptValue> SerializedScriptValue::Create(
-    const char* data,
-    size_t length) {
-  if (!data)
+    base::span<const uint8_t> data) {
+  if (data.empty())
     return Create();
 
-  DataBufferPtr data_buffer = AllocateBuffer(length);
-  std::copy(data, data + length, data_buffer.get());
-  SwapWiredDataIfNeeded(data_buffer.get(), length);
+  DataBufferPtr data_buffer = AllocateBuffer(data.size());
+  base::ranges::copy(data, data_buffer.get());
+  SwapWiredDataIfNeeded(data_buffer.get(), data.size());
 
   return base::AdoptRef(
-      new SerializedScriptValue(std::move(data_buffer), length));
+      new SerializedScriptValue(std::move(data_buffer), data.size()));
 }
 
 scoped_refptr<SerializedScriptValue> SerializedScriptValue::Create(
@@ -248,8 +231,7 @@ scoped_refptr<SerializedScriptValue> SerializedScriptValue::Create(
   DataBufferPtr data_buffer = AllocateBuffer(buffer->size());
   size_t offset = 0;
   for (const auto& span : *buffer) {
-    std::copy(span.data(), span.data() + span.size(),
-              data_buffer.get() + offset);
+    base::ranges::copy(span, data_buffer.get() + offset);
     offset += span.size();
   }
   SwapWiredDataIfNeeded(data_buffer.get(), buffer->size());
@@ -293,15 +275,14 @@ scoped_refptr<SerializedScriptValue> SerializedScriptValue::NullValue() {
   // The format here may fall a bit out of date, because we support
   // deserializing SSVs written by old browser versions.
   static const uint8_t kNullData[] = {0xFF, 17, 0xFF, 13, '0', 0x00};
-  return Create(reinterpret_cast<const char*>(kNullData), sizeof(kNullData));
+  return Create(kNullData);
 }
 
 scoped_refptr<SerializedScriptValue> SerializedScriptValue::UndefinedValue() {
   // The format here may fall a bit out of date, because we support
   // deserializing SSVs written by old browser versions.
   static const uint8_t kUndefinedData[] = {0xFF, 17, 0xFF, 13, '_', 0x00};
-  return Create(reinterpret_cast<const char*>(kUndefinedData),
-                sizeof(kUndefinedData));
+  return Create(kUndefinedData);
 }
 
 String SerializedScriptValue::ToWireString() const {
@@ -309,7 +290,7 @@ String SerializedScriptValue::ToWireString() const {
   // This requires direct use of uninitialized strings, though.
   UChar* destination;
   wtf_size_t string_size_bytes =
-      SafeCast<wtf_size_t>((data_buffer_size_ + 1) & ~1);
+      base::checked_cast<wtf_size_t>((data_buffer_size_ + 1) & ~1);
   String wire_string =
       String::CreateUninitialized(string_size_bytes / 2, destination);
   memcpy(destination, data_buffer_.get(), data_buffer_size_);
@@ -409,6 +390,9 @@ void SerializedScriptValue::TransferReadableStream(
   readable_stream->Serialize(script_state, local_port, exception_state);
   if (exception_state.HadException())
     return;
+  // The last element is added by the above `AddStreamChannel()` call.
+  streams_.back().readable_optimizer =
+      readable_stream->TakeTransferringOptimizer();
 }
 
 void SerializedScriptValue::TransferWritableStreams(
@@ -433,6 +417,9 @@ void SerializedScriptValue::TransferWritableStream(
   writable_stream->Serialize(script_state, local_port, exception_state);
   if (exception_state.HadException())
     return;
+  // The last element is added by the above `AddStreamChannel()` call.
+  streams_.back().writable_optimizer =
+      writable_stream->TakeTransferringOptimizer();
 }
 
 void SerializedScriptValue::TransferTransformStreams(
@@ -452,7 +439,7 @@ void SerializedScriptValue::TransferTransformStreams(
   }
 }
 
-// Creates an entangled pair of channels. Adds one end to |stream_channels_| as
+// Creates an entangled pair of channels. Adds one end to |streams_| as
 // a MessagePortChannel, and returns the other end as a MessagePort.
 MessagePort* SerializedScriptValue::AddStreamChannel(
     ExecutionContext* execution_context) {
@@ -468,7 +455,7 @@ MessagePort* SerializedScriptValue::AddStreamChannel(
 
   // 9. Set dataHolder.[[port]] to ! StructuredSerializeWithTransfer(port2,
   //    « port2 »).
-  stream_channels_.push_back(MessagePortChannel(pipe.TakePort1()));
+  streams_.push_back(Stream(pipe.TakePort1()));
   return local_port;
 }
 
@@ -518,28 +505,9 @@ UnpackedSerializedScriptValue* SerializedScriptValue::Unpack(
 }
 
 bool SerializedScriptValue::HasPackedContents() const {
-  return !array_buffer_contents_array_.IsEmpty() ||
-         !shared_array_buffers_contents_.IsEmpty() ||
-         !image_bitmap_contents_array_.IsEmpty();
-}
-
-bool SerializedScriptValue::ExtractTransferables(
-    v8::Isolate* isolate,
-    v8::Local<v8::Value> value,
-    int argument_index,
-    Transferables& transferables,
-    ExceptionState& exception_state) {
-  if (value.IsEmpty() || value->IsUndefined())
-    return true;
-
-  const HeapVector<ScriptValue>& transferable_array =
-      NativeValueTraits<IDLSequence<ScriptValue>>::NativeValue(isolate, value,
-                                                               exception_state);
-  if (exception_state.HadException())
-    return false;
-
-  return ExtractTransferables(isolate, transferable_array, transferables,
-                              exception_state);
+  return !array_buffer_contents_array_.empty() ||
+         !shared_array_buffers_contents_.empty() ||
+         !image_bitmap_contents_array_.empty();
 }
 
 bool SerializedScriptValue::ExtractTransferables(
@@ -547,129 +515,26 @@ bool SerializedScriptValue::ExtractTransferables(
     const HeapVector<ScriptValue>& object_sequence,
     Transferables& transferables,
     ExceptionState& exception_state) {
-  // Validate the passed array of transferables.
+  auto& factory = SerializedScriptValueFactory::Instance();
   wtf_size_t i = 0;
-  bool transferable_streams_enabled =
-      RuntimeEnabledFeatures::TransferableStreamsEnabled(
-          CurrentExecutionContext(isolate));
   for (const auto& script_value : object_sequence) {
-    v8::Local<v8::Value> transferable_object = script_value.V8Value();
+    v8::Local<v8::Value> value = script_value.V8Value();
     // Validation of non-null objects, per HTML5 spec 10.3.3.
-    if (IsUndefinedOrNull(transferable_object)) {
-      exception_state.ThrowTypeError(
+    if (IsUndefinedOrNull(value)) {
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kDataCloneError,
           "Value at index " + String::Number(i) + " is an untransferable " +
-          (transferable_object->IsUndefined() ? "'undefined'" : "'null'") +
-          " value.");
+              (value->IsUndefined() ? "'undefined'" : "'null'") + " value.");
       return false;
     }
-    // Validation of Objects implementing an interface, per WebIDL spec 4.1.15.
-    if (V8MessagePort::HasInstance(transferable_object, isolate)) {
-      MessagePort* port = V8MessagePort::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      // Check for duplicate MessagePorts.
-      if (transferables.message_ports.Contains(port)) {
+    if (!factory.ExtractTransferable(isolate, value, i, transferables,
+                                     exception_state)) {
+      if (!exception_state.HadException()) {
         exception_state.ThrowDOMException(
             DOMExceptionCode::kDataCloneError,
-            "Message port at index " + String::Number(i) +
-                " is a duplicate of an earlier port.");
-        return false;
+            "Value at index " + String::Number(i) +
+                " does not have a transferable type.");
       }
-      transferables.message_ports.push_back(port);
-    } else if (V8MojoHandle::HasInstance(transferable_object, isolate)) {
-      MojoHandle* handle = V8MojoHandle::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      // Check for duplicate MojoHandles.
-      if (transferables.mojo_handles.Contains(handle)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "Mojo handle at index " + String::Number(i) +
-                " is a duplicate of an earlier handle.");
-        return false;
-      }
-      transferables.mojo_handles.push_back(handle);
-    } else if (transferable_object->IsArrayBuffer()) {
-      DOMArrayBuffer* array_buffer = V8ArrayBuffer::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.array_buffers.Contains(array_buffer)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "ArrayBuffer at index " + String::Number(i) +
-                " is a duplicate of an earlier ArrayBuffer.");
-        return false;
-      }
-      transferables.array_buffers.push_back(array_buffer);
-    } else if (transferable_object->IsSharedArrayBuffer()) {
-      DOMSharedArrayBuffer* shared_array_buffer = V8SharedArrayBuffer::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.array_buffers.Contains(shared_array_buffer)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "SharedArrayBuffer at index " + String::Number(i) +
-                " is a duplicate of an earlier SharedArrayBuffer.");
-        return false;
-      }
-      transferables.array_buffers.push_back(shared_array_buffer);
-    } else if (V8ImageBitmap::HasInstance(transferable_object, isolate)) {
-      ImageBitmap* image_bitmap = V8ImageBitmap::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.image_bitmaps.Contains(image_bitmap)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "ImageBitmap at index " + String::Number(i) +
-                " is a duplicate of an earlier ImageBitmap.");
-        return false;
-      }
-      transferables.image_bitmaps.push_back(image_bitmap);
-    } else if (V8OffscreenCanvas::HasInstance(transferable_object, isolate)) {
-      OffscreenCanvas* offscreen_canvas = V8OffscreenCanvas::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.offscreen_canvases.Contains(offscreen_canvas)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "OffscreenCanvas at index " + String::Number(i) +
-                " is a duplicate of an earlier OffscreenCanvas.");
-        return false;
-      }
-      transferables.offscreen_canvases.push_back(offscreen_canvas);
-    } else if (transferable_streams_enabled &&
-               V8ReadableStream::HasInstance(transferable_object, isolate)) {
-      ReadableStream* stream = V8ReadableStream::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.readable_streams.Contains(stream)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "ReadableStream at index " + String::Number(i) +
-                " is a duplicate of an earlier ReadableStream.");
-        return false;
-      }
-      transferables.readable_streams.push_back(stream);
-    } else if (transferable_streams_enabled &&
-               V8WritableStream::HasInstance(transferable_object, isolate)) {
-      WritableStream* stream = V8WritableStream::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.writable_streams.Contains(stream)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "WritableStream at index " + String::Number(i) +
-                " is a duplicate of an earlier WritableStream.");
-        return false;
-      }
-      transferables.writable_streams.push_back(stream);
-    } else if (transferable_streams_enabled &&
-               V8TransformStream::HasInstance(transferable_object, isolate)) {
-      TransformStream* stream = V8TransformStream::ToImpl(
-          v8::Local<v8::Object>::Cast(transferable_object));
-      if (transferables.transform_streams.Contains(stream)) {
-        exception_state.ThrowDOMException(
-            DOMExceptionCode::kDataCloneError,
-            "TransformStream at index " + String::Number(i) +
-                " is a duplicate of an earlier TransformStream.");
-        return false;
-      }
-      transferables.transform_streams.push_back(stream);
-    } else {
-      exception_state.ThrowTypeError("Value at index " + String::Number(i) +
-                                     " does not have a transferable type.");
       return false;
     }
     i++;
@@ -750,11 +615,19 @@ SerializedScriptValue::TransferArrayBufferContents(
       DOMArrayBuffer* array_buffer =
           static_cast<DOMArrayBuffer*>(array_buffer_base);
 
-      if (!array_buffer->Transfer(isolate, contents.at(index))) {
+      if (!array_buffer->IsDetachable(isolate)) {
+        exception_state.ThrowTypeError(
+            "ArrayBuffer at index " + String::Number(index) +
+            " is not detachable and could not be transferred.");
+        return ArrayBufferContentsArray();
+      } else if (array_buffer->IsDetached()) {
         exception_state.ThrowDOMException(DOMExceptionCode::kDataCloneError,
                                           "ArrayBuffer at index " +
                                               String::Number(index) +
                                               " could not be transferred.");
+        return ArrayBufferContentsArray();
+      } else if (!array_buffer->Transfer(isolate, contents.at(index),
+                                         exception_state)) {
         return ArrayBufferContentsArray();
       }
     }
@@ -781,6 +654,44 @@ void SerializedScriptValue::RegisterMemoryAllocatedWithCurrentScriptContext() {
   v8::Isolate::GetCurrent()->AdjustAmountOfExternalAllocatedMemory(diff);
 }
 
+bool SerializedScriptValue::IsLockedToAgentCluster() const {
+  return !wasm_modules_.empty() || !shared_array_buffers_contents_.empty() ||
+         base::ranges::any_of(attachments_,
+                              [](const auto& entry) {
+                                return entry.value->IsLockedToAgentCluster();
+                              }) ||
+         shared_value_conveyor_.has_value();
+}
+
+bool SerializedScriptValue::IsOriginCheckRequired() const {
+  return file_system_access_tokens_.size() > 0 || wasm_modules_.size() > 0;
+}
+
+bool SerializedScriptValue::CanDeserializeIn(
+    ExecutionContext* execution_context) {
+  TrailerReader reader(GetWireData());
+  if (auto result = reader.SkipToTrailer(); !result.has_value())
+    return false;
+  if (auto result = reader.Read(); !result.has_value())
+    return false;
+  auto& factory = SerializedScriptValueFactory::Instance();
+  bool result = base::ranges::all_of(
+      reader.required_exposed_interfaces(), [&](SerializationTag tag) {
+        return factory.ExecutionContextExposesInterface(execution_context, tag);
+      });
+  if (const auto& callback = GetCanDeserializeInCallback())
+    result = callback.Run(*this, execution_context, result);
+  return result;
+}
+
+// static
+void SerializedScriptValue::OverrideCanDeserializeInForTesting(
+    SerializedScriptValue::CanDeserializeInCallback callback) {
+  auto& global = GetCanDeserializeInCallback();
+  CHECK_NE(callback.is_null(), global.is_null());
+  global = std::move(callback);
+}
+
 // This ensures that the version number published in
 // WebSerializedScriptValueVersion.h matches the serializer's understanding.
 // TODO(jbroman): Fix this to also account for the V8-side version. See
@@ -788,9 +699,5 @@ void SerializedScriptValue::RegisterMemoryAllocatedWithCurrentScriptContext() {
 static_assert(kSerializedScriptValueVersion ==
                   SerializedScriptValue::kWireFormatVersion,
               "Update WebSerializedScriptValueVersion.h.");
-
-bool SerializedScriptValue::IsOriginCheckRequired() const {
-  return native_file_system_tokens_.size() > 0;
-}
 
 }  // namespace blink

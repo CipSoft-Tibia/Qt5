@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 #define COMPONENTS_DOWNLOAD_PUBLIC_COMMON_URL_DOWNLOAD_REQUEST_HANDLE_H_
 
 #include "base/memory/weak_ptr.h"
+#include "base/task/sequenced_task_runner.h"
 #include "components/download/public/common/download_export.h"
 #include "components/download/public/common/url_download_handler.h"
 
@@ -19,13 +20,15 @@ class COMPONENTS_DOWNLOAD_EXPORT UrlDownloadRequestHandle {
       scoped_refptr<base::SequencedTaskRunner> downloader_task_runner);
   UrlDownloadRequestHandle(UrlDownloadRequestHandle&& other);
   UrlDownloadRequestHandle& operator=(UrlDownloadRequestHandle&& other);
+
+  UrlDownloadRequestHandle(const UrlDownloadRequestHandle&) = delete;
+  UrlDownloadRequestHandle& operator=(const UrlDownloadRequestHandle&) = delete;
+
   ~UrlDownloadRequestHandle();
 
  private:
   base::WeakPtr<UrlDownloadHandler> downloader_;
   scoped_refptr<base::SequencedTaskRunner> downloader_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(UrlDownloadRequestHandle);
 };
 
 }  // namespace download

@@ -27,6 +27,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_BIQUAD_PROCESSOR_H_
 
 #include <memory>
+
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/modules/webaudio/audio_node.h"
 #include "third_party/blink/renderer/modules/webaudio/audio_param.h"
@@ -57,6 +58,7 @@ class BiquadProcessor final : public AudioDSPKernelProcessor {
 
   BiquadProcessor(float sample_rate,
                   uint32_t number_of_channels,
+                  unsigned render_quantum_frames,
                   AudioParamHandler& frequency,
                   AudioParamHandler& q,
                   AudioParamHandler& gain,
@@ -65,11 +67,12 @@ class BiquadProcessor final : public AudioDSPKernelProcessor {
 
   std::unique_ptr<AudioDSPKernel> CreateKernel() override;
 
+  void Initialize() override;
   void Process(const AudioBus* source,
                AudioBus* destination,
                uint32_t frames_to_process) override;
-
   void ProcessOnlyAudioParams(uint32_t frames_to_process) override;
+  void Reset() override;
 
   // Get the magnitude and phase response of the filter at the given
   // set of frequencies (in Hz). The phase response is in radians.
@@ -93,7 +96,7 @@ class BiquadProcessor final : public AudioDSPKernelProcessor {
   void SetType(FilterType);
 
  private:
-  FilterType type_;
+  FilterType type_ = FilterType::kLowPass;
 
   scoped_refptr<AudioParamHandler> parameter1_;
   scoped_refptr<AudioParamHandler> parameter2_;
@@ -101,13 +104,22 @@ class BiquadProcessor final : public AudioDSPKernelProcessor {
   scoped_refptr<AudioParamHandler> parameter4_;
 
   // so DSP kernels know when to re-compute coefficients
-  bool filter_coefficients_dirty_;
+  bool filter_coefficients_dirty_ = true;
 
   // Set to true if any of the filter parameters are sample-accurate.
-  bool has_sample_accurate_values_;
+  bool has_sample_accurate_values_ = false;
 
   // Set to true if any of the filter parameters are a-rate.
   bool is_audio_rate_;
+
+  bool has_just_reset_ = true;
+
+  // Cache previous parameter values to allow us to skip recomputing filter
+  // coefficients when parameters are not changing
+  float previous_parameter1_ = std::numeric_limits<float>::quiet_NaN();
+  float previous_parameter2_ = std::numeric_limits<float>::quiet_NaN();
+  float previous_parameter3_ = std::numeric_limits<float>::quiet_NaN();
+  float previous_parameter4_ = std::numeric_limits<float>::quiet_NaN();
 };
 
 }  // namespace blink

@@ -1,11 +1,10 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Tool to create a new, empty .grd file with all the basic sections.
 '''
 
-from __future__ import print_function
 
 import getopt
 import sys

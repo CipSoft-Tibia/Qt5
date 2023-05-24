@@ -345,7 +345,6 @@ static void set_good_speed_feature_framesize_independent(VP9_COMP *cpi,
     sf->intra_y_mode_mask[TX_32X32] = INTRA_DC;
     sf->intra_uv_mode_mask[TX_32X32] = INTRA_DC;
     sf->adaptive_interp_filter_search = 1;
-    sf->allow_partition_search_skip = 1;
 
     if (cpi->twopass.fr_content_type == FC_GRAPHICS_ANIMATION) {
       for (i = 0; i < MAX_MESH_STEP; ++i) {
@@ -496,11 +495,10 @@ static void set_rt_speed_feature_framesize_independent(
         (cpi->external_resize == 1 ||
          cpi->oxcf.resize_mode == RESIZE_DYNAMIC)) {
       MV_REFERENCE_FRAME ref_frame;
-      static const int flag_list[4] = { 0, VP9_LAST_FLAG, VP9_GOLD_FLAG,
-                                        VP9_ALT_FLAG };
       for (ref_frame = LAST_FRAME; ref_frame <= ALTREF_FRAME; ++ref_frame) {
         const YV12_BUFFER_CONFIG *yv12 = get_ref_frame_buffer(cpi, ref_frame);
-        if (yv12 != NULL && (cpi->ref_frame_flags & flag_list[ref_frame])) {
+        if (yv12 != NULL &&
+            (cpi->ref_frame_flags & ref_frame_to_flag(ref_frame))) {
           const struct scale_factors *const scale_fac =
               &cm->frame_refs[ref_frame - 1].sf;
           if (vp9_is_scaled(scale_fac)) sf->reference_masking = 0;
@@ -654,8 +652,10 @@ static void set_rt_speed_feature_framesize_independent(
       if (cpi->content_state_sb_fd == NULL &&
           (!cpi->use_svc ||
            svc->spatial_layer_id == svc->number_spatial_layers - 1)) {
-        cpi->content_state_sb_fd = (uint8_t *)vpx_calloc(
-            (cm->mi_stride >> 3) * ((cm->mi_rows >> 3) + 1), sizeof(uint8_t));
+        CHECK_MEM_ERROR(cm, cpi->content_state_sb_fd,
+                        (uint8_t *)vpx_calloc(
+                            (cm->mi_stride >> 3) * ((cm->mi_rows >> 3) + 1),
+                            sizeof(uint8_t)));
       }
     }
     if (cpi->oxcf.rc_mode == VPX_CBR && content != VP9E_CONTENT_SCREEN) {
@@ -806,14 +806,17 @@ static void set_rt_speed_feature_framesize_independent(
       sf->partition_search_type = FIXED_PARTITION;
       sf->always_this_block_size = BLOCK_64X64;
     }
-    if (cpi->count_arf_frame_usage == NULL)
-      cpi->count_arf_frame_usage =
+    if (cpi->count_arf_frame_usage == NULL) {
+      CHECK_MEM_ERROR(
+          cm, cpi->count_arf_frame_usage,
           (uint8_t *)vpx_calloc((cm->mi_stride >> 3) * ((cm->mi_rows >> 3) + 1),
-                                sizeof(*cpi->count_arf_frame_usage));
+                                sizeof(*cpi->count_arf_frame_usage)));
+    }
     if (cpi->count_lastgolden_frame_usage == NULL)
-      cpi->count_lastgolden_frame_usage =
+      CHECK_MEM_ERROR(
+          cm, cpi->count_lastgolden_frame_usage,
           (uint8_t *)vpx_calloc((cm->mi_stride >> 3) * ((cm->mi_rows >> 3) + 1),
-                                sizeof(*cpi->count_lastgolden_frame_usage));
+                                sizeof(*cpi->count_lastgolden_frame_usage)));
   }
   if (svc->previous_frame_is_intra_only) {
     sf->partition_search_type = FIXED_PARTITION;
@@ -931,7 +934,6 @@ void vp9_set_speed_features_framesize_independent(VP9_COMP *cpi, int speed) {
   sf->max_delta_qindex = 0;
   sf->disable_filter_search_var_thresh = 0;
   sf->adaptive_interp_filter_search = 0;
-  sf->allow_partition_search_skip = 0;
   sf->allow_txfm_domain_distortion = 0;
   sf->tx_domain_thresh = 99.0;
   sf->allow_quant_coeff_opt = sf->optimize_coefficients;
@@ -940,6 +942,7 @@ void vp9_set_speed_features_framesize_independent(VP9_COMP *cpi, int speed) {
   sf->enable_tpl_model = oxcf->enable_tpl_model;
   sf->prune_ref_frame_for_rect_partitions = 0;
   sf->temporal_filter_search_method = MESH;
+  sf->allow_skip_txfm_ac_dc = 0;
 
   for (i = 0; i < TX_SIZES; i++) {
     sf->intra_y_mode_mask[i] = INTRA_ALL;

@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,6 @@
 #ifndef XFA_FXFA_LAYOUT_CXFA_LAYOUTITEM_H_
 #define XFA_FXFA_LAYOUT_CXFA_LAYOUTITEM_H_
 
-#include "core/fxcrt/retained_tree_node.h"
 #include "fxjs/gc/gced_tree_node.h"
 #include "fxjs/gc/heap.h"
 #include "v8/include/cppgc/member.h"
@@ -15,7 +14,6 @@
 #include "v8/include/cppgc/visitor.h"
 
 class CXFA_ContentLayoutItem;
-class CXFA_LayoutProcessor;
 class CXFA_Node;
 class CXFA_ViewLayoutItem;
 
@@ -39,7 +37,7 @@ class CXFA_LayoutItem : public GCedTreeNode<CXFA_LayoutItem> {
   const CXFA_ContentLayoutItem* AsContentLayoutItem() const;
 
   const CXFA_ViewLayoutItem* GetPage() const;
-  CXFA_Node* GetFormNode() const { return m_pFormNode.Get(); }
+  CXFA_Node* GetFormNode() const { return m_pFormNode; }
   void SetFormNode(CXFA_Node* pNode);
 
  protected:

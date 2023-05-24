@@ -1,47 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "profile_qt.h"
 
 #include "profile_adapter.h"
 #include "browsing_data_remover_delegate_qt.h"
+#include "client_hints.h"
 #include "download_manager_delegate_qt.h"
+#include "file_system_access/file_system_access_permission_context_factory_qt.h"
 #include "net/ssl_host_state_delegate_qt.h"
 #include "permission_manager_qt.h"
 #include "platform_notification_service_qt.h"
@@ -58,6 +24,7 @@
 #include "content/public/browser/storage_partition.h"
 
 #include "base/base_paths.h"
+#include "base/files/file_util.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_service.h"
@@ -67,7 +34,11 @@
 #include "components/prefs/pref_service_factory.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/user_prefs/user_prefs.h"
+#include "components/profile_metrics/browser_profile_type.h"
 #include "components/proxy_config/pref_proxy_config_tracker_impl.h"
+#include "chrome/browser/push_messaging/push_messaging_app_identifier.h"
+#include "chrome/browser/push_messaging/push_messaging_service_factory.h"
+#include "chrome/browser/push_messaging/push_messaging_service_impl.h"
 #include "chrome/common/pref_names.h"
 #if QT_CONFIG(webengine_spellchecker)
 #include "chrome/browser/spellchecker/spellcheck_service.h"
@@ -75,7 +46,12 @@
 #endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "base/command_line.h"
 #include "components/guest_view/browser/guest_view_manager.h"
+#include "extensions/browser/extension_pref_value_map_factory.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_prefs_factory.h"
+#include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/pref_names.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/common/constants.h"
@@ -83,16 +59,23 @@
 #include "extensions/extension_system_qt.h"
 #endif
 
+#if defined(Q_OS_WIN)
+#include "components/os_crypt/os_crypt.h"
+#endif
+
 namespace QtWebEngineCore {
 
 ProfileQt::ProfileQt(ProfileAdapter *profileAdapter)
-    : m_sharedCorsOriginAccessList(content::SharedCorsOriginAccessList::Create())
-    , m_profileIOData(new ProfileIODataQt(this))
+    : m_profileIOData(new ProfileIODataQt(this))
     , m_profileAdapter(profileAdapter)
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     , m_extensionSystem(nullptr)
 #endif // BUILDFLAG(ENABLE_EXTENSIONS)
 {
+    profile_metrics::SetBrowserProfileType(this, IsOffTheRecord()
+        ? profile_metrics::BrowserProfileType::kIncognito
+        : profile_metrics::BrowserProfileType::kRegular);
+
     setupPrefService();
 
     // Mark the context as live. This prevents the use-after-free DCHECK in
@@ -112,10 +95,18 @@ ProfileQt::~ProfileQt()
     DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
     m_prefServiceAdapter.commit();
     BrowserContextDependencyManager::GetInstance()->DestroyBrowserContextServices(this);
+    // Remembering push subscriptions and not persisting notification permissions would
+    // confuse most of web applications.
+    PushMessagingAppIdentifier::DeleteAllFromPrefs(this);
     ShutdownStoragePartitions();
     m_profileIOData->shutdownOnUIThread();
     //Should be deleted by IO Thread
     m_profileIOData.release();
+}
+
+void ProfileQt::DoFinalInit()
+{
+    PushMessagingServiceImpl::InitializeForProfile(this);
 }
 
 PrefService* ProfileQt::GetPrefs()
@@ -126,6 +117,11 @@ PrefService* ProfileQt::GetPrefs()
 const PrefService* ProfileQt::GetPrefs() const
 {
     return m_prefServiceAdapter.prefService();
+}
+
+bool ProfileQt::IsNewProfile() const
+{
+    return GetPrefs()->GetInitializationStatus() == PrefService::INITIALIZATION_STATUS_CREATED_NEW_PREF_STORE;
 }
 
 base::FilePath ProfileQt::GetPath()
@@ -170,7 +166,10 @@ storage::SpecialStoragePolicy *ProfileQt::GetSpecialStoragePolicy()
 
 content::PushMessagingService *ProfileQt::GetPushMessagingService()
 {
-    return nullptr;
+    if (m_profileAdapter->pushServiceEnabled())
+        return PushMessagingServiceFactory::GetForProfile(this);
+    else
+        return nullptr;
 }
 
 content::SSLHostStateDelegate* ProfileQt::GetSSLHostStateDelegate()
@@ -211,7 +210,7 @@ content::PermissionControllerDelegate *ProfileQt::GetPermissionControllerDelegat
 
 content::ClientHintsControllerDelegate *ProfileQt::GetClientHintsControllerDelegate()
 {
-    return nullptr;
+    return ClientHintsFactory::GetForBrowserContext(this);
 }
 
 content::StorageNotificationService *ProfileQt::GetStorageNotificationService()
@@ -219,32 +218,9 @@ content::StorageNotificationService *ProfileQt::GetStorageNotificationService()
     return nullptr;
 }
 
-void ProfileQt::SetCorsOriginAccessListForOrigin(const url::Origin &source_origin,
-                                                 std::vector<network::mojom::CorsOriginPatternPtr> allow_patterns,
-                                                 std::vector<network::mojom::CorsOriginPatternPtr> block_patterns,
-                                                 base::OnceClosure closure)
+content::ReduceAcceptLanguageControllerDelegate *ProfileQt::GetReduceAcceptLanguageControllerDelegate()
 {
-    auto barrier_closure = base::BarrierClosure(2, std::move(closure));
-
-    // Keep profile storage partitions' NetworkContexts synchronized.
-    auto profile_setter = base::MakeRefCounted<content::CorsOriginPatternSetter>(
-                source_origin,
-                content::CorsOriginPatternSetter::ClonePatterns(allow_patterns),
-                content::CorsOriginPatternSetter::ClonePatterns(block_patterns),
-                barrier_closure);
-    ForEachStoragePartition(this,
-                            base::BindRepeating(&content::CorsOriginPatternSetter::SetLists,
-                                                base::RetainedRef(profile_setter.get())));
-
-    m_sharedCorsOriginAccessList->SetForOrigin(source_origin,
-                                               std::move(allow_patterns),
-                                               std::move(block_patterns),
-                                               barrier_closure);
-}
-
-content::SharedCorsOriginAccessList *ProfileQt::GetSharedCorsOriginAccessList()
-{
-    return m_sharedCorsOriginAccessList.get();
+    return nullptr;
 }
 
 #if QT_CONFIG(webengine_spellchecker)
@@ -268,16 +244,43 @@ std::string ProfileQt::GetMediaDeviceIDSalt()
     return m_prefServiceAdapter.mediaDeviceIdSalt();
 }
 
+content::FileSystemAccessPermissionContext *ProfileQt::GetFileSystemAccessPermissionContext()
+{
+    return FileSystemAccessPermissionContextFactoryQt::GetForProfile(this);
+}
+
 void ProfileQt::setupPrefService()
 {
+    const bool recreation = m_prefServiceAdapter.prefService() != nullptr;
+    profile_metrics::SetBrowserProfileType(this,
+                                           IsOffTheRecord()
+                                               ? profile_metrics::BrowserProfileType::kIncognito
+                                               : profile_metrics::BrowserProfileType::kRegular);
+
     // Remove previous handler before we set a new one or we will assert
     // TODO: Remove in Qt6
-    if (m_prefServiceAdapter.prefService() != nullptr) {
+    if (recreation) {
         user_prefs::UserPrefs::Remove(this);
         m_prefServiceAdapter.commit();
     }
     m_prefServiceAdapter.setup(*m_profileAdapter);
     user_prefs::UserPrefs::Set(this, m_prefServiceAdapter.prefService());
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+    if (recreation) {
+        // Recreate ExtensionPrefs to update its pointer to the new PrefService
+        extensions::ExtensionsBrowserClient *client = extensions::ExtensionsBrowserClient::Get();
+        std::vector<extensions::EarlyExtensionPrefsObserver *> prefsObservers;
+        client->GetEarlyExtensionPrefsObservers(this, &prefsObservers);
+        extensions::ExtensionPrefs *extensionPrefs = extensions::ExtensionPrefs::Create(
+            this, client->GetPrefServiceForContext(this),
+            this->GetPath().AppendASCII(extensions::kInstallDirectoryName),
+            ExtensionPrefValueMapFactory::GetForBrowserContext(this),
+            client->AreExtensionsDisabled(*base::CommandLine::ForCurrentProcess(), this),
+            prefsObservers);
+        extensions::ExtensionPrefsFactory::GetInstance()->SetInstanceForTesting(this, base::WrapUnique(extensionPrefs));
+    }
+#endif
 }
 
 PrefServiceAdapter &ProfileQt::prefServiceAdapter()
@@ -290,8 +293,7 @@ const PrefServiceAdapter &ProfileQt::prefServiceAdapter() const
     return m_prefServiceAdapter;
 }
 
-
-content::PlatformNotificationService *ProfileQt::platformNotificationService()
+content::PlatformNotificationService *ProfileQt::GetPlatformNotificationService()
 {
     if (!m_platformNotificationService)
         m_platformNotificationService = std::make_unique<PlatformNotificationServiceQt>(this);

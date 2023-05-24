@@ -37,8 +37,8 @@ void SkPatch3D::transform(const SkM44& m, SkPatch3D* dst) const {
     }
     dst->fU = m * fU;
     dst->fV = m * fV;
-    auto t = m.map(fOrigin.x, fOrigin.y, fOrigin.z, 1);
-    dst->fOrigin = {t.x, t.y, t.z};
+    auto [x,y,z,_] = m.map(fOrigin.x, fOrigin.y, fOrigin.z, 1);
+    dst->fOrigin = {x, y, z};
 }
 
 SkScalar SkPatch3D::dotWith(SkScalar dx, SkScalar dy, SkScalar dz) const {
@@ -82,9 +82,7 @@ void SkCamera3D::doUpdate() const {
 
     {
         SkMatrix* orien = &fOrientation;
-        auto x = fObserver.x;
-	auto y = fObserver.y;
-        auto z = fObserver.z;
+        auto [x, y, z] = fObserver;
 
         // Looking along the view axis we have:
         //

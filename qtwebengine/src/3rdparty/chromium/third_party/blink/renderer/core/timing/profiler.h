@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,21 +9,24 @@
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/dom_high_res_time_stamp.h"
+#include "third_party/blink/renderer/core/dom/events/event_target.h"
 #include "third_party/blink/renderer/core/timing/profiler_group.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/heap/member.h"
-#include "third_party/blink/renderer/platform/heap/thread_state.h"
+#include "third_party/blink/renderer/platform/heap/prefinalizer.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
+class ExceptionState;
 class ScriptState;
+class ProfilerInitOptions;
 
 // A web-exposed JS sampling profiler created via blink::ProfilerGroup,
 // wrapping a handle to v8::CpuProfiler. Records samples periodically from the
 // isolate until stopped.
-class CORE_EXPORT Profiler final : public ScriptWrappable {
+class CORE_EXPORT Profiler final : public EventTargetWithInlineData {
   DEFINE_WRAPPERTYPEINFO();
   USING_PRE_FINALIZER(Profiler, DisposeAsync);
 
@@ -43,6 +46,10 @@ class CORE_EXPORT Profiler final : public ScriptWrappable {
 
   ~Profiler() override = default;
 
+  static Profiler* Create(ScriptState*,
+                          const ProfilerInitOptions*,
+                          ExceptionState&);
+
   void Trace(Visitor* visitor) const override;
 
   void DisposeAsync();
@@ -51,6 +58,10 @@ class CORE_EXPORT Profiler final : public ScriptWrappable {
   int TargetSampleRate() const { return target_sample_rate_; }
   const SecurityOrigin* SourceOrigin() const { return source_origin_.get(); }
   base::TimeTicks TimeOrigin() const { return time_origin_; }
+
+  // Overrides from extending EventTargetWithInlineData
+  const AtomicString& InterfaceName() const override;
+  ExecutionContext* GetExecutionContext() const override;
 
   DOMHighResTimeStamp sampleInterval() { return target_sample_rate_; }
   bool stopped() const { return !profiler_group_; }

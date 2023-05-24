@@ -25,8 +25,9 @@ namespace libgav1 {
 namespace dsp {
 namespace {
 
-template <int subsampling_x, int subsampling_y>
-uint8_t GetMaskValue(const uint8_t* mask, const uint8_t* mask_next_row, int x) {
+uint8_t GetMaskValue(const uint8_t* LIBGAV1_RESTRICT mask,
+                     const uint8_t* LIBGAV1_RESTRICT mask_next_row, int x,
+                     int subsampling_x, int subsampling_y) {
   if ((subsampling_x | subsampling_y) == 0) {
     return mask[x];
   }
@@ -43,10 +44,12 @@ uint8_t GetMaskValue(const uint8_t* mask, const uint8_t* mask_next_row, int x) {
 
 template <int bitdepth, typename Pixel, bool is_inter_intra, int subsampling_x,
           int subsampling_y>
-void MaskBlend_C(const void* prediction_0, const void* prediction_1,
-                 const ptrdiff_t prediction_stride_1, const uint8_t* mask,
+void MaskBlend_C(const void* LIBGAV1_RESTRICT prediction_0,
+                 const void* LIBGAV1_RESTRICT prediction_1,
+                 const ptrdiff_t prediction_stride_1,
+                 const uint8_t* LIBGAV1_RESTRICT mask,
                  const ptrdiff_t mask_stride, const int width, const int height,
-                 void* dest, const ptrdiff_t dest_stride) {
+                 void* LIBGAV1_RESTRICT dest, const ptrdiff_t dest_stride) {
   static_assert(!(bitdepth == 8 && is_inter_intra), "");
   assert(mask != nullptr);
   using PredType =
@@ -63,7 +66,7 @@ void MaskBlend_C(const void* prediction_0, const void* prediction_1,
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       const uint8_t mask_value =
-          GetMaskValue<subsampling_x, subsampling_y>(mask, mask_next_row, x);
+          GetMaskValue(mask, mask_next_row, x, subsampling_x, subsampling_y);
       if (is_inter_intra) {
         dst[x] = static_cast<Pixel>(RightShiftWithRounding(
             mask_value * pred_1[x] + (64 - mask_value) * pred_0[x], 6));
@@ -85,18 +88,19 @@ void MaskBlend_C(const void* prediction_0, const void* prediction_1,
 }
 
 template <int subsampling_x, int subsampling_y>
-void InterIntraMaskBlend8bpp_C(const uint8_t* prediction_0,
-                               uint8_t* prediction_1,
+void InterIntraMaskBlend8bpp_C(const uint8_t* LIBGAV1_RESTRICT prediction_0,
+                               uint8_t* LIBGAV1_RESTRICT prediction_1,
                                const ptrdiff_t prediction_stride_1,
-                               const uint8_t* mask, const ptrdiff_t mask_stride,
-                               const int width, const int height) {
+                               const uint8_t* LIBGAV1_RESTRICT mask,
+                               const ptrdiff_t mask_stride, const int width,
+                               const int height) {
   assert(mask != nullptr);
   constexpr int step_y = subsampling_y ? 2 : 1;
   const uint8_t* mask_next_row = mask + mask_stride;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       const uint8_t mask_value =
-          GetMaskValue<subsampling_x, subsampling_y>(mask, mask_next_row, x);
+          GetMaskValue(mask, mask_next_row, x, subsampling_x, subsampling_y);
       prediction_1[x] = static_cast<uint8_t>(RightShiftWithRounding(
           mask_value * prediction_1[x] + (64 - mask_value) * prediction_0[x],
           6));
@@ -148,6 +152,7 @@ void Init8bpp() {
 #ifndef LIBGAV1_Dsp8bpp_InterIntraMaskBlend8bpp420
   dsp->inter_intra_mask_blend_8bpp[2] = InterIntraMaskBlend8bpp_C<1, 1>;
 #endif
+  static_cast<void>(GetMaskValue);
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
 
@@ -192,7 +197,50 @@ void Init10bpp() {
   dsp->inter_intra_mask_blend_8bpp[2] = nullptr;
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
+#endif  // LIBGAV1_MAX_BITDEPTH >= 10
+
+#if LIBGAV1_MAX_BITDEPTH == 12
+void Init12bpp() {
+  Dsp* const dsp = dsp_internal::GetWritableDspTable(12);
+  assert(dsp != nullptr);
+#if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  dsp->mask_blend[0][0] = MaskBlend_C<12, uint16_t, false, 0, 0>;
+  dsp->mask_blend[1][0] = MaskBlend_C<12, uint16_t, false, 1, 0>;
+  dsp->mask_blend[2][0] = MaskBlend_C<12, uint16_t, false, 1, 1>;
+  dsp->mask_blend[0][1] = MaskBlend_C<12, uint16_t, true, 0, 0>;
+  dsp->mask_blend[1][1] = MaskBlend_C<12, uint16_t, true, 1, 0>;
+  dsp->mask_blend[2][1] = MaskBlend_C<12, uint16_t, true, 1, 1>;
+  // These are only used with 8-bit.
+  dsp->inter_intra_mask_blend_8bpp[0] = nullptr;
+  dsp->inter_intra_mask_blend_8bpp[1] = nullptr;
+  dsp->inter_intra_mask_blend_8bpp[2] = nullptr;
+#else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  static_cast<void>(dsp);
+#ifndef LIBGAV1_Dsp12bpp_MaskBlend444
+  dsp->mask_blend[0][0] = MaskBlend_C<12, uint16_t, false, 0, 0>;
 #endif
+#ifndef LIBGAV1_Dsp12bpp_MaskBlend422
+  dsp->mask_blend[1][0] = MaskBlend_C<12, uint16_t, false, 1, 0>;
+#endif
+#ifndef LIBGAV1_Dsp12bpp_MaskBlend420
+  dsp->mask_blend[2][0] = MaskBlend_C<12, uint16_t, false, 1, 1>;
+#endif
+#ifndef LIBGAV1_Dsp12bpp_MaskBlendInterIntra444
+  dsp->mask_blend[0][1] = MaskBlend_C<12, uint16_t, true, 0, 0>;
+#endif
+#ifndef LIBGAV1_Dsp12bpp_MaskBlendInterIntra422
+  dsp->mask_blend[1][1] = MaskBlend_C<12, uint16_t, true, 1, 0>;
+#endif
+#ifndef LIBGAV1_Dsp12bpp_MaskBlendInterIntra420
+  dsp->mask_blend[2][1] = MaskBlend_C<12, uint16_t, true, 1, 1>;
+#endif
+  // These are only used with 8-bit.
+  dsp->inter_intra_mask_blend_8bpp[0] = nullptr;
+  dsp->inter_intra_mask_blend_8bpp[1] = nullptr;
+  dsp->inter_intra_mask_blend_8bpp[2] = nullptr;
+#endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+}
+#endif  // LIBGAV1_MAX_BITDEPTH == 12
 
 }  // namespace
 
@@ -200,6 +248,9 @@ void MaskBlendInit_C() {
   Init8bpp();
 #if LIBGAV1_MAX_BITDEPTH >= 10
   Init10bpp();
+#endif
+#if LIBGAV1_MAX_BITDEPTH == 12
+  Init12bpp();
 #endif
 }
 

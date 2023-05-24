@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,39 +15,36 @@
 #include <utility>
 
 #include "base/check.h"
-#include "base/posix/unix_domain_socket.h"
 #include "build/build_config.h"
 #include "sandbox/linux/syscall_broker/broker_channel.h"
 #include "sandbox/linux/syscall_broker/broker_command.h"
 #include "sandbox/linux/syscall_broker/broker_permission_list.h"
 #include "sandbox/linux/syscall_broker/broker_simple_message.h"
 
-#if defined(OS_ANDROID) && !defined(MSG_CMSG_CLOEXEC)
+#if BUILDFLAG(IS_ANDROID) && !defined(MSG_CMSG_CLOEXEC)
 #define MSG_CMSG_CLOEXEC 0x40000000
 #endif
 
 namespace sandbox {
 namespace syscall_broker {
 
-BrokerClient::BrokerClient(const BrokerPermissionList& broker_permission_list,
+BrokerClient::BrokerClient(const BrokerSandboxConfig& policy,
                            BrokerChannel::EndPoint ipc_channel,
-                           const BrokerCommandSet& allowed_command_set,
                            bool fast_check_in_client)
-    : broker_permission_list_(broker_permission_list),
+    : policy_(policy),
       ipc_channel_(std::move(ipc_channel)),
-      allowed_command_set_(allowed_command_set),
       fast_check_in_client_(fast_check_in_client) {}
 
-BrokerClient::~BrokerClient() {}
+BrokerClient::~BrokerClient() = default;
 
 int BrokerClient::Access(const char* pathname, int mode) const {
   if (!pathname)
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandAccessIsSafe(allowed_command_set_, broker_permission_list_,
-                           pathname, mode, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandAccessIsSafe(policy_->allowed_command_set,
+                           *policy_->file_permissions, pathname, mode)) {
+    return -policy_->file_permissions->denied_errno();
   }
   return PathAndFlagsSyscall(COMMAND_ACCESS, pathname, mode);
 }
@@ -57,9 +54,9 @@ int BrokerClient::Mkdir(const char* pathname, int mode) const {
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandMkdirIsSafe(allowed_command_set_, broker_permission_list_,
-                          pathname, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandMkdirIsSafe(policy_->allowed_command_set,
+                          *policy_->file_permissions, pathname)) {
+    return -policy_->file_permissions->denied_errno();
   }
   return PathAndFlagsSyscall(COMMAND_MKDIR, pathname, mode);
 }
@@ -69,9 +66,10 @@ int BrokerClient::Open(const char* pathname, int flags) const {
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandOpenIsSafe(allowed_command_set_, broker_permission_list_,
-                         pathname, flags, nullptr, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandOpenIsSafe(policy_->allowed_command_set,
+                         *policy_->file_permissions, pathname, flags)
+           .first) {
+    return -policy_->file_permissions->denied_errno();
   }
   return PathAndFlagsSyscallReturningFD(COMMAND_OPEN, pathname, flags);
 }
@@ -81,9 +79,9 @@ int BrokerClient::Readlink(const char* path, char* buf, size_t bufsize) const {
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandReadlinkIsSafe(allowed_command_set_, broker_permission_list_,
-                             path, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandReadlinkIsSafe(policy_->allowed_command_set,
+                             *policy_->file_permissions, path)) {
+    return -policy_->file_permissions->denied_errno();
   }
 
   // Message structure:
@@ -127,9 +125,10 @@ int BrokerClient::Rename(const char* oldpath, const char* newpath) const {
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandRenameIsSafe(allowed_command_set_, broker_permission_list_,
-                           oldpath, newpath, nullptr, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandRenameIsSafe(policy_->allowed_command_set,
+                           *policy_->file_permissions, oldpath, newpath)
+           .first) {
+    return -policy_->file_permissions->denied_errno();
   }
 
   BrokerSimpleMessage message;
@@ -157,9 +156,9 @@ int BrokerClient::Rmdir(const char* path) const {
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandRmdirIsSafe(allowed_command_set_, broker_permission_list_, path,
-                          nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandRmdirIsSafe(policy_->allowed_command_set,
+                          *policy_->file_permissions, path)) {
+    return -policy_->file_permissions->denied_errno();
   }
   return PathOnlySyscall(COMMAND_RMDIR, path);
 }
@@ -171,9 +170,9 @@ int BrokerClient::Stat(const char* pathname,
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandStatIsSafe(allowed_command_set_, broker_permission_list_,
-                         pathname, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandStatIsSafe(policy_->allowed_command_set,
+                         *policy_->file_permissions, pathname)) {
+    return -policy_->file_permissions->denied_errno();
   }
   return StatFamilySyscall(COMMAND_STAT, pathname, follow_links, sb,
                            sizeof(*sb));
@@ -186,9 +185,9 @@ int BrokerClient::Stat64(const char* pathname,
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandStatIsSafe(allowed_command_set_, broker_permission_list_,
-                         pathname, nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandStatIsSafe(policy_->allowed_command_set,
+                         *policy_->file_permissions, pathname)) {
+    return -policy_->file_permissions->denied_errno();
   }
   return StatFamilySyscall(COMMAND_STAT64, pathname, follow_links, sb,
                            sizeof(*sb));
@@ -199,11 +198,43 @@ int BrokerClient::Unlink(const char* path) const {
     return -EFAULT;
 
   if (fast_check_in_client_ &&
-      !CommandUnlinkIsSafe(allowed_command_set_, broker_permission_list_, path,
-                           nullptr)) {
-    return -broker_permission_list_.denied_errno();
+      !CommandUnlinkIsSafe(policy_->allowed_command_set,
+                           *policy_->file_permissions, path)) {
+    return -policy_->file_permissions->denied_errno();
   }
   return PathOnlySyscall(COMMAND_UNLINK, path);
+}
+
+int BrokerClient::InotifyAddWatch(int fd,
+                                  const char* pathname,
+                                  uint32_t mask) const {
+  if (!pathname)
+    return -EFAULT;
+
+  if (fast_check_in_client_ &&
+      !CommandInotifyAddWatchIsSafe(policy_->allowed_command_set,
+                                    *policy_->file_permissions, pathname,
+                                    mask)) {
+    return -policy_->file_permissions->denied_errno();
+  }
+
+  BrokerSimpleMessage message;
+  RAW_CHECK(message.AddIntToMessage(COMMAND_INOTIFY_ADD_WATCH));
+  RAW_CHECK(message.AddStringToMessage(pathname));
+  RAW_CHECK(message.AddIntToMessage(mask));
+
+  BrokerSimpleMessage reply;
+  ssize_t msg_len = message.SendRecvMsgWithFlagsMultipleFds(
+      ipc_channel_.get(), 0, base::span<const int>(&fd, 1u), {}, &reply);
+
+  if (msg_len < 0)
+    return msg_len;
+
+  int return_value = -1;
+  if (!reply.ReadInt(&return_value))
+    return -ENOMEM;
+
+  return return_value;
 }
 
 int BrokerClient::PathOnlySyscall(BrokerCommand syscall_type,

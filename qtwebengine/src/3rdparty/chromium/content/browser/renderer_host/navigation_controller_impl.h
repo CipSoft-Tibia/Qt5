@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,32 +13,45 @@
 #include <string>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/compiler_specific.h"
+#include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "content/browser/renderer_host/back_forward_cache_impl.h"
 #include "content/browser/renderer_host/navigation_controller_delegate.h"
 #include "content/browser/renderer_host/navigation_entry_impl.h"
+#include "content/browser/renderer_host/navigation_type.h"
 #include "content/browser/ssl/ssl_manager.h"
+#include "content/common/content_export.h"
+#include "content/common/navigation_client.mojom-forward.h"
 #include "content/public/browser/navigation_controller.h"
-#include "content/public/browser/navigation_type.h"
 #include "content/public/browser/reload_type.h"
 #include "mojo/public/cpp/bindings/pending_associated_remote.h"
+#include "services/network/public/mojom/source_location.mojom-forward.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/scheduler/task_attribution_id.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
+#include "third_party/blink/public/mojom/navigation/navigation_api_history_entry_arrays.mojom-forward.h"
+#include "third_party/blink/public/mojom/navigation/navigation_initiator_activation_and_ad_status.mojom.h"
+#include "third_party/blink/public/mojom/navigation/navigation_params.mojom-forward.h"
 
-struct FrameHostMsg_DidCommitProvisionalLoad_Params;
+namespace blink {
+struct NavigationDownloadPolicy;
+}  // namespace blink
 
 namespace content {
+class FrameTree;
 class FrameTreeNode;
 class NavigationRequest;
 class RenderFrameHostImpl;
 class SiteInstance;
 struct LoadCommittedDetails;
 
+// NavigationControllerImpl is 1:1 with FrameTree. See comments on the base
+// class.
 class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
  public:
   // This tracks one NavigationRequest navigating to a pending NavigationEntry.
@@ -64,19 +77,27 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
    public:
     explicit PendingEntryRef(
         base::WeakPtr<NavigationControllerImpl> controller);
+
+    PendingEntryRef(const PendingEntryRef&) = delete;
+    PendingEntryRef& operator=(const PendingEntryRef&) = delete;
+
     ~PendingEntryRef();
 
    private:
     base::WeakPtr<NavigationControllerImpl> controller_;
-    DISALLOW_COPY_AND_ASSIGN(PendingEntryRef);
   };
 
-  NavigationControllerImpl(NavigationControllerDelegate* delegate,
-                           BrowserContext* browser_context);
+  NavigationControllerImpl(BrowserContext* browser_context,
+                           FrameTree& frame_tree,
+                           NavigationControllerDelegate* delegate);
+
+  NavigationControllerImpl(const NavigationControllerImpl&) = delete;
+  NavigationControllerImpl& operator=(const NavigationControllerImpl&) = delete;
+
   ~NavigationControllerImpl() override;
 
   // NavigationController implementation:
-  WebContents* GetWebContents() override;
+  WebContents* DeprecatedGetWebContents() override;
   BrowserContext* GetBrowserContext() override;
   void Restore(int selected_navigation,
                RestoreType type,
@@ -93,16 +114,20 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   void DiscardNonCommittedEntries() override;
   NavigationEntryImpl* GetPendingEntry() override;
   int GetPendingEntryIndex() override;
-  void LoadURL(const GURL& url,
-               const Referrer& referrer,
-               ui::PageTransition type,
-               const std::string& extra_headers) override;
-  void LoadURLWithParams(const LoadURLParams& params) override;
+  base::WeakPtr<NavigationHandle> LoadURL(
+      const GURL& url,
+      const Referrer& referrer,
+      ui::PageTransition type,
+      const std::string& extra_headers) override;
+  base::WeakPtr<NavigationHandle> LoadURLWithParams(
+      const LoadURLParams& params) override;
   void LoadIfNecessary() override;
-  void LoadPostCommitErrorPage(RenderFrameHost* render_frame_host,
-                               const GURL& url,
-                               const std::string& error_page_html,
-                               net::Error error) override;
+  void LoadOriginalRequestURL() override;
+  base::WeakPtr<NavigationHandle> LoadPostCommitErrorPage(
+      RenderFrameHost* render_frame_host,
+      const GURL& url,
+      const std::string& error_page_html,
+      net::Error error) override;
   bool CanGoBack() override;
   bool CanGoForward() override;
   bool CanGoToOffset(int offset) override;
@@ -132,6 +157,17 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   bool IsEntryMarkedToBeSkipped(int index) override;
   BackForwardCacheImpl& GetBackForwardCache() override;
 
+  // Discards the pending entry if any. If this is caused by a navigation
+  // committing a new entry, `commit_details` will contain the committed
+  // navigation's details.
+  void DiscardNonCommittedEntriesWithCommitDetails(
+      LoadCommittedDetails* commit_details);
+
+  // Creates the initial NavigationEntry for the NavigationController when its
+  // FrameTree is being initialized. See NavigationEntry::IsInitialEntry() on
+  // what this means.
+  void CreateInitialEntry();
+
   // Starts a navigation in a newly created subframe as part of a history
   // navigation. Returns true if the history navigation could start, false
   // otherwise.  If this returns false, the caller should do a regular
@@ -145,38 +181,88 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // is no history related to the frame, nothing happens and this returns false.
   bool ReloadFrame(FrameTreeNode* frame_tree_node);
 
-  // Navigates to a specified offset from the "current entry". Currently records
-  // a histogram indicating whether the session history navigation would only
-  // affect frames within the subtree of |sandbox_frame_tree_node_id|, which
-  // initiated the navigation.
-  void GoToOffsetInSandboxedFrame(int offset, int sandbox_frame_tree_node_id);
+  // Navigates to the specified offset from the "current entry" and marks the
+  // navigations as initiated by the renderer.
+  // |initiator_rfh| is the frame that requested the navigation.
+  // |soft_navigation_heuristics_task_id| is the task in the renderer that
+  // initiated this call (if any).
+  void GoToOffsetFromRenderer(
+      int offset,
+      RenderFrameHostImpl* initiator_rfh,
+      absl::optional<blink::scheduler::TaskAttributionId>
+          soft_navigation_heuristics_task_id);
+
+#if BUILDFLAG(IS_ANDROID)
+  // The difference between (Can)GoToOffsetWithSkipping and
+  // (Can)GoToOffset/(Can)GoToOffsetInSandboxedFrame is that this respects the
+  // history manipulation intervention and will exclude skippable entries.
+  // These should only be used for browser-initiated navigaitons.
+  bool CanGoToOffsetWithSkipping(int offset);
+  void GoToOffsetWithSkipping(int offset);
+#endif
 
   // Called when a document requests a navigation through a
   // RenderFrameProxyHost.
   void NavigateFromFrameProxy(
       RenderFrameHostImpl* render_frame_host,
       const GURL& url,
-      const GlobalFrameRoutingId& initiator_routing_id,
-      const base::Optional<url::Origin>& initiator_origin,
+      const blink::LocalFrameToken* initiator_frame_token,
+      int initiator_process_id,
+      const absl::optional<url::Origin>& initiator_origin,
+      const absl::optional<GURL>& initiator_base_url,
       bool is_renderer_initiated,
       SiteInstance* source_site_instance,
       const Referrer& referrer,
       ui::PageTransition page_transition,
       bool should_replace_current_entry,
-      NavigationDownloadPolicy download_policy,
+      blink::NavigationDownloadPolicy download_policy,
       const std::string& method,
       scoped_refptr<network::ResourceRequestBody> post_body,
       const std::string& extra_headers,
+      network::mojom::SourceLocationPtr source_location,
       scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory,
-      const base::Optional<Impression>& impression);
+      bool is_form_submission,
+      const absl::optional<blink::Impression>& impression,
+      blink::mojom::NavigationInitiatorActivationAndAdStatus
+          initiator_activation_and_ad_status,
+      base::TimeTicks navigation_start_time,
+      bool is_embedder_initiated_fenced_frame_navigation = false,
+      bool is_unfenced_top_navigation = false,
+      bool force_new_browsing_instance = false,
+      bool is_container_initiated = false);
+
+  // Navigates to the history entry associated with the given navigation API
+  // |key|. Searches |entries_| for a FrameNavigationEntry associated with
+  // |initiator_rfh|'s FrameTreeNode that has |key| as its navigation API key.
+  // Searches back from the current index, then forward, so if there are
+  // multiple entries with the same key, the nearest to current should be
+  // selected. Stops searching in the current direction if it finds a
+  // NavigationEntry without a FrameNavigationEntry for |initiator_rfh|'s
+  // FrameTreeNode, or if the FrameNavigationEntry doesn't match origin or site
+  // instance.
+  //
+  // If no matching entry is found, the navigation is dropped. The renderer
+  // should only send the navigation to the browser if it believes the entry is
+  // in |entries_|, but it might be wrong (if the entry was dropped from
+  // |entries_|, or due to a race condition) or compromised.
+  // If a matching entry is found, navigate to that entry and proceed like any
+  // other history navigation.
+  // |soft_navigation_heuristics_task_id|: The task in the renderer that
+  // initiated this call (if any).
+  void NavigateToNavigationApiKey(
+      RenderFrameHostImpl* initiator_rfh,
+      absl::optional<blink::scheduler::TaskAttributionId>
+          soft_navigation_heuristics_task_id,
+      const std::string& key);
 
   // Whether this is the initial navigation in an unmodified new tab.  In this
   // case, we know there is no content displayed in the page.
   bool IsUnmodifiedBlankTab();
 
-  // The session storage namespace that all child RenderViews belonging to
-  // |instance| should use.
-  SessionStorageNamespace* GetSessionStorageNamespace(SiteInstance* instance);
+  // The session storage namespace that all child `blink::WebView`s associated
+  // with `partition_config` should use.
+  SessionStorageNamespace* GetSessionStorageNamespace(
+      const StoragePartitionConfig& partition_config);
 
   // Returns the index of the specified entry, or -1 if entry is not contained
   // in this NavigationController.
@@ -187,6 +273,10 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
 
   // Return the entry with the given unique id, or null if not found.
   NavigationEntryImpl* GetEntryWithUniqueID(int nav_entry_id) const;
+  // Same as above method, but also includes the pending entry in the search
+  // space.
+  NavigationEntryImpl* GetEntryWithUniqueIDIncludingPending(
+      int nav_entry_id) const;
 
   NavigationControllerDelegate* delegate() const { return delegate_; }
 
@@ -207,15 +297,13 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
 
   // For use by WebContentsImpl ------------------------------------------------
 
-  // Visit all FrameNavigationEntries and register any instances of |origin| as
-  // non-isolated with their respective BrowsingInstances. This is important
-  // when |origin| requests isolation, so that we only do so in
+  // Visit all FrameNavigationEntries as well as all frame trees and register
+  // any instances of |origin| as having the default isolation state with their
+  // respective BrowsingInstances. This is important when |origin| is seen with
+  // an OriginAgentCluster header, so that we only accept such requests in
   // BrowsingInstances that haven't seen it before.
-  // TODO(crbug.com/1062719): Ensure that all origin instances are tracked,
-  // since currently NavigationEntries and FrameNavigationEntries may be missing
-  // for some active frames, or in pending navigations. This will be fixed when
-  // https://chromium-review.googlesource.com/c/chromium/src/+/2136703 lands.
-  void RegisterExistingOriginToPreventOptInIsolation(const url::Origin& origin);
+  void RegisterExistingOriginAsHavingDefaultIsolation(
+      const url::Origin& origin);
 
   // Allow renderer-initiated navigations to create a pending entry when the
   // provisional load starts.
@@ -232,45 +320,26 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // In the case that nothing has changed, the details structure is undefined
   // and it will return false.
   //
+  // |was_on_initial_empty_document| indicates whether the document being
+  // navigated away from was an initial empty document.
+  //
   // |previous_document_was_activated| is true if the previous document had user
   // interaction. This is used for a new renderer-initiated navigation to decide
   // if the page that initiated the navigation should be skipped on
   // back/forward button.
-  bool RendererDidNavigate(
-      RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
-      LoadCommittedDetails* details,
-      bool is_same_document_navigation,
-      bool previous_document_was_activated,
-      NavigationRequest* navigation_request);
+  bool RendererDidNavigate(RenderFrameHostImpl* rfh,
+                           const mojom::DidCommitProvisionalLoadParams& params,
+                           LoadCommittedDetails* details,
+                           bool is_same_document_navigation,
+                           bool was_on_initial_empty_document,
+                           bool previous_document_was_activated,
+                           NavigationRequest* navigation_request);
 
   // Notifies us that we just became active. This is used by the WebContentsImpl
   // so that we know to load URLs that were pending as "lazy" loads.
   void SetActive(bool is_active);
 
-  // Returns true if the given URL would be a same-document navigation (e.g., if
-  // the reference fragment is different, or after a pushState) from the last
-  // committed URL in the specified frame. If there is no last committed entry,
-  // then nothing will be same-document.
-  //
-  // Special note: if the URLs are the same, it does NOT automatically count as
-  // a same-document navigation. Neither does an input URL that has no ref, even
-  // if the rest is the same. This may seem weird, but when we're considering
-  // whether a navigation happened without loading anything, the same URL could
-  // be a reload, while only a different ref would be in-page (pages can't clear
-  // refs without reload, only change to "#" which we don't count as empty).
-  //
-  // The situation is made murkier by history.replaceState(), which could
-  // provide the same URL as part of a same-document navigation, not a reload.
-  // So we need to let the (untrustworthy) renderer resolve the ambiguity, but
-  // only when the URLs are on the same origin. We rely on |origin|, which
-  // matters in cases like about:blank that otherwise look cross-origin.
-  bool IsURLSameDocumentNavigation(const GURL& url,
-                                   const url::Origin& origin,
-                                   bool renderer_says_same_document,
-                                   RenderFrameHost* rfh);
-
-  // Sets the SessionStorageNamespace for the given |partition_id|. This is
+  // Sets the SessionStorageNamespace for the given |partition_config|. This is
   // used during initialization of a new NavigationController to allow
   // pre-population of the SessionStorageNamespace objects. Session restore,
   // prerendering, and the implementation of window.open() are the primary users
@@ -279,10 +348,12 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // Calling this function when a SessionStorageNamespace has already been
   // associated with a |partition_id| will CHECK() fail.
   void SetSessionStorageNamespace(
-      const std::string& partition_id,
+      const StoragePartitionConfig& partition_config,
       SessionStorageNamespace* session_storage_namespace);
 
   // Random data ---------------------------------------------------------------
+
+  FrameTree& frame_tree() { return *frame_tree_; }
 
   SSLManager* ssl_manager() { return &ssl_manager_; }
 
@@ -305,7 +376,7 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
 
 // Returns true if the string corresponds to a valid data URL, false
 // otherwise.
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   static bool ValidateDataURLAsString(
       const scoped_refptr<const base::RefCountedString>& data_url_as_string);
 #endif
@@ -319,21 +390,79 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // requests corresponding to the current pending entry.
   std::unique_ptr<PendingEntryRef> ReferencePendingEntry();
 
-  // Like NavigationController::CreateNavigationEntry, but takes extra arguments
-  // like |source_site_instance| and |should_replace_entry|. |web_contents| is
-  // the WebContents that will contain the NavigationEntry, and may be null.
+  // Another page accessed the initial empty main document, which means it
+  // is no longer safe to display a pending URL without risking a URL spoof.
+  void DidAccessInitialMainDocument();
+
+  // The state for the page changed and should be updated in session history.
+  void UpdateStateForFrame(RenderFrameHostImpl* render_frame_host,
+                           const blink::PageState& page_state);
+
+  // Like NavigationController::CreateNavigationEntry, but takes an extra
+  // argument, |source_site_instance|.
+  // `rewrite_virtual_urls` is true when it needs to rewrite virtual urls
+  // (e.g., for outermost frames).
   static std::unique_ptr<NavigationEntryImpl> CreateNavigationEntry(
       const GURL& url,
       Referrer referrer,
-      base::Optional<url::Origin> initiator_origin,
+      absl::optional<url::Origin> initiator_origin,
+      absl::optional<GURL> initiator_base_url,
       SiteInstance* source_site_instance,
       ui::PageTransition transition,
       bool is_renderer_initiated,
       const std::string& extra_headers,
       BrowserContext* browser_context,
       scoped_refptr<network::SharedURLLoaderFactory> blob_url_loader_factory,
-      bool should_replace_entry,
-      WebContents* web_contents);
+      bool rewrite_virtual_urls);
+
+  // Called just before sending the commit to the renderer, or when restoring
+  // from back/forward cache. Walks the session history entries for the relevant
+  // FrameTreeNode, forward and backward from the pending entry. All contiguous
+  // and same-origin FrameNavigationEntries are serialized and returned.
+  // |request| may be nullptr when getting entries for an iframe that is being
+  // restored for back/forward cache (in that case, the iframe itself is not
+  // navigated, so there is no NavigationRequest).
+  blink::mojom::NavigationApiHistoryEntryArraysPtr
+  GetNavigationApiHistoryEntryVectors(FrameTreeNode* node,
+                                      NavigationRequest* request);
+
+  // The window.navigation API exposes the urls of some non-current same-origin
+  // FrameNavigationEntries to the renderer. This helper checks whether the
+  // given ReferrerPolicy makes an attempt to hide a page's URL (e.g., in
+  // referrer headers) and thus whether the URL should be hidden from navigation
+  // API history entries as well.
+  static bool ShouldProtectUrlInNavigationApi(
+      network::mojom::ReferrerPolicy referrer_policy);
+
+  // Returns whether the last NavigationEntry encountered a post-commit error.
+  bool has_post_commit_error_entry() const {
+    return entry_replaced_by_post_commit_error_ != nullptr;
+  }
+
+  // Whether the current call stack includes NavigateToPendingEntry, to avoid
+  // re-entrant calls to NavigateToPendingEntry.
+  // TODO(https://crbug.com/1327907): Don't expose this once we figure out the
+  // root cause for the navigation re-entrancy case in the linked bug.
+  bool in_navigate_to_pending_entry() const {
+    return in_navigate_to_pending_entry_;
+  }
+
+  // Whether to maintain a session history with just one entry.
+  //
+  // This returns true for a prerendering page and for fenced frames.
+  // `frame_tree_node` is checked to see if it belongs to a frame tree for
+  // prerendering or for a fenced frame.
+  // Explainer:
+  // https://github.com/jeremyroman/alternate-loading-modes/blob/main/browsing-context.md#session-history)
+  //
+  // TODO(crbug.com/914108): Consider portals here as well.
+  bool ShouldMaintainTrivialSessionHistory(
+      const FrameTreeNode* frame_tree_node) const;
+
+  // Called when the referrer policy changes. It updates whether to protect the
+  // url in the navigation API.
+  void DidChangeReferrerPolicy(FrameTreeNode* node,
+                               network::mojom::ReferrerPolicy referrer_policy);
 
  private:
   friend class RestoreHelper;
@@ -342,8 +471,27 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   FRIEND_TEST_ALL_PREFIXES(TimeSmoother, SingleDuplicate);
   FRIEND_TEST_ALL_PREFIXES(TimeSmoother, ManyDuplicates);
   FRIEND_TEST_ALL_PREFIXES(TimeSmoother, ClockBackwardsJump);
-  FRIEND_TEST_ALL_PREFIXES(NavigationControllerTest,
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerBrowserTest, PostThenReload);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerBrowserTest,
                            PostThenReplaceStateThenReload);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerBrowserTest,
+                           PostThenPushStateThenReloadThenHistory);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerBrowserTest,
+                           PostThenFragmentNavigationThenReloadThenHistory);
+  FRIEND_TEST_ALL_PREFIXES(
+      NavigationControllerBrowserTest,
+      PostThenBrowserInitiatedFragmentNavigationThenReload);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerBrowserTest, PostSubframe);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerBrowserTest,
+                           ResetPendingLoadTypeWhenCancelPendingReload);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerDisableHistoryIntervention,
+                           GoToOffsetWithSkippingDisableHistoryIntervention);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerHistoryInterventionBrowserTest,
+                           GoToOffsetWithSkippingEnableHistoryIntervention);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerHistoryInterventionBrowserTest,
+                           SetSkipOnBackForwardDoSkipForGoToOffsetWithSkipping);
+  FRIEND_TEST_ALL_PREFIXES(NavigationControllerHistoryInterventionBrowserTest,
+                           SetSkipOnBackForwardDoNotSkipForGoToOffset);
 
   // Defines possible actions that are returned by
   // DetermineActionForHistoryNavigation().
@@ -353,6 +501,8 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
     kSameDocument,
     kDifferentDocument,
   };
+
+  enum class Direction { kForward, kBack };
 
   // Helper class to smooth out runs of duplicate timestamps while still
   // allowing time to jump backwards.
@@ -385,18 +535,61 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
     const bool was_disallowed_;
   };
 
-  // Navigates in session history to the given index. If
-  // |sandbox_frame_tree_node_id| is valid, then this request came
-  // from a sandboxed iframe with top level navigation disallowed. This
-  // is currently only used for tracking metrics.
-  void GoToIndex(int index, int sandbox_frame_tree_node_id);
+  // Records which navigation API keys are associated with live frames.
+  // On destruction, does a final pass to filter out any keys that are still
+  // present in |entries_|, then sends the removed navigation API keys to the
+  // renderer so that the navigation API can fire dispose events for the
+  // entries associated with those keys.
+  class RemovedEntriesTracker {
+   public:
+    explicit RemovedEntriesTracker(
+        base::SafeRef<NavigationControllerImpl> controller);
+    ~RemovedEntriesTracker();
+
+   private:
+    // Walk both directions from the last committed entry to find the navigation
+    // API keys of any FNEs that could be known by currently live documents.
+    // These FNEs are contiguous, so the walk can stop for a given frame when it
+    // reaches an FNE whose API key is no longer known to the current document.
+    void PopulateKeySet(Direction direction);
+    base::SafeRef<NavigationControllerImpl> controller_;
+    // Preprocessed maps used in PopulateKeySet(), mapping frame names
+    // to their respective FrameTreeNodes, and FrameTreeNode ids to their
+    // current document sequences numbers.
+    std::map<std::string, FrameTreeNode*> names_to_nodes_;
+    std::map<int, int64_t> frame_tree_node_id_to_doc_seq_nos_;
+
+    // The output of PopulateKeySet(), which maps FrameTreeNode ids to the keys
+    // that frame knows about in the renderer. Used in the destructor.
+    std::map<int, std::set<std::string>> frame_tree_node_id_to_keys_;
+  };
+
+  // Navigates in session history to the given index.
+  // |initiator_rfh| is nullptr for browser-initiated navigations.
+  // |soft_navigation_heuristics_task_id|: The task in the renderer that
+  // initiated this call (if any).
+  // If this navigation originated from the navigation API, |navigation_api_key|
+  // will be set and indicate the navigation api key that |initiator_rfh|
+  // asked to be navigated to.
+  void GoToIndex(int index,
+                 RenderFrameHostImpl* initiator_rfh,
+                 absl::optional<blink::scheduler::TaskAttributionId>
+                     soft_navigation_heuristics_task_id,
+                 const std::string* navigation_api_key);
 
   // Starts a navigation to an already existing pending NavigationEntry.
-  // Currently records a histogram indicating whether the session history
-  // navigation would only affect frames within the subtree of
-  // |sandbox_frame_tree_node_id|, which initiated the navigation.
-  void NavigateToExistingPendingEntry(ReloadType reload_type,
-                                      int sandboxed_source_frame_tree_node_id);
+  // |initiator_rfh| is nullptr for browser-initiated navigations.
+  // If this navigation originated from the navigation API, |navigation_api_key|
+  // will be set and indicate the navigation api key that |initiator_rfh|
+  // asked to be navigated to.
+  // |soft_navigation_heuristics_task_id|: The task in the renderer that
+  // initiated this call (if any).
+  void NavigateToExistingPendingEntry(
+      ReloadType reload_type,
+      RenderFrameHostImpl* initiator_rfh,
+      absl::optional<blink::scheduler::TaskAttributionId>
+          soft_navigation_heuristics_task_id,
+      const std::string* navigation_api_key);
 
   // Helper function used by FindFramesToNavigate to determine the appropriate
   // action to take for a particular frame while navigating to
@@ -409,16 +602,22 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // to |pending_entry_|, starting at |frame| and exploring its children.
   // |same_document_loads| and |different_document_loads| will be filled with
   // the NavigationRequests needed to navigate to |pending_entry_|.
+  // |soft_navigation_heuristics_task_id|: The task in the renderer that
+  // initiated this call (if any).
   void FindFramesToNavigate(
       FrameTreeNode* frame,
       ReloadType reload_type,
+      bool is_browser_initiated,
+      absl::optional<blink::scheduler::TaskAttributionId>
+          soft_navigation_heuristics_task_id,
       std::vector<std::unique_ptr<NavigationRequest>>* same_document_loads,
       std::vector<std::unique_ptr<NavigationRequest>>*
           different_document_loads);
 
   // Starts a new navigation based on |load_params|, that doesn't correspond to
   // an existing NavigationEntry.
-  void NavigateWithoutEntry(const LoadURLParams& load_params);
+  base::WeakPtr<NavigationHandle> NavigateWithoutEntry(
+      const LoadURLParams& load_params);
 
   // Handles a navigation to a renderer-debug URL.
   void HandleRendererDebugURL(FrameTreeNode* frame_tree_node, const GURL& url);
@@ -442,8 +641,6 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // |override_user_agent|, |should_replace_current_entry| and
   // |has_user_gesture| will override the values from |load_params|. The same
   // values should be passed to CreateNavigationEntryFromLoadParams.
-  // While LoadURLParams has a ui::PageTransition this function takes a
-  // ui::PageTransition as calling code may supply a different value.
   // TODO(clamy): Remove the dependency on NavigationEntry and
   // FrameNavigationEntry.
   std::unique_ptr<NavigationRequest> CreateNavigationRequestFromLoadParams(
@@ -452,15 +649,20 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
       bool override_user_agent,
       bool should_replace_current_entry,
       bool has_user_gesture,
-      NavigationDownloadPolicy download_policy,
+      network::mojom::SourceLocationPtr source_location,
       ReloadType reload_type,
       NavigationEntryImpl* entry,
       FrameNavigationEntry* frame_entry,
-      ui::PageTransition transition_type);
+      base::TimeTicks navigation_start_time,
+      bool is_embedder_initiated_fenced_frame_navigation = false,
+      bool is_unfenced_top_navigation = false,
+      bool is_container_initiated = false);
 
   // Creates and returns a NavigationRequest for a navigation to |entry|. Will
   // return nullptr if the parameters are invalid and the navigation cannot
   // start.
+  // |soft_navigation_heuristics_task_id|: The task in the renderer that
+  // initiated this call (if any).
   // TODO(clamy): Ensure this is only called for navigations to existing
   // NavigationEntries.
   std::unique_ptr<NavigationRequest> CreateNavigationRequestFromEntry(
@@ -469,7 +671,10 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
       FrameNavigationEntry* frame_entry,
       ReloadType reload_type,
       bool is_same_document_history_load,
-      bool is_history_navigation_in_new_child_frame);
+      bool is_history_navigation_in_new_child_frame,
+      bool is_browser_initiated,
+      absl::optional<blink::scheduler::TaskAttributionId>
+          soft_navigation_heuristics_task_id = absl::nullopt);
 
   // Returns whether there is a pending NavigationEntry whose unique ID matches
   // the given NavigationRequest's pending_nav_entry_id.
@@ -478,7 +683,8 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // Classifies the given renderer navigation (see the NavigationType enum).
   NavigationType ClassifyNavigation(
       RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params);
+      const mojom::DidCommitProvisionalLoadParams& params,
+      NavigationRequest* navigation_request);
 
   // Handlers for the different types of navigation types. They will actually
   // handle the navigations corresponding to the different NavClasses above.
@@ -489,41 +695,42 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // anything if some random subframe is loaded. It will return true if anything
   // changed, or false if not.
   //
-  // The NewPage and NewSubframe functions take in |replace_entry| to pass to
+  // The NewEntry and NewSubframe functions take in |replace_entry| to pass to
   // InsertOrReplaceEntry, in case the newly created NavigationEntry is meant to
   // replace the current one (e.g., for location.replace or successful loads
   // after net errors), in contrast to updating a NavigationEntry in place
   // (e.g., for history.replaceState).
-  void RendererDidNavigateToNewPage(
+  void RendererDidNavigateToNewEntry(
       RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
+      const mojom::DidCommitProvisionalLoadParams& params,
       bool is_same_document,
       bool replace_entry,
       bool previous_document_was_activated,
-      NavigationRequest* request);
-  void RendererDidNavigateToExistingPage(
+      NavigationRequest* request,
+      LoadCommittedDetails* details);
+  void RendererDidNavigateToExistingEntry(
       RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
+      const mojom::DidCommitProvisionalLoadParams& params,
       bool is_same_document,
       bool was_restored,
       NavigationRequest* request,
-      bool keep_pending_entry);
-  void RendererDidNavigateToSamePage(
-      RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
-      bool is_same_document,
-      NavigationRequest* request);
+      bool keep_pending_entry,
+      LoadCommittedDetails* details);
   void RendererDidNavigateNewSubframe(
       RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
+      const mojom::DidCommitProvisionalLoadParams& params,
       bool is_same_document,
       bool replace_entry,
       bool previous_document_was_activated,
-      NavigationRequest* request);
+      NavigationRequest* request,
+      LoadCommittedDetails* details);
   bool RendererDidNavigateAutoSubframe(
       RenderFrameHostImpl* rfh,
-      const FrameHostMsg_DidCommitProvisionalLoad_Params& params,
-      NavigationRequest* request);
+      const mojom::DidCommitProvisionalLoadParams& params,
+      bool is_same_document,
+      bool was_on_initial_empty_document,
+      NavigationRequest* request,
+      LoadCommittedDetails* details);
 
   // Allows the derived class to issue notifications that a load has been
   // committed. This will fill in the active entry to the details structure.
@@ -545,7 +752,9 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // entry or on reloads, the old one will replace |entry|.
   void InsertOrReplaceEntry(std::unique_ptr<NavigationEntryImpl> entry,
                             bool replace,
-                            bool was_post_commit_error);
+                            bool was_post_commit_error,
+                            bool is_in_fenced_frame_tree,
+                            LoadCommittedDetails* details);
 
   // Removes the entry at |index|, as long as it is not the current entry.
   void RemoveEntryAtIndexInternal(int index);
@@ -558,8 +767,8 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // Removes all entries except the last committed entry.  If there is a new
   // pending navigation it is preserved. In contrast to
   // PruneAllButLastCommitted() this does not update the session history of the
-  // RenderView.  Callers must ensure that |CanPruneAllButLastCommitted| returns
-  // true before calling this.
+  // `blink::WebView`.  Callers must ensure that `CanPruneAllButLastCommitted`
+  // returns true before calling this.
   void PruneAllButLastCommittedInternal();
 
   // Inserts up to |max_index| entries from |source| into this. This does NOT
@@ -569,6 +778,8 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
 
   // Returns the navigation index that differs from the current entry by the
   // specified |offset|.  The index returned is not guaranteed to be valid.
+  // This does not account for skippable entries or the history manipulation
+  // intervention.
   int GetIndexForOffset(int offset);
 
   // History Manipulation intervention:
@@ -599,10 +810,56 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // pending NavigationEntry.
   void PendingEntryRefDeleted(PendingEntryRef* ref);
 
+  // Computes the policy container policies to be stored in the
+  // FrameNavigationEntry by RendererDidNavigate.
+  std::unique_ptr<PolicyContainerPolicies>
+  ComputePolicyContainerPoliciesForFrameEntry(RenderFrameHostImpl* rfh,
+                                              bool is_same_document,
+                                              const GURL& url);
+
+  // Adds details from a committed navigation to `entry` and the
+  // FrameNavigationEntry corresponding to `rfh`.
+  void UpdateNavigationEntryDetails(
+      NavigationEntryImpl* entry,
+      RenderFrameHostImpl* rfh,
+      const mojom::DidCommitProvisionalLoadParams& params,
+      NavigationRequest* request,
+      NavigationEntryImpl::UpdatePolicy update_policy,
+      bool is_new_entry,
+      LoadCommittedDetails* commit_details);
+
+  // Broadcasts this controller's session history offset and length to all
+  // renderers involved in rendering the current page. The offset is
+  // GetLastCommittedEntryIndex() and length is GetEntryCount().
+  void BroadcastHistoryOffsetAndLength();
+
+  // Used by PopulateNavigationApiHistoryEntryVectors to initialize a single
+  // vector.
+  std::vector<blink::mojom::NavigationApiHistoryEntryPtr>
+  PopulateSingleNavigationApiHistoryEntryVector(
+      Direction direction,
+      int entry_index,
+      const url::Origin& pending_origin,
+      FrameTreeNode* node,
+      SiteInstance* site_instance,
+      int64_t pending_item_sequence_number,
+      int64_t pending_document_sequence_number);
+  // Helper for NavigateToNavigationApiKey(). Ensures that we only navigate to
+  // |target_entry| if it matches |current_entry|'s origin and site instance, as
+  // well as having |navigation_api_key| as its key.
+  HistoryNavigationAction ShouldNavigateToEntryForNavigationApiKey(
+      FrameNavigationEntry* current_entry,
+      FrameNavigationEntry* target_entry,
+      const std::string& navigation_api_key);
+
   // ---------------------------------------------------------------------------
 
+  // The FrameTree this instance belongs to. Each FrameTree gets its own
+  // NavigationController.
+  const raw_ref<FrameTree> frame_tree_;
+
   // The user browser context associated with this controller.
-  BrowserContext* const browser_context_;
+  const raw_ptr<BrowserContext> browser_context_;
 
   // List of |NavigationEntry|s for this controller.
   std::vector<std::unique_ptr<NavigationEntryImpl>> entries_;
@@ -614,7 +871,7 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
   // This may refer to an item in the entries_ list if the pending_entry_index_
   // != -1, or it may be its own entry that should be deleted. Be careful with
   // the memory management.
-  NavigationEntryImpl* pending_entry_ = nullptr;
+  raw_ptr<NavigationEntryImpl> pending_entry_ = nullptr;
 
   // This keeps track of the NavigationRequests associated with the pending
   // NavigationEntry. When all of them have been deleted, or have stopped
@@ -643,7 +900,7 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
 
   // The delegate associated with the controller. Possibly null during
   // setup.
-  NavigationControllerDelegate* delegate_;
+  raw_ptr<NavigationControllerDelegate> delegate_;
 
   // Manages the SSL security UI.
   SSLManager ssl_manager_;
@@ -707,8 +964,6 @@ class CONTENT_EXPORT NavigationControllerImpl : public NavigationController {
 
   // NOTE: This must be the last member.
   base::WeakPtrFactory<NavigationControllerImpl> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(NavigationControllerImpl);
 };
 
 }  // namespace content

@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,11 +13,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/compiler_specific.h"
-#include "base/files/file_path.h"
-#include "base/macros.h"
-#include "base/optional.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/values.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/preferences/public/mojom/preferences.mojom.h"
@@ -25,11 +24,11 @@
 #include "services/preferences/tracked/interceptable_pref_filter.h"
 #include "services/preferences/tracked/pref_hash_store.h"
 #include "services/preferences/tracked/tracked_preference.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class PrefService;
 
 namespace base {
-class DictionaryValue;
 class Time;
 }  // namespace base
 
@@ -60,14 +59,20 @@ class PrefHashFilter : public InterceptablePrefFilter {
   // than |tracked_preferences.size()|).
   // |external_validation_hash_store_pair_| will be used (if non-null) to
   // perform extra validations without triggering resets.
-  PrefHashFilter(std::unique_ptr<PrefHashStore> pref_hash_store,
-                 StoreContentsPair external_validation_hash_store_pair_,
-                 const std::vector<prefs::mojom::TrackedPreferenceMetadataPtr>&
-                     tracked_preferences,
-                 mojo::PendingRemote<prefs::mojom::ResetOnLoadObserver>
-                     reset_on_load_observer,
-                 prefs::mojom::TrackedPreferenceValidationDelegate* delegate,
-                 size_t reporting_ids_count);
+  PrefHashFilter(
+      std::unique_ptr<PrefHashStore> pref_hash_store,
+      StoreContentsPair external_validation_hash_store_pair_,
+      const std::vector<prefs::mojom::TrackedPreferenceMetadataPtr>&
+          tracked_preferences,
+      mojo::PendingRemote<prefs::mojom::ResetOnLoadObserver>
+          reset_on_load_observer,
+      scoped_refptr<base::RefCountedData<
+          mojo::Remote<prefs::mojom::TrackedPreferenceValidationDelegate>>>
+          delegate,
+      size_t reporting_ids_count);
+
+  PrefHashFilter(const PrefHashFilter&) = delete;
+  PrefHashFilter& operator=(const PrefHashFilter&) = delete;
 
   ~PrefHashFilter() override;
 
@@ -85,12 +90,12 @@ class PrefHashFilter : public InterceptablePrefFilter {
   // Initializes the PrefHashStore with hashes of the tracked preferences in
   // |pref_store_contents|. |pref_store_contents| will be the |storage| passed
   // to PrefHashStore::BeginTransaction().
-  void Initialize(base::DictionaryValue* pref_store_contents);
+  void Initialize(base::Value::Dict& pref_store_contents);
 
   // PrefFilter remaining implementation.
   void FilterUpdate(const std::string& path) override;
   OnWriteCallbackPair FilterSerializeData(
-      base::DictionaryValue* pref_store_contents) override;
+      base::Value::Dict& pref_store_contents) override;
 
   void OnStoreDeletionFromDisk() override;
 
@@ -98,26 +103,26 @@ class PrefHashFilter : public InterceptablePrefFilter {
   // InterceptablePrefFilter implementation.
   void FinalizeFilterOnLoad(
       PostFilterOnLoadCallback post_filter_on_load_callback,
-      std::unique_ptr<base::DictionaryValue> pref_store_contents,
+      base::Value::Dict pref_store_contents,
       bool prefs_altered) override;
 
   // Helper function to generate FilterSerializeData()'s pre-write and
   // post-write callbacks. The returned callbacks are thread-safe.
   OnWriteCallbackPair GetOnWriteSynchronousCallbacks(
-      base::DictionaryValue* pref_store_contents);
+      base::Value::Dict& pref_store_contents);
 
   // Clears the MACs contained in |external_validation_hash_store_contents|
   // which are present in |paths_to_clear|.
   static void ClearFromExternalStore(
       HashStoreContents* external_validation_hash_store_contents,
-      const base::DictionaryValue* changed_paths_and_macs);
+      const base::Value::Dict* changed_paths_and_macs);
 
   // Flushes the MACs contained in |changed_paths_and_mac| to
   // external_hash_store_contents if |write_success|, otherwise discards the
   // changes.
   static void FlushToExternalStore(
       std::unique_ptr<HashStoreContents> external_hash_store_contents,
-      std::unique_ptr<base::DictionaryValue> changed_paths_and_macs,
+      std::unique_ptr<base::Value::Dict> changed_paths_and_macs,
       bool write_success);
 
   // Callback to be invoked only once (and subsequently reset) on the next
@@ -139,18 +144,19 @@ class PrefHashFilter : public InterceptablePrefFilter {
   // A store and contents on which to perform extra validations without
   // triggering resets.
   // Will be null if the platform does not support external validation.
-  base::Optional<StoreContentsPair> external_validation_hash_store_pair_;
+  absl::optional<StoreContentsPair> external_validation_hash_store_pair_;
 
   // Notified if a reset occurs in a call to FilterOnLoad.
   mojo::Remote<prefs::mojom::ResetOnLoadObserver> reset_on_load_observer_;
+  scoped_refptr<base::RefCountedData<
+      mojo::Remote<prefs::mojom::TrackedPreferenceValidationDelegate>>>
+      delegate_;
 
   TrackedPreferencesMap tracked_paths_;
 
   // The set of all paths whose value has changed since the last call to
   // FilterSerializeData.
   ChangedPathsMap changed_paths_;
-
-  DISALLOW_COPY_AND_ASSIGN(PrefHashFilter);
 };
 
 #endif  // SERVICES_PREFERENCES_TRACKED_PREF_HASH_FILTER_H_

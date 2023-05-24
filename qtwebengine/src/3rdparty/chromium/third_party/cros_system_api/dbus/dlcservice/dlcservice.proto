@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium OS Authors. All rights reserved.
+// Copyright 2018 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,19 @@ syntax = "proto3";
 option optimize_for = LITE_RUNTIME;
 
 package dlcservice;
+option go_package = "chromiumos/system_api/dlcservice_proto";
+
+// This is the message that is passed into installation
+message InstallRequest {
+  // The unique ID of the DLC.
+  string id = 1;
+  // The omaha URL to download from.
+  // This field is optional.
+  string omaha_url = 2;
+  // The DLC will reserve space on installation success/failure.
+  // This field is optional.
+  bool reserve = 3;
+}
 
 // This message is used to query the DLCs that have data on disk. This allows
 // Chrome UI to show this list to the users and users can decide whether to
@@ -52,5 +65,11 @@ message DlcState {
   double progress = 4;
 
   // The last error code happened on for this DLC.
+  // Should only be dlcservice error codes from
+  // system_api/dbus/dlcservice/dbus-constants.h file.
   string last_error_code = 5;
+
+  // Indicates whether DLC is marked verified. Can be used to determine
+  // whether DLC is available on disk and can be mounted immediately.
+  bool is_verified = 6;
 }

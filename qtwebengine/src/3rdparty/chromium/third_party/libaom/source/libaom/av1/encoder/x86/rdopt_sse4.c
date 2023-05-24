@@ -12,7 +12,6 @@
 #include <assert.h>
 #include <emmintrin.h>
 #include "aom_dsp/x86/synonyms.h"
-#include "aom_ports/system_state.h"
 
 #include "config/av1_rtcd.h"
 #include "av1/encoder/rdopt.h"
@@ -30,10 +29,10 @@ INLINE static void horver_correlation_4x4(const int16_t *diff, int stride,
   //                      [ i j k l ]
   //                      [ m n o p ]
 
-  const __m128i pixelsa = _mm_set_epi64x(*(uint64_t *)&diff[0 * stride],
-                                         *(uint64_t *)&diff[2 * stride]);
-  const __m128i pixelsb = _mm_set_epi64x(*(uint64_t *)&diff[1 * stride],
-                                         *(uint64_t *)&diff[3 * stride]);
+  const __m128i pixelsa = _mm_set_epi64x(*(int64_t *)&diff[0 * stride],
+                                         *(int64_t *)&diff[2 * stride]);
+  const __m128i pixelsb = _mm_set_epi64x(*(int64_t *)&diff[1 * stride],
+                                         *(int64_t *)&diff[3 * stride]);
   // pixelsa = [d c b a l k j i] as i16
   // pixelsb = [h g f e p o n m] as i16
 
@@ -245,8 +244,6 @@ void av1_get_horver_correlation_full_sse4_1(const int16_t *diff, int stride,
   int64_t x2ver_sum = x2_sum - x2_finalrow;
   int64_t y2_sum = x2_sum - x2_firstcol;
   int64_t z2_sum = x2_sum - x2_firstrow;
-
-  aom_clear_system_state();
 
   const float num_hor = (float)(height * (width - 1));
   const float num_ver = (float)((height - 1) * width);

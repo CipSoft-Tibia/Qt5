@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,7 +14,7 @@
 namespace {
 
 const CXFA_Node::PropertyData kLinePropertyData[] = {
-    {XFA_Element::Edge, 1, 0},
+    {XFA_Element::Edge, 1, {}},
 };
 
 const CXFA_Node::AttributeData kLineAttributeData[] = {
@@ -29,10 +29,17 @@ const CXFA_Node::AttributeData kLineAttributeData[] = {
 
 }  // namespace
 
+// static
+CXFA_Line* CXFA_Line::FromNode(CXFA_Node* pNode) {
+  return pNode && pNode->GetElementType() == XFA_Element::Line
+             ? static_cast<CXFA_Line*>(pNode)
+             : nullptr;
+}
+
 CXFA_Line::CXFA_Line(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                (XFA_XDPPACKET_Template | XFA_XDPPACKET_Form),
+                {XFA_XDPPACKET::kTemplate, XFA_XDPPACKET::kForm},
                 XFA_ObjectType::Node,
                 XFA_Element::Line,
                 kLinePropertyData,

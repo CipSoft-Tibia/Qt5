@@ -1,52 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "QtGui/qimage.h"
 #include "qtexturefiledata_p.h"
-#include <QMetaEnum>
-#include <QSize>
-#if QT_CONFIG(opengl)
-#include <QOpenGLTexture>
-#endif
+#include <QtCore/qsize.h>
+#include <QtCore/qvarlengtharray.h>
+#include <QtCore/qmap.h>
 
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcQtGuiTextureIO, "qt.gui.textureio");
+
+constexpr size_t MAX_FACES = 6;
 
 class QTextureFileDataPrivate : public QSharedData
 {
@@ -57,12 +22,17 @@ public:
 
     QTextureFileDataPrivate(const QTextureFileDataPrivate &other)
         : QSharedData(other),
+          mode(other.mode),
           logName(other.logName),
           data(other.data),
           offsets(other.offsets),
           lengths(other.lengths),
+          images(other.images),
           size(other.size),
-          format(other.format)
+          format(other.format),
+          numFaces(other.numFaces),
+          numLevels(other.numLevels),
+          keyValues(other.keyValues)
     {
     }
 
@@ -70,27 +40,50 @@ public:
     {
     }
 
-    void ensureLevels(int num, bool force = false)
+    void ensureSize(int levels, int faces, bool force = false)
     {
-        const int newSize = force ? num : qMax(offsets.size(), num);
-        offsets.resize(newSize);
-        lengths.resize(newSize);
+        numLevels = force ? levels : qMax(numLevels, levels);
+        numFaces = force ? faces : qMax(numFaces, faces);
+        if (mode == QTextureFileData::ByteArrayMode) {
+            offsets.resize(numFaces);
+            lengths.resize(numFaces);
+
+            for (auto faceList : { &offsets, &lengths })
+                for (auto &levelList : *faceList)
+                    levelList.resize(numLevels);
+        } else {
+            images.resize(numFaces);
+            for (auto &levelList : images)
+                levelList.resize(numLevels);
+        }
     }
 
+    bool isValid(int level, int face) const { return level < numLevels && face < numFaces; }
+
+    int getOffset(int level, int face) const { return offsets[face][level]; }
+    void setOffset(int value, int level, int face) { offsets[face][level] = value; }
+    int getLength(int level, int face) const { return lengths[face][level]; }
+    void setLength(int value, int level, int face) { lengths[face][level] = value; }
+
+    QTextureFileData::Mode mode = QTextureFileData::ByteArrayMode;
     QByteArray logName;
     QByteArray data;
-    QVector<int> offsets;
-    QVector<int> lengths;
+    QVarLengthArray<QList<int>, MAX_FACES> offsets; // [Face][Level] = offset
+    QVarLengthArray<QList<int>, MAX_FACES> lengths; // [Face][Level] = length
+    QVarLengthArray<QList<QImage>, MAX_FACES> images; // [Face][Level] = length
     QSize size;
     quint32 format = 0;
     quint32 internalFormat = 0;
     quint32 baseInternalFormat = 0;
+    int numFaces = 0;
+    int numLevels = 0;
+    QMap<QByteArray, QByteArray> keyValues;
 };
 
-
-
-QTextureFileData::QTextureFileData()
+QTextureFileData::QTextureFileData(Mode mode)
 {
+    d = new QTextureFileDataPrivate;
+    d->mode = mode;
 }
 
 QTextureFileData::QTextureFileData(const QTextureFileData &other)
@@ -118,19 +111,34 @@ bool QTextureFileData::isValid() const
     if (!d)
         return false;
 
+    if (d->mode == ImageMode)
+        return true; // Manually populated: the caller needs to do verification at that time.
+
     if (d->data.isEmpty() || d->size.isEmpty() || (!d->format && !d->internalFormat))
         return false;
 
-    const int numChunks = d->offsets.size();
-    if (numChunks == 0 || (d->lengths.size() != numChunks))
-         return false;
+    const int numFacesOffset = d->offsets.size();
+    const int numFacesLength = d->lengths.size();
+    if (numFacesOffset == 0 || numFacesLength == 0 || d->numFaces != numFacesOffset
+        || d->numFaces != numFacesLength)
+        return false;
 
-    const qint64 sz = d->data.size();
-    for (int i = 0; i < numChunks; i++) {
-        qint64 offi = d->offsets.at(i);
-        qint64 leni = d->lengths.at(i);
-        if (offi < 0 || offi >= sz || leni <= 0 || (offi + leni > sz))
+    const qint64 dataSize = d->data.size();
+
+    // Go through all faces and levels and check that the range is inside the data size.
+    for (int face = 0; face < d->numFaces; face++) {
+        const int numLevelsOffset = d->offsets.at(face).size();
+        const int numLevelsLength = d->lengths.at(face).size();
+        if (numLevelsOffset == 0 || numLevelsLength == 0 || d->numLevels != numLevelsOffset
+            || d->numLevels != numLevelsLength)
             return false;
+
+        for (int level = 0; level < d->numLevels; level++) {
+            const qint64 offset = d->getOffset(level, face);
+            const qint64 length = d->getLength(level, face);
+            if (offset < 0 || offset >= dataSize || length <= 0 || (offset + length > dataSize))
+                return false;
+        }
     }
     return true;
 }
@@ -147,47 +155,85 @@ QByteArray QTextureFileData::data() const
 
 void QTextureFileData::setData(const QByteArray &data)
 {
-    if (!d.constData())  //### uh think about this design, this is the only way to create; should be constructor instead at least
-        d = new QTextureFileDataPrivate;
-
+    Q_ASSERT(d->mode == ByteArrayMode);
     d->data = data;
 }
 
-int QTextureFileData::dataOffset(int level) const
+void QTextureFileData::setData(const QImage &image, int level, int face)
 {
-    return (d && d->offsets.size() > level) ? d->offsets.at(level) : 0;
+    Q_ASSERT(d->mode == ImageMode);
+    d->ensureSize(level + 1, face + 1);
+    d->images[face][level] = image;
 }
 
-void QTextureFileData::setDataOffset(int offset, int level)
+int QTextureFileData::dataOffset(int level, int face) const
 {
+    Q_ASSERT(d->mode == ByteArrayMode);
+    return (d && d->isValid(level, face)) ? d->getOffset(level, face) : 0;
+}
+
+void QTextureFileData::setDataOffset(int offset, int level, int face)
+{
+    Q_ASSERT(d->mode == ByteArrayMode);
     if (d.constData() && level >= 0) {
-        d->ensureLevels(level + 1);
-        d->offsets[level] = offset;
+        d->ensureSize(level + 1, face + 1);
+        d->setOffset(offset, level, face);
     }
 }
 
-int QTextureFileData::dataLength(int level) const
+int QTextureFileData::dataLength(int level, int face) const
 {
-    return (d && d->lengths.size() > level) ? d->lengths.at(level) : 0;
+    Q_ASSERT(d->mode == ByteArrayMode);
+    return (d && d->isValid(level, face)) ? d->getLength(level, face) : 0;
 }
 
-void QTextureFileData::setDataLength(int length, int level)
+QByteArrayView QTextureFileData::getDataView(int level, int face) const
 {
+    if (d->mode == ByteArrayMode) {
+        const int dataLength = this->dataLength(level, face);
+        const int dataOffset = this->dataOffset(level, face);
+
+        if (d == nullptr || dataLength == 0)
+            return QByteArrayView();
+
+        return QByteArrayView(d->data.constData() + dataOffset, dataLength);
+    } else {
+        if (!d->isValid(level, face))
+            return QByteArrayView();
+        const QImage &img = d->images[face][level];
+        return img.isNull() ? QByteArrayView() : QByteArrayView(img.constBits(), img.sizeInBytes());
+    }
+}
+
+void QTextureFileData::setDataLength(int length, int level, int face)
+{
+    Q_ASSERT(d->mode == ByteArrayMode);
     if (d.constData() && level >= 0) {
-        d->ensureLevels(level + 1);
-        d->lengths[level] = length;
+        d->ensureSize(level + 1, face + 1);
+        d->setLength(length, level, face);
     }
 }
 
 int QTextureFileData::numLevels() const
 {
-    return d ? d->offsets.size() : 0;
+    return d ? d->numLevels : 0;
 }
 
-void QTextureFileData::setNumLevels(int num)
+void QTextureFileData::setNumLevels(int numLevels)
 {
-    if (d && num >= 0)
-        d->ensureLevels(num, true);
+    if (d && numLevels >= 0)
+        d->ensureSize(numLevels, d->numFaces, true);
+}
+
+int QTextureFileData::numFaces() const
+{
+    return d ? d->numFaces : 0;
+}
+
+void QTextureFileData::setNumFaces(int numFaces)
+{
+    if (d && numFaces >= 0)
+        d->ensureSize(d->numLevels, numFaces, true);
 }
 
 QSize QTextureFileData::size() const
@@ -245,15 +291,20 @@ void QTextureFileData::setLogName(const QByteArray &name)
         d->logName = name;
 }
 
+QMap<QByteArray, QByteArray> QTextureFileData::keyValueMetadata() const
+{
+    return d ? d->keyValues : QMap<QByteArray, QByteArray>();
+}
+
+void QTextureFileData::setKeyValueMetadata(const QMap<QByteArray, QByteArray> &keyValues)
+{
+    if (d)
+        d->keyValues = keyValues;
+}
+
 static QByteArray glFormatName(quint32 fmt)
 {
-    const char *id = nullptr;
-#if QT_CONFIG(opengl)
-    id = QMetaEnum::fromType<QOpenGLTexture::TextureFormat>().valueToKey(fmt);
-#endif
-    QByteArray res(id ? id : "(?)");
-    res += " [0x" + QByteArray::number(fmt, 16).rightJustified(4, '0') + ']';
-    return res;
+    return QByteArray("0x" + QByteArray::number(fmt, 16).rightJustified(4, '0'));
 }
 
 QDebug operator<<(QDebug dbg, const QTextureFileData &d)
@@ -267,9 +318,11 @@ QDebug operator<<(QDebug dbg, const QTextureFileData &d)
         dbg << "glInternalFormat:" << glFormatName(d.glInternalFormat());
         dbg << "glBaseInternalFormat:" << glFormatName(d.glBaseInternalFormat());
         dbg.nospace() << "Levels: " << d.numLevels();
+        dbg.nospace() << "Faces: " << d.numFaces();
         if (!d.isValid())
             dbg << " {Invalid}";
         dbg << ")";
+        dbg << (d.d->mode ? "[bytearray-based]" : "[image-based]");
     } else {
         dbg << "null)";
     }

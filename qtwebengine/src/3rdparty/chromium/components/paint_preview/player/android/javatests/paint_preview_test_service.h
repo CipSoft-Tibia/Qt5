@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -23,6 +23,8 @@ class PaintPreviewTestService : public PaintPreviewBaseService {
 
   PaintPreviewTestService(const PaintPreviewTestService&) = delete;
   PaintPreviewTestService& operator=(const PaintPreviewTestService&) = delete;
+
+  jlong GetBaseService(JNIEnv* env);
 
   base::android::ScopedJavaLocalRef<jintArray> CreateSingleSkp(
       JNIEnv* env,

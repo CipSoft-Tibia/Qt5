@@ -1,14 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_FRAME_WIDGET_INPUT_HANDLER_IMPL_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WIDGET_INPUT_FRAME_WIDGET_INPUT_HANDLER_IMPL_H_
 
-#include "build/build_config.h"
-#include "mojo/public/cpp/bindings/associated_receiver.h"
-#include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "third_party/blink/public/mojom/input/input_handler.mojom-blink.h"
+#include "third_party/blink/public/mojom/input/stylus_writing_gesture.mojom-blink.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 
 namespace blink {
@@ -40,10 +38,16 @@ class WidgetBase;
 class PLATFORM_EXPORT FrameWidgetInputHandlerImpl
     : public mojom::blink::FrameWidgetInputHandler {
  public:
+  // The `widget` and `frame_widget_input_handler` should be invalidated
+  // at the same time.
   FrameWidgetInputHandlerImpl(
       base::WeakPtr<WidgetBase> widget,
-      scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner,
+      base::WeakPtr<mojom::blink::FrameWidgetInputHandler>
+          frame_widget_input_handler,
       scoped_refptr<MainThreadEventQueue> input_event_queue);
+  FrameWidgetInputHandlerImpl(const FrameWidgetInputHandlerImpl&) = delete;
+  FrameWidgetInputHandlerImpl& operator=(const FrameWidgetInputHandlerImpl&) =
+      delete;
   ~FrameWidgetInputHandlerImpl() override;
 
   void AddImeTextSpansToExistingText(
@@ -62,6 +66,9 @@ class PLATFORM_EXPORT FrameWidgetInputHandlerImpl
   void DeleteSurroundingTextInCodePoints(int32_t before,
                                          int32_t after) override;
   void SetEditableSelectionOffsets(int32_t start, int32_t end) override;
+  void HandleStylusWritingGestureAction(
+      mojom::blink::StylusWritingGestureDataPtr gesture_data,
+      HandleStylusWritingGestureActionCallback callback) override;
   void ExecuteEditCommand(const String& command, const String& value) override;
   void Undo() override;
   void Redo() override;
@@ -76,15 +83,18 @@ class PLATFORM_EXPORT FrameWidgetInputHandlerImpl
   void SelectAll() override;
   void CollapseSelection() override;
   void SelectRange(const gfx::Point& base, const gfx::Point& extent) override;
-#if defined(OS_ANDROID)
-  void SelectWordAroundCaret(SelectWordAroundCaretCallback callback) override;
-#endif  // defined(OS_ANDROID)
+  void SelectAroundCaret(mojom::blink::SelectionGranularity granularity,
+                         bool should_show_handle,
+                         bool should_show_context_menu,
+                         SelectAroundCaretCallback callback) override;
   void AdjustSelectionByCharacterOffset(
       int32_t start,
       int32_t end,
       blink::mojom::SelectionMenuBehavior selection_menu_behavior) override;
   void MoveRangeSelectionExtent(const gfx::Point& extent) override;
-  void ScrollFocusedEditableNodeIntoRect(const gfx::Rect& rect) override;
+  void ScrollFocusedEditableNodeIntoView() override;
+  void WaitForPageScaleAnimationForTesting(
+      WaitForPageScaleAnimationForTestingCallback callback) override;
   void MoveCaret(const gfx::Point& point) override;
 
  private:
@@ -112,17 +122,20 @@ class PLATFORM_EXPORT FrameWidgetInputHandlerImpl
   };
 
   void RunOnMainThread(base::OnceClosure closure);
-  static void ExecuteCommandOnMainThread(base::WeakPtr<WidgetBase> widget,
-                                         const char* command,
-                                         UpdateState state);
+  static void ExecuteCommandOnMainThread(
+      base::WeakPtr<WidgetBase> widget,
+      base::WeakPtr<mojom::blink::FrameWidgetInputHandler> handler,
+      const char* command,
+      UpdateState state);
 
-  // |widget_| should only be accessed on the main thread.
+  bool ThreadedCompositingEnabled() { return input_event_queue_ != nullptr; }
+
+  // These should only be accessed on the main thread.
   base::WeakPtr<WidgetBase> widget_;
+  base::WeakPtr<mojom::blink::FrameWidgetInputHandler>
+      main_thread_frame_widget_input_handler_;
 
   scoped_refptr<MainThreadEventQueue> input_event_queue_;
-  scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(FrameWidgetInputHandlerImpl);
 };
 
 }  // namespace blink

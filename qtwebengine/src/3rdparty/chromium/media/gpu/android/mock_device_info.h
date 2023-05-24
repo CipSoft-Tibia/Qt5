@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace media {
+
+class MediaCodecBridge;
 
 // A mock DeviceInfo with reasonable defaults.
 class MockDeviceInfo : public DeviceInfo {
@@ -27,7 +29,7 @@ class MockDeviceInfo : public DeviceInfo {
   MOCK_METHOD1(CodecNeedsFlushWorkaround, bool(MediaCodecBridge* codec));
   MOCK_METHOD0(IsAsyncApiSupported, bool());
   MOCK_METHOD1(AddSupportedCodecProfileLevels,
-               bool(std::vector<CodecProfileLevel>*));
+               void(std::vector<CodecProfileLevel>*));
 };
 
 }  // namespace media

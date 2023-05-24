@@ -1,10 +1,12 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "core/fpdfdoc/cpvt_fontmap.h"
+
+#include <utility>
 
 #include "core/fpdfapi/font/cpdf_font.h"
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
@@ -13,42 +15,37 @@
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fpdfdoc/cpdf_interactiveform.h"
 #include "core/fxcrt/fx_codepage.h"
-#include "third_party/base/logging.h"
+#include "third_party/base/check.h"
+#include "third_party/base/notreached.h"
 
 CPVT_FontMap::CPVT_FontMap(CPDF_Document* pDoc,
-                           CPDF_Dictionary* pResDict,
-                           const RetainPtr<CPDF_Font>& pDefFont,
+                           RetainPtr<CPDF_Dictionary> pResDict,
+                           RetainPtr<CPDF_Font> pDefFont,
                            const ByteString& sDefFontAlias)
     : m_pDocument(pDoc),
-      m_pResDict(pResDict),
-      m_pDefFont(pDefFont),
+      m_pResDict(std::move(pResDict)),
+      m_pDefFont(std::move(pDefFont)),
       m_sDefFontAlias(sDefFontAlias) {}
 
 CPVT_FontMap::~CPVT_FontMap() = default;
 
-// static
-RetainPtr<CPDF_Font> CPVT_FontMap::GetAnnotSysPDFFont(
-    CPDF_Document* pDoc,
-    CPDF_Dictionary* pResDict,
-    ByteString* pSysFontAlias) {
-  ASSERT(pSysFontAlias);
-  if (!pDoc || !pResDict)
-    return nullptr;
+void CPVT_FontMap::SetupAnnotSysPDFFont() {
+  if (!m_pDocument || !m_pResDict)
+    return;
 
-  CPDF_Dictionary* pFormDict = pDoc->GetRoot()->GetDictFor("AcroForm");
   RetainPtr<CPDF_Font> pPDFFont =
-      CPDF_InteractiveForm::AddNativeInteractiveFormFont(pFormDict, pDoc,
-                                                         pSysFontAlias);
+      CPDF_InteractiveForm::AddNativeInteractiveFormFont(m_pDocument,
+                                                         &m_sSysFontAlias);
   if (!pPDFFont)
-    return nullptr;
+    return;
 
-  CPDF_Dictionary* pFontList = pResDict->GetDictFor("Font");
-  if (ValidateFontResourceDict(pFontList) &&
-      !pFontList->KeyExist(*pSysFontAlias)) {
-    pFontList->SetNewFor<CPDF_Reference>(*pSysFontAlias, pDoc,
-                                         pPDFFont->GetFontDict()->GetObjNum());
+  RetainPtr<CPDF_Dictionary> pFontList = m_pResDict->GetMutableDictFor("Font");
+  if (ValidateFontResourceDict(pFontList.Get()) &&
+      !pFontList->KeyExist(m_sSysFontAlias)) {
+    pFontList->SetNewFor<CPDF_Reference>(m_sSysFontAlias, m_pDocument,
+                                         pPDFFont->GetFontDictObjNum());
   }
-  return pPDFFont;
+  m_pSysFont = std::move(pPDFFont);
 }
 
 RetainPtr<CPDF_Font> CPVT_FontMap::GetPDFFont(int32_t nFontIndex) {
@@ -56,10 +53,8 @@ RetainPtr<CPDF_Font> CPVT_FontMap::GetPDFFont(int32_t nFontIndex) {
     case 0:
       return m_pDefFont;
     case 1:
-      if (!m_pSysFont) {
-        m_pSysFont = GetAnnotSysPDFFont(m_pDocument.Get(), m_pResDict.Get(),
-                                        &m_sSysFontAlias);
-      }
+      if (!m_pSysFont)
+        SetupAnnotSysPDFFont();
       return m_pSysFont;
     default:
       return nullptr;
@@ -71,10 +66,8 @@ ByteString CPVT_FontMap::GetPDFFontAlias(int32_t nFontIndex) {
     case 0:
       return m_sDefFontAlias;
     case 1:
-      if (!m_pSysFont) {
-        m_pSysFont = GetAnnotSysPDFFont(m_pDocument.Get(), m_pResDict.Get(),
-                                        &m_sSysFontAlias);
-      }
+      if (!m_pSysFont)
+        SetupAnnotSysPDFFont();
       return m_sSysFontAlias;
     default:
       return ByteString();
@@ -82,7 +75,7 @@ ByteString CPVT_FontMap::GetPDFFontAlias(int32_t nFontIndex) {
 }
 
 int32_t CPVT_FontMap::GetWordFontIndex(uint16_t word,
-                                       int32_t charset,
+                                       FX_Charset charset,
                                        int32_t nFontIndex) {
   NOTREACHED();
   return 0;
@@ -93,7 +86,8 @@ int32_t CPVT_FontMap::CharCodeFromUnicode(int32_t nFontIndex, uint16_t word) {
   return 0;
 }
 
-int32_t CPVT_FontMap::CharSetFromUnicode(uint16_t word, int32_t nOldCharset) {
+FX_Charset CPVT_FontMap::CharSetFromUnicode(uint16_t word,
+                                            FX_Charset nOldCharset) {
   NOTREACHED();
-  return FX_CHARSET_ANSI;
+  return FX_Charset::kANSI;
 }

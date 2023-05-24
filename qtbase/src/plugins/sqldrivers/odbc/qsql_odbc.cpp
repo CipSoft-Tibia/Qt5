@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsql_odbc_p.h"
 #include <qsqlrecord.h>
@@ -44,72 +8,78 @@
 #include <qt_windows.h>
 #endif
 #include <qcoreapplication.h>
-#include <qvariant.h>
 #include <qdatetime.h>
+#include <qlist.h>
+#include <qmath.h>
 #include <qsqlerror.h>
 #include <qsqlfield.h>
 #include <qsqlindex.h>
+#include <qstringconverter.h>
 #include <qstringlist.h>
+#include <qvariant.h>
 #include <qvarlengtharray.h>
-#include <qvector.h>
-#include <qmath.h>
 #include <QDebug>
 #include <QSqlQuery>
 #include <QtSql/private/qsqldriver_p.h>
 #include <QtSql/private/qsqlresult_p.h>
+#include "private/qtools_p.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
+
+// non-standard ODBC SQL data type from SQL Server sometimes used instead of SQL_TIME
+#ifndef SQL_SS_TIME2
+#define SQL_SS_TIME2 (-154)
+#endif
 
 // undefine this to prevent initial check of the ODBC driver
 #define ODBC_CHECK_DRIVER
 
-static const int COLNAMESIZE = 256;
-static const SQLSMALLINT TABLENAMESIZE = 128;
+static constexpr int COLNAMESIZE = 256;
+static constexpr SQLSMALLINT TABLENAMESIZE = 128;
 //Map Qt parameter types to ODBC types
-static const SQLSMALLINT qParamType[4] = { SQL_PARAM_INPUT, SQL_PARAM_INPUT, SQL_PARAM_OUTPUT, SQL_PARAM_INPUT_OUTPUT };
+static constexpr SQLSMALLINT qParamType[4] = { SQL_PARAM_INPUT, SQL_PARAM_INPUT, SQL_PARAM_OUTPUT, SQL_PARAM_INPUT_OUTPUT };
 
-inline static QString fromSQLTCHAR(const QVarLengthArray<SQLTCHAR>& input, int size=-1)
+template<typename C, int SIZE = sizeof(SQLTCHAR)>
+inline static QString fromSQLTCHAR(const C &input, qsizetype size = -1)
 {
-    QString result;
-
     // Remove any trailing \0 as some drivers misguidedly append one
-    int realsize = qMin(size, input.size());
-    if(realsize > 0 && input[realsize-1] == 0)
+    qsizetype realsize = qMin(size, input.size());
+    if (realsize > 0 && input[realsize - 1] == 0)
         realsize--;
-    switch(sizeof(SQLTCHAR)) {
-        case 1:
-            result=QString::fromUtf8((const char *)input.constData(), realsize);
-            break;
-        case 2:
-            result=QString::fromUtf16((const ushort *)input.constData(), realsize);
-            break;
-        case 4:
-            result=QString::fromUcs4((const uint *)input.constData(), realsize);
-            break;
-        default:
-            qCritical("sizeof(SQLTCHAR) is %d. Don't know how to handle this.", int(sizeof(SQLTCHAR)));
-    }
-    return result;
+    if constexpr (SIZE == 1)
+        return QString::fromUtf8(reinterpret_cast<const char *>(input.constData()), realsize);
+    else if constexpr (SIZE == 2)
+        return QString::fromUtf16(reinterpret_cast<const char16_t *>(input.constData()), realsize);
+    else if constexpr (SIZE == 4)
+        return QString::fromUcs4(reinterpret_cast<const char32_t *>(input.constData()), realsize);
+    else
+        static_assert(QtPrivate::value_dependent_false<SIZE>(),
+                      "Don't know how to handle sizeof(SQLTCHAR) != 1/2/4");
+}
+
+template<int SIZE = sizeof(SQLTCHAR)>
+QStringConverter::Encoding encodingForSqlTChar()
+{
+    if constexpr (SIZE == 1)
+        return QStringConverter::Utf8;
+    else if constexpr (SIZE == 2)
+        return QStringConverter::Utf16;
+    else if constexpr (SIZE == 4)
+        return QStringConverter::Utf32;
+    else
+        static_assert(QtPrivate::value_dependent_false<SIZE>(),
+                      "Don't know how to handle sizeof(SQLTCHAR) != 1/2/4");
 }
 
 inline static QVarLengthArray<SQLTCHAR> toSQLTCHAR(const QString &input)
 {
     QVarLengthArray<SQLTCHAR> result;
-    result.resize(input.size());
-    switch(sizeof(SQLTCHAR)) {
-        case 1:
-            memcpy(result.data(), input.toUtf8().data(), input.size());
-            break;
-        case 2:
-            memcpy(result.data(), input.unicode(), input.size() * 2);
-            break;
-        case 4:
-            memcpy(result.data(), input.toUcs4().data(), input.size() * 4);
-            break;
-        default:
-            qCritical("sizeof(SQLTCHAR) is %d. Don't know how to handle this.", int(sizeof(SQLTCHAR)));
-    }
-    result.append(0); // make sure it's null terminated, doesn't matter if it already is, it does if it isn't.
+    QStringEncoder enc(encodingForSqlTChar());
+    result.resize(enc.requiredSpace(input.size()));
+    const auto end = enc.appendToBuffer(reinterpret_cast<char *>(result.data()), input);
+    result.resize((end - reinterpret_cast<char *>(result.data())) / sizeof(SQLTCHAR));
     return result;
 }
 
@@ -141,13 +111,13 @@ public:
     void checkDateTimePrecision();
     bool setConnectionOptions(const QString& connOpts);
     void splitTableQualifier(const QString &qualifier, QString &catalog,
-                             QString &schema, QString &table);
+                             QString &schema, QString &table) const;
     DefaultCase defaultCase() const;
     QString adjustCase(const QString&) const;
     QChar quoteChar();
 private:
     bool isQuoteInitialized = false;
-    QChar quote = QLatin1Char('"');
+    QChar quote = u'"';
 };
 
 class QODBCResultPrivate;
@@ -206,7 +176,7 @@ public:
     SQLHANDLE hStmt = nullptr;
 
     QSqlRecord rInf;
-    QVector<QVariant> fieldCache;
+    QVariantList fieldCache;
     int fieldCacheIdx = 0;
     int disconnectCount = 0;
     bool hasSQLFetchScroll = true;
@@ -227,163 +197,167 @@ void QODBCResultPrivate::updateStmtHandleState()
     disconnectCount = drv_d_func() ? drv_d_func()->disconnectCount : 0;
 }
 
-static QString qWarnODBCHandle(int handleType, SQLHANDLE handle, int *nativeCode = 0)
+struct DiagRecord
 {
-    SQLINTEGER nativeCode_ = 0;
+    QString description;
+    QString sqlState;
+    QString errorCode;
+};
+static QList<DiagRecord> qWarnODBCHandle(int handleType, SQLHANDLE handle)
+{
+    SQLINTEGER nativeCode = 0;
     SQLSMALLINT msgLen = 0;
+    SQLSMALLINT i = 1;
     SQLRETURN r = SQL_NO_DATA;
-    SQLTCHAR state_[SQL_SQLSTATE_SIZE+1];
-    QVarLengthArray<SQLTCHAR> description_(SQL_MAX_MESSAGE_LENGTH);
-    QString result;
-    int i = 1;
+    QVarLengthArray<SQLTCHAR, SQL_SQLSTATE_SIZE + 1> state(SQL_SQLSTATE_SIZE + 1);
+    QVarLengthArray<SQLTCHAR, SQL_MAX_MESSAGE_LENGTH + 1> description(SQL_MAX_MESSAGE_LENGTH + 1);
+    QList<DiagRecord> result;
 
-    description_[0] = 0;
+    if (!handle)
+        return result;
     do {
         r = SQLGetDiagRec(handleType,
                           handle,
                           i,
-                          state_,
-                          &nativeCode_,
-                          0,
-                          0,
+                          state.data(),
+                          &nativeCode,
+                          description.data(),
+                          description.size(),
                           &msgLen);
-        if ((r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) && msgLen > 0)
-            description_.resize(msgLen+1);
-        r = SQLGetDiagRec(handleType,
-                            handle,
-                            i,
-                            state_,
-                            &nativeCode_,
-                            description_.data(),
-                            description_.size(),
-                            &msgLen);
+        if (msgLen >= description.size()) {
+            description.resize(msgLen + 1); // incl. \0 termination
+            continue;
+        }
         if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) {
-            if (nativeCode)
-                *nativeCode = nativeCode_;
-            const QString tmpstore = fromSQLTCHAR(description_, msgLen);
-            if(result != tmpstore) {
-                if(!result.isEmpty())
-                    result += QLatin1Char(' ');
-                result += tmpstore;
-            }
+            result.push_back({fromSQLTCHAR(description, msgLen),
+                              fromSQLTCHAR(state),
+                              QString::number(nativeCode)});
         } else if (r == SQL_ERROR || r == SQL_INVALID_HANDLE) {
-            return result;
+            break;
         }
         ++i;
     } while (r != SQL_NO_DATA);
     return result;
 }
 
-static QString qODBCWarn(const SQLHANDLE hStmt, const SQLHANDLE envHandle = 0,
-                         const SQLHANDLE pDbC = 0, int *nativeCode = 0)
+static QList<DiagRecord> qODBCWarn(const SQLHANDLE hStmt,
+                                   const SQLHANDLE envHandle = nullptr,
+                                   const SQLHANDLE pDbC = nullptr)
 {
-    QString result;
-    if (envHandle)
-        result += qWarnODBCHandle(SQL_HANDLE_ENV, envHandle, nativeCode);
-    if (pDbC) {
-        const QString dMessage = qWarnODBCHandle(SQL_HANDLE_DBC, pDbC, nativeCode);
-        if (!dMessage.isEmpty()) {
-            if (!result.isEmpty())
-                result += QLatin1Char(' ');
-            result += dMessage;
-        }
-    }
-    if (hStmt) {
-        const QString hMessage = qWarnODBCHandle(SQL_HANDLE_STMT, hStmt, nativeCode);
-        if (!hMessage.isEmpty()) {
-            if (!result.isEmpty())
-                result += QLatin1Char(' ');
-            result += hMessage;
-        }
-    }
+    QList<DiagRecord> result;
+    result.append(qWarnODBCHandle(SQL_HANDLE_ENV, envHandle));
+    result.append(qWarnODBCHandle(SQL_HANDLE_DBC, pDbC));
+    result.append(qWarnODBCHandle(SQL_HANDLE_STMT, hStmt));
     return result;
 }
 
-static QString qODBCWarn(const QODBCResultPrivate* odbc, int *nativeCode = 0)
+static QList<DiagRecord> qODBCWarn(const QODBCResultPrivate *odbc)
 {
-    return qODBCWarn(odbc->hStmt, odbc->dpEnv(), odbc->dpDbc(), nativeCode);
+    return qODBCWarn(odbc->hStmt, odbc->dpEnv(), odbc->dpDbc());
 }
 
-static QString qODBCWarn(const QODBCDriverPrivate* odbc, int *nativeCode = 0)
+static QList<DiagRecord> qODBCWarn(const QODBCDriverPrivate *odbc)
 {
-    return qODBCWarn(0, odbc->hEnv, odbc->hDbc, nativeCode);
+    return qODBCWarn(nullptr, odbc->hEnv, odbc->hDbc);
 }
 
-static void qSqlWarning(const QString& message, const QODBCResultPrivate* odbc)
+static DiagRecord combineRecords(const QList<DiagRecord> &records)
 {
-    qWarning() << message << "\tError:" << qODBCWarn(odbc);
+    const auto add = [](const DiagRecord &a, const DiagRecord &b) {
+        return DiagRecord{a.description + u' ' + b.description,
+                          a.sqlState + u';' + b.sqlState,
+                          a.errorCode + u';' + b.errorCode};
+    };
+    if (records.isEmpty())
+        return {};
+    return std::accumulate(std::next(records.begin()), records.end(), records.front(), add);
 }
 
-static void qSqlWarning(const QString &message, const QODBCDriverPrivate *odbc)
+static QSqlError errorFromDiagRecords(const QString &err,
+                                      QSqlError::ErrorType type,
+                                      const QList<DiagRecord> &records)
 {
-    qWarning() << message << "\tError:" << qODBCWarn(odbc);
+    if (records.empty())
+        return QSqlError("QODBC: unknown error"_L1, {}, type, {});
+    const auto combined = combineRecords(records);
+    return QSqlError("QODBC: "_L1 + err, combined.description + ", "_L1 + combined.sqlState, type,
+                     combined.errorCode);
 }
 
-static void qSqlWarning(const QString &message, const SQLHANDLE hStmt)
+static QString errorStringFromDiagRecords(const QList<DiagRecord>& records)
 {
-    qWarning() << message << "\tError:" << qODBCWarn(hStmt);
+    const auto combined = combineRecords(records);
+    return combined.description;
 }
 
-static QSqlError qMakeError(const QString& err, QSqlError::ErrorType type, const QODBCResultPrivate* p)
+template<class T>
+static void qSqlWarning(const QString &message, T &&val)
 {
-    int nativeCode = -1;
-    QString message = qODBCWarn(p, &nativeCode);
-    return QSqlError(QLatin1String("QODBC3: ") + err, message, type,
-                     nativeCode != -1 ? QString::number(nativeCode) : QString());
+    qWarning() << message << "\tError:" << errorStringFromDiagRecords(qODBCWarn(val));
 }
 
-static QSqlError qMakeError(const QString& err, QSqlError::ErrorType type,
-                            const QODBCDriverPrivate* p)
+static QSqlError qMakeError(const QString &err,
+                            QSqlError::ErrorType type,
+                            const QODBCResultPrivate *p)
 {
-    int nativeCode = -1;
-    QString message = qODBCWarn(p, &nativeCode);
-    return QSqlError(QLatin1String("QODBC3: ") + err, message, type,
-                     nativeCode != -1 ? QString::number(nativeCode) : QString());
+    return errorFromDiagRecords(err, type, qODBCWarn(p));
 }
 
-static QVariant::Type qDecodeODBCType(SQLSMALLINT sqltype, bool isSigned = true)
+static QSqlError qMakeError(const QString &err,
+                            QSqlError::ErrorType type,
+                            const QODBCDriverPrivate *p)
 {
-    QVariant::Type type = QVariant::Invalid;
+    return errorFromDiagRecords(err, type, qODBCWarn(p));
+}
+
+static QMetaType qDecodeODBCType(SQLSMALLINT sqltype, bool isSigned = true)
+{
+    int type = QMetaType::UnknownType;
     switch (sqltype) {
     case SQL_DECIMAL:
     case SQL_NUMERIC:
-    case SQL_REAL:
-    case SQL_FLOAT:
-    case SQL_DOUBLE:
-        type = QVariant::Double;
+    case SQL_FLOAT: // 24 or 53 bits precision
+    case SQL_DOUBLE:// 53 bits
+        type = QMetaType::Double;
+        break;
+    case SQL_REAL:  // 24 bits
+        type = QMetaType::Float;
         break;
     case SQL_SMALLINT:
+        type = isSigned ? QMetaType::Short : QMetaType::UShort;
+        break;
     case SQL_INTEGER:
     case SQL_BIT:
-        type = isSigned ? QVariant::Int : QVariant::UInt;
+        type = isSigned ? QMetaType::Int : QMetaType::UInt;
         break;
     case SQL_TINYINT:
-        type = QVariant::UInt;
+        type = QMetaType::UInt;
         break;
     case SQL_BIGINT:
-        type = isSigned ? QVariant::LongLong : QVariant::ULongLong;
+        type = isSigned ? QMetaType::LongLong : QMetaType::ULongLong;
         break;
     case SQL_BINARY:
     case SQL_VARBINARY:
     case SQL_LONGVARBINARY:
-        type = QVariant::ByteArray;
+        type = QMetaType::QByteArray;
         break;
     case SQL_DATE:
     case SQL_TYPE_DATE:
-        type = QVariant::Date;
+        type = QMetaType::QDate;
         break;
+    case SQL_SS_TIME2:
     case SQL_TIME:
     case SQL_TYPE_TIME:
-        type = QVariant::Time;
+        type = QMetaType::QTime;
         break;
     case SQL_TIMESTAMP:
     case SQL_TYPE_TIMESTAMP:
-        type = QVariant::DateTime;
+        type = QMetaType::QDateTime;
         break;
     case SQL_WCHAR:
     case SQL_WVARCHAR:
     case SQL_WLONGVARCHAR:
-        type = QVariant::String;
+        type = QMetaType::QString;
         break;
     case SQL_CHAR:
     case SQL_VARCHAR:
@@ -391,126 +365,76 @@ static QVariant::Type qDecodeODBCType(SQLSMALLINT sqltype, bool isSigned = true)
     case SQL_GUID:
 #endif
     case SQL_LONGVARCHAR:
-        type = QVariant::String;
+        type = QMetaType::QString;
         break;
     default:
-        type = QVariant::ByteArray;
+        type = QMetaType::QByteArray;
         break;
     }
-    return type;
+    return QMetaType(type);
 }
 
-static QString qGetStringData(SQLHANDLE hStmt, int column, int colSize, bool unicode = false)
+template <typename CT>
+static QVariant getStringDataImpl(SQLHANDLE hStmt, SQLUSMALLINT column, qsizetype colSize, SQLSMALLINT targetType)
 {
     QString fieldVal;
     SQLRETURN r = SQL_ERROR;
     SQLLEN lengthIndicator = 0;
+    QVarLengthArray<CT> buf(colSize);
+    while (true) {
+        r = SQLGetData(hStmt,
+                       column + 1,
+                       targetType,
+                       SQLPOINTER(buf.data()), SQLINTEGER(buf.size() * sizeof(CT)),
+                       &lengthIndicator);
+        if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) {
+            if (lengthIndicator == SQL_NULL_DATA) {
+                return {};
+            }
+            // starting with ODBC Native Client 2012, SQL_NO_TOTAL is returned
+            // instead of the length (which sometimes was wrong in older versions)
+            // see link for more info: http://msdn.microsoft.com/en-us/library/jj219209.aspx
+            // if length indicator equals SQL_NO_TOTAL, indicating that
+            // more data can be fetched, but size not known, collect data
+            // and fetch next block
+            if (lengthIndicator == SQL_NO_TOTAL) {
+                fieldVal += fromSQLTCHAR<QVarLengthArray<CT>, sizeof(CT)>(buf, buf.size());
+                continue;
+            }
+            // if SQL_SUCCESS_WITH_INFO is returned, indicating that
+            // more data can be fetched, the length indicator does NOT
+            // contain the number of bytes returned - it contains the
+            // total number of bytes that CAN be fetched
+            const qsizetype rSize = (r == SQL_SUCCESS_WITH_INFO)
+                    ? buf.size()
+                    : qsizetype(lengthIndicator / sizeof(CT));
+            fieldVal += fromSQLTCHAR<QVarLengthArray<CT>, sizeof(CT)>(buf, rSize);
+            // lengthIndicator does not contain the termination character
+            if (lengthIndicator < SQLLEN((buf.size() - 1) * sizeof(CT))) {
+                // workaround for Drivermanagers that don't return SQL_NO_DATA
+                break;
+            }
+        } else if (r == SQL_NO_DATA) {
+            break;
+        } else {
+            qSqlWarning("qGetStringData: Error while fetching data:"_L1, hStmt);
+            return {};
+        }
+    }
+    return fieldVal;
+}
 
-    // NB! colSize must be a multiple of 2 for unicode enabled DBs
+static QVariant qGetStringData(SQLHANDLE hStmt, SQLUSMALLINT column, int colSize, bool unicode)
+{
     if (colSize <= 0) {
-        colSize = 256;
+        colSize = 256;  // default Prealloc size of QVarLengthArray
     } else if (colSize > 65536) { // limit buffer size to 64 KB
         colSize = 65536;
     } else {
         colSize++; // make sure there is room for more than the 0 termination
     }
-    if(unicode) {
-        r = SQLGetData(hStmt,
-                        column+1,
-                        SQL_C_TCHAR,
-                        NULL,
-                        0,
-                        &lengthIndicator);
-        if ((r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) && lengthIndicator > 0)
-            colSize = int(lengthIndicator / sizeof(SQLTCHAR) + 1);
-        QVarLengthArray<SQLTCHAR> buf(colSize);
-        memset(buf.data(), 0, colSize*sizeof(SQLTCHAR));
-        while (true) {
-            r = SQLGetData(hStmt,
-                            column+1,
-                            SQL_C_TCHAR,
-                            (SQLPOINTER)buf.data(),
-                            colSize*sizeof(SQLTCHAR),
-                            &lengthIndicator);
-            if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) {
-                if (lengthIndicator == SQL_NULL_DATA) {
-                    fieldVal.clear();
-                    break;
-                }
-                // starting with ODBC Native Client 2012, SQL_NO_TOTAL is returned
-                // instead of the length (which sometimes was wrong in older versions)
-                // see link for more info: http://msdn.microsoft.com/en-us/library/jj219209.aspx
-                // if length indicator equals SQL_NO_TOTAL, indicating that
-                // more data can be fetched, but size not known, collect data
-                // and fetch next block
-                if (lengthIndicator == SQL_NO_TOTAL) {
-                    fieldVal += fromSQLTCHAR(buf, colSize);
-                    continue;
-                }
-                // if SQL_SUCCESS_WITH_INFO is returned, indicating that
-                // more data can be fetched, the length indicator does NOT
-                // contain the number of bytes returned - it contains the
-                // total number of bytes that CAN be fetched
-                int rSize = (r == SQL_SUCCESS_WITH_INFO) ? colSize : int(lengthIndicator / sizeof(SQLTCHAR));
-                    fieldVal += fromSQLTCHAR(buf, rSize);
-                if (lengthIndicator < SQLLEN(colSize*sizeof(SQLTCHAR))) {
-                    // workaround for Drivermanagers that don't return SQL_NO_DATA
-                    break;
-                }
-            } else if (r == SQL_NO_DATA) {
-                break;
-            } else {
-                qWarning() << "qGetStringData: Error while fetching data (" << qWarnODBCHandle(SQL_HANDLE_STMT, hStmt) << ')';
-                fieldVal.clear();
-                break;
-            }
-        }
-    } else {
-        r = SQLGetData(hStmt,
-                        column+1,
-                        SQL_C_CHAR,
-                        NULL,
-                        0,
-                        &lengthIndicator);
-        if ((r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) && lengthIndicator > 0)
-            colSize = lengthIndicator + 1;
-        QVarLengthArray<SQLCHAR> buf(colSize);
-        while (true) {
-            r = SQLGetData(hStmt,
-                            column+1,
-                            SQL_C_CHAR,
-                            (SQLPOINTER)buf.data(),
-                            colSize,
-                            &lengthIndicator);
-            if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) {
-                if (lengthIndicator == SQL_NULL_DATA || lengthIndicator == SQL_NO_TOTAL) {
-                    fieldVal.clear();
-                    break;
-                }
-                // if SQL_SUCCESS_WITH_INFO is returned, indicating that
-                // more data can be fetched, the length indicator does NOT
-                // contain the number of bytes returned - it contains the
-                // total number of bytes that CAN be fetched
-                int rSize = (r == SQL_SUCCESS_WITH_INFO) ? colSize : lengthIndicator;
-                // Remove any trailing \0 as some drivers misguidedly append one
-                int realsize = qMin(rSize, buf.size());
-                if (realsize > 0 && buf[realsize - 1] == 0)
-                    realsize--;
-                fieldVal += QString::fromUtf8(reinterpret_cast<const char *>(buf.constData()), realsize);
-                if (lengthIndicator < SQLLEN(colSize)) {
-                    // workaround for Drivermanagers that don't return SQL_NO_DATA
-                    break;
-                }
-            } else if (r == SQL_NO_DATA) {
-                break;
-            } else {
-                qWarning() << "qGetStringData: Error while fetching data (" << qWarnODBCHandle(SQL_HANDLE_STMT, hStmt) << ')';
-                fieldVal.clear();
-                break;
-            }
-        }
-    }
-    return fieldVal;
+    return unicode ? getStringDataImpl<SQLTCHAR>(hStmt, column, colSize, SQL_C_TCHAR)
+                   : getStringDataImpl<SQLCHAR>(hStmt, column, colSize, SQL_C_CHAR);
 }
 
 static QVariant qGetBinaryData(SQLHANDLE hStmt, int column)
@@ -524,12 +448,11 @@ static QVariant qGetBinaryData(SQLHANDLE hStmt, int column)
     SQLLEN lengthIndicator = 0;
     SQLRETURN r = SQL_ERROR;
 
-    QVarLengthArray<SQLTCHAR> colName(COLNAMESIZE);
+    QVarLengthArray<SQLTCHAR, COLNAMESIZE> colName(COLNAMESIZE);
 
     r = SQLDescribeCol(hStmt,
                        column + 1,
-                       colName.data(),
-                       COLNAMESIZE,
+                       colName.data(), SQLSMALLINT(colName.size()),
                        &colNameLen,
                        &colType,
                        &colSize,
@@ -554,7 +477,7 @@ static QVariant qGetBinaryData(SQLHANDLE hStmt, int column)
         if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO)
             break;
         if (lengthIndicator == SQL_NULL_DATA)
-            return QVariant(QVariant::ByteArray);
+            return QVariant(QMetaType(QMetaType::QByteArray));
         if (lengthIndicator > SQLLEN(colSize) || lengthIndicator == SQL_NO_TOTAL) {
             read += colSize;
             colSize = 65536;
@@ -581,9 +504,9 @@ static QVariant qGetIntData(SQLHANDLE hStmt, int column, bool isSigned = true)
                               sizeof(intbuf),
                               &lengthIndicator);
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO)
-        return QVariant(QVariant::Invalid);
+        return QVariant();
     if (lengthIndicator == SQL_NULL_DATA)
-        return QVariant(QVariant::Int);
+        return QVariant(QMetaType::fromType<int>());
     if (isSigned)
         return int(intbuf);
     else
@@ -601,10 +524,10 @@ static QVariant qGetDoubleData(SQLHANDLE hStmt, int column)
                               0,
                               &lengthIndicator);
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO) {
-        return QVariant(QVariant::Invalid);
+        return QVariant();
     }
-    if(lengthIndicator == SQL_NULL_DATA)
-        return QVariant(QVariant::Double);
+    if (lengthIndicator == SQL_NULL_DATA)
+        return QVariant(QMetaType::fromType<double>());
 
     return (double) dblbuf;
 }
@@ -621,9 +544,9 @@ static QVariant qGetBigIntData(SQLHANDLE hStmt, int column, bool isSigned = true
                               sizeof(lngbuf),
                               &lengthIndicator);
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO)
-        return QVariant(QVariant::Invalid);
+        return QVariant();
     if (lengthIndicator == SQL_NULL_DATA)
-        return QVariant(QVariant::LongLong);
+        return QVariant(QMetaType::fromType<qlonglong>());
 
     if (isSigned)
         return qint64(lngbuf);
@@ -650,7 +573,7 @@ static QSqlField qMakeFieldInfo(const SQLHANDLE hStmt, int i, QString *errorMess
 // by SQLColumns. The hStmt has to point to a valid position.
 static QSqlField qMakeFieldInfo(const SQLHANDLE hStmt, const QODBCDriverPrivate* p)
 {
-    QString fname = qGetStringData(hStmt, 3, -1, p->unicode);
+    QString fname = qGetStringData(hStmt, 3, -1, p->unicode).toString();
     int type = qGetIntData(hStmt, 4).toInt(); // column type
     QSqlField f(fname, qDecodeODBCType(type, p));
     QVariant var = qGetIntData(hStmt, 6);
@@ -685,12 +608,11 @@ static QSqlField qMakeFieldInfo(const SQLHANDLE hStmt, int i, QString *errorMess
     SQLSMALLINT colScale;
     SQLSMALLINT nullable;
     SQLRETURN r = SQL_ERROR;
-    QVarLengthArray<SQLTCHAR> colName(COLNAMESIZE);
+    QVarLengthArray<SQLTCHAR, COLNAMESIZE> colName(COLNAMESIZE);
     errorMessage->clear();
     r = SQLDescribeCol(hStmt,
                         i+1,
-                        colName.data(),
-                        (SQLSMALLINT)COLNAMESIZE,
+                        colName.data(), SQLSMALLINT(colName.size()),
                         &colNameLen,
                         &colType,
                         &colSize,
@@ -717,7 +639,7 @@ static QSqlField qMakeFieldInfo(const SQLHANDLE hStmt, int i, QString *errorMess
 
     const QString qColName(fromSQLTCHAR(colName, colNameLen));
     // nullable can be SQL_NO_NULLS, SQL_NULLABLE or SQL_NULLABLE_UNKNOWN
-    QVariant::Type type = qDecodeODBCType(colType, unsignedFlag == SQL_FALSE);
+    QMetaType type = qDecodeODBCType(colType, unsignedFlag == SQL_FALSE);
     QSqlField f(qColName, type);
     f.setSqlType(colType);
     f.setLength(colSize == 0 ? -1 : int(colSize));
@@ -728,18 +650,23 @@ static QSqlField qMakeFieldInfo(const SQLHANDLE hStmt, int i, QString *errorMess
         f.setRequired(false);
     // else we don't know
     f.setAutoValue(isAutoValue(hStmt, i));
-    QVarLengthArray<SQLTCHAR> tableName(TABLENAMESIZE);
+    QVarLengthArray<SQLTCHAR, TABLENAMESIZE> tableName(TABLENAMESIZE);
     SQLSMALLINT tableNameLen;
-    r = SQLColAttribute(hStmt, i + 1, SQL_DESC_BASE_TABLE_NAME, tableName.data(),
-                        TABLENAMESIZE, &tableNameLen, 0);
+    r = SQLColAttribute(hStmt,
+                        i + 1,
+                        SQL_DESC_BASE_TABLE_NAME,
+                        tableName.data(),
+                        SQLSMALLINT(tableName.size() * sizeof(SQLTCHAR)), // SQLColAttribute needs/returns size in bytes
+                        &tableNameLen,
+                        0);
     if (r == SQL_SUCCESS)
-        f.setTableName(fromSQLTCHAR(tableName, tableNameLen));
+        f.setTableName(fromSQLTCHAR(tableName, tableNameLen / sizeof(SQLTCHAR)));
     return f;
 }
 
 static size_t qGetODBCVersion(const QString &connOpts)
 {
-    if (connOpts.contains(QLatin1String("SQL_ATTR_ODBC_VERSION=SQL_OV_ODBC3"), Qt::CaseInsensitive))
+    if (connOpts.contains("SQL_ATTR_ODBC_VERSION=SQL_OV_ODBC3"_L1, Qt::CaseInsensitive))
         return SQL_OV_ODBC3;
     return SQL_OV_ODBC2;
 }
@@ -757,22 +684,30 @@ QChar QODBCDriverPrivate::quoteChar()
         if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)
             quote = QChar(driverResponse[0]);
         else
-            quote = QLatin1Char('"');
+            quote = u'"';
         isQuoteInitialized = true;
     }
     return quote;
+}
+
+static SQLRETURN qt_string_SQLSetConnectAttr(SQLHDBC handle, SQLINTEGER attr, const QString &val)
+{
+    auto encoded = toSQLTCHAR(val);
+    return SQLSetConnectAttr(handle, attr,
+                             encoded.data(),
+                             SQLINTEGER(encoded.size() * sizeof(SQLTCHAR))); // size in bytes
 }
 
 
 bool QODBCDriverPrivate::setConnectionOptions(const QString& connOpts)
 {
     // Set any connection attributes
-    const QStringList opts(connOpts.split(QLatin1Char(';'), Qt::SkipEmptyParts));
+    const QStringList opts(connOpts.split(u';', Qt::SkipEmptyParts));
     SQLRETURN r = SQL_SUCCESS;
     for (int i = 0; i < opts.count(); ++i) {
         const QString tmp(opts.at(i));
         int idx;
-        if ((idx = tmp.indexOf(QLatin1Char('='))) == -1) {
+        if ((idx = tmp.indexOf(u'=')) == -1) {
             qWarning() << "QODBCDriver::open: Illegal connect option value '" << tmp << '\'';
             continue;
         }
@@ -781,82 +716,76 @@ bool QODBCDriverPrivate::setConnectionOptions(const QString& connOpts)
         SQLUINTEGER v = 0;
 
         r = SQL_SUCCESS;
-        if (opt.toUpper() == QLatin1String("SQL_ATTR_ACCESS_MODE")) {
-            if (val.toUpper() == QLatin1String("SQL_MODE_READ_ONLY")) {
+        if (opt.toUpper() == "SQL_ATTR_ACCESS_MODE"_L1) {
+            if (val.toUpper() == "SQL_MODE_READ_ONLY"_L1) {
                 v = SQL_MODE_READ_ONLY;
-            } else if (val.toUpper() == QLatin1String("SQL_MODE_READ_WRITE")) {
+            } else if (val.toUpper() == "SQL_MODE_READ_WRITE"_L1) {
                 v = SQL_MODE_READ_WRITE;
             } else {
                 qWarning() << "QODBCDriver::open: Unknown option value '" << val << '\'';
                 continue;
             }
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_ACCESS_MODE, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_CONNECTION_TIMEOUT")) {
+        } else if (opt.toUpper() == "SQL_ATTR_CONNECTION_TIMEOUT"_L1) {
             v = val.toUInt();
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_CONNECTION_TIMEOUT, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_LOGIN_TIMEOUT")) {
+        } else if (opt.toUpper() == "SQL_ATTR_LOGIN_TIMEOUT"_L1) {
             v = val.toUInt();
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_CURRENT_CATALOG")) {
-            val.utf16(); // 0 terminate
-            r = SQLSetConnectAttr(hDbc, SQL_ATTR_CURRENT_CATALOG,
-                                    toSQLTCHAR(val).data(),
-                                    val.length()*sizeof(SQLTCHAR));
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_METADATA_ID")) {
-            if (val.toUpper() == QLatin1String("SQL_TRUE")) {
+        } else if (opt.toUpper() == "SQL_ATTR_CURRENT_CATALOG"_L1) {
+            r = qt_string_SQLSetConnectAttr(hDbc, SQL_ATTR_CURRENT_CATALOG, val);
+        } else if (opt.toUpper() == "SQL_ATTR_METADATA_ID"_L1) {
+            if (val.toUpper() == "SQL_TRUE"_L1) {
                 v = SQL_TRUE;
-            } else if (val.toUpper() == QLatin1String("SQL_FALSE")) {
+            } else if (val.toUpper() == "SQL_FALSE"_L1) {
                 v = SQL_FALSE;
             } else {
                 qWarning() << "QODBCDriver::open: Unknown option value '" << val << '\'';
                 continue;
             }
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_METADATA_ID, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_PACKET_SIZE")) {
+        } else if (opt.toUpper() == "SQL_ATTR_PACKET_SIZE"_L1) {
             v = val.toUInt();
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_PACKET_SIZE, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_TRACEFILE")) {
-            val.utf16(); // 0 terminate
-            r = SQLSetConnectAttr(hDbc, SQL_ATTR_TRACEFILE,
-                                    toSQLTCHAR(val).data(),
-                                    val.length()*sizeof(SQLTCHAR));
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_TRACE")) {
-            if (val.toUpper() == QLatin1String("SQL_OPT_TRACE_OFF")) {
+        } else if (opt.toUpper() == "SQL_ATTR_TRACEFILE"_L1) {
+            r = qt_string_SQLSetConnectAttr(hDbc, SQL_ATTR_TRACEFILE, val);
+        } else if (opt.toUpper() == "SQL_ATTR_TRACE"_L1) {
+            if (val.toUpper() == "SQL_OPT_TRACE_OFF"_L1) {
                 v = SQL_OPT_TRACE_OFF;
-            } else if (val.toUpper() == QLatin1String("SQL_OPT_TRACE_ON")) {
+            } else if (val.toUpper() == "SQL_OPT_TRACE_ON"_L1) {
                 v = SQL_OPT_TRACE_ON;
             } else {
                 qWarning() << "QODBCDriver::open: Unknown option value '" << val << '\'';
                 continue;
             }
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_TRACE, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_CONNECTION_POOLING")) {
-            if (val == QLatin1String("SQL_CP_OFF"))
+        } else if (opt.toUpper() == "SQL_ATTR_CONNECTION_POOLING"_L1) {
+            if (val == "SQL_CP_OFF"_L1)
                 v = SQL_CP_OFF;
-            else if (val.toUpper() == QLatin1String("SQL_CP_ONE_PER_DRIVER"))
+            else if (val.toUpper() == "SQL_CP_ONE_PER_DRIVER"_L1)
                 v = SQL_CP_ONE_PER_DRIVER;
-            else if (val.toUpper() == QLatin1String("SQL_CP_ONE_PER_HENV"))
+            else if (val.toUpper() == "SQL_CP_ONE_PER_HENV"_L1)
                 v = SQL_CP_ONE_PER_HENV;
-            else if (val.toUpper() == QLatin1String("SQL_CP_DEFAULT"))
+            else if (val.toUpper() == "SQL_CP_DEFAULT"_L1)
                 v = SQL_CP_DEFAULT;
             else {
                 qWarning() << "QODBCDriver::open: Unknown option value '" << val << '\'';
                 continue;
             }
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_CONNECTION_POOLING, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_CP_MATCH")) {
-            if (val.toUpper() == QLatin1String("SQL_CP_STRICT_MATCH"))
+        } else if (opt.toUpper() == "SQL_ATTR_CP_MATCH"_L1) {
+            if (val.toUpper() == "SQL_CP_STRICT_MATCH"_L1)
                 v = SQL_CP_STRICT_MATCH;
-            else if (val.toUpper() == QLatin1String("SQL_CP_RELAXED_MATCH"))
+            else if (val.toUpper() == "SQL_CP_RELAXED_MATCH"_L1)
                 v = SQL_CP_RELAXED_MATCH;
-            else if (val.toUpper() == QLatin1String("SQL_CP_MATCH_DEFAULT"))
+            else if (val.toUpper() == "SQL_CP_MATCH_DEFAULT"_L1)
                 v = SQL_CP_MATCH_DEFAULT;
             else {
                 qWarning() << "QODBCDriver::open: Unknown option value '" << val << '\'';
                 continue;
             }
             r = SQLSetConnectAttr(hDbc, SQL_ATTR_CP_MATCH, (SQLPOINTER) size_t(v), 0);
-        } else if (opt.toUpper() == QLatin1String("SQL_ATTR_ODBC_VERSION")) {
+        } else if (opt.toUpper() == "SQL_ATTR_ODBC_VERSION"_L1) {
             // Already handled in QODBCDriver::open()
             continue;
         } else {
@@ -869,38 +798,31 @@ bool QODBCDriverPrivate::setConnectionOptions(const QString& connOpts)
     return true;
 }
 
-void QODBCDriverPrivate::splitTableQualifier(const QString & qualifier, QString &catalog,
-                                       QString &schema, QString &table)
+void QODBCDriverPrivate::splitTableQualifier(const QString &qualifier, QString &catalog,
+                                             QString &schema, QString &table) const
 {
     if (!useSchema) {
         table = qualifier;
         return;
     }
-    QStringList l = qualifier.split(QLatin1Char('.'));
-    if (l.count() > 3)
-        return; // can't possibly be a valid table qualifier
-    int i = 0, n = l.count();
-    if (n == 1) {
-        table = qualifier;
-    } else {
-        for (QStringList::Iterator it = l.begin(); it != l.end(); ++it) {
-            if (n == 3) {
-                if (i == 0) {
-                    catalog = *it;
-                } else if (i == 1) {
-                    schema = *it;
-                } else if (i == 2) {
-                    table = *it;
-                }
-            } else if (n == 2) {
-                if (i == 0) {
-                    schema = *it;
-                } else if (i == 1) {
-                    table = *it;
-                }
-            }
-            i++;
-        }
+    const QList<QStringView> l = QStringView(qualifier).split(u'.');
+    switch (l.count()) {
+        case 1:
+            table = qualifier;
+            break;
+        case 2:
+            schema = l.at(0).toString();
+            table = l.at(1).toString();
+            break;
+        case 3:
+            catalog = l.at(0).toString();
+            schema = l.at(1).toString();
+            table = l.at(2).toString();
+            break;
+        default:
+            qSqlWarning(QString::fromLatin1("QODBCDriver::splitTableQualifier: Unable to split table qualifier '%1'")
+                        .arg(qualifier), this);
+            break;
     }
 }
 
@@ -970,7 +892,7 @@ QODBCResult::~QODBCResult()
     if (d->hStmt && d->isStmtHandleValid() && driver() && driver()->isOpen()) {
         SQLRETURN r = SQLFreeHandle(SQL_HANDLE_STMT, d->hStmt);
         if (r != SQL_SUCCESS)
-            qSqlWarning(QLatin1String("QODBCDriver: Unable to free statement handle ")
+            qSqlWarning("QODBCDriver: Unable to free statement handle "_L1
                          + QString::number(r), d);
     }
 }
@@ -990,7 +912,7 @@ bool QODBCResult::reset (const QString& query)
     if (d->hStmt && d->isStmtHandleValid()) {
         r = SQLFreeHandle(SQL_HANDLE_STMT, d->hStmt);
         if (r != SQL_SUCCESS) {
-            qSqlWarning(QLatin1String("QODBCResult::reset: Unable to free statement handle"), d);
+            qSqlWarning("QODBCResult::reset: Unable to free statement handle"_L1, d);
             return false;
         }
     }
@@ -998,7 +920,7 @@ bool QODBCResult::reset (const QString& query)
                          d->dpDbc(),
                          &d->hStmt);
     if (r != SQL_SUCCESS) {
-        qSqlWarning(QLatin1String("QODBCResult::reset: Unable to allocate statement handle"), d);
+        qSqlWarning("QODBCResult::reset: Unable to allocate statement handle"_L1, d);
         return false;
     }
 
@@ -1022,9 +944,12 @@ bool QODBCResult::reset (const QString& query)
         return false;
     }
 
-    r = SQLExecDirect(d->hStmt,
-                       toSQLTCHAR(query).data(),
-                       (SQLINTEGER) query.length());
+    {
+        auto encoded = toSQLTCHAR(query);
+        r = SQLExecDirect(d->hStmt,
+                          encoded.data(),
+                          SQLINTEGER(encoded.size()));
+    }
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO && r!= SQL_NO_DATA) {
         setLastError(qMakeError(QCoreApplication::translate("QODBCResult",
                      "Unable to execute statement"), QSqlError::StatementError, d));
@@ -1033,14 +958,14 @@ bool QODBCResult::reset (const QString& query)
 
     SQLULEN isScrollable = 0;
     r = SQLGetStmtAttr(d->hStmt, SQL_ATTR_CURSOR_SCROLLABLE, &isScrollable, SQL_IS_INTEGER, 0);
-    if(r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)
+    if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)
         setForwardOnly(isScrollable == SQL_NONSCROLLABLE);
 
     SQLSMALLINT count = 0;
     SQLNumResultCols(d->hStmt, &count);
     if (count) {
         setSelect(true);
-        for (int i = 0; i < count; ++i) {
+        for (SQLSMALLINT i = 0; i < count; ++i) {
             d->rInf.append(qMakeFieldInfo(d, i));
         }
         d->fieldCache.resize(count);
@@ -1212,20 +1137,22 @@ QVariant QODBCResult::data(int field)
         // some servers do not support fetching column n after we already
         // fetched column n+1, so cache all previous columns here
         const QSqlField info = d->rInf.field(i);
-        switch (info.type()) {
-        case QVariant::LongLong:
+        switch (info.metaType().id()) {
+        case QMetaType::LongLong:
             d->fieldCache[i] = qGetBigIntData(d->hStmt, i);
         break;
-        case QVariant::ULongLong:
+        case QMetaType::ULongLong:
             d->fieldCache[i] = qGetBigIntData(d->hStmt, i, false);
             break;
-        case QVariant::Int:
+        case QMetaType::Int:
+        case QMetaType::Short:
             d->fieldCache[i] = qGetIntData(d->hStmt, i);
-        break;
-        case QVariant::UInt:
+            break;
+        case QMetaType::UInt:
+        case QMetaType::UShort:
             d->fieldCache[i] = qGetIntData(d->hStmt, i, false);
             break;
-        case QVariant::Date:
+        case QMetaType::QDate:
             DATE_STRUCT dbuf;
             r = SQLGetData(d->hStmt,
                             i + 1,
@@ -1236,9 +1163,9 @@ QVariant QODBCResult::data(int field)
             if ((r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) && (lengthIndicator != SQL_NULL_DATA))
                 d->fieldCache[i] = QVariant(QDate(dbuf.year, dbuf.month, dbuf.day));
             else
-                d->fieldCache[i] = QVariant(QVariant::Date);
+                d->fieldCache[i] = QVariant(QMetaType::fromType<QDate>());
         break;
-        case QVariant::Time:
+        case QMetaType::QTime:
             TIME_STRUCT tbuf;
             r = SQLGetData(d->hStmt,
                             i + 1,
@@ -1249,9 +1176,9 @@ QVariant QODBCResult::data(int field)
             if ((r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) && (lengthIndicator != SQL_NULL_DATA))
                 d->fieldCache[i] = QVariant(QTime(tbuf.hour, tbuf.minute, tbuf.second));
             else
-                d->fieldCache[i] = QVariant(QVariant::Time);
+                d->fieldCache[i] = QVariant(QMetaType::fromType<QTime>());
         break;
-        case QVariant::DateTime:
+        case QMetaType::QDateTime:
             TIMESTAMP_STRUCT dtbuf;
             r = SQLGetData(d->hStmt,
                             i + 1,
@@ -1263,15 +1190,15 @@ QVariant QODBCResult::data(int field)
                 d->fieldCache[i] = QVariant(QDateTime(QDate(dtbuf.year, dtbuf.month, dtbuf.day),
                        QTime(dtbuf.hour, dtbuf.minute, dtbuf.second, dtbuf.fraction / 1000000)));
             else
-                d->fieldCache[i] = QVariant(QVariant::DateTime);
+                d->fieldCache[i] = QVariant(QMetaType::fromType<QDateTime>());
             break;
-        case QVariant::ByteArray:
+        case QMetaType::QByteArray:
             d->fieldCache[i] = qGetBinaryData(d->hStmt, i);
             break;
-        case QVariant::String:
+        case QMetaType::QString:
             d->fieldCache[i] = qGetStringData(d->hStmt, i, info.length(), d->unicode);
             break;
-        case QVariant::Double:
+        case QMetaType::Double:
             switch(numericalPrecisionPolicy()) {
                 case QSql::LowPrecisionInt32:
                     d->fieldCache[i] = qGetIntData(d->hStmt, i);
@@ -1289,7 +1216,7 @@ QVariant QODBCResult::data(int field)
             }
             break;
         default:
-            d->fieldCache[i] = QVariant(qGetStringData(d->hStmt, i, info.length(), false));
+            d->fieldCache[i] = qGetStringData(d->hStmt, i, info.length(), false);
             break;
         }
         d->fieldCacheIdx = field + 1;
@@ -1302,7 +1229,7 @@ bool QODBCResult::isNull(int field)
     Q_D(const QODBCResult);
     if (field < 0 || field >= d->fieldCache.size())
         return true;
-    if (field <= d->fieldCacheIdx) {
+    if (field >= d->fieldCacheIdx) {
         // since there is no good way to find out whether the value is NULL
         // without fetching the field we'll fetch it here.
         // (data() also sets the NULL flag)
@@ -1324,7 +1251,7 @@ int QODBCResult::numRowsAffected()
     if (r == SQL_SUCCESS)
         return affectedRowCount;
     else
-        qSqlWarning(QLatin1String("QODBCResult::numRowsAffected: Unable to count affected rows"), d);
+        qSqlWarning("QODBCResult::numRowsAffected: Unable to count affected rows"_L1, d);
     return -1;
 }
 
@@ -1339,7 +1266,7 @@ bool QODBCResult::prepare(const QString& query)
     if (d->hStmt && d->isStmtHandleValid()) {
         r = SQLFreeHandle(SQL_HANDLE_STMT, d->hStmt);
         if (r != SQL_SUCCESS) {
-            qSqlWarning(QLatin1String("QODBCResult::prepare: Unable to close statement"), d);
+            qSqlWarning("QODBCResult::prepare: Unable to close statement"_L1, d);
             return false;
         }
     }
@@ -1347,7 +1274,7 @@ bool QODBCResult::prepare(const QString& query)
                          d->dpDbc(),
                          &d->hStmt);
     if (r != SQL_SUCCESS) {
-        qSqlWarning(QLatin1String("QODBCResult::prepare: Unable to allocate statement handle"), d);
+        qSqlWarning("QODBCResult::prepare: Unable to allocate statement handle"_L1, d);
         return false;
     }
 
@@ -1371,9 +1298,12 @@ bool QODBCResult::prepare(const QString& query)
         return false;
     }
 
-    r = SQLPrepare(d->hStmt,
-                    toSQLTCHAR(query).data(),
-                    (SQLINTEGER) query.length());
+    {
+        auto encoded = toSQLTCHAR(query);
+        r = SQLPrepare(d->hStmt,
+                       encoded.data(),
+                       SQLINTEGER(encoded.size()));
+    }
 
     if (r != SQL_SUCCESS) {
         setLastError(qMakeError(QCoreApplication::translate("QODBCResult",
@@ -1393,30 +1323,28 @@ bool QODBCResult::exec()
     d->fieldCacheIdx = 0;
 
     if (!d->hStmt) {
-        qSqlWarning(QLatin1String("QODBCResult::exec: No statement handle available"), d);
+        qSqlWarning("QODBCResult::exec: No statement handle available"_L1, d);
         return false;
     }
 
     if (isSelect())
         SQLCloseCursor(d->hStmt);
 
-    QVector<QVariant>& values = boundValues();
-    QVector<QByteArray> tmpStorage(values.count(), QByteArray()); // holds temporary buffers
-    QVarLengthArray<SQLLEN, 32> indicators(values.count());
-    memset(indicators.data(), 0, indicators.size() * sizeof(SQLLEN));
+    QVariantList &values = boundValues();
+    QByteArrayList tmpStorage(values.count(), QByteArray()); // targets for SQLBindParameter()
+    QVarLengthArray<SQLLEN, 32> indicators(values.count(), 0);
 
     // bind parameters - only positional binding allowed
-    int i;
     SQLRETURN r;
-    for (i = 0; i < values.count(); ++i) {
+    for (qsizetype i = 0; i < values.count(); ++i) {
         if (bindValueType(i) & QSql::Out)
             values[i].detach();
         const QVariant &val = values.at(i);
         SQLLEN *ind = &indicators[i];
-        if (val.isNull())
+        if (QSqlResultPrivate::isVariantNull(val))
             *ind = SQL_NULL_DATA;
-        switch (val.userType()) {
-            case QVariant::Date: {
+        switch (val.typeId()) {
+            case QMetaType::QDate: {
                 QByteArray &ba = tmpStorage[i];
                 ba.resize(sizeof(DATE_STRUCT));
                 DATE_STRUCT *dt = (DATE_STRUCT *)const_cast<char *>(ba.constData());
@@ -1435,7 +1363,7 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break; }
-            case QVariant::Time: {
+            case QMetaType::QTime: {
                 QByteArray &ba = tmpStorage[i];
                 ba.resize(sizeof(TIME_STRUCT));
                 TIME_STRUCT *dt = (TIME_STRUCT *)const_cast<char *>(ba.constData());
@@ -1454,7 +1382,7 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break; }
-            case QVariant::DateTime: {
+            case QMetaType::QDateTime: {
                 QByteArray &ba = tmpStorage[i];
                 ba.resize(sizeof(TIMESTAMP_STRUCT));
                 TIMESTAMP_STRUCT *dt = reinterpret_cast<TIMESTAMP_STRUCT *>(const_cast<char *>(ba.constData()));
@@ -1490,7 +1418,7 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break; }
-            case QVariant::Int:
+            case QMetaType::Int:
                 r = SQLBindParameter(d->hStmt,
                                       i + 1,
                                       qParamType[bindValueType(i) & QSql::InOut],
@@ -1502,7 +1430,7 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break;
-            case QVariant::UInt:
+            case QMetaType::UInt:
                 r = SQLBindParameter(d->hStmt,
                                       i + 1,
                                       qParamType[bindValueType(i) & QSql::InOut],
@@ -1514,7 +1442,31 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break;
-            case QVariant::Double:
+            case QMetaType::Short:
+                r = SQLBindParameter(d->hStmt,
+                                      i + 1,
+                                      qParamType[bindValueType(i) & QSql::InOut],
+                                      SQL_C_SSHORT,
+                                      SQL_SMALLINT,
+                                      0,
+                                      0,
+                                      const_cast<void *>(val.constData()),
+                                      0,
+                                      *ind == SQL_NULL_DATA ? ind : NULL);
+                break;
+            case QMetaType::UShort:
+                r = SQLBindParameter(d->hStmt,
+                                      i + 1,
+                                      qParamType[bindValueType(i) & QSql::InOut],
+                                      SQL_C_USHORT,
+                                      SQL_NUMERIC,
+                                      15,
+                                      0,
+                                      const_cast<void *>(val.constData()),
+                                      0,
+                                      *ind == SQL_NULL_DATA ? ind : NULL);
+                break;
+            case QMetaType::Double:
                 r = SQLBindParameter(d->hStmt,
                                       i + 1,
                                       qParamType[bindValueType(i) & QSql::InOut],
@@ -1526,7 +1478,19 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break;
-            case QVariant::LongLong:
+            case QMetaType::Float:
+                r = SQLBindParameter(d->hStmt,
+                                      i + 1,
+                                      qParamType[bindValueType(i) & QSql::InOut],
+                                      SQL_C_FLOAT,
+                                      SQL_REAL,
+                                      0,
+                                      0,
+                                      const_cast<void *>(val.constData()),
+                                      0,
+                                      *ind == SQL_NULL_DATA ? ind : NULL);
+                break;
+            case QMetaType::LongLong:
                 r = SQLBindParameter(d->hStmt,
                                       i + 1,
                                       qParamType[bindValueType(i) & QSql::InOut],
@@ -1538,7 +1502,7 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break;
-            case QVariant::ULongLong:
+            case QMetaType::ULongLong:
                 r = SQLBindParameter(d->hStmt,
                                       i + 1,
                                       qParamType[bindValueType(i) & QSql::InOut],
@@ -1550,7 +1514,7 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break;
-            case QVariant::ByteArray:
+            case QMetaType::QByteArray:
                 if (*ind != SQL_NULL_DATA) {
                     *ind = val.toByteArray().size();
                 }
@@ -1565,7 +1529,7 @@ bool QODBCResult::exec()
                                       val.toByteArray().size(),
                                       ind);
                 break;
-            case QVariant::Bool:
+            case QMetaType::Bool:
                 r = SQLBindParameter(d->hStmt,
                                       i + 1,
                                       qParamType[bindValueType(i) & QSql::InOut],
@@ -1577,38 +1541,39 @@ bool QODBCResult::exec()
                                       0,
                                       *ind == SQL_NULL_DATA ? ind : NULL);
                 break;
-            case QVariant::String:
+            case QMetaType::QString:
                 if (d->unicode) {
                     QByteArray &ba = tmpStorage[i];
-                    QString str = val.toString();
+                    {
+                        const auto encoded = toSQLTCHAR(val.toString());
+                        ba = QByteArray(reinterpret_cast<const char *>(encoded.data()),
+                                        encoded.size() * sizeof(SQLTCHAR));
+                    }
+
                     if (*ind != SQL_NULL_DATA)
-                        *ind = str.length() * sizeof(SQLTCHAR);
-                    int strSize = str.length() * sizeof(SQLTCHAR);
+                        *ind = ba.size();
 
                     if (bindValueType(i) & QSql::Out) {
-                        const QVarLengthArray<SQLTCHAR> a(toSQLTCHAR(str));
-                        ba = QByteArray((const char *)a.constData(), a.size() * sizeof(SQLTCHAR));
                         r = SQLBindParameter(d->hStmt,
                                             i + 1,
                                             qParamType[bindValueType(i) & QSql::InOut],
                                             SQL_C_TCHAR,
-                                            strSize > 254 ? SQL_WLONGVARCHAR : SQL_WVARCHAR,
+                                            ba.size() > 254 ? SQL_WLONGVARCHAR : SQL_WVARCHAR,
                                             0, // god knows... don't change this!
                                             0,
-                                            ba.data(),
+                                            const_cast<char *>(ba.constData()), // don't detach
                                             ba.size(),
                                             ind);
                         break;
                     }
-                    ba = QByteArray ((const char *)toSQLTCHAR(str).constData(), str.size()*sizeof(SQLTCHAR));
                     r = SQLBindParameter(d->hStmt,
                                           i + 1,
                                           qParamType[bindValueType(i) & QSql::InOut],
                                           SQL_C_TCHAR,
-                                          strSize > 254 ? SQL_WLONGVARCHAR : SQL_WVARCHAR,
-                                          strSize,
+                                          ba.size() > 254 ? SQL_WLONGVARCHAR : SQL_WVARCHAR,
+                                          ba.size(),
                                           0,
-                                          const_cast<char *>(ba.constData()),
+                                          const_cast<char *>(ba.constData()), // don't detach
                                           ba.size(),
                                           ind);
                     break;
@@ -1633,7 +1598,7 @@ bool QODBCResult::exec()
                                           ind);
                     break;
                 }
-            // fall through
+            Q_FALLTHROUGH();
             default: {
                 QByteArray &ba = tmpStorage[i];
                 if (*ind != SQL_NULL_DATA)
@@ -1651,7 +1616,7 @@ bool QODBCResult::exec()
                 break; }
         }
         if (r != SQL_SUCCESS) {
-            qWarning() << "QODBCResult::exec: unable to bind variable:" << qODBCWarn(d);
+            qSqlWarning("QODBCResult::exec: unable to bind variable:"_L1, d);
             setLastError(qMakeError(QCoreApplication::translate("QODBCResult",
                          "Unable to bind variable"), QSqlError::StatementError, d));
             return false;
@@ -1659,7 +1624,7 @@ bool QODBCResult::exec()
     }
     r = SQLExecute(d->hStmt);
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO && r != SQL_NO_DATA) {
-        qWarning() << "QODBCResult::exec: Unable to execute statement:" << qODBCWarn(d);
+        qSqlWarning("QODBCResult::exec: Unable to execute statement:"_L1, d);
         setLastError(qMakeError(QCoreApplication::translate("QODBCResult",
                      "Unable to execute statement"), QSqlError::StatementError, d));
         return false;
@@ -1667,14 +1632,14 @@ bool QODBCResult::exec()
 
     SQLULEN isScrollable = 0;
     r = SQLGetStmtAttr(d->hStmt, SQL_ATTR_CURSOR_SCROLLABLE, &isScrollable, SQL_IS_INTEGER, 0);
-    if(r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)
+    if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)
         setForwardOnly(isScrollable == SQL_NONSCROLLABLE);
 
     SQLSMALLINT count = 0;
     SQLNumResultCols(d->hStmt, &count);
     if (count) {
         setSelect(true);
-        for (int i = 0; i < count; ++i) {
+        for (SQLSMALLINT i = 0; i < count; ++i) {
             d->rInf.append(qMakeFieldInfo(d, i));
         }
         d->fieldCache.resize(count);
@@ -1688,49 +1653,53 @@ bool QODBCResult::exec()
     if (!hasOutValues())
         return true;
 
-    for (i = 0; i < values.count(); ++i) {
-        switch (values.at(i).userType()) {
-            case QVariant::Date: {
+    for (qsizetype i = 0; i < values.count(); ++i) {
+        switch (values.at(i).typeId()) {
+            case QMetaType::QDate: {
                 DATE_STRUCT ds = *((DATE_STRUCT *)const_cast<char *>(tmpStorage.at(i).constData()));
                 values[i] = QVariant(QDate(ds.year, ds.month, ds.day));
                 break; }
-            case QVariant::Time: {
+            case QMetaType::QTime: {
                 TIME_STRUCT dt = *((TIME_STRUCT *)const_cast<char *>(tmpStorage.at(i).constData()));
                 values[i] = QVariant(QTime(dt.hour, dt.minute, dt.second));
                 break; }
-            case QVariant::DateTime: {
+            case QMetaType::QDateTime: {
                 TIMESTAMP_STRUCT dt = *((TIMESTAMP_STRUCT*)
                                         const_cast<char *>(tmpStorage.at(i).constData()));
                 values[i] = QVariant(QDateTime(QDate(dt.year, dt.month, dt.day),
                                QTime(dt.hour, dt.minute, dt.second, dt.fraction / 1000000)));
                 break; }
-            case QVariant::Bool:
-            case QVariant::Int:
-            case QVariant::UInt:
-            case QVariant::Double:
-            case QVariant::ByteArray:
-            case QVariant::LongLong:
-            case QVariant::ULongLong:
+            case QMetaType::Bool:
+            case QMetaType::Short:
+            case QMetaType::UShort:
+            case QMetaType::Int:
+            case QMetaType::UInt:
+            case QMetaType::Float:
+            case QMetaType::Double:
+            case QMetaType::QByteArray:
+            case QMetaType::LongLong:
+            case QMetaType::ULongLong:
                 //nothing to do
                 break;
-            case QVariant::String:
+            case QMetaType::QString:
                 if (d->unicode) {
                     if (bindValueType(i) & QSql::Out) {
-                        const QByteArray &first = tmpStorage.at(i);
-                        QVarLengthArray<SQLTCHAR> array;
-                        array.append((const SQLTCHAR *)first.constData(), first.size());
-                        values[i] = fromSQLTCHAR(array, first.size()/sizeof(SQLTCHAR));
+                        const QByteArray &bytes = tmpStorage.at(i);
+                        const auto strSize = bytes.size() / sizeof(SQLTCHAR);
+                        QVarLengthArray<SQLTCHAR> string(strSize);
+                        memcpy(string.data(), bytes.data(), strSize * sizeof(SQLTCHAR));
+                        values[i] = fromSQLTCHAR(string);
                     }
                     break;
                 }
-                // fall through
+                Q_FALLTHROUGH();
             default: {
                 if (bindValueType(i) & QSql::Out)
                     values[i] = tmpStorage.at(i);
                 break; }
         }
         if (indicators[i] == SQL_NULL_DATA)
-            values[i] = QVariant(QVariant::Type(values[i].userType()));
+            values[i] = QVariant(values[i].metaType());
     }
     return true;
 }
@@ -1751,13 +1720,13 @@ QVariant QODBCResult::lastInsertId() const
     switch (driver()->dbmsType()) {
     case QSqlDriver::MSSqlServer:
     case QSqlDriver::Sybase:
-        sql = QLatin1String("SELECT @@IDENTITY;");
+        sql = "SELECT @@IDENTITY;"_L1;
         break;
     case QSqlDriver::MySqlServer:
-        sql = QLatin1String("SELECT LAST_INSERT_ID();");
+        sql = "SELECT LAST_INSERT_ID();"_L1;
         break;
     case QSqlDriver::PostgreSQL:
-        sql = QLatin1String("SELECT lastval();");
+        sql = "SELECT lastval();"_L1;
         break;
     default:
         break;
@@ -1768,9 +1737,9 @@ QVariant QODBCResult::lastInsertId() const
         if (qry.exec(sql) && qry.next())
             return qry.value(0);
 
-        qSqlWarning(QLatin1String("QODBCResult::lastInsertId: Unable to get lastInsertId"), d);
+        qSqlWarning("QODBCResult::lastInsertId: Unable to get lastInsertId"_L1, d);
     } else {
-        qSqlWarning(QLatin1String("QODBCResult::lastInsertId: not implemented for this DBMS"), d);
+        qSqlWarning("QODBCResult::lastInsertId: not implemented for this DBMS"_L1, d);
     }
 
     return QVariant();
@@ -1779,7 +1748,7 @@ QVariant QODBCResult::lastInsertId() const
 QVariant QODBCResult::handle() const
 {
     Q_D(const QODBCResult);
-    return QVariant(qRegisterMetaType<SQLHANDLE>("SQLHANDLE"), &d->hStmt);
+    return QVariant(QMetaType::fromType<SQLHANDLE>(), &d->hStmt);
 }
 
 bool QODBCResult::nextResult()
@@ -1795,8 +1764,7 @@ bool QODBCResult::nextResult()
     SQLRETURN r = SQLMoreResults(d->hStmt);
     if (r != SQL_SUCCESS) {
         if (r == SQL_SUCCESS_WITH_INFO) {
-            int nativeCode = -1;
-            QString message = qODBCWarn(d, &nativeCode);
+            QString message = errorStringFromDiagRecords(qODBCWarn(d));
             qWarning() << "QODBCResult::nextResult():" << message;
         } else {
             if (r != SQL_NO_DATA)
@@ -1810,7 +1778,7 @@ bool QODBCResult::nextResult()
     SQLNumResultCols(d->hStmt, &count);
     if (count) {
         setSelect(true);
-        for (int i = 0; i < count; ++i) {
+        for (SQLSMALLINT i = 0; i < count; ++i) {
             d->rInf.append(qMakeFieldInfo(d, i));
         }
         d->fieldCache.resize(count);
@@ -1924,7 +1892,7 @@ bool QODBCDriver::open(const QString & db,
                         SQL_NULL_HANDLE,
                         &d->hEnv);
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO) {
-        qSqlWarning(QLatin1String("QODBCDriver::open: Unable to allocate environment"), d);
+        qSqlWarning("QODBCDriver::open: Unable to allocate environment"_L1, d);
         setOpenError(true);
         return false;
     }
@@ -1936,7 +1904,7 @@ bool QODBCDriver::open(const QString & db,
                         d->hEnv,
                         &d->hDbc);
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO) {
-        qSqlWarning(QLatin1String("QODBCDriver::open: Unable to allocate connection"), d);
+        qSqlWarning("QODBCDriver::open: Unable to allocate connection"_L1, d);
         setOpenError(true);
         cleanup();
         return false;
@@ -1950,30 +1918,30 @@ bool QODBCDriver::open(const QString & db,
     // Create the connection string
     QString connQStr;
     // support the "DRIVER={SQL SERVER};SERVER=blah" syntax
-    if (db.contains(QLatin1String(".dsn"), Qt::CaseInsensitive))
-        connQStr = QLatin1String("FILEDSN=") + db;
-    else if (db.contains(QLatin1String("DRIVER="), Qt::CaseInsensitive)
-            || db.contains(QLatin1String("SERVER="), Qt::CaseInsensitive))
+    if (db.contains(".dsn"_L1, Qt::CaseInsensitive))
+        connQStr = "FILEDSN="_L1 + db;
+    else if (db.contains("DRIVER="_L1, Qt::CaseInsensitive)
+            || db.contains("SERVER="_L1, Qt::CaseInsensitive))
         connQStr = db;
     else
-        connQStr = QLatin1String("DSN=") + db;
+        connQStr = "DSN="_L1 + db;
 
     if (!user.isEmpty())
-        connQStr += QLatin1String(";UID=") + user;
+        connQStr += ";UID="_L1 + user;
     if (!password.isEmpty())
-        connQStr += QLatin1String(";PWD=") + password;
+        connQStr += ";PWD="_L1 + password;
 
     SQLSMALLINT cb;
-    QVarLengthArray<SQLTCHAR> connOut(1024);
-    memset(connOut.data(), 0, connOut.size() * sizeof(SQLTCHAR));
-    r = SQLDriverConnect(d->hDbc,
-                          NULL,
-                          toSQLTCHAR(connQStr).data(),
-                          (SQLSMALLINT)connQStr.length(),
-                          connOut.data(),
-                          1024,
-                          &cb,
-                          /*SQL_DRIVER_NOPROMPT*/0);
+    QVarLengthArray<SQLTCHAR, 1024> connOut(1024);
+    {
+        auto encoded = toSQLTCHAR(connQStr);
+        r = SQLDriverConnect(d->hDbc,
+                             nullptr,
+                             encoded.data(), SQLSMALLINT(encoded.size()),
+                             connOut.data(), SQLSMALLINT(connOut.size()),
+                             &cb,
+                             /*SQL_DRIVER_NOPROMPT*/0);
+    }
 
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO) {
         setLastError(qMakeError(tr("Unable to connect"), QSqlError::ConnectionError, d));
@@ -2000,7 +1968,7 @@ bool QODBCDriver::open(const QString & db,
     setOpenError(false);
     if (d->dbmsType == MSSqlServer) {
         QSqlQuery i(createResult());
-        i.exec(QLatin1String("SET QUOTED_IDENTIFIER ON"));
+        i.exec("SET QUOTED_IDENTIFIER ON"_L1);
     }
     return true;
 }
@@ -2017,26 +1985,26 @@ void QODBCDriver::cleanup()
     Q_D(QODBCDriver);
     SQLRETURN r;
 
-    if(d->hDbc) {
+    if (d->hDbc) {
         // Open statements/descriptors handles are automatically cleaned up by SQLDisconnect
         if (isOpen()) {
             r = SQLDisconnect(d->hDbc);
             if (r != SQL_SUCCESS)
-                qSqlWarning(QLatin1String("QODBCDriver::disconnect: Unable to disconnect datasource"), d);
+                qSqlWarning("QODBCDriver::disconnect: Unable to disconnect datasource"_L1, d);
             else
                 d->disconnectCount++;
         }
 
         r = SQLFreeHandle(SQL_HANDLE_DBC, d->hDbc);
         if (r != SQL_SUCCESS)
-            qSqlWarning(QLatin1String("QODBCDriver::cleanup: Unable to free connection handle"), d);
+            qSqlWarning("QODBCDriver::cleanup: Unable to free connection handle"_L1, d);
         d->hDbc = 0;
     }
 
     if (d->hEnv) {
         r = SQLFreeHandle(SQL_HANDLE_ENV, d->hEnv);
         if (r != SQL_SUCCESS)
-            qSqlWarning(QLatin1String("QODBCDriver::cleanup: Unable to free environment handle"), d);
+            qSqlWarning("QODBCDriver::cleanup: Unable to free environment handle"_L1, d);
         d->hEnv = 0;
     }
 }
@@ -2083,13 +2051,25 @@ void QODBCDriverPrivate::checkUnicode()
                                   hDbc,
                                   &hStmt);
 
-    r = SQLExecDirect(hStmt, toSQLTCHAR(QLatin1String("select 'test'")).data(), SQL_NTS);
-    if(r == SQL_SUCCESS) {
+    // for databases which do not return something useful in SQLGetInfo and are picky about a
+    // 'SELECT' statement without 'FROM' but support VALUE(foo) statement like e.g. DB2 or Oracle
+    const auto statements = {
+        "select 'test'"_L1,
+        "values('test')"_L1,
+        "select 'test' from dual"_L1,
+    };
+    for (const auto &statement : statements) {
+        auto encoded = toSQLTCHAR(statement);
+        r = SQLExecDirect(hStmt, encoded.data(), SQLINTEGER(encoded.size()));
+        if (r == SQL_SUCCESS)
+            break;
+    }
+    if (r == SQL_SUCCESS) {
         r = SQLFetch(hStmt);
-        if(r == SQL_SUCCESS) {
-            QVarLengthArray<SQLWCHAR> buffer(10);
+        if (r == SQL_SUCCESS) {
+            QVarLengthArray<SQLWCHAR, 10> buffer(10);
             r = SQLGetData(hStmt, 1, SQL_C_WCHAR, buffer.data(), buffer.size() * sizeof(SQLWCHAR), NULL);
-            if(r == SQL_SUCCESS && fromSQLTCHAR(buffer) == QLatin1String("test")) {
+            if (r == SQL_SUCCESS && fromSQLTCHAR(buffer) == "test"_L1) {
                 unicode = true;
             }
         }
@@ -2100,48 +2080,49 @@ void QODBCDriverPrivate::checkUnicode()
 bool QODBCDriverPrivate::checkDriver() const
 {
 #ifdef ODBC_CHECK_DRIVER
-    static const SQLUSMALLINT reqFunc[] = {
+    static constexpr SQLUSMALLINT reqFunc[] = {
                 SQL_API_SQLDESCRIBECOL, SQL_API_SQLGETDATA, SQL_API_SQLCOLUMNS,
                 SQL_API_SQLGETSTMTATTR, SQL_API_SQLGETDIAGREC, SQL_API_SQLEXECDIRECT,
-                SQL_API_SQLGETINFO, SQL_API_SQLTABLES, 0
+                SQL_API_SQLGETINFO, SQL_API_SQLTABLES
     };
 
     // these functions are optional
-    static const SQLUSMALLINT optFunc[] = {
-        SQL_API_SQLNUMRESULTCOLS, SQL_API_SQLROWCOUNT, 0
+    static constexpr SQLUSMALLINT optFunc[] = {
+        SQL_API_SQLNUMRESULTCOLS, SQL_API_SQLROWCOUNT
     };
 
     SQLRETURN r;
     SQLUSMALLINT sup;
 
-    int i;
     // check the required functions
-    for (i = 0; reqFunc[i] != 0; ++i) {
+    for (const SQLUSMALLINT func : reqFunc) {
 
-        r = SQLGetFunctions(hDbc, reqFunc[i], &sup);
+        r = SQLGetFunctions(hDbc, func, &sup);
 
         if (r != SQL_SUCCESS) {
-            qSqlWarning(QLatin1String("QODBCDriver::checkDriver: Cannot get list of supported functions"), this);
+            qSqlWarning("QODBCDriver::checkDriver: Cannot get list of supported functions"_L1, this);
             return false;
         }
         if (sup == SQL_FALSE) {
-            qWarning () << "QODBCDriver::open: Warning - Driver doesn't support all needed functionality (" << reqFunc[i] <<
-                    ").\nPlease look at the Qt SQL Module Driver documentation for more information.";
+            qWarning () << "QODBCDriver::open: Warning - Driver doesn't support all needed functionality ("
+                        << func
+                        << ").\nPlease look at the Qt SQL Module Driver documentation for more information.";
             return false;
         }
     }
 
     // these functions are optional and just generate a warning
-    for (i = 0; optFunc[i] != 0; ++i) {
+    for (const SQLUSMALLINT func : optFunc) {
 
-        r = SQLGetFunctions(hDbc, optFunc[i], &sup);
+        r = SQLGetFunctions(hDbc, func, &sup);
 
         if (r != SQL_SUCCESS) {
-            qSqlWarning(QLatin1String("QODBCDriver::checkDriver: Cannot get list of supported functions"), this);
+            qSqlWarning("QODBCDriver::checkDriver: Cannot get list of supported functions"_L1, this);
             return false;
         }
         if (sup == SQL_FALSE) {
-            qWarning() << "QODBCDriver::checkDriver: Warning - Driver doesn't support some non-critical functions (" << optFunc[i] << ')';
+            qWarning() << "QODBCDriver::checkDriver: Warning - Driver doesn't support some non-critical functions ("
+                       << func << ')';
             return true;
         }
     }
@@ -2167,9 +2148,8 @@ void QODBCDriverPrivate::checkSchemaUsage()
 void QODBCDriverPrivate::checkDBMS()
 {
     SQLRETURN   r;
-    QVarLengthArray<SQLTCHAR> serverString(200);
+    QVarLengthArray<SQLTCHAR, 200> serverString(200);
     SQLSMALLINT t;
-    memset(serverString.data(), 0, serverString.size() * sizeof(SQLTCHAR));
 
     r = SQLGetInfo(hDbc,
                    SQL_DBMS_NAME,
@@ -2178,15 +2158,15 @@ void QODBCDriverPrivate::checkDBMS()
                    &t);
     if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) {
         const QString serverType = fromSQLTCHAR(serverString, t / sizeof(SQLTCHAR));
-        if (serverType.contains(QLatin1String("PostgreSQL"), Qt::CaseInsensitive))
+        if (serverType.contains("PostgreSQL"_L1, Qt::CaseInsensitive))
             dbmsType = QSqlDriver::PostgreSQL;
-        else if (serverType.contains(QLatin1String("Oracle"), Qt::CaseInsensitive))
+        else if (serverType.contains("Oracle"_L1, Qt::CaseInsensitive))
             dbmsType = QSqlDriver::Oracle;
-        else if (serverType.contains(QLatin1String("MySql"), Qt::CaseInsensitive))
+        else if (serverType.contains("MySql"_L1, Qt::CaseInsensitive))
             dbmsType = QSqlDriver::MySqlServer;
-        else if (serverType.contains(QLatin1String("Microsoft SQL Server"), Qt::CaseInsensitive))
+        else if (serverType.contains("Microsoft SQL Server"_L1, Qt::CaseInsensitive))
             dbmsType = QSqlDriver::MSSqlServer;
-        else if (serverType.contains(QLatin1String("Sybase"), Qt::CaseInsensitive))
+        else if (serverType.contains("Sybase"_L1, Qt::CaseInsensitive))
             dbmsType = QSqlDriver::Sybase;
     }
     r = SQLGetInfo(hDbc,
@@ -2196,7 +2176,7 @@ void QODBCDriverPrivate::checkDBMS()
                    &t);
     if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO) {
         const QString serverType = fromSQLTCHAR(serverString, t / sizeof(SQLTCHAR));
-        isFreeTDSDriver = serverType.contains(QLatin1String("tdsodbc"), Qt::CaseInsensitive);
+        isFreeTDSDriver = serverType.contains("tdsodbc"_L1, Qt::CaseInsensitive);
         unicode = unicode && !isFreeTDSDriver;
     }
 }
@@ -2213,7 +2193,7 @@ void QODBCDriverPrivate::checkHasSQLFetchScroll()
 
 void QODBCDriverPrivate::checkHasMultiResults()
 {
-    QVarLengthArray<SQLTCHAR> driverResponse(2);
+    QVarLengthArray<SQLTCHAR, 2> driverResponse(2);
     SQLSMALLINT length;
     SQLRETURN r = SQLGetInfo(hDbc,
                              SQL_MULT_RESULT_SETS,
@@ -2221,7 +2201,7 @@ void QODBCDriverPrivate::checkHasMultiResults()
                              SQLSMALLINT(driverResponse.size() * sizeof(SQLTCHAR)),
                              &length);
     if (r == SQL_SUCCESS || r == SQL_SUCCESS_WITH_INFO)
-        hasMultiResultSets = fromSQLTCHAR(driverResponse, length/sizeof(SQLTCHAR)).startsWith(QLatin1Char('Y'));
+        hasMultiResultSets = fromSQLTCHAR(driverResponse, length / sizeof(SQLTCHAR)).startsWith(u'Y');
 }
 
 void QODBCDriverPrivate::checkDateTimePrecision()
@@ -2335,7 +2315,7 @@ QStringList QODBCDriver::tables(QSql::TableType type) const
                                   d->hDbc,
                                   &hStmt);
     if (r != SQL_SUCCESS) {
-        qSqlWarning(QLatin1String("QODBCDriver::tables: Unable to allocate handle"), d);
+        qSqlWarning("QODBCDriver::tables: Unable to allocate handle"_L1, d);
         return tl;
     }
     r = SQLSetStmtAttr(hStmt,
@@ -2344,28 +2324,26 @@ QStringList QODBCDriver::tables(QSql::TableType type) const
                         SQL_IS_UINTEGER);
     QStringList tableType;
     if (type & QSql::Tables)
-        tableType += QLatin1String("TABLE");
+        tableType += "TABLE"_L1;
     if (type & QSql::Views)
-        tableType += QLatin1String("VIEW");
+        tableType += "VIEW"_L1;
     if (type & QSql::SystemTables)
-        tableType += QLatin1String("SYSTEM TABLE");
+        tableType += "SYSTEM TABLE"_L1;
     if (tableType.isEmpty())
         return tl;
 
-    QString joinedTableTypeString = tableType.join(QLatin1Char(','));
+    {
+        auto joinedTableTypeString = toSQLTCHAR(tableType.join(u','));
 
-    r = SQLTables(hStmt,
-                   NULL,
-                   0,
-                   NULL,
-                   0,
-                   NULL,
-                   0,
-                   toSQLTCHAR(joinedTableTypeString).data(),
-                   joinedTableTypeString.length() /* characters, not bytes */);
+        r = SQLTables(hStmt,
+                      nullptr, 0,
+                      nullptr, 0,
+                      nullptr, 0,
+                      joinedTableTypeString.data(), joinedTableTypeString.size());
+    }
 
     if (r != SQL_SUCCESS)
-        qSqlWarning(QLatin1String("QODBCDriver::tables Unable to execute table list"), d);
+        qSqlWarning("QODBCDriver::tables Unable to execute table list"_L1, d);
 
     if (d->hasSQLFetchScroll)
         r = SQLFetchScroll(hStmt,
@@ -2375,13 +2353,14 @@ QStringList QODBCDriver::tables(QSql::TableType type) const
         r = SQLFetch(hStmt);
 
     if (r != SQL_SUCCESS && r != SQL_SUCCESS_WITH_INFO && r != SQL_NO_DATA) {
-        qWarning() << "QODBCDriver::tables failed to retrieve table/view list: (" << r << "," << qWarnODBCHandle(SQL_HANDLE_STMT, hStmt) << ")";
+        qSqlWarning("QODBCDriver::tables failed to retrieve table/view list: ("_L1
+                            + QString::number(r) + u':',
+                    hStmt);
         return QStringList();
     }
 
     while (r == SQL_SUCCESS) {
-        QString fieldVal = qGetStringData(hStmt, 2, -1, d->unicode);
-        tl.append(fieldVal);
+        tl.append(qGetStringData(hStmt, 2, -1, d->unicode).toString());
 
         if (d->hasSQLFetchScroll)
             r = SQLFetchScroll(hStmt,
@@ -2393,7 +2372,7 @@ QStringList QODBCDriver::tables(QSql::TableType type) const
 
     r = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     if (r!= SQL_SUCCESS)
-        qSqlWarning(QLatin1String("QODBCDriver: Unable to free statement handle") + QString::number(r), d);
+        qSqlWarning("QODBCDriver: Unable to free statement handle"_L1 + QString::number(r), d);
     return tl;
 }
 
@@ -2411,11 +2390,11 @@ QSqlIndex QODBCDriver::primaryIndex(const QString& tablename) const
                                   d->hDbc,
                                   &hStmt);
     if (r != SQL_SUCCESS) {
-        qSqlWarning(QLatin1String("QODBCDriver::primaryIndex: Unable to list primary key"), d);
+        qSqlWarning("QODBCDriver::primaryIndex: Unable to list primary key"_L1, d);
         return index;
     }
     QString catalog, schema, table;
-    const_cast<QODBCDriverPrivate*>(d)->splitTableQualifier(tablename, catalog, schema, table);
+    d->splitTableQualifier(tablename, catalog, schema, table);
 
     if (isIdentifierEscaped(catalog, QSqlDriver::TableName))
         catalog = stripDelimiters(catalog, QSqlDriver::TableName);
@@ -2436,31 +2415,33 @@ QSqlIndex QODBCDriver::primaryIndex(const QString& tablename) const
                         SQL_ATTR_CURSOR_TYPE,
                         (SQLPOINTER)SQL_CURSOR_FORWARD_ONLY,
                         SQL_IS_UINTEGER);
-    r = SQLPrimaryKeys(hStmt,
-                        catalog.length() == 0 ? NULL : toSQLTCHAR(catalog).data(),
-                        catalog.length(),
-                        schema.length() == 0 ? NULL : toSQLTCHAR(schema).data(),
-                        schema.length(),
-                        toSQLTCHAR(table).data(),
-                        table.length() /* in characters, not in bytes */);
+    {
+        auto c = toSQLTCHAR(catalog);
+        auto s = toSQLTCHAR(schema);
+        auto t = toSQLTCHAR(table);
+        r = SQLPrimaryKeys(hStmt,
+                           catalog.isEmpty() ? nullptr : c.data(), c.size(),
+                           schema.isEmpty()  ? nullptr : s.data(), s.size(),
+                           t.data(), t.size());
+    }
 
     // if the SQLPrimaryKeys() call does not succeed (e.g the driver
     // does not support it) - try an alternative method to get hold of
     // the primary index (e.g MS Access and FoxPro)
     if (r != SQL_SUCCESS) {
-            r = SQLSpecialColumns(hStmt,
-                        SQL_BEST_ROWID,
-                        catalog.length() == 0 ? NULL : toSQLTCHAR(catalog).data(),
-                        catalog.length(),
-                        schema.length() == 0 ? NULL : toSQLTCHAR(schema).data(),
-                        schema.length(),
-                        toSQLTCHAR(table).data(),
-                        table.length(),
-                        SQL_SCOPE_CURROW,
-                        SQL_NULLABLE);
+        auto c = toSQLTCHAR(catalog);
+        auto s = toSQLTCHAR(schema);
+        auto t = toSQLTCHAR(table);
+        r = SQLSpecialColumns(hStmt,
+                              SQL_BEST_ROWID,
+                              catalog.isEmpty() ? nullptr : c.data(), c.size(),
+                              schema.isEmpty()  ? nullptr : s.data(), s.size(),
+                              t.data(), t.size(),
+                              SQL_SCOPE_CURROW,
+                              SQL_NULLABLE);
 
             if (r != SQL_SUCCESS) {
-                qSqlWarning(QLatin1String("QODBCDriver::primaryIndex: Unable to execute primary key list"), d);
+                qSqlWarning("QODBCDriver::primaryIndex: Unable to execute primary key list"_L1, d);
             } else {
                 usingSpecialColumns = true;
             }
@@ -2478,11 +2459,11 @@ QSqlIndex QODBCDriver::primaryIndex(const QString& tablename) const
     // Store all fields in a StringList because some drivers can't detail fields in this FETCH loop
     while (r == SQL_SUCCESS) {
         if (usingSpecialColumns) {
-            cName = qGetStringData(hStmt, 1, -1, d->unicode); // column name
+            cName = qGetStringData(hStmt, 1, -1, d->unicode).toString(); // column name
             idxName = QString::number(fakeId++); // invent a fake index name
         } else {
-            cName = qGetStringData(hStmt, 3, -1, d->unicode); // column name
-            idxName = qGetStringData(hStmt, 5, -1, d->unicode); // pk index name
+            cName = qGetStringData(hStmt, 3, -1, d->unicode).toString(); // column name
+            idxName = qGetStringData(hStmt, 5, -1, d->unicode).toString(); // pk index name
         }
         index.append(rec.field(cName));
         index.setName(idxName);
@@ -2497,7 +2478,7 @@ QSqlIndex QODBCDriver::primaryIndex(const QString& tablename) const
     }
     r = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     if (r!= SQL_SUCCESS)
-        qSqlWarning(QLatin1String("QODBCDriver: Unable to free statement handle") + QString::number(r), d);
+        qSqlWarning("QODBCDriver: Unable to free statement handle"_L1 + QString::number(r), d);
     return index;
 }
 
@@ -2510,7 +2491,7 @@ QSqlRecord QODBCDriver::record(const QString& tablename) const
 
     SQLHANDLE hStmt;
     QString catalog, schema, table;
-    const_cast<QODBCDriverPrivate*>(d)->splitTableQualifier(tablename, catalog, schema, table);
+    d->splitTableQualifier(tablename, catalog, schema, table);
 
     if (isIdentifierEscaped(catalog, QSqlDriver::TableName))
         catalog = stripDelimiters(catalog, QSqlDriver::TableName);
@@ -2531,24 +2512,26 @@ QSqlRecord QODBCDriver::record(const QString& tablename) const
                                   d->hDbc,
                                   &hStmt);
     if (r != SQL_SUCCESS) {
-        qSqlWarning(QLatin1String("QODBCDriver::record: Unable to allocate handle"), d);
+        qSqlWarning("QODBCDriver::record: Unable to allocate handle"_L1, d);
         return fil;
     }
     r = SQLSetStmtAttr(hStmt,
                         SQL_ATTR_CURSOR_TYPE,
                         (SQLPOINTER)SQL_CURSOR_FORWARD_ONLY,
                         SQL_IS_UINTEGER);
-    r =  SQLColumns(hStmt,
-                     catalog.length() == 0 ? NULL : toSQLTCHAR(catalog).data(),
-                     catalog.length(),
-                     schema.length() == 0 ? NULL : toSQLTCHAR(schema).data(),
-                     schema.length(),
-                     toSQLTCHAR(table).data(),
-                     table.length(),
-                     NULL,
-                     0);
+    {
+        auto c = toSQLTCHAR(catalog);
+        auto s = toSQLTCHAR(schema);
+        auto t = toSQLTCHAR(table);
+        r =  SQLColumns(hStmt,
+                        catalog.isEmpty() ? nullptr : c.data(), c.size(),
+                        schema.isEmpty()  ? nullptr : s.data(), s.size(),
+                        t.data(), t.size(),
+                        nullptr,
+                        0);
+    }
     if (r != SQL_SUCCESS)
-        qSqlWarning(QLatin1String("QODBCDriver::record: Unable to execute column list"), d);
+        qSqlWarning("QODBCDriver::record: Unable to execute column list"_L1, d);
 
     if (d->hasSQLFetchScroll)
         r = SQLFetchScroll(hStmt,
@@ -2572,7 +2555,7 @@ QSqlRecord QODBCDriver::record(const QString& tablename) const
 
     r = SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
     if (r!= SQL_SUCCESS)
-        qSqlWarning(QLatin1String("QODBCDriver: Unable to free statement handle ") + QString::number(r), d);
+        qSqlWarning("QODBCDriver: Unable to free statement handle "_L1 + QString::number(r), d);
 
     return fil;
 }
@@ -2582,33 +2565,32 @@ QString QODBCDriver::formatValue(const QSqlField &field,
 {
     QString r;
     if (field.isNull()) {
-        r = QLatin1String("NULL");
-    } else if (field.type() == QVariant::DateTime) {
+        r = "NULL"_L1;
+    } else if (field.metaType().id() == QMetaType::QDateTime) {
         // Use an escape sequence for the datetime fields
         if (field.value().toDateTime().isValid()){
             QDate dt = field.value().toDateTime().date();
             QTime tm = field.value().toDateTime().time();
             // Dateformat has to be "yyyy-MM-dd hh:mm:ss", with leading zeroes if month or day < 10
-            r = QLatin1String("{ ts '") +
-                QString::number(dt.year()) + QLatin1Char('-') +
-                QString::number(dt.month()).rightJustified(2, QLatin1Char('0'), true) +
-                QLatin1Char('-') +
-                QString::number(dt.day()).rightJustified(2, QLatin1Char('0'), true) +
-                QLatin1Char(' ') +
+            r = "{ ts '"_L1 +
+                QString::number(dt.year()) + u'-' +
+                QString::number(dt.month()).rightJustified(2, u'0', true) +
+                u'-' +
+                QString::number(dt.day()).rightJustified(2, u'0', true) +
+                u' ' +
                 tm.toString() +
-                QLatin1String("' }");
+                "' }"_L1;
         } else
-            r = QLatin1String("NULL");
-    } else if (field.type() == QVariant::ByteArray) {
-        QByteArray ba = field.value().toByteArray();
-        QString res;
-        static const char hexchars[] = "0123456789abcdef";
-        for (int i = 0; i < ba.size(); ++i) {
-            uchar s = (uchar) ba[i];
-            res += QLatin1Char(hexchars[s >> 4]);
-            res += QLatin1Char(hexchars[s & 0x0f]);
+            r = "NULL"_L1;
+    } else if (field.metaType().id() == QMetaType::QByteArray) {
+        const QByteArray ba = field.value().toByteArray();
+        r.reserve((ba.size() + 1) * 2);
+        r = "0x"_L1;
+        for (const char c : ba) {
+            const uchar s = uchar(c);
+            r += QLatin1Char(QtMiscUtils::toHexLower(s >> 4));
+            r += QLatin1Char(QtMiscUtils::toHexLower(s & 0x0f));
         }
-        r = QLatin1String("0x") + res;
     } else {
         r = QSqlDriver::formatValue(field, trimStrings);
     }
@@ -2618,7 +2600,7 @@ QString QODBCDriver::formatValue(const QSqlField &field,
 QVariant QODBCDriver::handle() const
 {
     Q_D(const QODBCDriver);
-    return QVariant(qRegisterMetaType<SQLHANDLE>("SQLHANDLE"), &d->hDbc);
+    return QVariant(QMetaType::fromType<SQLHANDLE>(), &d->hDbc);
 }
 
 QString QODBCDriver::escapeIdentifier(const QString &identifier, IdentifierType) const
@@ -2626,10 +2608,11 @@ QString QODBCDriver::escapeIdentifier(const QString &identifier, IdentifierType)
     Q_D(const QODBCDriver);
     QChar quote = const_cast<QODBCDriverPrivate*>(d)->quoteChar();
     QString res = identifier;
-    if(!identifier.isEmpty() && !identifier.startsWith(quote) && !identifier.endsWith(quote) ) {
-        res.replace(quote, QString(quote)+QString(quote));
-        res.prepend(quote).append(quote);
-        res.replace(QLatin1Char('.'), QString(quote)+QLatin1Char('.')+QString(quote));
+    if (!identifier.isEmpty() && !identifier.startsWith(quote) && !identifier.endsWith(quote) ) {
+        const QString quoteStr(quote);
+        res.replace(quote, quoteStr + quoteStr);
+        res.replace(u'.', quoteStr + u'.' + quoteStr);
+        res = quote + res + quote;
     }
     return res;
 }
@@ -2644,3 +2627,5 @@ bool QODBCDriver::isIdentifierEscaped(const QString &identifier, IdentifierType)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qsql_odbc_p.cpp"

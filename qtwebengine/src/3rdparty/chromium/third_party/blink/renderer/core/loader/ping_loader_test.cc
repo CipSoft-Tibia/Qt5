@@ -1,20 +1,20 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/loader/ping_loader.h"
 
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/public/platform/web_url_loader_factory.h"
-#include "third_party/blink/public/platform/web_url_loader_mock_factory.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/loader/empty_clients.h"
 #include "third_party/blink/renderer/core/loader/frame_loader.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
-#include "third_party/blink/renderer/platform/loader/testing/web_url_loader_factory_with_mock.h"
+#include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_factory.h"
 #include "third_party/blink/renderer/platform/network/encoded_form_data.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
 #include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 
@@ -47,9 +47,8 @@ class PingLocalFrameClient : public EmptyLocalFrameClient {
  public:
   PingLocalFrameClient() = default;
 
-  std::unique_ptr<WebURLLoaderFactory> CreateURLLoaderFactory() override {
-    return std::make_unique<WebURLLoaderFactoryWithMock>(
-        WebURLLoaderMockFactory::GetSingletonInstance());
+  std::unique_ptr<URLLoader> CreateURLLoaderForTesting() override {
+    return URLLoaderMockFactory::GetSingletonInstance()->CreateURLLoader();
   }
 
   void DispatchWillSendRequest(ResourceRequest& request) override {
@@ -76,7 +75,8 @@ class PingLoaderTest : public PageTestBase {
 
   void SetDocumentURL(const KURL& url) {
     GetFrame().Loader().CommitNavigation(
-        WebNavigationParams::CreateWithHTMLBuffer(SharedBuffer::Create(), url),
+        WebNavigationParams::CreateWithHTMLBufferForTesting(
+            SharedBuffer::Create(), url),
         nullptr /* extra_data */);
     blink::test::RunPendingTasks();
     ASSERT_EQ(url.GetString(), GetDocument().Url().GetString());
@@ -156,7 +156,7 @@ TEST_F(PingLoaderTest, ViolationPriority) {
   // via |PageTestBase::dummy_page_holder_|.
   url_test_helpers::RegisterMockedURLLoad(
       ping_url, test::CoreTestDataPath("bar.html"), "text/html");
-  PingLoader::SendViolationReport(&GetFrame(), ping_url,
+  PingLoader::SendViolationReport(GetFrame().DomWindow(), ping_url,
                                   EncodedFormData::Create());
   url_test_helpers::ServeAsynchronousRequests();
   const PartialResourceRequest& request = client_->PingRequest();

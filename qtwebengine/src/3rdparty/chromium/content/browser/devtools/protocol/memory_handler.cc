@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,13 +6,13 @@
 
 #include <cinttypes>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "base/profiler/module_cache.h"
 #include "base/sampling_heap_profiler/sampling_heap_profiler.h"
 #include "base/strings/stringprintf.h"
+#include "content/public/browser/child_process_host.h"
 #include "content/public/browser/render_process_host.h"
-#include "content/public/common/child_process_host.h"
 
 namespace content {
 namespace protocol {

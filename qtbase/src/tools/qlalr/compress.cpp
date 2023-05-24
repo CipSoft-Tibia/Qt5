@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "compress.h"
 
@@ -53,17 +28,15 @@ struct _PerfectMatch
 
 struct _GenerateCheck
 {
-  QVector<int>::const_iterator iterator;
-  int initial;
+    QList<int>::const_iterator iterator;
+    int initial;
 
-  _GenerateCheck (QVector<int>::const_iterator it, int i):
-    iterator (it),
-    initial (i) {}
+    _GenerateCheck(QList<int>::const_iterator it, int i) : iterator(it), initial(i) { }
 
-  inline int operator () ()
-  {
-    int check = initial++;
-    return *iterator++ ? check : -1;
+    inline int operator()()
+    {
+        int check = initial++;
+        return *iterator++ ? check : -1;
   }
 };
 
@@ -76,10 +49,10 @@ public:
 public:
   inline UncompressedRow ():
     _M_index (0),
-    _M_begin (0),
-    _M_end (0),
-    _M_beginNonZeros (0),
-    _M_endNonZeros (0) {}
+    _M_begin (nullptr),
+    _M_end (nullptr),
+    _M_beginNonZeros (nullptr),
+    _M_endNonZeros (nullptr) {}
 
   inline UncompressedRow (int index, const_iterator begin, const_iterator end)
   { assign (index, begin, end); }
@@ -151,7 +124,7 @@ void Compress::operator () (int *table, int row_count, int column_count)
   info.clear ();
   check.clear ();
 
-  QVector<UncompressedRow> sortedTable (row_count);
+  QList<UncompressedRow> sortedTable(row_count);
 
   for (int i = 0; i < row_count; ++i)
     {
@@ -166,7 +139,7 @@ void Compress::operator () (int *table, int row_count, int column_count)
 #ifndef QLALR_NO_CHECK_SORTED_TABLE
   int previous_zeros = INT_MAX;
 
-  for (const UncompressedRow &row : qAsConst(sortedTable))
+  for (const UncompressedRow &row : std::as_const(sortedTable))
     {
       int zeros = row.count (0);
 
@@ -178,17 +151,18 @@ void Compress::operator () (int *table, int row_count, int column_count)
 
   index.fill (-999999, row_count);
 
-  for (const UncompressedRow &row : qAsConst(sortedTable))
+  for (const UncompressedRow &row : std::as_const(sortedTable))
     {
       int first_token = std::distance (row.begin (), row.beginNonZeros ());
-      QVector<int>::iterator pos = info.begin ();
+      QList<int>::iterator pos = info.begin();
 
       while (pos != info.end ())
         {
           if (pos == info.begin ())
             {
               // try to find a perfect match
-              QVector<int>::iterator pm = std::search (pos, info.end (), row.beginNonZeros (), row.endNonZeros (), _PerfectMatch ());
+              QList<int>::iterator pm = std::search(pos, info.end(), row.beginNonZeros(),
+                                                    row.endNonZeros(), _PerfectMatch());
 
               if (pm != info.end ())
                 {
@@ -252,7 +226,7 @@ void Compress::operator () (int *table, int row_count, int column_count)
     }
 
 #if 0
-  for (const UncompressedRow &row : qAsConst(sortedTable))
+  for (const UncompressedRow &row : std::as_const(sortedTable))
     {
       int i = row.index ();
       Q_ASSERT (i < sortedTable.size ());

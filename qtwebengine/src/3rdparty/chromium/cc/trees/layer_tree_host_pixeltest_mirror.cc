@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,9 @@
 #include "cc/test/layer_tree_pixel_test.h"
 #include "cc/test/pixel_comparator.h"
 #include "ui/gfx/geometry/size.h"
-#include "ui/gfx/transform_util.h"
+#include "ui/gfx/geometry/transform_util.h"
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 
 namespace cc {
 namespace {
@@ -50,20 +50,18 @@ TEST_P(LayerTreeHostMirrorPixelTest, MirrorLayer) {
   background->AddChild(mirror_layer);
 
   if (use_software_renderer()) {
-    const bool discard_alpha = true;
-    const float error_pixels_percentage_limit = 3.f;
-    const float small_error_pixels_percentage_limit = 0.f;
-    const float avg_abs_error_limit = 65.f;
-    const int max_abs_error_limit = 120;
-    const int small_error_threshold = 0;
     pixel_comparator_ = std::make_unique<FuzzyPixelComparator>(
-        discard_alpha, error_pixels_percentage_limit,
-        small_error_pixels_percentage_limit, avg_abs_error_limit,
-        max_abs_error_limit, small_error_threshold);
+        FuzzyPixelComparator()
+            .DiscardAlpha()
+            .SetErrorPixelsPercentageLimit(3.f)
+            .SetAvgAbsErrorLimit(65.f)
+            .SetAbsErrorLimit(120));
   }
 
-  if (use_skia_vulkan())
-    pixel_comparator_ = std::make_unique<FuzzyPixelOffByOneComparator>(true);
+  if (use_skia_vulkan()) {
+    pixel_comparator_ =
+        std::make_unique<AlphaDiscardingFuzzyPixelOffByOneComparator>();
+  }
 
   RunPixelTest(background,
                base::FilePath(FILE_PATH_LITERAL("mirror_layer.png")));
@@ -72,4 +70,4 @@ TEST_P(LayerTreeHostMirrorPixelTest, MirrorLayer) {
 }  // namespace
 }  // namespace cc
 
-#endif  // !defined(OS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)

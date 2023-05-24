@@ -33,6 +33,19 @@ namespace tables {
 // @param size_kb Total size of the mapping.
 // @param private_dirty_kb KB of this mapping that are private dirty  RSS.
 // @param swap_kb KB of this mapping that are in swap.
+// @param file_name
+// @param file_name_iid
+// @param path_iid
+// @param start_address
+// @param module_timestamp
+// @param module_debugid
+// @param module_debug_path
+// @param protection_flags
+// @param private_clean_resident_kb
+// @param shared_dirty_resident_kb
+// @param shared_clean_resident_kb
+// @param locked_kb
+// @param proportional_resident_kb
 // @tablegroup Callstack profilers
 #define PERFETTO_TP_PROFILER_SMAPS_DEF(NAME, PARENT, C) \
   NAME(ProfilerSmapsTable, "profiler_smaps")            \
@@ -42,7 +55,18 @@ namespace tables {
   C(StringPool::Id, path)                               \
   C(int64_t, size_kb)                                   \
   C(int64_t, private_dirty_kb)                          \
-  C(int64_t, swap_kb)
+  C(int64_t, swap_kb)                                   \
+  C(StringPool::Id, file_name)                          \
+  C(int64_t, start_address)                             \
+  C(int64_t, module_timestamp)                          \
+  C(StringPool::Id, module_debugid)                     \
+  C(StringPool::Id, module_debug_path)                  \
+  C(int64_t, protection_flags)                          \
+  C(int64_t, private_clean_resident_kb)                 \
+  C(int64_t, shared_dirty_resident_kb)                  \
+  C(int64_t, shared_clean_resident_kb)                  \
+  C(int64_t, locked_kb)                                 \
+  C(int64_t, proportional_resident_kb)
 
 PERFETTO_TP_TABLE(PERFETTO_TP_PROFILER_SMAPS_DEF);
 
@@ -119,6 +143,9 @@ PERFETTO_TP_TABLE(PERFETTO_TP_STACK_PROFILE_FRAME_DEF);
 
 PERFETTO_TP_TABLE(PERFETTO_TP_STACK_PROFILE_CALLSITE_DEF);
 
+// TODO(rsavitski): rethink what to do with the root table now that only chrome
+// callstacks use it.
+
 // Root table for timestamped stack samples.
 // @param ts timestamp of the sample.
 // @param callsite_id unwound callstack.
@@ -144,33 +171,37 @@ PERFETTO_TP_TABLE(PERFETTO_TP_STACK_SAMPLE_DEF);
 
 PERFETTO_TP_TABLE(PERFETTO_TP_CPU_PROFILE_STACK_SAMPLE_DEF);
 
-// Stack samples from the traced_perf perf sampler.
+// Samples from the traced_perf profiler.
 //
-// The table currently provides no means of discriminating between multiple data
-// sources producing samples within a single trace.
 // @param ts timestamp of the sample.
-// @param callsite_id unwound callstack of the sampled thread.
 // @param utid sampled thread. {@joinable thread.utid}.
 // @param cpu the core the sampled thread was running on.
 // @param cpu_mode execution state (userspace/kernelspace) of the sampled
 //        thread.
+// @param callsite_id if set, unwound callstack of the sampled thread.
 // @param unwind_error if set, indicates that the unwinding for this sample
 //        encountered an error. Such samples still reference the best-effort
 //        result via the callsite_id (with a synthetic error frame at the point
 //        where unwinding stopped).
+// @param perf_session_id distinguishes samples from different profiling
+//        streams (i.e. multiple data sources).
+//        {@joinable perf_counter_track.perf_session_id}
 // @tablegroup Callstack profilers
-#define PERFETTO_TP_PERF_SAMPLE_DEF(NAME, PARENT, C) \
-  NAME(PerfSampleTable, "perf_sample")               \
-  PARENT(PERFETTO_TP_STACK_SAMPLE_DEF, C)            \
-  C(uint32_t, utid)                                  \
-  C(uint32_t, cpu)                                   \
-  C(StringPool::Id, cpu_mode)                        \
-  C(base::Optional<StringPool::Id>, unwind_error)
+#define PERFETTO_TP_PERF_SAMPLE_DEF(NAME, PARENT, C)            \
+  NAME(PerfSampleTable, "perf_sample")                          \
+  PERFETTO_TP_ROOT_TABLE(PARENT, C)                             \
+  C(int64_t, ts, Column::Flag::kSorted)                         \
+  C(uint32_t, utid)                                             \
+  C(uint32_t, cpu)                                              \
+  C(StringPool::Id, cpu_mode)                                   \
+  C(base::Optional<StackProfileCallsiteTable::Id>, callsite_id) \
+  C(base::Optional<StringPool::Id>, unwind_error)               \
+  C(uint32_t, perf_session_id)
 
 PERFETTO_TP_TABLE(PERFETTO_TP_PERF_SAMPLE_DEF);
 
 // Symbolization data for a frame. Rows with the same symbol_set_id describe
-// one frame, with the bottom-most inlined frame having id == symbol_set_id.
+// one callframe, with the most-inlined symbol having id == symbol_set_id.
 //
 // For instance, if the function foo has an inlined call to the function bar,
 // which has an inlined call to baz, the stack_profile_symbol table would look
@@ -179,9 +210,9 @@ PERFETTO_TP_TABLE(PERFETTO_TP_PERF_SAMPLE_DEF);
 // ```
 // |id|symbol_set_id|name         |source_file|line_number|
 // |--|-------------|-------------|-----------|-----------|
-// |1 |      1      |foo          |foo.cc     | 60        |
+// |1 |      1      |baz          |foo.cc     | 36        |
 // |2 |      1      |bar          |foo.cc     | 30        |
-// |3 |      1      |baz          |foo.cc     | 36        |
+// |3 |      1      |foo          |foo.cc     | 60        |
 // ```
 // @param name name of the function.
 // @param source_file name of the source file containing the function.
@@ -200,6 +231,12 @@ PERFETTO_TP_TABLE(PERFETTO_TP_PERF_SAMPLE_DEF);
 PERFETTO_TP_TABLE(PERFETTO_TP_SYMBOL_DEF);
 
 // Allocations that happened at a callsite.
+//
+//
+// NOTE: this table is not sorted by timestamp intentionanlly - see b/193757386
+// for details.
+// TODO(b/193757386): readd the sorted flag once this bug is fixed.
+//
 // This is generated by heapprofd.
 // @param ts the timestamp the allocations happened at. heapprofd batches
 // allocations and frees, and all data from a dump will have the same
@@ -217,7 +254,7 @@ PERFETTO_TP_TABLE(PERFETTO_TP_SYMBOL_DEF);
 #define PERFETTO_TP_HEAP_PROFILE_ALLOCATION_DEF(NAME, PARENT, C) \
   NAME(HeapProfileAllocationTable, "heap_profile_allocation")    \
   PERFETTO_TP_ROOT_TABLE(PARENT, C)                              \
-  C(int64_t, ts, Column::Flag::kSorted)                          \
+  C(int64_t, ts)                                                 \
   C(uint32_t, upid)                                              \
   C(StringPool::Id, heap_name)                                   \
   C(StackProfileCallsiteTable::Id, callsite_id)                  \
@@ -249,7 +286,10 @@ PERFETTO_TP_TABLE(PERFETTO_TP_HEAP_PROFILE_ALLOCATION_DEF);
   C(int64_t, cumulative_alloc_count)                                      \
   C(int64_t, alloc_size)                                                  \
   C(int64_t, cumulative_alloc_size)                                       \
-  C(base::Optional<ExperimentalFlamegraphNodesTable::Id>, parent_id)
+  C(base::Optional<ExperimentalFlamegraphNodesTable::Id>, parent_id)      \
+  C(base::Optional<StringPool::Id>, source_file)                          \
+  C(base::Optional<uint32_t>, line_number)                                \
+  C(base::Optional<StringPool::Id>, upid_group)
 
 PERFETTO_TP_TABLE(PERFETTO_TP_EXPERIMENTAL_FLAMEGRAPH_NODES);
 
@@ -257,14 +297,20 @@ PERFETTO_TP_TABLE(PERFETTO_TP_EXPERIMENTAL_FLAMEGRAPH_NODES);
 // @param deobfuscated_name if class name was obfuscated and deobfuscation map
 // for it provided, the deobfuscated name.
 // @param location the APK / Dex / JAR file the class is contained in.
-// @tablegroup ART Heap Profiler
-#define PERFETTO_TP_HEAP_GRAPH_CLASS_DEF(NAME, PARENT, C) \
-  NAME(HeapGraphClassTable, "heap_graph_class")           \
-  PERFETTO_TP_ROOT_TABLE(PARENT, C)                       \
-  C(StringPool::Id, name)                                 \
-  C(base::Optional<StringPool::Id>, deobfuscated_name)    \
-  C(base::Optional<StringPool::Id>, location)             \
-  C(base::Optional<HeapGraphClassTable::Id>, superclass_id)
+// @tablegroup ART Heap Graphs
+//
+// classloader_id should really be HeapGraphObject::id, but that would
+// create a loop, which is currently not possible.
+// TODO(lalitm): resolve this
+#define PERFETTO_TP_HEAP_GRAPH_CLASS_DEF(NAME, PARENT, C)   \
+  NAME(HeapGraphClassTable, "heap_graph_class")             \
+  PERFETTO_TP_ROOT_TABLE(PARENT, C)                         \
+  C(StringPool::Id, name)                                   \
+  C(base::Optional<StringPool::Id>, deobfuscated_name)      \
+  C(base::Optional<StringPool::Id>, location)               \
+  C(base::Optional<HeapGraphClassTable::Id>, superclass_id) \
+  C(base::Optional<uint32_t>, classloader_id)               \
+  C(StringPool::Id, kind)
 
 PERFETTO_TP_TABLE(PERFETTO_TP_HEAP_GRAPH_CLASS_DEF);
 
@@ -274,6 +320,8 @@ PERFETTO_TP_TABLE(PERFETTO_TP_HEAP_GRAPH_CLASS_DEF);
 // @param upid UniquePid of the target {@joinable process.upid}.
 // @param graph_sample_ts timestamp this dump was taken at.
 // @param self_size size this object uses on the Java Heap.
+// @param native_size approximate amount of native memory used by this object,
+//        as reported by libcore.util.NativeAllocationRegistry.size.
 // @param reference_set_id join key with heap_graph_reference containing all
 //        objects referred in this object's fields.
 //        {@joinable heap_graph_reference.reference_set_id}
@@ -281,13 +329,14 @@ PERFETTO_TP_TABLE(PERFETTO_TP_HEAP_GRAPH_CLASS_DEF);
 // false, this object is uncollected garbage.
 // @param type_id class this object is an instance of.
 // @param root_type if not NULL, this object is a GC root.
-// @tablegroup ART Heap Profiler
+// @tablegroup ART Heap Graphs
 #define PERFETTO_TP_HEAP_GRAPH_OBJECT_DEF(NAME, PARENT, C)            \
   NAME(HeapGraphObjectTable, "heap_graph_object")                     \
   PERFETTO_TP_ROOT_TABLE(PARENT, C)                                   \
   C(uint32_t, upid)                                                   \
   C(int64_t, graph_sample_ts)                                         \
   C(int64_t, self_size)                                               \
+  C(int64_t, native_size)                                             \
   C(base::Optional<uint32_t>, reference_set_id, Column::Flag::kDense) \
   C(int32_t, reachable)                                               \
   C(HeapGraphClassTable::Id, type_id)                                 \
@@ -307,15 +356,15 @@ PERFETTO_TP_TABLE(PERFETTO_TP_HEAP_GRAPH_OBJECT_DEF);
 // @param field_type_name the static type of the field. E.g. java.lang.String.
 // @param deobfuscated_field_name if field_name was obfuscated and a
 // deobfuscation mapping was provided for it, the deobfuscated name.
-// @tablegroup ART Heap Profiler
-#define PERFETTO_TP_HEAP_GRAPH_REFERENCE_DEF(NAME, PARENT, C) \
-  NAME(HeapGraphReferenceTable, "heap_graph_reference")       \
-  PERFETTO_TP_ROOT_TABLE(PARENT, C)                           \
-  C(uint32_t, reference_set_id, Column::Flag::kSorted)        \
-  C(HeapGraphObjectTable::Id, owner_id)                       \
-  C(HeapGraphObjectTable::Id, owned_id)                       \
-  C(StringPool::Id, field_name)                               \
-  C(StringPool::Id, field_type_name)                          \
+// @tablegroup ART Heap Graphs
+#define PERFETTO_TP_HEAP_GRAPH_REFERENCE_DEF(NAME, PARENT, C)                 \
+  NAME(HeapGraphReferenceTable, "heap_graph_reference")                       \
+  PERFETTO_TP_ROOT_TABLE(PARENT, C)                                           \
+  C(uint32_t, reference_set_id, Column::Flag::kSorted | Column::Flag::kSetId) \
+  C(HeapGraphObjectTable::Id, owner_id)                                       \
+  C(base::Optional<HeapGraphObjectTable::Id>, owned_id)                       \
+  C(StringPool::Id, field_name)                                               \
+  C(StringPool::Id, field_type_name)                                          \
   C(base::Optional<StringPool::Id>, deobfuscated_field_name)
 
 PERFETTO_TP_TABLE(PERFETTO_TP_HEAP_GRAPH_REFERENCE_DEF);

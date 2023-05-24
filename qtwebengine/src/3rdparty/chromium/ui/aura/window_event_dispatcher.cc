@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,13 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check_op.h"
-#include "base/notreached.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/observer_list.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "cc/metrics/custom_metrics_recorder.h"
 #include "ui/aura/client/aura_constants.h"
 #include "ui/aura/client/capture_client.h"
 #include "ui/aura/client/cursor_client.h"
@@ -29,12 +30,14 @@
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/ime/input_method.h"
+#include "ui/compositor/compositor.h"
 #include "ui/display/screen.h"
 #include "ui/events/event.h"
 #include "ui/events/event_utils.h"
 #include "ui/events/gestures/gesture_recognizer.h"
 #include "ui/events/gestures/gesture_types.h"
 #include "ui/events/platform/platform_event_source.h"
+#include "ui/gfx/geometry/transform.h"
 
 typedef ui::EventDispatchDetails DispatchDetails;
 
@@ -60,6 +63,8 @@ bool IsEventCandidateForHold(const ui::Event& event) {
     return true;
   if (event.type() == ui::ET_MOUSE_DRAGGED)
     return true;
+  if (event.type() == ui::ET_MOUSE_EXITED)
+    return false;
   if (event.IsMouseEvent() && (event.flags() & ui::EF_IS_SYNTHESIZED))
     return true;
   return false;
@@ -88,9 +93,7 @@ WindowEventDispatcher::ObserverNotifier::~ObserverNotifier() {
 // WindowEventDispatcher, public:
 
 WindowEventDispatcher::WindowEventDispatcher(WindowTreeHost* host)
-    : host_(host),
-      observer_manager_(this),
-      event_targeter_(std::make_unique<WindowTargeter>()) {
+    : host_(host), event_targeter_(std::make_unique<WindowTargeter>()) {
   Env::GetInstance()->gesture_recognizer()->AddGestureEventHelper(this);
   Env::GetInstance()->AddObserver(this);
 }
@@ -130,7 +133,7 @@ void WindowEventDispatcher::RepostEvent(const ui::LocatedEvent* event) {
   }
 
   if (held_repostable_event_) {
-    base::ThreadTaskRunnerHandle::Get()->PostNonNestableTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostNonNestableTask(
         FROM_HERE,
         base::BindOnce(
             base::IgnoreResult(&WindowEventDispatcher::DispatchHeldEvents),
@@ -184,11 +187,10 @@ void WindowEventDispatcher::ProcessedTouchEvent(
     uint32_t unique_event_id,
     Window* window,
     ui::EventResult result,
-    bool is_source_touch_event_set_non_blocking) {
+    bool is_source_touch_event_set_blocking) {
   ui::GestureRecognizer::Gestures gestures =
       Env::GetInstance()->gesture_recognizer()->AckTouchEvent(
-          unique_event_id, result, is_source_touch_event_set_non_blocking,
-          window);
+          unique_event_id, result, is_source_touch_event_set_blocking, window);
   DispatchDetails details = ProcessGestures(window, std::move(gestures));
   if (details.dispatcher_destroyed)
     return;
@@ -201,8 +203,8 @@ void WindowEventDispatcher::HoldPointerMoves() {
     held_event_factory_.InvalidateWeakPtrs();
   }
   ++move_hold_count_;
-  TRACE_EVENT_ASYNC_BEGIN0("ui", "WindowEventDispatcher::HoldPointerMoves",
-                           this);
+  TRACE_EVENT_NESTABLE_ASYNC_BEGIN0(
+      "ui", "WindowEventDispatcher::HoldPointerMoves", TRACE_ID_LOCAL(this));
 }
 
 void WindowEventDispatcher::ReleasePointerMoves() {
@@ -220,7 +222,7 @@ void WindowEventDispatcher::ReleasePointerMoves() {
       // dispatching another one may not be safe/expected.  Instead we post a
       // task, that we may cancel if HoldPointerMoves is called again before it
       // executes.
-      base::ThreadTaskRunnerHandle::Get()->PostNonNestableTask(
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostNonNestableTask(
           FROM_HERE,
           base::BindOnce(
               base::IgnoreResult(&WindowEventDispatcher::DispatchHeldEvents),
@@ -235,7 +237,8 @@ void WindowEventDispatcher::ReleasePointerMoves() {
       }
     }
   }
-  TRACE_EVENT_ASYNC_END0("ui", "WindowEventDispatcher::HoldPointerMoves", this);
+  TRACE_EVENT_NESTABLE_ASYNC_END0(
+      "ui", "WindowEventDispatcher::HoldPointerMoves", TRACE_ID_LOCAL(this));
 }
 
 gfx::Point WindowEventDispatcher::GetLastMouseLocationInRoot() const {
@@ -326,8 +329,8 @@ ui::EventDispatchDetails WindowEventDispatcher::DispatchMouseEnterOrExit(
   // coordinate system.
   if (!target)
     target = window();
-  ui::MouseEvent translated_event(event, target, mouse_moved_handler_, type,
-                                  event.flags() | ui::EF_IS_SYNTHESIZED);
+  ui::MouseEvent translated_event(event, target, mouse_moved_handler_.get(),
+                                  type, event.flags() | ui::EF_IS_SYNTHESIZED);
   return DispatchEvent(mouse_moved_handler_, &translated_event);
 }
 
@@ -370,6 +373,9 @@ void WindowEventDispatcher::OnWindowHidden(Window* invisible,
   if (invisible->Contains(old_dispatch_target_))
     old_dispatch_target_ = nullptr;
 
+  // Cleaning up gesture state may end up destroying the hidden window. We use a
+  // tracker to detect this.
+  WindowTracker invisible_tracker({invisible});
   invisible->CleanupGestureState();
 
   // Do not clear the capture, and the |event_dispatch_target_| if the
@@ -385,14 +391,18 @@ void WindowEventDispatcher::OnWindowHidden(Window* invisible,
     Window* capture_window =
         capture_client ? capture_client->GetCaptureWindow() : nullptr;
 
-    if (invisible->Contains(event_dispatch_target_))
+    if (!invisible_tracker.Contains(invisible) ||
+        invisible->Contains(event_dispatch_target_)) {
       event_dispatch_target_ = nullptr;
+    }
 
     // If the ancestor of the capture window is hidden, release the capture.
     // Note that this may delete the window so do not use capture_window
     // after this.
-    if (invisible->Contains(capture_window) && invisible != window())
+    if (invisible_tracker.Contains(invisible) &&
+        invisible->Contains(capture_window) && invisible != window()) {
       capture_window->ReleaseCapture();
+    }
   }
 }
 
@@ -448,7 +458,7 @@ void WindowEventDispatcher::OnOtherRootGotCapture() {
   // root window, in which case this function will get called whenever those
   // windows grab mouse capture. Sending mouse exit messages in these cases
   // causes subtle bugs like (crbug.com/394672).
-#if !defined(OS_WIN)
+#if !BUILDFLAG(IS_WIN)
   if (mouse_moved_handler_) {
     // Dispatch a mouse exit to reset any state associated with hover. This is
     // important when going from no window having capture to a window having
@@ -495,7 +505,10 @@ void WindowEventDispatcher::OnEventProcessingStarted(ui::Event* event) {
   observer_notifiers_.push(std::make_unique<ObserverNotifier>(this, *event));
 }
 
-void WindowEventDispatcher::OnEventProcessingFinished(ui::Event* event) {
+void WindowEventDispatcher::OnEventProcessingFinished(
+    ui::Event* event,
+    ui::EventTarget* target,
+    const ui::EventDispatchDetails& details) {
   if (in_shutdown_)
     return;
 
@@ -512,14 +525,16 @@ bool WindowEventDispatcher::CanDispatchToTarget(ui::EventTarget* target) {
 ui::EventDispatchDetails WindowEventDispatcher::PreDispatchEvent(
     ui::EventTarget* target,
     ui::Event* event) {
+  if (host_->compositor() && cc::CustomMetricRecorder::Get()) {
+    event_metrics_monitors_.push_back(
+        CreateScropedMetricsMonitorForEvent(*event));
+  }
+
   Window* target_window = static_cast<Window*>(target);
   CHECK(window()->Contains(target_window));
 
-  if (!(event->flags() & ui::EF_IS_SYNTHESIZED)) {
-    fraction_of_time_without_user_input_recorder_.RecordEventAtTime(
-        event->time_stamp());
-  }
-
+  WindowTracker target_window_tracker;
+  target_window_tracker.Add(target_window);
   if (!dispatching_held_event_) {
     bool can_be_held = IsEventCandidateForHold(*event);
     if (!move_hold_count_ || !can_be_held) {
@@ -529,6 +544,12 @@ ui::EventDispatchDetails WindowEventDispatcher::PreDispatchEvent(
       if (details.dispatcher_destroyed || details.target_destroyed)
         return details;
     }
+  }
+  if (target_window_tracker.windows().empty()) {
+    // The event target is destroyed while processing the held event.
+    DispatchDetails details;
+    details.target_destroyed = true;
+    return details;
   }
 
   DispatchDetails details;
@@ -575,11 +596,20 @@ ui::EventDispatchDetails WindowEventDispatcher::PostDispatchEvent(
         ui::GestureRecognizer::Gestures gestures =
             Env::GetInstance()->gesture_recognizer()->AckTouchEvent(
                 touchevent.unique_event_id(), event.result(),
-                false /* is_source_touch_event_set_non_blocking */, window);
+                false /* is_source_touch_event_set_blocking */, window);
 
-        return ProcessGestures(window, std::move(gestures));
+        details = ProcessGestures(window, std::move(gestures));
       }
     }
+  }
+
+  // Note this must run after processing events corresponding to the event
+  // monitor creation code in PreDispatchEvent to track latencies properly.
+  if (!details.dispatcher_destroyed && host_->compositor() &&
+      cc::CustomMetricRecorder::Get()) {
+    std::unique_ptr<cc::EventsMetricsManager::ScopedMonitor> monitor =
+        std::move(event_metrics_monitors_.back());
+    event_metrics_monitors_.pop_back();
   }
 
   return details;
@@ -621,7 +651,7 @@ void WindowEventDispatcher::OnWindowDestroying(Window* window) {
 void WindowEventDispatcher::OnWindowDestroyed(Window* window) {
   // We observe all windows regardless of what root Window (if any) they're
   // attached to.
-  observer_manager_.Remove(window);
+  observation_manager_.RemoveObservation(window);
 
   // In theory this should be cleaned up by other checks, but we are getting
   // crashes that seem to indicate otherwise. See https://crbug.com/942552 for
@@ -631,8 +661,8 @@ void WindowEventDispatcher::OnWindowDestroyed(Window* window) {
 }
 
 void WindowEventDispatcher::OnWindowAddedToRootWindow(Window* attached) {
-  if (!observer_manager_.IsObserving(attached))
-    observer_manager_.Add(attached);
+  if (!observation_manager_.IsObservingSource(attached))
+    observation_manager_.AddObservation(attached);
 
   if (!host_->window()->Contains(attached))
     return;
@@ -739,7 +769,7 @@ void WindowEventDispatcher::OnWindowTransformed(
 // WindowEventDispatcher, EnvObserver implementation:
 
 void WindowEventDispatcher::OnWindowInitialized(Window* window) {
-  observer_manager_.Add(window);
+  observation_manager_.AddObservation(window);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -808,7 +838,7 @@ void WindowEventDispatcher::PostSynthesizeMouseMove() {
   if (synthesize_mouse_move_ || in_shutdown_)
     return;
   synthesize_mouse_move_ = true;
-  base::ThreadTaskRunnerHandle::Get()->PostNonNestableTask(
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostNonNestableTask(
       FROM_HERE,
       base::BindOnce(
           base::IgnoreResult(&WindowEventDispatcher::SynthesizeMouseMoveEvent),
@@ -1054,6 +1084,64 @@ DispatchDetails WindowEventDispatcher::PreDispatchKeyEvent(
   DispatchDetails details = host_->GetInputMethod()->DispatchKeyEvent(event);
   event->StopPropagation();
   return details;
+}
+
+std::unique_ptr<cc::EventsMetricsManager::ScopedMonitor>
+WindowEventDispatcher::CreateScropedMetricsMonitorForEvent(
+    const ui::Event& event) {
+  std::unique_ptr<cc::EventMetrics> metrics;
+  if (event.IsScrollGestureEvent() || event.IsPinchEvent()) {
+    const auto* gesture = event.AsGestureEvent();
+    // There are many tests that don't set the device type properly, so if the
+    // device type is not set, we'll consider it as touchpad/wheel.
+    ui::ScrollInputType input_type =
+        gesture->details().device_type() ==
+                ui::GestureDeviceType::DEVICE_TOUCHSCREEN
+            ? ui::ScrollInputType::kTouchscreen
+            : ui::ScrollInputType::kWheel;
+    if (gesture->type() == ui::ET_GESTURE_SCROLL_UPDATE) {
+      metrics = cc::ScrollUpdateEventMetrics::CreateForBrowser(
+          ui::ET_GESTURE_SCROLL_UPDATE, input_type, /*is_inertial=*/false,
+          has_seen_gesture_scroll_update_after_begin_
+              ? cc::ScrollUpdateEventMetrics::ScrollUpdateType::kContinued
+              : cc::ScrollUpdateEventMetrics::ScrollUpdateType::kStarted,
+          gesture->details().scroll_y(), gesture->time_stamp(),
+          base::IdType64<class ui::LatencyInfo>(event.latency()->trace_id()));
+      has_seen_gesture_scroll_update_after_begin_ = true;
+    } else if (gesture->IsScrollGestureEvent()) {
+      metrics = cc::ScrollEventMetrics::CreateForBrowser(
+          gesture->type(), input_type,
+          /*is_inertial=*/false, gesture->time_stamp());
+      if (gesture->type() == ui::ET_GESTURE_SCROLL_BEGIN)
+        has_seen_gesture_scroll_update_after_begin_ = false;
+    } else {
+      DCHECK(gesture->IsPinchEvent());
+      metrics = cc::PinchEventMetrics::Create(gesture->type(), input_type,
+                                              gesture->time_stamp());
+    }
+  } else {
+    metrics = cc::EventMetrics::Create(event.type(), event.time_stamp());
+  }
+  cc::EventsMetricsManager::ScopedMonitor::DoneCallback done_callback;
+  if (metrics) {
+    // TODO(crbug.com/1278417): The following breakdown has the renderer word
+    // in its name, so not the best breakdown to use in the browser. Introduce
+    // and use breakdowns specific to the browser.
+    metrics->SetDispatchStageTimestamp(
+        cc::EventMetrics::DispatchStage::kRendererMainStarted);
+    done_callback = base::BindOnce(
+        [](std::unique_ptr<cc::EventMetrics> metrics, bool handled) {
+          // TODO(crbug.com/1278417): The following breakdown has the renderer
+          // word in its name, so not the best breakdown to use in the
+          // browser. Introduce and use breakdowns specific to the browser.
+          metrics->SetDispatchStageTimestamp(
+              cc::EventMetrics::DispatchStage::kRendererMainFinished);
+          return handled ? std::move(metrics) : nullptr;
+        },
+        std::move(metrics));
+  }
+  return host_->compositor()->GetScopedEventMetricsMonitor(
+      std::move(done_callback));
 }
 
 }  // namespace aura

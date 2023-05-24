@@ -104,7 +104,7 @@ namespace {
 // Generate the default base tag declaration.
 String GenerateBaseTagDeclaration(const String& base_target) {
   // TODO(yosin) We should call |FrameSerializer::baseTagDeclarationOf()|.
-  if (base_target.IsEmpty())
+  if (base_target.empty())
     return String("<base href=\".\">");
   String base_string = "<base href=\".\" target=\"" + base_target + "\">";
   return base_string;
@@ -171,9 +171,9 @@ String WebFrameSerializerImpl::PreActionBeforeSerializeOpenTag(
       param->have_added_xml_processing_directive = true;
       // Get encoding info.
       String xml_encoding = param->document->xmlEncoding();
-      if (xml_encoding.IsEmpty())
+      if (xml_encoding.empty())
         xml_encoding = param->document->EncodingName();
-      if (xml_encoding.IsEmpty())
+      if (xml_encoding.empty())
         xml_encoding = UTF8Encoding().GetName();
       result.Append("<?xml version=\"");
       result.Append(param->document->xmlVersion());
@@ -320,7 +320,7 @@ void WebFrameSerializerImpl::OpenTagToString(Element* element,
   // Find out if we need to do frame-specific link rewriting.
   WebFrame* frame = nullptr;
   if (auto* frame_owner_element = DynamicTo<HTMLFrameOwnerElement>(element)) {
-    frame = WebFrame::FromFrame(frame_owner_element->ContentFrame());
+    frame = WebFrame::FromCoreFrame(frame_owner_element->ContentFrame());
   }
   WebString rewritten_frame_link;
   bool should_rewrite_frame_src =
@@ -372,8 +372,12 @@ void WebFrameSerializerImpl::OpenTagToString(Element* element,
   // Do post action for open tag.
   String added_contents = PostActionAfterSerializeOpenTag(element, param);
   // Complete the open tag for element when it has child/children.
-  if (element->HasChildren() || param->have_added_contents_before_end)
+  if (element->HasChildren() || param->have_added_contents_before_end ||
+      (element->AuthorShadowRoot() &&
+       RuntimeEnabledFeatures::StreamingDeclarativeShadowDOMEnabled() &&
+       RuntimeEnabledFeatures::SaveAsWithDeclarativeShadowDOMEnabled())) {
     result.Append('>');
+  }
   // Append the added contents generate in  post action of open tag.
   result.Append(added_contents);
   // Save the result to data buffer.
@@ -390,7 +394,10 @@ void WebFrameSerializerImpl::EndTagToString(Element* element,
   if (need_skip)
     return;
   // Write end tag when element has child/children.
-  if (element->HasChildren() || param->have_added_contents_before_end) {
+  if (element->HasChildren() || param->have_added_contents_before_end ||
+      (element->AuthorShadowRoot() &&
+       RuntimeEnabledFeatures::StreamingDeclarativeShadowDOMEnabled() &&
+       RuntimeEnabledFeatures::SaveAsWithDeclarativeShadowDOMEnabled())) {
     result.Append("</");
     result.Append(element->nodeName().DeprecatedLower());
     result.Append('>');
@@ -417,19 +424,55 @@ void WebFrameSerializerImpl::EndTagToString(Element* element,
   SaveHTMLContentToBuffer(result.ToString(), param);
 }
 
+void WebFrameSerializerImpl::ShadowRootTagToString(ShadowRoot* shadow_root,
+                                                   SerializeDomParam* param) {
+  CHECK(!shadow_root->IsUserAgent());
+  DCHECK(RuntimeEnabledFeatures::StreamingDeclarativeShadowDOMEnabled());
+
+  StringBuilder result;
+  result.Append("<template shadowrootmode=");
+  result.Append(shadow_root->IsOpen() ? "\"open\"" : "\"closed\"");
+
+  if (shadow_root->delegatesFocus()) {
+    result.Append(" shadowrootdelegatesfocus");
+  }
+
+  result.Append('>');
+
+  SaveHTMLContentToBuffer(result.ToString(), param);
+}
+
 void WebFrameSerializerImpl::BuildContentForNode(Node* node,
                                                  SerializeDomParam* param) {
   switch (node->getNodeType()) {
-    case Node::kElementNode:
+    case Node::kElementNode: {
+      auto* element = To<Element>(node);
       // Process open tag of element.
-      OpenTagToString(To<Element>(node), param);
+      OpenTagToString(element, param);
+
+      // Process the ShadowRoot into a <template> if present.
+      auto* shadow_root = element->AuthorShadowRoot();
+      if (shadow_root &&
+          RuntimeEnabledFeatures::StreamingDeclarativeShadowDOMEnabled() &&
+          RuntimeEnabledFeatures::SaveAsWithDeclarativeShadowDOMEnabled()) {
+        ShadowRootTagToString(shadow_root, param);
+        for (Node* child = shadow_root->firstChild(); child;
+             child = child->nextSibling()) {
+          BuildContentForNode(child, param);
+        }
+        SaveHTMLContentToBuffer("</template>", param);
+      }
+
       // Walk through the children nodes and process it.
-      for (Node* child = node->firstChild(); child;
-           child = child->nextSibling())
+      for (Node* child = element->firstChild(); child;
+           child = child->nextSibling()) {
         BuildContentForNode(child, param);
+      }
+
       // Process end tag of element.
-      EndTagToString(To<Element>(node), param);
+      EndTagToString(element, param);
       break;
+    }
     case Node::kTextNode:
       SaveHTMLContentToBuffer(CreateMarkup(node), param);
       break;
@@ -442,7 +485,7 @@ void WebFrameSerializerImpl::BuildContentForNode(Node* node,
     // Document type node can be in DOM?
     case Node::kDocumentTypeNode:
       param->have_seen_doc_type = true;
-      FALLTHROUGH;
+      [[fallthrough]];
     default:
       // For other type node, call default action.
       SaveHTMLContentToBuffer(CreateMarkup(node), param);
@@ -467,7 +510,7 @@ WebFrameSerializerImpl::WebFrameSerializerImpl(
   DCHECK(client);
   DCHECK(delegate);
 
-  DCHECK(data_buffer_.IsEmpty());
+  DCHECK(data_buffer_.empty());
 }
 
 bool WebFrameSerializerImpl::Serialize() {
@@ -502,7 +545,7 @@ bool WebFrameSerializerImpl::Serialize() {
         WebVector<char>(), WebFrameSerializerClient::kCurrentFrameIsFinished);
   }
 
-  DCHECK(data_buffer_.IsEmpty());
+  DCHECK(data_buffer_.empty());
   return did_serialization;
 }
 

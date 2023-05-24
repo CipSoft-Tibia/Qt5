@@ -1,17 +1,17 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Browser tests targeted at the RenderView that run in browser context.
+// Browser tests targeted at the `blink::WebView` that run in browser context.
 // Note that these tests rely on single-process mode, and hence may be
 // disabled in some configurations (check gyp files).
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "content/public/browser/browser_context.h"
@@ -21,7 +21,6 @@
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
-#include "content/public/renderer/render_view.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/content_browser_test.h"
@@ -36,6 +35,8 @@
 #include "net/disk_cache/disk_cache.h"
 #include "net/http/http_cache.h"
 #include "services/network/public/cpp/features.h"
+#include "services/network/public/mojom/clear_data_filter.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/platform/web_url_error.h"
 #include "third_party/blink/public/platform/web_url_request.h"
@@ -52,10 +53,12 @@ class TestShellContentRendererClient : public ShellContentRendererClient {
         latest_error_reason_(0),
         latest_error_stale_copy_in_cache_(false) {}
 
-  void PrepareErrorPage(content::RenderFrame* render_frame,
-                        const blink::WebURLError& error,
-                        const std::string& http_method,
-                        std::string* error_html) override {
+  void PrepareErrorPage(
+      content::RenderFrame* render_frame,
+      const blink::WebURLError& error,
+      const std::string& http_method,
+      mojom::AlternativeErrorPageOverrideInfoPtr alternative_error_page_info,
+      std::string* error_html) override {
     if (error_html)
       *error_html = "A suffusion of yellow.";
     latest_error_valid_ = true;
@@ -140,12 +143,12 @@ class RenderViewBrowserTest : public ContentBrowserTest {
 };
 
 // https://crbug.com/788788
-#if defined(OS_ANDROID) && defined(ADDRESS_SANITIZER)
+#if BUILDFLAG(IS_ANDROID) && defined(ADDRESS_SANITIZER)
 #define MAYBE_ConfirmCacheInformationPlumbed \
   DISABLED_ConfirmCacheInformationPlumbed
 #else
 #define MAYBE_ConfirmCacheInformationPlumbed ConfirmCacheInformationPlumbed
-#endif  // defined(OS_ANDROID) && defined(ADDRESS_SANITIZER)
+#endif  // BUILDFLAG(IS_ANDROID) && defined(ADDRESS_SANITIZER)
 IN_PROC_BROWSER_TEST_F(RenderViewBrowserTest,
                        MAYBE_ConfirmCacheInformationPlumbed) {
   ASSERT_TRUE(embedded_test_server()->Start());
@@ -171,7 +174,7 @@ IN_PROC_BROWSER_TEST_F(RenderViewBrowserTest,
     base::RunLoop run_loop;
     content::StoragePartition* partition = shell()
                                                ->web_contents()
-                                               ->GetMainFrame()
+                                               ->GetPrimaryMainFrame()
                                                ->GetProcess()
                                                ->GetStoragePartition();
     partition->GetNetworkContext()->ClearHttpCache(

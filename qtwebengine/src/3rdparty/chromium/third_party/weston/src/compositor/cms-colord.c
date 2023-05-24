@@ -466,6 +466,7 @@ colord_module_destroy(struct cms_colord *cms)
 	g_free(cms->pnp_ids_data);
 	g_hash_table_unref(cms->pnp_ids);
 
+	wl_list_remove(&cms->destroy_listener.link);
 	free(cms);
 }
 
@@ -527,6 +528,14 @@ wet_module_init(struct weston_compositor *ec,
 	if (cms == NULL)
 		return -1;
 	cms->ec = ec;
+
+	if (!weston_compositor_add_destroy_listener_once(ec,
+							 &cms->destroy_listener,
+							 colord_notifier_destroy)) {
+		free(cms);
+		return 0;
+	}
+
 #if !GLIB_CHECK_VERSION(2,36,0)
 	g_type_init();
 #endif
@@ -541,10 +550,6 @@ wet_module_init(struct weston_compositor *ec,
 	g_mutex_init(&cms->pending_mutex);
 	cms->devices = g_hash_table_new_full(g_str_hash, g_str_equal,
 					     g_free, colord_cms_output_destroy);
-
-	/* destroy */
-	cms->destroy_listener.notify = colord_notifier_destroy;
-	wl_signal_add(&ec->destroy_signal, &cms->destroy_listener);
 
 	/* devices added */
 	cms->output_created_listener.notify = colord_notifier_output_created;

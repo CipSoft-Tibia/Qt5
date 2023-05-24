@@ -1,41 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
-#include <QtCore/QThread>
-#include <QtCore/QSemaphore>
+#include <QTest>
+#include <QtTest/qtesteventloop.h>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QList>
+#include <QtCore/QSemaphore>
 #include <QtCore/QSharedPointer>
-#include <QtCore/QVector>
-#include <QtNetwork/QTcpSocket>
-#include <QtNetwork/QSslSocket>
-#include <QtNetwork/QNetworkReply>
+#include <QtCore/QThread>
 #include <QtNetwork/QNetworkAccessManager>
+#include <QtNetwork/QNetworkReply>
+#include <QtNetwork/QSslSocket>
+#include <QtNetwork/QTcpSocket>
 
 #ifdef QT_BUILD_INTERNAL
 # include <private/qnetworkaccessmanager_p.h>
@@ -71,7 +47,7 @@ public:
 
     qint64 byteCounter;
     QNetworkAccessManager manager;
-    QVector<QUrl> httpUrls, httpsUrls, mixedUrls;
+    QList<QUrl> httpUrls, httpsUrls, mixedUrls;
     bool intermediateDebug;
 
 private:
@@ -125,7 +101,7 @@ tst_NetworkRemoteStressTest::tst_NetworkRemoteStressTest()
 
 void tst_NetworkRemoteStressTest::initTestCase_data()
 {
-    QTest::addColumn<QVector<QUrl> >("urlList");
+    QTest::addColumn<QList<QUrl>>("urlList");
     QTest::addColumn<bool>("useSslSocket");
 
     QTest::newRow("no-ssl") << httpUrls << false;
@@ -215,7 +191,7 @@ bool nativeSelect(int fd, int timeout, bool selectForWrite)
 
 void tst_NetworkRemoteStressTest::blockingSequentialRemoteHosts()
 {
-    QFETCH_GLOBAL(QVector<QUrl>, urlList);
+    QFETCH_GLOBAL(QList<QUrl>, urlList);
     QFETCH_GLOBAL(bool, useSslSocket);
 
     qint64 totalBytes = 0;
@@ -280,7 +256,7 @@ void tst_NetworkRemoteStressTest::blockingSequentialRemoteHosts()
 
 void tst_NetworkRemoteStressTest::sequentialRemoteHosts()
 {
-    QFETCH_GLOBAL(QVector<QUrl>, urlList);
+    QFETCH_GLOBAL(QList<QUrl>, urlList);
     QFETCH_GLOBAL(bool, useSslSocket);
 
 #ifdef QT_NO_SSL
@@ -354,7 +330,7 @@ void tst_NetworkRemoteStressTest::parallelRemoteHosts_data()
 
 void tst_NetworkRemoteStressTest::parallelRemoteHosts()
 {
-    QFETCH_GLOBAL(QVector<QUrl>, urlList);
+    QFETCH_GLOBAL(QList<QUrl>, urlList);
     QFETCH_GLOBAL(bool, useSslSocket);
 
     QFETCH(int, parallelAttempts);
@@ -367,13 +343,13 @@ void tst_NetworkRemoteStressTest::parallelRemoteHosts()
     QElapsedTimer outerTimer;
     outerTimer.start();
 
-    QVector<QUrl>::ConstIterator it = urlList.constBegin();
+    auto it = urlList.constBegin();
     while (it != urlList.constEnd()) {
         QElapsedTimer timeout;
         byteCounter = 0;
         timeout.start();
 
-        QVector<QSharedPointer<QTcpSocket> > sockets;
+        QList<QSharedPointer<QTcpSocket> > sockets;
         sockets.reserve(parallelAttempts);
         for (int j = 0; j < parallelAttempts && it != urlList.constEnd(); ++j, ++it) {
             const QUrl &url = *it;
@@ -449,7 +425,7 @@ void tst_NetworkRemoteStressTest::namRemoteGet_data()
 
 void tst_NetworkRemoteStressTest::namRemoteGet()
 {
-    QFETCH_GLOBAL(QVector<QUrl>, urlList);
+    QFETCH_GLOBAL(QList<QUrl>, urlList);
 
     QFETCH(int, parallelAttempts);
     bool pipelineAllowed = false;// QFETCH(bool, pipelineAllowed);
@@ -458,7 +434,7 @@ void tst_NetworkRemoteStressTest::namRemoteGet()
     QElapsedTimer outerTimer;
     outerTimer.start();
 
-    QVector<QUrl>::ConstIterator it = urlList.constBegin();
+    auto it = urlList.constBegin();
     while (it != urlList.constEnd()) {
         QElapsedTimer timeout;
         byteCounter = 0;
@@ -467,7 +443,7 @@ void tst_NetworkRemoteStressTest::namRemoteGet()
         QNetworkRequest req;
         req.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, pipelineAllowed);
 
-        QVector<QSharedPointer<QNetworkReply> > replies;
+        QList<QSharedPointer<QNetworkReply> > replies;
         replies.reserve(parallelAttempts);
         for (int j = 0; j < parallelAttempts && it != urlList.constEnd(); ++j) {
             req.setUrl(*it++);

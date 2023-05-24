@@ -5,6 +5,7 @@
   },
 
   data: [
+    "attributionsrc",
     "audio",
     "beacon",
     "css",
@@ -18,6 +19,7 @@
     "processinginstruction",
     "track",
     "uacss",
+    "use",
     "violationreport",
     "video",
     "xml",

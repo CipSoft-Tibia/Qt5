@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/contains.h"
 #include "base/strings/string_util.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/values.h"
@@ -25,6 +26,7 @@
 #include "components/spellcheck/browser/pref_names.h"
 #include "components/spellcheck/common/spellcheck_features.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace policy {
 
@@ -91,8 +93,7 @@ class SpellcheckLanguagePolicyHandlersTest
 
       for (const auto& language : languages_list->GetList()) {
         EXPECT_TRUE(language.is_string());
-        EXPECT_TRUE(std::find(expected.begin(), expected.end(),
-                              language.GetString()) != expected.end());
+        EXPECT_TRUE(base::Contains(expected, language.GetString()));
       }
     } else {
       EXPECT_FALSE(is_spellcheck_enabled_pref_set);
@@ -103,29 +104,24 @@ class SpellcheckLanguagePolicyHandlersTest
 };
 
 TEST_P(SpellcheckLanguagePolicyHandlersTest, ApplyPolicySettings) {
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
-  base::test::ScopedFeatureList feature_list;
-  if (GetParam().windows_spellchecker_enabled) {
-    if (!spellcheck::WindowsVersionSupportsSpellchecker())
-      return;
-
-    // Force Windows native spellchecking to be enabled.
-    feature_list.InitAndEnableFeature(spellcheck::kWinUseBrowserSpellChecker);
-  } else {
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+  absl::optional<spellcheck::ScopedDisableBrowserSpellCheckerForTesting>
+      disable_browser_spell_checker;
+  if (!GetParam().windows_spellchecker_enabled) {
     // Hunspell-only spellcheck languages will be used.
-    feature_list.InitAndDisableFeature(spellcheck::kWinUseBrowserSpellChecker);
+    disable_browser_spell_checker.emplace();
   }
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
 
   PrefValueMap prefs;
   policy::PolicyMap policy;
 
-  base::Value blocked_languages_list(base::Value::Type::LIST);
+  base::Value::List blocked_languages_list;
   for (const auto& blocked_language : GetParam().blocked_languages) {
     blocked_languages_list.Append(std::move(blocked_language));
   }
 
-  base::Value forced_languages_list(base::Value::Type::LIST);
+  base::Value::List forced_languages_list;
   for (const auto& forced_language : GetParam().forced_languages) {
     forced_languages_list.Append(std::move(forced_language));
   }
@@ -133,12 +129,12 @@ TEST_P(SpellcheckLanguagePolicyHandlersTest, ApplyPolicySettings) {
   policy.Set(policy::key::kSpellcheckLanguageBlocklist,
              policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_USER,
              policy::POLICY_SOURCE_ENTERPRISE_DEFAULT,
-             std::move(blocked_languages_list), nullptr);
+             base::Value(std::move(blocked_languages_list)), nullptr);
 
   policy.Set(policy::key::kSpellcheckLanguage, policy::POLICY_LEVEL_MANDATORY,
              policy::POLICY_SCOPE_USER,
              policy::POLICY_SOURCE_ENTERPRISE_DEFAULT,
-             std::move(forced_languages_list), nullptr);
+             base::Value(std::move(forced_languages_list)), nullptr);
 
   policy.Set(policy::key::kSpellcheckEnabled, policy::POLICY_LEVEL_MANDATORY,
              policy::POLICY_SCOPE_USER,
@@ -167,7 +163,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestCases,
     SpellcheckLanguagePolicyHandlersTest,
     testing::Values(
-#if defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
         // Test cases for Windows spellchecker (policy languages not restricted
         // to Hunspell).
         TestCase({"ar-SA", "es-MX", "fi", "fr",
@@ -183,7 +179,7 @@ INSTANTIATE_TEST_SUITE_P(
                  {""} /* expected forced languages */,
                  false /* spellcheck enabled */,
                  true /* windows spellchecker enabled */),
-#endif  // defined(OS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
+#endif  // BUILDFLAG(IS_WIN) && BUILDFLAG(USE_BROWSER_SPELLCHECKER)
         // Test cases for Hunspell only spellchecker. ar-SA and fi are
         // non-Hunspell languages so are ignored for policy enforcement. If they
         // ever obtain Hunspell support, the first test case below will fail.

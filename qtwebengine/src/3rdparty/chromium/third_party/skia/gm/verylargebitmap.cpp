@@ -24,6 +24,7 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkTileMode.h"
 #include "include/effects/SkGradientShader.h"
+#include "tools/ToolUtils.h"
 
 static void draw(SkCanvas* canvas, int width, int height, SkColor colors[2]) {
     const SkPoint center = { SkIntToScalar(width)/2, SkIntToScalar(height)/2 };
@@ -54,7 +55,10 @@ typedef sk_sp<SkImage> (*ImageMakerProc)(int width, int height, SkColor colors[2
 
 static void show_image(SkCanvas* canvas, int width, int height, SkColor colors[2],
                        ImageMakerProc proc) {
-    sk_sp<SkImage> image(proc(width, height, colors));
+    sk_sp<SkImage> image = ToolUtils::MakeTextureImage(canvas, proc(width, height, colors));
+    if (!image) {
+        return;
+    }
 
     SkPaint borderPaint;
 
@@ -64,19 +68,20 @@ static void show_image(SkCanvas* canvas, int width, int height, SkColor colors[2
 
     canvas->save();
     canvas->clipRect(dstRect);
-    canvas->drawImage(image, 0, 0, nullptr);
+    canvas->drawImage(image, 0, 0);
     canvas->restore();
     canvas->drawRect(dstRect, borderPaint);
 
     dstRect.offset(SkIntToScalar(150), 0);
     int hw = width / 2;
     int hh = height / 2;
-    SkIRect subset = SkIRect::MakeLTRB(hw - 64, hh - 32, hw + 64, hh + 32);
-    canvas->drawImageRect(image, subset, dstRect, nullptr);
+    SkRect subset = SkRect::MakeLTRB(hw - 64, hh - 32, hw + 64, hh + 32);
+    canvas->drawImageRect(image, subset, dstRect, SkSamplingOptions(), nullptr,
+                          SkCanvas::kStrict_SrcRectConstraint);
     canvas->drawRect(dstRect, borderPaint);
 
     dstRect.offset(SkIntToScalar(150), 0);
-    canvas->drawImageRect(image, dstRect, nullptr);
+    canvas->drawImageRect(image, dstRect, SkSamplingOptions(), nullptr);
     canvas->drawRect(dstRect, borderPaint);
 }
 

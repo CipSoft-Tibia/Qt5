@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,8 @@
 #include <stdint.h>
 #include <string>
 
-#include "base/macros.h"
-#include "base/optional.h"
 #include "components/background_task_scheduler/task_ids.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace background_task {
 
@@ -34,21 +33,16 @@ struct OneOffInfo {
   bool expires_after_window_end_time;
 };
 
-// Specifies information regarding exact tasks.
-struct ExactInfo {
-  ExactInfo();
-  ~ExactInfo();
-
-  int64_t trigger_at_ms;
-};
-
 // TaskInfo represents a request to run a specific BackgroundTask given
 // the required parameters, such as whether a special type of network is
 // available.
 struct TaskInfo {
   TaskInfo(int task_id, const PeriodicInfo& timing_info);
   TaskInfo(int task_id, const OneOffInfo& timing_info);
-  TaskInfo(int task_id, const ExactInfo& timing_info);
+
+  TaskInfo(const TaskInfo&) = delete;
+  TaskInfo& operator=(const TaskInfo&) = delete;
+
   ~TaskInfo();
 
   // A Java counterpart will be generated for this enum.
@@ -64,17 +58,14 @@ struct TaskInfo {
   };
 
   int task_id;
-  NetworkType network_type;
-  bool requires_charging;
-  bool is_persisted;
-  bool update_current;
+  NetworkType network_type = NetworkType::NONE;
+  bool requires_charging = false;
+  bool is_persisted = false;
+  bool update_current = false;
   std::string extras;
 
-  base::Optional<PeriodicInfo> periodic_info;
-  base::Optional<OneOffInfo> one_off_info;
-  base::Optional<ExactInfo> exact_info;
-
-  DISALLOW_COPY_AND_ASSIGN(TaskInfo);
+  absl::optional<PeriodicInfo> periodic_info;
+  absl::optional<OneOffInfo> one_off_info;
 };
 
 }  // namespace background_task

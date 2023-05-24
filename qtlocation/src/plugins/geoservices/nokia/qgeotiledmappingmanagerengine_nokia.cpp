@@ -1,40 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <QtPositioning/private/qwebmercator_p.h>
 #include "qgeocameracapabilities_p.h"
 #include "qgeotiledmappingmanagerengine_nokia.h"
 #include "qgeotiledmap_nokia.h"
@@ -50,6 +16,9 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/qmath.h>
 #include <QtCore/qstandardpaths.h>
+
+#include <QtPositioning/private/qwebmercator_p.h>
+#include <QtPositioning/private/qdoublevector2d_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -236,19 +205,19 @@ void QGeoTiledMappingManagerEngineNokia::populateMapSchemes()
     m_mapSchemes[21] = QStringLiteral("carnav.day.grey");
 }
 
-QString QGeoTiledMappingManagerEngineNokia::getScheme(int mapId)
+QString QGeoTiledMappingManagerEngineNokia::getScheme(int mapId) const
 {
     return m_mapSchemes[mapId];
 }
 
-QString QGeoTiledMappingManagerEngineNokia::getBaseScheme(int mapId)
+QString QGeoTiledMappingManagerEngineNokia::getBaseScheme(int mapId) const
 {
-    QString fullScheme(m_mapSchemes[mapId]);
+    const QString fullScheme(m_mapSchemes[mapId]);
 
     return fullScheme.section(QLatin1Char('.'), 0, 0);
 }
 
-int QGeoTiledMappingManagerEngineNokia::mapVersion()
+int QGeoTiledMappingManagerEngineNokia::mapVersion() const
 {
     return m_mapVersion.version();
 }
@@ -302,7 +271,7 @@ void QGeoTiledMappingManagerEngineNokia::parseNewVersionInfo(const QByteArray &v
 
     const QStringList versionLines =  versionString.split(QLatin1Char('\n'));
     QJsonObject newVersionData;
-    foreach (const QString &line, versionLines) {
+    for (const QString &line : versionLines) {
         const QStringList versionInfo = line.split(':');
         if (versionInfo.size() > 1) {
             const QString versionKey = versionInfo[0].trimmed();
@@ -364,8 +333,8 @@ void QGeoTiledMappingManagerEngineNokia::loadMapVersion()
     setTileVersion(m_mapVersion.version());
 }
 
-QString QGeoTiledMappingManagerEngineNokia::evaluateCopyrightsText(const QGeoMapType mapType,
-                                                                   const qreal zoomLevel,
+QString QGeoTiledMappingManagerEngineNokia::evaluateCopyrightsText(const QGeoMapType &mapType,
+                                                                   qreal zoomLevel,
                                                                    const QSet<QGeoTileSpec> &tiles)
 {
     static const QChar copyrightSymbol(0x00a9);
@@ -433,7 +402,7 @@ QString QGeoTiledMappingManagerEngineNokia::evaluateCopyrightsText(const QGeoMap
         }
     }
 
-    foreach (const QString &copyrightString, copyrightStrings) {
+    for (const QString &copyrightString : copyrightStrings) {
         if (copyrightsText.length())
             copyrightsText += QLatin1Char('\n');
         copyrightsText += copyrightSymbol;

@@ -1,43 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2014 Samuel Gaist <samuel.gaist@edeltech.ch>
-** Copyright (C) 2014 Petroules Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2014 Samuel Gaist <samuel.gaist@edeltech.ch>
+// Copyright (C) 2014 Petroules Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qstring.h>
 #include <QtCore/qurl.h>
@@ -62,9 +26,10 @@
 QT_BEGIN_NAMESPACE
 
 /*!
-    \since 5.3
+    \brief Constructs a new QByteArray containing a copy of the CFData \a data.
 
-    Constructs a new QByteArray containing a copy of the CFData \a data.
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa fromRawCFData(), fromRawData(), toRawCFData(), toCFData()
 */
@@ -77,14 +42,15 @@ QByteArray QByteArray::fromCFData(CFDataRef data)
 }
 
 /*!
-    \since 5.3
-
-    Constructs a QByteArray that uses the bytes of the CFData \a data.
+    \brief Constructs a QByteArray that uses the bytes of the CFData \a data.
 
     The \a data's bytes are not copied.
 
     The caller guarantees that the CFData will not be deleted
     or modified as long as this QByteArray object exists.
+
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa fromCFData(), fromRawData(), toRawCFData(), toCFData()
 */
@@ -97,10 +63,12 @@ QByteArray QByteArray::fromRawCFData(CFDataRef data)
 }
 
 /*!
-    \since 5.3
+    \brief Creates a CFData from a QByteArray.
 
-    Creates a CFData from a QByteArray. The caller owns the CFData object
-    and is responsible for releasing it.
+    The caller owns the CFData object and is responsible for releasing it.
+
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa toRawCFData(), fromCFData(), fromRawCFData(), fromRawData()
 */
@@ -110,14 +78,15 @@ CFDataRef QByteArray::toCFData() const
 }
 
 /*!
-    \since 5.3
-
-    Constructs a CFData that uses the bytes of the QByteArray.
+    \brief Constructs a CFData that uses the bytes of the QByteArray.
 
     The QByteArray's bytes are not copied.
 
     The caller guarantees that the QByteArray will not be deleted
     or modified as long as this CFData object exists.
+
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa toCFData(), fromRawCFData(), fromCFData(), fromRawData()
 */
@@ -128,9 +97,10 @@ CFDataRef QByteArray::toRawCFData() const
 }
 
 /*!
-    \since 5.3
+    \brief Constructs a new QByteArray containing a copy of the NSData \a data.
 
-    Constructs a new QByteArray containing a copy of the NSData \a data.
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa fromRawNSData(), fromRawData(), toNSData(), toRawNSData()
 */
@@ -142,14 +112,15 @@ QByteArray QByteArray::fromNSData(const NSData *data)
 }
 
 /*!
-    \since 5.3
-
-    Constructs a QByteArray that uses the bytes of the NSData \a data.
+    \brief Constructs a QByteArray that uses the bytes of the NSData \a data.
 
     The \a data's bytes are not copied.
 
     The caller guarantees that the NSData will not be deleted
     or modified as long as this QByteArray object exists.
+
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa fromNSData(), fromRawData(), toRawNSData(), toNSData()
 */
@@ -161,9 +132,12 @@ QByteArray QByteArray::fromRawNSData(const NSData *data)
 }
 
 /*!
-    \since 5.3
+    \brief Creates a NSData from a QByteArray.
 
-    Creates a NSData from a QByteArray. The NSData object is autoreleased.
+    The NSData object is autoreleased.
+
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa fromNSData(), fromRawNSData(), fromRawData(), toRawNSData()
 */
@@ -173,14 +147,15 @@ NSData *QByteArray::toNSData() const
 }
 
 /*!
-    \since 5.3
-
-    Constructs a NSData that uses the bytes of the QByteArray.
+    \brief Constructs a NSData that uses the bytes of the QByteArray.
 
     The QByteArray's bytes are not copied.
 
     The caller guarantees that the QByteArray will not be deleted
     or modified as long as this NSData object exists.
+
+    \since 5.3
+    \ingroup platform-type-conversions
 
     \sa fromRawNSData(), fromNSData(), fromRawData(), toNSData()
 */
@@ -193,11 +168,12 @@ NSData *QByteArray::toRawNSData() const
 // ----------------------------------------------------------------------------
 
 /*!
+    \brief Constructs a new QString containing a copy of the \a string CFString.
+
+    \note this function is only available on \macos and iOS.
+
     \since 5.2
-
-    Constructs a new QString containing a copy of the \a string CFString.
-
-    \note this function is only available on OS X and iOS.
+    \ingroup platform-type-conversions
 */
 QString QString::fromCFString(CFStringRef string)
 {
@@ -217,24 +193,42 @@ QString QString::fromCFString(CFStringRef string)
 }
 
 /*!
+    \brief Creates a CFString from a QString.
+
+    The caller owns the CFString and is responsible for releasing it.
+
+    \note this function is only available on \macos and iOS.
+
     \since 5.2
-
-    Creates a CFString from a QString. The caller owns the CFString and is
-    responsible for releasing it.
-
-    \note this function is only available on OS X and iOS.
+    \ingroup platform-type-conversions
 */
 CFStringRef QString::toCFString() const
 {
-    return CFStringCreateWithCharacters(0, reinterpret_cast<const UniChar *>(unicode()), length());
+    return QStringView{*this}.toCFString();
 }
 
 /*!
+    \brief Creates a CFString from this QStringView.
+
+    The caller owns the CFString and is responsible for releasing it.
+
+    \note this function is only available on \macos and iOS.
+
+    \since 6.0
+    \ingroup platform-type-conversions
+*/
+CFStringRef QStringView::toCFString() const
+{
+    return CFStringCreateWithCharacters(0, reinterpret_cast<const UniChar *>(data()), size());
+}
+
+/*!
+    \brief Constructs a new QString containing a copy of the \a string NSString.
+
+    \note this function is only available on \macos and iOS.
+
     \since 5.2
-
-    Constructs a new QString containing a copy of the \a string NSString.
-
-    \note this function is only available on OS X and iOS.
+    \ingroup platform-type-conversions
 */
 QString QString::fromNSString(const NSString *string)
 {
@@ -247,41 +241,62 @@ QString QString::fromNSString(const NSString *string)
 }
 
 /*!
+    \brief Creates a NSString from a QString.
+
+    The NSString is autoreleased.
+
+    \note this function is only available on \macos and iOS.
+
     \since 5.2
-
-    Creates a NSString from a QString. The NSString is autoreleased.
-
-    \note this function is only available on OS X and iOS.
+    \ingroup platform-type-conversions
 */
 NSString *QString::toNSString() const
 {
-    return [NSString stringWithCharacters: reinterpret_cast<const UniChar*>(unicode()) length: length()];
+    return QStringView{*this}.toNSString();
+}
+
+/*!
+    \brief Creates an NSString from this QStringView.
+
+    The NSString is autoreleased.
+
+    \note this function is only available on \macos and iOS.
+
+    \since 6.0
+    \ingroup platform-type-conversions
+*/
+NSString *QStringView::toNSString() const
+{
+    return [NSString stringWithCharacters:reinterpret_cast<const UniChar*>(data()) length:size()];
 }
 
 // ----------------------------------------------------------------------------
 
 /*!
-    \since 5.7
-
-    Constructs a new QUuid containing a copy of the \a uuid CFUUID.
+    \brief Constructs a new QUuid containing a copy of the \a uuid CFUUID.
 
     \note this function is only available on Apple platforms.
+
+    \since 5.7
+    \ingroup platform-type-conversions
 */
 QUuid QUuid::fromCFUUID(CFUUIDRef uuid)
 {
     if (!uuid)
         return QUuid();
     const CFUUIDBytes bytes = CFUUIDGetUUIDBytes(uuid);
-    return QUuid::fromRfc4122(QByteArray::fromRawData(reinterpret_cast<const char *>(&bytes), sizeof(bytes)));
+    return QUuid::fromRfc4122(QByteArrayView(reinterpret_cast<const char *>(&bytes), sizeof(bytes)));
 }
 
 /*!
-    \since 5.7
+    \brief Creates a CFUUID from a QUuid.
 
-    Creates a CFUUID from a QUuid. The caller owns the CFUUID and is
-    responsible for releasing it.
+    The caller owns the CFUUID and is responsible for releasing it.
 
     \note this function is only available on Apple platforms.
+
+    \since 5.7
+    \ingroup platform-type-conversions
 */
 CFUUIDRef QUuid::toCFUUID() const
 {
@@ -290,11 +305,12 @@ CFUUIDRef QUuid::toCFUUID() const
 }
 
 /*!
-    \since 5.7
-
-    Constructs a new QUuid containing a copy of the \a uuid NSUUID.
+    \brief Constructs a new QUuid containing a copy of the \a uuid NSUUID.
 
     \note this function is only available on Apple platforms.
+
+    \since 5.7
+    \ingroup platform-type-conversions
 */
 QUuid QUuid::fromNSUUID(const NSUUID *uuid)
 {
@@ -302,15 +318,18 @@ QUuid QUuid::fromNSUUID(const NSUUID *uuid)
         return QUuid();
     uuid_t bytes;
     [uuid getUUIDBytes:bytes];
-    return QUuid::fromRfc4122(QByteArray::fromRawData(reinterpret_cast<const char *>(bytes), sizeof(bytes)));
+    return QUuid::fromRfc4122(QByteArrayView(reinterpret_cast<const char *>(bytes), sizeof(bytes)));
 }
 
 /*!
-    \since 5.7
+    \brief Creates a NSUUID from a QUuid.
 
-    Creates a NSUUID from a QUuid. The NSUUID is autoreleased.
+    The NSUUID is autoreleased.
 
     \note this function is only available on Apple platforms.
+
+    \since 5.7
+    \ingroup platform-type-conversions
 */
 NSUUID *QUuid::toNSUUID() const
 {
@@ -322,9 +341,10 @@ NSUUID *QUuid::toNSUUID() const
 
 
 /*!
-    \since 5.2
+    \brief Constructs a QUrl containing a copy of the CFURL \a url.
 
-    Constructs a QUrl containing a copy of the CFURL \a url.
+    \since 5.2
+    \ingroup platform-type-conversions
 */
 QUrl QUrl::fromCFURL(CFURLRef url)
 {
@@ -334,10 +354,12 @@ QUrl QUrl::fromCFURL(CFURLRef url)
 }
 
 /*!
-    \since 5.2
+    \brief Creates a CFURL from a QUrl.
 
-    Creates a CFURL from a QUrl. The caller owns the CFURL and is
-    responsible for releasing it.
+    The caller owns the CFURL and is responsible for releasing it.
+
+    \since 5.2
+    \ingroup platform-type-conversions
 */
 CFURLRef QUrl::toCFURL() const
 {
@@ -351,9 +373,10 @@ CFURLRef QUrl::toCFURL() const
 }
 
 /*!
-    \since 5.2
+    \brief Constructs a QUrl containing a copy of the NSURL \a url.
 
-    Constructs a QUrl containing a copy of the NSURL \a url.
+    \since 5.2
+    \ingroup platform-type-conversions
 */
 QUrl QUrl::fromNSURL(const NSURL *url)
 {
@@ -363,9 +386,12 @@ QUrl QUrl::fromNSURL(const NSURL *url)
 }
 
 /*!
-    \since 5.2
+    \brief Creates a NSURL from a QUrl.
 
-    Creates a NSURL from a QUrl. The NSURL is autoreleased.
+    The NSURL is autoreleased.
+
+    \since 5.2
+    \ingroup platform-type-conversions
 */
 NSURL *QUrl::toNSURL() const
 {
@@ -376,9 +402,10 @@ NSURL *QUrl::toNSURL() const
 
 
 /*!
-    \since 5.5
+    \brief Constructs a new QDateTime containing a copy of the CFDate \a date.
 
-    Constructs a new QDateTime containing a copy of the CFDate \a date.
+    \since 5.5
+    \ingroup platform-type-conversions
 
     \sa toCFDate()
 */
@@ -391,10 +418,12 @@ QDateTime QDateTime::fromCFDate(CFDateRef date)
 }
 
 /*!
-    \since 5.5
+    \brief Creates a CFDate from a QDateTime.
 
-    Creates a CFDate from a QDateTime. The caller owns the CFDate object
-    and is responsible for releasing it.
+    The caller owns the CFDate object and is responsible for releasing it.
+
+    \since 5.5
+    \ingroup platform-type-conversions
 
     \sa fromCFDate()
 */
@@ -405,9 +434,10 @@ CFDateRef QDateTime::toCFDate() const
 }
 
 /*!
-    \since 5.5
+    \brief Constructs a new QDateTime containing a copy of the NSDate \a date.
 
-    Constructs a new QDateTime containing a copy of the NSDate \a date.
+    \since 5.5
+    \ingroup platform-type-conversions
 
     \sa toNSDate()
 */
@@ -419,9 +449,12 @@ QDateTime QDateTime::fromNSDate(const NSDate *date)
 }
 
 /*!
-    \since 5.5
+    \brief Creates an NSDate from a QDateTime.
 
-    Creates an NSDate from a QDateTime. The NSDate object is autoreleased.
+    The NSDate object is autoreleased.
+
+    \since 5.5
+    \ingroup platform-type-conversions
 
     \sa fromNSDate()
 */
@@ -435,9 +468,10 @@ NSDate *QDateTime::toNSDate() const
 
 #if QT_CONFIG(timezone) && !defined(QT_NO_SYSTEMLOCALE)
 /*!
-    \since 5.9
+    \brief Constructs a new QTimeZone containing a copy of the CFTimeZone \a timeZone.
 
-    Constructs a new QTimeZone containing a copy of the CFTimeZone \a timeZone.
+    \since 5.9
+    \ingroup platform-type-conversions
 
     \sa toCFTimeZone()
 */
@@ -449,26 +483,29 @@ QTimeZone QTimeZone::fromCFTimeZone(CFTimeZoneRef timeZone)
 }
 
 /*!
-    \since 5.9
+    \brief Creates a CFTimeZone from a QTimeZone.
 
-    Creates a CFTimeZone from a QTimeZone. The caller owns the CFTimeZone object
-    and is responsible for releasing it.
+    The caller owns the CFTimeZone object and is responsible for releasing it.
+
+    \since 5.9
+    \ingroup platform-type-conversions
 
     \sa fromCFTimeZone()
 */
 CFTimeZoneRef QTimeZone::toCFTimeZone() const
 {
 #ifndef QT_NO_DYNAMIC_CAST
-    Q_ASSERT(dynamic_cast<const QMacTimeZonePrivate *>(d.data()));
+    Q_ASSERT(dynamic_cast<const QMacTimeZonePrivate *>(d.d));
 #endif
-    const QMacTimeZonePrivate *p = static_cast<const QMacTimeZonePrivate *>(d.data());
+    const QMacTimeZonePrivate *p = static_cast<const QMacTimeZonePrivate *>(d.d);
     return reinterpret_cast<CFTimeZoneRef>([p->nsTimeZone() copy]);
 }
 
 /*!
-    \since 5.9
+    \brief Constructs a new QTimeZone containing a copy of the NSTimeZone \a timeZone.
 
-    Constructs a new QTimeZone containing a copy of the NSTimeZone \a timeZone.
+    \since 5.9
+    \ingroup platform-type-conversions
 
     \sa toNSTimeZone()
 */
@@ -480,9 +517,12 @@ QTimeZone QTimeZone::fromNSTimeZone(const NSTimeZone *timeZone)
 }
 
 /*!
-    \since 5.9
+    \brief Creates an NSTimeZone from a QTimeZone.
 
-    Creates an NSTimeZone from a QTimeZone. The NSTimeZone object is autoreleased.
+    The NSTimeZone object is autoreleased.
+
+    \since 5.9
+    \ingroup platform-type-conversions
 
     \sa fromNSTimeZone()
 */
@@ -495,9 +535,10 @@ NSTimeZone *QTimeZone::toNSTimeZone() const
 // ----------------------------------------------------------------------------
 
 /*!
-    \since 5.8
+    \brief Creates a CGRect from a QRect.
 
-    Creates a CGRect from a QRect.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa QRectF::fromCGRect()
 */
@@ -507,9 +548,10 @@ CGRect QRect::toCGRect() const noexcept
 }
 
 /*!
-    \since 5.8
+    \brief Creates a CGRect from a QRectF.
 
-    Creates a CGRect from a QRectF.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa fromCGRect()
 */
@@ -519,9 +561,10 @@ CGRect QRectF::toCGRect() const noexcept
 }
 
 /*!
-    \since 5.8
+    \brief Creates a QRectF from CGRect \a rect.
 
-    Creates a QRectF from CGRect \a rect.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa toCGRect()
 */
@@ -533,9 +576,10 @@ QRectF QRectF::fromCGRect(CGRect rect) noexcept
 // ----------------------------------------------------------------------------
 
 /*!
-    \since 5.8
+    \brief Creates a CGPoint from a QPoint.
 
-    Creates a CGPoint from a QPoint.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa QPointF::fromCGPoint()
 */
@@ -545,9 +589,10 @@ CGPoint QPoint::toCGPoint() const noexcept
 }
 
 /*!
-    \since 5.8
+    \brief Creates a CGPoint from a QPointF.
 
-    Creates a CGPoint from a QPointF.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa fromCGPoint()
 */
@@ -557,9 +602,10 @@ CGPoint QPointF::toCGPoint() const noexcept
 }
 
 /*!
-    \since 5.8
+    \brief Creates a QRectF from CGPoint \a point.
 
-    Creates a QRectF from CGPoint \a point.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa toCGPoint()
 */
@@ -571,9 +617,10 @@ QPointF QPointF::fromCGPoint(CGPoint point) noexcept
 // ----------------------------------------------------------------------------
 
 /*!
-    \since 5.8
+    \brief Creates a CGSize from a QSize.
 
-    Creates a CGSize from a QSize.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa QSizeF::fromCGSize()
 */
@@ -583,9 +630,10 @@ CGSize QSize::toCGSize() const noexcept
 }
 
 /*!
-    \since 5.8
+    \brief Creates a CGSize from a QSizeF.
 
-    Creates a CGSize from a QSizeF.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa fromCGSize()
 */
@@ -595,9 +643,10 @@ CGSize QSizeF::toCGSize() const noexcept
 }
 
 /*!
-    \since 5.8
+    \brief Creates a QRectF from \a size.
 
-    Creates a QRectF from \a size.
+    \since 5.8
+    \ingroup platform-type-conversions
 
     \sa toCGSize()
 */

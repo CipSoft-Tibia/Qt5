@@ -25,6 +25,7 @@ config("swiftshader_llvm_private_config") {
       "/wd4065",
       "/wd4141",
       "/wd4146",
+      "/wd4244",
       "/wd4245",
       "/wd4267",
       "/wd4310",
@@ -55,12 +56,14 @@ config("swiftshader_llvm_private_config") {
   }
 
   if (is_fuchsia) {
-    cflags += [ "-Wno-error" ]
+    # Ignore #warning for unimplemented features in Process.inc.
+    cflags += [ "-Wno-cpp" ]
   }
 
   if (is_clang) {
     cflags += [
       "-Wno-attributes",
+      "-Wno-bitwise-instead-of-logical",
       "-Wno-deprecated-declarations",
       "-Wno-enum-compare",
       "-Wno-header-hygiene",
@@ -70,9 +73,6 @@ config("swiftshader_llvm_private_config") {
       "-Wno-unused-result",
       "-Wno-unused-variable",
     ]
-    if (current_cpu == "x86" || current_cpu == "x64") {
-      cflags += [ "-msse2" ]
-    }
   }
 
   defines = [
@@ -87,6 +87,7 @@ llvm_include_dirs = [
   "llvm/lib/Target/ARM/",
   "llvm/lib/Target/Mips/",
   "llvm/lib/Target/PowerPC/",
+  "llvm/lib/Target/RISCV/",
   "llvm/lib/Target/X86/",
   "configs/common/include/",
   "configs/common/lib/IR/",
@@ -94,6 +95,7 @@ llvm_include_dirs = [
   "configs/common/lib/Target/ARM/",
   "configs/common/lib/Target/Mips/",
   "configs/common/lib/Target/PowerPC/",
+  "configs/common/lib/Target/RISCV/",
   "configs/common/lib/Target/X86/",
   "configs/common/lib/Transforms/InstCombine/",
 ]
@@ -129,7 +131,12 @@ swiftshader_llvm_source_set("swiftshader_llvm") {
   # builds require that all declared classes have a definition even if they're
   # not used.
   if (is_ubsan_vptr) {
-    sources = [ "llvm/lib/Target/ARM/MCTargetDesc/ARMTargetStreamer.cpp" ]
+    sources = [
+      "llvm/lib/MC/MCWasmObjectTargetWriter.cpp",
+      "llvm/lib/MC/MCXCOFFObjectTargetWriter.cpp",
+      "llvm/lib/Target/ARM/MCTargetDesc/ARMTargetStreamer.cpp",
+      "llvm/lib/Target/TargetIntrinsicInfo.cpp",
+    ]
   }
 
   deps = [
@@ -147,6 +154,8 @@ swiftshader_llvm_source_set("swiftshader_llvm") {
     deps += [ ":swiftshader_llvm_mips" ]
   } else if (current_cpu == "ppc64") {
     deps += [ ":swiftshader_llvm_ppc" ]
+  } else if (current_cpu == "riscv64") {
+    deps += [ ":swiftshader_llvm_riscv64" ]
   } else if (current_cpu == "x86" || current_cpu == "x64") {
     deps += [ ":swiftshader_llvm_x86" ]
   } else {
@@ -729,13 +738,23 @@ swiftshader_llvm_source_set("swiftshader_llvm_most") {
     "llvm/lib/Transforms/InstCombine/InstCombineSimplifyDemanded.cpp",
     "llvm/lib/Transforms/InstCombine/InstCombineVectorOps.cpp",
     "llvm/lib/Transforms/InstCombine/InstructionCombining.cpp",
+    "llvm/lib/Transforms/Instrumentation/AddressSanitizer.cpp",
+    "llvm/lib/Transforms/Instrumentation/BoundsChecking.cpp",
     "llvm/lib/Transforms/Instrumentation/ControlHeightReduction.cpp",
+    "llvm/lib/Transforms/Instrumentation/DataFlowSanitizer.cpp",
+    "llvm/lib/Transforms/Instrumentation/GCOVProfiling.cpp",
+    "llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp",
     "llvm/lib/Transforms/Instrumentation/IndirectCallPromotion.cpp",
     "llvm/lib/Transforms/Instrumentation/InstrOrderFile.cpp",
     "llvm/lib/Transforms/Instrumentation/InstrProfiling.cpp",
+    "llvm/lib/Transforms/Instrumentation/Instrumentation.cpp",
+    "llvm/lib/Transforms/Instrumentation/MemorySanitizer.cpp",
     "llvm/lib/Transforms/Instrumentation/PGOInstrumentation.cpp",
     "llvm/lib/Transforms/Instrumentation/PGOMemOPSizeOpt.cpp",
+    "llvm/lib/Transforms/Instrumentation/SanitizerCoverage.cpp",
+    "llvm/lib/Transforms/Instrumentation/ThreadSanitizer.cpp",
     "llvm/lib/Transforms/Instrumentation/ValueProfileCollector.cpp",
+    "llvm/lib/Transforms/Utils/ASanStackFrameLayout.cpp",
     "llvm/lib/Transforms/Utils/BasicBlockUtils.cpp",
     "llvm/lib/Transforms/Utils/BreakCriticalEdges.cpp",
     "llvm/lib/Transforms/Utils/BuildLibCalls.cpp",
@@ -908,6 +927,7 @@ swiftshader_llvm_source_set("swiftshader_llvm_support") {
     "llvm/lib/Support/SmallPtrSet.cpp",
     "llvm/lib/Support/SmallVector.cpp",
     "llvm/lib/Support/SourceMgr.cpp",
+    "llvm/lib/Support/SpecialCaseList.cpp",
     "llvm/lib/Support/Statistic.cpp",
     "llvm/lib/Support/StringExtras.cpp",
     "llvm/lib/Support/StringMap.cpp",
@@ -920,6 +940,7 @@ swiftshader_llvm_source_set("swiftshader_llvm_support") {
     "llvm/lib/Support/TimeProfiler.cpp",
     "llvm/lib/Support/Timer.cpp",
     "llvm/lib/Support/ToolOutputFile.cpp",
+    "llvm/lib/Support/TrigramIndex.cpp",
     "llvm/lib/Support/Triple.cpp",
     "llvm/lib/Support/Twine.cpp",
     "llvm/lib/Support/Unicode.cpp",
@@ -1306,5 +1327,41 @@ swiftshader_llvm_source_set("swiftshader_llvm_x86") {
     "llvm/lib/Target/X86/X86VZeroUpper.cpp",
     "llvm/lib/Target/X86/X86WinAllocaExpander.cpp",
     "llvm/lib/Target/X86/X86WinEHState.cpp",
+  ]
+}
+
+swiftshader_llvm_source_set("swiftshader_llvm_riscv64") {
+  sources = [
+    "llvm/lib/Target/RISCV/AsmParser/RISCVAsmParser.cpp",
+    "llvm/lib/Target/RISCV/Disassembler/RISCVDisassembler.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVAsmBackend.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVELFObjectWriter.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVELFStreamer.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVInstPrinter.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVMCAsmInfo.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVMCCodeEmitter.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVMCExpr.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVMCTargetDesc.cpp",
+    "llvm/lib/Target/RISCV/MCTargetDesc/RISCVTargetStreamer.cpp",
+    "llvm/lib/Target/RISCV/RISCVAsmPrinter.cpp",
+    "llvm/lib/Target/RISCV/RISCVCallLowering.cpp",
+    "llvm/lib/Target/RISCV/RISCVExpandPseudoInsts.cpp",
+    "llvm/lib/Target/RISCV/RISCVFrameLowering.cpp",
+    "llvm/lib/Target/RISCV/RISCVInstrInfo.cpp",
+    "llvm/lib/Target/RISCV/RISCVInstructionSelector.cpp",
+    "llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp",
+    "llvm/lib/Target/RISCV/RISCVISelLowering.cpp",
+    "llvm/lib/Target/RISCV/RISCVLegalizerInfo.cpp",
+    "llvm/lib/Target/RISCV/RISCVMCInstLower.cpp",
+    "llvm/lib/Target/RISCV/RISCVMergeBaseOffset.cpp",
+    "llvm/lib/Target/RISCV/RISCVRegisterBankInfo.cpp",
+    "llvm/lib/Target/RISCV/RISCVRegisterInfo.cpp",
+    "llvm/lib/Target/RISCV/RISCVSubtarget.cpp",
+    "llvm/lib/Target/RISCV/RISCVTargetMachine.cpp",
+    "llvm/lib/Target/RISCV/RISCVTargetObjectFile.cpp",
+    "llvm/lib/Target/RISCV/RISCVTargetTransformInfo.cpp",
+    "llvm/lib/Target/RISCV/TargetInfo/RISCVTargetInfo.cpp",
+    "llvm/lib/Target/RISCV/Utils/RISCVBaseInfo.cpp",
+    "llvm/lib/Target/RISCV/Utils/RISCVMatInt.cpp",
   ]
 }

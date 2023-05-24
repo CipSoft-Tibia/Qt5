@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,51 +16,35 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/task/post_task.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "media/base/color_plane_layout.h"
+#include "media/base/media_util.h"
 #include "media/base/scopedfd_helper.h"
+#include "media/base/status.h"
 #include "media/gpu/chromeos/fourcc.h"
 #include "media/gpu/chromeos/platform_video_frame_utils.h"
 #include "media/gpu/macros.h"
-
-#define IOCTL_OR_ERROR_RETURN_VALUE(type, arg, value, type_str) \
-  do {                                                          \
-    if (device_->Ioctl(type, arg) != 0) {                       \
-      VPLOGF(1) << "ioctl() failed: " << type_str;              \
-      return value;                                             \
-    }                                                           \
-  } while (0)
-
-#define IOCTL_OR_ERROR_RETURN_FALSE(type, arg) \
-  IOCTL_OR_ERROR_RETURN_VALUE(type, arg, false, #type)
+#include "media/gpu/v4l2/v4l2_utils.h"
 
 namespace media {
 
 namespace {
 
-enum v4l2_buf_type ToSingleV4L2Planar(enum v4l2_buf_type type) {
-  switch (type) {
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-      return V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-      return V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    default:
-      return type;
-  }
-}
+const char kImageProcessorTraceName[] = "V4L2ImageProcessorBackend";
 
-base::Optional<gfx::GpuMemoryBufferHandle> CreateHandle(
+absl::optional<gfx::GpuMemoryBufferHandle> CreateHandle(
     const VideoFrame* frame) {
   gfx::GpuMemoryBufferHandle handle = CreateGpuMemoryBufferHandle(frame);
 
   if (handle.is_null() || handle.type != gfx::NATIVE_PIXMAP)
-    return base::nullopt;
+    return absl::nullopt;
   return handle;
 }
 
@@ -96,13 +80,25 @@ void FillV4L2BufferByGpuMemoryBufferHandle(
 }
 
 bool AllocateV4L2Buffers(V4L2Queue* queue,
-                         size_t num_buffers,
+                         const size_t num_buffers,
                          v4l2_memory memory_type) {
   DCHECK(queue);
-  if (queue->AllocateBuffers(num_buffers, memory_type) == 0u)
+
+  size_t requested_buffers = num_buffers;
+
+  // If we are using DMABUFs, then we will try to keep using the same V4L2
+  // buffer for a given input or output frame. In that case, allocate as many
+  // V4L2 buffers as we can to avoid running out of them. Unused buffers won't
+  // use backed memory and are thus virtually free.
+  if (memory_type == V4L2_MEMORY_DMABUF)
+    requested_buffers = VIDEO_MAX_FRAME;
+
+  // Note that MDP does not support incoherent buffer allocations.
+  if (queue->AllocateBuffers(requested_buffers, memory_type,
+                             /*incoherent=*/false) == 0u)
     return false;
 
-  if (queue->AllocatedBuffersCount() != num_buffers) {
+  if (queue->AllocatedBuffersCount() < num_buffers) {
     VLOGF(1) << "Failed to allocate buffers. Allocated number="
              << queue->AllocatedBuffersCount()
              << ", Requested number=" << num_buffers;
@@ -119,7 +115,6 @@ V4L2ImageProcessorBackend::JobRecord::JobRecord()
 V4L2ImageProcessorBackend::JobRecord::~JobRecord() = default;
 
 V4L2ImageProcessorBackend::V4L2ImageProcessorBackend(
-    scoped_refptr<base::SequencedTaskRunner> backend_task_runner,
     scoped_refptr<V4L2Device> device,
     const PortConfig& input_config,
     const PortConfig& output_config,
@@ -134,7 +129,8 @@ V4L2ImageProcessorBackend::V4L2ImageProcessorBackend(
                             output_mode,
                             relative_rotation,
                             std::move(error_cb),
-                            std::move(backend_task_runner)),
+                            base::ThreadPool::CreateSequencedTaskRunner(
+                                {base::TaskPriority::USER_VISIBLE})),
       input_memory_type_(input_memory_type),
       output_memory_type_(output_memory_type),
       device_(device),
@@ -152,6 +148,10 @@ V4L2ImageProcessorBackend::V4L2ImageProcessorBackend(
   poll_weak_this_ = poll_weak_this_factory_.GetWeakPtr();
 }
 
+std::string V4L2ImageProcessorBackend::type() const {
+  return "V4L2ImageProcessor";
+}
+
 void V4L2ImageProcessorBackend::Destroy() {
   DVLOGF(3);
   DCHECK_CALLED_ON_VALID_SEQUENCE(backend_sequence_checker_);
@@ -159,13 +159,17 @@ void V4L2ImageProcessorBackend::Destroy() {
   backend_weak_this_factory_.InvalidateWeakPtrs();
 
   if (input_queue_) {
-    input_queue_->Streamoff();
-    input_queue_->DeallocateBuffers();
+    if (!input_queue_->Streamoff())
+      VLOGF(1) << "Failed to turn stream off";
+    if (!input_queue_->DeallocateBuffers())
+      VLOGF(1) << "Failed to deallocate buffers";
     input_queue_ = nullptr;
   }
   if (output_queue_) {
-    output_queue_->Streamoff();
-    output_queue_->DeallocateBuffers();
+    if (!output_queue_->Streamoff())
+      VLOGF(1) << "Failed to turn stream off";
+    if (!output_queue_->DeallocateBuffers())
+      VLOGF(1) << "Failed to deallocate buffers";
     output_queue_ = nullptr;
   }
 
@@ -212,7 +216,6 @@ v4l2_memory InputStorageTypeToV4L2Memory(VideoFrame::StorageType storage_type) {
     case VideoFrame::STORAGE_OWNED_MEMORY:
     case VideoFrame::STORAGE_UNOWNED_MEMORY:
     case VideoFrame::STORAGE_SHMEM:
-    case VideoFrame::STORAGE_MOJO_SHARED_BUFFER:
       return V4L2_MEMORY_USERPTR;
     case VideoFrame::STORAGE_DMABUFS:
     case VideoFrame::STORAGE_GPU_MEMORY_BUFFER:
@@ -230,42 +233,30 @@ std::unique_ptr<ImageProcessorBackend> V4L2ImageProcessorBackend::Create(
     size_t num_buffers,
     const PortConfig& input_config,
     const PortConfig& output_config,
-    const std::vector<OutputMode>& preferred_output_modes,
+    OutputMode output_mode,
     VideoRotation relative_rotation,
-    ErrorCB error_cb,
-    scoped_refptr<base::SequencedTaskRunner> backend_task_runner) {
-  for (const auto& output_mode : preferred_output_modes) {
-    auto image_processor = V4L2ImageProcessorBackend::CreateWithOutputMode(
-        device, num_buffers, input_config, output_config, output_mode,
-        relative_rotation, error_cb, backend_task_runner);
-    if (image_processor)
-      return image_processor;
-  }
-
-  return nullptr;
-}
-
-// static
-std::unique_ptr<ImageProcessorBackend>
-V4L2ImageProcessorBackend::CreateWithOutputMode(
-    scoped_refptr<V4L2Device> device,
-    size_t num_buffers,
-    const PortConfig& input_config,
-    const PortConfig& output_config,
-    const OutputMode& output_mode,
-    VideoRotation relative_rotation,
-    ErrorCB error_cb,
-    scoped_refptr<base::SequencedTaskRunner> backend_task_runner) {
+    ErrorCB error_cb) {
   VLOGF(2);
   DCHECK_GT(num_buffers, 0u);
+
+  // Most of the users of this class are decoders that only want a pixel format
+  // conversion (with the same coded dimensions and visible rectangles). Video
+  // encoding, however, can try and ask for cropping (this is common for camera
+  // capture for example). Although the V4L2 ImageProcessor might support it,
+  // it's a better idea to use libyuv instead.
+  if (input_config.size != output_config.size ||
+      input_config.visible_rect != output_config.visible_rect) {
+    VLOGF(2) << "V4L2ImageProcessor cannot adapt size/visible_rects, input "
+             << input_config.ToString() << ", output "
+             << output_config.ToString();
+    return nullptr;
+  }
 
   if (!device) {
     VLOGF(2) << "Failed creating V4L2Device";
     return nullptr;
   }
 
-  // V4L2ImageProcessorBackend supports either DmaBuf-backed or memory-based
-  // video frame for input.
   VideoFrame::StorageType input_storage_type = VideoFrame::STORAGE_UNKNOWN;
   for (auto input_type : input_config.preferred_storage_types) {
     v4l2_memory v4l2_memory_type = InputStorageTypeToV4L2Memory(input_type);
@@ -280,8 +271,6 @@ V4L2ImageProcessorBackend::CreateWithOutputMode(
     return nullptr;
   }
 
-  // V4L2ImageProcessorBackend only supports DmaBuf-backed video frame for
-  // output.
   VideoFrame::StorageType output_storage_type = VideoFrame::STORAGE_UNKNOWN;
   for (auto output_type : output_config.preferred_storage_types) {
     v4l2_memory v4l2_memory_type = InputStorageTypeToV4L2Memory(output_type);
@@ -302,11 +291,6 @@ V4L2ImageProcessorBackend::CreateWithOutputMode(
     VLOGF(1) << "Unsupported input storage type: " << input_storage_type;
     return nullptr;
   }
-
-  const v4l2_memory output_memory_type =
-      output_mode == OutputMode::ALLOCATE
-          ? V4L2_MEMORY_MMAP
-          : InputStorageTypeToV4L2Memory(output_storage_type);
 
   if (!device->IsImageProcessingSupported()) {
     VLOGF(1) << "V4L2ImageProcessorBackend not supported in this platform";
@@ -392,10 +376,49 @@ V4L2ImageProcessorBackend::CreateWithOutputMode(
     output_planes[i].size = pix_mp.plane_fmt[i].sizeimage;
   }
 
-  auto image_processor = std::unique_ptr<
-      V4L2ImageProcessorBackend, std::default_delete<ImageProcessorBackend>>(
+  // Capabilities check.
+  struct v4l2_capability caps {};
+  const __u32 kCapsRequired = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
+  if (device->Ioctl(VIDIOC_QUERYCAP, &caps) != 0) {
+    VPLOGF(1) << "VIDIOC_QUERYCAP failed";
+    return nullptr;
+  }
+  if ((caps.capabilities & kCapsRequired) != kCapsRequired) {
+    VLOGF(1) << "VIDIOC_QUERYCAP failed: "
+             << "caps check failed: 0x" << std::hex << caps.capabilities;
+    return nullptr;
+  }
+
+  // Set a few standard controls to default values.
+  struct v4l2_control rotation = {.id = V4L2_CID_ROTATE, .value = 0};
+  if (device->Ioctl(VIDIOC_S_CTRL, &rotation) != 0) {
+    VPLOGF(1) << "V4L2_CID_ROTATE failed";
+    return nullptr;
+  }
+
+  struct v4l2_control hflip = {.id = V4L2_CID_HFLIP, .value = 0};
+  if (device->Ioctl(VIDIOC_S_CTRL, &hflip) != 0) {
+    VPLOGF(1) << "V4L2_CID_HFLIP failed";
+    return nullptr;
+  }
+
+  struct v4l2_control vflip = {.id = V4L2_CID_VFLIP, .value = 0};
+  if (device->Ioctl(VIDIOC_S_CTRL, &vflip) != 0) {
+    VPLOGF(1) << "V4L2_CID_VFLIP failed";
+    return nullptr;
+  }
+
+  struct v4l2_control alpha = {.id = V4L2_CID_ALPHA_COMPONENT, .value = 255};
+  if (device->Ioctl(VIDIOC_S_CTRL, &alpha) != 0)
+    VPLOGF(1) << "V4L2_CID_ALPHA_COMPONENT failed";
+
+  const v4l2_memory output_memory_type =
+      output_mode == OutputMode::ALLOCATE
+          ? V4L2_MEMORY_MMAP
+          : InputStorageTypeToV4L2Memory(output_storage_type);
+  std::unique_ptr<V4L2ImageProcessorBackend> image_processor(
       new V4L2ImageProcessorBackend(
-          backend_task_runner, std::move(device),
+          std::move(device),
           PortConfig(input_config.fourcc, negotiated_input_size, input_planes,
                      input_config.visible_rect, {input_storage_type}),
           PortConfig(output_config.fourcc, negotiated_output_size,
@@ -404,7 +427,7 @@ V4L2ImageProcessorBackend::CreateWithOutputMode(
           input_memory_type, output_memory_type, output_mode, relative_rotation,
           num_buffers, std::move(error_cb)));
 
-  // Initialize at |backend_task_runner_|.
+  // Initialize at |backend_task_runner|.
   bool success = false;
   base::WaitableEvent done;
   auto init_cb = base::BindOnce(
@@ -414,18 +437,15 @@ V4L2ImageProcessorBackend::CreateWithOutputMode(
       },
       base::Unretained(&done), base::Unretained(&success));
   // Using base::Unretained() is safe because it is blocking call.
-  backend_task_runner->PostTask(
+  image_processor->backend_task_runner_->PostTask(
       FROM_HERE, base::BindOnce(&V4L2ImageProcessorBackend::Initialize,
                                 base::Unretained(image_processor.get()),
                                 std::move(init_cb)));
   done.Wait();
   if (!success) {
     // This needs to be destroyed on |backend_task_runner|.
-    backend_task_runner->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            base::DoNothing::Once<std::unique_ptr<ImageProcessorBackend>>(),
-            std::move(image_processor)));
+    auto backend_task_runner = image_processor->backend_task_runner_;
+    backend_task_runner->DeleteSoon(FROM_HERE, std::move(image_processor));
     return nullptr;
   }
 
@@ -435,22 +455,6 @@ V4L2ImageProcessorBackend::CreateWithOutputMode(
 void V4L2ImageProcessorBackend::Initialize(InitCB init_cb) {
   DVLOGF(2);
   DCHECK_CALLED_ON_VALID_SEQUENCE(backend_sequence_checker_);
-
-  // Capabilities check.
-  struct v4l2_capability caps;
-  memset(&caps, 0, sizeof(caps));
-  const __u32 kCapsRequired = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
-  if (device_->Ioctl(VIDIOC_QUERYCAP, &caps) != 0) {
-    VPLOGF(1) << "ioctl() failed: VIDIOC_QUERYCAP";
-    std::move(init_cb).Run(false);
-    return;
-  }
-  if ((caps.capabilities & kCapsRequired) != kCapsRequired) {
-    VLOGF(1) << "Initialize(): ioctl() failed: VIDIOC_QUERYCAP: "
-             << "caps check failed: 0x" << std::hex << caps.capabilities;
-    std::move(init_cb).Run(false);
-    return;
-  }
 
   if (!CreateInputBuffers() || !CreateOutputBuffers()) {
     std::move(init_cb).Run(false);
@@ -525,7 +529,7 @@ bool V4L2ImageProcessorBackend::TryOutputFormat(uint32_t input_pixelformat,
   if (device->Ioctl(VIDIOC_S_FMT, &format) != 0 ||
       format.fmt.pix_mp.pixelformat != input_pixelformat) {
     DVLOGF(4) << "Failed to set image processor input format: "
-              << V4L2Device::V4L2FormatToString(format);
+              << V4L2FormatToString(format);
     return false;
   }
 
@@ -560,6 +564,9 @@ void V4L2ImageProcessorBackend::ProcessLegacy(scoped_refptr<VideoFrame> frame,
   auto job_record = std::make_unique<JobRecord>();
   job_record->input_frame = frame;
   job_record->legacy_ready_cb = std::move(cb);
+  if (MediaTraceIsEnabled()) {
+    job_record->start_time = base::TimeTicks::Now();
+  }
 
   input_job_queue_.emplace(std::move(job_record));
   ProcessJobsTask();
@@ -575,6 +582,9 @@ void V4L2ImageProcessorBackend::Process(scoped_refptr<VideoFrame> input_frame,
   job_record->input_frame = std::move(input_frame);
   job_record->output_frame = std::move(output_frame);
   job_record->ready_cb = std::move(cb);
+  if (MediaTraceIsEnabled()) {
+    job_record->start_time = base::TimeTicks::Now();
+  }
 
   input_job_queue_.emplace(std::move(job_record));
   ProcessJobsTask();
@@ -590,7 +600,7 @@ void V4L2ImageProcessorBackend::ProcessJobsTask() {
           *(input_job_queue_.front()->input_frame.get());
       const gfx::Size input_buffer_size(input_frame.stride(0),
                                         input_frame.coded_size().height());
-      if (!ReconfigureV4L2Format(input_buffer_size, input_frame.visible_rect(),
+      if (!ReconfigureV4L2Format(input_buffer_size,
                                  V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)) {
         NotifyError();
         return;
@@ -605,7 +615,6 @@ void V4L2ImageProcessorBackend::ProcessJobsTask() {
       const gfx::Size output_buffer_size(output_frame.stride(0),
                                          output_frame.coded_size().height());
       if (!ReconfigureV4L2Format(output_buffer_size,
-                                 output_frame.visible_rect(),
                                  V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)) {
         NotifyError();
         return;
@@ -613,8 +622,26 @@ void V4L2ImageProcessorBackend::ProcessJobsTask() {
     }
 
     // We need one input and one output buffer to schedule the job
-    auto input_buffer = input_queue_->GetFreeBuffer();
-    auto output_buffer = output_queue_->GetFreeBuffer();
+    absl::optional<V4L2WritableBufferRef> input_buffer;
+    // If we are using DMABUF frames, try to always obtain the same V4L2 buffer.
+    if (input_memory_type_ == V4L2_MEMORY_DMABUF) {
+      const VideoFrame& input_frame =
+          *(input_job_queue_.front()->input_frame.get());
+      input_buffer = input_queue_->GetFreeBufferForFrame(input_frame);
+    }
+    if (!input_buffer)
+      input_buffer = input_queue_->GetFreeBuffer();
+
+    absl::optional<V4L2WritableBufferRef> output_buffer;
+    // If we are using DMABUF frames, try to always obtain the same V4L2 buffer.
+    if (output_memory_type_ == V4L2_MEMORY_DMABUF) {
+      const VideoFrame& output_frame =
+          *(input_job_queue_.front()->output_frame.get());
+      output_buffer = output_queue_->GetFreeBufferForFrame(output_frame);
+    }
+    if (!output_buffer)
+      output_buffer = output_queue_->GetFreeBuffer();
+
     if (!input_buffer || !output_buffer)
       break;
 
@@ -634,56 +661,10 @@ void V4L2ImageProcessorBackend::Reset() {
   running_jobs_ = {};
 }
 
-bool V4L2ImageProcessorBackend::ApplyCrop(const gfx::Rect& visible_rect,
-                                          enum v4l2_buf_type type) {
-  struct v4l2_rect rect {};
-  rect.left = visible_rect.x();
-  rect.top = visible_rect.y();
-  rect.width = visible_rect.width();
-  rect.height = visible_rect.height();
-
-  struct v4l2_selection selection_arg {};
-  // Multiplanar buffer types are messed up in S_SELECTION API, so all drivers
-  // don't necessarily work with MPLANE types. This issue is resolved with
-  // kernel 4.13. As we use kernel < 4.13 today, we use single planar buffer
-  // types. See
-  // https://linuxtv.org/downloads/v4l-dvb-apis/uapi/v4l/vidioc-g-selection.html.
-  selection_arg.type = ToSingleV4L2Planar(type);
-  selection_arg.target =
-      V4L2_TYPE_IS_OUTPUT(type) ? V4L2_SEL_TGT_CROP : V4L2_SEL_TGT_COMPOSE;
-
-  selection_arg.r = rect;
-  if (device_->Ioctl(VIDIOC_S_SELECTION, &selection_arg) == 0) {
-    DVLOGF(2) << "VIDIOC_S_SELECTION is supported";
-    rect = selection_arg.r;
-  } else {
-    DVLOGF(2) << "Fallback to VIDIOC_S/G_CROP";
-    struct v4l2_crop crop {};
-    crop.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-    crop.c = rect;
-    if (device_->Ioctl(VIDIOC_S_CROP, &crop) != 0) {
-      VPLOGF(1) << "VIDIOC_S_CROP failed: ";
-      return false;
-    }
-    rect = crop.c;
-  }
-
-  const gfx::Rect adjusted_visible_rect(rect.left, rect.top, rect.width,
-                                        rect.height);
-  if (visible_rect != adjusted_visible_rect) {
-    VLOGF(1) << "Unsupported visible rectangle: " << visible_rect.ToString()
-             << ", the rectangle adjusted by the driver: "
-             << adjusted_visible_rect.ToString();
-    return false;
-  }
-  return true;
-}
-
-bool V4L2ImageProcessorBackend::ReconfigureV4L2Format(
-    const gfx::Size& size,
-    const gfx::Rect& visible_rect,
-    enum v4l2_buf_type type) {
-  v4l2_format format{};
+bool V4L2ImageProcessorBackend::ReconfigureV4L2Format(const gfx::Size& size,
+                                                      enum v4l2_buf_type type) {
+  struct v4l2_format format;
+  memset(&format, 0, sizeof(format));
   format.type = type;
   if (device_->Ioctl(VIDIOC_G_FMT, &format) != 0) {
     VPLOGF(1) << "ioctl() failed: VIDIOC_G_FMT";
@@ -700,9 +681,6 @@ bool V4L2ImageProcessorBackend::ReconfigureV4L2Format(
     VPLOGF(1) << "ioctl() failed: VIDIOC_S_FMT";
     return false;
   }
-  if (!ApplyCrop(visible_rect, type)) {
-    return false;
-  }
 
   auto queue = device_->GetQueue(type);
   const size_t num_buffers = queue->AllocatedBuffersCount();
@@ -717,33 +695,6 @@ bool V4L2ImageProcessorBackend::CreateInputBuffers() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(backend_sequence_checker_);
   DCHECK_EQ(input_queue_, nullptr);
 
-  struct v4l2_control control;
-  memset(&control, 0, sizeof(control));
-  control.id = V4L2_CID_ROTATE;
-  control.value = 0;
-  IOCTL_OR_ERROR_RETURN_FALSE(VIDIOC_S_CTRL, &control);
-
-  memset(&control, 0, sizeof(control));
-  control.id = V4L2_CID_HFLIP;
-  control.value = 0;
-  IOCTL_OR_ERROR_RETURN_FALSE(VIDIOC_S_CTRL, &control);
-
-  memset(&control, 0, sizeof(control));
-  control.id = V4L2_CID_VFLIP;
-  control.value = 0;
-  IOCTL_OR_ERROR_RETURN_FALSE(VIDIOC_S_CTRL, &control);
-
-  memset(&control, 0, sizeof(control));
-  control.id = V4L2_CID_ALPHA_COMPONENT;
-  control.value = 255;
-  if (device_->Ioctl(VIDIOC_S_CTRL, &control) != 0)
-    DVLOGF(4) << "V4L2_CID_ALPHA_COMPONENT is not supported";
-
-  if (!ApplyCrop(input_config_.visible_rect, V4L2_BUF_TYPE_VIDEO_OUTPUT)) {
-    VLOGF(2) << "Failed to apply crop to input queue";
-    return false;
-  }
-
   input_queue_ = device_->GetQueue(V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
   return input_queue_ && AllocateV4L2Buffers(input_queue_.get(), num_buffers_,
                                              input_memory_type_);
@@ -753,10 +704,6 @@ bool V4L2ImageProcessorBackend::CreateOutputBuffers() {
   VLOGF(2);
   DCHECK_CALLED_ON_VALID_SEQUENCE(backend_sequence_checker_);
   DCHECK_EQ(output_queue_, nullptr);
-
-  if (!ApplyCrop(output_config_.visible_rect, V4L2_BUF_TYPE_VIDEO_CAPTURE)) {
-    return false;
-  }
 
   output_queue_ = device_->GetQueue(V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
   return output_queue_ && AllocateV4L2Buffers(output_queue_.get(), num_buffers_,
@@ -863,7 +810,7 @@ void V4L2ImageProcessorBackend::EnqueueOutput(JobRecord* job_record,
 // static
 void V4L2ImageProcessorBackend::V4L2VFRecycleThunk(
     scoped_refptr<base::SequencedTaskRunner> task_runner,
-    base::Optional<base::WeakPtr<V4L2ImageProcessorBackend>> image_processor,
+    absl::optional<base::WeakPtr<V4L2ImageProcessorBackend>> image_processor,
     V4L2ReadableBufferRef buf) {
   DVLOGF(4);
   DCHECK(image_processor);
@@ -902,9 +849,7 @@ void V4L2ImageProcessorBackend::Dequeue() {
   // Dequeue completed input (VIDEO_OUTPUT) buffers,
   // and recycle to the free list.
   while (input_queue_->QueuedBuffersCount() > 0) {
-    bool res;
-    V4L2ReadableBufferRef buffer;
-    std::tie(res, buffer) = input_queue_->DequeueBuffer();
+    auto [res, buffer] = input_queue_->DequeueBuffer();
     if (!res) {
       NotifyError();
       return;
@@ -920,9 +865,7 @@ void V4L2ImageProcessorBackend::Dequeue() {
   while (output_queue_->QueuedBuffersCount() > 0) {
     DCHECK(output_queue_->IsStreaming());
 
-    bool res;
-    V4L2ReadableBufferRef buffer;
-    std::tie(res, buffer) = output_queue_->DequeueBuffer();
+    auto [res, buffer] = output_queue_->DequeueBuffer();
     if (!res) {
       NotifyError();
       return;
@@ -966,7 +909,24 @@ void V4L2ImageProcessorBackend::Dequeue() {
         return;
     }
 
-    output_frame->set_timestamp(job_record->input_frame->timestamp());
+    const auto timestamp = job_record->input_frame->timestamp();
+    auto iter = buffer_tracers_.find(timestamp);
+    if (iter != buffer_tracers_.end()) {
+      iter->second->EndTrace(DecoderStatus::Codes::kOk);
+      buffer_tracers_.erase(iter);
+    }
+
+    output_frame->set_timestamp(timestamp);
+    output_frame->set_color_space(job_record->input_frame->ColorSpace());
+
+    if (job_record->start_time) {
+      TRACE_EVENT_NESTABLE_ASYNC_BEGIN_WITH_TIMESTAMP0(
+          "media", "V4L2ImageProcessorBackend::Process", TRACE_ID_LOCAL(this),
+          job_record->start_time.value());
+      TRACE_EVENT_NESTABLE_ASYNC_END_WITH_TIMESTAMP1(
+          "media", "V4L2ImageProcessorBackend::Process", TRACE_ID_LOCAL(this),
+          base::TimeTicks::Now(), "timestamp", timestamp.InMilliseconds());
+    }
 
     if (!job_record->legacy_ready_cb.is_null()) {
       std::move(job_record->legacy_ready_cb)
@@ -995,9 +955,13 @@ bool V4L2ImageProcessorBackend::EnqueueInputRecord(
                                   input_config_.size)
                 .GetArea();
         buffer.SetPlaneBytesUsed(i, bytes_used);
-        user_ptrs[i] = job_record->input_frame->data(i);
+        user_ptrs[i] = const_cast<uint8_t*>(job_record->input_frame->data(i));
       }
-      std::move(buffer).QueueUserPtr(user_ptrs);
+      if (!std::move(buffer).QueueUserPtr(user_ptrs)) {
+        VPLOGF(1) << "Failed to queue a DMABUF buffer to input queue";
+        NotifyError();
+        return false;
+      }
       break;
     }
     case V4L2_MEMORY_DMABUF: {
@@ -1010,7 +974,12 @@ bool V4L2ImageProcessorBackend::EnqueueInputRecord(
 
       FillV4L2BufferByGpuMemoryBufferHandle(
           input_config_.fourcc, input_config_.size, *input_handle, &buffer);
-      std::move(buffer).QueueDMABuf(input_handle->native_pixmap_handle.planes);
+      if (!std::move(buffer).QueueDMABuf(
+              input_handle->native_pixmap_handle.planes)) {
+        VPLOGF(1) << "Failed to queue a DMABUF buffer to input queue";
+        NotifyError();
+        return false;
+      }
       break;
     }
     default:
@@ -1020,6 +989,11 @@ bool V4L2ImageProcessorBackend::EnqueueInputRecord(
   DVLOGF(4) << "enqueued frame ts="
             << job_record->input_frame->timestamp().InMilliseconds()
             << " to device.";
+
+  const auto timestamp = job_record->input_frame->timestamp();
+  buffer_tracers_[timestamp] =
+      std::make_unique<ScopedDecodeTrace>(kImageProcessorTraceName,
+                                          /*is_key_frame=*/false, timestamp);
   return true;
 }
 

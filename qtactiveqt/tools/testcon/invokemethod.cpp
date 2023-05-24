@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "invokemethod.h"
 
 #include <qt_windows.h>
-#include <ActiveQt/ActiveQt>
+#include <QtAxContainer/QAxBase>
 #include <QtWidgets/QCompleter>
+#include <QtCore/QMetaObject>
+#include <QtCore/QMetaMethod>
 
 QT_BEGIN_NAMESPACE
 
@@ -66,7 +43,7 @@ void InvokeMethod::setControl(QAxBase *ax)
         return;
     }
 
-    const QMetaObject *mo = activex->metaObject();
+    const QMetaObject *mo = activex->axBaseMetaObject();
     if (mo->methodCount()) {
         for (int i = mo->methodOffset(); i < mo->methodCount(); ++i) {
             const QMetaMethod method = mo->method(i);
@@ -111,7 +88,7 @@ void InvokeMethod::on_comboMethods_textActivated(const QString &method)
         return;
     listParameters->clear();
 
-    const QMetaObject *mo = activex->metaObject();
+    const QMetaObject *mo = activex->axBaseMetaObject();
     const QMetaMethod slot = mo->method(mo->indexOfSlot(method.toLatin1()));
     QString signature = QString::fromLatin1(slot.methodSignature());
     signature.remove(0, signature.indexOf(QLatin1Char('(')) + 1);
@@ -120,7 +97,7 @@ void InvokeMethod::on_comboMethods_textActivated(const QString &method)
     const auto pnames = slot.parameterNames();
     const auto ptypes = slot.parameterTypes();
 
-    for (int p = 0; p < ptypes.count(); ++p) {
+    for (qsizetype p = 0; p < ptypes.size(); ++p) {
         QString ptype(QString::fromLatin1(ptypes.at(p)));
         if (ptype.isEmpty())
             continue;

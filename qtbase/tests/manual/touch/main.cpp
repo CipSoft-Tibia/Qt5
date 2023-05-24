@@ -1,56 +1,40 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QApplication>
-#include <QGesture>
-#include <QLabel>
-#include <QMenu>
-#include <QMenuBar>
 #include <QAction>
-#include <QMainWindow>
-#include <QSplitter>
-#include <QStatusBar>
-#include <QToolBar>
-#include <QVector>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-#include <QPlainTextEdit>
+#include <QDebug>
+#include <QGesture>
+#include <QLabel>
+#include <QList>
+#include <QMainWindow>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
+#include <QPlainTextEdit>
 #include <QScreen>
-#include <QWindow>
 #include <QSharedPointer>
-#include <QDebug>
+#include <QSplitter>
+#include <QStatusBar>
 #include <QTextStream>
+#include <QToolBar>
+#include <QWindow>
+
+#ifdef Q_OS_WIN
+#  include <QCheckBox>
+#  include <QDialog>
+#  include <QDialogButtonBox>
+#  include <QVBoxLayout>
+#  include <QtGui/private/qguiapplication_p.h>
+#  include <QtGui/qpa/qplatformintegration.h>
+#endif
 
 static bool optIgnoreTouch = false;
-static QVector<Qt::GestureType> optGestures;
+static QList<Qt::GestureType> optGestures;
 
 static QWidgetList mainWindows;
 
@@ -192,9 +176,9 @@ Gesture *Gesture::fromQGesture(const QWidget *w, const QGesture *source)
 }
 
 typedef QSharedPointer<Gesture> GesturePtr;
-typedef QVector<GesturePtr> GesturePtrs;
+typedef QList<GesturePtr> GesturePtrs;
 
-typedef QVector<QEvent::Type> EventTypeVector;
+typedef QList<QEvent::Type> EventTypeVector;
 static EventTypeVector eventTypes;
 
 class EventFilter : public QObject {
@@ -305,7 +289,7 @@ protected:
 private:
     void handleGestureEvent(QGestureEvent *gestureEvent);
 
-    QVector<Point> m_points;
+    QList<Point> m_points;
     GesturePtrs m_gestures;
     bool m_drawPoints;
 };
@@ -335,7 +319,7 @@ bool TouchTestWidget::event(QEvent *event)
     case QEvent::MouseButtonRelease:
         if (m_drawPoints) {
             const QMouseEvent *me = static_cast<const QMouseEvent *>(event);
-            m_points.append(Point(me->localPos(),
+            m_points.append(Point(me->position(),
                                   type == QEvent::MouseButtonPress ? MousePress : MouseRelease,
                                   me->source()));
             update();
@@ -344,8 +328,8 @@ bool TouchTestWidget::event(QEvent *event)
     case QEvent::TouchBegin:
     case QEvent::TouchUpdate:
         if (m_drawPoints) {
-            for (const QTouchEvent::TouchPoint &p : static_cast<const QTouchEvent *>(event)->touchPoints())
-                m_points.append(Point(p.pos(), TouchPoint, Qt::MouseEventNotSynthesized, p.ellipseDiameters()));
+            for (const QEventPoint &p : static_cast<const QPointerEvent *>(event)->points())
+                m_points.append(Point(p.position(), TouchPoint, Qt::MouseEventNotSynthesized, p.ellipseDiameters()));
             update();
         }
         Q_FALLTHROUGH();
@@ -398,7 +382,7 @@ void TouchTestWidget::paintEvent(QPaintEvent *)
     const QRectF geom = QRectF(QPointF(0, 0), QSizeF(size()));
     painter.fillRect(geom, Qt::white);
     painter.drawRect(QRectF(geom.topLeft(), geom.bottomRight() - QPointF(1, 1)));
-    for (const Point &point : qAsConst(m_points)) {
+    for (const Point &point : std::as_const(m_points)) {
         if (geom.contains(point.pos)) {
             if (point.type == MouseRelease)
                 drawEllipse(point.pos, point.horizontalDiameter, point.verticalDiameter, point.color(), painter);
@@ -406,9 +390,65 @@ void TouchTestWidget::paintEvent(QPaintEvent *)
                 fillEllipse(point.pos, point.horizontalDiameter, point.verticalDiameter, point.color(), painter);
         }
     }
-    for (const GesturePtr &gp : qAsConst(m_gestures))
+    for (const GesturePtr &gp : std::as_const(m_gestures))
         gp->draw(geom, painter);
 }
+
+#ifdef Q_OS_WIN
+class SettingsDialog : public QDialog
+{
+    Q_OBJECT
+public:
+    explicit SettingsDialog(QWidget *parent);
+
+private slots:
+    void touchTypeToggled();
+
+private:
+    using QWindowsApplication = QNativeInterface::Private::QWindowsApplication;
+    using TouchWindowTouchType = QWindowsApplication::TouchWindowTouchType;
+    using TouchWindowTouchTypes = QWindowsApplication::QWindowsApplication::TouchWindowTouchTypes;
+
+    QCheckBox *m_fineCheckBox;
+    QCheckBox *m_palmCheckBox;
+};
+
+SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
+{
+    setWindowTitle("Settings");
+    auto layout = new QVBoxLayout(this);
+
+    TouchWindowTouchTypes touchTypes;
+    if (auto nativeWindowsApp = qGuiApp->nativeInterface<QWindowsApplication>())
+        touchTypes = nativeWindowsApp->touchWindowTouchType();
+
+    m_fineCheckBox = new QCheckBox("Fine Touch", this);
+    m_fineCheckBox->setChecked(touchTypes.testFlag(TouchWindowTouchType::FineTouch));
+    layout->addWidget(m_fineCheckBox);
+    connect(m_fineCheckBox, &QAbstractButton::toggled, this, &SettingsDialog::touchTypeToggled);
+    m_palmCheckBox = new QCheckBox("Palm Touch", this);
+    connect(m_palmCheckBox, &QAbstractButton::toggled, this, &SettingsDialog::touchTypeToggled);
+    m_palmCheckBox->setChecked(touchTypes.testFlag(TouchWindowTouchType::WantPalmTouch));
+    layout->addWidget(m_palmCheckBox);
+
+    auto box = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(box, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(box);
+}
+
+void SettingsDialog::touchTypeToggled()
+{
+    TouchWindowTouchTypes types;
+    if (m_fineCheckBox->isChecked())
+        types.setFlag(TouchWindowTouchType::FineTouch);
+    if (m_palmCheckBox->isChecked())
+        types.setFlag(TouchWindowTouchType::WantPalmTouch);
+    if (auto nativeWindowsApp = qGuiApp->nativeInterface<QWindowsApplication>())
+        nativeWindowsApp->setTouchWindowTouchType(types);
+    else
+        qWarning("Missing Interface QWindowsApplication");
+}
+#endif // Q_OS_WIN
 
 class MainWindow : public QMainWindow
 {
@@ -425,6 +465,9 @@ public slots:
     void appendToLog(const QString &text) { m_logTextEdit->appendPlainText(text); }
     void dumpTouchDevices();
 
+private slots:
+    void settingsDialog();
+
 private:
     void updateScreenLabel();
     void newWindow() { MainWindow::createMainWindow(); }
@@ -440,8 +483,7 @@ MainWindow *MainWindow::createMainWindow()
     const QSize screenSize = QGuiApplication::primaryScreen()->availableGeometry().size();
     result->resize(screenSize / 2);
     const QSize sizeDiff = screenSize - result->size();
-    const QPoint pos = QPoint(sizeDiff.width() / 2, sizeDiff.height() / 2)
-                       + mainWindows.size() * QPoint(30, 10);
+    const QPoint pos = QPoint(sizeDiff.width() / 2, sizeDiff.height() / 2);
     result->move(pos);
     result->show();
 
@@ -471,15 +513,15 @@ MainWindow::MainWindow()
     addToolBar(Qt::TopToolBarArea, toolBar);
     QMenu *fileMenu = menuBar()->addMenu("File");
     QAction *newWindowAction = fileMenu->addAction(QStringLiteral("New Window"), this, &MainWindow::newWindow);
-    newWindowAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_N));
+    newWindowAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
     toolBar->addAction(newWindowAction);
     fileMenu->addSeparator();
     QAction *dumpDeviceAction = fileMenu->addAction(QStringLiteral("Dump devices"));
-    dumpDeviceAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_D));
+    dumpDeviceAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     connect(dumpDeviceAction, &QAction::triggered, this, &MainWindow::dumpTouchDevices);
     toolBar->addAction(dumpDeviceAction);
     QAction *clearLogAction = fileMenu->addAction(QStringLiteral("Clear Log"));
-    clearLogAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_L));
+    clearLogAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
     connect(clearLogAction, &QAction::triggered, m_logTextEdit, &QPlainTextEdit::clear);
     toolBar->addAction(clearLogAction);
     QAction *toggleDrawPointAction = fileMenu->addAction(QStringLiteral("Draw Points"));
@@ -488,13 +530,22 @@ MainWindow::MainWindow()
     connect(toggleDrawPointAction, &QAction::toggled, m_touchWidget, &TouchTestWidget::setDrawPoints);
     toolBar->addAction(toggleDrawPointAction);
     QAction *clearPointAction = fileMenu->addAction(QStringLiteral("Clear Points"));
-    clearPointAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_P));
+    clearPointAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
     connect(clearPointAction, &QAction::triggered, m_touchWidget, &TouchTestWidget::clearPoints);
     toolBar->addAction(clearPointAction);
     QAction *quitAction = fileMenu->addAction(QStringLiteral("Quit"));
-    quitAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q));
+    quitAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Q));
     connect(quitAction, &QAction::triggered, qApp, &QCoreApplication::quit);
     toolBar->addAction(quitAction);
+
+    auto settingsMenu = menuBar()->addMenu("Settings");
+    auto settingsAction = settingsMenu->addAction("Settings",
+                                                  this, &MainWindow::settingsDialog);
+#ifdef Q_OS_WIN
+    Q_UNUSED(settingsAction);
+#else
+    settingsAction->setEnabled(false);
+#endif
 
     QSplitter *mainSplitter = new QSplitter(Qt::Vertical, this);
 
@@ -509,6 +560,14 @@ MainWindow::MainWindow()
     statusBar()->addPermanentWidget(m_screenLabel);
 
     dumpTouchDevices();
+}
+
+void MainWindow::settingsDialog()
+{
+#ifdef Q_OS_WIN
+    SettingsDialog dialog(this);
+    dialog.exec();
+#endif
 }
 
 void MainWindow::setVisible(bool visible)
@@ -526,7 +585,7 @@ void MainWindow::updateScreenLabel()
     const QRect geometry = screen->geometry();
     const qreal dpr = screen->devicePixelRatio();
     str << '"' << screen->name() << "\" " << geometry.width() << 'x' << geometry.height()
-        << forcesign << geometry.x() << geometry.y() << noforcesign;
+        << Qt::forcesign << geometry.x() << geometry.y() << Qt::noforcesign;
     if (!qFuzzyCompare(dpr, qreal(1)))
         str << ", dpr=" << dpr;
     m_screenLabel->setText(text);
@@ -536,7 +595,7 @@ void MainWindow::dumpTouchDevices()
 {
     QString message;
     QDebug debug(&message);
-    const QList<const QTouchDevice *> devices = QTouchDevice::devices();
+    const auto devices = QPointingDevice::devices();
     debug << devices.size() << "Device(s):\n";
     for (int i = 0; i < devices.size(); ++i)
         debug << "Device #" << i << devices.at(i) << '\n';

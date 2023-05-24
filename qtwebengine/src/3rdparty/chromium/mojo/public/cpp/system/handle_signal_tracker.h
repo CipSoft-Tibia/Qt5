@@ -1,12 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MOJO_PUBLIC_CPP_SYSTEM_HANDLE_SIGNAL_TRACKER_H_
 #define MOJO_PUBLIC_CPP_SYSTEM_HANDLE_SIGNAL_TRACKER_H_
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/c/system/types.h"
 #include "mojo/public/cpp/system/handle.h"
 #include "mojo/public/cpp/system/simple_watcher.h"
@@ -36,7 +36,11 @@ class MOJO_CPP_SYSTEM_EXPORT HandleSignalTracker {
   HandleSignalTracker(Handle handle,
                       MojoHandleSignals signals,
                       scoped_refptr<base::SequencedTaskRunner> task_runner =
-                          base::SequencedTaskRunnerHandle::Get());
+                          base::SequencedTaskRunner::GetCurrentDefault());
+
+  HandleSignalTracker(const HandleSignalTracker&) = delete;
+  HandleSignalTracker& operator=(const HandleSignalTracker&) = delete;
+
   ~HandleSignalTracker();
 
   const HandleSignalsState& last_known_state() const {
@@ -67,8 +71,6 @@ class MOJO_CPP_SYSTEM_EXPORT HandleSignalTracker {
   // Watches for the signal(s) to be cleared. May only be armed when
   // |high_watcher_| is not.
   SimpleWatcher low_watcher_;
-
-  DISALLOW_COPY_AND_ASSIGN(HandleSignalTracker);
 };
 
 }  // namespace mojo

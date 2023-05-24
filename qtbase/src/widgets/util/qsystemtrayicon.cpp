@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsystemtrayicon.h"
 #include "qsystemtrayicon_p.h"
@@ -60,8 +24,6 @@
 #include "qstyle.h"
 #include "qgridlayout.h"
 #include "qapplication.h"
-#include "qdesktopwidget.h"
-#include <private/qdesktopwidget_p.h>
 #include "qbitmap.h"
 
 #include <private/qhighdpiscaling_p.h>
@@ -99,18 +61,18 @@ static QIcon messageIcon2qIcon(QSystemTrayIcon::MessageIcon icon)
     called the \e{system tray} or \e{notification area}, where long-running
     applications can display icons and short messages.
 
-    \image system-tray.png The system tray on Windows XP.
+    \image system-tray.webp The system tray on Windows 10.
 
     The QSystemTrayIcon class can be used on the following platforms:
 
     \list
     \li All supported versions of Windows.
-    \li All window managers and independent tray implementations for X11 that implement the
-       \l{http://standards.freedesktop.org/systemtray-spec/systemtray-spec-0.2.html freedesktop.org}
-       XEmbed system tray specification.
-    \li All X11 desktop environments that implement the D-Bus
+    \li All Linux desktop environments that implement the D-Bus
        \l{http://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/StatusNotifierItem}
-       specification, including recent versions of KDE and Unity.
+       {StatusNotifierItem specification}, including KDE, Gnome, Xfce, LXQt, and DDE.
+    \li All window managers and independent tray implementations for X11 that implement the
+       \l{http://standards.freedesktop.org/systemtray-spec/systemtray-spec-0.2.html}
+       {freedesktop.org XEmbed system tray specification}.
     \li All supported versions of \macos.
     \endlist
 
@@ -130,9 +92,11 @@ static QIcon messageIcon2qIcon(QSystemTrayIcon::MessageIcon icon)
 
     Only on X11, when a tooltip is requested, the QSystemTrayIcon receives a QHelpEvent
     of type QEvent::ToolTip. Additionally, the QSystemTrayIcon receives wheel events of
-    type QEvent::Wheel. These are not supported on any other platform.
+    type QEvent::Wheel. These are not supported on any other platform. Note: Since GNOME
+    Shell version 3.26, not all QSystemTrayIcon::ActivationReason are supported by the
+    system without shell extensions installed.
 
-    \sa QDesktopServices, QDesktopWidget, {Desktop Integration}, {System Tray Icon Example}
+    \sa QDesktopServices, {Desktop Integration}, {System Tray Icon Example}
 */
 
 /*!
@@ -190,9 +154,6 @@ QSystemTrayIcon::~QSystemTrayIcon()
     The menu will pop up when the user requests the context menu for the system
     tray icon by clicking the mouse button.
 
-    On \macos, this is currenly converted to a NSMenu, so the
-    aboutToHide() signal is not emitted.
-
     \note The system tray icon does not take ownership of the menu. You must
     ensure that it is deleted at the appropriate time by, for example, creating
     the menu with a suitable parent object.
@@ -201,12 +162,16 @@ void QSystemTrayIcon::setContextMenu(QMenu *menu)
 {
     Q_D(QSystemTrayIcon);
     QMenu *oldMenu = d->menu.data();
+    if (oldMenu == menu)
+        return;
+
     d->menu = menu;
     d->updateMenu_sys();
-    if (oldMenu != menu && d->qpa_sys) {
+
+    if (d->qpa_sys) {
         // Show the QMenu-based menu for QPA plugins that do not provide native menus
         if (oldMenu && !oldMenu->platformMenu())
-            QObject::disconnect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested, menu, nullptr);
+            QObject::disconnect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested, oldMenu, nullptr);
         if (menu && !menu->platformMenu()) {
             QObject::connect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested,
                              menu,
@@ -533,7 +498,7 @@ QBalloonTip::QBalloonTip(const QIcon &icon, const QString &title,
     msgLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 
     // smart size for the message label
-    int limit = QDesktopWidgetPrivate::availableGeometry(msgLabel).size().width() / 3;
+    int limit = QWidgetPrivate::availableScreenGeometry(msgLabel).width() / 3;
     if (msgLabel->sizeHint().width() > limit) {
         msgLabel->setWordWrap(true);
         if (msgLabel->sizeHint().width() > limit) {
@@ -600,12 +565,15 @@ void QBalloonTip::resizeEvent(QResizeEvent *ev)
 void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
 {
     this->showArrow = showArrow;
-    QRect scr = QDesktopWidgetPrivate::screenGeometry(pos);
+    QScreen *screen = QGuiApplication::screenAt(pos);
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    QRect screenRect = screen->geometry();
     QSize sh = sizeHint();
     const int border = 1;
     const int ah = 18, ao = 18, aw = 18, rc = 7;
-    bool arrowAtTop = (pos.y() + sh.height() + ah < scr.height());
-    bool arrowAtLeft = (pos.x() + sh.width() - ao < scr.width());
+    bool arrowAtTop = (pos.y() + sh.height() + ah < screenRect.height());
+    bool arrowAtLeft = (pos.x() + sh.width() - ao < screenRect.width());
     setContentsMargins(border + 3,  border + (arrowAtTop ? ah : 0) + 2, border + 3, border + (arrowAtTop ? 0 : ah) + 2);
     updateGeometry();
     sh  = sizeHint();
@@ -631,14 +599,14 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
             path.lineTo(ml + ao, mt - ah);
             path.lineTo(ml + ao + aw, mt);
         }
-        move(qMax(pos.x() - ao, scr.left() + 2), pos.y());
+        move(qMax(pos.x() - ao, screenRect.left() + 2), pos.y());
     } else if (arrowAtTop && !arrowAtLeft) {
         if (showArrow) {
             path.lineTo(mr - ao - aw, mt);
             path.lineTo(mr - ao, mt - ah);
             path.lineTo(mr - ao, mt);
         }
-        move(qMin(pos.x() - sh.width() + ao, scr.right() - sh.width() - 2), pos.y());
+        move(qMin(pos.x() - sh.width() + ao, screenRect.right() - sh.width() - 2), pos.y());
     }
     path.lineTo(mr - rc, mt);
     path.arcTo(QRect(mr - rc*2, mt, rc*2, rc*2), 90, -90);
@@ -650,7 +618,7 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
             path.lineTo(mr - ao, mb + ah);
             path.lineTo(mr - ao - aw, mb);
         }
-        move(qMin(pos.x() - sh.width() + ao, scr.right() - sh.width() - 2),
+        move(qMin(pos.x() - sh.width() + ao, screenRect.right() - sh.width() - 2),
              pos.y() - sh.height());
     } else if (!arrowAtTop && arrowAtLeft) {
         if (showArrow) {
@@ -658,7 +626,7 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
             path.lineTo(ao, mb + ah);
             path.lineTo(ao, mb);
         }
-        move(qMax(pos.x() - ao, scr.x() + 2), pos.y() - sh.height());
+        move(qMax(pos.x() - ao, screenRect.x() + 2), pos.y() - sh.height());
     }
     path.lineTo(ml + rc, mb);
     path.arcTo(QRect(ml, mb - rc*2, rc*2, rc*2), -90, -90);
@@ -689,7 +657,7 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
 void QBalloonTip::mousePressEvent(QMouseEvent *e)
 {
     close();
-    if(e->button() == Qt::LeftButton)
+    if (e->button() == Qt::LeftButton)
         emit trayIcon->messageClicked();
 }
 
@@ -746,7 +714,7 @@ void QSystemTrayIconPrivate::addPlatformMenu(QMenu *menu) const
     if (platformMenu)
         menu->setPlatformMenu(platformMenu);
 #else
-    Q_UNUSED(menu)
+    Q_UNUSED(menu);
 #endif // QT_CONFIG(menu)
 }
 

@@ -1,32 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+// Do not include anything in this file. We are being #included in the unnamed namespace
+// with a bunch of defines that may break other legitimate code.
 
 #define LITERAL "some literal"
 #define LITERAL_LEN (sizeof(LITERAL)-1)
@@ -37,16 +13,13 @@
 #define UTF8_LITERAL_LEN (sizeof(UTF8_LITERAL)-1)
 #define UTF8_LITERAL_EXTRA "s\xc3\xb6m\xc3\xab l\xc3\xaft\xc3\xabr\xc3\xa4l" "EXTRA"
 
-#ifdef Q_COMPILER_UNICODE_STRINGS
 // "some literal", but replacing all vocals by their umlauted UTF-8 string :)
 #define UNICODE_LITERAL u"s\u00f6m\u00eb l\u00eft\u00ebr\u00e4l"
 #define UNICODE_LITERAL_LEN ((sizeof(UNICODE_LITERAL) - 1) / 2)
 #define UNICODE_LITERAL_EXTRA u"s\u00f6m\u00eb l\u00eft\u00ebr\u00e4l" "EXTRA"
-#endif
 
 #ifndef P
 # error You need to define P
-# define P +
 #endif
 
 //fix for gcc4.0: if the operator+ does not exist without QT_USE_FAST_OPERATOR_PLUS
@@ -59,17 +32,14 @@
 template <typename T> QString toQString(const T &t);
 
 template <> QString toQString(const QString &s) { return s; }
-template <> QString toQString(const QStringRef &r) { return r.toString(); }
 template <> QString toQString(const QStringView &v) { return v.toString(); }
 template <> QString toQString(const QLatin1String &l) { return l; }
 template <> QString toQString(const QLatin1Char &l) { return QChar(l); }
 template <> QString toQString(const QChar &c) { return c; }
 template <> QString toQString(const QChar::SpecialCharacter &c) { return QChar(c); }
-#ifdef Q_COMPILER_UNICODE_STRINGS
 template <> QString toQString(char16_t * const &p) { return QStringView(p).toString(); }
 template <size_t N> QString toQString(const char16_t (&a)[N]) { return QStringView(a).toString(); }
 template <> QString toQString(const char16_t &c) { return QChar(c); }
-#endif
 
 template <typename T> QByteArray toQByteArray(const T &t);
 
@@ -78,23 +48,72 @@ template <> QByteArray toQByteArray(char * const &p) { return p; }
 template <size_t N> QByteArray toQByteArray(const char (&a)[N]) { return a; }
 template <> QByteArray toQByteArray(const char &c) { return QByteArray(&c, 1); }
 
+template <typename String, typename Separator>
+void checkItWorksWithFreeSpaceAtBegin(const String &chunk, const Separator &separator)
+{
+    // GIVEN: a String with freeSpaceAtBegin() and less than chunk.size() freeSpaceAtEnd()
+    String str;
+
+    int prepends = 0;
+    const int max_prepends = 10;
+    while (str.data_ptr().freeSpaceAtBegin() < chunk.size() && prepends++ < max_prepends)
+        str.prepend(chunk);
+    QVERIFY(prepends < max_prepends);
+
+    int appends = 0;
+    const int max_appends = 100;
+    while (str.data_ptr().freeSpaceAtEnd() >= chunk.size() && appends++ < max_appends)
+        str.append(chunk);
+    QVERIFY(appends < max_appends);
+
+    QVERIFY(str.capacity() - str.size() >= chunk.size());
+    QVERIFY(str.data_ptr().freeSpaceAtEnd() < chunk.size());
+
+    // WHEN: adding a QStringBuilder expression which exceeds freeSpaceAtEnd()
+    str += separator P chunk;
+
+    // THEN: it doesn't crash (QTBUG-99330)
+    const String expected = chunk.repeated(prepends + appends) + separator + chunk;
+    QCOMPARE(str, expected);
+}
+
+template <typename String>
+void checkNullVsEmpty(const String &empty, const char *failureReason = nullptr)
+{
+    String a;
+    String b;
+    QVERIFY(a.isNull());
+    QVERIFY(b.isNull());
+    String result = a P b;
+    QVERIFY(result.isNull());
+
+    String d = empty;
+    QVERIFY(d.isEmpty());
+    QVERIFY(!d.isNull());
+    result = a P d;
+    QVERIFY(result.isEmpty());
+    if (failureReason)
+        QEXPECT_FAIL("", failureReason, Continue);
+    QVERIFY(!result.isNull());
+
+    result = a P a P a;
+    QVERIFY(!result.isNull());
+}
+
 void runScenario()
 {
     // this code is latin1. TODO: replace it with the utf8 block below, once
     // strings default to utf8.
     QLatin1String l1string(LITERAL);
     QString string(l1string);
-    QStringRef stringref(&string, 2, 10);
-    QStringView stringview(stringref);
+    QStringView stringview = QStringView{ string }.mid(2, 10);
     QLatin1Char lchar('c');
     QChar qchar(lchar);
     QChar::SpecialCharacter special(QChar::Nbsp);
-#ifdef Q_COMPILER_UNICODE_STRINGS
     char16_t u16char = UNICODE_LITERAL[0];
     char16_t u16chararray[] = { u's', 0xF6, u'm', 0xEB, u' ', u'l', 0xEF, u't', 0xEB, u'r', 0xE4, u'l', 0x00 };
     QCOMPARE(QStringView(u16chararray), QStringView(UNICODE_LITERAL));
     char16_t *u16charstar = u16chararray;
-#endif
 
 #define CHECK(QorP, a1, a2) \
     do { \
@@ -109,7 +128,6 @@ void runScenario()
 
     CHECK(P, l1string, l1string);
     CHECK(P, l1string, string);
-    CHECK(P, l1string, stringref);
     CHECK(Q, l1string, stringview);
     CHECK(P, l1string, lchar);
     CHECK(P, l1string, qchar);
@@ -120,7 +138,6 @@ void runScenario()
     CHECK(Q, l1string, u16charstar);
 
     CHECK(P, string, string);
-    CHECK(P, string, stringref);
     CHECK(Q, string, stringview);
     CHECK(P, string, lchar);
     CHECK(P, string, qchar);
@@ -129,16 +146,6 @@ void runScenario()
     CHECK(Q, string, u16char);
     CHECK(Q, string, u16chararray);
     CHECK(Q, string, u16charstar);
-
-    CHECK(P, stringref, stringref);
-    CHECK(Q, stringref, stringview);
-    CHECK(P, stringref, lchar);
-    CHECK(P, stringref, qchar);
-    CHECK(P, stringref, special);
-    CHECK(P, stringref, QStringLiteral(LITERAL));
-    CHECK(Q, stringref, u16char);
-    CHECK(Q, stringref, u16chararray);
-    CHECK(Q, stringref, u16charstar);
 
     CHECK(Q, stringview, stringview);
     CHECK(Q, stringview, lchar);
@@ -191,7 +198,7 @@ void runScenario()
              toQByteArray(a1).append(toQByteArray(a2))) \
     /* end */
 
-    QByteArray bytearray = stringref.toUtf8();
+    QByteArray bytearray = stringview.toUtf8();
     char *charstar = bytearray.data();
     char chararray[3] = { 'H', 'i', '\0' };
     const char constchararray[3] = { 'H', 'i', '\0' };
@@ -224,15 +231,13 @@ void runScenario()
     QString r;
 
     // self-assignment:
-    r = stringref.toString();
+    r = stringview.toString();
     r = lchar + r;
-    QCOMPARE(r, QString(lchar P stringref));
+    QCOMPARE(r, QString(lchar P stringview));
 
-#ifdef Q_COMPILER_UNICODE_STRINGS
     r = QStringLiteral(UNICODE_LITERAL);
     r = r Q QStringLiteral(UNICODE_LITERAL);
     QCOMPARE(r, r3);
-#endif
 
 #ifndef QT_NO_CAST_FROM_ASCII
     r = string P LITERAL;
@@ -283,7 +288,7 @@ void runScenario()
     r = string P ba;
     QCOMPARE(r, string);
 
-    const char *zero = 0;
+    const char *zero = nullptr;
     r = string P zero;
     QCOMPARE(r, string);
     r = zero P string;
@@ -322,11 +327,15 @@ void runScenario()
         r2 = QByteArray("hello\0") P UTF8_LITERAL;
         QCOMPARE(r, r2);
 
-        const char *zero = 0;
+        const char *zero = nullptr;
         r = ba P zero;
         QCOMPARE(r, ba);
         r = zero P ba;
         QCOMPARE(r, ba);
+
+        QByteArrayView qbav = LITERAL;
+        superba = qbav P qbav P LITERAL;
+        QCOMPARE(superba, QByteArray(LITERAL LITERAL LITERAL));
     }
 
     //operator QString  +=
@@ -347,6 +356,16 @@ void runScenario()
         QCOMPARE(str2, str2_e);
     }
 
+    checkItWorksWithFreeSpaceAtBegin(QString::fromUtf8(UTF8_LITERAL),
+                                 #ifdef QT_NO_CAST_FROM_ASCII
+                                     QLatin1String("1234")
+                                 #else
+                                     "1234"
+                                 #endif
+                                     );
+    if (QTest::currentTestFailed())
+        return;
+
     //operator QByteArray  +=
     {
         QByteArray ba = UTF8_LITERAL;
@@ -358,15 +377,13 @@ void runScenario()
         QByteArray ba2 = withZero;
         ba2 += ba2 P withZero;
         QCOMPARE(ba2, QByteArray(withZero + withZero + withZero));
-#if !defined(QT_NO_CAST_TO_ASCII) && QT_DEPRECATED_SINCE(5, 15)
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-        ba = UTF8_LITERAL;
-        ba2 = (ba += QLatin1String(LITERAL) + QString::fromUtf8(UTF8_LITERAL));
-        QCOMPARE(ba2, ba);
-        QCOMPARE(ba, QByteArray(UTF8_LITERAL LITERAL UTF8_LITERAL));
-QT_WARNING_POP
-#endif
     }
 
+    // null vs. empty
+    checkNullVsEmpty(QStringLiteral(""));
+    checkNullVsEmpty(QByteArrayLiteral(""), "QTBUG-114238: inconsistent isEmpty/isNull between QString and QByteArray concatenation");
+
+    checkItWorksWithFreeSpaceAtBegin(QByteArray(UTF8_LITERAL), "1234");
+    if (QTest::currentTestFailed())
+        return;
 }

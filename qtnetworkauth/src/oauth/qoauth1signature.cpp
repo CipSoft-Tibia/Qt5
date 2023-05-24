@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Network Auth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qoauth1signature.h"
 #include "qoauth1signature_p.h"
@@ -98,7 +72,7 @@ QOAuth1SignaturePrivate QOAuth1SignaturePrivate::shared_null;
 
 QOAuth1SignaturePrivate::QOAuth1SignaturePrivate(const QUrl &url,
                                                  QOAuth1Signature::HttpRequestMethod method,
-                                                 const QVariantMap &parameters,
+                                                 const QMultiMap<QString, QVariant> &parameters,
                                                  const QString &clientSharedKey,
                                                  const QString &tokenSecret) :
     method(method), url(url), clientSharedKey(clientSharedKey), tokenSecret(tokenSecret),
@@ -140,7 +114,7 @@ QByteArray QOAuth1SignaturePrivate::signatureBaseString() const
     base.append('&');
     base.append(QUrl::toPercentEncoding(url.toString(QUrl::RemoveQuery)) + "&");
 
-    QVariantMap p = parameters;
+    QMultiMap<QString, QVariant> p = parameters;
     {
         // replace '+' with spaces now before decoding so that '%2B' gets left as '+'
         const QString query = url.query().replace(QLatin1Char('+'), QLatin1Char(' '));
@@ -161,7 +135,7 @@ QByteArray QOAuth1SignaturePrivate::secret() const
     return secret;
 }
 
-QByteArray QOAuth1SignaturePrivate::parameterString(const QVariantMap &parameters)
+QByteArray QOAuth1SignaturePrivate::parameterString(const QMultiMap<QString, QVariant> &parameters)
 {
     QByteArray ret;
     auto previous = parameters.end();
@@ -178,7 +152,7 @@ QByteArray QOAuth1SignaturePrivate::parameterString(const QVariantMap &parameter
     return ret;
 }
 
-QByteArray QOAuth1SignaturePrivate::encodeHeaders(const QVariantMap &headers)
+QByteArray QOAuth1SignaturePrivate::encodeHeaders(const QMultiMap<QString, QVariant> &headers)
 {
     return QUrl::toPercentEncoding(QString::fromLatin1(parameterString(headers)));
 }
@@ -192,7 +166,7 @@ QByteArray QOAuth1SignaturePrivate::encodeHeaders(const QVariantMap &headers)
     \endlist
 */
 QOAuth1Signature::QOAuth1Signature(const QUrl &url, QOAuth1Signature::HttpRequestMethod method,
-                                   const QVariantMap &parameters) :
+                                   const QMultiMap<QString, QVariant> &parameters) :
     d(new QOAuth1SignaturePrivate(url, method, parameters))
 {}
 
@@ -210,7 +184,7 @@ QOAuth1Signature::QOAuth1Signature(const QUrl &url, QOAuth1Signature::HttpReques
 */
 QOAuth1Signature::QOAuth1Signature(const QUrl &url, const QString &clientSharedKey,
                                    const QString &tokenSecret, HttpRequestMethod method,
-                                   const QVariantMap &parameters) :
+                                   const QMultiMap<QString, QVariant> &parameters) :
     d(new QOAuth1SignaturePrivate(url, method, parameters, clientSharedKey, tokenSecret))
 {}
 
@@ -300,7 +274,7 @@ void QOAuth1Signature::setUrl(const QUrl &url)
 /*!
     Returns the parameters.
 */
-QVariantMap QOAuth1Signature::parameters() const
+QMultiMap<QString, QVariant> QOAuth1Signature::parameters() const
 {
     return d->parameters;
 }
@@ -308,7 +282,7 @@ QVariantMap QOAuth1Signature::parameters() const
 /*!
     Sets the \a parameters.
 */
-void QOAuth1Signature::setParameters(const QVariantMap &parameters)
+void QOAuth1Signature::setParameters(const QMultiMap<QString, QVariant> &parameters)
 {
     d->parameters.clear();
     for (auto it = parameters.cbegin(), end = parameters.cend(); it != end; ++it)
@@ -402,10 +376,8 @@ void QOAuth1Signature::setTokenSecret(const QString &secret)
 */
 QByteArray QOAuth1Signature::hmacSha1() const
 {
-    QMessageAuthenticationCode code(QCryptographicHash::Sha1);
-    code.setKey(d->secret());
-    code.addData(d->signatureBaseString());
-    return code.result();
+    return QMessageAuthenticationCode::hash(d->signatureBaseString(), d->secret(),
+                                            QCryptographicHash::Sha1);
 }
 
 /*!

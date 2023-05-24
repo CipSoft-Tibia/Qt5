@@ -25,12 +25,13 @@ namespace dsp {
 namespace {
 
 template <int bitdepth, typename Pixel>
-void SuperRes_C(const void* /*coefficients*/, void* const source,
-                const ptrdiff_t stride, const int height,
+void SuperRes_C(const void* /*coefficients*/,
+                void* LIBGAV1_RESTRICT const source,
+                const ptrdiff_t source_stride, const int height,
                 const int downscaled_width, const int upscaled_width,
                 const int initial_subpixel_x, const int step,
-                void* const dest) {
-  assert(step <= kSuperResScaleMask || upscaled_width <= 4);
+                void* LIBGAV1_RESTRICT const dest, ptrdiff_t dest_stride) {
+  assert(step <= 1 << kSuperResScaleBits);
   auto* src = static_cast<Pixel*>(source) - DivideBy2(kSuperResFilterTaps);
   auto* dst = static_cast<Pixel*>(dest);
   int y = height;
@@ -61,8 +62,8 @@ void SuperRes_C(const void* /*coefficients*/, void* const source,
                      (1 << bitdepth) - 1);
       subpixel_x += step;
     } while (++x < upscaled_width);
-    src += stride;
-    dst += stride;
+    src += source_stride;
+    dst += dest_stride;
   } while (--y != 0);
 }
 
@@ -94,7 +95,23 @@ void Init10bpp() {
 #endif
 #endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
 }
+#endif  // LIBGAV1_MAX_BITDEPTH >= 10
+
+#if LIBGAV1_MAX_BITDEPTH == 12
+void Init12bpp() {
+  Dsp* dsp = dsp_internal::GetWritableDspTable(12);
+  assert(dsp != nullptr);
+  dsp->super_res_coefficients = nullptr;
+#if LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  dsp->super_res = SuperRes_C<12, uint16_t>;
+#else  // !LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+  static_cast<void>(dsp);
+#ifndef LIBGAV1_Dsp12bpp_SuperRes
+  dsp->super_res = SuperRes_C<12, uint16_t>;
 #endif
+#endif  // LIBGAV1_ENABLE_ALL_DSP_FUNCTIONS
+}
+#endif  // LIBGAV1_MAX_BITDEPTH == 12
 
 }  // namespace
 
@@ -102,6 +119,9 @@ void SuperResInit_C() {
   Init8bpp();
 #if LIBGAV1_MAX_BITDEPTH >= 10
   Init10bpp();
+#endif
+#if LIBGAV1_MAX_BITDEPTH == 12
+  Init12bpp();
 #endif
 }
 

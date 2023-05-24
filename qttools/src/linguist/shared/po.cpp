@@ -1,39 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "translator.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QIODevice>
 #include <QtCore/QHash>
-#include <QtCore/QRegExp>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QString>
-#include <QtCore/QTextCodec>
+#include <QtCore/QStringConverter>
 #include <QtCore/QTextStream>
 
 #include <ctype.h>
@@ -52,7 +27,7 @@ static QString poEscapedString(const QString &prefix, const QString &keyword,
     QStringList lines;
     int off = 0;
     QString res;
-    while (off < ba.length()) {
+    while (off < ba.size()) {
         ushort c = ba[off++].unicode();
         switch (c) {
         case '\n':
@@ -88,7 +63,7 @@ static QString poEscapedString(const QString &prefix, const QString &keyword,
             if (c < 32) {
                 res += QLatin1String("\\x");
                 res += QString::number(c, 16);
-                if (off < ba.length() && isxdigit(ba[off].unicode()))
+                if (off < ba.size() && isxdigit(ba[off].unicode()))
                     res += QLatin1String("\"\"");
             } else {
                 res += QChar(c);
@@ -100,15 +75,15 @@ static QString poEscapedString(const QString &prefix, const QString &keyword,
         lines.append(res);
     if (!lines.isEmpty()) {
         if (!noWrap) {
-            if (lines.count() != 1 ||
-                lines.first().length() > MAX_LEN - keyword.length() - prefix.length() - 3)
+            if (lines.size() != 1 ||
+                lines.first().size() > MAX_LEN - keyword.size() - prefix.size() - 3)
             {
-                QStringList olines = lines;
+                const QStringList olines = lines;
                 lines = QStringList(QString());
-                const int maxlen = MAX_LEN - prefix.length() - 2;
-                foreach (const QString &line, olines) {
+                const int maxlen = MAX_LEN - prefix.size() - 2;
+                for (const QString &line : olines) {
                     int off = 0;
-                    while (off + maxlen < line.length()) {
+                    while (off + maxlen < line.size()) {
                         int idx = line.lastIndexOf(QLatin1Char(' '), off + maxlen - 1) + 1;
                         if (idx == off) {
 #ifdef HARD_WRAP_LONG_WORDS
@@ -126,7 +101,7 @@ static QString poEscapedString(const QString &prefix, const QString &keyword,
                     lines.append(line.mid(off));
                 }
             }
-        } else if (lines.count() > 1) {
+        } else if (lines.size() > 1) {
             lines.prepend(QString());
         }
     }
@@ -138,7 +113,7 @@ static QString poEscapedString(const QString &prefix, const QString &keyword,
 static QString poEscapedLines(const QString &prefix, bool addSpace, const QStringList &lines)
 {
     QString out;
-    foreach (const QString &line, lines) {
+    for (const QString &line : lines) {
         out += prefix;
         if (addSpace && !line.isEmpty())
             out += QLatin1Char(' ' );
@@ -158,10 +133,10 @@ static QString poEscapedLines(const QString &prefix, bool addSpace, const QStrin
 
 static QString poWrappedEscapedLines(const QString &prefix, bool addSpace, const QString &line)
 {
-    const int maxlen = MAX_LEN - prefix.length() - addSpace;
+    const int maxlen = MAX_LEN - prefix.size() - addSpace;
     QStringList lines;
     int off = 0;
-    while (off + maxlen < line.length()) {
+    while (off + maxlen < line.size()) {
         int idx = line.lastIndexOf(QLatin1Char(' '), off + maxlen - 1);
         if (idx < off) {
 #if 0 //def HARD_WRAP_LONG_WORDS
@@ -227,11 +202,11 @@ static QByteArray slurpEscapedString(const QList<QByteArray> &lines, int &l,
             break;
         offset++;
         forever {
-            if (offset == line.length())
+            if (offset == line.size())
                 goto premature_eol;
             uchar c = line[offset++];
             if (c == '"') {
-                if (offset == line.length())
+                if (offset == line.size())
                     break;
                 while (isspace(line[offset]))
                     offset++;
@@ -244,7 +219,7 @@ static QByteArray slurpEscapedString(const QList<QByteArray> &lines, int &l,
                 continue;
             }
             if (c == '\\') {
-                if (offset == line.length())
+                if (offset == line.size())
                     goto premature_eol;
                 c = line[offset++];
                 switch (c) {
@@ -285,14 +260,14 @@ static QByteArray slurpEscapedString(const QList<QByteArray> &lines, int &l,
                 case '7':
                     stoff = offset - 1;
                     while ((c = line[offset]) >= '0' && c <= '7')
-                        if (++offset == line.length())
+                        if (++offset == line.size())
                             goto premature_eol;
                     msg += line.mid(stoff, offset - stoff).toUInt(0, 8);
                     break;
                 case 'x':
                     stoff = offset;
                     while (isxdigit(line[offset]))
-                        if (++offset == line.length())
+                        if (++offset == line.size())
                             goto premature_eol;
                     msg += line.mid(stoff, offset - stoff).toUInt(0, 16);
                     break;
@@ -397,7 +372,7 @@ static QByteArray QByteArrayList_join(const QList<QByteArray> &that, char sep)
 
 bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
 {
-    QTextCodec *codec = QTextCodec::codecForName("UTF-8");
+    QStringDecoder toUnicode(QStringConverter::Utf8, QStringDecoder::Flag::Stateless);
     bool error = false;
 
     // format of a .po file entry:
@@ -435,7 +410,7 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
             bool isObsolete = line.startsWith("#~ msgstr");
             const QByteArray prefix = isObsolete ? "#~ " : "";
             while (true) {
-                int idx = line.indexOf(' ', prefix.length());
+                int idx = line.indexOf(' ', prefix.size());
                 QByteArray str = slurpEscapedString(lines, l, idx, prefix, cd);
                 item.msgStr.append(str);
                 if (l + 1 >= lines.size() || !isTranslationLine(lines.at(l + 1)))
@@ -447,7 +422,7 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                 QHash<QString, QByteArray> extras;
                 QList<QByteArray> hdrOrder;
                 QByteArray pluralForms;
-                foreach (const QByteArray &hdr, item.msgStr.first().split('\n')) {
+                for (const QByteArray &hdr : item.msgStr.first().split('\n')) {
                     if (hdr.isEmpty())
                         continue;
                     int idx = hdr.indexOf(':');
@@ -476,18 +451,18 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                                     .arg(QString::fromLatin1(hdrValue)));
                                 error = true;
                                 // This will avoid a flood of conversion errors.
-                                codec = QTextCodec::codecForName("latin1");
+                                toUnicode = QStringDecoder(QStringConverter::Latin1);
                             } else {
                                 QByteArray cod = hdrValue.mid(20);
-                                QTextCodec *cdc = QTextCodec::codecForName(cod);
-                                if (!cdc) {
-                                    cd.appendError(QString::fromLatin1("Unsupported codec '%1'")
+                                auto enc = QStringConverter::encodingForName(cod);
+                                if (!enc) {
+                                    cd.appendError(QString::fromLatin1("Unsupported encoding '%1'")
                                             .arg(QString::fromLatin1(cod)));
                                     error = true;
                                     // This will avoid a flood of conversion errors.
-                                    codec = QTextCodec::codecForName("latin1");
+                                    toUnicode = QStringDecoder(QStringConverter::Latin1);
                                 } else {
-                                    codec = cdc;
+                                    toUnicode = QStringDecoder(*enc);
                                 }
                             }
                     } else if (hdrName == "Content-Transfer-Encoding") {
@@ -516,7 +491,7 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                     "Plural-Forms", "X-Language", "X-Source-Language", "X-Qt-Contexts"
                 };
                 uint cdh = 0;
-                for (int cho = 0; cho < hdrOrder.length(); cho++) {
+                for (int cho = 0; cho < hdrOrder.size(); cho++) {
                     for (;; cdh++) {
                         if (cdh == sizeof(dfltHdrs)/sizeof(dfltHdrs[0])) {
                             extras[QLatin1String("po-headers")] =
@@ -534,21 +509,19 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                     extras[QLatin1String("po-header_comment")] =
                             QByteArrayList_join(lines.mid(0, lastCmtLine + 1), '\n');
                 }
-                for (QHash<QString, QByteArray>::ConstIterator it = extras.constBegin(),
-                                                               end = extras.constEnd();
-                     it != end; ++it)
-                    translator.setExtra(it.key(), codec->toUnicode(it.value()));
+                for (auto it = extras.cbegin(), end = extras.cend(); it != end; ++it)
+                    translator.setExtra(it.key(), toUnicode(it.value()));
                 item = PoItem();
                 continue;
             }
             // build translator message
             TranslatorMessage msg;
-            msg.setContext(codec->toUnicode(item.context));
+            msg.setContext(toUnicode(item.context));
             if (!item.references.isEmpty()) {
                 QString xrefs;
-                foreach (const QString &ref,
-                         codec->toUnicode(item.references).split(
-                                 QRegExp(QLatin1String("\\s")), Qt::SkipEmptyParts)) {
+                for (const QString &ref :
+                         QString(toUnicode(item.references)).split(
+                                 QRegularExpression(QLatin1String("\\s")), Qt::SkipEmptyParts)) {
                     int pos = ref.indexOf(QLatin1Char(':'));
                     int lpos = ref.lastIndexOf(QLatin1Char(':'));
                     if (pos != -1 && pos == lpos) {
@@ -566,17 +539,17 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                 if (!xrefs.isEmpty())
                     item.extra[QLatin1String("po-references")] = xrefs;
             }
-            msg.setId(codec->toUnicode(item.id));
-            msg.setSourceText(codec->toUnicode(item.msgId));
-            msg.setOldSourceText(codec->toUnicode(item.oldMsgId));
-            msg.setComment(codec->toUnicode(item.tscomment));
-            msg.setOldComment(codec->toUnicode(item.oldTscomment));
-            msg.setExtraComment(codec->toUnicode(item.automaticComments));
-            msg.setTranslatorComment(codec->toUnicode(item.translatorComments));
+            msg.setId(toUnicode(item.id));
+            msg.setSourceText(toUnicode(item.msgId));
+            msg.setOldSourceText(toUnicode(item.oldMsgId));
+            msg.setComment(toUnicode(item.tscomment));
+            msg.setOldComment(toUnicode(item.oldTscomment));
+            msg.setExtraComment(toUnicode(item.automaticComments));
+            msg.setTranslatorComment(toUnicode(item.translatorComments));
             msg.setPlural(item.isPlural || item.msgStr.size() > 1);
             QStringList translations;
-            foreach (const QByteArray &bstr, item.msgStr) {
-                QString str = codec->toUnicode(bstr);
+            for (const QByteArray &bstr : std::as_const(item.msgStr)) {
+                QString str = toUnicode(bstr);
                 str.replace(QChar(Translator::TextVariantSeparator),
                             QChar(Translator::BinaryVariantSeparator));
                 translations << str;
@@ -607,13 +580,12 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                 case ',': {
                     QStringList flags =
                             QString::fromLatin1(line.mid(2)).split(
-                                    QRegExp(QLatin1String("[, ]")), Qt::SkipEmptyParts);
+                                    QRegularExpression(QLatin1String("[, ]")), Qt::SkipEmptyParts);
                     if (flags.removeOne(QLatin1String("fuzzy")))
                         item.isFuzzy = true;
                     flags.removeOne(QLatin1String("qt-format"));
-                    TranslatorMessage::ExtraData::const_iterator it =
-                            item.extra.find(QLatin1String("po-flags"));
-                    if (it != item.extra.end())
+                    const auto it = item.extra.constFind(QLatin1String("po-flags"));
+                    if (it != item.extra.cend())
                         flags.prepend(*it);
                     if (!flags.isEmpty())
                         item.extra[QLatin1String("po-flags")] = flags.join(QLatin1String(", "));
@@ -642,14 +614,14 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                         QByteArray extra = slurpEscapedString(lines, l, 16, "#| ", cd);
                         if (extra != item.oldMsgId)
                             item.extra[QLatin1String("po-old_msgid_plural")] =
-                                    codec->toUnicode(extra);
+                                    toUnicode(extra);
                     } else if (line.startsWith("#| msgctxt ")) {
                         item.oldTscomment = slurpEscapedString(lines, l, 11, "#| ", cd);
                         if (qtContexts)
                             splitContext(&item.oldTscomment, &item.context);
                     } else {
                         cd.appendError(QString(QLatin1String("PO-format parse error in line %1: '%2'"))
-                            .arg(l + 1).arg(codec->toUnicode(lines[l])));
+                            .arg(l + 1).arg(toUnicode(lines[l])));
                         error = true;
                     }
                     break;
@@ -660,7 +632,7 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                         QByteArray extra = slurpEscapedString(lines, l, 16, "#~ ", cd);
                         if (extra != item.msgId)
                             item.extra[QLatin1String("po-msgid_plural")] =
-                                    codec->toUnicode(extra);
+                                    toUnicode(extra);
                         item.isPlural = true;
                     } else if (line.startsWith("#~ msgctxt ")) {
                         item.tscomment = slurpEscapedString(lines, l, 11, "#~ ", cd);
@@ -672,20 +644,20 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
                         QByteArray extra = slurpEscapedString(lines, l, 17, "#~| ", cd);
                         if (extra != item.oldMsgId)
                             item.extra[QLatin1String("po-old_msgid_plural")] =
-                                    codec->toUnicode(extra);
+                                    toUnicode(extra);
                     } else if (line.startsWith("#~| msgctxt ")) {
                         item.oldTscomment = slurpEscapedString(lines, l, 12, "#~| ", cd);
                         if (qtContexts)
                             splitContext(&item.oldTscomment, &item.context);
                     } else {
                         cd.appendError(QString(QLatin1String("PO-format parse error in line %1: '%2'"))
-                            .arg(l + 1).arg(codec->toUnicode(lines[l])));
+                            .arg(l + 1).arg(toUnicode(lines[l])));
                         error = true;
                     }
                     break;
                 default:
                     cd.appendError(QString(QLatin1String("PO-format parse error in line %1: '%2'"))
-                        .arg(l + 1).arg(codec->toUnicode(lines[l])));
+                        .arg(l + 1).arg(toUnicode(lines[l])));
                     error = true;
                     break;
             }
@@ -699,11 +671,11 @@ bool loadPO(Translator &translator, QIODevice &dev, ConversionData &cd)
         } else if (line.startsWith("msgid_plural ")) {
             QByteArray extra = slurpEscapedString(lines, l, 13, QByteArray(), cd);
             if (extra != item.msgId)
-                item.extra[QLatin1String("po-msgid_plural")] = codec->toUnicode(extra);
+                item.extra[QLatin1String("po-msgid_plural")] = toUnicode(extra);
             item.isPlural = true;
         } else {
             cd.appendError(QString(QLatin1String("PO-format error in line %1: '%2'"))
-                .arg(l + 1).arg(codec->toUnicode(lines[l])));
+                .arg(l + 1).arg(toUnicode(lines[l])));
             error = true;
         }
     }
@@ -735,10 +707,9 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
 
     bool ok = true;
     QTextStream out(&dev);
-    out.setCodec("UTF-8");
 
     bool qtContexts = false;
-    foreach (const TranslatorMessage &msg, translator.messages())
+    for (const TranslatorMessage &msg : translator.messages())
         if (!msg.context().isEmpty()) {
             qtContexts = true;
             break;
@@ -754,12 +725,12 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
     // Keep in sync with loadPO
     addPoHeader(headers, hdrOrder, "MIME-Version", QLatin1String("1.0"));
     addPoHeader(headers, hdrOrder, "Content-Type",
-                QLatin1String("text/plain; charset=" + out.codec()->name()));
+                QLatin1String("text/plain; charset=UTF-8"));
     addPoHeader(headers, hdrOrder, "Content-Transfer-Encoding", QLatin1String("8bit"));
     if (!translator.languageCode().isEmpty()) {
         QLocale::Language l;
-        QLocale::Country c;
-        Translator::languageAndCountry(translator.languageCode(), &l, &c);
+        QLocale::Territory c;
+        Translator::languageAndTerritory(translator.languageCode(), &l, &c);
         const char *gettextRules;
         if (getNumerusInfo(l, c, 0, 0, &gettextRules))
             addPoHeader(headers, hdrOrder, "Plural-Forms", QLatin1String(gettextRules));
@@ -770,7 +741,7 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
     if (qtContexts)
         addPoHeader(headers, hdrOrder, "X-Qt-Contexts", QLatin1String("true"));
     QString hdrStr;
-    foreach (const QString &hdr, hdrOrder) {
+    for (const QString &hdr : std::as_const(hdrOrder)) {
         hdrStr += hdr;
         hdrStr += QLatin1String(": ");
         hdrStr += headers.value(makePoHeader(hdr));
@@ -778,7 +749,7 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
     }
     out << poEscapedString(QString(), QString::fromLatin1("msgstr"), true, hdrStr);
 
-    foreach (const TranslatorMessage &msg, translator.messages()) {
+    for (const TranslatorMessage &msg : translator.messages()) {
         out << Qt::endl;
 
         if (!msg.translatorComment().isEmpty())
@@ -793,7 +764,7 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
         QString xrefs = msg.extra(QLatin1String("po-references"));
         if (!msg.fileName().isEmpty() || !xrefs.isEmpty()) {
             QStringList refs;
-            foreach (const TranslatorMessage::Reference &ref, msg.allReferences())
+            for (const TranslatorMessage::Reference &ref : msg.allReferences())
                 refs.append(QString(QLatin1String("%2:%1"))
                                     .arg(ref.lineNumber()).arg(ref.fileName()));
             if (!xrefs.isEmpty())
@@ -807,11 +778,10 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
         if ((msg.type() == TranslatorMessage::Unfinished
              || msg.type() == TranslatorMessage::Obsolete) && msg.isTranslated())
             flags.append(QLatin1String("fuzzy"));
-        TranslatorMessage::ExtraData::const_iterator itr =
-                msg.extras().find(QLatin1String("po-flags"));
-        if (itr != msg.extras().end()) {
-            QStringList atoms = itr->split(QLatin1String(", "));
-            foreach (const QString &atom, atoms)
+        const auto itr = msg.extras().constFind(QLatin1String("po-flags"));
+        if (itr != msg.extras().cend()) {
+            const QStringList atoms = itr->split(QLatin1String(", "));
+            for (const QString &atom : atoms)
                 if (atom.endsWith(str_format)) {
                     skipFormat = true;
                     break;
@@ -825,7 +795,7 @@ bool savePO(const Translator &translator, QIODevice &dev, ConversionData &)
             // This is fuzzy logic, as we don't know whether the string is
             // actually used with QString::arg().
             for (int off = 0; (off = source.indexOf(QLatin1Char('%'), off)) >= 0; ) {
-                if (++off >= source.length())
+                if (++off >= source.size())
                     break;
                 if (source.at(off) == QLatin1Char('n') || source.at(off).isDigit()) {
                     flags.append(QLatin1String("qt-format"));

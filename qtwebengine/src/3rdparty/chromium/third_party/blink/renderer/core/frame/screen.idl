@@ -30,7 +30,7 @@
 
 [
     Exposed=Window
-] interface Screen {
+] interface Screen : EventTarget {
     [HighEntropy=Direct, Measure] readonly attribute long availWidth;
     [HighEntropy=Direct, Measure] readonly attribute long availHeight;
     [HighEntropy=Direct, Measure] readonly attribute long width;
@@ -43,14 +43,11 @@
     [HighEntropy=Direct, Measure] readonly attribute long availLeft;
     [HighEntropy=Direct, Measure] readonly attribute long availTop;
 
-    // Proposed
-    // https://github.com/webscreens/window-placement
-    // TODO(crbug.com/1116528): Use a dictionary, not the Screen interface, for proposed multi-screen info.
-    [HighEntropy=Direct, MeasureAs=WindowScreenLeft, RuntimeEnabled=WindowPlacement] readonly attribute long left;
-    [HighEntropy=Direct, MeasureAs=WindowScreenTop, RuntimeEnabled=WindowPlacement] readonly attribute long top;
-    [HighEntropy=Direct, MeasureAs=WindowScreenInternal, RuntimeEnabled=WindowPlacement] readonly attribute boolean internal;
-    [HighEntropy=Direct, MeasureAs=WindowScreenPrimary, RuntimeEnabled=WindowPlacement] readonly attribute boolean primary;
-    [RuntimeEnabled=WindowPlacement] readonly attribute float scaleFactor;
-    [HighEntropy=Direct, MeasureAs=WindowScreenId, RuntimeEnabled=WindowPlacement] readonly attribute DOMString id;
-    [RuntimeEnabled=WindowPlacement] readonly attribute boolean touchSupport;
+    // Fired when the window’s screen or that screen's attributes change.
+    // https://w3c.github.io/window-placement/
+    [SecureContext, HighEntropy, MeasureAs=WindowScreenChange] attribute EventHandler onchange;
+
+    // Whether the device’s visual output extends over multiple screens.
+    // https://w3c.github.io/window-placement/
+    [SecureContext, HighEntropy=Direct, MeasureAs=WindowScreenIsExtended] readonly attribute boolean isExtended;
 };

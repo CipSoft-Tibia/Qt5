@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 John Layt <jlayt@kde.org>
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtPrintSupport module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 John Layt <jlayt@kde.org>
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMPRINTDEVICE_H
 #define QPLATFORMPRINTDEVICE_H
@@ -56,8 +20,8 @@
 #include <private/qprint_p.h>
 #include <private/qprintdevice_p.h>
 
+#include <QtCore/qlist.h>
 #include <QtCore/qvariant.h>
-#include <QtCore/qvector.h>
 #if QT_CONFIG(mimetype)
 #include <QtCore/qmimetype.h>
 #endif
@@ -112,16 +76,16 @@ public:
     virtual QList<int> supportedResolutions() const;
 
     virtual QPrint::InputSlot defaultInputSlot() const;
-    virtual QVector<QPrint::InputSlot> supportedInputSlots() const;
+    virtual QList<QPrint::InputSlot> supportedInputSlots() const;
 
     virtual QPrint::OutputBin defaultOutputBin() const;
-    virtual QVector<QPrint::OutputBin> supportedOutputBins() const;
+    virtual QList<QPrint::OutputBin> supportedOutputBins() const;
 
     virtual QPrint::DuplexMode defaultDuplexMode() const;
-    virtual QVector<QPrint::DuplexMode> supportedDuplexModes() const;
+    virtual QList<QPrint::DuplexMode> supportedDuplexModes() const;
 
     virtual QPrint::ColorMode defaultColorMode() const;
-    virtual QVector<QPrint::ColorMode> supportedColorModes() const;
+    virtual QList<QPrint::ColorMode> supportedColorModes() const;
 
     virtual QVariant property(QPrintDevice::PrintDevicePropertyKey key) const;
     virtual bool setProperty(QPrintDevice::PrintDevicePropertyKey key, const QVariant &value);
@@ -169,16 +133,16 @@ protected:
     mutable QList<int> m_resolutions;
 
     mutable bool m_haveInputSlots;
-    mutable QVector<QPrint::InputSlot> m_inputSlots;
+    mutable QList<QPrint::InputSlot> m_inputSlots;
 
     mutable bool m_haveOutputBins;
-    mutable QVector<QPrint::OutputBin> m_outputBins;
+    mutable QList<QPrint::OutputBin> m_outputBins;
 
     mutable bool m_haveDuplexModes;
-    mutable QVector<QPrint::DuplexMode> m_duplexModes;
+    mutable QList<QPrint::DuplexMode> m_duplexModes;
 
     mutable bool m_haveColorModes;
-    mutable QVector<QPrint::ColorMode> m_colorModes;
+    mutable QList<QPrint::ColorMode> m_colorModes;
 
 #if QT_CONFIG(mimetype)
     mutable bool m_haveMimeTypes;

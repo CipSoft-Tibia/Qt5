@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,8 @@ syntax = "proto2";
 
 option optimize_for = LITE_RUNTIME;
 
-package cryptohome;
-option go_package = "bootlockbox_proto";
+package bootlockbox;
+option go_package = "chromiumos/system_api/bootlockbox_proto";
 
 enum BootLockboxErrorCode {
   BOOTLOCKBOX_ERROR_NOT_SET = 0;
@@ -22,6 +22,7 @@ enum BootLockboxErrorCode {
   BOOTLOCKBOX_ERROR_NVSPACE_UNDEFINED = 4;
   BOOTLOCKBOX_ERROR_NVSPACE_UNINITIALIZED = 5;
   BOOTLOCKBOX_ERROR_NVSPACE_OTHER = 6;
+  BOOTLOCKBOX_ERROR_NEED_POWERWASH = 7;
 }
 
 message StoreBootLockboxRequest {

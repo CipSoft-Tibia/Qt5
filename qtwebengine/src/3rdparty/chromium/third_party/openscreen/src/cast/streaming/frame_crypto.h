@@ -11,10 +11,10 @@
 #include <array>
 #include <vector>
 
-#include "absl/types/span.h"
 #include "cast/streaming/encoded_frame.h"
 #include "openssl/aes.h"
 #include "platform/base/macros.h"
+#include "platform/base/span.h"
 
 namespace openscreen {
 namespace cast {
@@ -29,8 +29,8 @@ class FrameCrypto;
 struct EncryptedFrame : public EncodedFrame {
   EncryptedFrame();
   ~EncryptedFrame();
-  EncryptedFrame(EncryptedFrame&&) MAYBE_NOEXCEPT;
-  EncryptedFrame& operator=(EncryptedFrame&&) MAYBE_NOEXCEPT;
+  EncryptedFrame(EncryptedFrame&&) noexcept;
+  EncryptedFrame& operator=(EncryptedFrame&&);
 
  protected:
   // Since only FrameCrypto and FrameCollector are trusted to generate the
@@ -57,11 +57,9 @@ class FrameCrypto {
 
   EncryptedFrame Encrypt(const EncodedFrame& encoded_frame) const;
 
-  // Decrypt the given |encrypted_frame| into the output |encoded_frame|. The
-  // caller must provide a sufficiently-sized data buffer (see
-  // GetPlaintextSize()).
-  void Decrypt(const EncryptedFrame& encrypted_frame,
-               EncodedFrame* encoded_frame) const;
+  // Decrypts `encrypted_frame` into `out`. `out` must have a sufficiently-sized
+  // data buffer (see GetPlaintextSize()).
+  void Decrypt(const EncryptedFrame& encrypted_frame, ByteBuffer out) const;
 
   // AES crypto inputs and outputs (for either encrypting or decrypting) are
   // always the same size in bytes. The following are just "documentative code."
@@ -83,9 +81,7 @@ class FrameCrypto {
 
   // AES-CTR is symmetric. Thus, the "meat" of both Encrypt() and Decrypt() is
   // the same.
-  void EncryptCommon(FrameId frame_id,
-                     absl::Span<const uint8_t> in,
-                     absl::Span<uint8_t> out) const;
+  void EncryptCommon(FrameId frame_id, ByteView in, ByteBuffer out) const;
 };
 
 }  // namespace cast

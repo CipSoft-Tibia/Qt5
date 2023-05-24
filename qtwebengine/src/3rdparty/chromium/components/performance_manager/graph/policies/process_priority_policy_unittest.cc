@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/test/bind_test_util.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/test/bind.h"
 #include "components/performance_manager/graph/process_node_impl.h"
 #include "components/performance_manager/public/performance_manager.h"
 #include "components/performance_manager/render_process_user_data.h"
@@ -112,7 +111,7 @@ TEST_F(ProcessPriorityPolicyTest, GraphReflectedToRenderProcessHost) {
 
   // Set the active contents in the RenderViewHostTestHarness.
   SetContents(CreateTestWebContents());
-  auto* rvh = web_contents()->GetRenderViewHost();
+  auto* rvh = web_contents()->GetPrimaryMainFrame()->GetRenderViewHost();
   DCHECK(rvh);
   auto* rph = rvh->GetProcess();
   DCHECK(rph);

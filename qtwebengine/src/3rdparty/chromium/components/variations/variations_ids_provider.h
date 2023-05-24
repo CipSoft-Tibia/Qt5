@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,8 +11,9 @@
 #include <utility>
 #include <vector>
 
+#include "base/component_export.h"
 #include "base/gtest_prod_util.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/field_trial.h"
 #include "base/observer_list.h"
 #include "base/synchronization/lock.h"
@@ -20,11 +21,6 @@
 #include "components/variations/synthetic_trials.h"
 #include "components/variations/variations.mojom.h"
 #include "components/variations/variations_associated_data.h"
-
-namespace base {
-template <typename T>
-struct DefaultSingletonTraits;
-}
 
 namespace variations {
 class VariationsClient;
@@ -36,7 +32,7 @@ class VariationsClient;
 // (i) VariationsIDs associated with external experiments, which can be sent
 // only for signed-in users and (ii) VariationsIDs that can be sent in first-
 // and third-party contexts.
-struct VariationsHeaderKey {
+struct COMPONENT_EXPORT(VARIATIONS) VariationsHeaderKey {
   bool is_signed_in;
   Study_GoogleWebVisibility web_visibility;
 
@@ -47,10 +43,11 @@ struct VariationsHeaderKey {
 // A helper class for maintaining client experiments and metrics state
 // transmitted in custom HTTP request headers.
 // This class is a thread-safe singleton.
-class VariationsIdsProvider : public base::FieldTrialList::Observer,
-                              public SyntheticTrialObserver {
+class COMPONENT_EXPORT(VARIATIONS) VariationsIdsProvider
+    : public base::FieldTrialList::Observer,
+      public SyntheticTrialObserver {
  public:
-  class Observer {
+  class COMPONENT_EXPORT(VARIATIONS) Observer {
    public:
     // Called when variation ids headers are updated.
     virtual void VariationIdsHeaderUpdated() = 0;
@@ -59,7 +56,31 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
     virtual ~Observer() {}
   };
 
+  enum class Mode {
+    // Indicates the signed-in parameter supplied to GetClientDataHeaders() is
+    // honored.
+    kUseSignedInState,
+
+    // Indicates the signed-in parameter supplied to GetClientDataHeaders() is
+    // treated as true, regardless of what is supplied. This is intended for
+    // embedders (such as WebLayer) that do not have the notion of signed-in.
+    kIgnoreSignedInState,
+
+    // Indicates the signed-in parameter supplied to GetClientDataHeaders() is
+    // treated as false, regardless of what is supplied.
+    kDontSendSignedInVariations,
+  };
+
+  // Creates the VariationsIdsProvider instance. This must be called before
+  // GetInstance(). Only one instance of VariationsIdsProvider may be created.
+  static VariationsIdsProvider* Create(Mode mode);
+
   static VariationsIdsProvider* GetInstance();
+
+  VariationsIdsProvider(const VariationsIdsProvider&) = delete;
+  VariationsIdsProvider& operator=(const VariationsIdsProvider&) = delete;
+
+  Mode mode() const { return mode_; }
 
   // Returns the X-Client-Data headers corresponding to |is_signed_in|: a header
   // that may be sent in first-party requests and a header that may be sent in
@@ -68,7 +89,9 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   //
   // If |is_signed_in| is false, VariationIDs that should be sent for only
   // signed in users (i.e. GOOGLE_WEB_PROPERTIES_SIGNED_IN entries) are not
-  // included. Also, computes and caches the header if necessary.
+  // included. Also, computes and caches the header if necessary. |is_signed_in|
+  // is impacted by the Mode supplied when VariationsIdsProvider is created.
+  // See Mode for details.
   variations::mojom::VariationsHeadersPtr GetClientDataHeaders(
       bool is_signed_in);
 
@@ -87,6 +110,10 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   // apps.
   std::string GetGoogleAppVariationsString();
 
+  // Same as GetVariationString(), but returns all triggering IDs.
+  // IMPORTANT: This string should only be used for debugging and diagnostics.
+  std::string GetTriggerVariationsString();
+
   // Returns the collection of VariationIDs associated with |keys|. Each entry
   // in the returned vector is unique.
   std::vector<VariationID> GetVariationsVector(
@@ -95,6 +122,10 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   // Returns the collection of variations ids for all Google Web Properties
   // related keys.
   std::vector<VariationID> GetVariationsVectorForWebPropertiesKeys();
+
+  // Sets low entropy source value that was used for client-side randomization
+  // of variations.
+  void SetLowEntropySourceValue(absl::optional<int> low_entropy_source_value);
 
   // Result of ForceVariationIds() call.
   enum class ForceIdsResult {
@@ -127,9 +158,9 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   void ResetForTesting();
 
  private:
-  friend struct base::DefaultSingletonTraits<VariationsIdsProvider>;
-
   typedef std::pair<VariationID, IDCollectionKey> VariationIDEntry;
+
+  friend class ScopedVariationsIdsProvider;
 
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest, ForceVariationIds_Valid);
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest,
@@ -143,6 +174,10 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest,
                            OnFieldTrialGroupFinalized);
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest,
+                           LowEntropySourceValue_Valid);
+  FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest,
+                           LowEntropySourceValue_Null);
+  FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest,
                            GetGoogleAppVariationsString);
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest, GetVariationsString);
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest, GetVariationsVector);
@@ -150,8 +185,11 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
                            GetVariationsVectorForWebPropertiesKeys);
   FRIEND_TEST_ALL_PREFIXES(VariationsIdsProviderTest, GetVariationsVectorImpl);
 
-  VariationsIdsProvider();
+  explicit VariationsIdsProvider(Mode mode);
   ~VariationsIdsProvider() override;
+
+  static void CreateInstanceForTesting(Mode mode);
+  static void DestroyInstanceForTesting();
 
   // Returns a space-separated string containing the list of current active
   // variations (as would be reported in the |variation_id| repeated field of
@@ -188,16 +226,22 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   std::string GenerateBase64EncodedProto(bool is_signed_in,
                                          bool is_first_party_context);
 
-  // Adds variation ids and trigger variation ids to |target_set|.
-  static bool AddVariationIdsToSet(
-      const std::vector<std::string>& variation_ids,
-      std::set<VariationIDEntry>* target_set);
+  // Adds variation ids and trigger variation ids to |target_set|. If
+  // |should_dedupe| is true, the ids in |variation_ids| that have already been
+  // added as non-Google-app ids are not added to |target_set|. Returns false if
+  // any variation ids are malformed or duplicated. Returns true otherwise.
+  bool AddVariationIdsToSet(const std::vector<std::string>& variation_ids,
+                            bool should_dedupe,
+                            std::set<VariationIDEntry>* target_set);
 
   // Parses a comma-separated string of variation ids and trigger variation ids
-  // and adds them to |target_set|.
-  static bool ParseVariationIdsParameter(
-      const std::string& command_line_variation_ids,
-      std::set<VariationIDEntry>* target_set);
+  // and adds them to |target_set|. If |should_dedupe| is true, ids that have
+  // already been added as non-Google-app ids are not added to |target_set|.
+  // Returns false if any variation ids are malformed or duplicated. Returns
+  // true otherwise.
+  bool ParseVariationIdsParameter(const std::string& command_line_variation_ids,
+                                  bool should_dedupe,
+                                  std::set<VariationIDEntry>* target_set);
 
   // Returns the value of the X-Client-Data header corresponding to
   // |is_signed_in| and |web_visibility|. Considering |web_visibility| may allow
@@ -206,8 +250,8 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
       bool is_signed_in,
       Study_GoogleWebVisibility web_visibility);
 
-  // Returns the currently active set of variation ids, which includes any
-  // default values, synthetic variations and actual field trial variations.
+  // Returns the currently active set of variation ids, which includes ids from
+  // field trials, synthetic trials, and forced ids.
   std::set<VariationIDEntry> GetAllVariationIds();
 
   // Returns the collection of variation ids matching any of the given
@@ -215,8 +259,20 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   std::vector<VariationID> GetVariationsVectorImpl(
       const std::set<IDCollectionKey>& key);
 
+  // Returns whether |id| has already been added to the active set of variation
+  // ids. This includes ids from field trials, synthetic trials, and forced ids.
+  // Note that Google app ids are treated differently. They may be reused as a
+  // Google Web id.
+  bool IsDuplicateId(VariationID id);
+
+  const Mode mode_;
+
   // Guards access to variables below.
   base::Lock lock_;
+
+  // Low entropy source value from client that was used for client-side
+  // randomization of variations.
+  absl::optional<int> low_entropy_source_value_;
 
   // Whether or not we've initialized the caches.
   bool variation_ids_cache_initialized_;
@@ -225,8 +281,9 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   // This consists of a list of valid IDs, and the actual transmitted header.
   std::set<VariationIDEntry> variation_ids_set_;
 
-  // Provides the google experiment ids forced from command line.
-  std::set<VariationIDEntry> default_variation_ids_set_;
+  // Provides the google experiment ids that are force-enabled through
+  // ForceVariationIds().
+  std::set<VariationIDEntry> force_enabled_ids_set_;
 
   // Variations ids from synthetic field trials.
   std::set<VariationIDEntry> synthetic_variation_ids_set_;
@@ -249,9 +306,7 @@ class VariationsIdsProvider : public base::FieldTrialList::Observer,
   // https://crbug.com/1051937 this isn't currently possible.
   base::ObserverList<Observer>::Unchecked observer_list_;
 
-  const VariationsClient* variations_client_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(VariationsIdsProvider);
+  raw_ptr<const VariationsClient> variations_client_ = nullptr;
 };
 
 }  // namespace variations

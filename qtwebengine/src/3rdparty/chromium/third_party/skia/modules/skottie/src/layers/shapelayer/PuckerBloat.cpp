@@ -16,8 +16,7 @@
 
 #include <vector>
 
-namespace skottie {
-namespace internal {
+namespace skottie::internal {
 
 namespace  {
 
@@ -29,7 +28,7 @@ static SkPoint lerp(const SkPoint& p0, const SkPoint& p1, SkScalar t) {
 // and cubic control points away from the center.  The general shape center is the vertex average.
 class PuckerBloatEffect final : public sksg::GeometryEffect {
 public:
-    explicit PuckerBloatEffect(sk_sp<sksg::GeometryNode> geo) : INHERITED(sk_sp<sksg::GeometryNode>{std::move(geo)}) {}
+    explicit PuckerBloatEffect(sk_sp<sksg::GeometryNode> geo) : INHERITED({std::move(geo)}) {}
 
     // Fraction of the transition to center. I.e.
     //
@@ -169,4 +168,4 @@ std::vector<sk_sp<sksg::GeometryNode>> ShapeBuilder::AttachPuckerBloatGeometryEf
     return bloated;
 }
 
-}} // namespace skottie::internal
+} // namespace skottie::internal

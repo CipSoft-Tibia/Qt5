@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QLegend>
 #include <private/qlegend_p.h>
@@ -38,12 +12,13 @@
 #include <QtCharts/QLegendMarker>
 #include <private/qlegendmarker_p.h>
 #include <private/legendmarkeritem_p.h>
+#include <private/legendmoveresizehandler_p.h>
 #include <private/chartdataset_p.h>
 #include <QtGui/QPainter>
 #include <QtGui/QPen>
 #include <QtWidgets/QGraphicsItemGroup>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QLegend
@@ -80,8 +55,9 @@ QT_CHARTS_BEGIN_NAMESPACE
 
     \image examples_percentbarchart_legend.png
 
-    \note There is no QML API available for modifying legend markers. Markers can be modified by
-    creating a custom legend, as illustrated by \l {qmlcustomlegend}{Qml Custom Example}.
+    \note There is no QML API available for modifying legend markers. Markers
+    can be modified by creating a custom legend. For more information, see
+    \l {Using Legend Markers}.
 */
 
 /*!
@@ -184,10 +160,20 @@ QT_CHARTS_BEGIN_NAMESPACE
            Marker size is determined by font size.
     \value MarkerShapeCircle Circular markers are used.
            Marker size is determined by font size.
+    \value MarkerShapeRotatedRectangle Rotated rectangle shaped markers are used.
+           Marker size is determined by font size.
+    \value MarkerShapeTriangle Triangular markers are used.
+           Marker size is determined by font size.
+    \value MarkerShapeStar Star shaped markers are used.
+           Marker size is determined by font size.
+    \value MarkerShapePentagon Pentagon shaped markers are used.
+           Marker size is determined by font size.
     \value MarkerShapeFromSeries The marker shape is determined by the series.
            In case of a scatter series, the legend marker looks like a scatter dot and is the same
-           size as the dot. In case of a line or spline series, the legend marker looks like a small
-           segment of the line. For other series types, rectangular markers are shown.
+           size as the dot. In case of a line or spline series, the legend marker looks like a
+           small segment of the line. For other series types, rectangular markers are shown.
+           If a \c lightMarker is specified for a series, the \c lightMarker will be shown and
+           its size will be determined by the series marker size.
 
     \sa markerShape
 */
@@ -201,6 +187,10 @@ QT_CHARTS_BEGIN_NAMESPACE
 
     \value Legend.MarkerShapeRectangle Legend markers are rectangular
     \value Legend.MarkerShapeCircle Legend markers are circular
+    \value MarkerShapeRotatedRectangle Legend markers are rotated rectangle shaped.
+    \value MarkerShapeTriangle Legend markers are triangular.
+    \value MarkerShapeStar Legend markers are star shaped.
+    \value MarkerShapePentagon Legend markers are pentagon shaped.
     \value Legend.MarkerShapeFromSeries Legend marker shape is determined by the series
 
     \sa QLegend::MarkerShape
@@ -218,6 +208,12 @@ QT_CHARTS_BEGIN_NAMESPACE
     \qmlproperty bool Legend::showToolTips
     Whether tooltips are shown when the text is truncated. This property is \c false by default.
     This property currently has no effect as there is no support for tooltips in QML.
+*/
+
+/*!
+    \fn void QLegend::attachedToChartChanged(bool attached)
+    This signal is emitted when the legend is \a attached to or detached from the chart.
+    \since 6.2
 */
 
 /*!
@@ -280,8 +276,8 @@ QLegend::~QLegend()
  */
 void QLegend::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
 {
-    Q_UNUSED(option)
-    Q_UNUSED(widget)
+    Q_UNUSED(option);
+    Q_UNUSED(widget);
 
     if (!d_ptr->m_backgroundVisible)
         return;
@@ -289,8 +285,8 @@ void QLegend::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, Q
     painter->setOpacity(opacity());
     painter->setPen(d_ptr->m_pen);
     painter->setBrush(d_ptr->m_brush);
-    painter->drawRoundedRect(rect(), d_ptr->roundness(rect().width()), d_ptr->roundness(rect().height()),
-                             Qt::RelativeSize);
+    painter->drawRoundedRect(rect(), d_ptr->roundness(rect().width()),
+                             d_ptr->roundness(rect().height()), Qt::RelativeSize);
 }
 
 
@@ -451,11 +447,13 @@ Qt::Alignment QLegend::alignment() const
  */
 void QLegend::detachFromChart()
 {
+    bool changed = d_ptr->m_attachedToChart == true;
     d_ptr->m_attachedToChart = false;
-//    layout()->invalidate();
     d_ptr->m_chart->layout()->invalidate();
     setParent(0);
 
+    if (changed)
+        emit attachedToChartChanged(false);
 }
 
 /*!
@@ -463,10 +461,13 @@ void QLegend::detachFromChart()
  */
 void QLegend::attachToChart()
 {
+    bool changed = d_ptr->m_attachedToChart == false;
     d_ptr->m_attachedToChart = true;
-//    layout()->invalidate();
     d_ptr->m_chart->layout()->invalidate();
     setParent(d_ptr->m_chart);
+
+    if (changed)
+        emit attachedToChartChanged(true);
 }
 
 /*!
@@ -545,6 +546,39 @@ void QLegend::setShowToolTips(bool show)
     }
 }
 
+/*!
+    Returns whether the legend can be dragged or resized using a mouse when it is detached.
+
+    \sa QLegend::setInteractive()
+    \since 6.2
+*/
+
+bool QLegend::isInteractive() const
+{
+    return d_ptr->m_interactive;
+}
+
+/*!
+    When \a interactive is \c true and the legend is detached, the legend is able to be moved and
+    resized with a mouse in a similar way to a window.
+
+    The legend will automatically attach to an edge of the chart by dragging it off of that edge.
+    Double clicking an attached legend will detach it.
+    This is \c false by default.
+
+    \sa QLegend::isInteractive()
+    \since 6.2
+*/
+
+void QLegend::setInteractive(bool interactive)
+{
+    if (d_ptr->m_interactive != interactive) {
+        d_ptr->m_interactive = interactive;
+        update();
+        emit interactiveChanged(interactive);
+    }
+}
+
 QLegend::MarkerShape QLegend::markerShape() const
 {
     return d_ptr->m_markerShape;
@@ -590,6 +624,7 @@ QLegendPrivate::QLegendPrivate(ChartPresenter *presenter, QChart *chart, QLegend
     : q_ptr(q),
       m_presenter(presenter),
       m_layout(new LegendLayout(q)),
+      m_resizer(new LegendMoveResizeHandler(q)),
       m_chart(chart),
       m_items(new QGraphicsItemGroup(q)),
       m_alignment(Qt::AlignTop),
@@ -601,6 +636,7 @@ QLegendPrivate::QLegendPrivate(ChartPresenter *presenter, QChart *chart, QLegend
       m_backgroundVisible(false),
       m_reverseMarkers(false),
       m_showToolTips(false),
+      m_interactive(false),
       m_markerShape(QLegend::MarkerShapeRectangle)
 {
     m_items->setHandlesChildEvents(false);
@@ -608,7 +644,7 @@ QLegendPrivate::QLegendPrivate(ChartPresenter *presenter, QChart *chart, QLegend
 
 QLegendPrivate::~QLegendPrivate()
 {
-
+    delete m_resizer;
 }
 
 void QLegendPrivate::setOffset(const QPointF &offset)
@@ -744,7 +780,7 @@ void QLegendPrivate::handleCountChanged()
     QAbstractSeriesPrivate *seriesP = qobject_cast<QAbstractSeriesPrivate *>(sender());
     QAbstractSeries *series = seriesP->q_ptr;
     QList<QLegendMarker *> createdMarkers = seriesP->createLegendMarkers(q_ptr);
-    QVector<bool> isNew(createdMarkers.size(), true);
+    QList<bool> isNew(createdMarkers.size(), true);
 
     const int pos = indexOfSeries(series, m_markers);
     // Remove markers of the series from m_markers and check against the newly
@@ -790,9 +826,9 @@ void QLegendPrivate::insertMarkerHelper(QLegendMarker *marker)
     m_markerHash.insert(item, marker);
 }
 
-void QLegendPrivate::addMarkers(QList<QLegendMarker *> markers)
+void QLegendPrivate::addMarkers(const QList<QLegendMarker *> &markers)
 {
-    foreach (QLegendMarker *marker, markers) {
+    for (auto *marker : markers) {
         insertMarkerHelper(marker);
         m_markers << marker;
     }
@@ -808,9 +844,9 @@ void QLegendPrivate::removeMarkerHelper(QLegendMarker *marker)
     delete marker;
 }
 
-void QLegendPrivate::removeMarkers(QList<QLegendMarker *> markers)
+void QLegendPrivate::removeMarkers(const QList<QLegendMarker *> &markers)
 {
-    foreach (QLegendMarker *marker, markers) {
+    for (auto *marker : markers) {
         m_markers.removeOne(marker);
         removeMarkerHelper(marker);
     }
@@ -822,9 +858,9 @@ void QLegendPrivate::decorateMarker(QLegendMarker *marker)
     marker->setLabelBrush(m_labelBrush);
 }
 
-void QLegendPrivate::decorateMarkers(QList<QLegendMarker *> markers)
+void QLegendPrivate::decorateMarkers(const QList<QLegendMarker *> &markers)
 {
-    for (QLegendMarker *marker : markers)
+    for (auto *marker : markers)
         decorateMarker(marker);
 }
 
@@ -838,7 +874,7 @@ void QLegendPrivate::updateToolTips()
     }
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qlegend.cpp"
 #include "moc_qlegend_p.cpp"

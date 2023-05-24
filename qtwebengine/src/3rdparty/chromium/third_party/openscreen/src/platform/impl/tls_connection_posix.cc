@@ -17,6 +17,7 @@
 #include <cstring>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -52,6 +53,11 @@ TlsConnectionPosix::TlsConnectionPosix(std::unique_ptr<StreamSocket> socket,
 TlsConnectionPosix::~TlsConnectionPosix() {
   if (platform_client_) {
     platform_client_->tls_data_router()->DeregisterConnection(this);
+  }
+  // TODO(issuetracker.google.com/169966671): This is only tested by CastSocket
+  // E2E tests at the moment.
+  if (ssl_) {
+    SSL_shutdown(ssl_.get());
   }
 }
 
@@ -94,14 +100,6 @@ void TlsConnectionPosix::SetClient(Client* client) {
 bool TlsConnectionPosix::Send(const void* data, size_t len) {
   OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
   return buffer_.Push(data, len);
-}
-
-IPEndpoint TlsConnectionPosix::GetLocalEndpoint() const {
-  OSP_DCHECK(task_runner_->IsRunningOnTaskRunner());
-
-  absl::optional<IPEndpoint> endpoint = socket_->local_address();
-  OSP_DCHECK(endpoint.has_value());
-  return endpoint.value();
 }
 
 IPEndpoint TlsConnectionPosix::GetRemoteEndpoint() const {

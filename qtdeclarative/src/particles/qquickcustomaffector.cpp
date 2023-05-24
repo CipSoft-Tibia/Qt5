@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickcustomaffector_p.h"
 #include <private/qqmlengine_p.h>
@@ -49,14 +13,15 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlsignal QtQuick.Particles::Affector::affectParticles(Array particles, real dt)
 
-    This signal is emitted when particles are selected to be affected. particles contains
-    an array of particle objects which can be directly manipulated.
+    This signal is emitted when particles are selected to be affected.
+    \a particles is an array of particle objects which can be directly
+    manipulated.
 
-    dt is the time since the last time it was affected. Use dt to normalize
-    trajectory manipulations to real time.
+    \a dt is the time since the last time it was affected. Use \a dt to
+    normalize trajectory manipulations to real time.
 
-    Note that JavaScript is slower to execute, so it is not recommended to use this in
-    high-volume particle systems.
+    \note JavaScript is slower to execute, so it is not recommended to use
+    this in high-volume particle systems.
 */
 
 /*!
@@ -120,9 +85,9 @@ void QQuickCustomAffector::affectSystem(qreal dt)
     updateOffsets();
 
     QList<QQuickParticleData*> toAffect;
-    foreach (QQuickParticleGroupData* gd, m_system->groupData) {
+    for (const QQuickParticleGroupData *gd : std::as_const(m_system->groupData)) {
         if (activeGroup(gd->index)) {
-            foreach (QQuickParticleData* d, gd->data) {
+            for (QQuickParticleData *d : gd->data) {
                 if (shouldAffect(d)) {
                     toAffect << d;
                 }
@@ -134,7 +99,7 @@ void QQuickCustomAffector::affectSystem(qreal dt)
         return;
 
     if (justAffected) {
-        foreach (QQuickParticleData* d, toAffect) {//Not postAffect to avoid saying the particle changed
+        for (const QQuickParticleData *d : std::as_const(toAffect)) {//Not postAffect to avoid saying the particle changed
             if (m_onceOff)
                 m_onceOffed << qMakePair(d->groupId, d->index);
             emit affected(d->curX(m_system), d->curY(m_system));
@@ -157,7 +122,7 @@ void QQuickCustomAffector::affectSystem(qreal dt)
     const auto doAffect = [&](qreal dt) {
         affectProperties(toAffect, dt);
         QJSValue particles;
-        QJSValuePrivate::setValue(&particles, v4, array);
+        QJSValuePrivate::setValue(&particles, array);
         emit affectParticles(particles, dt);
     };
 
@@ -176,7 +141,7 @@ void QQuickCustomAffector::affectSystem(qreal dt)
             doAffect(dt);
     }
 
-    foreach (QQuickParticleData* d, toAffect)
+    for (QQuickParticleData *d : std::as_const(toAffect))
         if (d->update == 1.0)
             postAffect(d);
 }
@@ -233,7 +198,7 @@ bool QQuickCustomAffector::affectParticle(QQuickParticleData *d, qreal dt)
 
 void QQuickCustomAffector::affectProperties(const QList<QQuickParticleData*> &particles, qreal dt)
 {
-    foreach (QQuickParticleData* d, particles)
+    for (QQuickParticleData *d : particles)
         if ( affectParticle(d, dt) )
             d->update = 1.0;
 }

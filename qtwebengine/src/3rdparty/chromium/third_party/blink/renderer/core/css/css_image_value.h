@@ -35,7 +35,6 @@ namespace blink {
 class Document;
 class KURL;
 class StyleImage;
-class ComputedStyle;
 
 class CORE_EXPORT CSSImageValue : public CSSValue {
  public:
@@ -52,16 +51,17 @@ class CORE_EXPORT CSSImageValue : public CSSValue {
     DCHECK(!IsCachePending());
     return cached_image_.Get();
   }
+  FetchParameters PrepareFetch(const Document&,
+                               FetchParameters::ImageRequestBehavior,
+                               CrossOriginAttributeValue) const;
   StyleImage* CacheImage(
       const Document&,
       FetchParameters::ImageRequestBehavior,
-      CrossOriginAttributeValue = kCrossOriginAttributeNotSet);
+      CrossOriginAttributeValue = kCrossOriginAttributeNotSet,
+      const float override_image_resolution = 0.0f);
 
   const String& Url() const { return absolute_url_; }
   const String& RelativeUrl() const { return relative_url_; }
-
-  const Referrer& GetReferrer() const { return referrer_; }
-  bool GetIsAdRelated() const { return is_ad_related_; }
 
   void ReResolveURL(const Document&) const;
 
@@ -71,9 +71,7 @@ class CORE_EXPORT CSSImageValue : public CSSValue {
 
   bool Equals(const CSSImageValue&) const;
 
-  bool KnownToBeOpaque(const Document&, const ComputedStyle&) const;
-
-  CSSImageValue* ValueWithURLMadeAbsolute() const {
+  CSSImageValue* ComputedCSSValue() const {
     return MakeGarbageCollected<CSSImageValue>(
         absolute_url_, KURL(absolute_url_), Referrer(), origin_clean_,
         is_ad_related_, cached_image_.Get());

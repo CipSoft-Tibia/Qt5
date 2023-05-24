@@ -29,7 +29,6 @@
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/flat_tree_node_data.h"
 #include "third_party/blink/renderer/core/dom/slot_assignment.h"
-#include "third_party/blink/renderer/core/html/html_shadow_element.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
 
 namespace blink {
@@ -41,7 +40,7 @@ void FlatTreeTraversal::AssertFlatTreeNodeDataUpdated(
     int& nodes_which_have_assigned_slot_count) {
   for (Node& node : NodeTraversal::StartsAt(root)) {
     if (auto* element = DynamicTo<Element>(node)) {
-      if (ShadowRoot* shadow_root = element->ShadowRootIfV1()) {
+      if (ShadowRoot* shadow_root = element->GetShadowRoot()) {
         DCHECK(!shadow_root->NeedsSlotAssignmentRecalc());
         AssertFlatTreeNodeDataUpdated(*shadow_root,
                                       assigned_nodes_in_slot_count,
@@ -52,7 +51,7 @@ void FlatTreeTraversal::AssertFlatTreeNodeDataUpdated(
             ToHTMLSlotElementIfSupportsAssignmentOrNull(node)) {
       assigned_nodes_in_slot_count += slot->AssignedNodes().size();
     }
-    if (node.IsChildOfV1ShadowHost()) {
+    if (node.IsChildOfShadowHost()) {
       ShadowRoot* parent_shadow_root = node.ParentElementShadowRoot();
       DCHECK(parent_shadow_root);
       if (!parent_shadow_root->HasSlotAssignment()) {
@@ -91,14 +90,10 @@ void FlatTreeTraversal::AssertFlatTreeNodeDataUpdated(
 }
 #endif
 
-bool CanBeDistributedToV0InsertionPoint(const Node& node) {
-  return node.IsInV0ShadowTree() || node.IsChildOfV0ShadowHost();
-}
-
 Node* FlatTreeTraversal::TraverseChild(const Node& node,
                                        TraversalDirection direction) {
   if (auto* slot = ToHTMLSlotElementIfSupportsAssignmentOrNull(node)) {
-    if (slot->AssignedNodes().IsEmpty()) {
+    if (slot->AssignedNodes().empty()) {
       return direction == kTraversalDirectionForward ? slot->firstChild()
                                                      : slot->lastChild();
     }
@@ -113,64 +108,19 @@ Node* FlatTreeTraversal::TraverseChild(const Node& node,
     child = direction == kTraversalDirectionForward ? node.firstChild()
                                                     : node.lastChild();
   }
-
-  if (!child)
-    return nullptr;
-
-  if (child->IsInV0ShadowTree()) {
-    return V0ResolveDistributionStartingAt(*child, direction);
-  }
   return child;
 }
 
-Node* FlatTreeTraversal::V0ResolveDistributionStartingAt(
-    const Node& node,
-    TraversalDirection direction) {
-  DCHECK(!ToHTMLSlotElementIfSupportsAssignmentOrNull(node));
-  for (const Node* sibling = &node; sibling;
-       sibling = (direction == kTraversalDirectionForward
-                      ? sibling->nextSibling()
-                      : sibling->previousSibling())) {
-    if (!IsActiveV0InsertionPoint(*sibling))
-      return const_cast<Node*>(sibling);
-    const auto& insertion_point = To<V0InsertionPoint>(*sibling);
-    if (Node* found = (direction == kTraversalDirectionForward
-                           ? insertion_point.FirstDistributedNode()
-                           : insertion_point.LastDistributedNode()))
-      return found;
-    DCHECK(IsA<HTMLShadowElement>(insertion_point) ||
-           (IsA<HTMLContentElement>(insertion_point) &&
-            !insertion_point.HasChildren()));
-  }
-  return nullptr;
-}
-
-// TODO(hayato): This may return a wrong result for a node which is not in a
-// document flat tree.  See FlatTreeTraversalTest's redistribution test for
-// details.
 Node* FlatTreeTraversal::TraverseSiblings(const Node& node,
                                           TraversalDirection direction) {
-  if (node.IsChildOfV1ShadowHost())
-    return TraverseSiblingsForV1HostChild(node, direction);
+  if (node.IsChildOfShadowHost())
+    return TraverseSiblingsForHostChild(node, direction);
 
-  if (ShadowRootWhereNodeCanBeDistributedForV0(node))
-    return TraverseSiblingsForV0Distribution(node, direction);
-
-  Node* sibling = direction == kTraversalDirectionForward
-                      ? node.nextSibling()
-                      : node.previousSibling();
-
-  if (!node.IsInV0ShadowTree())
-    return sibling;
-
-  if (sibling) {
-    if (Node* found = V0ResolveDistributionStartingAt(*sibling, direction))
-      return found;
-  }
-  return nullptr;
+  return direction == kTraversalDirectionForward ? node.nextSibling()
+                                                 : node.previousSibling();
 }
 
-Node* FlatTreeTraversal::TraverseSiblingsForV1HostChild(
+Node* FlatTreeTraversal::TraverseSiblingsForHostChild(
     const Node& node,
     TraversalDirection direction) {
   ShadowRoot* shadow_root = node.ParentElementShadowRoot();
@@ -197,72 +147,35 @@ Node* FlatTreeTraversal::TraverseSiblingsForV1HostChild(
   return nullptr;
 }
 
-Node* FlatTreeTraversal::TraverseSiblingsForV0Distribution(
-    const Node& node,
-    TraversalDirection direction) {
-  const V0InsertionPoint* final_destination = ResolveReprojection(&node);
-  if (!final_destination)
-    return nullptr;
-  if (Node* found = (direction == kTraversalDirectionForward
-                         ? final_destination->DistributedNodeNextTo(&node)
-                         : final_destination->DistributedNodePreviousTo(&node)))
-    return found;
-  return TraverseSiblings(*final_destination, direction);
-}
+ContainerNode* FlatTreeTraversal::TraverseParent(const Node& node) {
+  // This code is called extensively, so it minimizes repetitive work (such
+  // as avoiding multiple calls to parentElement()).
 
-ContainerNode* FlatTreeTraversal::TraverseParent(
-    const Node& node,
-    ParentTraversalDetails* details) {
   // TODO(hayato): Stop this hack for a pseudo element because a pseudo element
   // is not a child of its parentOrShadowHostNode() in a flat tree.
   if (node.IsPseudoElement())
     return node.ParentOrShadowHostNode();
 
-  if (node.IsChildOfV1ShadowHost())
-    return node.AssignedSlot();
+  ContainerNode* parent_node = node.parentNode();
+  if (!parent_node)
+    return nullptr;
 
-  if (auto* parent_slot =
-          ToHTMLSlotElementIfSupportsAssignmentOrNull(node.parentElement())) {
-    if (!parent_slot->AssignedNodes().IsEmpty())
-      return nullptr;
-    return parent_slot;
-  }
+  if (Element* parent_element = DynamicTo<Element>(parent_node)) {
+    if (parent_element->GetShadowRoot())
+      return node.AssignedSlot();
 
-  if (CanBeDistributedToV0InsertionPoint(node))
-    return TraverseParentForV0(node, details);
-
-  DCHECK(!ShadowRootWhereNodeCanBeDistributedForV0(node));
-  return TraverseParentOrHost(node);
-}
-
-ContainerNode* FlatTreeTraversal::TraverseParentForV0(
-    const Node& node,
-    ParentTraversalDetails* details) {
-  if (ShadowRootWhereNodeCanBeDistributedForV0(node)) {
-    if (const V0InsertionPoint* insertion_point = ResolveReprojection(&node)) {
-      if (details)
-        details->DidTraverseInsertionPoint(insertion_point);
-      // The node is distributed. But the distribution was stopped at this
-      // insertion point.
-      if (ShadowRootWhereNodeCanBeDistributedForV0(*insertion_point))
+    if (auto* parent_slot =
+            ToHTMLSlotElementIfSupportsAssignmentOrNull(*parent_element)) {
+      if (!parent_slot->AssignedNodes().empty())
         return nullptr;
-      return TraverseParent(*insertion_point);
+      return parent_slot;
     }
-    return nullptr;
   }
-  ContainerNode* parent = TraverseParentOrHost(node);
-  if (IsActiveV0InsertionPoint(*parent))
-    return nullptr;
-  return parent;
-}
 
-ContainerNode* FlatTreeTraversal::TraverseParentOrHost(const Node& node) {
-  ContainerNode* parent = node.parentNode();
-  if (!parent)
-    return nullptr;
-  auto* shadow_root = DynamicTo<ShadowRoot>(parent);
+  auto* shadow_root = DynamicTo<ShadowRoot>(parent_node);
   if (!shadow_root)
-    return parent;
+    return parent_node;
+
   return &shadow_root->host();
 }
 
@@ -296,7 +209,7 @@ bool FlatTreeTraversal::ContainsIncludingPseudoElement(
   return false;
 }
 
-Node* FlatTreeTraversal::PreviousSkippingChildren(const Node& node) {
+Node* FlatTreeTraversal::PreviousAbsoluteSibling(const Node& node) {
   if (Node* previous_sibling = TraversePreviousSibling(node))
     return previous_sibling;
   return TraversePreviousAncestorSibling(node);

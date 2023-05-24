@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLOWENERGYCONTROLLER_H
 #define QLOWENERGYCONTROLLER_H
@@ -45,12 +9,12 @@
 #include <QtBluetooth/QBluetoothDeviceInfo>
 #include <QtBluetooth/QBluetoothUuid>
 #include <QtBluetooth/QLowEnergyAdvertisingData>
+#include <QtBluetooth/QLowEnergyConnectionParameters>
 #include <QtBluetooth/QLowEnergyService>
 
 QT_BEGIN_NAMESPACE
 
 class QLowEnergyAdvertisingParameters;
-class QLowEnergyConnectionParameters;
 class QLowEnergyControllerPrivate;
 class QLowEnergyServiceData;
 
@@ -67,7 +31,9 @@ public:
         ConnectionError,
         AdvertisingError,
         RemoteHostClosedError,
-        AuthorizationError
+        AuthorizationError,
+        MissingPermissionsError,
+        RssiReadError
     };
     Q_ENUM(Error)
 
@@ -91,19 +57,13 @@ public:
     enum Role { CentralRole, PeripheralRole };
     Q_ENUM(Role)
 
-    explicit QLowEnergyController(const QBluetoothAddress &remoteDevice,
-                                  QObject *parent = nullptr); // TODO Qt 6 remove ctor
-    explicit QLowEnergyController(const QBluetoothDeviceInfo &remoteDevice,
-                                  QObject *parent = nullptr); // TODO Qt 6 make private
-    explicit QLowEnergyController(const QBluetoothAddress &remoteDevice,
-                                  const QBluetoothAddress &localDevice,
-                                  QObject *parent = nullptr); // TODO Qt 6 remove ctor
-
     static QLowEnergyController *createCentral(const QBluetoothDeviceInfo &remoteDevice,
                                                QObject *parent = nullptr);
-    static QLowEnergyController *createCentral(const QBluetoothAddress &remoteDevice,
+    static QLowEnergyController *createCentral(const QBluetoothDeviceInfo &remoteDevice,
                                                const QBluetoothAddress &localDevice,
                                                QObject *parent = nullptr);
+    static QLowEnergyController *createPeripheral(const QBluetoothAddress &localDevice,
+                                                  QObject *parent = nullptr);
     static QLowEnergyController *createPeripheral(QObject *parent = nullptr);
 
     // TODO: Allow to set connection timeout (disconnect when no data has been exchanged for n seconds).
@@ -143,18 +103,31 @@ public:
 
     Role role() const;
 
+    int mtu() const;
+    void readRssi();
+
 Q_SIGNALS:
     void connected();
     void disconnected();
     void stateChanged(QLowEnergyController::ControllerState state);
-    void error(QLowEnergyController::Error newError);
+    void errorOccurred(QLowEnergyController::Error newError);
+    void mtuChanged(int mtu);
+    void rssiRead(qint16 rssi);
 
     void serviceDiscovered(const QBluetoothUuid &newService);
     void discoveryFinished();
     void connectionUpdated(const QLowEnergyConnectionParameters &parameters);
 
+
 private:
-    explicit QLowEnergyController(QObject *parent = nullptr); // For the peripheral role.
+    // peripheral role ctor
+    explicit QLowEnergyController(const QBluetoothAddress &localDevice, QObject *parent = nullptr);
+
+    // central role ctors
+    explicit QLowEnergyController(const QBluetoothDeviceInfo &remoteDevice,
+                                  const QBluetoothAddress &localDevice,
+                                  QObject *parent = nullptr);
+
 
     Q_DECLARE_PRIVATE(QLowEnergyController)
     QLowEnergyControllerPrivate *d_ptr;
@@ -162,9 +135,15 @@ private:
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QLowEnergyController::Error)
-Q_DECLARE_METATYPE(QLowEnergyController::ControllerState)
-Q_DECLARE_METATYPE(QLowEnergyController::RemoteAddressType)
-Q_DECLARE_METATYPE(QLowEnergyController::Role)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyController::Error, QLowEnergyController__Error,
+                               Q_BLUETOOTH_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyController::ControllerState,
+                               QLowEnergyController__ControllerState,
+                               Q_BLUETOOTH_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyController::RemoteAddressType,
+                               QLowEnergyController__RemoteAddressType,
+                               Q_BLUETOOTH_EXPORT)
+QT_DECL_METATYPE_EXTERN_TAGGED(QLowEnergyController::Role, QLowEnergyController__Role,
+                               Q_BLUETOOTH_EXPORT)
 
 #endif // QLOWENERGYCONTROLLER_H

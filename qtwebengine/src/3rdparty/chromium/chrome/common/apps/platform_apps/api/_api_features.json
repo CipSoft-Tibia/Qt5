@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,10 @@
     "dependencies": ["permission:browser"],
     "contexts": ["blessed_extension"]
   },
+  "enterprise.remoteApps": {
+    "dependencies": ["permission:enterprise.remoteApps"],
+    "contexts": ["blessed_extension"]
+  },
   "firstRunPrivate": {
     "dependencies": ["permission:firstRunPrivate"],
     "contexts": ["blessed_extension"]
@@ -23,16 +27,8 @@
     "dependencies": ["permission:mediaGalleries"],
     "contexts": ["blessed_extension"]
   },
-  "musicManagerPrivate": {
-    "dependencies": ["permission:musicManagerPrivate"],
-    "contexts": ["blessed_extension"]
-  },
   "syncFileSystem": {
     "dependencies": ["permission:syncFileSystem"],
-    "contexts": ["blessed_extension"]
-  },
-  "webstoreWidgetPrivate": {
-    "dependencies": ["permission:webstoreWidgetPrivate"],
     "contexts": ["blessed_extension"]
   }
 }

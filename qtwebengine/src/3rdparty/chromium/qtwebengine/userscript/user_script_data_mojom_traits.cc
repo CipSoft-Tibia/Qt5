@@ -60,6 +60,6 @@ bool StructTraits<qtwebengine::mojom::UserScriptDataDataView,
   if (!data.ReadUrlPatterns(&out_data->urlPatterns))
     return false;
   return true;
-};
+}
 
 }  // namespace mojo

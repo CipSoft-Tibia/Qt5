@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformdefs.h"
 #include "private/qabstractfileengine_p.h"
+#include "private/qfiledevice_p.h"
 #include "private/qfsfileengine_p.h"
 #include "private/qcore_unix_p.h"
 #include "qfilesystementry_p.h"
@@ -56,7 +21,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
-#if !defined(QWS) && defined(Q_OS_MAC)
+#if defined(Q_OS_MACOS)
 # include <private/qcore_mac_p.h>
 #endif
 
@@ -100,14 +65,23 @@ static inline QString msgOpenDirectory()
 #if QT_CONFIG(translation)
     return QIODevice::tr(message);
 #else
-    return QLatin1String(message);
+    return QLatin1StringView(message);
 #endif
 }
 
 /*!
     \internal
 */
-bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode)
+bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode,
+                                      std::optional<QFile::Permissions> permissions)
+{
+    return nativeOpenImpl(openMode, permissions ? QtPrivate::toMode_t(*permissions) : 0666);
+}
+
+/*!
+    \internal
+*/
+bool QFSFileEnginePrivate::nativeOpenImpl(QIODevice::OpenMode openMode, mode_t mode)
 {
     Q_Q(QFSFileEngine);
 
@@ -118,7 +92,7 @@ bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode)
 
         // Try to open the file in unbuffered mode.
         do {
-            fd = QT_OPEN(fileEntry.nativeFilePath().constData(), flags, 0666);
+            fd = QT_OPEN(fileEntry.nativeFilePath().constData(), flags, mode);
         } while (fd == -1 && errno == EINTR);
 
         // On failure, return and report the error.
@@ -141,14 +115,14 @@ bool QFSFileEnginePrivate::nativeOpen(QIODevice::OpenMode openMode)
 
         // Seek to the end when in Append mode.
         if (flags & QFile::Append) {
-            int ret;
+            QT_OFF_T ret;
             do {
                 ret = QT_LSEEK(fd, 0, SEEK_END);
             } while (ret == -1 && errno == EINTR);
 
             if (ret == -1) {
                 q->setError(errno == EMFILE ? QFile::ResourceError : QFile::OpenError,
-                            qt_error_string(int(errno)));
+                            qt_error_string(errno));
                 return false;
             }
         }
@@ -186,9 +160,9 @@ bool QFSFileEnginePrivate::nativeSyncToDisk()
     Q_Q(QFSFileEngine);
     int ret;
 #if defined(_POSIX_SYNCHRONIZED_IO) && _POSIX_SYNCHRONIZED_IO > 0
-    EINTR_LOOP(ret, fdatasync(nativeHandle()));
+    QT_EINTR_LOOP(ret, fdatasync(nativeHandle()));
 #else
-    EINTR_LOOP(ret, fsync(nativeHandle()));
+    QT_EINTR_LOOP(ret, fsync(nativeHandle()));
 #endif
     if (ret != 0)
         q->setError(QFile::WriteError, qt_error_string(errno));
@@ -247,7 +221,7 @@ qint64 QFSFileEnginePrivate::nativeRead(char *data, qint64 len)
         }
         if (readBytes == 0 && !feof(fh)) {
             // if we didn't read anything and we're not at EOF, it must be an error
-            q->setError(QFile::ReadError, qt_error_string(int(errno)));
+            q->setError(QFile::ReadError, qt_error_string(errno));
             return -1;
         }
         return readBytes;
@@ -383,7 +357,7 @@ QAbstractFileEngine::FileFlags QFSFileEngine::fileFlags(FileFlags type) const
     {
         QFileSystemMetaData::MetaDataFlags queryFlags = { };
 
-        queryFlags |= QFileSystemMetaData::MetaDataFlags(uint(type))
+        queryFlags |= QFileSystemMetaData::MetaDataFlags(uint(type.toInt()))
                 & QFileSystemMetaData::Permissions;
 
         if (type & TypesMask)
@@ -409,7 +383,7 @@ QAbstractFileEngine::FileFlags QFSFileEngine::fileFlags(FileFlags type) const
         return ret;
 
     if (exists && (type & PermsMask))
-        ret |= FileFlags(uint(d->metaData.permissions()));
+        ret |= FileFlags(uint(d->metaData.permissions().toInt()));
 
     if (type & TypesMask) {
         if (d->metaData.isAlias()) {
@@ -470,11 +444,19 @@ QString QFSFileEngine::fileName(FileName file) const
         QFileSystemEntry entry(QFileSystemEngine::canonicalName(d->fileEntry, d->metaData));
         return file == CanonicalPathName ? entry.path() : entry.filePath();
     }
-    case LinkName:
+    case AbsoluteLinkTarget:
         if (d->isSymlink()) {
             QFileSystemEntry entry = QFileSystemEngine::getLinkTarget(d->fileEntry, d->metaData);
             return entry.filePath();
         }
+        return QString();
+    case RawLinkPath:
+        if (d->isSymlink()) {
+            QFileSystemEntry entry = QFileSystemEngine::getRawLinkPath(d->fileEntry, d->metaData);
+            return entry.filePath();
+        }
+        return QString();
+    case JunctionName:
         return QString();
     case DefaultName:
     case NFileNames:
@@ -486,7 +468,8 @@ QString QFSFileEngine::fileName(FileName file) const
 bool QFSFileEngine::isRelativePath() const
 {
     Q_D(const QFSFileEngine);
-    return d->fileEntry.filePath().length() ? d->fileEntry.filePath().at(0) != QLatin1Char('/') : true;
+    const QString fp = d->fileEntry.filePath();
+    return fp.isEmpty() || fp.at(0) != u'/';
 }
 
 uint QFSFileEngine::ownerId(FileOwner own) const
@@ -512,6 +495,10 @@ bool QFSFileEngine::setPermissions(uint perms)
     Q_D(QFSFileEngine);
     QSystemError error;
     bool ok;
+
+    // clear cached state (if any)
+    d->metaData.clearFlags(QFileSystemMetaData::Permissions);
+
     if (d->fd != -1)
         ok = QFileSystemEngine::setPermissions(d->fd, QFile::Permissions(perms), error);
     else
@@ -573,13 +560,13 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size, QFile::MemoryMapFla
 
     Q_Q(QFSFileEngine);
     if (openMode == QIODevice::NotOpen) {
-        q->setError(QFile::PermissionsError, qt_error_string(int(EACCES)));
+        q->setError(QFile::PermissionsError, qt_error_string(EACCES));
         return nullptr;
     }
 
     if (offset < 0 || offset > maxFileOffset
             || size < 0 || quint64(size) > quint64(size_t(-1))) {
-        q->setError(QFile::UnspecifiedError, qt_error_string(int(EINVAL)));
+        q->setError(QFile::UnspecifiedError, qt_error_string(EINVAL));
         return nullptr;
     }
 
@@ -607,7 +594,7 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size, QFile::MemoryMapFla
     int extra = offset % pageSize;
 
     if (quint64(size + extra) > quint64((size_t)-1)) {
-        q->setError(QFile::UnspecifiedError, qt_error_string(int(EINVAL)));
+        q->setError(QFile::UnspecifiedError, qt_error_string(EINVAL));
         return nullptr;
     }
 
@@ -619,22 +606,22 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size, QFile::MemoryMapFla
                    access, sharemode, nativeHandle(), realOffset);
     if (MAP_FAILED != mapAddress) {
         uchar *address = extra + static_cast<uchar*>(mapAddress);
-        maps[address] = QPair<int,size_t>(extra, realSize);
+        maps[address] = {extra, realSize};
         return address;
     }
 
     switch(errno) {
     case EBADF:
-        q->setError(QFile::PermissionsError, qt_error_string(int(EACCES)));
+        q->setError(QFile::PermissionsError, qt_error_string(EACCES));
         break;
     case ENFILE:
     case ENOMEM:
-        q->setError(QFile::ResourceError, qt_error_string(int(errno)));
+        q->setError(QFile::ResourceError, qt_error_string(errno));
         break;
     case EINVAL:
         // size are out of bounds
     default:
-        q->setError(QFile::UnspecifiedError, qt_error_string(int(errno)));
+        q->setError(QFile::UnspecifiedError, qt_error_string(errno));
         break;
     }
     return nullptr;
@@ -644,18 +631,19 @@ bool QFSFileEnginePrivate::unmap(uchar *ptr)
 {
 #if !defined(Q_OS_INTEGRITY)
     Q_Q(QFSFileEngine);
-    if (!maps.contains(ptr)) {
+    const auto it = std::as_const(maps).find(ptr);
+    if (it == maps.cend()) {
         q->setError(QFile::PermissionsError, qt_error_string(EACCES));
         return false;
     }
 
-    uchar *start = ptr - maps[ptr].first;
-    size_t len = maps[ptr].second;
+    uchar *start = ptr - it->start;
+    size_t len = it->length;
     if (-1 == munmap(start, len)) {
         q->setError(QFile::UnspecifiedError, qt_error_string(errno));
         return false;
     }
-    maps.remove(ptr);
+    maps.erase(it);
     return true;
 #else
     return false;

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "openglwidget.h"
 #include <QApplication>
@@ -49,14 +24,13 @@ class Tools : public QObject
     Q_OBJECT
 
 public:
-    Tools(QWidget *root, QWidget *widgetToTurn, const QVector<QWidget *> glwidgets)
+    Tools(QWidget *root, QWidget *widgetToTurn, const QWidgetList &glwidgets)
         : m_root(root), m_widgetToTurn(widgetToTurn), m_glWidgets(glwidgets) { }
     void dump();
 
 private slots:
     void turnNative();
     void hideShowAllGL();
-    void dumpCompositingStatus();
 
 signals:
     void aboutToShowGLWidgets();
@@ -66,7 +40,7 @@ private:
 
     QWidget *m_root;
     QWidget *m_widgetToTurn;
-    QVector<QWidget *> m_glWidgets;
+    QWidgetList m_glWidgets;
 };
 
 void Tools::turnNative()
@@ -106,12 +80,6 @@ void Tools::dumpWidget(QWidget *w, int indent)
         if (QWidget *cw = qobject_cast<QWidget *>(obj))
             dumpWidget(cw, indent + 4);
     }
-}
-
-void Tools::dumpCompositingStatus()
-{
-    QWindow *w = m_root->window()->windowHandle();
-    qDebug() << "Compositing status for" << w << m_root->window() << "is" << QWindowPrivate::get(w)->compositing;
 }
 
 class TabWidgetResetter : public QObject
@@ -212,15 +180,11 @@ int main(int argc, char *argv[])
     sw->setWindowTitle("Tabs");
 
     TabWidgetResetter twr(tw);
-    Tools t(&wnd, glw3, QVector<QWidget *>() << glw << glw2 << glw3 << glw4);
+    Tools t(&wnd, glw3, QWidgetList { glw, glw2, glw3, glw4 });
     QObject::connect(&t, SIGNAL(aboutToShowGLWidgets()), &twr, SLOT(reset()));
     QMenu *toolsMenu = wnd.menuBar()->addMenu("&Tools");
     toolsMenu->addAction("&Turn widgets (or some parent) into native", &t, SLOT(turnNative()));
     toolsMenu->addAction("&Hide/show all OpenGL widgets", &t, SLOT(hideShowAllGL()));
-
-    QTimer compStatusDumpTimer;
-    QObject::connect(&compStatusDumpTimer, SIGNAL(timeout()), &t, SLOT(dumpCompositingStatus()));
-    compStatusDumpTimer.start(5000);
 
     wnd.show();
 

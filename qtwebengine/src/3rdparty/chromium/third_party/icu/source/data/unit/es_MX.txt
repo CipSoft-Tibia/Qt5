@@ -1,19 +1,12 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
-// License & terms of use: http://www.unicode.org/copyright.html#License
+// License & terms of use: http://www.unicode.org/copyright.html
+// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
 es_MX{
     %%Parent{"es_419"}
-    Version{"37"}
     units{
         concentr{
-            milligram-per-deciliter{
-                one{"{0} mg/dL"}
-                other{"{0} mg/dL"}
-            }
-            millimole-per-liter{
-                dnam{"mmol/L"}
-            }
-            permillion{
-                dnam{"ppm"}
+            milligram-ofglucose-per-deciliter{
+                dnam{"miligramos por decilitro"}
             }
         }
         electric{
@@ -31,11 +24,6 @@ es_MX{
             }
         }
         length{
-            micrometer{
-                dnam{"micrometros"}
-                one{"{0} micrometro"}
-                other{"{0} micrometros"}
-            }
             mile-scandinavian{
                 dnam{"millas escandinavas"}
             }
@@ -68,11 +56,6 @@ es_MX{
                 other{"{0} kelvines"}
             }
         }
-        torque{
-            newton-meter{
-                dnam{"newton metros"}
-            }
-        }
         volume{
             acre-foot{
                 one{"{0} acre-pie"}
@@ -86,6 +69,12 @@ es_MX{
         }
     }
     unitsNarrow{
+        concentr{
+            karat{
+                one{"{0}kt"}
+                other{"{0}ct"}
+            }
+        }
         duration{
             day{
                 dnam{"días"}
@@ -108,12 +97,6 @@ es_MX{
                 other{"{0}a"}
             }
         }
-        temperature{
-            celsius{
-                one{"{0} °C"}
-                other{"{0} °C"}
-            }
-        }
     }
     unitsShort{
         acceleration{
@@ -122,11 +105,10 @@ es_MX{
             }
         }
         angle{
-            arc-second{
-                dnam{"arcseg"}
-            }
             degree{
                 dnam{"º"}
+                one{"{0}°"}
+                other{"{0} grados"}
             }
         }
         concentr{
@@ -172,9 +154,11 @@ es_MX{
                 per{"{0}/a"}
             }
         }
-        electric{
-            volt{
-                dnam{"V"}
+        graphics{
+            dot{
+                dnam{"pto"}
+                one{"{0} pto"}
+                other{"{0} ptos"}
             }
         }
         length{

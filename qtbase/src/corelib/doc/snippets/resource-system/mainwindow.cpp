@@ -1,62 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-//! [0]
 #include <QtWidgets>
 
 #include "mainwindow.h"
-//! [0]
-
-//! [1]
 MainWindow::MainWindow()
-//! [1] //! [2]
 {
     textEdit = new QPlainTextEdit;
     setCentralWidget(textEdit);
@@ -74,11 +22,8 @@ MainWindow::MainWindow()
     setCurrentFile(QString());
     setUnifiedTitleAndToolBarOnMac(true);
 }
-//! [2]
 
-//! [3]
 void MainWindow::closeEvent(QCloseEvent *event)
-//! [3] //! [4]
 {
     if (maybeSave()) {
         writeSettings();
@@ -87,22 +32,16 @@ void MainWindow::closeEvent(QCloseEvent *event)
         event->ignore();
     }
 }
-//! [4]
 
-//! [5]
 void MainWindow::newFile()
-//! [5] //! [6]
 {
     if (maybeSave()) {
         textEdit->clear();
         setCurrentFile(QString());
     }
 }
-//! [6]
 
-//! [7]
 void MainWindow::open()
-//! [7] //! [8]
 {
     if (maybeSave()) {
         QString fileName = QFileDialog::getOpenFileName(this);
@@ -110,11 +49,8 @@ void MainWindow::open()
             loadFile(fileName);
     }
 }
-//! [8]
 
-//! [9]
 bool MainWindow::save()
-//! [9] //! [10]
 {
     if (curFile.isEmpty()) {
         return saveAs();
@@ -122,11 +58,8 @@ bool MainWindow::save()
         return saveFile(curFile);
     }
 }
-//! [10]
 
-//! [11]
 bool MainWindow::saveAs()
-//! [11] //! [12]
 {
     QString fileName = QFileDialog::getSaveFileName(this);
     if (fileName.isEmpty())
@@ -134,42 +67,31 @@ bool MainWindow::saveAs()
 
     return saveFile(fileName);
 }
-//! [12]
 
-//! [13]
 void MainWindow::about()
-//! [13] //! [14]
 {
    QMessageBox::about(this, tr("About Application"),
             tr("The <b>Application</b> example demonstrates how to "
                "write modern GUI applications using Qt, with a menu bar, "
                "toolbars, and a status bar."));
 }
-//! [14]
 
-//! [15]
 void MainWindow::documentWasModified()
-//! [15] //! [16]
 {
     setWindowModified(textEdit->document()->isModified());
 }
-//! [16]
 
-//! [17]
 void MainWindow::createActions()
-//! [17] //! [18]
 {
     newAct = new QAction(QIcon(":/images/new.png"), tr("&New"), this);
     newAct->setShortcuts(QKeySequence::New);
     newAct->setStatusTip(tr("Create a new file"));
     connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
 
-//! [19]
     openAct = new QAction(QIcon(":/images/open.png"), tr("&Open..."), this);
     openAct->setShortcuts(QKeySequence::Open);
     openAct->setStatusTip(tr("Open an existing file"));
     connect(openAct, &QAction::triggered, this, &MainWindow::open);
-//! [18] //! [19]
 
     saveAct = new QAction(QIcon(":/images/save.png"), tr("&Save"), this);
     saveAct->setShortcuts(QKeySequence::Save);
@@ -181,10 +103,8 @@ void MainWindow::createActions()
     saveAsAct->setStatusTip(tr("Save the document under a new name"));
     connect(saveAsAct, &QAction::triggered, this, &MainWindow::saveAs);
 
-//! [20]
     exitAct = new QAction(tr("E&xit"), this);
     exitAct->setShortcuts(QKeySequence::Quit);
-//! [20]
     exitAct->setStatusTip(tr("Exit the application"));
     connect(exitAct, &QAction::triggered, this, &MainWindow::close);
 
@@ -212,34 +132,24 @@ void MainWindow::createActions()
     aboutAct->setStatusTip(tr("Show the application's About box"));
     connect(aboutAct, &QAction::triggered, this, &MainWindow::about);
 
-//! [22]
     aboutQtAct = new QAction(tr("About &Qt"), this);
     aboutQtAct->setStatusTip(tr("Show the Qt library's About box"));
     connect(aboutQtAct, &QAction::triggered, qApp, &QApplication::aboutQt);
-//! [22]
 
-//! [23]
     cutAct->setEnabled(false);
-//! [23] //! [24]
     copyAct->setEnabled(false);
     connect(textEdit, &QTextEdit::copyAvailable,
             cutAct, &QAction::setEnabled);
     connect(textEdit, &QTextEdit::copyAvailable,
             copyAct, &QAction::setEnabled);
 }
-//! [24]
 
-//! [25] //! [26]
 void MainWindow::createMenus()
-//! [25] //! [27]
 {
     fileMenu = menuBar()->addMenu(tr("&File"));
     fileMenu->addAction(newAct);
-//! [28]
     fileMenu->addAction(openAct);
-//! [28]
     fileMenu->addAction(saveAct);
-//! [26]
     fileMenu->addAction(saveAsAct);
     fileMenu->addSeparator();
     fileMenu->addAction(exitAct);
@@ -255,16 +165,12 @@ void MainWindow::createMenus()
     helpMenu->addAction(aboutAct);
     helpMenu->addAction(aboutQtAct);
 }
-//! [27]
 
-//! [29] //! [30]
 void MainWindow::createToolBars()
 {
     fileToolBar = addToolBar(tr("File"));
     fileToolBar->addAction(newAct);
-//! [29] //! [31]
     fileToolBar->addAction(openAct);
-//! [31]
     fileToolBar->addAction(saveAct);
 
     editToolBar = addToolBar(tr("Edit"));
@@ -272,19 +178,13 @@ void MainWindow::createToolBars()
     editToolBar->addAction(copyAct);
     editToolBar->addAction(pasteAct);
 }
-//! [30]
 
-//! [32]
 void MainWindow::createStatusBar()
-//! [32] //! [33]
 {
     statusBar()->showMessage(tr("Ready"));
 }
-//! [33]
 
-//! [34] //! [35]
 void MainWindow::readSettings()
-//! [34] //! [36]
 {
     QSettings settings("QtProject", "Application Example");
     QPoint pos = settings.value("pos", QPoint(200, 200)).toPoint();
@@ -292,21 +192,15 @@ void MainWindow::readSettings()
     resize(size);
     move(pos);
 }
-//! [35] //! [36]
 
-//! [37] //! [38]
 void MainWindow::writeSettings()
-//! [37] //! [39]
 {
     QSettings settings("QtProject", "Application Example");
     settings.setValue("pos", pos());
     settings.setValue("size", size());
 }
-//! [38] //! [39]
 
-//! [40]
 bool MainWindow::maybeSave()
-//! [40] //! [41]
 {
     if (textEdit->document()->isModified()) {
         QMessageBox::StandardButton ret;
@@ -321,11 +215,8 @@ bool MainWindow::maybeSave()
     }
     return true;
 }
-//! [41]
 
-//! [42]
 void MainWindow::loadFile(const QString &fileName)
-//! [42] //! [43]
 {
     QFile file(fileName);
     if (!file.open(QFile::ReadOnly | QFile::Text)) {
@@ -348,11 +239,8 @@ void MainWindow::loadFile(const QString &fileName)
     setCurrentFile(fileName);
     statusBar()->showMessage(tr("File loaded"), 2000);
 }
-//! [43]
 
-//! [44]
 bool MainWindow::saveFile(const QString &fileName)
-//! [44] //! [45]
 {
     QFile file(fileName);
     if (!file.open(QFile::WriteOnly | QFile::Text)) {
@@ -376,11 +264,8 @@ bool MainWindow::saveFile(const QString &fileName)
     statusBar()->showMessage(tr("File saved"), 2000);
     return true;
 }
-//! [45]
 
-//! [46]
 void MainWindow::setCurrentFile(const QString &fileName)
-//! [46] //! [47]
 {
     curFile = fileName;
     textEdit->document()->setModified(false);
@@ -391,12 +276,8 @@ void MainWindow::setCurrentFile(const QString &fileName)
         shownName = "untitled.txt";
     setWindowFilePath(shownName);
 }
-//! [47]
 
-//! [48]
 QString MainWindow::strippedName(const QString &fullFileName)
-//! [48] //! [49]
 {
     return QFileInfo(fullFileName).fileName();
 }
-//! [49]

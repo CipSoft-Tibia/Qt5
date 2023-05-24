@@ -2,6 +2,38 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="tr_TR">
 <context>
+    <name>QQuickPlatformDialog</name>
+    <message>
+        <source>Dialog is an abstract base class</source>
+        <translation>İletişim kutusu soyut bir temel sınıftır</translation>
+    </message>
+    <message>
+        <source>Cannot create an instance of StandardButton</source>
+        <translation>StandardButton örneği oluşturulamıyor</translation>
+    </message>
+</context>
+<context>
+    <name>QtQuickControls2ImagineStylePlugin</name>
+    <message>
+        <source>Imagine is an attached property</source>
+        <translation>Imagine ekli bir özelliktir</translation>
+    </message>
+</context>
+<context>
+    <name>QtQuickControls2MaterialStylePlugin</name>
+    <message>
+        <source>Material is an attached property</source>
+        <translation>Material ekli bir özelliktir</translation>
+    </message>
+</context>
+<context>
+    <name>QtQuickControls2UniversalStylePlugin</name>
+    <message>
+        <source>Universal is an attached property</source>
+        <translation>Universal ekli bir özelliktir</translation>
+    </message>
+</context>
+<context>
     <name>Object</name>
     <message>
         <source>Duplicate scoped enum name</source>
@@ -21,7 +53,7 @@
     </message>
     <message>
         <source>Duplicate default property</source>
-        <translation>Yinelenen varsayılan özellik</translation>
+        <translation>Yinelenen öntanımlı özellik</translation>
     </message>
     <message>
         <source>Duplicate alias name</source>
@@ -70,7 +102,7 @@
     </message>
     <message>
         <source>Component elements may not contain properties other than id</source>
-        <translation>Bileşen öğeleri kimlik dışında özellikler içeremez</translation>
+        <translation>Bileşen ögeleri kimlik dışında özellikler içeremez</translation>
     </message>
     <message>
         <source>Invalid component body specification</source>
@@ -192,7 +224,7 @@
     </message>
     <message>
         <source>createObject: value is not an object</source>
-        <translation>createObject: değer bir nesne değil</translation>
+        <translation>createObject: Değer bir nesne değil</translation>
     </message>
     <message>
         <source>Object or context destroyed during incubation</source>
@@ -207,15 +239,15 @@
     </message>
     <message>
         <source>Connections: nested objects not allowed</source>
-        <translation>Bağlantılar: yuvalanmış nesnelere izin verilmiyor</translation>
+        <translation>Bağlantılar: Yuvalanmış nesnelere izin verilmiyor</translation>
     </message>
     <message>
         <source>Connections: syntax error</source>
-        <translation>Bağlantılar: sözdizimi hatası</translation>
+        <translation>Bağlantılar: Sözdizim hatası</translation>
     </message>
     <message>
         <source>Connections: script expected</source>
-        <translation>Bağlantılar: betik bekleniyor</translation>
+        <translation>Bağlantılar: Betik bekleniyordu</translation>
     </message>
     <message>
         <source>Implicitly defined onFoo properties in Connections are deprecated. Use this syntax instead: function onFoo(&lt;arguments&gt;) { ... }</source>
@@ -223,14 +255,14 @@
     </message>
     <message>
         <source>Detected function &quot;%1&quot; in Connections element. This is probably intended to be a signal handler but no signal of the target matches the name.</source>
-        <translation>Bağlantılar öğesinde &quot;%1&quot; işlevi algılandı. Bu muhtemelen bir sinyal işleyici olarak tasarlanmıştır, ancak hedefin hiçbir sinyali adla eşleşmez.</translation>
+        <translation>Bağlantılar ögesinde &quot;%1&quot; işlevi algılandı. Bu muhtemelen bir sinyal işleyici olarak tasarlanmıştır; ancak hedefin hiçbir sinyali adla eşleşmez.</translation>
     </message>
 </context>
 <context>
     <name>QQmlDebugServerImpl</name>
     <message>
         <source>QML Debugger: Invalid argument &quot;%1&quot; detected. Ignoring the same.</source>
-        <translation>QML Hata Ayıklayıcı: Geçersiz bağımsız değişken&quot; %1 &quot; algılandı. Aynısı yoksayılıyor.</translation>
+        <translation>QML Hata Ayıklayıcı: Geçersiz argüman &quot; %1 &quot; algılandı. Aynısı yok sayılıyor.</translation>
     </message>
     <message>
         <source>QML Debugger: Ignoring &quot;-qmljsdebugger=%1&quot;.</source>
@@ -242,7 +274,7 @@
     </message>
     <message>
         <source>&quot;file:&quot; can be used to specify the name of a file the debugger will try to connect to using a QLocalSocket. If &quot;file:&quot; is given any &quot;host:&quot; and&quot;port:&quot; arguments will be ignored.</source>
-        <translation>&quot;file:&quot; hata ayıklayıcının bir QLocalSocket kullanarak bağlanmaya çalışacağı bir dosyanın adını belirtmek için kullanılabilir. &quot;file: &quot;herhangi bir &quot;host:&quot; ve &quot;port:&quot; değişkenleri verilirse göz ardı edilir.</translation>
+        <translation>&quot;file:&quot; hata ayıklayıcının bir QLocalSocket kullanarak bağlanmaya çalışacağı bir dosyanın adını belirtmek için kullanılabilir. &quot;file: &quot;herhangi bir &quot;host:&quot; ve &quot;port:&quot; argümanları verilirse yok sayılır.</translation>
     </message>
     <message>
         <source>&quot;host:&quot; and &quot;port:&quot; can be used to specify an address and a single port or a range of ports the debugger will try to bind to with a QTcpServer.</source>
@@ -254,7 +286,7 @@
     </message>
     <message>
         <source>&quot;services:&quot; can be used to specify which debug services the debugger should load. Some debug services interact badly with others. The V4 debugger should not be loaded when using the QML profiler as it will force any V4 engines to use the JavaScript interpreter rather than the JIT. The following debug services are available by default:</source>
-        <translation>&quot;services:&quot; hata ayıklayıcının hangi hata ayıklama hizmetlerini yüklemesi gerektiğini belirtmek için kullanılabilir. Bazı hata ayıklama hizmetleri diğerleriyle kötü etkileşime girer. VML hata ayıklayıcısı, QML profili oluşturucusu kullanılırken yüklenmemelidir, çünkü herhangi bir V4 motorunu JIT yerine JavaScript yorumlayıcısını kullanmaya zorlar. Aşağıdaki hata ayıklama hizmetleri varsayılan olarak kullanılabilir:</translation>
+        <translation>&quot;services:&quot; hata ayıklayıcının hangi hata ayıklama hizmetlerini yüklemesi gerektiğini belirtmek için kullanılabilir. Bazı hata ayıklama hizmetleri diğerleriyle kötü etkileşime girer. VML hata ayıklayıcısı, QML profili oluşturucusu kullanılırken yüklenmemelidir, çünkü herhangi bir V4 motorunu JIT yerine JavaScript yorumlayıcısını kullanmaya zorlar. Aşağıdaki hata ayıklama hizmetleri öntanımlı olarak kullanılabilir:</translation>
     </message>
     <message>
         <source>The QML debugger</source>
@@ -292,7 +324,7 @@
     </message>
     <message>
         <source>Other services offered by qmltooling plugins that implement QQmlDebugServiceFactory and which can be found in the standard plugin paths will also be available and can be specified. If no &quot;services&quot; argument is given, all services found this way, including the default ones, are loaded.</source>
-        <translation>QQmlDebugServiceFactory uygulayan ve standart eklenti yollarında bulunabilen qmltooling eklentileri tarafından sunulan diğer hizmetler de kullanılabilir ve belirtilebilir. Hiçbir &quot;services&quot; bağımsız değişkeni verilmezse, varsayılanlar da dahil olmak üzere bu şekilde bulunan tüm hizmetler yüklenir.</translation>
+        <translation>QQmlDebugServiceFactory uygulayan ve standart eklenti yollarında bulunabilen qmltooling eklentileri tarafından sunulan diğer hizmetler de kullanılabilir ve belirtilebilir. Hiçbir &quot;services&quot; argümanı verilmezse öntanımlılar da dahil olmak üzere bu şekilde bulunan tüm hizmetler yüklenir.</translation>
     </message>
 </context>
 <context>
@@ -322,95 +354,95 @@
     </message>
     <message>
         <source>get: index out of range</source>
-        <translation>get: dizin aralık dışında</translation>
+        <translation>get: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>insert: index out of range</source>
-        <translation>insert: dizin aralık dışında</translation>
+        <translation>insert: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>create: index out of range</source>
-        <translation>create: dizin aralık dışında</translation>
+        <translation>create: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>resolve: from index out of range</source>
-        <translation>resolve: dizinden aralık dışında</translation>
+        <translation>resolve: Aralık dışındaki indeksten</translation>
     </message>
     <message>
         <source>resolve: from index invalid</source>
-        <translation>resolve: dizinden geçersiz</translation>
+        <translation>resolve: Geçersiz indeksten</translation>
     </message>
     <message>
         <source>resolve: to index out of range</source>
-        <translation>resolve: dizine aralık dışında</translation>
+        <translation>resolve: Aralık dışındaki indekse</translation>
     </message>
     <message>
         <source>resolve: to index invalid</source>
-        <translation>resolve: dizine geçersiz</translation>
+        <translation>resolve: Geçersiz indekse</translation>
     </message>
     <message>
         <source>resolve: from is not an unresolved item</source>
-        <translation>resolve: from, çözülmemiş bir öğe değil</translation>
+        <translation>resolve: from, çözülmemiş bir öge değil</translation>
     </message>
     <message>
         <source>resolve: to is not a model item</source>
-        <translation>resolve: to bir model öğesi değildir</translation>
+        <translation>resolve: to bir model ögesi değil</translation>
     </message>
     <message>
         <source>remove: invalid index</source>
-        <translation>remove: geçersiz dizin</translation>
+        <translation>remove: Geçersiz indeks</translation>
     </message>
     <message>
         <source>remove: index out of range</source>
-        <translation>remove: dizin aralık dışında</translation>
+        <translation>remove: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>remove: invalid count</source>
-        <translation>remove: geçersiz sayı</translation>
+        <translation>remove: Geçersiz sayı</translation>
     </message>
     <message>
         <source>addGroups: index out of range</source>
-        <translation>addGroups: dizin aralık dışında</translation>
+        <translation>addGroups: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>addGroups: invalid count</source>
-        <translation>addGroups: geçersiz sayı</translation>
+        <translation>addGroups: Geçersiz sayı</translation>
     </message>
     <message>
         <source>removeGroups: index out of range</source>
-        <translation>removeGroups: dizin aralık dışında</translation>
+        <translation>removeGroups: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>removeGroups: invalid count</source>
-        <translation>removeGroups: geçersiz sayı</translation>
+        <translation>removeGroups: Geçersiz sayı</translation>
     </message>
     <message>
         <source>setGroups: index out of range</source>
-        <translation>setGroups: dizin aralık dışında</translation>
+        <translation>setGroups: İndeks aralık dışında</translation>
     </message>
     <message>
         <source>setGroups: invalid count</source>
-        <translation>setGroups: geçersiz sayı</translation>
+        <translation>setGroups: Geçersiz sayı</translation>
     </message>
     <message>
         <source>move: invalid from index</source>
-        <translation>move: dizinden geçersiz</translation>
+        <translation>move: İndeksten geçersiz</translation>
     </message>
     <message>
         <source>move: invalid to index</source>
-        <translation>move: dizine geçersiz</translation>
+        <translation>move: İndekse geçersiz</translation>
     </message>
     <message>
         <source>move: invalid count</source>
-        <translation>move: geçersiz sayı</translation>
+        <translation>move: Geçersiz sayı</translation>
     </message>
     <message>
         <source>move: from index out of range</source>
-        <translation>move: dizinden aralık dışında</translation>
+        <translation>move: Aralık dışındaki indeksten</translation>
     </message>
     <message>
         <source>move: to index out of range</source>
-        <translation>move: dizine aralık dışında</translation>
+        <translation>move: Aralık dışındaki indekse</translation>
     </message>
 </context>
 <context>
@@ -421,7 +453,7 @@
     </message>
     <message>
         <source>There are still &quot;%1&quot; items in the process of being created at engine destruction.</source>
-        <translation>Motor yıkımı sırasında oluşturulma sürecinde hala &quot;%1 &quot; öğeleri var.</translation>
+        <translation>Motor yıkımı sırasında oluşturulma sürecinde hala &quot;%1 &quot; ögeleri var.</translation>
     </message>
     <message>
         <source>executeSql called outside transaction()</source>
@@ -429,7 +461,7 @@
     </message>
     <message>
         <source>Read-only Transaction</source>
-        <translation>Salt Okunur Transaction</translation>
+        <translation>Saltokunur Transaction</translation>
     </message>
     <message>
         <source>Version mismatch: expected %1, found %2</source>
@@ -464,7 +496,7 @@
     </message>
     <message>
         <source>Invalid property assignment: &quot;%1&quot; is a read-only property</source>
-        <translation>Geçersiz özellik ataması: &quot;%1&quot; salt okunur bir özelliktir</translation>
+        <translation>Geçersiz özellik ataması: &quot;%1&quot; saltokunur bir özelliktir</translation>
     </message>
 </context>
 <context>
@@ -554,7 +586,7 @@
     <name>QQmlListModel</name>
     <message>
         <source>unable to enable dynamic roles as this model is not empty</source>
-        <translation>bu model boş olmadığından dinamik roller etkinleştirilemiyor</translation>
+        <translation>bu model boş olmadığından devingen roller etkinleştirilemiyor</translation>
     </message>
     <message>
         <source>unable to enable static roles as this model is not empty</source>
@@ -562,55 +594,55 @@
     </message>
     <message>
         <source>dynamic role setting must be made from the main thread, before any worker scripts are created</source>
-        <translation>herhangi bir çalışan betiği oluşturulmadan önce dinamik rol ayarı ana iş parçacığından yapılmalıdır</translation>
+        <translation>herhangi bir çalışan betiği oluşturulmadan önce devingen rol ayarı ana iş parçacığından yapılmalıdır</translation>
     </message>
     <message>
         <source>remove: indices [%1 - %2] out of range [0 - %3]</source>
-        <translation>remove: dizinler [%1 - %2] aralık dışında [0 - %3]</translation>
+        <translation>remove: İndeksler [%1 - %2] aralık dışında [0 - %3]</translation>
     </message>
     <message>
         <source>remove: incorrect number of arguments</source>
-        <translation>remove: yanlış değişken sayısı</translation>
+        <translation>remove: Yanlış argüman sayısı</translation>
     </message>
     <message>
         <source>insert: index %1 out of range</source>
-        <translation>insert: dizin %1 Aralık dışında</translation>
+        <translation>insert: %1 indeksi aralık dışında</translation>
     </message>
     <message>
         <source>insert: value is not an object</source>
-        <translation>insert: değer bir nesne değil</translation>
+        <translation>insert: Değer bir nesne değil</translation>
     </message>
     <message>
         <source>move: out of range</source>
-        <translation>move: aralık dışında</translation>
+        <translation>move: Aralık dışında</translation>
     </message>
     <message>
         <source>append: value is not an object</source>
-        <translation>append: değer bir nesne değil</translation>
+        <translation>append: Değer bir nesne değil</translation>
     </message>
     <message>
         <source>set: value is not an object</source>
-        <translation>set: değer bir nesne değil</translation>
+        <translation>set: Değer bir nesne değil</translation>
     </message>
     <message>
         <source>set: index %1 out of range</source>
-        <translation>set: dizin %1 aralık dışında</translation>
+        <translation>set: %1 indeksi aralık dışında</translation>
     </message>
     <message>
         <source>ListElement: cannot contain nested elements</source>
-        <translation>ListElement: iç içe öğeler içeremez</translation>
+        <translation>ListElement: İç içe ögeler içeremez</translation>
     </message>
     <message>
         <source>ListElement: cannot use reserved &quot;id&quot; property</source>
-        <translation>ListElement: ayrılmış &quot;kimlik&quot; özelliğini kullanamazsınız</translation>
+        <translation>ListElement: Ayrılmış &quot;kimlik&quot; özelliğini kullanamazsınız</translation>
     </message>
     <message>
         <source>ListElement: cannot use script for property value</source>
-        <translation>ListElement: özellik değeri için betik kullanılamıyor</translation>
+        <translation>ListElement: Özellik değeri için betik kullanılamıyor</translation>
     </message>
     <message>
         <source>ListModel: undefined property &apos;%1&apos;</source>
-        <translation>ListModel: tanımlanmamış özellik &apos;%1&apos;</translation>
+        <translation>ListModel: Tanımlanmamış özellik &apos;%1&apos;</translation>
     </message>
 </context>
 <context>
@@ -629,7 +661,7 @@
     </message>
     <message>
         <source>Cannot assign object type %1 with no default method</source>
-        <translation>%1 nesne türü varsayılan yöntemle atanamıyor</translation>
+        <translation>%1 nesne türü öntanımlı yöntemle atanamıyor</translation>
     </message>
     <message>
         <source>Cannot connect mismatched signal/slot %1 %vs. %2</source>
@@ -641,7 +673,7 @@
     </message>
     <message>
         <source>Cannot assign object to read only list</source>
-        <translation>Nesne salt okunur listesine atanamıyor</translation>
+        <translation>Nesne saltokunur listesine atanamıyor</translation>
     </message>
     <message>
         <source>Cannot assign primitives to lists</source>
@@ -660,7 +692,7 @@
     <name>QQmlObjectModel</name>
     <message>
         <source>insert: index %1 out of range</source>
-        <translation>insert: dizin %1 aralık dışında</translation>
+        <translation>insert: %1 indeksi aralık dışında</translation>
     </message>
     <message>
         <source>move: out of range</source>
@@ -668,7 +700,7 @@
     </message>
     <message>
         <source>remove: indices [%1 - %2] out of range [0 - %3]</source>
-        <translation>remove: dizinler [%1 - %2] aralık dışında [0 - %3]</translation>
+        <translation>remove: İndeksler [%1 - %2] aralık dışında [0 - %3]</translation>
     </message>
 </context>
 <context>
@@ -695,7 +727,7 @@
     </message>
     <message>
         <source>Library import requires a version</source>
-        <translation>Kütüphane içe aktarma bir sürüm gerektirir</translation>
+        <translation>Kitaplık içe aktarma bir sürüm gerektirir</translation>
     </message>
     <message>
         <source>Pragma requires a valid qualifier</source>
@@ -723,11 +755,11 @@
     </message>
     <message>
         <source>JavaScript declaration outside Script element</source>
-        <translation>Script öğesi dışında JavaScript bildirimi</translation>
+        <translation>Script ögesi dışında JavaScript bildirimi</translation>
     </message>
     <message>
         <source>Illegal unicode escape sequence</source>
-        <translation>Geçersiz unicode kaçış dizisi</translation>
+        <translation>Geçersiz Unicode kaçış dizisi</translation>
     </message>
     <message>
         <source>Unexpected token &apos;.&apos;</source>
@@ -735,7 +767,7 @@
     </message>
     <message>
         <source>Stray newline in string literal</source>
-        <translation>Dize değişmezinde rastgele yeni satır</translation>
+        <translation>Dizi değişmezinde rastgele yeni satır</translation>
     </message>
     <message>
         <source>End of file reached at escape sequence</source>
@@ -751,7 +783,7 @@
     </message>
     <message>
         <source>Unclosed string at end of line</source>
-        <translation>Satır sonunda kapatılmamış dize</translation>
+        <translation>Satır sonunda kapatılmamış dizi</translation>
     </message>
     <message>
         <source>At least one hexadecimal digit is required after &apos;0%1&apos;</source>
@@ -841,19 +873,19 @@
     <name>QQmlPropertyCacheCreatorBase</name>
     <message>
         <source>Fully dynamic types cannot declare new properties.</source>
-        <translation>Tam dinamik türler yeni özellikler bildiremez.</translation>
+        <translation>Tam devingen türler yeni özellikler bildiremez.</translation>
     </message>
     <message>
         <source>Fully dynamic types cannot declare new signals.</source>
-        <translation>Tam dinamik türler yeni sinyaller bildiremez.</translation>
+        <translation>Tam devingen türler yeni sinyaller bildiremez.</translation>
     </message>
     <message>
         <source>Fully Dynamic types cannot declare new functions.</source>
-        <translation>Tam dinamik türler yeni işlevler bildiremez.</translation>
+        <translation>Tam devingen türler yeni işlevler bildiremez.</translation>
     </message>
     <message>
         <source>Non-existent attached object</source>
-        <translation>Varolmayan ekli nesne</translation>
+        <translation>Var olmayan ekli nesne</translation>
     </message>
     <message>
         <source>Cannot override FINAL property</source>
@@ -888,7 +920,7 @@
     <name>QQmlPropertyValidator</name>
     <message>
         <source>Property assignment expected</source>
-        <translation>Özellik ataması bekleniyor</translation>
+        <translation>Özellik ataması bekleniyordu</translation>
     </message>
     <message>
         <source>&quot;%1.%2&quot; is not available in %3 %4.%5.</source>
@@ -916,7 +948,7 @@
     </message>
     <message>
         <source>Invalid property assignment: &quot;%1&quot; is a read-only property</source>
-        <translation>Geçersiz özellik ataması: &quot;%1&quot; salt okunur bir özelliktir</translation>
+        <translation>Geçersiz özellik ataması: &quot;%1&quot; saltokunur bir özelliktir</translation>
     </message>
     <message>
         <source>Cannot assign multiple values to a script property</source>
@@ -944,7 +976,7 @@
     </message>
     <message>
         <source>Cannot assign to non-existent default property</source>
-        <translation>Var olmayan varsayılan özelliğe atanamıyor</translation>
+        <translation>Var olmayan öntanımlı özelliğe atanamıyor</translation>
     </message>
     <message>
         <source>Cannot assign to non-existent property &quot;%1&quot;</source>
@@ -968,107 +1000,107 @@
     </message>
     <message>
         <source>Invalid property assignment: string expected</source>
-        <translation>Geçersiz özellik ataması: dize bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Dizi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: string or string list expected</source>
-        <translation>Geçersiz özellik ataması: dize veya dize listesi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Dizi veya dizi listesi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: byte array expected</source>
-        <translation>Geçersiz özellik ataması: bayt dizisi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Bayt dizilişi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: url expected</source>
-        <translation>Geçersiz özellik ataması: url bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: URL bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: unsigned int expected</source>
-        <translation>Geçersiz özellik ataması: imzasız int bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: İmzalanmamış tamsayı bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: int expected</source>
-        <translation>Geçersiz özellik ataması: int bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Tamsayı bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: number expected</source>
-        <translation>Geçersiz özellik ataması: sayı bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Sayı bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: color expected</source>
-        <translation>Geçersiz özellik ataması: renk bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Renk bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: date expected</source>
-        <translation>Geçersiz özellik ataması: tarih bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Tarih bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: time expected</source>
-        <translation>Geçersiz özellik ataması: zaman bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Zaman bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: datetime expected</source>
-        <translation>Geçersiz özellik ataması: tarihzaman bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Tarih-zaman bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: point expected</source>
-        <translation>Geçersiz özellik ataması: nokta bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Nokta bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: size expected</source>
-        <translation>Geçersiz özellik ataması: boyut bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Boyut bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: rect expected</source>
-        <translation>Geçersiz özellik ataması: rect bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Dörtgen bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: boolean expected</source>
-        <translation>Geçersiz özellik ataması: boolean bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Boole bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: 2D vector expected</source>
-        <translation>Geçersiz özellik ataması: 2B vektör bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: 2B vektör bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: 3D vector expected</source>
-        <translation>Geçersiz özellik ataması: 3B vektör bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: 3B vektör bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: 4D vector expected</source>
-        <translation>Geçersiz özellik ataması: 4B vektör bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: 4B vektör bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: quaternion expected</source>
-        <translation>Geçersiz özellik ataması: quaternion bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Dördey bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: regular expression expected; use /pattern/ syntax</source>
-        <translation>Geçersiz özellik ataması: düzenli ifade bekleniyor; /pattern/ syntax kullanın</translation>
+        <translation>Geçersiz özellik ataması: Düzenli ifade bekleniyordu; /pattern/ syntax kullanın</translation>
     </message>
     <message>
         <source>Invalid property assignment: number or array of numbers expected</source>
-        <translation>Geçersiz özellik ataması: sayı veya sayı dizisi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Sayı veya sayı dizilişi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: int or array of ints expected</source>
-        <translation>Geçersiz özellik ataması: int veya ints dizisi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Tamsayı veya tamsayılar dizilişi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: bool or array of bools expected</source>
-        <translation>Geçersiz özellik ataması: bool veya bools dizisi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Boole veya Boole&apos;ler dizilişi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: url or array of urls expected</source>
-        <translation>Geçersiz özellik ataması: url veya url dizisi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: URL veya URL&apos;ler dizilişi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: string or array of strings expected</source>
-        <translation>Geçersiz özellik ataması: dize veya dize dizisi bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: Dizi veya dizi dizilişi bekleniyordu</translation>
     </message>
     <message>
         <source>Invalid property assignment: unsupported type &quot;%1&quot;</source>
-        <translation>Geçersiz özellik ataması: desteklenmeyen &quot;%1&quot; türü</translation>
+        <translation>Geçersiz özellik ataması: Desteklenmeyen &quot;%1&quot; türü</translation>
     </message>
     <message>
         <source>&quot;%1&quot; cannot operate on &quot;%2&quot;</source>
@@ -1088,7 +1120,7 @@
     </message>
     <message>
         <source>Invalid property assignment: script expected</source>
-        <translation>Geçersiz özellik ataması: betik bekleniyor</translation>
+        <translation>Geçersiz özellik ataması: betik bekleniyordu</translation>
     </message>
     <message>
         <source>Cannot assign object of type &quot;%1&quot; to property of type &quot;%2&quot; as the former is neither the same as the latter nor a sub-class of it.</source>
@@ -1107,7 +1139,7 @@
     </message>
     <message>
         <source>Signal parameter &quot;%1&quot; hides global variable.</source>
-        <translation>&quot;%1&quot; sinyal parametresi genel değişkeni gizler.</translation>
+        <translation>&quot;%1&quot; sinyal parametresi global değişkeni gizler.</translation>
     </message>
 </context>
 <context>
@@ -1153,7 +1185,7 @@
     </message>
     <message>
         <source>qmldir defines type as singleton, but no pragma Singleton found in type %1.</source>
-        <translation>qmldir türü singleton olarak tanımlar, ancak %1 türünde pragma Singleton bulunamadı.</translation>
+        <translation>qmldir türü singleton olarak tanımlar; ancak %1 türünde pragma Singleton bulunamadı.</translation>
     </message>
     <message>
         <source>File is empty</source>
@@ -1184,7 +1216,7 @@
     </message>
     <message>
         <source>Cannot animate read-only property &quot;%1&quot;</source>
-        <translation>Salt okunur &quot;%1&quot; özelliği canlandırılamıyor</translation>
+        <translation>Saltokunur &quot;%1&quot; özelliği canlandırılamıyor</translation>
     </message>
     <message>
         <source>Animation is an abstract class</source>
@@ -1221,7 +1253,7 @@
     </message>
     <message>
         <source>Cannot anchor to an item that isn&apos;t a parent or sibling.</source>
-        <translation>Üst veya kardeş olmayan bir öğeye bağlanamıyor.</translation>
+        <translation>Üst veya kardeş olmayan bir ögeye bağlanamıyor.</translation>
     </message>
     <message>
         <source>Possible anchor loop detected on vertical anchor.</source>
@@ -1237,7 +1269,7 @@
     </message>
     <message>
         <source>Cannot anchor to a null item.</source>
-        <translation>Boş bir öğeye bağlanamıyor.</translation>
+        <translation>Boş bir ögeye bağlanamıyor.</translation>
     </message>
     <message>
         <source>Cannot anchor a horizontal edge to a vertical edge.</source>
@@ -1299,7 +1331,7 @@
     <name>QQuickEnterKeyAttached</name>
     <message>
         <source>EnterKey attached property only works with Items</source>
-        <translation>EnterKey ekli özellik yalnızca öğelerle çalışır</translation>
+        <translation>EnterKey ekli özellik yalnızca ögelerle çalışır</translation>
     </message>
     <message>
         <source>EnterKey is only available via attached properties</source>
@@ -1332,7 +1364,7 @@
     </message>
     <message>
         <source>Delegate must be of Item type</source>
-        <translation>Temsilci Öğe türü olmalıdır</translation>
+        <translation>Temsilci Öge türü olmalıdır</translation>
     </message>
 </context>
 <context>
@@ -1433,7 +1465,7 @@
     <name>QQuickPathView</name>
     <message>
         <source>Delegate must be of Item type</source>
-        <translation>Temsilci Öğe türünde olmalıdır</translation>
+        <translation>Temsilci Öge türünde olmalıdır</translation>
     </message>
 </context>
 <context>
@@ -1451,11 +1483,11 @@
     </message>
     <message>
         <source>Invalid image provider: %1</source>
-        <translation>Geçersiz görüntü sağlayıcı: %1</translation>
+        <translation>Geçersiz görsel sağlayıcı: %1</translation>
     </message>
     <message>
         <source>Failed to get image from provider: %1</source>
-        <translation>Sağlayıcıdan görüntü alınamadı: %1</translation>
+        <translation>Sağlayıcıdan görsel alınamadı: %1</translation>
     </message>
     <message>
         <source>Failed to get texture from provider: %1</source>
@@ -1528,14 +1560,14 @@
     </message>
     <message>
         <source>Cannot assign to read-only property &quot;%1&quot;</source>
-        <translation>&quot;%1&quot; salt okunur özelliğine atanamıyor</translation>
+        <translation>&quot;%1&quot; saltokunur özelliğine atanamıyor</translation>
     </message>
 </context>
 <context>
     <name>QQuickRepeater</name>
     <message>
         <source>Delegate must be of Item type</source>
-        <translation>Temsilci Öğe türü olmalıdır</translation>
+        <translation>Temsilci Öge türü olmalıdır</translation>
     </message>
 </context>
 <context>
@@ -1567,7 +1599,7 @@
     <name>QQuickTouchPoint</name>
     <message>
         <source>PointingDeviceUniqueId is only available via read-only properties</source>
-        <translation>PointingDeviceUniqueId salt okunur özellikler aracılığıyla kullanılabilir</translation>
+        <translation>PointingDeviceUniqueId saltokunur özellikler aracılığıyla kullanılabilir</translation>
     </message>
 </context>
 <context>
@@ -1588,7 +1620,7 @@ Install a driver providing OpenGL 2.0 or higher, or, if this is not possible, ma
         <translation>%2 biçimi için %1 bağlamı oluşturulamadı.
 Bunun nedeni büyük olasılıkla gerekli grafik sürücülerinin kurulu olmamasıdır.
 
-OpenGL 2.0 veya üstünü sağlayan bir sürücü kurun veya bu mümkün değilse, ANGLE Open GL ES 2.0 öykünme kütüphanelerinin (%3, %4 ve d3dcompiler_*.dll) uygulama yürütülebilir dizininde veya PATH&apos;de listelenen bir konumda bulunduğundan emin olun.</translation>
+OpenGL 2.0 veya üstünü sağlayan bir sürücü kurun veya bu mümkün değilse ANGLE Open GL ES 2.0 öykünme kütüphanelerinin (%3, %4 ve d3dcompiler_*.dll) uygulama yürütülebilir dizininde veya PATH&apos;de listelenen bir konumda bulunduğundan emin olun.</translation>
     </message>
     <message>
         <source>Failed to create %1 context for format %2</source>
@@ -1619,7 +1651,7 @@ OpenGL 2.0 veya üstünü sağlayan bir sürücü kurun veya bu mümkün değils
     </message>
     <message>
         <source>Signal parameter &quot;%1&quot; hides global variable.</source>
-        <translation>&quot;%1&quot; sinyal parametresi genel değişkeni gizler.</translation>
+        <translation>&quot;%1&quot; sinyal parametresi global değişkeni gizler.</translation>
     </message>
     <message>
         <source>&quot;%1.%2&quot; is not available in %3 %4.%5.</source>
@@ -1650,7 +1682,7 @@ OpenGL 2.0 veya üstünü sağlayan bir sürücü kurun veya bu mümkün değils
     </message>
     <message>
         <source>SignalTransition: script expected</source>
-        <translation>SignalTransition: betik bekleniyor</translation>
+        <translation>SignalTransition: betik bekleniyordu</translation>
     </message>
 </context>
 <context>

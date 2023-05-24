@@ -11,8 +11,8 @@ import("//testing/test.gni")
 import("libyuv.gni")
 
 declare_args() {
-  # Set to false to disable building with gflags.
-  libyuv_use_gflags = true
+  # Set to false to disable building with absl flags.
+  libyuv_use_absl_flags = true
 
   # When building a shared library using a target in WebRTC or
   # Chromium projects that depends on libyuv, setting this flag
@@ -28,6 +28,10 @@ config("libyuv_config") {
   if (is_android && current_cpu != "arm64") {
     ldflags = [ "-Wl,--dynamic-linker,/system/bin/linker" ]
   }
+
+  if (!libyuv_use_neon) {
+    defines = [ "LIBYUV_DISABLE_NEON" ]
+  }
 }
 
 # This target is built when no specific target is specified on the command line.
@@ -41,6 +45,7 @@ group("default") {
       ":i444tonv12_eg",
       ":libyuv_unittest",
       ":psnr",
+      ":yuvconstants",
       ":yuvconvert",
     ]
   }
@@ -50,7 +55,7 @@ group("libyuv") {
   all_dependent_configs = [ ":libyuv_config" ]
   deps = []
 
-  if (is_win && target_cpu == "x64" && !use_qt) {
+  if (is_win && target_cpu == "x64" && !is_qtwebengine) {
     # Compile with clang in order to get inline assembly
     public_deps = [ ":libyuv_internal(//build/toolchain/win:win_clang_x64)" ]
   } else {
@@ -63,10 +68,6 @@ group("libyuv") {
 
   if (libyuv_use_msa) {
     deps += [ ":libyuv_msa" ]
-  }
-
-  if (libyuv_use_mmi) {
-    deps += [ ":libyuv_mmi" ]
   }
 
   if (!is_ios && !libyuv_disable_jpeg) {
@@ -98,6 +99,7 @@ static_library("libyuv_internal") {
     "include/libyuv/row.h",
     "include/libyuv/scale.h",
     "include/libyuv/scale_argb.h",
+    "include/libyuv/scale_rgb.h",
     "include/libyuv/scale_row.h",
     "include/libyuv/scale_uv.h",
     "include/libyuv/version.h",
@@ -134,6 +136,7 @@ static_library("libyuv_internal") {
     "source/scale_argb.cc",
     "source/scale_common.cc",
     "source/scale_gcc.cc",
+    "source/scale_rgb.cc",
     "source/scale_uv.cc",
     "source/scale_win.cc",
     "source/video_common.cc",
@@ -174,9 +177,6 @@ static_library("libyuv_internal") {
       "-ffp-contract=fast",  # Enable fma vectorization for NEON.
     ]
   }
-  if (!libyuv_use_mmi) {
-    defines += [ "LIBYUV_DISABLE_MMI" ]
-  }
 }
 
 if (libyuv_use_neon) {
@@ -196,6 +196,7 @@ if (libyuv_use_neon) {
     deps = [ ":libyuv_internal" ]
 
     public_configs = [ ":libyuv_config" ]
+    cflags = []
 
     # Always enable optimization for Release and NaCl builds (to workaround
     # crbug.com/538243).
@@ -205,11 +206,16 @@ if (libyuv_use_neon) {
       # Enable optimize for speed (-O2) over size (-Os).
       # TODO(fbarchard): Consider optimize_speed which is O3.
       configs += [ "//build/config/compiler:optimize_max" ]
+    } else if(current_cpu != "arm64") {
+      # Remove default stack frames config and use -fomit-frame-pointer
+      # otherwise we run out of registry and will not compile for debug and neon
+      configs -= [ "//build/config/compiler:default_stack_frames" ]
+      cflags += [ "-fomit-frame-pointer" ]
     }
 
     if (current_cpu != "arm64") {
       configs -= [ "//build/config/compiler:compiler_arm_fpu" ]
-      cflags = [ "-mfpu=neon" ]
+      cflags += [ "-mfpu=neon" ]
     }
   }
 }
@@ -222,22 +228,6 @@ if (libyuv_use_msa) {
       "source/rotate_msa.cc",
       "source/row_msa.cc",
       "source/scale_msa.cc",
-    ]
-
-    deps = [ ":libyuv_internal" ]
-
-    public_configs = [ ":libyuv_config" ]
-  }
-}
-
-if (libyuv_use_mmi) {
-  static_library("libyuv_mmi") {
-    sources = [
-      # MMI Source Files
-      "source/compare_mmi.cc",
-      "source/rotate_mmi.cc",
-      "source/row_mmi.cc",
-      "source/scale_mmi.cc",
     ]
 
     deps = [ ":libyuv_internal" ]
@@ -281,6 +271,7 @@ if (libyuv_include_tests) {
       "unit_test/rotate_argb_test.cc",
       "unit_test/rotate_test.cc",
       "unit_test/scale_argb_test.cc",
+      "unit_test/scale_rgb_test.cc",
       "unit_test/scale_test.cc",
       "unit_test/scale_uv_test.cc",
       "unit_test/unit_test.cc",
@@ -294,9 +285,12 @@ if (libyuv_include_tests) {
     ]
 
     defines = []
-    if (libyuv_use_gflags) {
-      defines += [ "LIBYUV_USE_GFLAGS" ]
-      deps += [ "//third_party/gflags" ]
+    if (libyuv_use_absl_flags) {
+      defines += [ "LIBYUV_USE_ABSL_FLAGS" ]
+      deps += [
+        "//third_party/abseil-cpp/absl/flags:flag",
+        "//third_party/abseil-cpp/absl/flags:parse",
+      ]
     }
 
     configs += [ ":libyuv_unittest_warnings_config" ]
@@ -358,6 +352,17 @@ if (libyuv_include_tests) {
     }
   }
 
+  executable("yuvconstants") {
+    sources = [
+      # sources
+      "util/yuvconstants.c",
+    ]
+    deps = [ ":libyuv" ]
+    if (is_linux || is_chromeos) {
+      cflags = [ "-fexceptions" ]
+    }
+  }
+
   executable("psnr") {
     sources = [
       # sources
@@ -377,9 +382,7 @@ if (libyuv_include_tests) {
       # sources
       "util/i444tonv12_eg.cc",
     ]
-    deps = [
-      ":libyuv",
-    ]
+    deps = [ ":libyuv" ]
   }
 
   executable("cpuid") {

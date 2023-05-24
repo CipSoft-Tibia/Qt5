@@ -30,6 +30,7 @@ struct COMPONENT_EXPORT(URL) CustomScheme {
     ViewSourceAllowed = 0x20,
     ContentSecurityPolicyIgnored = 0x40,
     CorsEnabled = 0x80,
+    FetchApiAllowed = 0x100,
   };
 
   std::string name;

@@ -1,7 +1,8 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/memory/raw_ptr.h"
 #include "content/browser/media/session/media_session_impl.h"
 
 #include <map>
@@ -9,6 +10,7 @@
 
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
 #include "content/browser/media/session/media_session_player_observer.h"
 #include "content/browser/media/session/mock_media_session_service_impl.h"
@@ -18,6 +20,7 @@
 #include "services/media_session/public/cpp/media_metadata.h"
 #include "services/media_session/public/cpp/test/mock_media_session.h"
 #include "services/media_session/public/mojom/constants.mojom.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/mediasession/media_session.mojom.h"
 
 using ::testing::_;
@@ -26,6 +29,7 @@ using ::testing::Eq;
 using ::testing::InvokeWithoutArgs;
 using ::testing::NiceMock;
 
+using media_session::mojom::MediaAudioVideoState;
 using media_session::mojom::MediaSessionAction;
 using media_session::mojom::MediaSessionImageType;
 
@@ -34,14 +38,18 @@ namespace content {
 namespace {
 
 constexpr base::TimeDelta kDefaultSeekTime =
-    base::TimeDelta::FromSeconds(media_session::mojom::kDefaultSeekTimeSeconds);
+    base::Seconds(media_session::mojom::kDefaultSeekTimeSeconds);
 
 static const int kPlayerId = 0;
 
 class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
  public:
-  explicit MockMediaSessionPlayerObserver(RenderFrameHost* rfh, bool has_video)
-      : render_frame_host_(rfh), has_video_(has_video) {}
+  MockMediaSessionPlayerObserver(RenderFrameHost* rfh,
+                                 MediaAudioVideoState audio_video_state,
+                                 media::MediaContentType media_content_type)
+      : render_frame_host_(rfh),
+        audio_video_state_(audio_video_state),
+        media_content_type_(media_content_type) {}
 
   ~MockMediaSessionPlayerObserver() override = default;
 
@@ -49,20 +57,23 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
   MOCK_METHOD1(OnResume, void(int player_id));
   MOCK_METHOD2(OnSeekForward, void(int player_id, base::TimeDelta seek_time));
   MOCK_METHOD2(OnSeekBackward, void(int player_id, base::TimeDelta seek_time));
+  MOCK_METHOD2(OnSeekTo, void(int player_id, base::TimeDelta seek_time));
   MOCK_METHOD2(OnSetVolumeMultiplier,
                void(int player_id, double volume_multiplier));
   MOCK_METHOD1(OnEnterPictureInPicture, void(int player_id));
   MOCK_METHOD1(OnExitPictureInPicture, void(int player_id));
   MOCK_METHOD2(OnSetAudioSinkId,
                void(int player_id, const std::string& raw_device_id));
+  MOCK_METHOD2(OnSetMute, void(int player_id, bool mute));
+  MOCK_METHOD(void, OnRequestMediaRemoting, (int player_id), (override));
 
-  base::Optional<media_session::MediaPosition> GetPosition(
+  absl::optional<media_session::MediaPosition> GetPosition(
       int player_id) const override {
     return position_;
   }
 
   void SetPosition(
-      const base::Optional<media_session::MediaPosition>& position) {
+      const absl::optional<media_session::MediaPosition>& position) {
     position_ = position;
   }
 
@@ -70,7 +81,15 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
     return false;
   }
 
-  bool HasVideo(int player_id) const override { return has_video_; }
+  bool HasAudio(int player_id) const override {
+    return audio_video_state_ == MediaAudioVideoState::kAudioOnly ||
+           audio_video_state_ == MediaAudioVideoState::kAudioVideo;
+  }
+
+  bool HasVideo(int player_id) const override {
+    return audio_video_state_ == MediaAudioVideoState::kVideoOnly ||
+           audio_video_state_ == MediaAudioVideoState::kAudioVideo;
+  }
 
   std::string GetAudioOutputSinkId(int player_id) const override { return ""; }
 
@@ -78,16 +97,22 @@ class MockMediaSessionPlayerObserver : public MediaSessionPlayerObserver {
     return false;
   }
 
+  media::MediaContentType GetMediaContentType() const override {
+    return media_content_type_;
+  }
+
   RenderFrameHost* render_frame_host() const override {
     return render_frame_host_;
   }
 
  private:
-  RenderFrameHost* render_frame_host_;
+  raw_ptr<RenderFrameHost, DanglingUntriaged> render_frame_host_;
 
-  bool const has_video_;
+  const media_session::mojom::MediaAudioVideoState audio_video_state_;
 
-  base::Optional<media_session::MediaPosition> position_;
+  media::MediaContentType media_content_type_;
+
+  absl::optional<media_session::MediaPosition> position_;
 };
 
 }  // anonymous namespace
@@ -99,6 +124,8 @@ class MediaSessionImplServiceRoutingTest
     actions_.insert(MediaSessionAction::kPlay);
     actions_.insert(MediaSessionAction::kPause);
     actions_.insert(MediaSessionAction::kStop);
+    actions_.insert(MediaSessionAction::kSeekTo);
+    actions_.insert(MediaSessionAction::kScrubTo);
   }
 
   ~MediaSessionImplServiceRoutingTest() override = default;
@@ -106,14 +133,16 @@ class MediaSessionImplServiceRoutingTest
   void SetUp() override {
     RenderViewHostImplTestHarness::SetUp();
 
-    contents()->GetMainFrame()->InitializeRenderFrameIfNeeded();
+    contents()->GetPrimaryMainFrame()->InitializeRenderFrameIfNeeded();
     contents()->NavigateAndCommit(GURL("http://www.example.com"));
 
-    main_frame_ = contents()->GetMainFrame();
+    main_frame_ = contents()->GetPrimaryMainFrame();
     sub_frame_ = main_frame_->AppendChild("sub_frame");
 
     empty_metadata_.title = contents()->GetTitle();
-    empty_metadata_.source_title = base::ASCIIToUTF16("example.com");
+    empty_metadata_.source_title = u"example.com";
+
+    GetMediaSession()->SetShouldThrottleDurationUpdateForTest(false);
   }
 
   void TearDown() override {
@@ -138,18 +167,22 @@ class MediaSessionImplServiceRoutingTest
                                      : nullptr;
   }
 
-  void StartPlayerForFrame(TestRenderFrameHost* frame, bool has_video = false) {
-    StartPlayerForFrame(frame, media::MediaContentType::Persistent, has_video);
+  void StartPlayerForFrame(TestRenderFrameHost* frame,
+                           MediaAudioVideoState audio_video_state =
+                               MediaAudioVideoState::kAudioOnly) {
+    StartPlayerForFrame(frame, media::MediaContentType::Persistent,
+                        audio_video_state);
   }
 
   void StartPlayerForFrame(TestRenderFrameHost* frame,
                            media::MediaContentType type,
-                           bool has_video = false) {
+                           MediaAudioVideoState audio_video_state =
+                               MediaAudioVideoState::kAudioOnly) {
     players_[frame] =
-        std::make_unique<NiceMock<MockMediaSessionPlayerObserver>>(frame,
-                                                                   has_video);
+        std::make_unique<NiceMock<MockMediaSessionPlayerObserver>>(
+            frame, audio_video_state, type);
     MediaSessionImpl::Get(contents())
-        ->AddPlayer(players_[frame].get(), kPlayerId, type);
+        ->AddPlayer(players_[frame].get(), kPlayerId);
   }
 
   void ClearPlayersForFrame(TestRenderFrameHost* frame) {
@@ -189,12 +222,12 @@ class MediaSessionImplServiceRoutingTest
     return empty_metadata_;
   }
 
-  const base::string16& GetSourceTitleForNonEmptyMetadata() const {
+  const std::u16string& GetSourceTitleForNonEmptyMetadata() const {
     return empty_metadata_.source_title;
   }
 
-  TestRenderFrameHost* main_frame_;
-  TestRenderFrameHost* sub_frame_;
+  raw_ptr<TestRenderFrameHost> main_frame_;
+  raw_ptr<TestRenderFrameHost> sub_frame_;
 
   using ServiceMap = std::map<TestRenderFrameHost*,
                               std::unique_ptr<MockMediaSessionServiceImpl>>;
@@ -315,9 +348,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 TEST_F(MediaSessionImplServiceRoutingTest,
        NotifyMetadataAndActionsChangeWhenControllable) {
   media_session::MediaMetadata expected_metadata;
-  expected_metadata.title = base::ASCIIToUTF16("title");
-  expected_metadata.artist = base::ASCIIToUTF16("artist");
-  expected_metadata.album = base::ASCIIToUTF16("album");
+  expected_metadata.title = u"title";
+  expected_metadata.artist = u"artist";
+  expected_metadata.album = u"album";
   expected_metadata.source_title = GetSourceTitleForNonEmptyMetadata();
 
   CreateServiceForFrame(main_frame_);
@@ -337,9 +370,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 
     blink::mojom::SpecMediaMetadataPtr spec_metadata(
         blink::mojom::SpecMediaMetadata::New());
-    spec_metadata->title = base::ASCIIToUTF16("title");
-    spec_metadata->artist = base::ASCIIToUTF16("artist");
-    spec_metadata->album = base::ASCIIToUTF16("album");
+    spec_metadata->title = u"title";
+    spec_metadata->artist = u"artist";
+    spec_metadata->album = u"album";
 
     services_[main_frame_]->SetMetadata(std::move(spec_metadata));
     services_[main_frame_]->EnableAction(MediaSessionAction::kSeekForward);
@@ -353,9 +386,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 TEST_F(MediaSessionImplServiceRoutingTest,
        NotifyMetadataAndActionsChangeWhenTurningControllable) {
   media_session::MediaMetadata expected_metadata;
-  expected_metadata.title = base::ASCIIToUTF16("title");
-  expected_metadata.artist = base::ASCIIToUTF16("artist");
-  expected_metadata.album = base::ASCIIToUTF16("album");
+  expected_metadata.title = u"title";
+  expected_metadata.artist = u"artist";
+  expected_metadata.album = u"album";
   expected_metadata.source_title = GetSourceTitleForNonEmptyMetadata();
 
   CreateServiceForFrame(main_frame_);
@@ -363,9 +396,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
   {
     blink::mojom::SpecMediaMetadataPtr spec_metadata(
         blink::mojom::SpecMediaMetadata::New());
-    spec_metadata->title = base::ASCIIToUTF16("title");
-    spec_metadata->artist = base::ASCIIToUTF16("artist");
-    spec_metadata->album = base::ASCIIToUTF16("album");
+    spec_metadata->title = u"title";
+    spec_metadata->artist = u"artist";
+    spec_metadata->album = u"album";
 
     services_[main_frame_]->SetMetadata(std::move(spec_metadata));
   }
@@ -395,9 +428,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 TEST_F(MediaSessionImplServiceRoutingTest,
        NotifyActionsAndMetadataChangeWhenTurningUncontrollable) {
   media_session::MediaMetadata expected_metadata;
-  expected_metadata.title = base::ASCIIToUTF16("title");
-  expected_metadata.artist = base::ASCIIToUTF16("artist");
-  expected_metadata.album = base::ASCIIToUTF16("album");
+  expected_metadata.title = u"title";
+  expected_metadata.artist = u"artist";
+  expected_metadata.album = u"album";
   expected_metadata.source_title = GetSourceTitleForNonEmptyMetadata();
 
   CreateServiceForFrame(main_frame_);
@@ -405,9 +438,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
   {
     blink::mojom::SpecMediaMetadataPtr spec_metadata(
         blink::mojom::SpecMediaMetadata::New());
-    spec_metadata->title = base::ASCIIToUTF16("title");
-    spec_metadata->artist = base::ASCIIToUTF16("artist");
-    spec_metadata->album = base::ASCIIToUTF16("album");
+    spec_metadata->title = u"title";
+    spec_metadata->artist = u"artist";
+    spec_metadata->album = u"album";
 
     services_[main_frame_]->SetMetadata(std::move(spec_metadata));
   }
@@ -606,7 +639,7 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 
   CreateServiceForFrame(main_frame_);
 
-  base::TimeDelta seek_time = base::TimeDelta::FromSeconds(10);
+  base::TimeDelta seek_time = base::Seconds(10);
 
   EXPECT_CALL(*GetClientForFrame(main_frame_),
               DidReceiveAction(MediaSessionAction::kSeekTo, _))
@@ -631,7 +664,7 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 
   CreateServiceForFrame(main_frame_);
 
-  base::TimeDelta seek_time = base::TimeDelta::FromSeconds(10);
+  base::TimeDelta seek_time = base::Seconds(10);
 
   EXPECT_CALL(*GetClientForFrame(main_frame_),
               DidReceiveAction(MediaSessionAction::kSeekTo, _))
@@ -647,31 +680,12 @@ TEST_F(MediaSessionImplServiceRoutingTest,
   run_loop.Run();
 }
 
-TEST_F(MediaSessionImplServiceRoutingTest, SeekToActionEnablesScrubTo) {
-  CreateServiceForFrame(main_frame_);
-  StartPlayerForFrame(main_frame_);
-
-  std::set<MediaSessionAction> expected_actions(default_actions().begin(),
-                                                default_actions().end());
-  expected_actions.insert(MediaSessionAction::kSeekTo);
-  expected_actions.insert(MediaSessionAction::kScrubTo);
-
-  services_[main_frame_]->EnableAction(MediaSessionAction::kSeekTo);
-
-  media_session::test::MockMediaSessionMojoObserver observer(
-      *GetMediaSession());
-  observer.WaitForExpectedActions(expected_actions);
-
-  services_[main_frame_]->DisableAction(MediaSessionAction::kSeekTo);
-  observer.WaitForExpectedActions(default_actions());
-}
-
 TEST_F(MediaSessionImplServiceRoutingTest,
        NotifyObserverMetadataWhenControllable) {
   media_session::MediaMetadata expected_metadata;
-  expected_metadata.title = base::ASCIIToUTF16("title");
-  expected_metadata.artist = base::ASCIIToUTF16("artist");
-  expected_metadata.album = base::ASCIIToUTF16("album");
+  expected_metadata.title = u"title";
+  expected_metadata.artist = u"artist";
+  expected_metadata.album = u"album";
   expected_metadata.source_title = GetSourceTitleForNonEmptyMetadata();
 
   CreateServiceForFrame(main_frame_);
@@ -683,9 +697,9 @@ TEST_F(MediaSessionImplServiceRoutingTest,
 
     blink::mojom::SpecMediaMetadataPtr spec_metadata(
         blink::mojom::SpecMediaMetadata::New());
-    spec_metadata->title = base::ASCIIToUTF16("title");
-    spec_metadata->artist = base::ASCIIToUTF16("artist");
-    spec_metadata->album = base::ASCIIToUTF16("album");
+    spec_metadata->title = u"title";
+    spec_metadata->artist = u"artist";
+    spec_metadata->album = u"album";
 
     services_[main_frame_]->SetMetadata(std::move(spec_metadata));
 
@@ -792,7 +806,7 @@ TEST_F(MediaSessionImplServiceRoutingTest, NotifyObserverOnNavigation) {
 
   media_session::MediaMetadata expected_metadata;
   expected_metadata.title = contents()->GetTitle();
-  expected_metadata.source_title = base::ASCIIToUTF16("google.com");
+  expected_metadata.source_title = u"google.com";
   observer.WaitForExpectedMetadata(expected_metadata);
 }
 
@@ -801,10 +815,11 @@ TEST_F(MediaSessionImplServiceRoutingTest, NotifyObserverOnTitleChange) {
       *GetMediaSession());
 
   media_session::MediaMetadata expected_metadata;
-  expected_metadata.title = base::ASCIIToUTF16("new title");
+  expected_metadata.title = u"new title";
   expected_metadata.source_title = GetSourceTitleForNonEmptyMetadata();
 
-  contents()->UpdateTitle(contents()->GetMainFrame(), expected_metadata.title,
+  contents()->UpdateTitle(contents()->GetPrimaryMainFrame(),
+                          expected_metadata.title,
                           base::i18n::TextDirection::LEFT_TO_RIGHT);
 
   observer.WaitForExpectedMetadata(expected_metadata);
@@ -1003,7 +1018,8 @@ TEST_F(MediaSessionImplServiceRoutingTest,
   StartPlayerForFrame(main_frame_);
 
   media_session::MediaPosition player_position(
-      0.0, base::TimeDelta::FromSeconds(20), base::TimeDelta());
+      /*playback_rate=*/0.0, /*duration=*/base::Seconds(20),
+      /*position=*/base::TimeDelta(), /*end_of_media=*/false);
 
   media_session::test::MockMediaSessionMojoObserver observer(
       *GetMediaSession());
@@ -1016,7 +1032,8 @@ TEST_F(MediaSessionImplServiceRoutingTest,
   EXPECT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
 
   media_session::MediaPosition expected_position(
-      0.0, base::TimeDelta::FromSeconds(10), base::TimeDelta());
+      /*playback_rate=*/0.0, /*duration=*/base::Seconds(10),
+      /*position=*/base::TimeDelta(), /*end_of_media=*/false);
 
   services_[main_frame_]->SetPositionState(expected_position);
 
@@ -1034,7 +1051,8 @@ TEST_F(MediaSessionImplServiceRoutingTest, PositionFromServiceCanBeReset) {
   StartPlayerForFrame(main_frame_);
 
   media_session::MediaPosition player_position(
-      0.0, base::TimeDelta::FromSeconds(20), base::TimeDelta());
+      /*playback_rate=*/0.0, /*duration=*/base::Seconds(20),
+      /*position=*/base::TimeDelta(), /*end_of_media=*/false);
 
   media_session::test::MockMediaSessionMojoObserver observer(
       *GetMediaSession());
@@ -1047,13 +1065,14 @@ TEST_F(MediaSessionImplServiceRoutingTest, PositionFromServiceCanBeReset) {
   EXPECT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
 
   media_session::MediaPosition expected_position(
-      0.0, base::TimeDelta::FromSeconds(10), base::TimeDelta());
+      /*playback_rate=*/0.0, /*duration=*/base::Seconds(10),
+      /*position=*/base::TimeDelta(), /*end_of_media=*/false);
 
   services_[main_frame_]->SetPositionState(expected_position);
 
   observer.WaitForExpectedPosition(expected_position);
 
-  services_[main_frame_]->SetPositionState(base::nullopt);
+  services_[main_frame_]->SetPositionState(absl::nullopt);
 
   EXPECT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
 
@@ -1061,110 +1080,264 @@ TEST_F(MediaSessionImplServiceRoutingTest, PositionFromServiceCanBeReset) {
 }
 
 TEST_F(MediaSessionImplServiceRoutingTest, RouteAudioVideoState) {
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
+  for (const auto audio_or_video_only :
+       {MediaAudioVideoState::kAudioOnly, MediaAudioVideoState::kVideoOnly}) {
+    SCOPED_TRACE(audio_or_video_only);
 
-    // The default state should be unknown.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kUnknown);
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // The default state should be unknown.
+      observer.WaitForAudioVideoStates({});
+    }
+
+    StartPlayerForFrame(main_frame_, audio_or_video_only);
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // We should set the state to audio/video only.
+      observer.WaitForAudioVideoStates({audio_or_video_only});
+    }
+
+    StartPlayerForFrame(sub_frame_, MediaAudioVideoState::kAudioVideo);
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // The new player has both an audio and video track.
+      observer.WaitForAudioVideoStates(
+          {audio_or_video_only, MediaAudioVideoState::kAudioVideo});
+    }
+
+    CreateServiceForFrame(main_frame_);
+    ASSERT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // The service on the main frame will restrict the audio video state to
+      // only look at the routed frame.
+      observer.WaitForAudioVideoStates({audio_or_video_only});
+    }
+
+    CreateServiceForFrame(sub_frame_);
+    ASSERT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // The service on the main frame will restrict the audio video state to
+      // only look at the routed frame.
+      observer.WaitForAudioVideoStates({audio_or_video_only});
+    }
+
+    DestroyServiceForFrame(main_frame_);
+    ASSERT_EQ(services_[sub_frame_].get(), ComputeServiceForRouting());
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // Now that the service on the main frame has been destroyed then we
+      // should only look at players on the sub frame.
+      observer.WaitForAudioVideoStates({MediaAudioVideoState::kAudioVideo});
+    }
+
+    DestroyServiceForFrame(sub_frame_);
+    ASSERT_EQ(nullptr, ComputeServiceForRouting());
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // Now that there is no service we should be looking at all the players
+      // again.
+      observer.WaitForAudioVideoStates(
+          {audio_or_video_only, MediaAudioVideoState::kAudioVideo});
+    }
+
+    ClearPlayersForFrame(sub_frame_);
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // The state should be updated when we remove the sub frame players.
+      observer.WaitForAudioVideoStates({audio_or_video_only});
+    }
+
+    ClearPlayersForFrame(main_frame_);
+
+    {
+      media_session::test::MockMediaSessionMojoObserver observer(
+          *GetMediaSession());
+
+      // We should fallback to the default state.
+      observer.WaitForAudioVideoStates({});
+    }
+  }
+}
+
+// Test duration duration update throttle behavior for routed service.
+// TODO (jazzhsu): Remove these tests once media session supports livestream.
+class MediaSessionImplServiceRoutingThrottleTest
+    : public MediaSessionImplServiceRoutingTest {
+ public:
+  void SetUp() override {
+    MediaSessionImplServiceRoutingTest::SetUp();
+    GetMediaSession()->SetShouldThrottleDurationUpdateForTest(true);
   }
 
-  StartPlayerForFrame(main_frame_, false /* has_video */);
-
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
-
-    // We should set the state to audio only.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioOnly);
+  void FlushForTesting(MediaSessionImpl* session) {
+    session->FlushForTesting();
   }
 
-  StartPlayerForFrame(sub_frame_, true /* has_video */);
-
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
-
-    // The new player has a video track so we should now be AudioVideo.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioVideo);
+  int GetDurationUpdateMaxAllowance() {
+    return MediaSessionImpl::kDurationUpdateMaxAllowance;
   }
+};
+
+TEST_F(MediaSessionImplServiceRoutingThrottleTest,
+       ShouldNotThrottleRoutedService) {
+  CreateServiceForFrame(main_frame_);
+  StartPlayerForFrame(main_frame_);
+  media_session::test::MockMediaSessionMojoObserver observer(
+      *GetMediaSession());
+
+  // Duration updates will not be throttled for routed service.
+  for (int duration = 0; duration <= GetDurationUpdateMaxAllowance();
+       ++duration) {
+    media_session::MediaPosition expected_position(
+        /*playback_rate=*/0.0,
+        /*duration=*/base::Seconds(duration),
+        /*position=*/base::TimeDelta(), /*end_of_media=*/false);
+
+    services_[main_frame_]->SetPositionState(expected_position);
+    FlushForTesting(GetMediaSession());
+
+    observer.WaitForExpectedPosition(expected_position);
+  }
+}
+
+class MediaSessionImplServiceRoutingFencedFrameTest
+    : public MediaSessionImplServiceRoutingTest {
+ public:
+  MediaSessionImplServiceRoutingFencedFrameTest() {
+    scoped_feature_list_.InitAndEnableFeatureWithParameters(
+        blink::features::kFencedFrames, {{"implementation_type", "mparch"}});
+  }
+
+  void SetUp() override {
+    MediaSessionImplServiceRoutingTest::SetUp();
+    fenced_frame_ = main_frame_->AppendFencedFrame();
+  }
+
+  void CreateFencedFrameInSubframe() {
+    inner_fenced_frame_ = sub_frame_->AppendFencedFrame();
+  }
+
+ protected:
+  raw_ptr<TestRenderFrameHost> fenced_frame_;
+  raw_ptr<TestRenderFrameHost> inner_fenced_frame_;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest, NoFrameProducesAudio) {
+  CreateServiceForFrame(main_frame_);
+  CreateServiceForFrame(fenced_frame_);
+
+  ASSERT_EQ(nullptr, ComputeServiceForRouting());
+}
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest,
+       OnlyFencedFrameProducesAudioButHasNoService) {
+  StartPlayerForFrame(fenced_frame_);
+
+  ASSERT_EQ(nullptr, ComputeServiceForRouting());
+}
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest,
+       OnlyFencedFrameProducesAudioButHasDestroyedService) {
+  CreateServiceForFrame(fenced_frame_);
+  StartPlayerForFrame(fenced_frame_);
+  DestroyServiceForFrame(fenced_frame_);
+
+  ASSERT_EQ(nullptr, ComputeServiceForRouting());
+}
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest,
+       OnlyFencedFrameProducesAudioAndServiceIsCreatedAfterwards) {
+  StartPlayerForFrame(fenced_frame_);
+  CreateServiceForFrame(fenced_frame_);
+
+  ASSERT_EQ(services_[fenced_frame_].get(), ComputeServiceForRouting());
+}
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest,
+       BothFrameProducesAudioButOnlyFencedFrameHasService) {
+  StartPlayerForFrame(main_frame_);
+  StartPlayerForFrame(fenced_frame_);
+
+  CreateServiceForFrame(fenced_frame_);
+
+  ASSERT_EQ(services_[fenced_frame_].get(), ComputeServiceForRouting());
+}
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest, PreferTopMostFrame) {
+  StartPlayerForFrame(main_frame_);
+  StartPlayerForFrame(fenced_frame_);
 
   CreateServiceForFrame(main_frame_);
+  CreateServiceForFrame(fenced_frame_);
+
   ASSERT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
+}
 
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest,
+       RoutedServiceUpdatedAfterRemovingPlayer) {
+  StartPlayerForFrame(main_frame_);
+  StartPlayerForFrame(fenced_frame_);
 
-    // The service on the main frame will restrict the audio video state to
-    // only look at the routed frame.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioOnly);
-  }
-
-  CreateServiceForFrame(sub_frame_);
-  ASSERT_EQ(services_[main_frame_].get(), ComputeServiceForRouting());
-
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
-
-    // The service on the main frame will restrict the audio video state to
-    // only look at the routed frame.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioOnly);
-  }
-
-  DestroyServiceForFrame(main_frame_);
-  ASSERT_EQ(services_[sub_frame_].get(), ComputeServiceForRouting());
-
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
-
-    // Now that the service on the main frame has been destroyed then we should
-    // only look at players on the sub frame.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioVideo);
-  }
-
-  DestroyServiceForFrame(sub_frame_);
-  ASSERT_EQ(nullptr, ComputeServiceForRouting());
-
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
-
-    // Now that there is no service we should be looking at all the players
-    // again.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioVideo);
-  }
-
-  ClearPlayersForFrame(sub_frame_);
-
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
-
-    // The state should be updated when we remove the sub frame players.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kAudioOnly);
-  }
+  CreateServiceForFrame(main_frame_);
+  CreateServiceForFrame(fenced_frame_);
 
   ClearPlayersForFrame(main_frame_);
 
-  {
-    media_session::test::MockMediaSessionMojoObserver observer(
-        *GetMediaSession());
+  ASSERT_EQ(services_[fenced_frame_].get(), ComputeServiceForRouting());
+}
 
-    // We should fallback to the default state.
-    observer.WaitForAudioVideoState(
-        media_session::mojom::MediaAudioVideoState::kUnknown);
-  }
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest, PreferSubFrame) {
+  CreateFencedFrameInSubframe();
+
+  StartPlayerForFrame(sub_frame_);
+  StartPlayerForFrame(inner_fenced_frame_);
+
+  CreateServiceForFrame(sub_frame_);
+  CreateServiceForFrame(inner_fenced_frame_);
+
+  ASSERT_EQ(services_[sub_frame_].get(), ComputeServiceForRouting());
+}
+
+TEST_F(MediaSessionImplServiceRoutingFencedFrameTest,
+       AllFrameProducesAudioButSubFrameAndFencedFrameHaveService) {
+  CreateFencedFrameInSubframe();
+
+  StartPlayerForFrame(main_frame_);
+  StartPlayerForFrame(sub_frame_);
+  StartPlayerForFrame(inner_fenced_frame_);
+
+  CreateServiceForFrame(sub_frame_);
+  CreateServiceForFrame(inner_fenced_frame_);
+
+  ASSERT_EQ(services_[sub_frame_].get(), ComputeServiceForRouting());
 }
 
 }  // namespace content

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QVIDEOFRAMECONVERSIONHELPER_P_H
 #define QVIDEOFRAMECONVERSIONHELPER_P_H
@@ -54,40 +18,93 @@
 #include <qvideoframe.h>
 #include <private/qsimd_p.h>
 
+QT_BEGIN_NAMESPACE
+
+// Converts to RGB32 or ARGB32_Premultiplied
 typedef void (QT_FASTCALL *VideoFrameConvertFunc)(const QVideoFrame &frame, uchar *output);
+typedef void(QT_FASTCALL *PixelsCopyFunc)(uint32_t *dst, const uint32_t *src, size_t size, uint32_t mask);
 
-inline quint32 qConvertBGRA32ToARGB32(quint32 bgra)
-{
-    return (((bgra & 0xFF000000) >> 24)
-            | ((bgra & 0x00FF0000) >> 8)
-            | ((bgra & 0x0000FF00) << 8)
-            | ((bgra & 0x000000FF) << 24));
-}
+VideoFrameConvertFunc qConverterForFormat(QVideoFrameFormat::PixelFormat format);
 
-inline quint32 qConvertBGR24ToARGB32(const uchar *bgr)
-{
-    return 0xFF000000 | bgr[0] | bgr[1] << 8 | bgr[2] << 16;
-}
+void Q_MULTIMEDIA_EXPORT qCopyPixelsWithAlphaMask(uint32_t *dst,
+                                                  const uint32_t *src,
+                                                  size_t size,
+                                                  QVideoFrameFormat::PixelFormat format,
+                                                  bool srcAlphaVaries);
 
-inline quint32 qConvertBGR565ToARGB32(quint16 bgr)
-{
-    return 0xff000000
-            | ((((bgr) >> 8) & 0xf8) | (((bgr) >> 13) & 0x7))
-            | ((((bgr) << 5) & 0xfc00) | (((bgr) >> 1) & 0x300))
-            | ((((bgr) << 19) & 0xf80000) | (((bgr) << 14) & 0x70000));
-}
+void Q_MULTIMEDIA_EXPORT qCopyPixelsWithMask(uint32_t *dst, const uint32_t *src, size_t size, uint32_t mask);
 
-inline quint32 qConvertBGR555ToARGB32(quint16 bgr)
+uint32_t Q_MULTIMEDIA_EXPORT qAlphaMask(QVideoFrameFormat::PixelFormat format);
+
+template<int a, int r, int g, int b>
+struct ArgbPixel
 {
-    return 0xff000000
-            | ((((bgr) >> 7) & 0xf8) | (((bgr) >> 12) & 0x7))
-            | ((((bgr) << 6) & 0xf800) | (((bgr) << 1) & 0x700))
-            | ((((bgr) << 19) & 0xf80000) | (((bgr) << 11) & 0x70000));
-}
+    quint32 data;
+    inline quint32 convert() const
+    {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        return (((data >> (8*a)) & 0xff) << 24)
+             | (((data >> (8*r)) & 0xff) << 16)
+             | (((data >> (8*g)) & 0xff) << 8)
+             | ((data >> (8*b)) & 0xff);
+#else
+        return (((data >> (32-8*a)) & 0xff) << 24)
+             | (((data >> (32-8*r)) & 0xff) << 16)
+             | (((data >> (32-8*g)) & 0xff) << 8)
+             | ((data >> (32-8*b)) & 0xff);
+#endif
+    }
+};
+
+template<int r, int g, int b>
+struct RgbPixel
+{
+    quint32 data;
+    inline quint32 convert() const
+    {
+#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
+        return 0xff000000
+                | (((data >> (8*r)) & 0xff) << 16)
+                | (((data >> (8*g)) & 0xff) << 8)
+                | ((data >> (8*b)) & 0xff);
+#else
+        return 0xff000000
+                | (((data >> (32-8*r)) & 0xff) << 16)
+                | (((data >> (32-8*g)) & 0xff) << 8)
+                | ((data >> (32-8*b)) & 0xff);
+#endif
+    }
+};
+
+template<typename Y>
+struct YPixel
+{
+    Y data;
+    static constexpr uint shift = (sizeof(Y) - 1)*8;
+    inline quint32 convert() const
+    {
+        uint y = (data >> shift) & 0xff;
+        return (0xff000000)
+               | (y << 16)
+               | (y << 8)
+               | (y);
+    }
+
+};
+
+
+using ARGB8888 = ArgbPixel<0, 1, 2, 3>;
+using ABGR8888 = ArgbPixel<0, 3, 2, 1>;
+using RGBA8888 = ArgbPixel<3, 0, 1, 2>;
+using BGRA8888 = ArgbPixel<3, 2, 1, 0>;
+using XRGB8888 = RgbPixel<1, 2, 3>;
+using XBGR8888 = RgbPixel<3, 2, 1>;
+using RGBX8888 = RgbPixel<0, 1, 2>;
+using BGRX8888 = RgbPixel<2, 1, 0>;
 
 #define FETCH_INFO_PACKED(frame) \
-    const uchar *src = frame.bits(); \
-    int stride = frame.bytesPerLine(); \
+    const uchar *src = frame.bits(0); \
+    int stride = frame.bytesPerLine(0); \
     int width = frame.width(); \
     int height = frame.height();
 
@@ -118,6 +135,8 @@ inline quint32 qConvertBGR555ToARGB32(quint16 bgr)
 
 #define ALIGN(boundary, ptr, x, length) \
     for (; ((reinterpret_cast<qintptr>(ptr) & (boundary - 1)) != 0) && x < length; ++x)
+
+QT_END_NAMESPACE
 
 #endif // QVIDEOFRAMECONVERSIONHELPER_P_H
 

@@ -44,8 +44,38 @@ TEST(TraceProcessorImplTest, GuessTraceType_JsonWithSpaces) {
 
 // Some Android build traces do not contain the wrapper. See b/118826940
 TEST(TraceProcessorImplTest, GuessTraceType_JsonMissingTraceEvents) {
-  const uint8_t prefix[] = "[{";
+  const uint8_t prefix[] = "[{\"";
   EXPECT_EQ(kJsonTraceType, GuessTraceType(prefix, sizeof(prefix)));
+}
+
+TEST(TraceProcessorImplTest, GuessTraceType_DoctypeHtmlUppercase) {
+  const uint8_t prefix[] = "<!DOCTYPE HTML>";
+  EXPECT_EQ(kSystraceTraceType, GuessTraceType(prefix, sizeof(prefix)));
+}
+
+TEST(TraceProcessorImplTest, GuessTraceType_DoctypeHtml) {
+  const uint8_t prefix[] = "<!doctype html>";
+  EXPECT_EQ(kSystraceTraceType, GuessTraceType(prefix, sizeof(prefix)));
+}
+
+TEST(TraceProcessorImplTest, GuessTraceType_DoctypeHtmlMixed) {
+  const uint8_t prefix[] = "<!DoCTyPe HtMl>";
+  EXPECT_EQ(kSystraceTraceType, GuessTraceType(prefix, sizeof(prefix)));
+}
+
+TEST(TraceProcessorImplTest, GuessTraceType_Html) {
+  const uint8_t prefix[] = "<html>";
+  EXPECT_EQ(kSystraceTraceType, GuessTraceType(prefix, sizeof(prefix)));
+}
+
+TEST(TraceProcessorImplTest, GuessTraceType_HtmlUpper) {
+  const uint8_t prefix[] = "<HTML>";
+  EXPECT_EQ(kSystraceTraceType, GuessTraceType(prefix, sizeof(prefix)));
+}
+
+TEST(TraceProcessorImplTest, GuessTraceType_HtmlMixed) {
+  const uint8_t prefix[] = "<htmL>";
+  EXPECT_EQ(kSystraceTraceType, GuessTraceType(prefix, sizeof(prefix)));
 }
 
 TEST(TraceProcessorImplTest, GuessTraceType_Proto) {

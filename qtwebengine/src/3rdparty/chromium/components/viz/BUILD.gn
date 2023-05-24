@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,7 +6,21 @@ import("//build/config/ui.gni")
 import("//components/viz/viz.gni")
 import("//testing/test.gni")
 
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+
+  bundle_data_from_filelist("unit_tests_bundle_data") {
+    testonly = true
+    filelist_name = "unit_tests_bundle_data.filelist"
+  }
+}
+
 viz_test("viz_unittests") {
+  configs = []
+  if (is_chromeos_lacros && is_chromeos_device) {
+    configs += [ "//build/lacros:optional_shared_libgcc" ]
+  }
+
   use_xvfb = use_xvfb_in_this_config
 
   sources = [ "test/run_all_unittests.cc" ]
@@ -34,6 +48,21 @@ viz_test("viz_unittests") {
     # The top level test target must depend on the java library directly.
     deps += [ "//components/viz/service:service_java" ]
   }
+
+  if (is_fuchsia) {
+    # TODO(https://crbug.com/1185811): Investigate removing the requirement for
+    # job_policy_ambient_mark_vmo_exec for the sake of V8's allocator in tests.
+    test_runner_shard = "//build/config/fuchsia/test/elf_test_ambient_exec_runner.shard.test-cml"
+
+    additional_manifest_fragments = [
+      "//build/config/fuchsia/test/mark_vmo_executable.shard.test-cml",
+      "//third_party/fuchsia-sdk/sdk/pkg/vulkan/client.shard.cml",
+    ]
+  }
+
+  if (is_ios) {
+    public_deps = [ ":unit_tests_bundle_data" ]
+  }
 }
 
 viz_test("viz_perftests") {
@@ -50,6 +79,8 @@ viz_test("viz_perftests") {
     "//skia",
   ]
 
+  data = [ "test/data/" ]
+
   # This target should not require the Chrome executable to run.
   assert_no_deps = [ "//chrome" ]
 
@@ -57,4 +88,19 @@ viz_test("viz_perftests") {
     # Needed for isolate script to execute.
     "//testing:run_perf_test",
   ]
+}
+
+if (is_android) {
+  java_cpp_features("java_features_srcjar") {
+    # External code should depend on ":viz_java" instead.
+    visibility = [ ":*" ]
+    sources = [ "common/features.cc" ]
+    template = "common/java/src/org/chromium/components/viz/common/VizFeatures.java.tmpl"
+  }
+
+  android_library("viz_java") {
+    # Right now, this only includes the Java features. But if we need more Java
+    # files, they should be added here as necessary.
+    srcjar_deps = [ ":java_features_srcjar" ]
+  }
 }

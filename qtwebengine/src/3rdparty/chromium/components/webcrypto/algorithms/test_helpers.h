@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,22 +12,21 @@
 #include <string>
 #include <vector>
 
-#include "base/optional.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_piece_forward.h"
+#include "base/values.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/web_crypto_algorithm.h"
 #include "third_party/blink/public/platform/web_crypto_key.h"
 
+// Compare the input in hex, because `base::span` supports neither equality nor
+// printing.
 #define EXPECT_BYTES_EQ(expected, actual) \
-  EXPECT_EQ(CryptoData(expected), CryptoData(actual))
+  EXPECT_EQ(base::HexEncode(expected), base::HexEncode(actual))
 
 #define EXPECT_BYTES_EQ_HEX(expected_hex, actual_bytes) \
   EXPECT_BYTES_EQ(HexStringToBytes(expected_hex), actual_bytes)
-
-namespace base {
-class DictionaryValue;
-class ListValue;
-class Value;
-}
 
 namespace blink {
 class WebCryptoAlgorithm;
@@ -45,18 +44,12 @@ class WebCryptoTestBase : public testing::Test {
 };
 
 class Status;
-class CryptoData;
 
 // These functions are used by GTEST to support EXPECT_EQ() for
-// webcrypto::Status and webcrypto::CryptoData
-
+// webcrypto::Status.
 void PrintTo(const Status& status, ::std::ostream* os);
 bool operator==(const Status& a, const Status& b);
 bool operator!=(const Status& a, const Status& b);
-
-void PrintTo(const CryptoData& data, ::std::ostream* os);
-bool operator==(const CryptoData& a, const CryptoData& b);
-bool operator!=(const CryptoData& a, const CryptoData& b);
 
 // Gives a human-readable description of |status| and any error it represents.
 std::string StatusToString(const Status& status);
@@ -73,38 +66,30 @@ blink::WebCryptoAlgorithm CreateRsaHashedKeyGenAlgorithm(
 //  - For empty inputs, a byte is added.
 std::vector<uint8_t> Corrupted(const std::vector<uint8_t>& input);
 
-std::vector<uint8_t> HexStringToBytes(const std::string& hex);
+std::vector<uint8_t> HexStringToBytes(base::StringPiece hex);
 
-std::vector<uint8_t> MakeJsonVector(const std::string& json_string);
-std::vector<uint8_t> MakeJsonVector(const base::DictionaryValue& dict);
+// Serialize |value| to json, then return that json as a byte vector.
+std::vector<uint8_t> MakeJsonVector(const base::ValueView& value);
 
 // ----------------------------------------------------------------
 // Helpers for working with JSON data files for test expectations.
 // ----------------------------------------------------------------
 
-// Reads a file in "src/content/test/data/webcrypto" to a base::Value.
-// The file must be JSON, however it can also include C++ style comments.
-::testing::AssertionResult ReadJsonTestFile(const char* test_file_name,
-                                            base::Value* value);
-// Same as ReadJsonTestFile(), but returns the value as a List.
-::testing::AssertionResult ReadJsonTestFileToList(const char* test_file_name,
-                                                  base::ListValue* list);
-// Same as ReadJsonTestFile(), but returns the value as a Dictionary.
-::testing::AssertionResult ReadJsonTestFileToDictionary(
-    const char* test_file_name,
-    base::DictionaryValue* dict);
+// Reads "//components/test/data/webcrypto/" + test_file_name as a JSON
+// file, asserts that the contained JSON is a list, and returns that list.
+base::Value::List ReadJsonTestFileAsList(const char* test_file_name);
 
-// Reads a string property from the dictionary with path |property_name|
+// Reads a string property from the dictionary |dict| with path |property_name|
 // (which can include periods for nested dictionaries). Interprets the
 // string as a hex encoded string and converts it to a bytes list.
 //
 // Returns empty vector on failure.
-std::vector<uint8_t> GetBytesFromHexString(const base::DictionaryValue* dict,
-                                           const std::string& property_name);
+std::vector<uint8_t> GetBytesFromHexString(const base::Value::Dict& dict,
+                                           base::StringPiece property_name);
 
 // Reads a string property with path "property_name" and converts it to a
-// WebCryptoAlgorith. Returns null algorithm on failure.
-blink::WebCryptoAlgorithm GetDigestAlgorithm(const base::DictionaryValue* dict,
+// WebCryptoAlgorithm. Returns null algorithm on failure.
+blink::WebCryptoAlgorithm GetDigestAlgorithm(const base::Value::Dict& dict,
                                              const char* property_name);
 
 // Returns true if any of the vectors in the input list have identical content.
@@ -140,37 +125,37 @@ void ImportRsaKeyPair(const std::vector<uint8_t>& spki_der,
                       blink::WebCryptoKey* public_key,
                       blink::WebCryptoKey* private_key);
 
-Status ImportKeyJwkFromDict(const base::DictionaryValue& dict,
+Status ImportKeyJwkFromDict(const base::ValueView& dict,
                             const blink::WebCryptoAlgorithm& algorithm,
                             bool extractable,
                             blink::WebCryptoKeyUsageMask usages,
                             blink::WebCryptoKey* key);
 
 // Parses a vector of JSON into a dictionary.
-base::Optional<base::DictionaryValue> GetJwkDictionary(
+absl::optional<base::Value::Dict> GetJwkDictionary(
     const std::vector<uint8_t>& json);
 
 // Verifies the input dictionary contains the expected values. Exact matches are
 // required on the fields examined.
 ::testing::AssertionResult VerifyJwk(
-    const std::unique_ptr<base::DictionaryValue>& dict,
-    const std::string& kty_expected,
-    const std::string& alg_expected,
+    const base::Value::Dict& dict,
+    base::StringPiece kty_expected,
+    base::StringPiece alg_expected,
     blink::WebCryptoKeyUsageMask use_mask_expected);
 
 ::testing::AssertionResult VerifySecretJwk(
     const std::vector<uint8_t>& json,
-    const std::string& alg_expected,
-    const std::string& k_expected_hex,
+    base::StringPiece alg_expected,
+    base::StringPiece k_expected_hex,
     blink::WebCryptoKeyUsageMask use_mask_expected);
 
 // Verifies that the JSON in the input vector contains the provided
 // expected values. Exact matches are required on the fields examined.
 ::testing::AssertionResult VerifyPublicJwk(
     const std::vector<uint8_t>& json,
-    const std::string& alg_expected,
-    const std::string& n_expected_hex,
-    const std::string& e_expected_hex,
+    base::StringPiece alg_expected,
+    base::StringPiece n_expected_hex,
+    base::StringPiece e_expected_hex,
     blink::WebCryptoKeyUsageMask use_mask_expected);
 
 // Helper that tests importing ane exporting of symmetric keys as JWK.
@@ -178,7 +163,7 @@ void ImportExportJwkSymmetricKey(
     int key_len_bits,
     const blink::WebCryptoAlgorithm& import_algorithm,
     blink::WebCryptoKeyUsageMask usages,
-    const std::string& jwk_alg);
+    base::StringPiece jwk_alg);
 
 // Wrappers around GenerateKey() which expect the result to be either a secret
 // key or a public/private keypair. If the result does not match the
@@ -196,17 +181,19 @@ Status GenerateKeyPair(const blink::WebCryptoAlgorithm& algorithm,
 // Reads a key format string as used in some JSON test files and converts it to
 // a WebCryptoKeyFormat.
 blink::WebCryptoKeyFormat GetKeyFormatFromJsonTestCase(
-    const base::DictionaryValue* test);
+    const base::Value::Dict& test);
 
 // Extracts the key data bytes from |test| as used insome JSON test files.
 std::vector<uint8_t> GetKeyDataFromJsonTestCase(
-    const base::DictionaryValue* test,
+    const base::Value::Dict& test,
     blink::WebCryptoKeyFormat key_format);
 
 // Reads the "crv" string from a JSON test case and returns it as a
 // WebCryptoNamedCurve.
 blink::WebCryptoNamedCurve GetCurveNameFromDictionary(
-    const base::DictionaryValue* dict);
+    const base::Value::Dict& dict);
+
+blink::WebCryptoNamedCurve CurveNameToCurve(base::StringPiece name);
 
 // Creates an HMAC import algorithm whose inner hash algorithm is determined by
 // the specified algorithm ID. It is an error to call this method with a hash

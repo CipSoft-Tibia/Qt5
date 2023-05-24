@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QTest>
@@ -38,9 +13,11 @@
 #include <Qt3DRender/private/nodemanagers_p.h>
 #include <Qt3DRender/private/qrenderaspect_p.h>
 #include <Qt3DRender/private/techniquemanager_p.h>
+#include <Qt3DRender/private/filtercompatibletechniquejob_p.h>
 #include <renderer_p.h>
 #include <submissioncontext_p.h>
-#include <filtercompatibletechniquejob_p.h>
+
+#include "qbackendnodetester.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -50,7 +27,7 @@ class TestAspect : public Qt3DRender::QRenderAspect
 {
 public:
     TestAspect(Qt3DCore::QNode *root)
-        : Qt3DRender::QRenderAspect(Qt3DRender::QRenderAspect::Synchronous)
+        : Qt3DRender::QRenderAspect()
         , m_jobManager(new Qt3DCore::QAspectJobManager())
         , m_window(new QWindow())
         , m_contextCreationSuccessful(false)
@@ -74,7 +51,7 @@ public:
         Qt3DCore::QAbstractAspectPrivate::get(this)->m_jobManager = m_jobManager.data();
         QRenderAspect::onRegistered();
 
-        QVector<Qt3DCore::QNode *> nodes;
+        QList<Qt3DCore::QNode *> nodes;
         Qt3DCore::QNodeVisitor v;
         v.traverse(root, [&nodes](Qt3DCore::QNode *node) {
             Qt3DCore::QNodePrivate *d = Qt3DCore::QNodePrivate::get(node);
@@ -121,8 +98,8 @@ public:
         return static_cast<Render::OpenGL::Renderer *>(d_func()->m_renderer);
     }
 
-    void onRegistered() { QRenderAspect::onRegistered(); }
-    void onUnregistered() { QRenderAspect::onUnregistered(); }
+    void onRegistered() override { QRenderAspect::onRegistered(); }
+    void onUnregistered() override { QRenderAspect::onUnregistered(); }
 
 private:
     QScopedPointer<Qt3DCore::QAspectJobManager> m_jobManager;
@@ -179,7 +156,7 @@ private Q_SLOTS:
     void initTestCase()
     {
         QSurfaceFormat format;
-#ifdef QT_OPENGL_ES_2
+#if QT_CONFIG(opengles2)
         format.setRenderableType(QSurfaceFormat::OpenGLES);
 #else
         if (QOpenGLContext::openGLModuleType() == QOpenGLContext::LibGL) {
@@ -196,7 +173,7 @@ private Q_SLOTS:
     void checkInitialState()
     {
         // GIVEN
-        Qt3DRender::Render::OpenGL::FilterCompatibleTechniqueJob backendFilterCompatibleTechniqueJob;
+        Qt3DRender::Render::FilterCompatibleTechniqueJob backendFilterCompatibleTechniqueJob;
 
         // THEN
         QVERIFY(backendFilterCompatibleTechniqueJob.manager() == nullptr);
@@ -204,7 +181,7 @@ private Q_SLOTS:
 
         // WHEN
         Qt3DRender::Render::TechniqueManager techniqueManager;
-        Qt3DRender::Render::OpenGL::Renderer renderer(Qt3DRender::QRenderAspect::Synchronous);
+        Qt3DRender::Render::OpenGL::Renderer renderer;
         backendFilterCompatibleTechniqueJob.setManager(&techniqueManager);
         backendFilterCompatibleTechniqueJob.setRenderer(&renderer);
 
@@ -218,7 +195,7 @@ private Q_SLOTS:
     void checkRunRendererRunning()
     {
         // GIVEN
-        Qt3DRender::Render::OpenGL::FilterCompatibleTechniqueJob backendFilterCompatibleTechniqueJob;
+        Qt3DRender::Render::FilterCompatibleTechniqueJob backendFilterCompatibleTechniqueJob;
         Qt3DRender::TestAspect testAspect(buildTestScene());
 
         const bool unableToCreateContext = !testAspect.contextCreationSuccessful();
@@ -239,18 +216,18 @@ private Q_SLOTS:
         QCOMPARE(testAspect.renderer()->isRunning(), true);
         QCOMPARE(testAspect.renderer()->submissionContext()->isInitialized(), true);
         const std::vector<Qt3DRender::Render::HTechnique> &handles = testAspect.nodeManagers()->techniqueManager()->activeHandles();
-        QCOMPARE(handles.size(), 3);
+        QCOMPARE(handles.size(), size_t(3));
 
         // WHEN
         backendFilterCompatibleTechniqueJob.run();
 
         // THEN -> empty if job ran properly
-        const QVector<Qt3DCore::QNodeId> dirtyTechniquesId = testAspect.nodeManagers()->techniqueManager()->takeDirtyTechniques();
-        QCOMPARE(dirtyTechniquesId.size(), 0);
+        const std::vector<Qt3DCore::QNodeId> dirtyTechniquesId = testAspect.nodeManagers()->techniqueManager()->takeDirtyTechniques();
+        QCOMPARE(dirtyTechniquesId.size(), 0U);
 
         // Check at least one technique is valid
         bool foundValid = false;
-        for (const auto handle: handles) {
+        for (const auto &handle: handles) {
             Qt3DRender::Render::Technique *technique = testAspect.nodeManagers()->techniqueManager()->data(handle);
             foundValid |= technique->isCompatibleWithRenderer();
         }

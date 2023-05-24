@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QABSTRACTAXIS_H
 #define QABSTRACTAXIS_H
@@ -34,8 +8,9 @@
 #include <QtGui/QPen>
 #include <QtGui/QFont>
 #include <QtCore/QVariant>
+#include <QtCore/QObject>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class QAbstractAxisPrivate;
 
@@ -54,6 +29,8 @@ class Q_CHARTS_EXPORT QAbstractAxis : public QObject
     Q_PROPERTY(int labelsAngle READ labelsAngle WRITE setLabelsAngle NOTIFY labelsAngleChanged)
     Q_PROPERTY(QFont labelsFont READ labelsFont WRITE setLabelsFont NOTIFY labelsFontChanged)
     Q_PROPERTY(QColor labelsColor READ labelsColor WRITE setLabelsColor NOTIFY labelsColorChanged)
+    Q_PROPERTY(bool labelsTruncated READ labelsTruncated NOTIFY labelsTruncatedChanged REVISION(6, 2))
+    Q_PROPERTY(bool truncateLabels READ truncateLabels WRITE setTruncateLabels NOTIFY truncateLabelsChanged REVISION(6, 2))
     //grid
     Q_PROPERTY(bool gridVisible READ isGridLineVisible WRITE setGridLineVisible NOTIFY gridVisibleChanged)
     Q_PROPERTY(QPen gridLinePen READ gridLinePen WRITE setGridLinePen NOTIFY gridLinePenChanged)
@@ -74,7 +51,7 @@ class Q_CHARTS_EXPORT QAbstractAxis : public QObject
     Q_PROPERTY(QFont titleFont READ titleFont WRITE setTitleFont NOTIFY titleFontChanged)
     //orientation
     Q_PROPERTY(Qt::Orientation orientation READ orientation)
-    //aligment
+    //alignment
     Q_PROPERTY(Qt::Alignment alignment READ alignment)
     Q_PROPERTY(bool reverse READ isReverse WRITE setReverse NOTIFY reverseChanged)
 
@@ -86,7 +63,8 @@ public:
         AxisTypeBarCategory = 0x2,
         AxisTypeCategory = 0x4,
         AxisTypeDateTime = 0x8,
-        AxisTypeLogValue = 0x10
+        AxisTypeLogValue = 0x10,
+        AxisTypeColor = 0x20
     };
 
     Q_DECLARE_FLAGS(AxisTypes, AxisType)
@@ -177,6 +155,11 @@ public:
     void setLabelsEditable(bool editable = true);
     bool labelsEditable() const;
 
+    bool labelsTruncated() const;
+
+    void setTruncateLabels(bool truncateLabels = true);
+    bool truncateLabels() const;
+
 Q_SIGNALS:
     void visibleChanged(bool visible);
     void linePenChanged(const QPen &pen);
@@ -204,6 +187,8 @@ Q_SIGNALS:
     void shadesBrushChanged(const QBrush &brush);
     void reverseChanged(bool reverse);
     void labelsEditableChanged(bool editable);
+    Q_REVISION(6, 2) void labelsTruncatedChanged(bool labelsTruncated);
+    Q_REVISION(6, 2) void truncateLabelsChanged(bool truncateLabels);
 
 protected:
     QScopedPointer<QAbstractAxisPrivate> d_ptr;
@@ -212,12 +197,14 @@ protected:
     friend class ChartThemeManager;
     friend class AbstractDomain;
     friend class ChartAxisElement;
+    friend class HorizontalAxis;
+    friend class VerticalAxis;
     friend class XYChart;
 
 private:
     Q_DISABLE_COPY(QAbstractAxis)
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // QABSTRACTAXIS_H

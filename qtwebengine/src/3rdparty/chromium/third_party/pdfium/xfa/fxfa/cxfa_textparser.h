@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,23 +7,24 @@
 #ifndef XFA_FXFA_CXFA_TEXTPARSER_H_
 #define XFA_FXFA_CXFA_TEXTPARSER_H_
 
+#include <stdint.h>
+
 #include <map>
 #include <memory>
 #include <vector>
 
 #include "core/fxcrt/css/cfx_css.h"
+#include "core/fxcrt/css/cfx_csscomputedstyle.h"
 #include "core/fxcrt/css/cfx_cssdeclaration.h"
-#include "core/fxcrt/fx_string.h"
-#include "core/fxcrt/fx_system.h"
 #include "core/fxcrt/retain_ptr.h"
-#include "core/fxge/fx_dib.h"
+#include "core/fxcrt/widestring.h"
+#include "core/fxge/dib/fx_dib.h"
 #include "fxjs/gc/heap.h"
-#include "third_party/base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "xfa/fxfa/fxfa_basic.h"
 
 class CFGAS_GEFont;
-class CFX_CSSComputedStyle;
 class CFX_CSSStyleSelector;
 class CFX_CSSStyleSheet;
 class CFX_XMLNode;
@@ -38,9 +39,9 @@ class CXFA_TextParser : public cppgc::GarbageCollected<CXFA_TextParser> {
     Context();
     ~Context();
 
-    void SetParentStyle(const CFX_CSSComputedStyle* style);
-    const CFX_CSSComputedStyle* GetParentStyle() const {
-      return m_pParentStyle.Get();
+    void SetParentStyle(RetainPtr<const CFX_CSSComputedStyle> style);
+    RetainPtr<const CFX_CSSComputedStyle> GetParentStyle() const {
+      return m_pParentStyle;
     }
 
     void SetDisplay(CFX_CSSDisplay eDisplay) { m_eDisplay = eDisplay; }
@@ -70,7 +71,7 @@ class CXFA_TextParser : public cppgc::GarbageCollected<CXFA_TextParser> {
       CXFA_TextProvider* pTextProvider);
   RetainPtr<CFX_CSSComputedStyle> ComputeStyle(
       const CFX_XMLNode* pXMLNode,
-      const CFX_CSSComputedStyle* pParentStyle);
+      RetainPtr<const CFX_CSSComputedStyle> pParentStyle);
 
   bool IsParsed() const { return m_bParsed; }
 
@@ -109,8 +110,9 @@ class CXFA_TextParser : public cppgc::GarbageCollected<CXFA_TextParser> {
                       bool bFirst,
                       float fVerScale) const;
 
-  Optional<WideString> GetEmbeddedObj(const CXFA_TextProvider* pTextProvider,
-                                      const CFX_XMLNode* pXMLNode);
+  absl::optional<WideString> GetEmbeddedObj(
+      const CXFA_TextProvider* pTextProvider,
+      const CFX_XMLNode* pXMLNode);
   Context* GetParseContextFromMap(const CFX_XMLNode* pXMLNode);
 
  protected:

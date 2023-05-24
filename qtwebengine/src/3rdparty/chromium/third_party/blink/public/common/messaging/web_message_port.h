@@ -1,13 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_MESSAGING_WEB_MESSAGE_PORT_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_MESSAGING_WEB_MESSAGE_PORT_H_
 
+#include <string>
 #include <utility>
 
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/cpp/bindings/connector.h"
 #include "mojo/public/cpp/bindings/message.h"
 #include "third_party/blink/public/common/common_export.h"
@@ -83,6 +85,10 @@ class BLINK_COMMON_EXPORT WebMessagePort : public mojo::MessageReceiver {
   // are conjugates of each other.
   static std::pair<WebMessagePort, WebMessagePort> CreatePair();
 
+  // Wraps one end of a message channel. |port|'s mojo pipe must
+  // be paired, valid and not entangled.
+  static WebMessagePort Create(MessagePortDescriptor port);
+
   // Sets a message receiver for this message port. Once bound any incoming
   // messages to this port will be routed to the provided |receiver| with
   // callbacks invoked on the provided |runner|. Note that if you set a receiver
@@ -152,6 +158,10 @@ class BLINK_COMMON_EXPORT WebMessagePort : public mojo::MessageReceiver {
   // false). This can only be called if "is_transferable()" returns true.
   MessagePortDescriptor PassPort();
 
+  // Maintains a static agent cluster ID that is used as the cluster ID in
+  // casees where the embedder is the one calling PostMessage.
+  static const base::UnguessableToken& GetEmbedderAgentClusterID();
+
  private:
   // Creates a message port that wraps the provided |port|. This provided |port|
   // must be valid. This is private as it should only be called by message
@@ -170,7 +180,7 @@ class BLINK_COMMON_EXPORT WebMessagePort : public mojo::MessageReceiver {
   bool is_closed_ = true;
   bool is_errored_ = false;
   bool is_transferable_ = false;
-  MessageReceiver* receiver_ = nullptr;
+  raw_ptr<MessageReceiver> receiver_ = nullptr;
 };
 
 // A very simple message format. This is a subset of a TransferableMessage, as
@@ -185,7 +195,7 @@ struct BLINK_COMMON_EXPORT WebMessagePort::Message {
   ~Message();
 
   // Creates a message with the given |data|.
-  explicit Message(const base::string16& data);
+  explicit Message(const std::u16string& data);
 
   // Creates a message with the given collection of |ports| to be transferred.
   explicit Message(std::vector<WebMessagePort> ports);
@@ -195,13 +205,13 @@ struct BLINK_COMMON_EXPORT WebMessagePort::Message {
 
   // Creates a message with |data| and a collection of |ports| to be
   // transferred.
-  Message(const base::string16& data, std::vector<WebMessagePort> ports);
+  Message(const std::u16string& data, std::vector<WebMessagePort> ports);
 
   // Creates a message with |data| and a single |port| to be transferred.
-  Message(const base::string16& data, WebMessagePort port);
+  Message(const std::u16string& data, WebMessagePort port);
 
   // A UTF-16 message.
-  base::string16 data;
+  std::u16string data;
 
   // Other message ports that are to be transmitted as part of this message.
   std::vector<WebMessagePort> ports;

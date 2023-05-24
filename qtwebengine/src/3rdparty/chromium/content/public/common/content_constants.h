@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,17 +26,6 @@ CONTENT_EXPORT extern const base::FilePath::CharType kPepperDataDirname[];
 
 // The MIME type used for the browser plugin.
 CONTENT_EXPORT extern const char kBrowserPluginMimeType[];
-
-CONTENT_EXPORT extern const char kFlashPluginName[];
-CONTENT_EXPORT extern const char kFlashPluginSwfMimeType[];
-CONTENT_EXPORT extern const char kFlashPluginSwfExtension[];
-CONTENT_EXPORT extern const char kFlashPluginSwfDescription[];
-CONTENT_EXPORT extern const char kFlashPluginSplMimeType[];
-CONTENT_EXPORT extern const char kFlashPluginSplExtension[];
-CONTENT_EXPORT extern const char kFlashPluginSplDescription[];
-
-// The maximum number of session history entries per tab.
-constexpr int kMaxSessionHistoryEntries = 50;
 
 // The maximum number of characters in the URL that we're willing to accept
 // in the browser process. It is set low enough to avoid damage to the browser
@@ -70,7 +59,11 @@ CONTENT_EXPORT extern const char kCorsExemptPurposeHeaderName[];
 // it at run time.
 CONTENT_EXPORT std::string GetCorsExemptRequestedWithHeaderName();
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+// This is a value never returned as the unique id of any child processes of
+// any kind, including the values returned by RenderProcessHost::GetID().
+static constexpr int kInvalidChildProcessUniqueId = -1;
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 // The OOM score adj constants
 // The highest and lowest assigned OOM score adjustment (oom_score_adj) for
 // renderers and extensions used by the OomPriority Manager.

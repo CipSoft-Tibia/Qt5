@@ -21,9 +21,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_SVG_SVG_TEXT_CONTENT_ELEMENT_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SVG_SVG_TEXT_CONTENT_ELEMENT_H_
 
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_enumeration.h"
 #include "third_party/blink/renderer/core/svg/svg_graphics_element.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -80,7 +81,7 @@ class CORE_EXPORT SVGTextContentElement : public SVGGraphicsElement {
   void CollectStyleForPresentationAttribute(const QualifiedName&,
                                             const AtomicString&,
                                             MutableCSSPropertyValueSet*) final;
-  void SvgAttributeChanged(const QualifiedName&) override;
+  void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
 
   bool SelfHasRelativeLengths() const override;
 

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,14 +11,13 @@
 #include <list>
 #include <set>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
-#include "base/time/time.h"
-#include "content/public/browser/cache_storage_context.h"
-#include "url/origin.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 
 namespace content {
+class StoragePartition;
 struct StorageUsageInfo;
 }
 
@@ -37,24 +36,25 @@ class CacheStorageHelper
 
   // Create a CacheStorageHelper instance for the Cache Storage
   // stored in |context|'s associated profile's user data directory.
-  explicit CacheStorageHelper(content::CacheStorageContext* context);
+  explicit CacheStorageHelper(content::StoragePartition* partition);
+
+  CacheStorageHelper(const CacheStorageHelper&) = delete;
+  CacheStorageHelper& operator=(const CacheStorageHelper&) = delete;
 
   // Starts the fetching process, which will notify its completion via
   // |callback|. This must be called only in the UI thread.
   virtual void StartFetching(FetchCallback callback);
-  // Requests the Cache Storage data for an origin be deleted.
-  virtual void DeleteCacheStorage(const url::Origin& origin);
+  // Requests the Cache Storage data for a storage key be deleted.
+  virtual void DeleteCacheStorage(const blink::StorageKey& storage_key);
 
  protected:
   virtual ~CacheStorageHelper();
 
   // Owned by the profile.
-  content::CacheStorageContext* cache_storage_context_;
+  raw_ptr<content::StoragePartition> partition_;
 
  private:
   friend class base::RefCountedThreadSafe<CacheStorageHelper>;
-
-  DISALLOW_COPY_AND_ASSIGN(CacheStorageHelper);
 };
 
 // This class is an implementation of CacheStorageHelper that does
@@ -62,11 +62,15 @@ class CacheStorageHelper
 // info by a call when accessed.
 class CannedCacheStorageHelper : public CacheStorageHelper {
  public:
-  explicit CannedCacheStorageHelper(content::CacheStorageContext* context);
+  explicit CannedCacheStorageHelper(
+      content::StoragePartition* storage_partition);
+
+  CannedCacheStorageHelper(const CannedCacheStorageHelper&) = delete;
+  CannedCacheStorageHelper& operator=(const CannedCacheStorageHelper&) = delete;
 
   // Add a Cache Storage to the set of canned Cache Storages that is
   // returned by this helper.
-  void Add(const url::Origin& origin);
+  void Add(const blink::StorageKey& storage_key);
 
   // Clear the list of canned Cache Storages.
   void Reset();
@@ -78,18 +82,16 @@ class CannedCacheStorageHelper : public CacheStorageHelper {
   size_t GetCount() const;
 
   // Returns the current list of Cache Storages.
-  const std::set<url::Origin>& GetOrigins() const;
+  const std::set<blink::StorageKey>& GetStorageKeys() const;
 
   // CacheStorageHelper methods.
   void StartFetching(FetchCallback callback) override;
-  void DeleteCacheStorage(const url::Origin& origin) override;
+  void DeleteCacheStorage(const blink::StorageKey& storage_key) override;
 
  private:
   ~CannedCacheStorageHelper() override;
 
-  std::set<url::Origin> pending_origins_;
-
-  DISALLOW_COPY_AND_ASSIGN(CannedCacheStorageHelper);
+  std::set<blink::StorageKey> pending_storage_key_;
 };
 
 }  // namespace browsing_data

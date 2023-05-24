@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <cmath>
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "content/browser/media/capture/frame_sink_video_capture_device.h"
@@ -21,11 +21,13 @@
 #include "content/public/test/test_utils.h"
 #include "content/shell/browser/shell.h"
 #include "content/shell/common/shell_switches.h"
+#include "media/base/video_types.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/chrome_debug_urls.h"
 #include "ui/display/display_switches.h"
 #include "url/gurl.h"
 
@@ -46,19 +48,21 @@ void ContentCaptureDeviceBrowserTestBase::ChangePageContentColor(
   // See the HandleRequest() method for the original documents being modified
   // here.
   std::string script;
+  const std::string color_string =
+      base::StringPrintf("%02x%02x%02x", SkColorGetR(color), SkColorGetG(color),
+                         SkColorGetB(color));
   if (IsCrossSiteCaptureTest()) {
     const GURL& inner_frame_url =
         embedded_test_server()->GetURL(kInnerFrameHostname, kInnerFramePath);
     script = base::StringPrintf(
-        "document.getElementsByTagName('iframe')[0].src = '%s?color=123456';",
-        inner_frame_url.spec().c_str());
+        "document.getElementsByTagName('iframe')[0].src = '%s?color=%s';",
+        inner_frame_url.spec().c_str(), color_string.c_str());
   } else {
-    script = "document.body.style.backgroundColor = '#123456';";
+    script = base::StringPrintf("document.body.style.backgroundColor = '#%s';",
+                                color_string.c_str());
   }
-  script.replace(script.find("123456"), 6,
-                 base::StringPrintf("%02x%02x%02x", SkColorGetR(color),
-                                    SkColorGetG(color), SkColorGetB(color)));
-  CHECK(ExecuteScript(shell()->web_contents(), script));
+
+  CHECK(ExecJs(shell()->web_contents(), script));
 }
 
 gfx::Size ContentCaptureDeviceBrowserTestBase::GetExpectedSourceSize() {
@@ -93,7 +97,7 @@ ContentCaptureDeviceBrowserTestBase::SnapshotCaptureParams() {
 
   media::VideoCaptureParams params;
   params.requested_format = media::VideoCaptureFormat(
-      capture_size, kMaxFramesPerSecond, media::PIXEL_FORMAT_I420);
+      capture_size, kMaxFramesPerSecond, GetVideoPixelFormat());
   params.resolution_change_policy =
       IsFixedAspectRatioTest()
           ? media::ResolutionChangePolicy::FIXED_ASPECT_RATIO
@@ -101,8 +105,13 @@ ContentCaptureDeviceBrowserTestBase::SnapshotCaptureParams() {
   return params;
 }
 
+media::VideoPixelFormat
+ContentCaptureDeviceBrowserTestBase::GetVideoPixelFormat() const {
+  return media::VideoPixelFormat::PIXEL_FORMAT_I420;
+}
+
 base::TimeDelta ContentCaptureDeviceBrowserTestBase::GetMinCapturePeriod() {
-  return base::TimeDelta::FromMicroseconds(
+  return base::Microseconds(
       base::Time::kMicrosecondsPerSecond /
       device_->capture_params().requested_format.frame_rate);
 }
@@ -119,7 +128,7 @@ void ContentCaptureDeviceBrowserTestBase::NavigateToInitialDocument() {
 
     // Confirm the iframe is a cross-process child render frame.
     auto* const child_frame =
-        ChildFrameAt(shell()->web_contents()->GetMainFrame(), 0);
+        ChildFrameAt(shell()->web_contents()->GetPrimaryMainFrame(), 0);
     ASSERT_TRUE(child_frame);
     ASSERT_TRUE(child_frame->IsCrossProcessSubframe());
   } else {
@@ -138,8 +147,8 @@ void ContentCaptureDeviceBrowserTestBase::
   device_->AllocateAndStartWithReceiver(SnapshotCaptureParams(),
                                         capture_stack()->CreateFrameReceiver());
   RunUntilIdle();
-  EXPECT_TRUE(capture_stack()->started());
-  EXPECT_FALSE(capture_stack()->error_occurred());
+  EXPECT_TRUE(capture_stack()->Started());
+  EXPECT_FALSE(capture_stack()->ErrorOccurred());
   capture_stack()->ExpectNoLogMessages();
 
   WaitForFirstFrame();
@@ -165,7 +174,8 @@ void ContentCaptureDeviceBrowserTestBase::CrashTheRenderer() {
   RenderProcessHostWatcher crash_observer(
       shell()->web_contents(),
       RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT);
-  ASSERT_TRUE(NavigateToURLAndExpectNoCommit(shell(), GURL(kChromeUICrashURL)));
+  ASSERT_TRUE(
+      NavigateToURLAndExpectNoCommit(shell(), GURL(blink::kChromeUICrashURL)));
   crash_observer.Wait();
   ASSERT_TRUE(WaitForLoadStop(shell()->web_contents()));
 }
@@ -188,11 +198,6 @@ bool ContentCaptureDeviceBrowserTestBase::IsCrossSiteCaptureTest() const {
 }
 
 void ContentCaptureDeviceBrowserTestBase::SetUp() {
-  // IMPORTANT: Do not add the switches::kUseGpuInTests command line flag: It
-  // causes the tests to take 12+ seconds just to spin up a render process on
-  // debug builds. It can also cause test failures in MSAN builds, or exacerbate
-  // OOM situations on highly-loaded machines.
-
   // Screen capture requires readback from compositor output.
   EnablePixelOutput();
 

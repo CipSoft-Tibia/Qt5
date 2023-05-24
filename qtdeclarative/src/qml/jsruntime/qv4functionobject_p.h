@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4FUNCTIONOBJECT_H
 #define QV4FUNCTIONOBJECT_H
 
@@ -72,10 +36,11 @@ namespace Heap {
     Member(class, NoMark, Function *, function) \
     Member(class, NoMark, VTable::Call, jsCall) \
     Member(class, NoMark, VTable::CallAsConstructor, jsConstruct) \
+    Member(class, NoMark, VTable::CallWithMetaTypes, jsCallWithMetaTypes) \
     Member(class, NoMark, bool, canBeTailCalled)
 
 DECLARE_HEAP_OBJECT(FunctionObject, Object) {
-    DECLARE_MARKOBJECTS(FunctionObject);
+    DECLARE_MARKOBJECTS(FunctionObject)
     enum {
         Index_ProtoConstructor = 0,
         Index_Prototype = 0,
@@ -86,7 +51,9 @@ DECLARE_HEAP_OBJECT(FunctionObject, Object) {
         return jsConstruct != nullptr;
     }
 
-    Q_QML_PRIVATE_EXPORT void init(QV4::ExecutionContext *scope, QV4::String *name, VTable::Call call);
+    Q_QML_PRIVATE_EXPORT void init(
+                QV4::ExecutionContext *scope, QV4::String *name,
+                VTable::Call call, VTable::CallWithMetaTypes callWithMetaTypes = nullptr);
     Q_QML_PRIVATE_EXPORT void init(QV4::ExecutionContext *scope, QV4::String *name = nullptr);
     Q_QML_PRIVATE_EXPORT void init(QV4::ExecutionContext *scope, QV4::Function *function, QV4::String *n = nullptr);
     Q_QML_PRIVATE_EXPORT void init(QV4::ExecutionContext *scope, const QString &name);
@@ -107,9 +74,11 @@ struct FunctionPrototype : FunctionObject {
     void init();
 };
 
+// A function object with an additional index into a list.
+// Used by Models to refer to property roles.
 struct IndexedBuiltinFunction : FunctionObject {
-    inline void init(QV4::ExecutionContext *scope, uint index, VTable::Call call);
-    uint index;
+    inline void init(QV4::ExecutionContext *scope, qsizetype index, VTable::Call call);
+    qsizetype index;
 };
 
 struct ArrowFunction : FunctionObject {
@@ -158,7 +127,7 @@ struct DefaultClassConstructorFunction : FunctionObject
     Member(class, Pointer, MemberData *, boundArgs)
 
 DECLARE_HEAP_OBJECT(BoundFunction, FunctionObject) {
-    DECLARE_MARKOBJECTS(BoundFunction);
+    DECLARE_MARKOBJECTS(BoundFunction)
 
     void init(QV4::ExecutionContext *scope, QV4::FunctionObject *target, const Value &boundThis, QV4::MemberData *boundArgs);
 };
@@ -202,6 +171,9 @@ struct Q_QML_EXPORT FunctionObject: Object {
         return d()->jsCall(this, thisObject, argv, argc);
     }
     static ReturnedValue virtualCall(const FunctionObject *f, const Value *thisObject, const Value *argv, int argc);
+    void call(QObject *thisObject, void **a, const QMetaType *types, int argc);
+    static void virtualCallWithMetaTypes(const FunctionObject *f, QObject *thisObject,
+                                         void **a, const QMetaType *types, int argc);
 
     static Heap::FunctionObject *createScriptFunction(ExecutionContext *scope, Function *function);
     static Heap::FunctionObject *createConstructorFunction(ExecutionContext *scope, Function *function, Object *homeObject, bool isDerivedConstructor);
@@ -265,7 +237,8 @@ struct Q_QML_PRIVATE_EXPORT IndexedBuiltinFunction : FunctionObject
     V4_OBJECT2(IndexedBuiltinFunction, FunctionObject)
 };
 
-void Heap::IndexedBuiltinFunction::init(QV4::ExecutionContext *scope, uint index, VTable::Call call)
+void Heap::IndexedBuiltinFunction::init(
+        QV4::ExecutionContext *scope, qsizetype index, VTable::Call call)
 {
     Heap::FunctionObject::init(scope);
     this->jsCall = call;
@@ -277,7 +250,10 @@ struct ArrowFunction : FunctionObject {
     V4_INTERNALCLASS(ArrowFunction)
     enum { NInlineProperties = 3 };
 
-    static ReturnedValue virtualCall(const FunctionObject *f, const Value *thisObject, const Value *argv, int argc);
+    static void virtualCallWithMetaTypes(const FunctionObject *f, QObject *thisObject,
+                                         void **a, const QMetaType *types, int argc);
+    static ReturnedValue virtualCall(const QV4::FunctionObject *f, const QV4::Value *thisObject,
+                                     const QV4::Value *argv, int argc);
 };
 
 struct ScriptFunction : ArrowFunction {

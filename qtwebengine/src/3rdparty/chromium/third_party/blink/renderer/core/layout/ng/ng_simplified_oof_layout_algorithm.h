@@ -1,10 +1,12 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_NG_SIMPLIFIED_OOF_LAYOUT_ALGORITHM_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_NG_NG_SIMPLIFIED_OOF_LAYOUT_ALGORITHM_H_
 
+#include "base/notreached.h"
+#include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_layout_algorithm.h"
 
 #include "third_party/blink/renderer/core/layout/ng/ng_block_break_token.h"
@@ -13,7 +15,6 @@
 namespace blink {
 
 struct NGLink;
-class NGPhysicalContainerFragment;
 
 // This is more a copy-and-append algorithm than a layout algorithm.
 // This algorithm will only run when we are trying to add OOF-positioned
@@ -29,18 +30,16 @@ class CORE_EXPORT NGSimplifiedOOFLayoutAlgorithm
                                  const NGPhysicalBoxFragment&,
                                  bool is_new_fragment);
 
-  scoped_refptr<const NGLayoutResult> Layout() override;
-  MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesInput&) const override {
+  const NGLayoutResult* Layout() override;
+  MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesFloatInput&) override {
     NOTREACHED();
-    return {MinMaxSizes(), /* depends_on_percentage_block_size */ true};
+    return MinMaxSizesResult();
   }
 
-  void AppendOutOfFlowResult(scoped_refptr<const NGLayoutResult> child,
-                             LogicalOffset offset);
+  void AppendOutOfFlowResult(const NGLayoutResult* child);
 
  private:
-  void AddChildFragment(const NGLink& old_fragment,
-                        const NGPhysicalContainerFragment& new_fragment);
+  void AddChildFragment(const NGLink& old_fragment);
 
   const WritingDirectionMode writing_direction_;
   PhysicalSize previous_physical_container_size_;

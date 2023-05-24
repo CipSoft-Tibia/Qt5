@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2019 The Chromium Authors. All rights reserved.
+#!/usr/bin/env vpython3
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -13,37 +13,13 @@ import os
 import re
 import sys
 
-ROOT_PATH = os.path.join(os.path.dirname(__file__), '..', '..')
-PYJSON5_PATH = os.path.join(ROOT_PATH, 'third_party', 'pyjson5', 'src')
-DEPOT_TOOLS_PATH = os.path.join(ROOT_PATH, 'third_party', 'depot_tools')
+import utils
 
-sys.path.append(PYJSON5_PATH)
+DEPOT_TOOLS_PATH = os.path.join(utils.ROOT_PATH, 'third_party', 'depot_tools')
+
 sys.path.append(DEPOT_TOOLS_PATH)
 
-import json5
-import owners
-
-
-def load_metadata():
-  flags_path = os.path.join(ROOT_PATH, 'chrome', 'browser',
-                            'flag-metadata.json')
-  return json5.load(open(flags_path))
-
-
-def keep_expired_by(flags, mstone):
-  """Filter flags to contain only flags that expire by mstone.
-
-  Only flags that either never expire or have an expiration milestone <= mstone
-  are in the returned list.
-
-  >>> keep_expired_by([{'expiry_milestone': 3}], 2)
-  []
-  >>> keep_expired_by([{'expiry_milestone': 3}], 3)
-  [{'expiry_milestone': 3}]
-  >>> keep_expired_by([{'expiry_milestone': -1}], 3)
-  []
-  """
-  return [f for f in flags if -1 != f['expiry_milestone'] <= mstone]
+import owners_client
 
 
 def keep_never_expires(flags):
@@ -66,20 +42,24 @@ def resolve_owners(flags):
   * Passing any other type of entry through unmodified
   """
 
-  owners_db = owners.Database(ROOT_PATH, open, os.path)
+  owners_db = owners_client.GetCodeOwnersClient(
+      host="chromium-review.googlesource.com",
+      project="chromium/src",
+      branch="main")
 
   new_flags = []
   for f in flags:
     new_flag = f.copy()
-    new_owners = []
+    new_owners = set()
     for o in f['owners']:
-      if o.startswith('//') or '/' in o:
-        new_owners += owners_db.owners_rooted_at_file(re.sub('//', '', o))
+      # Assume any filepath is to an OWNERS file.
+      if '/' in o:
+        new_owners.update(set(owners_db.ListBestOwners(re.sub('//', '', o))))
       elif '@' not in o:
-        new_owners.append(o + '@chromium.org')
+        new_owners.add(o + '@chromium.org')
       else:
-        new_owners.append(o)
-    new_flag['resolved_owners'] = new_owners
+        new_owners.add(o)
+    new_flag['resolved_owners'] = sorted(new_owners)
     new_flags.append(new_flag)
   return new_flags
 
@@ -89,7 +69,7 @@ def find_unused(flags):
       'chrome/browser/about_flags.cc',
       'ios/chrome/browser/flags/about_flags.mm',
   ]
-  flag_files_data = [open(f, 'rb').read().decode('utf-8') for f in FLAG_FILES]
+  flag_files_data = [open(f, 'r', encoding='utf-8').read() for f in FLAG_FILES]
   unused_flags = []
   for flag in flags:
     # Search for the name in quotes.
@@ -99,11 +79,48 @@ def find_unused(flags):
   return unused_flags
 
 
+def filter_by_owner(flags, owner):
+  """Filter by owner flag.
+
+  Only support single owner.
+  TODO(zhagnwenyu): Support filter by multiple owners.
+
+  Need exact match and need to include @google.com or @chromium.org in the
+  argument. This is because the owner with ldap only is extended with
+  @chromium.org automatically via resolve_owners function.
+  TODO(zhangwenyu): Support filter by ldap.
+
+  >>> f1 = {'name': 'f_1', 'owners': ['b@g.com']}
+  >>> f1['resolved_owners'] = ['b@g.com']
+  >>> f2 = {'name': 'f_2', 'owners': ['z']}
+  >>> f2['resolved_owners'] = ['z@c.org']
+
+  >>> filter_by_owner([f1, f2], 'b@g.com')
+  [{'name': 'f_1', 'owners': ['b@g.com'], 'resolved_owners': ['b@g.com']}]
+  >>> filter_by_owner([f1, f2], 'z@c.org')
+  [{'name': 'f_2', 'owners': ['z'], 'resolved_owners': ['z@c.org']}]
+  >>> filter_by_owner([f1, f2], 'z') # Filter by ldap not supported.
+  []
+  >>> filter_by_owner([f1, f2], 'b@g.co') # Need exact match.
+  []
+  >>> filter_by_owner([f1, f2], 'b@g.com,z@c.org') # Multi owners not supported.
+  []
+  """
+
+  filtered_flags = []
+  for f in flags:
+    if any([owner == o for o in f['resolved_owners']]):
+      filtered_flags.append(f)
+  return filtered_flags
+
+
 def print_flags(flags, verbose):
   """Prints the supplied list of flags.
 
   In verbose mode, prints name, expiry, and owner list; in non-verbose mode,
-  prints just the name.
+  prints just the name. Verbose mode is actually tab-separated values, with
+  commas used as separators within individual fields - this is the format the
+  rest of the flags automation consumes most readily.
 
   >>> f1 = {'name': 'foo', 'expiry_milestone': 73, 'owners': ['bar', 'baz']}
   >>> f1['resolved_owners'] = ['bar@c.org', 'baz@c.org']
@@ -111,17 +128,17 @@ def print_flags(flags, verbose):
   >>> f2['resolved_owners'] = ['quxx@c.org']
   >>> print_flags([f1], False)
   foo
-  >>> print_flags([f1], True)
-  foo,73,bar baz,bar@c.org baz@c.org
+  >>> print_flags([f1], True) # doctest: +NORMALIZE_WHITESPACE
+  foo 73 bar,baz bar@c.org,baz@c.org
   >>> print_flags([f2], False)
   bar
-  >>> print_flags([f2], True)
-  bar,74,//quxx/OWNERS,quxx@c.org
+  >>> print_flags([f2], True) # doctest: +NORMALIZE_WHITESPACE
+  bar 74 //quxx/OWNERS quxx@c.org
   """
   for f in flags:
     if verbose:
-      print('%s,%d,%s,%s' % (f['name'], f['expiry_milestone'], ' '.join(
-          f['owners']), ' '.join(f['resolved_owners'])))
+      print('%s\t%d\t%s\t%s' % (f['name'], f['expiry_milestone'], ','.join(
+          f['owners']), ','.join(f['resolved_owners'])))
     else:
       print(f['name'])
 
@@ -135,6 +152,7 @@ def main():
   group.add_argument('-n', '--never-expires', action='store_true')
   group.add_argument('-e', '--expired-by', type=int)
   group.add_argument('-u', '--find-unused', action='store_true')
+  group.add_argument('-o', '--has-owner', type=str)
   parser.add_argument('-v', '--verbose', action='store_true')
   parser.add_argument('--testonly', action='store_true')
   args = parser.parse_args()
@@ -142,14 +160,18 @@ def main():
   if args.testonly:
     return
 
-  flags = load_metadata()
+  flags = utils.load_metadata()
   if args.expired_by:
-    flags = keep_expired_by(flags, args.expired_by)
+    flags = utils.keep_expired_by(flags, args.expired_by)
   if args.never_expires:
     flags = keep_never_expires(flags)
   if args.find_unused:
     flags = find_unused(flags)
   flags = resolve_owners(flags)
+  # Filter by owner after resolving owners completed, so it understands
+  # owners file.
+  if args.has_owner:
+    flags = filter_by_owner(flags, args.has_owner)
   print_flags(flags, args.verbose)
 
 

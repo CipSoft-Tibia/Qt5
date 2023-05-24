@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKANIMATION2_P_H
 #define QQUICKANIMATION2_P_H
@@ -125,7 +89,7 @@ public:
 };
 
 //animates QQuickBulkValueUpdater (assumes start and end values will be reals or compatible)
-class Q_AUTOTEST_EXPORT QQuickBulkValueAnimator : public QAbstractAnimationJob
+class Q_QUICK_AUTOTEST_EXPORT QQuickBulkValueAnimator : public QAbstractAnimationJob
 {
     Q_DISABLE_COPY(QQuickBulkValueAnimator)
 public:
@@ -178,7 +142,7 @@ public:
     : running(false), paused(false), alwaysRunToEnd(false),
       /*connectedTimeLine(false), */componentComplete(true),
       avoidPropertyValueSourceStart(false), disableUserControl(false),
-      registered(false), loopCount(1), group(nullptr), animationInstance(nullptr) {}
+      needsDeferredSetRunning(false), loopCount(1), group(nullptr), animationInstance(nullptr) {}
 
     bool running:1;
     bool paused:1;
@@ -187,7 +151,7 @@ public:
     bool componentComplete:1;
     bool avoidPropertyValueSourceStart:1;
     bool disableUserControl:1;
-    bool registered:1;
+    bool needsDeferredSetRunning:1;
 
     int loopCount;
 
@@ -200,6 +164,7 @@ public:
     QAbstractAnimationJob* animationInstance;
 
     static QQmlProperty createProperty(QObject *obj, const QString &str, QObject *infoObj, QString *errorMessage = nullptr);
+    void animationGroupDirty();
 };
 
 class QQuickPauseAnimationPrivate : public QQuickAbstractAnimationPrivate
@@ -253,25 +218,31 @@ class QQuickAnimationGroupPrivate : public QQuickAbstractAnimationPrivate
     Q_DECLARE_PUBLIC(QQuickAnimationGroup)
 public:
     QQuickAnimationGroupPrivate()
-    : QQuickAbstractAnimationPrivate() {}
+    : QQuickAbstractAnimationPrivate(), animationDirty(false) {}
 
     static void append_animation(QQmlListProperty<QQuickAbstractAnimation> *list, QQuickAbstractAnimation *role);
-    static QQuickAbstractAnimation *at_animation(QQmlListProperty<QQuickAbstractAnimation> *list, int index);
-    static int count_animation(QQmlListProperty<QQuickAbstractAnimation> *list);
+    static QQuickAbstractAnimation *at_animation(QQmlListProperty<QQuickAbstractAnimation> *list, qsizetype index);
+    static qsizetype count_animation(QQmlListProperty<QQuickAbstractAnimation> *list);
     static void clear_animation(QQmlListProperty<QQuickAbstractAnimation> *list);
-    static void replace_animation(QQmlListProperty<QQuickAbstractAnimation> *list, int index,
+    static void replace_animation(QQmlListProperty<QQuickAbstractAnimation> *list, qsizetype index,
                                   QQuickAbstractAnimation *role);
     static void removeLast_animation(QQmlListProperty<QQuickAbstractAnimation> *list);
     QList<QQuickAbstractAnimation *> animations;
+
+    void restartFromCurrentLoop();
+    void animationCurrentLoopChanged(QAbstractAnimationJob *job) override;
+    bool animationDirty: 1;
 };
 
-class QQuickPropertyAnimationPrivate : public QQuickAbstractAnimationPrivate
+class Q_QUICK_PRIVATE_EXPORT QQuickPropertyAnimationPrivate : public QQuickAbstractAnimationPrivate
 {
     Q_DECLARE_PUBLIC(QQuickPropertyAnimation)
 public:
     QQuickPropertyAnimationPrivate()
-    : QQuickAbstractAnimationPrivate(), target(nullptr), fromSourced(false), fromIsDefined(false), toIsDefined(false),
+    : QQuickAbstractAnimationPrivate(), target(nullptr), fromIsDefined(false), toIsDefined(false), ourPropertiesDirty(false),
       defaultToInterpolatorType(0), interpolatorType(0), interpolator(nullptr), duration(250), actions(nullptr) {}
+
+    void animationCurrentLoopChanged(QAbstractAnimationJob *job) override;
 
     QVariant from;
     QVariant to;
@@ -279,13 +250,13 @@ public:
     QObject *target;
     QString propertyName;
     QString properties;
-    QList<QObject *> targets;
+    QList<QPointer<QObject>> targets;
     QList<QObject *> exclude;
     QString defaultProperties;
 
-    bool fromSourced;
     bool fromIsDefined:1;
     bool toIsDefined:1;
+    bool ourPropertiesDirty : 1;
     bool defaultToInterpolatorType:1;
     int interpolatorType;
     QVariantAnimation::Interpolator interpolator;
@@ -296,7 +267,7 @@ public:
     QQuickStateActions *actions;
 
     static QVariant interpolateVariant(const QVariant &from, const QVariant &to, qreal progress);
-    static void convertVariant(QVariant &variant, int type);
+    static void convertVariant(QVariant &variant, QMetaType type);
 };
 
 class QQuickRotationAnimationPrivate : public QQuickPropertyAnimationPrivate

@@ -29,31 +29,31 @@
 
 #include <memory>
 #include "cc/layers/layer.h"
+#include "cc/trees/layer_tree_host.h"
+#include "components/viz/common/surfaces/local_surface_id.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_provider.h"
 #include "third_party/blink/public/platform/modules/service_worker/web_service_worker_provider_client.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_media_player.h"
-#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/visual_viewport.h"
 #include "third_party/blink/renderer/core/html/forms/color_chooser.h"
 #include "third_party/blink/renderer/core/html/forms/date_time_chooser.h"
 #include "third_party/blink/renderer/core/html/forms/file_chooser.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_element.h"
-#include "third_party/blink/renderer/core/loader/document_loader.h"
 
 namespace blink {
 
-void FillWithEmptyClients(Page::PageClients& page_clients) {
-  DEFINE_STATIC_LOCAL(Persistent<ChromeClient>, dummy_chrome_client,
+ChromeClient& GetStaticEmptyChromeClientInstance() {
+  DEFINE_STATIC_LOCAL(Persistent<ChromeClient>, chrome_client,
                       (MakeGarbageCollected<EmptyChromeClient>()));
-  page_clients.chrome_client = dummy_chrome_client;
+  return *chrome_client;
 }
 
 class EmptyPopupMenu : public PopupMenu {
  public:
-  void Show() override {}
+  void Show(ShowEventType) override {}
   void Hide() override {}
   void UpdateFromElement(UpdateReason) override {}
   void DisconnectClient() override {}
@@ -76,6 +76,11 @@ DateTimeChooser* EmptyChromeClient::OpenDateTimeChooser(
   return nullptr;
 }
 
+std::unique_ptr<cc::ScopedPauseRendering> EmptyChromeClient::PauseRendering(
+    LocalFrame&) {
+  return nullptr;
+}
+
 void EmptyChromeClient::OpenTextDataListChooser(HTMLInputElement&) {}
 
 void EmptyChromeClient::OpenFileChooser(LocalFrame*,
@@ -88,40 +93,38 @@ String EmptyChromeClient::AcceptLanguages() {
   return String();
 }
 
+bool EmptyChromeClient::StartDeferringCommits(LocalFrame& main_frame,
+                                              base::TimeDelta timeout,
+                                              cc::PaintHoldingReason reason) {
+  return false;
+}
+
 void EmptyLocalFrameClient::BeginNavigation(
     const ResourceRequest&,
+    const KURL& requestor_base_url,
     mojom::RequestContextFrameType,
     LocalDOMWindow*,
     DocumentLoader*,
     WebNavigationType,
     NavigationPolicy,
     WebFrameLoadType,
+    mojom::blink::ForceHistoryPush,
     bool,
-    TriggeringEventInfo,
+    // TODO(crbug.com/1315802): Refactor _unfencedTop handling.
+    bool,
+    mojom::blink::TriggeringEventInfo,
     HTMLFormElement*,
     network::mojom::CSPDisposition,
     mojo::PendingRemote<mojom::blink::BlobURLToken>,
     base::TimeTicks,
     const String&,
-    const base::Optional<WebImpression>&,
-    WTF::Vector<network::mojom::blink::ContentSecurityPolicyPtr> initiator_csp,
-    network::mojom::blink::CSPSourcePtr initiator_csp_self,
-    network::mojom::IPAddressSpace,
-    mojo::PendingRemote<mojom::blink::NavigationInitiator>) {}
+    const absl::optional<Impression>&,
+    const LocalFrameToken* initiator_frame_token,
+    std::unique_ptr<SourceLocation>,
+    mojo::PendingRemote<mojom::blink::PolicyContainerHostKeepAliveHandle>,
+    bool is_container_initiated) {}
 
 void EmptyLocalFrameClient::DispatchWillSendSubmitEvent(HTMLFormElement*) {}
-
-DocumentLoader* EmptyLocalFrameClient::CreateDocumentLoader(
-    LocalFrame* frame,
-    WebNavigationType navigation_type,
-    ContentSecurityPolicy* content_security_policy,
-    std::unique_ptr<WebNavigationParams> navigation_params,
-    std::unique_ptr<WebDocumentLoader::ExtraData> extra_data) {
-  DCHECK(frame);
-  return MakeGarbageCollected<DocumentLoader>(frame, navigation_type,
-                                              content_security_policy,
-                                              std::move(navigation_params));
-}
 
 LocalFrame* EmptyLocalFrameClient::CreateFrame(const AtomicString&,
                                                HTMLFrameOwnerElement*) {
@@ -136,6 +139,13 @@ std::pair<RemoteFrame*, PortalToken> EmptyLocalFrameClient::CreatePortal(
 }
 
 RemoteFrame* EmptyLocalFrameClient::AdoptPortal(HTMLPortalElement*) {
+  return nullptr;
+}
+
+RemoteFrame* EmptyLocalFrameClient::CreateFencedFrame(
+    HTMLFencedFrameElement*,
+    mojo::PendingAssociatedReceiver<mojom::blink::FencedFrameOwnerHost>,
+    mojom::blink::FencedFrameMode) {
   return nullptr;
 }
 
@@ -183,7 +193,5 @@ std::unique_ptr<WebServiceWorkerProvider>
 EmptyLocalFrameClient::CreateServiceWorkerProvider() {
   return nullptr;
 }
-
-EmptyRemoteFrameClient::EmptyRemoteFrameClient() = default;
 
 }  // namespace blink

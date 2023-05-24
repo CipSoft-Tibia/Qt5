@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium OS Authors. All rights reserved.
+// Copyright 2017 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package power_manager;
-option go_package = "power_manager_proto";
+option go_package = "chromiumos/system_api/power_manager_proto";
 
 // Included in powerd's ScreenIdleStateChanged signal, emitted when the screen's
 // dimming or on/off state changes in response to user activity or inactivity.

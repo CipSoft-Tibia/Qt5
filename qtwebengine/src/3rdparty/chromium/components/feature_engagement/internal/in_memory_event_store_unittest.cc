@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -51,8 +51,8 @@ TEST_F(InMemoryEventStoreTest, LoadShouldProvideEventsAsCallback) {
 
   // Load the data and ensure the callback is not immediately invoked, since the
   // result should be posted.
-  store.Load(base::Bind(&InMemoryEventStoreTest::LoadCallback,
-                        base::Unretained(this)));
+  store.Load(base::BindOnce(&InMemoryEventStoreTest::LoadCallback,
+                            base::Unretained(this)));
   EXPECT_FALSE(load_callback_has_been_invoked_);
 
   // Run the message loop until it's idle to finish to ensure the result is

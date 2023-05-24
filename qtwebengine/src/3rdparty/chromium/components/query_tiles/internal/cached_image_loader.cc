@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "components/image_fetcher/core/image_fetcher.h"
 #include "components/image_fetcher/core/image_fetcher_service.h"
 #include "components/image_fetcher/core/request_metadata.h"
@@ -32,8 +32,7 @@ constexpr char kImageFetcherUmaClientName[] = "QueryTiles";
 
 // The time interval for the images to stay in image fetcher's cache after last
 // used time.
-constexpr base::TimeDelta kImageCacheExpirationInterval =
-    base::TimeDelta::FromDays(1);
+constexpr base::TimeDelta kImageCacheExpirationInterval = base::Days(1);
 
 constexpr net::NetworkTrafficAnnotationTag kQueryTilesTrafficAnnotation =
     net::DefineNetworkTrafficAnnotation("query_tiles_image_loader", R"(

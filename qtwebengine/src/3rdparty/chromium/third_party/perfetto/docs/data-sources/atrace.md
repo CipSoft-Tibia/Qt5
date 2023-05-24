@@ -42,7 +42,7 @@ a managed execution environment, and a user-space <-> kernel-space roundtrip to
 write the marker into `/sys/kernel/debug/tracing/trace_marker` (which is the
 most expensive part).
 
-Our team is are looking into a migration path for Android, in light of the newly
+Our team is looking into a migration path for Android, in light of the newly
 introduced [Tracing SDK](/docs/instrumentation/tracing-sdk.md). At the moment
 the advice is to keep using the existing ATrace API on Android.
 
@@ -98,19 +98,25 @@ ts | process_name | pid | counter_name | value
 ## TraceConfig
 
 ```protobuf
+buffers {
+  size_kb: 102400
+  fill_policy: RING_BUFFER
+}
+
 data_sources {
   config {
     name: "linux.ftrace"
     ftrace_config {
-      // Enables specific system events tags.
+      # Enables specific system events tags.
       atrace_categories: "am"
       atrace_categories: "pm"
 
-      // Enables events for a specific app.
+      # Enables events for a specific app.
       atrace_apps: "com.google.android.apps.docs"
 
-      // Enables all events for all apps.
+      # Enables all events for all apps.
       atrace_apps: "*"
     }
   }
+}
 ```

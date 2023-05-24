@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,18 +9,19 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
 #include "base/hash/hash.h"
+#include "base/memory/raw_ptr.h"
 #include "base/pickle.h"
 #include "base/strings/stringprintf.h"
-#include "base/task_runner.h"
+#include "base/task/task_runner.h"
 #include "base/test/mock_entropy_provider.h"
-#include "base/test/scoped_feature_list.h"
 #include "base/threading/platform_thread.h"
 #include "base/time/time.h"
 #include "net/base/cache_type.h"
 #include "net/disk_cache/backend_cleanup_tracker.h"
+#include "net/disk_cache/disk_cache.h"
 #include "net/disk_cache/simple/simple_index_delegate.h"
 #include "net/disk_cache/simple/simple_index_file.h"
 #include "net/disk_cache/simple/simple_test_util.h"
@@ -31,8 +32,7 @@
 namespace disk_cache {
 namespace {
 
-const base::Time kTestLastUsedTime =
-    base::Time::UnixEpoch() + base::TimeDelta::FromDays(20);
+const base::Time kTestLastUsedTime = base::Time::UnixEpoch() + base::Days(20);
 const uint32_t kTestEntrySize = 789;
 const uint8_t kTestEntryMemoryData = 123;
 
@@ -51,9 +51,9 @@ class EntryMetadataTest : public testing::Test {
   }
 
   void CheckEntryMetadataValues(const EntryMetadata& entry_metadata) {
-    EXPECT_LT(kTestLastUsedTime - base::TimeDelta::FromSeconds(2),
+    EXPECT_LT(kTestLastUsedTime - base::Seconds(2),
               entry_metadata.GetLastUsedTime());
-    EXPECT_GT(kTestLastUsedTime + base::TimeDelta::FromSeconds(2),
+    EXPECT_GT(kTestLastUsedTime + base::Seconds(2),
               entry_metadata.GetLastUsedTime());
     EXPECT_EQ(RoundSize(kTestEntrySize), entry_metadata.GetEntrySize());
     EXPECT_EQ(kTestEntryMemoryData, entry_metadata.GetInMemoryData());
@@ -64,7 +64,10 @@ class MockSimpleIndexFile : public SimpleIndexFile,
                             public base::SupportsWeakPtr<MockSimpleIndexFile> {
  public:
   explicit MockSimpleIndexFile(net::CacheType cache_type)
-      : SimpleIndexFile(nullptr, nullptr, cache_type, base::FilePath()) {}
+      : SimpleIndexFile(nullptr,
+                        base::MakeRefCounted<TrivialFileOperationsFactory>(),
+                        cache_type,
+                        base::FilePath()) {}
 
   void LoadIndexEntries(base::Time cache_last_modified,
                         base::OnceClosure callback,
@@ -87,14 +90,18 @@ class MockSimpleIndexFile : public SimpleIndexFile,
     entry_set->swap(disk_write_entry_set_);
   }
 
-  base::OnceClosure TakeLoadCallback() { return std::move(load_callback_); }
+  void RunLoadCallback() {
+    // Clear dangling reference since callback may destroy `load_result_`.
+    load_result_ = nullptr;
+    std::move(load_callback_).Run();
+  }
   SimpleIndexLoadResult* load_result() const { return load_result_; }
   int load_index_entries_calls() const { return load_index_entries_calls_; }
   int disk_writes() const { return disk_writes_; }
 
  private:
   base::OnceClosure load_callback_;
-  SimpleIndexLoadResult* load_result_ = nullptr;
+  raw_ptr<SimpleIndexLoadResult> load_result_ = nullptr;
   int load_index_entries_calls_ = 0;
   int disk_writes_ = 0;
   SimpleIndex::EntrySet disk_write_entry_set_;
@@ -111,12 +118,12 @@ class SimpleIndexTest : public net::TestWithTaskEnvironment,
   }
 
   void SetUp() override {
-    std::unique_ptr<MockSimpleIndexFile> index_file(
-        new MockSimpleIndexFile(CacheType()));
+    auto index_file = std::make_unique<MockSimpleIndexFile>(CacheType());
     index_file_ = index_file->AsWeakPtr();
-    index_.reset(new SimpleIndex(/* io_thread = */ nullptr,
-                                 /* cleanup_tracker = */ nullptr, this,
-                                 CacheType(), std::move(index_file)));
+    index_ =
+        std::make_unique<SimpleIndex>(/* io_thread = */ nullptr,
+                                      /* cleanup_tracker = */ nullptr, this,
+                                      CacheType(), std::move(index_file));
 
     index_->Initialize(base::Time());
   }
@@ -125,8 +132,7 @@ class SimpleIndexTest : public net::TestWithTaskEnvironment,
     const base::Time initial_time = base::Time::Now();
     do {
       base::PlatformThread::YieldCurrentThread();
-    } while (base::Time::Now() -
-             initial_time < base::TimeDelta::FromSeconds(1));
+    } while (base::Time::Now() - initial_time < base::Seconds(1));
   }
 
   // From SimpleIndexDelegate:
@@ -157,7 +163,7 @@ class SimpleIndexTest : public net::TestWithTaskEnvironment,
 
   void ReturnIndexFile() {
     index_file_->load_result()->did_load = true;
-    index_file_->TakeLoadCallback().Run();
+    index_file_->RunLoadCallback();
   }
 
   // Non-const for timer manipulation.
@@ -203,10 +209,8 @@ TEST_F(EntryMetadataTest, Basics) {
   const base::Time new_time = base::Time::Now();
   entry_metadata.SetLastUsedTime(new_time);
 
-  EXPECT_LT(new_time - base::TimeDelta::FromSeconds(2),
-            entry_metadata.GetLastUsedTime());
-  EXPECT_GT(new_time + base::TimeDelta::FromSeconds(2),
-            entry_metadata.GetLastUsedTime());
+  EXPECT_LT(new_time - base::Seconds(2), entry_metadata.GetLastUsedTime());
+  EXPECT_GT(new_time + base::Seconds(2), entry_metadata.GetLastUsedTime());
 }
 
 // Tests that setting an unusually small/large last used time results in
@@ -224,7 +228,7 @@ TEST_F(EntryMetadataTest, SaturatedLastUsedTime) {
   // 1970).
   entry_metadata.SetLastUsedTime(
       base::Time::FromInternalValue(7u));  // This is a date in 1601.
-  EXPECT_EQ(base::Time::UnixEpoch() + base::TimeDelta::FromSeconds(1),
+  EXPECT_EQ(base::Time::UnixEpoch() + base::Seconds(1),
             entry_metadata.GetLastUsedTime());
 }
 
@@ -262,13 +266,13 @@ TEST_F(SimpleIndexTest, IndexSizeCorrectOnMerge) {
   index()->UpdateEntrySize(hashes_.at<4>(), 4u * kSizeResolution);
   EXPECT_EQ(9u * kSizeResolution, index()->cache_size_);
   {
-    std::unique_ptr<SimpleIndexLoadResult> result(new SimpleIndexLoadResult());
+    auto result = std::make_unique<SimpleIndexLoadResult>();
     result->did_load = true;
     index()->MergeInitializingSet(std::move(result));
   }
   EXPECT_EQ(9u * kSizeResolution, index()->cache_size_);
   {
-    std::unique_ptr<SimpleIndexLoadResult> result(new SimpleIndexLoadResult());
+    auto result = std::make_unique<SimpleIndexLoadResult>();
     result->did_load = true;
     const uint64_t new_hash_key = hashes_.at<11>();
     result->entries.insert(std::make_pair(
@@ -293,8 +297,8 @@ TEST_F(SimpleIndexTest, BasicInsertRemove) {
   index()->Insert(hashes_.at<1>());
   ASSERT_TRUE(GetEntryForTesting(hashes_.at<1>(), &metadata));
   base::Time now(base::Time::Now());
-  EXPECT_LT(now - base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
-  EXPECT_GT(now + base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Minutes(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now + base::Minutes(1), metadata.GetLastUsedTime());
   EXPECT_EQ(0U, metadata.GetEntrySize());
 
   // Confirm state after remove.
@@ -375,17 +379,13 @@ TEST_F(SimpleIndexTest, UpdateEntrySize) {
   index()->SetMaxSize(1000);
 
   const uint64_t kHash1 = hashes_.at<1>();
-  InsertIntoIndexFileReturn(kHash1, now - base::TimeDelta::FromDays(2), 475);
+  InsertIntoIndexFileReturn(kHash1, now - base::Days(2), 475);
   ReturnIndexFile();
 
   EntryMetadata metadata;
   EXPECT_TRUE(GetEntryForTesting(kHash1, &metadata));
-  EXPECT_LT(
-      now - base::TimeDelta::FromDays(2) - base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
-  EXPECT_GT(
-      now - base::TimeDelta::FromDays(2) + base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Days(2) - base::Seconds(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now - base::Days(2) + base::Seconds(1), metadata.GetLastUsedTime());
   EXPECT_EQ(RoundSize(475u), metadata.GetEntrySize());
 
   index()->UpdateEntrySize(kHash1, 600u);
@@ -422,11 +422,8 @@ TEST_F(SimpleIndexTest, GetEntryCount) {
 TEST_F(SimpleIndexTest, BasicInit) {
   base::Time now(base::Time::Now());
 
-  InsertIntoIndexFileReturn(hashes_.at<1>(),
-                            now - base::TimeDelta::FromDays(2),
-                            10u);
-  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::TimeDelta::FromDays(3),
-                            1000u);
+  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::Days(2), 10u);
+  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::Days(3), 1000u);
 
   ReturnIndexFile();
 
@@ -434,22 +431,14 @@ TEST_F(SimpleIndexTest, BasicInit) {
   EXPECT_TRUE(GetEntryForTesting(hashes_.at<1>(), &metadata));
   EXPECT_EQ(metadata.GetLastUsedTime(),
             index()->GetLastUsedTime(hashes_.at<1>()));
-  EXPECT_LT(
-      now - base::TimeDelta::FromDays(2) - base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
-  EXPECT_GT(
-      now - base::TimeDelta::FromDays(2) + base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Days(2) - base::Seconds(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now - base::Days(2) + base::Seconds(1), metadata.GetLastUsedTime());
   EXPECT_EQ(RoundSize(10u), metadata.GetEntrySize());
   EXPECT_TRUE(GetEntryForTesting(hashes_.at<2>(), &metadata));
   EXPECT_EQ(metadata.GetLastUsedTime(),
             index()->GetLastUsedTime(hashes_.at<2>()));
-  EXPECT_LT(
-      now - base::TimeDelta::FromDays(3) - base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
-  EXPECT_GT(
-      now - base::TimeDelta::FromDays(3) + base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Days(3) - base::Seconds(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now - base::Days(3) + base::Seconds(1), metadata.GetLastUsedTime());
   EXPECT_EQ(RoundSize(1000u), metadata.GetEntrySize());
   EXPECT_EQ(base::Time(), index()->GetLastUsedTime(hashes_.at<3>()));
 }
@@ -459,9 +448,7 @@ TEST_F(SimpleIndexTest, RemoveBeforeInit) {
   const uint64_t kHash1 = hashes_.at<1>();
   index()->Remove(kHash1);
 
-  InsertIntoIndexFileReturn(kHash1,
-                            base::Time::Now() - base::TimeDelta::FromDays(2),
-                            10u);
+  InsertIntoIndexFileReturn(kHash1, base::Time::Now() - base::Days(2), 10u);
   ReturnIndexFile();
 
   EXPECT_FALSE(index()->Has(kHash1));
@@ -473,16 +460,14 @@ TEST_F(SimpleIndexTest, InsertBeforeInit) {
   const uint64_t kHash1 = hashes_.at<1>();
   index()->Insert(kHash1);
 
-  InsertIntoIndexFileReturn(kHash1,
-                            base::Time::Now() - base::TimeDelta::FromDays(2),
-                            10u);
+  InsertIntoIndexFileReturn(kHash1, base::Time::Now() - base::Days(2), 10u);
   ReturnIndexFile();
 
   EntryMetadata metadata;
   EXPECT_TRUE(GetEntryForTesting(kHash1, &metadata));
   base::Time now(base::Time::Now());
-  EXPECT_LT(now - base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
-  EXPECT_GT(now + base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Minutes(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now + base::Minutes(1), metadata.GetLastUsedTime());
   EXPECT_EQ(0U, metadata.GetEntrySize());
 }
 
@@ -492,9 +477,7 @@ TEST_F(SimpleIndexTest, InsertRemoveBeforeInit) {
   index()->Insert(kHash1);
   index()->Remove(kHash1);
 
-  InsertIntoIndexFileReturn(kHash1,
-                            base::Time::Now() - base::TimeDelta::FromDays(2),
-                            10u);
+  InsertIntoIndexFileReturn(kHash1, base::Time::Now() - base::Days(2), 10u);
   ReturnIndexFile();
 
   EXPECT_FALSE(index()->Has(kHash1));
@@ -506,16 +489,14 @@ TEST_F(SimpleIndexTest, RemoveInsertBeforeInit) {
   index()->Remove(kHash1);
   index()->Insert(kHash1);
 
-  InsertIntoIndexFileReturn(kHash1,
-                            base::Time::Now() - base::TimeDelta::FromDays(2),
-                            10u);
+  InsertIntoIndexFileReturn(kHash1, base::Time::Now() - base::Days(2), 10u);
   ReturnIndexFile();
 
   EntryMetadata metadata;
   EXPECT_TRUE(GetEntryForTesting(kHash1, &metadata));
   base::Time now(base::Time::Now());
-  EXPECT_LT(now - base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
-  EXPECT_GT(now + base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Minutes(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now + base::Minutes(1), metadata.GetLastUsedTime());
   EXPECT_EQ(0U, metadata.GetEntrySize());
 }
 
@@ -525,26 +506,16 @@ TEST_F(SimpleIndexTest, AllInitConflicts) {
   base::Time now(base::Time::Now());
 
   index()->Remove(hashes_.at<1>());
-  InsertIntoIndexFileReturn(hashes_.at<1>(),
-                            now - base::TimeDelta::FromDays(2),
-                            10u);
+  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::Days(2), 10u);
   index()->Insert(hashes_.at<2>());
-  InsertIntoIndexFileReturn(hashes_.at<2>(),
-                            now - base::TimeDelta::FromDays(3),
-                            100u);
+  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::Days(3), 100u);
   index()->Insert(hashes_.at<3>());
   index()->Remove(hashes_.at<3>());
-  InsertIntoIndexFileReturn(hashes_.at<3>(),
-                            now - base::TimeDelta::FromDays(4),
-                            1000u);
+  InsertIntoIndexFileReturn(hashes_.at<3>(), now - base::Days(4), 1000u);
   index()->Remove(hashes_.at<4>());
   index()->Insert(hashes_.at<4>());
-  InsertIntoIndexFileReturn(hashes_.at<4>(),
-                            now - base::TimeDelta::FromDays(5),
-                            10000u);
-  InsertIntoIndexFileReturn(hashes_.at<5>(),
-                            now - base::TimeDelta::FromDays(6),
-                            100000u);
+  InsertIntoIndexFileReturn(hashes_.at<4>(), now - base::Days(5), 10000u);
+  InsertIntoIndexFileReturn(hashes_.at<5>(), now - base::Days(6), 100000u);
 
   ReturnIndexFile();
 
@@ -552,25 +523,21 @@ TEST_F(SimpleIndexTest, AllInitConflicts) {
 
   EntryMetadata metadata;
   EXPECT_TRUE(GetEntryForTesting(hashes_.at<2>(), &metadata));
-  EXPECT_LT(now - base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
-  EXPECT_GT(now + base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Minutes(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now + base::Minutes(1), metadata.GetLastUsedTime());
   EXPECT_EQ(0U, metadata.GetEntrySize());
 
   EXPECT_FALSE(index()->Has(hashes_.at<3>()));
 
   EXPECT_TRUE(GetEntryForTesting(hashes_.at<4>(), &metadata));
-  EXPECT_LT(now - base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
-  EXPECT_GT(now + base::TimeDelta::FromMinutes(1), metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Minutes(1), metadata.GetLastUsedTime());
+  EXPECT_GT(now + base::Minutes(1), metadata.GetLastUsedTime());
   EXPECT_EQ(0U, metadata.GetEntrySize());
 
   EXPECT_TRUE(GetEntryForTesting(hashes_.at<5>(), &metadata));
 
-  EXPECT_GT(
-      now - base::TimeDelta::FromDays(6) + base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
-  EXPECT_LT(
-      now - base::TimeDelta::FromDays(6) - base::TimeDelta::FromSeconds(1),
-      metadata.GetLastUsedTime());
+  EXPECT_GT(now - base::Days(6) + base::Seconds(1), metadata.GetLastUsedTime());
+  EXPECT_LT(now - base::Days(6) - base::Seconds(1), metadata.GetLastUsedTime());
 
   EXPECT_EQ(RoundSize(100000u), metadata.GetEntrySize());
 }
@@ -578,9 +545,7 @@ TEST_F(SimpleIndexTest, AllInitConflicts) {
 TEST_F(SimpleIndexTest, BasicEviction) {
   base::Time now(base::Time::Now());
   index()->SetMaxSize(1000);
-  InsertIntoIndexFileReturn(hashes_.at<1>(),
-                            now - base::TimeDelta::FromDays(2),
-                            475u);
+  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::Days(2), 475u);
   index()->Insert(hashes_.at<2>());
   index()->UpdateEntrySize(hashes_.at<2>(), 475u);
   ReturnIndexFile();
@@ -611,10 +576,8 @@ TEST_F(SimpleIndexTest, BasicEviction) {
 TEST_F(SimpleIndexTest, EvictBySize) {
   base::Time now(base::Time::Now());
   index()->SetMaxSize(50000);
-  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::TimeDelta::FromDays(2),
-                            475u);
-  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::TimeDelta::FromDays(1),
-                            40000u);
+  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::Days(2), 475u);
+  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::Days(1), 40000u);
   ReturnIndexFile();
   WaitForTimeChange();
 
@@ -642,10 +605,8 @@ TEST_F(SimpleIndexTest, EvictBySize) {
 TEST_F(SimpleIndexCodeCacheTest, DisableEvictBySize) {
   base::Time now(base::Time::Now());
   index()->SetMaxSize(50000);
-  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::TimeDelta::FromDays(2),
-                            475u);
-  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::TimeDelta::FromDays(1),
-                            40000u);
+  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::Days(2), 475u);
+  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::Days(1), 40000u);
   ReturnIndexFile();
   WaitForTimeChange();
 
@@ -674,10 +635,8 @@ TEST_F(SimpleIndexCodeCacheTest, DisableEvictBySize) {
 TEST_F(SimpleIndexTest, EvictBySize2) {
   base::Time now(base::Time::Now());
   index()->SetMaxSize(50000);
-  InsertIntoIndexFileReturn(hashes_.at<1>(),
-                            now - base::TimeDelta::FromDays(200), 475u);
-  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::TimeDelta::FromDays(1),
-                            40000u);
+  InsertIntoIndexFileReturn(hashes_.at<1>(), now - base::Days(200), 475u);
+  InsertIntoIndexFileReturn(hashes_.at<2>(), now - base::Days(1), 40000u);
   ReturnIndexFile();
   WaitForTimeChange();
 
@@ -764,8 +723,8 @@ TEST_F(SimpleIndexTest, DiskWriteExecuted) {
   ASSERT_EQ(1u, entry_set.size());
   EXPECT_EQ(hash_key, entry_set.begin()->first);
   const EntryMetadata& entry1(entry_set.begin()->second);
-  EXPECT_LT(now - base::TimeDelta::FromMinutes(1), entry1.GetLastUsedTime());
-  EXPECT_GT(now + base::TimeDelta::FromMinutes(1), entry1.GetLastUsedTime());
+  EXPECT_LT(now - base::Minutes(1), entry1.GetLastUsedTime());
+  EXPECT_GT(now + base::Minutes(1), entry1.GetLastUsedTime());
   EXPECT_EQ(RoundSize(20u), entry1.GetEntrySize());
 }
 

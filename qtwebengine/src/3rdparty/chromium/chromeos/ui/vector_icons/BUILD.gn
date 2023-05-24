@@ -1,4 +1,4 @@
-# Copyright 2018 The Chromium Authors. All rights reserved.
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -6,13 +6,15 @@ import("//components/vector_icons/vector_icons.gni")
 
 # The icons in this target, unlike those in //ash/resources/vector_icons,
 # are ok to use from outside of ash/, eg lacros builds.
-aggregate_vector_icons2("chromeos_ui_vector_icons") {
+aggregate_vector_icons("chromeos_ui_vector_icons") {
   icon_directory = "."
 
   sources = [
     "assistant.icon",
     "calculate.icon",
     "conversion_path.icon",
+    "dogfood_paw.icon",
+    "enterprise.icon",
     "filetype_archive.icon",
     "filetype_audio.icon",
     "filetype_chart.icon",
@@ -39,20 +41,24 @@ aggregate_vector_icons2("chromeos_ui_vector_icons") {
     "filetype_tini.icon",
     "filetype_video.icon",
     "filetype_word.icon",
+    "float_window.icon",
+    "keyboard_shortcuts.icon",
     "notification_assistant.icon",
     "notification_supervised_user.icon",
-    "notification_warning.icon",
     "person_pin_circle.icon",
+    "redeem.icon",
     "screenshot.icon",
     "sentiment_very_satisfied.icon",
     "straighten.icon",
     "timer.icon",
     "translate.icon",
+    "unfloat_button.icon",
     "window_control_back.icon",
+    "window_control_bottom_snapped.icon",
     "window_control_dezoom.icon",
     "window_control_left_snapped.icon",
-    "window_control_menu.icon",
     "window_control_right_snapped.icon",
+    "window_control_top_snapped.icon",
     "window_control_zoom.icon",
   ]
 }

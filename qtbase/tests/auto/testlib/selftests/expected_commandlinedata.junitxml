@@ -1,28 +1,41 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="6" failures="0" tests="4" name="tst_DataTable">
+<testsuite name="tst_DataTable" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="9" failures="0" errors="0" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="pass" name="fiveTablePasses">
-    <!-- tag="fiveTablePasses_data1" message="QVERIFY(test)" type="info" -->
-    <!-- tag="fiveTablePasses_data2" message="QVERIFY(test)" type="info" -->
-    <!-- tag="fiveTablePasses_data3" message="QVERIFY(test)" type="info" -->
-    <!-- tag="fiveTablePasses_data4" message="QVERIFY(test)" type="info" -->
-    <!-- tag="fiveTablePasses_data5" message="QVERIFY(test)" type="info" -->
+  <testcase name="initTestCase" classname="tst_DataTable" time="@TEST_DURATION@"/>
+  <testcase name="fiveTablePasses(fiveTablePasses_data1)" classname="tst_DataTable" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[QVERIFY(test)]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="fiveTablePasses">
-    <!-- tag="fiveTablePasses_data1" message="QVERIFY(test)" type="info" -->
+  <testcase name="fiveTablePasses(fiveTablePasses_data2)" classname="tst_DataTable" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[QVERIFY(test)]]>
+    </system-out>
   </testcase>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err>
-<![CDATA[QVERIFY(test)]]>
-<![CDATA[QVERIFY(test)]]>
-<![CDATA[QVERIFY(test)]]>
-<![CDATA[QVERIFY(test)]]>
-<![CDATA[QVERIFY(test)]]>
-<![CDATA[QVERIFY(test)]]>
-  </system-err>
+  <testcase name="fiveTablePasses(fiveTablePasses_data3)" classname="tst_DataTable" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[QVERIFY(test)]]>
+    </system-out>
+  </testcase>
+  <testcase name="fiveTablePasses(fiveTablePasses_data4)" classname="tst_DataTable" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[QVERIFY(test)]]>
+    </system-out>
+  </testcase>
+  <testcase name="fiveTablePasses(fiveTablePasses_data5)" classname="tst_DataTable" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[QVERIFY(test)]]>
+    </system-out>
+  </testcase>
+  <testcase name="fiveTablePasses" classname="tst_DataTable" time="@TEST_DURATION@"/>
+  <testcase name="fiveTablePasses(fiveTablePasses_data1)" classname="tst_DataTable" time="@TEST_DURATION@">
+    <system-out>
+      <![CDATA[QVERIFY(test)]]>
+    </system-out>
+  </testcase>
+  <testcase name="cleanupTestCase" classname="tst_DataTable" time="@TEST_DURATION@"/>
 </testsuite>

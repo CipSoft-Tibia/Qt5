@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 // any C++ headers must go in the __cplusplus block below.
 
 #if defined(BUILD_PRECOMPILE_H_)
-#error You shouldn't include the precompiled header file more than once.
+#error You should not include the precompiled header file more than once.
 #endif
 
 #define BUILD_PRECOMPILE_H_

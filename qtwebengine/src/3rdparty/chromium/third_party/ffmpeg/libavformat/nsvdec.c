@@ -195,6 +195,7 @@ static const AVCodecTag nsv_codec_video_tags[] = {
     { AV_CODEC_ID_VP4, MKTAG('V', 'P', '4', '0') },
 */
     { AV_CODEC_ID_MPEG4, MKTAG('X', 'V', 'I', 'D') }, /* cf sample xvid decoder from nsv_codec_sdk.zip */
+    { AV_CODEC_ID_H264,  MKTAG('H', '2', '6', '4') },
     { AV_CODEC_ID_RAWVIDEO, MKTAG('R', 'G', 'B', '3') },
     { AV_CODEC_ID_NONE, 0 },
 };
@@ -203,6 +204,7 @@ static const AVCodecTag nsv_codec_audio_tags[] = {
     { AV_CODEC_ID_MP3,       MKTAG('M', 'P', '3', ' ') },
     { AV_CODEC_ID_AAC,       MKTAG('A', 'A', 'C', ' ') },
     { AV_CODEC_ID_AAC,       MKTAG('A', 'A', 'C', 'P') },
+    { AV_CODEC_ID_AAC,       MKTAG('A', 'A', 'V', ' ') },
     { AV_CODEC_ID_AAC,       MKTAG('V', 'L', 'B', ' ') },
     { AV_CODEC_ID_SPEEX,     MKTAG('S', 'P', 'X', ' ') },
     { AV_CODEC_ID_PCM_U16LE, MKTAG('P', 'C', 'M', ' ') },
@@ -211,7 +213,6 @@ static const AVCodecTag nsv_codec_audio_tags[] = {
 
 //static int nsv_load_index(AVFormatContext *s);
 static int nsv_read_chunk(AVFormatContext *s, int fill_header);
-static int nsv_read_close(AVFormatContext *s);
 
 /* try to find something we recognize, and set the state accordingly */
 static int nsv_resync(AVFormatContext *s)
@@ -462,7 +463,23 @@ static int nsv_parse_NSVs_header(AVFormatContext *s)
             st->codecpar->codec_tag = atag;
             st->codecpar->codec_id = ff_codec_get_id(nsv_codec_audio_tags, atag);
 
-            st->need_parsing = AVSTREAM_PARSE_FULL; /* for PCM we will read a chunk later and put correct info */
+            if (atag == MKTAG('A', 'A', 'V', ' ')) {
+                static const uint8_t aav_pce[] = {
+                    0x12, 0x00, 0x05, 0x08, 0x48, 0x00,
+                    0x20, 0x00, 0xC6, 0x40, 0x04, 0x4C,
+                    0x61, 0x76, 0x63, 0x56, 0xE5, 0x00,
+                    0x00, 0x00,
+                };
+                int ret;
+
+                if ((ret = ff_alloc_extradata(st->codecpar, sizeof(aav_pce))) < 0)
+                    return ret;
+
+                st->codecpar->sample_rate = 44100;
+                memcpy(st->codecpar->extradata, aav_pce, sizeof(aav_pce));
+            }
+
+            ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL; /* for PCM we will read a chunk later and put correct info */
 
             /* set timebase to common denominator of ms and framerate */
             avpriv_set_pts_info(st, 64, 1, framerate.num*1000);
@@ -495,30 +512,25 @@ static int nsv_read_header(AVFormatContext *s)
     for (i = 0; i < NSV_MAX_RESYNC_TRIES; i++) {
         err = nsv_resync(s);
         if (err < 0)
-            goto fail;
+            return err;
         if (nsv->state == NSV_FOUND_NSVF) {
             err = nsv_parse_NSVf_header(s);
             if (err < 0)
-                goto fail;
+                return err;
         }
             /* we need the first NSVs also... */
         if (nsv->state == NSV_FOUND_NSVS) {
             err = nsv_parse_NSVs_header(s);
             if (err < 0)
-                goto fail;
+                return err;
             break; /* we just want the first one */
         }
     }
-    if (s->nb_streams < 1) { /* no luck so far */
-        err = AVERROR_INVALIDDATA;
-        goto fail;
-    }
+    if (s->nb_streams < 1) /* no luck so far */
+        return AVERROR_INVALIDDATA;
 
     /* now read the first chunk, so we can attempt to decode more info */
     err = nsv_read_chunk(s, 1);
-fail:
-    if (err < 0)
-        nsv_read_close(s);
 
     av_log(s, AV_LOG_TRACE, "parsed header\n");
     return err;
@@ -615,7 +627,7 @@ null_chunk_retry:
             asize-=4;
             av_log(s, AV_LOG_TRACE, "NSV RAWAUDIO: bps %d, nchan %d, srate %d\n", bps, channels, samplerate);
             if (fill_header) {
-                st[NSV_ST_AUDIO]->need_parsing = AVSTREAM_PARSE_NONE; /* we know everything */
+                ffstream(st[NSV_ST_AUDIO])->need_parsing = AVSTREAM_PARSE_NONE; /* we know everything */
                 if (bps != 16) {
                     av_log(s, AV_LOG_TRACE, "NSV AUDIO bit/sample != 16 (%d)!!!\n", bps);
                 }
@@ -624,7 +636,7 @@ null_chunk_retry:
                     st[NSV_ST_AUDIO]->codecpar->codec_id = AV_CODEC_ID_PCM_U8;
                 samplerate /= 4;/* UGH ??? XXX */
                 channels = 1;
-                st[NSV_ST_AUDIO]->codecpar->channels = channels;
+                st[NSV_ST_AUDIO]->codecpar->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
                 st[NSV_ST_AUDIO]->codecpar->sample_rate = samplerate;
                 av_log(s, AV_LOG_TRACE, "NSV RAWAUDIO: bps %d, nchan %d, srate %d\n", bps, channels, samplerate);
             }
@@ -675,6 +687,7 @@ static int nsv_read_seek(AVFormatContext *s, int stream_index, int64_t timestamp
 {
     NSVContext *nsv = s->priv_data;
     AVStream *st = s->streams[stream_index];
+    FFStream *const sti = ffstream(st);
     NSVStream *nst = st->priv_data;
     int index;
 
@@ -682,10 +695,10 @@ static int nsv_read_seek(AVFormatContext *s, int stream_index, int64_t timestamp
     if(index < 0)
         return -1;
 
-    if (avio_seek(s->pb, st->index_entries[index].pos, SEEK_SET) < 0)
+    if (avio_seek(s->pb, sti->index_entries[index].pos, SEEK_SET) < 0)
         return -1;
 
-    nst->frame_offset = st->index_entries[index].timestamp;
+    nst->frame_offset = sti->index_entries[index].timestamp;
     nsv->state = NSV_UNSYNC;
     return 0;
 }
@@ -734,10 +747,11 @@ static int nsv_probe(const AVProbeData *p)
     return score;
 }
 
-AVInputFormat ff_nsv_demuxer = {
+const AVInputFormat ff_nsv_demuxer = {
     .name           = "nsv",
     .long_name      = NULL_IF_CONFIG_SMALL("Nullsoft Streaming Video"),
     .priv_data_size = sizeof(NSVContext),
+    .flags_internal = FF_FMT_INIT_CLEANUP,
     .read_probe     = nsv_probe,
     .read_header    = nsv_read_header,
     .read_packet    = nsv_read_packet,

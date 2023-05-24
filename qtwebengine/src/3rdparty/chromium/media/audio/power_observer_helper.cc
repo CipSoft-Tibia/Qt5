@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,10 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/power_monitor/power_monitor.h"
+#include "base/task/sequenced_task_runner.h"
 
 namespace media {
 
@@ -28,12 +29,12 @@ PowerObserverHelper::PowerObserverHelper(
   // TODO(grunell): We could be suspending when adding this as observer, and
   // we won't be notified about that. See if we can add
   // PowerMonitorSource::IsSuspending() so that this can be checked here.
-  base::PowerMonitor::AddObserver(this);
+  base::PowerMonitor::AddPowerSuspendObserver(this);
 }
 
 PowerObserverHelper::~PowerObserverHelper() {
   DCHECK(task_runner_->RunsTasksInCurrentSequence());
-  base::PowerMonitor::RemoveObserver(this);
+  base::PowerMonitor::RemovePowerSuspendObserver(this);
 }
 
 bool PowerObserverHelper::IsSuspending() const {

@@ -42,8 +42,10 @@
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/testing/dummy_page_holder.h"
+#include "third_party/blink/renderer/core/testing/null_execution_context.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/thread_state.h"
 
 namespace blink {
 
@@ -84,7 +86,9 @@ TEST_F(DocumentMarkerControllerTest, DidMoveToNewDocument) {
   auto* parent = To<Element>(GetDocument().body()->firstChild()->firstChild());
   MarkNodeContents(parent);
   EXPECT_EQ(1u, MarkerController().Markers().size());
-  Persistent<Document> another_document = Document::CreateForTest();
+  ScopedNullExecutionContext execution_context;
+  Persistent<Document> another_document =
+      Document::CreateForTest(execution_context.GetExecutionContext());
   another_document->adoptNode(parent, ASSERT_NO_EXCEPTION);
 
   // No more reference to marked node.
@@ -223,13 +227,13 @@ TEST_F(DocumentMarkerControllerTest, UpdateRenderedRects) {
   SetBodyContent("<div style='margin: 100px'>foo</div>");
   auto* div = To<Element>(GetDocument().body()->firstChild());
   MarkNodeContentsTextMatch(div);
-  Vector<IntRect> rendered_rects =
+  Vector<gfx::Rect> rendered_rects =
       MarkerController().LayoutRectsForTextMatchMarkers();
   EXPECT_EQ(1u, rendered_rects.size());
 
   div->setAttribute(html_names::kStyleAttr, "margin: 200px");
   GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
-  Vector<IntRect> new_rendered_rects =
+  Vector<gfx::Rect> new_rendered_rects =
       MarkerController().LayoutRectsForTextMatchMarkers();
   EXPECT_EQ(1u, new_rendered_rects.size());
   EXPECT_NE(rendered_rects[0], new_rendered_rects[0]);

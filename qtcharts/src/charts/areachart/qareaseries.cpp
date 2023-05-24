@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QAreaSeries>
 #include <private/qareaseries_p.h>
@@ -38,7 +12,7 @@
 #include <QtCharts/QAreaLegendMarker>
 #include <private/qchart_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QAreaSeries
@@ -57,7 +31,7 @@ QT_CHARTS_BEGIN_NAMESPACE
     lower boundary is greater than that of the upper boundary. The main point is that the
     area between these two boundary lines will be filled.
 
-    See the \l {AreaChart Example} {area chart example} to learn how to create a simple area chart.
+    See the \l {Charts with Widgets Gallery} to learn how to create a simple area chart.
     \image examples_areachart.png
 */
 
@@ -86,7 +60,7 @@ QT_CHARTS_BEGIN_NAMESPACE
     \image examples_qmlchart4.png
 
     The following QML shows how to create a simple area chart:
-    \snippet qmlchart/qml/qmlchart/View4.qml 1
+    \snippet qmlchartsgallery/qml/AreaSeries.qml 1
 
     \note Adding the same line series to a chart and area series is not supported. The series used as
     boundary lines should be defined only for the area series.
@@ -465,8 +439,8 @@ void QAreaSeries::setUpperSeries(QLineSeries *series)
         if (series)
             series->d_ptr->setBlockOpenGL(true);
         d->m_upperSeries = series;
-        if (!d->m_item.isNull())
-            static_cast<AreaChartItem *>(d->m_item.data())->setUpperSeries(series);
+        if (d->m_item)
+            static_cast<AreaChartItem *>(d->m_item.get())->setUpperSeries(series);
     }
 }
 
@@ -486,8 +460,8 @@ void QAreaSeries::setLowerSeries(QLineSeries *series)
         if (series)
             series->d_ptr->setBlockOpenGL(true);
         d->m_lowerSeries = series;
-        if (!d->m_item.isNull())
-            static_cast<AreaChartItem *>(d->m_item.data())->setLowerSeries(series);
+        if (d->m_item)
+            static_cast<AreaChartItem *>(d->m_item.get())->setLowerSeries(series);
     }
 }
 
@@ -701,7 +675,7 @@ void QAreaSeriesPrivate::initializeDomain()
     QLineSeries *lowerSeries = q->lowerSeries();
 
     if (upperSeries) {
-        const QVector<QPointF> &points = upperSeries->pointsVector();
+        const auto &points = upperSeries->points();
 
         if (!points.isEmpty()) {
             minX = points[0].x();
@@ -709,7 +683,7 @@ void QAreaSeriesPrivate::initializeDomain()
             maxX = minX;
             maxY = minY;
 
-            for (int i = 0; i < points.count(); i++) {
+            for (int i = 0; i < points.size(); i++) {
                 qreal x = points[i].x();
                 qreal y = points[i].y();
                 minX = qMin(minX, x);
@@ -720,7 +694,7 @@ void QAreaSeriesPrivate::initializeDomain()
         }
     }
     if (lowerSeries) {
-        const QVector<QPointF> &points = lowerSeries->pointsVector();
+        const auto &points = lowerSeries->points();
 
         if (!points.isEmpty()) {
             if (!upperSeries) {
@@ -730,7 +704,7 @@ void QAreaSeriesPrivate::initializeDomain()
                 maxY = minY;
             }
 
-            for (int i = 0; i < points.count(); i++) {
+            for (int i = 0; i < points.size(); i++) {
                 qreal x = points[i].x();
                 qreal y = points[i].y();
                 minX = qMin(minX, x);
@@ -755,7 +729,7 @@ void  QAreaSeriesPrivate::initializeAnimations(QChart::AnimationOptions options,
                                                QEasingCurve &curve)
 {
     Q_Q(QAreaSeries);
-    AreaChartItem *area = static_cast<AreaChartItem *>(m_item.data());
+    AreaChartItem *area = static_cast<AreaChartItem *>(m_item.get());
 
     if (q->upperSeries() && area->upperLineItem()->animation())
         area->upperLineItem()->animation()->stopAndDestroyLater();
@@ -827,7 +801,7 @@ void QAreaSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bool forc
     }
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qareaseries.cpp"
 #include "moc_qareaseries_p.cpp"

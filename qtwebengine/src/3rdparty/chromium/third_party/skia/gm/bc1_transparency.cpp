@@ -11,10 +11,11 @@
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/GrRecordingContext.h"
 #include "src/core/SkCompressedDataUtils.h"
-#include "src/gpu/GrCaps.h"
-#include "src/gpu/GrImageContextPriv.h"
+#include "src/gpu/ganesh/GrCaps.h"
+#include "src/gpu/ganesh/GrImageContextPriv.h"
 #include "src/image/SkImage_Base.h"
 #include "src/image/SkImage_GpuBase.h"
+#include "tools/gpu/ProxyUtils.h"
 
 constexpr int kImgWidth  = 16;
 constexpr int kImgHeight = 8;
@@ -121,8 +122,8 @@ static void draw_image(SkCanvas* canvas, sk_sp<SkImage> image, int x, int y) {
     bool isCompressed = false;
     if (image && image->isTextureBacked()) {
         const GrCaps* caps = as_IB(image)->context()->priv().caps();
-
-        GrTextureProxy* proxy = as_IB(image)->peekProxy();
+        GrTextureProxy* proxy = sk_gpu_test::GetTextureImageProxy(image.get(),
+                                                                  canvas->recordingContext());
         isCompressed = caps->isFormatCompressed(proxy->backendFormat());
     }
 
@@ -175,7 +176,8 @@ protected:
         return SkISize::Make(kImgWidth + 2 * kPad, 2 * kImgHeight + 3 * kPad);
     }
 
-    DrawResult onGpuSetup(GrDirectContext* dContext, SkString* errorMsg) override {
+    DrawResult onGpuSetup(SkCanvas* canvas, SkString* errorMsg) override {
+        auto dContext = GrAsDirectContext(canvas->recordingContext());
         if (dContext && dContext->abandoned()) {
             // This isn't a GpuGM so a null 'context' is okay but an abandoned context
             // if forbidden.

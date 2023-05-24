@@ -18,6 +18,12 @@ go/chrome-security-bugs](http://go/chrome-security-bugs).
 You might also like the [HOWTO: Be A Security Sheriff
 deck](https://docs.google.com/presentation/d/1eISJXxyv7dUCGUKk_rvUI9t9s2xb98QY4d_-dZSa7Wg/edit#slide=id.p).
 
+The [Chrome Security FAQ](faq.md), [Extensions Security
+FAQ](/extensions/docs/security_faq.md), and [Service Worker Security
+FAQ](service-worker-security-faq.md) include commonly-raised questions about
+security and what is or is not considered a security bug. When triaging new
+bugs, you may want to reference these to see if there's an established stance.
+
 ## What Is A Security Sheriff Or Marshal?
 
 A security sheriff (as well as a security marshal) is a member of a rotation
@@ -74,7 +80,8 @@ various important responsibilities:
 ### Marshal
 
 * Ensure that all incoming queries to the
-  [security@chromium.org](https://groups.google.com/a/chromium.org/forum/#!forum/security)
+  [security@chromium.org](https://groups.google.com/a/chromium.org/forum/#!forum/security),
+  [security-dev@chromium.org](https://groups.google.com/a/chromium.org/forum/#!forum/security-dev),
   and
   [chrome-security@google.com](https://groups.google.com/a/google.com/forum/#!forum/chrome-security)
   lists get a reply (by someone; not necessarily the marshal themselves). See
@@ -92,16 +99,30 @@ various important responsibilities:
     owner. If not, you may need to do them yourself. Please see
     [How to do Chrome Third-Party Security Reviews](https://goto.google.com/how-to-do-chrome-third-party-security-reviews)
     for hints.
-* Change bugs status to **Fixed** for those that the developer forgets to close.
-  Make sure to read bug comments where developer might point out that it needs
-  more CLs, et c. Wait 24 hours before closing ClusterFuzz bugs, to give
-  ClusterFuzz a chance to close it automatically.
-  * [Starting point](https://bugs.chromium.org/p/chromium/issues/list?can=2&q=Type%3D%22Bug-Security%22+%22Change-Id:%22)
 * Look at the open security bug reports and check that progress is occurring.
   This does not apply to the **new bug reports** (these are handled by the
-  sheriff), but does apply to the issues on the *Low Severity Bugs* page of the
-  dashboard. The rule of thumb is *if there is any red cell on the dashboard, it
-  needs your attention*.
+  sheriff). The rule of thumb is *if there is any red cell on the dashboard, it
+  needs your attention*: that especially includes the "last updated" column.
+  (Our [severity guidelines](severity-guidelines.md) contain the expected duration
+  for shipping fixes, but remember, to get a fix to all users in - say - 60
+  days may require us to land a fix in a week or two).
+  Hints:
+  * Don't just add a comment to the bug: sometimes they can disappear into spam.
+    (Although a hand-crafted, meaningful comment can be effective).
+  * Contact via chat or e-mail (ideally, also comment on the bug so other marshals
+    can see you did so).
+  * CC more people!
+  * Think about what you can do to unblock the bug. What would _you_ do next?
+    Perhaps you can bring in different experts, suggest a different way to
+    reproduce the bug, or even write a fuzzer? Sometimes your security perspective
+    can really help engineering see a different way forward.
+  * Consider whether it's better for you to make meaningful steps forward on
+    ten bugs than to add ignorable nag messages to twenty bugs.
+  * You can't possibly hope to meaningfully move all bugs forward. As a rule of
+    thumb, perhaps expect to spend a solid ten hours progressing bugs during
+    your shift.
+  * Use the 'last updated' column to avoid duplicating the work of the previous
+    marshal.
 * Stay sharp, keep in shape ([finger
   exercises](https://youtu.be/20elMaVZ9lg?t=47s) are standard for the marshal),
   and remember you may be called upon during emergencies.
@@ -122,7 +143,7 @@ i like that.")
 
 ### Diagnose The Issue
 
-![alt text](life-of-a-security-issue.png "Life of a security issue.")
+![alt text](sheriff-life-of-an-issue.png "Life of a security issue.")
 
 * **If the report is invalid**, remove the **Restrict-View-SecurityTeam** label
   and mark it **WontFix**.
@@ -130,6 +151,7 @@ i like that.")
   a duplicate of is public, remove the **Restrict-View-SecurityTeam** label.
 * **If the report is primarily a privacy issue**, send it to the privacy team:
   * Add the **Privacy** component so that it enters their triage queue.
+  * Change **Type-Bug-Security** to **Type-Bug**.
   * CC any security team members, including yourself, who may be interested in
     the privacy issue.
 	* Change the **Restrict-View-SecurityTeam** label to
@@ -138,11 +160,7 @@ i like that.")
       access, so this will probably make the issue inaccessible to you.
 * **If the report is asking about why something is or is not on the Safe
   Browsing list:**
-  * Assign it to zbutler@, who will triage it for the Safe Browsing team.
-	* Remove the **Restrict-View-SecurityTeam** label and add the
-  **Restrict-View-Google** label.
-  * Change **Type-Bug-Security** label to **Type-Bug**.
-  * Add the **Security** component.
+  * Close the bug and request the reporter submit the URL to SafeBrowsing.
   * See below for reporting URLs to SafeBrowsing.
 * **If the report is a potentially valid bug but is not a security
   vulnerability:**
@@ -169,7 +187,7 @@ i like that.")
     bugs into their triage queue, just set OS to the single value of "Chrome".
     No other steps or labels are needed.
 	* If you need to ping or ask about Chrome OS bug, [ask their current
-    sheriff](go/whos-the-chromeos-sheriff).
+    sheriff](http://go/whos-the-chromeos-sheriff).
 * **If the report smells like a vulnerability, keep going.**
 
 ### Verify And Label The Bug
@@ -192,36 +210,47 @@ assigning it to someone else.
 A few components have their own triage processes or points of contact who can
 help.
 
-* V8 ClusterFuzz bugs can be assigned to the [V8 ClusterFuzz
+* **V8 ClusterFuzz bugs** can be assigned to the [V8 ClusterFuzz
   Sheriff](https://rotation.googleplex.com/status?id=5714662985302016) for
   triage. Note that V8 CHECK failure crashes can have security implications, so
   don't triage it yourself and instead assign it to V8 ClusterFuzz Sheriff. They
   can make an informed decision on whether it is a security vulnerability or not
   and whether it is safe to strip the security tags (**Type=Bug-Security**,
   **Restrict-View-SecurityTeam**).
-* V8 non-ClusterFuzz bugs shouldn't be assigned to the V8 ClusterFuzz sheriff.
+* **V8 non-ClusterFuzz bugs** shouldn't be assigned to the V8 ClusterFuzz sheriff.
   Instead, Googlers should refer to [the V8 security bug triage instructions](http://go/v8-security-issue-triage-how-to)
   for lists of component owners.
-* Skia bugs can be assigned to hcm@chromium.org. Be careful while triaging
+* **Skia bugs** can be assigned to hcm@chromium.org. Be careful while triaging
   these! The place where we're crashing isn't necessarily the place where the
   bug was introduced, so blame may be misleading. Skia fuzzing bugs can be
   assigned to kjlubick@chromium.org, as Skia is heavily fuzzed on OSS-Fuzz and
   some issues reported in Chromium are already known or even fixed upstream.
-* URL spoofing issues, especially related to RTL or IDNs? See
+* **URL spoofing issues**, especially related to RTL or IDNs? See
   [go/url-spoofs](http://go/url-spoofs) for a guide to triaging these.
+* **SQLite bugs** can be assigned to mek@. CC drhsqlite@ for upstream issues.
 
+Note that **even when you are handing off triage to another team or point of
+contact**, it is your responsibility to ensure that the `Security_Severity` and
+`FoundIn` fields are set as soon as possible (and definitely before the end of
+your sheriffing shift). Work with your point of contact to set these. For
+instance, you may want to set initial/provisional values for these fields and
+ask them whether it matches their understanding.
 
 Tips for reproducing bugs:
 
-* For any sort of a crash, CHECK/DCHECK or memory safety problem
-  [use ClusterFuzz](clusterfuzz-for-sheriffs.md). As well as reproducing bugs,
-  ClusterFuzz will help you with lots of subsequent bisection and labelling
-  tasks.
 * Assume that test cases may be malicious. You should only reproduce bugs
   on your local machine if you're completely certain that you understand
   100% of the test case. If not, use a disposable virtual machine. If you're
   inside Google, a good way to do this is using
   [Redshell](https://goto.google.com/redshell-for-chrome-sheriffs).
+* For any sort of a crash, CHECK/DCHECK or memory safety problem
+  [use ClusterFuzz](clusterfuzz-for-sheriffs.md). As well as reproducing bugs,
+  ClusterFuzz will help you with lots of subsequent bisection and labelling
+  tasks. Currently ClusterFuzz cannot guard against malicious test cases,
+  so be just as paranoid as if you were running a test case locally.
+* [Instructions for using an Android emulator can be found
+  here](/docs/android_emulator.md). If you're inside Google, we have a
+  [guide for testing using Google infrastructure](https://goto.google.com/android-for-chrome-sheriffs).
 * When you can't just build from a specific branch locally, check out
   [https://dev.chromium.org/getting-involved/dev-channel](https://dev.chromium.org/getting-involved/dev-channel)
   or
@@ -234,6 +263,10 @@ Tips for reproducing bugs:
   [ThreadSanitizer](https://www.chromium.org/developers/testing/threadsanitizer-tsan-v2),
   and
   [UndefinedBehaviorSanitizer](https://www.chromium.org/developers/testing/undefinedbehaviorsanitizer).
+* The [get_asan_chrome](https://source.chromium.org/chromium/chromium/src/+/main:tools/get_asan_chrome/get_asan_chrome.py)
+  helper script is a handy way to download ASAN Chrome. The --help flag
+  provides usage instructions, e.g. to fetch builds for various versions and
+  platforms.
 * If you run into issues with a reproducible ClusterFuzz test case (like
   missing symbols, or if anything else seems off), try uploading the test case
   again using a different job type with a more mature tool (e.g. ASan on Linux).
@@ -267,11 +300,36 @@ the regular `Security_Severity-*` label. If the bug is not exploitable, or is
 mitigated, the V8 team will reduce the security severity (to avoid unnecessary
 risk of merging the bug into stable branches).
 
-#### Step 3. Set Impact
+If an issue is found that can't affect any users running a default configuration
+of Chrome (e.g. an issue in code guarded by a command-line flag that is off by
+default), the `Security_Severity-*` label should still be set as if the issue
+is affecting users running a default configuration of Chrome (but see the next
+section about `FoundIn` and `Security_Impact-None`).
 
-Identify the earliest affected branch (stable, beta or head) and set either
-`Security_Impact-Stable`, `Security_Impact-Beta` or `Security_Impact-Head`.
+#### Step 3. Set FoundIn
+
+Identify the earliest affected branch (Extended Stable, Stable, Beta or Head)
+and set the corresponding `FoundIn` label (for example `FoundIn-66` if the
+extended stable milestone is 66 and you've confirmed it's reproducible on M66).
 If you reproduced the bug with ClusterFuzz, it should do this on your behalf.
+
+If you performed a bisection or were provided one with the commit that
+introduced the problem, you can check which milestone has that commit by
+navigating to https://chromiumdash.appspot.com/commit/COMMIT_HASH_HERE.
+
+Sometimes Extended Stable is the same milestone as Stable; sometimes it
+differs. If in doubt about the currently active milestones, check
+[ChromiumDash](https://chromiumdash.appspot.com/releases?platform=Windows).
+(It's fine to just check the Windows platform, via that link - there's no need
+to look at all the different platforms). There's no need to check for
+reproducibility on milestones earlier than the current Stable milestone.
+
+If an issue is found that can't affect any users running a default configuration
+of Chrome (e.g. an issue in code guarded by a command-line flag that is off by
+default), then do not set the `FoundIn` label; instead, set the impact to
+`Security_Impact-None` (but see
+[here](security-labels.md#when-to-use-security_impact_none-toc_security_impact_none)
+for additional nuances around using `Security_Impact-None`).
 
 #### Step 4. [Check other labels](security-labels.md).
 
@@ -285,12 +343,15 @@ was filed using the Security template):
 
 * **Restrict-View-SecurityTeam**
 * **Type-Bug-Security**
-* **If the reporter wants to remain anonymous or if the bug description or
-  comments contain PII**, add **Restrict-View-SecurityEmbargo**.
+* If you want to prevent the bug from becoming unrestricted after it has been
+  closed, add **Restrict-View-SecurityEmbargo**. This should be done if the
+  reporter wishes to remain anonymous, if the description or comments contain
+  PII, or if the bug contains malware samples.
 * **Security_Severity** - your responsibility as Sheriff.
-* **Security_Impact** - your responsibility as Sheriff.
+* **FoundIn** - your responsibility as Sheriff.
 * **reward_to** - if the bug was filed internally on behalf of somebody
-  external. This is also very important; please check.
+  external (for instance, a @chromium.org email reporting "I'm filing this on
+  behalf of" and the like). This is also very important; please check.
 
 You can expect Sheriffbot to fill in lots of other labels; for example,
 the `M-` label to indicate the target milestone. It's best to allow
@@ -304,10 +365,12 @@ changes.** Severity, milestone, and priority assignment generally require
 explanatory text.
 
 * Report suspected malicious URLs to SafeBrowsing:
-  * Public URL:
-  [https://support.google.com/websearch/contact/safe_browsing](https://support.google.com/websearch/contact/safe_browsing).
+  * Public URLs:
+    * [Report malware](https://safebrowsing.google.com/safebrowsing/report_badware/?hl=en)
+    * [Report phishing](https://safebrowsing.google.com/safebrowsing/report_phish/?hl=en)
+    * [Report incorrect phishing warning](https://safebrowsing.google.com/safebrowsing/report_error/?hl=en)
   * Googlers: see instructions at [go/safebrowsing-escalation](https://goto.google.com/safebrowsing-escalation)
-  * Report suspected malicious file attachments to SafeBrowsing and VirusTotal.
+  * Report suspected malicious file attachments to SafeBrowsing.
 * Make sure the report is properly forwarded when the vulnerability is in an
   upstream project, the OS, or some other dependency.
 * For vulnerabilities in services Chrome uses (e.g. Omaha, Chrome Web Store,
@@ -390,20 +453,11 @@ If you find a vulnerability in a Permission API and need to use the Global
 Permissions Kill Switch, then follow [the
 instructions](https://docs.google.com/document/d/17JeYt3c1GgghYoxy4NKJnlxrteAX8F4x-MAzTeXqP4U)
 
-### Wrap Up The Fixed Issue
+### Wrapping Up The Fixed Issue
 
-1. For any **Security_Severity-**{**Critical**, **High**, **Medium**} bugs that
-  **Security_Impact-**{**Beta**, **Stable**}, add **Merge-Requested** so that
-  the fix gets merged into the next release. Exercise discretion according to
-  security severity and risk associated with the bug fix; you can ask the patch
-  author whether any risky code paths are affected. The actual merging and
-  drafting of release notes is taken care of by the [security release management
-  role](https://www.chromium.org/Home/chromium-security/security-release-management).
-1. Chrome's [Vulnerability Rewards
-  Program](https://www.google.com/about/appsecurity/chrome-rewards/index.html)
-  TPM adds the **reward-topanel** label by mass modification, but **do** label
-  any bugs reported by a @chromium.org email that should be rewarded (e.g. "I'm
-  filing this on behalf of" or the like).
+1. Check with the developer that the issue can be closed as Fixed to allow
+   Sheriffbot to add the appropriate merge-review labels based on
+   Security_Severity and Security_Impact.
 
 ## End Of Rotation
 

@@ -35,6 +35,7 @@
 #include <wayland-util.h>
 
 #include <libweston/libweston.h>
+#include "weston-log-internal.h"
 
 /**
  * \defgroup wlog weston-logging

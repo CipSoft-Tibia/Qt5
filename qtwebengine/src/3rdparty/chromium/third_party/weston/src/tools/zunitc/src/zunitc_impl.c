@@ -524,13 +524,13 @@ int
 zuc_initialize(int *argc, char *argv[], bool *help_flagged)
 {
 	int rc = EXIT_FAILURE;
-	int opt_help = 0;
-	int opt_nofork = 0;
-	int opt_list = 0;
+	bool opt_help = false;
+	bool opt_nofork = false;
+	bool opt_list = false;
 	int opt_repeat = 0;
 	int opt_random = 0;
-	int opt_break_on_failure = 0;
-	int opt_junit = 0;
+	bool opt_break_on_failure = false;
+	bool opt_junit = false;
 	char *opt_filter = NULL;
 
 	char *help_param = NULL;

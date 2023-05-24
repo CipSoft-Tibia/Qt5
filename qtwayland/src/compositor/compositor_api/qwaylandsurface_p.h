@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Copyright (C) 2017 Jolla Ltd, author: <giulio.camuffo@jollamobile.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// Copyright (C) 2017 Jolla Ltd, author: <giulio.camuffo@jollamobile.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDSURFACE_P_H
 #define QWAYLANDSURFACE_P_H
@@ -51,7 +25,7 @@
 
 #include <QtWaylandCompositor/private/qwlregion_p.h>
 
-#include <QtCore/QVector>
+#include <QtCore/QList>
 #include <QtCore/QRect>
 #include <QtGui/QRegion>
 #include <QtGui/QImage>
@@ -71,14 +45,13 @@ QT_BEGIN_NAMESPACE
 class QWaylandCompositor;
 class QWaylandSurface;
 class QWaylandView;
-class QWaylandSurfaceInterface;
 class QWaylandInputMethodControl;
 
 namespace QtWayland {
 class FrameCallback;
 }
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandSurfacePrivate : public QObjectPrivate, public QtWaylandServer::wl_surface
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandSurfacePrivate : public QObjectPrivate, public QtWaylandServer::wl_surface
 {
 public:
     static QWaylandSurfacePrivate *get(QWaylandSurface *surface);
@@ -116,6 +89,7 @@ protected:
                         struct wl_resource *buffer, int x, int y) override;
     void surface_damage(Resource *resource,
                         int32_t x, int32_t y, int32_t width, int32_t height) override;
+    void surface_damage_buffer(Resource *resource, int32_t x, int32_t y, int32_t width, int32_t height) override;
     void surface_frame(Resource *resource,
                        uint32_t callback) override;
     void surface_set_opaque_region(Resource *resource,
@@ -140,7 +114,8 @@ public: //member variables
 
     struct {
         QWaylandBufferRef buffer;
-        QRegion damage;
+        QRegion surfaceDamage;
+        QRegion bufferDamage;
         QPoint offset;
         bool newlyAttached = false;
         QRegion inputRegion;
@@ -158,7 +133,7 @@ public: //member variables
 
     QList<QPointer<QWaylandSurface>> subsurfaceChildren;
 
-    QVector<QWaylandIdleInhibitManagerV1Private::Inhibitor *> idleInhibitors;
+    QList<QWaylandIdleInhibitManagerV1Private::Inhibitor *> idleInhibitors;
 
     QRegion inputRegion;
     QRegion opaqueRegion;
@@ -171,6 +146,7 @@ public: //member variables
     bool destroyed = false;
     bool hasContent = false;
     bool isInitialized = false;
+    bool isOpaque = false;
     Qt::ScreenOrientation contentOrientation = Qt::PrimaryOrientation;
     QWindow::Visibility visibility;
 #if QT_CONFIG(im)

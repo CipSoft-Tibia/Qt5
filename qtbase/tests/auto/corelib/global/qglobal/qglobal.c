@@ -1,41 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtCore/qglobal.h>
-
-#if __has_include(<stdbool.h>) || __STDC_VERSION__ >= 199901L
-#  include <stdbool.h>
-#else
-#  undef true
-#  define true 1
-#  undef false
-#  define false 0
-#endif
+#include <QtCore/qtversion.h>
+#include <QtCore/qtypes.h>
 
 #ifdef Q_COMPILER_THREAD_LOCAL
 #  include <threads.h>
@@ -77,7 +45,19 @@ void tst_GlobalTypes()
     qintptr qip;
     quintptr qup;
     Q_UNUSED(qs); Q_UNUSED(qp); Q_UNUSED(qip); Q_UNUSED(qup);
+
+#ifdef QT_SUPPORTS_INT128
+    qint128 s128;
+    quint128 u128;
+    Q_UNUSED(s128); Q_UNUSED(u128);
+#endif /* QT_SUPPORTS_INT128 */
 }
+
+#if QT_SUPPORTS_INT128
+qint128 tst_qint128_min() { return Q_INT128_MIN + 0; }
+qint128 tst_qint128_max() { return 0 + Q_INT128_MAX; }
+quint128 tst_quint128_max() { return Q_UINT128_MAX - 1 + 1; }
+#endif
 
 /* Qt version */
 int tst_QtVersion()
@@ -85,7 +65,8 @@ int tst_QtVersion()
     return QT_VERSION;
 }
 
-const char *tst_qVersion() Q_DECL_NOEXCEPT
+const char *tst_qVersion() Q_DECL_NOEXCEPT;
+const char *tst_qVersion()
 {
 #if !defined(QT_NAMESPACE)
     return qVersion();
@@ -106,12 +87,19 @@ Q_STATIC_ASSERT(!0);
 Q_STATIC_ASSERT(!!true);
 Q_STATIC_ASSERT(!!1);
 
+#ifdef __COUNTER__
+// if the compiler supports __COUNTER__, multiple
+// Q_STATIC_ASSERT's on a single line should compile:
+Q_STATIC_ASSERT(true); Q_STATIC_ASSERT_X(!false, "");
+#endif // __COUNTER__
+
 #ifdef Q_COMPILER_THREAD_LOCAL
 static thread_local int gt_var;
 void thread_local_test()
 {
     static thread_local int t_var;
     t_var = gt_var;
+    Q_UNUSED(t_var);
 }
 #endif
 

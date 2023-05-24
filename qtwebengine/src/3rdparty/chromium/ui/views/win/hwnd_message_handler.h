@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -14,29 +14,29 @@
 #include <string>
 #include <vector>
 
-#include "base/compiler_specific.h"
 #include "base/lazy_instance.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/scoped_observer.h"
-#include "base/strings/string16.h"
+#include "base/scoped_observation.h"
 #include "base/win/scoped_gdi_object.h"
 #include "base/win/win_util.h"
-#include "ui/accessibility/ax_enums.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/accessibility/platform/ax_fragment_root_delegate_win.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/base/ime/input_method_observer.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/base/win/window_event_target.h"
 #include "ui/events/event.h"
+#include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/size.h"
 #include "ui/gfx/sequential_id_generator.h"
 #include "ui/gfx/win/msg_util.h"
 #include "ui/gfx/win/window_impl.h"
 #include "ui/views/views_export.h"
 #include "ui/views/win/pen_event_processor.h"
 #include "ui/views/win/scoped_enable_unadjusted_mouse_events_win.h"
-#include "ui/views/window/window_resize_utils.h"
 
 namespace gfx {
 class ImageSkia;
@@ -46,9 +46,10 @@ class Insets;
 namespace ui {
 class AXFragmentRootWin;
 class AXSystemCaretWin;
+class SessionChangeObserver;
 class TextInputClient;
 class ViewProp;
-class SessionChangeObserver;
+class WinCursor;
 }  // namespace ui
 
 namespace views {
@@ -90,9 +91,13 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // See WindowImpl for details on |debugging_id|.
   HWNDMessageHandler(HWNDMessageHandlerDelegate* delegate,
                      const std::string& debugging_id);
+
+  HWNDMessageHandler(const HWNDMessageHandler&) = delete;
+  HWNDMessageHandler& operator=(const HWNDMessageHandler&) = delete;
+
   ~HWNDMessageHandler() override;
 
-  void Init(HWND parent, const gfx::Rect& bounds);
+  void Init(HWND parent, const gfx::Rect& bounds, bool headless_mode);
   void InitModalType(ui::ModalType modal_type);
 
   void Close();
@@ -140,6 +145,7 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   bool IsMaximized() const;
   bool IsFullscreen() const;
   bool IsAlwaysOnTop() const;
+  bool IsHeadless() const;
 
   bool RunMoveLoop(const gfx::Vector2d& drag_offset, bool hide_on_escape);
   void EndMoveLoop();
@@ -160,9 +166,9 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   void SetVisibilityChangedAnimationsEnabled(bool enabled);
 
   // Returns true if the title changed.
-  bool SetTitle(const base::string16& title);
+  bool SetTitle(const std::u16string& title);
 
-  void SetCursor(HCURSOR cursor);
+  void SetCursor(scoped_refptr<ui::WinCursor> cursor);
 
   void FrameTypeChanged();
 
@@ -173,7 +179,10 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
     use_system_default_icon_ = use_system_default_icon;
   }
 
-  void SetFullscreen(bool fullscreen);
+  // Set the fullscreen state. `target_display_id` indicates the display where
+  // the window should be shown fullscreen; display::kInvalidDisplayId indicates
+  // that no display was specified, so the current display may be used.
+  void SetFullscreen(bool fullscreen, int64_t target_display_id);
 
   // Updates the aspect ratio of the window.
   void SetAspectRatio(float aspect_ratio);
@@ -214,7 +223,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   void OnCaretBoundsChanged(const ui::TextInputClient* client) override;
   void OnTextInputStateChanged(const ui::TextInputClient* client) override;
   void OnInputMethodDestroyed(const ui::InputMethod* input_method) override;
-  void OnShowVirtualKeyboardIfEnabled() override;
 
   // Overridden from WindowEventTarget
   LRESULT HandleMouseMessage(unsigned int message,
@@ -362,9 +370,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
     CR_MESSAGE_HANDLER_EX(WM_NCUAHDRAWCAPTION, OnNCUAHDrawCaption)
     CR_MESSAGE_HANDLER_EX(WM_NCUAHDRAWFRAME, OnNCUAHDrawFrame)
 
-    // Vista and newer
-    CR_MESSAGE_HANDLER_EX(WM_DWMCOMPOSITIONCHANGED, OnDwmCompositionChanged)
-
     // Win 8.1 and newer
     CR_MESSAGE_HANDLER_EX(WM_DPICHANGED, OnDpiChanged)
 
@@ -444,7 +449,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
     CR_MSG_WM_NCCREATE(OnNCCreate)
     CR_MSG_WM_NCHITTEST(OnNCHitTest)
     CR_MSG_WM_NCPAINT(OnNCPaint)
-    CR_MSG_WM_NOTIFY(OnNotify)
     CR_MSG_WM_PAINT(OnPaint)
     CR_MSG_WM_SETFOCUS(OnSetFocus)
     CR_MSG_WM_SETICON(OnSetIcon)
@@ -475,7 +479,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   void OnDestroy();
   void OnDisplayChange(UINT bits_per_pixel, const gfx::Size& screen_size);
   LRESULT OnDpiChanged(UINT msg, WPARAM w_param, LPARAM l_param);
-  LRESULT OnDwmCompositionChanged(UINT msg, WPARAM w_param, LPARAM l_param);
   void OnEnterMenuLoop(BOOL from_track_popup_menu);
   void OnEnterSizeMove();
   LRESULT OnEraseBkgnd(HDC dc);
@@ -502,7 +505,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   void OnNCPaint(HRGN rgn);
   LRESULT OnNCUAHDrawCaption(UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT OnNCUAHDrawFrame(UINT message, WPARAM w_param, LPARAM l_param);
-  LRESULT OnNotify(int w_param, NMHDR* l_param);
   void OnPaint(HDC dc);
   LRESULT OnReflectedMessage(UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT OnScrollMessage(UINT message, WPARAM w_param, LPARAM l_param);
@@ -576,7 +578,7 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // |time_stamp| is the time stamp associated with the message.
   void GenerateTouchEvent(ui::EventType event_type,
                           const gfx::Point& point,
-                          size_t id,
+                          ui::PointerId id,
                           base::TimeTicks time_stamp,
                           TouchEvents* touch_events);
 
@@ -608,12 +610,12 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
 
   // Updates |rect| to adhere to the |aspect_ratio| of the window. |param|
   // refers to the edge of the window being sized.
-  void SizeRectToAspectRatio(UINT param, gfx::Rect* rect);
+  void SizeWindowToAspectRatio(UINT param, gfx::Rect* rect);
 
   // Get the cursor position, which may be mocked if running a test
   POINT GetCursorPos() const;
 
-  HWNDMessageHandlerDelegate* delegate_;
+  raw_ptr<HWNDMessageHandlerDelegate> delegate_;
 
   std::unique_ptr<FullscreenHandler> fullscreen_handler_;
 
@@ -627,7 +629,7 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   bool restored_enabled_;
 
   // The current cursor.
-  HCURSOR current_cursor_;
+  scoped_refptr<ui::WinCursor> current_cursor_;
 
   // The icon created from the bitmap image of the window icon.
   base::win::ScopedHICON window_icon_;
@@ -637,10 +639,14 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
 
   // The aspect ratio for the window. This is only used for sizing operations
   // for the non-client area.
-  base::Optional<float> aspect_ratio_;
+  absl::optional<float> aspect_ratio_;
 
   // The current DPI.
   int dpi_;
+
+  // This is true if the window is created with a specific size/location, as
+  // opposed to having them set after window creation.
+  bool initial_bounds_valid_ = false;
 
   // Whether EnableNonClientDpiScaling was called successfully with this window.
   // This flag exists because EnableNonClientDpiScaling must be called during
@@ -715,6 +721,14 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // IsMouseEventFromTouch function.
   static LONG last_touch_or_pen_message_time_;
 
+  // When true, this flag makes us discard window management mouse messages.
+  // Windows sends window management mouse messages at the mouse location when
+  // window states change (e.g. tooltips or status bubbles opening/closing).
+  // Those system generated messages should be ignored while the pen is active
+  // over the client area, where it is not in sync with the mouse position.
+  // Reset to false when we get user mouse input again.
+  static bool is_pen_active_in_client_area_;
+
   // Time the last WM_MOUSEHWHEEL message is received. Please refer to the
   // HandleMouseEventInternal function as to why this is needed.
   LONG last_mouse_hwheel_time_;
@@ -726,11 +740,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // This member variable is set to true if the window is transitioning to
   // glass. Defaults to false.
   bool dwm_transition_desired_;
-
-  // Is DWM composition currently enabled?
-  // Note: According to MSDN docs for DwmIsCompositionEnabled(), this is always
-  // true starting in Windows 8.
-  bool dwm_composition_enabled_;
 
   // True if HandleWindowSizeChanging has been called in the delegate, but not
   // HandleClientSizeChanged.
@@ -797,6 +806,35 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // call HandleWindowMinimizedOrRestored() when we get a WM_ACTIVATE message.
   bool notify_restore_on_activate_ = false;
 
+  // Counts the number of drag events received after a drag started event.
+  // This will be used to ignore a drag event to 0, 0, if it is one of the
+  // first few drag events after a drag started event. We randomly receive
+  // bogus 0, 0 drag events after the start of a drag. See
+  // https://crbug.com/1270828.
+  int num_drag_events_after_press_ = 0;
+
+  // Records ::GetLastError when ::ReleaseCapture fails. Logged in the DCHECK
+  // in `SetCapture` to diagnose https://crbug.com/1386013.
+  DWORD release_capture_errno_ = 0;
+
+  // This tracks headless window visibility, fullscreen and min/max states. In
+  // headless mode the platform window is never made visible or change its
+  // state, so this structure holds the requested state for reporting.
+  struct HeadlessModeWindow {
+    bool IsMinimized() const { return minmax_state == kMinimized; }
+    bool IsMaximized() const { return minmax_state == kMaximized; }
+
+    bool visibility_state = false;
+    bool fullscreen_state = false;
+    bool active_state = false;
+    enum { kNormal, kMinimized, kMaximized } minmax_state = kNormal;
+
+    gfx::Rect bounds;
+  };
+
+  // This is present iff the window has been created in headless mode.
+  absl::optional<HeadlessModeWindow> headless_mode_window_;
+
   // This is a map of the HMONITOR to full screeen window instance. It is safe
   // to keep a raw pointer to the HWNDMessageHandler instance as we track the
   // window destruction and ensure that the map is cleaned up.
@@ -810,9 +848,10 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   gfx::Size exposed_pixels_;
 
   // Populated if the cursor position is being mocked for testing purposes.
-  base::Optional<gfx::Point> mock_cursor_position_;
+  absl::optional<gfx::Point> mock_cursor_position_;
 
-  ScopedObserver<ui::InputMethod, ui::InputMethodObserver> observer_{this};
+  base::ScopedObservation<ui::InputMethod, ui::InputMethodObserver>
+      observation_{this};
 
   // The WeakPtrFactories below (one inside the
   // CR_MSG_MAP_CLASS_DECLARATIONS macro and autohide_factory_) must
@@ -822,8 +861,6 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
 
   // The factory used to lookup appbar autohide edges.
   base::WeakPtrFactory<HWNDMessageHandler> autohide_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(HWNDMessageHandler);
 };
 
 }  // namespace views

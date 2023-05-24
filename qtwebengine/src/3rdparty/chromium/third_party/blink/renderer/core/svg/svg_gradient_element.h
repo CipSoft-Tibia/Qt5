@@ -28,7 +28,8 @@
 #include "third_party/blink/renderer/core/svg/svg_uri_reference.h"
 #include "third_party/blink/renderer/core/svg_names.h"
 #include "third_party/blink/renderer/platform/graphics/gradient.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -71,7 +72,7 @@ class SVGGradientElement : public SVGElement, public SVGURIReference {
 
   using VisitedSet = HeapHashSet<Member<const SVGGradientElement>>;
 
-  void SvgAttributeChanged(const QualifiedName&) override;
+  void SvgAttributeChanged(const SvgAttributeChangedParams&) override;
 
  private:
   void CollectStyleForPresentationAttribute(

@@ -1,31 +1,6 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 BlackBerry Limited all rights reserved
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 BlackBerry Limited all rights reserved
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QUuid>
@@ -36,6 +11,12 @@
 #include <QLowEnergyDescriptor>
 #include <QLowEnergyController>
 #include <QBluetoothLocalDevice>
+
+#if QT_CONFIG(permissions)
+#include <QCoreApplication>
+#include <QPermissions>
+#include <QtCore/qnamespace.h>
+#endif
 
 QT_USE_NAMESPACE
 
@@ -60,12 +41,28 @@ private:
     QList<QBluetoothDeviceInfo> remoteLeDeviceInfos;
     QLowEnergyController *globalControl;
     QLowEnergyService *globalService;
+#if QT_CONFIG(permissions)
+    Qt::PermissionStatus permissionStatus = Qt::PermissionStatus::Undetermined;
+#endif
 };
 
 tst_QLowEnergyDescriptor::tst_QLowEnergyDescriptor() :
     globalControl(nullptr), globalService(nullptr)
 {
     QLoggingCategory::setFilterRules(QStringLiteral("qt.bluetooth* = true"));
+#if QT_CONFIG(permissions)
+    permissionStatus = qApp->checkPermission(QBluetoothPermission{});
+    const bool ciRun = qEnvironmentVariable("QTEST_ENVIRONMENT").split(' ').contains("ci");
+    if (!ciRun && permissionStatus == Qt::PermissionStatus::Undetermined) {
+        QTestEventLoop loop;
+        qApp->requestPermission(QBluetoothPermission{}, [this, &loop](const QPermission &permission){
+            permissionStatus = permission.status();
+            loop.exitLoop();
+        });
+        if (permissionStatus == Qt::PermissionStatus::Undetermined)
+            loop.enterLoopMSecs(30000);
+    }
+#endif // QT_CONFIG(permissions)
 }
 
 tst_QLowEnergyDescriptor::~tst_QLowEnergyDescriptor()
@@ -75,23 +72,36 @@ tst_QLowEnergyDescriptor::~tst_QLowEnergyDescriptor()
 void tst_QLowEnergyDescriptor::initTestCase()
 {
     if (QBluetoothLocalDevice::allDevices().isEmpty()) {
-        qWarning("No remote device discovered.");
-
+        qWarning("No local adapter, not discovering remote devices");
         return;
     }
 
-    // start Bluetooth if not started
     QBluetoothLocalDevice device;
-    device.powerOn();
+    if (device.hostMode() == QBluetoothLocalDevice::HostPoweredOff) {
+        // Attempt to switch Bluetooth ON
+        device.powerOn();
+        QTest::qWait(1000);
+        if (device.hostMode() == QBluetoothLocalDevice::HostPoweredOff) {
+            qWarning("Bluetooth couldn't be switched ON, not discovering remote devices");
+            return;
+        }
+    }
 
-    // find an arbitrary low energy device in vincinity
+#if QT_CONFIG(permissions)
+    if (permissionStatus != Qt::PermissionStatus::Granted) {
+        qWarning("Use of BLuetooth LE requires the Bluetooth permission granted");
+        return;
+    }
+#endif
+
+    // find an arbitrary low energy device in vicinity
     // find an arbitrary service with descriptor
 
     QBluetoothDeviceDiscoveryAgent *devAgent = new QBluetoothDeviceDiscoveryAgent(this);
     connect(devAgent, SIGNAL(deviceDiscovered(QBluetoothDeviceInfo)),
             this, SLOT(deviceDiscovered(QBluetoothDeviceInfo)));
 
-    QSignalSpy errorSpy(devAgent, SIGNAL(error(QBluetoothDeviceDiscoveryAgent::Error)));
+    QSignalSpy errorSpy(devAgent, SIGNAL(errorOccurred(QBluetoothDeviceDiscoveryAgent::Error)));
     QVERIFY(errorSpy.isValid());
     QVERIFY(errorSpy.isEmpty());
 
@@ -101,16 +111,16 @@ void tst_QLowEnergyDescriptor::initTestCase()
     QVERIFY(spy.isEmpty());
 
     devAgent->start();
-    QTRY_VERIFY_WITH_TIMEOUT(spy.count() > 0, 50000);
+    QTRY_VERIFY_WITH_TIMEOUT(spy.size() > 0, 100000);
 
     // find first service with descriptor
     QLowEnergyController *controller = nullptr;
-    for (const QBluetoothDeviceInfo& remoteDeviceInfo : qAsConst(remoteLeDeviceInfos)) {
+    for (const QBluetoothDeviceInfo& remoteDeviceInfo : std::as_const(remoteLeDeviceInfos)) {
         controller = QLowEnergyController::createCentral(remoteDeviceInfo, this);
         qDebug() << "Connecting to" << remoteDeviceInfo.address();
         controller->connectToDevice();
         QTRY_IMPL(controller->state() != QLowEnergyController::ConnectingState,
-                  20000)
+                  50000)
         if (controller->state() != QLowEnergyController::ConnectedState) {
             // any error and we skip
             delete controller;
@@ -121,8 +131,8 @@ void tst_QLowEnergyDescriptor::initTestCase()
         QSignalSpy discoveryFinishedSpy(controller, SIGNAL(discoveryFinished()));
         QSignalSpy stateSpy(controller, SIGNAL(stateChanged(QLowEnergyController::ControllerState)));
         controller->discoverServices();
-        QTRY_VERIFY_WITH_TIMEOUT(discoveryFinishedSpy.count() == 1, 10000);
-        QCOMPARE(stateSpy.count(), 2);
+        QTRY_VERIFY_WITH_TIMEOUT(discoveryFinishedSpy.size() == 1, 10000);
+        QCOMPARE(stateSpy.size(), 2);
         QCOMPARE(stateSpy.at(0).at(0).value<QLowEnergyController::ControllerState>(),
                  QLowEnergyController::DiscoveringState);
         QCOMPARE(stateSpy.at(1).at(0).value<QLowEnergyController::ControllerState>(),
@@ -136,7 +146,7 @@ void tst_QLowEnergyDescriptor::initTestCase()
 
             leService->discoverDetails();
             QTRY_VERIFY_WITH_TIMEOUT(
-                        leService->state() == QLowEnergyService::ServiceDiscovered, 10000);
+                        leService->state() == QLowEnergyService::RemoteServiceDiscovered, 10000);
 
             const QList<QLowEnergyCharacteristic> chars = leService->characteristics();
             for (const QLowEnergyCharacteristic &ch : chars) {
@@ -190,17 +200,15 @@ void tst_QLowEnergyDescriptor::tst_constructionDefault()
     QVERIFY(!descriptor.isValid());
     QCOMPARE(descriptor.value(), QByteArray());
     QVERIFY(descriptor.uuid().isNull());
-    QVERIFY(descriptor.handle() == 0);
     QCOMPARE(descriptor.name(), QString());
-    QCOMPARE(descriptor.type(), QBluetoothUuid::UnknownDescriptorType);
+    QCOMPARE(descriptor.type(), QBluetoothUuid::DescriptorType::UnknownDescriptorType);
 
     QLowEnergyDescriptor copyConstructed(descriptor);
     QVERIFY(!copyConstructed.isValid());
     QCOMPARE(copyConstructed.value(), QByteArray());
     QVERIFY(copyConstructed.uuid().isNull());
-    QVERIFY(copyConstructed.handle() == 0);
     QCOMPARE(copyConstructed.name(), QString());
-    QCOMPARE(copyConstructed.type(), QBluetoothUuid::UnknownDescriptorType);
+    QCOMPARE(copyConstructed.type(), QBluetoothUuid::DescriptorType::UnknownDescriptorType);
 
     QVERIFY(copyConstructed == descriptor);
     QVERIFY(descriptor == copyConstructed);
@@ -218,9 +226,8 @@ void tst_QLowEnergyDescriptor::tst_constructionDefault()
     QVERIFY(!assigned.isValid());
     QCOMPARE(assigned.value(), QByteArray());
     QVERIFY(assigned.uuid().isNull());
-    QVERIFY(assigned.handle() == 0);
     QCOMPARE(assigned.name(), QString());
-    QCOMPARE(assigned.type(), QBluetoothUuid::UnknownDescriptorType);
+    QCOMPARE(assigned.type(), QBluetoothUuid::DescriptorType::UnknownDescriptorType);
 
     QVERIFY(assigned == descriptor);
     QVERIFY(descriptor == assigned);
@@ -237,22 +244,23 @@ void tst_QLowEnergyDescriptor::tst_assignCompare()
 
     QLowEnergyDescriptor target;
     QVERIFY(!target.isValid());
-    QCOMPARE(target.type(), QBluetoothUuid::UnknownDescriptorType);
+    QCOMPARE(target.type(), QBluetoothUuid::DescriptorType::UnknownDescriptorType);
     QCOMPARE(target.name(), QString());
-    QCOMPARE(target.handle(), QLowEnergyHandle(0));
     QCOMPARE(target.uuid(), QBluetoothUuid());
     QCOMPARE(target.value(), QByteArray());
 
-    int index = -1;
+    qsizetype index = 0;
+    bool valueFound = false;
     QList<QLowEnergyDescriptor> targets;
     const QList<QLowEnergyCharacteristic> chars = globalService->characteristics();
     for (const QLowEnergyCharacteristic &ch : chars) {
         if (!ch.descriptors().isEmpty()) {
            targets = ch.descriptors();
-           for (int i = 0; i < targets.size(); ++i) {
+           for (qsizetype i = 0; i < targets.size(); ++i) {
                // try to get a descriptor we can read
-               if (targets[i].type() == QBluetoothUuid::CharacteristicUserDescription) {
+               if (targets[i].type() == QBluetoothUuid::DescriptorType::CharacteristicUserDescription) {
                    index = i;
+                   valueFound = true;
                    break;
                }
            }
@@ -263,16 +271,13 @@ void tst_QLowEnergyDescriptor::tst_assignCompare()
     if (targets.isEmpty())
         QSKIP("No descriptor found despite prior indication.");
 
-    QVERIFY(index != -1);
-
     // test assignment operator
     target = targets[index];
     QVERIFY(target.isValid());
-    QVERIFY(target.type() != QBluetoothUuid::UnknownDescriptorType);
+    QVERIFY(target.type() != QBluetoothUuid::DescriptorType::UnknownDescriptorType);
     QVERIFY(!target.name().isEmpty());
-    QVERIFY(target.handle() > 0);
     QVERIFY(!target.uuid().isNull());
-    QVERIFY(!target.value().isEmpty());
+    QVERIFY(!valueFound || !target.value().isEmpty());
 
     QVERIFY(target == targets[index]);
     QVERIFY(targets[index] == target);
@@ -282,7 +287,6 @@ void tst_QLowEnergyDescriptor::tst_assignCompare()
     QCOMPARE(target.isValid(), targets[index].isValid());
     QCOMPARE(target.type(), targets[index].type());
     QCOMPARE(target.name(), targets[index].name());
-    QCOMPARE(target.handle(), targets[index].handle());
     QCOMPARE(target.uuid(), targets[index].uuid());
     QCOMPARE(target.value(), targets[index].value());
 
@@ -291,7 +295,6 @@ void tst_QLowEnergyDescriptor::tst_assignCompare()
     QCOMPARE(copyConstructed.isValid(), targets[index].isValid());
     QCOMPARE(copyConstructed.type(), targets[index].type());
     QCOMPARE(copyConstructed.name(), targets[index].name());
-    QCOMPARE(copyConstructed.handle(), targets[index].handle());
     QCOMPARE(copyConstructed.uuid(), targets[index].uuid());
     QCOMPARE(copyConstructed.value(), targets[index].value());
 
@@ -306,9 +309,8 @@ void tst_QLowEnergyDescriptor::tst_assignCompare()
     QVERIFY(!target.isValid());
     QCOMPARE(target.value(), QByteArray());
     QVERIFY(target.uuid().isNull());
-    QVERIFY(target.handle() == 0);
     QCOMPARE(target.name(), QString());
-    QCOMPARE(target.type(), QBluetoothUuid::UnknownDescriptorType);
+    QCOMPARE(target.type(), QBluetoothUuid::DescriptorType::UnknownDescriptorType);
 
     QVERIFY(invalid == target);
     QVERIFY(target == invalid);
@@ -320,7 +322,7 @@ void tst_QLowEnergyDescriptor::tst_assignCompare()
     QVERIFY(targets[index] != target);
     QVERIFY(target != targets[index]);
 
-    if (targets.count() >= 2) {
+    if (targets.size() >= 2) {
         QLowEnergyDescriptor second = targets[(index+1)%2];
         // at least two descriptors
         QVERIFY(!(targets[index] == second));

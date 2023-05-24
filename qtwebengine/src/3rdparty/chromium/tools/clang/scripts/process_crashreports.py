@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -66,6 +66,10 @@ def ProcessCrashreport(base, source):
     subprocess.check_call([sys.executable, GSUTIL, '-q', 'cp', tmp_name, dest])
     print('done')
     print('    %s' % dest)
+  except subprocess.CalledProcessError as e:
+    print('upload failed; if it was due to missing permissions, try running')
+    print('download_from_google_storage --config')
+    print('and then try again')
   finally:
     if tmp_name:
       os.remove(tmp_name)
@@ -104,7 +108,11 @@ def main():
   # As a heuristic, find all .sh files in the crashreports directory, then
   # zip each up along with all other files that have the same basename with
   # different extensions.
-  for reproducer in glob.glob(os.path.join(CRASHREPORTS_DIR, '*.sh')):
+  clang_reproducers = glob.glob(os.path.join(CRASHREPORTS_DIR, '*.sh'))
+  # lld reproducers just leave a .tar
+  lld_reproducers = glob.glob(
+      os.path.join(CRASHREPORTS_DIR, 'linker-crash*.tar'))
+  for reproducer in clang_reproducers + lld_reproducers:
     base = os.path.splitext(os.path.basename(reproducer))[0]
     ProcessCrashreport(base, args.source)
 

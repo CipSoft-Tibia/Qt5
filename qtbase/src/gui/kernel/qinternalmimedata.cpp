@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qinternalmimedata_p.h"
 
@@ -46,15 +10,17 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 static QStringList imageMimeFormats(const QList<QByteArray> &imageFormats)
 {
     QStringList formats;
     formats.reserve(imageFormats.size());
     for (const auto &format : imageFormats)
-        formats.append(QLatin1String("image/") + QLatin1String(format.toLower()));
+        formats.append("image/"_L1 + QLatin1StringView(format.toLower()));
 
     //put png at the front because it is best
-    int pngIndex = formats.indexOf(QLatin1String("image/png"));
+    const qsizetype pngIndex = formats.indexOf("image/png"_L1);
     if (pngIndex != -1 && pngIndex != 0)
         formats.move(pngIndex, 0);
 
@@ -83,7 +49,7 @@ QInternalMimeData::~QInternalMimeData()
 bool QInternalMimeData::hasFormat(const QString &mimeType) const
 {
     bool foundFormat = hasFormat_sys(mimeType);
-    if (!foundFormat && mimeType == QLatin1String("application/x-qt-image")) {
+    if (!foundFormat && mimeType == "application/x-qt-image"_L1) {
         QStringList imageFormats = imageReadMimeFormats();
         for (int i = 0; i < imageFormats.size(); ++i) {
             if ((foundFormat = hasFormat_sys(imageFormats.at(i))))
@@ -96,11 +62,11 @@ bool QInternalMimeData::hasFormat(const QString &mimeType) const
 QStringList QInternalMimeData::formats() const
 {
     QStringList realFormats = formats_sys();
-    if (!realFormats.contains(QLatin1String("application/x-qt-image"))) {
+    if (!realFormats.contains("application/x-qt-image"_L1)) {
         QStringList imageFormats = imageReadMimeFormats();
         for (int i = 0; i < imageFormats.size(); ++i) {
             if (realFormats.contains(imageFormats.at(i))) {
-                realFormats += QLatin1String("application/x-qt-image");
+                realFormats += "application/x-qt-image"_L1;
                 break;
             }
         }
@@ -108,27 +74,27 @@ QStringList QInternalMimeData::formats() const
     return realFormats;
 }
 
-QVariant QInternalMimeData::retrieveData(const QString &mimeType, QVariant::Type type) const
+QVariant QInternalMimeData::retrieveData(const QString &mimeType, QMetaType type) const
 {
     QVariant data = retrieveData_sys(mimeType, type);
-    if (mimeType == QLatin1String("application/x-qt-image")) {
-        if (data.isNull() || (data.userType() == QMetaType::QByteArray && data.toByteArray().isEmpty())) {
+    if (mimeType == "application/x-qt-image"_L1) {
+        if (data.isNull() || (data.metaType().id() == QMetaType::QByteArray && data.toByteArray().isEmpty())) {
             // try to find an image
             QStringList imageFormats = imageReadMimeFormats();
             for (int i = 0; i < imageFormats.size(); ++i) {
                 data = retrieveData_sys(imageFormats.at(i), type);
-                if (data.isNull() || (data.userType() == QMetaType::QByteArray && data.toByteArray().isEmpty()))
+                if (data.isNull() || (data.metaType().id() == QMetaType::QByteArray && data.toByteArray().isEmpty()))
                     continue;
                 break;
             }
         }
-        int typeId = type;
+        int typeId = type.id();
         // we wanted some image type, but all we got was a byte array. Convert it to an image.
-        if (data.userType() == QMetaType::QByteArray
+        if (data.metaType().id() == QMetaType::QByteArray
             && (typeId == QMetaType::QImage || typeId == QMetaType::QPixmap || typeId == QMetaType::QBitmap))
             data = QImage::fromData(data.toByteArray());
 
-    } else if (mimeType == QLatin1String("application/x-color") && data.userType() == QMetaType::QByteArray) {
+    } else if (mimeType == "application/x-color"_L1 && data.metaType().id() == QMetaType::QByteArray) {
         QColor c;
         QByteArray ba = data.toByteArray();
         if (ba.size() == 8) {
@@ -141,7 +107,7 @@ QVariant QInternalMimeData::retrieveData(const QString &mimeType, QVariant::Type
         } else {
             qWarning("Qt: Invalid color format");
         }
-    } else if (data.userType() != int(type) && data.userType() == QMetaType::QByteArray) {
+    } else if (data.metaType() != type && data.metaType().id() == QMetaType::QByteArray) {
         // try to use mime data's internal conversion stuf.
         QInternalMimeData *that = const_cast<QInternalMimeData *>(this);
         that->setData(mimeType, data.toByteArray());
@@ -160,7 +126,7 @@ bool QInternalMimeData::canReadData(const QString &mimeType)
 QStringList QInternalMimeData::formatsHelper(const QMimeData *data)
 {
     QStringList realFormats = data->formats();
-    if (realFormats.contains(QLatin1String("application/x-qt-image"))) {
+    if (realFormats.contains("application/x-qt-image"_L1)) {
         // add all supported image formats
         QStringList imageFormats = imageWriteMimeFormats();
         for (int i = 0; i < imageFormats.size(); ++i) {
@@ -176,14 +142,14 @@ bool QInternalMimeData::hasFormatHelper(const QString &mimeType, const QMimeData
 
     bool foundFormat = data->hasFormat(mimeType);
     if (!foundFormat) {
-        if (mimeType == QLatin1String("application/x-qt-image")) {
+        if (mimeType == "application/x-qt-image"_L1) {
             // check all supported image formats
             QStringList imageFormats = imageWriteMimeFormats();
             for (int i = 0; i < imageFormats.size(); ++i) {
                 if ((foundFormat = data->hasFormat(imageFormats.at(i))))
                     break;
             }
-        } else if (mimeType.startsWith(QLatin1String("image/"))) {
+        } else if (mimeType.startsWith("image/"_L1)) {
             return data->hasImage() && imageWriteMimeFormats().contains(mimeType);
         }
     }
@@ -193,7 +159,7 @@ bool QInternalMimeData::hasFormatHelper(const QString &mimeType, const QMimeData
 QByteArray QInternalMimeData::renderDataHelper(const QString &mimeType, const QMimeData *data)
 {
     QByteArray ba;
-    if (mimeType == QLatin1String("application/x-color")) {
+    if (mimeType == "application/x-color"_L1) {
         /* QMimeData can only provide colors as QColor or the name
            of a color as a QByteArray or a QString. So we need to do
            the conversion to application/x-color here.
@@ -215,17 +181,17 @@ QByteArray QInternalMimeData::renderDataHelper(const QString &mimeType, const QM
     } else {
         ba = data->data(mimeType);
         if (ba.isEmpty()) {
-            if (mimeType == QLatin1String("application/x-qt-image") && data->hasImage()) {
+            if (mimeType == "application/x-qt-image"_L1 && data->hasImage()) {
                 QImage image = qvariant_cast<QImage>(data->imageData());
                 QBuffer buf(&ba);
                 buf.open(QBuffer::WriteOnly);
                 // would there not be PNG ??
                 image.save(&buf, "PNG");
-            } else if (mimeType.startsWith(QLatin1String("image/")) && data->hasImage()) {
+            } else if (mimeType.startsWith("image/"_L1) && data->hasImage()) {
                 QImage image = qvariant_cast<QImage>(data->imageData());
                 QBuffer buf(&ba);
                 buf.open(QBuffer::WriteOnly);
-                image.save(&buf, mimeType.mid(mimeType.indexOf(QLatin1Char('/')) + 1).toLatin1().toUpper());
+                image.save(&buf, mimeType.mid(mimeType.indexOf(u'/') + 1).toLatin1().toUpper());
             }
         }
     }
@@ -233,3 +199,5 @@ QByteArray QInternalMimeData::renderDataHelper(const QString &mimeType, const QM
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qinternalmimedata_p.cpp"

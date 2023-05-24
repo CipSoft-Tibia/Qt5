@@ -1,10 +1,11 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkImageInfo.h"
+#include "ui/gfx/geometry/size.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_family.h"
 #include "ui/gfx/image/image_skia.h"
@@ -221,15 +222,6 @@ TEST_F(ImageFamilyTest, CreateExact) {
 
   // Wider than widest image.
   EXPECT_IMAGE_SIZE(image_family_.CreateExact(255, 51), 255, 51);
-
-  // CreateExact on an image family with a non-N32 color bitmap results in an
-  // empty image.
-  gfx::ImageFamily a8_family;
-  SkBitmap a8_bitmap;
-  SkImageInfo a8_info = SkImageInfo::MakeA8(64, 64);
-  a8_bitmap.allocPixels(a8_info);
-  a8_family.Add(gfx::Image::CreateFrom1xBitmap(a8_bitmap));
-  EXPECT_TRUE(a8_family.CreateExact(32, 32).IsEmpty());
 }
 
 // Test adding and looking up images with 0 width and height.

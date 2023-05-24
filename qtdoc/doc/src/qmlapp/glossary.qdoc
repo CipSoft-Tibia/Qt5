@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qml-glossary.html
@@ -46,16 +22,16 @@
         \li Qt Quick
         \li The standard library of types and functionality for the
             QML language, which is provided by the Qt Quick module,
-            and may be accessed with "import QtQuick 2.3".
+            and may be accessed with "import QtQuick".
 
     \row
         \li Type
         \li In QML, a \e type may refer to either a
-            \l{qtqml-typesystem-topic.html}{Basic Type} or a
+            \l{qtqml-typesystem-topic.html}{Value Type} or a
             \l{qtqml-typesystem-topic.html#qml-object-types}{QML Object Type}.
 
             The QML language provides a number of built-in
-            \l{qtqml-typesystem-basictypes.html}{basic types}, and the
+            \l{qtqml-typesystem-valuetypes.html}{value types}, and the
             Qt Quick module provides various \l {Qt Quick QML Types}{Qt Quick types}
             for building QML applications. Types can also be provided by
             third-party developers through (\l{qtqml-modules-topic.html}{modules}) or by the application
@@ -65,17 +41,18 @@
             for more details.
 
     \row
-        \li Basic Type
-        \li A \l{qtqml-typesystem-topic.html}{basic type} is a simple type
+        \li Value Type
+        \li A \l{qtqml-typesystem-topic.html}{value type} is a simple type
             such as \c int, \c string and \c bool. Unlike
             \l{qtqml-typesystem-topic.html#qml-object-types}{object types},
-            an object cannot be instantiated from a basic type; for example,
+            an object cannot be instantiated from a value type; for example,
             it is not possible to create an \c int object with properties,
             methods, signals and so on.
 
-            Basic types are built into the QML language, whereas object types
-            cannot be used unless the appropriate
-            \l{qtqml-modules-topic.html}{module} is imported.
+            Value types as well as object types usually belong to a
+            \l{qtqml-modules-topic.html}{QML module}. You have to import the
+            module to use them. Some types are built into the language, for
+            example int, bool, double, string, but also QtObject and Component.
 
             See \l{qtqml-typesystem-topic.html}{The QML Type System}
             for more details.
@@ -178,8 +155,7 @@
             for more details.
 
     \row
-        \target lazy-instantiation
-        \li Lazy Instantiation
+        \li Lazy Instantiation \target lazy-instantiation
         \li Object instances can be instantiated "lazily" at run-time,
             to avoid performing unnecessary work until needed.  Qt Quick
             provides the \l Loader type to make lazy instantiation more

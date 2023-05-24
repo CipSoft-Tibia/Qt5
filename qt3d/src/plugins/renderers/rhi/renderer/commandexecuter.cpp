@@ -1,39 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 Paul Lemire <paul.lemire350@gmail.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "commandexecuter_p.h"
 
@@ -55,9 +22,11 @@ QT_BEGIN_NAMESPACE
 
 namespace Qt3DRender {
 
-namespace Debug {
+namespace DebugRhi {
 
 namespace {
+
+#if 0 // unused for now
 
 template<typename Type>
 QJsonObject typeToJsonObj(const Type &) noexcept
@@ -249,40 +218,40 @@ QJsonObject parameterPackToJson(const Render::Rhi::ShaderParameterPack &pack) no
 
     const Render::Rhi::PackUniformHash &uniforms = pack.uniforms();
     QJsonArray uniformsArray;
-    for (int i = 0, m = uniforms.keys.size(); i < m; ++i) {
+    for (qsizetype i = 0, m = uniforms.keys.size(); i < m; ++i) {
         QJsonObject uniformObj;
-        uniformObj.insert(QLatin1String("name"),
-                          Render::StringToInt::lookupString(uniforms.keys.at(i)));
+        uniformObj.insert(QLatin1String("name"), Render::StringToInt::lookupString(uniforms.keys.at(i)));
         const Render::UniformValue::ValueType type = uniforms.values.at(i).valueType();
         uniformObj.insert(QLatin1String("type"),
-                          type == Render::UniformValue::ScalarValue ? QLatin1String("value")
-                                                                    : QLatin1String("texture"));
+                          type == Render::UniformValue::ScalarValue
+                          ? QLatin1String("value")
+                          : QLatin1String("texture"));
         uniformsArray.push_back(uniformObj);
     }
     obj.insert(QLatin1String("uniforms"), uniformsArray);
 
     QJsonArray texturesArray;
-    const QVector<Render::Rhi::ShaderParameterPack::NamedResource> &textures = pack.textures();
-    for (const auto &texture : textures) {
+    const std::vector<Render::Rhi::ShaderParameterPack::NamedResource> &textures = pack.textures();
+    for (const auto & texture : textures) {
         QJsonObject textureObj;
-        textureObj.insert(QLatin1String("name"),
-                          Render::StringToInt::lookupString(texture.glslNameId));
+        textureObj.insert(QLatin1String("name"), Render::StringToInt::lookupString(texture.glslNameId));
         textureObj.insert(QLatin1String("id"), qint64(texture.nodeId.id()));
         texturesArray.push_back(textureObj);
     }
     obj.insert(QLatin1String("textures"), texturesArray);
 
-    const QVector<Render::Rhi::BlockToUBO> &ubos = pack.uniformBuffers();
+    const std::vector<Render::Rhi::BlockToUBO> &ubos = pack.uniformBuffers();
     QJsonArray ubosArray;
     for (const auto &ubo : ubos) {
         QJsonObject uboObj;
         uboObj.insert(QLatin1String("index"), ubo.m_blockIndex);
         uboObj.insert(QLatin1String("bufferId"), qint64(ubo.m_bufferID.id()));
         ubosArray.push_back(uboObj);
+
     }
     obj.insert(QLatin1String("ubos"), ubosArray);
 
-    const QVector<Render::Rhi::BlockToSSBO> &ssbos = pack.shaderStorageBuffers();
+    const std::vector<Render::Rhi::BlockToSSBO> &ssbos = pack.shaderStorageBuffers();
     QJsonArray ssbosArray;
     for (const auto &ssbo : ssbos) {
         QJsonObject ssboObj;
@@ -295,17 +264,22 @@ QJsonObject parameterPackToJson(const Render::Rhi::ShaderParameterPack &pack) no
     return obj;
 }
 
+#endif // 0
+
 } // anonymous
 
-CommandExecuter::CommandExecuter(Render::Rhi::Renderer *renderer) : m_renderer(renderer) { }
+CommandExecuter::CommandExecuter(Render::Rhi::Renderer *renderer) : m_renderer(renderer) {
+    Q_UNUSED(m_renderer)
+}
 
 // Render thread
 void CommandExecuter::performAsynchronousCommandExecution(
-        const QVector<Render::Rhi::RenderView *> &views)
+        const std::vector<Render::Rhi::RenderView *> &views)
 {
+    Q_UNUSED(views);
     RHI_UNIMPLEMENTED;
     //*    QMutexLocker lock(&m_pendingCommandsMutex);
-    //*    const QVector<Qt3DCore::Debug::AsynchronousCommandReply *> shellCommands =
+    //*    const std::vector<Qt3DCore::Debug::AsynchronousCommandReply *> shellCommands =
     //std::move(m_pendingCommands);
     //*    lock.unlock();
     //*
@@ -380,6 +354,7 @@ void CommandExecuter::performAsynchronousCommandExecution(
 // Main thread
 QVariant CommandExecuter::executeCommand(const QStringList &args)
 {
+    Q_UNUSED(args);
     RHI_UNIMPLEMENTED;
     //*    // Note: The replies will be deleted by the AspectCommandDebugger
     //*    if (args.length() > 0 &&
@@ -393,7 +368,7 @@ QVariant CommandExecuter::executeCommand(const QStringList &args)
     return QVariant();
 }
 
-} // Debug
+} // DebugRhi
 
 } // Qt3DRenderer
 

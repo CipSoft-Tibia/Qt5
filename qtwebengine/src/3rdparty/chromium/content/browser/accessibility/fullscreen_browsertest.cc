@@ -1,10 +1,12 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "base/test/scoped_feature_list.h"
 #include "content/browser/accessibility/browser_accessibility.h"
 #include "content/browser/accessibility/browser_accessibility_manager.h"
 #include "content/browser/web_contents/web_contents_impl.h"
+#include "content/public/common/content_features.h"
 #include "content/public/test/accessibility_notification_waiter.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -17,7 +19,7 @@ namespace content {
 
 class AccessibilityFullscreenBrowserTest : public ContentBrowserTest {
  public:
-  AccessibilityFullscreenBrowserTest() = default;
+  AccessibilityFullscreenBrowserTest();
   ~AccessibilityFullscreenBrowserTest() override = default;
 
  protected:
@@ -40,7 +42,17 @@ class AccessibilityFullscreenBrowserTest : public ContentBrowserTest {
     }
     return links_in_children;
   }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
+
+AccessibilityFullscreenBrowserTest::AccessibilityFullscreenBrowserTest() {
+  // The FakeFullscreenDelegate does not send the layout signals used to
+  // complete SurfaceSync for Fullscreen.
+  scoped_feature_list_.InitAndDisableFeature(
+      features::kSurfaceSyncFullscreenKillswitch);
+}
 
 namespace {
 
@@ -49,6 +61,10 @@ namespace {
 class FakeFullscreenDelegate : public WebContentsDelegate {
  public:
   FakeFullscreenDelegate() = default;
+
+  FakeFullscreenDelegate(const FakeFullscreenDelegate&) = delete;
+  FakeFullscreenDelegate& operator=(const FakeFullscreenDelegate&) = delete;
+
   ~FakeFullscreenDelegate() override = default;
 
   void EnterFullscreenModeForTab(
@@ -67,7 +83,6 @@ class FakeFullscreenDelegate : public WebContentsDelegate {
 
  private:
   bool is_fullscreen_ = false;
-  DISALLOW_COPY_AND_ASSIGN(FakeFullscreenDelegate);
 };
 
 }  // namespace
@@ -85,7 +100,7 @@ IN_PROC_BROWSER_TEST_F(AccessibilityFullscreenBrowserTest,
   GURL url(
       embedded_test_server()->GetURL("/accessibility/fullscreen/links.html"));
   EXPECT_TRUE(NavigateToURL(shell(), url));
-  waiter.WaitForNotification();
+  ASSERT_TRUE(waiter.WaitForNotification());
 
   WebContentsImpl* web_contents =
       static_cast<WebContentsImpl*>(shell()->web_contents());
@@ -93,11 +108,12 @@ IN_PROC_BROWSER_TEST_F(AccessibilityFullscreenBrowserTest,
       web_contents->GetRootBrowserAccessibilityManager();
 
   // Initially there are 3 links in the accessibility tree.
-  EXPECT_EQ(3, CountLinks(manager->GetRoot()));
+  EXPECT_EQ(3, CountLinks(manager->GetBrowserAccessibilityRoot()));
 
   // Enter fullscreen by finding the button and performing the default action,
   // which is to click it.
-  BrowserAccessibility* button = FindButton(manager->GetRoot());
+  BrowserAccessibility* button =
+      FindButton(manager->GetBrowserAccessibilityRoot());
   ASSERT_NE(nullptr, button);
   manager->DoDefaultAction(*button);
 
@@ -105,7 +121,7 @@ IN_PROC_BROWSER_TEST_F(AccessibilityFullscreenBrowserTest,
   WaitForAccessibilityTreeToContainNodeWithName(web_contents, "Done");
 
   // Now, the two links outside of the fullscreen element are gone.
-  EXPECT_EQ(1, CountLinks(manager->GetRoot()));
+  EXPECT_EQ(1, CountLinks(manager->GetBrowserAccessibilityRoot()));
 }
 
 // Fails flakily on all platforms: crbug.com/825735
@@ -122,7 +138,7 @@ IN_PROC_BROWSER_TEST_F(AccessibilityFullscreenBrowserTest,
   GURL url(
       embedded_test_server()->GetURL("/accessibility/fullscreen/iframe.html"));
   EXPECT_TRUE(NavigateToURL(shell(), url));
-  waiter.WaitForNotification();
+  ASSERT_TRUE(waiter.WaitForNotification());
 
   WebContentsImpl* web_contents =
       static_cast<WebContentsImpl*>(shell()->web_contents());
@@ -130,11 +146,12 @@ IN_PROC_BROWSER_TEST_F(AccessibilityFullscreenBrowserTest,
       web_contents->GetRootBrowserAccessibilityManager();
 
   // Initially there's just one link, in the top frame.
-  EXPECT_EQ(1, CountLinks(manager->GetRoot()));
+  EXPECT_EQ(1, CountLinks(manager->GetBrowserAccessibilityRoot()));
 
   // Enter fullscreen by finding the button and performing the default action,
   // which is to click it.
-  BrowserAccessibility* button = FindButton(manager->GetRoot());
+  BrowserAccessibility* button =
+      FindButton(manager->GetBrowserAccessibilityRoot());
   ASSERT_NE(nullptr, button);
   manager->DoDefaultAction(*button);
 
@@ -142,7 +159,7 @@ IN_PROC_BROWSER_TEST_F(AccessibilityFullscreenBrowserTest,
   // in the inert part of the page, then exit fullscreen and change the button
   // text to "Done". Then the link inside the iframe should also be exposed.
   WaitForAccessibilityTreeToContainNodeWithName(web_contents, "Done");
-  EXPECT_EQ(2, CountLinks(manager->GetRoot()));
+  EXPECT_EQ(2, CountLinks(manager->GetBrowserAccessibilityRoot()));
 }
 
 }  // namespace content

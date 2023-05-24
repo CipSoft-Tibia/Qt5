@@ -1,13 +1,14 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_PUBLIC_BROWSER_BROWSING_DATA_REMOVER_DELEGATE_H_
 #define CONTENT_PUBLIC_BROWSER_BROWSING_DATA_REMOVER_DELEGATE_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 
 namespace base {
 class Time;
@@ -61,6 +62,13 @@ class BrowsingDataRemoverDelegate {
       BrowsingDataFilterBuilder* filter_builder,
       uint64_t origin_type_mask,
       base::OnceCallback<void(/*failed_data_types=*/uint64_t)> callback) = 0;
+
+  // Called when the BrowsingDataRemover starts executing a task.
+  virtual void OnStartRemoving() {}
+
+  // Called when the BrowsingDataRemover is done executing all the tasks in its
+  // queue.
+  virtual void OnDoneRemoving() {}
 };
 
 }  // namespace content

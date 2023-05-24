@@ -1,13 +1,13 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/base/models/simple_menu_model.h"
 
-#include "base/macros.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/color/color_id.h"
 #include "ui/gfx/image/image_unittest_util.h"
 #include "ui/gfx/paint_vector_icon.h"
 #include "ui/gfx/vector_icon_types.h"
@@ -16,11 +16,17 @@ namespace ui {
 
 namespace {
 
+DECLARE_ELEMENT_IDENTIFIER_VALUE(kTestElementID);
+DEFINE_ELEMENT_IDENTIFIER_VALUE(kTestElementID);
+
 constexpr int kAlertedCommandId = 2;
 
 class DelegateBase : public SimpleMenuModel::Delegate {
  public:
   DelegateBase() : SimpleMenuModel::Delegate() {}
+
+  DelegateBase(const DelegateBase&) = delete;
+  DelegateBase& operator=(const DelegateBase&) = delete;
 
   ~DelegateBase() override = default;
 
@@ -56,27 +62,22 @@ class DelegateBase : public SimpleMenuModel::Delegate {
   }
 
  private:
-  base::Optional<int> item_with_icon_;
-
-  DISALLOW_COPY_AND_ASSIGN(DelegateBase);
+  absl::optional<int> item_with_icon_;
 };
 
 TEST(SimpleMenuModelTest, SetLabel) {
   SimpleMenuModel simple_menu_model(nullptr);
-  simple_menu_model.AddItem(/*command_id*/ 5,
-                            base::ASCIIToUTF16("menu item 0"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item 0");
 
-  simple_menu_model.SetLabel(/*index*/ 0, base::ASCIIToUTF16("new label"));
+  simple_menu_model.SetLabel(/*index*/ 0, u"new label");
 
-  ASSERT_EQ(base::ASCIIToUTF16("new label"), simple_menu_model.GetLabelAt(0));
+  ASSERT_EQ(u"new label", simple_menu_model.GetLabelAt(0));
 }
 
 TEST(SimpleMenuModelTest, SetEnabledAt) {
   SimpleMenuModel simple_menu_model(nullptr);
-  simple_menu_model.AddItem(/*command_id*/ 5,
-                            base::ASCIIToUTF16("menu item 0"));
-  simple_menu_model.AddItem(/*command_id*/ 6,
-                            base::ASCIIToUTF16("menu item 1"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item 0");
+  simple_menu_model.AddItem(/*command_id*/ 6, u"menu item 1");
 
   simple_menu_model.SetEnabledAt(/*index*/ 0, false);
   simple_menu_model.SetEnabledAt(/*index*/ 1, true);
@@ -87,10 +88,8 @@ TEST(SimpleMenuModelTest, SetEnabledAt) {
 
 TEST(SimpleMenuModelTest, SetVisibleAt) {
   SimpleMenuModel simple_menu_model(nullptr);
-  simple_menu_model.AddItem(/*command_id*/ 5,
-                            base::ASCIIToUTF16("menu item 0"));
-  simple_menu_model.AddItem(/*command_id*/ 6,
-                            base::ASCIIToUTF16("menu item 1"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item 0");
+  simple_menu_model.AddItem(/*command_id*/ 6, u"menu item 1");
 
   simple_menu_model.SetVisibleAt(/*index*/ 0, false);
   simple_menu_model.SetVisibleAt(/*index*/ 1, true);
@@ -101,7 +100,7 @@ TEST(SimpleMenuModelTest, SetVisibleAt) {
 
 TEST(SimpleMenuModelTest, IsEnabledAtWithNoDelegate) {
   SimpleMenuModel simple_menu_model(nullptr);
-  simple_menu_model.AddItem(/*command_id*/ 5, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item");
   simple_menu_model.SetEnabledAt(/*index*/ 0, false);
 
   ASSERT_FALSE(simple_menu_model.IsEnabledAt(0));
@@ -111,7 +110,7 @@ TEST(SimpleMenuModelTest, IsEnabledAtWithDelegateAndCommandEnabled) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
   // CommandId 5 is enabled.
-  simple_menu_model.AddItem(/*command_id*/ 5, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item");
   simple_menu_model.SetEnabledAt(/*index*/ 0, true);
 
   // Should return false since the command_id 5 is enabled.
@@ -122,8 +121,7 @@ TEST(SimpleMenuModelTest, IsEnabledAtWithDelegateAndCommandNotEnabled) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
   // CommandId 108 is disabled.
-  simple_menu_model.AddItem(/*command_id*/ 108,
-                            base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 108, u"menu item");
   simple_menu_model.SetEnabledAt(/*index*/ 0, true);
 
   // Should return false since the command_id 108 is disabled.
@@ -134,7 +132,7 @@ TEST(SimpleMenuModelTest, IsVisibleAtWithDelegateAndCommandVisible) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
   // CommandId 5 is visible.
-  simple_menu_model.AddItem(/*command_id*/ 5, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item");
   simple_menu_model.SetVisibleAt(/*index*/ 0, true);
 
   // Should return false since the command_id 5 is enabled.
@@ -145,8 +143,7 @@ TEST(SimpleMenuModelTest, IsVisibleAtWithDelegateAndCommandNotVisible) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
   // CommandId 108 is not visible.
-  simple_menu_model.AddItem(/*command_id*/ 108,
-                            base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 108, u"menu item");
   simple_menu_model.SetVisibleAt(/*index*/ 0, true);
 
   // Should return false since the command_id 108 is not visible.
@@ -156,10 +153,8 @@ TEST(SimpleMenuModelTest, IsVisibleAtWithDelegateAndCommandNotVisible) {
 TEST(SimpleMenuModelTest, IsAlertedAtViaDelegate) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
-  simple_menu_model.AddItem(kAlertedCommandId,
-                            base::ASCIIToUTF16("alerted item"));
-  simple_menu_model.AddItem(kAlertedCommandId + 1,
-                            base::ASCIIToUTF16("non-alerted item"));
+  simple_menu_model.AddItem(kAlertedCommandId, u"alerted item");
+  simple_menu_model.AddItem(kAlertedCommandId + 1, u"non-alerted item");
 
   EXPECT_TRUE(simple_menu_model.IsAlertedAt(0));
   EXPECT_FALSE(simple_menu_model.IsAlertedAt(1));
@@ -167,10 +162,8 @@ TEST(SimpleMenuModelTest, IsAlertedAtViaDelegate) {
 
 TEST(SimpleMenuModelTest, SetIsNewFeatureAt) {
   SimpleMenuModel simple_menu_model(nullptr);
-  simple_menu_model.AddItem(/*command_id*/ 5,
-                            base::ASCIIToUTF16("menu item 0"));
-  simple_menu_model.AddItem(/*command_id*/ 6,
-                            base::ASCIIToUTF16("menu item 1"));
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item 0");
+  simple_menu_model.AddItem(/*command_id*/ 6, u"menu item 1");
 
   simple_menu_model.SetIsNewFeatureAt(/*index*/ 0, false);
   simple_menu_model.SetIsNewFeatureAt(/*index*/ 1, true);
@@ -179,13 +172,25 @@ TEST(SimpleMenuModelTest, SetIsNewFeatureAt) {
   ASSERT_TRUE(simple_menu_model.IsNewFeatureAt(1));
 }
 
+TEST(SimpleMenuModelTest, SetElementIdentifierAt) {
+  SimpleMenuModel simple_menu_model(nullptr);
+  simple_menu_model.AddItem(/*command_id*/ 5, u"menu item 0");
+  simple_menu_model.AddItem(/*command_id*/ 6, u"menu item 1");
+
+  simple_menu_model.SetElementIdentifierAt(/*index*/ 1, kTestElementID);
+
+  EXPECT_EQ(ui::ElementIdentifier(),
+            simple_menu_model.GetElementIdentifierAt(0));
+  EXPECT_EQ(kTestElementID, simple_menu_model.GetElementIdentifierAt(1));
+}
+
 TEST(SimpleMenuModelTest, HasIconsViaDelegate) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
-  simple_menu_model.AddItem(/*command_id*/ 10, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 10, u"menu item");
   EXPECT_FALSE(simple_menu_model.HasIcons());
 
-  simple_menu_model.AddItem(/*command_id*/ 11, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 11, u"menu item");
   delegate.set_icon_on_item(11);
   EXPECT_TRUE(simple_menu_model.HasIcons());
 }
@@ -193,11 +198,11 @@ TEST(SimpleMenuModelTest, HasIconsViaDelegate) {
 TEST(SimpleMenuModelTest, HasIconsViaAddItem) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
-  simple_menu_model.AddItem(/*command_id*/ 10, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 10, u"menu item");
   EXPECT_FALSE(simple_menu_model.HasIcons());
 
   simple_menu_model.AddItemWithIcon(
-      /*command_id*/ 11, base::ASCIIToUTF16("menu item"),
+      /*command_id*/ 11, u"menu item",
       ui::ImageModel::FromImage(gfx::test::CreateImage(16, 16)));
   EXPECT_TRUE(simple_menu_model.HasIcons());
 }
@@ -205,7 +210,7 @@ TEST(SimpleMenuModelTest, HasIconsViaAddItem) {
 TEST(SimpleMenuModelTest, HasIconsViaVectorIcon) {
   DelegateBase delegate;
   SimpleMenuModel simple_menu_model(&delegate);
-  simple_menu_model.AddItem(/*command_id*/ 10, base::ASCIIToUTF16("menu item"));
+  simple_menu_model.AddItem(/*command_id*/ 10, u"menu item");
   EXPECT_FALSE(simple_menu_model.HasIcons());
 
   gfx::PathElement path[] = {gfx::CommandType::CIRCLE, 24, 18, 5};
@@ -213,9 +218,26 @@ TEST(SimpleMenuModelTest, HasIconsViaVectorIcon) {
   gfx::VectorIcon circle_icon = {rep, 1, "circle"};
 
   simple_menu_model.AddItemWithIcon(
-      /*command_id*/ 11, base::ASCIIToUTF16("menu item"),
-      ui::ImageModel::FromVectorIcon(circle_icon));
+      /*command_id*/ 11, u"menu item",
+      ui::ImageModel::FromVectorIcon(circle_icon, ui::kColorMenuIcon, 16));
   EXPECT_TRUE(simple_menu_model.HasIcons());
+}
+
+TEST(SimpleMenuModelTest, InheritsSubMenuAlert) {
+  DelegateBase delegate;
+  SimpleMenuModel submenu_model(&delegate);
+  submenu_model.AddItem(kAlertedCommandId + 1, u"menu item");
+
+  // The alerted menu item is not present in the submenu.
+  SimpleMenuModel parent_menu_model(&delegate);
+  parent_menu_model.AddSubMenu(/*command_id*/ 10, u"submenu", &submenu_model);
+  EXPECT_FALSE(parent_menu_model.IsAlertedAt(0));
+
+  // Add the alerted menu item to the submenu. Now both the submenu item and
+  // the item in the submenu should show as alerted.
+  submenu_model.AddItem(kAlertedCommandId, u"alerted item");
+  EXPECT_TRUE(submenu_model.IsAlertedAt(1));
+  EXPECT_TRUE(parent_menu_model.IsAlertedAt(0));
 }
 
 }  // namespace

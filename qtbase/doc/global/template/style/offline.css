@@ -89,13 +89,15 @@ offline viewing: HTML links display an icon
 -----------
 */
 
-a[href*="http://"], a[href*="ftp://"], a[href*="https://"] {
-    text-decoration: none;
-    background-image: url(../images/ico_out.png);
-    background-repeat: no-repeat;
-    background-position: left;
-    padding-left: 20px;
-    text-align: left;
+a[href*="http://"]::before,
+a[href*="ftp://"]::before,
+a[href*="https://"]::before {
+    content: url(../images/ico_out.png);
+    padding-right: 5px;
+}
+
+.video a {
+    background: none;
 }
 
 .flags {
@@ -145,7 +147,7 @@ Top navigation
     display: block;
     position: relative;
     text-align: right;
-    top: -47px;
+    top: -30px;
     float: right;
     height: 20px;
     z-index: 1;
@@ -524,11 +526,27 @@ ol.a > li{
     list-style-type: lower-alpha;
 }
 
- ol > li {
+ol > li {
      margin-left: 30px;
      padding-left: 8px;
-     list-style: decimal;
- }
+     list-style-type: decimal;
+}
+
+ol.A > li {
+    list-style-type: upper-alpha;
+}
+
+ol.a > li {
+    list-style-type: lower-alpha;
+}
+
+ol.i > li {
+    list-style-type: lower-roman;
+}
+
+ol.I > li {
+    list-style-type: upper-roman;
+}
 
 .centerAlign {
     text-align: left
@@ -556,6 +574,20 @@ ol.a > li{
     padding: 3px 15px 3px 0
 }
 
+span.status.technical-preview {
+    display: inline-block;
+    position: relative;
+    background: center/contain no-repeat url(tech_preview.svg);
+    width: 26px;
+    height: 23px;
+}
+
+td.memItemRight span.status {
+    margin-top: -10px;
+    right: -10px;
+    top: 6px;
+}
+
 .qml {
     display: block;
     margin: 10px;
@@ -563,13 +595,7 @@ ol.a > li{
     padding: 20px 20px 20px 20px;
 }
 
-.qmldefault {
-    padding-left: 5px;
-    float: right;
-    color: red;
-}
-
-.qmlreadonly {
+.qmlextra {
     padding-left: 5px;
     float: right;
     color: #254117;
@@ -773,10 +799,6 @@ div.multi-column div {
   display:table
 }
 
-.mainContent .video > .vspan {
-  padding-top:60%;
-  display:block
-}
 .mainContent .video iframe {
   width:100%;
   height:100%;

@@ -1,30 +1,32 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/renderer_host/mixed_content_navigation_throttle.h"
 
+#include <vector>
+
+#include "base/containers/contains.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/stl_util.h"
+#include "content/browser/preloading/prerender/prerender_final_status.h"
+#include "content/browser/preloading/prerender/prerender_metrics.h"
 #include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/navigation_request.h"
 #include "content/browser/renderer_host/render_frame_host_delegate.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
-#include "content/common/frame_messages.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/common/content_client.h"
-#include "content/public/common/navigation_policy.h"
-#include "content/public/common/origin_util.h"
 #include "net/base/url_util.h"
-#include "third_party/blink/public/common/loader/network_utils.h"
+#include "services/network/public/cpp/is_potentially_trustworthy.h"
 #include "third_party/blink/public/common/security_context/insecure_request_policy.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom.h"
+#include "third_party/blink/public/mojom/frame/frame.mojom.h"
+#include "third_party/blink/public/mojom/loader/mixed_content.mojom.h"
 #include "third_party/blink/public/mojom/security_context/insecure_request_policy.mojom.h"
-
 #include "url/gurl.h"
 #include "url/origin.h"
 #include "url/url_constants.h"
@@ -34,7 +36,6 @@ namespace content {
 
 namespace {
 
-// Should return the same value as SchemeRegistry::shouldTreatURLSchemeAsSecure.
 bool IsSecureScheme(const std::string& scheme) {
   return base::Contains(url::GetSecureSchemes(), scheme);
 }
@@ -48,18 +49,14 @@ bool ShouldTreatURLSchemeAsCorsEnabled(const GURL& url) {
 // Should return the same value as the resource URL checks assigned to
 // |isAllowed| made inside MixedContentChecker::isMixedContent.
 bool IsUrlPotentiallySecure(const GURL& url) {
-  // blob: and filesystem: URLs never hit the network, and access is restricted
-  // to same-origin contexts, so they are not blocked.
-  return url.SchemeIs(url::kBlobScheme) ||
-         url.SchemeIs(url::kFileSystemScheme) ||
-         blink::network_utils::IsOriginSecure(url) ||
-         IsPotentiallyTrustworthyOrigin(url::Origin::Create(url));
+  return network::IsUrlPotentiallyTrustworthy(url);
 }
 
 // This method should return the same results as
 // SchemeRegistry::shouldTreatURLSchemeAsRestrictingMixedContent.
 bool DoesOriginSchemeRestrictMixedContent(const url::Origin& origin) {
-  return origin.scheme() == url::kHttpsScheme;
+  return origin.GetTupleOrPrecursorTupleIfOpaque().scheme() ==
+         url::kHttpsScheme;
 }
 
 void UpdateRendererOnMixedContentFound(NavigationRequest* navigation_request,
@@ -70,22 +67,17 @@ void UpdateRendererOnMixedContentFound(NavigationRequest* navigation_request,
   // mixed content for now. Once/if the browser should also check form submits
   // for mixed content than this will be allowed to happen and this DCHECK
   // should be updated.
-  DCHECK(navigation_request->frame_tree_node()->parent());
-  RenderFrameHost* rfh =
-      navigation_request->frame_tree_node()->current_frame_host();
-  FrameMsg_MixedContentFound_Params params;
-  params.main_resource_url = mixed_content_url;
-  params.mixed_content_url = navigation_request->GetURL();
-  params.request_context_type = navigation_request->request_context_type();
-  params.request_destination = navigation_request->request_destination();
-  params.was_allowed = was_allowed;
-  DCHECK(!navigation_request->GetRedirectChain().empty());
-  params.url_before_redirects = navigation_request->GetRedirectChain()[0];
-  params.had_redirect = for_redirect;
-  params.source_location =
-      *(navigation_request->common_params().source_location.get());
+  DCHECK(!navigation_request->IsInOutermostMainFrame());
 
-  rfh->Send(new FrameMsg_MixedContentFound(rfh->GetRoutingID(), params));
+  RenderFrameHostImpl* rfh =
+      navigation_request->frame_tree_node()->current_frame_host();
+  DCHECK(!navigation_request->GetRedirectChain().empty());
+  GURL url_before_redirects = navigation_request->GetRedirectChain()[0];
+  rfh->GetAssociatedLocalFrame()->MixedContentFound(
+      mixed_content_url, navigation_request->GetURL(),
+      navigation_request->request_context_type(), was_allowed,
+      url_before_redirects, for_redirect,
+      navigation_request->common_params().source_location.Clone());
 }
 
 }  // namespace
@@ -113,16 +105,16 @@ NavigationThrottle::ThrottleCheckResult
 MixedContentNavigationThrottle::WillRedirectRequest() {
   // Upon redirects the same checks are to be executed as for requests.
   bool should_block = ShouldBlockNavigation(true);
-  return should_block ? CANCEL : PROCEED;
+  if (!should_block) {
+    MaybeHandleCertificateError();
+    return PROCEED;
+  }
+  return CANCEL;
 }
 
 NavigationThrottle::ThrottleCheckResult
 MixedContentNavigationThrottle::WillProcessResponse() {
-  // TODO(carlosk): At this point we are about to process the request response.
-  // So if we ever need to, here/now it is a good moment to check for the final
-  // attained security level of the connection. For instance, does it use an
-  // outdated protocol? The implementation should be based off
-  // MixedContentChecker::handleCertificateError. See https://crbug.com/576270.
+  MaybeHandleCertificateError();
   return PROCEED;
 }
 
@@ -152,17 +144,22 @@ bool MixedContentNavigationThrottle::ShouldBlockNavigation(bool for_redirect) {
   // If we're in strict mode, we'll automagically fail everything, and
   // intentionally skip the client/embedder checks in order to prevent degrading
   // the site's security UI.
+  // TODO(crbug.com/1312424): Instead of checking node->IsInFencedFrameTree()
+  // set insecure_request_policy to block mixed content requests in a
+  // fenced frame tree and change InWhichFrameIsContentMixed to not cross
+  // the frame tree boundary.
   bool block_all_mixed_content =
-      (mixed_content_frame->frame_tree_node()
-           ->current_replication_state()
-           .insecure_request_policy &
-       blink::mojom::InsecureRequestPolicy::kBlockAllMixedContent) !=
-      blink::mojom::InsecureRequestPolicy::kLeaveInsecureRequestsAlone;
+      ((mixed_content_frame->frame_tree_node()
+            ->current_replication_state()
+            .insecure_request_policy &
+        blink::mojom::InsecureRequestPolicy::kBlockAllMixedContent) !=
+       blink::mojom::InsecureRequestPolicy::kLeaveInsecureRequestsAlone) ||
+      node->IsInFencedFrameTree();
   const auto& prefs = mixed_content_frame->GetOrCreateWebPreferences();
   bool strict_mode =
       prefs.strict_mixed_content_checking || block_all_mixed_content;
 
-  blink::WebMixedContentContextType mixed_context_type =
+  blink::mojom::MixedContentContextType mixed_context_type =
       request->mixed_content_context_type();
 
   // Do not treat non-webby schemes as mixed content when loaded in subframes.
@@ -186,19 +183,27 @@ bool MixedContentNavigationThrottle::ShouldBlockNavigation(bool for_redirect) {
     return false;
   }
 
+  // Cancel the prerendering page to prevent the problems that can be the
+  // logging UMA, UKM and calling DidChangeVisibleSecurityState() through this
+  // throttle.
+  if (mixed_content_frame->CancelPrerendering(
+          PrerenderCancellationReason(PrerenderFinalStatus::kMixedContent))) {
+    return true;
+  }
+
   bool allowed = false;
   RenderFrameHostDelegate* frame_host_delegate =
       node->current_frame_host()->delegate();
   switch (mixed_context_type) {
-    case blink::WebMixedContentContextType::kOptionallyBlockable:
+    case blink::mojom::MixedContentContextType::kOptionallyBlockable:
       allowed = !strict_mode;
       if (allowed) {
         frame_host_delegate->PassiveInsecureContentFound(request->GetURL());
-        frame_host_delegate->DidDisplayInsecureContent();
+        node->frame_tree().controller().ssl_manager()->DidDisplayMixedContent();
       }
       break;
 
-    case blink::WebMixedContentContextType::kBlockable: {
+    case blink::mojom::MixedContentContextType::kBlockable: {
       // Note: from the renderer side implementation it seems like we don't need
       // to care about reporting
       // blink::UseCounter::BlockableMixedContentInSubframeBlocked because it is
@@ -215,21 +220,21 @@ bool MixedContentNavigationThrottle::ShouldBlockNavigation(bool for_redirect) {
       if (allowed) {
         const GURL& origin_url =
             mixed_content_frame->GetLastCommittedOrigin().GetURL();
-        frame_host_delegate->DidRunInsecureContent(origin_url,
-                                                   request->GetURL());
+        mixed_content_frame->OnDidRunInsecureContent(origin_url,
+                                                     request->GetURL());
         mixed_content_features_.insert(
             blink::mojom::WebFeature::kMixedContentBlockableAllowed);
       }
       break;
     }
 
-    case blink::WebMixedContentContextType::kShouldBeBlockable:
+    case blink::mojom::MixedContentContextType::kShouldBeBlockable:
       allowed = !strict_mode;
       if (allowed)
-        frame_host_delegate->DidDisplayInsecureContent();
+        node->frame_tree().controller().ssl_manager()->DidDisplayMixedContent();
       break;
 
-    case blink::WebMixedContentContextType::kNotMixedContent:
+    case blink::mojom::MixedContentContextType::kNotMixedContent:
       NOTREACHED();
       break;
   };
@@ -247,10 +252,11 @@ bool MixedContentNavigationThrottle::ShouldBlockNavigation(bool for_redirect) {
 RenderFrameHostImpl* MixedContentNavigationThrottle::InWhichFrameIsContentMixed(
     FrameTreeNode* node,
     const GURL& url) {
-  // Main frame navigations cannot be mixed content.
+  // Main frame navigations cannot be mixed content. But, fenced frame
+  // navigations should be considered as well because it can be mixed content.
   // TODO(carlosk): except for form submissions which might be supported in the
   // future.
-  if (node->IsMainFrame())
+  if (!node->GetParentOrOuterDocument())
     return nullptr;
 
   // There's no mixed content if any of these are true:
@@ -261,8 +267,9 @@ RenderFrameHostImpl* MixedContentNavigationThrottle::InWhichFrameIsContentMixed(
   // exist, here they are partially fulfilled here  and partially replaced by
   // DoesOriginSchemeRestrictMixedContent.
   RenderFrameHostImpl* mixed_content_frame = nullptr;
-  RenderFrameHostImpl* root = node->parent()->GetMainFrame();
-  RenderFrameHostImpl* parent = node->parent();
+  RenderFrameHostImpl* parent = node->GetParentOrOuterDocument();
+  RenderFrameHostImpl* root = parent->GetOutermostMainFrame();
+
   if (!IsUrlPotentiallySecure(url)) {
     // TODO(carlosk): we might need to check more than just the immediate parent
     // and the root. See https://crbug.com/623486.
@@ -291,7 +298,7 @@ RenderFrameHostImpl* MixedContentNavigationThrottle::InWhichFrameIsContentMixed(
           blink::mojom::WebFeature::
               kMixedContentInNonHTTPSFrameThatRestrictsMixedContent);
     }
-  } else if (!blink::network_utils::IsOriginSecure(url) &&
+  } else if (!network::IsUrlPotentiallyTrustworthy(url) &&
              (IsSecureScheme(root->GetLastCommittedOrigin().scheme()) ||
               IsSecureScheme(parent->GetLastCommittedOrigin().scheme()))) {
     mixed_content_features_.insert(
@@ -315,13 +322,13 @@ void MixedContentNavigationThrottle::MaybeSendBlinkFeatureUsageReport() {
 // Based off of MixedContentChecker::count.
 void MixedContentNavigationThrottle::ReportBasicMixedContentFeatures(
     blink::mojom::RequestContextType request_context_type,
-    blink::WebMixedContentContextType mixed_content_context_type) {
+    blink::mojom::MixedContentContextType mixed_content_context_type) {
   mixed_content_features_.insert(
       blink::mojom::WebFeature::kMixedContentPresent);
 
   // Report any blockable content.
   if (mixed_content_context_type ==
-      blink::WebMixedContentContextType::kBlockable) {
+      blink::mojom::MixedContentContextType::kBlockable) {
     mixed_content_features_.insert(
         blink::mojom::WebFeature::kMixedContentBlockable);
     return;
@@ -347,11 +354,33 @@ void MixedContentNavigationThrottle::ReportBasicMixedContentFeatures(
     case blink::mojom::RequestContextType::VIDEO:
     default:
       NOTREACHED() << "RequestContextType has value " << request_context_type
-                   << " and has WebMixedContentContextType of "
-                   << static_cast<int>(mixed_content_context_type);
+                   << " and has MixedContentContextType of "
+                   << mixed_content_context_type;
       return;
   }
   mixed_content_features_.insert(feature);
+}
+
+void MixedContentNavigationThrottle::MaybeHandleCertificateError() {
+  // The outermost main frame certificate errors are handled separately in
+  // SSLManager.
+  if (navigation_handle()->IsInOutermostMainFrame()) {
+    return;
+  }
+
+  // If there was no SSL info, then it was not an HTTPS resource load, and we
+  // can ignore it.
+  if (!navigation_handle()->GetSSLInfo()) {
+    return;
+  }
+
+  if (!net::IsCertStatusError(navigation_handle()->GetSSLInfo()->cert_status)) {
+    return;
+  }
+
+  NavigationRequest* request = NavigationRequest::From(navigation_handle());
+  RenderFrameHostImpl* rfh = request->frame_tree_node()->current_frame_host();
+  rfh->OnDidRunContentWithCertificateErrors();
 }
 
 // static

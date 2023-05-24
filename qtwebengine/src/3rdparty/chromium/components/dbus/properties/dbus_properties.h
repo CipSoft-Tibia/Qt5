@@ -1,15 +1,14 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_DBUS_PROPERTIES_DBUS_PROPERTIES_H_
 #define COMPONENTS_DBUS_PROPERTIES_DBUS_PROPERTIES_H_
 
-#include "base/callback_forward.h"
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/stl_util.h"
 #include "components/dbus/properties/types.h"
 #include "dbus/bus.h"
 #include "dbus/exported_object.h"
@@ -23,6 +22,10 @@ class COMPONENT_EXPORT(DBUS) DbusProperties {
   // not be removed until the bus is shut down.
   DbusProperties(dbus::ExportedObject* exported_object,
                  InitializedCallback callback);
+
+  DbusProperties(const DbusProperties&) = delete;
+  DbusProperties& operator=(const DbusProperties&) = delete;
+
   ~DbusProperties();
 
   void RegisterInterface(const std::string& interface);
@@ -36,7 +39,7 @@ class COMPONENT_EXPORT(DBUS) DbusProperties {
     auto interface_it = properties_.find(interface);
     DCHECK(interface_it != properties_.end());
     auto property_it = interface_it->second.find(name);
-    DbusVariant new_value = MakeDbusVariant(std::move(value));
+    DbusVariant new_value = MakeDbusVariant(std::forward<T>(value));
     const bool send_signal =
         emit_signal && (property_it == interface_it->second.end() ||
                         property_it->second != new_value);
@@ -69,7 +72,7 @@ class COMPONENT_EXPORT(DBUS) DbusProperties {
 
   bool initialized_ = false;
 
-  dbus::ExportedObject* exported_object_ = nullptr;
+  raw_ptr<dbus::ExportedObject, DanglingUntriaged> exported_object_ = nullptr;
 
   base::RepeatingCallback<void(bool)> barrier_;
 
@@ -78,8 +81,6 @@ class COMPONENT_EXPORT(DBUS) DbusProperties {
   std::map<std::string, std::map<std::string, DbusVariant>> properties_;
 
   base::WeakPtrFactory<DbusProperties> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(DbusProperties);
 };
 
 #endif  // COMPONENTS_DBUS_PROPERTIES_DBUS_PROPERTIES_H_

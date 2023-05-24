@@ -1,0 +1,39 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+syntax = "proto3";
+
+//! [0]
+package qtgrpc.examples.chat;
+
+message ChatMessage {
+    enum ContentType {
+        Unknown = 0;
+        Text = 1;
+        Image = 2;
+    };
+    uint64 timestamp = 1;
+    bytes content = 2;
+    ContentType type = 3;
+    string from = 4;
+}
+
+message ChatMessages {
+    repeated ChatMessage messages = 1;
+}
+
+message User {
+    string name = 1;
+    string password = 2;
+}
+
+message Users {
+    repeated User users = 1;
+}
+
+message None {}
+
+service SimpleChat {
+    rpc messageList(None) returns (stream ChatMessages) {}
+    rpc sendMessage(ChatMessage) returns (None) {}
+}
+//! [0]

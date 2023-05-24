@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
 #
 #  Use of this source code is governed by a BSD-style license
@@ -6,7 +6,6 @@
 #  tree. An additional intellectual property rights grant can be found
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
-
 """Run the tests with
 
       python rtp_analyzer_test.py
@@ -14,6 +13,8 @@ or
       python3 rtp_analyzer_test.py
 """
 
+from __future__ import absolute_import
+from __future__ import print_function
 import collections
 import unittest
 
@@ -56,6 +57,6 @@ class TestDelay(unittest.TestCase):
 
 if __name__ == "__main__":
   if MISSING_NUMPY:
-    print "Missing numpy, skipping test."
+    print("Missing numpy, skipping test.")
   else:
     unittest.main()

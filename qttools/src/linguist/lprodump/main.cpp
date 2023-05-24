@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <profileevaluator.h>
 #include <profileutils.h>
@@ -38,7 +13,8 @@
 #include <QtCore/QDirIterator>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
-#include <QtCore/QRegExp>
+#include <QtCore/QLibraryInfo>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 
@@ -47,6 +23,8 @@
 #include <QtCore/QJsonObject>
 
 #include <iostream>
+
+using namespace Qt::StringLiterals;
 
 static void printOut(const QString &out)
 {
@@ -79,34 +57,32 @@ void setValue(QJsonObject &obj, const char *key, T value)
     obj[QLatin1String(key)] = toJsonValue(value);
 }
 
-class LD {
-    Q_DECLARE_TR_FUNCTIONS(LProDump)
-};
-
 static void printUsage()
 {
-    printOut(LD::tr(
-        "Usage:\n"
-        "    lprodump [options] project-file...\n"
-        "lprodump is part of Qt's Linguist tool chain. It extracts information\n"
-        "from qmake projects to a .json file. This file can be passed to\n"
-        "lupdate/lrelease using the -project option.\n\n"
-        "Options:\n"
-        "    -help  Display this information and exit.\n"
-        "    -silent\n"
-        "           Do not explain what is being done.\n"
-        "    -pro <filename>\n"
-        "           Name of a .pro file. Useful for files with .pro file syntax but\n"
-        "           different file suffix. Projects are recursed into and merged.\n"
-        "    -pro-out <directory>\n"
-        "           Virtual output directory for processing subsequent .pro files.\n"
-        "    -pro-debug\n"
-        "           Trace processing .pro files. Specify twice for more verbosity.\n"
-        "    -out <filename>\n"
-        "           Name of the output file.\n"
-        "    -version\n"
-        "           Display the version of lprodump and exit.\n"
-    ));
+    printOut(uR"(Usage:
+    lprodump [options] project-file...
+lprodump is part of Qt's Linguist tool chain. It extracts information
+from qmake projects to a .json file. This file can be passed to
+lupdate/lrelease using the -project option.
+
+Options:
+    -help  Display this information and exit.
+    -silent
+           Do not explain what is being done.
+    -pro <filename>
+           Name of a .pro file. Useful for files with .pro file syntax but
+           different file suffix. Projects are recursed into and merged.
+    -pro-out <directory>
+           Virtual output directory for processing subsequent .pro files.
+    -pro-debug
+           Trace processing .pro files. Specify twice for more verbosity.
+    -out <filename>
+           Name of the output file.
+    -translations-variables <variable_1>[,<variable_2>,...]
+           Comma-separated list of QMake variables containing .ts files.
+    -version
+           Display the version of lprodump and exit.
+)"_s);
 }
 
 static void print(const QString &fileName, int lineNo, const QString &msg)
@@ -121,13 +97,13 @@ static void print(const QString &fileName, int lineNo, const QString &msg)
 
 class EvalHandler : public QMakeHandler {
 public:
-    virtual void message(int type, const QString &msg, const QString &fileName, int lineNo)
+    void message(int type, const QString &msg, const QString &fileName, int lineNo) override
     {
         if (verbose && !(type & CumulativeEvalMessage) && (type & CategoryMask) == ErrorMessage)
             print(fileName, lineNo, msg);
     }
 
-    virtual void fileMessage(int type, const QString &msg)
+    void fileMessage(int type, const QString &msg) override
     {
         if (verbose && !(type & CumulativeEvalMessage) && (type & CategoryMask) == ErrorMessage) {
             // "Downgrade" errors, as we don't really care for them
@@ -135,20 +111,13 @@ public:
         }
     }
 
-    virtual void aboutToEval(ProFile *, ProFile *, EvalFileType) {}
-    virtual void doneWithEval(ProFile *) {}
+    void aboutToEval(ProFile *, ProFile *, EvalFileType) override {}
+    void doneWithEval(ProFile *) override {}
 
     bool verbose = true;
 };
 
 static EvalHandler evalHandler;
-
-static bool isSupportedExtension(const QString &ext)
-{
-    return ext == QLatin1String("qml")
-        || ext == QLatin1String("js") || ext == QLatin1String("qs")
-        || ext == QLatin1String("ui") || ext == QLatin1String("jui");
-}
 
 static QStringList getResources(const QString &resourceFile, QMakeVfs *vfs)
 {
@@ -159,12 +128,12 @@ static QStringList getResources(const QString &resourceFile, QMakeVfs *vfs)
     QString errStr;
     if (vfs->readFile(vfs->idForFileName(resourceFile, QMakeVfs::VfsCumulative),
                       &content, &errStr) != QMakeVfs::ReadOk) {
-        printErr(LD::tr("lprodump error: Cannot read %1: %2\n").arg(resourceFile, errStr));
+        printErr(QStringLiteral("lprodump error: Cannot read %1: %2\n").arg(resourceFile, errStr));
         return QStringList();
     }
     const ReadQrcResult rqr = readQrcFile(resourceFile, content);
     if (rqr.hasError()) {
-        printErr(LD::tr("lprodump error: %1:%2: %3\n")
+        printErr(QStringLiteral("lprodump error: %1:%2: %3\n")
                  .arg(resourceFile, QString::number(rqr.line), rqr.errorString));
     }
     return rqr.files;
@@ -195,16 +164,16 @@ static QStringList getSources(const ProFileEvaluator &visitor, const QString &pr
 
     sourceFiles += getSources("FORMS", "VPATH_FORMS", baseVPaths, projectDir, visitor);
 
-    QStringList resourceFiles = getSources("RESOURCES", "VPATH_RESOURCES", baseVPaths, projectDir, visitor);
-    foreach (const QString &resource, resourceFiles)
+    const QStringList resourceFiles = getSources("RESOURCES", "VPATH_RESOURCES", baseVPaths, projectDir, visitor);
+    for (const QString &resource : resourceFiles)
         sourceFiles += getResources(resource, vfs);
 
     QStringList installs = visitor.values(QLatin1String("INSTALLS"))
                          + visitor.values(QLatin1String("DEPLOYMENT"));
     installs.removeDuplicates();
     QDir baseDir(projectDir);
-    foreach (const QString inst, installs) {
-        foreach (const QString &file, visitor.values(inst + QLatin1String(".files"))) {
+    for (const QString &inst : std::as_const(installs)) {
+        for (const QString &file : visitor.values(inst + QLatin1String(".files"))) {
             QFileInfo info(file);
             if (!info.isAbsolute())
                 info.setFile(baseDir.absoluteFilePath(file));
@@ -233,11 +202,11 @@ static QStringList getSources(const ProFileEvaluator &visitor, const QString &pr
     sourceFiles.removeDuplicates();
     sourceFiles.sort();
 
-    foreach (const QString &ex, excludes) {
+    for (const QString &ex : excludes) {
         // TODO: take advantage of the file list being sorted
-        QRegExp rx(ex, Qt::CaseSensitive, QRegExp::Wildcard);
-        for (QStringList::Iterator it = sourceFiles.begin(); it != sourceFiles.end(); ) {
-            if (rx.exactMatch(*it))
+        QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(ex));
+        for (auto it = sourceFiles.begin(); it != sourceFiles.end(); ) {
+            if (rx.match(*it).hasMatch())
                 it = sourceFiles.erase(it);
             else
                 ++it;
@@ -260,10 +229,10 @@ QStringList getExcludes(const ProFileEvaluator &visitor, const QString &projectD
 
 static void excludeProjects(const ProFileEvaluator &visitor, QStringList *subProjects)
 {
-    foreach (const QString &ex, visitor.values(QLatin1String("TR_EXCLUDE"))) {
-        QRegExp rx(ex, Qt::CaseSensitive, QRegExp::Wildcard);
-        for (QStringList::Iterator it = subProjects->begin(); it != subProjects->end(); ) {
-            if (rx.exactMatch(*it))
+    for (const QString &ex : visitor.values(QLatin1String("TR_EXCLUDE"))) {
+        QRegularExpression rx(QRegularExpression::wildcardToRegularExpression(ex));
+        for (auto it = subProjects->begin(); it != subProjects->end(); ) {
+            if (rx.match(*it).hasMatch())
                 it = subProjects->erase(it);
             else
                 ++it;
@@ -272,11 +241,13 @@ static void excludeProjects(const ProFileEvaluator &visitor, QStringList *subPro
 }
 
 static QJsonArray processProjects(bool topLevel, const QStringList &proFiles,
+        const QStringList &translationsVariables,
         const QHash<QString, QString> &outDirMap,
         ProFileGlobals *option, QMakeVfs *vfs, QMakeParser *parser,
         bool *fail);
 
-static QJsonObject processProject(const QString &proFile, ProFileGlobals *option, QMakeVfs *vfs,
+static QJsonObject processProject(const QString &proFile, const QStringList &translationsVariables,
+                                  ProFileGlobals *option, QMakeVfs *vfs,
                                   QMakeParser *parser, ProFileEvaluator &visitor)
 {
     QJsonObject result;
@@ -289,7 +260,7 @@ static QJsonObject processProject(const QString &proFile, ProFileGlobals *option
         excludeProjects(visitor, &subProjects);
         QStringList subProFiles;
         QDir proDir(proPath);
-        foreach (const QString &subdir, subProjects) {
+        for (const QString &subdir : std::as_const(subProjects)) {
             QString realdir = visitor.value(subdir + QLatin1String(".subdir"));
             if (realdir.isEmpty())
                 realdir = visitor.value(subdir + QLatin1String(".file"));
@@ -304,7 +275,7 @@ static QJsonObject processProject(const QString &proFile, ProFileGlobals *option
                 subProFiles << subPro;
             }
         }
-        QJsonArray subResults = processProjects(false, subProFiles,
+        QJsonArray subResults = processProjects(false, subProFiles, translationsVariables,
                                                 QHash<QString, QString>(), option, vfs, parser,
                                                 nullptr);
         if (!subResults.isEmpty())
@@ -321,11 +292,12 @@ static QJsonObject processProject(const QString &proFile, ProFileGlobals *option
 }
 
 static QJsonArray processProjects(bool topLevel, const QStringList &proFiles,
+        const QStringList &translationsVariables,
         const QHash<QString, QString> &outDirMap,
         ProFileGlobals *option, QMakeVfs *vfs, QMakeParser *parser, bool *fail)
 {
     QJsonArray result;
-    foreach (const QString &proFile, proFiles) {
+    for (const QString &proFile : proFiles) {
         if (!outDirMap.isEmpty())
             option->setDirectories(QFileInfo(proFile).path(), outDirMap[proFile]);
 
@@ -346,15 +318,24 @@ static QJsonArray processProjects(bool topLevel, const QStringList &proFiles,
             continue;
         }
 
-        QJsonObject prj = processProject(proFile, option, vfs, parser, visitor);
+        QJsonObject prj = processProject(proFile, translationsVariables, option, vfs, parser,
+                                         visitor);
         setValue(prj, "projectFile", proFile);
-        if (visitor.contains(QLatin1String("TRANSLATIONS"))) {
-            QStringList tsFiles;
+        QStringList tsFiles;
+        for (const QString &varName : translationsVariables) {
+            if (!visitor.contains(varName))
+                continue;
             QDir proDir(QFileInfo(proFile).path());
-            const QStringList translations = visitor.values(QLatin1String("TRANSLATIONS"));
+            const QStringList translations = visitor.values(varName);
             for (const QString &tsFile : translations)
                 tsFiles << proDir.filePath(tsFile);
+        }
+        if (!tsFiles.isEmpty())
             setValue(prj, "translations", tsFiles);
+        if (visitor.contains(QLatin1String("LUPDATE_COMPILE_COMMANDS_PATH"))) {
+            const QStringList thepathjson = visitor.values(
+                QLatin1String("LUPDATE_COMPILE_COMMANDS_PATH"));
+            setValue(prj, "compileCommands", thepathjson.value(0));
         }
         result.append(prj);
         pro->deref();
@@ -367,6 +348,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     QStringList args = app.arguments();
     QStringList proFiles;
+    QStringList translationsVariables = { u"TRANSLATIONS"_s };
     QString outDir = QDir::currentPath();
     QHash<QString, QString> outDirMap;
     QString outputFilePath;
@@ -382,7 +364,7 @@ int main(int argc, char **argv)
         } else if (arg == QLatin1String("-out")) {
             ++i;
             if (i == argc) {
-                printErr(LD::tr("The option -out requires a parameter.\n"));
+                printErr(u"The option -out requires a parameter.\n"_s);
                 return 1;
             }
             outputFilePath = args[i];
@@ -391,12 +373,12 @@ int main(int argc, char **argv)
         } else if (arg == QLatin1String("-pro-debug")) {
             proDebug++;
         } else if (arg == QLatin1String("-version")) {
-            printOut(LD::tr("lprodump version %1\n").arg(QLatin1String(QT_VERSION_STR)));
+            printOut(QStringLiteral("lprodump version %1\n").arg(QLatin1String(QT_VERSION_STR)));
             return 0;
         } else if (arg == QLatin1String("-pro")) {
             ++i;
             if (i == argc) {
-                printErr(LD::tr("The -pro option should be followed by a filename of .pro file.\n"));
+                printErr(QStringLiteral("The -pro option should be followed by a filename of .pro file.\n"));
                 return 1;
             }
             QString file = QDir::cleanPath(QFileInfo(args[i]).absoluteFilePath());
@@ -405,21 +387,29 @@ int main(int argc, char **argv)
         } else if (arg == QLatin1String("-pro-out")) {
             ++i;
             if (i == argc) {
-                printErr(LD::tr("The -pro-out option should be followed by a directory name.\n"));
+                printErr(QStringLiteral("The -pro-out option should be followed by a directory name.\n"));
                 return 1;
             }
             outDir = QDir::cleanPath(QFileInfo(args[i]).absoluteFilePath());
+        } else if (arg == u"-translations-variables"_s) {
+            ++i;
+            if (i == argc) {
+                printErr(u"The -translations-variables option must be followed by a "_s
+                         u"comma-separated list of variable names.\n"_s);
+                return 1;
+            }
+            translationsVariables = args.at(i).split(QLatin1Char(','));
         } else if (arg.startsWith(QLatin1String("-")) && arg != QLatin1String("-")) {
-            printErr(LD::tr("Unrecognized option '%1'.\n").arg(arg));
+            printErr(QStringLiteral("Unrecognized option '%1'.\n").arg(arg));
             return 1;
         } else {
             QFileInfo fi(arg);
             if (!fi.exists()) {
-                printErr(LD::tr("lprodump error: File '%1' does not exist.\n").arg(arg));
+                printErr(QStringLiteral("lprodump error: File '%1' does not exist.\n").arg(arg));
                 return 1;
             }
             if (!isProOrPriFile(arg)) {
-                printErr(LD::tr("lprodump error: '%1' is neither a .pro nor a .pri file.\n")
+                printErr(QStringLiteral("lprodump error: '%1' is neither a .pro nor a .pri file.\n")
                          .arg(arg));
                 return 1;
             }
@@ -437,8 +427,10 @@ int main(int argc, char **argv)
     bool fail = false;
     ProFileGlobals option;
     option.qmake_abslocation = QString::fromLocal8Bit(qgetenv("QMAKE"));
-    if (option.qmake_abslocation.isEmpty())
-        option.qmake_abslocation = app.applicationDirPath() + QLatin1String("/qmake");
+    if (option.qmake_abslocation.isEmpty()) {
+        option.qmake_abslocation = QLibraryInfo::path(QLibraryInfo::BinariesPath)
+            + QLatin1String("/qmake");
+    }
     option.debugLevel = proDebug;
     option.initProperties();
     option.setCommandLineArguments(QDir::currentPath(),
@@ -446,8 +438,8 @@ int main(int argc, char **argv)
     QMakeVfs vfs;
     QMakeParser parser(0, &vfs, &evalHandler);
 
-    QJsonArray results = processProjects(true, proFiles, outDirMap, &option, &vfs,
-                                         &parser, &fail);
+    QJsonArray results = processProjects(true, proFiles, translationsVariables, outDirMap, &option,
+                                         &vfs, &parser, &fail);
     if (fail)
         return 1;
 
@@ -457,7 +449,7 @@ int main(int argc, char **argv)
     } else {
         QFile f(outputFilePath);
         if (!f.open(QIODevice::WriteOnly)) {
-            printErr(LD::tr("lprodump error: Cannot open %1 for writing.\n").arg(outputFilePath));
+            printErr(QStringLiteral("lprodump error: Cannot open %1 for writing.\n").arg(outputFilePath));
             return 1;
         }
         f.write(output);

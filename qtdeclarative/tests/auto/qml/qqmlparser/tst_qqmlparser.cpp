@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <private/qqmljsengine_p.h>
 #include <private/qqmljsparser_p.h>
@@ -32,12 +7,13 @@
 #include <private/qqmljsastvisitor_p.h>
 #include <private/qqmljsast_p.h>
 
-#include "../../shared/util.h"
-#include "../../shared/qqmljsastdumper.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <QtQmlDom/private/qqmldomastdumper_p.h>
 
 #include <qtest.h>
 #include <QDir>
 #include <QDebug>
+#include <QRegularExpression>
 #include <cstdlib>
 
 class tst_qqmlparser : public QQmlDataTest
@@ -47,18 +23,20 @@ public:
     tst_qqmlparser();
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 #if !defined(QTEST_CROSS_COMPILED) // sources not available when cross compiled
     void qmlParser_data();
     void qmlParser();
 #endif
     void invalidEscapeSequence();
     void stringLiteral();
+    void codeLocationsWithContinuationStringLiteral();
+    void codeLocationsWithContinuationStringLiteral_data();
     void noSubstitutionTemplateLiteral();
     void templateLiteral();
     void leadingSemicolonInClass();
     void templatedReadonlyProperty();
-    void qmlImportInJSRequiresFullVersion();
+    void qmlImportInJS();
     void typeAnnotations_data();
     void typeAnnotations();
     void disallowedTypeAnnotations_data();
@@ -68,6 +46,8 @@ private slots:
     void typeAssertion();
     void annotations_data();
     void annotations();
+    void invalidImportVersion_data();
+    void invalidImportVersion();
 
 private:
     QStringList excludedDirs;
@@ -89,7 +69,7 @@ public:
         AST::Node::accept(node, this);
     }
 
-    void checkNode(AST::Node *node)
+    virtual void checkNode(AST::Node *node)
     {
         if (! nodeStack.isEmpty()) {
             AST::Node *parent = nodeStack.last();
@@ -108,14 +88,14 @@ public:
         }
     }
 
-    virtual bool preVisit(AST::Node *node)
+    bool preVisit(AST::Node *node) override
     {
         checkNode(node);
         nodeStack.append(node);
         return true;
     }
 
-    virtual void postVisit(AST::Node *)
+    void postVisit(AST::Node *) override
     {
         nodeStack.removeLast();
     }
@@ -135,7 +115,7 @@ struct TypeAnnotationObserver: public AST::Visitor
         AST::Node::accept(node, this);
     }
 
-    virtual bool visit(AST::TypeAnnotation *)
+    bool visit(AST::TypeAnnotation *) override
     {
         typeAnnotationSeen = true;
         return true;
@@ -157,7 +137,7 @@ struct ExpressionStatementObserver: public AST::Visitor
         AST::Node::accept(node, this);
     }
 
-    virtual bool visit(AST::ExpressionStatement *statement)
+    bool visit(AST::ExpressionStatement *statement) override
     {
         ++expressionsSeen;
         endsWithSemicolon = endsWithSemicolon
@@ -171,9 +151,71 @@ struct ExpressionStatementObserver: public AST::Visitor
     }
 };
 
+class CheckLocations : public Check
+{
+public:
+    CheckLocations(const QString &code)
+    {
+        m_codeStr = code;
+        m_code = code.split('\u000A');
+    }
+
+    void checkNode(AST::Node *node) override
+    {
+        SourceLocation first = node->firstSourceLocation();
+        SourceLocation last = node->lastSourceLocation();
+        int startLine = first.startLine - 1;
+        int endLine = last.startLine - 1;
+        QVERIFY(startLine >= 0 && startLine < m_code.size());
+        QVERIFY(endLine >= 0 && endLine < m_code.size());
+        const int length = last.offset + last.length - first.offset;
+        QString expected = m_code.join('\n').mid(first.offset, length);
+        int startColumn = first.startColumn - 1;
+        QString found;
+        while (startLine < endLine) {
+            found.append(m_code.at(startLine).mid(startColumn)).append('\n');
+            ++startLine;
+            startColumn = 0;
+        }
+        found.append(m_code.at(endLine).mid(startColumn,
+                                            last.startColumn + last.length - startColumn - 1));
+        ++startLine;
+        // handle possible continuation strings correctly
+        while (found.size() != length && startLine < m_code.size()) {
+            const QString line = m_code.at(startLine);
+            found.append('\n');
+            if (length - found.size() > line.size())
+                found.append(line);
+            else
+                found.append(line.left(length - found.size()));
+            ++startLine;
+        }
+        QCOMPARE(expected, found);
+        SourceLocation combined(first.offset, last.end() - first.begin(),
+                                first.startLine, first.startColumn);
+        SourceLocation cStart = combined.startZeroLengthLocation();
+        SourceLocation cEnd = combined.endZeroLengthLocation(m_codeStr);
+        QCOMPARE(cStart.begin(), first.begin());
+        QCOMPARE(cStart.end(), first.begin());
+        QCOMPARE(cStart.startLine, first.startLine);
+        QCOMPARE(cStart.startColumn, first.startColumn);
+        QCOMPARE(cEnd.begin(), last.end());
+        QCOMPARE(cEnd.end(), last.end());
+        QCOMPARE(cEnd.startLine, uint(startLine));
+        int lastNewline = found.lastIndexOf(QLatin1Char('\n'));
+        if (lastNewline < 0)
+            lastNewline = -int(combined.startColumn);
+        QCOMPARE(cEnd.startColumn, found.size() - lastNewline);
+    }
+private:
+    QString m_codeStr;
+    QStringList m_code;
+};
+
 }
 
 tst_qqmlparser::tst_qqmlparser()
+    : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
 }
 
@@ -193,7 +235,7 @@ void tst_qqmlparser::initTestCase()
 
 QStringList tst_qqmlparser::findFiles(const QDir &d)
 {
-    for (int ii = 0; ii < excludedDirs.count(); ++ii) {
+    for (int ii = 0; ii < excludedDirs.size(); ++ii) {
         QString s = excludedDirs.at(ii);
         if (d.absolutePath().endsWith(s))
             return QStringList();
@@ -285,7 +327,7 @@ void tst_qqmlparser::stringLiteral()
 
     Engine engine;
     Lexer lexer(&engine);
-    QLatin1String code("'hello string'");
+    QString code("'hello string'");
     lexer.setCode(code , 1);
     Parser parser(&engine);
     QVERIFY(parser.parseExpression());
@@ -293,9 +335,125 @@ void tst_qqmlparser::stringLiteral()
     QVERIFY(expression);
     auto *literal = QQmlJS::AST::cast<QQmlJS::AST::StringLiteral *>(expression);
     QVERIFY(literal);
-    QCOMPARE(literal->value, "hello string");
+    QCOMPARE(literal->value, u"hello string");
     QCOMPARE(literal->firstSourceLocation().begin(), 0u);
     QCOMPARE(literal->lastSourceLocation().end(), quint32(code.size()));
+
+    // test for correct handling escape sequences inside strings
+    QLatin1String leftCode("'hello\\n\\tstring'");
+    QLatin1String plusCode(" + ");
+    QLatin1String rightCode("'\\nbye'");
+    code = leftCode + plusCode + rightCode;
+    lexer.setCode(code , 1);
+    QVERIFY(parser.parseExpression());
+
+    expression = parser.expression();
+    QVERIFY(expression);
+    auto *binaryExpression = QQmlJS::AST::cast<QQmlJS::AST::BinaryExpression *>(expression);
+    QVERIFY(binaryExpression);
+
+    literal = QQmlJS::AST::cast<QQmlJS::AST::StringLiteral *>(binaryExpression->left);
+    QVERIFY(literal);
+    QCOMPARE(literal->value, u"hello\n\tstring");
+    QCOMPARE(literal->firstSourceLocation().begin(), 0u);
+    QCOMPARE(literal->firstSourceLocation().startLine, 1u);
+    QCOMPARE(literal->lastSourceLocation().end(), quint32(leftCode.size()));
+
+    QVERIFY(binaryExpression->right);
+    literal = QQmlJS::AST::cast<QQmlJS::AST::StringLiteral *>(binaryExpression->right);
+    QVERIFY(literal);
+    QCOMPARE(literal->value, u"\nbye");
+    quint32 offset = quint32(leftCode.size() + plusCode.size());
+    QCOMPARE(literal->firstSourceLocation().begin(), offset);
+    QCOMPARE(literal->firstSourceLocation().startLine, 1u);
+    QCOMPARE(literal->lastSourceLocation().end(), quint32(code.size()));
+
+    leftCode = QLatin1String("'\u000Ahello\u000Abye'");
+    code = leftCode + plusCode + rightCode;
+    lexer.setCode(code, 1);
+    QVERIFY(parser.parseExpression());
+    expression = parser.expression();
+    QVERIFY(expression);
+
+    binaryExpression = QQmlJS::AST::cast<QQmlJS::AST::BinaryExpression *>(expression);
+    QVERIFY(binaryExpression);
+
+    literal = QQmlJS::AST::cast<QQmlJS::AST::StringLiteral *>(binaryExpression->left);
+    QVERIFY(literal);
+    QCOMPARE(literal->value, u"\nhello\nbye");
+    QCOMPARE(literal->firstSourceLocation().begin(), 0u);
+    QCOMPARE(literal->firstSourceLocation().startLine, 1u);
+    QCOMPARE(literal->lastSourceLocation().end(), leftCode.size());
+
+    literal = QQmlJS::AST::cast<QQmlJS::AST::StringLiteral *>(binaryExpression->right);
+    QVERIFY(literal);
+    QCOMPARE(literal->value, u"\nbye");
+    offset = quint32(leftCode.size() + plusCode.size());
+    QCOMPARE(literal->firstSourceLocation().begin(), offset);
+    QCOMPARE(literal->lastSourceLocation().startLine, 3u);
+    QCOMPARE(literal->lastSourceLocation().end(), code.size());
+
+}
+
+void tst_qqmlparser::codeLocationsWithContinuationStringLiteral()
+{
+    using namespace QQmlJS;
+    QFETCH(QString, code);
+    Engine engine;
+    Lexer lexer(&engine);
+    lexer.setCode(code, 1);
+    Parser parser(&engine);
+    QVERIFY(parser.parse());
+
+    check::CheckLocations chk(code);
+    chk(parser.rootNode());
+}
+
+void tst_qqmlparser::codeLocationsWithContinuationStringLiteral_data()
+{
+    QTest::addColumn<QString>("code");
+    QString code("A {\u000A"
+                 "    property string dummy: \"this\u000A"
+                 "                             may break lexer\"\u000A"
+                 "    B { }\u000A"
+                 "}");
+    QTest::newRow("withTextBeforeLF") << code;
+    code = QString("A {\u000A"
+                   "    property string dummy: \"\u000A"
+                   "                             may break lexer\"\u000A"
+                   "    B { }\u000A"
+                   "}");
+    QTest::newRow("withoutTextBeforeLF") << code;
+    code = QString("A {\u000A"
+                   "    property string dummy: \"this\\\u000A"
+                   "                             may break lexer\"\u000A"
+                   "    B { }\u000A"
+                   "}");
+    QTest::newRow("withTextBeforeEscapedLF") << code;
+    code = QString("A {\u000A"
+                   "    property string dummy: \"th\\\"is\u000A"
+                   "                             may break lexer\"\u000A"
+                   "    B { }\u000A"
+                   "}");
+    QTest::newRow("withTextBeforeWithEscapeSequence") << code;
+    code = QString("A {\u000A"
+                   "    property string first: \"\u000A"
+                   "                             first\"\u000A"
+                   "    property string dummy: \"th\\\"is\u000A"
+                   "                             may break lexer\"\u000A"
+                   "    B { }\u000A"
+                   "}");
+    QTest::newRow("withTextBeforeLFwithEscapeSequenceCombined") << code;
+    // reference data
+    code = QString("A {\u000A"
+                   "    B {\u000A"
+                   "        property int dummy: 1\u000A"
+                   "    }\u000A"
+                   "    C {\u000A"
+                   "        D { }\u000A"
+                   "    }\u000A"
+                   "}");
+    QTest::newRow("noStringLiteralAtAll") << code;
 }
 
 void tst_qqmlparser::noSubstitutionTemplateLiteral()
@@ -314,7 +472,7 @@ void tst_qqmlparser::noSubstitutionTemplateLiteral()
     auto *literal = QQmlJS::AST::cast<QQmlJS::AST::TemplateLiteral *>(expression);
     QVERIFY(literal);
 
-    QCOMPARE(literal->value, "hello template");
+    QCOMPARE(literal->value, u"hello template");
     QCOMPARE(literal->firstSourceLocation().begin(), 0u);
     QCOMPARE(literal->lastSourceLocation().end(), quint32(code.size()));
 }
@@ -358,37 +516,28 @@ void tst_qqmlparser::templatedReadonlyProperty()
     QVERIFY(parser.parse());
 }
 
-void tst_qqmlparser::qmlImportInJSRequiresFullVersion()
+void tst_qqmlparser::qmlImportInJS()
 {
     {
         QQmlJS::Engine engine;
         QQmlJS::Lexer lexer(&engine);
         lexer.setCode(QLatin1String(".import Test 1.0 as T"), 0, false);
         QQmlJS::Parser parser(&engine);
-        bool b = parser.parseProgram();
-        qDebug() << parser.errorMessage();
-        QVERIFY(b);
+        QVERIFY(parser.parseProgram());
     }
     {
         QQmlJS::Engine engine;
         QQmlJS::Lexer lexer(&engine);
         lexer.setCode(QLatin1String(".import Test 1 as T"), 0, false);
         QQmlJS::Parser parser(&engine);
-        QVERIFY(!parser.parseProgram());
-    }
-    {
-        QQmlJS::Engine engine;
-        QQmlJS::Lexer lexer(&engine);
-        lexer.setCode(QLatin1String(".import Test 1 as T"), 0, false);
-        QQmlJS::Parser parser(&engine);
-        QVERIFY(!parser.parseProgram());
+        QVERIFY(parser.parseProgram());
     }
     {
         QQmlJS::Engine engine;
         QQmlJS::Lexer lexer(&engine);
         lexer.setCode(QLatin1String(".import Test as T"), 0, false);
         QQmlJS::Parser parser(&engine);
-        QVERIFY(!parser.parseProgram());
+        QVERIFY(parser.parseProgram());
     }
 }
 
@@ -401,7 +550,7 @@ void tst_qqmlparser::typeAnnotations_data()
     QStringList files;
     files << findFiles(QDir(tests));
 
-    for (const QString &file: qAsConst(files))
+    for (const QString &file: std::as_const(files))
         QTest::newRow(qPrintable(file)) << file;
 }
 
@@ -441,7 +590,7 @@ void tst_qqmlparser::disallowedTypeAnnotations_data()
     QStringList files;
     files << findFiles(QDir(tests));
 
-    for (const QString &file: qAsConst(files))
+    for (const QString &file: std::as_const(files))
         QTest::newRow(qPrintable(file)) << file;
 }
 
@@ -489,28 +638,20 @@ void tst_qqmlparser::typeAssertion_data()
     QTest::addColumn<QString>("expression");
     QTest::addRow("as A")
             << QString::fromLatin1("A { onStuff: (b as A).happen() }");
-    QTest::addRow("as double paren")
-            << QString::fromLatin1("A { onStuff: console.log((12 as double)); }");
-    QTest::addRow("as double noparen")
-            << QString::fromLatin1("A { onStuff: console.log(12 as double); }");
-    QTest::addRow("property as double")
-            << QString::fromLatin1("A { prop: (12 as double); }");
-    QTest::addRow("property noparen as double")
-            << QString::fromLatin1("A { prop: 12 as double; }");
 
-    // rabbits cannot be discerned from types on a syntactical level.
-    // We could detect this on a semantical level, once we implement type assertions there.
+    // Rabbits cannot be discerned from types on a syntactical level.
+    // (rabbits would instead cause an error, as they are lower case)
 
-    QTest::addRow("as rabbit")
-            << QString::fromLatin1("A { onStuff: (b as rabbit).happen() }");
-    QTest::addRow("as rabbit paren")
-            << QString::fromLatin1("A { onStuff: console.log((12 as rabbit)); }");
-    QTest::addRow("as rabbit noparen")
-            << QString::fromLatin1("A { onStuff: console.log(12 as rabbit); }");
-    QTest::addRow("property as rabbit")
-            << QString::fromLatin1("A { prop: (12 as rabbit); }");
-    QTest::addRow("property noparen as rabbit")
-            << QString::fromLatin1("A { prop: 12 as rabbit; }");
+    QTest::addRow("as Rabbit")
+            << QString::fromLatin1("A { onStuff: (b as Rabbit).happen() }");
+    QTest::addRow("as Rabbit paren")
+            << QString::fromLatin1("A { onStuff: console.log((12 as Rabbit)); }");
+    QTest::addRow("as Rabbit noparen")
+            << QString::fromLatin1("A { onStuff: console.log(12 as Rabbit); }");
+    QTest::addRow("property as Rabbit")
+            << QString::fromLatin1("A { prop: (12 as Rabbit); }");
+    QTest::addRow("property noparen as Rabbit")
+            << QString::fromLatin1("A { prop: 12 as Rabbit; }");
 }
 
 void tst_qqmlparser::typeAssertion()
@@ -538,9 +679,9 @@ void tst_qqmlparser::annotations_data()
     QStringList refFiles;
     refFiles << findFiles(QDir(compare));
 
-    for (const QString &file: qAsConst(files)) {
+    for (const QString &file: std::as_const(files)) {
         auto fileNameStart = file.lastIndexOf(QDir::separator());
-        QStringRef fileName(&file, fileNameStart, file.length()-fileNameStart);
+        auto fileName = QStringView(file).mid(fileNameStart, file.size()-fileNameStart);
         auto ref=std::find_if(refFiles.constBegin(),refFiles.constEnd(), [fileName](const QString &s){ return s.endsWith(fileName); });
         if (ref != refFiles.constEnd())
             QTest::newRow(qPrintable(file)) << file << *ref;
@@ -581,8 +722,51 @@ void tst_qqmlparser::annotations()
         Parser parser2(&engine2);
         QVERIFY(parser2.parse());
 
-        QCOMPARE(AstDumper::diff(parser.ast(), parser2.rootNode(), 3, DumperOptions::NoAnnotations | DumperOptions::NoLocations), QString());
+        using namespace QQmlJS::Dom;
+        QString diff = astNodeDiff(parser.ast(), parser2.rootNode(), 3, AstDumperOption::NoAnnotations | AstDumperOption::NoLocations);
+        QVERIFY2(diff.isEmpty(), qPrintable(diff));
     }
+}
+
+void tst_qqmlparser::invalidImportVersion_data()
+{
+    QTest::addColumn<QString>("expression");
+
+    const QStringList segments = {
+        "0", "255", "500", "3030303030303030303030303"
+    };
+
+    for (const QString &major : segments) {
+        if (major != "0") {
+            QTest::addRow("%s", qPrintable(major))
+                    << QString::fromLatin1("import Foo %1").arg(major);
+        }
+
+        for (const QString &minor : segments) {
+            if (major == "0" && minor == "0")
+                continue;
+
+            QTest::addRow("%s.%s", qPrintable(major), qPrintable(minor))
+                    << QString::fromLatin1("import Foo %1.%2").arg(major).arg(minor);
+        }
+    }
+
+
+}
+
+void tst_qqmlparser::invalidImportVersion()
+{
+    QFETCH(QString, expression);
+
+    QQmlJS::Engine engine;
+    QQmlJS::Lexer lexer(&engine);
+    lexer.setCode(expression, 1);
+    QQmlJS::Parser parser(&engine);
+    QVERIFY(!parser.parse());
+
+    QRegularExpression regexp(
+                "^Invalid (major )?version. Version numbers must be >= 0 and < 255\\.$");
+    QVERIFY(regexp.match(parser.errorMessage()).hasMatch());
 }
 
 QTEST_MAIN(tst_qqmlparser)

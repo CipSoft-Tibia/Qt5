@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,20 +18,27 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 
+#include <memory>
+#include <vector>
+
+#include "base/containers/adapters.h"
+#include "base/containers/contains.h"
+
 #if defined(ANDROID)
 // Work-around for buggy headers in Android's NDK
 #define __user
 #endif
 #include <linux/futex.h>
 
-#include "base/bind.h"
 #include "base/check.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/system/sys_info.h"
 #include "base/threading/thread.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
 #include "sandbox/linux/bpf_dsl/bpf_dsl.h"
 #include "sandbox/linux/bpf_dsl/errorcode.h"
 #include "sandbox/linux/bpf_dsl/linux_syscall_ranges.h"
@@ -57,8 +64,6 @@
 #define PR_CAPBSET_READ 23
 #define PR_CAPBSET_DROP 24
 #endif
-
-#define CASES SANDBOX_BPF_DSL_CASES
 
 namespace sandbox {
 namespace bpf_dsl {
@@ -96,7 +101,11 @@ class VerboseAPITestingPolicy : public Policy {
  public:
   explicit VerboseAPITestingPolicy(int* counter_ptr)
       : counter_ptr_(counter_ptr) {}
-  ~VerboseAPITestingPolicy() override {}
+
+  VerboseAPITestingPolicy(const VerboseAPITestingPolicy&) = delete;
+  VerboseAPITestingPolicy& operator=(const VerboseAPITestingPolicy&) = delete;
+
+  ~VerboseAPITestingPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -107,9 +116,7 @@ class VerboseAPITestingPolicy : public Policy {
   }
 
  private:
-  int* counter_ptr_;
-
-  DISALLOW_COPY_AND_ASSIGN(VerboseAPITestingPolicy);
+  const raw_ptr<int> counter_ptr_;
 };
 
 SANDBOX_TEST(SandboxBPF, DISABLE_ON_TSAN(VerboseAPITesting)) {
@@ -130,8 +137,12 @@ SANDBOX_TEST(SandboxBPF, DISABLE_ON_TSAN(VerboseAPITesting)) {
 
 class DenylistNanosleepPolicy : public Policy {
  public:
-  DenylistNanosleepPolicy() {}
-  ~DenylistNanosleepPolicy() override {}
+  DenylistNanosleepPolicy() = default;
+
+  DenylistNanosleepPolicy(const DenylistNanosleepPolicy&) = delete;
+  DenylistNanosleepPolicy& operator=(const DenylistNanosleepPolicy&) = delete;
+
+  ~DenylistNanosleepPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -149,9 +160,6 @@ class DenylistNanosleepPolicy : public Policy {
     BPF_ASSERT_EQ(-1, HANDLE_EINTR(syscall(__NR_nanosleep, &ts, NULL)));
     BPF_ASSERT_EQ(EACCES, errno);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(DenylistNanosleepPolicy);
 };
 
 BPF_TEST_C(SandboxBPF, ApplyBasicDenylistPolicy, DenylistNanosleepPolicy) {
@@ -178,7 +186,12 @@ bool IsSyscallForTestHarness(int sysno) {
   // ASan and MSan don't need any of these for normal operation, but they
   // require at least mmap & munmap to print a report if an error is detected.
   // ASan requires sigaltstack.
-  if (sysno == kMMapNr || sysno == __NR_munmap || sysno == __NR_pipe ||
+  if (sysno == kMMapNr || sysno == __NR_munmap ||
+#if !defined(__aarch64__)
+      sysno == __NR_pipe ||
+#else
+      sysno == __NR_pipe2 ||
+#endif
       sysno == __NR_sigaltstack) {
     return true;
   }
@@ -190,8 +203,12 @@ bool IsSyscallForTestHarness(int sysno) {
 
 class AllowlistGetpidPolicy : public Policy {
  public:
-  AllowlistGetpidPolicy() {}
-  ~AllowlistGetpidPolicy() override {}
+  AllowlistGetpidPolicy() = default;
+
+  AllowlistGetpidPolicy(const AllowlistGetpidPolicy&) = delete;
+  AllowlistGetpidPolicy& operator=(const AllowlistGetpidPolicy&) = delete;
+
+  ~AllowlistGetpidPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -200,9 +217,6 @@ class AllowlistGetpidPolicy : public Policy {
     }
     return Error(ENOMEM);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(AllowlistGetpidPolicy);
 };
 
 BPF_TEST_C(SandboxBPF, ApplyBasicAllowlistPolicy, AllowlistGetpidPolicy) {
@@ -227,7 +241,12 @@ intptr_t EnomemHandler(const struct arch_seccomp_data& args, void* aux) {
 class DenylistNanosleepTrapPolicy : public Policy {
  public:
   explicit DenylistNanosleepTrapPolicy(int* aux) : aux_(aux) {}
-  ~DenylistNanosleepTrapPolicy() override {}
+
+  DenylistNanosleepTrapPolicy(const DenylistNanosleepTrapPolicy&) = delete;
+  DenylistNanosleepTrapPolicy& operator=(const DenylistNanosleepTrapPolicy&) =
+      delete;
+
+  ~DenylistNanosleepTrapPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -240,9 +259,7 @@ class DenylistNanosleepTrapPolicy : public Policy {
   }
 
  private:
-  int* aux_;
-
-  DISALLOW_COPY_AND_ASSIGN(DenylistNanosleepTrapPolicy);
+  const raw_ptr<int> aux_;
 };
 
 BPF_TEST(SandboxBPF,
@@ -268,13 +285,14 @@ BPF_TEST(SandboxBPF,
 
 class ErrnoTestPolicy : public Policy {
  public:
-  ErrnoTestPolicy() {}
-  ~ErrnoTestPolicy() override {}
+  ErrnoTestPolicy() = default;
+
+  ErrnoTestPolicy(const ErrnoTestPolicy&) = delete;
+  ErrnoTestPolicy& operator=(const ErrnoTestPolicy&) = delete;
+
+  ~ErrnoTestPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ErrnoTestPolicy);
 };
 
 ResultExpr ErrnoTestPolicy::EvaluateSyscall(int sysno) const {
@@ -350,8 +368,12 @@ BPF_TEST_C(SandboxBPF, ErrnoTest, ErrnoTestPolicy) {
 
 class StackingPolicyPartOne : public Policy {
  public:
-  StackingPolicyPartOne() {}
-  ~StackingPolicyPartOne() override {}
+  StackingPolicyPartOne() = default;
+
+  StackingPolicyPartOne(const StackingPolicyPartOne&) = delete;
+  StackingPolicyPartOne& operator=(const StackingPolicyPartOne&) = delete;
+
+  ~StackingPolicyPartOne() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -364,15 +386,16 @@ class StackingPolicyPartOne : public Policy {
         return Allow();
     }
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(StackingPolicyPartOne);
 };
 
 class StackingPolicyPartTwo : public Policy {
  public:
-  StackingPolicyPartTwo() {}
-  ~StackingPolicyPartTwo() override {}
+  StackingPolicyPartTwo() = default;
+
+  StackingPolicyPartTwo(const StackingPolicyPartTwo&) = delete;
+  StackingPolicyPartTwo& operator=(const StackingPolicyPartTwo&) = delete;
+
+  ~StackingPolicyPartTwo() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -385,12 +408,14 @@ class StackingPolicyPartTwo : public Policy {
         return Allow();
     }
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(StackingPolicyPartTwo);
 };
 
-BPF_TEST_C(SandboxBPF, StackingPolicy, StackingPolicyPartOne) {
+// Depending on DCHECK being enabled or not the test may create some output.
+// Therefore explicitly specify the death test to allow some noise.
+BPF_DEATH_TEST_C(SandboxBPF,
+                 StackingPolicy,
+                 DEATH_SUCCESS_ALLOW_NOISE(),
+                 StackingPolicyPartOne) {
   errno = 0;
   BPF_ASSERT(syscall(__NR_getppid, 0) > 0);
   BPF_ASSERT(errno == 0);
@@ -428,8 +453,12 @@ int SysnoToRandomErrno(int sysno) {
 
 class SyntheticPolicy : public Policy {
  public:
-  SyntheticPolicy() {}
-  ~SyntheticPolicy() override {}
+  SyntheticPolicy() = default;
+
+  SyntheticPolicy(const SyntheticPolicy&) = delete;
+  SyntheticPolicy& operator=(const SyntheticPolicy&) = delete;
+
+  ~SyntheticPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -438,9 +467,6 @@ class SyntheticPolicy : public Policy {
     }
     return Error(SysnoToRandomErrno(sysno));
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(SyntheticPolicy);
 };
 
 BPF_TEST_C(SandboxBPF, SyntheticPolicy, SyntheticPolicy) {
@@ -471,15 +497,18 @@ int ArmPrivateSysnoToErrno(int sysno) {
   if (sysno >= static_cast<int>(MIN_PRIVATE_SYSCALL) &&
       sysno <= static_cast<int>(MAX_PRIVATE_SYSCALL)) {
     return (sysno - MIN_PRIVATE_SYSCALL) + 1;
-  } else {
-    return ENOSYS;
   }
+  return ENOSYS;
 }
 
 class ArmPrivatePolicy : public Policy {
  public:
-  ArmPrivatePolicy() {}
-  ~ArmPrivatePolicy() override {}
+  ArmPrivatePolicy() = default;
+
+  ArmPrivatePolicy(const ArmPrivatePolicy&) = delete;
+  ArmPrivatePolicy& operator=(const ArmPrivatePolicy&) = delete;
+
+  ~ArmPrivatePolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -491,9 +520,6 @@ class ArmPrivatePolicy : public Policy {
     }
     return Allow();
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ArmPrivatePolicy);
 };
 
 BPF_TEST_C(SandboxBPF, ArmPrivatePolicy, ArmPrivatePolicy) {
@@ -526,7 +552,11 @@ class GreyListedPolicy : public Policy {
     // Set the global environment for unsafe traps once.
     EnableUnsafeTraps();
   }
-  ~GreyListedPolicy() override {}
+
+  GreyListedPolicy(const GreyListedPolicy&) = delete;
+  GreyListedPolicy& operator=(const GreyListedPolicy&) = delete;
+
+  ~GreyListedPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -534,19 +564,17 @@ class GreyListedPolicy : public Policy {
     // use of UnsafeTrap()
     if (SandboxBPF::IsRequiredForUnsafeTrap(sysno)) {
       return Allow();
-    } else if (sysno == __NR_getpid) {
+    }
+    if (sysno == __NR_getpid) {
       // Disallow getpid()
       return Error(EPERM);
-    } else {
-      // Allow (and count) all other system calls.
-      return UnsafeTrap(CountSyscalls, aux_);
     }
+    // Allow (and count) all other system calls.
+    return UnsafeTrap(CountSyscalls, aux_);
   }
 
  private:
-  int* aux_;
-
-  DISALLOW_COPY_AND_ASSIGN(GreyListedPolicy);
+  const raw_ptr<int> aux_;
 };
 
 BPF_TEST(SandboxBPF, GreyListedPolicy, GreyListedPolicy, int /* (*BPF_AUX) */) {
@@ -584,15 +612,18 @@ intptr_t PrctlHandler(const struct arch_seccomp_data& args, void*) {
     // prctl(PR_CAPBSET_DROP, -1) is never valid. The kernel will always
     // return an error. But our handler allows this call.
     return 0;
-  } else {
-    return SandboxBPF::ForwardSyscall(args);
   }
+  return SandboxBPF::ForwardSyscall(args);
 }
 
 class PrctlPolicy : public Policy {
  public:
-  PrctlPolicy() {}
-  ~PrctlPolicy() override {}
+  PrctlPolicy() = default;
+
+  PrctlPolicy(const PrctlPolicy&) = delete;
+  PrctlPolicy& operator=(const PrctlPolicy&) = delete;
+
+  ~PrctlPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -607,9 +638,6 @@ class PrctlPolicy : public Policy {
     // Allow all other system calls.
     return Allow();
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(PrctlPolicy);
 };
 
 BPF_TEST_C(SandboxBPF, ForwardSyscall, PrctlPolicy) {
@@ -645,13 +673,15 @@ intptr_t AllowRedirectedSyscall(const struct arch_seccomp_data& args, void*) {
 
 class RedirectAllSyscallsPolicy : public Policy {
  public:
-  RedirectAllSyscallsPolicy() {}
-  ~RedirectAllSyscallsPolicy() override {}
+  RedirectAllSyscallsPolicy() = default;
+
+  RedirectAllSyscallsPolicy(const RedirectAllSyscallsPolicy&) = delete;
+  RedirectAllSyscallsPolicy& operator=(const RedirectAllSyscallsPolicy&) =
+      delete;
+
+  ~RedirectAllSyscallsPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(RedirectAllSyscallsPolicy);
 };
 
 ResultExpr RedirectAllSyscallsPolicy::EvaluateSyscall(int sysno) const {
@@ -756,13 +786,14 @@ BPF_TEST_C(SandboxBPF, UnsafeTrapWithErrno, RedirectAllSyscallsPolicy) {
 
 class SimpleCondTestPolicy : public Policy {
  public:
-  SimpleCondTestPolicy() {}
-  ~SimpleCondTestPolicy() override {}
+  SimpleCondTestPolicy() = default;
+
+  SimpleCondTestPolicy(const SimpleCondTestPolicy&) = delete;
+  SimpleCondTestPolicy& operator=(const SimpleCondTestPolicy&) = delete;
+
+  ~SimpleCondTestPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(SimpleCondTestPolicy);
 };
 
 ResultExpr SimpleCondTestPolicy::EvaluateSyscall(int sysno) const {
@@ -776,7 +807,7 @@ ResultExpr SimpleCondTestPolicy::EvaluateSyscall(int sysno) const {
 #if defined(__NR_open)
     case __NR_open:
       flags_argument_position = 1;
-      FALLTHROUGH;
+      [[fallthrough]];
 #endif
     case __NR_openat: {  // open can be a wrapper for openat(2).
       if (sysno == __NR_openat)
@@ -792,7 +823,7 @@ ResultExpr SimpleCondTestPolicy::EvaluateSyscall(int sysno) const {
       // disallow everything else.
       const Arg<int> option(0);
       return Switch(option)
-          .CASES((PR_SET_DUMPABLE, PR_GET_DUMPABLE), Allow())
+          .Cases({PR_SET_DUMPABLE, PR_GET_DUMPABLE}, Allow())
           .Default(Error(ENOMEM));
     }
     default:
@@ -847,13 +878,7 @@ class EqualityStressTest {
     }
   }
 
-  ~EqualityStressTest() {
-    for (std::vector<ArgValue*>::iterator iter = arg_values_.begin();
-         iter != arg_values_.end();
-         ++iter) {
-      DeleteArgValue(*iter);
-    }
-  }
+  ~EqualityStressTest() = default;
 
   ResultExpr Policy(int sysno) {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -863,11 +888,10 @@ class EqualityStressTest {
       // are part of our test data. Every other system call remains
       // allowed.
       return Allow();
-    } else {
-      // ToErrorCode() turns an ArgValue object into an ErrorCode that is
-      // suitable for use by a sandbox policy.
-      return ToErrorCode(arg_values_[sysno]);
     }
+    // ToErrorCode() turns an ArgValue object into an ErrorCode that is
+    // suitable for use by a sandbox policy.
+    return ToErrorCode(arg_values_[sysno].get());
   }
 
   void VerifyFilter() {
@@ -891,16 +915,20 @@ class EqualityStressTest {
   }
 
  private:
+  struct Tests;
   struct ArgValue {
     int argno;  // Argument number to inspect.
-    int size;   // Number of test cases (must be > 0).
-    struct Tests {
-      uint32_t k_value;            // Value to compare syscall arg against.
-      int err;                     // If non-zero, errno value to return.
-      struct ArgValue* arg_value;  // Otherwise, more args needs inspecting.
-    }* tests;
-    int err;                     // If none of the tests passed, this is what
-    struct ArgValue* arg_value;  // we'll return (this is the "else" branch).
+    int err;    // If none of the tests passed, this is what
+                // we'll return (this is the "else" branch).
+    std::vector<Tests> tests;
+    std::unique_ptr<ArgValue> next;
+  };
+
+  struct Tests {
+    uint32_t k_value;  // Value to compare syscall arg against.
+    int err;           // If non-zero, errno value to return.
+                       // Otherwise, more args needs inspecting.
+    std::unique_ptr<ArgValue> arg_value;
   };
 
   bool IsReservedSyscall(int sysno) {
@@ -918,12 +946,14 @@ class EqualityStressTest {
            sysno == __NR_exit_group || sysno == __NR_restart_syscall;
   }
 
-  ArgValue* RandomArgValue(int argno, int args_mask, int remaining_args) {
+  std::unique_ptr<ArgValue> RandomArgValue(int argno,
+                                           int args_mask,
+                                           int remaining_args) {
     // Create a new ArgValue and fill it with random data. We use as bit mask
     // to keep track of the system call parameters that have previously been
     // set; this ensures that we won't accidentally define a contradictory
     // set of equality tests.
-    struct ArgValue* arg_value = new ArgValue();
+    auto arg_value = std::make_unique<ArgValue>();
     args_mask |= 1 << argno;
     arg_value->argno = argno;
 
@@ -939,13 +969,13 @@ class EqualityStressTest {
 
     // Create a couple of different test cases with randomized values that
     // we want to use when comparing system call parameter number "argno".
-    arg_value->size = rand() % fan_out + 1;
-    arg_value->tests = new ArgValue::Tests[arg_value->size];
+    arg_value->tests.resize(rand() % fan_out + 1);
 
     uint32_t k_value = rand();
-    for (int n = 0; n < arg_value->size; ++n) {
+    for (auto& test : arg_value->tests) {
       // Ensure that we have unique values
       k_value += rand() % (RAND_MAX / (kMaxFanOut + 1)) + 1;
+      test.k_value = k_value;
 
       // There are two possible types of nodes. Either this is a leaf node;
       // in that case, we have completed all the equality tests that we
@@ -954,13 +984,12 @@ class EqualityStressTest {
       // expression; in that case, we have to recursively add tests for some
       // of system call parameters that we have not yet included in our
       // tests.
-      arg_value->tests[n].k_value = k_value;
       if (!remaining_args || (rand() & 1)) {
-        arg_value->tests[n].err = (rand() % 1000) + 1;
-        arg_value->tests[n].arg_value = nullptr;
+        test.err = 1 + (rand() % 1000);
+        test.arg_value = nullptr;
       } else {
-        arg_value->tests[n].err = 0;
-        arg_value->tests[n].arg_value =
+        test.err = 0;
+        test.arg_value =
             RandomArgValue(RandomArg(args_mask), args_mask, remaining_args - 1);
       }
     }
@@ -969,10 +998,10 @@ class EqualityStressTest {
     // node, or we can randomly add another couple of tests.
     if (!remaining_args || (rand() & 1)) {
       arg_value->err = (rand() % 1000) + 1;
-      arg_value->arg_value = nullptr;
+      arg_value->next = nullptr;
     } else {
       arg_value->err = 0;
-      arg_value->arg_value =
+      arg_value->next =
           RandomArgValue(RandomArg(args_mask), args_mask, remaining_args - 1);
     }
     // We have now built a new (sub-)tree of ArgValues defining a set of
@@ -994,57 +1023,31 @@ class EqualityStressTest {
     return argno;
   }
 
-  void DeleteArgValue(ArgValue* arg_value) {
-    // Delete an ArgValue and all of its child nodes. This requires
-    // recursively descending into the tree.
-    if (arg_value) {
-      if (arg_value->size) {
-        for (int n = 0; n < arg_value->size; ++n) {
-          if (!arg_value->tests[n].err) {
-            DeleteArgValue(arg_value->tests[n].arg_value);
-          }
-        }
-        delete[] arg_value->tests;
-      }
-      if (!arg_value->err) {
-        DeleteArgValue(arg_value->arg_value);
-      }
-      delete arg_value;
-    }
-  }
-
   ResultExpr ToErrorCode(ArgValue* arg_value) {
     // Compute the ResultExpr that should be returned, if none of our
     // tests succeed (i.e. the system call parameter doesn't match any
     // of the values in arg_value->tests[].k_value).
-    ResultExpr err;
-    if (arg_value->err) {
-      // If this was a leaf node, return the errno value that we expect to
-      // return from the BPF filter program.
-      err = Error(arg_value->err);
-    } else {
-      // If this wasn't a leaf node yet, recursively descend into the rest
-      // of the tree. This will end up adding a few more SandboxBPF::Cond()
-      // tests to our ErrorCode.
-      err = ToErrorCode(arg_value->arg_value);
-    }
+    // If this was a leaf node, return the errno value that we expect to
+    // return from the BPF filter program.
+    // If this wasn't a leaf node yet, recursively descend into the rest
+    // of the tree. This will end up adding a few more SandboxBPF::Cond()
+    // tests to our ErrorCode.
+    ResultExpr err = arg_value->err ? Error(arg_value->err)
+                                    : ToErrorCode(arg_value->next.get());
 
     // Now, iterate over all the test cases that we want to compare against.
     // This builds a chain of SandboxBPF::Cond() tests
     // (aka "if ... elif ... elif ... elif ... fi")
-    for (int n = arg_value->size; n-- > 0;) {
-      ResultExpr matched;
+    for (auto& test : base::Reversed(arg_value->tests)) {
       // Again, we distinguish between leaf nodes and subtrees.
-      if (arg_value->tests[n].err) {
-        matched = Error(arg_value->tests[n].err);
-      } else {
-        matched = ToErrorCode(arg_value->tests[n].arg_value);
-      }
+      ResultExpr matched =
+          test.err ? Error(test.err) : ToErrorCode(test.arg_value.get());
+
       // For now, all of our tests are limited to 32bit.
       // We have separate tests that check the behavior of 32bit vs. 64bit
       // conditional expressions.
       const Arg<uint32_t> arg(arg_value->argno);
-      err = If(arg == arg_value->tests[n].k_value, matched).Else(err);
+      err = If(arg == test.k_value, matched).Else(err);
     }
     return err;
   }
@@ -1054,25 +1057,21 @@ class EqualityStressTest {
     // Iterate over all the k_values in arg_value.tests[] and verify that
     // we see the expected return values from system calls, when we pass
     // the k_value as a parameter in a system call.
-    for (int n = arg_value.size; n-- > 0;) {
-      mismatched += arg_value.tests[n].k_value;
-      args[arg_value.argno] = arg_value.tests[n].k_value;
-      if (arg_value.tests[n].err) {
-        VerifyErrno(sysno, args, arg_value.tests[n].err);
+    for (auto& test : base::Reversed(arg_value.tests)) {
+      mismatched += test.k_value;
+      args[arg_value.argno] = test.k_value;
+      if (test.err) {
+        VerifyErrno(sysno, args, test.err);
       } else {
-        Verify(sysno, args, *arg_value.tests[n].arg_value);
+        Verify(sysno, args, *test.arg_value);
       }
     }
-  // Find a k_value that doesn't match any of the k_values in
-  // arg_value.tests[]. In most cases, the current value of "mismatched"
-  // would fit this requirement. But on the off-chance that it happens
-  // to collide, we double-check.
-  try_again:
-    for (int n = arg_value.size; n-- > 0;) {
-      if (mismatched == arg_value.tests[n].k_value) {
-        ++mismatched;
-        goto try_again;
-      }
+    // Find a k_value that doesn't match any of the k_values in
+    // arg_value.tests[]. In most cases, the current value of "mismatched"
+    // would fit this requirement. But on the off-chance that it happens
+    // to collide, we double-check.
+    while (base::Contains(arg_value.tests, mismatched, &Tests::k_value)) {
+      ++mismatched;
     }
     // Now verify that we see the expected return value from system calls,
     // if we pass a value that doesn't match any of the conditions (i.e. this
@@ -1081,7 +1080,7 @@ class EqualityStressTest {
     if (arg_value.err) {
       VerifyErrno(sysno, args, arg_value.err);
     } else {
-      Verify(sysno, args, *arg_value.arg_value);
+      Verify(sysno, args, *arg_value.next);
     }
     // Reset args[arg_value.argno]. This is not technically needed, but it
     // makes it easier to reason about the correctness of our tests.
@@ -1100,7 +1099,7 @@ class EqualityStressTest {
 
   // Vector of ArgValue trees. These trees define all the possible boolean
   // expressions that we want to turn into a BPF filter program.
-  std::vector<ArgValue*> arg_values_;
+  std::vector<std::unique_ptr<ArgValue>> arg_values_;
 
   // Don't increase these values. We are pushing the limits of the maximum
   // BPF program that the kernel will allow us to load. If the values are
@@ -1117,16 +1116,18 @@ class EqualityStressTest {
 class EqualityStressTestPolicy : public Policy {
  public:
   explicit EqualityStressTestPolicy(EqualityStressTest* aux) : aux_(aux) {}
-  ~EqualityStressTestPolicy() override {}
+
+  EqualityStressTestPolicy(const EqualityStressTestPolicy&) = delete;
+  EqualityStressTestPolicy& operator=(const EqualityStressTestPolicy&) = delete;
+
+  ~EqualityStressTestPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     return aux_->Policy(sysno);
   }
 
  private:
-  EqualityStressTest* aux_;
-
-  DISALLOW_COPY_AND_ASSIGN(EqualityStressTestPolicy);
+  const raw_ptr<EqualityStressTest> aux_;
 };
 
 BPF_TEST(SandboxBPF,
@@ -1138,13 +1139,15 @@ BPF_TEST(SandboxBPF,
 
 class EqualityArgumentWidthPolicy : public Policy {
  public:
-  EqualityArgumentWidthPolicy() {}
-  ~EqualityArgumentWidthPolicy() override {}
+  EqualityArgumentWidthPolicy() = default;
+
+  EqualityArgumentWidthPolicy(const EqualityArgumentWidthPolicy&) = delete;
+  EqualityArgumentWidthPolicy& operator=(const EqualityArgumentWidthPolicy&) =
+      delete;
+
+  ~EqualityArgumentWidthPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(EqualityArgumentWidthPolicy);
 };
 
 ResultExpr EqualityArgumentWidthPolicy::EvaluateSyscall(int sysno) const {
@@ -1191,8 +1194,14 @@ BPF_DEATH_TEST_C(SandboxBPF,
 
 class EqualityWithNegativeArgumentsPolicy : public Policy {
  public:
-  EqualityWithNegativeArgumentsPolicy() {}
-  ~EqualityWithNegativeArgumentsPolicy() override {}
+  EqualityWithNegativeArgumentsPolicy() = default;
+
+  EqualityWithNegativeArgumentsPolicy(
+      const EqualityWithNegativeArgumentsPolicy&) = delete;
+  EqualityWithNegativeArgumentsPolicy& operator=(
+      const EqualityWithNegativeArgumentsPolicy&) = delete;
+
+  ~EqualityWithNegativeArgumentsPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -1205,9 +1214,6 @@ class EqualityWithNegativeArgumentsPolicy : public Policy {
     }
     return Allow();
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(EqualityWithNegativeArgumentsPolicy);
 };
 
 BPF_TEST_C(SandboxBPF,
@@ -1232,16 +1238,18 @@ BPF_DEATH_TEST_C(SandboxBPF,
 
 class AllBitTestPolicy : public Policy {
  public:
-  AllBitTestPolicy() {}
-  ~AllBitTestPolicy() override {}
+  AllBitTestPolicy() = default;
+
+  AllBitTestPolicy(const AllBitTestPolicy&) = delete;
+  AllBitTestPolicy& operator=(const AllBitTestPolicy&) = delete;
+
+  ~AllBitTestPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
 
  private:
   static ResultExpr HasAllBits32(uint32_t bits);
   static ResultExpr HasAllBits64(uint64_t bits);
-
-  DISALLOW_COPY_AND_ASSIGN(AllBitTestPolicy);
 };
 
 ResultExpr AllBitTestPolicy::HasAllBits32(uint32_t bits) {
@@ -1418,16 +1426,18 @@ BPF_TEST_C(SandboxBPF, AllBitTests, AllBitTestPolicy) {
 
 class AnyBitTestPolicy : public Policy {
  public:
-  AnyBitTestPolicy() {}
-  ~AnyBitTestPolicy() override {}
+  AnyBitTestPolicy() = default;
+
+  AnyBitTestPolicy(const AnyBitTestPolicy&) = delete;
+  AnyBitTestPolicy& operator=(const AnyBitTestPolicy&) = delete;
+
+  ~AnyBitTestPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
 
  private:
   static ResultExpr HasAnyBits32(uint32_t);
   static ResultExpr HasAnyBits64(uint64_t);
-
-  DISALLOW_COPY_AND_ASSIGN(AnyBitTestPolicy);
 };
 
 ResultExpr AnyBitTestPolicy::HasAnyBits32(uint32_t bits) {
@@ -1582,16 +1592,18 @@ BPF_TEST_C(SandboxBPF, AnyBitTests, AnyBitTestPolicy) {
 
 class MaskedEqualTestPolicy : public Policy {
  public:
-  MaskedEqualTestPolicy() {}
-  ~MaskedEqualTestPolicy() override {}
+  MaskedEqualTestPolicy() = default;
+
+  MaskedEqualTestPolicy(const MaskedEqualTestPolicy&) = delete;
+  MaskedEqualTestPolicy& operator=(const MaskedEqualTestPolicy&) = delete;
+
+  ~MaskedEqualTestPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
 
  private:
   static ResultExpr MaskedEqual32(uint32_t mask, uint32_t value);
   static ResultExpr MaskedEqual64(uint64_t mask, uint64_t value);
-
-  DISALLOW_COPY_AND_ASSIGN(MaskedEqualTestPolicy);
 };
 
 ResultExpr MaskedEqualTestPolicy::MaskedEqual32(uint32_t mask, uint32_t value) {
@@ -1709,13 +1721,14 @@ intptr_t PthreadTrapHandler(const struct arch_seccomp_data& args, void* aux) {
 
 class PthreadPolicyEquality : public Policy {
  public:
-  PthreadPolicyEquality() {}
-  ~PthreadPolicyEquality() override {}
+  PthreadPolicyEquality() = default;
+
+  PthreadPolicyEquality(const PthreadPolicyEquality&) = delete;
+  PthreadPolicyEquality& operator=(const PthreadPolicyEquality&) = delete;
+
+  ~PthreadPolicyEquality() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(PthreadPolicyEquality);
 };
 
 ResultExpr PthreadPolicyEquality::EvaluateSyscall(int sysno) const {
@@ -1743,8 +1756,8 @@ ResultExpr PthreadPolicyEquality::EvaluateSyscall(int sysno) const {
                                            CLONE_SYSVSEM;
     const Arg<unsigned long> flags(0);
     return Switch(flags)
-        .CASES((kGlibcCloneMask, (kBaseAndroidCloneMask | CLONE_DETACHED),
-                kBaseAndroidCloneMask),
+        .Cases({kGlibcCloneMask, (kBaseAndroidCloneMask | CLONE_DETACHED),
+                kBaseAndroidCloneMask},
                Allow())
         .Default(Trap(PthreadTrapHandler, "Unknown mask"));
   }
@@ -1754,16 +1767,18 @@ ResultExpr PthreadPolicyEquality::EvaluateSyscall(int sysno) const {
 
 class PthreadPolicyBitMask : public Policy {
  public:
-  PthreadPolicyBitMask() {}
-  ~PthreadPolicyBitMask() override {}
+  PthreadPolicyBitMask() = default;
+
+  PthreadPolicyBitMask(const PthreadPolicyBitMask&) = delete;
+  PthreadPolicyBitMask& operator=(const PthreadPolicyBitMask&) = delete;
+
+  ~PthreadPolicyBitMask() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override;
 
  private:
   static BoolExpr HasAnyBits(const Arg<unsigned long>& arg, unsigned long bits);
   static BoolExpr HasAllBits(const Arg<unsigned long>& arg, unsigned long bits);
-
-  DISALLOW_COPY_AND_ASSIGN(PthreadPolicyBitMask);
 };
 
 BoolExpr PthreadPolicyBitMask::HasAnyBits(const Arg<unsigned long>& arg,
@@ -1935,15 +1950,16 @@ const uint16_t kTraceData = 0xcc;
 
 class TraceAllPolicy : public Policy {
  public:
-  TraceAllPolicy() {}
-  ~TraceAllPolicy() override {}
+  TraceAllPolicy() = default;
+
+  TraceAllPolicy(const TraceAllPolicy&) = delete;
+  TraceAllPolicy& operator=(const TraceAllPolicy&) = delete;
+
+  ~TraceAllPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int system_call_number) const override {
     return Trace(kTraceData);
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(TraceAllPolicy);
 };
 
 SANDBOX_TEST(SandboxBPF, DISABLE_ON_TSAN(SeccompRetTrace)) {
@@ -2043,7 +2059,7 @@ SANDBOX_TEST(SandboxBPF, DISABLE_ON_TSAN(SeccompRetTrace)) {
 }
 
 // Android does not expose pread64 nor pwrite64.
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 
 bool FullPwrite64(int fd, const char* buffer, size_t count, off64_t offset) {
   while (count > 0) {
@@ -2076,8 +2092,12 @@ bool pread_64_was_forwarded = false;
 
 class TrapPread64Policy : public Policy {
  public:
-  TrapPread64Policy() {}
-  ~TrapPread64Policy() override {}
+  TrapPread64Policy() = default;
+
+  TrapPread64Policy(const TrapPread64Policy&) = delete;
+  TrapPread64Policy& operator=(const TrapPread64Policy&) = delete;
+
+  ~TrapPread64Policy() override = default;
 
   ResultExpr EvaluateSyscall(int system_call_number) const override {
     // Set the global environment for unsafe traps once.
@@ -2099,8 +2119,6 @@ class TrapPread64Policy : public Policy {
 
     return SandboxBPF::ForwardSyscall(args);
   }
-
-  DISALLOW_COPY_AND_ASSIGN(TrapPread64Policy);
 };
 
 // pread(2) takes a 64 bits offset. On 32 bits systems, it will be split
@@ -2122,7 +2140,7 @@ BPF_TEST_C(SandboxBPF, Pread64, TrapPread64Policy) {
   BPF_ASSERT(pread_64_was_forwarded);
 }
 
-#endif  // !defined(OS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 void* TsyncApplyToTwoThreadsFunc(void* cond_ptr) {
   base::WaitableEvent* event = static_cast<base::WaitableEvent*>(cond_ptr);
@@ -2143,7 +2161,7 @@ SANDBOX_TEST(SandboxBPF, Tsync) {
   const bool supports_multi_threaded = SandboxBPF::SupportsSeccompSandbox(
       SandboxBPF::SeccompLevel::MULTI_THREADED);
 // On Chrome OS tsync is mandatory.
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
   if (base::SysInfo::IsRunningOnChromeOS()) {
     BPF_ASSERT_EQ(true, supports_multi_threaded);
   }
@@ -2182,13 +2200,14 @@ SANDBOX_TEST(SandboxBPF, Tsync) {
 
 class AllowAllPolicy : public Policy {
  public:
-  AllowAllPolicy() {}
-  ~AllowAllPolicy() override {}
+  AllowAllPolicy() = default;
+
+  AllowAllPolicy(const AllowAllPolicy&) = delete;
+  AllowAllPolicy& operator=(const AllowAllPolicy&) = delete;
+
+  ~AllowAllPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override { return Allow(); }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(AllowAllPolicy);
 };
 
 SANDBOX_DEATH_TEST(
@@ -2210,8 +2229,12 @@ intptr_t NoOpHandler(const struct arch_seccomp_data& args, void*) {
 
 class UnsafeTrapWithCondPolicy : public Policy {
  public:
-  UnsafeTrapWithCondPolicy() {}
-  ~UnsafeTrapWithCondPolicy() override {}
+  UnsafeTrapWithCondPolicy() = default;
+
+  UnsafeTrapWithCondPolicy(const UnsafeTrapWithCondPolicy&) = delete;
+  UnsafeTrapWithCondPolicy& operator=(const UnsafeTrapWithCondPolicy&) = delete;
+
+  ~UnsafeTrapWithCondPolicy() override = default;
 
   ResultExpr EvaluateSyscall(int sysno) const override {
     DCHECK(SandboxBPF::IsValidSyscallNumber(sysno));
@@ -2244,9 +2267,6 @@ class UnsafeTrapWithCondPolicy : public Policy {
         return Error(EPERM);
     }
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(UnsafeTrapWithCondPolicy);
 };
 
 BPF_TEST_C(SandboxBPF, UnsafeTrapWithCond, UnsafeTrapWithCondPolicy) {

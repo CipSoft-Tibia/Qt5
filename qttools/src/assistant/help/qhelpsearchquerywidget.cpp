@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpsearchquerywidget.h"
 
@@ -78,7 +42,7 @@ private:
 
         QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override
         {
-            if (!index.isValid() || index.row() >= termList.count()||
+            if (!index.isValid() || index.row() >= termList.size()||
                 (role != Qt::EditRole && role != Qt::DisplayRole))
                 return QVariant();
             return termList.at(index.row());
@@ -136,7 +100,7 @@ private:
         // Otherwise, the respective button would be disabled.
         Q_ASSERT(m_queries.curQuery != maxOrMinIndex);
 
-        m_queries.curQuery = qBound(0, m_queries.curQuery + addend, m_queries.queries.count() - 1);
+        m_queries.curQuery = qBound(0, m_queries.curQuery + addend, m_queries.queries.size() - 1);
         const QString &query = m_queries.queries.at(m_queries.curQuery);
         m_lineEdit->setText(query);
 
@@ -294,8 +258,9 @@ void QHelpSearchQueryWidget::collapseExtendedSearch()
     // TODO: no extended search anymore, deprecate it?
 }
 
+#if QT_DEPRECATED_SINCE(5, 9)
 /*!
-    \obsolete
+    \deprecated
 
     Use searchInput() instead.
 */
@@ -306,7 +271,7 @@ QList<QHelpSearchQuery> QHelpSearchQueryWidget::query() const
 }
 
 /*!
-    \obsolete
+    \deprecated
 
     Use setSearchInput() instead.
 */
@@ -317,6 +282,7 @@ void QHelpSearchQueryWidget::setQuery(const QList<QHelpSearchQuery> &queryList)
 
     setSearchInput(queryList.first().wordList.join(QChar::Space));
 }
+#endif // QT_DEPRECATED_SINCE(5, 9)
 
 /*!
     \since 5.9

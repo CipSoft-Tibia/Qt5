@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
 \page qtqml-javascript-expressions.html
 \title JavaScript Expressions in QML Documents
@@ -310,14 +286,14 @@ signal just before being destroyed.
     resources in Qt 5.0.0, so mark this section as internal for now.
     It should eventually become public API
 
-    There is another section about scarce resources in basictypes.qdoc. It should
+    There is another section about scarce resources in valuetypes.qdoc. It should
     be enabled at the same time.
 
 
 
 \section1 Scarce Resources in JavaScript
 
-As described in the documentation for \l{QML Basic Types}, a \c var type
+As described in the documentation for \l{QML Value Types}, a \c var type
 property may hold a \e{scarce resource} (image or pixmap). There are several
 important semantics of scarce resources which should be noted:
 

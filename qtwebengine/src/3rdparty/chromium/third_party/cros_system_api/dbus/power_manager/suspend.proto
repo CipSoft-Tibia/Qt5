@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium OS Authors. All rights reserved.
+// Copyright 2014 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@ syntax = "proto2";
 option optimize_for = LITE_RUNTIME;
 
 package power_manager;
-option go_package = "power_manager_proto";
+option go_package = "chromiumos/system_api/power_manager_proto";
 
 // Included in powerd's SuspendImminent signal, sent when the system is about to
 // suspend.  If any clients previously called RegisterSuspendDelay, suspending
@@ -52,7 +52,7 @@ option go_package = "power_manager_proto";
 // client may wish to unqueue the undo operation and instead report readiness
 // for the second, current |suspend_id| once the original operation completes.
 message SuspendImminent {
-  // Next ID to use: 2
+  // Next ID to use: 4
 
   enum Reason {
     // The user inactivity idle timeout was reached.
@@ -63,19 +63,30 @@ message SuspendImminent {
     OTHER = 2;
   }
 
+  enum Action {
+    // The system is going to suspend, hibernate, or both. (The exact
+    // destination power state is not specified.)
+    SUSPEND = 0;
+    // The system is about to resume from hibernate.
+    HIBERNATE_RESUME = 1;
+  }
+
   // Unique ID corresponding to this suspend request. This is included in the
   // SuspendReadinessInfo message passed via HandleSuspendReadiness.
   optional int32 suspend_id = 1;
 
   // The reason the system is suspending.
   optional Reason reason = 2;
+
+  // The action about to occur.
+  optional Action action = 3;
 }
 
 // Included in powerd's SuspendDone signal, sent after the system has completed
 // a suspend request. Each SuspendImminent signal will be followed by a
 // SuspendDone signal.
 message SuspendDone {
-  // Next ID to use: 4
+  // Next ID to use: 5
 
   enum WakeupType {
     UNKNOWN = 0;
@@ -86,6 +97,14 @@ message SuspendDone {
     // Resume is triggered by non-input devices (RTC for example).
     OTHER = 3;
   }
+
+  enum SuspendState {
+    // Suspended to RAM, S0ix or S3.
+    TO_RAM = 0;
+    // Hibernated to disk, S4 or lower.
+    TO_DISK = 1;
+  }
+
   // Unique ID corresponding to the suspend request.
   optional int32 suspend_id = 1;
 
@@ -93,8 +112,11 @@ message SuspendDone {
   // base::TimeDelta::ToInternalValue().
   optional int64 suspend_duration = 2;
 
-   // Type of wakeup source.
+  // Type of wakeup source.
   optional WakeupType wakeup_type = 3;
+
+  // Deepest suspend state that occurred.
+  optional SuspendState deepest_state = 4;
 }
 
 // Included in calls to powerd's RegisterSuspendDelay method.
@@ -155,3 +177,10 @@ message DarkResumeWakeReason {
   optional string wake_reason = 1;
 }
 
+// Included in powerd's HibernateResumeReady signal.
+message HibernateResumeReady {
+  // Next ID to use: 2
+
+  // Indicates the suspend_id that's ready to resume.
+  optional int32 suspend_id = 1;
+}

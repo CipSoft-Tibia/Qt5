@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Paketet är ogiltigt: <ph name="ERROR_CODE" />.</translation>
 <translation id="1140871961407805696">Vänd mot omgivningen</translation>
 <translation id="1196338895211115272">Det gick inte att exportera den privata nyckeln.</translation>
+<translation id="132960226125594336">Det gick inte att läsa in filen <ph name="RELATIVE_PATH" /> för innehållsskriptet eftersom den skulle överskrida den maximala skriptstorleken eller tilläggets maximala totala skriptstorlek.</translation>
 <translation id="1420684932347524586">Oj! Det gick inte att generera en slumpmässig privat RSA-nyckel.</translation>
 <translation id="1445572445564823378">Detta tillägg gör <ph name="PRODUCT_NAME" /> långsammare. Om du vill utnyttja den fulla prestandan i <ph name="PRODUCT_NAME" /> bör du inaktivera tillägget.</translation>
 <translation id="1468038450257740950">WebGL stöds inte.</translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">Paketet är ogiltigt. Information: <ph name="ERROR_MESSAGE" /></translation>
 <translation id="8761756413268424715"><ph name="APP_NAME" /> begär åtkomst till en av dina enheter:</translation>
 <translation id="8885905466771744233">Det finns redan en privat nyckel för det angivna tillägget. Återanvänd den nyckeln eller ta bort den först.</translation>
+<translation id="9039223174332979184">Administratören för den här datorn kräver att <ph name="EXTENSION_NAME" /> har manifestversion tre eller senare.</translation>
 <translation id="907841381057066561">Det gick inte att skapa en tillfällig ZIP-fil under packningen.</translation>
 <translation id="941543339607623937">Ogiltig privat nyckel.</translation>
 </translationbundle>

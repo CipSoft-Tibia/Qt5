@@ -1,11 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/preload_check_group.h"
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ref_counted.h"
 #include "extensions/common/extension.h"
 
@@ -13,7 +13,7 @@ namespace extensions {
 
 PreloadCheckGroup::PreloadCheckGroup() : PreloadCheck(nullptr) {}
 
-PreloadCheckGroup::~PreloadCheckGroup() {}
+PreloadCheckGroup::~PreloadCheckGroup() = default;
 
 void PreloadCheckGroup::AddCheck(PreloadCheck* check) {
   DCHECK_EQ(0, running_checks_);

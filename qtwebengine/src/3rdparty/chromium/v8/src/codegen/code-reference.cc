@@ -8,13 +8,17 @@
 #include "src/common/globals.h"
 #include "src/handles/handles-inl.h"
 #include "src/objects/objects-inl.h"
+
+#if V8_ENABLE_WEBASSEMBLY
 #include "src/wasm/wasm-code-manager.h"
+#endif  // V8_ENABLE_WEBASSEMBLY
 
 namespace v8 {
 namespace internal {
 
 namespace {
-struct JSOps {
+
+struct CodeOps {
   Handle<Code> code;
 
   Address constant_pool() const { return code->constant_pool(); }
@@ -28,7 +32,8 @@ struct JSOps {
   int code_comments_size() const { return code->code_comments_size(); }
 };
 
-struct WasmOps {
+#if V8_ENABLE_WEBASSEMBLY
+struct WasmCodeOps {
   const wasm::WasmCode* code;
 
   Address constant_pool() const { return code->constant_pool(); }
@@ -48,6 +53,7 @@ struct WasmOps {
   Address code_comments() const { return code->code_comments(); }
   int code_comments_size() const { return code->code_comments_size(); }
 };
+#endif  // V8_ENABLE_WEBASSEMBLY
 
 struct CodeDescOps {
   const CodeDesc* code_desc;
@@ -76,19 +82,25 @@ struct CodeDescOps {
 };
 }  // namespace
 
-#define DISPATCH(ret, method)                    \
-  ret CodeReference::method() const {            \
-    DCHECK(!is_null());                          \
-    switch (kind_) {                             \
-      case JS:                                   \
-        return JSOps{js_code_}.method();         \
-      case WASM:                                 \
-        return WasmOps{wasm_code_}.method();     \
-      case CODE_DESC:                            \
-        return CodeDescOps{code_desc_}.method(); \
-      default:                                   \
-        UNREACHABLE();                           \
-    }                                            \
+#if V8_ENABLE_WEBASSEMBLY
+#define HANDLE_WASM(...) __VA_ARGS__
+#else
+#define HANDLE_WASM(...) UNREACHABLE()
+#endif
+
+#define DISPATCH(ret, method)                                 \
+  ret CodeReference::method() const {                         \
+    DCHECK(!is_null());                                       \
+    switch (kind_) {                                          \
+      case Kind::CODE:                                        \
+        return CodeOps{code_}.method();                       \
+      case Kind::WASM_CODE:                                   \
+        HANDLE_WASM(return WasmCodeOps{wasm_code_}.method()); \
+      case Kind::CODE_DESC:                                   \
+        return CodeDescOps{code_desc_}.method();              \
+      default:                                                \
+        UNREACHABLE();                                        \
+    }                                                         \
   }
 
 DISPATCH(Address, constant_pool)
@@ -102,6 +114,7 @@ DISPATCH(Address, code_comments)
 DISPATCH(int, code_comments_size)
 
 #undef DISPATCH
+#undef HANDLE_WASM
 
 }  // namespace internal
 }  // namespace v8

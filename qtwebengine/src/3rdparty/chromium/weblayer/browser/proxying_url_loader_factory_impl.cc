@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,12 +13,11 @@
 #include "content/public/browser/web_contents.h"
 #include "mojo/public/cpp/system/data_pipe_producer.h"
 #include "mojo/public/cpp/system/string_data_source.h"
+#include "weblayer/browser/navigation_entry_data.h"
 
 namespace weblayer {
 
 namespace {
-
-const char kCacheKey[] = "weblayer_entry_cache_data";
 
 struct WriteData {
   mojo::Remote<network::mojom::URLLoaderClient> client;
@@ -46,17 +45,17 @@ void StartCachedLoad(
     const std::string& data) {
   mojo::Remote<network::mojom::URLLoaderClient> client(
       std::move(pending_client));
-  client->OnReceiveResponse(std::move(response_head));
 
   mojo::ScopedDataPipeProducerHandle producer;
   mojo::ScopedDataPipeConsumerHandle consumer;
-  if (CreateDataPipe(nullptr, &producer, &consumer) != MOJO_RESULT_OK) {
+  if (CreateDataPipe(nullptr, producer, consumer) != MOJO_RESULT_OK) {
     client->OnComplete(
         network::URLLoaderCompletionStatus(net::ERR_INSUFFICIENT_RESOURCES));
     return;
   }
 
-  client->OnStartLoadingResponseBody(std::move(consumer));
+  client->OnReceiveResponse(std::move(response_head), std::move(consumer),
+                            absl::nullopt);
 
   auto write_data = std::make_unique<WriteData>();
   write_data->client = std::move(client);
@@ -109,38 +108,6 @@ bool IsCachedResponseValid(net::HttpResponseHeaders* headers,
                                      base::Time::Now()) == net::VALIDATION_NONE;
 }
 
-// Stored on the NavigationEntry when we have a cached response from an
-// InputStream.
-class NavigationEntryCache : public base::SupportsUserData::Data {
- public:
-  NavigationEntryCache(network::mojom::URLResponseHeadPtr response_head,
-                       const std::string& data,
-                       base::Time request_time,
-                       base::Time response_time)
-      : response_head_(std::move(response_head)),
-        data_(data),
-        request_time_(request_time),
-        response_time_(response_time) {}
-
-  std::unique_ptr<Data> Clone() override {
-    return std::make_unique<NavigationEntryCache>(
-        response_head_.Clone(), data_, request_time_, response_time_);
-  }
-
-  network::mojom::URLResponseHead* response_head() {
-    return response_head_.get();
-  }
-  const std::string& data() const { return data_; }
-  const base::Time& request_time() const { return request_time_; }
-  const base::Time& response_time() const { return response_time_; }
-
- private:
-  network::mojom::URLResponseHeadPtr response_head_;
-  std::string data_;
-  base::Time request_time_;
-  base::Time response_time_;
-};
-
 // A ResponseDelegate for AndroidStreamReaderURLLoader which will cache the
 // response if it's successful. This allows back-forward navigations to reuse an
 // InputStream.
@@ -177,9 +144,13 @@ class CachingResponseDelegate : public embedder_support::ResponseDelegateImpl {
     if (!entry)
       return;
 
-    auto cache_data = std::make_unique<NavigationEntryCache>(
-        std::move(response_head_), data, request_time_, response_time_);
-    entry->SetUserData(kCacheKey, std::move(cache_data));
+    auto* entry_data = NavigationEntryData::Get(entry);
+    auto response_data = std::make_unique<NavigationEntryData::ResponseData>();
+    response_data->response_head = std::move(response_head_);
+    response_data->data = data;
+    response_data->request_time = request_time_;
+    response_data->response_time = response_time_;
+    entry_data->set_response_data(std::move(response_data));
   }
 
  private:
@@ -230,15 +201,19 @@ bool ProxyingURLLoaderFactoryImpl::HasCachedInputStream(
   if (!entry)
     return false;
 
-  auto* cache =
-      static_cast<NavigationEntryCache*>(entry->GetUserData(kCacheKey));
-  if (!cache)
+  auto* entry_data = NavigationEntryData::Get(entry);
+  if (!entry_data)
     return false;
 
-  if (!IsCachedResponseValid(cache->response_head()->headers.get(),
-                             cache->request_time(), cache->response_time())) {
+  auto* response_data = entry_data->response_data();
+  if (!response_data)
+    return false;
+
+  if (!IsCachedResponseValid(response_data->response_head->headers.get(),
+                             response_data->request_time,
+                             response_data->response_time)) {
     // Cache expired so remove it.
-    entry->RemoveUserData(kCacheKey);
+    entry_data->reset_response_data();
     return false;
   }
 
@@ -247,7 +222,6 @@ bool ProxyingURLLoaderFactoryImpl::HasCachedInputStream(
 
 void ProxyingURLLoaderFactoryImpl::CreateLoaderAndStart(
     mojo::PendingReceiver<network::mojom::URLLoader> loader,
-    int32_t routing_id,
     int32_t request_id,
     uint32_t options,
     const network::ResourceRequest& request,
@@ -260,7 +234,7 @@ void ProxyingURLLoaderFactoryImpl::CreateLoaderAndStart(
           std::make_unique<CachingResponseDelegate>(
               std::move(response_), frame_tree_node_id_,
               navigation_entry_unique_id_),
-          base::nullopt);
+          absl::nullopt);
       stream_loader->Start();
       return;
     }
@@ -269,17 +243,17 @@ void ProxyingURLLoaderFactoryImpl::CreateLoaderAndStart(
                              navigation_entry_unique_id_)) {
       auto* entry = GetNavigationEntryFromUniqueId(frame_tree_node_id_,
                                                    navigation_entry_unique_id_);
-      auto* cache =
-          static_cast<NavigationEntryCache*>(entry->GetUserData(kCacheKey));
-      StartCachedLoad(std::move(client), cache->response_head()->Clone(),
-                      cache->data());
+      auto* entry_data = NavigationEntryData::Get(entry);
+      auto* response_data = entry_data->response_data();
+      StartCachedLoad(std::move(client), response_data->response_head->Clone(),
+                      response_data->data);
       return;
     }
   }
 
-  target_factory_->CreateLoaderAndStart(std::move(loader), routing_id,
-                                        request_id, options, request,
-                                        std::move(client), traffic_annotation);
+  target_factory_->CreateLoaderAndStart(std::move(loader), request_id, options,
+                                        request, std::move(client),
+                                        traffic_annotation);
 }
 
 void ProxyingURLLoaderFactoryImpl::Clone(

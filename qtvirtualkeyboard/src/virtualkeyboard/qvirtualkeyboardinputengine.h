@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QVIRTUALKEYBOARDINPUTENGINE_H
 #define QVIRTUALKEYBOARDINPUTENGINE_H
 
-#include <QObject>
-#include <QPointer>
+#include <QtCore/QObject>
+#include <QtCore/QPointer>
+#include <QtQml/qqml.h>
 #include <QtVirtualKeyboard/qvirtualkeyboard_global.h>
 
 QT_BEGIN_NAMESPACE
@@ -42,7 +17,7 @@ class QVirtualKeyboardAbstractInputMethod;
 class QVirtualKeyboardInputEnginePrivate;
 class QVirtualKeyboardTrace;
 
-class QVIRTUALKEYBOARD_EXPORT QVirtualKeyboardInputEngine : public QObject
+class Q_VIRTUALKEYBOARD_EXPORT QVirtualKeyboardInputEngine : public QObject
 {
     Q_OBJECT
     Q_DISABLE_COPY(QVirtualKeyboardInputEngine)
@@ -55,6 +30,11 @@ class QVIRTUALKEYBOARD_EXPORT QVirtualKeyboardInputEngine : public QObject
     Q_PROPERTY(QList<int> patternRecognitionModes READ patternRecognitionModes NOTIFY patternRecognitionModesChanged)
     Q_PROPERTY(QVirtualKeyboardSelectionListModel *wordCandidateListModel READ wordCandidateListModel NOTIFY wordCandidateListModelChanged)
     Q_PROPERTY(bool wordCandidateListVisibleHint READ wordCandidateListVisibleHint NOTIFY wordCandidateListVisibleHintChanged)
+    Q_MOC_INCLUDE("qvirtualkeyboardabstractinputmethod.h")
+    QML_NAMED_ELEMENT(InputEngine)
+    QML_UNCREATABLE("InputEngine is only available via InputContext.inputEngine")
+    QML_ADDED_IN_VERSION(1, 0)
+    QML_EXTRA_VERSION(2, 0)
 
     explicit QVirtualKeyboardInputEngine(QVirtualKeyboardInputContext *parent = nullptr);
     void init();
@@ -84,7 +64,9 @@ public:
         ChineseHandwriting,
         JapaneseHandwriting,
         KoreanHandwriting,
-        Thai
+        Thai,
+        Stroke,
+        Romaji,
     };
     Q_ENUM(InputMode)
 

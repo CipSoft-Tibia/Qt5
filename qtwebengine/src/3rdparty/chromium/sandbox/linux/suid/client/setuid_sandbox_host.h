@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 
 #include "base/files/file_path.h"
 #include "base/files/scoped_file.h"
-#include "base/macros.h"
 #include "base/process/launch.h"
 #include "sandbox/sandbox_export.h"
 
@@ -31,8 +30,12 @@ namespace sandbox {
 // (The remaining steps are described within setuid_sandbox_client.h.)
 class SANDBOX_EXPORT SetuidSandboxHost {
  public:
-  // All instantation should go through this factory method.
-  static SetuidSandboxHost* Create();
+  // All instantiation should go through this factory method.
+  static std::unique_ptr<SetuidSandboxHost> Create();
+
+  SetuidSandboxHost(const SetuidSandboxHost&) = delete;
+  SetuidSandboxHost& operator=(const SetuidSandboxHost&) = delete;
+
   ~SetuidSandboxHost();
 
   // The setuid sandbox may still be disabled via the environment.
@@ -66,9 +69,7 @@ class SANDBOX_EXPORT SetuidSandboxHost {
   explicit SetuidSandboxHost(std::unique_ptr<base::Environment> env);
 
   // Holds the environment. Will never be NULL.
-  std::unique_ptr<base::Environment> env_;
-
-  DISALLOW_COPY_AND_ASSIGN(SetuidSandboxHost);
+  const std::unique_ptr<base::Environment> env_;
 };
 
 }  // namespace sandbox

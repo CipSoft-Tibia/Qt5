@@ -1,76 +1,30 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+
+#include <qtwidgetsglobal.h>
+
+QT_USE_NAMESPACE
 
 #include "qmenu.h"
 #if QT_CONFIG(menubar)
 #include "qmenubar.h"
 #include "qmenubar_p.h"
 #endif
-#include "qmacnativewidget_mac.h"
 
 #include <QtCore/QDebug>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QWindow>
 #include <qpa/qplatformnativeinterface.h>
+#include <qpa/qplatformmenu_p.h>
+
+using namespace QNativeInterface::Private;
 
 QT_BEGIN_NAMESPACE
 
 #if QT_CONFIG(menu)
-
-namespace {
-// TODO use QtMacExtras copy of this function when available.
-inline QPlatformNativeInterface::NativeResourceForIntegrationFunction resolvePlatformFunction(const QByteArray &functionName)
-{
-    QPlatformNativeInterface *nativeInterface = QGuiApplication::platformNativeInterface();
-    QPlatformNativeInterface::NativeResourceForIntegrationFunction function =
-        nativeInterface->nativeResourceFunctionForIntegration(functionName);
-    if (Q_UNLIKELY(!function))
-         qWarning("Qt could not resolve function %s from "
-                  "QGuiApplication::platformNativeInterface()->nativeResourceFunctionForIntegration()",
-                  functionName.constData());
-    return function;
-}
-} //namespsace
-
 
 /*!
     \fn NSMenu *QMenu::toNSMenu()
@@ -84,12 +38,9 @@ inline QPlatformNativeInterface::NativeResourceForIntegrationFunction resolvePla
 NSMenu *QMenu::toNSMenu()
 {
     Q_D(QMenu);
-    // Call into the cocoa platform plugin: qMenuToNSMenu(platformMenu())
-    QPlatformNativeInterface::NativeResourceForIntegrationFunction function = resolvePlatformFunction("qmenutonsmenu");
-    if (function) {
-        typedef void* (*QMenuToNSMenuFunction)(QPlatformMenu *platformMenu);
-        return reinterpret_cast<NSMenu *>(reinterpret_cast<QMenuToNSMenuFunction>(function)(d->createPlatformMenu()));
-    }
+    if (auto *cocoaPlatformMenu = dynamic_cast<QCocoaMenu *>(d->createPlatformMenu()))
+        return cocoaPlatformMenu->nsMenu();
+
     return nil;
 }
 
@@ -104,47 +55,46 @@ NSMenu *QMenu::toNSMenu()
 void QMenu::setAsDockMenu()
 {
     Q_D(QMenu);
-    // Call into the cocoa platform plugin: setDockMenu(platformMenu())
-    QPlatformNativeInterface::NativeResourceForIntegrationFunction function = resolvePlatformFunction("setdockmenu");
-    if (function) {
-        typedef void (*SetDockMenuFunction)(QPlatformMenu *platformMenu);
-        reinterpret_cast<SetDockMenuFunction>(function)(d->createPlatformMenu());
-    }
+    if (auto *cocoaPlatformMenu = dynamic_cast<QCocoaMenu *>(d->createPlatformMenu()))
+        cocoaPlatformMenu->setAsDockMenu();
 }
-
-
-/*! \fn void qt_mac_set_dock_menu(QMenu *menu)
-    \relates QMenu
-    \deprecated
-
-    Sets this \a menu to be the dock menu available by option-clicking
-    on the application dock icon. Available on \macos only.
-
-    Deprecated; use \l QMenu::setAsDockMenu() instead.
-*/
 
 void QMenuPrivate::moveWidgetToPlatformItem(QWidget *widget, QPlatformMenuItem* item)
 {
-    auto *container = new QT_IGNORE_DEPRECATIONS(QMacNativeWidget);
-    container->setAttribute(Qt::WA_QuitOnClose, false);
-    QObject::connect(platformMenu, SIGNAL(destroyed()), container, SLOT(deleteLater()));
-    container->resize(widget->sizeHint());
-    widget->setParent(container);
-    widget->setVisible(true);
+    // Hide the widget before we mess with it
+    widget->hide();
 
-    NSView *containerView = container->nativeView();
-    QWindow *containerWindow = container->windowHandle();
-    Qt::WindowFlags wf = containerWindow->flags();
-    containerWindow->setFlags(wf | Qt::SubWindow);
-    [(NSView *)widget->winId() setAutoresizingMask:NSViewWidthSizable];
+    // Move out of QMenu, since this widget will live in the native menu item
+    widget->setParent(nullptr);
 
-    if (QPlatformNativeInterface::NativeResourceForIntegrationFunction function = resolvePlatformFunction("setEmbeddedInForeignView")) {
-        typedef void (*SetEmbeddedInForeignViewFunction)(QPlatformWindow *window, bool embedded);
-        reinterpret_cast<SetEmbeddedInForeignViewFunction>(function)(containerWindow->handle(), true);
-    }
+    // Make sure the widget doesn't prevent quitting the application,
+    // just because it's a parent-less (top level) window.
+    widget->setAttribute(Qt::WA_QuitOnClose, false);
 
-    item->setNativeContents((WId)containerView);
-    container->show();
+    // And that it blends nicely with the native menu background
+    widget->setAttribute(Qt::WA_TranslucentBackground);
+
+    // Trigger creation of the backing QWindow, the platform window, and its
+    // underlying NSView and NSWindow. At this point the widget is still hidden,
+    // so the corresponding NSWindow that is created is not shown.
+    widget->setAttribute(Qt::WA_NativeWindow);
+    QWindow *widgetWindow = widget->windowHandle();
+    widgetWindow->create();
+
+    // Inform the window that it's actually a sub-window. This
+    // ensures that we dispose of the NSWindow when the widget is
+    // finally shown. We need to do this on a QWindow level, as
+    // QWidget will ignore the flag if there is no parentWidget().
+    // And we need to do it after creating the platform window, as
+    // QWidget will overwrite the window flags during creation.
+    widgetWindow->setFlag(Qt::SubWindow);
+
+    // Finally, we can associate the underlying NSView with the menu item,
+    // and show it. This will dispose of the created NSWindow, due to
+    // the Qt::SubWindow flag above. The widget will not actually be
+    // visible until it's re-parented into the NSMenu hierarchy.
+    item->setNativeContents(WId(widgetWindow->winId()));
+    widget->show();
 }
 
 #endif // QT_CONFIG(menu)
@@ -162,12 +112,9 @@ void QMenuPrivate::moveWidgetToPlatformItem(QWidget *widget, QPlatformMenuItem* 
 */
 NSMenu *QMenuBar::toNSMenu()
 {
-    // Call into the cocoa platform plugin: qMenuBarToNSMenu(platformMenuBar())
-    QPlatformNativeInterface::NativeResourceForIntegrationFunction function = resolvePlatformFunction("qmenubartonsmenu");
-    if (function) {
-        typedef void* (*QMenuBarToNSMenuFunction)(QPlatformMenuBar *platformMenuBar);
-        return reinterpret_cast<NSMenu *>(reinterpret_cast<QMenuBarToNSMenuFunction>(function)(platformMenuBar()));
-    }
+    if (auto *cocoaMenuBar = dynamic_cast<QCocoaMenuBar *>(platformMenuBar()))
+        return cocoaMenuBar->nsMenu();
+
     return nil;
 }
 #endif // QT_CONFIG(menubar)

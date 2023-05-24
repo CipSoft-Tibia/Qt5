@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/ascii.h"
@@ -26,9 +27,6 @@ static_assert(sizeof(absl::string_view::size_type) == sizeof(size_t),
 // grammar.abnf.  Similarly, methods like ParseMemberKey1 attempt to parse the
 // first choice in the memberkey rule.
 struct Parser {
-  Parser(const Parser&) = delete;
-  Parser& operator=(const Parser&) = delete;
-
   const char* data;
   std::vector<std::unique_ptr<AstNode>> nodes;
 };
@@ -427,7 +425,6 @@ AstNode* ParseGroupChoice(Parser* p) {
       return nullptr;
     }
   }
-  return nullptr;
 }
 
 AstNode* ParseGroup(Parser* p) {
@@ -974,7 +971,7 @@ ParseResult ParseCddl(absl::string_view data) {
   if (data[0] == 0) {
     return {nullptr, {}};
   }
-  Parser p{(char*)data.data()};
+  Parser p{data.data()};
 
   SkipWhitespace(&p);
   AstNode* root = nullptr;

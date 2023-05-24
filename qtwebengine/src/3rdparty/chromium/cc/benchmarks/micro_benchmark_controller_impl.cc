@@ -1,13 +1,14 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/benchmarks/micro_benchmark_controller_impl.h"
 
 #include <string>
+#include <utility>
 
-#include "base/callback.h"
-#include "base/stl_util.h"
+#include "base/containers/cxx20_erase.h"
+#include "base/functional/callback.h"
 #include "base/values.h"
 #include "cc/trees/layer_tree_host_impl.h"
 

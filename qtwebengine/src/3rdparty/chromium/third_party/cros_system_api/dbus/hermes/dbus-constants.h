@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium OS Authors. All rights reserved.
+// Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@ namespace hermes {
 // Hermes D-Bus service identifiers.
 const char kHermesServiceName[] = "org.chromium.Hermes";
 const char kHermesManagerInterface[] = "org.chromium.Hermes.Manager";
-const char kHermesManagerPath[] = "/org/chromium/Hermes";
+const char kHermesManagerPath[] = "/org/chromium/Hermes/Manager";
 
 const char kHermesEuiccInterface[] = "org.chromium.Hermes.Euicc";
 const char kHermesProfileInterface[] = "org.chromium.Hermes.Profile";
@@ -31,13 +31,26 @@ namespace euicc {
 const char kInstallProfileFromActivationCode[] =
     "InstallProfileFromActivationCode";
 const char kInstallPendingProfile[] = "InstallPendingProfile";
+const char kRefreshInstalledProfiles[] = "RefreshInstalledProfiles";
+const char kRequestPendingProfiles[] = "RequestPendingProfiles";
+const char kRefreshSmdxProfiles[] = "RefreshSmdxProfiles";
+const char kRequestInstalledProfiles[] = "RequestInstalledProfiles";
 const char kUninstallProfile[] = "UninstallProfile";
-const char kRequestPendingEvents[] = "RequestPendingEvents";
+const char kResetMemory[] = "ResetMemory";
+
+// Argument when a ResetMemory call is made
+enum ResetOptions {
+  kDeleteOperationalProfiles = 1,
+  kDeleteFieldLoadedTestProfiles = 2,
+};
 
 // Euicc properties.
+const char kEidProperty[] = "Eid";
 const char kInstalledProfilesProperty[] = "InstalledProfiles";
 const char kIsActiveProperty[] = "IsActive";
 const char kPendingProfilesProperty[] = "PendingProfiles";
+const char kProfilesProperty[] = "Profiles";
+const char kPhysicalSlotProperty[] = "PhysicalSlot";
 
 }  // namespace euicc
 
@@ -46,6 +59,7 @@ namespace profile {
 // Profile methods.
 const char kEnable[] = "Enable";
 const char kDisable[] = "Disable";
+const char kRename[] = "Rename";
 
 // Profile properties.
 const char kActivationCodeProperty[] = "ActivationCode";

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,22 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/mojom/view_type.mojom.h"
+#include "extensions/common/view_type_util.h"
 #include "extensions/renderer/extension_frame_helper.h"
 #include "extensions/renderer/script_context.h"
+#include "v8/include/v8-container.h"
+#include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-primitive.h"
 
 namespace extensions {
 
 RuntimeCustomBindings::RuntimeCustomBindings(ScriptContext* context)
     : ObjectBackedNativeHandler(context) {}
 
-RuntimeCustomBindings::~RuntimeCustomBindings() {}
+RuntimeCustomBindings::~RuntimeCustomBindings() = default;
 
 void RuntimeCustomBindings::AddRoutes() {
   RouteHandlerFunction(
@@ -41,9 +46,9 @@ void RuntimeCustomBindings::GetExtensionViews(
 
   std::string view_type_string =
       base::ToUpperASCII(*v8::String::Utf8Value(args.GetIsolate(), args[2]));
-  // |view_type| == VIEW_TYPE_INVALID means getting any type of
+  // |view_type| == mojom::ViewType::kInvalid means getting any type of
   // views.
-  ViewType view_type = VIEW_TYPE_INVALID;
+  mojom::ViewType view_type = mojom::ViewType::kInvalid;
   bool parsed_view_type = GetViewTypeFromString(view_type_string, &view_type);
   if (!parsed_view_type)
     CHECK_EQ("ALL", view_type_string);

@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,8 @@
 #ifndef CORE_FXCRT_STRING_DATA_TEMPLATE_H_
 #define CORE_FXCRT_STRING_DATA_TEMPLATE_H_
 
-#include "core/fxcrt/fx_system.h"
+#include <stddef.h>
+#include <stdint.h>
 
 namespace fxcrt {
 
@@ -33,13 +34,13 @@ class StringDataTemplate {
   // Since the count increments with each new pointer, the largest value is
   // the number of pointers that can fit into the address space. The size of
   // the address space itself is a good upper bound on it.
-  intptr_t m_nRefs;
+  intptr_t m_nRefs = 0;
 
   // These lengths are in terms of number of characters, not bytes, and do not
   // include the terminating NUL character, but the underlying buffer is sized
   // to be capable of holding it.
   size_t m_nDataLength;
-  size_t m_nAllocLength;
+  const size_t m_nAllocLength;
 
   // Not really 1, variable size.
   CharType m_String[1];
@@ -48,6 +49,9 @@ class StringDataTemplate {
   StringDataTemplate(size_t dataLen, size_t allocLen);
   ~StringDataTemplate() = delete;
 };
+
+extern template class StringDataTemplate<char>;
+extern template class StringDataTemplate<wchar_t>;
 
 }  // namespace fxcrt
 

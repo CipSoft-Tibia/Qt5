@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,8 @@
 #include <memory>
 #include <vector>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation_traits.h"
 #include "ui/events/event_handler.h"
 #include "ui/events/events_export.h"
 #include "ui/gfx/geometry/point.h"
@@ -28,14 +28,19 @@ class EVENTS_EXPORT EventTarget {
    public:
     explicit DispatcherApi(EventTarget* target) : target_(target) {}
 
+    DispatcherApi(const DispatcherApi&) = delete;
+    DispatcherApi& operator=(const DispatcherApi&) = delete;
+
    private:
     DispatcherApi();
-    EventTarget* target_;
-
-    DISALLOW_COPY_AND_ASSIGN(DispatcherApi);
+    raw_ptr<EventTarget> target_;
   };
 
   EventTarget();
+
+  EventTarget(const EventTarget&) = delete;
+  EventTarget& operator=(const EventTarget&) = delete;
+
   virtual ~EventTarget();
 
   virtual bool CanAcceptEvent(const Event& event) = 0;
@@ -64,7 +69,10 @@ class EVENTS_EXPORT EventTarget {
   enum class Priority {
     // The Accessibility level is the highest, and gets events before
     // other priority levels. This allows accessibility features to
-    // modify events directly from the user.
+    // modify events directly from the user. Note that Ash accessibility
+    // features should not use this directly, but instead should go
+    // through ash::Shell::AddAccessibilityEventHandler to allow for
+    // fine-grained control of ordering amongst themselves.
     kAccessibility,
 
     // System priority EventHandlers get events before default level, and
@@ -78,8 +86,8 @@ class EVENTS_EXPORT EventTarget {
   // Adds a handler to receive events before the target. The handler must be
   // explicitly removed from the target before the handler is destroyed. The
   // EventTarget does not take ownership of the handler.
-  void AddPreTargetHandler(EventHandler* handler,
-                           Priority priority = Priority::kDefault);
+  void AddPreTargetHandler(EventHandler* handler);
+  void AddPreTargetHandler(EventHandler* handler, Priority priority);
   void RemovePreTargetHandler(EventHandler* handler);
 
   // Adds a handler to receive events after the target. The handler must be
@@ -105,7 +113,7 @@ class EVENTS_EXPORT EventTarget {
 
   // A handler with a priority.
   struct PrioritizedHandler {
-    EventHandler* handler = nullptr;
+    raw_ptr<EventHandler, DanglingUntriaged> handler = nullptr;
     Priority priority = Priority::kDefault;
 
     bool operator<(const PrioritizedHandler& ph) const {
@@ -126,11 +134,24 @@ class EVENTS_EXPORT EventTarget {
 
   EventHandlerPriorityList pre_target_list_;
   EventHandlerList post_target_list_;
-  EventHandler* target_handler_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(EventTarget);
+  raw_ptr<EventHandler> target_handler_ = nullptr;
 };
 
 }  // namespace ui
+
+namespace base {
+
+template <>
+struct ScopedObservationTraits<ui::EventTarget, ui::EventHandler> {
+  static void AddObserver(ui::EventTarget* source, ui::EventHandler* observer) {
+    source->AddPreTargetHandler(observer);
+  }
+  static void RemoveObserver(ui::EventTarget* source,
+                             ui::EventHandler* observer) {
+    source->RemovePreTargetHandler(observer);
+  }
+};
+
+}  // namespace base
 
 #endif  // UI_EVENTS_EVENT_TARGET_H_

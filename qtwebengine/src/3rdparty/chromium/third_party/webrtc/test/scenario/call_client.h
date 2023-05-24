@@ -16,16 +16,18 @@
 #include <utility>
 #include <vector>
 
+#include "api/array_view.h"
 #include "api/rtc_event_log/rtc_event_log.h"
+#include "api/rtp_parameters.h"
 #include "api/test/time_controller.h"
+#include "api/units/data_rate.h"
 #include "call/call.h"
 #include "modules/audio_device/include/test_audio_device.h"
 #include "modules/congestion_controller/goog_cc/test/goog_cc_printer.h"
-#include "rtc_base/constructor_magic.h"
+#include "modules/rtp_rtcp/include/rtp_header_extension_map.h"
 #include "rtc_base/task_queue_for_test.h"
 #include "test/logging/log_writer.h"
 #include "test/network/network_emulation.h"
-#include "test/rtp_header_parser.h"
 #include "test/scenario/column_printer.h"
 #include "test/scenario/network_node.h"
 #include "test/scenario/scenario_config.h"
@@ -68,13 +70,20 @@ class LoggingNetworkControllerFactory
  public:
   LoggingNetworkControllerFactory(LogWriterFactoryInterface* log_writer_factory,
                                   TransportControllerConfig config);
-  RTC_DISALLOW_COPY_AND_ASSIGN(LoggingNetworkControllerFactory);
+
   ~LoggingNetworkControllerFactory();
+
+  LoggingNetworkControllerFactory(const LoggingNetworkControllerFactory&) =
+      delete;
+  LoggingNetworkControllerFactory& operator=(
+      const LoggingNetworkControllerFactory&) = delete;
+
   std::unique_ptr<NetworkControllerInterface> Create(
       NetworkControllerConfig config) override;
   TimeDelta GetProcessInterval() const override;
   // TODO(srte): Consider using the Columnprinter interface for this.
   void LogCongestionControllerStats(Timestamp at_time);
+  void SetRemoteBitrateEstimate(RemoteBitrateReport msg);
 
   NetworkControlUpdate GetUpdate() const;
 
@@ -98,9 +107,12 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   CallClient(TimeController* time_controller,
              std::unique_ptr<LogWriterFactoryInterface> log_writer_factory,
              CallClientConfig config);
-  RTC_DISALLOW_COPY_AND_ASSIGN(CallClient);
 
   ~CallClient();
+
+  CallClient(const CallClient&) = delete;
+  CallClient& operator=(const CallClient&) = delete;
+
   ColumnPrinter StatsPrinter();
   Call::Stats GetStats();
   DataRate send_bandwidth() {
@@ -109,6 +121,13 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   DataRate target_rate() const;
   DataRate stable_target_rate() const;
   DataRate padding_rate() const;
+  void UpdateBitrateConstraints(const BitrateConstraints& constraints);
+  void SetRemoteBitrate(DataRate bitrate);
+
+  void SetAudioReceiveRtpHeaderExtensions(
+      rtc::ArrayView<RtpExtension> extensions);
+  void SetVideoReceiveRtpHeaderExtensions(
+      rtc::ArrayView<RtpExtension> extensions);
 
   void OnPacketReceived(EmulatedIpPacket packet) override;
   std::unique_ptr<RtcEventLogOutput> GetLogWriter(std::string name);
@@ -133,7 +152,6 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   uint32_t GetNextAudioSsrc();
   uint32_t GetNextAudioLocalSsrc();
   uint32_t GetNextRtxSsrc();
-  void AddExtensions(std::vector<RtpExtension> extensions);
   int16_t Bind(EmulatedEndpoint* endpoint);
   void UnBind();
 
@@ -145,8 +163,9 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   CallClientFakeAudio fake_audio_setup_;
   std::unique_ptr<Call> call_;
   std::unique_ptr<NetworkNodeTransport> transport_;
-  std::unique_ptr<RtpHeaderParser> const header_parser_;
   std::vector<std::pair<EmulatedEndpoint*, uint16_t>> endpoints_;
+  RtpHeaderExtensionMap audio_extensions_;
+  RtpHeaderExtensionMap video_extensions_;
 
   int next_video_ssrc_index_ = 0;
   int next_video_local_ssrc_index_ = 0;
@@ -157,15 +176,16 @@ class CallClient : public EmulatedNetworkReceiverInterface {
   // Defined last so it's destroyed first.
   TaskQueueForTest task_queue_;
 
-  rtc::scoped_refptr<SharedModuleThread> module_thread_;
-
   const FieldTrialBasedConfig field_trials_;
 };
 
 class CallClientPair {
  public:
-  RTC_DISALLOW_COPY_AND_ASSIGN(CallClientPair);
   ~CallClientPair();
+
+  CallClientPair(const CallClientPair&) = delete;
+  CallClientPair& operator=(const CallClientPair&) = delete;
+
   CallClient* first() { return first_; }
   CallClient* second() { return second_; }
   std::pair<CallClient*, CallClient*> forward() { return {first(), second()}; }

@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {assertTrue} from '../base/logging';
 import {Actions} from '../common/actions';
 import {HttpRpcState} from '../common/http_rpc_engine';
 import {
   Area,
   FrontendLocalState as FrontendState,
-  OmniboxState,
   Timestamped,
   VisibleState,
 } from '../common/state';
 import {TimeSpan} from '../common/time';
 
 import {globals} from './globals';
-import {debounce, ratelimit} from './rate_limiters';
+import {ratelimit} from './rate_limiters';
 import {TimeScale} from './time_scale';
 
 interface Range {
@@ -32,9 +32,12 @@ interface Range {
   end?: number;
 }
 
-function chooseLatest<T extends Timestamped<{}>>(current: T, next: T): T {
+function chooseLatest<T extends Timestamped>(current: T, next: T): T {
   if (next !== current && next.lastUpdate > current.lastUpdate) {
-    return next;
+    // |next| is from state. Callers may mutate the return value of
+    // this function so we need to clone |next| to prevent bad mutations
+    // of state:
+    return Object.assign({}, next);
   }
   return current;
 }
@@ -64,35 +67,19 @@ function calculateScrollbarWidth() {
 export class FrontendLocalState {
   visibleWindowTime = new TimeSpan(0, 10);
   timeScale = new TimeScale(this.visibleWindowTime, [0, 0]);
-  perfDebug = false;
-  hoveredUtid = -1;
-  hoveredPid = -1;
-  hoveredLogsTimestamp = -1;
-  hoveredNoteTimestamp = -1;
-  highlightedSliceId = -1;
-  vidTimestamp = -1;
-  localOnlyMode = false;
-  sidebarVisible = true;
   showPanningHint = false;
   showCookieConsent = false;
   visibleTracks = new Set<string>();
   prevVisibleTracks = new Set<string>();
-  searchIndex = -1;
-  currentTab?: string;
   scrollToTrackId?: string|number;
   httpRpcState: HttpRpcState = {connected: false};
   newVersionAvailable = false;
+  showPivotTable = false;
 
   // This is used to calculate the tracks within a Y range for area selection.
   areaY: Range = {};
 
   private scrollBarWidth?: number;
-
-  private _omniboxState: OmniboxState = {
-    lastUpdate: 0,
-    omnibox: '',
-    mode: 'SEARCH',
-  };
 
   private _visibleState: VisibleState = {
     lastUpdate: 0,
@@ -114,58 +101,13 @@ export class FrontendLocalState {
     return this.scrollBarWidth;
   }
 
-  togglePerfDebug() {
-    this.perfDebug = !this.perfDebug;
+  setHttpRpcState(httpRpcState: HttpRpcState) {
+    this.httpRpcState = httpRpcState;
     globals.rafScheduler.scheduleFullRedraw();
-  }
-
-  setHoveredUtidAndPid(utid: number, pid: number) {
-    this.hoveredUtid = utid;
-    this.hoveredPid = pid;
-    globals.rafScheduler.scheduleRedraw();
-  }
-
-  setHighlightedSliceId(sliceId: number) {
-    this.highlightedSliceId = sliceId;
-    globals.rafScheduler.scheduleFullRedraw();
-  }
-
-  // Sets the timestamp at which a vertical line will be drawn.
-  setHoveredLogsTimestamp(ts: number) {
-    if (this.hoveredLogsTimestamp === ts) return;
-    this.hoveredLogsTimestamp = ts;
-    globals.rafScheduler.scheduleRedraw();
-  }
-
-  setHoveredNoteTimestamp(ts: number) {
-    if (this.hoveredNoteTimestamp === ts) return;
-    this.hoveredNoteTimestamp = ts;
-    globals.rafScheduler.scheduleRedraw();
-  }
-
-  setVidTimestamp(ts: number) {
-    if (this.vidTimestamp === ts) return;
-    this.vidTimestamp = ts;
-    globals.rafScheduler.scheduleRedraw();
   }
 
   addVisibleTrack(trackId: string) {
     this.visibleTracks.add(trackId);
-  }
-
-  setSearchIndex(index: number) {
-    this.searchIndex = index;
-    globals.rafScheduler.scheduleRedraw();
-  }
-
-  toggleSidebar() {
-    this.sidebarVisible = !this.sidebarVisible;
-    globals.rafScheduler.scheduleFullRedraw();
-  }
-
-  setHttpRpcState(httpRpcState: HttpRpcState) {
-    this.httpRpcState = httpRpcState;
-    globals.rafScheduler.scheduleFullRedraw();
   }
 
   // Called when beginning a canvas redraw.
@@ -177,17 +119,30 @@ export class FrontendLocalState {
   sendVisibleTracks() {
     if (this.prevVisibleTracks.size !== this.visibleTracks.size ||
         ![...this.prevVisibleTracks].every(
-            value => this.visibleTracks.has(value))) {
+            (value) => this.visibleTracks.has(value))) {
       globals.dispatch(
           Actions.setVisibleTracks({tracks: Array.from(this.visibleTracks)}));
       this.prevVisibleTracks = new Set(this.visibleTracks);
     }
   }
 
+  togglePivotTable() {
+    this.showPivotTable = !this.showPivotTable;
+    globals.rafScheduler.scheduleFullRedraw();
+  }
+
   mergeState(state: FrontendState): void {
-    this._omniboxState = chooseLatest(this._omniboxState, state.omniboxState);
+    // This is unfortunately subtle. This class mutates this._visibleState.
+    // Since we may not mutate |state| (in order to make immer's immutable
+    // updates work) this means that we have to make a copy of the visibleState.
+    // when updating it. We don't want to have to do that unnecessarily so
+    // chooseLatest returns a shallow clone of state.visibleState *only* when
+    // that is the newer state. All of these complications should vanish when
+    // we remove this class.
+    const previousVisibleState = this._visibleState;
     this._visibleState = chooseLatest(this._visibleState, state.visibleState);
-    if (this._visibleState === state.visibleState) {
+    const visibleStateWasUpdated = previousVisibleState !== this._visibleState;
+    if (visibleStateWasUpdated) {
       this.updateLocalTime(
           new TimeSpan(this._visibleState.startSec, this._visibleState.endSec));
     }
@@ -196,6 +151,7 @@ export class FrontendLocalState {
   selectArea(
       startSec: number, endSec: number,
       tracks = this._selectedArea ? this._selectedArea.tracks : []) {
+    assertTrue(endSec >= startSec);
     this.showPanningHint = true;
     this._selectedArea = {startSec, endSec, tracks},
     globals.rafScheduler.scheduleFullRedraw();
@@ -208,21 +164,6 @@ export class FrontendLocalState {
 
   get selectedArea(): Area|undefined {
     return this._selectedArea;
-  }
-
-  private setOmniboxDebounced = debounce(() => {
-    globals.dispatch(Actions.setOmnibox(this._omniboxState));
-  }, 20);
-
-  setOmnibox(value: string, mode: 'SEARCH'|'COMMAND') {
-    this._omniboxState.omnibox = value;
-    this._omniboxState.mode = mode;
-    this._omniboxState.lastUpdate = Date.now() / 1000;
-    this.setOmniboxDebounced();
-  }
-
-  get omnibox(): string {
-    return this._omniboxState.omnibox;
   }
 
   private ratelimitedUpdateVisible = ratelimit(() => {
@@ -251,6 +192,10 @@ export class FrontendLocalState {
     this._visibleState.endSec = this.visibleWindowTime.end;
     this._visibleState.resolution = globals.getCurResolution();
     this.ratelimitedUpdateVisible();
+  }
+
+  getVisibleStateBounds(): [number, number] {
+    return [this.visibleWindowTime.start, this.visibleWindowTime.end];
   }
 
   // Whenever start/end px of the timeScale is changed, update

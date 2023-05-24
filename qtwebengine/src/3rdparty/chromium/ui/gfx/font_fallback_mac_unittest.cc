@@ -1,9 +1,10 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/gfx/font_fallback.h"
 
+#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -30,9 +31,9 @@ TEST(FontFallbackMacTest, GetFallbackFonts) {
 // about font properties and availability on specific macOS versions.
 TEST(FontFallbackMacTest, GetFallbackFont) {
   Font arial("Helvetica", 12);
-  const base::string16 ascii = base::ASCIIToUTF16("abc");
-  const base::string16 hebrew = base::WideToUTF16(L"\x5d0\x5d1\x5d2");
-  const base::string16 emoji = base::UTF8ToUTF16("😋");
+  const std::u16string ascii = u"abc";
+  const std::u16string hebrew = u"\x5d0\x5d1\x5d2";
+  const std::u16string emoji = u"😋";
 
   Font fallback;
   EXPECT_TRUE(

@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "arthurwidgets.h"
 #include <QApplication>
@@ -62,34 +15,23 @@
 #include <QRegularExpression>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
-#include <QOpenGLPaintDevice>
-#include <QOpenGLWindow>
+#if QT_CONFIG(opengl)
+#include <QtOpenGL/QOpenGLPaintDevice>
+#include <QtOpenGL/QOpenGLWindow>
+#endif
 
 extern QPixmap cached(const QString &img);
 
 ArthurFrame::ArthurFrame(QWidget *parent)
-    : QWidget(parent)
-    , m_prefer_image(false)
+    : QWidget(parent),
+      m_tile(QPixmap(128, 128))
 {
-#if QT_CONFIG(opengl)
-    m_glWindow = nullptr;
-    m_glWidget = nullptr;
-    m_use_opengl = false;
-#endif
-    m_document = nullptr;
-    m_show_doc = false;
-
-    m_tile = QPixmap(128, 128);
     m_tile.fill(Qt::white);
     QPainter pt(&m_tile);
     QColor color(230, 230, 230);
     pt.fillRect(0, 0, 64, 64, color);
     pt.fillRect(64, 64, 64, 64, color);
     pt.end();
-
-//     QPalette pal = palette();
-//     pal.setBrush(backgroundRole(), m_tile);
-//     setPalette(pal);
 }
 
 
@@ -207,7 +149,7 @@ void ArthurFrame::paintEvent(QPaintEvent *e)
     painter.restore();
 
     painter.save();
-    if (m_show_doc)
+    if (m_showDoc)
         paintDescription(&painter);
     painter.restore();
 
@@ -242,9 +184,9 @@ void ArthurFrame::resizeEvent(QResizeEvent *e)
 
 void ArthurFrame::setDescriptionEnabled(bool enabled)
 {
-    if (m_show_doc != enabled) {
-        m_show_doc = enabled;
-        emit descriptionEnabledChanged(m_show_doc);
+    if (m_showDoc != enabled) {
+        m_showDoc = enabled;
+        emit descriptionEnabledChanged(m_showDoc);
         update();
     }
 }
@@ -274,9 +216,8 @@ void ArthurFrame::paintDescription(QPainter *painter)
 
     int pageWidth = qMax(width() - 100, 100);
     int pageHeight = qMax(height() - 100, 100);
-    if (pageWidth != m_document->pageSize().width()) {
+    if (pageWidth != m_document->pageSize().width())
         m_document->setPageSize(QSize(pageWidth, pageHeight));
-    }
 
     QRect textRect(width() / 2 - pageWidth / 2,
                    height() / 2 - pageHeight / 2,
@@ -338,7 +279,7 @@ void ArthurFrame::showSource()
         if (!f.open(QFile::ReadOnly))
             contents = tr("Could not open file: '%1'").arg(m_sourceFileName);
         else
-            contents = f.readAll();
+            contents = QString::fromUtf8(f.readAll());
     }
 
     contents.replace(QLatin1Char('&'), QStringLiteral("&amp;"));
@@ -379,7 +320,7 @@ void ArthurFrame::showSource()
     const QString html = QStringLiteral("<html><pre>") + contents + QStringLiteral("</pre></html>");
 
     QTextBrowser *sourceViewer = new QTextBrowser;
-    sourceViewer->setWindowTitle(tr("Source: %1").arg(m_sourceFileName.midRef(5)));
+    sourceViewer->setWindowTitle(tr("Source: %1").arg(QStringView{ m_sourceFileName }.mid(5)));
     sourceViewer->setParent(this, Qt::Dialog);
     sourceViewer->setAttribute(Qt::WA_DeleteOnClose);
     sourceViewer->setLineWrapMode(QTextEdit::NoWrap);

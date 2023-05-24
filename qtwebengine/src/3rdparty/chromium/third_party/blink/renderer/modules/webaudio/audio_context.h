@@ -1,20 +1,28 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_AUDIO_CONTEXT_H_
 #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_AUDIO_CONTEXT_H_
 
+#include "third_party/blink/public/mojom/mediastream/media_devices.mojom-blink.h"
+#include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
 #include "third_party/blink/public/mojom/webaudio/audio_context_manager.mojom-blink.h"
+#include "third_party/blink/public/platform/web_audio_sink_descriptor.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_audio_context_options.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_union_audiosinkinfo_string.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_union_audiosinkoptions_string.h"
 #include "third_party/blink/renderer/core/html/media/autoplay_policy.h"
 #include "third_party/blink/renderer/modules/webaudio/base_audio_context.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/modules/webaudio/setsinkid_resolver.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_deque.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/self_keep_alive.h"
+#include "third_party/blink/renderer/platform/mojo/heap_mojo_receiver.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
-#include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
 
@@ -32,7 +40,9 @@ class WebAudioLatencyHint;
 
 // This is an BaseAudioContext which actually plays sound, unlike an
 // OfflineAudioContext which renders sound into a buffer.
-class MODULES_EXPORT AudioContext : public BaseAudioContext {
+class MODULES_EXPORT AudioContext : public BaseAudioContext,
+                                    public mojom::blink::PermissionObserver,
+                                    public mojom::blink::MediaDevicesListener {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
@@ -42,8 +52,12 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
 
   AudioContext(Document&,
                const WebAudioLatencyHint&,
-               base::Optional<float> sample_rate);
+               absl::optional<float> sample_rate,
+               WebAudioSinkDescriptor sink_descriptor);
   ~AudioContext() override;
+
+  DEFINE_ATTRIBUTE_EVENT_LISTENER(sinkchange, kSinkchange)
+
   void Trace(Visitor*) const override;
 
   // For ContextLifeCycleObserver
@@ -51,9 +65,9 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
   bool HasPendingActivity() const override;
 
   ScriptPromise closeContext(ScriptState*, ExceptionState&);
-  bool IsContextClosed() const final;
+  bool IsContextCleared() const final;
 
-  ScriptPromise suspendContext(ScriptState*);
+  ScriptPromise suspendContext(ScriptState*, ExceptionState&);
   ScriptPromise resumeContext(ScriptState*, ExceptionState&);
 
   bool HasRealtimeConstraint() final { return true; }
@@ -62,6 +76,7 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
 
   AudioTimestamp* getOutputTimestamp(ScriptState*) const;
   double baseLatency() const;
+  double outputLatency() const;
 
   MediaElementAudioSourceNode* createMediaElementSource(HTMLMediaElement*,
                                                         ExceptionState&);
@@ -87,12 +102,38 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
 
   AudioCallbackMetric GetCallbackMetric() const;
 
+  // mojom::blink::PermissionObserver
+  void OnPermissionStatusChange(mojom::blink::PermissionStatus) override;
+
+  Member<V8UnionAudioSinkInfoOrString> sinkId() const { return v8_sink_id_; }
+
+  WebAudioSinkDescriptor GetSinkDescriptor() const { return sink_descriptor_; }
+
+  ScriptPromise setSinkId(ScriptState*,
+                          const V8UnionAudioSinkOptionsOrString*,
+                          ExceptionState&);
+
+  void NotifySetSinkIdIsDone(WebAudioSinkDescriptor);
+
+  HeapDeque<Member<SetSinkIdResolver>>& GetSetSinkIdResolver() {
+    return set_sink_id_resolvers_;
+  }
+
+  // mojom::blink::MediaDevicesListener
+  void OnDevicesChanged(mojom::blink::MediaDeviceType,
+                        const Vector<WebMediaDeviceInfo>&) override;
+
+  // A helper function to validate the given sink descriptor. See:
+  // webaudio.github.io/web-audio-api/#validating-sink-identifier
+  bool IsValidSinkDescriptor(const WebAudioSinkDescriptor&);
+
  protected:
   void Uninitialize() final;
 
  private:
   friend class AudioContextAutoplayTest;
   friend class AudioContextTest;
+  FRIEND_TEST_ALL_PREFIXES(AudioContextTest, MediaDevicesService);
 
   // These values are persisted to logs. Entries should not be renumbered and
   // numeric values should never be reused.
@@ -164,6 +205,26 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
   void EnsureAudioContextManagerService();
   void OnAudioContextManagerServiceConnectionError();
 
+  void SendLogMessage(const String& message);
+
+  void DidInitialPermissionCheck(mojom::blink::PermissionDescriptorPtr,
+                                 mojom::blink::PermissionStatus);
+  double GetOutputLatencyQuantizingFactor() const;
+
+  void InitializeMediaDeviceService();
+  void UninitializeMediaDeviceService();
+
+  // Callback from blink::mojom::MediaDevicesDispatcherHost::EnumerateDevices().
+  void DevicesEnumerated(const Vector<Vector<WebMediaDeviceInfo>>& enumeration,
+                         Vector<mojom::blink::VideoInputDeviceCapabilitiesPtr>
+                             video_input_capabilities,
+                         Vector<mojom::blink::AudioInputDeviceCapabilitiesPtr>
+                             audio_input_capabilities);
+
+  // A helper function used to update `v8_sink_id_` whenever `sink_id_` is
+  // updated.
+  void UpdateV8SinkId();
+
   unsigned context_id_;
   Member<ScriptPromiseResolver> close_resolver_;
 
@@ -176,26 +237,24 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
   // Autoplay status associated with this AudioContext, if any.
   // Will only be set if there is an autoplay policy in place.
   // Will never be set for OfflineAudioContext.
-  base::Optional<AutoplayStatus> autoplay_status_;
+  absl::optional<AutoplayStatus> autoplay_status_;
 
   // Autoplay unlock type for this AudioContext.
   // Will only be set if there is an autoplay policy in place.
   // Will never be set for OfflineAudioContext.
-  base::Optional<AutoplayUnlockType> autoplay_unlock_type_;
+  absl::optional<AutoplayUnlockType> autoplay_unlock_type_;
 
   // Records if start() was ever called for any source node in this context.
   bool source_node_started_ = false;
 
-  // Represents whether a context is suspended by explicit |context.suspend()|.
+  // Represents whether a context is suspended by explicit `context.suspend()`.
   bool suspended_by_user_ = false;
 
   // baseLatency for this context
   double base_latency_ = 0;
 
   // AudioContextManager for reporting audibility.
-  HeapMojoRemote<mojom::blink::AudioContextManager,
-                 HeapMojoWrapperMode::kWithoutContextObserver>
-      audio_context_manager_;
+  HeapMojoRemote<mojom::blink::AudioContextManager> audio_context_manager_;
 
   // Keeps track if the output of this destination was audible, before the
   // current rendering quantum.  Used for recording "playback" time.
@@ -206,7 +265,39 @@ class MODULES_EXPORT AudioContext : public BaseAudioContext {
   // all that's needed.
   size_t total_audible_renders_ = 0;
 
-  SelfKeepAlive<AudioContext> keep_alive_;
+  SelfKeepAlive<AudioContext> keep_alive_{this};
+
+  // Initially, we assume that the microphone permission is denied. But this
+  // will be corrected after the actual construction.
+  mojom::blink::PermissionStatus
+      microphone_permission_status_ = mojom::blink::PermissionStatus::DENIED;
+
+  HeapMojoRemote<mojom::blink::PermissionService> permission_service_;
+  HeapMojoReceiver<mojom::blink::PermissionObserver, AudioContext>
+      permission_receiver_;
+
+  // Describes the current audio output device.
+  WebAudioSinkDescriptor sink_descriptor_;
+
+  // A V8 return value from `AudioContext.sinkId` getter. It gets updated when
+  // `sink_descriptor_` above is updated.
+  Member<V8UnionAudioSinkInfoOrString> v8_sink_id_;
+
+  // A queue for setSinkId() Promise resolvers. Requests are handled in the
+  // order it was received and only one request is handled at a time.
+  HeapDeque<Member<SetSinkIdResolver>> set_sink_id_resolvers_;
+
+  // MediaDeviceService for querying device information, and the associated
+  // receiver for getting notification.
+  HeapMojoRemote<mojom::blink::MediaDevicesDispatcherHost>
+      media_device_service_;
+  HeapMojoReceiver<mojom::blink::MediaDevicesListener, AudioContext>
+      media_device_service_receiver_;
+
+  bool is_media_device_service_initialized_ = false;
+
+  // Stores a list of identifiers for output device.
+  HashSet<String> output_device_ids_;
 };
 
 }  // namespace blink

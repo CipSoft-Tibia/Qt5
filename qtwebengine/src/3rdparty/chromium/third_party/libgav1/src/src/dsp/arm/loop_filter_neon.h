@@ -26,6 +26,7 @@ namespace dsp {
 // Initializes Dsp::loop_filters, see the defines below for specifics. This
 // function is not thread-safe.
 void LoopFilterInit_NEON();
+void LoopFilterInit10bpp_NEON();
 
 }  // namespace dsp
 }  // namespace libgav1
@@ -47,6 +48,23 @@ void LoopFilterInit_NEON();
 #define LIBGAV1_Dsp8bpp_LoopFilterSize14_LoopFilterTypeHorizontal \
   LIBGAV1_CPU_NEON
 #define LIBGAV1_Dsp8bpp_LoopFilterSize14_LoopFilterTypeVertical LIBGAV1_CPU_NEON
+
+#define LIBGAV1_Dsp10bpp_LoopFilterSize4_LoopFilterTypeHorizontal \
+  LIBGAV1_CPU_NEON
+#define LIBGAV1_Dsp10bpp_LoopFilterSize4_LoopFilterTypeVertical LIBGAV1_CPU_NEON
+
+#define LIBGAV1_Dsp10bpp_LoopFilterSize6_LoopFilterTypeHorizontal \
+  LIBGAV1_CPU_NEON
+#define LIBGAV1_Dsp10bpp_LoopFilterSize6_LoopFilterTypeVertical LIBGAV1_CPU_NEON
+
+#define LIBGAV1_Dsp10bpp_LoopFilterSize8_LoopFilterTypeHorizontal \
+  LIBGAV1_CPU_NEON
+#define LIBGAV1_Dsp10bpp_LoopFilterSize8_LoopFilterTypeVertical LIBGAV1_CPU_NEON
+
+#define LIBGAV1_Dsp10bpp_LoopFilterSize14_LoopFilterTypeHorizontal \
+  LIBGAV1_CPU_NEON
+#define LIBGAV1_Dsp10bpp_LoopFilterSize14_LoopFilterTypeVertical \
+  LIBGAV1_CPU_NEON
 
 #endif  // LIBGAV1_ENABLE_NEON
 

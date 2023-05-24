@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "formbuilder.h"
 #include "formbuilderextra_p.h"
@@ -55,7 +8,13 @@
 #include <QtUiPlugin/customwidget.h>
 #include <QtWidgets/QtWidgets>
 
+#ifdef QT_OPENGLWIDGETS_LIB
+#  include <QtOpenGLWidgets/qopenglwidget.h>
+#endif
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifdef QFORMINTERNAL_NAMESPACE
 namespace QFormInternal {
@@ -129,7 +88,7 @@ QWidget *QFormBuilder::create(DomWidget *ui_widget, QWidget *parentWidget)
     // Is this a QLayoutWidget with a margin of 0: Not a known page-based
     // container and no method for adding pages registered.
     d->setProcessingLayoutWidget(false);
-    if (ui_widget->attributeClass() == QFormBuilderStrings::instance().qWidgetClass && !ui_widget->hasAttributeNative()
+    if (ui_widget->attributeClass() == "QWidget"_L1 && !ui_widget->hasAttributeNative()
             && parentWidget
 #if QT_CONFIG(mainwindow)
             && !qobject_cast<QMainWindow *>(parentWidget)
@@ -153,7 +112,7 @@ QWidget *QFormBuilder::create(DomWidget *ui_widget, QWidget *parentWidget)
             && !qobject_cast<QDockWidget *>(parentWidget)
 #endif
         ) {
-        const QString parentClassName = QLatin1String(parentWidget->metaObject()->className());
+        const QString parentClassName = QLatin1StringView(parentWidget->metaObject()->className());
         if (!d->isCustomWidgetContainer(parentClassName))
             d->setProcessingLayoutWidget(true);
     }
@@ -189,7 +148,7 @@ QWidget *QFormBuilder::createWidget(const QString &widgetName, QWidget *parentWi
 
     // ### special-casing for Line (QFrame) -- fix for 4.2
     do {
-        if (widgetName == QFormBuilderStrings::instance().lineClass) {
+        if (widgetName == "Line"_L1) {
             w = new QFrame(parentWidget);
             static_cast<QFrame*>(w)->setFrameStyle(QFrame::HLine | QFrame::Sunken);
             break;
@@ -257,7 +216,7 @@ QLayout *QFormBuilder::createLayout(const QString &layoutName, QObject *parent, 
 #define DECLARE_COMPAT_WIDGET(W, C)
 
 #define DECLARE_LAYOUT(L, C) \
-    if (layoutName == QLatin1String(#L)) { \
+    if (layoutName == QLatin1StringView(#L)) { \
         Q_ASSERT(l == 0); \
         l = parentLayout \
             ? new L() \
@@ -359,23 +318,9 @@ QLayout *QFormBuilder::create(DomLayout *ui_layout, QLayout *layout, QWidget *pa
     bool layoutWidget = d->processingLayoutWidget();
     QLayout *l = QAbstractFormBuilder::create(ui_layout, layout, parentWidget);
     if (layoutWidget) {
-        const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
-        int left, top, right, bottom;
-        left = top = right = bottom = 0;
-        const DomPropertyHash properties = propertyMap(ui_layout->elementProperty());
-
-        if (DomProperty *prop = properties.value(strings.leftMarginProperty))
-            left = prop->elementNumber();
-
-        if (DomProperty *prop = properties.value(strings.topMarginProperty))
-            top = prop->elementNumber();
-
-        if (DomProperty *prop = properties.value(strings.rightMarginProperty))
-            right = prop->elementNumber();
-
-        if (DomProperty *prop = properties.value(strings.bottomMarginProperty))
-            bottom = prop->elementNumber();
-
+        int left = 0, top = 0, right = 0, bottom = 0;
+        QFormBuilderExtra::getLayoutMargins(ui_layout->elementProperty(),
+                                            &left, &top, &right, &bottom);
         l->setContentsMargins(left, top, right, bottom);
         d->setProcessingLayoutWidget(false);
     }
@@ -475,7 +420,7 @@ void QFormBuilder::updateCustomWidgets()
     d->m_customWidgets.clear();
 
 #if QT_CONFIG(library)
-    for (const QString &path : qAsConst(d->m_pluginPaths)) {
+    for (const QString &path : std::as_const(d->m_pluginPaths)) {
         const QDir dir(path);
         const QStringList candidates = dir.entryList(QDir::Files);
 
@@ -483,11 +428,7 @@ void QFormBuilder::updateCustomWidgets()
             if (!QLibrary::isLibrary(plugin))
                 continue;
 
-            QString loaderPath = path;
-            loaderPath += QLatin1Char('/');
-            loaderPath += plugin;
-
-            QPluginLoader loader(loaderPath);
+            QPluginLoader loader(path + u'/' + plugin);
             if (loader.load())
                 insertPlugins(loader.instance(), &d->m_customWidgets);
         }
@@ -520,8 +461,6 @@ void QFormBuilder::applyProperties(QObject *o, const QList<DomProperty*> &proper
     if (properties.isEmpty())
         return;
 
-    const QFormBuilderStrings &strings = QFormBuilderStrings::instance();
-
     for (DomProperty *p : properties) {
         const QVariant v = toVariant(o->metaObject(), p);
         if (!v.isValid()) // QTBUG-33130, do not fall for QVariant(QString()).isNull() == true.
@@ -529,11 +468,12 @@ void QFormBuilder::applyProperties(QObject *o, const QList<DomProperty*> &proper
 
         const QString attributeName = p->attributeName();
         const bool isWidget = o->isWidgetType();
-        if (isWidget && o->parent() == d->parentWidget() && attributeName == strings.geometryProperty) {
+        if (isWidget && o->parent() == d->parentWidget() && attributeName == "geometry"_L1) {
             // apply only the size part of a geometry for the root widget
             static_cast<QWidget*>(o)->resize(qvariant_cast<QRect>(v).size());
         } else if (d->applyPropertyInternally(o, attributeName, v)) {
-        } else if (isWidget && !qstrcmp("QFrame", o->metaObject()->className ()) && attributeName == strings.orientationProperty) {
+        } else if (isWidget && qstrcmp("QFrame", o->metaObject()->className()) == 0
+                   && attributeName == "orientation"_L1) {
             // ### special-casing for Line (QFrame) -- try to fix me
             o->setProperty("frameShape", v); // v is of QFrame::Shape enum
         } else {

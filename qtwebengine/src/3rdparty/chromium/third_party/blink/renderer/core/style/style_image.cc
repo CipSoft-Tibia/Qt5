@@ -1,40 +1,50 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/style/style_image.h"
 
+#include "third_party/blink/renderer/core/layout/intrinsic_sizing_info.h"
 #include "third_party/blink/renderer/core/svg/graphics/svg_image.h"
-#include "third_party/blink/renderer/core/svg/graphics/svg_image_for_container.h"
-#include "third_party/blink/renderer/platform/geometry/layout_size.h"
 
 namespace blink {
 
-FloatSize StyleImage::ApplyZoom(const FloatSize& size, float multiplier) const {
-  if (multiplier == 1.0f || !HasIntrinsicSize())
+gfx::SizeF StyleImage::ApplyZoom(const gfx::SizeF& size, float multiplier) {
+  if (multiplier == 1.0f) {
     return size;
+  }
 
-  float width = size.Width() * multiplier;
-  float height = size.Height() * multiplier;
+  gfx::SizeF scaled_size = gfx::ScaleSize(size, multiplier);
 
   // Don't let images that have a width/height >= 1 shrink below 1 when zoomed.
-  if (size.Width() > 0)
-    width = std::max(1.0f, width);
+  if (size.width() > 0) {
+    scaled_size.set_width(std::max(1.0f, scaled_size.width()));
+  }
 
-  if (size.Height() > 0)
-    height = std::max(1.0f, height);
+  if (size.height() > 0) {
+    scaled_size.set_height(std::max(1.0f, scaled_size.height()));
+  }
 
-  return FloatSize(width, height);
+  return scaled_size;
 }
 
-FloatSize StyleImage::ImageSizeForSVGImage(
-    SVGImage* svg_image,
+gfx::SizeF StyleImage::ImageSizeForSVGImage(
+    const SVGImage& svg_image,
     float multiplier,
-    const FloatSize& default_object_size) const {
-  FloatSize unzoomed_default_object_size = default_object_size;
-  unzoomed_default_object_size.Scale(1 / multiplier);
-  return ApplyZoom(svg_image->ConcreteObjectSize(unzoomed_default_object_size),
+    const gfx::SizeF& default_object_size) {
+  gfx::SizeF unzoomed_default_object_size =
+      gfx::ScaleSize(default_object_size, 1 / multiplier);
+  return ApplyZoom(svg_image.ConcreteObjectSize(unzoomed_default_object_size),
                    multiplier);
+}
+
+bool StyleImage::HasIntrinsicDimensionsForSVGImage(const SVGImage& svg_image) {
+  IntrinsicSizingInfo intrinsic_sizing_info;
+  if (!svg_image.GetIntrinsicSizingInfo(intrinsic_sizing_info)) {
+    return false;
+  }
+  return intrinsic_sizing_info.has_width || intrinsic_sizing_info.has_height ||
+         !intrinsic_sizing_info.aspect_ratio.IsEmpty();
 }
 
 }  // namespace blink

@@ -26,7 +26,7 @@
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_resource_radial_gradient.h"
 #include "third_party/blink/renderer/core/svg/radial_gradient_attributes.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_length.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -85,7 +85,8 @@ void SVGRadialGradientElement::Trace(Visitor* visitor) const {
 }
 
 void SVGRadialGradientElement::SvgAttributeChanged(
-    const QualifiedName& attr_name) {
+    const SvgAttributeChangedParams& params) {
+  const QualifiedName& attr_name = params.name;
   if (attr_name == svg_names::kCxAttr || attr_name == svg_names::kCyAttr ||
       attr_name == svg_names::kFxAttr || attr_name == svg_names::kFyAttr ||
       attr_name == svg_names::kRAttr || attr_name == svg_names::kFrAttr) {
@@ -95,12 +96,12 @@ void SVGRadialGradientElement::SvgAttributeChanged(
     return;
   }
 
-  SVGGradientElement::SvgAttributeChanged(attr_name);
+  SVGGradientElement::SvgAttributeChanged(params);
 }
 
 LayoutObject* SVGRadialGradientElement::CreateLayoutObject(const ComputedStyle&,
                                                            LegacyLayout) {
-  return new LayoutSVGResourceRadialGradient(this);
+  return MakeGarbageCollected<LayoutSVGResourceRadialGradient>(this);
 }
 
 static void SetGradientAttributes(const SVGGradientElement& element,
@@ -131,13 +132,14 @@ static void SetGradientAttributes(const SVGGradientElement& element,
     attributes.SetFr(radial.fr()->CurrentValue());
 }
 
-void SVGRadialGradientElement::CollectGradientAttributes(
-    RadialGradientAttributes& attributes) const {
+RadialGradientAttributes SVGRadialGradientElement::CollectGradientAttributes()
+    const {
   DCHECK(GetLayoutObject());
 
   VisitedSet visited;
   const SVGGradientElement* current = this;
 
+  RadialGradientAttributes attributes;
   while (true) {
     SetGradientAttributes(*current, attributes,
                           IsA<SVGRadialGradientElement>(*current));
@@ -152,12 +154,36 @@ void SVGRadialGradientElement::CollectGradientAttributes(
       break;
   }
 
-  // Handle default values for fx/fy
-  if (!attributes.HasFx())
-    attributes.SetFx(attributes.Cx());
+  // Fill out any ("complex") empty fields with values from this element (where
+  // these values should equal the initial values).
+  if (!attributes.HasCx()) {
+    attributes.SetCx(cx()->CurrentValue());
+  }
+  if (!attributes.HasCy()) {
+    attributes.SetCy(cy()->CurrentValue());
+  }
+  if (!attributes.HasR()) {
+    attributes.SetR(r()->CurrentValue());
+  }
+  DCHECK(attributes.Cx());
+  DCHECK(attributes.Cy());
+  DCHECK(attributes.R());
 
-  if (!attributes.HasFy())
+  // Handle default values for fx/fy (after applying any default values for
+  // cx/cy).
+  if (!attributes.HasFx()) {
+    attributes.SetFx(attributes.Cx());
+  }
+  if (!attributes.HasFy()) {
     attributes.SetFy(attributes.Cy());
+  }
+  if (!attributes.HasFr()) {
+    attributes.SetFr(fr()->CurrentValue());
+  }
+  DCHECK(attributes.Fx());
+  DCHECK(attributes.Fy());
+  DCHECK(attributes.Fr());
+  return attributes;
 }
 
 bool SVGRadialGradientElement::SelfHasRelativeLengths() const {

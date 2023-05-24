@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QtTest/QtTest>
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlComponent>
@@ -98,6 +72,9 @@ QString tst_qml::imports_2_1()
 
 void tst_qml::initTestCase()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("The test doesn't package resources properly to Android (QTBUG-102725)");
+#endif
 }
 
 void tst_qml::cleanupTestCase()
@@ -140,7 +117,7 @@ void tst_qml::checkPlugin_data()
     QTest::newRow("HBarModelMapper") << imports_1_1() + "HBarModelMapper{}";
     QTest::newRow("VBarModelMapper") << imports_1_1() + "VBarModelMapper{}";
     QTest::newRow("ValueAxis") << imports_1_1() + "ValueAxis{}";
-#ifndef QT_QREAL_IS_FLOAT
+#if QT_CONFIG(charts_datetime_axis)
     QTest::newRow("DateTimeAxis") << imports_1_1() + "DateTimeAxis{}";
 #endif
     QTest::newRow("CategoryAxis") << imports_1_1() + "CategoryAxis{}";
@@ -176,7 +153,7 @@ void tst_qml::checkPlugin_data()
     QTest::newRow("HBarModelMapper_2_0") << imports_2_0() + "HBarModelMapper{}";
     QTest::newRow("VBarModelMapper_2_0") << imports_2_0() + "VBarModelMapper{}";
     QTest::newRow("ValueAxis_2_0") << imports_2_0() + "ValueAxis{}";
-#ifndef QT_QREAL_IS_FLOAT
+#if QT_CONFIG(charts_datetime_axis)
     QTest::newRow("DateTimeAxis_2_0") << imports_2_0() + "DateTimeAxis{}";
 #endif
     QTest::newRow("CategoryAxis_2_0") << imports_2_0() + "CategoryAxis{}";

@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QSignalSpy>
 
 #include <QtWidgets/qtwidgetsglobal.h>
 #if QT_CONFIG(dockwidget)
@@ -65,15 +41,15 @@ public:
     {
         m_timerId = startTimer(200);
     }
-    void timerEvent(QTimerEvent*)
+    void timerEvent(QTimerEvent*) override
     {
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseButtonPress, QPoint(6, 7), Qt::LeftButton, {}, {}));
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(7, 8), Qt::LeftButton, Qt::LeftButton, {}));
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(27, 23), Qt::LeftButton, Qt::LeftButton, {}));
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(30, 27), Qt::LeftButton, Qt::LeftButton, {}));
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(162, 109), Qt::LeftButton, Qt::LeftButton, {}));
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(10, 4), Qt::LeftButton, Qt::LeftButton, {}));
-        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseButtonRelease, QPoint(9, 4), Qt::LeftButton, {}, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseButtonPress, QPoint(6, 7), m_tb->mapToGlobal(QPoint(6, 7)), Qt::LeftButton, {}, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(7, 8), m_tb->mapToGlobal(QPoint(7, 8)), Qt::LeftButton, Qt::LeftButton, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(27, 23), m_tb->mapToGlobal(QPoint(27, 23)), Qt::LeftButton, Qt::LeftButton, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(30, 27), m_tb->mapToGlobal(QPoint(30, 27)), Qt::LeftButton, Qt::LeftButton, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(162, 109), m_tb->mapToGlobal(QPoint(162, 109)), Qt::LeftButton, Qt::LeftButton, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseMove, QPoint(10, 4), m_tb->mapToGlobal(QPoint(10, 4)), Qt::LeftButton, Qt::LeftButton, {}));
+        QCoreApplication::postEvent(m_tb, new QMouseEvent(QEvent::MouseButtonRelease, QPoint(9, 4), m_tb->mapToGlobal(QPoint(6, 7)), Qt::LeftButton, {}, {}));
     }
 };
 
@@ -89,10 +65,10 @@ public:
         m_timerId = startTimer(100);
     }
 
-    void timerEvent(QTimerEvent*)
+    void timerEvent(QTimerEvent*) override
     {
-        QCoreApplication::postEvent(m_w, new QMouseEvent(QEvent::MouseButtonPress, QPoint(230, 370), Qt::LeftButton, {}, {}));
-        QCoreApplication::postEvent(m_w, new QMouseEvent(QEvent::MouseButtonRelease, QPoint(230, 370), Qt::LeftButton, {}, {}));
+        QCoreApplication::postEvent(m_w, new QMouseEvent(QEvent::MouseButtonPress, QPoint(230, 370), m_w->mapToGlobal(QPoint(230, 370)), Qt::LeftButton, {}, {}));
+        QCoreApplication::postEvent(m_w, new QMouseEvent(QEvent::MouseButtonRelease, QPoint(230, 370), m_w->mapToGlobal(QPoint(230, 370)), Qt::LeftButton, {}, {}));
     }
 };
 
@@ -110,6 +86,7 @@ private slots:
     void iconSize();
     void toolButtonStyle();
     void menuBar();
+    void customMenuBar();
     void centralWidget();
     void takeCentralWidget();
     void corner();
@@ -125,6 +102,9 @@ private slots:
     void dockWidgetArea();
     void restoreState();
     void restoreStateFromPreviousVersion();
+    void restoreStateSizeChanged_data();
+    void restoreStateSizeChanged();
+    void restoreAndModify();
     void createPopupMenu();
     void hideBeforeLayout();
 #ifdef QT_BUILD_INTERNAL
@@ -669,6 +649,18 @@ void tst_QMainWindow::menuBar()
         QVERIFY(!topLeftCornerWidget);
         QVERIFY(!topRightCornerWidget);
     }
+}
+
+// QTBUG-98247
+void tst_QMainWindow::customMenuBar()
+{
+    QMainWindow w;
+    std::unique_ptr<QWidget> menuWidget(new QWidget);
+    w.setMenuWidget(menuWidget.get());
+    QVERIFY(menuWidget->parentWidget());
+    QVERIFY(w.menuBar()); // implicitly calls setMenuBar
+    QVERIFY(!menuWidget->parentWidget());
+    menuWidget.reset();
 }
 
 #ifdef QT_BUILD_INTERNAL
@@ -1349,29 +1341,35 @@ void tst_QMainWindow::restoreState()
     dw.setObjectName(QLatin1String("dock"));
     mw.addDockWidget(Qt::LeftDockWidgetArea, &dw);
 
+    QWidgetPrivate *tbp = QWidgetPrivate::get(&tb);
+    QVERIFY(tbp->widgetItem);
+
     QByteArray state;
 
     state = mw.saveState();
     QVERIFY(mw.restoreState(state));
+    QVERIFY(tbp->widgetItem);
 
     state = mw.saveState(1);
     QVERIFY(!mw.restoreState(state));
     QVERIFY(mw.restoreState(state, 1));
+    QVERIFY(tbp->widgetItem);
 }
 
 //tests the restoration of the previous versions of window settings
 void tst_QMainWindow::restoreStateFromPreviousVersion()
 {
-    QList<QByteArray> restoreData;
-    restoreData << QByteArray((char*)restoreData41, sizeof(restoreData41))
-         << QByteArray((char*)restoreData42, sizeof(restoreData42))
-         << QByteArray((char*)restoreData43, sizeof(restoreData43));
+    const QByteArray restoreData[] = {
+        QByteArray((char*)restoreData41, sizeof(restoreData41)),
+        QByteArray((char*)restoreData42, sizeof(restoreData42)),
+        QByteArray((char*)restoreData43, sizeof(restoreData43)),
+    };
 
-    foreach(QByteArray ba, restoreData) {
+    for (const QByteArray &ba : restoreData) {
 
         QMainWindow win;
         win.setCentralWidget(new QTextEdit);
-        QVector<QDockWidget*> docks;
+        QList<QDockWidget *> docks;
 
         for(int i = 0; i < 16; ++i) {
             const QString name = QStringLiteral("dock ") + QString::number(i);
@@ -1390,6 +1388,158 @@ void tst_QMainWindow::restoreStateFromPreviousVersion()
 
 }
 
+void tst_QMainWindow::restoreStateSizeChanged_data()
+{
+    QTest::addColumn<Qt::WindowState>("saveState");
+    QTest::addColumn<Qt::WindowState>("showState");
+    QTest::addColumn<bool>("sameSize");
+
+    QTest::addRow("fullscreen") << Qt::WindowFullScreen << Qt::WindowFullScreen << true;
+    QTest::addRow("maximized") << Qt::WindowMaximized << Qt::WindowMaximized << true;
+    QTest::addRow("maximized->normal") << Qt::WindowMaximized << Qt::WindowNoState << false;
+    QTest::addRow("fullscreen->normal") << Qt::WindowFullScreen << Qt::WindowNoState << false;
+    QTest::addRow("fullscreen->maximized") << Qt::WindowFullScreen << Qt::WindowMaximized << false;
+    QTest::addRow("maximized->fullscreen") << Qt::WindowMaximized << Qt::WindowFullScreen << true;
+}
+
+void tst_QMainWindow::restoreStateSizeChanged()
+{
+    QFETCH(Qt::WindowState, saveState);
+    QFETCH(Qt::WindowState, showState);
+    QFETCH(bool, sameSize);
+
+    auto createMainWindow = []{
+        QMainWindow *mainWindow = new QMainWindow;
+        mainWindow->move(QGuiApplication::primaryScreen()->availableGeometry().topLeft());
+        mainWindow->setCentralWidget(new QLabel("X"));
+        QDockWidget *dockWidget = new QDockWidget;
+        dockWidget->setObjectName("Dock Widget");
+        mainWindow->addDockWidget(Qt::LeftDockWidgetArea, dockWidget);
+        return mainWindow;
+    };
+
+    QByteArray geometryData;
+    QByteArray stateData;
+    int dockWidgetWidth = 0;
+    QRect normalGeometry;
+
+    {
+        auto mainWindow = QScopedPointer<QMainWindow>(createMainWindow());
+        mainWindow->setWindowState(saveState);
+        mainWindow->show();
+        QVERIFY(QTest::qWaitForWindowExposed(mainWindow.data()));
+        dockWidgetWidth = mainWindow->width() - 100;
+        QDockWidget *dockWidget = mainWindow->findChild<QDockWidget*>("Dock Widget");
+        mainWindow->resizeDocks({dockWidget}, {dockWidgetWidth}, Qt::Horizontal);
+        geometryData = mainWindow->saveGeometry();
+        stateData = mainWindow->saveState();
+        normalGeometry = mainWindow->normalGeometry();
+    }
+
+    auto mainWindow = QScopedPointer<QMainWindow>(createMainWindow());
+    mainWindow->restoreGeometry(geometryData);
+    QElapsedTimer timer;
+    timer.start();
+    mainWindow->restoreState(stateData);
+    mainWindow->setWindowState(showState);
+    mainWindow->show();
+    QVERIFY(QTest::qWaitForWindowExposed(mainWindow.data()));
+
+    QDockWidget *dockWidget = mainWindow->findChild<QDockWidget*>("Dock Widget");
+    QVERIFY(dockWidget);
+    QCOMPARE(mainWindow->normalGeometry().size(), normalGeometry.size());
+    if (sameSize) {
+        // The implementation discards the restored state 150ms after a resize
+        // event. If it takes too long to get here, then the test cannot pass anymore
+        // and we want to XFAIL rather then skip it with some information that might
+        // help us adjust the timeout in QMainWindowLayout.
+        bool expectFail = false;
+        const auto waitForLastResize = [&]() -> bool {
+            if (dockWidget->width() == dockWidgetWidth)
+                return true;
+            if (timer.elapsed() > 150) {
+                QMainWindowLayout *l = mainWindow->findChild<QMainWindowLayout *>();
+                Q_ASSERT(l);
+                if (!l->restoredState) {
+                    qWarning("Restored state discarded after %lld", timer.elapsed());
+                    expectFail = true;
+                    return true;
+                }
+            }
+            return false;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(waitForLastResize(), 500);
+        if (expectFail) {
+            QEXPECT_FAIL("fullscreen", "Restored state probably discarded too early", Continue);
+            QEXPECT_FAIL("maximized->fullscreen", "Restored state probably discarded too early", Continue);
+        }
+        QCOMPARE(dockWidget->width(), dockWidgetWidth);
+    }
+}
+
+/*!
+    If a main window's state is restored but also modified, then we
+    might have to forget the restored state to avoid dangling pointers.
+    See comment in QMainWindowLayout::applyRestoredState() and QTBUG-120025.
+*/
+void tst_QMainWindow::restoreAndModify()
+{
+    class MainWindow : public QMainWindow
+    {
+    public:
+        MainWindow()
+        {
+            setCentralWidget(new QTextEdit);
+
+            customers = new QDockWidget(tr("Customers"), this);
+            customers->setObjectName("Customers");
+            customers->setAllowedAreas(Qt::LeftDockWidgetArea |
+                                                  Qt::RightDockWidgetArea);
+            customers->setWidget(new QTextEdit);
+            addDockWidget(Qt::RightDockWidgetArea, customers);
+
+            paragraphs = new QDockWidget(tr("Paragraphs"), this);
+            paragraphs->setObjectName("Paragraphs");
+            paragraphs->setWidget(new QTextEdit);
+            addDockWidget(Qt::RightDockWidgetArea, paragraphs);
+        }
+
+        void restore()
+        {
+            if (!savedGeometry.isEmpty())
+                restoreGeometry(savedGeometry);
+            setWindowState(Qt::WindowMaximized);
+            if (!savedState.isEmpty())
+                restoreState(savedState);
+
+            tabifyDockWidget(customers, paragraphs);
+        }
+    protected:
+        void closeEvent(QCloseEvent *event) override
+        {
+            savedGeometry = saveGeometry();
+            savedState = saveState();
+
+            return QMainWindow::closeEvent(event);
+        }
+    private:
+        QByteArray savedGeometry;
+        QByteArray savedState;
+
+        QDockWidget *customers;
+        QDockWidget *paragraphs;
+
+    } mainWindow;
+
+    mainWindow.restore();
+    mainWindow.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mainWindow));
+    mainWindow.close();
+
+    mainWindow.restore();
+    mainWindow.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&mainWindow));
+}
 
 void tst_QMainWindow::createPopupMenu()
 {
@@ -1456,7 +1606,7 @@ void tst_QMainWindow::createPopupMenu()
 class MyDockWidget : public QDockWidget
 {
 public:
-    MyDockWidget(QWidget * = 0) {
+    MyDockWidget(QWidget * = nullptr) {
         create(); // otherwise hide() doesn't result in a hide event
     }
 };
@@ -1464,11 +1614,11 @@ public:
 class MyWidget : public QWidget
 {
 public:
-    MyWidget(QWidget *parent = 0) : QWidget(parent)
+    MyWidget(QWidget *parent = nullptr) : QWidget(parent)
     {
     }
 
-    QSize sizeHint() const
+    QSize sizeHint() const override
     {
         return QSize(200, 200);
     }
@@ -1522,10 +1672,10 @@ void AddDockWidget::apply(QMainWindow *mw) const
     dw->setObjectName(name);
     dw->setWindowTitle(name);
 
-    QDockWidget *other = 0;
+    QDockWidget *other = nullptr;
     if (mode == SplitMode || mode == TabMode) {
         other = mw->findChild<QDockWidget*>(this->other);
-        QVERIFY(other != 0);
+        QVERIFY(other != nullptr);
     }
 
     switch (mode) {
@@ -1587,25 +1737,25 @@ void MoveSeparator::apply(QMainWindow *mw) const
 QMap<QString, QRect> dockWidgetGeometries(QMainWindow *mw)
 {
     QMap<QString, QRect> result;
-    QList<QDockWidget*> dockWidgets = mw->findChildren<QDockWidget*>();
-    foreach (QDockWidget *dw, dockWidgets)
+    const QList<QDockWidget*> dockWidgets = mw->findChildren<QDockWidget*>();
+    for (QDockWidget *dw : dockWidgets)
         result.insert(dw->objectName(), dw->geometry());
     return result;
 }
 
 #define COMPARE_DOCK_WIDGET_GEOS(_oldGeos, _newGeos) \
 { \
-    QMap<QString, QRect> __oldGeos = _oldGeos; \
-    QMap<QString, QRect> __newGeos = _newGeos; \
-    QCOMPARE(__newGeos.keys(), __oldGeos.keys()); \
-    QStringList __keys = __newGeos.keys(); \
-    foreach (const QString &key, __keys) { \
-        QRect __r1 = __oldGeos[key]; \
-        QRect __r2 = __newGeos[key]; \
-        if (__r1 != __r2) \
-            qWarning() << key << __r1 << __r2; \
+    QMap<QString, QRect> _v_oldGeos = _oldGeos; \
+    QMap<QString, QRect> _v_newGeos = _newGeos; \
+    QCOMPARE(_v_newGeos.keys(), _v_oldGeos.keys()); \
+    const QStringList _v_keys = _v_newGeos.keys(); \
+    for (const QString &key : _v_keys) { \
+        QRect _v_r1 = _v_oldGeos[key]; \
+        QRect _v_r2 = _v_newGeos[key]; \
+        if (_v_r1 != _v_r2) \
+            qWarning() << key << _v_r1 << _v_r2; \
     } \
-    QCOMPARE(__newGeos, __oldGeos); \
+    QCOMPARE(_v_newGeos, _v_oldGeos); \
 }
 
 #ifdef QT_BUILD_INTERNAL
@@ -1651,8 +1801,8 @@ void tst_QMainWindow::saveRestore_data()
 #ifdef QT_BUILD_INTERNAL
 void tst_QMainWindow::saveRestore()
 {
-    QFETCH(AddList, addList);
-    QFETCH(MoveList, moveList);
+    QFETCH(const AddList, addList);
+    QFETCH(const MoveList, moveList);
 
     QByteArray stateData;
     QMap<QString, QRect> dockWidgetGeos;
@@ -1664,12 +1814,12 @@ void tst_QMainWindow::saveRestore()
         QTextEdit centralWidget("The rain in Spain falls mainly on the plains");
         mainWindow.setCentralWidget(&centralWidget);
 
-        foreach (const AddDockWidget &adw, addList)
+        for (const AddDockWidget &adw : addList)
             adw.apply(&mainWindow);
 
         mainWindow.show();
 
-        foreach (const MoveSeparator &ms, moveList)
+        for (const MoveSeparator &ms : moveList)
             ms.apply(&mainWindow);
 
         dockWidgetGeos = dockWidgetGeometries(&mainWindow);
@@ -1687,10 +1837,11 @@ void tst_QMainWindow::saveRestore()
         QTextEdit centralWidget("The rain in Spain falls mainly on the plains");
         mainWindow.setCentralWidget(&centralWidget);
 
-        foreach (const AddDockWidget &adw, addList)
+        for (const AddDockWidget &adw : addList)
             adw.apply(&mainWindow);
 
         mainWindow.show();
+
         mainWindow.restoreState(stateData);
 
         COMPARE_DOCK_WIDGET_GEOS(dockWidgetGeos, dockWidgetGeometries(&mainWindow));
@@ -1703,12 +1854,13 @@ void tst_QMainWindow::saveRestore()
         QTextEdit centralWidget("The rain in Spain falls mainly on the plains");
         mainWindow.setCentralWidget(&centralWidget);
 
-        foreach (const AddDockWidget &adw, addList)
+        for (const AddDockWidget &adw : addList)
             adw.apply(&mainWindow);
         mainWindow.resize(size);
         mainWindow.restoreState(stateData);
 
         mainWindow.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&mainWindow));
         COMPARE_DOCK_WIDGET_GEOS(dockWidgetGeos, dockWidgetGeometries(&mainWindow));
     }
 }
@@ -1753,11 +1905,11 @@ void tst_QMainWindow::setCursor()
     QVERIFY(QTest::qWaitForWindowActive(&mw));
     QCOMPARE(cur.shape(), mw.cursor().shape());
 
-    QHoverEvent enterE(QEvent::HoverEnter, QPoint(10,10), QPoint());
+    QHoverEvent enterE(QEvent::HoverEnter, QPoint(10,10), QPoint(), QPoint());
     mw.event(&enterE);
     QCOMPARE(cur.shape(), mw.cursor().shape());
 
-    QHoverEvent leaveE(QEvent::HoverLeave, QPoint(), QPoint());
+    QHoverEvent leaveE(QEvent::HoverLeave, QPoint(), QPoint(), QPoint());
     mw.event(&leaveE);
     QCOMPARE(cur.shape(), mw.cursor().shape());
 }
@@ -1787,9 +1939,6 @@ void tst_QMainWindow::centralWidgetSize()
     mainWindow.setCentralWidget(&widget);
 
     mainWindow.show();
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "Widgets are maximized by default on WinRT - QTBUG-68297", Abort);
-#endif
     QTRY_COMPARE(widget.size(), widget.sizeHint());
 }
 
@@ -1834,9 +1983,6 @@ void tst_QMainWindow::fixedSizeCentralWidget()
 
     // finally verify that we get the space back when we resize to the old size
     mainWindow.resize(mwSize);
-#ifdef Q_OS_WINRT
-    QEXPECT_FAIL("", "QMainWindow::resize does not work on WinRT", Continue);
-#endif
     QTRY_COMPARE(child->height(), childHeight);
 }
 
@@ -2016,10 +2162,11 @@ void tst_QMainWindow::resizeDocks()
     mw.setDockNestingEnabled(true);
     mw.resize(1800, 600);
 
-    foreach (const AddDockWidget &i, addList)
+    for (const AddDockWidget &i : std::as_const(addList))
         i.apply(&mw);
 
-    foreach (QDockWidget *dw, mw.findChildren<QDockWidget *>())
+    const auto dockWidgets = mw.findChildren<QDockWidget *>();
+    for (QDockWidget *dw : dockWidgets)
         dw->setStyleSheet( "* { background-color: " + dw->objectName() +" }");
 
     mw.setCentralWidget(new QTextEdit);
@@ -2028,11 +2175,11 @@ void tst_QMainWindow::resizeDocks()
     QVERIFY(QTest::qWaitForWindowExposed(&mw));
 
     QFETCH(Qt::Orientation, orientation);
-    QFETCH(QStringList, docks);
+    QFETCH(const QStringList, docks);
     QFETCH(QList<int>, sizes);
 
     QList<QDockWidget *> list;
-    foreach (const QString &name, docks) {
+    for (const QString &name : docks) {
         QDockWidget *d = mw.findChild<QDockWidget *>(name);
         QVERIFY(d);
         list << d;
@@ -2044,14 +2191,14 @@ void tst_QMainWindow::resizeDocks()
 
     int totalFromList = 0;
     int actualTotal = 0;
-    for (int i = 0; i < docks.count(); ++i) {
+    for (int i = 0; i < docks.size(); ++i) {
         totalFromList += sizes[i];
         QSize s = list[i]->size();
         actualTotal += (orientation == Qt::Horizontal) ? s.width() : s.height();
 //        qDebug() << list[i] << list[i]->size() << sizes[i];
     }
 
-    for (int i = 0; i < docks.count(); ++i) {
+    for (int i = 0; i < docks.size(); ++i) {
         QSize s = list[i]->size();
         int value = (orientation == Qt::Horizontal) ? s.width() : s.height();
         QCOMPARE(value,  qRound(sizes[i]*actualTotal/double(totalFromList)));

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QBYTEDATA_P_H
 #define QBYTEDATA_P_H
@@ -53,6 +17,9 @@
 
 #include <QtCore/private/qglobal_p.h>
 #include <qbytearray.h>
+#include <QtCore/qlist.h>
+
+#include <climits>
 
 QT_BEGIN_NAMESPACE
 
@@ -62,18 +29,9 @@ class QByteDataBuffer
 {
 private:
     QList<QByteArray> buffers;
-    qint64 bufferCompleteSize;
-    qint64 firstPos;
+    qint64 bufferCompleteSize = 0;
+    qint64 firstPos = 0;
 public:
-    QByteDataBuffer() : bufferCompleteSize(0), firstPos(0)
-    {
-    }
-
-    ~QByteDataBuffer()
-    {
-        clear();
-    }
-
     static inline void popFront(QByteArray &ba, qint64 n)
     {
         ba = QByteArray(ba.constData() + n, ba.size() - n);
@@ -99,31 +57,55 @@ public:
             popFront(buffers[bufferCount() - other.bufferCount()], other.firstPos);
     }
 
+    inline void append(QByteDataBuffer &&other)
+    {
+        if (other.isEmpty())
+            return;
+
+        auto otherBufferCount = other.bufferCount();
+        auto otherByteAmount = other.byteAmount();
+        buffers.append(std::move(other.buffers));
+        bufferCompleteSize += otherByteAmount;
+
+        if (other.firstPos > 0)
+            popFront(buffers[bufferCount() - otherBufferCount], other.firstPos);
+    }
 
     inline void append(const QByteArray& bd)
+    {
+        append(QByteArray(bd));
+    }
+
+    inline void append(QByteArray &&bd)
     {
         if (bd.isEmpty())
             return;
 
-        buffers.append(bd);
         bufferCompleteSize += bd.size();
+        buffers.append(std::move(bd));
     }
 
     inline void prepend(const QByteArray& bd)
+    {
+        prepend(QByteArray(bd));
+    }
+
+    inline void prepend(QByteArray &&bd)
     {
         if (bd.isEmpty())
             return;
 
         squeezeFirst();
 
-        buffers.prepend(bd);
         bufferCompleteSize += bd.size();
+        buffers.prepend(std::move(bd));
     }
 
     // return the first QByteData. User of this function has to free() its .data!
     // preferably use this function to read data.
     inline QByteArray read()
     {
+        Q_ASSERT(!isEmpty());
         squeezeFirst();
         bufferCompleteSize -= buffers.first().size();
         return buffers.takeFirst();
@@ -141,8 +123,15 @@ public:
     inline QByteArray read(qint64 amount)
     {
         amount = qMin(byteAmount(), amount);
+        if constexpr (sizeof(qsizetype) == sizeof(int)) { // 32-bit
+            // While we cannot overall have more than INT_MAX memory allocated,
+            // the QByteArrays we hold may be shared copies of each other,
+            // causing byteAmount() to exceed INT_MAX.
+            if (amount > INT_MAX)
+                qBadAlloc(); // what resize() would do if it saw past the truncation
+        }
         QByteArray byteData;
-        byteData.resize(amount);
+        byteData.resize(qsizetype(amount));
         read(byteData.data(), byteData.size());
         return byteData;
     }
@@ -178,8 +167,59 @@ public:
         return originalAmount;
     }
 
+    /*!
+        \internal
+        Returns a view into the first QByteArray contained inside,
+        ignoring any already read data. Call advanceReadPointer()
+        to advance the view forward. When a QByteArray is exhausted
+        the view returned by this function will view into another
+        QByteArray if any. Returns a default constructed view if
+        no data is available.
+
+        \sa advanceReadPointer
+    */
+    QByteArrayView readPointer() const
+    {
+        if (isEmpty())
+            return {};
+        return { buffers.first().constData() + qsizetype(firstPos),
+                 buffers.first().size() - qsizetype(firstPos) };
+    }
+
+    /*!
+        \internal
+        Advances the read pointer by \a distance.
+
+        \sa readPointer
+    */
+    void advanceReadPointer(qint64 distance)
+    {
+        qint64 newPos = firstPos + distance;
+        if (isEmpty()) {
+            newPos = 0;
+        } else if (auto size = buffers.first().size(); newPos >= size) {
+            while (newPos >= size) {
+                bufferCompleteSize -= (size - firstPos);
+                newPos -= size;
+                buffers.pop_front();
+                if (isEmpty()) {
+                    size = 0;
+                    newPos = 0;
+                    break;
+                }
+                size = buffers.front().size();
+            }
+            bufferCompleteSize -= newPos;
+        } else {
+            bufferCompleteSize -= newPos - firstPos;
+        }
+        firstPos = newPos;
+    }
+
     inline char getChar()
     {
+        Q_ASSERT_X(!isEmpty(), "QByteDataBuffer::getChar",
+                   "Cannot read a char from an empty buffer!");
         char c;
         read(&c, 1);
         return c;
@@ -199,9 +239,9 @@ public:
     }
 
     // the number of QByteArrays
-    inline int bufferCount() const
+    qsizetype bufferCount() const
     {
-        return buffers.length();
+        return buffers.size();
     }
 
     inline bool isEmpty() const
@@ -211,13 +251,13 @@ public:
 
     inline qint64 sizeNextBlock() const
     {
-        if(buffers.isEmpty())
+        if (buffers.isEmpty())
             return 0;
         else
             return buffers.first().size() - firstPos;
     }
 
-    inline QByteArray& operator[](int i)
+    QByteArray &operator[](qsizetype i)
     {
         if (i == 0)
             squeezeFirst();
@@ -226,13 +266,13 @@ public:
     }
 
     inline bool canReadLine() const {
-        int i = 0;
-        if (i < buffers.length()) {
+        qsizetype i = 0;
+        if (i < buffers.size()) {
             if (buffers.at(i).indexOf('\n', firstPos) != -1)
                 return true;
             ++i;
 
-            for (; i < buffers.length(); i++)
+            for (; i < buffers.size(); i++)
                 if (buffers.at(i).contains('\n'))
                     return true;
         }

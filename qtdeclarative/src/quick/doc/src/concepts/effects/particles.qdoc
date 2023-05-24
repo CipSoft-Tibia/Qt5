@@ -1,40 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-    \qmlmodule QtQuick.Particles 2.\QtMinorVersion
+    \keyword Qt Quick Particles
+    \qmlmodule QtQuick.Particles
     \title Qt Quick Particles QML Types
     \ingroup qmlmodules
     \brief Provides QML types for particle effects
 
   This QML module contains a particle system for Qt Quick. To use these types, import the module with the following line:
 
-  \qml \QtMinorVersion
-  import QtQuick.Particles 2.\1
+  \qml
+  import QtQuick.Particles
   \endqml
 
   For a simple overview of how the system can be used, see \l{Using the Qt Quick Particle System}.
@@ -51,8 +28,8 @@
 
     To use the types from the particles module, import the module with the following line:
 
-    \qml \QtMinorVersion
-    import QtQuick.Particles 2.\1
+    \qml
+    import QtQuick.Particles
     \endqml
 
     \section1 The ParticleSystem
@@ -96,14 +73,15 @@
     particle of the followed type within the bounds of a TrailEmitter will cause particle emission from its location, as if there
     were an Emitter on it with the same properties as the TrailEmitter.
 
+    \sa {Qt Quick Particles Examples - Emitters}
+
     \section1 ParticlePainters
     Painters are the types that visualize logical particles. For each logical particle in the groups assigned to it,
     which are within its bounds (or outside, if you do not set the clip property on the type) it will be visualized
     in a manner dependent on the type of ParticlePainter.  The base type of ParticlePainter does not draw anything.
-    ImageParticle renders an image at the particle location. CustomParticle allows you to write your own shaders to render
-    the particles, passing in the logical particle state as vertex data. ItemParticle allows you to visualize logical
-    particles using arbitrary QML delegates. ModelParticle is similar, but coordinates model data amongst the delegates
-    in a similar manner to the view classes.
+    ImageParticle renders an image at the particle location. ItemParticle allows you to visualize logical particles
+    using arbitrary QML delegates. ModelParticle is similar, but coordinates model data amongst the delegates in a
+    similar manner to the view classes.
 
     As the ParticlePainter is the QML type visualizing the particles in the scene, it is its Z value which is important
     when trying to place particles above or below other types visually.
@@ -112,6 +90,10 @@
     Affectors are an optional component of a particle system. They can perform a variety of manipulations to the simulation,
     such as altering the trajectory of particles or prematurely ending their life in the simulation. For performance reasons,
     it is recommended not to use Affectors in high-volume particle systems.
+
+    \sa {Qt Quick Particles Examples - Affectors}{Examples Affectors},
+        {Qt Quick Particles Examples - Image Particles}{Examples Image Particles},
+        {Qt Quick Particles Examples - System}{Example Affectors - System}
 
     \section1 Stochastic Parameters
     As particle systems benefit from stochastic control of parameters across a large number of instances, several stochastic

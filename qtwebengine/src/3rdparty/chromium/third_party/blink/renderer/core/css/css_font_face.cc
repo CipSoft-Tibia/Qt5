@@ -57,13 +57,15 @@ void CSSFontFace::RemoveSegmentedFontFace(
 }
 
 void CSSFontFace::DidBeginLoad() {
-  if (LoadStatus() == FontFace::kUnloaded)
+  if (LoadStatus() == FontFace::kUnloaded) {
     SetLoadStatus(FontFace::kLoading);
+  }
 }
 
 bool CSSFontFace::FontLoaded(CSSFontFaceSource* source) {
-  if (!IsValid() || source != sources_.front())
+  if (!IsValid() || source != sources_.front()) {
     return false;
+  }
 
   if (LoadStatus() == FontFace::kLoading) {
     if (source->IsValid()) {
@@ -77,8 +79,9 @@ bool CSSFontFace::FontLoaded(CSSFontFaceSource* source) {
     }
   }
 
-  for (CSSSegmentedFontFace* segmented_font_face : segmented_font_faces_)
+  for (CSSSegmentedFontFace* segmented_font_face : segmented_font_faces_) {
     segmented_font_face->FontFaceInvalidated();
+  }
   return true;
 }
 
@@ -89,8 +92,9 @@ void CSSFontFace::SetDisplay(FontDisplay value) {
 }
 
 size_t CSSFontFace::ApproximateBlankCharacterCount() const {
-  if (sources_.IsEmpty() || !sources_.front()->IsInBlockPeriod())
+  if (sources_.empty() || !sources_.front()->IsInBlockPeriod()) {
     return 0;
+  }
   size_t approximate_character_count_ = 0;
   for (CSSSegmentedFontFace* segmented_font_face : segmented_font_faces_) {
     approximate_character_count_ +=
@@ -100,53 +104,71 @@ size_t CSSFontFace::ApproximateBlankCharacterCount() const {
 }
 
 bool CSSFontFace::FallbackVisibilityChanged(RemoteFontFaceSource* source) {
-  if (!IsValid() || source != sources_.front())
+  if (!IsValid() || source != sources_.front()) {
     return false;
-  for (CSSSegmentedFontFace* segmented_font_face : segmented_font_faces_)
+  }
+  for (CSSSegmentedFontFace* segmented_font_face : segmented_font_faces_) {
     segmented_font_face->FontFaceInvalidated();
+  }
   return true;
 }
 
 scoped_refptr<SimpleFontData> CSSFontFace::GetFontData(
     const FontDescription& font_description) {
-  if (!IsValid())
+  if (!IsValid()) {
     return nullptr;
+  }
+
+  // Apply the 'size-adjust' descriptor before font selection.
+  // https://drafts.csswg.org/css-fonts-5/#descdef-font-face-size-adjust
+  const FontDescription& size_adjusted_description =
+      font_face_->HasSizeAdjust()
+          ? font_description.SizeAdjustedFontDescription(
+                font_face_->GetSizeAdjust())
+          : font_description;
 
   // https://www.w3.org/TR/css-fonts-4/#src-desc
   // "When a font is needed the user agent iterates over the set of references
   // listed, using the first one it can successfully activate."
-  while (!sources_.IsEmpty()) {
+  while (!sources_.empty()) {
     Member<CSSFontFaceSource>& source = sources_.front();
 
     // Bail out if the first source is in the Failure period, causing fallback
     // to next font-family.
-    if (source->IsInFailurePeriod())
+    if (source->IsInFailurePeriod()) {
       return nullptr;
+    }
 
-    if (scoped_refptr<SimpleFontData> result = source->GetFontData(
-            font_description, font_face_->GetFontSelectionCapabilities())) {
+    if (scoped_refptr<SimpleFontData> result =
+            source->GetFontData(size_adjusted_description,
+                                font_face_->GetFontSelectionCapabilities())) {
       if (font_face_->HasFontMetricsOverride()) {
-        // TODO(xiaochengh): Try not to create a temporary SimpleFontData.
+        // TODO(xiaochengh): Try not to create a temporary
+        // SimpleFontData.
         result = result->MetricsOverriddenFontData(
             font_face_->GetFontMetricsOverride());
       }
       // The active source may already be loading or loaded. Adjust our
       // FontFace status accordingly.
       if (LoadStatus() == FontFace::kUnloaded &&
-          (source->IsLoading() || source->IsLoaded()))
+          (source->IsLoading() || source->IsLoaded())) {
         SetLoadStatus(FontFace::kLoading);
-      if (LoadStatus() == FontFace::kLoading && source->IsLoaded())
+      }
+      if (LoadStatus() == FontFace::kLoading && source->IsLoaded()) {
         SetLoadStatus(FontFace::kLoaded);
+      }
       return result;
     }
     sources_.pop_front();
   }
 
   // We ran out of source. Set the FontFace status to "error" and return.
-  if (LoadStatus() == FontFace::kUnloaded)
+  if (LoadStatus() == FontFace::kUnloaded) {
     SetLoadStatus(FontFace::kLoading);
-  if (LoadStatus() == FontFace::kLoading)
+  }
+  if (LoadStatus() == FontFace::kLoading) {
     SetLoadStatus(FontFace::kError);
+  }
   return nullptr;
 }
 
@@ -158,8 +180,9 @@ bool CSSFontFace::MaybeLoadFont(const FontDescription& font_description,
   // kicked off in layout phase.
   UChar32 character = text.CharacterStartingAt(0);
   if (ranges_->Contains(character)) {
-    if (LoadStatus() == FontFace::kUnloaded)
+    if (LoadStatus() == FontFace::kUnloaded) {
       Load(font_description);
+    }
     return true;
   }
   return false;
@@ -179,17 +202,18 @@ bool CSSFontFace::MaybeLoadFont(const FontDescription& font_description,
 void CSSFontFace::Load() {
   FontDescription font_description;
   FontFamily font_family;
-  font_family.SetFamily(font_face_->family());
+  font_family.SetFamily(font_face_->family(), FontFamily::Type::kFamilyName);
   font_description.SetFamily(font_family);
   Load(font_description);
 }
 
 void CSSFontFace::Load(const FontDescription& font_description) {
-  if (LoadStatus() == FontFace::kUnloaded)
+  if (LoadStatus() == FontFace::kUnloaded) {
     SetLoadStatus(FontFace::kLoading);
+  }
   DCHECK_EQ(LoadStatus(), FontFace::kLoading);
 
-  while (!sources_.IsEmpty()) {
+  while (!sources_.empty()) {
     Member<CSSFontFaceSource>& source = sources_.front();
     if (source->IsValid()) {
       if (source->IsLocalNonBlocking()) {
@@ -198,10 +222,11 @@ void CSSFontFace::Load(const FontDescription& font_description) {
           return;
         }
       } else {
-        if (!source->IsLoaded())
+        if (!source->IsLoaded()) {
           source->BeginLoadIfNeeded();
-        else
+        } else {
           SetLoadStatus(FontFace::kLoaded);
+        }
         return;
       }
     }
@@ -212,13 +237,15 @@ void CSSFontFace::Load(const FontDescription& font_description) {
 
 void CSSFontFace::SetLoadStatus(FontFace::LoadStatusType new_status) {
   DCHECK(font_face_);
-  if (new_status == FontFace::kError)
+  if (new_status == FontFace::kError) {
     font_face_->SetError();
-  else
+  } else {
     font_face_->SetLoadStatus(new_status);
+  }
 
-  if (segmented_font_faces_.IsEmpty() || !font_face_->GetExecutionContext())
+  if (segmented_font_faces_.empty() || !font_face_->GetExecutionContext()) {
     return;
+  }
 
   if (auto* window =
           DynamicTo<LocalDOMWindow>(font_face_->GetExecutionContext())) {
@@ -228,18 +255,21 @@ void CSSFontFace::SetLoadStatus(FontFace::LoadStatusType new_status) {
     }
   } else if (auto* scope = DynamicTo<WorkerGlobalScope>(
                  font_face_->GetExecutionContext())) {
-    if (new_status == FontFace::kLoading)
+    if (new_status == FontFace::kLoading) {
       FontFaceSetWorker::From(*scope)->BeginFontLoading(font_face_);
+    }
   }
 }
 
 bool CSSFontFace::UpdatePeriod() {
-  if (LoadStatus() == FontFace::kLoaded)
+  if (LoadStatus() == FontFace::kLoaded) {
     return false;
+  }
   bool changed = false;
   for (CSSFontFaceSource* source : sources_) {
-    if (source->UpdatePeriod())
+    if (source->UpdatePeriod()) {
       changed = true;
+    }
   }
   return changed;
 }

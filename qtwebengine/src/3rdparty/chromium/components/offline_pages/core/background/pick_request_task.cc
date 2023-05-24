@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,8 +9,8 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/time/time.h"
 #include "components/offline_pages/core/background/device_conditions.h"
 #include "components/offline_pages/core/background/offliner_policy.h"
@@ -36,8 +36,7 @@ bool kNonUserRequestsFound = true;
 
 namespace offline_pages {
 
-const base::TimeDelta PickRequestTask::kDeferInterval =
-    base::TimeDelta::FromMinutes(1);
+const base::TimeDelta PickRequestTask::kDeferInterval = base::Minutes(1);
 
 PickRequestTask::PickRequestTask(
     RequestQueueStore* store,
@@ -117,8 +116,8 @@ void PickRequestTask::Choose(
       continue;
     }
     // If the request is on the disabled list, skip it.
-    auto search = disabled_requests_.find(request->request_id());
-    if (search != disabled_requests_.end())
+    auto search = disabled_requests_->find(request->request_id());
+    if (search != disabled_requests_->end())
       continue;
 
     // If there are non-user-requested tasks remaining, we need to make sure

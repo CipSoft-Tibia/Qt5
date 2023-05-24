@@ -63,9 +63,5 @@
         <source>Device disappeared from the system</source>
         <translation>Gerät wurde vom System entfernt</translation>
     </message>
-    <message>
-        <source>The device supports only the ignoring policy</source>
-        <translation>Dieses Gerät unterstützt lediglich die Policy &quot;ignoring&quot;</translation>
-    </message>
 </context>
 </TS>

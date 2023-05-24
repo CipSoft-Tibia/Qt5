@@ -16,7 +16,7 @@
 
 #include "src/trace_processor/importers/proto/gpu_event_parser.h"
 
-#include <inttypes.h>
+#include <cinttypes>
 
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/protozero/field.h"
@@ -198,17 +198,7 @@ void GpuEventParser::ParseGpuCounterEvent(int64_t ts, ConstBytes blob) {
       // Check missing counter_id
       if (gpu_counter_track_ids_.find(counter_id) ==
           gpu_counter_track_ids_.end()) {
-        char buffer[64];
-        base::StringWriter writer(buffer, sizeof(buffer));
-        writer.AppendString("gpu_counter(");
-        writer.AppendUnsignedInt(counter_id);
-        writer.AppendString(")");
-        auto name_id = context_->storage->InternString(writer.GetStringView());
-
-        TrackId track = context_->track_tracker->CreateGpuCounterTrack(
-            name_id, 0 /* gpu_id */);
-        gpu_counter_track_ids_.emplace(counter_id, track);
-        context_->storage->IncrementStats(stats::gpu_counters_missing_spec);
+        continue;
       }
       double counter_val = counter.has_int_value()
                                ? static_cast<double>(counter.int_value())
@@ -238,9 +228,8 @@ const StringId GpuEventParser::GetFullStageName(
     if (stage_id < gpu_render_stage_ids_.size()) {
       stage_name = gpu_render_stage_ids_[static_cast<size_t>(stage_id)].first;
     } else {
-      char buffer[64];
-      snprintf(buffer, sizeof(buffer), "render stage(%" PRIu64 ")", stage_id);
-      stage_name = context_->storage->InternString(buffer);
+      base::StackString<64> name("render stage(%" PRIu64 ")", stage_id);
+      stage_name = context_->storage->InternString(name.string_view());
     }
   }
   return stage_name;
@@ -480,7 +469,8 @@ void GpuEventParser::ParseGpuRenderStageEvent(
     row.submission_id = event.submission_id();
     row.hw_queue_id = static_cast<int64_t>(hw_queue_id);
 
-    context_->slice_tracker->ScopedGpu(row, args_callback);
+    context_->slice_tracker->ScopedTyped(
+        context_->storage->mutable_gpu_slice_table(), row, args_callback);
   }
 }
 
@@ -696,7 +686,8 @@ void GpuEventParser::ParseGpuLog(int64_t ts, ConstBytes blob) {
   row.track_id = track_id;
   row.name = severity_id;
   row.dur = 0;
-  context_->slice_tracker->ScopedGpu(row, args_callback);
+  context_->slice_tracker->ScopedTyped(
+      context_->storage->mutable_gpu_slice_table(), row, args_callback);
 }
 
 void GpuEventParser::ParseVulkanApiEvent(int64_t ts, ConstBytes blob) {
@@ -731,7 +722,8 @@ void GpuEventParser::ParseVulkanApiEvent(int64_t ts, ConstBytes blob) {
       inserter->AddArg(context_->storage->InternString("tid"),
                        Variadic::Integer(event.tid()));
     };
-    context_->slice_tracker->ScopedGpu(row, args_callback);
+    context_->slice_tracker->ScopedTyped(
+        context_->storage->mutable_gpu_slice_table(), row, args_callback);
   }
 }
 
@@ -743,7 +735,7 @@ void GpuEventParser::ParseGpuMemTotalEvent(int64_t ts, ConstBytes blob) {
   if (pid == 0) {
     // Pid 0 is used to indicate the global total
     track = context_->track_tracker->InternGlobalCounterTrack(
-        gpu_mem_total_name_id_, gpu_mem_total_unit_id_,
+        gpu_mem_total_name_id_, {}, gpu_mem_total_unit_id_,
         gpu_mem_total_global_desc_id_);
   } else {
     // Process emitting the packet can be different from the pid in the event.

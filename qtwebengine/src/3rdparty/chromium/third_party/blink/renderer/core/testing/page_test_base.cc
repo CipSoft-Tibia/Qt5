@@ -1,24 +1,31 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 
-#include "base/callback.h"
-#include "base/test/bind_test_util.h"
+#include <sstream>
+
+#include "base/functional/callback.h"
+#include "base/test/bind.h"
 #include "base/time/default_tick_clock.h"
 #include "third_party/blink/public/common/browser_interface_broker_proxy.h"
-#include "third_party/blink/renderer/bindings/core/v8/string_or_array_buffer_or_array_buffer_view.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_font_face_descriptors.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_union_arraybuffer_arraybufferview_string.h"
 #include "third_party/blink/renderer/core/css/font_face_set_document.h"
+#include "third_party/blink/renderer/core/frame/csp/conversion_util.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/html/html_collection.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/layout/layout_text_fragment.h"
+#include "third_party/blink/renderer/core/testing/mock_policy_container_host.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 
 namespace blink {
 
@@ -32,6 +39,31 @@ Element* GetOrCreateElement(ContainerNode* parent,
     return elements->item(0);
   return parent->ownerDocument()->CreateRawElement(
       tag_name, CreateElementFlags::ByCreateElement());
+}
+
+void ToSimpleLayoutTree(std::ostream& ostream,
+                        const LayoutObject& layout_object,
+                        int depth) {
+  for (int i = 1; i < depth; ++i)
+    ostream << "|  ";
+  ostream << (depth ? "+--" : "") << layout_object.GetName() << " ";
+  if (auto* node = layout_object.GetNode())
+    ostream << *node;
+  else
+    ostream << "(anonymous)";
+  if (auto* layout_text_fragment =
+          DynamicTo<LayoutTextFragment>(layout_object)) {
+    ostream << " (" << layout_text_fragment->GetText() << ")";
+  } else if (auto* layout_text = DynamicTo<LayoutText>(layout_object)) {
+    if (!layout_object.GetNode())
+      ostream << " " << layout_text->GetText();
+  }
+  ostream << std::endl;
+  for (auto* child = layout_object.SlowFirstChild(); child;
+       child = child->NextSibling()) {
+    ostream << "  ";
+    ToSimpleLayoutTree(ostream, *child, depth + 1);
+  }
 }
 
 }  // namespace
@@ -55,7 +87,7 @@ void PageTestBase::MockClipboardHostProvider::Install(
   interface_broker_ = &interface_broker;
   interface_broker_->SetBinderForTesting(
       blink::mojom::blink::ClipboardHost::Name_,
-      base::BindRepeating(
+      WTF::BindRepeating(
           &PageTestBase::MockClipboardHostProvider::BindClipboardHost,
           base::Unretained(this)));
 }
@@ -83,7 +115,7 @@ void PageTestBase::SetUp() {
       settings.SetAcceleratedCompositingEnabled(true);
   });
   dummy_page_holder_ = std::make_unique<DummyPageHolder>(
-      IntSize(800, 600), nullptr, nullptr, std::move(setter), GetTickClock());
+      gfx::Size(800, 600), nullptr, nullptr, std::move(setter), GetTickClock());
 
   // Mock out clipboard calls so that tests don't mess
   // with each other's copies/pastes when running in parallel.
@@ -96,7 +128,7 @@ void PageTestBase::SetUp() {
   GetPage().SetDefaultPageScaleLimits(1, 4);
 }
 
-void PageTestBase::SetUp(IntSize size) {
+void PageTestBase::SetUp(gfx::Size size) {
   DCHECK(!dummy_page_holder_) << "Page should be set up only once";
   auto setter = base::BindLambdaForTesting([&](Settings& settings) {
     if (enable_compositing_)
@@ -113,9 +145,10 @@ void PageTestBase::SetUp(IntSize size) {
 }
 
 void PageTestBase::SetupPageWithClients(
-    Page::PageClients* clients,
+    ChromeClient* chrome_client,
     LocalFrameClient* local_frame_client,
-    FrameSettingOverrideFunction setting_overrider) {
+    FrameSettingOverrideFunction setting_overrider,
+    gfx::Size size) {
   DCHECK(!dummy_page_holder_) << "Page should be set up only once";
   auto setter = base::BindLambdaForTesting([&](Settings& settings) {
     if (setting_overrider)
@@ -123,9 +156,9 @@ void PageTestBase::SetupPageWithClients(
     if (enable_compositing_)
       settings.SetAcceleratedCompositingEnabled(true);
   });
-  dummy_page_holder_ = std::make_unique<DummyPageHolder>(
-      IntSize(800, 600), clients, local_frame_client, std::move(setter),
-      GetTickClock());
+  dummy_page_holder_ =
+      std::make_unique<DummyPageHolder>(size, chrome_client, local_frame_client,
+                                        std::move(setter), GetTickClock());
 
   // Use no-quirks (ake "strict") mode by default.
   GetDocument().SetCompatibilityMode(Document::kNoQuirksMode);
@@ -159,19 +192,35 @@ void PageTestBase::LoadAhem() {
 }
 
 void PageTestBase::LoadAhem(LocalFrame& frame) {
+  LoadFontFromFile(frame, test::CoreTestDataPath("Ahem.ttf"), "Ahem");
+}
+
+void PageTestBase::LoadFontFromFile(LocalFrame& frame,
+                                    String font_path,
+                                    const AtomicString& family_name) {
   Document& document = *frame.DomWindow()->document();
-  scoped_refptr<SharedBuffer> shared_buffer =
-      test::ReadFromFile(test::CoreTestDataPath("Ahem.ttf"));
-  StringOrArrayBufferOrArrayBufferView buffer =
-      StringOrArrayBufferOrArrayBufferView::FromArrayBuffer(
+  scoped_refptr<SharedBuffer> shared_buffer = test::ReadFromFile(font_path);
+  auto* buffer =
+      MakeGarbageCollected<V8UnionArrayBufferOrArrayBufferViewOrString>(
           DOMArrayBuffer::Create(shared_buffer));
-  FontFace* ahem = FontFace::Create(frame.DomWindow(), "Ahem", buffer,
+  FontFace* ahem = FontFace::Create(frame.DomWindow(), family_name, buffer,
                                     FontFaceDescriptors::Create());
 
   ScriptState* script_state = ToScriptStateForMainWorld(&frame);
   DummyExceptionStateForTesting exception_state;
   FontFaceSetDocument::From(document)->addForBinding(script_state, ahem,
                                                      exception_state);
+}
+
+void PageTestBase::LoadNoto() {
+  LoadNoto(GetFrame());
+}
+
+void PageTestBase::LoadNoto(LocalFrame& frame) {
+  LoadFontFromFile(frame,
+                   blink::test::PlatformTestDataPath(
+                       "third_party/Noto/NotoNaskhArabic-regular.woff2"),
+                   "NotoArabic");
 }
 
 // Both sets the inner html and runs the document lifecycle.
@@ -201,11 +250,26 @@ void PageTestBase::InsertStyleElement(const std::string& style_rules) {
 
 void PageTestBase::NavigateTo(const KURL& url,
                               const WTF::HashMap<String, String>& headers) {
-  auto params =
-      WebNavigationParams::CreateWithHTMLBuffer(SharedBuffer::Create(), url);
+  auto params = WebNavigationParams::CreateWithHTMLBufferForTesting(
+      SharedBuffer::Create(), url);
 
   for (const auto& header : headers)
     params->response.SetHttpHeaderField(header.key, header.value);
+
+  MockPolicyContainerHost mock_policy_container_host;
+  params->policy_container = std::make_unique<WebPolicyContainer>(
+      WebPolicyContainerPolicies(),
+      mock_policy_container_host.BindNewEndpointAndPassDedicatedRemote());
+
+  // Add parsed Content Security Policies to the policy container, simulating
+  // what the browser does.
+  for (auto& csp : ParseContentSecurityPolicies(
+           params->response.HttpHeaderField("content-security-policy"),
+           network::mojom::blink::ContentSecurityPolicyType::kEnforce,
+           network::mojom::blink::ContentSecurityPolicySource::kHTTP, url)) {
+    params->policy_container->policies.content_security_policies.emplace_back(
+        ConvertToPublic(std::move(csp)));
+  }
 
   GetFrame().Loader().CommitNavigation(std::move(params),
                                        nullptr /* extra_data */);
@@ -215,8 +279,7 @@ void PageTestBase::NavigateTo(const KURL& url,
 }
 
 void PageTestBase::UpdateAllLifecyclePhasesForTest() {
-  GetDocument().View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
-  GetDocument().View()->RunPostLifecycleSteps();
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
 }
 
 StyleEngine& PageTestBase::GetStyleEngine() {
@@ -248,6 +311,16 @@ void PageTestBase::EnablePlatform() {
 const base::TickClock* PageTestBase::GetTickClock() {
   return platform_ ? platform()->test_task_runner()->GetMockTickClock()
                    : base::DefaultTickClock::GetInstance();
+}
+
+// See also LayoutTreeAsText to dump with geometry and paint layers.
+// static
+std::string PageTestBase::ToSimpleLayoutTree(
+    const LayoutObject& layout_object) {
+  std::ostringstream ostream;
+  ostream << std::endl;
+  ::blink::ToSimpleLayoutTree(ostream, layout_object, 0);
+  return ostream.str();
 }
 
 }  // namespace blink

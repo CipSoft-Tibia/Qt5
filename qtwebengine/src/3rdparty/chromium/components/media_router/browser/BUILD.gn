@@ -1,13 +1,9 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 source_set("browser") {
   sources = [
-    "issue_manager.cc",
-    "issue_manager.h",
-    "issues_observer.cc",
-    "issues_observer.h",
     "media_router.h",
     "media_router_base.cc",
     "media_router_base.h",
@@ -39,18 +35,17 @@ source_set("browser") {
     "presentation/start_presentation_context.h",
     "presentation/web_contents_presentation_manager.cc",
     "presentation/web_contents_presentation_manager.h",
-    "route_message_observer.cc",
-    "route_message_observer.h",
+    "presentation_connection_message_observer.cc",
+    "presentation_connection_message_observer.h",
     "route_message_util.cc",
     "route_message_util.h",
   ]
 
   deps = [
     "//base",
-    "//components/cast_channel",
     "//components/keyed_service/content",
     "//components/keyed_service/core",
-    "//components/openscreen_platform:openscreen_platform_network_service",
+    "//components/media_router/common/providers/cast/channel",
     "//components/prefs",
     "//components/sessions",
     "//components/user_prefs",
@@ -83,8 +78,16 @@ source_set("browser") {
     deps += [ "android:jni_headers" ]
   } else {
     sources += [
+      "issue_manager.cc",
+      "issue_manager.h",
+      "issues_observer.cc",
+      "issues_observer.h",
+      "log_util.cc",
+      "log_util.h",
       "logger_impl.cc",
       "logger_impl.h",
+      "media_router_debugger.cc",
+      "media_router_debugger.h",
       "presentation/presentation_navigation_policy.cc",
       "presentation/presentation_navigation_policy.h",
     ]
@@ -113,9 +116,9 @@ source_set("unit_tests") {
   testonly = true
 
   sources = [
-    "issue_manager_unittest.cc",
     "media_router_base_unittest.cc",
     "media_router_dialog_controller_unittest.cc",
+    "media_router_factory_unittest.cc",
     "media_router_metrics_unittest.cc",
     "media_sinks_observer_unittest.cc",
     "presentation/browser_presentation_connection_proxy_unittest.cc",
@@ -138,6 +141,10 @@ source_set("unit_tests") {
     sources += [ "android/media_router_android_unittest.cc" ]
     deps += [ "android:test_jni_headers" ]
   } else {
-    sources += [ "logger_impl_unittest.cc" ]
+    sources += [
+      "issue_manager_unittest.cc",
+      "logger_impl_unittest.cc",
+      "media_router_debugger_unittest.cc",
+    ]
   }
 }

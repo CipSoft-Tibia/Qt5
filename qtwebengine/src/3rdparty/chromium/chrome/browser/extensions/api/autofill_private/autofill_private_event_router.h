@@ -1,11 +1,11 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CHROME_BROWSER_EXTENSIONS_API_AUTOFILL_PRIVATE_AUTOFILL_PRIVATE_EVENT_ROUTER_H_
 #define CHROME_BROWSER_EXTENSIONS_API_AUTOFILL_PRIVATE_AUTOFILL_PRIVATE_EVENT_ROUTER_H_
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "components/autofill/core/browser/personal_data_manager_observer.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "extensions/browser/event_router.h"
@@ -29,7 +29,10 @@ class AutofillPrivateEventRouter :
  public:
   static AutofillPrivateEventRouter* Create(
       content::BrowserContext* browser_context);
-  ~AutofillPrivateEventRouter() override;
+  AutofillPrivateEventRouter(const AutofillPrivateEventRouter&) = delete;
+  AutofillPrivateEventRouter& operator=(const AutofillPrivateEventRouter&) =
+      delete;
+  ~AutofillPrivateEventRouter() override = default;
 
  protected:
   explicit AutofillPrivateEventRouter(content::BrowserContext* context);
@@ -41,13 +44,11 @@ class AutofillPrivateEventRouter :
   void OnPersonalDataChanged() override;
 
  private:
-  content::BrowserContext* context_;
+  raw_ptr<content::BrowserContext> context_;
 
-  EventRouter* event_router_;
+  raw_ptr<EventRouter> event_router_ = nullptr;
 
-  autofill::PersonalDataManager* personal_data_;
-
-  DISALLOW_COPY_AND_ASSIGN(AutofillPrivateEventRouter);
+  raw_ptr<autofill::PersonalDataManager> personal_data_ = nullptr;
 };
 
 }  // namespace extensions

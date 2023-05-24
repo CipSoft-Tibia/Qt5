@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/xproto_internal.h"
-#include "ui/gfx/x/xproto_util.h"
 
 namespace x11 {
 
@@ -26,8 +25,15 @@ struct ReplyHeader {
 
 }  // namespace
 
-ReadBuffer::ReadBuffer(scoped_refptr<base::RefCountedMemory> data)
+ReadBuffer::ReadBuffer(scoped_refptr<base::RefCountedMemory> data,
+                       bool setup_message)
     : data(data) {
+  // X connection setup uses a special reply without the standard header, see:
+  // https://www.x.org/releases/X11R7.6/doc/xproto/x11protocol.html#server_response
+  // Don't try to parse it like a normal reply.
+  if (setup_message)
+    return;
+
   const auto* reply_header = reinterpret_cast<const ReplyHeader*>(data->data());
 
   // Only replies can have FDs, not events or errors.
@@ -77,67 +83,6 @@ std::vector<scoped_refptr<base::RefCountedMemory>>& WriteBuffer::GetBuffers() {
 
 void WriteBuffer::AppendCurrentBuffer() {
   buffers_.push_back(base::RefCountedBytes::TakeVector(&current_buffer_));
-}
-
-FutureBase::FutureBase(Connection* connection,
-                       base::Optional<unsigned int> sequence)
-    : connection_(connection), sequence_(sequence) {}
-
-// If a user-defined response-handler is not installed before this object goes
-// out of scope, a default response handler will be installed.  The default
-// handler throws away the reply and prints the error if there is one.
-FutureBase::~FutureBase() {
-  if (!sequence_)
-    return;
-
-  OnResponseImpl(base::BindOnce(
-      [](Connection* connection, RawReply reply, RawError error) {
-        if (!error)
-          return;
-
-        x11::LogErrorEventDescription(error->full_sequence, error->error_code,
-                                      error->major_code, error->minor_code);
-      },
-      connection_));
-}
-
-FutureBase::FutureBase(FutureBase&& future)
-    : connection_(future.connection_), sequence_(future.sequence_) {
-  future.connection_ = nullptr;
-  future.sequence_ = base::nullopt;
-}
-
-FutureBase& FutureBase::operator=(FutureBase&& future) {
-  connection_ = future.connection_;
-  sequence_ = future.sequence_;
-  future.connection_ = nullptr;
-  future.sequence_ = base::nullopt;
-  return *this;
-}
-
-void FutureBase::SyncImpl(Error** raw_error,
-                          scoped_refptr<base::RefCountedMemory>* raw_reply) {
-  if (!sequence_)
-    return;
-  auto* reply = reinterpret_cast<uint8_t*>(
-      xcb_wait_for_reply(connection_->XcbConnection(), *sequence_, raw_error));
-  if (reply)
-    *raw_reply = base::MakeRefCounted<MallocedRefCountedMemory>(reply);
-  sequence_ = base::nullopt;
-}
-
-void FutureBase::SyncImpl(Error** raw_error) {
-  if (!sequence_)
-    return;
-  *raw_error = xcb_request_check(connection_->XcbConnection(), {*sequence_});
-  sequence_ = base::nullopt;
-}
-
-void FutureBase::OnResponseImpl(ResponseCallback callback) {
-  if (!sequence_)
-    return;
-  connection_->AddRequest(*sequence_, std::move(callback));
-  sequence_ = base::nullopt;
 }
 
 }  // namespace x11

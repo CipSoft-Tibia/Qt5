@@ -32,24 +32,24 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_PING_LOADER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_PING_LOADER_H_
 
-#include <memory>
-
-#include "third_party/blink/public/platform/web_url_loader_client.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/heap/self_keep_alive.h"
+#include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_client.h"
 #include "third_party/blink/renderer/platform/timer.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 
 namespace blink {
 
 class Blob;
 class DOMArrayBufferView;
+class DOMArrayBuffer;
 class EncodedFormData;
+class ExecutionContext;
 class FormData;
 class LocalFrame;
 class KURL;
 class ScriptState;
+class URLSearchParams;
 
 // Issue an asynchronous, one-directional request at some resources, ignoring
 // any response. The request is made independent of any LocalFrame staying
@@ -66,7 +66,7 @@ class CORE_EXPORT PingLoader {
   static void SendLinkAuditPing(LocalFrame*,
                                 const KURL& ping_url,
                                 const KURL& destination_url);
-  static void SendViolationReport(LocalFrame*,
+  static void SendViolationReport(ExecutionContext* execution_context,
                                   const KURL& report_url,
                                   scoped_refptr<EncodedFormData> report);
 
@@ -84,6 +84,14 @@ class CORE_EXPORT PingLoader {
                          LocalFrame*,
                          const KURL&,
                          DOMArrayBufferView*);
+  static bool SendBeacon(const ScriptState&,
+                         LocalFrame*,
+                         const KURL&,
+                         DOMArrayBuffer*);
+  static bool SendBeacon(const ScriptState&,
+                         LocalFrame*,
+                         const KURL&,
+                         URLSearchParams*);
   static bool SendBeacon(const ScriptState&, LocalFrame*, const KURL&, Blob*);
   static bool SendBeacon(const ScriptState&,
                          LocalFrame*,

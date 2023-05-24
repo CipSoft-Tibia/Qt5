@@ -1,17 +1,21 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/base_switches.h"
 #include "base/cfi_buildflags.h"
 #include "base/command_line.h"
+#include "base/feature_list.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/process/launch.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "components/variations/field_trial_config/field_trial_util.h"
+#include "components/variations/variations_switches.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/content_browser_test.h"
@@ -22,39 +26,23 @@
 #include "mojo/public/cpp/system/invitation.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if defined(USE_OZONE)
+#if BUILDFLAG(IS_OZONE)
 #include "ui/ozone/public/ozone_switches.h"
 #endif
 
-#if defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS_ASH)
 #include "ui/gl/gl_switches.h"
 #endif
 
 namespace content {
 namespace {
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 const char kShellExecutableName[] = "content_shell.exe";
 #else
 const char kShellExecutableName[] = "content_shell";
 const char kMojoCoreLibraryName[] = "libmojo_core.so";
 #endif
-
-const char* kSwitchesToCopy[] = {
-#if defined(USE_OZONE)
-    // Keep the kOzonePlatform switch that the Ozone must use.
-    switches::kOzonePlatform,
-#endif
-    // Some tests use custom cmdline that doesn't hold switches from previous
-    // cmdline. Only a couple of switches are copied. That can result in
-    // incorrect initialization of a process. For example, the work that we do
-    // to have use_x11 && use_ozone, requires UseOzonePlatform feature flag to
-    // be passed to all the process to ensure correct path is chosen.
-    // TODO(https://crbug.com/1096425): update this comment once USE_X11 goes
-    // away.
-    switches::kEnableFeatures,
-    switches::kDisableFeatures,
-};
 
 base::FilePath GetCurrentDirectory() {
   base::FilePath current_directory;
@@ -80,13 +68,44 @@ class LaunchAsMojoClientBrowserTest : public ContentBrowserTest {
         GetFilePathNextToCurrentExecutable(kShellExecutableName));
     command_line.AppendSwitchPath(switches::kContentShellDataPath,
                                   temp_dir_.GetPath());
+#if BUILDFLAG(IS_OZONE)
     const base::CommandLine& cmdline = *base::CommandLine::ForCurrentProcess();
+    const char* kSwitchesToCopy[] = {
+        // Keep the kOzonePlatform switch that the Ozone must use.
+        switches::kOzonePlatform,
+    };
     command_line.CopySwitchesFrom(cmdline, kSwitchesToCopy,
-                                  base::size(kSwitchesToCopy));
-
-#if defined(OS_CHROMEOS)
-    command_line.AppendSwitchASCII(switches::kUseGL, "swiftshader");
+                                  std::size(kSwitchesToCopy));
 #endif
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+    command_line.AppendSwitchASCII(switches::kUseGL,
+                                   gl::kGLImplementationANGLEName);
+    command_line.AppendSwitchASCII(switches::kUseANGLE,
+                                   gl::kANGLEImplementationSwiftShaderName);
+#endif
+
+    const auto& current_command_line = *base::CommandLine::ForCurrentProcess();
+    command_line.AppendSwitchASCII(
+        switches::kEnableFeatures,
+        current_command_line.GetSwitchValueASCII(switches::kEnableFeatures));
+    command_line.AppendSwitchASCII(
+        switches::kDisableFeatures,
+        current_command_line.GetSwitchValueASCII(switches::kDisableFeatures));
+
+    std::string force_field_trials =
+        current_command_line.GetSwitchValueASCII(switches::kForceFieldTrials);
+    if (!force_field_trials.empty()) {
+      command_line.AppendSwitchASCII(switches::kForceFieldTrials,
+                                     force_field_trials);
+
+      std::string params =
+          base::FieldTrialList::AllParamsToString(variations::EscapeValue);
+      if (!params.empty()) {
+        command_line.AppendSwitchASCII(
+            variations::switches::kForceFieldTrialParams, params);
+      }
+    }
     return command_line;
   }
 
@@ -109,7 +128,7 @@ class LaunchAsMojoClientBrowserTest : public ContentBrowserTest {
     return controller;
   }
 
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   base::FilePath GetMojoCoreLibraryPath() {
     return GetFilePathNextToCurrentExecutable(kMojoCoreLibraryName);
   }
@@ -153,7 +172,7 @@ IN_PROC_BROWSER_TEST_F(LaunchAsMojoClientBrowserTest, LaunchAndBindInterface) {
   base::RunLoop loop;
   shell_controller->GetSwitchValue(
       kExtraSwitchName,
-      base::BindLambdaForTesting([&](const base::Optional<std::string>& value) {
+      base::BindLambdaForTesting([&](const absl::optional<std::string>& value) {
         ASSERT_TRUE(value);
         EXPECT_EQ(kExtraSwitchValue, *value);
         loop.Quit();
@@ -163,21 +182,14 @@ IN_PROC_BROWSER_TEST_F(LaunchAsMojoClientBrowserTest, LaunchAndBindInterface) {
   shell_controller->ShutDown();
 }
 
-// Running a Content embedder with a dynamically loaded Mojo Core library is
-// currently only supported on Linux and Chrome OS.
-//
-// TODO(crbug.com/1096899): Re-enable on MSan if possible. MSan complains about
-// spurious uninitialized memory reads inside base::PlatformThread due to what
-// appears to be poor interaction among MSan, PlatformThread's thread_local
-// storage, and Mojo's use of dlopen().
-#if defined(OS_LINUX) || defined(OS_CHROMEOS)
-#if defined(MEMORY_SANITIZER) || BUILDFLAG(CFI_ICALL_CHECK)
-#define MAYBE_WithMojoCoreLibrary DISABLED_WithMojoCoreLibrary
-#else
-#define MAYBE_WithMojoCoreLibrary WithMojoCoreLibrary
-#endif
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+// TODO(crbug.com/1259557): This test implementation fundamentally conflicts
+// with a fix for the linked bug because it causes a browser process to behave
+// partially as a broker and partially as a non-broker. This can be re-enabled
+// when we migrate away from the current Mojo implementation. It's OK to disable
+// for now because no production code relies on this feature.
 IN_PROC_BROWSER_TEST_F(LaunchAsMojoClientBrowserTest,
-                       MAYBE_WithMojoCoreLibrary) {
+                       DISABLED_WithMojoCoreLibrary) {
   // Instructs a newly launched Content Shell browser to initialize Mojo Core
   // dynamically from a shared library, rather than using the version linked
   // into the Content Shell binary.
@@ -206,7 +218,7 @@ IN_PROC_BROWSER_TEST_F(LaunchAsMojoClientBrowserTest,
 
   shell_controller->ShutDown();
 }
-#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS)
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace
 }  // namespace content

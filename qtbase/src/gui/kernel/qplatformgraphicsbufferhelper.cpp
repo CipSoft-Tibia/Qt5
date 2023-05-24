@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtGui/qpa/qplatformgraphicsbuffer.h>
 
@@ -215,14 +179,14 @@ bool QPlatformGraphicsBufferHelper::bindSWToTexture(const QPlatformGraphicsBuffe
     QRect rect = subRect;
     if (rect.isNull() || rect == QRect(QPoint(0,0),size)) {
         if (needsRowLength)
-            funcs->glPixelStorei(GL_UNPACK_ROW_LENGTH, image.bytesPerLine() / 4);
+            funcs->glPixelStorei(GL_UNPACK_ROW_LENGTH, GLint(image.bytesPerLine() / 4));
         funcs->glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, size.width(), size.height(), 0, GL_RGBA, pixelType, image.constBits());
         if (needsRowLength)
             funcs->glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     } else {
         if (!ctx->isOpenGLES() || ctx->format().majorVersion() >= 3) {
             // OpenGL 2.1+ or OpenGL ES/3+
-            funcs->glPixelStorei(GL_UNPACK_ROW_LENGTH, image.bytesPerLine() / 4);
+            funcs->glPixelStorei(GL_UNPACK_ROW_LENGTH, GLint(image.bytesPerLine() / 4));
             funcs->glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x(), rect.y(), rect.width(), rect.height(), GL_RGBA, pixelType,
                                    image.constScanLine(rect.y()) + rect.x() * 4);
             funcs->glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
@@ -255,10 +219,10 @@ bool QPlatformGraphicsBufferHelper::bindSWToTexture(const QPlatformGraphicsBuffe
     return true;
 
 #else
-    Q_UNUSED(graphicsBuffer)
-    Q_UNUSED(swizzleRandB)
-    Q_UNUSED(premultipliedB)
-    Q_UNUSED(subRect)
+    Q_UNUSED(graphicsBuffer);
+    Q_UNUSED(swizzleRandB);
+    Q_UNUSED(premultipliedB);
+    Q_UNUSED(subRect);
     return false;
 #endif // QT_NO_OPENGL
 }

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,22 +13,11 @@
 #include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
 #include "third_party/blink/renderer/core/style_property_shorthand.h"
 #include "third_party/blink/renderer/core/svg/svg_element.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
 namespace {
-
-// Returns handle for the given CSSProperty.
-// |value| is required only for custom properties.
-PropertyHandle ToPropertyHandle(const CSSProperty& property,
-                                const CSSValue* value) {
-  if (property.IDEquals(CSSPropertyID::kVariable)) {
-    return PropertyHandle(To<CSSCustomPropertyDeclaration>(*value).GetName());
-  } else {
-    return PropertyHandle(property, false);
-  }
-}
 
 bool IsLogicalProperty(CSSPropertyID property_id) {
   const CSSProperty& property = CSSProperty::Get(property_id);
@@ -47,6 +36,7 @@ using PropertyResolver = StringKeyframe::PropertyResolver;
 
 StringKeyframe::StringKeyframe(const StringKeyframe& copy_from)
     : Keyframe(copy_from.offset_, copy_from.composite_, copy_from.easing_),
+      tree_scope_(copy_from.tree_scope_),
       input_properties_(copy_from.input_properties_),
       presentation_attribute_map_(
           copy_from.presentation_attribute_map_->MutableCopy()),
@@ -66,14 +56,15 @@ MutableCSSPropertyValueSet::SetResult StringKeyframe::SetCSSPropertyValue(
   bool is_animation_tainted = true;
 
   auto* property_map = CreateCssPropertyValueSet();
-  MutableCSSPropertyValueSet::SetResult result = property_map->SetProperty(
-      custom_property_name, value, false, secure_context_mode,
-      style_sheet_contents, is_animation_tainted);
+  MutableCSSPropertyValueSet::SetResult result =
+      property_map->ParseAndSetCustomProperty(
+          custom_property_name, value, false, secure_context_mode,
+          style_sheet_contents, is_animation_tainted);
 
   const CSSValue* parsed_value =
       property_map->GetPropertyCSSValue(custom_property_name);
 
-  if (result.did_parse && parsed_value) {
+  if (result != MutableCSSPropertyValueSet::kParseError && parsed_value) {
     // Per specification we only keep properties around which are parsable.
     input_properties_.Set(PropertyHandle(custom_property_name),
                           MakeGarbageCollected<PropertyResolver>(
@@ -93,14 +84,12 @@ MutableCSSPropertyValueSet::SetResult StringKeyframe::SetCSSPropertyValue(
   const CSSProperty& property = CSSProperty::Get(property_id);
 
   if (CSSAnimations::IsAnimationAffectingProperty(property)) {
-    bool did_parse = true;
-    bool did_change = false;
-    return MutableCSSPropertyValueSet::SetResult{did_parse, did_change};
+    return MutableCSSPropertyValueSet::kUnchanged;
   }
 
   auto* property_value_set = CreateCssPropertyValueSet();
   MutableCSSPropertyValueSet::SetResult result =
-      property_value_set->SetProperty(
+      property_value_set->ParseAndSetProperty(
           property_id, value, false, secure_context_mode, style_sheet_contents);
 
   // TODO(crbug.com/1132078): Add flag to CSSProperty to track if it is for a
@@ -122,25 +111,33 @@ MutableCSSPropertyValueSet::SetResult StringKeyframe::SetCSSPropertyValue(
   if (is_logical)
     has_logical_property_ = true;
 
-  if (result.did_parse) {
+  if (result != MutableCSSPropertyValueSet::kParseError) {
     // Per specification we only keep properties around which are parsable.
     auto* resolver = MakeGarbageCollected<PropertyResolver>(
         property, property_value_set, is_logical);
-    input_properties_.Set(PropertyHandle(property), resolver);
+    if (resolver->IsValid()) {
+      input_properties_.Set(PropertyHandle(property), resolver);
+      InvalidateCssPropertyMap();
+    }
   }
 
   return result;
 }
 
-void StringKeyframe::SetCSSPropertyValue(const CSSProperty& property,
+void StringKeyframe::SetCSSPropertyValue(const CSSPropertyName& name,
                                          const CSSValue& value) {
-  CSSPropertyID property_id = property.PropertyID();
+  CSSPropertyID property_id = name.Id();
   DCHECK_NE(property_id, CSSPropertyID::kInvalid);
-  DCHECK(!CSSAnimations::IsAnimationAffectingProperty(property));
-  DCHECK(!property.IsShorthand());
+#if DCHECK_IS_ON()
+  if (property_id != CSSPropertyID::kVariable) {
+    const CSSProperty& property = CSSProperty::Get(property_id);
+    DCHECK(!CSSAnimations::IsAnimationAffectingProperty(property));
+    DCHECK(!property.IsShorthand());
+  }
+#endif  // DCHECK_IS_ON()
   DCHECK(!IsLogicalProperty(property_id));
   input_properties_.Set(
-      ToPropertyHandle(property, &value),
+      PropertyHandle(name),
       MakeGarbageCollected<PropertyResolver>(property_id, value));
   InvalidateCssPropertyMap();
 }
@@ -159,9 +156,9 @@ void StringKeyframe::SetPresentationAttributeValue(
     StyleSheetContents* style_sheet_contents) {
   DCHECK_NE(property.PropertyID(), CSSPropertyID::kInvalid);
   if (!CSSAnimations::IsAnimationAffectingProperty(property)) {
-    presentation_attribute_map_->SetProperty(property.PropertyID(), value,
-                                             false, secure_context_mode,
-                                             style_sheet_contents);
+    presentation_attribute_map_->ParseAndSetProperty(
+        property.PropertyID(), value, false, secure_context_mode,
+        style_sheet_contents);
   }
 }
 
@@ -178,12 +175,12 @@ PropertyHandleSet StringKeyframe::Properties() const {
   for (unsigned i = 0; i < css_property_map_->PropertyCount(); ++i) {
     CSSPropertyValueSet::PropertyReference property_reference =
         css_property_map_->PropertyAt(i);
-    // TODO(crbug.com/980160): Remove access to static Variable instance.
-    const CSSProperty& property = CSSProperty::Get(property_reference.Id());
-    DCHECK(!property.IsShorthand())
+    const CSSPropertyName& name = property_reference.Name();
+    DCHECK(!name.IsCustomProperty() ||
+           !CSSProperty::Get(name.Id()).IsShorthand())
         << "Web Animations: Encountered unexpanded shorthand CSS property ("
-        << static_cast<int>(property.PropertyID()) << ").";
-    properties.insert(ToPropertyHandle(property, &property_reference.Value()));
+        << static_cast<int>(name.Id()) << ").";
+    properties.insert(PropertyHandle(name));
   }
 
   for (unsigned i = 0; i < presentation_attribute_map_->PropertyCount(); ++i) {
@@ -245,6 +242,7 @@ void StringKeyframe::AddKeyframePropertiesToV8Object(
 }
 
 void StringKeyframe::Trace(Visitor* visitor) const {
+  visitor->Trace(tree_scope_);
   visitor->Trace(input_properties_);
   visitor->Trace(css_property_map_);
   visitor->Trace(presentation_attribute_map_);
@@ -287,7 +285,8 @@ void StringKeyframe::EnsureCssPropertyMap() const {
     if (property_handle.IsCSSCustomProperty()) {
       CSSPropertyName property_name(property_handle.CustomPropertyName());
       const CSSValue* value = entry.value->CssValue();
-      css_property_map_->SetProperty(CSSPropertyValue(property_name, *value));
+      css_property_map_->SetLonghandProperty(
+          CSSPropertyValue(property_name, *value));
     } else {
       PropertyResolver* resolver = entry.value;
       if (resolver->IsLogical() || resolver->IsShorthand())
@@ -337,12 +336,16 @@ bool StringKeyframe::CSSPropertySpecificKeyframe::
                                     const ComputedStyle* parent_style) const {
   compositor_keyframe_value_cache_ =
       StyleResolver::CreateCompositorKeyframeValueSnapshot(
-          element, base_style, parent_style, property, value_.Get());
+          element, base_style, parent_style, property, value_.Get(), offset_);
   return true;
 }
 
 bool StringKeyframe::CSSPropertySpecificKeyframe::IsRevert() const {
   return value_ && value_->IsRevertValue();
+}
+
+bool StringKeyframe::CSSPropertySpecificKeyframe::IsRevertLayer() const {
+  return value_ && value_->IsRevertLayerValue();
 }
 
 Keyframe::PropertySpecificKeyframe*
@@ -402,8 +405,12 @@ PropertyResolver::PropertyResolver(
     css_property_value_set_ = property_value_set->ImmutableCopyIfNeeded();
 }
 
+bool PropertyResolver::IsValid() const {
+  return css_value_ || css_property_value_set_;
+}
+
 const CSSValue* PropertyResolver::CssValue() {
-  DCHECK(css_value_ || css_property_value_set_);
+  DCHECK(IsValid());
 
   if (css_value_)
     return css_value_;

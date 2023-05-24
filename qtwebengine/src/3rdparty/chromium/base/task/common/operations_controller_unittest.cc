@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <utility>
 
+#include "base/memory/raw_ref.h"
+#include "base/ranges/algorithm.h"
 #include "base/threading/platform_thread.h"
 #include "base/threading/simple_thread.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -19,10 +21,10 @@ namespace {
 class ScopedShutdown {
  public:
   ScopedShutdown(OperationsController* controller) : controller_(*controller) {}
-  ~ScopedShutdown() { controller_.ShutdownAndWaitForZeroOperations(); }
+  ~ScopedShutdown() { controller_->ShutdownAndWaitForZeroOperations(); }
 
  private:
-  OperationsController& controller_;
+  const raw_ref<OperationsController> controller_;
 };
 
 TEST(OperationsControllerTest, CanBeDestroyedWithoutWaiting) {
@@ -114,27 +116,26 @@ class TestThread : public SimpleThread {
         started_(*started),
         thread_counter_(*thread_counter) {}
   void Run() override {
-    thread_counter_.fetch_add(1, std::memory_order_relaxed);
+    thread_counter_->fetch_add(1, std::memory_order_relaxed);
     while (true) {
       PlatformThread::YieldCurrentThread();
-      bool was_started = started_.load(std::memory_order_relaxed);
+      bool was_started = started_->load(std::memory_order_relaxed);
       std::vector<OperationsController::OperationToken> tokens;
       for (int i = 0; i < 100; ++i) {
-        tokens.push_back(controller_.TryBeginOperation());
+        tokens.push_back(controller_->TryBeginOperation());
       }
       if (!was_started)
         continue;
-      if (std::any_of(tokens.begin(), tokens.end(),
-                      [](const auto& token) { return !token; })) {
+      if (ranges::any_of(tokens, [](const auto& token) { return !token; })) {
         break;
       }
     }
   }
 
  private:
-  OperationsController& controller_;
-  std::atomic<bool>& started_;
-  std::atomic<int32_t>& thread_counter_;
+  const raw_ref<OperationsController> controller_;
+  const raw_ref<std::atomic<bool>> started_;
+  const raw_ref<std::atomic<int32_t>> thread_counter_;
 };
 
 TEST(OperationsControllerTest, BeginsFromMultipleThreads) {
@@ -156,7 +157,7 @@ TEST(OperationsControllerTest, BeginsFromMultipleThreads) {
     }
 
     // Wait a bit before starting to try to introduce races.
-    constexpr TimeDelta kRaceInducingTimeout = TimeDelta::FromMicroseconds(50);
+    constexpr TimeDelta kRaceInducingTimeout = Microseconds(50);
     PlatformThread::Sleep(kRaceInducingTimeout);
 
     ref_controller.StartAcceptingOperations();
@@ -164,7 +165,7 @@ TEST(OperationsControllerTest, BeginsFromMultipleThreads) {
     started.store(true, std::memory_order_relaxed);
 
     // Let the test run for a while before shuting down.
-    PlatformThread::Sleep(TimeDelta::FromMilliseconds(5));
+    PlatformThread::Sleep(Milliseconds(5));
     ref_controller.ShutdownAndWaitForZeroOperations();
     for (const auto& t : threads) {
       t->Join();

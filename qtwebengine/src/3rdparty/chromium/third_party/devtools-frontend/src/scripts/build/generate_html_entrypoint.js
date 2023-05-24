@@ -5,16 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const {argv} = require('yargs');
-
-const ENTRYPOINTS = [
-  'devtools_app',
-  'inspector',
-  'js_app',
-  'ndb_app',
-  'node_app',
-  'toolbox',
-  'worker_app',
-];
+const {writeIfChanged} = require('./ninja/write-if-changed.js');
 
 const {template} = argv;
 
@@ -28,9 +19,19 @@ if (!outDirectory) {
   throw new Error('Must specify --out-directory location where the outputs must live.');
 }
 
+const {entrypoints} = argv;
+
+if (!entrypoints) {
+  throw new Error('Must specify at least one entrypoint name.');
+}
+
+if (!Array.isArray(entrypoints)) {
+  throw new Error('Must specify multiple entrypoints as array');
+}
+
 const templateContent = fs.readFileSync(template, 'utf-8');
 
-for (const entrypoint of ENTRYPOINTS) {
-  const rewrittenTemplateContent = templateContent.replace('%ENTRYPOINT_NAME%', entrypoint);
-  fs.writeFileSync(path.join(outDirectory, `${entrypoint}.html`), rewrittenTemplateContent);
+for (const entrypoint of entrypoints) {
+  const rewrittenTemplateContent = templateContent.replace(new RegExp('%ENTRYPOINT_NAME%', 'g'), entrypoint);
+  writeIfChanged(path.join(outDirectory, `${entrypoint}.html`), rewrittenTemplateContent);
 }

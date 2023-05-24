@@ -29,6 +29,11 @@ LayoutButton::LayoutButton(Element* element)
 
 LayoutButton::~LayoutButton() = default;
 
+void LayoutButton::Trace(Visitor* visitor) const {
+  visitor->Trace(inner_);
+  LayoutFlexibleBox::Trace(visitor);
+}
+
 void LayoutButton::AddChild(LayoutObject* new_child,
                             LayoutObject* before_child) {
   NOT_DESTROYED();
@@ -58,29 +63,31 @@ void LayoutButton::RemoveChild(LayoutObject* old_child) {
   }
 }
 
-void LayoutButton::UpdateAnonymousChildStyle(const LayoutObject* child,
-                                             ComputedStyle& child_style) const {
+void LayoutButton::UpdateAnonymousChildStyle(
+    const LayoutObject* child,
+    ComputedStyleBuilder& child_style_builder) const {
   DCHECK_EQ(inner_, child);
-  UpdateAnonymousChildStyle(StyleRef(), child_style);
+  UpdateAnonymousChildStyle(StyleRef(), child_style_builder);
 }
 
 // This function is shared with LayoutNGButton.
-void LayoutButton::UpdateAnonymousChildStyle(const ComputedStyle& parent_style,
-                                             ComputedStyle& child_style) {
-  child_style.SetFlexGrow(1.0f);
+void LayoutButton::UpdateAnonymousChildStyle(
+    const ComputedStyle& parent_style,
+    ComputedStyleBuilder& child_style_builder) {
+  child_style_builder.SetFlexGrow(1.0f);
   // min-width: 0; is needed for correct shrinking.
-  child_style.SetMinWidth(Length::Fixed(0));
+  child_style_builder.SetMinWidth(Length::Fixed(0));
   // Use margin:auto instead of align-items:center to get safe centering, i.e.
   // when the content overflows, treat it the same as align-items: flex-start.
-  child_style.SetMarginTop(Length());
-  child_style.SetMarginBottom(Length());
-  child_style.SetFlexDirection(parent_style.FlexDirection());
-  child_style.SetJustifyContent(parent_style.JustifyContent());
-  child_style.SetFlexWrap(parent_style.FlexWrap());
+  child_style_builder.SetMarginTop(Length());
+  child_style_builder.SetMarginBottom(Length());
+  child_style_builder.SetFlexDirection(parent_style.FlexDirection());
+  child_style_builder.SetJustifyContent(parent_style.JustifyContent());
+  child_style_builder.SetFlexWrap(parent_style.FlexWrap());
   // TODO (lajava): An anonymous box must not be used to resolve children's auto
   // values.
-  child_style.SetAlignItems(parent_style.AlignItems());
-  child_style.SetAlignContent(parent_style.AlignContent());
+  child_style_builder.SetAlignItems(parent_style.AlignItems());
+  child_style_builder.SetAlignContent(parent_style.AlignContent());
 }
 
 LayoutUnit LayoutButton::BaselinePosition(
@@ -111,7 +118,7 @@ LayoutUnit LayoutButton::BaselinePosition(
   // See crbug.com/690036 and crbug.com/304848.
   LayoutUnit correct_baseline = LayoutBlock::InlineBlockBaseline(direction);
   if (correct_baseline != result_baseline &&
-      ShouldCountWrongBaseline(StyleRef(),
+      ShouldCountWrongBaseline(*this, StyleRef(),
                                Parent() ? Parent()->Style() : nullptr)) {
     for (LayoutBox* child = FirstChildBox(); child;
          child = child->NextSiblingBox()) {
@@ -127,8 +134,11 @@ LayoutUnit LayoutButton::BaselinePosition(
   return result_baseline;
 }
 
-bool LayoutButton::ShouldCountWrongBaseline(const ComputedStyle& style,
+bool LayoutButton::ShouldCountWrongBaseline(const LayoutBox& button_box,
+                                            const ComputedStyle& style,
                                             const ComputedStyle* parent_style) {
+  if (button_box.IsFloatingOrOutOfFlowPositioned())
+    return false;
   if (parent_style) {
     EDisplay display = parent_style->Display();
     if (display == EDisplay::kFlex || display == EDisplay::kInlineFlex ||

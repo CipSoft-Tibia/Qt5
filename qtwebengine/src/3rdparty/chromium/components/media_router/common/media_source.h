@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,13 @@
 #include <string>
 
 #include "base/hash/hash.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
+
+namespace media {
+enum class AudioCodec;
+enum class VideoCodec;
+}  // namespace media
 
 namespace media_router {
 
@@ -22,10 +28,6 @@ constexpr char kRemotePlaybackPresentationUrlScheme[] = "remote-playback";
 // URL prefix used by legacy Cast presentations.
 constexpr char kLegacyCastPresentationUrlPrefix[] =
     "https://google.com/cast#__castAppId__=";
-
-// A Cast SDK enabled website (e.g. Google Slides) may use the mirroring app ID
-// rather than the tab mirroring URN.
-constexpr char kMirroringAppUri[] = "cast:0F5096E8";
 
 // Strings used in presentation IDs by the Cast SDK implementation.
 // TODO(takumif): Move them out of this file, since they are not directly
@@ -45,6 +47,9 @@ bool IsLegacyCastPresentationUrl(const GURL& url);
 // Returns true if |url| is a valid presentation URL.
 bool IsValidPresentationUrl(const GURL& url);
 
+// Returns true if |media_source| has a valid presentation URL.
+bool IsValidStandardPresentationSource(const std::string& media_source);
+
 // Returns true if |presentation_id| is an ID used by auto-join requests.
 bool IsAutoJoinPresentationId(const std::string& presentation_id);
 
@@ -53,10 +58,6 @@ bool IsAutoJoinPresentationId(const std::string& presentation_id);
 class MediaSource {
  public:
   using Id = std::string;
-
-  // TODO(jrw): Eliminate this constructor and use optional<MediaSource> where
-  // needed.
-  MediaSource();
 
   // Create from an arbitrary string, which may or may not be a presentation
   // URL.
@@ -81,24 +82,28 @@ class MediaSource {
 
   bool operator<(const MediaSource& other) const { return id_ < other.id(); }
 
-  // Hash operator for hash containers.
-  struct Hash {
-    uint32_t operator()(const MediaSource& source) const {
-      return base::FastHash(source.id());
+  // Compare operator for absl::optional<MediaSource>
+  struct Cmp {
+    bool operator()(const absl::optional<MediaSource>& source1,
+                    const absl::optional<MediaSource>& source2) const {
+      Id id1 = (source1.has_value()) ? (source1->id()) : "";
+      Id id2 = (source2.has_value()) ? (source2->id()) : "";
+      return id1 < id2;
     }
   };
 
   // Protocol-specific media source object creation.
   // Returns MediaSource URI depending on the type of source.
-  static MediaSource ForLocalFile();
   static MediaSource ForAnyTab();
   static MediaSource ForTab(int tab_id);
   static MediaSource ForPresentationUrl(const GURL& presentation_url);
+  static MediaSource ForRemotePlayback(int tab_id,
+                                       media::VideoCodec video_codec,
+                                       media::AudioCodec audio_codec);
 
   // Creates a media source for a specific desktop.
-  // |registered_desktop_stream_id| is the string returned by
-  // content::DesktopStreamsRegistry::RegisterStream().
-  static MediaSource ForDesktop(const std::string& registered_desktop_stream_id,
+  // `desktop_media_id` is the string representing content::DesktopMediaID.
+  static MediaSource ForDesktop(const std::string& desktop_media_id,
                                 bool with_audio);
 
   // Creates a media source representing a yet-to-be-chosen desktop, screen or
@@ -108,29 +113,31 @@ class MediaSource {
   // desktop/screen/window.
   static MediaSource ForUnchosenDesktop();
 
-  // Returns true if source outputs its content via tab mirroring and isn't a
-  // local file.
+  // Returns true if source outputs its content via tab mirroring.
   bool IsTabMirroringSource() const;
 
   // Returns true if source outputs its content via desktop mirroring.
   bool IsDesktopMirroringSource() const;
 
-  // Returns true if the source is a local file.
-  bool IsLocalFileSource() const;
-
   // Returns true if this is represents a Cast Presentation URL.
   bool IsCastPresentationUrl() const;
 
+  // Returns true if the source is a RemotePlayback source.
+  bool IsRemotePlaybackSource() const;
+
   // Parses the ID and returns the SessionTabHelper tab ID referencing a source
   // tab.  Don't rely on this method returning something useful without first
-  // calling IsTabMirroringSource(); it will return 0 for for ForLocalFile()
-  // source and -1 for non-tab sources or the ForAnyTab() source.
-  int TabId() const;
+  // calling IsTabMirroringSource(); Returns absl::nullopt for non-tab sources
+  // or the ForAnyTab() source.
+  absl::optional<int> TabId() const;
 
-  // When this source was created by ForDesktop(), returns the stream ID to pass
-  // to content::DesktopStreamsRegistry::RequestMediaForStreamId(). Otherwise,
-  // returns base::nullopt.
-  base::Optional<std::string> DesktopStreamId() const;
+  // Parse the tab ID from the RemotePlayback source. Returns absl::nullopt for
+  // non-RemotePlayback sources or invalid formats.
+  absl::optional<int> TabIdFromRemotePlaybackSource() const;
+
+  // When this source was created by ForDesktop(), returns the string
+  // representing content::DesktopMediaID. Otherwise, returns absl::nullopt.
+  absl::optional<std::string> DesktopStreamId() const;
 
   // Returns true if this source represents desktop capture that also provides
   // audio loopback capture. Returns false otherwise.

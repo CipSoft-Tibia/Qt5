@@ -1,36 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QtCore/qlist.h>
+
 #include <QtWidgets/qmainwindow.h>
-#include <QtCore/qvector.h>
 #include <QtWidgets/qmdiarea.h>
 
 QT_BEGIN_NAMESPACE
@@ -70,7 +46,7 @@ public:
     CloseEventPolicy closeEventPolicy() const { return m_policy; }
     void setCloseEventPolicy(CloseEventPolicy pol) { m_policy = pol; }
 
-    static QVector<QToolBar *> createToolBars(const QDesignerActions *actions, bool singleToolBar);
+    static QList<QToolBar *> createToolBars(const QDesignerActions *actions, bool singleToolBar);
     static QString mainWindowTitle();
 
     // Use the minor Qt version as settings versions to avoid conflicts
@@ -98,7 +74,7 @@ signals:
     void fileDropped(const QString &);
 
 protected:
-    bool event (QEvent *event);
+    bool event (QEvent *event) override;
 
 private:
     QStringList uiFiles(const QMimeData *d) const;
@@ -117,8 +93,8 @@ public:
                             QWidget *parent,
                             QMenu *toolBarMenu,
                             const QDesignerActions *actions,
-                            const QVector<QToolBar *> &toolbars,
-                            const QVector<QDesignerToolWindow *> &toolWindows);
+                            const QList<QToolBar *> &toolbars,
+                            const QList<QDesignerToolWindow *> &toolWindows);
 
     QByteArray saveState(int version = 0) const;
     bool restoreState(const QByteArray &state, int version = 0);
@@ -133,7 +109,7 @@ private:
     QMenu *m_toolBarMenu;
     QtToolBarManager *m_manager;
     QAction *m_configureAction;
-    QVector<QToolBar *> m_toolbars;
+    QList<QToolBar *> m_toolbars;
 };
 
 /* Main window to be used for docked mode */
@@ -141,8 +117,8 @@ class DockedMainWindow : public MainWindowBase {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(DockedMainWindow)
 public:
-    using DesignerToolWindowList = QVector<QDesignerToolWindow *>;
-    using DockWidgetList = QVector<QDockWidget *>;
+    using DesignerToolWindowList = QList<QDesignerToolWindow *>;
+    using DockWidgetList = QList<QDockWidget *>;
 
     explicit DockedMainWindow(QDesignerWorkbench *wb,
                               QMenu *toolBarMenu,
@@ -166,7 +142,7 @@ private slots:
     void slotSubWindowActivated(QMdiSubWindow*);
 
 private:
-    ToolBarManager *m_toolBarManager;
+    ToolBarManager *m_toolBarManager = nullptr;
 };
 
 QT_END_NAMESPACE

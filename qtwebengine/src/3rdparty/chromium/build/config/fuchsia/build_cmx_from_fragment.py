@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Creates a complete CMX (v1) component manifest, from a program name and
@@ -30,16 +30,15 @@ def BuildCmxFromFragment(output_file, fragment_file, program_binary):
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument(
-      '--cmx-fragment',
-      required=True,
-      help='Path to the CMX fragment to read from')
-  parser.add_argument(
-      '--cmx', required=True, help='Path to write the complete CMX file to')
-  parser.add_argument(
-      '--program',
-      required=True,
-      help='Package-relative path to the program binary')
+  parser.add_argument('--cmx-fragment',
+                      required=True,
+                      help='Path to the CMX fragment to read from')
+  parser.add_argument('--cmx',
+                      required=True,
+                      help='Path to write the complete CMX file to')
+  parser.add_argument('--program',
+                      required=True,
+                      help='Package-relative path to the program binary')
   args = parser.parse_args()
 
   return BuildCmxFromFragment(args.cmx, args.cmx_fragment, args.program)

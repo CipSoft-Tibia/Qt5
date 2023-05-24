@@ -20,26 +20,18 @@
 
 #include "third_party/blink/renderer/core/html/html_summary_element.h"
 
-#include "third_party/blink/renderer/core/css/style_change_reason.h"
-#include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
-#include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/events/keyboard_event.h"
 #include "third_party/blink/renderer/core/html/html_details_element.h"
-#include "third_party/blink/renderer/core/html/html_slot_element.h"
-#include "third_party/blink/renderer/core/html/shadow/details_marker_control.h"
-#include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
 #include "third_party/blink/renderer/core/layout/layout_object_factory.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
 HTMLSummaryElement::HTMLSummaryElement(Document& document)
     : HTMLElement(html_names::kSummaryTag, document) {
-  SetHasCustomStyleCallbacks();
-  EnsureUserAgentShadowRoot();
 }
 
 LayoutObject* HTMLSummaryElement::CreateLayoutObject(const ComputedStyle& style,
@@ -56,14 +48,6 @@ LayoutObject* HTMLSummaryElement::CreateLayoutObject(const ComputedStyle& style,
   return LayoutObjectFactory::CreateBlockFlow(*this, style, legacy);
 }
 
-void HTMLSummaryElement::DidAddUserAgentShadowRoot(ShadowRoot& root) {
-  auto* marker_control =
-      MakeGarbageCollected<DetailsMarkerControl>(GetDocument());
-  marker_control->SetIdAttribute(shadow_element_names::kIdDetailsMarker);
-  root.AppendChild(marker_control);
-  root.AppendChild(HTMLSlotElement::CreateUserAgentDefaultSlot(GetDocument()));
-}
-
 HTMLDetailsElement* HTMLSummaryElement::DetailsElement() const {
   if (auto* details = DynamicTo<HTMLDetailsElement>(parentNode()))
     return details;
@@ -72,32 +56,10 @@ HTMLDetailsElement* HTMLSummaryElement::DetailsElement() const {
   return nullptr;
 }
 
-Element* HTMLSummaryElement::MarkerControl() {
-  return EnsureUserAgentShadowRoot().getElementById(
-      shadow_element_names::kIdDetailsMarker);
-}
-
 bool HTMLSummaryElement::IsMainSummary() const {
   if (HTMLDetailsElement* details = DetailsElement())
     return details->FindMainSummary() == this;
 
-  return false;
-}
-
-bool HTMLSummaryElement::IsClickableControl(Node* node) {
-  auto* element = DynamicTo<Element>(node);
-  if (!element)
-    return false;
-  if (element->IsFormControlElement())
-    return true;
-  Element* host = element->OwnerShadowHost();
-  if (host && host->IsFormControlElement())
-    return true;
-  while (node && this != node) {
-    if (node->HasActivationBehavior())
-      return true;
-    node = node->ParentOrShadowHostNode();
-  }
   return false;
 }
 
@@ -158,16 +120,6 @@ bool HTMLSummaryElement::HasActivationBehavior() const {
 
 bool HTMLSummaryElement::WillRespondToMouseClickEvents() {
   return IsMainSummary() || HTMLElement::WillRespondToMouseClickEvents();
-}
-
-void HTMLSummaryElement::WillRecalcStyle(const StyleRecalcChange) {
-  if (GetForceReattachLayoutTree() && IsMainSummary()) {
-    if (Element* marker = MarkerControl()) {
-      marker->SetNeedsStyleRecalc(
-          kLocalStyleChange,
-          StyleChangeReasonForTracing::Create(style_change_reason::kControl));
-    }
-  }
 }
 
 }  // namespace blink

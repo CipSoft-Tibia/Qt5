@@ -1,17 +1,19 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_NETWORK_TRUST_TOKENS_TRUST_TOKEN_REQUEST_HELPER_H_
 #define SERVICES_NETWORK_TRUST_TOKENS_TRUST_TOKEN_REQUEST_HELPER_H_
 
-#include "base/callback_forward.h"
-#include "services/network/public/mojom/trust_tokens.mojom-shared.h"
-#include "services/network/public/mojom/url_response_head.mojom-forward.h"
+#include "base/functional/callback_forward.h"
+#include "services/network/public/mojom/trust_tokens.mojom.h"
 
 namespace net {
-class URLRequest;
+class HttpRequestHeaders;
+class HttpResponseHeaders;
 }  // namespace net
+
+class GURL;
 
 namespace network {
 
@@ -27,20 +29,27 @@ class TrustTokenRequestHelper {
   TrustTokenRequestHelper(const TrustTokenRequestHelper&) = delete;
   TrustTokenRequestHelper& operator=(const TrustTokenRequestHelper&) = delete;
 
-  // Checks preconditions for |request| and the protocol operation
+  // Checks preconditions for the request to `url` and the protocol operation
   // that this TrustTokenRequestHelper is responsible for. This completes
   // asynchronously because it might take a long time (for instance, for Trust
   // Tokens issuance and redemption, this involves executing a network request).
   virtual void Begin(
-      net::URLRequest* request,
+      const GURL& url,
+      base::OnceCallback<void(absl::optional<net::HttpRequestHeaders>,
+                              mojom::TrustTokenOperationStatus)> done) = 0;
+
+  // Checks |response_headers| for issuance response headers; if these are
+  // present and valid, removes the headers, updates internal protocol state,
+  // and returns true. Otherwise, returns false.
+  virtual void Finalize(
+      net::HttpResponseHeaders& response_headers,
       base::OnceCallback<void(mojom::TrustTokenOperationStatus)> done) = 0;
 
-  // Checks |response| for issuance response headers; if these are present and
-  // valid, removes the headers, updates internal protocol state, and returns
-  // true. Otherwise, returns false.
-  virtual void Finalize(
-      mojom::URLResponseHead* response,
-      base::OnceCallback<void(mojom::TrustTokenOperationStatus)> done) = 0;
+  // Provides operation specific information to DevTools. The |status| of an
+  // operation is passed inline to the "done" callback and not stored on the
+  // helper. Thus, it always needs to be provided explicitly.
+  virtual mojom::TrustTokenOperationResultPtr CollectOperationResultWithStatus(
+      mojom::TrustTokenOperationStatus status) = 0;
 };
 
 }  // namespace network

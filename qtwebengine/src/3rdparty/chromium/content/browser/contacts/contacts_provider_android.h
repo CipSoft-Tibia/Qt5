@@ -1,15 +1,15 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef CONTENT_BROWSER_CONTACTS_CONTACTS_PROVIDER_ANDROID_H_
 #define CONTENT_BROWSER_CONTACTS_CONTACTS_PROVIDER_ANDROID_H_
 
+#include <string>
+
 #include "base/android/jni_array.h"
 #include "base/android/scoped_java_ref.h"
-#include "base/strings/string16.h"
 #include "content/browser/contacts/contacts_provider.h"
-#include "content/common/content_export.h"
 #include "third_party/blink/public/mojom/contacts/contacts_manager.mojom.h"
 
 namespace content {
@@ -19,6 +19,10 @@ class RenderFrameHostImpl;
 class ContactsProviderAndroid : public ContactsProvider {
  public:
   explicit ContactsProviderAndroid(RenderFrameHostImpl* render_frame_host);
+
+  ContactsProviderAndroid(const ContactsProviderAndroid&) = delete;
+  ContactsProviderAndroid& operator=(const ContactsProviderAndroid&) = delete;
+
   ~ContactsProviderAndroid() override;
 
   // ContactsProvider:
@@ -60,9 +64,7 @@ class ContactsProviderAndroid : public ContactsProvider {
 
   // The origin that the contacts data will be shared with. Formatted for
   // display with the scheme omitted.
-  base::string16 formatted_origin_;
-
-  DISALLOW_COPY_AND_ASSIGN(ContactsProviderAndroid);
+  std::u16string formatted_origin_;
 };
 
 }  // namespace content

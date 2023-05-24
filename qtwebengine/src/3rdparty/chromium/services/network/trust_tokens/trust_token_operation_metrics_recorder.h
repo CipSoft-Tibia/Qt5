@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -27,17 +27,18 @@ extern const char kTrustTokenBeginTimeHistogramNameBase[];
 // part finishes; if the Begin part was successful, call BeginFinalize and
 // FinishFinalize analogously during the Finalize (inbound) part of the
 // operation.
-class TrustTokenOperationMetricsRecorder final {
+class TrustTokenOperationMetricsRecorder {
  public:
-  TrustTokenOperationMetricsRecorder() = default;
-  ~TrustTokenOperationMetricsRecorder() = default;
+  explicit TrustTokenOperationMetricsRecorder(
+      mojom::TrustTokenOperationType type);
+  ~TrustTokenOperationMetricsRecorder();
 
   TrustTokenOperationMetricsRecorder(
       const TrustTokenOperationMetricsRecorder&) = delete;
   TrustTokenOperationMetricsRecorder& operator=(
       const TrustTokenOperationMetricsRecorder&) = delete;
 
-  void BeginBegin(mojom::TrustTokenOperationType type);
+  void BeginBegin();
   void FinishBegin(mojom::TrustTokenOperationStatus status);
 
   void BeginFinalize();

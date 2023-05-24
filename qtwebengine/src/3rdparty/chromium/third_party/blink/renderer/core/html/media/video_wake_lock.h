@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,8 @@
 #include "third_party/blink/renderer/core/html/media/remote_playback_observer.h"
 #include "third_party/blink/renderer/core/intersection_observer/intersection_observer.h"
 #include "third_party/blink/renderer/core/page/page_visibility_observer.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 
 namespace blink {
 
@@ -89,6 +91,7 @@ class CORE_EXPORT VideoWakeLock final
   // `video_element_` owns |this|.
   Member<HTMLVideoElement> video_element_;
 
+  GC_PLUGIN_IGNORE("https://crbug.com/1381979")
   mojo::Remote<device::mojom::blink::WakeLock> wake_lock_service_;
 
   bool playing_ = false;

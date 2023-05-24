@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qshadernode_p.h"
 
@@ -47,7 +11,7 @@ QShaderNode::Type QShaderNode::type() const noexcept
 {
     int inputCount = 0;
     int outputCount = 0;
-    for (const auto &port : qAsConst(m_ports)) {
+    for (const auto &port : std::as_const(m_ports)) {
         switch (port.direction) {
         case QShaderNodePort::Input:
             inputCount++;
@@ -84,7 +48,7 @@ void QShaderNode::setLayers(const QStringList &layers) noexcept
     m_layers = layers;
 }
 
-QVector<QShaderNodePort> QShaderNode::ports() const noexcept
+QList<QShaderNodePort> QShaderNode::ports() const noexcept
 {
     return m_ports;
 }
@@ -141,9 +105,9 @@ void QShaderNode::removeRule(const QShaderFormat &format)
         m_rules.erase(it);
 }
 
-QVector<QShaderFormat> QShaderNode::availableFormats() const
+QList<QShaderFormat> QShaderNode::availableFormats() const
 {
-    auto res = QVector<QShaderFormat>();
+    auto res = QList<QShaderFormat>();
     std::transform(m_rules.cbegin(), m_rules.cend(),
                    std::back_inserter(res),
                    [](const QPair<QShaderFormat, Rule> &entry) { return entry.first; });

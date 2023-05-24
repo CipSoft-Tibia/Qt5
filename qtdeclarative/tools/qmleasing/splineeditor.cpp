@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "splineeditor.h"
 #include "segmentproperties.h"
@@ -194,7 +169,7 @@ void SplineEditor::paintEvent(QPaintEvent *)
     paintControlPoint(QPointF(0.0, 0.0), &painter, false, true, false, false);
     paintControlPoint(QPointF(1.0, 1.0), &painter, false, true, false, false);
 
-    for (int i = 0; i < m_controlPoints.count() - 1; ++i)
+    for (int i = 0; i < m_controlPoints.size() - 1; ++i)
         paintControlPoint(m_controlPoints.at(i),
                           &painter,
                           true,
@@ -206,12 +181,12 @@ void SplineEditor::paintEvent(QPaintEvent *)
 void SplineEditor::mousePressEvent(QMouseEvent *e)
 {
     if (e->button() == Qt::LeftButton) {
-        m_activeControlPoint = findControlPoint(e->pos());
+        m_activeControlPoint = findControlPoint(e->position().toPoint());
 
         if (m_activeControlPoint != -1) {
             mouseMoveEvent(e);
         }
-        m_mousePress = e->pos();
+        m_mousePress = e->position().toPoint();
         e->accept();
     }
 }
@@ -290,7 +265,7 @@ QHash<QString, QEasingCurve> SplineEditor::presets() const
 QString SplineEditor::generateCode()
 {
     QString s = QLatin1String("[");
-    for (const QPointF &point : qAsConst(m_controlPoints)) {
+    for (const QPointF &point : std::as_const(m_controlPoints)) {
         s += QString::number(point.x(), 'g', 2) + QLatin1Char(',')
              + QString::number(point.y(), 'g', 3) + QLatin1Char(',');
     }
@@ -369,7 +344,7 @@ void SplineEditor::smoothPoint(int index)
             before = m_controlPoints.at(index - 3);
 
         QPointF after = QPointF(1.0, 1.0);
-        if ((index + 3) < m_controlPoints.count())
+        if ((index + 3) < m_controlPoints.size())
             after = m_controlPoints.at(index + 3);
 
         QPointF tangent = (after - before) / 6;
@@ -379,7 +354,7 @@ void SplineEditor::smoothPoint(int index)
         if (index > 0)
             m_controlPoints[index - 1] = thisPoint - tangent;
 
-        if (index + 1  < m_controlPoints.count())
+        if (index + 1  < m_controlPoints.size())
             m_controlPoints[index + 1] = thisPoint + tangent;
 
         m_smoothList[index / 3] = true;
@@ -397,7 +372,7 @@ void SplineEditor::cornerPoint(int index)
         before = m_controlPoints.at(index - 3);
 
     QPointF after = QPointF(1.0, 1.0);
-    if ((index + 3) < m_controlPoints.count())
+    if ((index + 3) < m_controlPoints.size())
         after = m_controlPoints.at(index + 3);
 
     QPointF thisPoint =  m_controlPoints.at(index);
@@ -405,7 +380,7 @@ void SplineEditor::cornerPoint(int index)
     if (index > 0)
         m_controlPoints[index - 1] = (before - thisPoint) / 3 + thisPoint;
 
-    if (index + 1  < m_controlPoints.count())
+    if (index + 1  < m_controlPoints.size())
         m_controlPoints[index + 1] = (after - thisPoint) / 3 + thisPoint;
 
     m_smoothList[(index) / 3] = false;
@@ -437,7 +412,7 @@ void SplineEditor::addPoint(const QPointF point)
         before = m_controlPoints.at(splitIndex);
 
     QPointF after = QPointF(1.0, 1.0);
-    if ((splitIndex + 3) < m_controlPoints.count())
+    if ((splitIndex + 3) < m_controlPoints.size())
         after = m_controlPoints.at(splitIndex + 3);
 
     if (splitIndex > 0) {
@@ -566,7 +541,7 @@ bool SplineEditor::isControlPointSmooth(int i) const
     if (i == 0)
         return false;
 
-    if (i == m_controlPoints.count() - 1)
+    if (i == m_controlPoints.size() - 1)
         return false;
 
     if (m_numberOfSegments == 1)
@@ -577,7 +552,7 @@ bool SplineEditor::isControlPointSmooth(int i) const
     if (index == 0)
         return false;
 
-    if (index == m_controlPoints.count() - 1)
+    if (index == m_controlPoints.size() - 1)
         return false;
 
     return m_smoothList.at(index / 3);
@@ -612,10 +587,10 @@ QPointF limitToCanvas(const QPointF point)
 void SplineEditor::mouseMoveEvent(QMouseEvent *e)
 {
     // If we've moved more then 25 pixels, assume user is dragging
-    if (!m_mouseDrag && QPoint(m_mousePress - e->pos()).manhattanLength() > qApp->startDragDistance())
+    if (!m_mouseDrag && QPoint(m_mousePress - e->position().toPoint()).manhattanLength() > qApp->startDragDistance())
         m_mouseDrag = true;
 
-    QPointF p = mapFromCanvas(e->pos());
+    QPointF p = mapFromCanvas(e->position().toPoint());
 
     if (m_mouseDrag && m_activeControlPoint >= 0 && m_activeControlPoint < m_controlPoints.size()) {
         p = limitToCanvas(p);
@@ -636,7 +611,7 @@ void SplineEditor::mouseMoveEvent(QMouseEvent *e)
 
                 if ((m_activeControlPoint > 1) && (m_activeControlPoint % 3) == 0) { //right control point
                     m_controlPoints[m_activeControlPoint - 2] -= distance;
-                } else if ((m_activeControlPoint < (m_controlPoints.count() - 2)) //left control point
+                } else if ((m_activeControlPoint < (m_controlPoints.size() - 2)) //left control point
                            && (m_activeControlPoint % 3) == 1) {
                     m_controlPoints[m_activeControlPoint + 2] -= distance;
                 }
@@ -653,7 +628,7 @@ void SplineEditor::setEasingCurve(const QEasingCurve &easingCurve)
     m_block = true;
     m_easingCurve = easingCurve;
     m_controlPoints = m_easingCurve.toCubicSpline();
-    m_numberOfSegments = m_controlPoints.count() / 3;
+    m_numberOfSegments = m_controlPoints.size() / 3;
     update();
     emit easingCurveChanged();
 
@@ -675,26 +650,26 @@ void SplineEditor::setEasingCurve(const QString &code)
     if (m_block)
         return;
     if (code.startsWith(QLatin1Char('[')) && code.endsWith(QLatin1Char(']'))) {
-        const QStringRef cleanCode(&code, 1, code.size() - 2);
+        const auto cleanCode = QStringView(code).mid(1, code.size() - 2);
         const auto stringList = cleanCode.split(QLatin1Char(','), Qt::SkipEmptyParts);
-        if (stringList.count() >= 6 && (stringList.count() % 6 == 0)) {
+        if (stringList.size() >= 6 && (stringList.size() % 6 == 0)) {
             QVector<qreal> realList;
-            realList.reserve(stringList.count());
-            for (const QStringRef &string : stringList) {
+            realList.reserve(stringList.size());
+            for (const QStringView &string : stringList) {
                 bool ok;
                 realList.append(string.toDouble(&ok));
                 if (!ok)
                     return;
             }
             QVector<QPointF> points;
-            const int count = realList.count() / 2;
+            const int count = realList.size() / 2;
             points.reserve(count);
             for (int i = 0; i < count; ++i)
                 points.append(QPointF(realList.at(i * 2), realList.at(i * 2 + 1)));
             if (points.constLast() == QPointF(1.0, 1.0)) {
                 QEasingCurve easingCurve(QEasingCurve::BezierSpline);
 
-                for (int i = 0; i < points.count() / 3; ++i) {
+                for (int i = 0; i < points.size() / 3; ++i) {
                     easingCurve.addCubicBezierSegment(points.at(i * 3),
                                                       points.at(i * 3 + 1),
                                                       points.at(i * 3 + 2));

@@ -1,18 +1,18 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "mojo/core/user_message_impl.h"
 
-#include <algorithm>
+#include <atomic>
 #include <vector>
 
-#include "base/atomicops.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/numerics/safe_math.h"
+#include "base/ranges/algorithm.h"
 #include "base/trace_event/memory_allocator_dump.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/memory_dump_provider.h"
@@ -267,14 +267,14 @@ MojoResult CreateOrExtendSerializedEventMessage(
   return MOJO_RESULT_OK;
 }
 
-base::subtle::Atomic32 g_message_count = 0;
+std::atomic<uint32_t> g_message_count{0};
 
 void IncrementMessageCount() {
-  base::subtle::NoBarrier_AtomicIncrement(&g_message_count, 1);
+  g_message_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 void DecrementMessageCount() {
-  base::subtle::NoBarrier_AtomicIncrement(&g_message_count, -1);
+  g_message_count.fetch_add(-1, std::memory_order_relaxed);
 }
 
 class MessageMemoryDumpProvider : public base::trace_event::MemoryDumpProvider {
@@ -283,6 +283,10 @@ class MessageMemoryDumpProvider : public base::trace_event::MemoryDumpProvider {
     base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
         this, "MojoMessages", nullptr);
   }
+
+  MessageMemoryDumpProvider(const MessageMemoryDumpProvider&) = delete;
+  MessageMemoryDumpProvider& operator=(const MessageMemoryDumpProvider&) =
+      delete;
 
   ~MessageMemoryDumpProvider() override {
     base::trace_event::MemoryDumpManager::GetInstance()->UnregisterDumpProvider(
@@ -296,16 +300,14 @@ class MessageMemoryDumpProvider : public base::trace_event::MemoryDumpProvider {
     auto* dump = pmd->CreateAllocatorDump("mojo/messages");
     dump->AddScalar(base::trace_event::MemoryAllocatorDump::kNameObjectCount,
                     base::trace_event::MemoryAllocatorDump::kUnitsObjects,
-                    base::subtle::NoBarrier_Load(&g_message_count));
+                    g_message_count.load(std::memory_order_relaxed));
     return true;
   }
-
-  DISALLOW_COPY_AND_ASSIGN(MessageMemoryDumpProvider);
 };
 
 void EnsureMemoryDumpProviderExists() {
-  static base::NoDestructor<MessageMemoryDumpProvider> provider;
-  ALLOW_UNUSED_LOCAL(provider);
+  [[maybe_unused]] static base::NoDestructor<MessageMemoryDumpProvider>
+      provider;
 }
 
 }  // namespace
@@ -501,8 +503,8 @@ MojoResult UserMessageImpl::AppendData(uint32_t additional_payload_size,
     // In order to avoid rather expensive message resizing on every handle
     // attachment operation, we merely lock and prepare the handle for transit
     // here, deferring serialization until |CommitSize()|.
-    std::copy(dispatchers.begin(), dispatchers.end(),
-              std::back_inserter(pending_handle_attachments_));
+    base::ranges::copy(dispatchers,
+                       std::back_inserter(pending_handle_attachments_));
 
     if (additional_payload_size) {
       size_t header_offset =
@@ -511,8 +513,9 @@ MojoResult UserMessageImpl::AppendData(uint32_t additional_payload_size,
       size_t user_payload_offset =
           static_cast<uint8_t*>(user_payload_) -
           static_cast<const uint8_t*>(channel_message_->payload());
-      channel_message_->ExtendPayload(user_payload_offset + user_payload_size_ +
-                                      additional_payload_size);
+      Channel::Message::ExtendPayload(
+          channel_message_,
+          user_payload_offset + user_payload_size_ + additional_payload_size);
       header_ = static_cast<uint8_t*>(channel_message_->mutable_payload()) +
                 header_offset;
       user_payload_ =
@@ -614,7 +617,7 @@ MojoResult UserMessageImpl::ExtractSerializedHandles(
       channel_message_->TakeHandles();
   std::vector<PlatformHandle> msg_handles(handles_in_transit.size());
   for (size_t i = 0; i < handles_in_transit.size(); ++i) {
-    DCHECK(!handles_in_transit[i].owning_process().is_valid());
+    DCHECK(!handles_in_transit[i].owning_process().IsValid());
     msg_handles[i] = handles_in_transit[i].TakeHandle();
   }
   for (size_t i = 0; i < header->num_dispatchers; ++i) {

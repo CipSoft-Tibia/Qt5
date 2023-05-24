@@ -1,29 +1,5 @@
-﻿/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtqml-index.html
@@ -42,47 +18,47 @@ for QML applications, the \l{Qt Quick} module provides many visual components,
 model-view support, an animation framework, and much more for building user
 interfaces.
 
-For those new to QML and Qt Quick, please see
-\l{QML Applications}
-for an introduction to writing QML applications.
+If you're new to QML and Qt Quick, see \l{QML Applications} for an
+introduction to writing QML applications.
 
-\section1 Getting Started
+\section1 Using the Module
 
-To include the definitions of the module's classes, use the
-following directive:
+\section2 QML API
 
-\code
-#include <QtQml>
-\endcode
+\include {module-use.qdocinc} {using the qml api} {QtQml}
 
-The QML types in Qt QML are available through the \c QtQml import. To use the
-types, add the following import statement to your .qml file:
+\section2 C++ API
 
-\qml \QtMinorVersion
-import QtQml 2.\1
-\endqml
+\include {module-use.qdocinc} {using the c++ api}
 
+\section3 Building with CMake
 
-To link against the module, add this line to your \l qmake \c
-.pro file:
+\include {module-use.qdocinc} {building with cmake} {Qml}
 
-\code
-QT += qml
-\endcode
+To provide foreign QML type support for a non-QML library, locate
+the \c QmlIntegration module as follows:
+
+\snippet code/doc_src_qtqml.cmake 1
+
+See \l{qt6_generate_foreign_qml_types} for details.
+
+\section3 Building with qmake
+
+\include {module-use.qdocinc} {building_with_qmake} {qml}
 
 \section1 QML and QML Types
 
 The Qt QML module contains the QML framework and important QML types used in
 applications. The constructs of QML are described in the \l{The QML Reference}.
 
-In addition to the \l{QML Basic Types}, the module comes with
+In addition to the \l{QML Value Types}, the module comes with
 the following QML object types:
 \list
-\li \l Component
-\li \l QtObject
-\li \l Binding
-\li \l Connections
-\li \l Timer
+    \li \l Component
+    \li \l QtObject
+    \li \l Binding
+    \li \l Connections
+    \li \l Timer
 \endlist
 
 The \l{QtQml::Qt}{Qt} global object provides useful enums and functions
@@ -94,11 +70,11 @@ New in Qt 5.1, the model types are moved to a submodule, \c QtQml.Models. The
 \l{Qt QML Models QML Types}{Qt QML Models} page has more information.
 
 \list
-\li \l DelegateModel
-\li \l DelegateModelGroup
-\li \l ListElement
-\li \l ListModel
-\li \l ObjectModel
+    \li \l DelegateModel
+    \li \l DelegateModelGroup
+    \li \l ListElement
+    \li \l ListModel
+    \li \l ObjectModel
 \endlist
 
 \section1 JavaScript Environment for QML Applications
@@ -107,14 +83,19 @@ JavaScript expressions allow QML code to contain application logic. Qt QML
 provides the framework for running JavaScript expressions in QML and from C++.
 
 These sections are from \l{The QML Reference}.
-    \list
-    \li \l{qtqml-javascript-topic.html}{Integrating QML and JavaScript}
-    \li \l{qtqml-javascript-expressions.html}{Using JavaScript Expressions with QML}
-    \li \l{qtqml-javascript-dynamicobjectcreation.html}{Dynamic QML Object Creation from JavaScript}
-    \li \l{qtqml-javascript-resources.html}{Defining JavaScript Resources In QML}
-    \li \l{qtqml-javascript-imports.html}{Importing JavaScript Resources In QML}
-    \li \l{qtqml-javascript-hostenvironment.html}{JavaScript Host Environment}
-    \endlist
+\list
+    \li \l {qtqml-javascript-topic.html} {Integrating QML and JavaScript}
+    \li \l {qtqml-javascript-expressions.html}
+           {Using JavaScript Expressions with QML}
+    \li \l {qtqml-javascript-dynamicobjectcreation.html}
+           {Dynamic QML Object Creation from JavaScript}
+    \li \l {qtqml-javascript-resources.html}
+           {Defining JavaScript Resources In QML}
+    \li \l {qtqml-javascript-imports.html}
+           {Importing JavaScript Resources In QML}
+    \li \l {qtqml-javascript-hostenvironment.html}
+           {JavaScript Host Environment}
+\endlist
 
 \section1 Integrating QML with C++ Applications
 
@@ -122,15 +103,31 @@ The module also provides the framework for running QML applications.
 The QML framework allows QML code to contain JavaScript expressions and for
 the QML code to interact with C++ code.
 
+\section2 Articles and Guides
+
 \list
-\li \l{Important C++ Classes Provided By The Qt QML Module}
-\li \l{Integrating QML and C++}
+    \li \l {Overview - QML and C++ Integration}
+    \li \l {Data Type Conversion Between QML and C++}
+    \li \l {Integrating with JavaScript values from C++}
+    \li \l {Exposing Attributes of C++ Types to QML}
+    \li \l {Defining QML Types from C++}
+    \li \l {Writing QML Modules}
+    \li \l {Important C++ Classes Provided By The Qt QML Module}
 \endlist
 
-\section1 Additional Frameworks
+\section2 Tutorials
+
 \list
-\li \l{The Declarative State Machine Framework}
+    \li \l {Writing QML Extensions with C++}
+    \li \l {Writing advanced QML Extensions with C++}
 \endlist
+
+\omit
+    \section1 Additional Frameworks
+    \list
+        \li \l{The Declarative State Machine Framework}
+    \endlist
+\endomit
 
 \section1 Licenses and Attributions
 
@@ -146,24 +143,28 @@ modules under following permissive licenses:
 
 \generatelist{groupsbymodule attributions-qtqml}
 
-\section1 Guides and Other Information
+\section1 Related Articles and Guides
 
 Further information for writing QML applications:
 \list
-\li \l{The QML Reference}
-\li \l{QML Applications}
-    - essential information for application development with QML and Qt Quick
-\li \l{Qt Quick} - a module which provides a set of QML types and C++ classes
-    for building user interfaces and applications with QML
-\li \l{The QML Disk Cache}
-    - how to fine tune if and where the QML engine caches compilation results.
+    \li \l {The QML Reference}
+    \li \l {Qt Quick Compiler}
+           - overview of Qt Quick Compiler components
+    \li \l {QML Applications}
+           - essential information for application development with QML and Qt
+           Quick
+    \li \l {Qt Quick}
+           - a module which provides a set of QML types and C++ classes for
+           building user interfaces and applications with QML
+    \li \l {The QML Disk Cache}
+           - how to fine tune if and where the QML engine caches compilation
+           results
 \endlist
 
-\section2 Reference
+\section1 Reference
+
 \list
-\li \l{Qt QML C++ Classes}{C++ Classes}
-\li \l{Qt QML QML Types}{QML Types}
-\li \l{Qt QML Examples}{Examples}
+    \li \l {Qt QML C++ Classes} {C++ Classes}
+    \li \l {Qt QML QML Types} {QML Types}
 \endlist
-
 */

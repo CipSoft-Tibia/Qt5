@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,20 +8,18 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "components/viz/service/display_embedder/skia_output_device.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
 
 namespace gl {
-class GLImage;
 class GLSurface;
 }  // namespace gl
 
 namespace gpu {
-class MailboxManager;
 class SharedContextState;
-class SharedImageRepresentationFactory;
 
 namespace gles2 {
 class FeatureInfo;
@@ -33,33 +31,29 @@ namespace viz {
 class SkiaOutputDeviceGL final : public SkiaOutputDevice {
  public:
   SkiaOutputDeviceGL(
-      gpu::MailboxManager* mailbox_manager,
-      gpu::SharedImageRepresentationFactory*
-          shared_image_representation_factory,
       gpu::SharedContextState* context_state,
       scoped_refptr<gl::GLSurface> gl_surface,
       scoped_refptr<gpu::gles2::FeatureInfo> feature_info,
       gpu::MemoryTracker* memory_tracker,
       DidSwapBufferCompleteCallback did_swap_buffer_complete_callback);
+
+  SkiaOutputDeviceGL(const SkiaOutputDeviceGL&) = delete;
+  SkiaOutputDeviceGL& operator=(const SkiaOutputDeviceGL&) = delete;
+
   ~SkiaOutputDeviceGL() override;
 
   // SkiaOutputDevice implementation:
-  bool Reshape(const gfx::Size& size,
-               float device_scale_factor,
+  bool Reshape(const SkSurfaceCharacterization& characterization,
                const gfx::ColorSpace& color_space,
-               gfx::BufferFormat format,
+               float device_scale_factor,
                gfx::OverlayTransform transform) override;
   void SwapBuffers(BufferPresentedCallback feedback,
-                   std::vector<ui::LatencyInfo> latency_info) override;
+                   OutputSurfaceFrame frame) override;
   void PostSubBuffer(const gfx::Rect& rect,
                      BufferPresentedCallback feedback,
-                     std::vector<ui::LatencyInfo> latency_info) override;
+                     OutputSurfaceFrame frame) override;
   void CommitOverlayPlanes(BufferPresentedCallback feedback,
-                           std::vector<ui::LatencyInfo> latency_info) override;
-  bool SetDrawRectangle(const gfx::Rect& draw_rectangle) override;
-  void SetGpuVSyncEnabled(bool enabled) override;
-  void SetEnableDCLayers(bool enable) override;
-  void ScheduleOverlays(SkiaOutputSurface::OverlayList overlays) override;
+                           OutputSurfaceFrame frame) override;
   void EnsureBackbuffer() override;
   void DiscardBackbuffer() override;
   SkSurface* BeginPaint(
@@ -67,30 +61,29 @@ class SkiaOutputDeviceGL final : public SkiaOutputDevice {
   void EndPaint() override;
 
  private:
+  class OverlayData;
+
+  // Use instead of calling FinishSwapBuffers() directly.
+  void DoFinishSwapBuffers(const gfx::Size& size,
+                           OutputSurfaceFrame frame,
+                           gfx::SwapCompletionResult result);
   // Used as callback for SwapBuffersAsync and PostSubBufferAsync to finish
   // operation
-  void DoFinishSwapBuffers(const gfx::Size& size,
-                           std::vector<ui::LatencyInfo> latency_info,
-                           gfx::SwapCompletionResult result);
+  void DoFinishSwapBuffersAsync(const gfx::Size& size,
+                                OutputSurfaceFrame frame,
+                                gfx::SwapCompletionResult result);
 
-  scoped_refptr<gl::GLImage> GetGLImageForMailbox(const gpu::Mailbox& mailbox);
+  void CreateSkSurface();
 
-  gpu::MailboxManager* const mailbox_manager_;
-
-  gpu::SharedImageRepresentationFactory* const
-      shared_image_representation_factory_;
-
-  gpu::SharedContextState* const context_state_;
+  const raw_ptr<gpu::SharedContextState> context_state_;
   scoped_refptr<gl::GLSurface> gl_surface_;
   const bool supports_async_swap_;
 
-  sk_sp<SkSurface> sk_surface_;
-
   uint64_t backbuffer_estimated_size_ = 0;
 
-  base::WeakPtrFactory<SkiaOutputDeviceGL> weak_ptr_factory_{this};
+  sk_sp<SkSurface> sk_surface_;
 
-  DISALLOW_COPY_AND_ASSIGN(SkiaOutputDeviceGL);
+  base::WeakPtrFactory<SkiaOutputDeviceGL> weak_ptr_factory_{this};
 };
 
 }  // namespace viz

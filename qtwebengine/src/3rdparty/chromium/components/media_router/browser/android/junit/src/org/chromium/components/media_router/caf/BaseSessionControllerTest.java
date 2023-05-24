@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -29,6 +29,7 @@ import com.google.android.gms.cast.framework.CastSession;
 import com.google.android.gms.cast.framework.SessionManager;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -41,8 +42,10 @@ import org.robolectric.annotation.Config;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.components.media_router.CastSessionUtil;
+import org.chromium.components.media_router.MediaRouterClient;
 import org.chromium.components.media_router.MediaSink;
 import org.chromium.components.media_router.MediaSource;
+import org.chromium.components.media_router.TestMediaRouterClient;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -87,6 +90,7 @@ public class BaseSessionControllerTest {
         MockitoAnnotations.initMocks(this);
         mContext = RuntimeEnvironment.application;
         mMediaRouterHelper = new MediaRouterTestHelper();
+        MediaRouterClient.setInstance(new TestMediaRouterClient());
         ShadowCastContext.setInstance(mCastContext);
         mMediaRouteSelector =
                 new MediaRouteSelector.Builder()
@@ -105,6 +109,11 @@ public class BaseSessionControllerTest {
         doReturn(APP_ID).when(mSource).getApplicationId();
         doReturn(mRequestInfo).when(mProvider).getPendingCreateRouteRequestInfo();
         doReturn(MediaRouter.getInstance(mContext)).when(mProvider).getAndroidMediaRouter();
+    }
+
+    @After
+    public void tearDown() {
+        MediaRouterClient.setInstance(null);
     }
 
     @Test

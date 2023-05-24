@@ -26,7 +26,7 @@
 #include "libavutil/avassert.h"
 #include "dnn_backend_native_layer_avgpool.h"
 
-int dnn_load_layer_avg_pool(Layer *layer, AVIOContext *model_file_context, int file_size, int operands_num)
+int ff_dnn_load_layer_avg_pool(Layer *layer, AVIOContext *model_file_context, int file_size, int operands_num)
 {
     AvgPoolParams *avgpool_params;
     int dnn_size = 0;
@@ -55,8 +55,8 @@ int dnn_load_layer_avg_pool(Layer *layer, AVIOContext *model_file_context, int f
     return dnn_size;
 }
 
-int dnn_execute_layer_avg_pool(DnnOperand *operands, const int32_t *input_operand_indexes,
-                             int32_t output_operand_index, const void *parameters, NativeContext *ctx)
+int ff_dnn_execute_layer_avg_pool(DnnOperand *operands, const int32_t *input_operand_indexes,
+                                  int32_t output_operand_index, const void *parameters, NativeContext *ctx)
 {
     float *output;
     int height_end, width_end, height_radius, width_radius, output_height, output_width, kernel_area;
@@ -66,14 +66,14 @@ int dnn_execute_layer_avg_pool(DnnOperand *operands, const int32_t *input_operan
     int width = operands[input_operand_index].dims[2];
     int channel = operands[input_operand_index].dims[3];
     const float *input = operands[input_operand_index].data;
-    const AvgPoolParams *avgpool_params = (const AvgPoolParams *)parameters;
+    const AvgPoolParams *avgpool_params = parameters;
 
     int kernel_strides = avgpool_params->strides;
     int src_linesize = width * channel;
     DnnOperand *output_operand = &operands[output_operand_index];
 
     /**
-     * When padding_method = SAME, the tensorflow will only padding the hald number of 0 pxiels
+     * When padding_method = SAME, the tensorflow will only padding the hald number of 0 pixels
      * except the remainders.
      * Eg: assuming the input height = 1080, the strides = 11, so the remainders = 1080 % 11 = 2
      *     and if ksize = 5: it will fill (5 - 2) >> 1 = 1 line before the first line of input image,
@@ -106,15 +106,15 @@ int dnn_execute_layer_avg_pool(DnnOperand *operands, const int32_t *input_operan
     // not support pooling in channel dimension now
     output_operand->dims[3] = channel;
     output_operand->data_type = operands[input_operand_index].data_type;
-    output_operand->length = calculate_operand_data_length(output_operand);
+    output_operand->length = ff_calculate_operand_data_length(output_operand);
     if (output_operand->length <= 0) {
         av_log(ctx, AV_LOG_ERROR, "The output data length overflow\n");
-        return DNN_ERROR;
+        return AVERROR(EINVAL);
     }
     output_operand->data = av_realloc(output_operand->data, output_operand->length);
     if (!output_operand->data) {
         av_log(ctx, AV_LOG_ERROR, "Failed to reallocate memory for output\n");
-        return DNN_ERROR;
+        return AVERROR(ENOMEM);
     }
     output = output_operand->data;
 

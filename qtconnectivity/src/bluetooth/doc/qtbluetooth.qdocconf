@@ -15,18 +15,11 @@ qhp.QtBluetooth.virtualFolder       = qtbluetooth
 qhp.QtBluetooth.indexTitle          = Qt Bluetooth
 qhp.QtBluetooth.indexRoot           =
 
-qhp.QtBluetooth.filterAttributes    = qtbluetooth $QT_VERSION qtrefdoc
-qhp.QtBluetooth.customFilters.Qt.name = QtBluetooth $QT_VERSION
-qhp.QtBluetooth.customFilters.Qt.filterAttributes = qtbluetooth $QT_VERSION
-qhp.QtBluetooth.subprojects         = overviews classes qml examples
+qhp.QtBluetooth.subprojects         = overviews classes examples
 qhp.QtBluetooth.subprojects.classes.title = C++ Classes
 qhp.QtBluetooth.subprojects.classes.indexTitle = Qt Bluetooth C++ Classes
 qhp.QtBluetooth.subprojects.classes.selectors = class fake:headerfile
 qhp.QtBluetooth.subprojects.classes.sortPages = true
-qhp.QtBluetooth.subprojects.qml.title = QML Types
-qhp.QtBluetooth.subprojects.qml.indexTitle = Qt Bluetooth QML Types
-qhp.QtBluetooth.subprojects.qml.selectors = fake:headerfile
-qhp.QtBluetooth.subprojects.qml.sortPages = true
 qhp.QtBluetooth.subprojects.overviews.title = Overviews
 qhp.QtBluetooth.subprojects.overviews.indexTitle = Qt Bluetooth Overview
 qhp.QtBluetooth.subprojects.overviews.selectors = fake:page,group,module
@@ -36,23 +29,26 @@ qhp.QtBluetooth.subprojects.examples.selectors = fake:example
 
 tagfile                 = ../../../doc/qtbluetooth/qtbluetooth.tags
 
-depends += qtcore qtdoc qtquick
+depends += qtcore qtgui qtwidgets qtdoc qtquick qtcmake qmake
 
-headerdirs  += .. \
-                ../../imports/bluetooth
+headerdirs  += ..
 
-sourcedirs  += .. \
-                ../../imports/bluetooth \
+sourcedirs  += ..
 
 exampledirs += ../../../examples/bluetooth \
                snippets/ \
                ../
 
-manifestmeta.thumbnail.names = "QtBluetooth/Bluetooth Low Energy Heart Rate Server Example"
-manifestmeta.highlighted.names += "QtBluetooth/Bluetooth Low Energy Heart Rate Game"
+manifestmeta.thumbnail.names = "QtBluetooth/Bluetooth Low Energy Heart Rate Server"
+
+manifestmeta.highlighted.names = \
+    "QtBluetooth/Bluetooth Low Energy Heart Rate Game" \
+    "QtBluetooth/Bluetooth Low Energy Scanner"
 
 imagedirs   += images
 
 navigation.landingpage = "Qt Bluetooth"
 navigation.cppclassespage = "Qt Bluetooth C++ Classes"
-navigation.qmltypespage = "Qt Bluetooth QML Types"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

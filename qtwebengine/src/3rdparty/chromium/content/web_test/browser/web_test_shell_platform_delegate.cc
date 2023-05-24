@@ -1,10 +1,11 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/web_test/browser/web_test_shell_platform_delegate.h"
 
 #include "base/command_line.h"
+#include "content/public/browser/web_contents.h"
 #include "content/web_test/browser/web_test_control_host.h"
 #include "content/web_test/browser/web_test_javascript_dialog_manager.h"
 #include "content/web_test/common/web_test_switches.h"
@@ -28,24 +29,38 @@ void WebTestShellPlatformDelegate::DidCreateOrAttachWebContents(
   WebTestControlHost::Get()->DidCreateOrAttachWebContents(web_contents);
 }
 
+void WebTestShellPlatformDelegate::DidCloseLastWindow() {
+  // Some tests, or some fuzzer's test cases are closing every window. When
+  // this happens, the test runner must run the next test. For this reason, this
+  // do not call Shell::Shutdown(). It will be called manually at the end of:
+  // WebTestBrowserMainRunner::RunBrowserMain().
+}
+
 std::unique_ptr<JavaScriptDialogManager>
 WebTestShellPlatformDelegate::CreateJavaScriptDialogManager(Shell* shell) {
   return std::make_unique<WebTestJavaScriptDialogManager>();
 }
 
-std::unique_ptr<BluetoothChooser>
-WebTestShellPlatformDelegate::RunBluetoothChooser(
+bool WebTestShellPlatformDelegate::HandleRequestToLockMouse(
     Shell* shell,
-    RenderFrameHost* frame,
-    const BluetoothChooser::EventHandler& event_handler) {
-  return WebTestControlHost::Get()->RunBluetoothChooser(frame, event_handler);
+    WebContents* web_contents,
+    bool user_gesture,
+    bool last_unlocked_by_target) {
+  if (!user_gesture && !last_unlocked_by_target) {
+    web_contents->GotResponseToLockMouseRequest(
+        blink::mojom::PointerLockResult::kRequiresUserGesture);
+  }
+
+  WebTestControlHost::Get()->RequestToLockMouse(web_contents);
+  // Always indicate that we have handled the request to lock the mouse.
+  return true;
 }
 
 bool WebTestShellPlatformDelegate::ShouldAllowRunningInsecureContent(
     Shell* shell) {
-  const base::DictionaryValue& flags =
-      WebTestControlHost::Get()->accumulated_web_test_runtime_flags_changes();
-  return flags.FindBoolPath("running_insecure_content_allowed").value_or(false);
+  WebTestControlHost* control_host = WebTestControlHost::Get();
+  return control_host->web_test_runtime_flags()
+      .running_insecure_content_allowed();
 }
 
 }  // namespace content

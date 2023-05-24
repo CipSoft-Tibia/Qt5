@@ -13,10 +13,6 @@ qhp.QtQmlTest.virtualFolder       = qtqmltest
 qhp.QtQmlTest.indexTitle          = Qt Quick Test
 qhp.QtQmlTest.indexRoot           =
 
-qhp.QtQmlTest.filterAttributes    = qtqmltest $QT_VERSION qtrefdoc
-qhp.QtQmlTest.customFilters.Qt.name = QtQmlTest $QT_VERSION
-qhp.QtQmlTest.customFilters.Qt.filterAttributes = qtqmltest $QT_VERSION
-
 qhp.QtQmlTest.subprojects         = qmltypes classes
 qhp.QtQmlTest.subprojects.classes.title = C++ API
 qhp.QtQmlTest.subprojects.classes.indexTitle = Qt Quick Test C++ API
@@ -29,15 +25,17 @@ qhp.QtQmlTest.subprojects.qmltypes.sortPages = true
 
 tagfile      = qtqmltest.tags
 
-depends += qtcore qtgui qttestlib qtqml qtquick qtdoc
+depends += qtcore qtgui qttestlib qtqml qtquick qtdoc qmake qtcmake
 
 headerdirs  += ..
 
-sourcedirs  += .. \
-               ../../imports/testlib
+sourcedirs  += ..
 
 exampledirs += snippets
 
 navigation.landingpage = "Qt Quick Test"
 navigation.cppclassespage = "Qt Quick Test C++ API"
 navigation.qmltypespage = "Qt Quick Test QML Types"
+
+# Fail the documentation build if there are more warnings than the limit
+warninglimit = 0

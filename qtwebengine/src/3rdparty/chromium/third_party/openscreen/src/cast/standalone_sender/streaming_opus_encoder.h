@@ -32,7 +32,7 @@ class StreamingOpusEncoder {
   // |rtp_timebase()|.
   StreamingOpusEncoder(int num_channels,
                        int cast_frames_per_second,
-                       Sender* sender);
+                       std::unique_ptr<Sender> sender);
 
   ~StreamingOpusEncoder();
 
@@ -84,7 +84,7 @@ class StreamingOpusEncoder {
   int FillInputBuffer(const float* interleaved_samples, int num_samples);
 
   const int num_channels_;
-  Sender* const sender_;
+  std::unique_ptr<Sender> sender_;
   const int samples_per_cast_frame_;
   const Clock::duration approximate_cast_frame_duration_;
   const std::unique_ptr<uint8_t[]> encoder_storage_;

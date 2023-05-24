@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/focus_params.h"
 #include "third_party/blink/renderer/core/editing/commands/move_commands.h"
+#include "third_party/blink/renderer/core/editing/editing_behavior.h"
 #include "third_party/blink/renderer/core/editing/editor.h"
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/editing/selection_template.h"
@@ -56,13 +57,13 @@ TEST_F(MoveCommandsTest, CaretBrowsingPositionAndFocusUpdate_MoveDown) {
   VerifyCaretBrowsingPositionAndFocusUpdate(
       "<div>a|b</div><div><a href=\"foo\">cd</a></div>", "body",
       MoveCommands::ExecuteMoveDown,
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
       "<div>ab</div><div><a href=\"foo\">c|d</a></div>", "a");
-#else   // defined(OS_MAC)
-        // MoveDown navigates visually, placing caret at different position for
-        // macOS.
+#else
+      // MoveDown navigates visually, placing caret at different position for
+      // macOS.
       "<div>ab</div><div><a href=\"foo\">|cd</a></div>", "a");
-#endif  // !defined(OS_MAC)
+#endif
 }
 
 TEST_F(MoveCommandsTest, CaretBrowsingPositionAndFocusUpdate_MoveForward) {
@@ -184,13 +185,13 @@ TEST_F(MoveCommandsTest, CaretBrowsingPositionAndFocusUpdate_MoveUp) {
   VerifyCaretBrowsingPositionAndFocusUpdate(
       "<div><a href=\"foo\">ab</a></div><div>c|d</div>", "body",
       MoveCommands::ExecuteMoveUp,
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
       "<div><a href=\"foo\">a|b</a></div><div>cd</div>", "a");
-#else   // defined(OS_MAC)
+#else
       // MoveUp navigates visually, placing caret at different position for
       // macOS.
       "<div><a href=\"foo\">|ab</a></div><div>cd</div>", "a");
-#endif  // !defined(OS_MAC)
+#endif
 }
 
 TEST_F(MoveCommandsTest, CaretBrowsingPositionAndFocusUpdate_MoveWordBackward) {
@@ -215,10 +216,19 @@ TEST_F(MoveCommandsTest, CaretBrowsingPositionAndFocusUpdate_MoveWordLeft) {
 }
 
 TEST_F(MoveCommandsTest, CaretBrowsingPositionAndFocusUpdate_MoveWordRight) {
+  bool should_skip_spaces = GetDocument()
+                                .GetFrame()
+                                ->GetEditor()
+                                .Behavior()
+                                .ShouldSkipSpaceWhenMovingRight();
   VerifyCaretBrowsingPositionAndFocusUpdate(
       "<div>a|<a href=\"foo\"> b</a></div>", "body",
-      MoveCommands::ExecuteMoveWordRight, "<div>a<a href=\"foo\"> b|</a></div>",
+      MoveCommands::ExecuteMoveWordRight,
+      should_skip_spaces ? "<div>a<a href=\"foo\"> |b</a></div>"
+                         : "<div>a<a href=\"foo\"> b|</a></div>",
       "a");
+  // MoveRight skips the beginning of the word when started after
+  // end of previous word, placing caret at different position for macOS.
 }
 
 // This test verifies that focus returns to the body after browsing out of a

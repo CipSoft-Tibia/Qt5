@@ -3,7 +3,7 @@
 
 #include "avif/internal.h"
 
-#include "rav1e/rav1e.h"
+#include "rav1e.h"
 
 #include <string.h>
 
@@ -12,6 +12,8 @@ struct avifCodecInternal
     RaContext * rav1eContext;
     RaChromaSampling chromaSampling;
     int yShift;
+    uint32_t encodeWidth;
+    uint32_t encodeHeight;
 };
 
 static void rav1eCodecDestroyInternal(avifCodec * codec)
@@ -21,14 +23,6 @@ static void rav1eCodecDestroyInternal(avifCodec * codec)
         codec->internal->rav1eContext = NULL;
     }
     avifFree(codec->internal);
-}
-
-static avifBool rav1eCodecOpen(struct avifCodec * codec, uint32_t firstSampleIndex)
-{
-    (void)firstSampleIndex; // Codec is encode-only, this isn't used
-
-    codec->internal->rav1eContext = NULL;
-    return AVIF_TRUE;
 }
 
 // Official support wasn't added until v0.4.0
@@ -59,9 +53,31 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
                                         avifEncoder * encoder,
                                         const avifImage * image,
                                         avifBool alpha,
+                                        int tileRowsLog2,
+                                        int tileColsLog2,
+                                        int quantizer,
+                                        avifEncoderChanges encoderChanges,
                                         uint32_t addImageFlags,
                                         avifCodecEncodeOutput * output)
 {
+    // rav1e does not support changing encoder settings.
+    if (encoderChanges) {
+        return AVIF_RESULT_NOT_IMPLEMENTED;
+    }
+
+    // rav1e does not support changing image dimensions.
+    if (!codec->internal->rav1eContext) {
+        codec->internal->encodeWidth = image->width;
+        codec->internal->encodeHeight = image->height;
+    } else if ((codec->internal->encodeWidth != image->width) || (codec->internal->encodeHeight != image->height)) {
+        return AVIF_RESULT_NOT_IMPLEMENTED;
+    }
+
+    // rav1e does not support encoding layered image.
+    if (encoder->extraLayerCount > 0) {
+        return AVIF_RESULT_NOT_IMPLEMENTED;
+    }
+
     avifResult result = AVIF_RESULT_UNKNOWN_ERROR;
 
     RaConfig * rav1eConfig = NULL;
@@ -76,7 +92,7 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
         const avifBool supports400 = rav1eSupports400();
         RaPixelRange rav1eRange;
         if (alpha) {
-            rav1eRange = (image->alphaRange == AVIF_RANGE_FULL) ? RA_PIXEL_RANGE_FULL : RA_PIXEL_RANGE_LIMITED;
+            rav1eRange = RA_PIXEL_RANGE_FULL;
             codec->internal->chromaSampling = supports400 ? RA_CHROMA_SAMPLING_CS400 : RA_CHROMA_SAMPLING_CS420;
             codec->internal->yShift = 1;
         } else {
@@ -98,6 +114,7 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
                     codec->internal->yShift = 1;
                     break;
                 case AVIF_PIXEL_FORMAT_NONE:
+                case AVIF_PIXEL_FORMAT_COUNT:
                 default:
                     return AVIF_RESULT_UNKNOWN_ERROR;
             }
@@ -128,27 +145,23 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
         }
 
         int minQuantizer = AVIF_CLAMP(encoder->minQuantizer, 0, 63);
-        int maxQuantizer = AVIF_CLAMP(encoder->maxQuantizer, 0, 63);
         if (alpha) {
             minQuantizer = AVIF_CLAMP(encoder->minQuantizerAlpha, 0, 63);
-            maxQuantizer = AVIF_CLAMP(encoder->maxQuantizerAlpha, 0, 63);
         }
         minQuantizer = (minQuantizer * 255) / 63; // Rescale quantizer values as rav1e's QP range is [0,255]
-        maxQuantizer = (maxQuantizer * 255) / 63;
+        quantizer = (quantizer * 255) / 63;
         if (rav1e_config_parse_int(rav1eConfig, "min_quantizer", minQuantizer) == -1) {
             goto cleanup;
         }
-        if (rav1e_config_parse_int(rav1eConfig, "quantizer", maxQuantizer) == -1) {
+        if (rav1e_config_parse_int(rav1eConfig, "quantizer", quantizer) == -1) {
             goto cleanup;
         }
-        if (encoder->tileRowsLog2 != 0) {
-            int tileRowsLog2 = AVIF_CLAMP(encoder->tileRowsLog2, 0, 6);
+        if (tileRowsLog2 != 0) {
             if (rav1e_config_parse_int(rav1eConfig, "tile_rows", 1 << tileRowsLog2) == -1) {
                 goto cleanup;
             }
         }
-        if (encoder->tileColsLog2 != 0) {
-            int tileColsLog2 = AVIF_CLAMP(encoder->tileColsLog2, 0, 6);
+        if (tileColsLog2 != 0) {
             if (rav1e_config_parse_int(rav1eConfig, "tile_cols", 1 << tileColsLog2) == -1) {
                 goto cleanup;
             }
@@ -175,13 +188,13 @@ static avifResult rav1eCodecEncodeImage(avifCodec * codec,
 
     int byteWidth = (image->depth > 8) ? 2 : 1;
     if (alpha) {
-        rav1e_frame_fill_plane(rav1eFrame, 0, image->alphaPlane, image->alphaRowBytes * image->height, image->alphaRowBytes, byteWidth);
+        rav1e_frame_fill_plane(rav1eFrame, 0, image->alphaPlane, (size_t)image->alphaRowBytes * image->height, image->alphaRowBytes, byteWidth);
     } else {
-        rav1e_frame_fill_plane(rav1eFrame, 0, image->yuvPlanes[0], image->yuvRowBytes[0] * image->height, image->yuvRowBytes[0], byteWidth);
+        rav1e_frame_fill_plane(rav1eFrame, 0, image->yuvPlanes[0], (size_t)image->yuvRowBytes[0] * image->height, image->yuvRowBytes[0], byteWidth);
         if (image->yuvFormat != AVIF_PIXEL_FORMAT_YUV400) {
             uint32_t uvHeight = (image->height + codec->internal->yShift) >> codec->internal->yShift;
-            rav1e_frame_fill_plane(rav1eFrame, 1, image->yuvPlanes[1], image->yuvRowBytes[1] * uvHeight, image->yuvRowBytes[1], byteWidth);
-            rav1e_frame_fill_plane(rav1eFrame, 2, image->yuvPlanes[2], image->yuvRowBytes[2] * uvHeight, image->yuvRowBytes[2], byteWidth);
+            rav1e_frame_fill_plane(rav1eFrame, 1, image->yuvPlanes[1], (size_t)image->yuvRowBytes[1] * uvHeight, image->yuvRowBytes[1], byteWidth);
+            rav1e_frame_fill_plane(rav1eFrame, 2, image->yuvPlanes[2], (size_t)image->yuvRowBytes[2] * uvHeight, image->yuvRowBytes[2], byteWidth);
         }
     }
 
@@ -273,7 +286,6 @@ avifCodec * avifCodecCreateRav1e(void)
 {
     avifCodec * codec = (avifCodec *)avifAlloc(sizeof(avifCodec));
     memset(codec, 0, sizeof(struct avifCodec));
-    codec->open = rav1eCodecOpen;
     codec->encodeImage = rav1eCodecEncodeImage;
     codec->encodeFinish = rav1eCodecEncodeFinish;
     codec->destroyInternal = rav1eCodecDestroyInternal;

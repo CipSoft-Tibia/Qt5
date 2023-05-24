@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFILESYSTEMMETADATA_P_H
 #define QFILESYSTEMMETADATA_P_H
@@ -54,6 +18,7 @@
 #include "qplatformdefs.h"
 #include <QtCore/qglobal.h>
 #include <QtCore/qdatetime.h>
+#include <QtCore/qtimezone.h>
 #include <QtCore/private/qabstractfileengine_p.h>
 
 // Platform-specific includes
@@ -193,20 +158,20 @@ public:
         knownFlagsMask &= ~flags;
     }
 
-    bool exists() const                     { return (entryFlags & ExistsAttribute); }
+    bool exists() const                     { return entryFlags.testAnyFlag(ExistsAttribute); }
 
-    bool isLink() const                     { return  (entryFlags & LinkType); }
-    bool isFile() const                     { return (entryFlags & FileType); }
-    bool isDirectory() const                { return (entryFlags & DirectoryType); }
+    bool isLink() const                     { return entryFlags.testAnyFlag(LinkType); }
+    bool isFile() const                     { return entryFlags.testAnyFlag(FileType); }
+    bool isDirectory() const                { return entryFlags.testAnyFlag(DirectoryType); }
     bool isBundle() const;
     bool isAlias() const;
-    bool isLegacyLink() const               { return (entryFlags & LegacyLinkType); }
-    bool isSequential() const               { return (entryFlags & SequentialType); }
-    bool isHidden() const                   { return (entryFlags & HiddenAttribute); }
-    bool wasDeleted() const                 { return (entryFlags & WasDeletedAttribute); }
+    bool isLegacyLink() const               { return entryFlags.testAnyFlag(LegacyLinkType); }
+    bool isSequential() const               { return entryFlags.testAnyFlag(SequentialType); }
+    bool isHidden() const                   { return entryFlags.testAnyFlag(HiddenAttribute); }
+    bool wasDeleted() const                 { return entryFlags.testAnyFlag(WasDeletedAttribute); }
 #if defined(Q_OS_WIN)
-    bool isLnkFile() const                  { return (entryFlags & WinLnkType); }
-    bool isJunction() const                 { return (entryFlags & JunctionType); }
+    bool isLnkFile() const                  { return entryFlags.testAnyFlag(WinLnkType); }
+    bool isJunction() const                 { return entryFlags.testAnyFlag(JunctionType); }
 #else
     bool isLnkFile() const                  { return false; }
     bool isJunction() const                 { return false; }
@@ -214,7 +179,7 @@ public:
 
     qint64 size() const                     { return size_; }
 
-    QFile::Permissions permissions() const  { return QFile::Permissions(Permissions & entryFlags); }
+    QFile::Permissions permissions() const;
 
     QDateTime accessTime() const;
     QDateTime birthTime() const;
@@ -235,9 +200,7 @@ public:
 #if defined(Q_OS_WIN)
     inline void fillFromFileAttribute(DWORD fileAttribute, bool isDriveRoot = false);
     inline void fillFromFindData(WIN32_FIND_DATA &findData, bool setLinkType = false, bool isDriveRoot = false);
-#  ifndef Q_OS_WINRT
     inline void fillFromFindInfo(BY_HANDLE_FILE_INFORMATION &fileInfo);
-#  endif
 #endif
 private:
     friend class QFileSystemEngine;
@@ -245,7 +208,7 @@ private:
     MetaDataFlags knownFlagsMask;
     MetaDataFlags entryFlags;
 
-    qint64 size_;
+    qint64 size_ = 0;
 
     // Platform-specific data goes here:
 #if defined(Q_OS_WIN)
@@ -256,22 +219,24 @@ private:
     FILETIME lastWriteTime_;
 #else
     // msec precision
-    qint64 accessTime_;
-    qint64 birthTime_;
-    qint64 metadataChangeTime_;
-    qint64 modificationTime_;
+    qint64 accessTime_ = 0;
+    qint64 birthTime_ = 0;
+    qint64 metadataChangeTime_ = 0;
+    qint64 modificationTime_ = 0;
 
-    uint userId_;
-    uint groupId_;
+    uint userId_ = (uint) -2;
+    uint groupId_ = (uint) -2;
 #endif
 
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QFileSystemMetaData::MetaDataFlags)
 
+inline QFile::Permissions QFileSystemMetaData::permissions() const { return QFile::Permissions::fromInt((Permissions & entryFlags).toInt()); }
+
 #if defined(Q_OS_DARWIN)
-inline bool QFileSystemMetaData::isBundle() const                   { return (entryFlags & BundleType); }
-inline bool QFileSystemMetaData::isAlias() const                    { return (entryFlags & AliasType); }
+inline bool QFileSystemMetaData::isBundle() const                   { return entryFlags.testAnyFlag(BundleType); }
+inline bool QFileSystemMetaData::isAlias() const                    { return entryFlags.testAnyFlag(AliasType); }
 #else
 inline bool QFileSystemMetaData::isBundle() const                   { return false; }
 inline bool QFileSystemMetaData::isAlias() const                    { return false; }
@@ -300,13 +265,29 @@ inline QDateTime QFileSystemMetaData::fileTime(QAbstractFileEngine::FileTime tim
 
 #if defined(Q_OS_UNIX)
 inline QDateTime QFileSystemMetaData::birthTime() const
-{ return birthTime_ ? QDateTime::fromMSecsSinceEpoch(birthTime_) : QDateTime(); }
+{
+    return birthTime_
+        ? QDateTime::fromMSecsSinceEpoch(birthTime_, QTimeZone::UTC)
+        : QDateTime();
+}
 inline QDateTime QFileSystemMetaData::metadataChangeTime() const
-{ return metadataChangeTime_ ? QDateTime::fromMSecsSinceEpoch(metadataChangeTime_) : QDateTime(); }
+{
+    return metadataChangeTime_
+        ? QDateTime::fromMSecsSinceEpoch(metadataChangeTime_, QTimeZone::UTC)
+        : QDateTime();
+}
 inline QDateTime QFileSystemMetaData::modificationTime() const
-{ return modificationTime_ ? QDateTime::fromMSecsSinceEpoch(modificationTime_) : QDateTime(); }
+{
+    return modificationTime_
+        ? QDateTime::fromMSecsSinceEpoch(modificationTime_, QTimeZone::UTC)
+        : QDateTime();
+}
 inline QDateTime QFileSystemMetaData::accessTime() const
-{ return accessTime_ ? QDateTime::fromMSecsSinceEpoch(accessTime_) : QDateTime(); }
+{
+    return accessTime_
+        ? QDateTime::fromMSecsSinceEpoch(accessTime_, QTimeZone::UTC)
+        : QDateTime();
+}
 
 inline uint QFileSystemMetaData::userId() const                     { return userId_; }
 inline uint QFileSystemMetaData::groupId() const                    { return groupId_; }
@@ -372,7 +353,6 @@ inline void QFileSystemMetaData::fillFromFindData(WIN32_FIND_DATA &findData, boo
     }
 }
 
-#ifndef Q_OS_WINRT
 inline void QFileSystemMetaData::fillFromFindInfo(BY_HANDLE_FILE_INFORMATION &fileInfo)
 {
     fillFromFileAttribute(fileInfo.dwFileAttributes);
@@ -388,7 +368,6 @@ inline void QFileSystemMetaData::fillFromFindInfo(BY_HANDLE_FILE_INFORMATION &fi
     }
     knownFlagsMask |=  Times | SizeAttribute;
 }
-#endif // !Q_OS_WINRT
 #endif // Q_OS_WIN
 
 QT_END_NAMESPACE

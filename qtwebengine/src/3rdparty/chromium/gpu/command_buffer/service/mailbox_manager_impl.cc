@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "gpu/command_buffer/service/texture_base.h"
 
@@ -19,10 +20,6 @@ MailboxManagerImpl::MailboxManagerImpl() = default;
 MailboxManagerImpl::~MailboxManagerImpl() {
   DCHECK(mailbox_to_textures_.empty());
   DCHECK(textures_to_mailboxes_.empty());
-}
-
-bool MailboxManagerImpl::UsesSync() {
-  return false;
 }
 
 TextureBase* MailboxManagerImpl::ConsumeTexture(const Mailbox& mailbox) {

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,6 +24,15 @@ ShareTarget::Files& ShareTarget::Files::operator=(ShareTarget::Files&&) =
 
 ShareTarget::Files::~Files() = default;
 
+base::Value ShareTarget::Files::AsDebugValue() const {
+  base::Value::Dict root;
+  root.Set("name", name);
+  base::Value::List& accept_json = *root.EnsureList("accept");
+  for (const std::string& entry : accept)
+    accept_json.Append(entry);
+  return base::Value(std::move(root));
+}
+
 ShareTarget::Params::Params() = default;
 
 ShareTarget::Params::Params(const ShareTarget::Params&) = default;
@@ -37,6 +46,17 @@ ShareTarget::Params& ShareTarget::Params::operator=(ShareTarget::Params&&) =
     default;
 
 ShareTarget::Params::~Params() = default;
+
+base::Value ShareTarget::Params::AsDebugValue() const {
+  base::Value::Dict root;
+  root.Set("title", title);
+  root.Set("text", text);
+  root.Set("url", url);
+  base::Value::List& files_json = *root.EnsureList("files");
+  for (const auto& files_entry : files)
+    files_json.Append(files_entry.AsDebugValue());
+  return base::Value(std::move(root));
+}
 
 ShareTarget::ShareTarget() = default;
 
@@ -70,30 +90,13 @@ const char* ShareTarget::EnctypeToString(ShareTarget::Enctype enctype) {
   }
 }
 
-std::ostream& operator<<(std::ostream& out, const ShareTarget& share_target) {
-  out << "action: " << share_target.action << std::endl;
-  out << "method: " << ShareTarget::MethodToString(share_target.method)
-      << std::endl;
-  out << "enctype: " << ShareTarget::EnctypeToString(share_target.enctype)
-      << std::endl;
-  out << share_target.params;
-  return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const ShareTarget::Params& params) {
-  out << "title: " << params.title << std::endl;
-  out << "text: " << params.text << std::endl;
-  out << "url: " << params.url << std::endl;
-  for (const auto& files_entry : params.files)
-    out << files_entry;
-  return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const ShareTarget::Files& files) {
-  out << "name: " << files.name << std::endl;
-  for (const auto& accept_entry : files.accept)
-    out << "accept: " << accept_entry << std::endl;
-  return out;
+base::Value ShareTarget::AsDebugValue() const {
+  base::Value root(base::Value::Type::DICT);
+  root.SetStringKey("action", action.spec());
+  root.SetStringKey("method", ShareTarget::MethodToString(method));
+  root.SetStringKey("enctype", ShareTarget::EnctypeToString(enctype));
+  root.SetKey("params", params.AsDebugValue());
+  return root;
 }
 
 bool operator==(const ShareTarget& share_target1,

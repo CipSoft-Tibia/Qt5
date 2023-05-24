@@ -1,14 +1,15 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
+#include "build/chromeos_buildflags.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/prefs/browser_prefs.h"
@@ -29,8 +30,8 @@
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-#if defined(OS_CHROMEOS)
-#include "chromeos/tpm/stub_install_attributes.h"
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chromeos/ash/components/install_attributes/stub_install_attributes.h"
 #endif
 
 using ::testing::Return;
@@ -95,8 +96,9 @@ class ProxyPolicyTest : public testing::Test {
   ProxyPolicyTest() : command_line_(base::CommandLine::NO_PROGRAM) {}
 
   void SetUp() override {
-    EXPECT_CALL(provider_, IsInitializationComplete(_))
-        .WillRepeatedly(Return(true));
+    provider_.SetDefaultReturns(
+        /*is_initialization_complete_return=*/true,
+        /*is_first_policy_load_complete_return=*/true);
 
     PolicyServiceImpl::Providers providers;
     providers.push_back(&provider_);
@@ -125,11 +127,11 @@ class ProxyPolicyTest : public testing::Test {
 
   content::BrowserTaskEnvironment task_environment_;
   base::CommandLine command_line_;
-  MockConfigurationPolicyProvider provider_;
+  testing::NiceMock<MockConfigurationPolicyProvider> provider_;
   std::unique_ptr<PolicyServiceImpl> policy_service_;
 
-#if defined(OS_CHROMEOS)
-  chromeos::ScopedStubInstallAttributes test_install_attributes_;
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  ash::ScopedStubInstallAttributes test_install_attributes_;
 #endif
 };
 
@@ -150,7 +152,7 @@ TEST_F(ProxyPolicyTest, OverridesCommandLineOptions) {
   // there is no policy in effect.
   std::unique_ptr<PrefService> prefs(CreatePrefService(false));
   ProxyConfigDictionary dict(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyMode(dict, ProxyPrefs::MODE_FIXED_SERVERS);
   assertProxyServer(dict, "789");
   assertPacUrl(dict, std::string());
@@ -161,7 +163,7 @@ TEST_F(ProxyPolicyTest, OverridesCommandLineOptions) {
   // line and replaced them with the policy versions.
   prefs = CreatePrefService(true);
   ProxyConfigDictionary dict2(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyMode(dict2, ProxyPrefs::MODE_FIXED_SERVERS);
   assertProxyServer(dict2, "ghi");
   assertPacUrl(dict2, std::string());
@@ -181,7 +183,7 @@ TEST_F(ProxyPolicyTest, OverridesUnrelatedCommandLineOptions) {
   // there is no policy in effect.
   std::unique_ptr<PrefService> prefs = CreatePrefService(false);
   ProxyConfigDictionary dict(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyMode(dict, ProxyPrefs::MODE_FIXED_SERVERS);
   assertProxyServer(dict, "789");
   assertPacUrl(dict, std::string());
@@ -193,7 +195,7 @@ TEST_F(ProxyPolicyTest, OverridesUnrelatedCommandLineOptions) {
   // set in policy.
   prefs = CreatePrefService(true);
   ProxyConfigDictionary dict2(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyModeWithoutParams(dict2, ProxyPrefs::MODE_AUTO_DETECT);
 }
 
@@ -209,7 +211,7 @@ TEST_F(ProxyPolicyTest, OverridesCommandLineNoProxy) {
   // there is no policy in effect.
   std::unique_ptr<PrefService> prefs = CreatePrefService(false);
   ProxyConfigDictionary dict(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyModeWithoutParams(dict, ProxyPrefs::MODE_DIRECT);
 
   // Try a second time time with the managed PrefStore in place, the
@@ -217,7 +219,7 @@ TEST_F(ProxyPolicyTest, OverridesCommandLineNoProxy) {
   // in place with the appropriate default value for this to work.
   prefs = CreatePrefService(true);
   ProxyConfigDictionary dict2(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyModeWithoutParams(dict2, ProxyPrefs::MODE_AUTO_DETECT);
 }
 
@@ -233,7 +235,7 @@ TEST_F(ProxyPolicyTest, OverridesCommandLineAutoDetect) {
   // PrefStore.
   std::unique_ptr<PrefService> prefs = CreatePrefService(false);
   ProxyConfigDictionary dict(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyModeWithoutParams(dict, ProxyPrefs::MODE_AUTO_DETECT);
 
   // Try a second time time with the managed PrefStore in place, the
@@ -241,7 +243,7 @@ TEST_F(ProxyPolicyTest, OverridesCommandLineAutoDetect) {
   // in place with the appropriate default value for this to work.
   prefs = CreatePrefService(true);
   ProxyConfigDictionary dict2(
-      prefs->GetDictionary(proxy_config::prefs::kProxy)->Clone());
+      prefs->GetDict(proxy_config::prefs::kProxy).Clone());
   assertProxyModeWithoutParams(dict2, ProxyPrefs::MODE_DIRECT);
 }
 

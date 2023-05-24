@@ -18,6 +18,12 @@ void aom_extend_frame_borders_c(struct yv12_buffer_config* ybf,
                                 const int num_planes);
 #define aom_extend_frame_borders aom_extend_frame_borders_c
 
+void aom_extend_frame_borders_plane_row_c(const struct yv12_buffer_config* ybf,
+                                          int plane,
+                                          int v_start,
+                                          int v_end);
+#define aom_extend_frame_borders_plane_row aom_extend_frame_borders_plane_row_c
+
 void aom_extend_frame_borders_y_c(struct yv12_buffer_config* ybf);
 #define aom_extend_frame_borders_y aom_extend_frame_borders_y_c
 
@@ -149,6 +155,7 @@ void aom_yv12_partial_copy_y_c(const struct yv12_buffer_config* src_ybc,
 int aom_yv12_realloc_with_new_border_c(struct yv12_buffer_config* ybf,
                                        int new_border,
                                        int byte_alignment,
+                                       int num_pyramid_levels,
                                        int num_planes);
 #define aom_yv12_realloc_with_new_border aom_yv12_realloc_with_new_border_c
 

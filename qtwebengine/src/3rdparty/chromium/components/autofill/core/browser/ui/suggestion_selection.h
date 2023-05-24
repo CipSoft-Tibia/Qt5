@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_UI_SUGGESTION_SELECTION_H_
@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "base/strings/string16.h"
 #include "base/time/time.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/ui/suggestion.h"
@@ -30,8 +29,8 @@ extern const size_t kMaxPrunedUniqueSuggestionsCount;
 // |kMaxSuggestedProfilesCount| are returned.
 std::vector<Suggestion> GetPrefixMatchedSuggestions(
     const AutofillType& type,
-    const base::string16& raw_field_contents,
-    const base::string16& field_contents_canon,
+    const std::u16string& raw_field_contents,
+    const std::u16string& field_contents_canon,
     const AutofillProfileComparator& comparator,
     bool field_is_autofilled,
     const std::vector<AutofillProfile*>& profiles,
@@ -51,13 +50,15 @@ std::vector<Suggestion> GetUniqueSuggestions(
     std::vector<AutofillProfile*>* unique_matched_profiles);
 
 // Returns whether the |suggestion_canon| is valid considering the
-// |field_contents_canon|, the |type| and |is_masked_server_card|. Assigns true
-// to |is_prefix_matched| if the |field_contents_canon| is a prefix to
-// |suggestion_canon|, assigns false otherwise.
-bool IsValidSuggestionForFieldContents(base::string16 suggestion_canon,
-                                       base::string16 field_contents_canon,
+// |field_contents_canon|, the |type|, |is_masked_server_card|, and
+// |field_is_autofilled|. Assigns true to |is_prefix_matched| if the
+// |field_contents_canon| is a prefix to |suggestion_canon|, assigns false
+// otherwise.
+bool IsValidSuggestionForFieldContents(std::u16string suggestion_canon,
+                                       std::u16string field_contents_canon,
                                        const AutofillType& type,
                                        bool is_masked_server_card,
+                                       bool field_is_autofilled,
                                        bool* is_prefix_matched);
 
 // Removes profiles that haven't been used after |min_last_used| from
@@ -72,7 +73,7 @@ void RemoveProfilesNotUsedSinceTimestamp(
 //
 // NOTE: |suggestions| are assumed to have already been sorted from most to
 // least important.
-void PrepareSuggestions(const std::vector<base::string16>& labels,
+void PrepareSuggestions(const std::vector<std::u16string>& labels,
                         std::vector<Suggestion>* suggestions,
                         const AutofillProfileComparator& comparator);
 

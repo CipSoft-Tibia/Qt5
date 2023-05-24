@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/private/shadowinputcontext_p.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardinputcontext.h>
@@ -36,7 +10,6 @@
 #include <QQuickItem>
 
 QT_BEGIN_NAMESPACE
-bool operator==(const QInputMethodEvent::Attribute &attribute1, const QInputMethodEvent::Attribute &attribute2);
 
 namespace QtVirtualKeyboard {
 
@@ -133,6 +106,8 @@ void ShadowInputContext::setSelectionOnFocusObject(const QPointF &anchorPos, con
     if (success) {
         int cursor = queryFocusObject(Qt::ImCursorPosition, quickItem ? quickItem->mapFromScene(cursorPos) : cursorPos).toInt(&success);
         if (success) {
+            if (anchor == cursor && anchorPos != cursorPos)
+                return;
             QList<QInputMethodEvent::Attribute> imAttributes;
             imAttributes.append(QInputMethodEvent::Attribute(QInputMethodEvent::Selection, anchor, cursor - anchor, QVariant()));
             QInputMethodEvent event(QString(), imAttributes);
@@ -187,7 +162,7 @@ void ShadowInputContext::updateSelectionProperties()
 
 void ShadowInputContext::update(Qt::InputMethodQueries queries)
 {
-    Q_UNUSED(queries)
+    Q_UNUSED(queries);
     Q_D(ShadowInputContext);
     if (!d->inputItem)
         return;
@@ -203,22 +178,28 @@ void ShadowInputContext::update(Qt::InputMethodQueries queries)
     const int newCursorPosition = d->inputContext->cursorPosition();
     const int newAnchorPosition = d->inputContext->anchorPosition();
 
+    const QString newPreeditText = d->inputContext->preeditText();
+    const QList<QInputMethodEvent::Attribute> newPreeditAttributes = d->inputContext->preeditTextAttributes();
+
     bool updateSurroundingText = newSurroundingText != surroundingText;
     bool updateSelection = newCursorPosition != cursorPosition || newAnchorPosition != anchorPosition;
+    if (updateSurroundingText) {
+        QInputMethodEvent inputEvent;
+        inputEvent.setCommitString(newSurroundingText, -cursorPosition, surroundingText.size());
+        QGuiApplication::sendEvent(d->inputItem, &inputEvent);
+    }
+
     if (updateSurroundingText || updateSelection) {
         QList<QInputMethodEvent::Attribute> attributes;
         attributes.append(QInputMethodEvent::Attribute(QInputMethodEvent::Selection,
                                                        newAnchorPosition,
                                                        newCursorPosition - newAnchorPosition, QVariant()));
         QInputMethodEvent inputEvent(QString(), attributes);
-        if (updateSurroundingText)
-            inputEvent.setCommitString(newSurroundingText, -cursorPosition, surroundingText.length());
         QGuiApplication::sendEvent(d->inputItem, &inputEvent);
     }
 
-    const QString newPreeditText = d->inputContext->preeditText();
-    const QList<QInputMethodEvent::Attribute> newPreeditAttributes = d->inputContext->preeditTextAttributes();
-    if (d->preeditText != newPreeditText || d->preeditTextAttributes != newPreeditAttributes) {
+    const bool forcePreeditText = !newPreeditText.isEmpty() && (updateSurroundingText || updateSelection);
+    if (forcePreeditText || d->preeditText != newPreeditText || d->preeditTextAttributes != newPreeditAttributes) {
         d->preeditText = newPreeditText;
         d->preeditTextAttributes = newPreeditAttributes;
         QInputMethodEvent inputEvent(d->preeditText, d->preeditTextAttributes);

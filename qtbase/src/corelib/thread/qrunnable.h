@@ -1,70 +1,136 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QRUNNABLE_H
 #define QRUNNABLE_H
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qcompilerdetection.h>
+#include <QtCore/qfunctionaltools_impl.h>
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qtcoreexports.h>
+
 #include <functional>
+#include <type_traits>
 
 QT_BEGIN_NAMESPACE
 
 class Q_CORE_EXPORT QRunnable
 {
-    int ref; // Qt6: Make this a bool, or make autoDelete() virtual.
+    bool m_autoDelete = true;
 
-    friend class QThreadPool;
-    friend class QThreadPoolPrivate;
-    friend class QThreadPoolThread;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     Q_DISABLE_COPY(QRunnable)
-#endif
 public:
     virtual void run() = 0;
 
-    QRunnable() : ref(0) { }
+    constexpr QRunnable() noexcept = default;
     virtual ~QRunnable();
+#if QT_CORE_REMOVED_SINCE(6, 6)
     static QRunnable *create(std::function<void()> functionToRun);
+#endif
+    template <typename Callable>
+    using if_callable = std::enable_if_t<std::is_invocable_r_v<void, Callable>, bool>;
 
-    bool autoDelete() const { return ref != -1; }
-    void setAutoDelete(bool _autoDelete) { ref = _autoDelete ? 0 : -1; }
+    template <typename Callable, if_callable<Callable> = true>
+    static QRunnable *create(Callable &&functionToRun);
+    static QRunnable *create(std::nullptr_t) = delete;
+
+    bool autoDelete() const { return m_autoDelete; }
+    void setAutoDelete(bool autoDelete) { m_autoDelete = autoDelete; }
+
+private:
+    static Q_DECL_COLD_FUNCTION QRunnable *warnNullCallable();
+    class QGenericRunnable;
 };
+
+class Q_CORE_EXPORT QRunnable::QGenericRunnable : public QRunnable
+{
+    // Type erasure, to only instantiate a non-virtual class per Callable:
+    class HelperBase
+    {
+    protected:
+        enum class Op {
+            Run,
+            Destroy,
+        };
+        using OpFn = void* (*)(Op, HelperBase *, void*);
+        OpFn fn;
+    protected:
+        constexpr explicit HelperBase(OpFn f) noexcept : fn(f) {}
+        ~HelperBase() = default;
+    public:
+        void run() { fn(Op::Run, this, nullptr); }
+        void destroy() { fn(Op::Destroy, this, nullptr); }
+    };
+
+    template <typename Callable>
+    class Helper : public HelperBase, private QtPrivate::CompactStorage<Callable>
+    {
+        using Storage = QtPrivate::CompactStorage<Callable>;
+        static void *impl(Op op, HelperBase *that, [[maybe_unused]] void *arg)
+        {
+            const auto _this = static_cast<Helper*>(that);
+            switch (op) {
+            case Op::Run:     _this->object()(); break;
+            case Op::Destroy: delete _this; break;
+            }
+            return nullptr;
+        }
+    public:
+        template <typename UniCallable>
+        explicit Helper(UniCallable &&functionToRun) noexcept
+            : HelperBase(&impl),
+              Storage{std::forward<UniCallable>(functionToRun)}
+        {
+        }
+    };
+
+    HelperBase *runHelper;
+public:
+    template <typename Callable, if_callable<Callable> = true>
+    explicit QGenericRunnable(Callable &&c)
+        : runHelper(new Helper<std::decay_t<Callable>>(std::forward<Callable>(c)))
+    {
+    }
+    ~QGenericRunnable() override;
+
+    void run() override;
+};
+
+namespace QtPrivate {
+
+template <typename T>
+constexpr inline bool is_function_pointer_v = std::conjunction_v<
+        std::is_pointer<T>,
+        std::is_function<std::remove_pointer_t<T>>
+    >;
+template <typename T>
+constexpr inline bool is_std_function_v = false;
+template <typename T>
+constexpr inline bool is_std_function_v<std::function<T>> = true;
+
+} // namespace QtPrivate
+
+template <typename Callable, QRunnable::if_callable<Callable>>
+QRunnable *QRunnable::create(Callable &&functionToRun)
+{
+    using F = std::decay_t<Callable>;
+    constexpr bool is_std_function = QtPrivate::is_std_function_v<F>;
+    constexpr bool is_function_pointer = QtPrivate::is_function_pointer_v<F>;
+    if constexpr (is_std_function || is_function_pointer) {
+        bool is_null;
+        if constexpr (is_std_function) {
+            is_null = !functionToRun;
+        } else if constexpr (is_function_pointer) {
+            // shut up warnings about functions always having a non-null address:
+            const void *functionPtr = reinterpret_cast<void *>(functionToRun);
+            is_null = !functionPtr;
+        }
+        if (is_null)
+            return warnNullCallable();
+    }
+
+    return new QGenericRunnable(std::forward<Callable>(functionToRun));
+}
 
 QT_END_NAMESPACE
 

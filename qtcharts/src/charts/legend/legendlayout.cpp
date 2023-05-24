@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/legendlayout_p.h>
 #include <private/chartpresenter_p.h>
@@ -36,7 +10,7 @@
 #include <private/legendmarkeritem_p.h>
 #include <QtCharts/QLegendMarker>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 LegendLayout::LegendLayout(QLegend *legend)
     : m_legend(legend),
@@ -166,10 +140,10 @@ void LegendLayout::setAttachedGeometry(const QRectF &rect)
 
             // If the items would occupy more space than is available, start truncating them
             // from the longest one.
-            qreal availableGeometry = geometry.width() - right - left * 2 - itemMargins;
-            if (markerItemsWidth >= availableGeometry && legendWidthList.count() > 0) {
+            qreal availableGeometry = geometry.width() - itemMargins;
+            if (markerItemsWidth >= availableGeometry && legendWidthList.size() > 0) {
                 bool truncated(false);
-                int count = legendWidthList.count();
+                int count = legendWidthList.size();
                 for (int i = 1; i < count; i++) {
                     int truncateIndex = i - 1;
 
@@ -214,7 +188,7 @@ void LegendLayout::setAttachedGeometry(const QRectF &rect)
 
             QPointF point(0,0);
 
-            int markerCount = m_legend->d_ptr->markers().count();
+            int markerCount = m_legend->d_ptr->markers().size();
             for (int i = 0; i < markerCount; i++) {
                 QLegendMarker *marker;
                 if (m_legend->d_ptr->m_reverseMarkers)
@@ -257,7 +231,7 @@ void LegendLayout::setAttachedGeometry(const QRectF &rect)
     case Qt::AlignLeft:
     case Qt::AlignRight: {
             QPointF point(0,0);
-            int markerCount = m_legend->d_ptr->markers().count();
+            int markerCount = m_legend->d_ptr->markers().size();
             for (int i = 0; i < markerCount; i++) {
                 QLegendMarker *marker;
                 if (m_legend->d_ptr->m_reverseMarkers)
@@ -320,45 +294,14 @@ void LegendLayout::setDettachedGeometry(const QRectF &rect)
     if (markers.isEmpty())
         return;
 
-    switch (m_legend->alignment()) {
-    case Qt::AlignTop: {
-        QPointF point(0, 0);
-        m_width = 0;
-        m_height = 0;
-        for (int i = 0; i < markers.count(); i++) {
-            LegendMarkerItem *item = markers.at(i)->d_ptr->item();
-            if (item->isVisible()) {
-                item->setGeometry(geometry);
-                item->setPos(point.x(),point.y());
-                const QRectF &boundingRect = item->boundingRect();
-                qreal w = boundingRect.width();
-                qreal h = boundingRect.height();
-                m_width = qMax(m_width,w);
-                m_height = qMax(m_height,h);
-                point.setX(point.x() + w);
-                if (point.x() + w > geometry.left() + geometry.width() - right) {
-                    // Next item would go off rect.
-                    point.setX(0);
-                    point.setY(point.y() + h);
-                    if (i+1 < markers.count()) {
-                        m_height += h;
-                    }
-                }
-            }
-        }
-        m_legend->d_ptr->items()->setPos(geometry.topLeft());
-
-        m_minOffsetX = -left;
-        m_minOffsetY = -top;
-        m_maxOffsetX = m_width - geometry.width() - right;
-        m_maxOffsetY = m_height - geometry.height() - bottom;
-    }
-    break;
+    Qt::Alignment align = m_legend->alignment();
+    switch (align) {
+    case Qt::AlignTop:
     case Qt::AlignBottom: {
-        QPointF point(0, geometry.height());
+        QPointF point(0, (align == Qt::AlignTop) ? 0 : geometry.height());
         m_width = 0;
         m_height = 0;
-        for (int i = 0; i < markers.count(); i++) {
+        for (int i = 0; i < markers.size(); i++) {
             LegendMarkerItem *item = markers.at(i)->d_ptr->item();
             if (item->isVisible()) {
                 item->setGeometry(geometry);
@@ -367,13 +310,13 @@ void LegendLayout::setDettachedGeometry(const QRectF &rect)
                 qreal h = boundingRect.height();
                 m_width = qMax(m_width,w);
                 m_height = qMax(m_height,h);
-                item->setPos(point.x(),point.y() - h);
+                item->setPos(point.x(),point.y() - ((align == Qt::AlignTop) ? 0 : h));
                 point.setX(point.x() + w);
                 if (point.x() + w > geometry.left() + geometry.width() - right) {
                     // Next item would go off rect.
                     point.setX(0);
-                    point.setY(point.y() - h);
-                    if (i+1 < markers.count()) {
+                    point.setY(point.y() + ((align == Qt::AlignTop) ? h : -h));
+                    if (i+1 < markers.size()) {
                         m_height += h;
                     }
                 }
@@ -382,53 +325,23 @@ void LegendLayout::setDettachedGeometry(const QRectF &rect)
         m_legend->d_ptr->items()->setPos(geometry.topLeft());
 
         m_minOffsetX = -left;
-        m_minOffsetY = -m_height + geometry.height() - top;
         m_maxOffsetX = m_width - geometry.width() - right;
-        m_maxOffsetY = -bottom;
-    }
-    break;
-    case Qt::AlignLeft: {
-        QPointF point(0, 0);
-        m_width = 0;
-        m_height = 0;
-        qreal maxWidth = 0;
-        for (int i = 0; i < markers.count(); i++) {
-            LegendMarkerItem *item = markers.at(i)->d_ptr->item();
-            if (item->isVisible()) {
-                item->setGeometry(geometry);
-                const QRectF &boundingRect = item->boundingRect();
-                qreal w = boundingRect.width();
-                qreal h = boundingRect.height();
-                m_height = qMax(m_height,h);
-                maxWidth = qMax(maxWidth,w);
-                item->setPos(point.x(),point.y());
-                point.setY(point.y() + h);
-                if (point.y() + h > geometry.bottom() - bottom) {
-                    // Next item would go off rect.
-                    point.setX(point.x() + maxWidth);
-                    point.setY(0);
-                    if (i+1 < markers.count()) {
-                        m_width += maxWidth;
-                        maxWidth = 0;
-                    }
-                }
-            }
+        if (align == Qt::AlignTop) {
+            m_minOffsetY = -top;
+            m_maxOffsetY = m_height - geometry.height() - bottom;
+        } else {
+            m_minOffsetY = -m_height + geometry.height() - top;
+            m_maxOffsetY = -bottom;
         }
-        m_width += maxWidth;
-        m_legend->d_ptr->items()->setPos(geometry.topLeft());
-
-        m_minOffsetX = -left;
-        m_minOffsetY = -top;
-        m_maxOffsetX = m_width - geometry.width() - right;
-        m_maxOffsetY = m_height - geometry.height() - bottom;
     }
     break;
+    case Qt::AlignLeft:
     case Qt::AlignRight: {
-        QPointF point(geometry.width(), 0);
+        QPointF point((align == Qt::AlignLeft) ? 0 : geometry.width(), 0);
         m_width = 0;
         m_height = 0;
         qreal maxWidth = 0;
-        for (int i = 0; i < markers.count(); i++) {
+        for (int i = 0; i < markers.size(); i++) {
             LegendMarkerItem *item = markers.at(i)->d_ptr->item();
             if (item->isVisible()) {
                 item->setGeometry(geometry);
@@ -437,13 +350,13 @@ void LegendLayout::setDettachedGeometry(const QRectF &rect)
                 qreal h = boundingRect.height();
                 m_height = qMax(m_height,h);
                 maxWidth = qMax(maxWidth,w);
-                item->setPos(point.x() - w,point.y());
+                item->setPos(point.x() - ((align == Qt::AlignLeft) ? 0 : w),point.y());
                 point.setY(point.y() + h);
                 if (point.y() + h > geometry.bottom()-bottom) {
                     // Next item would go off rect.
-                    point.setX(point.x() - maxWidth);
+                    point.setX(point.x() + ((align == Qt::AlignLeft) ? maxWidth : -maxWidth));
                     point.setY(0);
-                    if (i+1 < markers.count()) {
+                    if (i+1 < markers.size()) {
                         m_width += maxWidth;
                         maxWidth = 0;
                     }
@@ -453,10 +366,15 @@ void LegendLayout::setDettachedGeometry(const QRectF &rect)
         m_width += maxWidth;
         m_legend->d_ptr->items()->setPos(geometry.topLeft());
 
-        m_minOffsetX = - m_width + geometry.width() - left;
         m_minOffsetY = -top;
-        m_maxOffsetX = - right;
         m_maxOffsetY = m_height - geometry.height() - bottom;
+        if (align == Qt::AlignLeft) {
+            m_minOffsetX = -left;
+            m_maxOffsetX = m_width - geometry.width() - right;
+        } else {
+            m_minOffsetX = - m_width + geometry.width() - left;
+            m_maxOffsetX = - right;
+        }
     }
     break;
     default:
@@ -516,4 +434,4 @@ bool LegendLayout::widthLongerThan(const LegendWidthStruct *item1,
     return item1->width > item2->width;
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE

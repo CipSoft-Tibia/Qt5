@@ -1,67 +1,29 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# Copyright 2013 The Chromium Authors. All rights reserved.
+# Copyright 2013 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import argparse
+from collections import defaultdict
+import logging
 import os
 import re
 import shutil
 import sys
-import tempfile
 import zipfile
 
 import dex
-import dex_jdk_libs
 from util import build_utils
 from util import diff_utils
 
-_API_LEVEL_VERSION_CODE = [
-    (21, 'L'),
-    (22, 'LolliopoMR1'),
-    (23, 'M'),
-    (24, 'N'),
-    (25, 'NMR1'),
-    (26, 'O'),
-    (27, 'OMR1'),
-    (28, 'P'),
-    (29, 'Q'),
-    (30, 'R'),
+sys.path.insert(1, os.path.dirname(os.path.dirname(__file__)))
+from pylib.dex import dex_parser
+
+_BLOCKLISTED_EXPECTATION_PATHS = [
+    # A separate expectation file is created for these files.
+    'clank/third_party/google3/pg_confs/'
 ]
-_CHECKDISCARD_RE = re.compile(r'^\s*-checkdiscard[\s\S]*?}', re.MULTILINE)
-_DIRECTIVE_RE = re.compile(r'^\s*-', re.MULTILINE)
-
-
-def _ValidateAndFilterCheckDiscards(configs):
-  """Check for invalid -checkdiscard rules and filter out -checkdiscards.
-
-  -checkdiscard assertions often don't work for test APKs and are not actually
-  helpful. Additionally, test APKs may pull in dependency proguard configs which
-  makes filtering out these rules difficult in GN. Instead, we enforce that
-  configs that use -checkdiscard do not contain any other rules so that we can
-  filter out the undesired -checkdiscard rule files here.
-
-  Args:
-    configs: List of paths to proguard configuration files.
-
-  Returns:
-    A list of configs with -checkdiscard-containing-configs removed.
-  """
-  valid_configs = []
-  for config_path in configs:
-    with open(config_path) as f:
-      contents = f.read()
-      if _CHECKDISCARD_RE.search(contents):
-        contents = _CHECKDISCARD_RE.sub('', contents)
-        if _DIRECTIVE_RE.search(contents):
-          raise Exception('Proguard configs containing -checkdiscards cannot '
-                          'contain other directives so that they can be '
-                          'disabled in test APKs ({}).'.format(config_path))
-      else:
-        valid_configs.append(config_path)
-
-  return valid_configs
 
 
 def _ParseOptions():
@@ -71,16 +33,10 @@ def _ParseOptions():
   parser.add_argument('--r8-path',
                       required=True,
                       help='Path to the R8.jar to use.')
-  parser.add_argument(
-      '--desugar-jdk-libs-json', help='Path to desugar_jdk_libs.json.')
   parser.add_argument('--input-paths',
                       action='append',
                       required=True,
                       help='GN-list of .jar files to optimize.')
-  parser.add_argument('--desugar-jdk-libs-jar',
-                      help='Path to desugar_jdk_libs.jar.')
-  parser.add_argument('--desugar-jdk-libs-configuration-jar',
-                      help='Path to desugar_jdk_libs_configuration.jar.')
   parser.add_argument('--output-path', help='Path to the generated .jar file.')
   parser.add_argument(
       '--proguard-configs',
@@ -100,30 +56,31 @@ def _ParseOptions():
       '--classpath',
       action='append',
       help='GN-list of .jar files to include as libraries.')
-  parser.add_argument(
-      '--main-dex-rules-path',
-      action='append',
-      help='Path to main dex rules for multidex'
-      '- only works with R8.')
+  parser.add_argument('--main-dex-rules-path',
+                      action='append',
+                      help='Path to main dex rules for multidex.')
   parser.add_argument(
       '--min-api', help='Minimum Android API level compatibility.')
+  parser.add_argument('--enable-obfuscation',
+                      action='store_true',
+                      help='Minify symbol names')
   parser.add_argument(
       '--verbose', '-v', action='store_true', help='Print all ProGuard output')
   parser.add_argument(
       '--repackage-classes', help='Package all optimized classes are put in.')
   parser.add_argument(
-      '--disable-outlining',
-      action='store_true',
-      help='Disable the outlining optimization provided by R8.')
-  parser.add_argument(
-      '--disable-checkdiscard',
-      action='store_true',
-      help='Disable -checkdiscard directives')
-  parser.add_argument('--sourcefile', help='Value for source file attribute')
+    '--disable-checks',
+    action='store_true',
+    help='Disable -checkdiscard directives and missing symbols check')
+  parser.add_argument('--source-file', help='Value for source file attribute.')
+  parser.add_argument('--package-name',
+                      help='Goes into a comment in the mapping file.')
   parser.add_argument(
       '--force-enable-assertions',
       action='store_true',
       help='Forcefully enable javac generated assertion code.')
+  parser.add_argument('--assertion-handler',
+                      help='The class name of the assertion handler class.')
   parser.add_argument(
       '--feature-jars',
       action='append',
@@ -138,12 +95,34 @@ def _ParseOptions():
       action='append',
       dest='feature_names',
       help='The name of the feature module.')
+  parser.add_argument(
+      '--uses-split',
+      action='append',
+      help='List of name pairs separated by : mapping a feature module to a '
+      'dependent feature module.')
+  parser.add_argument(
+      '--keep-rules-targets-regex',
+      metavar='KEEP_RULES_REGEX',
+      help='If passed outputs keep rules for references from all other inputs '
+      'to the subset of inputs that satisfy the KEEP_RULES_REGEX.')
+  parser.add_argument(
+      '--keep-rules-output-path',
+      help='Output path to the keep rules for references to the '
+      '--keep-rules-targets-regex inputs from the rest of the inputs.')
   parser.add_argument('--warnings-as-errors',
                       action='store_true',
                       help='Treat all warnings as errors.')
   parser.add_argument('--show-desugar-default-interface-warnings',
                       action='store_true',
                       help='Enable desugaring warnings.')
+  parser.add_argument('--dump-inputs',
+                      action='store_true',
+                      help='Use when filing R8 bugs to capture inputs.'
+                      ' Stores inputs to r8inputs.zip')
+  parser.add_argument(
+      '--dump-unknown-refs',
+      action='store_true',
+      help='Log all reasons why API modelling cannot determine API level')
   parser.add_argument(
       '--stamp',
       help='File to touch upon success. Mutually exclusive with --output-path')
@@ -160,6 +139,15 @@ def _ParseOptions():
       parser.error('Feature splits require a stamp file as output.')
   elif not options.output_path:
     parser.error('Output path required when feature splits aren\'t used')
+
+  if bool(options.keep_rules_targets_regex) != bool(
+      options.keep_rules_output_path):
+    parser.error('You must path both --keep-rules-targets-regex and '
+                 '--keep-rules-output-path')
+
+  if options.force_enable_assertions and options.assertion_handler:
+    parser.error('Cannot use both --force-enable-assertions and '
+                 '--assertion-handler')
 
   options.classpath = build_utils.ParseGnList(options.classpath)
   options.proguard_configs = build_utils.ParseGnList(options.proguard_configs)
@@ -178,40 +166,45 @@ def _ParseOptions():
         build_utils.ParseGnList(x) for x in options.feature_jars
     ]
 
+  split_map = {}
+  if options.uses_split:
+    for split_pair in options.uses_split:
+      child, parent = split_pair.split(':')
+      for name in (child, parent):
+        if name not in options.feature_names:
+          parser.error('"%s" referenced in --uses-split not present.' % name)
+      split_map[child] = parent
+  options.uses_split = split_map
+
   return options
 
 
-class _DexPathContext(object):
-  def __init__(self, name, output_path, input_jars, work_dir):
+class _SplitContext:
+  def __init__(self, name, output_path, input_jars, work_dir, parent_name=None):
     self.name = name
-    self.input_paths = input_jars
-    self._final_output_path = output_path
+    self.parent_name = parent_name
+    self.input_jars = set(input_jars)
+    self.final_output_path = output_path
     self.staging_dir = os.path.join(work_dir, name)
     os.mkdir(self.staging_dir)
 
-  def CreateOutput(self, has_imported_lib=False, keep_rule_output=None):
+  def CreateOutput(self):
     found_files = build_utils.FindInDirectory(self.staging_dir)
     if not found_files:
       raise Exception('Missing dex outputs in {}'.format(self.staging_dir))
 
-    if self._final_output_path.endswith('.dex'):
-      if has_imported_lib:
-        raise Exception(
-            'Trying to create a single .dex file, but a dependency requires '
-            'JDK Library Desugaring (which necessitates a second file).'
-            'Refer to %s to see what desugaring was required' %
-            keep_rule_output)
+    if self.final_output_path.endswith('.dex'):
       if len(found_files) != 1:
         raise Exception('Expected exactly 1 dex file output, found: {}'.format(
             '\t'.join(found_files)))
-      shutil.move(found_files[0], self._final_output_path)
+      shutil.move(found_files[0], self.final_output_path)
       return
 
     # Add to .jar using Python rather than having R8 output to a .zip directly
     # in order to disable compression of the .jar, saving ~500ms.
     tmp_jar_output = self.staging_dir + '.jar'
     build_utils.DoZip(found_files, tmp_jar_output, base_dir=self.staging_dir)
-    shutil.move(tmp_jar_output, self._final_output_path)
+    shutil.move(tmp_jar_output, self.final_output_path)
 
 
 def _OptimizeWithR8(options,
@@ -221,10 +214,10 @@ def _OptimizeWithR8(options,
                     print_stdout=False):
   with build_utils.TempDir() as tmp_dir:
     if dynamic_config_data:
-      tmp_config_path = os.path.join(tmp_dir, 'proguard_config.txt')
-      with open(tmp_config_path, 'w') as f:
+      dynamic_config_path = os.path.join(tmp_dir, 'dynamic_config.flags')
+      with open(dynamic_config_path, 'w') as f:
         f.write(dynamic_config_data)
-      config_paths = config_paths + [tmp_config_path]
+      config_paths = config_paths + [dynamic_config_path]
 
     tmp_mapping_path = os.path.join(tmp_dir, 'mapping.txt')
     # If there is no output (no classes are kept), this prevents this script
@@ -234,48 +227,69 @@ def _OptimizeWithR8(options,
     tmp_output = os.path.join(tmp_dir, 'r8out')
     os.mkdir(tmp_output)
 
-    feature_contexts = []
+    split_contexts_by_name = {}
     if options.feature_names:
-      for name, dest_dex, input_paths in zip(
-          options.feature_names, options.dex_dests, options.feature_jars):
-        feature_context = _DexPathContext(name, dest_dex, input_paths,
-                                          tmp_output)
-        if name == 'base':
-          base_dex_context = feature_context
-        else:
-          feature_contexts.append(feature_context)
+      for name, dest_dex, input_jars in zip(options.feature_names,
+                                            options.dex_dests,
+                                            options.feature_jars):
+        parent_name = options.uses_split.get(name)
+        if parent_name is None and name != 'base':
+          parent_name = 'base'
+        split_context = _SplitContext(name,
+                                      dest_dex,
+                                      input_jars,
+                                      tmp_output,
+                                      parent_name=parent_name)
+        split_contexts_by_name[name] = split_context
     else:
-      base_dex_context = _DexPathContext('base', options.output_path,
-                                         options.input_paths, tmp_output)
+      # Base context will get populated via "extra_jars" below.
+      split_contexts_by_name['base'] = _SplitContext('base',
+                                                     options.output_path, [],
+                                                     tmp_output)
+    base_context = split_contexts_by_name['base']
 
-    cmd = build_utils.JavaCmd(options.warnings_as_errors) + [
-        '-Dcom.android.tools.r8.allowTestProguardOptions=1',
+    # R8 OOMs with the default xmx=1G.
+    cmd = build_utils.JavaCmd(xmx='2G') + [
+        # Allows -whyareyounotinlining, which we don't have by default, but
+        # which is useful for one-off queries.
+        '-Dcom.android.tools.r8.experimental.enablewhyareyounotinlining=1',
+        # Restricts horizontal class merging to apply only to classes that
+        # share a .java file (nested classes). https://crbug.com/1363709
+        '-Dcom.android.tools.r8.enableSameFilePolicy=1',
     ]
-    if options.disable_outlining:
-      cmd += ['-Dcom.android.tools.r8.disableOutlining=1']
+    if options.dump_inputs:
+      cmd += ['-Dcom.android.tools.r8.dumpinputtofile=r8inputs.zip']
+    if options.dump_unknown_refs:
+      cmd += ['-Dcom.android.tools.r8.reportUnknownApiReferences=1']
     cmd += [
         '-cp',
         options.r8_path,
         'com.android.tools.r8.R8',
         '--no-data-resources',
+        '--map-id-template',
+        f'{options.source_file} ({options.package_name})',
+        '--source-file-template',
+        options.source_file,
         '--output',
-        base_dex_context.staging_dir,
+        base_context.staging_dir,
         '--pg-map-output',
         tmp_mapping_path,
     ]
 
-    if options.desugar_jdk_libs_json:
-      cmd += [
-          '--desugared-lib',
-          options.desugar_jdk_libs_json,
-          '--desugared-lib-pg-conf-output',
-          options.desugared_library_keep_rule_output,
-      ]
+    if options.disable_checks:
+      cmd += ['--map-diagnostics:CheckDiscardDiagnostic', 'error', 'none']
+    else:
+      cmd += ['--map-diagnostics', 'info', 'warning']
+      # Our stderr filtering relies on all items starting with "Warning:".
+      # Errors will still cause build failures due to fail_on_output=True.
+      cmd += ['--map-diagnostics', 'error', 'warning']
 
     if options.min_api:
       cmd += ['--min-api', options.min_api]
 
-    if options.force_enable_assertions:
+    if options.assertion_handler:
+      cmd += ['--force-assertions-handler:' + options.assertion_handler]
+    elif options.force_enable_assertions:
       cmd += ['--force-enable-assertions']
 
     for lib in libraries:
@@ -288,81 +302,190 @@ def _OptimizeWithR8(options,
       for main_dex_rule in options.main_dex_rules_path:
         cmd += ['--main-dex-rules', main_dex_rule]
 
-    module_input_jars = set(base_dex_context.input_paths)
-    for feature in feature_contexts:
-      feature_input_jars = [
-          p for p in feature.input_paths if p not in module_input_jars
-      ]
-      module_input_jars.update(feature_input_jars)
-      for in_jar in feature_input_jars:
-        cmd += ['--feature', in_jar, feature.staging_dir]
+    # Add any extra inputs to the base context (e.g. desugar runtime).
+    extra_jars = set(options.input_paths)
+    for split_context in split_contexts_by_name.values():
+      extra_jars -= split_context.input_jars
+    base_context.input_jars.update(extra_jars)
 
-    cmd += base_dex_context.input_paths
-    # Add any extra input jars to the base module (e.g. desugar runtime).
-    extra_jars = set(options.input_paths) - module_input_jars
-    cmd += sorted(extra_jars)
+    for split_context in split_contexts_by_name.values():
+      if split_context is base_context:
+        continue
+      for in_jar in sorted(split_context.input_jars):
+        cmd += ['--feature', in_jar, split_context.staging_dir]
+
+    cmd += sorted(base_context.input_jars)
 
     try:
       stderr_filter = dex.CreateStderrFilter(
           options.show_desugar_default_interface_warnings)
+      logging.debug('Running R8')
       build_utils.CheckOutput(cmd,
                               print_stdout=print_stdout,
                               stderr_filter=stderr_filter,
                               fail_on_output=options.warnings_as_errors)
-    except build_utils.CalledProcessError as err:
-      debugging_link = ('\n\nR8 failed. Please see {}.'.format(
+    except build_utils.CalledProcessError as e:
+      # Python will print the original exception as well.
+      raise Exception(
+          'R8 failed. Please see '
           'https://chromium.googlesource.com/chromium/src/+/HEAD/build/'
-          'android/docs/java_optimization.md#Debugging-common-failures\n'))
-      raise build_utils.CalledProcessError(err.cwd, err.args,
-                                           err.output + debugging_link)
+          'android/docs/java_optimization.md#Debugging-common-failures') from e
 
-    base_has_imported_lib = False
-    if options.desugar_jdk_libs_json:
-      existing_files = build_utils.FindInDirectory(base_dex_context.staging_dir)
-      jdk_dex_output = os.path.join(base_dex_context.staging_dir,
-                                    'classes%d.dex' % (len(existing_files) + 1))
-      base_has_imported_lib = dex_jdk_libs.DexJdkLibJar(
-          options.r8_path, options.min_api, options.desugar_jdk_libs_json,
-          options.desugar_jdk_libs_jar,
-          options.desugar_jdk_libs_configuration_jar,
-          options.desugared_library_keep_rule_output, jdk_dex_output,
-          options.warnings_as_errors)
+    logging.debug('Collecting ouputs')
+    base_context.CreateOutput()
+    for split_context in split_contexts_by_name.values():
+      if split_context is not base_context:
+        split_context.CreateOutput()
 
-    base_dex_context.CreateOutput(base_has_imported_lib,
-                                  options.desugared_library_keep_rule_output)
-    for feature in feature_contexts:
-      feature.CreateOutput()
-
-    with open(options.mapping_output, 'w') as out_file, \
-        open(tmp_mapping_path) as in_file:
-      # Mapping files generated by R8 include comments that may break
-      # some of our tooling so remove those (specifically: apkanalyzer).
-      out_file.writelines(l for l in in_file if not l.startswith('#'))
+    shutil.move(tmp_mapping_path, options.mapping_output)
+  return split_contexts_by_name
 
 
-def _CombineConfigs(configs, dynamic_config_data, exclude_generated=False):
-  ret = []
+def _OutputKeepRules(r8_path, input_paths, classpath, targets_re_string,
+                     keep_rules_output):
+  cmd = build_utils.JavaCmd() + [
+      '-cp', r8_path, 'com.android.tools.r8.tracereferences.TraceReferences',
+      '--map-diagnostics:MissingDefinitionsDiagnostic', 'error', 'warning',
+      '--keep-rules', '--output', keep_rules_output
+  ]
+  targets_re = re.compile(targets_re_string)
+  for path in input_paths:
+    if targets_re.search(path):
+      cmd += ['--target', path]
+    else:
+      cmd += ['--source', path]
+  for path in classpath:
+    cmd += ['--lib', path]
 
+  build_utils.CheckOutput(cmd, print_stderr=False, fail_on_output=False)
+
+
+def _CheckForMissingSymbols(r8_path, dex_files, classpath, warnings_as_errors,
+                            error_title):
+  cmd = build_utils.JavaCmd() + [
+      '-cp', r8_path, 'com.android.tools.r8.tracereferences.TraceReferences',
+      '--map-diagnostics:MissingDefinitionsDiagnostic', 'error', 'warning',
+      '--check'
+  ]
+
+  for path in classpath:
+    cmd += ['--lib', path]
+  for path in dex_files:
+    cmd += ['--source', path]
+
+  failed_holder = [False]
+
+  def stderr_filter(stderr):
+    ignored_lines = [
+        # Summary contains warning count, which our filtering makes wrong.
+        'Warning: Tracereferences found',
+
+        # TODO(agrieve): Create interface jars for these missing classes rather
+        #     than allowlisting here.
+        'dalvik.system',
+        'libcore.io',
+        'sun.misc.Unsafe',
+
+        # Found in: com/facebook/fbui/textlayoutbuilder/StaticLayoutHelper
+        'android.text.StaticLayout.<init>',
+
+        # Explicictly guarded by try (NoClassDefFoundError) in Flogger's
+        # PlatformProvider.
+        'com.google.common.flogger.backend.google.GooglePlatform',
+        'com.google.common.flogger.backend.system.DefaultPlatform',
+
+        # TODO(agrieve): Exclude these only when use_jacoco_coverage=true.
+        'java.lang.instrument.ClassFileTransformer',
+        'java.lang.instrument.IllegalClassFormatException',
+        'java.lang.instrument.Instrumentation',
+        'java.lang.management.ManagementFactory',
+        'javax.management.MBeanServer',
+        'javax.management.ObjectInstance',
+        'javax.management.ObjectName',
+        'javax.management.StandardMBean',
+
+        # Explicitly guarded by try (NoClassDefFoundError) in Firebase's
+        # KotlinDetector: com.google.firebase.platforminfo.KotlinDetector.
+        'kotlin.KotlinVersion',
+    ]
+
+    had_unfiltered_items = '  ' in stderr
+    stderr = build_utils.FilterLines(
+        stderr, '|'.join(re.escape(x) for x in ignored_lines))
+    if stderr:
+      if 'Missing' in stderr:
+        failed_holder[0] = True
+        stderr = 'TraceReferences failed: ' + error_title + """
+Tip: Build with:
+        is_java_debug=false
+        treat_warnings_as_errors=false
+        enable_proguard_obfuscation=false
+     and then use dexdump to see which class(s) reference them.
+
+     E.g.:
+       third_party/android_sdk/public/build-tools/*/dexdump -d \
+out/Release/apks/YourApk.apk > dex.txt
+""" + stderr
+
+        if 'FragmentActivity' in stderr:
+          stderr += """
+You may need to update build configs to run FragmentActivityReplacer for
+additional targets. See
+https://chromium.googlesource.com/chromium/src.git/+/main/docs/ui/android/bytecode_rewriting.md.
+"""
+      elif had_unfiltered_items:
+        # Left only with empty headings. All indented items filtered out.
+        stderr = ''
+    return stderr
+
+  build_utils.CheckOutput(cmd,
+                          print_stdout=True,
+                          stderr_filter=stderr_filter,
+                          fail_on_output=warnings_as_errors)
+  return failed_holder[0]
+
+
+def _CombineConfigs(configs,
+                    dynamic_config_data,
+                    embedded_configs,
+                    exclude_generated=False):
   # Sort in this way so //clank versions of the same libraries will sort
   # to the same spot in the file.
   def sort_key(path):
     return tuple(reversed(path.split(os.path.sep)))
 
-  for config in sorted(configs, key=sort_key):
-    if exclude_generated and config.endswith('.resources.proguard.txt'):
-      continue
-
-    ret.append('# File: ' + config)
-    with open(config) as config_file:
-      contents = config_file.read().rstrip()
+  def format_config_contents(path, contents):
+    formatted_contents = []
+    if not contents.strip():
+      return []
 
     # Fix up line endings (third_party configs can have windows endings).
     contents = contents.replace('\r', '')
     # Remove numbers from generated rule comments to make file more
     # diff'able.
     contents = re.sub(r' #generated:\d+', '', contents)
-    ret.append(contents)
-    ret.append('')
+    formatted_contents.append('# File: ' + path)
+    formatted_contents.append(contents)
+    formatted_contents.append('')
+    return formatted_contents
+
+  ret = []
+  for config in sorted(configs, key=sort_key):
+    if exclude_generated and config.endswith('.resources.proguard.txt'):
+      continue
+
+    # Exclude some confs from expectations.
+    if any(entry in config for entry in _BLOCKLISTED_EXPECTATION_PATHS):
+      continue
+
+    with open(config) as config_file:
+      contents = config_file.read().rstrip()
+
+    ret.extend(format_config_contents(config, contents))
+
+  for path, contents in sorted(embedded_configs.items()):
+    ret.extend(format_config_contents(path, contents))
+
 
   if dynamic_config_data:
     ret.append('# File: //build/android/gyp/proguard.py (generated rules)')
@@ -373,48 +496,38 @@ def _CombineConfigs(configs, dynamic_config_data, exclude_generated=False):
 
 def _CreateDynamicConfig(options):
   ret = []
-  if options.sourcefile:
-    ret.append("-renamesourcefileattribute '%s' # OMIT FROM EXPECTATIONS" %
-               options.sourcefile)
+  if options.enable_obfuscation:
+    ret.append("-repackageclasses ''")
+  else:
+    ret.append("-dontobfuscate")
 
   if options.apply_mapping:
-    ret.append("-applymapping '%s'" % os.path.abspath(options.apply_mapping))
-  if options.repackage_classes:
-    ret.append("-repackageclasses '%s'" % options.repackage_classes)
+    ret.append("-applymapping '%s'" % options.apply_mapping)
 
-  _min_api = int(options.min_api) if options.min_api else 0
-  for api_level, version_code in _API_LEVEL_VERSION_CODE:
-    annotation_name = 'org.chromium.base.annotations.VerifiesOn' + version_code
-    if api_level > _min_api:
-      ret.append('-keep @interface %s' % annotation_name)
-      ret.append("""\
--if @%s class * {
-    *** *(...);
-}
--keep,allowobfuscation class <1> {
-    *** <2>(...);
-}""" % annotation_name)
-      ret.append("""\
--keepclassmembers,allowobfuscation class ** {
-  @%s <methods>;
-}""" % annotation_name)
   return '\n'.join(ret)
 
 
-def _VerifyNoEmbeddedConfigs(jar_paths):
-  failed = False
-  for jar_path in jar_paths:
-    with zipfile.ZipFile(jar_path) as z:
-      for name in z.namelist():
-        if name.startswith('META-INF/proguard/'):
-          failed = True
-          sys.stderr.write("""\
-Found embedded proguard config within {}.
-Embedded configs are not permitted (https://crbug.com/989505)
-""".format(jar_path))
-          break
-  if failed:
-    sys.exit(1)
+def _ExtractEmbeddedConfigs(jar_path, embedded_configs):
+  with zipfile.ZipFile(jar_path) as z:
+    proguard_names = []
+    r8_names = []
+    for info in z.infolist():
+      if info.is_dir():
+        continue
+      if info.filename.startswith('META-INF/proguard/'):
+        proguard_names.append(info.filename)
+      elif info.filename.startswith('META-INF/com.android.tools/r8/'):
+        r8_names.append(info.filename)
+      elif info.filename.startswith('META-INF/com.android.tools/r8-from'):
+        # Assume our version of R8 is always latest.
+        if '-upto-' not in info.filename:
+          r8_names.append(info.filename)
+
+    # Give preference to r8-from-*, then r8/, then proguard/.
+    active = r8_names or proguard_names
+    for filename in active:
+      config_path = '{}:{}'.format(jar_path, filename)
+      embedded_configs[config_path] = z.read(filename).decode('utf-8').rstrip()
 
 
 def _ContainsDebuggingConfig(config_str):
@@ -431,9 +544,60 @@ def _MaybeWriteStampAndDepFile(options, inputs):
     build_utils.WriteDepfile(options.depfile, output, inputs=inputs)
 
 
+def _IterParentContexts(context_name, split_contexts_by_name):
+  while context_name:
+    context = split_contexts_by_name[context_name]
+    yield context
+    context_name = context.parent_name
+
+
+def _DoTraceReferencesChecks(options, split_contexts_by_name):
+  # Set of all contexts that are a parent to another.
+  parent_splits_context_names = {
+      c.parent_name
+      for c in split_contexts_by_name.values() if c.parent_name
+  }
+  context_sets = [
+      list(_IterParentContexts(n, split_contexts_by_name))
+      for n in parent_splits_context_names
+  ]
+  # Visit them in order of: base, base+chrome, base+chrome+thing.
+  context_sets.sort(key=lambda x: (len(x), x[0].name))
+
+  # Ensure there are no missing references when considering all dex files.
+  error_title = 'DEX contains references to non-existent symbols after R8.'
+  dex_files = sorted(c.final_output_path
+                     for c in split_contexts_by_name.values())
+  if _CheckForMissingSymbols(options.r8_path, dex_files, options.classpath,
+                             options.warnings_as_errors, error_title):
+    # Failed but didn't raise due to warnings_as_errors=False
+    return
+
+  for context_set in context_sets:
+    # Ensure there are no references from base -> chrome module, or from
+    # chrome -> feature modules.
+    error_title = (f'DEX within module "{context_set[0].name}" contains '
+                   'reference(s) to symbols within child splits')
+    dex_files = [c.final_output_path for c in context_set]
+    # Each check currently takes about 3 seconds on a fast dev machine, and we
+    # run 3 of them (all, base, base+chrome).
+    # We could run them concurrently, to shave off 5-6 seconds, but would need
+    # to make sure that the order is maintained.
+    if _CheckForMissingSymbols(options.r8_path, dex_files, options.classpath,
+                               options.warnings_as_errors, error_title):
+      # Failed but didn't raise due to warnings_as_errors=False
+      return
+
+
 def main():
+  build_utils.InitLogging('PROGUARD_DEBUG')
   options = _ParseOptions()
 
+  # ProGuard configs that are derived from flags.
+  logging.debug('Preparing configs')
+  dynamic_config_data = _CreateDynamicConfig(options)
+
+  logging.debug('Looking for embedded configs')
   libraries = []
   for p in options.classpath:
     # TODO(bjoyce): Remove filter once old android support libraries are gone.
@@ -444,40 +608,56 @@ def main():
     if p not in libraries and p not in options.input_paths:
       libraries.append(p)
 
-  _VerifyNoEmbeddedConfigs(options.input_paths + libraries)
-
-  proguard_configs = options.proguard_configs
-  if options.disable_checkdiscard:
-    proguard_configs = _ValidateAndFilterCheckDiscards(proguard_configs)
+  embedded_configs = {}
+  for jar_path in options.input_paths + libraries:
+    _ExtractEmbeddedConfigs(jar_path, embedded_configs)
 
   # ProGuard configs that are derived from flags.
-  dynamic_config_data = _CreateDynamicConfig(options)
-
-  # ProGuard configs that are derived from flags.
-  merged_configs = _CombineConfigs(
-      proguard_configs, dynamic_config_data, exclude_generated=True)
+  merged_configs = _CombineConfigs(options.proguard_configs,
+                                   dynamic_config_data,
+                                   embedded_configs,
+                                   exclude_generated=True)
   print_stdout = _ContainsDebuggingConfig(merged_configs) or options.verbose
 
+  depfile_inputs = options.proguard_configs + options.input_paths + libraries
   if options.expected_file:
     diff_utils.CheckExpectations(merged_configs, options)
     if options.only_verify_expectations:
       build_utils.WriteDepfile(options.depfile,
                                options.actual_file,
-                               inputs=options.proguard_configs)
+                               inputs=depfile_inputs)
       return
 
-  _OptimizeWithR8(options, proguard_configs, libraries, dynamic_config_data,
-                  print_stdout)
+  if options.keep_rules_output_path:
+    _OutputKeepRules(options.r8_path, options.input_paths, options.classpath,
+                     options.keep_rules_targets_regex,
+                     options.keep_rules_output_path)
+    return
 
-  # After ProGuard / R8 has run:
+  # TODO(agrieve): Stop appending to dynamic_config_data once R8 natively
+  #     supports finding configs the "tools" directory.
+  #     https://issuetracker.google.com/227983179
+  tools_configs = {
+      k: v
+      for k, v in embedded_configs.items() if 'com.android.tools' in k
+  }
+  dynamic_config_data += '\n' + _CombineConfigs([], None, tools_configs)
+
+  split_contexts_by_name = _OptimizeWithR8(options, options.proguard_configs,
+                                           libraries, dynamic_config_data,
+                                           print_stdout)
+
+  if not options.disable_checks:
+    logging.debug('Running tracereferences')
+    _DoTraceReferencesChecks(options, split_contexts_by_name)
+
   for output in options.extra_mapping_output_paths:
     shutil.copy(options.mapping_output, output)
 
-  inputs = options.proguard_configs + options.input_paths + libraries
   if options.apply_mapping:
-    inputs.append(options.apply_mapping)
+    depfile_inputs.append(options.apply_mapping)
 
-  _MaybeWriteStampAndDepFile(options, inputs)
+  _MaybeWriteStampAndDepFile(options, depfile_inputs)
 
 
 if __name__ == '__main__':

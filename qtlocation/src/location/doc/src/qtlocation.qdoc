@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 
 
@@ -69,53 +45,60 @@
 applications.
 \ingroup technology-apis
 
-The Qt Location API helps you create viable mapping solutions using the data
-available from some of the popular location services.
-
-\section1 Overview
+The Qt Location module helps you create mapping solutions using data available
+from popular location service providers, such as
+\l {http://openstreetmap.org}{Open Street Map}.
 
 The Qt Location API enables you to:
 \list
-  \li access and present map data,
-  \li support touch gesture on a specific area of the map,
-  \li query for a specific geographical location and route,
-  \li add additional layers on top, such as polylines and circles,
-  \li and search for places and related images.
+  \li Access and present map data.
+  \li Support touch gesture on a specific area of the map.
+  \li Query for a specific geographical location and route.
+  \li Add additional layers on top, such as polylines and circles.
+  \li Search for places and related images.
 \endlist
 
-\section1 Getting Started
+\section1 Using the Module
 
-To load the Qt Location module, add the following statement to your .qml files
+\section2 QML API
+
+To use the types, add the following import statements to your \c .qml file:
 
 \qml \QtVer
-import QtPositioning \1
-import QtLocation \1
+import QtPositioning
+import QtLocation
 \endqml
 
-The QtLocation QML module depends on the QtPositioning QML module.
-Therefore every QML application that imports the QtLocation QML module must always
-import the QtPositioning module as well.
+\note Many Qt Location QML module APIs are using types from the Qt Positioning
+module. For example, defining a coordinate to be the center of the map requires
+types from the Qt Positioning module.
 
-For C++ projects include the header appropriate for the current use case,
-for example applications using routes may use
+\section2 C++ API
+
+For C++ projects, include the header appropriate for the current use case;
+for example, applications using routes may use:
 
 \code
 #include <QGeoRoute>
 \endcode
 
-The .pro file should have the \e location keyword added
+\include {module-use.qdocinc} {using the c++ api}
 
-\code
-QT += location
-\endcode
+\section3 Building with CMake
 
-\section2 Submodules
+\include {module-use.qdocinc} {building with cmake} {Location}
+
+\section3 Building with qmake
+
+\include {module-use.qdocinc} {building_with_qmake} {location}
+
+\section1 Submodules
 
 The API is split into sub-modules, which provide QML and C++ interfaces for
 specific purposes. They focus mainly on Map and Place information. The required
 position data can be retrieved using the \l {QtPositioning} module.
 
-\section3 Places
+\section2 Places
 
 The Places submodule is the natural complement to Positioning, providing a
 source of geographical data about Places of Interest (POI). Besides the source
@@ -130,13 +113,13 @@ retrieve images, reviews, and other content related to a place.
     \li \l{Places (C++)}{for C++}
 \endtable
 
-\section3 Maps and Navigation
+\section2 Maps and Navigation
 
-The module provides the QML and C++ alternatives for maps and navigation.
-The C++ alternative provides utility classes to get geocoding (finding a geographic
+The module provides the QML and C++ alternatives for maps and navigation. The
+C++ alternative provides utility classes to get geocoding (finding a geographic
 coordinate from a street address) and navigation (including driving and walking
-directions) information, whereas its QML counterpart provides UI components to render
-the information.
+directions) information, whereas its QML counterpart provides UI components to
+render the information.
 
 \table
 \row
@@ -145,7 +128,17 @@ the information.
     \li \l{Maps and Navigation (C++)}{for C++}
 \endtable
 
-\section1 API References and Examples
+\section1 Examples
+\table
+    \row
+        \li \l {Qt Location Examples}{Example Apps}
+        \li Examples demonstrating use of the Qt Location APIs
+     \row
+        \li \l {QML Maps}{Maps and Navigation Tutorial}
+        \li Tutorial introducing the QML Maps Types
+\endtable
+
+\section1 API Reference
 
 The following are lists of the classes and UI components provided by the module,
 with example applications to demonstrate their usage:
@@ -160,12 +153,6 @@ with example applications to demonstrate their usage:
     \row
         \li \l {Qt Location C++ Classes}{C++ API Reference}
         \li Full list of C++ classes and methods of the Qt Location APIs
-    \row
-        \li \l {Qt Location Examples}{Example Apps}
-        \li Examples demonstrating use of the Qt Location APIs
-     \row
-        \li \l {QML Maps}{Maps and Navigation Tutorial}
-        \li Tutorial introducing the QML Maps Types
 \endtable
 
 \section1 Plugin References and Parameters
@@ -188,20 +175,15 @@ Qt Location available for a new platform.
         \li \l {Places Backend} {Places}
         \li Information for places backend implementors
     \row
-        \li \l {Qt Location QML API changes since 5.4}{API changes}
-        \li Information about QML API changes since 5.4
+        \li \l {Changes to Qt Location}{API changes}
+        \li Information about porting from Qt 5 to Qt 6
 \endtable
 
-    \section1 Licenses and Attributions
+\section1 Licenses
 
-    Qt Location is available under commercial licenses from \l{The Qt Company}.
-    In addition, it is available under the
-    \l{GNU Lesser General Public License, version 3}, or
-    the \l{GNU General Public License, version 2}.
-    See \l{Qt Licensing} for further details.
-
-    Furthermore Qt Location potentially contains third party
-    modules under following permissive licenses:
-
-    \generatelist{groupsbymodule attributions-qtlocation}
+Qt Location is available under commercial licenses from \l{The Qt Company}.
+In addition, it is available under the
+\l{GNU Lesser General Public License, version 3}, or
+the \l{GNU General Public License, version 2}.
+See \l{Qt Licensing} for further details.
 */

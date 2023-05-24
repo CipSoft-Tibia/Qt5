@@ -1,11 +1,13 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/command_line.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "build/build_config.h"
 #include "components/viz/common/gpu/context_provider.h"
+#include "components/viz/test/gpu_host_impl_test_api.h"
 #include "content/browser/browser_main_loop.h"
 #include "content/browser/compositor/image_transport_factory.h"
 #include "content/browser/gpu/gpu_process_host.h"
@@ -24,6 +26,7 @@
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkPaint.h"
 #include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/gpu/GpuTypes.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
 #include "ui/gl/gl_switches.h"
 
@@ -36,6 +39,10 @@ class ContextLostRunLoop : public viz::ContextLostObserver {
       : context_provider_(context_provider) {
     context_provider_->AddObserver(this);
   }
+
+  ContextLostRunLoop(const ContextLostRunLoop&) = delete;
+  ContextLostRunLoop& operator=(const ContextLostRunLoop&) = delete;
+
   ~ContextLostRunLoop() override { context_provider_->RemoveObserver(this); }
 
   void RunUntilContextLost() { run_loop_.Run(); }
@@ -44,10 +51,8 @@ class ContextLostRunLoop : public viz::ContextLostObserver {
   // viz::LostContextProvider:
   void OnContextLost() override { run_loop_.Quit(); }
 
-  viz::ContextProvider* const context_provider_;
+  const raw_ptr<viz::ContextProvider> context_provider_;
   base::RunLoop run_loop_;
-
-  DISALLOW_COPY_AND_ASSIGN(ContextLostRunLoop);
 };
 
 class ContextTestBase : public content::ContentBrowserTest {
@@ -64,7 +69,7 @@ class ContextTestBase : public content::ContentBrowserTest {
 
     provider_ =
         content::GpuBrowsertestCreateContext(std::move(gpu_channel_host));
-    auto result = provider_->BindToCurrentThread();
+    auto result = provider_->BindToCurrentSequence();
     CHECK_EQ(result, gpu::ContextResult::kSuccess);
     gl_ = provider_->ContextGL();
     context_support_ = provider_->ContextSupport();
@@ -79,18 +84,33 @@ class ContextTestBase : public content::ContentBrowserTest {
   }
 
  protected:
-  gpu::gles2::GLES2Interface* gl_ = nullptr;
-  gpu::ContextSupport* context_support_ = nullptr;
+  raw_ptr<gpu::gles2::GLES2Interface, DanglingUntriaged> gl_ = nullptr;
+  raw_ptr<gpu::ContextSupport, DanglingUntriaged> context_support_ = nullptr;
 
  private:
   scoped_refptr<viz::ContextProviderCommandBuffer> provider_;
+};
+
+class TestGpuHostImplDelegate
+    : public viz::GpuHostImplTestApi::HookDelegateBase {
+ public:
+  TestGpuHostImplDelegate() = default;
+  ~TestGpuHostImplDelegate() override = default;
+
+  TestGpuHostImplDelegate(const TestGpuHostImplDelegate&) = delete;
+  TestGpuHostImplDelegate& operator=(const TestGpuHostImplDelegate&) = delete;
+
+  // viz::GpuHostImpl::Delegate
+  bool GpuAccessAllowed() const override { return false; }
 };
 
 }  // namespace
 
 // Include the shared tests.
 #define CONTEXT_TEST_F IN_PROC_BROWSER_TEST_F
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/chromeos_buildflags.h"
 #include "content/public/browser/browser_thread.h"
 #include "gpu/ipc/client/gpu_context_tests.h"
 
@@ -145,7 +165,9 @@ class BrowserGpuChannelHostFactoryTest : public ContentBrowserTest {
 
 // Test fails on Chromeos + Mac, flaky on Windows because UI Compositor
 // establishes a GPU channel.
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 #define MAYBE_Basic Basic
 #else
 #define MAYBE_Basic DISABLED_Basic
@@ -156,10 +178,12 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest, MAYBE_Basic) {
   EXPECT_TRUE(GetGpuChannel() != nullptr);
 }
 
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 // Test fails on Chromeos + Mac, flaky on Windows because UI Compositor
 // establishes a GPU channel.
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 #define MAYBE_AlreadyEstablished AlreadyEstablished
 #else
 #define MAYBE_AlreadyEstablished DISABLED_AlreadyEstablished
@@ -181,7 +205,7 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
 #endif
 
 // Test fails on Windows because GPU Channel set-up fails.
-#if !defined(OS_WIN)
+#if !BUILDFLAG(IS_WIN)
 #define MAYBE_GrContextKeepsGpuChannelAlive GrContextKeepsGpuChannelAlive
 #else
 #define MAYBE_GrContextKeepsGpuChannelAlive \
@@ -203,13 +227,13 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
   // retain the host after provider is destroyed.
   scoped_refptr<viz::ContextProviderCommandBuffer> provider =
       content::GpuBrowsertestCreateContext(GetGpuChannel());
-  ASSERT_EQ(provider->BindToCurrentThread(), gpu::ContextResult::kSuccess);
+  ASSERT_EQ(provider->BindToCurrentSequence(), gpu::ContextResult::kSuccess);
 
   sk_sp<GrDirectContext> gr_context = sk_ref_sp(provider->GrContext());
 
   SkImageInfo info = SkImageInfo::MakeN32Premul(100, 100);
-  sk_sp<SkSurface> surface = SkSurface::MakeRenderTarget(
-      gr_context.get(), SkBudgeted::kNo, info);
+  sk_sp<SkSurface> surface =
+      SkSurface::MakeRenderTarget(gr_context.get(), skgpu::Budgeted::kNo, info);
   EXPECT_TRUE(surface);
 
   // Destroy the GL context after we made a surface.
@@ -217,7 +241,7 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
 
   // New surfaces will fail to create now.
   sk_sp<SkSurface> surface2 =
-      SkSurface::MakeRenderTarget(gr_context.get(), SkBudgeted::kNo, info);
+      SkSurface::MakeRenderTarget(gr_context.get(), skgpu::Budgeted::kNo, info);
   EXPECT_FALSE(surface2);
 
   // Drop our reference to the gr_context also.
@@ -237,7 +261,9 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
 
 // Test fails on Chromeos + Mac, flaky on Windows because UI Compositor
 // establishes a GPU channel.
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
 #define MAYBE_CrashAndRecover CrashAndRecover
 #else
 #define MAYBE_CrashAndRecover DISABLED_CrashAndRecover
@@ -251,8 +277,9 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
   scoped_refptr<viz::ContextProviderCommandBuffer> provider =
       content::GpuBrowsertestCreateContext(GetGpuChannel());
   ContextLostRunLoop run_loop(provider.get());
-  ASSERT_EQ(provider->BindToCurrentThread(), gpu::ContextResult::kSuccess);
-  GpuProcessHost::CallOnIO(GPU_PROCESS_KIND_SANDBOXED, false /* force_create */,
+  ASSERT_EQ(provider->BindToCurrentSequence(), gpu::ContextResult::kSuccess);
+  GpuProcessHost::CallOnIO(FROM_HERE, GPU_PROCESS_KIND_SANDBOXED,
+                           false /* force_create */,
                            base::BindOnce([](GpuProcessHost* host) {
                              if (host)
                                host->gpu_service()->Crash();
@@ -264,19 +291,13 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
   EXPECT_TRUE(IsChannelEstablished());
 }
 
-using GpuProcessHostBrowserTest = BrowserGpuChannelHostFactoryTest;
-
-IN_PROC_BROWSER_TEST_F(GpuProcessHostBrowserTest, Shutdown) {
-  DCHECK(!IsChannelEstablished());
-  EstablishAndWait();
-  base::RunLoop run_loop;
-  StopGpuProcess(run_loop.QuitClosure());
-  run_loop.Run();
-}
-
 // Disabled outside linux like other tests here sadface.
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
-IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest, CreateTransferBuffer) {
+// crbug.com/1224892: the test if flaky on linux and lacros.
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
+                       DISABLED_CreateTransferBuffer) {
   DCHECK(!IsChannelEstablished());
   EstablishAndWait();
 
@@ -292,7 +313,8 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest, CreateTransferBuffer) {
 
   auto impl = std::make_unique<gpu::CommandBufferProxyImpl>(
       GetGpuChannel(), GetFactory()->GetGpuMemoryBufferManager(),
-      content::kGpuStreamIdDefault, base::ThreadTaskRunnerHandle::Get());
+      content::kGpuStreamIdDefault,
+      base::SingleThreadTaskRunner::GetCurrentDefault());
   ASSERT_EQ(
       impl->Initialize(gpu::kNullSurfaceHandle, nullptr,
                        content::kGpuStreamPriorityDefault, attributes, GURL()),
@@ -336,25 +358,24 @@ IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest, CreateTransferBuffer) {
 }
 #endif
 
-class GpuProcessHostDisableGLBrowserTest : public GpuProcessHostBrowserTest {
- public:
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    UseSoftwareCompositing();
-    GpuProcessHostBrowserTest::SetUpCommandLine(command_line);
-    command_line->AppendSwitchASCII(switches::kUseGL,
-                                    gl::kGLImplementationDisabledName);
-  }
-};
-
-// Android and CrOS don't support disabling GL.
-#if !defined(OS_ANDROID) && !defined(OS_CHROMEOS)
-IN_PROC_BROWSER_TEST_F(GpuProcessHostDisableGLBrowserTest, CreateAndDestroy) {
-  DCHECK(!IsChannelEstablished());
+IN_PROC_BROWSER_TEST_F(BrowserGpuChannelHostFactoryTest,
+                       CallbackOnSynchronousFailure) {
+  // Ensure that there is no pending establish request.
   EstablishAndWait();
-  base::RunLoop run_loop;
-  StopGpuProcess(run_loop.QuitClosure());
-  run_loop.Run();
+
+  viz::GpuHostImplTestApi test_api(GpuProcessHost::Get()->gpu_host());
+
+  // This delegate disallows GPU access, which will cause EstablishGpuChannel()
+  // to fail synchronously.
+  test_api.HookDelegate(std::make_unique<TestGpuHostImplDelegate>());
+
+  bool event = false;
+  GetFactory()->EstablishGpuChannel(
+      base::BindOnce(&BrowserGpuChannelHostFactoryTest::Signal,
+                     base::Unretained(this), &event));
+
+  // Expect that the callback has been called.
+  EXPECT_TRUE(event);
 }
-#endif
 
 }  // namespace content

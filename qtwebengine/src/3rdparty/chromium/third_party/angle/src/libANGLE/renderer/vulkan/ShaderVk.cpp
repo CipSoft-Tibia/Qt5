@@ -11,8 +11,8 @@
 
 #include "common/debug.h"
 #include "libANGLE/Context.h"
+#include "libANGLE/Display.h"
 #include "libANGLE/renderer/vulkan/ContextVk.h"
-#include "platform/FeaturesVk.h"
 
 namespace rx
 {
@@ -23,67 +23,102 @@ ShaderVk::~ShaderVk() {}
 
 std::shared_ptr<WaitableCompileEvent> ShaderVk::compile(const gl::Context *context,
                                                         gl::ShCompilerInstance *compilerInstance,
-                                                        ShCompileOptions options)
+                                                        ShCompileOptions *options)
 {
-    ShCompileOptions compileOptions = 0;
-
     ContextVk *contextVk = vk::GetImpl(context);
 
-    bool isWebGL = context->getExtensions().webglCompatibility;
-
-    if (isWebGL)
+    if (context->isWebGL())
     {
-        // Only webgl requires initialization of local variables, others don't.
+        // Only WebGL requires initialization of local variables, others don't.
         // Extra initialization in spirv shader may affect performance.
-        compileOptions |= SH_INITIALIZE_UNINITIALIZED_LOCALS;
+        options->initializeUninitializedLocals = true;
+
+        // WebGL shaders may contain OOB array accesses which in turn cause undefined behavior,
+        // which may result in security issues. See https://crbug.com/1189110.
+        options->clampIndirectArrayBounds = true;
 
         if (mState.getShaderType() != gl::ShaderType::Compute)
         {
-            compileOptions |= SH_INIT_OUTPUT_VARIABLES;
+            options->initOutputVariables = true;
         }
+    }
+
+    // robustBufferAccess on Vulkan doesn't support bound check on shader local variables
+    // but the GL_EXT_robustness does support.
+    // Enable the flag clampIndirectArrayBounds to ensure out of bounds local variable writes in
+    // shaders are protected when the context has GL_EXT_robustness enabled
+    if (contextVk->getShareGroup()->hasAnyContextWithRobustness())
+    {
+        options->clampIndirectArrayBounds = true;
     }
 
     if (contextVk->getFeatures().clampPointSize.enabled)
     {
-        compileOptions |= SH_CLAMP_POINT_SIZE;
+        options->clampPointSize = true;
     }
 
-    if (contextVk->getFeatures().basicGLLineRasterization.enabled)
+    if (contextVk->getFeatures().emulateAdvancedBlendEquations.enabled)
     {
-        compileOptions |= SH_ADD_BRESENHAM_LINE_RASTER_EMULATION;
+        options->addAdvancedBlendEquationsEmulation = true;
     }
 
     if (contextVk->emulateSeamfulCubeMapSampling())
     {
-        compileOptions |= SH_EMULATE_SEAMFUL_CUBE_MAP_SAMPLING;
-    }
-
-    if (contextVk->useOldRewriteStructSamplers())
-    {
-        compileOptions |= SH_USE_OLD_REWRITE_STRUCT_SAMPLERS;
+        options->emulateSeamfulCubeMapSampling = true;
     }
 
     if (!contextVk->getFeatures().enablePrecisionQualifiers.enabled)
     {
-        compileOptions |= SH_IGNORE_PRECISION_QUALIFIERS;
+        options->ignorePrecisionQualifiers = true;
     }
 
-    // Let compiler detect and emit early fragment test execution mode. We will remove it if
-    // context state does not allow it
-    compileOptions |= SH_EARLY_FRAGMENT_TESTS_OPTIMIZATION;
-
-    if (contextVk->getFeatures().enablePreRotateSurfaces.enabled)
+    if (contextVk->getFeatures().forceFragmentShaderPrecisionHighpToMediump.enabled)
     {
-        // Let compiler inserts pre-rotation code.
-        compileOptions |= SH_ADD_PRE_ROTATION;
+        options->forceShaderPrecisionHighpToMediump = true;
     }
 
-    return compileImpl(context, compilerInstance, mState.getSource(), compileOptions | options);
+    // Let compiler use specialized constant for pre-rotation.
+    if (!contextVk->getFeatures().preferDriverUniformOverSpecConst.enabled)
+    {
+        options->useSpecializationConstant = true;
+    }
+
+    if (!contextVk->getFeatures().supportsDepthClipControl.enabled)
+    {
+        options->addVulkanDepthCorrection = true;
+    }
+
+    if (contextVk->getFeatures().supportsTransformFeedbackExtension.enabled)
+    {
+        options->addVulkanXfbExtensionSupportCode = true;
+    }
+    else if (mState.getShaderType() == gl::ShaderType::Vertex &&
+             contextVk->getFeatures().emulateTransformFeedback.enabled)
+    {
+        options->addVulkanXfbEmulationSupportCode = true;
+    }
+
+    if (contextVk->getFeatures().roundOutputAfterDithering.enabled)
+    {
+        options->roundOutputAfterDithering = true;
+    }
+
+    if (contextVk->getFeatures().precisionSafeDivision.enabled)
+    {
+        options->precisionSafeDivision = true;
+    }
+
+    if (contextVk->getExtensions().shaderPixelLocalStorageANGLE)
+    {
+        options->pls = contextVk->getNativePixelLocalStorageOptions();
+    }
+
+    return compileImpl(context, compilerInstance, mState.getSource(), options);
 }
 
 std::string ShaderVk::getDebugInfo() const
 {
-    return mState.getTranslatedSource();
+    return mState.getCompiledBinary().empty() ? "" : "<binary blob>";
 }
 
 }  // namespace rx

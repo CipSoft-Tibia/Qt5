@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,31 +7,20 @@
 #include <utility>
 
 #include "base/barrier_closure.h"
-#include "base/callback_helpers.h"
+#include "base/functional/callback_helpers.h"
 #include "base/synchronization/waitable_event.h"
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_record.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+#include "third_party/blink/renderer/platform/scheduler/public/non_main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/scheduler/public/thread.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+#include "third_party/blink/renderer/platform/wtf/wtf.h"
 
 namespace blink {
-
-namespace {
-class AutoSignal {
- public:
-  explicit AutoSignal(base::WaitableEvent* event) : event_(event) {
-    DCHECK(event);
-  }
-  ~AutoSignal() { event_->Signal(); }
-
- private:
-  base::WaitableEvent* event_;
-
-  DISALLOW_COPY_AND_ASSIGN(AutoSignal);
-};
-}  // namespace
 
 // static
 std::unique_ptr<PlatformPaintWorkletLayerPainter>
@@ -92,7 +81,7 @@ void PaintWorkletPaintDispatcher::DispatchWorklets(
   ongoing_jobs_ = std::move(worklet_job_map);
 
   scoped_refptr<base::SingleThreadTaskRunner> runner =
-      Thread::Current()->GetTaskRunner();
+      GetCompositorTaskRunner();
   WTF::CrossThreadClosure on_done = CrossThreadBindRepeating(
       [](base::WeakPtr<PaintWorkletPaintDispatcher> dispatcher,
          scoped_refptr<base::SingleThreadTaskRunner> runner) {
@@ -101,7 +90,7 @@ void PaintWorkletPaintDispatcher::DispatchWorklets(
             CrossThreadBindOnce(&PaintWorkletPaintDispatcher::AsyncPaintDone,
                                 dispatcher));
       },
-      weak_factory_.GetWeakPtr(), WTF::Passed(std::move(runner)));
+      weak_factory_.GetWeakPtr(), std::move(runner));
 
   // Use a base::RepeatingClosure to make sure that AsyncPaintDone is only
   // called once, once all the worklets are done. If there are no inputs
@@ -142,8 +131,8 @@ void PaintWorkletPaintDispatcher::DispatchWorklets(
               }
               on_done_runner->RunAndReset();
             },
-            WrapCrossThreadPersistent(painter), WTF::Passed(std::move(jobs)),
-            WTF::Passed(std::move(on_done_runner))));
+            WrapCrossThreadPersistent(painter), std::move(jobs),
+            std::move(on_done_runner)));
   }
 }
 
@@ -156,6 +145,13 @@ void PaintWorkletPaintDispatcher::AsyncPaintDone() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TRACE_EVENT0("cc", "PaintWorkletPaintDispatcher::AsyncPaintDone");
   std::move(on_async_paint_complete_).Run(std::move(ongoing_jobs_));
+}
+
+scoped_refptr<base::SingleThreadTaskRunner>
+PaintWorkletPaintDispatcher::GetCompositorTaskRunner() {
+  DCHECK(Thread::CompositorThread());
+  DCHECK(Thread::CompositorThread()->IsCurrentThread());
+  return Thread::CompositorThread()->GetTaskRunner();
 }
 
 }  // namespace blink

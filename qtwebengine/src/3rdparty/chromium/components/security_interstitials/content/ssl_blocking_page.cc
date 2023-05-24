@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
@@ -26,7 +26,6 @@
 #include "content/public/browser/ssl_status.h"
 #include "content/public/browser/web_contents.h"
 #include "net/base/net_errors.h"
-#include "third_party/blink/public/mojom/renderer_preferences.mojom.h"
 
 using base::TimeTicks;
 using content::NavigationEntry;
@@ -44,7 +43,7 @@ SSLBlockingPage::GetTypeForTesting() {
 SSLBlockingPage::~SSLBlockingPage() = default;
 
 void SSLBlockingPage::PopulateInterstitialStrings(
-    base::DictionaryValue* load_time_data) {
+    base::Value::Dict& load_time_data) {
   ssl_error_ui_->PopulateStringsForHTML(load_time_data);
   cert_report_helper()->PopulateExtendedReportingOption(load_time_data);
   cert_report_helper()->PopulateEnhancedProtectionMessage(load_time_data);
@@ -62,6 +61,7 @@ SSLBlockingPage::SSLBlockingPage(
     const GURL& support_url,
     std::unique_ptr<SSLCertReporter> ssl_cert_reporter,
     bool overridable,
+    bool can_show_enhanced_protection_message,
     std::unique_ptr<
         security_interstitials::SecurityInterstitialControllerClient>
         controller_client)
@@ -72,6 +72,7 @@ SSLBlockingPage::SSLBlockingPage(
                           std::move(ssl_cert_reporter),
                           overridable,
                           time_triggered,
+                          can_show_enhanced_protection_message,
                           std::move(controller_client)),
       ssl_info_(ssl_info),
       overridable_(overridable),

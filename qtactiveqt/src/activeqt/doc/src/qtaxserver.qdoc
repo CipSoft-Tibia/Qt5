@@ -1,34 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \module QAxServer
     \title QAxServer C++ Classes
     \ingroup modules
+    \qtcmakepackage AxServer
     \qtvariable axserver
 
     \brief The QAxServer module is a Windows-only static library that
@@ -418,8 +395,8 @@
     \li [in, out] struct QPoint (user defined)
     \endtable
 
-    Also supported are exported enums and flags (see Q_ENUMS() and
-    Q_FLAGS()). The in-parameter types are also supported as
+    Also supported are exported enums and flags (see Q_ENUM() and
+    Q_FLAG()). The in-parameter types are also supported as
     return values.
 
     Properties and signals/slots that have parameters using any other
@@ -680,6 +657,24 @@
 
     If the server runs, see the following section for information on
     debugging your server.
+
+    \section3 Crashes when unloading and reloading COM servers
+
+    If ActiveQt COM servers utilize Qt modules beyond those found in Qt Base, it
+    is necessary to activate the COM server as an out-of-process COM server.
+    Attempting to activate an in-process COM server that includes modules such
+    as Qt Quick may result in a crash after unloading the COM server.
+
+    \section3 Crash or unexpected behavior during outgoing COM calls
+
+    Be aware that an out-of-process COM server will be processing its message
+    queue while it is performing an outgoing call to the client. This can lead to
+    unexpected behavior or crash if the client is at the same time calling the
+    server. In this situation, the incoming call will be executed in the server
+    before the outgoing call returns. In particular, if the client closes
+    an ActiveX control while the control is calling back into the client, this
+    can lead to crash. Such reentrancy problems can be mitigated using message
+    filters (IMessageFilter and CoRegisterMessageFilter).
 
     \section2 Debugging Runtime Errors
 

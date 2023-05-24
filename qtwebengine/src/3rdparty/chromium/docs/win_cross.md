@@ -37,11 +37,13 @@ builds ([.asm bug](https://crbug.com/762167)).
 
 1. `gclient sync`, follow instructions on screen.
 
-If you're at Google, this will automatically download the Windows SDK for you.
-If this fails with an error:
+### If you're at Google
+
+`gclient sync` should automatically download the Windows SDK for you. If this
+fails with an error:
 
     Please follow the instructions at
-    https://chromium.googlesource.com/chromium/src/+/master/docs/windows_build_instructions.md
+    https://chromium.googlesource.com/chromium/src/+/HEAD/docs/win_cross.md
 
 then you may need to re-authenticate via:
 
@@ -49,19 +51,32 @@ then you may need to re-authenticate via:
     # Follow instructions, enter 0 as project id.
     download_from_google_storage --config
 
-If you are not at Google, you can package your Windows SDK installation
-into a zip file by running the following on a Windows machine:
+`gclient sync` should now succeed. Skip ahead to the [GN setup](#gn-setup)
+section.
+
+### If you're not at Google
+
+After installing [Microsoft's development tools](windows_build_instructions.md#visual-studio),
+you can package your Windows SDK installation into a zip file by running the following on a Windows machine:
 
     cd path/to/depot_tools/win_toolchain
-    # customize the Windows SDK version numbers
-    python package_from_installed.py 2017 -w 10.0.17134.0
+    python package_from_installed.py <vs version> -w <win version>
+
+where `<vs version>` and `<win version>` correspond respectively to the
+versions of Visual Studio (e.g. 2019) and of the Windows SDK (e.g.
+10.0.19041.0) installed on the Windows machine. Note that if you didn't
+install the ARM64 components of the SDK as noted in the link above, you
+should add `--noarm` to the parameter list.
 
 These commands create a zip file named `<hash value>.zip`. Then, to use the
 generated file in a Linux or Mac host, the following environment variables
 need to be set:
 
-    export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=<path/to/sdk/zip/file>
+    export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=<base url>
     export GYP_MSVS_HASH_<toolchain hash>=<hash value>
+
+`<base url>` is the path of the directory containing the zip file (note that
+specifying scheme `file://` is not required).
 
 `<toolchain hash>` is hardcoded in `src/build/vs_toolchain.py` and can be found by
 setting `DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL` and running `gclient sync`:
@@ -76,26 +91,26 @@ setting `DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL` and running `gclient sync`:
 
 ## GN setup
 
-Add `target_os = "win"` to your args.gn.  Then just build, e.g.
+Add
+
+    target_os = "win"
+
+to your args.gn.
+
+If you're building on an arm host (e.g. a Mac with an Apple Silicon chip),
+you very likely also want to add
+
+    target_cpu = "x64"
+
+lest you build an arm64 chrome/win binary.
+
+Then just build, e.g.
 
     ninja -C out/gnwin base_unittests.exe
 
 ## Goma
 
-For now, one needs to use the rbe backend, not the borg backend
-(default for Googlers).
-Use cloud backend instead.
-
-```shell
-    goma_auth.py login
-
-    # GOMA_* are needed for Googlers only
-    export GOMA_SERVER_HOST=goma.chromium.org
-    export GOMA_RPC_EXTRA_PARAMS=?rbe
-
-    goma_ctl.py ensure_start
-```
-
+This should be supported by the default (Goma RBE) backend.
 
 ## Copying and running chrome
 
@@ -110,7 +125,7 @@ to correctly symbolize stack traces (or if you want to attach a debugger).
 
 You can run the Windows binaries you built on swarming, like so:
 
-    tools/run-swarmed.py out/gnwin base_unittests [ --gtest_filter=... ]
+    tools/run-swarmed.py out/gnwin base_unittests -- [ --gtest_filter=... ]
 
 See the contents of run-swarmed.py for how to do this manually.
 

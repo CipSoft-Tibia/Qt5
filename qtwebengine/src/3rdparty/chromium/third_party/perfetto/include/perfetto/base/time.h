@@ -20,6 +20,7 @@
 #include <time.h>
 
 #include <chrono>
+#include <string>
 
 #include "perfetto/base/build_config.h"
 #include "perfetto/base/logging.h"
@@ -52,6 +53,9 @@ void SleepMicroseconds(unsigned interval_us);
 
 TimeNanos GetWallTimeNs();
 TimeNanos GetThreadCPUTimeNs();
+inline TimeNanos GetWallTimeRawNs() {
+  return GetWallTimeNs();
+}
 
 // TODO: Clock that counts time during suspend is not implemented on Windows.
 inline TimeNanos GetBootTimeNs() {
@@ -69,6 +73,10 @@ inline TimeNanos GetWallTimeNs() {
 
   static uint64_t monotonic_timebase_factor = init_time_factor();
   return TimeNanos(mach_absolute_time() * monotonic_timebase_factor);
+}
+
+inline TimeNanos GetWallTimeRawNs() {
+  return GetWallTimeNs();
 }
 
 // TODO: Clock that counts time during suspend is not implemented on Mac.
@@ -101,6 +109,10 @@ inline TimeNanos GetWallTimeNs() {
   return TimeNanos(static_cast<uint64_t>(emscripten_get_now()) * 1000000);
 }
 
+inline TimeNanos GetWallTimeRawNs() {
+  return GetWallTimeNs();
+}
+
 inline TimeNanos GetThreadCPUTimeNs() {
   return TimeNanos(0);
 }
@@ -117,6 +129,10 @@ inline TimeNanos GetBootTimeNs() {
 // GetWallTimeNs(), but to prevent false hope we leave it unimplemented.
 
 inline TimeNanos GetWallTimeNs() {
+  return TimeNanos(0);
+}
+
+inline TimeNanos GetWallTimeRawNs() {
   return TimeNanos(0);
 }
 
@@ -154,6 +170,10 @@ inline TimeNanos GetWallTimeNs() {
   return GetTimeInternalNs(kWallTimeClockSource);
 }
 
+inline TimeNanos GetWallTimeRawNs() {
+  return GetTimeInternalNs(CLOCK_MONOTONIC_RAW);
+}
+
 inline TimeNanos GetThreadCPUTimeNs() {
   return GetTimeInternalNs(CLOCK_THREAD_CPUTIME_ID);
 }
@@ -161,6 +181,10 @@ inline TimeNanos GetThreadCPUTimeNs() {
 
 inline TimeSeconds GetBootTimeS() {
   return std::chrono::duration_cast<TimeSeconds>(GetBootTimeNs());
+}
+
+inline TimeMillis GetBootTimeMs() {
+  return std::chrono::duration_cast<TimeMillis>(GetBootTimeNs());
 }
 
 inline TimeMillis GetWallTimeMs() {
@@ -177,6 +201,39 @@ inline struct timespec ToPosixTimespec(TimeMillis time) {
   ts.tv_sec = time_s;
   ts.tv_nsec = (static_cast<long>(time.count()) - time_s * 1000L) * 1000000L;
   return ts;
+}
+
+std::string GetTimeFmt(const std::string& fmt);
+
+inline int64_t TimeGm(struct tm* tms) {
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+  return static_cast<int64_t>(_mkgmtime(tms));
+#elif PERFETTO_BUILDFLAG(PERFETTO_OS_NACL)
+  // NaCL has no timegm.
+  if (tms)  // Kinda if (true), but avoids "mark as noreturn" errors.
+    PERFETTO_FATAL("timegm not supported");
+  return -1;
+#else
+  return static_cast<int64_t>(timegm(tms));
+#endif
+}
+
+// Creates a time_t-compatible timestamp (seconds since epoch) from a tuple of
+// y-m-d-h-m-s. It's a saner version of timegm(). Some remarks:
+// The year is just the actual year (it's Y-1900 in timegm()).
+// The month ranges 1-12 (it's 0-11 in timegm()).
+inline int64_t MkTime(int year, int month, int day, int h, int m, int s) {
+  PERFETTO_DCHECK(year >= 1900);
+  PERFETTO_DCHECK(month > 0 && month <= 12);
+  PERFETTO_DCHECK(day > 0 && day <= 31);
+  struct tm tms {};
+  tms.tm_year = year - 1900;
+  tms.tm_mon = month - 1;
+  tms.tm_mday = day;
+  tms.tm_hour = h;
+  tms.tm_min = m;
+  tms.tm_sec = s;
+  return TimeGm(&tms);
 }
 
 }  // namespace base

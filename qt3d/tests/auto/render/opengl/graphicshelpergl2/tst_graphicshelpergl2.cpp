@@ -1,45 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DRender/qrendertargetoutput.h>
 #include <Qt3DRender/private/uniform_p.h>
 #include <graphicshelpergl2_p.h>
 #include <Qt3DRender/private/attachmentpack_p.h>
-#include <QtOpenGLExtensions/QOpenGLExtensions>
 #include <QOpenGLContext>
+#include <QOpenGLVersionFunctionsFactory>
 #include <QOpenGLBuffer>
 #include <QOpenGLFunctions_2_0>
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
 #include <QSurfaceFormat>
 
-#ifndef QT_OPENGL_ES_2
+#if !QT_CONFIG(opengles2)
 
 #define TEST_SHOULD_BE_PERFORMED 1
 
@@ -153,11 +129,8 @@ private Q_SLOTS:
             return;
         }
 
-        if ((m_func = m_glContext.versionFunctions<QOpenGLFunctions_2_0>()) != nullptr) {
-            if (m_glContext.hasExtension(QByteArrayLiteral("GL_ARB_framebuffer_object"))) {
-                m_fboFuncs = new QOpenGLExtension_ARB_framebuffer_object();
-                m_fboFuncs->initializeOpenGLFunctions();
-            }
+        if ((m_func = QOpenGLVersionFunctionsFactory::get<QOpenGLFunctions_2_0>()) != nullptr) {
+            m_extraFunctions = m_glContext.extraFunctions();
             m_glHelper.initializeHelper(&m_glContext, m_func);
             m_initializationSuccessful = true;
         }
@@ -195,12 +168,9 @@ private Q_SLOTS:
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
 
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
-
         // GIVEN
         GLuint fboId;
-        m_fboFuncs->glGenFramebuffers(1, &fboId);
+        m_extraFunctions->glGenFramebuffers(1, &fboId);
 
         Attachment attachment;
         attachment.m_point = QRenderTargetOutput::Color0;
@@ -209,7 +179,7 @@ private Q_SLOTS:
         QVERIFY(fboId != 0);
 
         // WHEN
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
 
         QOpenGLTexture texture(QOpenGLTexture::Target2D);
         texture.setSize(512, 512);
@@ -226,33 +196,31 @@ private Q_SLOTS:
         m_glHelper.bindFrameBufferAttachment(&texture, attachment);
 
         // THEN
-        GLenum status = m_fboFuncs->glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        GLenum status = m_extraFunctions->glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
         QVERIFY(status == GL_FRAMEBUFFER_COMPLETE);
 
         error = m_func->glGetError();
         QVERIFY(error == 0);
         GLint textureAttachmentId = 0;
-        m_fboFuncs->glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER,
+        m_extraFunctions->glGetFramebufferAttachmentParameteriv(GL_DRAW_FRAMEBUFFER,
                                                       GL_COLOR_ATTACHMENT0,
                                                       GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
                                                       &textureAttachmentId);
         QCOMPARE(GLuint(textureAttachmentId), texture.textureId());
 
         // Restore state
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        m_fboFuncs->glDeleteFramebuffers(1, &fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        m_extraFunctions->glDeleteFramebuffers(1, &fboId);
     }
 
     void bindFrameBufferObject()
     {
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
 
         // GIVEN
         GLuint fboId;
-        m_fboFuncs->glGenFramebuffers(1, &fboId);
+        m_extraFunctions->glGenFramebuffers(1, &fboId);
 
         // THEN
         QVERIFY(fboId != 0);
@@ -288,7 +256,7 @@ private Q_SLOTS:
         QVERIFY(GLuint(boundindFBOId) == fboId);
 
         // Cleanup
-        m_fboFuncs->glDeleteFramebuffers(1, &fboId);
+        m_extraFunctions->glDeleteFramebuffers(1, &fboId);
     }
 
     void bindShaderStorageBlock()
@@ -341,15 +309,13 @@ private Q_SLOTS:
     {
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
 
         // GIVEN
         GLuint fboId;
-        m_fboFuncs->glGenFramebuffers(1, &fboId);
+        m_extraFunctions->glGenFramebuffers(1, &fboId);
 
         // WHEN
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
 
         // THEN
         GLint boundBuffer = 0;
@@ -360,25 +326,23 @@ private Q_SLOTS:
         QCOMPARE(m_glHelper.boundFrameBufferObject(), fboId);
 
         // Reset state
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        m_fboFuncs->glDeleteFramebuffers(1, &fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        m_extraFunctions->glDeleteFramebuffers(1, &fboId);
     }
 
     void checkFrameBufferComplete()
     {
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
 
         // GIVEN
         GLuint fboId;
-        m_fboFuncs->glGenFramebuffers(1, &fboId);
+        m_extraFunctions->glGenFramebuffers(1, &fboId);
 
         Attachment attachment;
         attachment.m_point = QRenderTargetOutput::Color0;
 
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
 
         QOpenGLTexture texture(QOpenGLTexture::Target2D);
         texture.setSize(512, 512);
@@ -390,14 +354,14 @@ private Q_SLOTS:
         m_glHelper.bindFrameBufferAttachment(&texture, attachment);
 
         // THEN
-        GLenum status = m_fboFuncs->glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        GLenum status = m_extraFunctions->glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
         QVERIFY(status == GL_FRAMEBUFFER_COMPLETE);
 
         QVERIFY(m_glHelper.checkFrameBufferComplete());
 
         // Restore
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        m_fboFuncs->glDeleteFramebuffers(1, &fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        m_extraFunctions->glDeleteFramebuffers(1, &fboId);
     }
 
     void clearBufferf()
@@ -411,8 +375,6 @@ private Q_SLOTS:
     {
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
 
         // WHEN
         const GLuint fboId = m_glHelper.createFrameBufferObject();
@@ -421,7 +383,7 @@ private Q_SLOTS:
         QVERIFY(fboId != 0);
 
         // Restore
-        m_fboFuncs->glDeleteFramebuffers(1, &fboId);
+        m_extraFunctions->glDeleteFramebuffers(1, &fboId);
     }
 
     void depthMask()
@@ -513,18 +475,15 @@ private Q_SLOTS:
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
 
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
-
         // GIVEN
         GLuint fboId;
-        m_fboFuncs->glGenFramebuffers(1, &fboId);
+        m_extraFunctions->glGenFramebuffers(1, &fboId);
 
         // THEN
         QVERIFY(fboId != 0);
 
         // WHEN
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fboId);
         QOpenGLTexture *textures[4];
 
         // Create 4 attachments
@@ -548,7 +507,7 @@ private Q_SLOTS:
             m_glHelper.bindFrameBufferAttachment(texture, attachment);
         }
         // THEN
-        GLenum status = m_fboFuncs->glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+        GLenum status = m_extraFunctions->glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
         QVERIFY(status == GL_FRAMEBUFFER_COMPLETE);
 
         // WHEN
@@ -577,8 +536,8 @@ private Q_SLOTS:
         QCOMPARE(enumValue, GL_COLOR_ATTACHMENT0 + newBufferEnum);
 
         // Restore
-        m_fboFuncs->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        m_fboFuncs->glDeleteFramebuffers(1, &fboId);
+        m_extraFunctions->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        m_extraFunctions->glDeleteFramebuffers(1, &fboId);
         for (int i = 0; i < 4; ++i)
             delete textures[i];
     }
@@ -737,10 +696,10 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        QVector<ShaderAttribute> activeAttributes = m_glHelper.programAttributesAndLocations(shaderProgram.programId());
+        std::vector<ShaderAttribute> activeAttributes = m_glHelper.programAttributesAndLocations(shaderProgram.programId());
 
         // THEN
-        QCOMPARE(activeAttributes.size(), 2);
+        QCOMPARE(activeAttributes.size(), 2U);
         std::sort(activeAttributes.begin(), activeAttributes.end(), [] (const ShaderAttribute &a, const ShaderAttribute &b) { return a.m_name < b.m_name; });
 
         const ShaderAttribute attribute1 = activeAttributes.at(0);
@@ -768,10 +727,10 @@ private Q_SLOTS:
         QVERIFY(shaderProgram.link());
 
         // WHEN
-        QVector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
+        std::vector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
 
         // THEN
-        QCOMPARE(activeUniforms.size(), 4);
+        QCOMPARE(activeUniforms.size(), 4U);
         std::sort(activeUniforms.begin(), activeUniforms.end(), [] (const ShaderUniform &a, const ShaderUniform &b) { return a.m_name < b.m_name; });
 
         const ShaderUniform uniform1 = activeUniforms.at(0);
@@ -826,11 +785,9 @@ private Q_SLOTS:
     {
         if (!m_initializationSuccessful)
             QSKIP("Initialization failed, OpenGL 2.0 functions not supported");
-        if (!m_fboFuncs)
-            QSKIP("FBO not supported by OpenGL 2.0");
-                // GIVEN
+        // GIVEN
         GLuint fboId;
-        m_fboFuncs->glGenFramebuffers(1, &fboId);
+        m_extraFunctions->glGenFramebuffers(1, &fboId);
 
         // THEN
         QVERIFY(fboId != 0);
@@ -839,7 +796,7 @@ private Q_SLOTS:
         m_glHelper.releaseFrameBufferObject(fboId);
 
         // THEN
-        QVERIFY(!m_fboFuncs->glIsFramebuffer(fboId));
+        QVERIFY(!m_extraFunctions->glIsFramebuffer(fboId));
     }
 
     void setMSAAEnabled()
@@ -915,7 +872,6 @@ private Q_SLOTS:
 
     void supportsFeature()
     {
-        SUPPORTS_FEATURE(GraphicsHelperInterface::MRT, (m_fboFuncs != nullptr));
         SUPPORTS_FEATURE(GraphicsHelperInterface::UniformBufferObject, false);
         SUPPORTS_FEATURE(GraphicsHelperInterface::BindableFragmentOutputs, false);
         SUPPORTS_FEATURE(GraphicsHelperInterface::PrimitiveRestart, false);
@@ -989,7 +945,7 @@ private Q_SLOTS:
 
         GLint location = shaderProgram.uniformLocation(name);
         // WHEN
-        const QVector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
+        const std::vector<ShaderUniform> activeUniforms = m_glHelper.programUniformsAndLocations(shaderProgram.programId());
         ShaderUniform matchingUniform;
         for (const ShaderUniform &u : activeUniforms) {
             if (u.m_location == location) {
@@ -1581,7 +1537,7 @@ private:
     QOpenGLContext m_glContext;
     GraphicsHelperGL2 m_glHelper;
     QOpenGLFunctions_2_0 *m_func = nullptr;
-    QOpenGLExtension_ARB_framebuffer_object *m_fboFuncs = nullptr;
+    QOpenGLExtraFunctions *m_extraFunctions;
     bool m_initializationSuccessful = false;
 };
 

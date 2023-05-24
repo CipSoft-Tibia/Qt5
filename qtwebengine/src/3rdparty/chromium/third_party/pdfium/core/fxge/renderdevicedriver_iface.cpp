@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,13 @@
 #include "core/fxge/renderdevicedriver_iface.h"
 
 #include "core/fxcrt/fx_coordinates.h"
-#include "core/fxge/cfx_pathdata.h"
+#include "core/fxge/cfx_path.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 
 RenderDeviceDriverIface::~RenderDeviceDriverIface() = default;
 
 bool RenderDeviceDriverIface::SetClip_PathStroke(
-    const CFX_PathData* pPathData,
+    const CFX_Path& path,
     const CFX_Matrix* pObject2Device,
     const CFX_GraphStateData* pGraphState) {
   return false;
@@ -50,8 +50,7 @@ bool RenderDeviceDriverIface::ContinueDIBits(CFX_ImageRenderer* handle,
 }
 
 bool RenderDeviceDriverIface::DrawDeviceText(
-    int nChars,
-    const TextCharPos* pCharPos,
+    pdfium::span<const TextCharPos> pCharPos,
     CFX_Font* pFont,
     const CFX_Matrix& mtObject2Device,
     float font_size,
@@ -82,8 +81,10 @@ bool RenderDeviceDriverIface::SetBitsWithMask(
     BlendMode blend_type) {
   return false;
 }
+
+void RenderDeviceDriverIface::SetGroupKnockout(bool group_knockout) {}
 #endif
 
-#if defined(_SKIA_SUPPORT_) || defined(_SKIA_SUPPORT_PATHS_)
+#ifdef _SKIA_SUPPORT_
 void RenderDeviceDriverIface::Flush() {}
 #endif

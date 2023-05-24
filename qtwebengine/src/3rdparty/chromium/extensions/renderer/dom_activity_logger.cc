@@ -1,18 +1,20 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/renderer/dom_activity_logger.h"
 
+#include <memory>
 #include <utility>
 
 #include "content/public/renderer/render_thread.h"
 #include "content/public/renderer/v8_value_converter.h"
 #include "extensions/common/dom_action_types.h"
-#include "extensions/common/extension_messages.h"
 #include "extensions/renderer/activity_log_converter_strategy.h"
+#include "ipc/ipc_sync_channel.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/platform/web_url.h"
+#include "v8/include/v8-isolate.h"
 
 using blink::WebString;
 using blink::WebURL;
@@ -25,8 +27,7 @@ namespace {
 // conversion succeeds.
 void AppendV8Value(const std::string& api_name,
                    const v8::Local<v8::Value>& v8_value,
-                   base::ListValue* list) {
-  DCHECK(list);
+                   base::Value::List& list) {
   std::unique_ptr<content::V8ValueConverter> converter =
       content::V8ValueConverter::Create();
   ActivityLogConverterStrategy strategy;
@@ -35,17 +36,16 @@ void AppendV8Value(const std::string& api_name,
   std::unique_ptr<base::Value> value(converter->FromV8Value(
       v8_value, v8::Isolate::GetCurrent()->GetCurrentContext()));
 
-  if (value.get())
-    list->Append(std::move(value));
+  if (value)
+    list.Append(base::Value::FromUniquePtrValue(std::move(value)));
 }
 
 }  // namespace
 
 DOMActivityLogger::DOMActivityLogger(const std::string& extension_id)
-    : extension_id_(extension_id) {
-}
+    : extension_id_(extension_id) {}
 
-DOMActivityLogger::~DOMActivityLogger() {}
+DOMActivityLogger::~DOMActivityLogger() = default;
 
 void DOMActivityLogger::AttachToWorld(int32_t world_id,
                                       const std::string& extension_id) {
@@ -62,9 +62,9 @@ void DOMActivityLogger::AttachToWorld(int32_t world_id,
 void DOMActivityLogger::LogGetter(const WebString& api_name,
                                   const WebURL& url,
                                   const WebString& title) {
-  SendDomActionMessage(api_name.Utf8(), url, title.Utf16(),
-                       DomActionType::GETTER,
-                       std::unique_ptr<base::ListValue>(new base::ListValue()));
+  GetRendererHost()->AddDOMActionToActivityLog(
+      extension_id_, api_name.Utf8(), base::Value::List(), url, title.Utf16(),
+      DomActionType::GETTER);
 }
 
 void DOMActivityLogger::LogSetter(const WebString& api_name,
@@ -79,13 +79,14 @@ void DOMActivityLogger::logSetter(const WebString& api_name,
                                   const v8::Local<v8::Value>& old_value,
                                   const WebURL& url,
                                   const WebString& title) {
-  std::unique_ptr<base::ListValue> args(new base::ListValue);
+  base::Value::List args;
   std::string api_name_utf8 = api_name.Utf8();
-  AppendV8Value(api_name_utf8, new_value, args.get());
+  AppendV8Value(api_name_utf8, new_value, args);
   if (!old_value.IsEmpty())
-    AppendV8Value(api_name_utf8, old_value, args.get());
-  SendDomActionMessage(api_name_utf8, url, title.Utf16(), DomActionType::SETTER,
-                       std::move(args));
+    AppendV8Value(api_name_utf8, old_value, args);
+  GetRendererHost()->AddDOMActionToActivityLog(
+      extension_id_, api_name_utf8, std::move(args), url, title.Utf16(),
+      DomActionType::SETTER);
 }
 
 void DOMActivityLogger::LogMethod(const WebString& api_name,
@@ -93,12 +94,13 @@ void DOMActivityLogger::LogMethod(const WebString& api_name,
                                   const v8::Local<v8::Value>* argv,
                                   const WebURL& url,
                                   const WebString& title) {
-  std::unique_ptr<base::ListValue> args(new base::ListValue);
+  base::Value::List args;
   std::string api_name_utf8 = api_name.Utf8();
   for (int i = 0; i < argc; ++i)
-    AppendV8Value(api_name_utf8, argv[i], args.get());
-  SendDomActionMessage(api_name_utf8, url, title.Utf16(), DomActionType::METHOD,
-                       std::move(args));
+    AppendV8Value(api_name_utf8, argv[i], args);
+  GetRendererHost()->AddDOMActionToActivityLog(
+      extension_id_, api_name_utf8, std::move(args), url, title.Utf16(),
+      DomActionType::METHOD);
 }
 
 void DOMActivityLogger::LogEvent(const WebString& event_name,
@@ -106,28 +108,21 @@ void DOMActivityLogger::LogEvent(const WebString& event_name,
                                  const WebString* argv,
                                  const WebURL& url,
                                  const WebString& title) {
-  std::unique_ptr<base::ListValue> args(new base::ListValue);
+  base::Value::List args;
   std::string event_name_utf8 = event_name.Utf8();
   for (int i = 0; i < argc; ++i)
-    args->AppendString(argv[i].Utf8());
-  SendDomActionMessage(event_name_utf8, url, title.Utf16(),
-                       DomActionType::METHOD, std::move(args));
+    args.Append(argv[i].Utf8());
+  GetRendererHost()->AddDOMActionToActivityLog(
+      extension_id_, event_name_utf8, std::move(args), url, title.Utf16(),
+      DomActionType::METHOD);
 }
 
-void DOMActivityLogger::SendDomActionMessage(
-    const std::string& api_call,
-    const GURL& url,
-    const base::string16& url_title,
-    DomActionType::Type call_type,
-    std::unique_ptr<base::ListValue> args) {
-  ExtensionHostMsg_DOMAction_Params params;
-  params.api_call = api_call;
-  params.url = url;
-  params.url_title = url_title;
-  params.call_type = call_type;
-  params.arguments.Swap(args.get());
-  content::RenderThread::Get()->Send(
-      new ExtensionHostMsg_AddDOMActionToActivityLog(extension_id_, params));
+mojom::RendererHost* DOMActivityLogger::GetRendererHost() {
+  if (!renderer_host_.is_bound()) {
+    content::RenderThread::Get()->GetChannel()->GetRemoteAssociatedInterface(
+        &renderer_host_);
+  }
+  return renderer_host_.get();
 }
 
 }  // namespace extensions

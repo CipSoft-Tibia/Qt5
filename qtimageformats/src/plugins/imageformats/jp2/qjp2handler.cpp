@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Petroules Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the JP2 plugins in the Qt ImageFormats module.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Petroules Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qjp2handler_p.h"
 
@@ -342,7 +306,8 @@ Jpeg2000JasperReader::Jpeg2000JasperReader(QIODevice *iod, SubFormat format)
 #else
     jas_conf_clear();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    jas_conf_set_max_mem_usage(QImageReader::allocationLimit() * 1024 * 1024);
+    if (QImageReader::allocationLimit() > 0)
+        jas_conf_set_max_mem_usage(qsizetype(QImageReader::allocationLimit()) * 1024 * 1024);
 #else
     // 128MB seems to be enough.
     jas_conf_set_max_mem_usage(128 * 1024 * 1024);
@@ -604,17 +569,13 @@ bool Jpeg2000JasperReader::read(QImage *pImage)
     }
 
     // Create a QImage of the correct type
-    if (jasperColorspaceFamily == JAS_CLRSPC_FAM_RGB) {
-        qtImage = QImage(qtWidth, qtHeight, hasAlpha
-                                                ? QImage::Format_ARGB32
-                                                : QImage::Format_RGB32);
-    } else if (jasperColorspaceFamily == JAS_CLRSPC_FAM_GRAY) {
-        if (hasAlpha) {
-            qtImage = QImage(qtWidth, qtHeight, QImage::Format_ARGB32);
-        } else {
-            qtImage = QImage(qtWidth, qtHeight, QImage::Format_Grayscale8);
-        }
-    }
+    QImage::Format qtFormat = QImage::Format_Invalid;
+    if (jasperColorspaceFamily == JAS_CLRSPC_FAM_RGB)
+        qtFormat = hasAlpha ? QImage::Format_ARGB32 : QImage::Format_RGB32;
+    else if (jasperColorspaceFamily == JAS_CLRSPC_FAM_GRAY)
+        qtFormat = hasAlpha ? QImage::Format_ARGB32 : QImage::Format_Grayscale8;
+    if (!QImageIOHandler::allocateImage(QSize(qtWidth, qtHeight), qtFormat, &qtImage))
+        return false;
 
     // Copy data
     if (oddComponentSubsampling) {
@@ -1230,7 +1191,7 @@ void Jpeg2000JasperReader::printMetadata(jas_image_t *image)
 
     qDebug("Component metadata:");
 
-    for (int c = 0; c < jas_image_numcmpts(image); ++c) {
+    for (int c = 0; c < static_cast<int>(jas_image_numcmpts(image)); ++c) {
         qDebug("Component %d:", c);
         qDebug("    Component type: %ld", long(jas_image_cmpttype(image, c)));
         qDebug("    Width: %ld", long(jas_image_cmptwidth(image, c)));

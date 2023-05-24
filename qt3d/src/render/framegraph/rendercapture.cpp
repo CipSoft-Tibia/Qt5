@@ -1,42 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <Qt3DRender/private/qrendercapture_p.h>
 #include <Qt3DRender/private/rendercapture_p.h>
-#include <Qt3DCore/qpropertyupdatedchange.h>
 #include <Qt3DCore/private/qaspectmanager_p.h>
 #include <Qt3DCore/private/qaspectjobmanager_p.h>
 
@@ -81,7 +47,7 @@ void RenderCapture::syncFromFrontEnd(const Qt3DCore::QNode *frontEnd, bool first
     FrameGraphNode::syncFromFrontEnd(frontEnd, firstTime);
 
     const QRenderCapturePrivate *d = static_cast<const QRenderCapturePrivate *>(QFrameGraphNodePrivate::get(node));
-    const auto newPendingsCaptures = std::move(d->m_pendingRequests);
+    const auto newPendingsCaptures = Qt3DCore::moveAndClear(d->m_pendingRequests);
     if (newPendingsCaptures.size() > 0) {
         m_requestedCaptures.append(newPendingsCaptures);
         markDirty(AbstractRenderer::FrameGraphDirty);
@@ -110,16 +76,12 @@ void RenderCapture::syncRenderCapturesToFrontend(Qt3DCore::QAspectManager *manag
     QRenderCapturePrivate *dfrontend = static_cast<QRenderCapturePrivate *>(Qt3DCore::QNodePrivate::get(frontend));
 
     QMutexLocker lock(&m_mutex);
-    for (const RenderCaptureDataPtr &data : qAsConst(m_renderCaptureData)) {
+    for (const RenderCaptureDataPtr &data : std::as_const(m_renderCaptureData)) {
         QPointer<QRenderCaptureReply> reply = dfrontend->takeReply(data.data()->captureId);
         // Note: QPointer has no operator bool, we must use isNull() to check it
         if (!reply.isNull()) {
             dfrontend->setImage(reply, data.data()->image);
             emit reply->completed();
-QT_WARNING_PUSH
-QT_WARNING_DISABLE_DEPRECATED
-            emit reply->completeChanged(true);
-QT_WARNING_POP
         }
     }
     m_renderCaptureData.clear();

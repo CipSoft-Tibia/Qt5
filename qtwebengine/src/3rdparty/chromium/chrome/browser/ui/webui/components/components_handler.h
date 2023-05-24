@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,15 +8,12 @@
 #include <memory>
 #include <string>
 
-#include "base/scoped_observer.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "build/build_config.h"
 #include "components/component_updater/component_updater_service.h"
 #include "components/update_client/update_client.h"
 #include "content/public/browser/web_ui_message_handler.h"
-
-namespace base {
-class ListValue;
-}
 
 // The handler for Javascript messages for the chrome://components/ page.
 class ComponentsHandler : public content::WebUIMessageHandler,
@@ -34,28 +31,33 @@ class ComponentsHandler : public content::WebUIMessageHandler,
   void OnJavascriptDisallowed() override;
 
   // Callback for the "requestComponentsData" message.
-  void HandleRequestComponentsData(const base::ListValue* args);
+  void HandleRequestComponentsData(const base::Value::List& args);
 
   // Callback for the "checkUpdate" message.
-  void HandleCheckUpdate(const base::ListValue* args);
+  void HandleCheckUpdate(const base::Value::List& args);
 
   // ServiceObserver implementation.
   void OnEvent(Events event, const std::string& id) override;
 
+#if BUILDFLAG(IS_CHROMEOS)
+  // Callback for the "crosUrlComponentsRedirect" message.
+  void HandleCrosUrlComponentsRedirect(const base::Value::List& args);
+#endif
+
  private:
-  static base::string16 ComponentEventToString(Events event);
-  static base::string16 ServiceStatusToString(
+  static std::u16string ComponentEventToString(Events event);
+  static std::u16string ServiceStatusToString(
       update_client::ComponentState state);
 
-  std::unique_ptr<base::ListValue> LoadComponents();
+  base::Value::List LoadComponents();
   void OnDemandUpdate(const std::string& component_id);
 
   // Weak pointer; injected for testing.
-  component_updater::ComponentUpdateService* const component_updater_;
+  const raw_ptr<component_updater::ComponentUpdateService> component_updater_;
 
-  ScopedObserver<component_updater::ComponentUpdateService,
-                 component_updater::ComponentUpdateService::Observer>
-      observer_{this};
+  base::ScopedObservation<component_updater::ComponentUpdateService,
+                          component_updater::ComponentUpdateService::Observer>
+      observation_{this};
 };
 
 #endif  // CHROME_BROWSER_UI_WEBUI_COMPONENTS_COMPONENTS_HANDLER_H_

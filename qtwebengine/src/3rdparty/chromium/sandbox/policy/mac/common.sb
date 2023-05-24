@@ -1,4 +1,4 @@
-; Copyright 2017 The Chromium Authors. All rights reserved.
+; Copyright 2017 The Chromium Authors
 ; Use of this source code is governed by a BSD-style license that can be
 ; found in the LICENSE file.
 (version 1)
@@ -15,7 +15,6 @@
 (define bundle-path "BUNDLE_PATH")
 (define component-path "COMPONENT_PATH")
 (define qt-prefix-path "QT_PREFIX_PATH")
-(define current-pid "CURRENT_PID")
 (define disable-sandbox-denial-logging "DISABLE_SANDBOX_DENIAL_LOGGING")
 (define enable-logging "ENABLE_LOGGING")
 (define executable-path "EXECUTABLE_PATH")
@@ -31,9 +30,6 @@
 (define filter-syscalls "FILTER_SYSCALLS")
 (define filter-syscalls-debug "FILTER_SYSCALLS_DEBUG")
 
-; Backwards compatibility for 10.10.
-(if (not (defined? 'path))
-  (define path literal))
 ; Backwards compatibility for 10.11.
 (if (not (defined? 'iokit-registry-entry-class))
   (define iokit-registry-entry-class iokit-user-client-class))
@@ -47,6 +43,9 @@
 
 ; Allow sending signals to self - https://crbug.com/20370
 (allow signal (target self))
+
+; TODO(rsesek): Lock down `(deny process-info*)`.
+(allow process-info-pidinfo (target self))
 
 ; Consumes a subpath and appends it to the user's homedir path.
 (define (user-homedir-path subpath)
@@ -66,8 +65,6 @@
       (global-name "com.apple.FontObjectsServer")
       (global-name "com.apple.fonts")
     )
-    (if (< os-version 1012)
-      (allow mach-lookup (global-name "com.apple.FontServer")))
     ; To allow accessing downloaded and other hidden fonts in
     ; /System/Library/Asssets/com_apple_MobileAsset_Font*.
     ; (https://crbug.com/662686)
@@ -118,6 +115,40 @@
 ; All processes can read the bundle contents.
 (allow file-read* (subpath (param bundle-path)))
 
+; A sandbox bug on macOS 11 and 12 causes the sandbox to see any paths within
+; the data volume (/System/Volumes/Data) outside of system firm link locations
+; (listed in /usr/share/firmlinks) as though they were not on the data volume,
+; causing it to deny access to user paths containing the data volume mount point
+; as a prefix. This is filed as https://openradar.appspot.com/FB9738355 and
+; tracked at https://crbug.com/1266490. Although macOS 10.15 also has the root
+; volume split, this bug does not appear to affect that OS version.
+;
+; When the bundle path appears in the data volume, this causes the sandbox to
+; deny access to the bundle.
+;
+; This is not a problem in normal use, as typical bundle paths, while on the
+; data volume, will be in system firm link locations such as /Applications or
+; /Users. As a workaround for other cases where the bundle may be present on the
+; data volume but not in a system firm link location, configure the sandbox with
+; an alternate bundle path so that it permits access to the bundle.
+(define (string-prefix? str prefix)
+  (let ((l (string-length prefix)))
+    (if (< (string-length str) l)
+      #f
+      (equal? (substring str 0 l) prefix)
+    )
+  )
+)
+(define data-volume-root "/System/Volumes/Data/")
+(when (string-prefix? (param bundle-path) data-volume-root)
+  (define (strip-leading-chars str count)
+    (substring str count (string-length str))
+  )
+  (allow file-read*
+         (subpath (strip-leading-chars (param bundle-path)
+                                       (- (string-length data-volume-root) 1))))
+)
+
 ; Allow reads of system libraries and frameworks.
 (allow file-read*
   (subpath "/System/Library/CoreServices/CoreTypes.bundle")
@@ -147,12 +178,8 @@
   (path "/dev/urandom")
 )
 
-(if (>= os-version 1013)
-  (begin (allow file-read* (subpath "/private/var/db/timezone"))
-         (allow file-read-data (subpath "/usr/share/zoneinfo.default"))))
-
-(if (< os-version 1013)
-  (allow file-read-data (subpath "/usr/share/zoneinfo")))
+(allow file-read* (subpath "/private/var/db/timezone"))
+(allow file-read-data (subpath "/usr/share/zoneinfo.default"))
 
 ; Reads from /Library.
 (allow file-read-data
@@ -169,6 +196,16 @@
   (path "/System/Library/CoreServices/SystemVersion.plist")
   (path "/System/Library/CoreServices/SystemVersionCompat.plist") ; https://crbug.com/1108832
   (path "/System/Library/CoreServices/checkfixlist")
+)
+
+; From /System/Library/Sandbox/Profiles/dyld-support.sb on macOS 13.
+(if (>= os-version 1300)
+  (allow file-read* file-map-executable
+    (subpath "/System/Cryptexes/App")
+    (subpath "/System/Cryptexes/OS")
+    (subpath "/System/Volumes/Preboot/Cryptexes/App/System")
+    (subpath "/System/Volumes/Preboot/Cryptexes/OS")
+  )
 )
 
 ; Reads from /usr.
@@ -217,7 +254,6 @@
   (sysctl-name "kern.usrstack64")
   (sysctl-name "kern.version")
   (sysctl-name "sysctl.proc_cputype")
-  (sysctl-name (string-append "kern.proc.pid." (param current-pid)))
 )
 
 (allow network-outbound

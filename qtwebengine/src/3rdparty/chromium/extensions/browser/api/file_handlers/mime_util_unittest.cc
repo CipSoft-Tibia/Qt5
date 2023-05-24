@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,19 @@
 #include <string>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/string_util.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/test/test_utils.h"
 #include "extensions/browser/api/extensions_api_client.h"
 #include "extensions/browser/extensions_test.h"
+#include "storage/browser/quota/quota_manager_proxy.h"
 #include "storage/browser/test/test_file_system_context.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -47,8 +49,8 @@ storage::FileSystemURL CreateNativeLocalFileSystemURL(
     storage::FileSystemContext* context,
     const base::FilePath local_path) {
   return context->CreateCrackedFileSystemURL(
-      url::Origin::Create(GURL(kOrigin)), storage::kFileSystemTypeNativeLocal,
-      local_path);
+      blink::StorageKey::CreateFromStringForTesting(kOrigin),
+      storage::kFileSystemTypeLocal, local_path);
 }
 
 }  // namespace
@@ -61,7 +63,7 @@ class FileHandlersMimeUtilTest : public ExtensionsTest {
   void SetUp() override {
     ExtensionsTest::SetUp();
     file_system_context_ = storage::CreateFileSystemContextForTesting(
-        nullptr, browser_context()->GetPath());
+        /*quota_manager_proxy=*/nullptr, browser_context()->GetPath());
 
     const std::string kSampleContent = "<html><body></body></html>";
     base::FilePath temp_filename = CreateTemporaryFile(kSampleContent);
@@ -70,13 +72,6 @@ class FileHandlersMimeUtilTest : public ExtensionsTest {
     html_mime_file_path_ =
         temp_filename.AddExtension(FILE_PATH_LITERAL(".html"));
     EXPECT_TRUE(base::Move(temp_filename, html_mime_file_path_));
-
-    // First 16 bytes of //media/test/data/bear.amr
-    const std::string kSampleAmrContent =
-        "\x23\x21\x41\x4d\x52\x0a\x3c\x53\x0a\x7c\xe8\xb8\x41\xa5\x80\xca";
-    temp_filename = CreateTemporaryFile(kSampleAmrContent);
-    amr_mime_file_path_ = temp_filename.AddExtension(FILE_PATH_LITERAL(".amr"));
-    EXPECT_TRUE(base::Move(temp_filename, amr_mime_file_path_));
   }
 
   base::FilePath CreateTemporaryFile(const std::string& contents) {
@@ -91,7 +86,6 @@ class FileHandlersMimeUtilTest : public ExtensionsTest {
   ExtensionsAPIClient extensions_api_client_;
   scoped_refptr<storage::FileSystemContext> file_system_context_;
   base::FilePath html_mime_file_path_;
-  base::FilePath amr_mime_file_path_;
 };
 
 TEST_F(FileHandlersMimeUtilTest, GetMimeTypeForLocalPath) {
@@ -121,17 +115,6 @@ TEST_F(FileHandlersMimeUtilTest, GetMimeTypeForLocalPath) {
                             base::BindOnce(&OnMimeTypeResult, &result));
     content::RunAllTasksUntilIdle();
     EXPECT_EQ("text/html", result);
-  }
-
-  {
-    std::string result;
-    GetMimeTypeForLocalPath(browser_context(), amr_mime_file_path_,
-                            base::BindOnce(&OnMimeTypeResult, &result));
-    content::RunAllTasksUntilIdle();
-    // The MIME type for AMR files is supposed to be "audio/AMR" (note: upper
-    // case). However, platforms are inconsistent in this and some, including
-    // chrome, use lower case.
-    EXPECT_EQ("audio/amr", base::ToLowerASCII(result));
   }
 
   {

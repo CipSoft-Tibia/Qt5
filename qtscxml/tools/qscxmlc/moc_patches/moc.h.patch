@@ -1,0 +1,95 @@
+--- .upstream/moc.h	2023-08-11 10:37:23.940392525 +0200
++++ moc.h	2023-08-21 11:17:37.751825117 +0200
+@@ -4,15 +4,12 @@
+ #ifndef MOC_H
+ #define MOC_H
+ 
+-#include "parser.h"
+-#include <qstringlist.h>
+-#include <qmap.h>
+-#include <qpair.h>
+-#include <qjsondocument.h>
+-#include <qjsonarray.h>
+-#include <qjsonobject.h>
+-#include <qversionnumber.h>
+-#include <stdio.h>
++// -- QtScxml
++#include <QtCore/qmap.h>
++#include <QtCore/qpair.h>
++#include <QtCore/qjsondocument.h>
++#include <QtCore/qjsonarray.h>
++// -- QtScxml
+ 
+ #include <private/qtools_p.h>
+ 
+@@ -24,16 +21,18 @@
+ {
+     enum ReferenceType { NoReference, Reference, RValueReference, Pointer };
+ 
+-    inline Type() : isVolatile(false), isScoped(false), firstToken(NOTOKEN), referenceType(NoReference) {}
++    inline Type() : isVolatile(false), isScoped(false), /* firstToken(NOTOKEN) -- QtScxml ,*/ referenceType(NoReference) {}
+     inline explicit Type(const QByteArray &_name)
+-        : name(_name), rawName(name), isVolatile(false), isScoped(false), firstToken(NOTOKEN), referenceType(NoReference) {}
++        : name(_name), rawName(name), isVolatile(false), isScoped(false), /* firstToken(NOTOKEN) -- QtScxml ,*/ referenceType(NoReference) {}
+     QByteArray name;
+     //When used as a return type, the type name may be modified to remove the references.
+     // rawName is the type as found in the function signature
+     QByteArray rawName;
+     uint isVolatile : 1;
+     uint isScoped : 1;
++#if 0 // -- QtScxml
+     Token firstToken;
++#endif // -- QtScxml
+     ReferenceType referenceType;
+ };
+ Q_DECLARE_TYPEINFO(Type, Q_RELOCATABLE_TYPE);
+@@ -83,8 +82,9 @@
+     bool inlineCode = false;
+     bool wasCloned = false;
+ 
++#if 0 // -- QtScxml
+     bool returnTypeIsVolatile = false;
+-
++#endif // -- QtScxml
+     bool isCompat = false;
+     bool isInvokable = false;
+     bool isScriptable = false;
+@@ -98,6 +98,11 @@
+ 
+     QJsonObject toJson() const;
+     static void accessToJson(QJsonObject *obj, Access acs);
++
++// -- QtScxml
++    QByteArray mangledName;
++    const char *implementation = nullptr;
++// -- QtScxml
+ };
+ Q_DECLARE_TYPEINFO(FunctionDef, Q_RELOCATABLE_TYPE);
+ 
+@@ -125,6 +130,10 @@
+     qsizetype location = -1; // token index, used for error reporting
+ 
+     QJsonObject toJson() const;
++
++// -- QtScxml
++    QByteArray mangledName;
++// -- QtScxml
+ };
+ Q_DECLARE_TYPEINFO(PropertyDef, Q_RELOCATABLE_TYPE);
+ 
+@@ -198,6 +207,7 @@
+ };
+ Q_DECLARE_TYPEINFO(NamespaceDef, Q_RELOCATABLE_TYPE);
+ 
++#if 0 // -- QtScxml
+ class Moc : public Parser
+ {
+ public:
+@@ -283,6 +293,7 @@
+     void checkProperties(ClassDef* cdef);
+     bool testForFunctionModifiers(FunctionDef *def);
+ };
++#endif // -- QtScxml
+ 
+ inline QByteArray noRef(const QByteArray &type)
+ {

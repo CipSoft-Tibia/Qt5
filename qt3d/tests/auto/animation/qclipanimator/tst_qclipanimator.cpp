@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QTest>
@@ -34,11 +9,9 @@
 #include <Qt3DAnimation/qclipanimator.h>
 #include <Qt3DAnimation/private/qanimationclip_p.h>
 #include <Qt3DAnimation/private/qclipanimator_p.h>
-#include <Qt3DCore/qnodecreatedchange.h>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
 #include <QObject>
 #include <QSignalSpy>
-#include <testpostmanarbiter.h>
+#include <testarbiter.h>
 
 class tst_QClipAnimator : public QObject
 {
@@ -80,7 +53,7 @@ private Q_SLOTS:
             QVERIFY(spy.isValid());
             QCOMPARE(animator.clip(), newValue);
             QCOMPARE(newValue->parent(), &animator);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -88,7 +61,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(animator.clip(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
 
         {
@@ -101,7 +74,7 @@ private Q_SLOTS:
             QVERIFY(spy.isValid());
             QCOMPARE(animator.channelMapper(), newValue);
             QCOMPARE(newValue->parent(), &animator);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -109,7 +82,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(animator.channelMapper(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
 
         {
@@ -122,7 +95,7 @@ private Q_SLOTS:
             QVERIFY(spy.isValid());
             QCOMPARE(animator.clock(), clock);
             QCOMPARE(clock->parent(), &animator);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -130,7 +103,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(animator.clock(), clock);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
 
         {
@@ -142,7 +115,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(animator.loopCount(), newValue);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -150,7 +123,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(animator.loopCount(), newValue);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
     }
 
@@ -181,61 +154,6 @@ private Q_SLOTS:
         }
     }
 
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DAnimation::QClipAnimator animator;
-        auto clip = new Qt3DAnimation::QAnimationClipLoader();
-        animator.setClip(clip);
-        auto mapper = new Qt3DAnimation::QChannelMapper();
-        animator.setChannelMapper(mapper);
-        auto clock = new Qt3DAnimation::QClock();
-        animator.setClock(clock);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&animator);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 4);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DAnimation::QClipAnimatorData>>(creationChanges.first());
-            const Qt3DAnimation::QClipAnimatorData data = creationChangeData->data;
-
-            QCOMPARE(animator.id(), creationChangeData->subjectId());
-            QCOMPARE(animator.isEnabled(), true);
-            QCOMPARE(animator.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(animator.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(animator.clip()->id(), data.clipId);
-            QCOMPARE(animator.channelMapper()->id(), data.mapperId);
-            QCOMPARE(animator.clock()->id(), data.clockId);
-            QCOMPARE(animator.loopCount(), data.loops);
-        }
-
-        // WHEN
-        animator.setEnabled(false);
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&animator);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 4);
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DAnimation::QClipAnimatorData>>(creationChanges.first());
-
-            QCOMPARE(animator.id(), creationChangeData->subjectId());
-            QCOMPARE(animator.isEnabled(), false);
-            QCOMPARE(animator.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(animator.metaObject(), creationChangeData->metaObject());
-        }
-    }
-
     void checkPropertyUpdate()
     {
         // GIVEN
@@ -249,10 +167,10 @@ private Q_SLOTS:
             animator.setClip(clip);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &animator);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &animator);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -260,7 +178,7 @@ private Q_SLOTS:
             animator.setClip(clip);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
         // GIVEN
@@ -270,10 +188,10 @@ private Q_SLOTS:
             animator.setChannelMapper(mapper);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &animator);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &animator);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -281,7 +199,7 @@ private Q_SLOTS:
             animator.setChannelMapper(mapper);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
         // GIVEN
@@ -291,10 +209,10 @@ private Q_SLOTS:
             animator.setClock(clock);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &animator);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &animator);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -302,7 +220,7 @@ private Q_SLOTS:
             animator.setClock(clock);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
         {
@@ -310,10 +228,10 @@ private Q_SLOTS:
             animator.setLoopCount(10);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QCOMPARE(arbiter.dirtyNodes.front(), &animator);
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QCOMPARE(arbiter.dirtyNodes().front(), &animator);
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -321,7 +239,7 @@ private Q_SLOTS:
             animator.setLoopCount(10);
 
             // THEN
-            QCOMPARE(arbiter.dirtyNodes.size(), 0);
+            QCOMPARE(arbiter.dirtyNodes().size(), 0);
         }
 
     }

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include <QtTest/QtTest>
 #include <qsignalspy.h>
 #include <QtQml/qqmlengine.h>
@@ -36,16 +11,17 @@
 #include <QtQuick/private/qquickanimation_p.h>
 #include <QtQuick/private/qquicksmoothedanimation_p.h>
 #include <private/qquickitem_p.h>
-#include "../../shared/util.h"
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+#include "bindable.h"
 
 class tst_qquickbehaviors : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qquickbehaviors() {}
+    tst_qquickbehaviors() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
-    void init() { qApp->processEvents(); }  //work around animation timer bug (QTBUG-22865)
+    void init() override;
     void simpleBehavior();
     void scriptTriggered();
     void cppTriggered();
@@ -57,6 +33,7 @@ private slots:
     void group();
     void valueType();
     void emptyBehavior();
+    void duplicatedBehavior();
     void explicitSelection();
     void nonSelectingBehavior();
     void reassignedAnimation();
@@ -76,7 +53,16 @@ private slots:
     void oneWay();
     void safeToDelete();
     void targetProperty();
+    void bindableProperty();
+    void defaultQProperty();
 };
+
+void tst_qquickbehaviors::init()
+{
+    QQmlDataTest::init();
+    //work around animation timer bug (QTBUG-22865)
+    qApp->processEvents();
+}
 
 void tst_qquickbehaviors::simpleBehavior()
 {
@@ -238,6 +224,20 @@ void tst_qquickbehaviors::emptyBehavior()
     QCOMPARE(x, qreal(200));    //should change immediately
 }
 
+void tst_qquickbehaviors::duplicatedBehavior()
+{
+    QTest::failOnWarning(QRegularExpression(".*"));
+    QTest::ignoreMessage(QtMsgType::QtWarningMsg,
+                         QRegularExpression("Attempting to set another interceptor on.*"));
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("duplicated.qml"));
+    QScopedPointer<QQuickRectangle> rect(qobject_cast<QQuickRectangle *>(c.create()));
+    QVERIFY2(!rect.isNull(), qPrintable(c.errorString()));
+
+    // Expecting no crash
+    QQuickItemPrivate::get(rect.data())->setState("moved");
+}
+
 void tst_qquickbehaviors::explicitSelection()
 {
     QQmlEngine engine;
@@ -356,7 +356,7 @@ void tst_qquickbehaviors::runningTrue()
 
     QSignalSpy runningSpy(animation, SIGNAL(runningChanged(bool)));
     rect->setProperty("myValue", 180);
-    QTRY_VERIFY(runningSpy.count() > 0);
+    QTRY_VERIFY(runningSpy.size() > 0);
 }
 
 //QTBUG-12295
@@ -594,7 +594,7 @@ void tst_qquickbehaviors::aliasedProperty()
     QSignalSpy targetValueSpy(behavior, SIGNAL(targetValueChanged()));
     QQuickItemPrivate::get(rect.data())->setState("moved");
     QCOMPARE(behavior->targetValue(), 400);
-    QCOMPARE(targetValueSpy.count(), 1);
+    QCOMPARE(targetValueSpy.size(), 1);
     QScopedPointer<QQuickRectangle> acc(qobject_cast<QQuickRectangle*>(rect->findChild<QQuickRectangle*>("acc")));
     QScopedPointer<QQuickRectangle> range(qobject_cast<QQuickRectangle*>(acc->findChild<QQuickRectangle*>("range")));
     QTRY_VERIFY(acc->property("value").toDouble() > 0);
@@ -630,7 +630,7 @@ void tst_qquickbehaviors::oneWay()
     QQuickRectangle *myRect = qobject_cast<QQuickRectangle*>(rect->findChild<QQuickRectangle*>("MyRectOneWay"));
     myRect->setProperty("x", 100);
     QCOMPARE(behavior->targetValue(), 100);
-    QCOMPARE(targetValueSpy.count(), 1);
+    QCOMPARE(targetValueSpy.size(), 1);
     QCOMPARE(behavior->enabled(), false);
     qreal x = myRect->x();
     QCOMPARE(x, qreal(100));    //should change immediately
@@ -640,7 +640,7 @@ void tst_qquickbehaviors::oneWay()
 
     myRect->setProperty("x", 0);
     QCOMPARE(behavior->targetValue(), 0);
-    QCOMPARE(targetValueSpy.count(), 2);
+    QCOMPARE(targetValueSpy.size(), 2);
     QCOMPARE(behavior->enabled(), true);
     QCOMPARE(myAnimation->isRunning(), true);
     QVERIFY(myRect->x() > 0.0);
@@ -654,7 +654,8 @@ void tst_qquickbehaviors::safeToDelete()
 {
     QQmlEngine engine;
     QQmlComponent c(&engine, testFileUrl("delete.qml"));
-    QVERIFY(c.create());
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(o.data());
 }
 
 Q_DECLARE_METATYPE(QQmlProperty)
@@ -678,6 +679,46 @@ void tst_qquickbehaviors::targetProperty()
     QCOMPARE(item->property("emptyBehaviorName").toString(), "");
 }
 
+void tst_qquickbehaviors::bindableProperty()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("bindableProperty.qml"));
+    QScopedPointer<QObject> root(c.create());
+    QVERIFY2(root, qPrintable(c.errorString()));
+    auto testBindable = qobject_cast<TestBindable *>(root.get());
+    QVERIFY(testBindable);
+
+    testBindable->setProperty("targetValue", 100);
+    QVERIFY(testBindable->prop() != 100);
+    QTRY_COMPARE(testBindable->prop(), 100);
+
+    testBindable->setProperty("enableBehavior", false);
+    testBindable->setProperty("targetValue", 200);
+    QCOMPARE(testBindable->prop(), 200);
+
+    testBindable->setProperty("enableBehavior", true);
+    testBindable->setProperty("prop", 300); // write through metaobject system gets intercepted
+    QVERIFY(testBindable->prop() != 300);
+    QTRY_COMPARE(testBindable->prop(), 300);
+}
+
+void tst_qquickbehaviors::defaultQProperty()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("defaultQProperty.qml"));
+    QScopedPointer<QObject> root(c.create());
+    QVERIFY2(root, qPrintable(c.errorString()));
+
+    QQuickItem *item = qobject_cast<QQuickItem *>(root.data());
+    QVERIFY(item);
+
+    QCOMPARE(item->height(), 0.0);
+    QCOMPARE(item->width(), 10.0);
+
+    // Both change only once: No intermediate change to 0 on width.
+    QCOMPARE(root->property("heightChanges").toInt(), 1);
+    QCOMPARE(root->property("widthChanges").toInt(), 1);
+}
 
 
 QTEST_MAIN(tst_qquickbehaviors)

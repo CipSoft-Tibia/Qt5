@@ -26,13 +26,13 @@ static uint32_t aom_highbd_var_filter_block2d_bil_avx2(
     const uint32_t xoffset, const uint32_t yoffset, const uint8_t *dst_ptr8,
     int dst_stride, uint32_t *sse) {
   const __m256i filter1 =
-      _mm256_set1_epi32((uint32_t)(bilinear_filters_2t[xoffset][1] << 16) |
+      _mm256_set1_epi32((int)(bilinear_filters_2t[xoffset][1] << 16) |
                         bilinear_filters_2t[xoffset][0]);
   const __m256i filter2 =
-      _mm256_set1_epi32((uint32_t)(bilinear_filters_2t[yoffset][1] << 16) |
+      _mm256_set1_epi32((int)(bilinear_filters_2t[yoffset][1] << 16) |
                         bilinear_filters_2t[yoffset][0]);
   const __m256i one = _mm256_set1_epi16(1);
-  const uint32_t bitshift = (uint32_t)0x40;
+  const int bitshift = 0x40;
   (void)pixel_step;
   unsigned int i, j, prev = 0, curr = 2;
   uint16_t *src_ptr = CONVERT_TO_SHORTPTR(src_ptr8);
@@ -718,34 +718,35 @@ static void highbd_10_variance_avx2(const uint16_t *src, int src_stride,
     return (var >= 0) ? (uint32_t)var : 0;                                 \
   }
 
-VAR_FN(128, 128, 16, 14);
-VAR_FN(128, 64, 16, 13);
-VAR_FN(64, 128, 16, 13);
-VAR_FN(64, 64, 16, 12);
-VAR_FN(64, 32, 16, 11);
-VAR_FN(32, 64, 16, 11);
-VAR_FN(32, 32, 16, 10);
-VAR_FN(32, 16, 16, 9);
-VAR_FN(16, 32, 16, 9);
-VAR_FN(16, 16, 16, 8);
-VAR_FN(16, 8, 8, 7);
-VAR_FN(16, 4, 16, 6);
-VAR_FN(8, 32, 8, 8);
-VAR_FN(32, 8, 8, 8);
-VAR_FN(16, 64, 16, 10);
-VAR_FN(64, 16, 16, 10);
-VAR_FN(8, 16, 8, 7);
-VAR_FN(8, 8, 8, 6);
+VAR_FN(128, 128, 16, 14)
+VAR_FN(128, 64, 16, 13)
+VAR_FN(64, 128, 16, 13)
+VAR_FN(64, 64, 16, 12)
+VAR_FN(64, 32, 16, 11)
+VAR_FN(32, 64, 16, 11)
+VAR_FN(32, 32, 16, 10)
+VAR_FN(32, 16, 16, 9)
+VAR_FN(16, 32, 16, 9)
+VAR_FN(16, 16, 16, 8)
+VAR_FN(16, 8, 8, 7)
+VAR_FN(16, 4, 16, 6)
+VAR_FN(8, 32, 8, 8)
+VAR_FN(32, 8, 8, 8)
+VAR_FN(16, 64, 16, 10)
+VAR_FN(64, 16, 16, 10)
+VAR_FN(8, 16, 8, 7)
+VAR_FN(8, 8, 8, 6)
 
 #undef VAR_FN
 
-#define SSE2_Height(H)                                                 \
+#define SSE2_HEIGHT(H)                                                 \
   uint32_t aom_highbd_10_sub_pixel_variance8x##H##_sse2(               \
       const uint8_t *src8, int src_stride, int x_offset, int y_offset, \
       const uint8_t *dst8, int dst_stride, uint32_t *sse_ptr);
 
-SSE2_Height(8);
-SSE2_Height(16);
+SSE2_HEIGHT(8)
+SSE2_HEIGHT(16)
+
 #undef SSE2_Height
 
 #define HIGHBD_SUBPIX_VAR(W, H)                                              \
@@ -763,19 +764,20 @@ SSE2_Height(16);
           src, src_stride, 1, H, W, xoffset, yoffset, dst, dst_stride, sse); \
   }
 
-HIGHBD_SUBPIX_VAR(128, 128);
-HIGHBD_SUBPIX_VAR(128, 64);
-HIGHBD_SUBPIX_VAR(64, 128);
-HIGHBD_SUBPIX_VAR(64, 64);
-HIGHBD_SUBPIX_VAR(64, 32);
-HIGHBD_SUBPIX_VAR(32, 64);
-HIGHBD_SUBPIX_VAR(32, 32);
-HIGHBD_SUBPIX_VAR(32, 16);
-HIGHBD_SUBPIX_VAR(16, 32);
-HIGHBD_SUBPIX_VAR(16, 16);
-HIGHBD_SUBPIX_VAR(16, 8);
-HIGHBD_SUBPIX_VAR(8, 16);
-HIGHBD_SUBPIX_VAR(8, 8);
+HIGHBD_SUBPIX_VAR(128, 128)
+HIGHBD_SUBPIX_VAR(128, 64)
+HIGHBD_SUBPIX_VAR(64, 128)
+HIGHBD_SUBPIX_VAR(64, 64)
+HIGHBD_SUBPIX_VAR(64, 32)
+HIGHBD_SUBPIX_VAR(32, 64)
+HIGHBD_SUBPIX_VAR(32, 32)
+HIGHBD_SUBPIX_VAR(32, 16)
+HIGHBD_SUBPIX_VAR(16, 32)
+HIGHBD_SUBPIX_VAR(16, 16)
+HIGHBD_SUBPIX_VAR(16, 8)
+HIGHBD_SUBPIX_VAR(8, 16)
+HIGHBD_SUBPIX_VAR(8, 8)
+
 #undef HIGHBD_SUBPIX_VAR
 
 uint64_t aom_mse_4xh_16bit_highbd_avx2(uint16_t *dst, int dstride,

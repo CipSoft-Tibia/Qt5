@@ -1,15 +1,19 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/workers/worklet_module_tree_client.h"
 
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/public/platform/task_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/core/script/module_script.h"
 #include "third_party/blink/renderer/core/workers/worker_reporting_proxy.h"
 #include "third_party/blink/renderer/core/workers/worklet_global_scope.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_std.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 
 namespace blink {
@@ -58,6 +62,13 @@ void WorkletModuleTreeClient::NotifyModuleTreeLoadFinished(
   // run these steps:
   ScriptState::Scope scope(script_state_);
   if (module_script->HasErrorToRethrow()) {
+    // TODO(crbug.com/1204965): SerializedScriptValue always assumes that the
+    // default microtask queue is used, so we have to put an explicit scope on
+    // the stack here. Ideally, all V8 bindings would understand non-default
+    // microtask queues.
+    v8::MicrotasksScope microtasks_scope(
+        script_state_->GetIsolate(), ToMicrotaskQueue(script_state_),
+        v8::MicrotasksScope::kDoNotRunMicrotasks);
     PostCrossThreadTask(
         *outside_settings_task_runner_, FROM_HERE,
         CrossThreadBindOnce(
@@ -71,9 +82,7 @@ void WorkletModuleTreeClient::NotifyModuleTreeLoadFinished(
 
   // Step 5: "Run a module script given script."
   ScriptEvaluationResult result =
-      Modulator::From(script_state_)
-          ->ExecuteModule(module_script,
-                          Modulator::CaptureEvalErrorFlag::kReport);
+      module_script->RunScriptOnScriptStateAndReturnValue(script_state_);
 
   auto* global_scope =
       To<WorkletGlobalScope>(ExecutionContext::From(script_state_));

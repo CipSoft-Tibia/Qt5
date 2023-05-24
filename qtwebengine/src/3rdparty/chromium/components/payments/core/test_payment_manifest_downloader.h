@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
+#include "base/memory/weak_ptr.h"
 #include "components/payments/core/payment_manifest_downloader.h"
 
 class GURL;
@@ -23,33 +23,40 @@ class SharedURLLoaderFactory;
 
 namespace payments {
 
+class CSPChecker;
+
 // Downloads payment method manifests from the test server.
 //
 // Sample usage #1:
 //
-//   TestDownloader downloader(context);
+//   TestDownloader downloader(csp_checker, url_loader_factory);
 //   downloader.AddTestServerURL("https://", "https://127.0.0.1:7070");
-//   // Actual URL downloaded is https://127.0.0.1:7070/alicepay.com/webpay.
+//   // Actual URL downloaded is https://127.0.0.1:7070/alicepay.test/webpay.
 //   downloader.DownloadPaymentMethodManifest(
-//       "https://alicepay.com/webpay", callback);
+//       "https://alicepay.test/webpay", callback);
 //
 // Sample usage #2:
 //
-//   TestDownloader downloader(context);
+//   TestDownloader downloader(csp_checker, url_loader_factory);
 //   downloader.AddTestServerURL(
-//       "https://alicepay.com", "https://127.0.0.1:8080");
+//       "https://alicepay.test", "https://127.0.0.1:8080");
 //   downloader.AddTestServerURL(
-//       "https://bobpay.com", "https://127.0.0.1:9090");
+//       "https://bobpay.test", "https://127.0.0.1:9090");
 //   // Actual URL downloaded is https://127.0.0.1:8080/webpay.
 //   downloader.DownloadPaymentMethodManifest(
-//       "https://alicepay.com/webpay", callback);
+//       "https://alicepay.test/webpay", callback);
 //   // Actual URL downloaded is https://127.0.0.1:9090/webpay.
 //   downloader.DownloadPaymentMethodManifest(
-//       "https://bobpay.com/webpay", callback);
+//       "https://bobpay.test/webpay", callback);
 class TestDownloader : public PaymentManifestDownloader {
  public:
-  explicit TestDownloader(
+  TestDownloader(
+      base::WeakPtr<CSPChecker> csp_checker,
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
+
+  TestDownloader(const TestDownloader&) = delete;
+  TestDownloader& operator=(const TestDownloader&) = delete;
+
   ~TestDownloader() override;
 
   // Modifies the downloader to replace all instances of |prefix| with
@@ -62,19 +69,19 @@ class TestDownloader : public PaymentManifestDownloader {
   // "https://127.0.0.1:7070". This is useful when running a single test server
   // that serves files in components/test/data/payments/, which has
   // subdirectories that look like hostnames. So, downloading
-  // "https://alicepay.com/webpay" would actually download
-  // https://127.0.0.1:7070/alicepay.com/webpay, which is a file located at
-  // components/test/data/payments/alicepay.com/webpay.
+  // "https://alicepay.test/webpay" would actually download
+  // https://127.0.0.1:7070/alicepay.test/webpay, which is a file located at
+  // components/test/data/payments/alicepay.test/webpay.
   //
-  // For anoter example, if AddTestServerURL("https://alicepay.com",
+  // For another example, if AddTestServerURL("https://alicepay.test",
   // "https://127.0.0.1:8080") is called, then all calls to
   // DownloadPaymentMethodManifest(some_url, callback) will replace the
-  // "https://alicepay.com" prefix of some_url with "https://127.0.0.1:8080".
+  // "https://alicepay.test" prefix of some_url with "https://127.0.0.1:8080".
   // This is useful when running multiple test servers, each one serving file
   // from individual subdirectories for components/test/data/payments/. So,
-  // downloading "https://alicepay.com/webpay" would actually download
+  // downloading "https://alicepay.test/webpay" would actually download
   // https://127.0.0.1:8080/webpay, which is a file located at
-  // components/test/data/payments/alicepay.com/webpay. Multiple test servers
+  // components/test/data/payments/alicepay.test/webpay. Multiple test servers
   // are useful for testing where the RFC6454 origins should be considered.
   //
   // Any call to DownloadPaymentMethodManifest(some_url, callback) where
@@ -87,19 +94,39 @@ class TestDownloader : public PaymentManifestDownloader {
   // AddTestServerURL("x");AddTestServerURL("xy"); is not.
   void AddTestServerURL(const std::string& prefix, const GURL& test_server_url);
 
+  // Resets test state set by TestDownloader.
+  void ResetTestState();
+
+  bool DidCompleteDownload() const { return did_complete_download_; }
+
+ private:
   // PaymentManifestDownloader:
   //
   // The reverse operation as AddTestServerURL: converts |url| back to a test
   // server URL so it can be fetched as a normal resource outside of this class.
   GURL FindTestServerURL(const GURL& url) const override;
 
- private:
-  // PaymentManifestDownloader implementation.
+  // PaymentManifestDownloader:
+  //
+  // Overrides the Content-Security-Policy (CSP) checker being used.
+  void SetCSPCheckerForTesting(base::WeakPtr<CSPChecker> csp_checker) override;
+
+  // PaymentManifestDownloader:
+  //
+  // Replaces the given URLs with the test server URLs before initiating
+  // download.
   void InitiateDownload(const url::Origin& request_initiator,
                         const GURL& url,
+                        const GURL& url_before_redirects,
+                        bool did_follow_redirect,
                         Download::Type download_type,
                         int allowed_number_of_redirects,
                         PaymentManifestDownloadCallback callback) override;
+
+  void OnDownloadCompleted(PaymentManifestDownloadCallback callback,
+                           const GURL& url,
+                           const std::string& contents,
+                           const std::string& error_message);
 
   // The mapping from the URL prefix to the URL of the test server to be used.
   // Example 1:
@@ -109,12 +136,14 @@ class TestDownloader : public PaymentManifestDownloader {
   // Example 2:
   //
   // {
-  //   "https://alicepay.com": "https://127.0.0.1:8080",
-  //   "https://bobpay.com": "https://127.0.0.1:9090"
+  //   "https://alicepay.test": "https://127.0.0.1:8080",
+  //   "https://bobpay.test": "https://127.0.0.1:9090"
   // }
   std::map<std::string, GURL> test_server_url_;
 
-  DISALLOW_COPY_AND_ASSIGN(TestDownloader);
+  bool did_complete_download_{false};
+
+  base::WeakPtrFactory<TestDownloader> weak_ptr_factory_{this};
 };
 
 }  // namespace payments

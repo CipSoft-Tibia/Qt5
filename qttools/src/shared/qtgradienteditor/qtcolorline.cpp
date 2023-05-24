@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qtcolorline.h"
 #include "qdrawutil.h"
@@ -94,7 +58,7 @@ private:
     QPixmap hueGradientPixmap(Qt::Orientation orientation, bool flipped = false,
                 int saturation = 0xFF, int value = 0xFF, int alpha = 0xFF) const;
 
-    QVector<QRect> rects(const QPointF &point) const;
+    QList<QRect> rects(const QPointF &point) const;
 
     QColor colorFromPoint(const QPointF &point) const;
     QPointF pointFromColor(const QColor &color) const;
@@ -620,7 +584,7 @@ QPointF QtColorLinePrivate::pointFromColor(const QColor &color) const
     return p;
 }
 
-QVector<QRect> QtColorLinePrivate::rects(const QPointF &point) const
+QList<QRect> QtColorLinePrivate::rects(const QPointF &point) const
 {
     QRect r = q_ptr->geometry();
     r.moveTo(0, 0);
@@ -630,7 +594,7 @@ QVector<QRect> QtColorLinePrivate::rects(const QPointF &point) const
     int y1 = (int)((r.height() - m_indicatorSize - 2 * m_indicatorSpace) * point.y() + 0.5);
     int y2 = y1 + m_indicatorSize + 2 * m_indicatorSpace;
 
-    QVector<QRect> rects;
+    QList<QRect> rects;
     if (m_orientation == Qt::Horizontal) {
         // r0 r1 r2
         QRect r0(0, 0, x1, r.height());
@@ -660,7 +624,7 @@ void QtColorLinePrivate::paintEvent(QPaintEvent *)
 {
     QRect rect = q_ptr->rect();
 
-    QVector<QRect> r = rects(m_point);
+    QList<QRect> r = rects(m_point);
 
     QColor c = colorFromPoint(m_point);
     if (!m_combiningAlpha && m_component != QtColorLine::Alpha)
@@ -878,7 +842,7 @@ void QtColorLinePrivate::paintEvent(QPaintEvent *)
     r[1].adjust(br, br, -br, -br);
     if (r[1].adjusted(lw, lw, -lw, -lw).isValid()) {
         QStyleOptionFrame opt;
-        opt.init(q_ptr);
+        opt.initFrom(q_ptr);
         opt.rect = r[1];
         opt.lineWidth = 2;
         opt.midLineWidth = 1;
@@ -915,8 +879,8 @@ void QtColorLinePrivate::mousePressEvent(QMouseEvent *event)
     if (event->button() != Qt::LeftButton)
         return;
 
-    QVector<QRect> r = rects(m_point);
-    QPoint clickPos = event->pos();
+    QList<QRect> r = rects(m_point);
+    QPoint clickPos = event->position().toPoint();
 
     QPoint posOnField = r[1].topLeft() - QPoint(m_indicatorSpace, m_indicatorSpace);
     m_clickOffset = posOnField - clickPos;
@@ -931,7 +895,7 @@ void QtColorLinePrivate::mouseMoveEvent(QMouseEvent *event)
 {
     if (!m_dragging)
         return;
-    QPoint newPos = event->pos();
+    QPoint newPos = event->position().toPoint();
 
     QSize fieldSize = q_ptr->geometry().size() -
             QSize(m_indicatorSize + 2 * m_indicatorSpace - 1, m_indicatorSize + 2 * m_indicatorSpace - 1);
@@ -969,8 +933,8 @@ void QtColorLinePrivate::mouseDoubleClickEvent(QMouseEvent *event)
     if (event->button() != Qt::LeftButton)
         return;
 
-    QVector<QRect> r = rects(m_point);
-    QPoint clickPos = event->pos();
+    QList<QRect> r = rects(m_point);
+    QPoint clickPos = event->position().toPoint();
     if (!r[0].contains(clickPos) && !r[2].contains(clickPos))
         return;
     QPoint newPosOnField = clickPos;

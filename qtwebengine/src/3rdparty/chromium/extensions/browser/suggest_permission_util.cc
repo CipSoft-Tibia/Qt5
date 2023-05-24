@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ const char kPermissionsHelpURLForApps[] =
     "https://developer.chrome.com/apps/declare_permissions.html";
 
 void SuggestAPIPermissionInDevToolsConsole(
-    APIPermission::ID permission,
+    mojom::APIPermissionID permission,
     const Extension* extension,
     content::RenderFrameHost* render_frame_host) {
   const APIPermissionInfo* permission_info =
@@ -37,17 +37,14 @@ void SuggestAPIPermissionInDevToolsConsole(
       extension->is_platform_app() ?
           kPermissionsHelpURLForApps : kPermissionsHelpURLForExtensions);
 
-  // Only the main frame handles dev tools messages.
-  content::WebContents::FromRenderFrameHost(render_frame_host)
-      ->GetMainFrame()
-      ->AddMessageToConsole(blink::mojom::ConsoleMessageLevel::kWarning,
-                            message);
+  render_frame_host->AddMessageToConsole(
+      blink::mojom::ConsoleMessageLevel::kWarning, message);
 }
 
 }  // namespace
 
 bool IsExtensionWithPermissionOrSuggestInConsole(
-    APIPermission::ID permission,
+    mojom::APIPermissionID permission,
     const Extension* extension,
     content::RenderFrameHost* render_frame_host) {
   if (extension && extension->permissions_data()->HasAPIPermission(permission))

@@ -1,11 +1,12 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef GOOGLE_APIS_GAIA_OAUTH2_ACCESS_TOKEN_FETCHER_IMMEDIATE_ERROR_H_
 #define GOOGLE_APIS_GAIA_OAUTH2_ACCESS_TOKEN_FETCHER_IMMEDIATE_ERROR_H_
 
-#include "base/macros.h"
+#include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "google_apis/gaia/oauth2_access_token_consumer.h"
@@ -28,10 +29,17 @@
 //
 // This class can handle one request at a time. To parallelize requests,
 // create multiple instances.
-class OAuth2AccessTokenFetcherImmediateError : public OAuth2AccessTokenFetcher {
+class COMPONENT_EXPORT(GOOGLE_APIS) OAuth2AccessTokenFetcherImmediateError
+    : public OAuth2AccessTokenFetcher {
  public:
   OAuth2AccessTokenFetcherImmediateError(OAuth2AccessTokenConsumer* consumer,
                                          const GoogleServiceAuthError& error);
+
+  OAuth2AccessTokenFetcherImmediateError(
+      const OAuth2AccessTokenFetcherImmediateError&) = delete;
+  OAuth2AccessTokenFetcherImmediateError& operator=(
+      const OAuth2AccessTokenFetcherImmediateError&) = delete;
+
   ~OAuth2AccessTokenFetcherImmediateError() override;
 
   void Start(const std::string& client_id,
@@ -41,7 +49,8 @@ class OAuth2AccessTokenFetcherImmediateError : public OAuth2AccessTokenFetcher {
   void CancelRequest() override;
 
  private:
-  class FailCaller : public base::RefCounted<FailCaller> {
+  class COMPONENT_EXPORT(GOOGLE_APIS) FailCaller
+      : public base::RefCounted<FailCaller> {
    public:
     FailCaller(OAuth2AccessTokenFetcherImmediateError* fetcher);
 
@@ -52,14 +61,13 @@ class OAuth2AccessTokenFetcherImmediateError : public OAuth2AccessTokenFetcher {
     friend class base::RefCounted<FailCaller>;
     ~FailCaller();
 
-    OAuth2AccessTokenFetcherImmediateError* fetcher_;
+    raw_ptr<OAuth2AccessTokenFetcherImmediateError> fetcher_;
   };
 
   void Fail();
 
   scoped_refptr<FailCaller> failer_;
   GoogleServiceAuthError immediate_error_;
-  DISALLOW_COPY_AND_ASSIGN(OAuth2AccessTokenFetcherImmediateError);
 };
 
 #endif  // GOOGLE_APIS_GAIA_OAUTH2_ACCESS_TOKEN_FETCHER_IMMEDIATE_ERROR_H_

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "base/location.h"
 #include "base/metrics/histogram_macros.h"
+#include "third_party/blink/public/mojom/frame/lifecycle.mojom-shared.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_idle_request_options.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
@@ -74,16 +75,14 @@ class IdleRequestCallbackWrapper
 
 }  // namespace internal
 
-ScriptedIdleTaskController::V8IdleTask::V8IdleTask(
-    V8IdleRequestCallback* callback)
-    : callback_(callback) {}
+V8IdleTask::V8IdleTask(V8IdleRequestCallback* callback) : callback_(callback) {}
 
-void ScriptedIdleTaskController::V8IdleTask::Trace(Visitor* visitor) const {
+void V8IdleTask::Trace(Visitor* visitor) const {
   visitor->Trace(callback_);
-  ScriptedIdleTaskController::IdleTask::Trace(visitor);
+  IdleTask::Trace(visitor);
 }
 
-void ScriptedIdleTaskController::V8IdleTask::invoke(IdleDeadline* deadline) {
+void V8IdleTask::invoke(IdleDeadline* deadline) {
   callback_->InvokeAndReportException(nullptr, deadline);
 }
 
@@ -123,16 +122,15 @@ ScriptedIdleTaskController::RegisterCallback(
   idle_tasks_.Set(id, idle_task);
   uint32_t timeout_millis = options->timeout();
 
-  probe::AsyncTaskScheduled(GetExecutionContext(), "requestIdleCallback",
-                            idle_task->async_task_id());
+  idle_task->async_task_context()->Schedule(GetExecutionContext(),
+                                            "requestIdleCallback");
 
   scoped_refptr<internal::IdleRequestCallbackWrapper> callback_wrapper =
       internal::IdleRequestCallbackWrapper::Create(id, this);
   ScheduleCallback(std::move(callback_wrapper), timeout_millis);
-  TRACE_EVENT_INSTANT1("devtools.timeline", "RequestIdleCallback",
-                       TRACE_EVENT_SCOPE_THREAD, "data",
-                       inspector_idle_callback_request_event::Data(
-                           GetExecutionContext(), id, timeout_millis));
+  DEVTOOLS_TIMELINE_TRACE_EVENT_INSTANT(
+      "RequestIdleCallback", inspector_idle_callback_request_event::Data,
+      GetExecutionContext(), id, timeout_millis);
   return id;
 }
 
@@ -140,24 +138,24 @@ void ScriptedIdleTaskController::ScheduleCallback(
     scoped_refptr<internal::IdleRequestCallbackWrapper> callback_wrapper,
     uint32_t timeout_millis) {
   scheduler_->PostIdleTask(
-      FROM_HERE, WTF::Bind(&internal::IdleRequestCallbackWrapper::IdleTaskFired,
-                           callback_wrapper));
+      FROM_HERE,
+      WTF::BindOnce(&internal::IdleRequestCallbackWrapper::IdleTaskFired,
+                    callback_wrapper));
   if (timeout_millis > 0) {
     GetExecutionContext()
         ->GetTaskRunner(TaskType::kIdleTask)
         ->PostDelayedTask(
             FROM_HERE,
-            WTF::Bind(&internal::IdleRequestCallbackWrapper::TimeoutFired,
-                      callback_wrapper),
-            base::TimeDelta::FromMilliseconds(timeout_millis));
+            WTF::BindOnce(&internal::IdleRequestCallbackWrapper::TimeoutFired,
+                          callback_wrapper),
+            base::Milliseconds(timeout_millis));
   }
 }
 
 void ScriptedIdleTaskController::CancelCallback(CallbackId id) {
-  TRACE_EVENT_INSTANT1(
-      "devtools.timeline", "CancelIdleCallback", TRACE_EVENT_SCOPE_THREAD,
-      "data",
-      inspector_idle_callback_cancel_event::Data(GetExecutionContext(), id));
+  DEVTOOLS_TIMELINE_TRACE_EVENT_INSTANT(
+      "CancelIdleCallback", inspector_idle_callback_cancel_event::Data,
+      GetExecutionContext(), id);
   if (!IsValidCallbackId(id))
     return;
 
@@ -203,17 +201,20 @@ void ScriptedIdleTaskController::RunCallback(
       std::max(deadline - base::TimeTicks::Now(), base::TimeDelta());
 
   probe::AsyncTask async_task(GetExecutionContext(),
-                              idle_task->async_task_id());
+                              idle_task->async_task_context());
   probe::UserCallback probe(GetExecutionContext(), "requestIdleCallback",
                             AtomicString(), true);
 
-  TRACE_EVENT1(
-      "devtools.timeline", "FireIdleCallback", "data",
-      inspector_idle_callback_fire_event::Data(
-          GetExecutionContext(), id, allotted_time.InMillisecondsF(),
-          callback_type == IdleDeadline::CallbackType::kCalledByTimeout));
-  idle_task->invoke(
-      MakeGarbageCollected<IdleDeadline>(deadline, callback_type));
+  bool cross_origin_isolated_capability =
+      GetExecutionContext()
+          ? GetExecutionContext()->CrossOriginIsolatedCapability()
+          : false;
+  DEVTOOLS_TIMELINE_TRACE_EVENT(
+      "FireIdleCallback", inspector_idle_callback_fire_event::Data,
+      GetExecutionContext(), id, allotted_time.InMillisecondsF(),
+      callback_type == IdleDeadline::CallbackType::kCalledByTimeout);
+  idle_task->invoke(MakeGarbageCollected<IdleDeadline>(
+      deadline, cross_origin_isolated_capability, callback_type));
 
   // Finally there is no need to keep the idle task alive.
   //
@@ -250,8 +251,8 @@ void ScriptedIdleTaskController::ContextUnpaused() {
         ->GetTaskRunner(TaskType::kIdleTask)
         ->PostTask(
             FROM_HERE,
-            WTF::Bind(&internal::IdleRequestCallbackWrapper::TimeoutFired,
-                      callback_wrapper));
+            WTF::BindOnce(&internal::IdleRequestCallbackWrapper::TimeoutFired,
+                          callback_wrapper));
   }
   pending_timeouts_.clear();
 
@@ -261,8 +262,8 @@ void ScriptedIdleTaskController::ContextUnpaused() {
         internal::IdleRequestCallbackWrapper::Create(idle_task.key, this);
     scheduler_->PostIdleTask(
         FROM_HERE,
-        WTF::Bind(&internal::IdleRequestCallbackWrapper::IdleTaskFired,
-                  callback_wrapper));
+        WTF::BindOnce(&internal::IdleRequestCallbackWrapper::IdleTaskFired,
+                      callback_wrapper));
   }
 }
 

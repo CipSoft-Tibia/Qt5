@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include "base/strings/string_util.h"
+#include "third_party/blink/renderer/platform/allow_discouraged_type.h"
 
 namespace blink {
 
@@ -17,7 +18,8 @@ struct CompareIgnoreCase {
   }
 };
 
-using HTTPHeaderSet = std::set<std::string, CompareIgnoreCase>;
+using HTTPHeaderSet ALLOW_DISCOURAGED_TYPE("TODO(crbug.com/1404327") =
+    std::set<std::string, CompareIgnoreCase>;
 
 }  // namespace blink
 

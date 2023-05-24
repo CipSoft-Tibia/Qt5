@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,20 +11,19 @@
 #include <set>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
-#include "base/metrics/histogram_macros.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/numerics/safe_math.h"
 #include "base/strings/stringprintf.h"
-#include "base/task/post_task.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/time/time.h"
 #include "base/trace_event/memory_dump_manager.h"
 #include "base/trace_event/trace_event.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
@@ -48,7 +47,8 @@ BlobStorageContext::BlobStorageContext()
     : profile_directory_(base::FilePath()),
       memory_controller_(base::FilePath(), scoped_refptr<base::TaskRunner>()) {
   base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
-      this, "BlobStorageContext", base::ThreadTaskRunnerHandle::Get());
+      this, "BlobStorageContext",
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 }
 
 BlobStorageContext::BlobStorageContext(
@@ -58,7 +58,8 @@ BlobStorageContext::BlobStorageContext(
     : profile_directory_(profile_directory),
       memory_controller_(storage_directory, std::move(file_runner)) {
   base::trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
-      this, "BlobStorageContext", base::ThreadTaskRunnerHandle::Get());
+      this, "BlobStorageContext",
+      base::SingleThreadTaskRunner::GetCurrentDefault());
 }
 
 BlobStorageContext::~BlobStorageContext() {
@@ -110,10 +111,7 @@ std::unique_ptr<BlobDataHandle> BlobStorageContext::AddFinishedBlob(
   TRACE_EVENT0("Blob", "Context::AddFinishedBlobFromItems");
   BlobEntry* entry =
       registry_.CreateEntry(uuid, content_type, content_disposition);
-  uint64_t total_memory_size = 0;
   for (const auto& item : items) {
-    if (item->item()->type() == BlobDataItem::Type::kBytes)
-      total_memory_size += item->item()->length();
     DCHECK_EQ(item->state(), ShareableBlobDataItem::POPULATED_WITH_QUOTA);
     DCHECK_NE(BlobDataItem::Type::kBytesDescription, item->item()->type());
     DCHECK(!item->item()->IsFutureFileItem());
@@ -121,7 +119,6 @@ std::unique_ptr<BlobDataHandle> BlobStorageContext::AddFinishedBlob(
 
   entry->SetSharedBlobItems(std::move(items));
   std::unique_ptr<BlobDataHandle> handle = CreateHandle(uuid, entry);
-  UMA_HISTOGRAM_COUNTS_1M("Storage.Blob.TotalSize", total_memory_size / 1024);
   entry->set_status(BlobStatus::DONE);
   memory_controller_.NotifyMemoryItemsUsed(entry->items());
   return handle;
@@ -216,20 +213,9 @@ std::unique_ptr<BlobDataHandle> BlobStorageContext::BuildBlobInternal(
 
   std::unique_ptr<BlobDataHandle> handle = CreateHandle(content->uuid_, entry);
 
-  UMA_HISTOGRAM_COUNTS_1M("Storage.Blob.TotalSize",
-                          content->total_memory_size() / 1024);
-
   TransportQuotaType transport_quota_type = content->found_memory_transport()
                                                 ? TransportQuotaType::MEMORY
                                                 : TransportQuotaType::FILE;
-
-  uint64_t total_memory_needed =
-      content->copy_quota_needed() +
-      (transport_quota_type == TransportQuotaType::MEMORY
-           ? content->transport_quota_needed()
-           : 0);
-  UMA_HISTOGRAM_COUNTS_1M("Storage.Blob.TotalUnsharedSize",
-                          total_memory_needed / 1024);
 
   std::vector<scoped_refptr<BlobDataItem>> items_needing_timestamp;
   std::vector<base::FilePath> file_paths_needing_timestamp;
@@ -319,7 +305,7 @@ std::unique_ptr<BlobDataHandle> BlobStorageContext::BuildBlobInternal(
               previous_building_state->build_completion_callbacks);
     building_state->build_aborted_callback =
         std::move(previous_building_state->build_aborted_callback);
-    auto runner = base::ThreadTaskRunnerHandle::Get();
+    auto runner = base::SingleThreadTaskRunner::GetCurrentDefault();
     for (auto& callback : previous_building_state->build_started_callbacks)
       runner->PostTask(FROM_HERE,
                        base::BindOnce(std::move(callback), entry->status()));
@@ -474,7 +460,7 @@ std::unique_ptr<BlobDataHandle> BlobStorageContext::CreateHandle(
     BlobEntry* entry) {
   return base::WrapUnique(new BlobDataHandle(
       uuid, entry->content_type_, entry->content_disposition_, entry->size_,
-      this, base::ThreadTaskRunnerHandle::Get().get()));
+      this, base::SingleThreadTaskRunner::GetCurrentDefault().get()));
 }
 
 void BlobStorageContext::NotifyTransportCompleteInternal(BlobEntry* entry) {
@@ -501,7 +487,7 @@ void BlobStorageContext::CancelBuildingBlobInternal(BlobEntry* entry,
   }
   if (entry->building_state_ &&
       entry->status() == BlobStatus::PENDING_CONSTRUCTION) {
-    auto runner = base::ThreadTaskRunnerHandle::Get();
+    auto runner = base::SingleThreadTaskRunner::GetCurrentDefault();
     for (auto& callback : entry->building_state_->build_started_callbacks)
       runner->PostTask(FROM_HERE, base::BindOnce(std::move(callback), reason));
   }
@@ -518,14 +504,6 @@ void BlobStorageContext::FinishBuilding(BlobEntry* entry) {
   DCHECK(entry);
   BlobStatus status = entry->status_;
   DCHECK_NE(BlobStatus::DONE, status);
-
-  bool error = BlobStatusIsError(status);
-  UMA_HISTOGRAM_BOOLEAN("Storage.Blob.Broken", error);
-  if (error) {
-    UMA_HISTOGRAM_ENUMERATION("Storage.Blob.BrokenReason",
-                              static_cast<int>(status),
-                              (static_cast<int>(BlobStatus::LAST_ERROR) + 1));
-  }
 
   if (BlobStatusIsPending(entry->status_)) {
     for (const ItemCopyEntry& copy : entry->building_state_->copies) {
@@ -577,7 +555,7 @@ void BlobStorageContext::FinishBuilding(BlobEntry* entry) {
 
   memory_controller_.NotifyMemoryItemsUsed(entry->items());
 
-  auto runner = base::ThreadTaskRunnerHandle::Get();
+  auto runner = base::SingleThreadTaskRunner::GetCurrentDefault();
   for (auto& callback : callbacks)
     runner->PostTask(FROM_HERE,
                      base::BindOnce(std::move(callback), entry->status()));
@@ -728,7 +706,7 @@ void BlobStorageContext::WriteBlobToFile(
     mojo::PendingRemote<::blink::mojom::Blob> pending_blob,
     const base::FilePath& file_path,
     bool flush_on_write,
-    base::Optional<base::Time> last_modified,
+    absl::optional<base::Time> last_modified,
     BlobStorageContext::WriteBlobToFileCallback callback) {
   DCHECK(!last_modified || !last_modified.value().is_null());
   if (profile_directory_.empty()) {
@@ -749,7 +727,7 @@ void BlobStorageContext::WriteBlobToFile(
       base::BindOnce(
           [](base::WeakPtr<BlobStorageContext> blob_context,
              const base::FilePath& file_path, bool flush_on_write,
-             base::Optional<base::Time> last_modified,
+             absl::optional<base::Time> last_modified,
              BlobStorageContext::WriteBlobToFileCallback callback,
              std::unique_ptr<BlobDataHandle> handle) {
             if (!handle || !blob_context) {

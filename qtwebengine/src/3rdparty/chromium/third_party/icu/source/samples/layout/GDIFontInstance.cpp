@@ -2,7 +2,7 @@
  *******************************************************************************
  *
  *   © 2016 and later: Unicode, Inc. and others.
- *   License & terms of use: http://www.unicode.org/copyright.html#License
+ *   License & terms of use: http://www.unicode.org/copyright.html
  *
  *******************************************************************************
  *******************************************************************************
@@ -402,7 +402,7 @@ le_bool GDIFontInstance::getGlyphPoint(LEGlyphID glyph, le_int32 pointNumber, LE
 
     return result;
 #else
-    return FALSE;
+    return false;
 #endif
 }
 

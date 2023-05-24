@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,9 +12,9 @@
 namespace {
 
 const CXFA_Node::PropertyData kEncryptionPropertyData[] = {
-    {XFA_Element::EncryptionLevel, 1, 0},
-    {XFA_Element::Encrypt, 1, 0},
-    {XFA_Element::Permissions, 1, 0},
+    {XFA_Element::EncryptionLevel, 1, {}},
+    {XFA_Element::Encrypt, 1, {}},
+    {XFA_Element::Permissions, 1, {}},
 };
 
 const CXFA_Node::AttributeData kEncryptionAttributeData[] = {
@@ -27,7 +27,7 @@ const CXFA_Node::AttributeData kEncryptionAttributeData[] = {
 CXFA_Encryption::CXFA_Encryption(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                XFA_XDPPACKET_Config,
+                XFA_XDPPACKET::kConfig,
                 XFA_ObjectType::Node,
                 XFA_Element::Encryption,
                 kEncryptionPropertyData,

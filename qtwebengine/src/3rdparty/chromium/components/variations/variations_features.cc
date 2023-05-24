@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,6 @@
 namespace variations {
 
 namespace internal {
-
-const base::Feature kRestrictGoogleWebVisibility{
-    "RestrictGoogleWebVisibility", base::FEATURE_DISABLED_BY_DEFAULT};
 
 }  // namespace internal
 }  // namespace variations

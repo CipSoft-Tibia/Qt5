@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCharts/QAbstractBarSeries>
 #include <private/qabstractbarseries_p.h>
@@ -41,7 +15,7 @@
 #include <private/abstractbarchartitem_p.h>
 #include <private/qchart_p.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 /*!
     \class QAbstractBarSeries
@@ -57,8 +31,7 @@ QT_CHARTS_BEGIN_NAMESPACE
     If a QValueAxis is used instead of QBarCategoryAxis for the main bar axis, the bars are
     grouped around the index value of the category.
 
-    See the \l {BarChart Example} {bar chart example} to learn how to use the QBarSeries class
-    to create a simple bar chart.
+    See the \l {Charts with Widgets Gallery} to learn how to use the QBarSeries class to create a simple bar chart.
     \image examples_barchart.png
 
     \sa QBarSet, QBarSeries, QStackedBarSeries, QPercentBarSeries
@@ -85,7 +58,7 @@ QT_CHARTS_BEGIN_NAMESPACE
 
     The following QML code snippet shows how to use the BarSeries and BarCategoryAxis type
     to create a simple bar chart:
-    \snippet qmlchart/qml/qmlchart/View6.qml 1
+    \snippet qmlchartsgallery/qml/BarSeries.qml 1
 
     \beginfloatleft
     \image examples_qmlchart6.png
@@ -348,7 +321,7 @@ QT_CHARTS_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QAbstractBarSeries::barsetsAdded(QList<QBarSet*> sets)
+    \fn void QAbstractBarSeries::barsetsAdded(const QList<QBarSet *> &sets)
     This signal is emitted when the bar sets specified by \a sets are added to the series.
     \sa append(), insert()
 */
@@ -360,7 +333,7 @@ QT_CHARTS_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QAbstractBarSeries::barsetsRemoved(QList<QBarSet*> sets)
+    \fn void QAbstractBarSeries::barsetsRemoved(const QList<QBarSet *> &sets)
     This signal is emitted when the bar sets specified by \a sets are removed from the series.
     \sa remove()
 */
@@ -513,17 +486,19 @@ bool QAbstractBarSeries::take(QBarSet *set)
     If any of the sets appears in the list more than once, nothing is appended and this function
     returns \c false.
 */
-bool QAbstractBarSeries::append(QList<QBarSet *> sets)
+bool QAbstractBarSeries::append(const QList<QBarSet *> &sets)
 {
     Q_D(QAbstractBarSeries);
-    bool success = d->append(sets);
-    if (success) {
-        foreach (QBarSet *set, sets)
-            set->setParent(this);
-        emit barsetsAdded(sets);
-        emit countChanged();
-    }
-    return success;
+    if (!d->append(sets))
+        return false;
+
+    for (auto *set : sets)
+        set->setParent(this);
+
+    emit barsetsAdded(sets);
+    emit countChanged();
+
+    return true;
 }
 
 /*!
@@ -566,7 +541,7 @@ void QAbstractBarSeries::clear()
 int QAbstractBarSeries::count() const
 {
     Q_D(const QAbstractBarSeries);
-    return d->m_barSets.count();
+    return d->m_barSets.size();
 }
 
 /*!
@@ -683,7 +658,7 @@ int QAbstractBarSeriesPrivate::categoryCount() const
 {
     // No categories defined. return count of longest set.
     int count = 0;
-    for (int i = 0; i < m_barSets.count(); i++) {
+    for (int i = 0; i < m_barSets.size(); i++) {
         if (m_barSets.at(i)->count() > count)
             count = m_barSets.at(i)->count();
     }
@@ -723,12 +698,12 @@ void QAbstractBarSeriesPrivate::setLabelsVisible(bool visible)
 
 qreal QAbstractBarSeriesPrivate::min()
 {
-    if (m_barSets.count() <= 0)
+    if (m_barSets.size() <= 0)
         return 0;
 
     qreal min = INT_MAX;
 
-    for (int i = 0; i < m_barSets.count(); i++) {
+    for (int i = 0; i < m_barSets.size(); i++) {
         int categoryCount = m_barSets.at(i)->count();
         for (int j = 0; j < categoryCount; j++) {
             qreal temp = m_barSets.at(i)->at(j);
@@ -741,12 +716,12 @@ qreal QAbstractBarSeriesPrivate::min()
 
 qreal QAbstractBarSeriesPrivate::max()
 {
-    if (m_barSets.count() <= 0)
+    if (m_barSets.size() <= 0)
         return 0;
 
     qreal max = INT_MIN;
 
-    for (int i = 0; i < m_barSets.count(); i++) {
+    for (int i = 0; i < m_barSets.size(); i++) {
         int categoryCount = m_barSets.at(i)->count();
         for (int j = 0; j < categoryCount; j++) {
             qreal temp = m_barSets.at(i)->at(j);
@@ -760,7 +735,7 @@ qreal QAbstractBarSeriesPrivate::max()
 
 qreal QAbstractBarSeriesPrivate::valueAt(int set, int category)
 {
-    if ((set < 0) || (set >= m_barSets.count()))
+    if ((set < 0) || (set >= m_barSets.size()))
         return 0; // No set, no value.
     else if ((category < 0) || (category >= m_barSets.at(set)->count()))
         return 0; // No category, no value.
@@ -770,7 +745,7 @@ qreal QAbstractBarSeriesPrivate::valueAt(int set, int category)
 
 qreal QAbstractBarSeriesPrivate::percentageAt(int set, int category)
 {
-    if ((set < 0) || (set >= m_barSets.count()))
+    if ((set < 0) || (set >= m_barSets.size()))
         return 0; // No set, no value.
     else if ((category < 0) || (category >= m_barSets.at(set)->count()))
         return 0; // No category, no value.
@@ -786,7 +761,7 @@ qreal QAbstractBarSeriesPrivate::percentageAt(int set, int category)
 qreal QAbstractBarSeriesPrivate::categorySum(int category)
 {
     qreal sum(0);
-    int count = m_barSets.count(); // Count sets
+    int count = m_barSets.size(); // Count sets
     for (int set = 0; set < count; set++) {
         if (category < m_barSets.at(set)->count())
             sum += m_barSets.at(set)->at(category);
@@ -797,7 +772,7 @@ qreal QAbstractBarSeriesPrivate::categorySum(int category)
 qreal QAbstractBarSeriesPrivate::absoluteCategorySum(int category)
 {
     qreal sum(0);
-    int count = m_barSets.count(); // Count sets
+    int count = m_barSets.size(); // Count sets
     for (int set = 0; set < count; set++) {
         if (category < m_barSets.at(set)->count())
             sum += qAbs(m_barSets.at(set)->at(category));
@@ -819,12 +794,12 @@ qreal QAbstractBarSeriesPrivate::maxCategorySum()
 
 qreal QAbstractBarSeriesPrivate::minX()
 {
-    if (m_barSets.count() <= 0)
+    if (m_barSets.size() <= 0)
         return 0;
 
     qreal min = INT_MAX;
 
-    for (int i = 0; i < m_barSets.count(); i++) {
+    for (int i = 0; i < m_barSets.size(); i++) {
         int categoryCount = m_barSets.at(i)->count();
         for (int j = 0; j < categoryCount; j++) {
             qreal temp = m_barSets.at(i)->d_ptr.data()->m_values.at(j).x();
@@ -837,12 +812,12 @@ qreal QAbstractBarSeriesPrivate::minX()
 
 qreal QAbstractBarSeriesPrivate::maxX()
 {
-    if (m_barSets.count() <= 0)
+    if (m_barSets.size() <= 0)
         return 0;
 
     qreal max = INT_MIN;
 
-    for (int i = 0; i < m_barSets.count(); i++) {
+    for (int i = 0; i < m_barSets.size(); i++) {
         int categoryCount = m_barSets.at(i)->count();
         for (int j = 0; j < categoryCount; j++) {
             qreal temp = m_barSets.at(i)->d_ptr.data()->m_values.at(j).x();
@@ -859,7 +834,7 @@ qreal QAbstractBarSeriesPrivate::categoryTop(int category)
     // Returns top (sum of all positive values) of category.
     // Returns 0, if all values are negative
     qreal top(0);
-    int count = m_barSets.count();
+    int count = m_barSets.size();
     for (int set = 0; set < count; set++) {
         if (category < m_barSets.at(set)->count()) {
             qreal temp = m_barSets.at(set)->at(category);
@@ -876,7 +851,7 @@ qreal QAbstractBarSeriesPrivate::categoryBottom(int category)
     // Returns bottom (sum of all negative values) of category
     // Returns 0, if all values are positive
     qreal bottom(0);
-    int count = m_barSets.count();
+    int count = m_barSets.size();
     for (int set = 0; set < count; set++) {
         if (category < m_barSets.at(set)->count()) {
             qreal temp = m_barSets.at(set)->at(category);
@@ -969,6 +944,8 @@ bool QAbstractBarSeriesPrivate::append(QBarSet *set)
                      this, &QAbstractBarSeriesPrivate::handleSetValueAdd);
     QObject::connect(set->d_ptr.data(), &QBarSetPrivate::valueRemoved,
                      this, &QAbstractBarSeriesPrivate::handleSetValueRemove);
+    connect(set, &QBarSet::selectedBarsChanged,
+            this, &QAbstractBarSeriesPrivate::updatedBars);
 
     emit restructuredBars(); // this notifies barchartitem
     return true;
@@ -988,21 +965,23 @@ bool QAbstractBarSeriesPrivate::remove(QBarSet *set)
                         this, &QAbstractBarSeriesPrivate::handleSetValueAdd);
     QObject::disconnect(set->d_ptr.data(), &QBarSetPrivate::valueRemoved,
                         this, &QAbstractBarSeriesPrivate::handleSetValueRemove);
+    disconnect(set, &QBarSet::selectedBarsChanged,
+               this, &QAbstractBarSeriesPrivate::updatedBars);
 
     emit restructuredBars(); // this notifies barchartitem
     return true;
 }
 
-bool QAbstractBarSeriesPrivate::append(QList<QBarSet * > sets)
+bool QAbstractBarSeriesPrivate::append(const QList<QBarSet *> &sets)
 {
-    foreach (QBarSet *set, sets) {
+    for (auto *set : sets) {
         if ((set == 0) || (m_barSets.contains(set)))
             return false; // Fail if any of the sets is null or is already appended.
         if (sets.count(set) != 1)
             return false; // Also fail if same set is more than once in given list.
     }
 
-    foreach (QBarSet *set, sets) {
+    for (auto *set : sets) {
         m_barSets.append(set);
         QObject::connect(set->d_ptr.data(), &QBarSetPrivate::updatedBars,
                          this, &QAbstractBarSeriesPrivate::updatedBars);
@@ -1012,15 +991,17 @@ bool QAbstractBarSeriesPrivate::append(QList<QBarSet * > sets)
                          this, &QAbstractBarSeriesPrivate::handleSetValueAdd);
         QObject::connect(set->d_ptr.data(), &QBarSetPrivate::valueRemoved,
                          this, &QAbstractBarSeriesPrivate::handleSetValueRemove);
+        connect(set, &QBarSet::selectedBarsChanged,
+                this, &QAbstractBarSeriesPrivate::updatedBars);
     }
 
     emit restructuredBars(); // this notifies barchartitem
     return true;
 }
 
-bool QAbstractBarSeriesPrivate::remove(QList<QBarSet * > sets)
+bool QAbstractBarSeriesPrivate::remove(const QList<QBarSet *> &sets)
 {
-    if (sets.count() == 0)
+    if (sets.size() == 0)
         return false;
 
     foreach (QBarSet *set, sets) {
@@ -1040,6 +1021,8 @@ bool QAbstractBarSeriesPrivate::remove(QList<QBarSet * > sets)
                             this, &QAbstractBarSeriesPrivate::handleSetValueAdd);
         QObject::disconnect(set->d_ptr.data(), &QBarSetPrivate::valueRemoved,
                             this, &QAbstractBarSeriesPrivate::handleSetValueRemove);
+        disconnect(set, &QBarSet::selectedBarsChanged,
+                   this, &QAbstractBarSeriesPrivate::updatedBars);
     }
 
     emit restructuredBars();        // this notifies barchartitem
@@ -1061,6 +1044,8 @@ bool QAbstractBarSeriesPrivate::insert(int index, QBarSet *set)
                      this, &QAbstractBarSeriesPrivate::handleSetValueAdd);
     QObject::connect(set->d_ptr.data(), &QBarSetPrivate::valueRemoved,
                      this, &QAbstractBarSeriesPrivate::handleSetValueRemove);
+    disconnect(set, &QBarSet::selectedBarsChanged,
+               this, &QAbstractBarSeriesPrivate::updatedBars);
 
     emit restructuredBars();      // this notifies barchartitem
     return true;
@@ -1095,7 +1080,7 @@ void QAbstractBarSeriesPrivate::initializeAxes()
     }
 
     // Make sure series animations are reset when axes change
-    AbstractBarChartItem *item = qobject_cast<AbstractBarChartItem *>(m_item.data());
+    AbstractBarChartItem *item = qobject_cast<AbstractBarChartItem *>(m_item.get());
     if (item)
         item->resetAnimation();
 }
@@ -1177,8 +1162,8 @@ void QAbstractBarSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bo
     // First series count is used to determine the color stepping to keep old applications
     // with single bar series with a lot of sets colored as they always have been.
     int actualIndex = 0;
-    int firstSeriesSetCount = m_barSets.count();
-    if (!m_item.isNull()) {
+    int firstSeriesSetCount = m_barSets.size();
+    if (m_item) {
         auto seriesMap = m_item->themeManager()->seriesMap();
         int lowestSeries = index;
         for (auto it = seriesMap.cbegin(), end = seriesMap.cend(); it != end; ++it) {
@@ -1187,7 +1172,7 @@ void QAbstractBarSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bo
                 if (barSeries) {
                     actualIndex += barSeries->count();
                     if (it.value() < lowestSeries) {
-                        firstSeriesSetCount = qMax(barSeries->count(), gradients.count());
+                        firstSeriesSetCount = qMax(barSeries->count(), gradients.size());
                         lowestSeries = it.value();
                     }
                 }
@@ -1199,15 +1184,15 @@ void QAbstractBarSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bo
     qreal step = 0.2;
     if (firstSeriesSetCount > 1) {
         step = 1.0 / qreal(firstSeriesSetCount);
-        if (firstSeriesSetCount % gradients.count())
-            step *= gradients.count();
+        if (firstSeriesSetCount % gradients.size())
+            step *= gradients.size();
         else
-            step *= (gradients.count() - 1);
+            step *= (gradients.size() - 1);
         if (index > 0) {
             // Take necessary amount of initial steps
             int initialStepper = actualIndex;
-            while (initialStepper > gradients.count()) {
-                initialStepper -= gradients.count();
+            while (initialStepper > gradients.size()) {
+                initialStepper -= gradients.size();
                 takeAtPos += step;
                 if (takeAtPos == 1.0)
                     takeAtPos += step;
@@ -1216,9 +1201,9 @@ void QAbstractBarSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bo
         }
     }
 
-    for (int i(0); i < m_barSets.count(); i++) {
-        int colorIndex = (actualIndex + i) % gradients.count();
-        if ((actualIndex + i) > 0 && (actualIndex + i) % gradients.count() == 0) {
+    for (int i(0); i < m_barSets.size(); i++) {
+        int colorIndex = (actualIndex + i) % gradients.size();
+        if ((actualIndex + i) > 0 && (actualIndex + i) % gradients.size() == 0) {
             // There is no dedicated base color for each sets, generate more colors
             takeAtPos += step;
             if (takeAtPos == 1.0)
@@ -1248,7 +1233,7 @@ void QAbstractBarSeriesPrivate::initializeTheme(int index, ChartTheme* theme, bo
 void QAbstractBarSeriesPrivate::initializeAnimations(QChart::AnimationOptions options, int duration,
                                                      QEasingCurve &curve)
 {
-    AbstractBarChartItem *bar = static_cast<AbstractBarChartItem *>(m_item.data());
+    AbstractBarChartItem *bar = static_cast<AbstractBarChartItem *>(m_item.get());
     Q_ASSERT(bar);
     if (bar->animation())
         bar->animation()->stopAndDestroyLater();
@@ -1260,7 +1245,7 @@ void QAbstractBarSeriesPrivate::initializeAnimations(QChart::AnimationOptions op
     QAbstractSeriesPrivate::initializeAnimations(options, duration, curve);
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_qabstractbarseries.cpp"
 #include "moc_qabstractbarseries_p.cpp"

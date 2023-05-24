@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDSURFACEITEM_H
 #define QWAYLANDSURFACEITEM_H
@@ -42,27 +16,33 @@
 
 Q_DECLARE_METATYPE(QWaylandQuickSurface*)
 
+QT_REQUIRE_CONFIG(wayland_compositor_quick);
+
 QT_BEGIN_NAMESPACE
 
 class QWaylandSeat;
 class QWaylandQuickItemPrivate;
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandQuickItem : public QQuickItem
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandQuickItem : public QQuickItem
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QWaylandQuickItem)
     Q_PROPERTY(QWaylandCompositor *compositor READ compositor NOTIFY compositorChanged)
     Q_PROPERTY(QWaylandSurface *surface READ surface WRITE setSurface NOTIFY surfaceChanged)
-    Q_PROPERTY(bool paintEnabled READ paintEnabled WRITE setPaintEnabled NOTIFY paintEnabledChanged)
+    Q_PROPERTY(bool paintEnabled READ isPaintEnabled WRITE setPaintEnabled NOTIFY paintEnabledChanged)
     Q_PROPERTY(bool touchEventsEnabled READ touchEventsEnabled WRITE setTouchEventsEnabled NOTIFY touchEventsEnabledChanged)
     Q_PROPERTY(QWaylandSurface::Origin origin READ origin NOTIFY originChanged)
     Q_PROPERTY(bool inputEventsEnabled READ inputEventsEnabled WRITE setInputEventsEnabled NOTIFY inputEventsEnabledChanged)
     Q_PROPERTY(bool focusOnClick READ focusOnClick WRITE setFocusOnClick NOTIFY focusOnClickChanged)
-    Q_PROPERTY(bool sizeFollowsSurface READ sizeFollowsSurface WRITE setSizeFollowsSurface NOTIFY sizeFollowsSurfaceChanged)
     Q_PROPERTY(QObject *subsurfaceHandler READ subsurfaceHandler WRITE setSubsurfaceHandler NOTIFY subsurfaceHandlerChanged)
     Q_PROPERTY(QWaylandOutput *output READ output WRITE setOutput NOTIFY outputChanged)
     Q_PROPERTY(bool bufferLocked READ isBufferLocked WRITE setBufferLocked NOTIFY bufferLockedChanged)
     Q_PROPERTY(bool allowDiscardFrontBuffer READ allowDiscardFrontBuffer WRITE setAllowDiscardFrontBuffer NOTIFY allowDiscardFrontBufferChanged)
+    Q_MOC_INCLUDE("qwaylandcompositor.h")
+    Q_MOC_INCLUDE("qwaylandseat.h")
+    Q_MOC_INCLUDE("qwaylanddrag.h")
+    QML_NAMED_ELEMENT(WaylandQuickItem)
+    QML_ADDED_IN_VERSION(1, 0)
 public:
     QWaylandQuickItem(QQuickItem *parent = nullptr);
     ~QWaylandQuickItem() override;
@@ -78,7 +58,7 @@ public:
     bool isTextureProvider() const override;
     QSGTextureProvider *textureProvider() const override;
 
-    bool paintEnabled() const;
+    bool isPaintEnabled() const;
     bool touchEventsEnabled() const;
 
     void setTouchEventsEnabled(bool enabled);
@@ -90,12 +70,8 @@ public:
     void setFocusOnClick(bool focus);
 
     bool inputRegionContains(const QPointF &localPosition) const;
-    bool inputRegionContains(const QPointF &localPosition);
     Q_INVOKABLE QPointF mapToSurface(const QPointF &point) const;
-    Q_REVISION(13) Q_INVOKABLE QPointF mapFromSurface(const QPointF &point) const;
-
-    bool sizeFollowsSurface() const;
-    void setSizeFollowsSurface(bool sizeFollowsSurface);
+    Q_REVISION(1, 13) Q_INVOKABLE QPointF mapFromSurface(const QPointF &point) const;
 
 #if QT_CONFIG(im)
     QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
@@ -164,6 +140,7 @@ private Q_SLOTS:
 #if QT_CONFIG(im)
     void updateInputMethod(Qt::InputMethodQueries queries);
 #endif
+    void updateFocus();
 
 Q_SIGNALS:
     void surfaceChanged();
@@ -176,7 +153,6 @@ Q_SIGNALS:
     void focusOnClickChanged();
     void mouseMove(const QPointF &windowPosition);
     void mouseRelease();
-    void sizeFollowsSurfaceChanged();
     void subsurfaceHandlerChanged();
     void outputChanged();
     void bufferLockedChanged();

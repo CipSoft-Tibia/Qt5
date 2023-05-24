@@ -1,33 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "paletteeditor.h"
 
+#include <qdesigner_utils_p.h>
 #include <iconloader_p.h>
 #include <qtcolorbutton.h>
 
@@ -37,17 +13,6 @@
 #include <QtDesigner/abstractformeditor.h>
 #include <QtDesigner/abstractformwindowmanager.h>
 
-#include <QtCore/qfile.h>
-#include <QtCore/qmetaobject.h>
-#include <QtCore/qsavefile.h>
-#include <QtCore/qxmlstream.h>
-#include <QtGui/qguiapplication.h>
-#include <QtGui/qpainter.h>
-#include <QtGui/qscreen.h>
-#if QT_CONFIG(clipboard)
-#  include <QtGui/qclipboard.h>
-#endif
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qfiledialog.h>
 #include <QtWidgets/qmessagebox.h>
 #include <QtWidgets/qpushbutton.h>
@@ -56,7 +21,22 @@
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qheaderview.h>
 
+#include <QtGui/qaction.h>
+#if QT_CONFIG(clipboard)
+#  include <QtGui/qclipboard.h>
+#endif
+#include <QtGui/qguiapplication.h>
+#include <QtGui/qpainter.h>
+#include <QtGui/qscreen.h>
+
+#include <QtCore/qfile.h>
+#include <QtCore/qmetaobject.h>
+#include <QtCore/qsavefile.h>
+#include <QtCore/qxmlstream.h>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -72,6 +52,19 @@ PaletteEditor::PaletteEditor(QDesignerFormEditorInterface *core, QWidget *parent
     connect(saveButton, &QPushButton::clicked, this, &PaletteEditor::save);
     auto loadButton = ui.buttonBox->addButton(tr("Load..."), QDialogButtonBox::ActionRole);
     connect(loadButton, &QPushButton::clicked, this, &PaletteEditor::load);
+
+    connect(ui.buildButton, &QtColorButton::colorChanged,
+            this, &PaletteEditor::buildButtonColorChanged);
+    connect(ui.activeRadio, &QAbstractButton::clicked,
+            this, &PaletteEditor::activeRadioClicked);
+    connect(ui.inactiveRadio,  &QAbstractButton::clicked,
+            this, &PaletteEditor::inactiveRadioClicked);
+    connect(ui.disabledRadio, &QAbstractButton::clicked,
+            this, &PaletteEditor::disabledRadioClicked);
+    connect(ui.computeRadio, &QAbstractButton::clicked,
+            this, &PaletteEditor::computeRadioClicked);
+    connect(ui.detailsRadio, &QAbstractButton::clicked,
+            this, &PaletteEditor::detailsRadioClicked);
 
     ui.paletteView->setModel(m_paletteModel);
     updatePreviewPalette();
@@ -108,18 +101,15 @@ QPalette PaletteEditor::palette() const
 void PaletteEditor::setPalette(const QPalette &palette)
 {
     m_editPalette = palette;
-    const uint mask = palette.resolve();
-    for (int i = 0; i < static_cast<int>(QPalette::NColorRoles); ++i) {
-        if (!(mask & (1 << i))) {
-            m_editPalette.setBrush(QPalette::Active, static_cast<QPalette::ColorRole>(i),
-                        m_parentPalette.brush(QPalette::Active, static_cast<QPalette::ColorRole>(i)));
-            m_editPalette.setBrush(QPalette::Inactive, static_cast<QPalette::ColorRole>(i),
-                        m_parentPalette.brush(QPalette::Inactive, static_cast<QPalette::ColorRole>(i)));
-            m_editPalette.setBrush(QPalette::Disabled, static_cast<QPalette::ColorRole>(i),
-                        m_parentPalette.brush(QPalette::Disabled, static_cast<QPalette::ColorRole>(i)));
+    for (int r = 0; r < static_cast<int>(QPalette::NColorRoles); ++r) {
+        for (int g = 0; g < static_cast<int>(QPalette::NColorGroups); ++g) {
+            const auto role = static_cast<QPalette::ColorRole>(r);
+            const auto group = static_cast<QPalette::ColorGroup>(g);
+            if (!palette.isBrushSet(group, role))
+                m_editPalette.setBrush(group, role, m_parentPalette.brush(group, role));
         }
     }
-    m_editPalette.resolve(mask);
+    m_editPalette.setResolveMask(palette.resolveMask());
     updatePreviewPalette();
     updateStyledButton();
     m_paletteUpdated = true;
@@ -134,30 +124,30 @@ void PaletteEditor::setPalette(const QPalette &palette, const QPalette &parentPa
     setPalette(palette);
 }
 
-void PaletteEditor::on_buildButton_colorChanged(const QColor &)
+void PaletteEditor::buildButtonColorChanged()
 {
     buildPalette();
 }
 
-void PaletteEditor::on_activeRadio_clicked()
+void PaletteEditor::activeRadioClicked()
 {
     m_currentColorGroup = QPalette::Active;
     updatePreviewPalette();
 }
 
-void PaletteEditor::on_inactiveRadio_clicked()
+void PaletteEditor::inactiveRadioClicked()
 {
     m_currentColorGroup = QPalette::Inactive;
     updatePreviewPalette();
 }
 
-void PaletteEditor::on_disabledRadio_clicked()
+void PaletteEditor::disabledRadioClicked()
 {
     m_currentColorGroup = QPalette::Disabled;
     updatePreviewPalette();
 }
 
-void PaletteEditor::on_computeRadio_clicked()
+void PaletteEditor::computeRadioClicked()
 {
     if (m_compute)
         return;
@@ -167,7 +157,7 @@ void PaletteEditor::on_computeRadio_clicked()
     m_paletteModel->setCompute(true);
 }
 
-void PaletteEditor::on_detailsRadio_clicked()
+void PaletteEditor::detailsRadioClicked()
 {
     if (!m_compute)
         return;
@@ -227,15 +217,12 @@ QPalette PaletteEditor::getPalette(QDesignerFormEditorInterface *core, QWidget* 
 {
     PaletteEditor dlg(core, parent);
     QPalette parentPalette(parentPal);
-    uint mask = init.resolve();
-    for (int i = 0; i < static_cast<int>(QPalette::NColorRoles); ++i) {
-        if (!(mask & (1 << i))) {
-            parentPalette.setBrush(QPalette::Active, static_cast<QPalette::ColorRole>(i),
-                        init.brush(QPalette::Active, static_cast<QPalette::ColorRole>(i)));
-            parentPalette.setBrush(QPalette::Inactive, static_cast<QPalette::ColorRole>(i),
-                        init.brush(QPalette::Inactive, static_cast<QPalette::ColorRole>(i)));
-            parentPalette.setBrush(QPalette::Disabled, static_cast<QPalette::ColorRole>(i),
-                        init.brush(QPalette::Disabled, static_cast<QPalette::ColorRole>(i)));
+    for (int r = 0; r < static_cast<int>(QPalette::NColorRoles); ++r) {
+        for (int g = 0; g < static_cast<int>(QPalette::NColorGroups); ++g) {
+            const auto role = static_cast<QPalette::ColorRole>(r);
+            const auto group = static_cast<QPalette::ColorGroup>(g);
+            if (!init.isBrushSet(group, role))
+                parentPalette.setBrush(group, role, init.brush(group, role));
         }
     }
     dlg.setPalette(init, parentPalette);
@@ -282,8 +269,6 @@ void PaletteEditor::viewContextMenuRequested(const QPoint &pos)
     brush.setColor(newColor);
     m_paletteModel->setData(index, QVariant(brush), BrushRole);
 }
-
-static inline QString paletteSuffix() { return QStringLiteral("xml"); }
 
 static inline QString paletteFilter()
 {
@@ -341,7 +326,7 @@ static bool loadPalette(const QString &fileName, QPalette *pal, QString *errorMe
         *errorMessage = msgCannotReadPalette(fileName, reader);
         return false;
     }
-    if (reader.name() != QLatin1String("palette")) {
+    if (reader.name() != "palette"_L1) {
         const auto why = PaletteEditor::tr("Invalid element \"%1\", expected \"palette\".")
                          .arg(reader.name().toString());
         *errorMessage = msgCannotReadPalette(fileName, reader, why);
@@ -361,7 +346,7 @@ void PaletteEditor::save()
 {
     QFileDialog dialog(this, tr("Save Palette"), QString(), paletteFilter());
     dialog.setAcceptMode(QFileDialog::AcceptSave);
-    dialog.setDefaultSuffix(paletteSuffix());
+    dialog.setDefaultSuffix(u"xml"_s);
     while (dialog.exec() == QDialog::Accepted) {
         QString errorMessage;
         if (savePalette(dialog.selectedFiles().constFirst(), palette(), &errorMessage))
@@ -386,6 +371,11 @@ void PaletteEditor::load()
 }
 
 //////////////////////
+// Column 0: Role name and reset button. Uses a boolean value indicating
+//           whether the role is modified for the edit role.
+// Column 1: Color group Active
+// Column 2: Color group Inactive (visibility depending on m_compute/detail radio group)
+// Column 3: Color group Disabled
 
 PaletteModel::PaletteModel(QObject *parent)  :
     QAbstractTableModel(parent)
@@ -398,7 +388,7 @@ PaletteModel::PaletteModel(QObject *parent)  :
     for (int r = QPalette::WindowText; r < QPalette::NColorRoles; r++) {
         const auto role = static_cast<QPalette::ColorRole>(r);
         if (role != QPalette::NoRole)
-            m_roleEntries.append({QLatin1String(e.key(r)), role});
+            m_roleEntries.append({QLatin1StringView(e.key(r)), role});
     }
 }
 
@@ -417,6 +407,12 @@ QBrush PaletteModel::brushAt(const QModelIndex &index) const
     return m_palette.brush(columnToGroup(index.column()), roleAt(index.row()));
 }
 
+// Palette resolve mask with all group bits for a row/role
+quint64 PaletteModel::rowMask(const QModelIndex &index) const
+{
+    return paletteResolveMask(roleAt(index.row()));
+}
+
 QVariant PaletteModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid())
@@ -426,15 +422,11 @@ QVariant PaletteModel::data(const QModelIndex &index, int role) const
     if (index.column() < 0 || index.column() >= 4)
         return QVariant();
 
-    if (index.column() == 0) {
+    if (index.column() == 0) { // Role name/bold print if changed
         if (role == Qt::DisplayRole)
             return m_roleEntries.at(index.row()).name;
-        if (role == Qt::EditRole) {
-            const uint mask = m_palette.resolve();
-            if (mask & (1 << int(roleAt(index.row()))))
-                return true;
-            return false;
-        }
+        if (role == Qt::EditRole)
+            return (rowMask(index) & m_palette.resolveMask()) != 0;
         return QVariant();
     }
     if (role == Qt::ToolTipRole)
@@ -493,11 +485,12 @@ bool PaletteModel::setData(const QModelIndex &index, const QVariant &value, int 
         return true;
     }
     if (index.column() == 0 && role == Qt::EditRole) {
-        uint mask = m_palette.resolve();
+        auto mask = m_palette.resolveMask();
         const bool isMask = qvariant_cast<bool>(value);
-        if (isMask)
-            mask |= (1 << int(colorRole));
-        else {
+        const auto bitMask = rowMask(index);
+        if (isMask) {
+            mask |= bitMask;
+        } else {
             m_palette.setBrush(QPalette::Active, colorRole,
                                m_parentPalette.brush(QPalette::Active, colorRole));
             m_palette.setBrush(QPalette::Inactive, colorRole,
@@ -505,9 +498,9 @@ bool PaletteModel::setData(const QModelIndex &index, const QVariant &value, int 
             m_palette.setBrush(QPalette::Disabled, colorRole,
                                m_parentPalette.brush(QPalette::Disabled, colorRole));
 
-            mask &= ~(1 << int(colorRole));
+            mask &= ~bitMask;
         }
-        m_palette.resolve(mask);
+        m_palette.setResolveMask(mask);
         emit paletteChanged(m_palette);
         const QModelIndex idxEnd = PaletteModel::index(row, 3);
         emit dataChanged(index, idxEnd);
@@ -573,7 +566,7 @@ int PaletteModel::groupToColumn(QPalette::ColorGroup group) const
 
 int PaletteModel::rowOf(QPalette::ColorRole role) const
 {
-    for (int row = 0, size = m_roleEntries.size(); row < size; ++row) {
+    for (qsizetype row = 0, size = m_roleEntries.size(); row < size; ++row) {
         if (m_roleEntries.at(row).role == role)
             return row;
     }
@@ -633,7 +626,7 @@ RoleEditor::RoleEditor(QWidget *parent) :
 
     QToolButton *button = new QToolButton(this);
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    button->setIcon(createIconSet(QStringLiteral("resetproperty.png")));
+    button->setIcon(createIconSet(u"resetproperty.png"_s));
     button->setIconSize(QSize(8,8));
     button->setSizePolicy(QSizePolicy(QSizePolicy::Fixed, QSizePolicy::MinimumExpanding));
     layout->addWidget(button);

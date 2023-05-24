@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 
 /*!
@@ -32,13 +8,13 @@
 */
 
 /*!
-    \externalpage http://www.linux-foundation.org/en/Accessibility/IAccessible2
+    \externalpage https://accessibility.linuxfoundation.org/a11yspecs/ia2/docs/html/index.html
     \title IAccessible2 Specification
 */
 
 /*!
-    \externalpage http://czyborra.com/
-    \title Roman Czyborra's
+    \externalpage https://www.unicode.org/reports/tr17/
+    \title UTR17
 */
 
 /*!
@@ -53,12 +29,21 @@
 
 /*!
     \externalpage https://standards.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html
-    \title Icon Theme Specification
+    \title Freedesktop Icon Theme Specification
 */
 
 /*!
+    \externalpage https://specifications.freedesktop.org/icon-naming-spec/icon-naming-spec-latest.html
+    \title Freedesktop Icon Naming Specification
+*/
+/*!
     \externalpage https://standards.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html#directory_layout
     \title Icon Theme Specification - Directory Layout
+*/
+
+/*!
+    \externalpage https://freedesktop.org/
+    \title Freedesktop
 */
 
 /*!
@@ -69,4 +54,14 @@
 /*!
     \externalpage https://www.lunarg.com/vulkan-sdk/
     \title LunarG Vulkan SDK
+*/
+
+/*!
+    \externalpage https://developer.android.com/reference/androidx/core/content/FileProvider
+    \title Android: FileProvider
+*/
+
+/*!
+    \externalpage https://developer.android.com/training/secure-file-sharing/setup-sharing.html
+    \title Android: Setting up file sharing
 */

@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import("../../../gn/perfetto_tp_tables.gni")
 import("../../../gn/test.gni")
+
+perfetto_tp_tables("tables_python") {
+  sources = [
+    "android_tables.py",
+    "metadata_tables.py",
+  ]
+  generate_docs = true
+}
 
 source_set("tables") {
   sources = [
@@ -21,22 +30,34 @@ source_set("tables") {
     "flow_tables.h",
     "macros.h",
     "macros_internal.h",
+    "memory_tables.h",
     "metadata_tables.h",
     "profiler_tables.h",
     "slice_tables.h",
     "table_destructors.cc",
+    "trace_proto_tables.h",
     "track_tables.h",
   ]
   deps = [
+    ":tables_python",
     "../../../gn:default_deps",
-    "../db:lib",
+    "../../../include/perfetto/ext/base",
+    "../db",
   ]
+}
+
+perfetto_tp_tables("py_tables_unittest") {
+  sources = [ "py_tables_unittest.py" ]
 }
 
 source_set("unittests") {
   testonly = true
-  sources = [ "macros_unittest.cc" ]
+  sources = [
+    "macros_unittest.cc",
+    "py_tables_unittest.cc",
+  ]
   deps = [
+    ":py_tables_unittest",
     ":tables",
     "../../../gn:default_deps",
     "../../../gn:gtest_and_gmock",

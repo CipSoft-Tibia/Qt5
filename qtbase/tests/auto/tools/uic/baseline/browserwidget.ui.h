@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'browserwidget.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -10,7 +10,7 @@
 #define BROWSERWIDGET_H
 
 #include <QtCore/QVariant>
-#include <QtWidgets/QAction>
+#include <QtGui/QAction>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QGroupBox>
 #include <QtWidgets/QHBoxLayout>
@@ -46,39 +46,39 @@ public:
     void setupUi(QWidget *Browser)
     {
         if (Browser->objectName().isEmpty())
-            Browser->setObjectName(QString::fromUtf8("Browser"));
+            Browser->setObjectName("Browser");
         Browser->resize(765, 515);
         insertRowAction = new QAction(Browser);
-        insertRowAction->setObjectName(QString::fromUtf8("insertRowAction"));
+        insertRowAction->setObjectName("insertRowAction");
         insertRowAction->setEnabled(false);
         deleteRowAction = new QAction(Browser);
-        deleteRowAction->setObjectName(QString::fromUtf8("deleteRowAction"));
+        deleteRowAction->setObjectName("deleteRowAction");
         deleteRowAction->setEnabled(false);
         vboxLayout = new QVBoxLayout(Browser);
 #ifndef Q_OS_MAC
         vboxLayout->setSpacing(6);
 #endif
         vboxLayout->setContentsMargins(8, 8, 8, 8);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         splitter_2 = new QSplitter(Browser);
-        splitter_2->setObjectName(QString::fromUtf8("splitter_2"));
-        QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        splitter_2->setObjectName("splitter_2");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Expanding);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(splitter_2->sizePolicy().hasHeightForWidth());
         splitter_2->setSizePolicy(sizePolicy);
         splitter_2->setOrientation(Qt::Horizontal);
         connectionWidget = new ConnectionWidget(splitter_2);
-        connectionWidget->setObjectName(QString::fromUtf8("connectionWidget"));
-        QSizePolicy sizePolicy1(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        connectionWidget->setObjectName("connectionWidget");
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Expanding);
         sizePolicy1.setHorizontalStretch(1);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(connectionWidget->sizePolicy().hasHeightForWidth());
         connectionWidget->setSizePolicy(sizePolicy1);
         splitter_2->addWidget(connectionWidget);
         table = new QTableView(splitter_2);
-        table->setObjectName(QString::fromUtf8("table"));
-        QSizePolicy sizePolicy2(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        table->setObjectName("table");
+        QSizePolicy sizePolicy2(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Expanding);
         sizePolicy2.setHorizontalStretch(2);
         sizePolicy2.setVerticalStretch(0);
         sizePolicy2.setHeightForWidth(table->sizePolicy().hasHeightForWidth());
@@ -90,8 +90,8 @@ public:
         vboxLayout->addWidget(splitter_2);
 
         groupBox = new QGroupBox(Browser);
-        groupBox->setObjectName(QString::fromUtf8("groupBox"));
-        QSizePolicy sizePolicy3(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
+        groupBox->setObjectName("groupBox");
+        QSizePolicy sizePolicy3(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::MinimumExpanding);
         sizePolicy3.setHorizontalStretch(0);
         sizePolicy3.setVerticalStretch(0);
         sizePolicy3.setHeightForWidth(groupBox->sizePolicy().hasHeightForWidth());
@@ -104,10 +104,10 @@ public:
 #ifndef Q_OS_MAC
         vboxLayout1->setContentsMargins(9, 9, 9, 9);
 #endif
-        vboxLayout1->setObjectName(QString::fromUtf8("vboxLayout1"));
+        vboxLayout1->setObjectName("vboxLayout1");
         sqlEdit = new QTextEdit(groupBox);
-        sqlEdit->setObjectName(QString::fromUtf8("sqlEdit"));
-        QSizePolicy sizePolicy4(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+        sqlEdit->setObjectName("sqlEdit");
+        QSizePolicy sizePolicy4(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::MinimumExpanding);
         sizePolicy4.setHorizontalStretch(0);
         sizePolicy4.setVerticalStretch(0);
         sizePolicy4.setHeightForWidth(sqlEdit->sizePolicy().hasHeightForWidth());
@@ -122,18 +122,18 @@ public:
         hboxLayout->setSpacing(6);
 #endif
         hboxLayout->setContentsMargins(1, 1, 1, 1);
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        hboxLayout->setObjectName("hboxLayout");
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
         clearButton = new QPushButton(groupBox);
-        clearButton->setObjectName(QString::fromUtf8("clearButton"));
+        clearButton->setObjectName("clearButton");
 
         hboxLayout->addWidget(clearButton);
 
         submitButton = new QPushButton(groupBox);
-        submitButton->setObjectName(QString::fromUtf8("submitButton"));
+        submitButton->setObjectName("submitButton");
 
         hboxLayout->addWidget(submitButton);
 

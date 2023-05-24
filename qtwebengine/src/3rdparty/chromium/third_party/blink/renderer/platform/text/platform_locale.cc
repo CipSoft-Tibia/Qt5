@@ -32,11 +32,12 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/strings/grit/blink_strings.h"
 #include "third_party/blink/renderer/platform/text/date_time_format.h"
+#include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/wtf/wtf.h"
 
 namespace blink {
 
@@ -48,6 +49,8 @@ class DateTimeStringBuilder : private DateTimeFormat::TokenHandler {
  public:
   // The argument objects must be alive until this object dies.
   DateTimeStringBuilder(Locale&, const DateComponents&);
+  DateTimeStringBuilder(const DateTimeStringBuilder&) = delete;
+  DateTimeStringBuilder& operator=(const DateTimeStringBuilder&) = delete;
 
   bool Build(const String&);
   String ToString();
@@ -63,8 +66,6 @@ class DateTimeStringBuilder : private DateTimeFormat::TokenHandler {
   StringBuilder builder_;
   Locale& localizer_;
   const DateComponents& date_;
-
-  DISALLOW_COPY_AND_ASSIGN(DateTimeStringBuilder);
 };
 
 DateTimeStringBuilder::DateTimeStringBuilder(Locale& localizer,
@@ -265,15 +266,15 @@ void Locale::SetLocaleData(const Vector<String, kDecimalSymbolsSize>& symbols,
                            const String& negative_prefix,
                            const String& negative_suffix) {
   for (wtf_size_t i = 0; i < symbols.size(); ++i) {
-    DCHECK(!symbols[i].IsEmpty());
+    DCHECK(!symbols[i].empty());
     decimal_symbols_[i] = symbols[i];
   }
   positive_prefix_ = positive_prefix;
   positive_suffix_ = positive_suffix;
   negative_prefix_ = negative_prefix;
   negative_suffix_ = negative_suffix;
-  DCHECK(!positive_prefix_.IsEmpty() || !positive_suffix_.IsEmpty() ||
-         !negative_prefix_.IsEmpty() || !negative_suffix_.IsEmpty());
+  DCHECK(!positive_prefix_.empty() || !positive_suffix_.empty() ||
+         !negative_prefix_.empty() || !negative_suffix_.empty());
   has_locale_data_ = true;
 
   StringBuilder builder;
@@ -308,7 +309,7 @@ void Locale::SetLocaleData(const Vector<String, kDecimalSymbolsSize>& symbols,
 
 String Locale::ConvertToLocalizedNumber(const String& input) {
   InitializeLocaleData();
-  if (!has_locale_data_ || input.IsEmpty())
+  if (!has_locale_data_ || input.empty())
     return input;
 
   unsigned i = 0;
@@ -352,7 +353,7 @@ String Locale::ConvertToLocalizedNumber(const String& input) {
 }
 
 static bool Matches(const String& text, unsigned position, const String& part) {
-  if (part.IsEmpty())
+  if (part.empty())
     return true;
   if (position + part.length() > text.length())
     return false;
@@ -367,9 +368,10 @@ bool Locale::DetectSignAndGetDigitRange(const String& input,
                                         bool& is_negative,
                                         unsigned& start_index,
                                         unsigned& end_index) {
+  DCHECK_EQ(input.Find(IsASCIISpace), WTF::kNotFound);
   start_index = 0;
   end_index = input.length();
-  if (negative_prefix_.IsEmpty() && negative_suffix_.IsEmpty()) {
+  if (negative_prefix_.empty() && negative_suffix_.empty()) {
     if (input.StartsWith(positive_prefix_) &&
         input.EndsWith(positive_suffix_)) {
       is_negative = false;
@@ -379,11 +381,18 @@ bool Locale::DetectSignAndGetDigitRange(const String& input,
       is_negative = true;
     }
   } else {
-    if (input.StartsWith(negative_prefix_) &&
-        input.EndsWith(negative_suffix_)) {
+    // For some locales the negative prefix and/or suffix are preceded or
+    // followed by whitespace. Exclude that for the purposes of this search
+    // since the input string has already been stripped of whitespace.
+    const String negative_prefix_without_whitespace =
+        negative_prefix_.StripWhiteSpace();
+    const String negative_suffix_without_whitespace =
+        negative_suffix_.StripWhiteSpace();
+    if (input.StartsWith(negative_prefix_without_whitespace) &&
+        input.EndsWith(negative_suffix_without_whitespace)) {
       is_negative = true;
-      start_index = negative_prefix_.length();
-      end_index -= negative_suffix_.length();
+      start_index = negative_prefix_without_whitespace.length();
+      end_index -= negative_suffix_without_whitespace.length();
     } else {
       is_negative = false;
       if (input.StartsWith(positive_prefix_) &&
@@ -414,7 +423,7 @@ unsigned Locale::MatchedDecimalSymbolIndex(const String& input,
 String Locale::ConvertFromLocalizedNumber(const String& localized) {
   InitializeLocaleData();
   String input = localized.RemoveCharacters(IsASCIISpace);
-  if (!has_locale_data_ || input.IsEmpty())
+  if (!has_locale_data_ || input.empty())
     return input;
 
   bool is_negative;
@@ -495,17 +504,21 @@ bool Locale::IsSignPrefix(UChar ch) {
 }
 
 bool Locale::HasTwoSignChars(const String& str) {
-  auto pos =
-      str.Find(WTF::BindRepeating(&Locale::IsSignPrefix, WTF::Passed(this)));
+  // Unretained is safe because callback executes synchronously in Find().
+  auto pos = str.Find(
+      WTF::BindRepeating(&Locale::IsSignPrefix, WTF::Unretained(this)));
   if (pos == kNotFound)
     return false;
-  return str.Find(WTF::BindRepeating(&Locale::IsSignPrefix, WTF::Passed(this)),
-                  pos + 1) != kNotFound;
+  // Unretained is safe because callback executes synchronously in Find().
+  return str.Find(
+             WTF::BindRepeating(&Locale::IsSignPrefix, WTF::Unretained(this)),
+             pos + 1) != kNotFound;
 }
 
 bool Locale::HasSignNotAfterE(const String& str) {
-  auto pos =
-      str.Find(WTF::BindRepeating(&Locale::IsSignPrefix, WTF::Passed(this)));
+  // Unretained is safe because callback executes synchronously in Find().
+  auto pos = str.Find(
+      WTF::BindRepeating(&Locale::IsSignPrefix, WTF::Unretained(this)));
   if (pos == kNotFound)
     return false;
   return pos == 0 || !IsE(str[pos - 1]);
@@ -516,7 +529,7 @@ bool Locale::IsDigit(UChar ch) {
   if (ch >= '0' && ch <= '9')
     return true;
   // Check each digit otherwise
-  String ch_str(&ch, 1);
+  String ch_str(&ch, 1u);
   return (ch_str == decimal_symbols_[0] || ch_str == decimal_symbols_[1] ||
           ch_str == decimal_symbols_[2] || ch_str == decimal_symbols_[3] ||
           ch_str == decimal_symbols_[4] || ch_str == decimal_symbols_[5] ||
@@ -528,13 +541,14 @@ bool Locale::IsDigit(UChar ch) {
 bool Locale::IsDecimalSeparator(UChar ch) {
   if (ch == '.')
     return true;
-  return LocalizedDecimalSeparator() == String(&ch, 1);
+  return LocalizedDecimalSeparator() == String(&ch, 1u);
 }
 
 // Is there a decimal separator in a string?
 bool Locale::HasDecimalSeparator(const String& str) {
+  // Unretained is safe because callback executes synchronously in Find().
   return str.Find(WTF::BindRepeating(&Locale::IsDecimalSeparator,
-                                     WTF::Passed(this))) != kNotFound;
+                                     WTF::Unretained(this))) != kNotFound;
 }
 
 String Locale::FormatDateTime(const DateComponents& date,

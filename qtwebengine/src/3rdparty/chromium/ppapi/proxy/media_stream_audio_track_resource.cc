@@ -1,10 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ppapi/proxy/media_stream_audio_track_resource.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "ppapi/proxy/audio_buffer_resource.h"
 #include "ppapi/proxy/ppapi_messages.h"
 #include "ppapi/shared_impl/media_stream_audio_track_shared.h"
@@ -80,10 +80,9 @@ int32_t MediaStreamAudioTrackResource::Configure(
 
   configure_callback_ = callback;
   Call<PpapiPluginMsg_MediaStreamAudioTrack_ConfigureReply>(
-      RENDERER,
-      PpapiHostMsg_MediaStreamAudioTrack_Configure(attributes),
-      base::Bind(&MediaStreamAudioTrackResource::OnPluginMsgConfigureReply,
-                 base::Unretained(this)),
+      RENDERER, PpapiHostMsg_MediaStreamAudioTrack_Configure(attributes),
+      base::BindOnce(&MediaStreamAudioTrackResource::OnPluginMsgConfigureReply,
+                     base::Unretained(this)),
       callback);
   return PP_OK_COMPLETIONPENDING;
 }

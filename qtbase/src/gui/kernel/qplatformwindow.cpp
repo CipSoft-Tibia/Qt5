@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformwindow.h"
 #include "qplatformwindow_p.h"
@@ -266,6 +230,20 @@ QPoint QPlatformWindow::mapToGlobal(const QPoint &pos) const
     return result;
 }
 
+QPointF QPlatformWindow::mapToGlobalF(const QPointF &pos) const
+{
+    const QPoint posPt = pos.toPoint();
+    const QPointF delta = pos - posPt;
+    return mapToGlobal(posPt) + delta;
+}
+
+QPointF QPlatformWindow::mapFromGlobalF(const QPointF &pos) const
+{
+    const QPoint posPt = pos.toPoint();
+    const QPointF delta = pos - posPt;
+    return mapFromGlobal(posPt) + delta;
+}
+
 /*!
     Translates the global screen coordinate \a pos to window
     coordinates using native methods. This is required for embedded windows,
@@ -492,7 +470,7 @@ bool QPlatformWindow::windowEvent(QEvent *event)
 
 bool QPlatformWindow::startSystemResize(Qt::Edges edges)
 {
-    Q_UNUSED(edges)
+    Q_UNUSED(edges);
     return false;
 }
 
@@ -519,7 +497,7 @@ bool QPlatformWindow::startSystemMove()
 
 void QPlatformWindow::setFrameStrutEventsEnabled(bool enabled)
 {
-    Q_UNUSED(enabled) // Do not warn as widgets enable it by default causing warnings with XCB.
+    Q_UNUSED(enabled); // Do not warn as widgets enable it by default causing warnings with XCB.
 }
 
 /*!
@@ -607,7 +585,7 @@ QSize QPlatformWindow::constrainWindowSize(const QSize &size)
 
 void QPlatformWindow::setAlertState(bool enable)
 {
-    Q_UNUSED(enable)
+    Q_UNUSED(enable);
 }
 
 /*!
@@ -749,20 +727,29 @@ QRect QPlatformWindow::initialGeometry(const QWindow *w, const QRect &initialGeo
     should be delivered using QPlatformWindow::deliverUpdateRequest()
     to not get out of sync with the internal state of QWindow.
 
-    The default implementation posts an UpdateRequest event to the
-    window after 5 ms. The additional time is there to give the event
-    loop a bit of idle time to gather system events.
+    The default implementation posts an UpdateRequest event to the window after
+    an interval that is at most 5 ms. If the window's associated screen reports
+    a \l{QPlatformScreen::refreshRate()}{refresh rate} higher than 60 Hz, the
+    interval is scaled down to a valid smaller than 5. The additional time is
+    there to give the event loop a bit of idle time to gather system events.
 
 */
 void QPlatformWindow::requestUpdate()
 {
     Q_D(QPlatformWindow);
 
-    static int updateInterval = []() {
-        bool ok = false;
-        int customUpdateInterval = qEnvironmentVariableIntValue("QT_QPA_UPDATE_IDLE_TIME", &ok);
-        return ok ? customUpdateInterval : 5;
-    }();
+    static bool customUpdateIntervalValid = false;
+    static int customUpdateInterval = qEnvironmentVariableIntValue("QT_QPA_UPDATE_IDLE_TIME",
+                                                                   &customUpdateIntervalValid);
+    int updateInterval = customUpdateInterval;
+    if (!customUpdateIntervalValid) {
+        updateInterval = 5;
+        if (QPlatformScreen *currentScreen = screen()) {
+            const qreal refreshRate = currentScreen->refreshRate();
+            if (refreshRate > 60.0)
+                updateInterval /= refreshRate / 60.0;
+        }
+    }
 
     Q_ASSERT(!d->updateTimer.isActive());
     d->updateTimer.start(updateInterval, Qt::PreciseTimer, window());
@@ -842,7 +829,7 @@ QSize QPlatformWindow::windowSizeIncrement() const
 */
 QRect QPlatformWindow::windowGeometry() const
 {
-    return QHighDpi::toNativePixels(window()->geometry(), window());
+    return QHighDpi::toNativeWindowGeometry(window()->geometry(), window());
 }
 
 /*!
@@ -850,7 +837,7 @@ QRect QPlatformWindow::windowGeometry() const
 */
 QRect QPlatformWindow::windowFrameGeometry() const
 {
-    return QHighDpi::toNativePixels(window()->frameGeometry(), window());
+    return QHighDpi::toNativeWindowGeometry(window()->frameGeometry(), window());
 }
 
 /*!
@@ -861,10 +848,10 @@ QRect QPlatformWindow::windowFrameGeometry() const
 
 QRectF QPlatformWindow::closestAcceptableGeometry(const QWindow *qWindow, const QRectF &nativeRect)
 {
-    const QRectF rectF = QHighDpi::fromNativePixels(nativeRect, qWindow);
+    const QRectF rectF = QHighDpi::fromNativeWindowGeometry(nativeRect, qWindow);
     const QRectF correctedGeometryF = qt_window_private(const_cast<QWindow *>(qWindow))->closestAcceptableGeometry(rectF);
     return !correctedGeometryF.isEmpty() && rectF != correctedGeometryF
-        ? QHighDpi::toNativePixels(correctedGeometryF, qWindow) : nativeRect;
+        ? QHighDpi::toNativeWindowGeometry(correctedGeometryF, qWindow) : nativeRect;
 }
 
 QRectF QPlatformWindow::windowClosestAcceptableGeometry(const QRectF &nativeRect) const

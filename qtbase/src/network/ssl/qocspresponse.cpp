@@ -1,41 +1,6 @@
-/****************************************************************************
-** Copyright (C) 2011 Richard J. Moore <rich@kde.org>
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011 Richard J. Moore <rich@kde.org>
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qocspresponse_p.h"
 #include "qocspresponse.h"
@@ -43,6 +8,8 @@
 #include "qhashfunctions.h"
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QOcspResponse)
 
 /*!
     \class QOcspResponse
@@ -53,7 +20,7 @@ QT_BEGIN_NAMESPACE
     \ingroup ssl
     \inmodule QtNetwork
 
-    The QOcspResponse class represents the revocation status of a server's certficate,
+    The QOcspResponse class represents the revocation status of a server's certificate,
     received by the client-side socket during the TLS handshake. QSslSocket must be
     configured with OCSP stapling enabled.
 
@@ -95,7 +62,7 @@ QT_BEGIN_NAMESPACE
     \inmodule QtNetwork
 
 
-    This enumeration describes revocation reasons, defined in \l{https://tools.ietf.org/html/rfc5280#section-5.3.1}{RFC 5280, section 5.3.1}
+    This enumeration describes revocation reasons, defined in \l{RFC 5280, section 5.3.1}
 
     \value None
     \value Unspecified
@@ -206,46 +173,46 @@ QSslCertificate QOcspResponse::subject() const
 }
 
 /*!
-    \fn bool operator==(const QOcspResponse &lhs, const QOcspResponse &rhs)
+    \fn bool QOcspResponse::operator==(const QOcspResponse &lhs, const QOcspResponse &rhs)
 
     Returns \c true if \a lhs and \a rhs are the responses for the same
     certificate, signed by the same responder, have the same
     revocation reason and the same certificate status.
 
     \since 5.13
-    \relates QOcspResponse
- */
-Q_NETWORK_EXPORT bool operator==(const QOcspResponse &lhs, const QOcspResponse &rhs)
-{
-    return lhs.d == rhs.d || *lhs.d == *rhs.d;
-}
-
-/*!
-  \fn bool operator != (const QOcspResponse &lhs, const QOcspResponse &rhs)
-
-  Returns \c true if \a lhs and \a rhs are responses for different certificates,
-  or signed by different responders, or have different revocation reasons, or different
-  certificate statuses.
-
-  \since 5.13
-  \relates QOcspResponse
 */
 
 /*!
-    \fn uint qHash(const QOcspResponse &response, uint seed)
+    \fn bool QOcspResponse::operator!=(const QOcspResponse &lhs, const QOcspResponse &rhs)
 
+    Returns \c true if \a lhs and \a rhs are responses for different certificates,
+    or signed by different responders, or have different revocation reasons, or different
+    certificate statuses.
+
+    \since 5.13
+*/
+
+/*!
+    \internal
+*/
+bool QOcspResponse::isEqual(const QOcspResponse &other) const
+{
+    return d == other.d || *d == *other.d;
+}
+
+/*!
     Returns the hash value for the \a response, using \a seed to seed the calculation.
 
     \since 5.13
     \relates QHash
 */
-uint qHash(const QOcspResponse &response, uint seed) noexcept
+size_t qHash(const QOcspResponse &response, size_t seed) noexcept
 {
     const QOcspResponsePrivate *d = response.d.data();
     Q_ASSERT(d);
 
     QtPrivate::QHashCombine hasher;
-    uint hash = hasher(seed, int(d->certificateStatus));
+    size_t hash = hasher(seed, int(d->certificateStatus));
     hash = hasher(hash, int(d->revocationReason));
     if (!d->signerCert.isNull())
         hash = hasher(hash, d->signerCert);

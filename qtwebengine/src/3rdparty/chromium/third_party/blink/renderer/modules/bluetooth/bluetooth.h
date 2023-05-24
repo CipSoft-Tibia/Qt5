@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,33 +7,43 @@
 
 #include "third_party/blink/public/mojom/bluetooth/web_bluetooth.mojom-blink-forward.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
 #include "third_party/blink/renderer/core/page/page_visibility_observer.h"
 #include "third_party/blink/renderer/modules/bluetooth/bluetooth_advertising_event.h"
 #include "third_party/blink/renderer/modules/bluetooth/bluetooth_device.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_associated_receiver_set.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_remote.h"
 #include "third_party/blink/renderer/platform/mojo/heap_mojo_wrapper_mode.h"
+#include "third_party/blink/renderer/platform/supplementable.h"
 
 namespace blink {
 
 class BluetoothLEScanOptions;
 class ExceptionState;
 class RequestDeviceOptions;
+class Navigator;
 class ScriptPromise;
 class ScriptState;
 
 class Bluetooth final : public EventTargetWithInlineData,
+                        public Supplement<Navigator>,
                         public PageVisibilityObserver,
                         public mojom::blink::WebBluetoothAdvertisementClient {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  explicit Bluetooth(LocalDOMWindow*);
+  static const char kSupplementName[];
+
+  // IDL exposed as navigator.bluetooth
+  static Bluetooth* bluetooth(Navigator&);
+
+  explicit Bluetooth(Navigator&);
   ~Bluetooth() override;
 
-  // IDL exposed interface:
+  // IDL exposed bluetooth interface:
   ScriptPromise getAvailability(ScriptState*, ExceptionState&);
   ScriptPromise getDevices(ScriptState*, ExceptionState&);
   ScriptPromise requestDevice(ScriptState*,
@@ -44,6 +54,7 @@ class Bluetooth final : public EventTargetWithInlineData,
                               const BluetoothLEScanOptions*,
                               ExceptionState&);
 
+  bool IsServiceBound() const { return service_.is_bound(); }
   mojom::blink::WebBluetoothService* Service() { return service_.get(); }
 
   // WebBluetoothAdvertisementClient
@@ -91,8 +102,6 @@ class Bluetooth final : public EventTargetWithInlineData,
   // Ensures only one BluetoothDevice instance represents each
   // Bluetooth device inside a single global object.
   HeapHashMap<String, Member<BluetoothDevice>> device_instance_map_;
-
-  Member<LocalDOMWindow> window_;
 
   HeapMojoAssociatedReceiverSet<mojom::blink::WebBluetoothAdvertisementClient,
                                 Bluetooth>

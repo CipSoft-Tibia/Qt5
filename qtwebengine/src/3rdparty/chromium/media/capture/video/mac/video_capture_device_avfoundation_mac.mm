@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,22 +9,27 @@
 #import <CoreVideo/CoreVideo.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sstream>
 
+#include "base/debug/dump_without_crashing.h"
 #include "base/location.h"
 #include "base/mac/foundation_util.h"
-#include "base/mac/mac_util.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/sequenced_task_runner.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
+#import "base/task/single_thread_task_runner.h"
+#include "components/crash/core/common/crash_key.h"
+#include "media/base/mac/color_space_util_mac.h"
 #include "media/base/media_switches.h"
 #include "media/base/timestamp_constants.h"
 #include "media/base/video_types.h"
 #import "media/capture/video/mac/video_capture_device_avfoundation_utils_mac.h"
 #include "media/capture/video/mac/video_capture_device_factory_mac.h"
 #include "media/capture/video/mac/video_capture_device_mac.h"
+#import "media/capture/video/mac/video_capture_metrics_mac.h"
 #include "media/capture/video_capture_types.h"
-#include "services/video_capture/public/uma/video_capture_service_event.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace {
@@ -33,42 +38,47 @@ namespace {
 constexpr NSString* kModelIdLogitech4KPro =
     @"UVC Camera VendorID_1133 ProductID_2175";
 
-constexpr int kTimeToWaitBeforeStoppingStillImageCaptureInSeconds = 60;
+constexpr gfx::ColorSpace kColorSpaceRec709Apple(
+    gfx::ColorSpace::PrimaryID::BT709,
+    gfx::ColorSpace::TransferID::BT709_APPLE,
+    gfx::ColorSpace::MatrixID::SMPTE170M,
+    gfx::ColorSpace::RangeID::LIMITED);
+
+constexpr int kTimeToWaitBeforeStoppingPhotoOutputInSeconds = 60;
 constexpr FourCharCode kDefaultFourCCPixelFormat =
     kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;  // NV12 (a.k.a. 420v)
+
+// Allowable epsilon when comparing the requested framerate against the
+// captures' min/max framerates, to handle float inaccuracies.
+// Framerates will be in the range of 1-100 or so, meaning under- or
+// overshooting by 0.001 fps will be negligable, but still handling float loss
+// of precision during manipulation.
+constexpr float kFrameRateEpsilon = 0.001;
 
 base::TimeDelta GetCMSampleBufferTimestamp(CMSampleBufferRef sampleBuffer) {
   const CMTime cm_timestamp =
       CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
   const base::TimeDelta timestamp =
       CMTIME_IS_VALID(cm_timestamp)
-          ? base::TimeDelta::FromSecondsD(CMTimeGetSeconds(cm_timestamp))
+          ? base::Seconds(CMTimeGetSeconds(cm_timestamp))
           : media::kNoTimestamp;
   return timestamp;
 }
 
-std::string MacFourCCToString(OSType fourcc) {
-  char arr[] = {fourcc >> 24, (fourcc >> 16) & 255, (fourcc >> 8) & 255,
-                fourcc & 255, 0};
-  return arr;
-}
-
-class CMSampleBufferScopedAccessPermission
-    : public media::VideoCaptureDevice::Client::Buffer::ScopedAccessPermission {
- public:
-  CMSampleBufferScopedAccessPermission(CMSampleBufferRef buffer)
-      : buffer_(buffer, base::scoped_policy::RETAIN) {
-    buffer_.reset();
-  }
-  ~CMSampleBufferScopedAccessPermission() override {}
-
- private:
-  base::ScopedCFTypeRef<CMSampleBufferRef> buffer_;
-};
+constexpr size_t kPixelBufferPoolSize = 10;
 
 }  // anonymous namespace
 
 namespace media {
+
+BASE_FEATURE(kInCapturerScaling,
+             "InCapturerScaling",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Uses the most recent advice from Apple for configuring and starting.
+BASE_FEATURE(kConfigureCaptureBeforeStart,
+             "ConfigureCaptureBeforeStart",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 AVCaptureDeviceFormat* FindBestCaptureFormat(
     NSArray<AVCaptureDeviceFormat*>* formats,
@@ -92,8 +102,9 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
     for (AVFrameRateRange* frameRateRange in
          [captureFormat videoSupportedFrameRateRanges]) {
       maxFrameRate = std::max(maxFrameRate, [frameRateRange maxFrameRate]);
-      matchesFrameRate |= [frameRateRange minFrameRate] <= frame_rate &&
-                          frame_rate <= [frameRateRange maxFrameRate];
+      matchesFrameRate |=
+          [frameRateRange minFrameRate] <= frame_rate + kFrameRateEpsilon &&
+          frame_rate - kFrameRateEpsilon <= [frameRateRange maxFrameRate];
     }
 
     // If the pixel format is unsupported by our code, then it is not useful.
@@ -165,30 +176,42 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
 
 #pragma mark Public methods
 
-- (id)initWithFrameReceiver:
+- (instancetype)initWithFrameReceiver:
     (media::VideoCaptureDeviceAVFoundationFrameReceiver*)frameReceiver {
   if ((self = [super init])) {
-    _mainThreadTaskRunner = base::ThreadTaskRunnerHandle::Get();
+    _mainThreadTaskRunner = base::SingleThreadTaskRunner::GetCurrentDefault();
+    _sampleQueue.reset(
+        dispatch_queue_create("org.chromium.VideoCaptureDeviceAVFoundation."
+                              "SampleDeliveryDispatchQueue",
+                              DISPATCH_QUEUE_SERIAL),
+        base::scoped_policy::ASSUME);
     DCHECK(frameReceiver);
+    _capturedFirstFrame = false;
     _weakPtrFactoryForTakePhoto =
         std::make_unique<base::WeakPtrFactory<VideoCaptureDeviceAVFoundation>>(
             self);
     [self setFrameReceiver:frameReceiver];
     _captureSession.reset([[AVCaptureSession alloc] init]);
+    _sampleBufferTransformer = media::SampleBufferTransformer::Create();
   }
   return self;
 }
 
 - (void)dealloc {
+  // Stopping a running photo output takes `_lock`. To avoid this happening
+  // inside stopCapture() below which would deadlock, we ensure that the photo
+  // output is already stopped before taking `_lock`.
+  [self stopPhotoOutput];
   {
     // To avoid races with concurrent callbacks, grab the lock before stopping
     // capture and clearing all the variables.
     base::AutoLock lock(_lock);
-    [self stopStillImageOutput];
     [self stopCapture];
     _frameReceiver = nullptr;
+    _sampleBufferTransformer.reset();
     _weakPtrFactoryForTakePhoto = nullptr;
     _mainThreadTaskRunner = nullptr;
+    _sampleQueue.reset();
   }
   {
     // Ensures -captureOutput has finished before we continue the destruction
@@ -217,9 +240,12 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
     [self stopCapture];
     // Now remove the input and output from the capture session.
     [_captureSession removeOutput:_captureVideoDataOutput];
-    [self stopStillImageOutput];
+    [self stopPhotoOutput];
     if (_captureDeviceInput) {
       DCHECK(_captureDevice);
+      if (@available(macOS 12.0, *)) {
+        [_captureDevice removeObserver:self forKeyPath:@"portraitEffectActive"];
+      }
       [_captureSession stopRunning];
       [_captureSession removeInput:_captureDeviceInput];
       _captureDeviceInput.reset();
@@ -232,8 +258,7 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   _captureDevice.reset([AVCaptureDevice deviceWithUniqueID:deviceId],
                        base::scoped_policy::RETAIN);
   if (!_captureDevice) {
-    *outMessage =
-        [NSString stringWithUTF8String:"Could not open video capture device."];
+    *outMessage = @"Could not open video capture device.";
     return NO;
   }
 
@@ -257,17 +282,20 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   _captureVideoDataOutput.reset([[AVCaptureVideoDataOutput alloc] init]);
   if (!_captureVideoDataOutput) {
     [_captureSession removeInput:_captureDeviceInput];
-    *outMessage =
-        [NSString stringWithUTF8String:"Could not create video data output."];
+    *outMessage = @"Could not create video data output.";
     return NO;
   }
   [_captureVideoDataOutput setAlwaysDiscardsLateVideoFrames:true];
 
-  [_captureVideoDataOutput
-      setSampleBufferDelegate:self
-                        queue:dispatch_get_global_queue(
-                                  DISPATCH_QUEUE_PRIORITY_DEFAULT, 0)];
+  [_captureVideoDataOutput setSampleBufferDelegate:self queue:_sampleQueue];
   [_captureSession addOutput:_captureVideoDataOutput];
+
+  if (@available(macOS 12.0, *)) {
+    [_captureDevice addObserver:self
+                     forKeyPath:@"portraitEffectActive"
+                        options:0
+                        context:_captureDevice.get()];
+  }
 
   return YES;
 }
@@ -285,7 +313,6 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
       media::FindBestCaptureFormat([_captureDevice formats], width, height,
                                    frameRate),
       base::scoped_policy::RETAIN);
-  // Default to NV12, a pixel format commonly supported by web cameras.
   FourCharCode best_fourcc = kDefaultFourCCPixelFormat;
   if (_bestCaptureFormat) {
     best_fourcc = CMFormatDescriptionGetMediaSubType(
@@ -303,8 +330,9 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
     }
   }
 
-  VLOG(2) << __func__ << ": configuring '" << MacFourCCToString(best_fourcc)
-          << "' " << width << "x" << height << "@" << frameRate;
+  VLOG(2) << __func__ << ": configuring '"
+          << media::MacFourCCToString(best_fourcc) << "' " << width << "x"
+          << height << "@" << frameRate;
 
   // The capture output has to be configured, despite Mac documentation
   // detailing that setting the sessionPreset would be enough. The reason for
@@ -322,26 +350,70 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
 
   AVCaptureConnection* captureConnection =
       [_captureVideoDataOutput connectionWithMediaType:AVMediaTypeVideo];
-  // Check selector existence, related to bugs http://crbug.com/327532 and
-  // http://crbug.com/328096.
-  // CMTimeMake accepts integer argumenst but |frameRate| is float, round it.
-  if ([captureConnection
-          respondsToSelector:@selector(isVideoMinFrameDurationSupported)] &&
-      [captureConnection isVideoMinFrameDurationSupported]) {
+  // CMTimeMake accepts integer arguments but |frameRate| is float, so round it.
+  if ([captureConnection isVideoMinFrameDurationSupported]) {
     [captureConnection
         setVideoMinFrameDuration:CMTimeMake(media::kFrameRatePrecision,
                                             (int)(frameRate *
                                                   media::kFrameRatePrecision))];
   }
-  if ([captureConnection
-          respondsToSelector:@selector(isVideoMaxFrameDurationSupported)] &&
-      [captureConnection isVideoMaxFrameDurationSupported]) {
+  if ([captureConnection isVideoMaxFrameDurationSupported]) {
     [captureConnection
         setVideoMaxFrameDuration:CMTimeMake(media::kFrameRatePrecision,
                                             (int)(frameRate *
                                                   media::kFrameRatePrecision))];
   }
   return YES;
+}
+
+- (void)setScaledResolutions:(std::vector<gfx::Size>)resolutions {
+  if (!base::FeatureList::IsEnabled(media::kInCapturerScaling)) {
+    return;
+  }
+  // The lock is needed for |_scaledFrameTransformers|.
+  base::AutoLock lock(_lock);
+  bool reconfigureScaledFrameTransformers = false;
+  if (resolutions.size() != _scaledFrameTransformers.size()) {
+    reconfigureScaledFrameTransformers = true;
+  } else {
+    for (const auto& resolution : resolutions) {
+      bool resolutionHasTransformer = false;
+      for (const auto& scaledFrameTransformer : _scaledFrameTransformers) {
+        if (resolution == scaledFrameTransformer->destination_size()) {
+          resolutionHasTransformer = true;
+          break;
+        }
+      }
+      if (!resolutionHasTransformer) {
+        reconfigureScaledFrameTransformers = true;
+        break;
+      }
+    }
+  }
+  if (!reconfigureScaledFrameTransformers)
+    return;
+  std::stringstream str;
+  str << "[";
+  for (size_t i = 0; i < resolutions.size(); ++i) {
+    if (i != 0)
+      str << ", ";
+    str << resolutions[i].ToString();
+  }
+  str << "]";
+  VLOG(1) << "Configuring scaled resolutions: " << str.str();
+  _scaledFrameTransformers.clear();
+  for (size_t i = 0; i < resolutions.size(); ++i) {
+    DCHECK(i == 0 || resolutions[i - 1].height() >= resolutions[i].height());
+    // Configure the transformer to and from NV12 pixel buffers - we only want
+    // to pay scaling costs, not conversion costs.
+    auto scaledFrameTransformer = media::SampleBufferTransformer::Create();
+    scaledFrameTransformer->Reconfigure(
+        media::SampleBufferTransformer::
+            kBestTransformerForPixelBufferToNv12Output,
+        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, resolutions[i],
+        kPixelBufferPoolSize);
+    _scaledFrameTransformers.push_back(std::move(scaledFrameTransformer));
+  }
 }
 
 - (BOOL)startCapture {
@@ -356,109 +428,133 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
          selector:@selector(onVideoError:)
              name:AVCaptureSessionRuntimeErrorNotification
            object:_captureSession];
-  [_captureSession startRunning];
 
-  // Update the active capture format once the capture session is running.
-  // Setting it before the capture session is running has no effect.
-  if (_bestCaptureFormat) {
-    if ([_captureDevice lockForConfiguration:nil]) {
+  if (base::FeatureList::IsEnabled(media::kConfigureCaptureBeforeStart)) {
+    if (_bestCaptureFormat) {
+      [_captureSession beginConfiguration];
+      if ([_captureDevice lockForConfiguration:nil]) {
+        [_captureDevice setActiveFormat:_bestCaptureFormat];
+        [_captureDevice unlockForConfiguration];
+      }
+      [_captureSession commitConfiguration];
+    }
+
+    [_captureSession startRunning];
+  } else {
+    [_captureSession startRunning];
+    if (_bestCaptureFormat && [_captureDevice lockForConfiguration:nil]) {
       [_captureDevice setActiveFormat:_bestCaptureFormat];
       [_captureDevice unlockForConfiguration];
     }
   }
 
+  {
+    base::AutoLock lock(_lock);
+    _capturedFirstFrame = false;
+    _capturedFrameSinceLastStallCheck = NO;
+  }
+  [self doStallCheck:0];
   return YES;
 }
 
 - (void)stopCapture {
   DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
-  [self stopStillImageOutput];
+  _weakPtrFactoryForStallCheck.reset();
+  [self stopPhotoOutput];
   if ([_captureSession isRunning])
     [_captureSession stopRunning];  // Synchronous.
   [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (bool)useLegacyStillImageApi {
+  if (@available(macOS 10.15, *)) {
+    return _forceLegacyStillImageApi;
+  }
+  return true;
+}
+
+- (void)setForceLegacyStillImageApiForTesting:(bool)forceLegacyApi {
+  _forceLegacyStillImageApi = forceLegacyApi;
 }
 
 - (void)takePhoto {
   DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
   DCHECK([_captureSession isRunning]);
 
-  ++_takePhotoStartedCount;
+  ++_pendingTakePhotos;
+  if (_pendingTakePhotos > 1u) {
+    // There is already pending takePhoto(). When it finishes it will kick off
+    // the next takePhotoInternal(), so there is nothing more to do here.
+    return;
+  }
+  // `_pendingTakePhotos` just went from 0 to 1. In case the 60 second delayed
+  // task to perform stopPhotoOutput() is in-flight, invalidate weak ptrs to
+  // cancel any such operation.
+  _weakPtrFactoryForTakePhoto->InvalidateWeakPtrs();
 
   // Ready to take a photo immediately?
-  if (_stillImageOutput && _stillImageOutputWarmupCompleted) {
+  // Thread-safe because `_photoOutput` is only modified on the main thread.
+  if (_photoOutput) {
     [self takePhotoInternal];
     return;
   }
 
-  // Lazily instantiate the |_stillImageOutput| the first time takePhoto() is
-  // called. When takePhoto() isn't called, this avoids JPEG compession work for
-  // every frame. This can save a lot of CPU in some cases (see
-  // https://crbug.com/1116241). However because it can take a couple of second
-  // for the 3A to stabilize, lazily instantiating like may result in noticeable
-  // delays. To avoid delays in future takePhoto() calls we don't delete
-  // |_stillImageOutput| until takePhoto() has not been called for 60 seconds.
-  if (!_stillImageOutput) {
-    // We use AVCaptureStillImageOutput for historical reasons, but note that it
-    // has been deprecated in macOS 10.15[1] in favor of
-    // AVCapturePhotoOutput[2].
-    //
-    // [1]
-    // https://developer.apple.com/documentation/avfoundation/avcapturestillimageoutput
-    // [2]
-    // https://developer.apple.com/documentation/avfoundation/avcapturephotooutput
-    // TODO(https://crbug.com/1124322): Migrate to the new API.
-    _stillImageOutput.reset([[AVCaptureStillImageOutput alloc] init]);
-    if (!_stillImageOutput ||
-        ![_captureSession canAddOutput:_stillImageOutput]) {
-      // Complete this started photo as error.
-      ++_takePhotoPendingCount;
-      {
-        base::AutoLock lock(_lock);
-        if (_frameReceiver) {
-          _frameReceiver->OnPhotoError();
-        }
-      }
-      [self takePhotoCompleted];
-      return;
+  // Lazily instantiate `_photoOutput` so that if the app never calls
+  // takePhoto() we don't have to pay the associated performance cost, see
+  // https://crbug.com/1116241. This procedure is purposefully delayed by 3
+  // seconds because the camera needs to ramp up after re-configuring itself in
+  // order for 3A to stabilize or else the photo is dark/black.
+  {
+    // `_lock` is needed since `_photoOutput` may be read from non-main thread.
+    base::AutoLock lock(_lock);
+    if ([self useLegacyStillImageApi]) {
+      _photoOutput.reset([[AVCaptureStillImageOutput alloc] init]);
+    } else if (@available(macOS 10.15, *)) {
+      _photoOutput.reset([[AVCapturePhotoOutput alloc] init]);
+    } else {
+      NOTREACHED();
     }
-    [_captureSession addOutput:_stillImageOutput];
-    // A delay is needed before taking the photo or else the photo may be dark.
-    // 2 seconds was enough in manual testing; we delay by 3 for good measure.
-    _mainThreadTaskRunner->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(
-            [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf) {
-              [weakSelf.get() takePhotoInternal];
-            },
-            _weakPtrFactoryForTakePhoto->GetWeakPtr()),
-        base::TimeDelta::FromSeconds(3));
   }
+  if (![_captureSession canAddOutput:_photoOutput]) {
+    {
+      base::AutoLock lock(_lock);
+      if (_frameReceiver) {
+        _frameReceiver->OnPhotoError();
+      }
+    }
+    [self takePhotoResolved];
+    return;
+  } else {
+    [_captureSession addOutput:_photoOutput];
+  }
+  // A delay is needed before taking the photo or else the photo may be dark.
+  // 2 seconds was enough in manual testing; we delay by 3 for good measure.
+  _mainThreadTaskRunner->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf) {
+            [weakSelf.get() takePhotoInternal];
+          },
+          _weakPtrFactoryForTakePhoto->GetWeakPtr()),
+      base::Seconds(3));
 }
 
-- (void)setOnStillImageOutputStoppedForTesting:
-    (base::RepeatingCallback<void()>)onStillImageOutputStopped {
+- (void)setOnPhotoOutputStoppedForTesting:
+    (base::RepeatingCallback<void()>)onPhotoOutputStopped {
   DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
-  _onStillImageOutputStopped = onStillImageOutputStopped;
+  _onPhotoOutputStopped = onPhotoOutputStopped;
 }
 
 #pragma mark Private methods
 
 - (void)takePhotoInternal {
   DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
-  // stopStillImageOutput invalidates all weak ptrs, meaning in-flight
-  // operations are affectively cancelled. So if this method is running, still
-  // image output must be good to go.
   DCHECK([_captureSession isRunning]);
-  DCHECK(_stillImageOutput);
-  DCHECK([[_stillImageOutput connections] count] == 1);
-  AVCaptureConnection* const connection =
-      [[_stillImageOutput connections] firstObject];
-  DCHECK(connection);
-  _stillImageOutputWarmupCompleted = true;
-
-  // For all photos started that are not yet pending, take photos.
-  while (_takePhotoPendingCount < _takePhotoStartedCount) {
-    ++_takePhotoPendingCount;
+  // takePhotoInternal() can only happen when we have a `_photoOutput` because
+  // stopPhotoOutput() cancels in-flight operations by invalidating weak ptrs.
+  DCHECK(_photoOutput);
+  if ([self useLegacyStillImageApi]) {
+    // `_photoOutput` is of type AVCaptureStillImageOutput.
     const auto handler = ^(CMSampleBufferRef sampleBuffer, NSError* error) {
       {
         base::AutoLock lock(_lock);
@@ -475,86 +571,153 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
             DCHECK_EQ(kCMVideoCodecType_JPEG,
                       CMFormatDescriptionGetMediaSubType(
                           CMSampleBufferGetFormatDescription(sampleBuffer)));
-
             char* baseAddress = 0;
             size_t length = 0;
-            media::ExtractBaseAddressAndLength(&baseAddress, &length,
-                                               sampleBuffer);
-            _frameReceiver->OnPhotoTaken(
-                reinterpret_cast<uint8_t*>(baseAddress), length, "image/jpeg");
+            const bool sample_buffer_addressable =
+                media::ExtractBaseAddressAndLength(&baseAddress, &length,
+                                                   sampleBuffer);
+            DCHECK(sample_buffer_addressable);
+            if (sample_buffer_addressable) {
+              _frameReceiver->OnPhotoTaken(
+                  reinterpret_cast<uint8_t*>(baseAddress), length,
+                  "image/jpeg");
+            }
           }
         }
       }
-      // Called both on success and failure.
+      // Whether we succeeded or failed, we need to resolve the pending
+      // takePhoto() operation.
       _mainThreadTaskRunner->PostTask(
           FROM_HERE,
           base::BindOnce(
               [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf) {
-                [weakSelf.get() takePhotoCompleted];
+                [weakSelf.get() takePhotoResolved];
               },
               _weakPtrFactoryForTakePhoto->GetWeakPtr()));
     };
-    [_stillImageOutput captureStillImageAsynchronouslyFromConnection:connection
-                                                   completionHandler:handler];
+    AVCaptureStillImageOutput* image_output =
+        static_cast<AVCaptureStillImageOutput*>(_photoOutput.get());
+    DCHECK([[image_output connections] count] == 1);
+    AVCaptureConnection* const connection =
+        [[image_output connections] firstObject];
+    DCHECK(connection);
+    [image_output captureStillImageAsynchronouslyFromConnection:connection
+                                              completionHandler:handler];
+  } else if (@available(macOS 10.15, *)) {
+    // `_photoOutput` is of type AVCapturePhotoOutput.
+    @try {
+      // Asynchronous success or failure is handled inside
+      // captureOutput:didFinishProcessingPhoto:error on an unknown thread.
+      // Synchronous failures are handled in the catch clause below.
+      [_photoOutput
+          capturePhotoWithSettings:[AVCapturePhotoSettings
+                                       photoSettingsWithFormat:@{
+                                         AVVideoCodecKey : AVVideoCodecTypeJPEG
+                                       }]
+                          delegate:self];
+    } @catch (id exception) {
+      {
+        base::AutoLock lock(_lock);
+        if (_frameReceiver) {
+          _frameReceiver->OnPhotoError();
+        }
+      }
+      [self takePhotoResolved];
+    }
+  } else {
+    NOTREACHED();
   }
 }
 
-- (void)takePhotoCompleted {
-  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
-  ++_takePhotoCompletedCount;
-  if (_takePhotoStartedCount != _takePhotoCompletedCount)
-    return;
-  // All pending takePhoto()s have completed. If no more photos are taken
-  // within 60 seconds, stop still image output to avoid expensive MJPEG
-  // conversions going forward.
-  _mainThreadTaskRunner->PostDelayedTask(
-      FROM_HERE,
-      base::BindOnce(
-          [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf,
-             size_t takePhotoCount) {
-            VideoCaptureDeviceAVFoundation* strongSelf = weakSelf.get();
-            if (!strongSelf)
-              return;
-            // Don't stop the still image output if takePhoto() was called
-            // while the task was pending.
-            if (strongSelf->_takePhotoStartedCount != takePhotoCount)
-              return;
-            [strongSelf stopStillImageOutput];
-          },
-          _weakPtrFactoryForTakePhoto->GetWeakPtr(), _takePhotoStartedCount),
-      base::TimeDelta::FromSeconds(
-          kTimeToWaitBeforeStoppingStillImageCaptureInSeconds));
-}
-
-- (void)stopStillImageOutput {
-  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
-  if (!_stillImageOutput) {
-    // Already stopped.
-    return;
-  }
-  if (_captureSession) {
-    [_captureSession removeOutput:_stillImageOutput];
-  }
-  _stillImageOutput.reset();
-  _stillImageOutputWarmupCompleted = false;
-
-  // Cancel all in-flight operations.
-  _weakPtrFactoryForTakePhoto->InvalidateWeakPtrs();
-  // Report error for all pending calls that were stopped.
-  size_t pendingCalls = _takePhotoStartedCount - _takePhotoCompletedCount;
-  _takePhotoCompletedCount = _takePhotoPendingCount = _takePhotoStartedCount;
-  {
+// Callback for the `_photoOutput` operation started in takePhotoInternal().
+- (void)captureOutput:(id)output        // AVCapturePhotoOutput*
+    didFinishProcessingPhoto:(id)photo  // AVCapturePhoto*
+                       error:(NSError*)error {
+  if (@available(macOS 10.15, *)) {
     base::AutoLock lock(_lock);
+    // If `output` is no longer current, ignore the result of this operation.
+    // `_frameReceiver->OnPhotoError()` will already have been called inside
+    // stopPhotoOutput().
+    if (output != _photoOutput) {
+      return;
+    }
     if (_frameReceiver) {
-      for (size_t i = 0; i < pendingCalls; ++i) {
+      // Always non-nil according to Apple's documentation.
+      DCHECK(photo);
+      NSData* data = static_cast<AVCapturePhoto*>(photo).fileDataRepresentation;
+      if (!error && data) {
+        _frameReceiver->OnPhotoTaken(
+            reinterpret_cast<const uint8_t*>(data.bytes), data.length,
+            "image/jpeg");
+      } else {
         _frameReceiver->OnPhotoError();
       }
     }
+    // Whether we succeeded or failed, we need to resolve the pending
+    // takePhoto() operation.
+    _mainThreadTaskRunner->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf) {
+              [weakSelf.get() takePhotoResolved];
+            },
+            _weakPtrFactoryForTakePhoto->GetWeakPtr()));
+  } else {
+    NOTREACHED();
+  }
+}
+
+- (void)takePhotoResolved {
+  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
+  --_pendingTakePhotos;
+  if (_pendingTakePhotos > 0u) {
+    // Take another photo.
+    [self takePhotoInternal];
+    return;
+  }
+  // All pending takePhoto()s have completed. If no more photos are taken
+  // within 60 seconds, stop photo output to avoid expensive MJPEG conversions
+  // going forward.
+  _mainThreadTaskRunner->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf) {
+            [weakSelf.get() stopPhotoOutput];
+          },
+          _weakPtrFactoryForTakePhoto->GetWeakPtr()),
+      base::Seconds(kTimeToWaitBeforeStoppingPhotoOutputInSeconds));
+}
+
+- (void)stopPhotoOutput {
+  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
+  // Already stopped?
+  // Thread-safe because `_photoOutput` is only modified on the main thread.
+  if (!_photoOutput) {
+    return;
+  }
+  // Cancel all in-flight operations.
+  _weakPtrFactoryForTakePhoto->InvalidateWeakPtrs();
+  {
+    base::AutoLock lock(_lock);
+    if (_captureSession) {
+      [_captureSession removeOutput:_photoOutput];
+    }
+    // `_lock` is needed since `_photoOutput` may be read from non-main thread.
+    _photoOutput.reset();
+    // For every pending photo, report OnPhotoError().
+    if (_pendingTakePhotos) {
+      if (_frameReceiver) {
+        for (size_t i = 0; i < _pendingTakePhotos; ++i) {
+          _frameReceiver->OnPhotoError();
+        }
+      }
+      _pendingTakePhotos = 0u;
+    }
   }
 
-  if (_onStillImageOutputStopped) {
+  if (_onPhotoOutputStopped) {
     // Callback used by tests.
-    _onStillImageOutputStopped.Run();
+    _onPhotoOutputStopped.Run();
   }
 }
 
@@ -566,17 +729,29 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   // Trust |_frameReceiver| to do decompression.
   char* baseAddress = 0;
   size_t frameSize = 0;
-  media::ExtractBaseAddressAndLength(&baseAddress, &frameSize, sampleBuffer);
   _lock.AssertAcquired();
-  _frameReceiver->ReceiveFrame(reinterpret_cast<const uint8_t*>(baseAddress),
-                               frameSize, captureFormat, colorSpace, 0, 0,
-                               timestamp);
+  DCHECK(_frameReceiver);
+  const bool sample_buffer_addressable = media::ExtractBaseAddressAndLength(
+      &baseAddress, &frameSize, sampleBuffer);
+  DCHECK(sample_buffer_addressable);
+  if (sample_buffer_addressable) {
+    const bool safe_to_forward =
+        captureFormat.pixel_format == media::PIXEL_FORMAT_MJPEG ||
+        media::VideoFrame::AllocationSize(
+            captureFormat.pixel_format, captureFormat.frame_size) <= frameSize;
+    DCHECK(safe_to_forward);
+    if (safe_to_forward) {
+      _frameReceiver->ReceiveFrame(
+          reinterpret_cast<const uint8_t*>(baseAddress), frameSize,
+          captureFormat, colorSpace, 0, 0, timestamp);
+    }
+  }
 }
 
-- (BOOL)processPixelBuffer:(CVImageBufferRef)pixelBuffer
-             captureFormat:(const media::VideoCaptureFormat&)captureFormat
-                colorSpace:(const gfx::ColorSpace&)colorSpace
-                 timestamp:(const base::TimeDelta)timestamp {
+- (BOOL)processPixelBufferPlanes:(CVImageBufferRef)pixelBuffer
+                   captureFormat:(const media::VideoCaptureFormat&)captureFormat
+                      colorSpace:(const gfx::ColorSpace&)colorSpace
+                       timestamp:(const base::TimeDelta)timestamp {
   VLOG(3) << __func__;
   if (CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly) !=
       kCVReturnSuccess) {
@@ -636,20 +811,40 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
     packedBufferSize += bytesPerRow * height;
   }
 
+  // If media::VideoFrame::PlaneSize differs from the CVPixelBuffer's size then
+  // generate a crash report to show the difference.
+  // https://crbug.com/1168112
+  CHECK_EQ(pixelBufferHeights.size(), packedHeights.size());
+  for (size_t plane = 0; plane < pixelBufferHeights.size(); ++plane) {
+    if (pixelBufferHeights[plane] != packedHeights[plane] &&
+        !_hasDumpedForFrameSizeMismatch) {
+      static crash_reporter::CrashKeyString<64> planeInfoKey(
+          "core-video-plane-info");
+      planeInfoKey.Set(
+          base::StringPrintf("plane:%zu cv_height:%zu packed_height:%zu", plane,
+                             pixelBufferHeights[plane], packedHeights[plane]));
+      base::debug::DumpWithoutCrashing();
+      _hasDumpedForFrameSizeMismatch = true;
+    }
+  }
+
   // If |pixelBuffer| is not tightly packed, then copy it to |packedBufferCopy|,
   // because ReceiveFrame() below assumes tight packing.
   // https://crbug.com/1151936
   bool needsCopyToPackedBuffer = pixelBufferBytesPerRows != packedBytesPerRows;
-  CHECK(pixelBufferHeights == packedHeights);
   std::vector<uint8_t> packedBufferCopy;
   if (needsCopyToPackedBuffer) {
-    CHECK(pixelBufferHeights == packedHeights);
-    packedBufferCopy.resize(packedBufferSize);
+    packedBufferCopy.resize(packedBufferSize, 0);
     uint8_t* dstAddr = packedBufferCopy.data();
     for (size_t plane = 0; plane < numPlanes; ++plane) {
       uint8_t* srcAddr = pixelBufferAddresses[plane];
-      for (size_t row = 0; row < packedHeights[plane]; ++row) {
-        memcpy(dstAddr, srcAddr, packedBytesPerRows[plane]);
+      size_t row = 0;
+      for (row = 0;
+           row < std::min(packedHeights[plane], pixelBufferHeights[plane]);
+           ++row) {
+        memcpy(dstAddr, srcAddr,
+               std::min(packedBytesPerRows[plane],
+                        pixelBufferBytesPerRows[plane]));
         dstAddr += packedBytesPerRows[plane];
         srcAddr += pixelBufferBytesPerRows[plane];
       }
@@ -657,6 +852,7 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   }
 
   _lock.AssertAcquired();
+  DCHECK(_frameReceiver);
   _frameReceiver->ReceiveFrame(
       packedBufferCopy.empty() ? pixelBufferAddresses[0]
                                : packedBufferCopy.data(),
@@ -665,25 +861,155 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   return YES;
 }
 
-- (BOOL)processNV12IOSurface:(IOSurfaceRef)ioSurface
-                sampleBuffer:(CMSampleBufferRef)sampleBuffer
-               captureFormat:(const media::VideoCaptureFormat&)captureFormat
-                  colorSpace:(const gfx::ColorSpace&)colorSpace
-                   timestamp:(const base::TimeDelta)timestamp {
+- (void)processPixelBufferNV12IOSurface:(CVPixelBufferRef)pixelBuffer
+                          captureFormat:
+                              (const media::VideoCaptureFormat&)captureFormat
+                             colorSpace:(const gfx::ColorSpace&)colorSpace
+                              timestamp:(const base::TimeDelta)timestamp {
   VLOG(3) << __func__;
   DCHECK_EQ(captureFormat.pixel_format, media::PIXEL_FORMAT_NV12);
-  gfx::GpuMemoryBufferHandle handle;
-  handle.id.id = -1;
-  handle.type = gfx::GpuMemoryBufferType::IO_SURFACE_BUFFER;
-  handle.mach_port.reset(IOSurfaceCreateMachPort(ioSurface));
-  if (!handle.mach_port)
-    return NO;
+
+  IOSurfaceRef ioSurface = CVPixelBufferGetIOSurface(pixelBuffer);
+  DCHECK(ioSurface);
+  media::CapturedExternalVideoBuffer externalBuffer =
+      [self capturedExternalVideoBufferFromNV12IOSurface:ioSurface
+                                           captureFormat:captureFormat
+                                              colorSpace:colorSpace];
+
+  // The lock is needed for |_scaledFrameTransformers| and |_frameReceiver|.
   _lock.AssertAcquired();
+  // References to any scaled pixel buffers need to be retained until after
+  // ReceiveExternalGpuMemoryBufferFrame().
+  std::vector<base::ScopedCFTypeRef<CVPixelBufferRef>> scaledPixelBuffers;
+  std::vector<media::CapturedExternalVideoBuffer> scaledExternalBuffers;
+  scaledPixelBuffers.reserve(_scaledFrameTransformers.size());
+  scaledExternalBuffers.reserve(_scaledFrameTransformers.size());
+  for (auto& scaledFrameTransformer : _scaledFrameTransformers) {
+    gfx::Size scaledFrameSize = scaledFrameTransformer->destination_size();
+    // Only proceed if this results in downscaling in one or both dimensions.
+    //
+    // It is not clear that we want to continue to allow changing the aspect
+    // ratio like this since this causes visible stretching in the image if the
+    // stretch is significantly large.
+    // TODO(https://crbug.com/1157072): When we know what to do about aspect
+    // ratios, consider adding a DCHECK here or otherwise ignore wrong aspect
+    // ratios (within some fault tolerance).
+    if (scaledFrameSize.width() > captureFormat.frame_size.width() ||
+        scaledFrameSize.height() > captureFormat.frame_size.height() ||
+        scaledFrameSize == captureFormat.frame_size) {
+      continue;
+    }
+    CVPixelBufferRef bufferToScale =
+        !scaledPixelBuffers.empty() ? scaledPixelBuffers.back() : pixelBuffer;
+    base::ScopedCFTypeRef<CVPixelBufferRef> scaledPixelBuffer =
+        scaledFrameTransformer->Transform(bufferToScale);
+    if (!scaledPixelBuffer) {
+      LOG(ERROR) << "Failed to downscale frame, skipping resolution "
+                 << scaledFrameSize.ToString();
+      continue;
+    }
+    scaledPixelBuffers.push_back(scaledPixelBuffer);
+    IOSurfaceRef scaledIoSurface = CVPixelBufferGetIOSurface(scaledPixelBuffer);
+    media::VideoCaptureFormat scaledCaptureFormat = captureFormat;
+    scaledCaptureFormat.frame_size = scaledFrameSize;
+    scaledExternalBuffers.push_back([self
+        capturedExternalVideoBufferFromNV12IOSurface:scaledIoSurface
+                                       captureFormat:scaledCaptureFormat
+                                          colorSpace:colorSpace]);
+  }
+
+  DCHECK(_frameReceiver);
   _frameReceiver->ReceiveExternalGpuMemoryBufferFrame(
-      std::move(handle),
-      std::make_unique<CMSampleBufferScopedAccessPermission>(sampleBuffer),
-      captureFormat, colorSpace, timestamp);
-  return YES;
+      std::move(externalBuffer), std::move(scaledExternalBuffers), timestamp);
+}
+
+- (media::CapturedExternalVideoBuffer)
+    capturedExternalVideoBufferFromNV12IOSurface:(IOSurfaceRef)ioSurface
+                                   captureFormat:
+                                       (const media::VideoCaptureFormat&)
+                                           captureFormat
+                                      colorSpace:
+                                          (const gfx::ColorSpace&)colorSpace {
+  DCHECK(ioSurface);
+  gfx::GpuMemoryBufferHandle handle;
+  handle.id = gfx::GpuMemoryBufferHandle::kInvalidId;
+  handle.type = gfx::GpuMemoryBufferType::IO_SURFACE_BUFFER;
+  handle.io_surface.reset(ioSurface, base::scoped_policy::RETAIN);
+
+  // The BT709_APPLE color space is stored as an ICC profile, which is parsed
+  // every frame in the GPU process. For this particularly common case, go back
+  // to ignoring the color profile, because doing so avoids doing an ICC profile
+  // parse.
+  // https://crbug.com/1143477 (CPU usage parsing ICC profile)
+  // https://crbug.com/959962 (ignoring color space)
+  gfx::ColorSpace overriddenColorSpace = colorSpace;
+  if (colorSpace == kColorSpaceRec709Apple) {
+    overriddenColorSpace = gfx::ColorSpace(
+        gfx::ColorSpace::PrimaryID::BT709, gfx::ColorSpace::TransferID::SRGB,
+        gfx::ColorSpace::MatrixID::BT709, gfx::ColorSpace::RangeID::LIMITED);
+    IOSurfaceSetValue(ioSurface, CFSTR("IOSurfaceColorSpace"),
+                      kCGColorSpaceSRGB);
+  }
+
+  return media::CapturedExternalVideoBuffer(std::move(handle), captureFormat,
+                                            overriddenColorSpace);
+}
+
+// Sometimes (especially when the camera is accessed by another process, e.g,
+// Photo Booth), the AVCaptureSession will stop producing new frames. This check
+// happens with no errors or notifications being produced. To recover from this,
+// check to see if a new frame has been captured second. If 5 of these checks
+// fail consecutively, restart the capture session.
+// https://crbug.com/1176568
+- (void)doStallCheck:(int)failedCheckCount {
+  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
+
+  int nextFailedCheckCount = failedCheckCount + 1;
+  {
+    base::AutoLock lock(_lock);
+    // This is to detect a capture was working, but stopped submitting new
+    // frames. If we haven't received any frames yet, don't do anything.
+    if (!_capturedFirstFrame)
+      nextFailedCheckCount = 0;
+
+    // If we captured a frame since last check, then we aren't stalled.
+    // We're also not considered stalled if takePhoto() is pending, avoiding
+    // excessive capture restarts in unit tests with mock time.
+    if (_capturedFrameSinceLastStallCheck || _pendingTakePhotos) {
+      nextFailedCheckCount = 0;
+    }
+    _capturedFrameSinceLastStallCheck = NO;
+  }
+
+  constexpr int kMaxFailedCheckCount = 5;
+  if (nextFailedCheckCount < kMaxFailedCheckCount) {
+    // Post a task to check for progress in 1 second. Create the weak factory
+    // for the posted task, if needed.
+    if (!_weakPtrFactoryForStallCheck) {
+      _weakPtrFactoryForStallCheck = std::make_unique<
+          base::WeakPtrFactory<VideoCaptureDeviceAVFoundation>>(self);
+    }
+    constexpr base::TimeDelta kStallCheckInterval = base::Seconds(1);
+    auto callback_lambda =
+        [](base::WeakPtr<VideoCaptureDeviceAVFoundation> weakSelf,
+           int failedCheckCount) {
+          VideoCaptureDeviceAVFoundation* strongSelf = weakSelf.get();
+          if (!strongSelf)
+            return;
+          [strongSelf doStallCheck:failedCheckCount];
+        };
+    _mainThreadTaskRunner->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(callback_lambda,
+                       _weakPtrFactoryForStallCheck->GetWeakPtr(),
+                       nextFailedCheckCount),
+        kStallCheckInterval);
+  } else {
+    // Capture appears to be stalled. Restart it.
+    LOG(ERROR) << "Capture appears to have stalled, restarting.";
+    [self stopCapture];
+    [self startCapture];
+  }
 }
 
 // |captureOutput| is called by the capture device to deliver a new frame.
@@ -699,8 +1025,70 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   // first to avoid races with -dealloc.
   base::AutoLock destructionLock(_destructionLock);
   base::AutoLock lock(_lock);
-  if (!_frameReceiver)
+  _capturedFrameSinceLastStallCheck = YES;
+  if (!_frameReceiver || !_sampleBufferTransformer) {
     return;
+  }
+
+  const base::TimeDelta pres_timestamp =
+      GetCMSampleBufferTimestamp(sampleBuffer);
+  if (start_timestamp_.is_zero()) {
+    start_timestamp_ = pres_timestamp;
+  }
+  const base::TimeDelta timestamp = pres_timestamp - start_timestamp_;
+
+  bool logUma = !std::exchange(_capturedFirstFrame, true);
+  if (logUma) {
+    media::LogFirstCapturedVideoFrame(_bestCaptureFormat, sampleBuffer);
+  }
+
+  // The SampleBufferTransformer CHECK-crashes if the sample buffer is not MJPEG
+  // and does not have a pixel buffer (https://crbug.com/1160647) so we fall
+  // back on the M87 code path if this is the case.
+  // TODO(https://crbug.com/1160315): When the SampleBufferTransformer is
+  // patched to support non-MJPEG-and-non-pixel-buffer sample buffers, remove
+  // this workaround and the fallback other code path.
+  bool sampleHasPixelBufferOrIsMjpeg =
+      CMSampleBufferGetImageBuffer(sampleBuffer) ||
+      CMFormatDescriptionGetMediaSubType(CMSampleBufferGetFormatDescription(
+          sampleBuffer)) == kCMVideoCodecType_JPEG_OpenDML;
+
+  // If the SampleBufferTransformer is enabled, convert all possible capture
+  // formats to an IOSurface-backed NV12 pixel buffer.
+  // TODO(https://crbug.com/1175142): Refactor to not hijack the code paths
+  // below the transformer code.
+  if (sampleHasPixelBufferOrIsMjpeg) {
+    _sampleBufferTransformer->Reconfigure(
+        media::SampleBufferTransformer::GetBestTransformerForNv12Output(
+            sampleBuffer),
+        kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+        media::GetSampleBufferSize(sampleBuffer), kPixelBufferPoolSize);
+    base::ScopedCFTypeRef<CVPixelBufferRef> pixelBuffer =
+        _sampleBufferTransformer->Transform(sampleBuffer);
+    if (!pixelBuffer) {
+      LOG(ERROR) << "Failed to transform captured frame. Dropping frame.";
+      return;
+    }
+    const media::VideoCaptureFormat captureFormat(
+        gfx::Size(CVPixelBufferGetWidth(pixelBuffer),
+                  CVPixelBufferGetHeight(pixelBuffer)),
+        _frameRate, media::PIXEL_FORMAT_NV12);
+    // When the |pixelBuffer| is the result of a conversion (not camera
+    // pass-through) then it originates from a CVPixelBufferPool and the color
+    // space is not recognized by media::GetImageBufferColorSpace(). This
+    // results in log spam and a default color space format is returned. To
+    // avoid this, we pretend the color space is kColorSpaceRec709Apple which
+    // triggers a path that avoids color space parsing inside of
+    // processPixelBufferNV12IOSurface.
+    // TODO(hbos): Investigate how to successfully parse and/or configure the
+    // color space correctly. The implications of this hack is not fully
+    // understood.
+    [self processPixelBufferNV12IOSurface:pixelBuffer
+                            captureFormat:captureFormat
+                               colorSpace:kColorSpaceRec709Apple
+                                timestamp:timestamp];
+    return;
+  }
 
   // We have certain format expectation for capture output:
   // For MJPEG, |sampleBuffer| is expected to always be a CVBlockBuffer.
@@ -718,56 +1106,104 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
   media::VideoPixelFormat videoPixelFormat = [VideoCaptureDeviceAVFoundation
       FourCCToChromiumPixelFormat:sampleBufferPixelFormat];
 
-  // TODO(julien.isorce): move GetImageBufferColorSpace(CVImageBufferRef)
-  // from media::VTVideoDecodeAccelerator to media/base/mac and call it
-  // here to get the color space. See https://crbug.com/959962.
-  // colorSpace = media::GetImageBufferColorSpace(videoFrame);
-  gfx::ColorSpace colorSpace;
   const media::VideoCaptureFormat captureFormat(
       gfx::Size(dimensions.width, dimensions.height), _frameRate,
       videoPixelFormat);
-  const base::TimeDelta timestamp = GetCMSampleBufferTimestamp(sampleBuffer);
 
   if (CVPixelBufferRef pixelBuffer =
           CMSampleBufferGetImageBuffer(sampleBuffer)) {
+    const gfx::ColorSpace colorSpace =
+        media::GetImageBufferColorSpace(pixelBuffer);
     OSType pixelBufferPixelFormat =
         CVPixelBufferGetPixelFormatType(pixelBuffer);
     DCHECK_EQ(pixelBufferPixelFormat, sampleBufferPixelFormat);
 
     // First preference is to use an NV12 IOSurface as a GpuMemoryBuffer.
-    static const bool kEnableGpuMemoryBuffers =
-        base::FeatureList::IsEnabled(media::kAVFoundationCaptureV2ZeroCopy);
-    if (kEnableGpuMemoryBuffers) {
-      IOSurfaceRef ioSurface = CVPixelBufferGetIOSurface(pixelBuffer);
-      if (ioSurface && videoPixelFormat == media::PIXEL_FORMAT_NV12) {
-        if ([self processNV12IOSurface:ioSurface
-                          sampleBuffer:sampleBuffer
+    if (CVPixelBufferGetIOSurface(pixelBuffer) &&
+        videoPixelFormat == media::PIXEL_FORMAT_NV12) {
+      [self processPixelBufferNV12IOSurface:pixelBuffer
+                              captureFormat:captureFormat
+                                 colorSpace:colorSpace
+                                  timestamp:timestamp];
+      return;
+    }
+
+    // Second preference is to read the CVPixelBuffer's planes.
+    if ([self processPixelBufferPlanes:pixelBuffer
                          captureFormat:captureFormat
                             colorSpace:colorSpace
                              timestamp:timestamp]) {
-          return;
-        }
-      }
-    }
-
-    // Second preference is to read the CVPixelBuffer.
-    if ([self processPixelBuffer:pixelBuffer
-                   captureFormat:captureFormat
-                      colorSpace:colorSpace
-                       timestamp:timestamp]) {
       return;
     }
   }
+
   // Last preference is to read the CMSampleBuffer.
+  gfx::ColorSpace colorSpace =
+      media::GetFormatDescriptionColorSpace(formatDescription);
   [self processSample:sampleBuffer
         captureFormat:captureFormat
            colorSpace:colorSpace
             timestamp:timestamp];
 }
 
+- (void)setIsPortraitEffectSupportedForTesting:
+    (bool)isPortraitEffectSupportedForTesting {
+  _isPortraitEffectSupportedForTesting = isPortraitEffectSupportedForTesting;
+}
+
+- (bool)isPortraitEffectSupported {
+  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
+  if (_isPortraitEffectSupportedForTesting.has_value()) {
+    return _isPortraitEffectSupportedForTesting.value();
+  }
+  if (@available(macOS 12.0, *)) {
+    return [[_captureDevice activeFormat] isPortraitEffectSupported];
+  }
+  return false;
+}
+
+- (void)setIsPortraitEffectActiveForTesting:
+    (bool)isPortraitEffectActiveForTesting {
+  if (_isPortraitEffectActiveForTesting.has_value() &&
+      _isPortraitEffectActiveForTesting == isPortraitEffectActiveForTesting) {
+    return;
+  }
+  _isPortraitEffectActiveForTesting = isPortraitEffectActiveForTesting;
+  [self captureConfigurationChanged];
+}
+
+- (bool)isPortraitEffectActive {
+  DCHECK(_mainThreadTaskRunner->BelongsToCurrentThread());
+  if (_isPortraitEffectActiveForTesting.has_value()) {
+    return _isPortraitEffectActiveForTesting.value();
+  }
+  if (@available(macOS 12.0, *)) {
+    return [_captureDevice isPortraitEffectActive];
+  }
+  return false;
+}
+
+- (void)observeValueForKeyPath:(NSString*)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary*)change
+                       context:(void*)context {
+  if (@available(macOS 12.0, *)) {
+    if ([keyPath isEqual:@"portraitEffectActive"]) {
+      [self captureConfigurationChanged];
+    }
+  }
+}
+
+- (void)captureConfigurationChanged {
+  base::AutoLock lock(_lock);
+  if (_frameReceiver) {
+    _frameReceiver->ReceiveCaptureConfigurationChanged();
+  }
+}
+
 - (void)onVideoError:(NSNotification*)errorNotification {
   NSError* error = base::mac::ObjCCast<NSError>(
-      [[errorNotification userInfo] objectForKey:AVCaptureSessionErrorKey]);
+      [errorNotification userInfo][AVCaptureSessionErrorKey]);
   [self sendErrorString:[NSString
                             stringWithFormat:@"%@: %@",
                                              [error localizedDescription],
@@ -782,6 +1218,11 @@ AVCaptureDeviceFormat* FindBestCaptureFormat(
         media::VideoCaptureError::
             kMacAvFoundationReceivedAVCaptureSessionRuntimeErrorNotification,
         FROM_HERE, base::SysNSStringToUTF8(error));
+}
+
+- (void)callLocked:(base::OnceClosure)lambda {
+  base::AutoLock lock(_lock);
+  std::move(lambda).Run();
 }
 
 @end

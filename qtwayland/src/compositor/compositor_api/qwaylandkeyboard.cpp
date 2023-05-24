@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Klarälvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Klarälvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qtwaylandcompositorglobal_p.h"
 #include "qwaylandkeyboard.h"
@@ -39,11 +13,13 @@
 #include <QtCore/QFile>
 #include <QtCore/QStandardPaths>
 
+#include <QKeyEvent>
 #include <fcntl.h>
 #include <unistd.h>
 #if QT_CONFIG(xkbcommon)
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <xkbcommon/xkbcommon-names.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -187,11 +163,27 @@ void QWaylandKeyboardPrivate::maybeUpdateXkbScanCodeTable()
                     continue;
 
                 Qt::KeyboardModifiers mods = {};
-                int qtKey = QXkbCommon::keysymToQtKey(syms[0], mods);
+                int qtKey = QXkbCommon::keysymToQtKey(syms[0], mods, nullptr, 0, false, false);
                 if (qtKey != 0)
                     scanCodesByQtKey->insert({layout, qtKey}, keycode);
             }
         }, &scanCodesByQtKey);
+
+        shiftIndex = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_SHIFT);
+        controlIndex = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_CTRL);
+        altIndex = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_ALT);
+    }
+}
+
+void QWaylandKeyboardPrivate::resetKeyboardState()
+{
+    if (!xkbContext())
+        return;
+
+    while (!keys.isEmpty()) {
+        uint32_t code = fromWaylandKey(keys.first());
+        keyEvent(code, WL_KEYBOARD_KEY_STATE_RELEASED);
+        updateModifierState(code, WL_KEYBOARD_KEY_STATE_RELEASED);
     }
 }
 #endif
@@ -223,6 +215,15 @@ void QWaylandKeyboardPrivate::updateModifierState(uint code, uint32_t state)
     if (focusResource) {
         send_modifiers(focusResource->handle, compositor()->nextSerial(), modsDepressed,
                        modsLatched, modsLocked, group);
+
+        Qt::KeyboardModifiers currentState = Qt::NoModifier;
+        if (xkb_state_mod_index_is_active(xkbState(), shiftIndex, XKB_STATE_MODS_EFFECTIVE) == 1)
+            currentState |= Qt::ShiftModifier;
+        if (xkb_state_mod_index_is_active(xkbState(), controlIndex, XKB_STATE_MODS_EFFECTIVE) == 1)
+            currentState |= Qt::ControlModifier;
+        if (xkb_state_mod_index_is_active(xkbState(), altIndex, XKB_STATE_MODS_EFFECTIVE) == 1)
+            currentState |= Qt::AltModifier;
+        currentModifierState = currentState;
     }
 #else
     Q_UNUSED(code);
@@ -262,17 +263,29 @@ void QWaylandKeyboardPrivate::maybeUpdateKeymap()
 #endif
 }
 
+// In all current XKB keymaps there's a constant offset of 8 (for historical
+// reasons) from hardware/evdev scancodes to XKB keycodes. On X11, we pass
+// XKB keycodes (as sent by X server) via QKeyEvent::nativeScanCode. eglfs+evdev
+// adds 8 for consistency, see qtbase/05c07c7636012ebb4131ca099ca4ea093af76410.
+// eglfs+libinput also adds 8, for the same reason. Wayland protocol uses
+// hardware/evdev scancodes, thus we need to subtract 8 before sending the event
+// out and add it when mapping back.
+#define QTWAYLANDKEYBOARD_XKB_HISTORICAL_OFFSET 8
+
+uint QWaylandKeyboardPrivate::fromWaylandKey(const uint key)
+{
+#if QT_CONFIG(xkbcommon)
+    const uint offset = QTWAYLANDKEYBOARD_XKB_HISTORICAL_OFFSET;
+    return key + offset;
+#else
+    return key;
+#endif
+}
+
 uint QWaylandKeyboardPrivate::toWaylandKey(const uint nativeScanCode)
 {
 #if QT_CONFIG(xkbcommon)
-    // In all current XKB keymaps there's a constant offset of 8 (for historical
-    // reasons) from hardware/evdev scancodes to XKB keycodes. On X11, we pass
-    // XKB keycodes (as sent by X server) via QKeyEvent::nativeScanCode. eglfs+evdev
-    // adds 8 for consistency, see qtbase/05c07c7636012ebb4131ca099ca4ea093af76410.
-    // eglfs+libinput also adds 8, for the same reason. Wayland protocol uses
-    // hardware/evdev scancodes, thus we need to minus 8 before sending the event
-    // out.
-    const uint offset = 8;
+    const uint offset = QTWAYLANDKEYBOARD_XKB_HISTORICAL_OFFSET;
     Q_ASSERT(nativeScanCode >= offset);
     return nativeScanCode - offset;
 #else
@@ -498,6 +511,38 @@ void QWaylandKeyboard::sendKeyReleaseEvent(uint code)
     d->sendKeyEvent(code, WL_KEYBOARD_KEY_STATE_RELEASED);
 }
 
+void QWaylandKeyboardPrivate::checkAndRepairModifierState(QKeyEvent *ke)
+{
+#if QT_CONFIG(xkbcommon)
+    if (ke->modifiers() != currentModifierState) {
+        if (focusResource && ke->key() != Qt::Key_Shift
+                && ke->key() != Qt::Key_Control && ke->key() != Qt::Key_Alt) {
+            // Only repair the state for non-modifier keys
+            // ### slightly awkward because the standard modifier handling
+            // is done by QtWayland::WindowSystemEventHandler after the
+            // key event is delivered
+            uint32_t mods = 0;
+
+            if (shiftIndex == 0 && controlIndex == 0)
+                maybeUpdateXkbScanCodeTable();
+
+            if (ke->modifiers() & Qt::ShiftModifier)
+                mods |= 1 << shiftIndex;
+            if (ke->modifiers() & Qt::ControlModifier)
+                mods |= 1 << controlIndex;
+            if (ke->modifiers() & Qt::AltModifier)
+                mods |= 1 << altIndex;
+            qCDebug(qLcWaylandCompositor) << "Keyboard modifier state mismatch detected for event" << ke << "state:" << currentModifierState << "repaired:" << Qt::hex << mods;
+            send_modifiers(focusResource->handle, compositor()->nextSerial(), mods,
+                    0, 0, group);
+            currentModifierState = ke->modifiers();
+        }
+    }
+#else
+    Q_UNUSED(ke);
+#endif
+}
+
 /*!
  * Returns the current repeat rate.
  */
@@ -589,3 +634,5 @@ uint QWaylandKeyboard::keyToScanCode(int qtKey) const
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandkeyboard.cpp"

@@ -22,6 +22,7 @@
 #include <memory>
 
 #include "perfetto/base/export.h"
+#include "perfetto/base/platform_handle.h"
 
 namespace perfetto {
 
@@ -32,9 +33,9 @@ namespace perfetto {
 // memory for the out-of-process case (see src/unix_rpc).
 // Both this class and the Factory are subclassed by the transport layer, which
 // will attach platform specific fields to it (e.g., a unix file descriptor).
-class PERFETTO_EXPORT SharedMemory {
+class PERFETTO_EXPORT_COMPONENT SharedMemory {
  public:
-  class PERFETTO_EXPORT Factory {
+  class PERFETTO_EXPORT_COMPONENT Factory {
    public:
     virtual ~Factory();
     virtual std::unique_ptr<SharedMemory> CreateSharedMemory(size_t) = 0;
@@ -46,7 +47,6 @@ class PERFETTO_EXPORT SharedMemory {
 
   virtual void* start() const = 0;
   virtual size_t size() const = 0;
-  virtual int fd() const = 0;
 };
 
 }  // namespace perfetto

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,10 @@
 #include <memory>
 #include <utility>
 
+#include "base/containers/contains.h"
 #include "base/files/file_path.h"
 #include "base/strings/stringprintf.h"
+#include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 #include "third_party/khronos/EGL/egl.h"
 #include "ui/gfx/buffer_format_util.h"
@@ -20,9 +22,12 @@
 #include "ui/gfx/linux/gbm_defines.h"
 #include "ui/gfx/linux/scoped_gbm_device.h"
 #include "ui/gfx/native_pixmap.h"
+#include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_surface_egl.h"
+#include "ui/gl/presenter.h"
 #include "ui/ozone/common/egl_util.h"
 #include "ui/ozone/common/gl_ozone_egl.h"
+#include "ui/ozone/common/native_pixmap_egl_binding.h"
 #include "ui/ozone/platform/drm/common/drm_util.h"
 #include "ui/ozone/platform/drm/common/scoped_drm_types.h"
 #include "ui/ozone/platform/drm/gpu/drm_gpu_util.h"
@@ -58,7 +63,47 @@ typedef VkResult(VKAPI_PTR* PFN_vkCreateDmaBufImageINTEL)(
 
 namespace ui {
 
+class ScopedAllowBlockingForGbmSurface : public base::ScopedAllowBlocking {};
+
 namespace {
+
+EGLDeviceEXT GetPreferredEGLDevice() {
+  std::vector<EGLDeviceEXT> devices(DRM_MAX_MINOR, EGL_NO_DEVICE_EXT);
+  EGLint num_devices = 0;
+
+  eglQueryDevicesEXT(DRM_MAX_MINOR, devices.data(), &num_devices);
+  devices.resize(num_devices);
+
+  std::map<EGLDeviceEXT, std::string> device_drivers;
+  for (EGLDeviceEXT device : devices) {
+    const char* filename =
+        eglQueryDeviceStringEXT(device, EGL_DRM_DEVICE_FILE_EXT);
+    if (!filename)  // Not a DRM device.
+      continue;
+
+    const auto driver_name = GetDrmDriverNameFromPath(filename);
+    if (driver_name)
+      device_drivers.insert({device, driver_name.value()});
+  }
+
+  // Find the device with the most preferred driver.
+  const auto preferred_drivers = GetPreferredDrmDrivers();
+  for (const auto* preferred_driver : preferred_drivers) {
+    for (EGLDeviceEXT device : devices) {
+      const auto driver = device_drivers.find(device);
+      if (driver != device_drivers.end() &&
+          driver->second == preferred_driver) {
+        return device;
+      }
+    }
+  }
+
+  // Fall back to the first device.
+  if (!devices.empty())
+    return devices[0];
+
+  return EGL_NO_DEVICE_EXT;
+}
 
 class GLOzoneEGLGbm : public GLOzoneEGL {
  public:
@@ -66,25 +111,55 @@ class GLOzoneEGLGbm : public GLOzoneEGL {
                 DrmThreadProxy* drm_thread_proxy)
       : surface_factory_(surface_factory),
         drm_thread_proxy_(drm_thread_proxy) {}
-  ~GLOzoneEGLGbm() override {}
+
+  GLOzoneEGLGbm(const GLOzoneEGLGbm&) = delete;
+  GLOzoneEGLGbm& operator=(const GLOzoneEGLGbm&) = delete;
+
+  ~GLOzoneEGLGbm() override = default;
+
+  bool CanImportNativePixmap() override {
+    return gl::GLSurfaceEGL::GetGLDisplayEGL()
+        ->ext->b_EGL_EXT_image_dma_buf_import;
+  }
+
+  std::unique_ptr<NativePixmapGLBinding> ImportNativePixmap(
+      scoped_refptr<gfx::NativePixmap> pixmap,
+      gfx::BufferFormat plane_format,
+      gfx::BufferPlane plane,
+      gfx::Size plane_size,
+      const gfx::ColorSpace& color_space,
+      GLenum target,
+      GLuint texture_id) override {
+    return NativePixmapEGLBinding::Create(pixmap, plane_format, plane,
+                                          plane_size, color_space, target,
+                                          texture_id);
+  }
 
   scoped_refptr<gl::GLSurface> CreateViewGLSurface(
+      gl::GLDisplay* display,
       gfx::AcceleratedWidget window) override {
     return nullptr;
   }
 
-  scoped_refptr<gl::GLSurface> CreateSurfacelessViewGLSurface(
+  scoped_refptr<gl::Presenter> CreateSurfacelessViewGLSurface(
+      gl::GLDisplay* display,
       gfx::AcceleratedWidget window) override {
-    return gl::InitializeGLSurface(new GbmSurfaceless(
-        surface_factory_, drm_thread_proxy_->CreateDrmWindowProxy(window),
-        window));
+    scoped_refptr<gl::Presenter> presenter =
+        base::MakeRefCounted<GbmSurfaceless>(
+            surface_factory_, display->GetAs<gl::GLDisplayEGL>(),
+            drm_thread_proxy_->CreateDrmWindowProxy(window), window);
+    if (!presenter->Initialize(gl::GLSurfaceFormat()))
+      return nullptr;
+    return presenter;
   }
 
   scoped_refptr<gl::GLSurface> CreateOffscreenGLSurface(
+      gl::GLDisplay* display,
       const gfx::Size& size) override {
     DCHECK_EQ(size.width(), 0);
     DCHECK_EQ(size.height(), 0);
-    return gl::InitializeGLSurface(new gl::SurfacelessEGL(size));
+    return gl::InitializeGLSurface(
+        new gl::SurfacelessEGL(display->GetAs<gl::GLDisplayEGL>(), size));
   }
 
  protected:
@@ -95,72 +170,29 @@ class GLOzoneEGLGbm : public GLOzoneEGL {
     // Default to null platform
     native_display_ = gl::EGLDisplayPlatform(EGL_DEFAULT_DISPLAY);
 
-    gl::g_driver_egl.InitializeClientExtensionBindings();
-
-    const char* client_extensions_string =
-        eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
-
-    gfx::ExtensionSet client_extensions =
-        client_extensions_string
-            ? gfx::MakeExtensionSet(client_extensions_string)
-            : gfx::ExtensionSet();
-
-    if (gfx::HasExtension(client_extensions, "EGL_MESA_platform_surfaceless")) {
+    if (gl::g_driver_egl.client_ext.b_EGL_MESA_platform_surfaceless) {
       native_display_ = gl::EGLDisplayPlatform(EGL_DEFAULT_DISPLAY,
                                                EGL_PLATFORM_SURFACELESS_MESA);
     }
 
-    if (!(gfx::HasExtension(client_extensions, "EGL_EXT_device_query") &&
-          gfx::HasExtension(client_extensions, "EGL_EXT_platform_device") &&
-          gfx::HasExtension(client_extensions, "EGL_EXT_device_enumeration"))) {
+    if (!(gl::g_driver_egl.client_ext.b_EGL_EXT_device_query &&
+          gl::g_driver_egl.client_ext.b_EGL_EXT_platform_device &&
+          gl::g_driver_egl.client_ext.b_EGL_EXT_device_enumeration)) {
       LOG(WARNING) << "Platform device extensions not found.";
       return native_display_;
     }
 
-    std::vector<EGLDeviceEXT> devices(DRM_MAX_MINOR, EGL_NO_DEVICE_EXT);
-    EGLDeviceEXT virgl_device = EGL_NO_DEVICE_EXT;
-    EGLDeviceEXT amdgpu_device = EGL_NO_DEVICE_EXT;
-    EGLDeviceEXT i915_device = EGL_NO_DEVICE_EXT;
-    EGLint num_devices = 0;
-
-    eglQueryDevicesEXT(DRM_MAX_MINOR, devices.data(), &num_devices);
-    devices.resize(num_devices);
-    for (EGLDeviceEXT device : devices) {
-      const char* filename =
-          eglQueryDeviceStringEXT(device, EGL_DRM_DEVICE_FILE_EXT);
-      if (!filename)  // Not a DRM device.
-        continue;
-      if (IsDriverName(filename, "virtio_gpu"))
-        virgl_device = device;
-      if (IsDriverName(filename, "amdgpu"))
-        amdgpu_device = device;
-      if (IsDriverName(filename, "i915"))
-        i915_device = device;
-    }
-
-    if (virgl_device != EGL_NO_DEVICE_EXT) {
+    const EGLDeviceEXT preferred_device = GetPreferredEGLDevice();
+    if (preferred_device != EGL_NO_DEVICE_EXT) {
       native_display_ = gl::EGLDisplayPlatform(
-          reinterpret_cast<EGLNativeDisplayType>(virgl_device),
-          EGL_PLATFORM_DEVICE_EXT);
-    }
-
-    if (amdgpu_device != EGL_NO_DEVICE_EXT) {
-      native_display_ = gl::EGLDisplayPlatform(
-          reinterpret_cast<EGLNativeDisplayType>(amdgpu_device),
-          EGL_PLATFORM_DEVICE_EXT);
-    }
-
-    // If we also have Intel integrated, use it instead.
-    if (i915_device != EGL_NO_DEVICE_EXT) {
-      native_display_ = gl::EGLDisplayPlatform(
-          reinterpret_cast<EGLNativeDisplayType>(i915_device),
+          reinterpret_cast<EGLNativeDisplayType>(preferred_device),
           EGL_PLATFORM_DEVICE_EXT);
     }
 
     return native_display_;
   }
 
-  bool LoadGLES2Bindings(gl::GLImplementation impl) override {
+  bool LoadGLES2Bindings(const gl::GLImplementationParts& impl) override {
     return LoadDefaultEGLGLES2Bindings(impl);
   }
 
@@ -168,8 +200,6 @@ class GLOzoneEGLGbm : public GLOzoneEGL {
   GbmSurfaceFactory* surface_factory_;
   DrmThreadProxy* drm_thread_proxy_;
   gl::EGLDisplayPlatform native_display_;
-
-  DISALLOW_COPY_AND_ASSIGN(GLOzoneEGLGbm);
 };
 
 std::vector<gfx::BufferFormat> EnumerateSupportedBufferFormatsForTexturing() {
@@ -180,7 +210,7 @@ std::vector<gfx::BufferFormat> EnumerateSupportedBufferFormatsForTexturing() {
     base::FilePath dev_path(FILE_PATH_LITERAL(
         base::StringPrintf(kRenderNodeFilePattern, i).c_str()));
 
-    base::ThreadRestrictions::ScopedAllowIO scoped_allow_io;
+    ScopedAllowBlockingForGbmSurface scoped_allow_blocking;
     base::File dev_path_file(dev_path,
                              base::File::FLAG_OPEN | base::File::FLAG_READ);
     if (!dev_path_file.IsValid())
@@ -188,18 +218,19 @@ std::vector<gfx::BufferFormat> EnumerateSupportedBufferFormatsForTexturing() {
 
     // Skip the virtual graphics memory manager device.
     ScopedDrmVersionPtr version(drmGetVersion(dev_path_file.GetPlatformFile()));
-    if (!version || base::LowerCaseEqualsASCII(version->name, "vgem")) {
+    if (!version || base::EqualsCaseInsensitiveASCII(version->name, "vgem")) {
       continue;
     }
 
     ScopedGbmDevice device(gbm_create_device(dev_path_file.GetPlatformFile()));
     if (!device) {
       LOG(ERROR) << "Couldn't create Gbm Device at " << dev_path.MaybeAsASCII();
-      return supported_buffer_formats;
+      continue;
     }
+    VLOG(1) << "Found Gbm Device at " << dev_path.MaybeAsASCII();
 
-    for (int i = 0; i <= static_cast<int>(gfx::BufferFormat::LAST); ++i) {
-      const gfx::BufferFormat buffer_format = static_cast<gfx::BufferFormat>(i);
+    for (int j = 0; j <= static_cast<int>(gfx::BufferFormat::LAST); ++j) {
+      const gfx::BufferFormat buffer_format = static_cast<gfx::BufferFormat>(j);
       if (base::Contains(supported_buffer_formats, buffer_format))
         continue;
       if (gbm_device_is_format_supported(
@@ -254,18 +285,19 @@ GbmSurfaceless* GbmSurfaceFactory::GetSurface(
   return it->second;
 }
 
-std::vector<gl::GLImplementation>
+std::vector<gl::GLImplementationParts>
 GbmSurfaceFactory::GetAllowedGLImplementations() {
   DCHECK(thread_checker_.CalledOnValidThread());
-  return std::vector<gl::GLImplementation>{gl::kGLImplementationEGLGLES2,
-                                           gl::kGLImplementationEGLANGLE,
-                                           gl::kGLImplementationSwiftShaderGL};
+  return std::vector<gl::GLImplementationParts>{
+      gl::GLImplementationParts(gl::kGLImplementationEGLGLES2),
+      gl::GLImplementationParts(gl::kGLImplementationEGLANGLE),
+      gl::GLImplementationParts(gl::ANGLEImplementation::kSwiftShader)};
 }
 
-GLOzone* GbmSurfaceFactory::GetGLOzone(gl::GLImplementation implementation) {
-  switch (implementation) {
+GLOzone* GbmSurfaceFactory::GetGLOzone(
+    const gl::GLImplementationParts& implementation) {
+  switch (implementation.gl) {
     case gl::kGLImplementationEGLGLES2:
-    case gl::kGLImplementationSwiftShaderGL:
     case gl::kGLImplementationEGLANGLE:
       return egl_implementation_.get();
     default:
@@ -275,9 +307,11 @@ GLOzone* GbmSurfaceFactory::GetGLOzone(gl::GLImplementation implementation) {
 
 #if BUILDFLAG(ENABLE_VULKAN)
 std::unique_ptr<gpu::VulkanImplementation>
-GbmSurfaceFactory::CreateVulkanImplementation(bool allow_protected_memory,
-                                              bool enforce_protected_memory) {
-  return std::make_unique<ui::VulkanImplementationGbm>();
+GbmSurfaceFactory::CreateVulkanImplementation(bool use_swiftshader,
+                                              bool allow_protected_memory) {
+  DCHECK(!use_swiftshader)
+      << "Vulkan Swiftshader is not supported on this platform.";
+  return std::make_unique<VulkanImplementationGbm>();
 }
 
 scoped_refptr<gfx::NativePixmap> GbmSurfaceFactory::CreateNativePixmapForVulkan(
@@ -324,8 +358,8 @@ scoped_refptr<gfx::NativePixmap> GbmSurfaceFactory::CreateNativePixmapForVulkan(
       /* .format = */ vk_format,
       /* .extent = */
       {
-          /* .width = */ size.width(),
-          /* .height = */ size.height(),
+          /* .width = */ static_cast<uint32_t>(size.width()),
+          /* .height = */ static_cast<uint32_t>(size.height()),
           /* .depth = */ 1,
       },
       /* .strideInBytes = */ buffer->GetPlaneStride(0),
@@ -359,11 +393,11 @@ std::unique_ptr<SurfaceOzoneCanvas> GbmSurfaceFactory::CreateCanvasForWidget(
 
 scoped_refptr<gfx::NativePixmap> GbmSurfaceFactory::CreateNativePixmap(
     gfx::AcceleratedWidget widget,
-    VkDevice vk_device,
+    gpu::VulkanDeviceQueue* device_queue,
     gfx::Size size,
     gfx::BufferFormat format,
     gfx::BufferUsage usage,
-    base::Optional<gfx::Size> framebuffer_size) {
+    absl::optional<gfx::Size> framebuffer_size) {
   if (framebuffer_size &&
       !gfx::Rect(size).Contains(gfx::Rect(*framebuffer_size))) {
     return nullptr;
@@ -379,12 +413,13 @@ scoped_refptr<gfx::NativePixmap> GbmSurfaceFactory::CreateNativePixmap(
                                          std::move(framebuffer));
 }
 
-void GbmSurfaceFactory::CreateNativePixmapAsync(gfx::AcceleratedWidget widget,
-                                                VkDevice vk_device,
-                                                gfx::Size size,
-                                                gfx::BufferFormat format,
-                                                gfx::BufferUsage usage,
-                                                NativePixmapCallback callback) {
+void GbmSurfaceFactory::CreateNativePixmapAsync(
+    gfx::AcceleratedWidget widget,
+    gpu::VulkanDeviceQueue* device_queue,
+    gfx::Size size,
+    gfx::BufferFormat format,
+    gfx::BufferUsage usage,
+    NativePixmapCallback callback) {
   drm_thread_proxy_->CreateBufferAsync(
       widget, size, format, usage, 0 /* flags */,
       base::BindOnce(OnNativePixmapCreated, std::move(callback),

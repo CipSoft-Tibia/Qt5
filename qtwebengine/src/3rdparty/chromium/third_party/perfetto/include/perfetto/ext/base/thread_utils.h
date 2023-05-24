@@ -20,6 +20,7 @@
 #include <string>
 
 #include "perfetto/base/build_config.h"
+#include "perfetto/ext/base/string_utils.h"
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) ||   \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || \
@@ -27,6 +28,10 @@
 #include <pthread.h>
 #include <string.h>
 #include <algorithm>
+#endif
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+#include <sys/prctl.h>
 #endif
 
 // Internal implementation utils that aren't as widely useful/supported as
@@ -42,8 +47,7 @@ namespace base {
 // string.
 inline bool MaybeSetThreadName(const std::string& name) {
   char buf[16] = {};
-  size_t sz = std::min(name.size(), static_cast<size_t>(15));
-  strncpy(buf, name.c_str(), sz);
+  StringCopy(buf, name.c_str(), sizeof(buf));
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
   return pthread_setname_np(buf) == 0;
@@ -51,8 +55,27 @@ inline bool MaybeSetThreadName(const std::string& name) {
   return pthread_setname_np(pthread_self(), buf) == 0;
 #endif
 }
+
+inline bool GetThreadName(std::string& out_result) {
+  char buf[16] = {};
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+  if (prctl(PR_GET_NAME, buf) != 0)
+    return false;
 #else
-inline void MaybeSetThreadName(const std::string&) {}
+  if (pthread_getname_np(pthread_self(), buf, sizeof(buf)) != 0)
+    return false;
+#endif
+  out_result = std::string(buf);
+  return true;
+}
+
+#else
+inline bool MaybeSetThreadName(const std::string&) {
+  return false;
+}
+inline bool GetThreadName(std::string&) {
+  return false;
+}
 #endif
 
 }  // namespace base

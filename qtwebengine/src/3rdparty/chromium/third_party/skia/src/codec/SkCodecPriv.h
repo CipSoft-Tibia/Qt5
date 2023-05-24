@@ -52,7 +52,7 @@ static inline int get_scaled_dimension(int srcDimension, int sampleSize) {
  *
  * This does not need to be called and is not called when sampleFactor == 1.
  */
-static inline int get_start_coord(int sampleFactor) { return sampleFactor / 2; };
+static inline int get_start_coord(int sampleFactor) { return sampleFactor / 2; }
 
 /*
  * Given a coordinate in the original image, this returns the corresponding
@@ -62,7 +62,7 @@ static inline int get_start_coord(int sampleFactor) { return sampleFactor / 2; }
  *
  * This does not need to be called and is not called when sampleFactor == 1.
  */
-static inline int get_dst_coord(int srcCoord, int sampleFactor) { return srcCoord / sampleFactor; };
+static inline int get_dst_coord(int srcCoord, int sampleFactor) { return srcCoord / sampleFactor; }
 
 /*
  * When scaling, we will discard certain y-coordinates (rows) and
@@ -195,6 +195,14 @@ static inline uint16_t get_endian_short(const uint8_t* data, bool littleEndian) 
     }
 
     return (data[0] << 8) | (data[1]);
+}
+
+static inline uint32_t get_endian_int(const uint8_t* data, bool littleEndian) {
+    if (littleEndian) {
+        return (data[3] << 24) | (data[2] << 16) | (data[1] << 8) | (data[0]);
+    }
+
+    return (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | (data[3]);
 }
 
 static inline SkPMColor premultiply_argb_as_rgba(U8CPU a, U8CPU r, U8CPU g, U8CPU b) {

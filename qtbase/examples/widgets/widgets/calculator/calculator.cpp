@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "calculator.h"
 #include "button.h"
@@ -76,29 +29,29 @@ Calculator::Calculator(QWidget *parent)
 
 //! [4]
     for (int i = 0; i < NumDigitButtons; ++i)
-        digitButtons[i] = createButton(QString::number(i), SLOT(digitClicked()));
+        digitButtons[i] = createButton(QString::number(i), &Calculator::digitClicked);
 
-    Button *pointButton = createButton(tr("."), SLOT(pointClicked()));
-    Button *changeSignButton = createButton(tr("\302\261"), SLOT(changeSignClicked()));
+    Button *pointButton = createButton(tr("."), &Calculator::pointClicked);
+    Button *changeSignButton = createButton(tr("\302\261"), &Calculator::changeSignClicked);
 
-    Button *backspaceButton = createButton(tr("Backspace"), SLOT(backspaceClicked()));
-    Button *clearButton = createButton(tr("Clear"), SLOT(clear()));
-    Button *clearAllButton = createButton(tr("Clear All"), SLOT(clearAll()));
+    Button *backspaceButton = createButton(tr("Backspace"), &Calculator::backspaceClicked);
+    Button *clearButton = createButton(tr("Clear"), &Calculator::clear);
+    Button *clearAllButton = createButton(tr("Clear All"), &Calculator::clearAll);
 
-    Button *clearMemoryButton = createButton(tr("MC"), SLOT(clearMemory()));
-    Button *readMemoryButton = createButton(tr("MR"), SLOT(readMemory()));
-    Button *setMemoryButton = createButton(tr("MS"), SLOT(setMemory()));
-    Button *addToMemoryButton = createButton(tr("M+"), SLOT(addToMemory()));
+    Button *clearMemoryButton = createButton(tr("MC"), &Calculator::clearMemory);
+    Button *readMemoryButton = createButton(tr("MR"), &Calculator::readMemory);
+    Button *setMemoryButton = createButton(tr("MS"), &Calculator::setMemory);
+    Button *addToMemoryButton = createButton(tr("M+"), &Calculator::addToMemory);
 
-    Button *divisionButton = createButton(tr("\303\267"), SLOT(multiplicativeOperatorClicked()));
-    Button *timesButton = createButton(tr("\303\227"), SLOT(multiplicativeOperatorClicked()));
-    Button *minusButton = createButton(tr("-"), SLOT(additiveOperatorClicked()));
-    Button *plusButton = createButton(tr("+"), SLOT(additiveOperatorClicked()));
+    Button *divisionButton = createButton(tr("\303\267"), &Calculator::multiplicativeOperatorClicked);
+    Button *timesButton = createButton(tr("\303\227"), &Calculator::multiplicativeOperatorClicked);
+    Button *minusButton = createButton(tr("-"), &Calculator::additiveOperatorClicked);
+    Button *plusButton = createButton(tr("+"), &Calculator::additiveOperatorClicked);
 
-    Button *squareRootButton = createButton(tr("Sqrt"), SLOT(unaryOperatorClicked()));
-    Button *powerButton = createButton(tr("x\302\262"), SLOT(unaryOperatorClicked()));
-    Button *reciprocalButton = createButton(tr("1/x"), SLOT(unaryOperatorClicked()));
-    Button *equalButton = createButton(tr("="), SLOT(equalClicked()));
+    Button *squareRootButton = createButton(tr("Sqrt"), &Calculator::unaryOperatorClicked);
+    Button *powerButton = createButton(tr("x\302\262"), &Calculator::unaryOperatorClicked);
+    Button *reciprocalButton = createButton(tr("1/x"), &Calculator::unaryOperatorClicked);
+    Button *equalButton = createButton(tr("="), &Calculator::equalClicked);
 //! [4]
 
 //! [5]
@@ -371,10 +324,11 @@ void Calculator::addToMemory()
 }
 //! [32]
 //! [34]
-Button *Calculator::createButton(const QString &text, const char *member)
+template<typename PointerToMemberFunction>
+Button *Calculator::createButton(const QString &text, const PointerToMemberFunction &member)
 {
     Button *button = new Button(text);
-    connect(button, SIGNAL(clicked()), this, member);
+    connect(button, &Button::clicked, this, member);
     return button;
 }
 //! [34]

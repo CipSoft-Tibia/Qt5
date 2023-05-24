@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,11 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
 #include "device/bluetooth/bluetooth_adapter.h"
 #include "device/bluetooth/bluetooth_adapter_factory.h"
@@ -20,6 +21,7 @@
 #include "device/bluetooth/dbus/fake_bluetooth_agent_manager_client.h"
 #include "device/bluetooth/dbus/fake_bluetooth_device_client.h"
 #include "device/bluetooth/dbus/fake_bluetooth_profile_manager_client.h"
+#include "device/bluetooth/floss/floss_features.h"
 #include "device/bluetooth/public/cpp/bluetooth_uuid.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -41,6 +43,10 @@ class BluetoothAdapterProfileBlueZTest : public testing::Test {
         profile_user_ptr_(nullptr) {}
 
   void SetUp() override {
+    // TODO(b/266989920) Remove when Floss fake implementation is completed.
+    if (floss::features::IsFlossEnabled()) {
+      GTEST_SKIP();
+    }
     std::unique_ptr<bluez::BluezDBusManagerSetter> dbus_setter =
         bluez::BluezDBusManager::GetSetterForTesting();
 
@@ -72,6 +78,9 @@ class BluetoothAdapterProfileBlueZTest : public testing::Test {
   }
 
   void TearDown() override {
+    if (floss::features::IsFlossEnabled()) {
+      return;
+    }
     profile_.reset();
     adapter_ = nullptr;
     bluez::BluezDBusManager::Shutdown();
@@ -158,14 +167,14 @@ class BluetoothAdapterProfileBlueZTest : public testing::Test {
 
   // unowned pointer as expected to be used by clients of
   // BluetoothAdapterBlueZ::UseProfile like BluetoothSocketBlueZ
-  BluetoothAdapterProfileBlueZ* profile_user_ptr_;
+  raw_ptr<BluetoothAdapterProfileBlueZ> profile_user_ptr_;
 };
 
 TEST_F(BluetoothAdapterProfileBlueZTest, DelegateCount) {
   BluetoothUUID uuid(bluez::FakeBluetoothProfileManagerClient::kRfcommUuid);
   bluez::BluetoothProfileManagerClient::Options options;
 
-  options.require_authentication.reset(new bool(false));
+  options.require_authentication = std::make_unique<bool>(false);
 
   BluetoothAdapterProfileBlueZ::Register(
       uuid, options,
@@ -202,7 +211,7 @@ TEST_F(BluetoothAdapterProfileBlueZTest, BlackHole) {
   BluetoothUUID uuid(bluez::FakeBluetoothProfileManagerClient::kRfcommUuid);
   bluez::BluetoothProfileManagerClient::Options options;
 
-  options.require_authentication.reset(new bool(false));
+  options.require_authentication = std::make_unique<bool>(false);
 
   BluetoothAdapterProfileBlueZ::Register(
       uuid, options,
@@ -238,7 +247,7 @@ TEST_F(BluetoothAdapterProfileBlueZTest, Routing) {
   BluetoothUUID uuid(bluez::FakeBluetoothProfileManagerClient::kRfcommUuid);
   bluez::BluetoothProfileManagerClient::Options options;
 
-  options.require_authentication.reset(new bool(false));
+  options.require_authentication = std::make_unique<bool>(false);
 
   BluetoothAdapterProfileBlueZ::Register(
       uuid, options,
@@ -316,7 +325,7 @@ TEST_F(BluetoothAdapterProfileBlueZTest, SimultaneousRegister) {
   BluetoothAdapterBlueZ* adapter =
       static_cast<BluetoothAdapterBlueZ*>(adapter_.get());
 
-  options.require_authentication.reset(new bool(false));
+  options.require_authentication = std::make_unique<bool>(false);
 
   success_callback_count_ = 0;
   error_callback_count_ = 0;
@@ -358,7 +367,7 @@ TEST_F(BluetoothAdapterProfileBlueZTest, SimultaneousRegisterFail) {
   BluetoothAdapterBlueZ* adapter =
       static_cast<BluetoothAdapterBlueZ*>(adapter_.get());
 
-  options.require_authentication.reset(new bool(false));
+  options.require_authentication = std::make_unique<bool>(false);
 
   success_callback_count_ = 0;
   error_callback_count_ = 0;

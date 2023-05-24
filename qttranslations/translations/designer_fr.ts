@@ -23,6 +23,10 @@
         <source>&lt;img src=&quot;:/qt-project.org/shared/images/wrap.png&quot;&gt;&amp;nbsp;Search wrapped</source>
         <translation>&lt;img src=&quot;:/qt-project.org/shared/images/wrap.png&quot;&gt;&amp;nbsp;Recherche à partir du début</translation>
     </message>
+    <message>
+        <source>&amp;Find in Text...</source>
+        <translation>&amp;Rechercher dans le texte…</translation>
+    </message>
 </context>
 <context>
     <name>AbstractItemEditor</name>
@@ -75,11 +79,11 @@
     </message>
     <message>
         <source>Title:</source>
-        <translation>Titre :</translation>
+        <translation>Titre&#xa0;:</translation>
     </message>
     <message>
         <source>URL:</source>
-        <translation>URL :</translation>
+        <translation>URL&#xa0;:</translation>
     </message>
 </context>
 <context>
@@ -160,7 +164,7 @@
     </message>
     <message>
         <source>Would you like to remove all fonts?</source>
-        <translation>Voulez-vous supprimer toutes les polices ?</translation>
+        <translation>Voulez-vous supprimer toutes les polices&#xa0;?</translation>
     </message>
 </context>
 <context>
@@ -178,7 +182,7 @@
     <name>AssistantClient</name>
     <message>
         <source>Unable to send request: Assistant is not responding.</source>
-        <translation>Impossible d&apos;envoyer la requête : Assistant ne répond pas.</translation>
+        <translation>Impossible d&apos;envoyer la requête&#xa0;: Assistant ne répond pas.</translation>
     </message>
     <message>
         <source>The binary &apos;%1&apos; does not exist.</source>
@@ -582,7 +586,7 @@
     </message>
     <message>
         <source>Edit...</source>
-        <translation>Éditer...</translation>
+        <translation>Éditer…</translation>
     </message>
     <message>
         <source>Show signals and slots inherited from QWidget</source>
@@ -626,7 +630,11 @@
     <name>Designer</name>
     <message>
         <source>Unable to launch %1.</source>
-        <translation>Impossible de lancer %1.</translation>
+        <translation type="vanished">Impossible de lancer %1.</translation>
+    </message>
+    <message>
+        <source>Unable to launch %1: %2</source>
+        <translation>Impossible de lancer %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>%1 timed out.</source>
@@ -718,11 +726,11 @@
     </message>
     <message>
         <source>The skin configuration file &apos;%1&apos; could not be read: %2</source>
-        <translation>Le fichier de configuration de revêtement &apos;%1&apos; ne peut pas être lu : %2</translation>
+        <translation>Le fichier de configuration de revêtement &apos;%1&apos; ne peut pas être lu&#xa0;: %2</translation>
     </message>
     <message>
         <source>Syntax error: %1</source>
-        <translation>Erreur de syntaxe : %1</translation>
+        <translation>Erreur de syntaxe&#xa0;: %1</translation>
     </message>
     <message>
         <source>The skin &quot;up&quot; image file &apos;%1&apos; does not exist.</source>
@@ -742,7 +750,7 @@
     </message>
     <message>
         <source>Syntax error in area definition: %1</source>
-        <translation>Erreur de syntaxe dans la zone de définition : %1</translation>
+        <translation>Erreur de syntaxe dans la zone de définition&#xa0;: %1</translation>
     </message>
     <message>
         <source>Mismatch in number of areas, expected %1, got %2.</source>
@@ -817,12 +825,12 @@
     <message>
         <source>Invalid stretch value for &apos;%1&apos;: &apos;%2&apos;</source>
         <extracomment>Parsing layout stretch values</extracomment>
-        <translation>Valeur d&apos;extension invalide pour &apos;%1&apos; : &apos;%2&apos;</translation>
+        <translation>Valeur d&apos;extension invalide pour &apos;%1&apos;&#xa0;: &apos;%2&apos;</translation>
     </message>
     <message>
         <source>Invalid minimum size for &apos;%1&apos;: &apos;%2&apos;</source>
         <extracomment>Parsing grid layout minimum size values</extracomment>
-        <translation>Taille minimum invalide pour &apos;%1&apos; : &apos;%2&apos;</translation>
+        <translation>Taille minimum invalide pour &apos;%1&apos;&#xa0;: &apos;%2&apos;</translation>
     </message>
 </context>
 <context>
@@ -849,6 +857,22 @@
         <source>Default Grid</source>
         <translation>Grille par défaut</translation>
     </message>
+    <message>
+        <source>Object Naming Convention</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Naming convention used for generating action object names from their text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Camel Case</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Underscore</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>FormLayoutRowDialog</name>
@@ -858,38 +882,38 @@
     </message>
     <message>
         <source>&amp;Label text:</source>
-        <translation>&amp;Texte du label :</translation>
+        <translation>&amp;Texte du label&#xa0;:</translation>
     </message>
     <message>
         <source>Field &amp;type:</source>
-        <translation>&amp;Type du champ :</translation>
+        <translation>&amp;Type du champ&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Field name:</source>
-        <translation>&amp;Nom du champ :</translation>
+        <translation>&amp;Nom du champ&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Buddy:</source>
-        <translation>&amp;Copain :</translation>
+        <translation>&amp;Copain&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Row:</source>
-        <translation>&amp;Ligne :</translation>
+        <translation>&amp;Ligne&#xa0;:</translation>
     </message>
     <message>
         <source>Label &amp;name:</source>
-        <translation>&amp;Nom du label :</translation>
+        <translation>&amp;Nom du label&#xa0;:</translation>
     </message>
 </context>
 <context>
     <name>FormWindow</name>
     <message>
         <source>Unexpected element &lt;%1&gt;</source>
-        <translation>Element inattendu : &lt;%1&gt;</translation>
+        <translation>Element inattendu&#xa0;: &lt;%1&gt;</translation>
     </message>
     <message>
         <source>Error while pasting clipboard contents at line %1, column %2: %3</source>
-        <translation>Erreur lors du collage du contenu du presse-papier à la ligne %1, colonne %2 : %3</translation>
+        <translation>Erreur lors du collage du contenu du presse-papier à la ligne %1, colonne %2&#xa0;: %3</translation>
     </message>
 </context>
 <context>
@@ -904,11 +928,11 @@
     </message>
     <message>
         <source>&amp;Spacing:</source>
-        <translation>&amp;Espacements :</translation>
+        <translation>&amp;Espacements&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Margin:</source>
-        <translation>&amp;Marge :</translation>
+        <translation>&amp;Marge&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Layout Function</source>
@@ -916,11 +940,11 @@
     </message>
     <message>
         <source>Ma&amp;rgin:</source>
-        <translation>Ma&amp;rge :</translation>
+        <translation>Ma&amp;rge&#xa0;:</translation>
     </message>
     <message>
         <source>Spa&amp;cing:</source>
-        <translation>Espa&amp;cement :</translation>
+        <translation>Espa&amp;cement&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Pixmap Function</source>
@@ -942,12 +966,100 @@
         <source>&amp;Author</source>
         <translation>&amp;Auteur</translation>
     </message>
+    <message>
+        <source>Translations</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ID-based</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connections</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connect slots by name</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>IconSelector</name>
     <message>
+        <source>The pixmap file &apos;%1&apos; cannot be read.</source>
+        <translation>Impossible de lire le fichier pixmap &apos;%1&apos;.</translation>
+    </message>
+    <message>
+        <source>The file &apos;%1&apos; does not appear to be a valid pixmap file: %2</source>
+        <translation>Le fichier &apos;%1&apos; n&apos;est pas un fichier de pixmap valide&#xa0;: %2</translation>
+    </message>
+    <message>
+        <source>The file &apos;%1&apos; could not be read: %2</source>
+        <translation>Impossible de lire le fichier &apos;%1&apos;&#xa0;: %2</translation>
+    </message>
+    <message>
         <source>All Pixmaps (</source>
         <translation>Tous les pixmaps (</translation>
+    </message>
+    <message>
+        <source>Choose a Pixmap</source>
+        <translation>Choisissez un pixmap</translation>
+    </message>
+    <message>
+        <source>Pixmap Read Error</source>
+        <translation>Erreur de lecture de pixmap</translation>
+    </message>
+    <message>
+        <source>...</source>
+        <translation>…</translation>
+    </message>
+    <message>
+        <source>Normal Off</source>
+        <translation>Arrêt normal</translation>
+    </message>
+    <message>
+        <source>Normal On</source>
+        <translation>Marche normal</translation>
+    </message>
+    <message>
+        <source>Disabled Off</source>
+        <translation>Arrêt désactivé</translation>
+    </message>
+    <message>
+        <source>Disabled On</source>
+        <translation>Marche désactivé</translation>
+    </message>
+    <message>
+        <source>Active Off</source>
+        <translation>Arrêt activé</translation>
+    </message>
+    <message>
+        <source>Active On</source>
+        <translation>Marche activé</translation>
+    </message>
+    <message>
+        <source>Selected Off</source>
+        <translation>Arrêt sélectionné</translation>
+    </message>
+    <message>
+        <source>Selected On</source>
+        <translation>Marche sélectionné</translation>
+    </message>
+    <message>
+        <source>Choose Resource...</source>
+        <translation>Choisir ressource…</translation>
+    </message>
+    <message>
+        <source>Choose File...</source>
+        <translation>Choisir fichier…</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>Réinitialiser</translation>
+    </message>
+    <message>
+        <source>Reset All</source>
+        <translation>Tout réinitialiser</translation>
     </message>
 </context>
 <context>
@@ -1010,7 +1122,7 @@
     </message>
     <message>
         <source>&amp;Open...</source>
-        <translation>&amp;Ouvrir...</translation>
+        <translation>&amp;Ouvrir…</translation>
     </message>
     <message>
         <source>&amp;Recent Forms</source>
@@ -1021,12 +1133,12 @@
         <translation>Erreur de lecture</translation>
     </message>
     <message>
-        <source>A temporary form file could not be created in %1.</source>
-        <translation>Un fichier temporaire de formulaire n&apos;a pas pu être créé dans %1.</translation>
+        <source>A temporary form file could not be created in %1: %2</source>
+        <translation>Un fichier temporaire de formulaire n&apos;a pas pu être créé dans %1&#xa0;: %2</translation>
     </message>
     <message>
-        <source>The temporary form file %1 could not be written.</source>
-        <translation>Le fichier temporaire de formulaire %1 n&apos;a pas pu être écrit.</translation>
+        <source>The temporary form file %1 could not be written: %2</source>
+        <translation>Le fichier temporaire de formulaire %1 n&apos;a pas pu être écrit&#xa0;: %2</translation>
     </message>
 </context>
 <context>
@@ -1097,7 +1209,7 @@
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Device skin</source>
@@ -1116,7 +1228,7 @@
     <name>QAbstractFormBuilder</name>
     <message>
         <source>An error has occurred while reading the UI file at line %1, column %2: %3</source>
-        <translation>Une erreur s&apos;est produite lors de la lecture du fichier UI à la ligne %1, colonne %2 : %3</translation>
+        <translation>Une erreur s&apos;est produite lors de la lecture du fichier UI à la ligne %1, colonne %2&#xa0;: %3</translation>
     </message>
     <message>
         <source>This file was created using Designer from Qt-%1 and cannot be read.</source>
@@ -1128,7 +1240,7 @@
     </message>
     <message>
         <source>Invalid UI file: The root element &lt;ui&gt; is missing.</source>
-        <translation>Fichier UI invalide : l&apos;élément racine &lt;ui&gt; est manquant.</translation>
+        <translation>Fichier UI invalide&#xa0;: l&apos;élément racine &lt;ui&gt; est manquant.</translation>
     </message>
     <message>
         <source>Invalid UI file</source>
@@ -1158,7 +1270,7 @@ Ceci indique une incohérence dans le fichier ui.</translation>
     </message>
     <message>
         <source>While applying tab stops: The widget &apos;%1&apos; could not be found.</source>
-        <translation>Lors de l&apos;application des arrêts de tabulation : le widget &apos;%1&apos; ne peut pas être trouvé.</translation>
+        <translation>Lors de l&apos;application des arrêts de tabulation&#xa0;: le widget &apos;%1&apos; ne peut pas être trouvé.</translation>
     </message>
     <message>
         <source>Invalid QButtonGroup reference &apos;%1&apos; referenced by &apos;%2&apos;.</source>
@@ -1254,8 +1366,8 @@ Ceci indique une incohérence dans le fichier ui.</translation>
     <message>
         <source>%1 already exists.
 Do you want to replace it?</source>
-        <translation>%1 existe déjà.
-Voulez-vous le remplacer ?</translation>
+        <translation type="vanished">%1 existe déjà.
+Voulez-vous le remplacer&#xa0;?</translation>
     </message>
     <message>
         <source>Edit Widgets</source>
@@ -1263,11 +1375,11 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>&amp;New...</source>
-        <translation>&amp;Nouveau...</translation>
+        <translation>&amp;Nouveau…</translation>
     </message>
     <message>
         <source>&amp;Open...</source>
-        <translation>&amp;Ouvrir...</translation>
+        <translation>&amp;Ouvrir…</translation>
     </message>
     <message>
         <source>&amp;Save</source>
@@ -1275,7 +1387,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Save &amp;As...</source>
-        <translation>Enregistrer &amp;sous...</translation>
+        <translation>Enregistrer &amp;sous…</translation>
     </message>
     <message>
         <source>Save A&amp;ll</source>
@@ -1283,7 +1395,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Save As &amp;Template...</source>
-        <translation>Sauver comme &amp;modèle...</translation>
+        <translation>Sauver comme &amp;modèle…</translation>
     </message>
     <message>
         <source>&amp;Close</source>
@@ -1291,11 +1403,11 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Save &amp;Image...</source>
-        <translation>Enregistrer &amp;image...</translation>
+        <translation>Enregistrer &amp;image…</translation>
     </message>
     <message>
         <source>&amp;Print...</source>
-        <translation>Im&amp;primer...</translation>
+        <translation>Im&amp;primer…</translation>
     </message>
     <message>
         <source>&amp;Quit</source>
@@ -1303,7 +1415,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>View &amp;Code...</source>
-        <translation>&amp;Visualizer le code...</translation>
+        <translation type="vanished">&amp;Visualiser le code…</translation>
     </message>
     <message>
         <source>&amp;Minimize</source>
@@ -1315,11 +1427,11 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Preferences...</source>
-        <translation>Préférences...</translation>
+        <translation>Préférences…</translation>
     </message>
     <message>
         <source>Additional Fonts...</source>
-        <translation>Polices additionnelles...</translation>
+        <translation>Polices additionnelles…</translation>
     </message>
     <message>
         <source>ALT+CTRL+S</source>
@@ -1378,12 +1490,20 @@ Voulez-vous le remplacer ?</translation>
         <translation>Enregistrer le formulaire sous</translation>
     </message>
     <message>
+        <source>View &amp;C++ Code...</source>
+        <translation>Voir le code &amp;C++…</translation>
+    </message>
+    <message>
+        <source>View &amp;Python Code...</source>
+        <translation>Voir le code &amp;Python…</translation>
+    </message>
+    <message>
         <source>Designer</source>
         <translation>Designer</translation>
     </message>
     <message>
         <source>Feature not implemented yet!</source>
-        <translation>Cette fonctionnalité n&apos;est pas encore implémentée !</translation>
+        <translation>Cette fonctionnalité n&apos;est pas encore implémentée&#xa0;!</translation>
     </message>
     <message>
         <source>Code generation failed</source>
@@ -1397,7 +1517,7 @@ Voulez-vous le remplacer ?</translation>
         <source>%1
 Do you want to update the file location or generate a new form?</source>
         <translation>%1
-Voulez vous mettre à jour l&apos;emplacement du fichier ou générer un nouveau formulaire ?</translation>
+Voulez vous mettre à jour l&apos;emplacement du fichier ou générer un nouveau formulaire&#xa0;?</translation>
     </message>
     <message>
         <source>&amp;Update</source>
@@ -1413,7 +1533,7 @@ Voulez vous mettre à jour l&apos;emplacement du fichier ou générer un nouveau
     </message>
     <message>
         <source>Save Form?</source>
-        <translation>Sauver le formulaire ?</translation>
+        <translation>Sauver le formulaire&#xa0;?</translation>
     </message>
     <message>
         <source>Could not open file</source>
@@ -1424,24 +1544,34 @@ Voulez vous mettre à jour l&apos;emplacement du fichier ou générer un nouveau
 Reason: %2
 Would you like to retry or select a different file?</source>
         <translation>Le fichier %1 ne peut pas être ouvert.
-Raison : %2
-Voulez-vous réessayer ou sélectionner un fichier différent ?</translation>
+Raison&#xa0;: %2
+Voulez-vous réessayer ou sélectionner un fichier différent&#xa0;?</translation>
     </message>
     <message>
         <source>Select New File</source>
         <translation>Sélectionner un nouveau fichier</translation>
     </message>
     <message>
+        <source>Save Form</source>
+        <translation>Enregistrer le formulaire</translation>
+    </message>
+    <message>
         <source>Could not write file</source>
         <translation>Impossible d&apos;écrire le fichier</translation>
+    </message>
+    <message>
+        <source>It was not possible to write the file %1 to disk.
+Reason: %2</source>
+        <translation>Impossible d&apos;écrire le fichier %1 sur le disque.
+Raison&#xa0;: %2</translation>
     </message>
     <message>
         <source>It was not possible to write the entire file %1 to disk.
 Reason:%2
 Would you like to retry?</source>
-        <translation>Il n&apos;a pas été possible d&apos;écrire l&apos;intégralité du fichier %1 sur le disque.
-Raison : %2
-Voulez-vous réessayer ?</translation>
+        <translation type="vanished">Il n&apos;a pas été possible d&apos;écrire l&apos;intégralité du fichier %1 sur le disque.
+Raison&#xa0;: %2
+Voulez-vous réessayer&#xa0;?</translation>
     </message>
     <message>
         <source>Assistant</source>
@@ -1553,11 +1683,11 @@ Voulez-vous réessayer ?</translation>
     </message>
     <message>
         <source>Save Form?</source>
-        <translation>Enregistrer le formulaire ?</translation>
+        <translation>Enregistrer le formulaire&#xa0;?</translation>
     </message>
     <message>
         <source>Do you want to save the changes to this document before closing?</source>
-        <translation>Voulez-vous enregistrer les changements de ce document avant de le fermer ?</translation>
+        <translation>Voulez-vous enregistrer les changements de ce document avant de le fermer&#xa0;?</translation>
     </message>
     <message>
         <source>If you don&apos;t save, your changes will be lost.</source>
@@ -1618,7 +1748,7 @@ Voulez-vous réessayer ?</translation>
     <name>QDesignerPluginManager</name>
     <message>
         <source>An XML error was encountered when parsing the XML of the custom widget %1: %2</source>
-        <translation>Une erreur XML a été rencontrée lors de l&apos;analyse grammaticale du XML provenant du widget personnalisé %1 : %2</translation>
+        <translation>Une erreur XML a été rencontrée lors de l&apos;analyse grammaticale du XML provenant du widget personnalisé %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>A required attribute (&apos;%1&apos;) is missing.</source>
@@ -1626,7 +1756,7 @@ Voulez-vous réessayer ?</translation>
     </message>
     <message>
         <source>An invalid property specification (&apos;%1&apos;) was encountered. Supported types: %2</source>
-        <translation>Une spécification invalide de propriété (&apos;%1&apos;) a été rencontrée. Types supportés : %2</translation>
+        <translation>Une spécification invalide de propriété (&apos;%1&apos;) a été rencontrée. Types supportés&#xa0;: %2</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a valid string property specification.</source>
@@ -1672,7 +1802,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     <message>
         <source>Error while pasting clipboard contents at line %1, column %2: %3</source>
         <extracomment>Parsing clipboard contents</extracomment>
-        <translation>Erreur lors du collage du contenu du presse-papier à la ligne %1, colonne %2 : %3</translation>
+        <translation>Erreur lors du collage du contenu du presse-papier à la ligne %1, colonne %2&#xa0;: %3</translation>
     </message>
     <message>
         <source>Error while pasting clipboard contents: The root element &lt;ui&gt; is missing.</source>
@@ -1688,7 +1818,14 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>An error has been encountered while parsing device profile XML: %1</source>
-        <translation>Une erreur a été rencontrée lors de l&apos;analyse grammaticale du XML du profil de l&apos;appareil : %1</translation>
+        <translation>Une erreur a été rencontrée lors de l&apos;analyse grammaticale du XML du profil de l&apos;appareil&#xa0;: %1</translation>
+    </message>
+</context>
+<context>
+    <name>QDesignerTaskMenu</name>
+    <message>
+        <source>no signals available</source>
+        <translation>aucun signal disponible</translation>
     </message>
 </context>
 <context>
@@ -1762,7 +1899,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>Save Forms?</source>
-        <translation>Enregistrer les formulaires ?</translation>
+        <translation>Enregistrer les formulaires&#xa0;?</translation>
     </message>
     <message numerus="yes">
         <source>There are %n forms with unsaved changes. Do you want to review these changes before quitting?</source>
@@ -1789,11 +1926,11 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>The last session of Designer was not terminated correctly. Backup files were left behind. Do you want to load them?</source>
-        <translation>La dernière session de Designer n&apos;a pas été fermée correctement. Des fichiers de sauvegarde existent. Voulez-vous les charger ?</translation>
+        <translation>La dernière session de Designer n&apos;a pas été fermée correctement. Des fichiers de sauvegarde existent. Voulez-vous les charger&#xa0;?</translation>
     </message>
     <message>
         <source>The file &lt;b&gt;%1&lt;/b&gt; could not be opened: %2</source>
-        <translation>Le fichier &lt;b&gt;%1&lt;/b&gt; ne peut pas être ouvert : %2</translation>
+        <translation>Le fichier &lt;b&gt;%1&lt;/b&gt; ne peut pas être ouvert&#xa0;: %2</translation>
     </message>
 </context>
 <context>
@@ -1864,7 +2001,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>Change Page Order...</source>
-        <translation>Modifier l&apos;ordre des pages...</translation>
+        <translation>Modifier l&apos;ordre des pages…</translation>
     </message>
     <message>
         <source>Change Page Order</source>
@@ -1929,7 +2066,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>Change Page Order...</source>
-        <translation>Modifier l&apos;ordre des pages...</translation>
+        <translation>Modifier l&apos;ordre des pages…</translation>
     </message>
     <message>
         <source>Change Page Order</source>
@@ -1977,7 +2114,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     <name>QtColorEditWidget</name>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
 </context>
 <context>
@@ -2071,7 +2208,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>What&apos;s This</source>
-        <translation>Qu&apos;est-ce que c&apos;est ?</translation>
+        <translation>Qu&apos;est-ce que c&apos;est&#xa0;?</translation>
     </message>
     <message>
         <source>Busy</source>
@@ -2082,7 +2219,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     <name>QtFontEditWidget</name>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Select Font</source>
@@ -2283,7 +2420,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Radial Type</source>
@@ -2409,11 +2546,11 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>New...</source>
-        <translation>Nouveau...</translation>
+        <translation>Nouveau…</translation>
     </message>
     <message>
         <source>Edit...</source>
-        <translation>Éditer...</translation>
+        <translation>Éditer…</translation>
     </message>
     <message>
         <source>Rename</source>
@@ -2433,7 +2570,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
     </message>
     <message>
         <source>Are you sure you want to remove the selected gradient?</source>
-        <translation>Êtes-vous sûr de vouloir supprimer le gradient sélectionné ?</translation>
+        <translation>Êtes-vous sûr de vouloir supprimer le gradient sélectionné&#xa0;?</translation>
     </message>
 </context>
 <context>
@@ -2591,7 +2728,7 @@ Les pages du conteneur ne devraient être ajoutées que par spécification dans 
         <source>%1 already exists.
 Do you want to replace it?</source>
         <translation>%1 existe déjà.
-Voulez-vous le remplacer ?</translation>
+Voulez-vous le remplacer&#xa0;?</translation>
     </message>
     <message>
         <source>The file does not appear to be a resource file; element &apos;%1&apos; was found where &apos;%2&apos; was expected.</source>
@@ -2627,11 +2764,11 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>&lt;p&gt;&lt;b&gt;Warning:&lt;/b&gt; The file&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;&lt;p&gt;is outside of the current resource file&apos;s parent directory.&lt;/p&gt;</source>
-        <translation>&lt;p&gt;&lt;b&gt;Avertissement :&lt;/b&gt; le fichier&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;&lt;p&gt;est en dehors du répertoire parent du fichier de ressource courant.&lt;/p&gt;</translation>
+        <translation>&lt;p&gt;&lt;b&gt;Avertissement&#xa0;:&lt;/b&gt; le fichier&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;&lt;p&gt;est en dehors du répertoire parent du fichier de ressource courant.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;p&gt;To resolve the issue, press:&lt;/p&gt;&lt;table&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Copy&lt;/th&gt;&lt;td&gt;to copy the file to the resource file&apos;s parent directory.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Copy As...&lt;/th&gt;&lt;td&gt;to copy the file into a subdirectory of the resource file&apos;s parent directory.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Keep&lt;/th&gt;&lt;td&gt;to use its current location.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;</source>
-        <translation>&lt;p&gt;Pour résoudre le problème, appuyez sur :&lt;/p&gt;&lt;table&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Copier&lt;/th&gt;&lt;td&gt;Pour copier le fichier dans le répertoire parent du fichier de ressource.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Copier sous...&lt;/th&gt;&lt;td&gt;Pour copier le fichier ressource dans un sous-répertoire du répertoire parent du fichier de ressource.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Conserver&lt;/th&gt;&lt;td&gt;pour conserver l&apos;emplacement courant.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;</translation>
+        <translation>&lt;p&gt;Pour résoudre le problème, appuyez sur&#xa0;:&lt;/p&gt;&lt;table&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Copier&lt;/th&gt;&lt;td&gt;Pour copier le fichier dans le répertoire parent du fichier de ressource.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Copier sous…&lt;/th&gt;&lt;td&gt;Pour copier le fichier ressource dans un sous-répertoire du répertoire parent du fichier de ressource.&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;th align=&quot;left&quot;&gt;Conserver&lt;/th&gt;&lt;td&gt;pour conserver l&apos;emplacement courant.&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;</translation>
     </message>
     <message>
         <source>Add Files</source>
@@ -2647,7 +2784,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Copy As...</source>
-        <translation>Copier sous...</translation>
+        <translation>Copier sous…</translation>
     </message>
     <message>
         <source>Keep</source>
@@ -2673,7 +2810,7 @@ Ceci peut être une extension de langue par exemple, comme &quot;_fr&apos;.</tra
     </message>
     <message>
         <source>&lt;p&gt;The selected file:&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;&lt;p&gt;is outside of the current resource file&apos;s directory:&lt;/p&gt;&lt;p&gt;%2&lt;/p&gt;&lt;p&gt;Please select another path within this directory.&lt;p&gt;</source>
-        <translation>&lt;p&gt;Le fichier sélectionné&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;&lt;p&gt;est en dehors du répertoire du fichier de ressource courant :&lt;/p&gt;&lt;p&gt;%2&lt;/p&gt;&lt;p&gt;Veuillez sélectionner un chemin dans le répertoire courant.&lt;/p&gt;</translation>
+        <translation>&lt;p&gt;Le fichier sélectionné&lt;/p&gt;&lt;p&gt;%1&lt;/p&gt;&lt;p&gt;est en dehors du répertoire du fichier de ressource courant&#xa0;:&lt;/p&gt;&lt;p&gt;%2&lt;/p&gt;&lt;p&gt;Veuillez sélectionner un chemin dans le répertoire courant.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>Could not overwrite %1.</source>
@@ -2692,7 +2829,7 @@ vers
     <message>
         <source>A parse error occurred at line %1, column %2 of %3:
 %4</source>
-        <translation>Une erreur d&apos;analyse grammaticale est apparue à la ligne %1, colonne %2 de %3 :
+        <translation>Une erreur d&apos;analyse grammaticale est apparue à la ligne %1, colonne %2 de %3&#xa0;:
 %4</translation>
     </message>
     <message>
@@ -2701,7 +2838,7 @@ vers
     </message>
     <message>
         <source>Could not write %1: %2</source>
-        <translation>Impossible d&apos;écrire %1 : %2</translation>
+        <translation>Impossible d&apos;écrire %1&#xa0;: %2</translation>
     </message>
     <message>
         <source>Edit Resources</source>
@@ -2709,11 +2846,11 @@ vers
     </message>
     <message>
         <source>New...</source>
-        <translation>Nouveau...</translation>
+        <translation>Nouveau…</translation>
     </message>
     <message>
         <source>Open...</source>
-        <translation>Ouvrir...</translation>
+        <translation>Ouvrir…</translation>
     </message>
     <message>
         <source>Open Resource File</source>
@@ -2737,7 +2874,7 @@ vers
     </message>
     <message>
         <source>Add Files...</source>
-        <translation>Ajouter fichiers...</translation>
+        <translation>Ajouter fichiers…</translation>
     </message>
     <message>
         <source>Change Prefix</source>
@@ -2753,7 +2890,7 @@ vers
     </message>
     <message>
         <source>Clone Prefix...</source>
-        <translation>Cloner le préfixe...</translation>
+        <translation>Cloner le préfixe…</translation>
     </message>
     <message>
         <source>Prefix / Path</source>
@@ -2765,7 +2902,7 @@ vers
     </message>
     <message>
         <source>&lt;html&gt;&lt;p&gt;&lt;b&gt;Warning:&lt;/b&gt; There have been problems while reloading the resources:&lt;/p&gt;&lt;pre&gt;%1&lt;/pre&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;p&gt;&lt;b&gt;Avertissement:&lt;/b&gt; Des problèmes sont apparus lors du rafraichissement des données des ressources :&lt;/p&gt;&lt;pre&gt;%1&lt;/pre&gt;&lt;/html&gt;</translation>
+        <translation>&lt;html&gt;&lt;p&gt;&lt;b&gt;Avertissement:&lt;/b&gt; Des problèmes sont apparus lors du rafraichissement des données des ressources&#xa0;:&lt;/p&gt;&lt;pre&gt;%1&lt;/pre&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <source>Resource Warning</source>
@@ -2777,12 +2914,12 @@ vers
     <message>
         <source>Size: %1 x %2
 %3</source>
-        <translation>Taille : %1 x %2
+        <translation>Taille&#xa0;: %1 x %2
 %3</translation>
     </message>
     <message>
         <source>Edit Resources...</source>
-        <translation>Éditer ressources...</translation>
+        <translation>Éditer ressources…</translation>
     </message>
     <message>
         <source>Reload</source>
@@ -2967,15 +3104,15 @@ vers
     </message>
     <message>
         <source>&amp;Name:</source>
-        <translation>&amp;Nom :</translation>
+        <translation>&amp;Nom&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Category:</source>
-        <translation>&amp;Catégorie :</translation>
+        <translation>&amp;Catégorie&#xa0;:</translation>
     </message>
     <message>
         <source>Add path...</source>
-        <translation>Ajouter chemin...</translation>
+        <translation>Ajouter chemin…</translation>
     </message>
     <message>
         <source>Template Exists</source>
@@ -2985,7 +3122,7 @@ vers
         <source>A template with the name %1 already exists.
 Do you want overwrite the template?</source>
         <translation>Un modèle existe déjà avec le nom %1.
-Voulez-vous le remplacer ?</translation>
+Voulez-vous le remplacer&#xa0;?</translation>
     </message>
     <message>
         <source>Overwrite Template</source>
@@ -2997,7 +3134,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>There was an error opening template %1 for writing. Reason: %2</source>
-        <translation>Une erreur s&apos;est produite à l&apos;ouverture du modèle %1 en écriture. Raison : %2</translation>
+        <translation>Une erreur s&apos;est produite à l&apos;ouverture du modèle %1 en écriture. Raison&#xa0;: %2</translation>
     </message>
     <message>
         <source>Write Error</source>
@@ -3005,7 +3142,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>There was an error writing the template %1 to disk. Reason: %2</source>
-        <translation>Une erreur s&apos;est produite lors de l&apos;écriture du modèle %1 sur le disque. Raison : %2</translation>
+        <translation>Une erreur s&apos;est produite lors de l&apos;écriture du modèle %1 sur le disque. Raison&#xa0;: %2</translation>
     </message>
     <message>
         <source>Pick a directory to save templates in</source>
@@ -3054,7 +3191,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Delete</source>
@@ -3088,7 +3225,7 @@ Voulez-vous le remplacer ?</translation>
     <name>ToolBarManager</name>
     <message>
         <source>Configure Toolbars...</source>
-        <translation>Configurer les barres d&apos;outils...</translation>
+        <translation>Configurer les barres d&apos;outils…</translation>
     </message>
     <message>
         <source>Window</source>
@@ -3164,15 +3301,15 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::ActionEditor</name>
     <message>
         <source>New...</source>
-        <translation>Nouveau...</translation>
+        <translation>Nouveau…</translation>
     </message>
     <message>
         <source>Edit...</source>
-        <translation>Éditer...</translation>
+        <translation>Éditer…</translation>
     </message>
     <message>
         <source>Go to slot...</source>
-        <translation>Aller au slot...</translation>
+        <translation>Aller au slot…</translation>
     </message>
     <message>
         <source>Copy</source>
@@ -3332,7 +3469,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Change text...</source>
-        <translation>Modifier le texte...</translation>
+        <translation>Modifier le texte…</translation>
     </message>
     <message>
         <source>None</source>
@@ -3347,7 +3484,7 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::CodeDialog</name>
     <message>
         <source>Save...</source>
-        <translation>Enregistrer...</translation>
+        <translation>Enregistrer…</translation>
     </message>
     <message>
         <source>Copy All</source>
@@ -3355,7 +3492,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>&amp;Find in Text...</source>
-        <translation>&amp;Rechercher dans le texte...</translation>
+        <translation type="vanished">&amp;Rechercher dans le texte…</translation>
     </message>
     <message>
         <source>A temporary form file could not be created in %1.</source>
@@ -3367,7 +3504,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>%1 - [Code]</source>
-        <translation>%1 - [Code]</translation>
+        <translation type="vanished">%1 - [Code]</translation>
     </message>
     <message>
         <source>Save Code</source>
@@ -3375,15 +3512,19 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Header Files (*.%1)</source>
-        <translation>Fichiers headers (*.%1)</translation>
+        <translation type="vanished">Fichiers headers (*.%1)</translation>
+    </message>
+    <message>
+        <source>%1 - [%2 Code]</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>The file %1 could not be opened: %2</source>
-        <translation>Le fichier %1 ne peut pas être ouvert : %2</translation>
+        <translation>Le fichier %1 ne peut pas être ouvert&#xa0;: %2</translation>
     </message>
     <message>
         <source>The file %1 could not be written: %2</source>
-        <translation>Le fichier %1 ne peut pas être écrit : %2</translation>
+        <translation>Le fichier %1 ne peut pas être écrit&#xa0;: %2</translation>
     </message>
     <message>
         <source>%1 - Error</source>
@@ -3401,7 +3542,7 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::ComboBoxTaskMenu</name>
     <message>
         <source>Edit Items...</source>
-        <translation>Éditer les éléments...</translation>
+        <translation>Éditer les éléments…</translation>
     </message>
     <message>
         <source>Change Combobox Contents</source>
@@ -3412,7 +3553,7 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::CommandLinkButtonTaskMenu</name>
     <message>
         <source>Change description...</source>
-        <translation>Modifier la description...</translation>
+        <translation>Modifier la description…</translation>
     </message>
 </context>
 <context>
@@ -3466,7 +3607,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>The connection already exists!&lt;br&gt;%1</source>
-        <translation>La connexion existe déjà !&lt;br&gt;%1</translation>
+        <translation>La connexion existe déjà&#xa0;!&lt;br&gt;%1</translation>
     </message>
     <message>
         <source>Signal and Slot Editor</source>
@@ -3538,6 +3679,10 @@ Voulez-vous le remplacer ?</translation>
     <message>
         <source>comment</source>
         <translation>commentaire</translation>
+    </message>
+    <message>
+        <source>id</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>AlignLeft</source>
@@ -3651,7 +3796,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Unable to open the file &apos;%1&apos; for writing: %2</source>
-        <translation>Impossible d&apos;ouvrir le fichier &apos;%1&apos; en écriture : %2</translation>
+        <translation>Impossible d&apos;ouvrir le fichier &apos;%1&apos; en écriture&#xa0;: %2</translation>
     </message>
     <message>
         <source>Open profile</source>
@@ -3663,11 +3808,11 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Unable to open the file &apos;%1&apos; for reading: %2</source>
-        <translation>Impossible d&apos;ouvrir le fichier &apos;%1&apos; en lecture : %2</translation>
+        <translation>Impossible d&apos;ouvrir le fichier &apos;%1&apos; en lecture&#xa0;: %2</translation>
     </message>
     <message>
         <source>&apos;%1&apos; is not a valid profile: %2</source>
-        <translation>&apos;%1&apos; n&apos;est pas un profil valide : %2</translation>
+        <translation>&apos;%1&apos; n&apos;est pas un profil valide&#xa0;: %2</translation>
     </message>
 </context>
 <context>
@@ -3698,7 +3843,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>&amp;Value:</source>
-        <translation>&amp;Valeur : </translation>
+        <translation>&amp;Valeur&#xa0;: </translation>
     </message>
     <message>
         <source>Move String Up</source>
@@ -3753,7 +3898,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Would you like to delete the profile &apos;%1&apos;?</source>
-        <translation>Voulez-vous supprimer le profil &apos;%1&apos; ?</translation>
+        <translation>Voulez-vous supprimer le profil &apos;%1&apos;&#xa0;?</translation>
     </message>
     <message>
         <source>Default</source>
@@ -3768,14 +3913,14 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>The file &quot;%1&quot; has changed outside Designer. Do you want to reload it?</source>
-        <translation>Le fichier &quot;%1&quot; a été modifié en dehors de Designer. Voulez-vous le recharger ?</translation>
+        <translation>Le fichier &quot;%1&quot; a été modifié en dehors de Designer. Voulez-vous le recharger&#xa0;?</translation>
     </message>
 </context>
 <context>
     <name>qdesigner_internal::FormLayoutMenu</name>
     <message>
         <source>Add form layout row...</source>
-        <translation>Ajouter une ligne au layout du formulaire...</translation>
+        <translation>Ajouter une ligne au layout du formulaire…</translation>
     </message>
 </context>
 <context>
@@ -3875,7 +4020,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>&lt;p&gt;This file contains top level spacers.&lt;br/&gt;They will &lt;b&gt;not&lt;/b&gt; be saved.&lt;/p&gt;&lt;p&gt;Perhaps you forgot to create a layout?&lt;/p&gt;</source>
-        <translation>&lt;p&gt;Ce fichier contient des espaceurs de premier niveau.&lt;br/&gt;Ils &lt;b&gt;ne seront pas&lt;/b&gt; sauvegardés.&lt;/p&gt;&lt;p&gt;Peut-être que vous avez oublié de créer un layout ?&lt;/p&gt;</translation>
+        <translation>&lt;p&gt;Ce fichier contient des espaceurs de premier niveau.&lt;br/&gt;Ils &lt;b&gt;ne seront pas&lt;/b&gt; sauvegardés.&lt;/p&gt;&lt;p&gt;Peut-être que vous avez oublié de créer un layout&#xa0;?&lt;/p&gt;</translation>
     </message>
 </context>
 <context>
@@ -4010,7 +4155,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>&amp;Preview...</source>
-        <translation>&amp;Prévisualisation...</translation>
+        <translation>&amp;Prévisualisation…</translation>
     </message>
     <message>
         <source>Preview current form</source>
@@ -4018,7 +4163,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Form &amp;Settings...</source>
-        <translation>Paramètres du &amp;formulaire...</translation>
+        <translation>Paramètres du &amp;formulaire…</translation>
     </message>
     <message>
         <source>Break Layout</source>
@@ -4046,7 +4191,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Device Profile: %1</source>
-        <translation>Profil de périphérique : %1</translation>
+        <translation>Profil de périphérique&#xa0;: %1</translation>
     </message>
 </context>
 <context>
@@ -4084,7 +4229,7 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::GroupBoxTaskMenu</name>
     <message>
         <source>Change title...</source>
-        <translation>Modifier le titre...</translation>
+        <translation>Modifier le titre…</translation>
     </message>
 </context>
 <context>
@@ -4098,75 +4243,75 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::IconSelector</name>
     <message>
         <source>The pixmap file &apos;%1&apos; cannot be read.</source>
-        <translation>Le fichier pixmap &apos;%1&apos; ne peut pas être lu.</translation>
+        <translation type="vanished">Le fichier pixmap &apos;%1&apos; ne peut pas être lu.</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; does not appear to be a valid pixmap file: %2</source>
-        <translation>Le fichier &apos;%1&apos; n&apos;est pas un fichier de pixmap valide : %2</translation>
+        <translation type="vanished">Le fichier &apos;%1&apos; n&apos;est pas un fichier de pixmap valide&#xa0;: %2</translation>
     </message>
     <message>
         <source>The file &apos;%1&apos; could not be read: %2</source>
-        <translation>Le fichier &apos;%1&apos; ne peut pas être lu : %2</translation>
+        <translation type="vanished">Le fichier &apos;%1&apos; ne peut pas être lu&#xa0;: %2</translation>
     </message>
     <message>
         <source>Choose a Pixmap</source>
-        <translation>Choisissez un pixmap</translation>
+        <translation type="vanished">Choisissez un pixmap</translation>
     </message>
     <message>
         <source>Pixmap Read Error</source>
-        <translation>Erreur de lecture de pixmap</translation>
+        <translation type="vanished">Erreur de lecture de pixmap</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation type="vanished">…</translation>
     </message>
     <message>
         <source>Normal Off</source>
-        <translation>Arrêt normal</translation>
+        <translation type="vanished">Arrêt normal</translation>
     </message>
     <message>
         <source>Normal On</source>
-        <translation>Marche normal</translation>
+        <translation type="vanished">Marche normal</translation>
     </message>
     <message>
         <source>Disabled Off</source>
-        <translation>Arrêt désactivé</translation>
+        <translation type="vanished">Arrêt désactivé</translation>
     </message>
     <message>
         <source>Disabled On</source>
-        <translation>Marche désactivé</translation>
+        <translation type="vanished">Marche désactivé</translation>
     </message>
     <message>
         <source>Active Off</source>
-        <translation>Arrêt activé</translation>
+        <translation type="vanished">Arrêt activé</translation>
     </message>
     <message>
         <source>Active On</source>
-        <translation>Marche activé</translation>
+        <translation type="vanished">Marche activé</translation>
     </message>
     <message>
         <source>Selected Off</source>
-        <translation>Arrêt sélectionné</translation>
+        <translation type="vanished">Arrêt sélectionné</translation>
     </message>
     <message>
         <source>Selected On</source>
-        <translation>Marche sélectionné</translation>
+        <translation type="vanished">Marche sélectionné</translation>
     </message>
     <message>
         <source>Choose Resource...</source>
-        <translation>Choisir ressource...</translation>
+        <translation type="vanished">Choisir ressource…</translation>
     </message>
     <message>
         <source>Choose File...</source>
-        <translation>Choisir un fichier...</translation>
+        <translation type="vanished">Choisir un fichier…</translation>
     </message>
     <message>
         <source>Reset</source>
-        <translation>Réinitialiser</translation>
+        <translation type="vanished">Réinitialiser</translation>
     </message>
     <message>
         <source>Reset All</source>
-        <translation>Réinitialisé tout</translation>
+        <translation type="vanished">Réinitialisé tout</translation>
     </message>
 </context>
 <context>
@@ -4177,7 +4322,7 @@ Voulez-vous le remplacer ?</translation>
     </message>
     <message>
         <source>Input icon name from the current theme:</source>
-        <translation>Entrer le nom de l&apos;icône à partir du thème courant :</translation>
+        <translation>Entrer le nom de l&apos;icône à partir du thème courant&#xa0;:</translation>
     </message>
 </context>
 <context>
@@ -4231,11 +4376,11 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::LabelTaskMenu</name>
     <message>
         <source>Change rich text...</source>
-        <translation>Modifier texte riche...</translation>
+        <translation>Modifier texte riche…</translation>
     </message>
     <message>
         <source>Change plain text...</source>
-        <translation>Modifier texte simple...</translation>
+        <translation>Modifier texte simple…</translation>
     </message>
 </context>
 <context>
@@ -4249,7 +4394,7 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::LineEditTaskMenu</name>
     <message>
         <source>Change text...</source>
-        <translation>Modifier texte...</translation>
+        <translation>Modifier texte…</translation>
     </message>
 </context>
 <context>
@@ -4271,7 +4416,7 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::ListWidgetTaskMenu</name>
     <message>
         <source>Edit Items...</source>
-        <translation>Éditer les éléments...</translation>
+        <translation>Éditer les éléments…</translation>
     </message>
     <message>
         <source>Change List Contents</source>
@@ -4315,39 +4460,39 @@ Voulez-vous le remplacer ?</translation>
     <name>qdesigner_internal::NewActionDialog</name>
     <message>
         <source>New Action...</source>
-        <translation>Nouvelle action...</translation>
+        <translation>Nouvelle action…</translation>
     </message>
     <message>
         <source>&amp;Text:</source>
-        <translation>&amp;Texte :</translation>
+        <translation>&amp;Texte&#xa0;:</translation>
     </message>
     <message>
         <source>Object &amp;name:</source>
-        <translation>&amp;Nom de l&apos;objet :</translation>
+        <translation>&amp;Nom de l&apos;objet&#xa0;:</translation>
     </message>
     <message>
         <source>T&amp;oolTip:</source>
-        <translation>I&amp;nfo-bulle :</translation>
+        <translation>I&amp;nfo-bulle&#xa0;:</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Icon th&amp;eme:</source>
-        <translation>Icône du thème :</translation>
+        <translation>Icône du thème&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Icon:</source>
-        <translation>&amp;Icône :</translation>
+        <translation>&amp;Icône&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Checkable:</source>
-        <translation>&amp;Cochable :</translation>
+        <translation>&amp;Cochable&#xa0;:</translation>
     </message>
     <message>
         <source>&amp;Shortcut:</source>
-        <translation>&amp;Raccourci :</translation>
+        <translation>&amp;Raccourci&#xa0;:</translation>
     </message>
 </context>
 <context>
@@ -4401,11 +4546,11 @@ Veuillez sélectionner un autre nom.</translation>
     </message>
     <message>
         <source>Device:</source>
-        <translation>Appareil :</translation>
+        <translation>Appareil&#xa0;:</translation>
     </message>
     <message>
         <source>Screen Size:</source>
-        <translation>Dimensions de l&apos;écran :</translation>
+        <translation>Dimensions de l&apos;écran&#xa0;:</translation>
     </message>
     <message>
         <source>Default size</source>
@@ -4446,11 +4591,11 @@ Veuillez sélectionner un autre nom.</translation>
     </message>
     <message>
         <source>Unable to open the form template file &apos;%1&apos;: %2</source>
-        <translation>Impossible d&apos;ouvrir le fichier de modèle de formulaire &apos;%1&apos; : %2</translation>
+        <translation>Impossible d&apos;ouvrir le fichier de modèle de formulaire &apos;%1&apos;&#xa0;: %2</translation>
     </message>
     <message>
         <source>Internal error: No template selected.</source>
-        <translation>Erreur interne : aucun modèle sélectionné.</translation>
+        <translation>Erreur interne&#xa0;: aucun modèle sélectionné.</translation>
     </message>
 </context>
 <context>
@@ -4465,15 +4610,15 @@ Veuillez sélectionner un autre nom.</translation>
     </message>
     <message>
         <source>Base class name:</source>
-        <translation>Nom de la classe de base :</translation>
+        <translation>Nom de la classe de base&#xa0;:</translation>
     </message>
     <message>
         <source>Promoted class name:</source>
-        <translation>Nom de la classe promue :</translation>
+        <translation>Nom de la classe promue&#xa0;:</translation>
     </message>
     <message>
         <source>Header file:</source>
-        <translation>Fichier d&apos;en-tête :</translation>
+        <translation>Fichier d&apos;en-tête&#xa0;:</translation>
     </message>
     <message>
         <source>Global include</source>
@@ -4487,12 +4632,16 @@ Veuillez sélectionner un autre nom.</translation>
 <context>
     <name>qdesigner_internal::ObjectInspector</name>
     <message>
+        <source>Filter</source>
+        <translation>Filtre</translation>
+    </message>
+    <message>
         <source>Change Current Page</source>
         <translation>Modifier la page courante</translation>
     </message>
     <message>
         <source>&amp;Find in Text...</source>
-        <translation>&amp;Rechercher dans le texte...</translation>
+        <translation type="vanished">&amp;Rechercher dans le texte…</translation>
     </message>
 </context>
 <context>
@@ -4560,6 +4709,66 @@ Veuillez sélectionner un autre nom.</translation>
         <source>Active</source>
         <translation>Actif</translation>
     </message>
+    <message>
+        <source>Save...</source>
+        <translation>Enregistrer…</translation>
+    </message>
+    <message>
+        <source>Load...</source>
+        <translation>Charger…</translation>
+    </message>
+    <message>
+        <source>Lighter</source>
+        <translation>Plus clair</translation>
+    </message>
+    <message>
+        <source>Darker</source>
+        <translation>Plus sombre</translation>
+    </message>
+    <message>
+        <source>Copy color %1</source>
+        <translation>Copier la couleur %1</translation>
+    </message>
+    <message>
+        <source>QPalette UI file (*.xml)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot open %1 for writing: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot write %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot read palette from %1:%2:%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot open %1 for reading: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid element &quot;%1&quot;, expected &quot;palette&quot;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error Writing Palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load Palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Error Reading Palette</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>qdesigner_internal::PaletteEditorButton</name>
@@ -4591,15 +4800,15 @@ Veuillez sélectionner un autre nom.</translation>
     <name>qdesigner_internal::PixmapEditor</name>
     <message>
         <source>Choose Resource...</source>
-        <translation>Choisir ressource...</translation>
+        <translation>Choisir ressource…</translation>
     </message>
     <message>
         <source>Choose File...</source>
-        <translation>Choisir fichier...</translation>
+        <translation>Choisir un fichier…</translation>
     </message>
     <message>
         <source>Set Icon From Theme...</source>
-        <translation>Définir l&apos;icône à partir du thème...</translation>
+        <translation>Définir l&apos;icône à partir du thème…</translation>
     </message>
     <message>
         <source>Copy Path</source>
@@ -4611,7 +4820,7 @@ Veuillez sélectionner un autre nom.</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>[Theme] %1</source>
@@ -4683,7 +4892,7 @@ Veuillez sélectionner un autre nom.</translation>
     </message>
     <message>
         <source>Browse...</source>
-        <translation>Parcourir...</translation>
+        <translation>Parcourir…</translation>
     </message>
     <message>
         <source>Load Custom Device Skin</source>
@@ -4708,7 +4917,7 @@ Veuillez sélectionner un autre nom.</translation>
     <message>
         <source>%1 is not a valid skin directory:
 %2</source>
-        <translation>%1 n&apos;est pas un répertoire de revêtements valide :
+        <translation>%1 n&apos;est pas un répertoire de revêtements valide&#xa0;:
 %2</translation>
     </message>
 </context>
@@ -4775,7 +4984,7 @@ je préfère les mines de Pompéi.</translation>
     <message>
         <source>ButtonGroup2</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>ButtonGroup2</translation>
+        <translation type="vanished">ButtonGroup2</translation>
     </message>
     <message>
         <source>CheckBox1</source>
@@ -4785,12 +4994,12 @@ je préfère les mines de Pompéi.</translation>
     <message>
         <source>CheckBox2</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>CheckBox2</translation>
+        <translation type="vanished">CheckBox2</translation>
     </message>
     <message>
         <source>ButtonGroup</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>ButtonGroup</translation>
+        <translation type="vanished">ButtonGroup</translation>
     </message>
     <message>
         <source>RadioButton1</source>
@@ -4805,7 +5014,100 @@ je préfère les mines de Pompéi.</translation>
     <message>
         <source>RadioButton3</source>
         <extracomment>Palette Editor Preview Widget</extracomment>
-        <translation>BoutonRadio1</translation>
+        <translation>RadioButton3</translation>
+    </message>
+    <message>
+        <source>Buttons</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tristate CheckBox</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ToggleButton</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ToolButton</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation>Menu</translation>
+    </message>
+    <message>
+        <source>Item Views</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Column 1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top Level 1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nested Item 1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nested Item 2</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nested Item 3</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Simple Input Widgets</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Item1</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Item2</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display Widgets</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>QLabel</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>QLabel with frame</source>
+        <extracomment>Palette Editor Preview Widget</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Option 1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checkable</source>
+        <translation type="unfinished">Vérifiable</translation>
     </message>
 </context>
 <context>
@@ -4831,15 +5133,15 @@ je préfère les mines de Pompéi.</translation>
     <name>qdesigner_internal::PromotionTaskMenu</name>
     <message>
         <source>Promoted widgets...</source>
-        <translation>Widgets promus...</translation>
+        <translation>Widgets promus…</translation>
     </message>
     <message>
         <source>Promote to ...</source>
-        <translation>Promouvoir en...</translation>
+        <translation>Promouvoir en…</translation>
     </message>
     <message>
         <source>Change signals/slots...</source>
-        <translation>Modifier signaux/slots...</translation>
+        <translation>Modifier signaux/slots…</translation>
     </message>
     <message>
         <source>Promote to</source>
@@ -4854,7 +5156,7 @@ je préfère les mines de Pompéi.</translation>
     <name>qdesigner_internal::PropertyEditor</name>
     <message>
         <source>Add Dynamic Property...</source>
-        <translation>Ajouter une propriété dynamique...</translation>
+        <translation>Ajouter une propriété dynamique…</translation>
     </message>
     <message>
         <source>Remove Dynamic Property</source>
@@ -4878,15 +5180,15 @@ je préfère les mines de Pompéi.</translation>
     </message>
     <message>
         <source>String...</source>
-        <translation>Chaîne de caractères...</translation>
+        <translation>Chaîne de caractères…</translation>
     </message>
     <message>
         <source>Bool...</source>
-        <translation>Booléen...</translation>
+        <translation>Booléen…</translation>
     </message>
     <message>
         <source>Other...</source>
-        <translation>Autre...</translation>
+        <translation>Autre…</translation>
     </message>
     <message>
         <source>Configure Property Editor</source>
@@ -4899,8 +5201,8 @@ je préfère les mines de Pompéi.</translation>
     <message>
         <source>Object: %1
 Class: %2</source>
-        <translation>Objet : %1
-Classe : %2</translation>
+        <translation>Objet&#xa0;: %1
+Classe&#xa0;: %2</translation>
     </message>
 </context>
 <context>
@@ -4926,7 +5228,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Change signals/slots...</source>
-        <translation>Modifier signaux/slots...</translation>
+        <translation>Modifier signaux/slots…</translation>
     </message>
     <message>
         <source>%1 - Error</source>
@@ -4941,7 +5243,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>The specified qrc file &lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;could not be found. Do you want to update the file location?&lt;/p&gt;</source>
-        <translation>Le fichier qrc spécifié &lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;n&apos;a pas pu être trouvé. Voulez-vous mettre à jour l&apos;emplacement du fichier ?&lt;/p&gt;</translation>
+        <translation>Le fichier qrc spécifié &lt;p&gt;&lt;b&gt;%1&lt;/b&gt;&lt;/p&gt;&lt;p&gt;n&apos;a pas pu être trouvé. Voulez-vous mettre à jour l&apos;emplacement du fichier&#xa0;?&lt;/p&gt;</translation>
     </message>
     <message>
         <source>New location for %1</source>
@@ -4992,19 +5294,19 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Change objectName...</source>
-        <translation>Modifier objectName...</translation>
+        <translation>Modifier objectName…</translation>
     </message>
     <message>
         <source>Change toolTip...</source>
-        <translation>Modifier toolTip...</translation>
+        <translation>Modifier toolTip…</translation>
     </message>
     <message>
         <source>Change whatsThis...</source>
-        <translation>Modifier whatsThis...</translation>
+        <translation>Modifier whatsThis…</translation>
     </message>
     <message>
         <source>Change styleSheet...</source>
-        <translation>Modifier la feuille de style...</translation>
+        <translation>Modifier la feuille de style…</translation>
     </message>
     <message>
         <source>Create Menu Bar</source>
@@ -5013,6 +5315,10 @@ Classe : %2</translation>
     <message>
         <source>Add Tool Bar</source>
         <translation>Ajouter une barre d&apos;outils</translation>
+    </message>
+    <message>
+        <source>Add Tool Bar to Other Area</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Create Status Bar</source>
@@ -5024,11 +5330,11 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Change signals/slots...</source>
-        <translation>Modifier signaux/slots...</translation>
+        <translation>Modifier signaux/slots…</translation>
     </message>
     <message>
         <source>Go to slot...</source>
-        <translation>Aller au slot...</translation>
+        <translation>Aller au slot…</translation>
     </message>
     <message>
         <source>Size Constraints</source>
@@ -5068,7 +5374,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>no signals available</source>
-        <translation>Aucun signal disponible</translation>
+        <translation type="vanished">Aucun signal disponible</translation>
     </message>
     <message numerus="yes">
         <source>Set size constraint on %n widget(s)</source>
@@ -5087,7 +5393,7 @@ Classe : %2</translation>
     <message>
         <source>A parse error occurred at line %1, column %2 of the XML code specified for the widget %3: %4
 %5</source>
-        <translation>Une erreur d&apos;analyse grammaticale est apparue à la ligne %1, colonne %2 du code XML spécifiant le widget %3 : %4
+        <translation>Une erreur d&apos;analyse grammaticale est apparue à la ligne %1, colonne %2 du code XML spécifiant le widget %3&#xa0;: %4
 %5</translation>
     </message>
     <message>
@@ -5098,7 +5404,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>An error has been encountered at line %1 of %2: %3</source>
-        <translation>Une erreur a été rencontrée à la ligne %1 de %2 : %3</translation>
+        <translation>Une erreur a été rencontrée à la ligne %1 de %2&#xa0;: %3</translation>
     </message>
     <message>
         <source>Unexpected element &lt;%1&gt; encountered when parsing for &lt;widget&gt; or &lt;ui&gt;</source>
@@ -5321,19 +5627,19 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Add Resource...</source>
-        <translation>Ajouter ressource...</translation>
+        <translation>Ajouter ressource…</translation>
     </message>
     <message>
         <source>Add Gradient...</source>
-        <translation>Ajouter gradient...</translation>
+        <translation>Ajouter gradient…</translation>
     </message>
     <message>
         <source>Add Color...</source>
-        <translation>Ajouter couleur...</translation>
+        <translation>Ajouter couleur…</translation>
     </message>
     <message>
         <source>Add Font...</source>
-        <translation>Ajouter police...</translation>
+        <translation>Ajouter police…</translation>
     </message>
     <message>
         <source>Edit Style Sheet</source>
@@ -5356,7 +5662,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Tab Order List...</source>
-        <translation>Ordre de la liste de tabulation...</translation>
+        <translation>Ordre de la liste de tabulation…</translation>
     </message>
     <message>
         <source>Tab Order List</source>
@@ -5424,7 +5730,7 @@ Classe : %2</translation>
     <name>qdesigner_internal::TableWidgetTaskMenu</name>
     <message>
         <source>Edit Items...</source>
-        <translation>Éditer les éléments...</translation>
+        <translation>Éditer les éléments…</translation>
     </message>
 </context>
 <context>
@@ -5439,7 +5745,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Pick a directory to save templates in</source>
@@ -5454,7 +5760,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Change HTML...</source>
-        <translation>Modifier le HTML...</translation>
+        <translation>Modifier le HTML…</translation>
     </message>
     <message>
         <source>Edit Text</source>
@@ -5462,22 +5768,22 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Change Plain Text...</source>
-        <translation>Modifier le texte simple...</translation>
+        <translation>Modifier le texte simple…</translation>
     </message>
 </context>
 <context>
     <name>qdesigner_internal::TextEditor</name>
     <message>
         <source>Choose Resource...</source>
-        <translation>Choisir ressource...</translation>
+        <translation>Choisir ressource…</translation>
     </message>
     <message>
         <source>Choose File...</source>
-        <translation>Choisir fichier...</translation>
+        <translation>Choisir fichier…</translation>
     </message>
     <message>
         <source>...</source>
-        <translation>...</translation>
+        <translation>…</translation>
     </message>
     <message>
         <source>Choose a File</source>
@@ -5610,7 +5916,7 @@ Classe : %2</translation>
     <name>qdesigner_internal::TreeWidgetTaskMenu</name>
     <message>
         <source>Edit Items...</source>
-        <translation>Éditer les éléments...</translation>
+        <translation>Éditer les éléments…</translation>
     </message>
 </context>
 <context>
@@ -5621,7 +5927,7 @@ Classe : %2</translation>
     </message>
     <message>
         <source>Warning: Widget creation failed in the widget box. This could be caused by invalid custom widget XML.</source>
-        <translation>Avertissement : La création du widget a échoué dans la boîte de widget. Ceci peut être causé par un code XML invalide d&apos;un widget personnalisé.</translation>
+        <translation>Avertissement&#xa0;: La création du widget a échoué dans la boîte de widget. Ceci peut être causé par un code XML invalide d&apos;un widget personnalisé.</translation>
     </message>
 </context>
 <context>

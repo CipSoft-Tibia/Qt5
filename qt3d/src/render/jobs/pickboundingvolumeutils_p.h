@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_PICKBOUNDINGVOLUMEUTILS_H
 #define QT3DRENDER_RENDER_PICKBOUNDINGVOLUMEUTILS_H
@@ -72,6 +36,7 @@ namespace Render {
 class Entity;
 class Renderer;
 class FrameGraphNode;
+class RenderSettings;
 class NodeManagers;
 
 namespace PickingUtils {
@@ -87,22 +52,35 @@ struct Q_AUTOTEST_EXPORT ViewportCameraAreaDetails
 };
 QT3D_DECLARE_TYPEINFO_3(Qt3DRender, Render, PickingUtils, ViewportCameraAreaDetails, Q_COMPLEX_TYPE)
 
+struct PickConfiguration {
+    std::vector<ViewportCameraAreaDetails> vcaDetails;
+    bool trianglePickingRequested = false;
+    bool edgePickingRequested = false;
+    bool pointPickingRequested = false;
+    bool primitivePickingRequested = false;
+    bool frontFaceRequested = false;
+    bool backFaceRequested = false;
+    float pickWorldSpaceTolerance = -1.f;
+
+    PickConfiguration(FrameGraphNode *frameGraphRoot, RenderSettings *renderSettings);
+};
+
 class Q_AUTOTEST_EXPORT ViewportCameraAreaGatherer
 {
 public:
     ViewportCameraAreaGatherer(const Qt3DCore::QNodeId &nodeId = Qt3DCore::QNodeId()) : m_targetCamera(nodeId) { }
-    QVector<ViewportCameraAreaDetails> gather(FrameGraphNode *root);
+    std::vector<ViewportCameraAreaDetails> gather(FrameGraphNode *root);
 
 private:
     Qt3DCore::QNodeId m_targetCamera;
-    QVector<FrameGraphNode *> m_leaves;
+    std::vector<FrameGraphNode *> m_leaves;
 
     void visit(FrameGraphNode *node);
     ViewportCameraAreaDetails gatherUpViewportCameraAreas(Render::FrameGraphNode *node) const;
-    bool isUnique(const QVector<ViewportCameraAreaDetails> &vcaList, const ViewportCameraAreaDetails &vca) const;
+    bool isUnique(const std::vector<ViewportCameraAreaDetails> &vcaList, const ViewportCameraAreaDetails &vca) const;
 };
 
-typedef QVector<RayCasting::QCollisionQueryResult::Hit> HitList;
+typedef std::vector<RayCasting::QCollisionQueryResult::Hit> HitList;
 
 class Q_AUTOTEST_EXPORT HierarchicalEntityPicker
 {
@@ -114,13 +92,13 @@ public:
 
     bool collectHits(NodeManagers *manager, Entity *root);
     inline HitList hits() const { return m_hits; }
-    inline QVector<Entity *> entities() const { return m_entities; }
+    inline const std::vector<Entity *> &entities() const { return m_entities; }
     inline QHash<Qt3DCore::QNodeId, int> entityToPriorityTable() const { return m_entityToPriorityTable; }
 
 private:
     RayCasting::QRay3D m_ray;
     HitList m_hits;
-    QVector<Entity *> m_entities;
+    std::vector<Entity *> m_entities;
     bool m_objectPickersRequired;
     Qt3DCore::QNodeIdVector m_layerFilterIds;
     Qt3DCore::QNodeIdVector m_layerIds;
@@ -138,7 +116,7 @@ struct Q_AUTOTEST_EXPORT AbstractCollisionGathererFunctor
     RayCasting::QRay3D m_ray;
     QHash<Qt3DCore::QNodeId, int> m_entityToPriorityTable;
 
-    virtual HitList computeHits(const QVector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) = 0;
+    virtual HitList computeHits(const std::vector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) = 0;
 
     // This define is required to work with QtConcurrent
     typedef HitList result_type;
@@ -151,7 +129,7 @@ struct Q_AUTOTEST_EXPORT AbstractCollisionGathererFunctor
 
 struct Q_AUTOTEST_EXPORT EntityCollisionGathererFunctor : public AbstractCollisionGathererFunctor
 {
-    HitList computeHits(const QVector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
+    HitList computeHits(const std::vector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
     HitList pick(const Entity *entity) const override;
 };
 
@@ -160,7 +138,7 @@ struct Q_AUTOTEST_EXPORT TriangleCollisionGathererFunctor : public AbstractColli
     bool m_frontFaceRequested;
     bool m_backFaceRequested;
 
-    HitList computeHits(const QVector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
+    HitList computeHits(const std::vector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
     HitList pick(const Entity *entity) const override;
 };
 
@@ -168,7 +146,7 @@ struct Q_AUTOTEST_EXPORT LineCollisionGathererFunctor : public AbstractCollision
 {
     float m_pickWorldSpaceTolerance;
 
-    HitList computeHits(const QVector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
+    HitList computeHits(const std::vector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
     HitList pick(const Entity *entity) const override;
 };
 
@@ -176,7 +154,7 @@ struct Q_AUTOTEST_EXPORT PointCollisionGathererFunctor : public AbstractCollisio
 {
     float m_pickWorldSpaceTolerance;
 
-    HitList computeHits(const QVector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
+    HitList computeHits(const std::vector<Entity *> &entities, Qt3DRender::QPickingSettings::PickResultMode mode) override;
     HitList pick(const Entity *entity) const override;
 };
 

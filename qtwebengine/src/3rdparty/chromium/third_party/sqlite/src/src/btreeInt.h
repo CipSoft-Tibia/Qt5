@@ -272,7 +272,6 @@ typedef struct CellInfo CellInfo;
 */
 struct MemPage {
   u8 isInit;           /* True if previously initialized. MUST BE FIRST! */
-  u8 bBusy;            /* Prevent endless loops on corrupt database files */
   u8 intKey;           /* True if table b-trees.  False for index b-trees */
   u8 intKeyLeaf;       /* True if the leaf of an intKey table */
   Pgno pgno;           /* Page number for this page */
@@ -294,7 +293,9 @@ struct MemPage {
   u8 *apOvfl[4];       /* Pointers to the body of overflow cells */
   BtShared *pBt;       /* Pointer to BtShared that this page is part of */
   u8 *aData;           /* Pointer to disk image of the page data */
-  u8 *aDataEnd;        /* One byte past the end of usable data */
+  u8 *aDataEnd;        /* One byte past the end of the entire page - not just
+                       ** the usable space, the entire page.  Used to prevent
+                       ** corruption-induced buffer overflow. */
   u8 *aCellIdx;        /* The cell index area */
   u8 *aDataOfst;       /* Same as aData for leaves.  aData+4 for interior */
   DbPage *pDbPage;     /* Pager page handle */
@@ -599,7 +600,7 @@ struct BtCursor {
 /* 
 ** The database page the PENDING_BYTE occupies. This page is never used.
 */
-# define PENDING_BYTE_PAGE(pBt) PAGER_MJ_PGNO(pBt)
+#define PENDING_BYTE_PAGE(pBt)  ((Pgno)((PENDING_BYTE/((pBt)->pageSize))+1))
 
 /*
 ** These macros define the location of the pointer-map entry for a 
@@ -673,15 +674,15 @@ struct BtCursor {
 ** So, this macro is defined instead.
 */
 #ifndef SQLITE_OMIT_AUTOVACUUM
-#define ISAUTOVACUUM (pBt->autoVacuum)
+#define ISAUTOVACUUM(pBt) (pBt->autoVacuum)
 #else
-#define ISAUTOVACUUM 0
+#define ISAUTOVACUUM(pBt) 0
 #endif
 
 
 /*
-** This structure is passed around through all the sanity checking routines
-** in order to keep track of some global state information.
+** This structure is passed around through all the PRAGMA integrity_check
+** checking routines in order to keep track of some global state information.
 **
 ** The aRef[] array is allocated so that there is 1 bit for each page in
 ** the database. As the integrity-check proceeds, for each page used in
@@ -697,7 +698,8 @@ struct IntegrityCk {
   Pgno nPage;       /* Number of pages in the database */
   int mxErr;        /* Stop accumulating errors when this reaches zero */
   int nErr;         /* Number of messages written to zErrMsg so far */
-  int bOomFault;    /* A memory allocation error has occurred */
+  int rc;           /* SQLITE_OK, SQLITE_NOMEM, or SQLITE_INTERRUPT */
+  u32 nStep;        /* Number of steps into the integrity_check process */
   const char *zPfx; /* Error message prefix */
   Pgno v1;          /* Value for first %u substitution in zPfx */
   int v2;           /* Value for second %d substitution in zPfx */

@@ -33,6 +33,8 @@ class V8_EXPORT_PRIVATE LoadElimination final
   LoadElimination(Editor* editor, JSGraph* jsgraph, Zone* zone)
       : AdvancedReducer(editor), node_states_(zone), jsgraph_(jsgraph) {}
   ~LoadElimination() final = default;
+  LoadElimination(const LoadElimination&) = delete;
+  LoadElimination& operator=(const LoadElimination&) = delete;
 
   const char* reducer_name() const override { return "LoadElimination"; }
 
@@ -134,8 +136,12 @@ class V8_EXPORT_PRIVATE LoadElimination final
 
     AbstractField const* Extend(Node* object, FieldInfo info,
                                 Zone* zone) const {
-      AbstractField* that = zone->New<AbstractField>(zone);
-      that->info_for_node_ = this->info_for_node_;
+      AbstractField* that = zone->New<AbstractField>(*this);
+      if (that->info_for_node_.size() >= kMaxTrackedObjects) {
+        // We are tracking too many objects, which leads to bad performance.
+        // Delete one to avoid the map from becoming bigger.
+        that->info_for_node_.erase(that->info_for_node_.begin());
+      }
       that->info_for_node_[object] = info;
       return that;
     }
@@ -169,6 +175,7 @@ class V8_EXPORT_PRIVATE LoadElimination final
   };
 
   static size_t const kMaxTrackedFields = 32;
+  static size_t const kMaxTrackedObjects = 100;
 
   // Abstract state to approximate the current map of an object along the
   // effect paths through the graph.
@@ -204,10 +211,10 @@ class V8_EXPORT_PRIVATE LoadElimination final
     }
     static IndexRange Invalid() { return IndexRange(); }
 
-    bool operator==(const IndexRange& other) {
+    bool operator==(const IndexRange& other) const {
       return begin_ == other.begin_ && end_ == other.end_;
     }
-    bool operator!=(const IndexRange& other) { return !(*this == other); }
+    bool operator!=(const IndexRange& other) const { return !(*this == other); }
 
     struct Iterator {
       int i;
@@ -287,7 +294,7 @@ class V8_EXPORT_PRIVATE LoadElimination final
     AbstractState const* Get(Node* node) const;
     void Set(Node* node, AbstractState const* state);
 
-    Zone* zone() const { return info_for_node_.get_allocator().zone(); }
+    Zone* zone() const { return info_for_node_.zone(); }
 
    private:
     ZoneVector<AbstractState const*> info_for_node_;
@@ -335,8 +342,6 @@ class V8_EXPORT_PRIVATE LoadElimination final
 
   AbstractStateForEffectNodes node_states_;
   JSGraph* const jsgraph_;
-
-  DISALLOW_COPY_AND_ASSIGN(LoadElimination);
 };
 
 }  // namespace compiler

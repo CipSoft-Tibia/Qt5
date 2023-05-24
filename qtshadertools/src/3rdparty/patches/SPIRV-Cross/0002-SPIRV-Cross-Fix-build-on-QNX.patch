@@ -1,0 +1,26 @@
+From 8b382fddb5d50bd0e7de9c6d87a20701d2d5d37d Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Fri, 17 Sep 2021 13:24:02 +0200
+Subject: [PATCH] SPIRV-Cross: Fix build on QNX
+
+Change-Id: I3fea15b154a5f1bbc54289e546af0496be5943c7
+---
+ src/3rdparty/SPIRV-Cross/spirv_glsl.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/3rdparty/SPIRV-Cross/spirv_glsl.cpp b/src/3rdparty/SPIRV-Cross/spirv_glsl.cpp
+index 6b1c8a61..9b4e4875 100644
+--- a/src/3rdparty/SPIRV-Cross/spirv_glsl.cpp
++++ b/src/3rdparty/SPIRV-Cross/spirv_glsl.cpp
+@@ -178,7 +178,7 @@ void CompilerGLSL::init()
+ 	const struct lconv *conv = localeconv();
+ 	if (conv && conv->decimal_point)
+ 		current_locale_radix_character = *conv->decimal_point;
+-#elif defined(__ANDROID__) && __ANDROID_API__ < 26 || defined(__ghs__)
++#elif defined(__ANDROID__) && __ANDROID_API__ < 26 || defined(__ghs__) || defined(__QNXNTO__)
+ 	// nl_langinfo is not supported on this platform, fall back to the worse alternative.
+ 	const struct lconv *conv = localeconv();
+ 	if (conv && conv->decimal_point)
+-- 
+2.23.0.windows.1
+

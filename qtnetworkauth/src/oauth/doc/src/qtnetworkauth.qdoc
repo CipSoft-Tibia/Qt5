@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page qtnetworkauth-index.html
@@ -37,22 +13,32 @@
     Currently, the supported authorization protocol is \l {https://oauth.net}
     {OAuth}, versions 1 and 2.
 
-    \section1 Getting Started
+    \section1 Using the Module
 
-//! [qtnetworkauth-usage]
-    To use Qt Network Authorization classes, add this directive into C++ files:
+    Using a Qt module requires linking against the module library, either
+    directly or through other dependencies. Several build tools have dedicated
+    support for this, including CMake and qmake.
 
-    \code
-    #include <QtNetworkAuth>
+    \section2 Building with CMake
+
+    Use the \c find_package() command to locate the needed module components in
+    the Qt6 package:
+
+    \badcode
+    find_package(Qt6 REQUIRED COMPONENTS NetworkAuth)
+    target_link_libraries(mytarget PRIVATE Qt6::NetworkAuth)
     \endcode
 
-    To link against the Qt Network Authorization module, add this line to the
-    project file:
+    See also the \l{Build with CMake} overview.
 
-    \code
-    QT += network networkauth
+    \section2 Building with qmake
+
+    To configure the module for building with qmake, add the module as a value
+    of the QT variable in the project's .pro file:
+
+    \badcode
+    QT += networkauth
     \endcode
-//! [qtnetworkauth-usage]
 
     \section1 Overview
 
@@ -62,8 +48,8 @@
     There are several authentication systems, including:
 
     \list
-      \li \l {https://tools.ietf.org/html/rfc5849} {OAuth 1}
-      \li \l {https://tools.ietf.org/html/rfc6749} {OAuth 2}
+      \li \l {https://datatracker.ietf.org/doc/html/rfc5849} {OAuth 1}
+      \li \l {https://datatracker.ietf.org/doc/html/rfc6749} {OAuth 2}
       \li \l {http://openid.net} {OpenID}
       \li \l {http://openid.net/connect/} {OpenID Connect}
     \endlist
@@ -97,8 +83,7 @@
     \module QtNetworkAuth
     \title Qt Network Authorization C++ Classes
     \ingroup modules
+    \qtcmakepackage NetworkAuth
     \qtvariable networkauth
     \brief Provides classes for network authorization support (OAuth).
-
-    \include qtnetworkauth.qdoc qtnetworkauth-usage
 */

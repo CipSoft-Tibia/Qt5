@@ -37,10 +37,10 @@
 #ifndef V8_CODEGEN_IA32_ASSEMBLER_IA32_INL_H_
 #define V8_CODEGEN_IA32_ASSEMBLER_IA32_INL_H_
 
-#include "src/codegen/ia32/assembler-ia32.h"
-
 #include "src/base/memory.h"
 #include "src/codegen/assembler.h"
+#include "src/codegen/flush-instruction-cache.h"
+#include "src/codegen/ia32/assembler-ia32.h"
 #include "src/debug/debug.h"
 #include "src/objects/objects-inl.h"
 
@@ -49,16 +49,12 @@ namespace internal {
 
 bool CpuFeatures::SupportsOptimizer() { return true; }
 
-bool CpuFeatures::SupportsWasmSimd128() { return IsSupported(SSE4_1); }
-
 // The modes possibly affected by apply must be in kApplyMask.
 void RelocInfo::apply(intptr_t delta) {
   DCHECK_EQ(kApplyMask, (RelocInfo::ModeMask(RelocInfo::CODE_TARGET) |
                          RelocInfo::ModeMask(RelocInfo::INTERNAL_REFERENCE) |
-                         RelocInfo::ModeMask(RelocInfo::OFF_HEAP_TARGET) |
-                         RelocInfo::ModeMask(RelocInfo::RUNTIME_ENTRY)));
-  if (IsRuntimeEntry(rmode_) || IsCodeTarget(rmode_) ||
-      IsOffHeapTarget(rmode_)) {
+                         RelocInfo::ModeMask(RelocInfo::OFF_HEAP_TARGET)));
+  if (IsCodeTarget(rmode_) || IsOffHeapTarget(rmode_)) {
     base::WriteUnalignedValue(pc_,
                               base::ReadUnalignedValue<int32_t>(pc_) - delta);
   } else if (IsInternalReference(rmode_)) {
@@ -69,7 +65,7 @@ void RelocInfo::apply(intptr_t delta) {
 }
 
 Address RelocInfo::target_address() {
-  DCHECK(IsCodeTarget(rmode_) || IsRuntimeEntry(rmode_) || IsWasmCall(rmode_));
+  DCHECK(IsCodeTarget(rmode_) || IsWasmCall(rmode_));
   return Assembler::target_address_at(pc_, constant_pool_);
 }
 
@@ -82,31 +78,26 @@ Address RelocInfo::constant_pool_entry_address() { UNREACHABLE(); }
 
 int RelocInfo::target_address_size() { return Assembler::kSpecialTargetSize; }
 
-HeapObject RelocInfo::target_object() {
-  DCHECK(IsCodeTarget(rmode_) || rmode_ == FULL_EMBEDDED_OBJECT);
+HeapObject RelocInfo::target_object(PtrComprCageBase cage_base) {
+  DCHECK(IsCodeTarget(rmode_) || IsFullEmbeddedObject(rmode_));
   return HeapObject::cast(Object(ReadUnalignedValue<Address>(pc_)));
 }
 
-HeapObject RelocInfo::target_object_no_host(Isolate* isolate) {
-  return target_object();
-}
-
 Handle<HeapObject> RelocInfo::target_object_handle(Assembler* origin) {
-  DCHECK(IsCodeTarget(rmode_) || rmode_ == FULL_EMBEDDED_OBJECT);
+  DCHECK(IsCodeTarget(rmode_) || IsFullEmbeddedObject(rmode_));
   return Handle<HeapObject>::cast(ReadUnalignedValue<Handle<Object>>(pc_));
 }
 
 void RelocInfo::set_target_object(Heap* heap, HeapObject target,
                                   WriteBarrierMode write_barrier_mode,
                                   ICacheFlushMode icache_flush_mode) {
-  DCHECK(IsCodeTarget(rmode_) || rmode_ == FULL_EMBEDDED_OBJECT);
+  DCHECK(IsCodeTarget(rmode_) || IsFullEmbeddedObject(rmode_));
   WriteUnalignedValue(pc_, target.ptr());
   if (icache_flush_mode != SKIP_ICACHE_FLUSH) {
     FlushInstructionCache(pc_, sizeof(Address));
   }
-  if (write_barrier_mode == UPDATE_WRITE_BARRIER && !host().is_null() &&
-      !FLAG_disable_write_barriers) {
-    WriteBarrierForCode(host(), this, target);
+  if (!host().is_null() && !v8_flags.disable_write_barriers) {
+    WriteBarrierForCode(host(), this, target, write_barrier_mode);
   }
 }
 
@@ -134,19 +125,7 @@ Address RelocInfo::target_internal_reference_address() {
   return pc_;
 }
 
-Address RelocInfo::target_runtime_entry(Assembler* origin) {
-  DCHECK(IsRuntimeEntry(rmode_));
-  return ReadUnalignedValue<Address>(pc_);
-}
-
-void RelocInfo::set_target_runtime_entry(Address target,
-                                         WriteBarrierMode write_barrier_mode,
-                                         ICacheFlushMode icache_flush_mode) {
-  DCHECK(IsRuntimeEntry(rmode_));
-  if (target_address() != target) {
-    set_target_address(target, write_barrier_mode, icache_flush_mode);
-  }
-}
+Builtin RelocInfo::target_builtin_at(Assembler* origin) { UNREACHABLE(); }
 
 Address RelocInfo::target_off_heap_target() {
   DCHECK(IsOffHeapTarget(rmode_));
@@ -157,8 +136,7 @@ void RelocInfo::WipeOut() {
   if (IsFullEmbeddedObject(rmode_) || IsExternalReference(rmode_) ||
       IsInternalReference(rmode_)) {
     WriteUnalignedValue(pc_, kNullAddress);
-  } else if (IsCodeTarget(rmode_) || IsRuntimeEntry(rmode_) ||
-             IsOffHeapTarget(rmode_)) {
+  } else if (IsCodeTarget(rmode_) || IsOffHeapTarget(rmode_)) {
     // Effectively write zero into the relocation.
     Assembler::set_target_address_at(pc_, constant_pool_,
                                      pc_ + sizeof(int32_t));
@@ -182,7 +160,7 @@ void Assembler::emit(Handle<HeapObject> handle) {
 }
 
 void Assembler::emit(uint32_t x, RelocInfo::Mode rmode) {
-  if (!RelocInfo::IsNone(rmode)) {
+  if (!RelocInfo::IsNoInfo(rmode)) {
     RecordRelocInfo(rmode);
   }
   emit(x);
@@ -198,19 +176,19 @@ void Assembler::emit(const Immediate& x) {
     emit_code_relative_offset(label);
     return;
   }
-  if (!RelocInfo::IsNone(x.rmode_)) RecordRelocInfo(x.rmode_);
-  if (x.is_heap_object_request()) {
-    RequestHeapObject(x.heap_object_request());
+  if (!RelocInfo::IsNoInfo(x.rmode_)) RecordRelocInfo(x.rmode_);
+  if (x.is_heap_number_request()) {
+    RequestHeapNumber(x.heap_number_request());
     emit(0);
-  } else {
-    emit(x.immediate());
+    return;
   }
+  emit(x.immediate());
 }
 
 void Assembler::emit_code_relative_offset(Label* label) {
   if (label->is_bound()) {
     int32_t pos;
-    pos = label->pos() + Code::kHeaderSize - kHeapObjectTag;
+    pos = label->pos() + InstructionStream::kHeaderSize - kHeapObjectTag;
     emit(pos);
   } else {
     emit_disp(label, Displacement::CODE_RELATIVE);
@@ -224,7 +202,7 @@ void Assembler::emit_b(Immediate x) {
 }
 
 void Assembler::emit_w(const Immediate& x) {
-  DCHECK(RelocInfo::IsNone(x.rmode_));
+  DCHECK(RelocInfo::IsNoInfo(x.rmode_));
   uint16_t value = static_cast<uint16_t>(x.immediate());
   WriteUnalignedValue(reinterpret_cast<Address>(pc_), value);
   pc_ += sizeof(uint16_t);
@@ -244,7 +222,7 @@ void Assembler::set_target_address_at(Address pc, Address constant_pool,
 }
 
 void Assembler::deserialization_set_special_target_at(
-    Address instruction_payload, Code code, Address target) {
+    Address instruction_payload, InstructionStream code, Address target) {
   set_target_address_at(instruction_payload,
                         !code.is_null() ? code.constant_pool() : kNullAddress,
                         target);

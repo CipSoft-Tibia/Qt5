@@ -1,7 +1,6 @@
 // -*- mode: c++ -*-
 
-// Copyright (c) 2012, Google Inc.
-// All rights reserved.
+// Copyright 2012 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -13,7 +12,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -45,9 +44,9 @@
 // DWARF compilation units.
 class TestCompilationUnit: public google_breakpad::test_assembler::Section {
  public:
-  typedef dwarf2reader::DwarfTag DwarfTag;
-  typedef dwarf2reader::DwarfAttribute DwarfAttribute;
-  typedef dwarf2reader::DwarfForm DwarfForm;
+  typedef google_breakpad::DwarfTag DwarfTag;
+  typedef google_breakpad::DwarfAttribute DwarfAttribute;
+  typedef google_breakpad::DwarfForm DwarfForm;
   typedef google_breakpad::test_assembler::Label Label;
 
   // Set the section's DWARF format size (the 32-bit DWARF format or the
@@ -71,7 +70,7 @@ class TestCompilationUnit: public google_breakpad::test_assembler::Section {
   // Append a DWARF compilation unit header to the section, with the given
   // DWARF version, abbrev table offset, and address size.
   TestCompilationUnit& Header(int version, const Label& abbrev_offset,
-                              size_t address_size) {
+                              size_t address_size, int header_type) {
     if (format_size_ == 4) {
       D32(length_);
     } else {
@@ -84,9 +83,18 @@ class TestCompilationUnit: public google_breakpad::test_assembler::Section {
       SectionOffset(abbrev_offset);
       D8(address_size);
     } else {
-      D8(0x01);  // DW_UT_compile
+      D8(header_type);  // DW_UT_compile, DW_UT_type, etc.
       D8(address_size);
       SectionOffset(abbrev_offset);
+      if (header_type == google_breakpad::DW_UT_type) {
+        uint64_t dummy_type_signature = 0xdeadbeef;
+        uint64_t dummy_type_offset = 0x2b;
+        D64(dummy_type_signature);
+        if (format_size_ == 4)
+          D32(dummy_type_offset);
+        else
+          D64(dummy_type_offset);
+      }
     }
     return *this;
   }
@@ -113,10 +121,10 @@ class TestCompilationUnit: public google_breakpad::test_assembler::Section {
 // abbreviation tables.
 class TestAbbrevTable: public google_breakpad::test_assembler::Section {
  public:
-  typedef dwarf2reader::DwarfTag DwarfTag;
-  typedef dwarf2reader::DwarfAttribute DwarfAttribute;
-  typedef dwarf2reader::DwarfForm DwarfForm;
-  typedef dwarf2reader::DwarfHasChild DwarfHasChild;
+  typedef google_breakpad::DwarfTag DwarfTag;
+  typedef google_breakpad::DwarfAttribute DwarfAttribute;
+  typedef google_breakpad::DwarfForm DwarfForm;
+  typedef google_breakpad::DwarfHasChild DwarfHasChild;
   typedef google_breakpad::test_assembler::Label Label;
 
   // Start a new abbreviation table entry for abbreviation code |code|,

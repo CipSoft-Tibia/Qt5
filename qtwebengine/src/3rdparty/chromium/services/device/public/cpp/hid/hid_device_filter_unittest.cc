@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,8 @@
 
 #include "build/build_config.h"
 #include "services/device/hid/hid_device_info.h"
-#include "services/device/hid/test_report_descriptors.h"
 #include "services/device/public/cpp/hid/hid_device_filter.h"
+#include "services/device/public/cpp/test/test_report_descriptors.h"
 #include "services/device/public/mojom/hid.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -15,9 +15,9 @@ namespace device {
 
 namespace {
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 const uint64_t kTestDeviceId = 42;
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 const wchar_t* kTestDeviceId = L"device1";
 #else
 const char* kTestDeviceId = "device1";
@@ -30,8 +30,7 @@ class HidFilterTest : public testing::Test {
   void SetUp() override {
     device_info_ = new HidDeviceInfo(
         kTestDeviceId, "1", 0x046d, 0xc31c, "Test Keyboard", "123ABC",
-        mojom::HidBusType::kHIDBusTypeUSB,
-        std::vector<uint8_t>(kKeyboard, kKeyboard + kKeyboardSize));
+        mojom::HidBusType::kHIDBusTypeUSB, TestReportDescriptors::Keyboard());
   }
 
  protected:

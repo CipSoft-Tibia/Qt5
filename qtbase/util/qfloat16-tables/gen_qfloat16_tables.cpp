@@ -1,42 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 by Southwest Research Institute (R)
-** Copyright (C) 2019 Intel Corporation.
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 by Southwest Research Institute (R)
+// Copyright (C) 2019 Intel Corporation.
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <stdint.h>
 #include <stdio.h>
@@ -71,6 +36,7 @@ uint32_t convertmantissa(int32_t i)
 // to more closely map the implementation given in the paper.
 uint32_t basetable[512];
 uint32_t shifttable[512];
+uint32_t roundtable[512];
 
 int main()
 {
@@ -113,47 +79,73 @@ int main()
     int32_t e;
     for (i = 0; i < 256; ++i) {
         e = i - 127;
-        if (e < -24) {   // Very small numbers map to zero
+        if (e < -25) {   // Very small numbers map to zero
             basetable[i | 0x000] = 0x0000;
             basetable[i | 0x100] = 0x8000;
             shifttable[i | 0x000] = 24;
             shifttable[i | 0x100] = 24;
+            roundtable[i | 0x000] = 0;
+            roundtable[i | 0x100] = 0;
 
         } else if (e < -14) {             // Small numbers map to denorms
             basetable[i | 0x000] = (0x0400 >> (-e - 14));
             basetable[i | 0x100] = (0x0400 >> (-e - 14)) | 0x8000;
             shifttable[i | 0x000] = -e - 1;
             shifttable[i | 0x100] = -e - 1;
+            if (e == -25) {
+                // rounds up
+                roundtable[i | 0x000] = (1 << 24);
+                roundtable[i | 0x100] = (1 << 24);
+            } else if (e == -24) {
+                // rounds half up
+                roundtable[i | 0x000] = (1 << 22) + 1;
+                roundtable[i | 0x100] = (1 << 22) + 1;
+            } else {
+                roundtable[i | 0x000] = (1 << (-e - 2));
+                roundtable[i | 0x100] = (1 << (-e - 2));
+            }
 
         } else if (e <= 15) {            // Normal numbers just lose precision
             basetable[i | 0x000] = ((e + 15) << 10);
             basetable[i | 0x100] = ((e + 15) << 10) | 0x8000;
             shifttable[i | 0x000] = 13;
             shifttable[i | 0x100] = 13;
+            roundtable[i | 0x000] = (1 << 12);
+            roundtable[i | 0x100] = (1 << 12);
 
         } else if (e < 128) {            // Large numbers map to Infinity
             basetable[i | 0x000] = 0x7C00;
             basetable[i | 0x100] = 0xFC00;
             shifttable[i | 0x000] = 24;
             shifttable[i | 0x100] = 24;
+            roundtable[i | 0x000] = 0;
+            roundtable[i | 0x100] = 0;
 
         } else {                     // Infinity and NaN's stay Infinity and NaN's
             basetable[i | 0x000] = 0x7C00;
             basetable[i | 0x100] = 0xFC00;
             shifttable[i | 0x000] = 13;
             shifttable[i | 0x100] = 13;
+            roundtable[i | 0x000] = 0;
+            roundtable[i | 0x100] = 0;
         }
     }
 
-    printf("const quint32 qfloat16::basetable[512] = {\n");
+    printf("const quint16 qfloat16::basetable[512] = {\n");
     for (i = 0; i < 512; i++)
         printf("0x%XU,\n", basetable[i]);
 
     printf("};\n\n");
 
-    printf("const quint32 qfloat16::shifttable[512] = {\n");
+    printf("const quint16 qfloat16::shifttable[512] = {\n");
     for (i = 0; i < 512; i++)
         printf("0x%XU,\n", shifttable[i]);
+
+    printf("};\n\n");
+
+    printf("const quint32 qfloat16::roundtable[512] = {\n");
+    for (i = 0; i < 512; i++)
+        printf("0x%XU,\n", roundtable[i]);
 
     printf("};\n\n");
 

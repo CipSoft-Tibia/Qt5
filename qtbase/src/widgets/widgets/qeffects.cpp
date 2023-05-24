@@ -1,45 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qapplication.h"
-#include "qdesktopwidget.h"
+#include "qdebug.h"
 #include "qeffects_p.h"
+#include "qelapsedtimer.h"
 #include "qevent.h"
 #include "qimage.h"
 #include "qpainter.h"
@@ -47,21 +12,12 @@
 #include "qpixmap.h"
 #include "qpointer.h"
 #include "qtimer.h"
-#include "qelapsedtimer.h"
-#include "qdebug.h"
+#include "qwidget.h"
+#include "private/qwidget_p.h"
+#include "qwindow.h"
 
-#include <private/qdesktopwidget_p.h>
 
 QT_BEGIN_NAMESPACE
-
-static QWidget *effectParent(const QWidget* w)
-{
-    const int screenNumber = w ? QGuiApplication::screens().indexOf(w->screen()) : 0;
-    QT_WARNING_PUSH // ### Qt 6: Find a replacement for QDesktopWidget::screen()
-    QT_WARNING_DISABLE_DEPRECATED
-    return QApplication::desktop()->screen(screenNumber);
-    QT_WARNING_POP
-}
 
 /*
   Internal class QAlphaWidget.
@@ -108,8 +64,9 @@ static QAlphaWidget* q_blend = nullptr;
   Constructs a QAlphaWidget.
 */
 QAlphaWidget::QAlphaWidget(QWidget* w, Qt::WindowFlags f)
-    : QWidget(effectParent(w), f)
+    : QWidget(nullptr, f)
 {
+    QWidgetPrivate::get(this)->setScreen(w->screen());
 #ifndef Q_OS_WIN
     setEnabled(false);
 #endif
@@ -171,7 +128,7 @@ void QAlphaWidget::run(int time)
     resize(widget->size().width(), widget->size().height());
 
     frontImage = widget->grab().toImage();
-    backImage = QGuiApplication::primaryScreen()->grabWindow(QApplication::desktop()->winId(),
+    backImage = QGuiApplication::primaryScreen()->grabWindow(0,
                                 widget->geometry().x(), widget->geometry().y(),
                                 widget->geometry().width(), widget->geometry().height()).toImage();
 
@@ -214,7 +171,7 @@ bool QAlphaWidget::eventFilter(QObject *o, QEvent *e)
         break;
     case QEvent::KeyPress: {
 #ifndef QT_NO_SHORTCUT
-       QKeyEvent *ke = (QKeyEvent*)e;
+       QKeyEvent *ke = static_cast<QKeyEvent *>(e);
        if (ke->matches(QKeySequence::Cancel)) {
            showWidget = false;
        } else
@@ -311,7 +268,7 @@ void QAlphaWidget::alphaBlend()
 
     const int sw = frontImage.width();
     const int sh = frontImage.height();
-    const int bpl = frontImage.bytesPerLine();
+    const qsizetype bpl = frontImage.bytesPerLine();
     switch(frontImage.depth()) {
     case 32:
         {
@@ -389,8 +346,9 @@ static QRollEffect* q_roll = nullptr;
   Construct a QRollEffect widget.
 */
 QRollEffect::QRollEffect(QWidget* w, Qt::WindowFlags f, DirFlags orient)
-    : QWidget(effectParent(w), f), orientation(orient)
+    : QWidget(nullptr, f), orientation(orient)
 {
+    QWidgetPrivate::get(this)->setScreen(w->screen());
 #ifndef Q_OS_WIN
     setEnabled(false);
 #endif
@@ -505,14 +463,12 @@ void QRollEffect::scroll()
                 + (2 * totalWidth * (elapsed%duration) + duration)
                 / (2 * duration);
             // equiv. to int((totalWidth*elapsed) / duration + 0.5)
-            done = (currentWidth >= totalWidth);
         }
         if (currentHeight != totalHeight) {
             currentHeight = totalHeight * (elapsed/duration)
                 + (2 * totalHeight * (elapsed%duration) + duration)
                 / (2 * duration);
             // equiv. to int((totalHeight*elapsed) / duration + 0.5)
-            done = (currentHeight >= totalHeight);
         }
         done = (currentHeight >= totalHeight) &&
                (currentWidth >= totalWidth);
@@ -561,7 +517,7 @@ void QRollEffect::scroll()
     }
 }
 
-/*!
+/*
     Scroll widget \a w in \a time ms. \a orient may be 1 (vertical), 2
     (horizontal) or 3 (diagonal).
 */
@@ -584,7 +540,7 @@ void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
     q_roll->run(time);
 }
 
-/*!
+/*
     Fade in widget \a w in \a time ms.
 */
 void qFadeEffect(QWidget* w, int time)

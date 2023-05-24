@@ -19,10 +19,15 @@ bool ScopedTraceOperation::TraceAsyncEnd(const uint32_t line,
                                          const char* file,
                                          TraceId id,
                                          Error::Code e) {
-  auto end_time = Clock::now();
   const CurrentTracingDestination destination;
   if (destination) {
-    destination->LogAsyncEnd(line, file, end_time, id, e);
+    TraceEvent end_event;
+    end_event.start_time = Clock::now();
+    end_event.line_number = line;
+    end_event.file_name = file;
+    end_event.ids.current = id;
+    end_event.result = e;
+    destination->LogAsyncEnd(std::move(end_event));
     return true;
   }
   return false;
@@ -81,30 +86,31 @@ thread_local ScopedTraceOperation* ScopedTraceOperation::root_node_ = nullptr;
 std::atomic<std::uint64_t> ScopedTraceOperation::trace_id_counter_{
     uint64_t{0x01} << (sizeof(TraceId) * 8 - 1)};
 
-TraceLoggerBase::TraceLoggerBase(TraceCategory::Value category,
+TraceLoggerBase::TraceLoggerBase(TraceCategory category,
                                  const char* name,
                                  const char* file,
                                  uint32_t line,
+                                 std::vector<TraceEvent::Argument> arguments,
                                  TraceId current,
                                  TraceId parent,
                                  TraceId root)
     : ScopedTraceOperation(current, parent, root),
-      start_time_(Clock::now()),
-      result_(Error::Code::kNone),
-      name_(name),
-      file_name_(file),
-      line_number_(line),
-      category_(category) {}
+      event_(category, Clock::now(), name, file, line) {
+  event_.arguments = std::move(arguments);
+  event_.TruncateStrings();
+}
 
-TraceLoggerBase::TraceLoggerBase(TraceCategory::Value category,
+TraceLoggerBase::TraceLoggerBase(TraceCategory category,
                                  const char* name,
                                  const char* file,
                                  uint32_t line,
+                                 std::vector<TraceEvent::Argument> arguments,
                                  TraceIdHierarchy ids)
     : TraceLoggerBase(category,
                       name,
                       file,
                       line,
+                      std::move(arguments),
                       ids.current,
                       ids.parent,
                       ids.root) {}
@@ -112,19 +118,17 @@ TraceLoggerBase::TraceLoggerBase(TraceCategory::Value category,
 SynchronousTraceLogger::~SynchronousTraceLogger() {
   const CurrentTracingDestination destination;
   if (destination) {
-    auto end_time = Clock::now();
-    destination->LogTrace(this->name_, this->line_number_, this->file_name_,
-                          this->start_time_, end_time, this->to_hierarchy(),
-                          this->result_);
+    const auto end_time = Clock::now();
+    event_.ids = to_hierarchy();
+    destination->LogTrace(event_, end_time);
   }
 }
 
 AsynchronousTraceLogger::~AsynchronousTraceLogger() {
   const CurrentTracingDestination destination;
   if (destination) {
-    destination->LogAsyncStart(this->name_, this->line_number_,
-                               this->file_name_, this->start_time_,
-                               this->to_hierarchy());
+    event_.ids = to_hierarchy();
+    destination->LogAsyncStart(event_);
   }
 }
 

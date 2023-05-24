@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickpositioners_p.h"
 #include "qquickpositioners_p_p.h"
@@ -69,7 +33,9 @@ void QQuickBasePositionerPrivate::unwatchChanges(QQuickItem* other)
 
 QQuickBasePositioner::PositionedItem::PositionedItem(QQuickItem *i)
     : item(i)
+#if QT_CONFIG(quick_viewtransitions)
     , transitionableItem(nullptr)
+#endif
     , index(-1)
     , isNew(false)
     , isVisible(true)
@@ -82,27 +48,40 @@ QQuickBasePositioner::PositionedItem::PositionedItem(QQuickItem *i)
 
 QQuickBasePositioner::PositionedItem::~PositionedItem()
 {
+#if QT_CONFIG(quick_viewtransitions)
     delete transitionableItem;
+#endif
 }
 
 qreal QQuickBasePositioner::PositionedItem::itemX() const
 {
-    return transitionableItem ? transitionableItem->itemX() : item->x();
+    return
+#if QT_CONFIG(quick_viewtransitions)
+            transitionableItem ? transitionableItem->itemX() :
+#endif
+            item->x();
 }
 
 qreal QQuickBasePositioner::PositionedItem::itemY() const
 {
-    return transitionableItem ? transitionableItem->itemY() : item->y();
+    return
+#if QT_CONFIG(quick_viewtransitions)
+            transitionableItem ? transitionableItem->itemY() :
+#endif
+            item->y();
 }
 
 void QQuickBasePositioner::PositionedItem::moveTo(const QPointF &pos)
 {
+#if QT_CONFIG(quick_viewtransitions)
     if (transitionableItem)
         transitionableItem->moveTo(pos);
     else
+#endif
         item->setPosition(pos);
 }
 
+#if QT_CONFIG(quick_viewtransitions)
 void QQuickBasePositioner::PositionedItem::transitionNextReposition(QQuickItemViewTransitioner *transitioner, QQuickItemViewTransitioner::TransitionType type, bool asTarget)
 {
     if (!transitioner)
@@ -122,6 +101,7 @@ void QQuickBasePositioner::PositionedItem::startTransition(QQuickItemViewTransit
     if (transitionableItem)
         transitionableItem->startTransition(transitioner, index);
 }
+#endif
 
 void QQuickBasePositioner::PositionedItem::updatePadding(qreal lp, qreal tp, qreal rp, qreal bp)
 {
@@ -168,7 +148,9 @@ QQuickBasePositioner::QQuickBasePositioner(QQuickBasePositionerPrivate &dd, Posi
 QQuickBasePositioner::~QQuickBasePositioner()
 {
     Q_D(QQuickBasePositioner);
+#if QT_CONFIG(quick_viewtransitions)
     delete d->transitioner;
+#endif
     for (int i = 0; i < positionedItems.count(); ++i)
         d->unwatchChanges(positionedItems.at(i).item);
     for (int i = 0; i < unpositionedItems.count(); ++i)
@@ -200,6 +182,7 @@ void QQuickBasePositioner::setSpacing(qreal s)
     emit spacingChanged();
 }
 
+#if QT_CONFIG(quick_viewtransitions)
 QQuickTransition *QQuickBasePositioner::populate() const
 {
     Q_D(const QQuickBasePositioner);
@@ -252,17 +235,24 @@ void QQuickBasePositioner::setAdd(QQuickTransition *add)
     d->transitioner->addTransition = add;
     emit addChanged();
 }
+#endif
 
 void QQuickBasePositioner::componentComplete()
 {
+#if QT_CONFIG(quick_viewtransitions)
     Q_D(QQuickBasePositioner);
+#endif
     QQuickItem::componentComplete();
+#if QT_CONFIG(quick_viewtransitions)
     if (d->transitioner)
         d->transitioner->setPopulateTransitionEnabled(true);
-    positionedItems.reserve(childItems().count());
+#endif
+    positionedItems.reserve(childItems().size());
     prePositioning();
+#if QT_CONFIG(quick_viewtransitions)
     if (d->transitioner)
         d->transitioner->setPopulateTransitionEnabled(false);
+#endif
 }
 
 void QQuickBasePositioner::itemChange(ItemChange change, const ItemChangeData &value)
@@ -311,9 +301,11 @@ void QQuickBasePositioner::prePositioning()
     for (int ii = 0; ii < unpositionedItems.count(); ii++)
         oldItems.append(unpositionedItems[ii]);
     unpositionedItems.clear();
+#if QT_CONFIG(quick_viewtransitions)
     int addedIndex = -1;
+#endif
 
-    for (int ii = 0; ii < children.count(); ++ii) {
+    for (int ii = 0; ii < children.size(); ++ii) {
         QQuickItem *child = children.at(ii);
         if (QQuickItemPrivate::get(child)->isTransparentForPositioner())
             continue;
@@ -331,6 +323,7 @@ void QQuickBasePositioner::prePositioning()
                 posItem.index = positionedItems.count();
                 positionedItems.append(posItem);
 
+#if QT_CONFIG(quick_viewtransitions)
                 if (d->transitioner) {
                     if (addedIndex < 0)
                         addedIndex = posItem.index;
@@ -340,6 +333,7 @@ void QQuickBasePositioner::prePositioning()
                     else if (!d->transitioner->populateTransitionEnabled())
                         theItem->transitionNextReposition(d->transitioner, QQuickItemViewTransitioner::AddTransition, true);
                 }
+#endif
             }
         } else {
             PositionedItem *item = &oldItems[wIdx];
@@ -356,11 +350,13 @@ void QQuickBasePositioner::prePositioning()
                 item->index = positionedItems.count();
                 positionedItems.append(*item);
 
+#if QT_CONFIG(quick_viewtransitions)
                 if (d->transitioner) {
                     if (addedIndex < 0)
                         addedIndex = item->index;
                     positionedItems[positionedItems.count()-1].transitionNextReposition(d->transitioner, QQuickItemViewTransitioner::AddTransition, true);
                 }
+#endif
             } else {
                 item->isNew = false;
                 item->index = positionedItems.count();
@@ -369,6 +365,7 @@ void QQuickBasePositioner::prePositioning()
         }
     }
 
+#if QT_CONFIG(quick_viewtransitions)
     if (d->transitioner) {
         for (int i=0; i<positionedItems.count(); i++) {
             if (!positionedItems[i].isNew) {
@@ -382,6 +379,7 @@ void QQuickBasePositioner::prePositioning()
             }
         }
     }
+#endif
 
     QSizeF contentSize(0,0);
     reportConflictingAnchors();
@@ -390,6 +388,7 @@ void QQuickBasePositioner::prePositioning()
         updateAttachedProperties();
     }
 
+#if QT_CONFIG(quick_viewtransitions)
     if (d->transitioner) {
         QRectF viewBounds(QPointF(), contentSize);
         for (int i=0; i<positionedItems.count(); i++)
@@ -398,6 +397,7 @@ void QQuickBasePositioner::prePositioning()
             positionedItems[i].startTransition(d->transitioner);
         d->transitioner->resetTargetLists();
     }
+#endif
 
     d->doingPositioning = false;
 
@@ -439,13 +439,17 @@ void QQuickBasePositioner::positionItemY(qreal y, PositionedItem *target)
 void QQuickBasePositioner::removePositionedItem(QPODVector<PositionedItem,8> *items, int index)
 {
     Q_ASSERT(index >= 0 && index < items->count());
+#if QT_CONFIG(quick_viewtransitions)
     delete items->at(index).transitionableItem;
+#endif
     items->remove(index);
 }
 void QQuickBasePositioner::clearPositionedItems(QPODVector<PositionedItem,8> *items)
 {
+#if QT_CONFIG(quick_viewtransitions)
     for (int i=0; i<items->count(); i++)
         delete items->at(i).transitionableItem;
+#endif
     items->clear();
 }
 
@@ -1147,14 +1151,12 @@ QQuickRow::QQuickRow(QQuickItem *parent)
 
     Possible values:
 
-    \list
-    \li Qt.LeftToRight (default) - Items are laid out from left to right. If the width of the row is explicitly set,
-    the left anchor remains to the left of the row.
-    \li Qt.RightToLeft - Items are laid out from right to left. If the width of the row is explicitly set,
-    the right anchor remains to the right of the row.
-    \endlist
+    \value Qt.LeftToRight   (default) Items are laid out from left to right. If the width of the row is
+                            explicitly set, the left anchor remains to the left of the row.
+    \value Qt.RightToLeft   Items are laid out from right to left. If the width of the row is
+                            explicitly set, the right anchor remains to the right of the row.
 
-    \sa Grid::layoutDirection, Flow::layoutDirection, {Qt Quick Examples - Right to Left}
+    \sa Grid::layoutDirection, Flow::layoutDirection
 */
 
 Qt::LayoutDirection QQuickRow::layoutDirection() const
@@ -1567,7 +1569,7 @@ void QQuickGrid::setColumnSpacing(const qreal columnSpacing)
     \l Grid::flow property.
     \endlist
 
-    \sa Flow::layoutDirection, Row::layoutDirection, {Qt Quick Examples - Right to Left}
+    \sa Flow::layoutDirection, Row::layoutDirection
 */
 Qt::LayoutDirection QQuickGrid::layoutDirection() const
 {
@@ -1697,7 +1699,7 @@ void QQuickGrid::doPositioning(QSizeF *contentSize)
     QQuickBasePositionerPrivate *d = static_cast<QQuickBasePositionerPrivate*>(QQuickBasePositionerPrivate::get(this));
     int c = m_columns;
     int r = m_rows;
-    int numVisible = positionedItems.count();
+    const int numVisible = positionedItems.count();
 
     if (m_columns <= 0 && m_rows <= 0) {
         c = 4;
@@ -1712,6 +1714,10 @@ void QQuickGrid::doPositioning(QSizeF *contentSize)
         contentSize->setHeight(topPadding() + bottomPadding());
         contentSize->setWidth(leftPadding() + rightPadding());
         return; //Nothing else to do
+    }
+
+    if (numVisible > r * c) {
+        qmlWarning(this) << "Grid contains more visible items (" << numVisible << ") than rows*columns (" << r * c << ")";
     }
 
     QList<qreal> maxColWidth;
@@ -2063,7 +2069,7 @@ void QQuickFlow::setFlow(Flow flow)
     \l Flow::flow property.
     \endlist
 
-    \sa Grid::layoutDirection, Row::layoutDirection, {Qt Quick Examples - Right to Left}
+    \sa Grid::layoutDirection, Row::layoutDirection
 */
 
 Qt::LayoutDirection QQuickFlow::layoutDirection() const

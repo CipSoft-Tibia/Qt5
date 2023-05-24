@@ -1,4 +1,4 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,10 +11,10 @@ namespace {
 
 void HashTestCase(uint32_t hash, const char* str, uint32_t* so_far) {
   if (hash != 0xffffffffu) {
-    EXPECT_EQ(hash, FX_HashCode_GetAsIfW(str, false)) << str;
+    EXPECT_EQ(hash, FX_HashCode_GetAsIfW(str)) << str;
     EXPECT_LT(*so_far, hash) << hash;
   } else {
-    EXPECT_NE(hash, FX_HashCode_GetAsIfW(str, false)) << str;
+    EXPECT_NE(hash, FX_HashCode_GetAsIfW(str)) << str;
   }
   *so_far = hash;
 }

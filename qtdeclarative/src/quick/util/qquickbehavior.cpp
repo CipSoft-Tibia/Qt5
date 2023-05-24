@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickbehavior_p.h"
 
@@ -53,23 +17,144 @@
 
 QT_BEGIN_NAMESPACE
 
-class QQuickBehaviorPrivate : public QObjectPrivate, public QAnimationJobChangeListener
+/*!
+   \internal
+   \brief The UntypedProxyProperty class is a property used in Behavior to handle bindable properties.
+
+   Whenever a bindable property with a Behavior gets a request for its bindable interface, we instead
+   return the bindable interface of the UntypedProxyProperty. This causes all reads and writes to be
+   intercepted to use \c m_storage instead; moreover, any installed binding will also use \c m_storage
+   as the property data for the binding.
+
+   The BehaviorPrivate acts as an observer, listening to changes of the proxy property. If those occur,
+   QQuickBehavior::write is called with the new value, which will then adjust the actual property (playing
+   animations if necessary).
+
+   \warning The interception mechanism works only via the metaobject system, just like it is the case with
+   non-binadble properties and writes. Bypassing the metaobject system can thus lead to inconsistent results;
+   it is however currently safe, as we do not publically expose the classes, and the code in Quick plays
+   nicely.
+ */
+class UntypedProxyProperty : public QUntypedPropertyData
+{
+    QtPrivate::QPropertyBindingData m_bindingData;
+    QUntypedPropertyData *m_sourcePropertyData;
+    const QtPrivate::QBindableInterface *m_sourceInterface;
+    QVariant m_storage;
+public:
+    void static getter(const QUntypedPropertyData *d, void *value)
+    {
+        auto This = static_cast<const UntypedProxyProperty *>(d);
+        // multiplexing: If the flag is set, we want to receive the metatype instead
+        if (quintptr(value) & QtPrivate::QBindableInterface::MetaTypeAccessorFlag) {
+            *reinterpret_cast<QMetaType *>(quintptr(value) &
+                                           ~QtPrivate::QBindableInterface::MetaTypeAccessorFlag)
+                    = This->type();
+            return;
+        }
+        This->type().construct(value, This->m_storage.constData());
+        This->m_bindingData.registerWithCurrentlyEvaluatingBinding();
+    }
+
+    void static setter(QUntypedPropertyData *d, const void *value)
+    {
+        auto This = static_cast<UntypedProxyProperty *>(d);
+        This->type().construct(This->m_storage.data(), value);
+        This->m_bindingData.notifyObservers(reinterpret_cast<QUntypedPropertyData *>(This->m_storage.data()));
+    }
+
+    static QUntypedPropertyBinding bindingGetter(const QUntypedPropertyData *d)
+    {
+        auto This = static_cast<const UntypedProxyProperty *>(d);
+        return QUntypedPropertyBinding(This->m_bindingData.binding());
+    }
+
+    static QUntypedPropertyBinding bindingSetter(QUntypedPropertyData *d,
+                                                 const QUntypedPropertyBinding &binding)
+    {
+        auto This = static_cast<UntypedProxyProperty *>(d);
+        const QMetaType type = This->type();
+        if (binding.valueMetaType() != type)
+            return {};
+
+        // We want to notify in any case here because the target property should be set
+        // even if our proxy binding results in the default value.
+        QPropertyBindingPrivate::get(binding)->scheduleNotify();
+        return This->m_bindingData.setBinding(binding,
+                                              reinterpret_cast<QUntypedPropertyData *>(
+                                                  This->m_storage.data()));
+    }
+
+    static QUntypedPropertyBinding makeBinding(const QUntypedPropertyData *d,
+                                               const QPropertyBindingSourceLocation &location)
+    {
+        auto This = static_cast<const UntypedProxyProperty *>(d);
+        return This->m_sourceInterface->makeBinding(This->m_sourcePropertyData, location);
+    }
+
+    static void setObserver(const QUntypedPropertyData *d, QPropertyObserver *observer)
+    {
+        auto This = static_cast<const UntypedProxyProperty *>(d);
+        This->m_sourceInterface->setObserver(This->m_sourcePropertyData, observer);
+    }
+
+
+
+    UntypedProxyProperty(QUntypedBindable bindable, QQuickBehaviorPrivate *behavior);
+
+    QUntypedBindable getBindable();
+    QMetaType type() const { return m_storage.metaType(); }
+    QVariant value() const {return m_storage;}
+};
+
+static constexpr inline QtPrivate::QBindableInterface untypedProxyPropertyBindableInterafce {
+    &UntypedProxyProperty::getter,
+    &UntypedProxyProperty::setter,
+    &UntypedProxyProperty::bindingGetter,
+    &UntypedProxyProperty::bindingSetter,
+    &UntypedProxyProperty::makeBinding,
+    &UntypedProxyProperty::setObserver,
+    /*metatype*/nullptr
+};
+
+struct UntypedProxyPropertyBindable : QUntypedBindable {
+    UntypedProxyPropertyBindable(UntypedProxyProperty *property)
+        :QUntypedBindable (property, &untypedProxyPropertyBindableInterafce)
+    {}
+};
+
+QUntypedBindable UntypedProxyProperty::getBindable()
+{
+    return UntypedProxyPropertyBindable {const_cast<UntypedProxyProperty *>(this)};
+}
+
+class QQuickBehaviorPrivate : public QObjectPrivate, public QAnimationJobChangeListener, public QPropertyObserver
 {
     Q_DECLARE_PUBLIC(QQuickBehavior)
 public:
-    QQuickBehaviorPrivate() : animation(nullptr), animationInstance(nullptr), enabled(true), finalized(false)
-      , blockRunningChanged(false) {}
-
+    static void onProxyChanged(QPropertyObserver *, QUntypedPropertyData *);
+    QQuickBehaviorPrivate()
+        : QPropertyObserver(&QQuickBehaviorPrivate::onProxyChanged) {}
     void animationStateChanged(QAbstractAnimationJob *, QAbstractAnimationJob::State newState, QAbstractAnimationJob::State oldState) override;
 
     QQmlProperty property;
     QVariant targetValue;
-    QPointer<QQuickAbstractAnimation> animation;
-    QAbstractAnimationJob *animationInstance;
-    bool enabled;
-    bool finalized;
-    bool blockRunningChanged;
+    QPointer<QQuickAbstractAnimation> animation = nullptr;
+    QAbstractAnimationJob *animationInstance = nullptr;
+    std::unique_ptr<UntypedProxyProperty> propertyProxy;
+    bool enabled = true;
+    bool finalized = false;
+    bool blockRunningChanged = false;
+
 };
+
+UntypedProxyProperty::UntypedProxyProperty(QUntypedBindable bindable, QQuickBehaviorPrivate *behavior) :
+    m_sourcePropertyData(QUntypedBindablePrivate::getPropertyData(bindable)),
+    m_sourceInterface(QUntypedBindablePrivate::getInterface(bindable)),
+    m_storage(QVariant(bindable.metaType()))
+{
+    behavior->setSource(m_bindingData);
+}
 
 /*!
     \qmltype Behavior
@@ -114,7 +199,7 @@ QQuickBehavior::~QQuickBehavior()
 
 /*!
     \qmlproperty Animation QtQuick::Behavior::animation
-    \default
+    \qmldefault
 
     This property holds the animation to run when the behavior is triggered.
 */
@@ -140,6 +225,12 @@ void QQuickBehavior::setAnimation(QQuickAbstractAnimation *animation)
     }
 }
 
+
+void QQuickBehaviorPrivate::onProxyChanged(QPropertyObserver *observer, QUntypedPropertyData *)
+{
+    auto This = static_cast<QQuickBehaviorPrivate *>(observer);
+    This->q_func()->write(This->propertyProxy->value());
+}
 
 void QQuickBehaviorPrivate::animationStateChanged(QAbstractAnimationJob *, QAbstractAnimationJob::State newState,QAbstractAnimationJob::State)
 {
@@ -189,7 +280,7 @@ QVariant QQuickBehavior::targetValue() const
     \readonly
     \qmlpropertygroup QtQuick::Behavior::targetProperty
     \qmlproperty string QtQuick::Behavior::targetProperty.name
-    \qmlproperty Object QtQuick::Behavior::targetProperty.object
+    \qmlproperty QtObject QtQuick::Behavior::targetProperty.object
 
     \table
     \header
@@ -259,6 +350,12 @@ QQmlProperty QQuickBehavior::targetProperty() const
     return d->property;
 }
 
+void QQuickBehavior::componentFinalized()
+{
+    Q_D(QQuickBehavior);
+    d->finalized = true;
+}
+
 void QQuickBehavior::write(const QVariant &value)
 {
     Q_D(QQuickBehavior);
@@ -308,23 +405,31 @@ void QQuickBehavior::write(const QVariant &value)
     actions << action;
 
     QList<QQmlProperty> after;
-    QAbstractAnimationJob *prev = d->animationInstance;
-    d->animationInstance = d->animation->transition(actions, after, QQuickAbstractAnimation::Forward);
-
-    if (d->animationInstance && d->animation->threadingModel() == QQuickAbstractAnimation::RenderThread)
-        d->animationInstance = new QQuickAnimatorProxyJob(d->animationInstance, d->animation);
-
-    if (prev && prev != d->animationInstance)
-        delete prev;
+    auto *newInstance = d->animation->transition(actions, after, QQuickAbstractAnimation::Forward);
+    Q_ASSERT(!newInstance || newInstance != d->animationInstance);
+    delete d->animationInstance;
+    d->animationInstance = newInstance;
 
     if (d->animationInstance) {
-        if (d->animationInstance != prev)
-            d->animationInstance->addAnimationChangeListener(d, QAbstractAnimationJob::StateChange);
+        if (d->animation->threadingModel() == QQuickAbstractAnimation::RenderThread)
+            d->animationInstance = new QQuickAnimatorProxyJob(d->animationInstance, d->animation);
+
+        d->animationInstance->addAnimationChangeListener(d, QAbstractAnimationJob::StateChange);
         d->animationInstance->start();
         d->blockRunningChanged = false;
     }
+
     if (!after.contains(d->property))
         QQmlPropertyPrivate::write(d->property, value, QQmlPropertyData::BypassInterceptor | QQmlPropertyData::DontRemoveBinding);
+}
+
+bool QQuickBehavior::bindable(QUntypedBindable *untypedBindable, QUntypedBindable target)
+{
+    Q_D(QQuickBehavior);
+    if (!d->propertyProxy)
+        d->propertyProxy = std::make_unique<UntypedProxyProperty>(target, d);
+    *untypedBindable = d->propertyProxy->getBindable();
+    return true;
 }
 
 void QQuickBehavior::setTarget(const QQmlProperty &property)
@@ -334,19 +439,16 @@ void QQuickBehavior::setTarget(const QQmlProperty &property)
     if (d->animation)
         d->animation->setDefaultTarget(property);
 
-    QQmlEnginePrivate *engPriv = QQmlEnginePrivate::get(qmlEngine(this));
-    static int finalizedIdx = -1;
-    if (finalizedIdx < 0)
-        finalizedIdx = metaObject()->indexOfSlot("componentFinalized()");
-    engPriv->registerFinalizeCallback(this, finalizedIdx);
+    if (QMetaProperty metaProp = property.property(); metaProp.isBindable()) {
+        QUntypedBindable untypedBindable = metaProp.bindable(property.object());
+        d->propertyProxy = std::make_unique<UntypedProxyProperty>(untypedBindable, d);
+        if (untypedBindable.hasBinding()) {
+            // should not happen as bindings should get initialized only after interceptors
+            UntypedProxyProperty::bindingSetter(d->propertyProxy.get(), untypedBindable.takeBinding());
+        }
+    }
 
     Q_EMIT targetPropertyChanged();
-}
-
-void QQuickBehavior::componentFinalized()
-{
-    Q_D(QQuickBehavior);
-    d->finalized = true;
 }
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -23,14 +23,14 @@ class DirectoryOwnersExtractorTest(unittest.TestCase):
         self.host = MockHost()
         self.host.filesystem = MockFileSystem(files={
             MOCK_WEB_TESTS + 'external/OWNERS':
-            'ecosystem-infra@chromium.org'
+            b'ecosystem-infra@chromium.org'
         })
         self.extractor = DirectoryOwnersExtractor(self.host)
 
     def _write_files(self, files):
         # Use write_text_file instead of directly assigning to filesystem.files
         # so that intermediary directories are correctly created, too.
-        for path, contents in files.iteritems():
+        for path, contents in files.items():
             self.host.filesystem.write_text_file(path, contents)
 
     def test_list_owners_combines_same_owners(self):
@@ -161,99 +161,64 @@ class DirectoryOwnersExtractorTest(unittest.TestCase):
         self.assertIsNone(self.extractor.find_owners_file('third_party'))
 
     def test_extract_owners(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '#This is a comment\n'
-            '*\n'
-            'foo@chromium.org\n'
-            'bar@chromium.org\n'
-            'foobar\n'
-            '#foobar@chromium.org\n'
-            '# TEAM: some-team@chromium.org\n'
-            '# COMPONENT: Blink>Layout\n'
-        }
+        fs = self.host.filesystem
+        fs.write_text_file(fs.join(ABS_WPT_BASE, 'foo', 'OWNERS'),
+                           ('#This is a comment\n'
+                            '*\n'
+                            'foo@chromium.org\n'
+                            'bar@chromium.org\n'
+                            'foobar\n'
+                            '#foobar@chromium.org\n'
+                            '# TEAM: some-team@chromium.org\n'
+                            '# COMPONENT: Blink>Layout\n'))
         self.assertEqual(
             self.extractor.extract_owners(ABS_WPT_BASE + '/foo/OWNERS'),
             ['foo@chromium.org', 'bar@chromium.org'])
 
-    def test_extract_component(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '# TEAM: some-team@chromium.org\n'
-            '# COMPONENT: Blink>Layout\n'
-        }
-        self.assertEqual(
-            self.extractor.extract_component(ABS_WPT_BASE + '/foo/OWNERS'),
-            'Blink>Layout')
-
     def test_is_wpt_notify_enabled_true(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '# COMPONENT: Blink>Layout\n'
-            '# WPT-NOTIFY: true\n'
-        }
-        self.assertTrue(
-            self.extractor.is_wpt_notify_enabled(ABS_WPT_BASE + '/foo/OWNERS'))
-
-    def test_is_wpt_notify_enabled_false(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '# COMPONENT: Blink>Layout\n'
-            '# WPT-NOTIFY: false\n'
-        }
-        self.assertFalse(
-            self.extractor.is_wpt_notify_enabled(ABS_WPT_BASE + '/foo/OWNERS'))
-
-    def test_is_wpt_notify_enabled_absence_is_false(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '# TEAM: some-team@chromium.org\n'
-            '# COMPONENT: Blink>Layout\n'
-        }
-        self.assertFalse(
-            self.extractor.is_wpt_notify_enabled(ABS_WPT_BASE + '/foo/OWNERS'))
-
-    def test_is_wpt_notify_enabled_with_dir_metadata(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '# TEAM: some-team@chromium.org\n'
-            '# COMPONENT: Blink>Layout\n'
-            '# WPT-NOTIFY: true\n'
-        }
         data = (
-            '{"dirs":{"a/b":{"monorail":'
+            '{"dirs":{"third_party/blink/web_tests/a/b":{"monorail":'
             '{"component":"foo"},"teamEmail":"bar","wpt":{"notify":"YES"}}}}')
         self.host.executive = MockExecutive(output=data)
         extractor = DirectoryOwnersExtractor(self.host)
 
         self.assertTrue(
-            extractor.is_wpt_notify_enabled(MOCK_WEB_TESTS + 'a/b/OWNERS'))
+            extractor.is_wpt_notify_enabled(MOCK_WEB_TESTS +
+                                            'a/b/DIR_METADATA'))
 
-    def test_is_wpt_notify_enabled_with_dir_metadata_none(self):
-        self.host.filesystem.files = {
-            ABS_WPT_BASE + '/foo/OWNERS':
-            '# COMPONENT: Blink>Layout\n'
-            '# WPT-NOTIFY: true\n'
-        }
+    def test_is_wpt_notify_enabled_false(self):
+        data = (
+            '{"dirs":{"third_party/blink/web_tests/a/b":{"monorail":'
+            '{"component":"foo"},"teamEmail":"bar","wpt":{"notify":"NO"}}}}')
+        self.host.executive = MockExecutive(output=data)
+        extractor = DirectoryOwnersExtractor(self.host)
+
+        self.assertFalse(
+            extractor.is_wpt_notify_enabled(MOCK_WEB_TESTS +
+                                            'a/b/DIR_METADATA'))
+
+    def test_is_wpt_notify_enabled_error(self):
         self.host.executive = MockExecutive(output='error')
         extractor = DirectoryOwnersExtractor(self.host)
 
-        self.assertTrue(
-            extractor.is_wpt_notify_enabled(ABS_WPT_BASE + '/foo/OWNERS'))
+        self.assertFalse(
+            extractor.is_wpt_notify_enabled(ABS_WPT_BASE +
+                                            '/foo/DIR_METADATA'))
 
-    def test_extract_component_with_dir_metadata(self):
+    def test_extract_component(self):
         data = (
-            '{"dirs":{"a/b":{"monorail":'
+            '{"dirs":{"third_party/blink/web_tests/a/b":{"monorail":'
             '{"component":"foo"},"teamEmail":"bar","wpt":{"notify":"YES"}}}}')
         self.host.executive = MockExecutive(output=data)
         extractor = DirectoryOwnersExtractor(self.host)
 
         self.assertEqual(
-            extractor.extract_component(MOCK_WEB_TESTS + 'a/b/OWNERS'), 'foo')
+            extractor.extract_component(MOCK_WEB_TESTS + 'a/b/DIR_METADATA'),
+            'foo')
 
     def test_read_dir_metadata_success(self):
         data = (
-            '{"dirs":{"a/b":{"monorail":'
+            '{"dirs":{"third_party/blink/web_tests/a/b":{"monorail":'
             '{"component":"foo"},"teamEmail":"bar","wpt":{"notify":"YES"}}}}')
         self.host.executive = MockExecutive(output=data)
         extractor = DirectoryOwnersExtractor(self.host)
@@ -262,8 +227,7 @@ class DirectoryOwnersExtractorTest(unittest.TestCase):
                                                         'a/b/OWNERS')
 
         self.assertEqual(self.host.executive.full_calls[0].args, [
-            'dirmd', 'compute', '-root', MOCK_WEB_TESTS_WITHOUT_SLASH,
-            MOCK_WEB_TESTS + 'a/b'
+            'dirmd', 'read', '-form', 'sparse', MOCK_WEB_TESTS + 'a/b'
         ])
         self.assertEqual(wpt_dir_metadata.team_email, 'bar')
         self.assertEqual(wpt_dir_metadata.should_notify, True)
@@ -277,16 +241,15 @@ class DirectoryOwnersExtractorTest(unittest.TestCase):
                                                         'a/b/OWNERS')
 
         self.assertEqual(self.host.executive.full_calls[0].args, [
-            'dirmd', 'compute', '-root', MOCK_WEB_TESTS_WITHOUT_SLASH,
-            MOCK_WEB_TESTS + 'a/b'
+            'dirmd', 'read', '-form', 'sparse', MOCK_WEB_TESTS + 'a/b'
         ])
         self.assertEqual(wpt_dir_metadata, None)
 
 
 class WPTDirMetadataTest(unittest.TestCase):
     def test_WPTDirMetadata_empty_content(self):
-        empty_data = '{"dirs":{"a/b":{}}}'
-        wpt_dir_metadata = WPTDirMetadata(json.loads(empty_data), 'a/b')
+        empty_data = '{"dirs":{"third_party/blink/web_tests/a/b":{}}}'
+        wpt_dir_metadata = WPTDirMetadata(json.loads(empty_data), 'third_party/blink/web_tests/a/b')
         self.assertEqual(wpt_dir_metadata.team_email, None)
         self.assertEqual(wpt_dir_metadata.should_notify, None)
         self.assertEqual(wpt_dir_metadata.component, None)

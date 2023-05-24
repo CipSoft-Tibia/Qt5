@@ -1,22 +1,21 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_PASSWORD_FORM_MANAGER_FOR_UI_H_
 #define COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_PASSWORD_FORM_MANAGER_FOR_UI_H_
 
+#include <string>
 #include <vector>
 
 #include "base/containers/span.h"
-#include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
-#include "components/password_manager/core/browser/password_form_forward.h"
+#include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
 
 namespace password_manager {
 
-struct CompromisedCredentials;
 struct InteractionsStats;
+struct PasswordForm;
 class PasswordFormMetricsRecorder;
 
 // Interface that contains all methods from PasswordFormManager that are used in
@@ -51,15 +50,14 @@ class PasswordFormManagerForUI {
   // Statistics for recent password bubble usage.
   virtual base::span<const InteractionsStats> GetInteractionsStats() const = 0;
 
-  // List of compromised passwords for the current site.
-  virtual base::span<const CompromisedCredentials> GetCompromisedCredentials()
-      const = 0;
+  // List of insecure passwords for the current site.
+  virtual std::vector<const PasswordForm*> GetInsecureCredentials() const = 0;
 
   // Determines if the user opted to 'never remember' passwords for this form.
-  virtual bool IsBlacklisted() const = 0;
+  virtual bool IsBlocklisted() const = 0;
 
-  // Checks if the user unblacklisted the origin of the form for saving.
-  virtual bool WasUnblacklisted() const = 0;
+  // Checks if the user unblocklisted the origin of the form for saving.
+  virtual bool WasUnblocklisted() const = 0;
 
   // Determines whether the submitted credentials returned by
   // GetPendingCredentials() can be moved to the signed in account store.
@@ -80,13 +78,13 @@ class PasswordFormManagerForUI {
   // the save button. Updates the username and modifies internal state
   // accordingly.
   virtual void OnUpdateUsernameFromPrompt(
-      const base::string16& new_username) = 0;
+      const std::u16string& new_username) = 0;
 
   // Updates the password value. Called when user selects a password from the
   // password selection dropdown and clicks the save button. Updates the
   // password and modifies internal state accordingly.
   virtual void OnUpdatePasswordFromPrompt(
-      const base::string16& new_password) = 0;
+      const std::u16string& new_password) = 0;
 
   // Called when the user chose not to update password.
   virtual void OnNopeUpdateClicked() = 0;
@@ -99,8 +97,8 @@ class PasswordFormManagerForUI {
   virtual void OnNoInteraction(bool is_update) = 0;
 
   // A user opted to 'never remember' passwords for this form.
-  // Blacklist it so that from now on when it is seen we ignore it.
-  virtual void PermanentlyBlacklist() = 0;
+  // Blocklist it so that from now on when it is seen we ignore it.
+  virtual void Blocklist() = 0;
 
   // Called when the passwords were shown on on the bubble without obfuscation.
   virtual void OnPasswordsRevealed() = 0;

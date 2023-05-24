@@ -1,9 +1,10 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/webui/autofill_and_password_manager_internals/internals_ui_handler.h"
 
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
@@ -33,20 +34,20 @@ class AutofillInternalsWebUIBrowserTest : public InProcessBrowserTest {
 
   void SpinRunLoop() {
     base::RunLoop run_loop;
-    base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
-        FROM_HERE, run_loop.QuitClosure(),
-        base::TimeDelta::FromMilliseconds(20));
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE, run_loop.QuitClosure(), base::Milliseconds(20));
     run_loop.Run();
   }
 };
 
 IN_PROC_BROWSER_TEST_F(AutofillInternalsWebUIBrowserTest, ResetCache) {
-  ui_test_utils::NavigateToURL(browser(), GURL("chrome://autofill-internals"));
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL("chrome://autofill-internals")));
 
   // Wait for reset-fake-button to become visible
   constexpr char kGetResetButtonDisplayStyle[] =
       "document.getElementById('reset-cache-fake-button').style.display";
-  while ("inline-block" != EvalJs(kGetResetButtonDisplayStyle))
+  while ("inline" != EvalJs(kGetResetButtonDisplayStyle))
     SpinRunLoop();
 
   // Trigger reset button.

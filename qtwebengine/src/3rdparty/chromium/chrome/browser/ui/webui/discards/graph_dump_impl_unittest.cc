@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,14 @@
 
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "base/containers/contains.h"
 #include "base/json/json_reader.h"
 #include "base/run_loop.h"
-#include "base/stl_util.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "base/time/time.h"
 #include "chrome/browser/ui/webui/discards/discards.mojom.h"
 #include "components/performance_manager/public/graph/node_data_describer.h"
@@ -145,25 +147,35 @@ class DiscardsGraphDumpImplTest : public testing::Test {
 class TestNodeDataDescriber : public performance_manager::NodeDataDescriber {
  public:
   // NodeDataDescriber implementations:
-  base::Value DescribeFrameNodeData(
+  base::Value::Dict DescribeFrameNodeData(
       const performance_manager::FrameNode* node) const override {
-    return base::Value("frame");
+    base::Value::Dict dict;
+    dict.Set("type", "frame");
+    return dict;
   }
-  base::Value DescribePageNodeData(
+  base::Value::Dict DescribePageNodeData(
       const performance_manager::PageNode* node) const override {
-    return base::Value("page");
+    base::Value::Dict dict;
+    dict.Set("type", "page");
+    return dict;
   }
-  base::Value DescribeProcessNodeData(
+  base::Value::Dict DescribeProcessNodeData(
       const performance_manager::ProcessNode* node) const override {
-    return base::Value("process");
+    base::Value::Dict dict;
+    dict.Set("type", "process");
+    return dict;
   }
-  base::Value DescribeSystemNodeData(
+  base::Value::Dict DescribeSystemNodeData(
       const performance_manager::SystemNode* node) const override {
-    return base::Value("system");
+    base::Value::Dict dict;
+    dict.Set("type", "system");
+    return dict;
   }
-  base::Value DescribeWorkerNodeData(
+  base::Value::Dict DescribeWorkerNodeData(
       const performance_manager::WorkerNode* node) const override {
-    return base::Value("worker");
+    base::Value::Dict dict;
+    dict.Set("type", "worker");
+    return dict;
   }
 };
 
@@ -220,18 +232,18 @@ TEST_F(DiscardsGraphDumpImplTest, ChangeStream) {
   for (const auto& kv : change_stream.process_map()) {
     const auto* process_info = kv.second.get();
     EXPECT_NE(0u, process_info->id);
-    EXPECT_EQ(base::JSONReader::Read("{\"test\":\"process\"}"),
+    EXPECT_EQ(base::JSONReader::Read("{\"test\":{\"type\":\"process\"}}"),
               base::JSONReader::Read(process_info->description_json));
   }
 
   EXPECT_EQ(3u, change_stream.frame_map().size());
   for (const auto& kv : change_stream.frame_map()) {
-    EXPECT_EQ(base::JSONReader::Read("{\"test\":\"frame\"}"),
+    EXPECT_EQ(base::JSONReader::Read("{\"test\":{\"type\":\"frame\"}}"),
               base::JSONReader::Read(kv.second->description_json));
   }
   EXPECT_EQ(1u, change_stream.worker_map().size());
   for (const auto& kv : change_stream.worker_map()) {
-    EXPECT_EQ(base::JSONReader::Read("{\"test\":\"worker\"}"),
+    EXPECT_EQ(base::JSONReader::Read("{\"test\":{\"type\":\"worker\"}}"),
               base::JSONReader::Read(kv.second->description_json));
   }
 
@@ -261,7 +273,7 @@ TEST_F(DiscardsGraphDumpImplTest, ChangeStream) {
     const auto& page = kv.second;
     EXPECT_NE(0u, page->id);
     EXPECT_EQ(kExampleUrl, page->main_frame_url);
-    EXPECT_EQ(base::JSONReader::Read("{\"test\":\"page\"}"),
+    EXPECT_EQ(base::JSONReader::Read("{\"test\":{\"type\":\"page\"}}"),
               base::JSONReader::Read(kv.second->description_json));
   }
 
@@ -310,10 +322,12 @@ TEST_F(DiscardsGraphDumpImplTest, ChangeStream) {
               // Check that the descriptions make sense.
               for (auto kv : node_descriptions_json) {
                 keys_received.push_back(kv.first);
-                base::Optional<base::Value> v =
+                absl::optional<base::Value> v =
                     base::JSONReader::Read(kv.second);
                 EXPECT_TRUE(v->is_dict());
-                std::string* str = v->FindStringKey("test");
+                base::Value::Dict* dict = v->GetDict().FindDict("test");
+                EXPECT_TRUE(dict);
+                std::string* str = dict->FindString("type");
                 EXPECT_TRUE(str);
                 if (str) {
                   EXPECT_TRUE(*str == "frame" || *str == "page" ||

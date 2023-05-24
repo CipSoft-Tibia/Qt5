@@ -1,4 +1,4 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,6 +10,7 @@ from __future__ import print_function
 
 import logging
 import os
+import sys
 import webbrowser
 
 from difflib import HtmlDiff
@@ -38,11 +39,15 @@ def PromptUserToAcceptDiff(old_text, new_text, prompt):
       todesc='Updated', context=True, numlines=5)
   temp = NamedTemporaryFile(suffix='.html', delete=False)
   try:
+    html_diff = html_diff.encode()
     temp.write(html_diff)
     temp.close()  # Close the file so the browser process can access it.
     webbrowser.open('file://' + temp.name)
     print(prompt)
-    response = raw_input('(Y/n): ').strip().lower()
+    if sys.version_info.major == 2:
+      response = raw_input('(Y/n): ').strip().lower()
+    else:
+      response = input('(Y/n): ').strip().lower()
   finally:
     temp.close()  # May be called on already closed file.
     os.remove(temp.name)

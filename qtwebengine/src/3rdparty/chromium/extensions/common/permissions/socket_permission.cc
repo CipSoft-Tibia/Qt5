@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -35,7 +35,7 @@ SocketPermissionEntrySet ExtractSocketEntries(
 SocketPermission::SocketPermission(const APIPermissionInfo* info)
     : SetDisjunctionPermission<SocketPermissionData, SocketPermission>(info) {}
 
-SocketPermission::~SocketPermission() {}
+SocketPermission::~SocketPermission() = default;
 
 bool SocketPermission::FromValue(
     const base::Value* value,

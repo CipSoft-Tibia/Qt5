@@ -1,15 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <string>
 #include <vector>
 
+#include "base/containers/contains.h"
 #include "base/containers/flat_set.h"
 #include "base/i18n/case_conversion.h"
 #include "base/i18n/char_iterator.h"
 #include "base/no_destructor.h"
-#include "base/stl_util.h"
-#include "base/strings/string16.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
@@ -518,7 +518,7 @@ AXImageStopwords::AXImageStopwords() {
 AXImageStopwords::~AXImageStopwords() = default;
 
 bool AXImageStopwords::IsImageStopword(const char* word_utf8) const {
-  base::string16 word_utf16 = base::UTF8ToUTF16(word_utf8);
+  std::u16string word_utf16 = base::UTF8ToUTF16(word_utf8);
 
   // It's not really meaningful, but since short words are stopwords, for
   // simplicity we define the empty string to be a stopword too.
@@ -530,11 +530,9 @@ bool AXImageStopwords::IsImageStopword(const char* word_utf8) const {
   word_utf16 = base::i18n::FoldCase(word_utf16);
 
   // Count the number of distinct codepoints from a supported unicode block.
-  base::i18n::UTF16CharIterator iter(&word_utf16);
   int supported_count = 0;
-  int total_count = 0;
-  while (!iter.end()) {
-    total_count++;
+  base::i18n::UTF16CharIterator iter(word_utf16);
+  for (; !iter.end(); iter.Advance()) {
     int32_t codepoint = iter.get();
     UBlockCode block_code = ublock_getCode(codepoint);
     switch (block_code) {
@@ -547,7 +545,6 @@ bool AXImageStopwords::IsImageStopword(const char* word_utf8) const {
       default:
         break;
     }
-    iter.Advance();
   }
 
   // Treat any string of 2 or fewer characters in any of these unicode
@@ -566,7 +563,7 @@ bool AXImageStopwords::IsImageStopword(const char* word_utf8) const {
   // actually two or more unicode codepoints (consonants and vowels that are
   // joined together), which is why this heuristic still works. Anything with
   // two or fewer unicode codepoints is an extremely short word.
-  if (supported_count == total_count && total_count <= 2)
+  if (supported_count == iter.char_offset() && iter.char_offset() <= 2)
     return true;
 
   return base::Contains(stopword_set_, base::UTF16ToUTF8(word_utf16));

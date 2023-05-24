@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <algorithm>
 
 #include "base/numerics/safe_math.h"
-#include "base/stl_util.h"
 #include "gpu/command_buffer/service/command_buffer_service.h"
 #include "gpu/command_buffer/service/decoder_client.h"
 #include "ui/gfx/ipc/color/gfx_param_traits.h"
@@ -46,9 +45,12 @@ void* CommonDecoder::Bucket::GetData(size_t offset, size_t size) const {
 
 void CommonDecoder::Bucket::SetSize(size_t size) {
   if (size != size_) {
-    data_.reset(size ? new int8_t[size] : nullptr);
+    // Note: the `()` after `new[]` is significant: it ensures the elements are
+    // value-initialized (not to be confused with default *initialized*). In the
+    // case of int8_t, that means the returned buffer will be
+    // zero-initialized.
+    data_.reset(size ? new int8_t[size]() : nullptr);
     size_ = size;
-    memset(data_.get(), 0, size);
   }
 }
 
@@ -127,6 +129,13 @@ bool CommonDecoder::Bucket::GetAsStrings(
     (*_length)[ii] = length[ii];
   }
   return true;
+}
+
+bool CommonDecoder::Bucket::OffsetSizeValid(size_t offset, size_t size) const {
+  size_t end = 0;
+  if (!base::CheckAdd<size_t>(offset, size).AssignIfValid(&end))
+    return false;
+  return end <= size_;
 }
 
 CommonDecoder::CommonDecoder(DecoderClient* client,
@@ -217,7 +226,7 @@ RETURN_TYPE GetImmediateDataAs(const volatile COMMAND_TYPE& pod) {
 error::Error CommonDecoder::DoCommonCommand(unsigned int command,
                                             unsigned int arg_count,
                                             const volatile void* cmd_data) {
-  if (command < base::size(command_info)) {
+  if (command < std::size(command_info)) {
     const CommandInfo& info = command_info[command];
     unsigned int info_arg_count = static_cast<unsigned int>(info.arg_count);
     if ((info.arg_flags == cmd::kFixed && arg_count == info_arg_count) ||

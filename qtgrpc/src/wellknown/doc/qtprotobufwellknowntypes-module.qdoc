@@ -1,0 +1,40 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+/*!
+    \module QtProtobufWellKnownTypes
+    \modulestate Technical Preview
+    \title Qt Protobuf Well-Known Types C++ Classes
+    \ingroup frameworks-technologies
+    \qtcmakepackage ProtobufWellKnownTypes
+    \qtvariable protobufwellknowntypes
+    \since 6.6
+
+    \brief The Qt Protobuf Well-Known Types module provides support for some of
+    the types available from the
+    \l{https://protobuf.dev/reference/protobuf/google.protobuf/}{Well-Known Types}
+    package.
+
+    QtProtobufWellKnownTypes contains the following
+    \l{https://developers.google.com/protocol-buffers/docs/reference/google.protobuf}{Protobuf Well-Known types}:
+    Supported types:
+    \list
+        \li \l{Any}
+    \endlist
+
+    To use well-known type in your project you may include the corresponding
+    google .proto file in your interface:
+    \badcode
+        syntax = "proto3";
+        package somepackage;
+        import "google/protobuf/any.proto";
+        message Message {
+            google.protobuf.Any payload = 1;
+        }
+    \endcode
+
+    To use the types listed you must link with the QtProtobuf WellKnownTypes
+    library by adding the following line to your \e{CMakeLists.txt} file:
+    \badcode
+        target_link_libraries(YourTargetName PRIVATE Qt::ProtobufWellKnownTypes)
+    \endcode
+*/

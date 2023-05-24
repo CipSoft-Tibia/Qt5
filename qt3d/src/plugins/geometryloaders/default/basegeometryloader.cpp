@@ -1,52 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "basegeometryloader_p.h"
 
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qgeometry.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <Qt3DCore/qgeometry.h>
 
 #include <Qt3DRender/private/qaxisalignedboundingbox_p.h>
 #include <Qt3DRender/private/renderlogging_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt3DCore;
 
 namespace Qt3DRender {
 
@@ -60,7 +26,7 @@ BaseGeometryLoader::BaseGeometryLoader()
 {
 }
 
-QGeometry *BaseGeometryLoader::geometry() const
+Qt3DCore::QGeometry *BaseGeometryLoader::geometry() const
 {
     return m_geometry;
 }
@@ -70,10 +36,10 @@ bool BaseGeometryLoader::load(QIODevice *ioDev, const QString &subMesh)
     if (!doLoad(ioDev, subMesh))
         return false;
 
-    if (m_normals.isEmpty())
+    if (m_normals.empty())
         generateAveragedNormals(m_points, m_normals, m_indices);
 
-    if (m_generateTangents && !m_texCoords.isEmpty())
+    if (m_generateTangents && !m_texCoords.empty())
         generateTangents(m_points, m_normals, m_indices, m_texCoords, m_tangents);
 
     if (m_centerMesh)
@@ -91,14 +57,14 @@ bool BaseGeometryLoader::load(QIODevice *ioDev, const QString &subMesh)
     return true;
 }
 
-void BaseGeometryLoader::generateAveragedNormals(const QVector<QVector3D>& points,
-                                                 QVector<QVector3D>& normals,
-                                                 const QVector<unsigned int>& faces) const
+void BaseGeometryLoader::generateAveragedNormals(const std::vector<QVector3D> &points,
+                                                 std::vector<QVector3D> &normals,
+                                                 const std::vector<unsigned int> &faces) const
 {
-    for (int i = 0; i < points.size(); ++i)
-        normals.append(QVector3D());
+    for (size_t i = 0; i < points.size(); ++i)
+        normals.push_back(QVector3D());
 
-    for (int i = 0; i < faces.size(); i += 3) {
+    for (size_t i = 0; i < faces.size(); i += 3) {
         const QVector3D &p1 = points[ faces[i]   ];
         const QVector3D &p2 = points[ faces[i+1] ];
         const QVector3D &p3 = points[ faces[i+2] ];
@@ -112,22 +78,22 @@ void BaseGeometryLoader::generateAveragedNormals(const QVector<QVector3D>& point
         normals[ faces[i+2] ] += n;
     }
 
-    for (int i = 0; i < normals.size(); ++i)
+    for (size_t i = 0; i < normals.size(); ++i)
         normals[i].normalize();
 }
 
 void BaseGeometryLoader::generateGeometry()
 {
     QByteArray bufferBytes;
-    const int count = m_points.size();
+    const uint count = uint(m_points.size());
     const quint32 elementSize = 3 + (hasTextureCoordinates() ? 2 : 0)
-            + (hasNormals() ? 3 : 0)
-            + (hasTangents() ? 4 : 0);
+        + (hasNormals() ? 3 : 0)
+        + (hasTangents() ? 4 : 0);
     const quint32 stride = elementSize * sizeof(float);
     bufferBytes.resize(stride * count);
     float *fptr = reinterpret_cast<float*>(bufferBytes.data());
 
-    for (int index = 0; index < count; ++index) {
+    for (size_t index = 0; index < count; ++index) {
         *fptr++ = m_points.at(index).x();
         *fptr++ = m_points.at(index).y();
         *fptr++ = m_points.at(index).z();
@@ -151,7 +117,7 @@ void BaseGeometryLoader::generateGeometry()
         }
     } // of buffer filling loop
 
-    QBuffer *buf = new QBuffer();
+    auto *buf = new Qt3DCore::QBuffer();
     buf->setData(bufferBytes);
 
     if (m_geometry)
@@ -187,7 +153,7 @@ void BaseGeometryLoader::generateGeometry()
         ty = QAttribute::UnsignedShort;
         indexBytes.resize(m_indices.size() * sizeof(quint16));
         quint16 *usptr = reinterpret_cast<quint16*>(indexBytes.data());
-        for (int i = 0; i < m_indices.size(); ++i)
+        for (int i = 0; i < int(m_indices.size()); ++i)
             *usptr++ = static_cast<quint16>(m_indices.at(i));
     } else {
         // use UINT - no conversion needed, but let's ensure int is 32-bit!
@@ -197,29 +163,29 @@ void BaseGeometryLoader::generateGeometry()
         memcpy(indexBytes.data(), reinterpret_cast<const char*>(m_indices.data()), indexBytes.size());
     }
 
-    QBuffer *indexBuffer = new QBuffer();
+    auto *indexBuffer = new Qt3DCore::QBuffer();
     indexBuffer->setData(indexBytes);
-    QAttribute *indexAttribute = new QAttribute(indexBuffer, ty, 1, m_indices.size());
+    QAttribute *indexAttribute = new QAttribute(indexBuffer, ty, 1, uint(m_indices.size()));
     indexAttribute->setAttributeType(QAttribute::IndexAttribute);
     m_geometry->addAttribute(indexAttribute);
 }
 
-void BaseGeometryLoader::generateTangents(const QVector<QVector3D>& points,
-                                          const QVector<QVector3D>& normals,
-                                          const QVector<unsigned  int>& faces,
-                                          const QVector<QVector2D>& texCoords,
-                                          QVector<QVector4D>& tangents) const
+void BaseGeometryLoader::generateTangents(const std::vector<QVector3D> &points,
+                                          const std::vector<QVector3D> &normals,
+                                          const std::vector<unsigned int> &faces,
+                                          const std::vector<QVector2D> &texCoords,
+                                          std::vector<QVector4D> &tangents) const
 {
     tangents.clear();
-    QVector<QVector3D> tan1Accum;
-    QVector<QVector3D> tan2Accum;
+    std::vector<QVector3D> tan1Accum;
+    std::vector<QVector3D> tan2Accum;
 
     tan1Accum.resize(points.size());
     tan2Accum.resize(points.size());
     tangents.resize(points.size());
 
     // Compute the tangent vector
-    for (int i = 0; i < faces.size(); i += 3) {
+    for (size_t i = 0; i < faces.size(); i += 3) {
         const QVector3D &p1 = points[ faces[i] ];
         const QVector3D &p2 = points[ faces[i+1] ];
         const QVector3D &p3 = points[ faces[i+2] ];
@@ -247,7 +213,7 @@ void BaseGeometryLoader::generateTangents(const QVector<QVector3D>& points,
         tan2Accum[ faces[i+2] ] += tan2;
     }
 
-    for (int i = 0; i < points.size(); ++i) {
+    for (size_t i = 0; i < points.size(); ++i) {
         const QVector3D &n = normals[i];
         const QVector3D &t1 = tan1Accum[i];
         const QVector3D &t2 = tan2Accum[i];
@@ -260,16 +226,16 @@ void BaseGeometryLoader::generateTangents(const QVector<QVector3D>& points,
     }
 }
 
-void BaseGeometryLoader::center(QVector<QVector3D>& points)
+void BaseGeometryLoader::center(std::vector<QVector3D> &points)
 {
-    if (points.isEmpty())
+    if (points.empty())
         return;
 
     const QAxisAlignedBoundingBox bb(points);
     const QVector3D center = bb.center();
 
     // Translate center of the AABB to the origin
-    for (int i = 0; i < points.size(); ++i) {
+    for (size_t i = 0; i < points.size(); ++i) {
         QVector3D &point = points[i];
         point = point - center;
     }
@@ -278,3 +244,5 @@ void BaseGeometryLoader::center(QVector<QVector3D>& points)
 } // namespace Qt3DRender
 
 QT_END_NAMESPACE
+
+#include "moc_basegeometryloader_p.cpp"

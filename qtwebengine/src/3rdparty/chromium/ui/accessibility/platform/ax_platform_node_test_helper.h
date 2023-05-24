@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,12 +7,13 @@
 
 #include <string>
 
+#include "base/component_export.h"
 #include "ui/accessibility/platform/ax_platform_node.h"
 #include "ui/accessibility/platform/ax_platform_node_delegate.h"
 
 namespace ui {
 
-class AX_EXPORT AXPlatformNodeTestHelper {
+class COMPONENT_EXPORT(AX_PLATFORM) AXPlatformNodeTestHelper {
  public:
   static int GetTreeSize(AXPlatformNode* ax_node);
   static AXPlatformNode* FindChildByName(AXPlatformNode* ax_node,

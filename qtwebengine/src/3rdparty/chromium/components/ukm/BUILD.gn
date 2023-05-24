@@ -1,4 +1,4 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -17,9 +17,12 @@ component("ukm_recorder") {
   sources = [
     "scheme_constants.cc",
     "scheme_constants.h",
+    "ukm_consent_state.h",
     "ukm_entry_filter.h",
     "ukm_recorder_impl.cc",
     "ukm_recorder_impl.h",
+    "ukm_recorder_observer.cc",
+    "ukm_recorder_observer.h",
   ]
 
   deps = [
@@ -70,6 +73,9 @@ static_library("ukm") {
     "//components/variations",
     "//url",
   ]
+  if (is_ios) {
+    deps += [ "//components/ukm/ios:ukm_reporting_ios_util" ]
+  }
 }
 
 # Helper library for observing signals that we need to clear any local data.
@@ -79,13 +85,16 @@ static_library("observers") {
     "observers/history_delete_observer.h",
     "observers/ukm_consent_state_observer.cc",
     "observers/ukm_consent_state_observer.h",
+    "ukm_consent_state.h",
   ]
 
   deps = [
     "//base",
     "//components/history/core/browser",
-    "//components/sync",
+    "//components/sync/base",
+    "//components/sync/driver",
     "//google_apis",
+    "//services/metrics/public/cpp:metrics_cpp",
   ]
 
   public_deps = [ "//components/unified_consent" ]

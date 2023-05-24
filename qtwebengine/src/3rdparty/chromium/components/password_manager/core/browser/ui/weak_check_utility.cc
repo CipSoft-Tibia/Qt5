@@ -1,11 +1,15 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/password_manager/core/browser/ui/weak_check_utility.h"
 
+#include "base/containers/cxx20_erase.h"
+#include "base/functional/not_fn.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/time/time.h"
 #include "third_party/zxcvbn-cpp/native-src/zxcvbn/matching.hpp"
 #include "third_party/zxcvbn-cpp/native-src/zxcvbn/scoring.hpp"
 #include "third_party/zxcvbn-cpp/native-src/zxcvbn/time_estimates.hpp"
@@ -38,6 +42,7 @@ constexpr int kLowSeverityScore = 2;
 
 // Returns the |password| score.
 int PasswordWeakCheck(base::StringPiece16 password16) {
+  base::TimeTicks start_time = base::TimeTicks::Now();
   // zxcvbn's computation time explodes for long passwords, so cap at that
   // number.
   std::string password =
@@ -47,6 +52,8 @@ int PasswordWeakCheck(base::StringPiece16 password16) {
       zxcvbn::most_guessable_match_sequence(password, matches);
 
   int score = zxcvbn::estimate_attack_times(result.guesses).score;
+  base::UmaHistogramTimes("PasswordManager.WeakCheck.SingleCheckTime",
+                          base::TimeTicks::Now() - start_time);
   base::UmaHistogramEnumeration("PasswordManager.WeakCheck.PasswordScore",
                                 static_cast<PasswordWeaknessScore>(score));
   return score;
@@ -54,14 +61,15 @@ int PasswordWeakCheck(base::StringPiece16 password16) {
 
 }  // namespace
 
-base::flat_set<base::string16> BulkWeakCheck(
-    base::flat_set<base::string16> passwords) {
+IsWeakPassword IsWeak(base::StringPiece16 password) {
+  return IsWeakPassword(PasswordWeakCheck(password) <= kLowSeverityScore);
+}
+
+base::flat_set<std::u16string> BulkWeakCheck(
+    base::flat_set<std::u16string> passwords) {
   base::UmaHistogramCounts1000("PasswordManager.WeakCheck.CheckedPasswords",
                                passwords.size());
-  base::EraseIf(passwords, [](const auto& password) {
-    return kLowSeverityScore < PasswordWeakCheck(password);
-  });
-
+  base::EraseIf(passwords, base::not_fn(&IsWeak));
   base::UmaHistogramCounts1000("PasswordManager.WeakCheck.WeakPasswords",
                                passwords.size());
   return passwords;

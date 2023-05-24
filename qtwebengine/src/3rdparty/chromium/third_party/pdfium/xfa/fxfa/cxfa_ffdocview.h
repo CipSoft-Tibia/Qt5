@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,6 @@
 #define XFA_FXFA_CXFA_FFDOCVIEW_H_
 
 #include <list>
-#include <memory>
 #include <vector>
 
 #include "fxjs/gc/heap.h"
@@ -27,36 +26,36 @@ class CXFA_Node;
 class CXFA_Subform;
 class CXFA_ViewLayoutItem;
 
-extern const XFA_AttributeValue gs_EventActivity[];
-enum XFA_DOCVIEW_LAYOUTSTATUS {
-  XFA_DOCVIEW_LAYOUTSTATUS_None,
-  XFA_DOCVIEW_LAYOUTSTATUS_Start,
-  XFA_DOCVIEW_LAYOUTSTATUS_FormInitialize,
-  XFA_DOCVIEW_LAYOUTSTATUS_FormInitCalculate,
-  XFA_DOCVIEW_LAYOUTSTATUS_FormInitValidate,
-  XFA_DOCVIEW_LAYOUTSTATUS_FormFormReady,
-  XFA_DOCVIEW_LAYOUTSTATUS_Doing,
-  XFA_DOCVIEW_LAYOUTSTATUS_PagesetInitialize,
-  XFA_DOCVIEW_LAYOUTSTATUS_PagesetInitCalculate,
-  XFA_DOCVIEW_LAYOUTSTATUS_PagesetInitValidate,
-  XFA_DOCVIEW_LAYOUTSTATUS_PagesetFormReady,
-  XFA_DOCVIEW_LAYOUTSTATUS_LayoutReady,
-  XFA_DOCVIEW_LAYOUTSTATUS_DocReady,
-  XFA_DOCVIEW_LAYOUTSTATUS_End
-};
+extern const XFA_AttributeValue kXFAEventActivity[];
 
 class CXFA_FFDocView : public cppgc::GarbageCollected<CXFA_FFDocView> {
  public:
+  enum class LayoutStatus : uint8_t { kNone, kStart, kDoing, kEnd };
+
+  class UpdateScope {
+    CPPGC_STACK_ALLOCATED();
+
+   public:
+    explicit UpdateScope(CXFA_FFDocView* pDocView);
+    ~UpdateScope();
+
+   private:
+    UnownedPtr<CXFA_FFDocView> const m_pDocView;
+  };
+
   CONSTRUCT_VIA_MAKE_GARBAGE_COLLECTED;
   ~CXFA_FFDocView();
 
   void Trace(cppgc::Visitor* visitor) const;
 
-  CXFA_FFDoc* GetDoc() const { return m_pDoc.Get(); }
+  CXFA_FFDoc* GetDoc() const { return m_pDoc; }
   int32_t StartLayout();
   int32_t DoLayout();
   void StopLayout();
-  int32_t GetLayoutStatus() const { return m_iStatus; }
+
+  void SetLayoutEvent() { m_bLayoutEvent = true; }
+  bool InLayoutStatus() const { return m_bInLayoutStatus; }
+  LayoutStatus GetLayoutStatus() const { return m_iStatus; }
 
   void UpdateDocView();
   void UpdateUIDisplay(CXFA_Node* pNode, CXFA_FFWidget* pExcept);
@@ -73,7 +72,8 @@ class CXFA_FFDocView : public cppgc::GarbageCollected<CXFA_FFDocView> {
   CXFA_FFWidget* GetWidgetByName(const WideString& wsName,
                                  CXFA_FFWidget* pRefWidget);
   CXFA_LayoutProcessor* GetLayoutProcessor() const;
-  void OnPageEvent(CXFA_ViewLayoutItem* pSender, uint32_t dwEvent);
+  void OnPageViewEvent(CXFA_ViewLayoutItem* pSender,
+                       CXFA_FFDoc::PageViewEvent eEvent);
   void LockUpdate() { m_iLock++; }
   void UnlockUpdate() { m_iLock--; }
   void InvalidateRect(CXFA_FFPageView* pPageView,
@@ -89,7 +89,7 @@ class CXFA_FFDocView : public cppgc::GarbageCollected<CXFA_FFDocView> {
 
   bool RunLayout();
   void AddNewFormNode(CXFA_Node* pNode);
-  void AddIndexChangedSubform(CXFA_Node* pNode);
+  void AddIndexChangedSubform(CXFA_Subform* pNode);
   CXFA_Node* GetFocusNode() const { return m_pFocusNode; }
   void SetFocusNode(CXFA_Node* pNode);
   void DeleteLayoutItem(CXFA_FFWidget* pWidget);
@@ -99,10 +99,7 @@ class CXFA_FFDocView : public cppgc::GarbageCollected<CXFA_FFDocView> {
                                               bool bRecursive);
 
   void AddBindItem(CXFA_BindItems* item) { m_BindItems.push_back(item); }
-
-  bool m_bLayoutEvent = false;
-  bool m_bInLayoutStatus = false;
-  std::vector<WideString> m_NullTestMsgArray;
+  void AddNullTestMsg(const WideString& msg);
 
  private:
   explicit CXFA_FFDocView(CXFA_FFDoc* pDoc);
@@ -129,8 +126,11 @@ class CXFA_FFDocView : public cppgc::GarbageCollected<CXFA_FFDocView> {
   std::vector<cppgc::Member<CXFA_Node>> m_CalculateNodes;
   std::list<cppgc::Member<CXFA_BindItems>> m_BindItems;
   std::list<cppgc::Member<CXFA_Node>> m_NewAddedNodes;
-  std::list<cppgc::Member<CXFA_Node>> m_IndexChangedSubforms;
-  XFA_DOCVIEW_LAYOUTSTATUS m_iStatus = XFA_DOCVIEW_LAYOUTSTATUS_None;
+  std::list<cppgc::Member<CXFA_Subform>> m_IndexChangedSubforms;
+  std::vector<WideString> m_NullTestMsgArray;
+  bool m_bLayoutEvent = false;
+  bool m_bInLayoutStatus = false;
+  LayoutStatus m_iStatus = LayoutStatus::kNone;
   int32_t m_iLock = 0;
 };
 

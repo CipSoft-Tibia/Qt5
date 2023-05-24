@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,17 +11,21 @@
 #include <memory>
 
 #include "base/check_op.h"
+#include "base/containers/fixed_flat_set.h"
 #include "base/debug/alias.h"
 #include "base/file_version_info.h"
 #include "base/files/file_path.h"
 #include "base/memory/free_deleter.h"
 #include "base/notreached.h"
+#include "base/numerics/checked_math.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/stl_util.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/scoped_blocking_call.h"
+#include "base/win/registry.h"
+#include "base/win/windows_types.h"
 #include "base/win/windows_version.h"
 #include "printing/backend/print_backend.h"
 #include "printing/backend/print_backend_consts.h"
@@ -130,6 +134,36 @@ const char kXpsTicketTemplate[] =
 const char kXpsTicketColor[] = "Color";
 const char kXpsTicketMonochrome[] = "Monochrome";
 
+// Registry path prefix for the printer drivers' keys.
+constexpr wchar_t kDriversRegistryKeyPath[] =
+    L"SYSTEM\\CurrentControlSet\\Control\\Print\\Printers\\";
+
+// Registry value name for a port.
+constexpr wchar_t kPortRegistryValue[] = L"Port";
+
+// List of printer ports which are known to cause a UI dialog to be displayed
+// when printing.
+constexpr wchar_t kPrinterDriverPortFile[] = L"FILE:";
+constexpr wchar_t kPrinterDriverPortPrompt[] = L"PORTPROMPT:";
+constexpr wchar_t kPrinterDriverPortFax[] = L"SHRFAX:";
+
+// Gets the port used for a particular printer driver.  This can be found in
+// the Windows registry entry for the driver.
+std::wstring GetPrinterDriverPort(const std::string& printer_name) {
+  base::win::RegKey reg_key;
+  std::wstring root_key(std::wstring(kDriversRegistryKeyPath) +
+                        base::UTF8ToWide(printer_name));
+  LONG result =
+      reg_key.Open(HKEY_LOCAL_MACHINE, root_key.c_str(), KEY_QUERY_VALUE);
+  if (result != ERROR_SUCCESS)
+    return std::wstring();
+  std::wstring port_value;
+  result = reg_key.ReadValue(kPortRegistryValue, &port_value);
+  if (result != ERROR_SUCCESS)
+    return std::wstring();
+  return port_value;
+}
+
 }  // namespace
 
 namespace printing {
@@ -211,7 +245,7 @@ bool XPSModule::InitImpl() {
   return true;
 }
 
-HRESULT XPSModule::OpenProvider(const base::string16& printer_name,
+HRESULT XPSModule::OpenProvider(const std::wstring& printer_name,
                                 DWORD version,
                                 HPTPROVIDER* provider) {
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
@@ -409,23 +443,30 @@ std::string GetDriverInfo(HANDLE printer) {
         FileVersionInfo::CreateFileVersionInfo(
             base::FilePath(info_6.get()->pDriverPath)));
     if (version_info.get()) {
-      info[1] = base::WideToUTF8(version_info->file_version());
-      info[2] = base::WideToUTF8(version_info->product_name());
-      info[3] = base::WideToUTF8(version_info->product_version());
+      info[1] = base::UTF16ToUTF8(version_info->file_version());
+      info[2] = base::UTF16ToUTF8(version_info->product_name());
+      info[3] = base::UTF16ToUTF8(version_info->product_version());
     }
   }
 
-  for (size_t i = 0; i < base::size(info); ++i) {
+  for (size_t i = 0; i < std::size(info); ++i) {
     std::replace(info[i].begin(), info[i].end(), ';', ',');
     driver_info.append(info[i]);
-    if (i < base::size(info) - 1)
+    if (i < std::size(info) - 1)
       driver_info.append(";");
   }
   return driver_info;
 }
 
+bool DoesDriverDisplayFileDialogForPrinting(const std::string& printer_name) {
+  static constexpr auto kPortNames = base::MakeFixedFlatSet<base::WStringPiece>(
+      {kPrinterDriverPortFile, kPrinterDriverPortPrompt,
+       kPrinterDriverPortFax});
+  return kPortNames.contains(GetPrinterDriverPort(printer_name));
+}
+
 std::unique_ptr<DEVMODE, base::FreeDeleter> XpsTicketToDevMode(
-    const base::string16& printer_name,
+    const std::wstring& printer_name,
     const std::string& print_ticket) {
   std::unique_ptr<DEVMODE, base::FreeDeleter> dev_mode;
   ScopedXPSInitializer xps_initializer;
@@ -469,7 +510,7 @@ bool IsDevModeWithColor(const DEVMODE* devmode) {
 
 std::unique_ptr<DEVMODE, base::FreeDeleter> CreateDevModeWithColor(
     HANDLE printer,
-    const base::string16& printer_name,
+    const std::wstring& printer_name,
     bool color) {
   std::unique_ptr<DEVMODE, base::FreeDeleter> default_ticket =
       CreateDevMode(printer, nullptr);
@@ -520,12 +561,19 @@ std::unique_ptr<DEVMODE, base::FreeDeleter> CreateDevMode(HANDLE printer,
     buffer_size = DocumentProperties(nullptr, printer, device_name_ptr, nullptr,
                                      nullptr, 0);
   }
-  if (buffer_size < static_cast<int>(sizeof(DEVMODE)))
+  // TODO(thestig): Consider limiting `buffer_size` to avoid buggy printer
+  // drivers that return excessively large values.
+  if (buffer_size < static_cast<LONG>(sizeof(DEVMODE)))
     return nullptr;
 
   // Some drivers request buffers with size smaller than dmSize + dmDriverExtra.
-  // crbug.com/421402
-  buffer_size *= 2;
+  // Examples: crbug.com/421402, crbug.com/780016
+  // Pad the `out` buffer so there is plenty of space. Calculate the size using
+  // `base::CheckedNumeric` to avoid a potential integer overflow.
+  base::CheckedNumeric<LONG> safe_buffer_size = buffer_size;
+  safe_buffer_size *= 2;
+  safe_buffer_size += 8192;
+  buffer_size = safe_buffer_size.ValueOrDie();
 
   std::unique_ptr<DEVMODE, base::FreeDeleter> out(
       reinterpret_cast<DEVMODE*>(calloc(buffer_size, 1)));
@@ -560,6 +608,8 @@ std::unique_ptr<DEVMODE, base::FreeDeleter> CreateDevMode(HANDLE printer,
   // recorded in crash dumps.
   // See https://crbug.com/780016 and https://crbug.com/806016 for example
   // crashes.
+  // TODO(crbug.com/780016): Remove this debug code if the CHECK_GE() below
+  // stops failing.
   base::debug::Alias(&size);
   base::debug::Alias(&extra_size);
   base::debug::Alias(&buffer_size);
@@ -569,7 +619,7 @@ std::unique_ptr<DEVMODE, base::FreeDeleter> CreateDevMode(HANDLE printer,
 
 std::unique_ptr<DEVMODE, base::FreeDeleter> PromptDevMode(
     HANDLE printer,
-    const base::string16& printer_name,
+    const std::wstring& printer_name,
     DEVMODE* in,
     HWND window,
     bool* canceled) {

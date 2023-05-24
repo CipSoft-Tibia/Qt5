@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
 \page qtqml-syntax-imports.html
 \title Import Statements
@@ -36,12 +12,10 @@ resources and component directories are used within a QML document.  The types
 which may be used within a document depends on which modules, resources and
 directories are imported by the document.
 
-\section2 Import Types
-
 There are three different types of imports.  Each import type has a slightly
 different syntax, and different semantics apply to different import types.
 
-\section3 Module (Namespace) Imports
+\section2 Module (Namespace) Imports
 
 The most common type of import is a module import.  Clients can import
 \l{qtqml-modules-identifiedmodules.html}{QML modules} which register QML object
@@ -49,7 +23,7 @@ types and JavaScript resources into a given namespace.
 
 The generic form of a module import is as follows:
 \code
-import <ModuleIdentifier> <Version.Number> [as <Qualifier>]
+import <ModuleIdentifier> [<Version.Number>] [as <Qualifier>]
 \endcode
 
 \list
@@ -59,7 +33,9 @@ import <ModuleIdentifier> <Version.Number> [as <Qualifier>]
   \li The \c <Version.Number> is a version of the form
       \c {MajorVersion.MinorVersion} which specifies which definitions of
       various object types and JavaScript resources will be made available due
-      to the import.
+      to the import. It can be omitted, in which case the latest version of the
+      module is imported. It is also possible to only omit the minor version.
+      Then the latest minor version of the given major version is imported.
   \li The \c <Qualifier> is an optional local namespace identifier into which
       the object types and JavaScript resources provided by the module will be
       installed, if given.  If omitted, the object types and JavaScript
@@ -69,7 +45,7 @@ import <ModuleIdentifier> <Version.Number> [as <Qualifier>]
 
 An example of an unqualified module import is as follows:
 \code
-import QtQuick 2.0
+import QtQuick
 \endcode
 
 This import allows the use of all of the types provided by the \c QtQuick
@@ -77,7 +53,7 @@ module without needing to specify a qualifier.  For example, the client code to
 create a rectangle is as follows:
 
 \qml
-import QtQuick 2.0
+import QtQuick
 
 Rectangle {
     width: 200
@@ -86,9 +62,16 @@ Rectangle {
 }
 \endqml
 
+An example of an unqualified import with version would be
+\code
+import QtQuick 2.10
+\endcode
+In that case, any types defined in QtQuick 2.11 and higher or in any higher major
+version, like 6.0, would not be available to the file.
+
 An example of a qualified module import is as follows:
 \code
-import QtQuick 2.0 as Quick
+import QtQuick as Quick
 \endcode
 
 This import allows multiple modules which provide conflicting type names to be
@@ -100,7 +83,7 @@ An example of client code which creates a rectangle after using a qualified
 module import is as follows:
 
 \qml
-import QtQuick 2.0 as Quick
+import QtQuick as Quick
 
 Quick.Rectangle {
     width: 200
@@ -127,7 +110,7 @@ Rectangle {
 
 In this case, the engine will emit an error and refuse to load the file.
 
-\section4 C++ Module Imports
+\section3 C++ Module Imports
 
 Usually, C++ types are declared using the QML_ELEMENT and QML_NAMED_ELEMENT()
 macros and registered via the build system using QML_IMPORT_NAME and
@@ -137,7 +120,7 @@ module that can be imported to access the types.
 This is most common in client applications which define their own QML object
 types in C++.
 
-\section4 Importing into a Qualified Local Namespace
+\section3 Importing into a Qualified Local Namespace
 
 The \c import statement may optionally use the \c as keyword to specify that
 the types should be imported into a particular document-local namespace. If a
@@ -149,7 +132,7 @@ references to types from the \c QtQuick module must be prefixed with the
 \c CoreItems name:
 
 \qml
-import QtQuick 2.0 as CoreItems
+import QtQuick as CoreItems
 
 CoreItems.Rectangle {
     width: 100; height: 100
@@ -171,7 +154,7 @@ two modules can be imported into different namespaces to ensure the code is
 referring to the correct type:
 
 \qml
-import QtQuick 2.0 as CoreItems
+import QtQuick as CoreItems
 import "../textwidgets" as MyModule
 
 CoreItems.Rectangle {
@@ -187,7 +170,7 @@ way that multiple modules can be imported into the global namespace. For example
 
 \snippet qml/imports/merged-named-imports.qml imports
 
-\section3 Directory Imports
+\section2 Directory Imports
 
 A directory which contains QML documents may also be imported directly in a
 QML document.  This provides a simple way for QML types to be segmented into
@@ -213,7 +196,7 @@ section about \l{Importing into a Qualified Local Namespace}.
 For more information about directory imports, please see the in-depth
 documentation about \l{qtqml-syntax-directoryimports.html}{directory imports}.
 
-\section3 JavaScript Resource Imports
+\section2 JavaScript Resource Imports
 
 JavaScript resources may be imported directly in a QML document.  Every
 JavaScript resource must have an identifier by which it is accessed.
@@ -226,7 +209,7 @@ import "<JavaScriptFile>" as <Identifier>
 Note that the \c <Identifier> must be unique within a QML document, unlike the
 local namespace qualifier which can be applied to module imports.
 
-\section4 JavaScript Resources from Modules
+\section3 JavaScript Resources from Modules
 
 Javascript files can be provided by modules, by adding identifier
 definitions to the \c qmldir file which specifies the module.
@@ -244,8 +227,8 @@ module by importing the module and using the identifier associated with a
 declared resource:
 
 \qml
-import QtQuick 2.0
-import projects.MyQMLProject.MyFunctions 1.0
+import QtQuick
+import projects.MyQMLProject.MyFunctions
 
 Item {
     Component.onCompleted: { SystemFunctions.cleanUp(); }
@@ -257,9 +240,9 @@ resource identifiers must be prefixed with the namespace qualifier in order
 to be used:
 
 \qml
-import QtQuick 2.0
-import projects.MyQMLProject.MyFunctions 1.0 as MyFuncs
-import org.example.Functions 1.0 as TheirFuncs
+import QtQuick
+import projects.MyQMLProject.MyFunctions as MyFuncs
+import org.example.Functions as TheirFuncs
 
 Item {
     Component.onCompleted: {
@@ -269,7 +252,7 @@ Item {
 }
 \endqml
 
-\section4 Further Information
+\section3 Further Information
 
 For more information about JavaScript resources, please see the documentation
 about \l{qtqml-javascript-resources.html}
@@ -289,22 +272,28 @@ default locations to be searched by the engine. By default, this list contains:
 
 \list
 \li The directory of the current file
-\li The location specified by QLibraryInfo::Qml2ImportsPath
-\li Paths specified by the \c QML2_IMPORT_PATH environment variable
+\li The location specified by QLibraryInfo::QmlImportsPath
+\li Paths specified by the \c QML_IMPORT_PATH environment variable
 \li The qrc:/qt-project.org/imports path inside the resources.
+\li The qrc:/qt/qml path inside the resources (since Qt 6.5).
 \endlist
 
 Additional import paths can be added through QQmlEngine::addImportPath() or the
-\c QML2_IMPORT_PATH environment variable. When running the
-\l{Prototyping with qmlscene}{qmlscene} tool, you can also use the \c -I option
-to add an import path.
+\c QML_IMPORT_PATH environment variable. When running the
+\l {Prototyping with the QML Runtime Tool}{qml tool}, you can also use the
+\c -I option to add an import path.
 
-You can specify multiple import paths in the \c QML2_IMPORT_PATH environment
+You can specify multiple import paths in the \c QML_IMPORT_PATH environment
 variable by joining them using the path separator. On Windows the path separator
 is a semicolon (;), on other platforms it is a colon (:). This means that you
-cannot specify resource paths or URLs in QML2_IMPORT_PATH, as they contain
+cannot specify resource paths or URLs in QML_IMPORT_PATH, as they contain
 colons themselves. However, you can add resource paths and URLs by calling
 QQmlEngine::addImportPath() programatically.
+
+\note It is recommended that applications and libraries put their modules
+under "qrc:/qt/qml". This happens by default when the module is created
+with  \l{qt_add_qml_module}{qt_add_qml_module()} and \l{QTP0001} is
+enabled.
 
 
 \section1 Debugging

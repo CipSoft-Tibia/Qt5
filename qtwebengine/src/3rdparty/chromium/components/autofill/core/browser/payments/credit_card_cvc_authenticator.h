@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,66 +6,66 @@
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_CREDIT_CARD_CVC_AUTHENTICATOR_H_
 
 #include <memory>
+#include <string>
 
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/data_model/credit_card.h"
 #include "components/autofill/core/browser/payments/card_unmask_delegate.h"
 #include "components/autofill/core/browser/payments/full_card_request.h"
+#include "components/autofill/core/browser/ui/payments/card_unmask_prompt_options.h"
 
 namespace autofill {
 
+namespace metrics {
+class AutofillMetricsBaseTest;
+}
+
 // Authenticates credit card unmasking through CVC verification.
-class CreditCardCVCAuthenticator
+class CreditCardCvcAuthenticator
     : public payments::FullCardRequest::ResultDelegate,
       public payments::FullCardRequest::UIDelegate {
  public:
-  struct CVCAuthenticationResponse {
-    CVCAuthenticationResponse();
-    ~CVCAuthenticationResponse();
+  struct CvcAuthenticationResponse {
+    CvcAuthenticationResponse();
+    ~CvcAuthenticationResponse();
 
-    CVCAuthenticationResponse& with_did_succeed(bool b) {
+    CvcAuthenticationResponse& with_did_succeed(bool b) {
       did_succeed = b;
       return *this;
     }
     // Data pointed to by |c| must outlive this object.
-    CVCAuthenticationResponse& with_card(const CreditCard* c) {
+    CvcAuthenticationResponse& with_card(const CreditCard* c) {
       card = c;
       return *this;
     }
-    CVCAuthenticationResponse& with_cvc(const base::string16 s) {
-      cvc = base::string16(s);
+    CvcAuthenticationResponse& with_cvc(const std::u16string s) {
+      cvc = std::u16string(s);
       return *this;
     }
-    CVCAuthenticationResponse& with_creation_options(
-        base::Optional<base::Value> v) {
-      creation_options = std::move(v);
-      return *this;
-    }
-    CVCAuthenticationResponse& with_request_options(
-        base::Optional<base::Value> v) {
+    CvcAuthenticationResponse& with_request_options(
+        absl::optional<base::Value::Dict> v) {
       request_options = std::move(v);
       return *this;
     }
-    CVCAuthenticationResponse& with_card_authorization_token(std::string s) {
+    CvcAuthenticationResponse& with_card_authorization_token(std::string s) {
       card_authorization_token = s;
       return *this;
     }
     bool did_succeed = false;
-    const CreditCard* card = nullptr;
-    base::string16 cvc = base::string16();
-    base::Optional<base::Value> creation_options = base::nullopt;
-    base::Optional<base::Value> request_options = base::nullopt;
+    raw_ptr<const CreditCard> card = nullptr;
+    std::u16string cvc = std::u16string();
+    absl::optional<base::Value::Dict> request_options;
     std::string card_authorization_token = std::string();
   };
   class Requester {
    public:
     virtual ~Requester() = default;
-    virtual void OnCVCAuthenticationComplete(
-        const CVCAuthenticationResponse& response) = 0;
+    virtual void OnCvcAuthenticationComplete(
+        const CvcAuthenticationResponse& response) = 0;
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
     // Returns whether or not the user, while on the CVC prompt, should be
     // offered to switch to FIDO authentication for card unmasking. This will
     // always be false for Desktop since FIDO authentication is offered as a
@@ -81,29 +81,40 @@ class CreditCardCVCAuthenticator
     virtual bool UserOptedInToFidoFromSettingsPageOnMobile() const = 0;
 #endif
   };
-  explicit CreditCardCVCAuthenticator(AutofillClient* client);
-  ~CreditCardCVCAuthenticator() override;
+  explicit CreditCardCvcAuthenticator(AutofillClient* client);
+
+  CreditCardCvcAuthenticator(const CreditCardCvcAuthenticator&) = delete;
+  CreditCardCvcAuthenticator& operator=(const CreditCardCvcAuthenticator&) =
+      delete;
+
+  ~CreditCardCvcAuthenticator() override;
 
   // Authentication
-  void Authenticate(const CreditCard* card,
-                    base::WeakPtr<Requester> requester,
-                    PersonalDataManager* personal_data_manager,
-                    const base::TimeTicks& form_parsed_timestamp);
+  void Authenticate(
+      const CreditCard* card,
+      base::WeakPtr<Requester> requester,
+      PersonalDataManager* personal_data_manager,
+      absl::optional<std::string> vcn_context_token = absl::nullopt,
+      absl::optional<CardUnmaskChallengeOption> selected_challenge_option =
+          absl::nullopt);
 
   // payments::FullCardRequest::ResultDelegate
   void OnFullCardRequestSucceeded(
       const payments::FullCardRequest& full_card_request,
       const CreditCard& card,
-      const base::string16& cvc) override;
-  void OnFullCardRequestFailed() override;
+      const std::u16string& cvc) override;
+  void OnFullCardRequestFailed(
+      CreditCard::RecordType card_type,
+      payments::FullCardRequest::FailureType failure_type) override;
 
   // payments::FullCardRequest::UIDelegate
-  void ShowUnmaskPrompt(const CreditCard& card,
-                        AutofillClient::UnmaskCardReason reason,
-                        base::WeakPtr<CardUnmaskDelegate> delegate) override;
+  void ShowUnmaskPrompt(
+      const CreditCard& card,
+      const CardUnmaskPromptOptions& card_unmask_prompt_options,
+      base::WeakPtr<CardUnmaskDelegate> delegate) override;
   void OnUnmaskVerificationResult(
       AutofillClient::PaymentsRpcResult result) override;
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   bool ShouldOfferFidoAuth() const override;
   bool UserOptedInToFidoFromSettingsPageOnMobile() const override;
 #endif
@@ -114,14 +125,14 @@ class CreditCardCVCAuthenticator
   GetAsFullCardRequestUIDelegate();
 
  private:
-  friend class AutofillAssistantTest;
-  friend class AutofillManagerTest;
+  friend class BrowserAutofillManagerTest;
   friend class AutofillMetricsTest;
+  friend class metrics::AutofillMetricsBaseTest;
   friend class CreditCardAccessManagerTest;
-  friend class CreditCardCVCAuthenticatorTest;
+  friend class CreditCardCvcAuthenticatorTest;
 
   // The associated autofill client. Weak reference.
-  AutofillClient* const client_;
+  const raw_ptr<AutofillClient> client_;
 
   // Responsible for getting the full card details, including the PAN and the
   // CVC.
@@ -130,9 +141,7 @@ class CreditCardCVCAuthenticator
   // Weak pointer to object that is requesting authentication.
   base::WeakPtr<Requester> requester_;
 
-  base::WeakPtrFactory<CreditCardCVCAuthenticator> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(CreditCardCVCAuthenticator);
+  base::WeakPtrFactory<CreditCardCvcAuthenticator> weak_ptr_factory_{this};
 };
 
 }  // namespace autofill

@@ -30,11 +30,15 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_SHAPE_VALUE_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_SHAPE_VALUE_H_
 
+#include "base/check_op.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/memory/values_equivalent.h"
+#include "base/notreached.h"
 #include "third_party/blink/renderer/core/style/basic_shapes.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
-#include "third_party/blink/renderer/core/style/data_equivalency.h"
 #include "third_party/blink/renderer/core/style/style_image.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/heap/visitor.h"
 
 namespace blink {
 
@@ -61,8 +65,9 @@ class ShapeValue final : public GarbageCollected<ShapeValue> {
   StyleImage* GetImage() const { return image_.Get(); }
   void SetImage(StyleImage* image) {
     DCHECK_EQ(GetType(), kImage);
-    if (image_ != image)
+    if (image_ != image) {
       image_ = image;
+    }
   }
   CSSBoxType CssBox() const { return css_box_; }
 
@@ -78,17 +83,18 @@ class ShapeValue final : public GarbageCollected<ShapeValue> {
 };
 
 inline bool ShapeValue::operator==(const ShapeValue& other) const {
-  if (GetType() != other.GetType())
+  if (GetType() != other.GetType()) {
     return false;
+  }
 
   switch (GetType()) {
     case kShape:
-      return DataEquivalent(Shape(), other.Shape()) &&
+      return base::ValuesEquivalent(Shape(), other.Shape()) &&
              CssBox() == other.CssBox();
     case kBox:
       return CssBox() == other.CssBox();
     case kImage:
-      return DataEquivalent(GetImage(), other.GetImage());
+      return base::ValuesEquivalent(GetImage(), other.GetImage());
   }
 
   NOTREACHED();
@@ -97,4 +103,4 @@ inline bool ShapeValue::operator==(const ShapeValue& other) const {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_STYLE_SHAPE_VALUE_H_

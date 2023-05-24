@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,13 @@
 
 #include "base/android/jni_android.h"
 #include "base/android/scoped_java_ref.h"
-#include "base/macros.h"
-#include "cc/layers/layer.h"
 #include "components/thin_webview/compositor_view.h"
 #include "content/public/browser/android/compositor_client.h"
 
-namespace cc {
+namespace cc::slim {
+class Layer;
 class SolidColorLayer;
-}  // namespace cc
+}  // namespace cc::slim
 
 namespace content {
 class Compositor;
@@ -35,7 +34,12 @@ class CompositorViewImpl : public CompositorView,
  public:
   CompositorViewImpl(JNIEnv* env,
                      jobject obj,
-                     ui::WindowAndroid* window_android);
+                     ui::WindowAndroid* window_android,
+                     int64_t java_background_color);
+
+  CompositorViewImpl(const CompositorViewImpl&) = delete;
+  CompositorViewImpl& operator=(const CompositorViewImpl&) = delete;
+
   ~CompositorViewImpl() override;
 
   void Destroy(JNIEnv* env, const base::android::JavaParamRef<jobject>& object);
@@ -55,7 +59,7 @@ class CompositorViewImpl : public CompositorView,
                       const base::android::JavaParamRef<jobject>& surface);
 
   // CompositorView implementation.
-  void SetRootLayer(scoped_refptr<cc::Layer> layer) override;
+  void SetRootLayer(scoped_refptr<cc::slim::Layer> layer) override;
 
   // CompositorClient implementation.
   void RecreateSurface() override;
@@ -64,11 +68,9 @@ class CompositorViewImpl : public CompositorView,
  private:
   base::android::ScopedJavaGlobalRef<jobject> obj_;
   std::unique_ptr<content::Compositor> compositor_;
-  scoped_refptr<cc::SolidColorLayer> root_layer_;
+  scoped_refptr<cc::slim::SolidColorLayer> root_layer_;
 
   int current_surface_format_;
-
-  DISALLOW_COPY_AND_ASSIGN(CompositorViewImpl);
 };
 
 }  // namespace android

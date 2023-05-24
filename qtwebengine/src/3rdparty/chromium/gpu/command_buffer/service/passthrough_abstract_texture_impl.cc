@@ -1,9 +1,10 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include <utility>
 
+#include "build/build_config.h"
 #include "gpu/command_buffer/service/abstract_texture.h"
 #include "gpu/command_buffer/service/context_group.h"
 #include "gpu/command_buffer/service/error_state.h"
@@ -46,46 +47,34 @@ void PassthroughAbstractTextureImpl::SetParameteri(GLenum pname, GLint param) {
   gl_api_->glTexParameteriFn(texture_passthrough_->target(), pname, param);
 }
 
-void PassthroughAbstractTextureImpl::BindImage(gl::GLImage* image,
-                                               bool client_managed) {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE)
+void PassthroughAbstractTextureImpl::SetUnboundImage(gl::GLImage* image) {
   if (!texture_passthrough_)
     return;
 
   const GLuint target = texture_passthrough_->target();
   const GLuint level = 0;
 
-  // If there is a decoder-managed image bound, release it.
-  if (decoder_managed_image_) {
-    gl::GLImage* current_image =
-        texture_passthrough_->GetLevelImage(target, level);
-    // TODO(sandersd): This isn't correct if CopyTexImage() was used.
-    bool is_bound = !texture_passthrough_->is_bind_pending();
-    if (current_image && is_bound)
-      current_image->ReleaseTexImage(target);
-  }
-
   // Configure the new image.
-  decoder_managed_image_ = image && !client_managed;
-  texture_passthrough_->set_is_bind_pending(decoder_managed_image_);
+  if (image) {
+    texture_passthrough_->set_bind_pending();
+  } else {
+    texture_passthrough_->clear_bind_pending();
+  }
   texture_passthrough_->SetLevelImage(target, level, image);
 }
-
-void PassthroughAbstractTextureImpl::BindStreamTextureImage(gl::GLImage* image,
-                                                            GLuint service_id) {
-  DCHECK(image);
-  DCHECK(!decoder_managed_image_);
-
-  if (!texture_passthrough_)
+#else
+void PassthroughAbstractTextureImpl::SetBoundImage(gl::GLImage* image) {
+  if (!texture_passthrough_) {
     return;
+  }
 
-  const GLuint target = texture_passthrough_->target();
-  const GLint level = 0;
-
-  texture_passthrough_->set_is_bind_pending(true);
-  texture_passthrough_->SetStreamLevelImage(target, level, image, service_id);
+  texture_passthrough_->SetLevelImage(texture_passthrough_->target(),
+                                      /*level=*/0, image);
 }
+#endif
 
-gl::GLImage* PassthroughAbstractTextureImpl::GetImage() const {
+gl::GLImage* PassthroughAbstractTextureImpl::GetImageForTesting() const {
   if (!texture_passthrough_)
     return nullptr;
 
@@ -100,6 +89,10 @@ void PassthroughAbstractTextureImpl::SetCleared() {
 
 void PassthroughAbstractTextureImpl::SetCleanupCallback(CleanupCallback cb) {
   cleanup_cb_ = std::move(cb);
+}
+
+void PassthroughAbstractTextureImpl::NotifyOnContextLost() {
+  NOTIMPLEMENTED();
 }
 
 scoped_refptr<TexturePassthrough>

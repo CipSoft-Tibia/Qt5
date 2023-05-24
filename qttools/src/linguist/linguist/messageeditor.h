@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Linguist of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef MESSAGEEDITOR_H
 #define MESSAGEEDITOR_H
@@ -64,14 +39,15 @@ class MessageEditor : public QScrollArea
 
 public:
     MessageEditor(MultiDataModel *dataModel, QMainWindow *parent = 0);
+    ~MessageEditor();
 
     void showNothing();
     void showMessage(const MultiDataIndex &index);
     void setNumerusForms(int model, const QStringList &numerusForms);
-    bool eventFilter(QObject *, QEvent *);
-    void setTranslation(int model, const QString &translation, int numerus);
-    int activeModel() const { return (m_editors.count() != 1) ? m_currentModel : 0; }
-    void setEditorFocus(int model);
+    bool eventFilter(QObject *, QEvent *) override;
+    void setNumerusTranslation(int model, const QString &translation, int numerus);
+    int activeModel() const { return (m_editors.size() != 1) ? m_currentModel : 0; }
+    void setEditorFocusForModel(int model);
     void setUnfinishedEditorFocus();
     bool focusNextUnfinished();
     void setVisualizeWhitespace(bool value);

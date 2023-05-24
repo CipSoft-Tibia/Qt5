@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKDROPAREA_P_H
 #define QQUICKDROPAREA_P_H
@@ -51,7 +15,9 @@
 // We mean it.
 //
 
-#include "qquickitem.h"
+#include <private/qtquickglobal_p.h>
+
+#include <QtQuick/qquickitem.h>
 
 #include <QtGui/qevent.h>
 
@@ -60,32 +26,34 @@ QT_REQUIRE_CONFIG(quick_draganddrop);
 QT_BEGIN_NAMESPACE
 
 class QQuickDropAreaPrivate;
-class QQuickDropEvent : public QObject
+class QQuickDragEvent : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(qreal x READ x)
-    Q_PROPERTY(qreal y READ y)
-    Q_PROPERTY(QObject *source READ source)
-    Q_PROPERTY(QStringList keys READ keys)
-    Q_PROPERTY(Qt::DropActions supportedActions READ supportedActions)
-    Q_PROPERTY(Qt::DropActions proposedAction READ proposedAction)
-    Q_PROPERTY(Qt::DropAction action READ action WRITE setAction RESET resetAction)
-    Q_PROPERTY(bool accepted READ accepted WRITE setAccepted)
-    Q_PROPERTY(bool hasColor READ hasColor)
-    Q_PROPERTY(bool hasHtml READ hasHtml)
-    Q_PROPERTY(bool hasText READ hasText)
-    Q_PROPERTY(bool hasUrls READ hasUrls)
-    Q_PROPERTY(QVariant colorData READ colorData)
-    Q_PROPERTY(QString html READ html)
-    Q_PROPERTY(QString text READ text)
-    Q_PROPERTY(QList<QUrl> urls READ urls)
-    Q_PROPERTY(QStringList formats READ formats)
-    QML_ANONYMOUS
+    Q_PROPERTY(qreal x READ x FINAL)
+    Q_PROPERTY(qreal y READ y FINAL)
+    Q_PROPERTY(QObject *source READ source FINAL)
+    Q_PROPERTY(QStringList keys READ keys FINAL)
+    Q_PROPERTY(Qt::DropActions supportedActions READ supportedActions FINAL)
+    Q_PROPERTY(Qt::DropActions proposedAction READ proposedAction FINAL)
+    Q_PROPERTY(Qt::DropAction action READ action WRITE setAction RESET resetAction FINAL)
+    Q_PROPERTY(bool accepted READ accepted WRITE setAccepted FINAL)
+    Q_PROPERTY(bool hasColor READ hasColor FINAL)
+    Q_PROPERTY(bool hasHtml READ hasHtml FINAL)
+    Q_PROPERTY(bool hasText READ hasText FINAL)
+    Q_PROPERTY(bool hasUrls READ hasUrls FINAL)
+    Q_PROPERTY(QVariant colorData READ colorData FINAL)
+    Q_PROPERTY(QString html READ html FINAL)
+    Q_PROPERTY(QString text READ text FINAL)
+    Q_PROPERTY(QList<QUrl> urls READ urls FINAL)
+    Q_PROPERTY(QStringList formats READ formats FINAL)
+    QML_NAMED_ELEMENT(DragEvent)
+    QML_UNCREATABLE("DragEvent is only meant to be created by DropArea")
+    QML_ADDED_IN_VERSION(2, 0)
 public:
-    QQuickDropEvent(QQuickDropAreaPrivate *d, QDropEvent *event) : d(d), event(event) {}
+    QQuickDragEvent(QQuickDropAreaPrivate *d, QDropEvent *event) : d(d), event(event) {}
 
-    qreal x() const { return event->pos().x(); }
-    qreal y() const { return event->pos().y(); }
+    qreal x() const { return event->position().x(); }
+    qreal y() const { return event->position().y(); }
 
     QObject *source() const;
 
@@ -110,10 +78,11 @@ public:
     QList<QUrl> urls() const;
     QStringList formats() const;
 
-    Q_INVOKABLE void getDataAsString(QQmlV4Function *);
-    Q_INVOKABLE void getDataAsArrayBuffer(QQmlV4Function *);
-    Q_INVOKABLE void acceptProposedAction(QQmlV4Function *);
-    Q_INVOKABLE void accept(QQmlV4Function *);
+    Q_INVOKABLE QString getDataAsString(const QString &format) const;
+    Q_INVOKABLE QByteArray getDataAsArrayBuffer(const QString &format) const;
+    Q_INVOKABLE void acceptProposedAction();
+    Q_INVOKABLE void accept();
+    Q_INVOKABLE void accept(Qt::DropAction action);
 
 private:
     QQuickDropAreaPrivate *d;
@@ -123,12 +92,13 @@ private:
 class QQuickDropAreaDrag : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(qreal x READ x NOTIFY positionChanged)
-    Q_PROPERTY(qreal y READ y NOTIFY positionChanged)
-    Q_PROPERTY(QObject *source READ source NOTIFY sourceChanged)
+    Q_PROPERTY(qreal x READ x NOTIFY positionChanged FINAL)
+    Q_PROPERTY(qreal y READ y NOTIFY positionChanged FINAL)
+    Q_PROPERTY(QObject *source READ source NOTIFY sourceChanged FINAL)
     QML_ANONYMOUS
+    QML_ADDED_IN_VERSION(2, 0)
 public:
-    QQuickDropAreaDrag(QQuickDropAreaPrivate *d, QObject *parent = 0);
+    QQuickDropAreaDrag(QQuickDropAreaPrivate *d, QObject *parent = nullptr);
     ~QQuickDropAreaDrag();
 
     qreal x() const;
@@ -147,13 +117,14 @@ private:
 };
 
 class QQuickDropAreaPrivate;
-class Q_AUTOTEST_EXPORT QQuickDropArea : public QQuickItem
+class Q_QUICK_PRIVATE_EXPORT QQuickDropArea : public QQuickItem
 {
     Q_OBJECT
-    Q_PROPERTY(bool containsDrag READ containsDrag NOTIFY containsDragChanged)
-    Q_PROPERTY(QStringList keys READ keys WRITE setKeys NOTIFY keysChanged)
-    Q_PROPERTY(QQuickDropAreaDrag *drag READ drag CONSTANT)
+    Q_PROPERTY(bool containsDrag READ containsDrag NOTIFY containsDragChanged FINAL)
+    Q_PROPERTY(QStringList keys READ keys WRITE setKeys NOTIFY keysChanged FINAL)
+    Q_PROPERTY(QQuickDropAreaDrag *drag READ drag CONSTANT FINAL)
     QML_NAMED_ELEMENT(DropArea)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickDropArea(QQuickItem *parent=0);
@@ -172,10 +143,10 @@ Q_SIGNALS:
     void keysChanged();
     void sourceChanged();
 
-    void entered(QQuickDropEvent *drag);
+    void entered(QQuickDragEvent *drag);
     void exited();
-    void positionChanged(QQuickDropEvent *drag);
-    void dropped(QQuickDropEvent *drop);
+    void positionChanged(QQuickDragEvent *drag);
+    void dropped(QQuickDragEvent *drop);
 
 protected:
     void dragMoveEvent(QDragMoveEvent *event) override;
@@ -190,7 +161,6 @@ private:
 
 QT_END_NAMESPACE
 
-QML_DECLARE_TYPE(QQuickDropEvent)
 QML_DECLARE_TYPE(QQuickDropArea)
 
 #endif // QQUICKDROPAREA_P_H

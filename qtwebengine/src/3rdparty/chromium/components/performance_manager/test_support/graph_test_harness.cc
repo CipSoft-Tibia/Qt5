@@ -1,10 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/performance_manager/test_support/graph_test_harness.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
 
 namespace performance_manager {
@@ -15,11 +15,10 @@ TestGraphImpl::~TestGraphImpl() = default;
 TestNodeWrapper<FrameNodeImpl> TestGraphImpl::CreateFrameNodeAutoId(
     ProcessNodeImpl* process_node,
     PageNodeImpl* page_node,
-    FrameNodeImpl* parent_frame_node,
-    int frame_tree_node_id) {
-  return TestNodeWrapper<FrameNodeImpl>::Create(
-      this, process_node, page_node, parent_frame_node, frame_tree_node_id,
-      ++next_frame_routing_id_);
+    FrameNodeImpl* parent_frame_node) {
+  return TestNodeWrapper<FrameNodeImpl>::Create(this, process_node, page_node,
+                                                parent_frame_node,
+                                                ++next_frame_routing_id_);
 }
 
 GraphTestHarness::GraphTestHarness()
@@ -28,13 +27,33 @@ GraphTestHarness::GraphTestHarness()
       graph_(new TestGraphImpl()) {}
 
 GraphTestHarness::~GraphTestHarness() {
+  // These will fire if this class is derived from, and SetUp or TearDown are
+  // overridden but not called from the derived class.
+  static constexpr char kNotCalled[] =
+      " was not called. This probably means that the "
+      "developer has overridden the method and not called "
+      "the superclass version.";
+  CHECK(setup_called_ || IsSkipped()) << "SetUp" << kNotCalled;
+  CHECK(teardown_called_ || IsSkipped()) << "TearDown" << kNotCalled;
+
   // Ideally this would be done in TearDown(), but that would require subclasses
-  // do destroy all their nodes before invoking TearDown below.
+  // to destroy all their nodes before invoking TearDown below.
   if (graph_)
     graph_->TearDown();
 }
 
+void GraphTestHarness::SetUp() {
+  setup_called_ = true;
+
+  graph_->SetUp();
+  graph_features_.ConfigureGraph(graph_.get());
+
+  // This can't be done in the constructor because it is a virtual function.
+  OnGraphCreated(graph_.get());
+}
+
 void GraphTestHarness::TearDown() {
+  teardown_called_ = true;
   base::RunLoop().RunUntilIdle();
 }
 

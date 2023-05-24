@@ -1,43 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #import <UIKit/UIKit.h>
+
+#import <Photos/Photos.h>
 
 #include <QtCore/qstandardpaths.h>
 #include <QtGui/qwindow.h>
@@ -49,6 +15,8 @@
 #include "qiosintegration.h"
 #include "qiosoptionalplugininterface.h"
 #include "qiosdocumentpickercontroller.h"
+
+using namespace Qt::StringLiterals;
 
 QIOSFileDialog::QIOSFileDialog()
     : m_viewController(nullptr)
@@ -70,11 +38,15 @@ bool QIOSFileDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
     Q_UNUSED(windowFlags);
     Q_UNUSED(windowModality);
 
-    bool acceptOpen = options()->acceptMode() == QFileDialogOptions::AcceptOpen;
-    QString directory = options()->initialDirectory().toLocalFile();
+    const bool acceptOpen = options()->acceptMode() == QFileDialogOptions::AcceptOpen;
+    const auto initialDir = options()->initialDirectory();
+    const QString directory = initialDir.toLocalFile();
+    // We manually add assets-library:// to the list of paths,
+    // when converted to QUrl, it becames a scheme.
+    const QString scheme = initialDir.scheme();
 
     if (acceptOpen) {
-        if (directory.startsWith(QLatin1String("assets-library:")))
+        if (directory.startsWith("assets-library:"_L1) || scheme == "assets-library"_L1)
             return showImagePickerDialog(parent);
         else
             return showNativeDocumentPickerDialog(parent);
@@ -83,11 +55,19 @@ bool QIOSFileDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
     return false;
 }
 
+void QIOSFileDialog::showImagePickerDialog_helper(QWindow *parent)
+{
+    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
+                              : qt_apple_sharedApplication().keyWindow;
+    [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
+}
+
 bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
 {
     if (!m_viewController) {
         QFactoryLoader *plugins = QIOSIntegration::instance()->optionalPlugins();
-        for (int i = 0; i < plugins->metaData().size(); ++i) {
+        qsizetype size = QList<QPluginParsedMetaData>(plugins->metaData()).size();
+        for (qsizetype i = 0; i < size; ++i) {
             QIosOptionalPluginInterface *plugin = qobject_cast<QIosOptionalPluginInterface *>(plugins->instance(i));
             m_viewController = [plugin->createImagePickerController(this) retain];
             if (m_viewController)
@@ -100,9 +80,38 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
         return false;
     }
 
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-        : qt_apple_sharedApplication().keyWindow;
-    [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
+    // "Old style" authorization (deprecated, but we have to work with AssetsLibrary anyway).
+    //
+    // From the documentation:
+    // "The authorizationStatus and requestAuthorization: methods aren’t compatible with the
+    //  limited library and return PHAuthorizationStatusAuthorized when the user authorizes your
+    //  app for limited access only."
+    //
+    // This is good enough for us.
+
+    const auto authStatus = [PHPhotoLibrary authorizationStatus];
+    if (authStatus == PHAuthorizationStatusAuthorized) {
+        showImagePickerDialog_helper(parent);
+    } else if (authStatus == PHAuthorizationStatusNotDetermined) {
+        QPointer<QWindow> winGuard(parent);
+        QPointer<QIOSFileDialog> thisGuard(this);
+        [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (status == PHAuthorizationStatusAuthorized) {
+                    if (thisGuard && winGuard)
+                        thisGuard->showImagePickerDialog_helper(winGuard);
+
+                } else if (thisGuard) {
+                    emit thisGuard->reject();
+                }
+            });
+        }];
+    } else {
+        // Treat 'Limited' (we don't know how to deal with anyway) and 'Denied' as errors.
+        // FIXME: logging category?
+        qWarning() << "QIOSFileDialog: insufficient permission, cannot pick images";
+        return false;
+    }
 
     return true;
 }
@@ -110,10 +119,6 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
 bool QIOSFileDialog::showNativeDocumentPickerDialog(QWindow *parent)
 {
 #ifndef Q_OS_TVOS
-    if (options()->fileMode() == QFileDialogOptions::Directory ||
-        options()->fileMode() == QFileDialogOptions::DirectoryOnly)
-        return false;
-
     m_viewController = [[QIOSDocumentPickerController alloc] initWithQIOSFileDialog:this];
 
     UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window

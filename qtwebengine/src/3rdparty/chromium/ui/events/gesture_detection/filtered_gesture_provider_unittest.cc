@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -78,7 +78,7 @@ TEST_F(FilteredGestureProviderTest, TouchMovedBeyondSlopRegion_SingleTouch) {
   EXPECT_FALSE(result.moved_beyond_slop_region);
 
   // A fling should set the bit right away.
-  time += base::TimeDelta::FromMilliseconds(10);
+  time += base::Milliseconds(10);
   event.MovePoint(0, kSlopRegion * 50, 0);
   event.set_event_time(time);
   result = provider.OnTouchEvent(event);
@@ -153,6 +153,17 @@ TEST_F(FilteredGestureProviderTest, TouchMovedBeyondSlopRegion_MultiTouch) {
     EXPECT_TRUE(result.succeeded);
     EXPECT_TRUE(result.moved_beyond_slop_region);
   }
+}
+
+// Extra cancel events should be handled gracefully: https://crbug.com/1407442
+TEST_F(FilteredGestureProviderTest, ExtraCancel) {
+  GestureProvider::Config config;
+  FilteredGestureProvider provider(config, this);
+
+  test::MockMotionEvent event(MotionEvent::Action::CANCEL, base::TimeTicks(), 0,
+                              0);
+  auto result = provider.OnTouchEvent(event);
+  EXPECT_FALSE(result.succeeded);
 }
 
 }  // namespace ui

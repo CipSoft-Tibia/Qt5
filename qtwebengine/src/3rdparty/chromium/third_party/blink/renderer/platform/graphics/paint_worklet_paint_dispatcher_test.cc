@@ -1,17 +1,19 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/graphics/paint_worklet_paint_dispatcher.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "cc/paint/paint_worklet_job.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/public/platform/platform.h"
-#include "third_party/blink/renderer/platform/scheduler/public/thread.h"
+#include "third_party/blink/public/platform/scheduler/test/renderer_scheduler_test_support.h"
+#include "third_party/blink/renderer/platform/scheduler/public/non_main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_type.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
 
 using ::testing::_;
 using ::testing::NiceMock;
@@ -20,8 +22,8 @@ using ::testing::Return;
 namespace blink {
 namespace {
 // We need a thread (or multiple threads) for the (mock) worklets to run on.
-std::unique_ptr<Thread> CreateTestThread(const char* name) {
-  return Platform::Current()->CreateThread(
+std::unique_ptr<NonMainThread> CreateTestThread(const char* name) {
+  return NonMainThread::CreateThread(
       ThreadCreationParams(ThreadType::kTestThread).SetThreadNameForTest(name));
 }
 
@@ -54,13 +56,12 @@ class MockPaintWorkletPainter
   MockPaintWorkletPainter(int worklet_id) {
     ON_CALL(*this, GetWorkletId).WillByDefault(Return(worklet_id));
   }
-  ~MockPaintWorkletPainter() = default;
+  ~MockPaintWorkletPainter() override = default;
 
   MOCK_CONST_METHOD0(GetWorkletId, int());
-  MOCK_METHOD2(
-      Paint,
-      sk_sp<PaintRecord>(const cc::PaintWorkletInput*,
-                         const cc::PaintWorkletJob::AnimatedPropertyValues&));
+  MOCK_METHOD2(Paint,
+               PaintRecord(const cc::PaintWorkletInput*,
+                           const cc::PaintWorkletJob::AnimatedPropertyValues&));
 };
 
 class MockPaintWorkletInput : public cc::PaintWorkletInput {
@@ -68,12 +69,13 @@ class MockPaintWorkletInput : public cc::PaintWorkletInput {
   explicit MockPaintWorkletInput(int worklet_id) {
     ON_CALL(*this, WorkletId).WillByDefault(Return(worklet_id));
   }
-  ~MockPaintWorkletInput() = default;
+  ~MockPaintWorkletInput() override = default;
 
   MOCK_CONST_METHOD0(GetSize, gfx::SizeF());
   MOCK_CONST_METHOD0(WorkletId, int());
   MOCK_CONST_METHOD0(GetPropertyKeys,
                      const std::vector<PaintWorkletInput::PropertyKey>&());
+  MOCK_CONST_METHOD0(IsCSSPaintWorkletInput, bool());
 };
 
 cc::PaintWorkletInput* AddPaintWorkletInputToMap(cc::PaintWorkletJobMap& map,
@@ -87,15 +89,27 @@ cc::PaintWorkletInput* AddPaintWorkletInputToMap(cc::PaintWorkletJobMap& map,
                                      animated_property_values);
   return input_ptr;
 }
+
+class PaintWorkletPaintDispatcherMainThread
+    : public PaintWorkletPaintDispatcher {
+ protected:
+  scoped_refptr<base::SingleThreadTaskRunner> GetCompositorTaskRunner()
+      override {
+    // There is no compositor thread in testing, so return the current thread.
+    return scheduler::GetSingleThreadTaskRunnerForTesting();
+  }
+};
+
 }  // namespace
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchedWorkletIsPainted) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   const int worklet_id = 4;
   MockPaintWorkletPainter* mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(worklet_id);
-  std::unique_ptr<Thread> worklet_thread = CreateTestThread("WorkletThread");
+  std::unique_ptr<NonMainThread> worklet_thread =
+      CreateTestThread("WorkletThread");
   dispatcher->RegisterPaintWorkletPainter(mock_painter,
                                           worklet_thread->GetTaskRunner());
 
@@ -116,7 +130,7 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchedWorkletIsPainted) {
 }
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchCompletesWithNoPainters) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   cc::PaintWorkletJobMap job_map;
   AddPaintWorkletInputToMap(job_map, /*worklet_id=*/2);
@@ -132,12 +146,13 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchCompletesWithNoPainters) {
 }
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchHandlesEmptyInput) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   const int worklet_id = 4;
   auto* mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(worklet_id);
-  std::unique_ptr<Thread> worklet_thread = CreateTestThread("WorkletThread");
+  std::unique_ptr<NonMainThread> worklet_thread =
+      CreateTestThread("WorkletThread");
   dispatcher->RegisterPaintWorkletPainter(mock_painter,
                                           worklet_thread->GetTaskRunner());
 
@@ -152,12 +167,13 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchHandlesEmptyInput) {
 }
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchSelectsCorrectPainter) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   const int first_worklet_id = 2;
   auto* first_mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(first_worklet_id);
-  std::unique_ptr<Thread> first_thread = CreateTestThread("WorkletThread1");
+  std::unique_ptr<NonMainThread> first_thread =
+      CreateTestThread("WorkletThread1");
   dispatcher->RegisterPaintWorkletPainter(first_mock_painter,
                                           first_thread->GetTaskRunner());
 
@@ -165,7 +181,8 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchSelectsCorrectPainter) {
   auto* second_mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(
           second_worklet_id);
-  std::unique_ptr<Thread> second_thread = CreateTestThread("WorkletThread2");
+  std::unique_ptr<NonMainThread> second_thread =
+      CreateTestThread("WorkletThread2");
   dispatcher->RegisterPaintWorkletPainter(second_mock_painter,
                                           second_thread->GetTaskRunner());
 
@@ -186,12 +203,13 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchSelectsCorrectPainter) {
 }
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchIgnoresNonMatchingInput) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   const int worklet_id = 2;
   auto* mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(worklet_id);
-  std::unique_ptr<Thread> worklet_thread = CreateTestThread("WorkletThread");
+  std::unique_ptr<NonMainThread> worklet_thread =
+      CreateTestThread("WorkletThread");
   dispatcher->RegisterPaintWorkletPainter(mock_painter,
                                           worklet_thread->GetTaskRunner());
 
@@ -211,12 +229,13 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest, DispatchIgnoresNonMatchingInput) {
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest,
        DispatchCorrectlyAssignsInputsToMultiplePainters) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   const int first_worklet_id = 5;
   auto* first_mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(first_worklet_id);
-  std::unique_ptr<Thread> first_thread = CreateTestThread("WorkletThread1");
+  std::unique_ptr<NonMainThread> first_thread =
+      CreateTestThread("WorkletThread1");
   dispatcher->RegisterPaintWorkletPainter(first_mock_painter,
                                           first_thread->GetTaskRunner());
 
@@ -224,7 +243,8 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest,
   auto* second_mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(
           second_worklet_id);
-  std::unique_ptr<Thread> second_thread = CreateTestThread("WorkletThread2");
+  std::unique_ptr<NonMainThread> second_thread =
+      CreateTestThread("WorkletThread2");
   dispatcher->RegisterPaintWorkletPainter(second_mock_painter,
                                           second_thread->GetTaskRunner());
 
@@ -244,12 +264,13 @@ TEST_F(PaintWorkletPaintDispatcherAsyncTest,
 
 TEST_F(PaintWorkletPaintDispatcherAsyncTest,
        HasOngoingDispatchIsTrackedCorrectly) {
-  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcher>();
+  auto dispatcher = std::make_unique<PaintWorkletPaintDispatcherMainThread>();
 
   const int first_worklet_id = 2;
   auto* first_mock_painter =
       MakeGarbageCollected<NiceMock<MockPaintWorkletPainter>>(first_worklet_id);
-  std::unique_ptr<Thread> first_thread = CreateTestThread("WorkletThread1");
+  std::unique_ptr<NonMainThread> first_thread =
+      CreateTestThread("WorkletThread1");
   dispatcher->RegisterPaintWorkletPainter(first_mock_painter,
                                           first_thread->GetTaskRunner());
 

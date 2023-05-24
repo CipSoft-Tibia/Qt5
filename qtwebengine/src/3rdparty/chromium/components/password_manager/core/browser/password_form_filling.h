@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,19 @@
 
 #include <vector>
 
-#include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
-#include "components/password_manager/core/browser/password_form_forward.h"
-
 namespace autofill {
 struct PasswordFormFillData;
 }  // namespace autofill
 
+namespace url {
+class Origin;
+}  // namespace url
+
 namespace password_manager {
+class PasswordFormMetricsRecorder;
 class PasswordManagerClient;
 class PasswordManagerDriver;
-class PasswordFormMetricsRecorder;
+struct PasswordForm;
 
 // Enum detailing the browser process' best belief what kind of credential
 // filling is used in the renderer for a given password form.
@@ -46,7 +47,9 @@ LikelyFormFilling SendFillInformationToRenderer(
     const std::vector<const PasswordForm*>& best_matches,
     const std::vector<const PasswordForm*>& federated_matches,
     const PasswordForm* preferred_match,
-    PasswordFormMetricsRecorder* metrics_recorder);
+    bool blocked_by_user,
+    PasswordFormMetricsRecorder* metrics_recorder,
+    bool webauthn_suggestions_available);
 
 // Create a PasswordFormFillData structure in preparation for filling a form
 // identified by |form_on_page|, with credentials from |preferred_match| and
@@ -56,6 +59,7 @@ autofill::PasswordFormFillData CreatePasswordFormFillData(
     const PasswordForm& form_on_page,
     const std::vector<const PasswordForm*>& matches,
     const PasswordForm& preferred_match,
+    const url::Origin& main_frame_origin,
     bool wait_for_username);
 
 }  // namespace password_manager

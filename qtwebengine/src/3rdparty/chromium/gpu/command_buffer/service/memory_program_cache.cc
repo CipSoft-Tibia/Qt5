@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 #include <stddef.h>
 
 #include "base/base64.h"
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/checked_math.h"
@@ -43,7 +43,7 @@ void FillShaderVariableProto(
     ShaderVariableProto* field = proto->add_fields();
     FillShaderVariableProto(field, variable.fields[ii]);
   }
-  proto->set_struct_name(variable.structName);
+  proto->set_struct_name(variable.getStructName());
 }
 
 void FillShaderAttributeProto(
@@ -134,7 +134,7 @@ void RetrieveShaderVariableInfo(
   variable->fields.resize(proto.fields_size());
   for (int ii = 0; ii < proto.fields_size(); ++ii)
     RetrieveShaderVariableInfo(proto.fields(ii), &(variable->fields[ii]));
-  variable->structName = proto.struct_name();
+  variable->setStructName(proto.struct_name());
 }
 
 void RetrieveShaderAttributeInfo(
@@ -203,7 +203,7 @@ void RunShaderCallback(DecoderClient* client,
 
   std::string key;
   base::Base64Encode(sha_string, &key);
-  client->CacheShader(key, shader);
+  client->CacheBlob(gpu::GpuDiskCacheType::kGlShaders, key, shader);
 }
 
 bool ProgramBinaryExtensionsAvailable() {
@@ -251,11 +251,11 @@ std::vector<uint8_t> DecompressData(const std::vector<uint8_t>& data,
 }
 
 bool CompressProgramBinaries() {
-#if !defined(OS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
   return false;
-#else   // !defined(OS_ANDROID)
+#else   // !BUILDFLAG(IS_ANDROID)
   return base::SysInfo::IsLowEndDevice();
-#endif  // !defined(OS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 }  // namespace
@@ -271,7 +271,7 @@ MemoryProgramCache::MemoryProgramCache(
           disable_program_caching_for_transform_feedback),
       compress_program_binaries_(CompressProgramBinaries()),
       curr_size_bytes_(0),
-      store_(ProgramMRUCache::NO_AUTO_EVICT),
+      store_(ProgramLRUCache::NO_AUTO_EVICT),
       activity_flags_(activity_flags) {}
 
 MemoryProgramCache::~MemoryProgramCache() = default;
@@ -312,7 +312,7 @@ ProgramCache::ProgramLoadResult MemoryProgramCache::LoadLinkedProgram(
                      sha);
   const std::string sha_string(sha, kHashLength);
 
-  ProgramMRUCache::iterator found = store_.Get(sha_string);
+  ProgramLRUCache::iterator found = store_.Get(sha_string);
   if (found == store_.end()) {
     return PROGRAM_LOAD_FAILURE;
   }
@@ -426,7 +426,7 @@ void MemoryProgramCache::SaveLinkedProgram(
 
   // Evict any cached program with the same key in favor of the least recently
   // accessed.
-  ProgramMRUCache::iterator existing = store_.Peek(sha_string);
+  ProgramLRUCache::iterator existing = store_.Peek(sha_string);
   if(existing != store_.end())
     store_.Erase(existing);
 

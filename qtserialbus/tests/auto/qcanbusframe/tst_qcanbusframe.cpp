@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtSerialBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtSerialBus/qcanbusframe.h>
 
@@ -409,7 +376,7 @@ void tst_QCanBusFrame::tst_isValidSize()
 void tst_QCanBusFrame::tst_toString_data()
 {
     QTest::addColumn<QCanBusFrame::FrameType>("frameType");
-    QTest::addColumn<quint32>("id");
+    QTest::addColumn<QCanBusFrame::FrameId>("id");
     QTest::addColumn<bool>("extended");
     QTest::addColumn<QByteArray>("payload");
     QTest::addColumn<QString>("expected");
@@ -467,7 +434,7 @@ void tst_QCanBusFrame::tst_toString_data()
 void tst_QCanBusFrame::tst_toString()
 {
     QFETCH(QCanBusFrame::FrameType, frameType);
-    QFETCH(quint32, id);
+    QFETCH(QCanBusFrame::FrameId, id);
     QFETCH(bool, extended);
     QFETCH(QByteArray, payload);
     QFETCH(QString, expected);
@@ -484,7 +451,7 @@ void tst_QCanBusFrame::tst_toString()
 
 void tst_QCanBusFrame::streaming_data()
 {
-    QTest::addColumn<quint32>("frameId");
+    QTest::addColumn<QCanBusFrame::FrameId>("frameId");
     QTest::addColumn<QByteArray>("payload");
     QTest::addColumn<qint64>("seconds");
     QTest::addColumn<qint64>("microSeconds");
@@ -496,47 +463,47 @@ void tst_QCanBusFrame::streaming_data()
     QTest::addColumn<QCanBusFrame::FrameType>("frameType");
 
 
-    QTest::newRow("emptyFrame") << quint32(0) << QByteArray()
+    QTest::newRow("emptyFrame") << QCanBusFrame::FrameId(0) << QByteArray()
                                 << qint64(0) << qint64(0)
                                 << false << false << false << false << false
                                 << QCanBusFrame::DataFrame;
-    QTest::newRow("fullFrame1") << quint32(123) << QByteArray("abcde1")
+    QTest::newRow("fullFrame1") << QCanBusFrame::FrameId(123) << QByteArray("abcde1")
                                << qint64(456) << qint64(784)
                                << true << false << false << false << false
                                << QCanBusFrame::DataFrame;
-    QTest::newRow("fullFrame2") << quint32(123) << QByteArray("abcde2")
+    QTest::newRow("fullFrame2") << QCanBusFrame::FrameId(123) << QByteArray("abcde2")
                                << qint64(457) << qint64(785)
                                << false << false << false << false << false
                                << QCanBusFrame::DataFrame;
-    QTest::newRow("fullFrameFD") << quint32(123) << QByteArray("abcdfd")
+    QTest::newRow("fullFrameFD") << QCanBusFrame::FrameId(123) << QByteArray("abcdfd")
                                 << qint64(457) << qint64(785)
                                 << false << true << false << false << false
                                 << QCanBusFrame::DataFrame;
-    QTest::newRow("fullFrameBRS") << quint32(123) << QByteArray("abcdfd")
+    QTest::newRow("fullFrameBRS") << QCanBusFrame::FrameId(123) << QByteArray("abcdfd")
                                 << qint64(457) << qint64(785)
                                 << false << true << true << false << false
                                 << QCanBusFrame::DataFrame;
-    QTest::newRow("fullFrameESI") << quint32(123) << QByteArray("abcdfd")
+    QTest::newRow("fullFrameESI") << QCanBusFrame::FrameId(123) << QByteArray("abcdfd")
                                   << qint64(457) << qint64(785)
                                   << false << true << false << true << false
                                   << QCanBusFrame::DataFrame;
-    QTest::newRow("echoFrame") << quint32(123) << QByteArray("abcde7")
+    QTest::newRow("echoFrame") << QCanBusFrame::FrameId(123) << QByteArray("abcde7")
                                << qint64(888) << qint64(777)
                                << false << false << false << false << true
                                << QCanBusFrame::DataFrame;
-    QTest::newRow("fullFrame3") << quint32(123) << QByteArray("abcde3")
+    QTest::newRow("fullFrame3") << QCanBusFrame::FrameId(123) << QByteArray("abcde3")
                                << qint64(458) << qint64(786)
                                << true << false << false << false << false
                                << QCanBusFrame::RemoteRequestFrame;
-    QTest::newRow("fullFrame4") << quint32(123) << QByteArray("abcde4")
+    QTest::newRow("fullFrame4") << QCanBusFrame::FrameId(123) << QByteArray("abcde4")
                                << qint64(459) << qint64(787)
                                << false << false << false << false << false
                                << QCanBusFrame::RemoteRequestFrame;
-    QTest::newRow("fullFrame5") << quint32(123) << QByteArray("abcde5")
+    QTest::newRow("fullFrame5") << QCanBusFrame::FrameId(123) << QByteArray("abcde5")
                                << qint64(460) << qint64(789)
                                << true << false << false << false << false
                                << QCanBusFrame::ErrorFrame;
-    QTest::newRow("fullFrame6") << quint32(123) << QByteArray("abcde6")
+    QTest::newRow("fullFrame6") << QCanBusFrame::FrameId(123) << QByteArray("abcde6")
                                << qint64(453) << qint64(788)
                                << false << false << false << false << false
                                << QCanBusFrame::ErrorFrame;
@@ -544,7 +511,7 @@ void tst_QCanBusFrame::streaming_data()
 
 void tst_QCanBusFrame::streaming()
 {
-    QFETCH(quint32, frameId);
+    QFETCH(QCanBusFrame::FrameId, frameId);
     QFETCH(QByteArray, payload);
     QFETCH(qint64, seconds);
     QFETCH(qint64, microSeconds);

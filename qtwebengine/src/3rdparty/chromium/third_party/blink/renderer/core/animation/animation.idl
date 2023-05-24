@@ -28,7 +28,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// https://drafts.csswg.org/web-animations/#the-animation-interface
+// https://w3.org/TR/web-animations-1/#the-animation-interface
 
 enum AnimationPlayState { "idle", "pending", "running", "paused", "finished" };
 
@@ -41,8 +41,8 @@ enum ReplaceState { "active", "removed", "persisted" };
     [CallWith=ExecutionContext, RaisesException] constructor(optional AnimationEffect? effect = null, optional AnimationTimeline? timeline);
     [Measure] attribute AnimationEffect? effect;
     [RuntimeEnabled=WebAnimationsAPI] attribute AnimationTimeline? timeline;
-    [Measure, RaisesException=Setter] attribute double? startTime;
-    [Measure, RaisesException=Setter] attribute double? currentTime;
+    [Measure, RaisesException=Setter] attribute CSSNumberish? startTime;
+    [Measure, RaisesException=Setter] attribute CSSNumberish? currentTime;
     [Measure, RaisesException=Setter] attribute double playbackRate;
     [Measure] readonly attribute AnimationPlayState playState;
     [RuntimeEnabled=WebAnimationsAPI, Measure] readonly attribute ReplaceState replaceState;

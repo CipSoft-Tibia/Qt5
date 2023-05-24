@@ -16,17 +16,19 @@
 
 #include "Constants.hpp"
 #include "SpirvShader.hpp"
+#include "Device/Clipper.hpp"
 #include "Device/Renderer.hpp"
 #include "Device/Vertex.hpp"
 #include "System/Debug.hpp"
 #include "System/Half.hpp"
+#include "Vulkan/VkDevice.hpp"
 
 namespace sw {
 
 VertexRoutine::VertexRoutine(
     const VertexProcessor::State &state,
-    vk::PipelineLayout const *pipelineLayout,
-    SpirvShader const *spirvShader)
+    const vk::PipelineLayout *pipelineLayout,
+    const SpirvShader *spirvShader)
     : routine(pipelineLayout)
     , state(state)
     , spirvShader(spirvShader)
@@ -46,7 +48,7 @@ void VertexRoutine::generate()
 
 	UInt vertexCount = *Pointer<UInt>(task + OFFSET(VertexTask, vertexCount));
 
-	constants = *Pointer<Pointer<Byte>>(data + OFFSET(DrawData, constants));
+	constants = device + OFFSET(vk::Device, constants);
 
 	// Check the cache one vertex index at a time. If a hit occurs, copy from the cache to the 'vertex' output buffer.
 	// On a cache miss, process a SIMD width of consecutive indices from the input batch. They're written to the cache
@@ -88,10 +90,10 @@ void VertexRoutine::readInput(Pointer<UInt> &batch)
 {
 	for(int i = 0; i < MAX_INTERFACE_COMPONENTS; i += 4)
 	{
-		if(spirvShader->inputs[i + 0].Type != SpirvShader::ATTRIBTYPE_UNUSED ||
-		   spirvShader->inputs[i + 1].Type != SpirvShader::ATTRIBTYPE_UNUSED ||
-		   spirvShader->inputs[i + 2].Type != SpirvShader::ATTRIBTYPE_UNUSED ||
-		   spirvShader->inputs[i + 3].Type != SpirvShader::ATTRIBTYPE_UNUSED)
+		if(spirvShader->inputs[i + 0].Type != Spirv::ATTRIBTYPE_UNUSED ||
+		   spirvShader->inputs[i + 1].Type != Spirv::ATTRIBTYPE_UNUSED ||
+		   spirvShader->inputs[i + 2].Type != Spirv::ATTRIBTYPE_UNUSED ||
+		   spirvShader->inputs[i + 3].Type != Spirv::ATTRIBTYPE_UNUSED)
 		{
 			Pointer<Byte> input = *Pointer<Pointer<Byte>>(data + OFFSET(DrawData, input) + sizeof(void *) * (i / 4));
 			UInt stride = *Pointer<UInt>(data + OFFSET(DrawData, stride) + sizeof(uint32_t) * (i / 4));
@@ -114,34 +116,41 @@ void VertexRoutine::readInput(Pointer<UInt> &batch)
 void VertexRoutine::computeClipFlags()
 {
 	auto it = spirvShader->outputBuiltins.find(spv::BuiltInPosition);
-	assert(it != spirvShader->outputBuiltins.end());
-	assert(it->second.SizeInComponents == 4);
-	auto &pos = routine.getVariable(it->second.Id);
-	auto posX = pos[it->second.FirstComponent + 0];
-	auto posY = pos[it->second.FirstComponent + 1];
-	auto posZ = pos[it->second.FirstComponent + 2];
-	auto posW = pos[it->second.FirstComponent + 3];
+	if(it != spirvShader->outputBuiltins.end())
+	{
+		assert(it->second.SizeInComponents == 4);
+		auto &pos = routine.getVariable(it->second.Id);
+		auto posX = pos[it->second.FirstComponent + 0];
+		auto posY = pos[it->second.FirstComponent + 1];
+		auto posZ = pos[it->second.FirstComponent + 2];
+		auto posW = pos[it->second.FirstComponent + 3];
 
-	Int4 maxX = CmpLT(posW, posX);
-	Int4 maxY = CmpLT(posW, posY);
-	Int4 maxZ = CmpLT(posW, posZ);
-	Int4 minX = CmpNLE(-posW, posX);
-	Int4 minY = CmpNLE(-posW, posY);
-	Int4 minZ = CmpNLE(Float4(0.0f), posZ);
+		SIMD::Int maxX = CmpLT(posW, posX);
+		SIMD::Int maxY = CmpLT(posW, posY);
+		SIMD::Int minX = CmpNLE(-posW, posX);
+		SIMD::Int minY = CmpNLE(-posW, posY);
 
-	clipFlags = Pointer<Int>(constants + OFFSET(Constants, maxX))[SignMask(maxX)];
-	clipFlags |= Pointer<Int>(constants + OFFSET(Constants, maxY))[SignMask(maxY)];
-	clipFlags |= Pointer<Int>(constants + OFFSET(Constants, maxZ))[SignMask(maxZ)];
-	clipFlags |= Pointer<Int>(constants + OFFSET(Constants, minX))[SignMask(minX)];
-	clipFlags |= Pointer<Int>(constants + OFFSET(Constants, minY))[SignMask(minY)];
-	clipFlags |= Pointer<Int>(constants + OFFSET(Constants, minZ))[SignMask(minZ)];
+		clipFlags = maxX & Clipper::CLIP_RIGHT;
+		clipFlags |= maxY & Clipper::CLIP_TOP;
+		clipFlags |= minX & Clipper::CLIP_LEFT;
+		clipFlags |= minY & Clipper::CLIP_BOTTOM;
+		if(state.depthClipEnable)
+		{
+			// If depthClipNegativeOneToOne is enabled, depth values are in [-1, 1] instead of [0, 1].
+			SIMD::Int maxZ = CmpLT(posW, posZ);
+			SIMD::Int minZ = CmpNLE(state.depthClipNegativeOneToOne ? -posW : 0.0f, posZ);
+			clipFlags |= maxZ & Clipper::CLIP_FAR;
+			clipFlags |= minZ & Clipper::CLIP_NEAR;
+		}
 
-	Int4 finiteX = CmpLE(Abs(posX), *Pointer<Float4>(constants + OFFSET(Constants, maxPos)));
-	Int4 finiteY = CmpLE(Abs(posY), *Pointer<Float4>(constants + OFFSET(Constants, maxPos)));
-	Int4 finiteZ = CmpLE(Abs(posZ), *Pointer<Float4>(constants + OFFSET(Constants, maxPos)));
+		SIMD::Float maxPos = As<SIMD::Float>(SIMD::Int(0x7F7FFFFF));
+		SIMD::Int finiteX = CmpLE(Abs(posX), maxPos);
+		SIMD::Int finiteY = CmpLE(Abs(posY), maxPos);
+		SIMD::Int finiteZ = CmpLE(Abs(posZ), maxPos);
 
-	Int4 finiteXYZ = finiteX & finiteY & finiteZ;
-	clipFlags |= Pointer<Int>(constants + OFFSET(Constants, fini))[SignMask(finiteXYZ)];
+		SIMD::Int finiteXYZ = finiteX & finiteY & finiteZ;
+		clipFlags |= finiteXYZ & Clipper::CLIP_FINITE;
+	}
 }
 
 void VertexRoutine::computeCullMask()
@@ -154,7 +163,7 @@ void VertexRoutine::computeCullMask()
 		auto count = spirvShader->getNumOutputCullDistances();
 		for(uint32_t i = 0; i < count; i++)
 		{
-			auto const &distance = routine.getVariable(it->second.Id)[it->second.FirstComponent + i];
+			const auto &distance = routine.getVariable(it->second.Id)[it->second.FirstComponent + i];
 			auto mask = SignMask(CmpGE(distance, SIMD::Float(0)));
 			cullMask &= mask;
 		}
@@ -182,26 +191,32 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 	UInt4 zero(0);
 	if(robustBufferAccess)
 	{
-		// TODO(b/141124876): Optimize for wide-vector gather operations.
+		// Prevent integer overflow on the addition below.
+		offsets = Min(offsets, UInt4(robustnessSize));
+
+		// "vertex input attributes are considered out of bounds if the offset of the attribute
+		//  in the bound vertex buffer range plus the size of the attribute is greater than ..."
 		UInt4 limits = offsets + UInt4(format.bytes());
+
 		Pointer<Byte> zeroSource = As<Pointer<Byte>>(&zero);
-		source0 = IfThenElse(limits.x <= robustnessSize, source0, zeroSource);
-		source1 = IfThenElse(limits.y <= robustnessSize, source1, zeroSource);
-		source2 = IfThenElse(limits.z <= robustnessSize, source2, zeroSource);
-		source3 = IfThenElse(limits.w <= robustnessSize, source3, zeroSource);
+		// TODO(b/141124876): Optimize for wide-vector gather operations.
+		source0 = IfThenElse(limits.x > robustnessSize, zeroSource, source0);
+		source1 = IfThenElse(limits.y > robustnessSize, zeroSource, source1);
+		source2 = IfThenElse(limits.z > robustnessSize, zeroSource, source2);
+		source3 = IfThenElse(limits.w > robustnessSize, zeroSource, source3);
 	}
 
 	int componentCount = format.componentCount();
 	bool normalized = !format.isUnnormalizedInteger();
-	bool isNativeFloatAttrib = (stream.attribType == SpirvShader::ATTRIBTYPE_FLOAT) || normalized;
+	bool isNativeFloatAttrib = (stream.attribType == Spirv::ATTRIBTYPE_FLOAT) || normalized;
 	bool bgra = false;
 
 	switch(stream.format)
 	{
-		case VK_FORMAT_R32_SFLOAT:
-		case VK_FORMAT_R32G32_SFLOAT:
-		case VK_FORMAT_R32G32B32_SFLOAT:
-		case VK_FORMAT_R32G32B32A32_SFLOAT:
+	case VK_FORMAT_R32_SFLOAT:
+	case VK_FORMAT_R32G32_SFLOAT:
+	case VK_FORMAT_R32G32B32_SFLOAT:
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
 		{
 			if(componentCount == 0)
 			{
@@ -228,138 +243,180 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 			}
 		}
 		break;
-		case VK_FORMAT_B8G8R8A8_UNORM:
-			bgra = true;
-			// [[fallthrough]]
-		case VK_FORMAT_R8_UNORM:
-		case VK_FORMAT_R8G8_UNORM:
-		case VK_FORMAT_R8G8B8A8_UNORM:
-		case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
-			v.x = Float4(*Pointer<Byte4>(source0));
-			v.y = Float4(*Pointer<Byte4>(source1));
-			v.z = Float4(*Pointer<Byte4>(source2));
-			v.w = Float4(*Pointer<Byte4>(source3));
+	case VK_FORMAT_B8G8R8A8_UNORM:
+		bgra = true;
+		// [[fallthrough]]
+	case VK_FORMAT_R8_UNORM:
+	case VK_FORMAT_R8G8_UNORM:
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
+		v.x = Float4(*Pointer<Byte4>(source0));
+		v.y = Float4(*Pointer<Byte4>(source1));
+		v.z = Float4(*Pointer<Byte4>(source2));
+		v.w = Float4(*Pointer<Byte4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
 
-			if(componentCount >= 1) v.x *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleByte));
-			if(componentCount >= 2) v.y *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleByte));
-			if(componentCount >= 3) v.z *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleByte));
-			if(componentCount >= 4) v.w *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleByte));
-			break;
-		case VK_FORMAT_R8_UINT:
-		case VK_FORMAT_R8G8_UINT:
-		case VK_FORMAT_R8G8B8A8_UINT:
-		case VK_FORMAT_A8B8G8R8_UINT_PACK32:
-			v.x = As<Float4>(Int4(*Pointer<Byte4>(source0)));
-			v.y = As<Float4>(Int4(*Pointer<Byte4>(source1)));
-			v.z = As<Float4>(Int4(*Pointer<Byte4>(source2)));
-			v.w = As<Float4>(Int4(*Pointer<Byte4>(source3)));
+		if(componentCount >= 1) v.x *= (1.0f / 0xFF);
+		if(componentCount >= 2) v.y *= (1.0f / 0xFF);
+		if(componentCount >= 3) v.z *= (1.0f / 0xFF);
+		if(componentCount >= 4) v.w *= (1.0f / 0xFF);
+		break;
+	case VK_FORMAT_R8_UINT:
+	case VK_FORMAT_R8G8_UINT:
+	case VK_FORMAT_R8G8B8A8_UINT:
+	case VK_FORMAT_A8B8G8R8_UINT_PACK32:
+		v.x = As<Float4>(Int4(*Pointer<Byte4>(source0)));
+		v.y = As<Float4>(Int4(*Pointer<Byte4>(source1)));
+		v.z = As<Float4>(Int4(*Pointer<Byte4>(source2)));
+		v.w = As<Float4>(Int4(*Pointer<Byte4>(source3)));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
-			break;
-		case VK_FORMAT_R8_SNORM:
-		case VK_FORMAT_R8G8_SNORM:
-		case VK_FORMAT_R8G8B8A8_SNORM:
-		case VK_FORMAT_A8B8G8R8_SNORM_PACK32:
-			v.x = Float4(*Pointer<SByte4>(source0));
-			v.y = Float4(*Pointer<SByte4>(source1));
-			v.z = Float4(*Pointer<SByte4>(source2));
-			v.w = Float4(*Pointer<SByte4>(source3));
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R8_SNORM:
+	case VK_FORMAT_R8G8_SNORM:
+	case VK_FORMAT_R8G8B8A8_SNORM:
+	case VK_FORMAT_A8B8G8R8_SNORM_PACK32:
+		v.x = Float4(*Pointer<SByte4>(source0));
+		v.y = Float4(*Pointer<SByte4>(source1));
+		v.z = Float4(*Pointer<SByte4>(source2));
+		v.w = Float4(*Pointer<SByte4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
 
-			if(componentCount >= 1) v.x = Max(v.x * *Pointer<Float4>(constants + OFFSET(Constants, unscaleSByte)), Float4(-1.0f));
-			if(componentCount >= 2) v.y = Max(v.y * *Pointer<Float4>(constants + OFFSET(Constants, unscaleSByte)), Float4(-1.0f));
-			if(componentCount >= 3) v.z = Max(v.z * *Pointer<Float4>(constants + OFFSET(Constants, unscaleSByte)), Float4(-1.0f));
-			if(componentCount >= 4) v.w = Max(v.w * *Pointer<Float4>(constants + OFFSET(Constants, unscaleSByte)), Float4(-1.0f));
-			break;
-		case VK_FORMAT_R8_SINT:
-		case VK_FORMAT_R8G8_SINT:
-		case VK_FORMAT_R8G8B8A8_SINT:
-		case VK_FORMAT_A8B8G8R8_SINT_PACK32:
-			v.x = As<Float4>(Int4(*Pointer<SByte4>(source0)));
-			v.y = As<Float4>(Int4(*Pointer<SByte4>(source1)));
-			v.z = As<Float4>(Int4(*Pointer<SByte4>(source2)));
-			v.w = As<Float4>(Int4(*Pointer<SByte4>(source3)));
+		if(componentCount >= 1) v.x = Max(v.x * (1.0f / 0x7F), Float4(-1.0f));
+		if(componentCount >= 2) v.y = Max(v.y * (1.0f / 0x7F), Float4(-1.0f));
+		if(componentCount >= 3) v.z = Max(v.z * (1.0f / 0x7F), Float4(-1.0f));
+		if(componentCount >= 4) v.w = Max(v.w * (1.0f / 0x7F), Float4(-1.0f));
+		break;
+	case VK_FORMAT_R8_USCALED:
+	case VK_FORMAT_R8G8_USCALED:
+	case VK_FORMAT_R8G8B8A8_USCALED:
+	case VK_FORMAT_A8B8G8R8_USCALED_PACK32:
+		v.x = Float4(*Pointer<Byte4>(source0));
+		v.y = Float4(*Pointer<Byte4>(source1));
+		v.z = Float4(*Pointer<Byte4>(source2));
+		v.w = Float4(*Pointer<Byte4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
-			break;
-		case VK_FORMAT_R16_SNORM:
-		case VK_FORMAT_R16G16_SNORM:
-		case VK_FORMAT_R16G16B16A16_SNORM:
-			v.x = Float4(*Pointer<Short4>(source0));
-			v.y = Float4(*Pointer<Short4>(source1));
-			v.z = Float4(*Pointer<Short4>(source2));
-			v.w = Float4(*Pointer<Short4>(source3));
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R8_SSCALED:
+	case VK_FORMAT_R8G8_SSCALED:
+	case VK_FORMAT_R8G8B8A8_SSCALED:
+	case VK_FORMAT_A8B8G8R8_SSCALED_PACK32:
+		v.x = Float4(*Pointer<SByte4>(source0));
+		v.y = Float4(*Pointer<SByte4>(source1));
+		v.z = Float4(*Pointer<SByte4>(source2));
+		v.w = Float4(*Pointer<SByte4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R8_SINT:
+	case VK_FORMAT_R8G8_SINT:
+	case VK_FORMAT_R8G8B8A8_SINT:
+	case VK_FORMAT_A8B8G8R8_SINT_PACK32:
+		v.x = As<Float4>(Int4(*Pointer<SByte4>(source0)));
+		v.y = As<Float4>(Int4(*Pointer<SByte4>(source1)));
+		v.z = As<Float4>(Int4(*Pointer<SByte4>(source2)));
+		v.w = As<Float4>(Int4(*Pointer<SByte4>(source3)));
 
-			if(componentCount >= 1) v.x = Max(v.x * *Pointer<Float4>(constants + OFFSET(Constants, unscaleShort)), Float4(-1.0f));
-			if(componentCount >= 2) v.y = Max(v.y * *Pointer<Float4>(constants + OFFSET(Constants, unscaleShort)), Float4(-1.0f));
-			if(componentCount >= 3) v.z = Max(v.z * *Pointer<Float4>(constants + OFFSET(Constants, unscaleShort)), Float4(-1.0f));
-			if(componentCount >= 4) v.w = Max(v.w * *Pointer<Float4>(constants + OFFSET(Constants, unscaleShort)), Float4(-1.0f));
-			break;
-		case VK_FORMAT_R16_SINT:
-		case VK_FORMAT_R16G16_SINT:
-		case VK_FORMAT_R16G16B16A16_SINT:
-			v.x = As<Float4>(Int4(*Pointer<Short4>(source0)));
-			v.y = As<Float4>(Int4(*Pointer<Short4>(source1)));
-			v.z = As<Float4>(Int4(*Pointer<Short4>(source2)));
-			v.w = As<Float4>(Int4(*Pointer<Short4>(source3)));
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R16_UNORM:
+	case VK_FORMAT_R16G16_UNORM:
+	case VK_FORMAT_R16G16B16A16_UNORM:
+		v.x = Float4(*Pointer<UShort4>(source0));
+		v.y = Float4(*Pointer<UShort4>(source1));
+		v.z = Float4(*Pointer<UShort4>(source2));
+		v.w = Float4(*Pointer<UShort4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
-			break;
-		case VK_FORMAT_R16_UNORM:
-		case VK_FORMAT_R16G16_UNORM:
-		case VK_FORMAT_R16G16B16A16_UNORM:
-			v.x = Float4(*Pointer<UShort4>(source0));
-			v.y = Float4(*Pointer<UShort4>(source1));
-			v.z = Float4(*Pointer<UShort4>(source2));
-			v.w = Float4(*Pointer<UShort4>(source3));
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		if(componentCount >= 1) v.x *= (1.0f / 0xFFFF);
+		if(componentCount >= 2) v.y *= (1.0f / 0xFFFF);
+		if(componentCount >= 3) v.z *= (1.0f / 0xFFFF);
+		if(componentCount >= 4) v.w *= (1.0f / 0xFFFF);
+		break;
+	case VK_FORMAT_R16_SNORM:
+	case VK_FORMAT_R16G16_SNORM:
+	case VK_FORMAT_R16G16B16A16_SNORM:
+		v.x = Float4(*Pointer<Short4>(source0));
+		v.y = Float4(*Pointer<Short4>(source1));
+		v.z = Float4(*Pointer<Short4>(source2));
+		v.w = Float4(*Pointer<Short4>(source3));
 
-			if(componentCount >= 1) v.x *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleUShort));
-			if(componentCount >= 2) v.y *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleUShort));
-			if(componentCount >= 3) v.z *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleUShort));
-			if(componentCount >= 4) v.w *= *Pointer<Float4>(constants + OFFSET(Constants, unscaleUShort));
-			break;
-		case VK_FORMAT_R16_UINT:
-		case VK_FORMAT_R16G16_UINT:
-		case VK_FORMAT_R16G16B16A16_UINT:
-			v.x = As<Float4>(Int4(*Pointer<UShort4>(source0)));
-			v.y = As<Float4>(Int4(*Pointer<UShort4>(source1)));
-			v.z = As<Float4>(Int4(*Pointer<UShort4>(source2)));
-			v.w = As<Float4>(Int4(*Pointer<UShort4>(source3)));
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
-			break;
-		case VK_FORMAT_R32_SINT:
-		case VK_FORMAT_R32G32_SINT:
-		case VK_FORMAT_R32G32B32_SINT:
-		case VK_FORMAT_R32G32B32A32_SINT:
-			v.x = *Pointer<Float4>(source0);
-			v.y = *Pointer<Float4>(source1);
-			v.z = *Pointer<Float4>(source2);
-			v.w = *Pointer<Float4>(source3);
+		if(componentCount >= 1) v.x = Max(v.x * (1.0f / 0x7FFF), Float4(-1.0f));
+		if(componentCount >= 2) v.y = Max(v.y * (1.0f / 0x7FFF), Float4(-1.0f));
+		if(componentCount >= 3) v.z = Max(v.z * (1.0f / 0x7FFF), Float4(-1.0f));
+		if(componentCount >= 4) v.w = Max(v.w * (1.0f / 0x7FFF), Float4(-1.0f));
+		break;
+	case VK_FORMAT_R16_USCALED:
+	case VK_FORMAT_R16G16_USCALED:
+	case VK_FORMAT_R16G16B16A16_USCALED:
+		v.x = Float4(*Pointer<UShort4>(source0));
+		v.y = Float4(*Pointer<UShort4>(source1));
+		v.z = Float4(*Pointer<UShort4>(source2));
+		v.w = Float4(*Pointer<UShort4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
-			break;
-		case VK_FORMAT_R32_UINT:
-		case VK_FORMAT_R32G32_UINT:
-		case VK_FORMAT_R32G32B32_UINT:
-		case VK_FORMAT_R32G32B32A32_UINT:
-			v.x = *Pointer<Float4>(source0);
-			v.y = *Pointer<Float4>(source1);
-			v.z = *Pointer<Float4>(source2);
-			v.w = *Pointer<Float4>(source3);
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R16_SSCALED:
+	case VK_FORMAT_R16G16_SSCALED:
+	case VK_FORMAT_R16G16B16A16_SSCALED:
+		v.x = Float4(*Pointer<Short4>(source0));
+		v.y = Float4(*Pointer<Short4>(source1));
+		v.z = Float4(*Pointer<Short4>(source2));
+		v.w = Float4(*Pointer<Short4>(source3));
 
-			transpose4xN(v.x, v.y, v.z, v.w, componentCount);
-			break;
-		case VK_FORMAT_R16_SFLOAT:
-		case VK_FORMAT_R16G16_SFLOAT:
-		case VK_FORMAT_R16G16B16A16_SFLOAT:
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R16_SINT:
+	case VK_FORMAT_R16G16_SINT:
+	case VK_FORMAT_R16G16B16A16_SINT:
+		v.x = As<Float4>(Int4(*Pointer<Short4>(source0)));
+		v.y = As<Float4>(Int4(*Pointer<Short4>(source1)));
+		v.z = As<Float4>(Int4(*Pointer<Short4>(source2)));
+		v.w = As<Float4>(Int4(*Pointer<Short4>(source3)));
+
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R16_UINT:
+	case VK_FORMAT_R16G16_UINT:
+	case VK_FORMAT_R16G16B16A16_UINT:
+		v.x = As<Float4>(Int4(*Pointer<UShort4>(source0)));
+		v.y = As<Float4>(Int4(*Pointer<UShort4>(source1)));
+		v.z = As<Float4>(Int4(*Pointer<UShort4>(source2)));
+		v.w = As<Float4>(Int4(*Pointer<UShort4>(source3)));
+
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R32_SINT:
+	case VK_FORMAT_R32G32_SINT:
+	case VK_FORMAT_R32G32B32_SINT:
+	case VK_FORMAT_R32G32B32A32_SINT:
+		v.x = *Pointer<Float4>(source0);
+		v.y = *Pointer<Float4>(source1);
+		v.z = *Pointer<Float4>(source2);
+		v.w = *Pointer<Float4>(source3);
+
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R32_UINT:
+	case VK_FORMAT_R32G32_UINT:
+	case VK_FORMAT_R32G32B32_UINT:
+	case VK_FORMAT_R32G32B32A32_UINT:
+		v.x = *Pointer<Float4>(source0);
+		v.y = *Pointer<Float4>(source1);
+		v.z = *Pointer<Float4>(source2);
+		v.w = *Pointer<Float4>(source3);
+
+		transpose4xN(v.x, v.y, v.z, v.w, componentCount);
+		break;
+	case VK_FORMAT_R16_SFLOAT:
+	case VK_FORMAT_R16G16_SFLOAT:
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
 		{
 			if(componentCount >= 1)
 			{
@@ -414,10 +471,10 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 			}
 		}
 		break;
-		case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
-			bgra = true;
-			// [[fallthrough]]
-		case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+	case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
+		bgra = true;
+		// [[fallthrough]]
+	case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
 		{
 			Int4 src;
 			src = Insert(src, *Pointer<Int>(source0), 0);
@@ -435,10 +492,10 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 			v.w = Max(v.w, Float4(-1.0f));
 		}
 		break;
-		case VK_FORMAT_A2R10G10B10_SINT_PACK32:
-			bgra = true;
-			// [[fallthrough]]
-		case VK_FORMAT_A2B10G10R10_SINT_PACK32:
+	case VK_FORMAT_A2R10G10B10_SINT_PACK32:
+		bgra = true;
+		// [[fallthrough]]
+	case VK_FORMAT_A2B10G10R10_SINT_PACK32:
 		{
 			Int4 src;
 			src = Insert(src, *Pointer<Int>(source0), 0);
@@ -451,10 +508,10 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 			v.w = As<Float4>(src >> 30);
 		}
 		break;
-		case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
-			bgra = true;
-			// [[fallthrough]]
-		case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+	case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+		bgra = true;
+		// [[fallthrough]]
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
 		{
 			Int4 src;
 			src = Insert(src, *Pointer<Int>(source0), 0);
@@ -473,10 +530,10 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 			v.w *= Float4(1.0f / 0x3);
 		}
 		break;
-		case VK_FORMAT_A2R10G10B10_UINT_PACK32:
-			bgra = true;
-			// [[fallthrough]]
-		case VK_FORMAT_A2B10G10R10_UINT_PACK32:
+	case VK_FORMAT_A2R10G10B10_UINT_PACK32:
+		bgra = true;
+		// [[fallthrough]]
+	case VK_FORMAT_A2B10G10R10_UINT_PACK32:
 		{
 			Int4 src;
 			src = Insert(src, *Pointer<Int>(source0), 0);
@@ -490,8 +547,8 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 			v.w = As<Float4>((src >> 30) & Int4(0x3));
 		}
 		break;
-		default:
-			UNSUPPORTED("stream.format %d", int(stream.format));
+	default:
+		UNSUPPORTED("stream.format %d", int(stream.format));
 	}
 
 	if(bgra)
@@ -512,6 +569,8 @@ Vector4f VertexRoutine::readStream(Pointer<Byte> &buffer, UInt &stride, const St
 
 void VertexRoutine::writeCache(Pointer<Byte> &vertexCache, Pointer<UInt> &tagCache, Pointer<UInt> &batch)
 {
+	ASSERT(SIMD::Width == 4);
+
 	UInt index0 = batch[0];
 	UInt index1 = batch[1];
 	UInt index2 = batch[2];
@@ -530,32 +589,54 @@ void VertexRoutine::writeCache(Pointer<Byte> &vertexCache, Pointer<UInt> &tagCac
 	tagCache[cacheIndex0] = index0;
 
 	auto it = spirvShader->outputBuiltins.find(spv::BuiltInPosition);
-	assert(it != spirvShader->outputBuiltins.end());
-	assert(it->second.SizeInComponents == 4);
-	auto &position = routine.getVariable(it->second.Id);
+	if(it != spirvShader->outputBuiltins.end())
+	{
+		assert(it->second.SizeInComponents == 4);
+		auto &position = routine.getVariable(it->second.Id);
 
-	Vector4f pos;
-	pos.x = position[it->second.FirstComponent + 0];
-	pos.y = position[it->second.FirstComponent + 1];
-	pos.z = position[it->second.FirstComponent + 2];
-	pos.w = position[it->second.FirstComponent + 3];
+		SIMD::Float4 pos;
+		pos.x = position[it->second.FirstComponent + 0];
+		pos.y = position[it->second.FirstComponent + 1];
+		pos.z = position[it->second.FirstComponent + 2];
+		pos.w = position[it->second.FirstComponent + 3];
 
-	// Projection and viewport transform.
-	Float4 w = As<Float4>(As<Int4>(pos.w) | (As<Int4>(CmpEQ(pos.w, Float4(0.0f))) & As<Int4>(Float4(1.0f))));
-	Float4 rhw = Float4(1.0f) / w;
+		// Projection and viewport transform.
+		SIMD::Float w = As<SIMD::Float>(As<SIMD::Int>(pos.w) | (As<SIMD::Int>(CmpEQ(pos.w, 0.0f)) & As<SIMD::Int>(SIMD::Float(1.0f))));
+		SIMD::Float rhw = 1.0f / w;
 
-	Vector4f proj;
-	proj.x = As<Float4>(RoundInt(*Pointer<Float4>(data + OFFSET(DrawData, X0xF)) + pos.x * rhw * *Pointer<Float4>(data + OFFSET(DrawData, WxF))));
-	proj.y = As<Float4>(RoundInt(*Pointer<Float4>(data + OFFSET(DrawData, Y0xF)) + pos.y * rhw * *Pointer<Float4>(data + OFFSET(DrawData, HxF))));
-	proj.z = pos.z * rhw;
-	proj.w = rhw;
+		SIMD::Float4 proj;
+		proj.x = As<Float4>(RoundIntClamped(SIMD::Float(*Pointer<Float>(data + OFFSET(DrawData, X0xF))) + pos.x * rhw * SIMD::Float(*Pointer<Float>(data + OFFSET(DrawData, WxF)))));
+		proj.y = As<Float4>(RoundIntClamped(SIMD::Float(*Pointer<Float>(data + OFFSET(DrawData, Y0xF))) + pos.y * rhw * SIMD::Float(*Pointer<Float>(data + OFFSET(DrawData, HxF)))));
+		proj.z = pos.z * rhw;
+		proj.w = rhw;
 
-	transpose4x4(pos.x, pos.y, pos.z, pos.w);
+		Float4 pos_x = Extract128(pos.x, 0);
+		Float4 pos_y = Extract128(pos.y, 0);
+		Float4 pos_z = Extract128(pos.z, 0);
+		Float4 pos_w = Extract128(pos.w, 0);
+		transpose4x4(pos_x, pos_y, pos_z, pos_w);
 
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, position), 16) = pos.w;
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, position), 16) = pos.z;
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, position), 16) = pos.y;
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, position), 16) = pos.x;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, position), 16) = pos_w;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, position), 16) = pos_z;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, position), 16) = pos_y;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, position), 16) = pos_x;
+
+		*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, clipFlags)) = Extract(clipFlags, 3);
+		*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, clipFlags)) = Extract(clipFlags, 2);
+		*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, clipFlags)) = Extract(clipFlags, 1);
+		*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, clipFlags)) = Extract(clipFlags, 0);
+
+		Float4 proj_x = Extract128(proj.x, 0);
+		Float4 proj_y = Extract128(proj.y, 0);
+		Float4 proj_z = Extract128(proj.z, 0);
+		Float4 proj_w = Extract128(proj.w, 0);
+		transpose4x4(proj_x, proj_y, proj_z, proj_w);
+
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, projected), 16) = proj_w;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, projected), 16) = proj_z;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, projected), 16) = proj_y;
+		*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, projected), 16) = proj_x;
+	}
 
 	it = spirvShader->outputBuiltins.find(spv::BuiltInPointSize);
 	if(it != spirvShader->outputBuiltins.end())
@@ -597,35 +678,23 @@ void VertexRoutine::writeCache(Pointer<Byte> &vertexCache, Pointer<UInt> &tagCac
 		}
 	}
 
-	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, clipFlags)) = (clipFlags >> 24) & 0x0000000FF;
-	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, clipFlags)) = (clipFlags >> 16) & 0x0000000FF;
-	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, clipFlags)) = (clipFlags >> 8) & 0x0000000FF;
-	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, clipFlags)) = (clipFlags >> 0) & 0x0000000FF;
-
 	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, cullMask)) = -((cullMask >> 3) & 1);
 	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, cullMask)) = -((cullMask >> 2) & 1);
 	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, cullMask)) = -((cullMask >> 1) & 1);
 	*Pointer<Int>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, cullMask)) = -((cullMask >> 0) & 1);
 
-	transpose4x4(proj.x, proj.y, proj.z, proj.w);
-
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex3 + OFFSET(Vertex, projected), 16) = proj.w;
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex2 + OFFSET(Vertex, projected), 16) = proj.z;
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex1 + OFFSET(Vertex, projected), 16) = proj.y;
-	*Pointer<Float4>(vertexCache + sizeof(Vertex) * cacheIndex0 + OFFSET(Vertex, projected), 16) = proj.x;
-
 	for(int i = 0; i < MAX_INTERFACE_COMPONENTS; i += 4)
 	{
-		if(spirvShader->outputs[i + 0].Type != SpirvShader::ATTRIBTYPE_UNUSED ||
-		   spirvShader->outputs[i + 1].Type != SpirvShader::ATTRIBTYPE_UNUSED ||
-		   spirvShader->outputs[i + 2].Type != SpirvShader::ATTRIBTYPE_UNUSED ||
-		   spirvShader->outputs[i + 3].Type != SpirvShader::ATTRIBTYPE_UNUSED)
+		if(spirvShader->outputs[i + 0].Type != Spirv::ATTRIBTYPE_UNUSED ||
+		   spirvShader->outputs[i + 1].Type != Spirv::ATTRIBTYPE_UNUSED ||
+		   spirvShader->outputs[i + 2].Type != Spirv::ATTRIBTYPE_UNUSED ||
+		   spirvShader->outputs[i + 3].Type != Spirv::ATTRIBTYPE_UNUSED)
 		{
 			Vector4f v;
-			v.x = routine.outputs[i + 0];
-			v.y = routine.outputs[i + 1];
-			v.z = routine.outputs[i + 2];
-			v.w = routine.outputs[i + 3];
+			v.x = Extract128(routine.outputs[i + 0], 0);
+			v.y = Extract128(routine.outputs[i + 1], 0);
+			v.z = Extract128(routine.outputs[i + 2], 0);
+			v.w = Extract128(routine.outputs[i + 3], 0);
 
 			transpose4x4(v.x, v.y, v.z, v.w);
 
@@ -648,7 +717,7 @@ void VertexRoutine::writeVertex(const Pointer<Byte> &vertex, Pointer<Byte> &cach
 
 	for(int i = 0; i < MAX_INTERFACE_COMPONENTS; i++)
 	{
-		if(spirvShader->outputs[i].Type != SpirvShader::ATTRIBTYPE_UNUSED)
+		if(spirvShader->outputs[i].Type != Spirv::ATTRIBTYPE_UNUSED)
 		{
 			*Pointer<Int>(vertex + OFFSET(Vertex, v[i]), 4) = *Pointer<Int>(cacheEntry + OFFSET(Vertex, v[i]), 4);
 		}

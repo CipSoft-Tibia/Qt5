@@ -37,6 +37,13 @@ const char* ReadValue(T* value_out, const char* ptr) {
   return ptr + sizeof(T);
 }
 
+template <typename T>
+const char* ReadValues(T* out, const char* ptr, size_t num_values) {
+  size_t sz = sizeof(T) * num_values;
+  memcpy(out, reinterpret_cast<const void*>(ptr), sz);
+  return ptr + sz;
+}
+
 bool IsPowerOfTwo(size_t v) {
   return (v != 0 && ((v & (v - 1)) == 0));
 }
@@ -50,11 +57,28 @@ static int perf_event_open(perf_event_attr* attr,
       syscall(__NR_perf_event_open, attr, pid, cpu, group_fd, flags));
 }
 
-base::ScopedFile PerfEventOpen(uint32_t cpu, const EventConfig& event_cfg) {
-  base::ScopedFile perf_fd{
-      perf_event_open(event_cfg.perf_attr(), /*pid=*/-1, static_cast<int>(cpu),
-                      /*group_fd=*/-1, PERF_FLAG_FD_CLOEXEC)};
+base::ScopedFile PerfEventOpen(uint32_t cpu,
+                               perf_event_attr* perf_attr,
+                               int group_fd = -1) {
+  base::ScopedFile perf_fd{perf_event_open(perf_attr, /*pid=*/-1,
+                                           static_cast<int>(cpu), group_fd,
+                                           PERF_FLAG_FD_CLOEXEC)};
   return perf_fd;
+}
+
+// If counting tracepoints, set an event filter if requested.
+bool MaybeApplyTracepointFilter(int fd, const PerfCounter& event) {
+  if (event.type != PerfCounter::Type::kTracepoint ||
+      event.tracepoint_filter.empty()) {
+    return true;
+  }
+  PERFETTO_DCHECK(event.attr_type == PERF_TYPE_TRACEPOINT);
+
+  if (ioctl(fd, PERF_EVENT_IOC_SET_FILTER, event.tracepoint_filter.c_str())) {
+    PERFETTO_PLOG("Failed ioctl to set event filter");
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -111,7 +135,9 @@ base::Optional<PerfRingBuffer> PerfRingBuffer::Allocate(
   ret.metadata_page_ = reinterpret_cast<perf_event_mmap_page*>(mmap_addr);
   ret.data_buf_ = reinterpret_cast<char*>(mmap_addr) + base::kPageSize;
   PERFETTO_CHECK(ret.metadata_page_->data_offset == base::kPageSize);
-  PERFETTO_CHECK(ret.metadata_page_->data_size = ret.data_buf_sz_);
+  PERFETTO_CHECK(ret.metadata_page_->data_size == ret.data_buf_sz_);
+
+  PERFETTO_DCHECK(IsPowerOfTwo(ret.data_buf_sz_));
 
   return base::make_optional(std::move(ret));
 }
@@ -125,7 +151,7 @@ base::Optional<PerfRingBuffer> PerfRingBuffer::Allocate(
 char* PerfRingBuffer::ReadRecordNonconsuming() {
   static_assert(sizeof(std::atomic<uint64_t>) == sizeof(uint64_t), "");
 
-  PERFETTO_CHECK(valid());
+  PERFETTO_DCHECK(valid());
 
   // |data_tail| is written only by this userspace thread, so we can safely read
   // it without any synchronization.
@@ -154,8 +180,6 @@ char* PerfRingBuffer::ReadRecordNonconsuming() {
 
   // event wrapped - reconstruct it, and return a pointer to the buffer
   if (read_pos + evt_size > data_buf_sz_) {
-    PERFETTO_DCHECK(read_pos + evt_size !=
-                    ((read_pos + evt_size) & (data_buf_sz_ - 1)));
     PERFETTO_DLOG("PerfRingBuffer: returning reconstructed event");
 
     size_t prefix_sz = data_buf_sz_ - read_pos;
@@ -165,15 +189,12 @@ char* PerfRingBuffer::ReadRecordNonconsuming() {
     return &reconstructed_record_[0];
   } else {
     // usual case - contiguous sample
-    PERFETTO_DCHECK(read_pos + evt_size ==
-                    ((read_pos + evt_size) & (data_buf_sz_ - 1)));
-
     return data_buf_ + read_pos;
   }
 }
 
 void PerfRingBuffer::Consume(size_t bytes) {
-  PERFETTO_CHECK(valid());
+  PERFETTO_DCHECK(valid());
 
   // Advance |data_tail|, which is written only by this thread. The store of the
   // updated value needs to have release semantics such that the preceding
@@ -194,12 +215,6 @@ EventReader::EventReader(uint32_t cpu,
       perf_fd_(std::move(perf_fd)),
       ring_buffer_(std::move(ring_buffer)) {}
 
-EventReader::EventReader(EventReader&& other) noexcept
-    : cpu_(other.cpu_),
-      event_attr_(other.event_attr_),
-      perf_fd_(std::move(other.perf_fd_)),
-      ring_buffer_(std::move(other.ring_buffer_)) {}
-
 EventReader& EventReader::operator=(EventReader&& other) noexcept {
   if (this == &other)
     return *this;
@@ -212,20 +227,22 @@ EventReader& EventReader::operator=(EventReader&& other) noexcept {
 base::Optional<EventReader> EventReader::ConfigureEvents(
     uint32_t cpu,
     const EventConfig& event_cfg) {
-  auto perf_fd = PerfEventOpen(cpu, event_cfg);
-  if (!perf_fd) {
-    PERFETTO_PLOG("failed perf_event_open");
+  auto leader_fd = PerfEventOpen(cpu, event_cfg.perf_attr());
+  if (!leader_fd) {
+    PERFETTO_PLOG("Failed perf_event_open");
     return base::nullopt;
   }
+  if (!MaybeApplyTracepointFilter(leader_fd.get(), event_cfg.timebase_event()))
+    return base::nullopt;
 
   auto ring_buffer =
-      PerfRingBuffer::Allocate(perf_fd.get(), event_cfg.ring_buffer_pages());
+      PerfRingBuffer::Allocate(leader_fd.get(), event_cfg.ring_buffer_pages());
   if (!ring_buffer.has_value()) {
     return base::nullopt;
   }
 
   return base::make_optional<EventReader>(cpu, *event_cfg.perf_attr(),
-                                          std::move(perf_fd),
+                                          std::move(leader_fd),
                                           std::move(ring_buffer.value()));
 }
 
@@ -281,7 +298,8 @@ ParsedSample EventReader::ParseSampleRecord(uint32_t cpu,
                                             const char* record_start) {
   if (event_attr_.sample_type &
       (~uint64_t(PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_STACK_USER |
-                 PERF_SAMPLE_REGS_USER))) {
+                 PERF_SAMPLE_REGS_USER | PERF_SAMPLE_CALLCHAIN |
+                 PERF_SAMPLE_READ))) {
     PERFETTO_FATAL("Unsupported sampling option");
   }
 
@@ -289,8 +307,8 @@ ParsedSample EventReader::ParseSampleRecord(uint32_t cpu,
   size_t sample_size = event_hdr->size;
 
   ParsedSample sample = {};
-  sample.cpu = cpu;
-  sample.cpu_mode = event_hdr->misc & PERF_RECORD_MISC_CPUMODE_MASK;
+  sample.common.cpu = cpu;
+  sample.common.cpu_mode = event_hdr->misc & PERF_RECORD_MISC_CPUMODE_MASK;
 
   // Parse the payload, which consists of concatenated data for each
   // |attr.sample_type| flag.
@@ -301,12 +319,24 @@ ParsedSample EventReader::ParseSampleRecord(uint32_t cpu,
     uint32_t tid = 0;
     parse_pos = ReadValue(&pid, parse_pos);
     parse_pos = ReadValue(&tid, parse_pos);
-    sample.pid = static_cast<pid_t>(pid);
-    sample.tid = static_cast<pid_t>(tid);
+    sample.common.pid = static_cast<pid_t>(pid);
+    sample.common.tid = static_cast<pid_t>(tid);
   }
 
   if (event_attr_.sample_type & PERF_SAMPLE_TIME) {
-    parse_pos = ReadValue(&sample.timestamp, parse_pos);
+    parse_pos = ReadValue(&sample.common.timestamp, parse_pos);
+  }
+
+  if (event_attr_.sample_type & PERF_SAMPLE_READ) {
+    parse_pos = ReadValue(&sample.common.timebase_count, parse_pos);
+  }
+
+  if (event_attr_.sample_type & PERF_SAMPLE_CALLCHAIN) {
+    uint64_t chain_len = 0;
+    parse_pos = ReadValue(&chain_len, parse_pos);
+    sample.kernel_ips.resize(static_cast<size_t>(chain_len));
+    parse_pos = ReadValues<uint64_t>(sample.kernel_ips.data(), parse_pos,
+                                     static_cast<size_t>(chain_len));
   }
 
   if (event_attr_.sample_type & PERF_SAMPLE_REGS_USER) {
@@ -329,8 +359,6 @@ ParsedSample EventReader::ParseSampleRecord(uint32_t cpu,
     if (max_stack_size > 0) {
       uint64_t filled_stack_size;
       parse_pos = ReadValue(&filled_stack_size, parse_pos);
-      PERFETTO_DLOG("sampled stack size: %" PRIu64 " / %" PRIu64 "",
-                    filled_stack_size, max_stack_size);
 
       // copy stack bytes into a vector
       size_t payload_sz = static_cast<size_t>(filled_stack_size);
@@ -346,7 +374,12 @@ ParsedSample EventReader::ParseSampleRecord(uint32_t cpu,
   return sample;
 }
 
-void EventReader::PauseEvents() {
+void EventReader::EnableEvents() {
+  int ret = ioctl(perf_fd_.get(), PERF_EVENT_IOC_ENABLE);
+  PERFETTO_CHECK(ret == 0);
+}
+
+void EventReader::DisableEvents() {
   int ret = ioctl(perf_fd_.get(), PERF_EVENT_IOC_DISABLE);
   PERFETTO_CHECK(ret == 0);
 }

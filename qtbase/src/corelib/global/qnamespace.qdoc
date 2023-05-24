@@ -1,29 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2020 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \namespace Qt
@@ -117,9 +94,11 @@
     \value AA_DontShowShortcutsInContextMenus Actions with the Shortcut property
            won't be shown in any shortcut menus unless specifically set by the
            QAction::shortcutVisibleInContextMenu property. This value was added
-           in Qt 5.10, and defaults to the preference reported by the implementation
-           of QPlatformIntegration::styleHint. To override the platform integration,
-           set this attribute after QCoreApplication has been instantiated.
+           in Qt 5.10, and is by default based on the value reported by
+           QStyleHints::showShortcutsInContextMenus(). To override the default
+           behavior, set the style hint before QCoreApplication has been
+           instantiated, or set this attribute after QCoreApplication has
+           been instantiated.
 
     \value AA_NativeWindows Ensures that widgets have native windows.
 
@@ -141,13 +120,24 @@
            set to true won't be used as a native menubar (e.g, the menubar at
            the top of the main screen on \macos).
 
-    \value AA_MacDontSwapCtrlAndMeta On \macos by default, Qt swaps the
-           Control and Meta (Command) keys (i.e., whenever Control is pressed, Qt
-           sends Meta, and whenever Meta is pressed Control is sent). When this
-           attribute is true, Qt will not do the flip. \l QKeySequence::StandardKey
-           will also flip accordingly (i.e., QKeySequence::Copy will be
-           Command+C on the keyboard regardless of the value set, though what is output for
-           QKeySequence::toString() will be different).
+    \value AA_MacDontSwapCtrlAndMeta Keyboard shortcuts on Apple platforms are typically
+           based on the Command (or Cmd) keyboard modifier, represented by
+           the ⌘ symbol. For example, the 'Copy' action is Command+C (⌘+C).
+           To ease cross platform development Qt will by default remap Command
+           to the Qt::ControlModifier, to align with other platforms. This
+           allows creating keyboard shortcuts such as "Ctrl+J", which on
+           \macos will then map to Command+J, as expected by \macos users. The
+           actual Control (or Ctrl) modifier on Apple platforms, represented by ⌃,
+           is mapped to Qt::MetaModifier.
+
+           When this attribute is true Qt will not do the remapping, and pressing
+           the Command modifier will result in Qt::MetaModifier, while pressing
+           the Control modifier will result in Qt::ControlModifier.
+
+           Note that the \l QKeySequence::StandardKey sequences will always be
+           based on the same modifier (i.e., QKeySequence::Copy will be
+           Command+C regardless of the value set), but what is output for
+           QKeySequence::toString() will be different.
 
     \value AA_Use96Dpi Assume the screen has a resolution of 96 DPI rather
            than using the OS-provided resolution. This will cause font rendering
@@ -162,13 +152,6 @@
            that are not accepted by the application will be translated
            to left button mouse events instead. This attribute is enabled
            by default.
-
-    \value AA_UseHighDpiPixmaps Make QIcon::pixmap() generate high-dpi pixmaps
-           that can be larger than the requested size. Such pixmaps will have
-           \l {QPixmap::devicePixelRatio}{devicePixelRatio()} set to a value higher than 1.
-           After setting this attribute, application code that uses pixmap
-           sizes in layout geometry calculations should typically divide by
-           \l {QPixmap::devicePixelRatio}{devicePixelRatio()} to get device-independent layout geometry.
 
     \value AA_ForceRasterWidgets Make top-level widgets use pure raster surfaces,
            and do not support non-native GL-based child widgets.
@@ -205,24 +188,6 @@
 
     \value AA_SetPalette Indicates whether a palette was explicitly set on the
            QGuiApplication. This value was added in Qt 5.5.
-
-    \value AA_EnableHighDpiScaling Enables high-DPI scaling in Qt on supported
-           platforms (see also \l{High DPI Displays}). Supported platforms are
-           X11, Windows and Android. Enabling makes Qt scale the main (device
-           independent) coordinate system according to display scale factors
-           provided by the operating system. This corresponds to setting the
-           QT_AUTO_SCREEN\unicode{0x200b}_SCALE_FACTOR environment variable to
-           1. This attribute must be set before QGuiApplication is constructed.
-           This value was added in Qt 5.6.
-
-    \value AA_DisableHighDpiScaling Disables high-DPI scaling in Qt, exposing window
-           system coordinates. Note that the window system may do its own scaling,
-           so this does not guarantee that QPaintDevice::devicePixelRatio() will
-           be equal to 1. In addition, scale factors set by QT_SCALE_FACTOR will not
-           be affected. This corresponds to setting the
-           QT_AUTO_SCREEN\unicode{0x200b}_SCALE_FACTOR environment variable to 0.
-           This attribute must be set before QGuiApplication is constructed.
-           This value was added in Qt 5.6.
 
     \value AA_UseStyleSheetPropagationInWidgetStyles By default, Qt Style Sheets
            disable regular QWidget palette and font propagation. When this flag
@@ -277,16 +242,10 @@
            on disk. By default Qt Quick, QPainter's OpenGL backend, and any
            application using QOpenGLShaderProgram with one of its
            \e addCacheableShaderFromSource overloads will employ a disk-based
-           \l{Caching Program Binaries}{program binary cache} in either the shared
-           or per-process cache storage location, on systems that support
-           \e glProgramBinary(). In the unlikely event of this being problematic,
-           set this attribute to disable all disk-based caching of shaders.
-
-    \value AA_DisableWindowContextHelpButton Disables the WindowContextHelpButtonHint
-           by default on Qt::Sheet and Qt::Dialog widgets. This hides the \gui ? button
-           on Windows, which only makes sense if you use \l QWhatsThis functionality.
-           This value was added in Qt 5.10. In Qt 6, WindowContextHelpButtonHint
-           will not be set by default.
+           program binary cache in either the shared or per-process cache storage
+           location, on systems that support \e glProgramBinary(). In the unlikely
+           event of this being problematic, set this attribute to disable all
+           disk-based caching of shaders.
 
     \value AA_DisableSessionManager Disables the QSessionManager.
            By default Qt will connect to a running session manager for a GUI
@@ -301,27 +260,10 @@
            Currently supported on the Windows platform only.
            This value was added in 5.15
 
-    The following values are deprecated or obsolete:
-
-    \value AA_ImmediateWidgetCreation This attribute is no longer fully
-           supported in Qt 5. It ensures that widgets are created
-           as soon as they are constructed. By default, resources for
-           widgets are allocated on demand to improve efficiency and
-           minimize resource usage. Setting or clearing this attribute
-           affects widgets constructed after the change. Setting it
-           tells Qt to create toplevel windows immediately.
-           Therefore, if it is important to minimize resource
-           consumption, do not set this attribute.
-
-    \value AA_MacPluginApplication This attribute has been deprecated.
-           Use AA_PluginApplication instead.
-
-    \value AA_MSWindowsUseDirect3DByDefault This value is obsolete and
-           has no effect.
-
-    \value AA_X11InitThreads This value is obsolete and has no effect.
-
     \omitvalue AA_AttributeCount
+    \omitvalue AA_EnableHighDpiScaling
+    \omitvalue AA_UseHighDpiPixmaps
+    \omitvalue AA_DisableHighDpiScaling
 */
 
 /*!
@@ -341,7 +283,6 @@
            left-handed mice.)
     \value RightButton     The right button.
     \value MiddleButton    The middle button.
-    \omitvalue MidButton
 
     \value BackButton      The 'Back' button. (Typically present on
            the 'thumb' side of a mouse with extra buttons. This is NOT
@@ -433,8 +374,6 @@
     \value META The Meta keys.
     \value CTRL The Ctrl keys.
     \value ALT The normal Alt keys, but not keys like AltGr.
-    \value UNICODE_ACCEL The shortcut is specified as a Unicode code
-    point, not as a Qt Key.
     \omitvalue MODIFIER_MASK
 
     \sa KeyboardModifier, MouseButton
@@ -625,7 +564,6 @@
     \value TextJustificationForced Ensures that text lines are justified.
 
     \omitvalue TextLongestVariant
-    \omitvalue TextBypassShaping
     \omitvalue TextForceLeftToRight
     \omitvalue TextForceRightToLeft
 
@@ -679,7 +617,14 @@
            connection types, using a bitwise OR. When Qt::UniqueConnection is
            set, QObject::connect() will fail if the connection already exists
            (i.e. if the same signal is already connected to the same slot
-           for the same pair of objects). This flag was introduced in Qt 4.6.
+           for the same pair of objects).
+
+    \value SingleShotConnection
+           This is a flag that can be combined with any one of the above
+           connection types, using a bitwise OR. When Qt::SingleShotConnection
+           is set, the slot is going to be called only once; the connection
+           will be automatically broken when the signal is emitted.
+           This flag was introduced in Qt 6.0.
 
     With queued connections, the parameters must be of types that are
     known to Qt's meta-object system, because Qt needs to copy the
@@ -699,73 +644,77 @@
 /*!
     \enum Qt::DateFormat
 
-    \value TextDate The default Qt format, which includes the day and month name,
-    the day number in the month, and the year in full. The day and month names will
-    be short, localized names. This is basically equivalent to using the date format
-    string, "ddd MMM d yyyy". See QDate::toString() for more information.
+    \value TextDate The default Qt format, which includes the day and month
+    name, the day number in the month, and the year in full. The day and month
+    names will be short names in English (C locale). This effectively uses, for
+    a date, format \c{ddd MMM d yyyy}, for a time \c{HH:mm:ss} and combines
+    these as \c{ddd MMM d HH:mm:ss yyyy} for a date-time, with an optional
+    zone-offset suffix, where relevant.  When reading from a string, a
+    fractional part is also recognized on the seconds of a time part, as
+    \c{HH:mm:ss.zzz}, and some minor variants on the format may be recognized,
+    for compatibility with earlier versions of Qt and with changes to the format
+    planned for the future. In particular, the zone-offset suffix presently uses
+    \c{GMT[±tzoff]} with a \c{tzoff} in \c{HH[[:]mm]} format (two-digit hour and
+    optional two-digit minutes, with optional colon separator); this shall
+    change to use \c{UTC} in place of \c{GMT} in a future release of Qt, so the
+    planned \c{UTC} format is recognized.
 
-    \value ISODate \l{ISO 8601} extended format: either \c{yyyy-MM-dd} for dates or
-    \c{yyyy-MM-ddTHH:mm:ss} (e.g. 2017-07-24T15:46:29), or with a time-zone
-    suffix (Z for UTC otherwise an offset as [+|-]HH:mm) where appropriate
-    for combined dates and times.
+    \value ISODateWithMs \l{ISO 8601} extended format: uses \c{yyyy-MM-dd} for
+    dates, \c{HH:mm:ss.zzz} for times or \c{yyyy-MM-ddTHH:mm:ss.zzz}
+    (e.g. 2017-07-24T15:46:29.739) for combined dates and times, optionally with
+    a time-zone suffix (Z for UTC otherwise an offset as ±HH:mm) where
+    appropriate. When parsed, a single space, \c{' '}, may be used in place of
+    the \c{'T'} separator between date and time; no other spacing characters are
+    permitted. This format also accepts \c{HH:mm} and plain \c{HH} formats for
+    the time part, either of which may include a fractional part, \c{HH:mm.zzz}
+    or \c{HH.zzz}, applied to the last field present (hour or minute).
 
-    \value ISODateWithMs \l{ISO 8601} extended format, including milliseconds if applicable.
+    \value ISODate \l{ISO 8601} extended format, as for \c ISODateWithMs, but
+    omitting the milliseconds (\c{.zzz}) part when converting to a string. There
+    is no difference when reading from a string: if a fractional part is present
+    on the last time field, either format will accept it.
 
-    \value SystemLocaleShortDate \e{This enum value is deprecated and
-    shall be removed in Qt 6.} Use QLocale's methods for converting
-    dates and times to and from strings, with the
-    \l{QLocale::ShortFormat}{short format} of
-    \l{QLocale::system()}{the locale used by the operating system}.
-
-    \value SystemLocaleLongDate \e{This enum value is deprecated and
-    shall be removed in Qt 6.} Use QLocale's methods for converting
-    dates and times to and from strings, with the
-    \l{QLocale::LongFormat}{long format} of \l{QLocale::system()}{the
-    locale used by the operating system}.
-
-    \value DefaultLocaleShortDate \e{This enum value is deprecated and
-    shall be removed in Qt 6.} Use QLocale's methods for converting
-    dates and times to and from strings, with the
-    \l{QLocale::ShortFormat}{short format} of
-    \l{QLocale::setDefault()}{the application's locale}.
-
-    \value DefaultLocaleLongDate \e{This enum value is deprecated and
-    shall be removed in Qt 6.} Use QLocale's methods for converting
-    dates and times to and from strings, with the
-    \l{QLocale::LongFormat}{long format} \l{QLocale::setDefault()}{the
-    application's locale}.
-
-    \value SystemLocaleDate \e{This enum value is deprecated and shall
-    be removed in Qt 6.} It is equivalent to SystemLocaleShortDate.
-
-    \value LocaleDate \e{This enum value is deprecated and shall be
-    removed in Qt 6.} It is equivalent to DefaultLocaleShortDate.
-
-    \value LocalDate \e{This enum value is deprecated and shall be
-    removed in Qt 6.} It is equivalent to SystemLocaleShortDate.
-
-    \value RFC2822Date \l{RFC 2822}, \l{RFC 850} and \l{RFC 1036} format:
-    either \c{[ddd,] dd MMM yyyy [HH:mm[:ss]][ ±tzoff]}
-    or \c{ddd MMM dd[ HH:mm:ss] yyyy[ ±tzoff]} are recognized for combined dates
-    and times, where \c{tzoff} is a timezone offset in \c{HHmm} format. For
-    dates and times separately, the same formats are matched and the unwanted
-    parts are ignored. In particular, note that a time is not recognized without
-    an accompanying date. When converting dates to string form,
-    format \c{dd MMM yyyy} is used, for times the format is \c{HH:mm:ss}. For
-    combined date and time, these are combined
+    \value RFC2822Date \l{RFC 2822}, \l{RFC 850} and \l{RFC 1036} format: when
+    converting dates to string form, format \c{dd MMM yyyy} is used, for times
+    the format is \c{HH:mm:ss}. For combined date and time, these are combined
     as \c{dd MMM yyyy HH:mm:ss ±tzoff} (omitting the optional leading day of the
-    week from the first format recognized).
+    week from the first format recognized). When reading from a string either
+    \c{[ddd,] dd MMM yyyy [HH:mm[:ss]][ ±tzoff]} or \c{ddd MMM dd[ HH:mm:ss]
+    yyyy[ ±tzoff]} will be recognized for combined dates and times, where
+    \c{tzoff} is a timezone offset in \c{HHmm} format. Arbitrary spacing may
+    appear before or after the text and any non-empty spacing may replace the
+    spaces in this format. For dates and times separately, the same formats are
+    matched and the unwanted parts are ignored. In particular, note that a time
+    is not recognized without an accompanying date.
 
     \note For \c ISODate formats, each \c y, \c M and \c d represents a single
     digit of the year, month, and day used to specify the date. Each \c H, \c m,
     and \c s represents a single digit of the hour (up to 24), minute and second
-    used to specify the time. The presence of a literal \c T character is used
-    to separate the date and time when both are specified. For the \c
-    RFC2822Date format, MMM stands for the first three letters of the month name
-    in English, the other format characters have the same meaning as for the
-    ISODate format.
-*/
+    used to specify the time. An hour of 24, with zero for all other time
+    fields, is understood as the start of the next day. A \c{.zzz} stands for a
+    fractional part suffix on the preceding field, which may be separated from
+    that field either by a comma \c{','} or the dot \c{'.'} shown. Precision
+    beyond milliseconds is accepted but discarded, rounding to the nearest
+    representable millisecond. The presence of a literal \c T character is used
+    to separate the date and time when both are specified. For the \c TextDate
+    and \c RFC2822Date formats, \c{ddd} stands for the first three letters of
+    the name of the day of the week and \c{MMM} stands for the first three
+    letters of the month name. The names of days and months are always in
+    English (C locale) regardless of user preferences or system settings. The
+    other format characters have the same meaning as for the ISODate format,
+    except that 24 is not accepted as an hour. Parts of a format enclosed in
+    square brackets \c{[...]} are optional; the square brackets do not form part
+    of the format. The plus-or-minus character \c{'±'} here stands for either
+    sign character, \c{'-'} for minus or \c{'+'} for plus.
 
+    \note Zone offsets are measured positive to the east of Greenwich, negative
+    to the west, as is usual for UTC-based offset notations (conflicting with
+    some GMT-based zones-names, such as \c{Etc/GMT+3}, which use the opposite
+    convention).
+
+    \sa QDate::toString(), QTime::toString(), QDateTime::toString(),
+        QDate::fromString(), QTime::fromString(), QDateTime::fromString()
+*/
 
 /*!
     \enum Qt::TimeSpec
@@ -781,15 +730,25 @@
     Mean Time has zero offset from it. Neither UTC nor OffsetFromUTC
     has any transitions.
 
+    When specifying a datetime using OffsetFromUTC, the offset from UTC must
+    also be supplied (it is measured in seconds). To specify a datetime using
+    TimeZone, a QTimeZone must be supplied. From Qt 6.5, a QTimeZone can now
+    package a timespec with, where needed, an offset as a lightweight time
+    description, so that passing a QTimeZone now provides a uniform way to use
+    datetime APIs, saving the need to call them differently for different
+    timespecs.
+
     \note After a change to the system time-zone setting, the behavior
     of LocalTime-based QDateTime objects created before the change is
     undefined: QDateTime may have cached data that the change
-    invalidates. (This is not triggered by transitions of the system
+    invalidates. (This is not triggered by \e transitions of the system
     time-zone.) In long-running processes, updates to the system's
     time-zone data (e.g. when politicians change the rules for a zone)
     may likewise lead to conflicts between the updated time-zone
     information and data cached by QDateTime objects created before
     the update, using either LocalTime or TimeZone.
+
+    \sa QTimeZone, QDateTime
 */
 
 /*!
@@ -827,14 +786,29 @@
 /*!
     \enum Qt::DockWidgetArea
 
-    \value LeftDockWidgetArea
-    \value RightDockWidgetArea
-    \value TopDockWidgetArea
-    \value BottomDockWidgetArea
-    \value AllDockWidgetAreas
-    \value NoDockWidgetArea
+    Represents the areas a QDockWidget can be plugged to.
+    \note A floating dock widget with tabs can be docked anywhere.
+
+    \value LeftDockWidgetArea The left dock area of a QMainWindow.
+    \value RightDockWidgetArea The right dock area of a QMainWindow.
+    \value TopDockWidgetArea The top dock area of a QMainWindow.
+    \value BottomDockWidgetArea The bottom dock area of a QMainWindow.
+    \value AllDockWidgetAreas All dock widget areas (default).
+    \value NoDockWidgetArea No dock widget areas.
 
     \omitvalue DockWidgetArea_Mask
+    \sa QDockWidget::setAllowedAreas, QDockWidget::isAreaAllowed
+*/
+
+/*!
+    \enum Qt::ColorScheme
+
+    Represents the appearance of an application's theme,
+    defined by QGuiApplication::palette().
+
+    \value Unknown The appearance is unknown.
+    \value Light The background colors are lighter than the text color, i.e. the theme is light.
+    \value Dark The background colors are darker than the text color, i.e. the theme is dark.
 */
 
 /*!
@@ -872,11 +846,6 @@
            different colors than the size of the color table of the destination format.
     \value AutoDither (default) - Only dither when down-converting to 1 or 8-bit indexed formats.
 
-    \omitvalue ColorMode_Mask
-    \omitvalue Dither_Mask
-    \omitvalue AlphaDither_Mask
-    \omitvalue DitherMode_Mask
-
     \value NoOpaqueDetection Do not check whether the image contains non-opaque
            pixels. Use this if you know that the image is semi-transparent and
            you want to avoid the overhead of checking the pixels in the image
@@ -888,6 +857,11 @@
            Can be useful when converting a QImage to a QPixmap for a one-time
            rendering operation for example. Note that a QPixmap not in the
            preferred format will be much slower as a paint device.
+
+    \omitvalue ColorMode_Mask
+    \omitvalue Dither_Mask
+    \omitvalue AlphaDither_Mask
+    \omitvalue DitherMode_Mask
 */
 
 /*!
@@ -977,10 +951,6 @@
 
     \value WA_AlwaysShowToolTips Enables tooltips for inactive windows.
 
-    \value WA_ContentsPropagated This flag is superfluous and
-    obsolete; it no longer has any effect. Since Qt 4.1, all widgets
-    that do not set WA_PaintOnScreen propagate their contents.
-
     \value WA_CustomWhatsThis Indicates that the widget wants to
     continue operating normally in "What's This?" mode. This is set by the
     widget's author.
@@ -996,9 +966,6 @@
     \value WA_DontShowOnScreen Indicates that the widget is hidden or is
     not a part of the viewable Desktop.
 
-    \omitvalue WA_DropSiteRegistered
-    \omitvalue WA_ForceAcceptDrops
-
     \value WA_ForceDisabled Indicates that the widget is
     explicitly disabled, i.e. it will remain disabled even when all
     its ancestors are set to the enabled state. This implies
@@ -1011,14 +978,9 @@
     This implies WA_UpdatesDisabled. This is set/cleared by
     QWidget::setUpdatesEnabled().
 
-    \value WA_GroupLeader
-        \e{This attribute has been deprecated.} Use QWidget::windowModality
-        instead.
-
     \value WA_Hover Forces Qt to generate paint events when the mouse
     enters or leaves the widget. This feature is typically used when
-    implementing custom styles; see the \l{widgets/styles}{Styles}
-    example for details.
+    implementing custom styles.
 
     \value WA_InputMethodEnabled Enables input methods for Asian languages.
     Must be set when creating custom text editing widgets.
@@ -1054,8 +1016,6 @@
     \value WA_LayoutUsesWidgetRect Ignore the layout item rect from the style
     when laying out this widget with QLayout.
 
-    \value WA_MacNoClickThrough This value is obsolete and has no effect.
-
     \value WA_MacOpaqueSizeGrip Indicates that the native size grip
     should be opaque instead of transparent (the default). This attribute
     is only applicable to \macos and is set by the widget's author.
@@ -1079,14 +1039,6 @@
     size for widgets in \macos. This attribute is only applicable to
     \macos.
 
-    \value WA_MacVariableSize Indicates the widget can choose between
-    alternative sizes for widgets to avoid clipping.
-    This attribute is only applicable to \macos.
-
-    \value WA_MacBrushedMetal This value is obsolete and has no effect.
-
-    \omitvalue WA_MacMetalStyle
-
     \value WA_Mapped Indicates that the widget is mapped on screen.
     This is set/cleared by the Qt kernel.
 
@@ -1101,12 +1053,6 @@
     \value WA_Moved Indicates that the widget has an explicit
     position. This is set/cleared by QWidget::move() and
     by QWidget::setGeometry().
-
-    \value WA_MSWindowsUseDirect3D This value is obsolete and has no
-    effect.
-
-    \value WA_NoBackground This value is obsolete. Use
-    WA_OpaquePaintEvent instead.
 
     \value WA_NoChildEventsForParent Indicates that the widget does
     not want ChildAdded or ChildRemoved events sent to its
@@ -1182,10 +1128,10 @@
     e.g., when a hidden widget was resized. This flag is set or cleared by the
     Qt kernel.
 
-    \value WA_QuitOnClose Makes Qt quit the application when the last widget
-    with the attribute set has accepted closeEvent(). This behavior can be
-    modified with the QApplication::quitOnLastWindowClosed property. By default
-    this attribute is set for all widgets of type Qt::Window.
+    \value WA_QuitOnClose Indicates that the widget should be taken into account
+    when deciding whether to quit the application when the last window is closed.
+    This behavior can be modified with the QGuiApplication::quitOnLastWindowClosed
+    property. By default this attribute is set for all widgets of type Qt::Window.
 
     \value WA_Resized Indicates that the widget has an explicit size. This flag
     is set or cleared by QWidget::resize() and QWidget::setGeometry().
@@ -1228,9 +1174,12 @@
     \value WA_TranslucentBackground Indicates that the widget should have a
     translucent background, i.e., any non-opaque regions of the widgets will be
     translucent because the widget will have an alpha channel. Setting this
-    flag causes WA_NoSystemBackground to be set. On Windows the
-    widget also needs the Qt::FramelessWindowHint window flag to be set.
-    This flag is set or cleared by the widget's author.
+    flag causes WA_NoSystemBackground to be set. On Windows the widget also
+    needs the Qt::FramelessWindowHint window flag to be set. This flag is set
+    or cleared by the widget's author. As of Qt 5.0, toggling this attribute
+    after the widget has been shown is not uniformly supported across
+    platforms. When translucent background is desired, set the attribute early
+    when creating the widget, and avoid altering it afterwards.
 
     \value WA_UnderMouse Indicates that the widget is under the mouse cursor.
     The value is not updated correctly during drag and drop operations. There
@@ -1344,8 +1293,6 @@
     has no effect on non-X11 platforms. \b Note: Qt automatically sets this
     attribute on the feedback widget used during a drag.
 
-    \value WA_MacFrameworkScaled This value is obsolete and has no effect.
-
     \value WA_AcceptTouchEvents Allows touch events (see QTouchEvent)
     to be sent to the widget. Must be set on all widgets that can
     handle touch events. Without this attribute set, events from a
@@ -1358,44 +1305,13 @@
     to this top level window. This attribute has no effect on non-X11
     platforms.
 
-    \value WA_AlwaysStackOnTop Since Qt 5.4, this value forces QOpenGLWidget and
+    \value [since 5.4] WA_AlwaysStackOnTop Forces QOpenGLWidget and
     QQuickWidget to be drawn last, on top of other widgets. Ignored for other
     type of widgets. Setting this attribute breaks the stacking order, but
     allows having a semi-transparent OpenGL widget with other widgets visible
     underneath. It is strongly recommended to call update() on the widget's
     top-level window after enabling or disabling this attribute.
 
-    \omitvalue WA_SetLayoutDirection
-    \omitvalue WA_InputMethodTransparent
-    \omitvalue WA_WState_CompressKeys
-    \omitvalue WA_WState_ConfigPending
-    \omitvalue WA_WState_Created
-    \omitvalue WA_WState_DND
-    \omitvalue WA_WState_ExplicitShowHide
-    \omitvalue WA_WState_Hidden
-    \omitvalue WA_WState_InPaintEvent
-    \omitvalue WA_WState_OwnSizePolicy
-    \omitvalue WA_WState_Polished
-    \omitvalue WA_WState_Reparented
-    \omitvalue WA_WState_Visible
-    \omitvalue WA_SetWindowIcon
-    \omitvalue WA_PendingUpdate
-    \omitvalue WA_LaidOut
-    \omitvalue WA_GrabbedShortcut
-    \omitvalue WA_DontShowOnScreen
-    \omitvalue WA_InvalidSize
-    \omitvalue WA_ForceUpdatesDisabled
-    \omitvalue WA_NoX11EventCompression
-    \omitvalue WA_TintedBackground
-    \omitvalue WA_X11OpenGLOverlay
-    \omitvalue WA_CanHostQMdiSubWindowTitleBar
-    \omitvalue WA_AttributeCount
-    \omitvalue WA_StyleSheet
-    \omitvalue WA_X11BypassTransientForHint
-    \omitvalue WA_SetWindowModality
-    \omitvalue WA_WState_WindowOpacitySet
-    \omitvalue WA_WState_AcceptedTouchBeginEvent
-    \omitvalue WA_MacNoShadow
     \value WA_ContentsMarginsRespectsSafeArea A QWidget respects the safe
     area margins of a window by incorporating the margins into its contents'
     margins by default. This means, that a QLayout will use the content area
@@ -1404,6 +1320,37 @@
     layout, to allow for example a background image to underlay the status bar and other
     system areas on an iOS device, while still allowing child widgets of
     that background to be inset based on the safe area.
+
+    \omitvalue WA_LaidOut
+    \omitvalue WA_WState_Visible
+    \omitvalue WA_WState_Hidden
+    \omitvalue WA_PendingUpdate
+    \omitvalue WA_InvalidSize
+    \omitvalue WA_GrabbedShortcut
+    \omitvalue WA_SetWindowIcon
+    \omitvalue WA_SetLayoutDirection
+    \omitvalue WA_ForceUpdatesDisabled
+    \omitvalue WA_WState_Created
+    \omitvalue WA_WState_CompressKeys
+    \omitvalue WA_WState_InPaintEvent
+    \omitvalue WA_WState_Reparented
+    \omitvalue WA_WState_ConfigPending
+    \omitvalue WA_WState_Polished
+    \omitvalue WA_WState_OwnSizePolicy
+    \omitvalue WA_WState_ExplicitShowHide
+    \omitvalue WA_InputMethodTransparent
+    \omitvalue WA_DropSiteRegistered
+    \omitvalue WA_NoX11EventCompression
+    \omitvalue WA_TintedBackground
+    \omitvalue WA_X11OpenGLOverlay
+    \omitvalue WA_CanHostQMdiSubWindowTitleBar
+    \omitvalue WA_X11BypassTransientForHint
+    \omitvalue WA_DontShowOnScreen
+    \omitvalue WA_SetWindowModality
+    \omitvalue WA_WState_WindowOpacitySet
+    \omitvalue WA_WState_AcceptedTouchBeginEvent
+    \omitvalue WA_StyleSheet
+    \omitvalue WA_AttributeCount
 */
 
 /*! \typedef Qt::HANDLE
@@ -1738,24 +1685,24 @@
     \value Key_OpenUrl
     \value Key_LaunchMail
     \value Key_LaunchMedia
-    \value Key_Launch0 On X11 this key is mapped to "My Computer" (XF86XK_MyComputer) key for legacy reasons.
-    \value Key_Launch1 On X11 this key is mapped to "Calculator" (XF86XK_Calculator) key for legacy reasons.
-    \value Key_Launch2 On X11 this key is mapped to XF86XK_Launch0 key for legacy reasons.
-    \value Key_Launch3 On X11 this key is mapped to XF86XK_Launch1 key for legacy reasons.
-    \value Key_Launch4 On X11 this key is mapped to XF86XK_Launch2 key for legacy reasons.
-    \value Key_Launch5 On X11 this key is mapped to XF86XK_Launch3 key for legacy reasons.
-    \value Key_Launch6 On X11 this key is mapped to XF86XK_Launch4 key for legacy reasons.
-    \value Key_Launch7 On X11 this key is mapped to XF86XK_Launch5 key for legacy reasons.
-    \value Key_Launch8 On X11 this key is mapped to XF86XK_Launch6 key for legacy reasons.
-    \value Key_Launch9 On X11 this key is mapped to XF86XK_Launch7 key for legacy reasons.
-    \value Key_LaunchA On X11 this key is mapped to XF86XK_Launch8 key for legacy reasons.
-    \value Key_LaunchB On X11 this key is mapped to XF86XK_Launch9 key for legacy reasons.
-    \value Key_LaunchC On X11 this key is mapped to XF86XK_LaunchA key for legacy reasons.
-    \value Key_LaunchD On X11 this key is mapped to XF86XK_LaunchB key for legacy reasons.
-    \value Key_LaunchE On X11 this key is mapped to XF86XK_LaunchC key for legacy reasons.
-    \value Key_LaunchF On X11 this key is mapped to XF86XK_LaunchD key for legacy reasons.
-    \value Key_LaunchG On X11 this key is mapped to XF86XK_LaunchE key for legacy reasons.
-    \value Key_LaunchH On X11 this key is mapped to XF86XK_LaunchF key for legacy reasons.
+    \value Key_Launch0
+    \value Key_Launch1
+    \value Key_Launch2
+    \value Key_Launch3
+    \value Key_Launch4
+    \value Key_Launch5
+    \value Key_Launch6
+    \value Key_Launch7
+    \value Key_Launch8
+    \value Key_Launch9
+    \value Key_LaunchA
+    \value Key_LaunchB
+    \value Key_LaunchC
+    \value Key_LaunchD
+    \value Key_LaunchE
+    \value Key_LaunchF
+    \value Key_LaunchG
+    \value Key_LaunchH
     \value Key_MonBrightnessUp
     \value Key_MonBrightnessDown
     \value Key_KeyboardLightOnOff
@@ -1781,7 +1728,7 @@
     \value Key_ApplicationRight
     \value Key_Book
     \value Key_CD
-    \value Key_Calculator On X11 this key is not mapped for legacy reasons. Use Qt::Key_Launch1 instead.
+    \value Key_Calculator
     \value Key_ToDoList
     \value Key_ClearGrab
     \value Key_Close
@@ -2164,14 +2111,6 @@
 */
 
 /*!
-    \typedef Qt::WFlags
-    \obsolete
-    This typedef is obsolete. Use Qt::WindowFlags instead.
-
-    Synonym for Qt::WindowFlags.
-*/
-
-/*!
     \enum Qt::WindowType
 
     \keyword window flag
@@ -2244,8 +2183,7 @@
     \value SplashScreen Indicates that the window is a splash screen.
                         This is the default type for QSplashScreen.
 
-    \value Desktop  Indicates that this widget is the desktop. This
-                    is the type for QDesktopWidget.
+    \omitvalue Desktop  Indicates that this widget is the desktop.
 
     \value SubWindow  Indicates that this widget is a sub-window, such
                       as a QMdiSubWindow widget.
@@ -2286,10 +2224,16 @@
            you call QWidget::activateWindow() manually).
 
     \value FramelessWindowHint  Produces a borderless window.
-           The user cannot move or resize a borderless window via the window
-           system. On X11, the result of the flag is dependent on the window manager and its
+
+           On X11, the result of the flag is dependent on the window manager and its
            ability to understand Motif and/or NETWM hints. Most existing
            modern window managers can handle this.
+
+           \note If the window manager relies on the frame to interactively manipulate
+           the window, the user can no longer move or resize the window via the window
+           system, but this side effect should not be relied on. To produce a fixed
+           size window that can not be resized, please set QWindow::setMinimumSize()
+           and QWindow::setMaximumSize() to the same size.
 
     \value NoDropShadowWindowHint  Disables window drop shadow on supporting platforms.
 
@@ -2720,11 +2664,11 @@
     \enum Qt::InputMethodQuery
 
     \value ImEnabled            The widget accepts input method input.
-    \value ImMicroFocus         This query is obsolete. Use \c ImCursorRectangle instead.
     \value ImCursorRectangle    The rectangle covering the area of the input cursor in widget coordinates.
     \value ImFont               The currently used font for text input.
     \value ImCursorPosition     The logical position of the cursor within the text surrounding the input area
-                                (see \c ImSurroundingText).
+                                (see \c ImSurroundingText). The position does not incorporate the offset of
+                                the cursor within the preedit area, as controlled by QInputMethodEvent::Cursor.
     \value ImSurroundingText    The plain text around the input area, for example the current paragraph.
     \value ImCurrentSelection   The currently selected text.
     \value ImMaximumTextLength  The maximum number of characters that the widget can hold. If there is no limit,
@@ -2735,7 +2679,9 @@
     \value ImHints              The hints for input method on expected input. (See Qt::InputMethodHints)
     \value ImPreferredLanguage  The preferred input language.
     \value ImPlatformData       Platform specific data for input method.
-    \value ImAbsolutePosition   The logical position of the cursor within the entire document.
+    \value ImAbsolutePosition   The logical position of the cursor within the entire document. The position does
+                                not incorporate the offset of the cursor within the preedit area, as controlled
+                                by QInputMethodEvent::Cursor.
     \value ImTextBeforeCursor   The plain text before the cursor. The widget can decide how much text to return,
                                 but \b{must} not return an empty string unless the cursor is at the start of the document.
     \value ImTextAfterCursor    The plain text after the cursor. The widget can decide how much text to return,
@@ -2746,6 +2692,7 @@
     \value ImInputItemClipRectangle The actual exposed input item rectangle. Parts of the input item might be
                                 clipped. This value will take clipping into consideration and return the actual painted
                                 item rectangle. The rectangle is in widget coordinates.
+    \value ImReadOnly           The widget is read only. This value was added in Qt 6.2.
 
     Masks:
 
@@ -2816,16 +2763,13 @@
                                 default delegate. (Qt::Alignment)
     \value BackgroundRole       The background brush used for items rendered with
                                 the default delegate. (QBrush)
-    \value BackgroundColorRole  This role is obsolete. Use BackgroundRole instead.
     \value ForegroundRole       The foreground brush (text color, typically)
                                 used for items rendered with the default delegate.
                                 (QBrush)
-    \value TextColorRole        This role is obsolete. Use ForegroundRole instead.
     \value CheckStateRole       This role is used to obtain the checked state of
                                 an item. (Qt::CheckState)
     \value InitialSortOrderRole This role is used to obtain the initial sort order
-                                of a header view section. (Qt::SortOrder). This
-                                role was introduced in Qt 4.8.
+                                of a header view section. (Qt::SortOrder).
 
     Accessibility roles (with associated types):
 
@@ -2865,8 +2809,6 @@
            This enables automatic management of the state of parent items in QTreeWidget
            (checked if all children are checked, unchecked if all children are unchecked,
            or partially checked if only some children are checked).
-    \value ItemIsTristate \e{This enum value is deprecated.} Use Qt::ItemIsAutoTristate
-    instead.
     \value ItemNeverHasChildren The item never has child items.
            This is used for optimization purposes only.
     \value ItemIsUserTristate The user can cycle through three separate states.
@@ -2898,9 +2840,6 @@
     \value MatchStartsWith         The search term matches the start of the item.
     \value MatchEndsWith           The search term matches the end of the item.
     \value MatchCaseSensitive      The search is case sensitive.
-    \value MatchRegExp             Performs string-based matching using a regular
-           expression as the search term. Uses the deprecated QRegExp class.
-           \e{This enum value is deprecated since Qt 5.15.}
     \value MatchRegularExpression  Performs string-based matching using a regular
            expression as the search term. Uses QRegularExpression.
            When using this flag, a QRegularExpression object can be passed as
@@ -2914,13 +2853,14 @@
            the search reaches the last item in the model, it begins again at
            the first item and continues until all items have been examined.
     \value MatchRecursive          Searches the entire hierarchy.
+    \omitvalue MatchTypeMask
 
     \note Qt::MatchExactly, Qt::MatchContains, Qt::MatchStartsWith,
           Qt::MatchEndsWith, Qt::MatchRegularExpression, Qt::MatchWildcard, and
           Qt::MatchFixedString are mutually exclusive. The behavior achieved by
           setting several of them in a Qt::MatchFlags argument is undefined.
 
-    \sa QString::compare(), QRegExp, QRegularExpression
+    \sa QString::compare(), QRegularExpression
 */
 
 /*!
@@ -2932,7 +2872,10 @@
     \value ElideLeft    The ellipsis should appear at the beginning of the text.
     \value ElideRight   The ellipsis should appear at the end of the text.
     \value ElideMiddle  The ellipsis should appear in the middle of the text.
-    \value ElideNone    Ellipsis should NOT appear in the text.
+    \value ElideNone    Ellipsis should NOT appear in the text. When passed to functions such as
+                        QFontMetrics::elidedText(), this will cause the full string to return unless
+                        the text contains multi-length variants. Elision in this case must be done
+                        by clipping to the component width.
 
     Qt::ElideMiddle is normally the most appropriate choice for URLs (e.g.,
     "\l{http://bugreports.qt.io/browse/QTWEBSITE-13}{http://bugreports.qt.../QTWEBSITE-13/}"),
@@ -3097,6 +3040,11 @@
 */
 
 /*!
+    \enum Qt::Disambiguated_t
+    \internal
+*/
+
+/*!
     \enum Qt::CoordinateSystem
     \since 4.6
 
@@ -3115,6 +3063,7 @@
     This enum represents the state of a touch point at the time a
     QTouchEvent occurred.
 
+    \value TouchPointUnknownState The state of the touch point is not known.
     \value TouchPointPressed The touch point is now pressed.
     \value TouchPointMoved The touch point moved.
     \value TouchPointStationary The touch point did not move.
@@ -3176,8 +3125,8 @@
     the Qt::GestureStarted state and ending with a gesture in the
     Qt::GestureFinished or Qt::GestureCanceled states.
 
-    \value IgnoredGesturesPropagateToParent Since Qt 4.7, this flag allows you
-    to fine-tune gesture event propagation. By setting the flag when
+    \value [since 4.7] IgnoredGesturesPropagateToParent Allows fine-tuning of
+    gesture event propagation. By setting the flag when
     \l{QGraphicsObject::grabGesture()}{grabbing} a gesture all ignored partial
     gestures will propagate to their parent items.
 
@@ -3192,12 +3141,11 @@
 
     \value BeginNativeGesture Sent before gesture event stream.
     \value EndNativeGesture   Sent after gesture event stream.
-    \value PanNativeGesture   Sent after a panning gesture.
-                              Similar to a click-and-drag mouse movement.
+    \value PanNativeGesture   Specifies the displacement delta in pixels.
     \value ZoomNativeGesture  Specifies the magnification delta in percent.
     \value SmartZoomNativeGesture Boolean magnification state.
-    \value RotateNativeGesture    Rotation delta in degrees.
-    \value SwipeNativeGesture     Sent after a swipe movements.
+    \value RotateNativeGesture    Specifies the rotation delta in degrees.
+    \value SwipeNativeGesture     Sent after a swipe movement.
 
 */
 
@@ -3325,6 +3273,7 @@
     \l {QEvent::MouseButtonDblClick}{MouseButtonDblClick} event from this event. The flag is set in the causing
     \l {QEvent::MouseButtonPress}{MouseButtonPress}, and not in the resulting \l {QEvent::MouseButtonDblClick}{MouseButtonDblClick}.
 
+    \omitvalue NoMouseEventFlag
     \omitvalue MouseEventFlagMask
 */
 
@@ -3347,11 +3296,9 @@
   decide how non-integer scale factors (such as Windows 150%) are handled.
 
   The active policy is set by calling QGuiApplication::setHighDdpiScaleFactorRoundingPolicy() before
-  the application object is created, or by setting the QT_SCALE_FACTOR_ROUNDING_POLICY
-  environment variable.
+  the application object is created.
 
   \sa QGuiApplication::setHighDpiScaleFactorRoundingPolicy()
-  \sa AA_EnableHighDpiScaling.
 
   \omitvalue Unset
   \value Round Round up for .5 and above.
@@ -3359,6 +3306,38 @@
   \value Floor Always round down.
   \value RoundPreferFloor Round up for .75 and above.
   \value PassThrough Don't round.
+*/
+
+/*!
+    \enum Qt::PermissionStatus
+
+    This enum describes the possible statuses of a permissions.
+
+    \value Undetermined
+        The permission status is not yet known. Permission should be requested
+        via QCoreApplication::requestPermission() to determine the actual status.
+        This status will never be the result of requesting a permission.
+
+    \value Granted
+        The user has explicitly granted the application the permission,
+        or the permission is known to not require user authorization on
+        the given platform.
+
+    \value Denied
+        The user has explicitly denied the application the requested permission,
+        or the permission is known to not be accessible or applicable to applications
+        on the given platform.
+
+        \note On Android, there is no \c Undetermined status by the platform's APIs.
+            Thus, if a permission is denied for an app,
+            \l QCoreApplication::checkPermission() returns \c Undetermined
+            by default until \l QCoreApplication::requestPermission() is called.
+            After that \l QCoreApplication::checkPermission() reports a non \c Undetermined
+            status.
+
+    \since 6.5
+    \sa QCoreApplication::requestPermission(), QCoreApplication::checkPermission(),
+        {Application Permissions}
 */
 
 /*!
@@ -3374,3 +3353,199 @@
   \sa QLabel::picture()
   \sa QLabel::pixmap()
 */
+
+/*!
+  \class QKeyCombination
+  \inmodule QtCore
+  \since 6.0
+  \brief The QKeyCombination class stores a combination of a key with optional modifiers.
+
+  The QKeyCombination class can be used to represent a combination of a key
+  with zero or more keyboard modifiers.
+
+  \sa QKeySequence
+*/
+
+/*!
+  \fn QKeyCombination::QKeyCombination(Qt::Key key = Qt::Key_unknown) noexcept
+
+  Constructs a QKeyCombination object that represents the key \a key
+  and no modifiers.
+
+  \sa key()
+*/
+
+/*!
+  \fn QKeyCombination::QKeyCombination(Qt::Modifiers modifiers, Qt::Key key = Qt::Key_unknown) noexcept
+
+  Constructs a QKeyCombination object that represents the combination
+  of \a key with the modifiers \a modifiers.
+
+  \sa key(), keyboardModifiers()
+*/
+
+/*!
+  \fn QKeyCombination::QKeyCombination(Qt::KeyboardModifiers modifiers, Qt::Key key = Qt::Key_unknown) noexcept
+
+  Constructs a QKeyCombination object that represents the combination
+  of \a key with the modifiers \a modifiers.
+
+  \sa key(), keyboardModifiers()
+*/
+
+/*!
+  \fn Qt::KeyboardModifiers QKeyCombination::keyboardModifiers() const noexcept
+
+  Returns the keyboard modifiers represented by this QKeyCombination object.
+
+  \sa key()
+*/
+
+/*!
+  \fn Qt::Key QKeyCombination::key() const noexcept
+
+  Returns the key represented by this QKeyCombination object.
+
+  \sa keyboardModifiers()
+*/
+
+/*!
+  \fn QKeyCombination QKeyCombination::fromCombined(int combined)
+
+  Constructs a QKeyCombination object by extracting the key and the
+  modifiers out of \a combined, which must be the result of a bitwise
+  OR between a value of type Qt::Key and value of type
+  Qt::KeyboardModifiers. toCombined() can be used in order to produce
+  valid values for \a combined.
+
+  \sa toCombined()
+*/
+
+/*!
+  \fn int QKeyCombination::toCombined() const noexcept
+
+  Returns an integer value obtained by applying a bitwise OR between
+  the values of key() and keyboardModifiers() represented
+  by this object. A QKeyCombination object can be created from the
+  returned integer value by using fromCombined().
+
+  \sa fromCombined(), key(), keyboardModifiers()
+*/
+
+#if QT_DEPRECATED_SINCE(6, 0)
+/*!
+  \fn QKeyCombination::operator int() const noexcept
+  \deprecated
+
+  Use toCombined() instead.
+*/
+#endif
+
+/*!
+  \fn bool QKeyCombination::operator==(QKeyCombination lhs, QKeyCombination rhs) noexcept
+
+  Returns \c true if \a lhs and \a rhs have the same combination
+  of key and modifiers, and \c false otherwise.
+*/
+
+/*!
+  \fn bool QKeyCombination::operator!=(QKeyCombination lhs, QKeyCombination rhs) noexcept
+
+  Returns \c true if \a lhs and \a rhs have different combinations
+  of key and modifiers, otherwise \c false.
+*/
+
+/*!
+  \fn QKeyCombination operator|(Qt::Modifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination operator|(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination operator|(Qt::Key key, Qt::Modifier modifier) noexcept
+  \fn QKeyCombination operator|(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
+
+  \relates QKeyCombination
+
+  Returns a QKeyCombination object that represents the combination
+  of \a key with the modifier \a modifier.
+*/
+
+/*!
+  \fn QKeyCombination operator|(Qt::Modifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination operator|(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination operator|(Qt::Key key, Qt::Modifiers modifiers) noexcept
+  \fn QKeyCombination operator|(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
+
+  \relates QKeyCombination
+
+  Returns a QKeyCombination object that represents the combination
+  of \a key with the modifiers \a modifiers.
+*/
+
+/*!
+  \fn QKeyCombination operator+(Qt::Modifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination operator+(Qt::KeyboardModifier modifier, Qt::Key key) noexcept
+  \fn QKeyCombination operator+(Qt::Key key, Qt::Modifier modifier) noexcept
+  \fn QKeyCombination operator+(Qt::Key key, Qt::KeyboardModifier modifier) noexcept
+
+  \relates QKeyCombination
+  \deprecated
+
+  Use operator| instead.
+
+  Returns a QKeyCombination object that represents the combination
+  of \a key with the modifier \a modifier.
+*/
+
+/*!
+  \fn QKeyCombination operator+(Qt::Modifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination operator+(Qt::KeyboardModifiers modifiers, Qt::Key key) noexcept
+  \fn QKeyCombination operator+(Qt::Key key, Qt::Modifiers modifiers) noexcept
+  \fn QKeyCombination operator+(Qt::Key key, Qt::KeyboardModifiers modifiers) noexcept
+
+  \relates QKeyCombination
+  \deprecated
+
+  Use operator| instead.
+
+  Returns a QKeyCombination object that represents the combination
+  of \a key with the modifiers \a modifiers.
+*/
+
+/*!
+  \fn size_t qHash(QKeyCombination key, size_t seed = 0) noexcept
+  \relates QKeyCombination
+
+  Returns the hash value for the \a key, using \a seed to seed the calculation.
+*/
+
+#ifndef QT_NO_DEBUG_STREAM
+/*!
+  \fn QDebug operator<<(QDebug debug, QKeyCombination combination)
+  \relates QKeyCombination
+
+  Writes the combination \a combination into the debug object \a debug for
+  debugging purposes.
+
+  \sa {Debugging Techniques}
+*/
+#endif
+
+#ifndef QT_NO_DATASTREAM
+/*!
+  \fn QDataStream &operator<<(QDataStream &out, QKeyCombination combination)
+  \relates QKeyCombination
+
+  Writes the combination \a combination into the stream \a out.
+  Returns \a out.
+
+  \sa {Serializing Qt Data Types}
+*/
+
+/*!
+  \fn QDataStream &operator>>(QDataStream &in, QKeyCombination &combination)
+  \relates QKeyCombination
+
+  Reads the combination \a combination from the stream \a in.
+  Returns \a in.
+
+  \sa {Serializing Qt Data Types}
+*/
+#endif

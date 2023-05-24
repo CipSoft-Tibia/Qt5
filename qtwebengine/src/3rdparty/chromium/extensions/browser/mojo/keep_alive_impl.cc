@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "content/public/browser/browser_context.h"
 
 namespace extensions {
@@ -30,8 +30,8 @@ KeepAliveImpl::KeepAliveImpl(content::BrowserContext* context,
       extension_, Activity::MOJO, std::string());
   receiver_.set_disconnect_handler(
       base::BindOnce(&KeepAliveImpl::OnDisconnected, base::Unretained(this)));
-  extension_registry_observer_.Add(ExtensionRegistry::Get(context_));
-  process_manager_observation_.Add(ProcessManager::Get(context_));
+  extension_registry_observation_.Observe(ExtensionRegistry::Get(context_));
+  process_manager_observation_.Observe(ProcessManager::Get(context_));
 }
 
 KeepAliveImpl::~KeepAliveImpl() = default;

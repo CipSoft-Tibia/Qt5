@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,12 +8,11 @@
 #include <memory>
 #include <string>
 
-#include "base/compiler_specific.h"
-#include "base/macros.h"
-#include "base/strings/string16.h"
 #include "cc/paint/paint_flags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/controls/focus_ring.h"
+#include "ui/views/metadata/view_factory.h"
 
 namespace gfx {
 struct VectorIcon;
@@ -27,17 +26,21 @@ class VIEWS_EXPORT Checkbox : public LabelButton {
  public:
   METADATA_HEADER(Checkbox);
 
-  explicit Checkbox(const base::string16& label = base::string16(),
-                    PressedCallback callback = PressedCallback());
-  Checkbox(const base::string16& label, ButtonListener* listener);
+  explicit Checkbox(const std::u16string& label = std::u16string(),
+                    PressedCallback callback = PressedCallback(),
+                    int button_context = style::CONTEXT_BUTTON);
+
+  Checkbox(const Checkbox&) = delete;
+  Checkbox& operator=(const Checkbox&) = delete;
+
   ~Checkbox() override;
 
   // Sets/Gets whether or not the checkbox is checked.
   virtual void SetChecked(bool checked);
   bool GetChecked() const;
 
-  PropertyChangedSubscription AddCheckedChangedCallback(
-      PropertyChangedCallback callback) WARN_UNUSED_RESULT;
+  [[nodiscard]] base::CallbackListSubscription AddCheckedChangedCallback(
+      PropertyChangedCallback callback);
 
   void SetMultiLine(bool multi_line);
   bool GetMultiLine() const;
@@ -47,6 +50,8 @@ class VIEWS_EXPORT Checkbox : public LabelButton {
   // accessible name from the labelling views's accessible name. Any view with
   // an accessible name can be used, e.g. a Label, StyledLabel or Link.
   void SetAssociatedLabel(View* labelling_view);
+
+  void SetCheckedIconImageColor(SkColor color);
 
   // LabelButton:
   void GetAccessibleNodeData(ui::AXNodeData* node_data) override;
@@ -59,9 +64,6 @@ class VIEWS_EXPORT Checkbox : public LabelButton {
 
   // LabelButton:
   void OnThemeChanged() override;
-  std::unique_ptr<InkDrop> CreateInkDrop() override;
-  std::unique_ptr<InkDropRipple> CreateInkDropRipple() const override;
-  SkColor GetInkDropBaseColor() const override;
 
   // Returns the path to draw the focus ring around for this Checkbox.
   virtual SkPath GetFocusRingPath() const;
@@ -82,14 +84,18 @@ class VIEWS_EXPORT Checkbox : public LabelButton {
   void GetExtraParams(ui::NativeTheme::ExtraParams* params) const override;
 
   // True if the checkbox is checked.
-  bool checked_;
+  bool checked_ = false;
 
-  // The unique id for the associated label's accessible object.
-  int32_t label_ax_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(Checkbox);
+  absl::optional<SkColor> checked_icon_image_color_;
 };
 
+BEGIN_VIEW_BUILDER(VIEWS_EXPORT, Checkbox, LabelButton)
+VIEW_BUILDER_PROPERTY(bool, Checked)
+VIEW_BUILDER_PROPERTY(bool, MultiLine)
+END_VIEW_BUILDER
+
 }  // namespace views
+
+DEFINE_VIEW_BUILDER(VIEWS_EXPORT, Checkbox)
 
 #endif  // UI_VIEWS_CONTROLS_BUTTON_CHECKBOX_H_

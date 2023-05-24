@@ -1,11 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/layout/ng/exclusions/ng_exclusion_space.h"
 
-#include "base/optional.h"
+#include <algorithm>
+
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/core/layout/ng/exclusions/ng_exclusion.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 
 namespace blink {
 
@@ -18,16 +21,16 @@ namespace {
 // they are always produced in the order.
 void InsertClosedArea(
     const NGExclusionSpaceInternal::NGClosedArea area,
-    Vector<NGExclusionSpaceInternal::NGClosedArea, 4>* areas) {
-  if (areas->IsEmpty()) {
-    areas->emplace_back(area);
+    HeapVector<NGExclusionSpaceInternal::NGClosedArea, 4>& areas) {
+  if (areas.empty()) {
+    areas.emplace_back(area);
     return;
   }
 
   // We go backwards through the list as there is a higher probability that a
   // new area will be at the end of the list.
-  for (wtf_size_t i = areas->size(); i--;) {
-    const NGExclusionSpaceInternal::NGClosedArea& other = areas->at(i);
+  for (wtf_size_t i = areas.size(); i--;) {
+    const NGExclusionSpaceInternal::NGClosedArea& other = areas.at(i);
     if (other.opportunity.rect.BlockStartOffset() <=
         area.opportunity.rect.BlockStartOffset()) {
 #if DCHECK_IS_ON()
@@ -42,7 +45,7 @@ void InsertClosedArea(
       }
 #endif
 
-      areas->insert(i + 1, area);
+      areas.insert(i + 1, area);
       return;
     }
   }
@@ -56,17 +59,16 @@ void InsertClosedArea(
   // When a subsequent float gets placed, it might create a closed-off area at
   // LayoutUnit::Min(), and should be inserted at the front of the areas list.
   DCHECK_EQ(area.opportunity.rect.BlockStartOffset(), LayoutUnit::Min());
-  areas->push_front(area);
+  areas.push_front(area);
 }
 
 // Returns true if there is at least one edge between block_start and block_end.
-bool HasSolidEdges(
-    const Vector<NGExclusionSpaceInternal::NGShelfEdge, 1>& edges,
-    LayoutUnit block_start,
-    LayoutUnit block_end) {
+bool HasSolidEdges(const Vector<NGExclusionSpaceInternal::NGShelfEdge>& edges,
+                   LayoutUnit block_start,
+                   LayoutUnit block_end) {
   // If there aren't any adjacent exclusions, we must be the initial shelf.
   // This always has "solid" edges on either side.
-  if (edges.IsEmpty())
+  if (edges.empty())
     return true;
 
   for (const auto& edge : edges) {
@@ -82,9 +84,9 @@ bool HasSolidEdges(
 // to the given out_edges vector.
 // edges will be invalid after this call.
 void CollectSolidEdges(
-    Vector<NGExclusionSpaceInternal::NGShelfEdge, 1>* edges,
+    Vector<NGExclusionSpaceInternal::NGShelfEdge>* edges,
     LayoutUnit block_offset,
-    Vector<NGExclusionSpaceInternal::NGShelfEdge, 1>* out_edges) {
+    Vector<NGExclusionSpaceInternal::NGShelfEdge>* out_edges) {
   *out_edges = std::move(*edges);
   for (auto* it = out_edges->begin(); it != out_edges->end();) {
     if ((*it).block_end <= block_offset) {
@@ -103,8 +105,8 @@ void CollectSolidEdges(
 bool Intersects(const NGLayoutOpportunity& opportunity,
                 const NGBfcOffset& offset,
                 const LayoutUnit inline_size) {
-  return opportunity.rect.LineEndOffset() > offset.line_offset &&
-         opportunity.rect.LineStartOffset() <
+  return opportunity.rect.LineEndOffset() >= offset.line_offset &&
+         opportunity.rect.LineStartOffset() <=
              offset.line_offset + inline_size &&
          opportunity.rect.BlockEndOffset() > offset.block_offset;
 }
@@ -127,7 +129,7 @@ NGLayoutOpportunity CreateLayoutOpportunity(const NGLayoutOpportunity& other,
   return NGLayoutOpportunity(
       NGBfcRect(start_offset, end_offset),
       other.shape_exclusions
-          ? base::AdoptRef(new NGShapeExclusions(*other.shape_exclusions))
+          ? MakeGarbageCollected<NGShapeExclusions>(*other.shape_exclusions)
           : nullptr);
 }
 
@@ -150,17 +152,19 @@ NGLayoutOpportunity CreateLayoutOpportunity(
   return NGLayoutOpportunity(
       NGBfcRect(start_offset, end_offset),
       shelf.has_shape_exclusions
-          ? base::AdoptRef(new NGShapeExclusions(*shelf.shape_exclusions))
+          ? MakeGarbageCollected<NGShapeExclusions>(*shelf.shape_exclusions)
           : nullptr);
 }
 
 }  // namespace
 
 NGExclusionSpaceInternal::NGExclusionSpaceInternal()
-    : exclusions_(base::MakeRefCounted<NGExclusionPtrArray>()),
-      num_exclusions_(0),
+    : exclusions_(MakeGarbageCollected<NGExclusionPtrArray>()),
       track_shape_exclusions_(false),
-      derived_geometry_(nullptr) {}
+      has_break_before_left_float_(false),
+      has_break_before_right_float_(false),
+      has_break_inside_left_float_(false),
+      has_break_inside_right_float_(false) {}
 
 NGExclusionSpaceInternal::NGExclusionSpaceInternal(
     const NGExclusionSpaceInternal& other)
@@ -169,15 +173,20 @@ NGExclusionSpaceInternal::NGExclusionSpaceInternal(
       left_clear_offset_(other.left_clear_offset_),
       right_clear_offset_(other.right_clear_offset_),
       last_float_block_start_(other.last_float_block_start_),
+      initial_letter_left_clear_offset_(
+          other.initial_letter_left_clear_offset_),
+      initial_letter_right_clear_offset_(
+          other.initial_letter_right_clear_offset_),
       track_shape_exclusions_(other.track_shape_exclusions_),
+      has_break_before_left_float_(other.has_break_before_left_float_),
+      has_break_before_right_float_(other.has_break_before_right_float_),
+      has_break_inside_left_float_(other.has_break_inside_left_float_),
+      has_break_inside_right_float_(other.has_break_inside_right_float_),
       derived_geometry_(std::move(other.derived_geometry_)) {
   // This copy-constructor does fun things. It moves the derived_geometry_ to
   // the newly created exclusion space where it'll more-likely be used.
   other.derived_geometry_ = nullptr;
 }
-
-NGExclusionSpaceInternal::NGExclusionSpaceInternal(
-    NGExclusionSpaceInternal&&) noexcept = default;
 
 NGExclusionSpaceInternal& NGExclusionSpaceInternal::operator=(
     const NGExclusionSpaceInternal& other) {
@@ -186,14 +195,17 @@ NGExclusionSpaceInternal& NGExclusionSpaceInternal::operator=(
   left_clear_offset_ = other.left_clear_offset_;
   right_clear_offset_ = other.right_clear_offset_;
   last_float_block_start_ = other.last_float_block_start_;
+  initial_letter_left_clear_offset_ = other.initial_letter_left_clear_offset_;
+  initial_letter_right_clear_offset_ = other.initial_letter_right_clear_offset_;
   track_shape_exclusions_ = other.track_shape_exclusions_;
+  has_break_before_left_float_ = other.has_break_before_left_float_;
+  has_break_before_right_float_ = other.has_break_before_right_float_;
+  has_break_inside_left_float_ = other.has_break_inside_left_float_;
+  has_break_inside_right_float_ = other.has_break_inside_right_float_;
   derived_geometry_ = std::move(other.derived_geometry_);
   other.derived_geometry_ = nullptr;
   return *this;
 }
-
-NGExclusionSpaceInternal& NGExclusionSpaceInternal::operator=(
-    NGExclusionSpaceInternal&&) noexcept = default;
 
 NGExclusionSpaceInternal::DerivedGeometry::DerivedGeometry(
     LayoutUnit block_offset_limit,
@@ -205,23 +217,23 @@ NGExclusionSpaceInternal::DerivedGeometry::DerivedGeometry(
                         track_shape_exclusions_);
 }
 
-void NGExclusionSpaceInternal::Add(scoped_refptr<const NGExclusion> exclusion) {
-  DCHECK_LE(num_exclusions_, exclusions_->data.size());
+void NGExclusionSpaceInternal::Add(const NGExclusion* exclusion) {
+  DCHECK_LE(num_exclusions_, exclusions_->size());
 
   bool already_exists = false;
 
-  if (num_exclusions_ < exclusions_->data.size()) {
-    if (*exclusion == *exclusions_->data.at(num_exclusions_)) {
+  if (num_exclusions_ < exclusions_->size()) {
+    if (*exclusion == *exclusions_->at(num_exclusions_)) {
       // We might be adding an exclusion seen in a previous layout pass.
       already_exists = true;
     } else {
       // Perform a copy-on-write if the number of exclusions has gone out of
       // sync.
-      scoped_refptr<NGExclusionPtrArray> exclusions =
-          base::MakeRefCounted<NGExclusionPtrArray>();
-      exclusions->data.AppendRange(exclusions_->data.begin(),
-                                   exclusions_->data.begin() + num_exclusions_);
-      std::swap(exclusions_, exclusions);
+      NGExclusionPtrArray* exclusions =
+          MakeGarbageCollected<NGExclusionPtrArray>();
+      exclusions->AppendRange(exclusions_->begin(),
+                              exclusions_->begin() + num_exclusions_);
+      exclusions_ = exclusions;
     }
   }
 
@@ -236,15 +248,60 @@ void NGExclusionSpaceInternal::Add(scoped_refptr<const NGExclusion> exclusion) {
 
   // We can safely mutate the exclusion here as an exclusion will never be
   // reused if this invariant doesn't hold.
-  const_cast<NGExclusion*>(exclusion.get())->is_past_other_exclusions =
-      exclusion_block_offset >= left_clear_offset_ &&
-      exclusion_block_offset >= right_clear_offset_;
+  const_cast<NGExclusion*>(exclusion)->is_past_other_exclusions =
+      exclusion_block_offset >=
+      std::max({left_clear_offset_, exclusion_block_offset, right_clear_offset_,
+                exclusion_block_offset, initial_letter_left_clear_offset_,
+                exclusion_block_offset, initial_letter_right_clear_offset_});
+
+  // Update the members used for clearance calculations.
+  LayoutUnit clear_offset = exclusion->rect.BlockEndOffset();
+  if (UNLIKELY(exclusion->IsForInitialLetterBox())) {
+    if (exclusion->type == EFloat::kLeft) {
+      initial_letter_left_clear_offset_ =
+          std::max(initial_letter_left_clear_offset_, clear_offset);
+    } else if (exclusion->type == EFloat::kRight) {
+      initial_letter_right_clear_offset_ =
+          std::max(initial_letter_right_clear_offset_, clear_offset);
+    }
+
+    if (!already_exists) {
+      // Perform a copy-on-write if the number of exclusions has gone out of
+      // sync.
+      const auto& source_exclusions = *exclusions_;
+      exclusions_ = MakeGarbageCollected<NGExclusionPtrArray>();
+      exclusions_->resize(num_exclusions_ + 1);
+      const auto* const source_end =
+          source_exclusions.begin() + num_exclusions_;
+      // Initial-letters are special in that they can be inserted "before"
+      // other floats. Ensure we insert |exclusion| in the correct place
+      // (ascent order by block-start).
+      auto* destination = exclusions_->begin();
+      for (auto* it = source_exclusions.begin(); it != source_end; ++it) {
+        if (exclusion->rect.BlockStartOffset() <
+            (*it)->rect.BlockStartOffset()) {
+          *destination = exclusion;
+          destination = std::copy(it, source_end, destination + 1);
+          break;
+        }
+        *destination++ = *it;
+      }
+      if (destination != exclusions_->end())
+        *destination++ = exclusion;
+      DCHECK_EQ(destination, exclusions_->end());
+    }
+    num_exclusions_++;
+
+    if (exclusions_->at(num_exclusions_ - 1) != exclusion)
+      derived_geometry_ = nullptr;
+    if (derived_geometry_)
+      derived_geometry_->Add(*exclusion);
+    return;
+  }
 
   last_float_block_start_ =
       std::max(last_float_block_start_, exclusion_block_offset);
 
-  // Update the members used for clearance calculations.
-  LayoutUnit clear_offset = exclusion->rect.BlockEndOffset();
   if (exclusion->type == EFloat::kLeft)
     left_clear_offset_ = std::max(left_clear_offset_, clear_offset);
   else if (exclusion->type == EFloat::kRight)
@@ -254,7 +311,7 @@ void NGExclusionSpaceInternal::Add(scoped_refptr<const NGExclusion> exclusion) {
     derived_geometry_->Add(*exclusion);
 
   if (!already_exists)
-    exclusions_->data.emplace_back(std::move(exclusion));
+    exclusions_->emplace_back(std::move(exclusion));
   num_exclusions_++;
 }
 
@@ -280,7 +337,7 @@ void NGExclusionSpaceInternal::DerivedGeometry::Add(
   for (wtf_size_t i = 0; i < shelves_.size(); ++i) {
     // We modify the current shelf in-place. However we need to keep a copy of
     // the shelf if we need to insert a new shelf later in the loop.
-    base::Optional<NGShelf> shelf_copy;
+    absl::optional<NGShelf> shelf_copy;
 
     bool is_between_shelves;
 
@@ -372,15 +429,30 @@ void NGExclusionSpaceInternal::DerivedGeometry::Add(
         // 10 |xxx|        |xxx|
         //    +---+        +---+
         // 20
-        //                  +---+
-        // 30               |NEW|
-        //                  +---+
+        //                 +---+
+        // 30              |NEW|
+        //                 +---+
         //
         // In the above example the "NEW" exclusion *doesn't* overlap with the
         // above drawn shelf, and a new opportunity hasn't been created.
-        bool is_overlapping =
-            exclusion.rect.LineStartOffset() < shelf.line_right &&
-            exclusion.rect.LineEndOffset() > shelf.line_left;
+        //
+        // NOTE: below we have subtly different conditions for left/right
+        // exclusions. E.g. if a right exclusion is aligned with the right edge
+        // of the shelf (see above) then we *shouldn't* create a new area.
+        //
+        // However we may have a left exclusion whose left edge is aligned with
+        // the right edge of the shelf. In this case we *do* create a new area.
+        bool is_overlapping;
+        if (exclusion.type == EFloat::kLeft) {
+          is_overlapping =
+              exclusion.rect.LineStartOffset() <= shelf.line_right &&
+              exclusion.rect.LineEndOffset() > shelf.line_left;
+        } else {
+          DCHECK_EQ(exclusion.type, EFloat::kRight);
+          is_overlapping =
+              exclusion.rect.LineStartOffset() < shelf.line_right &&
+              exclusion.rect.LineEndOffset() >= shelf.line_left;
+        }
 
         // Insert a closed-off layout opportunity if needed.
         if (has_solid_edges && is_overlapping) {
@@ -389,13 +461,14 @@ void NGExclusionSpaceInternal::DerivedGeometry::Add(
                   /* start_offset */ {shelf.line_left, shelf.block_offset},
                   /* end_offset */ {shelf.line_right,
                                     exclusion.rect.BlockStartOffset()}),
-              shelf.has_shape_exclusions ? base::AdoptRef(new NGShapeExclusions(
-                                               *shelf.shape_exclusions))
-                                         : nullptr);
+              shelf.has_shape_exclusions
+                  ? MakeGarbageCollected<NGShapeExclusions>(
+                        *shelf.shape_exclusions)
+                  : nullptr);
 
           InsertClosedArea(NGClosedArea(opportunity, shelf.line_left_edges,
                                         shelf.line_right_edges),
-                           &areas_);
+                           areas_);
         }
       }
 
@@ -448,8 +521,22 @@ void NGExclusionSpaceInternal::DerivedGeometry::Add(
         if (exclusion.shape_data)
           shelf.has_shape_exclusions = true;
 
-        // Just in case the shelf has a negative inline-size.
-        shelf.line_right = std::max(shelf.line_left, shelf.line_right);
+        // A shelf can be completely closed off and not needed anymore. For
+        // example:
+        //
+        //    0 1 2 3 4 5 6 7 8
+        // 0  +---+X----------X
+        //    |xxx|
+        // 10 |xxx|
+        //    +---+
+        // 20
+        //       +-----------+
+        // 30    |NEW (right)|
+        //       +-----------+
+        //
+        // In the above example "NEW (right)" will have shrunk the shelf such
+        // that line_right will now be smaller than line_left.
+        bool is_closed_off = shelf.line_left > shelf.line_right;
 
         // We can end up in a situation where a shelf is the same as the
         // previous one. For example:
@@ -469,7 +556,7 @@ void NGExclusionSpaceInternal::DerivedGeometry::Add(
         bool is_same_as_previous =
             (i > 0) && shelf.line_left == shelves_[i - 1].line_left &&
             shelf.line_right == shelves_[i - 1].line_right;
-        if (is_same_as_previous) {
+        if (is_closed_off || is_same_as_previous) {
           shelves_.EraseAt(i);
           --i;
         }
@@ -503,10 +590,10 @@ void NGExclusionSpaceInternal::DerivedGeometry::Add(
 
         // If we didn't find any edges, the line_left/line_right of the shelf
         // are pushed out to be the minimum/maximum.
-        new_shelf.line_left = new_shelf.line_left_edges.IsEmpty()
+        new_shelf.line_left = new_shelf.line_left_edges.empty()
                                   ? LayoutUnit::Min()
                                   : shelf_copy->line_left;
-        new_shelf.line_right = new_shelf.line_right_edges.IsEmpty()
+        new_shelf.line_right = new_shelf.line_right_edges.empty()
                                    ? LayoutUnit::Max()
                                    : shelf_copy->line_right;
 
@@ -649,12 +736,12 @@ NGExclusionSpaceInternal::GetDerivedGeometry(
 
   // Re-build the geometry if it isn't present.
   if (!derived_geometry_) {
-    DCHECK_LE(num_exclusions_, exclusions_->data.size());
+    DCHECK_LE(num_exclusions_, exclusions_->size());
     DCHECK_GE(num_exclusions_, 1u);
 
-    const auto* begin = exclusions_->data.begin();
+    const auto* begin = exclusions_->begin();
     const auto* end = begin + num_exclusions_;
-    DCHECK_LE(end, exclusions_->data.end());
+    DCHECK_LE(end, exclusions_->end());
 
     // Find the first exclusion whose block-start offset is "after" the
     // |block_offset_limit|.
@@ -685,7 +772,7 @@ NGExclusionSpaceInternal::GetDerivedGeometry(
     }
 
     // Add all the exclusions below the block-offset limit.
-    derived_geometry_ = std::make_unique<DerivedGeometry>(
+    derived_geometry_ = MakeGarbageCollected<DerivedGeometry>(
         block_offset_limit, track_shape_exclusions_);
     for (; it < end; ++it)
       derived_geometry_->Add(**it);
@@ -699,7 +786,11 @@ bool NGExclusionSpaceInternal::operator==(
   if (num_exclusions_ == 0 && other.num_exclusions_ == 0)
     return true;
   return num_exclusions_ == other.num_exclusions_ &&
-         exclusions_ == other.exclusions_;
+         exclusions_ == other.exclusions_ &&
+         has_break_before_left_float_ == other.has_break_before_left_float_ &&
+         has_break_before_right_float_ == other.has_break_before_right_float_ &&
+         has_break_inside_left_float_ == other.has_break_inside_left_float_ &&
+         has_break_inside_right_float_ == other.has_break_inside_right_float_;
 }
 
 }  // namespace blink

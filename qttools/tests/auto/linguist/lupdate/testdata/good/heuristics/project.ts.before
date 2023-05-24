@@ -2,14 +2,6 @@
 <!DOCTYPE TS>
 <TS version="2.0" language="de_DE">
 <context>
-    <name>A</name>
-    <message>
-        <location filename="main.cpp" line="53"/>
-        <source>version 1.0 now</source>
-        <translation>teraz wersja 1.0</translation>
-    </message>
-</context>
-<context>
     <name>B</name>
     <message>
         <location filename="main.cpp" line="56"/>

@@ -1,5 +1,5 @@
-# Copyright 2020 The Chromium Authors.All rights reserved.
-# Use of this source code is governed by a BSD - style license that can be
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 source_set("services") {
@@ -8,6 +8,8 @@ source_set("services") {
     "services/paint_preview_tab_service.h",
     "services/paint_preview_tab_service_factory.cc",
     "services/paint_preview_tab_service_factory.h",
+    "services/paint_preview_tab_service_file_mixin.cc",
+    "services/paint_preview_tab_service_file_mixin.h",
   ]
 
   deps = [

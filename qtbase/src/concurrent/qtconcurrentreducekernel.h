@@ -1,48 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtConcurrent module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTCONCURRENT_REDUCEKERNEL_H
 #define QTCONCURRENT_REDUCEKERNEL_H
 
 #include <QtConcurrent/qtconcurrent_global.h>
 
-#if !defined(QT_NO_CONCURRENT) || defined(Q_CLANG_QDOC)
+#if !defined(QT_NO_CONCURRENT) || defined(Q_QDOC)
 
 #include <QtCore/qatomic.h>
 #include <QtCore/qlist.h>
@@ -50,12 +14,22 @@
 #include <QtCore/qmutex.h>
 #include <QtCore/qthread.h>
 #include <QtCore/qthreadpool.h>
-#include <QtCore/qvector.h>
 
 #include <mutex>
 
 QT_BEGIN_NAMESPACE
 
+namespace QtPrivate {
+
+template<typename Sequence>
+struct SequenceHolder
+{
+    SequenceHolder(const Sequence &s) : sequence(s) { }
+    SequenceHolder(Sequence &&s) : sequence(std::move(s)) { }
+    Sequence sequence;
+};
+
+}
 
 namespace QtConcurrent {
 
@@ -66,7 +40,7 @@ namespace QtConcurrent {
     MapReduce won't start any new threads, and when it exceeds
     ReduceQueueThrottleLimit running threads will be stopped.
 */
-#ifdef Q_CLANG_QDOC
+#ifdef Q_QDOC
 enum ReduceQueueLimits {
     ReduceQueueStartLimit = 20,
     ReduceQueueThrottleLimit = 30
@@ -86,7 +60,7 @@ class IntermediateResults
 {
 public:
     int begin, end;
-    QVector<T> vector;
+    QList<T> vector;
 };
 
 enum ReduceOption {
@@ -96,7 +70,7 @@ enum ReduceOption {
     // ParallelReduce = 0x8
 };
 Q_DECLARE_FLAGS(ReduceOptions, ReduceOption)
-#ifndef Q_CLANG_QDOC
+#ifndef Q_QDOC
 Q_DECLARE_OPERATORS_FOR_FLAGS(ReduceOptions)
 #endif
 // supports both ordered and out-of-order reduction
@@ -108,7 +82,8 @@ class ReduceKernel
     const ReduceOptions reduceOptions;
 
     QMutex mutex;
-    int progress, resultsMapSize, threadCount;
+    int progress, resultsMapSize;
+    const int threadCount;
     ResultsMap resultsMap;
 
     bool canReduce(int begin) const
@@ -124,7 +99,7 @@ class ReduceKernel
                       const IntermediateResults<T> &result)
     {
         for (int i = 0; i < result.vector.size(); ++i) {
-            reduce(r, result.vector.at(i));
+            std::invoke(reduce, r, result.vector.at(i));
         }
     }
 
@@ -140,9 +115,9 @@ class ReduceKernel
     }
 
 public:
-    ReduceKernel(ReduceOptions _reduceOptions)
+    ReduceKernel(QThreadPool *pool, ReduceOptions _reduceOptions)
         : reduceOptions(_reduceOptions), progress(0), resultsMapSize(0),
-          threadCount(QThreadPool::globalInstance()->maxThreadCount())
+          threadCount(std::max(pool->maxThreadCount(), 1))
     { }
 
     void runReduce(ReduceFunctor &reduce,
@@ -224,24 +199,32 @@ public:
 };
 
 template <typename Sequence, typename Base, typename Functor1, typename Functor2>
-struct SequenceHolder2 : public Base
+struct SequenceHolder2 : private QtPrivate::SequenceHolder<Sequence>, public Base
 {
-    SequenceHolder2(const Sequence &_sequence,
-                    Functor1 functor1,
-                    Functor2 functor2,
+    template<typename S = Sequence, typename F1 = Functor1, typename F2 = Functor2>
+    SequenceHolder2(QThreadPool *pool, S &&_sequence, F1 &&functor1, F2 &&functor2,
                     ReduceOptions reduceOptions)
-        : Base(_sequence.begin(), _sequence.end(), functor1, functor2, reduceOptions),
-          sequence(_sequence)
+        : QtPrivate::SequenceHolder<Sequence>(std::forward<S>(_sequence)),
+          Base(pool, this->sequence.cbegin(), this->sequence.cend(),
+               std::forward<F1>(functor1), std::forward<F2>(functor2), reduceOptions)
     { }
 
-    Sequence sequence;
+    template<typename InitialValueType, typename S = Sequence,
+             typename F1 = Functor1, typename F2 = Functor2>
+    SequenceHolder2(QThreadPool *pool, S &&_sequence, F1 &&functor1, F2 &&functor2,
+                    InitialValueType &&initialValue, ReduceOptions reduceOptions)
+        : QtPrivate::SequenceHolder<Sequence>(std::forward<S>(_sequence)),
+          Base(pool, this->sequence.cbegin(), this->sequence.cend(),
+               std::forward<F1>(functor1), std::forward<F2>(functor2),
+               std::forward<InitialValueType>(initialValue), reduceOptions)
+    { }
 
     void finish() override
     {
         Base::finish();
         // Clear the sequence to make sure all temporaries are destroyed
         // before finished is signaled.
-        sequence = Sequence();
+        this->sequence = Sequence();
     }
 };
 

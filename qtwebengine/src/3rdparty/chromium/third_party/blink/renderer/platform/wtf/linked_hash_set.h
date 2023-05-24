@@ -23,7 +23,6 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_WTF_LINKED_HASH_SET_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_WTF_LINKED_HASH_SET_H_
 
-#include "base/macros.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/partition_allocator.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/hash_set.h"
@@ -39,7 +38,14 @@ namespace WTF {
 // The linked list is implementing in a vector (with links being indexes instead
 // of pointers), to simplify the move of backing during GC compaction.
 //
-// Unlike ListHashSet, this container supports WeakMember<T>.
+// This container supports WeakMember<T>.
+//
+// LinkedHashSet iterators are not invalidated by mutation of the
+// collection, unless they point to removed items. This means, for example, that
+// you can safely modify the container while iterating over it generally, as
+// long as you don't remove the current item. Moving items does not invalidate
+// iterator, so that it may cause unexpected behavior (i.e. loop unexpectedly
+// ends when moving the current item to last).
 //
 // Note: empty/deleted values as defined in HashTraits are not allowed.
 template <typename ValueArg,
@@ -50,12 +56,8 @@ class LinkedHashSet {
 
  private:
   using Value = ValueArg;
-  using Map = HashMap<Value,
-                      wtf_size_t,
-                      typename DefaultHash<Value>::Hash,
-                      TraitsArg,
-                      HashTraits<wtf_size_t>,
-                      Allocator>;
+  using Map =
+      HashMap<Value, wtf_size_t, TraitsArg, HashTraits<wtf_size_t>, Allocator>;
   using ListType = VectorBackedLinkedList<Value, Allocator>;
   using BackingIterator = typename ListType::const_iterator;
   using BackingReverseIterator = typename ListType::const_reverse_iterator;
@@ -141,7 +143,7 @@ class LinkedHashSet {
     DCHECK(value_to_index_.size() == list_.size());
     return list_.size();
   }
-  bool IsEmpty() const { return list_.empty(); }
+  bool empty() const { return list_.empty(); }
 
   iterator begin() { return MakeIterator(list_.begin()); }
   const_iterator begin() const { return MakeIterator(list_.cbegin()); }
@@ -171,6 +173,16 @@ class LinkedHashSet {
   iterator find(ValuePeekInType);
   const_iterator find(ValuePeekInType) const;
   bool Contains(ValuePeekInType) const;
+
+  // An alternate version of find() that finds the object by hashing and
+  // comparing with some other type, to avoid the cost of type conversion.
+  // The HashTranslator interface is defined in HashSet.
+  template <typename HashTranslator, typename T>
+  iterator Find(const T&);
+  template <typename HashTranslator, typename T>
+  const_iterator Find(const T&) const;
+  template <typename HashTranslator, typename T>
+  bool Contains(const T&) const;
 
   template <typename IncomingValueType>
   AddResult insert(IncomingValueType&&);
@@ -273,6 +285,35 @@ bool LinkedHashSet<T, TraitsArg, Allocator>::Contains(
   return value_to_index_.Contains(value);
 }
 
+template <typename ValueType, typename TraitsArg, typename Allocator>
+template <typename HashTranslator, typename T>
+inline typename LinkedHashSet<ValueType, TraitsArg, Allocator>::iterator
+LinkedHashSet<ValueType, TraitsArg, Allocator>::Find(const T& value) {
+  typename Map::const_iterator it =
+      value_to_index_.template Find<HashTranslator>(value);
+  if (it == value_to_index_.end())
+    return end();
+  return MakeIterator(list_.MakeIterator(it->value));
+}
+
+template <typename ValueType, typename TraitsArg, typename Allocator>
+template <typename HashTranslator, typename T>
+inline typename LinkedHashSet<ValueType, TraitsArg, Allocator>::const_iterator
+LinkedHashSet<ValueType, TraitsArg, Allocator>::Find(const T& value) const {
+  typename Map::const_iterator it =
+      value_to_index_.template Find<HashTranslator>(value);
+  if (it == value_to_index_.end())
+    return end();
+  return MakeIterator(list_.MakeConstIterator(it->value));
+}
+
+template <typename ValueType, typename TraitsArg, typename Allocator>
+template <typename HashTranslator, typename T>
+bool LinkedHashSet<ValueType, TraitsArg, Allocator>::Contains(
+    const T& value) const {
+  return value_to_index_.template Contains<HashTranslator>(value);
+}
+
 template <typename T, typename TraitsArg, typename Allocator>
 template <typename IncomingValueType>
 typename LinkedHashSet<T, TraitsArg, Allocator>::AddResult
@@ -341,13 +382,13 @@ inline void LinkedHashSet<T, TraitsArg, Allocator>::erase(const_iterator it) {
 
 template <typename T, typename TraitsArg, typename Allocator>
 inline void LinkedHashSet<T, TraitsArg, Allocator>::RemoveFirst() {
-  DCHECK(!IsEmpty());
+  DCHECK(!empty());
   erase(begin());
 }
 
 template <typename T, typename TraitsArg, typename Allocator>
 inline void LinkedHashSet<T, TraitsArg, Allocator>::pop_back() {
-  DCHECK(!IsEmpty());
+  DCHECK(!empty());
   erase(--end());
 }
 

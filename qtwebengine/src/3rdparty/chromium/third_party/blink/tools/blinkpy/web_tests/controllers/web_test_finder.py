@@ -28,13 +28,12 @@
 
 import errno
 import fnmatch
+import hashlib
 import json
 import logging
-import math
 import re
 
 from blinkpy.web_tests.layout_package.json_results_generator import convert_times_trie_to_flat_paths
-from blinkpy.web_tests.models import test_expectations, typ_types
 from blinkpy.web_tests.models.typ_types import ResultType
 from blinkpy.web_tests.port.base import Port
 from collections import OrderedDict
@@ -50,17 +49,24 @@ class WebTestFinder(object):
         self.WEB_TESTS_DIRECTORIES = ('src', 'third_party', 'blink',
                                       'web_tests')
 
-    def find_tests(self,
-                   args,
-                   test_list=None,
-                   fastest_percentile=None,
-                   filters=None):
+    def find_tests(
+            self,
+            args,
+            test_lists=None,
+            filter_files=None,
+            fastest_percentile=None,
+            filters=None,
+    ):
         filters = filters or []
         paths = self._strip_test_dir_prefixes(args)
-        if test_list:
-            paths += self._strip_test_dir_prefixes(
-                self._read_test_names_from_file(
-                    test_list, self._port.TEST_PATH_SEPARATOR))
+        if test_lists:
+            new_paths = self._read_test_list_files(
+                test_lists, self._port.TEST_PATH_SEPARATOR)
+            new_paths = [
+                self._strip_test_dir_prefix(new_path)
+                for new_path in new_paths
+            ]
+            paths += new_paths
 
         all_tests = []
         if not paths or fastest_percentile:
@@ -90,7 +96,16 @@ class WebTestFinder(object):
             test_files = all_tests
             running_all_tests = True
 
-        test_files = filter_tests(test_files, [f.split('::') for f in filters])
+        all_filters = []
+        if filters:
+            all_filters = [f.split('::') for f in filters]
+        if filter_files:
+            file_filters = self._read_filter_files(
+                filter_files, self._port.TEST_PATH_SEPARATOR)
+            all_filters = all_filters + file_filters
+
+        test_files = filter_tests(test_files, all_filters)
+
         # de-dupe the test list and paths here before running them.
         test_files = list(OrderedDict.fromkeys(test_files))
         paths = list(OrderedDict.fromkeys(paths))
@@ -112,9 +127,8 @@ class WebTestFinder(object):
         times = convert_times_trie_to_flat_paths(times_trie)
 
         # Ignore tests with a time==0 because those are skipped tests.
-        sorted_times = sorted(
-            [test for (test, time) in times.iteritems() if time],
-            key=lambda t: (times[t], t))
+        sorted_times = sorted([test for (test, time) in times.items() if time],
+                              key=lambda t: (times[t], t))
         clamped_percentile = max(0, min(100, fastest_percentile))
         number_of_tests_to_return = int(
             len(sorted_times) * clamped_percentile / 100)
@@ -148,9 +162,32 @@ class WebTestFinder(object):
                     return path[len(directory_prefix):]
         return path
 
-    def _read_test_names_from_file(self, filenames, test_path_separator):
+    def _read_filter_files(self, filenames, test_path_separator):
         fs = self._filesystem
-        tests = []
+        filters = []
+        for filename in filenames:
+            file_lines = []
+            try:
+                if test_path_separator != fs.sep:
+                    filename = filename.replace(test_path_separator, fs.sep)
+                file_contents = fs.read_text_file(filename).split('\n')
+                for line in file_contents:
+                    line = self._strip_comments(line)
+                    if not line:
+                        continue
+                    file_lines.append(line)
+                filters.append(file_lines)
+            except IOError as error:
+                if error.errno == errno.ENOENT:
+                    _log.critical('')
+                    _log.critical('--test-launcher-filter-file "%s" not found',
+                                  filename)
+                raise
+        return filters
+
+    def _read_test_list_files(self, filenames, test_path_separator):
+        fs = self._filesystem
+        positive_matches = []
         for filename in filenames:
             try:
                 if test_path_separator != fs.sep:
@@ -158,19 +195,24 @@ class WebTestFinder(object):
                 file_contents = fs.read_text_file(filename).split('\n')
                 for line in file_contents:
                     line = self._strip_comments(line)
-                    if line:
-                        tests.append(line)
+                    if not line:
+                        continue
+                    if line[0] == '-':
+                        _log.debug(
+                            'test-list %s contains a negative filter %s' %
+                            (filename, line))
+                    positive_matches.append(line)
             except IOError as error:
                 if error.errno == errno.ENOENT:
                     _log.critical('')
-                    _log.critical('--test-list file "%s" not found', file)
+                    _log.critical('--test-list file "%s" not found', filename)
                 raise
-        return tests
+        return positive_matches
 
     @staticmethod
     def _strip_comments(line):
-        commentIndex = line.find('//')
-        if commentIndex is -1:
+        commentIndex = line.find('#')
+        if commentIndex == -1:
             commentIndex = len(line)
 
         line = re.sub(r'\s+', ' ', line[:commentIndex].strip())
@@ -198,8 +240,17 @@ class WebTestFinder(object):
         """
         all_tests = set(all_tests_list)
         tests_to_skip = set()
-        idlharness_skips = set()
+        tests_always_skipped = set()
         for test in all_tests:
+            # Manual tests and virtual tests skipped by platform config are
+            # always skipped and not affected by the --skip parameter
+            if (self._port.is_manual_test(test)
+                    or self._port.virtual_test_skipped_due_to_platform_config(
+                        test) or
+                    self._port.skipped_due_to_exclusive_virtual_tests(test)):
+                tests_always_skipped.update({test})
+                continue
+
             # We always skip idlharness tests for MSAN/ASAN, even when running
             # with --no-expectations (https://crbug.com/856601). Note we will
             # run the test anyway if it is explicitly specified on the command
@@ -207,7 +258,6 @@ class WebTestFinder(object):
             if self._options.enable_sanitizer and Port.is_wpt_idlharness_test(
                     test):
                 tests_to_skip.update({test})
-                idlharness_skips.update({test})
                 continue
 
             if self._options.no_expectations:
@@ -222,17 +272,6 @@ class WebTestFinder(object):
             if self._options.skip_failing_tests and ResultType.Failure in expected_results:
                 tests_to_skip.update({test})
 
-        # Idlharness tests are skipped programmatically on MSAN/ASAN, so we have
-        # to add them to the expectations to avoid reporting unexpected skips.
-        if idlharness_skips and expectations is not None:
-            raw_expectations = '# results: [ Skip ]\n'
-            for test in idlharness_skips:
-                raw_expectations += typ_types.Expectation(
-                    reason="crbug.com/856601",
-                    test=test,
-                    results=[ResultType.Skip]).to_string() + '\n'
-            expectations.merge_raw_expectations(raw_expectations)
-
         if self._options.skipped == 'only':
             tests_to_skip = all_tests - tests_to_skip
         elif self._options.skipped == 'ignore':
@@ -240,6 +279,8 @@ class WebTestFinder(object):
         elif self._options.skipped != 'always':
             # make sure we're explicitly running any tests passed on the command line; equivalent to 'default'.
             tests_to_skip -= set(paths)
+
+        tests_to_skip.update(tests_always_skipped)
 
         return tests_to_skip
 
@@ -266,8 +307,11 @@ class WebTestFinder(object):
 
     @staticmethod
     def _split_into_chunks(test_names, index, count):
-        tests_and_indices = [(test_name, hash(test_name) % count)
-                             for test_name in test_names]
+        tests_and_indices = [
+            (test_name,
+             int(hashlib.sha256(test_name.encode('utf-8')).hexdigest(), 16) %
+             count) for test_name in test_names
+        ]
 
         tests_to_run = [
             test_name for test_name, test_index in tests_and_indices
@@ -287,17 +331,22 @@ def filter_tests(tests, filters):
     https://bit.ly/chromium-test-runner-api and
     https://bit.ly/chromium-test-list-format, but are as follows:
 
-    Each filter is a list of glob expressions, with each expression optionally
-    prefixed by a "-". If the glob starts with a "-", it is a negative glob,
-    otherwise it is a positive glob.
+    A test should be run only if it would be run when every flag (ie filter) is
+    evaluated individually. A test should be skipped if it would be skipped if
+    any flag (filter) was evaluated individually.
 
-    A test passes the filter if and only if it is explicitly matched by at
-    least one positive glob and no negative globs, or if there are no
-    positive globs and it is not matched by any negative globs.
+    Each filter is a list of potentially glob expressions, with each expression
+    optionally prefixed by a "-" or "+". If the glob starts with a "-", it is a
+    negative term, otherwise it is a positive term.
 
-    Globbing is fairly limited; "?" is not allowed, and "*" must only appear
-    at the end of the glob. If multiple globs match a test, the longest match
-    wins. If both globs are the same length, an error is raised.
+    If multiple filter terms in a flag (filter) match a given test name, the
+    longest match takes priority (longest match wins). The order of the filters
+    should not matter. It is an error to have multiple expressions of the same
+    length that conflict.
+
+    Globbing is fairly limited; "?" is not allowed, and unescaped "*" must only
+    appear at the end of the glob. If multiple globs match a test, the longest
+    match wins. If both globs are the same length, an error is raised.
 
     A test will be run only if it passes every filter.
     """
@@ -305,30 +354,79 @@ def filter_tests(tests, filters):
     def glob_sort_key(k):
         if k and k[0] == '-':
             return (len(k[1:]), k[1:])
+        elif k and k[0] == '+':
+            return (len(k[1:]), k[1:])
         else:
             return (len(k), k)
 
-    for globs in filters:
-        include_by_default = all(glob.startswith('-') for glob in globs)
+    for filter in filters:
+        # Validate the filter
+        for term in filter:
+            if (term.startswith('-') and not term[1:]) or not term:
+                raise ValueError('Empty filter entry "%s"' % (term, ))
+            for i, c in enumerate(term):
+                if i == len(term) - 1:
+                    continue
+                if c == '*' and (i == 0 or term[i - 1] != '\\'):
+                    raise ValueError('Bad test filter "%s" specified; '
+                                     'unescaped wildcards are only allowed at '
+                                     'the end' % (term, ))
+            if term.startswith('-') and term[1:] in filter:
+                raise ValueError('Both "%s" and "%s" specified in test '
+                                 'filter' % (term, term[1:]))
+
+        # Separate the negative/positive globless terms and glob terms
+        include_by_default = all(term.startswith('-') for term in filter)
+        exact_neg_terms, exact_pos_terms, glob_terms = _extract_terms(filter)
+
         filtered_tests = []
         for test in tests:
+            # Check for the exact test name
+            if test in exact_neg_terms:
+                continue
+            if test in exact_pos_terms:
+                filtered_tests.append(test)
+                continue
+
+            # Check globs, this could be done with a trie to avoid this loop
+            # but glob terms should be lower volume than exact terms
             include = include_by_default
-            for glob in sorted(globs, key=glob_sort_key):
-                if (glob.startswith('-') and not glob[1:]) or not glob:
-                    raise ValueError('Empty glob filter "%s"' % (filter, ))
-                if '*' in glob[:-1]:
-                    raise ValueError(
-                        'Bad test filter "%s" specified; '
-                        'wildcards are only allowed at the end' % (glob, ))
-                if glob.startswith('-') and glob[1:] in globs:
-                    raise ValueError('Both "%s" and "%s" specified in test '
-                                     'filter' % (glob, glob[1:]))
+            for glob in sorted(glob_terms, key=glob_sort_key):
                 if glob.startswith('-'):
                     include = include and not fnmatch.fnmatch(test, glob[1:])
                 else:
-                    include = include or fnmatch.fnmatch(test, glob)
+                    include = include or fnmatch.fnmatch(
+                        test, glob[1:] if glob[0] == '+' else glob)
             if include:
                 filtered_tests.append(test)
         tests = filtered_tests
 
     return tests
+
+
+def _extract_terms(filter):
+    """Extract terms of the filter into exact +/- terms and glob terms.
+
+    The +/- prefix char for exact terms will also be stripped as they are no
+    longer needed to identify the term as a positive or negative filter. Any
+    prefix in globbed terms (terms with a *) will preserve the sign.
+    """
+    exact_negative_terms = set()
+    exact_positive_terms = set()
+    glob_terms = set()
+    for term in filter:
+        is_glob = False
+        for i, c in enumerate(term):
+            if c == '*' and (i == 0 or term[i - 1] != '\\'):
+                glob_terms.add(term)
+                is_glob = True
+                break
+        if is_glob:
+            continue
+        elif term[0] == '-':
+            exact_negative_terms.add(term[1:])
+        elif term[0] == '+':
+            exact_positive_terms.add(term[1:])
+        else:
+            exact_positive_terms.add(term)
+    return exact_negative_terms, exact_positive_terms, list(glob_terms)

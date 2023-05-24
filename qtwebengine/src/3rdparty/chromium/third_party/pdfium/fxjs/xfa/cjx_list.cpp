@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,13 @@
 
 #include <vector>
 
+#include "fxjs/fxv8.h"
 #include "fxjs/js_resources.h"
 #include "fxjs/xfa/cfxjse_class.h"
 #include "fxjs/xfa/cfxjse_engine.h"
-#include "fxjs/xfa/cfxjse_value.h"
 #include "third_party/base/numerics/safe_conversions.h"
+#include "v8/include/v8-object.h"
+#include "v8/include/v8-primitive.h"
 #include "xfa/fxfa/parser/cxfa_document.h"
 #include "xfa/fxfa/parser/cxfa_list.h"
 #include "xfa/fxfa/parser/cxfa_node.h"
@@ -36,45 +38,43 @@ CXFA_List* CJX_List::GetXFAList() {
   return ToList(GetXFAObject());
 }
 
-CJS_Result CJX_List::append(CFX_V8* runtime,
+CJS_Result CJX_List::append(CFXJSE_Engine* runtime,
                             const std::vector<v8::Local<v8::Value>>& params) {
   if (params.size() != 1)
     return CJS_Result::Failure(JSMessage::kParamError);
 
-  auto* pNode =
-      ToNode(static_cast<CFXJSE_Engine*>(runtime)->ToXFAObject(params[0]));
+  auto* pNode = ToNode(runtime->ToXFAObject(params[0]));
   if (!pNode)
     return CJS_Result::Failure(JSMessage::kValueError);
 
-  GetXFAList()->Append(pNode);
+  if (!GetXFAList()->Append(pNode))
+    return CJS_Result::Failure(JSMessage::kWouldBeCyclic);
+
   return CJS_Result::Success();
 }
 
-CJS_Result CJX_List::insert(CFX_V8* runtime,
+CJS_Result CJX_List::insert(CFXJSE_Engine* runtime,
                             const std::vector<v8::Local<v8::Value>>& params) {
   if (params.size() != 2)
     return CJS_Result::Failure(JSMessage::kParamError);
 
-  auto* pNewNode =
-      ToNode(static_cast<CFXJSE_Engine*>(runtime)->ToXFAObject(params[0]));
+  auto* pNewNode = ToNode(runtime->ToXFAObject(params[0]));
   if (!pNewNode)
     return CJS_Result::Failure(JSMessage::kValueError);
 
-  auto* pBeforeNode =
-      ToNode(static_cast<CFXJSE_Engine*>(runtime)->ToXFAObject(params[1]));
+  auto* pBeforeNode = ToNode(runtime->ToXFAObject(params[1]));
   if (!GetXFAList()->Insert(pNewNode, pBeforeNode))
     return CJS_Result::Failure(JSMessage::kValueError);
 
   return CJS_Result::Success();
 }
 
-CJS_Result CJX_List::remove(CFX_V8* runtime,
+CJS_Result CJX_List::remove(CFXJSE_Engine* runtime,
                             const std::vector<v8::Local<v8::Value>>& params) {
   if (params.size() != 1)
     return CJS_Result::Failure(JSMessage::kParamError);
 
-  auto* pNode =
-      ToNode(static_cast<CFXJSE_Engine*>(runtime)->ToXFAObject(params[0]));
+  auto* pNode = ToNode(runtime->ToXFAObject(params[0]));
   if (!pNode)
     return CJS_Result::Failure(JSMessage::kValueError);
 
@@ -82,7 +82,7 @@ CJS_Result CJX_List::remove(CFX_V8* runtime,
   return CJS_Result::Success();
 }
 
-CJS_Result CJX_List::item(CFX_V8* runtime,
+CJS_Result CJX_List::item(CFXJSE_Engine* runtime,
                           const std::vector<v8::Local<v8::Value>>& params) {
   if (params.size() != 1)
     return CJS_Result::Failure(JSMessage::kParamError);
@@ -92,18 +92,18 @@ CJS_Result CJX_List::item(CFX_V8* runtime,
   if (index < 0 || cast_index >= GetXFAList()->GetLength())
     return CJS_Result::Failure(JSMessage::kInvalidInputError);
 
-  return CJS_Result::Success(static_cast<CFXJSE_Engine*>(runtime)->NewXFAObject(
-      GetXFAList()->Item(cast_index),
-      GetDocument()->GetScriptContext()->GetJseNormalClass()->GetTemplate()));
+  return CJS_Result::Success(
+      runtime->NewNormalXFAObject(GetXFAList()->Item(cast_index)));
 }
 
-void CJX_List::length(CFXJSE_Value* pValue,
+void CJX_List::length(v8::Isolate* pIsolate,
+                      v8::Local<v8::Value>* pValue,
                       bool bSetting,
                       XFA_Attribute eAttribute) {
   if (bSetting) {
-    ThrowInvalidPropertyException();
+    ThrowInvalidPropertyException(pIsolate);
     return;
   }
-  pValue->SetInteger(
-      pdfium::base::checked_cast<int32_t>(GetXFAList()->GetLength()));
+  *pValue = fxv8::NewNumberHelper(
+      pIsolate, pdfium::base::checked_cast<int32_t>(GetXFAList()->GetLength()));
 }

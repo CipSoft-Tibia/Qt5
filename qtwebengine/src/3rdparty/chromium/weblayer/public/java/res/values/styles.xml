@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright 2020 The Chromium Authors. All rights reserved.
-     Use of this source code is governed by a BSD-style license that can be
-     found in the LICENSE file. -->
+<!--
+Copyright 2020 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
 
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Base.Theme.WebLayer.SiteSettings" parent="Theme.AppCompat.DayNight">
+    <style name="Base.Theme.WebLayer.Settings" parent="Theme.AppCompat.DayNight">
         <!-- Window Properties -->
         <item name="android:windowBackground">@color/weblayer_default_bg_color</item>
 
@@ -17,5 +19,5 @@
         <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
     </style>
 
-    <style name="Theme.WebLayer.SiteSettings" parent="Base.Theme.WebLayer.SiteSettings" />
+    <style name="Theme.WebLayer.Settings" parent="Base.Theme.WebLayer.Settings" />
 </resources>

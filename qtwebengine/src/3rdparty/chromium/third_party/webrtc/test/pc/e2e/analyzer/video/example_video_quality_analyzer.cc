@@ -14,7 +14,6 @@
 #include "rtc_base/logging.h"
 
 namespace webrtc {
-namespace webrtc_pc_e2e {
 
 ExampleVideoQualityAnalyzer::ExampleVideoQualityAnalyzer() = default;
 ExampleVideoQualityAnalyzer::~ExampleVideoQualityAnalyzer() = default;
@@ -30,13 +29,16 @@ uint16_t ExampleVideoQualityAnalyzer::OnFrameCaptured(
     const webrtc::VideoFrame& frame) {
   MutexLock lock(&lock_);
   uint16_t frame_id = next_frame_id_++;
+  if (frame_id == VideoFrame::kNotSetId) {
+    frame_id = next_frame_id_++;
+  }
   auto it = frames_in_flight_.find(frame_id);
   if (it == frames_in_flight_.end()) {
     frames_in_flight_.insert(frame_id);
     frames_to_stream_label_.insert({frame_id, stream_label});
   } else {
-    RTC_LOG(WARNING) << "Meet new frame with the same id: " << frame_id
-                     << ". Assumes old one as dropped";
+    RTC_LOG(LS_WARNING) << "Meet new frame with the same id: " << frame_id
+                        << ". Assumes old one as dropped";
     // We needn't insert frame to frames_in_flight_, because it is already
     // there.
     ++frames_dropped_;
@@ -59,7 +61,8 @@ void ExampleVideoQualityAnalyzer::OnFrameEncoded(
     absl::string_view peer_name,
     uint16_t frame_id,
     const webrtc::EncodedImage& encoded_image,
-    const EncoderStats& stats) {
+    const EncoderStats& stats,
+    bool discarded) {
   MutexLock lock(&lock_);
   ++frames_encoded_;
 }
@@ -67,7 +70,7 @@ void ExampleVideoQualityAnalyzer::OnFrameEncoded(
 void ExampleVideoQualityAnalyzer::OnFrameDropped(
     absl::string_view peer_name,
     webrtc::EncodedImageCallback::DropReason reason) {
-  RTC_LOG(INFO) << "Frame dropped by encoder";
+  RTC_LOG(LS_INFO) << "Frame dropped by encoder";
   MutexLock lock(&lock_);
   ++frames_dropped_;
 }
@@ -106,15 +109,16 @@ void ExampleVideoQualityAnalyzer::OnEncoderError(
 
 void ExampleVideoQualityAnalyzer::OnDecoderError(absl::string_view peer_name,
                                                  uint16_t frame_id,
-                                                 int32_t error_code) {
+                                                 int32_t error_code,
+                                                 const DecoderStats& stats) {
   RTC_LOG(LS_ERROR) << "Failed to decode frame " << frame_id
                     << ". Code: " << error_code;
 }
 
 void ExampleVideoQualityAnalyzer::Stop() {
   MutexLock lock(&lock_);
-  RTC_LOG(INFO) << "There are " << frames_in_flight_.size()
-                << " frames in flight, assuming all of them are dropped";
+  RTC_LOG(LS_INFO) << "There are " << frames_in_flight_.size()
+                   << " frames in flight, assuming all of them are dropped";
   frames_dropped_ += frames_in_flight_.size();
 }
 
@@ -161,5 +165,4 @@ uint64_t ExampleVideoQualityAnalyzer::frames_dropped() const {
   return frames_dropped_;
 }
 
-}  // namespace webrtc_pc_e2e
 }  // namespace webrtc

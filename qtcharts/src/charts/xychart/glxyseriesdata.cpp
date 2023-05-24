@@ -1,37 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "private/glxyseriesdata_p.h"
 #include "private/abstractdomain_p.h"
+#if QT_CONFIG(charts_scatter_chart)
 #include <QtCharts/QScatterSeries>
+#endif
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 GLXYSeriesDataManager::GLXYSeriesDataManager(QObject *parent)
     : QObject(parent),
@@ -52,6 +28,7 @@ void GLXYSeriesDataManager::setPoints(QXYSeries *series, const AbstractDomain *d
         data->type = series->type();
         data->visible = series->isVisible();
         QColor sc;
+#if QT_CONFIG(charts_scatter_chart)
         if (data->type == QAbstractSeries::SeriesTypeScatter) {
             QScatterSeries *scatter = static_cast<QScatterSeries *>(series);
             data->width = float(scatter->markerSize());
@@ -60,7 +37,9 @@ void GLXYSeriesDataManager::setPoints(QXYSeries *series, const AbstractDomain *d
                     &GLXYSeriesDataManager::handleScatterColorChange);
             connect(scatter, &QScatterSeries::markerSizeChanged, this,
                     &GLXYSeriesDataManager::handleScatterMarkerSizeChange);
-        } else {
+        } else
+#endif
+        {
             data->width = float(series->pen().widthF());
             sc = series->color();
             connect(series, &QXYSeries::penChanged, this,
@@ -74,7 +53,7 @@ void GLXYSeriesDataManager::setPoints(QXYSeries *series, const AbstractDomain *d
         m_seriesDataMap.insert(series, data);
         m_mapDirty = true;
     }
-    QVector<float> &array = data->array;
+    QList<float> &array = data->array;
 
     bool logAxis = false;
     bool reverseX = false;
@@ -99,7 +78,7 @@ void GLXYSeriesDataManager::setPoints(QXYSeries *series, const AbstractDomain *d
     QMatrix4x4 matrix;
     if (logAxis) {
         // Use domain to resolve geometry points. Not as fast as shaders, but simpler that way
-        QVector<QPointF> geometryPoints = domain->calculateGeometryPoints(series->pointsVector());
+        QList<QPointF> geometryPoints = domain->calculateGeometryPoints(series->points());
         const float height = domain->size().height();
         if (geometryPoints.size()) {
             for (int i = 0; i < count; i++) {
@@ -129,7 +108,7 @@ void GLXYSeriesDataManager::setPoints(QXYSeries *series, const AbstractDomain *d
         const qreal yd = domain->maxY() - my;
 
         if (!qFuzzyIsNull(xd) && !qFuzzyIsNull(yd)) {
-            const QVector<QPointF> seriesPoints = series->pointsVector();
+            const QList<QPointF> seriesPoints = series->points();
             for (const QPointF &point : seriesPoints) {
                 array[index++] = float((point.x() - mx) / xd);
                 array[index++] = float((point.y() - my) / yd);
@@ -196,6 +175,7 @@ void GLXYSeriesDataManager::handleSeriesVisibilityChange()
     }
 }
 
+#if QT_CONFIG(charts_scatter_chart)
 void GLXYSeriesDataManager::handleScatterColorChange()
 {
     QScatterSeries *series = qobject_cast<QScatterSeries *>(sender());
@@ -220,6 +200,7 @@ void GLXYSeriesDataManager::handleScatterMarkerSizeChange()
         }
     }
 }
+#endif
 
 void GLXYSeriesDataManager::handleAxisReverseChanged(const QList<QAbstractSeries *> &seriesList)
 {
@@ -251,5 +232,5 @@ void GLXYSeriesDataManager::handleAxisReverseChanged(const QList<QAbstractSeries
     }
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 

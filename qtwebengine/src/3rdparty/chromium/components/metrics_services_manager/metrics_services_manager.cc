@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,19 +6,22 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/check.h"
-#include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/metrics/histogram_macros.h"
+#include "build/chromeos_buildflags.h"
 #include "components/metrics/metrics_service.h"
 #include "components/metrics/metrics_service_client.h"
 #include "components/metrics/metrics_state_manager.h"
 #include "components/metrics/metrics_switches.h"
 #include "components/metrics_services_manager/metrics_services_manager_client.h"
-#include "components/rappor/rappor_service_impl.h"
 #include "components/ukm/ukm_service.h"
 #include "components/variations/service/variations_service.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "components/metrics/structured/neutrino_logging.h"  // nogncheck
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
 namespace metrics_services_manager {
 
@@ -33,23 +36,17 @@ MetricsServicesManager::MetricsServicesManager(
 
 MetricsServicesManager::~MetricsServicesManager() {}
 
-std::unique_ptr<const base::FieldTrial::EntropyProvider>
-MetricsServicesManager::CreateEntropyProvider() {
-  return client_->GetMetricsStateManager()->CreateDefaultEntropyProvider();
+void MetricsServicesManager::InstantiateFieldTrialList() const {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  metrics::structured::NeutrinoDevicesLog(
+      metrics::structured::NeutrinoDevicesLocation::kCreateEntropyProvider);
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+  client_->GetMetricsStateManager()->InstantiateFieldTrialList();
 }
 
 metrics::MetricsService* MetricsServicesManager::GetMetricsService() {
   DCHECK(thread_checker_.CalledOnValidThread());
   return GetMetricsServiceClient()->GetMetricsService();
-}
-
-rappor::RapporServiceImpl* MetricsServicesManager::GetRapporServiceImpl() {
-  DCHECK(thread_checker_.CalledOnValidThread());
-  if (!rappor_service_) {
-    rappor_service_ = client_->CreateRapporServiceImpl();
-    rappor_service_->Initialize(client_->GetURLLoaderFactory());
-  }
-  return rappor_service_.get();
 }
 
 ukm::UkmService* MetricsServicesManager::GetUkmService() {
@@ -64,13 +61,14 @@ variations::VariationsService* MetricsServicesManager::GetVariationsService() {
   return variations_service_.get();
 }
 
-void MetricsServicesManager::OnPluginLoadingError(
-    const base::FilePath& plugin_path) {
-  GetMetricsServiceClient()->OnPluginLoadingError(plugin_path);
+void MetricsServicesManager::LoadingStateChanged(bool is_loading) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  GetMetricsServiceClient()->LoadingStateChanged(is_loading);
 }
 
-void MetricsServicesManager::OnRendererProcessCrash() {
-  GetMetricsServiceClient()->OnRendererProcessCrash();
+std::unique_ptr<const variations::EntropyProviders>
+MetricsServicesManager::CreateEntropyProvidersForTesting() {
+  return client_->GetMetricsStateManager()->CreateEntropyProviders();
 }
 
 metrics::MetricsServiceClient*
@@ -100,8 +98,35 @@ void MetricsServicesManager::UpdatePermissions(bool current_may_record,
     }
   }
 
-  // Stash the current permissions so that we can update the RapporServiceImpl
-  // correctly when the Rappor preference changes.
+  // If metrics reporting goes from not consented to consented, create and
+  // persist a client ID (either generate a new one or promote the provisional
+  // client ID if this is the first run). This can occur in the following
+  // situations:
+  // 1. The user enables metrics reporting in the FRE
+  // 2. The user enables metrics reporting in settings, crash bubble, etc.
+  // 3. On startup, after fetching the enable status from the previous session
+  //    (if enabled)
+  //
+  // ForceClientIdCreation() may be called again later on via
+  // MetricsService::EnableRecording(), but in that case,
+  // ForceClientIdCreation() will be a no-op (will return early since a client
+  // ID will already exist).
+  //
+  // ForceClientIdCreation() must be called here, otherwise, in cases where the
+  // user is sampled out, the passed |current_may_record| will be false, which
+  // will result in not calling ForceClientIdCreation() in
+  // MetricsService::EnableRecording() later on. This is problematic because
+  // in the FRE, if the user consents to metrics reporting, this will cause the
+  // provisional client ID to not be promoted/stored as the client ID. In the
+  // next run, a different client ID will be generated and stored, which will
+  // result in different trial assignments—and the client may even be sampled
+  // in at that time.
+  if (!consent_given_ && current_consent_given) {
+    client_->GetMetricsStateManager()->ForceClientIdCreation();
+  }
+
+  // Stash the current permissions so that we can update the services correctly
+  // when preferences change.
   may_record_ = current_may_record;
   consent_given_ = current_consent_given;
   may_upload_ = current_may_upload;
@@ -112,10 +137,8 @@ void MetricsServicesManager::UpdateRunningServices() {
   DCHECK(thread_checker_.CalledOnValidThread());
   metrics::MetricsService* metrics = GetMetricsService();
 
-  const base::CommandLine* cmdline = base::CommandLine::ForCurrentProcess();
-  if (cmdline->HasSwitch(metrics::switches::kMetricsRecordingOnly)) {
+  if (metrics::IsMetricsRecordingOnlyEnabled()) {
     metrics->StartRecordingForTests();
-    GetRapporServiceImpl()->Update(true, false);
     return;
   }
 
@@ -133,8 +156,6 @@ void MetricsServicesManager::UpdateRunningServices() {
   }
 
   UpdateUkmService();
-
-  GetRapporServiceImpl()->Update(may_record_, may_upload_);
 }
 
 void MetricsServicesManager::UpdateUkmService() {
@@ -150,9 +171,7 @@ void MetricsServicesManager::UpdateUkmService() {
   bool is_incognito = client_->IsOffTheRecordSessionActive();
 
   if (consent_given_ && listeners_active && sync_enabled && !is_incognito) {
-    // TODO(skare): revise this - merged in a big change
-    ukm->EnableRecording(
-        metrics_service_client_->IsUkmAllowedWithExtensionsForAllProfiles());
+    ukm->EnableRecording();
     if (may_upload_)
       ukm->EnableReporting();
     else
@@ -179,6 +198,10 @@ bool MetricsServicesManager::IsMetricsReportingEnabled() const {
 
 bool MetricsServicesManager::IsMetricsConsentGiven() const {
   return client_->IsMetricsConsentGiven();
+}
+
+bool MetricsServicesManager::IsUkmAllowedForAllProfiles() {
+  return metrics_service_client_->IsUkmAllowedForAllProfiles();
 }
 
 }  // namespace metrics_services_manager

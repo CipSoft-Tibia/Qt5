@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
 #
 #  Use of this source code is governed by a BSD-style license
@@ -5,16 +6,18 @@
 #  tree. An additional intellectual property rights grant can be found
 #  in the file PATENTS.  All contributing project authors may
 #  be found in the AUTHORS file in the root of the source tree.
-
 """Displays statistics and plots graphs from RTC protobuf dump."""
 
 from __future__ import division
 from __future__ import print_function
 
+from __future__ import absolute_import
 import collections
 import optparse
 import os
 import sys
+from six.moves import range
+from six.moves import zip
 
 import matplotlib.pyplot as plt
 import numpy
@@ -23,7 +26,7 @@ import misc
 import pb_parse
 
 
-class RTPStatistics(object):
+class RTPStatistics:
   """Has methods for calculating and plotting RTP stream statistics."""
 
   BANDWIDTH_SMOOTHING_WINDOW_SIZE = 10
@@ -64,21 +67,20 @@ class RTPStatistics(object):
         ssrc_id: textual identifier of SSRC printed beside statistics for it.
         ssrc: SSRC by which to filter data and display statistics
     """
-    filtered_ssrc = [point for point in self.data_points if point.ssrc
-                     == ssrc]
+    filtered_ssrc = [point for point in self.data_points if point.ssrc == ssrc]
     payloads = misc.NormalizeCounter(
-        collections.Counter([point.payload_type for point in
-                             filtered_ssrc]))
+        collections.Counter([point.payload_type for point in filtered_ssrc]))
 
-    payload_info = "payload type(s): {}".format(
-        ", ".join(str(payload) for payload in  payloads))
+    payload_info = "payload type(s): {}".format(", ".join(
+        str(payload) for payload in payloads))
     print("{} 0x{:x} {}, {:.2f}% packets, {:.2f}% data".format(
         ssrc_id, ssrc, payload_info, self.ssrc_frequencies[ssrc] * 100,
         self.ssrc_size_table[ssrc] * 100))
     print("  packet sizes:")
-    (bin_counts, bin_bounds) = numpy.histogram([point.size for point in
-                                                filtered_ssrc], bins=5,
-                                               density=False)
+    (bin_counts,
+     bin_bounds) = numpy.histogram([point.size for point in filtered_ssrc],
+                                   bins=5,
+                                   density=False)
     bin_proportions = bin_counts / sum(bin_counts)
     print("\n".join([
         " {:.1f} - {:.1f}: {:.2f}%".format(bin_bounds[i], bin_bounds[i + 1],
@@ -90,7 +92,7 @@ class RTPStatistics(object):
     """Queries user for SSRC."""
 
     if len(self.ssrc_frequencies) == 1:
-      chosen_ssrc = self.ssrc_frequencies.keys()[0]
+      chosen_ssrc = list(self.ssrc_frequencies.keys())[0]
       self.PrintSsrcInfo("", chosen_ssrc)
       return chosen_ssrc
 
@@ -110,8 +112,7 @@ class RTPStatistics(object):
       chosen_index = int(misc.get_input("choose one> "))
       if 0 <= chosen_index < len(self.ssrc_frequencies):
         return (incoming + outgoing)[chosen_index]
-      else:
-        print("Invalid index!")
+      print("Invalid index!")
 
   def FilterSsrc(self, chosen_ssrc):
     """Filters and wraps data points.
@@ -119,36 +120,33 @@ class RTPStatistics(object):
     Removes data points with `ssrc != chosen_ssrc`. Unwraps sequence
     numbers and timestamps for the chosen selection.
     """
-    self.data_points = [point for point in self.data_points if
-                        point.ssrc == chosen_ssrc]
+    self.data_points = [
+        point for point in self.data_points if point.ssrc == chosen_ssrc
+    ]
     unwrapped_sequence_numbers = misc.Unwrap(
         [point.sequence_number for point in self.data_points], 2**16 - 1)
     for (data_point, sequence_number) in zip(self.data_points,
                                              unwrapped_sequence_numbers):
       data_point.sequence_number = sequence_number
 
-    unwrapped_timestamps = misc.Unwrap([point.timestamp for point in
-                                        self.data_points], 2**32 - 1)
+    unwrapped_timestamps = misc.Unwrap(
+        [point.timestamp for point in self.data_points], 2**32 - 1)
 
-    for (data_point, timestamp) in zip(self.data_points,
-                                       unwrapped_timestamps):
+    for (data_point, timestamp) in zip(self.data_points, unwrapped_timestamps):
       data_point.timestamp = timestamp
 
   def PrintSequenceNumberStatistics(self):
-    seq_no_set = set(point.sequence_number for point in
-                     self.data_points)
+    seq_no_set = set(point.sequence_number for point in self.data_points)
     missing_sequence_numbers = max(seq_no_set) - min(seq_no_set) + (
         1 - len(seq_no_set))
     print("Missing sequence numbers: {} out of {}  ({:.2f}%)".format(
-        missing_sequence_numbers,
-        len(seq_no_set),
-        100 * missing_sequence_numbers / len(seq_no_set)
-    ))
-    print("Duplicated packets: {}".format(len(self.data_points) -
-                                          len(seq_no_set)))
+        missing_sequence_numbers, len(seq_no_set),
+        100 * missing_sequence_numbers / len(seq_no_set)))
+    print("Duplicated packets: {}".format(
+        len(self.data_points) - len(seq_no_set)))
     print("Reordered packets: {}".format(
-        misc.CountReordered([point.sequence_number for point in
-                             self.data_points])))
+        misc.CountReordered(
+            [point.sequence_number for point in self.data_points])))
 
   def EstimateFrequency(self, always_query_sample_rate):
     """Estimates frequency and updates data.
@@ -173,7 +171,7 @@ class RTPStatistics(object):
     print("Estimated frequency: {:.3f}kHz".format(freq_est))
     if freq is None or always_query_sample_rate:
       if not always_query_sample_rate:
-        print ("Frequency could not be guessed.", end=" ")
+        print("Frequency could not be guessed.", end=" ")
       freq = int(misc.get_input("Input frequency (in kHz)> "))
     else:
       print("Guessed frequency: {}kHz".format(freq))
@@ -193,24 +191,22 @@ class RTPStatistics(object):
 
     stream_duration_sender = self.data_points[-1].real_send_time_ms / 1000
     print("Stream duration at sender: {:.1f} seconds".format(
-        stream_duration_sender
-    ))
+        stream_duration_sender))
 
-    arrival_timestamps_ms = [point.arrival_timestamp_ms for point in
-                             self.data_points]
+    arrival_timestamps_ms = [
+        point.arrival_timestamp_ms for point in self.data_points
+    ]
     stream_duration_receiver = (max(arrival_timestamps_ms) -
                                 min(arrival_timestamps_ms)) / 1000
     print("Stream duration at receiver: {:.1f} seconds".format(
-        stream_duration_receiver
-    ))
+        stream_duration_receiver))
 
     print("Clock drift: {:.2f}%".format(
-        100 * (stream_duration_receiver / stream_duration_sender - 1)
-    ))
+        100 * (stream_duration_receiver / stream_duration_sender - 1)))
 
     total_size = sum(point.size for point in self.data_points) * 8 / 1000
-    print("Send average bitrate: {:.2f} kbps".format(
-        total_size / stream_duration_sender))
+    print("Send average bitrate: {:.2f} kbps".format(total_size /
+                                                     stream_duration_sender))
 
     print("Receive average bitrate: {:.2f} kbps".format(
         total_size / stream_duration_receiver))
@@ -236,14 +232,14 @@ class RTPStatistics(object):
     stop_ms = self.data_points[-1].real_send_time_ms
     (self.bandwidth_kbps, _) = numpy.histogram(
         [point.real_send_time_ms for point in self.data_points],
-        bins=numpy.arange(start_ms, stop_ms,
-                          RTPStatistics.PLOT_RESOLUTION_MS),
-        weights=[point.size * 8 / RTPStatistics.PLOT_RESOLUTION_MS
-                 for point in self.data_points]
-    )
-    correlate_filter = (numpy.ones(
-        RTPStatistics.BANDWIDTH_SMOOTHING_WINDOW_SIZE) /
-                        RTPStatistics.BANDWIDTH_SMOOTHING_WINDOW_SIZE)
+        bins=numpy.arange(start_ms, stop_ms, RTPStatistics.PLOT_RESOLUTION_MS),
+        weights=[
+            point.size * 8 / RTPStatistics.PLOT_RESOLUTION_MS
+            for point in self.data_points
+        ])
+    correlate_filter = (
+        numpy.ones(RTPStatistics.BANDWIDTH_SMOOTHING_WINDOW_SIZE) /
+        RTPStatistics.BANDWIDTH_SMOOTHING_WINDOW_SIZE)
     self.smooth_bw_kbps = numpy.correlate(self.bandwidth_kbps, correlate_filter)
 
   def PlotStatistics(self):
@@ -254,9 +250,8 @@ class RTPStatistics(object):
     time_axis = numpy.arange(start_ms / 1000, stop_ms / 1000,
                              RTPStatistics.PLOT_RESOLUTION_MS / 1000)
 
-    delay = CalculateDelay(start_ms, stop_ms,
-                            RTPStatistics.PLOT_RESOLUTION_MS,
-                            self.data_points)
+    delay = CalculateDelay(start_ms, stop_ms, RTPStatistics.PLOT_RESOLUTION_MS,
+                           self.data_points)
 
     plt.figure(1)
     plt.plot(time_axis, delay[:len(time_axis)])
@@ -283,10 +278,11 @@ def CalculateDelay(start, stop, step, points):
   grouped_delays = [[] for _ in numpy.arange(start, stop + step, step)]
   rounded_value_index = lambda x: int((x - start) / step)
   for point in points:
-    grouped_delays[rounded_value_index(point.real_send_time_ms)
-                  ].append(point.absdelay)
-  regularized_delays = [numpy.average(arr) if arr else -1 for arr in
-                        grouped_delays]
+    grouped_delays[rounded_value_index(point.real_send_time_ms)].append(
+        point.absdelay)
+  regularized_delays = [
+      numpy.average(arr) if arr else -1 for arr in grouped_delays
+  ]
   return numpy.ma.masked_values(regularized_delays, -1)
 
 
@@ -294,14 +290,17 @@ def main():
   usage = "Usage: %prog [options] <filename of rtc event log>"
   parser = optparse.OptionParser(usage=usage)
   parser.add_option("--dump_header_to_stdout",
-                    default=False, action="store_true",
+                    default=False,
+                    action="store_true",
                     help="print header info to stdout; similar to rtp_analyze")
   parser.add_option("--query_sample_rate",
-                    default=False, action="store_true",
+                    default=False,
+                    action="store_true",
                     help="always query user for real sample rate")
 
   parser.add_option("--working_directory",
-                    default=None, action="store",
+                    default=None,
+                    action="store",
                     help="directory in which to search for relative paths")
 
   (options, args) = parser.parse_args()
@@ -335,6 +334,7 @@ def main():
   rtp_stats.RemoveReordered()
   rtp_stats.ComputeBandwidth()
   rtp_stats.PlotStatistics()
+
 
 if __name__ == "__main__":
   main()

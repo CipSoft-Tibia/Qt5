@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/optional.h"
 #include "api/test/network_emulation_manager.h"
 #include "api/test/simulated_network.h"
 #include "call/simulated_network.h"
@@ -25,6 +26,7 @@
 #include "test/gmock.h"
 #include "test/gtest.h"
 #include "test/network/network_emulation_manager.h"
+#include "test/network/traffic_route.h"
 #include "test/time_controller/simulated_time_controller.h"
 
 namespace webrtc {
@@ -47,21 +49,21 @@ struct TrafficCounterFixture {
   SimulatedClock clock{0};
   CountingReceiver counter;
   TaskQueueForTest task_queue_;
-  EmulatedEndpointImpl endpoint{
-      /*id=*/1,
-      rtc::IPAddress(kTestIpAddress),
-      EmulatedEndpointConfig::StatsGatheringMode::kDefault,
-      /*is_enabled=*/true,
-      /*type=*/rtc::AdapterType::ADAPTER_TYPE_UNKNOWN,
-      &task_queue_,
-      &clock};
+  EmulatedEndpointImpl endpoint{EmulatedEndpointImpl::Options{
+                                    /*id=*/1,
+                                    rtc::IPAddress(kTestIpAddress),
+                                    EmulatedEndpointConfig(),
+                                    EmulatedNetworkStatsGatheringMode::kDefault,
+                                },
+                                /*is_enabled=*/true, &task_queue_, &clock};
 };
 
 }  // namespace
 
 TEST(CrossTrafficTest, TriggerPacketBurst) {
   TrafficCounterFixture fixture;
-  TrafficRoute traffic(&fixture.clock, &fixture.counter, &fixture.endpoint);
+  CrossTrafficRouteImpl traffic(&fixture.clock, &fixture.counter,
+                                &fixture.endpoint);
   traffic.TriggerPacketBurst(100, 1000);
 
   EXPECT_EQ(fixture.counter.packets_count_, 100);
@@ -70,7 +72,8 @@ TEST(CrossTrafficTest, TriggerPacketBurst) {
 
 TEST(CrossTrafficTest, PulsedPeaksCrossTraffic) {
   TrafficCounterFixture fixture;
-  TrafficRoute traffic(&fixture.clock, &fixture.counter, &fixture.endpoint);
+  CrossTrafficRouteImpl traffic(&fixture.clock, &fixture.counter,
+                                &fixture.endpoint);
 
   PulsedPeaksConfig config;
   config.peak_rate = DataRate::KilobitsPerSec(1000);
@@ -85,8 +88,8 @@ TEST(CrossTrafficTest, PulsedPeaksCrossTraffic) {
     fixture.clock.AdvanceTimeMilliseconds(1);
   }
 
-  RTC_LOG(INFO) << fixture.counter.packets_count_ << " packets; "
-                << fixture.counter.total_packets_size_ << " bytes";
+  RTC_LOG(LS_INFO) << fixture.counter.packets_count_ << " packets; "
+                   << fixture.counter.total_packets_size_ << " bytes";
   // Using 50% duty cycle.
   const auto kExpectedDataSent = kRunTime * config.peak_rate * 0.5;
   EXPECT_NEAR(fixture.counter.total_packets_size_, kExpectedDataSent.bytes(),
@@ -95,7 +98,8 @@ TEST(CrossTrafficTest, PulsedPeaksCrossTraffic) {
 
 TEST(CrossTrafficTest, RandomWalkCrossTraffic) {
   TrafficCounterFixture fixture;
-  TrafficRoute traffic(&fixture.clock, &fixture.counter, &fixture.endpoint);
+  CrossTrafficRouteImpl traffic(&fixture.clock, &fixture.counter,
+                                &fixture.endpoint);
 
   RandomWalkConfig config;
   config.peak_rate = DataRate::KilobitsPerSec(1000);
@@ -112,8 +116,8 @@ TEST(CrossTrafficTest, RandomWalkCrossTraffic) {
     fixture.clock.AdvanceTimeMilliseconds(1);
   }
 
-  RTC_LOG(INFO) << fixture.counter.packets_count_ << " packets; "
-                << fixture.counter.total_packets_size_ << " bytes";
+  RTC_LOG(LS_INFO) << fixture.counter.packets_count_ << " packets; "
+                   << fixture.counter.total_packets_size_ << " bytes";
   // Sending at peak rate since bias = 1.
   const auto kExpectedDataSent = kRunTime * config.peak_rate;
   EXPECT_NEAR(fixture.counter.total_packets_size_, kExpectedDataSent.bytes(),
@@ -121,7 +125,8 @@ TEST(CrossTrafficTest, RandomWalkCrossTraffic) {
 }
 
 TEST(TcpMessageRouteTest, DeliveredOnLossyNetwork) {
-  NetworkEmulationManagerImpl net(TimeMode::kSimulated);
+  NetworkEmulationManagerImpl net(TimeMode::kSimulated,
+                                  EmulatedNetworkStatsGatheringMode::kDefault);
   BuiltInNetworkBehaviorConfig send;
   // 800 kbps means that the 100 kB message would be delivered in ca 1 second
   // under ideal conditions and no overhead.

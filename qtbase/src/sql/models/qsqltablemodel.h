@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtSql module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSQLTABLEMODEL_H
 #define QSQLTABLEMODEL_H
@@ -58,11 +22,12 @@ class Q_SQL_EXPORT QSqlTableModel: public QSqlQueryModel
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QSqlTableModel)
+    Q_MOC_INCLUDE(<QtSql/qsqlrecord.h>)
 
 public:
     enum EditStrategy {OnFieldChange, OnRowChange, OnManualSubmit};
 
-    explicit QSqlTableModel(QObject *parent = nullptr, QSqlDatabase db = QSqlDatabase());
+    explicit QSqlTableModel(QObject *parent = nullptr, const QSqlDatabase &db = QSqlDatabase());
     virtual ~QSqlTableModel();
 
     virtual void setTable(const QString &tableName);
@@ -74,9 +39,7 @@ public:
     QSqlRecord record(int row) const;
     QVariant data(const QModelIndex &idx, int role = Qt::DisplayRole) const override;
     bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool clearItemData(const QModelIndex &index) override;
-#endif
 
     QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
 
@@ -127,7 +90,7 @@ Q_SIGNALS:
     void beforeDelete(int row);
 
 protected:
-    QSqlTableModel(QSqlTableModelPrivate &dd, QObject *parent = nullptr, QSqlDatabase db = QSqlDatabase());
+    QSqlTableModel(QSqlTableModelPrivate &dd, QObject *parent = nullptr, const QSqlDatabase &db = QSqlDatabase());
 
     virtual bool updateRowInTable(int row, const QSqlRecord &values);
     virtual bool insertRowIntoTable(const QSqlRecord &values);
@@ -136,7 +99,9 @@ protected:
     virtual QString selectStatement() const;
 
     void setPrimaryKey(const QSqlIndex &key);
+#if QT_SQL_REMOVED_SINCE(6, 5)
     void setQuery(const QSqlQuery &query);
+#endif
     QModelIndex indexInQuery(const QModelIndex &item) const override;
     QSqlRecord primaryValues(int row) const;
 };

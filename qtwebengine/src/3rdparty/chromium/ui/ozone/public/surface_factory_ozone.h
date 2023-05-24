@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,12 +9,12 @@
 #include <memory>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/component_export.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/native_library.h"
 #include "gpu/vulkan/buildflags.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/buffer_types.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_pixmap.h"
@@ -29,6 +29,10 @@
 
 namespace gfx {
 class NativePixmap;
+}
+
+namespace gpu {
+class VulkanDeviceQueue;
 }
 
 namespace ui {
@@ -67,24 +71,31 @@ class PlatformWindowSurface;
 // modes (See comments below for descriptions).
 class COMPONENT_EXPORT(OZONE_BASE) SurfaceFactoryOzone {
  public:
+  SurfaceFactoryOzone(const SurfaceFactoryOzone&) = delete;
+  SurfaceFactoryOzone& operator=(const SurfaceFactoryOzone&) = delete;
+
   // Returns a list of allowed GL implementations. The default implementation
   // will be the first item.
-  virtual std::vector<gl::GLImplementation> GetAllowedGLImplementations();
+  virtual std::vector<gl::GLImplementationParts> GetAllowedGLImplementations();
 
   // Returns the GLOzone to use for the specified GL implementation, or null if
   // GL implementation doesn't exist.
-  virtual GLOzone* GetGLOzone(gl::GLImplementation implementation);
+  virtual GLOzone* GetGLOzone(const gl::GLImplementationParts& implementation);
+
+  // Returns the current GLOzone based on the OzonePlatform and
+  // GLImplementationParts currently in use.
+  GLOzone* GetCurrentGLOzone();
 
 #if BUILDFLAG(ENABLE_VULKAN)
   // Creates the vulkan implementation. This object should be capable of
   // creating surfaces that swap to a platform window.
+  // |use_swiftshader| suggests using Swiftshader.  The actual support depends
+  // on the platform.
   // |allow_protected_memory| suggests that the vulkan implementation should
   // create protected-capable resources, such as VkQueue.
-  // |enforce_protected_memory| suggests that the vulkan implementation should
-  // always use protected memory and resources, such as CommandBuffers.
   virtual std::unique_ptr<gpu::VulkanImplementation> CreateVulkanImplementation(
-      bool allow_protected_memory,
-      bool enforce_protected_memory);
+      bool use_swiftshader,
+      bool allow_protected_memory);
 
   // Creates a scanout NativePixmap that can be rendered using Vulkan.
   // TODO(spang): Remove this once VK_EXT_image_drm_format_modifier is
@@ -133,17 +144,19 @@ class COMPONENT_EXPORT(OZONE_BASE) SurfaceFactoryOzone {
   // This method can be called on any thread.
   virtual scoped_refptr<gfx::NativePixmap> CreateNativePixmap(
       gfx::AcceleratedWidget widget,
-      VkDevice vk_device,
+      gpu::VulkanDeviceQueue* device_queue,
       gfx::Size size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
-      base::Optional<gfx::Size> framebuffer_size = base::nullopt);
+      absl::optional<gfx::Size> framebuffer_size = absl::nullopt);
+
+  virtual bool CanCreateNativePixmapForFormat(gfx::BufferFormat format);
 
   // Similar to CreateNativePixmap, but returns the result asynchronously.
   using NativePixmapCallback =
       base::OnceCallback<void(scoped_refptr<gfx::NativePixmap>)>;
   virtual void CreateNativePixmapAsync(gfx::AcceleratedWidget widget,
-                                       VkDevice vk_device,
+                                       gpu::VulkanDeviceQueue* device_queue,
                                        gfx::Size size,
                                        gfx::BufferFormat format,
                                        gfx::BufferUsage usage,
@@ -195,12 +208,13 @@ class COMPONENT_EXPORT(OZONE_BASE) SurfaceFactoryOzone {
   virtual std::vector<gfx::BufferFormat> GetSupportedFormatsForTexturing()
       const;
 
+  // This returns a preferred format for solid color image on Wayland.
+  virtual absl::optional<gfx::BufferFormat> GetPreferredFormatForSolidColor()
+      const;
+
  protected:
   SurfaceFactoryOzone();
   virtual ~SurfaceFactoryOzone();
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(SurfaceFactoryOzone);
 };
 
 }  // namespace ui

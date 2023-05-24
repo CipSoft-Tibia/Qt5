@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,13 +13,20 @@
 #include "base/base_export.h"
 #include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
+#include "base/memory/raw_ptr.h"
+#include "base/strings/string_piece.h"
 #include "build/build_config.h"
 
-#if defined(OS_WIN)
-#include <windows.h>
+#if BUILDFLAG(IS_WIN)
+#include "base/win/windows_types.h"
 #endif
 
 namespace base {
+
+// Converts module id to match the id that the Google-internal symbol server
+// expects.
+BASE_EXPORT std::string TransformModuleIDToSymbolServerFormat(
+    StringPiece module_id);
 
 // Supports cached lookup of modules by address, with caching based on module
 // address ranges.
@@ -66,6 +73,21 @@ class BASE_EXPORT ModuleCache {
     virtual bool IsNative() const = 0;
   };
 
+  // Interface for lazily creating a native module for a given |address|. The
+  // provider is registered with RegisterAuxiliaryModuleProvider().
+  class AuxiliaryModuleProvider {
+   public:
+    AuxiliaryModuleProvider() = default;
+    AuxiliaryModuleProvider(const AuxiliaryModuleProvider&) = delete;
+    AuxiliaryModuleProvider& operator=(const AuxiliaryModuleProvider&) = delete;
+
+    virtual std::unique_ptr<const Module> TryCreateModuleForAddress(
+        uintptr_t address) = 0;
+
+   protected:
+    ~AuxiliaryModuleProvider() = default;
+  };
+
   ModuleCache();
   ~ModuleCache();
 
@@ -102,6 +124,19 @@ class BASE_EXPORT ModuleCache {
   // |module| may not overlap with any native Modules already present in
   // ModuleCache.
   void AddCustomNativeModule(std::unique_ptr<const Module> module);
+
+  // Registers a custom module provider for lazily creating native modules. At
+  // most one provider can be registered at any time, and the provider must be
+  // unregistered before being destroyed. This is intended to support native
+  // modules that require custom handling. In general, native modules will be
+  // found and added automatically when invoking GetModuleForAddress(). If no
+  // module is found, this provider will be used as fallback.
+  void RegisterAuxiliaryModuleProvider(
+      AuxiliaryModuleProvider* auxiliary_module_provider);
+
+  // Unregisters the custom module provider.
+  void UnregisterAuxiliaryModuleProvider(
+      AuxiliaryModuleProvider* auxiliary_module_provider);
 
   // Gets the module containing |address| if one already exists, or nullptr
   // otherwise. The returned module remains owned by and has the same lifetime
@@ -156,6 +191,9 @@ class BASE_EXPORT ModuleCache {
   // because it can contain multiple modules that were loaded (then subsequently
   // unloaded) at the same base address.
   std::vector<std::unique_ptr<const Module>> inactive_non_native_modules_;
+
+  // Auxiliary module provider, for lazily creating native modules.
+  raw_ptr<AuxiliaryModuleProvider> auxiliary_module_provider_ = nullptr;
 };
 
 }  // namespace base

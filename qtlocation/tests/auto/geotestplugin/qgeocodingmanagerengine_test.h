@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QGEOCODINGMANAGERENGINE_TEST_H
 #define QGEOCODINGMANAGERENGINE_TEST_H
@@ -45,29 +20,11 @@
 
 QT_USE_NAMESPACE
 
-
-class GeocodeReplyTestPrivate : public QGeoCodeReplyPrivate
-{
-public:
-    GeocodeReplyTestPrivate()
-    {
-    }
-    ~GeocodeReplyTestPrivate()
-    {
-    }
-    QVariantMap extraData() const override
-    {
-        return m_extraData;
-    }
-
-    QVariantMap m_extraData;
-};
-
 class GeocodeReplyTest :public QGeoCodeReply
 {
     Q_OBJECT
 public:
-    GeocodeReplyTest(QObject *parent = 0) : QGeoCodeReply (*new GeocodeReplyTestPrivate, parent) {}
+    using QGeoCodeReply::QGeoCodeReply;
 
     void  callAddLocation ( const QGeoLocation & location ) {addLocation(location);}
     void  callSetError ( Error error, const QString & errorString ) {setError(error, errorString);}
@@ -113,7 +70,7 @@ public:
     QGeoCodeReply* geocode(const QString &searchString,
                            int limit = -1,
                            int offset = 0,
-                           const QGeoShape &bounds = QGeoShape())
+                           const QGeoShape &bounds = QGeoShape()) override
     {
         geocodeReply_ = new GeocodeReplyTest();
         connect(geocodeReply_, SIGNAL(aborted()), this, SLOT(requestAborted()));
@@ -129,8 +86,6 @@ public:
 
         if (errorCode_ == QGeoCodeReply::NoError)
             setLocations(geocodeReply_, searchString, limit, offset);
-        if (includeExtendedData_)
-            injectExtra(geocodeReply_, extendedReplyData_);
 
         if (finishRequestImmediately_) {
             // check if we should finish with error
@@ -147,13 +102,11 @@ public:
         return static_cast<QGeoCodeReply*>(geocodeReply_);
     }
 
-    QGeoCodeReply* geocode(const QGeoAddress & address, const QGeoShape &bounds)
+    QGeoCodeReply* geocode(const QGeoAddress & address, const QGeoShape &bounds) override
     {
         geocodeReply_ = new GeocodeReplyTest();
         connect(geocodeReply_, SIGNAL(aborted()), this, SLOT(requestAborted()));
         geocodeReply_->callSetViewport(bounds);
-        if (includeExtendedData_)
-            injectExtra(geocodeReply_, extendedReplyData_);
 
         if (address.street().startsWith("error")) {
             errorString_ = address.street();
@@ -242,15 +195,13 @@ public:
         }
     }
 
-    QGeoCodeReply* reverseGeocode(const QGeoCoordinate &coordinate, const QGeoShape &bounds)
+    QGeoCodeReply* reverseGeocode(const QGeoCoordinate &coordinate, const QGeoShape &bounds) override
     {
         geocodeReply_ = new GeocodeReplyTest();
         connect(geocodeReply_, SIGNAL(aborted()), this, SLOT(requestAborted()));
 
         setLocations(geocodeReply_, coordinate);
         geocodeReply_->callSetViewport(bounds);
-        if (includeExtendedData_)
-            injectExtra(geocodeReply_, extendedReplyData_);
 
         if (coordinate.latitude() > 70) {
             errorString_ = "error";
@@ -275,7 +226,7 @@ public:
     }
 
 protected:
-     void timerEvent(QTimerEvent *event)
+     void timerEvent(QTimerEvent *event) override
      {
          Q_UNUSED(event);
          Q_ASSERT(timerId_ == event->timerId());
@@ -284,19 +235,12 @@ protected:
          timerId_ = 0;
          if (errorCode_) {
              geocodeReply_->callSetError(errorCode_, errorString_);
-             emit error(geocodeReply_, errorCode_, errorString_);
+             emit errorOccurred(geocodeReply_, errorCode_, errorString_);
         } else {
              geocodeReply_->callSetError(QGeoCodeReply::NoError, "no error");
              geocodeReply_->callSetFinished(true);
          }
          emit finished(geocodeReply_);
-     }
-
-     static void injectExtra(QGeoCodeReply *reply, const QVariantMap &extra)
-     {
-         GeocodeReplyTestPrivate *replyPrivate
-                 = static_cast<GeocodeReplyTestPrivate *>(QGeoCodeReplyPrivate::get(*reply));
-         replyPrivate->m_extraData = extra;
      }
 
      static void injectExtra(QGeoLocation &location, const QVariantMap &extra)

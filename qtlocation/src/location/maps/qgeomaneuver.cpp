@@ -1,51 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeomaneuver.h"
 #include "qgeomaneuver_p.h"
 
+#include <QtCore/QVariant>
 #include "qgeocoordinate.h"
 
 QT_BEGIN_NAMESPACE
 
-template<>
-QGeoManeuverPrivate *QSharedDataPointer<QGeoManeuverPrivate>::clone()
-{
-    return d->clone();
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QGeoManeuverPrivate)
 
 /*!
     \class QGeoManeuver
@@ -66,6 +30,34 @@ QGeoManeuverPrivate *QSharedDataPointer<QGeoManeuverPrivate>::clone()
 
     It is also possible to determine if a routing waypoint has been passed by
     checking if waypoint() returns a valid QGeoCoordinate.
+*/
+
+/*!
+    \qmltype routeManeuver
+    \inqmlmodule QtLocation
+    \ingroup qml-QtLocation5-routing
+    \since QtLocation 5.5
+
+    \brief The routeManeuver type represents the information relevant to the
+    point at which two routeSegments meet.
+
+    Instances of routeSegment can be thought of as edges on a routing
+    graph, with routeManeuver instances as optional labels attached to the
+    vertices of the graph.
+
+    The most interesting information held in a routeManeuver instance is
+    normally the textual navigation to provide and the position at which to
+    provide it, accessible by \l instructionText and \l position respectively.
+
+    \section1 Example
+
+    The following QML snippet demonstrates how to print information about a
+    route maneuver:
+
+    \snippet declarative/routing.qml QtQuick import
+    \snippet declarative/maps.qml QtLocation import
+    \codeline
+    \snippet declarative/routing.qml routeManeuver
 */
 
 /*!
@@ -121,18 +113,17 @@ The instruction indicates that the direction of travel should bear to the left.
     setWaypoint() is called.
 */
 QGeoManeuver::QGeoManeuver()
-    : d_ptr(new QGeoManeuverPrivateDefault()) {}
+    : d_ptr(new QGeoManeuverPrivate()) {}
 
 /*!
     Constructs a maneuver object from the contents of \a other.
 */
-QGeoManeuver::QGeoManeuver(const QGeoManeuver &other)
-    : d_ptr(other.d_ptr) {}
+QGeoManeuver::QGeoManeuver(const QGeoManeuver &other) noexcept = default;
 
 /*!
     Destroys this maneuver object.
 */
-QGeoManeuver::~QGeoManeuver() {}
+QGeoManeuver::~QGeoManeuver() = default;
 
 /*!
     Assigns \a other to this maneuver object and then returns
@@ -148,24 +139,35 @@ QGeoManeuver &QGeoManeuver::operator= (const QGeoManeuver & other)
 }
 
 /*!
-    Returns whether this maneuver is equal to \a other.
+    \fn bool QGeoManeuver::operator==(const QGeoManeuver &lhs, const QGeoManeuver &rhs) noexcept
+
+    Returns whether the \a lhs maneuver is equal to \a rhs.
 */
-bool QGeoManeuver::operator== (const QGeoManeuver &other) const
+
+/*!
+    \fn bool QGeoManeuver::operator!= (const QGeoManeuver &lhs, const QGeoManeuver &rhs) noexcept
+
+    Returns whether the \a lhs maneuver is not equal to \a rhs.
+*/
+
+bool QGeoManeuver::isEqual(const QGeoManeuver &other) const
 {
     return ( (d_ptr.constData() == other.d_ptr.constData())
-            ||  (*(d_ptr.constData()) == *(other.d_ptr.constData())) );
+            ||  (d_ptr->equals(*other.d_ptr)) );
 }
 
 /*!
-    Returns whether this maneuver is not equal to \a other.
+    \qmlproperty bool routeManeuver::valid
+
+    This read-only property holds whether this maneuver is valid or not.
+
+    Invalid maneuvers are used when there is no information
+    that needs to be attached to the endpoint of a QGeoRouteSegment instance.
 */
-bool QGeoManeuver::operator!= (const QGeoManeuver &other) const
-{
-    return !(operator==(other));
-}
 
 /*!
-    Returns whether this maneuver is valid or not.
+    \property QGeoManeuver::valid
+    \brief whether this maneuver is valid or not.
 
     Invalid maneuvers are used when there is no information
     that needs to be attached to the endpoint of a QGeoRouteSegment instance.
@@ -176,8 +178,15 @@ bool QGeoManeuver::isValid() const
 }
 
 /*!
-    Sets the position where instructionText() should be displayed to \a
-    position.
+    \qmlproperty coordinate routeManeuver::position
+
+    This read-only property holds where the \l instructionText should be displayed.
+
+*/
+
+/*!
+    \property QGeoManeuver::position
+    \brief the position where \l instructionText should be displayed.
 */
 void QGeoManeuver::setPosition(const QGeoCoordinate &position)
 {
@@ -185,16 +194,20 @@ void QGeoManeuver::setPosition(const QGeoCoordinate &position)
     d_ptr->setPosition(position);
 }
 
-/*!
-    Returns the position where instructionText() should be displayed.
-*/
 QGeoCoordinate QGeoManeuver::position() const
 {
     return d_ptr->position();
 }
 
 /*!
-    Sets the textual navigation instructions to \a instructionText.
+    \qmlproperty string routeManeuver::instructionText
+
+    This read-only property holds textual navigation instruction.
+*/
+
+/*!
+    \property QGeoManeuver::instructionText
+    \brief the textual navigation instructions.
 */
 void QGeoManeuver::setInstructionText(const QString &instructionText)
 {
@@ -202,17 +215,36 @@ void QGeoManeuver::setInstructionText(const QString &instructionText)
     d_ptr->setText(instructionText);
 }
 
-/*!
-    Returns the textual navigation instructions.
-*/
 QString QGeoManeuver::instructionText() const
 {
     return d_ptr->text();
 }
 
 /*!
-    Sets the direction associated with the associated instruction to \a
-    direction.
+    \qmlproperty enumeration routeManeuver::direction
+
+    Describes the change in direction associated with the instruction text
+    that is associated with a routeManeuver.
+
+    \list
+    \li RouteManeuver.NoDirection - There is no direction associated with the instruction text
+    \li RouteManeuver.DirectionForward - The instruction indicates that the direction of travel does not need to change
+    \li RouteManeuver.DirectionBearRight - The instruction indicates that the direction of travel should bear to the right
+    \li RouteManeuver.DirectionLightRight - The instruction indicates that a light turn to the right is required
+    \li RouteManeuver.DirectionRight - The instruction indicates that a turn to the right is required
+    \li RouteManeuver.DirectionHardRight - The instruction indicates that a hard turn to the right is required
+    \li RouteManeuver.DirectionUTurnRight - The instruction indicates that a u-turn to the right is required
+    \li RouteManeuver.DirectionUTurnLeft - The instruction indicates that a u-turn to the left is required
+    \li RouteManeuver.DirectionHardLeft - The instruction indicates that a hard turn to the left is required
+    \li RouteManeuver.DirectionLeft - The instruction indicates that a turn to the left is required
+    \li RouteManeuver.DirectionLightLeft - The instruction indicates that a light turn to the left is required
+    \li RouteManeuver.DirectionBearLeft - The instruction indicates that the direction of travel should bear to the left
+    \endlist
+*/
+
+/*!
+    \property QGeoManeuver::direction
+    \brief the direction associated with the associated instruction.
 */
 void QGeoManeuver::setDirection(QGeoManeuver::InstructionDirection direction)
 {
@@ -220,18 +252,24 @@ void QGeoManeuver::setDirection(QGeoManeuver::InstructionDirection direction)
     d_ptr->setDirection(direction);
 }
 
-/*!
-    Returns the direction associated with the associated instruction.
-*/
 QGeoManeuver::InstructionDirection QGeoManeuver::direction() const
 {
     return d_ptr->direction();
 }
 
 /*!
-    Sets the estimated time it will take to travel from the point at which the
-    associated instruction was issued and the point that the next instruction
-    should be issued, in seconds, to \a secs.
+    \qmlproperty int routeManeuver::timeToNextInstruction
+
+    This read-only property holds the estimated time, in seconds, that it will take
+    to travel from the point at which the associated instruction was issued
+    to the point at which the next instruction should be issued, in seconds.
+*/
+
+/*!
+    \property QGeoManeuver::timeToNextInstruction
+    \brief the estimated time, in seconds, that it will take to travel from the
+    point at which the associated instruction was issued to the point at which the
+    next instruction should be issued.
 */
 void QGeoManeuver::setTimeToNextInstruction(int secs)
 {
@@ -239,20 +277,23 @@ void QGeoManeuver::setTimeToNextInstruction(int secs)
     d_ptr->setTimeToNextInstruction(secs);
 }
 
-/*!
-    Returns the estimated time it will take to travel from the point at which
-    the associated instruction was issued and the point that the next
-    instruction should be issued, in seconds.
-*/
 int QGeoManeuver::timeToNextInstruction() const
 {
     return d_ptr->timeToNextInstruction();
 }
 
 /*!
-    Sets the distance, in meters, between the point at which the associated
-    instruction was issued and the point that the next instruction should be
-    issued to \a distance.
+    \qmlproperty real routeManeuver::distanceToNextInstruction
+
+    This read-only property holds the distance, in meters, between the point at which
+    the associated instruction was issued and the point that the next instruction should
+    be issued.
+*/
+
+/*!
+    \property QGeoManeuver::distanceToNextInstruction
+    \brief the distance, in meters, between the point at which this instruction was
+    issued, and the point at which the next instruction should be issued.
 */
 void QGeoManeuver::setDistanceToNextInstruction(qreal distance)
 {
@@ -260,18 +301,24 @@ void QGeoManeuver::setDistanceToNextInstruction(qreal distance)
     d_ptr->setDistanceToNextInstruction(distance);
 }
 
-/*!
-    Returns the distance, in meters, between the point at which the associated
-    instruction was issued and the point that the next instruction should be
-    issued.
-*/
 qreal QGeoManeuver::distanceToNextInstruction() const
 {
     return d_ptr->distanceToNextInstruction();
 }
 
 /*!
-    Sets the waypoint associated with this maneuver to \a coordinate.
+    \qmlproperty coordinate routeManeuver::waypoint
+
+    This property holds the waypoint associated with this maneuver.
+    Not all maneuvers have a waypoint associated with them.
+*/
+
+/*!
+    \property QGeoManeuver::waypoint
+    \brief the waypoint associated with this maneuver.
+
+    If there is not waypoint associated with this maneuver, then this
+    property holds an invalid QGeoCoordinate.
 */
 void QGeoManeuver::setWaypoint(const QGeoCoordinate &coordinate)
 {
@@ -279,23 +326,30 @@ void QGeoManeuver::setWaypoint(const QGeoCoordinate &coordinate)
     d_ptr->setWaypoint(coordinate);
 }
 
-/*!
-    Returns the waypoint associated with this maneuver.
-
-    If there is not waypoint associated with this maneuver an invalid
-    QGeoCoordinate will be returned.
-*/
 QGeoCoordinate QGeoManeuver::waypoint() const
 {
     return d_ptr->waypoint();
 }
 
-QGeoManeuver::QGeoManeuver(const QSharedDataPointer<QGeoManeuverPrivate> &dd)
-    : d_ptr(dd) {}
+/*!
+    \qmlproperty Object routeManeuver::extendedAttributes
+
+    This property holds the extended attributes of the maneuver and is a map.
+    These attributes are plugin specific, and can be empty.
+
+    Consult the \l {Qt Location#Plugin References and Parameters}{plugin documentation}
+    for what attributes are supported and how they should be used.
+
+    Note, due to limitations of the QQmlPropertyMap, it is not possible
+    to declaratively specify the attributes in QML, assignment of attributes keys
+    and values can only be accomplished by JavaScript.
+
+    \since QtLocation 5.11
+*/
 
 /*!
-    Sets the extended attributes \a extendedAttributes associated with this maneuver.
-
+    \property QGeoManeuver::extendedAttributes
+    \brief the extended attributes associated with this maneuver.
     \since QtLocation 5.11
 */
 void QGeoManeuver::setExtendedAttributes(const QVariantMap &extendedAttributes)
@@ -304,11 +358,6 @@ void QGeoManeuver::setExtendedAttributes(const QVariantMap &extendedAttributes)
     d_ptr->setExtendedAttributes(extendedAttributes);
 }
 
-/*!
-    Returns the extended attributes associated with this maneuver.
-
-    \since QtLocation 5.11
-*/
 QVariantMap QGeoManeuver::extendedAttributes() const
 {
     return d_ptr->extendedAttributes();
@@ -316,27 +365,6 @@ QVariantMap QGeoManeuver::extendedAttributes() const
 
 /*******************************************************************************
 *******************************************************************************/
-
-QGeoManeuverPrivate::QGeoManeuverPrivate()
-{
-
-}
-
-QGeoManeuverPrivate::QGeoManeuverPrivate(const QGeoManeuverPrivate &other)
-    : QSharedData(other)
-{
-
-}
-
-QGeoManeuverPrivate::~QGeoManeuverPrivate()
-{
-
-}
-
-bool QGeoManeuverPrivate::operator==(const QGeoManeuverPrivate &other) const
-{
-    return equals(other);
-}
 
 bool QGeoManeuverPrivate::equals(const QGeoManeuverPrivate &other) const
 {
@@ -349,212 +377,99 @@ bool QGeoManeuverPrivate::equals(const QGeoManeuverPrivate &other) const
             && (waypoint() == other.waypoint()));
 }
 
-bool QGeoManeuverPrivate::valid() const
-{
-    return false;
-}
-
-void QGeoManeuverPrivate::setValid(bool valid)
-{
-    Q_UNUSED(valid);
-}
-
-QString QGeoManeuverPrivate::id() const
-{
-    return QString();
-}
-
-void QGeoManeuverPrivate::setId(const QString id)
-{
-    Q_UNUSED(id);
-}
-
-QGeoCoordinate QGeoManeuverPrivate::position() const
-{
-    return QGeoCoordinate();
-}
-
-void QGeoManeuverPrivate::setPosition(const QGeoCoordinate &position)
-{
-    Q_UNUSED(position);
-}
-
-QString QGeoManeuverPrivate::text() const
-{
-    return QString();
-}
-
-void QGeoManeuverPrivate::setText(const QString &text)
-{
-    Q_UNUSED(text);
-}
-
-QGeoManeuver::InstructionDirection QGeoManeuverPrivate::direction() const
-{
-    return QGeoManeuver::NoDirection;
-}
-
-void QGeoManeuverPrivate::setDirection(QGeoManeuver::InstructionDirection direction)
-{
-    Q_UNUSED(direction);
-}
-
-int QGeoManeuverPrivate::timeToNextInstruction() const
-{
-    return 0;
-}
-
-void QGeoManeuverPrivate::setTimeToNextInstruction(int timeToNextInstruction)
-{
-    Q_UNUSED(timeToNextInstruction);
-}
-
-qreal QGeoManeuverPrivate::distanceToNextInstruction() const
-{
-    return 0;
-}
-
-void QGeoManeuverPrivate::setDistanceToNextInstruction(qreal distanceToNextInstruction)
-{
-    Q_UNUSED(distanceToNextInstruction);
-}
-
-QGeoCoordinate QGeoManeuverPrivate::waypoint() const
-{
-    return QGeoCoordinate();
-}
-
-void QGeoManeuverPrivate::setWaypoint(const QGeoCoordinate &waypoint)
-{
-    Q_UNUSED(waypoint);
-}
-
-QVariantMap QGeoManeuverPrivate::extendedAttributes() const
-{
-    return QVariantMap();
-}
-
-void QGeoManeuverPrivate::setExtendedAttributes(const QVariantMap &extendedAttributes)
-{
-    Q_UNUSED(extendedAttributes);
-}
-
-
-
 /*******************************************************************************
 *******************************************************************************/
 
-QGeoManeuverPrivateDefault::QGeoManeuverPrivateDefault()
-    : m_valid(false),
-      m_direction(QGeoManeuver::NoDirection),
-      m_timeToNextInstruction(0),
-      m_distanceToNextInstruction(0.0) {}
-
-QGeoManeuverPrivateDefault::QGeoManeuverPrivateDefault(const QGeoManeuverPrivateDefault &other)
-    : QGeoManeuverPrivate(other),
-      m_valid(other.m_valid),
-      m_position(other.m_position),
-      m_text(other.m_text),
-      m_direction(other.m_direction),
-      m_timeToNextInstruction(other.m_timeToNextInstruction),
-      m_distanceToNextInstruction(other.m_distanceToNextInstruction),
-      m_waypoint(other.m_waypoint) {}
-
-QGeoManeuverPrivateDefault::~QGeoManeuverPrivateDefault() {}
-
-QGeoManeuverPrivate *QGeoManeuverPrivateDefault::clone()
-{
-    return new QGeoManeuverPrivateDefault(*this);
-}
-
-bool QGeoManeuverPrivateDefault::valid() const
+bool QGeoManeuverPrivate::valid() const
 {
     return m_valid;
 }
 
-void QGeoManeuverPrivateDefault::setValid(bool valid)
+void QGeoManeuverPrivate::setValid(bool valid)
 {
     m_valid = valid;
 }
 
-QString QGeoManeuverPrivateDefault::id() const
+QString QGeoManeuverPrivate::id() const
 {
     return m_id;
 }
 
-void QGeoManeuverPrivateDefault::setId(const QString id)
+void QGeoManeuverPrivate::setId(const QString &id)
 {
     m_id = id;
 }
 
-QGeoCoordinate QGeoManeuverPrivateDefault::position() const
+QGeoCoordinate QGeoManeuverPrivate::position() const
 {
     return m_position;
 }
 
-void QGeoManeuverPrivateDefault::setPosition(const QGeoCoordinate &position)
+void QGeoManeuverPrivate::setPosition(const QGeoCoordinate &position)
 {
     m_position = position;
 }
 
-QString QGeoManeuverPrivateDefault::text() const
+QString QGeoManeuverPrivate::text() const
 {
     return m_text;
 }
 
-void QGeoManeuverPrivateDefault::setText(const QString &text)
+void QGeoManeuverPrivate::setText(const QString &text)
 {
     m_text = text;
 }
 
-QGeoManeuver::InstructionDirection QGeoManeuverPrivateDefault::direction() const
+QGeoManeuver::InstructionDirection QGeoManeuverPrivate::direction() const
 {
     return m_direction;
 }
 
-void QGeoManeuverPrivateDefault::setDirection(QGeoManeuver::InstructionDirection direction)
+void QGeoManeuverPrivate::setDirection(QGeoManeuver::InstructionDirection direction)
 {
     m_direction = direction;
 }
 
-int QGeoManeuverPrivateDefault::timeToNextInstruction() const
+int QGeoManeuverPrivate::timeToNextInstruction() const
 {
     return m_timeToNextInstruction;
 }
 
-void QGeoManeuverPrivateDefault::setTimeToNextInstruction(int timeToNextInstruction)
+void QGeoManeuverPrivate::setTimeToNextInstruction(int timeToNextInstruction)
 {
     m_timeToNextInstruction = timeToNextInstruction;
 }
 
-qreal QGeoManeuverPrivateDefault::distanceToNextInstruction() const
+qreal QGeoManeuverPrivate::distanceToNextInstruction() const
 {
     return m_distanceToNextInstruction;
 }
 
-void QGeoManeuverPrivateDefault::setDistanceToNextInstruction(qreal distanceToNextInstruction)
+void QGeoManeuverPrivate::setDistanceToNextInstruction(qreal distanceToNextInstruction)
 {
     m_distanceToNextInstruction = distanceToNextInstruction;
 }
 
-QGeoCoordinate QGeoManeuverPrivateDefault::waypoint() const
+QGeoCoordinate QGeoManeuverPrivate::waypoint() const
 {
     return m_waypoint;
 }
 
-void QGeoManeuverPrivateDefault::setWaypoint(const QGeoCoordinate &waypoint)
+void QGeoManeuverPrivate::setWaypoint(const QGeoCoordinate &waypoint)
 {
     m_waypoint = waypoint;
 }
 
-QVariantMap QGeoManeuverPrivateDefault::extendedAttributes() const
+QVariantMap QGeoManeuverPrivate::extendedAttributes() const
 {
     return m_extendedAttributes;
 }
 
-void QGeoManeuverPrivateDefault::setExtendedAttributes(const QVariantMap &extendedAttributes)
+void QGeoManeuverPrivate::setExtendedAttributes(const QVariantMap &extendedAttributes)
 {
     m_extendedAttributes = extendedAttributes;
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qgeomaneuver.cpp"

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,14 +13,13 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/containers/queue.h"
 #include "base/containers/span.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/writable_shared_memory_region.h"
-#include "base/optional.h"
-#include "base/single_thread_task_runner.h"
+#include "base/process/process.h"
+#include "base/task/single_thread_task_runner.h"
 #include "build/build_config.h"
 #include "mojo/core/atomic_flag.h"
 #include "mojo/core/node_channel.h"
@@ -28,9 +27,9 @@
 #include "mojo/core/ports/name.h"
 #include "mojo/core/ports/node.h"
 #include "mojo/core/ports/node_delegate.h"
-#include "mojo/core/scoped_process_handle.h"
 #include "mojo/core/system_impl_export.h"
 #include "mojo/public/cpp/platform/platform_handle.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace mojo {
 namespace core {
@@ -73,6 +72,10 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
 
   // |core| owns and out-lives us.
   NodeController();
+
+  NodeController(const NodeController&) = delete;
+  NodeController& operator=(const NodeController&) = delete;
+
   ~NodeController() override;
 
   const ports::NodeName& name() const { return name_; }
@@ -89,7 +92,7 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
   // Sends an invitation to a remote process (via |connection_params|) to join
   // this process's graph of connected processes as a broker client.
   void SendBrokerClientInvitation(
-      base::ProcessHandle target_process,
+      base::Process target_process,
       ConnectionParams connection_params,
       const std::vector<std::pair<std::string, ports::PortRef>>& attached_ports,
       const ProcessErrorCallback& process_error_callback);
@@ -183,13 +186,13 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
   };
 
   void SendBrokerClientInvitationOnIOThread(
-      ScopedProcessHandle target_process,
+      base::Process target_process,
       ConnectionParams connection_params,
       ports::NodeName token,
       const ProcessErrorCallback& process_error_callback);
   void AcceptBrokerClientInvitationOnIOThread(
       ConnectionParams connection_params,
-      base::Optional<PlatformHandle> broker_host_handle);
+      absl::optional<PlatformHandle> broker_host_handle);
 
   void ConnectIsolatedOnIOThread(ConnectionParams connection_params,
                                  ports::PortRef port,
@@ -227,7 +230,8 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
                            PlatformHandle broker_channel) override;
   void OnAcceptBrokerClient(const ports::NodeName& from_node,
                             const ports::NodeName& broker_name,
-                            PlatformHandle broker_channel) override;
+                            PlatformHandle broker_channel,
+                            const uint64_t broker_capabilities) override;
   void OnEventMessage(const ports::NodeName& from_node,
                       Channel::MessagePtr message) override;
   void OnRequestPortMerge(const ports::NodeName& from_node,
@@ -237,10 +241,11 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
                              const ports::NodeName& name) override;
   void OnIntroduce(const ports::NodeName& from_node,
                    const ports::NodeName& name,
-                   PlatformHandle channel_handle) override;
+                   PlatformHandle channel_handle,
+                   const uint64_t remote_capailities) override;
   void OnBroadcast(const ports::NodeName& from_node,
                    Channel::MessagePtr message) override;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   void OnRelayEventMessage(const ports::NodeName& from_node,
                            base::ProcessHandle from_process,
                            const ports::NodeName& destination,
@@ -273,6 +278,10 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
 
   // See |ForceDisconnectProcessForTesting()|.
   void ForceDisconnectProcessForTestingOnIOThread(base::ProcessId process_id);
+
+  // Mark a port that it is about to be merged. This allows us to do a security
+  // check on the incoming port merge that this port was intended to be merged.
+  void RecordPendingPortMerge(const ports::PortRef& port);
 
   // These are safe to access from any thread as long as the Node is alive.
   const ports::NodeName name_;
@@ -352,12 +361,10 @@ class MOJO_SYSTEM_IMPL_EXPORT NodeController : public ports::NodeDelegate,
   // Must only be accessed from the IO thread.
   bool destroy_on_io_thread_shutdown_ = false;
 
-#if !defined(OS_APPLE) && !defined(OS_NACL_SFI) && !defined(OS_FUCHSIA)
+#if !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_NACL) && !BUILDFLAG(IS_FUCHSIA)
   // Broker for sync shared buffer creation on behalf of broker clients.
   std::unique_ptr<Broker> broker_;
 #endif
-
-  DISALLOW_COPY_AND_ASSIGN(NodeController);
 };
 
 }  // namespace core

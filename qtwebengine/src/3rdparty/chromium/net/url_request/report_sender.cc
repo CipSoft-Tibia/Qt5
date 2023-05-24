@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "net/base/elements_upload_data_stream.h"
+#include "net/base/isolation_info.h"
 #include "net/base/load_flags.h"
 #include "net/base/request_priority.h"
 #include "net/base/upload_bytes_element_reader.h"
@@ -55,20 +56,23 @@ ReportSender::ReportSender(URLRequestContext* request_context,
 
 ReportSender::~ReportSender() = default;
 
-void ReportSender::Send(const GURL& report_uri,
-                        base::StringPiece content_type,
-                        base::StringPiece report,
-                        SuccessCallback success_callback,
-                        ErrorCallback error_callback) {
+void ReportSender::Send(
+    const GURL& report_uri,
+    base::StringPiece content_type,
+    base::StringPiece report,
+    const NetworkAnonymizationKey& network_anonymization_key,
+    SuccessCallback success_callback,
+    ErrorCallback error_callback) {
   DCHECK(!content_type.empty());
   std::unique_ptr<URLRequest> url_request = request_context_->CreateRequest(
       report_uri, DEFAULT_PRIORITY, this, traffic_annotation_);
   url_request->SetUserData(
       &kUserDataKey, std::make_unique<CallbackInfo>(std::move(success_callback),
                                                     std::move(error_callback)));
-
   url_request->SetLoadFlags(kLoadFlags);
   url_request->set_allow_credentials(false);
+  url_request->set_isolation_info_from_network_anonymization_key(
+      network_anonymization_key);
 
   HttpRequestHeaders extra_headers;
   extra_headers.SetHeader(HttpRequestHeaders::kContentType, content_type);
@@ -77,8 +81,7 @@ void ReportSender::Send(const GURL& report_uri,
   url_request->set_method("POST");
 
   std::vector<char> report_data(report.begin(), report.end());
-  std::unique_ptr<UploadElementReader> reader(
-      new UploadOwnedBytesElementReader(&report_data));
+  auto reader = std::make_unique<UploadOwnedBytesElementReader>(&report_data);
   url_request->set_upload(
       ElementsUploadDataStream::CreateWithReader(std::move(reader), 0));
 

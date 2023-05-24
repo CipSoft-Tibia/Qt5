@@ -1,18 +1,20 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_ACCESSIBILITY_PLATFORM_AX_SYSTEM_CARET_WIN_H_
 #define UI_ACCESSIBILITY_PLATFORM_AX_SYSTEM_CARET_WIN_H_
 
+#include <type_traits>
+
 #include <oleacc.h>
 #include <wrl/client.h>
 
-#include "base/macros.h"
-#include "ui/accessibility/ax_export.h"
+#include "base/component_export.h"
+#include "base/memory/raw_ptr.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/ax_tree_data.h"
-#include "ui/accessibility/platform/ax_platform_node_delegate_base.h"
+#include "ui/accessibility/platform/ax_platform_node_delegate.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_widget_types.h"
 
@@ -24,9 +26,14 @@ class AXPlatformNodeWin;
 // Windows. This is required because Chrome doesn't use the standard system
 // caret and because some assistive software still relies on specific
 // accessibility APIs to retrieve the caret position.
-class AX_EXPORT AXSystemCaretWin : private AXPlatformNodeDelegateBase {
+class COMPONENT_EXPORT(AX_PLATFORM) AXSystemCaretWin
+    : private AXPlatformNodeDelegate {
  public:
   explicit AXSystemCaretWin(gfx::AcceleratedWidget event_target);
+
+  AXSystemCaretWin(const AXSystemCaretWin&) = delete;
+  AXSystemCaretWin& operator=(const AXSystemCaretWin&) = delete;
+
   ~AXSystemCaretWin() override;
 
   Microsoft::WRL::ComPtr<IAccessible> GetCaret() const;
@@ -36,7 +43,7 @@ class AX_EXPORT AXSystemCaretWin : private AXPlatformNodeDelegateBase {
  private:
   // |AXPlatformNodeDelegate| members.
   const AXNodeData& GetData() const override;
-  gfx::NativeViewAccessible GetParent() override;
+  gfx::NativeViewAccessible GetParent() const override;
   gfx::Rect GetBoundsRect(const AXCoordinateSystem coordinate_system,
                           const AXClippingBehavior clipping_behavior,
                           AXOffscreenResult* offscreen_result) const override;
@@ -44,14 +51,17 @@ class AX_EXPORT AXSystemCaretWin : private AXPlatformNodeDelegateBase {
   bool ShouldIgnoreHoveredStateForTesting() override;
   const ui::AXUniqueId& GetUniqueId() const override;
 
-  AXPlatformNodeWin* caret_;
+  static void AXPlatformNodeWinDeleter(AXPlatformNodeWin* ptr);
+
+  using deleter = std::integral_constant<
+      decltype(AXSystemCaretWin::AXPlatformNodeWinDeleter)*,
+      AXSystemCaretWin::AXPlatformNodeWinDeleter>;
+  std::unique_ptr<AXPlatformNodeWin, deleter> caret_;
   gfx::AcceleratedWidget event_target_;
   AXNodeData data_;
   ui::AXUniqueId unique_id_;
 
   friend class AXPlatformNodeWin;
-
-  DISALLOW_COPY_AND_ASSIGN(AXSystemCaretWin);
 };
 
 }  // namespace ui

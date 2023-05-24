@@ -1,52 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 Intel Corporation.
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "converter.h"
 
@@ -58,177 +12,144 @@
 
 #include <stdio.h>
 
-static QVector<Converter *> *availableConverters;
+using namespace Qt::StringLiterals;
 
-Converter::Converter()
+static const Converter *prepareConverter(QString format, Converter::Direction direction,
+                                         QFile *stream)
 {
-    if (!availableConverters)
-        availableConverters = new QVector<Converter *>;
-    availableConverters->append(this);
-}
+    const bool out = direction == Converter::Direction::Out;
+    const QIODevice::OpenMode mode = out
+        ? QIODevice::WriteOnly | QIODevice::Truncate
+        : QIODevice::ReadOnly;
+    const char *dirn = out ? "output" : "input";
 
-Converter::~Converter()
-{
-    availableConverters->removeAll(this);
+    if (stream->fileName().isEmpty())
+        stream->open(out ? stdout : stdin, mode);
+    else
+        stream->open(mode);
+
+    if (!stream->isOpen()) {
+        qFatal("Could not open \"%s\" for %s: %s",
+               qPrintable(stream->fileName()), dirn, qPrintable(stream->errorString()));
+    } else if (format == "auto"_L1) {
+        for (const Converter *conv : Converter::allConverters()) {
+            if (conv->directions().testFlag(direction) && conv->probeFile(stream))
+                return conv;
+        }
+        if (out) // Failure to identify output format can be remedied by loadFile().
+            return nullptr;
+
+        // Input format, however, we must know before we can call that:
+        qFatal("Could not determine input format. Specify it with the -I option.");
+    } else {
+        for (const Converter *conv : Converter::allConverters()) {
+            if (conv->name() == format) {
+                if (!conv->directions().testFlag(direction)) {
+                    qWarning("File format \"%s\" cannot be used for %s",
+                             qPrintable(format), dirn);
+                    continue; // on the off chance there's another with the same name
+                }
+                return conv;
+            }
+        }
+        qFatal("Unknown %s file format \"%s\"", dirn, qPrintable(format));
+    }
+    Q_UNREACHABLE_RETURN(nullptr);
 }
 
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
 
+//! [0]
     QStringList inputFormats;
     QStringList outputFormats;
-    for (Converter *conv : qAsConst(*availableConverters)) {
+    for (const Converter *conv : Converter::allConverters()) {
         auto direction = conv->directions();
         QString name = conv->name();
-        if (direction & Converter::In)
+        if (direction.testFlag(Converter::Direction::In))
             inputFormats << name;
-        if (direction & Converter::Out)
+        if (direction.testFlag(Converter::Direction::Out))
             outputFormats << name;
     }
+//! [0]
     inputFormats.sort();
     outputFormats.sort();
-    inputFormats.prepend("auto");
-    outputFormats.prepend("auto");
+    inputFormats.prepend("auto"_L1);
+    outputFormats.prepend("auto"_L1);
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("Qt file format conversion tool"));
+    parser.setApplicationDescription("Qt serialization format conversion tool"_L1);
     parser.addHelpOption();
 
-    QCommandLineOption inputFormatOption(QStringList{"I", "input-format"});
-    inputFormatOption.setDescription(QLatin1String("Select the input format for the input file. Available formats: ") +
-                                     inputFormats.join(", "));
-    inputFormatOption.setValueName("format");
+    QCommandLineOption inputFormatOption(QStringList{ "I"_L1, "input-format"_L1 });
+    inputFormatOption.setDescription(
+            "Select the input format for the input file. Available formats: "_L1
+            + inputFormats.join(", "_L1));
+    inputFormatOption.setValueName("format"_L1);
     inputFormatOption.setDefaultValue(inputFormats.constFirst());
     parser.addOption(inputFormatOption);
 
-    QCommandLineOption outputFormatOption(QStringList{"O", "output-format"});
-    outputFormatOption.setDescription(QLatin1String("Select the output format for the output file. Available formats: ") +
-                                     outputFormats.join(", "));
-    outputFormatOption.setValueName("format");
+    QCommandLineOption outputFormatOption(QStringList{ "O"_L1, "output-format"_L1 });
+    outputFormatOption.setDescription(
+            "Select the output format for the output file. Available formats: "_L1
+            + outputFormats.join(", "_L1));
+    outputFormatOption.setValueName("format"_L1);
     outputFormatOption.setDefaultValue(outputFormats.constFirst());
     parser.addOption(outputFormatOption);
 
-    QCommandLineOption optionOption(QStringList{"o", "option"});
-    optionOption.setDescription(QStringLiteral("Format-specific options. Use --format-options to find out what options are available."));
-    optionOption.setValueName("options...");
+    QCommandLineOption optionOption(QStringList{ "o"_L1, "option"_L1 });
+    optionOption.setDescription(
+        "Format-specific options. Use --format-options to find out what options are available."_L1);
+    optionOption.setValueName("options..."_L1);
     optionOption.setDefaultValues({});
     parser.addOption(optionOption);
 
-    QCommandLineOption formatOptionsOption("format-options");
-    formatOptionsOption.setDescription(QStringLiteral("Prints the list of valid options for --option for the converter format <format>."));
-    formatOptionsOption.setValueName("format");
+    QCommandLineOption formatOptionsOption("format-options"_L1);
+    formatOptionsOption.setDescription(
+        "Prints the list of valid options for --option for the converter format <format>."_L1);
+    formatOptionsOption.setValueName("format"_L1);
     parser.addOption(formatOptionsOption);
 
-    parser.addPositionalArgument(QStringLiteral("[source]"),
-                                 QStringLiteral("File to read from (stdin if none)"));
-    parser.addPositionalArgument(QStringLiteral("[destination]"),
-                                 QStringLiteral("File to write to (stdout if none)"));
+    parser.addPositionalArgument("[source]"_L1, "File to read from (stdin if none)"_L1);
+    parser.addPositionalArgument("[destination]"_L1, "File to write to (stdout if none)"_L1);
 
     parser.process(app);
 
     if (parser.isSet(formatOptionsOption)) {
         QString format = parser.value(formatOptionsOption);
-        for (Converter *conv : qAsConst(*availableConverters)) {
+//! [1]
+        for (const Converter *conv : Converter::allConverters()) {
             if (conv->name() == format) {
                 const char *help = conv->optionsHelp();
-                if (help)
-                    printf("The following options are available for format '%s':\n\n%s", qPrintable(format), help);
-                else
-                    printf("Format '%s' supports no options.\n", qPrintable(format));
+                if (help) {
+                    qInfo("The following options are available for format '%s':\n\n%s",
+                          qPrintable(format), help);
+                } else {
+                    qInfo("Format '%s' supports no options.", qPrintable(format));
+                }
                 return EXIT_SUCCESS;
             }
         }
+//! [1]
 
-        fprintf(stderr, "Unknown file format '%s'\n", qPrintable(format));
-        return EXIT_FAILURE;
+        qFatal("Unknown file format '%s'", qPrintable(format));
     }
 
-    Converter *inconv = nullptr;
-    QString format = parser.value(inputFormatOption);
-    if (format != "auto") {
-        for (Converter *conv : qAsConst(*availableConverters)) {
-            if (conv->name() == format) {
-                inconv = conv;
-                break;
-            }
-        }
-
-        if (!inconv) {
-            fprintf(stderr, "Unknown file format \"%s\"\n", qPrintable(format));
-            return EXIT_FAILURE;
-        }
-    }
-
-    Converter *outconv = nullptr;
-    format = parser.value(outputFormatOption);
-    if (format != "auto") {
-        for (Converter *conv : qAsConst(*availableConverters)) {
-            if (conv->name() == format) {
-                outconv = conv;
-                break;
-            }
-        }
-
-        if (!outconv) {
-            fprintf(stderr, "Unknown file format \"%s\"\n", qPrintable(format));
-            return EXIT_FAILURE;
-        }
-    }
-
+//! [2]
     QStringList files = parser.positionalArguments();
     QFile input(files.value(0));
     QFile output(files.value(1));
+    const Converter *inconv = prepareConverter(parser.value(inputFormatOption),
+                                               Converter::Direction::In, &input);
+    const Converter *outconv = prepareConverter(parser.value(outputFormatOption),
+                                                Converter::Direction::Out, &output);
 
-    if (input.fileName().isEmpty())
-        input.open(stdin, QIODevice::ReadOnly);
-    else
-        input.open(QIODevice::ReadOnly);
-    if (!input.isOpen()) {
-        fprintf(stderr, "Could not open \"%s\" for reading: %s\n",
-                qPrintable(input.fileName()), qPrintable(input.errorString()));
-        return EXIT_FAILURE;
-    }
-
-    if (output.fileName().isEmpty())
-        output.open(stdout, QIODevice::WriteOnly | QIODevice::Truncate);
-    else
-        output.open(QIODevice::WriteOnly | QIODevice::Truncate);
-    if (!output.isOpen()) {
-        fprintf(stderr, "Could not open \"%s\" for writing: %s\n",
-                qPrintable(output.fileName()), qPrintable(output.errorString()));
-        return EXIT_FAILURE;
-    }
-
-    if (!inconv) {
-        // probe the input to find a file format
-        for (Converter *conv : qAsConst(*availableConverters)) {
-            if (conv->directions() & Converter::In && conv->probeFile(&input)) {
-                inconv = conv;
-                break;
-            }
-        }
-
-        if (!inconv) {
-            fprintf(stderr, "Could not determine input format. pass -I option.\n");
-            return EXIT_FAILURE;
-        }
-    }
-
-    if (!outconv) {
-        // probe the output to find a file format
-        for (Converter *conv : qAsConst(*availableConverters)) {
-            if (conv->directions() & Converter::Out && conv->probeFile(&output)) {
-                outconv = conv;
-                break;
-            }
-        }
-    }
-
-    // now finally perform the conversion
+    // Now finally perform the conversion:
     QVariant data = inconv->loadFile(&input, outconv);
-    Q_ASSERT_X(outconv, "Converter Tool",
+    Q_ASSERT_X(outconv, "Serialization Converter",
                "Internal error: converter format did not provide default");
     outconv->saveFile(&output, data, parser.values(optionOption));
     return EXIT_SUCCESS;
+//! [2]
 }

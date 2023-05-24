@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -54,10 +54,9 @@ class FakeBlobRegistry : public mojom::blink::BlobRegistry {
   };
   Vector<OwnedReceiver> owned_receivers;
 
-  std::unique_ptr<mojo::DataPipeDrainer> drainer_;
-
   class DataPipeDrainerClient;
   std::unique_ptr<DataPipeDrainerClient> drainer_client_;
+  std::unique_ptr<mojo::DataPipeDrainer> drainer_;
 };
 
 }  // namespace blink

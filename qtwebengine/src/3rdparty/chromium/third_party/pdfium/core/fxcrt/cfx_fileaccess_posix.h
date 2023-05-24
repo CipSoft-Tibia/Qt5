@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,11 +7,14 @@
 #ifndef CORE_FXCRT_CFX_FILEACCESS_POSIX_H_
 #define CORE_FXCRT_CFX_FILEACCESS_POSIX_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "build/build_config.h"
 #include "core/fxcrt/fileaccess_iface.h"
-#include "core/fxcrt/fx_system.h"
+#include "core/fxcrt/fx_types.h"
 
-#if !defined(OS_POSIX)
+#if !BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_FUCHSIA)
 #error "Included on the wrong platform"
 #endif
 
@@ -21,8 +24,7 @@ class CFX_FileAccess_Posix final : public FileAccessIface {
   ~CFX_FileAccess_Posix() override;
 
   // FileAccessIface:
-  bool Open(ByteStringView fileName, uint32_t dwMode) override;
-  bool Open(WideStringView fileName, uint32_t dwMode) override;
+  bool Open(ByteStringView fileName) override;
   void Close() override;
   FX_FILESIZE GetSize() const override;
   FX_FILESIZE GetPosition() const override;
@@ -37,7 +39,7 @@ class CFX_FileAccess_Posix final : public FileAccessIface {
   bool Truncate(FX_FILESIZE szFile) override;
 
  private:
-  int32_t m_nFD;
+  int32_t m_nFD = -1;
 };
 
 #endif  // CORE_FXCRT_CFX_FILEACCESS_POSIX_H_

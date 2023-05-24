@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,24 +11,15 @@
 
 namespace features {
 
-MEDIA_EXPORT extern const base::Feature kAudioServiceOutOfProcessKillAtHang;
-MEDIA_EXPORT extern const base::Feature kDumpOnAudioServiceHang;
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kAudioServiceOutOfProcessKillAtHang);
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kDumpOnAudioServiceHang);
 
-#if defined(OS_ANDROID)
-MEDIA_EXPORT extern const base::Feature kUseAAudioDriver;
+#if BUILDFLAG(IS_ANDROID)
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kUseAAudioDriver);
 #endif
 
-#if defined(OS_CHROMEOS)
-MEDIA_EXPORT extern const base::Feature kCrOSSystemAEC;
-MEDIA_EXPORT extern const base::Feature kCrOSSystemAECDeactivatedGroups;
-#endif
-
-#if defined(OS_MAC) || defined(OS_CHROMEOS)
-MEDIA_EXPORT extern const base::Feature kForceEnableSystemAec;
-#endif
-
-#if defined(OS_WIN)
-MEDIA_EXPORT extern const base::Feature kAllowIAudioClient3;
+#if BUILDFLAG(IS_WIN)
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kAllowIAudioClient3);
 #endif
 
 }  // namespace features

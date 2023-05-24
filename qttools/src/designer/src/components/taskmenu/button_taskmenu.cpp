@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "button_taskmenu.h"
 #include "inplace_editor.h"
@@ -38,19 +13,23 @@
 #include <QtDesigner/abstractobjectinspector.h>
 #include <QtDesigner/abstractpropertyeditor.h>
 
-#include <QtWidgets/qaction.h>
-#include <QtWidgets/qactiongroup.h>
 #include <QtWidgets/qmenu.h>
 #include <QtWidgets/qstyle.h>
 #include <QtWidgets/qstyleoption.h>
 #include <QtWidgets/qabstractbutton.h>
 #include <QtWidgets/qbuttongroup.h>
 #include <QtWidgets/qapplication.h>
+
+#include <QtGui/qaction.h>
+#include <QtGui/qactiongroup.h>
+
 #include <QtCore/qdebug.h>
 
 Q_DECLARE_METATYPE(QButtonGroup*)
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace qdesigner_internal {
 
@@ -109,18 +88,16 @@ void ButtonGroupCommand::addButtonsToGroup()
 {
     if (debugButtonMenu)
         qDebug() << "Adding " << m_buttonList << " to " << m_buttonGroup;
-    const ButtonList::const_iterator cend = m_buttonList.constEnd();
-    for (ButtonList::const_iterator it = m_buttonList.constBegin(); it != cend; ++it)
-        m_buttonGroup->addButton(*it);
+    for (auto *b : std::as_const(m_buttonList))
+        m_buttonGroup->addButton(b);
 }
 
 void ButtonGroupCommand::removeButtonsFromGroup()
 {
     if (debugButtonMenu)
         qDebug() << "Removing " << m_buttonList << " from " << m_buttonGroup;
-    const ButtonList::const_iterator cend = m_buttonList.constEnd();
-    for (ButtonList::const_iterator it = m_buttonList.constBegin(); it != cend; ++it)
-        m_buttonGroup->removeButton(*it);
+    for (auto *b : std::as_const(m_buttonList))
+        m_buttonGroup->removeButton(b);
 }
 
 void ButtonGroupCommand::createButtonGroup()
@@ -146,9 +123,8 @@ void ButtonGroupCommand::breakButtonGroup()
     // Button group was selected, that is, break was invoked via its context menu. Remove it from property editor, select the buttons
     if (core->propertyEditor()->object() == m_buttonGroup) {
         fw->clearSelection(false);
-        const ButtonList::const_iterator cend = m_buttonList.constEnd();
-        for (ButtonList::const_iterator it = m_buttonList.constBegin(); it != cend; ++it)
-            fw->selectWidget(*it, true);
+        for (auto *b : std::as_const(m_buttonList))
+            fw->selectWidget(b, true);
     }
     // Now remove and refresh object inspector
     removeButtonsFromGroup();
@@ -163,13 +139,12 @@ QString ButtonGroupCommand::nameList(const ButtonList& bl)
 {
     QString rc;
     const QChar quote = QLatin1Char('\'');
-    const QString separator =  QStringLiteral(", ");
-    const int size = bl.size();
-    for (int i = 0; i < size; i++) {
+    const auto separator = ", "_L1;
+    for (qsizetype i = 0, size = bl.size(); i < size; ++i) {
         if (i)
             rc += separator;
         rc += quote;
-        rc += bl[i]->objectName();
+        rc += bl.at(i)->objectName();
         rc += quote;
     }
     return rc;
@@ -181,13 +156,13 @@ ButtonGroupList ButtonGroupCommand::managedButtonGroups(const QDesignerFormWindo
     const QDesignerMetaDataBaseInterface *mdb = formWindow->core()->metaDataBase();
     ButtonGroupList bl;
     // Check 1st order children for managed button groups
-    const QObjectList children = formWindow->mainContainer()->children();
-    const QObjectList::const_iterator cend =  children.constEnd();
-    for (QObjectList::const_iterator it =  children.constBegin(); it != cend; ++it) {
-        if (!(*it)->isWidgetType())
-            if (QButtonGroup *bg = qobject_cast<QButtonGroup *>(*it))
+    for (auto *o : formWindow->mainContainer()->children()) {
+        if (!o->isWidgetType()) {
+            if (QButtonGroup *bg = qobject_cast<QButtonGroup *>(o)) {
                 if (mdb->item(bg))
                     bl.push_back(bg);
+            }
+        }
     }
     return bl;
 }
@@ -215,7 +190,7 @@ bool CreateButtonGroupCommand::init(const ButtonList &bl)
         return false;
     QDesignerFormWindowInterface *fw = formWindow();
     QButtonGroup *buttonGroup = new QButtonGroup(fw->mainContainer());
-    buttonGroup->setObjectName(QStringLiteral("buttonGroup"));
+    buttonGroup->setObjectName(u"buttonGroup"_s);
     fw->ensureUniqueObjectName(buttonGroup);
     initialize(bl, buttonGroup);
     return true;
@@ -326,10 +301,10 @@ void ButtonGroupMenu::selectGroup()
     // Select and make current button "current" again by selecting it last (if there is any)
     const ButtonList buttons = m_buttonGroup->buttons();
     m_formWindow->clearSelection(false);
-    const ButtonList::const_iterator cend = buttons.constEnd();
-    for (ButtonList::const_iterator it = buttons.constBegin(); it != cend; ++it)
-        if (*it != m_currentButton)
-            m_formWindow->selectWidget(*it, true);
+    for (auto *b : buttons) {
+        if (b != m_currentButton)
+            m_formWindow->selectWidget(b, true);
+    }
     if (m_currentButton)
         m_formWindow->selectWidget(m_currentButton, true);
 }
@@ -380,7 +355,7 @@ protected:
 };
 
 ButtonTextTaskMenuInlineEditor::ButtonTextTaskMenuInlineEditor(QAbstractButton *button, QObject *parent) :
-      TaskMenuInlineEditor(button, ValidationMultiLine, QStringLiteral("text"), parent)
+      TaskMenuInlineEditor(button, ValidationMultiLine, u"text"_s, parent)
 {
 }
 
@@ -388,7 +363,7 @@ QRect ButtonTextTaskMenuInlineEditor::editRectangle() const
 {
     QWidget *w = widget();
     QStyleOptionButton opt;
-    opt.init(w);
+    opt.initFrom(w);
     return w->style()->subElementRect(QStyle::SE_PushButtonContents, &opt, w);
 }
 
@@ -403,7 +378,7 @@ protected:
 };
 
 LinkDescriptionTaskMenuInlineEditor::LinkDescriptionTaskMenuInlineEditor(QAbstractButton *button, QObject *parent) :
-      TaskMenuInlineEditor(button, ValidationMultiLine, QStringLiteral("description"), parent)
+      TaskMenuInlineEditor(button, ValidationMultiLine, u"description"_s, parent)
 {
 }
 
@@ -411,7 +386,7 @@ QRect LinkDescriptionTaskMenuInlineEditor::editRectangle() const
 {
     QWidget *w = widget(); // TODO: What is the exact description area?
     QStyleOptionButton opt;
-    opt.init(w);
+    opt.initFrom(w);
     return w->style()->subElementRect(QStyle::SE_PushButtonContents, &opt, w);
 }
 
@@ -478,7 +453,7 @@ bool ButtonTaskMenu::refreshAssignMenu(const QDesignerFormWindowInterface *fw, i
     // Assign to other
     const ButtonGroupList bl = ButtonGroupCommand::managedButtonGroups(fw);
     // Groups: Any groups to add to except the current?
-    const int groupCount = bl.size();
+    const auto groupCount = bl.size();
     const bool hasAddGroups = groupCount > 1 || (groupCount == 1 && !bl.contains(currentGroup));
     if (hasAddGroups) {
         if (!m_assignGroupSubMenu->isEmpty())
@@ -486,11 +461,8 @@ bool ButtonTaskMenu::refreshAssignMenu(const QDesignerFormWindowInterface *fw, i
         // Create a new action group
         m_assignActionGroup = new QActionGroup(this);
         connect(m_assignActionGroup, &QActionGroup::triggered, this, &ButtonTaskMenu::addToGroup);
-
-        const ButtonGroupList::const_iterator cend = bl.constEnd();
-        for (ButtonGroupList::const_iterator it = bl.constBegin(); it != cend; ++it) {
-            QButtonGroup *bg = *it;
-            if (*it != currentGroup) {
+        for (auto *bg : bl) {
+            if (bg != currentGroup) {
                 QAction *a = new QAction(bg->objectName(), m_assignGroupSubMenu);
                 a->setData(QVariant::fromValue(bg));
                 m_assignActionGroup->addAction(a);

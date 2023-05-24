@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,8 +16,10 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/sequenced_task_runner.h"
+#include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/version.h"
+#include "components/component_updater/component_installer.h"
 #include "components/component_updater/component_updater_service.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
@@ -33,19 +35,19 @@ class MockComponentUpdateService : public ComponentUpdateService {
     DoMaybeThrottle(id, std::move(callback));
   }
 
+  base::Version GetRegisteredVersion(const std::string& app_id) override {
+    return base::Version(kNullVersion);
+  }
+
   MOCK_METHOD1(AddObserver,
       void(Observer* observer));
   MOCK_METHOD1(RemoveObserver,
       void(Observer* observer));
-  MOCK_METHOD1(RegisterComponent,
-      bool(const CrxComponent& component));
+  MOCK_METHOD1(RegisterComponent, bool(const ComponentRegistration& component));
   MOCK_METHOD1(UnregisterComponent,
       bool(const std::string& id));
   MOCK_CONST_METHOD0(GetComponentIDs,
       std::vector<std::string>());
-  MOCK_CONST_METHOD1(
-      GetComponentForMimeType,
-      std::unique_ptr<ComponentInfo>(const std::string& mime_type));
   MOCK_CONST_METHOD0(GetComponents, std::vector<ComponentInfo>());
   MOCK_METHOD0(GetOnDemandUpdater,
       OnDemandUpdater&());

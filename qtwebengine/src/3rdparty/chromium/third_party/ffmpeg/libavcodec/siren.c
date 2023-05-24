@@ -21,13 +21,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/tx.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem_internal.h"
 
 #include "avcodec.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
-#include "internal.h"
-#include "mathops.h"
 
 static const uint8_t index_table[8] = {4, 4, 3, 3, 2, 2, 1, 0};
 static const uint8_t vector_dimension[8] = { 2, 2, 2, 4, 4, 5, 5, 1 };
@@ -341,27 +343,29 @@ static const float mlt_quant[7][14] = {
     { 0.0f, 1.964f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f }
 };
 
-static const float noise_category5[20] = {
+static const float noise_category5[21] = {
     0.70711f, 0.6179f, 0.5005f, 0.3220f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f,
     0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f, 0.17678f
 };
 
-static const float noise_category6[20] = {
+static const float noise_category6[21] = {
     0.70711f, 0.5686f, 0.3563f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f,
     0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f
 };
 
 #define FRAME_SIZE 320
+#define REGION_SIZE 20
 
 typedef struct SirenContext {
     GetBitContext gb;
 
+    int microsoft;
     int rate_control_possibilities;
     int esf_adjustment;
     int number_of_regions;
     int scale_factor;
     int sample_rate_bits;
-    int region_size;
+    int checksum_bits;
 
     unsigned dw1, dw2, dw3, dw4;
 
@@ -394,15 +398,14 @@ static av_cold int siren_init(AVCodecContext *avctx)
     s->imdct_prev = s->imdct_buf[2];
     s->window     = s->imdct_buf[3];
 
-    avctx->channels       = 1;
-    avctx->channel_layout = AV_CH_LAYOUT_MONO;
+    av_channel_layout_uninit(&avctx->ch_layout);
+    avctx->ch_layout      = (AVChannelLayout)AV_CHANNEL_LAYOUT_MONO;
     avctx->sample_fmt     = AV_SAMPLE_FMT_FLT;
 
     s->rate_control_possibilities = 16;
     s->esf_adjustment = 7;
     s->number_of_regions = 14;
     s->scale_factor = 22;
-    s->region_size = 20;
     s->dw1 = s->dw2 = s->dw3 = s->dw4 = 1;
 
     for (i = 0; i < 64; i++) {
@@ -420,6 +423,15 @@ static av_cold int siren_init(AVCodecContext *avctx)
     if (!s->fdsp)
         return AVERROR(ENOMEM);
 
+    s->microsoft = avctx->codec->id == AV_CODEC_ID_MSNSIREN;
+    if (s->microsoft) {
+        s->esf_adjustment = -2;
+        s->number_of_regions = 14;
+        s->scale_factor = 1;
+        s->sample_rate_bits = 2;
+        s->checksum_bits = 4;
+    }
+
     return av_tx_init(&s->tx_ctx, &s->tx_fn, AV_TX_FLOAT_MDCT, 1, FRAME_SIZE, &scale, 0);
 }
 
@@ -435,6 +447,8 @@ static int decode_envelope(SirenContext *s, GetBitContext *gb,
         int index = 0;
 
         do {
+            if (get_bits_left(gb) < 4 + number_of_regions - i + s->checksum_bits)
+                return AVERROR_INVALIDDATA;
             index = differential_decoder_tree[i - 1][index][get_bits1(gb)];
         } while (index > 0);
 
@@ -556,7 +570,7 @@ static int get_dw(SirenContext *s)
 }
 
 static int decode_vector(SirenContext *s, int number_of_regions,
-                         int number_of_available_bits, float *decoder_standard_deviation,
+                         float *decoder_standard_deviation,
                          int *power_categories, float *coefs, int scale_factor)
 {
     GetBitContext *gb = &s->gb;
@@ -574,7 +588,7 @@ static int decode_vector(SirenContext *s, int number_of_regions,
 
     for (region = 0; region < number_of_regions; region++) {
         category = power_categories[region];
-        coefs_ptr = coefs + (region * s->region_size);
+        coefs_ptr = coefs + (region * REGION_SIZE);
 
         if (category >= 0 && category < 7) {
             decoder_tree = decoder_tables[category];
@@ -582,7 +596,7 @@ static int decode_vector(SirenContext *s, int number_of_regions,
             for (i = 0; i < number_of_vectors[category]; i++) {
                 index = 0;
                 do {
-                    if (get_bits_left(gb) <= 0) {
+                    if (get_bits_left(gb) - s->checksum_bits <= 0) {
                         error = 1;
                         break;
                     }
@@ -596,12 +610,16 @@ static int decode_vector(SirenContext *s, int number_of_regions,
 
                 index >>= 1;
 
-                if (error == 0 && get_bits_left(gb) >= 0) {
+                if (error == 0) {
                     for (j = 0; j < vector_dimension[category]; j++) {
                         decoded_value = mlt_quant[category][index & ((1 << index_table[category]) - 1)];
                         index >>= index_table[category];
 
                         if (decoded_value) {
+                            if (get_bits_left(gb) - s->checksum_bits <= 0) {
+                                error = 1;
+                                break;
+                            }
                             if (!get_bits1(gb))
                                 decoded_value *= -decoder_standard_deviation[region];
                             else
@@ -623,32 +641,45 @@ static int decode_vector(SirenContext *s, int number_of_regions,
             }
         }
 
-        coefs_ptr = coefs + (region * s->region_size);
+        coefs_ptr = coefs + (region * REGION_SIZE);
 
-        if (category == 5) {
+        if (category == 5 && s->microsoft) {
             i = 0;
-            for (j = 0; j < s->region_size; j++) {
+            for (j = 0; j < REGION_SIZE; j++) {
+                if (*coefs_ptr != 0) {
+                    i++;
+                    if (fabs(*coefs_ptr) > 2.0 * decoder_standard_deviation[region]) {
+                        i += 3;
+                    }
+                }
+                coefs_ptr++;
+            }
+            if (i >= FF_ARRAY_ELEMS(noise_category5)) {
+                error = 1;
+                break;
+            }
+
+            noise = decoder_standard_deviation[region] * noise_category5[i];
+        } else
+        if (category == 5 || category == 6) {
+            i = 0;
+            for (j = 0; j < REGION_SIZE; j++) {
                 if (*coefs_ptr != 0)
                     i++;
                 coefs_ptr++;
             }
 
-            noise = decoder_standard_deviation[region] * noise_category5[i];
-        } else if (category == 6) {
-            i = 0;
-            for (j = 0; j < s->region_size; j++) {
-                if (*coefs_ptr++ != 0)
-                    i++;
-            }
-
-            noise = decoder_standard_deviation[region] * noise_category6[i];
+            if (category == 5) {
+                noise = decoder_standard_deviation[region] * noise_category5[i];
+            } else
+                noise = decoder_standard_deviation[region] * noise_category6[i];
         } else if (category == 7) {
             noise = decoder_standard_deviation[region] * 0.70711f;
         } else {
             noise = 0;
         }
 
-        coefs_ptr = coefs + (region * s->region_size);
+        coefs_ptr = coefs + (region * REGION_SIZE);
 
         if (category == 5 || category == 6 || category == 7) {
             dw1 = get_dw(s);
@@ -668,28 +699,41 @@ static int decode_vector(SirenContext *s, int number_of_regions,
         }
     }
 
-    return error == 1 ? AVERROR_INVALIDDATA : get_bits_left(gb);
+    return error == 1 ? AVERROR_INVALIDDATA : (get_bits_left(gb) - s->checksum_bits);
 }
 
-static int siren_decode(AVCodecContext *avctx, void *data,
+static int siren_decode(AVCodecContext *avctx, AVFrame *frame,
                         int *got_frame, AVPacket *avpkt)
 {
     SirenContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
-    AVFrame *frame = data;
-    int ret, number_of_valid_coefs = 20 * s->number_of_regions;
+    int ret, number_of_valid_coefs = REGION_SIZE * s->number_of_regions;
     int frame_error = 0, rate_control = 0;
+    int bits_per_frame;
 
-    if ((ret = init_get_bits8(gb, avpkt->data, avpkt->size)) < 0)
-        return ret;
+    if (s->microsoft) {
+        bits_per_frame  = avctx->sample_rate / 50;
 
-    decode_envelope(s, gb, s->number_of_regions,
+        if (avpkt->size < bits_per_frame / 8)
+            return AVERROR_INVALIDDATA;
+
+        if ((ret = init_get_bits(gb, avpkt->data, bits_per_frame)) < 0)
+            return ret;
+    } else
+        if ((ret = init_get_bits8(gb, avpkt->data, avpkt->size)) < 0)
+            return ret;
+
+    skip_bits(gb, s->sample_rate_bits);
+
+    ret = decode_envelope(s, gb, s->number_of_regions,
                     s->decoder_standard_deviation,
                     s->absolute_region_power_index, s->esf_adjustment);
+    if (ret < 0)
+        return ret;
 
     rate_control = get_bits(gb, 4);
 
-    ret = categorize_regions(s->number_of_regions, get_bits_left(gb),
+    ret = categorize_regions(s->number_of_regions, get_bits_left(gb) - s->checksum_bits,
                              s->absolute_region_power_index, s->power_categories,
                              s->category_balance);
     if (ret < 0)
@@ -698,17 +742,17 @@ static int siren_decode(AVCodecContext *avctx, void *data,
     for (int i = 0; i < rate_control; i++)
         s->power_categories[s->category_balance[i]]++;
 
-    ret = decode_vector(s, s->number_of_regions, get_bits_left(gb),
+    ret = decode_vector(s, s->number_of_regions,
                         s->decoder_standard_deviation, s->power_categories,
                         s->imdct_in, s->scale_factor);
-    if (ret < 0)
+    if (ret < 0 && !s->microsoft)
         return ret;
 
-    if (get_bits_left(gb) > 0) {
+    if (get_bits_left(gb) - s->checksum_bits > 0) {
         do {
             frame_error |= !get_bits1(gb);
-        } while (get_bits_left(gb) > 0);
-    } else if (get_bits_left(gb) < 0 &&
+        } while (get_bits_left(gb) - s->checksum_bits > 0);
+    } else if (get_bits_left(gb) - s->checksum_bits < 0 &&
                rate_control + 1 < s->rate_control_possibilities) {
         frame_error = 1;
     }
@@ -717,6 +761,38 @@ static int siren_decode(AVCodecContext *avctx, void *data,
         if (s->absolute_region_power_index[i] > 33 ||
             s->absolute_region_power_index[i] < -31)
             frame_error = 1;
+    }
+
+    if ((avctx->err_recognition & AV_EF_CRCCHECK) && s->checksum_bits) {
+        static const uint16_t ChecksumTable[4] = {0x7F80, 0x7878, 0x6666, 0x5555};
+        int wpf, checksum, sum, calculated_checksum, temp1;
+
+        checksum = get_bits(gb, s->checksum_bits);
+
+        wpf = bits_per_frame / 16;
+        sum = 0;
+        for (int i = 0; i < wpf - 1; i++)
+            sum ^= AV_RB16(avpkt->data + i * 2) << (i % 15);
+        sum ^= (AV_RB16(avpkt->data + (wpf - 1) * 2) & ~checksum) << ((wpf - 1) % 15);
+        sum = (sum >> 15) ^ (sum & 0x7FFF);
+
+        calculated_checksum = 0;
+        for (int i = 0; i < 4; i++) {
+            temp1 = ChecksumTable[i] & sum;
+
+            for (int j = 8; j > 0; j >>= 1)
+                temp1 ^= temp1 >> j;
+
+            calculated_checksum <<= 1;
+            calculated_checksum |= temp1 & 1;
+        }
+
+        if (checksum != calculated_checksum) {
+            av_log(avctx, AV_LOG_WARNING, "Invalid checksum\n");
+            if (avctx->err_recognition & AV_EF_EXPLODE)
+                return AVERROR_INVALIDDATA;
+            frame_error = 1;
+        }
     }
 
     if (frame_error) {
@@ -730,7 +806,7 @@ static int siren_decode(AVCodecContext *avctx, void *data,
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    for (int i = 0; i < 320; i += 2)
+    for (int i = 0; i < FRAME_SIZE; i += 2)
         s->imdct_in[i] *= -1;
 
     s->tx_fn(s->tx_ctx, s->imdct_out, s->imdct_in, sizeof(float));
@@ -742,7 +818,7 @@ static int siren_decode(AVCodecContext *avctx, void *data,
 
     *got_frame = 1;
 
-    return avpkt->size;
+    return s->microsoft ? bits_per_frame / 8 : avpkt->size;
 }
 
 static av_cold void siren_flush(AVCodecContext *avctx)
@@ -764,17 +840,32 @@ static av_cold int siren_close(AVCodecContext *avctx)
     return 0;
 }
 
-AVCodec ff_siren_decoder = {
-    .name           = "siren",
-    .long_name      = NULL_IF_CONFIG_SMALL("Siren"),
+const FFCodec ff_siren_decoder = {
+    .p.name         = "siren",
+    CODEC_LONG_NAME("Siren"),
     .priv_data_size = sizeof(SirenContext),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_SIREN,
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_SIREN,
     .init           = siren_init,
     .close          = siren_close,
-    .decode         = siren_decode,
+    FF_CODEC_DECODE_CB(siren_decode),
     .flush          = siren_flush,
-    .capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
-                      FF_CODEC_CAP_INIT_CLEANUP,
+    .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
+                      AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+};
+
+const FFCodec ff_msnsiren_decoder = {
+    .p.name         = "msnsiren",
+    CODEC_LONG_NAME("MSN Siren"),
+    .priv_data_size = sizeof(SirenContext),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_MSNSIREN,
+    .init           = siren_init,
+    .close          = siren_close,
+    FF_CODEC_DECODE_CB(siren_decode),
+    .flush          = siren_flush,
+    .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
+                      AV_CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

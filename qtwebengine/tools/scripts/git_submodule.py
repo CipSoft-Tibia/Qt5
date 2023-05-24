@@ -1,30 +1,5 @@
-#############################################################################
-##
-## Copyright (C) 2016 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the QtWebEngine module of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2016 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import glob
 import os
@@ -36,22 +11,16 @@ import version_resolver as resolver
 extra_os = ['mac', 'win']
 
 def subprocessCall(args):
-    print args
+    print(args)
     return subprocess.call(args)
 
 def subprocessCheckOutput(args):
-    print args
-    return subprocess.check_output(args)
+    print(args)
+    return subprocess.check_output(args).decode()
 
-class DEPSParser:
+class SubmoduleDEPSParser(resolver.DEPSParser):
     def __init__(self):
-        self.global_scope = {
-          'Var': lambda var_name: '{%s}' % var_name,
-          'Str': str,
-          'deps_os': {},
-        }
-        self.local_scope = {}
-        self.topmost_supermodule_path_prefix = ''
+        super().__init__()
 
     def get_vars(self):
         """Returns a dictionary of effective variable values
@@ -62,10 +31,7 @@ class DEPSParser:
         #result.update(self.custom_vars or {})
         return result
 
-    def get_recursedeps(self):
-        return self.local_scope["recursedeps"]
-
-    def createSubmodulesFromScope(self, scope, os):
+    def createSubmodulesFromScope(self, scope, os, module_whitelist = []):
         submodules = []
         for dep in scope:
             url = ''
@@ -74,29 +40,23 @@ class DEPSParser:
             elif (type(scope[dep]) == dict and 'url' in scope[dep]):
                 url = scope[dep]['url']
 
-                if ('condition' in scope[dep]) and (not 'checkout_linux' in scope[dep]['condition']):
-                    url = ''
-
+                if ('condition' in scope[dep]) and \
+                (not 'checkout_linux' in scope[dep]['condition']) and \
+                (not dep in module_whitelist):
+                    continue
             if url:
                 url = url.format(**self.get_vars())
                 repo_rev = url.split('@')
                 repo = repo_rev[0]
                 rev = repo_rev[1]
-                subdir = dep
-                if subdir.startswith('src/'):
-                    subdir = subdir[4:]
-                # Don't skip submodules that have a supermodule path prefix set (at the moment these
-                # are 2nd level deep submodules).
-                elif not self.topmost_supermodule_path_prefix:
-                    # Ignore the information about chromium itself since we get that from git,
-                    # also ignore anything outside src/ (e.g. depot_tools)
+                subdir = self.subdir(dep)
+                if subdir is None:
                     continue
-
                 submodule = Submodule(subdir, repo, sp=self.topmost_supermodule_path_prefix)
                 submodule.os = os
 
                 if not submodule.matchesOS():
-                    print '-- skipping ' + submodule.pathRelativeToTopMostSupermodule() + ' for this operating system. --'
+                    print('-- skipping ' + submodule.pathRelativeToTopMostSupermodule() + ' for this operating system. --')
                     continue
 
                 if len(rev) == 40: # Length of a git shasum
@@ -108,11 +68,11 @@ class DEPSParser:
                 submodules.append(submodule)
         return submodules
 
-    def parse(self, deps_content):
+    def parse(self, deps_content, module_whitelist = []):
         exec(deps_content, self.global_scope, self.local_scope)
 
         submodules = []
-        submodules.extend(self.createSubmodulesFromScope(self.local_scope['deps'], 'all'))
+        submodules.extend(self.createSubmodulesFromScope(self.local_scope['deps'], 'all', module_whitelist))
         if 'deps_os' in self.local_scope:
             for os_dep in self.local_scope['deps_os']:
                 submodules.extend(self.createSubmodulesFromScope(self.local_scope['deps_os'][os_dep], os_dep))
@@ -201,7 +161,7 @@ class Submodule:
     def findGitDir(self):
         try:
             return subprocessCheckOutput(['git', 'rev-parse', '--git-dir']).strip()
-        except subprocess.CalledProcessError, e:
+        except subprocess.CalledProcessError as e:
             sys.exit("git dir could not be determined! - Initialization failed! " + e.output)
 
     def reset(self):
@@ -210,27 +170,27 @@ class Submodule:
         gitdir = self.findGitDir()
         if os.path.isdir(os.path.join(gitdir, 'rebase-merge')):
             if os.path.isfile(os.path.join(gitdir, 'MERGE_HEAD')):
-                print 'merge in progress... aborting merge.'
+                print('merge in progress... aborting merge.')
                 subprocessCall(['git', 'merge', '--abort'])
             else:
-                print 'rebase in progress... aborting merge.'
+                print('rebase in progress... aborting merge.')
                 subprocessCall(['git', 'rebase', '--abort'])
         if os.path.isdir(os.path.join(gitdir, 'rebase-apply')):
-            print 'am in progress... aborting am.'
+            print('am in progress... aborting am.')
             subprocessCall(['git', 'am', '--abort'])
         subprocessCall(['git', 'reset', '--hard'])
         os.chdir(currentDir)
 
     def initialize(self):
         if self.matchesOS():
-            print '\n\n-- initializing ' + self.pathRelativeToTopMostSupermodule() + ' --'
+            print('\n\n-- initializing ' + self.pathRelativeToTopMostSupermodule() + ' --')
             oldCwd = os.getcwd()
 
             # The submodule operations should be done relative to the current submodule's
             # supermodule.
             if self.topmost_supermodule_path_prefix:
                 if not os.path.isdir(self.path):
-                    print '-- creating ' + self.path + ' as dir is missing. --'
+                    print('-- creating ' + self.path + ' as dir is missing. --')
                     os.makedirs(self.path)
                 os.chdir(self.topmost_supermodule_path_prefix)
 
@@ -254,7 +214,7 @@ class Submodule:
 
             os.chdir(oldCwd)
         else:
-            print '-- skipping ' + self.path + ' for this operating system. --'
+            print('-- skipping ' + self.path + ' for this operating system. --')
 
     def listFiles(self):
         if self.matchesOS() and os.path.isdir(self.pathRelativeToTopMostSupermodule()):
@@ -264,7 +224,7 @@ class Submodule:
             os.chdir(currentDir)
             return files
         else:
-            print '-- skipping ' + self.path + ' for this operating system. --'
+            print('-- skipping ' + self.path + ' for this operating system. --')
             return []
 
     def parseGitModulesFileContents(self, gitmodules_lines):
@@ -319,10 +279,10 @@ class Submodule:
     def readSubmodules(self, use_deps=False):
         submodules = []
         if use_deps:
-            submodules = resolver.readSubmodules()
-            print 'DEPS file provides the following submodules:'
+            submodules = resolver.read(SubmoduleDEPSParser)
+            print('DEPS file provides the following submodules:')
             for submodule in submodules:
-                print '{:<80}'.format(submodule.pathRelativeToTopMostSupermodule()) + '{:<120}'.format(submodule.url) + submodule.ref
+                print('{:<80}'.format(submodule.pathRelativeToTopMostSupermodule()) + '{:<120}'.format(submodule.url) + submodule.ref)
         else: # Try .gitmodules instead
             gitmodules_file_name = '.gitmodules'
             submodules = self.readSubmodulesFromGitModules(self, gitmodules_file_name, self.path)

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,27 +10,50 @@
 #include <memory>
 #include <string>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/macros.h"
 #include "base/run_loop.h"
-#include "base/single_thread_task_runner.h"
-#include "base/stl_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/mock_callback.h"
 #include "base/test/task_environment.h"
 #include "base/threading/thread.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "components/file_access/scoped_file_access.h"
+#include "components/file_access/scoped_file_access_delegate.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
 #include "net/base/test_completion_callback.h"
 #include "storage/browser/file_system/file_stream_reader_test.h"
 #include "storage/browser/file_system/file_stream_test_utils.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+#include "base/files/scoped_file.h"
+#endif
+
 namespace storage {
+
+namespace {
+
+using ::testing::_;
+
+file_access::ScopedFileAccess CreateScopedFileAccess(bool allowed) {
+#if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
+  return file_access::ScopedFileAccess(allowed, base::ScopedFD());
+#else
+  return file_access::ScopedFileAccess(allowed);
+#endif
+}
+
+}  // namespace
 
 class LocalFileStreamReaderTest : public FileStreamReaderTest {
  public:
@@ -100,5 +123,59 @@ class LocalFileStreamReaderTest : public FileStreamReaderTest {
 INSTANTIATE_TYPED_TEST_SUITE_P(Local,
                                FileStreamReaderTypedTest,
                                LocalFileStreamReaderTest);
+
+// TODO(b/262199707 b/265908846): Replace direct call to
+// file_access::ScopedFileAccessDelegate with getting access through a callback.
+TEST_F(LocalFileStreamReaderTest, ReadAllowedByDataLeakPrevention) {
+  this->WriteTestFile();
+  std::unique_ptr<FileStreamReader> reader(
+      this->CreateFileReader(std::string(this->kTestFileName), 0,
+                             this->test_file_modification_time()));
+
+  base::MockRepeatingCallback<void(
+      const std::vector<base::FilePath>&,
+      base::OnceCallback<void(file_access::ScopedFileAccess)>)>
+      callback;
+  file_access::ScopedFileAccessDelegate::
+      ScopedRequestFilesAccessCallbackForTesting file_access_callback(
+          callback.Get());
+  EXPECT_CALL(
+      callback,
+      Run(testing::ElementsAre(test_dir().AppendASCII(kTestFileName)), _))
+      .WillOnce(base::test::RunOnceCallback<1>(CreateScopedFileAccess(true)));
+
+  int result = 0;
+  std::string data;
+  ReadFromReader(reader.get(), &data, this->kTestData.size(), &result);
+  ASSERT_EQ(net::OK, result);
+  ASSERT_EQ(this->kTestData, data);
+}
+
+// TODO(b/262199707 b/265908846): Replace direct call to
+// file_access::ScopedFileAccessDelegate with getting access through a callback.
+TEST_F(LocalFileStreamReaderTest, ReadBlockedByDataLeakPrevention) {
+  this->WriteTestFile();
+  std::unique_ptr<FileStreamReader> reader(
+      this->CreateFileReader(std::string(this->kTestFileName), 0,
+                             this->test_file_modification_time()));
+
+  base::MockRepeatingCallback<void(
+      const std::vector<base::FilePath>&,
+      base::OnceCallback<void(file_access::ScopedFileAccess)>)>
+      callback;
+  file_access::ScopedFileAccessDelegate::
+      ScopedRequestFilesAccessCallbackForTesting file_access_callback(
+          callback.Get());
+  EXPECT_CALL(
+      callback,
+      Run(testing::ElementsAre(test_dir().AppendASCII(kTestFileName)), _))
+      .WillOnce(base::test::RunOnceCallback<1>(CreateScopedFileAccess(false)));
+
+  int result = 0;
+  std::string data;
+  ReadFromReader(reader.get(), &data, this->kTestData.size(), &result);
+  ASSERT_EQ(net::ERR_ACCESS_DENIED, result);
+  ASSERT_EQ("", data);
+}
 
 }  // namespace storage

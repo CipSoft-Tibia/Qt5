@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwaylandivisurface.h"
 #include "qwaylandivisurface_p.h"
@@ -45,8 +19,8 @@ QWaylandSurfaceRole QWaylandIviSurfacePrivate::s_role("ivi_surface");
 
 /*!
  * \qmltype IviSurface
- * \inqmlmodule QtWayland.Compositor
  * \instantiates QWaylandIviSurface
+ * \inqmlmodule QtWayland.Compositor.IviApplication
  * \since 5.8
  * \brief Provides a simple way to identify and resize a surface.
  *
@@ -87,7 +61,7 @@ QWaylandIviSurface::QWaylandIviSurface(QWaylandIviApplication *application, QWay
 }
 
 /*!
- * \qmlmethod void QtWaylandCompositor::IviSurface::initialize(IviApplication iviApplication, WaylandSurface surface, int iviId, WaylandResource resource)
+ * \qmlmethod void IviSurface::initialize(IviApplication iviApplication, WaylandSurface surface, int iviId, WaylandResource resource)
  *
  * Initializes the IviSurface, associating it with the given \a iviApplication, \a surface,
  * \a iviId, and \a resource.
@@ -115,7 +89,7 @@ void QWaylandIviSurface::initialize(QWaylandIviApplication *iviApplication, QWay
 }
 
 /*!
- * \qmlproperty WaylandSurface QtWaylandCompositor::IviSurface::surface
+ * \qmlproperty WaylandSurface IviSurface::surface
  *
  * This property holds the surface associated with this IviSurface.
  */
@@ -132,7 +106,7 @@ QWaylandSurface *QWaylandIviSurface::surface() const
 }
 
 /*!
- * \qmlproperty int QtWaylandCompositor::IviSurface::iviId
+ * \qmlproperty int IviSurface::iviId
  * \readonly
  *
  * This property holds the ivi id id of this IviSurface.
@@ -181,7 +155,7 @@ QWaylandIviSurface *QWaylandIviSurface::fromResource(wl_resource *resource)
 }
 
 /*!
- * \qmlmethod int QtWaylandCompositor::IviSurface::sendConfigure(size size)
+ * \qmlmethod int IviSurface::sendConfigure(size size)
  *
  * Sends a configure event to the client, telling it to resize the surface to the given \a size.
  */
@@ -232,3 +206,5 @@ void QWaylandIviSurfacePrivate::ivi_surface_destroy(QtWaylandServer::ivi_surface
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qwaylandivisurface.cpp"

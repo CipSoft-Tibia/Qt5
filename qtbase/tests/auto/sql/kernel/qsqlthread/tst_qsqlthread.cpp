@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 
 #include "../qsqldatabase/tst_databases.h"
@@ -36,7 +11,7 @@
 #include <QtSql>
 #include "qdebug.h"
 
-const QString qtest(qTableName("qtest", __FILE__, QSqlDatabase()));
+QString qtest;
 // set this define if Oracle is built with threading support
 //#define QOCI_THREADED
 
@@ -93,7 +68,7 @@ class QtTestSqlThread : public QThread
 {
     Q_OBJECT
 public:
-    QtTestSqlThread(const QSqlDatabase &aDb, QObject *parent = 0)
+    QtTestSqlThread(const QSqlDatabase &aDb, QObject *parent = nullptr)
         : QThread(parent), sourceDb(aDb) {}
 
     void runHelper(const QString &dbName)
@@ -110,7 +85,7 @@ public:
         q.clear();
     }
 
-    void run()
+    void run() override
     {
         QString dbName = QString("QThreadDb%1").arg((size_t)currentThreadId());
         runHelper(dbName);
@@ -129,7 +104,7 @@ class SqlProducer: public QThread
 {
     Q_OBJECT
 public:
-    SqlProducer(const QSqlDatabase &aDb, QObject *parent = 0)
+    SqlProducer(const QSqlDatabase &aDb, QObject *parent = nullptr)
         : QThread(parent), sourceDb(aDb) {}
 
     void runHelper(const QString &dbName)
@@ -148,7 +123,7 @@ public:
         }
     }
 
-    void run()
+    void run() override
     {
         QString dbName = QString("Producer%1").arg((size_t)currentThreadId());
         runHelper(dbName);
@@ -164,7 +139,7 @@ class SqlConsumer: public QThread
     Q_OBJECT
 
 public:
-    SqlConsumer(const QSqlDatabase &aDb, QObject *parent = 0)
+    SqlConsumer(const QSqlDatabase &aDb, QObject *parent = nullptr)
         : QThread(parent), sourceDb(aDb) {}
 
     void runHelper(const QString &dbName)
@@ -184,7 +159,7 @@ public:
         }
     }
 
-    void run()
+    void run() override
     {
         QString dbName = QString("Consumer%1").arg((size_t)currentThreadId());
         runHelper(dbName);
@@ -203,10 +178,10 @@ class SqlThread: public QThread
 public:
     enum Mode { SimpleReading, PreparedReading, SimpleWriting, PreparedWriting };
 
-    SqlThread(Mode m, const QSqlDatabase &db, QObject *parent = 0)
+    SqlThread(Mode m, const QSqlDatabase &db, QObject *parent = nullptr)
         : QThread(parent), sourceDb(db), mode(m) {}
 
-    void run()
+    void run() override
     {
         QSqlDatabase &db = sourceDb;
         switch (mode) {
@@ -263,6 +238,8 @@ private:
 tst_QSqlThread::tst_QSqlThread()
     : threadFinishedCount(0)
 {
+    static QSqlDatabase static_qtest_db = QSqlDatabase();
+    qtest = qTableName("qtest", __FILE__, static_qtest_db);
 }
 
 tst_QSqlThread::~tst_QSqlThread()
@@ -281,18 +258,16 @@ void tst_QSqlThread::generic_data(const QString& engine)
 
 void tst_QSqlThread::dropTestTables()
 {
-    for (int i = 0; i < dbs.dbNames.count(); ++i) {
-        QSqlDatabase db = QSqlDatabase::database(dbs.dbNames.at(i));
-        QSqlQuery q(db);
-
-        tst_Databases::safeDropTables(db, QStringList() << qtest << qTableName("qtest2", __FILE__, db) << qTableName("emptytable", __FILE__, db));
+    for (const auto &dbName : dbs.dbNames) {
+        QSqlDatabase db = QSqlDatabase::database(dbName);
+        tst_Databases::safeDropTables(db, { qtest, qTableName("qtest2", __FILE__, db), qTableName("emptytable", __FILE__, db) });
     }
 }
 
 void tst_QSqlThread::createTestTables()
 {
-    for (int i = 0; i < dbs.dbNames.count(); ++i) {
-        QSqlDatabase db = QSqlDatabase::database(dbs.dbNames.at(i));
+    for (const auto &dbName : dbs.dbNames) {
+        QSqlDatabase db = QSqlDatabase::database(dbName);
         QSqlQuery q(db);
 
         QVERIFY_SQL(q, exec("create table " + qtest
@@ -308,8 +283,8 @@ void tst_QSqlThread::createTestTables()
 
 void tst_QSqlThread::repopulateTestTables()
 {
-    for (int i = 0; i < dbs.dbNames.count(); ++i) {
-        QSqlDatabase db = QSqlDatabase::database(dbs.dbNames.at(i));
+    for (const auto &dbName : dbs.dbNames) {
+        QSqlDatabase db = QSqlDatabase::database(dbName);
         QSqlQuery q(db);
 
         QVERIFY_SQL(q, exec("delete from " + qtest));

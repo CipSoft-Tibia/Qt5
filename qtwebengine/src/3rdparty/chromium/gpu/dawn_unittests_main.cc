@@ -1,9 +1,9 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/functional/bind.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/task/single_thread_task_executor.h"
 #include "base/test/launcher/unit_test_launcher.h"
@@ -19,8 +19,13 @@ int RunHelper(base::TestSuite* test_suite) {
 
 }  // namespace
 
+// Definition located in third_party/dawn/src/tests/unittests/validation/ValidationTest.h
+// Forward declared here to avoid pulling in the Dawn headers.
+void InitDawnValidationTestEnvironment(int argc, char** argv);
+
 int main(int argc, char** argv) {
   base::CommandLine::Init(argc, argv);
+  InitDawnValidationTestEnvironment(argc, argv);
   testing::InitGoogleMock(&argc, argv);
   base::TestSuite test_suite(argc, argv);
   int rt = base::LaunchUnitTestsSerially(

@@ -40,10 +40,8 @@ namespace blink {
 HTMLNoEmbedElement::HTMLNoEmbedElement(Document& document)
     : HTMLElement(html_names::kNoembedTag, document) {}
 
-bool HTMLNoEmbedElement::LayoutObjectIsNeeded(
-    const ComputedStyle& style) const {
-  if (GetDocument().GetFrame()->Loader().AllowPlugins(
-          kNotAboutToInstantiatePlugin))
+bool HTMLNoEmbedElement::LayoutObjectIsNeeded(const DisplayStyle& style) const {
+  if (GetDocument().GetFrame()->Loader().AllowPlugins())
     return false;
   return Element::LayoutObjectIsNeeded(style);
 }

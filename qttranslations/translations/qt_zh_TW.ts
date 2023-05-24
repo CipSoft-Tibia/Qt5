@@ -4,6 +4,5 @@
   <dependencies>
     <dependency catalog="qtbase_zh_TW"/>
     <dependency catalog="qtmultimedia_zh_TW"/>
-    <dependency catalog="qtxmlpatterns_zh_TW"/>
   </dependencies>
 </TS>

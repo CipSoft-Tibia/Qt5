@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,7 @@
 
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/frame/fullscreen.mojom-blink.h"
+#include "third_party/blink/public/mojom/webpreferences/web_preferences.mojom-blink.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
@@ -30,17 +31,23 @@ class VideoAutoFullscreenFrameHost : public FakeLocalFrameHost {
   void EnterFullscreen(mojom::blink::FullscreenOptionsPtr options,
                        EnterFullscreenCallback callback) override {
     std::move(callback).Run(true);
-    Thread::Current()->GetTaskRunner()->PostTask(
-        FROM_HERE,
-        WTF::Bind([](WebViewImpl* web_view) { web_view->DidEnterFullscreen(); },
-                  WTF::Unretained(web_view_)));
+    web_view_->MainFrameImpl()
+        ->GetTaskRunner(TaskType::kInternalNavigationAssociated)
+        ->PostTask(FROM_HERE, WTF::BindOnce(
+                                  [](WebViewImpl* web_view) {
+                                    web_view->DidEnterFullscreen();
+                                  },
+                                  WTF::Unretained(web_view_)));
   }
 
   void ExitFullscreen() override {
-    Thread::Current()->GetTaskRunner()->PostTask(
-        FROM_HERE,
-        WTF::Bind([](WebViewImpl* web_view) { web_view->DidExitFullscreen(); },
-                  WTF::Unretained(web_view_)));
+    web_view_->MainFrameImpl()
+        ->GetTaskRunner(TaskType::kInternalNavigationAssociated)
+        ->PostTask(FROM_HERE, WTF::BindOnce(
+                                  [](WebViewImpl* web_view) {
+                                    web_view->DidExitFullscreen();
+                                  },
+                                  WTF::Unretained(web_view_)));
   }
 
   void set_web_view(WebViewImpl* web_view) { web_view_ = web_view; }
@@ -52,12 +59,15 @@ class VideoAutoFullscreenFrameHost : public FakeLocalFrameHost {
 class VideoAutoFullscreenFrameClient
     : public frame_test_helpers::TestWebFrameClient {
  public:
-  WebMediaPlayer* CreateMediaPlayer(const WebMediaPlayerSource&,
-                                    WebMediaPlayerClient*,
-                                    blink::MediaInspectorContext*,
-                                    WebMediaPlayerEncryptedMediaClient*,
-                                    WebContentDecryptionModule*,
-                                    const WebString& sink_id) final {
+  WebMediaPlayer* CreateMediaPlayer(
+      const WebMediaPlayerSource&,
+      WebMediaPlayerClient*,
+      blink::MediaInspectorContext*,
+      WebMediaPlayerEncryptedMediaClient*,
+      WebContentDecryptionModule*,
+      const WebString& sink_id,
+      const cc::LayerTreeSettings* settings,
+      scoped_refptr<base::TaskRunner> compositor_worker_task_runner) final {
     return new EmptyWebMediaPlayer();
   }
 };
@@ -67,11 +77,11 @@ class VideoAutoFullscreen : public testing::Test,
  public:
   VideoAutoFullscreen() : ScopedVideoAutoFullscreenForTest(true) {}
   void SetUp() override {
-    web_view_helper_.Initialize(&web_frame_client_);
     frame_host_.Init(
         web_frame_client_.GetRemoteNavigationAssociatedInterfaces());
+    web_view_helper_.Initialize(&web_frame_client_);
     GetWebView()->GetSettings()->SetAutoplayPolicy(
-        web_pref::AutoplayPolicy::kUserGestureRequired);
+        mojom::AutoplayPolicy::kUserGestureRequired);
 
     frame_test_helpers::LoadFrame(
         web_view_helper_.GetWebView()->MainFrameImpl(), "about:blank");
@@ -166,7 +176,9 @@ TEST_F(VideoAutoFullscreen, ExitFullscreenDoesNotPauseWithPlaysInline) {
   EXPECT_FALSE(Video()->paused());
 }
 
-TEST_F(VideoAutoFullscreen, OnPlayTriggersFullscreenWithoutGesture) {
+// This test is disabled because it requires adding a fake activation in
+// production code (crbug.com/1082258).
+TEST_F(VideoAutoFullscreen, DISABLED_OnPlayTriggersFullscreenWithoutGesture) {
   Video()->SetSrc("http://example.com/foo.mp4");
 
   LocalFrame::NotifyUserActivation(

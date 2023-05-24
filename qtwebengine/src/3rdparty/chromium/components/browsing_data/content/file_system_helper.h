@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,11 +12,15 @@
 #include <map>
 #include <set>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
+#include "base/task/sequenced_task_runner.h"
 #include "storage/common/file_system/file_system_types.h"
 #include "url/origin.h"
+
+namespace blink {
+class StorageKey;
+}  // namespace blink
 
 namespace storage {
 class FileSystemContext;
@@ -55,14 +59,14 @@ class FileSystemHelper : public base::RefCountedThreadSafe<FileSystemHelper> {
       base::OnceCallback<void(const std::list<FileSystemInfo>&)>;
 
   // Creates a FileSystemHelper instance for the file systems stored
-  // in |profile|'s user data directory. The FileSystemHelper object
+  // in `profile`'s user data directory. The FileSystemHelper object
   // will hold a reference to the FileSystemContext that's passed in, but is not
   // responsible for destroying it.
   //
   // The FileSystemHelper will not change the profile itself, but
   // can modify data it contains (by removing file systems).
-  static FileSystemHelper* Create(
-      storage::FileSystemContext* file_system_context,
+  FileSystemHelper(
+      storage::FileSystemContext* filesystem_context,
       const std::vector<storage::FileSystemType>& additional_types);
 
   // Starts the process of fetching file system data, which will call |callback|
@@ -82,10 +86,6 @@ class FileSystemHelper : public base::RefCountedThreadSafe<FileSystemHelper> {
  protected:
   friend class base::RefCountedThreadSafe<FileSystemHelper>;
 
-  FileSystemHelper(
-      storage::FileSystemContext* filesystem_context,
-      const std::vector<storage::FileSystemType>& additional_types);
-
   virtual ~FileSystemHelper();
 
  private:
@@ -94,9 +94,10 @@ class FileSystemHelper : public base::RefCountedThreadSafe<FileSystemHelper> {
   // task runner.
   void FetchFileSystemInfoInFileThread(FetchCallback callback);
 
-  // Deletes all file systems associated with |origin|. This must be called on
-  // the file task runner.
-  void DeleteFileSystemOriginInFileThread(const url::Origin& origin);
+  // Deletes all file systems associated with `storage_key`. This must be called
+  // on the file task runner.
+  void DeleteFileSystemForStorageKeyInFileThread(
+      const blink::StorageKey& storage_key);
 
   // Returns the file task runner for the |filesystem_context_|.
   base::SequencedTaskRunner* file_task_runner();
@@ -119,6 +120,9 @@ class CannedFileSystemHelper : public FileSystemHelper {
   explicit CannedFileSystemHelper(
       storage::FileSystemContext* filesystem_context,
       const std::vector<storage::FileSystemType>& additional_types);
+
+  CannedFileSystemHelper(const CannedFileSystemHelper&) = delete;
+  CannedFileSystemHelper& operator=(const CannedFileSystemHelper&) = delete;
 
   // Manually adds a filesystem to the set of canned file systems that this
   // helper returns via StartFetching.
@@ -145,8 +149,6 @@ class CannedFileSystemHelper : public FileSystemHelper {
 
   // Holds the current list of filesystems returned to the client.
   std::set<url::Origin> pending_origins_;
-
-  DISALLOW_COPY_AND_ASSIGN(CannedFileSystemHelper);
 };
 
 }  // namespace browsing_data

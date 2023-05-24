@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/media/webrtc/fake_desktop_media_list.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -29,32 +29,37 @@ void FakeDesktopMediaPicker::Show(
   bool show_screens = false;
   bool show_windows = false;
   bool show_tabs = false;
+  bool show_current_tab = false;
   picker_params_ = params;
 
   for (auto& source_list : source_lists) {
     switch (source_list->GetMediaListType()) {
-      case content::DesktopMediaID::TYPE_NONE:
+      case DesktopMediaList::Type::kNone:
         break;
-      case content::DesktopMediaID::TYPE_SCREEN:
+      case DesktopMediaList::Type::kScreen:
         show_screens = true;
         break;
-      case content::DesktopMediaID::TYPE_WINDOW:
+      case DesktopMediaList::Type::kWindow:
         show_windows = true;
         break;
-      case content::DesktopMediaID::TYPE_WEB_CONTENTS:
+      case DesktopMediaList::Type::kWebContents:
         show_tabs = true;
+        break;
+      case DesktopMediaList::Type::kCurrentTab:
+        show_current_tab = true;
         break;
     }
   }
   EXPECT_EQ(expectation_->expect_screens, show_screens);
   EXPECT_EQ(expectation_->expect_windows, show_windows);
   EXPECT_EQ(expectation_->expect_tabs, show_tabs);
+  EXPECT_EQ(expectation_->expect_current_tab, show_current_tab);
   EXPECT_EQ(expectation_->expect_audio, params.request_audio);
   EXPECT_EQ(params.modality, ui::ModalType::MODAL_TYPE_CHILD);
 
   if (!expectation_->cancelled) {
     // Post a task to call the callback asynchronously.
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
         base::BindOnce(&FakeDesktopMediaPicker::CallCallback,
                        weak_factory_.GetWeakPtr(), std::move(done_callback)));
@@ -88,7 +93,7 @@ std::unique_ptr<DesktopMediaPicker>
 FakeDesktopMediaPickerFactory::CreatePicker() {
   EXPECT_LE(current_test_, tests_count_);
   if (current_test_ >= tests_count_)
-    return std::unique_ptr<DesktopMediaPicker>();
+    return nullptr;
   ++current_test_;
   picker_ = new FakeDesktopMediaPicker(test_flags_ + current_test_ - 1);
   return std::unique_ptr<DesktopMediaPicker>(picker_);
@@ -96,8 +101,11 @@ FakeDesktopMediaPickerFactory::CreatePicker() {
 
 std::vector<std::unique_ptr<DesktopMediaList>>
 FakeDesktopMediaPickerFactory::CreateMediaList(
-    const std::vector<content::DesktopMediaID::Type>& types) {
+    const std::vector<DesktopMediaList::Type>& types,
+    content::WebContents* web_contents,
+    DesktopMediaList::WebContentsFilter includable_web_contents_filter) {
   EXPECT_LE(current_test_, tests_count_);
+  is_web_contents_excluded_ = !includable_web_contents_filter.Run(web_contents);
   std::vector<std::unique_ptr<DesktopMediaList>> media_lists;
   for (auto source_type : types)
     media_lists.emplace_back(new FakeDesktopMediaList(source_type));

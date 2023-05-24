@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,14 +6,13 @@
 #define CONTENT_BROWSER_ANDROID_SELECTION_COMPOSITED_TOUCH_HANDLE_DRAWABLE_H_
 
 #include "base/android/scoped_java_ref.h"
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/touch_selection/touch_handle.h"
 
-namespace cc {
+namespace cc::slim {
 class UIResourceLayer;
-}  // namespace cc
+}  // namespace cc::slim
 
 namespace content {
 
@@ -22,6 +21,11 @@ class CompositedTouchHandleDrawable : public ui::TouchHandleDrawable {
  public:
   CompositedTouchHandleDrawable(gfx::NativeView view,
                                 const base::android::JavaRef<jobject>& context);
+
+  CompositedTouchHandleDrawable(const CompositedTouchHandleDrawable&) = delete;
+  CompositedTouchHandleDrawable& operator=(
+      const CompositedTouchHandleDrawable&) = delete;
+
   ~CompositedTouchHandleDrawable() override;
 
   // ui::TouchHandleDrawable implementation.
@@ -42,9 +46,7 @@ class CompositedTouchHandleDrawable : public ui::TouchHandleDrawable {
   float drawable_horizontal_padding_ratio_;
   ui::TouchHandleOrientation orientation_;
   gfx::PointF origin_position_;
-  scoped_refptr<cc::UIResourceLayer> layer_;
-
-  DISALLOW_COPY_AND_ASSIGN(CompositedTouchHandleDrawable);
+  scoped_refptr<cc::slim::UIResourceLayer> layer_;
 };
 
 }  // namespace content

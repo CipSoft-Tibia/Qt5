@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ SettingsOverrideAPIPermission::SettingsOverrideAPIPermission(
     const std::string& setting_value)
     : APIPermission(permission), setting_value_(setting_value) {}
 
-SettingsOverrideAPIPermission::~SettingsOverrideAPIPermission() {}
+SettingsOverrideAPIPermission::~SettingsOverrideAPIPermission() = default;
 
 PermissionIDSet SettingsOverrideAPIPermission::GetPermissions() const {
   PermissionIDSet permissions;
@@ -32,7 +32,7 @@ PermissionIDSet SettingsOverrideAPIPermission::GetPermissions() const {
 
 bool SettingsOverrideAPIPermission::Check(
     const APIPermission::CheckParam* param) const {
-  return (param == NULL);
+  return (param == nullptr);
 }
 
 bool SettingsOverrideAPIPermission::Contains(const APIPermission* rhs) const {
@@ -50,7 +50,10 @@ bool SettingsOverrideAPIPermission::FromValue(
     const base::Value* value,
     std::string* /*error*/,
     std::vector<std::string>* unhandled_permissions) {
-  return value && value->GetAsString(&setting_value_);
+  if (!value || !value->is_string())
+    return false;
+  setting_value_ = value->GetString();
+  return true;
 }
 
 std::unique_ptr<base::Value> SettingsOverrideAPIPermission::ToValue() const {
@@ -80,17 +83,6 @@ std::unique_ptr<APIPermission> SettingsOverrideAPIPermission::Intersect(
   CHECK_EQ(info(), rhs->info());
   return std::make_unique<SettingsOverrideAPIPermission>(info(),
                                                          setting_value_);
-}
-
-void SettingsOverrideAPIPermission::Write(base::Pickle* m) const {}
-
-bool SettingsOverrideAPIPermission::Read(const base::Pickle* m,
-                                         base::PickleIterator* iter) {
-  return true;
-}
-
-void SettingsOverrideAPIPermission::Log(std::string* log) const {
-  *log = setting_value_;
 }
 
 }  // namespace extensions

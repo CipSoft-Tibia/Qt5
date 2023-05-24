@@ -11,6 +11,7 @@
 #if defined(USE_SIMULATOR)
 
 #include <stdarg.h>
+
 #include <vector>
 
 #include "src/base/compiler-specific.h"
@@ -728,6 +729,11 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   // Start the debugging command line.
   void Debug();
 
+  // Executes a single debug command. Takes ownership of the command (so that it
+  // can store it for repeat executions), and returns true if the debugger
+  // should resume execution after this command completes.
+  bool ExecDebugCommand(ArrayUniquePtr<char> command);
+
   bool GetValue(const char* desc, int64_t* value);
 
   bool PrintValue(const char* desc);
@@ -754,7 +760,7 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   // Simulation helpers.
   template <typename T>
   void set_pc(T new_pc) {
-    DCHECK(sizeof(T) == sizeof(pc_));
+    static_assert(sizeof(T) == sizeof(pc_));
     memcpy(&pc_, &new_pc, sizeof(T));
     pc_modified_ = true;
   }
@@ -1107,7 +1113,7 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   // As above, but don't automatically log the register update.
   template <typename T>
   void set_vreg_no_log(unsigned code, T value) {
-    STATIC_ASSERT((sizeof(value) == kBRegSize) ||
+    static_assert((sizeof(value) == kBRegSize) ||
                   (sizeof(value) == kHRegSize) ||
                   (sizeof(value) == kSRegSize) ||
                   (sizeof(value) == kDRegSize) || (sizeof(value) == kQRegSize));
@@ -1486,6 +1492,14 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   void ConditionalCompareHelper(Instruction* instr, T op2);
   void LoadStoreHelper(Instruction* instr, int64_t offset, AddrMode addrmode);
   void LoadStorePairHelper(Instruction* instr, AddrMode addrmode);
+  template <typename T>
+  void CompareAndSwapHelper(const Instruction* instr);
+  template <typename T>
+  void CompareAndSwapPairHelper(const Instruction* instr);
+  template <typename T>
+  void AtomicMemorySimpleHelper(const Instruction* instr);
+  template <typename T>
+  void AtomicMemorySwapHelper(const Instruction* instr);
   uintptr_t LoadStoreAddress(unsigned addr_reg, int64_t offset,
                              AddrMode addrmode);
   void LoadStoreWriteBack(unsigned addr_reg, int64_t offset, AddrMode addrmode);
@@ -1495,11 +1509,23 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
                                        AddrMode addr_mode);
   void CheckMemoryAccess(uintptr_t address, uintptr_t stack);
 
+  // "Probe" if an address range can be read. This is currently implemented
+  // by doing a 1-byte read of the last accessed byte, since the assumption is
+  // that if the last byte is accessible, also all lower bytes are accessible
+  // (which holds true for Wasm).
+  // Returns true if the access was successful, false if the access raised a
+  // signal which was then handled by the trap handler (also see
+  // {trap_handler::ProbeMemory}). If the access raises a signal which is not
+  // handled by the trap handler (e.g. because the current PC is not registered
+  // as a protected instruction), the signal will propagate and make the process
+  // crash. If no trap handler is available, this always returns true.
+  bool ProbeMemory(uintptr_t address, uintptr_t access_size);
+
   // Memory read helpers.
   template <typename T, typename A>
   T MemoryRead(A address) {
     T value;
-    STATIC_ASSERT((sizeof(value) == 1) || (sizeof(value) == 2) ||
+    static_assert((sizeof(value) == 1) || (sizeof(value) == 2) ||
                   (sizeof(value) == 4) || (sizeof(value) == 8) ||
                   (sizeof(value) == 16));
     memcpy(&value, reinterpret_cast<const void*>(address), sizeof(value));
@@ -1509,7 +1535,7 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   // Memory write helpers.
   template <typename T, typename A>
   void MemoryWrite(A address, T value) {
-    STATIC_ASSERT((sizeof(value) == 1) || (sizeof(value) == 2) ||
+    static_assert((sizeof(value) == 1) || (sizeof(value) == 2) ||
                   (sizeof(value) == 4) || (sizeof(value) == 8) ||
                   (sizeof(value) == 16));
     memcpy(reinterpret_cast<void*>(address), &value, sizeof(value));
@@ -2324,12 +2350,11 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   static const char* vreg_names[];
 
   // Debugger input.
-  void set_last_debugger_input(char* input) {
-    DeleteArray(last_debugger_input_);
-    last_debugger_input_ = input;
+  void set_last_debugger_input(ArrayUniquePtr<char> input) {
+    last_debugger_input_ = std::move(input);
   }
-  char* last_debugger_input() { return last_debugger_input_; }
-  char* last_debugger_input_;
+  const char* last_debugger_input() { return last_debugger_input_.get(); }
+  ArrayUniquePtr<char> last_debugger_input_;
 
   // Synchronization primitives. See ARM DDI 0487A.a, B2.10. Pair types not
   // implemented.
@@ -2431,6 +2456,9 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
 
   V8_EXPORT_PRIVATE void CallImpl(Address entry, CallArgument* args);
 
+  void CallAnyCTypeFunction(Address target_address,
+                            const EncodedCSignature& signature);
+
   // Read floating point return values.
   template <typename T>
   typename std::enable_if<std::is_floating_point<T>::value, T>::type
@@ -2493,7 +2521,7 @@ class Simulator : public DecoderVisitor, public SimulatorBase {
   }
 
   int log_parameters_;
-  // Instruction counter only valid if FLAG_stop_sim_at isn't 0.
+  // Instruction counter only valid if v8_flags.stop_sim_at isn't 0.
   int icount_for_stop_sim_at_;
   Isolate* isolate_;
 };

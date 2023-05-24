@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,6 +15,10 @@
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/skia/include/core/SkBlendMode.h"
 
+namespace gfx {
+class Rect;
+}
+
 namespace blink {
 
 class BackgroundImageGeometry;
@@ -22,10 +26,9 @@ class ComputedStyle;
 class Document;
 class FillLayer;
 class FloatRoundedRect;
-class GraphicsContext;
 class ImageResourceObserver;
-class IntRect;
 class LayoutBox;
+class Node;
 struct PaintInfo;
 struct PhysicalOffset;
 struct PhysicalRect;
@@ -111,14 +114,14 @@ class BoxPainterBase {
    public:
     FillLayerInfo(const Document&,
                   const ComputedStyle&,
-                  bool has_overflow_clip,
+                  bool is_scroll_container,
                   Color bg_color,
                   const FillLayer&,
                   BackgroundBleedAvoidance,
                   RespectImageOrientationEnum,
                   PhysicalBoxSides sides_to_include,
                   bool is_inline,
-                  bool is_painting_scrolling_background);
+                  bool is_painting_background_in_contents_space);
 
     // FillLayerInfo is a temporary, stack-allocated container which cannot
     // outlive the StyleImage.  This would normally be a raw pointer, if not for
@@ -132,15 +135,19 @@ class BoxPainterBase {
     bool is_border_fill;
     bool is_clipped_with_local_scrolling;
     bool is_rounded_fill;
+    bool is_printing;
     bool should_paint_image;
     bool should_paint_color;
+    // True if we paint background color off main thread, design doc here:
+    // https://docs.google.com/document/d/1usCnwWs8HsH5FU_185q6MsrZehFmpl5QgbbB4pvHIjI/edit
+    bool should_paint_color_with_paint_worklet_image;
   };
 
  protected:
   virtual LayoutRectOutsets ComputeBorders() const = 0;
   virtual LayoutRectOutsets ComputePadding() const = 0;
   LayoutRectOutsets AdjustedBorderOutsets(const FillLayerInfo&) const;
-  void PaintFillLayerTextFillBox(GraphicsContext&,
+  void PaintFillLayerTextFillBox(const PaintInfo&,
                                  const FillLayerInfo&,
                                  Image*,
                                  SkBlendMode composite_op,
@@ -148,8 +155,8 @@ class BoxPainterBase {
                                  const PhysicalRect&,
                                  const PhysicalRect& scrolled_paint_rect,
                                  bool object_has_multiple_boxes);
-  virtual void PaintTextClipMask(GraphicsContext&,
-                                 const IntRect& mask_rect,
+  virtual void PaintTextClipMask(const PaintInfo&,
+                                 const gfx::Rect& mask_rect,
                                  const PhysicalOffset& paint_offset,
                                  bool object_has_multiple_boxes) = 0;
 
@@ -160,8 +167,7 @@ class BoxPainterBase {
       const Color&,
       const FillLayer&,
       BackgroundBleedAvoidance,
-      bool is_painting_scrolling_background) const = 0;
-  virtual bool IsPaintingScrollingBackground(const PaintInfo&) const = 0;
+      bool is_painting_background_in_contents_space) const = 0;
   static void PaintInsetBoxShadow(
       const PaintInfo&,
       const FloatRoundedRect&,
@@ -169,6 +175,8 @@ class BoxPainterBase {
       PhysicalBoxSides sides_to_include = PhysicalBoxSides());
 
  private:
+  LayoutRectOutsets ComputeSnappedBorders() const;
+
   const Document* document_;
   const ComputedStyle& style_;
   Node* node_;
@@ -176,4 +184,4 @@ class BoxPainterBase {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_BOX_PAINTER_BASE_H_

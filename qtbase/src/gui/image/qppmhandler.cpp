@@ -1,53 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qppmhandler_p.h"
 
 #ifndef QT_NO_IMAGEFORMAT_PPM
 
+#include <qdebug.h>
 #include <qimage.h>
-#include <qvariant.h>
-#include <qvector.h>
-#include <ctype.h>
+#include <qlist.h>
+#include <qloggingcategory.h>
 #include <qrgba64.h>
+#include <qvariant.h>
+#include <private/qlocale_p.h>
+#include <private/qtools_p.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcImageIo)
 
 /*****************************************************************************
   PBM/PGM/PPM (ASCII and RAW) image read/write functions
@@ -63,7 +32,7 @@ static void discard_pbm_line(QIODevice *d)
     } while (res > 0 && buf[res-1] != '\n');
 }
 
-static int read_pbm_int(QIODevice *d, bool *ok)
+static int read_pbm_int(QIODevice *d, bool *ok, int maxDigits = -1)
 {
     char c;
     int          val = -1;
@@ -72,7 +41,7 @@ static int read_pbm_int(QIODevice *d, bool *ok)
     for (;;) {
         if (!d->getChar(&c))                // end of file
             break;
-        digit = isdigit((uchar) c);
+        digit = QtMiscUtils::isAsciiDigit(c);
         if (val != -1) {
             if (digit) {
                 const int cValue = c - '0';
@@ -81,6 +50,8 @@ static int read_pbm_int(QIODevice *d, bool *ok)
                 } else {
                     hasOverflow = true;
                 }
+                if (maxDigits > 0 && --maxDigits == 0)
+                    break;
                 continue;
             } else {
                 if (c == '#')                        // comment
@@ -90,11 +61,13 @@ static int read_pbm_int(QIODevice *d, bool *ok)
         }
         if (digit)                                // first digit
             val = c - '0';
-        else if (isspace((uchar) c))
+        else if (ascii_isspace(c))
             continue;
         else if (c == '#')
             discard_pbm_line(d);
         else
+            break;
+        if (maxDigits > 0 && --maxDigits == 0)
             break;
     }
     if (val < 0)
@@ -108,7 +81,7 @@ static bool read_pbm_header(QIODevice *device, char& type, int& w, int& h, int& 
     if (device->read(buf, 3) != 3)                        // read P[1-6]<white-space>
         return false;
 
-    if (!(buf[0] == 'P' && isdigit((uchar) buf[1]) && isspace((uchar) buf[2])))
+    if (!(buf[0] == 'P' && QtMiscUtils::isAsciiDigit(buf[1]) && ascii_isspace(buf[2])))
         return false;
 
     type = buf[1];
@@ -138,7 +111,7 @@ static inline QRgb scale_pbm_color(quint16 mx, quint16 rv, quint16 gv, quint16 b
 static bool read_pbm_body(QIODevice *device, char type, int w, int h, int mcc, QImage *outImage)
 {
     int nbits, y;
-    int pbm_bpl;
+    qsizetype pbm_bpl;
     bool raw;
 
     QImage::Format format;
@@ -163,13 +136,10 @@ static bool read_pbm_body(QIODevice *device, char type, int w, int h, int mcc, Q
     }
     raw = type >= '4';
 
-    if (outImage->size() != QSize(w, h) || outImage->format() != format) {
-        *outImage = QImage(w, h, format);
-        if (outImage->isNull())
-            return false;
-    }
+    if (!QImageIOHandler::allocateImage(QSize(w, h), format, outImage))
+        return false;
 
-    pbm_bpl = (nbits*w+7)/8;                        // bytes per scanline in PBM
+    pbm_bpl = (qsizetype(w) * nbits + 7) / 8;   // bytes per scanline in PBM
 
     if (raw) {                                // read raw data
         if (nbits == 32) {                        // type 6
@@ -228,14 +198,14 @@ static bool read_pbm_body(QIODevice *device, char type, int w, int h, int mcc, Q
                 if (device->read((char *)p, pbm_bpl) != pbm_bpl)
                     return false;
                 if (nbits == 8 && mcc < 255) {
-                    for (int i = 0; i < pbm_bpl; i++)
+                    for (qsizetype i = 0; i < pbm_bpl; i++)
                         p[i] = (p[i] * 255) / mcc;
                 }
             }
         }
     } else {                                        // read ascii data
         uchar *p;
-        int n;
+        qsizetype n;
         bool ok = true;
         for (y = 0; y < h && ok; y++) {
             p = outImage->scanLine(y);
@@ -247,7 +217,7 @@ static bool read_pbm_body(QIODevice *device, char type, int w, int h, int mcc, Q
                     b = 0;
                     for (int i=0; i<8; i++) {
                         if (i < bitsLeft)
-                            b = (b << 1) | (read_pbm_int(device, &ok) & 1);
+                            b = (b << 1) | (read_pbm_int(device, &ok, 1) & 1);
                         else
                             b = (b << 1) | (0 & 1); // pad it our self if we need to
                     }
@@ -356,7 +326,7 @@ static bool write_pbm_image(QIODevice *out, const QImage &sourceImage, const QBy
     switch (image.depth()) {
         case 1: {
             str.insert(1, '4');
-            if (out->write(str, str.length()) != str.length())
+            if (out->write(str, str.size()) != str.size())
                 return false;
             w = (w+7)/8;
             for (uint y=0; y<h; y++) {
@@ -370,12 +340,12 @@ static bool write_pbm_image(QIODevice *out, const QImage &sourceImage, const QBy
         case 8: {
             str.insert(1, gray ? '5' : '6');
             str.append("255\n");
-            if (out->write(str, str.length()) != str.length())
+            if (out->write(str, str.size()) != str.size())
                 return false;
-            uint bpl = w * (gray ? 1 : 3);
+            qsizetype bpl = qsizetype(w) * (gray ? 1 : 3);
             uchar *buf = new uchar[bpl];
             if (image.format() == QImage::Format_Indexed8) {
-                QVector<QRgb> color = image.colorTable();
+                QList<QRgb> color = image.colorTable();
                 for (uint y=0; y<h; y++) {
                     const uchar *b = image.constScanLine(y);
                     uchar *p = buf;
@@ -393,7 +363,7 @@ static bool write_pbm_image(QIODevice *out, const QImage &sourceImage, const QBy
                             *p++ = qBlue(rgb);
                         }
                     }
-                    if (bpl != (uint)out->write((char*)buf, bpl))
+                    if (bpl != (qsizetype)out->write((char*)buf, bpl))
                         return false;
                 }
             } else {
@@ -412,7 +382,7 @@ static bool write_pbm_image(QIODevice *out, const QImage &sourceImage, const QBy
                             *p++ = color;
                         }
                     }
-                    if (bpl != (uint)out->write((char*)buf, bpl))
+                    if (bpl != (qsizetype)out->write((char*)buf, bpl))
                         return false;
                 }
             }
@@ -423,9 +393,9 @@ static bool write_pbm_image(QIODevice *out, const QImage &sourceImage, const QBy
         case 32: {
             str.insert(1, '6');
             str.append("255\n");
-            if (out->write(str, str.length()) != str.length())
+            if (out->write(str, str.size()) != str.size())
                 return false;
-            uint bpl = w * 3;
+            qsizetype bpl = qsizetype(w) * 3;
             uchar *buf = new uchar[bpl];
             for (uint y=0; y<h; y++) {
                 const QRgb  *b = reinterpret_cast<const QRgb *>(image.constScanLine(y));
@@ -437,7 +407,7 @@ static bool write_pbm_image(QIODevice *out, const QImage &sourceImage, const QBy
                     *p++ = qGreen(rgb);
                     *p++ = qBlue(rgb);
                 }
-                if (bpl != (uint)out->write((char*)buf, bpl))
+                if (bpl != (qsizetype)out->write((char*)buf, bpl))
                     return false;
             }
             delete [] buf;
@@ -481,7 +451,7 @@ bool QPpmHandler::canRead() const
 bool QPpmHandler::canRead(QIODevice *device, QByteArray *subType)
 {
     if (!device) {
-        qWarning("QPpmHandler::canRead() called with no device");
+        qCWarning(lcImageIo, "QPpmHandler::canRead() called with no device");
         return false;
     }
 

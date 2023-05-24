@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtDesigner/QDesignerComponents>
 
@@ -89,6 +64,8 @@ static void initInstances()
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 /*!
     \class QDesignerComponents
     \brief The QDesignerComponents class provides a central resource for the various components
@@ -146,18 +123,17 @@ static inline void setMinorVersion(int minorVersion, int *qtVersion)
 static inline QString widgetBoxFileName(int qtVersion, const QDesignerLanguageExtension *lang = nullptr)
 {
     QString rc; {
-        const QChar dot = QLatin1Char('.');
         QTextStream str(&rc);
-        str << QDir::homePath() << QDir::separator() << QStringLiteral(".designer") << QDir::separator()
-            << QStringLiteral("widgetbox");
+        str << QDir::homePath() << QDir::separator() << ".designer" << QDir::separator()
+            << "widgetbox";
         // The naming convention using the version was introduced with 4.4
         const int major = qtMajorVersion(qtVersion);
         const int minor = qtMinorVersion(qtVersion);
         if (major >= 4 &&  minor >= 4)
-            str << major << dot << minor;
+            str << major << '.' << minor;
         if (lang)
-            str << dot << lang->uiExtension();
-        str << QStringLiteral(".xml");
+            str << '.' << lang->uiExtension();
+        str << ".xml";
     }
     return rc;
 }
@@ -179,7 +155,7 @@ QDesignerWidgetBoxInterface *QDesignerComponents::createWidgetBox(QDesignerFormE
             }
         }
 
-        widgetBox->setFileName(QStringLiteral(":/qt-project.org/widgetbox/widgetbox.xml"));
+        widgetBox->setFileName(u":/qt-project.org/widgetbox/widgetbox.xml"_s);
         widgetBox->load();
     } while (false);
 
@@ -234,7 +210,7 @@ QWidget *QDesignerComponents::createResourceEditor(QDesignerFormEditorInterface 
     }
     QtResourceView *resourceView = new QtResourceView(core, parent);
     resourceView->setResourceModel(core->resourceModel());
-    resourceView->setSettingsKey(QStringLiteral("ResourceBrowser"));
+    resourceView->setSettingsKey(u"ResourceBrowser"_s);
     // Note for integrators: make sure you call createResourceEditor() after you instantiated your subclass of designer integration
     // (designer doesn't do that since by default editing resources is enabled)
     const QDesignerIntegrationInterface *integration = core->integration();

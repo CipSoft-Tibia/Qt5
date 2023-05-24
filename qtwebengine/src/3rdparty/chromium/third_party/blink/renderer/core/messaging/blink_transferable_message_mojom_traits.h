@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,6 +10,9 @@
 #include "third_party/blink/public/common/messaging/message_port_channel.h"
 #include "third_party/blink/public/common/messaging/message_port_descriptor.h"
 #include "third_party/blink/public/common/messaging/message_port_descriptor_mojom_traits.h"
+#include "third_party/blink/public/common/messaging/task_attribution_id_mojom_traits.h"
+#include "third_party/blink/public/common/scheduler/task_attribution_id.h"
+#include "third_party/blink/public/mojom/blob/blob.mojom-blink.h"
 #include "third_party/blink/public/mojom/messaging/transferable_message.mojom-shared.h"
 #include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -38,10 +41,10 @@ struct CORE_EXPORT StructTraits<blink::mojom::TransferableMessageDataView,
   static Vector<blink::MessagePortDescriptor> stream_channels(
       blink::BlinkTransferableMessage& input) {
     Vector<blink::MessagePortDescriptor> result;
-    auto& stream_channels = input.message->GetStreamChannels();
-    result.ReserveInitialCapacity(stream_channels.size());
-    for (const auto& port : stream_channels)
-      result.push_back(port.ReleaseHandle());
+    auto& streams = input.message->GetStreams();
+    result.ReserveInitialCapacity(streams.size());
+    for (const auto& stream : streams)
+      result.push_back(stream.channel.ReleaseHandle());
     return result;
   }
 
@@ -56,6 +59,19 @@ struct CORE_EXPORT StructTraits<blink::mojom::TransferableMessageDataView,
   static const blink::mojom::blink::UserActivationSnapshotPtr& user_activation(
       const blink::BlinkTransferableMessage& input) {
     return input.user_activation;
+  }
+
+  static blink::mojom::blink::DelegatedCapability delegated_capability(
+      const blink::BlinkTransferableMessage& input) {
+    return input.delegated_capability;
+  }
+
+  static absl::optional<blink::scheduler::TaskAttributionId> parent_task_id(
+      blink::BlinkTransferableMessage& input) {
+    return input.parent_task_id
+               ? absl::make_optional(blink::scheduler::TaskAttributionId(
+                     input.parent_task_id.value()))
+               : absl::nullopt;
   }
 
   static bool Read(blink::mojom::TransferableMessageDataView,
@@ -74,6 +90,15 @@ class CORE_EXPORT
     return mojo_base::BigBuffer(
         base::make_span(allocation_start, array_buffer_contents.DataLength()));
   }
+  static bool is_resizable_by_user_javascript(
+      const blink::ArrayBufferContents& array_buffer_contents) {
+    return array_buffer_contents.IsResizableByUserJavaScript();
+  }
+  static size_t max_byte_length(
+      const blink::ArrayBufferContents& array_buffer_contents) {
+    return array_buffer_contents.MaxDataLength();
+  }
+
   static bool Read(blink::mojom::SerializedArrayBufferContentsDataView,
                    blink::ArrayBufferContents* out);
 };

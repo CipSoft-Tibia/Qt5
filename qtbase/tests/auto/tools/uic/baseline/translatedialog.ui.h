@@ -1,37 +1,14 @@
 /*
-*********************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the autotests of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-*********************************************************************
+
+* Copyright (C) 2016 The Qt Company Ltd.
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+
 */
 
 /********************************************************************************
 ** Form generated from reading UI file 'translatedialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -79,9 +56,9 @@ public:
     void setupUi(QDialog *TranslateDialog)
     {
         if (TranslateDialog->objectName().isEmpty())
-            TranslateDialog->setObjectName(QString::fromUtf8("TranslateDialog"));
+            TranslateDialog->setObjectName("TranslateDialog");
         TranslateDialog->resize(407, 145);
-        QSizePolicy sizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Maximum);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(TranslateDialog->sizePolicy().hasHeightForWidth());
@@ -89,35 +66,35 @@ public:
         hboxLayout = new QHBoxLayout(TranslateDialog);
         hboxLayout->setSpacing(6);
         hboxLayout->setContentsMargins(11, 11, 11, 11);
-        hboxLayout->setObjectName(QString::fromUtf8("hboxLayout"));
+        hboxLayout->setObjectName("hboxLayout");
         hboxLayout->setContentsMargins(9, 9, 9, 9);
         vboxLayout = new QVBoxLayout();
         vboxLayout->setSpacing(6);
-        vboxLayout->setObjectName(QString::fromUtf8("vboxLayout"));
+        vboxLayout->setObjectName("vboxLayout");
         vboxLayout->setContentsMargins(0, 0, 0, 0);
         gridLayout = new QGridLayout();
         gridLayout->setSpacing(6);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         gridLayout->setHorizontalSpacing(6);
         gridLayout->setVerticalSpacing(6);
         gridLayout->setContentsMargins(0, 0, 0, 0);
         ledTranslateTo = new QLineEdit(TranslateDialog);
-        ledTranslateTo->setObjectName(QString::fromUtf8("ledTranslateTo"));
+        ledTranslateTo->setObjectName("ledTranslateTo");
 
         gridLayout->addWidget(ledTranslateTo, 1, 1, 1, 1);
 
         findWhat = new QLabel(TranslateDialog);
-        findWhat->setObjectName(QString::fromUtf8("findWhat"));
+        findWhat->setObjectName("findWhat");
 
         gridLayout->addWidget(findWhat, 0, 0, 1, 1);
 
         translateTo = new QLabel(TranslateDialog);
-        translateTo->setObjectName(QString::fromUtf8("translateTo"));
+        translateTo->setObjectName("translateTo");
 
         gridLayout->addWidget(translateTo, 1, 0, 1, 1);
 
         ledFindWhat = new QLineEdit(TranslateDialog);
-        ledFindWhat->setObjectName(QString::fromUtf8("ledFindWhat"));
+        ledFindWhat->setObjectName("ledFindWhat");
 
         gridLayout->addWidget(ledFindWhat, 0, 1, 1, 1);
 
@@ -125,22 +102,22 @@ public:
         vboxLayout->addLayout(gridLayout);
 
         groupBox = new QGroupBox(TranslateDialog);
-        groupBox->setObjectName(QString::fromUtf8("groupBox"));
+        groupBox->setObjectName("groupBox");
         vboxLayout1 = new QVBoxLayout(groupBox);
         vboxLayout1->setSpacing(6);
         vboxLayout1->setContentsMargins(11, 11, 11, 11);
-        vboxLayout1->setObjectName(QString::fromUtf8("vboxLayout1"));
+        vboxLayout1->setObjectName("vboxLayout1");
         ckMatchCase = new QCheckBox(groupBox);
-        ckMatchCase->setObjectName(QString::fromUtf8("ckMatchCase"));
+        ckMatchCase->setObjectName("ckMatchCase");
 
         vboxLayout1->addWidget(ckMatchCase);
 
         ckMarkFinished = new QCheckBox(groupBox);
-        ckMarkFinished->setObjectName(QString::fromUtf8("ckMarkFinished"));
+        ckMarkFinished->setObjectName("ckMarkFinished");
 
         vboxLayout1->addWidget(ckMarkFinished);
 
-        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout1->addItem(spacerItem);
 
@@ -152,30 +129,30 @@ public:
 
         vboxLayout2 = new QVBoxLayout();
         vboxLayout2->setSpacing(6);
-        vboxLayout2->setObjectName(QString::fromUtf8("vboxLayout2"));
+        vboxLayout2->setObjectName("vboxLayout2");
         vboxLayout2->setContentsMargins(0, 0, 0, 0);
         findNxt = new QPushButton(TranslateDialog);
-        findNxt->setObjectName(QString::fromUtf8("findNxt"));
+        findNxt->setObjectName("findNxt");
         findNxt->setFlat(false);
 
         vboxLayout2->addWidget(findNxt);
 
         translate = new QPushButton(TranslateDialog);
-        translate->setObjectName(QString::fromUtf8("translate"));
+        translate->setObjectName("translate");
 
         vboxLayout2->addWidget(translate);
 
         translateAll = new QPushButton(TranslateDialog);
-        translateAll->setObjectName(QString::fromUtf8("translateAll"));
+        translateAll->setObjectName("translateAll");
 
         vboxLayout2->addWidget(translateAll);
 
         cancel = new QPushButton(TranslateDialog);
-        cancel->setObjectName(QString::fromUtf8("cancel"));
+        cancel->setObjectName("cancel");
 
         vboxLayout2->addWidget(cancel);
 
-        spacerItem1 = new QSpacerItem(20, 51, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem1 = new QSpacerItem(20, 51, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout2->addItem(spacerItem1);
 
@@ -195,7 +172,7 @@ public:
         QWidget::setTabOrder(ckMatchCase, ckMarkFinished);
 
         retranslateUi(TranslateDialog);
-        QObject::connect(cancel, SIGNAL(clicked()), TranslateDialog, SLOT(reject()));
+        QObject::connect(cancel, &QPushButton::clicked, TranslateDialog, qOverload<>(&QDialog::reject));
 
         findNxt->setDefault(true);
 

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,14 +9,14 @@
 
 namespace blink {
 
-class ComputedStyle;
+class ComputedStyleBuilder;
 class CSSToLengthConversionData;
 
 class MathMLSpaceElement final : public MathMLElement {
  public:
   explicit MathMLSpaceElement(Document&);
 
-  void AddMathBaselineIfNeeded(ComputedStyle&,
+  void AddMathBaselineIfNeeded(ComputedStyleBuilder&,
                                const CSSToLengthConversionData&);
 
  private:

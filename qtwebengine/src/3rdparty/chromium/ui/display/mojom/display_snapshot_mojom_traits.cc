@@ -1,8 +1,10 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/display/mojom/display_snapshot_mojom_traits.h"
+
+#include <cstdint>
 
 #include "mojo/public/cpp/base/file_path_mojom_traits.h"
 #include "ui/display/types/display_constants.h"
@@ -81,6 +83,10 @@ bool StructTraits<display::mojom::DisplaySnapshotDataView,
   if (!data.ReadType(&type))
     return false;
 
+  std::vector<uint64_t> path_topology;
+  if (!data.ReadPathTopology(&path_topology))
+    return false;
+
   display::PrivacyScreenState privacy_screen_state;
   if (!data.ReadPrivacyScreenState(&privacy_screen_state))
     return false;
@@ -91,6 +97,10 @@ bool StructTraits<display::mojom::DisplaySnapshotDataView,
 
   gfx::ColorSpace color_space;
   if (!data.ReadColorSpace(&color_space))
+    return false;
+
+  absl::optional<gfx::HDRStaticMetadata> hdr_static_metadata;
+  if (!data.ReadHdrStaticMetadata(&hdr_static_metadata))
     return false;
 
   std::string display_name;
@@ -137,14 +147,34 @@ bool StructTraits<display::mojom::DisplaySnapshotDataView,
   if (!data.ReadMaximumCursorSize(&maximum_cursor_size))
     return false;
 
+  display::VariableRefreshRateState variable_refresh_rate_state;
+  if (!data.ReadVariableRefreshRateState(&variable_refresh_rate_state))
+    return false;
+
+  absl::optional<gfx::Range> vertical_display_range_limits;
+  if (!data.ReadVerticalDisplayRangeLimits(&vertical_display_range_limits))
+    return false;
+
+  display::DrmFormatsAndModifiers drm_formats_and_modifiers;
+#if BUILDFLAG(IS_CHROMEOS)
+  if (!data.ReadDrmFormatsAndModifiers(&drm_formats_and_modifiers)) {
+    return false;
+  }
+#endif
+
   *out = std::make_unique<display::DisplaySnapshot>(
-      data.display_id(), origin, physical_size, type,
+      data.display_id(), data.port_display_id(), data.edid_display_id(),
+      data.connector_index(), origin, physical_size, type,
+      data.base_connector_id(), path_topology,
       data.is_aspect_preserving_scaling(), data.has_overscan(),
-      privacy_screen_state, data.has_color_correction_matrix(),
+      privacy_screen_state, data.has_content_protection_key(),
+      data.has_color_correction_matrix(),
       data.color_correction_in_linear_space(), color_space,
-      data.bits_per_channel(), display_name, file_path, std::move(modes),
-      panel_orientation, std::move(edid), current_mode, native_mode,
-      data.product_code(), data.year_of_manufacture(), maximum_cursor_size);
+      data.bits_per_channel(), hdr_static_metadata, display_name, file_path,
+      std::move(modes), panel_orientation, std::move(edid), current_mode,
+      native_mode, data.product_code(), data.year_of_manufacture(),
+      maximum_cursor_size, variable_refresh_rate_state,
+      vertical_display_range_limits, drm_formats_and_modifiers);
   return true;
 }
 

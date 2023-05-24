@@ -1,38 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qdesigner_introspection_p.h"
 
+#include <QtCore/qobject.h>
+#include <QtCore/qlist.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qstringlist.h>
-#include <QtCore/qvector.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 // Qt Implementation
 static QStringList byteArrayListToStringList(const QByteArrayList &l)
@@ -84,8 +62,7 @@ namespace  {
 
     QString QDesignerMetaEnum::separator() const
     {
-        static const QString rc = QStringLiteral("::");
-        return rc;
+        return u"::"_s;
     }
 
     // ------- QDesignerMetaProperty
@@ -99,9 +76,9 @@ namespace  {
         Kind kind() const override { return m_kind; }
 
         AccessFlags accessFlags() const override { return m_access; }
-        Attributes attributes(const QObject *object = nullptr) const override;
+        Attributes attributes() const override;
 
-        QVariant::Type type() const override { return m_property.type(); }
+        int type() const override            { return m_property.metaType().id(); }
         QString name() const override        { return m_name; }
         QString typeName() const override    { return m_typeName; }
         int userType() const override        { return m_property.userType(); }
@@ -162,20 +139,9 @@ namespace  {
         delete m_enumerator;
     }
 
-    QDesignerMetaProperty::Attributes QDesignerMetaProperty::attributes(const QObject *object) const
+    QDesignerMetaProperty::Attributes QDesignerMetaProperty::attributes() const
     {
-        if (!object)
-            return m_defaultAttributes;
-        Attributes rc;
-        if (m_property.isDesignable(object))
-            rc |= DesignableAttribute;
-        if (m_property.isScriptable(object))
-            rc |= ScriptableAttribute;
-        if (m_property.isStored(object))
-            rc |= StoredAttribute;
-        if (m_property.isUser(object))
-            rc |= UserAttribute;
-        return rc;
+        return m_defaultAttributes;
     }
 
     // -------------- QDesignerMetaMethod
@@ -283,13 +249,13 @@ namespace  {
         const qdesigner_internal::QDesignerIntrospection *m_introspection;
         const QMetaObject *m_metaObject;
 
-        using Enumerators = QVector<QDesignerMetaEnumInterface *>;
+        using Enumerators = QList<QDesignerMetaEnumInterface *>;
         Enumerators m_enumerators;
 
-        using Methods = QVector<QDesignerMetaMethodInterface *>;
+        using Methods = QList<QDesignerMetaMethodInterface *>;
         Methods m_methods;
 
-        using Properties = QVector<QDesignerMetaPropertyInterface *>;
+        using Properties = QList<QDesignerMetaPropertyInterface *>;
         Properties m_properties;
 
         QDesignerMetaPropertyInterface *m_userProperty;
@@ -354,7 +320,7 @@ namespace qdesigner_internal {
 
     const QDesignerMetaObjectInterface* QDesignerIntrospection::metaObjectForQMetaObject(const QMetaObject *metaObject) const
     {
-        MetaObjectMap::iterator it = m_metaObjectMap.find(metaObject);
+        auto it = m_metaObjectMap.find(metaObject);
         if (it == m_metaObjectMap.end())
             it = m_metaObjectMap.insert(metaObject, new QDesignerMetaObject(this, metaObject));
         return it.value();

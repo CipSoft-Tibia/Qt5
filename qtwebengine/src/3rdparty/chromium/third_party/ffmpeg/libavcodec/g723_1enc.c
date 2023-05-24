@@ -34,11 +34,60 @@
 
 #include "avcodec.h"
 #include "celp_math.h"
+#include "codec_internal.h"
+#include "encode.h"
 #include "g723_1.h"
-#include "internal.h"
 
 #define BITSTREAM_WRITER_LE
 #include "put_bits.h"
+
+/**
+ * Hamming window coefficients scaled by 2^15
+ */
+static const int16_t hamming_window[LPC_FRAME] = {
+     2621,  2631,  2659,  2705,  2770,  2853,  2955,  3074,  3212,  3367,
+     3541,  3731,  3939,  4164,  4405,  4663,  4937,  5226,  5531,  5851,
+     6186,  6534,  6897,  7273,  7661,  8062,  8475,  8899,  9334,  9780,
+    10235, 10699, 11172, 11653, 12141, 12636, 13138, 13645, 14157, 14673,
+    15193, 15716, 16242, 16769, 17298, 17827, 18356, 18884, 19411, 19935,
+    20457, 20975, 21489, 21999, 22503, 23002, 23494, 23978, 24455, 24924,
+    25384, 25834, 26274, 26704, 27122, 27529, 27924, 28306, 28675, 29031,
+    29373, 29700, 30012, 30310, 30592, 30857, 31107, 31340, 31557, 31756,
+    31938, 32102, 32249, 32377, 32488, 32580, 32654, 32710, 32747, 32766,
+    32766, 32747, 32710, 32654, 32580, 32488, 32377, 32249, 32102, 31938,
+    31756, 31557, 31340, 31107, 30857, 30592, 30310, 30012, 29700, 29373,
+    29031, 28675, 28306, 27924, 27529, 27122, 26704, 26274, 25834, 25384,
+    24924, 24455, 23978, 23494, 23002, 22503, 21999, 21489, 20975, 20457,
+    19935, 19411, 18884, 18356, 17827, 17298, 16769, 16242, 15716, 15193,
+    14673, 14157, 13645, 13138, 12636, 12141, 11653, 11172, 10699, 10235,
+     9780, 9334,   8899,  8475,  8062,  7661,  7273,  6897,  6534,  6186,
+     5851, 5531,   5226,  4937,  4663,  4405,  4164,  3939,  3731,  3541,
+     3367, 3212,   3074,  2955,  2853,  2770,  2705,  2659,  2631,  2621
+};
+
+/**
+ * Binomial window coefficients scaled by 2^15
+ */
+static const int16_t binomial_window[LPC_ORDER] = {
+    32749, 32695, 32604, 32477, 32315, 32118, 31887, 31622, 31324, 30995
+};
+
+/**
+ * 0.994^i scaled by 2^15
+ */
+static const int16_t bandwidth_expand[LPC_ORDER] = {
+    32571, 32376, 32182, 31989, 31797, 31606, 31416, 31228, 31040, 30854
+};
+
+/**
+ * 0.5^i scaled by 2^15
+ */
+static const int16_t percept_flt_tbl[2][LPC_ORDER] = {
+    /* Zero part */
+    {29491, 26542, 23888, 21499, 19349, 17414, 15673, 14106, 12695, 11425},
+    /* Pole part */
+    {16384,  8192,  4096,  2048,  1024,   512,   256,   128,    64,    32}
+};
 
 static av_cold int g723_1_encode_init(AVCodecContext *avctx)
 {
@@ -47,11 +96,6 @@ static av_cold int g723_1_encode_init(AVCodecContext *avctx)
 
     if (avctx->sample_rate != 8000) {
         av_log(avctx, AV_LOG_ERROR, "Only 8000Hz sample rate supported\n");
-        return AVERROR(EINVAL);
-    }
-
-    if (avctx->channels != 1) {
-        av_log(avctx, AV_LOG_ERROR, "Only mono supported\n");
         return AVERROR(EINVAL);
     }
 
@@ -82,7 +126,7 @@ static void highpass_filter(int16_t *buf, int16_t *fir, int *iir)
 {
     int i;
     for (i = 0; i < FRAME_LEN; i++) {
-        *iir   = (buf[i] << 15) + ((-*fir) << 15) + MULL2(*iir, 0x7f00);
+        *iir   = (buf[i] - *fir) * (1 << 15) + MULL2(*iir, 0x7f00);
         *fir   = buf[i];
         buf[i] = av_clipl_int32((int64_t)*iir + (1 << 15)) >> 16;
     }
@@ -122,7 +166,7 @@ static void comp_autocorr(int16_t *buf, int16_t *autocorr)
     } else {
         for (i = 1; i <= LPC_ORDER; i++) {
             temp        = ff_dot_product(vector, vector + i, LPC_FRAME - i);
-            temp        = MULL2((temp << scale), binomial_window[i - 1]);
+            temp        = MULL2(temp * (1 << scale), binomial_window[i - 1]);
             autocorr[i] = av_clipl_int32((int64_t) temp + (1 << 15)) >> 16;
         }
     }
@@ -149,15 +193,14 @@ static void levinson_durbin(int16_t *lpc, int16_t *autocorr, int16_t error)
         temp = 0;
         for (j = 0; j < i; j++)
             temp -= lpc[j] * autocorr[i - j - 1];
-        temp = ((autocorr[i] << 13) + temp) << 3;
+        temp = (autocorr[i] * (1 << 13) + temp) * (1 << 3);
 
         if (FFABS(temp) >= (error << 16))
             break;
 
         partial_corr = temp / (error << 1);
 
-        lpc[i] = av_clipl_int32((int64_t) (partial_corr << 14) +
-                                (1 << 15)) >> 16;
+        lpc[i] = (partial_corr + (1 << 1)) >> 2;
 
         /* Update the prediction error */
         temp  = MULL2(temp, partial_corr);
@@ -166,8 +209,8 @@ static void levinson_durbin(int16_t *lpc, int16_t *autocorr, int16_t error)
 
         memcpy(vector, lpc, i * sizeof(int16_t));
         for (j = 0; j < i; j++) {
-            temp   = partial_corr * vector[i - j - 1] << 1;
-            lpc[j] = av_clipl_int32((int64_t) (lpc[j] << 16) - temp +
+            temp   = partial_corr * vector[i - j - 1] * 2;
+            lpc[j] = av_clipl_int32((int64_t) (lpc[j] * (1 << 16)) - temp +
                                     (1 << 15)) >> 16;
         }
     }
@@ -216,9 +259,9 @@ static void lpc2lsp(int16_t *lpc, int16_t *prev_lsp, int16_t *lsp)
     /* Compute the remaining coefficients */
     for (i = 0; i < LPC_ORDER / 2; i++) {
         /* f1 */
-        f[2 * i + 2] = -f[2 * i] - ((lsp[i] + lsp[LPC_ORDER - 1 - i]) << 12);
+        f[2 * i + 2] = -f[2 * i]    - (lsp[i] + lsp[LPC_ORDER - 1 - i]) * (1 << 12);
         /* f2 */
-        f[2 * i + 3] = f[2 * i + 1] - ((lsp[i] - lsp[LPC_ORDER - 1 - i]) << 12);
+        f[2 * i + 3] = f[2 * i + 1] - (lsp[i] - lsp[LPC_ORDER - 1 - i]) * (1 << 12);
     }
 
     /* Divide f1[5] and f2[5] by 2 for use in polynomial evaluation */
@@ -233,7 +276,7 @@ static void lpc2lsp(int16_t *lpc, int16_t *prev_lsp, int16_t *lsp)
     shift = ff_g723_1_normalize_bits(max, 31);
 
     for (i = 0; i < LPC_ORDER + 2; i++)
-        f[i] = av_clipl_int32((int64_t) (f[i] << shift) + (1 << 15)) >> 16;
+        f[i] = av_clipl_int32((int64_t) (f[i] * (1 << shift)) + (1 << 15)) >> 16;
 
     /**
      * Evaluate F1 and F2 at uniform intervals of pi/256 along the
@@ -242,15 +285,15 @@ static void lpc2lsp(int16_t *lpc, int16_t *prev_lsp, int16_t *lsp)
     p    = 0;
     temp = 0;
     for (i = 0; i <= LPC_ORDER / 2; i++)
-        temp += f[2 * i] * cos_tab[0];
+        temp += f[2 * i] * G723_1_COS_TAB_FIRST_ELEMENT;
     prev_val = av_clipl_int32(temp << 1);
     count    = 0;
     for (i = 1; i < COS_TBL_SIZE / 2; i++) {
         /* Evaluate */
         temp = 0;
         for (j = 0; j <= LPC_ORDER / 2; j++)
-            temp += f[LPC_ORDER - 2 * j + p] * cos_tab[i * j % COS_TBL_SIZE];
-        cur_val = av_clipl_int32(temp << 1);
+            temp += f[LPC_ORDER - 2 * j + p] * ff_g723_1_cos_tab[i * j % COS_TBL_SIZE];
+        cur_val = av_clipl_int32(temp * 2);
 
         /* Check for sign change, indicating a zero crossing */
         if ((cur_val ^ prev_val) < 0) {
@@ -273,8 +316,8 @@ static void lpc2lsp(int16_t *lpc, int16_t *prev_lsp, int16_t *lsp)
             temp = 0;
             for (j = 0; j <= LPC_ORDER / 2; j++)
                 temp += f[LPC_ORDER - 2 * j + p] *
-                        cos_tab[i * j % COS_TBL_SIZE];
-            cur_val = av_clipl_int32(temp << 1);
+                        ff_g723_1_cos_tab[i * j % COS_TBL_SIZE];
+            cur_val = av_clipl_int32(temp * 2);
         }
         prev_val = cur_val;
     }
@@ -298,11 +341,11 @@ static void lpc2lsp(int16_t *lpc, int16_t *prev_lsp, int16_t *lsp)
                                                                               \
     for (i = 0; i < LSP_CB_SIZE; i++) {                                       \
         for (j = 0; j < size; j++){                                           \
-            temp[j] = (weight[j + (offset)] * lsp_band##num[i][j] +           \
+            temp[j] = (weight[j + (offset)] * ff_g723_1_lsp_band##num[i][j] + \
                       (1 << 14)) >> 15;                                       \
         }                                                                     \
-        error  = ff_g723_1_dot_product(lsp + (offset), temp, size) << 1;      \
-        error -= ff_g723_1_dot_product(lsp_band##num[i], temp, size);         \
+        error  = ff_g723_1_dot_product(lsp + (offset), temp, size) * 2;       \
+        error -= ff_g723_1_dot_product(ff_g723_1_lsp_band##num[i], temp, size); \
         if (error > max) {                                                    \
             max = error;                                                      \
             lsp_index[num] = i;                                               \
@@ -376,7 +419,7 @@ static void iir_filter(int16_t *fir_coef, int16_t *iir_coef,
                       iir_coef[n - 1] * dest[m - n];
         }
 
-        dest[m] = av_clipl_int32((src[m] << 16) + (filter << 3) +
+        dest[m] = av_clipl_int32(src[m] * (1 << 16) + filter * (1 << 3) +
                                  (1 << 15)) >> 16;
     }
 }
@@ -516,7 +559,7 @@ static void comp_harmonic_coeff(int16_t *buf, int16_t pitch_lag, HFParam *hf)
 
     exp = ff_g723_1_normalize_bits(max, 31);
     for (i = 0; i < 15; i++) {
-        energy[i] = av_clipl_int32((int64_t)(energy[i] << exp) +
+        energy[i] = av_clipl_int32((int64_t)(energy[i] * (1 << exp)) +
                                    (1 << 15)) >> 16;
     }
 
@@ -570,8 +613,8 @@ static void harmonic_filter(HFParam *hf, const int16_t *src, int16_t *dest)
     int i;
 
     for (i = 0; i < SUBFRAME_LEN; i++) {
-        int64_t temp = hf->gain * src[i - hf->index] << 1;
-        dest[i] = av_clipl_int32((src[i] << 16) - temp + (1 << 15)) >> 16;
+        int64_t temp = hf->gain * src[i - hf->index] * 2;
+        dest[i] = av_clipl_int32(src[i] * (1 << 16) - temp + (1 << 15)) >> 16;
     }
 }
 
@@ -579,8 +622,8 @@ static void harmonic_noise_sub(HFParam *hf, const int16_t *src, int16_t *dest)
 {
     int i;
     for (i = 0; i < SUBFRAME_LEN; i++) {
-        int64_t temp = hf->gain * src[i - hf->index] << 1;
-        dest[i] = av_clipl_int32(((dest[i] - src[i]) << 16) + temp +
+        int64_t temp = hf->gain * src[i - hf->index] * 2;
+        dest[i] = av_clipl_int32((dest[i] - src[i]) * (1 << 16) + temp +
                                  (1 << 15)) >> 16;
     }
 }
@@ -612,7 +655,7 @@ static void synth_percept_filter(int16_t *qnt_lpc, int16_t *perf_lpc,
         for (j = 1; j <= LPC_ORDER; j++)
             temp -= qnt_lpc[j - 1] * bptr_16[i - j];
 
-        buf[i]     = (src[i] << 15) + (temp << 3);
+        buf[i]     = src[i] * (1 << 15) + temp * (1 << 3);
         bptr_16[i] = av_clipl_int32(buf[i] + (1 << 15)) >> 16;
     }
 
@@ -622,7 +665,7 @@ static void synth_percept_filter(int16_t *qnt_lpc, int16_t *perf_lpc,
             fir -= perf_lpc[j - 1] * bptr_16[i - j];
             iir += perf_lpc[j + LPC_ORDER - 1] * dest[i - j];
         }
-        dest[i] = av_clipl_int32(((buf[i] + (fir << 3)) << scale) + (iir << 3) +
+        dest[i] = av_clipl_int32((buf[i] + fir * (1 << 3)) * (1 << scale) + iir * (1 << 3) +
                                  (1 << 15)) >> 16;
     }
     memcpy(perf_fir, buf_16 + SUBFRAME_LEN, sizeof(int16_t) * LPC_ORDER);
@@ -642,7 +685,7 @@ static void acb_search(G723_1_ChannelContext *p, int16_t *residual,
 {
     int16_t flt_buf[PITCH_ORDER][SUBFRAME_LEN];
 
-    const int16_t *cb_tbl = adaptive_cb_gain85;
+    const int16_t *cb_tbl = ff_g723_1_adaptive_cb_gain85;
 
     int ccr_buf[PITCH_ORDER * SUBFRAMES << 2];
 
@@ -671,23 +714,22 @@ static void acb_search(G723_1_ChannelContext *p, int16_t *residual,
             temp = 0;
             for (k = 0; k <= j; k++)
                 temp += residual[PITCH_ORDER - 1 + k] * impulse_resp[j - k];
-            flt_buf[PITCH_ORDER - 1][j] = av_clipl_int32((temp << 1) +
-                                                         (1 << 15)) >> 16;
+            flt_buf[PITCH_ORDER - 1][j] = av_clipl_int32(temp * 2 + (1 << 15)) >> 16;
         }
 
         for (j = PITCH_ORDER - 2; j >= 0; j--) {
-            flt_buf[j][0] = ((residual[j] << 13) + (1 << 14)) >> 15;
+            flt_buf[j][0] = (residual[j] + (1 << 1)) >> 2;
             for (k = 1; k < SUBFRAME_LEN; k++) {
-                temp = (flt_buf[j + 1][k - 1] << 15) +
+                temp = flt_buf[j + 1][k - 1] * (1 << 15) +
                        residual[j] * impulse_resp[k];
-                flt_buf[j][k] = av_clipl_int32((temp << 1) + (1 << 15)) >> 16;
+                flt_buf[j][k] = av_clipl_int32(temp * 2 + (1 << 15)) >> 16;
             }
         }
 
         /* Compute crosscorrelation with the signal */
         for (j = 0; j < PITCH_ORDER; j++) {
             temp             = ff_dot_product(buf, flt_buf[j], SUBFRAME_LEN);
-            ccr_buf[count++] = av_clipl_int32(temp << 1);
+            ccr_buf[count++] = av_clipl_int32(temp * 2);
         }
 
         /* Compute energies */
@@ -699,7 +741,7 @@ static void acb_search(G723_1_ChannelContext *p, int16_t *residual,
         for (j = 1; j < PITCH_ORDER; j++) {
             for (k = 0; k < j; k++) {
                 temp             = ff_dot_product(flt_buf[j], flt_buf[k], SUBFRAME_LEN);
-                ccr_buf[count++] = av_clipl_int32(temp << 2);
+                ccr_buf[count++] = av_clipl_int32(temp * (1 << 2));
             }
         }
     }
@@ -712,7 +754,7 @@ static void acb_search(G723_1_ChannelContext *p, int16_t *residual,
     temp = ff_g723_1_normalize_bits(max, 31);
 
     for (i = 0; i < 20 * iter; i++)
-        ccr_buf[i] = av_clipl_int32((int64_t) (ccr_buf[i] << temp) +
+        ccr_buf[i] = av_clipl_int32((int64_t) (ccr_buf[i] * (1 << temp)) +
                                     (1 << 15)) >> 16;
 
     max = 0;
@@ -720,7 +762,7 @@ static void acb_search(G723_1_ChannelContext *p, int16_t *residual,
         /* Select quantization table */
         if (!odd_frame && pitch_lag + i - 1 >= SUBFRAME_LEN - 2 ||
             odd_frame && pitch_lag >= SUBFRAME_LEN - 2) {
-            cb_tbl   = adaptive_cb_gain170;
+            cb_tbl   = ff_g723_1_adaptive_cb_gain170;
             tbl_size = 170;
         }
 
@@ -760,11 +802,11 @@ static void sub_acb_contrib(const int16_t *residual, const int16_t *impulse_resp
     int i, j;
     /* Subtract adaptive CB contribution to obtain the residual */
     for (i = 0; i < SUBFRAME_LEN; i++) {
-        int64_t temp = buf[i] << 14;
+        int64_t temp = buf[i] * (1 << 14);
         for (j = 0; j <= i; j++)
             temp -= residual[j] * impulse_resp[i - j];
 
-        buf[i] = av_clipl_int32((temp << 2) + (1 << 15)) >> 16;
+        buf[i] = av_clipl_int32(temp * (1 << 2) + (1 << 15)) >> 16;
     }
 }
 
@@ -808,7 +850,7 @@ static void get_fcb_param(FCBParam *optim, int16_t *impulse_resp,
     for (i = 1; i < SUBFRAME_LEN; i++) {
         temp = ff_g723_1_dot_product(temp_corr + i, temp_corr,
                                      SUBFRAME_LEN - i);
-        impulse_corr[i] = av_clipl_int32((temp << scale) + (1 << 15)) >> 16;
+        impulse_corr[i] = av_clipl_int32(temp * (1 << scale) + (1 << 15)) >> 16;
     }
 
     /* Compute crosscorrelation of impulse response with residual signal */
@@ -818,7 +860,7 @@ static void get_fcb_param(FCBParam *optim, int16_t *impulse_resp,
         if (scale < 0)
             ccr1[i] = temp >> -scale;
         else
-            ccr1[i] = av_clipl_int32(temp << scale);
+            ccr1[i] = av_clipl_int32(temp * (1 << scale));
     }
 
     /* Search loop */
@@ -838,7 +880,7 @@ static void get_fcb_param(FCBParam *optim, int16_t *impulse_resp,
         min           = 1 << 30;
         max_amp_index = GAIN_LEVELS - 2;
         for (j = max_amp_index; j >= 2; j--) {
-            temp = av_clipl_int32((int64_t) fixed_cb_gain[j] *
+            temp = av_clipl_int32((int64_t) ff_g723_1_fixed_cb_gain[j] *
                                   impulse_corr[0] << 1);
             temp = FFABS(temp - amp);
             if (temp < min) {
@@ -855,7 +897,7 @@ static void get_fcb_param(FCBParam *optim, int16_t *impulse_resp,
                 ccr2[k]      = ccr1[k];
             }
             param.amp_index = max_amp_index + j - 2;
-            amp             = fixed_cb_gain[param.amp_index];
+            amp             = ff_g723_1_fixed_cb_gain[param.amp_index];
 
             param.pulse_sign[0] = (ccr2[param.pulse_pos[0]] < 0) ? -amp : amp;
             temp_corr[param.pulse_pos[0]] = 1;
@@ -867,7 +909,7 @@ static void get_fcb_param(FCBParam *optim, int16_t *impulse_resp,
                         continue;
                     temp = impulse_corr[FFABS(l - param.pulse_pos[k - 1])];
                     temp = av_clipl_int32((int64_t) temp *
-                                          param.pulse_sign[k - 1] << 1);
+                                          param.pulse_sign[k - 1] * 2);
                     ccr2[l] -= temp;
                     temp     = FFABS(ccr2[l]);
                     if (temp > max) {
@@ -891,17 +933,17 @@ static void get_fcb_param(FCBParam *optim, int16_t *impulse_resp,
                 temp = 0;
                 for (l = 0; l <= k; l++) {
                     int prod = av_clipl_int32((int64_t) temp_corr[l] *
-                                              impulse_r[k - l] << 1);
+                                              impulse_r[k - l] * 2);
                     temp = av_clipl_int32(temp + prod);
                 }
-                temp_corr[k] = temp << 2 >> 16;
+                temp_corr[k] = temp >> 14;
             }
 
             /* Compute square of error */
             err = 0;
             for (k = 0; k < SUBFRAME_LEN; k++) {
                 int64_t prod;
-                prod = av_clipl_int32((int64_t) buf[k] * temp_corr[k] << 1);
+                prod = av_clipl_int32((int64_t) buf[k] * temp_corr[k] * 2);
                 err  = av_clipl_int32(err - prod);
                 prod = av_clipl_int32((int64_t) temp_corr[k] * temp_corr[k]);
                 err  = av_clipl_int32(err + prod);
@@ -942,7 +984,7 @@ static void pack_fcb_param(G723_1_Subframe *subfrm, FCBParam *optim,
     for (i = 0; i < SUBFRAME_LEN >> 1; i++) {
         int val = buf[optim->grid_index + (i << 1)];
         if (!val) {
-            subfrm->pulse_pos += combinatorial_table[j][i];
+            subfrm->pulse_pos += ff_g723_1_combinatorial_table[j][i];
         } else {
             subfrm->pulse_sign <<= 1;
             if (val < 0)
@@ -996,10 +1038,9 @@ static void fcb_search(G723_1_ChannelContext *p, int16_t *impulse_resp,
  * @param frame output buffer
  * @param size  size of the buffer
  */
-static int pack_bitstream(G723_1_ChannelContext *p, AVPacket *avpkt)
+static void pack_bitstream(G723_1_ChannelContext *p, AVPacket *avpkt, int info_bits)
 {
     PutBitContext pb;
-    int info_bits = 0;
     int i, temp;
 
     init_put_bits(&pb, avpkt->data, avpkt->size);
@@ -1051,7 +1092,6 @@ static int pack_bitstream(G723_1_ChannelContext *p, AVPacket *avpkt)
     }
 
     flush_put_bits(&pb);
-    return frame_size[info_bits];
 }
 
 static int g723_1_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
@@ -1064,15 +1104,14 @@ static int g723_1_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     int16_t cur_lsp[LPC_ORDER];
     int16_t weighted_lpc[LPC_ORDER * SUBFRAMES << 1];
     int16_t vector[FRAME_LEN + PITCH_MAX];
-    int offset, ret, i, j;
+    int offset, ret, i, j, info_bits = 0;
     int16_t *in, *start;
     HFParam hf[4];
 
     /* duplicate input */
-    start = in = av_malloc(frame->nb_samples * sizeof(int16_t));
+    start = in = av_memdup(frame->data[0], frame->nb_samples * sizeof(int16_t));
     if (!in)
         return AVERROR(ENOMEM);
-    memcpy(in, frame->data[0], frame->nb_samples * sizeof(int16_t));
 
     highpass_filter(in, &p->hpf_fir_mem, &p->hpf_iir_mem);
 
@@ -1164,7 +1203,7 @@ static int g723_1_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
         memmove(p->prev_excitation, p->prev_excitation + SUBFRAME_LEN,
                 sizeof(int16_t) * (PITCH_MAX - SUBFRAME_LEN));
         for (j = 0; j < SUBFRAME_LEN; j++)
-            in[j] = av_clip_int16((in[j] << 1) + impulse_resp[j]);
+            in[j] = av_clip_int16(in[j] * 2 + impulse_resp[j]);
         memcpy(p->prev_excitation + PITCH_MAX - SUBFRAME_LEN, in,
                sizeof(int16_t) * SUBFRAME_LEN);
 
@@ -1183,29 +1222,34 @@ static int g723_1_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     av_free(start);
 
-    if ((ret = ff_alloc_packet2(avctx, avpkt, 24, 0)) < 0)
+    ret = ff_get_encode_buffer(avctx, avpkt, frame_size[info_bits], 0);
+    if (ret < 0)
         return ret;
 
     *got_packet_ptr = 1;
-    avpkt->size = pack_bitstream(p, avpkt);
+    pack_bitstream(p, avpkt, info_bits);
     return 0;
 }
 
-static const AVCodecDefault defaults[] = {
+static const FFCodecDefault defaults[] = {
     { "b", "6300" },
     { NULL },
 };
 
-AVCodec ff_g723_1_encoder = {
-    .name           = "g723_1",
-    .long_name      = NULL_IF_CONFIG_SMALL("G.723.1"),
-    .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = AV_CODEC_ID_G723_1,
+const FFCodec ff_g723_1_encoder = {
+    .p.name         = "g723_1",
+    CODEC_LONG_NAME("G.723.1"),
+    .p.type         = AVMEDIA_TYPE_AUDIO,
+    .p.id           = AV_CODEC_ID_G723_1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .priv_data_size = sizeof(G723_1_Context),
     .init           = g723_1_encode_init,
-    .encode2        = g723_1_encode_frame,
+    FF_CODEC_ENCODE_CB(g723_1_encode_frame),
     .defaults       = defaults,
-    .sample_fmts    = (const enum AVSampleFormat[]) {
+    .p.sample_fmts  = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE
+    },
+    .p.ch_layouts   = (const AVChannelLayout[]){
+        AV_CHANNEL_LAYOUT_MONO, { 0 }
     },
 };

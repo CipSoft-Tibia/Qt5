@@ -2,13 +2,11 @@
 # dependencies to a minimal set.
 include_rules = [
   "-components",
-  "+components/browser_watcher",
   "+components/component_updater",
-  "+components/compression",
+  "+components/flags_ui",
   "+components/metrics",
   "+components/network_time",
   "+components/prefs",
-  "+components/sync",
   "+components/variations",
   "+components/version_info",
   "+content/public/test",
@@ -16,10 +14,11 @@ include_rules = [
   "+extensions/buildflags",
   "+mojo/public/cpp",
   "+services/service_manager/public/cpp",
+  "+services/network/test",
   "+third_party/metrics_proto",
   "+third_party/zlib/google",
   "-net",
-  "+url"
+  "+url",
 ]
 
 specific_include_rules = {

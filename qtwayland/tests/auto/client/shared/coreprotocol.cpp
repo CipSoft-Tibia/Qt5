@@ -1,35 +1,25 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "coreprotocol.h"
 #include "datadevice.h"
 
 namespace MockCompositor {
+
+Surface::Surface(WlCompositor *wlCompositor, wl_client *client, int id, int version)
+    : QtWaylandServer::wl_surface(client, id, version)
+    , m_wlCompositor(wlCompositor)
+    , m_wlshell(wlCompositor->m_compositor->m_type == CoreCompositor::CompositorType::Legacy)
+{
+}
+
+Surface::~Surface()
+{
+    // TODO: maybe make sure buffers are released?
+    qDeleteAll(m_commits);
+    if (m_wlShellSurface)
+        m_wlShellSurface->m_surface = nullptr;
+}
 
 void Surface::sendFrameCallbacks()
 {
@@ -55,6 +45,11 @@ void Surface::sendLeave(Output *output)
         wl_surface::send_leave(resource()->handle, outputResource->handle);
 }
 
+void Surface::map()
+{
+    m_mapped = true;
+}
+
 void Surface::surface_destroy_resource(Resource *resource)
 {
     Q_UNUSED(resource);
@@ -65,14 +60,29 @@ void Surface::surface_destroy_resource(Resource *resource)
     delete this;
 }
 
+void Surface::surface_destroy(Resource *resource)
+{
+    if (m_wlShellSurface) // on wl-shell the shell surface is automatically destroyed with the surface
+        wl_resource_destroy(m_wlShellSurface->resource()->handle);
+    Q_ASSERT(!m_wlShellSurface);
+    wl_resource_destroy(resource->handle);
+}
+
 void Surface::surface_attach(Resource *resource, wl_resource *buffer, int32_t x, int32_t y)
 {
     Q_UNUSED(resource);
-    QPoint offset(x, y);
-    m_pending.buffer = fromResource<Buffer>(buffer);
-    m_pending.commitSpecific.attachOffset = offset;
-    m_pending.commitSpecific.attached = true;
-    emit attach(buffer, offset);
+    if (m_wlshell) {
+        m_buffer = buffer;
+        if (!buffer)
+            m_image = QImage();
+    } else {
+        QPoint offset(x, y);
+        m_pending.buffer = fromResource<Buffer>(buffer);
+        m_pending.commitSpecific.attachOffset = offset;
+        m_pending.commitSpecific.attached = true;
+
+        emit attach(buffer, offset);
+    }
 }
 
 void Surface::surface_set_buffer_scale(QtWaylandServer::wl_surface::Resource *resource, int32_t scale)
@@ -84,32 +94,63 @@ void Surface::surface_set_buffer_scale(QtWaylandServer::wl_surface::Resource *re
 void Surface::surface_commit(Resource *resource)
 {
     Q_UNUSED(resource);
-    m_committed = m_pending;
-    m_commits.append(new DoubleBufferedState(m_committed));
 
-    if (auto *frame = m_pending.commitSpecific.frame)
-        m_waitingFrameCallbacks.append(frame);
+    if (m_wlshell) {
+        if (m_buffer) {
+            struct ::wl_shm_buffer *shm_buffer = wl_shm_buffer_get(m_buffer);
+            if (shm_buffer) {
+                int stride = wl_shm_buffer_get_stride(shm_buffer);
+                uint format = wl_shm_buffer_get_format(shm_buffer);
+                Q_UNUSED(format);
+                void *data = wl_shm_buffer_get_data(shm_buffer);
+                const uchar *char_data = static_cast<const uchar *>(data);
+                QImage img(char_data, wl_shm_buffer_get_width(shm_buffer), wl_shm_buffer_get_height(shm_buffer), stride, QImage::Format_ARGB32_Premultiplied);
+                m_image = img;
+            }
+        }
 
-    m_pending.commitSpecific = PerCommitData();
-    emit commit();
-    if (m_committed.commitSpecific.attached)
-        emit bufferCommitted();
+        for (wl_resource *frameCallback : std::exchange(m_frameCallbackList, {})) {
+            auto time = m_wlCompositor->m_compositor->currentTimeMilliseconds();
+            wl_callback_send_done(frameCallback, time);
+            wl_resource_destroy(frameCallback);
+        }
+    } else {
+        m_committed = m_pending;
+        m_commits.append(new DoubleBufferedState(m_committed));
+
+        if (auto *frame = m_pending.commitSpecific.frame)
+            m_waitingFrameCallbacks.append(frame);
+
+        m_pending.commitSpecific = PerCommitData();
+        emit commit();
+        if (m_committed.commitSpecific.attached)
+            emit bufferCommitted();
+    }
 }
 
 void Surface::surface_frame(Resource *resource, uint32_t callback)
 {
-    // Although valid, there is really no point having multiple frame requests in the same commit.
-    // Make sure we don't do it
-    QCOMPARE(m_pending.commitSpecific.frame, nullptr);
+    if (m_wlshell) {
+        wl_resource *frameCallback = wl_resource_create(resource->client(), &wl_callback_interface, 1, callback);
+        m_frameCallbackList << frameCallback;
+    } else {
+        // Although valid, there is really no point having multiple frame requests in the same commit.
+        // Make sure we don't do it
+        QCOMPARE(m_pending.commitSpecific.frame, nullptr);
 
-    auto *frame = new Callback(resource->client(), callback, 1);
-    m_pending.commitSpecific.frame = frame;
+        auto *frame = new Callback(resource->client(), callback, 1);
+        m_pending.commitSpecific.frame = frame;
+    }
 }
 
 bool WlCompositor::isClean() {
-    for (auto *surface : qAsConst(m_surfaces)) {
-        if (!CursorRole::fromSurface(surface))
-            return false;
+    for (auto *surface : std::as_const(m_surfaces)) {
+        if (!CursorRole::fromSurface(surface)) {
+            if (m_compositor->m_type != CoreCompositor::CompositorType::Legacy)
+                return false;
+            if (surface->isMapped())
+                return false;
+        }
     }
     return true;
 }
@@ -119,7 +160,7 @@ QString WlCompositor::dirtyMessage()
     if (isClean())
         return "clean";
     QStringList messages;
-    for (auto *s : qAsConst(m_surfaces)) {
+    for (auto *s : std::as_const(m_surfaces)) {
         QString role = s->m_role ? s->m_role->staticMetaObject.className(): "none/unknown";
         messages << "Surface with role: " + role;
     }
@@ -185,6 +226,8 @@ void Output::output_bind_resource(QtWaylandServer::wl_output::Resource *resource
 
     if (m_version >= WL_OUTPUT_DONE_SINCE_VERSION)
         wl_output::send_done(resource->handle);
+
+    Q_EMIT outputBound(resource);
 }
 
 // Seat stuff
@@ -295,12 +338,13 @@ uint Pointer::sendEnter(Surface *surface, const QPointF &position)
 
     uint serial = m_seat->m_compositor->nextSerial();
     m_enterSerials << serial;
-    m_cursorRole = nullptr; // According to the protocol, the pointer image is undefined after enter
+    m_cursorRole.clear(); // According to the protocol, the pointer image is undefined after enter
 
     wl_client *client = surface->resource()->client();
     const auto pointerResources = resourceMap().values(client);
-    for (auto *r : pointerResources)
+    for (auto *r : pointerResources) {
         wl_pointer::send_enter(r->handle, serial, surface->resource()->handle, x ,y);
+    }
     return serial;
 }
 
@@ -381,18 +425,36 @@ void Pointer::sendFrame(wl_client *client)
         send_frame(r->handle);
 }
 
+void Pointer::sendAxisValue120(wl_client *client, QtWaylandServer::wl_pointer::axis axis, int value120)
+{
+    const auto pointerResources = resourceMap().values(client);
+    for (auto *r : pointerResources)
+        send_axis_value120(r->handle, axis, value120);
+}
+
+void Pointer::sendAxisRelativeDirection(wl_client *client, QtWaylandServer::wl_pointer::axis axis, QtWaylandServer::wl_pointer::axis_relative_direction direction)
+{
+    const auto pointerResources = resourceMap().values(client);
+    for (auto *r : pointerResources)
+        send_axis_relative_direction(r->handle, axis, direction);
+}
+
 void Pointer::pointer_set_cursor(Resource *resource, uint32_t serial, wl_resource *surface, int32_t hotspot_x, int32_t hotspot_y)
 {
     Q_UNUSED(resource);
-    auto *s = fromResource<Surface>(surface);
-    QVERIFY(s);
 
-    if (s->m_role) {
-        m_cursorRole = CursorRole::fromSurface(s);
-        QVERIFY(m_cursorRole);
+    if (!surface) {
+        m_cursorRole = nullptr;
     } else {
-        m_cursorRole = new CursorRole(s); //TODO: make sure we don't leak CursorRole
-        s->m_role = m_cursorRole;
+        auto *s = fromResource<Surface>(surface);
+        QVERIFY(s);
+        if (s->m_role) {
+            m_cursorRole = CursorRole::fromSurface(s);
+            QVERIFY(m_cursorRole);
+        } else {
+            m_cursorRole = new CursorRole(s); //TODO: make sure we don't leak CursorRole
+            s->m_role = m_cursorRole;
+        }
     }
 
     // Directly checking the last serial would be racy, we may just have sent leaves/enters which
@@ -486,13 +548,14 @@ uint Keyboard::sendKey(wl_client *client, uint key, uint state)
     auto time = m_seat->m_compositor->currentTimeMilliseconds();
     uint serial = m_seat->m_compositor->nextSerial();
     const auto pointerResources = resourceMap().values(client);
-    for (auto *r : pointerResources)
+    for (auto *r : pointerResources) {
         send_key(r->handle, serial, time, key, state);
+    }
     return serial;
 }
 
 // Shm implementation
-Shm::Shm(CoreCompositor *compositor, QVector<format> formats, int version)
+Shm::Shm(CoreCompositor *compositor, QList<format> formats, int version)
     : QtWaylandServer::wl_shm(compositor->m_display, version)
     , m_compositor(compositor)
     , m_formats(formats)
@@ -504,7 +567,7 @@ Shm::Shm(CoreCompositor *compositor, QVector<format> formats, int version)
 
 bool Shm::isClean()
 {
-//    for (ShmPool *pool : qAsConst(m_pools)) {
+//    for (ShmPool *pool : std::as_const(m_pools)) {
 //        //TODO: return false if not cursor buffer
 //        if (pool->m_buffers.isEmpty()) {
 //            return false;
@@ -539,6 +602,40 @@ void ShmPool::shm_pool_destroy_resource(Resource *resource)
     bool removed = m_shm->m_pools.removeOne(this);
     Q_ASSERT(removed);
     delete this;
+}
+
+WlShell::WlShell(CoreCompositor *compositor, int version)
+    : QtWaylandServer::wl_shell(compositor->m_display, version)
+    , m_compositor(compositor)
+{
+}
+
+void WlShell::shell_get_shell_surface(Resource *resource, uint32_t id, wl_resource *surface)
+{
+    auto *s = fromResource<Surface>(surface);
+    auto *wlShellSurface = new WlShellSurface(this, resource->client(), id, s);
+    m_wlShellSurfaces << wlShellSurface;
+    emit wlShellSurfaceCreated(wlShellSurface);
+}
+
+WlShellSurface::WlShellSurface(WlShell *wlShell, wl_client *client, int id, Surface *surface)
+    : QtWaylandServer::wl_shell_surface(client, id, 1)
+    , m_wlShell(wlShell)
+    , m_surface(surface)
+{
+    surface->m_wlShellSurface = this;
+    surface->map();
+}
+
+WlShellSurface::~WlShellSurface()
+{
+    if (m_surface)
+        m_surface->m_wlShellSurface = nullptr;
+}
+
+void WlShellSurface::sendConfigure(uint32_t edges, int32_t width, int32_t height)
+{
+    wl_shell_surface::send_configure(edges, width, height);
 }
 
 } // namespace MockCompositor

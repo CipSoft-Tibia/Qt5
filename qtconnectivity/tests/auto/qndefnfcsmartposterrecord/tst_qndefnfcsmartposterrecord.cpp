@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Research In Motion
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNfc module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Research In Motion
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 
@@ -136,16 +111,12 @@ QString tst_QNdefNfcSmartPosterRecord::getTitle(const QString& locale)
 
 void tst_QNdefNfcSmartPosterRecord::checkLocale(const QNdefNfcSmartPosterRecord& record, const QStringList& localeList)
 {
-    QList<QString> locales = _textRecords.keys();
-
-    for (int i = 0; i < locales.size(); i++) {
-        if (localeList.contains(locales[i])) {
-            QVERIFY(record.hasTitle(locales[i]));
-        }
-
-        else {
-            QVERIFY(!record.hasTitle(locales[i]));
-        }
+    for (auto it = _textRecords.cbegin(), end = _textRecords.cend(); it != end; ++it) {
+        const QString &locale = it.key();
+        if (localeList.contains(locale))
+            QVERIFY(record.hasTitle(locale));
+        else
+            QVERIFY(!record.hasTitle(locale));
     }
 
     if (localeList.empty()) {
@@ -187,7 +158,7 @@ void tst_QNdefNfcSmartPosterRecord::tst_emptyRecord()
 
     quint32 size = 0;
     QCOMPARE(record.size(), size);
-    QCOMPARE(record.typeInfo(), QByteArray());
+    QCOMPARE(record.typeInfo(), QString());
 
     QVERIFY(record.isRecordType<QNdefNfcSmartPosterRecord>());
     QVERIFY(!record.isRecordType<QNdefNfcTextRecord>());
@@ -229,6 +200,7 @@ void tst_QNdefNfcSmartPosterRecord::tst_titles()
     QVERIFY(record.addTitle(deRecord));
 
     QCOMPARE(record.titleCount(), 2);
+    QCOMPARE(record.titleRecord(1), deRecord);
     {
         QStringList locales;
         locales << "en" << "de";
@@ -240,6 +212,7 @@ void tst_QNdefNfcSmartPosterRecord::tst_titles()
     QVERIFY(record.addTitle(frRecord));
 
     QCOMPARE(record.titleCount(), 3);
+    QCOMPARE(record.titleRecord(2), frRecord);
     {
         QStringList locales;
         locales << "en" << "de" << "fr";
@@ -324,6 +297,7 @@ void tst_QNdefNfcSmartPosterRecord::tst_uri()
 void tst_QNdefNfcSmartPosterRecord::tst_action()
 {
     QNdefNfcSmartPosterRecord record;
+    QVERIFY(!record.hasAction());
 
     record.setAction(QNdefNfcSmartPosterRecord::DoAction);
     QVERIFY(record.hasAction());
@@ -333,6 +307,10 @@ void tst_QNdefNfcSmartPosterRecord::tst_action()
     QVERIFY(record.hasAction());
     QCOMPARE(record.action(), QNdefNfcSmartPosterRecord::SaveAction);
 
+    record.setAction(QNdefNfcSmartPosterRecord::EditAction);
+    QVERIFY(record.hasAction());
+    QCOMPARE(record.action(), QNdefNfcSmartPosterRecord::EditAction);
+
     record.setAction(QNdefNfcSmartPosterRecord::UnspecifiedAction);
     QVERIFY(record.hasAction());
     QCOMPARE(record.action(), QNdefNfcSmartPosterRecord::UnspecifiedAction);
@@ -341,6 +319,7 @@ void tst_QNdefNfcSmartPosterRecord::tst_action()
 void tst_QNdefNfcSmartPosterRecord::tst_icon()
 {
     QNdefNfcSmartPosterRecord record;
+    QVERIFY(!record.hasIcon());
 
     QNdefNfcIconRecord icon;
     record.addIcon(icon);
@@ -366,6 +345,8 @@ void tst_QNdefNfcSmartPosterRecord::tst_icon()
     QCOMPARE(record.iconCount(), 1);
     QCOMPARE(record.icon(), QByteArray("icondata"));
     QCOMPARE(record.icon(mimeType), QByteArray("icondata"));
+    // invalid type => empty data
+    QCOMPARE(record.icon(QByteArray("mime")), QByteArray());
 
     QNdefNfcIconRecord icon2;
     icon2.setData("iconrecorddata");
@@ -387,10 +368,15 @@ void tst_QNdefNfcSmartPosterRecord::tst_icon()
     QCOMPARE(iconRecords[1], icon2);
 
     QVERIFY(record.removeIcon(mimeType));
+    QVERIFY(!record.removeIcon(QByteArray("mime")));
     QCOMPARE(record.iconCount(), 1);
     iconRecords = record.iconRecords();
     QCOMPARE(iconRecords.size(), 1);
     QCOMPARE(iconRecords[0], icon2);
+
+    QVERIFY(record.removeIcon(icon2));
+    QVERIFY(!record.removeIcon(icon3)); // already removed
+    QCOMPARE(record.iconCount(), 0);
 
     QList<QNdefNfcIconRecord> iconList;
 
@@ -398,21 +384,29 @@ void tst_QNdefNfcSmartPosterRecord::tst_icon()
     testIcon.setData("testicondata");
     testIcon.setType("test/data");
 
-    iconList << testIcon;
+    iconList << testIcon << icon2;
     record.setIcons(iconList);
 
-    QCOMPARE(record.iconCount(), 1);
+    QCOMPARE(record.iconCount(), 2);
     iconRecords = record.iconRecords();
-    QCOMPARE(iconRecords.size(), 1);
+    QCOMPARE(iconRecords.size(), 2);
 
     QCOMPARE(iconRecords[0], testIcon);
+    QCOMPARE(iconRecords[1], icon2);
 }
 
 void tst_QNdefNfcSmartPosterRecord::tst_size()
 {
     QNdefNfcSmartPosterRecord record;
+    QVERIFY(!record.hasSize());
+    QCOMPARE(record.size(), 0U);
 
     quint32 size = 1024;
+    record.setSize(size);
+    QCOMPARE(record.size(), size);
+    QVERIFY(record.hasSize());
+
+    size = 0x12345678; // check that all bytes are stored correctly
     record.setSize(size);
     QCOMPARE(record.size(), size);
     QVERIFY(record.hasSize());
@@ -426,13 +420,20 @@ void tst_QNdefNfcSmartPosterRecord::tst_size()
 void tst_QNdefNfcSmartPosterRecord::tst_typeInfo()
 {
     QNdefNfcSmartPosterRecord record;
+    QVERIFY(!record.hasTypeInfo());
+    QVERIFY(record.typeInfo().isEmpty());
 
-    QByteArray typeInfo("typeinfo");
+    QString typeInfo("typeinfo");
     record.setTypeInfo(typeInfo);
     QCOMPARE(record.typeInfo(), typeInfo);
     QVERIFY(record.hasTypeInfo());
 
     typeInfo = "moreinfo";
+    record.setTypeInfo(typeInfo);
+    QCOMPARE(record.typeInfo(), typeInfo);
+    QVERIFY(record.hasTypeInfo());
+
+    typeInfo = QString();
     record.setTypeInfo(typeInfo);
     QCOMPARE(record.typeInfo(), typeInfo);
     QVERIFY(record.hasTypeInfo());
@@ -480,11 +481,11 @@ void tst_QNdefNfcSmartPosterRecord::tst_construct()
     QVERIFY(iconRecords.value(1).data().isEmpty());
 
     QVERIFY(sprecord.hasSize());
-    quint32 size = 1024;
+    const quint32 size = 1024;
     QCOMPARE(sprecord.size(), size);
 
     QVERIFY(sprecord.hasTypeInfo());
-    QCOMPARE(sprecord.typeInfo(), QByteArray("text/html"));
+    QCOMPARE(sprecord.typeInfo(), QString("text/html"));
 
     QVERIFY(record == sprecord);
     QVERIFY(!(record != sprecord));
@@ -531,7 +532,7 @@ void tst_QNdefNfcSmartPosterRecord::tst_downcast()
     QByteArray spPayload = sprecord.payload();
 
     // Check length is longer on the base
-    QVERIFY(basePayload.length() > record.payload().length());
+    QVERIFY(basePayload.size() > record.payload().size());
 
     // Check the payloads are the same
     QCOMPARE(basePayload, spPayload);

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,8 +10,6 @@
 #include <set>
 
 #include "chrome/browser/devtools/device/android_device_manager.h"
-#include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "mojo/public/cpp/bindings/remote.h"
 #include "net/base/host_port_pair.h"
 #include "services/network/public/mojom/host_resolver.mojom-forward.h"
 
@@ -22,18 +20,18 @@ class TCPDeviceProvider : public AndroidDeviceManager::DeviceProvider {
   using HostPortSet = std::set<net::HostPortPair>;
   explicit TCPDeviceProvider(const HostPortSet& targets);
 
-  void QueryDevices(const SerialsCallback& callback) override;
+  void QueryDevices(SerialsCallback callback) override;
 
   void QueryDeviceInfo(const std::string& serial,
-                       const DeviceInfoCallback& callback) override;
+                       DeviceInfoCallback callback) override;
 
   void OpenSocket(const std::string& serial,
                   const std::string& socket_name,
-                  const SocketCallback& callback) override;
+                  SocketCallback callback) override;
 
   void ReleaseDevice(const std::string& serial) override;
 
-  void set_release_callback_for_test(const base::Closure& callback);
+  void set_release_callback_for_test(base::OnceClosure callback);
 
   HostPortSet get_targets_for_test() { return targets_; }
 
@@ -41,7 +39,7 @@ class TCPDeviceProvider : public AndroidDeviceManager::DeviceProvider {
   ~TCPDeviceProvider() override;
 
   HostPortSet targets_;
-  base::Closure release_callback_;
+  base::OnceClosure release_callback_;
 };
 
 #endif  // CHROME_BROWSER_DEVTOOLS_DEVICE_TCP_DEVICE_PROVIDER_H_

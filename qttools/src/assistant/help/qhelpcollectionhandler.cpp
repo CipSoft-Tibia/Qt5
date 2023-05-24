@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Assistant of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpcollectionhandler_p.h"
 #include "qhelp_global.h"
@@ -47,8 +11,9 @@
 #include <QtCore/QDir>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QList>
+#include <QtCore/QMultiMap>
 #include <QtCore/QTimer>
-#include <QtCore/QVector>
 #include <QtCore/QVersionNumber>
 
 #include <QtHelp/QHelpLink>
@@ -61,6 +26,8 @@ QT_BEGIN_NAMESPACE
 class Transaction
 {
 public:
+    Q_DISABLE_COPY_MOVE(Transaction);
+
     Transaction(const QString &connectionName)
         : m_db(QSqlDatabase::database(connectionName)),
           m_inTransaction(m_db.driver()->hasFeature(QSqlDriver::Transactions))
@@ -107,8 +74,9 @@ bool QHelpCollectionHandler::isDBOpened() const
 {
     if (m_query)
         return true;
-    emit error(tr("The collection file \"%1\" is not set up yet.").
-               arg(m_collectionFile));
+    auto *that = const_cast<QHelpCollectionHandler *>(this);
+    emit that->error(tr("The collection file \"%1\" is not set up yet.").
+                     arg(m_collectionFile));
     return false;
 }
 
@@ -203,7 +171,7 @@ bool QHelpCollectionHandler::openCollectionFile()
 
     m_query->exec(queryString);
     m_query->next();
-    if (m_query->value(0).toInt() != newTables.count()) {
+    if (m_query->value(0).toInt() != newTables.size()) {
         if (!recreateIndexAndNamespaceFilterTables(m_query)) {
             emit error(tr("Cannot create index tables in file %1.").arg(collectionFile()));
             return false;
@@ -237,7 +205,7 @@ bool QHelpCollectionHandler::openCollectionFile()
         timeStamps.append(timeStamp);
     }
 
-    QVector<TimeStamp> toRemove;
+    QList<TimeStamp> toRemove;
     for (const TimeStamp &timeStamp : timeStamps) {
         if (!isTimeStampCorrect(timeStamp))
             toRemove.append(timeStamp);
@@ -803,7 +771,7 @@ bool QHelpCollectionHandler::addCustomFilter(const QString &filterName,
             idsToInsert.removeAll(attributeName);
     }
 
-    for (const QString &id : qAsConst(idsToInsert)) {
+    for (const QString &id : std::as_const(idsToInsert)) {
         m_query->prepare(QLatin1String("INSERT INTO FilterAttributeTable VALUES(NULL, ?)"));
         m_query->bindValue(0, id);
         m_query->exec();
@@ -993,7 +961,7 @@ static QHelpCollectionHandler::FileInfo extractFileInfo(const QUrl &url)
     if (fileInfo.fileName.startsWith(QLatin1Char('/')))
         fileInfo.fileName = fileInfo.fileName.mid(1);
     fileInfo.folderName = fileInfo.fileName.mid(0, fileInfo.fileName.indexOf(QLatin1Char('/'), 1));
-    fileInfo.fileName.remove(0, fileInfo.folderName.length() + 1);
+    fileInfo.fileName.remove(0, fileInfo.folderName.size() + 1);
 
     return fileInfo;
 }
@@ -1136,8 +1104,8 @@ static QString prepareFilterQuery(int attributesCount,
 void bindFilterQuery(QSqlQuery *query, int startingBindPos, const QStringList &filterAttributes)
 {
     for (int i = 0; i < 2; ++i) {
-        for (int j = 0; j < filterAttributes.count(); j++) {
-            query->bindValue(i * filterAttributes.count() + j + startingBindPos,
+        for (int j = 0; j < filterAttributes.size(); j++) {
+            query->bindValue(i * filterAttributes.size() + j + startingBindPos,
                              filterAttributes.at(j));
         }
     }
@@ -1166,7 +1134,7 @@ QString QHelpCollectionHandler::namespaceForFile(const QUrl &url,
                 "AND FolderTable.NamespaceId = NamespaceTable.Id");
 
     const QString filterQuery = filterlessQuery
-            + prepareFilterQuery(filterAttributes.count(),
+            + prepareFilterQuery(filterAttributes.size(),
                                  QLatin1String("FileNameTable"),
                                  QLatin1String("FileId"),
                                  QLatin1String("FileFilterTable"),
@@ -1180,7 +1148,7 @@ QString QHelpCollectionHandler::namespaceForFile(const QUrl &url,
     if (!m_query->exec())
         return QString();
 
-    QVector<QString> namespaceList;
+    QList<QString> namespaceList;
     while (m_query->next())
         namespaceList.append(m_query->value(0).toString());
 
@@ -1235,7 +1203,7 @@ QString QHelpCollectionHandler::namespaceForFile(const QUrl &url,
     if (!m_query->exec())
         return QString();
 
-    QVector<QString> namespaceList;
+    QList<QString> namespaceList;
     while (m_query->next())
         namespaceList.append(m_query->value(0).toString());
 
@@ -1279,7 +1247,7 @@ QStringList QHelpCollectionHandler::files(const QString &namespaceName,
                 "AND NamespaceTable.Name = ?") + extensionQuery;
 
     const QString filterQuery = filterlessQuery
-            + prepareFilterQuery(filterAttributes.count(),
+            + prepareFilterQuery(filterAttributes.size(),
                                  QLatin1String("FileNameTable"),
                                  QLatin1String("FileId"),
                                  QLatin1String("FileFilterTable"),
@@ -1424,7 +1392,7 @@ QStringList QHelpCollectionHandler::indicesForFilter(const QStringList &filterAt
                 "AND IndexTable.NamespaceId = NamespaceTable.Id");
 
     const QString filterQuery = filterlessQuery
-            + prepareFilterQuery(filterAttributes.count(),
+            + prepareFilterQuery(filterAttributes.size(),
                                  QLatin1String("IndexTable"),
                                  QLatin1String("Id"),
                                  QLatin1String("IndexFilterTable"),
@@ -1518,7 +1486,7 @@ QList<QHelpCollectionHandler::ContentsData> QHelpCollectionHandler::contentsForF
                 "AND VersionTable.NamespaceId = NamespaceTable.Id");
 
     const QString filterQuery = filterlessQuery
-            + prepareFilterQuery(filterAttributes.count(),
+            + prepareFilterQuery(filterAttributes.size(),
                                  QLatin1String("ContentsTable"),
                                  QLatin1String("Id"),
                                  QLatin1String("ContentsFilterTable"),
@@ -1546,7 +1514,7 @@ QList<QHelpCollectionHandler::ContentsData> QHelpCollectionHandler::contentsForF
     }
 
     QList<QHelpCollectionHandler::ContentsData> result;
-    for (const auto &versionContents : qAsConst(contentsMap)) {
+    for (const auto &versionContents : std::as_const(contentsMap)) {
         // insert items in the reverse order of version number
         const auto itBegin = versionContents.constBegin();
         auto it = versionContents.constEnd();
@@ -1605,7 +1573,7 @@ QList<QHelpCollectionHandler::ContentsData> QHelpCollectionHandler::contentsForF
     }
 
     QList<QHelpCollectionHandler::ContentsData> result;
-    for (const auto &versionContents : qAsConst(contentsMap)) {
+    for (const auto &versionContents : std::as_const(contentsMap)) {
         // insert items in the reverse order of version number
         const auto itBegin = versionContents.constBegin();
         auto it = versionContents.constEnd();
@@ -2045,7 +2013,7 @@ bool QHelpCollectionHandler::registerIndexTable(const QHelpDBReader::IndexTable 
         const int attributeId = m_query->value(0).toInt();
 
         QVariantList attributeIds;
-        for (int i = 0; i < it.value().count(); i++)
+        for (int i = 0; i < it.value().size(); i++)
             attributeIds.append(attributeId);
 
         m_query->prepare(QLatin1String("INSERT INTO FileFilterTable VALUES(?, ?)"));
@@ -2107,7 +2075,7 @@ bool QHelpCollectionHandler::registerIndexTable(const QHelpDBReader::IndexTable 
         const int attributeId = m_query->value(0).toInt();
 
         QVariantList attributeIds;
-        for (int i = 0; i < it.value().count(); i++)
+        for (int i = 0; i < it.value().size(); i++)
             attributeIds.append(attributeId);
 
         m_query->prepare(QLatin1String("INSERT INTO IndexFilterTable VALUES(?, ?)"));
@@ -2159,7 +2127,7 @@ bool QHelpCollectionHandler::registerIndexTable(const QHelpDBReader::IndexTable 
         const int attributeId = m_query->value(0).toInt();
 
         QVariantList attributeIds;
-        for (int i = 0; i < it.value().count(); i++)
+        for (int i = 0; i < it.value().size(); i++)
             attributeIds.append(attributeId);
 
         m_query->prepare(QLatin1String("INSERT INTO ContentsFilterTable VALUES(?, ?)"));
@@ -2197,7 +2165,7 @@ bool QHelpCollectionHandler::registerIndexTable(const QHelpDBReader::IndexTable 
     m_query->addBindValue(fileName);
     const QFileInfo fi(absoluteDocPath(fileName));
     m_query->addBindValue(fi.size());
-    QDateTime lastModified = fi.lastModified();
+    QDateTime lastModified = fi.lastModified(QTimeZone::UTC);
     if (qEnvironmentVariableIsSet("SOURCE_DATE_EPOCH")) {
         const QString sourceDateEpochStr = qEnvironmentVariable("SOURCE_DATE_EPOCH");
         bool ok;
@@ -2298,8 +2266,8 @@ bool QHelpCollectionHandler::unregisterIndexTable(int nsId, int vfId)
     return true;
 }
 
-static QUrl buildQUrl(const QString &ns, const QString &folder,
-                      const QString &relFileName, const QString &anchor)
+QUrl QHelpCollectionHandler::buildQUrl(const QString &ns, const QString &folder,
+                                       const QString &relFileName, const QString &anchor)
 {
     QUrl url;
     url.setScheme(QLatin1String("qthelp"));
@@ -2309,45 +2277,51 @@ static QUrl buildQUrl(const QString &ns, const QString &folder,
     return url;
 }
 
-QMap<QString, QUrl> QHelpCollectionHandler::linksForIdentifier(const QString &id,
-                    const QStringList &filterAttributes) const
+QMultiMap<QString, QUrl> QHelpCollectionHandler::linksForIdentifier(
+        const QString &id,
+        const QStringList &filterAttributes) const
 {
     return linksForField(QLatin1String("Identifier"), id, filterAttributes);
 }
 
-QMap<QString, QUrl> QHelpCollectionHandler::linksForKeyword(const QString &keyword,
-                    const QStringList &filterAttributes) const
+QMultiMap<QString, QUrl> QHelpCollectionHandler::linksForKeyword(
+        const QString &keyword,
+        const QStringList &filterAttributes) const
 {
     return linksForField(QLatin1String("Name"), keyword, filterAttributes);
 }
 
-QList<QHelpLink> QHelpCollectionHandler::documentsForIdentifier(const QString &id,
-                         const QStringList &filterAttributes) const
+QList<QHelpLink> QHelpCollectionHandler::documentsForIdentifier(
+        const QString &id,
+        const QStringList &filterAttributes) const
 {
     return documentsForField(QLatin1String("Identifier"), id, filterAttributes);
 }
 
-QList<QHelpLink> QHelpCollectionHandler::documentsForKeyword(const QString &keyword,
-                         const QStringList &filterAttributes) const
+QList<QHelpLink> QHelpCollectionHandler::documentsForKeyword(
+        const QString &keyword,
+        const QStringList &filterAttributes) const
 {
     return documentsForField(QLatin1String("Name"), keyword, filterAttributes);
 }
 
-QMap<QString, QUrl> QHelpCollectionHandler::linksForField(const QString &fieldName,
-                    const QString &fieldValue,
-                    const QStringList &filterAttributes) const
+QMultiMap<QString, QUrl> QHelpCollectionHandler::linksForField(
+        const QString &fieldName,
+        const QString &fieldValue,
+        const QStringList &filterAttributes) const
 {
-    QMap<QString, QUrl> linkMap;
+    QMultiMap<QString, QUrl> linkMap;
     const auto documents = documentsForField(fieldName, fieldValue, filterAttributes);
     for (const auto &document : documents)
-        static_cast<QMultiMap<QString, QUrl> &>(linkMap).insert(document.title, document.url);
+        linkMap.insert(document.title, document.url);
 
     return linkMap;
 }
 
-QList<QHelpLink> QHelpCollectionHandler::documentsForField(const QString &fieldName,
-                    const QString &fieldValue,
-                    const QStringList &filterAttributes) const
+QList<QHelpLink> QHelpCollectionHandler::documentsForField(
+        const QString &fieldName,
+        const QString &fieldValue,
+        const QStringList &filterAttributes) const
 {
     QList<QHelpLink> docList;
 
@@ -2372,7 +2346,7 @@ QList<QHelpLink> QHelpCollectionHandler::documentsForField(const QString &fieldN
                 "AND IndexTable.%1 = ?").arg(fieldName);
 
     const QString filterQuery = filterlessQuery
-            + prepareFilterQuery(filterAttributes.count(),
+            + prepareFilterQuery(filterAttributes.size(),
                                  QLatin1String("IndexTable"),
                                  QLatin1String("Id"),
                                  QLatin1String("IndexFilterTable"),
@@ -2398,45 +2372,51 @@ QList<QHelpLink> QHelpCollectionHandler::documentsForField(const QString &fieldN
     return docList;
 }
 
-QMap<QString, QUrl> QHelpCollectionHandler::linksForIdentifier(const QString &id,
-                    const QString &filterName) const
+QMultiMap<QString, QUrl> QHelpCollectionHandler::linksForIdentifier(
+        const QString &id,
+        const QString &filterName) const
 {
     return linksForField(QLatin1String("Identifier"), id, filterName);
 }
 
-QMap<QString, QUrl> QHelpCollectionHandler::linksForKeyword(const QString &keyword,
-                    const QString &filterName) const
+QMultiMap<QString, QUrl> QHelpCollectionHandler::linksForKeyword(
+        const QString &keyword,
+        const QString &filterName) const
 {
     return linksForField(QLatin1String("Name"), keyword, filterName);
 }
 
-QList<QHelpLink> QHelpCollectionHandler::documentsForIdentifier(const QString &id,
-                         const QString &filterName) const
+QList<QHelpLink> QHelpCollectionHandler::documentsForIdentifier(
+        const QString &id,
+        const QString &filterName) const
 {
     return documentsForField(QLatin1String("Identifier"), id, filterName);
 }
 
-QList<QHelpLink> QHelpCollectionHandler::documentsForKeyword(const QString &keyword,
-                         const QString &filterName) const
+QList<QHelpLink> QHelpCollectionHandler::documentsForKeyword(
+        const QString &keyword,
+        const QString &filterName) const
 {
     return documentsForField(QLatin1String("Name"), keyword, filterName);
 }
 
-QMap<QString, QUrl> QHelpCollectionHandler::linksForField(const QString &fieldName,
-                    const QString &fieldValue,
-                    const QString &filterName) const
+QMultiMap<QString, QUrl> QHelpCollectionHandler::linksForField(
+        const QString &fieldName,
+        const QString &fieldValue,
+        const QString &filterName) const
 {
-    QMap<QString, QUrl> linkMap;
+    QMultiMap<QString, QUrl> linkMap;
     const auto documents = documentsForField(fieldName, fieldValue, filterName);
     for (const auto &document : documents)
-        static_cast<QMultiMap<QString, QUrl> &>(linkMap).insert(document.title, document.url);
+        linkMap.insert(document.title, document.url);
 
     return linkMap;
 }
 
-QList<QHelpLink> QHelpCollectionHandler::documentsForField(const QString &fieldName,
-                                           const QString &fieldValue,
-                                           const QString &filterName) const
+QList<QHelpLink> QHelpCollectionHandler::documentsForField(
+        const QString &fieldName,
+        const QString &fieldValue,
+        const QString &filterName) const
 {
     QList<QHelpLink> docList;
 

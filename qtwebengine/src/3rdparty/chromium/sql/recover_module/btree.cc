@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <limits>
+#include <ostream>
+#include <tuple>
 #include <type_traits>
 
 #include "base/check_op.h"
@@ -62,7 +64,7 @@ int InnerPageDecoder::TryAdvance() {
     // TODO(pwnall): UMA the error code.
 
     next_read_index_ = cell_count_ + 1;  // End the reading process.
-    return DatabasePageReader::kInvalidPageId;
+    return DatabasePageReader::kHighestInvalidPageId;
   }
 
   const uint8_t* const page_data = db_reader_->page_data();
@@ -84,11 +86,11 @@ int InnerPageDecoder::TryAdvance() {
     // Each cell needs 1 byte for the rowid varint, in addition to the 4 bytes
     // for the child page number that will be read below. Skip cells that
     // obviously go over the page end.
-    return DatabasePageReader::kInvalidPageId;
+    return DatabasePageReader::kHighestInvalidPageId;
   }
   if (cell_pointer < kFirstCellOfsetInnerPageOffset) {
     // The pointer points into the cell's header.
-    return DatabasePageReader::kInvalidPageId;
+    return DatabasePageReader::kHighestInvalidPageId;
   }
 
   return LoadBigEndianInt32(page_data + cell_pointer);

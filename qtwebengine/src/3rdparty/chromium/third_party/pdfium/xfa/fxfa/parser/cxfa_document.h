@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,18 +7,24 @@
 #ifndef XFA_FXFA_PARSER_CXFA_DOCUMENT_H_
 #define XFA_FXFA_PARSER_CXFA_DOCUMENT_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <map>
 #include <memory>
 #include <vector>
 
 #include "core/fxcrt/unowned_ptr.h"
+#include "core/fxcrt/widestring.h"
 #include "fxjs/gc/heap.h"
-#include "third_party/base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/base/span.h"
 #include "v8/include/cppgc/garbage-collected.h"
 #include "v8/include/cppgc/member.h"
 #include "v8/include/cppgc/persistent.h"
 #include "v8/include/cppgc/visitor.h"
 #include "xfa/fxfa/fxfa.h"
+#include "xfa/fxfa/fxfa_basic.h"
 #include "xfa/fxfa/parser/cxfa_localemgr.h"
 #include "xfa/fxfa/parser/cxfa_nodeowner.h"
 
@@ -65,8 +71,8 @@ class CXFA_Document final : public cppgc::GarbageCollected<CXFA_Document> {
     virtual ~LayoutProcessorIface();
 
     virtual void Trace(cppgc::Visitor* visitor) const;
-    virtual void SetForceRelayout(bool enable) = 0;
-    virtual void AddChangedContainer(CXFA_Node* pContainer) = 0;
+    virtual void SetForceRelayout() = 0;
+    virtual void SetHasChangedContainer() = 0;
 
     void SetDocument(CXFA_Document* pDocument) { m_pDocument = pDocument; }
     CXFA_Document* GetDocument() const { return m_pDocument; }
@@ -89,14 +95,14 @@ class CXFA_Document final : public cppgc::GarbageCollected<CXFA_Document> {
   // won't have an isolate set into it.
   CFXJSE_Engine* GetScriptContext() const;
 
-  CXFA_FFNotify* GetNotify() const { return notify_.Get(); }
+  CXFA_FFNotify* GetNotify() const { return notify_; }
   CXFA_NodeOwner* GetNodeOwner() { return node_owner_; }
   cppgc::Heap* GetHeap() const;
   CXFA_LocaleMgr* GetLocaleMgr();
   CXFA_Object* GetXFAObject(XFA_HashCode wsNodeNameHash);
   CXFA_Node* GetNodeByID(CXFA_Node* pRoot, WideStringView wsID) const;
   CXFA_Node* GetNotBindNode(
-      const std::vector<UnownedPtr<CXFA_Object>>& arrayNodes) const;
+      pdfium::span<cppgc::Member<CXFA_Object>> arrayNodes) const;
 
   LayoutProcessorIface* GetLayoutProcessor() const {
     return m_pLayoutProcessor;
@@ -119,7 +125,7 @@ class CXFA_Document final : public cppgc::GarbageCollected<CXFA_Document> {
 
   void DoProtoMerge();
   void DoDataMerge();
-  void DoDataRemerge(bool bDoDataMerge);
+  void DoDataRemerge();
   CXFA_Node* DataMerge_CopyContainer(CXFA_Node* pTemplateNode,
                                      CXFA_Node* pFormNode,
                                      CXFA_Node* pDataScope,
@@ -140,6 +146,19 @@ class CXFA_Document final : public cppgc::GarbageCollected<CXFA_Document> {
   void SetPendingNodesUnusedAndUnbound();
 
  private:
+  friend class CXFA_DocumentTest_ParseXFAVersion_Test;
+  friend class CXFA_DocumentTest_ParseUseHref_Test;
+  friend class CXFA_DocumentTest_ParseUse_Test;
+
+  static XFA_VERSION ParseXFAVersion(const WideString& wsTemplateNS);
+  static void ParseUseHref(const WideString& wsUseVal,
+                           WideStringView& wsURI,
+                           WideStringView& wsID,
+                           WideStringView& wsSOM);
+  static void ParseUse(const WideString& wsUseVal,
+                       WideStringView& wsID,
+                       WideStringView& wsSOM);
+
   CXFA_Document(CXFA_FFNotify* notify,
                 cppgc::Heap* heap,
                 LayoutProcessorIface* pLayout);
@@ -160,7 +179,7 @@ class CXFA_Document final : public cppgc::GarbageCollected<CXFA_Document> {
   std::map<uint32_t, cppgc::Member<CXFA_Node>> m_rgGlobalBinding;
   std::vector<cppgc::Member<CXFA_Node>> m_pPendingPageSet;
   XFA_VERSION m_eCurVersionMode = XFA_VERSION_DEFAULT;
-  Optional<bool> m_Interactive;
+  absl::optional<bool> m_Interactive;
   bool m_bStrictScoping = false;
   bool m_bScripting = false;
 };

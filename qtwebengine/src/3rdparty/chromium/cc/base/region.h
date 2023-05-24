@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,16 +11,15 @@
 #include "cc/base/base_export.h"
 #include "third_party/skia/include/core/SkRegion.h"
 #include "ui/gfx/geometry/rect.h"
-#include "ui/gfx/skia_util.h"
+#include "ui/gfx/geometry/skia_conversions.h"
 
 class SkPath;
 
 namespace base {
-class Value;
 namespace trace_event {
 class TracedValue;
 }
-}
+}  // namespace base
 
 namespace gfx {
 class Vector2d;
@@ -40,6 +39,11 @@ class CC_BASE_EXPORT Region {
   const Region& operator=(const gfx::Rect& rect);
   const Region& operator=(const Region& region);
   const Region& operator+=(const gfx::Vector2d& offset);
+
+  // Returns a reference to a global empty Region. This should only be used for
+  // functions that need to return a reference to a Region, not instead of the
+  // default constructor.
+  static const Region& Empty();
 
   void Swap(Region* region);
   void Clear();
@@ -71,7 +75,6 @@ class CC_BASE_EXPORT Region {
   }
 
   std::string ToString() const;
-  std::unique_ptr<base::Value> AsValue() const;
   void AsValueInto(base::trace_event::TracedValue* array) const;
 
   // Iterator for iterating through the gfx::Rects contained in this Region.

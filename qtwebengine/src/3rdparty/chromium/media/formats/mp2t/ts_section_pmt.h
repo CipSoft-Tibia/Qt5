@@ -1,13 +1,12 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_FORMATS_MP2T_TS_SECTION_PMT_H_
 #define MEDIA_FORMATS_MP2T_TS_SECTION_PMT_H_
 
-#include "base/callback.h"
 #include "base/compiler_specific.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "media/formats/mp2t/descriptors.h"
 #include "media/formats/mp2t/ts_section_psi.h"
 
@@ -22,6 +21,10 @@ class TsSectionPmt : public TsSectionPsi {
       void(int pes_pid, int stream_type, const Descriptors& descriptors)>;
 
   explicit TsSectionPmt(RegisterPesCB register_pes_cb);
+
+  TsSectionPmt(const TsSectionPmt&) = delete;
+  TsSectionPmt& operator=(const TsSectionPmt&) = delete;
+
   ~TsSectionPmt() override;
 
   // Mpeg2TsPsiParser implementation.
@@ -30,8 +33,6 @@ class TsSectionPmt : public TsSectionPsi {
 
  private:
   const RegisterPesCB register_pes_cb_;
-
-  DISALLOW_COPY_AND_ASSIGN(TsSectionPmt);
 };
 
 }  // namespace mp2t

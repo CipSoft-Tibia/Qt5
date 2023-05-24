@@ -1,5 +1,4 @@
-// Copyright (c) 2009, Google Inc.
-// All rights reserved.
+// Copyright 2009 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -48,6 +47,7 @@ LibcurlWrapper::LibcurlWrapper()
 LibcurlWrapper::~LibcurlWrapper() {
   if (init_ok_) {
     (*easy_cleanup_)(curl_);
+    (*global_cleanup_)();
     dlclose(curl_lib_);
   }
 }
@@ -263,6 +263,10 @@ bool LibcurlWrapper::SetFunctionPointers() {
   SET_AND_CHECK_FUNCTION_POINTER(formfree_,
                                  "curl_formfree",
                                  void(*)(curl_httppost*));
+
+  SET_AND_CHECK_FUNCTION_POINTER(global_cleanup_,
+                                 "curl_global_cleanup",
+                                 void(*)(void));
   return true;
 }
 
@@ -299,12 +303,10 @@ bool LibcurlWrapper::SendRequestInner(const string& url,
     (*easy_getinfo_)(curl_, CURLINFO_RESPONSE_CODE, http_status_code);
   }
 
-#ifndef NDEBUG
   if (err_code != CURLE_OK)
     fprintf(stderr, "Failed to send http request to %s, error: %s\n",
             url.c_str(),
             (*easy_strerror_)(err_code));
-#endif
 
   Reset();
 

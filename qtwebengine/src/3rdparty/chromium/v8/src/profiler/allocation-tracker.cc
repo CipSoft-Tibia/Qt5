@@ -5,7 +5,7 @@
 #include "src/profiler/allocation-tracker.h"
 
 #include "src/execution/frames-inl.h"
-#include "src/handles/global-handles.h"
+#include "src/handles/global-handles-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/profiler/heap-snapshot-generator-inl.h"
 
@@ -76,7 +76,7 @@ AllocationTraceTree::AllocationTraceTree()
 }
 
 AllocationTraceNode* AllocationTraceTree::AddPathFromEnd(
-    const Vector<unsigned>& path) {
+    const base::Vector<unsigned>& path) {
   AllocationTraceNode* node = root();
   for (unsigned* entry = path.begin() + path.length() - 1;
        entry != path.begin() - 1; --entry) {
@@ -84,7 +84,6 @@ AllocationTraceNode* AllocationTraceTree::AddPathFromEnd(
   }
   return node;
 }
-
 
 void AllocationTraceTree::Print(AllocationTracker* tracker) {
   base::OS::Print("[AllocationTraceTree:]\n");
@@ -200,16 +199,16 @@ void AllocationTracker::PrepareForSerialization() {
 
 
 void AllocationTracker::AllocationEvent(Address addr, int size) {
-  DisallowHeapAllocation no_allocation;
+  DisallowGarbageCollection no_gc;
   Heap* heap = ids_->heap();
 
   // Mark the new block as FreeSpace to make sure the heap is iterable
   // while we are capturing stack trace.
-  heap->CreateFillerObjectAt(addr, size, ClearRecordedSlots::kNo);
+  heap->CreateFillerObjectAt(addr, size);
 
   Isolate* isolate = Isolate::FromHeap(heap);
   int length = 0;
-  JavaScriptFrameIterator it(isolate);
+  JavaScriptStackFrameIterator it(isolate);
   while (!it.done() && length < kMaxAllocationTraceLength) {
     JavaScriptFrame* frame = it.frame();
     SharedFunctionInfo shared = frame->function().shared();
@@ -225,7 +224,7 @@ void AllocationTracker::AllocationEvent(Address addr, int size) {
     }
   }
   AllocationTraceNode* top_node = trace_tree_.AddPathFromEnd(
-      Vector<unsigned>(allocation_trace_buffer_, length));
+      base::Vector<unsigned>(allocation_trace_buffer_, length));
   top_node->AddAllocation(size);
 
   address_to_trace_.AddRange(addr, size, top_node->id());
@@ -242,7 +241,7 @@ unsigned AllocationTracker::AddFunctionInfo(SharedFunctionInfo shared,
       reinterpret_cast<void*>(id), SnapshotObjectIdHash(id));
   if (entry->value == nullptr) {
     FunctionInfo* info = new FunctionInfo();
-    info->name = names_->GetName(shared.DebugName());
+    info->name = names_->GetCopy(shared.DebugNameCStr().get());
     info->function_id = id;
     if (shared.script().IsScript()) {
       Script script = Script::cast(shared.script());

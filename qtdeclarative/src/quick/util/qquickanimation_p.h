@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKANIMATION_H
 #define QQUICKANIMATION_H
@@ -74,13 +38,14 @@ class Q_QUICK_PRIVATE_EXPORT QQuickAbstractAnimation : public QObject, public QQ
 
     Q_INTERFACES(QQmlParserStatus)
     Q_INTERFACES(QQmlPropertyValueSource)
-    Q_PROPERTY(bool running READ isRunning WRITE setRunning NOTIFY runningChanged)
-    Q_PROPERTY(bool paused READ isPaused WRITE setPaused NOTIFY pausedChanged)
-    Q_PROPERTY(bool alwaysRunToEnd READ alwaysRunToEnd WRITE setAlwaysRunToEnd NOTIFY alwaysRunToEndChanged)
-    Q_PROPERTY(int loops READ loops WRITE setLoops NOTIFY loopCountChanged)
+    Q_PROPERTY(bool running READ isRunning WRITE setRunning NOTIFY runningChanged FINAL)
+    Q_PROPERTY(bool paused READ isPaused WRITE setPaused NOTIFY pausedChanged FINAL)
+    Q_PROPERTY(bool alwaysRunToEnd READ alwaysRunToEnd WRITE setAlwaysRunToEnd NOTIFY alwaysRunToEndChanged FINAL)
+    Q_PROPERTY(int loops READ loops WRITE setLoops NOTIFY loopCountChanged FINAL)
     Q_CLASSINFO("DefaultMethod", "start()")
 
     QML_NAMED_ELEMENT(Animation)
+    QML_ADDED_IN_VERSION(2, 0)
     QML_UNCREATABLE("Animation is an abstract class")
 
 public:
@@ -129,7 +94,7 @@ Q_SIGNALS:
     void pausedChanged(bool);
     void alwaysRunToEndChanged(bool);
     void loopCountChanged(int);
-    Q_REVISION(12) void finished();
+    Q_REVISION(2, 12) void finished();
 
 public Q_SLOTS:
     void restart();
@@ -151,8 +116,6 @@ public:
                             QObject *defaultTarget = nullptr);
     QAbstractAnimationJob* qtAnimation();
 
-private Q_SLOTS:
-    void componentFinalized();
 private:
     void setTarget(const QQmlProperty &) override;
     void notifyRunningChanged(bool running);
@@ -167,8 +130,9 @@ class Q_QUICK_PRIVATE_EXPORT QQuickPauseAnimation : public QQuickAbstractAnimati
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPauseAnimation)
 
-    Q_PROPERTY(int duration READ duration WRITE setDuration NOTIFY durationChanged)
+    Q_PROPERTY(int duration READ duration WRITE setDuration NOTIFY durationChanged FINAL)
     QML_NAMED_ELEMENT(PauseAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickPauseAnimation(QObject *parent=nullptr);
@@ -188,14 +152,15 @@ protected:
 };
 
 class QQuickScriptActionPrivate;
-class QQuickScriptAction : public QQuickAbstractAnimation
+class Q_QUICK_PRIVATE_EXPORT QQuickScriptAction : public QQuickAbstractAnimation
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickScriptAction)
 
-    Q_PROPERTY(QQmlScriptString script READ script WRITE setScript)
-    Q_PROPERTY(QString scriptName READ stateChangeScriptName WRITE setStateChangeScriptName)
+    Q_PROPERTY(QQmlScriptString script READ script WRITE setScript FINAL)
+    Q_PROPERTY(QString scriptName READ stateChangeScriptName WRITE setStateChangeScriptName FINAL)
     QML_NAMED_ELEMENT(ScriptAction)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickScriptAction(QObject *parent=nullptr);
@@ -215,18 +180,19 @@ protected:
 };
 
 class QQuickPropertyActionPrivate;
-class QQuickPropertyAction : public QQuickAbstractAnimation
+class Q_QUICK_PRIVATE_EXPORT QQuickPropertyAction : public QQuickAbstractAnimation
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPropertyAction)
 
-    Q_PROPERTY(QObject *target READ target WRITE setTargetObject NOTIFY targetChanged)
-    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged)
-    Q_PROPERTY(QString properties READ properties WRITE setProperties NOTIFY propertiesChanged)
-    Q_PROPERTY(QQmlListProperty<QObject> targets READ targets)
-    Q_PROPERTY(QQmlListProperty<QObject> exclude READ exclude)
-    Q_PROPERTY(QVariant value READ value WRITE setValue NOTIFY valueChanged)
+    Q_PROPERTY(QObject *target READ target WRITE setTargetObject NOTIFY targetChanged FINAL)
+    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged FINAL)
+    Q_PROPERTY(QString properties READ properties WRITE setProperties NOTIFY propertiesChanged FINAL)
+    Q_PROPERTY(QQmlListProperty<QObject> targets READ targets FINAL)
+    Q_PROPERTY(QQmlListProperty<QObject> exclude READ exclude FINAL)
+    Q_PROPERTY(QVariant value READ value WRITE setValue NOTIFY valueChanged FINAL)
     QML_NAMED_ELEMENT(PropertyAction)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickPropertyAction(QObject *parent=nullptr);
@@ -266,16 +232,17 @@ class Q_QUICK_PRIVATE_EXPORT QQuickPropertyAnimation : public QQuickAbstractAnim
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPropertyAnimation)
 
-    Q_PROPERTY(int duration READ duration WRITE setDuration NOTIFY durationChanged)
+    Q_PROPERTY(int duration READ duration WRITE setDuration NOTIFY durationChanged FINAL)
     Q_PROPERTY(QVariant from READ from WRITE setFrom NOTIFY fromChanged)
     Q_PROPERTY(QVariant to READ to WRITE setTo NOTIFY toChanged)
-    Q_PROPERTY(QEasingCurve easing READ easing WRITE setEasing NOTIFY easingChanged)
-    Q_PROPERTY(QObject *target READ target WRITE setTargetObject NOTIFY targetChanged)
-    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged)
-    Q_PROPERTY(QString properties READ properties WRITE setProperties NOTIFY propertiesChanged)
-    Q_PROPERTY(QQmlListProperty<QObject> targets READ targets)
-    Q_PROPERTY(QQmlListProperty<QObject> exclude READ exclude)
+    Q_PROPERTY(QEasingCurve easing READ easing WRITE setEasing NOTIFY easingChanged FINAL)
+    Q_PROPERTY(QObject *target READ target WRITE setTargetObject NOTIFY targetChanged FINAL)
+    Q_PROPERTY(QString property READ property WRITE setProperty NOTIFY propertyChanged FINAL)
+    Q_PROPERTY(QString properties READ properties WRITE setProperties NOTIFY propertiesChanged FINAL)
+    Q_PROPERTY(QQmlListProperty<QObject> targets READ targets FINAL)
+    Q_PROPERTY(QQmlListProperty<QObject> exclude READ exclude FINAL)
     QML_NAMED_ELEMENT(PropertyAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickPropertyAnimation(QObject *parent=nullptr);
@@ -329,9 +296,10 @@ class Q_QUICK_PRIVATE_EXPORT QQuickColorAnimation : public QQuickPropertyAnimati
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPropertyAnimation)
-    Q_PROPERTY(QColor from READ from WRITE setFrom)
-    Q_PROPERTY(QColor to READ to WRITE setTo)
+    Q_PROPERTY(QColor from READ from WRITE setFrom FINAL)
+    Q_PROPERTY(QColor to READ to WRITE setTo FINAL)
     QML_NAMED_ELEMENT(ColorAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickColorAnimation(QObject *parent=nullptr);
@@ -349,9 +317,10 @@ class Q_QUICK_PRIVATE_EXPORT QQuickNumberAnimation : public QQuickPropertyAnimat
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPropertyAnimation)
 
-    Q_PROPERTY(qreal from READ from WRITE setFrom NOTIFY fromChanged)
-    Q_PROPERTY(qreal to READ to WRITE setTo NOTIFY toChanged)
+    Q_PROPERTY(qreal from READ from WRITE setFrom NOTIFY fromChanged FINAL)
+    Q_PROPERTY(qreal to READ to WRITE setTo NOTIFY toChanged FINAL)
     QML_NAMED_ELEMENT(NumberAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickNumberAnimation(QObject *parent=nullptr);
@@ -375,9 +344,10 @@ class Q_QUICK_PRIVATE_EXPORT QQuickVector3dAnimation : public QQuickPropertyAnim
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPropertyAnimation)
 
-    Q_PROPERTY(QVector3D from READ from WRITE setFrom NOTIFY fromChanged)
-    Q_PROPERTY(QVector3D to READ to WRITE setTo NOTIFY toChanged)
+    Q_PROPERTY(QVector3D from READ from WRITE setFrom NOTIFY fromChanged FINAL)
+    Q_PROPERTY(QVector3D to READ to WRITE setTo NOTIFY toChanged FINAL)
     QML_NAMED_ELEMENT(Vector3dAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickVector3dAnimation(QObject *parent=nullptr);
@@ -396,10 +366,11 @@ class Q_QUICK_PRIVATE_EXPORT QQuickRotationAnimation : public QQuickPropertyAnim
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickRotationAnimation)
 
-    Q_PROPERTY(qreal from READ from WRITE setFrom NOTIFY fromChanged)
-    Q_PROPERTY(qreal to READ to WRITE setTo NOTIFY toChanged)
-    Q_PROPERTY(RotationDirection direction READ direction WRITE setDirection NOTIFY directionChanged)
+    Q_PROPERTY(qreal from READ from WRITE setFrom NOTIFY fromChanged FINAL)
+    Q_PROPERTY(qreal to READ to WRITE setTo NOTIFY toChanged FINAL)
+    Q_PROPERTY(RotationDirection direction READ direction WRITE setDirection NOTIFY directionChanged FINAL)
     QML_NAMED_ELEMENT(RotationAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickRotationAnimation(QObject *parent=nullptr);
@@ -427,7 +398,7 @@ class Q_QUICK_PRIVATE_EXPORT QQuickAnimationGroup : public QQuickAbstractAnimati
     Q_DECLARE_PRIVATE(QQuickAnimationGroup)
 
     Q_CLASSINFO("DefaultProperty", "animations")
-    Q_PROPERTY(QQmlListProperty<QQuickAbstractAnimation> animations READ animations)
+    Q_PROPERTY(QQmlListProperty<QQuickAbstractAnimation> animations READ animations FINAL)
 
 public:
     QQuickAnimationGroup(QObject *parent);
@@ -440,11 +411,12 @@ protected:
     QQuickAnimationGroup(QQuickAnimationGroupPrivate &dd, QObject *parent);
 };
 
-class QQuickSequentialAnimation : public QQuickAnimationGroup
+class Q_QUICK_PRIVATE_EXPORT QQuickSequentialAnimation : public QQuickAnimationGroup
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickAnimationGroup)
     QML_NAMED_ELEMENT(SequentialAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickSequentialAnimation(QObject *parent=nullptr);
@@ -463,6 +435,7 @@ class Q_QUICK_PRIVATE_EXPORT QQuickParallelAnimation : public QQuickAnimationGro
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickAnimationGroup)
     QML_NAMED_ELEMENT(ParallelAnimation)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickParallelAnimation(QObject *parent=nullptr);

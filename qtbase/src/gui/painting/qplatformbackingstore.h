@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMBACKINGSTORE_H
 #define QPLATFORMBACKINGSTORE_H
@@ -56,24 +20,71 @@
 
 #include <QtGui/qwindow.h>
 #include <QtGui/qregion.h>
-#include <QtGui/qopengl.h>
 
 QT_BEGIN_NAMESPACE
 
-Q_GUI_EXPORT Q_DECLARE_LOGGING_CATEGORY(lcQpaBackingStore)
+Q_DECLARE_EXPORTED_LOGGING_CATEGORY(lcQpaBackingStore, Q_GUI_EXPORT)
 
 class QRegion;
 class QRect;
 class QPoint;
 class QImage;
 class QPlatformBackingStorePrivate;
-class QPlatformWindow;
 class QPlatformTextureList;
 class QPlatformTextureListPrivate;
-class QOpenGLContext;
 class QPlatformGraphicsBuffer;
+class QRhi;
+class QRhiTexture;
+class QRhiResourceUpdateBatch;
 
-#ifndef QT_NO_OPENGL
+struct Q_GUI_EXPORT QPlatformBackingStoreRhiConfig
+{
+    enum Api {
+        OpenGL,
+        Metal,
+        Vulkan,
+        D3D11,
+        D3D12,
+        Null
+    };
+
+    QPlatformBackingStoreRhiConfig()
+        : m_enable(false)
+    { }
+
+    QPlatformBackingStoreRhiConfig(Api api)
+        : m_enable(true),
+          m_api(api)
+    { }
+
+    bool isEnabled() const { return m_enable; }
+    void setEnabled(bool enable) { m_enable = enable; }
+
+    Api api() const { return m_api; }
+    void setApi(Api api) { m_api = api; }
+
+    bool isDebugLayerEnabled() const { return m_debugLayer; }
+    void setDebugLayer(bool enable) { m_debugLayer = enable; }
+
+private:
+    bool m_enable;
+    Api m_api = Null;
+    bool m_debugLayer = false;
+    friend bool operator==(const QPlatformBackingStoreRhiConfig &a, const QPlatformBackingStoreRhiConfig &b);
+};
+
+inline bool operator==(const QPlatformBackingStoreRhiConfig &a, const QPlatformBackingStoreRhiConfig &b)
+{
+    return a.m_enable == b.m_enable
+            && a.m_api == b.m_api
+            && a.m_debugLayer == b.m_debugLayer;
+}
+
+inline bool operator!=(const QPlatformBackingStoreRhiConfig &a, const QPlatformBackingStoreRhiConfig &b)
+{
+    return !(a == b);
+}
+
 class Q_GUI_EXPORT QPlatformTextureList : public QObject
 {
     Q_OBJECT
@@ -91,7 +102,8 @@ public:
 
     int count() const;
     bool isEmpty() const { return count() == 0; }
-    GLuint textureId(int index) const;
+    QRhiTexture *texture(int index) const;
+    QRhiTexture *textureExtra(int index) const;
     QRect geometry(int index) const;
     QRect clipRect(int index) const;
     void *source(int index);
@@ -99,7 +111,10 @@ public:
     void lock(bool on);
     bool isLocked() const;
 
-    void appendTexture(void *source, GLuint textureId, const QRect &geometry,
+    void appendTexture(void *source, QRhiTexture *texture, const QRect &geometry,
+                       const QRect &clipRect = QRect(), Flags flags = { });
+
+    void appendTexture(void *source, QRhiTexture *textureLeft, QRhiTexture *textureRight, const QRect &geometry,
                        const QRect &clipRect = QRect(), Flags flags = { });
     void clear();
 
@@ -107,11 +122,16 @@ public:
     void locked(bool);
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(QPlatformTextureList::Flags)
-#endif
 
 class Q_GUI_EXPORT QPlatformBackingStore
 {
 public:
+    enum FlushResult {
+        FlushSuccess,
+        FlushFailed,
+        FlushFailedDueToLostDevice
+    };
+
     explicit QPlatformBackingStore(QWindow *window);
     virtual ~QPlatformBackingStore();
 
@@ -120,22 +140,26 @@ public:
 
     virtual QPaintDevice *paintDevice() = 0;
 
-    virtual void flush(QWindow *window, const QRegion &region, const QPoint &offset) = 0;
-#ifndef QT_NO_OPENGL
-    virtual void composeAndFlush(QWindow *window, const QRegion &region, const QPoint &offset,
+    virtual void flush(QWindow *window, const QRegion &region, const QPoint &offset);
+
+    virtual FlushResult rhiFlush(QWindow *window,
+                                 qreal sourceDevicePixelRatio,
+                                 const QRegion &region,
+                                 const QPoint &offset,
                                  QPlatformTextureList *textures,
                                  bool translucentBackground);
-#endif
+
     virtual QImage toImage() const;
-#ifndef QT_NO_OPENGL
+
     enum TextureFlag {
         TextureSwizzle = 0x01,
         TextureFlip = 0x02,
-        TexturePremultiplied = 0x04,
+        TexturePremultiplied = 0x04
     };
     Q_DECLARE_FLAGS(TextureFlags, TextureFlag)
-    virtual GLuint toTexture(const QRegion &dirtyRegion, QSize *textureSize, TextureFlags *flags) const;
-#endif
+    virtual QRhiTexture *toTexture(QRhiResourceUpdateBatch *resourceUpdates,
+                                   const QRegion &dirtyRegion,
+                                   TextureFlags *flags) const;
 
     virtual QPlatformGraphicsBuffer *graphicsBuffer() const;
 
@@ -146,6 +170,11 @@ public:
     virtual void beginPaint(const QRegion &);
     virtual void endPaint();
 
+    void setRhiConfig(const QPlatformBackingStoreRhiConfig &config);
+    QRhi *rhi() const;
+    void surfaceAboutToBeDestroyed();
+    void graphicsDeviceReportedLost();
+
 private:
     QPlatformBackingStorePrivate *d_ptr;
 
@@ -153,9 +182,7 @@ private:
     friend class QBackingStore;
 };
 
-#ifndef QT_NO_OPENGL
 Q_DECLARE_OPERATORS_FOR_FLAGS(QPlatformBackingStore::TextureFlags)
-#endif
 
 QT_END_NAMESPACE
 

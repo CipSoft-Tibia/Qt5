@@ -9,7 +9,7 @@ pages for build instructions and example applications specific to these mobile p
 
 First, be sure to install the [prerequisite software][webrtc-prerequisite-sw].
 
-[webrtc-prerequisite-sw]: https://webrtc.googlesource.com/src/+/refs/heads/master/docs/native-code/development/prerequisite-sw/index.md
+[webrtc-prerequisite-sw]: https://webrtc.googlesource.com/src/+/main/docs/native-code/development/prerequisite-sw/index.md
 
 
 ## Getting the Code
@@ -44,7 +44,7 @@ $ git config branch.autosetuprebase always
 
 ```
 $ cd src
-$ git checkout master
+$ git checkout main
 $ git new-branch your-branch-name
 ```
 
@@ -58,11 +58,11 @@ make sure you're logged in. The quota is much larger for logged in users.
 Update your current branch with:
 
 ```
-$ git checkout master
-$ git pull origin master
+$ git checkout main
+$ git pull origin main
 $ gclient sync
 $ git checkout my-branch
-$ git merge master
+$ git merge main
 ```
 
 ## Building
@@ -98,6 +98,12 @@ configuration untouched (stored in the args.gn file), do:
 $ gn clean out/Default
 ```
 
+To build the fuzzers residing in the [test/fuzzers][fuzzers] directory, use
+```
+$ gn gen out/fuzzers --args='use_libfuzzer=true optimize_for_fuzzing=true'
+```
+Depending on the fuzzer additional arguments like `is_asan`, `is_msan` or `is_ubsan_security` might be required.
+
 See the [GN][gn-doc] documentation for all available options. There are also more
 platform specific tips on the [Android][webrtc-android-development] and
 [iOS][webrtc-ios-development] instructions.
@@ -110,8 +116,18 @@ When you have Ninja project files generated (see previous section), compile
 For [Ninja][ninja] project files generated in `out/Default`:
 
 ```
-$ ninja -C out/Default
+$ autoninja -C out/Default
 ```
+
+To build everything in the generated folder (`out/Default`):
+
+```
+$ autoninja all -C out/Default
+```
+
+`autoninja` is a wrapper that automatically provides optimal values for the arguments passed to `ninja`.
+
+See [Ninja build rules][ninja-build-rules] to read more about difference between `ninja` and `ninja all`.
 
 
 ## Using Another Build System
@@ -134,10 +150,10 @@ $ git branch -r
 ```
 
 To create a local branch tracking a remote release branch (in this example,
-the 43 branch):
+the branch corresponding to Chrome M80):
 
 ```
-$ git checkout -b my_branch refs/remotes/branch-heads/43
+$ git checkout -b my_branch refs/remotes/branch-heads/3987
 $ gclient sync
 ```
 
@@ -154,35 +170,40 @@ $ git checkout <hash>
 $ cd ~/dev/webrtc/src
 $ gclient sync
 $ # When done, go back to depot_tools, git reset --hard, run gclient again and
-$ # verify the current branch becomes REMOTE:origin/master
+$ # verify the current branch becomes REMOTE:origin/main
 ```
 
 The above is untested and unsupported, but it might help.
 
-Commit log for the branch: [https://webrtc.googlesource.com/src/+log/branch-heads/43][m43-log]
-To browse it: [https://webrtc.googlesource.com/src/+/branch-heads/43][m43]
+Commit log for the branch: [https://webrtc.googlesource.com/src/+log/branch-heads/3987][m80-log]
+To browse it: [https://webrtc.googlesource.com/src/+/branch-heads/3987][m80]
 
 For more details, read Chromium's [Working with Branches][chromium-work-branches] and
 [Working with Release Branches][chromium-work-release-branches] pages.
+To find the branch corresponding to a Chrome release check the
+[Chromium Dashboard][https://chromiumdash.appspot.com/branches].
 
 
 ## Contributing Patches
 
-Please see [Contributing Fixes][webrtc-contributing] for information on how to run
+Please see [Contributing Fixes][contributing] for information on how to run
 `git cl upload`, getting your patch reviewed, and getting it submitted. You can also
 find info on how to run trybots and applying for try rights.
+
+[contributing]: https://webrtc.googlesource.com/src/+/refs/heads/main/docs/native-code/development/contributing.md
+
 
 ## Chromium Committers
 
 Many WebRTC committers are also Chromium committers. To make sure to use the
 right account for pushing commits to WebRTC, use the `user.email` Git config
-setting. The recommended way is to have the chromium.org account set globally
+setting. The recommended way is to have the chromium committer account set globally
 as described at the [depot tools setup page][depot-tools] and then set `user.email`
-locally for the WebRTC repos using (change to your webrtc.org address):
+locally for the WebRTC repos using:
 
 ```
 $ cd /path/to/webrtc/src
-$ git config user.email yourname@webrtc.org
+$ git config user.email <YOUR_WEBRTC_COMMITTER_EMAIL>
 ```
 
 ## Example Applications
@@ -254,15 +275,16 @@ Target name `turnserver`. Used for unit tests.
 
 
 [ninja]: https://ninja-build.org/
-[gn]: https://gn.googlesource.com/gn/+/master/README.md
-[gn-doc]: https://gn.googlesource.com/gn/+/master/docs/reference.md#IDE-options
-[webrtc-android-development]: https://webrtc.googlesource.com/src/+/refs/heads/master/docs/native-code/android/index.md
-[webrtc-ios-development]: https://webrtc.googlesource.com/src/+/refs/heads/master/docs/native-code/ios/index.md
+[ninja-build-rules]: https://gn.googlesource.com/gn/+/main/docs/reference.md#the-all-and-default-rules
+[gn]: https://gn.googlesource.com/gn/+/main/README.md
+[gn-doc]: https://gn.googlesource.com/gn/+/main/docs/reference.md#IDE-options
+[webrtc-android-development]: https://webrtc.googlesource.com/src/+/main/docs/native-code/android/index.md
+[webrtc-ios-development]: https://webrtc.googlesource.com/src/+/main/docs/native-code/ios/index.md
 [chromium-work-branches]: https://www.chromium.org/developers/how-tos/get-the-code/working-with-branches
 [chromium-work-release-branches]: https://www.chromium.org/developers/how-tos/get-the-code/working-with-release-branches
-[webrtc-contributing]: https://webrtc.org/support/contributing/
 [depot-tools]: http://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/depot_tools_tutorial.html#_setting_up
 [rfc-5389]: https://tools.ietf.org/html/rfc5389
 [rfc-5766]: https://tools.ietf.org/html/rfc5766
-[m43-log]: https://webrtc.googlesource.com/src/+log/branch-heads/43
-[m43]: https://webrtc.googlesource.com/src/+/branch-heads/43
+[m80-log]: https://webrtc.googlesource.com/src/+log/branch-heads/3987
+[m80]: https://webrtc.googlesource.com/src/+/branch-heads/3987
+[fuzzers]: https://webrtc.googlesource.com/src/+/main/test/fuzzers/

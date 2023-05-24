@@ -1,10 +1,11 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef MEDIA_REMOTING_FAKE_REMOTER_H_
 #define MEDIA_REMOTING_FAKE_REMOTER_H_
 
+#include "base/memory/scoped_refptr.h"
 #include "media/base/decoder_buffer.h"
 #include "media/mojo/common/mojo_data_pipe_read_write.h"
 #include "media/mojo/mojom/remoting.mojom.h"
@@ -13,8 +14,11 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 
-namespace media {
-namespace remoting {
+namespace cast_streaming {
+class DecoderBufferReader;
+}  // namespace cast_streaming
+
+namespace media::remoting {
 
 class RendererController;
 
@@ -23,6 +27,11 @@ class FakeRemotingDataStreamSender : public mojom::RemotingDataStreamSender {
   FakeRemotingDataStreamSender(
       mojo::PendingReceiver<mojom::RemotingDataStreamSender> receiver,
       mojo::ScopedDataPipeConsumerHandle consumer_handle);
+
+  FakeRemotingDataStreamSender(const FakeRemotingDataStreamSender&) = delete;
+  FakeRemotingDataStreamSender& operator=(const FakeRemotingDataStreamSender&) =
+      delete;
+
   ~FakeRemotingDataStreamSender() override;
 
   uint32_t send_frame_count() const { return send_frame_count_; }
@@ -32,23 +41,23 @@ class FakeRemotingDataStreamSender : public mojom::RemotingDataStreamSender {
                            size_t size,
                            bool key_frame,
                            int pts_ms);
+  void CloseDataPipe();
 
  private:
   // mojom::RemotingDataStreamSender implementation.
-  void SendFrame(uint32_t frame_size) final;
+  void SendFrame(media::mojom::DecoderBufferPtr buffer,
+                 SendFrameCallback callback) final;
   void CancelInFlightData() final;
 
-  void OnFrameRead(bool success);
+  void OnFrameRead(scoped_refptr<media::DecoderBuffer> buffer);
 
   mojo::Receiver<RemotingDataStreamSender> receiver_;
-  MojoDataPipeReader data_pipe_reader_;
+  std::unique_ptr<cast_streaming::DecoderBufferReader> decoder_buffer_reader_;
+  SendFrameCallback send_frame_callback_;
 
-  std::vector<uint8_t> next_frame_data_;
-  std::vector<std::vector<uint8_t>> received_frame_list;
-  uint32_t send_frame_count_;
-  uint32_t cancel_in_flight_count_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeRemotingDataStreamSender);
+  std::vector<scoped_refptr<media::DecoderBuffer>> received_frame_list_;
+  uint32_t send_frame_count_ = 0;
+  uint32_t cancel_in_flight_count_ = 0;
 };
 
 class FakeRemoter final : public mojom::Remoter {
@@ -56,10 +65,15 @@ class FakeRemoter final : public mojom::Remoter {
   // |start_will_fail| indicates whether starting remoting will fail.
   FakeRemoter(mojo::PendingRemote<mojom::RemotingSource> source,
               bool start_will_fail);
+
+  FakeRemoter(const FakeRemoter&) = delete;
+  FakeRemoter& operator=(const FakeRemoter&) = delete;
+
   ~FakeRemoter() override;
 
   // mojom::Remoter implementations.
   void Start() override;
+  void StartWithPermissionAlreadyGranted() override;
   void StartDataStreams(mojo::ScopedDataPipeConsumerHandle audio_pipe,
                         mojo::ScopedDataPipeConsumerHandle video_pipe,
                         mojo::PendingReceiver<mojom::RemotingDataStreamSender>
@@ -83,14 +97,16 @@ class FakeRemoter final : public mojom::Remoter {
   std::unique_ptr<FakeRemotingDataStreamSender> video_stream_sender_;
 
   base::WeakPtrFactory<FakeRemoter> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(FakeRemoter);
 };
 
 class FakeRemoterFactory final : public mojom::RemoterFactory {
  public:
   // |start_will_fail| indicates whether starting remoting will fail.
   explicit FakeRemoterFactory(bool start_will_fail);
+
+  FakeRemoterFactory(const FakeRemoterFactory&) = delete;
+  FakeRemoterFactory& operator=(const FakeRemoterFactory&) = delete;
+
   ~FakeRemoterFactory() override;
 
   // mojom::RemoterFactory implementation.
@@ -102,11 +118,8 @@ class FakeRemoterFactory final : public mojom::RemoterFactory {
 
  private:
   bool start_will_fail_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeRemoterFactory);
 };
 
-}  // namespace remoting
-}  // namespace media
+}  // namespace media::remoting
 
 #endif  // MEDIA_REMOTING_FAKE_REMOTER_H_

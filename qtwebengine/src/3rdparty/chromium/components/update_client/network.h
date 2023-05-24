@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,9 +10,8 @@
 #include <memory>
 #include <string>
 
-#include "base/callback_forward.h"
 #include "base/containers/flat_map.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/ref_counted.h"
 
 class GURL;
@@ -37,6 +36,7 @@ class NetworkFetcher {
       base::OnceCallback<void(int net_error, int64_t content_size)>;
   using ResponseStartedCallback =
       base::OnceCallback<void(int response_code, int64_t content_length)>;
+  // `current` is the number of bytes received thus far.
   using ProgressCallback = base::RepeatingCallback<void(int64_t current)>;
 
   // The following two headers carry the ECSDA signature of the POST response,
@@ -52,6 +52,9 @@ class NetworkFetcher {
   // do a subsequent update check. Only the values retrieved over HTTPS are
   // trusted.
   static constexpr char kHeaderXRetryAfter[] = "X-Retry-After";
+
+  NetworkFetcher(const NetworkFetcher&) = delete;
+  NetworkFetcher& operator=(const NetworkFetcher&) = delete;
 
   virtual ~NetworkFetcher() = default;
 
@@ -72,9 +75,6 @@ class NetworkFetcher {
 
  protected:
   NetworkFetcher() = default;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(NetworkFetcher);
 };
 
 class NetworkFetcherFactory
@@ -82,13 +82,13 @@ class NetworkFetcherFactory
  public:
   virtual std::unique_ptr<NetworkFetcher> Create() const = 0;
 
+  NetworkFetcherFactory(const NetworkFetcherFactory&) = delete;
+  NetworkFetcherFactory& operator=(const NetworkFetcherFactory&) = delete;
+
  protected:
   friend class base::RefCountedThreadSafe<NetworkFetcherFactory>;
   NetworkFetcherFactory() = default;
   virtual ~NetworkFetcherFactory() = default;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(NetworkFetcherFactory);
 };
 
 }  // namespace update_client

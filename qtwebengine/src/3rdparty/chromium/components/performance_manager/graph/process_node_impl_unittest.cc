@@ -1,16 +1,20 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/performance_manager/graph/process_node_impl.h"
 
+#include "base/containers/contains.h"
+#include "base/memory/raw_ptr.h"
 #include "base/process/process.h"
-#include "base/test/bind_test_util.h"
+#include "base/test/bind.h"
 #include "components/performance_manager/graph/frame_node_impl.h"
 #include "components/performance_manager/public/render_process_host_id.h"
 #include "components/performance_manager/public/render_process_host_proxy.h"
 #include "components/performance_manager/test_support/graph_test_harness.h"
 #include "components/performance_manager/test_support/mock_graphs.h"
+#include "content/public/browser/background_tracing_config.h"
+#include "content/public/browser/background_tracing_manager.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -53,7 +57,7 @@ TEST_F(ProcessNodeImplTest, ProcessLifeCycle) {
 
   // Next go through PID->exit status.
   const base::Process self = base::Process::Current();
-  const base::Time launch_time = base::Time::Now();
+  const base::TimeTicks launch_time = base::TimeTicks::Now();
   process_node->SetProcess(self.Duplicate(), launch_time);
   EXPECT_TRUE(process_node->process().IsValid());
   EXPECT_EQ(self.Pid(), process_node->process_id());
@@ -80,7 +84,7 @@ TEST_F(ProcessNodeImplTest, ProcessLifeCycle) {
 
   // Resurrect again and verify the launch time and measurements
   // are cleared.
-  const base::Time launch2_time = launch_time + base::TimeDelta::FromSeconds(1);
+  const base::TimeTicks launch2_time = launch_time + base::Seconds(1);
   process_node->SetProcess(self.Duplicate(), launch2_time);
 
   EXPECT_EQ(launch2_time, process_node->launch_time());
@@ -137,13 +141,14 @@ class LenientMockObserver : public ProcessNodeImpl::Observer {
   }
 
  private:
-  const ProcessNode* notified_process_node_ = nullptr;
+  raw_ptr<const ProcessNode> notified_process_node_ = nullptr;
 };
 
 using MockObserver = ::testing::StrictMock<LenientMockObserver>;
 
 using testing::_;
 using testing::Invoke;
+using testing::Return;
 
 }  // namespace
 
@@ -160,7 +165,8 @@ TEST_F(ProcessNodeImplTest, ObserverWorks) {
 
   // Test process creation and exit events.
   EXPECT_CALL(obs, OnProcessLifetimeChange(_));
-  process_node->SetProcess(base::Process::Current(), base::Time::Now());
+  process_node->SetProcess(base::Process::Current(),
+                           /* launch_time=*/base::TimeTicks::Now());
   EXPECT_CALL(obs, OnProcessLifetimeChange(_));
   process_node->SetProcessExitStatus(10);
 
@@ -191,21 +197,48 @@ TEST_F(ProcessNodeImplTest, ObserverWorks) {
   graph()->RemoveProcessNodeObserver(&obs);
 }
 
-TEST_F(ProcessNodeImplTest, ConstructionArguments) {
+TEST_F(ProcessNodeImplTest, ConstructionArguments_Browser) {
+  auto process_node = CreateNode<ProcessNodeImpl>(BrowserProcessNodeTag{});
+
+  const ProcessNode* public_process_node = process_node.get();
+
+  EXPECT_EQ(content::PROCESS_TYPE_BROWSER, process_node->process_type());
+  EXPECT_EQ(content::PROCESS_TYPE_BROWSER,
+            public_process_node->GetProcessType());
+}
+
+TEST_F(ProcessNodeImplTest, ConstructionArguments_Renderer) {
   constexpr RenderProcessHostId kRenderProcessHostId =
       RenderProcessHostId(0xF0B);
   auto process_node = CreateNode<ProcessNodeImpl>(
-      content::PROCESS_TYPE_GPU,
       RenderProcessHostProxy::CreateForTesting(kRenderProcessHostId));
+
+  const ProcessNode* public_process_node = process_node.get();
+
+  EXPECT_EQ(content::PROCESS_TYPE_RENDERER, process_node->process_type());
+  EXPECT_EQ(content::PROCESS_TYPE_RENDERER,
+            public_process_node->GetProcessType());
+
+  EXPECT_EQ(kRenderProcessHostId,
+            public_process_node->GetRenderProcessHostProxy()
+                .render_process_host_id());
+}
+
+TEST_F(ProcessNodeImplTest, ConstructionArguments_NonRenderer) {
+  constexpr BrowserChildProcessHostId kBrowserChildProcessHostId =
+      BrowserChildProcessHostId(0xF0B);
+  auto process_node = CreateNode<ProcessNodeImpl>(
+      content::PROCESS_TYPE_GPU, BrowserChildProcessHostProxy::CreateForTesting(
+                                     kBrowserChildProcessHostId));
 
   const ProcessNode* public_process_node = process_node.get();
 
   EXPECT_EQ(content::PROCESS_TYPE_GPU, process_node->process_type());
   EXPECT_EQ(content::PROCESS_TYPE_GPU, public_process_node->GetProcessType());
 
-  EXPECT_EQ(kRenderProcessHostId,
-            public_process_node->GetRenderProcessHostProxy()
-                .render_process_host_id());
+  EXPECT_EQ(kBrowserChildProcessHostId,
+            public_process_node->GetBrowserChildProcessHostProxy()
+                .browser_child_process_host_id());
 }
 
 TEST_F(ProcessNodeImplTest, PublicInterface) {
@@ -225,8 +258,8 @@ TEST_F(ProcessNodeImplTest, PublicInterface) {
             public_process_node->GetProcessType());
 
   const base::Process self = base::Process::Current();
-  const base::Time launch_time = base::Time::Now();
-  process_node->SetProcess(self.Duplicate(), launch_time);
+  process_node->SetProcess(self.Duplicate(),
+                           /* launch_time=*/base::TimeTicks::Now());
   EXPECT_EQ(process_node->process_id(), public_process_node->GetProcessId());
   EXPECT_EQ(&process_node->process(), &public_process_node->GetProcess());
   EXPECT_EQ(process_node->launch_time(), public_process_node->GetLaunchTime());
@@ -234,6 +267,12 @@ TEST_F(ProcessNodeImplTest, PublicInterface) {
   constexpr int32_t kExitStatus = 0xF00;
   process_node->SetProcessExitStatus(kExitStatus);
   EXPECT_EQ(process_node->exit_status(), public_process_node->GetExitStatus());
+
+  const std::string kMetricsName("TestUtilityProcess");
+  process_node->SetProcessMetricsName(kMetricsName);
+  EXPECT_EQ(process_node->metrics_name(), kMetricsName);
+  EXPECT_EQ(process_node->metrics_name(),
+            public_process_node->GetMetricsName());
 
   const auto& frame_nodes = process_node->frame_nodes();
   auto public_frame_nodes = public_process_node->GetFrameNodes();
@@ -244,11 +283,11 @@ TEST_F(ProcessNodeImplTest, PublicInterface) {
   }
 
   decltype(public_frame_nodes) visited_frame_nodes;
-  public_process_node->VisitFrameNodes(base::BindLambdaForTesting(
+  public_process_node->VisitFrameNodes(
       [&visited_frame_nodes](const FrameNode* frame_node) -> bool {
         visited_frame_nodes.insert(frame_node);
         return true;
-      }));
+      });
   EXPECT_EQ(public_frame_nodes, visited_frame_nodes);
 
   process_node->SetMainThreadTaskLoadIsLow(true);
@@ -262,6 +301,95 @@ TEST_F(ProcessNodeImplTest, PublicInterface) {
   process_node->set_resident_set_kb(398);
   EXPECT_EQ(process_node->resident_set_kb(),
             public_process_node->GetResidentSetKb());
+}
+
+namespace {
+
+class LenientFakeBackgroundTracingManager
+    : public content::BackgroundTracingManager {
+ public:
+  LenientFakeBackgroundTracingManager() = default;
+  ~LenientFakeBackgroundTracingManager() override = default;
+
+  // Functions we want to intercept.
+  MOCK_METHOD(TriggerHandle,
+              RegisterTriggerType,
+              (base::StringPiece trigger_name),
+              (override));
+  MOCK_METHOD(bool, HasActiveScenario, (), (override));
+  MOCK_METHOD(void,
+              TriggerNamedEvent,
+              (TriggerHandle trigger_handle,
+               StartedFinalizingCallback started_callback),
+              (override));
+
+  // Functions we don't care about.
+  bool SetActiveScenario(
+      std::unique_ptr<content::BackgroundTracingConfig> config,
+      DataFiltering data_filtering) override {
+    return true;
+  }
+  bool SetActiveScenarioWithReceiveCallback(
+      std::unique_ptr<content::BackgroundTracingConfig> config,
+      ReceiveCallback receive_callback,
+      DataFiltering data_filtering) override {
+    return true;
+  }
+
+  void WhenIdle(IdleCallback idle_callback) override {}
+  const std::string& GetTriggerNameFromHandle(
+      TriggerHandle trigger_handle) override {
+    static std::string name;
+    return name;
+  }
+  bool HasTraceToUpload() override { return false; }
+  std::string GetLatestTraceToUpload() override { return std::string(); }
+  std::unique_ptr<content::BackgroundTracingConfig> GetBackgroundTracingConfig(
+      const std::string& trial_name) override {
+    return nullptr;
+  }
+  void AbortScenarioForTesting() override {}
+  void SetTraceToUploadForTesting(
+      std::unique_ptr<std::string> trace_data) override {}
+  void SetConfigTextFilterForTesting(
+      ConfigTextFilterForTesting predicate) override {}
+};
+
+using FakeBackgroundTracingManager =
+    ::testing::StrictMock<LenientFakeBackgroundTracingManager>;
+
+}  // namespace
+
+TEST_F(ProcessNodeImplTest, FireBackgroundTracingTriggerOnUI) {
+  const std::string kTrigger1("trigger1");
+  const std::string kTrigger2("trigger2");
+  constexpr content::BackgroundTracingManager::TriggerHandle kHandle1 = 1;
+
+  FakeBackgroundTracingManager manager;
+
+  // Don't expect any other functions exception HasActiveScenario to be called
+  // it that function returns false.
+  EXPECT_CALL(manager, HasActiveScenario()).WillOnce(Return(false));
+  ProcessNodeImpl::FireBackgroundTracingTriggerOnUIForTesting(kTrigger1,
+                                                              manager);
+  testing::Mock::VerifyAndClear(&manager);
+
+  // If HasActiveScenario returns true, expect a new trigger to be registered
+  // and triggered.
+  EXPECT_CALL(manager, HasActiveScenario()).WillOnce(Return(true));
+  EXPECT_CALL(manager, RegisterTriggerType(_)).WillOnce(Return(kHandle1));
+  EXPECT_CALL(manager, TriggerNamedEvent(_, _));
+  ProcessNodeImpl::FireBackgroundTracingTriggerOnUIForTesting(kTrigger1,
+                                                              manager);
+  testing::Mock::VerifyAndClear(&manager);
+
+  // Now that a trigger is registered, expect the trigger to be validated, and
+  // triggered again.
+  EXPECT_CALL(manager, HasActiveScenario()).WillOnce(Return(true));
+  EXPECT_CALL(manager, TriggerNamedEvent(_, _));
+  ProcessNodeImpl::FireBackgroundTracingTriggerOnUIForTesting(kTrigger1,
+                                                              manager);
+  testing::Mock::VerifyAndClear(&manager);
 }
 
 }  // namespace performance_manager

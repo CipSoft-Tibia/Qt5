@@ -1,44 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdeclarativeplace_p.h"
-#include "qdeclarativecontactdetail_p.h"
+#include "qdeclarativecontactdetails_p.h"
 #include "qdeclarativegeoserviceprovider_p.h"
-#include "qdeclarativeplaceattribute_p.h"
-#include "qdeclarativeplaceicon_p.h"
 #include "error_messages_p.h"
 
 #include <QtCore/QCoreApplication>
@@ -46,6 +11,7 @@
 #include <QtQml/QQmlEngine>
 #include <QtQml/QQmlInfo>
 #include <QtLocation/QGeoServiceProvider>
+#include <QtLocation/QPlaceAttribute>
 #include <QtLocation/QPlaceManager>
 #include <QtLocation/QPlaceDetailsReply>
 #include <QtLocation/QPlaceReply>
@@ -182,29 +148,26 @@ QT_BEGIN_NAMESPACE
 */
 
 QDeclarativePlace::QDeclarativePlace(QObject *parent)
-:   QObject(parent), m_location(0), m_ratings(0), m_supplier(0), m_icon(0),
-    m_reviewModel(0), m_imageModel(0), m_editorialModel(0),
+:   QObject(parent),
     m_extendedAttributes(new QQmlPropertyMap(this)),
-    m_contactDetails(new QDeclarativeContactDetails(this)), m_reply(0), m_plugin(0),
-    m_complete(false), m_favorite(0), m_status(QDeclarativePlace::Ready)
+    m_contactDetails(new QDeclarativeContactDetails(this))
 {
-    connect(m_contactDetails, SIGNAL(valueChanged(QString,QVariant)),
-            this, SLOT(contactsModified(QString,QVariant)));
+    connect(m_contactDetails, &QDeclarativeContactDetails::valueChanged,
+            this, &QDeclarativePlace::contactsModified);
 
     setPlace(QPlace());
 }
 
 QDeclarativePlace::QDeclarativePlace(const QPlace &src, QDeclarativeGeoServiceProvider *plugin, QObject *parent)
-:   QObject(parent), m_location(0), m_ratings(0), m_supplier(0), m_icon(0),
-    m_reviewModel(0), m_imageModel(0), m_editorialModel(0),
+:   QObject(parent),
     m_extendedAttributes(new QQmlPropertyMap(this)),
-    m_contactDetails(new QDeclarativeContactDetails(this)), m_reply(0), m_plugin(plugin),
-    m_complete(false), m_favorite(0), m_status(QDeclarativePlace::Ready)
+    m_contactDetails(new QDeclarativeContactDetails(this)),
+    m_plugin(plugin)
 {
     Q_ASSERT(plugin);
 
-    connect(m_contactDetails, SIGNAL(valueChanged(QString,QVariant)),
-            this, SLOT(contactsModified(QString,QVariant)));
+    connect(m_contactDetails, &QDeclarativeContactDetails::valueChanged,
+            this, &QDeclarativePlace::contactsModified);
 
     setPlace(src);
 }
@@ -236,8 +199,8 @@ void QDeclarativePlace::setPlugin(QDeclarativeGeoServiceProvider *plugin)
     if (m_plugin->isAttached()) {
         pluginReady();
     } else {
-        connect(m_plugin, SIGNAL(attached()),
-                this, SLOT(pluginReady()));
+        connect(m_plugin, &QDeclarativeGeoServiceProvider::attached,
+                this, &QDeclarativePlace::pluginReady);
     }
 }
 
@@ -262,10 +225,10 @@ QDeclarativeGeoServiceProvider *QDeclarativePlace::plugin() const
 
     This property holds a model which can be used to retrieve reviews about the place.
 */
-QDeclarativeReviewModel *QDeclarativePlace::reviewModel()
+QDeclarativePlaceReviewModel *QDeclarativePlace::reviewModel()
 {
     if (!m_reviewModel) {
-        m_reviewModel = new QDeclarativeReviewModel(this);
+        m_reviewModel = new QDeclarativePlaceReviewModel(this);
         m_reviewModel->setPlace(this);
     }
 
@@ -303,10 +266,7 @@ QDeclarativePlaceEditorialModel *QDeclarativePlace::editorialModel()
 }
 
 /*!
-    \qmlproperty QPlace Place::place
-
-    For details on how to use this property to interface between C++ and QML see
-    "\l {Place - QPlace} {Interfaces between C++ and QML Code}".
+    \internal
 */
 void QDeclarativePlace::setPlace(const QPlace &src)
 {
@@ -325,52 +285,28 @@ void QDeclarativePlace::setPlace(const QPlace &src)
         emit locationChanged();
     }
 
-    if (m_ratings && m_ratings->parent() == this) {
-        m_ratings->setRatings(m_src.ratings());
-    } else if (!m_ratings || m_ratings->parent() != this) {
-        m_ratings = new QDeclarativeRatings(m_src.ratings(), this);
+    if (previous.ratings() != m_src.ratings())
         emit ratingsChanged();
-    }
-
-    if (m_supplier && m_supplier->parent() == this) {
-        m_supplier->setSupplier(m_src.supplier(), m_plugin);
-    } else if (!m_supplier || m_supplier->parent() != this) {
-        m_supplier = new QDeclarativeSupplier(m_src.supplier(), m_plugin, this);
+    if (previous.supplier() != m_src.supplier())
         emit supplierChanged();
-    }
-
-    if (m_icon && m_icon->parent() == this) {
-        m_icon->setPlugin(m_plugin);
-        m_icon->setIcon(m_src.icon());
-    } else if (!m_icon || m_icon->parent() != this) {
-        m_icon = new QDeclarativePlaceIcon(m_src.icon(), m_plugin, this);
+    if (previous.icon() != m_src.icon())
         emit iconChanged();
-    }
-
-    if (previous.name() != m_src.name()) {
+    if (previous.name() != m_src.name())
         emit nameChanged();
-    }
-    if (previous.placeId() != m_src.placeId()) {
+    if (previous.placeId() != m_src.placeId())
         emit placeIdChanged();
-    }
-    if (previous.attribution() != m_src.attribution()) {
+    if (previous.attribution() != m_src.attribution())
         emit attributionChanged();
-    }
-    if (previous.detailsFetched() != m_src.detailsFetched()) {
+    if (previous.detailsFetched() != m_src.detailsFetched())
         emit detailsFetchedChanged();
-    }
-    if (previous.primaryPhone() != m_src.primaryPhone()) {
+    if (previous.primaryPhone() != m_src.primaryPhone())
         emit primaryPhoneChanged();
-    }
-    if (previous.primaryFax() != m_src.primaryFax()) {
+    if (previous.primaryFax() != m_src.primaryFax())
         emit primaryFaxChanged();
-    }
-    if (previous.primaryEmail() != m_src.primaryEmail()) {
+    if (previous.primaryEmail() != m_src.primaryEmail())
         emit primaryEmailChanged();
-    }
-    if (previous.primaryWebsite() != m_src.primaryWebsite()) {
+    if (previous.primaryWebsite() != m_src.primaryWebsite())
         emit primaryWebsiteChanged();
-    }
 
     if (m_reviewModel && m_src.totalContentCount(QPlaceContent::ReviewType) >= 0) {
         m_reviewModel->initializeCollection(m_src.totalContentCount(QPlaceContent::ReviewType),
@@ -389,15 +325,17 @@ void QDeclarativePlace::setPlace(const QPlace &src)
     synchronizeContacts();
 }
 
-QPlace QDeclarativePlace::place()
+QPlace QDeclarativePlace::place() const
 {
-    // The following properties are not stored in m_src but instead stored in QDeclarative* objects
+    // The properties handled explicirly here are not stored in m_src, but
+    // but are instead stored in QDeclarative* objects which we need to update
+    // explicitly.
 
     QPlace result = m_src;
 
     // Categories
     QList<QPlaceCategory> categories;
-    foreach (QDeclarativeCategory *value, m_categories)
+    for (QDeclarativeCategory *value : std::as_const(m_categories))
         categories.append(value->category());
 
     result.setCategories(categories);
@@ -405,30 +343,16 @@ QPlace QDeclarativePlace::place()
     // Location
     result.setLocation(m_location ? m_location->location() : QGeoLocation());
 
-    // Rating
-    result.setRatings(m_ratings ? m_ratings->ratings() : QPlaceRatings());
-
-    // Supplier
-    result.setSupplier(m_supplier ? m_supplier->supplier() : QPlaceSupplier());
-
-    // Icon
-    result.setIcon(m_icon ? m_icon->icon() : QPlaceIcon());
-
     //contact details
     QList<QPlaceContactDetail> cppDetails;
-    foreach (const QString &key, m_contactDetails->keys()) {
+    for (const QString &key : m_contactDetails->keys()) {
         cppDetails.clear();
-        if (m_contactDetails->value(key).type() == QVariant::List) {
-            QVariantList detailsVarList = m_contactDetails->value(key).toList();
-            foreach (const QVariant &detailVar, detailsVarList) {
-                QDeclarativeContactDetail *detail = qobject_cast<QDeclarativeContactDetail *>(detailVar.value<QObject *>());
-                if (detail)
-                    cppDetails.append(detail->contactDetail());
-            }
+        if (m_contactDetails->value(key).typeId() == QMetaType::QVariantList) {
+            const QVariantList detailsVarList = m_contactDetails->value(key).toList();
+            for (const QVariant &detailVar : detailsVarList)
+                cppDetails.append(detailVar.value<QPlaceContactDetail>());
         } else {
-            QDeclarativeContactDetail *detail = qobject_cast<QDeclarativeContactDetail *>(m_contactDetails->value(key).value<QObject *>());
-            if (detail)
-                cppDetails.append(detail->contactDetail());
+            cppDetails.append(m_contactDetails->value(key).value<QPlaceContactDetail>());
         }
         result.setContactDetails(key, cppDetails);
     }
@@ -454,7 +378,7 @@ void QDeclarativePlace::setLocation(QDeclarativeGeoLocation *location)
     emit locationChanged();
 }
 
-QDeclarativeGeoLocation *QDeclarativePlace::location()
+QDeclarativeGeoLocation *QDeclarativePlace::location() const
 {
     return m_location;
 }
@@ -465,22 +389,17 @@ QDeclarativeGeoLocation *QDeclarativePlace::location()
     This property holds ratings of the place.  The ratings provide an indication of the quality of a
     place.
 */
-void QDeclarativePlace::setRatings(QDeclarativeRatings *rating)
+void QDeclarativePlace::setRatings(const QPlaceRatings &rating)
 {
-    if (m_ratings == rating)
-        return;
-
-    if (m_ratings && m_ratings->parent() == this)
-        delete m_ratings;
-
-    m_ratings = rating;
-    emit ratingsChanged();
+    if (m_src.ratings() != rating) {
+        m_src.setRatings(rating);
+        emit ratingsChanged();
+    }
 }
 
-QDeclarativeRatings *QDeclarativePlace::ratings()
+QPlaceRatings QDeclarativePlace::ratings() const
 {
-
-    return m_ratings;
+    return m_src.ratings();
 }
 
 /*!
@@ -489,21 +408,17 @@ QDeclarativeRatings *QDeclarativePlace::ratings()
     This property holds the supplier of the place data.
     The supplier is typically a business or organization that collected the data about the place.
 */
-void QDeclarativePlace::setSupplier(QDeclarativeSupplier *supplier)
+void QDeclarativePlace::setSupplier(const QPlaceSupplier &supplier)
 {
-    if (m_supplier == supplier)
-        return;
-
-    if (m_supplier && m_supplier->parent() == this)
-        delete m_supplier;
-
-    m_supplier = supplier;
-    emit supplierChanged();
+    if (m_src.supplier() != supplier) {
+        m_src.setSupplier(supplier);
+        emit supplierChanged();
+    }
 }
 
-QDeclarativeSupplier *QDeclarativePlace::supplier() const
+QPlaceSupplier QDeclarativePlace::supplier() const
 {
-    return m_supplier;
+    return m_src.supplier();
 }
 
 /*!
@@ -511,21 +426,17 @@ QDeclarativeSupplier *QDeclarativePlace::supplier() const
 
     This property holds a graphical icon which can be used to represent the place.
 */
-QDeclarativePlaceIcon *QDeclarativePlace::icon() const
+QPlaceIcon QDeclarativePlace::icon() const
 {
-    return m_icon;
+    return m_src.icon();
 }
 
-void QDeclarativePlace::setIcon(QDeclarativePlaceIcon *icon)
+void QDeclarativePlace::setIcon(const QPlaceIcon &icon)
 {
-    if (m_icon == icon)
-        return;
-
-    if (m_icon && m_icon->parent() == this)
-        delete m_icon;
-
-    m_icon = icon;
-    emit iconChanged();
+    if (m_src.icon() != icon) {
+        m_src.setIcon(icon);
+        emit iconChanged();
+    }
 }
 
 /*!
@@ -695,14 +606,14 @@ void QDeclarativePlace::finished()
         m_errorString.clear();
 
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
 
         setStatus(QDeclarativePlace::Ready);
     } else {
         QString errorString = m_reply->errorString();
 
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
 
         setStatus(QDeclarativePlace::Error, errorString);
     }
@@ -721,7 +632,7 @@ void QDeclarativePlace::contactsModified(const QString &key, const QVariant &)
 */
 void QDeclarativePlace::cleanupDeletedCategories()
 {
-    foreach (QDeclarativeCategory * category, m_categoriesToBeDeleted) {
+    for (QDeclarativeCategory * category : m_categoriesToBeDeleted) {
         if (category->parent() == this)
             delete category;
     }
@@ -745,7 +656,7 @@ void QDeclarativePlace::getDetails()
         return;
 
     m_reply = placeManager->getPlaceDetails(placeId());
-    connect(m_reply, SIGNAL(finished()), this, SLOT(finished()));
+    connect(m_reply, &QPlaceReply::finished, this, &QDeclarativePlace::finished);
     setStatus(QDeclarativePlace::Fetching);
 }
 
@@ -774,7 +685,7 @@ void QDeclarativePlace::save()
         return;
 
     m_reply = placeManager->savePlace(place());
-    connect(m_reply, SIGNAL(finished()), this, SLOT(finished()));
+    connect(m_reply, &QPlaceReply::finished, this, &QDeclarativePlace::finished);
     setStatus(QDeclarativePlace::Saving);
 }
 
@@ -794,7 +705,7 @@ void QDeclarativePlace::remove()
         return;
 
     m_reply = placeManager->removePlace(place().placeId());
-    connect(m_reply, SIGNAL(finished()), this, SLOT(finished()));
+    connect(m_reply, &QPlaceReply::finished, this, &QDeclarativePlace::finished);
     setStatus(QDeclarativePlace::Removing);
 }
 
@@ -878,7 +789,7 @@ QQmlPropertyMap *QDeclarativePlace::extendedAttributes() const
     \qmlproperty ContactDetails Place::contactDetails
 
     This property holds the contact information for this place, for example a phone number or
-    a website URL.  This property is a map of \l ContactDetail objects.
+    a website URL.  This property is a map of \l contactDetail objects.
 */
 QDeclarativeContactDetails *QDeclarativePlace::contactDetails() const
 {
@@ -925,7 +836,7 @@ void QDeclarativePlace::category_append(QQmlListProperty<QDeclarativeCategory> *
 /*!
     \internal
 */
-int QDeclarativePlace::category_count(QQmlListProperty<QDeclarativeCategory> *prop)
+qsizetype QDeclarativePlace::category_count(QQmlListProperty<QDeclarativeCategory> *prop)
 {
     return static_cast<QDeclarativePlace *>(prop->object)->m_categories.count();
 }
@@ -934,7 +845,7 @@ int QDeclarativePlace::category_count(QQmlListProperty<QDeclarativeCategory> *pr
     \internal
 */
 QDeclarativeCategory *QDeclarativePlace::category_at(QQmlListProperty<QDeclarativeCategory> *prop,
-                                                                          int index)
+                                                     qsizetype index)
 {
     QDeclarativePlace *object = static_cast<QDeclarativePlace *>(prop->object);
     QDeclarativeCategory *res = NULL;
@@ -953,9 +864,9 @@ void QDeclarativePlace::category_clear(QQmlListProperty<QDeclarativeCategory> *p
     if (object->m_categories.isEmpty())
         return;
 
-    for (int i = 0; i < object->m_categories.count(); ++i) {
-        if (object->m_categories.at(i)->parent() == object)
-            object->m_categoriesToBeDeleted.append(object->m_categories.at(i));
+    for (auto *category : std::as_const(object->m_categories)) {
+        if (category->parent() == object)
+            object->m_categoriesToBeDeleted.append(category);
     }
 
     object->m_categories.clear();
@@ -971,7 +882,7 @@ void QDeclarativePlace::synchronizeCategories()
 {
     qDeleteAll(m_categories);
     m_categories.clear();
-    foreach (const QPlaceCategory &value, m_src.categories()) {
+    for (const QPlaceCategory &value : m_src.categories()) {
         QDeclarativeCategory *declarativeValue = new QDeclarativeCategory(value, m_plugin, this);
         m_categories.append(declarativeValue);
     }
@@ -1078,14 +989,14 @@ void QDeclarativePlace::initializeFavorite(QDeclarativeGeoServiceProvider *plugi
 */
 void QDeclarativePlace::pullExtendedAttributes()
 {
-    QStringList keys = m_extendedAttributes->keys();
-    foreach (const QString &key, keys)
+    const QStringList keys = m_extendedAttributes->keys();
+    for (const QString &key : keys)
         m_extendedAttributes->clear(key);
 
-    QStringList attributeTypes = m_src.extendedAttributeTypes();
-    foreach (const QString &attributeType, attributeTypes) {
+    const QStringList attributeTypes = m_src.extendedAttributeTypes();
+    for (const QString &attributeType : attributeTypes) {
         m_extendedAttributes->insert(attributeType,
-            QVariant::fromValue(new QDeclarativePlaceAttribute(m_src.extendedAttribute(attributeType))));
+            QVariant::fromValue(m_src.extendedAttribute(attributeType)));
     }
 
     emit extendedAttributesChanged();
@@ -1097,9 +1008,9 @@ void QDeclarativePlace::pullExtendedAttributes()
 void QDeclarativePlace::synchronizeContacts()
 {
     //clear out contact data
-    foreach (const QString &contactType, m_contactDetails->keys()) {
-        QList<QVariant> contacts = m_contactDetails->value(contactType).toList();
-        foreach (const QVariant &var, contacts) {
+    for (const QString &contactType : m_contactDetails->keys()) {
+        const QList<QVariant> contacts = m_contactDetails->value(contactType).toList();
+        for (const QVariant &var : contacts) {
             QObject *obj = var.value<QObject *>();
             if (obj->parent() == this)
                 delete obj;
@@ -1108,14 +1019,11 @@ void QDeclarativePlace::synchronizeContacts()
     }
 
     //insert new contact data from source place
-    foreach (const QString &contactType, m_src.contactTypes()) {
-        QList<QPlaceContactDetail> sourceContacts = m_src.contactDetails(contactType);
+    for (const QString &contactType : m_src.contactTypes()) {
+        const QList<QPlaceContactDetail> sourceContacts = m_src.contactDetails(contactType);
         QVariantList declContacts;
-        foreach (const QPlaceContactDetail &sourceContact, sourceContacts) {
-            QDeclarativeContactDetail *declContact = new QDeclarativeContactDetail(this);
-            declContact->setContactDetail(sourceContact);
-            declContacts.append(QVariant::fromValue(qobject_cast<QObject *>(declContact)));
-        }
+        for (const QPlaceContactDetail &sourceContact : sourceContacts)
+            declContacts.append(QVariant::fromValue(sourceContact));
         m_contactDetails->insert(contactType, declContacts);
     }
     primarySignalsEmission();
@@ -1173,29 +1081,29 @@ void QDeclarativePlace::primarySignalsEmission(const QString &type)
 QPlaceManager *QDeclarativePlace::manager()
 {
     if (m_status != QDeclarativePlace::Ready && m_status != QDeclarativePlace::Error)
-        return 0;
+        return nullptr;
 
     if (m_reply) {
         m_reply->abort();
         m_reply->deleteLater();
-        m_reply = 0;
+        m_reply = nullptr;
     }
 
     if (!m_plugin) {
            qmlWarning(this) << QStringLiteral("Plugin is not assigned to place.");
-           return 0;
+           return nullptr;
     }
 
     QGeoServiceProvider *serviceProvider = m_plugin->sharedGeoServiceProvider();
     if (!serviceProvider)
-        return 0;
+        return nullptr;
 
     QPlaceManager *placeManager = serviceProvider->placeManager();
 
     if (!placeManager) {
         setStatus(Error, QCoreApplication::translate(CONTEXT_NAME, PLUGIN_ERROR)
                          .arg(m_plugin->name()).arg(serviceProvider->errorString()));
-        return 0;
+        return nullptr;
     }
 
     return placeManager;
@@ -1210,17 +1118,12 @@ QString QDeclarativePlace::primaryValue(const QString &contactType) const
     if (value.userType() == qMetaTypeId<QJSValue>())
         value = value.value<QJSValue>().toVariant();
 
-    if (value.userType() == QVariant::List) {
+    if (value.userType() == QMetaType::QVariantList) {
         QVariantList detailList = m_contactDetails->value(contactType).toList();
-        if (!detailList.isEmpty()) {
-            QDeclarativeContactDetail *primaryDetail = qobject_cast<QDeclarativeContactDetail *>(detailList.at(0).value<QObject *>());
-            if (primaryDetail)
-                return primaryDetail->value();
-        }
-    } else if (value.userType() == QMetaType::QObjectStar) {
-        QDeclarativeContactDetail *primaryDetail = qobject_cast<QDeclarativeContactDetail *>(m_contactDetails->value(contactType).value<QObject *>());
-        if (primaryDetail)
-            return primaryDetail->value();
+        if (!detailList.isEmpty())
+            return detailList.at(0).value<QPlaceContactDetail>().value();
+    } else if (value.metaType() == QMetaType::fromType<QPlaceContactDetail>()) {
+        return value.value<QPlaceContactDetail>().value();
     }
 
     return QString();

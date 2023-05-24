@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtTest/QTest>
@@ -37,9 +12,7 @@
 #include <Qt3DRender/private/qtechnique_p.h>
 #include <QObject>
 #include <QSignalSpy>
-#include <Qt3DCore/private/qnodecreatedchangegenerator_p.h>
-#include <Qt3DCore/qnodecreatedchange.h>
-#include "testpostmanarbiter.h"
+#include "testarbiter.h"
 
 class tst_QTechnique : public QObject
 {
@@ -137,7 +110,7 @@ private Q_SLOTS:
             // THEN
             QVERIFY(spy.isValid());
             QCOMPARE(technique.graphicsApiFilter()->majorVersion(), 3);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -145,14 +118,14 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(technique.graphicsApiFilter()->majorVersion(), 3);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
 
             // WHEN
             technique.graphicsApiFilter()->setMinorVersion(2);
 
             // THEN
             QCOMPARE(technique.graphicsApiFilter()->minorVersion(), 2);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -160,14 +133,14 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(technique.graphicsApiFilter()->minorVersion(), 2);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
 
             // WHEN
             technique.graphicsApiFilter()->setProfile(Qt3DRender::QGraphicsApiFilter::CoreProfile);
 
             // THEN
             QCOMPARE(technique.graphicsApiFilter()->profile(), Qt3DRender::QGraphicsApiFilter::CoreProfile);
-            QCOMPARE(spy.count(), 1);
+            QCOMPARE(spy.size(), 1);
 
             // WHEN
             spy.clear();
@@ -175,7 +148,7 @@ private Q_SLOTS:
 
             // THEN
             QCOMPARE(technique.graphicsApiFilter()->profile(), Qt3DRender::QGraphicsApiFilter::CoreProfile);
-            QCOMPARE(spy.count(), 0);
+            QCOMPARE(spy.size(), 0);
         }
     }
 
@@ -233,85 +206,6 @@ private Q_SLOTS:
         QCOMPARE(technique.filterKeys().size(), 0);
     }
 
-    void checkCreationData()
-    {
-        // GIVEN
-        Qt3DRender::QTechnique technique;
-        Qt3DRender::QRenderPass pass;
-        Qt3DRender::QParameter parameter;
-        Qt3DRender::QFilterKey filterKey;
-
-        technique.addRenderPass(&pass);
-        technique.addParameter(&parameter);
-        technique.addFilterKey(&filterKey);
-
-        // WHEN
-        QVector<Qt3DCore::QNodeCreatedChangeBasePtr> creationChanges;
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&technique);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 4); // Technique + Pass + Parameter + FilterKey
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QTechniqueData>>(creationChanges.first());
-            const Qt3DRender::QTechniqueData cloneData = creationChangeData->data;
-
-            QCOMPARE(technique.graphicsApiFilter()->minorVersion(), cloneData.graphicsApiFilterData.m_minor);
-            QCOMPARE(technique.graphicsApiFilter()->majorVersion(), cloneData.graphicsApiFilterData.m_major);
-            QCOMPARE(technique.graphicsApiFilter()->profile(), cloneData.graphicsApiFilterData.m_profile);
-            QCOMPARE(technique.graphicsApiFilter()->vendor(), cloneData.graphicsApiFilterData.m_vendor);
-            QCOMPARE(technique.graphicsApiFilter()->extensions(), cloneData.graphicsApiFilterData.m_extensions);
-            QCOMPARE(technique.graphicsApiFilter()->api(), cloneData.graphicsApiFilterData.m_api);
-            QCOMPARE(technique.id(), creationChangeData->subjectId());
-            QCOMPARE(technique.isEnabled(), true);
-            QCOMPARE(technique.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(technique.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(technique.renderPasses().size(), cloneData.renderPassIds.size());
-            QCOMPARE(technique.parameters().size(), cloneData.parameterIds.size());
-            QCOMPARE(technique.filterKeys().size(), cloneData.filterKeyIds.size());
-            QCOMPARE(pass.id(), cloneData.renderPassIds.first());
-            QCOMPARE(parameter.id(), cloneData.parameterIds.first());
-            QCOMPARE(filterKey.id(), cloneData.filterKeyIds.first());
-        }
-
-        // WHEN
-        technique.setEnabled(false);
-
-        {
-            Qt3DCore::QNodeCreatedChangeGenerator creationChangeGenerator(&technique);
-            creationChanges = creationChangeGenerator.creationChanges();
-        }
-
-        // THEN
-        {
-            QCOMPARE(creationChanges.size(), 4); // Technique + Pass + Parameter + FilterKey
-
-            const auto creationChangeData = qSharedPointerCast<Qt3DCore::QNodeCreatedChange<Qt3DRender::QTechniqueData>>(creationChanges.first());
-            const Qt3DRender::QTechniqueData cloneData = creationChangeData->data;
-
-            QCOMPARE(technique.graphicsApiFilter()->minorVersion(), cloneData.graphicsApiFilterData.m_minor);
-            QCOMPARE(technique.graphicsApiFilter()->majorVersion(), cloneData.graphicsApiFilterData.m_major);
-            QCOMPARE(technique.graphicsApiFilter()->profile(), cloneData.graphicsApiFilterData.m_profile);
-            QCOMPARE(technique.graphicsApiFilter()->vendor(), cloneData.graphicsApiFilterData.m_vendor);
-            QCOMPARE(technique.graphicsApiFilter()->extensions(), cloneData.graphicsApiFilterData.m_extensions);
-            QCOMPARE(technique.graphicsApiFilter()->api(), cloneData.graphicsApiFilterData.m_api);
-            QCOMPARE(technique.id(), creationChangeData->subjectId());
-            QCOMPARE(technique.isEnabled(), false);
-            QCOMPARE(technique.isEnabled(), creationChangeData->isNodeEnabled());
-            QCOMPARE(technique.metaObject(), creationChangeData->metaObject());
-            QCOMPARE(technique.renderPasses().size(), cloneData.renderPassIds.size());
-            QCOMPARE(technique.parameters().size(), cloneData.parameterIds.size());
-            QCOMPARE(technique.filterKeys().size(), cloneData.filterKeyIds.size());
-            QCOMPARE(pass.id(), cloneData.renderPassIds.first());
-            QCOMPARE(parameter.id(), cloneData.parameterIds.first());
-            QCOMPARE(filterKey.id(), cloneData.filterKeyIds.first());
-        }
-    }
-
     void checkRenderPassUpdate()
     {
         // GIVEN
@@ -326,11 +220,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
         {
             // WHEN
@@ -338,9 +231,8 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
         }
     }
 
@@ -358,11 +250,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -371,11 +262,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
     }
 
@@ -393,11 +283,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
 
         {
@@ -406,11 +295,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
     }
 
@@ -427,11 +315,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
         {
             // WHEN
@@ -439,11 +326,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
         {
             // WHEN
@@ -451,11 +337,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
         {
             // WHEN
@@ -463,11 +348,10 @@ private Q_SLOTS:
             QCoreApplication::processEvents();
 
             // THEN
-            QCOMPARE(arbiter.events.size(), 0);
-            QCOMPARE(arbiter.dirtyNodes.size(), 1);
-            QVERIFY(arbiter.dirtyNodes.contains(&technique));
+            QCOMPARE(arbiter.dirtyNodes().size(), 1);
+            QVERIFY(arbiter.dirtyNodes().contains(&technique));
 
-            arbiter.dirtyNodes.clear();
+            arbiter.clear();
         }
     }
 };

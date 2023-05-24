@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -64,6 +64,12 @@ DatabaseStatus ToDatabaseStatus(blink::ServiceWorkerStatusCode status);
 bool ToBackgroundFetchRegistration(
     const proto::BackgroundFetchMetadata& metadata_proto,
     blink::mojom::BackgroundFetchRegistrationData* registration_data);
+
+// Gets the storage key for a `BackgroundFetchMetadata`, falling back to
+// `origin` if `storage_key` is not set.  If neither is set, this returns
+// a key with an opaque origin.
+CONTENT_EXPORT blink::StorageKey GetMetadataStorageKey(
+    const content::proto::BackgroundFetchMetadata& metadata_proto);
 
 bool MojoFailureReasonFromRegistrationProto(
     proto::BackgroundFetchRegistration_BackgroundFetchFailureReason

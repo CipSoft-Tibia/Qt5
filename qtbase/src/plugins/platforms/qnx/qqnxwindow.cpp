@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2011 - 2013 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqnxglobal.h"
 
@@ -157,7 +121,6 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
       m_exposed(true),
       m_foreign(false),
       m_windowState(Qt::WindowNoState),
-      m_mmRendererWindow(0),
       m_firstActivateHandled(false)
 {
     qWindowDebug() << "window =" << window << ", size =" << window->size();
@@ -280,7 +243,6 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, screen_window_
     , m_exposed(true)
     , m_foreign(true)
     , m_windowState(Qt::WindowNoState)
-    , m_mmRendererWindow(0)
     , m_parentGroupName(256, 0)
     , m_isTopLevel(false)
 {
@@ -566,7 +528,7 @@ void QQnxWindow::removeFromParent()
         if (Q_UNLIKELY(!m_parentWindow->m_childWindows.removeAll(this)))
             qFatal("QQnxWindow: Window Hierarchy broken; window has parent, but parent hasn't got child.");
         else
-            m_parentWindow = 0;
+            m_parentWindow = nullptr;
     } else if (m_screen) {
         m_screen->removeWindow(this);
     }
@@ -634,7 +596,7 @@ void QQnxWindow::lower()
 
 void QQnxWindow::requestActivateWindow()
 {
-    QQnxWindow *focusWindow = 0;
+    QQnxWindow *focusWindow = nullptr;
     if (QGuiApplication::focusWindow())
         focusWindow = static_cast<QQnxWindow*>(QGuiApplication::focusWindow()->handle());
 
@@ -664,7 +626,7 @@ void QQnxWindow::requestActivateWindow()
                   platformScreen->rootWindow()->m_windowGroupName == currentWindow->m_parentGroupName) {
                 currentWindow = platformScreen->rootWindow();
             } else {
-                currentWindow = 0;
+                currentWindow = nullptr;
             }
         }
 
@@ -750,22 +712,6 @@ void QQnxWindow::propagateSizeHints()
 {
     // nothing to do; silence base class warning
     qWindowDebug("ignored");
-}
-
-void QQnxWindow::setMMRendererWindowName(const QString &name)
-{
-    m_mmRendererWindowName = name;
-}
-
-void QQnxWindow::setMMRendererWindow(screen_window_t handle)
-{
-    m_mmRendererWindow = handle;
-}
-
-void QQnxWindow::clearMMRendererWindow()
-{
-    m_mmRendererWindowName.clear();
-    m_mmRendererWindow = 0;
 }
 
 QPlatformScreen *QQnxWindow::screen() const
@@ -912,9 +858,6 @@ void QQnxWindow::updateZorder(int &topZorder)
 {
     updateZorder(m_window, topZorder);
 
-    if (m_mmRendererWindow)
-        updateZorder(m_mmRendererWindow, topZorder);
-
     Q_FOREACH (QQnxWindow *childWindow, m_childWindows)
         childWindow->updateZorder(topZorder);
 }
@@ -946,10 +889,12 @@ void QQnxWindow::applyWindowState()
 
 void QQnxWindow::windowPosted()
 {
-    if (m_cover)
+    if (m_cover) {
         m_cover->updateCover();
-
-    qqnxLgmonFramePosted(m_cover);  // for performance measurements
+        qqnxLgmonFramePosted(true);  // for performance measurements
+    } else {
+        qqnxLgmonFramePosted(false);  // for performance measurements
+    }
 }
 
 bool QQnxWindow::shouldMakeFullScreen() const

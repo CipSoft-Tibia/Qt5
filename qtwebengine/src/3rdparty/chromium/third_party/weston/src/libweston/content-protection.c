@@ -32,7 +32,7 @@
 #include <string.h>
 #include <libweston/libweston.h>
 #include <libweston/weston-log.h>
-#include "compositor/weston.h"
+#include "libweston-internal.h"
 #include "weston-content-protection-server-protocol.h"
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
@@ -187,7 +187,7 @@ cp_destroy_listener(struct wl_listener *listener, void *data)
 			  destroy_listener);
 	wl_list_remove(&cp->destroy_listener.link);
 	wl_list_remove(&cp->protected_list);
-	weston_compositor_log_scope_destroy(cp->debug);
+	weston_log_scope_destroy(cp->debug);
 	cp->debug = NULL;
 	cp->surface_protection_update = NULL;
 	free(cp);
@@ -340,9 +340,8 @@ weston_compositor_enable_content_protection(struct weston_compositor *compositor
 
 	cp->destroy_listener.notify = cp_destroy_listener;
 	wl_signal_add(&compositor->destroy_signal, &cp->destroy_listener);
-	cp->debug = weston_compositor_add_log_scope(compositor->weston_log_ctx,
-						    "content-protection-debug",
+	cp->debug = weston_compositor_add_log_scope(compositor, "content-protection-debug",
 						    "debug-logs for content-protection",
-						    NULL, NULL);
+						    NULL, NULL, NULL);
 	return 0;
 }

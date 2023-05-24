@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtDBus module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qdbusmetaobject_p.h"
 
@@ -59,6 +23,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 class QDBusMetaObjectGenerator
 {
 public:
@@ -75,22 +41,23 @@ private:
         QVarLengthArray<int, 4> inputTypes;
         QVarLengthArray<int, 4> outputTypes;
         QByteArray rawReturnType;
-        int flags;
+        quint32 flags;
     };
 
     struct Property {
         QByteArray typeName;
         QByteArray signature;
         int type;
-        int flags;
+        quint32 flags;
     };
     struct Type {
         int id;
         QByteArray name;
     };
 
-    QMap<QByteArray, Method> signals_;
-    QMap<QByteArray, Method> methods;
+    using MethodMap = QMap<QByteArray, Method>;
+    MethodMap signals_;
+    MethodMap methods;
     QMap<QByteArray, Property> properties;
 
     const QDBusIntrospection::Interface *data;
@@ -104,11 +71,11 @@ private:
     void parseSignals();
     void parseProperties();
 
-    static int aggregateParameterCount(const QMap<QByteArray, Method> &map);
+    static qsizetype aggregateParameterCount(const MethodMap &map);
 };
 
-static const int intsPerProperty = 2;
-static const int intsPerMethod = 2;
+static const qsizetype intsPerProperty = 2;
+static const qsizetype intsPerMethod = 2;
 
 struct QDBusMetaObjectPrivate : public QMetaObjectPrivate
 {
@@ -127,27 +94,37 @@ QDBusMetaObjectGenerator::QDBusMetaObjectGenerator(const QString &interfaceName,
     }
 }
 
-static int registerComplexDBusType(const char *typeName)
+static int registerComplexDBusType(const QByteArray &typeName)
 {
-    struct QDBusRawTypeHandler {
-        static void destruct(void *)
-        {
-            qFatal("Cannot destruct placeholder type QDBusRawType");
-        }
-
-        static void *construct(void *, const void *)
-        {
-            qFatal("Cannot construct placeholder type QDBusRawType");
-            return nullptr;
-        }
+    struct QDBusRawTypeHandler : QtPrivate::QMetaTypeInterface
+    {
+        const QByteArray name;
+        QDBusRawTypeHandler(const QByteArray &name)
+            : QtPrivate::QMetaTypeInterface {
+                0, sizeof(void *), sizeof(void *), QMetaType::RelocatableType, 0, nullptr,
+                name.constData(),
+                nullptr, nullptr, nullptr, nullptr,
+                nullptr, nullptr, nullptr,
+                nullptr, nullptr, nullptr
+            },
+            name(name)
+        {}
     };
 
-    return QMetaType::registerNormalizedType(typeName,
-                                             QDBusRawTypeHandler::destruct,
-                                             QDBusRawTypeHandler::construct,
-                                             sizeof(void *),
-                                             QMetaType::MovableType,
-                                             nullptr);
+    Q_CONSTINIT static QBasicMutex mutex;
+    Q_CONSTINIT static struct Hash : QHash<QByteArray, QMetaType>
+    {
+        ~Hash()
+        {
+            for (QMetaType entry : *this)
+                QMetaType::unregisterMetaType(std::move(entry));
+        }
+    } hash;
+    QMutexLocker lock(&mutex);
+    QMetaType &metatype = hash[typeName];
+    if (!metatype.isValid())
+        metatype = QMetaType(new QDBusRawTypeHandler(typeName));
+    return metatype.id();
 }
 
 Q_DBUS_EXPORT bool qt_dbus_metaobject_skip_annotations = false;
@@ -160,14 +137,14 @@ QDBusMetaObjectGenerator::findType(const QByteArray &signature,
     Type result;
     result.id = QMetaType::UnknownType;
 
-    int type = QDBusMetaType::signatureToType(signature);
+    int type = QDBusMetaType::signatureToMetaType(signature).id();
     if (type == QMetaType::UnknownType && !qt_dbus_metaobject_skip_annotations) {
         // it's not a type normally handled by our meta type system
         // it must contain an annotation
         QString annotationName = QString::fromLatin1("org.qtproject.QtDBus.QtTypeName");
         if (id >= 0)
             annotationName += QString::fromLatin1(".%1%2")
-                              .arg(QLatin1String(direction))
+                              .arg(QLatin1StringView(direction))
                               .arg(id);
 
         // extract from annotations:
@@ -179,17 +156,17 @@ QDBusMetaObjectGenerator::findType(const QByteArray &signature,
             annotationName = QString::fromLatin1("com.trolltech.QtDBus.QtTypeName");
             if (id >= 0)
                 annotationName += QString::fromLatin1(".%1%2")
-                                  .arg(QLatin1String(direction))
+                                  .arg(QLatin1StringView(direction))
                                   .arg(id);
             typeName = annotations.value(annotationName).toLatin1();
         }
 
         if (!typeName.isEmpty()) {
             // type name found
-            type = QMetaType::type(typeName);
+            type = QMetaType::fromName(typeName).id();
         }
 
-        if (type == QMetaType::UnknownType || signature != QDBusMetaType::typeToSignature(type)) {
+        if (type == QMetaType::UnknownType || signature != QDBusMetaType::typeToSignature(QMetaType(type))) {
             // type is still unknown or doesn't match back to the signature that it
             // was expected to, so synthesize a fake type
             typeName = "QDBusRawType<0x" + signature.toHex() + ">*";
@@ -218,7 +195,7 @@ QDBusMetaObjectGenerator::findType(const QByteArray &signature,
             type = registerComplexDBusType(result.name);
         }
     } else {
-        result.name = QMetaType::typeName(type);
+        result.name = QMetaType(type).name();
     }
 
     result.id = type;
@@ -232,10 +209,7 @@ void QDBusMetaObjectGenerator::parseMethods()
     //  Add cloned methods when the remote object has return types
     //
 
-    QDBusIntrospection::Methods::ConstIterator method_it = data->methods.constBegin();
-    QDBusIntrospection::Methods::ConstIterator method_end = data->methods.constEnd();
-    for ( ; method_it != method_end; ++method_it) {
-        const QDBusIntrospection::Method &m = *method_it;
+    for (const QDBusIntrospection::Method &m : std::as_const(data->methods)) {
         Method mm;
 
         mm.name = m.name.toLatin1();
@@ -245,7 +219,7 @@ void QDBusMetaObjectGenerator::parseMethods()
         bool ok = true;
 
         // build the input argument list
-        for (int i = 0; i < m.inputArgs.count(); ++i) {
+        for (qsizetype i = 0; i < m.inputArgs.size(); ++i) {
             const QDBusIntrospection::Argument &arg = m.inputArgs.at(i);
 
             Type type = findType(arg.type.toLatin1(), m.annotations, "In", i);
@@ -264,7 +238,7 @@ void QDBusMetaObjectGenerator::parseMethods()
         if (!ok) continue;
 
         // build the output argument list:
-        for (int i = 0; i < m.outputArgs.count(); ++i) {
+        for (qsizetype i = 0; i < m.outputArgs.size(); ++i) {
             const QDBusIntrospection::Argument &arg = m.outputArgs.at(i);
 
             Type type = findType(arg.type.toLatin1(), m.annotations, "Out", i);
@@ -290,12 +264,12 @@ void QDBusMetaObjectGenerator::parseMethods()
 
         // convert the last commas:
         if (!mm.parameterNames.isEmpty())
-            prototype[prototype.length() - 1] = ')';
+            prototype[prototype.size() - 1] = ')';
         else
             prototype.append(')');
 
         // check the async tag
-        if (m.annotations.value(QLatin1String(ANNOTATION_NO_WAIT)) == QLatin1String("true"))
+        if (m.annotations.value(ANNOTATION_NO_WAIT ""_L1) == "true"_L1)
             mm.tag = "Q_NOREPLY";
 
         // meta method flags
@@ -308,10 +282,7 @@ void QDBusMetaObjectGenerator::parseMethods()
 
 void QDBusMetaObjectGenerator::parseSignals()
 {
-    QDBusIntrospection::Signals::ConstIterator signal_it = data->signals_.constBegin();
-    QDBusIntrospection::Signals::ConstIterator signal_end = data->signals_.constEnd();
-    for ( ; signal_it != signal_end; ++signal_it) {
-        const QDBusIntrospection::Signal &s = *signal_it;
+    for (const QDBusIntrospection::Signal &s : std::as_const(data->signals_)) {
         Method mm;
 
         mm.name = s.name.toLatin1();
@@ -321,7 +292,7 @@ void QDBusMetaObjectGenerator::parseSignals()
         bool ok = true;
 
         // build the output argument list
-        for (int i = 0; i < s.outputArgs.count(); ++i) {
+        for (qsizetype i = 0; i < s.outputArgs.size(); ++i) {
             const QDBusIntrospection::Argument &arg = s.outputArgs.at(i);
 
             Type type = findType(arg.type.toLatin1(), s.annotations, "Out", i);
@@ -341,7 +312,7 @@ void QDBusMetaObjectGenerator::parseSignals()
 
         // convert the last commas:
         if (!mm.parameterNames.isEmpty())
-            prototype[prototype.length() - 1] = ')';
+            prototype[prototype.size() - 1] = ')';
         else
             prototype.append(')');
 
@@ -355,10 +326,7 @@ void QDBusMetaObjectGenerator::parseSignals()
 
 void QDBusMetaObjectGenerator::parseProperties()
 {
-    QDBusIntrospection::Properties::ConstIterator prop_it = data->properties.constBegin();
-    QDBusIntrospection::Properties::ConstIterator prop_end = data->properties.constEnd();
-    for ( ; prop_it != prop_end; ++prop_it) {
-        const QDBusIntrospection::Property &p = *prop_it;
+    for (const QDBusIntrospection::Property &p : std::as_const(data->properties)) {
         Property mp;
         Type type = findType(p.type.toLatin1(), p.annotations);
         if (type.id == QMetaType::UnknownType)
@@ -384,14 +352,11 @@ void QDBusMetaObjectGenerator::parseProperties()
 // Returns the sum of all parameters (including return type) for the given
 // \a map of methods. This is needed for calculating the size of the methods'
 // parameter type/name meta-data.
-int QDBusMetaObjectGenerator::aggregateParameterCount(const QMap<QByteArray, Method> &map)
+qsizetype QDBusMetaObjectGenerator::aggregateParameterCount(const MethodMap &map)
 {
-    int sum = 0;
-    QMap<QByteArray, Method>::const_iterator it;
-    for (it = map.constBegin(); it != map.constEnd(); ++it) {
-        const Method &m = it.value();
-        sum += m.inputTypes.size() + qMax(1, m.outputTypes.size());
-    }
+    qsizetype sum = 0;
+    for (const Method &m : map)
+        sum += m.inputTypes.size() + qMax(qsizetype(1), m.outputTypes.size());
     return sum;
 }
 
@@ -401,74 +366,89 @@ void QDBusMetaObjectGenerator::write(QDBusMetaObject *obj)
     // with a few modifications to make it cleaner
 
     QString className = interface;
-    className.replace(QLatin1Char('.'), QLatin1String("::"));
+    className.replace(u'.', "::"_L1);
     if (className.isEmpty())
-        className = QLatin1String("QDBusInterface");
+        className = "QDBusInterface"_L1;
 
-    QVarLengthArray<int> idata;
-    idata.resize(sizeof(QDBusMetaObjectPrivate) / sizeof(int));
+    QVarLengthArray<uint> idata;
+    idata.resize(sizeof(QDBusMetaObjectPrivate) / sizeof(uint));
 
-    int methodParametersDataSize =
+    qsizetype methodParametersDataSize =
             ((aggregateParameterCount(signals_)
              + aggregateParameterCount(methods)) * 2) // types and parameter names
-            - signals_.count() // return "parameters" don't have names
-            - methods.count(); // ditto
+            - signals_.size() // return "parameters" don't have names
+            - methods.size(); // ditto
 
     QDBusMetaObjectPrivate *header = reinterpret_cast<QDBusMetaObjectPrivate *>(idata.data());
-    Q_STATIC_ASSERT_X(QMetaObjectPrivate::OutputRevision == 8, "QtDBus meta-object generator should generate the same version as moc");
+    static_assert(QMetaObjectPrivate::OutputRevision == 12, "QtDBus meta-object generator should generate the same version as moc");
     header->revision = QMetaObjectPrivate::OutputRevision;
     header->className = 0;
     header->classInfoCount = 0;
     header->classInfoData = 0;
-    header->methodCount = signals_.count() + methods.count();
-    header->methodData = idata.size();
-    header->propertyCount = properties.count();
-    header->propertyData = header->methodData + header->methodCount * 5 + methodParametersDataSize;
+    header->methodCount = int(signals_.size() + methods.size());
+    header->methodData = int(idata.size());
+    header->propertyCount = int(properties.size());
+    header->propertyData = int(header->methodData + header->methodCount *
+                               QMetaObjectPrivate::IntsPerMethod + methodParametersDataSize);
     header->enumeratorCount = 0;
     header->enumeratorData = 0;
     header->constructorCount = 0;
     header->constructorData = 0;
     header->flags = RequiresVariantMetaObject;
-    header->signalCount = signals_.count();
+    header->signalCount = signals_.size();
     // These are specific to QDBusMetaObject:
-    header->propertyDBusData = header->propertyData + header->propertyCount * 3;
-    header->methodDBusData = header->propertyDBusData + header->propertyCount * intsPerProperty;
+    header->propertyDBusData = int(header->propertyData + header->propertyCount
+                                   * QMetaObjectPrivate::IntsPerProperty);
+    header->methodDBusData = int(header->propertyDBusData + header->propertyCount * intsPerProperty);
 
-    int data_size = idata.size() +
-                    (header->methodCount * (5+intsPerMethod)) + methodParametersDataSize +
-                    (header->propertyCount * (3+intsPerProperty));
-    for (const Method &mm : qAsConst(signals_))
-        data_size += 2 + mm.inputTypes.count() + mm.outputTypes.count();
-    for (const Method &mm : qAsConst(methods))
-        data_size += 2 + mm.inputTypes.count() + mm.outputTypes.count();
+    qsizetype data_size = idata.size() +
+                    (header->methodCount * (QMetaObjectPrivate::IntsPerMethod+intsPerMethod)) + methodParametersDataSize +
+                    (header->propertyCount * (QMetaObjectPrivate::IntsPerProperty+intsPerProperty));
+
+    // Signals must be added before other methods, to match moc.
+    std::array<std::reference_wrapper<const MethodMap>, 2> methodMaps = { signals_, methods };
+
+    for (const auto &methodMap : methodMaps) {
+        for (const Method &mm : methodMap.get())
+            data_size += 2 + mm.inputTypes.size() + mm.outputTypes.size();
+    }
     idata.resize(data_size + 1);
 
     QMetaStringTable strings(className.toLatin1());
 
-    int offset = header->methodData;
-    int parametersOffset = offset + header->methodCount * 5;
-    int signatureOffset = header->methodDBusData;
-    int typeidOffset = header->methodDBusData + header->methodCount * intsPerMethod;
+    qsizetype offset = header->methodData;
+    qsizetype parametersOffset = offset + header->methodCount * QMetaObjectPrivate::IntsPerMethod;
+    qsizetype signatureOffset = header->methodDBusData;
+    qsizetype typeidOffset = header->methodDBusData + header->methodCount * intsPerMethod;
     idata[typeidOffset++] = 0;                           // eod
 
-    // add each method:
-    for (int x = 0; x < 2; ++x) {
-        // Signals must be added before other methods, to match moc.
-        QMap<QByteArray, Method> &map = (x == 0) ? signals_ : methods;
-        for (QMap<QByteArray, Method>::ConstIterator it = map.constBegin();
-             it != map.constEnd(); ++it) {
-            const Method &mm = it.value();
+    qsizetype totalMetaTypeCount = properties.size();
+    ++totalMetaTypeCount; // + 1 for metatype of dynamic metaobject
+    for (const auto &methodMap : methodMaps) {
+        for (const Method &mm : methodMap.get()) {
+            qsizetype argc = mm.inputTypes.size() + qMax(qsizetype(0), mm.outputTypes.size() - 1);
+            totalMetaTypeCount += argc + 1;
+        }
+    }
+    QMetaType *metaTypes = new QMetaType[totalMetaTypeCount];
+    int propertyId = 0;
 
-            int argc = mm.inputTypes.size() + qMax(0, mm.outputTypes.size() - 1);
+    // add each method:
+    qsizetype currentMethodMetaTypeOffset = properties.size() + 1;
+
+    for (const auto &methodMap : methodMaps) {
+        for (const Method &mm : methodMap.get()) {
+            qsizetype argc = mm.inputTypes.size() + qMax(qsizetype(0), mm.outputTypes.size() - 1);
 
             idata[offset++] = strings.enter(mm.name);
             idata[offset++] = argc;
             idata[offset++] = parametersOffset;
             idata[offset++] = strings.enter(mm.tag);
             idata[offset++] = mm.flags;
+            idata[offset++] = currentMethodMetaTypeOffset;
 
             // Parameter types
-            for (int i = -1; i < argc; ++i) {
+            for (qsizetype i = -1; i < argc; ++i) {
                 int type;
                 QByteArray typeName;
                 if (i < 0) { // Return type
@@ -486,34 +466,35 @@ void QDBusMetaObjectGenerator::write(QDBusMetaObject *obj)
                     Q_ASSERT(mm.outputTypes.size() > 1);
                     type = mm.outputTypes.at(i - mm.inputTypes.size() + 1);
                     // Output parameters are references; type id not available
-                    typeName = QMetaType::typeName(type);
+                    typeName = QMetaType(type).name();
                     typeName.append('&');
+                    type = QMetaType::UnknownType;
                 }
-                Q_ASSERT(type != QMetaType::UnknownType);
                 int typeInfo;
                 if (!typeName.isEmpty())
                     typeInfo = IsUnresolvedType | strings.enter(typeName);
                 else
                     typeInfo = type;
+                metaTypes[currentMethodMetaTypeOffset++] = QMetaType(type);
                 idata[parametersOffset++] = typeInfo;
             }
             // Parameter names
-            for (int i = 0; i < argc; ++i)
+            for (qsizetype i = 0; i < argc; ++i)
                 idata[parametersOffset++] = strings.enter(mm.parameterNames.at(i));
 
             idata[signatureOffset++] = typeidOffset;
-            idata[typeidOffset++] = mm.inputTypes.count();
-            memcpy(idata.data() + typeidOffset, mm.inputTypes.data(), mm.inputTypes.count() * sizeof(int));
-            typeidOffset += mm.inputTypes.count();
+            idata[typeidOffset++] = mm.inputTypes.size();
+            memcpy(idata.data() + typeidOffset, mm.inputTypes.data(), mm.inputTypes.size() * sizeof(uint));
+            typeidOffset += mm.inputTypes.size();
 
             idata[signatureOffset++] = typeidOffset;
-            idata[typeidOffset++] = mm.outputTypes.count();
-            memcpy(idata.data() + typeidOffset, mm.outputTypes.data(), mm.outputTypes.count() * sizeof(int));
-            typeidOffset += mm.outputTypes.count();
+            idata[typeidOffset++] = mm.outputTypes.size();
+            memcpy(idata.data() + typeidOffset, mm.outputTypes.data(), mm.outputTypes.size() * sizeof(uint));
+            typeidOffset += mm.outputTypes.size();
         }
     }
 
-    Q_ASSERT(offset == header->methodData + header->methodCount * 5);
+    Q_ASSERT(offset == header->methodData + header->methodCount * QMetaObjectPrivate::IntsPerMethod);
     Q_ASSERT(parametersOffset == header->propertyData);
     Q_ASSERT(signatureOffset == header->methodDBusData + header->methodCount * intsPerMethod);
     Q_ASSERT(typeidOffset == idata.size());
@@ -522,19 +503,21 @@ void QDBusMetaObjectGenerator::write(QDBusMetaObject *obj)
 
     // add each property
     signatureOffset = header->propertyDBusData;
-    for (QMap<QByteArray, Property>::ConstIterator it = properties.constBegin();
-         it != properties.constEnd(); ++it) {
-        const Property &mp = it.value();
-
+    for (const auto &[name, mp] : std::as_const(properties).asKeyValueRange()) {
         // form is name, typeinfo, flags
-        idata[offset++] = strings.enter(it.key()); // name
+        idata[offset++] = strings.enter(name);
         Q_ASSERT(mp.type != QMetaType::UnknownType);
         idata[offset++] = mp.type;
         idata[offset++] = mp.flags;
+        idata[offset++] = -1; // notify index
+        idata[offset++] = 0; // revision
 
         idata[signatureOffset++] = strings.enter(mp.signature);
         idata[signatureOffset++] = mp.type;
+
+        metaTypes[propertyId++] = QMetaType(mp.type);
     }
+    metaTypes[propertyId] = QMetaType(); // we can't know our own metatype
 
     Q_ASSERT(offset == header->propertyDBusData);
     Q_ASSERT(signatureOffset == header->methodDBusData);
@@ -543,15 +526,16 @@ void QDBusMetaObjectGenerator::write(QDBusMetaObject *obj)
     strings.writeBlob(string_data);
 
     uint *uint_data = new uint[idata.size()];
-    memcpy(uint_data, idata.data(), idata.size() * sizeof(int));
+    memcpy(uint_data, idata.data(), idata.size() * sizeof(uint));
 
     // put the metaobject together
     obj->d.data = uint_data;
     obj->d.relatedMetaObjects = nullptr;
     obj->d.static_metacall = nullptr;
     obj->d.extradata = nullptr;
-    obj->d.stringdata = reinterpret_cast<const QByteArrayData *>(string_data);
+    obj->d.stringdata = reinterpret_cast<const uint *>(string_data);
     obj->d.superdata = &QDBusAbstractInterface::staticMetaObject;
+    obj->d.metaTypes = reinterpret_cast<QtPrivate::QMetaTypeInterface *const *>(metaTypes);
 }
 
 #if 0
@@ -559,7 +543,7 @@ void QDBusMetaObjectGenerator::writeWithoutXml(const QString &interface)
 {
     // no XML definition
     QString tmp(interface);
-    tmp.replace(QLatin1Char('.'), QLatin1String("::"));
+    tmp.replace(u'.', "::"_L1);
     QByteArray name(tmp.toLatin1());
 
     QDBusMetaObjectPrivate *header = new QDBusMetaObjectPrivate;
@@ -598,13 +582,13 @@ QDBusMetaObject *QDBusMetaObject::createMetaObject(const QString &interface, con
         bool us = it.key() == interface;
 
         QDBusMetaObject *obj = cache.value(it.key(), 0);
-        if ( !obj && ( us || !interface.startsWith( QLatin1String("local.") ) ) ) {
+        if (!obj && (us || !interface.startsWith("local."_L1 ))) {
             // not in cache; create
             obj = new QDBusMetaObject;
             QDBusMetaObjectGenerator generator(it.key(), it.value().constData());
             generator.write(obj);
 
-            if ( (obj->cached = !it.key().startsWith( QLatin1String("local.") )) )
+            if ((obj->cached = !it.key().startsWith("local."_L1)))
                 // cache it
                 cache.insert(it.key(), obj);
             else if (!us)
@@ -640,7 +624,7 @@ QDBusMetaObject *QDBusMetaObject::createMetaObject(const QString &interface, con
             merged.properties.insert(it.value()->properties);
         }
 
-        merged.name = QLatin1String("local.Merged");
+        merged.name = "local.Merged"_L1;
         merged.introspection.clear();
 
         we = new QDBusMetaObject;
@@ -652,8 +636,7 @@ QDBusMetaObject *QDBusMetaObject::createMetaObject(const QString &interface, con
 
     // mark as an error
     error = QDBusError(QDBusError::UnknownInterface,
-        QLatin1String("Interface '%1' was not found")
-                       .arg(interface));
+                       "Interface '%1' was not found"_L1.arg(interface));
     return nullptr;
 }
 

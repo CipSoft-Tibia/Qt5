@@ -15,8 +15,6 @@
 
 #include "absl/types/optional.h"
 #include "api/audio/audio_mixer.h"
-#include "api/audio_codecs/audio_decoder_factory.h"
-#include "api/audio_codecs/audio_encoder_factory.h"
 #include "api/audio_codecs/builtin_audio_decoder_factory.h"
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
 #include "api/audio_options.h"
@@ -24,14 +22,15 @@
 #include "api/jsep.h"
 #include "api/media_stream_interface.h"
 #include "api/peer_connection_interface.h"
+#include "api/rtc_error.h"
 #include "api/scoped_refptr.h"
 #include "api/stats/rtc_stats.h"
 #include "api/stats/rtc_stats_report.h"
 #include "api/stats/rtcstats_objects.h"
+#include "api/test/metrics/global_metrics_logger_and_exporter.h"
+#include "api/test/metrics/metric.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
-#include "api/video_codecs/video_decoder_factory.h"
-#include "api/video_codecs/video_encoder_factory.h"
 #include "modules/audio_device/include/audio_device.h"
 #include "modules/audio_processing/include/audio_processing.h"
 #include "p2p/base/port_allocator.h"
@@ -48,20 +47,23 @@
 #include "rtc_base/firewall_socket_server.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/helpers.h"
-#include "rtc_base/location.h"
-#include "rtc_base/ref_counted_object.h"
 #include "rtc_base/socket_address.h"
+#include "rtc_base/socket_factory.h"
 #include "rtc_base/ssl_certificate.h"
+#include "rtc_base/task_queue_for_test.h"
 #include "rtc_base/test_certificate_verifier.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/virtual_socket_server.h"
 #include "system_wrappers/include/clock.h"
 #include "test/gtest.h"
-#include "test/testsupport/perf_test.h"
 
 namespace webrtc {
-
 namespace {
+
+using ::webrtc::test::GetGlobalMetricsLogger;
+using ::webrtc::test::ImprovementDirection;
+using ::webrtc::test::Unit;
+
 static const int kDefaultTestTimeMs = 15000;
 static const int kRampUpTimeMs = 5000;
 static const int kPollIntervalTimeMs = 50;
@@ -75,6 +77,7 @@ static const int kTurnExternalPort = 0;
 // Setting the network bandwidth to 1 Mbps allows the video's bitrate to push
 // the network's limitations.
 static const int kNetworkBandwidth = 1000000;
+
 }  // namespace
 
 using RTCConfiguration = PeerConnectionInterface::RTCConfiguration;
@@ -120,19 +123,20 @@ class PeerConnectionWrapperForRampUpTest : public PeerConnectionWrapper {
       FrameGeneratorCapturerVideoTrackSource::Config config,
       Clock* clock) {
     video_track_sources_.emplace_back(
-        new rtc::RefCountedObject<FrameGeneratorCapturerVideoTrackSource>(
+        rtc::make_ref_counted<FrameGeneratorCapturerVideoTrackSource>(
             config, clock, /*is_screencast=*/false));
     video_track_sources_.back()->Start();
     return rtc::scoped_refptr<VideoTrackInterface>(
         pc_factory()->CreateVideoTrack(rtc::CreateRandomUuid(),
-                                       video_track_sources_.back()));
+                                       video_track_sources_.back().get()));
   }
 
   rtc::scoped_refptr<AudioTrackInterface> CreateLocalAudioTrack(
       const cricket::AudioOptions options) {
     rtc::scoped_refptr<AudioSourceInterface> source =
         pc_factory()->CreateAudioSource(options);
-    return pc_factory()->CreateAudioTrack(rtc::CreateRandomUuid(), source);
+    return pc_factory()->CreateAudioTrack(rtc::CreateRandomUuid(),
+                                          source.get());
   }
 
  private:
@@ -165,8 +169,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   }
 
   virtual ~PeerConnectionRampUpTest() {
-    network_thread()->Invoke<void>(RTC_FROM_HERE,
-                                   [this] { turn_servers_.clear(); });
+    SendTask(network_thread(), [this] { turn_servers_.clear(); });
   }
 
   bool CreatePeerConnectionWrappers(const RTCConfiguration& caller_config,
@@ -185,21 +188,24 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     auto observer = std::make_unique<MockPeerConnectionObserver>();
     webrtc::PeerConnectionDependencies dependencies(observer.get());
     cricket::BasicPortAllocator* port_allocator =
-        new cricket::BasicPortAllocator(fake_network_manager);
+        new cricket::BasicPortAllocator(
+            fake_network_manager,
+            std::make_unique<rtc::BasicPacketSocketFactory>(
+                firewall_socket_server_.get()));
     port_allocator->set_step_delay(cricket::kDefaultStepDelay);
     dependencies.allocator =
         std::unique_ptr<cricket::BasicPortAllocator>(port_allocator);
     dependencies.tls_cert_verifier =
         std::make_unique<rtc::TestCertificateVerifier>();
 
-    auto pc =
-        pc_factory_->CreatePeerConnection(config, std::move(dependencies));
-    if (!pc) {
+    auto result = pc_factory_->CreatePeerConnectionOrError(
+        config, std::move(dependencies));
+    if (!result.ok()) {
       return nullptr;
     }
 
     return std::make_unique<PeerConnectionWrapperForRampUpTest>(
-        pc_factory_, pc, std::move(observer));
+        pc_factory_, result.MoveValue(), std::move(observer));
   }
 
   void SetupOneWayCall() {
@@ -233,18 +239,18 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   void CreateTurnServer(cricket::ProtocolType type,
                         const std::string& common_name = "test turn server") {
     rtc::Thread* thread = network_thread();
-    std::unique_ptr<cricket::TestTurnServer> turn_server =
-        network_thread_->Invoke<std::unique_ptr<cricket::TestTurnServer>>(
-            RTC_FROM_HERE, [thread, type, common_name] {
-              static const rtc::SocketAddress turn_server_internal_address{
-                  kTurnInternalAddress, kTurnInternalPort};
-              static const rtc::SocketAddress turn_server_external_address{
-                  kTurnExternalAddress, kTurnExternalPort};
-              return std::make_unique<cricket::TestTurnServer>(
-                  thread, turn_server_internal_address,
-                  turn_server_external_address, type,
-                  true /*ignore_bad_certs=*/, common_name);
-            });
+    rtc::SocketFactory* factory = firewall_socket_server_.get();
+    std::unique_ptr<cricket::TestTurnServer> turn_server;
+    SendTask(network_thread_.get(), [&] {
+      static const rtc::SocketAddress turn_server_internal_address{
+          kTurnInternalAddress, kTurnInternalPort};
+      static const rtc::SocketAddress turn_server_external_address{
+          kTurnExternalAddress, kTurnExternalPort};
+      turn_server = std::make_unique<cricket::TestTurnServer>(
+          thread, factory, turn_server_internal_address,
+          turn_server_external_address, type, true /*ignore_bad_certs=*/,
+          common_name);
+    });
     turn_servers_.push_back(std::move(turn_server));
   }
 
@@ -265,8 +271,10 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     double average_bandwidth_estimate = total_bwe / number_of_polls;
     std::string value_description =
         "bwe_after_" + std::to_string(kDefaultTestTimeMs / 1000) + "_seconds";
-    test::PrintResult("peerconnection_ramp_up_", test_string, value_description,
-                      average_bandwidth_estimate, "bwe", false);
+    GetGlobalMetricsLogger()->LogSingleValueMetric(
+        "peerconnection_ramp_up_" + test_string, value_description,
+        average_bandwidth_estimate, Unit::kUnitless,
+        ImprovementDirection::kNeitherIsBetter);
   }
 
   rtc::Thread* network_thread() { return network_thread_.get(); }
@@ -298,7 +306,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
     if (ice_candidate_pair_stats.available_outgoing_bitrate.is_defined()) {
       return *ice_candidate_pair_stats.available_outgoing_bitrate;
     }
-    // We couldn't get the |available_outgoing_bitrate| for the active candidate
+    // We couldn't get the `available_outgoing_bitrate` for the active candidate
     // pair.
     return 0;
   }
@@ -307,7 +315,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   // The turn servers should be accessed & deleted on the network thread to
   // avoid a race with the socket read/write which occurs on the network thread.
   std::vector<std::unique_ptr<cricket::TestTurnServer>> turn_servers_;
-  // |virtual_socket_server_| is used by |network_thread_| so it must be
+  // `virtual_socket_server_` is used by `network_thread_` so it must be
   // destroyed later.
   // TODO(bugs.webrtc.org/7668): We would like to update the virtual network we
   // use for this test. VirtualSocketServer isn't ideal because:
@@ -325,7 +333,7 @@ class PeerConnectionRampUpTest : public ::testing::Test {
   std::unique_ptr<rtc::FirewallSocketServer> firewall_socket_server_;
   std::unique_ptr<rtc::Thread> network_thread_;
   std::unique_ptr<rtc::Thread> worker_thread_;
-  // The |pc_factory| uses |network_thread_| & |worker_thread_|, so it must be
+  // The `pc_factory` uses `network_thread_` & `worker_thread_`, so it must be
   // destroyed first.
   std::vector<std::unique_ptr<rtc::FakeNetworkManager>> fake_network_managers_;
   rtc::scoped_refptr<PeerConnectionFactoryInterface> pc_factory_;
@@ -343,9 +351,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTCP) {
   ice_server.username = "test";
   ice_server.password = "test";
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.servers.push_back(ice_server);
   client_1_config.type = PeerConnectionInterface::kRelay;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.servers.push_back(ice_server);
   client_2_config.type = PeerConnectionInterface::kRelay;
   ASSERT_TRUE(CreatePeerConnectionWrappers(client_1_config, client_2_config));
@@ -364,9 +374,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverUDP) {
   ice_server.username = "test";
   ice_server.password = "test";
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.servers.push_back(ice_server);
   client_1_config.type = PeerConnectionInterface::kRelay;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.servers.push_back(ice_server);
   client_2_config.type = PeerConnectionInterface::kRelay;
   ASSERT_TRUE(CreatePeerConnectionWrappers(client_1_config, client_2_config));
@@ -385,9 +397,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTLS) {
   ice_server.username = "test";
   ice_server.password = "test";
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.servers.push_back(ice_server);
   client_1_config.type = PeerConnectionInterface::kRelay;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.servers.push_back(ice_server);
   client_2_config.type = PeerConnectionInterface::kRelay;
 
@@ -399,9 +413,11 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_TurnOverTLS) {
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_UDPPeerToPeer) {
   PeerConnectionInterface::RTCConfiguration client_1_config;
+  client_1_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_1_config.tcp_candidate_policy =
       PeerConnection::kTcpCandidatePolicyDisabled;
   PeerConnectionInterface::RTCConfiguration client_2_config;
+  client_2_config.sdp_semantics = SdpSemantics::kUnifiedPlan;
   client_2_config.tcp_candidate_policy =
       PeerConnection::kTcpCandidatePolicyDisabled;
   ASSERT_TRUE(CreatePeerConnectionWrappers(client_1_config, client_2_config));
@@ -412,9 +428,9 @@ TEST_F(PeerConnectionRampUpTest, Bwe_After_UDPPeerToPeer) {
 
 TEST_F(PeerConnectionRampUpTest, Bwe_After_TCPPeerToPeer) {
   firewall_socket_server()->set_udp_sockets_enabled(false);
-  ASSERT_TRUE(CreatePeerConnectionWrappers(
-      PeerConnectionInterface::RTCConfiguration(),
-      PeerConnectionInterface::RTCConfiguration()));
+  PeerConnectionInterface::RTCConfiguration config;
+  config.sdp_semantics = SdpSemantics::kUnifiedPlan;
+  ASSERT_TRUE(CreatePeerConnectionWrappers(config, config));
 
   SetupOneWayCall();
   RunTest("tcp_peer_to_peer");

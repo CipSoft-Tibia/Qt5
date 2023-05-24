@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qlinuxfbscreen.h"
 #include <QtFbSupport/private/qfbcursor_p.h>
@@ -64,6 +28,8 @@
 #include <linux/fb.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static int openFramebufferDevice(const QString &dev)
 {
@@ -247,7 +213,7 @@ static QImage::Format determineFormat(const fb_var_screeninfo &info, int depth)
 
 static int openTtyDevice(const QString &device)
 {
-    const char *const devs[] = { "/dev/tty0", "/dev/tty", "/dev/console", 0 };
+    const char *const devs[] = { "/dev/tty0", "/dev/tty", "/dev/console", nullptr };
 
     int fd = -1;
     if (device.isEmpty()) {
@@ -287,9 +253,9 @@ static void blankScreen(int fd, bool on)
 }
 
 QLinuxFbScreen::QLinuxFbScreen(const QStringList &args)
-    : mArgs(args), mFbFd(-1), mTtyFd(-1), mBlitter(0)
+    : mArgs(args), mFbFd(-1), mTtyFd(-1), mBlitter(nullptr)
 {
-    mMmap.data = 0;
+    mMmap.data = nullptr;
 }
 
 QLinuxFbScreen::~QLinuxFbScreen()
@@ -308,11 +274,11 @@ QLinuxFbScreen::~QLinuxFbScreen()
 
 bool QLinuxFbScreen::initialize()
 {
-    QRegularExpression ttyRx(QLatin1String("tty=(.*)"));
-    QRegularExpression fbRx(QLatin1String("fb=(.*)"));
-    QRegularExpression mmSizeRx(QLatin1String("mmsize=(\\d+)x(\\d+)"));
-    QRegularExpression sizeRx(QLatin1String("size=(\\d+)x(\\d+)"));
-    QRegularExpression offsetRx(QLatin1String("offset=(\\d+)x(\\d+)"));
+    QRegularExpression ttyRx("tty=(.*)"_L1);
+    QRegularExpression fbRx("fb=(.*)"_L1);
+    QRegularExpression mmSizeRx("mmsize=(\\d+)x(\\d+)"_L1);
+    QRegularExpression sizeRx("size=(\\d+)x(\\d+)"_L1);
+    QRegularExpression offsetRx("offset=(\\d+)x(\\d+)"_L1);
 
     QString fbDevice, ttyDevice;
     QSize userMmSize;
@@ -320,9 +286,9 @@ bool QLinuxFbScreen::initialize()
     bool doSwitchToGraphicsMode = true;
 
     // Parse arguments
-    for (const QString &arg : qAsConst(mArgs)) {
+    for (const QString &arg : std::as_const(mArgs)) {
         QRegularExpressionMatch match;
-        if (arg == QLatin1String("nographicsmodeswitch"))
+        if (arg == "nographicsmodeswitch"_L1)
             doSwitchToGraphicsMode = false;
         else if (arg.contains(mmSizeRx, &match))
             userMmSize = QSize(match.captured(1).toInt(), match.captured(2).toInt());
@@ -337,9 +303,9 @@ bool QLinuxFbScreen::initialize()
     }
 
     if (fbDevice.isEmpty()) {
-        fbDevice = QLatin1String("/dev/fb0");
+        fbDevice = "/dev/fb0"_L1;
         if (!QFile::exists(fbDevice))
-            fbDevice = QLatin1String("/dev/graphics/fb0");
+            fbDevice = "/dev/graphics/fb0"_L1;
         if (!QFile::exists(fbDevice)) {
             qWarning("Unable to figure out framebuffer device. Specify it manually.");
             return false;
@@ -378,7 +344,7 @@ bool QLinuxFbScreen::initialize()
 
     // mmap the framebuffer
     mMmap.size = finfo.smem_len;
-    uchar *data = (unsigned char *)mmap(0, mMmap.size, PROT_READ | PROT_WRITE, MAP_SHARED, mFbFd, 0);
+    uchar *data = (unsigned char *)mmap(nullptr, mMmap.size, PROT_READ | PROT_WRITE, MAP_SHARED, mFbFd, 0);
     if ((long)data == -1) {
         qErrnoWarning(errno, "Failed to mmap framebuffer");
         return false;
@@ -447,4 +413,6 @@ QPixmap QLinuxFbScreen::grabWindow(WId wid, int x, int y, int width, int height)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qlinuxfbscreen.cpp"
 

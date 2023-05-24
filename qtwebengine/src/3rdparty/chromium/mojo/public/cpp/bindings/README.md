@@ -168,7 +168,7 @@ defines a `BindNewPipeAndPassReceiver` method:
 
 ``` cpp
 mojo::Remote<sample::mojom::Logger> logger;
-auto receiver = logger.BindNewPipeAndPassReceiver());
+auto receiver = logger.BindNewPipeAndPassReceiver();
 ```
 
 This second snippet is equivalent to the first one.
@@ -226,7 +226,6 @@ which binds it.
 
 ``` cpp
 #include "base/logging.h"
-#include "base/macros.h"
 #include "sample/logger.mojom.h"
 
 class LoggerImpl : public sample::mojom::Logger {
@@ -236,9 +235,9 @@ class LoggerImpl : public sample::mojom::Logger {
 
   explicit LoggerImpl(mojo::PendingReceiver<sample::mojom::Logger> receiver)
       : receiver_(this, std::move(receiver)) {}
-  ~Logger() override {}
   Logger(const Logger&) = delete;
   Logger& operator=(const Logger&) = delete;
+  ~Logger() override {}
 
   // sample::mojom::Logger:
   void Log(const std::string& message) override {
@@ -693,26 +692,24 @@ class Dictionary {
 And we can use it like so:
 
 ```cpp
-ValuePtr value = Value::New();
-value->set_int_value(42);
+ValuePtr value = Value::NewIntValue(42);
 CHECK(value->is_int_value());
-CHECK_EQ(value->which(), Value::Tag::INT_VALUE);
+CHECK_EQ(value->which(), Value::Tag::kIntValue);
 
 value->set_float_value(42);
 CHECK(value->is_float_value());
-CHECK_EQ(value->which(), Value::Tag::FLOAT_VALUE);
+CHECK_EQ(value->which(), Value::Tag::kFloatValue);
 
 value->set_string_value("bananas");
 CHECK(value->is_string_value());
-CHECK_EQ(value->which(), Value::Tag::STRING_VALUE);
+CHECK_EQ(value->which(), Value::Tag::kStringValue);
 ```
 
 Finally, note that if a union value is not currently occupied by a given field,
 attempts to access that field will DCHECK:
 
 ```cpp
-ValuePtr value = Value::New();
-value->set_int_value(42);
+ValuePtr value = Value::NewIntValue(42);
 LOG(INFO) << "Value is " << value->string_value();  // DCHECK!
 ```
 
@@ -978,9 +975,9 @@ class TableImpl : public db::mojom::Table {
   // db::mojom::Table:
   void AddRow(int32_t key, const std::string& data) override {
     rows_.insert({key, data});
-    listeners_.ForEach([key, &data](db::mojom::TableListener* listener) {
+    for (auto& listener : listeners_) {
       listener->OnRowAdded(key, data);
-    });
+    }
   }
 
   void AddListener(mojo::PendingRemote<db::mojom::TableListener> listener) {
@@ -1530,18 +1527,20 @@ to valid getter return types:
 | `handle<message_pipe>`       | `mojo::ScopedMessagePipeHandle`
 | `handle<data_pipe_consumer>` | `mojo::ScopedDataPipeConsumerHandle`
 | `handle<data_pipe_producer>` | `mojo::ScopedDataPipeProducerHandle`
+| `handle<platform>`           | `mojo::PlatformHandle`
 | `handle<shared_buffer>`      | `mojo::ScopedSharedBufferHandle`
 | `pending_remote<Foo>`        | `mojo::PendingRemote<Foo>`
 | `pending_receiver<Foo>`      | `mojo::PendingReceiver<Foo>`
 | `pending_associated_remote<Foo>`    | `mojo::PendingAssociatedRemote<Foo>`
 | `pending_associated_receiver<Foo>`    | `mojo::PendingAssociatedReceiver<Foo>`
 | `string`                     | Value or reference to any type `T` that has a `mojo::StringTraits` specialization defined. By default this includes `std::string`, `base::StringPiece`, and `WTF::String` (Blink).
-| `array<T>`                   | Value or reference to any type `T` that has a `mojo::ArrayTraits` specialization defined. By default this includes `std::vector<T>`, `mojo::CArray<T>`, and `WTF::Vector<T>` (Blink).
-| `map<K, V>`                  | Value or reference to any type `T` that has a `mojo::MapTraits` specialization defined. By default this includes `std::map<T>`, `mojo::unordered_map<T>`, and `WTF::HashMap<T>` (Blink).
-| `FooEnum`                    | Value of any type that has an appropriate `EnumTraits` specialization defined. By default this inlcudes only the generated `FooEnum` type.
+| `array<T>`                   | Value or reference to any type `T` that has a `mojo::ArrayTraits` specialization defined. By default this includes `std::array<T, N>`, `std::vector<T>`, `WTF::Vector<T>` (Blink), etc.
+| `array<T, N>`                | Similar to the above, but the length of the data must be always the same as `N`.
+| `map<K, V>`                  | Value or reference to any type `T` that has a `mojo::MapTraits` specialization defined. By default this includes `std::map<T>`, `mojo::unordered_map<T>`, `WTF::HashMap<T>` (Blink), etc.
+| `FooEnum`                    | Value of any type that has an appropriate `EnumTraits` specialization defined. By default this includes only the generated `FooEnum` type.
 | `FooStruct`                  | Value or reference to any type that has an appropriate `StructTraits` specialization defined. By default this includes only the generated `FooStructPtr` type.
 | `FooUnion`                   | Value of reference to any type that has an appropriate `UnionTraits` specialization defined. By default this includes only the generated `FooUnionPtr` type.
-| `Foo?`                       | `base::Optional<CppType>`, where `CppType` is the value type defined by the appropriate traits class specialization (e.g. `StructTraits`, `mojo::MapTraits`, etc.). This may be customized by the [typemapping](#Enabling-a-New-Type-Mapping).
+| `Foo?`                       | `absl::optional<CppType>`, where `CppType` is the value type defined by the appropriate traits class specialization (e.g. `StructTraits`, `mojo::MapTraits`, etc.). This may be customized by the [typemapping](#Enabling-a-New-Type-Mapping).
 
 ### Using Generated DataView Types
 
@@ -1710,7 +1709,7 @@ C++ sources can depend on shared sources only, by referencing the
 example above.
 
 For converting between Blink and non-Blink variants, please see
-`//chromium/third_party/blink/public/platform/cross_variant_mojo_util.h`.
+`//third_party/blink/public/platform/cross_variant_mojo_util.h`.
 
 ## Versioning Considerations
 
@@ -1745,23 +1744,20 @@ received.
 
 ### Versioned Enums
 
-For convenience, every extensible enum has a generated helper function to
-determine whether a received enum value is known by the implementation's current
-version of the enum definition. For example:
+All extensible enums should have one enumerator value designated as the default
+using the `[Default]` attribute. When Mojo deserializes an enum value that is
+not defined in the current version of the enum definition, that value will be
+transparently mapped to the `[Default]` enumerator value. Implementations can
+use the presence of this enumerator value to correctly handle version skew.
 
 ```cpp
 [Extensible]
 enum Department {
-  SALES,
-  DEV,
-  RESEARCH,
+  [Default] kUnknown,
+  kSales,
+  kDev,
+  kResearch,
 };
-```
-
-generates the function in the same namespace as the generated C++ enum type:
-
-```cpp
-inline bool IsKnownEnumValue(Department value);
 ```
 
 ### Using Mojo Bindings in Chrome

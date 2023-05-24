@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,10 +9,13 @@
 #include <map>
 #include <string>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "components/browsing_data/content/database_helper.h"
 #include "content/public/browser/storage_usage_info.h"
+
+namespace content {
+class StoragePartition;
+}  // namespace content
 
 namespace browsing_data {
 
@@ -21,7 +24,10 @@ namespace browsing_data {
 // Notify().
 class MockDatabaseHelper : public DatabaseHelper {
  public:
-  explicit MockDatabaseHelper(content::BrowserContext* browser_context);
+  explicit MockDatabaseHelper(content::StoragePartition* storage_partition);
+
+  MockDatabaseHelper(const MockDatabaseHelper&) = delete;
+  MockDatabaseHelper& operator=(const MockDatabaseHelper&) = delete;
 
   void StartFetching(FetchCallback callback) override;
 
@@ -53,8 +59,6 @@ class MockDatabaseHelper : public DatabaseHelper {
   std::map<const std::string, bool> databases_;
 
   std::list<content::StorageUsageInfo> response_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockDatabaseHelper);
 };
 
 }  // namespace browsing_data

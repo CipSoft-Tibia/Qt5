@@ -1,10 +1,12 @@
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import contextlib
 import json
 import optparse
 import unittest
+from unittest import mock
 
 from blinkpy.common.net.results_fetcher import Build
 from blinkpy.common.net.web_test_results import WebTestResults
@@ -15,6 +17,7 @@ from blinkpy.tool.commands.rebaseline import (
 from blinkpy.tool.mock_tool import MockBlinkTool
 from blinkpy.web_tests.builder_list import BuilderList
 from blinkpy.web_tests.port.factory_mock import MockPortFactory
+from blinkpy.web_tests.port.test import MOCK_WEB_TESTS
 
 
 class BaseTestCase(unittest.TestCase):
@@ -56,6 +59,16 @@ class BaseTestCase(unittest.TestCase):
                 'port_name': 'test-linux-trusty',
                 'specifiers': ['Trusty', 'Release']
             },
+            'MOCK Trusty Multiple Steps': {
+                'port_name': 'test-linux-trusty',
+                'specifiers': ['Trusty', 'Release'],
+                'steps': {
+                    'blink_web_tests (with patch)': {},
+                    'not_site_per_process_blink_web_tests (with patch)': {
+                        'flag_specific': 'disable-site-isolation-trials',
+                    },
+                },
+            },
             'MOCK Win10': {
                 'port_name': 'test-win-win10',
                 'specifiers': ['Win10', 'Release']
@@ -76,17 +89,45 @@ class BaseTestCase(unittest.TestCase):
                 'port_name': 'test-win-win7',
                 'specifiers': ['Win7', 'Release']
             },
+            'MOCK wpt(1)': {
+                'port_name': 'test-linux-trusty',
+                'specifiers': ['Trusty', 'Release']
+            },
+            'MOCK wpt(2)': {
+                'port_name': 'test-linux-trusty',
+                'specifiers': ['Trusty', 'Release']
+            },
         })
         self.mac_port = self.tool.port_factory.get_from_builder_name(
             'MOCK Mac10.11')
         self.test_expectations_path = self.mac_port.path_to_generic_test_expectations_file(
         )
 
-        # This file must exist for Port classes to function properly.
-        self._write('VirtualTestSuites', '[]')
+        self._write(
+            'VirtualTestSuites',
+            json.dumps([{
+                "prefix":
+                "prefix",
+                "platforms": ["Linux", "Mac"],
+                "bases": [
+                    "userscripts/first-test.html",
+                    'userscripts/second-test.html'
+                ],
+                "args": ["--enable-features=flag"]
+            }]))
+
+        self._write(
+            'FlagSpecificConfig',
+            json.dumps([
+                {
+                    'name': 'disable-site-isolation-trials',
+                    'args': ['--disable-site-isolation-trials'],
+                },
+            ]))
         # Create some dummy tests (note _setup_mock_build_data uses the same test names).
         self._write('userscripts/first-test.html', 'Dummy test contents')
         self._write('userscripts/second-test.html', 'Dummy test contents')
+        self._write('userscripts/third-test.html', 'Dummy test contents')
 
         # In AbstractParallelRebaselineCommand._rebaseline_commands, a default port
         # object is gotten using self.tool.port_factory.get(), which is used to get
@@ -101,10 +142,28 @@ class BaseTestCase(unittest.TestCase):
                 return test_port
             return self.original_port_factory_get(port_name, options, **kwargs)
 
-        self.tool.port_factory.get = get_test_port
+        self._mocks = contextlib.ExitStack()
+        self._mocks.enter_context(
+            mock.patch('blinkpy.common.message_pool.get',
+                       return_value=self._pool_mock()))
+        self._mocks.enter_context(
+            mock.patch.object(self.tool.port_factory, 'get', get_test_port))
+
+    def _pool_mock(self):
+        message_pool = mock.Mock()
+        message_pool.run = self._pool_run
+        message_pool = contextlib.nullcontext(message_pool)
+        return message_pool
+
+    def _pool_run(self, commands):
+        if commands:
+            self.tool.executive.run_in_parallel([
+                (command, self.tool.git().checkout_root)
+                for _, command in commands
+            ])
 
     def tearDown(self):
-        self.tool.port_factory.get = self.original_port_factory_get
+        self._mocks.close()
 
     def _expand(self, path):
         if self.tool.filesystem.isabs(path):
@@ -120,7 +179,7 @@ class BaseTestCase(unittest.TestCase):
     def _zero_out_test_expectations(self):
         for port_name in self.tool.port_factory.all_port_names():
             port = self.tool.port_factory.get(port_name)
-            for path in port.expectations_files():
+            for path in port.default_expectations_files():
                 self._write(path, '')
         self.tool.filesystem.written_files = {}
 
@@ -128,37 +187,43 @@ class BaseTestCase(unittest.TestCase):
         for builder in ['MOCK Win7', 'MOCK Win7 (dbg)', 'MOCK Mac10.11']:
             self.tool.results_fetcher.set_results(
                 Build(builder),
-                WebTestResults({
-                    'tests': {
-                        'userscripts': {
-                            'first-test.html': {
-                                'expected': 'PASS',
-                                'actual': 'FAIL',
-                                'is_unexpected': True,
-                                'artifacts': {
-                                    'actual_image': ['first-test-actual.png'],
-                                    'expected_image':
-                                    ['first-test-expected.png'],
-                                    'actual_text': ['first-test-actual.txt'],
-                                    'expected_text':
-                                    ['first-test-expected.txt']
-                                }
-                            },
-                            'second-test.html': {
-                                'expected': 'FAIL',
-                                'actual': 'FAIL',
-                                'artifacts': {
-                                    'actual_image': ['second-test-actual.png'],
-                                    'expected_image':
-                                    ['second-test-expected.png'],
-                                    'actual_audio': ['second-test-actual.wav'],
-                                    'expected_audio':
-                                    ['second-test-expected.wav']
+                WebTestResults.from_json(
+                    {
+                        'tests': {
+                            'userscripts': {
+                                'first-test.html': {
+                                    'expected': 'PASS',
+                                    'actual': 'FAIL',
+                                    'is_unexpected': True,
+                                    'artifacts': {
+                                        'actual_image':
+                                        ['first-test-actual.png'],
+                                        'expected_image':
+                                        ['first-test-expected.png'],
+                                        'actual_text':
+                                        ['first-test-actual.txt'],
+                                        'expected_text':
+                                        ['first-test-expected.txt']
+                                    }
+                                },
+                                'second-test.html': {
+                                    'expected': 'FAIL',
+                                    'actual': 'FAIL',
+                                    'artifacts': {
+                                        'actual_image':
+                                        ['second-test-actual.png'],
+                                        'expected_image':
+                                        ['second-test-expected.png'],
+                                        'actual_audio':
+                                        ['second-test-actual.wav'],
+                                        'expected_audio':
+                                        ['second-test-expected.wav']
+                                    }
                                 }
                             }
                         }
-                    }
-                }))
+                    },
+                    step_name='blink_web_tests (with patch)'))
 
 
 class TestAbstractParallelRebaselineCommand(BaseTestCase):
@@ -171,12 +236,41 @@ class TestAbstractParallelRebaselineCommand(BaseTestCase):
     command_constructor = AbstractParallelRebaselineCommand
 
     def test_builders_to_fetch_from(self):
-        # pylint: disable=protected-access
-        builders_to_fetch = self.command._builders_to_fetch_from([
-            'MOCK Win10', 'MOCK Win7 (dbg)(1)', 'MOCK Win7 (dbg)(2)',
-            'MOCK Win7'
+        build_steps_to_fetch = self.command.build_steps_to_fetch_from([
+            ('MOCK Win10', 'blink_web_tests (with patch)'),
+            ('MOCK Win7 (dbg)(1)', 'blink_web_tests (with patch)'),
+            ('MOCK Win7 (dbg)(2)', 'blink_web_tests (with patch)'),
+            ('MOCK Win7', 'blink_web_tests (with patch)'),
         ])
-        self.assertEqual(builders_to_fetch, {'MOCK Win7', 'MOCK Win10'})
+        # Win7 debug builders are shadowed by release builder.
+        self.assertEqual(
+            build_steps_to_fetch, {
+                ('MOCK Win7', 'blink_web_tests (with patch)'),
+                ('MOCK Win10', 'blink_web_tests (with patch)'),
+            })
+
+    def test_builders_to_fetch_from_flag_specific(self):
+        build_steps_to_fetch = self.command.build_steps_to_fetch_from([
+            ('MOCK Trusty', 'blink_web_tests (with patch)'),
+        ])
+        # Ports are the same, but the fallback paths differ.
+        self.assertEqual(
+            build_steps_to_fetch, {
+                ('MOCK Trusty', 'blink_web_tests (with patch)'),
+            })
+
+        build_steps_to_fetch = self.command.build_steps_to_fetch_from([
+            ('MOCK Trusty Multiple Steps', 'blink_web_tests (with patch)'),
+            ('MOCK Trusty Multiple Steps',
+             'not_site_per_process_blink_web_tests (with patch)'),
+        ])
+        self.assertEqual(len(build_steps_to_fetch), 2)
+        self.assertIn(
+            ('MOCK Trusty Multiple Steps', 'blink_web_tests (with patch)'),
+            build_steps_to_fetch)
+        self.assertIn(('MOCK Trusty Multiple Steps',
+                       'not_site_per_process_blink_web_tests (with patch)'),
+                      build_steps_to_fetch)
 
     def test_generic_baseline_paths(self):
         test_baseline_set = TestBaselineSet(self.tool)
@@ -188,9 +282,9 @@ class TestAbstractParallelRebaselineCommand(BaseTestCase):
         baseline_paths = self.command._generic_baseline_paths(
             test_baseline_set)
         self.assertEqual(baseline_paths, [
-            '/test.checkout/wtests/passes/text-expected.png',
-            '/test.checkout/wtests/passes/text-expected.txt',
-            '/test.checkout/wtests/passes/text-expected.wav',
+            MOCK_WEB_TESTS + 'passes/text-expected.png',
+            MOCK_WEB_TESTS + 'passes/text-expected.txt',
+            MOCK_WEB_TESTS + 'passes/text-expected.wav',
         ])
 
     def test_unstaged_baselines(self):
@@ -202,9 +296,30 @@ class TestAbstractParallelRebaselineCommand(BaseTestCase):
             RELATIVE_WEB_TESTS + 'x/foo.html': 'M',
             'docs/something.md': '?', }
         self.assertEqual(self.command.unstaged_baselines(), [
-            '/mock-checkout/' + RELATIVE_WEB_TESTS + 'x/foo-expected.png',
-            '/mock-checkout/' + RELATIVE_WEB_TESTS + 'x/foo-expected.txt',
+            MOCK_WEB_TESTS + 'x/foo-expected.png',
+            MOCK_WEB_TESTS + 'x/foo-expected.txt',
         ])
+
+    def test_suffixes_for_actual_failures_for_non_wpt(self):
+        # pylint: disable=protected-access
+        build = Build('MOCK Win7')
+        self.tool.results_fetcher.set_results(
+            build,
+            WebTestResults.from_json({
+                'tests': {
+                    'pixel.html': {
+                        'expected': 'PASS',
+                        'actual': 'FAIL',
+                        'artifacts': {
+                            'actual_image': ['pixel-actual.png'],
+                        },
+                    }
+                }
+            }))
+        self.assertEqual(
+            self.command._suffixes_for_actual_failures('pixel.html', build),
+            {'png'},
+        )
 
 
 class TestRebaseline(BaseTestCase):
@@ -226,16 +341,20 @@ class TestRebaseline(BaseTestCase):
     @staticmethod
     def options(**kwargs):
         return optparse.Values(
-            dict({
-                'optimize': True,
-                'verbose': True,
-                'results_directory': None
-            }, **kwargs))
+            dict(
+                {
+                    'optimize': True,
+                    'dry_run': False,
+                    'verbose': True,
+                    'results_directory': None,
+                    'flag_specific': None,
+                    'resultDB': None
+                }, **kwargs))
 
     def test_rebaseline_test_passes_on_all_builders(self):
         self.tool.results_fetcher.set_results(
             Build('MOCK Win7'),
-            WebTestResults({
+            WebTestResults.from_json({
                 'tests': {
                     'userscripts': {
                         'first-test.html': {
@@ -252,13 +371,13 @@ class TestRebaseline(BaseTestCase):
         test_baseline_set.add('userscripts/first-test.html',
                               Build('MOCK Win7'))
         self.command.rebaseline(self.options(), test_baseline_set)
-
         self.assertEqual(self.tool.executive.calls, [])
 
     def test_rebaseline_all(self):
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Win7'))
+                              Build('MOCK Win7'),
+                              'blink_web_tests (with patch)')
         self.command.rebaseline(self.options(), test_baseline_set)
 
         self.assertEqual(self.tool.executive.calls,
@@ -270,7 +389,7 @@ class TestRebaseline(BaseTestCase):
                              '--test',
                              'userscripts/first-test.html',
                              '--suffixes',
-                             'txt,png',
+                             'png,txt',
                              '--port-name',
                              'test-win-win7',
                          ]],
@@ -282,7 +401,7 @@ class TestRebaseline(BaseTestCase):
                               '--test',
                               'userscripts/first-test.html',
                               '--suffixes',
-                              'txt,png',
+                              'png,txt',
                               '--port-name',
                               'test-win-win7',
                               '--builder',
@@ -296,18 +415,16 @@ class TestRebaseline(BaseTestCase):
                               'optimize-baselines',
                               '--no-manifest-update',
                               '--verbose',
-                              '--suffixes',
-                              'txt,png',
                               'userscripts/first-test.html',
                           ]]])
 
     def test_rebaseline_debug(self):
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Win7 (dbg)'))
+                              Build('MOCK Win7 (dbg)'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
-
         self.assertEqual(self.tool.executive.calls,
                          [[[
                              'python',
@@ -317,7 +434,7 @@ class TestRebaseline(BaseTestCase):
                              '--test',
                              'userscripts/first-test.html',
                              '--suffixes',
-                             'txt,png',
+                             'png,txt',
                              '--port-name',
                              'test-win-win7',
                          ]],
@@ -329,7 +446,7 @@ class TestRebaseline(BaseTestCase):
                               '--test',
                               'userscripts/first-test.html',
                               '--suffixes',
-                              'txt,png',
+                              'png,txt',
                               '--port-name',
                               'test-win-win7',
                               '--builder',
@@ -343,15 +460,14 @@ class TestRebaseline(BaseTestCase):
                               'optimize-baselines',
                               '--no-manifest-update',
                               '--verbose',
-                              '--suffixes',
-                              'txt,png',
                               'userscripts/first-test.html',
                           ]]])
 
     def test_no_optimize(self):
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Win7'))
+                              Build('MOCK Win7'),
+                              'blink_web_tests (with patch)')
         self.command.rebaseline(
             self.options(optimize=False), test_baseline_set)
 
@@ -364,7 +480,7 @@ class TestRebaseline(BaseTestCase):
                              '--test',
                              'userscripts/first-test.html',
                              '--suffixes',
-                             'txt,png',
+                             'png,txt',
                              '--port-name',
                              'test-win-win7',
                          ]],
@@ -376,7 +492,7 @@ class TestRebaseline(BaseTestCase):
                               '--test',
                               'userscripts/first-test.html',
                               '--suffixes',
-                              'txt,png',
+                              'png,txt',
                               '--port-name',
                               'test-win-win7',
                               '--builder',
@@ -388,7 +504,8 @@ class TestRebaseline(BaseTestCase):
     def test_results_directory(self):
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Win7'))
+                              Build('MOCK Win7'),
+                              'blink_web_tests (with patch)')
         self.command.rebaseline(
             self.options(optimize=False, results_directory='/tmp'),
             test_baseline_set)
@@ -402,7 +519,7 @@ class TestRebaseline(BaseTestCase):
                 '--test',
                 'userscripts/first-test.html',
                 '--suffixes',
-                'txt,png',
+                'png,txt',
                 '--port-name',
                 'test-win-win7',
             ]],
@@ -414,7 +531,7 @@ class TestRebaseline(BaseTestCase):
                 '--test',
                 'userscripts/first-test.html',
                 '--suffixes',
-                'txt,png',
+                'png,txt',
                 '--port-name',
                 'test-win-win7',
                 '--builder',
@@ -429,7 +546,8 @@ class TestRebaseline(BaseTestCase):
     def test_rebaseline_with_different_port_name(self):
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Win7'), 'test-win-win10')
+                              Build('MOCK Win7'),
+                              'blink_web_tests (with patch)', 'test-win-win10')
         self.command.rebaseline(self.options(), test_baseline_set)
 
         self.assertEqual(self.tool.executive.calls,
@@ -441,7 +559,7 @@ class TestRebaseline(BaseTestCase):
                              '--test',
                              'userscripts/first-test.html',
                              '--suffixes',
-                             'txt,png',
+                             'png,txt',
                              '--port-name',
                              'test-win-win10',
                          ]],
@@ -453,7 +571,7 @@ class TestRebaseline(BaseTestCase):
                               '--test',
                               'userscripts/first-test.html',
                               '--suffixes',
-                              'txt,png',
+                              'png,txt',
                               '--port-name',
                               'test-win-win10',
                               '--builder',
@@ -467,12 +585,13 @@ class TestRebaseline(BaseTestCase):
                               'optimize-baselines',
                               '--no-manifest-update',
                               '--verbose',
-                              '--suffixes',
-                              'txt,png',
                               'userscripts/first-test.html',
                           ]]])
 
 
+@unittest.skip('Disabled because this does not reflect the behavior of '
+               "'rebaseline-test-internal' now. Reenable after implementing "
+               'crbug.com/1149035.')
 class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
     """Tests for the logic related to updating the test expectations file."""
 
@@ -490,8 +609,11 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
     def options():
         return optparse.Values({
             'optimize': False,
+            'dry_run': False,
             'verbose': True,
-            'results_directory': None
+            'results_directory': None,
+            'flag_specific': None,
+            'resultDB': None
         })
 
     # In the following test cases, we use a mock rebaseline-test-internal to
@@ -508,7 +630,8 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._setup_mock_build_data()
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Mac10.11'))
+                              Build('MOCK Mac10.11'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
 
@@ -527,7 +650,8 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._setup_mock_build_data()
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Mac10.11'))
+                              Build('MOCK Mac10.11'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
 
@@ -554,7 +678,8 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._setup_mock_build_data()
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Mac10.11'))
+                              Build('MOCK Mac10.11'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
 
@@ -582,7 +707,8 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._setup_mock_build_data()
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Mac10.11'))
+                              Build('MOCK Mac10.11'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
 
@@ -605,7 +731,8 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._setup_mock_build_data()
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Mac10.11'))
+                              Build('MOCK Mac10.11'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
 
@@ -631,7 +758,8 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._setup_mock_build_data()
         test_baseline_set = TestBaselineSet(self.tool)
         test_baseline_set.add('userscripts/first-test.html',
-                              Build('MOCK Mac10.11'))
+                              Build('MOCK Mac10.11'),
+                              'blink_web_tests (with patch)')
 
         self.command.rebaseline(self.options(), test_baseline_set)
 
@@ -659,7 +787,7 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._write('userscripts/skipped-test.html', 'Dummy test contents')
         self.tool.results_fetcher.set_results(
             Build('MOCK Mac10.11'),
-            WebTestResults({
+            WebTestResults.from_json({
                 'tests': {
                     'userscripts': {
                         'skipped-test.html': {
@@ -671,7 +799,7 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
             }))
         self.tool.results_fetcher.set_results(
             Build('MOCK Win7'),
-            WebTestResults({
+            WebTestResults.from_json({
                 'tests': {
                     'userscripts': {
                         'skipped-test.html': {
@@ -707,7 +835,7 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         self._write('userscripts/flaky-test.html', 'Dummy test contents')
         self.tool.results_fetcher.set_results(
             Build('MOCK Mac10.11'),
-            WebTestResults({
+            WebTestResults.from_json({
                 'tests': {
                     'userscripts': {
                         'flaky-test.html': {
@@ -741,7 +869,7 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         test_baseline_set = TestBaselineSet(self.tool)
         self.tool.results_fetcher.set_results(
             Build('MOCK Mac10.11'),
-            WebTestResults({
+            WebTestResults.from_json({
                 'tests': {
                     'userscripts': {
                         'all-pass.html': {
@@ -781,7 +909,7 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         ]:
             self.tool.results_fetcher.set_results(
                 Build(builder),
-                WebTestResults({
+                WebTestResults.from_json({
                     'tests': {
                         'userscripts': {
                             'all-pass.html': {
@@ -812,7 +940,7 @@ class TestRebaselineUpdatesExpectationsFiles(BaseTestCase):
         test_baseline_set = TestBaselineSet(self.tool)
         self.tool.results_fetcher.set_results(
             Build('MOCK Mac10.11'),
-            WebTestResults({
+            WebTestResults.from_json({
                 'tests': {
                     'userscripts': {
                         'all-pass.html': {
@@ -845,9 +973,12 @@ class TestRebaselineExecute(BaseTestCase):
         return optparse.Values({
             'results_directory': False,
             'optimize': False,
+            'dry_run': False,
             'builders': None,
-            'suffixes': 'txt,png',
-            'verbose': True
+            'suffixes': 'png,txt',
+            'verbose': True,
+            'flag_specific': None,
+            'resultDB': None
         })
 
     def test_rebaseline(self):
@@ -866,7 +997,7 @@ class TestRebaselineExecute(BaseTestCase):
                              '--test',
                              'userscripts/first-test.html',
                              '--suffixes',
-                             'txt,png',
+                             'png,txt',
                              '--port-name',
                              'test-win-win7',
                          ]],
@@ -878,7 +1009,7 @@ class TestRebaselineExecute(BaseTestCase):
                               '--test',
                               'userscripts/first-test.html',
                               '--suffixes',
-                              'txt,png',
+                              'png,txt',
                               '--port-name',
                               'test-win-win7',
                               '--builder',
@@ -893,7 +1024,6 @@ class TestRebaselineExecute(BaseTestCase):
 
         self._setup_mock_build_data()
         self.command.execute(self.options(), ['userscripts'], self.tool)
-
         self.assertEqual(self.tool.executive.calls,
                          [[[
                              'python',
@@ -903,7 +1033,7 @@ class TestRebaselineExecute(BaseTestCase):
                              '--test',
                              'userscripts/first-test.html',
                              '--suffixes',
-                             'txt,png',
+                             'png,txt',
                              '--port-name',
                              'test-win-win7',
                          ],
@@ -915,7 +1045,7 @@ class TestRebaselineExecute(BaseTestCase):
                                '--test',
                                'userscripts/second-test.html',
                                '--suffixes',
-                               'wav,png',
+                               'png,wav',
                                '--port-name',
                                'test-win-win7',
                            ]],
@@ -927,7 +1057,7 @@ class TestRebaselineExecute(BaseTestCase):
                               '--test',
                               'userscripts/first-test.html',
                               '--suffixes',
-                              'txt,png',
+                              'png,txt',
                               '--port-name',
                               'test-win-win7',
                               '--builder',
@@ -943,7 +1073,7 @@ class TestRebaselineExecute(BaseTestCase):
                                '--test',
                                'userscripts/second-test.html',
                                '--suffixes',
-                               'wav,png',
+                               'png,wav',
                                '--port-name',
                                'test-win-win7',
                                '--builder',
@@ -959,9 +1089,9 @@ class TestBaselineSetTest(unittest.TestCase):
         host.port_factory = MockPortFactory(host)
         port = host.port_factory.get()
         base_dir = port.web_tests_dir()
-        host.filesystem.write_text_file(base_dir + '/a/x.html', '<html>')
-        host.filesystem.write_text_file(base_dir + '/a/y.html', '<html>')
-        host.filesystem.write_text_file(base_dir + '/a/z.html', '<html>')
+        host.filesystem.write_text_file(base_dir + 'a/x.html', '<html>')
+        host.filesystem.write_text_file(base_dir + 'a/y.html', '<html>')
+        host.filesystem.write_text_file(base_dir + 'a/z.html', '<html>')
         host.builders = BuilderList({
             'MOCK Mac10.12': {
                 'port_name': 'test-mac-mac10.12',
@@ -969,11 +1099,15 @@ class TestBaselineSetTest(unittest.TestCase):
             },
             'MOCK Trusty': {
                 'port_name': 'test-linux-trusty',
-                'specifiers': ['Trusty', 'Release']
+                'specifiers': ['Trusty', 'Release'],
             },
             'MOCK Win10': {
                 'port_name': 'test-win-win10',
                 'specifiers': ['Win10', 'Release']
+            },
+            'some-wpt-bot': {
+                'port_name': 'linux-trusty',
+                'specifiers': ['Trusty', 'Release']
             },
         })
         self.host = host
@@ -981,18 +1115,18 @@ class TestBaselineSetTest(unittest.TestCase):
     def test_add_and_iter_tests(self):
         test_baseline_set = TestBaselineSet(host=self.host)
         test_baseline_set.add('a', Build('MOCK Trusty'))
-        test_baseline_set.add('a/z.html', Build('MOCK Win10'))
-        self.assertEqual(
-            list(test_baseline_set), [
-                ('a/x.html', Build(builder_name='MOCK Trusty'),
-                 'test-linux-trusty'),
-                ('a/y.html', Build(builder_name='MOCK Trusty'),
-                 'test-linux-trusty'),
-                ('a/z.html', Build(builder_name='MOCK Trusty'),
-                 'test-linux-trusty'),
-                ('a/z.html', Build(builder_name='MOCK Win10'),
-                 'test-win-win10'),
-            ])
+        test_baseline_set.add('a/z.html', Build('MOCK Win10'),
+                              'blink_web_tests (with patch)')
+        self.assertEqual(list(test_baseline_set), [
+            ('a/x.html', Build(builder_name='MOCK Trusty'), None,
+             'test-linux-trusty'),
+            ('a/y.html', Build(builder_name='MOCK Trusty'), None,
+             'test-linux-trusty'),
+            ('a/z.html', Build(builder_name='MOCK Trusty'), None,
+             'test-linux-trusty'),
+            ('a/z.html', Build(builder_name='MOCK Win10'),
+             'blink_web_tests (with patch)', 'test-win-win10'),
+        ])
         self.assertEqual(test_baseline_set.all_tests(),
                          ['a/x.html', 'a/y.html', 'a/z.html'])
 
@@ -1003,13 +1137,13 @@ class TestBaselineSetTest(unittest.TestCase):
     def test_str_basic(self):
         test_baseline_set = TestBaselineSet(host=self.host)
         test_baseline_set.add('a/x.html', Build('MOCK Mac10.12'))
-        test_baseline_set.add('a/x.html', Build('MOCK Win10'))
-        self.assertEqual(
+        test_baseline_set.add('a/x.html', Build('MOCK Win10'),
+                              'blink_web_tests (with patch)')
+        self.assertRegex(str(test_baseline_set),
+                         'a/x.html: .*, None, test-mac-mac10.12')
+        self.assertRegex(
             str(test_baseline_set),
-            ('<TestBaselineSet with:\n'
-             '  a/x.html: Build(builder_name=\'MOCK Mac10.12\', build_number=None), test-mac-mac10.12\n'
-             '  a/x.html: Build(builder_name=\'MOCK Win10\', build_number=None), test-win-win10>'
-             ))
+            'a/x.html: .*, blink_web_tests \(with patch\), test-win-win10')
 
     def test_getters(self):
         test_baseline_set = TestBaselineSet(host=self.host)
@@ -1020,3 +1154,17 @@ class TestBaselineSetTest(unittest.TestCase):
             test_baseline_set.build_port_pairs('a/x.html'),
             [(Build(builder_name='MOCK Mac10.12'), 'test-mac-mac10.12'),
              (Build(builder_name='MOCK Win10'), 'test-win-win10')])
+
+    def test_non_prefix_mode(self):
+        test_baseline_set = TestBaselineSet(host=self.host, prefix_mode=False)
+        # This test does not exist in setUp.
+        test_baseline_set.add('wpt/foo.html', Build('some-wpt-bot'))
+        # But it should still appear in various getters since no test lookup is
+        # done when prefix_mode=False.
+        self.assertEqual(
+            list(test_baseline_set),
+            [('wpt/foo.html', Build('some-wpt-bot'), None, 'linux-trusty')])
+        self.assertEqual(test_baseline_set.all_tests(), ['wpt/foo.html'])
+        self.assertEqual(test_baseline_set.test_prefixes(), ['wpt/foo.html'])
+        self.assertEqual(test_baseline_set.build_port_pairs('wpt/foo.html'),
+                         [(Build('some-wpt-bot'), 'linux-trusty')])

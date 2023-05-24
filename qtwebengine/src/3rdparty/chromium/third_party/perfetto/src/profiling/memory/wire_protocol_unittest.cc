@@ -95,12 +95,13 @@ TEST(WireProtocolTest, AllocMessage) {
   WireMessage recv_msg;
   ASSERT_TRUE(ReceiveWireMessage(reinterpret_cast<char*>(buf.data), buf.size,
                                  &recv_msg));
-  shmem_server->EndRead(std::move(buf));
 
   ASSERT_EQ(recv_msg.record_type, msg.record_type);
   ASSERT_EQ(*recv_msg.alloc_header, *msg.alloc_header);
   ASSERT_EQ(recv_msg.payload_size, msg.payload_size);
   ASSERT_STREQ(recv_msg.payload, msg.payload);
+
+  shmem_server->EndRead(std::move(buf));
 }
 
 TEST(WireProtocolTest, FreeMessage) {
@@ -123,11 +124,12 @@ TEST(WireProtocolTest, FreeMessage) {
   WireMessage recv_msg;
   ASSERT_TRUE(ReceiveWireMessage(reinterpret_cast<char*>(buf.data), buf.size,
                                  &recv_msg));
-  shmem_server->EndRead(std::move(buf));
 
   ASSERT_EQ(recv_msg.record_type, msg.record_type);
   ASSERT_EQ(*recv_msg.free_header, *msg.free_header);
   ASSERT_EQ(recv_msg.payload_size, msg.payload_size);
+
+  shmem_server->EndRead(std::move(buf));
 }
 
 TEST(GetHeapSamplingInterval, Default) {
@@ -157,6 +159,17 @@ TEST(GetHeapSamplingInterval, SelectedAndDefault) {
   memcpy(cli_config.heaps[0].name, "something", sizeof("something"));
   cli_config.heaps[0].interval = 4096u;
   EXPECT_EQ(GetHeapSamplingInterval(cli_config, "something"), 4096u);
+  EXPECT_EQ(GetHeapSamplingInterval(cli_config, "else"), 1u);
+}
+
+TEST(GetHeapSamplingInterval, DisabledAndDefault) {
+  ClientConfiguration cli_config{};
+  cli_config.all_heaps = true;
+  cli_config.num_heaps = 1;
+  cli_config.default_interval = 1;
+  memcpy(cli_config.heaps[0].name, "something", sizeof("something"));
+  cli_config.heaps[0].interval = 0u;
+  EXPECT_EQ(GetHeapSamplingInterval(cli_config, "something"), 0u);
   EXPECT_EQ(GetHeapSamplingInterval(cli_config, "else"), 1u);
 }
 

@@ -10,6 +10,7 @@
 #include "GLES3/gl3.h"
 #include "common/mathutil.h"
 #include "common/platform.h"
+#include "common/string_utils.h"
 
 #include <set>
 
@@ -128,23 +129,28 @@ GLenum VariableComponentType(GLenum type)
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_SAMPLER_3D:
         case GL_SAMPLER_CUBE:
+        case GL_SAMPLER_CUBE_MAP_ARRAY:
         case GL_SAMPLER_2D_ARRAY:
         case GL_SAMPLER_EXTERNAL_OES:
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
+        case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_INT_SAMPLER_2D_ARRAY:
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
+        case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_2D_SHADOW:
+        case GL_SAMPLER_BUFFER:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
         case GL_INT_VEC2:
@@ -165,8 +171,13 @@ GLenum VariableComponentType(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_UNSIGNED_INT_ATOMIC_COUNTER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
+        case GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT:
             return GL_INT;
         case GL_UNSIGNED_INT:
         case GL_UNSIGNED_INT_VEC2:
@@ -254,7 +265,7 @@ std::string GetGLSLTypeString(GLenum type)
             return "mat4";
         default:
             UNREACHABLE();
-            return nullptr;
+            return "";
     }
 }
 
@@ -316,6 +327,7 @@ int VariableRowCount(GLenum type)
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_BUFFER:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
@@ -323,6 +335,7 @@ int VariableRowCount(GLenum type)
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
@@ -330,6 +343,7 @@ int VariableRowCount(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
@@ -350,7 +364,11 @@ int VariableRowCount(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
+        case GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT:
             return 1;
         case GL_FLOAT_MAT2:
         case GL_FLOAT_MAT3x2:
@@ -388,6 +406,7 @@ int VariableColumnCount(GLenum type)
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_BUFFER:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
         case GL_INT_SAMPLER_CUBE:
@@ -395,6 +414,7 @@ int VariableColumnCount(GLenum type)
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_EXTERNAL_OES:
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_UNSIGNED_INT_SAMPLER_2D:
@@ -404,6 +424,7 @@ int VariableColumnCount(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
@@ -420,11 +441,15 @@ int VariableColumnCount(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_ATOMIC_COUNTER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
+        case GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT:
             return 1;
         case GL_BOOL_VEC2:
         case GL_FLOAT_VEC2:
@@ -469,6 +494,7 @@ bool IsSamplerType(GLenum type)
         case GL_SAMPLER_2D_MULTISAMPLE:
         case GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_RECT_ANGLE:
         case GL_INT_SAMPLER_2D:
         case GL_INT_SAMPLER_3D:
@@ -477,6 +503,7 @@ bool IsSamplerType(GLenum type)
         case GL_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_INT_SAMPLER_BUFFER:
         case GL_UNSIGNED_INT_SAMPLER_2D:
         case GL_UNSIGNED_INT_SAMPLER_3D:
         case GL_UNSIGNED_INT_SAMPLER_CUBE:
@@ -484,11 +511,13 @@ bool IsSamplerType(GLenum type)
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
         case GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
         case GL_UNSIGNED_INT_SAMPLER_CUBE_MAP_ARRAY:
+        case GL_UNSIGNED_INT_SAMPLER_BUFFER:
         case GL_SAMPLER_2D_SHADOW:
         case GL_SAMPLER_CUBE_SHADOW:
         case GL_SAMPLER_2D_ARRAY_SHADOW:
         case GL_SAMPLER_CUBE_MAP_ARRAY_SHADOW:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
+        case GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT:
             return true;
     }
 
@@ -509,6 +538,18 @@ bool IsSamplerCubeType(GLenum type)
     return false;
 }
 
+bool IsSamplerYUVType(GLenum type)
+{
+    switch (type)
+    {
+        case GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 bool IsImageType(GLenum type)
 {
     switch (type)
@@ -525,6 +566,9 @@ bool IsImageType(GLenum type)
         case GL_IMAGE_CUBE_MAP_ARRAY:
         case GL_INT_IMAGE_CUBE_MAP_ARRAY:
         case GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
@@ -553,6 +597,9 @@ bool IsImage2DType(GLenum type)
         case GL_IMAGE_CUBE:
         case GL_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_IMAGE_CUBE:
+        case GL_IMAGE_BUFFER:
+        case GL_INT_IMAGE_BUFFER:
+        case GL_UNSIGNED_INT_IMAGE_BUFFER:
             return false;
         default:
             UNREACHABLE();
@@ -839,6 +886,7 @@ int VariableSortOrder(GLenum type)
         case GL_UNSIGNED_INT_IMAGE_CUBE:
         case GL_UNSIGNED_INT_ATOMIC_COUNTER:
         case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
+        case GL_SAMPLER_EXTERNAL_2D_Y2Y_EXT:
             return 6;
 
         default:
@@ -882,6 +930,11 @@ std::string ParseResourceName(const std::string &name, std::vector<unsigned int>
     return name.substr(0, baseNameLength);
 }
 
+bool IsBuiltInName(const char *name)
+{
+    return angle::BeginsWith(name, "gl_");
+}
+
 std::string StripLastArrayIndex(const std::string &name)
 {
     size_t strippedNameLength = name.find_last_of('[');
@@ -921,6 +974,21 @@ unsigned int ArraySizeProduct(const std::vector<unsigned int> &arraySizes)
         arraySizeProduct *= arraySize;
     }
     return arraySizeProduct;
+}
+
+unsigned int InnerArraySizeProduct(const std::vector<unsigned int> &arraySizes)
+{
+    unsigned int arraySizeProduct = 1u;
+    for (size_t index = 0; index + 1 < arraySizes.size(); ++index)
+    {
+        arraySizeProduct *= arraySizes[index];
+    }
+    return arraySizeProduct;
+}
+
+unsigned int OutermostArraySize(const std::vector<unsigned int> &arraySizes)
+{
+    return arraySizes.empty() || arraySizes.back() == 0 ? 1 : arraySizes.back();
 }
 
 unsigned int ParseArrayIndex(const std::string &name, size_t *nameLengthWithoutArrayIndexOut)
@@ -1009,6 +1077,24 @@ unsigned int ElementTypeSize(GLenum elementType)
     }
 }
 
+bool IsMipmapFiltered(GLenum minFilterMode)
+{
+    switch (minFilterMode)
+    {
+        case GL_NEAREST:
+        case GL_LINEAR:
+            return false;
+        case GL_NEAREST_MIPMAP_NEAREST:
+        case GL_LINEAR_MIPMAP_NEAREST:
+        case GL_NEAREST_MIPMAP_LINEAR:
+        case GL_LINEAR_MIPMAP_LINEAR:
+            return true;
+        default:
+            UNREACHABLE();
+            return false;
+    }
+}
+
 PipelineType GetPipelineType(ShaderType type)
 {
     switch (type)
@@ -1085,6 +1171,69 @@ const char *GetDebugMessageSeverityString(GLenum severity)
             return "Unknown Severity";
     }
 }
+
+ShaderType GetShaderTypeFromBitfield(size_t singleShaderType)
+{
+    switch (singleShaderType)
+    {
+        case GL_VERTEX_SHADER_BIT:
+            return ShaderType::Vertex;
+        case GL_FRAGMENT_SHADER_BIT:
+            return ShaderType::Fragment;
+        case GL_COMPUTE_SHADER_BIT:
+            return ShaderType::Compute;
+        case GL_GEOMETRY_SHADER_BIT:
+            return ShaderType::Geometry;
+        case GL_TESS_CONTROL_SHADER_BIT:
+            return ShaderType::TessControl;
+        case GL_TESS_EVALUATION_SHADER_BIT:
+            return ShaderType::TessEvaluation;
+        default:
+            return ShaderType::InvalidEnum;
+    }
+}
+
+GLbitfield GetBitfieldFromShaderType(ShaderType shaderType)
+{
+    switch (shaderType)
+    {
+        case ShaderType::Vertex:
+            return GL_VERTEX_SHADER_BIT;
+        case ShaderType::Fragment:
+            return GL_FRAGMENT_SHADER_BIT;
+        case ShaderType::Compute:
+            return GL_COMPUTE_SHADER_BIT;
+        case ShaderType::Geometry:
+            return GL_GEOMETRY_SHADER_BIT;
+        case ShaderType::TessControl:
+            return GL_TESS_CONTROL_SHADER_BIT;
+        case ShaderType::TessEvaluation:
+            return GL_TESS_EVALUATION_SHADER_BIT;
+        default:
+            UNREACHABLE();
+            return GL_ZERO;
+    }
+}
+
+bool ShaderTypeSupportsTransformFeedback(ShaderType shaderType)
+{
+    switch (shaderType)
+    {
+        case ShaderType::Vertex:
+        case ShaderType::Geometry:
+        case ShaderType::TessEvaluation:
+            return true;
+        default:
+            return false;
+    }
+}
+
+ShaderType GetLastPreFragmentStage(ShaderBitSet shaderTypes)
+{
+    shaderTypes.reset(ShaderType::Fragment);
+    shaderTypes.reset(ShaderType::Compute);
+    return shaderTypes.any() ? shaderTypes.last() : ShaderType::InvalidEnum;
+}
 }  // namespace gl
 
 namespace egl
@@ -1148,6 +1297,8 @@ bool IsExternalImageTarget(EGLenum target)
         case EGL_NATIVE_BUFFER_ANDROID:
         case EGL_D3D11_TEXTURE_ANGLE:
         case EGL_LINUX_DMA_BUF_EXT:
+        case EGL_METAL_TEXTURE_ANGLE:
+        case EGL_VULKAN_IMAGE_ANGLE:
             return true;
 
         default:
@@ -1236,34 +1387,103 @@ EGLClientBuffer GLObjectHandleToEGLClientBuffer(GLuint handle)
 
 }  // namespace gl_egl
 
-#if !defined(ANGLE_ENABLE_WINDOWS_UWP)
-std::string getTempPath()
+namespace angle
 {
-#    ifdef ANGLE_PLATFORM_WINDOWS
-    char path[MAX_PATH];
-    DWORD pathLen = GetTempPathA(sizeof(path) / sizeof(path[0]), path);
-    if (pathLen == 0)
+bool IsDrawEntryPoint(EntryPoint entryPoint)
+{
+    switch (entryPoint)
     {
-        UNREACHABLE();
-        return std::string();
+        case EntryPoint::GLDrawArrays:
+        case EntryPoint::GLDrawArraysIndirect:
+        case EntryPoint::GLDrawArraysInstanced:
+        case EntryPoint::GLDrawArraysInstancedANGLE:
+        case EntryPoint::GLDrawArraysInstancedBaseInstance:
+        case EntryPoint::GLDrawArraysInstancedBaseInstanceANGLE:
+        case EntryPoint::GLDrawArraysInstancedEXT:
+        case EntryPoint::GLDrawElements:
+        case EntryPoint::GLDrawElementsBaseVertex:
+        case EntryPoint::GLDrawElementsBaseVertexEXT:
+        case EntryPoint::GLDrawElementsBaseVertexOES:
+        case EntryPoint::GLDrawElementsIndirect:
+        case EntryPoint::GLDrawElementsInstanced:
+        case EntryPoint::GLDrawElementsInstancedANGLE:
+        case EntryPoint::GLDrawElementsInstancedBaseInstance:
+        case EntryPoint::GLDrawElementsInstancedBaseVertex:
+        case EntryPoint::GLDrawElementsInstancedBaseVertexBaseInstance:
+        case EntryPoint::GLDrawElementsInstancedBaseVertexBaseInstanceANGLE:
+        case EntryPoint::GLDrawElementsInstancedBaseVertexEXT:
+        case EntryPoint::GLDrawElementsInstancedBaseVertexOES:
+        case EntryPoint::GLDrawElementsInstancedEXT:
+        case EntryPoint::GLDrawPixels:
+        case EntryPoint::GLDrawRangeElements:
+        case EntryPoint::GLDrawRangeElementsBaseVertex:
+        case EntryPoint::GLDrawRangeElementsBaseVertexEXT:
+        case EntryPoint::GLDrawRangeElementsBaseVertexOES:
+        case EntryPoint::GLDrawTexfOES:
+        case EntryPoint::GLDrawTexfvOES:
+        case EntryPoint::GLDrawTexiOES:
+        case EntryPoint::GLDrawTexivOES:
+        case EntryPoint::GLDrawTexsOES:
+        case EntryPoint::GLDrawTexsvOES:
+        case EntryPoint::GLDrawTexxOES:
+        case EntryPoint::GLDrawTexxvOES:
+        case EntryPoint::GLDrawTransformFeedback:
+        case EntryPoint::GLDrawTransformFeedbackInstanced:
+        case EntryPoint::GLDrawTransformFeedbackStream:
+        case EntryPoint::GLDrawTransformFeedbackStreamInstanced:
+            return true;
+        default:
+            return false;
     }
-
-    UINT unique = GetTempFileNameA(path, "sh", 0, path);
-    if (unique == 0)
-    {
-        UNREACHABLE();
-        return std::string();
-    }
-
-    return path;
-#    else
-    UNIMPLEMENTED();
-    return "";
-#    endif
 }
+
+bool IsDispatchEntryPoint(EntryPoint entryPoint)
+{
+    switch (entryPoint)
+    {
+        case EntryPoint::GLDispatchCompute:
+        case EntryPoint::GLDispatchComputeIndirect:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsClearEntryPoint(EntryPoint entryPoint)
+{
+    switch (entryPoint)
+    {
+        case EntryPoint::GLClear:
+        case EntryPoint::GLClearBufferfi:
+        case EntryPoint::GLClearBufferfv:
+        case EntryPoint::GLClearBufferiv:
+        case EntryPoint::GLClearBufferuiv:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsQueryEntryPoint(EntryPoint entryPoint)
+{
+    switch (entryPoint)
+    {
+        case EntryPoint::GLBeginQuery:
+        case EntryPoint::GLBeginQueryEXT:
+        case EntryPoint::GLBeginQueryIndexed:
+        case EntryPoint::GLEndQuery:
+        case EntryPoint::GLEndQueryEXT:
+        case EntryPoint::GLEndQueryIndexed:
+            return true;
+        default:
+            return false;
+    }
+}
+}  // namespace angle
 
 void writeFile(const char *path, const void *content, size_t size)
 {
+#if !defined(ANGLE_ENABLE_WINDOWS_UWP)
     FILE *file = fopen(path, "w");
     if (!file)
     {
@@ -1273,8 +1493,11 @@ void writeFile(const char *path, const void *content, size_t size)
 
     fwrite(content, sizeof(char), size, file);
     fclose(file);
-}
+#else
+    UNREACHABLE();
+    return;
 #endif  // !ANGLE_ENABLE_WINDOWS_UWP
+}
 
 #if defined(ANGLE_PLATFORM_WINDOWS)
 

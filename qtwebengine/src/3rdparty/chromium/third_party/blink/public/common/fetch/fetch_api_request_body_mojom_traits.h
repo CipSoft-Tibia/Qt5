@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,6 +13,10 @@
 #include "services/network/public/mojom/url_loader.mojom-forward.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-shared.h"
+
+namespace network {
+class DataElement;
+}
 
 namespace mojo {
 
@@ -45,51 +49,6 @@ struct BLINK_COMMON_EXPORT
 
   static bool Read(blink::mojom::FetchAPIRequestBodyDataView data,
                    scoped_refptr<network::ResourceRequestBody>* out);
-};
-
-template <>
-struct BLINK_COMMON_EXPORT
-    StructTraits<blink::mojom::FetchAPIDataElementDataView,
-                 network::DataElement> {
-  static const network::mojom::DataElementType& type(
-      const network::DataElement& element) {
-    return element.type_;
-  }
-  static const std::vector<uint8_t>& buf(const network::DataElement& element) {
-    return element.buf_;
-  }
-  static const base::FilePath& path(const network::DataElement& element) {
-    return element.path_;
-  }
-  static const std::string& blob_uuid(const network::DataElement& element) {
-    return element.blob_uuid_;
-  }
-  static mojo::PendingRemote<network::mojom::DataPipeGetter> data_pipe_getter(
-      const network::DataElement& element) {
-    if (element.type_ != network::mojom::DataElementType::kDataPipe)
-      return mojo::NullRemote();
-    return element.CloneDataPipeGetter();
-  }
-  static mojo::PendingRemote<network::mojom::ChunkedDataPipeGetter>
-  chunked_data_pipe_getter(const network::DataElement& element) {
-    if (element.type_ != network::mojom::DataElementType::kReadOnceStream)
-      return mojo::NullRemote();
-    return const_cast<network::DataElement&>(element)
-        .ReleaseChunkedDataPipeGetter();
-  }
-  static uint64_t offset(const network::DataElement& element) {
-    return element.offset_;
-  }
-  static uint64_t length(const network::DataElement& element) {
-    return element.length_;
-  }
-  static const base::Time& expected_modification_time(
-      const network::DataElement& element) {
-    return element.expected_modification_time_;
-  }
-
-  static bool Read(blink::mojom::FetchAPIDataElementDataView data,
-                   network::DataElement* out);
 };
 
 }  // namespace mojo

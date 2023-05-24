@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,7 @@
 #include "base/memory/madv_free_discardable_memory_allocator_posix.h"
 #include "base/process/process_metrics.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/tracing_buildflags.h"
 
 #if BUILDFLAG(ENABLE_BASE_TRACING)
@@ -21,12 +20,13 @@ namespace base {
 MadvFreeDiscardableMemoryAllocatorPosix::
     MadvFreeDiscardableMemoryAllocatorPosix() {
 #if BUILDFLAG(ENABLE_BASE_TRACING)
-  // Don't register dump provider if ThreadTaskRunnerHandle is not set, such as
-  // in tests and Android Webview.
-  if (base::ThreadTaskRunnerHandle::IsSet()) {
+  // Don't register dump provider if
+  // SingleThreadTaskRunner::CurrentDefaultHAndle is not set, such as in tests
+  // and Android Webview.
+  if (base::SingleThreadTaskRunner::HasCurrentDefault()) {
     trace_event::MemoryDumpManager::GetInstance()->RegisterDumpProvider(
         this, "MadvFreeDiscardableMemoryAllocator",
-        ThreadTaskRunnerHandle::Get());
+        SingleThreadTaskRunner::GetCurrentDefault());
   }
 #endif  // BUILDFLAG(ENABLE_BASE_TRACING)
 }

@@ -47,7 +47,8 @@ class LayoutTextControlSingleLine : public LayoutTextControl {
  private:
   bool IsOfType(LayoutObjectType type) const override {
     NOT_DESTROYED();
-    return type == kLayoutObjectTextField || LayoutTextControl::IsOfType(type);
+    return type == kLayoutObjectTextControlSingleLine ||
+           LayoutTextControl::IsOfType(type);
   }
 
   void Paint(const PaintInfo&) const override;
@@ -56,17 +57,9 @@ class LayoutTextControlSingleLine : public LayoutTextControl {
   bool NodeAtPoint(HitTestResult&,
                    const HitTestLocation&,
                    const PhysicalOffset& accumulated_offset,
-                   HitTestAction) final;
-
-  // Subclassed to forward to our inner div.
-  LayoutUnit ScrollWidth() const final;
-  LayoutUnit ScrollHeight() const final;
+                   HitTestPhase) final;
 
   int TextBlockWidth() const;
-  LayoutUnit PreferredContentLogicalWidth(float char_width) const final;
-  LayoutUnit ComputeControlLogicalHeight(
-      LayoutUnit line_height,
-      LayoutUnit non_content_height) const override;
 
   void ComputeVisualOverflow(bool recompute_floats) override;
 
@@ -75,7 +68,7 @@ class LayoutTextControlSingleLine : public LayoutTextControl {
   // shouldn't affect outside of the INPUT box.  So we ignore child overflow.
   void AddLayoutOverflowFromChildren() final { NOT_DESTROYED(); }
 
-  bool AllowsNonVisibleOverflow() const override {
+  bool RespectsCSSOverflow() const override {
     NOT_DESTROYED();
     return false;
   }
@@ -109,4 +102,4 @@ class LayoutTextControlInnerEditor : public LayoutBlockFlow {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_TEXT_CONTROL_SINGLE_LINE_H_

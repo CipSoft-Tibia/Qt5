@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QQMLOBJECTCREATOR_P_H
 #define QQMLOBJECTCREATOR_P_H
 
@@ -57,6 +21,9 @@
 #include <private/qrecursionwatcher_p.h>
 #include <private/qqmlprofiler_p.h>
 #include <private/qv4qmlcontext_p.h>
+#include <private/qqmlguardedcontextdata_p.h>
+#include <private/qqmlfinalizer_p.h>
+#include <private/qqmlvmemetaobject_p.h>
 
 #include <qpointer.h>
 
@@ -86,72 +53,140 @@ struct RequiredPropertyInfo
     QVector<AliasToRequiredInfo> aliasesToRequired;
 };
 
-class RequiredProperties : public QHash<QQmlPropertyData*, RequiredPropertyInfo> {};
-
-struct QQmlObjectCreatorSharedState : public QSharedData
+struct RequiredPropertyKey
 {
-    QQmlContextData *rootContext;
-    QQmlContextData *creationContext;
+    RequiredPropertyKey() = default;
+    RequiredPropertyKey(const QObject *object, const QQmlPropertyData *data)
+        : object(object)
+        , data(data)
+    {}
+
+    const QObject *object = nullptr;
+    const QQmlPropertyData *data = nullptr;
+
+private:
+    friend size_t qHash(const RequiredPropertyKey &key, size_t seed = 0)
+    {
+        return qHashMulti(seed, key.object, key.data);
+    }
+
+    friend bool operator==(const RequiredPropertyKey &a, const RequiredPropertyKey &b)
+    {
+        return a.object == b.object && a.data == b.data;
+    }
+};
+
+class RequiredProperties : public QHash<RequiredPropertyKey, RequiredPropertyInfo> {};
+
+struct DeferredQPropertyBinding {
+    QObject *target = nullptr;
+    int properyIndex = -1;
+    QUntypedPropertyBinding binding;
+};
+
+struct QQmlObjectCreatorSharedState : QQmlRefCounted<QQmlObjectCreatorSharedState>
+{
+    QQmlRefPointer<QQmlContextData> rootContext;
+    QQmlRefPointer<QQmlContextData> creationContext;
     QFiniteStack<QQmlAbstractBinding::Ptr> allCreatedBindings;
     QFiniteStack<QQmlParserStatus*> allParserStatusCallbacks;
-    QFiniteStack<QPointer<QObject> > allCreatedObjects;
+    QFiniteStack<QQmlGuard<QObject> > allCreatedObjects;
     QV4::Value *allJavaScriptObjects; // pointer to vector on JS stack to reference JS wrappers during creation phase.
     QQmlComponentAttached *componentAttached;
-    QList<QQmlEnginePrivate::FinalizeCallback> finalizeCallbacks;
+    QList<QQmlFinalizerHook *> finalizeHooks;
     QQmlVmeProfiler profiler;
     QRecursionNode recursionNode;
     RequiredProperties requiredProperties;
-    bool hadRequiredProperties;
+    QList<DeferredQPropertyBinding> allQPropertyBindings;
+    bool hadTopLevelRequiredProperties;
 };
 
 class Q_QML_PRIVATE_EXPORT QQmlObjectCreator
 {
     Q_DECLARE_TR_FUNCTIONS(QQmlObjectCreator)
 public:
-    QQmlObjectCreator(QQmlContextData *parentContext, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, QQmlContextData *creationContext, QQmlIncubatorPrivate  *incubator = nullptr);
+    QQmlObjectCreator(QQmlRefPointer<QQmlContextData> parentContext,
+                      const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+                      const QQmlRefPointer<QQmlContextData> &creationContext,
+                      QQmlIncubatorPrivate  *incubator = nullptr);
     ~QQmlObjectCreator();
 
     enum CreationFlags { NormalObject = 1, InlineComponent = 2 };
-    QObject *create(int subComponentIndex = -1, QObject *parent = nullptr, QQmlInstantiationInterrupt *interrupt = nullptr, int flags = NormalObject);
+    QObject *create(int subComponentIndex = -1, QObject *parent = nullptr,
+                    QQmlInstantiationInterrupt *interrupt = nullptr, int flags = NormalObject);
 
     bool populateDeferredProperties(QObject *instance, const QQmlData::DeferredData *deferredData);
 
-    void beginPopulateDeferred(QQmlContextData *context);
+    void beginPopulateDeferred(const QQmlRefPointer<QQmlContextData> &context);
     void populateDeferredBinding(const QQmlProperty &qmlProperty, int deferredIndex,
                                  const QV4::CompiledData::Binding *binding);
+    void populateDeferredInstance(QObject *outerObject, int deferredIndex,
+                                  int index, QObject *instance, QObject *bindingTarget,
+                                  const QQmlPropertyData *valueTypeProperty,
+                                  const QV4::CompiledData::Binding *binding = nullptr);
     void finalizePopulateDeferred();
 
-    QQmlContextData *finalize(QQmlInstantiationInterrupt &interrupt);
+    bool finalize(QQmlInstantiationInterrupt &interrupt);
     void clear();
 
+    QQmlRefPointer<QQmlContextData> rootContext() const { return sharedState->rootContext; }
     QQmlComponentAttached **componentAttachment() { return &sharedState->componentAttached; }
-
-    QList<QQmlEnginePrivate::FinalizeCallback> *finalizeCallbacks() { return &sharedState->finalizeCallbacks; }
 
     QList<QQmlError> errors;
 
-    QQmlContextData *parentContextData() const { return parentContext.contextData(); }
-    QFiniteStack<QPointer<QObject> > &allCreatedObjects() { return sharedState->allCreatedObjects; }
+    QQmlRefPointer<QQmlContextData> parentContextData() const
+    {
+        return parentContext.contextData();
+    }
+    QFiniteStack<QQmlGuard<QObject> > &allCreatedObjects() { return sharedState->allCreatedObjects; }
 
-    RequiredProperties &requiredProperties() {return sharedState->requiredProperties;}
-    bool componentHadRequiredProperties() const {return sharedState->hadRequiredProperties;}
+    RequiredProperties *requiredProperties() {return &sharedState->requiredProperties;}
+    bool componentHadTopLevelRequiredProperties() const {return sharedState->hadTopLevelRequiredProperties;}
+
+    static QQmlComponent *createComponent(QQmlEngine *engine,
+                                          QV4::ExecutableCompilationUnit *compilationUnit,
+                                          int index, QObject *parent,
+                                          const QQmlRefPointer<QQmlContextData> &context);
+
+    void removePendingBinding(QObject *target, int propertyIndex)
+    {
+        QList<DeferredQPropertyBinding> &pendingBindings = sharedState.data()->allQPropertyBindings;
+        auto it = std::remove_if(pendingBindings.begin(), pendingBindings.end(),
+                                 [&](const DeferredQPropertyBinding &deferred) {
+            return deferred.properyIndex == propertyIndex && deferred.target == target;
+        });
+        pendingBindings.erase(it, pendingBindings.end());
+    }
 
 private:
-    QQmlObjectCreator(QQmlContextData *contextData, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, QQmlObjectCreatorSharedState *inheritedSharedState);
+    QQmlObjectCreator(QQmlRefPointer<QQmlContextData> contextData,
+                      const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+                      QQmlObjectCreatorSharedState *inheritedSharedState,
+                      bool isContextObject);
 
-    void init(QQmlContextData *parentContext);
+    void init(QQmlRefPointer<QQmlContextData> parentContext);
 
     QObject *createInstance(int index, QObject *parent = nullptr, bool isContextObject = false);
 
-    bool populateInstance(int index, QObject *instance,
-                          QObject *bindingTarget, const QQmlPropertyData *valueTypeProperty);
-
-    // If qmlProperty and binding are null, populate all properties, otherwise only the given one.
-    void populateDeferred(QObject *instance, int deferredIndex,
-                          const QQmlPropertyPrivate *qmlProperty = nullptr,
+    bool populateInstance(int index, QObject *instance, QObject *bindingTarget,
+                          const QQmlPropertyData *valueTypeProperty,
                           const QV4::CompiledData::Binding *binding = nullptr);
 
-    void setupBindings(bool applyDeferredBindings = false);
+    // If qmlProperty and binding are null, populate all properties, otherwise only the given one.
+    void populateDeferred(QObject *instance, int deferredIndex);
+    void populateDeferred(QObject *instance, int deferredIndex,
+                          const QQmlPropertyPrivate *qmlProperty,
+                          const QV4::CompiledData::Binding *binding);
+
+    enum BindingMode {
+        ApplyNone      = 0x0,
+        ApplyImmediate = 0x1,
+        ApplyDeferred  = 0x2,
+        ApplyAll       = ApplyImmediate | ApplyDeferred,
+    };
+    Q_DECLARE_FLAGS(BindingSetupFlags, BindingMode);
+
+    void setupBindings(BindingSetupFlags mode = BindingMode::ApplyImmediate);
     bool setPropertyBinding(const QQmlPropertyData *property, const QV4::CompiledData::Binding *binding);
     void setPropertyValue(const QQmlPropertyData *property, const QV4::CompiledData::Binding *binding);
     void setupFunctions();
@@ -162,7 +197,6 @@ private:
     void registerObjectWithContextById(const QV4::CompiledData::Object *object, QObject *instance) const;
 
     inline QV4::QmlContext *currentQmlContext();
-    Q_NEVER_INLINE void createQmlContext();
     QV4::ResolvedTypeReference *resolvedType(int id) const
     {
         return compilationUnit->resolvedType(id);
@@ -182,10 +216,11 @@ private:
     QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
     const QV4::CompiledData::Unit *qmlUnit;
     QQmlGuardedContextData parentContext;
-    QQmlContextData *context;
+    QQmlRefPointer<QQmlContextData> context;
     const QQmlPropertyCacheVector *propertyCaches;
-    QExplicitlySharedDataPointer<QQmlObjectCreatorSharedState> sharedState;
+    QQmlRefPointer<QQmlObjectCreatorSharedState> sharedState;
     bool topLevelCreator;
+    bool isContextObject;
     QQmlIncubatorPrivate *incubator;
 
     QObject *_qobject;
@@ -196,7 +231,7 @@ private:
     int _compiledObjectIndex;
     const QV4::CompiledData::Object *_compiledObject;
     QQmlData *_ddata;
-    QQmlRefPointer<QQmlPropertyCache> _propertyCache;
+    QQmlPropertyCache::ConstPtr _propertyCache;
     QQmlVMEMetaObject *_vmeMetaObject;
     QQmlListProperty<void> _currentList;
     QV4::QmlContext *_qmlContext;
@@ -205,6 +240,53 @@ private:
 
     typedef std::function<bool(QQmlObjectCreatorSharedState *sharedState)> PendingAliasBinding;
     std::vector<PendingAliasBinding> pendingAliasBindings;
+
+    template<typename Functor>
+    void doPopulateDeferred(QObject *instance, int deferredIndex, Functor f)
+    {
+        QQmlData *declarativeData = QQmlData::get(instance);
+        QObject *bindingTarget = instance;
+
+        QQmlPropertyCache::ConstPtr cache = declarativeData->propertyCache;
+        QQmlVMEMetaObject *vmeMetaObject = QQmlVMEMetaObject::get(instance);
+
+        QObject *scopeObject = instance;
+        qt_ptr_swap(_scopeObject, scopeObject);
+
+        QV4::Scope valueScope(v4);
+        QScopedValueRollback<QV4::Value*> jsObjectGuard(sharedState->allJavaScriptObjects,
+                                                        valueScope.alloc(compilationUnit->totalObjectCount()));
+
+        Q_ASSERT(topLevelCreator);
+        QV4::QmlContext *qmlContext = static_cast<QV4::QmlContext *>(valueScope.alloc());
+
+        qt_ptr_swap(_qmlContext, qmlContext);
+
+        _propertyCache.swap(cache);
+        qt_ptr_swap(_qobject, instance);
+
+        int objectIndex = deferredIndex;
+        std::swap(_compiledObjectIndex, objectIndex);
+
+        const QV4::CompiledData::Object *obj = compilationUnit->objectAt(_compiledObjectIndex);
+        qt_ptr_swap(_compiledObject, obj);
+        qt_ptr_swap(_ddata, declarativeData);
+        qt_ptr_swap(_bindingTarget, bindingTarget);
+        qt_ptr_swap(_vmeMetaObject, vmeMetaObject);
+
+        f();
+
+        qt_ptr_swap(_vmeMetaObject, vmeMetaObject);
+        qt_ptr_swap(_bindingTarget, bindingTarget);
+        qt_ptr_swap(_ddata, declarativeData);
+        qt_ptr_swap(_compiledObject, obj);
+        std::swap(_compiledObjectIndex, objectIndex);
+        qt_ptr_swap(_qobject, instance);
+        _propertyCache.swap(cache);
+
+        qt_ptr_swap(_qmlContext, qmlContext);
+        qt_ptr_swap(_scopeObject, scopeObject);
+    }
 };
 
 struct QQmlObjectCreatorRecursionWatcher
@@ -214,7 +296,7 @@ struct QQmlObjectCreatorRecursionWatcher
     bool hasRecursed() const { return watcher.hasRecursed(); }
 
 private:
-    QExplicitlySharedDataPointer<QQmlObjectCreatorSharedState> sharedState;
+    QQmlRefPointer<QQmlObjectCreatorSharedState> sharedState;
     QRecursionWatcher<QQmlObjectCreatorSharedState, &QQmlObjectCreatorSharedState::recursionNode> watcher;
 };
 

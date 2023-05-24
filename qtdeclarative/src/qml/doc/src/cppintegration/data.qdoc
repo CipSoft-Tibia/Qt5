@@ -1,29 +1,5 @@
-﻿/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 /*!
 \page qtqml-cppintegration-data.html
 \title Data Type Conversion Between QML and C++
@@ -37,6 +13,10 @@ the engine.
 The QML engine provides built-in support for a large number of Qt C++ data
 types. Additionally, custom C++ types may be registered with the QML type
 system to make them available to the engine.
+
+For more information about C++ and the different QML integration methods,
+see the
+\l {Overview - QML and C++ Integration} {C++ and QML integration overview} page.
 
 This page discusses the data types supported by the QML engine and how
 they are converted between QML and C++.
@@ -59,13 +39,13 @@ has a parent.
 \section1 Basic Qt Data Types
 
 By default, QML recognizes the following Qt data types, which are
-automatically converted to a corresponding \l {QML Basic Types}{QML basic type}
+automatically converted to a corresponding \l {QML Value Types}{QML value type}
 when passed from C++ to QML and vice-versa:
 
 \table
     \row
         \li Qt Type
-        \li QML Basic Type
+        \li QML Value Type
     \row
         \li bool
         \li \l bool
@@ -112,7 +92,7 @@ when passed from C++ to QML and vice-versa:
         \li QVector2D, QVector3D, QVector4D
         \li \l vector2d, \l vector3d, \l vector4d
     \row
-        \li Enums declared with Q_ENUM() or Q_ENUMS()
+        \li Enums declared with Q_ENUM()
         \li \l enumeration
 \endtable
 
@@ -133,7 +113,7 @@ Item {
 }
 \endqml
 
-See documentation for each individual type under \l {QML Basic Types} for more
+See documentation for each individual type under \l {QML Value Types} for more
 information.
 
 
@@ -266,6 +246,51 @@ Similarly, if a C++ type uses a QDateTime for a property type or method
 parameter, the value can be created as a JavaScript \c Date object in QML, and
 is automatically converted to a QDateTime value when it is passed to C++.
 
+\note Watch out for the difference in month numbering: JavaScript numbers
+January as 0 through 11 for December, off by one from Qt's numbering
+of January as 1 through 12 for December.
+
+\note When using a string in JavaScript as the value of a \c Date object,
+note that a string with no time fields (so a simple date) is
+interpreted as the UTC start of the relevant day, in contrast
+to \c{new Date(y, m, d)} which uses the local time start of the day.
+Most other ways of constructing a \c Date object in JavaScript produce
+a local time, unless methods with UTC in their names are used. If your
+program is run in a zone behind UTC (nominally west of The Prime
+Meridian), use of a date-only string will lead to a \c Date object
+whose \c getDate() is one less than the day-number in your string; it
+will typically have a large value for \c getHours(). The UTC variants
+of these methods, \c getUTCDate() and \c getUTCHours(), will give the
+results you expect for such a \c Date objects. See also the next
+section.
+
+\section2 QDate and JavaScript Date
+
+The QML engine converts automatically between \l QDate and the
+JavaScript \c Date type by representing the date by the UTC start of
+its day.  A date is mapped back to QDate via QDateTime, selecting
+its \l {QDateTime::}{date()} method, using the local time form of the
+date unless the UTC form of it coincides with the start of the next
+day, in which case the UTC form is used.
+
+This slighly eccentric arrangement is a work-around for the fact that
+JavaScript's construction of a \c Date object from a date-only string
+uses the UTC start of the day, but \c{new Date(y, m, d)} uses the
+local time start of the indicated date, as discussed in a note at the
+end of the previous section.
+
+As a result, where a QDate property or parameter is exposed to QML,
+care should be taken in reading its value: the \c
+Date.getUTCFullYear(), \c Date.getUTCMonth() and \c Date.getUTCDate()
+methods are more likely to deliver the results users expect than the
+corresponding methods without UTC in their names.
+
+It is thus commonly more robust to use a \l QDateTime property. This
+makes it possible to take control, on the QDateTime side, of whether
+the date (and time) is specified in terms of UTC or local time; as
+long as the JavaScript code is written to work with the same standard,
+it should be possible to avoid trouble.
+
 //! Target adds an anchor, so renaming the section won't break incoming links.
 \target QTime to JavaScript Date
 \section2 QTime and JavaScript Date
@@ -275,9 +300,9 @@ JavaScript \c Date objects. As QTime values do not contain a date component,
 one is created for the conversion only. Thus, you should not rely on the date
 component of the resulting Date object.
 
-Under the hood, conversion from a JavaScript \c Date object to QTime is done by
-converting to a QDateTime object and calling its \l {QDateTime::}{time()}
-method.
+Under the hood, conversion from a JavaScript \c Date object to QTime
+is done by converting to a QDateTime object (using local time) and
+calling its \l {QDateTime::}{time()} method.
 
 \section2 Sequence Type to JavaScript Array
 
@@ -303,7 +328,7 @@ In particular, QML currently supports:
   \li \c {std::vector<bool>}
 \endlist
 
-and all registered QList, QVector, QQueue, QStack, QSet, QLinkedList, std::list,
+and all registered QList, QVector, QQueue, QStack, QSet, std::list,
 std::vector that contain a type marked with \l Q_DECLARE_METATYPE.
 
 These sequence types are implemented directly in terms of the underlying C++
@@ -496,6 +521,62 @@ class Message : public QObject
         };
     };
 \endcode
+
+Enums from related types are usually registered in the scope of the relating
+type. For example any enum from a different type used in a \l{Q_PROPERTY}
+declaration causes all enums from that type to be made available in QML. This
+is usually more of a liability than a feature. In order to prevent it from
+happening, annotate your class with a special \l{Q_CLASSINFO} macro.
+Use the name \c RegisterEnumsFromRelatedTypes with the value \c false to prevent
+enums from related types from being registered in this type.
+
+You should explicitly register the enclosing types of any enums you want to use
+in QML, using \l{QML_ELEMENT} or \l{QML_NAMED_ELEMENT}, rather than rely on
+their enums to be injected into other types.
+
+\code
+class OtherType : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+
+public:
+    enum SomeEnum { A, B, C };
+    Q_ENUM(SomeEnum)
+
+    enum AnotherEnum { D, E, F };
+    Q_ENUM(AnotherEnum)
+};
+
+class Message : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+
+    // This would usually cause all enums from OtherType to be registered
+    // as members of Message ...
+    Q_PROPERTY(OtherType::SomeEnum someEnum READ someEnum CONSTANT)
+
+    // ... but this way it doesn't.
+    Q_CLASSINFO("RegisterEnumsFromRelatedTypes", "false")
+
+public:
+    OtherType::SomeEnum someEnum() const { return OtherType::B; }
+};
+\endcode
+
+The important difference is the scope for the enums in QML. If an enum from a
+related class is automatically registered, the scope is the type it is
+imported into. In the above case, without the extra \l{Q_CLASSINFO}, you would
+use \c {Message.A}, for example. If C++ type holding the enums is explicitly
+registered, and the registration of enums from related types is suppressed, the
+QML type for the C++ type holding the enums is the scope for all of its enums.
+You would use \c {OtherType.A} instead of \c {Message.A} in QML.
+
+Mind that you can use \l QML_FOREIGN to register a type you cannot modify. You
+can also use \l QML_FOREIGN_NAMESPACE to register the enumerators of a C++ type
+into a QML namespace of any upper-case name, even if the same C++ type is
+also registered as a QML value type.
 
 \section2 Enumeration Types as Signal and Method Parameters
 

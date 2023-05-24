@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Mikkel Krautz <mikkel@krautz.dk>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Mikkel Krautz <mikkel@krautz.dk>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 /*!
@@ -56,6 +20,7 @@
 
 #include "qssldiffiehellmanparameters.h"
 #include "qssldiffiehellmanparameters_p.h"
+#include "qtlsbackend_p.h"
 #include "qsslsocket.h"
 #include "qsslsocket_p.h"
 
@@ -68,17 +33,18 @@
 
 QT_BEGIN_NAMESPACE
 
-// The 1024-bit MODP group from RFC 2459 (Second Oakley Group)
+// The 2048-bit MODP group from RFC 3526
 Q_AUTOTEST_EXPORT const char *qssl_dhparams_default_base64 =
-    "MIGHAoGBAP//////////yQ/aoiFowjTExmKLgNwc0SkCTgiKZ8x0Agu+pjsTmyJR"
-    "Sgh5jjQE3e+VGbPNOkMbMCsKbfJfFDdP4TVtbVHCReSFtXZiXn7G9ExC6aY37WsL"
-    "/1y29Aa37e44a/taiZ+lrp8kEXxLH+ZJKGZR7OZTgf//////////AgEC";
+    "MIIBCAKCAQEA///////////JD9qiIWjCNMTGYouA3BzRKQJOCIpnzHQCC76mOxObIlFKCHmO"
+    "NATd75UZs806QxswKwpt8l8UN0/hNW1tUcJF5IW1dmJefsb0TELppjftawv/XLb0Brft7jhr"
+    "+1qJn6WunyQRfEsf5kkoZlHs5Fs9wgB8uKFjvwWY2kg2HFXTmmkWP6j9JM9fg2VdI9yjrZYc"
+    "YvNWIIVSu57VKQdwlpZtZww1Tkq8mATxdGwIyhghfDKQXkYuNs474553LBgOhgObJ4Oi7Aei"
+    "j7XFXfBvTFLJ3ivL9pVYFxg5lUl86pVq5RXSJhiY+gUQFXKOWoqsqmj//////////wIBAg==";
 
 /*!
     Returns the default QSslDiffieHellmanParameters used by QSslSocket.
 
-    This is currently the 1024-bit MODP group from RFC 2459, also
-    known as the Second Oakley Group.
+    This is currently the 2048-bit MODP group from RFC 3526.
 */
 QSslDiffieHellmanParameters QSslDiffieHellmanParameters::defaultParameters()
 {
@@ -117,12 +83,15 @@ QSslDiffieHellmanParameters::QSslDiffieHellmanParameters()
 QSslDiffieHellmanParameters QSslDiffieHellmanParameters::fromEncoded(const QByteArray &encoded, QSsl::EncodingFormat encoding)
 {
     QSslDiffieHellmanParameters result;
+    const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse();
+    if (!tlsBackend)
+        return result;
     switch (encoding) {
     case QSsl::Der:
-        result.d->decodeDer(encoded);
+        result.d->initFromDer(encoded);
         break;
     case QSsl::Pem:
-        result.d->decodePem(encoded);
+        result.d->initFromPem(encoded);
         break;
     }
     return result;
@@ -273,19 +242,47 @@ QString QSslDiffieHellmanParameters::errorString() const noexcept
         return QCoreApplication::translate("QSslDiffieHellmanParameter", "The given Diffie-Hellman parameters are deemed unsafe");
     }
 
-    Q_UNREACHABLE();
-    return QString();
+    Q_UNREACHABLE_RETURN(QString());
 }
 
 /*!
+    \fn bool QSslDiffieHellmanParameters::operator==(const QSslDiffieHellmanParameters &lhs, const QSslDiffieHellmanParameters &rhs) noexcept
     \since 5.8
-    \relates QSslDiffieHellmanParameters
 
     Returns \c true if \a lhs is equal to \a rhs; otherwise returns \c false.
 */
-bool operator==(const QSslDiffieHellmanParameters &lhs, const QSslDiffieHellmanParameters &rhs) noexcept
+
+/*!
+    \fn bool QSslDiffieHellmanParameters::operator!=(const QSslDiffieHellmanParameters &lhs, const QSslDiffieHellmanParameters &rhs) noexcept
+    \since 5.8
+
+    Returns \c true if \a lhs is not equal to \a rhs; otherwise returns \c false.
+*/
+
+/*!
+    \internal
+*/
+bool QSslDiffieHellmanParameters::isEqual(const QSslDiffieHellmanParameters &other) const noexcept
 {
-    return lhs.d->derData == rhs.d->derData;
+    return d->derData == other.d->derData;
+}
+
+/*!
+    \internal
+*/
+void QSslDiffieHellmanParametersPrivate::initFromDer(const QByteArray &der)
+{
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        error = QSslDiffieHellmanParameters::Error(tlsBackend->dhParametersFromDer(der, &derData));
+}
+
+/*!
+    \internal
+*/
+void QSslDiffieHellmanParametersPrivate::initFromPem(const QByteArray &pem)
+{
+    if (const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse())
+        error = QSslDiffieHellmanParameters::Error(tlsBackend->dhParametersFromPem(pem, &derData));
 }
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -316,7 +313,7 @@ QDebug operator<<(QDebug debug, const QSslDiffieHellmanParameters &dhparam)
     Returns an hash value for \a dhparam, using \a seed to seed
     the calculation.
 */
-uint qHash(const QSslDiffieHellmanParameters &dhparam, uint seed) noexcept
+size_t qHash(const QSslDiffieHellmanParameters &dhparam, size_t seed) noexcept
 {
     return qHash(dhparam.d->derData, seed);
 }

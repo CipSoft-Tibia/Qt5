@@ -1,56 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef GL_SURFACE_EGL_QT_H_
 #define GL_SURFACE_EGL_QT_H_
 
 #include "gl_surface_qt.h"
 #include <EGL/egl.h>
-#include <EGL/eglext.h>
 
 namespace gl {
 
+class GLDisplayEGL;
+
 class GLSurfaceEGLQt: public GLSurfaceQt {
 public:
-    explicit GLSurfaceEGLQt(const gfx::Size& size);
+    explicit GLSurfaceEGLQt(gl::GLDisplayEGL *display, const gfx::Size& size);
 
-    static bool InitializeOneOff();
+    static gl::GLDisplay *InitializeOneOff(gl::GpuPreference preference);
     static bool InitializeExtensionSettingsOneOff();
 
     bool Initialize(GLSurfaceFormat format) override;
@@ -69,7 +34,6 @@ public:
 private:
    EGLSurface m_surfaceBuffer;
    static bool s_initialized;
-   DISALLOW_COPY_AND_ASSIGN(GLSurfaceEGLQt);
 };
 
 // The following comment is cited from chromium/ui/gl/gl_surface_egl.cc:
@@ -79,7 +43,7 @@ private:
 
 class GLSurfacelessQtEGL : public GLSurfaceQt {
 public:
-    explicit GLSurfacelessQtEGL(const gfx::Size& size);
+    explicit GLSurfacelessQtEGL(gl::GLDisplayEGL *display, const gfx::Size& size);
 
 public:
     bool Initialize(GLSurfaceFormat format) override;
@@ -89,9 +53,6 @@ public:
                 const gfx::ColorSpace &color_space, bool has_alpha) override;
     EGLSurface GetHandle() override;
     void* GetShareHandle() override;
-
-private:
-    DISALLOW_COPY_AND_ASSIGN(GLSurfacelessQtEGL);
 };
 }
 

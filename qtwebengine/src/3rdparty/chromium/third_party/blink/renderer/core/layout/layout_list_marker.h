@@ -40,6 +40,7 @@ class CORE_EXPORT LayoutListMarker final : public LayoutBox {
  public:
   explicit LayoutListMarker(Element*);
   ~LayoutListMarker() override;
+  void Trace(Visitor*) const override;
 
   // Marker text without suffix, e.g. "1".
   const String& GetText() const {
@@ -51,6 +52,7 @@ class CORE_EXPORT LayoutListMarker final : public LayoutBox {
   String TextAlternative() const;
 
   ListMarker::ListStyleCategory GetListStyleCategory() const;
+  const CounterStyle& GetCounterStyle() const;
 
   bool IsInside() const;
 
@@ -116,14 +118,19 @@ class CORE_EXPORT LayoutListMarker final : public LayoutBox {
 
   void UpdateMarkerImageIfNeeded(StyleImage* image);
   void ListStyleTypeChanged();
+  void CounterStyleChanged();
 
   String text_;
-  Persistent<StyleImage> image_;
+  Member<StyleImage> image_;
   LayoutUnit list_item_inline_start_offset_;
 };
 
-DEFINE_LAYOUT_OBJECT_TYPE_CASTS(LayoutListMarker,
-                                IsListMarkerForNormalContent());
+template <>
+struct DowncastTraits<LayoutListMarker> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsListMarkerForNormalContent();
+  }
+};
 
 }  // namespace blink
 

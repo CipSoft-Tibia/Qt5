@@ -1,13 +1,12 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/events/blink/web_input_event.h"
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-#include "base/stl_util.h"
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -20,17 +19,6 @@
 #include "ui/events/keycodes/dom/dom_key.h"
 #include "ui/events/keycodes/dom/keycode_converter.h"
 #include "ui/events/test/keyboard_layout.h"
-
-#if defined(USE_X11)
-#include "ui/base/x/x11_util.h"                    // nogncheck
-#include "ui/events/test/events_test_utils_x11.h"  // nogncheck
-#include "ui/events/x/x11_event_translation.h"     // nogncheck
-#include "ui/gfx/x/event.h"                        // nogncheck
-#include "ui/gfx/x/keysyms/keysyms.h"              // nogncheck
-#include "ui/gfx/x/x11.h"                          // nogncheck
-#include "ui/gfx/x/x11_types.h"                    // nogncheck
-#include "ui/gfx/x/xproto.h"                       // nogncheck
-#endif
 
 namespace ui {
 
@@ -48,7 +36,7 @@ TEST(WebInputEventTest, TestMakeWebKeyboardEvent) {
     EXPECT_EQ(blink::WebInputEvent::kControlKey | blink::WebInputEvent::kIsLeft,
               webkit_event.GetModifiers());
     EXPECT_EQ(static_cast<int>(DomCode::CONTROL_LEFT), webkit_event.dom_code);
-    EXPECT_EQ(static_cast<int>(DomKey::CONTROL), webkit_event.dom_key);
+    EXPECT_EQ(DomKey::CONTROL, webkit_event.dom_key);
   }
   {
     // Release left Ctrl.
@@ -58,7 +46,7 @@ TEST(WebInputEventTest, TestMakeWebKeyboardEvent) {
     // However, modifier bit for Control in |webkit_event| shouldn't be set.
     EXPECT_EQ(blink::WebInputEvent::kIsLeft, webkit_event.GetModifiers());
     EXPECT_EQ(static_cast<int>(DomCode::CONTROL_LEFT), webkit_event.dom_code);
-    EXPECT_EQ(static_cast<int>(DomKey::CONTROL), webkit_event.dom_key);
+    EXPECT_EQ(DomKey::CONTROL, webkit_event.dom_key);
   }
   {
     // Press right Ctrl.
@@ -79,68 +67,12 @@ TEST(WebInputEventTest, TestMakeWebKeyboardEvent) {
     // However, modifier bit for Control in |webkit_event| shouldn't be set.
     EXPECT_EQ(blink::WebInputEvent::kIsRight, webkit_event.GetModifiers());
     EXPECT_EQ(static_cast<int>(DomCode::CONTROL_RIGHT), webkit_event.dom_code);
-    EXPECT_EQ(static_cast<int>(DomKey::CONTROL), webkit_event.dom_key);
+    EXPECT_EQ(DomKey::CONTROL, webkit_event.dom_key);
   }
-#if defined(USE_X11)
-  // https://crbug.com/1109112): fix this.
-  if (features::IsUsingOzonePlatform())
-    return;
-  const int kLocationModifiers =
-      blink::WebInputEvent::kIsLeft | blink::WebInputEvent::kIsRight;
-  ScopedXI2Event xev;
-  {
-    // Press Ctrl.
-    xev.InitKeyEvent(ET_KEY_PRESSED, VKEY_CONTROL, 0);
-    auto event = ui::BuildKeyEventFromXEvent(*xev);
-    blink::WebKeyboardEvent webkit_event = MakeWebKeyboardEvent(*event);
-    // However, modifier bit for Control in |webkit_event| should be set.
-    EXPECT_EQ(blink::WebInputEvent::kControlKey,
-              webkit_event.GetModifiers() & ~kLocationModifiers);
-  }
-  {
-    // Release Ctrl.
-    xev.InitKeyEvent(ET_KEY_RELEASED, VKEY_CONTROL,
-                     static_cast<uint32_t>(x11::KeyButMask::Control));
-    auto event = ui::BuildKeyEventFromXEvent(*xev);
-    blink::WebKeyboardEvent webkit_event = MakeWebKeyboardEvent(*event);
-    // However, modifier bit for Control in |webkit_event| shouldn't be set.
-    EXPECT_EQ(0, webkit_event.GetModifiers() & ~kLocationModifiers);
-  }
-#endif
 }
 
 TEST(WebInputEventTest, TestMakeWebKeyboardEventWindowsKeyCode) {
-#if defined(USE_X11)
-  // https://crbug.com/1109112): enable this.
-  if (features::IsUsingOzonePlatform())
-    return;
-  ScopedXI2Event xev;
-  {
-    // Press left Ctrl.
-    xev.InitKeyEvent(ET_KEY_PRESSED, VKEY_CONTROL, 0);
-    x11::Event* x11_event = xev;
-    x11_event->As<x11::KeyEvent>()->detail = static_cast<x11::KeyCode>(
-        KeycodeConverter::DomCodeToNativeKeycode(DomCode::CONTROL_LEFT));
-    auto event = ui::BuildKeyEventFromXEvent(*xev);
-    blink::WebKeyboardEvent webkit_event = MakeWebKeyboardEvent(*event);
-    EXPECT_EQ(VKEY_CONTROL, webkit_event.windows_key_code);
-  }
-  {
-    // Press right Ctrl.
-    xev.InitKeyEvent(ET_KEY_PRESSED, VKEY_CONTROL, 0);
-    x11::Event* x11_event = xev;
-    x11_event->As<x11::KeyEvent>()->detail = static_cast<x11::KeyCode>(
-        KeycodeConverter::DomCodeToNativeKeycode(DomCode::CONTROL_RIGHT));
-    auto event = ui::BuildKeyEventFromXEvent(*xev);
-    blink::WebKeyboardEvent webkit_event = MakeWebKeyboardEvent(*event);
-    EXPECT_EQ(VKEY_CONTROL, webkit_event.windows_key_code);
-  }
-#elif defined(OS_WIN)
-// TODO(yusukes): Add tests for win_aura once keyboardEvent() in
-// third_party/WebKit/Source/web/win/WebInputEventFactory.cpp is modified
-// to return VKEY_[LR]XXX instead of VKEY_XXX.
-// https://bugs.webkit.org/show_bug.cgi?id=86694
-#endif
+  ui::ScopedKeyboardLayout keyboard_layout(ui::KEYBOARD_LAYOUT_ENGLISH_US);
   {
     // Press left Ctrl.
     KeyEvent event(ET_KEY_PRESSED, VKEY_CONTROL, DomCode::CONTROL_LEFT,
@@ -155,61 +87,62 @@ TEST(WebInputEventTest, TestMakeWebKeyboardEventWindowsKeyCode) {
     blink::WebKeyboardEvent webkit_event = MakeWebKeyboardEvent(event);
     EXPECT_EQ(VKEY_CONTROL, webkit_event.windows_key_code);
   }
+#if BUILDFLAG(IS_WIN)
+// TODO(yusukes): Add tests for win_aura once keyboardEvent() in
+// third_party/WebKit/Source/web/win/WebInputEventFactory.cpp is modified
+// to return VKEY_[LR]XXX instead of VKEY_XXX.
+// https://bugs.webkit.org/show_bug.cgi?id=86694
+#endif
 }
 
 // Checks that MakeWebKeyboardEvent fills a correct keypad modifier.
 TEST(WebInputEventTest, TestMakeWebKeyboardEventKeyPadKeyCode) {
-#if defined(USE_X11)
-#define XK(x) XK_##x
-#else
-#define XK(x) 0
-#endif
   ui::ScopedKeyboardLayout keyboard_layout(ui::KEYBOARD_LAYOUT_ENGLISH_US);
   struct TestCase {
     DomCode dom_code;         // The physical key (location).
     KeyboardCode ui_keycode;  // The virtual key code.
-    uint32_t x_keysym;        // The X11 keysym.
     bool expected_result;     // true if the event has "isKeyPad" modifier.
   } kTesCases[] = {
-      {DomCode::DIGIT0, VKEY_0, XK(0), false},
-      {DomCode::DIGIT1, VKEY_1, XK(1), false},
-      {DomCode::DIGIT2, VKEY_2, XK(2), false},
-      {DomCode::DIGIT3, VKEY_3, XK(3), false},
-      {DomCode::DIGIT4, VKEY_4, XK(4), false},
-      {DomCode::DIGIT5, VKEY_5, XK(5), false},
-      {DomCode::DIGIT6, VKEY_6, XK(6), false},
-      {DomCode::DIGIT7, VKEY_7, XK(7), false},
-      {DomCode::DIGIT8, VKEY_8, XK(8), false},
-      {DomCode::DIGIT9, VKEY_9, XK(9), false},
+      {DomCode::DIGIT0, VKEY_0, false},
+      {DomCode::DIGIT1, VKEY_1, false},
+      {DomCode::DIGIT2, VKEY_2, false},
+      {DomCode::DIGIT3, VKEY_3, false},
+      {DomCode::DIGIT4, VKEY_4, false},
+      {DomCode::DIGIT5, VKEY_5, false},
+      {DomCode::DIGIT6, VKEY_6, false},
+      {DomCode::DIGIT7, VKEY_7, false},
+      {DomCode::DIGIT8, VKEY_8, false},
+      {DomCode::DIGIT9, VKEY_9, false},
 
-      {DomCode::NUMPAD0, VKEY_NUMPAD0, XK(KP_0), true},
-      {DomCode::NUMPAD1, VKEY_NUMPAD1, XK(KP_1), true},
-      {DomCode::NUMPAD2, VKEY_NUMPAD2, XK(KP_2), true},
-      {DomCode::NUMPAD3, VKEY_NUMPAD3, XK(KP_3), true},
-      {DomCode::NUMPAD4, VKEY_NUMPAD4, XK(KP_4), true},
-      {DomCode::NUMPAD5, VKEY_NUMPAD5, XK(KP_5), true},
-      {DomCode::NUMPAD6, VKEY_NUMPAD6, XK(KP_6), true},
-      {DomCode::NUMPAD7, VKEY_NUMPAD7, XK(KP_7), true},
-      {DomCode::NUMPAD8, VKEY_NUMPAD8, XK(KP_8), true},
-      {DomCode::NUMPAD9, VKEY_NUMPAD9, XK(KP_9), true},
+      {DomCode::NUMPAD0, VKEY_NUMPAD0, true},
+      {DomCode::NUMPAD1, VKEY_NUMPAD1, true},
+      {DomCode::NUMPAD2, VKEY_NUMPAD2, true},
+      {DomCode::NUMPAD3, VKEY_NUMPAD3, true},
+      {DomCode::NUMPAD4, VKEY_NUMPAD4, true},
+      {DomCode::NUMPAD5, VKEY_NUMPAD5, true},
+      {DomCode::NUMPAD6, VKEY_NUMPAD6, true},
+      {DomCode::NUMPAD7, VKEY_NUMPAD7, true},
+      {DomCode::NUMPAD8, VKEY_NUMPAD8, true},
+      {DomCode::NUMPAD9, VKEY_NUMPAD9, true},
 
-      {DomCode::NUMPAD_MULTIPLY, VKEY_MULTIPLY, XK(KP_Multiply), true},
-      {DomCode::NUMPAD_SUBTRACT, VKEY_SUBTRACT, XK(KP_Subtract), true},
-      {DomCode::NUMPAD_ADD, VKEY_ADD, XK(KP_Add), true},
-      {DomCode::NUMPAD_DIVIDE, VKEY_DIVIDE, XK(KP_Divide), true},
-      {DomCode::NUMPAD_DECIMAL, VKEY_DECIMAL, XK(KP_Decimal), true},
-      {DomCode::NUMPAD_DECIMAL, VKEY_DELETE, XK(KP_Delete), true},
-      {DomCode::NUMPAD0, VKEY_INSERT, XK(KP_Insert), true},
-      {DomCode::NUMPAD1, VKEY_END, XK(KP_End), true},
-      {DomCode::NUMPAD2, VKEY_DOWN, XK(KP_Down), true},
-      {DomCode::NUMPAD3, VKEY_NEXT, XK(KP_Page_Down), true},
-      {DomCode::NUMPAD4, VKEY_LEFT, XK(KP_Left), true},
-      {DomCode::NUMPAD5, VKEY_CLEAR, XK(KP_Begin), true},
-      {DomCode::NUMPAD6, VKEY_RIGHT, XK(KP_Right), true},
-      {DomCode::NUMPAD7, VKEY_HOME, XK(KP_Home), true},
-      {DomCode::NUMPAD8, VKEY_UP, XK(KP_Up), true},
-      {DomCode::NUMPAD9, VKEY_PRIOR, XK(KP_Page_Up), true},
+      {DomCode::NUMPAD_MULTIPLY, VKEY_MULTIPLY, true},
+      {DomCode::NUMPAD_SUBTRACT, VKEY_SUBTRACT, true},
+      {DomCode::NUMPAD_ADD, VKEY_ADD, true},
+      {DomCode::NUMPAD_DIVIDE, VKEY_DIVIDE, true},
+      {DomCode::NUMPAD_DECIMAL, VKEY_DECIMAL, true},
+      {DomCode::NUMPAD_DECIMAL, VKEY_DELETE, true},
+      {DomCode::NUMPAD0, VKEY_INSERT, true},
+      {DomCode::NUMPAD1, VKEY_END, true},
+      {DomCode::NUMPAD2, VKEY_DOWN, true},
+      {DomCode::NUMPAD3, VKEY_NEXT, true},
+      {DomCode::NUMPAD4, VKEY_LEFT, true},
+      {DomCode::NUMPAD5, VKEY_CLEAR, true},
+      {DomCode::NUMPAD6, VKEY_RIGHT, true},
+      {DomCode::NUMPAD7, VKEY_HOME, true},
+      {DomCode::NUMPAD8, VKEY_UP, true},
+      {DomCode::NUMPAD9, VKEY_PRIOR, true},
   };
+
   for (const auto& test_case : kTesCases) {
     KeyEvent event(ET_KEY_PRESSED, test_case.ui_keycode, test_case.dom_code,
                    EF_NONE);
@@ -222,39 +155,6 @@ TEST(WebInputEventTest, TestMakeWebKeyboardEventKeyPadKeyCode) {
         << ", ui_keycode:" << test_case.ui_keycode
         << "}, expect: " << test_case.expected_result;
   }
-#if defined(USE_X11)
-  // https://crbug.com/1109112): fix this.
-  if (features::IsUsingOzonePlatform())
-    return;
-  ScopedXI2Event xev;
-  for (size_t i = 0; i < base::size(kTesCases); ++i) {
-    const TestCase& test_case = kTesCases[i];
-
-    // TODO: re-enable the two cases excluded here once all trybots
-    // are sufficiently up to date to round-trip the associated keys.
-    if ((test_case.x_keysym == XK_KP_Divide) ||
-        (test_case.x_keysym == XK_KP_Decimal))
-      continue;
-
-    xev.InitKeyEvent(ET_KEY_PRESSED, test_case.ui_keycode, EF_NONE);
-    x11::Event* x11_event = xev;
-    auto keycode = x11::Connection::Get()->KeysymToKeycode(
-        static_cast<x11::KeySym>(test_case.x_keysym));
-    if (keycode == x11::KeyCode{})
-      continue;
-    x11_event->As<x11::KeyEvent>()->detail = keycode;
-    auto event = ui::BuildKeyEventFromXEvent(*xev);
-    blink::WebKeyboardEvent webkit_event = MakeWebKeyboardEvent(*event);
-    EXPECT_EQ(test_case.expected_result, (webkit_event.GetModifiers() &
-                                          blink::WebInputEvent::kIsKeyPad) != 0)
-        << "Failed in " << i << "th test case: "
-        << "{dom_code:"
-        << KeycodeConverter::DomCodeToCodeString(test_case.dom_code)
-        << ", ui_keycode:" << test_case.ui_keycode
-        << ", x_keysym:" << test_case.x_keysym
-        << "}, expect: " << test_case.expected_result;
-  }
-#endif
 }
 
 TEST(WebInputEventTest, TestMakeWebMouseEvent) {
@@ -479,10 +379,11 @@ TEST(WebInputEventTest, TestMakeWebMouseWheelEvent) {
   }
 }
 
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
 TEST(WebInputEventTest, TestPercentMouseWheelScroll) {
   base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(features::kPercentBasedScrolling);
+  scoped_feature_list.InitAndEnableFeature(
+      features::kWindowsScrollingPersonality);
 
   base::TimeTicks timestamp = EventTimeForNow();
   MouseWheelEvent ui_event(gfx::Vector2d(0, -MouseWheelEvent::kWheelDelta),
@@ -516,7 +417,7 @@ TEST(WebInputEventTest, KeyEvent) {
       {ui::KeyEvent(ui::ET_KEY_RELEASED, ui::VKEY_C, ui::EF_ALT_DOWN),
        blink::WebInputEvent::Type::kKeyUp, blink::WebInputEvent::kAltKey}};
 
-  for (size_t i = 0; i < base::size(tests); i++) {
+  for (size_t i = 0; i < std::size(tests); i++) {
     blink::WebKeyboardEvent web_event = MakeWebKeyboardEvent(tests[i].event);
     ASSERT_TRUE(blink::WebInputEvent::IsKeyboardEventType(web_event.GetType()));
     ASSERT_EQ(tests[i].web_type, web_event.GetType());
@@ -527,6 +428,9 @@ TEST(WebInputEventTest, KeyEvent) {
 }
 
 TEST(WebInputEventTest, WheelEvent) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      features::kWindowsScrollingPersonality);
   const int kDeltaX = 14;
   const int kDeltaY = -3;
   ui::MouseWheelEvent ui_event(
@@ -561,7 +465,7 @@ TEST(WebInputEventTest, MousePointerEvent) {
        gfx::Point(13, 3), gfx::Point(53, 3)},
   };
 
-  for (size_t i = 0; i < base::size(tests); i++) {
+  for (size_t i = 0; i < std::size(tests); i++) {
     ui::MouseEvent ui_event(tests[i].ui_type, tests[i].location,
                             tests[i].screen_location, base::TimeTicks(),
                             tests[i].ui_modifiers, 0);
@@ -576,9 +480,9 @@ TEST(WebInputEventTest, MousePointerEvent) {
   }
 }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 TEST(WebInputEventTest, MouseLeaveScreenCoordinate) {
-  MSG msg_event = {nullptr, WM_MOUSELEAVE, 0, MAKELPARAM(300, 200)};
+  CHROME_MSG msg_event = {nullptr, WM_MOUSELEAVE, 0, MAKELPARAM(300, 200)};
   ::SetCursorPos(250, 350);
   ui::MouseEvent ui_event(msg_event);
 

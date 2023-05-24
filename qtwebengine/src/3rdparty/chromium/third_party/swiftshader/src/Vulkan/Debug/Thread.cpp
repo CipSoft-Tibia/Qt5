@@ -53,13 +53,11 @@ void Thread::onLocationUpdate(marl::lock &lock)
 
 	switch(state_)
 	{
-		case State::Paused:
-		{
-			lock.wait(stateCV, [this]() REQUIRES(mutex) { return state_ != State::Paused; });
-			break;
-		}
+	case State::Paused:
+		lock.wait(stateCV, [this]() REQUIRES(mutex) { return state_ != State::Paused; });
+		break;
 
-		case State::Stepping:
+	case State::Stepping:
 		{
 			bool pause = false;
 
@@ -79,11 +77,11 @@ void Thread::onLocationUpdate(marl::lock &lock)
 				state_ = State::Paused;
 				lock.wait(stateCV, [this]() REQUIRES(mutex) { return state_ != State::Paused; });
 			}
-			break;
 		}
+		break;
 
-		case State::Running:
-			break;
+	case State::Running:
+		break;
 	}
 }
 
@@ -113,10 +111,14 @@ void Thread::enter(const std::shared_ptr<File> &file, const std::string &functio
 	}
 }
 
-void Thread::exit()
+void Thread::exit(bool isStep /* = false */)
 {
 	marl::lock lock(mutex);
 	frames.pop_back();
+	if(isStep)
+	{
+		onLocationUpdate(lock);
+	}
 }
 
 void Thread::update(bool isStep, const UpdateFrame &f)

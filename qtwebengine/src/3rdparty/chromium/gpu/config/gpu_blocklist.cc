@@ -1,4 +1,4 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,25 +29,23 @@ std::unique_ptr<GpuBlocklist> GpuBlocklist::Create(
                             GPU_FEATURE_TYPE_ACCELERATED_2D_CANVAS);
   list->AddSupportedFeature("accelerated_webgl",
                             GPU_FEATURE_TYPE_ACCELERATED_WEBGL);
-  list->AddSupportedFeature("flash3d", GPU_FEATURE_TYPE_FLASH3D);
-  list->AddSupportedFeature("flash_stage3d", GPU_FEATURE_TYPE_FLASH_STAGE3D);
-  list->AddSupportedFeature("flash_stage3d_baseline",
-                            GPU_FEATURE_TYPE_FLASH_STAGE3D_BASELINE);
   list->AddSupportedFeature("accelerated_video_decode",
                             GPU_FEATURE_TYPE_ACCELERATED_VIDEO_DECODE);
+  list->AddSupportedFeature("accelerated_video_encode",
+                            GPU_FEATURE_TYPE_ACCELERATED_VIDEO_ENCODE);
   list->AddSupportedFeature("gpu_rasterization",
                             GPU_FEATURE_TYPE_GPU_RASTERIZATION);
   list->AddSupportedFeature("accelerated_webgl2",
                             GPU_FEATURE_TYPE_ACCELERATED_WEBGL2);
-  list->AddSupportedFeature("protected_video_decode",
-                            GPU_FEATURE_TYPE_PROTECTED_VIDEO_DECODE);
-  list->AddSupportedFeature("oop_rasterization",
-                            GPU_FEATURE_TYPE_OOP_RASTERIZATION);
   list->AddSupportedFeature("android_surface_control",
                             GPU_FEATURE_TYPE_ANDROID_SURFACE_CONTROL);
   list->AddSupportedFeature("accelerated_gl", GPU_FEATURE_TYPE_ACCELERATED_GL);
   list->AddSupportedFeature("metal", GPU_FEATURE_TYPE_METAL);
   list->AddSupportedFeature("vulkan", GPU_FEATURE_TYPE_VULKAN);
+  list->AddSupportedFeature("canvas_oop_rasterization",
+                            GPU_FEATURE_TYPE_CANVAS_OOP_RASTERIZATION);
+  list->AddSupportedFeature("accelerated_webgpu",
+                            GPU_FEATURE_TYPE_ACCELERATED_WEBGPU);
   return list;
 }
 

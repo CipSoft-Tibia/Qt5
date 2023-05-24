@@ -1,24 +1,30 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<testsuite errors="0" failures="3" tests="4" name="tst_DateTime">
+<testsuite name="tst_DateTime" timestamp="@TEST_START_TIME@" hostname="@HOSTNAME@" tests="7" failures="3" errors="0" skipped="0" time="@TEST_DURATION@">
   <properties>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QTestVersion"/>
-    <property value="@INSERT_QT_VERSION_HERE@" name="QtVersion"/>
-    <property value="" name="QtBuild"/>
+    <property name="QTestVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtVersion" value="@INSERT_QT_VERSION_HERE@"/>
+    <property name="QtBuild" value=""/>
   </properties>
-  <testcase result="pass" name="initTestCase"/>
-  <testcase result="fail" name="dateTime">
-    <failure message="Compared values are not the same
-   Actual   (local): 2000/05/03 04:03:04.000[UTC+00:02]
-   Expected (utc)  : 2000/05/03 04:03:04.000[UTC]" result="fail"/>
+  <testcase name="initTestCase" classname="tst_DateTime" time="@TEST_DURATION@"/>
+  <testcase name="dateTime" classname="tst_DateTime" time="@TEST_DURATION@">
+    <failure type="fail" message="Compared values are not the same">
+      <![CDATA[   Actual   (local): 2000/05/03 04:03:04.000[UTC+00:02]
+   Expected (utc)  : 2000/05/03 04:03:04.000[UTC]]]>
+    </failure>
   </testcase>
-  <testcase result="fail" name="qurl">
-    <failure tag="empty rhs" message="Compared values are not the same
-   Actual   (operandA): http://example.com
-   Expected (operandB): Invalid URL: " result="fail"/>
-    <failure tag="empty lhs" message="Compared values are not the same
-   Actual   (operandA): Invalid URL: 
-   Expected (operandB): http://example.com" result="fail"/>
+  <testcase name="qurl(empty urls)" classname="tst_DateTime" time="@TEST_DURATION@"/>
+  <testcase name="qurl(empty rhs)" classname="tst_DateTime" time="@TEST_DURATION@">
+    <failure type="fail" message="Compared values are not the same">
+      <![CDATA[   Actual   (operandA): http://example.com
+   Expected (operandB): Invalid URL: ]]>
+    </failure>
   </testcase>
-  <testcase result="pass" name="cleanupTestCase"/>
-  <system-err/>
+  <testcase name="qurl(empty lhs)" classname="tst_DateTime" time="@TEST_DURATION@">
+    <failure type="fail" message="Compared values are not the same">
+      <![CDATA[   Actual   (operandA): Invalid URL: 
+   Expected (operandB): http://example.com]]>
+    </failure>
+  </testcase>
+  <testcase name="qurl(same urls)" classname="tst_DateTime" time="@TEST_DURATION@"/>
+  <testcase name="cleanupTestCase" classname="tst_DateTime" time="@TEST_DURATION@"/>
 </testsuite>

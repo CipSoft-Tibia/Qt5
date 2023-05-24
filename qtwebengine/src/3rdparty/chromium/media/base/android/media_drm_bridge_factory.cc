@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "media/base/android/media_drm_bridge_factory.h"
 
-#include "base/bind.h"
-#include "base/callback_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "media/base/cdm_config.h"
 #include "media/base/content_decryption_module.h"
 #include "third_party/widevine/cdm/widevine_cdm_common.h"
@@ -26,22 +26,20 @@ MediaDrmBridgeFactory::~MediaDrmBridgeFactory() {
 }
 
 void MediaDrmBridgeFactory::Create(
-    const std::string& key_system,
     const CdmConfig& cdm_config,
     const SessionMessageCB& session_message_cb,
     const SessionClosedCB& session_closed_cb,
     const SessionKeysChangeCB& session_keys_change_cb,
     const SessionExpirationUpdateCB& session_expiration_update_cb,
     CdmCreatedCB cdm_created_cb) {
-  DCHECK(MediaDrmBridge::IsKeySystemSupported(key_system));
-  DCHECK(MediaDrmBridge::IsAvailable());
+  DCHECK(MediaDrmBridge::IsKeySystemSupported(cdm_config.key_system));
   DCHECK(scheme_uuid_.empty()) << "This factory can only be used once.";
 
-  scheme_uuid_ = MediaDrmBridge::GetUUID(key_system);
+  scheme_uuid_ = MediaDrmBridge::GetUUID(cdm_config.key_system);
   DCHECK(!scheme_uuid_.empty());
 
   // Set security level.
-  if (key_system == kWidevineKeySystem) {
+  if (cdm_config.key_system == kWidevineKeySystem) {
     security_level_ = cdm_config.use_hw_secure_codecs
                           ? MediaDrmBridge::SECURITY_LEVEL_1
                           : MediaDrmBridge::SECURITY_LEVEL_3;
@@ -49,7 +47,7 @@ void MediaDrmBridgeFactory::Create(
     // Assume other key systems require hardware-secure codecs and thus do not
     // support full compositing.
     auto error_message =
-        key_system +
+        cdm_config.key_system +
         " may require use_video_overlay_for_embedded_encrypted_video";
     NOTREACHED() << error_message;
     std::move(cdm_created_cb).Run(nullptr, error_message);
@@ -64,13 +62,6 @@ void MediaDrmBridgeFactory::Create(
 
   // MediaDrmStorage may be lazy created in MediaDrmStorageBridge.
   storage_ = std::make_unique<MediaDrmStorageBridge>();
-
-  if (!MediaDrmBridge::IsPerOriginProvisioningSupported()) {
-    // Per-origin provisioning isn't supported, so proceed without specifying an
-    // origin ID.
-    CreateMediaDrmBridge("");
-    return;
-  }
 
   storage_->Initialize(
       create_storage_cb_,

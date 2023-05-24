@@ -1,32 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-#include <QtTest/QtTest>
+#include <QTest>
+#include <QPauseAnimation>
+#include <QVariantAnimation>
+#include <QPropertyAnimation>
+#include <QSignalSpy>
 
 #include <QtCore/qanimationgroup.h>
 #include <QtCore/qsequentialanimationgroup.h>
@@ -79,12 +58,12 @@ class TestAnimation : public QVariantAnimation
 {
     Q_OBJECT
 public:
-    virtual void updateCurrentValue(const QVariant &value) { Q_UNUSED(value)};
+    virtual void updateCurrentValue(const QVariant &value) override { Q_UNUSED(value)};
     virtual void updateState(QAbstractAnimation::State oldState,
-                             QAbstractAnimation::State newState)
+                             QAbstractAnimation::State newState) override
     {
-        Q_UNUSED(oldState)
-        Q_UNUSED(newState)
+        Q_UNUSED(oldState);
+        Q_UNUSED(newState);
     };
 };
 
@@ -92,16 +71,16 @@ class UncontrolledAnimation : public QPropertyAnimation
 {
     Q_OBJECT
 public:
-    UncontrolledAnimation(QObject *target, const QByteArray &propertyName, QObject *parent = 0)
+    UncontrolledAnimation(QObject *target, const QByteArray &propertyName, QObject *parent = nullptr)
         : QPropertyAnimation(target, propertyName, parent), id(0)
     {
         setDuration(250);
     }
 
-    int duration() const { return -1; /* not time driven */ }
+    int duration() const override { return -1; /* not time driven */ }
 
 protected:
-    void timerEvent(QTimerEvent *event)
+    void timerEvent(QTimerEvent *event) override
     {
         if (event->timerId() == id)
             stop();
@@ -130,7 +109,7 @@ void tst_QAnimationGroup::emptyGroup()
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
     group.start();
 
-    QCOMPARE(groupStateChangedSpy.count(), 2);
+    QCOMPARE(groupStateChangedSpy.size(), 2);
 
     QCOMPARE(qvariant_cast<QAbstractAnimation::State>(groupStateChangedSpy.at(0).first()),
              QAnimationGroup::Running);
@@ -142,7 +121,7 @@ void tst_QAnimationGroup::emptyGroup()
     QTest::ignoreMessage(QtWarningMsg, "QAbstractAnimation::pause: Cannot pause a stopped animation");
     group.pause();
 
-    QCOMPARE(groupStateChangedSpy.count(), 2);
+    QCOMPARE(groupStateChangedSpy.size(), 2);
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
 
     group.start();
@@ -156,7 +135,7 @@ void tst_QAnimationGroup::emptyGroup()
 
     group.stop();
 
-    QCOMPARE(groupStateChangedSpy.count(), 4);
+    QCOMPARE(groupStateChangedSpy.size(), 4);
     QCOMPARE(group.state(), QAnimationGroup::Stopped);
 }
 
@@ -286,7 +265,8 @@ void tst_QAnimationGroup::setParentAutoAdd()
 
 void tst_QAnimationGroup::beginNestedGroup()
 {
-    QAnimationGroup *parent = new QParallelAnimationGroup();
+    QParallelAnimationGroup group;
+    QAnimationGroup *parent = &group;
 
     for (int i = 0; i < 10; ++i) {
         if (i & 1) {
@@ -343,7 +323,8 @@ void tst_QAnimationGroup::addChildTwice()
 
 void tst_QAnimationGroup::loopWithoutStartValue()
 {
-    QAnimationGroup *parent = new QSequentialAnimationGroup();
+    QSequentialAnimationGroup group;
+    QAnimationGroup *parent = &group;
     QObject o;
     o.setProperty("ole", 0);
     QCOMPARE(o.property("ole").toInt(), 0);

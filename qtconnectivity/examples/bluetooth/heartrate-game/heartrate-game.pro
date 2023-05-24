@@ -2,7 +2,10 @@ TEMPLATE = app
 TARGET = heartrate-game
 
 QT += qml quick bluetooth
-CONFIG += c++11
+
+CONFIG += qmltypes
+QML_IMPORT_NAME = HeartRateGame
+QML_IMPORT_MAJOR_VERSION = 1
 
 HEADERS += \
     connectionhandler.h \
@@ -19,14 +22,36 @@ SOURCES += main.cpp \
     devicehandler.cpp \
     bluetoothbaseclass.cpp
 
-ios: QMAKE_INFO_PLIST = Info.plist
+qml_resources.files = \
+    qmldir \
+    App.qml \
+    BluetoothAlarmDialog.qml \
+    BottomLine.qml \
+    Connect.qml \
+    GameButton.qml \
+    GamePage.qml \
+    GameSettings.qml \
+    Measure.qml \
+    SplashScreen.qml \
+    Stats.qml \
+    StatsLabel.qml \
+    TitleBar.qml \
+    Main.qml \
+    images/alert.svg \
+    images/bluetooth.svg \
+    images/bt_off_to_on.png \
+    images/clock.svg \
+    images/heart.png \
+    images/logo.png \
+    images/progress.svg \
+    images/search.svg
+
+qml_resources.prefix = /qt/qml/HeartRateGame
+
+RESOURCES = qml_resources
+
+ios: QMAKE_INFO_PLIST = ../shared/Info.qmake.ios.plist
 macos: QMAKE_INFO_PLIST = ../shared/Info.qmake.macos.plist
-
-RESOURCES += qml.qrc \
-    images.qrc
-
-# Additional import path used to resolve QML modules in Qt Creator's code model
-QML_IMPORT_PATH =
 
 target.path = $$[QT_INSTALL_EXAMPLES]/bluetooth/heartrate-game
 INSTALLS += target

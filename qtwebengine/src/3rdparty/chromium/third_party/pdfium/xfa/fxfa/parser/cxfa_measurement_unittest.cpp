@@ -1,4 +1,4 @@
-// Copyright 2019 PDFium Authors. All rights reserved.
+// Copyright 2019 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -43,4 +43,34 @@ TEST(CXFAMeasurementTest, GetUnitFromString) {
   EXPECT_EQ(XFA_Unit::Unknown, CXFA_Measurement::GetUnitFromString(L"CM"));
   EXPECT_EQ(XFA_Unit::Unknown, CXFA_Measurement::GetUnitFromString(L"Cm"));
   EXPECT_EQ(XFA_Unit::Unknown, CXFA_Measurement::GetUnitFromString(L"cM"));
+}
+
+TEST(CXFAMeasurementTest, EqualsPrefix) {
+  CXFA_Measurement no_unit(L"=5");
+  EXPECT_EQ(XFA_Unit::Unknown, no_unit.GetUnit());
+  EXPECT_FLOAT_EQ(5.0f, no_unit.GetValue());
+
+  CXFA_Measurement mm_unit(L"=5mm");
+  EXPECT_EQ(XFA_Unit::Mm, mm_unit.GetUnit());
+  EXPECT_FLOAT_EQ(5.0f, mm_unit.GetValue());
+}
+
+TEST(CXFAMeasurementTest, NoPrefix) {
+  CXFA_Measurement no_unit(L"5");
+  EXPECT_EQ(XFA_Unit::Unknown, no_unit.GetUnit());
+  EXPECT_FLOAT_EQ(5.0f, no_unit.GetValue());
+
+  CXFA_Measurement mm_unit(L"5mm");
+  EXPECT_EQ(XFA_Unit::Mm, mm_unit.GetUnit());
+  EXPECT_FLOAT_EQ(5.0f, mm_unit.GetValue());
+}
+
+TEST(CXFAMeasurementTest, InvalidValues) {
+  CXFA_Measurement empty(L"");
+  EXPECT_EQ(XFA_Unit::Unknown, empty.GetUnit());
+  EXPECT_FLOAT_EQ(0.0f, empty.GetValue());
+
+  CXFA_Measurement equals(L"=");
+  EXPECT_EQ(XFA_Unit::Unknown, equals.GetUnit());
+  EXPECT_FLOAT_EQ(0.0f, equals.GetValue());
 }

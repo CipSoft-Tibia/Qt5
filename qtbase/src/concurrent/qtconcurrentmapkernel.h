@@ -1,51 +1,16 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtConcurrent module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTCONCURRENT_MAPKERNEL_H
 #define QTCONCURRENT_MAPKERNEL_H
 
 #include <QtConcurrent/qtconcurrent_global.h>
 
-#if !defined(QT_NO_CONCURRENT) || defined (Q_CLANG_QDOC)
+#if !defined(QT_NO_CONCURRENT) || defined (Q_QDOC)
 
 #include <QtConcurrent/qtconcurrentiteratekernel.h>
 #include <QtConcurrent/qtconcurrentreducekernel.h>
+#include <QtConcurrent/qtconcurrentfunctionwrappers.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -59,13 +24,14 @@ class MapKernel : public IterateKernel<Iterator, void>
     MapFunctor map;
 public:
     typedef void ReturnType;
-    MapKernel(Iterator begin, Iterator end, MapFunctor _map)
-        : IterateKernel<Iterator, void>(begin, end), map(_map)
+    template <typename F = MapFunctor>
+    MapKernel(QThreadPool *pool, Iterator begin, Iterator end, F &&_map)
+        : IterateKernel<Iterator, void>(pool, begin, end), map(std::forward<F>(_map))
     { }
 
     bool runIteration(Iterator it, int, void *) override
     {
-        map(*it);
+        std::invoke(map, *it);
         return false;
     }
 
@@ -88,39 +54,54 @@ template <typename ReducedResultType,
           typename ReduceFunctor,
           typename Reducer = ReduceKernel<ReduceFunctor,
                                           ReducedResultType,
-                                          typename MapFunctor::result_type> >
+                                          QtPrivate::MapResultType<Iterator, MapFunctor>>>
 class MappedReducedKernel : public IterateKernel<Iterator, ReducedResultType>
 {
-    ReducedResultType reducedResult;
+    ReducedResultType &reducedResult;
     MapFunctor map;
     ReduceFunctor reduce;
     Reducer reducer;
+    using IntermediateResultsType = QtPrivate::MapResultType<Iterator, MapFunctor>;
+
 public:
     typedef ReducedResultType ReturnType;
-    MappedReducedKernel(Iterator begin, Iterator end, MapFunctor _map, ReduceFunctor _reduce, ReduceOptions reduceOptions)
-        : IterateKernel<Iterator, ReducedResultType>(begin, end), reducedResult(), map(_map), reduce(_reduce), reducer(reduceOptions)
+
+    template<typename F1 = MapFunctor, typename F2 = ReduceFunctor>
+    MappedReducedKernel(QThreadPool *pool, Iterator begin, Iterator end, F1 &&_map, F2 &&_reduce,
+                        ReduceOptions reduceOptions)
+        : IterateKernel<Iterator, ReducedResultType>(pool, begin, end),
+          reducedResult(this->defaultValue.value),
+          map(std::forward<F1>(_map)),
+          reduce(std::forward<F2>(_reduce)),
+          reducer(pool, reduceOptions)
     { }
 
-    MappedReducedKernel(ReducedResultType initialValue,
-                     MapFunctor _map,
-                     ReduceFunctor _reduce)
-        : reducedResult(initialValue), map(_map), reduce(_reduce)
-    { }
+    template<typename F1 = MapFunctor, typename F2 = ReduceFunctor>
+    MappedReducedKernel(QThreadPool *pool, Iterator begin, Iterator end, F1 &&_map, F2 &&_reduce,
+                        ReducedResultType &&initialValue, ReduceOptions reduceOptions)
+        : IterateKernel<Iterator, ReducedResultType>(pool, begin, end,
+                                                     std::forward<ReducedResultType>(initialValue)),
+          reducedResult(this->defaultValue.value),
+          map(std::forward<F1>(_map)),
+          reduce(std::forward<F2>(_reduce)),
+          reducer(pool, reduceOptions)
+    {
+    }
 
     bool runIteration(Iterator it, int index, ReducedResultType *) override
     {
-        IntermediateResults<typename MapFunctor::result_type> results;
+        IntermediateResults<IntermediateResultsType> results;
         results.begin = index;
         results.end = index + 1;
 
-        results.vector.append(map(*it));
+        results.vector.append(std::invoke(map, *it));
         reducer.runReduce(reduce, reducedResult, results);
         return false;
     }
 
     bool runIterations(Iterator sequenceBeginIterator, int beginIndex, int endIndex, ReducedResultType *) override
     {
-        IntermediateResults<typename MapFunctor::result_type> results;
+        IntermediateResults<IntermediateResultsType> results;
         results.begin = beginIndex;
         results.end = endIndex;
         results.vector.reserve(endIndex - beginIndex);
@@ -128,7 +109,7 @@ public:
         Iterator it = sequenceBeginIterator;
         std::advance(it, beginIndex);
         for (int i = beginIndex; i < endIndex; ++i) {
-            results.vector.append(map(*(it)));
+            results.vector.append(std::invoke(map, *it));
             std::advance(it, 1);
         }
 
@@ -159,20 +140,20 @@ public:
 };
 
 template <typename Iterator, typename MapFunctor>
-class MappedEachKernel : public IterateKernel<Iterator, typename MapFunctor::result_type>
+class MappedEachKernel : public IterateKernel<Iterator, QtPrivate::MapResultType<Iterator, MapFunctor>>
 {
     MapFunctor map;
-    typedef typename MapFunctor::result_type T;
-public:
-    typedef T ReturnType;
-    typedef T ResultType;
+    using T = QtPrivate::MapResultType<Iterator, MapFunctor>;
 
-    MappedEachKernel(Iterator begin, Iterator end, MapFunctor _map)
-        : IterateKernel<Iterator, T>(begin, end), map(_map) { }
+public:
+    template <typename F = MapFunctor>
+    MappedEachKernel(QThreadPool *pool, Iterator begin, Iterator end, F &&_map)
+        : IterateKernel<Iterator, T>(pool, begin, end), map(std::forward<F>(_map))
+    { }
 
     bool runIteration(Iterator it, int,  T *result) override
     {
-        *result = map(*it);
+        *result = std::invoke(map, *it);
         return true;
     }
 
@@ -192,16 +173,20 @@ public:
 
 //! [qtconcurrentmapkernel-1]
 template <typename Iterator, typename Functor>
-inline ThreadEngineStarter<void> startMap(Iterator begin, Iterator end, Functor functor)
+inline ThreadEngineStarter<void> startMap(QThreadPool *pool, Iterator begin,
+                                          Iterator end, Functor &&functor)
 {
-    return startThreadEngine(new MapKernel<Iterator, Functor>(begin, end, functor));
+    return startThreadEngine(new MapKernel<Iterator, std::decay_t<Functor>>(
+            pool, begin, end, std::forward<Functor>(functor)));
 }
 
 //! [qtconcurrentmapkernel-2]
 template <typename T, typename Iterator, typename Functor>
-inline ThreadEngineStarter<T> startMapped(Iterator begin, Iterator end, Functor functor)
+inline ThreadEngineStarter<T> startMapped(QThreadPool *pool, Iterator begin,
+                                          Iterator end, Functor &&functor)
 {
-    return startThreadEngine(new MappedEachKernel<Iterator, Functor>(begin, end, functor));
+    return startThreadEngine(new MappedEachKernel<Iterator, std::decay_t<Functor>>(
+            pool, begin, end, std::forward<Functor>(functor)));
 }
 
 /*
@@ -209,56 +194,127 @@ inline ThreadEngineStarter<T> startMapped(Iterator begin, Iterator end, Functor 
     sequence we are working on.
 */
 template <typename Sequence, typename Base, typename Functor>
-struct SequenceHolder1 : public Base
+struct SequenceHolder1 : private QtPrivate::SequenceHolder<Sequence>, public Base
 {
-    SequenceHolder1(const Sequence &_sequence, Functor functor)
-        : Base(_sequence.begin(), _sequence.end(), functor), sequence(_sequence)
+    template<typename S = Sequence, typename F = Functor>
+    SequenceHolder1(QThreadPool *pool, S &&_sequence, F &&functor)
+        : QtPrivate::SequenceHolder<Sequence>(std::forward<S>(_sequence)),
+          Base(pool, this->sequence.cbegin(), this->sequence.cend(), std::forward<F>(functor))
     { }
-
-    Sequence sequence;
 
     void finish() override
     {
         Base::finish();
         // Clear the sequence to make sure all temporaries are destroyed
         // before finished is signaled.
-        sequence = Sequence();
+        this->sequence = Sequence();
     }
 };
 
 //! [qtconcurrentmapkernel-3]
 template <typename T, typename Sequence, typename Functor>
-inline ThreadEngineStarter<T> startMapped(const Sequence &sequence, Functor functor)
+inline ThreadEngineStarter<T> startMapped(QThreadPool *pool, Sequence &&sequence,
+                                          Functor &&functor)
 {
-    typedef SequenceHolder1<Sequence,
-                            MappedEachKernel<typename Sequence::const_iterator , Functor>, Functor>
-                            SequenceHolderType;
+    using DecayedSequence = std::decay_t<Sequence>;
+    using DecayedFunctor = std::decay_t<Functor>;
+    using SequenceHolderType = SequenceHolder1<
+            DecayedSequence,
+            MappedEachKernel<typename DecayedSequence::const_iterator, DecayedFunctor>,
+            DecayedFunctor>;
 
-    return startThreadEngine(new SequenceHolderType(sequence, functor));
+    return startThreadEngine(new SequenceHolderType(pool, std::forward<Sequence>(sequence),
+                                                    std::forward<Functor>(functor)));
 }
 
 //! [qtconcurrentmapkernel-4]
-template <typename IntermediateType, typename ResultType, typename Sequence, typename MapFunctor, typename ReduceFunctor>
-inline ThreadEngineStarter<ResultType> startMappedReduced(const Sequence & sequence,
-                                                           MapFunctor mapFunctor, ReduceFunctor reduceFunctor,
-                                                           ReduceOptions options)
+template <typename IntermediateType, typename ResultType, typename Sequence, typename MapFunctor,
+          typename ReduceFunctor>
+inline ThreadEngineStarter<ResultType> startMappedReduced(QThreadPool *pool,
+                                                          Sequence &&sequence,
+                                                          MapFunctor &&mapFunctor,
+                                                          ReduceFunctor &&reduceFunctor,
+                                                          ReduceOptions options)
 {
-    typedef typename Sequence::const_iterator Iterator;
-    typedef ReduceKernel<ReduceFunctor, ResultType, IntermediateType> Reducer;
-    typedef MappedReducedKernel<ResultType, Iterator, MapFunctor, ReduceFunctor, Reducer> MappedReduceType;
-    typedef SequenceHolder2<Sequence, MappedReduceType, MapFunctor, ReduceFunctor> SequenceHolderType;
-    return startThreadEngine(new SequenceHolderType(sequence, mapFunctor, reduceFunctor, options));
+    using DecayedSequence = std::decay_t<Sequence>;
+    using DecayedMapFunctor = std::decay_t<MapFunctor>;
+    using DecayedReduceFunctor = std::decay_t<ReduceFunctor>;
+    using Iterator = typename DecayedSequence::const_iterator;
+    using Reducer = ReduceKernel<DecayedReduceFunctor, ResultType, IntermediateType>;
+    using MappedReduceType = MappedReducedKernel<ResultType, Iterator, DecayedMapFunctor,
+                                                 DecayedReduceFunctor, Reducer>;
+    using SequenceHolderType = SequenceHolder2<DecayedSequence, MappedReduceType, DecayedMapFunctor,
+                                               DecayedReduceFunctor>;
+    return startThreadEngine(new SequenceHolderType(pool, std::forward<Sequence>(sequence),
+                                                    std::forward<MapFunctor>(mapFunctor),
+                                                    std::forward<ReduceFunctor>(reduceFunctor),
+                                                    options));
 }
 
 //! [qtconcurrentmapkernel-5]
-template <typename IntermediateType, typename ResultType, typename Iterator, typename MapFunctor, typename ReduceFunctor>
-inline ThreadEngineStarter<ResultType> startMappedReduced(Iterator begin, Iterator end,
-                                                           MapFunctor mapFunctor, ReduceFunctor reduceFunctor,
-                                                           ReduceOptions options)
+template <typename IntermediateType, typename ResultType, typename Iterator, typename MapFunctor,
+          typename ReduceFunctor>
+inline ThreadEngineStarter<ResultType> startMappedReduced(QThreadPool *pool,
+                                                          Iterator begin,
+                                                          Iterator end,
+                                                          MapFunctor &&mapFunctor,
+                                                          ReduceFunctor &&reduceFunctor,
+                                                          ReduceOptions options)
 {
-    typedef ReduceKernel<ReduceFunctor, ResultType, IntermediateType> Reducer;
-    typedef MappedReducedKernel<ResultType, Iterator, MapFunctor, ReduceFunctor, Reducer> MappedReduceType;
-    return startThreadEngine(new MappedReduceType(begin, end, mapFunctor, reduceFunctor, options));
+    using Reducer =
+            ReduceKernel<std::decay_t<ReduceFunctor>, std::decay_t<ResultType>, IntermediateType>;
+    using MappedReduceType = MappedReducedKernel<ResultType, Iterator, std::decay_t<MapFunctor>,
+                                                 std::decay_t<ReduceFunctor>, Reducer>;
+    return startThreadEngine(new MappedReduceType(pool, begin, end,
+                                                  std::forward<MapFunctor>(mapFunctor),
+                                                  std::forward<ReduceFunctor>(reduceFunctor),
+                                                  options));
+}
+
+//! [qtconcurrentmapkernel-6]
+template <typename IntermediateType, typename ResultType, typename Sequence, typename MapFunctor,
+          typename ReduceFunctor>
+inline ThreadEngineStarter<ResultType> startMappedReduced(QThreadPool *pool,
+                                                          Sequence &&sequence,
+                                                          MapFunctor &&mapFunctor,
+                                                          ReduceFunctor &&reduceFunctor,
+                                                          ResultType &&initialValue,
+                                                          ReduceOptions options)
+{
+    using DecayedSequence = std::decay_t<Sequence>;
+    using DecayedMapFunctor = std::decay_t<MapFunctor>;
+    using DecayedReduceFunctor = std::decay_t<ReduceFunctor>;
+    using Iterator = typename DecayedSequence::const_iterator;
+    using Reducer = ReduceKernel<DecayedReduceFunctor, ResultType, IntermediateType>;
+    using MappedReduceType = MappedReducedKernel<ResultType, Iterator, DecayedMapFunctor,
+                                                 DecayedReduceFunctor, Reducer>;
+    using SequenceHolderType = SequenceHolder2<DecayedSequence, MappedReduceType, DecayedMapFunctor,
+                                               DecayedReduceFunctor>;
+    return startThreadEngine(
+            new SequenceHolderType(pool, std::forward<Sequence>(sequence),
+                                   std::forward<MapFunctor>(mapFunctor),
+                                   std::forward<ReduceFunctor>(reduceFunctor),
+                                   std::forward<ResultType>(initialValue), options));
+}
+
+//! [qtconcurrentmapkernel-7]
+template <typename IntermediateType, typename ResultType, typename Iterator, typename MapFunctor,
+          typename ReduceFunctor>
+inline ThreadEngineStarter<ResultType> startMappedReduced(QThreadPool *pool,
+                                                          Iterator begin,
+                                                          Iterator end,
+                                                          MapFunctor &&mapFunctor,
+                                                          ReduceFunctor &&reduceFunctor,
+                                                          ResultType &&initialValue,
+                                                          ReduceOptions options)
+{
+    using Reducer = ReduceKernel<std::decay_t<ReduceFunctor>, ResultType, IntermediateType>;
+    using MappedReduceType = MappedReducedKernel<ResultType, Iterator, std::decay_t<MapFunctor>,
+                                                 std::decay_t<ReduceFunctor>, Reducer>;
+    return startThreadEngine(new MappedReduceType(pool, begin, end,
+                                                  std::forward<MapFunctor>(mapFunctor),
+                                                  std::forward<ReduceFunctor>(reduceFunctor),
+                                                  std::forward<ResultType>(initialValue), options));
 }
 
 } // namespace QtConcurrent

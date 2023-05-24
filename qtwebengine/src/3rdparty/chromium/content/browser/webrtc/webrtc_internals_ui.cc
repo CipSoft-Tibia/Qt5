@@ -1,10 +1,11 @@
-// Copyright (c) 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "content/browser/webrtc/webrtc_internals_ui.h"
 
 #include "content/browser/webrtc/resources/grit/webrtc_internals_resources.h"
+#include "content/browser/webrtc/resources/grit/webrtc_internals_resources_map.h"
 #include "content/browser/webrtc/webrtc_internals_message_handler.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
@@ -19,8 +20,9 @@ WebUIDataSource* CreateWebRTCInternalsHTMLSource() {
       WebUIDataSource::Create(kChromeUIWebRTCInternalsHost);
 
   source->UseStringsJs();
-  source->AddResourcePath("webrtc_internals.js", IDR_WEBRTC_INTERNALS_JS);
-  source->SetDefaultResource(IDR_WEBRTC_INTERNALS_HTML);
+  source->AddResourcePaths(base::make_span(kWebrtcInternalsResources,
+                                           kWebrtcInternalsResourcesSize));
+  source->SetDefaultResource(IDR_WEBRTC_INTERNALS_WEBRTC_INTERNALS_HTML);
   return source;
 }
 

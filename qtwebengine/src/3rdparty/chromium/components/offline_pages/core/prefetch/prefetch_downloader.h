@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,14 +10,13 @@
 #include <string>
 #include <utility>
 
-#include "base/callback.h"
 #include "base/files/file_path.h"
+#include "base/functional/callback.h"
 #include "components/offline_pages/core/prefetch/prefetch_types.h"
 
 namespace offline_pages {
 class PrefetchService;
-static constexpr base::TimeDelta kPrefetchDownloadLifetime =
-    base::TimeDelta::FromDays(2);
+static constexpr base::TimeDelta kPrefetchDownloadLifetime = base::Days(2);
 
 // Asynchronously downloads the archive.
 class PrefetchDownloader {

@@ -30,7 +30,7 @@
 #include "base/memory/ptr_util.h"
 #include "base/numerics/checked_math.h"
 #include "base/numerics/clamped_math.h"
-#include "base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
@@ -78,8 +78,9 @@ class CounterDirectives {
   int CombinedValue() const {
     // If there is a counter-set, it overrides over values.
     // https://drafts.csswg.org/css-lists-3/#auto-numbering
-    if (IsSet())
+    if (IsSet()) {
       return SetValue();
+    }
 
     // According to the spec, if an increment would overflow or underflow the
     // counter, we are allowed to ignore the increment.
@@ -92,9 +93,9 @@ class CounterDirectives {
   friend bool operator==(const CounterDirectives&, const CounterDirectives&);
 
  private:
-  base::Optional<int> reset_value_;
-  base::Optional<int> increment_value_;
-  base::Optional<int> set_value_;
+  absl::optional<int> reset_value_;
+  absl::optional<int> increment_value_;
+  absl::optional<int> set_value_;
 };
 
 inline bool operator!=(const CounterDirectives& a, const CounterDirectives& b) {

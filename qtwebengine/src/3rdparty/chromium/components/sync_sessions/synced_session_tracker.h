@@ -1,4 +1,4 @@
-// Copyright 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,24 +13,20 @@
 #include <string>
 #include <vector>
 
-#include "base/feature_list.h"
-#include "base/macros.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/session_types.h"
+#include "components/sync/protocol/session_specifics.pb.h"
+#include "components/sync/protocol/sync_enums.pb.h"
+#include "components/sync_device_info/device_info.h"
 #include "components/sync_sessions/synced_session.h"
 #include "components/sync_sessions/tab_node_pool.h"
-
-namespace sync_pb {
-class SessionSpecifics;
-}
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace sync_sessions {
 
 class SyncSessionsClient;
-
-// TODO(crbug.com/882489): Remove feature toggle during code cleanup when a
-// satisfying solution is found for closed tabs.
-extern const base::Feature kDeferRecyclingOfSyncTabNodesIfUnsynced;
 
 // Class to manage synced sessions. The tracker will own all SyncedSession
 // and SyncedSessionTab objects it creates, and deletes them appropriately on
@@ -47,6 +43,10 @@ class SyncedSessionTracker {
   };
 
   explicit SyncedSessionTracker(SyncSessionsClient* sessions_client);
+
+  SyncedSessionTracker(const SyncedSessionTracker&) = delete;
+  SyncedSessionTracker& operator=(const SyncedSessionTracker&) = delete;
+
   ~SyncedSessionTracker();
 
   // **** Synced session/tab query methods. ****
@@ -83,6 +83,10 @@ class SyncedSessionTracker {
   // Returns null if lookup fails.
   const sessions::SessionTab* LookupSessionTab(const std::string& session_tag,
                                                SessionID tab_id) const;
+
+  absl::optional<sync_pb::SyncEnums::BrowserType> LookupWindowType(
+      const std::string& session_tag,
+      SessionID window_id) const;
 
   // Allows retrieval of existing data for the local session. Unlike GetSession
   // this won't create-if-not-present and will return null instead.
@@ -160,16 +164,17 @@ class SyncedSessionTracker {
   void DeleteForeignTab(const std::string& session_tag, int tab_node_id);
 
   // Deletes the session associated with |session_tag| if it exists.
-  // Returns true if the session existed and was deleted, false otherwise.
-  bool DeleteForeignSession(const std::string& session_tag);
+  void DeleteForeignSession(const std::string& session_tag);
 
   // **** Methods specific to the local session. ****
 
   // Set the local session information. Must be called before any other local
   // session methods are invoked.
-  void InitLocalSession(const std::string& local_session_tag,
-                        const std::string& local_session_name,
-                        sync_pb::SyncEnums::DeviceType local_device_type);
+  void InitLocalSession(
+      const std::string& local_session_tag,
+      const std::string& local_session_name,
+      sync_pb::SyncEnums::DeviceType local_device_type,
+      syncer::DeviceInfo::FormFactor local_device_form_factor);
 
   // Gets the session tag previously set with InitLocalSession().
   const std::string& GetLocalSessionTag() const;
@@ -278,7 +283,7 @@ class SyncedSessionTracker {
           is_tab_node_unsynced_cb);
 
   // The client of the sync sessions datatype.
-  SyncSessionsClient* const sessions_client_;
+  const raw_ptr<SyncSessionsClient> sessions_client_;
 
   // Map: session tag -> TrackedSession.
   std::map<std::string, TrackedSession> session_map_;
@@ -286,8 +291,6 @@ class SyncedSessionTracker {
   // The tag for this machine's local session, so we can distinguish the foreign
   // sessions.
   std::string local_session_tag_;
-
-  DISALLOW_COPY_AND_ASSIGN(SyncedSessionTracker);
 };
 
 // Helper function to load and add window or tab data from synced specifics to

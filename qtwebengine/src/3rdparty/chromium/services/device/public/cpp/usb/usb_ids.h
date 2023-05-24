@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "base/macros.h"
+#include "base/memory/raw_ptr_exclusion.h"
 
 namespace device {
 
@@ -23,7 +23,9 @@ struct UsbProduct {
 // For example, uint16_t instead of size_t.
 struct UsbVendor {
   const char* name;
-  const UsbProduct* products;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #global-scope
+  RAW_PTR_EXCLUSION const UsbProduct* products;
   const uint16_t id;
   const uint16_t product_size;
 };
@@ -32,6 +34,9 @@ struct UsbVendor {
 // mapping from a vendor/product ID pair to a product name.
 class UsbIds {
  public:
+  UsbIds(const UsbIds&) = delete;
+  UsbIds& operator=(const UsbIds&) = delete;
+
   // Gets the name of the vendor who owns |vendor_id|. Returns NULL if the
   // specified |vendor_id| does not exist.
   static const char* GetVendorName(uint16_t vendor_id);
@@ -54,8 +59,6 @@ class UsbIds {
   // more information on how they are generated.
   static const size_t vendor_size_;
   static const UsbVendor vendors_[];
-
-  DISALLOW_COPY_AND_ASSIGN(UsbIds);
 };
 
 }  // namespace device

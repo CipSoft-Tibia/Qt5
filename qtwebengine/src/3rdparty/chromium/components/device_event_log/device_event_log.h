@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 
 #include "base/check.h"
 #include "base/logging.h"
-#include "base/macros.h"
 #include "base/timer/elapsed_timer.h"
 #include "build/build_config.h"
 #include "components/device_event_log/device_event_log_export.h"
@@ -71,8 +70,17 @@
 #define SERIAL_PLOG(level)                         \
   DEVICE_PLOG(::device_event_log::LOG_TYPE_SERIAL, \
               ::device_event_log::LOG_LEVEL_##level)
+#define CAMERA_LOG(level)                         \
+  DEVICE_LOG(::device_event_log::LOG_TYPE_CAMERA, \
+             ::device_event_log::LOG_LEVEL_##level)
+#define GEOLOCATION_LOG(level)                         \
+  DEVICE_LOG(::device_event_log::LOG_TYPE_GEOLOCATION, \
+             ::device_event_log::LOG_LEVEL_##level)
+#define EXTENSIONS_LOG(level)                         \
+  DEVICE_LOG(::device_event_log::LOG_TYPE_EXTENSIONS, \
+             ::device_event_log::LOG_LEVEL_##level)
 
-#if defined(OS_ANDROID) && defined(OFFICIAL_BUILD)
+#if BUILDFLAG(IS_ANDROID) && defined(OFFICIAL_BUILD)
 // FIDO_LOG is discarded for release Android builds in order to reduce binary
 // size.
 #define FIDO_LOG(level) EAT_CHECK_STREAM_PARAMS()
@@ -129,8 +137,14 @@ enum LogType {
   LOG_TYPE_FIDO = 8,
   // Serial port related events (i.e. services/device/serial).
   LOG_TYPE_SERIAL = 9,
+  // Camera related events.
+  LOG_TYPE_CAMERA = 10,
+  // Geolocation related events (i.e. services/device/geolocation).
+  LOG_TYPE_GEOLOCATION = 11,
+  // Logs from extensions
+  LOG_TYPE_EXTENSIONS = 12,
   // Used internally, must be the last type (may be changed).
-  LOG_TYPE_UNKNOWN = 10
+  LOG_TYPE_UNKNOWN = 13
 };
 
 // Used to specify the detail level for logging. In GetAsString, used to
@@ -214,6 +228,10 @@ class DEVICE_EVENT_LOG_EXPORT DeviceEventLogInstance {
                          int line,
                          device_event_log::LogType type,
                          device_event_log::LogLevel level);
+
+  DeviceEventLogInstance(const DeviceEventLogInstance&) = delete;
+  DeviceEventLogInstance& operator=(const DeviceEventLogInstance&) = delete;
+
   ~DeviceEventLogInstance();
 
   std::ostream& stream() { return stream_; }
@@ -224,8 +242,6 @@ class DEVICE_EVENT_LOG_EXPORT DeviceEventLogInstance {
   device_event_log::LogType type_;
   device_event_log::LogLevel level_;
   std::ostringstream stream_;
-
-  DISALLOW_COPY_AND_ASSIGN(DeviceEventLogInstance);
 };
 
 // Implementation class for DEVICE_PLOG macros. Provides a stream for creating
@@ -238,6 +254,12 @@ class DEVICE_EVENT_LOG_EXPORT DeviceEventSystemErrorLogInstance {
                                     device_event_log::LogType type,
                                     device_event_log::LogLevel level,
                                     logging::SystemErrorCode err);
+
+  DeviceEventSystemErrorLogInstance(const DeviceEventSystemErrorLogInstance&) =
+      delete;
+  DeviceEventSystemErrorLogInstance& operator=(
+      const DeviceEventSystemErrorLogInstance&) = delete;
+
   ~DeviceEventSystemErrorLogInstance();
 
   std::ostream& stream() { return log_instance_.stream(); }
@@ -248,8 +270,6 @@ class DEVICE_EVENT_LOG_EXPORT DeviceEventSystemErrorLogInstance {
   // log when it is destroyed (after a string description of |err_| is appended
   // to the stream).
   DeviceEventLogInstance log_instance_;
-
-  DISALLOW_COPY_AND_ASSIGN(DeviceEventSystemErrorLogInstance);
 };
 
 // Implementation class for SCOPED_LOG_IF_SLOW macros. Tests the elapsed time on
@@ -273,4 +293,4 @@ class DEVICE_EVENT_LOG_EXPORT ScopedDeviceLogIfSlow {
 
 }  // namespace device_event_log
 
-#endif  // DEVICE_EVENT_LOG_DEVICE_EVENT_LOG_H_
+#endif  // COMPONENTS_DEVICE_EVENT_LOG_DEVICE_EVENT_LOG_H_

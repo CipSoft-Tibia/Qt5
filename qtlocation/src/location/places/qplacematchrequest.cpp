@@ -1,43 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplacematchrequest.h"
 
 #include <QtCore/QSharedData>
 #include <QtCore/QList>
+#include <QtLocation/QPlace>
 #include <QtLocation/QPlaceResult>
 
 QT_BEGIN_NAMESPACE
@@ -45,11 +13,6 @@ QT_BEGIN_NAMESPACE
 class QPlaceMatchRequestPrivate : public QSharedData
 {
 public:
-    QPlaceMatchRequestPrivate();
-    QPlaceMatchRequestPrivate(const QPlaceMatchRequestPrivate &other);
-    ~QPlaceMatchRequestPrivate();
-
-    QPlaceMatchRequestPrivate &operator=(const QPlaceMatchRequestPrivate &other);
     bool operator==(const QPlaceMatchRequestPrivate &other) const;
 
     void clear();
@@ -58,31 +21,7 @@ public:
     QVariantMap parameters;
 };
 
-QPlaceMatchRequestPrivate::QPlaceMatchRequestPrivate()
-    :   QSharedData()
-{
-}
-
-QPlaceMatchRequestPrivate::QPlaceMatchRequestPrivate(const QPlaceMatchRequestPrivate &other)
-    : QSharedData(other),
-      places(other.places),
-      parameters(other.parameters)
-{
-}
-
-QPlaceMatchRequestPrivate::~QPlaceMatchRequestPrivate()
-{
-}
-
-QPlaceMatchRequestPrivate &QPlaceMatchRequestPrivate::operator=(const QPlaceMatchRequestPrivate &other)
-{
-    if (this != &other) {
-        places = other.places;
-        parameters = other.parameters;
-    }
-
-    return *this;
-}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QPlaceMatchRequestPrivate)
 
 bool QPlaceMatchRequestPrivate::operator==(const QPlaceMatchRequestPrivate &other) const
 {
@@ -134,23 +73,18 @@ QPlaceMatchRequest::QPlaceMatchRequest()
 /*!
     Constructs a copy of \a other.
 */
-QPlaceMatchRequest::QPlaceMatchRequest(const QPlaceMatchRequest &other)
-    : d_ptr(other.d_ptr)
-{
-}
+QPlaceMatchRequest::QPlaceMatchRequest(const QPlaceMatchRequest &other) noexcept = default;
 
 /*!
     Destroys the request object.
 */
-QPlaceMatchRequest::~QPlaceMatchRequest()
-{
-}
+QPlaceMatchRequest::~QPlaceMatchRequest() = default;
 
 /*!
     Assigns \a other to this search request and returns a reference
     to this match request.
 */
-QPlaceMatchRequest &QPlaceMatchRequest::operator= (const QPlaceMatchRequest & other)
+QPlaceMatchRequest &QPlaceMatchRequest::operator=(const QPlaceMatchRequest & other) noexcept
 {
     if (this == &other)
         return *this;
@@ -159,24 +93,23 @@ QPlaceMatchRequest &QPlaceMatchRequest::operator= (const QPlaceMatchRequest & ot
 }
 
 /*!
-    Returns true if \a other is equal to this match request,
-    otherwise returns false.
+    \fn bool QPlaceMatchRequest::operator==(const QPlaceMatchRequest &lhs, const QPlaceMatchRequest &rhs) noexcept
+
+    Returns true if \a lhs is equal to \a rhs, otherwise returns false.
 */
-bool QPlaceMatchRequest::operator== (const QPlaceMatchRequest &other) const
+
+/*!
+    \fn bool QPlaceMatchRequest::operator!=(const QPlaceMatchRequest &lhs, const QPlaceMatchRequest &rhs) noexcept
+
+    Returns true if \a lhs is not equal to \a rhs, otherwise returns false.
+*/
+
+bool QPlaceMatchRequest::isEqual(const QPlaceMatchRequest &other) const noexcept
 {
     Q_D(const QPlaceMatchRequest);
     return *d == *other.d_func();
 }
 
-/*!
-    Returns true if \a other is not equal to this match request,
-    otherwise returns false.
-*/
-bool QPlaceMatchRequest::operator!= (const QPlaceMatchRequest &other) const
-{
-    Q_D(const QPlaceMatchRequest);
-    return !(*d == *other.d_func());
-}
 
 
 /*!
@@ -193,7 +126,7 @@ QList<QPlace> QPlaceMatchRequest::places() const
 
     \sa setResults()
 */
-void QPlaceMatchRequest::setPlaces(const QList<QPlace> places)
+void QPlaceMatchRequest::setPlaces(const QList<QPlace> &places)
 {
     Q_D(QPlaceMatchRequest);
     d->places = places;
@@ -209,7 +142,7 @@ void QPlaceMatchRequest::setResults(const QList<QPlaceSearchResult> &results)
 {
     Q_D(QPlaceMatchRequest);
     QList<QPlace> places;
-    foreach (const QPlaceSearchResult &result, results) {
+    for (const QPlaceSearchResult &result : results) {
         if (result.type() == QPlaceSearchResult::PlaceResult) {
             QPlaceResult placeResult = result;
             places.append(placeResult.place());

@@ -29,10 +29,15 @@
  * The buffer was av_realloc()ed, so it is reallocatable.
  */
 #define BUFFER_FLAG_REALLOCATABLE (1 << 0)
+/**
+ * The AVBuffer structure is part of a larger structure
+ * and should not be freed.
+ */
+#define BUFFER_FLAG_NO_FREE       (1 << 1)
 
 struct AVBuffer {
     uint8_t *data; /**< data described by this buffer */
-    int      size; /**< size of data in bytes */
+    size_t size; /**< size of data in bytes */
 
     /**
      *  number of existing AVBufferRef instances referring to this buffer
@@ -72,6 +77,12 @@ typedef struct BufferPoolEntry {
 
     AVBufferPool *pool;
     struct BufferPoolEntry *next;
+
+    /*
+     * An AVBuffer structure to (re)use as AVBuffer for subsequent uses
+     * of this BufferPoolEntry.
+     */
+    AVBuffer buffer;
 } BufferPoolEntry;
 
 struct AVBufferPool {
@@ -89,10 +100,10 @@ struct AVBufferPool {
      */
     atomic_uint refcount;
 
-    int size;
+    size_t size;
     void *opaque;
-    AVBufferRef* (*alloc)(int size);
-    AVBufferRef* (*alloc2)(void *opaque, int size);
+    AVBufferRef* (*alloc)(size_t size);
+    AVBufferRef* (*alloc2)(void *opaque, size_t size);
     void         (*pool_free)(void *opaque);
 };
 

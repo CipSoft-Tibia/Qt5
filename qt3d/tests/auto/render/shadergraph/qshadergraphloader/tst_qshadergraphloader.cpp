@@ -1,33 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 #include <QtCore/qbuffer.h>
 
@@ -69,7 +44,7 @@ namespace
         return port;
     }
 
-    QShaderNode createNode(const QVector<QShaderNodePort> &ports, const QStringList &layers = QStringList())
+    QShaderNode createNode(const QList<QShaderNodePort> &ports, const QStringList &layers = QStringList())
     {
         auto node = QShaderNode();
         node.setUuid(QUuid::createUuid());
@@ -218,7 +193,7 @@ namespace
         qDebug() << prefix << statement.inputs << statement.uuid().toString() << statement.outputs;
     }
 
-    void dumpStatementsIfNeeded(const QVector<QShaderGraph::Statement> &statements, const QVector<QShaderGraph::Statement> &expected)
+    void dumpStatementsIfNeeded(const QList<QShaderGraph::Statement> &statements, const QList<QShaderGraph::Statement> &expected)
     {
         if (statements != expected) {
             for (int i = 0; i < qMax(statements.size(), expected.size()); i++) {
@@ -276,7 +251,7 @@ void tst_QShaderGraphLoader::shouldManipulateLoaderMembers()
 
 
     // WHEN
-    const auto prototypes = [this]{
+    const auto prototypes = []{
         auto res = QHash<QString, QShaderNode>();
         res.insert("foo", createNode({}));
         return res;
@@ -332,7 +307,7 @@ void tst_QShaderGraphLoader::shouldLoadFromJsonStream_data()
                            "    ]"
                            "}";
 
-    const auto smallProtos = [this]{
+    const auto smallProtos = []{
         auto protos = PrototypeHash();
 
         auto input = createNode({
@@ -353,7 +328,7 @@ void tst_QShaderGraphLoader::shouldLoadFromJsonStream_data()
         return protos;
     }();
 
-    const auto smallGraph = [this]{
+    const auto smallGraph = []{
         auto graph = QShaderGraph();
 
         auto input = createNode({
@@ -485,7 +460,7 @@ void tst_QShaderGraphLoader::shouldLoadFromJsonStream_data()
                              "    ]"
                              "}";
 
-    const auto complexProtos = [this]{
+    const auto complexProtos = []{
         const auto openGLES2 = createFormat(QShaderFormat::OpenGLES, 2, 0);
         const auto openGL3 = createFormat(QShaderFormat::OpenGLCoreProfile, 3, 0);
 

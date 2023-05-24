@@ -1,6 +1,21 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import './shared/nearby_onboarding_one_page.js';
+import './shared/nearby_onboarding_page.js';
+import './shared/nearby_visibility_page.js';
+import './nearby_confirmation_page.js';
+import './nearby_discovery_page.js';
+import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
+
+import {ConfirmationManagerInterface, PayloadPreview, ShareTarget, TransferUpdateListenerPendingReceiver} from '/mojo/nearby_share.mojom-webui.js';
+import {loadTimeData} from 'chrome://resources/ash/common/load_time_data.m.js';
+import {mixinBehaviors, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+
+import {getTemplate} from './app.html.js';
+import {NearbyShareSettingsMixin} from './shared/nearby_share_settings_mixin.js';
+import {CloseReason} from './shared/types.js';
 
 /**
  * @fileoverview The 'nearby-share' component is the entry point for the Nearby
@@ -8,76 +23,110 @@
  * of the ChromeOS share sheet.
  */
 
-import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.m.js';
-import './shared/nearby_onboarding_page.m.js';
-import './shared/nearby_visibility_page.m.js';
-import './nearby_confirmation_page.js';
-import './nearby_discovery_page.js';
-
-import {html, Polymer} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
-import {NearbyShareSettingsBehavior} from './shared/nearby_share_settings_behavior.m.js';
+/**
+ * TODO: Remove this manual type declaration once this file is converted to TS.
+ *
+ * The reason a page was closed. Keep in sync with NearbyShareDialogUI.
+ * @enum {number}
+ */
+const CloseReasonType = {
+  UNKNOWN: 0,
+  TRANSFER_STARTED: 1,
+  TRANSFER_SUCCEEDED: 2,
+  CANCELLED: 3,
+  REJECTED: 4,
+};
 
 /** @enum {string} */
 const Page = {
   CONFIRMATION: 'confirmation',
   DISCOVERY: 'discovery',
   ONBOARDING: 'onboarding',
+  ONEPAGE_ONBOARDING: 'onboarding-one',
   VISIBILITY: 'visibility',
 };
 
-Polymer({
-  is: 'nearby-share-app',
+/**
+ * @constructor
+ * @extends {PolymerElement}
+ * @implements {NearbyShareSettingsMixinInterface}
+ */
+const NearbyShareAppElementBase = NearbyShareSettingsMixin(PolymerElement);
 
-  behaviors: [NearbyShareSettingsBehavior],
+/** @polymer */
+export class NearbyShareAppElement extends NearbyShareAppElementBase {
+  static get is() {
+    return 'nearby-share-app';
+  }
 
-  _template: html`{__html_template__}`,
+  static get template() {
+    return getTemplate();
+  }
 
-  properties: {
-    /** Mirroring the enum so that it can be used from HTML bindings. */
-    Page: {
-      type: Object,
-      value: Page,
-    },
+  static get properties() {
+    return {
+      /** Mirroring the enum so that it can be used from HTML bindings. */
+      Page: {
+        type: Object,
+        value: Page,
+      },
 
-    /**
-     * Set by the nearby-discovery-page component when switching to the
-     * nearby-confirmation-page.
-     * @type {?nearbyShare.mojom.ConfirmationManagerInterface}
-     * @private
-     */
-    confirmationManager_: {
-      type: Object,
-      value: null,
-    },
+      /**
+       * Set by the nearby-discovery-page component when switching to the
+       * nearby-confirmation-page.
+       * @private {?ConfirmationManagerInterface}
+       */
+      confirmationManager_: {
+        type: Object,
+        value: null,
+      },
 
-    /**
-     * Set by the nearby-discovery-page component when switching to the
-     * nearby-confirmation-page.
-     * @type {?nearbyShare.mojom.TransferUpdateListenerPendingReceiver}
-     * @private
-     */
-    transferUpdateListener_: {
-      type: Object,
-      value: null,
-    },
+      /**
+       * Set by the nearby-discovery-page component when switching to the
+       * nearby-confirmation-page.
+       * @private {?TransferUpdateListenerPendingReceiver}
+       */
+      transferUpdateListener_: {
+        type: Object,
+        value: null,
+      },
 
-    /**
-     * The currently selected share target set by the nearby-discovery-page
-     * component when the user selects a device.
-     * @type {?nearbyShare.mojom.ShareTarget}
-     * @private
-     */
-    selectedShareTarget_: {
-      type: Object,
-      value: null,
-    },
-  },
+      /**
+       * The currently selected share target set by the nearby-discovery-page
+       * component when the user selects a device.
+       * @private {?ShareTarget}
+       */
+      selectedShareTarget_: {
+        type: Object,
+        value: null,
+      },
 
-  listeners: {
-    'change-page': 'onChangePage_',
-    'close': 'onClose_',
-    'onboarding-complete': 'onOnboardingComplete_',
-  },
+      /**
+       * Preview info of attachment to be sent, set by the
+       * nearby-discovery-page.
+       * @private {?PayloadPreview}
+       */
+      payloadPreview_: {
+        type: Object,
+        value: null,
+      },
+    };
+  }
+
+  /** @override */
+  ready() {
+    super.ready();
+
+    this.addEventListener(
+        'change-page',
+        e =>
+            this.onChangePage_(/** @type {!CustomEvent<!{page: Page}>} */ (e)));
+    this.addEventListener(
+        'close',
+        e => this.onClose_(
+            /** @type {!CustomEvent<!{reason: CloseReasonType}>} */ (e)));
+    this.addEventListener('onboarding-complete', this.onOnboardingComplete_);
+  }
 
   /**
    * @return {!CrViewManagerElement} the view manager
@@ -85,18 +134,55 @@ Polymer({
    */
   getViewManager_() {
     return /** @type {!CrViewManagerElement} */ (this.$.viewManager);
-  },
+  }
 
   /**
-   * Called when all settings values have been retrieved.
+   * Called whenever view changes.
+   * ChromeVox screen reader requires focus on #pageContainer to read
+   * dialog.
+   * @param {string} page
+   * @private
+   */
+  focusOnPageContainer_(page) {
+    this.shadowRoot.querySelector(`nearby-${page}-page`)
+        .shadowRoot.querySelector('nearby-page-template')
+        .shadowRoot.querySelector('#pageContainer')
+        .focus();
+  }
+
+  /**
+   * Determines if the feature flag for One-page onboarding workflow is enabled.
+   * @return {boolean} whether the one-page onboarding is enabled
+   * @private
+   */
+  isOnePageOnboardingEnabled_() {
+    return loadTimeData.getBoolean('isOnePageOnboardingEnabled');
+  }
+
+  /**
+   * Called when component is attached and all settings values have been
+   * retrieved.
    */
   onSettingsRetrieved() {
-    if (this.settings.enabled) {
+    if (this.settings.isOnboardingComplete) {
+      if (!this.settings.enabled) {
+        // When a new share is triggered, if the user has completed onboarding
+        // previously, then silently enable the feature and continue to
+        // discovery page directly.
+        this.set('settings.enabled', true);
+      }
       this.getViewManager_().switchView(Page.DISCOVERY);
-    } else {
-      this.getViewManager_().switchView(Page.ONBOARDING);
+      this.focusOnPageContainer_(Page.DISCOVERY);
+
+      return;
     }
-  },
+
+    const onboardingPage = this.isOnePageOnboardingEnabled_() ?
+        Page.ONEPAGE_ONBOARDING :
+        Page.ONBOARDING;
+    this.getViewManager_().switchView(onboardingPage);
+    this.focusOnPageContainer_(onboardingPage);
+  }
 
   /**
    * Handler for the change-page event.
@@ -105,16 +191,20 @@ Polymer({
    */
   onChangePage_(event) {
     this.getViewManager_().switchView(event.detail.page);
-  },
+    this.focusOnPageContainer_(event.detail.page);
+  }
 
   /**
    * Handler for the close event.
-   * @param {!Event} event
+   * @param {!CustomEvent<!{reason: CloseReasonType}>} event
    * @private
    */
   onClose_(event) {
-    chrome.send('close');
-  },
+    // TODO(b/237796007): Handle the case of null |event.detail|
+    const reason =
+        event.detail.reason == null ? CloseReason.UNKNOWN : event.detail.reason;
+    chrome.send('close', [reason]);
+  }
 
   /**
    * Handler for when onboarding is completed.
@@ -123,5 +213,8 @@ Polymer({
    */
   onOnboardingComplete_(event) {
     this.getViewManager_().switchView(Page.DISCOVERY);
-  },
-});
+    this.focusOnPageContainer_(Page.DISCOVERY);
+  }
+}
+
+customElements.define(NearbyShareAppElement.is, NearbyShareAppElement);

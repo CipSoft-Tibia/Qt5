@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/qvirtualkeyboardinputengine.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardinputcontext.h>
@@ -35,6 +9,8 @@
 #include <QtVirtualKeyboard/qvirtualkeyboardtrace.h>
 #include <QtVirtualKeyboard/private/virtualkeyboarddebug_p.h>
 
+#include <QQmlContext>
+#include <QQmlEngine>
 #include <QTimerEvent>
 #include <QtCore/private/qobject_p.h>
 
@@ -124,7 +100,7 @@ private:
 /*!
     \qmltype InputEngine
     \inqmlmodule QtQuick.VirtualKeyboard
-    \ingroup qtvirtualkeyboard-qml
+    \ingroup qtvirtualkeyboard-internal-qml
     \instantiates QVirtualKeyboardInputEngine
     \brief Maps the user input to the input methods.
 
@@ -139,6 +115,7 @@ private:
 /*!
     \class QVirtualKeyboardInputEngine
     \inmodule QtVirtualKeyboard
+    \ingroup qtvirtualkeyboard-cpp-for-devs
     \brief The InputEngine class provides an input engine
     that supports C++ and QML integration.
 
@@ -390,6 +367,7 @@ void QVirtualKeyboardInputEngine::setInputMethod(QVirtualKeyboardAbstractInputMe
     if (d->inputMethod != inputMethod) {
         update();
         if (d->inputMethod) {
+            d->inputMethod->clearInputMode();
             QObject::disconnect(d->inputMethod.data(), &QVirtualKeyboardAbstractInputMethod::selectionListsChanged, this, &QVirtualKeyboardInputEngine::updateSelectionListModels);
             d->inputMethod->setInputEngine(nullptr);
         }
@@ -475,7 +453,7 @@ QList<int> QVirtualKeyboardInputEngine::patternRecognitionModes() const
     if (patterRecognitionModeList.isEmpty())
         return resultList;
     resultList.reserve(patterRecognitionModeList.size());
-    for (const PatternRecognitionMode &patternRecognitionMode : qAsConst(patterRecognitionModeList))
+    for (const PatternRecognitionMode &patternRecognitionMode : std::as_const(patterRecognitionModeList))
         resultList.append(static_cast<int>(patternRecognitionMode));
     return resultList;
 }
@@ -538,8 +516,14 @@ QVirtualKeyboardTrace *QVirtualKeyboardInputEngine::traceBegin(
     if (!d->inputMethod->patternRecognitionModes().contains(patternRecognitionMode))
         return nullptr;
     QVirtualKeyboardTrace *trace = d->inputMethod->traceBegin(traceId, patternRecognitionMode, traceCaptureDeviceInfo, traceScreenInfo);
-    if (trace)
+    if (trace) {
+        if (QQmlContext *context = QQmlEngine::contextForObject(this)) {
+            if (QQmlEngine *engine = context->engine()) {
+                engine->setObjectOwnership(trace, QQmlEngine::CppOwnership);
+            }
+        }
         trace->setTraceId(traceId);
+    }
     return trace;
 }
 
@@ -676,7 +660,7 @@ void QVirtualKeyboardInputEngine::updateSelectionListModels()
     }
 
     // Deallocate inactive selection lists
-    for (const QVirtualKeyboardSelectionListModel::Type &selectionListType : qAsConst(inactiveSelectionLists)) {
+    for (const QVirtualKeyboardSelectionListModel::Type &selectionListType : std::as_const(inactiveSelectionLists)) {
         const auto it = d->selectionListModels.constFind(selectionListType);
         if (it != d->selectionListModels.cend()) {
             it.value()->setDataSource(nullptr, selectionListType);
@@ -693,8 +677,9 @@ void QVirtualKeyboardInputEngine::updateInputModes()
 {
     Q_D(QVirtualKeyboardInputEngine);
     QList<int> newInputModes;
+    QList<InputMode> tmpList;
     if (d->inputMethod) {
-        QList<InputMode> tmpList(d->inputMethod->inputModes(d->inputContext->locale()));
+        tmpList = d->inputMethod->inputModes(d->inputContext->locale());
         if (!tmpList.isEmpty()) {
             std::transform(tmpList.constBegin(), tmpList.constEnd(),
                            std::back_inserter(newInputModes),
@@ -705,6 +690,7 @@ void QVirtualKeyboardInputEngine::updateInputModes()
     }
     if (d->inputModes != newInputModes) {
         d->inputModes = newInputModes;
+        VIRTUALKEYBOARD_DEBUG() << "QVirtualKeyboardInputEngine::inputModesChanged():" << tmpList;
         emit inputModesChanged();
     }
 }
@@ -808,6 +794,8 @@ void QVirtualKeyboardInputEngine::timerEvent(QTimerEvent *timerEvent)
         \li \c InputEngine.InputMode.JapaneseHandwriting Japanese handwriting.
         \li \c InputEngine.InputMode.KoreanHandwriting Korean handwriting.
         \li \c InputEngine.InputMode.Thai Thai input mode.
+        \li \c InputEngine.InputMode.Stroke Stroke input mode for Chinese.
+        \li \c InputEngine.InputMode.Romaji Romaji input mode for Japanese.
     \endlist
 */
 
@@ -891,6 +879,10 @@ void QVirtualKeyboardInputEngine::timerEvent(QTimerEvent *timerEvent)
            Korean handwriting input mode.
     \value Thai
            Thai input mode.
+    \value Stroke
+           Stroke input mode for Chinese.
+    \value Romaji
+           Romaji input mode for Japanese.
 */
 
 /*!

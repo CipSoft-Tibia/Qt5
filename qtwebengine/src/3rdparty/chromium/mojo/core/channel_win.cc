@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,19 +10,19 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <tuple>
 
-#include "base/bind.h"
 #include "base/containers/queue.h"
-#include "base/debug/activity_tracker.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/message_loop/message_pump_for_io.h"
 #include "base/process/process_handle.h"
 #include "base/synchronization/lock.h"
 #include "base/task/current_thread.h"
-#include "base/task_runner.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_runner.h"
 #include "base/win/scoped_handle.h"
 #include "base/win/win_util.h"
 
@@ -31,40 +31,18 @@ namespace core {
 
 namespace {
 
-std::atomic<uint64_t>* MaybeGetExtendedCrashAnnotation() {
-  base::debug::GlobalActivityTracker* activity_tracker =
-      base::debug::GlobalActivityTracker::Get();
-  if (!activity_tracker)
-    return nullptr;
-
-  static std::atomic<uint64_t>* sum = activity_tracker->process_data().SetUint(
-      "channel_win_total_outgoing_messages", 0u);
-
-  return sum;
-}
-
 class ChannelWinMessageQueue {
  public:
-  explicit ChannelWinMessageQueue()
-      : queue_size_sum_(MaybeGetExtendedCrashAnnotation()) {}
-  ~ChannelWinMessageQueue() {
-    if (queue_size_sum_) {
-      queue_size_sum_->fetch_sub(queue_.size(), std::memory_order_relaxed);
-    }
-  }
+  ChannelWinMessageQueue() = default;
+  ~ChannelWinMessageQueue() = default;
 
   void Append(Channel::MessagePtr message) {
     queue_.emplace_back(std::move(message));
-    if (queue_size_sum_)
-      ++(*queue_size_sum_);
   }
 
   Channel::Message* GetFirst() const { return queue_.front().get(); }
 
   Channel::MessagePtr TakeFirst() {
-    if (queue_size_sum_)
-      --(*queue_size_sum_);
-
     Channel::MessagePtr message = std::move(queue_.front());
     queue_.pop_front();
     return message;
@@ -74,7 +52,6 @@ class ChannelWinMessageQueue {
 
  private:
   base::circular_deque<Channel::MessagePtr> queue_;
-  std::atomic<uint64_t>* queue_size_sum_ = nullptr;
 };
 
 class ChannelWin : public Channel,
@@ -87,6 +64,7 @@ class ChannelWin : public Channel,
              scoped_refptr<base::SingleThreadTaskRunner> io_task_runner)
       : Channel(delegate, handle_policy),
         base::MessagePumpForIO::IOHandler(FROM_HERE),
+        is_untrusted_process_(connection_params.is_untrusted_process()),
         self_(this),
         io_task_runner_(io_task_runner) {
     if (connection_params.server_endpoint().is_valid()) {
@@ -102,6 +80,9 @@ class ChannelWin : public Channel,
     CHECK(handle_.IsValid());
   }
 
+  ChannelWin(const ChannelWin&) = delete;
+  ChannelWin& operator=(const ChannelWin&) = delete;
+
   void Start() override {
     io_task_runner_->PostTask(
         FROM_HERE, base::BindOnce(&ChannelWin::StartOnIOThread, this));
@@ -114,13 +95,17 @@ class ChannelWin : public Channel,
   }
 
   void Write(MessagePtr message) override {
-    if (remote_process().is_valid()) {
+    if (remote_process().IsValid()) {
       // If we know the remote process handle, we transfer all outgoing handles
       // to the process now rewriting them in the message.
       std::vector<PlatformHandleInTransit> handles = message->TakeHandles();
       for (auto& handle : handles) {
-        if (handle.handle().is_valid())
-          handle.TransferToProcess(remote_process().Clone());
+        if (handle.handle().is_valid()) {
+          handle.TransferToProcess(
+              remote_process().Duplicate(),
+              is_untrusted_process_ ? PlatformHandleInTransit::kUntrustedTarget
+                                    : PlatformHandleInTransit::kTrustedTarget);
+        }
       }
       message->SetHandles(std::move(handles));
     }
@@ -172,17 +157,25 @@ class ChannelWin : public Channel,
           base::win::Uint32ToHandle(extra_header_handles[i].handle);
       if (PlatformHandleInTransit::IsPseudoHandle(handle_value))
         return false;
-      if (remote_process().is_valid()) {
+      if (remote_process().IsValid() && handle_value != INVALID_HANDLE_VALUE) {
         // If we know the remote process's handle, we assume it doesn't know
         // ours; that means any handle values still belong to that process, and
         // we need to transfer them to this process.
         handle_value = PlatformHandleInTransit::TakeIncomingRemoteHandle(
-                           handle_value, remote_process().get())
+                           handle_value, remote_process().Handle())
                            .ReleaseHandle();
       }
       handles->emplace_back(base::win::ScopedHandle(std::move(handle_value)));
     }
     return true;
+  }
+
+  bool GetReadPlatformHandlesForIpcz(
+      size_t num_handles,
+      std::vector<PlatformHandle>& handles) override {
+    // Always a validation failure if we're asked for handles on Windows,
+    // because ChannelWin for ipcz never sends handles out-of-band from data.
+    return false;
   }
 
  private:
@@ -239,7 +232,7 @@ class ChannelWin : public Channel,
     CHECK(handle_.IsValid());
     CancelIo(handle_.Get());
     if (leak_handle_)
-      ignore_result(handle_.Take());
+      std::ignore = handle_.Take();
     else
       handle_.Close();
 
@@ -395,6 +388,8 @@ class ChannelWin : public Channel,
     OnError(error);
   }
 
+  const bool is_untrusted_process_;
+
   // Keeps the Channel alive at least until explicit shutdown on the IO thread.
   scoped_refptr<Channel> self_;
 
@@ -420,8 +415,6 @@ class ChannelWin : public Channel,
   bool is_write_pending_ = false;
 
   bool leak_handle_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(ChannelWin);
 };
 
 }  // namespace

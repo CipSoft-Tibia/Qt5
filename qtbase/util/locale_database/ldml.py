@@ -1,30 +1,5 @@
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the test suite of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2020 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 """Parsing the Locale Data Markup Language
 
 It's an XML format, so the raw parsing of XML is, of course, delegated
@@ -124,7 +99,7 @@ class Node (object):
         one."""
         seq = self.findAllChildren(tag)
         try:
-            node = seq.next()
+            node = next(seq)
         except StopIteration:
             raise Error('No child found where one was expected', tag)
         for it in seq:
@@ -191,13 +166,26 @@ class XmlScanner (object):
         return elts
 
 class Supplement (XmlScanner):
-    def find(self, xpath):
+    def find(self, xpath, exclude=()):
+        """Finds nodes by matching a specified xpath.
+
+        If exclude is passed, it should be a sequence of attribute names (its
+        default is empty). Any matches to the given xpath that also have any
+        attribute in this sequence will be excluded.
+
+        For each childless node matching the xpath, or child of a node matching
+        the xpath, this yields a twople (name, attrs) where name is the
+        nodeName and attrs is a dict mapping the node's attribute's names to
+        their values. For attribute values that are not simple strings, the
+        nodeValue of the attribute node is used."""
         elts = self.findNodes(xpath)
-        for elt in _iterateEach(e.dom.childNodes if e.dom.childNodes else (e.dom,)
-                                for e in elts):
+        for elt in _iterateEach(e.dom.childNodes or (e.dom,)
+                                for e in elts
+                                if not any(a in e.dom.attributes
+                                           for a in exclude)):
             if elt.attributes:
                 yield (elt.nodeName,
-                       dict((k, v if isinstance(v, basestring) else v.nodeValue)
+                       dict((k, v if isinstance(v, str) else v.nodeValue)
                             for k, v in elt.attributes.items()))
 
 class LocaleScanner (object):
@@ -216,7 +204,10 @@ class LocaleScanner (object):
             for elt in self.__find(xpath):
                 try:
                     if draft is None or elt.draft <= draft:
-                        return elt.dom.firstChild.nodeValue
+                        value = elt.dom.firstChild.nodeValue
+                        # The github version of CLDR uses '↑↑↑' to indicate "inherit"
+                        if value != '↑↑↑':
+                            return value
                 except (AttributeError, KeyError):
                     pass
         except Error as e:
@@ -227,7 +218,7 @@ class LocaleScanner (object):
     def tagCodes(self):
         """Yields four tag codes
 
-        The tag codes are language, script, country and variant; an
+        The tag codes are language, script, territory and variant; an
         empty value for any of them indicates that no value was
         provided.  The values are obtained from the primary file's
         top-level <identity> element.  An Error is raised if any
@@ -241,7 +232,7 @@ class LocaleScanner (object):
             except (KeyError, AttributeError):
                 pass
             else:
-                raise Error('Alias to {}'.format(source))
+                raise Error(f'Alias to {source}')
 
         ids = root.findUniqueChild('identity')
         for code in ('language', 'script', 'territory', 'variant'):
@@ -259,17 +250,13 @@ class LocaleScanner (object):
         """Fetches currency data for this locale.
 
         Single argument, isoCode, is the ISO currency code for the
-        currency in use in the country. See also numericData, which
+        currency in use in the territory. See also numericData, which
         includes some currency formats.
         """
         if isoCode:
-            stem = 'numbers/currencies/currency[{}]/'.format(isoCode)
-            symbol = self.find(stem + 'symbol', '')
-            name = ';'.join(
-                self.find(stem + 'displayName' + tail, '')
-                for tail in ('',) + tuple(
-                    '[count={}]'.format(x) for x in ('zero', 'one', 'two', 'few', 'many', 'other')
-                )) + ';'
+            stem = f'numbers/currencies/currency[{isoCode}]/'
+            symbol = self.find(f'{stem}symbol', '')
+            name = self.__currencyDisplayName(stem)
         else:
             symbol = name = ''
         yield 'currencySymbol', symbol
@@ -280,29 +267,38 @@ class LocaleScanner (object):
 
         First argument, lookup, is a callable that maps a numbering
         system's name to certain data about the system, as a mapping;
-        we expect this to have u'digits' as a key.
+        we expect this to have 'digits' as a key.
         """
         system = self.find('numbers/defaultNumberingSystem')
-        stem = 'numbers/symbols[numberSystem={}]/'.format(system)
-        decimal = self.find(stem + 'decimal')
-        group = self.find(stem + 'group')
-        assert decimal != group, (self.name, system, decimal)
+        stem = f'numbers/symbols[numberSystem={system}]/'
+        decimal = self.find(f'{stem}decimal')
+        group = self.find(f'{stem}group')
+        if decimal == group:
+            # mn_Mong_MN @v43 :-(
+            clean = Node.draftScore('approved')
+            decimal = self.find(f'{stem}decimal', draft=clean)
+            group = self.find(f'{stem}group', draft=clean)
+            assert decimal != group, (self.name, system, decimal)
+
         yield 'decimal', decimal
         yield 'group', group
-        yield 'percent', self.find(stem + 'percentSign')
-        yield 'list', self.find(stem + 'list')
-        # FIXME: don't lower-case:
-        yield 'exp', self.find(stem + 'exponential').lower()
+        yield 'percent', self.find(f'{stem}percentSign')
+        yield 'list', self.find(f'{stem}list')
+        yield 'exp', self.find(f'{stem}exponential')
+        yield 'groupSizes', self.__numberGrouping(system)
 
         digits = lookup(system)['digits']
         assert len(digits) == 10
         zero = digits[0]
-        # Qt's number-formatting code assumes digits are consecutive:
-        assert all(ord(c) == i for i, c in enumerate(digits, ord(zero)))
+        # Qt's number-formatting code assumes digits are consecutive
+        # (except Suzhou - see QTBUG-85409 - which shares its zero
+        # with CLDR's very-non-contiguous hanidec):
+        assert all(ord(c) == i + (0x3020 if ord(zero) == 0x3007 else ord(zero))
+                   for i, c in enumerate(digits[1:], 1))
         yield 'zero', zero
 
-        plus = self.find(stem + 'plusSign')
-        minus = self.find(stem + 'minusSign')
+        plus = self.find(f'{stem}plusSign')
+        minus = self.find(f'{stem}minusSign')
         yield 'plus', plus
         yield 'minus', minus
 
@@ -310,11 +306,11 @@ class LocaleScanner (object):
         xpath = 'numbers/currencyFormats/currencyFormatLength/currencyFormat[accounting]/pattern'
         try:
             money = self.find(xpath.replace('Formats/',
-                                            'Formats[numberSystem={}]/'.format(system)))
+                                            f'Formats[numberSystem={system}]/'))
         except Error:
             money = self.find(xpath)
         money = self.__currencyFormats(money, plus, minus)
-        yield 'currencyFormat', money.next()
+        yield 'currencyFormat', next(money)
         neg = ''
         for it in money:
             assert not neg, 'There should be at most one more pattern'
@@ -324,12 +320,12 @@ class LocaleScanner (object):
     def textPatternData(self):
         for key in ('quotationStart', 'alternateQuotationEnd',
                     'quotationEnd', 'alternateQuotationStart'):
-            yield key, self.find('delimiters/' + key)
+            yield key, self.find(f'delimiters/{key}')
 
         for key in ('start', 'middle', 'end'):
-            yield ('listPatternPart' + key.capitalize(),
+            yield (f'listPatternPart{key.capitalize()}',
                    self.__fromLdmlListPattern(self.find(
-                        'listPatterns/listPattern/listPatternPart[{}]'.format(key))))
+                        f'listPatterns/listPattern/listPatternPart[{key}]')))
         yield ('listPatternPartTwo',
                self.__fromLdmlListPattern(self.find(
                     'listPatterns/listPattern/listPatternPart[2]')))
@@ -337,28 +333,26 @@ class LocaleScanner (object):
         stem = 'dates/calendars/calendar[gregorian]/'
         # TODO: is wide really the right width to use here ?
         # abbreviated might be an option ... or try both ?
-        meridiem = stem + 'dayPeriods/dayPeriodContext[format]/dayPeriodWidth[wide]/'
+        meridiem = f'{stem}dayPeriods/dayPeriodContext[format]/dayPeriodWidth[wide]/'
         for key in ('am', 'pm'):
-            yield key, self.find(meridiem + 'dayPeriod[{}]'.format(key),
+            yield key, self.find(f'{meridiem}dayPeriod[{key}]',
                                  draft = Node.draftScore('contributed'))
 
         for pair in (('long', 'full'), ('short', 'short')):
             for key in ('time', 'date'):
-                yield (pair[0] + key.capitalize() + 'Format',
+                yield (f'{pair[0]}{key.capitalize()}Format',
                        convert_date(self.find(
-                            stem + '{}Formats/{}FormatLength[{}]/{}Format/pattern'.format(
-                                key, key, pair[1], key))))
+                            f'{stem}{key}Formats/{key}FormatLength[{pair[1]}]/{key}Format/pattern')))
 
-    def endonyms(self, language, script, country, variant):
+    def endonyms(self, language, script, territory, variant):
         # TODO: take variant into account ?
-        for seq in ((language, script, country),
-                    (language, script), (language, country), (language,)):
+        for seq in ((language, script, territory),
+                    (language, script), (language, territory), (language,)):
             if not all(seq):
                 continue
             try:
                 yield ('languageEndonym',
-                       self.find('localeDisplayNames/languages/language[{}]'
-                                 .format('_'.join(seq))))
+                       self.find(f'localeDisplayNames/languages/language[{"_".join(seq)}]'))
             except Error:
                 pass
             else:
@@ -367,9 +361,8 @@ class LocaleScanner (object):
             # grumble(failed to find endonym for language)
             yield 'languageEndonym', ''
 
-        yield ('countryEndonym',
-               self.find('localeDisplayNames/territories/territory[{}]'
-                         .format(country), ''))
+        yield ('territoryEndonym',
+               self.find(f'localeDisplayNames/territories/territory[{territory}]', ''))
 
     def unitData(self):
         yield ('byte_unit',
@@ -388,21 +381,21 @@ class LocaleScanner (object):
     def calendarNames(self, calendars):
         namings = self.__nameForms
         for cal in calendars:
-            stem = 'dates/calendars/calendar[' + cal + ']/months/'
+            stem = f'dates/calendars/calendar[{cal}]/months/'
             for key, mode, size in namings:
-                prop = 'monthContext[' + mode + ']/monthWidth[' + size + ']/'
-                yield (key + 'Months_' + cal,
-                       ';'.join(self.find(stem + prop + 'month[{}]'.format(i))
-                                for i in range(1, 13)) + ';')
+                prop = f'monthContext[{mode}]/monthWidth[{size}]/'
+                yield (f'{key}Months_{cal}',
+                       ';'.join(self.find(f'{stem}{prop}month[{i}]')
+                                for i in range(1, 13)))
 
         # Day data (for Gregorian, at least):
         stem = 'dates/calendars/calendar[gregorian]/days/'
         days = ('sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat')
         for (key, mode, size) in namings:
-            prop = 'dayContext[' + mode + ']/dayWidth[' + size + ']/day'
-            yield (key + 'Days',
-                   ';'.join(self.find(stem + prop + '[' + day + ']')
-                            for day in days) + ';')
+            prop = f'dayContext[{mode}]/dayWidth[{size}]/day'
+            yield (f'{key}Days',
+                   ';'.join(self.find(f'{stem}{prop}[{day}]')
+                            for day in days))
 
     # Implementation details
     __nameForms = (
@@ -446,9 +439,8 @@ class LocaleScanner (object):
                         break
                     sought = '/'.join(tags)
                     if sought != xpath:
-                        sought += ' (for {})'.format(xpath)
-                    raise Error('All lack child {} for {} in {}'.format(
-                            selector, sought, self.name))
+                        sought += f' (for {xpath})'
+                    raise Error(f'All lack child {selector} for {sought} in {self.name}')
 
             else: # Found matching elements
                 for elt in roots:
@@ -456,18 +448,30 @@ class LocaleScanner (object):
 
         sought = '/'.join(tags)
         if sought != xpath:
-            sought += ' (for {})'.format(xpath)
-        raise Error('No {} in {}'.format(sought, self.name))
+            sought += f' (for {xpath})'
+        raise Error(f'No {sought} in {self.name}')
+
+    def __currencyDisplayName(self, stem):
+        try:
+            return self.find(stem + 'displayName')
+        except Error:
+            pass
+        for x in  ('zero', 'one', 'two', 'few', 'many', 'other'):
+            try:
+                return self.find(f'{stem}displayName[count={x}]')
+            except Error:
+                pass
+        return ''
 
     def __findUnit(self, keySuffix, quantify, fallback=''):
         # The displayName for a quantified unit in en.xml is kByte
         # (even for unitLength[narrow]) instead of kB (etc.), so
         # prefer any unitPattern provided, but prune its placeholder:
         for size in ('short', 'narrow'): # TODO: reverse order ?
-            stem = 'units/unitLength[{}]/unit[digital-{}byte]/'.format(size + keySuffix, quantify)
+            stem = f'units/unitLength[{size}{keySuffix}]/unit[digital-{quantify}byte]/'
             for count in ('many', 'few', 'two', 'other', 'zero', 'one'):
                 try:
-                    ans = self.find(stem + 'unitPattern[count={}]'.format(count))
+                    ans = self.find(f'{stem}unitPattern[count={count}]')
                 except Error:
                     continue
 
@@ -480,7 +484,7 @@ class LocaleScanner (object):
                     return ans
 
             try:
-                return self.find(stem + 'displayName')
+                return self.find(f'{stem}displayName')
             except Error:
                 pass
 
@@ -508,10 +512,10 @@ class LocaleScanner (object):
             if cache:
                 byte = cache.pop()
                 if all(byte == k for k in cache):
-                    suffix = 'i' + byte
+                    suffix = f'i{byte}'
             for q in siQuantifiers:
                 # Those don't (yet, v36) exist in CLDR, so we always get the fall-back:
-                yield self.__findUnit(keySuffix, q[:2], q[0].upper() + suffix)
+                yield self.__findUnit(keySuffix, q[:2], f'{q[0].upper()}{suffix}')
         else: # first call
             tail = suffix = suffix or 'B'
             for q in siQuantifiers:
@@ -525,6 +529,36 @@ class LocaleScanner (object):
                     tail = rest if all(rest == k for k in cache) else suffix
                     cache.append(rest)
                 yield it
+
+    def __numberGrouping(self, system):
+        """Sizes of groups of digits within a number.
+
+        Returns a triple (least, higher, top) for which:
+          * least is the number of digits after the last grouping
+            separator;
+          * higher is the number of digits between grouping
+            separators;
+          * top is the fewest digits that can appear before the first
+            grouping separator.
+
+        Thus (4, 3, 2) would want 1e7 as 1000,0000 but 1e8 as 10,000,0000.
+
+        Note: CLDR does countenance the possibility of grouping also
+        in the fractional part.  This is not presently attempted.  Nor
+        is placement of the sign character anywhere but at the start
+        of the number (some formats may place it at the end, possibly
+        elsewhere)."""
+        top = int(self.find('numbers/minimumGroupingDigits'))
+        assert top < 4, top # We store it in a 2-bit field
+        grouping = self.find(f'numbers/decimalFormats[numberSystem={system}]/'
+                             'decimalFormatLength/decimalFormat/pattern')
+        groups = grouping.split('.')[0].split(',')[-3:]
+        assert all(len(x) < 8 for x in groups[-2:]), grouping # we store them in 3-bit fields
+        if len(groups) > 2:
+            return len(groups[-1]), len(groups[-2]), top
+
+        size = len(groups[-1]) if len(groups) == 2 else 3
+        return size, size, top
 
     @staticmethod
     def __currencyFormats(patterns, plus, minus):
@@ -540,7 +574,7 @@ class LocaleScanner (object):
             # According to http://www.unicode.org/reports/tr35/#Number_Format_Patterns
             # there can be doubled or trippled currency sign, however none of the
             # locales use that.
-            p = p.replace(u'\xa4', "%2")
+            p = p.replace('\xa4', "%2")
             # Single quote goes away, but double goes to single:
             p = p.replace("''", '###').replace("'", '').replace('###', "'")
             # Use number system's signs:

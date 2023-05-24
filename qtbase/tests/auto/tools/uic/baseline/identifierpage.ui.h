@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'identifierpage.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -36,53 +36,53 @@ public:
     void setupUi(QWidget *IdentifierPage)
     {
         if (IdentifierPage->objectName().isEmpty())
-            IdentifierPage->setObjectName(QString::fromUtf8("IdentifierPage"));
+            IdentifierPage->setObjectName("IdentifierPage");
         IdentifierPage->resize(417, 242);
         gridLayout = new QGridLayout(IdentifierPage);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
-        spacerItem = new QSpacerItem(20, 20, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        gridLayout->setObjectName("gridLayout");
+        spacerItem = new QSpacerItem(20, 20, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem, 0, 1, 1, 1);
 
         identifierCheckBox = new QCheckBox(IdentifierPage);
-        identifierCheckBox->setObjectName(QString::fromUtf8("identifierCheckBox"));
+        identifierCheckBox->setObjectName("identifierCheckBox");
 
         gridLayout->addWidget(identifierCheckBox, 1, 0, 1, 3);
 
-        spacerItem1 = new QSpacerItem(161, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(161, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem1, 1, 3, 1, 1);
 
-        spacerItem2 = new QSpacerItem(30, 20, QSizePolicy::Fixed, QSizePolicy::Minimum);
+        spacerItem2 = new QSpacerItem(30, 20, QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem2, 2, 0, 1, 1);
 
         globalButton = new QRadioButton(IdentifierPage);
-        globalButton->setObjectName(QString::fromUtf8("globalButton"));
+        globalButton->setObjectName("globalButton");
         globalButton->setEnabled(false);
         globalButton->setChecked(true);
 
         gridLayout->addWidget(globalButton, 2, 1, 1, 1);
 
         prefixLineEdit = new QLineEdit(IdentifierPage);
-        prefixLineEdit->setObjectName(QString::fromUtf8("prefixLineEdit"));
+        prefixLineEdit->setObjectName("prefixLineEdit");
         prefixLineEdit->setEnabled(false);
 
         gridLayout->addWidget(prefixLineEdit, 2, 2, 1, 1);
 
         fileNameButton = new QRadioButton(IdentifierPage);
-        fileNameButton->setObjectName(QString::fromUtf8("fileNameButton"));
+        fileNameButton->setObjectName("fileNameButton");
         fileNameButton->setEnabled(false);
 
         gridLayout->addWidget(fileNameButton, 3, 1, 1, 2);
 
-        spacerItem3 = new QSpacerItem(20, 31, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem3 = new QSpacerItem(20, 31, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem3, 4, 1, 1, 1);
 
 
         retranslateUi(IdentifierPage);
-        QObject::connect(globalButton, SIGNAL(toggled(bool)), prefixLineEdit, SLOT(setEnabled(bool)));
+        QObject::connect(globalButton, &QRadioButton::toggled, prefixLineEdit, &QLineEdit::setEnabled);
 
         QMetaObject::connectSlotsByName(IdentifierPage);
     } // setupUi

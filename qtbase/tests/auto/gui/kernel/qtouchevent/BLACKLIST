@@ -1,2 +1,6 @@
-[multiPointRawEventTranslationOnTouchScreen]
-ubuntu-16.04
+[multiPointRawEventTranslationOnTouchPad]
+# QTBUG-101519
+windows-11
+android
+[touchBeginWithGraphicsWidget]
+android

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qquickimage_p.h"
 #include "qquickimage_p_p.h"
@@ -115,19 +79,33 @@ QQuickImagePrivate::QQuickImagePrivate()
 
     \clearfloat
 
-    \section1 OpenGL Texture Files
+    \section1 Compressed Texture Files
 
-    When the default OpenGL \l{Qt Quick Scene Graph}{scene graph} backend is in
-    use, images can also be supplied in compressed texture files. The content
-    must be a simple RGB(A) format 2D texture. Supported compression schemes
-    are only limited by the underlying OpenGL driver and GPU. The following
-    container file formats are supported:
+    When supported by the implementation of the underlying graphics API at run
+    time, images can also be supplied in compressed texture files. The content
+    must be a simple RGB(A) format 2D texture. Supported compression schemes are
+    only limited by the underlying driver and GPU. The following container file
+    formats are supported:
 
     \list
     \li \c PKM (since Qt 5.10)
     \li \c KTX (since Qt 5.11)
     \li \c ASTC (since Qt 5.13)
     \endlist
+
+    \note The intended vertical orientation of an image in a texture file is not generally well
+    defined. Different texture compression tools have different defaults and options of when to
+    perform vertical flipping of the input image. If an image from a texture file appears upside
+    down, flipping may need to be toggled in the asset conditioning process. Alternatively, the
+    Image element itself can be flipped by either applying a suitable transformation via the
+    transform property or, more conveniently, by setting the mirrorVertically property:
+    \badcode
+    transform: [ Translate { y: -myImage.height }, Scale { yScale: -1 } ]
+    \endcode
+    or
+    \badcode
+    mirrorVertically: true
+    \endcode
 
     \note Semi-transparent original images require alpha pre-multiplication
     prior to texture compression in order to be correctly displayed in Qt
@@ -137,6 +115,43 @@ QQuickImagePrivate::QQuickImagePrivate()
     convert foo.png \( +clone -alpha Extract \) -channel RGB -compose Multiply -composite foo_pm.png
     \endcode
 
+    Do not confuse container formats, such as, \c KTX, and the format of the
+    actual texture data stored in the container file. For example, reading a
+    \c KTX file is supported on all platforms, independently of what GPU driver is
+    used at run time. However, this does not guarantee that the compressed
+    texture format, used by the data in the file, is supported at run time. For
+    example, if the KTX file contains compressed data with the format
+    \c{ETC2 RGBA8}, and the 3D graphics API implementation used at run time does not
+    support \c ETC2 compressed textures, the Image item will not display
+    anything.
+
+    \note Compressed texture format support is not under Qt's control, and it
+    is up to the application or device developer to ensure the compressed
+    texture data is provided in the appropriate format for the target
+    environment(s).
+
+    Do not assume that compressed format support is specific to a platform. It
+    may also be specific to the driver and 3D API implementation in use on that
+    particular platform. In practice, implementations of different 3D graphics
+    APIs (e.g., Vulkan and OpenGL) on the same platform (e.g., Windows) from
+    the same vendor for the same hardware may offer a different set of
+    compressed texture formats.
+
+    When targeting desktop environments (Windows, macOS, Linux) only, a general
+    recommendation is to consider using the \c{DXTn}/\c{BCn} formats since
+    these tend to have the widest support amongst the implementations of Direct
+    3D, Vulkan, OpenGL, and Metal on these platforms. In contrast, when
+    targeting mobile or embedded devices, the \c ETC2 or \c ASTC formats are
+    likely to be a better choice since these are typically the formats
+    supported by the OpenGL ES implementations on such hardware.
+
+    An application that intends to run across desktop, mobile, and embedded
+    hardware should plan and design its use of compressed textures carefully.
+    It is highly likely that relying on a single format is not going to be
+    sufficient, and therefore the application will likely need to branch based
+    on the platform to use compressed textures in a format appropriate there,
+    or perhaps to skip using compressed textures in some cases.
+
     \section1 Automatic Detection of File Extension
 
     If the \l source URL indicates a non-existing local file or resource, the
@@ -144,10 +159,10 @@ QQuickImagePrivate::QQuickImagePrivate()
     file can be found by appending any of the supported image file extensions
     to the \l source URL, then that file will be loaded.
 
-    If the OpenGL \l{Qt Quick Scene Graph}{scene graph} backend is in use, the
-    file search the attempts the OpenGL texture file extensions first. If the
-    search is unsuccessful, it attempts to search with the file extensions for
-    the \l{QImageReader::supportedImageFormats()}{conventional image file
+    The file search attempts to look for compressed texture container file
+    extensions first. If the search is unsuccessful, it attempts to search with
+    the file extensions for the
+    \l{QImageReader::supportedImageFormats()}{conventional image file
     types}. For example:
 
     \snippet qml/image-ext.qml ext
@@ -204,10 +219,7 @@ void QQuickImagePrivate::setImage(const QImage &image)
 {
     Q_Q(QQuickImage);
     pix.setImage(image);
-
     q->pixmapChange();
-    status = pix.isNull() ? QQuickImageBase::Null : QQuickImageBase::Ready;
-
     q->update();
 }
 
@@ -215,10 +227,7 @@ void QQuickImagePrivate::setPixmap(const QQuickPixmap &pixmap)
 {
     Q_Q(QQuickImage);
     pix.setPixmap(pixmap);
-
     q->pixmapChange();
-    status = pix.isNull() ? QQuickImageBase::Null : QQuickImageBase::Ready;
-
     q->update();
 }
 
@@ -227,15 +236,15 @@ void QQuickImagePrivate::setPixmap(const QQuickPixmap &pixmap)
 
     Set this property to define what happens when the source image has a different size
     than the item.
-    \list
-    \li Image.Stretch - the image is scaled to fit
-    \li Image.PreserveAspectFit - the image is scaled uniformly to fit without cropping
-    \li Image.PreserveAspectCrop - the image is scaled uniformly to fill, cropping if necessary
-    \li Image.Tile - the image is duplicated horizontally and vertically
-    \li Image.TileVertically - the image is stretched horizontally and tiled vertically
-    \li Image.TileHorizontally - the image is stretched vertically and tiled horizontally
-    \li Image.Pad - the image is not transformed
-    \endlist
+
+    \value Image.Stretch            the image is scaled to fit
+    \value Image.PreserveAspectFit  the image is scaled uniformly to fit without cropping
+    \value Image.PreserveAspectCrop the image is scaled uniformly to fill, cropping if necessary
+    \value Image.Tile               the image is duplicated horizontally and vertically
+    \value Image.TileVertically     the image is stretched horizontally and tiled vertically
+    \value Image.TileHorizontally   the image is stretched vertically and tiled horizontally
+    \value Image.Pad                the image is not transformed
+    \br
 
     \table
 
@@ -370,12 +379,11 @@ qreal QQuickImage::paintedHeight() const
     \readonly
 
     This property holds the status of image loading.  It can be one of:
-    \list
-    \li Image.Null - no image has been set
-    \li Image.Ready - the image has been loaded
-    \li Image.Loading - the image is currently being loaded
-    \li Image.Error - an error occurred while loading the image
-    \endlist
+
+    \value Image.Null       No image has been set
+    \value Image.Ready      The image has been loaded
+    \value Image.Loading    The image is currently being loaded
+    \value Image.Error      An error occurred while loading the image
 
     Use this status to provide an update or respond to the status change in some way.
     For example, you could:
@@ -480,6 +488,8 @@ qreal QQuickImage::paintedHeight() const
 
     \note \e {Changing this property dynamically causes the image source to be reloaded,
     potentially even from the network, if it is not in the disk cache.}
+
+    \sa {Qt Quick Examples - Pointer Handlers}
 */
 
 /*!
@@ -534,7 +544,7 @@ qreal QQuickImage::paintedHeight() const
 
     The URL may be absolute, or relative to the URL of the component.
 
-    \sa QQuickImageProvider {OpenGL Texture Files} {Automatic Detection of File Extension}
+    \sa QQuickImageProvider, {Compressed Texture Files}, {Automatic Detection of File Extension}
 */
 
 /*!
@@ -567,6 +577,17 @@ qreal QQuickImage::paintedHeight() const
     (effectively displaying a mirrored image).
 
     The default value is false.
+*/
+
+/*!
+    \qmlproperty bool QtQuick::Image::mirrorVertically
+
+    This property holds whether the image should be vertically inverted
+    (effectively displaying a mirrored image).
+
+    The default value is false.
+
+    \since 6.2
 */
 
 /*!
@@ -630,9 +651,9 @@ void QQuickImage::updatePaintedGeometry()
     emit paintedGeometryChanged();
 }
 
-void QQuickImage::geometryChanged(const QRectF &newGeometry, const QRectF &oldGeometry)
+void QQuickImage::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
 {
-    QQuickImageBase::geometryChanged(newGeometry, oldGeometry);
+    QQuickImageBase::geometryChange(newGeometry, oldGeometry);
     if (newGeometry.size() != oldGeometry.size())
         updatePaintedGeometry();
 }
@@ -829,7 +850,7 @@ QSGNode *QQuickImage::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *)
     node->setTargetRect(targetRect);
     node->setInnerTargetRect(targetRect);
     node->setSubSourceRect(nsrect);
-    node->setMirror(d->mirror);
+    node->setMirror(d->mirrorHorizontally, d->mirrorVertically);
     node->setAntialiasing(d->antialiasing);
     node->update();
 
@@ -919,6 +940,8 @@ void QQuickImage::setMipmap(bool use)
     emit mipmapChanged(d->mipmap);
 
     d->pixmapChanged = true;
+    if (isComponentComplete())
+        load();
     update();
 }
 
@@ -945,3 +968,7 @@ void QQuickImage::setMipmap(bool use)
 */
 
 QT_END_NAMESPACE
+
+#include "moc_qquickimage_p_p.cpp"
+
+#include "moc_qquickimage_p.cpp"

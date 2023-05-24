@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/features.gni")
 import("//build/config/host_byteorder.gni")
 
 import("//build/config/linux/pkg_config.gni")
@@ -67,12 +68,6 @@ config("bundled_icu_config") {
   } else {
     defines += [ "ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC" ]
   }
-
-  if (is_win) {
-    defines += [ "UCHAR_TYPE=wchar_t" ]
-  } else {
-    defines += [ "UCHAR_TYPE=uint16_t" ]
-  }
 }
 
 # Config used only by ICU code.
@@ -92,7 +87,7 @@ config("icu_code") {
     "U_CHARSET_IS_UTF8=1",
   ]
 
-  if (is_win) {
+  if (is_win && !is_mingw) {
     # Disable some compiler warnings.
     cflags += [
       "/wd4005",  # Macro redefinition.
@@ -100,6 +95,18 @@ config("icu_code") {
       "/wd4267",  # Conversion from size_t on 64-bits.
       "/utf-8",  # ICU source files are in UTF-8.
     ]
+    if (!is_clang) {
+      cflags += [
+        # Ignore some msvc warnings here because V8 still supports msvc.
+        "/wd4244",  # Conversion: possible loss of data.
+      ]
+      defines += [
+        # https://crbug.com/1274247
+        # <ctgmath> is deprecated in C++17, but ICU still uses it, so we should
+        # silence the warning for now.
+        "_SILENCE_CXX17_C_HEADER_DEPRECATION_WARNING",
+      ]
+    }
   } else if (is_linux || is_chromeos || is_android || icu_is_in_fuchsia) {
     cflags += [ "-Wno-unused-function" ]
   }
@@ -116,12 +123,21 @@ config("icu_code") {
 
       # putil.cpp contains unused variables when building for iOS simulators.
       "-Wno-unused-variable",
+
+      # ICU has decided not to fix this warning as doing so would break its
+      # stable API.
+      "-Wno-ambiguous-reversed-operator",
     ]
   }
   if (is_clang || is_linux || is_chromeos || is_android || icu_is_in_fuchsia) {
     cflags += [
       # ICU uses its own deprecated functions.
       "-Wno-deprecated-declarations",
+    ]
+  }
+  if (is_mingw && !is_clang) {
+    cflags += [
+        "-fext-numeric-literals",
     ]
   }
   if (icu_is_in_fuchsia) {
@@ -134,7 +150,23 @@ config("icu_code") {
       # is fixed.
       "-Wno-implicit-int-float-conversion",
       "-Wno-conversion",
+
+      # Needed for C++20
+      "-Wno-ambiguous-reversed-operator",
+      "-Wno-rewrite-not-bool",
+      "-Wno-deprecated-anon-enum-enum-conversion",
+      "-Wno-deprecated-array-compare",
+      "-Wno-deprecated-pragma",
+
+      # Used for conditional changes to the compilation process that
+      # are only needed for the Fuchsia toolchain.
+      "-DICU_IS_IN_FUCHSIA",
     ]
+  }
+  if (current_cpu == "wasm") {
+    # Tell ICU that we are a 32 bit platform, otherwise,
+    # double-conversion-utils.h doesn't know how to operate.
+    defines += [ "__i386__" ]
   }
 }
 
@@ -156,6 +188,14 @@ template("generate_icu_component") {
                                "visibility",
                              ])
       assert(fuchsia_output_name_postfix == "")
+
+      # If icu_use_target_out_dir is defined and set, then the component
+      # will be output in the regular target_out_dir, rather than the default
+      # root_build_dir.
+      # See README.fuchsia for details.
+      if (defined(icu_use_target_out_dir) && icu_use_target_out_dir) {
+        output_dir = target_out_dir
+      }
 
       # ICU uses RTTI, replace the default "no rtti" config (if applied).
       configs += [
@@ -183,10 +223,24 @@ template("generate_icu_component") {
                                "testonly",
                                "visibility",
                              ])
+
+      # If icu_use_target_output_dir is defined and set, then the component
+      # will be output in the regular target_out_dir, rather than the default
+      # root_build_dir.
+      # See README.fuchsia for details.
+      if (defined(icu_use_target_output_dir) && icu_use_target_output_dir) {
+        output_dir = target_out_dir
+      }
+
       if (is_fuchsia) {
+        base_output_name = target_name
+        if (defined(invoker.output_name)) {
+          base_output_name = invoker.output_name
+        }
+
         # Fuchsia puts its own libicu*.so in /system/lib where we need to put our
         # .so when doing component builds, so we need to give this a different name.
-        output_name = "${target_name}_cr${fuchsia_output_name_postfix}"
+        output_name = "${base_output_name}_cr${fuchsia_output_name_postfix}"
       } else {
         assert(fuchsia_output_name_postfix == "")
       }
@@ -213,7 +267,7 @@ template("generate_icu_component") {
 
       # Make icu into a standalone static library. Currently This is only useful
       # on Chrome OS.
-      if (invoker.check_thin_archive && icu_disable_thin_archive) {
+      if (icu_disable_thin_archive) {
         configs -= [ "//build/config/compiler:thin_archive" ]
         complete_static_lib = true
       }
@@ -222,7 +276,6 @@ template("generate_icu_component") {
 }
 
 template("generate_icui18n") {
-  check_thin_archive = true
   generate_icu_component("bundled_" + target_name) {
     assert(defined(invoker.icuuc_deps), "Need the 'icuuc_deps' parameter.")
     icuuc_deps = invoker.icuuc_deps
@@ -244,24 +297,28 @@ template("generate_icui18n") {
 
     defines = [ "U_I18N_IMPLEMENTATION" ]
     deps = icuuc_deps
+
+    # TODO(fxbug.dev/98632): workaround for toolchain issues, see bug
+    if (icu_is_in_fuchsia && is_fuchsia) {
+      deps += [ "//build/config/fuchsia:uses-outline-atomics-fxbug98632" ]
+    }
   }
 }
 
 generate_icui18n("icui18n") {
   extra_configs = []
-  icuuc_deps = [ ":icuuc" ]
+  icuuc_deps = [ ":bundled_icuuc_private" ]
 }
 
 generate_icui18n("icui18n_hidden_visibility") {
   extra_configs = [ ":visibility_hidden" ]
-  icuuc_deps = [ ":bundled_icuuc_hidden_visibility" ]
+  icuuc_deps = [ ":bundled_icuuc_private_hidden_visibility" ]
   if (is_fuchsia && !icu_is_in_fuchsia) {
     fuchsia_output_name_postfix = "_hidden_visibility"
   }
 }
 
 template("generate_icuuc") {
-  check_thin_archive = false
   generate_icu_component("bundled_" + target_name) {
     fuchsia_output_name_postfix = ""
     if (defined(invoker.fuchsia_output_name_postfix)) {
@@ -276,24 +333,56 @@ template("generate_icuuc") {
                            ])
 
     sources = icuuc_sources
-    public = icuuc_public
+    public_deps = [ ":icuuc_public" ]
 
     defines = [ "U_COMMON_IMPLEMENTATION" ]
     deps = [ ":icudata" ]
 
-    if (icu_use_data_file) {
+    if (is_chromeos) {
+      deps += [ ":icudata_hash" ]
+    }
+
+    if (icu_use_data_file && icu_use_stub_data) {
       sources += [ "source/stubdata/stubdata.cpp" ]
     }
 
     defines += [ "U_ICUDATAENTRY_IN_COMMON" ]
+
+    # TODO(fxbug.dev/98632): workaround for toolchain issues, see bug
+    if (icu_is_in_fuchsia && is_fuchsia) {
+      deps += [ "//build/config/fuchsia:uses-outline-atomics-fxbug98632" ]
+    }
   }
 }
 
-generate_icuuc("icuuc") {
-  extra_configs = []
+group("bundled_icuuc") {
+  public_deps = [ ":bundled_icuuc_private" ]
 }
-generate_icuuc("icuuc_hidden_visibility") {
+
+group("bundled_icuuc_hidden_visibility") {
+  public_deps = [ ":bundled_icuuc_private_hidden_visibility" ]
+}
+
+source_set("icuuc_public") {
+  sources = icuuc_public
+}
+
+generate_icuuc("icuuc_private") {
+  extra_configs = []
+  output_name = "icuuc"
+  visibility = [
+    ":bundled_icui18n",
+    ":bundled_icuuc",
+  ]
+}
+
+generate_icuuc("icuuc_private_hidden_visibility") {
   extra_configs = [ ":visibility_hidden" ]
+  output_name = "icuuc_hidden_visibility"
+  visibility = [
+    ":bundled_icui18n_hidden_visibility",
+    ":bundled_icuuc_hidden_visibility",
+  ]
   if (is_fuchsia && !icu_is_in_fuchsia) {
     fuchsia_output_name_postfix = "_hidden_visibility"
   }
@@ -307,23 +396,19 @@ if (is_android && enable_java_templates) {
       disable_compression = true
     }
   }
-
-  android_assets("icu_extra_assets") {
-    if (icu_use_data_file) {
-      sources = [ "$root_out_dir/icudtl_extra.dat" ]
-      deps = [ ":extra_icudata" ]
-      disable_compression = true
-    }
-  }
 }
 
 if (is_android) {
-  # Use android_small for now to keep the size till we decide to switch to the new one.
-  data_dir = "android_small"
-} else if (is_ios) {
+  data_dir = "android"
+} else if (is_ios && !use_blink) {
   data_dir = "ios"
 } else if (is_chromeos) {
   data_dir = "chromeos"
+} else if (current_cpu == "wasm") {
+  data_dir = "flutter"
+} else if (icu_is_in_fuchsia && icu_fuchsia_override_data_dir != "") {
+  # See //config.gni for details.
+  data_dir = icu_fuchsia_override_data_dir
 } else {
   data_dir = "common"
 }
@@ -336,6 +421,23 @@ if (current_cpu == "mips" || current_cpu == "mips64" ||
 }
 data_bundle = "${data_bundle_prefix}.dat"
 
+# Some code paths end up not using these, marking them to avoid build
+# breaks.
+# See README.fuchsia for details.
+not_needed([
+             "data_bundle",
+             "data_bundle_prefix",
+             "data_dir",
+           ])
+
+if (icu_copy_icudata_to_root_build_dir) {
+  copy("copy_icudata") {
+    sources = [ "$data_dir/$data_bundle" ]
+    outputs = [ "$root_out_dir/$data_bundle" ]
+    data = [ "$root_out_dir/$data_bundle" ]
+  }
+}
+
 if (icu_use_data_file) {
   if (is_ios) {
     bundle_data("icudata") {
@@ -343,32 +445,52 @@ if (icu_use_data_file) {
       outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
     }
   } else {
-    copy("icudata") {
-      sources = [ "$data_dir/$data_bundle" ]
-      outputs = [ "$root_out_dir/$data_bundle" ]
-      data = [ "$root_out_dir/$data_bundle" ]
+    group("icudata") {
+      if (icu_copy_icudata_to_root_build_dir) {
+        # Guarded by a flag, to avoid name clashes if other build processes
+        # also happen to generate the output file by the same name.
+        # See README.fuchsia for details.
+        public_deps = [ ":copy_icudata" ]
+      }
     }
   }
 
-  copy("extra_icudata") {
-    sources = [ "//third_party/icu/android_small/icudtl_extra.dat" ]
-    outputs = [ "$root_out_dir/icudtl_extra.dat" ]
+  if (is_chromeos) {
+    copy("icudata_hash") {
+      sources = [ "chromeos/icudtl.dat.hash" ]
+      outputs = [ "$root_out_dir/icudtl.dat.hash" ]
+    }
   }
 } else {
-  data_assembly = "$target_gen_dir/${data_bundle_prefix}_dat.S"
+  if (current_cpu == "wasm") {
+    data_assembly = "$target_gen_dir/${data_bundle_prefix}_dat.cpp"
+  } else {
+    data_assembly = "$target_gen_dir/${data_bundle_prefix}_dat.S"
+  }
   inline_data_assembly = "$target_gen_dir/${data_bundle_prefix}_dat.cc"
   action("make_data_assembly") {
-    script = "scripts/make_data_assembly.py"
-    inputs = [ "$data_dir/$data_bundle" ]
-    outputs = [ data_assembly ]
-    args = [
-      rebase_path(inputs[0], root_build_dir),
-      rebase_path(data_assembly, root_build_dir),
-    ]
-    if (is_mac || is_ios) {
-      args += [ "--mac" ]
-    } else if (is_win) {
-      args += [ "--win" ]
+    if (current_cpu == "wasm") {
+      # See scripts/make_data_cpp.py for details on building ICU for wasm.
+      script = "scripts/make_data_cpp.py"
+      inputs = [ "$data_dir/$data_bundle" ]
+      outputs = [ data_assembly ]
+      args = [
+        rebase_path(inputs[0], root_build_dir),
+        rebase_path(data_assembly, root_build_dir),
+      ]
+    } else {
+      script = "scripts/make_data_assembly.py"
+      inputs = [ "$data_dir/$data_bundle" ]
+      outputs = [ data_assembly ]
+      args = [
+        rebase_path(inputs[0], root_build_dir),
+        rebase_path(data_assembly, root_build_dir),
+      ]
+      if (is_mac || is_ios) {
+        args += [ "--mac" ]
+      } else if (is_win) {
+        args += [ "--win" ]
+      }
     }
   }
 
@@ -405,12 +527,6 @@ config("system_icu_config") {
     "USING_SYSTEM_ICU=1",
     "ICU_UTIL_DATA_IMPL=ICU_UTIL_DATA_STATIC",
   ]
-
-  if (is_win) {
-    defines += [ "UCHAR_TYPE=wchar_t" ]
-  } else {
-    defines += [ "UCHAR_TYPE=uint16_t" ]
-  }
 }
 
 if (use_system_icu) {
@@ -505,6 +621,7 @@ shim_headers("icui18n_shim") {
     "unirepl.h",
     "unum.h",
     "unumberformatter.h",
+    "unumberrangeformatter.h",
     "unumsys.h",
     "upluralrules.h",
     "uregex.h",
@@ -544,6 +661,7 @@ shim_headers("icuuc_shim") {
     "icuplug.h",
     "idna.h",
     "localebuilder.h",
+    "localematcher.h",
     "localpointer.h",
     "locdspnm.h",
     "locid.h",

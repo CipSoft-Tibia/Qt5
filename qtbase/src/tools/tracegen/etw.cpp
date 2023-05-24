@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Rafael Roquetto <rafael.roquetto@kdab.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Rafael Roquetto <rafael.roquetto@kdab.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "etw.h"
 #include "provider.h"
@@ -47,19 +11,31 @@
 #include <qtextstream.h>
 #include <quuid.h>
 
+using namespace Qt::StringLiterals;
+
 static inline QString providerVar(const QString &providerName)
 {
-    return providerName + QLatin1String("_provider");
+    return providerName + "_provider"_L1;
 }
 
 static void writeEtwMacro(QTextStream &stream, const Tracepoint::Field &field)
 {
     const QString &name = field.name;
 
+    if (field.arrayLen > 0) {
+        for (int i = 0; i < field.arrayLen; i++) {
+            stream << "TraceLoggingValue(" << name << "[" << i << "], \"" << name << "[" << i << "]\")";
+            if (i + 1 < field.arrayLen)
+                stream << ",\n        ";
+        }
+        return;
+    }
+
     switch (field.backendType) {
     case Tracepoint::Field::QtString:
         stream << "TraceLoggingCountedWideString(reinterpret_cast<LPCWSTR>("
-               << name << ".utf16()), " << name << ".size(), \"" << name << "\")";
+               << name << ".utf16()), static_cast<ULONG>(" << name << ".size()), \""
+               << name << "\")";
         return;
     case Tracepoint::Field::QtByteArray:
         stream << "TraceLoggingBinary(" << name << ".constData(), "
@@ -69,13 +45,30 @@ static void writeEtwMacro(QTextStream &stream, const Tracepoint::Field &field)
         stream << "TraceLoggingValue(" << name << ".toEncoded().constData(), \"" << name << "\")";
         return;
     case Tracepoint::Field::QtRect:
+    case Tracepoint::Field::QtRectF:
         stream << "TraceLoggingValue(" << name << ".x(), \"x\"), "
                << "TraceLoggingValue(" << name << ".y(), \"y\"), "
                << "TraceLoggingValue(" << name << ".width(), \"width\"), "
                << "TraceLoggingValue(" << name << ".height(), \"height\")";
         return;
+    case Tracepoint::Field::QtSize:
+    case Tracepoint::Field::QtSizeF:
+        stream << "TraceLoggingValue(" << name << ".width(), \"width\"), "
+               << "TraceLoggingValue(" << name << ".height(), \"height\")";
+        return;
     case Tracepoint::Field::Pointer:
         stream << "TraceLoggingPointer(" << name << ", \"" << name << "\")";
+        return;
+    case Tracepoint::Field::Unknown:
+        // Write down the previously stringified data (like we do for QString).
+        // The string is already created in writeWrapper().
+        // Variable name is name##Str.
+        stream << "TraceLoggingCountedWideString(reinterpret_cast<LPCWSTR>(" << name
+               << "Str.utf16()), static_cast<ULONG>(" << name << "Str.size()), \"" << name << "\")";
+        return;
+    case Tracepoint::Field::EnumeratedType:
+    case Tracepoint::Field::FlagType:
+        stream << "TraceLoggingString(trace_convert_" << typeToTypeName(field.paramType) << "(" << name << ").toUtf8().constData(), \"" << name << "\")";
         return;
     default:
         break;
@@ -111,6 +104,7 @@ static QString createGuid(const QUuid &uuid)
 
 static void writePrologue(QTextStream &stream, const QString &fileName, const Provider &provider)
 {
+    writeCommonPrologue(stream);
     QUuid uuid = QUuid::createUuidV5(QUuid(), provider.name.toLocal8Bit());
 
     const QString providerV = providerVar(provider.name);
@@ -121,7 +115,7 @@ static void writePrologue(QTextStream &stream, const QString &fileName, const Pr
     stream << "#ifndef " << guard << "\n"
            << "#define " << guard << "\n"
            << "\n"
-           << "#include <windows.h>\n"
+           << "#include <qt_windows.h>\n"
            << "#include <TraceLoggingProvider.h>\n"
            << "\n";
 
@@ -138,7 +132,7 @@ static void writePrologue(QTextStream &stream, const QString &fileName, const Pr
     stream << "\n";
 
     if (!provider.prefixText.isEmpty())
-        stream << provider.prefixText.join(QLatin1Char('\n')) << "\n\n";
+        stream << provider.prefixText.join(u'\n') << "\n\n";
 
     stream << "#ifdef TRACEPOINT_DEFINE\n"
            << "/* " << guidString << " */\n"
@@ -169,20 +163,29 @@ static void writeEpilogue(QTextStream &stream, const QString &fileName)
            << "#include <private/qtrace_p.h>\n";
 }
 
-static void writeWrapper(QTextStream &stream, const Tracepoint &tracepoint,
+static void writeWrapper(QTextStream &stream, const Provider &provider, const Tracepoint &tracepoint,
                          const QString &providerName)
 {
     const QString argList = formatFunctionSignature(tracepoint.args);
-    const QString paramList = formatParameterList(tracepoint.args, ETW);
+    const QString paramList = formatParameterList(provider, tracepoint.args, tracepoint.fields, ETW);
     const QString &name = tracepoint.name;
     const QString includeGuard = QStringLiteral("TP_%1_%2").arg(providerName).arg(name).toUpper();
-    const QString provider = providerVar(providerName);
+    const QString provar = providerVar(providerName);
 
     stream << "\n";
 
     stream << "inline void trace_" << name << "(" << argList << ")\n"
-           << "{\n"
-           << "    TraceLoggingWrite(" << provider << ", \"" << name << "\"";
+           << "{\n";
+
+    // Convert all unknown types to QString's using QDebug.
+    // Note the naming convention: it's field.name##Str
+    for (const Tracepoint::Field &field : tracepoint.fields) {
+        if (field.backendType == Tracepoint::Field::Unknown) {
+            stream << "    const QString " << field.name << "Str = QDebug::toString(" << field.name
+                   << ");\n";
+        }
+    }
+    stream << "    TraceLoggingWrite(" << provar << ", \"" << name << "\"";
 
     for (const Tracepoint::Field &field : tracepoint.fields) {
         stream << ",\n";
@@ -200,8 +203,54 @@ static void writeWrapper(QTextStream &stream, const Tracepoint &tracepoint,
 
     stream << "inline bool trace_" << name << "_enabled()\n"
            << "{\n"
-           << "    return TraceLoggingProviderEnabled(" << provider << ", 0, 0);\n"
+           << "    return TraceLoggingProviderEnabled(" << provar << ", 0, 0);\n"
            << "}\n";
+}
+
+static void writeEnumConverter(QTextStream &stream, const TraceEnum &enumeration)
+{
+    stream << "inline QString trace_convert_" << typeToTypeName(enumeration.name) << "(" << enumeration.name << " val)\n";
+    stream << "{\n";
+    for (const auto &v : enumeration.values) {
+        if (v.range != 0) {
+            stream << "    if (val >= " << v.value << " && val <= " << v.range << ")\n"
+                   << "        return QStringLiteral(\"" << v.name << " + \") + QString::number((int)val - " << v.value << ");\n";
+        }
+    }
+    stream << "\n    QString ret;\n    switch (val) {\n";
+
+    QList<int> handledValues;
+    for (const auto &v : enumeration.values) {
+        if (v.range == 0 && !handledValues.contains(v.value)) {
+            stream << "    case " << v.value << ": ret = QStringLiteral(\""
+                   << aggregateListValues(v.value, enumeration.values) << "\"); break;\n";
+            handledValues.append(v.value);
+        }
+    }
+
+    stream << "    }\n    return ret;\n}\n";
+}
+
+static void writeFlagConverter(QTextStream &stream, const TraceFlags &flag)
+{
+    stream << "inline QString trace_convert_" << typeToTypeName(flag.name) << "(" << flag.name << " val)\n";
+    stream << "{\n    QString ret;\n";
+    for (const auto &v : flag.values) {
+        if (v.value == 0) {
+            stream << "    if (val == 0)\n        return QStringLiteral(\""
+                   << aggregateListValues(v.value, flag.values) << "\");\n";
+            break;
+        }
+    }
+    QList<int> handledValues;
+    for (const auto &v : flag.values) {
+        if (v.value != 0 && !handledValues.contains(v.value)) {
+            stream << "    if (val & " << (1 << (v.value - 1))
+                   << ") { if (ret.length()) ret += QLatin1Char(\'|\'); ret += QStringLiteral(\"" << v.name << "\"); }\n";
+            handledValues.append(v.value);
+        }
+    }
+    stream << "    return ret;\n}\n";
 }
 
 static void writeTracepoints(QTextStream &stream, const Provider &provider)
@@ -213,12 +262,20 @@ static void writeTracepoints(QTextStream &stream, const Provider &provider)
 
     stream << "#if !defined(" << includeGuard << ") && !defined(TRACEPOINT_DEFINE)\n"
            << "#define " << includeGuard << "\n"
+           << "QT_BEGIN_NAMESPACE\n"
            << "namespace QtPrivate {\n";
 
+    for (const auto &enumeration : provider.enumerations)
+        writeEnumConverter(stream, enumeration);
+
+    for (const auto &flag : provider.flags)
+        writeFlagConverter(stream, flag);
+
     for (const Tracepoint &t : provider.tracepoints)
-        writeWrapper(stream, t, provider.name);
+        writeWrapper(stream, provider, t, provider.name);
 
     stream << "} // namespace QtPrivate\n"
+           << "QT_END_NAMESPACE\n"
            << "#endif // " << includeGuard << "\n\n";
 }
 

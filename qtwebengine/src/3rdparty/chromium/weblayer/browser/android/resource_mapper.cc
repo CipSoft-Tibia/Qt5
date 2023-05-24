@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,6 +42,7 @@ void ConstructMap() {
 #include "components/resources/android/page_info_resource_id.h"
 #include "components/resources/android/permissions_resource_id.h"
 #include "components/resources/android/sms_resource_id.h"
+#include "components/resources/android/webxr_resource_id.h"
 #undef LINK_RESOURCE_ID
 #undef DECLARE_RESOURCE_ID
   // Make sure ID list sizes match up.

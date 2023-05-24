@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,9 +17,10 @@ UsbPrinterManifestHandler::~UsbPrinterManifestHandler() {
 }
 
 bool UsbPrinterManifestHandler::Parse(Extension* extension,
-                                      base::string16* error) {
-  const base::Value* usb_printers = nullptr;
-  CHECK(extension->manifest()->Get(manifest_keys::kUsbPrinters, &usb_printers));
+                                      std::u16string* error) {
+  const base::Value* usb_printers =
+      extension->manifest()->FindPath(manifest_keys::kUsbPrinters);
+  CHECK(usb_printers != nullptr);
   std::unique_ptr<UsbPrinterManifestData> data =
       UsbPrinterManifestData::FromValue(*usb_printers, error);
   if (!data) {
@@ -32,11 +33,7 @@ bool UsbPrinterManifestHandler::Parse(Extension* extension,
 
 base::span<const char* const> UsbPrinterManifestHandler::Keys() const {
   static constexpr const char* kKeys[] = {manifest_keys::kUsbPrinters};
-#if !defined(__GNUC__) || __GNUC__ > 5
   return kKeys;
-#else
-  return base::make_span(kKeys, 1);
-#endif
 }
 
 }  // namespace extensions

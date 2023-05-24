@@ -8,17 +8,33 @@
 #ifndef SkImage_GpuBase_DEFINED
 #define SkImage_GpuBase_DEFINED
 
-#include "include/core/SkDeferredDisplayListRecorder.h"
-#include "include/core/SkYUVAIndex.h"
-#include "include/gpu/GrBackendSurface.h"
-#include "include/private/GrTypesPriv.h"
+#include "include/core/SkRefCnt.h"
+#include "include/private/gpu/ganesh/GrImageContext.h"
 #include "src/image/SkImage_Base.h"
 
-class GrColorSpaceXform;
+#include <cstddef>
+#include <cstdint>
+
+class GrBackendFormat;
+class GrBackendTexture;
+class GrCaps;
+class GrContextThreadSafeProxy;
 class GrDirectContext;
-class GrImageContext;
-class GrRenderTargetContext;
+class GrRecordingContext;
+class GrTextureProxy;
+class SkBitmap;
 class SkColorSpace;
+class SkImage;
+enum SkAlphaType : int;
+enum SkColorType : int;
+enum class GrColorType;
+struct SkIRect;
+struct SkISize;
+struct SkImageInfo;
+namespace skgpu {
+enum class Mipmapped : bool;
+class RefCntedCallback;
+}
 
 class SkImage_GpuBase : public SkImage_Base {
 public:
@@ -35,72 +51,40 @@ public:
                       int srcY,
                       CachingHint) const override;
 
-    GrSurfaceProxyView refView(GrRecordingContext*, GrMipmapped) const final;
-
-    GrSurfaceProxyView refPinnedView(GrRecordingContext* context, uint32_t* uniqueID) const final {
-        *uniqueID = this->uniqueID();
-        SkASSERT(this->view(context));
-        return *this->view(context);
-    }
-
-    GrBackendTexture onGetBackendTexture(bool flushPendingGrContextIO,
-                                         GrSurfaceOrigin* origin) const final;
-
-    GrTexture* getTexture() const;
-
     bool onIsValid(GrRecordingContext*) const final;
-
-#if GR_TEST_UTILS
-    void resetContext(sk_sp<GrImageContext> newContext);
-#endif
 
     static bool ValidateBackendTexture(const GrCaps*, const GrBackendTexture& tex,
                                        GrColorType grCT, SkColorType ct, SkAlphaType at,
                                        sk_sp<SkColorSpace> cs);
     static bool ValidateCompressedBackendTexture(const GrCaps*, const GrBackendTexture& tex,
                                                  SkAlphaType);
-    static bool MakeTempTextureProxies(GrRecordingContext*, const GrBackendTexture yuvaTextures[],
-                                       int numTextures, const SkYUVAIndex [4],
-                                       GrSurfaceOrigin imageOrigin,
-                                       GrSurfaceProxyView tempViews[4],
-                                       sk_sp<GrRefCntedCallback> releaseHelper);
 
-    static SkAlphaType GetAlphaTypeFromYUVAIndices(const SkYUVAIndex yuvaIndices[4]) {
-        return -1 != yuvaIndices[SkYUVAIndex::kA_Index].fIndex ? kPremul_SkAlphaType
-                                                               : kOpaque_SkAlphaType;
-    }
-
-    using PromiseImageTextureContext = SkDeferredDisplayListRecorder::PromiseImageTextureContext;
-    using PromiseImageTextureFulfillProc =
-            SkDeferredDisplayListRecorder::PromiseImageTextureFulfillProc;
-    using PromiseImageTextureReleaseProc =
-            SkDeferredDisplayListRecorder::PromiseImageTextureReleaseProc;
-    using PromiseImageTextureDoneProc = SkDeferredDisplayListRecorder::PromiseImageTextureDoneProc;
+    // Helper for making a lazy proxy for a promise image.
+    // PromiseImageTextureFulfillProc must not be null.
+    static sk_sp<GrTextureProxy> MakePromiseImageLazyProxy(
+            GrContextThreadSafeProxy*,
+            SkISize dimensions,
+            GrBackendFormat,
+            skgpu::Mipmapped,
+            PromiseImageTextureFulfillProc,
+            sk_sp<skgpu::RefCntedCallback> releaseHelper);
 
 protected:
-    SkImage_GpuBase(sk_sp<GrImageContext>, SkISize size, uint32_t uniqueID, SkColorType,
-                    SkAlphaType, sk_sp<SkColorSpace>);
-
-    using PromiseImageApiVersion = SkDeferredDisplayListRecorder::PromiseImageApiVersion;
-    // Helper for making a lazy proxy for a promise image. The PromiseDoneProc we be called,
-    // if not null, immediately if this function fails. Othwerwise, it is installed in the
-    // proxy along with the TextureFulfillProc and TextureReleaseProc. PromiseDoneProc must not
-    // be null.
-    static sk_sp<GrTextureProxy> MakePromiseImageLazyProxy(
-            GrRecordingContext*, int width, int height, GrBackendFormat, GrMipmapped,
-            PromiseImageTextureFulfillProc, PromiseImageTextureReleaseProc,
-            PromiseImageTextureDoneProc, PromiseImageTextureContext, PromiseImageApiVersion);
-
-    static bool RenderYUVAToRGBA(const GrCaps&, GrRenderTargetContext*,
-                                 const SkRect&, SkYUVColorSpace,
-                                 sk_sp<GrColorSpaceXform>,
-                                 GrSurfaceProxyView [4],
-                                 const SkYUVAIndex [4]);
+    SkImage_GpuBase(sk_sp<GrImageContext>, SkImageInfo, uint32_t uniqueID);
 
     sk_sp<GrImageContext> fContext;
 
-private:
-    using INHERITED = SkImage_Base;
+#ifdef SK_GRAPHITE_ENABLED
+    sk_sp<SkImage> onMakeTextureImage(skgpu::graphite::Recorder*,
+                                      RequiredImageProperties) const final;
+    sk_sp<SkImage> onMakeSubset(const SkIRect& subset,
+                                skgpu::graphite::Recorder*,
+                                RequiredImageProperties) const final;
+    sk_sp<SkImage> onMakeColorTypeAndColorSpace(SkColorType,
+                                                sk_sp<SkColorSpace>,
+                                                skgpu::graphite::Recorder*,
+                                                RequiredImageProperties) const final;
+#endif
 };
 
 #endif

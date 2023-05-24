@@ -1,15 +1,17 @@
-# Memory: Java heap profiler
+# Memory: Java heap dumps
 
-NOTE: The Java heap profiler requires Android 11 or higher
+NOTE: Capturing Java heap dumps requires Android 11 or higher
 
 See the [Memory Guide](/docs/case-studies/memory.md#java-hprof) for getting
-started with Java heap profiling.
+started with Java heap dumps.
 
-Conversely from the [Native heap profiler](native-heap-profiler.md), the Java
-heap profiler reports full retention graphs of managed objects but not
-call-stacks. The information recorded by the Java heap profiler is of the form:
-_Object X retains object Y, which is N bytes large, through its class member
-named Z_.
+Conversely from [Native heap profiles](native-heap-profiler.md), Java heap dumps
+report full retention graphs of managed objects but not call-stacks. The
+information recorded in a Java heap dump is of the form: _Object X retains
+object Y, which is N bytes large, through its class member named Z_.
+
+Java heap dumps are not to be confused with profiles taken by the
+[Java heap sampler](native-heap-profiler.md#java-heap-sampling)
 
 ## UI
 
@@ -17,9 +19,13 @@ Heap graph dumps are shown as flamegraphs in the UI after clicking on the
 diamond in the _"Heap Profile"_ track of a process. Each diamond corresponds to
 a heap dump.
 
-![Java heap profiles in the process tracks](/docs/images/profile-diamond.png)
+![Java heap dumps in the process tracks](/docs/images/profile-diamond.png)
 
-![Flamegraph of a Java heap profiler](/docs/images/java-flamegraph.png)
+![Flamegraph of a Java heap dump](/docs/images/java-heap-graph.png)
+
+The native size of certain objects is represented as an extra child node in the
+flamegraph, prefixed with "[native]". The extra node counts as an extra object.
+This is available only on Android 13 or higher.
 
 ## SQL
 
@@ -28,6 +34,9 @@ Information about the Java Heap is written to the following tables:
 * [`heap_graph_class`](/docs/analysis/sql-tables.autogen#heap_graph_class)
 * [`heap_graph_object`](/docs/analysis/sql-tables.autogen#heap_graph_object)
 * [`heap_graph_reference`](/docs/analysis/sql-tables.autogen#heap_graph_reference)
+
+`native_size` (available only on Android T+) is extracted from the related
+`libcore.util.NativeAllocationRegistry` and is not included in `self_size`.
 
 For instance, to get the bytes used by class name, run the following query.
 As-is this query will often return un-actionable information, as most of the
@@ -67,7 +76,10 @@ We can then use them to get the flamegraph data.
 
 ```sql
 select name, cumulative_size
-       from experimental_flamegraph(56785646801, 1, 'graph')
+       from experimental_flamegraph
+       where ts = 56785646801
+            and upid = 1
+            and profile_type = 'graph'
        order by 2 desc;
 ```
 
@@ -83,7 +95,7 @@ select name, cumulative_size
 
 ## TraceConfig
 
-The Java heap profiler is configured through the
+The Java heap dump data source is configured through the
 [JavaHprofConfig](/docs/reference/trace-config-proto.autogen#JavaHprofConfig)
 section of the trace config.
 

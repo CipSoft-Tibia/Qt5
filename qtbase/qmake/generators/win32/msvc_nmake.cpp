@@ -1,35 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "msvc_nmake.h"
 #include "option.h"
 
-#include <qregexp.h>
+#include <qregularexpression.h>
 #include <qdir.h>
 #include <qdiriterator.h>
 #include <qset.h>
@@ -86,8 +61,8 @@ QString NmakeMakefileGenerator::defaultInstall(const QString &t)
 
     if (project->isActiveConfig("debug_info")) {
         if (t == "dlltarget" || project->values(ProKey(t + ".CONFIG")).indexOf("no_dll") == -1) {
-            const QFileInfo targetFileInfo = project->first("DESTDIR") + project->first("TARGET")
-                    + project->first("TARGET_EXT");
+            const QFileInfo targetFileInfo(project->first("DESTDIR") + project->first("TARGET")
+                    + project->first("TARGET_EXT"));
             const QString pdb_target = targetFileInfo.completeBaseName() + ".pdb";
             QString src_targ = (project->isEmpty("DESTDIR") ? QString("$(DESTDIR)") : project->first("DESTDIR")) + pdb_target;
             QString dst_targ = filePrefixRoot(root, fileFixify(targetdir + pdb_target, FileFixifyAbsolute));
@@ -174,6 +149,10 @@ QString NmakeMakefileGenerator::var(const ProKey &value) const
     return MakefileGenerator::var(value);
 }
 
+void NmakeMakefileGenerator::suppressBuiltinRules(QTextStream &) const
+{
+}
+
 void NmakeMakefileGenerator::init()
 {
     /* this should probably not be here, but I'm using it to wrap the .t files */
@@ -245,8 +224,8 @@ void NmakeMakefileGenerator::init()
         project->values("PRECOMPILED_PCH_C")    = ProStringList(precompPchC);
     }
 
-    const QFileInfo targetFileInfo = project->first("DESTDIR") + project->first("TARGET")
-            + project->first("TARGET_EXT");
+    const QFileInfo targetFileInfo(project->first("DESTDIR") + project->first("TARGET")
+            + project->first("TARGET_EXT"));
     const ProString targetBase = targetFileInfo.path() + '/' + targetFileInfo.completeBaseName();
     if (project->first("TEMPLATE") == "lib" && project->isActiveConfig("shared")) {
         project->values("QMAKE_CLEAN").append(targetBase + ".exp");
@@ -285,9 +264,9 @@ QStringList NmakeMakefileGenerator::sourceFilesForImplicitRulesFilter()
 {
     QStringList filter;
     const QChar wildcard = QLatin1Char('*');
-    for (const QString &ext : qAsConst(Option::c_ext))
+    for (const QString &ext : std::as_const(Option::c_ext))
         filter << wildcard + ext;
-    for (const QString &ext : qAsConst(Option::cpp_ext))
+    for (const QString &ext : std::as_const(Option::cpp_ext))
         filter << wildcard + ext;
     return filter;
 }
@@ -311,7 +290,7 @@ void NmakeMakefileGenerator::writeImplicitRulesPart(QTextStream &t)
         for (int y = 0; directories[y]; y++) {
             QString dirTemp = project->first(directories[y]).toQString();
             if (dirTemp.endsWith("\\"))
-                dirTemp.truncate(dirTemp.length()-1);
+                dirTemp.truncate(dirTemp.size()-1);
             if(!dirTemp.isEmpty())
                 source_directories.insert(dirTemp);
         }
@@ -335,11 +314,10 @@ void NmakeMakefileGenerator::writeImplicitRulesPart(QTextStream &t)
         const QStringList sourceFilesFilter = sourceFilesForImplicitRulesFilter();
         QStringList fixifiedSourceDirs = fileFixify(QList<QString>(source_directories.constBegin(), source_directories.constEnd()), FileFixifyAbsolute);
         fixifiedSourceDirs.removeDuplicates();
-        for (const QString &sourceDir : qAsConst(fixifiedSourceDirs)) {
+        for (const QString &sourceDir : std::as_const(fixifiedSourceDirs)) {
             QDirIterator dit(sourceDir, sourceFilesFilter, QDir::Files | QDir::NoDotAndDotDot);
             while (dit.hasNext()) {
-                dit.next();
-                const QFileInfo fi = dit.fileInfo();
+                const QFileInfo fi = dit.nextFileInfo();
                 QString &duplicate = fileNames[fi.completeBaseName()];
                 if (duplicate.isNull()) {
                     duplicate = fi.filePath();
@@ -361,7 +339,7 @@ void NmakeMakefileGenerator::writeImplicitRulesPart(QTextStream &t)
         project->variables().remove("QMAKE_RUN_CXX");
         project->variables().remove("QMAKE_RUN_CC");
 
-        for (const QString &sourceDir : qAsConst(source_directories)) {
+        for (const QString &sourceDir : std::as_const(source_directories)) {
             if (sourceDir.isEmpty())
                 continue;
             QString objDir = var("OBJECTS_DIR");
@@ -370,12 +348,12 @@ void NmakeMakefileGenerator::writeImplicitRulesPart(QTextStream &t)
             for(QStringList::Iterator cppit = Option::cpp_ext.begin(); cppit != Option::cpp_ext.end(); ++cppit)
                 t << '{' << escapeDependencyPath(sourceDir) << '}' << (*cppit)
                   << '{' << escapeDependencyPath(objDir) << '}' << Option::obj_ext << "::\n\t"
-                  << var("QMAKE_RUN_CXX_IMP_BATCH").replace(QRegExp("\\$@"), fileVar("OBJECTS_DIR"))
+                  << var("QMAKE_RUN_CXX_IMP_BATCH").replace(QRegularExpression("\\$@"), fileVar("OBJECTS_DIR"))
                   << "\n\t$<\n<<\n\n";
             for(QStringList::Iterator cit = Option::c_ext.begin(); cit != Option::c_ext.end(); ++cit)
                 t << '{' << escapeDependencyPath(sourceDir) << '}' << (*cit)
                   << '{' << escapeDependencyPath(objDir) << '}' << Option::obj_ext << "::\n\t"
-                  << var("QMAKE_RUN_CC_IMP_BATCH").replace(QRegExp("\\$@"), fileVar("OBJECTS_DIR"))
+                  << var("QMAKE_RUN_CC_IMP_BATCH").replace(QRegularExpression("\\$@"), fileVar("OBJECTS_DIR"))
                   << "\n\t$<\n<<\n\n";
         }
     } else {
@@ -434,7 +412,7 @@ void NmakeMakefileGenerator::writeBuildRulesPart(QTextStream &t)
             }
 
             const QString resourceId = (templateName == "app") ? "1" : "2";
-            const bool incrementalLinking = project->values("QMAKE_LFLAGS").toQStringList().filter(QRegExp("(/|-)INCREMENTAL:NO")).isEmpty();
+            const bool incrementalLinking = project->values("QMAKE_LFLAGS").toQStringList().filter(QRegularExpression("(/|-)INCREMENTAL:NO")).isEmpty();
             if (incrementalLinking && !linkerSupportsEmbedding) {
                 // Link a resource that contains the manifest without modifying the exe/dll after linking.
 

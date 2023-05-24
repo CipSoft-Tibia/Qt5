@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QOPENGL_H
 #define QOPENGL_H
@@ -63,9 +27,9 @@
 // access to additional functionality the drivers may expose but
 // which the system headers do not.
 
-#if defined(QT_OPENGL_ES_2)
+#if QT_CONFIG(opengles2)
 # if defined(Q_OS_IOS) || defined(Q_OS_TVOS)
-#  if defined(QT_OPENGL_ES_3)
+#  if QT_CONFIG(opengles3)
 #   include <OpenGLES/ES3/gl.h>
 #   include <OpenGLES/ES3/glext.h>
 #  else
@@ -83,7 +47,7 @@ typedef void* GLeglImageOES;
 
 # elif !defined(Q_OS_DARWIN) // "uncontrolled" ES2 platforms
 
-// In "es2" builds (QT_OPENGL_ES_2) additional defines indicate GLES 3.0 or
+// In "es2" builds (QT_CONFIG(opengles2)) additional defines indicate GLES 3.0 or
 // higher is available *at build time*. In this case include the corresponding
 // header. These are backwards compatible and it should be safe to include
 // headers on top of each other, meaning that applications can include gl2.h
@@ -101,20 +65,20 @@ typedef void* GLeglImageOES;
 #   define QGL_TEMP_GLEXT_PROTO
 #  endif
 
-#  if defined(QT_OPENGL_ES_3_2)
+#  if QT_CONFIG(opengles32)
 #   include <GLES3/gl32.h>
-#  elif defined(QT_OPENGL_ES_3_1)
+#  elif QT_CONFIG(opengles31)
 #   include <GLES3/gl31.h>
-#  elif defined(QT_OPENGL_ES_3)
+#  elif QT_CONFIG(opengles3)
 #   include <GLES3/gl3.h>
 #  else
 #   include <GLES2/gl2.h>
-#endif
+#  endif
 
 #  ifdef QGL_TEMP_GLEXT_PROTO
 #   undef GL_GLEXT_PROTOTYPES
 #   undef QGL_TEMP_GLEXT_PROTO
-# endif
+#  endif
 
 /*
    Some GLES2 implementations (like the one on Harmattan) are missing the
@@ -125,9 +89,9 @@ typedef void* GLeglImageOES;
 typedef char GLchar;
 
 #  include <QtGui/qopengles2ext.h>
-# endif // Q_OS_MAC
+# endif
 #else // non-ES2 platforms
-# if defined(Q_OS_MAC)
+# if defined(Q_OS_MACOS)
 #  include <OpenGL/gl.h>
 #  define GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
 #  include <OpenGL/gl3.h>
@@ -144,11 +108,11 @@ typedef char GLchar;
 #   include <GL/gl.h>
 #  endif
 #  include <QtGui/qopenglext.h>
-# endif // Q_OS_MAC
-#endif // QT_OPENGL_ES_2
+# endif
+#endif // !QT_CONFIG(opengles2)
 
 // Desktops can support OpenGL 4.
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
 #define QT_OPENGL_3
 #define QT_OPENGL_3_2
 #define QT_OPENGL_4
@@ -157,15 +121,13 @@ typedef char GLchar;
 # endif
 #endif
 
-QT_BEGIN_NAMESPACE
-
 
 // When all else fails we provide sensible fallbacks - this is needed to
 // allow compilation on OS X 10.6
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
 
 // OS X 10.6 doesn't define these which are needed below
-// OS X 10.7 and later defien them in gl3.h
+// OS X 10.7 and later define them in gl3.h
 #ifndef APIENTRY
 #define APIENTRY
 #endif
@@ -287,6 +249,7 @@ typedef GLintptr GLvdpauSurfaceNV;
 // End of block copied from glext.h
 #endif
 
+QT_BEGIN_NAMESPACE
 
 // Types that aren't defined in all system's gl.h files.
 typedef ptrdiff_t qopengl_GLintptr;

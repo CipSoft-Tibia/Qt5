@@ -1,53 +1,22 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qfilesystemwatcher_polling_p.h"
+
 #include <QtCore/qscopeguard.h>
 #include <QtCore/qtimer.h>
 
+#include <chrono>
+
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
+static constexpr auto PollingInterval = 1s;
+
 QPollingFileSystemWatcherEngine::QPollingFileSystemWatcherEngine(QObject *parent)
-    : QFileSystemWatcherEngine(parent),
-      timer(this)
+    : QFileSystemWatcherEngine(parent)
 {
-    connect(&timer, SIGNAL(timeout()), SLOT(timeout()));
 }
 
 QStringList QPollingFileSystemWatcherEngine::addPaths(const QStringList &paths,
@@ -64,8 +33,8 @@ QStringList QPollingFileSystemWatcherEngine::addPaths(const QStringList &paths,
             if (directories->contains(path))
                 continue;
             directories->append(path);
-            if (!path.endsWith(QLatin1Char('/')))
-                fi = QFileInfo(path + QLatin1Char('/'));
+            if (!path.endsWith(u'/'))
+                fi = QFileInfo(path + u'/');
             this->directories.insert(path, fi);
         } else {
             if (files->contains(path))
@@ -79,7 +48,7 @@ QStringList QPollingFileSystemWatcherEngine::addPaths(const QStringList &paths,
     if ((!this->files.isEmpty() ||
          !this->directories.isEmpty()) &&
         !timer.isActive()) {
-        timer.start(PollingInterval);
+        timer.start(PollingInterval, this);
     }
 
     return unhandled;
@@ -108,40 +77,46 @@ QStringList QPollingFileSystemWatcherEngine::removePaths(const QStringList &path
     return unhandled;
 }
 
-void QPollingFileSystemWatcherEngine::timeout()
+void QPollingFileSystemWatcherEngine::timerEvent(QTimerEvent *e)
 {
+    if (e->timerId() != timer.timerId())
+        return QFileSystemWatcherEngine::timerEvent(e);
+
     for (auto it = files.begin(), end = files.end(); it != end; /*erasing*/) {
-        auto x = it++;
-        QString path = x.key();
+        QString path = it.key();
         QFileInfo fi(path);
         if (!fi.exists()) {
-            files.erase(x);
+            it = files.erase(it);
             emit fileChanged(path, true);
-        } else if (x.value() != fi) {
-            x.value() = fi;
+            continue;
+        } else if (it.value() != fi) {
+            it.value() = fi;
             emit fileChanged(path, false);
         }
+        ++it;
     }
 
     for (auto it = directories.begin(), end = directories.end(); it != end; /*erasing*/) {
-        auto x = it++;
-        QString path = x.key();
+        QString path = it.key();
         QFileInfo fi(path);
-        if (!path.endsWith(QLatin1Char('/')))
-            fi = QFileInfo(path + QLatin1Char('/'));
+        if (!path.endsWith(u'/'))
+            fi = QFileInfo(path + u'/');
         if (!fi.exists()) {
-            directories.erase(x);
+            it = directories.erase(it);
             emit directoryChanged(path, true);
-        } else if (x.value() != fi) {
+            continue;
+        } else if (it.value() != fi) {
             fi.refresh();
             if (!fi.exists()) {
-                directories.erase(x);
+                it = directories.erase(it);
                 emit directoryChanged(path, true);
+                continue;
             } else {
-                x.value() = fi;
+                it.value() = fi;
                 emit directoryChanged(path, false);
             }
         }
+        ++it;
     }
 }
 

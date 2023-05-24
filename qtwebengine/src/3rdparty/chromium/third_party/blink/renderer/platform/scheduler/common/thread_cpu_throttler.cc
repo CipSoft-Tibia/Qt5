@@ -1,26 +1,25 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/platform/scheduler/public/thread_cpu_throttler.h"
 
-#include "base/atomicops.h"
-#include "base/macros.h"
+#include <atomic>
+#include <memory>
+
+#include "base/logging.h"
 #include "base/memory/singleton.h"
 #include "base/synchronization/atomic_flag.h"
 #include "base/threading/platform_thread.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 #include <signal.h>
 #define USE_SIGNALS 1
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 #include <windows.h>
 #endif
-
-using base::subtle::Atomic32;
-using base::subtle::Acquire_Load;
-using base::subtle::Release_Store;
 
 namespace blink {
 namespace scheduler {
@@ -29,6 +28,8 @@ class ThreadCPUThrottler::ThrottlingThread final
     : public base::PlatformThread::Delegate {
  public:
   explicit ThrottlingThread(double rate);
+  ThrottlingThread(const ThrottlingThread&) = delete;
+  ThrottlingThread& operator=(const ThrottlingThread&) = delete;
   ~ThrottlingThread() override;
 
   void SetThrottlingRate(double rate);
@@ -52,22 +53,20 @@ class ThreadCPUThrottler::ThrottlingThread final
   static bool signal_handler_installed_;
   static struct sigaction old_signal_handler_;
 #endif
-  static Atomic32 thread_exists_;
-  static Atomic32 throttling_rate_percent_;
+  static std::atomic<bool> thread_exists_;
+  static std::atomic<int> throttling_rate_percent_;
 
   base::PlatformThreadHandle throttled_thread_handle_;
   base::PlatformThreadHandle throttling_thread_handle_;
   base::AtomicFlag cancellation_flag_;
-
-  DISALLOW_COPY_AND_ASSIGN(ThrottlingThread);
 };
 
 #ifdef USE_SIGNALS
 bool ThreadCPUThrottler::ThrottlingThread::signal_handler_installed_;
 struct sigaction ThreadCPUThrottler::ThrottlingThread::old_signal_handler_;
 #endif
-Atomic32 ThreadCPUThrottler::ThrottlingThread::throttling_rate_percent_;
-Atomic32 ThreadCPUThrottler::ThrottlingThread::thread_exists_;
+std::atomic<int> ThreadCPUThrottler::ThrottlingThread::throttling_rate_percent_;
+std::atomic<bool> ThreadCPUThrottler::ThrottlingThread::thread_exists_;
 
 ThreadCPUThrottler::ThrottlingThread::ThrottlingThread(double rate)
 #ifdef OS_WIN
@@ -77,17 +76,18 @@ ThreadCPUThrottler::ThrottlingThread::ThrottlingThread(double rate)
     : throttled_thread_handle_(base::PlatformThread::CurrentHandle()) {
 #endif
   SetThrottlingRate(rate);
-  CHECK_EQ(base::subtle::NoBarrier_AtomicExchange(&thread_exists_, 1), 0);
+  CHECK(!thread_exists_.exchange(true, std::memory_order_relaxed));
   Start();
 }  // namespace scheduler
 
 ThreadCPUThrottler::ThrottlingThread::~ThrottlingThread() {
   Stop();
-  CHECK_EQ(base::subtle::NoBarrier_AtomicExchange(&thread_exists_, 0), 1);
+  CHECK(thread_exists_.exchange(false, std::memory_order_relaxed));
 }
 
 void ThreadCPUThrottler::ThrottlingThread::SetThrottlingRate(double rate) {
-  Release_Store(&throttling_rate_percent_, static_cast<Atomic32>(rate * 100));
+  throttling_rate_percent_.store(static_cast<int>(rate * 100),
+                                 std::memory_order_release);
 }
 
 void ThreadCPUThrottler::ThrottlingThread::ThreadMain() {
@@ -129,15 +129,15 @@ void ThreadCPUThrottler::ThrottlingThread::HandleSignal(int signal) {
   static base::TimeTicks lastResumeTime;
   base::TimeTicks now = base::TimeTicks::Now();
   base::TimeDelta run_duration = now - lastResumeTime;
-  uint32_t throttling_rate_percent = Acquire_Load(&throttling_rate_percent_);
+  uint32_t throttling_rate_percent =
+      throttling_rate_percent_.load(std::memory_order_acquire);
   // Limit the observed run duration to 1000μs to deal with the first entrance
   // to the signal handler.
   uint32_t run_duration_us = static_cast<uint32_t>(
       std::min(run_duration.InMicroseconds(), static_cast<int64_t>(1000)));
   uint32_t sleep_duration_us =
       run_duration_us * throttling_rate_percent / 100 - run_duration_us;
-  base::TimeTicks wake_up_time =
-      now + base::TimeDelta::FromMicroseconds(sleep_duration_us);
+  base::TimeTicks wake_up_time = now + base::Microseconds(sleep_duration_us);
   do {
     now = base::TimeTicks::Now();
   } while (now < wake_up_time);
@@ -147,27 +147,25 @@ void ThreadCPUThrottler::ThrottlingThread::HandleSignal(int signal) {
 #endif  // USE_SIGNALS
 
 void ThreadCPUThrottler::ThrottlingThread::Throttle() {
-  const int quant_time_us = 200;
+  [[maybe_unused]] const int quant_time_us = 200;
 #ifdef USE_SIGNALS
   pthread_kill(throttled_thread_handle_.platform_handle(), SIGUSR2);
-  Sleep(base::TimeDelta::FromMicroseconds(quant_time_us));
-#elif defined(OS_WIN)
-  double rate = Acquire_Load(&throttling_rate_percent_) / 100.;
+  Sleep(base::Microseconds(quant_time_us));
+#elif BUILDFLAG(IS_WIN)
+  double rate = throttling_rate_percent_.load(std::memory_order_acquire) / 100.;
   base::TimeDelta run_duration =
-      base::TimeDelta::FromMicroseconds(static_cast<int>(quant_time_us / rate));
+      base::Microseconds(static_cast<int>(quant_time_us / rate));
   base::TimeDelta sleep_duration =
-      base::TimeDelta::FromMicroseconds(quant_time_us) - run_duration;
+      base::Microseconds(quant_time_us) - run_duration;
   Sleep(run_duration);
   ::SuspendThread(throttled_thread_handle_.platform_handle());
   Sleep(sleep_duration);
   ::ResumeThread(throttled_thread_handle_.platform_handle());
-#else
-  ALLOW_UNUSED_LOCAL(quant_time_us);
 #endif
 }
 
 void ThreadCPUThrottler::ThrottlingThread::Start() {
-#if defined(USE_SIGNALS) || defined(OS_WIN)
+#if defined(USE_SIGNALS) || BUILDFLAG(IS_WIN)
 #if defined(USE_SIGNALS)
   InstallSignalHandler();
 #endif
@@ -180,7 +178,7 @@ void ThreadCPUThrottler::ThrottlingThread::Start() {
 }
 
 void ThreadCPUThrottler::ThrottlingThread::Sleep(base::TimeDelta duration) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // We cannot rely on ::Sleep function as it's precision is not enough for
   // the purpose. Could be up to 16ms jitter.
   base::TimeTicks wakeup_time = base::TimeTicks::Now() + duration;
@@ -212,7 +210,7 @@ void ThreadCPUThrottler::SetThrottlingRate(double rate) {
   if (throttling_thread_) {
     throttling_thread_->SetThrottlingRate(rate);
   } else {
-    throttling_thread_.reset(new ThrottlingThread(rate));
+    throttling_thread_ = std::make_unique<ThrottlingThread>(rate);
   }
 }
 

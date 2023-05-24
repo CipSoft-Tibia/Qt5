@@ -1,15 +1,13 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/browsing_data/core/history_notice_utils.h"
 
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
-#include "base/single_thread_task_runner.h"
-#include "base/strings/stringprintf.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/history/core/browser/web_history_service.h"
 #include "components/sync/driver/sync_service.h"
 #include "components/sync/driver/sync_user_settings.h"
@@ -40,7 +38,8 @@ class MergeBooleanCallbacks {
       return;
 
     std::move(target_callback_).Run(final_response_);
-    base::ThreadTaskRunnerHandle::Get()->DeleteSoon(FROM_HERE, this);
+    base::SingleThreadTaskRunner::GetCurrentDefault()->DeleteSoon(FROM_HERE,
+                                                                  this);
   }
 
  private:
@@ -61,7 +60,7 @@ void ShouldShowNoticeAboutOtherFormsOfBrowsingHistory(
   if (!sync_service || !sync_service->IsSyncFeatureActive() ||
       !sync_service->GetActiveDataTypes().Has(
           syncer::HISTORY_DELETE_DIRECTIVES) ||
-      sync_service->GetUserSettings()->IsUsingSecondaryPassphrase() ||
+      sync_service->GetUserSettings()->IsUsingExplicitPassphrase() ||
       !history_service) {
     std::move(callback).Run(false);
     return;
@@ -104,7 +103,7 @@ void ShouldPopupDialogAboutOtherFormsOfBrowsingHistory(
   if (!sync_service || !sync_service->IsSyncFeatureActive() ||
       !sync_service->GetActiveDataTypes().Has(
           syncer::HISTORY_DELETE_DIRECTIVES) ||
-      sync_service->GetUserSettings()->IsUsingSecondaryPassphrase() ||
+      sync_service->GetUserSettings()->IsUsingExplicitPassphrase() ||
       !history_service) {
     std::move(callback).Run(false);
     return;

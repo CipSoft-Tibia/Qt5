@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 
 #include "base/command_line.h"
 #include "base/files/file_util.h"
+#include "base/memory/raw_ptr.h"
 #include "media/base/test_data_util.h"
 #include "media/gpu/vp8_decoder.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -27,7 +28,7 @@ const std::string kIFrame = "vp8-I-frame-320x240";
 const std::string kPFrame = "vp8-P-frame-320x240";
 const std::string kCorruptFrame = "vp8-corrupt-I-frame";
 constexpr gfx::Size kVideoSize(320, 240);
-constexpr size_t kRequiredNumOfPictures = 9u;
+constexpr size_t kRequiredNumOfPictures = 8u;
 
 class MockVP8Accelerator : public VP8Decoder::VP8Accelerator {
  public:
@@ -55,7 +56,7 @@ class VP8DecoderTest : public ::testing::Test {
   void CompleteToDecodeFirstIFrame();
 
   std::unique_ptr<VP8Decoder> decoder_;
-  MockVP8Accelerator* accelerator_ = nullptr;
+  raw_ptr<MockVP8Accelerator> accelerator_ = nullptr;
 
  private:
   void DecodeFirstIFrame();
@@ -80,6 +81,7 @@ void VP8DecoderTest::SetUp() {
 void VP8DecoderTest::DecodeFirstIFrame() {
   ASSERT_EQ(AcceleratedVideoDecoder::kRanOutOfStreamData, Decode(kNullFrame));
   ASSERT_EQ(AcceleratedVideoDecoder::kConfigChange, Decode(kIFrame));
+  EXPECT_EQ(8u, decoder_->GetBitDepth());
   EXPECT_EQ(kVideoSize, decoder_->GetPicSize());
   EXPECT_LE(kRequiredNumOfPictures, decoder_->GetRequiredNumOfPictures());
 }
@@ -119,6 +121,8 @@ AcceleratedVideoDecoder::DecodeResult VP8DecoderTest::Decode(
                   AcceleratedVideoDecoder::DecodeResult::kRanOutOfStreamData ||
               result == AcceleratedVideoDecoder::DecodeResult::kConfigChange ||
               result == AcceleratedVideoDecoder::DecodeResult::kDecodeError);
+  if (result != AcceleratedVideoDecoder::DecodeResult::kDecodeError)
+    EXPECT_EQ(8u, decoder_->GetBitDepth());
   return result;
 }
 

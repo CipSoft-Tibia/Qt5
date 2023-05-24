@@ -1,4 +1,4 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,6 +16,7 @@ from .code_node_cxx import CxxFuncDefNode
 from .code_node_cxx import CxxNamespaceNode
 from .codegen_accumulator import CodeGenAccumulator
 from .codegen_context import CodeGenContext
+from .codegen_utils import collect_forward_decls_and_include_headers
 from .codegen_utils import component_export
 from .codegen_utils import component_export_header
 from .codegen_utils import enclose_with_header_guard
@@ -30,7 +31,6 @@ from .task_queue import TaskQueue
 
 # IDL callback interface and IDL callback function share a lot by their nature,
 # so this module uses some implementations from IDL callback function.
-from .callback_function import collect_forward_decls_and_include_headers
 from .callback_function import make_callback_invocation_function
 from .callback_function import make_invoke_and_report_function
 from .callback_function import make_is_runnable_or_throw_exception
@@ -177,7 +177,7 @@ def generate_callback_interface(callback_interface_identifier):
          prop_install_mode=PropInstallMode.UNCONDITIONAL,
          trampoline_var_name=None,
          attribute_entries=[],
-         constant_entries=filter(is_unconditional, constant_entries),
+         constant_entries=list(filter(is_unconditional, constant_entries)),
          exposed_construct_entries=[],
          operation_entries=[])
     (install_interface_template_decl, install_interface_template_def,
@@ -185,6 +185,7 @@ def generate_callback_interface(callback_interface_identifier):
          cg_context,
          FN_INSTALL_INTERFACE_TEMPLATE,
          class_name=class_name,
+         api_class_name=class_name,
          trampoline_var_name=None,
          constructor_entries=[],
          supplemental_install_node=SequenceNode(),
@@ -202,7 +203,7 @@ def generate_callback_interface(callback_interface_identifier):
     ])
     installer_function_defs.accumulate(
         CodeGenAccumulator.require_include_headers([
-            "third_party/blink/renderer/bindings/core/v8/v8_dom_configuration.h"
+            "third_party/blink/renderer/platform/bindings/idl_member_installer.h",
         ]))
 
     # WrapperTypeInfo
@@ -283,13 +284,19 @@ def generate_callback_interface(callback_interface_identifier):
         "third_party/blink/renderer/platform/bindings/callback_interface_base.h",
         "third_party/blink/renderer/platform/bindings/v8_value_or_script_wrappable_adapter.h",
     ])
+    source_node.accumulator.add_stdcpp_include_headers([
+        "tuple",
+    ])
     source_node.accumulator.add_include_headers([
         "third_party/blink/renderer/bindings/core/v8/callback_invoke_helper.h",
         "third_party/blink/renderer/bindings/core/v8/generated_code_helper.h",
+        "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h",
     ])
     (header_forward_decls, header_include_headers, source_forward_decls,
      source_include_headers) = collect_forward_decls_and_include_headers(
-         callback_interface.operation_groups[0][0])
+         [callback_interface.operation_groups[0][0].return_type] + list(
+             map(lambda argument: argument.idl_type,
+                 callback_interface.operation_groups[0][0].arguments)))
     header_node.accumulator.add_class_decls(header_forward_decls)
     header_node.accumulator.add_include_headers(header_include_headers)
     source_node.accumulator.add_class_decls(source_forward_decls)
@@ -310,13 +317,6 @@ def generate_callback_interface(callback_interface_identifier):
 
         class_def.public_section.append(get_wrapper_type_info_def)
         class_def.public_section.append(EmptyNode())
-        class_def.public_section.extend([
-            TextNode("// Migration adapter"),
-            TextNode("static v8::Local<v8::FunctionTemplate> DomTemplate("
-                     "v8::Isolate* isolate, "
-                     "const DOMWrapperWorld& world);"),
-            EmptyNode(),
-        ])
         class_def.private_section.append(wrapper_type_info_var_def)
         class_def.private_section.append(EmptyNode())
         source_blink_ns.body.extend([

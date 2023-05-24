@@ -1,47 +1,11 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Copyright (C) 2016 Pelagicore AG
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// Copyright (C) 2017 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// Copyright (C) 2016 Pelagicore AG
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qeglfskmsscreen.h"
-#include "qeglfskmsdevice.h"
-#include "qeglfsintegration_p.h"
+#include "qeglfskmsscreen_p.h"
+#include "qeglfskmsdevice_p.h"
+#include <private/qeglfsintegration_p.h>
 
 #include <QtCore/QLoggingCategory>
 
@@ -160,14 +124,12 @@ QSizeF QEglFSKmsScreen::physicalSize() const
 
 QDpi QEglFSKmsScreen::logicalDpi() const
 {
-    const QSizeF ps = physicalSize();
-    const QSize s = geometry().size();
+    return logicalBaseDpi();
+}
 
-    if (!ps.isEmpty() && !s.isEmpty())
-        return QDpi(25.4 * s.width() / ps.width(),
-                    25.4 * s.height() / ps.height());
-    else
-        return QDpi(100, 100);
+QDpi QEglFSKmsScreen::logicalBaseDpi() const
+{
+    return QDpi(100, 100);
 }
 
 Qt::ScreenOrientation QEglFSKmsScreen::nativeOrientation() const
@@ -218,12 +180,12 @@ qreal QEglFSKmsScreen::refreshRate() const
     return refresh > 0 ? refresh : 60;
 }
 
-QVector<QPlatformScreen::Mode> QEglFSKmsScreen::modes() const
+QList<QPlatformScreen::Mode> QEglFSKmsScreen::modes() const
 {
-    QVector<QPlatformScreen::Mode> list;
+    QList<QPlatformScreen::Mode> list;
     list.reserve(m_output.modes.size());
 
-    for (const drmModeModeInfo &info : qAsConst(m_output.modes))
+    for (const drmModeModeInfo &info : std::as_const(m_output.modes))
         list.append({QSize(info.hdisplay, info.vdisplay),
                      qreal(info.vrefresh > 0 ? info.vrefresh : 60)});
 
@@ -254,6 +216,15 @@ void QEglFSKmsScreen::setPowerState(QPlatformScreen::PowerState state)
 {
     m_output.setPowerState(m_device, state);
     m_powerState = state;
+}
+
+/* Informs exact page flip timing which can be used rendering optimization.
+   Consider this is from drm event reader thread. */
+void QEglFSKmsScreen::pageFlipped(unsigned int sequence, unsigned int tv_sec, unsigned int tv_usec)
+{
+    Q_UNUSED(sequence);
+    Q_UNUSED(tv_sec);
+    Q_UNUSED(tv_usec);
 }
 
 QT_END_NAMESPACE

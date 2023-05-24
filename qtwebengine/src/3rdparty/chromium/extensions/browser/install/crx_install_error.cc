@@ -1,19 +1,18 @@
-// Copyright (c) 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/install/crx_install_error.h"
 
-#include <algorithm>
-
 #include "base/check_op.h"
+#include "base/containers/contains.h"
 #include "extensions/browser/install/sandboxed_unpacker_failure_reason.h"
 
 namespace extensions {
 
 CrxInstallError::CrxInstallError(CrxInstallErrorType type,
                                  CrxInstallErrorDetail detail,
-                                 const base::string16& message)
+                                 const std::u16string& message)
     : type_(type), detail_(detail), message_(message) {
   DCHECK_NE(CrxInstallErrorType::NONE, type);
   DCHECK_NE(CrxInstallErrorType::SANDBOXED_UNPACKER_FAILURE, type);
@@ -21,10 +20,10 @@ CrxInstallError::CrxInstallError(CrxInstallErrorType type,
 
 CrxInstallError::CrxInstallError(CrxInstallErrorType type,
                                  CrxInstallErrorDetail detail)
-    : CrxInstallError(type, detail, base::string16()) {}
+    : CrxInstallError(type, detail, std::u16string()) {}
 
 CrxInstallError::CrxInstallError(SandboxedUnpackerFailureReason reason,
-                                 const base::string16& message)
+                                 const std::u16string& message)
     : type_(CrxInstallErrorType::SANDBOXED_UNPACKER_FAILURE),
       detail_(CrxInstallErrorDetail::NONE),
       sandbox_failure_detail_(reason),
@@ -78,10 +77,7 @@ bool CrxInstallError::IsCrxVerificationFailedError() const {
     return false;
   const SandboxedUnpackerFailureReason unpacker_failure_reason =
       sandbox_failure_detail();
-  return std::find(std::begin(kVerificationFailureReasons),
-                   std::end(kVerificationFailureReasons),
-                   unpacker_failure_reason) !=
-         std::end(kVerificationFailureReasons);
+  return base::Contains(kVerificationFailureReasons, unpacker_failure_reason);
 }
 
 // Returns true if the error occurred during crx installation due to mismatch in

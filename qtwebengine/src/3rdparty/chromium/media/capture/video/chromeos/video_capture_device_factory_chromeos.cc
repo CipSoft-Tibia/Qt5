@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/memory/ptr_util.h"
+#include "base/task/single_thread_task_runner.h"
 #include "media/base/bind_to_current_loop.h"
 #include "media/capture/video/chromeos/camera_app_device_bridge_impl.h"
 #include "media/capture/video/chromeos/camera_hal_dispatcher_impl.h"
@@ -20,31 +21,34 @@ gpu::GpuMemoryBufferManager* g_gpu_buffer_manager = nullptr;
 }  // namespace
 
 VideoCaptureDeviceFactoryChromeOS::VideoCaptureDeviceFactoryChromeOS(
-    scoped_refptr<base::SingleThreadTaskRunner> task_runner_for_screen_observer,
-    CameraAppDeviceBridgeImpl* camera_app_device_bridge)
-    : task_runner_for_screen_observer_(task_runner_for_screen_observer),
-      camera_hal_ipc_thread_("CameraHalIpcThread"),
-      camera_app_device_bridge_(camera_app_device_bridge),
-      initialized_(Init()) {}
+    scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner)
+    : ui_task_runner_(ui_task_runner), initialized_(Init()) {}
 
 VideoCaptureDeviceFactoryChromeOS::~VideoCaptureDeviceFactoryChromeOS() {
-  if (camera_app_device_bridge_) {
-    camera_app_device_bridge_->UnsetCameraInfoGetter();
-  }
+  CameraAppDeviceBridgeImpl::GetInstance()->UnsetCameraInfoGetter();
+
+  auto* camera_app_device_bridge = CameraAppDeviceBridgeImpl::GetInstance();
+  camera_app_device_bridge->UnsetCameraInfoGetter();
+  camera_app_device_bridge->UnsetVirtualDeviceController();
+
   camera_hal_delegate_->Reset();
-  camera_hal_ipc_thread_.Stop();
+  camera_hal_delegate_.reset();
 }
 
-std::unique_ptr<VideoCaptureDevice>
-VideoCaptureDeviceFactoryChromeOS::CreateDevice(
+VideoCaptureErrorOrDevice VideoCaptureDeviceFactoryChromeOS::CreateDevice(
     const VideoCaptureDeviceDescriptor& device_descriptor) {
   DCHECK(thread_checker_.CalledOnValidThread());
   if (!initialized_) {
-    return std::unique_ptr<VideoCaptureDevice>();
+    return VideoCaptureErrorOrDevice(
+        VideoCaptureError::
+            kCrosHalV3DeviceDelegateFailedToInitializeCameraDevice);
   }
-  return camera_hal_delegate_->CreateDevice(task_runner_for_screen_observer_,
-                                            device_descriptor,
-                                            camera_app_device_bridge_);
+  auto device =
+      camera_hal_delegate_->CreateDevice(ui_task_runner_, device_descriptor);
+  return device ? VideoCaptureErrorOrDevice(std::move(device))
+                : VideoCaptureErrorOrDevice(
+                      VideoCaptureError::
+                          kVideoCaptureDeviceFactoryChromeOSCreateDeviceFailed);
 }
 
 void VideoCaptureDeviceFactoryChromeOS::GetDevicesInfo(
@@ -71,32 +75,34 @@ void VideoCaptureDeviceFactoryChromeOS::SetGpuBufferManager(
 }
 
 bool VideoCaptureDeviceFactoryChromeOS::Init() {
-  if (!camera_hal_ipc_thread_.Start()) {
-    LOG(ERROR) << "Module thread failed to start";
-    return false;
-  }
-
   if (!CameraHalDispatcherImpl::GetInstance()->IsStarted()) {
     LOG(ERROR) << "CameraHalDispatcherImpl is not started";
     return false;
   }
 
-  camera_hal_delegate_ =
-      new CameraHalDelegate(camera_hal_ipc_thread_.task_runner());
-  camera_hal_delegate_->RegisterCameraClient();
+  camera_hal_delegate_ = std::make_unique<CameraHalDelegate>(ui_task_runner_);
 
-  // Since the |camera_hal_delegate_| is initialized on the constructor of this
-  // object and is destroyed after |camera_app_device_bridge_| unsetting its
-  // reference, it is safe to use base::Unretained() here.
-  if (camera_app_device_bridge_) {
-    camera_app_device_bridge_->SetCameraInfoGetter(
-        base::BindRepeating(&CameraHalDelegate::GetCameraInfoFromDeviceId,
-                            base::Unretained(camera_hal_delegate_.get())));
+  if (!camera_hal_delegate_->Init()) {
+    LOG(ERROR) << "Failed to initialize CameraHalDelegate";
+    camera_hal_delegate_.reset();
+    return false;
   }
-  return true;
-}
 
-bool VideoCaptureDeviceFactoryChromeOS::IsSupportedCameraAppDeviceBridge() {
+  if (!camera_hal_delegate_->RegisterCameraClient()) {
+    LOG(ERROR) << "Failed to register camera client";
+    return false;
+  }
+
+  // Since we will unset camera info getter and virtual device controller before
+  // invalidate |camera_hal_delegate_| in the destructor, it should be safe to
+  // use base::Unretained() here.
+  auto* camera_app_device_bridge = CameraAppDeviceBridgeImpl::GetInstance();
+  camera_app_device_bridge->SetCameraInfoGetter(
+      base::BindRepeating(&CameraHalDelegate::GetCameraInfoFromDeviceId,
+                          base::Unretained(camera_hal_delegate_.get())));
+  camera_app_device_bridge->SetVirtualDeviceController(
+      base::BindRepeating(&CameraHalDelegate::EnableVirtualDevice,
+                          base::Unretained(camera_hal_delegate_.get())));
   return true;
 }
 

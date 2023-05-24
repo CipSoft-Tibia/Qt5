@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,13 +11,12 @@
 #include "base/check.h"
 #include "base/notreached.h"
 #include "content/common/pepper_file_util.h"
-#include "content/common/view_messages.h"
-#include "content/renderer/render_thread_impl.h"
 #include "ppapi/c/pp_errors.h"
 #include "ppapi/c/pp_instance.h"
 #include "ppapi/c/pp_resource.h"
 #include "ppapi/c/ppb_image_data.h"
 #include "ppapi/thunk/thunk.h"
+#include "skia/ext/legacy_display_globals.h"
 #include "skia/ext/platform_canvas.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkColorPriv.h"
@@ -36,10 +35,10 @@ PPB_ImageData_Impl::PPB_ImageData_Impl(PP_Instance instance,
       height_(0) {
   switch (type) {
     case PPB_ImageData_Shared::PLATFORM:
-      backend_.reset(new ImageDataPlatformBackend());
+      backend_ = std::make_unique<ImageDataPlatformBackend>();
       return;
     case PPB_ImageData_Shared::SIMPLE:
-      backend_.reset(new ImageDataSimpleBackend);
+      backend_ = std::make_unique<ImageDataSimpleBackend>();
       return;
       // No default: so that we get a compiler warning if any types are added.
   }
@@ -51,7 +50,7 @@ PPB_ImageData_Impl::PPB_ImageData_Impl(PP_Instance instance, ForTest)
       format_(PP_IMAGEDATAFORMAT_BGRA_PREMUL),
       width_(0),
       height_(0) {
-  backend_.reset(new ImageDataPlatformBackend());
+  backend_ = std::make_unique<ImageDataPlatformBackend>();
 }
 
 PPB_ImageData_Impl::~PPB_ImageData_Impl() {}
@@ -238,7 +237,8 @@ void* ImageDataSimpleBackend::Map() {
     skia_bitmap_.setPixels(shm_mapping_.memory());
     // Our platform bitmaps are set to opaque by default, which we don't want.
     skia_bitmap_.setAlphaType(kPremul_SkAlphaType);
-    skia_canvas_ = std::make_unique<SkCanvas>(skia_bitmap_);
+    skia_canvas_ = std::make_unique<SkCanvas>(
+        skia_bitmap_, skia::LegacyDisplayGlobals::GetSkSurfaceProps());
   }
   return skia_bitmap_.isNull() ? nullptr : skia_bitmap_.getAddr32(0, 0);
 }

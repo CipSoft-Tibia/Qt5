@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,11 +12,12 @@
 #include <utility>
 #include <vector>
 
-#include "base/callback.h"
 #include "base/containers/flat_map.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/system/system_monitor.h"
+#include "build/build_config.h"
 #include "content/browser/media/media_devices_util.h"
 #include "content/common/content_export.h"
 #include "media/audio/audio_device_description.h"
@@ -28,6 +29,7 @@
 #include "third_party/blink/public/mojom/mediastream/media_devices.mojom.h"
 
 using blink::mojom::AudioInputDeviceCapabilitiesPtr;
+using blink::mojom::MediaDeviceType;
 using blink::mojom::VideoInputDeviceCapabilitiesPtr;
 
 namespace media {
@@ -39,9 +41,10 @@ namespace content {
 class MediaDevicesPermissionChecker;
 class VideoCaptureManager;
 
-// Use blink::MediaDeviceType values to index on this type.
+// Use MediaDeviceType values to index on this type.
 using MediaDeviceEnumeration =
-    std::array<blink::WebMediaDeviceInfoArray, blink::NUM_MEDIA_DEVICE_TYPES>;
+    std::array<blink::WebMediaDeviceInfoArray,
+               static_cast<size_t>(MediaDeviceType::NUM_MEDIA_DEVICE_TYPES)>;
 
 // MediaDevicesManager is responsible for doing media-device enumerations.
 // In addition it implements caching for enumeration results and device
@@ -50,10 +53,12 @@ using MediaDeviceEnumeration =
 class CONTENT_EXPORT MediaDevicesManager
     : public base::SystemMonitor::DevicesChangedObserver {
  public:
-  // Use blink::MediaDeviceType values to index on this type. By default all
-  // device types are false.
+  // Use MediaDeviceType values to index on this type. By default
+  // all device types are false.
   class BoolDeviceTypes final
-      : public std::array<bool, blink::NUM_MEDIA_DEVICE_TYPES> {
+      : public std::array<bool,
+                          static_cast<size_t>(
+                              MediaDeviceType::NUM_MEDIA_DEVICE_TYPES)> {
    public:
     BoolDeviceTypes() { fill(false); }
   };
@@ -65,10 +70,10 @@ class CONTENT_EXPORT MediaDevicesManager
       std::vector<VideoInputDeviceCapabilitiesPtr>,
       std::vector<AudioInputDeviceCapabilitiesPtr>)>;
   using StopRemovedInputDeviceCallback = base::RepeatingCallback<void(
-      blink::MediaDeviceType type,
+      MediaDeviceType type,
       const blink::WebMediaDeviceInfo& media_device_info)>;
   using UIInputDeviceChangeCallback = base::RepeatingCallback<void(
-      blink::MediaDeviceType stream_type,
+      MediaDeviceType stream_type,
       const blink::WebMediaDeviceInfoArray& devices)>;
 
   MediaDevicesManager(
@@ -76,6 +81,10 @@ class CONTENT_EXPORT MediaDevicesManager
       const scoped_refptr<VideoCaptureManager>& video_capture_manager,
       StopRemovedInputDeviceCallback stop_removed_input_device_cb,
       UIInputDeviceChangeCallback ui_input_device_change_cb);
+
+  MediaDevicesManager(const MediaDevicesManager&) = delete;
+  MediaDevicesManager& operator=(const MediaDevicesManager&) = delete;
+
   ~MediaDevicesManager() override;
 
   // Performs a possibly cached device enumeration for the requested device
@@ -117,9 +126,6 @@ class CONTENT_EXPORT MediaDevicesManager
   // Stops device monitoring and disables caching for all device types.
   void StopMonitoring();
 
-  // Returns true if device monitoring is active, false otherwise.
-  bool IsMonitoringStarted();
-
   // Implements base::SystemMonitor::DevicesChangedObserver.
   // This function is only called in response to physical audio/video device
   // changes.
@@ -137,9 +143,7 @@ class CONTENT_EXPORT MediaDevicesManager
   // is rewritten to receive devices via a callback.
   // See http://crbug.com/648155.
   blink::WebMediaDeviceInfoArray GetCachedDeviceInfo(
-      blink::MediaDeviceType type);
-
-  MediaDevicesPermissionChecker* media_devices_permission_checker();
+      MediaDeviceType type) const;
 
   const MediaDeviceSaltAndOriginCallback& salt_and_origin_callback() const {
     return salt_and_origin_callback_;
@@ -172,6 +176,11 @@ class CONTENT_EXPORT MediaDevicesManager
     int render_frame_id;
     BoolDeviceTypes subscribe_types;
     mojo::Remote<blink::mojom::MediaDevicesListener> listener_;
+
+    // The previously seen device ID salt for this subscription, to be used only
+    // to tell if a new salt has been generated, meaning the subscription should
+    // be notified that device IDs have changed.
+    absl::optional<std::string> last_seen_device_id_salt_;
   };
 
   // Class containing the state of each spawned enumeration. This state is
@@ -207,7 +216,7 @@ class CONTENT_EXPORT MediaDevicesManager
   };
 
   // Manually sets a caching policy for a given device type.
-  void SetCachePolicy(blink::MediaDeviceType type, CachePolicy policy);
+  void SetCachePolicy(MediaDeviceType type, CachePolicy policy);
 
   // Helpers to handle enumeration results for a renderer process.
   void CheckPermissionsForEnumerateDevices(
@@ -242,7 +251,7 @@ class CONTENT_EXPORT MediaDevicesManager
   void GotAudioInputCapabilities(
       size_t state_index,
       size_t capabilities_index,
-      const base::Optional<media::AudioParameters>& parameters);
+      const absl::optional<media::AudioParameters>& parameters);
   void FinalizeDevicesEnumerated(EnumerationState enumeration_state);
 
   std::vector<VideoInputDeviceCapabilitiesPtr> ComputeVideoInputCapabilities(
@@ -250,61 +259,72 @@ class CONTENT_EXPORT MediaDevicesManager
       const blink::WebMediaDeviceInfoArray& translated_device_infos);
 
   // Helpers to issue low-level device enumerations.
-  void DoEnumerateDevices(blink::MediaDeviceType type);
+  void DoEnumerateDevices(MediaDeviceType type);
   void EnumerateAudioDevices(bool is_input);
 
   // Callback for VideoCaptureManager::EnumerateDevices.
   void VideoInputDevicesEnumerated(
+      media::mojom::DeviceEnumerationResult result_code,
       const media::VideoCaptureDeviceDescriptors& descriptors);
 
   // Callback for AudioSystem::GetDeviceDescriptions.
   void AudioDevicesEnumerated(
-      blink::MediaDeviceType type,
+      MediaDeviceType type,
       media::AudioDeviceDescriptions device_descriptions);
 
   // Helpers to handle enumeration results.
-  void DevicesEnumerated(blink::MediaDeviceType type,
+  void DevicesEnumerated(MediaDeviceType type,
                          const blink::WebMediaDeviceInfoArray& snapshot);
-  void UpdateSnapshot(blink::MediaDeviceType type,
+  void UpdateSnapshot(MediaDeviceType type,
                       const blink::WebMediaDeviceInfoArray& new_snapshot,
                       bool ignore_group_id = true);
   void ProcessRequests();
   bool IsEnumerationRequestReady(const EnumerationRequest& request_info);
 
   // Helpers to handle device-change notification.
-  void HandleDevicesChanged(blink::MediaDeviceType type);
+  void HandleDevicesChanged(MediaDeviceType type);
   void MaybeStopRemovedInputDevices(
-      blink::MediaDeviceType type,
+      MediaDeviceType type,
       const blink::WebMediaDeviceInfoArray& new_snapshot);
-  void NotifyDeviceChangeSubscribers(
-      blink::MediaDeviceType type,
-      const blink::WebMediaDeviceInfoArray& snapshot);
+  void SetSubscriptionLastSeenDeviceIdSalt(
+      uint32_t subscription_id,
+      MediaDeviceSaltAndOrigin salt_and_origin);
+  void OnSaltAndOriginForSubscription(
+      uint32_t subscription_id,
+      int render_process_id,
+      int render_frame_id,
+      MediaDeviceType type,
+      const blink::WebMediaDeviceInfoArray& device_infos,
+      bool devices_changed,
+      MediaDeviceSaltAndOrigin salt_and_origin);
   void CheckPermissionForDeviceChange(
       uint32_t subscription_id,
       int render_process_id,
       int render_frame_id,
-      blink::MediaDeviceType type,
+      MediaDeviceType type,
       const blink::WebMediaDeviceInfoArray& device_infos,
       MediaDeviceSaltAndOrigin salt_and_origin);
   void NotifyDeviceChange(uint32_t subscription_id,
-                          blink::MediaDeviceType type,
+                          MediaDeviceType type,
                           const blink::WebMediaDeviceInfoArray& device_infos,
                           const MediaDeviceSaltAndOrigin& salt_and_origin,
                           bool has_permission);
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   void StartMonitoringOnUIThread();
 #endif
 
   bool use_fake_devices_;
-  media::AudioSystem* const audio_system_;  // not owned
+  const raw_ptr<media::AudioSystem> audio_system_;  // not owned
   scoped_refptr<VideoCaptureManager> video_capture_manager_;
   StopRemovedInputDeviceCallback stop_removed_input_device_cb_;
   UIInputDeviceChangeCallback ui_input_device_change_cb_;
 
   std::unique_ptr<MediaDevicesPermissionChecker> permission_checker_;
 
-  using CachePolicies = std::array<CachePolicy, blink::NUM_MEDIA_DEVICE_TYPES>;
+  using CachePolicies =
+      std::array<CachePolicy,
+                 static_cast<size_t>(MediaDeviceType::NUM_MEDIA_DEVICE_TYPES)>;
   CachePolicies cache_policies_;
 
   class CacheInfo;
@@ -329,8 +349,6 @@ class CONTENT_EXPORT MediaDevicesManager
   uint32_t next_enumeration_state_id_ = 0;
 
   base::WeakPtrFactory<MediaDevicesManager> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(MediaDevicesManager);
 };
 
 // This function uses a heuristic to guess the group ID for a video device with

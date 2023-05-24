@@ -1,18 +1,24 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/common/loader/network_utils.h"
 
-#include "base/feature_list.h"
-#include "build/build_config.h"
-#include "net/net_buildflags.h"
-#include "services/network/public/cpp/is_potentially_trustworthy.h"
-#include "third_party/blink/public/common/features.h"
-#include "url/url_constants.h"
+#include "media/media_buildflags.h"
+#include "net/http/http_request_headers.h"
+#include "services/network/public/cpp/constants.h"
+#include "services/network/public/mojom/fetch_api.mojom.h"
+#include "third_party/blink/public/common/buildflags.h"
 
 namespace blink {
 namespace network_utils {
+
+namespace {
+
+constexpr char kStylesheetAcceptHeader[] = "text/css,*/*;q=0.1";
+constexpr char kWebBundleAcceptHeader[] = "application/webbundle;v=b2";
+
+}  // namespace
 
 bool AlwaysAccessNetwork(
     const scoped_refptr<net::HttpResponseHeaders>& headers) {
@@ -26,29 +32,33 @@ bool AlwaysAccessNetwork(
          headers->HasHeaderValue("vary", "*");
 }
 
-bool IsURLHandledByNetworkService(const GURL& url) {
-  if (url.SchemeIsHTTPOrHTTPS() || url.SchemeIsWSOrWSS())
-    return true;
-#if !BUILDFLAG(DISABLE_FTP_SUPPORT)
-  if (url.SchemeIs(url::kFtpScheme) &&
-      base::FeatureList::IsEnabled(features::kFtpProtocol))
-    return true;
+const char* ImageAcceptHeader() {
+#if BUILDFLAG(ENABLE_AV1_DECODER)
+  return "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
+#else
+  return "image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8";
 #endif
-  return false;
 }
 
-bool IsOriginSecure(const GURL& url) {
-  // TODO(lukasza): data: URLs (and opaque origins associated with them) should
-  // be considered insecure according to
-  // https://www.w3.org/TR/powerful-features/#is-url-trustworthy.
-  // Unfortunately, changing this behavior of NetworkUtils::IsOriginSecure
-  // breaks quite a few tests for now (e.g. considering data: insecure makes us
-  // think that https + data = mixed content), so fixing this is postponed to a
-  // follow-up CL.  WIP CL @ https://crrev.com/c/1505897.
-  if (url.SchemeIs(url::kDataScheme))
-    return true;
-
-  return network::IsUrlPotentiallyTrustworthy(url);
+void SetAcceptHeader(net::HttpRequestHeaders& headers,
+                     network::mojom::RequestDestination request_destination) {
+  if (request_destination == network::mojom::RequestDestination::kStyle ||
+      request_destination == network::mojom::RequestDestination::kXslt) {
+    headers.SetHeader(net::HttpRequestHeaders::kAccept,
+                      kStylesheetAcceptHeader);
+  } else if (request_destination ==
+             network::mojom::RequestDestination::kImage) {
+    headers.SetHeaderIfMissing(net::HttpRequestHeaders::kAccept,
+                               ImageAcceptHeader());
+  } else if (request_destination ==
+             network::mojom::RequestDestination::kWebBundle) {
+    headers.SetHeader(net::HttpRequestHeaders::kAccept, kWebBundleAcceptHeader);
+  } else {
+    // Calling SetHeaderIfMissing() instead of SetHeader() because JS can
+    // manually set an accept header on an XHR.
+    headers.SetHeaderIfMissing(net::HttpRequestHeaders::kAccept,
+                               network::kDefaultAcceptHeaderValue);
+  }
 }
 
 }  // namespace network_utils

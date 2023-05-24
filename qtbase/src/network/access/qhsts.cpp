@@ -1,46 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhsts_p.h"
 
 #include "QtCore/private/qipaddress_p.h"
-#include "QtCore/qvector.h"
 #include "QtCore/qlist.h"
 
 #if QT_CONFIG(settings)
@@ -93,7 +56,7 @@ void QHstsCache::updateFromHeaders(const QList<QPair<QByteArray, QByteArray>> &h
     }
 }
 
-void QHstsCache::updateFromPolicies(const QVector<QHstsPolicy> &policies)
+void QHstsCache::updateFromPolicies(const QList<QHstsPolicy> &policies)
 {
     for (const auto &policy : policies)
         updateKnownHost(policy.host(), policy.expiry(), policy.includesSubDomains());
@@ -194,7 +157,7 @@ bool QHstsCache::isKnownHost(const QUrl &url) const
 
     bool superDomainMatch = false;
     const QString hostNameAsString(url.host());
-    HostName nameToTest(static_cast<QStringRef>(&hostNameAsString));
+    HostName nameToTest(QStringView{hostNameAsString});
     while (nameToTest.fragment.size()) {
         auto const pos = knownHosts.find(nameToTest);
         if (pos != knownHosts.end()) {
@@ -211,7 +174,7 @@ bool QHstsCache::isKnownHost(const QUrl &url) const
             }
         }
 
-        const int dot = nameToTest.fragment.indexOf(QLatin1Char('.'));
+        const qsizetype dot = nameToTest.fragment.indexOf(u'.');
         if (dot == -1)
             break;
 
@@ -227,9 +190,9 @@ void QHstsCache::clear()
     knownHosts.clear();
 }
 
-QVector<QHstsPolicy> QHstsCache::policies() const
+QList<QHstsPolicy> QHstsCache::policies() const
 {
-    QVector<QHstsPolicy> values;
+    QList<QHstsPolicy> values;
     values.reserve(int(knownHosts.size()));
     for (const auto &host : knownHosts)
         values << host.second;
@@ -250,7 +213,7 @@ void QHstsCache::setStore(QHstsStore *store)
         // (and thus the cached policy takes priority over whatever policy we
         // had in the store for the same host, if any).
         if (knownHosts.size()) {
-            const QVector<QHstsPolicy> observed(policies());
+            const QList<QHstsPolicy> observed(policies());
             for (const auto &policy : observed)
                 hstsStore->addToObserved(policy);
             hstsStore->synchronize();
@@ -260,7 +223,7 @@ void QHstsCache::setStore(QHstsStore *store)
         // the store knows about (well, it can happen we synchronize again as a
         // result if some policies managed to expire or if we add a new one
         // from the store to cache):
-        const QVector<QHstsPolicy> restored(store->readPolicies());
+        const QList<QHstsPolicy> restored(store->readPolicies());
         updateFromPolicies(restored);
     }
 }
@@ -364,8 +327,8 @@ quoted-pair    = "\" CHAR
 bool QHstsHeaderParser::parse(const QList<QPair<QByteArray, QByteArray>> &headers)
 {
     for (const auto &h : headers) {
-        // We use '==' since header name was already 'trimmed' for us:
-        if (h.first == "Strict-Transport-Security") {
+        // We compare directly because header name was already 'trimmed' for us:
+        if (h.first.compare("Strict-Transport-Security", Qt::CaseInsensitive) == 0) {
             header = h.second;
             // RFC6797, 8.1:
             //

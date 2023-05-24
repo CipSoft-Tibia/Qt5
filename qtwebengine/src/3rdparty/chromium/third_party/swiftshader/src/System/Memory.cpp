@@ -40,52 +40,21 @@
 #	define __x86__
 #endif
 
+// A Clang extension to determine compiler features.
+// We use it to detect Sanitizer builds (e.g. -fsanitize=memory).
+#ifndef __has_feature
+#	define __has_feature(x) 0
+#endif
+
 namespace sw {
 
 namespace {
 
 struct Allocation
 {
-	//	size_t bytes;
+	// size_t bytes;
 	unsigned char *block;
 };
-
-void *allocateRaw(size_t bytes, size_t alignment)
-{
-	ASSERT((alignment & (alignment - 1)) == 0);  // Power of 2 alignment.
-
-#if defined(LINUX_ENABLE_NAMED_MMAP)
-	if(alignment < sizeof(void *))
-	{
-		return malloc(bytes);
-	}
-	else
-	{
-		void *allocation;
-		int result = posix_memalign(&allocation, alignment, bytes);
-		if(result != 0)
-		{
-			errno = result;
-			allocation = nullptr;
-		}
-		return allocation;
-	}
-#else
-	unsigned char *block = (unsigned char *)malloc(bytes + sizeof(Allocation) + alignment);
-	unsigned char *aligned = nullptr;
-
-	if(block)
-	{
-		aligned = (unsigned char *)((uintptr_t)(block + sizeof(Allocation) + alignment - 1) & -(intptr_t)alignment);
-		Allocation *allocation = (Allocation *)(aligned - sizeof(Allocation));
-
-		//	allocation->bytes = bytes;
-		allocation->block = block;
-	}
-
-	return aligned;
-#endif
-}
 
 }  // anonymous namespace
 
@@ -104,23 +73,45 @@ size_t memoryPageSize()
 	return pageSize;
 }
 
-void *allocate(size_t bytes, size_t alignment)
+static void *allocate(size_t bytes, size_t alignment, bool clearToZero)
 {
-	void *memory = allocateRaw(bytes, alignment);
+	ASSERT((alignment & (alignment - 1)) == 0);  // Power of 2 alignment.
 
-	if(memory)
+	size_t size = bytes + sizeof(Allocation) + alignment;
+	unsigned char *block = (unsigned char *)malloc(size);
+	unsigned char *aligned = nullptr;
+
+	if(block)
 	{
-		memset(memory, 0, bytes);
+		if(clearToZero)
+		{
+			memset(block, 0, size);
+		}
+
+		aligned = (unsigned char *)((uintptr_t)(block + sizeof(Allocation) + alignment - 1) & -(intptr_t)alignment);
+		Allocation *allocation = (Allocation *)(aligned - sizeof(Allocation));
+
+		// allocation->bytes = bytes;
+		allocation->block = block;
 	}
 
-	return memory;
+	return aligned;
 }
 
-void deallocate(void *memory)
+void *allocate(size_t bytes, size_t alignment)
 {
-#if defined(LINUX_ENABLE_NAMED_MMAP)
-	free(memory);
-#else
+	return allocate(bytes, alignment, false);
+}
+
+// This funtion allocates memory that is zero-initialized for security reasons
+// only. In MemorySanitizer enabled builds it is left uninitialized.
+void *allocateZeroOrPoison(size_t bytes, size_t alignment)
+{
+	return allocate(bytes, alignment, !__has_feature(memory_sanitizer));
+}
+
+void freeMemory(void *memory)
+{
 	if(memory)
 	{
 		unsigned char *aligned = (unsigned char *)memory;
@@ -128,7 +119,6 @@ void deallocate(void *memory)
 
 		free(allocation->block);
 	}
-#endif
 }
 
 void clear(uint16_t *memory, uint16_t element, size_t count)

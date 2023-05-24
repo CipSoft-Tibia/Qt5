@@ -28,6 +28,11 @@
 #include "src/arm/asm.S"
 #include "util.S"
 
+// depending on how many pixels need to be stored, returns:
+// x14 = (1 << 0) : 0 pixels
+// x14 = (1 << 4) : inner 4 pixels
+// x14 = (1 << 6) : inner 6 pixels
+// x14 = 0 : all pixels
 .macro loop_filter wd
 function lpf_8_wd\wd\()_neon
         uabd            v0.8h,   v22.8h,  v23.8h  // abs(p1 - p0)
@@ -77,8 +82,10 @@ function lpf_8_wd\wd\()_neon
         mov             x16, v1.d[0]
         mov             x17, v1.d[1]
         adds            x16, x16, x17
-        b.eq            9f                        // if (!fm || wd < 4) return;
-
+        b.ne            9f                        // if (!fm || wd < 4) return;
+        mov             x14, #(1 << 0)
+        ret
+9:
 .if \wd >= 6
         movi            v10.8h,  #1
         uabd            v2.8h,   v21.8h,  v23.8h  // abs(p2 - p0)
@@ -150,10 +157,9 @@ function lpf_8_wd\wd\()_neon
         movi            v6.8h,   #4
         add             v2.8h,   v2.8h,   v4.8h
         smin            v2.8h,   v2.8h,   v3.8h   // f = iclip_diff()
-        movi            v7.8h,   #3
         smax            v2.8h,   v2.8h,   v9.8h   // f = iclip_diff()
         sqadd           v4.8h,   v6.8h,   v2.8h   // f + 4
-        sqadd           v5.8h,   v7.8h,   v2.8h   // f + 3
+        sqadd           v5.8h,   v5.8h,   v2.8h   // f + 3
         smin            v4.8h,   v4.8h,   v3.8h   // imin(f + 4, 128 << bitdepth_min_8 - 1)
         smin            v5.8h,   v5.8h,   v3.8h   // imin(f + 3, 128 << bitdepth_min_8 - 1)
         sshr            v4.8h,   v4.8h,   #3      // f1
@@ -361,20 +367,20 @@ function lpf_8_wd\wd\()_neon
         bif             v11.16b, v29.16b, v15.16b // out q5
 .endif
 
+        mov             x14, #0
         ret
 .if \wd == 16
 7:
         // Return to a shorter epilogue, writing only the inner 6 pixels
-        br              x13
+        mov             x14, #(1 << 6)
+        ret
 .endif
 .if \wd >= 8
 8:
         // Return to a shorter epilogue, writing only the inner 4 pixels
-        br              x14
+        mov             x14, #(1 << 4)
+        ret
 .endif
-9:
-        // Return directly without writing back any pixels
-        br              x15
 endfunc
 .endm
 
@@ -384,22 +390,34 @@ loop_filter 6
 loop_filter 4
 
 .macro lpf_8_wd16
-        adr             x13, 7f
-        adr             x14, 8f
         bl              lpf_8_wd16_neon
+        cbz             x14, 1f
+        tbnz            x14, #6, 7f
+        tbnz            x14, #4, 8f
+        ret             x15
+1:
 .endm
 
 .macro lpf_8_wd8
-        adr             x14, 8f
         bl              lpf_8_wd8_neon
+        cbz             x14, 1f
+        tbnz            x14, #4, 8f
+        ret             x15
+1:
 .endm
 
 .macro lpf_8_wd6
         bl              lpf_8_wd6_neon
+        cbz             x14, 1f
+        ret             x15
+1:
 .endm
 
 .macro lpf_8_wd4
         bl              lpf_8_wd4_neon
+        cbz             x14, 1f
+        ret             x15
+1:
 .endm
 
 function lpf_v_4_8_neon
@@ -419,7 +437,7 @@ function lpf_v_4_8_neon
         st1             {v23.8h}, [x16], x1 // p0
         st1             {v25.8h}, [x0],  x1 // q1
         sub             x0,  x0,  x1, lsl #1
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_h_4_8_neon
@@ -454,7 +472,7 @@ function lpf_h_4_8_neon
         st1             {v25.d}[0], [x16], x1
         st1             {v25.d}[1], [x0],  x1
         add             x0,  x0,  #4
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_v_6_8_neon
@@ -478,7 +496,7 @@ function lpf_v_6_8_neon
         st1             {v23.8h}, [x16], x1 // p0
         st1             {v25.8h}, [x0],  x1 // q1
         sub             x0,  x0,  x1, lsl #1
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_h_6_8_neon
@@ -513,7 +531,7 @@ function lpf_h_6_8_neon
         st1             {v25.d}[0], [x16], x1
         st1             {v25.d}[1], [x0],  x1
         add             x0,  x0,  #4
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_v_8_8_neon
@@ -541,7 +559,7 @@ function lpf_v_8_8_neon
         st1             {v26.8h}, [x0],  x1 // q2
         sub             x0,  x0,  x1, lsl #1
         sub             x0,  x0,  x1
-        br              x15
+        ret             x15
 
 8:
         sub             x16, x0,  x1, lsl #1
@@ -550,7 +568,7 @@ function lpf_v_8_8_neon
         st1             {v23.8h}, [x16], x1 // p0
         st1             {v25.8h}, [x0],  x1 // q1
         sub             x0,  x0,  x1, lsl #1
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_h_8_8_neon
@@ -585,7 +603,7 @@ function lpf_h_8_8_neon
         st1             {v23.8h}, [x16], x1
         st1             {v27.8h}, [x0],  x1
         add             x0,  x0,  #8
-        br              x15
+        ret             x15
 8:
         sub             x16, x0,  x1, lsl #3
         sub             x16, x16, #4
@@ -601,7 +619,7 @@ function lpf_h_8_8_neon
         st1             {v25.d}[0], [x16], x1
         st1             {v25.d}[1], [x0],  x1
         add             x0,  x0,  #4
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_v_16_8_neon
@@ -644,7 +662,7 @@ function lpf_v_16_8_neon
         st1             {v11.8h}, [x0],  x1 // q5
         sub             x0,  x0,  x1, lsl #2
         sub             x0,  x0,  x1, lsl #1
-        br              x15
+        ret             x15
 7:
         sub             x16, x0,  x1
         sub             x16, x16, x1, lsl #1
@@ -656,7 +674,7 @@ function lpf_v_16_8_neon
         st1             {v26.8h}, [x0],  x1 // q2
         sub             x0,  x0,  x1, lsl #1
         sub             x0,  x0,  x1
-        br              x15
+        ret             x15
 
 8:
         sub             x16, x0,  x1, lsl #1
@@ -665,7 +683,7 @@ function lpf_v_16_8_neon
         st1             {v23.8h}, [x16], x1 // p0
         st1             {v25.8h}, [x0],  x1 // q1
         sub             x0,  x0,  x1, lsl #1
-        br              x15
+        ret             x15
 endfunc
 
 function lpf_h_16_8_neon
@@ -715,7 +733,7 @@ function lpf_h_16_8_neon
         st1             {v30.8h}, [x0],  x1
         st1             {v5.8h},  [x16], x1
         st1             {v31.8h}, [x0],  x1
-        br              x15
+        ret             x15
 
 7:
         sub             x16, x0,  x1, lsl #3
@@ -732,7 +750,7 @@ function lpf_h_16_8_neon
         st1             {v23.8h}, [x16], x1
         st1             {v27.8h}, [x0],  x1
         add             x0,  x0,  #8
-        br              x15
+        ret             x15
 8:
         sub             x16, x0,  x1, lsl #3
         sub             x16, x16, #4
@@ -748,7 +766,7 @@ function lpf_h_16_8_neon
         st1             {v25.d}[0], [x16], x1
         st1             {v25.d}[1], [x0],  x1
         add             x0,  x0,  #4
-        br              x15
+        ret             x15
 endfunc
 
 // void dav1d_lpf_v_sb_y_16bpc_neon(pixel *dst, const ptrdiff_t stride,
@@ -785,7 +803,7 @@ function lpf_\dir\()_sb_\type\()_16bpc_neon, export=1
         orr             w6,  w6,  w7             // vmask[0] |= vmask[1]
 
 1:
-        tst             w6,  #0x0f
+        tst             w6,  #0x03
 .ifc \dir, v
         ld1             {v0.8b}, [x4], #8
         ld1             {v1.8b}, [x3], #8
@@ -808,11 +826,11 @@ function lpf_\dir\()_sb_\type\()_16bpc_neon, export=1
         ld1r            {v6.8b}, [x5]             // sharp[1]
         sub             x5,  x5,  #8
         bif             v1.8b,   v0.8b,   v3.8b   // if (!l[0][0]) L = l[offset][0]
+        cmtst           v2.2s,   v1.2s,   v2.2s   // L != 0
         mul             v1.2s,   v1.2s,   v4.2s   // L
 .ifc \type, y
         dup             v15.2s,  w2               // vmask[2]
 .endif
-        cmtst           v2.2s,   v1.2s,   v2.2s   // L != 0
         dup             v14.2s,  w7               // vmask[1]
         mov             x16, v2.d[0]
         cmp             x16, #0
@@ -847,14 +865,14 @@ function lpf_\dir\()_sb_\type\()_16bpc_neon, export=1
         ushl            v10.8h,  v10.8h,  v31.8h
 
 .ifc \type, y
-        tst             w2,  #0x0f
+        tst             w2,  #0x03
         b.eq            2f
         // wd16
         bl              lpf_\dir\()_16_8_neon
         b               8f
 2:
 .endif
-        tst             w7,  #0x0f
+        tst             w7,  #0x03
         b.eq            3f
 .ifc \type, y
         // wd8
@@ -893,7 +911,7 @@ function lpf_\dir\()_sb_\type\()_16bpc_neon, export=1
         ldp             d12, d13, [sp, #0x20]
         ldp             d10, d11, [sp, #0x10]
         ldp             d8,  d9,  [sp], 0x40
-        br              x11
+        ret             x11
 endfunc
 .endm
 

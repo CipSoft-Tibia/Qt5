@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Network Auth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //
 //  W A R N I N G
@@ -62,9 +36,9 @@ class QOAuth1Signature;
 
 class QOAuth1Private : public QAbstractOAuthPrivate
 {
+public:
     Q_DECLARE_PUBLIC(QOAuth1)
 
-public:
     QOAuth1Private(const QPair<QString, QString> &clientCredentials,
                    QNetworkAccessManager *networkAccessManager = nullptr);
 
@@ -73,7 +47,7 @@ public:
                          QVariantMap *headers,
                          const QUrl &url,
                          QNetworkAccessManager::Operation operation,
-                         const QVariantMap parameters);
+                         const QMultiMap<QString, QVariant> parameters);
 
     QNetworkReply *requestToken(QNetworkAccessManager::Operation operation,
                                 const QUrl &url,
@@ -81,19 +55,15 @@ public:
                                 const QVariantMap &additionalParameters);
 
     QString signatureMethodString() const;
-    QByteArray generateSignature(const QVariantMap &parameters,
+    QByteArray generateSignature(const QMultiMap<QString, QVariant> &parameters,
                                  const QUrl &url,
                                  QNetworkAccessManager::Operation operation) const;
-    QByteArray generateSignature(const QVariantMap &parameters,
+    QByteArray generateSignature(const QMultiMap<QString, QVariant> &parameters,
                                  const QUrl &url,
                                  const QByteArray &verb) const;
     QByteArray formatSignature(const QOAuth1Signature &signature) const;
 
     QVariantMap createOAuthBaseParams() const;
-
-    void prepareRequestImpl(QNetworkRequest *request,
-                            const QByteArray &verb,
-                            const QByteArray &body) override;
 
     void _q_onTokenRequestError(QNetworkReply::NetworkError error);
     void _q_tokensReceived(const QVariantMap &tokens);

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qshadergenerator_p.h"
 
@@ -298,14 +262,14 @@ namespace
     struct ShaderGenerationState
     {
         ShaderGenerationState(const QShaderGenerator &gen,
-                              QVector<QShaderGraph::Statement> statements)
+                              QList<QShaderGraph::Statement> statements)
             : generator { gen }, statements { statements }
         {
 
         }
 
         const QShaderGenerator &generator;
-        QVector<QShaderGraph::Statement> statements;
+        QList<QShaderGraph::Statement> statements;
         QByteArrayList code;
     };
 
@@ -402,52 +366,12 @@ namespace
         void onInclude(QByteArrayList &code, const QByteArray &snippet) noexcept
         {
             const auto filepath = QString::fromUtf8(snippet.mid(strlen("#pragma include ")));
-            QString deincluded = QString::fromUtf8(QShaderProgramPrivate::deincludify(filepath));
+            const QByteArray deincluded = QShaderProgramPrivate::deincludify(filepath);
 
-            // This lambda will replace all occurrences of a string (e.g. "binding = auto") by another,
-            // with the incremented int passed as argument (e.g. "binding = 1", "binding = 2" ...)
-            const auto replaceAndIncrement = [&deincluded](const QRegularExpression &regexp,
-                                                           int &variable,
-                                                           const QString &replacement) noexcept {
-                int matchStart = 0;
-                do {
-                    matchStart = deincluded.indexOf(regexp, matchStart);
-                    if (matchStart != -1) {
-                        const auto match = regexp.match(deincluded.midRef(matchStart));
-                        const auto length = match.capturedLength(0);
-
-                        deincluded.replace(matchStart, length, replacement.arg(variable++));
-                    }
-                } while (matchStart != -1);
-            };
-
-            // 1. Handle uniforms
-            {
-                thread_local const QRegularExpression bindings(
-                        QStringLiteral("binding\\s?+=\\s?+auto"));
-
-                replaceAndIncrement(bindings, currentBinding, QStringLiteral("binding = %1"));
-            }
-
-            // 2. Handle inputs
-            {
-                thread_local const QRegularExpression inLocations(
-                        QStringLiteral("location\\s?+=\\s?+auto\\s?+\\)\\s?+in\\s+"));
-
-                replaceAndIncrement(inLocations, currentInputLocation,
-                                    QStringLiteral("location = %1) in "));
-            }
-
-            // 3. Handle outputs
-            {
-                thread_local const QRegularExpression outLocations(
-                        QStringLiteral("location\\s?+=\\s?+auto\\s?+\\)\\s?+out\\s+"));
-
-                replaceAndIncrement(outLocations, currentOutputLocation,
-                                    QStringLiteral("location = %1) out "));
-            }
-
-            code << deincluded.toUtf8();
+            code << QShaderProgramPrivate::resolveAutoBindingIndices(deincluded,
+                                                                     currentBinding,
+                                                                     currentInputLocation,
+                                                                     currentOutputLocation);
         }
 
         int currentInputLocation { 0 };
@@ -522,7 +446,7 @@ namespace
 
 QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) const
 {
-    const QVector<QShaderNode> nodes = graph.nodes();
+    const QList<QShaderNode> nodes = graph.nodes();
     const auto statements = graph.createStatements(enabledLayers);
     ShaderGenerationState state(*this, statements);
     QByteArrayList &code = state.code;
@@ -553,7 +477,7 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
     struct Assignment
     {
         QString expression;
-        QVector<Variable *> referencedVariables;
+        QList<Variable *> referencedVariables;
     };
 
     struct Variable
@@ -574,7 +498,7 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
 
             qCDebug(ShaderGenerator)
                     << "Begin Substituting " << v->name << " = " << v->assignment.expression;
-            for (Variable *ref : qAsConst(v->assignment.referencedVariables)) {
+            for (Variable *ref : std::as_const(v->assignment.referencedVariables)) {
                 // Recursively substitute
                 Variable::substitute(ref);
 
@@ -611,16 +535,16 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
     // just use vertexPosition directly.
     // The added benefit is when having arrays, we don't try to create
     // mat4 v38 = skinningPalelette[100] which would be invalid
-    QVector<Variable> temporaryVariables;
+    std::vector<Variable> temporaryVariables;
     // Reserve more than enough space to ensure no reallocation will take place
     temporaryVariables.reserve(nodes.size() * 8);
 
-    QVector<LineContent> lines;
+    QList<LineContent> lines;
 
     auto createVariable = [&] () -> Variable * {
         Q_ASSERT(temporaryVariables.capacity() > 0);
         temporaryVariables.resize(temporaryVariables.size() + 1);
-        return &temporaryVariables.last();
+        return &temporaryVariables.back();
     };
 
     auto findVariable = [&] (const QString &name) -> Variable * {
@@ -655,7 +579,7 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
     for (const QShaderGraph::Statement &statement : statements) {
         const QShaderNode node = statement.node;
         QByteArray line = node.rule(format).substitution;
-        const QVector<QShaderNodePort> ports = node.ports();
+        const QList<QShaderNodePort> ports = node.ports();
 
         struct VariableReplacement
         {
@@ -663,7 +587,7 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
             QByteArray variable;
         };
 
-        QVector<VariableReplacement> variableReplacements;
+        QList<VariableReplacement> variableReplacements;
 
         // Generate temporary variable names vN
         for (const QShaderNodePort &port : ports) {
@@ -687,17 +611,17 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
             variableReplacements.append(std::move(replacement));
         }
 
-        int begin = 0;
+        qsizetype begin = 0;
         while ((begin = line.indexOf('$', begin)) != -1) {
-            int end = begin + 1;
+            qsizetype end = begin + 1;
             char endChar = line.at(end);
-            const int size = line.size();
-            while (end < size && (std::isalnum(endChar) || endChar == '_')) {
+            const qsizetype size = line.size();
+            while (end < size && (std::isalnum(uchar(endChar)) || endChar == '_')) {
                 ++end;
                 endChar = line.at(end);
             }
 
-            const int placeholderLength = end - begin;
+            const qsizetype placeholderLength = end - begin;
 
             const QByteArray variableName = line.mid(begin, placeholderLength);
             const auto replacementIt =
@@ -708,7 +632,7 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
 
             if (replacementIt != variableReplacements.cend()) {
                 line.replace(begin, placeholderLength, replacementIt->variable);
-                begin += replacementIt->variable.length();
+                begin += replacementIt->variable.size();
             } else {
                 begin = end;
             }
@@ -827,7 +751,7 @@ QByteArray QShaderGenerator::createShaderCode(const QStringList &enabledLayers) 
     }
 
     // Go throug all lines and insert content
-    for (const LineContent &lineContent : qAsConst(lines)) {
+    for (const LineContent &lineContent : std::as_const(lines)) {
         if (!lineContent.rawContent.isEmpty()) {
             code << lineContent.rawContent;
         }

@@ -54,7 +54,7 @@
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
@@ -115,15 +115,15 @@ class ImageDocumentParser : public RawDataDocumentParser {
 
 // --------
 
-static String ImageTitle(const String& filename, const IntSize& size) {
+static String ImageTitle(const String& filename, const gfx::Size& size) {
   StringBuilder result;
   result.Append(filename);
   result.Append(" (");
   // FIXME: Localize numbers. Safari/OSX shows localized numbers with group
   // separaters. For example, "1,920x1,080".
-  result.AppendNumber(size.Width());
+  result.AppendNumber(size.width());
   result.Append(static_cast<UChar>(0xD7));  // U+00D7 (multiplication sign)
-  result.AppendNumber(size.Height());
+  result.AppendNumber(size.height());
   result.Append(')');
   return result.ToString();
 }
@@ -204,7 +204,6 @@ ImageDocument::ImageDocument(const DocumentInit& initializer)
       did_shrink_image_(false),
       should_shrink_image_(ShouldShrinkToFit()),
       image_is_loaded_(false),
-      style_mouse_cursor_mode_(kDefault),
       shrink_to_fit_mode_(GetFrame()->GetSettings()->GetViewportEnabled()
                               ? kViewport
                               : kDesktop) {
@@ -216,7 +215,7 @@ DocumentParser* ImageDocument::CreateParser() {
   return MakeGarbageCollected<ImageDocumentParser>(this);
 }
 
-IntSize ImageDocument::ImageSize() const {
+gfx::Size ImageDocument::ImageSize() const {
   DCHECK(image_element_);
   DCHECK(image_element_->CachedImage());
   return image_element_->CachedImage()->IntrinsicSize(
@@ -236,7 +235,8 @@ void ImageDocument::CreateDocumentStructure(
     return;  // runScriptsAtDocumentElementAvailable can detach the frame.
 
   auto* head = MakeGarbageCollected<HTMLHeadElement>(*this);
-  auto* meta = MakeGarbageCollected<HTMLMetaElement>(*this);
+  auto* meta =
+      MakeGarbageCollected<HTMLMetaElement>(*this, CreateElementFlags());
   meta->setAttribute(html_names::kNameAttr, "viewport");
   meta->setAttribute(html_names::kContentAttr,
                      "width=device-width, minimum-scale=0.1");
@@ -259,7 +259,7 @@ void ImageDocument::CreateDocumentStructure(
                                "min-width: min-content;"
                                "height: 100%;"
                                "width: 100%;");
-    HTMLSlotElement* slot = HTMLSlotElement::CreateUserAgentDefaultSlot(*this);
+    HTMLSlotElement* slot = MakeGarbageCollected<HTMLSlotElement>(*this);
     div_element_->AppendChild(slot);
 
     // Adding a UA shadow root here is because the container <div> should be
@@ -307,14 +307,14 @@ void ImageDocument::UpdateTitle() {
   // Report the natural image size in the page title, regardless of zoom
   // level.  At a zoom level of 1 the image is guaranteed to have an integer
   // size.
-  IntSize size = ImageSize();
-  if (!size.Width())
+  gfx::Size size = ImageSize();
+  if (!size.width())
     return;
   // Compute the title, we use the decoded filename of the resource, falling
   // back on the (decoded) hostname if there is no path.
   String file_name = DecodeURLEscapeSequences(Url().LastPathComponent(),
                                               DecodeURLMode::kUTF8OrIsomorphic);
-  if (file_name.IsEmpty())
+  if (file_name.empty())
     file_name = Url().Host();
   setTitle(ImageTitle(file_name, size));
 }
@@ -328,7 +328,7 @@ float ImageDocument::Scale() const {
   if (!view)
     return 1.0f;
 
-  IntSize image_size = ImageSize();
+  gfx::Size image_size = ImageSize();
   if (image_size.IsEmpty())
     return 1.0f;
 
@@ -336,8 +336,8 @@ float ImageDocument::Scale() const {
   // page in (but not when the zoom is coming from device scale).
   const float viewport_zoom =
       view->GetChromeClient()->WindowToViewportScalar(GetFrame(), 1.f);
-  float width_scale = view->Width() / (viewport_zoom * image_size.Width());
-  float height_scale = view->Height() / (viewport_zoom * image_size.Height());
+  float width_scale = view->Width() / (viewport_zoom * image_size.width());
+  float height_scale = view->Height() / (viewport_zoom * image_size.height());
 
   return std::min(width_scale, height_scale);
 }
@@ -347,11 +347,10 @@ void ImageDocument::ResizeImageToFit() {
   if (!image_element_ || image_element_->GetDocument() != this)
     return;
 
-  IntSize image_size = ImageSize();
-  image_size.Scale(Scale());
+  gfx::Size image_size = gfx::ScaleToFlooredSize(ImageSize(), Scale());
 
-  image_element_->setWidth(image_size.Width());
-  image_element_->setHeight(image_size.Height());
+  image_element_->setWidth(image_size.width());
+  image_element_->setHeight(image_size.height());
 
   UpdateImageStyle();
 }
@@ -394,48 +393,46 @@ void ImageDocument::ImageClicked(int x, int y) {
 
 void ImageDocument::ImageLoaded() {
   image_is_loaded_ = true;
+  UpdateImageStyle();
+}
 
-  if (ShouldShrinkToFit()) {
-    // The checkerboard background needs to be inserted.
-    UpdateImageStyle();
-  }
+ImageDocument::MouseCursorMode ImageDocument::ComputeMouseCursorMode() const {
+  if (!image_is_loaded_)
+    return kDefault;
+  if (shrink_to_fit_mode_ != kDesktop || !ShouldShrinkToFit())
+    return kDefault;
+  if (ImageFitsInWindow())
+    return kDefault;
+  return should_shrink_image_ ? kZoomIn : kZoomOut;
 }
 
 void ImageDocument::UpdateImageStyle() {
   StringBuilder image_style;
+  image_style.Append("display: block;");
   image_style.Append("-webkit-user-select: none;");
 
   if (ShouldShrinkToFit()) {
     if (shrink_to_fit_mode_ == kViewport)
       image_style.Append("max-width: 100%;");
     image_style.Append("margin: auto;");
+  }
 
+  MouseCursorMode cursor_mode = ComputeMouseCursorMode();
+  if (cursor_mode == kZoomIn)
+    image_style.Append("cursor: zoom-in;");
+  else if (cursor_mode == kZoomOut)
+    image_style.Append("cursor: zoom-out;");
+
+  if (GetFrame()->IsOutermostMainFrame()) {
     if (image_is_loaded_) {
-      MouseCursorMode new_cursor_mode = kDefault;
-
-      if (shrink_to_fit_mode_ != kViewport) {
-        // In desktop mode, the user can click on the image to zoom in or out.
-        DCHECK_EQ(shrink_to_fit_mode_, kDesktop);
-        if (ImageFitsInWindow()) {
-          new_cursor_mode = kDefault;
-        } else {
-          new_cursor_mode = should_shrink_image_ ? kZoomIn : kZoomOut;
-        }
+      image_style.Append("background-color: hsl(0, 0%, 90%);");
+      DCHECK(image_element_);
+      DCHECK(image_element_->CachedImage());
+      if (!image_element_->CachedImage()->IsAnimatedImage()) {
+        image_style.Append("transition: background-color 300ms;");
       }
-
-      // The only thing that can differ between updates is
-      // the type of cursor being displayed.
-      if (new_cursor_mode == style_mouse_cursor_mode_) {
-        return;
-      }
-      style_mouse_cursor_mode_ = new_cursor_mode;
-
-      if (shrink_to_fit_mode_ == kDesktop) {
-        if (style_mouse_cursor_mode_ == kZoomIn)
-          image_style.Append("cursor: zoom-in;");
-        else if (style_mouse_cursor_mode_ == kZoomOut)
-          image_style.Append("cursor: zoom-out;");
-      }
+    } else if (image_size_is_known_) {
+      image_style.Append("background-color: hsl(0, 0%, 25%);");
     }
   }
 
@@ -454,6 +451,7 @@ void ImageDocument::ImageUpdated() {
     return;
 
   image_size_is_known_ = true;
+  UpdateImageStyle();
 
   if (ShouldShrinkToFit()) {
     // Force resizing of the image
@@ -468,9 +466,9 @@ void ImageDocument::RestoreImageSize() {
       image_element_->GetDocument() != this)
     return;
 
-  IntSize image_size = ImageSize();
-  image_element_->setWidth(image_size.Width());
-  image_element_->setHeight(image_size.Height());
+  gfx::Size image_size = ImageSize();
+  image_element_->setWidth(image_size.width());
+  image_element_->setHeight(image_size.height());
   UpdateImageStyle();
 
   did_shrink_image_ = false;
@@ -490,13 +488,13 @@ int ImageDocument::CalculateDivWidth() {
   //   of the frame.
   // * Images smaller in either dimension are centered along that axis.
   int viewport_width =
-      GetFrame()->GetPage()->GetVisualViewport().Size().Width() /
+      GetFrame()->GetPage()->GetVisualViewport().Size().width() /
       GetFrame()->PageZoomFactor();
 
   // For huge images, minimum-scale=0.1 is still too big on small screens.
   // Set the <div> width so that the image will shrink to fit the width of the
   // screen when the scale is minimum.
-  int max_width = std::min(ImageSize().Width(), viewport_width * 10);
+  int max_width = std::min(ImageSize().width(), viewport_width * 10);
   return std::max(viewport_width, max_width);
 }
 
@@ -518,8 +516,10 @@ void ImageDocument::WindowSizeChanged() {
     // around. i.e. The div should fill the viewport when minimally zoomed and
     // the URL bar is showing, but won't fill the new space when the URL bar
     // hides.
-    float aspect_ratio = View()->GetLayoutSize().AspectRatio();
-    int div_height = std::max(ImageSize().Height(),
+    gfx::Size layout_size = View()->GetLayoutSize();
+    float aspect_ratio =
+        static_cast<float>(layout_size.width()) / layout_size.height();
+    int div_height = std::max(ImageSize().height(),
                               static_cast<int>(div_width / aspect_ratio));
     div_element_->SetInlineStyleProperty(CSSPropertyID::kHeight, div_height,
                                          CSSPrimitiveValue::UnitType::kPixels);
@@ -563,7 +563,7 @@ bool ImageDocument::ShouldShrinkToFit() const {
   // disallow images from shrinking to fit for WebViews.
   bool is_wrap_content_web_view =
       GetPage() ? GetPage()->GetSettings().GetForceZeroLayoutHeight() : false;
-  return GetFrame()->IsMainFrame() && !is_wrap_content_web_view;
+  return GetFrame()->IsOutermostMainFrame() && !is_wrap_content_web_view;
 }
 
 void ImageDocument::Trace(Visitor* visitor) const {

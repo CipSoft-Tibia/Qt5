@@ -1,38 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <QObject>
 #include <Qt3DExtras/qcuboidgeometry.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
-#include <qopenglcontext.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <QtGui/qopenglcontext.h>
 #include <QtGui/qvector2d.h>
 #include <QtGui/qvector3d.h>
 #include <QtGui/qvector4d.h>
@@ -59,13 +33,13 @@ private Q_SLOTS:
         QCOMPARE(geometry.yzMeshResolution(), QSize(2, 2));
         QCOMPARE(geometry.xzMeshResolution(), QSize(2, 2));
         QVERIFY(geometry.positionAttribute() != nullptr);
-        QCOMPARE(geometry.positionAttribute()->name(), Qt3DRender::QAttribute::defaultPositionAttributeName());
+        QCOMPARE(geometry.positionAttribute()->name(), Qt3DCore::QAttribute::defaultPositionAttributeName());
         QVERIFY(geometry.normalAttribute() != nullptr);
-        QCOMPARE(geometry.normalAttribute()->name(), Qt3DRender::QAttribute::defaultNormalAttributeName());
+        QCOMPARE(geometry.normalAttribute()->name(), Qt3DCore::QAttribute::defaultNormalAttributeName());
         QVERIFY(geometry.texCoordAttribute() != nullptr);
-        QCOMPARE(geometry.texCoordAttribute()->name(), Qt3DRender::QAttribute::defaultTextureCoordinateAttributeName());
+        QCOMPARE(geometry.texCoordAttribute()->name(), Qt3DCore::QAttribute::defaultTextureCoordinateAttributeName());
         QVERIFY(geometry.tangentAttribute() != nullptr);
-        QCOMPARE(geometry.tangentAttribute()->name(), Qt3DRender::QAttribute::defaultTangentAttributeName());
+        QCOMPARE(geometry.tangentAttribute()->name(), Qt3DCore::QAttribute::defaultTangentAttributeName());
         QVERIFY(geometry.indexAttribute() != nullptr);
     }
 
@@ -198,31 +172,31 @@ private Q_SLOTS:
         QTest::addColumn<QSize>("yzMeshResolution");
         QTest::addColumn<QSize>("xzMeshResolution");
         QTest::addColumn<int>("triangleIndex");
-        QTest::addColumn<QVector<quint16>>("indices");
-        QTest::addColumn<QVector<QVector3D>>("positions");
-        QTest::addColumn<QVector<QVector3D>>("normals");
-        QTest::addColumn<QVector<QVector2D>>("texCoords");
-        QTest::addColumn<QVector<QVector4D>>("tangents");
+        QTest::addColumn<QList<quint16>>("indices");
+        QTest::addColumn<QList<QVector3D>>("positions");
+        QTest::addColumn<QList<QVector3D>>("normals");
+        QTest::addColumn<QList<QVector2D>>("texCoords");
+        QTest::addColumn<QList<QVector4D>>("tangents");
 
         {
             const int triangleIndex = 0;
-            const auto indices = (QVector<quint16>() << 0 << 1 << 2);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(0.5f, -0.5f, -0.5f)
-                    << QVector3D(0.5f, 0.5f, -0.5f)
-                    << QVector3D(0.5f, -0.5f, 0.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(1.0f, 0.0f, 0.0f)
-                    << QVector3D(1.0f, 0.0f, 0.0f)
-                    << QVector3D(1.0f, 0.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(1.0f, 1.0f)
-                    << QVector2D(0.0f, 0.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(0.0f, 0.0f, -1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, -1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, -1.0f, 1.0f));
+            const QList<quint16> indices = { 0, 1, 2 };
+            const QList<QVector3D> positions
+                    = { QVector3D(0.5f, -0.5f, -0.5f),
+                        QVector3D(0.5f, 0.5f, -0.5f),
+                        QVector3D(0.5f, -0.5f, 0.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(1.0f, 0.0f, 0.0f),
+                        QVector3D(1.0f, 0.0f, 0.0f),
+                        QVector3D(1.0f, 0.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(1.0f, 0.0f),
+                        QVector2D(1.0f, 1.0f),
+                        QVector2D(0.0f, 0.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(0.0f, 0.0f, -1.0f, 1.0f),
+                        QVector4D(0.0f, 0.0f, -1.0f, 1.0f),
+                        QVector4D(0.0f, 0.0f, -1.0f, 1.0f) };
             QTest::newRow("default_positiveX_firstTriangle")
                     << 1.0f << 1.0f << 1.0f
                     << QSize(2,2) << QSize(2,2) << QSize(2,2)
@@ -232,23 +206,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 3;
-            const auto indices = (QVector<quint16>() << 6 << 5 << 7);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-0.5f, -0.5f, -0.5f)
-                    << QVector3D(-0.5f, 0.5f, 0.5f)
-                    << QVector3D(-0.5f, 0.5f, -0.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(-1.0f, 0.0f, 0.0f)
-                    << QVector3D(-1.0f, 0.0f, 0.0f)
-                    << QVector3D(-1.0f, 0.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 0.0f)
-                    << QVector2D(1.0f, 1.0f)
-                    << QVector2D(0.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(0.0f, 0.0f, 1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, 1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, 1.0f, 1.0f));
+            const QList<quint16> indices = { 6, 5, 7 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-0.5f, -0.5f, -0.5f),
+                        QVector3D(-0.5f, 0.5f, 0.5f),
+                        QVector3D(-0.5f, 0.5f, -0.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(-1.0f, 0.0f, 0.0f),
+                        QVector3D(-1.0f, 0.0f, 0.0f),
+                        QVector3D(-1.0f, 0.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 0.0f),
+                        QVector2D(1.0f, 1.0f),
+                        QVector2D(0.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(0.0f, 0.0f, 1.0f, 1.0f),
+                        QVector4D(0.0f, 0.0f, 1.0f, 1.0f),
+                        QVector4D(0.0f, 0.0f, 1.0f, 1.0f) };
             QTest::newRow("default_negativeX_lastTriangle")
                     << 1.0f << 1.0f << 1.0f
                     << QSize(2,2) << QSize(2,2) << QSize(2,2)
@@ -258,23 +232,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 4;
-            const auto indices = (QVector<quint16>() << 8 << 9 << 10);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-0.5f, 0.5f, 0.5f)
-                    << QVector3D(0.5f, 0.5f, 0.5f)
-                    << QVector3D(-0.5f, 0.5f, -0.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, 1.0f, 0.0f)
-                    << QVector3D(0.0f, 1.0f, 0.0f)
-                    << QVector3D(0.0f, 1.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 0.0f)
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(0.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 8, 9, 10 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-0.5f, 0.5f, 0.5f),
+                        QVector3D(0.5f, 0.5f, 0.5f),
+                        QVector3D(-0.5f, 0.5f, -0.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, 1.0f, 0.0f),
+                        QVector3D(0.0f, 1.0f, 0.0f),
+                        QVector3D(0.0f, 1.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 0.0f),
+                        QVector2D(1.0f, 0.0f),
+                        QVector2D(0.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_positiveY_firstTriangle")
                     << 1.0f << 1.0f << 1.0f
                     << QSize(2,2) << QSize(2,2) << QSize(2,2)
@@ -284,23 +258,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 7;
-            const auto indices = (QVector<quint16>() << 14 << 13 << 15);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-0.5f, -0.5f, 0.5f)
-                    << QVector3D(0.5f, -0.5f, -0.5f)
-                    << QVector3D(0.5f, -0.5f, 0.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, -1.0f, 0.0f)
-                    << QVector3D(0.0f, -1.0f, 0.0f)
-                    << QVector3D(0.0f, -1.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 1.0f)
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(1.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 14, 13, 15 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-0.5f, -0.5f, 0.5f),
+                        QVector3D(0.5f, -0.5f, -0.5f),
+                        QVector3D(0.5f, -0.5f, 0.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, -1.0f, 0.0f),
+                        QVector3D(0.0f, -1.0f, 0.0f),
+                        QVector3D(0.0f, -1.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 1.0f),
+                        QVector2D(1.0f, 0.0f),
+                        QVector2D(1.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_negativeY_lastTriangle")
                     << 1.0f << 1.0f << 1.0f
                     << QSize(2,2) << QSize(2,2) << QSize(2,2)
@@ -310,23 +284,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 8;
-            const auto indices = (QVector<quint16>() << 16 << 17 << 18);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-0.5f, -0.5f, 0.5f)
-                    << QVector3D(0.5f, -0.5f, 0.5f)
-                    << QVector3D(-0.5f, 0.5f, 0.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, 0.0f, 1.0f)
-                    << QVector3D(0.0f, 0.0f, 1.0f)
-                    << QVector3D(0.0f, 0.0f, 1.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 0.0f)
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(0.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 16, 17, 18 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-0.5f, -0.5f, 0.5f),
+                        QVector3D(0.5f, -0.5f, 0.5f),
+                        QVector3D(-0.5f, 0.5f, 0.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, 0.0f, 1.0f),
+                        QVector3D(0.0f, 0.0f, 1.0f),
+                        QVector3D(0.0f, 0.0f, 1.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 0.0f),
+                        QVector2D(1.0f, 0.0f),
+                        QVector2D(0.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_positiveZ_firstTriangle")
                     << 1.0f << 1.0f << 1.0f
                     << QSize(2,2) << QSize(2,2) << QSize(2,2)
@@ -336,23 +310,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 11;
-            const auto indices = (QVector<quint16>() << 22 << 21 << 23);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(0.5f, 0.5f, -0.5f)
-                    << QVector3D(-0.5f, -0.5f, -0.5f)
-                    << QVector3D(-0.5f, 0.5f, -0.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, 0.0f, -1.0f)
-                    << QVector3D(0.0f, 0.0f, -1.0f)
-                    << QVector3D(0.0f, 0.0f, -1.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 1.0f)
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(1.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(-1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(-1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(-1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 22, 21, 23 };
+            const QList<QVector3D> positions
+                    = { QVector3D(0.5f, 0.5f, -0.5f),
+                        QVector3D(-0.5f, -0.5f, -0.5f),
+                        QVector3D(-0.5f, 0.5f, -0.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, 0.0f, -1.0f),
+                        QVector3D(0.0f, 0.0f, -1.0f),
+                        QVector3D(0.0f, 0.0f, -1.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 1.0f),
+                        QVector2D(1.0f, 0.0f),
+                        QVector2D(1.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(-1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(-1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(-1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_negativeZ_lastTriangle")
                     << 1.0f << 1.0f << 1.0f
                     << QSize(2,2) << QSize(2,2) << QSize(2,2)
@@ -362,23 +336,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 0;
-            const auto indices = (QVector<quint16>() << 0 << 1 << 2);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(1.0f, -1.5f, -2.5f)
-                    << QVector3D(1.0f, 1.5f, -2.5f)
-                    << QVector3D(1.0f, -1.5f, -1.25f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(1.0f, 0.0f, 0.0f)
-                    << QVector3D(1.0f, 0.0f, 0.0f)
-                    << QVector3D(1.0f, 0.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(1.0f, 1.0f)
-                    << QVector2D(0.75f, 0.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(0.0f, 0.0f, -1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, -1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, -1.0f, 1.0f));
+            const QList<quint16> indices = { 0, 1, 2 };
+            const QList<QVector3D> positions
+                    = { QVector3D(1.0f, -1.5f, -2.5f),
+                        QVector3D(1.0f, 1.5f, -2.5f),
+                        QVector3D(1.0f, -1.5f, -1.25f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(1.0f, 0.0f, 0.0f),
+                        QVector3D(1.0f, 0.0f, 0.0f),
+                        QVector3D(1.0f, 0.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(1.0f, 0.0f),
+                        QVector2D(1.0f, 1.0f),
+                        QVector2D(0.75f, 0.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(0.0f, 0.0f, -1.0f, 1.0f),
+                       QVector4D(0.0f, 0.0f, -1.0f, 1.0f),
+                       QVector4D(0.0f, 0.0f, -1.0f, 1.0f) };
             QTest::newRow("default_positiveX_firstTriangle_nonSymmetric")
                     << 2.0f << 3.0f << 5.0f
                     << QSize(2,3) << QSize(2,5) << QSize(2,9)
@@ -388,23 +362,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 15;
-            const auto indices = (QVector<quint16>() << 18 << 17 << 19);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-1.0f, -1.5f, -2.5f)
-                    << QVector3D(-1.0f, 1.5f, -1.25f)
-                    << QVector3D(-1.0f, 1.5f, -2.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(-1.0f, 0.0f, 0.0f)
-                    << QVector3D(-1.0f, 0.0f, 0.0f)
-                    << QVector3D(-1.0f, 0.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 0.0f)
-                    << QVector2D(0.25f, 1.0f)
-                    << QVector2D(0.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(0.0f, 0.0f, 1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, 1.0f, 1.0f)
-                    << QVector4D(0.0f, 0.0f, 1.0f, 1.0f));
+            const QList<quint16> indices = { 18, 17, 19 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-1.0f, -1.5f, -2.5f),
+                        QVector3D(-1.0f, 1.5f, -1.25f),
+                        QVector3D(-1.0f, 1.5f, -2.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(-1.0f, 0.0f, 0.0f),
+                        QVector3D(-1.0f, 0.0f, 0.0f),
+                        QVector3D(-1.0f, 0.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 0.0f),
+                        QVector2D(0.25f, 1.0f),
+                        QVector2D(0.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(0.0f, 0.0f, 1.0f, 1.0f),
+                        QVector4D(0.0f, 0.0f, 1.0f, 1.0f),
+                        QVector4D(0.0f, 0.0f, 1.0f, 1.0f) };
             QTest::newRow("default_negativeX_lastTriangle_nonSymmetric")
                     << 2.0f << 3.0f << 5.0f
                     << QSize(2,3) << QSize(2,5) << QSize(2,9)
@@ -414,23 +388,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 16;
-            const auto indices = (QVector<quint16>() << 20 << 21 << 22);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-1.0f, 1.5f, 2.5f)
-                    << QVector3D(1.0f, 1.5f, 2.5f)
-                    << QVector3D(-1.0f, 1.5f, 1.875f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, 1.0f, 0.0f)
-                    << QVector3D(0.0f, 1.0f, 0.0f)
-                    << QVector3D(0.0f, 1.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 0.0f)
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(0.0f, 0.125f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 20, 21, 22 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-1.0f, 1.5f, 2.5f),
+                        QVector3D(1.0f, 1.5f, 2.5f),
+                        QVector3D(-1.0f, 1.5f, 1.875f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, 1.0f, 0.0f),
+                        QVector3D(0.0f, 1.0f, 0.0f),
+                        QVector3D(0.0f, 1.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 0.0f),
+                        QVector2D(1.0f, 0.0f),
+                        QVector2D(0.0f, 0.125f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_positiveY_firstTriangle_nonSymmetric")
                     << 2.0f << 3.0f << 5.0f
                     << QSize(2,3) << QSize(2,5) << QSize(2,9)
@@ -440,23 +414,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 47;
-            const auto indices = (QVector<quint16>() << 54 << 53 << 55);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-1.0f, -1.5f, 2.5f)
-                    << QVector3D(1.0f, -1.5f, 1.875f)
-                    << QVector3D(1.0f, -1.5f, 2.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, -1.0f, 0.0f)
-                    << QVector3D(0.0f, -1.0f, 0.0f)
-                    << QVector3D(0.0f, -1.0f, 0.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 1.0f)
-                    << QVector2D(1.0f, 0.875f)
-                    << QVector2D(1.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 54, 53, 55 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-1.0f, -1.5f, 2.5f),
+                        QVector3D(1.0f, -1.5f, 1.875f),
+                        QVector3D(1.0f, -1.5f, 2.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, -1.0f, 0.0f),
+                        QVector3D(0.0f, -1.0f, 0.0f),
+                        QVector3D(0.0f, -1.0f, 0.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 1.0f),
+                        QVector2D(1.0f, 0.875f),
+                        QVector2D(1.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_negativeY_lastTriangle_nonSymmetric")
                     << 2.0f << 3.0f << 5.0f
                     << QSize(2,3) << QSize(2,5) << QSize(2,9)
@@ -466,23 +440,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 48;
-            const auto indices = (QVector<quint16>() << 56 << 57 << 58);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(-1.0f, -1.5f, 2.5f)
-                    << QVector3D(1.0f, -1.5f, 2.5f)
-                    << QVector3D(-1.0f, 0.0f, 2.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, 0.0f, 1.0f)
-                    << QVector3D(0.0f, 0.0f, 1.0f)
-                    << QVector3D(0.0f, 0.0f, 1.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 0.0f)
-                    << QVector2D(1.0f, 0.0f)
-                    << QVector2D(0.0f, 0.5f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 56, 57, 58 };
+            const QList<QVector3D> positions
+                    = { QVector3D(-1.0f, -1.5f, 2.5f),
+                        QVector3D(1.0f, -1.5f, 2.5f),
+                        QVector3D(-1.0f, 0.0f, 2.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, 0.0f, 1.0f),
+                        QVector3D(0.0f, 0.0f, 1.0f),
+                        QVector3D(0.0f, 0.0f, 1.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 0.0f),
+                        QVector2D(1.0f, 0.0f),
+                        QVector2D(0.0f, 0.5f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_positiveZ_firstTriangle_nonSymmetric")
                     << 2.0f << 3.0f << 5.0f
                     << QSize(2,3) << QSize(2,5) << QSize(2,9)
@@ -492,23 +466,23 @@ private Q_SLOTS:
 
         {
             const int triangleIndex = 55;
-            const auto indices = (QVector<quint16>() << 66 << 65 << 67);
-            const auto positions = (QVector<QVector3D>()
-                    << QVector3D(1.0f, 1.5f, -2.5f)
-                    << QVector3D(-1.0f, 0.0f, -2.5f)
-                    << QVector3D(-1.0f, 1.5f, -2.5f));
-            const auto normals = (QVector<QVector3D>()
-                    << QVector3D(0.0f, 0.0f, -1.0f)
-                    << QVector3D(0.0f, 0.0f, -1.0f)
-                    << QVector3D(0.0f, 0.0f, -1.0f));
-            const auto texCoords = (QVector<QVector2D>()
-                    << QVector2D(0.0f, 1.0f)
-                    << QVector2D(1.0f, 0.5f)
-                    << QVector2D(1.0f, 1.0f));
-            const auto tangents = (QVector<QVector4D>()
-                    << QVector4D(-1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(-1.0f, 0.0f, 0.0f, 1.0f)
-                    << QVector4D(-1.0f, 0.0f, 0.0f, 1.0f));
+            const QList<quint16> indices = { 66, 65, 67 };
+            const QList<QVector3D> positions
+                    = { QVector3D(1.0f, 1.5f, -2.5f),
+                        QVector3D(-1.0f, 0.0f, -2.5f),
+                        QVector3D(-1.0f, 1.5f, -2.5f) };
+            const QList<QVector3D> normals
+                    = { QVector3D(0.0f, 0.0f, -1.0f),
+                        QVector3D(0.0f, 0.0f, -1.0f),
+                        QVector3D(0.0f, 0.0f, -1.0f) };
+            const QList<QVector2D> texCoords
+                    = { QVector2D(0.0f, 1.0f),
+                        QVector2D(1.0f, 0.5f),
+                        QVector2D(1.0f, 1.0f) };
+            const QList<QVector4D> tangents
+                    = { QVector4D(-1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(-1.0f, 0.0f, 0.0f, 1.0f),
+                        QVector4D(-1.0f, 0.0f, 0.0f, 1.0f) };
             QTest::newRow("default_negativeZ_lastTriangle_nonSymmetric")
                     << 2.0f << 3.0f << 5.0f
                     << QSize(2,3) << QSize(2,5) << QSize(2,9)
@@ -521,12 +495,12 @@ private Q_SLOTS:
     {
         // GIVEN
         Qt3DExtras::QCuboidGeometry geometry;
-        const QVector<Qt3DRender::QAttribute *> attributes = geometry.attributes();
-        Qt3DRender::QAttribute *positionAttribute = geometry.positionAttribute();
-        Qt3DRender::QAttribute *normalAttribute = geometry.normalAttribute();
-        Qt3DRender::QAttribute *texCoordAttribute = geometry.texCoordAttribute();
-        Qt3DRender::QAttribute *tangentAttribute = geometry.tangentAttribute();
-        Qt3DRender::QAttribute *indexAttribute = geometry.indexAttribute();
+        const QList<Qt3DCore::QAttribute *> attributes = geometry.attributes();
+        Qt3DCore::QAttribute *positionAttribute = geometry.positionAttribute();
+        Qt3DCore::QAttribute *normalAttribute = geometry.normalAttribute();
+        Qt3DCore::QAttribute *texCoordAttribute = geometry.texCoordAttribute();
+        Qt3DCore::QAttribute *tangentAttribute = geometry.tangentAttribute();
+        Qt3DCore::QAttribute *indexAttribute = geometry.indexAttribute();
 
         // WHEN
         QFETCH(float, xExtent);
@@ -542,13 +516,11 @@ private Q_SLOTS:
         geometry.setYZMeshResolution(yzMeshResolution);
         geometry.setXZMeshResolution(xzMeshResolution);
 
-        generateGeometry(geometry);
-
         // THEN
 
         // Check buffer of each attribute is valid and actually has some data
         for (const auto &attribute : attributes) {
-            Qt3DRender::QBuffer *buffer = attribute->buffer();
+            Qt3DCore::QBuffer *buffer = attribute->buffer();
             QVERIFY(buffer != nullptr);
             QVERIFY(buffer->data().size() != 0);
         }
@@ -557,11 +529,11 @@ private Q_SLOTS:
 
         // Check specific indices and vertex attributes of triangle under test
         QFETCH(int, triangleIndex);
-        QFETCH(QVector<quint16>, indices);
-        QFETCH(QVector<QVector3D>, positions);
-        QFETCH(QVector<QVector3D>, normals);
-        QFETCH(QVector<QVector2D>, texCoords);
-        QFETCH(QVector<QVector4D>, tangents);
+        QFETCH(QList<quint16>, indices);
+        QFETCH(QList<QVector3D>, positions);
+        QFETCH(QList<QVector3D>, normals);
+        QFETCH(QList<QVector2D>, texCoords);
+        QFETCH(QList<QVector4D>, tangents);
 
         int i = 0;
         for (auto index : indices) {

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,11 +15,10 @@
 
 #include "base/files/file.h"
 #include "base/files/file_path.h"
-#include "base/no_destructor.h"
 #include "base/strings/string_piece.h"
-#include "base/test/bind_test_util.h"
-#include "base/threading/sequenced_task_runner_handle.h"
-#include "components/services/storage/indexed_db/scopes/disjoint_range_lock_manager.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/test/bind.h"
+#include "components/services/storage/indexed_db/locks/partitioned_lock_manager.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scope.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scopes.h"
 #include "components/services/storage/indexed_db/scopes/leveldb_scopes_test_utils.h"
@@ -66,20 +65,19 @@ class TransactionalLevelDBTransactionTest : public LevelDBScopesTestBase {
     ASSERT_TRUE(s.ok()) << s.ToString();
     leveldb_database_ = transactional_leveldb_factory_.CreateLevelDBDatabase(
         leveldb_, std::move(scopes_system),
-        base::SequencedTaskRunnerHandle::Get(), kTestingMaxOpenCursors);
+        base::SequencedTaskRunner::GetCurrentDefault(), kTestingMaxOpenCursors);
   }
 
-  std::vector<ScopeLock> AcquireLocksSync(
-      ScopesLockManager* lock_manager,
-      base::flat_set<ScopesLockManager::ScopeLockRequest> lock_requests) {
+  std::vector<PartitionedLock> AcquireLocksSync(
+      PartitionedLockManager* lock_manager,
+      base::flat_set<PartitionedLockManager::PartitionedLockRequest>
+          lock_requests) {
     base::RunLoop loop;
-    ScopesLocksHolder locks_receiver;
-    bool success = lock_manager->AcquireLocks(
+    PartitionedLockHolder locks_receiver;
+    lock_manager->AcquireLocks(
         lock_requests, locks_receiver.AsWeakPtr(),
         base::BindLambdaForTesting([&loop]() { loop.Quit(); }));
-    EXPECT_TRUE(success);
-    if (success)
-      loop.Run();
+    loop.Run();
     return std::move(locks_receiver.locks);
   }
 
@@ -152,7 +150,7 @@ class TransactionalLevelDBTransactionTest : public LevelDBScopesTestBase {
  private:
   DefaultTransactionalLevelDBFactory transactional_leveldb_factory_;
   std::unique_ptr<TransactionalLevelDBDatabase> leveldb_database_;
-  DisjointRangeLockManager lock_manager_{3};
+  PartitionedLockManager lock_manager_;
 };
 
 TEST_F(TransactionalLevelDBTransactionTest, GetPutDelete) {
@@ -201,7 +199,7 @@ TEST_F(TransactionalLevelDBTransactionTest, GetPutDelete) {
   EXPECT_EQ(Compare(got_value, another_value), 0);
 
   TransactionRemove(transaction.get(), another_key);
-  EXPECT_EQ(136ull, transaction->GetTransactionSize());
+  EXPECT_EQ(124ull, transaction->GetTransactionSize());
 
   status = transaction->Get(another_key, &got_value, &found);
   EXPECT_FALSE(found);
@@ -637,13 +635,13 @@ TEST_P(LevelDBTransactionRangeTest, RemoveRangeIteratorRetainsKey) {
 
   ASSERT_TRUE(it->IsValid());
   EXPECT_EQ(Compare(key_in_range2_, it->Key()), 0)
-      << key_in_range2_ << " != " << it->Key().as_string();
+      << key_in_range2_ << " != " << it->Key();
 
   status = it->Next();
   EXPECT_TRUE(status.ok());
   ASSERT_TRUE(it->IsValid());
   EXPECT_EQ(Compare(key_after_range_, it->Key()), 0)
-      << key_after_range_ << " != " << it->Key().as_string();
+      << key_after_range_ << " != " << it->Key();
 
   status = transaction_->Commit(/*sync_on_commit=*/false);
   EXPECT_TRUE(status.ok());

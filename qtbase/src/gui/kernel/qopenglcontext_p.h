@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QOPENGLCONTEXT_P_H
 #define QOPENGLCONTEXT_P_H
@@ -110,6 +74,7 @@ public:
         , m_func(func)
     {
     }
+    ~QOpenGLSharedResourceGuard() override;
 
     GLuint id() const { return m_id; }
 
@@ -135,6 +100,7 @@ public:
         , m_refs(0)
     {
     }
+    ~QOpenGLContextGroupPrivate() override;
 
     void addContext(QOpenGLContext *ctx);
     void removeContext(QOpenGLContext *ctx);
@@ -174,7 +140,7 @@ public:
         // Have to use our own mutex here, not the group's, since
         // m_groups has to be protected too against any concurrent access.
         QMutexLocker locker(&m_mutex);
-        T *resource = static_cast<T *>(group->d_func()->m_resources.value(this, 0));
+        T *resource = static_cast<T *>(group->d_func()->m_resources.value(this, nullptr));
         if (!resource) {
             resource = new T(context);
             insert(context, resource);
@@ -191,21 +157,29 @@ private:
 class QPaintEngineEx;
 class QOpenGLFunctions;
 class QOpenGLTextureHelper;
+class QOpenGLVertexArrayObjectHelper;
+
+class Q_GUI_EXPORT QOpenGLContextVersionFunctionHelper
+{
+public:
+    virtual ~QOpenGLContextVersionFunctionHelper();
+};
 
 class Q_GUI_EXPORT QOpenGLContextPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QOpenGLContext)
 public:
     QOpenGLContextPrivate()
-        : qGLContextHandle(nullptr)
-        , qGLContextDeleteFunction(nullptr)
-        , platformGLContext(nullptr)
+        : platformGLContext(nullptr)
         , shareContext(nullptr)
         , shareGroup(nullptr)
         , screen(nullptr)
         , surface(nullptr)
         , functions(nullptr)
         , textureFunctions(nullptr)
+        , versionFunctions(nullptr)
+        , vaoHelper(nullptr)
+        , vaoHelperDestroyCallback(nullptr)
         , max_texture_size(-1)
         , workaround_brokenFBOReadBack(false)
         , workaround_brokenTexSubImage(false)
@@ -218,18 +192,9 @@ public:
         requestedFormat = QSurfaceFormat::defaultFormat();
     }
 
-    ~QOpenGLContextPrivate()
-    {
-        //do not delete the QOpenGLContext handle here as it is deleted in
-        //QWidgetPrivate::deleteTLSysExtra()
-    }
+    ~QOpenGLContextPrivate() override;
 
-    mutable QHash<QOpenGLVersionProfile, QAbstractOpenGLFunctions *> versionFunctions;
-    mutable QOpenGLVersionFunctionsStorage versionFunctionsStorage;
-    mutable QSet<QAbstractOpenGLFunctions *> externalVersionFunctions;
-
-    void *qGLContextHandle;
-    void (*qGLContextDeleteFunction)(void *handle);
+    void adopt(QPlatformOpenGLContext *);
 
     QSurfaceFormat requestedFormat;
     QPlatformOpenGLContext *platformGLContext;
@@ -240,6 +205,11 @@ public:
     QOpenGLFunctions *functions;
     mutable QSet<QByteArray> extensionNames;
     QOpenGLTextureHelper* textureFunctions;
+    std::function<void()> textureFunctionsDestroyCallback;
+    QOpenGLContextVersionFunctionHelper *versionFunctions;
+    QOpenGLVertexArrayObjectHelper *vaoHelper;
+    using QOpenGLVertexArrayObjectHelperDestroyCallback_t = void (*)(QOpenGLVertexArrayObjectHelper *);
+    QOpenGLVertexArrayObjectHelperDestroyCallback_t vaoHelperDestroyCallback;
 
     GLint max_texture_size;
 
@@ -256,7 +226,6 @@ public:
     // Saves us from querying the driver for the current FBO in most paths.
     QOpenGLFramebufferObject *qgl_current_fbo;
 
-    QVariant nativeHandle;
     GLuint defaultFboRedirect;
 
     static QOpenGLContext *setCurrentContext(QOpenGLContext *context);

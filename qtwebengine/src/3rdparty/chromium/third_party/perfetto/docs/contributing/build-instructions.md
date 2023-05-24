@@ -7,64 +7,105 @@ A read-only mirror is also available at https://github.com/google/perfetto .
 
 Perfetto can be built both from the Android tree (AOSP) and standalone.
 Standalone builds are meant only for local testing and are not shipped.
-Due to the reduced dependencies they are faster to iterate on and the
-suggested way to work on Perfetto.
+Due to the reduced dependencies, the standalone workflow is faster to iterate on
+and the suggested way to work on Perfetto, unless you are working on code that
+has non-NDK depedencies into Android internals. Profilers and internal HAL/AIDL
+dependencies will not be built in the standalone build.
 
-## Get the code
+If you are chromium contributor, AOSP is still the place you should send CLs to.
+The code inside chromium's
+[third_party/perfetto](https://source.chromium.org/chromium/chromium/src/+/main:third_party/perfetto/?q=f:third_party%2Fperfetto&ss=chromium)
+is a direct mirror of the AOSP repo. The
+[AOSP->Chromium autoroller](https://autoroll.skia.org/r/perfetto-chromium-autoroll)
+takes care of keeping chromium's DEPS up to date.
 
-**Standalone checkout**:
+## Standalone builds
+
+#### Get the code
 
 ```bash
 git clone https://android.googlesource.com/platform/external/perfetto/
 ```
 
-**Android tree**:
-
-Perfetto lives in [`external/perfetto` in the AOSP tree](https://cs.android.com/android/platform/superproject/+/master:external/perfetto/).
-
-## Prerequisites
-
-**Standalone checkout**:
-
-All dependent libraries are self-hosted and pulled through:
+#### Pull dependent libraries and toolchains
 
 ```bash
-tools/install-build-deps [--android] [--ui]
+tools/install-build-deps [--android] [--ui] [--linux-arm]
 ```
 
-**Android tree**:
+`--android` will pull the Android NDK, emulator and other deps required
+to build for `target_os = "android"`.
 
-See https://source.android.com/setup
+`--ui` will pull NodeJS and all the NPM modules required to build the
+Web UI. See the [UI Development](#ui-development) section below for more.
 
-## Building
+`--linux-arm` will pull the sysroots for cross-compiling for Linux ARM/64.
 
-**Standalone checkout**:
+WARNING: Note that if you're using an M1 or any later ARM Mac, your Python
+version should be at least 3.9.1 to work around
+[this Python Bug](https://bugs.python.org/issue42704).
 
-If you are a chromium developer and have depot_tools installed you can avoid
-the `tools/` prefix below and just use gn/ninja from depot_tools.
+#### Generate the build files via GN
 
-`$ tools/gn args out/android` to generate build files and enter in the editor:
+Perfetto uses [GN](https://gn.googlesource.com/gn/+/HEAD/docs/quick_start.md)
+as primary build system. See the [Build files](#build-files) section below for
+more.
+
+```bash
+tools/gn args out/android
+```
+
+This will open an editor to customize the GN args. Enter:
 
 ```python
-target_os = "android"                 # Only when building for Android
+# Set only when building for Android, omit when building for linux, mac or win.
+target_os = "android"
 target_cpu = "arm" / "arm64" / "x64"
+
 is_debug = true / false
-cc_wrapper = "ccache"                 # Optionally speed repeated builds with ccache
+cc_wrapper = "ccache"             # [Optional] speed up rebuilds with ccache.
 ```
 
-(See the [Build Configurations](#build-configurations) section below for more)
+See the [Build Configurations](#build-configurations) and
+[Building on Windows](#building-on-windows) sections below for more.
+
+TIP: If you are a chromium developer and have depot_tools installed you can
+avoid the `tools/` prefix below and just use gn/ninja from depot_tools.
+
+#### Build native C/C++ targets
 
 ```bash
+# This will build all the targets.
 tools/ninja -C out/android
+
+# Alternatively, list targets explicitly.
+tools/ninja -C out/android \
+  traced \                 # Tracing service.
+  traced_probes \          # Ftrace interop and /proc poller.
+  perfetto \               # Cmdline client.
+  trace_processor_shell \  # Trace parsing.
+  traceconv                # Trace conversion.
+...
 ```
 
-**Android tree**
+## Android tree builds
 
-`mmma external/perfetto`
-or
-`m perfetto traced traced_probes`
+Follow these instructions if you are an AOSP contributor.
+
+The source code lives in [`external/perfetto` in the AOSP tree](https://cs.android.com/android/platform/superproject/+/master:external/perfetto/).
+
+Follow the instructions on https://source.android.com/setup/build/building .
+
+Then:
+
+```bash
+mmma external/perfetto
+# or
+m traced traced_probes perfetto
+```
 
 This will generate artifacts `out/target/product/XXX/system/`.
+
 Executables and shared libraries are stripped by default by the Android build
 system. The unstripped artifacts are kept into `out/target/product/XXX/symbols`.
 
@@ -80,32 +121,48 @@ tools/install-build-deps --ui
 Build the UI:
 
 ```bash
-gn args out/default  # The only relevant arg is is_debug=true|false
-
-# This will generate the static content for serving the UI in out/default/ui/.
-tools/ninja -C out/default ui
+# Will build into ./out/ui by default. Can be changed with --out path/
+# The final bundle will be available at ./ui/out/dist/.
+# The build script creates a symlink from ./ui/out to $OUT_PATH/ui/.
+ui/build
 ```
 
 Test your changes on a local server using:
 
 ```bash
-ui/run-dev-server out/default
+# This will automatically build the UI. There is no need to manually run
+# ui/build before running ui/run-dev-server.
+ui/run-dev-server
 ```
 
 Navigate to http://localhost:10000/ to see the changes.
 
-## IDE setup
+The server supports live reloading of CSS and TS/JS contents. Whenever a ui
+source file is changed it, the script will automatically re-build it and show a
+prompt in the web page.
 
-Use a following command in the checkout directory in order to generate the
-compilation database file:
+UI unit tests are located next to the functionality being tested, and have
+`_unittest.ts` or `_jsdomtest.ts` suffixes. The following command runs all unit
+tests:
 
 ```bash
-tools/ninja -C out/default -t compdb cc cxx > compile_commands.json
+ui/run-unittests
 ```
 
-After generating, it can be used in CLion (File -> Open -> Open As Project),
-Visual Studio Code with C/C++ extension and any other tool and editor that
-supports the compilation database format.
+This command will perform the build first; which is not necessary if you
+already have a development server running. In this case, to avoid interference
+with the rebuild done by development server and to get the results faster, you
+can use
+
+```bash
+ui/run-unittests --no-build
+```
+
+to skip the build steps.
+
+Script `ui/run-unittests` also supports `--watch` parameter, which would
+restart the testing when the underlying source files are changed. This can be
+used in conjunction with `--no-build`, and on its own as well.
 
 ## Build files
 
@@ -114,6 +171,8 @@ on [GN][gn-quickstart].
 The Android build file ([Android.bp](/Android.bp)) is autogenerated from the GN
 files through `tools/gen_android_bp`, which needs to be invoked whenever a
 change touches GN files or introduces new ones.
+Likewise, the Bazel build file ([BUILD](/BUILD)) is autogenerated through the
+`tools/gen_bazel` script.
 
 A presubmit check checks that the Android.bp is consistent with GN files when
 submitting a CL through `git cl upload`.
@@ -124,10 +183,11 @@ Android.bp file. If you are adding a new target, add a new entry to the
 
 ## Supported platforms
 
-**Linux desktop** (Debian Rodete)
+**Linux desktop** (Debian Testing/Rodete)
 
 - Hermetic clang + libcxx toolchain (both following chromium's revisions)
 - GCC-7 and libstdc++ 6
+- Cross-compiling for arm and arm64 (more below).
 
 **Android**
 
@@ -136,19 +196,116 @@ Android.bp file. If you are adding a new target, add a new entry to the
 
 **Mac**
 
-- XCode 9 / clang (currently maintained best-effort).
+- XCode 9 / clang (maintained best-effort).
 
 **Windows**
 
-Windows builds are not currently supported when using the standalone checkout
-and GN. Windows is supported only for a subset of the targets (mainly
-`trace_processor` and the in-process version of the
-[Tracing SDK](/docs/instrumentation/tracing-sdk.md)) in two ways:
-(1) when building through Bazel; (2) when building as part of Chromium.
+- Windows 10 with either MSVC 2019 or clang-cl (maintained best-effort).
+
+### Building on Windows
+
+Building on Windows is possible using both the MSVC 2019 compiler (you don't
+need the full IDE, just the build tools) or the LLVM clang-cl compiler.
+
+The Windows support in standalone builds has been introduced in v16 by
+[r.android.com/1711913](https://r.android.com/1711913).
+
+clang-cl support is more stable because that build configuration is actively
+covered by the Chromium project (Perfetto rolls into chromium and underpins
+chrome://tracing). The MSVC build is maintained best-effort.
+
+The following targets are supported on Windows:
+
+- `trace_processor_shell`: the trace importer and SQL query engine.
+- `traceconv`: the trace conversion tool.
+- `traced` and `perfetto`: the tracing service and cmdline client. They use an
+  alternative implementation of the [inter-process tracing protocol](/docs/design-docs/api-and-abi.md#tracing-protocol-abi)
+  based on a TCP socket and named shared memory. This configuration is only for
+  testing / benchmarks and is not shipped in production.
+  Googlers: see [go/perfetto-win](http://go/perfetto-win) for details.
+- `perfetto_unittests` / `perfetto_integrationtests`: although they support only
+  the subset of code that is supported on Windows (e.g. no ftrace).
+
+It is NOT possible to build the Perfetto UI from Windows.
+
+#### Prerequisites
+
+You need all of these both for MSVC and clang-cl:
+
+- [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
+- [Windows 10 SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk/)
+- [Python 3](https://www.python.org/downloads/windows/)
+
+The [`win_find_msvc.py`](/gn/standalone/toolchain/win_find_msvc.py) script will
+locate the higest version numbers available from
+`C:\Program Files (x86)\Windows Kits\10` and
+`C:\Program Files (x86)\Microsoft Visual Studio\2019`.
+
+#### Pull dependent libraries and toolchains
+
+```bash
+# This will download also the LLVM clang-cl prebuilt used by chromium.
+python3 tools/install-build-deps
+```
+
+#### Generate build files
+
+```bash
+python3 tools/gn gen out/win
+```
+
+In the editor type:
+
+```bash
+is_debug = true | false
+
+is_clang = true  # Will use the hermetic clang-cl toolchain.
+# or
+is_clang = false  # Will use MSVC 2019.
+```
+
+#### Build
+
+```bash
+python3 tools/ninja -C out/win perfetto traced trace_processor_shell
+```
+
+### Cross-compiling for Linux ARM/64
+
+When cross-compiling for Linux you will need a sysroot. You have two options:
+
+#### 1. Use the built-in sysroots based on Debian Sid
+
+```bash
+tools/install-build-deps --linux-arm
+```
+
+Then set the following GN args:
+
+```python
+target_os = "linux"
+target_cpu = "arm"
+# or
+target_cpu = "arm64"
+```
+
+#### 2. Use your own sysroot
+
+In this case you need to manually specify the sysroot location and the
+toolchain prefix triplet to use.
+
+```python
+target_os = "linux"
+target_sysroot = "/path/to/sysroot"
+target_triplet = "aarch64-linux-gnu"  # Or any other supported triplet.
+```
+
+For more details see the [Using cutom toolchains](#custom-toolchain) section
+below.
 
 ## Build configurations
 
-TIP: `tools/build_all_configs.py` can be used to generate out/XXX folders for
+TIP: `tools/setup_all_configs.py` can be used to generate out/XXX folders for
 most of the supported configurations.
 
 The following [GN args][gn-quickstart] are supported:
@@ -183,6 +340,12 @@ See also the [custom toolchain](#custom-toolchain) section below.
 `is_hermetic_clang = true | false`
 
 Use bundled toolchain from `buildtools/` rather than system-wide one.
+
+`non_hermetic_clang_stdlib = libc++ | libstdc++`
+
+If `is_hermetic_clang` is `false`, sets the `-stdlib` flag for clang
+invocations. `libstdc++` is default on Linux hosts and `libc++` is
+default everywhere else.
 
 `cc = "gcc" / cxx = "g++"`
 
@@ -298,3 +461,73 @@ extra_target_ldflags="${LDFLAGS}"
 ```
 
 [gn-quickstart]: https://gn.googlesource.com/gn/+/master/docs/quick_start.md
+
+## IDE setup
+
+Use a following command in the checkout directory in order to generate the
+compilation database file:
+
+```bash
+tools/gn gen out/default --export-compile-commands
+```
+
+After generating, it can be used in CLion (File -> Open -> Open As Project),
+Visual Studio Code with C/C++ extension and any other tool and editor that
+supports the compilation database format.
+
+#### Useful extensions
+
+If you are using VS Code we suggest the following extensions:
+
+- [Clang-Format](https://marketplace.visualstudio.com/items?itemName=xaver.clang-format)
+- [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
+- [clangd](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd)
+- [Native Debug](https://marketplace.visualstudio.com/items?itemName=webfreak.debug)
+- [GNFormat](https://marketplace.visualstudio.com/items?itemName=persidskiy.vscode-gnformat)
+- [ESlint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
+- [markdownlint](https://marketplace.visualstudio.com/items?itemName=DavidAnson.vscode-markdownlint)
+
+#### Useful settings
+
+In `.vscode/settings.json`:
+
+```json
+{
+  "C_Cpp.clang_format_path": "${workspaceRoot}/buildtools/mac/clang-format",
+  "C_Cpp.clang_format_sortIncludes": true,
+  "files.exclude": {
+    "out/*/obj": true,
+    "out/*/gen": true,
+  },
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/out/mac_debug",
+    "--completion-style=detailed",
+    "--header-insertion=never"
+  ],
+}
+```
+
+Replace `/mac/` with `/linux64/` on Linux.
+
+### Debugging with VSCode
+
+Edit `.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "request": "launch",
+      "type": "cppdbg",
+      "name": "Perfetto unittests",
+      "program": "${workspaceRoot}/out/mac_debug/perfetto_unittests",
+      "args": ["--gtest_filter=TracingServiceImplTest.StopTracingTriggerRingBuffer"],
+      "cwd": "${workspaceFolder}/out/mac_debug",
+      "MIMode": "lldb",
+    },
+  ]
+}
+```
+
+Then open the command palette `Meta`+`Shift`+`P` -> `Debug: Start debugging`.

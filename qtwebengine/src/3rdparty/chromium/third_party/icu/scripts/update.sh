@@ -13,6 +13,13 @@ then
 fi
 
 version="$1"
+
+# Makes ("68" "1") from "68-1".
+readonly major_minor_version=(${version//-/ })
+
+# Just the major part of the ICU version number, e.g. "68".
+readonly major_version="${major_minor_version[0]}"
+
 repoprefix="https://github.com/unicode-org/icu/tags/release-"
 repo="${repoprefix}${version}/icu4c"
 treeroot="$(dirname "$0")/.."
@@ -34,7 +41,7 @@ do
 done
 
 echo "deleting directories we don't care about ..."
-for d in layoutex data/xml test allinone
+for d in layoutex data/xml allinone
 do
   rm -rf "${treeroot}/source/${d}"
 done
@@ -49,9 +56,9 @@ do
   git checkout -- "${treeroot}/source/data/"${line}
 done < "${treeroot}/scripts/data_files_to_preserve.txt"
 
-echo "Patching configure to work without source/{layoutex,test}  ..."
+echo "Patching configure to work without source/{layoutex}  ..."
 sed -i.orig -e '/^ac_config_files=/ s:\ layoutex/Makefile::g' \
-  -e '/^ac_config_files=/ s: test/.* samples/M: samples/M:' \
+  -e '/^ac_config_files=/ s: samples/M: samples/M:' \
   "${treeroot}/source/configure"
 rm -f "${treeroot}/source/configure.orig"
 
@@ -122,5 +129,13 @@ sed   -i \
       /source\/common/ d
    }' icu.gypi
 
+# Update the major version number registered in version.json.
+# The version is written out into a text file to allow other tools to
+# read it without parsing .gni files.
+cat << EOF > version.json
+{
+ "major_version": "${major_version}"
+}
+EOF
 
 echo "Done"

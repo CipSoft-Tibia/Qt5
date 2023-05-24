@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "interactivewidget.h"
 #include "widgets.h"
 #include "paintcommands.h"
@@ -42,8 +17,9 @@
 #endif
 
 #ifndef QT_NO_OPENGL
-#include <qgl.h>
-#include <QGLPixelBuffer>
+#include <QtOpenGL/QOpenGLFramebufferObjectFormat>
+#include <QtOpenGL/QOpenGLPaintDevice>
+#include <QtOpenGLWidgets/QOpenGLWidget>
 #endif
 
 // #define DO_QWS_DEBUGGING
@@ -89,7 +65,7 @@ static void printHelp()
            "    -imagemono      Paints the files to a monochrome image\n"
            "    -imagewidget    same as image, but with interacion...\n"
 #ifndef QT_NO_OPENGL
-           "    -opengl         Paints the files to a QGLWidget (Qt4 style) on screen\n"
+           "    -opengl         Paints the files to a QOpenGLWidget on screen\n"
            "    -glbuffer       Paints the files to a QOpenGLFrameBufferObject (Qt5 style) \n"
            "    -coreglbuffer   Paints the files to a Core Profile context QOpenGLFrameBufferObject\n"
 #endif
@@ -215,6 +191,7 @@ int main(int argc, char **argv)
 
     DeviceType type = WidgetType;
     QSurfaceFormat contextFormat;
+    contextFormat.setStencilBufferSize(8);
     bool checkers_background = true;
 
     QImage::Format imageFormat = QImage::Format_ARGB32_Premultiplied;
@@ -233,12 +210,11 @@ int main(int argc, char **argv)
     bool verboseMode = false;
 
 #ifndef QT_NO_OPENGL
-    QGLFormat f = QGLFormat::defaultFormat();
-    f.setSampleBuffers(true);
-    f.setStencil(true);
-    f.setAlpha(true);
+    QSurfaceFormat f = QSurfaceFormat::defaultFormat();
+    f.setSamples(1);
+    f.setStencilBufferSize(8);
     f.setAlphaBufferSize(8);
-    QGLFormat::setDefaultFormat(f);
+    QSurfaceFormat::setDefaultFormat(f);
 #endif
 
     char *arg;
@@ -447,14 +423,14 @@ int main(int argc, char **argv)
             }
             case OpenGLType:
             {
-                OnScreenWidget<QGLWidget> *qGLWidget = new OnScreenWidget<QGLWidget>(files.at(j));
-                qGLWidget->setVerboseMode(verboseMode);
-                qGLWidget->setType(type);
-                qGLWidget->setCheckersBackground(checkers_background);
-                qGLWidget->m_commands = content;
-                qGLWidget->resize(width, height);
-                qGLWidget->show();
-                activeWidget = qGLWidget;
+                OnScreenWidget<QOpenGLWidget> *qOpenGLWidget = new OnScreenWidget<QOpenGLWidget>(files.at(j));
+                qOpenGLWidget->setVerboseMode(verboseMode);
+                qOpenGLWidget->setType(type);
+                qOpenGLWidget->setCheckersBackground(checkers_background);
+                qOpenGLWidget->m_commands = content;
+                qOpenGLWidget->resize(width, height);
+                qOpenGLWidget->show();
+                activeWidget = qOpenGLWidget;
                 break;
             }
 #else
@@ -633,7 +609,7 @@ int main(int argc, char **argv)
                                      + input.suffix() + QStringLiteral(".pdf");
                 p.setOutputFormat(QPrinter::PdfFormat);
                 p.setOutputFileName(file);
-                p.setPageSize(QPrinter::A4);
+                p.setPageSize(QPageSize(QPageSize::A4));
                 QPainter pt(&p);
                 pcmd.setPainter(&pt);
                 pcmd.setFilePath(fileinfo.absolutePath());

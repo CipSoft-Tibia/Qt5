@@ -39,6 +39,7 @@
 #include <sys/shm.h>
 #include <linux/input.h>
 
+#include <drm_fourcc.h>
 #include <xcb/xcb.h>
 #include <xcb/shm.h>
 #ifdef HAVE_XCB_XKB
@@ -57,7 +58,7 @@
 #include "shared/timespec-util.h"
 #include "shared/file-util.h"
 #include "renderer-gl/gl-renderer.h"
-#include "weston-egl-ext.h"
+#include "shared/weston-egl-ext.h"
 #include "pixman-renderer.h"
 #include "presentation-time-server-protocol.h"
 #include "linux-dmabuf.h"
@@ -71,6 +72,10 @@
 
 #define WINDOW_MAX_WIDTH 8192
 #define WINDOW_MAX_HEIGHT 8192
+
+static const uint32_t x11_formats[] = {
+	DRM_FORMAT_XRGB8888,
+};
 
 struct x11_backend {
 	struct weston_backend	 base;
@@ -802,16 +807,6 @@ x11_output_switch_mode(struct weston_output *base, struct weston_mode *mode)
 	static uint32_t values[2];
 	int ret;
 
-	if (base == NULL) {
-		weston_log("output is NULL.\n");
-		return -1;
-	}
-
-	if (mode == NULL) {
-		weston_log("mode is NULL.\n");
-		return -1;
-	}
-
         b = to_x11_backend(base->compositor);
         output = to_x11_output(base);
 
@@ -841,6 +836,9 @@ x11_output_switch_mode(struct weston_output *base, struct weston_mode *mode)
 	output->mode.height = mode->height;
 
 	if (b->use_pixman) {
+		const struct pixman_renderer_output_options options = {
+			.use_shadow = true,
+		};
 		pixman_renderer_output_destroy(&output->base);
 		x11_output_deinit_shm(b, output);
 
@@ -851,23 +849,23 @@ x11_output_switch_mode(struct weston_output *base, struct weston_mode *mode)
 			return -1;
 		}
 
-		if (pixman_renderer_output_create(&output->base,
-				PIXMAN_RENDERER_OUTPUT_USE_SHADOW) < 0) {
+		if (pixman_renderer_output_create(&output->base, &options) < 0) {
 			weston_log("Failed to create pixman renderer for output\n");
 			x11_output_deinit_shm(b, output);
 			return -1;
 		}
 	} else {
 		Window xid = (Window) output->window;
+		const struct gl_renderer_output_options options = {
+			.window_for_legacy = (EGLNativeWindowType) output->window,
+			.window_for_platform = &xid,
+			.drm_formats = x11_formats,
+			.drm_formats_count = ARRAY_LENGTH(x11_formats),
+		};
 
 		gl_renderer->output_destroy(&output->base);
 
-		ret = gl_renderer->output_window_create(&output->base,
-						        (EGLNativeWindowType) output->window,
-						        &xid,
-						        gl_renderer->opaque_attribs,
-						        NULL,
-						        0);
+		ret = gl_renderer->output_window_create(&output->base, &options);
 		if (ret < 0)
 			return -1;
 	}
@@ -1018,14 +1016,16 @@ x11_output_enable(struct weston_output *base)
 		x11_output_wait_for_map(b, output);
 
 	if (b->use_pixman) {
+		const struct pixman_renderer_output_options options = {
+			.use_shadow = true,
+		};
 		if (x11_output_init_shm(b, output,
 					output->base.current_mode->width,
 					output->base.current_mode->height) < 0) {
 			weston_log("Failed to initialize SHM for the X11 output\n");
 			goto err;
 		}
-		if (pixman_renderer_output_create(&output->base,
-				PIXMAN_RENDERER_OUTPUT_USE_SHADOW) < 0) {
+		if (pixman_renderer_output_create(&output->base, &options) < 0) {
 			weston_log("Failed to create pixman renderer for output\n");
 			x11_output_deinit_shm(b, output);
 			goto err;
@@ -1036,14 +1036,15 @@ x11_output_enable(struct weston_output *base)
 		/* eglCreatePlatformWindowSurfaceEXT takes a Window*
 		 * but eglCreateWindowSurface takes a Window. */
 		Window xid = (Window) output->window;
+		const struct gl_renderer_output_options options = {
+			.window_for_legacy = (EGLNativeWindowType) output->window,
+			.window_for_platform = &xid,
+			.drm_formats = x11_formats,
+			.drm_formats_count = ARRAY_LENGTH(x11_formats),
+		};
 
-		ret = gl_renderer->output_window_create(
-					&output->base,
-					(EGLNativeWindowType) output->window,
-					&xid,
-					gl_renderer->opaque_attribs,
-					NULL,
-					0);
+		ret = gl_renderer->output_window_create(&output->base,
+							&options);
 		if (ret < 0)
 			goto err;
 
@@ -1801,18 +1802,20 @@ x11_destroy(struct weston_compositor *ec)
 static int
 init_gl_renderer(struct x11_backend *b)
 {
-	int ret;
+	const struct gl_renderer_display_options options = {
+		.egl_platform = EGL_PLATFORM_X11_KHR,
+		.egl_native_display = b->dpy,
+		.egl_surface_type = EGL_WINDOW_BIT,
+		.drm_formats = x11_formats,
+		.drm_formats_count = ARRAY_LENGTH(x11_formats),
+	};
 
 	gl_renderer = weston_load_module("gl-renderer.so",
 					 "gl_renderer_interface");
 	if (!gl_renderer)
 		return -1;
 
-	ret = gl_renderer->display_create(b->compositor, EGL_PLATFORM_X11_KHR,
-					  (void *) b->dpy, NULL,
-					  gl_renderer->opaque_attribs, NULL, 0);
-
-	return ret;
+	return gl_renderer->display_create(b->compositor, &options);
 }
 
 static const struct weston_windowed_output_api api = {

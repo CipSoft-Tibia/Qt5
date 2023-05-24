@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,15 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <ostream>
 #include <tuple>
 
 #include "base/check_op.h"
+#include "base/containers/contains.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
-#include "base/stl_util.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_piece.h"
 #include "url/gurl.h"
 #include "url/third_party/mozilla/url_parse.h"
 #include "url/url_canon.h"
@@ -50,12 +52,21 @@ bool IsCanonicalHost(const base::StringPiece& host) {
   return host == canon_host;
 }
 
+// Note: When changing IsValidInput, consider also updating
+// ShouldTreatAsOpaqueOrigin in Blink (there might be existing differences in
+// behavior between these 2 layers, but we should avoid introducing new
+// differences).
 bool IsValidInput(const base::StringPiece& scheme,
                   const base::StringPiece& host,
                   uint16_t port,
                   SchemeHostPort::ConstructPolicy policy) {
   // Empty schemes are never valid.
   if (scheme.empty())
+    return false;
+
+  // about:blank and other no-access schemes translate into an opaque origin.
+  // This helps consistency with ShouldTreatAsOpaqueOrigin in Blink.
+  if (base::Contains(GetNoAccessSchemes(), scheme))
     return false;
 
   // NOTE(juvaldma)(Chromium 67.0.3396.47)
@@ -80,9 +91,10 @@ bool IsValidInput(const base::StringPiece& scheme,
       Component(0, base::checked_cast<int>(scheme.length())),
       &scheme_type);
   if (!is_standard) {
-    // To be consistent with blink, local non-standard schemes are currently
-    // allowed to be tuple origins. Nonstandard schemes don't have hostnames,
-    // so their tuple is just ("protocol", "", 0).
+    // To be consistent with ShouldTreatAsOpaqueOrigin in Blink, local
+    // non-standard schemes are currently allowed to be tuple origins.
+    // Nonstandard schemes don't have hostnames, so their tuple is just
+    // ("protocol", "", 0).
     //
     // TODO: Migrate "content:" and "externalfile:" to be standard schemes, and
     // remove this local scheme exception.
@@ -166,8 +178,8 @@ SchemeHostPort::SchemeHostPort(std::string scheme,
 SchemeHostPort::SchemeHostPort(base::StringPiece scheme,
                                base::StringPiece host,
                                uint16_t port)
-    : SchemeHostPort(scheme.as_string(),
-                     host.as_string(),
+    : SchemeHostPort(std::string(scheme),
+                     std::string(host),
                      port,
                      ConstructPolicy::CHECK_CANONICALIZATION) {}
 
@@ -291,9 +303,6 @@ std::string SchemeHostPort::SerializeInternal(url::Parsed* parsed) const {
     parsed->host = Component(result.length(), host_.length());
     result.append(host_);
   }
-
-  if (port_ == 0)
-    return result;
 
   // Omit the port component if the port matches with the default port
   // defined for the scheme, if any.

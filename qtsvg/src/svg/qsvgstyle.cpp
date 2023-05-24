@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt SVG module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsvgstyle_p.h"
 
@@ -54,14 +18,15 @@
 QT_BEGIN_NAMESPACE
 
 QSvgExtraStates::QSvgExtraStates()
-    : fillOpacity(1.0)
-    , strokeOpacity(1.0)
-    , svgFont(0)
-    , textAnchor(Qt::AlignLeft)
-    , fontWeight(400)
-    , fillRule(Qt::WindingFill)
-    , strokeDashOffset(0)
-    , vectorEffect(false)
+    : fillOpacity(1.0),
+      strokeOpacity(1.0),
+      svgFont(0),
+      textAnchor(Qt::AlignLeft),
+      fontWeight(QFont::Normal),
+      fillRule(Qt::WindingFill),
+      strokeDashOffset(0),
+      vectorEffect(false),
+      imageRendering(QSvgQualityStyle::ImageRenderingAuto)
 {
 }
 
@@ -81,16 +46,46 @@ void QSvgFillStyleProperty::revert(QPainter *, QSvgExtraStates &)
 
 
 QSvgQualityStyle::QSvgQualityStyle(int color)
+    : m_imageRendering(QSvgQualityStyle::ImageRenderingAuto)
+    , m_oldImageRendering(QSvgQualityStyle::ImageRenderingAuto)
+    , m_imageRenderingSet(0)
 {
     Q_UNUSED(color);
 }
-void QSvgQualityStyle::apply(QPainter *, const QSvgNode *, QSvgExtraStates &)
-{
 
+void QSvgQualityStyle::setImageRendering(ImageRendering hint) {
+    m_imageRendering = hint;
+    m_imageRenderingSet = 1;
 }
-void QSvgQualityStyle::revert(QPainter *, QSvgExtraStates &)
-{
 
+void QSvgQualityStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &states)
+{
+   m_oldImageRendering = states.imageRendering;
+   if (m_imageRenderingSet) {
+       states.imageRendering = m_imageRendering;
+   }
+   if (m_imageRenderingSet) {
+       bool smooth = false;
+       if (m_imageRendering == ImageRenderingAuto)
+           // auto (the spec says to prefer quality)
+           smooth = true;
+       else
+           smooth = (m_imageRendering == ImageRenderingOptimizeQuality);
+       p->setRenderHint(QPainter::SmoothPixmapTransform, smooth);
+   }
+}
+
+void QSvgQualityStyle::revert(QPainter *p, QSvgExtraStates &states)
+{
+    if (m_imageRenderingSet) {
+        states.imageRendering = m_oldImageRendering;
+        bool smooth = false;
+        if (m_oldImageRendering == ImageRenderingAuto)
+            smooth = true;
+        else
+            smooth = (m_oldImageRendering == ImageRenderingOptimizeQuality);
+        p->setRenderHint(QPainter::SmoothPixmapTransform, smooth);
+    }
 }
 
 QSvgFillStyle::QSvgFillStyle()
@@ -127,7 +122,7 @@ void QSvgFillStyle::setFillStyle(QSvgFillStyleProperty* style)
 void QSvgFillStyle::setBrush(QBrush brush)
 {
     m_fill = std::move(brush);
-    m_style = 0;
+    m_style = nullptr;
     m_fillSet = 1;
 }
 
@@ -199,26 +194,6 @@ QSvgFontStyle::QSvgFontStyle()
 {
 }
 
-int QSvgFontStyle::SVGToQtWeight(int weight) {
-    switch (weight) {
-    case 100:
-    case 200:
-        return QFont::Light;
-    case 300:
-    case 400:
-        return QFont::Normal;
-    case 500:
-    case 600:
-        return QFont::DemiBold;
-    case 700:
-    case 800:
-        return QFont::Bold;
-    case 900:
-        return QFont::Black;
-    }
-    return QFont::Normal;
-}
-
 void QSvgFontStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &states)
 {
     m_oldQFont = p->font();
@@ -246,13 +221,15 @@ void QSvgFontStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &states
 
     if (m_weightSet) {
         if (m_weight == BOLDER) {
-            states.fontWeight = qMin(states.fontWeight + 100, 900);
+            states.fontWeight = qMin(states.fontWeight + 100, static_cast<int>(QFont::Black));
         } else if (m_weight == LIGHTER) {
-            states.fontWeight = qMax(states.fontWeight - 100, 100);
+            states.fontWeight = qMax(states.fontWeight - 100, static_cast<int>(QFont::Thin));
         } else {
             states.fontWeight = m_weight;
         }
-        font.setWeight(SVGToQtWeight(states.fontWeight));
+        font.setWeight(QFont::Weight(qBound(static_cast<int>(QFont::Weight::Thin),
+                                            states.fontWeight,
+                                            static_cast<int>(QFont::Weight::Black))));
     }
 
     p->setFont(font);
@@ -336,7 +313,7 @@ void QSvgStrokeStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &stat
             setDashOffsetNeeded = true;
         } else {
             // If dash array was set, but not the width, the dash array has to be scaled with respect to the old width.
-            QVector<qreal> dashes = m_stroke.dashPattern();
+            QList<qreal> dashes = m_stroke.dashPattern();
             for (int i = 0; i < dashes.size(); ++i)
                 dashes[i] /= oldWidth;
             pen.setDashPattern(dashes);
@@ -344,7 +321,7 @@ void QSvgStrokeStyle::apply(QPainter *p, const QSvgNode *, QSvgExtraStates &stat
         }
     } else if (m_strokeWidthSet && pen.style() != Qt::SolidLine && scale != 1) {
         // If the width was set, but not the dash array, the old dash array must be scaled with respect to the new width.
-        QVector<qreal> dashes = pen.dashPattern();
+        QList<qreal> dashes = pen.dashPattern();
         for (int i = 0; i < dashes.size(); ++i)
             dashes[i] *= scale;
         pen.setDashPattern(dashes);
@@ -381,10 +358,10 @@ void QSvgStrokeStyle::revert(QPainter *p, QSvgExtraStates &states)
     states.vectorEffect = m_oldVectorEffect;
 }
 
-void QSvgStrokeStyle::setDashArray(const QVector<qreal> &dashes)
+void QSvgStrokeStyle::setDashArray(const QList<qreal> &dashes)
 {
     if (m_strokeWidthSet) {
-        QVector<qreal> d = dashes;
+        QList<qreal> d = dashes;
         qreal w = m_stroke.widthF();
         if (w != 0 && w != 1) {
             for (int i = 0; i < d.size(); ++i)
@@ -648,13 +625,13 @@ QSvgAnimateTransform::QSvgAnimateTransform(int startMs, int endMs, int byMs )
     Q_UNUSED(byMs);
 }
 
-void QSvgAnimateTransform::setArgs(TransformType type, Additive additive, const QVector<qreal> &args)
+void QSvgAnimateTransform::setArgs(TransformType type, Additive additive, const QList<qreal> &args)
 {
     m_type = type;
     m_args = args;
     m_additive = additive;
-    Q_ASSERT(!(args.count()%3));
-    m_count = args.count() / 3;
+    Q_ASSERT(!(args.size()%3));
+    m_count = args.size() / 3;
 }
 
 void QSvgAnimateTransform::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates &)
@@ -673,7 +650,6 @@ void QSvgAnimateTransform::revert(QPainter *p, QSvgExtraStates &)
 
 void QSvgAnimateTransform::resolveMatrix(const QSvgNode *node)
 {
-    static const qreal deg2rad = qreal(0.017453292519943295769);
     qreal totalTimeElapsed = node->document()->currentElapsed();
     if (totalTimeElapsed < m_from || m_finished)
         return;
@@ -773,7 +749,7 @@ void QSvgAnimateTransform::resolveMatrix(const QSvgNode *node)
         qreal transXDiff = (to1-from1) * percentOfAnimation;
         qreal transX = from1 + transXDiff;
         m_transform = QTransform();
-        m_transform.shear(qTan(transX * deg2rad), 0);
+        m_transform.shear(qTan(qDegreesToRadians(transX)), 0);
         break;
     }
     case SkewY: {
@@ -788,7 +764,7 @@ void QSvgAnimateTransform::resolveMatrix(const QSvgNode *node)
         qreal transYDiff = (to1 - from1) * percentOfAnimation;
         qreal transY = from1 + transYDiff;
         m_transform = QTransform();
-        m_transform.shear(0, qTan(transY * deg2rad));
+        m_transform.shear(0, qTan(qDegreesToRadians(transY)));
         break;
     }
     default:
@@ -860,7 +836,7 @@ void QSvgAnimateColor::apply(QPainter *p, const QSvgNode *node, QSvgExtraStates 
         percentOfAnimation -= ((int)percentOfAnimation);
     }
 
-    qreal currentPosition = percentOfAnimation * (m_colors.count() - 1);
+    qreal currentPosition = percentOfAnimation * (m_colors.size() - 1);
 
     int startElem = qFloor(currentPosition);
     int endElem   = qCeil(currentPosition);

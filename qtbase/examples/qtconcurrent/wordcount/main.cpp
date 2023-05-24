@@ -1,90 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QList>
-#include <QMap>
-#include <QTextStream>
-#include <QString>
-#include <QStringList>
-#include <QDir>
-#include <QElapsedTimer>
-#include <QApplication>
-#include <QDebug>
-
-#include <qtconcurrentmap.h>
-
-using namespace QtConcurrent;
-
-/*
-    Utility function that recursivily searches for files.
-*/
-QStringList findFiles(const QString &startDir, const QStringList &filters)
-{
-    QStringList names;
-    QDir dir(startDir);
-
-    const auto files = dir.entryList(filters, QDir::Files);
-    for (const QString &file : files)
-        names += startDir + '/' + file;
-
-    const auto subdirs =  dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot);
-    for (const QString &subdir : subdirs)
-        names += findFiles(startDir + '/' + subdir, filters);
-    return names;
-}
+#include <QtWidgets/qfiledialog.h>
+#include <QtWidgets/qapplication.h>
+#include <QtCore/qmimedatabase.h>
+#include <QtCore/qelapsedtimer.h>
+#include <QtConcurrent/qtconcurrentmap.h>
 
 typedef QMap<QString, int> WordCount;
 
-/*
-    Single threaded word counter function.
-*/
+void printHighestResult(const WordCount &, qsizetype);
+QStringList findFiles(const QString &);
+
+// Single threaded word counter function.
 WordCount singleThreadedWordCount(const QStringList &files)
 {
     WordCount wordCount;
@@ -93,14 +21,13 @@ WordCount singleThreadedWordCount(const QStringList &files)
         f.open(QIODevice::ReadOnly);
         QTextStream textStream(&f);
         while (!textStream.atEnd()) {
-            const auto words =  textStream.readLine().split(' ');
+            const auto words =  textStream.readLine().split(' ', Qt::SkipEmptyParts);
             for (const QString &word : words)
                 wordCount[word] += 1;
         }
     }
     return wordCount;
 }
-
 
 // countWords counts the words in a single file. This function is
 // called in parallel by several threads and must be thread
@@ -113,7 +40,7 @@ WordCount countWords(const QString &file)
     WordCount wordCount;
 
     while (!textStream.atEnd()) {
-        const auto words =  textStream.readLine().split(' ');
+        const auto words =  textStream.readLine().split(' ', Qt::SkipEmptyParts);
         for (const QString &word : words)
             wordCount[word] += 1;
     }
@@ -133,33 +60,93 @@ void reduce(WordCount &result, const WordCount &w)
 int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
-    qDebug() << "finding files...";
-    QStringList files = findFiles("../../", QStringList() << "*.cpp" << "*.h");
-    qDebug() << files.count() << "files";
+    app.setOrganizationName("QtProject");
+    app.setApplicationName(QCoreApplication::translate("main", "Word Count"));
 
-    qDebug() << "warmup";
-    {
-        WordCount total = singleThreadedWordCount(files);
-    }
+    QFileDialog fileDialog;
+    fileDialog.setOption(QFileDialog::ReadOnly);
+    // Grab the directory path from the dialog
+    auto dirPath = QFileDialog::getExistingDirectory(nullptr,
+                                QCoreApplication::translate("main","Select a Folder"),
+                                QDir::currentPath());
 
-    qDebug() << "warmup done";
+    QStringList files = findFiles(dirPath);
+    qDebug() << QCoreApplication::translate("main", "Indexing %1 files in %2")
+        .arg(files.size()).arg(dirPath);
 
-    int singleThreadTime = 0;
+    // Start the single threaded operation
+    qint64 singleThreadTime;
     {
         QElapsedTimer timer;
         timer.start();
+    //! [1]
         WordCount total = singleThreadedWordCount(files);
+    //! [1]
         singleThreadTime = timer.elapsed();
-        qDebug() << "single thread" << singleThreadTime;
+        qDebug() << QCoreApplication::translate("main", "Single threaded scanning took %1 ms")
+            .arg(singleThreadTime);
     }
-
-    int mapReduceTime = 0;
+    // Start the multithreaded mappedReduced operation.
+    qint64 mapReduceTime;
     {
         QElapsedTimer timer;
         timer.start();
-        WordCount total = mappedReduced(files, countWords, reduce);
+    //! [2]
+        WordCount total = QtConcurrent::mappedReduced(files, countWords, reduce).result();
+    //! [2]
         mapReduceTime = timer.elapsed();
-        qDebug() << "MapReduce" << mapReduceTime;
+        qDebug() << QCoreApplication::translate("main", "MapReduce scanning took %1 ms")
+            .arg(mapReduceTime);
+        qDebug() << QCoreApplication::translate("main", "MapReduce speedup: %1")
+            .arg(((double)singleThreadTime - (double)mapReduceTime) / (double)mapReduceTime + 1);
+        printHighestResult(total, 10);
     }
-    qDebug() << "MapReduce speedup x" << ((double)singleThreadTime - (double)mapReduceTime) / (double)mapReduceTime + 1;
+}
+
+// Utility function that recursively searches for text files.
+QStringList findFiles(const QString &startDir)
+{
+    QStringList names;
+    QDir dir(startDir);
+    static const QMimeDatabase db;
+
+    const auto files = dir.entryList(QDir::Files);
+    for (const QString &file : files) {
+        const auto path = startDir + QDir::separator() + file;
+        const QMimeType mime = db.mimeTypeForFile(QFileInfo(path));
+        const auto mimeTypesForFile = mime.parentMimeTypes();
+
+        for (const auto &i : mimeTypesForFile) {
+            if (i.contains("text", Qt::CaseInsensitive)
+                || mime.comment().contains("text", Qt::CaseInsensitive)) {
+                names += startDir + QDir::separator() + file;
+            }
+        }
+    }
+
+    const auto subdirs =  dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot);
+    for (const QString &subdir : subdirs) {
+        if (names.length() >= 20000) {
+            qDebug() << QCoreApplication::translate("main", "Too many files! Aborting ...");
+            exit(-1);
+        }
+        names += findFiles(startDir + QDir::separator() + subdir);
+    }
+    return names;
+}
+
+// Utility function that prints the results of the map in decreasing order based on the value.
+void printHighestResult(const WordCount &countedWords, qsizetype nResults)
+{
+    using pair = QPair<QString, int>;
+    QList<pair> vec;
+
+    std::copy(countedWords.keyValueBegin(), countedWords.keyValueEnd(),
+              std::back_inserter<QList<pair>>(vec));
+    std::sort(vec.begin(), vec.end(),
+              [](const pair &l, const pair &r) { return l.second > r.second; });
+
+    qDebug() << QCoreApplication::translate("main", "Most occurring words are:");
+    for (qsizetype i = 0; i < qMin(vec.size(), nResults); ++i)
+        qDebug() << vec[i].first << " : " << vec[i].second;
 }

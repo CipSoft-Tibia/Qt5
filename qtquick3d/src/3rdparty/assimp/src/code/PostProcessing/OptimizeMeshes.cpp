@@ -3,7 +3,7 @@
 Open Asset Import Library (assimp)
 ---------------------------------------------------------------------------
 
-Copyright (c) 2006-2019, assimp team
+Copyright (c) 2006-2022, assimp team
 
 
 
@@ -71,9 +71,7 @@ OptimizeMeshesProcess::OptimizeMeshesProcess()
 
 // ------------------------------------------------------------------------------------------------
 // Destructor, private as well
-OptimizeMeshesProcess::~OptimizeMeshesProcess() {
-    // empty
-}
+OptimizeMeshesProcess::~OptimizeMeshesProcess() = default;
 
 // ------------------------------------------------------------------------------------------------
 // Returns whether the processing step is present in the given flag field.
@@ -151,7 +149,7 @@ void OptimizeMeshesProcess::Execute( aiScene* pScene)
     std::copy(output.begin(),output.end(),mScene->mMeshes);
 
     if (output.size() != num_old) {
-        ASSIMP_LOG_DEBUG_F("OptimizeMeshesProcess finished. Input meshes: ", num_old, ", Output meshes: ", pScene->mNumMeshes);
+        ASSIMP_LOG_DEBUG("OptimizeMeshesProcess finished. Input meshes: ", num_old, ", Output meshes: ", pScene->mNumMeshes);
     } else {
         ASSIMP_LOG_DEBUG( "OptimizeMeshesProcess finished" );
     }

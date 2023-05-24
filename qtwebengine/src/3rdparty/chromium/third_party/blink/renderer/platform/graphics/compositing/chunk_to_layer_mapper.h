@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,6 @@
 #include "third_party/blink/renderer/platform/graphics/paint/float_clip_rect.h"
 #include "third_party/blink/renderer/platform/graphics/paint/geometry_mapper.h"
 #include "third_party/blink/renderer/platform/graphics/paint/property_tree_state.h"
-#include "third_party/skia/include/core/SkMatrix.h"
 
 namespace blink {
 
@@ -30,10 +29,10 @@ class PLATFORM_EXPORT ChunkToLayerMapper {
   void SwitchToChunk(const PaintChunk&);
 
   // Maps a visual rectangle in the current chunk space into the layer space.
-  IntRect MapVisualRect(const IntRect&) const;
+  gfx::Rect MapVisualRect(const gfx::Rect&) const;
 
   // Returns the combined transform from the current chunk to the layer.
-  SkMatrix Transform() const { return translation_2d_or_matrix_.ToSkMatrix(); }
+  const gfx::Transform& Transform() const { return transform_; }
 
   // Returns the combined clip from the current chunk to the layer if it can
   // be calculated (there is no filter that moves pixels), or infinite loose
@@ -43,8 +42,8 @@ class PLATFORM_EXPORT ChunkToLayerMapper {
  private:
   friend class ChunkToLayerMapperTest;
 
-  IntRect MapUsingGeometryMapper(const IntRect&) const;
-  void InflateForRasterEffectOutset(FloatRect&) const;
+  gfx::Rect MapUsingGeometryMapper(const gfx::Rect&) const;
+  void InflateForRasterEffectOutset(gfx::RectF&) const;
 
   const PropertyTreeState layer_state_;
   const gfx::Vector2dF layer_offset_;
@@ -52,7 +51,7 @@ class PLATFORM_EXPORT ChunkToLayerMapper {
   // The following fields are chunk-specific which are updated in
   // SwitchToChunk().
   PropertyTreeState chunk_state_;
-  GeometryMapper::Translation2DOrMatrix translation_2d_or_matrix_;
+  gfx::Transform transform_;
   FloatClipRect clip_rect_;
   RasterEffectOutset raster_effect_outset_ = RasterEffectOutset::kNone;
   // True if there is any pixel-moving filter between chunk state and layer
@@ -62,4 +61,4 @@ class PLATFORM_EXPORT ChunkToLayerMapper {
 
 }  // namespace blink
 
-#endif  // PaintArtifactCompositor_h
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_GRAPHICS_COMPOSITING_CHUNK_TO_LAYER_MAPPER_H_

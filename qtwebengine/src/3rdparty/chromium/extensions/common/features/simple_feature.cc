@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,35 +9,41 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/macros.h"
-#include "base/stl_util.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "components/crx_file/id_util.h"
 #include "extensions/common/extension_api.h"
+#include "extensions/common/extension_features.h"
 #include "extensions/common/features/feature_channel.h"
+#include "extensions/common/features/feature_developer_mode_only.h"
 #include "extensions/common/features/feature_flags.h"
 #include "extensions/common/features/feature_provider.h"
+#include "extensions/common/features/feature_session_type.h"
 #include "extensions/common/manifest_handlers/background_info.h"
 #include "extensions/common/switches.h"
 
 using crx_file::id_util::HashedIdInHex;
+using extensions::mojom::ManifestLocation;
 
 namespace extensions {
 
 namespace {
 
 struct AllowlistInfo {
-  AllowlistInfo()
-      : hashed_id(HashedIdInHex(
-            base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
-                switches::kAllowlistedExtensionID))) {}
+  AllowlistInfo() {
+    const std::string& allowlisted_extension_id =
+        base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+            switches::kAllowlistedExtensionID);
+    hashed_id = HashedIdInHex(allowlisted_extension_id);
+  }
   std::string hashed_id;
 };
-// A singleton copy of the --whitelisted-extension-id so that we don't need to
+// A singleton copy of the --allowlisted-extension-id so that we don't need to
 // copy it from the CommandLine each time.
 base::LazyInstance<AllowlistInfo>::Leaky g_allowlist_info =
     LAZY_INSTANCE_INITIALIZER;
@@ -45,24 +51,18 @@ base::LazyInstance<AllowlistInfo>::Leaky g_allowlist_info =
 Feature::Availability IsAvailableToManifestForBind(
     const HashedExtensionId& hashed_id,
     Manifest::Type type,
-    Manifest::Location location,
+    ManifestLocation location,
     int manifest_version,
     Feature::Platform platform,
+    int context_id,
     const Feature* feature) {
   return feature->IsAvailableToManifest(hashed_id, type, location,
                                         manifest_version, platform);
 }
 
-Feature::Availability IsAvailableToContextForBind(const Extension* extension,
-                                                  Feature::Context context,
-                                                  const GURL& url,
-                                                  Feature::Platform platform,
-                                                  const Feature* feature) {
-  return feature->IsAvailableToContext(extension, context, url, platform);
-}
-
-Feature::Availability IsAvailableToEnvironmentForBind(const Feature* feature) {
-  return feature->IsAvailableToEnvironment();
+Feature::Availability IsAvailableToEnvironmentForBind(int context_id,
+                                                      const Feature* feature) {
+  return feature->IsAvailableToEnvironment(context_id);
 }
 
 // Gets a human-readable name for the given extension type, suitable for giving
@@ -87,6 +87,8 @@ std::string GetDisplayName(Manifest::Type type) {
       return "shared module";
     case Manifest::TYPE_LOGIN_SCREEN_EXTENSION:
       return "login screen extension";
+    case Manifest::TYPE_CHROMEOS_SYSTEM_EXTENSION:
+      return "chromeos system extension";
     case Manifest::NUM_LOAD_TYPES:
       NOTREACHED();
   }
@@ -120,6 +122,8 @@ std::string GetDisplayName(Feature::Context context) {
       return "webui untrusted";
     case Feature::LOCK_SCREEN_EXTENSION_CONTEXT:
       return "lock screen app";
+    case Feature::OFFSCREEN_EXTENSION_CONTEXT:
+      return "offscreen document";
   }
   NOTREACHED();
   return "";
@@ -142,17 +146,17 @@ std::string GetDisplayName(version_info::Channel channel) {
   return "";
 }
 
-std::string GetDisplayName(FeatureSessionType session_type) {
+std::string GetDisplayName(mojom::FeatureSessionType session_type) {
   switch (session_type) {
-    case FeatureSessionType::INITIAL:
+    case mojom::FeatureSessionType::kInitial:
       return "user-less";
-    case FeatureSessionType::UNKNOWN:
+    case mojom::FeatureSessionType::kUnknown:
       return "unknown";
-    case FeatureSessionType::KIOSK:
+    case mojom::FeatureSessionType::kKiosk:
       return "kiosk app";
-    case FeatureSessionType::AUTOLAUNCHED_KIOSK:
+    case mojom::FeatureSessionType::kAutolaunchedKiosk:
       return "auto-launched kiosk app";
-    case FeatureSessionType::REGULAR:
+    case mojom::FeatureSessionType::kRegular:
       return "regular user";
   }
   return "";
@@ -212,16 +216,18 @@ SimpleFeature::SimpleFeature()
       is_internal_(false),
       disallow_for_service_workers_(false) {}
 
-SimpleFeature::~SimpleFeature() {}
+SimpleFeature::~SimpleFeature() = default;
 
 Feature::Availability SimpleFeature::IsAvailableToManifest(
     const HashedExtensionId& hashed_id,
     Manifest::Type type,
-    Manifest::Location location,
+    ManifestLocation location,
     int manifest_version,
-    Platform platform) const {
+    Platform platform,
+    int context_id) const {
   Availability environment_availability = GetEnvironmentAvailability(
-      platform, GetCurrentChannel(), GetCurrentFeatureSessionType());
+      platform, GetCurrentChannel(), GetCurrentFeatureSessionType(), context_id,
+      true);
   if (!environment_availability.is_available())
     return environment_availability;
   Availability manifest_availability =
@@ -229,18 +235,32 @@ Feature::Availability SimpleFeature::IsAvailableToManifest(
   if (!manifest_availability.is_available())
     return manifest_availability;
 
-  return CheckDependencies(base::BindRepeating(&IsAvailableToManifestForBind,
-                                               hashed_id, type, location,
-                                               manifest_version, platform));
+  return CheckDependencies(
+      base::BindRepeating(&IsAvailableToManifestForBind, hashed_id, type,
+                          location, manifest_version, platform, context_id));
 }
 
-Feature::Availability SimpleFeature::IsAvailableToContext(
+Feature::Availability SimpleFeature::IsAvailableToContextForBind(
     const Extension* extension,
     Feature::Context context,
     const GURL& url,
-    Platform platform) const {
+    Feature::Platform platform,
+    int context_id,
+    const Feature* feature) {
+  return feature->IsAvailableToContextImpl(extension, context, url, platform,
+                                           context_id, true);
+}
+
+Feature::Availability SimpleFeature::IsAvailableToContextImpl(
+    const Extension* extension,
+    Feature::Context context,
+    const GURL& url,
+    Platform platform,
+    int context_id,
+    bool check_developer_mode) const {
   Availability environment_availability = GetEnvironmentAvailability(
-      platform, GetCurrentChannel(), GetCurrentFeatureSessionType());
+      platform, GetCurrentChannel(), GetCurrentFeatureSessionType(), context_id,
+      check_developer_mode);
   if (!environment_availability.is_available())
     return environment_availability;
 
@@ -269,19 +289,20 @@ Feature::Availability SimpleFeature::IsAvailableToContext(
 
   // TODO(kalman): Assert that if the context was a webpage or WebUI context
   // then at some point a "matches" restriction was checked.
-  return CheckDependencies(base::BindRepeating(&IsAvailableToContextForBind,
-                                               base::RetainedRef(extension),
-                                               context, url, platform));
+  return CheckDependencies(base::BindRepeating(
+      &IsAvailableToContextForBind, base::RetainedRef(extension), context, url,
+      platform, context_id));
 }
 
-Feature::Availability SimpleFeature::IsAvailableToEnvironment() const {
-  Availability environment_availability =
-      GetEnvironmentAvailability(GetCurrentPlatform(), GetCurrentChannel(),
-                                 GetCurrentFeatureSessionType());
+Feature::Availability SimpleFeature::IsAvailableToEnvironment(
+    int context_id) const {
+  Availability environment_availability = GetEnvironmentAvailability(
+      GetCurrentPlatform(), GetCurrentChannel(), GetCurrentFeatureSessionType(),
+      context_id, true);
   if (!environment_availability.is_available())
     return environment_availability;
   return CheckDependencies(
-      base::BindRepeating(&IsAvailableToEnvironmentForBind));
+      base::BindRepeating(&IsAvailableToEnvironmentForBind, context_id));
 }
 
 std::string SimpleFeature::GetAvailabilityMessage(
@@ -290,12 +311,12 @@ std::string SimpleFeature::GetAvailabilityMessage(
     const GURL& url,
     Context context,
     version_info::Channel channel,
-    FeatureSessionType session_type) const {
+    mojom::FeatureSessionType session_type) const {
   switch (result) {
     case IS_AVAILABLE:
       return std::string();
-    case NOT_FOUND_IN_WHITELIST:
-    case FOUND_IN_BLACKLIST:
+    case NOT_FOUND_IN_ALLOWLIST:
+    case FOUND_IN_BLOCKLIST:
       return base::StringPrintf(
           "'%s' is not allowed for specified extension ID.",
           name().c_str());
@@ -339,7 +360,7 @@ std::string SimpleFeature::GetAvailabilityMessage(
       return base::StringPrintf(
           "'%s' is only allowed to run in %s sessions, but this is %s session.",
           name().c_str(),
-          ListDisplayNames(std::vector<FeatureSessionType>(
+          ListDisplayNames(std::vector<mojom::FeatureSessionType>(
                                session_types_.begin(), session_types_.end()))
               .c_str(),
           GetDisplayName(session_type).c_str());
@@ -362,6 +383,10 @@ std::string SimpleFeature::GetAvailabilityMessage(
       return base::StringPrintf(
           "'%s' requires the '%s' feature flag to be enabled.", name().c_str(),
           feature_flag_->c_str());
+    case REQUIRES_DEVELOPER_MODE:
+      return base::StringPrintf(
+          "'%s' requires the user to have developer mode enabled.",
+          name().c_str());
   }
 
   NOTREACHED();
@@ -371,9 +396,10 @@ std::string SimpleFeature::GetAvailabilityMessage(
 Feature::Availability SimpleFeature::CreateAvailability(
     AvailabilityResult result) const {
   return Availability(
-      result, GetAvailabilityMessage(
-                  result, Manifest::TYPE_UNKNOWN, GURL(), UNSPECIFIED_CONTEXT,
-                  version_info::Channel::UNKNOWN, FeatureSessionType::UNKNOWN));
+      result, GetAvailabilityMessage(result, Manifest::TYPE_UNKNOWN, GURL(),
+                                     UNSPECIFIED_CONTEXT,
+                                     version_info::Channel::UNKNOWN,
+                                     mojom::FeatureSessionType::kUnknown));
 }
 
 Feature::Availability SimpleFeature::CreateAvailability(
@@ -381,16 +407,17 @@ Feature::Availability SimpleFeature::CreateAvailability(
   return Availability(
       result, GetAvailabilityMessage(result, type, GURL(), UNSPECIFIED_CONTEXT,
                                      version_info::Channel::UNKNOWN,
-                                     FeatureSessionType::UNKNOWN));
+                                     mojom::FeatureSessionType::kUnknown));
 }
 
 Feature::Availability SimpleFeature::CreateAvailability(
     AvailabilityResult result,
     const GURL& url) const {
   return Availability(
-      result, GetAvailabilityMessage(
-                  result, Manifest::TYPE_UNKNOWN, url, UNSPECIFIED_CONTEXT,
-                  version_info::Channel::UNKNOWN, FeatureSessionType::UNKNOWN));
+      result, GetAvailabilityMessage(result, Manifest::TYPE_UNKNOWN, url,
+                                     UNSPECIFIED_CONTEXT,
+                                     version_info::Channel::UNKNOWN,
+                                     mojom::FeatureSessionType::kUnknown));
 }
 
 Feature::Availability SimpleFeature::CreateAvailability(
@@ -399,7 +426,7 @@ Feature::Availability SimpleFeature::CreateAvailability(
   return Availability(
       result, GetAvailabilityMessage(result, Manifest::TYPE_UNKNOWN, GURL(),
                                      context, version_info::Channel::UNKNOWN,
-                                     FeatureSessionType::UNKNOWN));
+                                     mojom::FeatureSessionType::kUnknown));
 }
 
 Feature::Availability SimpleFeature::CreateAvailability(
@@ -408,12 +435,12 @@ Feature::Availability SimpleFeature::CreateAvailability(
   return Availability(
       result, GetAvailabilityMessage(result, Manifest::TYPE_UNKNOWN, GURL(),
                                      UNSPECIFIED_CONTEXT, channel,
-                                     FeatureSessionType::UNKNOWN));
+                                     mojom::FeatureSessionType::kUnknown));
 }
 
 Feature::Availability SimpleFeature::CreateAvailability(
     AvailabilityResult result,
-    FeatureSessionType session_type) const {
+    mojom::FeatureSessionType session_type) const {
   return Availability(
       result, GetAvailabilityMessage(
                   result, Manifest::TYPE_UNKNOWN, GURL(), UNSPECIFIED_CONTEXT,
@@ -456,16 +483,16 @@ bool SimpleFeature::IsIdInList(const HashedExtensionId& hashed_id,
 }
 
 bool SimpleFeature::MatchesManifestLocation(
-    Manifest::Location manifest_location) const {
+    ManifestLocation manifest_location) const {
   DCHECK(location_);
   switch (*location_) {
     case SimpleFeature::COMPONENT_LOCATION:
-      return manifest_location == Manifest::COMPONENT;
+      return manifest_location == ManifestLocation::kComponent;
     case SimpleFeature::EXTERNAL_COMPONENT_LOCATION:
-      return manifest_location == Manifest::EXTERNAL_COMPONENT;
+      return manifest_location == ManifestLocation::kExternalComponent;
     case SimpleFeature::POLICY_LOCATION:
-      return manifest_location == Manifest::EXTERNAL_POLICY ||
-             manifest_location == Manifest::EXTERNAL_POLICY_DOWNLOAD;
+      return manifest_location == ManifestLocation::kExternalPolicy ||
+             manifest_location == ManifestLocation::kExternalPolicyDownload;
     case SimpleFeature::UNPACKED_LOCATION:
       return Manifest::IsUnpackedLocation(manifest_location);
   }
@@ -473,7 +500,8 @@ bool SimpleFeature::MatchesManifestLocation(
   return false;
 }
 
-bool SimpleFeature::MatchesSessionTypes(FeatureSessionType session_type) const {
+bool SimpleFeature::MatchesSessionTypes(
+    mojom::FeatureSessionType session_type) const {
   if (session_types_.empty())
     return true;
 
@@ -483,8 +511,12 @@ bool SimpleFeature::MatchesSessionTypes(FeatureSessionType session_type) const {
   // AUTOLAUNCHED_KIOSK session type is subset of KIOSK - accept auto-lauched
   // kiosk session if kiosk session is allowed. This is the only exception to
   // rejecting session type that is not present in |session_types_|
-  return session_type == FeatureSessionType::AUTOLAUNCHED_KIOSK &&
-         base::Contains(session_types_, FeatureSessionType::KIOSK);
+  return session_type == mojom::FeatureSessionType::kAutolaunchedKiosk &&
+         base::Contains(session_types_, mojom::FeatureSessionType::kKiosk);
+}
+
+bool SimpleFeature::RequiresDelegatedAvailabilityCheck() const {
+  return requires_delegated_availability_check_;
 }
 
 Feature::Availability SimpleFeature::CheckDependencies(
@@ -526,7 +558,7 @@ void SimpleFeature::set_blocklist(
 
 void SimpleFeature::set_command_line_switch(
     base::StringPiece command_line_switch) {
-  command_line_switch_ = command_line_switch.as_string();
+  command_line_switch_ = std::string(command_line_switch);
 }
 
 void SimpleFeature::set_contexts(std::initializer_list<Context> contexts) {
@@ -544,11 +576,11 @@ void SimpleFeature::set_extension_types(
 }
 
 void SimpleFeature::set_feature_flag(base::StringPiece feature_flag) {
-  feature_flag_ = feature_flag.as_string();
+  feature_flag_ = std::string(feature_flag);
 }
 
 void SimpleFeature::set_session_types(
-    std::initializer_list<FeatureSessionType> types) {
+    std::initializer_list<mojom::FeatureSessionType> types) {
   session_types_ = types;
 }
 
@@ -571,7 +603,9 @@ void SimpleFeature::set_allowlist(
 Feature::Availability SimpleFeature::GetEnvironmentAvailability(
     Platform platform,
     version_info::Channel channel,
-    FeatureSessionType session_type) const {
+    mojom::FeatureSessionType session_type,
+    int context_id,
+    bool check_developer_mode) const {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   if (!platforms_.empty() && !base::Contains(platforms_, platform))
     return CreateAvailability(INVALID_PLATFORM);
@@ -598,13 +632,20 @@ Feature::Availability SimpleFeature::GetEnvironmentAvailability(
   if (!MatchesSessionTypes(session_type))
     return CreateAvailability(INVALID_SESSION_TYPE, session_type);
 
+  if (check_developer_mode &&
+      base::FeatureList::IsEnabled(
+          extensions_features::kRestrictDeveloperModeAPIs) &&
+      developer_mode_only_ && !GetCurrentDeveloperMode(context_id)) {
+    return CreateAvailability(REQUIRES_DEVELOPER_MODE);
+  }
+
   return CreateAvailability(IS_AVAILABLE);
 }
 
 Feature::Availability SimpleFeature::GetManifestAvailability(
     const HashedExtensionId& hashed_id,
     Manifest::Type type,
-    Manifest::Location location,
+    ManifestLocation location,
     int manifest_version) const {
   // Check extension type first to avoid granting platform app permissions
   // to component extensions.
@@ -618,18 +659,19 @@ Feature::Availability SimpleFeature::GetManifestAvailability(
   }
 
   if (!blocklist_.empty() && IsIdInBlocklist(hashed_id))
-    return CreateAvailability(FOUND_IN_BLACKLIST);
+    return CreateAvailability(FOUND_IN_BLOCKLIST);
 
   // TODO(benwells): don't grant all component extensions.
   // See http://crbug.com/370375 for more details.
   // Component extensions can access any feature.
   // NOTE: Deliberately does not match EXTERNAL_COMPONENT.
-  if (component_extensions_auto_granted_ && location == Manifest::COMPONENT)
+  if (component_extensions_auto_granted_ &&
+      location == ManifestLocation::kComponent)
     return CreateAvailability(IS_AVAILABLE);
 
   if (!allowlist_.empty() && !IsIdInAllowlist(hashed_id) &&
       !IsAllowlistedForTest(hashed_id)) {
-    return CreateAvailability(NOT_FOUND_IN_WHITELIST);
+    return CreateAvailability(NOT_FOUND_IN_ALLOWLIST);
   }
 
   if (location_ && !MatchesManifestLocation(location) &&

@@ -1,45 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsslconfiguration.h"
-#include "qdtls_openssl_p.h"
+#include "qsslsocket_p.h"
 #include "qudpsocket.h"
+#include "qsslcipher.h"
 #include "qdtls_p.h"
 #include "qssl_p.h"
 #include "qdtls.h"
@@ -57,7 +22,7 @@
 
     The QDtlsClientVerifier class implements server-side DTLS cookie generation
     and verification. Datagram security protocols are highly susceptible to a
-    variety of Denial-of-Service attacks. According to \l {https://tools.ietf.org/html/rfc6347#section-4.2.1}{RFC 6347, section 4.2.1},
+    variety of Denial-of-Service attacks. According to \l {RFC 6347, section 4.2.1},
     these are two of the more common types of attack:
 
     \list
@@ -70,7 +35,7 @@
     which can be quite large, thus flooding the victim machine with datagrams.
     \endlist
 
-    As a countermeasure to these attacks, \l {https://tools.ietf.org/html/rfc6347#section-4.2.1}{RFC 6347, section 4.2.1}
+    As a countermeasure to these attacks, \l {RFC 6347, section 4.2.1}
     proposes a stateless cookie technique that a server may deploy:
 
     \list
@@ -118,7 +83,7 @@
 
     \note The default secret is shared by all objects of the classes QDtlsClientVerifier
     and QDtls. Since this can impose security risks, RFC 6347 recommends to change
-    the server's secret frequently. Please see \l {https://tools.ietf.org/html/rfc6347}{RFC 6347, section 4.2.1}
+    the server's secret frequently. Please see \l {RFC 6347, section 4.2.1}
     for hints about possible server implementations. Cookie generator parameters
     can be set using the class QDtlsClientVerifier::GeneratorParameters and
     setCookieGeneratorParameters():
@@ -249,7 +214,7 @@
     \warning It's recommended to call shutdown() before destroying the client's QDtls
     object if you are planning to re-use the same port number to connect to the
     server later. Otherwise, the server may drop incoming ClientHello messages,
-    see \l{https://tools.ietf.org/html/rfc6347#page-25}{RFC 6347, section 4.2.8}
+    see \l {RFC 6347, section 4.2.8}
     for more details and implementation hints.
 
     If the server does not use QDtlsClientVerifier, it \e must configure its
@@ -337,72 +302,6 @@
 
 QT_BEGIN_NAMESPACE
 
-QSslConfiguration QDtlsBasePrivate::configuration() const
-{
-    auto copyPrivate = new QSslConfigurationPrivate(dtlsConfiguration);
-    copyPrivate->ref.storeRelaxed(0); // the QSslConfiguration constructor refs up
-    QSslConfiguration copy(copyPrivate);
-    copyPrivate->sessionCipher = sessionCipher;
-    copyPrivate->sessionProtocol = sessionProtocol;
-
-    return copy;
-}
-
-void QDtlsBasePrivate::setConfiguration(const QSslConfiguration &configuration)
-{
-    dtlsConfiguration.localCertificateChain = configuration.localCertificateChain();
-    dtlsConfiguration.privateKey = configuration.privateKey();
-    dtlsConfiguration.ciphers = configuration.ciphers();
-    dtlsConfiguration.ellipticCurves = configuration.ellipticCurves();
-    dtlsConfiguration.preSharedKeyIdentityHint = configuration.preSharedKeyIdentityHint();
-    dtlsConfiguration.dhParams = configuration.diffieHellmanParameters();
-    dtlsConfiguration.caCertificates = configuration.caCertificates();
-    dtlsConfiguration.peerVerifyDepth = configuration.peerVerifyDepth();
-    dtlsConfiguration.peerVerifyMode = configuration.peerVerifyMode();
-    dtlsConfiguration.protocol = configuration.protocol();
-    dtlsConfiguration.sslOptions = configuration.d->sslOptions;
-    dtlsConfiguration.sslSession = configuration.sessionTicket();
-    dtlsConfiguration.sslSessionTicketLifeTimeHint = configuration.sessionTicketLifeTimeHint();
-    dtlsConfiguration.nextAllowedProtocols = configuration.allowedNextProtocols();
-    dtlsConfiguration.nextNegotiatedProtocol = configuration.nextNegotiatedProtocol();
-    dtlsConfiguration.nextProtocolNegotiationStatus = configuration.nextProtocolNegotiationStatus();
-    dtlsConfiguration.dtlsCookieEnabled = configuration.dtlsCookieVerificationEnabled();
-    dtlsConfiguration.allowRootCertOnDemandLoading = configuration.d->allowRootCertOnDemandLoading;
-    dtlsConfiguration.backendConfig = configuration.backendConfiguration();
-
-    clearDtlsError();
-}
-
-bool QDtlsBasePrivate::setCookieGeneratorParameters(QCryptographicHash::Algorithm alg,
-                                                    const QByteArray &key)
-{
-    if (!key.size()) {
-        setDtlsError(QDtlsError::InvalidInputParameters,
-                     QDtls::tr("Invalid (empty) secret"));
-        return false;
-    }
-
-    clearDtlsError();
-
-    hashAlgorithm = alg;
-    secret = key;
-
-    return true;
-}
-
-bool QDtlsBasePrivate::isDtlsProtocol(QSsl::SslProtocol protocol)
-{
-    switch (protocol) {
-    case QSsl::DtlsV1_0:
-    case QSsl::DtlsV1_0OrLater:
-    case QSsl::DtlsV1_2:
-    case QSsl::DtlsV1_2OrLater:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static QString msgUnsupportedMulticastAddress()
 {
     return QDtls::tr("Multicast and broadcast addresses are not supported");
@@ -434,22 +333,37 @@ QDtlsClientVerifier::GeneratorParameters::GeneratorParameters(QCryptographicHash
 {
 }
 
+QDtlsClientVerifierPrivate::QDtlsClientVerifierPrivate()
+{
+    const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse();
+    if (!tlsBackend) {
+        qCWarning(lcSsl, "No TLS backend is available, cannot verify DTLS client");
+        return;
+    }
+    backend.reset(tlsBackend->createDtlsCookieVerifier());
+    if (!backend.get())
+        qCWarning(lcSsl) << "The backend" << tlsBackend->backendName() << "does not support DTLS cookies";
+}
+
+QDtlsClientVerifierPrivate::~QDtlsClientVerifierPrivate() = default;
+
 /*!
     Constructs a QDtlsClientVerifier object, \a parent is passed to QObject's
     constructor.
 */
 QDtlsClientVerifier::QDtlsClientVerifier(QObject *parent)
-    : QObject(*new QDtlsClientVerifierOpenSSL, parent)
+    : QObject(*new QDtlsClientVerifierPrivate, parent)
 {
     Q_D(QDtlsClientVerifier);
 
-    d->mode = QSslSocket::SslServerMode;
-    // The default configuration suffices: verifier never does a full
-    // handshake and upon verifying a cookie in a client hello message,
-    // it reports success.
-    auto conf = QSslConfiguration::defaultDtlsConfiguration();
-    conf.setPeerVerifyMode(QSslSocket::VerifyNone);
-    d->setConfiguration(conf);
+    if (auto *backend = d->backend.get()) {
+        // The default configuration suffices: verifier never does a full
+        // handshake and upon verifying a cookie in a client hello message,
+        // it reports success.
+        auto conf = QSslConfiguration::defaultDtlsConfiguration();
+        conf.setPeerVerifyMode(QSslSocket::VerifyNone);
+        backend->setConfiguration(conf);
+    }
 }
 
 /*!
@@ -473,8 +387,10 @@ QDtlsClientVerifier::~QDtlsClientVerifier()
 bool QDtlsClientVerifier::setCookieGeneratorParameters(const GeneratorParameters &params)
 {
     Q_D(QDtlsClientVerifier);
+    if (auto *backend = d->backend.get())
+        return backend->setCookieGeneratorParameters(params);
 
-    return d->setCookieGeneratorParameters(params.hash, params.secret);
+    return false;
 }
 
 /*!
@@ -491,7 +407,10 @@ QDtlsClientVerifier::GeneratorParameters QDtlsClientVerifier::cookieGeneratorPar
 {
     Q_D(const QDtlsClientVerifier);
 
-    return {d->hashAlgorithm, d->secret};
+    if (const auto *backend = d->backend.get())
+        return backend->cookieGeneratorParameters();
+
+    return {};
 }
 
 /*!
@@ -514,19 +433,23 @@ bool QDtlsClientVerifier::verifyClient(QUdpSocket *socket, const QByteArray &dgr
 {
     Q_D(QDtlsClientVerifier);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket || address.isNull() || !dgram.size()) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        tr("A valid UDP socket, non-empty datagram, valid address/port were expected"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              tr("A valid UDP socket, non-empty datagram, and valid address/port were expected"));
         return false;
     }
 
     if (address.isBroadcast() || address.isMulticast()) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        msgUnsupportedMulticastAddress());
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              msgUnsupportedMulticastAddress());
         return false;
     }
 
-    return d->verifyClient(socket, dgram, address, port);
+    return backend->verifyClient(socket, dgram, address, port);
 }
 
 /*!
@@ -539,7 +462,10 @@ QByteArray QDtlsClientVerifier::verifiedHello() const
 {
     Q_D(const QDtlsClientVerifier);
 
-    return d->verifiedClientHello;
+    if (const auto *backend = d->backend.get())
+        return backend->verifiedHello();
+
+    return {};
 }
 
 /*!
@@ -551,7 +477,10 @@ QDtlsError QDtlsClientVerifier::dtlsError() const
 {
     Q_D(const QDtlsClientVerifier);
 
-    return d->errorCode;
+    if (const auto *backend = d->backend.get())
+        return backend->error();
+
+    return QDtlsError::TlsInitializationError;
 }
 
 /*!
@@ -561,10 +490,16 @@ QDtlsError QDtlsClientVerifier::dtlsError() const
  */
 QString QDtlsClientVerifier::dtlsErrorString() const
 {
-    Q_D(const QDtlsBase);
+    Q_D(const QDtlsClientVerifier);
 
-    return d->errorDescription;
+    if (const auto *backend = d->backend.get())
+        return backend->errorString();
+
+    return QStringLiteral("No TLS backend is available, no client verification");
 }
+
+QDtlsPrivate::QDtlsPrivate() = default;
+QDtlsPrivate::~QDtlsPrivate() = default;
 
 /*!
     Creates a QDtls object, \a parent is passed to the QObject constructor.
@@ -574,11 +509,19 @@ QString QDtlsClientVerifier::dtlsErrorString() const
     \sa sslMode(), QSslSocket::SslMode
 */
 QDtls::QDtls(QSslSocket::SslMode mode, QObject *parent)
-    : QObject(*new QDtlsPrivateOpenSSL, parent)
+    : QObject(*new QDtlsPrivate, parent)
 {
     Q_D(QDtls);
-
-    d->mode = mode;
+    const auto *tlsBackend = QSslSocketPrivate::tlsBackendInUse();
+    if (!tlsBackend) {
+        qCWarning(lcSsl, "No TLS backend found, QDtls is unsupported");
+        return;
+    }
+    d->backend.reset(tlsBackend->createDtlsCryptograph(this, mode));
+    if (!d->backend.get()) {
+        qCWarning(lcSsl) << "TLS backend" << tlsBackend->backendName()
+                         << "does not support the protocol DTLS";
+    }
     setDtlsConfiguration(QSslConfiguration::defaultDtlsConfiguration());
 }
 
@@ -601,29 +544,30 @@ bool QDtls::setPeer(const QHostAddress &address, quint16 port,
 {
     Q_D(QDtls);
 
-    if (d->handshakeState != HandshakeNotStarted) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot set peer after handshake started"));
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
+    if (backend->state() != HandshakeNotStarted) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot set peer after handshake started"));
         return false;
     }
 
     if (address.isNull()) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        tr("Invalid address"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              tr("Invalid address"));
         return false;
     }
 
     if (address.isBroadcast() || address.isMulticast()) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        msgUnsupportedMulticastAddress());
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              msgUnsupportedMulticastAddress());
         return false;
     }
 
-    d->clearDtlsError();
-
-    d->remoteAddress = address;
-    d->remotePort = port;
-    d->peerVerificationName = verificationName;
+    backend->clearDtlsError();
+    backend->setPeer(address, port, verificationName);
 
     return true;
 }
@@ -640,14 +584,18 @@ bool QDtls::setPeerVerificationName(const QString &name)
 {
     Q_D(QDtls);
 
-    if (d->handshakeState != HandshakeNotStarted) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
+    if (backend->state() != HandshakeNotStarted) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
                         tr("Cannot set verification name after handshake started"));
         return false;
     }
 
-    d->clearDtlsError();
-    d->peerVerificationName = name;
+    backend->clearDtlsError();
+    backend->setPeerVerificationName(name);
 
     return true;
 }
@@ -661,7 +609,10 @@ QHostAddress QDtls::peerAddress() const
 {
     Q_D(const QDtls);
 
-    return d->remoteAddress;
+    if (const auto *backend = d->backend.get())
+        return backend->peerAddress();
+
+    return {};
 }
 
 /*!
@@ -671,9 +622,12 @@ QHostAddress QDtls::peerAddress() const
 */
 quint16 QDtls::peerPort() const
 {
-    Q_D(const QDtlsBase);
+    Q_D(const QDtls);
 
-    return d->remotePort;
+    if (const auto *backend = d->backend.get())
+        return backend->peerPort();
+
+    return 0;
 }
 
 /*!
@@ -686,7 +640,10 @@ QString QDtls::peerVerificationName() const
 {
     Q_D(const QDtls);
 
-    return d->peerVerificationName;
+    if (const auto *backend = d->backend.get())
+        return backend->peerVerificationName();
+
+    return {};
 }
 
 /*!
@@ -699,7 +656,10 @@ QSslSocket::SslMode QDtls::sslMode() const
 {
     Q_D(const QDtls);
 
-    return d->mode;
+    if (const auto *backend = d->backend.get())
+        return backend->cryptographMode();
+
+    return QSslSocket::UnencryptedMode;
 }
 
 /*!
@@ -712,7 +672,8 @@ void QDtls::setMtuHint(quint16 mtuHint)
 {
     Q_D(QDtls);
 
-    d->mtuHint = mtuHint;
+    if (auto *backend = d->backend.get())
+        backend->setDtlsMtuHint(mtuHint);
 }
 
 /*!
@@ -724,7 +685,10 @@ quint16 QDtls::mtuHint() const
 {
     Q_D(const QDtls);
 
-    return d->mtuHint;
+    if (const auto *backend = d->backend.get())
+        return backend->dtlsMtuHint();
+
+    return 0;
 }
 
 /*!
@@ -741,7 +705,10 @@ bool QDtls::setCookieGeneratorParameters(const GeneratorParameters &params)
 {
     Q_D(QDtls);
 
-    return d->setCookieGeneratorParameters(params.hash, params.secret);
+    if (auto *backend = d->backend.get())
+        backend->setCookieGeneratorParameters(params);
+
+    return false;
 }
 
 /*!
@@ -759,7 +726,10 @@ QDtls::GeneratorParameters QDtls::cookieGeneratorParameters() const
 {
     Q_D(const QDtls);
 
-    return {d->hashAlgorithm, d->secret};
+    if (const auto *backend = d->backend.get())
+        return backend->cookieGeneratorParameters();
+
+    return {};
 }
 
 /*!
@@ -774,13 +744,17 @@ bool QDtls::setDtlsConfiguration(const QSslConfiguration &configuration)
 {
     Q_D(QDtls);
 
-    if (d->handshakeState != HandshakeNotStarted) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot set configuration after handshake started"));
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
+    if (backend->state() != HandshakeNotStarted) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot set configuration after handshake started"));
         return false;
     }
 
-    d->setConfiguration(configuration);
+    backend->setConfiguration(configuration);
     return true;
 }
 
@@ -793,8 +767,10 @@ bool QDtls::setDtlsConfiguration(const QSslConfiguration &configuration)
 QSslConfiguration QDtls::dtlsConfiguration() const
 {
     Q_D(const QDtls);
+    if (const auto *backend = d->backend.get())
+        return backend->configuration();
 
-    return d->configuration();
+    return {};
 }
 
 /*!
@@ -806,7 +782,10 @@ QDtls::HandshakeState QDtls::handshakeState()const
 {
     Q_D(const QDtls);
 
-    return d->handshakeState;
+    if (const auto *backend = d->backend.get())
+        return backend->state();
+
+    return QDtls::HandshakeNotStarted;
 }
 
 /*!
@@ -832,13 +811,17 @@ bool QDtls::doHandshake(QUdpSocket *socket, const QByteArray &dgram)
 {
     Q_D(QDtls);
 
-    if (d->handshakeState == HandshakeNotStarted)
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
+    if (backend->state() == HandshakeNotStarted)
         return startHandshake(socket, dgram);
-    else if (d->handshakeState == HandshakeInProgress)
+    else if (backend->state() == HandshakeInProgress)
         return continueHandshake(socket, dgram);
 
-    d->setDtlsError(QDtlsError::InvalidOperation,
-                    tr("Cannot start/continue handshake, invalid handshake state"));
+    backend->setDtlsError(QDtlsError::InvalidOperation,
+                          tr("Cannot start/continue handshake, invalid handshake state"));
     return false;
 }
 
@@ -849,34 +832,38 @@ bool QDtls::startHandshake(QUdpSocket *socket, const QByteArray &datagram)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
         return false;
     }
 
-    if (d->remoteAddress.isNull()) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("To start a handshake you must set peer's address and port first"));
+    if (backend->peerAddress().isNull()) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("To start a handshake you must set peer's address and port first"));
         return false;
     }
 
     if (sslMode() == QSslSocket::SslServerMode && !datagram.size()) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        tr("To start a handshake, DTLS server requires non-empty datagram (client hello)"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              tr("To start a handshake, DTLS server requires non-empty datagram (client hello)"));
         return false;
     }
 
-    if (d->handshakeState != HandshakeNotStarted) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot start handshake, already done/in progress"));
+    if (backend->state() != HandshakeNotStarted) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot start handshake, already done/in progress"));
         return false;
     }
 
-    return d->startHandshake(socket, datagram);
+    return backend->startHandshake(socket, datagram);
 }
 
 /*!
-    If a timeout occures during the handshake, the handshakeTimeout() signal
+    If a timeout occurs during the handshake, the handshakeTimeout() signal
     is emitted. The application must call handleTimeout() to retransmit handshake
     messages; handleTimeout() returns \c true if a timeout has occurred, false
     otherwise. \a socket must be a valid pointer.
@@ -887,12 +874,16 @@ bool QDtls::handleTimeout(QUdpSocket *socket)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
         return false;
     }
 
-    return d->handleTimeout(socket);
+    return backend->handleTimeout(socket);
 }
 
 /*!
@@ -902,19 +893,23 @@ bool QDtls::continueHandshake(QUdpSocket *socket, const QByteArray &datagram)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket || !datagram.size()) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        tr("A valid QUdpSocket and non-empty datagram are needed to continue the handshake"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              tr("A valid QUdpSocket and non-empty datagram are needed to continue the handshake"));
         return false;
     }
 
-    if (d->handshakeState != HandshakeInProgress) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot continue handshake, not in InProgress state"));
+    if (backend->state() != HandshakeInProgress) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot continue handshake, not in InProgress state"));
         return false;
     }
 
-    return d->continueHandshake(socket, datagram);
+    return backend->continueHandshake(socket, datagram);
 }
 
 /*!
@@ -929,18 +924,22 @@ bool QDtls::resumeHandshake(QUdpSocket *socket)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
         return false;
     }
 
-    if (d->handshakeState != PeerVerificationFailed) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot resume, not in VerificationError state"));
+    if (backend->state() != PeerVerificationFailed) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot resume, not in VerificationError state"));
         return false;
     }
 
-    return d->resumeHandshake(socket);
+    return backend->resumeHandshake(socket);
 }
 
 /*!
@@ -953,18 +952,22 @@ bool QDtls::abortHandshake(QUdpSocket *socket)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
         return false;
     }
 
-    if (d->handshakeState != PeerVerificationFailed && d->handshakeState != HandshakeInProgress) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("No handshake in progress, nothing to abort"));
+    if (backend->state() != PeerVerificationFailed && backend->state() != HandshakeInProgress) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("No handshake in progress, nothing to abort"));
         return false;
     }
 
-    d->abortHandshake(socket);
+    backend->abortHandshake(socket);
     return true;
 }
 
@@ -979,19 +982,23 @@ bool QDtls::shutdown(QUdpSocket *socket)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return false;
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters,
-                        tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters,
+                              tr("Invalid (nullptr) socket"));
         return false;
     }
 
-    if (!d->connectionEncrypted) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot send shutdown alert, not encrypted"));
+    if (!backend->isConnectionEncrypted()) {
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot send shutdown alert, not encrypted"));
         return false;
     }
 
-    d->sendShutdownAlert(socket);
+    backend->sendShutdownAlert(socket);
     return true;
 }
 
@@ -1004,7 +1011,11 @@ bool QDtls::isConnectionEncrypted() const
 {
     Q_D(const QDtls);
 
-    return d->connectionEncrypted;
+
+    if (const auto *backend = d->backend.get())
+        return backend->isConnectionEncrypted();
+
+    return false;
 }
 
 /*!
@@ -1023,7 +1034,10 @@ QSslCipher QDtls::sessionCipher() const
 {
     Q_D(const QDtls);
 
-    return d->sessionCipher;
+    if (const auto *backend = d->backend.get())
+        return backend->dtlsSessionCipher();
+
+    return {};
 }
 
 /*!
@@ -1040,7 +1054,10 @@ QSsl::SslProtocol QDtls::sessionProtocol() const
 {
     Q_D(const QDtls);
 
-    return d->sessionProtocol;
+    if (const auto *backend = d->backend.get())
+        return backend->dtlsSessionProtocol();
+
+    return QSsl::UnknownProtocol;
 }
 
 /*!
@@ -1055,18 +1072,22 @@ qint64 QDtls::writeDatagramEncrypted(QUdpSocket *socket, const QByteArray &dgram
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return -1;
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
         return -1;
     }
 
     if (!isConnectionEncrypted()) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot write a datagram, not in encrypted state"));
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot write a datagram, not in encrypted state"));
         return -1;
     }
 
-    return d->writeDatagramEncrypted(socket, dgram);
+    return backend->writeDatagramEncrypted(socket, dgram);
 }
 
 /*!
@@ -1079,21 +1100,25 @@ QByteArray QDtls::decryptDatagram(QUdpSocket *socket, const QByteArray &dgram)
 {
     Q_D(QDtls);
 
+    auto *backend = d->backend.get();
+    if (!backend)
+        return {};
+
     if (!socket) {
-        d->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
+        backend->setDtlsError(QDtlsError::InvalidInputParameters, tr("Invalid (nullptr) socket"));
         return {};
     }
 
     if (!isConnectionEncrypted()) {
-        d->setDtlsError(QDtlsError::InvalidOperation,
-                        tr("Cannot read a datagram, not in encrypted state"));
+        backend->setDtlsError(QDtlsError::InvalidOperation,
+                              tr("Cannot read a datagram, not in encrypted state"));
         return {};
     }
 
     if (!dgram.size())
         return {};
 
-    return d->decryptDatagram(socket, dgram);
+    return backend->decryptDatagram(socket, dgram);
 }
 
 /*!
@@ -1105,7 +1130,10 @@ QDtlsError QDtls::dtlsError() const
 {
     Q_D(const QDtls);
 
-    return d->errorCode;
+    if (const auto *backend = d->backend.get())
+        return backend->error();
+
+    return QDtlsError::NoError;
 }
 
 /*!
@@ -1118,7 +1146,10 @@ QString QDtls::dtlsErrorString() const
 {
     Q_D(const QDtls);
 
-    return d->errorDescription;
+    if (const auto *backend = d->backend.get())
+        return backend->errorString();
+
+    return {};
 }
 
 /*!
@@ -1127,11 +1158,15 @@ QString QDtls::dtlsErrorString() const
     If you want to continue connecting despite the errors that have occurred,
     you must call ignoreVerificationErrors().
 */
-QVector<QSslError> QDtls::peerVerificationErrors() const
+QList<QSslError> QDtls::peerVerificationErrors() const
 {
     Q_D(const QDtls);
 
-    return d->tlsErrors;
+    if (const auto *backend = d->backend.get())
+        return backend->peerVerificationErrors();
+
+    //return d->tlsErrors;
+    return {};
 }
 
 /*!
@@ -1152,11 +1187,14 @@ QVector<QSslError> QDtls::peerVerificationErrors() const
 
     \sa doHandshake(), resumeHandshake(), QSslError
 */
-void QDtls::ignoreVerificationErrors(const QVector<QSslError> &errorsToIgnore)
+void QDtls::ignoreVerificationErrors(const QList<QSslError> &errorsToIgnore)
 {
     Q_D(QDtls);
 
-    d->tlsErrorsToIgnore = errorsToIgnore;
+    if (auto *backend = d->backend.get())
+        backend->ignoreVerificationErrors(errorsToIgnore);
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qdtls.cpp"

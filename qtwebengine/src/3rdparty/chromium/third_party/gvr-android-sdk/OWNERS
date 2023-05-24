@@ -1,9 +1,5 @@
-alcooper@chromium.org
-bajones@chromium.org
-bialpio@chromium.org
+file://components/webxr/OWNERS
 mthiesse@chromium.org
 vollick@chromium.org
 
-# TEAM: xr-dev@chromium.org
-# COMPONENT: Internals>XR>VR
-# OS: Android
+per-file *.sha1=file://build/OWNERS

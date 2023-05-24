@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qgeotiledmap_test.h"
 #include "qgeotilefetcher_test.h"
@@ -32,10 +7,13 @@
 #include <QtCore/QString>
 #include <QtTest/QtTest>
 #include <QtTest/QSignalSpy>
+#include <QtPositioning/QGeoCoordinate>
 #include <QtPositioning/private/qwebmercator_p.h>
+#include <QtPositioning/private/qdoublevector2d_p.h>
 #include <QtLocation/QGeoServiceProvider>
 #include <QtLocation/private/qgeotiledmap_p.h>
 #include <QtLocation/private/qgeomappingmanager_p.h>
+#include <QtLocation/private/qgeocameradata_p.h>
 #include <QtLocation/private/qgeocameracapabilities_p.h>
 
 QT_USE_NAMESPACE
@@ -70,8 +48,9 @@ private Q_SLOTS:
     void fetchTiles_data();
 
 private:
-    QScopedPointer<QGeoTiledMapTest> m_map;
-    QScopedPointer<FetchTileCounter> m_tilesCounter;
+    std::unique_ptr<QGeoServiceProvider> m_provider;
+    std::unique_ptr<QGeoTiledMapTest> m_map;
+    std::unique_ptr<FetchTileCounter> m_tilesCounter;
     QGeoTileFetcherTest *m_fetcher;
 
 };
@@ -101,17 +80,18 @@ void tst_QGeoTiledMap::initTestCase()
       parameters["tileSize"] = 256;
       parameters["maxZoomLevel"] = 8;
       parameters["finishRequestImmediately"] = true;
-      QGeoServiceProvider *provider = new QGeoServiceProvider("qmlgeo.test.plugin",parameters);
-      provider->setAllowExperimental(true);
-      QGeoMappingManager *mappingManager = provider->mappingManager();
-      QVERIFY2(provider->error() == QGeoServiceProvider::NoError, "Could not load plugin: " + provider->errorString().toLatin1());
+      m_provider = std::make_unique<QGeoServiceProvider>("qmlgeo.test.plugin", parameters);
+      m_provider->setAllowExperimental(true);
+      QGeoMappingManager *mappingManager = m_provider->mappingManager();
+      QVERIFY2(m_provider->error() == QGeoServiceProvider::NoError,
+               "Could not load plugin: " + m_provider->errorString().toLatin1());
       m_map.reset(static_cast<QGeoTiledMapTest*>(mappingManager->createMap(this)));
       QVERIFY(m_map);
       m_map->setViewportSize(QSize(256, 256));
       m_map->setActiveMapType(m_map->m_engine->supportedMapTypes().first());
       m_fetcher = static_cast<QGeoTileFetcherTest*>(m_map->m_engine->tileFetcher());
       m_tilesCounter.reset(new FetchTileCounter());
-      connect(m_fetcher, SIGNAL(tileFetched(const QGeoTileSpec&)), m_tilesCounter.data(), SLOT(tileFetched(const QGeoTileSpec&)));
+      connect(m_fetcher, SIGNAL(tileFetched(const QGeoTileSpec&)), m_tilesCounter.get(), SLOT(tileFetched(const QGeoTileSpec&)));
 }
 
 void tst_QGeoTiledMap::fetchTiles()

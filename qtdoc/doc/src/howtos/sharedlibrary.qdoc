@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \page sharedlibrary.html
@@ -52,13 +28,13 @@
     Depending on your target platform, Qt provides special macros that contain
     the necessary definitions:
     \list
-        \li  \c{Q_DECL_EXPORT} must be added to the declarations of symbols used
+        \li  \l{Q_DECL_EXPORT} must be added to the declarations of symbols used
             when compiling a shared library.
-        \li  \c{Q_DECL_IMPORT} must be added to the declarations of symbols used
+        \li  \l{Q_DECL_IMPORT} must be added to the declarations of symbols used
             when compiling a client that uses the shared library.
     \endlist
 
-    Now, we need to ensure that the right macro is invoked -- whether we
+    Now, we need to ensure that the right macro is invoked - whether we
     compile a shared library itself, or just the client using the shared
     library.
     Typically, this can be solved by adding a special header.
@@ -77,12 +53,6 @@
         #endif
     \endcode
 
-    In the \c{.pro} file of the shared library, we add:
-
-    \code
-        DEFINES += MYSHAREDLIB_LIBRARY
-    \endcode
-
     In each header of the library, we specify the following:
 
     \code
@@ -91,9 +61,27 @@
         MYSHAREDLIB_EXPORT void foo();
         class MYSHAREDLIB_EXPORT MyClass...
     \endcode
-    This ensures that the right macro is seen by both library and clients. We
-    also use this technique in Qt's sources.
 
+    We then need to ensure that \c MYSHAREDLIB_LIBRARY is defined for the
+    compiler when building the library itself. This is done in the build system
+    of the library. If we use \l{Build with CMake}{CMake}, we augment the
+    shared library target:
+
+    \code
+    target_compile_definitions(mysharedlib PRIVATE MYSHAREDLIB_LIBRARY)
+    \endcode
+
+    If we use \l{qmake}, we add
+
+    \code
+    DEFINES += MYSHAREDLIB_LIBRARY
+    \endcode
+
+    to the \c{.pro} file of the shared library.
+
+    \note The library wizards in \l{Qt Creator Manual}{Qt Creator} and
+    \l{Qt VS Tools} provide you with a skeleton that sets up these things for
+    you.
 
     \section1 Header File Considerations
 

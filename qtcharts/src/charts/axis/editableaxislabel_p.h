@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 //  W A R N I N G
 //  -------------
@@ -45,7 +19,7 @@
 #include <QtGui/qevent.h>
 #include <QtGui/qtextdocument.h>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class Q_CHARTS_PRIVATE_EXPORT EditableAxisLabel : public QGraphicsTextItem
 {
@@ -53,13 +27,13 @@ class Q_CHARTS_PRIVATE_EXPORT EditableAxisLabel : public QGraphicsTextItem
 public:
     EditableAxisLabel(QGraphicsItem *parent = nullptr);
 
-    void focusInEvent(QFocusEvent *event);
-    void focusOutEvent(QFocusEvent *event);
-    bool sceneEvent(QEvent *event);
+    void focusInEvent(QFocusEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
+    bool sceneEvent(QEvent *event) override;
     void setEditable(bool editable);
     void reloadBeforeEditContent();
 
-    QRectF boundingRect() const;
+    QRectF boundingRect() const override;
 
 protected:
     QString m_htmlBeforeEdit;
@@ -73,6 +47,6 @@ protected:
     bool isEditEndingKeyPress(QKeyEvent *event);
 };
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #endif // EDITABLEAXISLABEL_P_H

@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,11 +8,11 @@
 #define XFA_FXFA_PARSER_CXFA_STIPPLE_H_
 
 #include "core/fxcrt/fx_coordinates.h"
+#include "xfa/fgas/graphics/cfgas_gepath.h"
 #include "xfa/fxfa/parser/cxfa_node.h"
-#include "xfa/fxgraphics/cxfa_gepath.h"
 
+class CFGAS_GEGraphics;
 class CXFA_Color;
-class CXFA_Graphics;
 
 class CXFA_Stipple final : public CXFA_Node {
  public:
@@ -21,8 +21,8 @@ class CXFA_Stipple final : public CXFA_Node {
   CONSTRUCT_VIA_MAKE_GARBAGE_COLLECTED;
   ~CXFA_Stipple() override;
 
-  void Draw(CXFA_Graphics* pGS,
-            CXFA_GEPath* fillPath,
+  void Draw(CFGAS_GEGraphics* pGS,
+            const CFGAS_GEPath& fillPath,
             const CFX_RectF& rtFill,
             const CFX_Matrix& matrix);
 

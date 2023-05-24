@@ -1,43 +1,18 @@
-#!/usr/bin/env python
-
-#############################################################################
-##
-## Copyright (C) 2016 The Qt Company Ltd.
-## Contact: https://www.qt.io/licensing/
-##
-## This file is part of the QtWebEngine module of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:GPL-EXCEPT$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see https://www.qt.io/terms-conditions. For further
-## information use the contact form at https://www.qt.io/contact-us.
-##
-## GNU General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU
-## General Public License version 3 as published by the Free Software
-## Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-## included in the packaging of this file. Please review the following
-## information to ensure the GNU General Public License requirements will
-## be met: https://www.gnu.org/licenses/gpl-3.0.html.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+#!/usr/bin/env python3
+# Copyright (C) 2016 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import glob
 import os
 import subprocess
 import sys
-import imp
+import importlib
 import errno
 import shutil
 
 from distutils.version import StrictVersion
 import git_submodule as GitSubmodule
+import cipd_package as CIPDPackage
 
 qtwebengine_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 os.chdir(qtwebengine_root)
@@ -58,10 +33,14 @@ def isInChromiumBlacklist(file_path):
     if file_path.endswith('.gn') or file_path.endswith('.gni') or file_path.endswith('.typemap') or \
     file_path.endswith('.mojom'):
         return False
+    # Add android dependencies info so gn build tree can be parsed
+    if file_path.endswith('.info') or file_path.endswith('.pydeps'):
+        return False
+    if file_path.endswith('.mailmap') or file_path.endswith('.tat.gz.sha1'):
+        return True
     if (file_path.startswith('android_webview')
         or file_path.startswith('apps/')
         or file_path.startswith('ash/')
-        or file_path.startswith('base/android')
         or file_path.startswith('buildtools/clang_format/script')
         or file_path.startswith('buildtools/third_party/libc++')
         or file_path.startswith('buildtools/third_party/libc++abi')
@@ -75,11 +54,19 @@ def isInChromiumBlacklist(file_path):
           and not file_path.startswith('chrome/browser/custom_handlers/')
           and not file_path.startswith('chrome/browser/devtools/')
           and not file_path.startswith('chrome/browser/extensions/api/')
+          and not file_path.startswith('chrome/browser/gcm/')
           and not file_path.startswith('chrome/browser/media/webrtc/')
           and not file_path.startswith('chrome/browser/net/')
           and not file_path.startswith('chrome/browser/prefs/')
           and not file_path.startswith('chrome/browser/printing/')
+          and not file_path.startswith('chrome/browser/profiles/incognito_helpers')
+          and not file_path.startswith('chrome/browser/profiles/profile_keyed_service_factory')
+          and not file_path.startswith('chrome/browser/profiles/profile_selections')
+          and not file_path.startswith('chrome/browser/push_messaging/')
           and not file_path.startswith('chrome/browser/renderer_host/')
+          and not file_path.startswith('chrome/browser/share/core/')
+          and not file_path.startswith('chrome/browser/share/proto/')
+          and not file_path.startswith('chrome/browser/signin/')
           and not file_path.startswith('chrome/browser/spellchecker')
           and not file_path.startswith('chrome/browser/tab_contents/')
           and not file_path.startswith('chrome/browser/ui/webui/')
@@ -93,7 +80,8 @@ def isInChromiumBlacklist(file_path):
           and not file_path.startswith('chrome/tools/convert_dict/')
           and not file_path.endswith('.grd')
           and not file_path.endswith('.grdp')
-          and not file_path.endswith('chrome_version.rc.version'))
+          and not file_path.endswith('chrome_version.rc.version')
+          and not file_path.endswith('service_sandbox_type.h'))
         or file_path.startswith('chrome_elf')
         or file_path.startswith('chromecast')
         or file_path.startswith('chromeos')
@@ -103,10 +91,9 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('components/cronet/')
             or file_path.startswith('components/drive/')
             or file_path.startswith('components/invalidation/')
-            or file_path.startswith('components/gcm_driver/')
             or file_path.startswith('components/nacl/')
             or file_path.startswith('components/omnibox/')
-            or file_path.startswith('components/policy/')
+            or file_path.startswith('components/policy/resources/')
             or file_path.startswith('components/proximity_auth/')
             or (file_path.startswith('components/resources/terms/')
               and not file_path.endswith('terms_chromium.html'))
@@ -118,10 +105,10 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('components/translate/')
         ))
         or file_path.startswith('content/public/android/java')
-        or (file_path.startswith('content/shell')
-          and not file_path.startswith('content/shell/common')
-          and not file_path.endswith('.grd'))
+        or file_path.startswith('content/shell/android/')
+        or file_path.startswith('content/shell/browser/')
         or file_path.startswith('courgette')
+        or file_path.startswith('docs/website/')
         or file_path.startswith('google_update')
         or file_path.startswith('ios')
         or file_path.startswith('media/base/android/java')
@@ -130,7 +117,10 @@ def isInChromiumBlacklist(file_path):
         or (file_path.startswith('net/data/')
           and '_unittest/' in file_path)
         or file_path.startswith('net/data/fuzzer_data/')
-        or file_path.startswith('remoting')
+        or (file_path.startswith('remoting')
+            and not file_path.endswith('VERSION')
+            and not file_path.endswith('branding_Chromium')
+            and not file_path.endswith('remove_spaces.py'))
         or file_path.startswith('rlz')
         or file_path.startswith('testing/android')
         or file_path.startswith('testing/buildbot')
@@ -139,6 +129,7 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('third_party/accessibility')
             or file_path.startswith('third_party/afl')
             or file_path.startswith('third_party/android_')
+            or file_path.startswith('third_party/androidx')
             or file_path.startswith('third_party/angle/third_party/deqp')
             or file_path.startswith('third_party/angle/third_party/glmark2')
             or file_path.startswith('third_party/angle/third_party/VK-GL-CTS')
@@ -166,13 +157,61 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('third_party/chromite')
             or file_path.startswith('third_party/colorama')
             or file_path.startswith('third_party/depot_tools')
-            or file_path.startswith('third_party/devtools-frontend/src/node-modules/')
+            or file_path.startswith('third_party/devtools-frontend/src/third_party/image_diff')
+            or (file_path.startswith('third_party/node/node_modules/')
+              and not file_path.startswith('third_party/node/node_modules/@babel/')
+              and not file_path.startswith('third_party/node/node_modules/@types/d3')
+              and not file_path.startswith('third_party/node/node_modules/@types/trusted-types/')
+              and not file_path.startswith('third_party/node/node_modules/ansi-styles/')
+              and not file_path.startswith('third_party/node/node_modules/balanced-match/')
+              and not file_path.startswith('third_party/node/node_modules/brace-expansion/')
+              and not file_path.startswith('third_party/node/node_modules/cancel-token/')
+              and not file_path.startswith('third_party/node/node_modules/chalk/')
+              and not file_path.startswith('third_party/node/node_modules/color-convert/')
+              and not file_path.startswith('third_party/node/node_modules/color-name/')
+              and not file_path.startswith('third_party/node/node_modules/commander/')
+              and not file_path.startswith('third_party/node/node_modules/concat-map/')
+              and not file_path.startswith('third_party/node/node_modules/cssbeautify/')
+              and not file_path.startswith('third_party/node/node_modules/debug/')
+              and not file_path.startswith('third_party/node/node_modules/escape-string-regexp/')
+              and not file_path.startswith('third_party/node/node_modules/esutils/')
+              and not file_path.startswith('third_party/node/node_modules/function-bind/')
+              and not file_path.startswith('third_party/node/node_modules/globals/')
+              and not file_path.startswith('third_party/node/node_modules/has-ansi/')
+              and not file_path.startswith('third_party/node/node_modules/has-flag/')
+              and not file_path.startswith('third_party/node/node_modules/has/')
+              and not file_path.startswith('third_party/node/node_modules/indent/')
+              and not file_path.startswith('third_party/node/node_modules/is-core-module/')
+              and not file_path.startswith('third_party/node/node_modules/is-windows/')
+              and not file_path.startswith('third_party/node/node_modules/@jridgewell/')
+              and not file_path.startswith('third_party/node/node_modules/js-tokens/')
+              and not file_path.startswith('third_party/node/node_modules/jsesc/')
+              and not file_path.startswith('third_party/node/node_modules/jsonschema/')
+              and not file_path.startswith('third_party/node/node_modules/lodash.camelcase/')
+              and not file_path.startswith('third_party/node/node_modules/lodash.sortby/')
+              and not file_path.startswith('third_party/node/node_modules/minimatch/')
+              and not file_path.startswith('third_party/node/node_modules/ms/')
+              and not file_path.startswith('third_party/node/node_modules/path-is-inside/')
+              and not file_path.startswith('third_party/node/node_modules/polymer-analyzer/')
+              and not file_path.startswith('third_party/node/node_modules/polymer-css-build/')
+              and not file_path.startswith('third_party/node/node_modules/resolve/')
+              and not file_path.startswith('third_party/node/node_modules/rollup/')
+              and not file_path.startswith('third_party/node/node_modules/shady-css-parser/')
+              and not file_path.startswith('third_party/node/node_modules/source-map/')
+              and not file_path.startswith('third_party/node/node_modules/stable/')
+              and not file_path.startswith('third_party/node/node_modules/supports-color/')
+              and not file_path.startswith('third_party/node/node_modules/terser/')
+              and not file_path.startswith('third_party/node/node_modules/to-fast-properties/')
+              and not file_path.startswith('third_party/node/node_modules/tr46/')
+              and not file_path.startswith('third_party/node/node_modules/typescript/')
+              and not file_path.startswith('third_party/node/node_modules/vscode-uri/')
+              and not file_path.startswith('third_party/node/node_modules/webidl-conversions/')
+              and not file_path.startswith('third_party/node/node_modules/whatwg-url/'))
             or file_path.startswith('third_party/fuschsia-sdk/')
             or file_path.startswith('third_party/glslang/src/Test/')
             or file_path.startswith('third_party/google_')
             or file_path.startswith('third_party/grpc/')
             or file_path.startswith('third_party/hunspell_dictionaries')
-            or file_path.startswith('third_party/icu/android')
             or file_path.startswith('third_party/icu/cast')
             or file_path.startswith('third_party/icu/chromeos')
             or file_path.startswith('third_party/instrumented_libraries')
@@ -184,6 +223,7 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('third_party/libFuzzer')
             or file_path.startswith('third_party/liblouis')
             or file_path.startswith('third_party/libphonenumber')
+            or file_path.startswith('third_party/libunwindstack')
             or file_path.startswith('third_party/logilab')
             or file_path.startswith('third_party/markdown')
             or file_path.startswith('third_party/openh264/src/res')
@@ -196,11 +236,12 @@ def isInChromiumBlacklist(file_path):
             or file_path.startswith('third_party/sfntly/src/java')
             or file_path.startswith('third_party/skia/docs/')
             or file_path.startswith('third_party/skia/infra')
-            or file_path.startswith('third_party/skia/site/dev/tools/calendar.mskp')
+            or file_path.startswith('third_party/skia/site/docs/dev/tools/calendar.mskp')
             or file_path.startswith('third_party/sqlite/sqlite-src-')
-            or file_path.startswith('third_party/speech-dispatcher')
             or file_path.startswith('third_party/spirv-cross/spirv-cross/reference/')
             or file_path.startswith('third_party/swiftshader/third_party/')
+            or file_path.startswith('third_party/tflite/')
+            or file_path.startswith('third_party/unrar')
             or file_path.startswith('third_party/wayland')
             or file_path.startswith('third_party/webgl')
             or file_path.startswith('third_party/webrtc/resources/')
@@ -262,7 +303,7 @@ def printProgress(current, total):
     sys.stdout.write("\r{} of {}".format(current, total))
     sys.stdout.flush()
 
-def copyFile(src, dst):
+def copyFile(src, dst, use_link = True, force_remove = False):
     src = os.path.abspath(src)
     dst = os.path.abspath(dst)
     dst_dir = os.path.dirname(dst)
@@ -270,16 +311,19 @@ def copyFile(src, dst):
     if not os.path.isdir(dst_dir):
         os.makedirs(dst_dir)
 
-    if os.path.exists(dst):
+    if force_remove or os.path.exists(dst):
         os.remove(dst)
 
     try:
-        os.link(src, dst)
+        if use_link:
+            os.link(src, dst)
+        else:
+            shutil.copy(src,dst)
         # Qt uses LF-only but Chromium isn't.
         subprocess.call(['dos2unix', '--keep-bom', '--quiet', dst])
     except OSError as exception:
         if exception.errno == errno.ENOENT:
-            print 'file does not exist:' + src
+            print('file does not exist: ' + src)
         else:
             raise
 
@@ -289,10 +333,10 @@ third_party = os.path.join(qtwebengine_root, 'src/3rdparty')
 def clearDirectory(directory):
     currentDir = os.getcwd()
     os.chdir(directory)
-    print 'clearing the directory:' + directory
+    print('clearing the directory:' + directory)
     for direntry in os.listdir(directory):
         if not direntry == '.git' and os.path.isdir(direntry):
-            print 'clearing:' + direntry
+            print('clearing:' + direntry)
             shutil.rmtree(direntry)
     os.chdir(currentDir)
 
@@ -306,17 +350,27 @@ def listFilesInCurrentRepository(use_deps=False):
             files.append(os.path.join(submodule.pathRelativeToTopMostSupermodule(), submodule_file))
     return files
 
+def listPackageFilesInCurrentRepositoryForPackage(packageName):
+    cipd = CIPDPackage.CIPDEntity(os.getcwd())
+    cipd_entities = cipd.readEntities()
+    files = []
+    for e in cipd_entities:
+        pkg = e.findPackage(CIPDPackage.androidx_package_name)
+        if pkg:
+            files.extend(pkg.listFiles())
+    return files
+
 def exportGn():
     third_party_upstream_gn = os.path.join(third_party_upstream, 'gn')
     third_party_gn = os.path.join(third_party, 'gn')
     os.makedirs(third_party_gn);
-    print 'exporting contents of:' + third_party_upstream_gn
+    print('exporting contents of:' + third_party_upstream_gn)
     os.chdir(third_party_upstream_gn)
     files = listFilesInCurrentRepository()
-    print 'copying files to ' + third_party_gn
-    for i in xrange(len(files)):
+    print('copying files to ' + third_party_gn)
+    for i in range(len(files)):
         printProgress(i+1, len(files))
-        f = files[i]
+        f = files[i].decode()
         if not isInGitBlacklist(f):
             copyFile(f, os.path.join(third_party_gn, f))
     print("")
@@ -325,13 +379,13 @@ def exportNinja():
     third_party_upstream_ninja = os.path.join(third_party_upstream, 'ninja')
     third_party_ninja = os.path.join(third_party, 'ninja')
     os.makedirs(third_party_ninja);
-    print 'exporting contents of:' + third_party_upstream_ninja
+    print('exporting contents of:' + third_party_upstream_ninja)
     os.chdir(third_party_upstream_ninja)
     files = listFilesInCurrentRepository()
-    print 'copying files to ' + third_party_ninja
-    for i in xrange(len(files)):
+    print('copying files to ' + third_party_ninja)
+    for i in range(len(files)):
         printProgress(i+1, len(files))
-        f = files[i]
+        f = files[i].decode()
         if not isInGitBlacklist(f):
             copyFile(f, os.path.join(third_party_ninja, f))
     print("")
@@ -340,36 +394,60 @@ def exportChromium():
     third_party_upstream_chromium = os.path.join(third_party_upstream, 'chromium')
     third_party_chromium = os.path.join(third_party, 'chromium')
     os.makedirs(third_party_chromium);
-    print 'exporting contents of:' + third_party_upstream_chromium
+    print('exporting contents of:' + third_party_upstream_chromium)
     os.chdir(third_party_upstream_chromium)
     files = listFilesInCurrentRepository(True)
     # Add LASTCHANGE files which are not tracked by git.
-    files.append('build/util/LASTCHANGE')
-    files.append('build/util/LASTCHANGE.committime')
-    files.append('skia/ext/skia_commit_hash.h')
-    files.append('gpu/config/gpu_lists_version.h')
-    print 'copying files to ' + third_party_chromium
-    for i in xrange(len(files)):
+    files.append(b'build/util/LASTCHANGE')
+    files.append(b'build/util/LASTCHANGE.committime')
+    files.append(b'skia/ext/skia_commit_hash.h')
+    files.append(b'gpu/config/gpu_lists_version.h')
+
+    files.extend(listPackageFilesInCurrentRepositoryForPackage(CIPDPackage.androidx_package_name))
+
+    for root, directories, local_files in os.walk(third_party_upstream_chromium + '/third_party/node/node_modules'):
+        for name in local_files:
+            f = os.path.relpath(os.path.join(root, name))
+            files.append(f)
+
+    symlinks = []
+    print('copying files to ' + third_party_chromium)
+    for i in range(len(files)):
         printProgress(i+1, len(files))
-        f = files[i]
+        if isinstance(files[i], bytes):
+            f = files[i].decode()
+        else:
+            f = files[i]
         if not isInChromiumBlacklist(f) and not isInGitBlacklist(f):
-            copyFile(f, os.path.join(third_party_chromium, f))
+            d = os.path.join(third_party_chromium, f)
+            copyFile(f,d)
+            # make sure we did not make a hardlink of symlink which is broken afterwards
+            if os.path.islink(f):
+              symlinks.append((f,d))
+    # this is mostly used for files coming from cipd packages
+    for s in symlinks:
+        if not os.path.exists(s[1]):
+            print('fixing ivalid link ' + s[1])
+            copyFile(s[0],s[1], use_link = False, force_remove = True)
+
+    # We need to gzip transport_security_state_static.json since it is otherwise too big for our git configuration:
+    subprocess.call(['gzip', '-n',  third_party_chromium + '/net/http/transport_security_state_static.json'])
     print("")
 
 commandNotFound = subprocess.call(['which', 'dos2unix'])
 
 if not commandNotFound:
-    dos2unixVersion , err = subprocess.Popen(['dos2unix', '-V', '| true'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+    dos2unixVersion, err = subprocess.Popen(['dos2unix', '-V', '| true'], stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
     if not dos2unixVersion:
         raise Exception("You need dos2unix version 6.0.6 minimum.")
-    dos2unixVersion = StrictVersion(dos2unixVersion.splitlines()[0].split()[1])
+    dos2unixVersion = StrictVersion(dos2unixVersion.splitlines()[0].split()[1].decode())
 
 if commandNotFound or dos2unixVersion < StrictVersion('6.0.6'):
     raise Exception("You need dos2unix version 6.0.6 minimum.")
 
 os.chdir(third_party)
 ignore_case_setting = subprocess.Popen(['git', 'config', '--get', 'core.ignorecase'], stdout=subprocess.PIPE).communicate()[0]
-if 'true' in ignore_case_setting:
+if b'true' in ignore_case_setting:
     raise Exception("Your 3rdparty repository is configured to ignore case. "
                     "A snapshot created with these settings would cause problems on case sensitive file systems.")
 
@@ -379,5 +457,5 @@ exportGn()
 exportNinja()
 exportChromium()
 
-print 'done.'
+print('done.')
 

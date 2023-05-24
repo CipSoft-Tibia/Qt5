@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "richtexteditor_p.h"
 #include "htmlhighlighter_p.h"
@@ -36,30 +11,36 @@
 #include <QtDesigner/abstractformeditor.h>
 #include <QtDesigner/abstractsettings.h>
 
-#include <QtCore/qlist.h>
-#include <QtCore/qmap.h>
-#include <QtCore/qpointer.h>
-#include <QtCore/qxmlstream.h>
-
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qcolordialog.h>
 #include <QtWidgets/qcombobox.h>
-#include <QtGui/qfontdatabase.h>
-#include <QtGui/qtextcursor.h>
-#include <QtGui/qpainter.h>
-#include <QtGui/qicon.h>
 #include <QtWidgets/qmenu.h>
-#include <QtGui/qevent.h>
 #include <QtWidgets/qtabwidget.h>
-#include <QtGui/qtextobject.h>
-#include <QtGui/qtextdocument.h>
 #include <QtWidgets/qtoolbar.h>
 #include <QtWidgets/qtoolbutton.h>
 #include <QtWidgets/qboxlayout.h>
 #include <QtWidgets/qpushbutton.h>
 #include <QtWidgets/qdialogbuttonbox.h>
 
+#include <QtGui/qaction.h>
+#include <QtGui/qactiongroup.h>
+#include <QtGui/qevent.h>
+#include <QtGui/qfontdatabase.h>
+#include <QtGui/qicon.h>
+#include <QtGui/qpainter.h>
+#include <QtGui/qtextcursor.h>
+#include <QtGui/qtextdocument.h>
+#include <QtGui/qtextobject.h>
+
+#include <QtCore/qlist.h>
+#include <QtCore/qmap.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/qxmlstream.h>
+
+#include <algorithm>
+
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 static const char RichTextDialogGroupC[] = "RichTextDialog";
 static const char GeometryKeyC[] = "Geometry";
@@ -70,13 +51,13 @@ const bool simplifyRichTextDefault = true;
 namespace qdesigner_internal {
 
 // Richtext simplification filter helpers: Elements to be discarded
-static inline bool filterElement(const QStringRef &name)
+static inline bool filterElement(QStringView name)
 {
-    return name != QStringLiteral("meta") && name != QStringLiteral("style");
+    return name != "meta"_L1 && name != "style"_L1;
 }
 
 // Richtext simplification filter helpers: Filter attributes of elements
-static inline void filterAttributes(const QStringRef &name,
+static inline void filterAttributes(QStringView name,
                                     QXmlStreamAttributes *atts,
                                     bool *paragraphAlignmentFound)
 {
@@ -84,15 +65,15 @@ static inline void filterAttributes(const QStringRef &name,
         return;
 
      // No style attributes for <body>
-    if (name == QStringLiteral("body")) {
+    if (name == "body"_L1) {
         atts->clear();
         return;
     }
 
     // Clean out everything except 'align' for 'p'
-    if (name == QStringLiteral("p")) {
+    if (name == "p"_L1) {
         for (auto it = atts->begin(); it != atts->end(); ) {
-            if (it->name() == QStringLiteral("align")) {
+            if (it->name() == "align"_L1) {
                 ++it;
                 *paragraphAlignmentFound = true;
             } else {
@@ -103,14 +84,11 @@ static inline void filterAttributes(const QStringRef &name,
     }
 }
 
-// Richtext simplification filter helpers: Check for blank QStringRef.
-static inline bool isWhiteSpace(const QStringRef &in)
+// Richtext simplification filter helpers: Check for blank QStringView.
+static inline bool isWhiteSpace(QStringView in)
 {
-    const int count = in.size();
-    for (int i = 0; i < count; i++)
-        if (!in.at(i).isSpace())
-            return false;
-    return true;
+    return std::all_of(in.cbegin(), in.cend(),
+                       [](QChar c) { return c.isSpace(); });
 }
 
 // Richtext simplification filter: Remove hard-coded font settings,
@@ -167,6 +145,8 @@ public:
 
     QToolBar *createToolBar(QDesignerFormEditorInterface *core, QWidget *parent = nullptr);
 
+    QString text(Qt::TextFormat format) const;
+
     bool simplifyRichText() const      { return m_simplifyRichText; }
 
 public slots:
@@ -174,7 +154,6 @@ public slots:
     void setFontPointSize(double);
     void setText(const QString &text);
     void setSimplifyRichText(bool v);
-    QString text(Qt::TextFormat format) const;
 
 signals:
     void stateChanged();
@@ -199,16 +178,14 @@ public slots:
 
 private:
     RichTextEditor *m_editor;
-    Ui::AddLinkDialog *m_ui;
+    QT_PREPEND_NAMESPACE(Ui)::AddLinkDialog *m_ui;
 };
 
 AddLinkDialog::AddLinkDialog(RichTextEditor *editor, QWidget *parent) :
     QDialog(parent),
-    m_ui(new Ui::AddLinkDialog)
+    m_ui(new QT_PREPEND_NAMESPACE(Ui)::AddLinkDialog)
 {
     m_ui->setupUi(this);
-
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     m_editor = editor;
 }
@@ -238,12 +215,7 @@ void AddLinkDialog::accept()
     const QString url = m_ui->urlInput->text();
 
     if (!title.isEmpty()) {
-        QString html = QStringLiteral("<a href=\"");
-        html += url;
-        html += QStringLiteral("\">");
-        html += title;
-        html += QStringLiteral("</a>");
-
+        const QString html = "<a href=\""_L1 + url + "\">"_L1 + title + "</a>"_L1;
         m_editor->insertHtml(html);
     }
 
@@ -288,9 +260,9 @@ void HtmlTextEdit::contextMenuEvent(QContextMenuEvent *event)
     };
 
     for (const Entry &e : entries) {
-        QAction *entityAction = new QAction(QLatin1String(e.text),
+        QAction *entityAction = new QAction(QLatin1StringView(e.text),
                                             htmlMenu);
-        entityAction->setData(QLatin1String(e.entity));
+        entityAction->setData(QLatin1StringView(e.entity));
         htmlMenu->addAction(entityAction);
     }
 
@@ -399,7 +371,6 @@ private:
 };
 
 static QAction *createCheckableAction(const QIcon &icon, const QString &text,
-                                      QObject *receiver, const char *slot,
                                       QObject *parent = nullptr)
 {
     QAction *result = new QAction(parent);
@@ -407,8 +378,6 @@ static QAction *createCheckableAction(const QIcon &icon, const QString &text,
     result->setText(text);
     result->setCheckable(true);
     result->setChecked(false);
-    if (slot)
-        QObject::connect(result, SIGNAL(triggered(bool)), receiver, slot);
     return result;
 }
 
@@ -438,20 +407,20 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
     // Bold, italic and underline buttons
 
     m_bold_action = createCheckableAction(
-            createIconSet(QStringLiteral("textbold.png")),
-            tr("Bold"), editor, SLOT(setFontBold(bool)), this);
+            createIconSet(u"textbold.png"_s), tr("Bold"), this);
+    connect(m_bold_action, &QAction::triggered, editor, &RichTextEditor::setFontBold);
     m_bold_action->setShortcut(tr("CTRL+B"));
     addAction(m_bold_action);
 
     m_italic_action = createCheckableAction(
-            createIconSet(QStringLiteral("textitalic.png")),
-            tr("Italic"), editor, SLOT(setFontItalic(bool)), this);
+            createIconSet(u"textitalic.png"_s), tr("Italic"), this);
+    connect(m_italic_action, &QAction::triggered, editor, &RichTextEditor::setFontItalic);
     m_italic_action->setShortcut(tr("CTRL+I"));
     addAction(m_italic_action);
 
     m_underline_action = createCheckableAction(
-            createIconSet(QStringLiteral("textunder.png")),
-            tr("Underline"), editor, SLOT(setFontUnderline(bool)), this);
+            createIconSet(u"textunder.png"_s), tr("Underline"), this);
+    connect(m_underline_action, &QAction::triggered, editor, &RichTextEditor::setFontUnderline);
     m_underline_action->setShortcut(tr("CTRL+U"));
     addAction(m_underline_action);
 
@@ -464,28 +433,25 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
             this, &RichTextEditorToolBar::alignmentActionTriggered);
 
     m_align_left_action = createCheckableAction(
-            createIconSet(QStringLiteral("textleft.png")),
-            tr("Left Align"), editor, nullptr, alignment_group);
+            createIconSet(u"textleft.png"_s), tr("Left Align"), alignment_group);
     addAction(m_align_left_action);
 
     m_align_center_action = createCheckableAction(
-            createIconSet(QStringLiteral("textcenter.png")),
-            tr("Center"), editor, nullptr, alignment_group);
+            createIconSet(u"textcenter.png"_s), tr("Center"), alignment_group);
     addAction(m_align_center_action);
 
     m_align_right_action = createCheckableAction(
-            createIconSet(QStringLiteral("textright.png")),
-            tr("Right Align"), editor, nullptr, alignment_group);
+            createIconSet(u"textright.png"_s), tr("Right Align"), alignment_group);
     addAction(m_align_right_action);
 
     m_align_justify_action = createCheckableAction(
-            createIconSet(QStringLiteral("textjustify.png")),
-            tr("Justify"), editor, nullptr, alignment_group);
+            createIconSet(u"textjustify.png"_s), tr("Justify"), alignment_group);
     addAction(m_align_justify_action);
 
     m_layoutDirectionAction = createCheckableAction(
-            createIconSet(QStringLiteral("righttoleft.png")),
-            tr("Right to Left"), this, SLOT(layoutDirectionChanged()));
+            createIconSet(u"righttoleft.png"_s), tr("Right to Left"));
+    connect(m_layoutDirectionAction, &QAction::triggered,
+            this, &RichTextEditorToolBar::layoutDirectionChanged);
     addAction(m_layoutDirectionAction);
 
     addSeparator();
@@ -493,27 +459,27 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
     // Superscript and subscript buttons
 
     m_valign_sup_action = createCheckableAction(
-            createIconSet(QStringLiteral("textsuperscript.png")),
-            tr("Superscript"),
-            this, SLOT(setVAlignSuper(bool)), this);
+            createIconSet(u"textsuperscript.png"_s), tr("Superscript"), this);
+    connect(m_valign_sup_action, &QAction::triggered,
+            this, &RichTextEditorToolBar::setVAlignSuper);
     addAction(m_valign_sup_action);
 
     m_valign_sub_action = createCheckableAction(
-            createIconSet(QStringLiteral("textsubscript.png")),
-            tr("Subscript"),
-            this, SLOT(setVAlignSub(bool)), this);
+            createIconSet(u"textsubscript.png"_s), tr("Subscript"), this);
+    connect(m_valign_sub_action, &QAction::triggered,
+            this, &RichTextEditorToolBar::setVAlignSub);
     addAction(m_valign_sub_action);
 
     addSeparator();
 
     // Insert hyperlink and image buttons
 
-    m_link_action->setIcon(createIconSet(QStringLiteral("textanchor.png")));
+    m_link_action->setIcon(createIconSet(u"textanchor.png"_s));
     m_link_action->setText(tr("Insert &Link"));
     connect(m_link_action, &QAction::triggered, this, &RichTextEditorToolBar::insertLink);
     addAction(m_link_action);
 
-    m_image_action->setIcon(createIconSet(QStringLiteral("insertimage.png")));
+    m_image_action->setIcon(createIconSet(u"insertimage.png"_s));
     m_image_action->setText(tr("Insert &Image"));
     connect(m_image_action, &QAction::triggered, this, &RichTextEditorToolBar::insertImage);
     addAction(m_image_action);
@@ -529,8 +495,9 @@ RichTextEditorToolBar::RichTextEditorToolBar(QDesignerFormEditorInterface *core,
 
     // Simplify rich text
     m_simplify_richtext_action
-        = createCheckableAction(createIconSet(QStringLiteral("simplifyrichtext.png")),
-                                tr("Simplify Rich Text"), m_editor, SLOT(setSimplifyRichText(bool)));
+        = createCheckableAction(createIconSet(u"simplifyrichtext.png"_s), tr("Simplify Rich Text"));
+    connect(m_simplify_richtext_action, &QAction::triggered,
+            m_editor, &RichTextEditor::setSimplifyRichText);
     m_simplify_richtext_action->setChecked(m_editor->simplifyRichText());
     connect(m_editor.data(), &RichTextEditor::simplifyRichTextChanged,
             m_simplify_richtext_action, &QAction::setChecked);
@@ -759,13 +726,12 @@ RichTextEditorDialog::RichTextEditorDialog(QDesignerFormEditorInterface *core, Q
     m_initialTab(RichTextIndex)
 {
     setWindowTitle(tr("Edit text"));
-    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
     // Read settings
     const QDesignerSettingsInterface *settings = core->settingsManager();
-    const QString rootKey = QLatin1String(RichTextDialogGroupC) + QLatin1Char('/');
-    const QByteArray lastGeometry = settings->value(rootKey + QLatin1String(GeometryKeyC)).toByteArray();
-    const int initialTab = settings->value(rootKey + QLatin1String(TabKeyC), QVariant(m_initialTab)).toInt();
+    const QString rootKey = QLatin1StringView(RichTextDialogGroupC) + u'/';
+    const QByteArray lastGeometry = settings->value(rootKey + QLatin1StringView(GeometryKeyC)).toByteArray();
+    const int initialTab = settings->value(rootKey + QLatin1StringView(TabKeyC), QVariant(m_initialTab)).toInt();
     if (initialTab == RichTextIndex || initialTab == SourceIndex)
         m_initialTab = initialTab;
 
@@ -815,10 +781,10 @@ RichTextEditorDialog::RichTextEditorDialog(QDesignerFormEditorInterface *core, Q
 RichTextEditorDialog::~RichTextEditorDialog()
 {
     QDesignerSettingsInterface *settings = m_core->settingsManager();
-    settings->beginGroup(QLatin1String(RichTextDialogGroupC));
+    settings->beginGroup(QLatin1StringView(RichTextDialogGroupC));
 
-    settings->setValue(QLatin1String(GeometryKeyC), saveGeometry());
-    settings->setValue(QLatin1String(TabKeyC), m_tab_widget->currentIndex());
+    settings->setValue(QLatin1StringView(GeometryKeyC), saveGeometry());
+    settings->setValue(QLatin1StringView(TabKeyC), m_tab_widget->currentIndex());
     settings->endGroup();
 }
 

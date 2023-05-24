@@ -1,37 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QApplication>
 #include <QPixmap>
 #include <QImage>
 #include <QPainter>
 #include <QPainterPath>
-#include <QGLWidget>
+#include <QOpenGLWidget>
 #include <QTextLayout>
 #include <QVBoxLayout>
 #include <QElapsedTimer>
@@ -46,7 +21,7 @@ const int spacing = 36;
 QSizeF size(1000, 800);
 const qreal lineWidth = 1000;
 QString strings[lines];
-QGLWidget *testWidget = 0;
+QOpenGLWidget *testWidget = nullptr;
 
 void paint_QTextLayout(QPainter &p, bool useCache)
 {
@@ -151,8 +126,8 @@ void paint_RoundedRect(QPainter &p)
     static bool first = true;
     if (first) {
         if (testWidget) {
-            QGLFormat format = testWidget->format();
-            if (!format.sampleBuffers())
+            QSurfaceFormat format = testWidget->format();
+            if (format.samples() == -1)
                 qWarning() << "Cannot paint antialiased rounded rect without sampleBuffers";
         }
         first = false;
@@ -314,10 +289,11 @@ struct {
 
 PaintFunc testFunc = 0;
 
-class MyGLWidget : public QGLWidget
+class MyGLWidget : public QOpenGLWidget
 {
 public:
-    MyGLWidget(const QGLFormat &format) : QGLWidget(format), frames(0) {
+    MyGLWidget(const QSurfaceFormat &format) : frames(0) {
+        setFormat(format);
         const char chars[] = "abcd efgh ijkl mnop qrst uvwx yz!$. ABCD 1234";
         int len = strlen(chars);
         for (int i = 0; i < lines; ++i) {
@@ -327,7 +303,7 @@ public:
         }
     }
 
-    void paintEvent(QPaintEvent *) {
+    void paintEvent(QPaintEvent *) override {
         static qint64 last = 0;
         static bool firstRun = true;
         if (firstRun) {
@@ -394,8 +370,11 @@ int main(int argc, char *argv[])
     }
 
     QWidget w;
-    QGLFormat format = QGLFormat::defaultFormat();
-    format.setSampleBuffers(sampleBuffers);
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    if (!sampleBuffers)
+        format.setSamples(-1);
+    else if (format.samples() == -1)
+        format.setSamples(4);
     testWidget = new MyGLWidget(format);
     testWidget->setAutoFillBackground(false);
     QVBoxLayout *layout = new QVBoxLayout(&w);

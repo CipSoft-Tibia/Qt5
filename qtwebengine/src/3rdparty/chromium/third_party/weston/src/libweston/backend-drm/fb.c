@@ -70,31 +70,18 @@ drm_fb_destroy_dumb(struct drm_fb *fb)
 	drm_fb_destroy(fb);
 }
 
-static void
-drm_fb_destroy_gbm(struct gbm_bo *bo, void *data)
-{
-	struct drm_fb *fb = data;
-
-	assert(fb->type == BUFFER_GBM_SURFACE || fb->type == BUFFER_CLIENT ||
-	       fb->type == BUFFER_CURSOR);
-	drm_fb_destroy(fb);
-}
-
 static int
 drm_fb_addfb(struct drm_backend *b, struct drm_fb *fb)
 {
 	int ret = -EINVAL;
-#ifdef HAVE_DRM_ADDFB2_MODIFIERS
 	uint64_t mods[4] = { };
 	size_t i;
-#endif
 
 	/* If we have a modifier set, we must only use the WithModifiers
 	 * entrypoint; we cannot import it through legacy ioctls. */
 	if (b->fb_modifiers && fb->modifier != DRM_FORMAT_MOD_INVALID) {
 		/* KMS demands that if a modifier is set, it must be the same
 		 * for all planes. */
-#ifdef HAVE_DRM_ADDFB2_MODIFIERS
 		for (i = 0; i < ARRAY_LENGTH(mods) && fb->handles[i]; i++)
 			mods[i] = fb->modifier;
 		ret = drmModeAddFB2WithModifiers(fb->fd, fb->width, fb->height,
@@ -102,7 +89,6 @@ drm_fb_addfb(struct drm_backend *b, struct drm_fb *fb)
 						 fb->handles, fb->strides,
 						 fb->offsets, mods, &fb->fb_id,
 						 DRM_MODE_FB_MODIFIERS);
-#endif
 		return ret;
 	}
 
@@ -211,6 +197,17 @@ drm_fb_ref(struct drm_fb *fb)
 	return fb;
 }
 
+#ifdef BUILD_DRM_GBM
+static void
+drm_fb_destroy_gbm(struct gbm_bo *bo, void *data)
+{
+	struct drm_fb *fb = data;
+
+	assert(fb->type == BUFFER_GBM_SURFACE || fb->type == BUFFER_CLIENT ||
+	       fb->type == BUFFER_CURSOR);
+	drm_fb_destroy(fb);
+}
+
 static void
 drm_fb_destroy_dmabuf(struct drm_fb *fb)
 {
@@ -225,7 +222,6 @@ static struct drm_fb *
 drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 		       struct drm_backend *backend, bool is_opaque)
 {
-#ifdef HAVE_GBM_FD_IMPORT
 	struct drm_fb *fb;
 	struct gbm_import_fd_data import_legacy = {
 		.width = dmabuf->attributes.width,
@@ -234,6 +230,7 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 		.stride = dmabuf->attributes.stride[0],
 		.fd = dmabuf->attributes.fd[0],
 	};
+#ifdef HAVE_GBM_FD_IMPORT
 	struct gbm_import_fd_modifier_data import_mod = {
 		.width = dmabuf->attributes.width,
 		.height = dmabuf->attributes.height,
@@ -241,6 +238,8 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 		.num_fds = dmabuf->attributes.n_planes,
 		.modifier = dmabuf->attributes.modifier[0],
 	};
+#endif /* HAVE_GBM_FD_IMPORT */
+
 	int i;
 
 	/* XXX: TODO:
@@ -262,6 +261,7 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 	fb->refcnt = 1;
 	fb->type = BUFFER_DMABUF;
 
+#ifdef HAVE_GBM_FD_IMPORT
 	static_assert(ARRAY_LENGTH(import_mod.fds) ==
 		      ARRAY_LENGTH(dmabuf->attributes.fd),
 		      "GBM and linux_dmabuf FD size must match");
@@ -286,15 +286,21 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 		      "GBM and linux_dmabuf offset size must match");
 	memcpy(import_mod.offsets, dmabuf->attributes.offset,
 	       sizeof(import_mod.offsets));
+#endif /* NOT HAVE_GBM_FD_IMPORT */
 
 	/* The legacy FD-import path does not allow us to supply modifiers,
 	 * multiple planes, or buffer offsets. */
 	if (dmabuf->attributes.modifier[0] != DRM_FORMAT_MOD_INVALID ||
-	    import_mod.num_fds > 1 ||
-	    import_mod.offsets[0] > 0) {
+	    dmabuf->attributes.n_planes > 1 ||
+	    dmabuf->attributes.offset[0] > 0) {
+#ifdef HAVE_GBM_FD_IMPORT
 		fb->bo = gbm_bo_import(backend->gbm, GBM_BO_IMPORT_FD_MODIFIER,
 				       &import_mod,
 				       GBM_BO_USE_SCANOUT);
+#else /* NOT HAVE_GBM_FD_IMPORT */
+		drm_debug(backend, "\t\t\t[dmabuf] Unsupported use of modifiers.\n");
+		goto err_free;
+#endif /* NOT HAVE_GBM_FD_IMPORT */
 	} else {
 		fb->bo = gbm_bo_import(backend->gbm, GBM_BO_IMPORT_FD,
 				       &import_legacy,
@@ -341,6 +347,7 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 		goto err_free;
 	}
 
+#ifdef HAVE_GBM_MODIFIERS
 	fb->num_planes = dmabuf->attributes.n_planes;
 	for (i = 0; i < dmabuf->attributes.n_planes; i++) {
 		union gbm_bo_handle handle;
@@ -350,6 +357,20 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 			goto err_free;
 		fb->handles[i] = handle.u32;
 	}
+#else /* NOT HAVE_GBM_MODIFIERS */
+	{
+		union gbm_bo_handle handle;
+
+		fb->num_planes = 1;
+
+	        handle = gbm_bo_get_handle(fb->bo);
+
+		if (handle.s32 == -1)
+			goto err_free;
+		fb->handles[0] = handle.u32;
+	}
+#endif /* NOT HAVE_GBM_MODIFIERS */
+
 
 	if (drm_fb_addfb(backend, fb) != 0)
 		goto err_free;
@@ -358,7 +379,6 @@ drm_fb_get_from_dmabuf(struct linux_dmabuf_buffer *dmabuf,
 
 err_free:
 	drm_fb_destroy_dmabuf(fb);
-#endif
 	return NULL;
 }
 
@@ -450,6 +470,7 @@ drm_fb_set_buffer(struct drm_fb *fb, struct weston_buffer *buffer,
 	weston_buffer_release_reference(&fb->buffer_release_ref,
 					buffer_release);
 }
+#endif
 
 void
 drm_fb_unref(struct drm_fb *fb)
@@ -465,6 +486,7 @@ drm_fb_unref(struct drm_fb *fb)
 	case BUFFER_PIXMAN_DUMB:
 		drm_fb_destroy_dumb(fb);
 		break;
+#ifdef BUILD_DRM_GBM
 	case BUFFER_CURSOR:
 	case BUFFER_CLIENT:
 		gbm_bo_destroy(fb->bo);
@@ -475,10 +497,30 @@ drm_fb_unref(struct drm_fb *fb)
 	case BUFFER_DMABUF:
 		drm_fb_destroy_dmabuf(fb);
 		break;
+#endif
 	default:
 		assert(NULL);
 		break;
 	}
+}
+
+#ifdef BUILD_DRM_GBM
+bool
+drm_can_scanout_dmabuf(struct weston_compositor *ec,
+		       struct linux_dmabuf_buffer *dmabuf)
+{
+	struct drm_fb *fb;
+	struct drm_backend *b = to_drm_backend(ec);
+	bool ret = false;
+
+	fb = drm_fb_get_from_dmabuf(dmabuf, b, true);
+	if (fb)
+		ret = true;
+
+	drm_fb_unref(fb);
+	drm_debug(b, "[dmabuf] dmabuf %p, import test %s\n", dmabuf,
+		      ret ? "succeeded" : "failed");
+	return ret;
 }
 
 struct drm_fb *
@@ -495,6 +537,10 @@ drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev)
 		return NULL;
 
 	if (!drm_view_transform_supported(ev, &output->base))
+		return NULL;
+
+	if (ev->surface->protection_mode == WESTON_SURFACE_PROTECTION_MODE_ENFORCED &&
+	    ev->surface->desired_protection > output->base.current_protection)
 		return NULL;
 
 	if (!buffer)
@@ -533,3 +579,4 @@ drm_fb_get_from_view(struct drm_output_state *state, struct weston_view *ev)
 			  ev->surface->buffer_release_ref.buffer_release);
 	return fb;
 }
+#endif

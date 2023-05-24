@@ -26,6 +26,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_MULTI_COLUMN_FLOW_THREAD_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LAYOUT_LAYOUT_MULTI_COLUMN_FLOW_THREAD_H_
 
+#include "base/dcheck_is_on.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_context.h"
 #include "third_party/blink/renderer/core/layout/layout_flow_thread.h"
@@ -145,6 +146,7 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
       public FragmentationContext {
  public:
   ~LayoutMultiColumnFlowThread() override;
+  void Trace(Visitor*) const override;
 
   static LayoutMultiColumnFlowThread* CreateAnonymous(
       Document&,
@@ -159,6 +161,11 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
   LayoutBlockFlow* MultiColumnBlockFlow() const {
     NOT_DESTROYED();
     return To<LayoutBlockFlow>(Parent());
+  }
+
+  bool IsNGMulticol() const {
+    NOT_DESTROYED();
+    return MultiColumnBlockFlow()->IsLayoutNGObject();
   }
 
   LayoutMultiColumnSet* FirstMultiColumnSet() const;
@@ -255,7 +262,8 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
   // out inside the flow thread, since the flow thread is not in a spanner's
   // containing block chain (since the containing block is the multicol
   // container).
-  void SkipColumnSpanner(LayoutBox*, LayoutUnit logical_top_in_flow_thread);
+  void SkipColumnSpanner(const LayoutBox*,
+                         LayoutUnit logical_top_in_flow_thread);
 
   // Returns true if at least one column got a new height after flow thread
   // layout (during column set layout), in which case we need another layout
@@ -303,7 +311,12 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
   void AppendNewFragmentainerGroupIfNeeded(LayoutUnit offset_in_flow_thread,
                                            PageBoundaryRule);
 
-  void UpdateFromNG();
+  void SetColumnCountFromNG(unsigned column_count);
+  void StartLayoutFromNG();
+  LayoutMultiColumnSet* PendingColumnSetForNG() const;
+  void AppendNewFragmentainerGroupFromNG();
+  void SetCurrentColumnBlockSizeFromNG(LayoutUnit);
+  void FinishLayoutFromNG(LayoutUnit flow_thread_offset);
 
   // Implementing FragmentationContext:
   bool IsFragmentainerLogicalHeightKnown() final;
@@ -319,8 +332,13 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
     return "LayoutMultiColumnFlowThread";
   }
 
- private:
+  // Note: We call this constructor only in |CreateAnonymous()|, but mark this
+  // "public" for |MakeGarbageCollected<T>|.
   explicit LayoutMultiColumnFlowThread(bool needs_paint_layer);
+
+  LayoutSize Size() const override;
+
+ private:
   void UpdateLayout() override;
 
   void CalculateColumnHeightAvailable();
@@ -358,12 +376,13 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
   bool CanSkipLayout(const LayoutBox&) const final;
   MultiColumnLayoutState GetMultiColumnLayoutState() const final;
   void RestoreMultiColumnLayoutState(const MultiColumnLayoutState&) final;
+  LayoutSize ComputeSize() const;
 
   // The last set we worked on. It's not to be used as the "current set". The
   // concept of a "current set" is difficult, since layout may jump back and
   // forth in the tree, due to wrong top location estimates (due to e.g. margin
   // collapsing), and possibly for other reasons.
-  LayoutMultiColumnSet* last_set_worked_on_;
+  Member<LayoutMultiColumnSet> last_set_worked_on_;
 
 #if DCHECK_IS_ON()
   // Used to check consistency between calls to
@@ -400,14 +419,16 @@ class CORE_EXPORT LayoutMultiColumnFlowThread final
   static bool toggle_spanners_if_needed_;
 };
 
-// Cannot use DEFINE_LAYOUT_OBJECT_TYPE_CASTS here, because
-// isMultiColumnFlowThread() is defined in LayoutFlowThread, not in
-// LayoutObject.
-DEFINE_TYPE_CASTS(LayoutMultiColumnFlowThread,
-                  LayoutFlowThread,
-                  object,
-                  object->IsLayoutMultiColumnFlowThread(),
-                  object.IsLayoutMultiColumnFlowThread());
+template <>
+struct DowncastTraits<LayoutMultiColumnFlowThread> {
+  static bool AllowFrom(const LayoutObject& object) {
+    return object.IsLayoutFlowThread() &&
+           To<LayoutFlowThread>(object).IsLayoutMultiColumnFlowThread();
+  }
+  static bool AllowFrom(const LayoutFlowThread& flow_thread) {
+    return flow_thread.IsLayoutMultiColumnFlowThread();
+  }
+};
 
 }  // namespace blink
 

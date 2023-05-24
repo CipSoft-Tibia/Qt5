@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,10 @@
 
 #include <set>
 
-#include "base/callback.h"
+#include "base/containers/contains.h"
 #include "base/feature_list.h"
+#include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
-#include "base/stl_util.h"
 #include "components/performance_manager/persistence/site_data/leveldb_site_data_store.h"
 #include "components/performance_manager/persistence/site_data/site_data_cache_factory.h"
 #include "components/performance_manager/persistence/site_data/site_data_writer.h"
@@ -49,7 +49,7 @@ std::unique_ptr<SiteDataReader> SiteDataCacheImpl::GetReaderForOrigin(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   internal::SiteDataImpl* impl = GetOrCreateFeatureImpl(origin);
   DCHECK(impl);
-  SiteDataReader* data_reader = new SiteDataReader(impl);
+  SiteDataReader* data_reader = new SiteDataReaderImpl(impl);
   return base::WrapUnique(data_reader);
 }
 
@@ -168,6 +168,7 @@ void SiteDataCacheImpl::ClearAllSiteData() {
 
 void SiteDataCacheImpl::SetInitializationCallbackForTesting(
     base::OnceClosure callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   data_store_->SetInitializationCallbackForTesting(std::move(callback));
 }
 

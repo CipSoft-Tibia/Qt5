@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPLATFORMSCREEN_H
 #define QPLATFORMSCREEN_H
@@ -57,6 +21,7 @@
 #include <QtCore/qrect.h>
 #include <QtCore/qobject.h>
 
+#include <QtGui/qcolorspace.h>
 #include <QtGui/qcursor.h>
 #include <QtGui/qimage.h>
 #include <QtGui/qwindowdefs.h>
@@ -114,18 +79,17 @@ public:
 
     virtual int depth() const = 0;
     virtual QImage::Format format() const = 0;
+    virtual QColorSpace colorSpace() const { return QColorSpace::SRgb; }
 
     virtual QSizeF physicalSize() const;
     virtual QDpi logicalDpi() const;
     virtual QDpi logicalBaseDpi() const;
     virtual qreal devicePixelRatio() const;
-    virtual qreal pixelDensity()  const;
 
     virtual qreal refreshRate() const;
 
     virtual Qt::ScreenOrientation nativeOrientation() const;
     virtual Qt::ScreenOrientation orientation() const;
-    virtual void setOrientationUpdateMask(Qt::ScreenOrientations mask);
 
     virtual QWindow *topLevelAt(const QPoint &point) const;
     QWindowList windows() const;
@@ -151,7 +115,7 @@ public:
     virtual PowerState powerState() const;
     virtual void setPowerState(PowerState state);
 
-    virtual QVector<Mode> modes() const;
+    virtual QList<Mode> modes() const;
 
     virtual int currentMode() const;
     virtual int preferredMode() const;
@@ -159,9 +123,6 @@ public:
     static int angleBetween(Qt::ScreenOrientation a, Qt::ScreenOrientation b);
     static QTransform transformBetween(Qt::ScreenOrientation a, Qt::ScreenOrientation b, const QRect &target);
     static QRect mapBetween(Qt::ScreenOrientation a, Qt::ScreenOrientation b, const QRect &rect);
-
-    // The platform screen's geometry in device independent coordinates
-    QRect deviceIndependentGeometry() const;
 
     static QDpi overrideDpi(const QDpi &in);
 
@@ -171,7 +132,7 @@ protected:
     QScopedPointer<QPlatformScreenPrivate> d_ptr;
 
 private:
-    friend class QScreenPrivate;
+    friend class QScreen;
 };
 
 // Qt doesn't currently support running with no platform screen

@@ -1,39 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
+#include <qbuffer.h>
 #include <qbytearray.h>
-#include <qstring.h>
-#include <qvarlengtharray.h>
+#include <qdebug.h>
 #include <qfile.h>
 #include <qlist.h>
-#include <qbuffer.h>
-#include <qvector.h>
-#include <qdebug.h>
+#include <qstring.h>
+#include <qvarlengtharray.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +15,8 @@
 
 #include <qdbusconnection.h>    // for the Export* flags
 #include <private/qdbusconnection_p.h>    // for the qDBusCheckAsyncTag
+
+using namespace Qt::StringLiterals;
 
 // copied from dbus-protocol.h:
 static const char docTypeHeader[] =
@@ -61,7 +37,7 @@ static const char docTypeHeader[] =
 
 #define PROGRAMNAME     "qdbuscpp2xml"
 #define PROGRAMVERSION  "0.2"
-#define PROGRAMCOPYRIGHT "Copyright (C) 2020 The Qt Company Ltd."
+#define PROGRAMCOPYRIGHT QT_COPYRIGHT
 
 static QString outputFile;
 static int flags;
@@ -72,17 +48,17 @@ static const char help[] =
     "produces the D-Bus Introspection XML."
     "\n"
     "Options:\n"
-    "  -p|-s|-m       Only parse scriptable Properties, Signals and Methods (slots)\n"
-    "  -P|-S|-M       Parse all Properties, Signals and Methods (slots)\n"
-    "  -a             Output all scriptable contents (equivalent to -psm)\n"
-    "  -A             Output all contents (equivalent to -PSM)\n"
-    "  -o <filename>  Write the output to file <filename>\n"
-    "  -h             Show this information\n"
-    "  -V             Show the program version and quit.\n"
+    "  -p|-s|-m             Only parse scriptable Properties, Signals and Methods (slots)\n"
+    "  -P|-S|-M             Parse all Properties, Signals and Methods (slots)\n"
+    "  -a                   Output all scriptable contents (equivalent to -psm)\n"
+    "  -A                   Output all contents (equivalent to -PSM)\n"
+    "  -t <type>=<dbustype> Output <type> (ex: MyStruct) as <dbustype> (ex: {ss})\n"
+    "  -o <filename>        Write the output to file <filename>\n"
+    "  -h                   Show this information\n"
+    "  -V                   Show the program version and quit.\n"
     "\n";
 
-
-int qDBusParametersForMethod(const FunctionDef &mm, QVector<int>& metaTypes, QString &errorMsg)
+int qDBusParametersForMethod(const FunctionDef &mm, QList<QMetaType> &metaTypes, QString &errorMsg)
 {
     QList<QByteArray> parameterTypes;
     parameterTypes.reserve(mm.arguments.size());
@@ -96,7 +72,7 @@ int qDBusParametersForMethod(const FunctionDef &mm, QVector<int>& metaTypes, QSt
 
 static inline QString typeNameToXml(const char *typeName)
 {
-    QString plain = QLatin1String(typeName);
+    QString plain = QLatin1StringView(typeName);
     return plain.toHtmlEscaped();
 }
 
@@ -106,40 +82,41 @@ static QString addFunction(const FunctionDef &mm, bool isSignal = false) {
                                     isSignal ? "signal" : "method", mm.name.constData());
 
     // check the return type first
-    int typeId = QMetaType::type(mm.normalizedType.constData());
+    int typeId = QMetaType::fromName(mm.normalizedType).id();
     if (typeId != QMetaType::Void) {
         if (typeId) {
-            const char *typeName = QDBusMetaType::typeToSignature(typeId);
+            const char *typeName = QDBusMetaType::typeToSignature(QMetaType(typeId));
             if (typeName) {
                 xml += QString::fromLatin1("      <arg type=\"%1\" direction=\"out\"/>\n")
                         .arg(typeNameToXml(typeName));
 
                     // do we need to describe this argument?
-                    if (QDBusMetaType::signatureToType(typeName) == QMetaType::UnknownType)
+                    if (!QDBusMetaType::signatureToMetaType(typeName).isValid())
                         xml += QString::fromLatin1("      <annotation name=\"org.qtproject.QtDBus.QtTypeName.Out0\" value=\"%1\"/>\n")
                             .arg(typeNameToXml(mm.normalizedType.constData()));
             } else {
                 return QString();
             }
         } else if (!mm.normalizedType.isEmpty()) {
-            return QString();           // wasn't a valid type
+            qWarning() << "Unregistered return type:" << mm.normalizedType.constData();
+            return QString();
         }
     }
-    QVector<ArgumentDef> names = mm.arguments;
-    QVector<int> types;
+    QList<ArgumentDef> names = mm.arguments;
+    QList<QMetaType> types;
     QString errorMsg;
     int inputCount = qDBusParametersForMethod(mm, types, errorMsg);
     if (inputCount == -1) {
         qWarning() << qPrintable(errorMsg);
         return QString();           // invalid form
     }
-    if (isSignal && inputCount + 1 != types.count())
+    if (isSignal && inputCount + 1 != types.size())
         return QString();           // signal with output arguments?
     if (isSignal && types.at(inputCount) == QDBusMetaTypeId::message())
         return QString();           // signal with QDBusMessage argument?
 
     bool isScriptable = mm.isScriptable;
-    for (int j = 1; j < types.count(); ++j) {
+    for (qsizetype j = 1; j < types.size(); ++j) {
         // input parameter for a slot or output for a signal
         if (types.at(j) == QDBusMetaTypeId::message()) {
             isScriptable = true;
@@ -152,17 +129,17 @@ static QString addFunction(const FunctionDef &mm, bool isSignal = false) {
 
         bool isOutput = isSignal || j > inputCount;
 
-        const char *signature = QDBusMetaType::typeToSignature(types.at(j));
+        const char *signature = QDBusMetaType::typeToSignature(QMetaType(types.at(j)));
         xml += QString::fromLatin1("      <arg %1type=\"%2\" direction=\"%3\"/>\n")
                 .arg(name,
-                     QLatin1String(signature),
-                     isOutput ? QLatin1String("out") : QLatin1String("in"));
+                     QLatin1StringView(signature),
+                     isOutput ? "out"_L1 : "in"_L1);
 
         // do we need to describe this argument?
-        if (QDBusMetaType::signatureToType(signature) == QMetaType::UnknownType) {
-            const char *typeName = QMetaType::typeName(types.at(j));
+        if (!QDBusMetaType::signatureToMetaType(signature).isValid()) {
+            const char *typeName = QMetaType(types.at(j)).name();
             xml += QString::fromLatin1("      <annotation name=\"org.qtproject.QtDBus.QtTypeName.%1%2\" value=\"%3\"/>\n")
-                    .arg(isOutput ? QLatin1String("Out") : QLatin1String("In"))
+                    .arg(isOutput ? "Out"_L1 : "In"_L1)
                     .arg(isOutput && !isSignal ? j - inputCount : j - 1)
                     .arg(typeNameToXml(typeName));
         }
@@ -180,12 +157,10 @@ static QString addFunction(const FunctionDef &mm, bool isSignal = false) {
 
     if (qDBusCheckAsyncTag(mm.tag.constData()))
         // add the no-reply annotation
-        xml += QLatin1String("      <annotation name=\"" ANNOTATION_NO_WAIT "\""
-                              " value=\"true\"/>\n");
+        xml += "      <annotation name=\"" ANNOTATION_NO_WAIT "\" value=\"true\"/>\n"_L1;
 
     QString retval = xml;
-    retval += QString::fromLatin1("    </%1>\n")
-              .arg(isSignal ? QLatin1String("signal") : QLatin1String("method"));
+    retval += QString::fromLatin1("    </%1>\n").arg(isSignal ? "signal"_L1 : "method"_L1);
 
     return retval;
 }
@@ -198,7 +173,7 @@ static QString generateInterfaceXml(const ClassDef *mo)
     // start with properties:
     if (flags & (QDBusConnection::ExportScriptableProperties |
                  QDBusConnection::ExportNonScriptableProperties)) {
-        static const char *accessvalues[] = {0, "read", "write", "readwrite"};
+        static const char *accessvalues[] = {nullptr, "read", "write", "readwrite"};
         for (const PropertyDef &mp : mo->propertyList) {
             if (!((!mp.scriptable.isEmpty() && (flags & QDBusConnection::ExportScriptableProperties)) ||
                   (!mp.scriptable.isEmpty() && (flags & QDBusConnection::ExportNonScriptableProperties))))
@@ -210,26 +185,26 @@ static QString generateInterfaceXml(const ClassDef *mo)
             if (!mp.write.isEmpty())
                 access |= 2;
 
-            int typeId = QMetaType::type(mp.type.constData());
+            int typeId = QMetaType::fromName(mp.type).id();
             if (!typeId) {
                 fprintf(stderr, PROGRAMNAME ": unregistered type: '%s', ignoring\n",
                         mp.type.constData());
                 continue;
             }
-            const char *signature = QDBusMetaType::typeToSignature(typeId);
+            const char *signature = QDBusMetaType::typeToSignature(QMetaType(typeId));
             if (!signature)
                 continue;
 
             retval += QString::fromLatin1("    <property name=\"%1\" type=\"%2\" access=\"%3\"")
-                      .arg(QLatin1String(mp.name),
-                           QLatin1String(signature),
-                           QLatin1String(accessvalues[access]));
+                      .arg(QLatin1StringView(mp.name),
+                           QLatin1StringView(signature),
+                           QLatin1StringView(accessvalues[access]));
 
-            if (QDBusMetaType::signatureToType(signature) == QMetaType::UnknownType) {
+            if (!QDBusMetaType::signatureToMetaType(signature).isValid()) {
                 retval += QString::fromLatin1(">\n      <annotation name=\"org.qtproject.QtDBus.QtTypeName\" value=\"%3\"/>\n    </property>\n")
                           .arg(typeNameToXml(mp.type.constData()));
             } else {
-                retval += QLatin1String("/>\n");
+                retval += "/>\n"_L1;
             }
         }
     }
@@ -272,17 +247,17 @@ QString qDBusInterfaceFromClassDef(const ClassDef *mo)
         if (cid.name == QCLASSINFO_DBUS_INTERFACE)
             return QString::fromUtf8(cid.value);
     }
-    interface = QLatin1String(mo->classname);
-    interface.replace(QLatin1String("::"), QLatin1String("."));
+    interface = QLatin1StringView(mo->classname);
+    interface.replace("::"_L1, "."_L1);
 
-    if (interface.startsWith(QLatin1String("QDBus"))) {
-        interface.prepend(QLatin1String("org.qtproject.QtDBus."));
-    } else if (interface.startsWith(QLatin1Char('Q')) &&
-                interface.length() >= 2 && interface.at(1).isUpper()) {
+    if (interface.startsWith("QDBus"_L1)) {
+        interface.prepend("org.qtproject.QtDBus."_L1);
+    } else if (interface.startsWith(u'Q') &&
+                interface.size() >= 2 && interface.at(1).isUpper()) {
         // assume it's Qt
-        interface.prepend(QLatin1String("local.org.qtproject.Qt."));
+        interface.prepend("local.org.qtproject.Qt."_L1);
     } else {
-        interface.prepend(QLatin1String("local."));
+        interface.prepend("local."_L1);
     }
 
     return interface;
@@ -320,19 +295,54 @@ static void showVersion()
     exit(0);
 }
 
+class CustomType {
+public:
+    CustomType(const QByteArray &typeName)
+        : typeName(typeName)
+    {
+        metaTypeImpl.name = typeName.constData();
+    }
+    QMetaType metaType() const { return QMetaType(&metaTypeImpl); }
+
+private:
+    // not copiable and not movable because of QBasicAtomicInt
+    QtPrivate::QMetaTypeInterface metaTypeImpl =
+    {  /*.revision=*/ 0,
+       /*.alignment=*/ 0,
+       /*.size=*/ 0,
+       /*.flags=*/ 0,
+       /*.typeId=*/ 0,
+       /*.metaObjectFn=*/ 0,
+       /*.name=*/ nullptr, // set by the constructor
+       /*.defaultCtr=*/ nullptr,
+       /*.copyCtr=*/ nullptr,
+       /*.moveCtr=*/ nullptr,
+       /*.dtor=*/ nullptr,
+       /*.equals=*/ nullptr,
+       /*.lessThan=*/ nullptr,
+       /*.debugStream=*/ nullptr,
+       /*.dataStreamOut=*/ nullptr,
+       /*.dataStreamIn=*/ nullptr,
+       /*.legacyRegisterOp=*/ nullptr
+    };
+    QByteArray typeName;
+};
+// Unlike std::vector, std::deque works with non-copiable non-movable types
+static std::deque<CustomType> s_customTypes;
+
 static void parseCmdLine(QStringList &arguments)
 {
     flags = 0;
-    for (int i = 0; i < arguments.count(); ++i) {
+    for (qsizetype i = 0; i < arguments.size(); ++i) {
         const QString arg = arguments.at(i);
 
-        if (arg == QLatin1String("--help"))
+        if (arg == "--help"_L1)
             showHelp();
 
-        if (!arg.startsWith(QLatin1Char('-')))
+        if (!arg.startsWith(u'-'))
             continue;
 
-        char c = arg.count() == 2 ? arg.at(1).toLatin1() : char(0);
+        char c = arg.size() == 2 ? arg.at(1).toLatin1() : char(0);
         switch (c) {
         case 'P':
             flags |= QDBusConnection::ExportNonScriptableProperties;
@@ -362,8 +372,29 @@ static void parseCmdLine(QStringList &arguments)
             flags |= QDBusConnection::ExportScriptableContents;
             break;
 
+        case 't':
+            if (arguments.size() < i + 2) {
+                printf("-t expects a type=dbustype argument\n");
+                exit(1);
+            } else {
+                const QByteArray arg = arguments.takeAt(i + 1).toUtf8();
+                // lastIndexOf because the C++ type could contain '=' while the DBus type can't
+                const qsizetype separator = arg.lastIndexOf('=');
+                if (separator == -1) {
+                    printf("-t expects a type=dbustype argument, but no '=' was found\n");
+                    exit(1);
+                }
+                const QByteArray type = arg.left(separator);
+                const QByteArray dbustype = arg.mid(separator+1);
+
+                s_customTypes.emplace_back(type);
+                QMetaType metaType = s_customTypes.back().metaType();
+                QDBusMetaType::registerCustomType(metaType, dbustype);
+            }
+            break;
+
         case 'o':
-            if (arguments.count() < i + 2 || arguments.at(i + 1).startsWith(QLatin1Char('-'))) {
+            if (arguments.size() < i + 2 || arguments.at(i + 1).startsWith(u'-')) {
                 printf("-o expects a filename\n");
                 exit(1);
             }
@@ -398,16 +429,22 @@ int main(int argc, char **argv)
         args.append(QString::fromLocal8Bit(argv[n]));
     parseCmdLine(args);
 
-    QVector<ClassDef> classes;
+    QList<ClassDef> classes;
 
-    for (int i = 0; i < args.count(); ++i) {
-        const QString arg = args.at(i);
-
-        if (arg.startsWith(QLatin1Char('-')))
+    if (args.isEmpty())
+        args << u"-"_s;
+    for (const auto &arg: std::as_const(args)) {
+        if (arg.startsWith(u'-') && arg.size() > 1)
             continue;
 
-        QFile f(arg);
-        if (!f.open(QIODevice::ReadOnly|QIODevice::Text)) {
+        QFile f;
+        if (arg == u'-') {
+            f.open(stdin, QIODevice::ReadOnly | QIODevice::Text);
+        } else {
+            f.setFileName(arg);
+            f.open(QIODevice::ReadOnly | QIODevice::Text);
+        }
+        if (!f.isOpen()) {
             fprintf(stderr, PROGRAMNAME ": could not open '%s': %s\n",
                     qPrintable(arg), qPrintable(f.errorString()));
             return 1;
@@ -447,7 +484,7 @@ int main(int argc, char **argv)
 
     output.write(docTypeHeader);
     output.write("<node>\n");
-    for (const ClassDef &cdef : qAsConst(classes)) {
+    for (const ClassDef &cdef : std::as_const(classes)) {
         QString xml = qDBusGenerateClassDefXml(&cdef);
         output.write(std::move(xml).toLocal8Bit());
     }

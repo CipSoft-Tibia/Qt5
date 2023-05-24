@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ namespace tracing {
 
 class COMPONENT_EXPORT(TRACING_CPP) DummyProducer : public SystemProducer {
  public:
-  DummyProducer(PerfettoTaskRunner* task_runner);
+  explicit DummyProducer(base::tracing::PerfettoTaskRunner*);
   ~DummyProducer() override;
 
   // perfetto::Producer implementation.

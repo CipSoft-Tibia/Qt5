@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "base/json/json_reader.h"
-#include "base/macros.h"
 #include "base/values.h"
 #include "chrome/browser/extensions/permissions_test_util.h"
 #include "chrome/common/extensions/api/permissions.h"
@@ -25,6 +24,7 @@
 #include "url/gurl.h"
 
 using extensions::api::permissions::Permissions;
+using extensions::mojom::APIPermissionID;
 using extensions::permissions_api_helpers::PackPermissionSet;
 using extensions::permissions_api_helpers::UnpackPermissionSet;
 using extensions::permissions_api_helpers::UnpackPermissionSetResult;
@@ -35,8 +35,8 @@ namespace extensions {
 // Tests that we can convert PermissionSets to the generated types.
 TEST(ExtensionPermissionsAPIHelpers, Pack) {
   APIPermissionSet apis;
-  apis.insert(APIPermission::kTab);
-  apis.insert(APIPermission::kFileBrowserHandler);
+  apis.insert(APIPermissionID::kTab);
+  apis.insert(APIPermissionID::kFileBrowserHandler);
   // Note: kFileBrowserHandler implies kFileBrowserHandlerInternal.
 
   URLPatternSet explicit_hosts(
@@ -62,20 +62,19 @@ TEST(ExtensionPermissionsAPIHelpers, Pack) {
                                          "http://c.com/*", "http://d.com/*"));
 }
 
-// Tests various error conditions and edge cases when unpacking values
+// Tests various error conditions and edge cases when unpacking Dicts
 // into PermissionSets.
 TEST(ExtensionPermissionsAPIHelpers, Unpack_Basic) {
-  std::unique_ptr<base::ListValue> apis(new base::ListValue());
-  apis->AppendString("tabs");
-  std::unique_ptr<base::ListValue> origins(new base::ListValue());
-  origins->AppendString("http://a.com/*");
+  base::Value::List apis;
+  apis.Append("tabs");
+  base::Value::List origins;
+  origins.Append("http://a.com/*");
 
-  std::unique_ptr<base::DictionaryValue> value(new base::DictionaryValue());
   std::unique_ptr<const PermissionSet> permissions;
   std::string error;
 
   APIPermissionSet optional_apis;
-  optional_apis.insert(APIPermission::kTab);
+  optional_apis.insert(APIPermissionID::kTab);
   URLPatternSet optional_explicit_hosts(
       {URLPattern(Extension::kValidHostPermissionSchemes, "http://a.com/*")});
   PermissionSet optional_permissions(
@@ -85,8 +84,10 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_Basic) {
   // Origins shouldn't have to be present.
   {
     Permissions permissions_object;
-    value->Set("permissions", apis->CreateDeepCopy());
-    EXPECT_TRUE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    dict.Set("permissions", apis.Clone());
+    EXPECT_TRUE(Permissions::Populate(base::Value(std::move(dict)),
+                                      &permissions_object));
 
     std::unique_ptr<UnpackPermissionSetResult> unpack_result =
         UnpackPermissionSet(permissions_object, PermissionSet(),
@@ -95,15 +96,17 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_Basic) {
     ASSERT_TRUE(unpack_result);
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(1u, unpack_result->optional_apis.size());
-    EXPECT_TRUE(unpack_result->optional_apis.count(APIPermission::kTab));
+    EXPECT_TRUE(
+        unpack_result->optional_apis.count(mojom::APIPermissionID::kTab));
   }
 
   // The api permissions don't need to be present either.
   {
     Permissions permissions_object;
-    value->Clear();
-    value->Set("origins", origins->CreateDeepCopy());
-    EXPECT_TRUE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    dict.Set("origins", origins.Clone());
+    EXPECT_TRUE(Permissions::Populate(base::Value(std::move(dict)),
+                                      &permissions_object));
 
     std::unique_ptr<UnpackPermissionSetResult> unpack_result =
         UnpackPermissionSet(permissions_object, PermissionSet(),
@@ -118,46 +121,50 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_Basic) {
   // Throw errors for non-string API permissions.
   {
     Permissions permissions_object;
-    value->Clear();
-    std::unique_ptr<base::ListValue> invalid_apis = apis->CreateDeepCopy();
-    invalid_apis->AppendInteger(3);
-    value->Set("permissions", std::move(invalid_apis));
-    EXPECT_FALSE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    base::Value::List invalid_apis = apis.Clone();
+    invalid_apis.Append(3);
+    dict.Set("permissions", std::move(invalid_apis));
+    EXPECT_FALSE(Permissions::Populate(base::Value(std::move(dict)),
+                                       &permissions_object));
   }
 
   // Throw errors for non-string origins.
   {
     Permissions permissions_object;
-    value->Clear();
-    std::unique_ptr<base::ListValue> invalid_origins =
-        origins->CreateDeepCopy();
-    invalid_origins->AppendInteger(3);
-    value->Set("origins", std::move(invalid_origins));
-    EXPECT_FALSE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    base::Value::List invalid_origins = origins.Clone();
+    invalid_origins.Append(3);
+    dict.Set("origins", std::move(invalid_origins));
+    EXPECT_FALSE(Permissions::Populate(base::Value(std::move(dict)),
+                                       &permissions_object));
   }
 
   // Throw errors when "origins" or "permissions" are not list values.
   {
     Permissions permissions_object;
-    value->Clear();
-    value->Set("origins", std::make_unique<base::Value>(2));
-    EXPECT_FALSE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    dict.Set("origins", 2);
+    EXPECT_FALSE(Permissions::Populate(base::Value(std::move(dict)),
+                                       &permissions_object));
   }
 
   {
     Permissions permissions_object;
-    value->Clear();
-    value->Set("permissions", std::make_unique<base::Value>(2));
-    EXPECT_FALSE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    dict.Set("permissions", 2);
+    EXPECT_FALSE(Permissions::Populate(base::Value(std::move(dict)),
+                                       &permissions_object));
   }
 
   // Additional fields should be allowed.
   {
     Permissions permissions_object;
-    value->Clear();
-    value->Set("origins", origins->CreateDeepCopy());
-    value->Set("random", std::make_unique<base::Value>(3));
-    EXPECT_TRUE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    dict.Set("origins", origins.Clone());
+    dict.Set("random", 3);
+    EXPECT_TRUE(Permissions::Populate(base::Value(std::move(dict)),
+                                      &permissions_object));
 
     std::unique_ptr<UnpackPermissionSetResult> unpack_result =
         UnpackPermissionSet(permissions_object, PermissionSet(),
@@ -172,11 +179,12 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_Basic) {
   // Unknown permissions should throw an error.
   {
     Permissions permissions_object;
-    value->Clear();
-    std::unique_ptr<base::ListValue> invalid_apis = apis->CreateDeepCopy();
-    invalid_apis->AppendString("unknown_permission");
-    value->Set("permissions", std::move(invalid_apis));
-    EXPECT_TRUE(Permissions::Populate(*value, &permissions_object));
+    base::Value::Dict dict;
+    base::Value::List invalid_apis = apis.Clone();
+    invalid_apis.Append("unknown_permission");
+    dict.Set("permissions", std::move(invalid_apis));
+    EXPECT_TRUE(Permissions::Populate(base::Value(std::move(dict)),
+                                      &permissions_object));
 
     EXPECT_FALSE(UnpackPermissionSet(permissions_object, PermissionSet(),
                                      optional_permissions, true, &error));
@@ -239,11 +247,10 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_HostSeparation) {
       std::move(optional_explicit_hosts), URLPatternSet());
 
   Permissions permissions_object;
-  permissions_object.origins =
-      std::make_unique<std::vector<std::string>>(std::vector<std::string>(
-          {kRequiredExplicit1, kOptionalExplicit1, kRequiredScriptable1,
-           kRequiredExplicitAndScriptable1,
-           kOptionalExplicitAndRequiredScriptable1, kUnlisted1}));
+  permissions_object.origins = std::vector<std::string>(
+      {kRequiredExplicit1, kOptionalExplicit1, kRequiredScriptable1,
+       kRequiredExplicitAndScriptable1, kOptionalExplicitAndRequiredScriptable1,
+       kUnlisted1});
 
   std::string error;
   std::unique_ptr<UnpackPermissionSetResult> unpack_result =
@@ -269,11 +276,11 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_HostSeparation) {
 // Tests that host permissions are properly partitioned according to the
 // required/optional permission sets.
 TEST(ExtensionPermissionsAPIHelpers, Unpack_APISeparation) {
-  constexpr APIPermission::ID kRequired1 = APIPermission::kTab;
-  constexpr APIPermission::ID kRequired2 = APIPermission::kStorage;
-  constexpr APIPermission::ID kOptional1 = APIPermission::kCookie;
-  constexpr APIPermission::ID kOptional2 = APIPermission::kAlarms;
-  constexpr APIPermission::ID kUnlisted1 = APIPermission::kIdle;
+  constexpr APIPermissionID kRequired1 = APIPermissionID::kTab;
+  constexpr APIPermissionID kRequired2 = APIPermissionID::kStorage;
+  constexpr APIPermissionID kOptional1 = APIPermissionID::kCookie;
+  constexpr APIPermissionID kOptional2 = APIPermissionID::kAlarms;
+  constexpr APIPermissionID kUnlisted1 = APIPermissionID::kIdle;
 
   APIPermissionSet required_apis;
   required_apis.insert(kRequired1);
@@ -291,8 +298,8 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_APISeparation) {
                                      URLPatternSet());
 
   Permissions permissions_object;
-  permissions_object.permissions = std::make_unique<std::vector<std::string>>(
-      std::vector<std::string>({"tabs", "cookies", "idle"}));
+  permissions_object.permissions =
+      std::vector<std::string>({"tabs", "cookies", "idle"});
 
   std::string error;
   std::unique_ptr<UnpackPermissionSetResult> unpack_result =
@@ -321,8 +328,8 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_WildcardSchemes) {
       URLPatternSet());
 
   Permissions permissions_object;
-  permissions_object.origins = std::make_unique<std::vector<std::string>>(
-      std::vector<std::string>({kWildcardSchemePattern}));
+  permissions_object.origins =
+      std::vector<std::string>({kWildcardSchemePattern});
 
   std::string error;
   std::unique_ptr<UnpackPermissionSetResult> unpack_result =
@@ -346,8 +353,8 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_FileSchemes_AllUrls) {
         URLPatternSet());
 
     Permissions permissions_object;
-    permissions_object.origins = std::make_unique<std::vector<std::string>>(
-        std::vector<std::string>({URLPattern::kAllUrlsPattern}));
+    permissions_object.origins =
+        std::vector<std::string>({URLPattern::kAllUrlsPattern});
 
     constexpr bool kHasFileAccess = false;
     std::string error;
@@ -376,8 +383,8 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_FileSchemes_AllUrls) {
         URLPatternSet());
 
     Permissions permissions_object;
-    permissions_object.origins = std::make_unique<std::vector<std::string>>(
-        std::vector<std::string>({URLPattern::kAllUrlsPattern}));
+    permissions_object.origins =
+        std::vector<std::string>({URLPattern::kAllUrlsPattern});
 
     std::string error;
     constexpr bool kHasFileAccess = true;
@@ -412,8 +419,7 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_FileSchemes_Specific) {
         URLPatternSet({file_pattern}), URLPatternSet());
 
     Permissions permissions_object;
-    permissions_object.origins = std::make_unique<std::vector<std::string>>(
-        std::vector<std::string>({kFilePattern}));
+    permissions_object.origins = std::vector<std::string>({kFilePattern});
 
     std::string error;
     constexpr bool kHasFileAccess = false;
@@ -442,8 +448,7 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_FileSchemes_Specific) {
         URLPatternSet({file_pattern}), URLPatternSet());
 
     Permissions permissions_object;
-    permissions_object.origins = std::make_unique<std::vector<std::string>>(
-        std::vector<std::string>({kFilePattern}));
+    permissions_object.origins = std::vector<std::string>({kFilePattern});
 
     std::string error;
     constexpr bool kHasFileAccess = true;
@@ -474,7 +479,8 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_UsbDevicePermission) {
   ASSERT_TRUE(device_list) << "Failed to parse device list JSON.";
 
   auto usb_device_permission = std::make_unique<UsbDevicePermission>(
-      PermissionsInfo::GetInstance()->GetByID(APIPermission::ID::kUsbDevice));
+      PermissionsInfo::GetInstance()->GetByID(
+          mojom::APIPermissionID::kUsbDevice));
   std::string error;
   std::vector<std::string> unhandled_permissions;
   bool from_value_result = usb_device_permission->FromValue(
@@ -489,8 +495,8 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_UsbDevicePermission) {
                                      URLPatternSet());
 
   Permissions permissions_object;
-  permissions_object.permissions = std::make_unique<std::vector<std::string>>(
-      std::vector<std::string>({kUsbDevicesPermissionJson}));
+  permissions_object.permissions =
+      std::vector<std::string>({kUsbDevicesPermissionJson});
   constexpr bool kHasFileAccess = false;
   std::unique_ptr<UnpackPermissionSetResult> unpack_result =
       UnpackPermissionSet(permissions_object, PermissionSet(),
@@ -499,7 +505,7 @@ TEST(ExtensionPermissionsAPIHelpers, Unpack_UsbDevicePermission) {
   ASSERT_TRUE(unpack_result) << error;
 
   ASSERT_EQ(1U, unpack_result->optional_apis.size());
-  EXPECT_EQ(APIPermission::ID::kUsbDevice,
+  EXPECT_EQ(mojom::APIPermissionID::kUsbDevice,
             unpack_result->optional_apis.begin()->id());
   EXPECT_TRUE(unpack_result->optional_apis.begin()->Contains(
       usb_device_permission.get()));

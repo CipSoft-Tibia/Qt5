@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,17 @@
         "type": "string",
         "enum": ["currentTab", "newForegroundTab", "newBackgroundTab"],
         "description": "The window disposition for the omnibox query. This is the recommended context to display results. For example, if the omnibox command is to navigate to a certain URL, a disposition of 'newForegroundTab' means the navigation should take place in a new selected tab."
+      },
+      {
+        "id": "MatchClassification",
+        "nodoc": true,
+        "type": "object",
+        "description": "The style ranges for the description, as provided by the extension.",
+        "properties": {
+          "offset": { "type": "integer" },
+          "type": { "description": "The style type", "$ref": "DescriptionStyleType"},
+          "length": { "type": "integer", "optional": true }
+        }
       },
       {
         "id": "SuggestResult",
@@ -45,29 +56,8 @@
             "type": "array",
             "description": "An array of style ranges for the description, as provided by the extension.",
             "items": {
-              "type": "object",
               "name": "matchClassification",
-              "description": "The style ranges for the description, as provided by the extension.",
-              "properties": {
-                "offset": { "type": "integer" },
-                "type": { "description": "The style type", "$ref": "DescriptionStyleType"},
-                "length": { "type": "integer", "optional": true }
-              }
-            }
-          },
-          "descriptionStylesRaw": {
-            "nodoc": true,
-            "optional": true,
-            "type": "array",
-            "description": "An array of style ranges for the description, as provided by ToValue().",
-            "items": {
-              "type": "object",
-              "name": "matchClassification",
-              "description": "The style ranges for the description, as provided by ToValue().",
-              "properties": {
-                "offset": { "type": "integer" },
-                "type": { "type": "integer" }
-              }
+              "$ref": "MatchClassification"
             }
           }
         }
@@ -89,34 +79,24 @@
             "type": "array",
             "description": "An array of style ranges for the description, as provided by the extension.",
             "items": {
-              "type": "object",
               "name": "matchClassification",
-              "description": "The style ranges for the description, as provided by the extension.",
-              "properties": {
-                "offset": { "type": "integer" },
-                "type": { "description": "The style type", "$ref": "DescriptionStyleType"},
-                "length": { "type": "integer", "optional": true }
-              }
-            }
-          },
-          "descriptionStylesRaw": {
-            "nodoc": true,
-            "optional": true,
-            "type": "array",
-            "description": "An array of style ranges for the description, as provided by ToValue().",
-            "items": {
-              "type": "object",
-              "name": "matchClassification",
-              "description": "The style ranges for the description, as provided by ToValue().",
-              "properties": {
-                "offset": { "type": "integer" },
-                "type": { "type": "integer" }
-              }
+              "$ref": "MatchClassification"
             }
           }
         }
       }
     ],
+    "manifest_keys": {
+      "omnibox": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "The keyword to register with the omnibox. Must be non-empty."
+          }
+        }
+      }
+    },
     "functions": [
       {
         "name": "sendSuggestions",
@@ -145,7 +125,12 @@
             "$ref": "DefaultSuggestResult",
             "description": "A partial SuggestResult object, without the 'content' parameter."
           }
-        ]
+        ],
+        "returns_async": {
+          "name": "callback",
+          "optional": true,
+          "parameters": []
+        }
       }
     ],
     "events": [

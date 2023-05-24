@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,9 @@
 
 #include <map>
 #include <memory>
-#include <string>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "net/base/net_export.h"
 #include "net/http/transport_security_state.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
@@ -20,6 +19,7 @@ class GURL;
 
 namespace net {
 
+class NetworkAnonymizationKey;
 class URLRequestContext;
 
 // ReportSender asynchronously sends serialized reports to a URI.
@@ -27,6 +27,9 @@ class URLRequestContext;
 // the format of the report being sent (JSON, protobuf, etc.) and the particular
 // data that it contains. Multiple reports can be in-flight at once. This class
 // owns inflight requests and cleans them up when necessary.
+//
+// Despite this class's name, it has nothing to do with the Reporting API,
+// which is implemented in net/reporting.
 class NET_EXPORT ReportSender
     : public URLRequest::Delegate,
       public TransportSecurityState::ReportSenderInterface {
@@ -43,12 +46,16 @@ class NET_EXPORT ReportSender
   explicit ReportSender(URLRequestContext* request_context,
                         net::NetworkTrafficAnnotationTag traffic_annotation);
 
+  ReportSender(const ReportSender&) = delete;
+  ReportSender& operator=(const ReportSender&) = delete;
+
   ~ReportSender() override;
 
   // TransportSecurityState::ReportSenderInterface implementation.
   void Send(const GURL& report_uri,
             base::StringPiece content_type,
             base::StringPiece report,
+            const NetworkAnonymizationKey& network_anonymization_key,
             SuccessCallback success_callback,
             ErrorCallback error_callback) override;
 
@@ -57,11 +64,9 @@ class NET_EXPORT ReportSender
   void OnReadCompleted(URLRequest* request, int bytes_read) override;
 
  private:
-  net::URLRequestContext* const request_context_;
+  const raw_ptr<net::URLRequestContext> request_context_;
   std::map<URLRequest*, std::unique_ptr<URLRequest>> inflight_requests_;
   const net::NetworkTrafficAnnotationTag traffic_annotation_;
-
-  DISALLOW_COPY_AND_ASSIGN(ReportSender);
 };
 
 }  // namespace net

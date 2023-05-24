@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "base/power_monitor/power_monitor.h"
-#include "base/threading/sequenced_task_runner_handle.h"
+#include "base/task/sequenced_task_runner.h"
 #include "media/learning/common/feature_library.h"
 #include "net/base/network_change_notifier.h"
 
@@ -29,7 +29,7 @@ BrowserFeatureProvider::~BrowserFeatureProvider() = default;
 SequenceBoundFeatureProvider BrowserFeatureProvider::Create(
     const LearningTask& task) {
   return base::SequenceBound<BrowserFeatureProvider>(
-      base::SequencedTaskRunnerHandle::Get(), task);
+      base::SequencedTaskRunner::GetCurrentDefault(), task);
 }
 
 // static

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,6 @@
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 
 class GURL;
-
-namespace url {
-class Origin;
-}
 
 namespace network {
 
@@ -38,19 +34,25 @@ class COMPONENT_EXPORT(NETWORK_CPP) CSPContext {
   CSPContext();
   virtual ~CSPContext();
 
-  // Check if an |url| is allowed by the set of Content-Security-Policy. It will
-  // report any violation by:
+  // Check if an |url| is allowed by the set of Content-Security-Policy
+  // |policies|. It will report any violation by:
   // - displaying a console message.
   // - triggering the "SecurityPolicyViolation" javascript event.
   // - sending a JSON report to any uri defined with the "report-uri" directive.
   // Returns true when the request can proceed, false otherwise.
-  bool IsAllowedByCsp(mojom::CSPDirectiveName directive_name,
-                      const GURL& url,
-                      bool has_followed_redirect,
-                      bool is_response_check,
-                      const mojom::SourceLocationPtr& source_location,
-                      CheckCSPDisposition check_csp_disposition,
-                      bool is_form_submission);
+  // Note that when |is_opaque_fenced_frame| is true only https scheme source
+  // will be matched and |url| might be disregarded.
+  bool IsAllowedByCsp(
+      const std::vector<mojom::ContentSecurityPolicyPtr>& policies,
+      mojom::CSPDirectiveName directive_name,
+      const GURL& url,
+      const GURL& url_before_redirects,
+      bool has_followed_redirect,
+      bool is_response_check,
+      const mojom::SourceLocationPtr& source_location,
+      CheckCSPDisposition check_csp_disposition,
+      bool is_form_submission,
+      bool is_opaque_fenced_frame = false);
 
   // Called when IsAllowedByCsp return false. Implementer of CSPContext must
   // display an error message and send reports using |violation|.
@@ -66,7 +68,6 @@ class COMPONENT_EXPORT(NETWORK_CPP) CSPContext {
   // without the round trip in the renderer process.
   // See https://crbug.com/721329
   virtual void SanitizeDataForUseInCspViolation(
-      bool has_followed_redirect,
       mojom::CSPDirectiveName directive,
       GURL* blocked_url,
       mojom::SourceLocation* source_location) const;
@@ -75,33 +76,9 @@ class COMPONENT_EXPORT(NETWORK_CPP) CSPContext {
   // HTTPS) according to the CSP.
   bool ShouldModifyRequestUrlForCsp(bool is_subresource_or_form_submssion);
 
+  // This is declared virtual only so that it can be overridden for unit
+  // testing.
   virtual bool SchemeShouldBypassCSP(const base::StringPiece& scheme);
-
-  // TODO(arthursonzogni): This is an interface. Stop storing object in it.
-  void ResetContentSecurityPolicies() { policies_.clear(); }
-  void AddContentSecurityPolicy(mojom::ContentSecurityPolicyPtr policy) {
-    policies_.push_back(std::move(policy));
-  }
-  const std::vector<mojom::ContentSecurityPolicyPtr>&
-  ContentSecurityPolicies() {
-    return policies_;
-  }
-
-  void SetSelf(const url::Origin& origin);
-  void SetSelf(mojom::CSPSourcePtr self_source);
-
-  // When a CSPSourceList contains 'self', the url is allowed when it match the
-  // CSPSource returned by this function.
-  // Sometimes there is no 'self' source. It means that the current origin is
-  // unique and no urls will match 'self' whatever they are.
-  // Note: When there is a 'self' source, its scheme is guaranteed to be
-  // non-empty.
-  const mojom::CSPSourcePtr& self_source() { return self_source_; }
-
- private:
-  // TODO(arthursonzogni): This is an interface. Stop storing object in it.
-  mojom::CSPSourcePtr self_source_;  // Nullable.
-  std::vector<mojom::ContentSecurityPolicyPtr> policies_;
 };
 
 }  // namespace network

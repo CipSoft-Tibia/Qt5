@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNfc module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnearfieldtarget.h"
 #include "qnearfieldtarget_p.h"
@@ -43,14 +7,14 @@
 
 #include <QtCore/QString>
 #include <QtCore/QUrl>
-#include <QtCore/QVariant>
 
 #include <QtCore/QDebug>
 
-#include <QElapsedTimer>
 #include <QCoreApplication>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN_TAGGED(QNearFieldTarget::RequestId, QNearFieldTarget__RequestId)
 
 /*!
     \class QNearFieldTarget
@@ -75,11 +39,7 @@ QT_BEGIN_NAMESPACE
     and set the NDEF message.
 
     If the target supports TagTypeSpecificAccess, sendCommand() can be used to send a single
-    proprietary command to the target and retrieve the response.  sendCommands() can be used to
-    send multiple proprietary commands to the target and retrieve all of the responses.
-
-    If the target supports LlcpAccess, the QLlcpSocket class can be used to connected to a
-    service provided by the target.
+    proprietary command to the target and retrieve the response.
 */
 
 /*!
@@ -91,7 +51,10 @@ QT_BEGIN_NAMESPACE
     \value NfcTagType1      An NFC tag type 1 target.
     \value NfcTagType2      An NFC tag type 2 target.
     \value NfcTagType3      An NFC tag type 3 target.
-    \value NfcTagType4      An NFC tag type 4 target.
+    \value NfcTagType4      An NFC tag type 4 target. This value is used if the NfcTagType4
+                            cannot be further refined by NfcTagType4A or NfcTagType4B below.
+    \value NfcTagType4A     An NFC tag type 4 target based on ISO/IEC 14443-3A.
+    \value NfcTagType4B     An NFC tag type 4 target based on ISO/IEC 14443-3B.
     \value MifareTag        A Mifare target.
 */
 
@@ -104,8 +67,8 @@ QT_BEGIN_NAMESPACE
     \value NdefAccess               The target supports reading and writing NDEF messages using
                                     readNdefMessages() and writeNdefMessages().
     \value TagTypeSpecificAccess    The target supports sending tag type specific commands using
-                                    sendCommand() and sendCommands().
-    \value LlcpAccess               The target supports peer-to-peer LLCP communication.
+                                    sendCommand().
+    \value AnyAccess                The target supports any of the known access types.
 */
 
 /*!
@@ -121,22 +84,13 @@ QT_BEGIN_NAMESPACE
     \value NoResponseError          The target did not respond.
     \value ChecksumMismatchError    The checksum has detected a corrupted response.
     \value InvalidParametersError   Invalid parameters were passed to a tag type specific function.
+    \value ConnectionError          Failed to connect to the target.
     \value NdefReadError            Failed to read NDEF messages from the target.
     \value NdefWriteError           Failed to write NDEF messages to the target.
     \value CommandError             Failed to send a command to the target.
+    \value TimeoutError             The request could not be completed within the time
+                                    specified in waitForRequestCompleted().
 */
-
-#if QT_DEPRECATED_SINCE(5, 9)
-/*!
-    \relates QNearFieldTarget
-
-    Returns the NFC checksum of the first \a len bytes of \a data.
-*/
-quint16 qNfcChecksum(const char *data, uint len)
-{
-    return qChecksum(data, len, Qt::ChecksumItuV41);
-}
-#endif
 
 /*!
     \fn void QNearFieldTarget::disconnected()
@@ -150,14 +104,6 @@ quint16 qNfcChecksum(const char *data, uint len)
     This signal is emitted when a complete NDEF \a message has been read from the target.
 
     \sa readNdefMessages()
-*/
-
-/*!
-    \fn void QNearFieldTarget::ndefMessagesWritten()
-
-    This signal is emitted when NDEF messages have been successfully written to the target.
-
-    \sa writeNdefMessages()
 */
 
 /*!
@@ -177,7 +123,7 @@ quint16 qNfcChecksum(const char *data, uint len)
 
 /*!
     \class QNearFieldTarget::RequestId
-    \inmodule QtHfc
+    \inmodule QtNfc
     \inheaderfile QNearFieldTarget
     \brief A request id handle.
 */
@@ -213,7 +159,7 @@ QNearFieldTarget::RequestId::~RequestId()
 }
 
 /*!
-    Returns true if this is a valid request id; otherwise returns false.
+    Returns \c true if this is a valid request id; otherwise returns \c false.
 */
 bool QNearFieldTarget::RequestId::isValid() const
 {
@@ -236,7 +182,7 @@ int QNearFieldTarget::RequestId::refCount() const
 */
 bool QNearFieldTarget::RequestId::operator<(const RequestId &other) const
 {
-    return d < other.d;
+    return std::less<const RequestIdPrivate*>()(d.constData(), other.d.constData());
 }
 
 /*!
@@ -268,11 +214,8 @@ QNearFieldTarget::RequestId &QNearFieldTarget::RequestId::operator=(const Reques
     Constructs a new near field target with \a parent.
 */
 QNearFieldTarget::QNearFieldTarget(QObject *parent)
-:   QObject(parent), d_ptr(new QNearFieldTargetPrivate(this))
+:   QNearFieldTarget(new QNearFieldTargetPrivate(this), parent)
 {
-    qRegisterMetaType<QNearFieldTarget::RequestId>();
-    qRegisterMetaType<QNearFieldTarget::Error>();
-    qRegisterMetaType<QNdefMessage>();
 }
 
 /*!
@@ -280,97 +223,73 @@ QNearFieldTarget::QNearFieldTarget(QObject *parent)
 */
 QNearFieldTarget::~QNearFieldTarget()
 {
-    delete d_ptr;
+    Q_D(QNearFieldTarget);
+
+    d->disconnect();
 }
 
 /*!
-    \fn QByteArray QNearFieldTarget::uid() const = 0
-
     Returns the UID of the near field target.
-*/
 
-/*!
-    Returns the URL of the near field target.
+    \note On iOS, this function returns an empty QByteArray for
+    a near field target discovered using NdefAccess method.
+
+    \sa QNearFieldTarget::AccessMethod
 */
-QUrl QNearFieldTarget::url() const
+QByteArray QNearFieldTarget::uid() const
 {
-    return QUrl();
+    Q_D(const QNearFieldTarget);
+
+    return d->uid();
 }
 
 /*!
-    \fn QNearFieldTarget::Type QNearFieldTarget::type() const = 0
-
     Returns the type of tag type of this near field target.
 */
-
-/*!
-    \fn QNearFieldTarget::AccessMethods QNearFieldTarget::accessMethods() const = 0
-
-    Returns the access methods support by this near field target.
-*/
-
-/*!
-    \since 5.9
-
-    Returns true if this feature is enabled.
-
-    \sa setKeepConnection(), disconnect()
-*/
-bool QNearFieldTarget::keepConnection() const
+QNearFieldTarget::Type QNearFieldTarget::type() const
 {
-    return d_ptr->keepConnection();
+    Q_D(const QNearFieldTarget);
+
+    return d->type();
+}
+
+/*!
+    Returns the access methods supported by this near field target.
+*/
+QNearFieldTarget::AccessMethods QNearFieldTarget::accessMethods() const
+{
+    Q_D(const QNearFieldTarget);
+
+    return d->accessMethods();
 }
 
 /*!
     \since 5.9
 
-    Preserves the connection to the target device after processing a command or
-    reading/writing NDEF messages if \a isPersistent is \c true.
-    By default, this behavior is not enabled.
+    Closes the connection to the target to enable communication with the target
+    from a different instance. The connection will also be closed, when the
+    QNearFieldTarget is destroyed. A connection to the target device is
+    (re)created to process a command or read/write a NDEF messages.
 
-    Returns \c true if enabling this feature was successful. A possible
-    reason for a failure is the lack of support on the used platform.
-
-    Enabling this feature requires to use the disconnect() function too, to close the
-    connection manually and enable communication with the target from a different instance.
-    Disabling this feature will also close an open connection.
-
-    \sa keepConnection(), disconnect()
-*/
-bool QNearFieldTarget::setKeepConnection(bool isPersistent)
-{
-    return d_ptr->setKeepConnection(isPersistent);
-}
-
-/*!
-    \since 5.9
-
-    Closes the connection to the target.
-
-    Returns true only if an existing connection was successfully closed.
-
-    \sa keepConnection(), setKeepConnection()
+    Returns \c true only if an existing connection was successfully closed;
+    otherwise returns \c false.
 */
 bool QNearFieldTarget::disconnect()
 {
-    return d_ptr->disconnect();
+    Q_D(QNearFieldTarget);
+
+    return d->disconnect();
 }
 
 /*!
-    Returns true if the target is processing commands; otherwise returns false.
-*/
-bool QNearFieldTarget::isProcessingCommand() const
-{
-    return false;
-}
-
-/*!
-    Returns true if at least one NDEF message is stored on the near field target; otherwise returns
-    false.
+    Returns \c true if at least one NDEF message is stored on the near field
+    target; otherwise returns \c false.
 */
 bool QNearFieldTarget::hasNdefMessage()
 {
-    return false;
+    Q_D(QNearFieldTarget);
+
+    return d->hasNdefMessage();
 }
 
 /*!
@@ -381,10 +300,16 @@ bool QNearFieldTarget::hasNdefMessage()
     An ndefMessageRead() signal will be emitted for each NDEF message. The requestCompleted()
     signal will be emitted was all NDEF messages have been read. The error() signal is emitted if
     an error occurs.
+
+    \note An attempt to read an NDEF message from a tag, that is in INITIALIZED
+    state as defined by NFC Forum, will fail with the \l NdefReadError, as the
+    tag is formatted to support NDEF but does not contain a message yet.
 */
 QNearFieldTarget::RequestId QNearFieldTarget::readNdefMessages()
 {
-    return RequestId();
+    Q_D(QNearFieldTarget);
+
+    return d->readNdefMessages();
 }
 
 /*!
@@ -392,14 +317,14 @@ QNearFieldTarget::RequestId QNearFieldTarget::readNdefMessages()
     to track the completion status of the request. An invalid request id will be returned if the
     target does not support reading NDEF messages.
 
-    The ndefMessagesWritten() signal will be emitted when the write operation completes
+    The requestCompleted() signal will be emitted when the write operation completes
     successfully; otherwise the error() signal is emitted.
 */
 QNearFieldTarget::RequestId QNearFieldTarget::writeNdefMessages(const QList<QNdefMessage> &messages)
 {
-    Q_UNUSED(messages);
+    Q_D(QNearFieldTarget);
 
-    return RequestId();
+    return d->writeNdefMessages(messages);
 }
 
 /*!
@@ -408,11 +333,13 @@ QNearFieldTarget::RequestId QNearFieldTarget::writeNdefMessages(const QList<QNde
     Returns the maximum number of bytes that can be sent with sendCommand. 0 will
     be returned if the target does not support sending tag type specific commands.
 
-    \sa sendCommand(), sendCommands()
+    \sa sendCommand()
 */
 int QNearFieldTarget::maxCommandLength() const
 {
-    return d_ptr->maxCommandLength();
+    Q_D(const QNearFieldTarget);
+
+    return d->maxCommandLength();
 }
 
 /*!
@@ -430,124 +357,59 @@ int QNearFieldTarget::maxCommandLength() const
 */
 QNearFieldTarget::RequestId QNearFieldTarget::sendCommand(const QByteArray &command)
 {
-    Q_UNUSED(command);
+    Q_D(QNearFieldTarget);
 
-    emit error(UnsupportedError, RequestId());
-
-    return RequestId();
+    return d->sendCommand(command);
 }
 
 /*!
-    Sends multiple \a commands to the near field target. Returns a request id which can be used to
-    track the completion status of the request. An invalid request id will be returned if the
-    target does not support sending tag type specific commands.
-
-    If all commands complete successfully the requestCompleted() signal will be emitted; otherwise
-    the error() signal will be emitted. If a command fails succeeding commands from this call will
-    not be processed.
-
-    Once the request completes the response for successfully completed requests can be retrieved
-    from the requestResponse() function. The response of this request will be a QList<QByteArray>.
-
-    \sa requestCompleted(), waitForRequestCompleted()
-*/
-QNearFieldTarget::RequestId QNearFieldTarget::sendCommands(const QList<QByteArray> &commands)
-{
-    Q_UNUSED(commands);
-
-    emit error(UnsupportedError, RequestId());
-
-    return RequestId();
-}
-
-/*!
-    Waits up to \a msecs milliseconds for the request \a id to complete. Returns true if the
-    request completes successfully and the requestCompeted() signal is emitted; otherwise returns
-    false.
+    Waits up to \a msecs milliseconds for the request \a id to complete.
+    Returns \c true if the request completes successfully and the
+    requestCompeted() signal is emitted; otherwise returns \c false.
 */
 bool QNearFieldTarget::waitForRequestCompleted(const RequestId &id, int msecs)
 {
     Q_D(QNearFieldTarget);
 
-    QElapsedTimer timer;
-    timer.start();
-
-    do {
-        if (d->m_decodedResponses.contains(id))
-            return true;
-        else
-            QCoreApplication::processEvents(QEventLoop::WaitForMoreEvents, 1);
-    } while (timer.elapsed() <= msecs);
-
-    return false;
+    return d->waitForRequestCompleted(id, msecs);
 }
 
 /*!
     Returns the decoded response for request \a id. If the request is unknown or has not yet been
     completed an invalid QVariant is returned.
 */
-QVariant QNearFieldTarget::requestResponse(const RequestId &id)
+QVariant QNearFieldTarget::requestResponse(const RequestId &id) const
+{
+    Q_D(const QNearFieldTarget);
+
+    return d->requestResponse(id);
+}
+
+/*!
+    \internal
+*/
+QNearFieldTarget::QNearFieldTarget(QNearFieldTargetPrivate *backend, QObject *parent)
+:   QObject(parent), d_ptr(backend)
 {
     Q_D(QNearFieldTarget);
 
-    return d->m_decodedResponses.value(id);
-}
+    d->q_ptr = this;
+    d->setParent(this);
 
-/*!
-    Sets the decoded response for request \a id to \a response. If \a emitRequestCompleted is true
-    the requestCompleted() signal will be emitted for \a id; otherwise no signal will be emitted.
+    qRegisterMetaType<QNearFieldTarget::RequestId>();
+    qRegisterMetaType<QNearFieldTarget::Error>();
+    qRegisterMetaType<QNdefMessage>();
 
-    \sa requestResponse()
-*/
-void QNearFieldTarget::setResponseForRequest(const QNearFieldTarget::RequestId &id,
-                                             const QVariant &response, bool emitRequestCompleted)
-{
-    Q_D(QNearFieldTarget);
-
-    for (auto i = d->m_decodedResponses.begin(), end = d->m_decodedResponses.end(); i != end; /* erasing */) {
-        // no more external references
-        if (i.key().refCount() == 1)
-            i = d->m_decodedResponses.erase(i);
-        else
-            ++i;
-    }
-
-    d->m_decodedResponses.insert(id, response);
-
-    if (emitRequestCompleted)
-        emit requestCompleted(id);
-}
-
-/*!
-    Handles the \a response received for the request \a id. Returns true if the response is
-    handled; otherwise returns false.
-
-    Classes reimplementing this virtual function should call the base class implementation to
-    ensure that requests initiated by those classes are handled correctly.
-
-    The default implementation stores the response such that it can be retrieved by
-    requestResponse().
-*/
-bool QNearFieldTarget::handleResponse(const QNearFieldTarget::RequestId &id,
-                                      const QByteArray &response)
-{
-    setResponseForRequest(id, response);
-
-    return true;
-}
-
-/*!
-    \since 5.12
-
-    Reports the \a error for the request \a id by appending the signal emission to the event queue.
-*/
-void QNearFieldTarget::reportError(QNearFieldTarget::Error error,
-                                   const QNearFieldTarget::RequestId &id)
-{
-    setResponseForRequest(id, QVariant(), false);
-    QMetaObject::invokeMethod(this, [this, error, id]() {
-        Q_EMIT this->error(error, id);
-    }, Qt::QueuedConnection);
+    connect(d, &QNearFieldTargetPrivate::disconnected,
+            this, &QNearFieldTarget::disconnected);
+    connect(d, &QNearFieldTargetPrivate::ndefMessageRead,
+            this, &QNearFieldTarget::ndefMessageRead);
+    connect(d, &QNearFieldTargetPrivate::requestCompleted,
+            this, &QNearFieldTarget::requestCompleted);
+    connect(d, &QNearFieldTargetPrivate::error,
+            this, &QNearFieldTarget::error);
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qnearfieldtarget.cpp"

@@ -33,16 +33,15 @@
  *
  */
 
-/*
- * TODO the types we are after are defined in different headers on different
- * platforms find which headers to include to get uint32_t
- */
-
+#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
-#ifdef HAVE_SYS_SYSCTL_H
+#if HAVE_SYS_SYSCTL_H
+#ifdef __FreeBSD__
+#include <sys/types.h>
+#endif
 #include <sys/sysctl.h>
 #endif
 #include <stdio.h>
@@ -52,6 +51,7 @@
 #include "xf86drmMode.h"
 #include "xf86drm.h"
 #include <drm.h>
+#include <drm_fourcc.h>
 #include <string.h>
 #include <dirent.h>
 #include <unistd.h>
@@ -150,6 +150,16 @@ drm_public void drmModeFreeEncoder(drmModeEncoderPtr ptr)
 /*
  * ModeSetting functions.
  */
+
+drm_public int drmIsKMS(int fd)
+{
+	struct drm_mode_card_res res = {0};
+
+	if (drmIoctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res) != 0)
+		return 0;
+
+	return res.count_crtcs > 0 && res.count_connectors > 0 && res.count_encoders > 0;
+}
 
 drm_public drmModeResPtr drmModeGetResources(int fd)
 {
@@ -600,6 +610,29 @@ drm_public drmModeConnectorPtr drmModeGetConnectorCurrent(int fd, uint32_t conne
 	return _drmModeGetConnector(fd, connector_id, 0);
 }
 
+drm_public uint32_t drmModeConnectorGetPossibleCrtcs(int fd,
+                                                     const drmModeConnector *connector)
+{
+	drmModeEncoder *encoder;
+	int i;
+	uint32_t possible_crtcs;
+
+	possible_crtcs = 0;
+	for (i = 0; i < connector->count_encoders; i++) {
+		encoder = drmModeGetEncoder(fd, connector->encoders[i]);
+		if (!encoder) {
+			return 0;
+		}
+
+		possible_crtcs |= encoder->possible_crtcs;
+		drmModeFreeEncoder(encoder);
+	}
+
+	if (possible_crtcs == 0)
+		errno = ENOENT;
+	return possible_crtcs;
+}
+
 drm_public int drmModeAttachMode(int fd, uint32_t connector_id, drmModeModeInfoPtr mode_info)
 {
 	struct drm_mode_mode_cmd res;
@@ -683,6 +716,7 @@ drm_public void drmModeFreeProperty(drmModePropertyPtr ptr)
 
 	drmFree(ptr->values);
 	drmFree(ptr->enums);
+	drmFree(ptr->blob_ids);
 	drmFree(ptr);
 }
 
@@ -716,6 +750,112 @@ drm_public drmModePropertyBlobPtr drmModeGetPropertyBlob(int fd,
 err_allocs:
 	drmFree(U642VOID(blob.data));
 	return r;
+}
+
+static inline const uint32_t *
+get_formats_ptr(const struct drm_format_modifier_blob *blob)
+{
+	return (const uint32_t *)(((uint8_t *)blob) + blob->formats_offset);
+}
+
+static inline const struct drm_format_modifier *
+get_modifiers_ptr(const struct drm_format_modifier_blob *blob)
+{
+	return (const struct drm_format_modifier *)(((uint8_t *)blob) +
+						    blob->modifiers_offset);
+}
+
+static bool _drmModeFormatModifierGetNext(const drmModePropertyBlobRes *blob,
+					  drmModeFormatModifierIterator *iter)
+{
+	const struct drm_format_modifier *blob_modifiers, *mod;
+	const struct drm_format_modifier_blob *fmt_mod_blob;
+	const uint32_t *blob_formats;
+
+	assert(blob && iter);
+
+	fmt_mod_blob = blob->data;
+	blob_modifiers = get_modifiers_ptr(fmt_mod_blob);
+	blob_formats = get_formats_ptr(fmt_mod_blob);
+
+	/* fmt_idx and mod_idx designate the number of processed formats
+	 * and modifiers.
+	 */
+	if (iter->fmt_idx >= fmt_mod_blob->count_formats ||
+	    iter->mod_idx >= fmt_mod_blob->count_modifiers)
+		return false;
+
+	iter->fmt = blob_formats[iter->fmt_idx];
+	iter->mod = DRM_FORMAT_MOD_INVALID;
+
+	/* From the latest valid found, get the next valid modifier */
+	while (iter->mod_idx < fmt_mod_blob->count_modifiers) {
+		mod = &blob_modifiers[iter->mod_idx++];
+
+		/* Check if the format that fmt_idx designates, belongs to
+		 * this modifier 64-bit window selected via mod->offset.
+		 */
+		if (iter->fmt_idx < mod->offset ||
+		    iter->fmt_idx >= mod->offset + 64)
+			continue;
+		if (!(mod->formats & (1 << (iter->fmt_idx - mod->offset))))
+			continue;
+
+		iter->mod = mod->modifier;
+		break;
+	}
+
+	if (iter->mod_idx == fmt_mod_blob->count_modifiers) {
+		iter->mod_idx = 0;
+		iter->fmt_idx++;
+	}
+
+	/* Since mod_idx reset, in order for the caller to iterate over
+	 * the last modifier of the last format, always return true here
+	 * and early return from the next call.
+	 */
+	return true;
+}
+
+/**
+ * Iterate over formats first and then over modifiers. On each call, iter->fmt
+ * is retained until all associated modifiers are returned. Then, either update
+ * iter->fmt with the next format, or exit if there aren't any left.
+ *
+ * NOTE: clients should not make any assumption on mod_idx and fmt_idx values
+ *
+ * @blob: valid kernel blob holding formats and modifiers
+ * @iter: input and output iterator data. Iter data must be initialised to zero
+ * @return: false, on error or there aren't any further formats or modifiers left.
+ *          true, on success and there are more formats or modifiers.
+ */
+drm_public bool drmModeFormatModifierBlobIterNext(const drmModePropertyBlobRes *blob,
+						  drmModeFormatModifierIterator *iter)
+{
+	drmModeFormatModifierIterator tmp;
+	bool has_fmt;
+
+	if (!blob || !iter)
+		return false;
+
+	tmp.fmt_idx = iter->fmt_idx;
+	tmp.mod_idx = iter->mod_idx;
+
+	/* With the current state of things, DRM/KMS drivers are allowed to
+	 * construct blobs having formats and no modifiers. Userspace can't
+	 * legitimately abort in such cases.
+	 *
+	 * While waiting for the kernel to perhaps disallow formats with no
+	 * modifiers in IN_FORMATS blobs, skip the format altogether.
+	 */
+	do {
+		has_fmt = _drmModeFormatModifierGetNext(blob, &tmp);
+		if (has_fmt && tmp.mod != DRM_FORMAT_MOD_INVALID)
+			*iter = tmp;
+
+	} while (has_fmt && tmp.mod == DRM_FORMAT_MOD_INVALID);
+
+	return has_fmt;
 }
 
 drm_public void drmModeFreePropertyBlob(drmModePropertyBlobPtr ptr)
@@ -800,21 +940,13 @@ drm_public int drmCheckModesettingSupported(const char *busid)
 	if (found)
 		return 0;
 #elif defined (__FreeBSD__) || defined (__FreeBSD_kernel__)
-	char kbusid[1024], sbusid[1024];
+	char sbusid[1024];
 	char oid[128];
-	int domain, bus, dev, func;
 	int i, modesetting, ret;
 	size_t len;
 
-	ret = sscanf(busid, "pci:%04x:%02x:%02x.%d", &domain, &bus, &dev,
-	    &func);
-	if (ret != 4)
-		return -EINVAL;
-	snprintf(kbusid, sizeof(kbusid), "pci:%04x:%02x:%02x.%d", domain, bus,
-	    dev, func);
-
 	/* How many GPUs do we expect in the machine ? */
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < 10; i++) {
 		snprintf(oid, sizeof(oid), "hw.dri.%d.busid", i);
 		len = sizeof(sbusid);
 		ret = sysctlbyname(oid, sbusid, &len, NULL, 0);
@@ -823,7 +955,7 @@ drm_public int drmCheckModesettingSupported(const char *busid)
 				continue;
 			return -EINVAL;
 		}
-		if (strcmp(sbusid, kbusid) != 0)
+		if (strcmp(sbusid, busid) != 0)
 			continue;
 		snprintf(oid, sizeof(oid), "hw.dri.%d.modesetting", i);
 		len = sizeof(modesetting);
@@ -1215,6 +1347,7 @@ struct _drmModeAtomicReqItem {
 	uint32_t object_id;
 	uint32_t property_id;
 	uint64_t value;
+	uint32_t cursor;
 };
 
 struct _drmModeAtomicReq {
@@ -1238,7 +1371,7 @@ drm_public drmModeAtomicReqPtr drmModeAtomicAlloc(void)
 	return req;
 }
 
-drm_public drmModeAtomicReqPtr drmModeAtomicDuplicate(drmModeAtomicReqPtr old)
+drm_public drmModeAtomicReqPtr drmModeAtomicDuplicate(const drmModeAtomicReqPtr old)
 {
 	drmModeAtomicReqPtr new;
 
@@ -1268,8 +1401,10 @@ drm_public drmModeAtomicReqPtr drmModeAtomicDuplicate(drmModeAtomicReqPtr old)
 }
 
 drm_public int drmModeAtomicMerge(drmModeAtomicReqPtr base,
-                                  drmModeAtomicReqPtr augment)
+                                  const drmModeAtomicReqPtr augment)
 {
+	uint32_t i;
+
 	if (!base)
 		return -EINVAL;
 
@@ -1292,12 +1427,14 @@ drm_public int drmModeAtomicMerge(drmModeAtomicReqPtr base,
 
 	memcpy(&base->items[base->cursor], augment->items,
 	       augment->cursor * sizeof(*augment->items));
+	for (i = base->cursor; i < base->cursor + augment->cursor; i++)
+		base->items[i].cursor = i;
 	base->cursor += augment->cursor;
 
 	return 0;
 }
 
-drm_public int drmModeAtomicGetCursor(drmModeAtomicReqPtr req)
+drm_public int drmModeAtomicGetCursor(const drmModeAtomicReqPtr req)
 {
 	if (!req)
 		return -EINVAL;
@@ -1337,6 +1474,7 @@ drm_public int drmModeAtomicAddProperty(drmModeAtomicReqPtr req,
 	req->items[req->cursor].object_id = object_id;
 	req->items[req->cursor].property_id = property_id;
 	req->items[req->cursor].value = value;
+	req->items[req->cursor].cursor = req->cursor;
 	req->cursor++;
 
 	return req->cursor;
@@ -1357,15 +1495,15 @@ static int sort_req_list(const void *misc, const void *other)
 	const drmModeAtomicReqItem *first = misc;
 	const drmModeAtomicReqItem *second = other;
 
-	if (first->object_id < second->object_id)
-		return -1;
-	else if (first->object_id > second->object_id)
-		return 1;
+	if (first->object_id != second->object_id)
+		return first->object_id - second->object_id;
+	else if (first->property_id != second->property_id)
+		return first->property_id - second->property_id;
 	else
-		return second->property_id - first->property_id;
+		return first->cursor - second->cursor;
 }
 
-drm_public int drmModeAtomicCommit(int fd, drmModeAtomicReqPtr req,
+drm_public int drmModeAtomicCommit(int fd, const drmModeAtomicReqPtr req,
                                    uint32_t flags, void *user_data)
 {
 	drmModeAtomicReqPtr sorted;
@@ -1413,6 +1551,9 @@ drm_public int drmModeAtomicCommit(int fd, drmModeAtomicReqPtr req,
 			(sorted->cursor - i - 1) * sizeof(*sorted->items));
 		sorted->cursor--;
 	}
+
+	for (i = 0; i < sorted->cursor; i++)
+		sorted->items[i].cursor = i;
 
 	objs_ptr = drmMalloc(atomic.count_objs * sizeof objs_ptr[0]);
 	if (!objs_ptr) {
@@ -1593,4 +1734,141 @@ drmModeRevokeLease(int fd, uint32_t lessee_id)
 	if (ret == 0)
 		return 0;
 	return -errno;
+}
+
+drm_public drmModeFB2Ptr
+drmModeGetFB2(int fd, uint32_t fb_id)
+{
+	struct drm_mode_fb_cmd2 get = {
+		.fb_id = fb_id,
+	};
+	drmModeFB2Ptr ret;
+	int err;
+
+	err = DRM_IOCTL(fd, DRM_IOCTL_MODE_GETFB2, &get);
+	if (err != 0)
+		return NULL;
+
+	ret = drmMalloc(sizeof(drmModeFB2));
+	if (!ret)
+		return NULL;
+
+	ret->fb_id = fb_id;
+	ret->width = get.width;
+	ret->height = get.height;
+	ret->pixel_format = get.pixel_format;
+	ret->flags = get.flags;
+	ret->modifier = get.modifier[0];
+	memcpy(ret->handles, get.handles, sizeof(uint32_t) * 4);
+	memcpy(ret->pitches, get.pitches, sizeof(uint32_t) * 4);
+	memcpy(ret->offsets, get.offsets, sizeof(uint32_t) * 4);
+
+	return ret;
+}
+
+drm_public void drmModeFreeFB2(drmModeFB2Ptr ptr)
+{
+	drmFree(ptr);
+}
+
+drm_public const char *
+drmModeGetConnectorTypeName(uint32_t connector_type)
+{
+	/* Keep the strings in sync with the kernel's drm_connector_enum_list in
+	 * drm_connector.c. */
+	switch (connector_type) {
+	case DRM_MODE_CONNECTOR_Unknown:
+		return "Unknown";
+	case DRM_MODE_CONNECTOR_VGA:
+		return "VGA";
+	case DRM_MODE_CONNECTOR_DVII:
+		return "DVI-I";
+	case DRM_MODE_CONNECTOR_DVID:
+		return "DVI-D";
+	case DRM_MODE_CONNECTOR_DVIA:
+		return "DVI-A";
+	case DRM_MODE_CONNECTOR_Composite:
+		return "Composite";
+	case DRM_MODE_CONNECTOR_SVIDEO:
+		return "SVIDEO";
+	case DRM_MODE_CONNECTOR_LVDS:
+		return "LVDS";
+	case DRM_MODE_CONNECTOR_Component:
+		return "Component";
+	case DRM_MODE_CONNECTOR_9PinDIN:
+		return "DIN";
+	case DRM_MODE_CONNECTOR_DisplayPort:
+		return "DP";
+	case DRM_MODE_CONNECTOR_HDMIA:
+		return "HDMI-A";
+	case DRM_MODE_CONNECTOR_HDMIB:
+		return "HDMI-B";
+	case DRM_MODE_CONNECTOR_TV:
+		return "TV";
+	case DRM_MODE_CONNECTOR_eDP:
+		return "eDP";
+	case DRM_MODE_CONNECTOR_VIRTUAL:
+		return "Virtual";
+	case DRM_MODE_CONNECTOR_DSI:
+		return "DSI";
+	case DRM_MODE_CONNECTOR_DPI:
+		return "DPI";
+	case DRM_MODE_CONNECTOR_WRITEBACK:
+		return "Writeback";
+	case DRM_MODE_CONNECTOR_SPI:
+		return "SPI";
+	case DRM_MODE_CONNECTOR_USB:
+		return "USB";
+	default:
+		return NULL;
+	}
+}
+
+drm_public int
+drmModeCreateDumbBuffer(int fd, uint32_t width, uint32_t height, uint32_t bpp,
+                        uint32_t flags, uint32_t *handle, uint32_t *pitch,
+                        uint64_t *size)
+{
+	int ret;
+	struct drm_mode_create_dumb create = {
+		.width = width,
+		.height = height,
+		.bpp = bpp,
+		.flags = flags,
+	};
+
+	ret = DRM_IOCTL(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create);
+	if (ret != 0)
+		return ret;
+
+	*handle = create.handle;
+	*pitch = create.pitch;
+	*size = create.size;
+	return 0;
+}
+
+drm_public int
+drmModeDestroyDumbBuffer(int fd, uint32_t handle)
+{
+	struct drm_mode_destroy_dumb destroy = {
+		.handle = handle,
+	};
+
+	return DRM_IOCTL(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy);
+}
+
+drm_public int
+drmModeMapDumbBuffer(int fd, uint32_t handle, uint64_t *offset)
+{
+	int ret;
+	struct drm_mode_map_dumb map = {
+		.handle = handle,
+	};
+
+	ret = DRM_IOCTL(fd, DRM_IOCTL_MODE_MAP_DUMB, &map);
+	if (ret != 0)
+		return ret;
+
+	*offset = map.offset;
+	return 0;
 }

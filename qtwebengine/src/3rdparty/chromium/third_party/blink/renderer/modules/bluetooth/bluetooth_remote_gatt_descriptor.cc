@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@
 #include "third_party/blink/renderer/modules/bluetooth/bluetooth_remote_gatt_service.h"
 #include "third_party/blink/renderer/modules/bluetooth/bluetooth_remote_gatt_utils.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 
 namespace blink {
@@ -26,7 +26,7 @@ BluetoothRemoteGATTDescriptor::BluetoothRemoteGATTDescriptor(
 void BluetoothRemoteGATTDescriptor::ReadValueCallback(
     ScriptPromiseResolver* resolver,
     mojom::blink::WebBluetoothResult result,
-    const base::Optional<Vector<uint8_t>>& value) {
+    const absl::optional<Vector<uint8_t>>& value) {
   if (!resolver->GetExecutionContext() ||
       resolver->GetExecutionContext()->IsContextDestroyed())
     return;
@@ -52,7 +52,7 @@ void BluetoothRemoteGATTDescriptor::ReadValueCallback(
 ScriptPromise BluetoothRemoteGATTDescriptor::readValue(
     ScriptState* script_state,
     ExceptionState& exception_state) {
-  if (!GetGatt()->connected()) {
+  if (!GetGatt()->connected() || !GetBluetooth()->IsServiceBound()) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kNetworkError,
         BluetoothError::CreateNotConnectedExceptionMessage(
@@ -69,10 +69,10 @@ ScriptPromise BluetoothRemoteGATTDescriptor::readValue(
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
-  GetService()->RemoteDescriptorReadValue(
+  GetBluetooth()->Service()->RemoteDescriptorReadValue(
       descriptor_->instance_id,
-      WTF::Bind(&BluetoothRemoteGATTDescriptor::ReadValueCallback,
-                WrapPersistent(this), WrapPersistent(resolver)));
+      WTF::BindOnce(&BluetoothRemoteGATTDescriptor::ReadValueCallback,
+                    WrapPersistent(this), WrapPersistent(resolver)));
 
   return promise;
 }
@@ -105,7 +105,7 @@ ScriptPromise BluetoothRemoteGATTDescriptor::writeValue(
     ScriptState* script_state,
     const DOMArrayPiece& value,
     ExceptionState& exception_state) {
-  if (!GetGatt()->connected()) {
+  if (!GetGatt()->connected() || !GetBluetooth()->IsServiceBound()) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kNetworkError,
         BluetoothError::CreateNotConnectedExceptionMessage(
@@ -131,7 +131,7 @@ ScriptPromise BluetoothRemoteGATTDescriptor::writeValue(
   // If bytes is more than 512 bytes long (the maximum length of an attribute
   // value, per Long Attribute Values) return a promise rejected with an
   // InvalidModificationError and abort.
-  if (value.ByteLengthAsSizeT() > 512) {
+  if (value.ByteLength() > 512) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidModificationError,
         "Value can't exceed 512 bytes.");
@@ -141,15 +141,16 @@ ScriptPromise BluetoothRemoteGATTDescriptor::writeValue(
   // Let valueVector be a copy of the bytes held by value.
   Vector<uint8_t> value_vector;
   value_vector.Append(value.Bytes(),
-                      static_cast<wtf_size_t>(value.ByteLengthAsSizeT()));
+                      static_cast<wtf_size_t>(value.ByteLength()));
 
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ScriptPromise promise = resolver->Promise();
   GetGatt()->AddToActiveAlgorithms(resolver);
-  GetService()->RemoteDescriptorWriteValue(
+  GetBluetooth()->Service()->RemoteDescriptorWriteValue(
       descriptor_->instance_id, value_vector,
-      WTF::Bind(&BluetoothRemoteGATTDescriptor::WriteValueCallback,
-                WrapPersistent(this), WrapPersistent(resolver), value_vector));
+      WTF::BindOnce(&BluetoothRemoteGATTDescriptor::WriteValueCallback,
+                    WrapPersistent(this), WrapPersistent(resolver),
+                    value_vector));
 
   return promise;
 }

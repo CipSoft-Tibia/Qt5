@@ -33,15 +33,10 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "third_party/blink/renderer/bindings/core/v8/sanitize_script_errors.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_source_location_type.h"
 #include "third_party/blink/renderer/bindings/core/v8/window_proxy_manager.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
-#include "third_party/blink/renderer/platform/loader/fetch/resource_loader_options.h"
-#include "third_party/blink/renderer/platform/loader/fetch/script_fetch_options.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/text_position.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "v8/include/v8.h"
@@ -49,11 +44,11 @@
 namespace blink {
 
 class DOMWrapperWorld;
-class ExecutionContext;
 class KURL;
 class LocalDOMWindow;
-class ScriptSourceCode;
 class SecurityOrigin;
+
+enum class ExecuteScriptPolicy;
 
 // This class exposes methods to run script in a frame (in the main world and
 // in isolated worlds). An instance can be obtained by using
@@ -61,14 +56,13 @@ class SecurityOrigin;
 class CORE_EXPORT ScriptController final
     : public GarbageCollected<ScriptController> {
  public:
-  enum ExecuteScriptPolicy {
-    kExecuteScriptWhenScriptsDisabled,
-    kDoNotExecuteScriptWhenScriptsDisabled
-  };
-
   ScriptController(LocalDOMWindow& window,
                    LocalWindowProxyManager& window_proxy_manager)
       : window_(&window), window_proxy_manager_(&window_proxy_manager) {}
+
+  ScriptController(const ScriptController&) = delete;
+  ScriptController& operator=(const ScriptController&) = delete;
+
   void Trace(Visitor*) const;
 
   // This returns an initialized window proxy. (If the window proxy is not
@@ -77,39 +71,11 @@ class CORE_EXPORT ScriptController final
     return window_proxy_manager_->WindowProxy(world);
   }
 
-  v8::Local<v8::Value> ExecuteScriptAndReturnValue(
-      v8::Local<v8::Context>,
-      const ScriptSourceCode&,
-      const KURL& base_url,
-      SanitizeScriptErrors,
-      const ScriptFetchOptions& = ScriptFetchOptions());
-
   v8::Local<v8::Value> EvaluateMethodInMainWorld(
       v8::Local<v8::Function> function,
       v8::Local<v8::Value> receiver,
       int argc,
-      v8::Local<v8::Value> argv[],
-      ScriptController::ExecuteScriptPolicy = ScriptController::
-          ExecuteScriptPolicy::kDoNotExecuteScriptWhenScriptsDisabled);
-
-  // Evaluate JavaScript in the main world.
-  v8::Local<v8::Value> EvaluateScriptInMainWorld(const ScriptSourceCode&,
-                                                 const KURL& base_url,
-                                                 SanitizeScriptErrors,
-                                                 const ScriptFetchOptions&,
-                                                 ExecuteScriptPolicy);
-
-  // Executes JavaScript in an isolated world. The script gets its own global
-  // scope, its own prototypes for intrinsic JavaScript objects (String, Array,
-  // and so-on), and its own wrappers for all DOM nodes and DOM constructors.
-  //
-  // If an isolated world with the specified ID already exists, it is reused.
-  // Otherwise, a new world is created.
-  v8::Local<v8::Value> ExecuteScriptInIsolatedWorld(
-      int32_t world_id,
-      const ScriptSourceCode&,
-      const KURL& base_url,
-      SanitizeScriptErrors sanitize_script_errors);
+      v8::Local<v8::Value> argv[]);
 
   // Executes a javascript url in the main world. |world_for_csp| denotes the
   // javascript world in which this navigation initiated and which should be
@@ -126,10 +92,18 @@ class CORE_EXPORT ScriptController final
   // Disables eval for the main world.
   void DisableEval(const String& error_message);
 
+  // Disables wasm eval for the main world
+  void SetWasmEvalErrorMessage(const String& error_message);
+
   // Disables eval for the given isolated |world_id|. This initializes the
   // window proxy for the isolated world, if it's not yet initialized.
   void DisableEvalForIsolatedWorld(int32_t world_id,
                                    const String& error_message);
+
+  // Disables wasm eval for the given isolated |world_id|. This initializes the
+  // window proxy for the isolated world, if it's not yet initialized.
+  void SetWasmEvalErrorMessageForIsolatedWorld(int32_t world_id,
+                                               const String& error_message);
 
   TextPosition EventHandlerPosition() const;
 
@@ -154,10 +128,12 @@ class CORE_EXPORT ScriptController final
                        bool allow_eval,
                        const String& error_message);
 
+  void SetWasmEvalErrorMessageForWorld(DOMWrapperWorld& world,
+                                       bool allow_eval,
+                                       const String& error_message);
+
   const Member<LocalDOMWindow> window_;
   const Member<LocalWindowProxyManager> window_proxy_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScriptController);
 };
 
 }  // namespace blink

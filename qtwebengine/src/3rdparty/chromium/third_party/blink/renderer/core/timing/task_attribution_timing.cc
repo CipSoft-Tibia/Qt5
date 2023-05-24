@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,10 +12,11 @@ namespace blink {
 
 TaskAttributionTiming::TaskAttributionTiming(const AtomicString& name,
                                              const AtomicString& container_type,
-                                             const String& container_src,
-                                             const String& container_id,
-                                             const String& container_name)
-    : PerformanceEntry(name, 0.0, 0.0),
+                                             const AtomicString& container_src,
+                                             const AtomicString& container_id,
+                                             const AtomicString& container_name,
+                                             DOMWindow* source)
+    : PerformanceEntry(name, 0.0, 0.0, source),
       container_type_(container_type),
       container_src_(container_src),
       container_id_(container_id),
@@ -23,7 +24,7 @@ TaskAttributionTiming::TaskAttributionTiming(const AtomicString& name,
 
 TaskAttributionTiming::~TaskAttributionTiming() = default;
 
-AtomicString TaskAttributionTiming::entryType() const {
+const AtomicString& TaskAttributionTiming::entryType() const {
   return performance_entry_names::kTaskattribution;
 }
 

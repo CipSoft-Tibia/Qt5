@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QTABBAR_P_H
 #define QTABBAR_P_H
@@ -65,6 +29,7 @@
 #define ANIMATION_DURATION 250
 
 #include <qstyleoption.h>
+#include <utility>
 
 QT_REQUIRE_CONFIG(tabbar);
 
@@ -88,40 +53,74 @@ class Q_WIDGETS_EXPORT QTabBarPrivate : public QWidgetPrivate
     Q_DECLARE_PUBLIC(QTabBar)
 public:
     QTabBarPrivate()
-        :currentIndex(-1), pressedIndex(-1), firstVisible(0), lastVisible(-1), shape(QTabBar::RoundedNorth), layoutDirty(false),
-        drawBase(true), scrollOffset(0), hoverIndex(-1), elideModeSetByUser(false), useScrollButtonsSetByUser(false), expanding(true), closeButtonOnTabs(false),
-        selectionBehaviorOnRemove(QTabBar::SelectRightTab), paintWithOffsets(true), movable(false),
-        dragInProgress(false), documentMode(false), autoHide(false), changeCurrentOnDrag(false),
-        switchTabCurrentIndex(-1), switchTabTimerId(0), movingTab(nullptr)
-        {}
+    : layoutDirty(false), drawBase(true), elideModeSetByUser(false), useScrollButtons(false),
+      useScrollButtonsSetByUser(false), expanding(true), closeButtonOnTabs(false),
+      paintWithOffsets(true), movable(false), dragInProgress(false), documentMode(false),
+      autoHide(false), changeCurrentOnDrag(false)
+    {}
+    ~QTabBarPrivate()
+    {
+        qDeleteAll(tabList);
+    }
 
-    int currentIndex;
-    int pressedIndex;
-    int firstVisible;
-    int lastVisible;
-    QTabBar::Shape shape;
-    bool layoutDirty;
-    bool drawBase;
-    int scrollOffset;
+    QRect hoverRect;
+    QPoint dragStartPosition;
+    QPoint mousePosition = {-1, -1};
+#if QT_CONFIG(wheelevent)
+    QPoint accumulatedAngleDelta;
+#endif
+    QSize iconSize;
+    QToolButton* rightB = nullptr; // right or bottom
+    QToolButton* leftB = nullptr; // left or top
+    QMovableTabWidget *movingTab = nullptr;
+    int hoverIndex = -1;
+    int switchTabCurrentIndex = -1;
+    int switchTabTimerId = 0;
+    Qt::TextElideMode elideMode = Qt::ElideNone;
+    QTabBar::SelectionBehavior selectionBehaviorOnRemove = QTabBar::SelectRightTab;
+    QTabBar::Shape shape = QTabBar::RoundedNorth;
+    Qt::MouseButtons mouseButtons = Qt::NoButton;
+
+    int currentIndex = -1;
+    int pressedIndex = -1;
+    int firstVisible = 0;
+    int lastVisible = -1;
+    int scrollOffset = 0;
+
+    bool layoutDirty : 1;
+    bool drawBase : 1;
+    bool elideModeSetByUser : 1;
+    bool useScrollButtons : 1;
+    bool useScrollButtonsSetByUser : 1;
+    bool expanding : 1;
+    bool closeButtonOnTabs : 1;
+    bool paintWithOffsets : 1;
+    bool movable : 1;
+    bool dragInProgress : 1;
+    bool documentMode : 1;
+    bool autoHide : 1;
+    bool changeCurrentOnDrag : 1;
 
     struct Tab {
         inline Tab(const QIcon &ico, const QString &txt)
-            : enabled(true) , visible(true), shortcutId(0), text(txt), icon(ico),
-            leftWidget(nullptr), rightWidget(nullptr), lastTab(-1), dragOffset(0)
-#if QT_CONFIG(animation)
-            , animation(nullptr)
-#endif // animation
-        {}
-        bool operator==(const Tab &other) const { return &other == this; }
-        bool enabled;
-        bool visible;
-        int shortcutId;
+        : text(txt), icon(ico), enabled(true), visible(true)
+        {
+        }
+        /*
+            Tabs are managed by instance; they are not the same even
+            if all properties are the same.
+        */
+        Q_DISABLE_COPY_MOVE(Tab);
+
         QString text;
-#ifndef QT_NO_TOOLTIP
+#if QT_CONFIG(tooltip)
         QString toolTip;
 #endif
 #if QT_CONFIG(whatsthis)
         QString whatsThis;
+#endif
+#if QT_CONFIG(accessibility)
+        QString accessibleName;
 #endif
         QIcon icon;
         QRect rect;
@@ -130,16 +129,15 @@ public:
 
         QColor textColor;
         QVariant data;
-        QWidget *leftWidget;
-        QWidget *rightWidget;
-        int lastTab;
-        int dragOffset;
-#ifndef QT_NO_ACCESSIBILITY
-        QString accessibleName;
-#endif
+        QWidget *leftWidget = nullptr;
+        QWidget *rightWidget = nullptr;
+        int shortcutId = 0;
+        int lastTab = -1;
+        int dragOffset = 0;
+        uint enabled : 1;
+        uint visible : 1;
 
 #if QT_CONFIG(animation)
-        ~Tab() { delete animation; }
         struct TabBarAnimation : public QVariantAnimation {
             TabBarAnimation(Tab *t, QTabBarPrivate *_priv) : tab(t), priv(_priv)
             { setEasingCurve(QEasingCurve::InOutQuad); }
@@ -151,15 +149,16 @@ public:
             //these are needed for the callbacks
             Tab *tab;
             QTabBarPrivate *priv;
-        } *animation;
+        };
+        std::unique_ptr<TabBarAnimation> animation;
 
         void startAnimation(QTabBarPrivate *priv, int duration) {
             if (!priv->isAnimated()) {
-                priv->moveTabFinished(priv->tabList.indexOf(*this));
+                priv->moveTabFinished(priv->tabList.indexOf(this));
                 return;
             }
             if (!animation)
-                animation = new TabBarAnimation(this, priv);
+                animation = std::make_unique<TabBarAnimation>(this, priv);
             animation->setStartValue(dragOffset);
             animation->setEndValue(0);
             animation->setDuration(duration);
@@ -167,10 +166,10 @@ public:
         }
 #else
         void startAnimation(QTabBarPrivate *priv, int duration)
-        { Q_UNUSED(duration); priv->moveTabFinished(priv->tabList.indexOf(*this)); }
+        { Q_UNUSED(duration); priv->moveTabFinished(priv->tabList.indexOf(this)); }
 #endif // animation
     };
-    QList<Tab> tabList;
+    QList<Tab*> tabList;
     mutable QHash<QString, QSize> textSizes;
 
     void calculateFirstLastVisible(int index, bool visible, bool remove);
@@ -179,24 +178,19 @@ public:
     void slide(int from, int to);
     void init();
 
-    Tab *at(int index);
-    const Tab *at(int index) const;
+    inline Tab *at(int index) { return tabList.value(index, nullptr); }
+    inline const Tab *at(int index) const { return tabList.value(index, nullptr); }
 
     int indexAtPos(const QPoint &p) const;
 
     inline bool isAnimated() const { Q_Q(const QTabBar); return q->style()->styleHint(QStyle::SH_Widget_Animation_Duration, nullptr, q) > 0; }
-    inline bool validIndex(int index) const { return index >= 0 && index < tabList.count(); }
+    inline bool validIndex(int index) const { return index >= 0 && index < tabList.size(); }
     void setCurrentNextEnabledIndex(int offset);
-
-    QToolButton* rightB; // right or bottom
-    QToolButton* leftB; // left or top
 
     void _q_scrollTabs();
     void _q_closeTab();
     void moveTab(int index, int offset);
     void moveTabFinished(int index);
-    QRect hoverRect;
-    int hoverIndex;
 
     void refresh();
     void layoutTabs();
@@ -212,28 +206,7 @@ public:
     void initBasicStyleOption(QStyleOptionTab *option, int tabIndex) const;
 
     void makeVisible(int index);
-    QSize iconSize;
-    Qt::TextElideMode elideMode;
-    bool elideModeSetByUser;
-    bool useScrollButtons;
-    bool useScrollButtonsSetByUser;
 
-    bool expanding;
-    bool closeButtonOnTabs;
-    QTabBar::SelectionBehavior selectionBehaviorOnRemove;
-
-    QPoint dragStartPosition;
-    bool paintWithOffsets;
-    bool movable;
-    bool dragInProgress;
-    bool documentMode;
-    bool autoHide;
-    bool changeCurrentOnDrag;
-
-    int switchTabCurrentIndex;
-    int switchTabTimerId;
-
-    QMovableTabWidget *movingTab;
     // shared by tabwidget and qtabbar
     static void initStyleBaseOption(QStyleOptionTabBarBase *optTabBase, QTabBar *tabbar, QSize size)
     {
@@ -241,7 +214,7 @@ public:
         tabOverlap.shape = tabbar->shape();
         int overlap = tabbar->style()->pixelMetric(QStyle::PM_TabBarBaseOverlap, &tabOverlap, tabbar);
         QWidget *theParent = tabbar->parentWidget();
-        optTabBase->init(tabbar);
+        optTabBase->initFrom(tabbar);
         optTabBase->shape = tabbar->shape();
         optTabBase->documentMode = tabbar->documentMode();
         if (theParent && overlap > 0) {
@@ -271,6 +244,14 @@ public:
     void killSwitchTabTimer();
 
 };
+
+constexpr inline bool verticalTabs(QTabBar::Shape shape) noexcept
+{
+    return shape == QTabBar::RoundedWest
+            || shape == QTabBar::RoundedEast
+            || shape == QTabBar::TriangularWest
+            || shape == QTabBar::TriangularEast;
+}
 
 QT_END_NAMESPACE
 

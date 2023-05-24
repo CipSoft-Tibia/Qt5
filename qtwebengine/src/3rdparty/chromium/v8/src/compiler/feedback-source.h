@@ -17,7 +17,6 @@ struct FeedbackSource {
   V8_EXPORT_PRIVATE FeedbackSource(Handle<FeedbackVector> vector_,
                                    FeedbackSlot slot_);
   FeedbackSource(FeedbackVectorRef vector_, FeedbackSlot slot_);
-  explicit FeedbackSource(FeedbackNexus const& nexus);
 
   bool IsValid() const { return !vector.is_null() && !slot.IsInvalid(); }
   int index() const;
@@ -44,6 +43,9 @@ bool operator!=(FeedbackSource const&, FeedbackSource const&);
 
 V8_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
                                            FeedbackSource const&);
+inline size_t hash_value(const FeedbackSource& value) {
+  return FeedbackSource::Hash()(value);
+}
 
 }  // namespace compiler
 }  // namespace internal

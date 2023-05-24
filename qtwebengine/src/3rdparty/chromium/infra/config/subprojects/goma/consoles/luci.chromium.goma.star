@@ -1,28 +1,14 @@
-# Copyright 2020 The Chromium Authors. All rights reserved.
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+load("//console-header.star", "HEADER")
+
 luci.console_view(
     name = "luci.chromium.goma",
-    header = "//chromium-header.textpb",
-    include_experimental_builds = True,
     repo = "https://chromium.googlesource.com/chromium/src",
+    header = HEADER,
     entries = [
-        luci.console_view_entry(
-            builder = "goma/Chromium Linux Goma Staging",
-            category = "clients5",
-            short_name = "lnx",
-        ),
-        luci.console_view_entry(
-            builder = "goma/Chromium Mac Goma Staging",
-            category = "clients5",
-            short_name = "mac",
-        ),
-        luci.console_view_entry(
-            builder = "goma/CrWinGomaStaging",
-            category = "clients5",
-            short_name = "win",
-        ),
         luci.console_view_entry(
             builder = "goma/Chromium Linux Goma RBE Staging (clobber)",
             category = "rbe|rel",
@@ -42,4 +28,5 @@ luci.console_view(
             category = "rbe|debug",
         ),
     ],
+    include_experimental_builds = True,
 )

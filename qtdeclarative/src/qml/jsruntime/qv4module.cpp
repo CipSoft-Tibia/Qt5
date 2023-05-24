@@ -1,52 +1,17 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qv4module_p.h"
 
-#include <private/qv4mm_p.h>
-#include <private/qv4vme_moth_p.h>
 #include <private/qv4context_p.h>
-#include <private/qv4symbol_p.h>
 #include <private/qv4identifiertable_p.h>
+#include <private/qv4mm_p.h>
+#include <private/qv4stackframe_p.h>
+#include <private/qv4symbol_p.h>
+#include <private/qv4vme_moth_p.h>
 
-#include <QScopeGuard>
+#include <QtCore/qscopeguard.h>
 
 using namespace QV4;
 
@@ -112,15 +77,15 @@ void Module::evaluate()
 
     ExecutionEngine *v4 = engine();
     Function *moduleFunction = unit->runtimeFunctions[unit->data->indexOfRootFunction];
-    CppStackFrame frame;
-    frame.init(v4, moduleFunction, nullptr, 0);
+    JSTypesStackFrame frame;
+    frame.init(moduleFunction, nullptr, 0);
     frame.setupJSFrame(v4->jsStackTop, Value::undefinedValue(), d()->scope,
                        Value::undefinedValue(), Value::undefinedValue());
 
-    frame.push();
+    frame.push(v4);
     v4->jsStackTop += frame.requiredJSStackFrameSize();
-    auto frameCleanup = qScopeGuard([&frame]() {
-        frame.pop();
+    auto frameCleanup = qScopeGuard([&frame, v4]() {
+        frame.pop(v4);
     });
     Moth::VME::exec(&frame, v4);
 }
@@ -231,7 +196,7 @@ struct ModuleNamespaceIterator : ObjectOwnPropertyKeyIterator
 PropertyKey ModuleNamespaceIterator::next(const Object *o, Property *pd, PropertyAttributes *attrs)
 {
     const Module *module = static_cast<const Module *>(o);
-    if (exportIndex < exportedNames.count()) {
+    if (exportIndex < exportedNames.size()) {
         if (attrs)
             *attrs = Attr_Data;
         Scope scope(module->engine());
@@ -258,9 +223,12 @@ OwnPropertyKeyIterator *Module::virtualOwnPropertyKeys(const Object *o, Value *t
     if (module->d()->unit->isESModule()) {
         names = module->d()->unit->exportedNames();
     } else {
-        Heap::InternalClass *scopeClass = module->d()->scope->internalClass;
-        for (uint i = 0; i < scopeClass->size; ++i)
-            names << scopeClass->keyAt(i);
+        QV4::Scope scope(module->engine());
+        QV4::Scoped<InternalClass> scopeClass(scope, module->d()->scope->internalClass);
+        for (uint i = 0, end = scopeClass->d()->size; i < end; ++i) {
+            QV4::ScopedValue key(scope, scopeClass->d()->keyAt(i));
+            names << key->toQString();
+        }
     }
 
     return new ModuleNamespaceIterator(names);

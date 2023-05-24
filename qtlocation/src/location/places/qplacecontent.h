@@ -1,60 +1,23 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QPLACECONTENT_H
 #define QPLACECONTENT_H
 
 #include <QtLocation/qlocationglobal.h>
 
+#include <QtCore/QExplicitlySharedDataPointer>
 #include <QtCore/QMap>
 #include <QtCore/QMetaType>
-#include <QtCore/QSharedDataPointer>
+#include <QtCore/QVariant>
+
+#include <QtLocation/QPlaceUser>
+#include <QtLocation/QPlaceSupplier>
 
 QT_BEGIN_NAMESPACE
 
-#define Q_DECLARE_CONTENT_D_FUNC(Class) \
-    inline Class##Private *d_func(); \
-    inline const Class##Private *d_func() const;\
-    friend class Class##Private;
-
-#define Q_DECLARE_CONTENT_COPY_CTOR(Class) \
-    Class(const QPlaceContent &other);
-
-class QPlaceUser;
-class QPlaceSupplier;
 class QPlaceContentPrivate;
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QPlaceContentPrivate, Q_LOCATION_EXPORT)
+
 class Q_LOCATION_EXPORT QPlaceContent
 {
 public:
@@ -68,34 +31,69 @@ public:
         CustomType = 0x0100
     };
 
-    QPlaceContent();
-    QPlaceContent(const QPlaceContent &other);
-    virtual ~QPlaceContent();
+    enum DataTag {
+        ContentSupplier,
+        ContentUser,
+        ContentAttribution,
+        ImageId,
+        ImageUrl,
+        ImageMimeType,
+        EditorialTitle,
+        EditorialText,
+        EditorialLanguage,
+        ReviewId,
+        ReviewDateTime,
+        ReviewTitle,
+        ReviewText,
+        ReviewLanguage,
+        ReviewRating,
+        CustomDataTag = 1000
+    };
 
-    QPlaceContent &operator=(const QPlaceContent &other);
+    QPlaceContent(Type type = NoType);
+    ~QPlaceContent();
+
+    QPlaceContent(const QPlaceContent &other) noexcept;
+    QPlaceContent &operator=(const QPlaceContent &other) noexcept;
+
+    QPlaceContent(QPlaceContent &&other) noexcept = default;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QPlaceContent)
+    void swap(QPlaceContent &other) noexcept
+    { d_ptr.swap(other.d_ptr); }
+    void detach();
 
     bool operator==(const QPlaceContent &other) const;
     bool operator!=(const QPlaceContent &other) const;
 
     QPlaceContent::Type type() const;
 
-    QPlaceSupplier supplier() const;
-    void setSupplier(const QPlaceSupplier &supplier);
+    QList<DataTag> dataTags() const;
+    QVariant value(DataTag tag) const;
+    void setValue(DataTag tag, const QVariant &);
 
-    QPlaceUser user() const;
-    void setUser(const QPlaceUser &user);
+#if QT_DEPRECATED_SINCE(6, 0)
+    QT_DEPRECATED_VERSION_X_6_0("Use value()") QPlaceSupplier supplier() const
+    { return value(QPlaceContent::ContentSupplier).value<QPlaceSupplier>(); }
+    QT_DEPRECATED_VERSION_X_6_0("Use setValue()") void setSupplier(const QPlaceSupplier &supplier)
+    { setValue(QPlaceContent::ContentSupplier, QVariant::fromValue(supplier)); }
 
-    QString attribution() const;
-    void setAttribution(const QString &attribution);
+    QT_DEPRECATED_VERSION_X_6_0("Use value()") QPlaceUser user() const
+    { return value(QPlaceContent::ContentUser).value<QPlaceUser>(); }
+    QT_DEPRECATED_VERSION_X_6_0("Use setValue()") void setUser(const QPlaceUser &user)
+    { setValue(QPlaceContent::ContentUser, QVariant::fromValue(user)); }
+
+    QT_DEPRECATED_VERSION_X_6_0("Use value()") QString attribution() const
+    { return value(QPlaceContent::ContentAttribution).value<QString>(); }
+    QT_DEPRECATED_VERSION_X_6_0("Use setValue()") void setAttribution(const QString &attribution)
+    { setValue(QPlaceContent::ContentAttribution, QVariant::fromValue(attribution)); }
+#endif
 
 protected:
-    explicit QPlaceContent(QPlaceContentPrivate *d);
-    QSharedDataPointer<QPlaceContentPrivate> d_ptr;
-
-private:
     inline QPlaceContentPrivate *d_func();
     inline const QPlaceContentPrivate *d_func() const;
 
+private:
+    QExplicitlySharedDataPointer<QPlaceContentPrivate> d_ptr;
     friend class QPlaceContentPrivate;
 };
 

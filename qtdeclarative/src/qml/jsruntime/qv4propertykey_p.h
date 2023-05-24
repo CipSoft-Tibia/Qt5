@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QV4PROPERTYKEY_H
 #define QV4PROPERTYKEY_H
 
@@ -51,6 +15,8 @@
 //
 
 #include <private/qv4global_p.h>
+#include <private/qv4staticvalue_p.h>
+#include <QtCore/qhashfunctions.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -71,68 +37,67 @@ private:
     // * If the key is a Symbol it simply points to the referenced symbol object
     // * if the key is an array index (a uint < UINT_MAX), it's encoded as an
     // integer value
-    quint64 val;
+    QV4::StaticValue val;
 
-    // Important: Always keep this in sync with the definitions for Integers and heap objects in Value
-    static const quint64 ArrayIndexMask = 0x3800000000000ull;
-    enum {
-        IsManagedOrUndefined_Shift = 64-15,
-    };
-    inline bool isManaged() const { return (val >> IsManagedOrUndefined_Shift) == 0; }
-    inline quint32 value() const { return val & quint64(~quint32(0)); }
-
-#if QT_POINTER_SIZE == 8
-    QML_NEARLY_ALWAYS_INLINE Heap::StringOrSymbol *m() const
-    {
-        Heap::StringOrSymbol *b;
-        memcpy(&b, &val, 8);
-        return b;
-    }
-    QML_NEARLY_ALWAYS_INLINE void setM(Heap::StringOrSymbol *b)
-    {
-        memcpy(&val, &b, 8);
-    }
-#elif QT_POINTER_SIZE == 4
-    QML_NEARLY_ALWAYS_INLINE Heap::StringOrSymbol *m() const
-    {
-        Q_STATIC_ASSERT(sizeof(Heap::StringOrSymbol*) == sizeof(quint32));
-        Heap::StringOrSymbol *b;
-        quint32 v = value();
-        memcpy(&b, &v, 4);
-        return b;
-    }
-    QML_NEARLY_ALWAYS_INLINE void setM(Heap::StringOrSymbol *b)
-    {
-        quint32 v;
-        memcpy(&v, &b, 4);
-        val = v;
-    }
-#endif
+    inline bool isManaged() const { return val.isManaged(); }
+    inline quint32 value() const { return val.value(); }
 
 public:
-    static PropertyKey invalid() { PropertyKey key; key.val = 0; return key; }
-    static PropertyKey fromArrayIndex(uint idx) { PropertyKey key; key.val = ArrayIndexMask | static_cast<quint64>(idx); return key; }
-    bool isStringOrSymbol() const { return isManaged() && val != 0; }
-    uint asArrayIndex() const { Q_ASSERT(isArrayIndex()); return static_cast<uint>(val & 0xffffffff); }
-    uint isArrayIndex() const { return !isManaged() && val != 0; }
-    bool isValid() const { return val != 0; }
-    static PropertyKey fromStringOrSymbol(Heap::StringOrSymbol *b)
-    { PropertyKey key; key.setM(b); return key; }
-    Heap::StringOrSymbol *asStringOrSymbol() const {
-        if (!isManaged())
-            return nullptr;
-        return m();
+    static PropertyKey invalid()
+    {
+        PropertyKey key;
+        key.val = StaticValue::undefinedValue();
+        return key;
     }
 
-    Q_QML_EXPORT bool isString() const;
-    bool isSymbol() const;
+    static PropertyKey fromArrayIndex(uint idx)
+    {
+        PropertyKey key;
+        key.val.setInt_32(idx);
+        return key;
+    }
+
+    bool isStringOrSymbol() const { return isManaged(); }
+    uint asArrayIndex() const
+    {
+        Q_ASSERT(isArrayIndex());
+        return value();
+    }
+
+    bool isArrayIndex() const { return val.isInteger(); }
+    bool isValid() const { return !val.isUndefined(); }
+
+    // We cannot #include the declaration of Heap::StringOrSymbol here.
+    // Therefore we do some gymnastics to enforce the type safety.
+
+    template<typename StringOrSymbol = Heap::StringOrSymbol>
+    static PropertyKey fromStringOrSymbol(StringOrSymbol *b)
+    {
+        static_assert(std::is_base_of_v<Heap::StringOrSymbol, StringOrSymbol>);
+        PropertyKey key;
+        key.val.setM(b);
+        Q_ASSERT(key.isManaged());
+        return key;
+    }
+
+    template<typename StringOrSymbol = Heap::StringOrSymbol>
+    StringOrSymbol *asStringOrSymbol() const
+    {
+        static_assert(std::is_base_of_v<Heap::StringOrSymbol, StringOrSymbol>);
+        if (!isManaged())
+            return nullptr;
+        return static_cast<StringOrSymbol *>(val.m());
+    }
+
+    Q_QML_PRIVATE_EXPORT bool isString() const;
+    Q_QML_PRIVATE_EXPORT bool isSymbol() const;
     bool isCanonicalNumericIndexString() const;
 
-    Q_QML_EXPORT QString toQString() const;
+    Q_QML_PRIVATE_EXPORT QString toQString() const;
     Heap::StringOrSymbol *toStringOrSymbol(ExecutionEngine *e);
-    quint64 id() const { return val; }
+    quint64 id() const { return val._val; }
     static PropertyKey fromId(quint64 id) {
-        PropertyKey key; key.val = id; return key;
+        PropertyKey key; key.val._val = id; return key;
     }
 
     enum FunctionNamePrefix {
@@ -142,9 +107,10 @@ public:
     };
     Heap::String *asFunctionName(ExecutionEngine *e, FunctionNamePrefix prefix) const;
 
-    bool operator ==(const PropertyKey &other) const { return val == other.val; }
-    bool operator !=(const PropertyKey &other) const { return val != other.val; }
-    bool operator <(const PropertyKey &other) const { return val < other.val; }
+    bool operator ==(const PropertyKey &other) const { return val._val == other.val._val; }
+    bool operator !=(const PropertyKey &other) const { return val._val != other.val._val; }
+    bool operator <(const PropertyKey &other) const { return val._val < other.val._val; }
+    friend size_t qHash(const PropertyKey &key, size_t seed = 0) { return qHash(key.val._val, seed); }
 };
 
 }

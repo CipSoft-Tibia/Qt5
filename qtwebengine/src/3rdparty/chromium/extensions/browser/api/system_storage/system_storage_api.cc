@@ -1,14 +1,13 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "extensions/browser/api/system_storage/system_storage_api.h"
 
-#include "base/bind.h"
-#include "base/task/post_task.h"
+#include "base/functional/bind.h"
 #include "base/task/thread_pool.h"
-#include "base/task_runner_util.h"
 #include "content/public/browser/browser_thread.h"
+#include "extensions/browser/api/system_storage/storage_info_provider.h"
 
 using storage_monitor::StorageMonitor;
 
@@ -18,14 +17,8 @@ using api::system_storage::StorageUnitInfo;
 namespace EjectDevice = api::system_storage::EjectDevice;
 namespace GetAvailableCapacity = api::system_storage::GetAvailableCapacity;
 
-SystemStorageGetInfoFunction::SystemStorageGetInfoFunction() {
-}
-
-SystemStorageGetInfoFunction::~SystemStorageGetInfoFunction() {
-}
-
 ExtensionFunction::ResponseAction SystemStorageGetInfoFunction::Run() {
-  StorageInfoProvider::Get()->StartQueryInfo(base::Bind(
+  StorageInfoProvider::Get()->StartQueryInfo(base::BindOnce(
       &SystemStorageGetInfoFunction::OnGetStorageInfoCompleted, this));
   return RespondLater();
 }
@@ -39,14 +32,11 @@ void SystemStorageGetInfoFunction::OnGetStorageInfoCompleted(bool success) {
   }
 }
 
-SystemStorageEjectDeviceFunction::~SystemStorageEjectDeviceFunction() {
-}
-
 ExtensionFunction::ResponseAction SystemStorageEjectDeviceFunction::Run() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   std::unique_ptr<EjectDevice::Params> params(
-      EjectDevice::Params::Create(*args_));
+      EjectDevice::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params.get());
 
   StorageMonitor::GetInstance()->EnsureInitialized(
@@ -92,8 +82,7 @@ void SystemStorageEjectDeviceFunction::HandleResponse(
       result = api::system_storage::EJECT_DEVICE_RESULT_CODE_FAILURE;
   }
 
-  Respond(OneArgument(
-      std::make_unique<base::Value>(api::system_storage::ToString(result))));
+  Respond(OneArgument(base::Value(api::system_storage::ToString(result))));
 }
 
 SystemStorageGetAvailableCapacityFunction::
@@ -110,7 +99,7 @@ SystemStorageGetAvailableCapacityFunction::Run() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
   std::unique_ptr<GetAvailableCapacity::Params> params(
-      GetAvailableCapacity::Params::Create(*args_));
+      GetAvailableCapacity::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params.get());
 
   StorageMonitor::GetInstance()->EnsureInitialized(base::BindOnce(
@@ -121,8 +110,8 @@ SystemStorageGetAvailableCapacityFunction::Run() {
 
 void SystemStorageGetAvailableCapacityFunction::OnStorageMonitorInit(
     const std::string& transient_id) {
-  base::PostTaskAndReplyWithResult(
-      query_runner_.get(), FROM_HERE,
+  query_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
       base::BindOnce(
           &StorageInfoProvider::GetStorageFreeSpaceFromTransientIdAsync,
           StorageInfoProvider::Get(), transient_id),
@@ -139,7 +128,7 @@ void SystemStorageGetAvailableCapacityFunction::OnQueryCompleted(
     api::system_storage::StorageAvailableCapacityInfo result;
     result.id = transient_id;
     result.available_capacity = available_capacity;
-    Respond(OneArgument(result.ToValue()));
+    Respond(OneArgument(base::Value(result.ToValue())));
   } else {
     Respond(Error("Error occurred when querying available capacity."));
   }

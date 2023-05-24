@@ -8,11 +8,13 @@
 #ifndef SkAutoBlitterChoose_DEFINED
 #define SkAutoBlitterChoose_DEFINED
 
-#include "include/private/SkMacros.h"
-#include "src/core/SkArenaAlloc.h"
+#include "include/private/base/SkMacros.h"
+#include "src/base/SkArenaAlloc.h"
 #include "src/core/SkBlitter.h"
 #include "src/core/SkDraw.h"
+#include "src/core/SkMatrixProvider.h"
 #include "src/core/SkRasterClip.h"
+#include "src/core/SkSurfacePriv.h"
 
 class SkMatrix;
 class SkPaint;
@@ -35,16 +37,13 @@ public:
         if (!matrixProvider) {
             matrixProvider = draw.fMatrixProvider;
         }
-        fBlitter = SkBlitter::Choose(draw.fDst, *matrixProvider, paint, &fAlloc, drawCoverage,
-                                     draw.fRC->clipShader());
-
-        if (draw.fCoverage) {
-            // hmm, why can't choose ignore the paint if drawCoverage is true?
-            SkBlitter* coverageBlitter =
-                    SkBlitter::Choose(*draw.fCoverage, *matrixProvider, SkPaint(), &fAlloc, true,
-                                      draw.fRC->clipShader());
-            fBlitter = fAlloc.make<SkPairBlitter>(fBlitter, coverageBlitter);
-        }
+        fBlitter = SkBlitter::Choose(draw.fDst,
+                                     matrixProvider->localToDevice(),
+                                     paint,
+                                     &fAlloc,
+                                     drawCoverage,
+                                     draw.fRC->clipShader(),
+                                     SkSurfacePropsCopyOrDefault(draw.fProps));
         return fBlitter;
     }
 

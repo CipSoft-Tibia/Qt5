@@ -1,47 +1,21 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the Qt Speech module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only
 
 #include "qtexttospeech_sapi.h"
 
 #include <windows.h>
+#ifdef Q_CC_MSVC
+#pragma warning(disable : 4996)
+#endif
 #include <sapi.h>
 #include <sphelper.h>
-#include <qdebug.h>
+
+#include <QtCore/QCoreApplication>
+#include <QtCore/QDebug>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #ifndef SPERR_NO_MORE_ITEMS
 # define SPERR_NO_MORE_ITEMS MAKE_SAPI_ERROR(0x039)
@@ -50,6 +24,7 @@ QT_BEGIN_NAMESPACE
 #ifdef Q_CC_MINGW // from sphelper.h
 
 static const GUID CLSD_SpVoice = {0x96749377, 0x3391, 0x11d2,{0x9e, 0xe3, 0x0, 0xc0, 0x4f, 0x79, 0x73, 0x96}};
+const GUID SPDFID_WaveFormatEx = {0xC31ADBAE, 0x527F, 0x4ff5,{0xA2, 0x30, 0xF6, 0x2B, 0xB6, 0x1F, 0xF7, 0x0C}};
 
 static inline HRESULT SpGetTokenFromId(const WCHAR *pszTokenId, ISpObjectToken **cpToken, BOOL fCreateIfNotExist = FALSE)
 {
@@ -66,21 +41,25 @@ static inline HRESULT SpCreateNewToken(const WCHAR *pszTokenId, ISpObjectToken *
     // Forcefully create the token
     return SpGetTokenFromId(pszTokenId, ppToken, TRUE);
 }
+
+inline void SpClearEvent(SPEVENT *pe)
+{
+    switch (pe->elParamType) {
+    case SPET_LPARAM_IS_TOKEN:
+    case SPET_LPARAM_IS_OBJECT:
+        reinterpret_cast<IUnknown *>(pe->lParam)->Release();
+        break;
+    case SPET_LPARAM_IS_POINTER:
+    case SPET_LPARAM_IS_STRING:
+        CoTaskMemFree(reinterpret_cast<void *>(pe->lParam));
+        break;
+    case SPET_LPARAM_IS_UNDEFINED:
+        break;
+    }
+}
 #endif // Q_CC_MINGW
 
 QTextToSpeechEngineSapi::QTextToSpeechEngineSapi(const QVariantMap &, QObject *)
-    : m_state(QTextToSpeech::BackendError), m_voice(nullptr), m_pitch(0.0), m_pauseCount(0)
-{
-    init();
-}
-
-QTextToSpeechEngineSapi::~QTextToSpeechEngineSapi()
-{
-    if (m_voice)
-        m_voice->Release();
-}
-
-void QTextToSpeechEngineSapi::init()
 {
     if (FAILED(::CoInitialize(NULL))) {
         qWarning() << "Init of COM failed";
@@ -89,14 +68,29 @@ void QTextToSpeechEngineSapi::init()
 
     HRESULT hr = CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL, IID_ISpVoice, (void **)&m_voice);
     if (!SUCCEEDED(hr)) {
-        qWarning() << "Could not init voice";
+        setError(QTextToSpeech::ErrorReason::Initialization,
+                 QCoreApplication::translate("QTextToSpeech",
+                                             "Could not initialize text-to-speech engine."));
         return;
     }
 
     m_voice->SetInterest(SPFEI_ALL_TTS_EVENTS, SPFEI_ALL_TTS_EVENTS);
     m_voice->SetNotifyCallbackInterface(this, 0, 0);
     updateVoices();
-    m_state = QTextToSpeech::Ready;
+    if (m_voices.isEmpty()) {
+        setError(QTextToSpeech::ErrorReason::Configuration,
+                 QCoreApplication::translate("QTextToSpeech", "No voices available."));
+    } else {
+        m_state = QTextToSpeech::Ready;
+        m_errorReason = QTextToSpeech::ErrorReason::NoError;
+    }
+}
+
+QTextToSpeechEngineSapi::~QTextToSpeechEngineSapi()
+{
+    if (m_voice)
+        m_voice->Release();
+    CoUninitialize();
 }
 
 bool QTextToSpeechEngineSapi::isSpeaking() const
@@ -111,47 +105,166 @@ void QTextToSpeechEngineSapi::say(const QString &text)
     if (text.isEmpty())
         return;
 
-    QString textString = text;
     if (m_state != QTextToSpeech::Ready)
-        stop();
+        stop(QTextToSpeech::BoundaryHint::Default);
 
-    textString.prepend(QString::fromLatin1("<pitch absmiddle=\"%1\"/>").arg(m_pitch * 10));
+    currentText = text;
+    const QString prefix = u"<pitch absmiddle=\"%1\"/>"_s.arg(m_pitch * 10);
+    textOffset = prefix.length();
+    currentText.prepend(prefix);
 
-    std::wstring wtext = textString.toStdWString();
-    m_voice->Speak(wtext.data(), SPF_ASYNC, NULL);
+    HRESULT hr = m_voice->Speak(currentText.toStdWString().data(), SPF_ASYNC, NULL);
+    if (!SUCCEEDED(hr))
+        setError(QTextToSpeech::ErrorReason::Input,
+                 QCoreApplication::translate("QTextToSpeech", "Speech synthesizing failure."));
 }
 
-void QTextToSpeechEngineSapi::stop()
+void QTextToSpeechEngineSapi::synthesize(const QString &text)
 {
-    if (m_state == QTextToSpeech::Paused)
+    class OutputStream : public ISpStreamFormat
+    {
+        ULONG m_ref = 1;
+        qint64 m_pos = 0;
+        qint64 m_length = 0;
+        QTextToSpeechEngineSapi *m_engine = nullptr;
+        QAudioFormat m_format;
+
+    public:
+        OutputStream(QTextToSpeechEngineSapi *engine)
+            : m_engine(engine)
+        {
+            m_format.setChannelConfig(QAudioFormat::ChannelConfigMono);
+            m_format.setSampleRate(16000);
+            m_format.setSampleFormat(QAudioFormat::Int16);
+        }
+        virtual ~OutputStream() = default;
+
+        // IUnknown
+        ULONG STDMETHODCALLTYPE AddRef() override { return ++m_ref; }
+        ULONG STDMETHODCALLTYPE Release() override {
+            if (!--m_ref) {
+                delete this;
+                return 0;
+            }
+            return m_ref;
+        }
+
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, VOID **ppvInterface) override
+        {
+            if (!ppvInterface)
+                return E_POINTER;
+
+            if (riid == __uuidof(IUnknown)) {
+                *ppvInterface = static_cast<IUnknown*>(this);
+            } else if (riid == __uuidof(IStream)) {
+                *ppvInterface = static_cast<IStream *>(this);
+            } else if (riid == __uuidof(ISpStreamFormat)) {
+                *ppvInterface = static_cast<ISpStreamFormat *>(this);
+            } else {
+                *ppvInterface = nullptr;
+                return E_NOINTERFACE;
+            }
+            AddRef();
+            return S_OK;
+        }
+
+        // IStream
+        HRESULT STDMETHODCALLTYPE Read(void *,ULONG,ULONG *) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Write(const void *pv,ULONG cb,ULONG *pcbWritten) override
+        {
+            emit m_engine->synthesized(m_format, QByteArray(static_cast<const char *>(pv), cb));
+            *pcbWritten = cb;
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE Seek(LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER *plibNewPosition) override
+        {
+            qint64 move = dlibMove.QuadPart;
+            switch (dwOrigin) {
+            case STREAM_SEEK_SET:
+                m_pos = move;
+                break;
+            case STREAM_SEEK_CUR:
+                m_pos += move;
+                break;
+            case STREAM_SEEK_END:
+                m_pos = m_length + move;
+                break;
+            }
+            (*plibNewPosition).QuadPart = m_pos;
+            return S_OK;
+        }
+        HRESULT STDMETHODCALLTYPE SetSize(ULARGE_INTEGER) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE CopyTo(IStream *,ULARGE_INTEGER,ULARGE_INTEGER *,ULARGE_INTEGER *) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Commit(DWORD) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Revert(void) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE LockRegion(ULARGE_INTEGER,ULARGE_INTEGER,DWORD) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE UnlockRegion(ULARGE_INTEGER,ULARGE_INTEGER,DWORD) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Stat(STATSTG *,DWORD) override { return E_NOTIMPL; }
+        HRESULT STDMETHODCALLTYPE Clone(IStream **) override { return E_NOTIMPL; }
+
+        // ISpStreamFormat
+        HRESULT STDMETHODCALLTYPE GetFormat(GUID *pguidFormatId,WAVEFORMATEX **ppCoMemWaveFormatEx) override
+        {
+            *pguidFormatId = SPDFID_WaveFormatEx;
+            WAVEFORMATEX *format = static_cast<WAVEFORMATEX *>(CoTaskMemAlloc(sizeof(WAVEFORMATEX)));
+            format->wFormatTag = WAVE_FORMAT_PCM;
+            format->nChannels = m_format.channelCount();
+            format->nSamplesPerSec = m_format.sampleRate();
+            format->wBitsPerSample = m_format.bytesPerSample() * 8;
+            format->nBlockAlign = format->nChannels * format->wBitsPerSample / 8;
+            format->nAvgBytesPerSec = format->nSamplesPerSec * format->nBlockAlign;
+            format->cbSize = 0; // amount of extra format information
+
+            *ppCoMemWaveFormatEx = format;
+            return S_OK;
+        }
+    };
+
+    if (text.isEmpty())
+        return;
+
+    currentText = text;
+    const QString prefix = u"<pitch absmiddle=\"%1\"/>"_s.arg(m_pitch * 10);
+    textOffset = prefix.length();
+    currentText.prepend(prefix);
+
+    OutputStream *outputStream = new OutputStream(this);
+    m_voice->SetOutput(outputStream, false);
+    HRESULT hr = m_voice->Speak(currentText.toStdWString().data(), SPF_ASYNC, NULL);
+    if (!SUCCEEDED(hr))
+        setError(QTextToSpeech::ErrorReason::Input,
+                 QCoreApplication::translate("QTextToSpeech", "Speech synthesizing failure."));
+}
+
+void QTextToSpeechEngineSapi::stop(QTextToSpeech::BoundaryHint boundaryHint)
+{
+    Q_UNUSED(boundaryHint);
+    if (m_state == QTextToSpeech::Paused || m_pauseRequested)
         resume();
     m_voice->Speak(NULL, SPF_PURGEBEFORESPEAK, 0);
+    currentText.clear();
 }
 
-void QTextToSpeechEngineSapi::pause()
+void QTextToSpeechEngineSapi::pause(QTextToSpeech::BoundaryHint boundaryHint)
 {
+    Q_UNUSED(boundaryHint);
     if (!isSpeaking())
         return;
 
-    if (m_pauseCount == 0) {
-        ++m_pauseCount;
+    // SAPI voices count calls to Pause() and require an equal
+    // number of calls to Resume(); we don't want that, so don't
+    // call either more than once.
+    if (!m_pauseRequested && m_state != QTextToSpeech::Paused) {
+        m_pauseRequested = true;
         m_voice->Pause();
-        m_state = QTextToSpeech::Paused;
-        emit stateChanged(m_state);
     }
 }
 
 void QTextToSpeechEngineSapi::resume()
 {
-    if (m_pauseCount > 0) {
-        --m_pauseCount;
+    if (m_pauseRequested || m_state == QTextToSpeech::Paused) {
+        m_pauseRequested = false;
         m_voice->Resume();
-        if (isSpeaking()) {
-            m_state = QTextToSpeech::Speaking;
-        } else {
-            m_state = QTextToSpeech::Ready;
-        }
-        emit stateChanged(m_state);
     }
 }
 
@@ -192,9 +305,7 @@ double QTextToSpeechEngineSapi::volume() const
 {
     USHORT baseVolume;
     if (m_voice->GetVolume(&baseVolume) == S_OK)
-    {
         return baseVolume / 100.0;
-    }
     return 0.0;
 }
 
@@ -242,9 +353,8 @@ QMap<QString, QString> QTextToSpeechEngineSapi::voiceAttributes(ISpObjectToken *
             continue;
         }
 
-        if (0 != wcscmp(val, L"")) {
+        if (0 != wcscmp(val, L""))
             result[QString::fromWCharArray(val)] = QString::fromWCharArray(data);
-        }
 
         // FIXME: Do we need to free the memory here?
         CoTaskMemFree(val);
@@ -262,12 +372,24 @@ QLocale QTextToSpeechEngineSapi::lcidToLocale(const QString &lcid) const
         qWarning() << "Could not convert language attribute to LCID";
         return QLocale();
     }
-    int nchars = GetLocaleInfoW(locale, LOCALE_SISO639LANGNAME, NULL, 0);
-    wchar_t* languageCode = new wchar_t[nchars];
-    GetLocaleInfoW(locale, LOCALE_SISO639LANGNAME, languageCode, nchars);
-    QString iso = QString::fromWCharArray(languageCode);
-    delete[] languageCode;
-    return QLocale(iso);
+    const int nchars = GetLocaleInfoW(locale, LOCALE_SISO639LANGNAME, NULL, 0);
+    QVarLengthArray<wchar_t, 12> languageCode(nchars);
+    GetLocaleInfoW(locale, LOCALE_SISO639LANGNAME, languageCode.data(), nchars);
+    return QLocale(QString::fromWCharArray(languageCode.data()));
+}
+
+QVoice::Age QTextToSpeechEngineSapi::toVoiceAge(const QString &age) const
+{
+    // See https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee431801(v=vs.85)#61-category-voices
+    if (age == u"Child")
+        return QVoice::Child;
+    if (age == u"Teen")
+        return QVoice::Teenager;
+    if (age == u"Adult")
+        return QVoice::Adult;
+    if (age == u"Senior")
+        return QVoice::Senior;
+    return QVoice::Other;
 }
 
 void QTextToSpeechEngineSapi::updateVoices()
@@ -278,9 +400,8 @@ void QTextToSpeechEngineSapi::updateVoices()
     ULONG ulCount = 0;
 
     hr = SpEnumTokens(SPCAT_VOICES, NULL, NULL, &cpEnum);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr))
         hr = cpEnum->GetCount(&ulCount);
-    }
 
     // Loop through all voices
     while (SUCCEEDED(hr) && ulCount--) {
@@ -291,81 +412,82 @@ void QTextToSpeechEngineSapi::updateVoices()
         hr = cpEnum->Next(1, &cpVoiceToken, NULL);
 
         // Get attributes of the voice
-        QMap<QString, QString> vAttr = voiceAttributes(cpVoiceToken);
+        const QMap<QString, QString> vAttr = voiceAttributes(cpVoiceToken);
 
         // Transform Windows LCID to QLocale
-        QLocale vLocale = lcidToLocale(vAttr["Language"]);
-        if (!m_locales.contains(vLocale))
-            m_locales.append(vLocale);
+        const QLocale vLocale = lcidToLocale(vAttr[u"Language"_s]);
 
         // Create voice
-
-        QString name = vAttr["Name"];
-        QVoice::Age age = vAttr["Age"] == "Adult" ?  QVoice::Adult : QVoice::Other;
-        QVoice::Gender gender = vAttr["Gender"] == "Male" ? QVoice::Male :
-                                vAttr["Gender"] == "Female" ? QVoice::Female :
-                                QVoice::Unknown;
+        const QString name = vAttr[u"Name"_s];
+        const QVoice::Age age = toVoiceAge(vAttr[u"Age"_s]);
+        const QVoice::Gender gender = vAttr[u"Gender"_s] == u"Male"_s ? QVoice::Male :
+                                      vAttr[u"Gender"_s] == u"Female"_s ? QVoice::Female :
+                                      QVoice::Unknown;
         // Getting the ID of the voice to set the voice later
-        QString vId = voiceId(cpVoiceToken);
-        QVoice voice = createVoice(name, gender, age, vId);
-        m_voices.insert(vLocale.name(), voice);
+        const QVoice voice = createVoice(name, vLocale, gender, age, voiceId(cpVoiceToken));
+        m_voices.insert(vLocale, voice);
     }
     if (cpVoiceToken)
         cpVoiceToken->Release();
     cpEnum->Release();
 }
 
-QVector<QLocale> QTextToSpeechEngineSapi::availableLocales() const
+QList<QLocale> QTextToSpeechEngineSapi::availableLocales() const
 {
-    return m_locales;
+    return m_voices.uniqueKeys();
 }
 
 bool QTextToSpeechEngineSapi::setLocale(const QLocale &locale)
 {
-    QList<QVoice> voicesForLocale = m_voices.values(locale.name());
-    if (voicesForLocale.length() > 0) {
-        setVoice(voicesForLocale[0]);
-        return true;
-    } else {
-        qWarning() << "No voice found for given locale";
+    const QList<QVoice> voicesForLocale = m_voices.values(locale);
+    if (voicesForLocale.isEmpty()) {
+        setError(QTextToSpeech::ErrorReason::Configuration,
+                 QCoreApplication::translate("QTextToSpeech", "No voice found for locale %1.")
+                    .arg(locale.bcp47Name()));
+        return false;
     }
-    return false;
+
+    setVoice(voicesForLocale[0]);
+    return true;
 }
 
 QLocale QTextToSpeechEngineSapi::locale() const
 {
     // Get current voice id
     ISpObjectToken *cpVoiceToken = nullptr;
-    m_voice->GetVoice(&cpVoiceToken);
+    HRESULT hr = m_voice->GetVoice(&cpVoiceToken);
+    if (FAILED(hr)) {
+        qWarning() << "ISpObjectToken::GetVoice failed";
+        return QLocale();
+    }
     // read attributes
-    QMap<QString, QString> vAttr = voiceAttributes(cpVoiceToken);
+    const QMap<QString, QString> vAttr = voiceAttributes(cpVoiceToken);
     cpVoiceToken->Release();
-    return lcidToLocale(vAttr["Language"]);
+    return lcidToLocale(vAttr.value(u"Language"_s));
 }
 
-QVector<QVoice> QTextToSpeechEngineSapi::availableVoices() const
+QList<QVoice> QTextToSpeechEngineSapi::availableVoices() const
 {
-    return m_voices.values(locale().name()).toVector();
+    return m_voices.values(locale());
 }
 
 bool QTextToSpeechEngineSapi::setVoice(const QVoice &voice)
 {
     // Convert voice id to null-terminated wide char string
-    QString vId = voiceData(voice).toString();
-    wchar_t* tokenId = new wchar_t[vId.size()+1];
-    vId.toWCharArray(tokenId);
+    const QString vId = voiceData(voice).toString();
+    QVarLengthArray<wchar_t, 255> tokenId(vId.size() + 1);
+    vId.toWCharArray(tokenId.data());
     tokenId[vId.size()] = 0;
 
     // create the voice token via the id
     HRESULT hr = S_OK;
     ISpObjectToken *cpVoiceToken = nullptr;
-    hr = SpCreateNewToken(tokenId, &cpVoiceToken);
+    hr = SpCreateNewToken(tokenId.constData(), &cpVoiceToken);
     if (FAILED(hr)) {
-        qWarning() << "Creating the voice token from ID failed";
         if (cpVoiceToken)
             cpVoiceToken->Release();
-        m_state = QTextToSpeech::BackendError;
-        emit stateChanged(m_state);
+        setError(QTextToSpeech::ErrorReason::Configuration,
+                 QCoreApplication::translate("QTextToSpeech", "Could not set voice."));
         return false;
     }
 
@@ -374,7 +496,6 @@ bool QTextToSpeechEngineSapi::setVoice(const QVoice &voice)
         emit stateChanged(m_state);
     }
 
-    delete[] tokenId;
     m_voice->SetVoice(cpVoiceToken);
     cpVoiceToken->Release();
     return true;
@@ -383,13 +504,16 @@ bool QTextToSpeechEngineSapi::setVoice(const QVoice &voice)
 QVoice QTextToSpeechEngineSapi::voice() const
 {
     ISpObjectToken *cpVoiceToken = nullptr;
-    m_voice->GetVoice(&cpVoiceToken);
+    HRESULT hr = m_voice->GetVoice(&cpVoiceToken);
+    if (FAILED(hr)) {
+        qWarning() << "ISpObjectToken::GetVoice failed";
+        return QVoice();
+    }
     QString vId = voiceId(cpVoiceToken);
     cpVoiceToken->Release();
     for (const QVoice &voice : m_voices) {
-        if (voiceData(voice).toString() == vId) {
+        if (voiceData(voice).toString() == vId)
             return voice;
-        }
     }
     return QVoice();
 }
@@ -399,21 +523,79 @@ QTextToSpeech::State QTextToSpeechEngineSapi::state() const
     return m_state;
 }
 
+void QTextToSpeechEngineSapi::setError(QTextToSpeech::ErrorReason reason, const QString &string)
+{
+    m_errorReason = reason;
+    m_errorString = string;
+    if (reason != QTextToSpeech::ErrorReason::NoError)
+        return;
+    if (m_state != QTextToSpeech::Error) {
+        m_state = QTextToSpeech::Error;
+        emit stateChanged(m_state);
+    }
+    emit errorOccurred(m_errorReason, m_errorString);
+}
+
+QTextToSpeech::ErrorReason QTextToSpeechEngineSapi::errorReason() const
+{
+    return m_errorReason;
+}
+
+QString QTextToSpeechEngineSapi::errorString() const
+{
+    return m_errorString;
+}
+
 HRESULT QTextToSpeechEngineSapi::NotifyCallback(WPARAM /*wParam*/, LPARAM /*lParam*/)
 {
-    QTextToSpeech::State newState = QTextToSpeech::Ready;
-    if (isPaused()) {
-        newState = QTextToSpeech::Paused;
-    } else if (isSpeaking()) {
-        newState = QTextToSpeech::Speaking;
-    } else {
-        newState = QTextToSpeech::Ready;
+    const QTextToSpeech::State oldState = m_state;
+
+    // we can't use CSpEvent here as it doesn't provide the time offset
+    if (ISpEventSource2 *eventSource; S_OK == m_voice->QueryInterface(&eventSource)) {
+        SPEVENTEX event;
+        ULONG got;
+        while (S_OK == eventSource->GetEventsEx(1, &event, &got)) {
+            switch (event.eEventId) {
+            case SPEI_START_INPUT_STREAM:
+                m_state = QTextToSpeech::Speaking;
+                break;
+            case SPEI_END_INPUT_STREAM:
+                m_state = QTextToSpeech::Ready;
+                break;
+            case SPEI_WORD_BOUNDARY:
+                emit sayingWord(currentText.sliced(event.lParam, event.wParam),
+                                event.lParam - textOffset, event.wParam);
+                break;
+            // these are the other TTS events which might be interesting for us at some point
+            case SPEI_SENTENCE_BOUNDARY:
+            case SPEI_PHONEME:
+            case SPEI_TTS_BOOKMARK:
+            case SPEI_VISEME:
+            case SPEI_VOICE_CHANGE:
+            case SPEI_TTS_AUDIO_LEVEL:
+                break;
+            // the rest is uninteresting (speech recognition or engine-internal events).
+            default:
+                break;
+            }
+            // There is no SpClearEventEx, and while a SPEVENTEX is not a subclass of SPEVENT, the
+            // two structs have identical memory layout, plus the extra ullAudioTimeOffset member.
+            SpClearEvent(reinterpret_cast<SPEVENT*>(&event));
+        }
+
+        eventSource->Release();
     }
 
-    if (m_state != newState) {
-        m_state = newState;
-        emit stateChanged(newState);
-    }
+    // There are no explicit events for pause/resume, so we have to brute force this ourselves.
+    // This means that we transition into pause prematurely, as SAPI typically only pauses in
+    // a word- or sentence-break.
+    if (m_pauseRequested)
+        m_state = QTextToSpeech::Paused;
+    else if (m_state == QTextToSpeech::Paused && isSpeaking())
+        m_state = QTextToSpeech::Speaking;
+
+    if (m_state != oldState)
+        emit stateChanged(m_state);
 
     return S_OK;
 }

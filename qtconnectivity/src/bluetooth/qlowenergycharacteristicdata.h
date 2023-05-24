@@ -1,41 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #ifndef QLOWENERGYCHARACTERISTICDATA_H
 #define QLOWENERGYCHARACTERISTICDATA_H
 
@@ -48,14 +12,22 @@ class QLowEnergyDescriptorData;
 struct QLowEnergyCharacteristicDataPrivate;
 class Q_BLUETOOTH_EXPORT QLowEnergyCharacteristicData
 {
-    friend Q_BLUETOOTH_EXPORT bool operator==(const QLowEnergyCharacteristicData &cd1,
-                                              const QLowEnergyCharacteristicData &cd2);
 public:
     QLowEnergyCharacteristicData();
     QLowEnergyCharacteristicData(const QLowEnergyCharacteristicData &other);
     ~QLowEnergyCharacteristicData();
 
     QLowEnergyCharacteristicData &operator=(const QLowEnergyCharacteristicData &other);
+    friend bool operator==(const QLowEnergyCharacteristicData &a,
+                           const QLowEnergyCharacteristicData &b)
+    {
+        return equals(a, b);
+    }
+    friend bool operator!=(const QLowEnergyCharacteristicData &a,
+                           const QLowEnergyCharacteristicData &b)
+    {
+        return !equals(a, b);
+    }
 
     QBluetoothUuid uuid() const;
     void setUuid(const QBluetoothUuid &uuid);
@@ -82,19 +54,13 @@ public:
 
     bool isValid() const;
 
-    void swap(QLowEnergyCharacteristicData &other) Q_DECL_NOTHROW { qSwap(d, other.d); }
+    void swap(QLowEnergyCharacteristicData &other) noexcept { d.swap(other.d); }
 
 private:
+    static bool equals(const QLowEnergyCharacteristicData &a,
+                       const QLowEnergyCharacteristicData &b);
     QSharedDataPointer<QLowEnergyCharacteristicDataPrivate> d;
 };
-
-Q_BLUETOOTH_EXPORT bool operator==(const QLowEnergyCharacteristicData &cd1,
-                                   const QLowEnergyCharacteristicData &cd2);
-inline bool operator!=(const QLowEnergyCharacteristicData &cd1,
-                       const QLowEnergyCharacteristicData &cd2)
-{
-    return !(cd1 == cd2);
-}
 
 Q_DECLARE_SHARED(QLowEnergyCharacteristicData)
 

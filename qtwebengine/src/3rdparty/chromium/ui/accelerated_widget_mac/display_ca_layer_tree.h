@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_ACCELERATED_WIDGET_MAC_DISPLAY_CA_LAYER_TREE_H_
 #define UI_ACCELERATED_WIDGET_MAC_DISPLAY_CA_LAYER_TREE_H_
 
-#include <IOSurface/IOSurface.h>
+#include <IOSurface/IOSurfaceRef.h>
 
 #include "base/mac/scoped_cftyperef.h"
 #import "base/mac/scoped_nsobject.h"

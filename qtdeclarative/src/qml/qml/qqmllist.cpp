@@ -1,68 +1,36 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmllist.h"
 #include "qqmllist_p.h"
-#include "qqmlengine_p.h"
-#include "qqmlproperty_p.h"
+#include <QtQml/private/qqmlproperty_p.h>
 
 QT_BEGIN_NAMESPACE
 
+static bool isObjectCompatible(QObject *object, QQmlListReferencePrivate *d)
+{
+    if (object) {
+        const QQmlMetaObject elementType = d->elementType();
+        if (elementType.isNull() || !QQmlMetaObject::canConvert(object, elementType))
+            return false;
+    }
+    return true;
+}
+
 QQmlListReferencePrivate::QQmlListReferencePrivate()
-: propertyType(-1), refCount(1)
+: refCount(1)
 {
 }
 
-QQmlListReference QQmlListReferencePrivate::init(const QQmlListProperty<QObject> &prop, int propType, QQmlEngine *engine)
+QQmlListReference QQmlListReferencePrivate::init(
+        const QQmlListProperty<QObject> &prop, QMetaType propType)
 {
     QQmlListReference rv;
 
     if (!prop.object) return rv;
 
-    QQmlEnginePrivate *p = engine?QQmlEnginePrivate::get(engine):nullptr;
-
-    int listType = p?p->listType(propType):QQmlMetaType::listType(propType);
-    if (listType == -1) return rv;
-
     rv.d = new QQmlListReferencePrivate;
     rv.d->object = prop.object;
-    rv.d->elementType = QQmlPropertyPrivate::rawMetaObjectForType(p, listType);
     rv.d->property = prop;
     rv.d->propertyType = propType;
 
@@ -119,34 +87,83 @@ QQmlListReference::QQmlListReference()
 {
 }
 
+#if QT_DEPRECATED_SINCE(6, 4)
 /*!
+\since 6.1
+\obsolete [6.4] Use the constructors without QQmlEngine argument instead.
+
+Constructs a QQmlListReference from a QVariant \a variant containing a QQmlListProperty. If
+\a variant does not contain a list property, an invalid QQmlListReference is created. If the object
+owning the list property is destroyed after the reference is constructed, it will automatically
+become invalid.  That is, it is safe to hold QQmlListReference instances even after the object is
+deleted.
+
+The \a engine is unused.
+*/
+QQmlListReference::QQmlListReference(const QVariant &variant, [[maybe_unused]] QQmlEngine *engine)
+    : QQmlListReference(variant)
+{}
+
+/*!
+\obsolete [6.4] Use the constructors without QQmlEngine argument instead.
+
 Constructs a QQmlListReference for \a object's \a property.  If \a property is not a list
 property, an invalid QQmlListReference is created.  If \a object is destroyed after
 the reference is constructed, it will automatically become invalid.  That is, it is safe to hold
 QQmlListReference instances even after \a object is deleted.
 
-Passing \a engine is required to access some QML created list properties.  If in doubt, and an engine
-is available, pass it.
+The \a engine is unused.
 */
-QQmlListReference::QQmlListReference(QObject *object, const char *property, QQmlEngine *engine)
-: d(nullptr)
+QQmlListReference::QQmlListReference(QObject *object, const char *property,
+                                     [[maybe_unused]] QQmlEngine *engine)
+    : QQmlListReference(object, property)
+{}
+#endif
+
+/*!
+\since 6.1
+
+Constructs a QQmlListReference from a QVariant \a variant containing a QQmlListProperty. If
+\a variant does not contain a list property, an invalid QQmlListReference is created. If the object
+owning the list property is destroyed after the reference is constructed, it will automatically
+become invalid.  That is, it is safe to hold QQmlListReference instances even after the object is
+deleted.
+*/
+QQmlListReference::QQmlListReference(const QVariant &variant)
+    : d(nullptr)
+{
+    const QMetaType t = variant.metaType();
+    if (!(t.flags() & QMetaType::IsQmlList))
+        return;
+
+    d = new QQmlListReferencePrivate;
+    d->propertyType = t;
+
+    d->property.~QQmlListProperty();
+    t.construct(&d->property, variant.constData());
+
+    d->object = d->property.object;
+}
+
+/*!
+Constructs a QQmlListReference for \a object's \a property.  If \a property is not a list
+property, an invalid QQmlListReference is created.  If \a object is destroyed after
+the reference is constructed, it will automatically become invalid.  That is, it is safe to hold
+QQmlListReference instances even after \a object is deleted.
+*/
+QQmlListReference::QQmlListReference(QObject *object, const char *property)
+    : d(nullptr)
 {
     if (!object || !property) return;
 
     QQmlPropertyData local;
-    QQmlPropertyData *data =
-        QQmlPropertyCache::property(engine, object, QLatin1String(property), nullptr, local);
+    const QQmlPropertyData *data =
+        QQmlPropertyCache::property(object, QLatin1String(property), nullptr, &local);
 
     if (!data || !data->isQList()) return;
 
-    QQmlEnginePrivate *p = engine?QQmlEnginePrivate::get(engine):nullptr;
-
-    int listType = p?p->listType(data->propType()):QQmlMetaType::listType(data->propType());
-    if (listType == -1) return;
-
     d = new QQmlListReferencePrivate;
     d->object = object;
-    d->elementType = p ? p->rawMetaObjectForType(listType) : QQmlMetaType::qmlType(listType).baseMetaObject();
     d->propertyType = data->propType();
 
     void *args[] = { &d->property, nullptr };
@@ -197,12 +214,11 @@ Returns the QMetaObject for the elements stored in the list property,
 or \nullptr if the reference is invalid.
 
 The QMetaObject can be used ahead of time to determine whether a given instance can be added
-to a list.
+to a list. If you didn't pass an engine on construction this may return nullptr.
 */
 const QMetaObject *QQmlListReference::listElementType() const
 {
-    if (isValid()) return d->elementType.metaObject();
-    else return nullptr;
+    return isValid() ? d->elementType() : nullptr;
 }
 
 /*!
@@ -311,7 +327,7 @@ bool QQmlListReference::append(QObject *object) const
 {
     if (!canAppend()) return false;
 
-    if (object && !QQmlMetaObject::canConvert(object, d->elementType))
+    if (!isObjectCompatible(object, d))
         return false;
 
     d->property.append(&d->property, object);
@@ -324,7 +340,7 @@ Returns the list element at \a index, or 0 if the operation failed.
 
 \sa canAt()
 */
-QObject *QQmlListReference::at(int index) const
+QObject *QQmlListReference::at(qsizetype index) const
 {
     if (!canAt()) return nullptr;
 
@@ -348,7 +364,7 @@ bool QQmlListReference::clear() const
 /*!
 Returns the number of objects in the list, or 0 if the operation failed.
 */
-int QQmlListReference::count() const
+qsizetype QQmlListReference::count() const
 {
     if (!canCount()) return 0;
 
@@ -356,17 +372,23 @@ int QQmlListReference::count() const
 }
 
 /*!
+\fn qsizetype QQmlListReference::size() const
+\since 6.2
+Returns the number of objects in the list, or 0 if the operation failed.
+*/
+
+/*!
 Replaces the item at \a index in the list with \a object.
 Returns true if the operation succeeded, otherwise false.
 
 \sa canReplace()
 */
-bool QQmlListReference::replace(int index, QObject *object) const
+bool QQmlListReference::replace(qsizetype index, QObject *object) const
 {
     if (!canReplace())
         return false;
 
-    if (object && !QQmlMetaObject::canConvert(object, d->elementType))
+    if (!isObjectCompatible(object, d))
         return false;
 
     d->property.replace(&d->property, index, object);
@@ -425,7 +447,54 @@ Q_PROPERTY(QQmlListProperty<Fruit> fruit READ fruit)
 QML list properties are type-safe - in this case \c {Fruit} is a QObject type that
 \c {Apple}, \c {Orange} and \c {Banana} all derive from.
 
-\sa {Extending QML - Object and List Property Types Example}
+\sa {Chapter 5: Using List Property Types}
+*/
+
+/*!
+    \macro QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_APPEND
+    \relates QQmlListProperty
+
+    This macro defines the behavior of the list properties of this class to Append.
+    When assigning the property in a derived type, the values are appended
+    to those of the base class. This is the default behavior.
+
+    \snippet code/src_qml_qqmllist.cpp 0
+
+    \sa QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_REPLACE_IF_NOT_DEFAULT
+    \sa QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_REPLACE
+    \sa {Defining Object Types through QML Documents}
+*/
+
+/*!
+    \macro QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_REPLACE_IF_NOT_DEFAULT
+    \relates QQmlListProperty
+
+    This macro defines the behavior of the list properties of this class to
+    ReplaceIfNotDefault.
+    When assigning the property in a derived type, the values replace those of
+    the base class unless it's the default property.
+    In the case of the default property, values are appended to those of the base class.
+
+    \snippet code/src_qml_qqmllist.cpp 1
+
+    \sa QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_APPEND
+    \sa QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_REPLACE
+    \sa {Defining Object Types through QML Documents}
+*/
+
+/*!
+    \macro QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_REPLACE
+    \relates QQmlListProperty
+
+    This macro defines the behavior of the list properties of this class to Replace.
+    When assigning the property in a derived type, the values replace those
+    of the base class.
+
+    \snippet code/src_qml_qqmllist.cpp 2
+
+    \sa QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_APPEND
+    \sa QML_LIST_PROPERTY_ASSIGN_BEHAVIOR_REPLACE_IF_NOT_DEFAULT
+    \sa {Defining Object Types through QML Documents}
 */
 
 /*!
@@ -525,7 +594,7 @@ Append the \a value to the list \a property.
 /*!
 \typedef QQmlListProperty::CountFunction
 
-Synonym for \c {int (*)(QQmlListProperty<T> *property)}.
+Synonym for \c {qsizetype (*)(QQmlListProperty<T> *property)}.
 
 Return the number of elements in the list \a property.
 */
@@ -539,7 +608,7 @@ Returns true if this QQmlListProperty is equal to \a other, otherwise false.
 /*!
 \typedef QQmlListProperty::AtFunction
 
-Synonym for \c {T *(*)(QQmlListProperty<T> *property, int index)}.
+Synonym for \c {T *(*)(QQmlListProperty<T> *property, qsizetype index)}.
 
 Return the element at position \a index in the list \a property.
 */
@@ -555,7 +624,7 @@ Clear the list \a property.
 /*!
 \typedef QQmlListProperty::ReplaceFunction
 
-Synonym for \c {void (*)(QQmlListProperty<T> *property, int index, T *value)}.
+Synonym for \c {void (*)(QQmlListProperty<T> *property, qsizetype index, T *value)}.
 
 Replace the element at position \a index in the list \a property with \a value.
 */
@@ -566,6 +635,17 @@ Replace the element at position \a index in the list \a property with \a value.
 Synonym for \c {void (*)(QQmlListProperty<T> *property)}.
 
 Remove the last element from the list \a property.
+*/
+
+/*!
+\fn bool QQmlListReference::operator==(const QQmlListReference &other) const
+
+Compares this QQmlListReference to \a other, and returns \c true if they are
+equal. The two are only considered equal if one was created from the other
+via copy assignment or copy construction.
+
+\note Independently created references to the same object are not considered
+to be equal.
 */
 
 QT_END_NAMESPACE

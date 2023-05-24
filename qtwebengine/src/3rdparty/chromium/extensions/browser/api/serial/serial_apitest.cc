@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,8 @@
 #include <string>
 #include <utility>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ref_counted.h"
 #include "base/unguessable_token.h"
 #include "chrome/browser/extensions/extension_apitest.h"
@@ -75,31 +74,32 @@ class FakeSerialPort : public device::mojom::SerialPort {
     options_.has_cts_flow_control = true;
   }
 
+  FakeSerialPort(const FakeSerialPort&) = delete;
+  FakeSerialPort& operator=(const FakeSerialPort&) = delete;
+
   ~FakeSerialPort() override = default;
+
+  mojo::PendingRemote<device::mojom::SerialPort> Open(
+      device::mojom::SerialConnectionOptionsPtr options,
+      mojo::PendingRemote<device::mojom::SerialPortClient> client) {
+    if (receiver_.is_bound()) {
+      // Port is already open.
+      return mojo::NullRemote();
+    }
+
+    DCHECK(!client_.is_bound());
+    DCHECK(client.is_valid());
+    client_.Bind(std::move(client));
+
+    DoConfigurePort(*options);
+
+    return receiver_.BindNewPipeAndPassRemote();
+  }
 
   const device::mojom::SerialPortInfo& info() { return *info_; }
 
-  void Bind(mojo::PendingReceiver<device::mojom::SerialPort> receiver) {
-    receivers_.Add(this, std::move(receiver));
-  }
-
  private:
   // device::mojom::SerialPort methods:
-  void Open(device::mojom::SerialConnectionOptionsPtr options,
-            mojo::PendingRemote<device::mojom::SerialPortClient> client,
-            OpenCallback callback) override {
-    if (client_) {
-      // Port is already open.
-      std::move(callback).Run(false);
-      return;
-    }
-
-    DoConfigurePort(*options);
-    DCHECK(client);
-    client_.Bind(std::move(client));
-    std::move(callback).Run(true);
-  }
-
   void StartWriting(mojo::ScopedDataPipeConsumerHandle consumer) override {
     if (in_stream_)
       return;
@@ -165,13 +165,14 @@ class FakeSerialPort : public device::mojom::SerialPort {
     std::move(callback).Run(std::move(info));
   }
 
-  void Close(CloseCallback callback) override {
+  void Close(bool flush, CloseCallback callback) override {
     in_stream_watcher_.Cancel();
     in_stream_.reset();
     out_stream_watcher_.Cancel();
     out_stream_.reset();
     client_.reset();
     std::move(callback).Run();
+    receiver_.reset();
   }
 
   void DoWrite(MojoResult result, const mojo::HandleSignalsState& state) {
@@ -269,7 +270,7 @@ class FakeSerialPort : public device::mojom::SerialPort {
   }
 
   device::mojom::SerialPortInfoPtr info_;
-  mojo::ReceiverSet<device::mojom::SerialPort> receivers_;
+  mojo::Receiver<device::mojom::SerialPort> receiver_{this};
 
   // Currently applied connection options.
   device::mojom::SerialConnectionOptions options_;
@@ -281,8 +282,6 @@ class FakeSerialPort : public device::mojom::SerialPort {
   mojo::SimpleWatcher in_stream_watcher_;
   mojo::ScopedDataPipeProducerHandle out_stream_;
   mojo::SimpleWatcher out_stream_watcher_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeSerialPort);
 };
 
 class FakeSerialPortManager : public device::mojom::SerialPortManager {
@@ -291,6 +290,9 @@ class FakeSerialPortManager : public device::mojom::SerialPortManager {
     AddPort(base::FilePath(FILE_PATH_LITERAL("/dev/fakeserialmojo")));
     AddPort(base::FilePath(FILE_PATH_LITERAL("\\\\COM800\\")));
   }
+
+  FakeSerialPortManager(const FakeSerialPortManager&) = delete;
+  FakeSerialPortManager& operator=(const FakeSerialPortManager&) = delete;
 
   ~FakeSerialPortManager() override = default;
 
@@ -312,15 +314,18 @@ class FakeSerialPortManager : public device::mojom::SerialPortManager {
     std::move(callback).Run(std::move(ports));
   }
 
-  void GetPort(const base::UnguessableToken& token,
-               bool use_alternate_path,
-               mojo::PendingReceiver<device::mojom::SerialPort> receiver,
-               mojo::PendingRemote<device::mojom::SerialPortConnectionWatcher>
-                   watcher) override {
+  void OpenPort(
+      const base::UnguessableToken& token,
+      bool use_alternate_path,
+      device::mojom::SerialConnectionOptionsPtr options,
+      mojo::PendingRemote<device::mojom::SerialPortClient> client,
+      mojo::PendingRemote<device::mojom::SerialPortConnectionWatcher> watcher,
+      OpenPortCallback callback) override {
     DCHECK(!watcher);
     auto it = ports_.find(token);
     DCHECK(it != ports_.end());
-    it->second->Bind(std::move(receiver));
+    std::move(callback).Run(
+        it->second->Open(std::move(options), std::move(client)));
   }
 
   void AddPort(const base::FilePath& path) {
@@ -334,8 +339,6 @@ class FakeSerialPortManager : public device::mojom::SerialPortManager {
 
   mojo::ReceiverSet<device::mojom::SerialPortManager> receivers_;
   std::map<base::UnguessableToken, std::unique_ptr<FakeSerialPort>> ports_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeSerialPortManager);
 };
 
 class SerialApiTest : public ExtensionApiTest {

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,10 +10,9 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
 #include "base/time/time.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/display/manager/configure_displays_task.h"
 #include "ui/display/manager/display_configurator.h"
 #include "ui/display/types/native_display_observer.h"
@@ -21,6 +20,7 @@
 namespace display {
 
 class DisplaySnapshot;
+class DisplayLayoutManager;
 class NativeDisplayDelegate;
 
 class DISPLAY_MANAGER_EXPORT UpdateDisplayConfigurationTask
@@ -31,15 +31,26 @@ class DISPLAY_MANAGER_EXPORT UpdateDisplayConfigurationTask
       /*displays=*/const std::vector<DisplaySnapshot*>&,
       /*unassociated_displays=*/const std::vector<DisplaySnapshot*>&,
       /*new_display_state=*/MultipleDisplayState,
-      /*new_power_state=*/chromeos::DisplayPowerState)>;
+      /*new_power_state=*/chromeos::DisplayPowerState,
+      /*new_vrr_state=*/bool)>;
 
-  UpdateDisplayConfigurationTask(NativeDisplayDelegate* delegate,
-                                 DisplayLayoutManager* layout_manager,
-                                 MultipleDisplayState new_display_state,
-                                 chromeos::DisplayPowerState new_power_state,
-                                 int power_flags,
-                                 bool force_configure,
-                                 ResponseCallback callback);
+  UpdateDisplayConfigurationTask(
+      NativeDisplayDelegate* delegate,
+      DisplayLayoutManager* layout_manager,
+      MultipleDisplayState new_display_state,
+      chromeos::DisplayPowerState new_power_state,
+      int power_flags,
+      RefreshRateThrottleState refresh_rate_throttle_state,
+      bool new_vrr_state,
+      bool force_configure,
+      ConfigurationType configuration_type,
+      ResponseCallback callback);
+
+  UpdateDisplayConfigurationTask(const UpdateDisplayConfigurationTask&) =
+      delete;
+  UpdateDisplayConfigurationTask& operator=(
+      const UpdateDisplayConfigurationTask&) = delete;
+
   ~UpdateDisplayConfigurationTask() override;
 
   void Run();
@@ -63,7 +74,7 @@ class DISPLAY_MANAGER_EXPORT UpdateDisplayConfigurationTask
   void OnEnableSoftwareMirroring(ConfigureDisplaysTask::Status status);
 
   // Starts the configuration process. |callback| is used to continue the task
-  // after |configure_taks_| finishes executing.
+  // after |configure_task_| finishes executing.
   void EnterState(ConfigureDisplaysTask::ResponseCallback callback);
 
   // Finishes display configuration and runs |callback_|.
@@ -78,6 +89,10 @@ class DISPLAY_MANAGER_EXPORT UpdateDisplayConfigurationTask
   // Returns a display state based on the power state.
   MultipleDisplayState ChooseDisplayState() const;
 
+  // Returns whether a display configuration is required to meet the desired
+  // variable refresh rate setting.
+  bool ShouldConfigureVrr() const;
+
   NativeDisplayDelegate* delegate_;       // Not owned.
   DisplayLayoutManager* layout_manager_;  // Not owned.
 
@@ -91,7 +106,19 @@ class DISPLAY_MANAGER_EXPORT UpdateDisplayConfigurationTask
   // DisplayConfigurator.
   int power_flags_;
 
+  // Whether the configuration task should select a low refresh rate
+  // for the internal display.
+  RefreshRateThrottleState refresh_rate_throttle_state_;
+
+  // The requested VRR enabled state which the configuration task should apply
+  // to all capable displays.
+  bool new_vrr_state_;
+
   bool force_configure_;
+
+  // Whether the configuration task should be done without blanking the
+  // displays.
+  const ConfigurationType configuration_type_;
 
   // Used to signal that the task has finished.
   ResponseCallback callback_;
@@ -109,11 +136,9 @@ class DISPLAY_MANAGER_EXPORT UpdateDisplayConfigurationTask
   std::unique_ptr<ConfigureDisplaysTask> configure_task_;
 
   // The timestamp when Run() was called. Null if the task is not running.
-  base::Optional<base::TimeTicks> start_timestamp_;
+  absl::optional<base::TimeTicks> start_timestamp_;
 
   base::WeakPtrFactory<UpdateDisplayConfigurationTask> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(UpdateDisplayConfigurationTask);
 };
 
 }  // namespace display

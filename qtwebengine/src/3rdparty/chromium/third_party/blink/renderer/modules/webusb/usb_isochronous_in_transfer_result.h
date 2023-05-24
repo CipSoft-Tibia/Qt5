@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,7 +9,7 @@
 #include "third_party/blink/renderer/core/typed_arrays/dom_data_view.h"
 #include "third_party/blink/renderer/modules/webusb/usb_isochronous_in_transfer_packet.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
@@ -21,8 +21,7 @@ class USBIsochronousInTransferResult final : public ScriptWrappable {
   static USBIsochronousInTransferResult* Create(
       DOMArrayBuffer* data,
       const HeapVector<Member<USBIsochronousInTransferPacket>>& packets) {
-    DOMDataView* data_view =
-        DOMDataView::Create(data, 0, data->ByteLengthAsSizeT());
+    DOMDataView* data_view = DOMDataView::Create(data, 0, data->ByteLength());
     return MakeGarbageCollected<USBIsochronousInTransferResult>(data_view,
                                                                 packets);
   }
@@ -30,7 +29,7 @@ class USBIsochronousInTransferResult final : public ScriptWrappable {
   static USBIsochronousInTransferResult* Create(
       const HeapVector<Member<USBIsochronousInTransferPacket>>& packets,
       NotShared<DOMDataView> data) {
-    return MakeGarbageCollected<USBIsochronousInTransferResult>(data.View(),
+    return MakeGarbageCollected<USBIsochronousInTransferResult>(data.Get(),
                                                                 packets);
   }
 

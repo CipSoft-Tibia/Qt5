@@ -1,21 +1,21 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_SCHEDULER_WORKER_WORKER_THREAD_SCHEDULER_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_SCHEDULER_WORKER_WORKER_THREAD_SCHEDULER_H_
 
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/scheduling_metrics/task_duration_metric_reporter.h"
 #include "third_party/blink/renderer/platform/scheduler/common/idle_helper.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_status.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_type.h"
-#include "third_party/blink/renderer/platform/scheduler/worker/non_main_thread_scheduler_impl.h"
+#include "third_party/blink/renderer/platform/scheduler/worker/non_main_thread_scheduler_base.h"
 #include "third_party/blink/renderer/platform/scheduler/worker/worker_metrics_helper.h"
 
 namespace base {
+class LazyNow;
 class TaskObserver;
 namespace sequence_manager {
 class SequenceManager;
@@ -29,13 +29,13 @@ class UkmRecorder;
 namespace blink {
 namespace scheduler {
 
-class WorkerScheduler;
+class WorkerSchedulerImpl;
 class WorkerSchedulerProxy;
-class TaskQueueThrottler;
 class WakeUpBudgetPool;
 class CPUTimeBudgetPool;
 
-class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
+class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerBase,
+                                              public ThreadScheduler,
                                               public IdleHelper::Delegate {
  public:
   // |sequence_manager| and |proxy| must remain valid for the entire lifetime of
@@ -44,33 +44,40 @@ class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
       ThreadType thread_type,
       base::sequence_manager::SequenceManager* sequence_manager,
       WorkerSchedulerProxy* proxy);
+  WorkerThreadScheduler(const WorkerThreadScheduler&) = delete;
+  WorkerThreadScheduler& operator=(const WorkerThreadScheduler&) = delete;
   ~WorkerThreadScheduler() override;
 
-  // WebThreadScheduler implementation:
+  // ThreadScheduler implementation:
   scoped_refptr<base::SingleThreadTaskRunner> V8TaskRunner() override;
-  scoped_refptr<base::SingleThreadTaskRunner> CompositorTaskRunner() override;
-  scoped_refptr<base::SingleThreadTaskRunner> NonWakingTaskRunner() override;
+  scoped_refptr<base::SingleThreadTaskRunner> CleanupTaskRunner() override;
   bool ShouldYieldForHighPriorityWork() override;
-  bool CanExceedIdleDeadlineIfRequired() const override;
   void AddTaskObserver(base::TaskObserver* task_observer) override;
   void RemoveTaskObserver(base::TaskObserver* task_observer) override;
-  void AddRAILModeObserver(RAILModeObserver*) override {}
-  void RemoveRAILModeObserver(RAILModeObserver const*) override {}
+  void PostIdleTask(const base::Location&, Thread::IdleTask) override;
+  void PostDelayedIdleTask(const base::Location&,
+                           base::TimeDelta delay,
+                           Thread::IdleTask) override;
+  void PostNonNestableIdleTask(const base::Location&,
+                               Thread::IdleTask) override;
+  base::TimeTicks MonotonicallyIncreasingVirtualTime() override;
+  void SetV8Isolate(v8::Isolate* isolate) override;
   void Shutdown() override;
 
-  // ThreadSchedulerImpl implementation:
-  scoped_refptr<SingleThreadIdleTaskRunner> IdleTaskRunner() override;
-
   // NonMainThreadSchedulerImpl implementation:
+  void Init() override;
   scoped_refptr<NonMainThreadTaskQueue> DefaultTaskQueue() override;
   void OnTaskCompleted(
       NonMainThreadTaskQueue* worker_task_queue,
       const base::sequence_manager::Task& task,
       base::sequence_manager::TaskQueue::TaskTiming* task_timing,
-      base::sequence_manager::LazyNow* lazy_now) override;
+      base::LazyNow* lazy_now) override;
 
   SchedulerHelper* GetSchedulerHelperForTesting();
   base::TimeTicks CurrentIdleTaskDeadlineForTesting() const;
+
+  scoped_refptr<SingleThreadIdleTaskRunner> IdleTaskRunner();
+  scoped_refptr<base::SingleThreadTaskRunner> CompositorTaskRunner();
 
   // Virtual for test.
   virtual void OnLifecycleStateChanged(
@@ -80,28 +87,22 @@ class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
 
   // Each WorkerScheduler should notify NonMainThreadSchedulerImpl when it is
   // created or destroyed.
-  void RegisterWorkerScheduler(WorkerScheduler* worker_scheduler);
-  void UnregisterWorkerScheduler(WorkerScheduler* worker_scheduler);
+  void RegisterWorkerScheduler(WorkerSchedulerImpl* worker_scheduler);
+  void UnregisterWorkerScheduler(WorkerSchedulerImpl* worker_scheduler);
 
   // Returns the control task queue.  Tasks posted to this queue are executed
   // with the highest priority. Care must be taken to avoid starvation of other
   // task queues.
   scoped_refptr<NonMainThreadTaskQueue> ControlTaskQueue();
 
-  // TaskQueueThrottler might be null if throttling is not enabled or
-  // not supported.
-  TaskQueueThrottler* task_queue_throttler() const {
-    return task_queue_throttler_.get();
+  WakeUpBudgetPool* wake_up_budget_pool() const {
+    return wake_up_budget_pool_.get();
   }
-  WakeUpBudgetPool* wake_up_budget_pool() const { return wake_up_budget_pool_; }
   CPUTimeBudgetPool* cpu_time_budget_pool() const {
-    return cpu_time_budget_pool_;
+    return cpu_time_budget_pool_.get();
   }
 
  protected:
-  // NonMainThreadScheduler implementation:
-  void InitImpl() override;
-
   // IdleHelper::Delegate implementation:
   bool CanEnterLongIdlePeriod(
       base::TimeTicks now,
@@ -111,11 +112,12 @@ class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
   void OnIdlePeriodEnded() override {}
   void OnPendingTasksChanged(bool new_state) override {}
 
-  void CreateTaskQueueThrottler();
+  void CreateBudgetPools();
 
-  void SetCPUTimeBudgetPoolForTesting(CPUTimeBudgetPool* cpu_time_budget_pool);
+  void SetCPUTimeBudgetPoolForTesting(
+      std::unique_ptr<CPUTimeBudgetPool> cpu_time_budget_pool);
 
-  HashSet<WorkerScheduler*>& GetWorkerSchedulersForTesting();
+  HashSet<WorkerSchedulerImpl*>& GetWorkerSchedulersForTesting();
 
   void SetUkmTaskSamplingRateForTest(double rate);
   void SetUkmRecorderForTest(std::unique_ptr<ukm::UkmRecorder> ukm_recorder);
@@ -123,6 +125,12 @@ class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
   virtual void PerformMicrotaskCheckpoint();
 
  private:
+  // ThreadSchedulerBase overrides
+  base::SequencedTaskRunner* GetVirtualTimeTaskRunner() override;
+  void OnVirtualTimeDisabled() override;
+  void OnVirtualTimePaused() override;
+  void OnVirtualTimeResumed() override;
+
   void MaybeStartLongIdlePeriod();
 
   void RecordTaskUkm(
@@ -131,9 +139,9 @@ class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
       const base::sequence_manager::TaskQueue::TaskTiming& task_timing);
 
   const ThreadType thread_type_;
+  scoped_refptr<NonMainThreadTaskQueue> idle_helper_queue_;
   IdleHelper idle_helper_;
-  bool initialized_;
-  scoped_refptr<NonMainThreadTaskQueue> control_task_queue_;
+  bool initialized_ = false;
   scoped_refptr<base::SingleThreadTaskRunner> v8_task_runner_;
   scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner_;
   SchedulingLifecycleState lifecycle_state_;
@@ -145,20 +153,16 @@ class PLATFORM_EXPORT WorkerThreadScheduler : public NonMainThreadSchedulerImpl,
   TraceableVariableController traceable_variable_controller_;
 
   // Worker schedulers associated with this thread.
-  HashSet<WorkerScheduler*> worker_schedulers_;
+  HashSet<WorkerSchedulerImpl*> worker_schedulers_;
 
-  std::unique_ptr<TaskQueueThrottler> task_queue_throttler_;
-  // Owned by |task_queue_throttler_|.
-  WakeUpBudgetPool* wake_up_budget_pool_ = nullptr;
-  CPUTimeBudgetPool* cpu_time_budget_pool_ = nullptr;
+  std::unique_ptr<WakeUpBudgetPool> wake_up_budget_pool_;
+  std::unique_ptr<CPUTimeBudgetPool> cpu_time_budget_pool_;
 
   // The status of the parent frame when the worker was created.
   const FrameStatus initial_frame_status_;
 
   const ukm::SourceId ukm_source_id_;
   std::unique_ptr<ukm::UkmRecorder> ukm_recorder_;
-
-  DISALLOW_COPY_AND_ASSIGN(WorkerThreadScheduler);
 };
 
 }  // namespace scheduler

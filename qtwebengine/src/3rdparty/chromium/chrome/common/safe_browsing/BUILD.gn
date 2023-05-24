@@ -1,17 +1,10 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//chrome/common/features.gni")
 import("//components/safe_browsing/buildflags.gni")
 import("//third_party/protobuf/proto_library.gni")
-
-# This file depends on the legacy global sources assignment filter. It should
-# be converted to check target platform before assigning source files to the
-# sources variable. Remove this import and set_sources_assignment_filter call
-# when the file has been converted. See https://crbug.com/1018739 for details.
-import("//build/config/deprecated_default_sources_assignment_filter.gni")
-set_sources_assignment_filter(deprecated_default_sources_assignment_filter)
 
 proto_library("proto") {
   sources = [ "crx_info.proto" ]
@@ -28,10 +21,25 @@ if (safe_browsing_mode == 1) {
       ":download_type_util",
       "//base",
       "//base:i18n",
-      "//components/safe_browsing/core:file_type_policies",
+      "//components/safe_browsing/content/common:file_type_policies",
       "//crypto",
     ]
-    public_deps = [ "//components/safe_browsing/core:csd_proto" ]
+    public_deps = [ "//components/safe_browsing/core/common/proto:csd_proto" ]
+  }
+
+  if (is_linux || is_win) {
+    source_set("document_analyzer_results") {
+      sources = [
+        "document_analyzer_results.cc",
+        "document_analyzer_results.h",
+      ]
+      deps = [
+        ":download_type_util",
+        "//base",
+        "//components/safe_browsing/content/common:file_type_policies",
+      ]
+      public_deps = [ "//components/safe_browsing/core/common/proto:csd_proto" ]
+    }
   }
 
   source_set("download_type_util") {
@@ -41,10 +49,10 @@ if (safe_browsing_mode == 1) {
     ]
     deps = [
       "//base",
-      "//components/safe_browsing/core:features",
-      "//components/safe_browsing/core:file_type_policies",
+      "//components/safe_browsing/content/common:file_type_policies",
+      "//components/safe_browsing/core/common",
     ]
-    public_deps = [ "//components/safe_browsing/core:csd_proto" ]
+    public_deps = [ "//components/safe_browsing/core/common/proto:csd_proto" ]
   }
 
   source_set("rar_analyzer") {
@@ -58,53 +66,66 @@ if (safe_browsing_mode == 1) {
       ":download_type_util",
       "//base",
       "//base:i18n",
-      "//components/safe_browsing/core:features",
-      "//components/safe_browsing/core:file_type_policies",
+      "//components/safe_browsing/content/common:file_type_policies",
+      "//components/safe_browsing/core/common",
       "//third_party/unrar:unrar",
     ]
 
-    defines = [
-      "_FILE_OFFSET_BITS=64",
-      "LARGEFILE_SOURCE",
-      "RAR_SMP",
-      "SILENT",
-
-      # The following is set to disable certain macro definitions in the unrar
-      # source code.
-      "CHROMIUM_UNRAR",
-
-      # Disables exceptions in unrar, replaces them with process termination.
-      "UNRAR_NO_EXCEPTIONS",
-    ]
-
-    public_deps = [ "//components/safe_browsing/core:csd_proto" ]
+    public_deps = [ "//components/safe_browsing/core/common/proto:csd_proto" ]
   }
 
-  source_set("disk_image_type_sniffer_mac") {
-    sources = [
-      "disk_image_type_sniffer_mac.cc",
-      "disk_image_type_sniffer_mac.h",
-    ]
+  if (is_linux || is_win) {
+    source_set("document_analyzer") {
+      sources = [
+        "document_analyzer.cc",
+        "document_analyzer.h",
+      ]
 
-    deps = [ "//base" ]
+      deps = [
+        ":document_analyzer_results",
+        ":download_type_util",
+        "//base",
+        "//components/safe_browsing/content/common:file_type_policies",
+        "//components/safe_browsing/core/common",
+        "//third_party/maldoca:maldoca",
+      ]
+
+      public_deps = [ "//components/safe_browsing/core/common/proto:csd_proto" ]
+    }
+  }
+
+  if (is_mac) {
+    source_set("disk_image_type_sniffer_mac") {
+      sources = [
+        "disk_image_type_sniffer_mac.cc",
+        "disk_image_type_sniffer_mac.h",
+      ]
+
+      deps = [ "//base" ]
+    }
   }
 
   source_set("binary_feature_extractor") {
     sources = [
       "binary_feature_extractor.cc",
       "binary_feature_extractor.h",
-      "binary_feature_extractor_mac.cc",
-      "binary_feature_extractor_win.cc",
-      "mach_o_image_reader_mac.cc",
-      "mach_o_image_reader_mac.h",
     ]
-    if (is_posix) {
+    if (is_mac) {
+      sources += [
+        "binary_feature_extractor_mac.cc",
+        "mach_o_image_reader_mac.cc",
+        "mach_o_image_reader_mac.h",
+      ]
+    } else if (is_win) {
+      sources += [ "binary_feature_extractor_win.cc" ]
+    }
+    if (is_posix || is_fuchsia) {
       sources += [ "binary_feature_extractor_posix.cc" ]
     }
 
     public_deps = [
       "//base",
-      "//components/safe_browsing/core:csd_proto",
+      "//components/safe_browsing/core/common/proto:csd_proto",
       "//crypto",
     ]
   }
@@ -125,7 +146,11 @@ if (safe_browsing_mode == 1) {
 }
 
 source_set("safe_browsing") {
-  deps = [ "//components/safe_browsing/core:file_type_policies" ]
+  deps = []
+
+  if (safe_browsing_mode != 0) {
+    deps += [ "//components/safe_browsing/content/common:file_type_policies" ]
+  }
 
   if (safe_browsing_mode == 1) {
     sources = [
@@ -134,6 +159,8 @@ source_set("safe_browsing") {
       "protobuf_message_log_macros.h",
       "protobuf_message_read_macros.h",
       "protobuf_message_write_macros.h",
+      "seven_zip_analyzer.cc",
+      "seven_zip_analyzer.h",
       "zip_analyzer.cc",
       "zip_analyzer.h",
     ]
@@ -143,20 +170,28 @@ source_set("safe_browsing") {
       ":binary_feature_extractor",
       ":download_type_util",
       ":rar_analyzer",
-      "//components/safe_browsing/core:features",
+      "//components/safe_browsing/core/common",
+      "//third_party/lzma_sdk/google:seven_zip_reader",
     ]
+
+    if (is_linux) {
+      deps += [ ":document_analyzer" ]
+    }
 
     public_deps = [
       ":proto",
       "//base:i18n",
       "//chrome/common:mojo_bindings",
-      "//components/safe_browsing/core:csd_proto",
+      "//components/safe_browsing/core/common/proto:csd_proto",
       "//crypto",
       "//ipc",
       "//third_party/zlib/google:zip",
     ]
     if (is_mac) {
       deps += [ ":disk_image_type_sniffer_mac" ]
+    }
+    if (is_linux || is_win) {
+      public_deps += [ ":document_analyzer_results" ]
     }
   }
 }

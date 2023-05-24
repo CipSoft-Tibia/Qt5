@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,6 @@ class CFWL_ComboList final : public CFWL_ListBox {
 
   int32_t MatchItem(WideStringView wsMatch);
   void ChangeSelected(int32_t iSel);
-  void SetNotifyOwner(bool notify) { m_bNotifyOwner = notify; }
 
  private:
   CFWL_ComboList(CFWL_App* app,

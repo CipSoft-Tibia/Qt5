@@ -18,10 +18,6 @@ qhp.QtWidgets.virtualFolder       = qtwidgets
 qhp.QtWidgets.indexTitle          = Qt Widgets
 qhp.QtWidgets.indexRoot           =
 
-qhp.QtWidgets.filterAttributes    = qtwidgets $QT_VERSION qtrefdoc
-qhp.QtWidgets.customFilters.Qt.name = QtWidgets $QT_VERSION
-qhp.QtWidgets.customFilters.Qt.filterAttributes = qtwidgets $QT_VERSION
-
 qhp.QtWidgets.subprojects         = classes
 qhp.QtWidgets.subprojects.classes.title = C++ Classes
 qhp.QtWidgets.subprojects.classes.indexTitle = Qt Widgets C++ Classes
@@ -30,7 +26,20 @@ qhp.QtWidgets.subprojects.classes.sortPages = true
 
 tagfile                 = ../../../doc/qtwidgets/qtwidgets.tags
 
-depends                 += qtcore qtgui qtdoc qtsql qtdesigner qtquick qmake qtplatformheaders qtsvg qtlinguist
+depends += \
+    qtcore \
+    qtgui \
+    qtdoc \
+    qtsql \
+    qtdesigner \
+    qtquick \
+    qmake \
+    qtcmake \
+    qtsvg \
+    qtlinguist \
+    qthelp \
+    qtopengl \
+    qtshadertools
 
 headerdirs  += ..
 
@@ -39,13 +48,23 @@ sourcedirs  += .. \
 
 exampledirs += ../../../examples/widgets \
                ../../../doc/src/snippets \
-               ../ \
+               .. \
+               . \
                snippets
 
 excludedirs += snippets
 
 # Included in qttestlib.qdocconf instead
 excludefiles += ../kernel/qtestsupport_widgets.cpp
+
+# Exclude forwarding headers to QtGUI to avoid duplicates in the node tree
+excludefiles += \
+    ../dialogs/qfilesystemmodel.h \
+    ../kernel/qaction.h \
+    ../kernel/qactiongroup.h \
+    ../kernel/qshortcut.h \
+    ../util/qundogroup.h \
+    ../util/qundostack.h
 
 imagedirs   += images \
                ../../../doc/src/images \
@@ -54,7 +73,13 @@ imagedirs   += images \
 
 navigation.landingpage = "Qt Widgets"
 navigation.cppclassespage = "Qt Widgets C++ Classes"
-manifestmeta.highlighted.names = "QtWidgets/Calendar Widget Example" \
-                                 "QtWidgets/Editable Tree Model Example" \
-                                 "QtWidgets/Address Book Example" \
-                                 "QtWidgets/Application Example"
+
+# Highlighted examples for User Interface Components category
+manifestmeta.highlighted.names = \
+    "QtWidgets/Editable Tree Model Example" \
+    "QtWidgets/Menus Example"
+
+# Highlighted examples for Desktop category
+manifestmeta.highlighted.names += \
+    "QtWidgets/System Tray Icon Example" \
+    "QtWidgets/Taking a Screenshot"

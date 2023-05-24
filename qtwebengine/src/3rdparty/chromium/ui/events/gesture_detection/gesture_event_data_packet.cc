@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -113,12 +113,12 @@ GestureEventDataPacket GestureEventDataPacket::FromTouchTimeout(
 }
 
 void GestureEventDataPacket::Ack(bool event_consumed,
-                                 bool is_source_touch_event_set_non_blocking) {
+                                 bool is_source_touch_event_set_blocking) {
   DCHECK_EQ(static_cast<int>(ack_state_), static_cast<int>(AckState::PENDING));
   ack_state_ = event_consumed ? AckState::CONSUMED : AckState::UNCONSUMED;
   for (auto& gesture : gestures_.container()) {
-    gesture.details.set_is_source_touch_event_set_non_blocking(
-        is_source_touch_event_set_non_blocking);
+    gesture.details.set_is_source_touch_event_set_blocking(
+        is_source_touch_event_set_blocking);
   }
 }
 

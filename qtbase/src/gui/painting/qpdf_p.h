@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QPDF_P_H
 #define QPDF_P_H
@@ -55,12 +19,12 @@
 
 #ifndef QT_NO_PDF
 
+#include "QtCore/qlist.h"
 #include "QtCore/qstring.h"
-#include "QtCore/qvector.h"
-#include "private/qstroker_p.h"
-#include "private/qpaintengine_p.h"
 #include "private/qfontengine_p.h"
 #include "private/qfontsubset_p.h"
+#include "private/qpaintengine_p.h"
+#include "private/qstroker_p.h"
 #include "qpagelayout.h"
 
 QT_BEGIN_NAMESPACE
@@ -86,6 +50,8 @@ namespace QPdf {
         ByteStream &operator <<(const ByteStream &src);
         ByteStream &operator <<(qreal val);
         ByteStream &operator <<(int val);
+        ByteStream &operator <<(uint val) { return (*this << int(val)); }
+        ByteStream &operator <<(qint64 val) { return (*this << int(val)); }
         ByteStream &operator <<(const QPointF &p);
         // Note that the stream may be invalidated by calls that insert data.
         QIODevice *stream();
@@ -147,13 +113,13 @@ class QPdfPage : public QPdf::ByteStream
 public:
     QPdfPage();
 
-    QVector<uint> images;
-    QVector<uint> graphicStates;
-    QVector<uint> patterns;
-    QVector<uint> fonts;
-    QVector<uint> annotations;
+    QList<uint> images;
+    QList<uint> graphicStates;
+    QList<uint> patterns;
+    QList<uint> fonts;
+    QList<uint> annotations;
 
-    void streamImage(int w, int h, int object);
+    void streamImage(int w, int h, uint object);
 
     QSize pageSize;
 private:
@@ -265,7 +231,7 @@ public:
     QPointF brushOrigin;
     QBrush brush;
     QPen pen;
-    QVector<QPainterPath> clips;
+    QList<QPainterPath> clips;
     bool clipEnabled;
     bool allClipped;
     bool hasPen;
@@ -305,12 +271,14 @@ private:
     int writeXmpDcumentMetaData();
     int writeOutputIntent();
     void writePageRoot();
+    void writeDestsRoot();
     void writeAttachmentRoot();
+    void writeNamesRoot();
     void writeFonts();
     void embedFont(QFontSubset *font);
     qreal calcUserUnit() const;
 
-    QVector<int> xrefPositions;
+    QList<int> xrefPositions;
     QDataStream* stream;
     int streampos;
 
@@ -319,7 +287,7 @@ private:
     void writePage();
 
     int addXrefEntry(int object, bool printostr = true);
-    void printString(const QString &string);
+    void printString(QStringView string);
     void xprintf(const char* fmt, ...);
     inline void write(const QByteArray &data) {
         stream->writeRawData(data.constData(), data.size());
@@ -327,7 +295,7 @@ private:
     }
 
     int writeCompressed(const char *src, int len);
-    inline int writeCompressed(const QByteArray &data) { return writeCompressed(data.constData(), data.length()); }
+    inline int writeCompressed(const QByteArray &data) { return writeCompressed(data.constData(), data.size()); }
     int writeCompressed(QIODevice *dev);
 
     struct AttachmentInfo
@@ -339,12 +307,21 @@ private:
         QString mimeType;
     };
 
+    struct DestInfo
+    {
+        QString anchor;
+        uint pageObj;
+        QPointF coords;
+    };
+
     // various PDF objects
-    int pageRoot, embeddedfilesRoot, namesRoot, catalog, info, graphicsState, patternColorSpace;
-    QVector<uint> pages;
+    int pageRoot, namesRoot, destsRoot, attachmentsRoot, catalog, info;
+    int graphicsState, patternColorSpace;
+    QList<uint> pages;
     QHash<qint64, uint> imageCache;
     QHash<QPair<uint, uint>, uint > alphaCache;
-    QVector<AttachmentInfo> fileCache;
+    QList<DestInfo> destCache;
+    QList<AttachmentInfo> fileCache;
     QByteArray xmpDocumentMetadata;
 };
 

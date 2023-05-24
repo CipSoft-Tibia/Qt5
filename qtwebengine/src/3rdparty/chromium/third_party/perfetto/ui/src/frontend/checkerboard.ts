@@ -15,9 +15,7 @@
 const LOADING_TEXT = 'Loading...';
 let LOADING_TEXT_WIDTH = 0;
 
-/**
- * Checker board the range [leftPx, rightPx].
- */
+// Checker board the range [leftPx, rightPx].
 export function checkerboard(
     ctx: CanvasRenderingContext2D,
     heightPx: number,
@@ -33,17 +31,16 @@ export function checkerboard(
   if (LOADING_TEXT_WIDTH === 0) {
     LOADING_TEXT_WIDTH = ctx.measureText(LOADING_TEXT).width;
   }
-  ctx.fillText(
-      LOADING_TEXT,
-      leftPx + widthPx / 2 - LOADING_TEXT_WIDTH,
-      heightPx / 2,
-      widthPx);
+  if (LOADING_TEXT_WIDTH <= widthPx) {
+    ctx.fillText(
+        LOADING_TEXT,
+        leftPx + widthPx / 2 - LOADING_TEXT_WIDTH / 2,
+        heightPx / 2);
+  }
   ctx.textBaseline = oldBaseline;
 }
 
-/**
- * Checker board everything between [startPx, endPx] except [leftPx, rightPx].
- */
+// Checker board everything between [startPx, endPx] except [leftPx, rightPx].
 export function checkerboardExcept(
     ctx: CanvasRenderingContext2D,
     heightPx: number,

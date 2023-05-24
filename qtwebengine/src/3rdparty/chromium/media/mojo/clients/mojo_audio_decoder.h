@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,8 @@
 
 #include <memory>
 
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/sequence_checker.h"
 #include "media/base/audio_decoder.h"
 #include "media/mojo/mojom/audio_decoder.mojom.h"
 #include "media/mojo/mojom/media_types.mojom.h"
@@ -17,7 +17,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 
 namespace base {
-class SingleThreadTaskRunner;
+class SequencedTaskRunner;
 }
 
 namespace media {
@@ -25,16 +25,21 @@ namespace media {
 class MojoDecoderBufferWriter;
 
 // An AudioDecoder that proxies to a mojom::AudioDecoder.
-class MojoAudioDecoder : public AudioDecoder, public mojom::AudioDecoderClient {
+class MojoAudioDecoder final : public AudioDecoder,
+                               public mojom::AudioDecoderClient {
  public:
-  MojoAudioDecoder(scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+  MojoAudioDecoder(scoped_refptr<base::SequencedTaskRunner> task_runner,
                    mojo::PendingRemote<mojom::AudioDecoder> remote_decoder);
+
+  MojoAudioDecoder(const MojoAudioDecoder&) = delete;
+  MojoAudioDecoder& operator=(const MojoAudioDecoder&) = delete;
+
   ~MojoAudioDecoder() final;
 
   // Decoder implementation
   bool IsPlatformDecoder() const final;
   bool SupportsDecryption() const final;
-  std::string GetDisplayName() const final;
+  AudioDecoderType GetDecoderType() const override;
 
   // AudioDecoder implementation.
   void Initialize(const AudioDecoderConfig& config,
@@ -61,18 +66,21 @@ class MojoAudioDecoder : public AudioDecoder, public mojom::AudioDecoderClient {
   void OnConnectionError();
 
   // Fail an initialization with a Status.
-  void FailInit(InitCB init_cb, Status err);
+  void FailInit(InitCB init_cb, DecoderStatus err);
 
   // Called when |remote_decoder_| finished initialization.
-  void OnInitialized(const Status& status, bool needs_bitstream_conversion);
+  void OnInitialized(const DecoderStatus& status,
+                     bool needs_bitstream_conversion,
+                     AudioDecoderType decoder_type);
 
   // Called when |remote_decoder_| accepted or rejected DecoderBuffer.
-  void OnDecodeStatus(const Status& decode_status);
+  void OnDecodeStatus(const DecoderStatus& decode_status);
 
   // called when |remote_decoder_| finished Reset() sequence.
   void OnResetDone();
 
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+  scoped_refptr<base::SequencedTaskRunner> task_runner_;
+  SEQUENCE_CHECKER(sequence_checker_);
 
   // This class is constructed on one thread and used exclusively on another
   // thread. This member is used to safely pass the
@@ -100,8 +108,7 @@ class MojoAudioDecoder : public AudioDecoder, public mojom::AudioDecoderClient {
   // Flag telling whether this decoder requires bitstream conversion.
   // Passed from |remote_decoder_| as a result of its initialization.
   bool needs_bitstream_conversion_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(MojoAudioDecoder);
+  AudioDecoderType decoder_type_ = AudioDecoderType::kUnknown;
 };
 
 }  // namespace media

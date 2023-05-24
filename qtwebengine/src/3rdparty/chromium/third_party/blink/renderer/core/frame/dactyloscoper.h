@@ -1,11 +1,11 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_DACTYLOSCOPER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_FRAME_DACTYLOSCOPER_H_
 
-#include "base/optional.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/privacy_budget/identifiable_token.h"
 #include "third_party/blink/public/common/privacy_budget/identifiable_token_builder.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -25,11 +25,19 @@ class CORE_EXPORT Dactyloscoper {
   DISALLOW_NEW();
 
  public:
+  // HighEntropyTracer traces calls of HighEntropy APIs to perfetto.
+  //
+  // NOTE: This class must always be instantiated on the stack.
+  class CORE_EXPORT HighEntropyTracer {
+   public:
+    HighEntropyTracer(const char* called_api,
+                      const v8::FunctionCallbackInfo<v8::Value>& info);
+    ~HighEntropyTracer();
+  };
+
   Dactyloscoper();
-
-  void Record(WebFeature);
-
-  static void Record(ExecutionContext*, WebFeature);
+  Dactyloscoper(const Dactyloscoper&) = delete;
+  Dactyloscoper& operator=(const Dactyloscoper&) = delete;
 
   // These are helpers used by the generated bindings code when invoking IDL
   // methods with HighEntropy=Direct.
@@ -62,7 +70,7 @@ class CORE_EXPORT Dactyloscoper {
   template <typename T>
   static void RecordDirectSurface(ExecutionContext* context,
                                   WebFeature feature,
-                                  const base::Optional<T>& value) {
+                                  const absl::optional<T>& value) {
     if (value.has_value()) {
       RecordDirectSurface(context, feature, value.value());
     } else {
@@ -70,9 +78,6 @@ class CORE_EXPORT Dactyloscoper {
                           IdentifiableTokenBuilder().GetToken());
     }
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(Dactyloscoper);
 };
 
 }  // namespace blink

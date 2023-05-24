@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/private/platforminputcontext_p.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardinputcontext.h>
@@ -96,7 +70,7 @@ void PlatformInputContext::commit()
 void PlatformInputContext::update(Qt::InputMethodQueries queries)
 {
     VIRTUALKEYBOARD_DEBUG() << "PlatformInputContext::update():" << queries;
-    bool enabled = inputMethodQuery(Qt::ImEnabled).toBool();
+    const bool enabled = inputMethodAccepted();
 #ifdef QT_VIRTUALKEYBOARD_DESKTOP
     if (enabled && !m_inputPanel && !m_desktopModeDisabled) {
         m_inputPanel = new DesktopInputPanel(this);
@@ -110,14 +84,10 @@ void PlatformInputContext::update(Qt::InputMethodQueries queries)
     }
 #endif
     if (m_inputContext) {
-        if (enabled) {
+        if (enabled)
             m_inputContext->priv()->update(queries);
-            if (m_visible)
-                updateInputPanelVisible();
-        } else {
-            hideInputPanel();
-        }
         m_inputContext->priv()->setFocus(enabled);
+        updateInputPanelVisible();
     }
 }
 
@@ -200,6 +170,9 @@ void PlatformInputContext::setFocusObject(QObject *object)
     Q_ASSERT(m_inputContext == nullptr ||
              m_inputContext->priv()->shadow()->inputItem() == nullptr ||
              m_inputContext->priv()->shadow()->inputItem() != object);
+    QScopedPointer<QVirtualKeyboardScopedState> setFocusState;
+    if (m_inputContext)
+        setFocusState.reset(new QVirtualKeyboardScopedState(m_inputContext->priv(), QVirtualKeyboardInputContextPrivate::State::SetFocus));
     if (m_focusObject != object) {
         if (m_focusObject)
             m_focusObject->removeEventFilter(this);
@@ -221,16 +194,6 @@ bool PlatformInputContext::eventFilter(QObject *object, QEvent *event)
     if (event != m_filterEvent && object == m_focusObject && m_inputContext)
         return m_inputContext->priv()->filterEvent(event);
     return false;
-}
-
-void PlatformInputContext::setInputMethods(const QStringList &inputMethods)
-{
-    m_inputMethods = inputMethods;
-}
-
-QStringList PlatformInputContext::inputMethods() const
-{
-    return m_inputMethods;
 }
 
 void PlatformInputContext::sendEvent(QEvent *event)
@@ -285,6 +248,16 @@ void PlatformInputContext::setInputContext(QVirtualKeyboardInputContext *context
     }
 }
 
+bool PlatformInputContext::evaluateInputPanelVisible() const
+{
+    // Show input panel when input panel is requested by showInputPanel()
+    // and focus object is set to an input control with input method accepted (Qt::ImEnabled)
+    // or input events without focus are enabled.
+    return m_visible &&
+            ((m_focusObject && inputMethodAccepted()) ||
+             QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS);
+}
+
 void PlatformInputContext::keyboardRectangleChanged()
 {
     m_inputPanel->setInputRect(m_inputContext->priv()->keyboardRectangle().toRect());
@@ -295,13 +268,16 @@ void PlatformInputContext::updateInputPanelVisible()
     if (!m_inputPanel)
         return;
 
-    if (m_visible != m_inputPanel->isVisible()) {
-        if (m_visible)
+    const bool visible = evaluateInputPanelVisible();
+    if (visible != m_inputPanel->isVisible()) {
+        if (visible)
             m_inputPanel->show();
         else
             m_inputPanel->hide();
-        if (m_selectionControl)
-            m_selectionControl->setEnabled(m_visible);
+        if (m_selectionControl) {
+            m_selectionControl->setEnabled(visible);
+            m_inputContext->priv()->updateSelectionControlVisible(visible);
+        }
         emitInputPanelVisibleChanged();
     }
 }

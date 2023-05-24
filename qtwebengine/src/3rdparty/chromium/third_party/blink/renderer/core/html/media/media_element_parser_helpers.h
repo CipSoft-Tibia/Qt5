@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@ class LayoutObject;
 namespace media_element_parser_helpers {
 
 // When |layout_object| is not properly styled (according to
-// FeaturePolicyFeature::kUnsizedMedia) this invocation counts a potential
+// PermissionsPolicyFeature::kUnsizedMedia) this invocation counts a potential
 // violation. If |send_report| is set, then an actual violation report is
 // generated.
 void CheckUnsizedMediaViolation(const LayoutObject* layout_object,

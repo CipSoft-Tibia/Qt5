@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -38,6 +38,11 @@ namespace sockets.tcp {
   // Callback from the <code>create</code> method.
   // |createInfo| : The result of the socket creation.
   callback CreateCallback = void (CreateInfo createInfo);
+
+  // DNS resolution preferences. The default is <code>any</code> and uses the
+  // current OS config which may return IPv4 or IPv6. <code>ipv4</code> forces
+  // IPv4, and <code>ipv6</code> forces IPv6.
+  enum DnsQueryType { any, ipv4, ipv6 };
 
   // Callback from the <code>connect</code> method.
   // |result| : The result code returned from the underlying network call.
@@ -81,9 +86,13 @@ namespace sockets.tcp {
   callback SetNoDelayCallback = void (long result);
 
   dictionary TLSVersionConstraints {
-    // The minimum and maximum acceptable versions of TLS. These will
-    // be <code>tls1</code>, <code>tls1.1</code>, <code>tls1.2</code>, or
-    // <code>tls1.3</code>.
+    // The minimum and maximum acceptable versions of TLS. Supported values are
+    // <code>tls1.2</code> or <code>tls1.3</code>.
+    //
+    // The values <code>tls1</code> and <code>tls1.1</code> are no longer
+    // supported. If |min| is set to one of these values, it will be silently
+    // clamped to <code>tls1.2</code>. If |max| is set to one of those values,
+    // or any other unrecognized value, it will be silently ignored.
     DOMString? min;
     DOMString? max;
   };
@@ -211,10 +220,12 @@ namespace sockets.tcp {
     // |peerAddress| : The address of the remote machine. DNS name, IPv4 and
     //  IPv6 formats are supported.
     // |peerPort| : The port of the remote machine.
+    // |dnsQueryType| : The address resolution preference.
     // |callback| : Called when the connect attempt is complete.
     static void connect(long socketId,
                         DOMString peerAddress,
                         long peerPort,
+                        optional DnsQueryType dnsQueryType,
                         ConnectCallback callback);
 
     // Disconnects the socket.

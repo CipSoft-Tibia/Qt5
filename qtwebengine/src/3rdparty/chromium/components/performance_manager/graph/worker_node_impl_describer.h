@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -26,7 +26,8 @@ class WorkerNodeImplDescriber : public GraphOwnedDefaultImpl,
   void OnTakenFromGraph(Graph* graph) override;
 
   // NodeDataDescriber implementation:
-  base::Value DescribeWorkerNodeData(const WorkerNode* node) const override;
+  base::Value::Dict DescribeWorkerNodeData(
+      const WorkerNode* node) const override;
 };
 
 }  // namespace performance_manager

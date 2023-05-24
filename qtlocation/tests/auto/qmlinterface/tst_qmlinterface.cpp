@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QtTest>
 #include <QtQml/QQmlEngine>
@@ -97,14 +72,15 @@ tst_qmlinterface::tst_qmlinterface()
     m_rectangle.setWidth(40.0);
 
     m_location.setAddress(m_address);
-    m_location.setBoundingBox(m_rectangle);
+    m_location.setBoundingShape(m_rectangle);
     m_location.setCoordinate(m_coordinate);
 
     m_category.setName(QStringLiteral("Test category"));
     m_category.setCategoryId(QStringLiteral("test-category-id"));
 
     QVariantMap iconParams;
-    iconParams.insert(QPlaceIcon::SingleUrl, QUrl(QStringLiteral("http://www.example.com/test-icon.png")));
+    iconParams.insert(QPlaceIcon::SingleUrl,
+                      QStringLiteral("http://www.example.com/test-icon.png"));
     m_icon.setParameters(iconParams);
 
     m_ratings.setAverage(3.5);
@@ -338,7 +314,7 @@ void tst_qmlinterface::testPlace()
     QVERIFY(qmlObject->property("name").toString().isEmpty());
     QVERIFY(qmlObject->property("placeId").toString().isEmpty());
     QVERIFY(qmlObject->property("attribution").toString().isEmpty());
-    QQmlListReference categories(qmlObject, "categories", &engine);
+    QQmlListReference categories(qmlObject, "categories");
     QCOMPARE(categories.count(), 0);
     QCOMPARE(qmlObject->property("location").value<QGeoLocation>(), QGeoLocation());
     QCOMPARE(qmlObject->property("ratings").value<QPlaceRatings>(), QPlaceRatings());

@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgeoroutereply.h"
 #include "qgeoroutereply_p.h"
@@ -54,13 +21,13 @@ QT_BEGIN_NAMESPACE
     The isFinished(), error() and errorString() methods provide information
     on whether the operation has completed and if it completed successfully.
 
-    The finished() and error(QGeoRouteReply::Error,QString)
+    The finished() and errorOccurred(QGeoRouteReply::Error,QString)
     signals can be used to monitor the progress of the operation.
 
     It is possible that a newly created QGeoRouteReply may be in a finished
     state, most commonly because an error has occurred. Since such an instance
     will never emit the finished() or
-    error(QGeoRouteReply::Error,QString) signals, it is
+    errorOccurred(QGeoRouteReply::Error,QString) signals, it is
     important to check the result of isFinished() before making the connections
     to the signals. The documentation for QGeoRoutingManager demonstrates how
     this might be carried out.
@@ -143,14 +110,14 @@ bool QGeoRouteReply::isFinished() const
     Sets the error state of this reply to \a error and the textual
     representation of the error to \a errorString.
 
-    This will also cause error() and finished() signals to be emitted, in that
+    This will also cause errorOccurred() and finished() signals to be emitted, in that
     order.
 */
 void QGeoRouteReply::setError(QGeoRouteReply::Error error, const QString &errorString)
 {
     d_ptr->error = error;
     d_ptr->errorString = errorString;
-    emit this->error(error, errorString);
+    emit errorOccurred(error, errorString);
     setFinished(true);
 }
 
@@ -245,7 +212,7 @@ void QGeoRouteReply::abort()
     signal. Use deleteLater() instead.
 */
 /*!
-    \fn void QGeoRouteReply::error(QGeoRouteReply::Error error, const QString &errorString)
+    \fn void QGeoRouteReply::errorOccurred(QGeoRouteReply::Error error, const QString &errorString)
 
     This signal is emitted when an error has been detected in the processing of
     this reply. The finished() signal will probably follow.
@@ -253,7 +220,7 @@ void QGeoRouteReply::abort()
     The error will be described by the error code \a error. If \a errorString is
     not empty it will contain a textual description of the error.
 
-    This signal and QGeoRoutingManager::error() will be emitted at the same time.
+    This signal and QGeoRoutingManager::errorOccurred() will be emitted at the same time.
 
     \note Do not delete this reply object in the slot connected to this
     signal. Use deleteLater() instead.
@@ -263,15 +230,13 @@ void QGeoRouteReply::abort()
 *******************************************************************************/
 
 QGeoRouteReplyPrivate::QGeoRouteReplyPrivate(const QGeoRouteRequest &request)
-    : error(QGeoRouteReply::NoError),
-      isFinished(false),
-      request(request) {}
+    : request(request)
+{}
 
 QGeoRouteReplyPrivate::QGeoRouteReplyPrivate(QGeoRouteReply::Error error, QString errorString)
     : error(error),
       errorString(errorString),
-      isFinished(true) {}
-
-QGeoRouteReplyPrivate::~QGeoRouteReplyPrivate() {}
+      isFinished(true)
+{}
 
 QT_END_NAMESPACE

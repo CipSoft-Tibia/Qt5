@@ -44,6 +44,7 @@ enum VectorScopeMode {
 enum VectorScopeDraw {
     DOT,
     LINE,
+    AALINE,
     DRAW_NB,
 };
 
@@ -75,48 +76,50 @@ typedef struct AudioVectorScopeContext {
 
 #define OFFSET(x) offsetof(AudioVectorScopeContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
+#define TFLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption avectorscope_options[] = {
-    { "mode", "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=LISSAJOUS}, 0, MODE_NB-1, FLAGS, "mode" },
-    { "m",    "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=LISSAJOUS}, 0, MODE_NB-1, FLAGS, "mode" },
-    { "lissajous",    "", 0, AV_OPT_TYPE_CONST, {.i64=LISSAJOUS},    0, 0, FLAGS, "mode" },
-    { "lissajous_xy", "", 0, AV_OPT_TYPE_CONST, {.i64=LISSAJOUS_XY}, 0, 0, FLAGS, "mode" },
-    { "polar",        "", 0, AV_OPT_TYPE_CONST, {.i64=POLAR},        0, 0, FLAGS, "mode" },
+    { "mode", "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=LISSAJOUS}, 0, MODE_NB-1, TFLAGS, "mode" },
+    { "m",    "set mode", OFFSET(mode), AV_OPT_TYPE_INT, {.i64=LISSAJOUS}, 0, MODE_NB-1, TFLAGS, "mode" },
+    { "lissajous",    "", 0, AV_OPT_TYPE_CONST, {.i64=LISSAJOUS},    0, 0, TFLAGS, "mode" },
+    { "lissajous_xy", "", 0, AV_OPT_TYPE_CONST, {.i64=LISSAJOUS_XY}, 0, 0, TFLAGS, "mode" },
+    { "polar",        "", 0, AV_OPT_TYPE_CONST, {.i64=POLAR},        0, 0, TFLAGS, "mode" },
     { "rate", "set video rate", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str="25"}, 0, INT_MAX, FLAGS },
     { "r",    "set video rate", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str="25"}, 0, INT_MAX, FLAGS },
     { "size", "set video size", OFFSET(w), AV_OPT_TYPE_IMAGE_SIZE, {.str="400x400"}, 0, 0, FLAGS },
     { "s",    "set video size", OFFSET(w), AV_OPT_TYPE_IMAGE_SIZE, {.str="400x400"}, 0, 0, FLAGS },
-    { "rc", "set red contrast",   OFFSET(contrast[0]), AV_OPT_TYPE_INT, {.i64=40},  0, 255, FLAGS },
-    { "gc", "set green contrast", OFFSET(contrast[1]), AV_OPT_TYPE_INT, {.i64=160}, 0, 255, FLAGS },
-    { "bc", "set blue contrast",  OFFSET(contrast[2]), AV_OPT_TYPE_INT, {.i64=80},  0, 255, FLAGS },
-    { "ac", "set alpha contrast", OFFSET(contrast[3]), AV_OPT_TYPE_INT, {.i64=255}, 0, 255, FLAGS },
-    { "rf", "set red fade",       OFFSET(fade[0]), AV_OPT_TYPE_INT, {.i64=15}, 0, 255, FLAGS },
-    { "gf", "set green fade",     OFFSET(fade[1]), AV_OPT_TYPE_INT, {.i64=10}, 0, 255, FLAGS },
-    { "bf", "set blue fade",      OFFSET(fade[2]), AV_OPT_TYPE_INT, {.i64=5},  0, 255, FLAGS },
-    { "af", "set alpha fade",     OFFSET(fade[3]), AV_OPT_TYPE_INT, {.i64=5},  0, 255, FLAGS },
-    { "zoom", "set zoom factor",  OFFSET(zoom), AV_OPT_TYPE_DOUBLE, {.dbl=1},  0, 10, FLAGS },
-    { "draw", "set draw mode", OFFSET(draw), AV_OPT_TYPE_INT, {.i64=DOT}, 0, DRAW_NB-1, FLAGS, "draw" },
-    { "dot",   "", 0, AV_OPT_TYPE_CONST, {.i64=DOT} , 0, 0, FLAGS, "draw" },
-    { "line",  "", 0, AV_OPT_TYPE_CONST, {.i64=LINE}, 0, 0, FLAGS, "draw" },
-    { "scale", "set amplitude scale mode", OFFSET(scale), AV_OPT_TYPE_INT, {.i64=LIN}, 0, SCALE_NB-1, FLAGS, "scale" },
-    { "lin",   "linear",      0, AV_OPT_TYPE_CONST, {.i64=LIN},  0, 0, FLAGS, "scale" },
-    { "sqrt",  "square root", 0, AV_OPT_TYPE_CONST, {.i64=SQRT}, 0, 0, FLAGS, "scale" },
-    { "cbrt",  "cube root",   0, AV_OPT_TYPE_CONST, {.i64=CBRT}, 0, 0, FLAGS, "scale" },
-    { "log",   "logarithmic", 0, AV_OPT_TYPE_CONST, {.i64=LOG},  0, 0, FLAGS, "scale" },
-    { "swap", "swap x axis with y axis", OFFSET(swap), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, FLAGS },
-    { "mirror", "mirror axis", OFFSET(mirror), AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "mirror" },
-    { "none",  "no mirror", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "mirror" },
-    { "x",  "mirror x",     0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "mirror" },
-    { "y",  "mirror y",     0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, FLAGS, "mirror" },
-    { "xy", "mirror both",  0, AV_OPT_TYPE_CONST, {.i64=3}, 0, 0, FLAGS, "mirror" },
+    { "rc", "set red contrast",   OFFSET(contrast[0]), AV_OPT_TYPE_INT, {.i64=40},  0, 255, TFLAGS },
+    { "gc", "set green contrast", OFFSET(contrast[1]), AV_OPT_TYPE_INT, {.i64=160}, 0, 255, TFLAGS },
+    { "bc", "set blue contrast",  OFFSET(contrast[2]), AV_OPT_TYPE_INT, {.i64=80},  0, 255, TFLAGS },
+    { "ac", "set alpha contrast", OFFSET(contrast[3]), AV_OPT_TYPE_INT, {.i64=255}, 0, 255, TFLAGS },
+    { "rf", "set red fade",       OFFSET(fade[0]), AV_OPT_TYPE_INT, {.i64=15}, 0, 255, TFLAGS },
+    { "gf", "set green fade",     OFFSET(fade[1]), AV_OPT_TYPE_INT, {.i64=10}, 0, 255, TFLAGS },
+    { "bf", "set blue fade",      OFFSET(fade[2]), AV_OPT_TYPE_INT, {.i64=5},  0, 255, TFLAGS },
+    { "af", "set alpha fade",     OFFSET(fade[3]), AV_OPT_TYPE_INT, {.i64=5},  0, 255, TFLAGS },
+    { "zoom", "set zoom factor",  OFFSET(zoom), AV_OPT_TYPE_DOUBLE, {.dbl=1},  0, 10, TFLAGS },
+    { "draw", "set draw mode", OFFSET(draw), AV_OPT_TYPE_INT, {.i64=DOT}, 0, DRAW_NB-1, TFLAGS, "draw" },
+    { "dot",   "draw dots",               0, AV_OPT_TYPE_CONST, {.i64=DOT} , 0, 0, TFLAGS, "draw" },
+    { "line",  "draw lines",              0, AV_OPT_TYPE_CONST, {.i64=LINE}, 0, 0, TFLAGS, "draw" },
+    { "aaline","draw anti-aliased lines", 0, AV_OPT_TYPE_CONST, {.i64=AALINE},0,0, TFLAGS, "draw" },
+    { "scale", "set amplitude scale mode", OFFSET(scale), AV_OPT_TYPE_INT, {.i64=LIN}, 0, SCALE_NB-1, TFLAGS, "scale" },
+    { "lin",   "linear",      0, AV_OPT_TYPE_CONST, {.i64=LIN},  0, 0, TFLAGS, "scale" },
+    { "sqrt",  "square root", 0, AV_OPT_TYPE_CONST, {.i64=SQRT}, 0, 0, TFLAGS, "scale" },
+    { "cbrt",  "cube root",   0, AV_OPT_TYPE_CONST, {.i64=CBRT}, 0, 0, TFLAGS, "scale" },
+    { "log",   "logarithmic", 0, AV_OPT_TYPE_CONST, {.i64=LOG},  0, 0, TFLAGS, "scale" },
+    { "swap", "swap x axis with y axis", OFFSET(swap), AV_OPT_TYPE_BOOL, {.i64=1}, 0, 1, TFLAGS },
+    { "mirror", "mirror axis", OFFSET(mirror), AV_OPT_TYPE_INT, {.i64=0}, 0, 3, TFLAGS, "mirror" },
+    { "none",  "no mirror", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, TFLAGS, "mirror" },
+    { "x",  "mirror x",     0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, TFLAGS, "mirror" },
+    { "y",  "mirror y",     0, AV_OPT_TYPE_CONST, {.i64=2}, 0, 0, TFLAGS, "mirror" },
+    { "xy", "mirror both",  0, AV_OPT_TYPE_CONST, {.i64=3}, 0, 0, TFLAGS, "mirror" },
     { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(avectorscope);
 
-static void draw_dot(AudioVectorScopeContext *s, unsigned x, unsigned y)
+static void draw_dot(AudioVectorScopeContext *s, unsigned x, unsigned y, int value)
 {
-    const int linesize = s->outpicref->linesize[0];
+    const ptrdiff_t linesize = s->outpicref->linesize[0];
     uint8_t *dst;
 
     if (s->zoom > 1) {
@@ -127,11 +130,11 @@ static void draw_dot(AudioVectorScopeContext *s, unsigned x, unsigned y)
         x = FFMIN(x, s->w - 1);
     }
 
-    dst = &s->outpicref->data[0][y * linesize + x * 4];
-    dst[0] = FFMIN(dst[0] + s->contrast[0], 255);
-    dst[1] = FFMIN(dst[1] + s->contrast[1], 255);
-    dst[2] = FFMIN(dst[2] + s->contrast[2], 255);
-    dst[3] = FFMIN(dst[3] + s->contrast[3], 255);
+    dst = s->outpicref->data[0] + y * linesize + x * 4;
+    dst[0] = FFMIN(dst[0] + s->contrast[0], value);
+    dst[1] = FFMIN(dst[1] + s->contrast[1], value);
+    dst[2] = FFMIN(dst[2] + s->contrast[2], value);
+    dst[3] = FFMIN(dst[3] + s->contrast[3], value);
 }
 
 static void draw_line(AudioVectorScopeContext *s, int x0, int y0, int x1, int y1)
@@ -141,7 +144,7 @@ static void draw_line(AudioVectorScopeContext *s, int x0, int y0, int x1, int y1
     int err = (dx>dy ? dx : -dy) / 2, e2;
 
     for (;;) {
-        draw_dot(s, x0, y0);
+        draw_dot(s, x0, y0, 255);
 
         if (x0 == x1 && y0 == y1)
             break;
@@ -160,23 +163,72 @@ static void draw_line(AudioVectorScopeContext *s, int x0, int y0, int x1, int y1
     }
 }
 
-static void fade(AudioVectorScopeContext *s)
+static void draw_aaline(AudioVectorScopeContext *s, int x0, int y0, int x1, int y1)
 {
+    int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, x2;
+    int dx = FFABS(x1-x0), dy = FFABS(y1-y0), err = dx * dx + dy * dy;
+    int e2 = err == 0 ? 1 : 0xffffff / (dx + dy);
+
+    dx *= e2;
+    dy *= e2;
+    err = dx - dy;
+
+    for (;;) {
+        draw_dot(s, x0, y0, 255-(FFABS(err - dx + dy) >> 16));
+        e2 = err;
+        x2 = x0;
+        if (2 * e2 >= -dx) {
+            if (x0 == x1)
+                break;
+            if (e2 + dy < 0xff0000)
+                draw_dot(s, x0, y0 + sy, 255-((e2 + dy) >> 16));
+            err -= dy;
+            x0 += sx;
+        }
+
+        if (2 * e2 <= dy) {
+            if (y0 == y1)
+                break;
+            if (dx - e2 < 0xff0000)
+                draw_dot(s, x2 + sx, y0, 255-((dx - e2) >> 16));
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+static int fade(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
+{
+    AudioVectorScopeContext *s = ctx->priv;
     const int linesize = s->outpicref->linesize[0];
-    int i, j;
+    const int height = s->outpicref->height;
+    const int slice_start = (height *  jobnr   ) / nb_jobs;
+    const int slice_end   = (height * (jobnr+1)) / nb_jobs;
+
+    if (s->fade[0] == 255 && s->fade[1] == 255 && s->fade[2] == 255) {
+        for (int i = slice_start; i < slice_end; i++)
+            memset(s->outpicref->data[0] + i * linesize, 0, s->outpicref->width * 4);
+        return 0;
+    }
 
     if (s->fade[0] || s->fade[1] || s->fade[2]) {
-        uint8_t *d = s->outpicref->data[0];
-        for (i = 0; i < s->h; i++) {
-            for (j = 0; j < s->w*4; j+=4) {
-                d[j+0] = FFMAX(d[j+0] - s->fade[0], 0);
-                d[j+1] = FFMAX(d[j+1] - s->fade[1], 0);
-                d[j+2] = FFMAX(d[j+2] - s->fade[2], 0);
-                d[j+3] = FFMAX(d[j+3] - s->fade[3], 0);
+        uint8_t *d = s->outpicref->data[0] + slice_start * linesize;
+        for (int i = slice_start; i < slice_end; i++) {
+            for (int j = 0; j < s->w*4; j+=4) {
+                if (d[j+0])
+                    d[j+0] = FFMAX(d[j+0] - s->fade[0], 0);
+                if (d[j+1])
+                    d[j+1] = FFMAX(d[j+1] - s->fade[1], 0);
+                if (d[j+2])
+                    d[j+2] = FFMAX(d[j+2] - s->fade[2], 0);
+                if (d[j+3])
+                    d[j+3] = FFMAX(d[j+3] - s->fade[3], 0);
             }
             d += linesize;
         }
     }
+
+    return 0;
 }
 
 static int query_formats(AVFilterContext *ctx)
@@ -190,17 +242,17 @@ static int query_formats(AVFilterContext *ctx)
     int ret;
 
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref         (formats, &inlink->out_formats        )) < 0 ||
-        (ret = ff_add_channel_layout  (&layout, AV_CH_LAYOUT_STEREO         )) < 0 ||
-        (ret = ff_channel_layouts_ref (layout , &inlink->out_channel_layouts)) < 0)
+    if ((ret = ff_formats_ref         (formats, &inlink->outcfg.formats        )) < 0 ||
+        (ret = ff_add_channel_layout  (&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO)) < 0 ||
+        (ret = ff_channel_layouts_ref (layout , &inlink->outcfg.channel_layouts)) < 0)
         return ret;
 
     formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->out_samplerates)) < 0)
+    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
         return ret;
 
     formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->in_formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
         return ret;
 
     return 0;
@@ -224,6 +276,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = s->h;
     outlink->sample_aspect_ratio = (AVRational){1,1};
     outlink->frame_rate = s->frame_rate;
+    outlink->time_base = av_inv_q(outlink->frame_rate);
 
     s->prev_x = s->hw = s->w / 2;
     s->prev_y = s->hh = s->mode == POLAR ? s->h - 1 : s->h / 2;
@@ -235,6 +288,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
 {
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
+    const int16_t *samples = (const int16_t *)insamples->data[0];
+    const float *samplesf = (const float *)insamples->data[0];
     AudioVectorScopeContext *s = ctx->priv;
     const int hw = s->hw;
     const int hh = s->hh;
@@ -242,7 +297,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
     unsigned x, y;
     unsigned prev_x = s->prev_x, prev_y = s->prev_y;
     double zoom = s->zoom;
-    int i;
 
     if (!s->outpicref || s->outpicref->width  != outlink->w ||
                          s->outpicref->height != outlink->h) {
@@ -254,55 +308,61 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
         }
 
         s->outpicref->sample_aspect_ratio = (AVRational){1,1};
-        for (i = 0; i < outlink->h; i++)
+        for (int i = 0; i < outlink->h; i++)
             memset(s->outpicref->data[0] + i * s->outpicref->linesize[0], 0, outlink->w * 4);
     }
-    s->outpicref->pts = insamples->pts;
+    s->outpicref->pts = av_rescale_q(insamples->pts, inlink->time_base, outlink->time_base);
+    s->outpicref->duration = 1;
 
-    fade(s);
+    av_frame_make_writable(s->outpicref);
+    ff_filter_execute(ctx, fade, NULL, NULL, FFMIN(outlink->h, ff_filter_get_nb_threads(ctx)));
 
     if (zoom < 1) {
         float max = 0;
 
         switch (insamples->format) {
-        case AV_SAMPLE_FMT_S16: {
-            int16_t *samples = (int16_t *)insamples->data[0];
-
-            for (i = 0; i < insamples->nb_samples * 2; i++) {
+        case AV_SAMPLE_FMT_S16:
+            for (int i = 0; i < insamples->nb_samples * 2; i++) {
                 float sample = samples[i] / (float)INT16_MAX;
                 max = FFMAX(FFABS(sample), max);
             }
-
-            }
             break;
-        case AV_SAMPLE_FMT_FLT: {
-            float *samples = (float *)insamples->data[0];
-
-            for (i = 0; i < insamples->nb_samples * 2; i++) {
-                max = FFMAX(FFABS(samples[i]), max);
-            }
+        case AV_SAMPLE_FMT_FLT:
+            for (int i = 0; i < insamples->nb_samples * 2; i++) {
+                max = FFMAX(FFABS(samplesf[i]), max);
             }
             break;
         default:
             av_assert2(0);
         }
 
-        zoom = 1. / max;
+        switch (s->scale) {
+        case SQRT:
+            max = sqrtf(max);
+            break;
+        case CBRT:
+            max = cbrtf(max);
+            break;
+        case LOG:
+            max = logf(1 + max) / logf(2);
+            break;
+        }
+
+        if (max > 0.f)
+            zoom = 1. / max;
     }
 
-    for (i = 0; i < insamples->nb_samples; i++) {
-        int16_t *samples = (int16_t *)insamples->data[0] + i * 2;
-        float *samplesf = (float *)insamples->data[0] + i * 2;
+    for (int i = 0; i < insamples->nb_samples; i++) {
         float src[2];
 
         switch (insamples->format) {
         case AV_SAMPLE_FMT_S16:
-            src[0] = samples[0] / (float)INT16_MAX;
-            src[1] = samples[1] / (float)INT16_MAX;
+            src[0] = samples[i*2+0] / (float)INT16_MAX;
+            src[1] = samples[i*2+1] / (float)INT16_MAX;
             break;
         case AV_SAMPLE_FMT_FLT:
-            src[0] = samplesf[0];
-            src[1] = samplesf[1];
+            src[0] = samplesf[i*2+0];
+            src[1] = samplesf[i*2+1];
             break;
         default:
             av_assert2(0);
@@ -350,9 +410,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
         }
 
         if (s->draw == DOT) {
-            draw_dot(s, x, y);
-        } else {
+            draw_dot(s, x, y, 255);
+        } else if (s->draw == LINE) {
             draw_line(s, x, y, prev_x, prev_y);
+        } else {
+            draw_aaline(s, x, y, prev_x, prev_y);
         }
         prev_x = x;
         prev_y = y;
@@ -384,6 +446,11 @@ static int activate(AVFilterContext *ctx)
     if (ret > 0)
         return filter_frame(inlink, in);
 
+    if (ff_inlink_queued_samples(inlink) >= s->nb_samples) {
+        ff_filter_set_ready(ctx, 10);
+        return 0;
+    }
+
     FF_FILTER_FORWARD_STATUS(inlink, outlink);
     FF_FILTER_FORWARD_WANTED(outlink, inlink);
 
@@ -403,7 +470,6 @@ static const AVFilterPad audiovectorscope_inputs[] = {
         .type         = AVMEDIA_TYPE_AUDIO,
         .config_props = config_input,
     },
-    { NULL }
 };
 
 static const AVFilterPad audiovectorscope_outputs[] = {
@@ -412,17 +478,18 @@ static const AVFilterPad audiovectorscope_outputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .config_props = config_output,
     },
-    { NULL }
 };
 
-AVFilter ff_avf_avectorscope = {
+const AVFilter ff_avf_avectorscope = {
     .name          = "avectorscope",
     .description   = NULL_IF_CONFIG_SMALL("Convert input audio to vectorscope video output."),
     .uninit        = uninit,
-    .query_formats = query_formats,
     .priv_size     = sizeof(AudioVectorScopeContext),
     .activate      = activate,
-    .inputs        = audiovectorscope_inputs,
-    .outputs       = audiovectorscope_outputs,
+    FILTER_INPUTS(audiovectorscope_inputs),
+    FILTER_OUTPUTS(audiovectorscope_outputs),
+    FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &avectorscope_class,
+    .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    .process_command = ff_filter_process_command,
 };

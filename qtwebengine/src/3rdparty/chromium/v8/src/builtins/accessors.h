@@ -5,7 +5,7 @@
 #ifndef V8_BUILTINS_ACCESSORS_H_
 #define V8_BUILTINS_ACCESSORS_H_
 
-#include "include/v8.h"
+#include "include/v8-local-handle.h"
 #include "src/base/bit-field.h"
 #include "src/common/globals.h"
 #include "src/objects/property-details.h"
@@ -44,9 +44,16 @@ class JavaScriptFrame;
     kHasSideEffectToReceiver)                                                 \
   V(_, function_prototype, FunctionPrototype, kHasNoSideEffect,               \
     kHasSideEffectToReceiver)                                                 \
-  V(_, regexp_result_indices, RegExpResultIndices, kHasSideEffectToReceiver,  \
+  V(_, string_length, StringLength, kHasNoSideEffect,                         \
     kHasSideEffectToReceiver)                                                 \
-  V(_, string_length, StringLength, kHasNoSideEffect, kHasSideEffectToReceiver)
+  V(_, value_unavailable, ValueUnavailable, kHasNoSideEffect,                 \
+    kHasSideEffectToReceiver)                                                 \
+  V(_, wrapped_function_length, WrappedFunctionLength, kHasNoSideEffect,      \
+    kHasSideEffectToReceiver)                                                 \
+  V(_, wrapped_function_name, WrappedFunctionName, kHasNoSideEffect,          \
+    kHasSideEffectToReceiver)
+
+#define ACCESSOR_GETTER_LIST(V) V(ModuleNamespaceEntryGetter)
 
 #define ACCESSOR_SETTER_LIST(V) \
   V(ArrayLengthSetter)          \
@@ -66,6 +73,12 @@ class Accessors : public AllStatic {
   ACCESSOR_INFO_LIST_GENERATOR(ACCESSOR_GETTER_DECLARATION, /* not used */)
 #undef ACCESSOR_GETTER_DECLARATION
 
+#define ACCESSOR_GETTER_DECLARATION(accessor_name)    \
+  static void accessor_name(v8::Local<v8::Name> name, \
+                            const v8::PropertyCallbackInfo<v8::Value>& info);
+  ACCESSOR_GETTER_LIST(ACCESSOR_GETTER_DECLARATION)
+#undef ACCESSOR_GETTER_DECLARATION
+
 #define ACCESSOR_SETTER_DECLARATION(accessor_name)          \
   static void accessor_name(                                \
       v8::Local<v8::Name> name, v8::Local<v8::Value> value, \
@@ -78,14 +91,16 @@ class Accessors : public AllStatic {
       ACCESSOR_INFO_LIST_GENERATOR(COUNT_ACCESSOR, /* not used */);
 #undef COUNT_ACCESSOR
 
+  static constexpr int kAccessorGetterCount =
+#define COUNT_ACCESSOR(...) +1
+      ACCESSOR_GETTER_LIST(COUNT_ACCESSOR);
+#undef COUNT_ACCESSOR
+
   static constexpr int kAccessorSetterCount =
 #define COUNT_ACCESSOR(...) +1
       ACCESSOR_SETTER_LIST(COUNT_ACCESSOR);
 #undef COUNT_ACCESSOR
 
-  static void ModuleNamespaceEntryGetter(
-      v8::Local<v8::Name> name,
-      const v8::PropertyCallbackInfo<v8::Value>& info);
   static Handle<AccessorInfo> MakeModuleNamespaceEntryInfo(Isolate* isolate,
                                                            Handle<String> name);
 
@@ -102,8 +117,8 @@ class Accessors : public AllStatic {
                                       FieldIndex* field_index);
 
   static MaybeHandle<Object> ReplaceAccessorWithDataProperty(
-      Handle<Object> receiver, Handle<JSObject> holder, Handle<Name> name,
-      Handle<Object> value);
+      Isolate* isolate, Handle<Object> receiver, Handle<JSObject> holder,
+      Handle<Name> name, Handle<Object> value);
 
   // Create an AccessorInfo. The setter is optional (can be nullptr).
   //

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qwizard_container.h"
 
@@ -33,11 +8,13 @@
 
 #include <QtWidgets/qwizard.h>
 #include <QtCore/qdebug.h>
-#include <QtCore/qvector.h>
+#include <QtCore/qlist.h>
 
 QT_BEGIN_NAMESPACE
 
-using WizardPageList = QVector<QWizardPage *>;
+using namespace Qt::StringLiterals;
+
+using WizardPageList = QList<QWizardPage *>;
 
 namespace qdesigner_internal {
 
@@ -93,7 +70,7 @@ void QWizardContainer::setCurrentIndex(int index)
     }
 }
 
-static const char *msgWrongType = "** WARNING Attempt to add oject that is not of class WizardPage to a QWizard";
+static const char msgWrongType[] = "** WARNING Attempt to add oject that is not of class WizardPage to a QWizard";
 
 void QWizardContainer::addWidget(QWidget *widget)
 {
@@ -118,7 +95,7 @@ void QWizardContainer::insertWidget(int index, QWidget *widget)
     }
 
     const auto idList = m_wizard->pageIds();
-    const int pageCount = idList.size();
+    const auto pageCount = idList.size();
     if (index >= pageCount) {
         addWidget(widget);
         return;
@@ -134,12 +111,12 @@ void QWizardContainer::insertWidget(int index, QWidget *widget)
         // Create a gap by shuffling pages
         WizardPageList pageList;
         pageList.push_back(newPage);
-        for (int i = index; i < pageCount; i++) {
+        for (qsizetype i = index; i < pageCount; ++i) {
             pageList.push_back(m_wizard->page(idList.at(i)));
             m_wizard->removePage(idList.at(i));
         }
         int newId = idBefore + delta;
-        for (QWizardPage *page : qAsConst(pageList)) {
+        for (QWizardPage *page : std::as_const(pageList)) {
             m_wizard->setPage(newId, page);
             newId += delta;
         }
@@ -176,7 +153,7 @@ const char *QWizardPagePropertySheet::pageIdProperty = "pageId";
 
 QWizardPagePropertySheet::QWizardPagePropertySheet(QWizardPage *object, QObject *parent) :
     QDesignerPropertySheet(object, parent),
-    m_pageIdIndex(createFakeProperty(QLatin1String(pageIdProperty), QString()))
+    m_pageIdIndex(createFakeProperty(QLatin1StringView(pageIdProperty), QString()))
 {
     setAttribute(m_pageIdIndex, true);
 }
@@ -193,7 +170,7 @@ bool QWizardPagePropertySheet::reset(int index)
 // ---------------- QWizardPropertySheet
 QWizardPropertySheet::QWizardPropertySheet(QWizard *object, QObject *parent) :
     QDesignerPropertySheet(object, parent),
-    m_startId(QStringLiteral("startId"))
+    m_startId(u"startId"_s)
 {
 }
 

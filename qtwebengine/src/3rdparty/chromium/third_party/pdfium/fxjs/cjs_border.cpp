@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,7 +13,7 @@ const JSConstSpec CJS_Border::ConstSpecs[] = {
     {"i", JSConstSpec::String, 0, "inset"},
     {"u", JSConstSpec::String, 0, "underline"}};
 
-int CJS_Border::ObjDefnID = -1;
+uint32_t CJS_Border::ObjDefnID = 0;
 
 // static
 void CJS_Border::DefineJSObjects(CFXJS_Engine* pEngine) {

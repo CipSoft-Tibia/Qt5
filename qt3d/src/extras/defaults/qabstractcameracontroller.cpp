@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qabstractcameracontroller.h"
 #include "qabstractcameracontroller_p.h"
@@ -100,32 +67,32 @@ void QAbstractCameraControllerPrivate::init()
     //// Actions
 
     // Left Mouse Button Action
-    m_leftMouseButtonInput->setButtons(QVector<int>() << Qt::LeftButton);
+    m_leftMouseButtonInput->setButtons(QList<int> { Qt::LeftButton });
     m_leftMouseButtonInput->setSourceDevice(m_mouseDevice);
     m_leftMouseButtonAction->addInput(m_leftMouseButtonInput);
 
     // Middle Mouse Button Action
-    m_middleMouseButtonInput->setButtons(QVector<int>() << Qt::MiddleButton);
+    m_middleMouseButtonInput->setButtons(QList<int> { Qt::MiddleButton });
     m_middleMouseButtonInput->setSourceDevice(m_mouseDevice);
     m_middleMouseButtonAction->addInput(m_middleMouseButtonInput);
 
     // Right Mouse Button Action
-    m_rightMouseButtonInput->setButtons(QVector<int>() << Qt::RightButton);
+    m_rightMouseButtonInput->setButtons(QList<int> { Qt::RightButton });
     m_rightMouseButtonInput->setSourceDevice(m_mouseDevice);
     m_rightMouseButtonAction->addInput(m_rightMouseButtonInput);
 
     // Alt Button Action
-    m_altButtonInput->setButtons(QVector<int>() << Qt::Key_Alt);
+    m_altButtonInput->setButtons(QList<int> { Qt::Key_Alt });
     m_altButtonInput->setSourceDevice(m_keyboardDevice);
     m_altButtonAction->addInput(m_altButtonInput);
 
     // Shift Button Action
-    m_shiftButtonInput->setButtons(QVector<int>() << Qt::Key_Shift);
+    m_shiftButtonInput->setButtons(QList<int> { Qt::Key_Shift });
     m_shiftButtonInput->setSourceDevice(m_keyboardDevice);
     m_shiftButtonAction->addInput(m_shiftButtonInput);
 
     // Escape Button Action
-    m_escapeButtonInput->setButtons(QVector<int>() << Qt::Key_Escape);
+    m_escapeButtonInput->setButtons(QList<int> { Qt::Key_Escape });
     m_escapeButtonInput->setSourceDevice(m_keyboardDevice);
     m_escapeButtonAction->addInput(m_escapeButtonInput);
 
@@ -152,37 +119,37 @@ void QAbstractCameraControllerPrivate::init()
     m_tzAxis->addInput(m_mouseTzYInput);
 
     // Keyboard Pos Tx
-    m_keyboardTxPosInput->setButtons(QVector<int>() << Qt::Key_Right);
+    m_keyboardTxPosInput->setButtons(QList<int> { Qt::Key_Right });
     m_keyboardTxPosInput->setScale(1.0f);
     m_keyboardTxPosInput->setSourceDevice(m_keyboardDevice);
     m_txAxis->addInput(m_keyboardTxPosInput);
 
     // Keyboard Pos Tz
-    m_keyboardTzPosInput->setButtons(QVector<int>() << Qt::Key_PageUp);
+    m_keyboardTzPosInput->setButtons(QList<int> { Qt::Key_PageUp });
     m_keyboardTzPosInput->setScale(1.0f);
     m_keyboardTzPosInput->setSourceDevice(m_keyboardDevice);
     m_tzAxis->addInput(m_keyboardTzPosInput);
 
     // Keyboard Pos Ty
-    m_keyboardTyPosInput->setButtons(QVector<int>() << Qt::Key_Up);
+    m_keyboardTyPosInput->setButtons(QList<int> { Qt::Key_Up });
     m_keyboardTyPosInput->setScale(1.0f);
     m_keyboardTyPosInput->setSourceDevice(m_keyboardDevice);
     m_tyAxis->addInput(m_keyboardTyPosInput);
 
     // Keyboard Neg Tx
-    m_keyboardTxNegInput->setButtons(QVector<int>() << Qt::Key_Left);
+    m_keyboardTxNegInput->setButtons(QList<int> { Qt::Key_Left });
     m_keyboardTxNegInput->setScale(-1.0f);
     m_keyboardTxNegInput->setSourceDevice(m_keyboardDevice);
     m_txAxis->addInput(m_keyboardTxNegInput);
 
     // Keyboard Neg Tz
-    m_keyboardTzNegInput->setButtons(QVector<int>() << Qt::Key_PageDown);
+    m_keyboardTzNegInput->setButtons(QList<int> { Qt::Key_PageDown });
     m_keyboardTzNegInput->setScale(-1.0f);
     m_keyboardTzNegInput->setSourceDevice(m_keyboardDevice);
     m_tzAxis->addInput(m_keyboardTzNegInput);
 
     // Keyboard Neg Ty
-    m_keyboardTyNegInput->setButtons(QVector<int>() << Qt::Key_Down);
+    m_keyboardTyNegInput->setButtons(QList<int> { Qt::Key_Down });
     m_keyboardTyNegInput->setScale(-1.0f);
     m_keyboardTyNegInput->setSourceDevice(m_keyboardDevice);
     m_tyAxis->addInput(m_keyboardTyNegInput);
@@ -285,7 +252,8 @@ QAbstractCameraController::QAbstractCameraController(QAbstractCameraControllerPr
     d->init();
 
     QObject::connect(d->m_frameAction, &Qt3DLogic::QFrameAction::triggered,
-                     this, [=] (float dt) {
+                     this, [this] (float dt) {
+        Q_D(const QAbstractCameraController);
         InputState  state;
 
         state.rxAxisValue = d->m_rxAxis->value();

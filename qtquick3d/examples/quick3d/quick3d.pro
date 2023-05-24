@@ -2,14 +2,32 @@ TEMPLATE = subdirs
 SUBDIRS += \
     antialiasing \
     customshaders \
-    effects \
     hellocube \
-    simple \
+    intro \
+    screenspacereflections \
     view3d \
     picking \
     lights \
     custommaterial \
     principledmaterial \
-    dynamictexture \
+    proceduraltexture \
     dynamiccreation \
-    quickitems
+    quickitems \
+    customgeometry \
+    customeffect \
+    custominstancing \
+    instancing \
+    skinning \
+    offlineshaders \
+    submeshes \
+    quickball \
+    helloqtquick3d \
+    morphing \
+    custommorphing \
+    particles3d \
+    runtimeloader \
+    reflectionprobes \
+    bakedlightmap \
+    lodhelper \
+    simplefog \
+    sceneeffects

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,21 +10,25 @@
 #include <xf86drmMode.h>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/containers/flat_map.h"
+#include "base/functional/callback.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
+#include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/gfx/buffer_types.h"
 #include "ui/gfx/swap_result.h"
 #include "ui/ozone/platform/drm/gpu/drm_overlay_plane.h"
 #include "ui/ozone/platform/drm/gpu/hardware_display_plane_manager.h"
+#include "ui/ozone/platform/drm/gpu/page_flip_watchdog.h"
 #include "ui/ozone/public/swap_completion_callback.h"
 
 namespace gfx {
 class Point;
-}
+struct GpuFenceHandle;
+}  // namespace gfx
 
 namespace ui {
 
@@ -33,8 +37,7 @@ class DrmFramebuffer;
 class DrmDumbBuffer;
 class DrmDevice;
 
-// The HDCOz will handle modesettings and scannout operations for hardware
-// devices.
+// The HDC will handle modesetting and scanout operations for hardware devices.
 //
 // In the DRM world there are 3 components that need to be paired up to be able
 // to display an image to the monitor: CRTC (cathode ray tube controller),
@@ -91,26 +94,32 @@ class HardwareDisplayController {
  public:
   HardwareDisplayController(std::unique_ptr<CrtcController> controller,
                             const gfx::Point& origin);
+
+  HardwareDisplayController(const HardwareDisplayController&) = delete;
+  HardwareDisplayController& operator=(const HardwareDisplayController&) =
+      delete;
+
   ~HardwareDisplayController();
 
   // Gets the props required to modeset a CRTC with a |mode| onto
   // |commit_request|.
   void GetModesetProps(CommitRequest* commit_request,
-                       const DrmOverlayPlane& primary,
-                       const drmModeModeInfo& mode);
+                       const DrmOverlayPlaneList& modeset_planes,
+                       const drmModeModeInfo& mode,
+                       bool enable_vrr);
   // Gets the props required to enable/disable a CRTC onto |commit_request|.
   void GetEnableProps(CommitRequest* commit_request,
-                      const DrmOverlayPlane& primary);
+                      const DrmOverlayPlaneList& modeset_planes);
   void GetDisableProps(CommitRequest* commit_request);
 
   // Updates state of the controller after modeset/enable/disable is performed.
-  void UpdateState(bool is_enabled, const DrmOverlayPlane* primary_plane);
+  void UpdateState(const CrtcCommitRequest& crtc_request);
 
   // Schedules the |overlays|' framebuffers to be displayed on the next vsync
   // event. The event will be posted on the graphics card file descriptor |fd_|
   // and it can be read and processed by |drmHandleEvent|. That function can
   // define the callback for the page flip event. A generic data argument will
-  // be presented to the callback. We use that argument to pass in the HDCO
+  // be presented to the callback. We use that argument to pass in the HDC
   // object the event belongs to.
   //
   // Between this call and the callback, the framebuffers used in this call
@@ -119,7 +128,7 @@ class HardwareDisplayController {
   // be modified as it could still be displayed.
   //
   // Note that this function does not block. Also, this function should not be
-  // called again before the page flip occurrs.
+  // called again before the page flip occurs.
   void SchedulePageFlip(DrmOverlayPlaneList plane_list,
                         SwapCompletionOnceCallback submission_callback,
                         PresentationOnceCallback presentation_callback);
@@ -128,17 +137,15 @@ class HardwareDisplayController {
   // doesn't change any state.
   bool TestPageFlip(const DrmOverlayPlaneList& plane_list);
 
-  // Return the supported modifiers for |fourcc_format| for this
-  // controller.
-  std::vector<uint64_t> GetFormatModifiers(uint32_t fourcc_format) const;
+  // Return the supported modifiers for |fourcc_format| for this controller.
+  std::vector<uint64_t> GetSupportedModifiers(uint32_t fourcc_format,
+                                              bool is_modeset = false) const;
 
-  // Return the supported modifiers for |fourcc_format| for this
-  // controller to be used for modeset buffers. Currently, this only exists
-  // because we can't provide valid AFBC buffers during modeset.
-  // See https://crbug.com/852675
-  // TODO: Remove this.
-  std::vector<uint64_t> GetFormatModifiersForModesetting(
-      uint32_t fourcc_format) const;
+  std::vector<uint64_t> GetFormatModifiersForTestModeset(
+      uint32_t fourcc_format);
+
+  void UpdatePreferredModifierForFormat(gfx::BufferFormat buffer_format,
+                                        uint64_t modifier);
 
   // Moves the hardware cursor to |location|.
   void MoveCursor(const gfx::Point& location);
@@ -152,7 +159,7 @@ class HardwareDisplayController {
       uint32_t crtc);
   bool HasCrtc(const scoped_refptr<DrmDevice>& drm, uint32_t crtc) const;
   bool IsMirrored() const;
-  bool IsDisabled() const;
+  bool IsEnabled() const;
   gfx::Size GetModeSize() const;
 
   gfx::Point origin() const { return origin_; }
@@ -168,26 +175,46 @@ class HardwareDisplayController {
   scoped_refptr<DrmDevice> GetDrmDevice() const;
 
   void OnPageFlipComplete(
+      int modeset_sequence,
       DrmOverlayPlaneList pending_planes,
       const gfx::PresentationFeedback& presentation_feedback);
 
+  // Adds trace records to |context|.
+  void WriteIntoTrace(perfetto::TracedValue context) const;
+
  private:
+  // These values are persisted to logs. Entries should not be
+  // renumbered and numeric values should never be reused.
+  enum PageFlipResult {
+    // Indicates that the page flip was committed successfully.
+    kSuccess = 0,
+    // Indicates that the page flip failed because we could not assign
+    // planes.
+    kFailedPlaneAssignment = 1,
+    // Indicates that we assigned planes but the DRM commit failed.
+    kFailedCommit = 2,
+    kMaxValue = kFailedCommit,
+  };
   // Loops over |crtc_controllers_| and save their props into |commit_request|
   // to be enabled/modeset.
   void GetModesetPropsForCrtcs(CommitRequest* commit_request,
-                               const DrmOverlayPlane& primary,
+                               const DrmOverlayPlaneList& modeset_planes,
                                bool use_current_crtc_mode,
-                               const drmModeModeInfo& mode);
-  void OnModesetComplete(const DrmOverlayPlane& primary);
-  bool ScheduleOrTestPageFlip(const DrmOverlayPlaneList& plane_list,
-                              scoped_refptr<PageFlipRequest> page_flip_request,
-                              std::unique_ptr<gfx::GpuFence>* out_fence);
+                               const drmModeModeInfo& mode,
+                               absl::optional<bool> enable_vrr);
+  void OnModesetComplete(const DrmOverlayPlaneList& modeset_planes);
+  PageFlipResult ScheduleOrTestPageFlip(
+      const DrmOverlayPlaneList& plane_list,
+      scoped_refptr<PageFlipRequest> page_flip_request,
+      gfx::GpuFenceHandle* release_fence);
   void AllocateCursorBuffers();
   DrmDumbBuffer* NextCursorBuffer();
   void UpdateCursorImage();
   void UpdateCursorLocation();
   void ResetCursor();
   void DisableCursor();
+
+  std::vector<uint64_t> GetFormatModifiers(uint32_t fourcc_format) const;
 
   HardwareDisplayPlaneList owned_hardware_planes_;
 
@@ -207,11 +234,15 @@ class HardwareDisplayController {
   int cursor_frontbuffer_ = 0;
   DrmDumbBuffer* current_cursor_ = nullptr;
 
-  bool is_disabled_;
+  // Maps each fourcc_format to its preferred modifier which was generated
+  // through modeset-test and updated in UpdatePreferredModifierForFormat().
+  base::flat_map<uint32_t /*fourcc_format*/, uint64_t /*preferred_modifier*/>
+      preferred_format_modifier_;
+
+  // Used to crash the GPU process when unrecoverable failures occur.
+  PageFlipWatchdog watchdog_;
 
   base::WeakPtrFactory<HardwareDisplayController> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(HardwareDisplayController);
 };
 
 }  // namespace ui

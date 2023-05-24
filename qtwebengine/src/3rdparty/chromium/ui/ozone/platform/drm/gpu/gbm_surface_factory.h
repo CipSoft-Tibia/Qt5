@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/threading/thread_checker.h"
 #include "gpu/vulkan/buildflags.h"
 #include "ui/gl/gl_implementation.h"
@@ -27,6 +26,10 @@ class GbmOverlaySurface;
 class GbmSurfaceFactory : public SurfaceFactoryOzone {
  public:
   explicit GbmSurfaceFactory(DrmThreadProxy* drm_thread_proxy);
+
+  GbmSurfaceFactory(const GbmSurfaceFactory&) = delete;
+  GbmSurfaceFactory& operator=(const GbmSurfaceFactory&) = delete;
+
   ~GbmSurfaceFactory() override;
 
   void RegisterSurface(gfx::AcceleratedWidget widget, GbmSurfaceless* surface);
@@ -34,13 +37,13 @@ class GbmSurfaceFactory : public SurfaceFactoryOzone {
   GbmSurfaceless* GetSurface(gfx::AcceleratedWidget widget) const;
 
   // SurfaceFactoryOzone:
-  std::vector<gl::GLImplementation> GetAllowedGLImplementations() override;
-  GLOzone* GetGLOzone(gl::GLImplementation implementation) override;
+  std::vector<gl::GLImplementationParts> GetAllowedGLImplementations() override;
+  GLOzone* GetGLOzone(const gl::GLImplementationParts& implementation) override;
 
 #if BUILDFLAG(ENABLE_VULKAN)
   std::unique_ptr<gpu::VulkanImplementation> CreateVulkanImplementation(
-      bool allow_protected_memory,
-      bool enforce_protected_memory) override;
+      bool use_swiftshader,
+      bool allow_protected_memory) override;
   scoped_refptr<gfx::NativePixmap> CreateNativePixmapForVulkan(
       gfx::AcceleratedWidget widget,
       gfx::Size size,
@@ -57,13 +60,13 @@ class GbmSurfaceFactory : public SurfaceFactoryOzone {
       gfx::AcceleratedWidget widget) override;
   scoped_refptr<gfx::NativePixmap> CreateNativePixmap(
       gfx::AcceleratedWidget widget,
-      VkDevice vk_device,
+      gpu::VulkanDeviceQueue* device_queue,
       gfx::Size size,
       gfx::BufferFormat format,
       gfx::BufferUsage usage,
-      base::Optional<gfx::Size> framebuffer_size = base::nullopt) override;
+      absl::optional<gfx::Size> framebuffer_size = absl::nullopt) override;
   void CreateNativePixmapAsync(gfx::AcceleratedWidget widget,
-                               VkDevice vk_device,
+                               gpu::VulkanDeviceQueue* device_queue,
                                gfx::Size size,
                                gfx::BufferFormat format,
                                gfx::BufferUsage usage,
@@ -103,8 +106,6 @@ class GbmSurfaceFactory : public SurfaceFactoryOzone {
   GetProtectedNativePixmapCallback get_protected_native_pixmap_callback_;
 
   base::WeakPtrFactory<GbmSurfaceFactory> weak_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(GbmSurfaceFactory);
 };
 
 }  // namespace ui

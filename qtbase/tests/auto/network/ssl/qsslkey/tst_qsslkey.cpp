@@ -1,33 +1,7 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-
-#include <QtTest/QtTest>
+#include <QTest>
 #include <qsslkey.h>
 #include <qsslsocket.h>
 #include <QScopeGuard>
@@ -42,14 +16,18 @@
 #include <QtCore/qlist.h>
 
 #ifdef QT_BUILD_INTERNAL
-    #ifndef QT_NO_SSL
+    #if QT_CONFIG(ssl)
         #include "private/qsslkey_p.h"
         #define TEST_CRYPTO
     #endif
     #ifndef QT_NO_OPENSSL
-        #include "private/qsslsocket_openssl_symbols_p.h"
+        #include "../shared/qopenssl_symbols.h"
     #endif
 #endif
+
+#if QT_CONFIG(ssl)
+#include <QtNetwork/qsslsocket.h>
+#endif // QT_CONFIG(ssl)
 
 #include <algorithm>
 
@@ -79,7 +57,7 @@ public:
 public slots:
     void initTestCase();
 
-#ifndef QT_NO_SSL
+#if QT_CONFIG(ssl)
 
 private slots:
     void emptyConstructor();
@@ -107,17 +85,23 @@ private slots:
     void encrypt();
 #endif
 
-#endif
+#endif // ssl
 private:
     QString testDataDir;
 
     bool fileContainsUnsupportedEllipticCurve(const QString &fileName) const;
+    bool algorithmsSupported(const QString &fileName) const;
     QVector<QString> unsupportedCurves;
+
+    bool isOpenSsl = false;
+    bool isOpenSslResolved = false;
+    bool isSecureTransport = false;
+    bool isSchannel = false;
 };
 
 tst_QSslKey::tst_QSslKey()
 {
-#ifndef QT_NO_SSL
+#if QT_CONFIG(ssl)
     const QString expectedCurves[] = {
         // See how we generate them in keys/genkey.sh.
         QStringLiteral("secp224r1"),
@@ -131,7 +115,7 @@ tst_QSslKey::tst_QSslKey()
 
     for (const auto &requestedEc : expectedCurves) {
         auto pos = std::find_if(supportedCurves.begin(), supportedCurves.end(),
-                     [&requestedEc](const QSslEllipticCurve &supported) {
+                     [&requestedEc](const auto &supported) {
             return requestedEc == supported.shortName();
         });
         if (pos == supportedCurves.end()) {
@@ -140,6 +124,22 @@ tst_QSslKey::tst_QSslKey()
             unsupportedCurves.push_back(requestedEc);
         }
     }
+    // Alas, we don't use network-private (and why?).
+    const auto backendName = QSslSocket::activeBackend();
+    isOpenSsl = backendName == QStringLiteral("openssl");
+
+    if (isOpenSsl) {
+#if !defined(QT_NO_OPENSSL) && defined(QT_BUILD_INTERNAL)
+        isOpenSslResolved = qt_auto_test_resolve_OpenSSL_symbols();
+#else
+        isOpenSslResolved = false; // not 'unused variable' anymore.
+#endif
+    } else {
+        isSecureTransport = backendName == QStringLiteral("securetransport");
+    }
+
+    if (!isOpenSsl && !isSecureTransport)
+        isSchannel = backendName == QStringLiteral("schannel");
 #else
     unsupportedCurves = {}; // not unsued anymore.
 #endif
@@ -154,6 +154,37 @@ bool tst_QSslKey::fileContainsUnsupportedEllipticCurve(const QString &fileName) 
     return false;
 }
 
+bool tst_QSslKey::algorithmsSupported(const QString &fileName) const
+{
+#if QT_CONFIG(ssl)
+    if (isSchannel && fileName.contains("RC2-64")) // Schannel treats RC2 as 128 bit
+        return false;
+
+    if (isSchannel || isSecureTransport) {
+        // No AES support in the generic back-end, PKCS#12 algorithms not supported either.
+        return !(fileName.contains(QRegularExpression("-aes\\d\\d\\d-")) || fileName.contains("pkcs8-pkcs12"));
+    }
+
+    if (!isOpenSsl || QSslSocket::sslLibraryVersionNumber() >> 28 < 3)
+        return true;
+
+    // OpenSSL v3 first introduced the notion of 'providers'. Many algorithms
+    // were moved into the 'legacy' provider. While they are still supported in theory,
+    // the 'legacy' provider is NOT loaded by default and we are not loading it either.
+    // Thus, some of the keys we are using in tst_QSslKey would fail the test. We
+    // have to filter them out.
+    const auto name = fileName.toLower();
+    if (name.contains("-des."))
+        return false;
+
+    return !name.contains("-rc2-") && !name.contains("-rc4-");
+#else
+    Q_UNUSED(fileName);
+    return false;
+#endif // QT_CONFIG(ssl)
+}
+
+
 void tst_QSslKey::initTestCase()
 {
     testDataDir = QFileInfo(QFINDTESTDATA("rsa-without-passphrase.pem")).absolutePath();
@@ -164,31 +195,31 @@ void tst_QSslKey::initTestCase()
 
     QDir dir(testDataDir + "keys");
     const QFileInfoList fileInfoList = dir.entryInfoList(QDir::Files | QDir::Readable);
-    QRegExp rx(QLatin1String("^(rsa|dsa|dh|ec)-(pub|pri)-(\\d+)-?[\\w-]*\\.(pem|der)$"));
+    QRegularExpression rx(QLatin1String("^(rsa|dsa|dh|ec)-(pub|pri)-(\\d+)-?[\\w-]*\\.(pem|der)$"));
     for (const QFileInfo &fileInfo : fileInfoList) {
         if (fileContainsUnsupportedEllipticCurve(fileInfo.fileName()))
             continue;
-
-        if (rx.indexIn(fileInfo.fileName()) >= 0) {
+        auto match = rx.match(fileInfo.fileName());
+        if (match.hasMatch()) {
             keyInfoList << KeyInfo(
                 fileInfo,
-                rx.cap(1) == QLatin1String("rsa") ? QSsl::Rsa :
-                rx.cap(1) == QLatin1String("dsa") ? QSsl::Dsa :
-                rx.cap(1) == QLatin1String("dh") ? QSsl::Dh : QSsl::Ec,
-                rx.cap(2) == QLatin1String("pub") ? QSsl::PublicKey : QSsl::PrivateKey,
-                rx.cap(3).toInt(),
-                rx.cap(4) == QLatin1String("pem") ? QSsl::Pem : QSsl::Der);
+                match.captured(1) == QLatin1String("rsa") ? QSsl::Rsa :
+                match.captured(1) == QLatin1String("dsa") ? QSsl::Dsa :
+                match.captured(1) == QLatin1String("dh") ? QSsl::Dh : QSsl::Ec,
+                match.captured(2) == QLatin1String("pub") ? QSsl::PublicKey : QSsl::PrivateKey,
+                match.captured(3).toInt(),
+                match.captured(4) == QLatin1String("pem") ? QSsl::Pem : QSsl::Der);
         }
     }
 }
 
-#ifndef QT_NO_SSL
+#if QT_CONFIG(ssl)
 
 static QByteArray readFile(const QString &absFilePath)
 {
     QFile file(absFilePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        QWARN("failed to open file");
+        qWarning("failed to open file");
         return QByteArray();
     }
     return file.readAll();
@@ -221,16 +252,9 @@ void tst_QSslKey::createPlainTestRows(bool pemOnly)
     foreach (KeyInfo keyInfo, keyInfoList) {
         if (pemOnly && keyInfo.format != QSsl::EncodingFormat::Pem)
             continue;
-#if defined(Q_OS_WINRT) || QT_CONFIG(schannel)
-        if (keyInfo.fileInfo.fileName().contains("RC2-64"))
-            continue; // WinRT/Schannel treats RC2 as 128 bit
-#endif
-#if !defined(QT_NO_SSL) && defined(QT_NO_OPENSSL) // generic backend
-        if (keyInfo.fileInfo.fileName().contains(QRegularExpression("-aes\\d\\d\\d-")))
-            continue; // No AES support in the generic back-end
-        if (keyInfo.fileInfo.fileName().contains("pkcs8-pkcs12"))
-            continue; // The generic back-end doesn't support PKCS#12 algorithms
-#endif
+
+        if (!algorithmsSupported(keyInfo.fileInfo.fileName()))
+            continue;
 
         QTest::newRow(keyInfo.fileInfo.fileName().toLatin1())
             << keyInfo.fileInfo.absoluteFilePath() << keyInfo.algorithm << keyInfo.type
@@ -273,7 +297,7 @@ void tst_QSslKey::constructorHandle()
 #ifndef QT_BUILD_INTERNAL
     QSKIP("This test requires -developer-build.");
 #else
-    if (!QSslSocket::supportsSsl())
+    if (!isOpenSslResolved)
         return;
 
     QFETCH(QString, absFilePath);
@@ -291,7 +315,7 @@ void tst_QSslKey::constructorHandle()
         passphrase = "1234";
 
     BIO* bio = q_BIO_new(q_BIO_s_mem());
-    q_BIO_write(bio, pem.constData(), pem.length());
+    q_BIO_write(bio, pem.constData(), pem.size());
     EVP_PKEY *origin = func(bio, nullptr, nullptr, static_cast<void *>(passphrase.data()));
     Q_ASSERT(origin);
     q_EVP_PKEY_up_ref(origin);
@@ -331,7 +355,7 @@ void tst_QSslKey::constructorHandle()
 #endif
 }
 
-#endif
+#endif // !QT_NO_OPENSSL
 
 void tst_QSslKey::copyAndAssign_data()
 {
@@ -419,13 +443,13 @@ void tst_QSslKey::toPemOrDer()
     QByteArray dataTag = QByteArray(QTest::currentDataTag());
     if (dataTag.contains("-pkcs8-")) // these are encrypted
         QSKIP("Encrypted PKCS#8 keys gets decrypted when loaded. So we can't compare it to the encrypted version.");
-#ifndef QT_NO_OPENSSL
-    if (dataTag.contains("pkcs8"))
-        QSKIP("OpenSSL converts PKCS#8 keys to other formats, invalidating comparisons.");
-#else // !openssl
-    if (dataTag.contains("pkcs8") && dataTag.contains("rsa"))
-        QSKIP("PKCS#8 RSA keys are changed into a different format in the generic back-end, meaning the comparison fails.");
-#endif // openssl
+
+    if (dataTag.contains("pkcs8")) {
+        if (isOpenSsl)
+            QSKIP("OpenSSL converts PKCS#8 keys to other formats, invalidating comparisons.");
+        else if (dataTag.contains("rsa"))
+            QSKIP("PKCS#8 RSA keys are changed into a different format in the generic back-end, meaning the comparison fails.");
+    }
 
     QByteArray encoded = readFile(absFilePath);
     QSslKey key(encoded, algorithm, format, type);
@@ -515,20 +539,29 @@ void tst_QSslKey::toEncryptedPemOrDer()
 
 void tst_QSslKey::passphraseChecks_data()
 {
+    if (!QSslSocket::supportsSsl())
+        QSKIP("This test requires a working TLS library");
+
     QTest::addColumn<QString>("fileName");
     QTest::addColumn<QByteArray>("passphrase");
 
     const QByteArray pass("123");
     const QByteArray aesPass("1234");
 
-    QTest::newRow("DES") << QString(testDataDir + "rsa-with-passphrase-des.pem") << pass;
+    if (!isOpenSsl || QSslSocket::sslLibraryVersionNumber() >> 28 < 3) {
+        // DES and RC2 are not provided by default in OpenSSL v3.
+        // This part is for either non-OpenSSL build, or OpenSSL v < 3.x.
+        QTest::newRow("DES") << QString(testDataDir + "rsa-with-passphrase-des.pem") << pass;
+        QTest::newRow("RC2") << QString(testDataDir + "rsa-with-passphrase-rc2.pem") << pass;
+    }
+
     QTest::newRow("3DES") << QString(testDataDir + "rsa-with-passphrase-3des.pem") << pass;
-    QTest::newRow("RC2") << QString(testDataDir + "rsa-with-passphrase-rc2.pem") << pass;
-#if (!defined(QT_NO_OPENSSL) && !defined(OPENSSL_NO_AES)) || (defined(QT_NO_OPENSSL) && QT_CONFIG(ssl))
+
+#if defined(QT_NO_OPENSSL) || !defined(OPENSSL_NO_AES)
     QTest::newRow("AES128") << QString(testDataDir + "rsa-with-passphrase-aes128.pem") << aesPass;
     QTest::newRow("AES192") << QString(testDataDir + "rsa-with-passphrase-aes192.pem") << aesPass;
     QTest::newRow("AES256") << QString(testDataDir + "rsa-with-passphrase-aes256.pem") << aesPass;
-#endif // (OpenSSL && AES) || generic backend
+#endif // Generic backend || OpenSSL built with AES
 }
 
 void tst_QSslKey::passphraseChecks()
@@ -574,6 +607,9 @@ void tst_QSslKey::passphraseChecks()
 
 void tst_QSslKey::noPassphraseChecks()
 {
+    if (!QSslSocket::supportsSsl())
+        QSKIP("This test requires a working TLS library");
+
     // be sure and check a key without passphrase too
     QString fileName(testDataDir + "rsa-without-passphrase.pem");
     QFile keyFile(fileName);
@@ -608,139 +644,145 @@ Q_DECLARE_METATYPE(QSslKeyPrivate::Cipher)
 
 void tst_QSslKey::encrypt_data()
 {
-    QTest::addColumn<QSslKeyPrivate::Cipher>("cipher");
+    using QTlsPrivate::Cipher;
+
+    QTest::addColumn<Cipher>("cipher");
     QTest::addColumn<QByteArray>("key");
     QTest::addColumn<QByteArray>("plainText");
     QTest::addColumn<QByteArray>("cipherText");
     QTest::addColumn<QByteArray>("iv");
 
     QByteArray iv("abcdefgh");
+#if OPENSSL_VERSION_MAJOR < 3
+    // Either non-OpenSSL build, or OpenSSL v < 3
+    // (with DES and other legacy algorithms available by default)
     QTest::newRow("DES-CBC, length 0")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray()
         << QByteArray::fromHex("956585228BAF9B1F")
         << iv;
     QTest::newRow("DES-CBC, length 1")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(1, 'a')
         << QByteArray::fromHex("E6880AF202BA3C12")
         << iv;
     QTest::newRow("DES-CBC, length 2")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(2, 'a')
         << QByteArray::fromHex("A82492386EED6026")
         << iv;
     QTest::newRow("DES-CBC, length 3")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(3, 'a')
         << QByteArray::fromHex("90B76D5B79519CBA")
         << iv;
     QTest::newRow("DES-CBC, length 4")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(4, 'a')
         << QByteArray::fromHex("63E3DD6FED87052A")
         << iv;
     QTest::newRow("DES-CBC, length 5")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(5, 'a')
         << QByteArray::fromHex("03ACDB0EACBDFA94")
         << iv;
     QTest::newRow("DES-CBC, length 6")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(6, 'a')
         << QByteArray::fromHex("7D95024E42A3A88A")
         << iv;
     QTest::newRow("DES-CBC, length 7")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(7, 'a')
         << QByteArray::fromHex("5003436B8A8E42E9")
         << iv;
     QTest::newRow("DES-CBC, length 8")
-        << QSslKeyPrivate::DesCbc << QByteArray("01234567")
+        << Cipher::DesCbc << QByteArray("01234567")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("E4C1F054BF5521C0A4A0FD4A2BC6C1B1")
         << iv;
 
     QTest::newRow("DES-EDE3-CBC, length 0")
-        << QSslKeyPrivate::DesEde3Cbc << QByteArray("0123456789abcdefghijklmn")
+        << Cipher::DesEde3Cbc << QByteArray("0123456789abcdefghijklmn")
         << QByteArray()
         << QByteArray::fromHex("3B2B4CD0B0FD495F")
         << iv;
     QTest::newRow("DES-EDE3-CBC, length 8")
-        << QSslKeyPrivate::DesEde3Cbc << QByteArray("0123456789abcdefghijklmn")
+        << Cipher::DesEde3Cbc << QByteArray("0123456789abcdefghijklmn")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("F2A5A87763C54A72A3224103D90CDB03")
         << iv;
 
     QTest::newRow("RC2-40-CBC, length 0")
-        << QSslKeyPrivate::Rc2Cbc << QByteArray("01234")
+        << Cipher::Rc2Cbc << QByteArray("01234")
         << QByteArray()
         << QByteArray::fromHex("6D05D52392FF6E7A")
         << iv;
     QTest::newRow("RC2-40-CBC, length 8")
-        << QSslKeyPrivate::Rc2Cbc << QByteArray("01234")
+        << Cipher::Rc2Cbc << QByteArray("01234")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("75768E64C5749072A5D168F3AFEB0005")
         << iv;
 
     QTest::newRow("RC2-64-CBC, length 0")
-        << QSslKeyPrivate::Rc2Cbc << QByteArray("01234567")
+        << Cipher::Rc2Cbc << QByteArray("01234567")
         << QByteArray()
         << QByteArray::fromHex("ADAE6BF70F420130")
         << iv;
     QTest::newRow("RC2-64-CBC, length 8")
-        << QSslKeyPrivate::Rc2Cbc << QByteArray("01234567")
+        << Cipher::Rc2Cbc << QByteArray("01234567")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("C7BF5C80AFBE9FBEFBBB9FD935F6D0DF")
         << iv;
 
     QTest::newRow("RC2-128-CBC, length 0")
-        << QSslKeyPrivate::Rc2Cbc << QByteArray("012345679abcdefg")
+        << Cipher::Rc2Cbc << QByteArray("012345679abcdefg")
         << QByteArray()
         << QByteArray::fromHex("1E965D483A13C8FB")
         << iv;
     QTest::newRow("RC2-128-CBC, length 8")
-        << QSslKeyPrivate::Rc2Cbc << QByteArray("012345679abcdefg")
+        << Cipher::Rc2Cbc << QByteArray("012345679abcdefg")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("5AEC1A5B295660B02613454232F7DECE")
         << iv;
+#endif // OPENSSL_VERSION_MAJOR
 
-#if (!defined(QT_NO_OPENSSL) && !defined(OPENSSL_NO_AES)) || (defined(QT_NO_OPENSSL) && QT_CONFIG(ssl))
+#if defined(QT_NO_OPENSSL) || !defined(OPENSSL_NO_AES)
     // AES needs a longer IV
     iv = QByteArray("abcdefghijklmnop");
     QTest::newRow("AES-128-CBC, length 0")
-        << QSslKeyPrivate::Aes128Cbc << QByteArray("012345679abcdefg")
+        << Cipher::Aes128Cbc << QByteArray("012345679abcdefg")
         << QByteArray()
         << QByteArray::fromHex("28DE1A9AA26601C30DD2527407121D1A")
         << iv;
     QTest::newRow("AES-128-CBC, length 8")
-        << QSslKeyPrivate::Aes128Cbc << QByteArray("012345679abcdefg")
+        << Cipher::Aes128Cbc << QByteArray("012345679abcdefg")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("08E880B1BA916F061C1E801D7F44D0EC")
         << iv;
 
     QTest::newRow("AES-192-CBC, length 0")
-        << QSslKeyPrivate::Aes192Cbc << QByteArray("0123456789abcdefghijklmn")
+        << Cipher::Aes192Cbc << QByteArray("0123456789abcdefghijklmn")
         << QByteArray()
         << QByteArray::fromHex("E169E0E205CDC2BA895B7CF6097673B1")
         << iv;
     QTest::newRow("AES-192-CBC, length 8")
-        << QSslKeyPrivate::Aes192Cbc << QByteArray("0123456789abcdefghijklmn")
+        << Cipher::Aes192Cbc << QByteArray("0123456789abcdefghijklmn")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("3A227D6A3A13237316D30AA17FF9B0A7")
         << iv;
 
     QTest::newRow("AES-256-CBC, length 0")
-        << QSslKeyPrivate::Aes256Cbc << QByteArray("0123456789abcdefghijklmnopqrstuv")
+        << Cipher::Aes256Cbc << QByteArray("0123456789abcdefghijklmnopqrstuv")
         << QByteArray()
         << QByteArray::fromHex("4BAACAA0D22199C97DE206C465B7B14A")
         << iv;
     QTest::newRow("AES-256-CBC, length 8")
-        << QSslKeyPrivate::Aes256Cbc << QByteArray("0123456789abcdefghijklmnopqrstuv")
+        << Cipher::Aes256Cbc << QByteArray("0123456789abcdefghijklmnopqrstuv")
         << QByteArray(8, 'a')
         << QByteArray::fromHex("879C8C25EC135CDF0B14490A0A7C2F67")
         << iv;
-#endif // (OpenSSL && AES) || generic backend
+#endif // Generic backend || OpenSSL built with AES
 }
 
 void tst_QSslKey::encrypt()
@@ -751,21 +793,22 @@ void tst_QSslKey::encrypt()
     QFETCH(QByteArray, cipherText);
     QFETCH(QByteArray, iv);
 
-#if defined(Q_OS_WINRT) || QT_CONFIG(schannel)
-    QEXPECT_FAIL("RC2-40-CBC, length 0", "WinRT/Schannel treats RC2 as 128-bit", Abort);
-    QEXPECT_FAIL("RC2-40-CBC, length 8", "WinRT/Schannel treats RC2 as 128-bit", Abort);
-    QEXPECT_FAIL("RC2-64-CBC, length 0", "WinRT/Schannel treats RC2 as 128-bit", Abort);
-    QEXPECT_FAIL("RC2-64-CBC, length 8", "WinRT/Schannel treats RC2 as 128-bit", Abort);
-#endif
+    if (isSchannel) {
+        QEXPECT_FAIL("RC2-40-CBC, length 0", "Schannel treats RC2 as 128-bit", Abort);
+        QEXPECT_FAIL("RC2-40-CBC, length 8", "Schannel treats RC2 as 128-bit", Abort);
+        QEXPECT_FAIL("RC2-64-CBC, length 0", "Schannel treats RC2 as 128-bit", Abort);
+        QEXPECT_FAIL("RC2-64-CBC, length 8", "Schannel treats RC2 as 128-bit", Abort);
+    }
+
     QByteArray encrypted = QSslKeyPrivate::encrypt(cipher, plainText, key, iv);
     QCOMPARE(encrypted, cipherText);
 
     QByteArray decrypted = QSslKeyPrivate::decrypt(cipher, cipherText, key, iv);
     QCOMPARE(decrypted, plainText);
 }
-#endif
+#endif // TEST_CRYPTO
 
-#endif
+#endif // ssl
 
 QTEST_MAIN(tst_QSslKey)
 #include "tst_qsslkey.moc"

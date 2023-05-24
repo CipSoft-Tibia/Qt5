@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-# Copyright 2020 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2020 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Unit tests for the 'grit newgrd' tool.'''
 
-from __future__ import print_function
 
 import os
 import sys
@@ -17,7 +16,7 @@ import unittest
 from grit.tool import diff_structures
 
 
-class DummyOpts(object):
+class DummyOpts:
   """Options needed by NewGrd."""
 
 

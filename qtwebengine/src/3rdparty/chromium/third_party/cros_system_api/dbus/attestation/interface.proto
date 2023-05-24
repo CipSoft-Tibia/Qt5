@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium OS Authors. All rights reserved.
+// Copyright 2015 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@ import "attestation_ca.proto";
 import "keystore.proto";
 
 package attestation;
-option go_package = "attestation_proto";
+option go_package = "chromiumos/system_api/attestation_proto";
 
 enum AttestationStatus {
   STATUS_SUCCESS = 0;
@@ -37,6 +37,17 @@ enum VAType {
   TEST_VA = 1;
 }
 
+message GetFeaturesRequest {}
+
+message GetFeaturesReply {
+  optional AttestationStatus status = 1;
+  // If `false`, core attestation service is not available, including
+  // preparation, enrollment, and certification.
+  optional bool is_available = 2;
+  // The supported key types of the certified keys.
+  repeated KeyType supported_key_types = 3;
+}
+
 message GetKeyInfoRequest {
   optional string key_label = 1;
   optional string username = 2;
@@ -56,6 +67,8 @@ message GetKeyInfoReply {
   optional bytes certificate = 7;
   // The payload associated with the key.
   optional bytes payload = 8;
+  // The certified key credential in DER format.
+  optional bytes certified_key_credential = 9;
 }
 
 message GetEndorsementInfoRequest {
@@ -266,6 +279,17 @@ message EnrollReply {
   optional AttestationStatus status = 1;
 }
 
+// `DEVICE_SETUP_CERTIFICATE` specific request metadata.
+message DeviceSetupCertificateRequestMetadata {
+  // This will eventually be a DUSI. For now, this will be a 36 character GUID.
+  // This will be used as the CN of the Remote Attestation certificate.
+  optional string id = 1;
+
+  // The generated certificate will be bound to this value. This is used to
+  // prevent replay attacks. Currently it is the FIDO credential id.
+  optional string content_binding = 2;
+}
+
 // Create an attestation certificate request to be sent to the Privacy CA.
 // The request is a serialized AttestationCertificateRequest protobuf. The
 // certificate request process generates and certifies a key in the TPM and
@@ -286,6 +310,12 @@ message CreateCertificateRequestRequest {
   optional ACAType aca_type = 4;
   // The key algorithm of certified key.
   optional KeyType key_type = 5;
+  // Certificate profile specific metadata.
+  oneof metadata {
+    // `DEVICE_SETUP_CERTIFICATE` specific request metadata.
+    DeviceSetupCertificateRequestMetadata
+        device_setup_certificate_request_metadata = 6;
+  }
 }
 
 message CreateCertificateRequestReply {
@@ -310,11 +340,17 @@ message FinishCertificateRequestRequest {
 
 message FinishCertificateRequestReply {
   optional AttestationStatus status = 1;
-  // The PCA issued certificate chain in PEM format.  By
+  // The PCA issued certificate chain in PEM format. By
   // convention the certified key certificate is listed
   // first followed by intermediate CA certificate(s).
   // The PCA root certificate is not included.
   optional bytes certificate = 2;
+  // The public key (X.509/DER SubjectPublicKeyInfo).
+  optional bytes public_key = 3;
+  // The tpm key blob that the key can be loaded to TPM with.
+  optional bytes key_blob = 4;
+  // The PCA issued certificate in DER format.
+  optional bytes certified_key_credential = 5;
 }
 
 // Goes through the entire cert process, including creating cert, sending the
@@ -342,6 +378,11 @@ message GetCertificateRequest {
   // If set to |true|, this request also triggers enrollment process if the
   // device is not enrolled yet.
   optional bool shall_trigger_enrollment = 8;
+  oneof metadata {
+    // `DEVICE_SETUP_CERTIFICATE` specific request metadata.
+    DeviceSetupCertificateRequestMetadata
+        device_setup_certificate_request_metadata = 9;
+  }
 }
 
 message GetCertificateReply {
@@ -351,6 +392,12 @@ message GetCertificateReply {
   // first followed by intermediate CA certificate(s).
   // The PCA root certificate is not included.
   optional bytes certificate = 2;
+  // The public key (X.509/DER SubjectPublicKeyInfo).
+  optional bytes public_key = 3;
+  // The tpm key blob that the key can be loaded to TPM with.
+  optional bytes key_blob = 4;
+  // The PCA issued certificate in DER format.
+  optional bytes certified_key_credential = 5;
 }
 
 // Sign a challenge for an enterprise device / user.  This challenge is
@@ -360,10 +407,13 @@ message SignEnterpriseChallengeRequest {
   // The key name. This is the same name previously passed to
   // FinishCertficateRequestRequest.
   optional string key_label = 1;
-  // The canonical username of the active user profile. Leave blank
-  // if not associated with the current user.
+  // The canonical username of the active user profile.
+  // When this is set, an EUK challenge will be performed.
+  // When this is unset or empty, an EMK challenge will be performed.
   optional string username = 2;
   // A domain value to be included in the challenge response.
+  // This is supposed to be the user's canonical e-mail address for an EUK
+  // challenge. Ignored for EMK challenges.
   optional string domain = 3;
   // A device identifier to be included in the challenge response.
   optional bytes device_id = 4;
@@ -378,6 +428,15 @@ message SignEnterpriseChallengeRequest {
   // the same key used to sign the challenge response (EMK or EUK) will be used
   // for SignedPublicKeyAndChallenge.
   optional string key_name_for_spkac = 8;
+  // Device Trust Signals
+  // Deprecated due to signals collection change to store signals in a
+  // dictionary and converting them to a JSON string. Use
+  // `device_trust_signals_json` instead.
+  optional DeviceTrustSignals device_trust_signals = 9 [deprecated = true];
+  // Device Trust Signals
+  optional string device_trust_signals_json = 10;
+  // Whether the challenge response should include the customer id.
+  optional bool include_customer_id = 11;
 }
 
 message SignEnterpriseChallengeReply {

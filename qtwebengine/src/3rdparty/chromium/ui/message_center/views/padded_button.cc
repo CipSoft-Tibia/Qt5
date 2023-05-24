@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,45 +6,44 @@
 
 #include <memory>
 
-#include "ui/base/resource/resource_bundle.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
 #include "ui/gfx/canvas.h"
+#include "ui/gfx/color_utils.h"
 #include "ui/message_center/public/cpp/message_center_constants.h"
-#include "ui/views/animation/flood_fill_ink_drop_ripple.h"
+#include "ui/views/animation/ink_drop.h"
+#include "ui/views/animation/ink_drop_host.h"
 #include "ui/views/animation/ink_drop_impl.h"
 #include "ui/views/background.h"
 #include "ui/views/border.h"
 #include "ui/views/controls/button/image_button.h"
-#include "ui/views/painter.h"
 
 namespace message_center {
 
-PaddedButton::PaddedButton(views::ButtonListener* listener)
-    : views::ImageButton(listener) {
-  SetFocusForPlatform();
-  SetBorder(views::CreateEmptyBorder(gfx::Insets(kControlButtonBorderSize)));
+PaddedButton::PaddedButton(PressedCallback callback)
+    : views::ImageButton(std::move(callback)) {
+  SetBorder(views::CreateEmptyBorder(kControlButtonBorderSize));
   SetAnimateOnStateChange(false);
 
-  SetInkDropMode(InkDropMode::ON);
-  SetInkDropVisibleOpacity(0.12f);
+  views::InkDrop::Get(this)->SetMode(views::InkDropHost::InkDropMode::ON);
+  views::InkDrop::Get(this)->SetVisibleOpacity(0.12f);
   SetHasInkDropActionOnClick(true);
-}
-
-std::unique_ptr<views::InkDrop> PaddedButton::CreateInkDrop() {
-  auto ink_drop = CreateDefaultInkDropImpl();
-  ink_drop->SetShowHighlightOnHover(false);
-  ink_drop->SetShowHighlightOnFocus(false);
-  return std::move(ink_drop);
+  views::InkDrop::UseInkDropForSquareRipple(views::InkDrop::Get(this),
+                                            /*highlight_on_hover=*/false);
 }
 
 void PaddedButton::OnThemeChanged() {
   ImageButton::OnThemeChanged();
-  auto* theme = GetNativeTheme();
-#if defined(OS_CHROMEOS)
-  SetBackground(views::CreateSolidBackground(theme->GetSystemColor(
-      ui::NativeTheme::kColorId_NotificationButtonBackground)));
-#endif
-  SetInkDropBaseColor(theme->GetSystemColor(
-      ui::NativeTheme::kColorId_PaddedButtonInkDropColor));
+  const auto* color_provider = GetColorProvider();
+  SkColor background_color =
+      color_provider->GetColor(ui::kColorWindowBackground);
+  views::InkDrop::Get(this)->SetBaseColor(
+      color_utils::GetColorWithMaxContrast(background_color));
 }
+
+BEGIN_METADATA(PaddedButton, views::ImageButton)
+END_METADATA
 
 }  // namespace message_center

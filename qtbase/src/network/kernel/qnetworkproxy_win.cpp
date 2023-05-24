@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qnetworkproxy.h"
 
@@ -43,111 +7,40 @@
 
 #include <qmutex.h>
 #include <qstringlist.h>
-#include <qregexp.h>
+#include <qregularexpression.h>
 #include <qurl.h>
-#include <private/qsystemlibrary_p.h>
 #include <qnetworkinterface.h>
 #include <qdebug.h>
+#include <qvarlengtharray.h>
+#include <qhash.h>
 
 #include <string.h>
 #include <qt_windows.h>
-#include <wininet.h>
 #include <lmcons.h>
-
-/*
- * Information on the WinHTTP DLL:
- *  http://msdn.microsoft.com/en-us/library/aa384122(VS.85).aspx example for WPAD
- *
- *  http://msdn.microsoft.com/en-us/library/aa384097(VS.85).aspx WinHttpGetProxyForUrl
- *  http://msdn.microsoft.com/en-us/library/aa384096(VS.85).aspx WinHttpGetIEProxyConfigForCurrentUs
- *  http://msdn.microsoft.com/en-us/library/aa384095(VS.85).aspx WinHttpGetDefaultProxyConfiguration
- */
-
-// We don't want to include winhttp.h because that's not
-// present in some Windows SDKs (I don't know why)
-// So, instead, copy the definitions here
-
-typedef struct {
-  DWORD dwFlags;
-  DWORD dwAutoDetectFlags;
-  LPCWSTR lpszAutoConfigUrl;
-  LPVOID lpvReserved;
-  DWORD dwReserved;
-  BOOL fAutoLogonIfChallenged;
-} WINHTTP_AUTOPROXY_OPTIONS;
-
-typedef struct {
-  DWORD dwAccessType;
-  LPWSTR lpszProxy;
-  LPWSTR lpszProxyBypass;
-} WINHTTP_PROXY_INFO;
-
-typedef struct {
-  BOOL fAutoDetect;
-  LPWSTR lpszAutoConfigUrl;
-  LPWSTR lpszProxy;
-  LPWSTR lpszProxyBypass;
-} WINHTTP_CURRENT_USER_IE_PROXY_CONFIG;
-
-#define WINHTTP_AUTOPROXY_AUTO_DETECT           0x00000001
-#define WINHTTP_AUTOPROXY_CONFIG_URL            0x00000002
-
-#define WINHTTP_AUTO_DETECT_TYPE_DHCP           0x00000001
-#define WINHTTP_AUTO_DETECT_TYPE_DNS_A          0x00000002
-
-#define WINHTTP_ACCESS_TYPE_DEFAULT_PROXY               0
-#define WINHTTP_ACCESS_TYPE_NO_PROXY                    1
-#define WINHTTP_ACCESS_TYPE_NAMED_PROXY                 3
-
-#define WINHTTP_NO_PROXY_NAME     NULL
-#define WINHTTP_NO_PROXY_BYPASS   NULL
-
-#define WINHTTP_ERROR_BASE                      12000
-#define ERROR_WINHTTP_LOGIN_FAILURE             (WINHTTP_ERROR_BASE + 15)
-#define ERROR_WINHTTP_UNABLE_TO_DOWNLOAD_SCRIPT (WINHTTP_ERROR_BASE + 167)
-#define ERROR_WINHTTP_AUTODETECTION_FAILED      (WINHTTP_ERROR_BASE + 180)
+#include <winhttp.h>
 
 QT_BEGIN_NAMESPACE
 
-typedef BOOL (WINAPI * PtrWinHttpGetProxyForUrl)(HINTERNET, LPCWSTR, WINHTTP_AUTOPROXY_OPTIONS*, WINHTTP_PROXY_INFO*);
-typedef HINTERNET (WINAPI * PtrWinHttpOpen)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR,DWORD);
-typedef BOOL (WINAPI * PtrWinHttpGetDefaultProxyConfiguration)(WINHTTP_PROXY_INFO*);
-typedef BOOL (WINAPI * PtrWinHttpGetIEProxyConfigForCurrentUser)(WINHTTP_CURRENT_USER_IE_PROXY_CONFIG*);
-typedef BOOL (WINAPI * PtrWinHttpCloseHandle)(HINTERNET);
-typedef BOOL (WINAPI * PtrCloseServiceHandle)(SC_HANDLE hSCObject);
-static PtrWinHttpGetProxyForUrl ptrWinHttpGetProxyForUrl = 0;
-static PtrWinHttpOpen ptrWinHttpOpen = 0;
-static PtrWinHttpGetDefaultProxyConfiguration ptrWinHttpGetDefaultProxyConfiguration = 0;
-static PtrWinHttpGetIEProxyConfigForCurrentUser ptrWinHttpGetIEProxyConfigForCurrentUser = 0;
-static PtrWinHttpCloseHandle ptrWinHttpCloseHandle = 0;
-
+using namespace Qt::StringLiterals;
 
 static bool currentProcessIsService()
 {
-    typedef BOOL (WINAPI *PtrGetUserName)(LPTSTR lpBuffer, LPDWORD lpnSize);
-    typedef BOOL (WINAPI *PtrLookupAccountName)(LPCTSTR lpSystemName, LPCTSTR lpAccountName, PSID Sid,
-                                  LPDWORD cbSid, LPTSTR ReferencedDomainName, LPDWORD cchReferencedDomainName, PSID_NAME_USE peUse);
-    static PtrGetUserName ptrGetUserName = (PtrGetUserName)QSystemLibrary::resolve(QLatin1String("Advapi32"), "GetUserNameW");
-    static PtrLookupAccountName ptrLookupAccountName = (PtrLookupAccountName)QSystemLibrary::resolve(QLatin1String("Advapi32"), "LookupAccountNameW");
-
-    if (ptrGetUserName && ptrLookupAccountName) {
-        wchar_t userName[UNLEN + 1] = L"";
-        DWORD size = UNLEN;
-        if (ptrGetUserName(userName, &size)) {
-            SID_NAME_USE type = SidTypeUser;
-            DWORD sidSize = 0;
-            DWORD domainSize = 0;
-            // first call is to get the correct size
-            bool bRet = ptrLookupAccountName(NULL, userName, NULL, &sidSize, NULL, &domainSize, &type);
-            if (bRet == FALSE && ERROR_INSUFFICIENT_BUFFER != GetLastError())
-                return false;
-            QVarLengthArray<BYTE, 68> buff(sidSize);
-            QVarLengthArray<wchar_t, MAX_PATH> domainName(domainSize);
-            // second call to LookupAccountNameW actually gets the SID
-            // both the pointer to the buffer and the pointer to the domain name should not be NULL
-            if (ptrLookupAccountName(NULL, userName, buff.data(), &sidSize, domainName.data(), &domainSize, &type))
-                return type != SidTypeUser; //returns true if the current user is not a user
-        }
+    wchar_t userName[UNLEN + 1] = L"";
+    DWORD size = UNLEN;
+    if (GetUserNameW(userName, &size)) {
+        SID_NAME_USE type = SidTypeUser;
+        DWORD sidSize = 0;
+        DWORD domainSize = 0;
+        // first call is to get the correct size
+        bool bRet = LookupAccountNameW(NULL, userName, NULL, &sidSize, NULL, &domainSize, &type);
+        if (bRet == FALSE && ERROR_INSUFFICIENT_BUFFER != GetLastError())
+            return false;
+        QVarLengthArray<BYTE, 68> buff(sidSize);
+        QVarLengthArray<wchar_t, MAX_PATH> domainName(domainSize);
+        // second call to LookupAccountNameW actually gets the SID
+        // both the pointer to the buffer and the pointer to the domain name should not be NULL
+        if (LookupAccountNameW(NULL, userName, buff.data(), &sidSize, domainName.data(), &domainSize, &type))
+            return type != SidTypeUser; //returns true if the current user is not a user
     }
     return false;
 }
@@ -155,11 +48,11 @@ static bool currentProcessIsService()
 static QStringList splitSpaceSemicolon(const QString &source)
 {
     QStringList list;
-    int start = 0;
-    int end;
+    qsizetype start = 0;
+    qsizetype end;
     while (true) {
-        int space = source.indexOf(QLatin1Char(' '), start);
-        int semicolon = source.indexOf(QLatin1Char(';'), start);
+        qsizetype space = source.indexOf(u' ', start);
+        qsizetype semicolon = source.indexOf(u';', start);
         end = space;
         if (semicolon != -1 && (end == -1 || semicolon < end))
             end = semicolon;
@@ -181,7 +74,7 @@ static bool isBypassed(const QString &host, const QStringList &bypassList)
     if (host.isEmpty())
         return false;
 
-    bool isSimple = !host.contains(QLatin1Char('.')) && !host.contains(QLatin1Char(':'));
+    bool isSimple = !host.contains(u'.') && !host.contains(u':');
 
     QHostAddress ipAddress;
     bool isIpAddress = ipAddress.setAddress(host);
@@ -192,7 +85,7 @@ static bool isBypassed(const QString &host, const QStringList &bypassList)
 
     // does it match the list of exclusions?
     for (const QString &entry : bypassList) {
-        if (entry == QLatin1String("<local>")) {
+        if (entry == "<local>"_L1) {
             if (isSimple)
                 return true;
             if (isIpAddress) {
@@ -212,8 +105,8 @@ static bool isBypassed(const QString &host, const QStringList &bypassList)
             return true;        // excluded
         } else {
             // do wildcard matching
-            QRegExp rx(entry, Qt::CaseInsensitive, QRegExp::Wildcard);
-            if (rx.exactMatch(host))
+            auto rx = QRegularExpression::fromWildcard(entry, Qt::CaseInsensitive);
+            if (rx.match(host).hasMatch())
                 return true;
         }
     }
@@ -292,32 +185,32 @@ static QList<QNetworkProxy> parseServerList(const QNetworkProxyQuery &query, con
             && query.queryType() != QNetworkProxyQuery::TcpServer
             && query.queryType() != QNetworkProxyQuery::SctpServer;
     for (const QString &entry : proxyList) {
-        int server = 0;
+        qsizetype server = 0;
 
         QNetworkProxy::ProxyType proxyType = QNetworkProxy::HttpProxy;
         quint16 port = 8080;
 
-        int pos = entry.indexOf(QLatin1Char('='));
-        QStringRef scheme;
-        QStringRef protocolTag;
+        qsizetype pos = entry.indexOf(u'=');
+        QStringView scheme;
+        QStringView protocolTag;
         if (pos != -1) {
-            scheme = protocolTag = entry.leftRef(pos);
+            scheme = protocolTag = QStringView{entry}.left(pos);
             server = pos + 1;
         }
-        pos = entry.indexOf(QLatin1String("://"), server);
+        pos = entry.indexOf("://"_L1, server);
         if (pos != -1) {
-            scheme = entry.midRef(server, pos - server);
+            scheme = QStringView{entry}.mid(server, pos - server);
             server = pos + 3;
         }
 
         if (!scheme.isEmpty()) {
-            if (scheme == QLatin1String("http") || scheme == QLatin1String("https")) {
+            if (scheme == "http"_L1 || scheme == "https"_L1) {
                 // no-op
                 // defaults are above
-            } else if (scheme == QLatin1String("socks") || scheme == QLatin1String("socks5")) {
+            } else if (scheme == "socks"_L1 || scheme == "socks5"_L1) {
                 proxyType = QNetworkProxy::Socks5Proxy;
                 port = 1080;
-            } else if (scheme == QLatin1String("ftp")) {
+            } else if (scheme == "ftp"_L1) {
                 proxyType = QNetworkProxy::FtpCachingProxy;
                 port = 2121;
             } else {
@@ -326,10 +219,10 @@ static QList<QNetworkProxy> parseServerList(const QNetworkProxyQuery &query, con
             }
         }
 
-        pos = entry.indexOf(QLatin1Char(':'), server);
+        pos = entry.indexOf(u':', server);
         if (pos != -1) {
             bool ok;
-            uint value = entry.midRef(pos + 1).toUInt(&ok);
+            uint value = QStringView{entry}.mid(pos + 1).toUInt(&ok);
             if (!ok || value > 65535)
                 continue;       // invalid port number
 
@@ -352,10 +245,10 @@ static QList<QNetworkProxy> parseServerList(const QNetworkProxyQuery &query, con
             result.prepend(taggedProxies.value(requiredTag));
         }
     }
-    if (!checkTags || requiredTag != QLatin1String("http")) {
+    if (!checkTags || requiredTag != "http"_L1) {
         // if there are different http proxies for http and https, prefer the https one (more likely to be capable of CONNECT)
-        QNetworkProxy httpProxy = taggedProxies.value(QLatin1String("http"));
-        QNetworkProxy httpsProxy = taggedProxies.value(QLatin1String("http"));
+        QNetworkProxy httpProxy = taggedProxies.value("http"_L1);
+        QNetworkProxy httpsProxy = taggedProxies.value("http"_L1);
         if (httpProxy != httpsProxy && httpProxy.type() == QNetworkProxy::HttpProxy && httpsProxy.type() == QNetworkProxy::HttpProxy) {
             for (int i = 0; i < result.count(); i++) {
                 if (httpProxy == result.at(i))
@@ -367,7 +260,6 @@ static QList<QNetworkProxy> parseServerList(const QNetworkProxyQuery &query, con
     return removeDuplicateProxies(result);
 }
 
-#if !defined(Q_OS_WINRT)
 namespace {
 class QRegistryWatcher {
     Q_DISABLE_COPY_MOVE(QRegistryWatcher)
@@ -403,9 +295,9 @@ public:
     }
 
     void clear() {
-        for (HANDLE event : qAsConst(m_watchEvents))
+        for (HANDLE event : std::as_const(m_watchEvents))
             CloseHandle(event);
-        for (HKEY key : qAsConst(m_registryHandles))
+        for (HKEY key : std::as_const(m_registryHandles))
             RegCloseKey(key);
 
         m_watchEvents.clear();
@@ -417,11 +309,10 @@ public:
     }
 
 private:
-    QVector<HANDLE> m_watchEvents;
-    QVector<HKEY> m_registryHandles;
+    QList<HANDLE> m_watchEvents;
+    QList<HKEY> m_registryHandles;
 };
 } // namespace
-#endif // !defined(Q_OS_WINRT)
 
 class QWindowsSystemProxy
 {
@@ -441,9 +332,7 @@ public:
     QStringList proxyServerList;
     QStringList proxyBypass;
     QList<QNetworkProxy> defaultResult;
-#if !defined(Q_OS_WINRT)
     QRegistryWatcher proxySettingsWatcher;
-#endif
     bool initialized;
     bool functional;
     bool isAutoConfig;
@@ -460,7 +349,7 @@ QWindowsSystemProxy::QWindowsSystemProxy()
 QWindowsSystemProxy::~QWindowsSystemProxy()
 {
     if (hHttpSession)
-        ptrWinHttpCloseHandle(hHttpSession);
+        WinHttpCloseHandle(hHttpSession);
 }
 
 void QWindowsSystemProxy::reset()
@@ -477,9 +366,7 @@ void QWindowsSystemProxy::reset()
 void QWindowsSystemProxy::init()
 {
     bool proxySettingsChanged = false;
-#if !defined(Q_OS_WINRT)
     proxySettingsChanged = proxySettingsWatcher.hasChanged();
-#endif
 
     if (initialized && !proxySettingsChanged)
         return;
@@ -487,27 +374,14 @@ void QWindowsSystemProxy::init()
 
     reset();
 
-#if !defined(Q_OS_WINRT)
     proxySettingsWatcher.clear(); // needs reset to trigger a new detection
     proxySettingsWatcher.addLocation(HKEY_CURRENT_USER,  QStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"));
     proxySettingsWatcher.addLocation(HKEY_LOCAL_MACHINE, QStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"));
     proxySettingsWatcher.addLocation(HKEY_LOCAL_MACHINE, QStringLiteral("Software\\Policies\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"));
-#endif
-
-    // load the winhttp.dll library
-    QSystemLibrary lib(L"winhttp");
-    if (!lib.load())
-        return;                 // failed to load
-
-    ptrWinHttpOpen = (PtrWinHttpOpen)lib.resolve("WinHttpOpen");
-    ptrWinHttpCloseHandle = (PtrWinHttpCloseHandle)lib.resolve("WinHttpCloseHandle");
-    ptrWinHttpGetProxyForUrl = (PtrWinHttpGetProxyForUrl)lib.resolve("WinHttpGetProxyForUrl");
-    ptrWinHttpGetDefaultProxyConfiguration = (PtrWinHttpGetDefaultProxyConfiguration)lib.resolve("WinHttpGetDefaultProxyConfiguration");
-    ptrWinHttpGetIEProxyConfigForCurrentUser = (PtrWinHttpGetIEProxyConfigForCurrentUser)lib.resolve("WinHttpGetIEProxyConfigForCurrentUser");
 
     // Try to obtain the Internet Explorer configuration.
     WINHTTP_CURRENT_USER_IE_PROXY_CONFIG ieProxyConfig;
-    const bool hasIEConfig = ptrWinHttpGetIEProxyConfigForCurrentUser(&ieProxyConfig);
+    const bool hasIEConfig = WinHttpGetIEProxyConfigForCurrentUser(&ieProxyConfig);
     if (hasIEConfig) {
         if (ieProxyConfig.lpszAutoConfigUrl) {
             autoConfigUrl = QString::fromWCharArray(ieProxyConfig.lpszAutoConfigUrl);
@@ -532,7 +406,7 @@ void QWindowsSystemProxy::init()
         // attempt to get the default configuration instead
         // that config will serve as default if WPAD fails
         WINHTTP_PROXY_INFO proxyInfo;
-        if (ptrWinHttpGetDefaultProxyConfiguration(&proxyInfo) &&
+        if (WinHttpGetDefaultProxyConfiguration(&proxyInfo) &&
             proxyInfo.dwAccessType == WINHTTP_ACCESS_TYPE_NAMED_PROXY) {
             // we got information from the registry
             // overwrite the IE configuration, if any
@@ -550,11 +424,11 @@ void QWindowsSystemProxy::init()
     hHttpSession = NULL;
     if (ieProxyConfig.fAutoDetect || !autoConfigUrl.isEmpty()) {
         // open the handle and obtain the options
-        hHttpSession = ptrWinHttpOpen(L"Qt System Proxy access/1.0",
-                                      WINHTTP_ACCESS_TYPE_NO_PROXY,
-                                      WINHTTP_NO_PROXY_NAME,
-                                      WINHTTP_NO_PROXY_BYPASS,
-                                      0);
+        hHttpSession = WinHttpOpen(L"Qt System Proxy access/1.0",
+                                   WINHTTP_ACCESS_TYPE_NO_PROXY,
+                                   WINHTTP_NO_PROXY_NAME,
+                                   WINHTTP_NO_PROXY_BYPASS,
+                                   0);
         if (!hHttpSession)
             return;
 
@@ -596,11 +470,11 @@ QList<QNetworkProxy> QNetworkProxyFactory::systemProxyForQuery(const QNetworkPro
         // url could be empty, e.g. from QNetworkProxy::applicationProxy(), that's fine,
         // we'll still ask for the proxy.
         // But for a file url, we know we don't need one.
-        if (url.scheme() == QLatin1String("file") || url.scheme() == QLatin1String("qrc"))
+        if (url.scheme() == "file"_L1 || url.scheme() == "qrc"_L1)
             return sp->defaultResult;
         if (query.queryType() != QNetworkProxyQuery::UrlRequest) {
             // change the scheme to https, maybe it'll work
-            url.setScheme(QLatin1String("https"));
+            url.setScheme("https"_L1);
         }
 
         QString urlQueryString = url.toString();
@@ -611,7 +485,7 @@ QList<QNetworkProxy> QNetworkProxyFactory::systemProxyForQuery(const QNetworkPro
             urlQueryString = url.toString().left(2083);
         }
 
-        bool getProxySucceeded = ptrWinHttpGetProxyForUrl(sp->hHttpSession,
+        bool getProxySucceeded = WinHttpGetProxyForUrl(sp->hHttpSession,
                                                 reinterpret_cast<LPCWSTR>(urlQueryString.utf16()),
                                                 &sp->autoProxyOptions,
                                                 &proxyInfo);
@@ -629,7 +503,7 @@ QList<QNetworkProxy> QNetworkProxyFactory::systemProxyForQuery(const QNetworkPro
                 sp->autoProxyOptions.dwFlags = WINHTTP_AUTOPROXY_CONFIG_URL;
                 sp->autoProxyOptions.lpszAutoConfigUrl =
                     reinterpret_cast<LPCWSTR>(sp->autoConfigUrl.utf16());
-                getProxySucceeded = ptrWinHttpGetProxyForUrl(sp->hHttpSession,
+                getProxySucceeded = WinHttpGetProxyForUrl(sp->hHttpSession,
                                                 reinterpret_cast<LPCWSTR>(urlQueryString.utf16()),
                                                 &sp->autoProxyOptions,
                                                 &proxyInfo);
@@ -642,7 +516,7 @@ QList<QNetworkProxy> QNetworkProxyFactory::systemProxyForQuery(const QNetworkPro
             // We first tried without AutoLogon, because this might prevent caching the result.
             // But now we've to enable it (http://msdn.microsoft.com/en-us/library/aa383153%28v=VS.85%29.aspx)
             sp->autoProxyOptions.fAutoLogonIfChallenged = TRUE;
-            getProxySucceeded = ptrWinHttpGetProxyForUrl(sp->hHttpSession,
+            getProxySucceeded = WinHttpGetProxyForUrl(sp->hHttpSession,
                                                 reinterpret_cast<LPCWSTR>(urlQueryString.utf16()),
                                                 &sp->autoProxyOptions,
                                                 &proxyInfo);

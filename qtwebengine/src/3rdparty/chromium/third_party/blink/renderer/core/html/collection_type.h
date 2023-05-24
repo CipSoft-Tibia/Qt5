@@ -48,6 +48,7 @@ enum CollectionType {
   kDataListOptions,
   kMapAreas,
   kFormControls,
+  kPopoverInvokers,
 
   // Named HTMLCollection types cached in the document.
   kWindowNamedItems,
@@ -84,4 +85,4 @@ inline bool IsLiveNodeListType(CollectionType type) {
 
 }  // namespace blink
 
-#endif
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_HTML_COLLECTION_TYPE_H_

@@ -1,39 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2020 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qcommandlineoption.h>
 #include <qcommandlineparser.h>
 #include <qcoreapplication.h>
 #include <qfileinfo.h>
+#include <qjsondocument.h>
+#include <qjsonobject.h>
+#include <qjsonarray.h>
 
 #include "cppcodegenerator.h"
-#include "moc.h"
-#include "preprocessor.h"
 #include "repcodegenerator.h"
 #include "repparser.h"
 #include "utils.h"
@@ -41,11 +17,11 @@
 #include <cstdio>
 
 #define PROGRAM_NAME  "repc"
-#define REPC_VERSION  "0.1"
+#define REPC_VERSION  "1.0.0"
 
 enum Mode {
     InRep = 1,
-    InSrc = 2,
+    InJson = 2,
     OutRep = 4,
     OutSource = 8,
     OutReplica = 16,
@@ -53,10 +29,6 @@ enum Mode {
 };
 
 static const QLatin1String REP("rep");
-static const QLatin1String SRC("src");
-static const QLatin1String REPLICA("replica");
-static const QLatin1String SOURCE("source");
-static const QLatin1String MERGED("merged");
 
 QT_USE_NAMESPACE
 
@@ -76,8 +48,8 @@ int main(int argc, char **argv)
     QCommandLineOption inputTypeOption(QStringLiteral("i"));
     inputTypeOption.setDescription(QLatin1String("Input file type:\n"
                                                   "rep: replicant template files.\n"
-                                                  "src: C++ QObject derived classes."));
-    inputTypeOption.setValueName(QStringLiteral("rep|src"));
+                                                  "json: JSON output from moc of a Qt header file."));
+    inputTypeOption.setValueName(QStringLiteral("rep|json"));
     parser.addOption(inputTypeOption);
 
     QCommandLineOption outputTypeOption(QStringLiteral("o"));
@@ -102,8 +74,8 @@ int main(int argc, char **argv)
     debugOption.setDescription(QStringLiteral("Print out parsing debug information (for troubleshooting)."));
     parser.addOption(debugOption);
 
-    parser.addPositionalArgument(QStringLiteral("[header-file/rep-file]"),
-            QStringLiteral("Input header/rep file to read from, otherwise stdin."));
+    parser.addPositionalArgument(QStringLiteral("[json-file/rep-file]"),
+            QStringLiteral("Input json/rep file to read from, otherwise stdin."));
 
     parser.addPositionalArgument(QStringLiteral("[rep-file/header-file]"),
             QStringLiteral("Output header/rep file to write to, otherwise stdout."));
@@ -112,7 +84,7 @@ int main(int argc, char **argv)
 
     const QStringList files = parser.positionalArguments();
 
-    if (files.count() > 2) {
+    if (files.size() > 2) {
         fprintf(stderr, "%s", qPrintable(QLatin1String(PROGRAM_NAME ": Too many input, output files specified: '") + files.join(QStringLiteral("' '")) + QStringLiteral("\'.\n")));
         parser.showHelp(1);
     }
@@ -121,8 +93,8 @@ int main(int argc, char **argv)
         const QString &inputType = parser.value(inputTypeOption);
         if (inputType == REP)
             mode = InRep;
-        else if (inputType == SRC)
-            mode = InSrc;
+        else if (inputType == u"json")
+            mode = InJson;
         else {
             fprintf(stderr, PROGRAM_NAME ": Unknown input type\"%s\".\n", qPrintable(inputType));
             parser.showHelp(1);
@@ -133,11 +105,11 @@ int main(int argc, char **argv)
         const QString &outputType = parser.value(outputTypeOption);
         if (outputType == REP)
             mode |= OutRep;
-        else if (outputType == REPLICA)
+        else if (outputType == u"replica")
             mode |= OutReplica;
-        else if (outputType == SOURCE)
+        else if (outputType == u"source")
             mode |= OutSource;
-        else if (outputType == MERGED)
+        else if (outputType == u"merged")
             mode |= OutMerged;
         else {
             fprintf(stderr, PROGRAM_NAME ": Unknown output type\"%s\".\n", qPrintable(outputType));
@@ -145,7 +117,7 @@ int main(int argc, char **argv)
         }
     }
 
-    switch (files.count()) {
+    switch (files.size()) {
     case 2:
         outputFile = files.last();
         if (!(mode & (OutRep | OutSource | OutReplica))) {
@@ -156,17 +128,17 @@ int main(int argc, char **argv)
         Q_FALLTHROUGH();
     case 1:
         inputFile = files.first();
-        if (!(mode & (InRep | InSrc))) {
+        if (!(mode & (InRep | InJson))) {
             // try to figure out the In mode from file extension
             if (inputFile.endsWith(QLatin1String(".rep")))
                 mode |= InRep;
             else
-                mode |= InSrc;
+                mode |= InJson;
         }
         break;
     }
     // check mode sanity
-    if (!(mode & (InRep | InSrc))) {
+    if (!(mode & (InRep | InJson))) {
         fprintf(stderr, PROGRAM_NAME ": Unknown input type, please use -i option to specify one.\n");
         parser.showHelp(1);
     }
@@ -178,7 +150,7 @@ int main(int argc, char **argv)
         fprintf(stderr, PROGRAM_NAME ": Invalid input/output type combination, both are rep files.\n");
         parser.showHelp(1);
     }
-    if (mode & InSrc && mode & OutSource) {
+    if (mode & InJson && mode & OutSource) {
         fprintf(stderr, PROGRAM_NAME ": Invalid input/output type combination, both are source header files.\n");
         parser.showHelp(1);
     }
@@ -207,40 +179,30 @@ int main(int argc, char **argv)
         }
     }
 
-    if (mode & InSrc) {
-        Preprocessor pp;
-        const QFileInfo includePath(QLatin1String(RO_INSTALL_HEADERS));
-        pp.includes += Preprocessor::IncludePath(QFile::encodeName(includePath.canonicalFilePath()));
-        pp.includes += Preprocessor::IncludePath(QFile::encodeName(includePath.canonicalPath()));
-        const auto paths = parser.values(includePathOption);
-        for (const QString &path : paths)
-            pp.includes += Preprocessor::IncludePath(QFile::encodeName(path));
+    if (mode & InJson) {
+        QJsonDocument doc(QJsonDocument::fromJson(input.readAll()));
+        input.close();
+        if (!doc.isObject()) {
+            fprintf(stderr, PROGRAM_NAME ": Unable to read json input.\n");
+            return 0;
+        }
 
-        pp.macros["Q_MOC_RUN"];
-        pp.macros["__cplusplus"];
+        QJsonObject json = doc.object();
 
-        Moc moc;
-        if (!inputFile.isEmpty())
-            moc.filename = inputFile.toLocal8Bit();
-        moc.currentFilenames.push(inputFile.toLocal8Bit());
-        moc.includes = pp.includes;
-        moc.symbols = pp.preprocessed(moc.filename, &input);
-        moc.parse();
-
-        if (moc.classList.isEmpty()) {
+        if (!json.contains(QLatin1String("classes")) || !json[QLatin1String("classes")].isArray()) {
             fprintf(stderr, PROGRAM_NAME ": No QObject classes found.\n");
             return 0;
         }
 
-        input.close();
+        QJsonArray classes = json[QLatin1String("classes")].toArray();
 
         if (mode & OutRep) {
             CppCodeGenerator generator(&output);
-            generator.generate(moc.classList, parser.isSet(alwaysClassOption));
+            generator.generate(classes, parser.isSet(alwaysClassOption));
         } else {
             Q_ASSERT(mode & OutReplica);
-            RepCodeGenerator generator(&output);
-            generator.generate(classList2AST(moc.classList), RepCodeGenerator::REPLICA, outputFile);
+            RepCodeGenerator generator(&output, classList2AST(classes));
+            generator.generate(RepCodeGenerator::REPLICA, outputFile);
         }
     } else {
         Q_ASSERT(!(mode & OutRep));
@@ -258,13 +220,13 @@ int main(int argc, char **argv)
 
         input.close();
 
-        RepCodeGenerator generator(&output);
+        RepCodeGenerator generator(&output, repparser.ast());
         if ((mode & OutMerged) == OutMerged)
-            generator.generate(repparser.ast(), RepCodeGenerator::MERGED, outputFile);
+            generator.generate(RepCodeGenerator::MERGED, outputFile);
         else if (mode & OutReplica)
-            generator.generate(repparser.ast(), RepCodeGenerator::REPLICA, outputFile);
+            generator.generate(RepCodeGenerator::REPLICA, outputFile);
         else if (mode & OutSource)
-            generator.generate(repparser.ast(), RepCodeGenerator::SOURCE, outputFile);
+            generator.generate(RepCodeGenerator::SOURCE, outputFile);
         else {
             fprintf(stderr, PROGRAM_NAME ": Unknown mode.\n");
             return 1;

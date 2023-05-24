@@ -23,22 +23,23 @@
 #include <QScopedPointer>
 #include <QtQml/QQmlEngine>
 #include <QtTest/QtTest>
-#include <QtWebView/private/qquickwebview_p.h>
+#include <QtWebViewQuick/private/qquickwebview_p.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qstandardpaths.h>
 #include <QtWebView/qtwebviewfunctions.h>
+#include <QtWebViewQuick/private/qquickwebviewsettings_p.h>
 
-QString getTestFilePath(const QString &testFile)
+QUrl getTestFilePath(const QString &testFile)
 {
     const QString tempTestFile = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/" + testFile;
     const bool exists = QFile::exists(tempTestFile);
     if (exists)
-        return tempTestFile;
+        return QUrl::fromLocalFile(tempTestFile);
 
     QFile tf(QString(":/") + testFile);
     const bool copied = tf.copy(tempTestFile);
 
-    return copied ? tempTestFile : testFile;
+    return QUrl::fromLocalFile(copied ? tempTestFile : testFile);
 }
 
 class tst_QQuickWebView : public QObject {
@@ -47,6 +48,8 @@ public:
     tst_QQuickWebView();
 
 private Q_SLOTS:
+    void initTestCase();
+
     void init();
     void cleanup();
 
@@ -69,6 +72,10 @@ private Q_SLOTS:
     void multipleWebViews();
     void titleUpdate();
     void changeUserAgent();
+    void setAndDeleteCookies();
+
+    void settings_JS_data();
+    void settings_JS();
 
 private:
     inline QQuickWebView *newWebView();
@@ -93,7 +100,15 @@ QQuickWebView *tst_QQuickWebView::newWebView()
 {
     QObject *viewInstance = m_component->create();
     QQuickWebView *webView = qobject_cast<QQuickWebView*>(viewInstance);
+    webView->settings()->setAllowFileAccess(true);
+    webView->settings()->setLocalContentCanAccessFileUrls(true);
     return webView;
+}
+
+void tst_QQuickWebView::initTestCase()
+{
+    if (!qEnvironmentVariableIsEmpty("QEMU_LD_PREFIX"))
+        QSKIP("This test is unstable on QEMU, so it will be skipped.");
 }
 
 void tst_QQuickWebView::init()
@@ -131,7 +146,7 @@ void tst_QQuickWebView::stopEnabledAfterLoadStarted()
     QCOMPARE(webView()->isLoading(), false);
 
     LoadStartedCatcher catcher(webView());
-    webView()->setUrl(QUrl(getTestFilePath("basic_page.html")));
+    webView()->setUrl(getTestFilePath("basic_page.html"));
     waitForSignal(&catcher, SIGNAL(finished()));
 
     QCOMPARE(webView()->isLoading(), true);
@@ -161,7 +176,7 @@ void tst_QQuickWebView::loadEmptyPageViewHidden()
 {
     QSignalSpy loadSpy(webView(), SIGNAL(loadingChanged(QQuickWebViewLoadRequest*)));
 
-    webView()->setUrl(QUrl(getTestFilePath("basic_page.html")));
+    webView()->setUrl(getTestFilePath("basic_page.html"));
     QVERIFY(waitForLoadSucceeded(webView()));
 
     QCOMPARE(loadSpy.size(), 2);
@@ -171,7 +186,7 @@ void tst_QQuickWebView::loadNonexistentFileUrl()
 {
     QSignalSpy loadSpy(webView(), SIGNAL(loadingChanged(QQuickWebViewLoadRequest*)));
 
-    webView()->setUrl(QUrl(getTestFilePath("file_that_does_not_exist.html")));
+    webView()->setUrl(getTestFilePath("file_that_does_not_exist.html"));
     QVERIFY(waitForLoadFailed(webView()));
 
     QCOMPARE(loadSpy.size(), 2);
@@ -179,40 +194,40 @@ void tst_QQuickWebView::loadNonexistentFileUrl()
 
 void tst_QQuickWebView::backAndForward()
 {
-    const QString basicPage = getTestFilePath("basic_page.html");
-    const QString basicPage2 = getTestFilePath("basic_page2.html");
-    webView()->setUrl(QUrl(basicPage));
+    const QUrl basicPage = getTestFilePath("basic_page.html");
+    const QUrl basicPage2 = getTestFilePath("basic_page2.html");
+    webView()->setUrl(basicPage);
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), basicPage);
+    QCOMPARE(webView()->url(), basicPage);
 
-    webView()->setUrl(QUrl(basicPage2));
+    webView()->setUrl(basicPage2);
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), basicPage2);
+    QCOMPARE(webView()->url(), basicPage2);
 
     webView()->goBack();
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), basicPage);
+    QCOMPARE(webView()->url(), basicPage);
 
     webView()->goForward();
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), basicPage2);
+    QCOMPARE(webView()->url(), basicPage2);
 }
 
 void tst_QQuickWebView::reload()
 {
-    webView()->setUrl(QUrl(getTestFilePath("basic_page.html")));
+    webView()->setUrl(getTestFilePath("basic_page.html"));
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), getTestFilePath("basic_page.html"));
+    QCOMPARE(webView()->url(), getTestFilePath("basic_page.html"));
 
     webView()->reload();
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), getTestFilePath("basic_page.html"));
+    QCOMPARE(webView()->url(), getTestFilePath("basic_page.html"));
 }
 
 void tst_QQuickWebView::stop()
@@ -220,7 +235,7 @@ void tst_QQuickWebView::stop()
     webView()->setUrl(QUrl(getTestFilePath("basic_page.html")));
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QCOMPARE(webView()->url().path(), getTestFilePath("basic_page.html"));
+    QCOMPARE(webView()->url(), getTestFilePath("basic_page.html"));
 
     webView()->stop();
 }
@@ -229,11 +244,11 @@ void tst_QQuickWebView::loadProgress()
 {
     QCOMPARE(webView()->loadProgress(), 0);
 
-    webView()->setUrl(QUrl(getTestFilePath("basic_page.html")));
+    webView()->setUrl(getTestFilePath("basic_page.html"));
     QSignalSpy loadProgressChangedSpy(webView(), SIGNAL(loadProgressChanged()));
     QVERIFY(waitForLoadSucceeded(webView()));
 
-    QVERIFY(loadProgressChangedSpy.count() >= 1);
+    QVERIFY(loadProgressChangedSpy.size() >= 1);
 
     QCOMPARE(webView()->loadProgress(), 100);
 }
@@ -248,7 +263,7 @@ void tst_QQuickWebView::show()
 
 void tst_QQuickWebView::showWebView()
 {
-    webView()->setUrl(QUrl(getTestFilePath("direct-image-compositing.html")));
+    webView()->setUrl(getTestFilePath("direct-image-compositing.html"));
     QVERIFY(waitForLoadSucceeded(webView()));
     m_window->show();
     // This should not crash.
@@ -282,12 +297,12 @@ void tst_QQuickWebView::multipleWebViewWindows()
     QQuickWebView *webView2 = newWebView();
     QScopedPointer<TestWindow> window2(new TestWindow(webView2));
 
-    webView1->setUrl(QUrl(getTestFilePath("scroll.html")));
+    webView1->setUrl(getTestFilePath("scroll.html"));
     QVERIFY(waitForLoadSucceeded(webView1));
     window1->show();
     webView1->setVisible(true);
 
-    webView2->setUrl(QUrl(getTestFilePath("basic_page.html")));
+    webView2->setUrl(getTestFilePath("basic_page.html"));
     QVERIFY(waitForLoadSucceeded(webView2));
     window2->show();
     webView2->setVisible(true);
@@ -305,12 +320,12 @@ void tst_QQuickWebView::multipleWebViews()
     webView2->setParentItem(m_window->contentItem());
 
     webView1->setSize(QSizeF(300, 400));
-    webView1->setUrl(QUrl(getTestFilePath("scroll.html")));
+    webView1->setUrl(getTestFilePath("scroll.html"));
     QVERIFY(waitForLoadSucceeded(webView1.data()));
     webView1->setVisible(true);
 
     webView2->setSize(QSizeF(300, 400));
-    webView2->setUrl(QUrl(getTestFilePath("basic_page.html")));
+    webView2->setUrl(getTestFilePath("basic_page.html"));
     QVERIFY(waitForLoadSucceeded(webView2.data()));
     webView2->setVisible(true);
     QTest::qWait(200);
@@ -321,14 +336,19 @@ void tst_QQuickWebView::titleUpdate()
     QSignalSpy titleSpy(webView(), SIGNAL(titleChanged()));
 
     // Load page with no title
-    webView()->setUrl(QUrl(getTestFilePath("basic_page2.html")));
+    webView()->setUrl(getTestFilePath("basic_page2.html"));
     QVERIFY(waitForLoadSucceeded(webView()));
+#ifdef QT_WEBVIEW_WEBENGINE_BACKEND
+    // webengine emits titleChanged even if there is no title
+    // QTBUG-94151
     QCOMPARE(titleSpy.size(), 1);
-
+#else
+    QCOMPARE(titleSpy.size(), 0);
+#endif
     titleSpy.clear();
 
     // No titleChanged signal for failed load
-    webView()->setUrl(QUrl(getTestFilePath("file_that_does_not_exist.html")));
+    webView()->setUrl(getTestFilePath("file_that_does_not_exist.html"));
     QVERIFY(waitForLoadFailed(webView()));
     QCOMPARE(titleSpy.size(), 0);
 
@@ -346,6 +366,86 @@ void tst_QQuickWebView::changeUserAgent()
     QObject *viewInstance = userAgentWebView.create();
     QQuickWebView *webView = qobject_cast<QQuickWebView *>(viewInstance);
     QCOMPARE(webView->httpUserAgent(), "dummy");
+}
+
+void tst_QQuickWebView::setAndDeleteCookies()
+{
+    QSignalSpy cookieAddedSpy(webView(), SIGNAL(cookieAdded(const QString &, const QString &)));
+    QSignalSpy cookieRemovedSpy(webView(), SIGNAL(cookieRemoved(const QString &, const QString &)));
+
+#ifdef QT_WEBVIEW_WEBENGINE_BACKEND
+    webView()->setUrl(QUrl("qrc:///cookies.html"));
+    QVERIFY(waitForLoadSucceeded(webView()));
+
+    QTRY_COMPARE(cookieAddedSpy.size(), 2);
+
+    webView()->deleteAllCookies();
+    QTRY_COMPARE(cookieRemovedSpy.size(), 2);
+
+    cookieAddedSpy.clear();
+    cookieRemovedSpy.clear();
+#endif
+
+    Cookie::List cookies { {".example.com", "TestCookie", "testValue"},
+                           {".example2.com", "TestCookie2", "testValue2"},
+                           {".example3.com", "TestCookie3", "testValue3"} };
+
+    for (const auto &cookie : cookies)
+        webView()->setCookie(cookie.domain, cookie.name, cookie.value);
+
+    QTRY_COMPARE(cookieAddedSpy.size(), cookies.size());
+    QVERIFY(Cookie::testSignalValues(cookies, cookieAddedSpy));
+
+    auto removedCookie = cookies.takeLast();
+
+    webView()->deleteCookie(removedCookie.domain, removedCookie.name);
+    QTRY_COMPARE(cookieRemovedSpy.size(), 1);
+    {
+        const auto &first = cookieRemovedSpy.first();
+        Cookie::SigArg sigArg{ first.at(0).toString(), first.at(1).toString() };
+        QCOMPARE(removedCookie, sigArg);
+    }
+
+    // deleting a cookie using a name that has not been set
+    webView()->deleteCookie(".example.com", "NewCookieName");
+    QTRY_COMPARE(cookieRemovedSpy.size(), 1);
+
+    // deleting a cookie using a domain that has not been set
+    webView()->deleteCookie(".new.domain.com", "TestCookie2");
+    QTRY_COMPARE(cookieRemovedSpy.size(), 1);
+
+    webView()->deleteAllCookies();
+#ifdef Q_OS_ANDROID
+    QEXPECT_FAIL("", "Notification for deleteAllCookies() is not implemented on Android, yet!", Continue);
+#endif
+    QTRY_COMPARE(cookieRemovedSpy.size(), 3);
+}
+
+void tst_QQuickWebView::settings_JS_data()
+{
+    QTest::addColumn<bool>("jsEnabled");
+    QTest::addColumn<QUrl>("testUrl");
+    QTest::addColumn<QString>("expectedTitle");
+
+    // Title should be updated from "JavaScript" to "JavaScript Test"
+    QTest::newRow("Test JS enabled") << true << getTestFilePath("javascript.html") << "JavaScript Test";
+    // Title should _not_ be updated from "JavaScript" to "JavaScript Test"
+    QTest::newRow("Test JS disabled") << false << getTestFilePath("javascript.html") << "JavaScript";
+}
+
+void tst_QQuickWebView::settings_JS()
+{
+
+    QFETCH(bool, jsEnabled);
+    QFETCH(QUrl, testUrl);
+    QFETCH(QString, expectedTitle);
+
+    bool wasJsEnabled = webView()->settings()->javaScriptEnabled();
+    webView()->settings()->setJavaScriptEnabled(jsEnabled);
+    webView()->setUrl(testUrl);
+    QVERIFY(waitForLoadSucceeded(webView()));
+    QCOMPARE(webView()->title(), expectedTitle);
+    webView()->settings()->setJavaScriptEnabled(wasJsEnabled);
 }
 
 QTEST_MAIN(tst_QQuickWebView)

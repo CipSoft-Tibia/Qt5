@@ -10,6 +10,8 @@ and what not.
   occasionally break at compile-time throughout 2020.
 * The C++ API within `include/perfetto/ext/` is internal-only and exposed only
   for Chromium.
+* A new C API/ABI for a tracing shared library is in the works in
+  `include/perfetto/public`. It is not stable yet.
 * The tracing protocol ABI is based on protobuf-over-UNIX-socket and shared
   memory. It is long-term stable and maintains compatibility in both directions
   (old service + newer client and vice-versa).
@@ -136,7 +138,7 @@ the following frame types:
     If a method return signature is marked as `stream` (e.g.
     `returns (stream GetAsyncCommandResponse)`), the method invocation can be
     followed by more than one `InvokeMethodReply`, all with the same
-    `request_id`. All replies in the stream but the last one will have
+    `request_id`. All replies in the stream except for the last one will have
     `has_more: true`, to notify the client more responses for the same invocation
     will follow.
 
@@ -252,7 +254,7 @@ No. Within Chrome processes (the browser app, not CrOS) Perfetto doesn't use
 any doesn't use any unix socket. Instead it uses the functionally equivalent
 Mojo endpoints [`Producer{Client,Host}` and `Consumer{Client,Host}`][mojom].
 
-### Shared memory
+### {#shmem-abi} Shared memory
 
 This section describes the binary interface of the memory buffer shared between
 a producer process and the tracing service (SMB).
@@ -272,7 +274,7 @@ The producer specifies the desired SMB size and memory layout when sending the
 [`InitializeConnectionRequest`][producer_port.proto] request to the
 service, which is the very first IPC sent after connection.
 By default, the service creates the SMB and passes back its file descriptor to
-the producer with the the [`InitializeConnectionResponse`][producer_port.proto]
+the producer with the [`InitializeConnectionResponse`][producer_port.proto]
 IPC reply. Recent versions of the service (Android R / 11) allow the FD to be
 created by the producer and passed down to the service in the request. When the
 service supports this, it acks the request setting
@@ -394,7 +396,7 @@ the producer ID that wrote it matches the Producer ID of the patch request over
 IPC (the Producer ID is not spoofable and is tied to the IPC socket file
 descriptor).
 
-### Proto definitions
+### {#protos} Proto definitions
 
 The following protobuf messages are part of the overall trace protocol ABI and
 are updated maintaining backward-compatibility, unless marked as experimental
@@ -486,20 +488,22 @@ service, which might not support some newer features.
 
 ## Static linking vs shared library
 
-The Perfetto Client Library is only available in the form of a static library
-and a single-source amalgamated SDK (which is effectively a static library).
-The library implements the Tracing Protocol ABI so, once statically linked,
-depends only on the socket and shared memory protocol ABI, which are guaranteed
-to be stable.
+The Perfetto C++ Client Library is only available in the form of a static
+library and a single-source amalgamated SDK (which is effectively a static
+library). The library implements the Tracing Protocol ABI so, once statically
+linked, depends only on the socket and shared memory protocol ABI, which are
+guaranteed to be stable.
 
-No shared library distributions are available. We strongly discourage teams from
-attempting to build the tracing library as shared library and use it from a
-different linker unit. It is fine to link AND use the client library within
-the same shared library, as long as none of the perfetto C++ API is exported.
+No shared library distributions for the C++ are available. We strongly
+discourage teams from attempting to build the C++ tracing library as shared
+library and use it from a different linker unit. It is fine to link AND use the
+client library within the same shared library, as long as none of the perfetto
+C++ API is exported.
 
-The `PERFETTO_EXPORT` annotations are only used when building the third tier of
-the client library in chromium component builds and cannot be easily repurposed
-for delineating shared library boundaries for the other two API tiers.
+The `PERFETTO_EXPORT_COMPONENT` annotations are only used when building the
+third tier of the client library in chromium component builds and cannot be
+easily repurposed for delineating shared library boundaries for the other two
+API tiers.
 
 This is because the C++ the first two tiers of the Client Library C++ API make
 extensive use of inline headers and C++ templates, in order to allow the
@@ -509,6 +513,8 @@ Maintaining the C++ ABI across hundreds of inlined functions and a shared
 library is prohibitively expensive and too prone to break in extremely subtle
 ways. For this reason the team has ruled out shared library distributions for
 the time being.
+
+A new C Client library API/ABI is in the works, but it's not stable yet.
 
 [cli_lib]: /docs/instrumentation/tracing-sdk.md
 [selinux_producer]: https://cs.android.com/search?q=perfetto_producer%20f:sepolicy.*%5C.te&sq=

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,12 +15,13 @@ class DOMException;
 
 // Converts an IDL trustToken object to its Mojo counterpart.
 // The elements of trustToken (and of TrustTokenParams) comprise:
+// - a version type, always populated
 // - an operation type, always populated
 // - remaining elements partitioned into groups of parameters used for specific
 // operations.
 //
-// The method sets only |type| and the fields corresponding to the operation
-// specified by |type|, namely
+// The method sets |version|, |operation| and the fields corresponding to the
+// operation specified by |operation|, namely
 // - for issuance, no additional fields;
 // - for redemption, |refresh_policy|;
 // - for signing: |issuer|, |additional_signed_headers|, |sign_request_data|,

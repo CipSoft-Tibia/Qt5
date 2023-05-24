@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -29,7 +29,6 @@ namespace content {
 // events will ge generated and the vector will be empty.
 CONTENT_EXPORT void CreateInputEventData(
     const blink::WebInputEvent& event,
-    std::unique_ptr<gfx::PointF>* last_mouse_position,
     std::vector<ppapi::InputEventData>* pp_events);
 
 // Creates a WebInputEvent from the given PP_InputEvent.  If it fails, returns

@@ -20,6 +20,7 @@
 #include "absl/types/optional.h"
 #include "api/audio/audio_mixer.h"
 #include "api/create_peerconnection_factory.h"
+#include "api/sequence_checker.h"
 #include "api/video_codecs/builtin_video_decoder_factory.h"
 #include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "api/video_codecs/video_decoder_factory.h"
@@ -34,10 +35,8 @@
 #include "pc/test/mock_peer_connection_observers.h"
 #include "rtc_base/gunit.h"
 #include "rtc_base/logging.h"
-#include "rtc_base/ref_counted_object.h"
 #include "rtc_base/rtc_certificate_generator.h"
 #include "rtc_base/string_encode.h"
-#include "rtc_base/thread_checker.h"
 #include "rtc_base/time_utils.h"
 #include "test/gtest.h"
 
@@ -76,9 +75,11 @@ void PeerConnectionTestWrapper::Connect(PeerConnectionTestWrapper* caller,
 
 PeerConnectionTestWrapper::PeerConnectionTestWrapper(
     const std::string& name,
+    rtc::SocketServer* socket_server,
     rtc::Thread* network_thread,
     rtc::Thread* worker_thread)
     : name_(name),
+      socket_server_(socket_server),
       network_thread_(network_thread),
       worker_thread_(worker_thread),
       pending_negotiation_(false) {
@@ -101,12 +102,15 @@ bool PeerConnectionTestWrapper::CreatePc(
     rtc::scoped_refptr<webrtc::AudioEncoderFactory> audio_encoder_factory,
     rtc::scoped_refptr<webrtc::AudioDecoderFactory> audio_decoder_factory) {
   std::unique_ptr<cricket::PortAllocator> port_allocator(
-      new cricket::FakePortAllocator(network_thread_, nullptr));
+      new cricket::FakePortAllocator(
+          network_thread_,
+          std::make_unique<rtc::BasicPacketSocketFactory>(socket_server_),
+          &field_trials_));
 
   RTC_DCHECK_RUN_ON(&pc_thread_checker_);
 
   fake_audio_capture_module_ = FakeAudioCaptureModule::Create();
-  if (fake_audio_capture_module_ == NULL) {
+  if (fake_audio_capture_module_ == nullptr) {
     return false;
   }
 
@@ -123,17 +127,31 @@ bool PeerConnectionTestWrapper::CreatePc(
 
   std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator(
       new FakeRTCCertificateGenerator());
-  peer_connection_ = peer_connection_factory_->CreatePeerConnection(
-      config, std::move(port_allocator), std::move(cert_generator), this);
-
-  return peer_connection_.get() != NULL;
+  webrtc::PeerConnectionDependencies deps(this);
+  deps.allocator = std::move(port_allocator);
+  deps.cert_generator = std::move(cert_generator);
+  auto result = peer_connection_factory_->CreatePeerConnectionOrError(
+      config, std::move(deps));
+  if (result.ok()) {
+    peer_connection_ = result.MoveValue();
+    return true;
+  } else {
+    return false;
+  }
 }
 
 rtc::scoped_refptr<webrtc::DataChannelInterface>
 PeerConnectionTestWrapper::CreateDataChannel(
     const std::string& label,
     const webrtc::DataChannelInit& init) {
-  return peer_connection_->CreateDataChannel(label, &init);
+  auto result = peer_connection_->CreateDataChannelOrError(label, &init);
+  if (!result.ok()) {
+    RTC_LOG(LS_ERROR) << "CreateDataChannel failed: "
+                      << ToString(result.error().type()) << " "
+                      << result.error().message();
+    return nullptr;
+  }
+  return result.MoveValue();
 }
 
 void PeerConnectionTestWrapper::WaitForNegotiation() {
@@ -162,19 +180,17 @@ void PeerConnectionTestWrapper::OnIceCandidate(
     const IceCandidateInterface* candidate) {
   std::string sdp;
   EXPECT_TRUE(candidate->ToString(&sdp));
-  // Give the user a chance to modify sdp for testing.
-  SignalOnIceCandidateCreated(&sdp);
   SignalOnIceCandidateReady(candidate->sdp_mid(), candidate->sdp_mline_index(),
                             sdp);
 }
 
 void PeerConnectionTestWrapper::OnDataChannel(
     rtc::scoped_refptr<webrtc::DataChannelInterface> data_channel) {
-  SignalOnDataChannel(data_channel);
+  SignalOnDataChannel(data_channel.get());
 }
 
 void PeerConnectionTestWrapper::OnSuccess(SessionDescriptionInterface* desc) {
-  // This callback should take the ownership of |desc|.
+  // This callback should take the ownership of `desc`.
   std::unique_ptr<SessionDescriptionInterface> owned_desc(desc);
   std::string sdp;
   EXPECT_TRUE(desc->ToString(&sdp));
@@ -182,9 +198,6 @@ void PeerConnectionTestWrapper::OnSuccess(SessionDescriptionInterface* desc) {
   RTC_LOG(LS_INFO) << "PeerConnectionTestWrapper " << name_ << ": "
                    << webrtc::SdpTypeToString(desc->GetType())
                    << " sdp created: " << sdp;
-
-  // Give the user a chance to modify sdp for testing.
-  SignalOnSdpCreated(&sdp);
 
   SetLocalDescription(desc->GetType(), sdp);
 
@@ -221,10 +234,9 @@ void PeerConnectionTestWrapper::SetLocalDescription(SdpType type,
                    << ": SetLocalDescription " << webrtc::SdpTypeToString(type)
                    << " " << sdp;
 
-  rtc::scoped_refptr<MockSetSessionDescriptionObserver> observer(
-      new rtc::RefCountedObject<MockSetSessionDescriptionObserver>());
+  auto observer = rtc::make_ref_counted<MockSetSessionDescriptionObserver>();
   peer_connection_->SetLocalDescription(
-      observer, webrtc::CreateSessionDescription(type, sdp).release());
+      observer.get(), webrtc::CreateSessionDescription(type, sdp).release());
 }
 
 void PeerConnectionTestWrapper::SetRemoteDescription(SdpType type,
@@ -233,10 +245,9 @@ void PeerConnectionTestWrapper::SetRemoteDescription(SdpType type,
                    << ": SetRemoteDescription " << webrtc::SdpTypeToString(type)
                    << " " << sdp;
 
-  rtc::scoped_refptr<MockSetSessionDescriptionObserver> observer(
-      new rtc::RefCountedObject<MockSetSessionDescriptionObserver>());
+  auto observer = rtc::make_ref_counted<MockSetSessionDescriptionObserver>();
   peer_connection_->SetRemoteDescription(
-      observer, webrtc::CreateSessionDescription(type, sdp).release());
+      observer.get(), webrtc::CreateSessionDescription(type, sdp).release());
 }
 
 void PeerConnectionTestWrapper::AddIceCandidate(const std::string& sdp_mid,
@@ -307,7 +318,8 @@ rtc::scoped_refptr<webrtc::MediaStreamInterface>
 PeerConnectionTestWrapper::GetUserMedia(
     bool audio,
     const cricket::AudioOptions& audio_options,
-    bool video) {
+    bool video,
+    webrtc::Resolution resolution) {
   std::string stream_id =
       kStreamIdBase + rtc::ToString(num_get_user_media_calls_++);
   rtc::scoped_refptr<webrtc::MediaStreamInterface> stream =
@@ -321,7 +333,7 @@ PeerConnectionTestWrapper::GetUserMedia(
         peer_connection_factory_->CreateAudioSource(options);
     rtc::scoped_refptr<webrtc::AudioTrackInterface> audio_track(
         peer_connection_factory_->CreateAudioTrack(kAudioTrackLabelBase,
-                                                   source));
+                                                   source.get()));
     stream->AddTrack(audio_track);
   }
 
@@ -330,14 +342,16 @@ PeerConnectionTestWrapper::GetUserMedia(
     webrtc::FakePeriodicVideoSource::Config config;
     config.frame_interval_ms = 100;
     config.timestamp_offset_ms = rtc::TimeMillis();
+    config.width = resolution.width;
+    config.height = resolution.height;
 
-    rtc::scoped_refptr<webrtc::VideoTrackSourceInterface> source =
-        new rtc::RefCountedObject<webrtc::FakePeriodicVideoTrackSource>(
-            config, /* remote */ false);
+    auto source = rtc::make_ref_counted<webrtc::FakePeriodicVideoTrackSource>(
+        config, /* remote */ false);
 
     std::string videotrack_label = stream_id + kVideoTrackLabelBase;
     rtc::scoped_refptr<webrtc::VideoTrackInterface> video_track(
-        peer_connection_factory_->CreateVideoTrack(videotrack_label, source));
+        peer_connection_factory_->CreateVideoTrack(videotrack_label,
+                                                   source.get()));
 
     stream->AddTrack(video_track);
   }

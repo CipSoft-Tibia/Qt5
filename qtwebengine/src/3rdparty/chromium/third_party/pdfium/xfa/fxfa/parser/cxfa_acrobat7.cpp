@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,7 @@
 namespace {
 
 const CXFA_Node::PropertyData kAcrobat7PropertyData[] = {
-    {XFA_Element::DynamicRender, 1, 0},
+    {XFA_Element::DynamicRender, 1, {}},
 };
 
 const CXFA_Node::AttributeData kAcrobat7AttributeData[] = {
@@ -25,7 +25,7 @@ const CXFA_Node::AttributeData kAcrobat7AttributeData[] = {
 CXFA_Acrobat7::CXFA_Acrobat7(CXFA_Document* doc, XFA_PacketType packet)
     : CXFA_Node(doc,
                 packet,
-                XFA_XDPPACKET_Config,
+                XFA_XDPPACKET::kConfig,
                 XFA_ObjectType::Node,
                 XFA_Element::Acrobat7,
                 kAcrobat7PropertyData,

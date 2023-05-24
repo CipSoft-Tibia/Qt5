@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,13 +10,17 @@
 #include <syscall.h>
 
 #include <atomic>
+#include <cstring>
 
+#include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/profiler/register_context.h"
 #include "base/profiler/stack_buffer.h"
 #include "base/profiler/suspendable_thread_delegate.h"
+#include "base/time/time_override.h"
 #include "base/trace_event/base_tracing.h"
 #include "build/build_config.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 
@@ -33,7 +37,7 @@ class AsyncSafeWaitableEvent {
     // futex() can wake up spuriously if this memory address was previously used
     // for a pthread mutex. So, also check the condition.
     while (true) {
-      int res =
+      long res =
           syscall(SYS_futex, futex_int_ptr(), FUTEX_WAIT | FUTEX_PRIVATE_FLAG,
                   0, nullptr, nullptr, 0);
       if (futex_.load(std::memory_order_acquire) != 0)
@@ -70,7 +74,7 @@ class ScopedEventSignaller {
   ~ScopedEventSignaller() { event_->Signal(); }
 
  private:
-  AsyncSafeWaitableEvent* event_;
+  raw_ptr<AsyncSafeWaitableEvent> event_;
 };
 
 // Struct to store the arguments to the signal handler.
@@ -78,25 +82,25 @@ struct HandlerParams {
   uintptr_t stack_base_address;
 
   // The event is signalled when signal handler is done executing.
-  AsyncSafeWaitableEvent* event;
+  raw_ptr<AsyncSafeWaitableEvent> event;
 
   // Return values:
 
   // Successfully copied the stack segment.
-  bool* success;
+  raw_ptr<bool> success;
 
   // The thread context of the leaf function.
-  mcontext_t* context;
+  raw_ptr<mcontext_t> context;
 
   // Buffer to copy the stack segment.
-  StackBuffer* stack_buffer;
-  const uint8_t** stack_copy_bottom;
+  raw_ptr<StackBuffer> stack_buffer;
+  raw_ptr<const uint8_t*> stack_copy_bottom;
 
   // The timestamp when the stack was copied.
-  TimeTicks* timestamp;
+  raw_ptr<absl::optional<TimeTicks>> maybe_timestamp;
 
   // The delegate provided to the StackCopier.
-  StackCopier::Delegate* stack_copier_delegate;
+  raw_ptr<StackCopier::Delegate> stack_copier_delegate;
 };
 
 // Pointer to the parameters to be "passed" to the CopyStackSignalHandler() from
@@ -110,15 +114,18 @@ std::atomic<HandlerParams*> g_handler_params;
 void CopyStackSignalHandler(int n, siginfo_t* siginfo, void* sigcontext) {
   HandlerParams* params = g_handler_params.load(std::memory_order_acquire);
 
-  // TimeTicks::Now() is implemented in terms of clock_gettime on Linux, which
-  // is signal safe per the signal-safety(7) man page.
-  *params->timestamp = TimeTicks::Now();
+  // MaybeTimeTicksNowIgnoringOverride() is implemented in terms of
+  // clock_gettime on Linux, which is signal safe per the signal-safety(7) man
+  // page, but is not garanteed to succeed, in which case absl::nullopt is
+  // returned. TimeTicks::Now() can't be used because it expects clock_gettime
+  // to always succeed and is thus not signal-safe.
+  *params->maybe_timestamp = subtle::MaybeTimeTicksNowIgnoringOverride();
 
   ScopedEventSignaller e(params->event);
   *params->success = false;
 
   const ucontext_t* ucontext = static_cast<ucontext_t*>(sigcontext);
-  memcpy(params->context, &ucontext->uc_mcontext, sizeof(mcontext_t));
+  std::memcpy(params->context, &ucontext->uc_mcontext, sizeof(mcontext_t));
 
   const uintptr_t bottom = RegisterContextStackPointer(params->context);
   const uintptr_t top = params->stack_base_address;
@@ -173,8 +180,8 @@ class ScopedSigaction {
 
  private:
   const int signal_;
-  struct sigaction* const action_;
-  struct sigaction* const original_action_;
+  const raw_ptr<struct sigaction> action_;
+  const raw_ptr<struct sigaction> original_action_;
   const bool succeeded_;
 };
 
@@ -195,9 +202,10 @@ bool StackCopierSignal::CopyStack(StackBuffer* stack_buffer,
   bool copied = false;
   const uint8_t* stack_copy_bottom = nullptr;
   const uintptr_t stack_base_address = thread_delegate_->GetStackBaseAddress();
+  absl::optional<TimeTicks> maybe_timestamp;
   HandlerParams params = {stack_base_address, &wait_event,  &copied,
                           thread_context,     stack_buffer, &stack_copy_bottom,
-                          timestamp,          delegate};
+                          &maybe_timestamp,   delegate};
   {
     ScopedSetSignalHandlerParams scoped_handler_params(&params);
 
@@ -227,6 +235,16 @@ bool StackCopierSignal::CopyStack(StackBuffer* stack_buffer,
     if (!finished_waiting) {
       NOTREACHED();
       return false;
+    }
+    // Ideally, an accurate timestamp is captured while the sampled thread is
+    // paused. In rare cases, this may fail, in which case we resort to
+    // capturing an delayed timestamp here instead.
+    if (maybe_timestamp.has_value())
+      *timestamp = maybe_timestamp.value();
+    else {
+      TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("cpu_profiler.debug"),
+                   "Fallback on TimeTicks::Now()");
+      *timestamp = TimeTicks::Now();
     }
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -50,9 +50,7 @@ class IdentityPrivateApiTest : public ExtensionBrowserTest {
   std::string consent_result_;
   std::string window_id_;
   std::unique_ptr<base::RunLoop> callback_loop_;
-  std::unique_ptr<base::RepeatingCallbackList<
-      IdentityAPI::OnSetConsentResultSignature>::Subscription>
-      callback_subscription_;
+  base::CallbackListSubscription callback_subscription_;
 };
 
 IN_PROC_BROWSER_TEST_F(IdentityPrivateApiTest, SetConsentResult) {

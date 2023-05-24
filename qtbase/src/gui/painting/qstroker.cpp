@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qstroker_p.h"
 #include "private/qbezier_p.h"
@@ -295,7 +259,7 @@ void QStrokerOps::strokePath(const QPainterPath &path, void *customData, const Q
 /*!
     Convenience function for stroking a polygon of the \a pointCount
     first points in \a points. If \a implicit_close is set to true a
-    line is implictly drawn between the first and last point in the
+    line is implicitly drawn between the first and last point in the
     polygon. Typically true for polygons and false for polylines.
 
     The \a matrix is used to transform the points before they enter the
@@ -1028,13 +992,13 @@ QDashStroker::~QDashStroker()
 {
 }
 
-QVector<qfixed> QDashStroker::patternForStyle(Qt::PenStyle style)
+QList<qfixed> QDashStroker::patternForStyle(Qt::PenStyle style)
 {
     const qfixed space = 2;
     const qfixed dot = 1;
     const qfixed dash = 4;
 
-    QVector<qfixed> pattern;
+    QList<qfixed> pattern;
 
     switch (style) {
     case Qt::DashLine:
@@ -1133,7 +1097,9 @@ void QDashStroker::processCurrentSubpath()
     qreal doffset = m_dashOffset * m_stroke_width;
 
     // make sure doffset is in range [0..sumLength)
-    doffset -= qFloor(doffset * invSumLength) * sumLength;
+    doffset = std::fmod(doffset, sumLength);
+    if (doffset < 0)
+        doffset += sumLength;
 
     while (doffset >= dashes[idash]) {
         doffset -= dashes[idash];

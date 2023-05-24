@@ -1,13 +1,15 @@
 %{
-// Copyright (c) 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/core/css/{{file_basename}}.h"
 
 #include <string.h>
-#include "third_party/blink/public/mojom/use_counter/css_property_id.mojom-blink.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/css_property_id.mojom-blink.h"
 #include "third_party/blink/renderer/core/css/hash_tools.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/text/ascii_ctype.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -41,16 +43,18 @@ const Property* FindProperty(const char* str, unsigned int len) {
   return {{class_name}}Hash::findPropertyImpl(str, len);
 }
 
-CSSPropertyID cssPropertyID(const ExecutionContext* execution_context, const String& string)
+CSSPropertyID CssPropertyID(const ExecutionContext* execution_context,
+                            const String& string)
 {
-    return resolveCSSPropertyID(unresolvedCSSPropertyID(execution_context, string));
+    return ResolveCSSPropertyID(UnresolvedCSSPropertyID(execution_context,
+                                                        string));
 }
 
 mojom::blink::CSSSampleId GetCSSSampleId(CSSPropertyID id) {
   switch (id) {
-  {% for key in property_keys: %}
+  {% for key, value in css_sample_id_pairs: %}
     case CSSPropertyID::{{key}}:
-      return mojom::blink::CSSSampleId::{{key}};
+      return mojom::blink::CSSSampleId::{{value}};
   {% endfor %}
 
     case CSSPropertyID::kVariable:
@@ -64,6 +68,15 @@ mojom::blink::CSSSampleId GetCSSSampleId(CSSPropertyID id) {
   }
 
   NOTREACHED();
+}
+
+int ResolveCSSPropertyAlias(int value) {
+  static constexpr uint16_t kLookupTable[] = {
+  {% for p in aliases: %}
+    {{p.aliased_enum_value}},
+  {% endfor %}
+  };
+  return kLookupTable[value - {{alias_offset}}];
 }
 
 }  // namespace blink

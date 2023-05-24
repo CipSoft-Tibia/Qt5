@@ -1,7 +1,8 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/jumbo.gni")
 import("//mojo/public/tools/bindings/mojom.gni")
 import("//testing/test.gni")
@@ -9,7 +10,7 @@ import("//third_party/google_input_tools/closure.gni")
 import("//third_party/google_input_tools/inputview.gni")
 import("//tools/grit/grit_rule.gni")
 
-assert(is_chromeos)
+assert(is_chromeos_ash)
 
 jumbo_component("ui") {
   sources = [

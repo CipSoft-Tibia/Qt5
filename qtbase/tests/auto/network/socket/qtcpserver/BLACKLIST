@@ -7,13 +7,11 @@ windows-10 msvc-2017
 [ipv6Server:WithoutProxy]
 windows
 osx
-[eagainBlockingAccept]
-windows-7sp1
-windows-10
 [serverAddress]
+# QTBUG-103056
+qnx
 windows-7sp1
 windows-10
 
 [linkLocal]
 macos arm
-

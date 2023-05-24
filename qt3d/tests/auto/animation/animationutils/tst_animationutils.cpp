@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <Qt3DAnimation/private/animationclip_p.h>
@@ -46,7 +21,7 @@
 #include <QtCore/qbitarray.h>
 
 #include <qbackendnodetester.h>
-#include <testpostmanarbiter.h>
+#include <testarbiter.h>
 
 using namespace Qt3DAnimation::Animation;
 
@@ -82,14 +57,14 @@ public:
         m_value2Id = value2Id;
     }
 
-    inline QVector<Qt3DCore::QNodeId> allDependencyIds() const override
+    inline QList<Qt3DCore::QNodeId> allDependencyIds() const override
     {
         return currentDependencyIds();
     }
 
-    QVector<Qt3DCore::QNodeId> currentDependencyIds() const final
+    QList<Qt3DCore::QNodeId> currentDependencyIds() const final
     {
-        return QVector<Qt3DCore::QNodeId>() << m_value1Id << m_value2Id;
+        return { m_value1Id, m_value2Id };
     }
 
     using ClipBlendNode::setClipResults;
@@ -97,13 +72,13 @@ public:
     double duration() const final { return 0.0f; }
 
 protected:
-    ClipResults doBlend(const QVector<ClipResults> &blendData) const final
+    ClipResults doBlend(const QList<ClipResults> &blendData) const final
     {
         Q_ASSERT(blendData.size() == 2);
-        const int elementCount = blendData.first().size();
+        const qsizetype elementCount = blendData.first().size();
         ClipResults blendResults(elementCount);
 
-        for (int i = 0; i < elementCount; ++i)
+        for (qsizetype i = 0; i < elementCount; ++i)
             blendResults[i] = 0.5f * (blendData[0][i] + blendData[1][i]);
 
         return blendResults;
@@ -173,7 +148,7 @@ public:
     }
 
     ChannelMapper *createChannelMapper(Handler *handler,
-                                       const QVector<Qt3DCore::QNodeId> &mappingIds)
+                                       const QList<Qt3DCore::QNodeId> &mappingIds)
     {
         auto channelMapperId = Qt3DCore::QNodeId::createId();
         ChannelMapper *channelMapper = handler->channelMapperManager()->getOrCreateResource(channelMapperId);
@@ -289,86 +264,84 @@ private Q_SLOTS:
                                                        QLatin1String("Location"),
                                                        Qt3DCore::QNodeId::createId(),
                                                        "translation",
-                                                       static_cast<int>(QVariant::Vector3D),
+                                                       static_cast<int>(QMetaType::QVector3D),
                                                        3);
 
-            QVector<ChannelMapping *> channelMappings = { channelMapping };
+            const QVector<ChannelMapping *> channelMappings = { channelMapping };
 
             // Create a few channels in the format description
-            ChannelNameAndType rotation = { QLatin1String("Rotation"),
-                                            static_cast<int>(QVariant::Quaternion),
+            const ChannelNameAndType rotation = { QLatin1String("Rotation"),
+                                            static_cast<int>(QMetaType::QQuaternion),
                                             4,
                                             channelMapping->peerId() };
-            ChannelNameAndType location = { QLatin1String("Location"),
-                                            static_cast<int>(QVariant::Vector3D),
+            const ChannelNameAndType location = { QLatin1String("Location"),
+                                            static_cast<int>(QMetaType::QVector3D),
                                             3,
                                             channelMapping->peerId() };
-            ChannelNameAndType baseColor = { QLatin1String("BaseColor"),
-                                             static_cast<int>(QVariant::Vector3D),
-                                             3,
-                                             channelMapping->peerId() };
-            ChannelNameAndType metalness = { QLatin1String("Metalness"),
-                                             static_cast<int>(QVariant::Double),
-                                             1,
-                                             channelMapping->peerId() };
-            ChannelNameAndType roughness = { QLatin1String("Roughness"),
-                                             static_cast<int>(QVariant::Double),
-                                             1,
-                                             channelMapping->peerId() };
-            ChannelNameAndType morphTargetWeightsList = { QLatin1String("MorphTargetWeightsList"),
-                                                      static_cast<int>(QVariant::List),
-                                                      5,
-                                                      channelMapping->peerId() };
-            ChannelNameAndType morphTargetWeightsVec = { QLatin1String("MorphTargetWeightsVec"),
-                                                      qMetaTypeId<QVector<float>>(),
-                                                      6,
-                                                      channelMapping->peerId() };
-            ChannelNameAndType rgbColor = { QLatin1String("rgbColor"),
-                                            static_cast<int>(QVariant::Color),
+            const ChannelNameAndType baseColor = { QLatin1String("BaseColor"),
+                                            static_cast<int>(QMetaType::QVector3D),
                                             3,
                                             channelMapping->peerId() };
-
-            ChannelNameAndType rgbaColor = { QLatin1String("rgbaColor"),
-                                            static_cast<int>(QVariant::Color),
+            const ChannelNameAndType metalness = { QLatin1String("Metalness"),
+                                            static_cast<int>(QMetaType::Double),
+                                            1,
+                                            channelMapping->peerId() };
+            const ChannelNameAndType roughness = { QLatin1String("Roughness"),
+                                            static_cast<int>(QMetaType::Double),
+                                            1,
+                                            channelMapping->peerId() };
+            const ChannelNameAndType morphTargetWeightsList = { QLatin1String("MorphTargetWeightsList"),
+                                            static_cast<int>(QMetaType::QVariantList),
+                                            5,
+                                            channelMapping->peerId() };
+            const ChannelNameAndType morphTargetWeightsVec = { QLatin1String("MorphTargetWeightsVec"),
+                                            qMetaTypeId<QVector<float>>(),
+                                            6,
+                                            channelMapping->peerId() };
+            const ChannelNameAndType rgbColor = { QLatin1String("rgbColor"),
+                                            static_cast<int>(QMetaType::QColor),
+                                            3,
+                                            channelMapping->peerId() };
+            const ChannelNameAndType rgbaColor = { QLatin1String("rgbaColor"),
+                                            static_cast<int>(QMetaType::QColor),
                                             4,
                                             channelMapping->peerId() };
 
-            QVector<ChannelNameAndType> channelNamesAndTypes
+            const QVector<ChannelNameAndType> channelNamesAndTypes
                     = { rotation, location, baseColor, metalness, roughness,
                         morphTargetWeightsList, morphTargetWeightsVec, rgbColor, rgbaColor };
 
             // And the matching indices
-            ComponentIndices rotationIndices = { 0, 1, 2, 3 };
-            ComponentIndices locationIndices = { 4, 5, 6 };
-            ComponentIndices baseColorIndices = { 7, 8, 9 };
-            ComponentIndices metalnessIndices = { 10 };
-            ComponentIndices roughnessIndices = { 11 };
-            ComponentIndices morphTargetListIndices = { 12, 13, 14, 15, 16 };
-            ComponentIndices morphTargetVecIndices = { 17, 18, 19, 20, 21, 22 };
-            ComponentIndices rgbColorIndices = { 23, 24, 25 };
-            ComponentIndices rgbaColorIndices = { 26, 27, 28, 29 };
-            QVector<ComponentIndices> channelComponentIndices
+            const ComponentIndices rotationIndices = { 0, 1, 2, 3 };
+            const ComponentIndices locationIndices = { 4, 5, 6 };
+            const ComponentIndices baseColorIndices = { 7, 8, 9 };
+            const ComponentIndices metalnessIndices = { 10 };
+            const ComponentIndices roughnessIndices = { 11 };
+            const ComponentIndices morphTargetListIndices = { 12, 13, 14, 15, 16 };
+            const ComponentIndices morphTargetVecIndices = { 17, 18, 19, 20, 21, 22 };
+            const ComponentIndices rgbColorIndices = { 23, 24, 25 };
+            const ComponentIndices rgbaColorIndices = { 26, 27, 28, 29 };
+            const QVector<ComponentIndices> channelComponentIndices
                     = { rotationIndices, locationIndices, baseColorIndices,
                         metalnessIndices, roughnessIndices, morphTargetListIndices,
                         morphTargetVecIndices, rgbColorIndices, rgbaColorIndices };
 
-            QVector<QBitArray> sourceClipMask = { QBitArray(4, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(1, true),
-                                                  QBitArray(1, true),
-                                                  QBitArray(5, true),
-                                                  QBitArray(6, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(4, true),
-                                                };
+            const QVector<QBitArray> sourceClipMask = { QBitArray(4, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(1, true),
+                                                       QBitArray(1, true),
+                                                       QBitArray(5, true),
+                                                       QBitArray(6, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(4, true) };
 
             MappingData expectedMapping;
             expectedMapping.targetId = channelMapping->targetId();
             expectedMapping.propertyName = channelMapping->propertyName();
             expectedMapping.type = channelMapping->type();
             expectedMapping.channelIndices = locationIndices;
-            QVector<MappingData> expectedResults = { expectedMapping };
+            const QVector<MappingData> expectedResults = { expectedMapping };
 
             QTest::newRow("single mapping")
                     << handler
@@ -387,96 +360,96 @@ private Q_SLOTS:
                                                         QLatin1String("Location"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "translation",
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3);
 
             auto metalnessMapping = createChannelMapping(handler,
                                                          QLatin1String("Metalness"),
                                                          Qt3DCore::QNodeId::createId(),
                                                          "metalness",
-                                                         static_cast<int>(QVariant::Double),
+                                                         static_cast<int>(QMetaType::Double),
                                                          1);
 
             auto baseColorMapping = createChannelMapping(handler,
                                                          QLatin1String("BaseColor"),
                                                          Qt3DCore::QNodeId::createId(),
                                                          "baseColor",
-                                                         static_cast<int>(QVariant::Vector3D),
+                                                         static_cast<int>(QMetaType::QVector3D),
                                                          3);
 
             auto roughnessMapping = createChannelMapping(handler,
                                                          QLatin1String("Roughness"),
                                                          Qt3DCore::QNodeId::createId(),
                                                          "roughness",
-                                                         static_cast<int>(QVariant::Double),
+                                                         static_cast<int>(QMetaType::Double),
                                                          1);
 
             auto rotationMapping = createChannelMapping(handler,
                                                         QLatin1String("Rotation"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "rotation",
-                                                        static_cast<int>(QVariant::Quaternion),
+                                                        static_cast<int>(QMetaType::QQuaternion),
                                                         4);
 
             auto morphTargetMapping = createChannelMapping(handler,
                                                            QLatin1String("MorphTargetWeights"),
                                                            Qt3DCore::QNodeId::createId(),
                                                            "weights",
-                                                           static_cast<int>(QVariant::List),
+                                                           static_cast<int>(QMetaType::QVariantList),
                                                            5);
 
 
-            QVector<ChannelMapping *> channelMappings
+            const QVector<ChannelMapping *> channelMappings
                     = { locationMapping, metalnessMapping,
                         baseColorMapping, roughnessMapping,
                         rotationMapping, morphTargetMapping };
 
             // Create a few channels in the format description
-            ChannelNameAndType rotation = { QLatin1String("Rotation"),
-                                            static_cast<int>(QVariant::Quaternion),
+            const ChannelNameAndType rotation = { QLatin1String("Rotation"),
+                                            static_cast<int>(QMetaType::QQuaternion),
                                             4,
                                             rotationMapping->peerId() };
-            ChannelNameAndType location = { QLatin1String("Location"),
-                                            static_cast<int>(QVariant::Vector3D),
+            const ChannelNameAndType location = { QLatin1String("Location"),
+                                            static_cast<int>(QMetaType::QVector3D),
                                             3,
                                             locationMapping->peerId() };
-            ChannelNameAndType baseColor = { QLatin1String("BaseColor"),
-                                             static_cast<int>(QVariant::Vector3D),
+            const ChannelNameAndType baseColor = { QLatin1String("BaseColor"),
+                                             static_cast<int>(QMetaType::QVector3D),
                                              3,
                                              baseColorMapping->peerId() };
-            ChannelNameAndType metalness = { QLatin1String("Metalness"),
-                                             static_cast<int>(QVariant::Double),
+            const ChannelNameAndType metalness = { QLatin1String("Metalness"),
+                                             static_cast<int>(QMetaType::Double),
                                              1,
                                              metalnessMapping->peerId() };
-            ChannelNameAndType roughness = { QLatin1String("Roughness"),
-                                             static_cast<int>(QVariant::Double),
+            const ChannelNameAndType roughness = { QLatin1String("Roughness"),
+                                             static_cast<int>(QMetaType::Double),
                                              1,
                                              roughnessMapping->peerId() };
-            ChannelNameAndType morphTarget = { QLatin1String("MorphTargetWeights"),
-                                               static_cast<int>(QVariant::List),
+            const ChannelNameAndType morphTarget = { QLatin1String("MorphTargetWeights"),
+                                               static_cast<int>(QMetaType::QVariantList),
                                                5,
                                                morphTargetMapping->peerId() };
-            QVector<ChannelNameAndType> channelNamesAndTypes
+            const QVector<ChannelNameAndType> channelNamesAndTypes
                     = { rotation, location, baseColor, metalness, roughness,
                         morphTarget };
 
             // And the matching indices
-            ComponentIndices rotationIndices = { 0, 1, 2, 3 };
-            ComponentIndices locationIndices = { 4, 5, 6 };
-            ComponentIndices baseColorIndices = { 7, 8, 9 };
-            ComponentIndices metalnessIndices = { 10 };
-            ComponentIndices roughnessIndices = { 11 };
-            ComponentIndices morphTargetIndices = { 12, 13, 14, 15, 16 };
-            QVector<ComponentIndices> channelComponentIndices
+            const ComponentIndices rotationIndices = { 0, 1, 2, 3 };
+            const ComponentIndices locationIndices = { 4, 5, 6 };
+            const ComponentIndices baseColorIndices = { 7, 8, 9 };
+            const ComponentIndices metalnessIndices = { 10 };
+            const ComponentIndices roughnessIndices = { 11 };
+            const ComponentIndices morphTargetIndices = { 12, 13, 14, 15, 16 };
+            const QVector<ComponentIndices> channelComponentIndices
                     = { rotationIndices, locationIndices, baseColorIndices,
                         metalnessIndices, roughnessIndices, morphTargetIndices };
 
-            QVector<QBitArray> sourceClipMask = { QBitArray(4, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(1, true),
-                                                  QBitArray(1, true),
-                                                  QBitArray(5, true) };
+            const QVector<QBitArray> sourceClipMask = { QBitArray(4, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(1, true),
+                                                       QBitArray(1, true),
+                                                       QBitArray(5, true) };
 
             MappingData expectedLocationMapping;
             expectedLocationMapping.targetId = locationMapping->targetId();
@@ -514,7 +487,7 @@ private Q_SLOTS:
             expectedMorphTargetMapping.type = morphTargetMapping->type();
             expectedMorphTargetMapping.channelIndices = morphTargetIndices;
 
-            QVector<MappingData> expectedResults
+            const QVector<MappingData> expectedResults
                     = { expectedLocationMapping,
                         expectedMetalnessMapping,
                         expectedBaseColorMapping,
@@ -534,17 +507,17 @@ private Q_SLOTS:
         // Single skeleton mapping
         {
             Handler *handler = new Handler();
-            const int jointCount = 4;
+            const qsizetype jointCount = 4;
             auto skeleton = createSkeleton(handler, jointCount);
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
 
-            QVector<ChannelMapping *> channelMappings = { channelMapping };
+            const QVector<ChannelMapping *> channelMappings = { channelMapping };
 
             // Create a few channels in the format description
             QVector<ChannelNameAndType> channelNamesAndTypes;
-            for (int i = 0; i < jointCount; ++i) {
+            for (qsizetype i = 0; i < jointCount; ++i) {
                 ChannelNameAndType locationDescription = { QLatin1String("Location"),
-                                                           static_cast<int>(QVariant::Vector3D),
+                                                           static_cast<int>(QMetaType::QVector3D),
                                                            3,
                                                            channelMapping->peerId() };
                 locationDescription.jointIndex = i;
@@ -552,7 +525,7 @@ private Q_SLOTS:
                 channelNamesAndTypes.push_back(locationDescription);
 
                 ChannelNameAndType rotationDescription = { QLatin1String("Rotation"),
-                                                           static_cast<int>(QVariant::Quaternion),
+                                                           static_cast<int>(QMetaType::QQuaternion),
                                                            4,
                                                            channelMapping->peerId() };
                 rotationDescription.jointIndex = i;
@@ -560,7 +533,7 @@ private Q_SLOTS:
                 channelNamesAndTypes.push_back(rotationDescription);
 
                 ChannelNameAndType scaleDescription = { QLatin1String("Scale"),
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3,
                                                         channelMapping->peerId() };
                 scaleDescription.jointIndex = i;
@@ -569,57 +542,47 @@ private Q_SLOTS:
             }
 
             // And the matching indices
-            QVector<ComponentIndices> channelComponentIndices;
-            channelComponentIndices.push_back({ 0, 1, 2 });
-            channelComponentIndices.push_back({ 3, 4, 5, 6 });
-            channelComponentIndices.push_back({ 7, 8, 9 });
+            const QVector<ComponentIndices> channelComponentIndices = {
+                {  0,  1,  2 }, {  3,  4,  5,  6 }, {  7,  8,  9 },
+                { 10, 11, 12 }, { 13, 14, 15, 16 }, { 17, 18, 19 },
+                { 20, 21, 22 }, { 23, 24, 25, 26 }, { 27, 28, 29 },
+                { 30, 31, 32 }, { 33, 34, 35, 36 }, { 37, 38, 39 }
+            };
 
-            channelComponentIndices.push_back({ 10, 11, 12 });
-            channelComponentIndices.push_back({ 13, 14, 15, 16 });
-            channelComponentIndices.push_back({ 17, 18, 19 });
-
-            channelComponentIndices.push_back({ 20, 21, 22 });
-            channelComponentIndices.push_back({ 23, 24, 25, 26 });
-            channelComponentIndices.push_back({ 27, 28, 29 });
-
-            channelComponentIndices.push_back({ 30, 31, 32 });
-            channelComponentIndices.push_back({ 33, 34, 35, 36 });
-            channelComponentIndices.push_back({ 37, 38, 39 });
-
-            QVector<QBitArray> sourceClipMask = { QBitArray(3, true),
-                                                  QBitArray(4, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(4, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(4, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(3, true),
-                                                  QBitArray(4, true),
-                                                  QBitArray(3, true) };
+            const QVector<QBitArray> sourceClipMask = { QBitArray(3, true),
+                                                       QBitArray(4, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(4, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(4, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(3, true),
+                                                       QBitArray(4, true),
+                                                       QBitArray(3, true) };
 
             QVector<MappingData> expectedResults;
             int componentIndicesIndex = 0;
-            for (int i = 0; i < jointCount; ++i) {
+            for (qsizetype i = 0; i < jointCount; ++i) {
                 MappingData locationMapping;
                 locationMapping.targetId = channelMapping->skeletonId();
                 locationMapping.propertyName = "translation";
-                locationMapping.type = static_cast<int>(QVariant::Vector3D);
+                locationMapping.type = static_cast<int>(QMetaType::QVector3D);
                 locationMapping.channelIndices = channelComponentIndices[componentIndicesIndex++];
                 locationMapping.jointIndex = i;
 
                 MappingData rotationMapping;
                 rotationMapping.targetId = channelMapping->skeletonId();
                 rotationMapping.propertyName = "rotation";
-                rotationMapping.type = static_cast<int>(QVariant::Quaternion);
+                rotationMapping.type = static_cast<int>(QMetaType::QQuaternion);
                 rotationMapping.channelIndices = channelComponentIndices[componentIndicesIndex++];
                 rotationMapping.jointIndex = i;
 
                 MappingData scaleMapping;
                 scaleMapping.targetId = channelMapping->skeletonId();
                 scaleMapping.propertyName = "scale";
-                scaleMapping.type = static_cast<int>(QVariant::Vector3D);
+                scaleMapping.type = static_cast<int>(QMetaType::QVector3D);
                 scaleMapping.channelIndices = channelComponentIndices[componentIndicesIndex++];
                 scaleMapping.jointIndex = i;
 
@@ -647,14 +610,14 @@ private Q_SLOTS:
         QFETCH(QVector<MappingData>, expectedResults);
 
         // WHEN
-        const QVector<MappingData> actualResults = buildPropertyMappings(channelMappings,
-                                                                         channelNamesAndTypes,
-                                                                         channelComponentIndices,
-                                                                         sourceClipMask);
+        const auto actualResults = buildPropertyMappings(channelMappings,
+                                                         channelNamesAndTypes,
+                                                         channelComponentIndices,
+                                                         sourceClipMask);
 
         // THEN
         QCOMPARE(actualResults.size(), expectedResults.size());
-        for (int i = 0; i < actualResults.size(); ++i) {
+        for (qsizetype i = 0; i < actualResults.size(); ++i) {
             const auto actualMapping = actualResults[i];
             const auto expectedMapping = expectedResults[i];
 
@@ -821,10 +784,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "translation";
-            mapping.type = static_cast<int>(QVariant::Vector3D);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2;
+            mapping.type = static_cast<int>(QMetaType::QVector3D);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 1.0f << 2.0f << 3.0f;
+            channelResults = QVector<float> { 1.0f, 2.0f, 3.0f };
             expectedChanges.normalizedTime = 1.1f; // Invalid
             expectedChanges.finalFrame = false;
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(QVector3D(1.0f, 2.0f, 3.0f))});
@@ -849,19 +812,18 @@ private Q_SLOTS:
             MappingData translationMapping;
             translationMapping.targetId = Qt3DCore::QNodeId::createId();
             translationMapping.propertyName = "translation";
-            translationMapping.type = static_cast<int>(QVariant::Vector3D);
-            translationMapping.channelIndices = QVector<int>() << 0 << 1 << 2;
+            translationMapping.type = static_cast<int>(QMetaType::QVector3D);
+            translationMapping.channelIndices = QVector<qsizetype>{ 0, 1, 2 };
             mappingData.push_back(translationMapping);
 
             MappingData scaleMapping;
             scaleMapping.targetId = Qt3DCore::QNodeId::createId();
             scaleMapping.propertyName = "scale";
-            scaleMapping.type = static_cast<int>(QVariant::Vector3D);
-            scaleMapping.channelIndices = QVector<int>() << 3 << 4 << 5;
+            scaleMapping.type = static_cast<int>(QMetaType::QVector3D);
+            scaleMapping.channelIndices = QVector<qsizetype>{ 3, 4, 5 };
             mappingData.push_back(scaleMapping);
 
-            channelResults = QVector<float>() << 1.0f << 2.0f << 3.0f
-                                              << 4.0f << 5.0f << 6.0f;
+            channelResults = QVector<float> { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = -0.1f; // Invalid
 
@@ -888,10 +850,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "mass";
-            mapping.type = static_cast<int>(QVariant::Double);
-            mapping.channelIndices = QVector<int>() << 0;
+            mapping.type = static_cast<int>(QMetaType::Double);
+            mapping.channelIndices = QVector<qsizetype>{ 0 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 3.5f;
+            channelResults = QVector<float> { 3.5f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = -1.0f; // Invalid
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(3.5f)});
@@ -910,10 +872,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "pos";
-            mapping.type = static_cast<int>(QVariant::Vector2D);
-            mapping.channelIndices = QVector<int>() << 0 << 1;
+            mapping.type = static_cast<int>(QMetaType::QVector2D);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 2.0f << 1.0f;
+            channelResults = QVector<float> { 2.0f, 1.0f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = 1.1f; // Invalid
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(QVector2D(2.0f, 1.0f))});
@@ -932,10 +894,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "foo";
-            mapping.type = static_cast<int>(QVariant::Vector4D);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2 << 3;
+            mapping.type = static_cast<int>(QMetaType::QVector4D);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2, 3 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 4.0f << 3.0f << 2.0f << 1.0f;
+            channelResults = QVector<float> { 4.0f, 3.0f, 2.0f, 1.0f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = 1.1f; // Invalid
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(QVector4D(4.0f, 3.0f, 2.0f, 1.0f))});
@@ -954,10 +916,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "rotation";
-            mapping.type = static_cast<int>(QVariant::Quaternion);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2 << 3;
+            mapping.type = static_cast<int>(QMetaType::QQuaternion);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2, 3 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 1.0f << 0.0f << 0.0f << 1.0f;
+            channelResults = QVector<float> { 1.0f, 0.0f, 0.0f, 1.0f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = -0.1f; // Invalid
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(QQuaternion(1.0f, 0.0f, 0.0f, 1.0f).normalized())});
@@ -976,10 +938,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "color";
-            mapping.type = static_cast<int>(QVariant::Color);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2;
+            mapping.type = static_cast<int>(QMetaType::QColor);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 0.5f << 0.4f << 0.3f;
+            channelResults = QVector<float> { 0.5f, 0.4f, 0.3f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = 1.1f; // Invalid
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(QColor::fromRgbF(0.5f, 0.4f, 0.3f))});
@@ -998,10 +960,10 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "color";
-            mapping.type = static_cast<int>(QVariant::Color);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2 << 3;
+            mapping.type = static_cast<int>(QMetaType::QColor);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2, 3 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 0.5f << 0.4f << 0.3f << 0.2f;
+            channelResults = QVector<float> { 0.5f, 0.4f, 0.3f, 0.2f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = 1.1f; // Invalid
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(QColor::fromRgbF(0.5f, 0.4f, 0.3f, 0.2f))});
@@ -1020,13 +982,13 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "weights";
-            mapping.type = static_cast<int>(QVariant::List);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2 << 3 << 4 << 5 << 6;
+            mapping.type = static_cast<int>(QMetaType::QVariantList);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2, 3, 4, 5, 6 };
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 0.5f << 0.4f << 0.3f << 0.0f << 1.0f << 0.6f << 0.9f;
+            channelResults = QVector<float> { 0.5f, 0.4f, 0.3f, 0.0f, 1.0f, 0.6f, 0.9f };
             expectedChanges.finalFrame = false;
             expectedChanges.normalizedTime = 1.1f; // Invalid
-            QVariantList expectedValue = QVariantList() << 0.5f << 0.4f << 0.3f << 0.0f << 1.0f << 0.6f << 0.9f;
+            QVariantList expectedValue = QVariantList { 0.5f, 0.4f, 0.3f, 0.0f, 1.0f, 0.6f, 0.9f };
             expectedChanges.targetChanges.push_back({mapping.targetId, mapping.propertyName, QVariant::fromValue(expectedValue)});
 
             QTest::newRow("QVariantList weights")
@@ -1079,12 +1041,12 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "translation";
-            mapping.type = static_cast<int>(QVariant::Vector3D);
-            mapping.channelIndices = QVector<int>() << 0 << 1 << 2;
+            mapping.type = static_cast<int>(QMetaType::QVector3D);
+            mapping.channelIndices = QVector<qsizetype>{ 0, 1, 2 };
             mapping.callback = &callback;
             mapping.callbackFlags = {};
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 1.0f << 2.0f << 3.0f;
+            channelResults = QVector<float> { 1.0f, 2.0f, 3.0f };
 
             AnimationCallbackAndValue cbv;
             cbv.callback = mapping.callback;
@@ -1105,12 +1067,12 @@ private Q_SLOTS:
             MappingData mapping;
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "something";
-            mapping.type = static_cast<int>(QVariant::Double);
-            mapping.channelIndices = QVector<int>() << 0;
+            mapping.type = static_cast<int>(QMetaType::Double);
+            mapping.channelIndices = QVector<qsizetype>{ 0 };
             mapping.callback = &callback;
             mapping.callbackFlags = {};
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 1.0f;
+            channelResults = QVector<float> { 1.0f };
 
             AnimationCallbackAndValue cbv;
             cbv.callback = mapping.callback;
@@ -1132,11 +1094,11 @@ private Q_SLOTS:
             mapping.targetId = Qt3DCore::QNodeId::createId();
             mapping.propertyName = "opacity";
             mapping.type = static_cast<int>(QMetaType::Float);
-            mapping.channelIndices = QVector<int>() << 0;
+            mapping.channelIndices = QVector<qsizetype>{ 0 };
             mapping.callback = &callback;
             mapping.callbackFlags = Qt3DAnimation::QAnimationCallback::OnThreadPool;
             mappingData.push_back(mapping);
-            channelResults = QVector<float>() << 0.5f;
+            channelResults = QVector<float> { 0.5f };
 
             AnimationCallbackAndValue cbv;
             cbv.callback = mapping.callback;
@@ -1190,7 +1152,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip1.json"));
             localTime = 0.0f;
-            expectedResults = QVector<float>() << 0.0f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 0.0f, 0.0f, 0.0f };
 
             QTest::newRow("clip1.json, t = 0.0")
                     << handler << clip << localTime << expectedResults;
@@ -1201,7 +1163,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip1.json"));
             localTime = clip->duration();
-            expectedResults = QVector<float>() << 5.0f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 5.0f, 0.0f, 0.0f };
 
             QTest::newRow("clip1.json, t = duration")
                     << handler << clip << localTime << expectedResults;
@@ -1212,7 +1174,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip1.json"));
             localTime = clip->duration() / 2.0f;
-            expectedResults = QVector<float>() << 2.5f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 2.5f, 0.0f, 0.0f };
 
             QTest::newRow("clip1.json, t = duration/2")
                     << handler << clip << localTime << expectedResults;
@@ -1223,9 +1185,8 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip2.json"));
             localTime = 0.0f;
-            expectedResults = QVector<float>()
-                    << 0.0f << 0.0f << 0.0f             // Translation
-                    << 1.0f << 0.0f << 0.0f << 0.0f;    // Rotation
+            expectedResults = QVector<float> { 0.0f, 0.0f, 0.0f,         // Translation
+                                             1.0f, 0.0f, 0.0f, 0.0f }; // Rotation
 
             QTest::newRow("clip2.json, t = 0.0")
                     << handler << clip << localTime << expectedResults;
@@ -1235,9 +1196,8 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip2.json"));
             localTime = clip->duration();
-            expectedResults = QVector<float>()
-                    << 5.0f << 0.0f << 0.0f             // Translation
-                    << 0.0f << 0.0f << -1.0f << 0.0f;   // Rotation
+            expectedResults = QVector<float> { 5.0f, 0.0f, 0.0f,          // Translation
+                                             0.0f, 0.0f, -1.0f, 0.0f }; // Rotation
 
             QTest::newRow("clip2.json, t = duration")
                     << handler << clip << localTime << expectedResults;
@@ -1247,9 +1207,8 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip2.json"));
             localTime = clip->duration() / 2.0f;
-            expectedResults = QVector<float>()
-                    << 2.5f << 0.0f << 0.0f             // Translation
-                    << 0.5f << 0.0f << -0.5f << 0.0f;   // Rotation
+            expectedResults = QVector<float> { 2.5f, 0.0f, 0.0f,          // Translation
+                                             0.5f, 0.0f, -0.5f, 0.0f }; // Rotation
 
             QTest::newRow("clip2.json, t = duration/2")
                     << handler << clip << localTime << expectedResults;
@@ -1260,7 +1219,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip4.json"));
             localTime = clip->duration();
-            expectedResults = QVector<float>() << 5.0 << -2.0f << 6.0f;
+            expectedResults = QVector<float> { 5.0, -2.0f, 6.0f };
 
             QTest::newRow("clip4.json, linear, t = duration")
                     << handler << clip << localTime << expectedResults;
@@ -1271,7 +1230,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip4.json"));
             localTime = clip->duration() / 2.0f;
-            expectedResults = QVector<float>() << 2.5f << -1.0f << 3.0f;
+            expectedResults = QVector<float> { 2.5f, -1.0f, 3.0f };
 
             QTest::newRow("clip4.json, linear, t = duration/2")
                     << handler << clip << localTime << expectedResults;
@@ -1282,7 +1241,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip6.json"));
             localTime = clip->duration() / 2.0f;
-            expectedResults = QVector<float>() << 0.923822f << 0.382626f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 0.923822f, 0.382626f, 0.0f, 0.0f };
 
             QTest::newRow("clip6.json, slerp, t = duration/2")
                     << handler << clip << localTime << expectedResults;
@@ -1299,7 +1258,7 @@ private Q_SLOTS:
         QFETCH(ClipResults, expectedResults);
 
         // WHEN
-        ClipResults actualResults = evaluateClipAtLocalTime(clip, localTime);
+        const ClipResults actualResults = evaluateClipAtLocalTime(clip, localTime);
 
         // THEN
         QCOMPARE(actualResults.size(), expectedResults.size());
@@ -1330,7 +1289,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip1.json"));
             phase = 0.0f;
-            expectedResults = QVector<float>() << 0.0f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 0.0f, 0.0f, 0.0f };
 
             QTest::newRow("clip1.json, phi = 0.0")
                     << handler << clip << phase << expectedResults;
@@ -1341,7 +1300,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip1.json"));
             phase = 1.0f;
-            expectedResults = QVector<float>() << 5.0f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 5.0f, 0.0f, 0.0f };
 
             QTest::newRow("clip1.json, phi = 1.0")
                     << handler << clip << phase << expectedResults;
@@ -1352,7 +1311,7 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip1.json"));
             phase = 0.5f;
-            expectedResults = QVector<float>() << 2.5f << 0.0f << 0.0f;
+            expectedResults = QVector<float> { 2.5f, 0.0f, 0.0f };
 
             QTest::newRow("clip1.json, phi = 0.5")
                     << handler << clip << phase << expectedResults;
@@ -1363,9 +1322,8 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip2.json"));
             phase = 0.0f;
-            expectedResults = QVector<float>()
-                    << 0.0f << 0.0f << 0.0f             // Translation
-                    << 1.0f << 0.0f << 0.0f << 0.0f;    // Rotation
+            expectedResults = QVector<float> { 0.0f, 0.0f, 0.0f,         // Translation
+                                             1.0f, 0.0f, 0.0f, 0.0f }; // Rotation
 
             QTest::newRow("clip2.json, phi = 0.0")
                     << handler << clip << phase << expectedResults;
@@ -1375,9 +1333,8 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip2.json"));
             phase = 1.0f;
-            expectedResults = QVector<float>()
-                    << 5.0f << 0.0f << 0.0f             // Translation
-                    << 0.0f << 0.0f << -1.0f << 0.0f;   // Rotation
+            expectedResults = QVector<float> { 5.0f, 0.0f, 0.0f,          // Translation
+                                             0.0f, 0.0f, -1.0f, 0.0f }; // Rotation
 
             QTest::newRow("clip2.json, t = 1.0")
                     << handler << clip << phase << expectedResults;
@@ -1387,9 +1344,8 @@ private Q_SLOTS:
             handler = new Handler();
             clip = createAnimationClipLoader(handler, QUrl("qrc:/clip2.json"));
             phase = 0.5f;
-            expectedResults = QVector<float>()
-                    << 2.5f << 0.0f << 0.0f             // Translation
-                    << 0.5f << 0.0f << -0.5f << 0.0f;   // Rotation
+            expectedResults = QVector<float> { 2.5f, 0.0f, 0.0f,          // Translation
+                                             0.5f, 0.0f, -0.5f, 0.0f }; // Rotation
 
             QTest::newRow("clip2.json, phi = 0.5")
                     << handler << clip << phase << expectedResults;
@@ -1406,7 +1362,7 @@ private Q_SLOTS:
         QFETCH(ClipResults, expectedResults);
 
         // WHEN
-        ClipResults actualResults = evaluateClipAtPhase(clip, phase);
+        const ClipResults actualResults = evaluateClipAtPhase(clip, phase);
 
         // THEN
         QCOMPARE(actualResults.size(), expectedResults.size());
@@ -1425,17 +1381,17 @@ private Q_SLOTS:
     {
         QTest::addColumn<Channel>("channel");
         QTest::addColumn<int>("dataType");
-        QTest::addColumn<int>("expectedChannelComponentCount");
-        QTest::addColumn<int>("offset");
-        QTest::addColumn<QVector<char>>("suffixes");
-        QTest::addColumn<QVector<int>>("expectedResults");
+        QTest::addColumn<qsizetype>("expectedChannelComponentCount");
+        QTest::addColumn<qsizetype>("offset");
+        QTest::addColumn<QList<char>>("suffixes");
+        QTest::addColumn<QList<qsizetype>>("expectedResults");
 
         Channel channel;
         int dataType;
-        int expectedChannelComponentCount;
-        int offset;
-        QVector<char> suffixes;
-        QVector<int> expectedResults;
+        qsizetype expectedChannelComponentCount;
+        qsizetype offset;
+        QList<char> suffixes;
+        QList<qsizetype> expectedResults;
 
         // already sorted vec3, no component names, with and without offset
         {
@@ -1444,11 +1400,11 @@ private Q_SLOTS:
             channel.channelComponents.resize(3);
             // leave 'name' empty
 
-            dataType = static_cast<int>(QVariant::Vector3D);
+            dataType = static_cast<int>(QMetaType::QVector3D);
             expectedChannelComponentCount = 3;
             offset = 0;
             // suffixes expected to be ignored
-            expectedResults = (QVector<int>() << 0 << 1 << 2);
+            expectedResults = QList<qsizetype>{ 0, 1, 2 };
 
             QTest::newRow("vec3 location, pre-sorted, no component names, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1457,7 +1413,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 4;
-            expectedResults = (QVector<int>() << 4 << 5 << 6);
+            expectedResults = QList<qsizetype>{ 4, 5, 6 };
             QTest::newRow("vec3 location, pre-sorted, no component names, offset = 4")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1473,11 +1429,11 @@ private Q_SLOTS:
             channel.channelComponents[1].name = QLatin1String("Location Y");
             channel.channelComponents[2].name = QLatin1String("Location Z");
 
-            dataType = static_cast<int>(QVariant::Vector3D);
+            dataType = static_cast<int>(QMetaType::QVector3D);
             expectedChannelComponentCount = 3;
             offset = 0;
-            suffixes = (QVector<char>() << 'X' << 'Y' << 'Z' << 'W');
-            expectedResults = (QVector<int>() << 0 << 1 << 2);
+            suffixes = QList<char> { 'X', 'Y', 'Z', 'W' };
+            expectedResults = QList<qsizetype>{ 0, 1, 2 };
 
             QTest::newRow("vec3 location, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1486,7 +1442,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 4;
-            expectedResults = (QVector<int>() << 4 << 5 << 6);
+            expectedResults = QList<qsizetype>{ 4, 5, 6 };
             QTest::newRow("vec3 location, offset = 4")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1503,11 +1459,11 @@ private Q_SLOTS:
             channel.channelComponents[0].name = QLatin1String("pos X");
             channel.channelComponents[1].name = QLatin1String("pos Y");
 
-            dataType = static_cast<int>(QVariant::Vector2D);
+            dataType = static_cast<int>(QMetaType::QVector2D);
             expectedChannelComponentCount = 2;
             offset = 0;
-            suffixes = (QVector<char>() << 'X' << 'Y' << 'Z' << 'W');
-            expectedResults = (QVector<int>() << 0 << 1);
+            suffixes = QList<char> { 'X', 'Y', 'Z', 'W' };
+            expectedResults = QList<qsizetype>{ 0, 1 };
 
             QTest::newRow("vec2 pos, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1516,7 +1472,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 2;
-            expectedResults = (QVector<int>() << 2 << 3);
+            expectedResults = QList<qsizetype>{ 2, 3 };
             QTest::newRow("vec2 pos, offset = 2")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1535,11 +1491,11 @@ private Q_SLOTS:
             channel.channelComponents[2].name = QLatin1String("foo Z");
             channel.channelComponents[3].name = QLatin1String("foo W");
 
-            dataType = static_cast<int>(QVariant::Vector4D);
+            dataType = static_cast<int>(QMetaType::QVector4D);
             expectedChannelComponentCount = 4;
             offset = 0;
-            suffixes = (QVector<char>() << 'X' << 'Y' << 'Z' << 'W');
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3);
+            suffixes = QList<char> { 'X', 'Y', 'Z', 'W' };
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3 };
 
             QTest::newRow("vec4 foo, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1548,7 +1504,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13 };
             QTest::newRow("vec4 foo, offset = 10")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1564,11 +1520,11 @@ private Q_SLOTS:
             channel.channelComponents.resize(1);
             channel.channelComponents[0].name = QLatin1String("Mass X");
 
-            dataType = static_cast<int>(QVariant::Double);
+            dataType = static_cast<int>(QMetaType::Double);
             expectedChannelComponentCount = 1;
             offset = 0;
-            suffixes = (QVector<char>() << 'X' << 'Y' << 'Z' << 'W');
-            expectedResults = (QVector<int>() << 0);
+            suffixes = QList<char> { 'X', 'Y', 'Z', 'W' };
+            expectedResults = QList<qsizetype>{ 0 };
 
             QTest::newRow("double Mass, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1577,7 +1533,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 5;
-            expectedResults = (QVector<int>() << 5);
+            expectedResults = QList<qsizetype>{ 5 };
             QTest::newRow("double Mass, offset = 5")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1596,11 +1552,11 @@ private Q_SLOTS:
             channel.channelComponents[2].name = QLatin1String("Rotation Y");
             channel.channelComponents[3].name = QLatin1String("Rotation Z");
 
-            dataType = static_cast<int>(QVariant::Quaternion);
+            dataType = static_cast<int>(QMetaType::QQuaternion);
             expectedChannelComponentCount = 4;
             offset = 0;
-            suffixes = (QVector<char>() << 'W' << 'X' << 'Y' << 'Z');
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3);
+            suffixes = QList<char> { 'W', 'X', 'Y', 'Z' };
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3 };
 
             QTest::newRow("quaternion Rotation, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1609,7 +1565,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13 };
             QTest::newRow("quaternion Rotation, offset = 10")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1628,11 +1584,11 @@ private Q_SLOTS:
             channel.channelComponents[2].name = QLatin1String("Rotation Z");
             channel.channelComponents[3].name = QLatin1String("Rotation Y");
 
-            dataType = static_cast<int>(QVariant::Quaternion);
+            dataType = static_cast<int>(QMetaType::QQuaternion);
             expectedChannelComponentCount = 4;
             offset = 0;
-            suffixes = (QVector<char>() << 'W' << 'X' << 'Y' << 'Z');
-            expectedResults = (QVector<int>() << 1 << 0 << 3 << 2);
+            suffixes = QList<char> { 'W', 'X', 'Y', 'Z' };
+            expectedResults = QList<qsizetype>{ 1, 0, 3, 2 };
 
             QTest::newRow("quaternion Rotation, offset = 0, randomized")
                     << channel << dataType << expectedChannelComponentCount
@@ -1641,7 +1597,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 11 << 10 << 13 << 12);
+            expectedResults = QList<qsizetype>{ 11, 10, 13, 12 };
             QTest::newRow("quaternion Rotation, offset = 10, randomized")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1659,11 +1615,11 @@ private Q_SLOTS:
             channel.channelComponents[1].name = QLatin1String("Color G");
             channel.channelComponents[2].name = QLatin1String("Color B");
 
-            dataType = static_cast<int>(QVariant::Color);
+            dataType = static_cast<int>(QMetaType::QColor);
             expectedChannelComponentCount = 3;
             offset = 0;
-            suffixes = (QVector<char>() << 'R' << 'G' << 'B');
-            expectedResults = (QVector<int>() << 0 << 1 << 2);
+            suffixes = QList<char> { 'R', 'G', 'B' };
+            expectedResults = QList<qsizetype>{ 0, 1, 2 };
 
             QTest::newRow("QColor RGB Color, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1672,7 +1628,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12);
+            expectedResults = QList<qsizetype>{ 10, 11, 12 };
             QTest::newRow("QColor RGB Color, offset = 10")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1691,11 +1647,11 @@ private Q_SLOTS:
             channel.channelComponents[2].name = QLatin1String("Color B");
             channel.channelComponents[3].name = QLatin1String("Color A");
 
-            dataType = static_cast<int>(QVariant::Color);
+            dataType = static_cast<int>(QMetaType::QColor);
             expectedChannelComponentCount = 4;
             offset = 0;
-            suffixes = (QVector<char>() << 'R' << 'G' << 'B' << 'A');
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3);
+            suffixes = QList<char> { 'R', 'G', 'B', 'A' };
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3 };
 
             QTest::newRow("QColor RGBA Color, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1704,7 +1660,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13 };
             QTest::newRow("QColor RGBA Color, offset = 10")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1720,11 +1676,11 @@ private Q_SLOTS:
             channel.channelComponents.resize(6);
             // leave channel component names empty
 
-            dataType = static_cast<int>(QVariant::List);
+            dataType = static_cast<int>(QMetaType::QVariantList);
             expectedChannelComponentCount = 6;
             offset = 0;
             // suffixes expected to be ignored
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3 << 4 << 5);
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3, 4, 5 };
 
             QTest::newRow("MorphWeights List count = 6, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1732,7 +1688,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13 << 14 << 15);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13, 14, 15 };
             QTest::newRow("MorphWeights List count = 6, offset = 10")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1747,11 +1703,11 @@ private Q_SLOTS:
             channel.channelComponents.resize(6);
             // leave channel component names empty
 
-            dataType = qMetaTypeId<QVector<float>>();
+            dataType = qMetaTypeId<QList<float>>();
             expectedChannelComponentCount = 6;
             offset = 0;
             // suffixes expected to be ignored
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3 << 4 << 5);
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3, 4, 5 };
 
             QTest::newRow("MorphWeights Vec count = 6, offset = 0")
                     << channel << dataType << expectedChannelComponentCount
@@ -1759,7 +1715,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13 << 14 << 15);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13, 14, 15 };
             QTest::newRow("MorphWeights Vec count = 6, offset = 10")
                     << channel << dataType << expectedChannelComponentCount
                     << offset << suffixes << expectedResults;
@@ -1772,19 +1728,18 @@ private Q_SLOTS:
     {
         // GIVEN
         QFETCH(Channel, channel);
-        QFETCH(int, offset);
-        QFETCH(int, expectedChannelComponentCount);
-        QFETCH(QVector<char>, suffixes);
-        QFETCH(QVector<int>, expectedResults);
+        QFETCH(qsizetype, offset);
+        QFETCH(qsizetype, expectedChannelComponentCount);
+        QFETCH(QList<char>, suffixes);
+        QFETCH(QList<qsizetype>, expectedResults);
 
         // WHEN
-        QVector<int> actualResults
-                = channelComponentsToIndicesHelper(channel, expectedChannelComponentCount,
-                                                   offset, suffixes);
+        const QVector<qsizetype> actualResults = channelComponentsToIndicesHelper(channel,
+                                                                                  expectedChannelComponentCount, offset, suffixes);
 
         // THEN
         QCOMPARE(actualResults.size(), expectedResults.size());
-        for (int i = 0; i < actualResults.size(); ++i) {
+        for (qsizetype i = 0; i < actualResults.size(); ++i) {
             QCOMPARE(actualResults[i], expectedResults[i]);
         }
     }
@@ -1793,15 +1748,15 @@ private Q_SLOTS:
     {
         QTest::addColumn<Channel>("channel");
         QTest::addColumn<int>("dataType");
-        QTest::addColumn<int>("componentCount");
-        QTest::addColumn<int>("offset");
-        QTest::addColumn<QVector<int>>("expectedResults");
+        QTest::addColumn<qsizetype>("componentCount");
+        QTest::addColumn<qsizetype>("offset");
+        QTest::addColumn<QList<qsizetype>>("expectedResults");
 
         Channel channel;
         int dataType;
-        int componentCount;
-        int offset;
-        QVector<int> expectedResults;
+        qsizetype componentCount;
+        qsizetype offset;
+        QList<qsizetype> expectedResults;
 
         // Quaternion
         {
@@ -1813,10 +1768,10 @@ private Q_SLOTS:
             channel.channelComponents[2].name = QLatin1String("Rotation Y");
             channel.channelComponents[3].name = QLatin1String("Rotation Z");
 
-            dataType = static_cast<int>(QVariant::Quaternion);
+            dataType = static_cast<int>(QMetaType::QQuaternion);
             componentCount = 4;
             offset = 0;
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3);
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3 };
 
             QTest::newRow("quaternion Rotation, offset = 0")
                     << channel << dataType << componentCount << offset << expectedResults;
@@ -1824,7 +1779,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13 };
             QTest::newRow("quaternion Rotation, offset = 10")
                     << channel << dataType << componentCount << offset << expectedResults;
 
@@ -1840,10 +1795,10 @@ private Q_SLOTS:
             channel.channelComponents[1].name = QLatin1String("Location Y");
             channel.channelComponents[2].name = QLatin1String("Location Z");
 
-            dataType = static_cast<int>(QVariant::Vector3D);
+            dataType = static_cast<int>(QMetaType::QVector3D);
             componentCount = 3;
             offset = 0;
-            expectedResults = (QVector<int>() << 0 << 1 << 2);
+            expectedResults = QList<qsizetype>{ 0, 1, 2 };
 
             QTest::newRow("vec3 location, offset = 0")
                     << channel << dataType << componentCount << offset << expectedResults;
@@ -1851,7 +1806,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 4;
-            expectedResults = (QVector<int>() << 4 << 5 << 6);
+            expectedResults = QList<qsizetype>{ 4, 5, 6 };
             QTest::newRow("vec3 location, offset = 4")
                     << channel << dataType << componentCount << offset << expectedResults;
 
@@ -1867,10 +1822,10 @@ private Q_SLOTS:
             channel.channelComponents[1].name = QLatin1String("Color G");
             channel.channelComponents[2].name = QLatin1String("Color B");
 
-            dataType = static_cast<int>(QVariant::Color);
+            dataType = static_cast<int>(QMetaType::QColor);
             componentCount = 3;
             offset = 0;
-            expectedResults = (QVector<int>() << 0 << 1 << 2);
+            expectedResults = QList<qsizetype>{ 0, 1, 2 };
 
             QTest::newRow("QColor RGB Color, offset = 0")
                     << channel << dataType << componentCount << offset << expectedResults;
@@ -1878,7 +1833,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12);
+            expectedResults = QList<qsizetype>{ 10, 11, 12 };
             QTest::newRow("QColor RGB Color, offset = 10")
                     << channel << dataType << componentCount << offset << expectedResults;
 
@@ -1894,10 +1849,10 @@ private Q_SLOTS:
             channel.channelComponents[2].name = QLatin1String("Color B");
             channel.channelComponents[3].name = QLatin1String("Color A");
 
-            dataType = static_cast<int>(QVariant::Color);
+            dataType = static_cast<int>(QMetaType::QColor);
             componentCount = 4;
             offset = 0;
-            expectedResults = (QVector<int>() << 0 << 1 << 2 << 3);
+            expectedResults = QList<qsizetype>{ 0, 1, 2, 3 };
 
             QTest::newRow("QColor RGBA Color, offset = 0")
                     << channel << dataType << componentCount << offset << expectedResults;
@@ -1905,7 +1860,7 @@ private Q_SLOTS:
             expectedResults.clear();
 
             offset = 10;
-            expectedResults = (QVector<int>() << 10 << 11 << 12 << 13);
+            expectedResults = QList<qsizetype>{ 10, 11, 12, 13 };
             QTest::newRow("QColor RGBA Color, offset = 10")
                     << channel << dataType << componentCount << offset << expectedResults;
 
@@ -1917,17 +1872,17 @@ private Q_SLOTS:
     {
         QFETCH(Channel, channel);
         QFETCH(int, dataType);
-        QFETCH(int, componentCount);
-        QFETCH(int, offset);
-        QFETCH(QVector<int>, expectedResults);
+        QFETCH(qsizetype, componentCount);
+        QFETCH(qsizetype, offset);
+        QFETCH(QList<qsizetype>, expectedResults);
 
         // WHEN
-        QVector<int> actualResults
-                = channelComponentsToIndices(channel, dataType, componentCount, offset);
+        const QVector<qsizetype> actualResults = channelComponentsToIndices(channel,
+                                                                            dataType, componentCount, offset);
 
         // THEN
         QCOMPARE(actualResults.size(), expectedResults.size());
-        for (int i = 0; i < actualResults.size(); ++i) {
+        for (qsizetype i = 0; i < actualResults.size(); ++i) {
             QCOMPARE(actualResults[i], expectedResults[i]);
         }
     }
@@ -2286,7 +2241,7 @@ private Q_SLOTS:
     {
         QTest::addColumn<Handler *>("handler");
         QTest::addColumn<Qt3DCore::QNodeId>("blendTreeRootId");
-        QTest::addColumn<QVector<Qt3DCore::QNodeId>>("expectedIds");
+        QTest::addColumn<QList<Qt3DCore::QNodeId>>("expectedIds");
 
         {
             Handler *handler = new Handler;
@@ -2302,7 +2257,7 @@ private Q_SLOTS:
             value2->setClipId(clip2Id);
             lerp->setEndClipId(value2->peerId());
 
-            QVector<Qt3DCore::QNodeId> expectedIds = { value1->peerId(), value2->peerId() };
+            const QList<Qt3DCore::QNodeId> expectedIds = { value1->peerId(), value2->peerId() };
 
             QTest::newRow("simple lerp") << handler << lerp->peerId() << expectedIds;
         }
@@ -2314,7 +2269,7 @@ private Q_SLOTS:
             const auto clip1Id = Qt3DCore::QNodeId::createId();
             value1->setClipId(clip1Id);
 
-            QVector<Qt3DCore::QNodeId> expectedIds = { value1->peerId() };
+            const QList<Qt3DCore::QNodeId> expectedIds = { value1->peerId() };
 
             QTest::newRow("value only") << handler << value1->peerId() << expectedIds;
         }
@@ -2325,10 +2280,10 @@ private Q_SLOTS:
         // GIVEN
         QFETCH(Handler *, handler);
         QFETCH(Qt3DCore::QNodeId, blendTreeRootId);
-        QFETCH(QVector<Qt3DCore::QNodeId>, expectedIds);
+        QFETCH(QList<Qt3DCore::QNodeId>, expectedIds);
 
         // WHEN
-        QVector<Qt3DCore::QNodeId> actualIds = gatherValueNodesToEvaluate(handler, blendTreeRootId);
+        const QVector<Qt3DCore::QNodeId> actualIds = gatherValueNodesToEvaluate(handler, blendTreeRootId);
 
         // THEN
         QCOMPARE(actualIds.size(), expectedIds.size());
@@ -2660,7 +2615,7 @@ private Q_SLOTS:
     {
         QTest::addColumn<Handler *>("handler");
         QTest::addColumn<ChannelMapper *>("mapper");
-        QTest::addColumn<QVector<ChannelNameAndType>>("expectedResults");
+        QTest::addColumn<QList<ChannelNameAndType>>("expectedResults");
 
         {
             auto handler = new Handler();
@@ -2668,19 +2623,17 @@ private Q_SLOTS:
                                                        QLatin1String("Location"),
                                                        Qt3DCore::QNodeId::createId(),
                                                        "translation",
-                                                       static_cast<int>(QVariant::Vector3D),
+                                                       static_cast<int>(QMetaType::QVector3D),
                                                        3);
-            QVector<ChannelMapping *> channelMappings;
-            channelMappings.push_back(channelMapping);
-
             auto channelMapper = createChannelMapper(handler,
-                                                     QVector<Qt3DCore::QNodeId>() << channelMapping->peerId());
+                                                     QList<Qt3DCore::QNodeId> { channelMapping->peerId() });
 
-            QVector<ChannelNameAndType> expectedResults;
-            expectedResults.push_back({ QLatin1String("Location"),
-                                        static_cast<int>(QVariant::Vector3D),
-                                        3,
-                                        channelMapping->peerId() });
+            const QList<ChannelNameAndType> expectedResults = {
+                { QLatin1String("Location"),
+                  static_cast<int>(QMetaType::QVector3D),
+                  3,
+                  channelMapping->peerId() }
+            };
 
             QTest::addRow("Location, vec3") << handler << channelMapper << expectedResults;
         }
@@ -2691,33 +2644,29 @@ private Q_SLOTS:
                                                         QLatin1String("Location"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "translation",
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3);
             auto channelMapping2 = createChannelMapping(handler,
                                                         QLatin1String("Rotation"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "rotation",
-                                                        static_cast<int>(QVariant::Quaternion),
+                                                        static_cast<int>(QMetaType::QQuaternion),
                                                         4);
-            QVector<ChannelMapping *> channelMappings;
-            channelMappings.push_back(channelMapping1);
-            channelMappings.push_back(channelMapping2);
 
-            QVector<Qt3DCore::QNodeId> channelMappingIds
-                    = (QVector<Qt3DCore::QNodeId>()
-                       << channelMapping1->peerId()
-                       << channelMapping2->peerId());
+            const QList<Qt3DCore::QNodeId> channelMappingIds
+                    = { channelMapping1->peerId(), channelMapping2->peerId() };
             auto channelMapper = createChannelMapper(handler, channelMappingIds);
 
-            QVector<ChannelNameAndType> expectedResults;
-            expectedResults.push_back({ QLatin1String("Location"),
-                                        static_cast<int>(QVariant::Vector3D),
-                                        3,
-                                        channelMapping1->peerId() });
-            expectedResults.push_back({ QLatin1String("Rotation"),
-                                        static_cast<int>(QVariant::Quaternion),
-                                        4,
-                                        channelMapping2->peerId() });
+            const QList<ChannelNameAndType> expectedResults = {
+                { QLatin1String("Location"),
+                  static_cast<int>(QMetaType::QVector3D),
+                  3,
+                  channelMapping1->peerId() },
+                { QLatin1String("Rotation"),
+                  static_cast<int>(QMetaType::QQuaternion),
+                  4,
+                  channelMapping2->peerId() }
+            };
 
             QTest::addRow("Multiple unique channels") << handler << channelMapper << expectedResults;
         }
@@ -2728,58 +2677,50 @@ private Q_SLOTS:
                                                         QLatin1String("Location"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "translation",
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3);
             auto channelMapping2 = createChannelMapping(handler,
                                                         QLatin1String("Rotation"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "rotation",
-                                                        static_cast<int>(QVariant::Quaternion),
+                                                        static_cast<int>(QMetaType::QQuaternion),
                                                         4);
             auto channelMapping3 = createChannelMapping(handler,
                                                         QLatin1String("Location"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "translation",
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3);
             auto channelMapping4 = createChannelMapping(handler,
                                                         QLatin1String("Location"),
                                                         Qt3DCore::QNodeId::createId(),
                                                         "translation",
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3);
 
-            QVector<ChannelMapping *> channelMappings;
-            channelMappings.push_back(channelMapping1);
-            channelMappings.push_back(channelMapping2);
-            channelMappings.push_back(channelMapping3);
-            channelMappings.push_back(channelMapping4);
-
-            QVector<Qt3DCore::QNodeId> channelMappingIds
-                    = (QVector<Qt3DCore::QNodeId>()
-                       << channelMapping1->peerId()
-                       << channelMapping2->peerId()
-                       << channelMapping3->peerId()
-                       << channelMapping4->peerId());
+            const QList<Qt3DCore::QNodeId> channelMappingIds
+                    = { channelMapping1->peerId(), channelMapping2->peerId(),
+                        channelMapping3->peerId(), channelMapping4->peerId() };
             auto channelMapper = createChannelMapper(handler, channelMappingIds);
 
-            QVector<ChannelNameAndType> expectedResults;
-            expectedResults.push_back({ QLatin1String("Location"),
-                                        static_cast<int>(QVariant::Vector3D),
-                                        3,
-                                        channelMapping1->peerId() });
-            expectedResults.push_back({ QLatin1String("Rotation"),
-                                        static_cast<int>(QVariant::Quaternion),
-                                        4,
-                                        channelMapping2->peerId() });
-            expectedResults.push_back({ QLatin1String("Location"),
-                                        static_cast<int>(QVariant::Vector3D),
-                                        3,
-                                        channelMapping3->peerId() });
-            expectedResults.push_back({ QLatin1String("Location"),
-                                        static_cast<int>(QVariant::Vector3D),
-                                        3,
-                                        channelMapping4->peerId() });
+            QList<ChannelNameAndType> expectedResults = {
+                { QLatin1String("Location"),
+                  static_cast<int>(QMetaType::QVector3D),
+                  3,
+                  channelMapping1->peerId() },
+                { QLatin1String("Rotation"),
+                  static_cast<int>(QMetaType::QQuaternion),
+                  4,
+                  channelMapping2->peerId() },
+                { QLatin1String("Location"),
+                  static_cast<int>(QMetaType::QVector3D),
+                  3,
+                  channelMapping3->peerId() },
+                { QLatin1String("Location"),
+                  static_cast<int>(QMetaType::QVector3D),
+                  3,
+                  channelMapping4->peerId() }
+            };
 
             QTest::addRow("Multiple channels with repeats") << handler << channelMapper << expectedResults;
         }
@@ -2789,16 +2730,13 @@ private Q_SLOTS:
             const int jointCount = 10;
             auto skeleton = createSkeleton(handler, jointCount);
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
-            QVector<ChannelMapping *> channelMappings;
-            channelMappings.push_back(channelMapping);
-
             auto channelMapper = createChannelMapper(handler,
-                                                     QVector<Qt3DCore::QNodeId>() << channelMapping->peerId());
+                                                     QList<Qt3DCore::QNodeId> { channelMapping->peerId() });
 
-            QVector<ChannelNameAndType> expectedResults;
+            QList<ChannelNameAndType> expectedResults;
             for (int i = 0; i < jointCount; ++i) {
                 ChannelNameAndType locationDescription = { QLatin1String("Location"),
-                                                           static_cast<int>(QVariant::Vector3D),
+                                                           static_cast<int>(QMetaType::QVector3D),
                                                            3,
                                                            channelMapping->peerId() };
                 locationDescription.jointIndex = i;
@@ -2806,7 +2744,7 @@ private Q_SLOTS:
                 expectedResults.push_back(locationDescription);
 
                 ChannelNameAndType rotationDescription = { QLatin1String("Rotation"),
-                                                           static_cast<int>(QVariant::Quaternion),
+                                                           static_cast<int>(QMetaType::QQuaternion),
                                                            4,
                                                            channelMapping->peerId() };
                 rotationDescription.jointIndex = i;
@@ -2814,7 +2752,7 @@ private Q_SLOTS:
                 expectedResults.push_back(rotationDescription);
 
                 ChannelNameAndType scaleDescription = { QLatin1String("Scale"),
-                                                        static_cast<int>(QVariant::Vector3D),
+                                                        static_cast<int>(QMetaType::QVector3D),
                                                         3,
                                                         channelMapping->peerId() };
                 scaleDescription.jointIndex = i;
@@ -2831,7 +2769,7 @@ private Q_SLOTS:
         // GIVEN
         QFETCH(Handler *, handler);
         QFETCH(ChannelMapper *, mapper);
-        QFETCH(QVector<ChannelNameAndType>, expectedResults);
+        QFETCH(QList<ChannelNameAndType>, expectedResults);
 
         // WHEN
         const QVector<ChannelNameAndType> actualResults = buildRequiredChannelsAndTypes(handler, mapper);
@@ -2851,43 +2789,44 @@ private Q_SLOTS:
         QTest::addColumn<QVector<ComponentIndices>>("expectedResults");
 
         {
-            QVector<ChannelNameAndType> allChannels;
-            allChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
+            const QVector<ChannelNameAndType> allChannels = {
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 }
+            };
 
-            QVector<ComponentIndices> expectedResults;
-            expectedResults.push_back({ 0, 1, 2 });
+            const QVector<ComponentIndices> expectedResults = { { 0, 1, 2 } };
 
             QTest::newRow("vec3 location") << allChannels << expectedResults;
         }
 
         {
-            QVector<ChannelNameAndType> allChannels;
-            allChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
-            allChannels.push_back({ QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 });
+            const QVector<ChannelNameAndType> allChannels = {
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 }
+            };
 
-            QVector<ComponentIndices> expectedResults;
-            expectedResults.push_back({ 0, 1, 2 });
-            expectedResults.push_back({ 3, 4, 5, 6 });
+            const QVector<ComponentIndices> expectedResults = { { 0, 1, 2 },
+                                                              { 3, 4, 5, 6 } };
 
             QTest::newRow("vec3 location, quaterion rotation") << allChannels << expectedResults;
         }
 
         {
-            QVector<ChannelNameAndType> allChannels;
-            allChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
-            allChannels.push_back({ QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 });
-            allChannels.push_back({ QLatin1String("BaseColor"), static_cast<int>(QVariant::Vector3D), 3 });
-            allChannels.push_back({ QLatin1String("Metalness"), static_cast<int>(QVariant::Double), 1 });
-            allChannels.push_back({ QLatin1String("Roughness"), static_cast<int>(QVariant::Double), 1 });
-            allChannels.push_back({ QLatin1String("MorphWeights"), static_cast<int>(QVariant::List), 6 });
+            const QVector<ChannelNameAndType> allChannels = {
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 },
+                { QLatin1String("BaseColor"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Metalness"), static_cast<int>(QMetaType::Double), 1 },
+                { QLatin1String("Roughness"), static_cast<int>(QMetaType::Double), 1 },
+                { QLatin1String("MorphWeights"), static_cast<int>(QMetaType::QVariantList), 6 }
+            };
 
-            QVector<ComponentIndices> expectedResults;
-            expectedResults.push_back({ 0, 1, 2 });
-            expectedResults.push_back({ 3, 4, 5, 6 });
-            expectedResults.push_back({ 7, 8, 9 });
-            expectedResults.push_back({ 10 });
-            expectedResults.push_back({ 11 });
-            expectedResults.push_back({ 12, 13, 14, 15, 16, 17 });
+            const QVector<ComponentIndices> expectedResults = {
+                { 0, 1, 2 },
+                { 3, 4, 5, 6 },
+                { 7, 8, 9 },
+                { 10 },
+                { 11 },
+                { 12, 13, 14, 15, 16, 17 } };
 
             QTest::newRow("vec3 location, quaterion rotation, pbr metal-rough morphweights") << allChannels << expectedResults;
         }
@@ -2896,35 +2835,25 @@ private Q_SLOTS:
             QVector<ChannelNameAndType> allChannels;
             const int jointCount = 4;
             for (int i = 0; i < jointCount; ++i) {
-                ChannelNameAndType locationDescription = { QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 };
+                ChannelNameAndType locationDescription = { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 };
                 locationDescription.jointIndex = i;
                 allChannels.push_back(locationDescription);
 
-                ChannelNameAndType rotationDescription = { QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 };
+                ChannelNameAndType rotationDescription = { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 };
                 rotationDescription.jointIndex = i;
                 allChannels.push_back(rotationDescription);
 
-                ChannelNameAndType scaleDescription = { QLatin1String("Scale"), static_cast<int>(QVariant::Vector3D), 3 };
+                ChannelNameAndType scaleDescription = { QLatin1String("Scale"), static_cast<int>(QMetaType::QVector3D), 3 };
                 scaleDescription.jointIndex = i;
                 allChannels.push_back(scaleDescription);
             }
 
-            QVector<ComponentIndices> expectedResults;
-            expectedResults.push_back({ 0, 1, 2 });
-            expectedResults.push_back({ 3, 4, 5, 6 });
-            expectedResults.push_back({ 7, 8, 9 });
-
-            expectedResults.push_back({ 10, 11, 12 });
-            expectedResults.push_back({ 13, 14, 15, 16 });
-            expectedResults.push_back({ 17, 18, 19 });
-
-            expectedResults.push_back({ 20, 21, 22 });
-            expectedResults.push_back({ 23, 24, 25, 26 });
-            expectedResults.push_back({ 27, 28, 29 });
-
-            expectedResults.push_back({ 30, 31, 32 });
-            expectedResults.push_back({ 33, 34, 35, 36 });
-            expectedResults.push_back({ 37, 38, 39 });
+            const QVector<ComponentIndices> expectedResults = {
+                {  0,  1,  2 }, {  3,  4,  5,  6 }, {  7,  8,  9 },
+                { 10, 11, 12 }, { 13, 14, 15, 16 }, { 17, 18, 19 },
+                { 20, 21, 22 }, { 23, 24, 25, 26 }, { 27, 28, 29 },
+                { 30, 31, 32 }, { 33, 34, 35, 36 }, { 37, 38, 39 }
+            };
 
             QTest::newRow("skeleton, 4 joints") << allChannels << expectedResults;
         }
@@ -2958,19 +2887,21 @@ private Q_SLOTS:
         QTest::addColumn<ClipFormat>("expectedResults");
 
         {
-            QVector<ChannelNameAndType> targetChannels;
-            targetChannels.push_back({ QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 });
-            targetChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Base Color"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Metalness"), static_cast<int>(QVariant::Double), 1 });
-            targetChannels.push_back({ QLatin1String("Roughness"), static_cast<int>(QVariant::Double), 1 });
+            const QVector<ChannelNameAndType> targetChannels = {
+                { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 },
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Base Color"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Metalness"), static_cast<int>(QMetaType::Double), 1 },
+                { QLatin1String("Roughness"), static_cast<int>(QMetaType::Double), 1 }
+            };
 
-            QVector<ComponentIndices> targetIndices;
-            targetIndices.push_back({ 0, 1, 2, 3 });
-            targetIndices.push_back({ 4, 5, 6 });
-            targetIndices.push_back({ 7, 8, 9 });
-            targetIndices.push_back({ 10 });
-            targetIndices.push_back({ 11 });
+            const QVector<ComponentIndices> targetIndices = {
+                { 0, 1, 2, 3 },
+                { 4, 5, 6 },
+                { 7, 8, 9 },
+                { 10 },
+                { 11 }
+            };
 
             auto *clip = new AnimationClip();
             clip->setDataType(AnimationClip::File);
@@ -2996,19 +2927,21 @@ private Q_SLOTS:
         }
 
         {
-            QVector<ChannelNameAndType> targetChannels;
-            targetChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 });
-            targetChannels.push_back({ QLatin1String("Base Color"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Metalness"), static_cast<int>(QVariant::Double), 1 });
-            targetChannels.push_back({ QLatin1String("Roughness"), static_cast<int>(QVariant::Double), 1 });
+            const QVector<ChannelNameAndType> targetChannels = {
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 },
+                { QLatin1String("Base Color"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Metalness"), static_cast<int>(QMetaType::Double), 1 },
+                { QLatin1String("Roughness"), static_cast<int>(QMetaType::Double), 1 }
+            };
 
-            QVector<ComponentIndices> targetIndices;
-            targetIndices.push_back({ 0, 1, 2 });
-            targetIndices.push_back({ 3, 4, 5, 6 });
-            targetIndices.push_back({ 7, 8, 9 });
-            targetIndices.push_back({ 10 });
-            targetIndices.push_back({ 11 });
+            const QVector<ComponentIndices> targetIndices = {
+                { 0, 1, 2 },
+                { 3, 4, 5, 6 },
+                { 7, 8, 9 },
+                { 10 },
+                { 11 }
+            };
 
             auto *clip = new AnimationClip();
             clip->setDataType(AnimationClip::File);
@@ -3034,19 +2967,21 @@ private Q_SLOTS:
         }
 
         {
-            QVector<ChannelNameAndType> targetChannels;
-            targetChannels.push_back({ QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 });
-            targetChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Albedo"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Metalness"), static_cast<int>(QVariant::Double), 1 });
-            targetChannels.push_back({ QLatin1String("Roughness"), static_cast<int>(QVariant::Double), 1 });
+            const QVector<ChannelNameAndType> targetChannels = {
+                { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 },
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Albedo"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Metalness"), static_cast<int>(QMetaType::Double), 1 },
+                { QLatin1String("Roughness"), static_cast<int>(QMetaType::Double), 1 }
+            };
 
-            QVector<ComponentIndices> targetIndices;
-            targetIndices.push_back({ 0, 1, 2, 3 });
-            targetIndices.push_back({ 4, 5, 6 });
-            targetIndices.push_back({ 7, 8, 9 });
-            targetIndices.push_back({ 10 });
-            targetIndices.push_back({ 11 });
+            const QVector<ComponentIndices> targetIndices = {
+                { 0, 1, 2, 3 },
+                { 4, 5, 6 },
+                { 7, 8, 9 },
+                { 10 },
+                { 11 }
+            };
 
             auto *clip = new AnimationClip();
             clip->setDataType(AnimationClip::File);
@@ -3072,19 +3007,21 @@ private Q_SLOTS:
         }
 
         {
-            QVector<ChannelNameAndType> targetChannels;
-            targetChannels.push_back({ QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 });
-            targetChannels.push_back({ QLatin1String("Albedo"), static_cast<int>(QVariant::Vector3D), 3 });
-            targetChannels.push_back({ QLatin1String("Metalness"), static_cast<int>(QVariant::Double), 1 });
-            targetChannels.push_back({ QLatin1String("Roughness"), static_cast<int>(QVariant::Double), 1 });
+            const QVector<ChannelNameAndType> targetChannels = {
+                { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 },
+                { QLatin1String("Albedo"), static_cast<int>(QMetaType::QVector3D), 3 },
+                { QLatin1String("Metalness"), static_cast<int>(QMetaType::Double), 1 },
+                { QLatin1String("Roughness"), static_cast<int>(QMetaType::Double), 1 }
+            };
 
-            QVector<ComponentIndices> targetIndices;
-            targetIndices.push_back({ 0, 1, 2 });
-            targetIndices.push_back({ 3, 4, 5, 6 });
-            targetIndices.push_back({ 7, 8, 9 });
-            targetIndices.push_back({ 10 });
-            targetIndices.push_back({ 11 });
+            const QVector<ComponentIndices> targetIndices = {
+                { 0, 1, 2 },
+                { 3, 4, 5, 6 },
+                { 7, 8, 9 },
+                { 10 },
+                { 11 }
+            };
 
             auto *clip = new AnimationClip();
             clip->setDataType(AnimationClip::File);
@@ -3113,35 +3050,25 @@ private Q_SLOTS:
             QVector<ChannelNameAndType> targetChannels;
             const int jointCount = 4;
             for (int i = 0; i < jointCount; ++i) {
-                ChannelNameAndType locationDescription = { QLatin1String("Location"), static_cast<int>(QVariant::Vector3D), 3 };
+                ChannelNameAndType locationDescription = { QLatin1String("Location"), static_cast<int>(QMetaType::QVector3D), 3 };
                 locationDescription.jointIndex = i;
                 targetChannels.push_back(locationDescription);
 
-                ChannelNameAndType rotationDescription = { QLatin1String("Rotation"), static_cast<int>(QVariant::Quaternion), 4 };
+                ChannelNameAndType rotationDescription = { QLatin1String("Rotation"), static_cast<int>(QMetaType::QQuaternion), 4 };
                 rotationDescription.jointIndex = i;
                 targetChannels.push_back(rotationDescription);
 
-                ChannelNameAndType scaleDescription = { QLatin1String("Scale"), static_cast<int>(QVariant::Vector3D), 3 };
+                ChannelNameAndType scaleDescription = { QLatin1String("Scale"), static_cast<int>(QMetaType::QVector3D), 3 };
                 scaleDescription.jointIndex = i;
                 targetChannels.push_back(scaleDescription);
             }
 
-            QVector<ComponentIndices> targetIndices;
-            targetIndices.push_back({ 0, 1, 2 });
-            targetIndices.push_back({ 3, 4, 5, 6 });
-            targetIndices.push_back({ 7, 8, 9 });
-
-            targetIndices.push_back({ 10, 11, 12 });
-            targetIndices.push_back({ 13, 14, 15, 16 });
-            targetIndices.push_back({ 17, 18, 19 });
-
-            targetIndices.push_back({ 20, 21, 22 });
-            targetIndices.push_back({ 23, 24, 25, 26 });
-            targetIndices.push_back({ 27, 28, 29 });
-
-            targetIndices.push_back({ 30, 31, 32 });
-            targetIndices.push_back({ 33, 34, 35, 36 });
-            targetIndices.push_back({ 37, 38, 39 });
+            const QVector<ComponentIndices> targetIndices = {
+                {  0,  1,  2 }, {  3,  4,  5,  6 }, {  7,  8,  9 },
+                { 10, 11, 12 }, { 13, 14, 15, 16 }, { 17, 18, 19 },
+                { 20, 21, 22 }, { 23, 24, 25, 26 }, { 27, 28, 29 },
+                { 30, 31, 32 }, { 33, 34, 35, 36 }, { 37, 38, 39 }
+            };
 
             auto *clip = new AnimationClip();
             clip->setDataType(AnimationClip::File);
@@ -3227,11 +3154,11 @@ private Q_SLOTS:
                                                        QLatin1String("Location"),
                                                        Qt3DCore::QNodeId::createId(),
                                                        "translation",
-                                                       static_cast<int>(QVariant::Vector3D),
+                                                       static_cast<int>(QMetaType::QVector3D),
                                                        3);
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.name = QLatin1String("translation");
             const QVector<float> expectedResults = { 0.0f, 0.0f, 0.0f };
             QTest::newRow("translation") << handler << channelDescription << expectedResults;
@@ -3243,11 +3170,11 @@ private Q_SLOTS:
                                                        QLatin1String("Rotation"),
                                                        Qt3DCore::QNodeId::createId(),
                                                        "rotation",
-                                                       static_cast<int>(QVariant::Quaternion),
+                                                       static_cast<int>(QMetaType::QQuaternion),
                                                        4);
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Quaternion);
+            channelDescription.type = static_cast<int>(QMetaType::QQuaternion);
             channelDescription.name = QLatin1String("rotation");
             const QVector<float> expectedResults = { 1.0f, 0.0f, 0.0f, 0.0f };
             QTest::newRow("rotation") << handler << channelDescription << expectedResults;
@@ -3259,11 +3186,11 @@ private Q_SLOTS:
                                                        QLatin1String("Scale"),
                                                        Qt3DCore::QNodeId::createId(),
                                                        "scale",
-                                                       static_cast<int>(QVariant::Vector3D),
+                                                       static_cast<int>(QMetaType::QVector3D),
                                                        3);
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.name = QLatin1String("scale");
             const QVector<float> expectedResults = { 1.0f, 1.0f, 1.0f };
             QTest::newRow("scale") << handler << channelDescription << expectedResults;
@@ -3278,7 +3205,7 @@ private Q_SLOTS:
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.jointIndex = 0;
             channelDescription.jointTransformComponent = Scale;
             const QVector<float> expectedResults = { 2.0f, 3.0f, 4.0f };
@@ -3293,7 +3220,7 @@ private Q_SLOTS:
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.jointIndex = 0;
             channelDescription.jointTransformComponent = Rotation;
             const QVector<float> expectedResults = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -3308,7 +3235,7 @@ private Q_SLOTS:
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.jointIndex = 0;
             channelDescription.jointTransformComponent = Translation;
             const QVector<float> expectedResults = { 2.0f, 3.0f, 4.0f };
@@ -3323,7 +3250,7 @@ private Q_SLOTS:
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.jointIndex = 1;
             channelDescription.jointTransformComponent = Scale;
             const QVector<float> expectedResults = { 20.0f, 30.0f, 40.0f };
@@ -3338,7 +3265,7 @@ private Q_SLOTS:
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.jointIndex = 1;
             channelDescription.jointTransformComponent = Rotation;
             const QVector<float> expectedResults = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -3353,7 +3280,7 @@ private Q_SLOTS:
             auto channelMapping = createChannelMapping(handler, skeleton->peerId());
             ChannelNameAndType channelDescription;
             channelDescription.mappingId = channelMapping->peerId();
-            channelDescription.type = static_cast<int>(QVariant::Vector3D);
+            channelDescription.type = static_cast<int>(QMetaType::QVector3D);
             channelDescription.jointIndex = 1;
             channelDescription.jointTransformComponent = Translation;
             const QVector<float> expectedResults = { 4.0f, 5.0f, 6.0f };

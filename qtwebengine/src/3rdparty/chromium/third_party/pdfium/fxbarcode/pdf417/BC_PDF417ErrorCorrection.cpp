@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,9 +22,9 @@
 
 #include "fxbarcode/pdf417/BC_PDF417ErrorCorrection.h"
 
-#include <vector>
+#include <stdint.h>
 
-#include "core/fxcrt/fx_memory_wrappers.h"
+#include "core/fxcrt/data_vector.h"
 
 namespace {
 
@@ -133,14 +133,14 @@ int32_t CBC_PDF417ErrorCorrection::GetErrorCorrectionCodewordCount(
 }
 
 // static
-Optional<WideString> CBC_PDF417ErrorCorrection::GenerateErrorCorrection(
+absl::optional<WideString> CBC_PDF417ErrorCorrection::GenerateErrorCorrection(
     const WideString& dataCodewords,
     int32_t errorCorrectionLevel) {
   int32_t k = GetErrorCorrectionCodewordCount(errorCorrectionLevel);
   if (k < 0)
-    return {};
+    return absl::nullopt;
 
-  std::vector<wchar_t, FxAllocAllocator<wchar_t>> ech(k);
+  DataVector<wchar_t> ech(k);
   size_t sld = dataCodewords.GetLength();
   for (size_t i = 0; i < sld; i++) {
     int32_t t1 = (dataCodewords[i] + ech[k - 1]) % 929;

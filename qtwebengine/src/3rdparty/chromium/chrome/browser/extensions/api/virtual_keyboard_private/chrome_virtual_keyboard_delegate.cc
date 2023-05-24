@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,22 +8,22 @@
 #include <string>
 #include <utility>
 
-#include "ash/public/cpp/keyboard/keyboard_switches.h"
+#include "ash/constants/ash_features.h"
+#include "ash/public/cpp/clipboard_history_controller.h"
+#include "ash/public/cpp/clipboard_image_model_factory.h"
 #include "ash/public/cpp/keyboard/keyboard_types.h"
-#include "base/bind.h"
-#include "base/command_line.h"
+#include "base/check.h"
 #include "base/feature_list.h"
-#include "base/metrics/field_trial_params.h"
+#include "base/functional/bind.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
-#include "base/strings/string16.h"
-#include "chrome/browser/chromeos/login/lock/screen_locker.h"
-#include "chrome/browser/chromeos/login/ui/user_adding_screen.h"
+#include "base/values.h"
+#include "chrome/browser/ash/login/lock/screen_locker.h"
+#include "chrome/browser/ash/login/ui/user_adding_screen.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/keyboard/chrome_keyboard_controller_client.h"
 #include "chrome/browser/ui/settings_window_manager_chromeos.h"
-#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom.h"
-#include "chrome/common/url_constants.h"
+#include "chrome/browser/ui/webui/settings/chromeos/constants/routes.mojom-forward.h"
 #include "chromeos/constants/chromeos_features.h"
 #include "components/user_manager/user_manager.h"
 #include "content/public/browser/audio_service.h"
@@ -34,7 +34,7 @@
 #include "media/audio/audio_system.h"
 #include "ui/aura/event_injector.h"
 #include "ui/aura/window_tree_host.h"
-#include "ui/base/ime/chromeos/ime_bridge.h"
+#include "ui/base/ime/ash/ime_bridge.h"
 #include "ui/base/ime/constants.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/base/ime/text_input_client.h"
@@ -72,7 +72,7 @@ keyboard::ContainerType ConvertKeyboardModeToContainerType(int mode) {
 // Returns the ui::TextInputClient of the active InputMethod or nullptr.
 ui::TextInputClient* GetFocusedTextInputClient() {
   ui::InputMethod* input_method =
-      ui::IMEBridge::Get()->GetInputContextHandler()->GetInputMethod();
+      ash::IMEBridge::Get()->GetInputContextHandler()->GetInputMethod();
   if (!input_method)
     return nullptr;
 
@@ -156,6 +156,17 @@ std::string GetKeyboardLayout() {
              : "qwerty";
 }
 
+// Returns a nullptr if a router could not be found or if the the router does
+// not have an event listener for the given `event_name`.
+extensions::EventRouter* GetRouterForEventName(content::BrowserContext* context,
+                                               const std::string& event_name) {
+  extensions::EventRouter* router = extensions::EventRouter::Get(context);
+  if (!router || !router->HasEventListener(event_name)) {
+    return nullptr;
+  }
+  return router;
+}
+
 }  // namespace
 
 namespace extensions {
@@ -164,9 +175,20 @@ ChromeVirtualKeyboardDelegate::ChromeVirtualKeyboardDelegate(
     content::BrowserContext* browser_context)
     : browser_context_(browser_context) {
   weak_this_ = weak_factory_.GetWeakPtr();
+
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (clipboard_history_controller) {
+    clipboard_history_controller->AddObserver(this);
+  }
 }
 
-ChromeVirtualKeyboardDelegate::~ChromeVirtualKeyboardDelegate() {}
+ChromeVirtualKeyboardDelegate::~ChromeVirtualKeyboardDelegate() {
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (clipboard_history_controller)
+    clipboard_history_controller->RemoveObserver(this);
+}
 
 void ChromeVirtualKeyboardDelegate::GetKeyboardConfig(
     OnKeyboardSettingsCallback on_settings_callback) {
@@ -180,7 +202,7 @@ void ChromeVirtualKeyboardDelegate::GetKeyboardConfig(
 
 void ChromeVirtualKeyboardDelegate::OnKeyboardConfigChanged() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  GetKeyboardConfig(base::Bind(
+  GetKeyboardConfig(base::BindOnce(
       &ChromeVirtualKeyboardDelegate::DispatchConfigChangeEvent, weak_this_));
 }
 
@@ -196,13 +218,15 @@ bool ChromeVirtualKeyboardDelegate::HideKeyboard() {
   return true;
 }
 
-bool ChromeVirtualKeyboardDelegate::InsertText(const base::string16& text) {
+bool ChromeVirtualKeyboardDelegate::InsertText(const std::u16string& text) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   ui::TextInputClient* tic = GetFocusedTextInputClient();
   if (!tic || tic->GetTextInputType() == ui::TEXT_INPUT_TYPE_NONE)
     return false;
 
-  tic->InsertText(text);
+  tic->InsertText(
+      text,
+      ui::TextInputClient::InsertTextCursorBehavior::kMoveCursorAfterText);
   return true;
 }
 
@@ -252,14 +276,25 @@ bool ChromeVirtualKeyboardDelegate::ShowLanguageSettings() {
   if (keyboard_client->is_keyboard_enabled())
     keyboard_client->HideKeyboard(ash::HideReason::kUser);
 
-  base::RecordAction(base::UserMetricsAction("OpenLanguageOptionsDialog"));
-  const std::string path =
-      base::FeatureList::IsEnabled(
-          ::chromeos::features::kLanguageSettingsUpdate)
-          ? chromeos::settings::mojom::kInputSubpagePath
-          : chromeos::settings::mojom::kLanguagesAndInputDetailsSubpagePath;
+  base::RecordAction(
+      base::UserMetricsAction("VirtualKeyboard.OpenLanguageSettings"));
   chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
-      ProfileManager::GetActiveUserProfile(), path);
+      ProfileManager::GetActiveUserProfile(),
+      chromeos::settings::mojom::kInputSubpagePath);
+  return true;
+}
+
+bool ChromeVirtualKeyboardDelegate::ShowSuggestionSettings() {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  auto* keyboard_client = ChromeKeyboardControllerClient::Get();
+  if (keyboard_client->is_keyboard_enabled())
+    keyboard_client->HideKeyboard(ash::HideReason::kUser);
+
+  base::RecordAction(
+      base::UserMetricsAction("VirtualKeyboard.OpenSuggestionSettings"));
+  chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
+      ProfileManager::GetActiveUserProfile(),
+      chromeos::settings::mojom::kSmartInputsSubpagePath);
   return true;
 }
 
@@ -315,6 +350,55 @@ bool ChromeVirtualKeyboardDelegate::SetWindowBoundsInScreen(
   return keyboard_client->SetWindowBoundsInScreen(bounds_in_screen);
 }
 
+void ChromeVirtualKeyboardDelegate::GetClipboardHistory(
+    const std::set<std::string>& item_ids_filter,
+    OnGetClipboardHistoryCallback get_history_callback) {
+  // Do not leak clipboard history items if the screen is locked.
+  if (ash::ScreenLocker::default_screen_locker() &&
+      ash::ScreenLocker::default_screen_locker()->locked()) {
+    std::move(get_history_callback).Run(base::Value(base::Value::Type::LIST));
+    return;
+  }
+
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (!clipboard_history_controller) {
+    std::move(get_history_callback).Run(base::Value(base::Value::Type::LIST));
+    return;
+  }
+
+  // Begin renderng all items in the clipboard history. Current items will
+  // render even if Deactivate() is called on the ClipboardImageModelFactory.
+  if (ash::ClipboardImageModelFactory::Get()) {
+    ash::ClipboardImageModelFactory::Get()->RenderCurrentPendingRequests();
+  }
+
+  clipboard_history_controller->GetHistoryValues(
+      item_ids_filter, std::move(get_history_callback));
+}
+
+bool ChromeVirtualKeyboardDelegate::PasteClipboardItem(
+    const std::string& clipboard_item_id) {
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (!clipboard_history_controller)
+    return false;
+
+  return clipboard_history_controller->PasteClipboardItemById(
+      clipboard_item_id);
+}
+
+bool ChromeVirtualKeyboardDelegate::DeleteClipboardItem(
+    const std::string& clipboard_item_id) {
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (!clipboard_history_controller)
+    return false;
+
+  return clipboard_history_controller->DeleteClipboardItemById(
+      clipboard_item_id);
+}
+
 bool ChromeVirtualKeyboardDelegate::SetDraggableArea(
     const api::virtual_keyboard_private::Bounds& rect) {
   auto* keyboard_client = ChromeKeyboardControllerClient::Get();
@@ -349,11 +433,89 @@ bool ChromeVirtualKeyboardDelegate::SetRequestedKeyboardState(int state_enum) {
   return true;
 }
 
-bool ChromeVirtualKeyboardDelegate::IsLanguageSettingsEnabled() {
+bool ChromeVirtualKeyboardDelegate::IsSettingsEnabled() {
   return (user_manager::UserManager::Get()->IsUserLoggedIn() &&
-          !chromeos::UserAddingScreen::Get()->IsRunning() &&
-          !(chromeos::ScreenLocker::default_screen_locker() &&
-            chromeos::ScreenLocker::default_screen_locker()->locked()));
+          !ash::UserAddingScreen::Get()->IsRunning() &&
+          !(ash::ScreenLocker::default_screen_locker() &&
+            ash::ScreenLocker::default_screen_locker()->locked()));
+}
+
+void ChromeVirtualKeyboardDelegate::OnClipboardHistoryItemListAddedOrRemoved() {
+  EventRouter* router = GetRouterForEventName(
+      browser_context_, keyboard_api::OnClipboardHistoryChanged::kEventName);
+  if (!router)
+    return;
+
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (!clipboard_history_controller)
+    return;
+
+  auto item_ids = clipboard_history_controller->GetHistoryItemIds();
+
+  auto ids = keyboard_api::OnClipboardHistoryChanged::Create(item_ids);
+
+  auto event = std::make_unique<extensions::Event>(
+      extensions::events::VIRTUAL_KEYBOARD_PRIVATE_ON_CLIPBOARD_HISTORY_CHANGED,
+      keyboard_api::OnClipboardHistoryChanged::kEventName, std::move(ids),
+      browser_context_);
+  router->BroadcastEvent(std::move(event));
+}
+
+void ChromeVirtualKeyboardDelegate::OnClipboardHistoryItemsUpdated(
+    const std::vector<base::UnguessableToken>& menu_item_ids) {
+  EventRouter* router = GetRouterForEventName(
+      browser_context_, keyboard_api::OnClipboardItemUpdated::kEventName);
+  if (!router)
+    return;
+
+  ash::ClipboardHistoryController* clipboard_history_controller =
+      ash::ClipboardHistoryController::Get();
+  if (!clipboard_history_controller)
+    return;
+
+  std::set<std::string> item_ids_filter;
+  for (const auto& id : menu_item_ids) {
+    item_ids_filter.insert(id.ToString());
+  }
+  // Make call to get the updated clipboard items.
+  clipboard_history_controller->GetHistoryValues(
+      item_ids_filter,
+      base::BindOnce(
+          &ChromeVirtualKeyboardDelegate::OnGetHistoryValuesAfterItemsUpdated,
+          weak_this_));
+}
+
+void ChromeVirtualKeyboardDelegate::OnGetHistoryValuesAfterItemsUpdated(
+    base::Value updated_items) {
+  EventRouter* router = GetRouterForEventName(
+      browser_context_, keyboard_api::OnClipboardItemUpdated::kEventName);
+  if (!router)
+    return;
+
+  // Broadcast an api event for each updated item.
+  for (auto& item : updated_items.GetList()) {
+    keyboard_api::ClipboardItem clipboard_item;
+    const base::Value::Dict& dict = item.GetDict();
+    if (dict.FindString("imageData")) {
+      clipboard_item.image_data = *dict.FindString("imageData");
+    }
+    if (dict.FindString("textData")) {
+      clipboard_item.text_data = *dict.FindString("textData");
+    }
+    if (dict.FindString("idToken")) {
+      clipboard_item.id = *dict.FindString("textData");
+    }
+
+    auto item_value =
+        keyboard_api::OnClipboardItemUpdated::Create(clipboard_item);
+
+    auto event = std::make_unique<extensions::Event>(
+        extensions::events::VIRTUAL_KEYBOARD_PRIVATE_ON_CLIPBOARD_ITEM_UPDATED,
+        keyboard_api::OnClipboardItemUpdated::kEventName, std::move(item_value),
+        browser_context_);
+    router->BroadcastEvent(std::move(event));
+  }
 }
 
 void ChromeVirtualKeyboardDelegate::OnHasInputDevices(
@@ -362,81 +524,91 @@ void ChromeVirtualKeyboardDelegate::OnHasInputDevices(
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   auto* keyboard_client = ChromeKeyboardControllerClient::Get();
 
-  std::unique_ptr<base::DictionaryValue> results(new base::DictionaryValue());
-  results->SetString("layout", GetKeyboardLayout());
+  base::Value::Dict results;
+  results.Set("layout", GetKeyboardLayout());
 
   // TODO(bshe): Consolidate a11y, hotrod and normal mode into a mode enum. See
   // crbug.com/529474.
-  results->SetBoolean("a11ymode",
-                      keyboard_client->IsEnableFlagSet(
-                          keyboard::KeyboardEnableFlag::kAccessibilityEnabled));
-  results->SetBoolean("hotrodmode", g_hotrod_keyboard_enabled);
-  std::unique_ptr<base::ListValue> features(new base::ListValue());
+  results.Set("a11ymode",
+              keyboard_client->IsEnableFlagSet(
+                  keyboard::KeyboardEnableFlag::kAccessibilityEnabled));
+  results.Set("hotrodmode", g_hotrod_keyboard_enabled);
+  base::Value::List features;
 
   keyboard::KeyboardConfig config = keyboard_client->GetKeyboardConfig();
   // TODO(oka): Change this to use config.voice_input.
-  features->AppendString(GenerateFeatureFlag(
+  features.Append(GenerateFeatureFlag(
       "voiceinput", has_audio_input_devices && config.voice_input));
-  features->AppendString(
-      GenerateFeatureFlag("autocomplete", config.auto_complete));
-  features->AppendString(
-      GenerateFeatureFlag("autocorrect", config.auto_correct));
-  features->AppendString(GenerateFeatureFlag("spellcheck", config.spell_check));
-  features->AppendString(
-      GenerateFeatureFlag("handwriting", config.handwriting));
-  features->AppendString(GenerateFeatureFlag(
+  features.Append(GenerateFeatureFlag("autocomplete", config.auto_complete));
+  features.Append(GenerateFeatureFlag("autocorrect", config.auto_correct));
+  features.Append(GenerateFeatureFlag("spellcheck", config.spell_check));
+  features.Append(GenerateFeatureFlag("handwriting", config.handwriting));
+  features.Append(GenerateFeatureFlag(
       "handwritinggesture",
       base::FeatureList::IsEnabled(features::kHandwritingGesture)));
-  features->AppendString(
-      GenerateFeatureFlag("handwritinggestureediting",
+  features.Append(GenerateFeatureFlag(
+      "handwritinggestureediting",
+      base::FeatureList::IsEnabled(ash::features::kHandwritingGestureEditing)));
+  features.Append(
+      GenerateFeatureFlag("handwritinglegacyrecognition",
                           base::FeatureList::IsEnabled(
-                              chromeos::features::kHandwritingGestureEditing)));
-  features->AppendString(GenerateFeatureFlag(
-      "floatingkeyboarddefault",
+                              ash::features::kHandwritingLegacyRecognition)));
+  features.Append(GenerateFeatureFlag(
+      "handwritinglegacyrecognitionall",
       base::FeatureList::IsEnabled(
-          chromeos::features::kVirtualKeyboardFloatingDefault)));
-  features->AppendString(GenerateFeatureFlag(
-      "imemozcproto",
-      base::FeatureList::IsEnabled(chromeos::features::kImeMozcProto)));
-  // 3 flags below are used to enable IME new APIs on each decoder.
-  features->AppendString(GenerateFeatureFlag(
-      "fstinputlogic",
-      base::FeatureList::IsEnabled(chromeos::features::kImeInputLogicFst)));
-  features->AppendString(GenerateFeatureFlag(
-      "hmminputlogic",
-      base::FeatureList::IsEnabled(chromeos::features::kImeInputLogicHmm)));
-  features->AppendString(GenerateFeatureFlag(
-      "mozcinputlogic",
-      base::FeatureList::IsEnabled(chromeos::features::kImeInputLogicMozc)));
-  // Flag used to enable UIL Mojo APIs instead of NaCl APIs.
-  features->AppendString(GenerateFeatureFlag(
-      "usemojodecoder", chromeos::features::IsImeSandboxEnabled()));
-  features->AppendString(GenerateFeatureFlag(
-      "borderedkey", base::FeatureList::IsEnabled(
-                         chromeos::features::kVirtualKeyboardBorderedKey)));
-  features->AppendString(GenerateFeatureFlag(
-      "assistiveAutoCorrect",
-      base::FeatureList::IsEnabled(chromeos::features::kAssistAutoCorrect)));
-  features->AppendString(
-      GenerateFeatureFlag("systemlatinphysicaltyping",
+          ash::features::kHandwritingLegacyRecognitionAllLang)));
+  features.Append(GenerateFeatureFlag(
+      "hindiinscriptlayout",
+      base::FeatureList::IsEnabled(ash::features::kHindiInscriptLayout)));
+  features.Append(GenerateFeatureFlag(
+      "multiword", ash::features::IsAssistiveMultiWordEnabled()));
+  features.Append(GenerateFeatureFlag(
+      "stylushandwriting",
+      base::FeatureList::IsEnabled(ash::features::kImeStylusHandwriting)));
+  features.Append(GenerateFeatureFlag(
+      "darkmode",
+      base::FeatureList::IsEnabled(chromeos::features::kDarkLightMode)));
+  features.Append(GenerateFeatureFlag(
+      "newheader",
+      base::FeatureList::IsEnabled(ash::features::kVirtualKeyboardNewHeader)));
+  features.Append(GenerateFeatureFlag(
+      "multitouch",
+      base::FeatureList::IsEnabled(ash::features::kVirtualKeyboardMultitouch)));
+  features.Append(GenerateFeatureFlag(
+      "roundCorners", base::FeatureList::IsEnabled(
+                          ash::features::kVirtualKeyboardRoundCorners)));
+  features.Append(
+      GenerateFeatureFlag("systemjapanesephysicaltyping",
                           base::FeatureList::IsEnabled(
-                              chromeos::features::kSystemLatinPhysicalTyping)));
+                              ash::features::kSystemJapanesePhysicalTyping)));
+  features.Append(GenerateFeatureFlag(
+      "multilingualtyping",
+      base::FeatureList::IsEnabled(ash::features::kMultilingualTyping)));
+  features.Append(GenerateFeatureFlag(
+      "autocorrectparamstuning",
+      base::FeatureList::IsEnabled(ash::features::kAutocorrectParamsTuning)));
+  features.Append(GenerateFeatureFlag(
+      "handwritinglibrarydlc",
+      base::FeatureList::IsEnabled(ash::features::kHandwritingLibraryDlc)));
+  features.Append(
+      GenerateFeatureFlag("jelly", ash::features::IsJellyEnabled()));
 
-  results->Set("features", std::move(features));
+  results.Set("features", std::move(features));
 
   std::move(on_settings_callback).Run(std::move(results));
 }
 
 void ChromeVirtualKeyboardDelegate::DispatchConfigChangeEvent(
-    std::unique_ptr<base::DictionaryValue> settings) {
-  EventRouter* router = EventRouter::Get(browser_context_);
+    absl::optional<base::Value::Dict> settings) {
+  DCHECK(settings);
 
-  if (!router->HasEventListener(
-          keyboard_api::OnKeyboardConfigChanged::kEventName))
+  EventRouter* router = GetRouterForEventName(
+      browser_context_, keyboard_api::OnKeyboardConfigChanged::kEventName);
+  if (!router)
     return;
 
-  auto event_args = std::make_unique<base::ListValue>();
-  event_args->Append(std::move(settings));
+  base::Value::List event_args;
+  event_args.Append(std::move(*settings));
 
   auto event = std::make_unique<extensions::Event>(
       extensions::events::VIRTUAL_KEYBOARD_PRIVATE_ON_KEYBOARD_CONFIG_CHANGED,
@@ -445,9 +617,9 @@ void ChromeVirtualKeyboardDelegate::DispatchConfigChangeEvent(
   router->BroadcastEvent(std::move(event));
 }
 
-api::virtual_keyboard::FeatureRestrictions
-ChromeVirtualKeyboardDelegate::RestrictFeatures(
-    const api::virtual_keyboard::RestrictFeatures::Params& params) {
+void ChromeVirtualKeyboardDelegate::RestrictFeatures(
+    const api::virtual_keyboard::RestrictFeatures::Params& params,
+    OnRestrictFeaturesCallback callback) {
   const api::virtual_keyboard::FeatureRestrictions& restrictions =
       params.restrictions;
   api::virtual_keyboard::FeatureRestrictions update;
@@ -456,44 +628,40 @@ ChromeVirtualKeyboardDelegate::RestrictFeatures(
   keyboard::KeyboardConfig config(current_config);
   if (restrictions.spell_check_enabled &&
       config.spell_check != *restrictions.spell_check_enabled) {
-    update.spell_check_enabled =
-        std::make_unique<bool>(*restrictions.spell_check_enabled);
+    update.spell_check_enabled = *restrictions.spell_check_enabled;
     config.spell_check = *restrictions.spell_check_enabled;
   }
   if (restrictions.auto_complete_enabled &&
       config.auto_complete != *restrictions.auto_complete_enabled) {
-    update.auto_complete_enabled =
-        std::make_unique<bool>(*restrictions.auto_complete_enabled);
+    update.auto_complete_enabled = *restrictions.auto_complete_enabled;
     config.auto_complete = *restrictions.auto_complete_enabled;
   }
   if (restrictions.auto_correct_enabled &&
       config.auto_correct != *restrictions.auto_correct_enabled) {
-    update.auto_correct_enabled =
-        std::make_unique<bool>(*restrictions.auto_correct_enabled);
+    update.auto_correct_enabled = *restrictions.auto_correct_enabled;
     config.auto_correct = *restrictions.auto_correct_enabled;
   }
   if (restrictions.voice_input_enabled &&
       config.voice_input != *restrictions.voice_input_enabled) {
-    update.voice_input_enabled =
-        std::make_unique<bool>(*restrictions.voice_input_enabled);
+    update.voice_input_enabled = *restrictions.voice_input_enabled;
     config.voice_input = *restrictions.voice_input_enabled;
   }
   if (restrictions.handwriting_enabled &&
       config.handwriting != *restrictions.handwriting_enabled) {
-    update.handwriting_enabled =
-        std::make_unique<bool>(*restrictions.handwriting_enabled);
+    update.handwriting_enabled = *restrictions.handwriting_enabled;
     config.handwriting = *restrictions.handwriting_enabled;
   }
 
   if (config != current_config) {
     ChromeKeyboardControllerClient::Get()->SetKeyboardConfig(config);
-    // This reloads virtual keyboard even if it exists. This ensures virtual
-    // keyboard gets the correct state through
-    // chrome.virtualKeyboardPrivate.getKeyboardConfig.
-    // TODO(oka): Extension should reload on it's own by receiving event
+    // This reloads the virtual keyboard (VK) even if it exists, so it can get
+    // new restrictFeatures via chrome.virtualKeyboardPrivate.getKeyboardConfig.
+    // However, this reload is unnecessary as the API specs do NOT require
+    // restrictFeatures to take effect immediately midway through a VK session.
+    // Keeping this unnecessary reload for now, just to avoid behaviour changes.
     ChromeKeyboardControllerClient::Get()->RebuildKeyboardIfEnabled();
   }
-  return update;
+  std::move(callback).Run(std::move(update));
 }
 
 }  // namespace extensions

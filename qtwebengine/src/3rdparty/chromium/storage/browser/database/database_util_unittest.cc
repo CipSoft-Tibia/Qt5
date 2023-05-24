@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,8 +20,8 @@ void TestVfsFilePath(bool expected_result,
                      const char* expected_database_name = "",
                      const char* expected_sqlite_suffix = "") {
   std::string origin_identifier;
-  base::string16 database_name;
-  base::string16 sqlite_suffix;
+  std::u16string database_name;
+  std::u16string sqlite_suffix;
   EXPECT_EQ(expected_result,
             DatabaseUtil::CrackVfsFileName(ASCIIToUTF16(vfs_file_name),
                                            &origin_identifier, &database_name,

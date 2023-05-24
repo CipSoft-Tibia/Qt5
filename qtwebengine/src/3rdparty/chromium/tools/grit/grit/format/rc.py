@@ -1,17 +1,13 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''Support for formatting an RC file for compilation.
 '''
 
-from __future__ import print_function
-
 import os
 import re
 from functools import partial
-
-import six
 
 from grit import util
 from grit.node import misc
@@ -163,7 +159,10 @@ _LANGUAGE_CHARSET_PAIR = {
   'gl'          : '045604e4',
   # No codepage for Zulu, use unicode(1200).
   'zu'          : '043504b0',
-  'fake-bidi'   : '040d04e7',
+
+  # Pseudolocales
+  'ar-XB'       : '040d04e7',
+  'en-XA'       : '040904b0',
 }
 
 # Language ID resource: http://msdn.microsoft.com/en-us/library/ms776294.aspx
@@ -250,7 +249,10 @@ _LANGUAGE_DIRECTIVE_PAIR = {
   'si'          : 'LANG_SINHALESE, SUBLANG_SINHALESE_SRI_LANKA',
   'ne'          : 'LANG_NEPALI, SUBLANG_NEPALI_NEPAL',
   'ti'          : 'LANG_TIGRIGNA, SUBLANG_TIGRIGNA_ERITREA',
-  'fake-bidi'   : 'LANG_HEBREW, SUBLANG_DEFAULT',
+
+  # Pseudolocales
+  'ar-XB'       : 'LANG_HEBREW, SUBLANG_DEFAULT',
+  'en-XA'       : 'LANG_ENGLISH, SUBLANG_ENGLISH_US',
 }
 
 # A note on 'no-specific-language' in the following few functions:
@@ -316,7 +318,7 @@ def RcSubstitutions(substituter, lang):
 
 def _FormatHeader(root, lang, output_dir):
   '''Returns the required preamble for RC files.'''
-  assert isinstance(lang, six.string_types)
+  assert isinstance(lang, str)
   assert isinstance(root, misc.GritNode)
   # Find the location of the resource header file, so that we can include
   # it.
@@ -374,7 +376,7 @@ def FormatMessage(item, lang):
 
 def _FormatSection(item, lang, output_dir):
   '''Writes out an .rc file section.'''
-  assert isinstance(lang, six.string_types)
+  assert isinstance(lang, str)
   from grit.node import structure
   assert isinstance(item, structure.StructureNode)
 
@@ -403,7 +405,7 @@ def FormatInclude(item, lang, output_dir, type=None, process_html=False):
           StructureNode)
     process_html: False/True (ignored unless item is a StructureNode)
   '''
-  assert isinstance(lang, six.string_types)
+  assert isinstance(lang, str)
   from grit.node import structure
   from grit.node import include
   assert isinstance(item, (structure.StructureNode, include.IncludeNode))

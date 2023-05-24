@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,8 @@ namespace views {
 
 AXAuraObjWrapper::AXAuraObjWrapper(AXAuraObjCache* cache)
     : aura_obj_cache_(cache) {}
+
+AXAuraObjWrapper::~AXAuraObjWrapper() = default;
 
 bool AXAuraObjWrapper::HandleAccessibleAction(const ui::AXActionData& action) {
   return false;

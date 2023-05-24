@@ -30,6 +30,7 @@
 #include "base/gtest_prod_util.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/dom/events/simulated_click_options.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_control_element_with_state.h"
 #include "third_party/blink/renderer/core/html/forms/html_options_collection.h"
 #include "third_party/blink/renderer/core/html/forms/option_list.h"
@@ -44,11 +45,11 @@ class ExceptionState;
 class HTMLHRElement;
 class HTMLOptGroupElement;
 class HTMLOptionElement;
-class HTMLOptionElementOrHTMLOptGroupElement;
-class HTMLElementOrLong;
 class LayoutUnit;
 class PopupMenu;
 class SelectType;
+class V8UnionHTMLElementOrLong;
+class V8UnionHTMLOptGroupElementOrHTMLOptionElement;
 
 class CORE_EXPORT HTMLSelectElement final
     : public HTMLFormControlElementWithState,
@@ -84,16 +85,28 @@ class CORE_EXPORT HTMLSelectElement final
 
   bool UsesMenuList() const { return uses_menu_list_; }
 
-  void add(const HTMLOptionElementOrHTMLOptGroupElement&,
-           const HTMLElementOrLong&,
-           ExceptionState&);
+  void add(const V8UnionHTMLOptGroupElementOrHTMLOptionElement* element,
+           const V8UnionHTMLElementOrLong* before,
+           ExceptionState& exception_state);
 
   using Node::remove;
   void remove(int index);
 
-  String value() const;
-  void setValue(const String&, bool send_events = false);
+  String Value() const;
+  void SetValue(const String&,
+                bool send_events = false,
+                WebAutofillState = WebAutofillState::kNotFilled);
+  String valueForBinding() const { return Value(); }
+  void setValueForBinding(const String&);
+
+  // It is possible to pass WebAutofillState::kNotFilled here in case we need
+  // to simulate a reset of a <select> element.
+  void SetAutofillValue(const String& value, WebAutofillState);
+
   String SuggestedValue() const;
+  // Sets the suggested value and puts the element into
+  // WebAutofillState::kPreviewed state if the value exists, or
+  // WebAutofillState::kNotFilled otherwise.
   void SetSuggestedValue(const String&);
 
   // |options| and |selectedOptions| are not safe to be used in in
@@ -115,7 +128,7 @@ class CORE_EXPORT HTMLSelectElement final
   // We prefer |optionList()| to |listItems()|.
   const ListItems& GetListItems() const;
 
-  void AccessKeyAction(bool send_mouse_events) override;
+  void AccessKeyAction(SimulatedClickCreationScope creation_scope) override;
   void SelectOptionByAccessKey(HTMLOptionElement*);
 
   void SetOption(unsigned index, HTMLOptionElement*, ExceptionState&);
@@ -161,7 +174,8 @@ class CORE_EXPORT HTMLSelectElement final
   void ProvisionalSelectionChanged(unsigned);
   void PopupDidHide();
   bool PopupIsVisible() const;
-  HTMLOptionElement* OptionToBeShownForTesting() const;
+  // Returns the active option. Only available in menulist mode.
+  HTMLOptionElement* OptionToBeShown() const;
   // Style of the selected OPTION. This is nullable, and only for
   // the menulist mode.
   const ComputedStyle* OptionStyle() const;
@@ -170,9 +184,6 @@ class CORE_EXPORT HTMLSelectElement final
   PopupMenu* PopupForTesting() const;
 
   void ResetTypeAheadSessionForTesting();
-
-  // Used for slot assignment.
-  static bool CanAssignToSelectSlot(const Node&);
 
   bool HasNonInBodyInsertionMode() const override { return true; }
 
@@ -184,6 +195,8 @@ class CORE_EXPORT HTMLSelectElement final
   Element& InnerElement() const;
   AXObject* PopupRootAXObject() const;
 
+  bool IsRichlyEditableForAccessibility() const override { return false; }
+
  private:
   const AtomicString& FormControlType() const override;
 
@@ -191,7 +204,7 @@ class CORE_EXPORT HTMLSelectElement final
 
   bool ShouldHaveFocusAppearance() const final;
 
-  void DispatchFocusEvent(
+  bool DispatchFocusEvent(
       Element* old_focused_element,
       mojom::blink::FocusType,
       InputDeviceCapabilities* source_capabilities) override;
@@ -219,6 +232,7 @@ class CORE_EXPORT HTMLSelectElement final
   void DetachLayoutTree(bool performing_reattach = false) override;
   void AppendToFormData(FormData&) override;
   void DidAddUserAgentShadowRoot(ShadowRoot&) override;
+  void ManuallyAssignSlots() override;
 
   void DefaultEventHandler(Event&) override;
 
@@ -243,7 +257,9 @@ class CORE_EXPORT HTMLSelectElement final
     kMakeOptionDirtyFlag = 1 << 2,
   };
   typedef unsigned SelectOptionFlags;
-  void SelectOption(HTMLOptionElement*, SelectOptionFlags);
+  void SelectOption(HTMLOptionElement*,
+                    SelectOptionFlags,
+                    WebAutofillState = WebAutofillState::kNotFilled);
   bool DeselectItemsWithoutValidation(
       HTMLOptionElement* element_to_exclude = nullptr);
   void ParseMultipleAttribute(const AtomicString&);
@@ -281,12 +297,12 @@ class CORE_EXPORT HTMLSelectElement final
   mutable ListItems list_items_;
   TypeAhead type_ahead_;
   unsigned size_;
+  Member<HTMLSlotElement> option_slot_;
   Member<HTMLOptionElement> last_on_change_option_;
   Member<HTMLOptionElement> suggested_option_;
   bool uses_menu_list_ = true;
   bool is_multiple_;
   mutable bool should_recalc_list_items_;
-  bool is_autofilled_by_preview_;
 
   Member<SelectType> select_type_;
   int index_to_select_on_cancel_;

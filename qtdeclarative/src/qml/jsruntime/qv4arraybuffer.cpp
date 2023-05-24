@@ -1,46 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qv4arraybuffer_p.h"
 #include "qv4typedarray_p.h"
 #include "qv4dataview_p.h"
-#include "qv4string_p.h"
-#include "qv4jscall_p.h"
 #include "qv4symbol_p.h"
 
 using namespace QV4;
@@ -66,14 +28,15 @@ ReturnedValue SharedArrayBufferCtor::virtualCallAsConstructor(const FunctionObje
     if (newTarget->isUndefined())
         return scope.engine->throwTypeError();
 
-    qint64 len = argc ? argv[0].toIndex() : 0;
-    if (scope.engine->hasException)
+    const double len = argc ? argv[0].toInteger() : 0;
+    if (scope.hasException())
         return Encode::undefined();
-    if (len < 0 || len >= INT_MAX)
+    if (len < 0 || len >= std::numeric_limits<int>::max())
         return scope.engine->throwRangeError(QStringLiteral("SharedArrayBuffer: Invalid length."));
 
-    Scoped<SharedArrayBuffer> a(scope, scope.engine->memoryManager->allocate<SharedArrayBuffer>(len));
-    if (scope.engine->hasException)
+    Scoped<SharedArrayBuffer> a(
+                scope, scope.engine->memoryManager->allocate<SharedArrayBuffer>(size_t(len)));
+    if (scope.hasException())
         return Encode::undefined();
 
     return a->asReturnedValue();
@@ -105,7 +68,7 @@ ReturnedValue ArrayBufferCtor::virtualCallAsConstructor(const FunctionObject *f,
         if (o)
             a->setPrototypeOf(o);
     }
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return Encode::undefined();
 
     return a->asReturnedValue();
@@ -127,13 +90,18 @@ ReturnedValue ArrayBufferCtor::method_isView(const FunctionObject *, const Value
 void Heap::SharedArrayBuffer::init(size_t length)
 {
     Object::init();
+    QPair<QTypedArrayData<char> *, char *> pair;
     if (length < UINT_MAX)
-        data = QTypedArrayData<char>::allocate(length + 1);
-    if (!data) {
+        pair =  QTypedArrayData<char>::allocate(length + 1);
+    if (!pair.first) {
+        new (&arrayDataPointerStorage) QArrayDataPointer<char>();
         internalClass->engine->throwRangeError(QStringLiteral("ArrayBuffer: out of memory"));
         return;
     }
-    data->size = int(length);
+    auto data = new (&arrayDataPointerStorage) QArrayDataPointer<char>{
+            pair.first, pair.second, qsizetype(length) };
+
+    // can't use appendInitialize() because we want to set the terminating '\0'
     memset(data->data(), 0, length + 1);
     isShared = true;
 }
@@ -141,41 +109,24 @@ void Heap::SharedArrayBuffer::init(size_t length)
 void Heap::SharedArrayBuffer::init(const QByteArray& array)
 {
     Object::init();
-    data = const_cast<QByteArray&>(array).data_ptr();
-    data->ref.ref();
+    new (&arrayDataPointerStorage) QArrayDataPointer<char>(*const_cast<QByteArray &>(array).data_ptr());
     isShared = true;
 }
 
 void Heap::SharedArrayBuffer::destroy()
 {
-    if (data && !data->ref.deref())
-        QTypedArrayData<char>::deallocate(data);
+    arrayDataPointer().~QArrayDataPointer();
     Object::destroy();
 }
 
 QByteArray ArrayBuffer::asByteArray() const
 {
-    QByteArrayDataPtr ba = { d()->data };
-    ba.ptr->ref.ref();
-    return QByteArray(ba);
+    return QByteArray(constArrayData(), arrayDataLength());
 }
 
-void ArrayBuffer::detach() {
-    if (!d()->data->ref.isShared())
-        return;
-
-    QTypedArrayData<char> *oldData = d()->data;
-
-    d()->data = QTypedArrayData<char>::allocate(oldData->size + 1);
-    if (!d()->data) {
-        engine()->throwRangeError(QStringLiteral("ArrayBuffer: out of memory"));
-        return;
-    }
-
-    memcpy(d()->data->data(), oldData->data(), oldData->size + 1);
-
-    if (!oldData->ref.deref())
-        QTypedArrayData<char>::deallocate(oldData);
+void ArrayBuffer::detach()
+{
+    detachArrayData();
 }
 
 
@@ -197,10 +148,10 @@ void SharedArrayBufferPrototype::init(ExecutionEngine *engine, Object *ctor)
 ReturnedValue SharedArrayBufferPrototype::method_get_byteLength(const FunctionObject *b, const Value *thisObject, const Value *, int)
 {
     const SharedArrayBuffer *a = thisObject->as<SharedArrayBuffer>();
-    if (!a || a->isDetachedBuffer() || !a->isSharedArrayBuffer())
+    if (!a || a->hasDetachedArrayData() || !a->isSharedArrayBuffer())
         return b->engine()->throwTypeError();
 
-    return Encode(a->d()->data->size);
+    return Encode(a->arrayDataLength());
 }
 
 ReturnedValue SharedArrayBufferPrototype::method_slice(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc)
@@ -212,17 +163,18 @@ ReturnedValue SharedArrayBufferPrototype::slice(const FunctionObject *b, const V
 {
     Scope scope(b);
     const SharedArrayBuffer *a = thisObject->as<SharedArrayBuffer>();
-    if (!a || a->isDetachedBuffer() || (a->isSharedArrayBuffer() != shared))
+    if (!a || a->hasDetachedArrayData() || (a->isSharedArrayBuffer() != shared))
         return scope.engine->throwTypeError();
 
+    const uint aDataLength = a->arrayDataLength();
+
     double start = argc > 0 ? argv[0].toInteger() : 0;
-    double end = (argc < 2 || argv[1].isUndefined()) ?
-                a->d()->data->size : argv[1].toInteger();
+    double end = (argc < 2 || argv[1].isUndefined()) ? aDataLength : argv[1].toInteger();
     if (scope.hasException())
         return QV4::Encode::undefined();
 
-    double first = (start < 0) ? qMax(a->d()->data->size + start, 0.) : qMin(start, (double)a->d()->data->size);
-    double final = (end < 0) ? qMax(a->d()->data->size + end, 0.) : qMin(end, (double)a->d()->data->size);
+    double first = (start < 0) ? qMax(aDataLength + start, 0.) : qMin(start, double(aDataLength));
+    double final = (end < 0) ? qMax(aDataLength + end, 0.) : qMin(end, double(aDataLength));
 
     const FunctionObject *constructor = a->speciesConstructor(scope, shared ? scope.engine->sharedArrayBufferCtor() : scope.engine->arrayBufferCtor());
     if (!constructor)
@@ -231,13 +183,13 @@ ReturnedValue SharedArrayBufferPrototype::slice(const FunctionObject *b, const V
     double newLen = qMax(final - first, 0.);
     ScopedValue argument(scope, QV4::Encode(newLen));
     QV4::Scoped<SharedArrayBuffer> newBuffer(scope, constructor->callAsConstructor(argument, 1));
-    if (!newBuffer || newBuffer->d()->data->size < (int)newLen ||
-        newBuffer->isDetachedBuffer() || (newBuffer->isSharedArrayBuffer() != shared) ||
+    if (!newBuffer || newBuffer->arrayDataLength() < newLen ||
+        newBuffer->hasDetachedArrayData() || (newBuffer->isSharedArrayBuffer() != shared) ||
         newBuffer->sameValue(*a) ||
-        a->isDetachedBuffer())
+        a->hasDetachedArrayData())
         return scope.engine->throwTypeError();
 
-    memcpy(newBuffer->d()->data->data(), a->d()->data->data() + (uint)first, newLen);
+    memcpy(newBuffer->arrayData(), a->constArrayData() + (uint)first, newLen);
     return newBuffer->asReturnedValue();
 }
 
@@ -262,10 +214,13 @@ void ArrayBufferPrototype::init(ExecutionEngine *engine, Object *ctor)
 ReturnedValue ArrayBufferPrototype::method_get_byteLength(const FunctionObject *f, const Value *thisObject, const Value *, int)
 {
     const ArrayBuffer *a = thisObject->as<ArrayBuffer>();
-    if (!a || a->isDetachedBuffer() || a->isSharedArrayBuffer())
+    if (!a || a->isSharedArrayBuffer())
         return f->engine()->throwTypeError();
 
-    return Encode(a->d()->data->size);
+    if (a->hasDetachedArrayData())
+        return Encode(0);
+
+    return Encode(a->arrayDataLength());
 }
 
 ReturnedValue ArrayBufferPrototype::method_slice(const FunctionObject *b, const Value *thisObject, const Value *argv, int argc)

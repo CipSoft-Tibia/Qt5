@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtWebView module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWEBENGINEWEBVIEW_P_H
 #define QWEBENGINEWEBVIEW_P_H
@@ -55,59 +22,97 @@
 #include <QtQml/qqmlcomponent.h>
 
 #include <private/qabstractwebview_p.h>
-#include <QtWebEngine/QQuickWebEngineProfile>
-
+#include <QtWebEngineQuick/QQuickWebEngineProfile>
+#include <QtWebEngineQuick/private/qquickwebenginesettings_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QQuickWebEngineView;
-class QQuickWebEngineLoadRequest;
+class QWebEngineLoadingInfo;
+class QNetworkCookie;
+class QWebEngineWebViewPrivate;
+
+class QWebEngineWebViewSettingsPrivate : public QAbstractWebViewSettings
+{
+    Q_OBJECT
+public:
+    explicit QWebEngineWebViewSettingsPrivate(QWebEngineWebViewPrivate *p = nullptr);
+
+    bool localStorageEnabled() const override;
+    bool javascriptEnabled() const override;
+    bool localContentCanAccessFileUrls() const override;
+    bool allowFileAccess() const override;
+
+public Q_SLOTS:
+    void setLocalContentCanAccessFileUrls(bool enabled) override;
+    void setJavascriptEnabled(bool enabled) override;
+    void setLocalStorageEnabled(bool enabled) override;
+    void setAllowFileAccess(bool enabled) override;
+
+    void init(QQuickWebEngineSettings *settings);
+
+private:
+    QPointer<QQuickWebEngineSettings> m_settings;
+    bool m_localStorageEnabled = true;
+    bool m_javaScriptEnabled = true;
+    bool m_localContentCanAccessFileUrlsEnabled = true;
+    bool m_allowFileAccessEnabled = true;
+};
 
 class QWebEngineWebViewPrivate : public QAbstractWebView
 {
     Q_OBJECT
 public:
-    explicit QWebEngineWebViewPrivate(QObject *p = 0);
-    ~QWebEngineWebViewPrivate() Q_DECL_OVERRIDE;
+    explicit QWebEngineWebViewPrivate(QObject *p = nullptr);
+    ~QWebEngineWebViewPrivate() override;
 
-    QString httpUserAgent() const Q_DECL_OVERRIDE;
-    void setHttpUserAgent(const QString &userAgent) Q_DECL_OVERRIDE;
-    QUrl url() const Q_DECL_OVERRIDE;
-    void setUrl(const QUrl &url) Q_DECL_OVERRIDE;
-    bool canGoBack() const Q_DECL_OVERRIDE;
-    bool canGoForward() const Q_DECL_OVERRIDE;
-    QString title() const Q_DECL_OVERRIDE;
-    int loadProgress() const Q_DECL_OVERRIDE;
-    bool isLoading() const Q_DECL_OVERRIDE;
+    QString httpUserAgent() const override;
+    void setHttpUserAgent(const QString &userAgent) override;
+    QUrl url() const override;
+    void setUrl(const QUrl &url) override;
+    bool canGoBack() const override;
+    bool canGoForward() const override;
+    QString title() const override;
+    int loadProgress() const override;
+    bool isLoading() const override;
 
-    void setParentView(QObject *parentView) Q_DECL_OVERRIDE;
-    QObject *parentView() const Q_DECL_OVERRIDE;
-    void setGeometry(const QRect &geometry) Q_DECL_OVERRIDE;
-    void setVisibility(QWindow::Visibility visibility) Q_DECL_OVERRIDE;
-    void setVisible(bool visible) Q_DECL_OVERRIDE;
-    void setFocus(bool focus) Q_DECL_OVERRIDE;
+    void setParentView(QObject *parentView) override;
+    QObject *parentView() const override;
+    void setGeometry(const QRect &geometry) override;
+    void setVisibility(QWindow::Visibility visibility) override;
+    void setVisible(bool visible) override;
+    void setFocus(bool focus) override;
+    QAbstractWebViewSettings *getSettings() const override;
 
 public Q_SLOTS:
-    void goBack() Q_DECL_OVERRIDE;
-    void goForward() Q_DECL_OVERRIDE;
-    void reload() Q_DECL_OVERRIDE;
-    void stop() Q_DECL_OVERRIDE;
-    void loadHtml(const QString &html, const QUrl &baseUrl = QUrl()) Q_DECL_OVERRIDE;
+    void goBack() override;
+    void goForward() override;
+    void reload() override;
+    void stop() override;
+    void loadHtml(const QString &html, const QUrl &baseUrl = QUrl()) override;
+    void setCookie(const QString &domain, const QString &name,
+                   const QString &value) override;
+    void deleteCookie(const QString &domain, const QString &name) override;
+    void deleteAllCookies() override;
 
 private Q_SLOTS:
     void q_urlChanged();
     void q_loadProgressChanged();
     void q_titleChanged();
-    void q_loadingChanged(QQuickWebEngineLoadRequest *loadRequest);
+    void q_loadingChanged(const QWebEngineLoadingInfo &loadRequest);
     void q_profileChanged();
     void q_httpUserAgentChanged();
+    void q_cookieAdded(const QNetworkCookie &cookie);
+    void q_cookieRemoved(const QNetworkCookie &cookie);
 
 protected:
     void runJavaScriptPrivate(const QString& script,
-                              int callbackId) Q_DECL_OVERRIDE;
-
+                              int callbackId) override;
 private:
-    QQuickWebEngineProfile *m_profile;
+    friend class QWebEngineWebViewSettingsPrivate;
+
+    QQuickWebEngineProfile *m_profile = nullptr;
+    mutable QWebEngineWebViewSettingsPrivate *m_settings = nullptr;
     QString m_httpUserAgent;
     struct QQuickWebEngineViewPtr
     {
@@ -122,6 +127,19 @@ private:
         QWebEngineWebViewPrivate *m_parent;
         mutable QScopedPointer<QQuickWebEngineView> m_webEngineView;
     } m_webEngineView;
+    struct QWebEngineCookieStorePtr
+    {
+        inline QWebEngineCookieStore *operator->() const
+        {
+            if (!m_cookieStore)
+                init();
+            return m_cookieStore;
+        }
+        void init() const;
+
+        QQuickWebEngineViewPtr *m_webEngineViewPtr = nullptr;
+        mutable QWebEngineCookieStore *m_cookieStore = nullptr;
+    } m_cookieStore;
 };
 
 QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -44,7 +44,7 @@ class CheckFinalizerVisitor
  private:
   bool MightBeCollected(FieldPoint* point);
 
-  bool blacklist_context_;
+  bool blocklist_context_;
   Errors finalized_fields_;
   std::set<clang::MemberExpr*> seen_members_;
   RecordCache* cache_;

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQUICKTEXTEDIT_P_P_H
 #define QQUICKTEXTEDIT_P_P_H
@@ -59,6 +23,10 @@
 #include <QtCore/qlist.h>
 #include <private/qlazilyallocated_p.h>
 
+#if QT_CONFIG(accessibility)
+#include <QtGui/qaccessible.h>
+#endif
+
 #include <limits>
 
 QT_BEGIN_NAMESPACE
@@ -69,6 +37,9 @@ class QQuickTextNode;
 class QQuickTextNodeEngine;
 
 class Q_QUICK_PRIVATE_EXPORT QQuickTextEditPrivate : public QQuickImplicitSizeItemPrivate
+#if QT_CONFIG(accessibility)
+    , public QAccessible::ActivationObserver
+#endif
 {
 public:
     Q_DECLARE_PUBLIC(QQuickTextEdit)
@@ -89,6 +60,10 @@ public:
         int m_startPos;
         QQuickTextNode* m_node;
         bool m_dirty;
+
+#ifndef QT_NO_DEBUG_STREAM
+        friend QDebug Q_QUICK_PRIVATE_EXPORT operator<<(QDebug, const Node &);
+#endif
     };
     typedef QList<Node>::iterator TextNodeIterator;
 
@@ -125,10 +100,20 @@ public:
         , updateType(UpdatePaintNode)
         , dirty(false), richText(false), cursorVisible(false), cursorPending(false)
         , focusOnPress(true), persistentSelection(false), requireImplicitWidth(false)
-        , selectByMouse(false), canPaste(false), canPasteValid(false), hAlignImplicit(true)
+        , selectByMouse(true), canPaste(false), canPasteValid(false), hAlignImplicit(true)
         , textCached(true), inLayout(false), selectByKeyboard(false), selectByKeyboardSet(false)
-        , hadSelection(false), markdownText(false)
+        , hadSelection(false), markdownText(false), inResize(false)
     {
+#if QT_CONFIG(accessibility)
+        QAccessible::installActivationObserver(this);
+#endif
+    }
+
+    ~QQuickTextEditPrivate()
+    {
+#if QT_CONFIG(accessibility)
+        QAccessible::removeActivationObserver(this);
+#endif
     }
 
     static QQuickTextEditPrivate *get(QQuickTextEdit *item) {
@@ -142,9 +127,14 @@ public:
     bool determineHorizontalAlignment();
     bool setHAlign(QQuickTextEdit::HAlignment, bool forceAlign = false);
     void mirrorChange() override;
+    bool transformChanged(QQuickItem *transformedItem) override;
     qreal getImplicitWidth() const override;
     Qt::LayoutDirection textDirection(const QString &text) const;
     bool isLinkHoveredConnected();
+
+#if QT_CONFIG(cursor)
+    void updateMouseCursorShape();
+#endif
 
     void setNativeCursorEnabled(bool) {}
     void handleFocusEvent(QFocusEvent *event);
@@ -153,6 +143,11 @@ public:
 
 #if QT_CONFIG(im)
     Qt::InputMethodHints effectiveInputMethodHints() const;
+#endif
+
+#if QT_CONFIG(accessibility)
+    void accessibilityActiveChanged(bool active) override;
+    QAccessible::Role accessibleRole() const override;
 #endif
 
     inline qreal padding() const { return extra.isAllocated() ? extra->padding : 0.0; }
@@ -189,11 +184,15 @@ public:
     int lastSelectionStart;
     int lastSelectionEnd;
     int lineCount;
+    int firstBlockInViewport = -1;   // can be wrong after scrolling sometimes
+    int firstBlockPastViewport = -1; // only for the autotest
+    QRectF renderedRegion;
 
     enum UpdateType {
         UpdateNone,
         UpdateOnlyPreprocess,
-        UpdatePaintNode
+        UpdatePaintNode,
+        UpdateAll
     };
 
     QQuickTextEdit::HAlignment hAlign;
@@ -207,7 +206,6 @@ public:
     Qt::InputMethodHints inputMethodHints;
 #endif
     UpdateType updateType;
-    Qt::CursorShape cursorToRestoreAfterHover = Qt::IBeamCursor;
 
     bool dirty : 1;
     bool richText : 1;
@@ -226,7 +224,14 @@ public:
     bool selectByKeyboardSet:1;
     bool hadSelection : 1;
     bool markdownText : 1;
+    bool inResize : 1;
+
+    static const int largeTextSizeThreshold;
 };
+
+#ifndef QT_NO_DEBUG_STREAM
+QDebug Q_QUICK_PRIVATE_EXPORT operator<<(QDebug debug, const QQuickTextEditPrivate::Node &);
+#endif
 
 QT_END_NAMESPACE
 

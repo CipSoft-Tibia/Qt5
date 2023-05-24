@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,18 +22,21 @@ class MediaStreamInternalFrameWrapper {
                                WebLocalFrame::ToCoreFrame(*web_frame))
                          : nullptr) {}
 
+  MediaStreamInternalFrameWrapper(const MediaStreamInternalFrameWrapper&) =
+      delete;
+  MediaStreamInternalFrameWrapper& operator=(
+      const MediaStreamInternalFrameWrapper&) = delete;
+
   LocalFrame* frame() { return frame_.Get(); }
   WebLocalFrame* web_frame() {
     if (!frame_)
       return nullptr;
 
-    return static_cast<WebLocalFrame*>(WebFrame::FromFrame(frame()));
+    return static_cast<WebLocalFrame*>(WebFrame::FromCoreFrame(frame()));
   }
 
  private:
   WeakPersistent<LocalFrame> frame_;
-
-  DISALLOW_COPY_AND_ASSIGN(MediaStreamInternalFrameWrapper);
 };
 
 }  // namespace blink

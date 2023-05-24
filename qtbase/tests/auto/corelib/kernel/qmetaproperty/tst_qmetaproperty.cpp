@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2015 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <qobject.h>
 #include <qmetaobject.h>
+#include <QMap>
+#include <QString>
 
 struct CustomType
 {
@@ -65,6 +42,7 @@ private slots:
     void readAndWriteWithLazyRegistration();
     void mapProperty();
     void conversion();
+    void enumsFlags();
 
 public:
     enum EnumType { EnumType1 };
@@ -138,6 +116,7 @@ void tst_QMetaProperty::gadget()
     const QMetaObject *mo = &MyGadget::staticMetaObject;
     QMetaProperty valueProp = mo->property(mo->indexOfProperty("value"));
     QVERIFY(valueProp.isValid());
+    QCOMPARE(valueProp.metaType(), QMetaType::fromType<QString>());
     {
         MyGadget g;
         QString hello = QLatin1String("hello");
@@ -180,22 +159,49 @@ public:
     {}
 };
 
+class EnumFlagsTester : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(TestEnum enumProperty READ enumProperty WRITE setEnumProperty)
+    Q_PROPERTY(TestFlags flagProperty READ flagProperty WRITE setFlagProperty)
+public:
+    enum TestEnum { e1, e2 };
+    Q_ENUM(TestEnum)
+
+    enum TestFlag { flag1 = 0x1, flag2 = 0x2 };
+    Q_DECLARE_FLAGS(TestFlags, TestFlag)
+
+    using QObject::QObject;
+
+    TestEnum enumProperty() const { return m_enum; }
+    void setEnumProperty(TestEnum e) { m_enum = e; }
+
+    TestFlags flagProperty() const { return m_flags; }
+    void setFlagProperty(TestFlags f) { m_flags = f; }
+
+private:
+    TestEnum m_enum = e1;
+    TestFlags m_flags;
+};
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(EnumFlagsTester::TestFlags)
+
 void tst_QMetaProperty::readAndWriteWithLazyRegistration()
 {
-    QCOMPARE(QMetaType::type("CustomReadObject*"), int(QMetaType::UnknownType));
-    QCOMPARE(QMetaType::type("CustomWriteObject*"), int(QMetaType::UnknownType));
+    QVERIFY(!QMetaType::fromName("CustomReadObject*").isValid());
+    QVERIFY(!QMetaType::fromName("CustomWriteObject*").isValid());
 
     TypeLazyRegistration o;
     QVERIFY(o.property("read").isValid());
-    QVERIFY(QMetaType::type("CustomReadObject*") != QMetaType::UnknownType);
-    QCOMPARE(QMetaType::type("CustomWriteObject*"), int(QMetaType::UnknownType));
+    QVERIFY(QMetaType::fromName("CustomReadObject*").isValid());
+    QVERIFY(!QMetaType::fromName("CustomWriteObject*").isValid());
 
     CustomWriteObjectChild data;
     QVariant value = QVariant::fromValue(&data); // this register CustomWriteObjectChild
     // check if base classes are not registered automatically, otherwise this test would be meaningless
-    QCOMPARE(QMetaType::type("CustomWriteObject*"), int(QMetaType::UnknownType));
+    QVERIFY(!QMetaType::fromName("CustomWriteObject*").isValid());
     QVERIFY(o.setProperty("write", value));
-    QVERIFY(QMetaType::type("CustomWriteObject*") != QMetaType::UnknownType);
+    QVERIFY(QMetaType::fromName("CustomWriteObject*").isValid());
     QCOMPARE(o.property("write").value<CustomWriteObjectChild*>(), &data);
 }
 
@@ -243,6 +249,29 @@ void tst_QMetaProperty::conversion()
     // or reset resetable
     QVERIFY(value7P.write(this, QVariant()));
     QCOMPARE(value7, QLatin1String("reset"));
+}
+
+void tst_QMetaProperty::enumsFlags()
+{
+    // QTBUG-83689, verify that enumerations and flags can be assigned from int,
+    // which is important for Qt Designer.
+    EnumFlagsTester t;
+
+    auto mo = t.metaObject();
+
+    const int enumIndex = mo->indexOfProperty("enumProperty");
+    QVERIFY(enumIndex >= 0);
+    auto enumProperty = mo->property(enumIndex);
+    QVERIFY(enumProperty.metaType().flags().testFlag(QMetaType::IsEnumeration));
+    QVERIFY(enumProperty.write(&t, QVariant(int(EnumFlagsTester::e2))));
+    QCOMPARE(t.enumProperty(), EnumFlagsTester::e2);
+
+    const int flagsIndex = mo->indexOfProperty("flagProperty");
+    QVERIFY(flagsIndex >= 0);
+    auto flagsProperty = mo->property(flagsIndex);
+    QVERIFY(flagsProperty.metaType().flags().testFlag(QMetaType::IsEnumeration));
+    QVERIFY(flagsProperty.write(&t, QVariant(int(EnumFlagsTester::flag2))));
+    QCOMPARE(t.flagProperty(), EnumFlagsTester::flag2);
 }
 
 QTEST_MAIN(tst_QMetaProperty)

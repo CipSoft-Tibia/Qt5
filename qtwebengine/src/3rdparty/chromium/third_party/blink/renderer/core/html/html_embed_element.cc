@@ -43,10 +43,7 @@ namespace blink {
 
 HTMLEmbedElement::HTMLEmbedElement(Document& document,
                                    const CreateElementFlags flags)
-    : HTMLPlugInElement(html_names::kEmbedTag,
-                        document,
-                        flags,
-                        kShouldPreferPlugInsForImages) {
+    : HTMLPlugInElement(html_names::kEmbedTag, document, flags) {
   EnsureUserAgentShadowRoot();
 }
 
@@ -61,10 +58,8 @@ static inline LayoutEmbeddedContent* FindPartLayoutObject(const Node* n) {
   if (!n->GetLayoutObject())
     n = Traversal<HTMLObjectElement>::FirstAncestor(*n);
 
-  if (n && n->GetLayoutObject() &&
-      n->GetLayoutObject()->IsLayoutEmbeddedContent())
-    return ToLayoutEmbeddedContent(n->GetLayoutObject());
-
+  if (n)
+    return DynamicTo<LayoutEmbeddedContent>(n->GetLayoutObject());
   return nullptr;
 }
 
@@ -84,15 +79,10 @@ void HTMLEmbedElement::CollectStyleForPresentationAttribute(
     const AtomicString& value,
     MutableCSSPropertyValueSet* style) {
   if (name == html_names::kHiddenAttr) {
-    if (EqualIgnoringASCIICase(value, "yes") ||
-        EqualIgnoringASCIICase(value, "true")) {
-      AddPropertyToPresentationAttributeStyle(
-          style, CSSPropertyID::kWidth, 0,
-          CSSPrimitiveValue::UnitType::kPixels);
-      AddPropertyToPresentationAttributeStyle(
-          style, CSSPropertyID::kHeight, 0,
-          CSSPrimitiveValue::UnitType::kPixels);
-    }
+    AddPropertyToPresentationAttributeStyle(
+        style, CSSPropertyID::kWidth, 0, CSSPrimitiveValue::UnitType::kPixels);
+    AddPropertyToPresentationAttributeStyle(
+        style, CSSPropertyID::kHeight, 0, CSSPrimitiveValue::UnitType::kPixels);
   } else {
     HTMLPlugInElement::CollectStyleForPresentationAttribute(name, value, style);
   }
@@ -105,30 +95,37 @@ void HTMLEmbedElement::ParseAttribute(
     wtf_size_t pos = service_type_.Find(";");
     if (pos != kNotFound)
       SetServiceType(service_type_.Left(pos));
+    SetDisposeView();
     if (GetLayoutObject()) {
       SetNeedsPluginUpdate(true);
-      SetDisposeView();
       GetLayoutObject()->SetNeedsLayoutAndFullPaintInvalidation(
           "Embed type changed");
     }
   } else if (params.name == html_names::kCodeAttr) {
-    // TODO(schenney): Remove this branch? It's not in the spec and we're not in
-    // the HTMLAppletElement hierarchy.
+    // TODO(rendering-core): Remove this branch? It's not in the spec and we're
+    // not in the HTMLAppletElement hierarchy.
     SetUrl(StripLeadingAndTrailingHTMLSpaces(params.new_value));
     SetDisposeView();
   } else if (params.name == html_names::kSrcAttr) {
+    // https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-embed-element
+    // The spec says that when the url attribute is changed and the embed
+    // element is "potentially active," we should run the embed element setup
+    // steps.
+    // We don't follow the "potentially active" definition precisely here, but
+    // it works.
     SetUrl(StripLeadingAndTrailingHTMLSpaces(params.new_value));
+    SetDisposeView();
     if (GetLayoutObject() && IsImageType()) {
-      SetDisposeView();
       if (!image_loader_)
         image_loader_ = MakeGarbageCollected<HTMLImageLoader>(this);
       image_loader_->UpdateFromElement(ImageLoader::kUpdateIgnorePreviousError);
     } else if (GetLayoutObject()) {
-      // Check if this Embed can transition from potentially-active to active
-      if (FastHasAttribute(html_names::kTypeAttr)) {
-        SetNeedsPluginUpdate(true);
-        ReattachOnPluginChangeIfNeeded();
+      if (!FastHasAttribute(html_names::kTypeAttr)) {
+        UseCounter::Count(GetDocument(),
+                          WebFeature::kEmbedElementWithoutTypeSrcChanged);
       }
+      SetNeedsPluginUpdate(true);
+      ReattachOnPluginChangeIfNeeded();
     }
   } else {
     HTMLPlugInElement::ParseAttribute(params);
@@ -148,7 +145,7 @@ void HTMLEmbedElement::UpdatePluginInternal() {
   DCHECK(NeedsPluginUpdate());
   SetNeedsPluginUpdate(false);
 
-  if (url_.IsEmpty() && service_type_.IsEmpty())
+  if (url_.empty() && service_type_.empty())
     return;
 
   // Note these pass url_ and service_type_ to allow better code sharing with
@@ -176,7 +173,7 @@ void HTMLEmbedElement::UpdatePluginInternal() {
   RequestObject(plugin_params);
 }
 
-bool HTMLEmbedElement::LayoutObjectIsNeeded(const ComputedStyle& style) const {
+bool HTMLEmbedElement::LayoutObjectIsNeeded(const DisplayStyle& style) const {
   if (IsImageType())
     return HTMLPlugInElement::LayoutObjectIsNeeded(style);
 

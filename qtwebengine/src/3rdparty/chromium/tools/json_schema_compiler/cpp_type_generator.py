@@ -1,8 +1,8 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from code import Code
+from code_util import Code
 from model import PropertyType
 import cpp_util
 from json_parse import OrderedDict
@@ -32,7 +32,7 @@ class CppTypeGenerator(object):
     """
     self._default_namespace = default_namespace
     if self._default_namespace is None:
-      self._default_namespace = model.namespaces.values()[0]
+      self._default_namespace = list(model.namespaces.values())[0]
     self._namespace_resolver = namespace_resolver
 
   def GetEnumNoneValue(self, type_):
@@ -62,17 +62,15 @@ class CppTypeGenerator(object):
       value += "_"
     return value
 
-  def GetCppType(self, type_, is_ptr=False, is_in_container=False):
+  def GetCppType(self, type_, is_optional=False):
     """Translates a model.Property or model.Type into its C++ type.
 
     If REF types from different namespaces are referenced, will resolve
     using self._namespace_resolver.
 
-    Use |is_ptr| if the type is optional. This will wrap the type in a
-    scoped_ptr if possible (it is not possible to wrap an enum).
-
-    Use |is_in_container| if the type is appearing in a collection, e.g. a
-    std::vector or std::map. This will wrap it in the correct type with spacing.
+    Use |is_optional| if the type is optional. This will wrap the type either
+    in an optional, or in a unique_ptr if possible (it is not possible to wrap
+    an enum).
     """
     cpp_type = None
     if type_.property_type == PropertyType.REF:
@@ -104,12 +102,16 @@ class CppTypeGenerator(object):
     elif type_.property_type == PropertyType.ANY:
       cpp_type = 'base::Value'
     elif type_.property_type == PropertyType.FUNCTION:
-      # Functions come into the json schema compiler as empty objects. We can
-      # record these as empty DictionaryValues so that we know if the function
-      # was passed in or not.
-      cpp_type = 'base::DictionaryValue'
+      if type_.is_serializable_function:
+        # Serializable functions get transformed into strings.
+        cpp_type = 'std::string'
+      else:
+        # Non-serializable functions come into the json schema compiler as
+        # empty objects. We can record these as empty Value::Dict so that
+        # we know if the function was passed in or not.
+        cpp_type = 'base::Value::Dict'
     elif type_.property_type == PropertyType.ARRAY:
-      item_cpp_type = self.GetCppType(type_.item_type, is_in_container=True)
+      item_cpp_type = self.GetCppType(type_.item_type)
       cpp_type = 'std::vector<%s>' % item_cpp_type
     elif type_.property_type == PropertyType.BINARY:
       cpp_type = 'std::vector<uint8_t>'
@@ -120,12 +122,11 @@ class CppTypeGenerator(object):
     # never needs to be wrapped in pointer shenanigans.
     # TODO(kalman): change this - but it's an exceedingly far-reaching change.
     if not self.FollowRef(type_).property_type == PropertyType.ENUM:
-      is_base_value = (cpp_type == 'base::Value' or
-                       cpp_type == 'base::DictionaryValue')
-      # Wrap ptrs and base::Values in containers (which aren't movable) in
-      # scoped_ptrs.
-      if is_ptr or (is_in_container and is_base_value):
-        cpp_type = 'std::unique_ptr<%s>' % cpp_type
+      if is_optional:
+        if cpp_util.ShouldUseAbslOptional(self.FollowRef(type_)):
+          cpp_type = 'absl::optional<%s>' % cpp_type
+        else:
+          cpp_type = 'std::unique_ptr<%s>' % cpp_type
 
     return cpp_type
 
@@ -174,7 +175,7 @@ class CppTypeGenerator(object):
           path = '%s/%s.h' % (namespace.source_file_dir, namespace.unix_name)
           if path not in added_paths:
             added_paths.add(path)
-            c.Append('#include "%s"' % path)
+            c.Append('#include "%s"' % cpp_util.ToPosixPath(path))
     return c
 
   def _FindType(self, full_name):
@@ -208,8 +209,8 @@ class CppTypeGenerator(object):
       for param in function.params:
         dependencies |= self._TypeDependencies(param.type_,
                                                hard=not param.optional)
-      if function.callback:
-        for param in function.callback.params:
+      if function.returns_async:
+        for param in function.returns_async.params:
           dependencies |= self._TypeDependencies(param.type_,
                                                  hard=not param.optional)
     for type_ in self._default_namespace.types.values():

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef QGEOROUTINGMANAGERENGINE_TEST_H
 #define QGEOROUTINGMANAGERENGINE_TEST_H
@@ -41,33 +16,6 @@
 #include <QTimerEvent>
 
 QT_USE_NAMESPACE
-
-
-class QGeoRoutePrivateDefaultAlt : public QGeoRoutePrivateDefault
-{
-public:
-    QGeoRoutePrivateDefaultAlt() : QGeoRoutePrivateDefault()
-    {
-        m_travelTime = 123456; // To identify this is actually a QGeoRoutePrivateDefaultAlt
-    }
-    QGeoRoutePrivateDefaultAlt(const QGeoRoutePrivateDefaultAlt &other)
-        : QGeoRoutePrivateDefault(other) {}
-    ~QGeoRoutePrivateDefaultAlt() {}
-
-    void setTravelTime(int travelTime) override
-    {
-        Q_UNUSED(travelTime);
-    }
-};
-
-class QGeoRouteAlt : public QGeoRoute
-{
-public:
-    QGeoRouteAlt()
-    : QGeoRoute(QExplicitlySharedDataPointer<QGeoRoutePrivate>(new QGeoRoutePrivateDefaultAlt()))
-    {
-    }
-};
 
 class RouteReplyTest :public QGeoRouteReply
 {
@@ -136,7 +84,7 @@ public:
                     QGeoRouteRequest::TruckTravel );
     }
 
-    virtual QGeoRouteReply* calculateRoute(const QGeoRouteRequest& request)
+    QGeoRouteReply* calculateRoute(const QGeoRouteRequest& request) override
     {
         routeReply_ = new RouteReplyTest();
         connect(routeReply_, SIGNAL(aborted()), this, SLOT(requestAborted()));
@@ -168,24 +116,13 @@ public:
     {
         QList<QGeoRoute> routes;
         int travelTime = 0;
-        if (request.extraParameters().contains("test-traveltime"))
-            travelTime = request.extraParameters().value("test-traveltime").toMap().value("requestedTime").toInt();
 
         for (int i = 0; i < request.numberAlternativeRoutes(); ++i) {
             QGeoRoute route;
-            if (alternateGeoRouteImplementation_)
-                route = QGeoRouteAlt();
             route.setPath(request.waypoints());
             route.setTravelTime(travelTime);
-
-            const QList<QVariantMap> metadata = request.waypointsMetadata();
-            for (const auto &meta: metadata) {
-                if (meta.contains("extra")) {
-                    QVariantMap extra = meta.value("extra").toMap();
-                    if (extra.contains("user_distance"))
-                        route.setDistance(meta.value("extra").toMap().value("user_distance").toMap().value("distance").toDouble());
-                }
-            }
+            if (alternateGeoRouteImplementation_)
+                route.setTravelTime(123456);
 
             if (request.departureTime().isValid()) {
                 QVariantMap extendedAttributes = route.extendedAttributes();
@@ -210,7 +147,7 @@ public Q_SLOTS:
     }
 
 protected:
-     void timerEvent(QTimerEvent *event)
+     void timerEvent(QTimerEvent *event) override
      {
          Q_UNUSED(event);
          Q_ASSERT(timerId_ == event->timerId());
@@ -219,7 +156,7 @@ protected:
          timerId_ = 0;
          if (errorCode_) {
              routeReply_->callSetError(errorCode_, errorString_);
-             emit error(routeReply_, errorCode_, errorString_);
+             emit errorOccurred(routeReply_, errorCode_, errorString_);
          } else {
              routeReply_->callSetError(QGeoRouteReply::NoError, "no error");
              routeReply_->callSetFinished(true);

@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QFUTUREINTERFACE_P_H
 #define QFUTUREINTERFACE_P_H
@@ -58,19 +22,27 @@
 #include <QtCore/qwaitcondition.h>
 #include <QtCore/qrunnable.h>
 #include <QtCore/qthreadpool.h>
+#include <QtCore/qfutureinterface.h>
+#include <QtCore/qexception.h>
 
 QT_REQUIRE_CONFIG(future);
 
 QT_BEGIN_NAMESPACE
 
-class QFutureCallOutEvent : public QEvent
+// Although QFutureCallOutEvent and QFutureCallOutInterface are private,
+// for historical reasons they were used externally (in QtJambi, see
+// https://github.com/OmixVisualization/qtjambi), so we export them to
+// not break the pre-existing code.
+class Q_CORE_EXPORT QFutureCallOutEvent : public QEvent
 {
+    Q_DECL_EVENT_COMMON(QFutureCallOutEvent)
 public:
     enum CallOutType {
         Started,
         Finished,
         Canceled,
-        Paused,
+        Suspending,
+        Suspended,
         Resumed,
         Progress,
         ProgressRange,
@@ -99,29 +71,12 @@ public:
     int index1;
     int index2;
     QString text;
-
-    QFutureCallOutEvent *clone() const
-    {
-        return new QFutureCallOutEvent(callOutType, index1, index2, text);
-    }
-
-private:
-    QFutureCallOutEvent(CallOutType callOutType,
-                        int index1,
-                        int index2,
-                        const QString &text)
-        : QEvent(QEvent::FutureCallOut),
-          callOutType(callOutType),
-          index1(index1),
-          index2(index2),
-          text(text)
-    { }
 };
 
-class QFutureCallOutInterface
+class Q_CORE_EXPORT QFutureCallOutInterface
 {
 public:
-    virtual ~QFutureCallOutInterface() {}
+    virtual ~QFutureCallOutInterface();
     virtual void postCallOutEvent(const QFutureCallOutEvent &) = 0;
     virtual void callOutInterfaceDisconnected() = 0;
 };
@@ -130,6 +85,7 @@ class QFutureInterfaceBasePrivate
 {
 public:
     QFutureInterfaceBasePrivate(QFutureInterfaceBase::State initialState);
+    ~QFutureInterfaceBasePrivate();
 
     // When the last QFuture<T> reference is removed, we need to make
     // sure that data stored in the ResultStore is cleaned out.
@@ -157,23 +113,55 @@ public:
 
     // T: accessed from executing thread
     // Q: accessed from the waiting/querying thread
-    RefCount refCount;
     mutable QMutex m_mutex;
-    QWaitCondition waitCondition;
+    QBasicMutex continuationMutex;
     QList<QFutureCallOutInterface *> outputConnections;
-    int m_progressValue; // TQ
-    int m_progressMinimum; // TQ
-    int m_progressMaximum; // TQ
-    QAtomicInt state; // reads and writes can happen unprotected, both must be atomic
     QElapsedTimer progressTime;
+    QWaitCondition waitCondition;
     QWaitCondition pausedWaitCondition;
-    QtPrivate::ResultStoreBase m_results;
-    bool manualProgress; // only accessed from executing thread
-    int m_expectedResultCount;
-    QtPrivate::ExceptionStore m_exceptionStore;
-    QString m_progressText;
-    QRunnable *runnable;
-    QThreadPool *m_pool;
+
+    union Data {
+        QtPrivate::ResultStoreBase m_results;
+        QtPrivate::ExceptionStore m_exceptionStore;
+
+#ifndef QT_NO_EXCEPTIONS
+        void setException(const std::exception_ptr &e)
+        {
+            m_results.~ResultStoreBase();
+            new (&m_exceptionStore) QtPrivate::ExceptionStore();
+            m_exceptionStore.setException(e);
+        }
+#endif
+
+        ~Data() { }
+    };
+    Data data = { QtPrivate::ResultStoreBase() };
+
+    QRunnable *runnable = nullptr;
+    QThreadPool *m_pool = nullptr;
+    // Wrapper for continuation
+    std::function<void(const QFutureInterfaceBase &)> continuation;
+    QFutureInterfaceBasePrivate *continuationData = nullptr;
+
+    RefCount refCount = 1;
+    QAtomicInt state; // reads and writes can happen unprotected, both must be atomic
+
+    int m_progressValue = 0; // TQ
+    struct ProgressData
+    {
+        int minimum = 0; // TQ
+        int maximum = 0; // TQ
+        QString text;
+    };
+    QScopedPointer<ProgressData> m_progress;
+
+    int m_expectedResultCount = 0;
+    bool launchAsync = false;
+    bool isValid = false;
+    bool hasException = false;
+
+    enum ContinuationState : quint8 { Default, Canceled, Cleaned };
+    std::atomic<ContinuationState> continuationState { Default };
 
     inline QThreadPool *pool() const
     { return m_pool ? m_pool : QThreadPool::globalInstance(); }
@@ -183,6 +171,7 @@ public:
     int internal_resultCount() const;
     bool internal_isResultReadyAt(int index) const;
     bool internal_waitForNextResult();
+    bool internal_updateProgressValue(int progress);
     bool internal_updateProgress(int progress, const QString &progressText = QString());
     void internal_setThrottled(bool enable);
     void sendCallOut(const QFutureCallOutEvent &callOut);

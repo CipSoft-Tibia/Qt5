@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,8 +6,12 @@
 
 #include <utility>
 
+#include "base/functional/bind.h"
+#include "base/location.h"
+#include "base/task/single_thread_task_runner.h"
 #include "components/payments/content/payment_manifest_web_data_service.h"
 #include "components/payments/core/error_strings.h"
+#include "content/public/browser/render_frame_host.h"
 
 namespace payments {
 
@@ -16,9 +20,15 @@ TestContentPaymentRequestDelegate::TestContentPaymentRequestDelegate(
     autofill::PersonalDataManager* pdm)
     : core_delegate_(std::move(task_executor), pdm) {}
 
-TestContentPaymentRequestDelegate::~TestContentPaymentRequestDelegate() {}
+TestContentPaymentRequestDelegate::~TestContentPaymentRequestDelegate() =
+    default;
 
-std::unique_ptr<autofill::InternalAuthenticator>
+content::RenderFrameHost*
+TestContentPaymentRequestDelegate::GetRenderFrameHost() const {
+  return content::RenderFrameHost::FromID(frame_routing_id_);
+}
+
+std::unique_ptr<webauthn::InternalAuthenticator>
 TestContentPaymentRequestDelegate::CreateInternalAuthenticator() const {
   return nullptr;
 }
@@ -30,7 +40,7 @@ TestContentPaymentRequestDelegate::GetPaymentManifestWebDataService() const {
 
 PaymentRequestDisplayManager*
 TestContentPaymentRequestDelegate::GetDisplayManager() {
-  return nullptr;
+  return &payment_request_display_manager_;
 }
 
 void TestContentPaymentRequestDelegate::ShowDialog(
@@ -58,15 +68,18 @@ bool TestContentPaymentRequestDelegate::IsBrowserWindowActive() const {
   return core_delegate_.IsBrowserWindowActive();
 }
 
-bool TestContentPaymentRequestDelegate::SkipUiForBasicCard() const {
-  return false;
-}
-
-std::string TestContentPaymentRequestDelegate::GetTwaPackageName() const {
-  return "";
+void TestContentPaymentRequestDelegate::GetTwaPackageName(
+    GetTwaPackageNameCallback callback) const {
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(std::move(callback), ""));
 }
 
 PaymentRequestDialog* TestContentPaymentRequestDelegate::GetDialogForTesting() {
+  return nullptr;
+}
+
+SecurePaymentConfirmationNoCreds*
+TestContentPaymentRequestDelegate::GetNoMatchingCredentialsDialogForTesting() {
   return nullptr;
 }
 
@@ -86,13 +99,6 @@ bool TestContentPaymentRequestDelegate::IsOffTheRecord() const {
 
 const GURL& TestContentPaymentRequestDelegate::GetLastCommittedURL() const {
   return core_delegate_.GetLastCommittedURL();
-}
-
-void TestContentPaymentRequestDelegate::DoFullCardRequest(
-    const autofill::CreditCard& credit_card,
-    base::WeakPtr<autofill::payments::FullCardRequest::ResultDelegate>
-        result_delegate) {
-  return core_delegate_.DoFullCardRequest(credit_card, result_delegate);
 }
 
 autofill::AddressNormalizer*
@@ -142,5 +148,16 @@ void TestContentPaymentRequestDelegate::DelayFullCardRequestCompletion() {
 void TestContentPaymentRequestDelegate::CompleteFullCardRequest() {
   core_delegate_.CompleteFullCardRequest();
 }
+
+const base::WeakPtr<PaymentUIObserver>
+TestContentPaymentRequestDelegate::GetPaymentUIObserver() const {
+  return nullptr;
+}
+
+void TestContentPaymentRequestDelegate::ShowNoMatchingPaymentCredentialDialog(
+    const std::u16string& merchant_name,
+    const std::string& rp_id,
+    base::OnceClosure response_callback,
+    base::OnceClosure opt_out_callback) {}
 
 }  // namespace payments

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -97,8 +97,8 @@ struct SYSTEM_PROCESS_INFORMATION {
   ULONGLONG KernelTime;
   UNICODE_STRING ImageName;
   KPRIORITY BasePriority;
-  HANDLE ProcessId;
-  HANDLE ParentProcessId;
+  HANDLE ProcessId;        // Actually process ID, not a handle
+  HANDLE ParentProcessId;  // Actually parent process ID, not a handle
   ULONG HandleCount;
   ULONG Reserved2[2];
   // Padding here in 64-bit
@@ -215,6 +215,14 @@ SystemInformationSampler::SystemInformationSampler(
   lstrcpyn(target_process_name_, process_name,
            sizeof(target_process_name_) / sizeof(wchar_t));
 
+  // If |target_process_name_| is numeric, treat it as a process ID.
+  errno = 0;
+  wchar_t* end_ptr;
+  target_process_id_ = wcstoul(target_process_name_, &end_ptr, 10);
+  // Discard result if error occurred, or if negative or only partially numeric.
+  if (errno != 0 || target_process_id_ < 0 || *end_ptr != L'\0')
+    target_process_id_ = 0;
+
   QueryPerformanceFrequency(&perf_frequency_);
   QueryPerformanceCounter(&initial_counter_);
 }
@@ -231,7 +239,15 @@ SystemInformationSampler::~SystemInformationSampler() {}
 ProcessData GetProcessData(const SYSTEM_PROCESS_INFORMATION* const pi) {
   ProcessData process_data;
   process_data.cpu_time = pi->KernelTime + pi->UserTime;
-  process_data.working_set = pi->WorkingSetPrivateSize;
+  // The PagefileUsage member measures Private Commit. Presumably the name was
+  // chosen because all private commit has to be backed by either memory or the
+  // page file. Private Commit is the standard measure for memory in Chromium,
+  // including in the Memory footprint column in Chrome's task manager.
+  // Private Commit is a much more stable and meaningful number than private
+  // working set which can be affected by memory pressure or other factors that
+  // cause Windows to drain the working set and page out or compress the memory.
+  process_data.memory = pi->VirtualMemoryCounters.PagefileUsage;
+  process_data.handle_count = pi->HandleCount;
 
   // Iterate over threads and store each thread's ID and number of context
   // switches.
@@ -294,7 +310,16 @@ std::unique_ptr<ProcessDataSnapshot> SystemInformationSampler::TakeSnapshot() {
         break;
       }
 
-      if (pi->ImageName.Buffer) {
+      if (target_process_id_ > 0) {
+        // If |pi| or its parent has the targeted process ID, add its data to
+        // the snapshot.
+        if (reinterpret_cast<uintptr_t>(pi->ProcessId) == target_process_id_ ||
+            reinterpret_cast<uintptr_t>(pi->ParentProcessId) ==
+                target_process_id_) {
+          snapshot->processes.insert(
+              std::make_pair(pi->ProcessId, GetProcessData(pi)));
+        }
+      } else if (pi->ImageName.Buffer) {
         // Validate that the image name is within the buffer boundary.
         // ImageName.Length seems to be in bytes rather than characters.
         size_t image_name_offset =
@@ -302,11 +327,18 @@ std::unique_ptr<ProcessDataSnapshot> SystemInformationSampler::TakeSnapshot() {
         if (image_name_offset + pi->ImageName.Length > data_buffer.size())
           break;
 
-        // If |pi| is the targeted process, add its data to the snapshot.
+        // If |pi| has the targeted process name, add its data to the snapshot.
         if (wcsncmp(target_process_name_filter(), pi->ImageName.Buffer,
                     lstrlen(target_process_name_filter())) == 0) {
-          snapshot->processes.insert(
-              std::make_pair(pi->ProcessId, GetProcessData(pi)));
+          // Special case System so that it must be an exact match instead of a
+          // prefix match, since otherwise there is no way to get reports for
+          // the system process without also recording SystemSettings.exe. For
+          // most processes you can solve this by adding .exe to the filter name
+          // but the System process doesn't have that suffix.
+          if (wcscmp(target_process_name_filter(), L"System") != 0 ||
+              wcslen(pi->ImageName.Buffer) == 6)
+            snapshot->processes.insert(
+                std::make_pair(pi->ProcessId, GetProcessData(pi)));
         }
       }
     }

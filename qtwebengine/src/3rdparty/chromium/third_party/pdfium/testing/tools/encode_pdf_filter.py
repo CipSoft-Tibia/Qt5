@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2019 The PDFium Authors. All rights reserved.
+# Copyright 2019 The PDFium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 """Encodes binary data using one or more PDF stream filters.
@@ -13,6 +13,7 @@ manually-run script.
 """
 
 import argparse
+from abc import ABCMeta, abstractmethod
 import base64
 import collections
 import collections.abc
@@ -21,9 +22,21 @@ import sys
 import zlib
 
 
-class _PdfStream:
+class _PdfStream(metaclass=ABCMeta):
   _unique_filter_classes = []
   _filter_classes = {}
+
+  @classmethod
+  @property
+  @abstractmethod
+  def name(cls):
+    pass
+
+  @classmethod
+  @property
+  @abstractmethod
+  def aliases(cls):
+    pass
 
   @staticmethod
   def GetFilterByName(name):
@@ -99,6 +112,22 @@ class _SinkPdfStream(_PdfStream):
   def __init__(self):
     super().__init__(io.BytesIO())
 
+  @classmethod
+  @property
+  def name(cls):
+    # Return an invalid name, so as to ensure _SinkPdfStream.Register()
+    # cannot be called. This method has to be implemented, because this
+    # script create `_SinkPdfStream` instances.
+    return ''
+
+  @classmethod
+  @property
+  def aliases(cls):
+    # Return an invalid aliases, so as to ensure _SinkPdfStream.Register()
+    # cannot be called. This method has to be implemented, because this
+    # script create `_SinkPdfStream` instances.
+    return ()
+
   def close(self):
     # Don't call io.BytesIO.close(); this deallocates the written data.
     self.flush()
@@ -113,6 +142,18 @@ class _AsciiPdfStream(_PdfStream):
     super().__init__(out_buffer, **kwargs)
     self.wrapcol = wrapcol
     self.column = 0
+
+  @classmethod
+  @property
+  @abstractmethod
+  def name(cls):
+    pass
+
+  @classmethod
+  @property
+  @abstractmethod
+  def aliases(cls):
+    pass
 
   def write(self, data):
     if not self.wrapcol:
@@ -134,8 +175,18 @@ class _AsciiPdfStream(_PdfStream):
 
 
 class _Ascii85DecodePdfStream(_AsciiPdfStream):
-  name = '/ASCII85Decode'
-  aliases = ('ascii85', 'base85')
+  _name = '/ASCII85Decode'
+  _aliases = ('ascii85', 'base85')
+
+  @classmethod
+  @property
+  def name(cls):
+    return cls._name
+
+  @classmethod
+  @property
+  def aliases(cls):
+    return cls._aliases
 
   def __init__(self, out_buffer, **kwargs):
     super().__init__(out_buffer, **kwargs)
@@ -158,8 +209,18 @@ class _Ascii85DecodePdfStream(_AsciiPdfStream):
 
 
 class _AsciiHexDecodePdfStream(_AsciiPdfStream):
-  name = '/ASCIIHexDecode'
-  aliases = ('base16', 'hex', 'hexadecimal')
+  _name = '/ASCIIHexDecode'
+  _aliases = ('base16', 'hex', 'hexadecimal')
+
+  @classmethod
+  @property
+  def name(cls):
+    return cls._name
+
+  @classmethod
+  @property
+  def aliases(cls):
+    return cls._aliases
 
   def __init__(self, out_buffer, **kwargs):
     super().__init__(out_buffer, **kwargs)
@@ -169,12 +230,22 @@ class _AsciiHexDecodePdfStream(_AsciiPdfStream):
 
 
 class _FlateDecodePdfStream(_PdfStream):
-  name = '/FlateDecode'
-  aliases = ('deflate', 'flate', 'zlib')
+  _name = '/FlateDecode'
+  _aliases = ('deflate', 'flate', 'zlib')
 
   def __init__(self, out_buffer, **kwargs):
     super().__init__(out_buffer, **kwargs)
     self.deflate = zlib.compressobj(level=9, memLevel=9)
+
+  @classmethod
+  @property
+  def name(cls):
+    return cls._name
+
+  @classmethod
+  @property
+  def aliases(cls):
+    return cls._aliases
 
   def write(self, data):
     self.buffer.write(self.deflate.compress(data))
@@ -190,6 +261,18 @@ class _FlateDecodePdfStream(_PdfStream):
 class _VirtualPdfStream(_PdfStream):
 
   @classmethod
+  @property
+  @abstractmethod
+  def name(cls):
+    pass
+
+  @classmethod
+  @property
+  @abstractmethod
+  def aliases(cls):
+    pass
+
+  @classmethod
   def RegisterByName(cls):
     pass
 
@@ -199,13 +282,23 @@ class _VirtualPdfStream(_PdfStream):
 
 
 class _PassthroughPdfStream(_VirtualPdfStream):
-  name = '(virtual) passthrough'
-  aliases = ('noop', 'passthrough')
+  _name = '(virtual) passthrough'
+  _aliases = ('noop', 'passthrough')
+
+  @classmethod
+  @property
+  def name(cls):
+    return cls._name
+
+  @classmethod
+  @property
+  def aliases(cls):
+    return cls._aliases
 
 
 class _PngIdatPdfStream(_VirtualPdfStream):
-  name = '(virtual) PNG IDAT'
-  aliases = ('png',)
+  _name = '(virtual) PNG IDAT'
+  _aliases = ('png',)
 
   _EXPECT_HEADER = -1
   _EXPECT_LENGTH = -2
@@ -214,6 +307,16 @@ class _PngIdatPdfStream(_VirtualPdfStream):
 
   _PNG_HEADER = 0x89504E470D0A1A0A
   _PNG_CHUNK_IDAT = 0x49444154
+
+  @classmethod
+  @property
+  def name(cls):
+    return cls._name
+
+  @classmethod
+  @property
+  def aliases(cls):
+    return cls._aliases
 
   @classmethod
   def AddEntries(cls, entries):

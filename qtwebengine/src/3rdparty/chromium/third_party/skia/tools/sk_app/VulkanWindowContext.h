@@ -12,14 +12,13 @@
 
 #ifdef SK_VULKAN
 
-#include "include/gpu/vk/GrVkVulkan.h"
-
 #include "include/gpu/vk/GrVkBackendContext.h"
-#include "src/gpu/vk/GrVkInterface.h"
 #include "tools/gpu/vk/VkTestUtils.h"
 #include "tools/sk_app/WindowContext.h"
 
 class GrRenderTarget;
+
+namespace skgpu { struct VulkanInterface; }
 
 namespace sk_app {
 
@@ -48,7 +47,7 @@ public:
     using CanPresentFn = sk_gpu_test::CanPresentFn;
 
     VulkanWindowContext(const DisplayParams&, CreateVkSurfaceFn, CanPresentFn,
-                        PFN_vkGetInstanceProcAddr, PFN_vkGetDeviceProcAddr);
+                        PFN_vkGetInstanceProcAddr);
 
 private:
     void initializeContext();
@@ -61,7 +60,7 @@ private:
 
     BackbufferInfo* getAvailableBackbuffer();
     bool createSwapchain(int width, int height, const DisplayParams& params);
-    void createBuffers(VkFormat format, VkImageUsageFlags, SkColorType colorType, VkSharingMode);
+    bool createBuffers(VkFormat format, VkImageUsageFlags, SkColorType colorType, VkSharingMode);
     void destroyBuffers();
 
     VkInstance fInstance = VK_NULL_HANDLE;
@@ -73,9 +72,7 @@ private:
     CreateVkSurfaceFn fCreateVkSurfaceFn;
     CanPresentFn      fCanPresentFn;
 
-    // Vulkan GetProcAddr functions
     PFN_vkGetInstanceProcAddr fGetInstanceProcAddr = nullptr;
-    PFN_vkGetDeviceProcAddr fGetDeviceProcAddr = nullptr;
 
     // WSI interface functions
     PFN_vkDestroySurfaceKHR fDestroySurfaceKHR = nullptr;
@@ -97,7 +94,7 @@ private:
     PFN_vkDestroyDevice fDestroyDevice = nullptr;
     PFN_vkGetDeviceQueue fGetDeviceQueue = nullptr;
 
-    sk_sp<const GrVkInterface> fInterface;
+    sk_sp<const skgpu::VulkanInterface> fInterface;
 
     VkSurfaceKHR      fSurface;
     VkSwapchainKHR    fSwapchain;

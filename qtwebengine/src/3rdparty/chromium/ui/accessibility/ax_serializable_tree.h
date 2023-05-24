@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -19,10 +19,9 @@ class AX_EXPORT AXSerializableTree : public AXTree {
 
   // Create a TreeSource adapter for this tree. The client gets ownership
   // of the return value and should delete it when done.
-  virtual AXTreeSource<const AXNode*, AXNodeData, AXTreeData>*
-      CreateTreeSource();
+  virtual AXTreeSource<const AXNode*>* CreateTreeSource();
 };
 
 }  // namespace ui
 
-#endif  // UI_ACCESSIBILITY_AX_TREE_H_
+#endif  // UI_ACCESSIBILITY_AX_SERIALIZABLE_TREE_H_

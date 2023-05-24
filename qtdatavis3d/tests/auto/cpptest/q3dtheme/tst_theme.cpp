@@ -1,37 +1,9 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 
 #include <QtDataVisualization/Q3DTheme>
-
-using namespace QtDataVisualization;
 
 class tst_theme: public QObject
 {
@@ -82,10 +54,10 @@ void tst_theme::construct()
     QCOMPARE(theme->ambientLightStrength(), 0.5f);
     QCOMPARE(theme->backgroundColor(), QColor(Qt::black));
     QCOMPARE(theme->isBackgroundEnabled(), true);
-    QCOMPARE(theme->baseColors().length(), 5);
+    QCOMPARE(theme->baseColors().size(), 5);
     QCOMPARE(theme->baseColors().at(0), QColor(Qt::white));
     QCOMPARE(theme->baseColors().at(4), QColor(QRgb(0x6b6b6b)));
-    QCOMPARE(theme->baseGradients().length(), 5);
+    QCOMPARE(theme->baseGradients().size(), 5);
     QCOMPARE(theme->baseGradients().at(0).stops().at(1).second, QColor(Qt::white));
     QCOMPARE(theme->baseGradients().at(4).stops().at(1).second, QColor(QRgb(0x6b6b6b)));
     QCOMPARE(theme->colorStyle(), Q3DTheme::ColorStyleUniform);
@@ -115,9 +87,9 @@ void tst_theme::initialProperties()
     QCOMPARE(m_theme->ambientLightStrength(), 0.25f);
     QCOMPARE(m_theme->backgroundColor(), QColor(Qt::black));
     QCOMPARE(m_theme->isBackgroundEnabled(), true);
-    QCOMPARE(m_theme->baseColors().length(), 1);
+    QCOMPARE(m_theme->baseColors().size(), 1);
     QCOMPARE(m_theme->baseColors().at(0), QColor(Qt::black));
-    QCOMPARE(m_theme->baseGradients().length(), 1);
+    QCOMPARE(m_theme->baseGradients().size(), 1);
     QCOMPARE(m_theme->baseGradients().at(0).stops().at(0).second, QColor(Qt::black));
     QCOMPARE(m_theme->baseGradients().at(0).stops().at(1).second, QColor(Qt::white));
     QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyleUniform);
@@ -180,10 +152,10 @@ void tst_theme::initializeProperties()
     QCOMPARE(m_theme->ambientLightStrength(), 0.3f);
     QCOMPARE(m_theme->backgroundColor(), QColor(Qt::red));
     QCOMPARE(m_theme->isBackgroundEnabled(), false);
-    QCOMPARE(m_theme->baseColors().length(), 2);
+    QCOMPARE(m_theme->baseColors().size(), 2);
     QCOMPARE(m_theme->baseColors().at(0), QColor(Qt::red));
     QCOMPARE(m_theme->baseColors().at(1), QColor(Qt::blue));
-    QCOMPARE(m_theme->baseGradients().length(), 2);
+    QCOMPARE(m_theme->baseGradients().size(), 2);
     QCOMPARE(m_theme->baseGradients().at(0), gradient1);
     QCOMPARE(m_theme->baseGradients().at(0), gradient2);
     QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyleRangeGradient);

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Designer of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "tool_widgeteditor.h"
 #include "formwindow.h"
@@ -38,15 +13,17 @@
 #include <qdesigner_dnditem_p.h>
 #include <qdesigner_resource.h>
 
-#include <QtGui/qevent.h>
-#include <QtWidgets/qaction.h>
 #include <QtWidgets/qmainwindow.h>
+
+#include <QtGui/qaction.h>
 #include <QtGui/qcursor.h>
+#include <QtGui/qevent.h>
+
 #include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
 
-using namespace qdesigner_internal;
+namespace qdesigner_internal {
 
 WidgetEditorTool::WidgetEditorTool(FormWindow *formWindow)
     : QDesignerFormWindowToolInterface(formWindow),
@@ -87,7 +64,7 @@ bool WidgetEditorTool::mainWindowSeparatorEvent(QWidget *widget, QEvent *event)
     QMouseEvent *e = static_cast<QMouseEvent*>(event);
 
     if (event->type() == QEvent::MouseButtonPress) {
-        if (mw->isSeparator(e->pos())) {
+        if (mw->isSeparator(e->position().toPoint())) {
             m_separator_drag_mw = mw;
             return true;
         }
@@ -153,7 +130,7 @@ bool WidgetEditorTool::handleEvent(QWidget *widget, QWidget *managedWidget, QEve
     case QEvent::DragEnter:
         return handleDragEnterMoveEvent(widget, managedWidget, static_cast<QDragEnterEvent *>(event), true);
     case QEvent::DragMove:
-        return handleDragEnterMoveEvent(widget, managedWidget, static_cast<QDragEnterEvent *>(event), false);
+        return handleDragEnterMoveEvent(widget, managedWidget, static_cast<QDragMoveEvent *>(event), false);
     case QEvent::DragLeave:
         return handleDragLeaveEvent(widget, managedWidget, static_cast<QDragLeaveEvent *>(event));
     case QEvent::Drop:
@@ -254,7 +231,7 @@ bool WidgetEditorTool::handleDragEnterMoveEvent(QWidget *widget, QWidget * /*man
             m_lastDropTarget = mw->centralWidget();
     } else {
         // If custom widgets have acceptDrops=true, the event occurs for them
-        const QPoint formPos = widget != m_formWindow ? widget->mapTo(m_formWindow, e->pos()) : e->pos();
+        const QPoint formPos = widget != m_formWindow ? widget->mapTo(m_formWindow, e->position().toPoint()) : e->position().toPoint();
         globalPos = m_formWindow->mapToGlobal(formPos);
         const FormWindowBase::WidgetUnderMouseMode wum = mimeData->items().size() == 1 ? FormWindowBase::FindSingleSelectionDropTarget : FormWindowBase::FindMultiSelectionDropTarget;
         QWidget *dropTarget = m_formWindow->widgetUnderMouse(formPos, wum);
@@ -285,7 +262,7 @@ bool WidgetEditorTool::handleDropEvent(QWidget *widget, QWidget *, QDropEvent *e
         return true;
     }
     // FormWindow determines the position from the decoration.
-    const QPoint globalPos = widget->mapToGlobal(e->pos());
+    const QPoint globalPos = widget->mapToGlobal(e->position().toPoint());
     mimeData->moveDecoration(globalPos);
     if (m_specialDockDrag) {
         if (!m_formWindow->dropDockWidget(mimeData->items().at(0), globalPos)) {
@@ -348,5 +325,7 @@ void WidgetEditorTool::deactivated()
 
     m_formWindow->clearSelection();
 }
+
+} // namespace qdesigner_internal
 
 QT_END_NAMESPACE

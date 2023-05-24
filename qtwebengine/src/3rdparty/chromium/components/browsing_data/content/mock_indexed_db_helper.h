@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,13 +8,15 @@
 #include <list>
 #include <map>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "components/browsing_data/content/indexed_db_helper.h"
-#include "url/origin.h"
+
+namespace blink {
+class StorageKey;
+}
 
 namespace content {
-class BrowserContext;
+class StoragePartition;
 }
 
 namespace browsing_data {
@@ -24,7 +26,10 @@ namespace browsing_data {
 // call Notify().
 class MockIndexedDBHelper : public IndexedDBHelper {
  public:
-  explicit MockIndexedDBHelper(content::BrowserContext* browser_context);
+  explicit MockIndexedDBHelper(content::StoragePartition* storage_partition);
+
+  MockIndexedDBHelper(const MockIndexedDBHelper&) = delete;
+  MockIndexedDBHelper& operator=(const MockIndexedDBHelper&) = delete;
 
   // Adds some StorageUsageInfo samples.
   void AddIndexedDBSamples();
@@ -41,17 +46,15 @@ class MockIndexedDBHelper : public IndexedDBHelper {
 
   // IndexedDBHelper.
   void StartFetching(FetchCallback callback) override;
-  void DeleteIndexedDB(const url::Origin& origin,
+  void DeleteIndexedDB(const blink::StorageKey& storage_key,
                        base::OnceCallback<void(bool)> callback) override;
 
  private:
   ~MockIndexedDBHelper() override;
 
   FetchCallback callback_;
-  std::map<url::Origin, bool> origins_;
+  std::map<blink::StorageKey, bool> storage_keys_;
   std::list<content::StorageUsageInfo> response_;
-
-  DISALLOW_COPY_AND_ASSIGN(MockIndexedDBHelper);
 };
 
 }  // namespace browsing_data

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@
 namespace extensions {
 
 // Ensures the existence of any BrowserContextKeyedServiceFactory provided by
-// the core extensions code.
+// the core extensions code or //extensions layer APIs.
 void EnsureBrowserContextKeyedServiceFactoriesBuilt();
 
 }  // namespace extensions

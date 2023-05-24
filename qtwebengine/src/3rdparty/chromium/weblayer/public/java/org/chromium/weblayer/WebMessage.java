@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,10 +8,8 @@ import androidx.annotation.NonNull;
 
 /**
  * Used when sending and receiving messages to a page.
- *
- * @since 85
  */
-public class WebMessage {
+class WebMessage {
     private final String mContents;
 
     /**

@@ -1,14 +1,14 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/controls/button/label_button_label.h"
 
-namespace views {
+#include "ui/base/metadata/metadata_impl_macros.h"
 
-namespace internal {
+namespace views::internal {
 
-LabelButtonLabel::LabelButtonLabel(const base::string16& text, int text_context)
+LabelButtonLabel::LabelButtonLabel(const std::u16string& text, int text_context)
     : Label(text, text_context, style::STYLE_PRIMARY) {}
 
 LabelButtonLabel::~LabelButtonLabel() = default;
@@ -35,15 +35,19 @@ void LabelButtonLabel::OnEnabledChanged() {
 }
 
 void LabelButtonLabel::SetColorForEnableState() {
-  if (GetEnabled() ? requested_enabled_color_ : requested_disabled_color_) {
-    Label::SetEnabledColor(GetEnabled() ? *requested_enabled_color_
-                                        : *requested_disabled_color_);
-  } else {
+  const absl::optional<SkColor>& color =
+      GetEnabled() ? requested_enabled_color_ : requested_disabled_color_;
+  if (color) {
+    Label::SetEnabledColor(*color);
+  } else if (GetWidget()) {
+    // If there is no widget, we can't actually get the colors here.
+    // An OnThemeChanged() will fire once a widget is available.
     int style = GetEnabled() ? style::STYLE_PRIMARY : style::STYLE_DISABLED;
     Label::SetEnabledColor(style::GetColor(*this, GetTextContext(), style));
   }
 }
 
-}  // namespace internal
+BEGIN_METADATA(LabelButtonLabel, Label)
+END_METADATA
 
-}  // namespace views
+}  // namespace views::internal

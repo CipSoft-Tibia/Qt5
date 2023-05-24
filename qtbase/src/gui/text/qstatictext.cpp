@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtGui module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstatictext.h"
 #include "qstatictext_p.h"
@@ -45,6 +9,8 @@
 #include <qabstracttextdocumentlayout.h>
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QStaticText)
 
 QStaticTextUserData::~QStaticTextUserData()
 {
@@ -84,7 +50,7 @@ QStaticTextUserData::~QStaticTextUserData()
     class MyWidget: public QWidget
     {
     public:
-        MyWidget(QWidget *parent = 0) : QWidget(parent), m_staticText("This is static text")
+        MyWidget(QWidget *parent = nullptr) : QWidget(parent), m_staticText("This is static text")
 
     protected:
         void paintEvent(QPaintEvent *)
@@ -207,7 +173,7 @@ void QStaticText::detach()
   making changes, you can use the prepare() function and pass in the \a matrix and \a font you
   expect to use when drawing the text.
 
-  \sa QPainter::setFont(), QPainter::setMatrix()
+  \sa QPainter::setFont(), QPainter::setWorldTransform()
 */
 void QStaticText::prepare(const QTransform &matrix, const QFont &font)
 {
@@ -498,25 +464,25 @@ namespace {
             return User;
         }
 
-        QVector<QStaticTextItem> items() const
+        QList<QStaticTextItem> items() const
         {
             return m_items;
         }
 
-        QVector<QFixedPoint> positions() const
+        QList<QFixedPoint> positions() const
         {
             return m_positions;
         }
 
-        QVector<glyph_t> glyphs() const
+        QList<glyph_t> glyphs() const
         {
             return m_glyphs;
         }
 
     private:
-        QVector<QStaticTextItem> m_items;
-        QVector<QFixedPoint> m_positions;
-        QVector<glyph_t> m_glyphs;
+        QList<QStaticTextItem> m_items;
+        QList<QFixedPoint> m_positions;
+        QList<glyph_t> m_glyphs;
 
         bool m_dirtyPen;
         bool m_useBackendOptimizations;
@@ -580,17 +546,17 @@ namespace {
             return m_paintEngine;
         }
 
-        QVector<glyph_t> glyphs() const
+        QList<glyph_t> glyphs() const
         {
             return m_paintEngine->glyphs();
         }
 
-        QVector<QFixedPoint> positions() const
+        QList<QFixedPoint> positions() const
         {
             return m_paintEngine->positions();
         }
 
-        QVector<QStaticTextItem> items() const
+        QList<QStaticTextItem> items() const
         {
             return m_paintEngine->items();
         }
@@ -684,9 +650,9 @@ void QStaticTextPrivate::init()
         paintText(QPointF(0, 0), &painter, QColor(0, 0, 0, 0));
     }
 
-    QVector<QStaticTextItem> deviceItems = device.items();
-    QVector<QFixedPoint> positions = device.positions();
-    QVector<glyph_t> glyphs = device.glyphs();
+    QList<QStaticTextItem> deviceItems = device.items();
+    QList<QFixedPoint> positions = device.positions();
+    QList<glyph_t> glyphs = device.glyphs();
 
     itemCount = deviceItems.size();
     items = new QStaticTextItem[itemCount];

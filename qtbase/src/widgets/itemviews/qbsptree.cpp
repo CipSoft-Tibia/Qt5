@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qbsptree_p.h"
 
@@ -56,8 +20,8 @@ void QBspTree::create(int n, int d)
     }
     depth = qMax(depth, uint(1));
 
-    nodes.resize((1 << depth) - 1); // resize to number of nodes
-    leaves.resize(1 << depth); // resize to number of leaves
+    nodes.resize((1ll << depth) - 1); // resize to number of nodes
+    leaves.resize(1ll << depth); // resize to number of leaves
 }
 
 void QBspTree::destroy()
@@ -76,9 +40,9 @@ void QBspTree::climbTree(const QRect &rect, callback *function, QBspTreeData dat
 
 void QBspTree::climbTree(const QRect &area, callback *function, QBspTreeData data, int index)
 {
-    if (index >= nodes.count()) { // the index points to a leaf
+    if (index >= nodes.size()) { // the index points to a leaf
         Q_ASSERT(!nodes.isEmpty());
-        function(leaf(index - nodes.count()), area, visited, data);
+        function(leaf(index - nodes.size()), area, visited, data);
         return;
     }
 
@@ -128,12 +92,12 @@ void QBspTree::init(const QRect &area, int depth, NodeType type, int index)
     }
 }
 
-void QBspTree::insert(QVector<int> &leaf, const QRect &, uint, QBspTreeData data)
+void QBspTree::insert(QList<int> &leaf, const QRect &, uint, QBspTreeData data)
 {
     leaf.append(data.i);
 }
 
-void QBspTree::remove(QVector<int> &leaf, const QRect &, uint, QBspTreeData data)
+void QBspTree::remove(QList<int> &leaf, const QRect &, uint, QBspTreeData data)
 {
     int i = leaf.indexOf(data.i);
     if (i != -1)

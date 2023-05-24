@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,8 +22,9 @@ bool HasAny(const Backing<type>& backing,
             const BackingFlags& flags,
             std::initializer_list<const char*> args) {
   for (const char* str : args) {
-    if (backing.Contains(flags, str))
+    if (backing.Contains(flags, str)) {
       return true;
+    }
   }
   return false;
 }
@@ -33,8 +34,9 @@ bool HasAll(const Backing<type>& backing,
             const BackingFlags& flags,
             std::initializer_list<const char*> args) {
   for (const char* str : args) {
-    if (!backing.Contains(flags, str))
+    if (!backing.Contains(flags, str)) {
       return false;
+    }
   }
   return true;
 }
@@ -202,8 +204,9 @@ TEST(InvalidationSetTest, Backing_Iterator) {
     Backing<BackingType::kClasses> backing;
 
     Vector<AtomicString> strings;
-    for (const AtomicString& str : backing.Items(flags))
+    for (const AtomicString& str : backing.Items(flags)) {
       strings.push_back(str);
+    }
     ASSERT_EQ(0u, strings.size());
   }
 
@@ -214,8 +217,9 @@ TEST(InvalidationSetTest, Backing_Iterator) {
 
     backing.Add(flags, "test1");
     Vector<AtomicString> strings;
-    for (const AtomicString& str : backing.Items(flags))
+    for (const AtomicString& str : backing.Items(flags)) {
       strings.push_back(str);
+    }
     ASSERT_EQ(1u, strings.size());
     ASSERT_TRUE(strings.Contains("test1"));
     backing.Clear(flags);
@@ -230,8 +234,9 @@ TEST(InvalidationSetTest, Backing_Iterator) {
     backing.Add(flags, "test2");
     backing.Add(flags, "test3");
     Vector<AtomicString> strings;
-    for (const AtomicString& str : backing.Items(flags))
+    for (const AtomicString& str : backing.Items(flags)) {
       strings.push_back(str);
+    }
     ASSERT_EQ(3u, strings.size());
     ASSERT_TRUE(strings.Contains("test1"));
     ASSERT_TRUE(strings.Contains("test2"));
@@ -263,10 +268,11 @@ TEST(InvalidationSetTest, Backing_GetHashSet) {
 }
 
 TEST(InvalidationSetTest, ClassInvalidatesElement) {
-  auto dummy_page_holder = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  auto dummy_page_holder =
+      std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   auto& document = dummy_page_holder->GetDocument();
   document.body()->setInnerHTML("<div id=test class='a b'>");
-  document.View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  document.View()->UpdateAllLifecyclePhasesForTest();
   Element* element = document.getElementById("test");
   ASSERT_TRUE(element);
 
@@ -288,10 +294,11 @@ TEST(InvalidationSetTest, ClassInvalidatesElement) {
 }
 
 TEST(InvalidationSetTest, AttributeInvalidatesElement) {
-  auto dummy_page_holder = std::make_unique<DummyPageHolder>(IntSize(800, 600));
+  auto dummy_page_holder =
+      std::make_unique<DummyPageHolder>(gfx::Size(800, 600));
   auto& document = dummy_page_holder->GetDocument();
   document.body()->setInnerHTML("<div id=test a b>");
-  document.View()->UpdateAllLifecyclePhases(DocumentUpdateReason::kTest);
+  document.View()->UpdateAllLifecyclePhasesForTest();
   Element* element = document.getElementById("test");
   ASSERT_TRUE(element);
 
@@ -384,13 +391,6 @@ TEST(InvalidationSetTest, SelfInvalidationSet_Combine) {
   set->Combine(*self_set);
   EXPECT_TRUE(set->InvalidatesSelf());
 }
-
-#ifndef NDEBUG
-TEST(InvalidationSetTest, ShowDebug) {
-  scoped_refptr<InvalidationSet> set = DescendantInvalidationSet::Create();
-  set->Show();
-}
-#endif  // NDEBUG
 
 }  // namespace
 }  // namespace blink

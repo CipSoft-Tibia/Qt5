@@ -1,29 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2022 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
 \page qtquick-debugging.html
@@ -145,6 +121,9 @@ may face. The sections below describe the debugging tools available and how to u
             JavaScript execution at the point where it is called.
 \endtable
 
+Alternatively, a \l {QLoggingCategory}{logging category} can be passed as the
+first argument to any of these \c {console} functions. See \l [QML] LoggingCategory for more details.
+
 \section1 Debugging Module Imports
 
 Set the \c QML_IMPORT_TRACE environment variable to enable debug output from QML's import loading
@@ -153,12 +132,12 @@ mechanisms.
 For example, for a simple QML file like this:
 
 \qml
-import QtQuick 2.3
+import QtQuick
 
 Rectangle { width: 100; height: 100 }
 \endqml
 
-If you set \c {QML_IMPORT_TRACE=1} before running the \l{qtquick-qml-runtime.html}{QML Runtime} or your
+If you set \c {QML_IMPORT_TRACE=1} before running the \l{qml_runtime_tool}{QML Runtime Tool} or your
 QML C++ application, you will see output similar to:
 
 \code

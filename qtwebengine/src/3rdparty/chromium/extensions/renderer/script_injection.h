@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,24 +10,19 @@
 #include <memory>
 #include <vector>
 
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
-#include "base/metrics/ukm_source_id.h"
-#include "base/optional.h"
+#include "extensions/common/mojom/host_id.mojom-forward.h"
+#include "extensions/common/mojom/run_location.mojom-shared.h"
 #include "extensions/common/user_script.h"
 #include "extensions/renderer/injection_host.h"
 #include "extensions/renderer/script_injector.h"
-
-struct HostID;
+#include "services/metrics/public/cpp/ukm_source_id.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "v8/include/v8-forward.h"
 
 namespace content {
 class RenderFrame;
-}
-
-namespace v8 {
-class Value;
-template <class T> class Local;
 }
 
 namespace extensions {
@@ -43,7 +38,14 @@ class ScriptInjection {
     INJECTION_WAITING
   };
 
-  using CompletionCallback = base::Callback<void(ScriptInjection*)>;
+  // Represents the purpose of calling StatusUpdatedCallback.
+  enum class InjectionStatus {
+    kPermitted,
+    kFinished,
+  };
+
+  using StatusUpdatedCallback =
+      base::OnceCallback<void(InjectionStatus, ScriptInjection*)>;
 
   // Return the id of the injection host associated with the given world.
   static std::string GetHostIdForIsolatedWorld(int world_id);
@@ -54,8 +56,12 @@ class ScriptInjection {
   ScriptInjection(std::unique_ptr<ScriptInjector> injector,
                   content::RenderFrame* render_frame,
                   std::unique_ptr<const InjectionHost> injection_host,
-                  UserScript::RunLocation run_location,
+                  mojom::RunLocation run_location,
                   bool log_activity);
+
+  ScriptInjection(const ScriptInjection&) = delete;
+  ScriptInjection& operator=(const ScriptInjection&) = delete;
+
   ~ScriptInjection();
 
   // Try to inject the script at the |current_location|. This returns
@@ -64,12 +70,11 @@ class ScriptInjection {
   // finished yet, returns INJECTION_WAITING if injections is delayed (either
   // for permission purposes or because |current_location| is not the designated
   // |run_location_|).
-  // If INJECTION_BLOCKED is returned, |async_completion_callback| will be
-  // called upon completion.
-  InjectionResult TryToInject(
-      UserScript::RunLocation current_location,
-      ScriptsRunInfo* scripts_run_info,
-      const CompletionCallback& async_completion_callback);
+  // If INJECTION_BLOCKED or INJECTION_WAITING is returned,
+  // |async_updated_callback| will be called upon the status updated.
+  InjectionResult TryToInject(mojom::RunLocation current_location,
+                              ScriptsRunInfo* scripts_run_info,
+                              StatusUpdatedCallback async_updated_callback);
 
   // Called when permission for the given injection has been granted.
   // Returns INJECTION_FINISHED if injection has injected or will never inject,
@@ -83,19 +88,26 @@ class ScriptInjection {
 
   // Accessors.
   content::RenderFrame* render_frame() const { return render_frame_; }
-  const HostID& host_id() const { return injection_host_->id(); }
+  const mojom::HostID& host_id() const { return injection_host_->id(); }
   int64_t request_id() const { return request_id_; }
 
   // Called when JS injection for the given frame has been completed or
   // cancelled.
-  void OnJsInjectionCompleted(const std::vector<v8::Local<v8::Value>>& results,
-                              base::Optional<base::TimeDelta> elapsed);
+  void OnJsInjectionCompleted(absl::optional<base::Value> value,
+                              base::TimeTicks start_time);
 
  private:
   class FrameWatcher;
 
   // Sends a message to the browser to request permission to inject.
-  void RequestPermissionFromBrowser();
+  // |async_updated_callback| should be called if the permission is handled.
+  void RequestPermissionFromBrowser(
+      StatusUpdatedCallback async_updated_callback);
+
+  // Handles the injection permission calling |async_updated_callback| if
+  // |granted| is true.
+  void HandlePermission(StatusUpdatedCallback async_updated_callback,
+                        bool granted);
 
   // Injects the script. Returns INJECTION_FINISHED if injection has finished,
   // otherwise INJECTION_BLOCKED.
@@ -122,14 +134,14 @@ class ScriptInjection {
   std::unique_ptr<const InjectionHost> injection_host_;
 
   // The location in the document load at which we inject the script.
-  UserScript::RunLocation run_location_;
+  mojom::RunLocation run_location_;
 
   // This injection's request id. This will be -1 unless the injection is
   // currently waiting on permission.
   int64_t request_id_;
 
   // Identifies the frame we're injecting into.
-  base::UkmSourceId ukm_source_id_;
+  ukm::SourceIdObj ukm_source_id_;
 
   // Whether or not the injection is complete, either via injecting the script
   // or because it will never complete.
@@ -142,17 +154,16 @@ class ScriptInjection {
   bool log_activity_;
 
   // Results storage.
-  std::unique_ptr<base::Value> execution_result_;
+  absl::optional<base::Value> execution_result_;
 
-  // The callback to run upon completing asynchronously.
-  CompletionCallback async_completion_callback_;
+  // The callback to run upon the status updated asynchronously. It's used for
+  // the reply of the permission handling or script injection completion.
+  StatusUpdatedCallback async_completion_callback_;
 
   // A helper class to hold the render frame and watch for its deletion.
   std::unique_ptr<FrameWatcher> frame_watcher_;
 
   base::WeakPtrFactory<ScriptInjection> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(ScriptInjection);
 };
 
 }  // namespace extensions

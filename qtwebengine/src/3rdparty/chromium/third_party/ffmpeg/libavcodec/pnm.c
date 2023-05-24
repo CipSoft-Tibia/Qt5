@@ -26,7 +26,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/avstring.h"
 #include "avcodec.h"
-#include "internal.h"
+#include "decode.h"
 #include "pnm.h"
 
 static inline int pnm_space(int c)
@@ -38,7 +38,7 @@ static void pnm_get(PNMContext *sc, char *str, int buf_size)
 {
     char *s;
     int c;
-    uint8_t *bs  = sc->bytestream;
+    const uint8_t *bs  = sc->bytestream;
     const uint8_t *end = sc->bytestream_end;
 
     /* skip spaces and comments */
@@ -72,16 +72,28 @@ int ff_pnm_decode_header(AVCodecContext *avctx, PNMContext * const s)
         s->bytestream[0] != 'P' ||
         (s->bytestream[1] < '1' ||
          s->bytestream[1] > '7' &&
-         s->bytestream[1] != 'F')) {
+         s->bytestream[1] != 'f' &&
+         s->bytestream[1] != 'F' &&
+         s->bytestream[1] != 'H' &&
+         s->bytestream[1] != 'h')) {
         s->bytestream += s->bytestream_end > s->bytestream;
         s->bytestream += s->bytestream_end > s->bytestream;
         return AVERROR_INVALIDDATA;
     }
     pnm_get(s, buf1, sizeof(buf1));
     s->type= buf1[1]-'0';
+    s->half = 0;
 
     if (buf1[1] == 'F') {
         avctx->pix_fmt = AV_PIX_FMT_GBRPF32;
+    } else if (buf1[1] == 'f') {
+        avctx->pix_fmt = AV_PIX_FMT_GRAYF32;
+    } else if (buf1[1] == 'H') {
+        avctx->pix_fmt = AV_PIX_FMT_GBRPF32;
+        s->half = 1;
+    } else if (buf1[1] == 'h') {
+        avctx->pix_fmt = AV_PIX_FMT_GRAYF32;
+        s->half = 1;
     } else if (s->type==1 || s->type==4) {
         avctx->pix_fmt = AV_PIX_FMT_MONOWHITE;
     } else if (s->type==2 || s->type==5) {
@@ -177,7 +189,7 @@ int ff_pnm_decode_header(AVCodecContext *avctx, PNMContext * const s)
     if (ret < 0)
         return ret;
 
-    if (avctx->pix_fmt == AV_PIX_FMT_GBRPF32) {
+    if (avctx->pix_fmt == AV_PIX_FMT_GBRPF32 || avctx->pix_fmt == AV_PIX_FMT_GRAYF32) {
         pnm_get(s, buf1, sizeof(buf1));
         if (av_sscanf(buf1, "%f", &s->scale) != 1 || s->scale == 0.0 || !isfinite(s->scale)) {
             av_log(avctx, AV_LOG_ERROR, "Invalid scale.\n");
@@ -218,7 +230,8 @@ int ff_pnm_decode_header(AVCodecContext *avctx, PNMContext * const s)
         return AVERROR_INVALIDDATA;
 
     /* more check if YUV420 */
-    if (av_pix_fmt_desc_get(avctx->pix_fmt)->flags & AV_PIX_FMT_FLAG_PLANAR) {
+    if ((av_pix_fmt_desc_get(avctx->pix_fmt)->flags & AV_PIX_FMT_FLAG_PLANAR) &&
+        avctx->pix_fmt != AV_PIX_FMT_GBRPF32) {
         if ((avctx->width & 1) != 0)
             return AVERROR_INVALIDDATA;
         h = (avctx->height * 2);

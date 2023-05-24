@@ -1,12 +1,15 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "base/profiler/module_cache.h"
 
-#include <algorithm>
 #include <iterator>
 #include <utility>
+
+#include "base/check_op.h"
+#include "base/ranges/algorithm.h"
+#include "base/strings/strcat.h"
 
 namespace base {
 
@@ -29,16 +32,47 @@ struct ModuleAddressCompare {
 
 }  // namespace
 
+std::string TransformModuleIDToSymbolServerFormat(StringPiece module_id) {
+  std::string mangled_id(module_id);
+  // Android and Linux Chrome builds use the "breakpad" format to index their
+  // build id, so we transform the build id for these platforms. All other
+  // platforms keep their symbols indexed by the original build ID.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX)
+  // Linux ELF module IDs are 160bit integers, which we need to mangle
+  // down to 128bit integers to match the id that Breakpad outputs.
+  // Example on version '66.0.3359.170' x64:
+  //   Build-ID: "7f0715c2 86f8 b16c 10e4ad349cda3b9b 56c7a773
+  //   Debug-ID  "C215077F F886 6CB1 10E4AD349CDA3B9B 0"
+
+  if (mangled_id.size() < 32) {
+    mangled_id.resize(32, '0');
+  }
+
+  mangled_id = base::StrCat({mangled_id.substr(6, 2), mangled_id.substr(4, 2),
+                             mangled_id.substr(2, 2), mangled_id.substr(0, 2),
+                             mangled_id.substr(10, 2), mangled_id.substr(8, 2),
+                             mangled_id.substr(14, 2), mangled_id.substr(12, 2),
+                             mangled_id.substr(16, 16), "0"});
+#endif
+  return mangled_id;
+}
+
 ModuleCache::ModuleCache() = default;
-ModuleCache::~ModuleCache() = default;
+
+ModuleCache::~ModuleCache() {
+  DCHECK_EQ(auxiliary_module_provider_, nullptr);
+}
 
 const ModuleCache::Module* ModuleCache::GetModuleForAddress(uintptr_t address) {
   if (const ModuleCache::Module* module = GetExistingModuleForAddress(address))
     return module;
 
   std::unique_ptr<const Module> new_module = CreateModuleForAddress(address);
+  if (!new_module && auxiliary_module_provider_)
+    new_module = auxiliary_module_provider_->TryCreateModuleForAddress(address);
   if (!new_module)
     return nullptr;
+
   const auto result = native_modules_.insert(std::move(new_module));
   // TODO(https://crbug.com/1131769): Reintroduce DCHECK(result.second) after
   // fixing the issue that is causing it to fail.
@@ -69,8 +103,8 @@ void ModuleCache::UpdateNonNativeModules(
   //
   // stable_partition is O(m*log(r)) where m is the number of current modules
   // and r is the number of modules to remove. insert and erase are both O(r).
-  auto first_module_defunct_modules = std::stable_partition(
-      non_native_modules_.begin(), non_native_modules_.end(),
+  auto first_module_defunct_modules = ranges::stable_partition(
+      non_native_modules_,
       [&defunct_modules_set](const std::unique_ptr<const Module>& module) {
         return defunct_modules_set.find(module.get()) ==
                defunct_modules_set.end();
@@ -123,6 +157,18 @@ const ModuleCache::Module* ModuleCache::GetExistingModuleForAddress(
     return native_module_loc->get();
 
   return nullptr;
+}
+
+void ModuleCache::RegisterAuxiliaryModuleProvider(
+    AuxiliaryModuleProvider* auxiliary_module_provider) {
+  DCHECK(!auxiliary_module_provider_);
+  auxiliary_module_provider_ = auxiliary_module_provider;
+}
+
+void ModuleCache::UnregisterAuxiliaryModuleProvider(
+    AuxiliaryModuleProvider* auxiliary_module_provider) {
+  DCHECK_EQ(auxiliary_module_provider_, auxiliary_module_provider);
+  auxiliary_module_provider_ = nullptr;
 }
 
 bool ModuleCache::ModuleAndAddressCompare::operator()(

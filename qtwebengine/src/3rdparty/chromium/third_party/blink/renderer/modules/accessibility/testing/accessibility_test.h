@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,6 +11,7 @@
 
 #include "third_party/blink/renderer/core/accessibility/ax_context.h"
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
+#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 
 namespace blink {
@@ -53,21 +54,11 @@ class AccessibilityTest : public RenderingTest {
   std::ostringstream& PrintAXTreeHelper(std::ostringstream&,
                                         const AXObject* root,
                                         size_t level) const;
+
+  ScopedAccessibilityExposeHTMLElementForTest expose_html_element{true};
+  ScopedAccessibilityUseAXPositionForDocumentMarkersForTest use_ax_position{
+      true};
 };
-
-class ParameterizedAccessibilityTest : public testing::WithParamInterface<bool>,
-                                       private ScopedLayoutNGForTest,
-                                       public AccessibilityTest {
- public:
-  ParameterizedAccessibilityTest() : ScopedLayoutNGForTest(GetParam()) {}
-
- protected:
-  bool LayoutNGEnabled() const {
-    return RuntimeEnabledFeatures::LayoutNGEnabled();
-  }
-};
-
-INSTANTIATE_TEST_SUITE_P(All, ParameterizedAccessibilityTest, testing::Bool());
 
 }  // namespace blink
 

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,12 @@
 
 #include <utility>
 
-#include "base/bind.h"
 #include "base/files/file_path.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/logging.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "components/update_client/component.h"
 #include "components/update_client/task_traits.h"
 
@@ -19,18 +19,16 @@ namespace update_client {
 
 ActionRunner::ActionRunner(const Component& component)
     : component_(component),
-      main_task_runner_(base::ThreadTaskRunnerHandle::Get()) {}
+      main_task_runner_(base::SequencedTaskRunner::GetCurrentDefault()) {}
 
-ActionRunner::~ActionRunner() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-}
+ActionRunner::~ActionRunner() = default;
 
 void ActionRunner::Run(Callback callback) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  auto action_handler = component_.crx_component()->action_handler;
+  auto action_handler = component_->crx_component()->action_handler;
   if (!action_handler) {
-    DVLOG(1) << component_.action_run() << " is missing an action handler";
+    DVLOG(1) << component_->action_run() << " is missing an action handler";
     main_task_runner_->PostTask(
         FROM_HERE, base::BindOnce(std::move(callback), false, -1, 0));
     return;
@@ -48,17 +46,17 @@ void ActionRunner::Run(Callback callback) {
                 component->action_run(), &crx_path);
             return crx_path;
           },
-          base::Unretained(&component_)),
+          base::Unretained(&*component_)),
       base::BindOnce(&ActionRunner::Handle, base::Unretained(this)));
 }
 
 void ActionRunner::Handle(const base::FilePath& crx_path) {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  auto action_handler = component_.crx_component()->action_handler;
+  auto action_handler = component_->crx_component()->action_handler;
   DCHECK(action_handler);
 
-  action_handler->Handle(crx_path, component_.session_id(),
+  action_handler->Handle(crx_path, component_->session_id(),
                          std::move(callback_));
 }
 

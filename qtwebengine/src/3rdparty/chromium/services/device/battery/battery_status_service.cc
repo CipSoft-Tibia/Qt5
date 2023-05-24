@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,19 +6,19 @@
 
 #include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/no_destructor.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/sequence_local_storage_slot.h"
-#include "base/threading/thread_task_runner_handle.h"
 #include "services/device/battery/battery_monitor_impl.h"
 #include "services/device/battery/battery_status_manager.h"
 
 namespace device {
 
 BatteryStatusService::BatteryStatusService()
-    : main_thread_task_runner_(base::ThreadTaskRunnerHandle::Get()),
+    : main_thread_task_runner_(
+          base::SingleThreadTaskRunner::GetCurrentDefault()),
       update_callback_(
           base::BindRepeating(&BatteryStatusService::NotifyConsumers,
                               base::Unretained(this))),
@@ -35,8 +35,8 @@ BatteryStatusService* BatteryStatusService::GetInstance() {
   return service_wrapper.get();
 }
 
-std::unique_ptr<BatteryStatusService::BatteryUpdateSubscription>
-BatteryStatusService::AddCallback(const BatteryUpdateCallback& callback) {
+base::CallbackListSubscription BatteryStatusService::AddCallback(
+    const BatteryUpdateCallback& callback) {
   DCHECK(main_thread_task_runner_->BelongsToCurrentThread());
   DCHECK(!is_shutdown_);
 
@@ -106,7 +106,7 @@ void BatteryStatusService::SetBatteryManagerForTesting(
   status_ = mojom::BatteryStatus();
   status_updated_ = false;
   is_shutdown_ = false;
-  main_thread_task_runner_ = base::ThreadTaskRunnerHandle::Get();
+  main_thread_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
 }
 
 }  // namespace device

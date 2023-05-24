@@ -1,25 +1,26 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/tab_groups/tab_group_visual_data.h"
 
-#include "base/stl_util.h"
-#include "base/strings/string16.h"
+#include <string>
+
+#include "base/containers/contains.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/tab_groups/tab_group_color.h"
 
 namespace tab_groups {
 
 TabGroupVisualData::TabGroupVisualData()
-    : TabGroupVisualData(base::string16(), TabGroupColorId::kGrey, false) {}
+    : TabGroupVisualData(std::u16string(), TabGroupColorId::kGrey, false) {}
 
-TabGroupVisualData::TabGroupVisualData(base::string16 title,
+TabGroupVisualData::TabGroupVisualData(std::u16string title,
                                        tab_groups::TabGroupColorId color,
                                        bool is_collapsed)
     : title_(std::move(title)), color_(color), is_collapsed_(is_collapsed) {}
 
-TabGroupVisualData::TabGroupVisualData(base::string16 title,
+TabGroupVisualData::TabGroupVisualData(std::u16string title,
                                        uint32_t color_int,
                                        bool is_collapsed)
     : title_(std::move(title)),

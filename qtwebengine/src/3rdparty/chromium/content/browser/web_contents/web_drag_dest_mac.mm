@@ -1,12 +1,14 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #import "content/browser/web_contents/web_drag_dest_mac.h"
 
+#include <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 
-#include "base/optional.h"
+#include "base/mac/scoped_nsobject.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/sys_string_conversions.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
@@ -14,18 +16,17 @@
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/common/web_contents_ns_view_bridge.mojom.h"
+#include "content/public/browser/child_process_host.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_view_delegate.h"
 #include "content/public/browser/web_drag_dest_delegate.h"
-#include "content/public/common/child_process_host.h"
 #include "content/public/common/drop_data.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
-#import "third_party/mozilla/NSPasteboard+Utils.h"
 #include "ui/base/clipboard/clipboard_constants.h"
 #include "ui/base/clipboard/clipboard_util_mac.h"
 #include "ui/base/clipboard/custom_data_helper.h"
 #include "ui/base/cocoa/cocoa_base_utils.h"
-#import "ui/base/dragdrop/cocoa_dnd_util.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/point.h"
 
@@ -38,12 +39,11 @@ using remote_cocoa::mojom::DraggingInfo;
 
 namespace content {
 
-DropContext::DropContext(
-    const content::DropData drop_data,
-    const gfx::PointF client_pt,
-    const gfx::PointF screen_pt,
-    int modifier_flags,
-    base::WeakPtr<content::RenderWidgetHostImpl> target_rwh)
+DropContext::DropContext(const DropData drop_data,
+                         const gfx::PointF client_pt,
+                         const gfx::PointF screen_pt,
+                         int modifier_flags,
+                         base::WeakPtr<RenderWidgetHostImpl> target_rwh)
     : drop_data(drop_data),
       client_pt(client_pt),
       screen_pt(screen_pt),
@@ -51,6 +51,7 @@ DropContext::DropContext(
       target_rwh(target_rwh) {}
 
 DropContext::DropContext(const DropContext& other) = default;
+DropContext::DropContext(DropContext&& other) = default;
 
 DropContext::~DropContext() = default;
 
@@ -90,20 +91,14 @@ content::GlobalRoutingID GetRenderViewHostID(content::RenderViewHost* rvh) {
                                   rvh->GetRoutingID());
 }
 
-void DropCompletionCallback(
-    WebDragDest* drag_dest,
-    const content::DropContext context,
-    content::WebContentsViewDelegate::DropCompletionResult result) {
+void DropCompletionCallback(WebDragDest* drag_dest,
+                            const content::DropContext context,
+                            absl::optional<content::DropData> drop_data) {
   // This is an async callback. Make sure RWH is still valid.
-  if (!context.target_rwh ||
-      ![drag_dest isValidDragTarget:context.target_rwh.get()]) {
+  if (!context.target_rwh)
     return;
-  }
 
-  bool success =
-      result ==
-      content::WebContentsViewDelegate::DropCompletionResult::kContinue;
-  [drag_dest completeDropAsync:success withContext:context];
+  [drag_dest completeDropAsync:drop_data withContext:context];
 }
 
 }  // namespace
@@ -203,8 +198,11 @@ void DropCompletionCallback(
   NSDragOperation mask = info->operation_mask;
 
   // Give the delegate an opportunity to cancel the drag.
-  _canceled = !_webContents->GetDelegate()->CanDragEnter(
-      _webContents, *dropData, static_cast<DragOperationsMask>(mask));
+  if (auto* delegate = _webContents->GetDelegate()) {
+    _canceled = !delegate->CanDragEnter(_webContents, *dropData,
+                                        static_cast<DragOperationsMask>(mask));
+  }
+
   if (_canceled)
     return NSDragOperationNone;
 
@@ -217,7 +215,8 @@ void DropCompletionCallback(
 
   _currentRWHForDrag->DragTargetDragEnter(
       *_dropDataFiltered, transformedPt, info->location_in_screen,
-      static_cast<DragOperationsMask>(mask), GetModifierFlags());
+      static_cast<DragOperationsMask>(mask), GetModifierFlags(),
+      base::DoNothing());
 
   // We won't know the true operation (whether the drag is allowed) until we
   // hear back from the renderer. For now, be optimistic:
@@ -299,7 +298,7 @@ void DropCompletionCallback(
   NSDragOperation mask = info->operation_mask;
   targetRWH->DragTargetDragOver(transformedPt, info->location_in_screen,
                                 static_cast<DragOperationsMask>(mask),
-                                GetModifierFlags());
+                                GetModifierFlags(), base::DoNothing());
 
   if (_delegate)
     _delegate->OnDragOver();
@@ -328,7 +327,7 @@ void DropCompletionCallback(
     [self draggingEntered:info];
   }
 
-  _currentRVH = NULL;
+  _currentRVH = nullptr;
   _webContents->Focus();
 
   if (webContentsViewDelegate) {
@@ -337,15 +336,17 @@ void DropCompletionCallback(
                                  /*screen_pt=*/info->location_in_screen,
                                  /*modifier_flags=*/GetModifierFlags(),
                                  /*target_rwh=*/targetRWH->GetWeakPtr());
-
+    // Use a separate variable since `context` is about to move.
+    content::DropData drop_data = context.drop_data;
     webContentsViewDelegate->OnPerformDrop(
-        context.drop_data,
-        base::BindOnce(&DropCompletionCallback, self, context));
+        std::move(drop_data),
+        base::BindOnce(&DropCompletionCallback, self, std::move(context)));
   } else {
     if (_delegate)
       _delegate->OnDrop();
     targetRWH->DragTargetDrop(*_dropDataFiltered, transformedPt,
-                              info->location_in_screen, GetModifierFlags());
+                              info->location_in_screen, GetModifierFlags(),
+                              base::DoNothing());
   }
   _dropDataUnfiltered.reset();
   _dropDataFiltered.reset();
@@ -353,14 +354,14 @@ void DropCompletionCallback(
   return YES;
 }
 
-- (void)completeDropAsync:(BOOL)success
+- (void)completeDropAsync:(absl::optional<content::DropData>)dropData
               withContext:(const content::DropContext)context {
-  if (success) {
+  if (dropData.has_value()) {
     if (_delegate)
       _delegate->OnDrop();
-    context.target_rwh->DragTargetDrop(context.drop_data, context.client_pt,
-                                       context.screen_pt,
-                                       context.modifier_flags);
+    context.target_rwh->DragTargetDrop(
+        dropData.value(), context.client_pt, context.screen_pt,
+        context.modifier_flags, base::DoNothing());
   } else {
     if (_delegate)
       _delegate->OnDragLeave();
@@ -381,6 +382,12 @@ void DropCompletionCallback(
   _dragStartViewID = GetRenderViewHostID(_webContents->GetRenderViewHost());
 }
 
+- (void)resetDragStartTrackers {
+  _dragStartProcessID = content::ChildProcessHost::kInvalidUniqueID;
+  _dragStartViewID = content::GlobalRoutingID(
+      content::ChildProcessHost::kInvalidUniqueID, MSG_ROUTING_NONE);
+}
+
 - (bool)isValidDragTarget:(content::RenderWidgetHostImpl*)targetRWH {
   return targetRWH->GetProcess()->GetID() == _dragStartProcessID ||
          GetRenderViewHostID(_webContents->GetRenderViewHost()) !=
@@ -391,66 +398,57 @@ void DropCompletionCallback(
 
 namespace content {
 
-void PopulateDropDataFromPasteboard(content::DropData* data,
-                                    NSPasteboard* pboard) {
-  DCHECK(data);
+DropData PopulateDropDataFromPasteboard(NSPasteboard* pboard) {
   DCHECK(pboard);
-  NSArray* types = [pboard types];
+  DropData drop_data;
 
-  data->did_originate_from_renderer =
-      [types containsObject:ui::kChromeDragDummyPboardType];
+  // https://crbug.com/1016740#c21
+  base::scoped_nsobject<NSArray> types([[pboard types] retain]);
+
+  drop_data.did_originate_from_renderer =
+      [types containsObject:ui::kUTTypeChromiumRendererInitiatedDrag];
+  drop_data.is_from_privileged =
+      [types containsObject:ui::kUTTypeChromiumPrivilegedInitiatedDrag];
 
   // Get URL if possible. To avoid exposing file system paths to web content,
   // filenames in the drag are not converted to file URLs.
-  ui::PopulateURLAndTitleFromPasteboard(&data->url,
-                                        &data->url_title,
-                                        pboard,
-                                        NO);
+  NSArray<NSString*>* urls;
+  NSArray<NSString*>* titles;
+  if (ui::ClipboardUtil::URLsAndTitlesFromPasteboard(
+          pboard, /*include_files=*/false, &urls, &titles)) {
+    drop_data.url = GURL(base::SysNSStringToUTF8(urls.firstObject));
+    drop_data.url_title = base::SysNSStringToUTF16(titles.firstObject);
+  }
 
   // Get plain text.
-  if ([types containsObject:NSStringPboardType]) {
-    data->text =
-        base::SysNSStringToUTF16([pboard stringForType:NSStringPboardType]);
+  if ([types containsObject:NSPasteboardTypeString]) {
+    drop_data.text =
+        base::SysNSStringToUTF16([pboard stringForType:NSPasteboardTypeString]);
   }
 
   // Get HTML. If there's no HTML, try RTF.
-  if ([types containsObject:NSHTMLPboardType]) {
-    NSString* html = [pboard stringForType:NSHTMLPboardType];
-    data->html = base::SysNSStringToUTF16(html);
-  } else if ([types containsObject:ui::kChromeDragImageHTMLPboardType]) {
-    NSString* html = [pboard stringForType:ui::kChromeDragImageHTMLPboardType];
-    data->html = base::SysNSStringToUTF16(html);
-  } else if ([types containsObject:NSRTFPboardType]) {
+  if ([types containsObject:NSPasteboardTypeHTML]) {
+    NSString* html = [pboard stringForType:NSPasteboardTypeHTML];
+    drop_data.html = base::SysNSStringToUTF16(html);
+  } else if ([types containsObject:ui::kUTTypeChromiumImageAndHTML]) {
+    NSString* html = [pboard stringForType:ui::kUTTypeChromiumImageAndHTML];
+    drop_data.html = base::SysNSStringToUTF16(html);
+  } else if ([types containsObject:NSPasteboardTypeRTF]) {
     NSString* html = ui::ClipboardUtil::GetHTMLFromRTFOnPasteboard(pboard);
-    data->html = base::SysNSStringToUTF16(html);
+    drop_data.html = base::SysNSStringToUTF16(html);
   }
 
   // Get files.
-  if ([types containsObject:NSFilenamesPboardType]) {
-    NSArray* files = [pboard propertyListForType:NSFilenamesPboardType];
-    if ([files isKindOfClass:[NSArray class]] && [files count]) {
-      for (NSUInteger i = 0; i < [files count]; i++) {
-        NSString* filename = [files objectAtIndex:i];
-        BOOL exists = [[NSFileManager defaultManager]
-                           fileExistsAtPath:filename];
-        if (exists) {
-          data->filenames.push_back(ui::FileInfo(
-              base::FilePath::FromUTF8Unsafe(base::SysNSStringToUTF8(filename)),
-              base::FilePath()));
-        }
-      }
-    }
-  }
-
-  // TODO(pinkerton): Get file contents. http://crbug.com/34661
+  drop_data.filenames = ui::ClipboardUtil::FilesFromPasteboard(pboard);
 
   // Get custom MIME data.
-  if ([types containsObject:ui::kWebCustomDataPboardType]) {
-    NSData* customData = [pboard dataForType:ui::kWebCustomDataPboardType];
-    ui::ReadCustomDataIntoMap([customData bytes],
-                              [customData length],
-                              &data->custom_data);
+  if ([types containsObject:ui::kUTTypeChromiumWebCustomData]) {
+    NSData* customData = [pboard dataForType:ui::kUTTypeChromiumWebCustomData];
+    ui::ReadCustomDataIntoMap(customData.bytes, customData.length,
+                              &drop_data.custom_data);
   }
+
+  return drop_data;
 }
 
 }  // namespace content

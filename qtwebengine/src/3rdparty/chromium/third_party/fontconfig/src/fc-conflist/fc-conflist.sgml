@@ -1,18 +1,40 @@
 <!doctype refentry PUBLIC "-//OASIS//DTD DocBook V4.1//EN" [
 
+<!--
+Copyright © 2014 Red Hat, Inc.
+
+Permission to use, copy, modify, distribute, and sell this software and its
+documentation for any purpose is hereby granted without fee, provided that
+the above copyright notice appear in all copies and that both that
+copyright notice and this permission notice appear in supporting
+documentation, and that the name of the author(s) not be used in
+advertising or publicity pertaining to distribution of the software without
+specific, written prior permission.  The authors make no
+representations about the suitability of this software for any purpose.  It
+is provided "as is" without express or implied warranty.
+
+THE AUTHOR(S) DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
+EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
+-->
+
 <!-- Process this file with docbook-to-man to generate an nroff manual
      page: `docbook-to-man manpage.sgml > manpage.1'.  You may view
      the manual page with: `docbook-to-man manpage.sgml | nroff -man |
      less'.  A typical entry in a Makefile or Makefile.am is:
 
 manpage.1: manpage.sgml
-	docbook-to-man $< > $@
+        docbook-to-man $< > $@
 
 
-	The docbook-to-man binary is found in the docbook-to-man package.
-	Please remember that if you create the nroff version in one of the
-	debian/rules file targets (such as build), you will need to include
-	docbook-to-man in your Build-Depends control field.
+        The docbook-to-man binary is found in the docbook-to-man package.
+        Please remember that if you create the nroff version in one of the
+        debian/rules file targets (such as build), you will need to include
+        docbook-to-man in your Build-Depends control field.
 
   -->
 
@@ -20,7 +42,7 @@ manpage.1: manpage.sgml
   <!ENTITY dhfirstname "<firstname>Akira</firstname>">
   <!ENTITY dhsurname   "<surname>TAGOH</surname>">
   <!-- Please adjust the date whenever revising the manpage. -->
-  <!ENTITY dhdate      "<date>Apr  1, 2014</date>">
+  <!ENTITY dhdate      "<date>Dec 21, 2021</date>">
   <!-- SECTION should be 1-8, maybe w/ subsection other parameters are
        allowed: see man(7), man(1). -->
   <!ENTITY dhsection   "<manvolnum>1</manvolnum>">
@@ -56,7 +78,7 @@ manpage.1: manpage.sgml
   <refnamediv>
     <refname>&dhpackage;</refname>
 
-    <refpurpose>Show the ruleset files information on the system</refpurpose>
+    <refpurpose>list the configuration files processed by Fontconfig</refpurpose>
   </refnamediv>
   <refsynopsisdiv>
     <cmdsynopsis>
@@ -72,8 +94,10 @@ manpage.1: manpage.sgml
   <refsect1>
     <title>DESCRIPTION</title>
 
-    <para><command>&dhpackage;</command> shows the ruleset files' information
-      being installed on the system.</para>
+    <para><command>&dhpackage;</command> prints an annotated list of all the configuration files processed by Fontconfig.</para>
+    <para>The output is a `-' or `+' depending on whether the file is ignored or processed, a space, the file's path, a colon and space, and the description from the file or `No description' if none is present.</para>
+    <para>The order of files looks like how fontconfig acautlly process them except one contains &lt;include&gt; element.
+      In that case, it will be shown after processing all the sub directories where is targeted by &lt;include&gt;.</para>
 
   </refsect1>
   <refsect1>
@@ -106,7 +130,7 @@ manpage.1: manpage.sgml
   <refsect1>
     <title>RETURN CODES</title>
     <para><command>fc-conflist</command> returns error code 0 for successful parsing,
-    or 1 if any errors occured or if at least one font face could not be opened.</para>
+    or 1 if any errors occurred or if at least one font face could not be opened.</para>
   </refsect1>
 
   <refsect1>

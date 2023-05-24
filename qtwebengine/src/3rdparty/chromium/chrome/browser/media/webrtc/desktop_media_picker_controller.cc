@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,17 +8,17 @@
 #include <tuple>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
+#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
-#include "chrome/browser/media/webrtc/desktop_media_list_ash.h"
+#include "chrome/browser/media/webrtc/capture_policy_utils.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker_factory_impl.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/media/webrtc/native_desktop_media_list.h"
 #include "chrome/browser/media/webrtc/tab_desktop_media_list.h"
-#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/grit/chromium_strings.h"
@@ -42,9 +42,10 @@ DesktopMediaPickerController::~DesktopMediaPickerController() = default;
 
 void DesktopMediaPickerController::Show(
     const Params& params,
-    const std::vector<content::DesktopMediaID::Type>& sources,
+    const std::vector<DesktopMediaList::Type>& sources,
+    DesktopMediaList::WebContentsFilter includable_web_contents_filter,
     DoneCallback done_callback) {
-  DCHECK(!base::Contains(sources, content::DesktopMediaID::TYPE_NONE));
+  DCHECK(!base::Contains(sources, DesktopMediaList::Type::kNone));
   DCHECK(!done_callback_);
 
   done_callback_ = std::move(done_callback);
@@ -53,14 +54,15 @@ void DesktopMediaPickerController::Show(
   Observe(params.web_contents);
 
   // Keep same order as the input |sources| and avoid duplicates.
-  source_lists_ = picker_factory_->CreateMediaList(sources);
+  source_lists_ = picker_factory_->CreateMediaList(
+      sources, params.web_contents, std::move(includable_web_contents_filter));
   if (source_lists_.empty()) {
     OnPickerDialogResults("At least one source type must be specified.", {});
     return;
   }
 
   if (params.select_only_screen && sources.size() == 1 &&
-      sources[0] == content::DesktopMediaID::TYPE_SCREEN) {
+      sources[0] == DesktopMediaList::Type::kScreen) {
     // Try to bypass the picker dialog if possible.
     DCHECK(source_lists_.size() == 1);
     auto* source_list = source_lists_[0].get();
@@ -87,9 +89,8 @@ void DesktopMediaPickerController::OnInitialMediaListFound() {
     // system-wide audio loopback) at this time.
     content::DesktopMediaID media_id = source_list->GetSource(0).id;
     DCHECK_EQ(media_id.type, content::DesktopMediaID::TYPE_SCREEN);
-#if defined(USE_CRAS) || defined(OS_WIN)
-    media_id.audio_share =
-        params_.request_audio && params_.approve_audio_by_default;
+#if defined(USE_CRAS) || BUILDFLAG(IS_WIN)
+    media_id.audio_share = params_.request_audio;
 #else
     media_id.audio_share = false;
 #endif

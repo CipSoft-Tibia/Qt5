@@ -1,10 +1,10 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "components/webcrypto/algorithm_registry.h"
 
-#include "base/lazy_instance.h"
+#include "base/no_destructor.h"
 #include "components/webcrypto/algorithm_implementation.h"
 #include "components/webcrypto/algorithm_implementations.h"
 #include "components/webcrypto/status.h"
@@ -31,8 +31,7 @@ class AlgorithmRegistry {
         ecdh_(CreateEcdhImplementation()),
         hkdf_(CreateHkdfImplementation()),
         pbkdf2_(CreatePbkdf2Implementation()),
-        ed25519_(CreateEd25519Implementation()),
-        x25519_(CreateX25519Implementation()) {
+        ed25519_(CreateEd25519Implementation()) {
     crypto::EnsureOpenSSLInit();
   }
 
@@ -70,8 +69,6 @@ class AlgorithmRegistry {
         return pbkdf2_.get();
       case blink::kWebCryptoAlgorithmIdEd25519:
         return ed25519_.get();
-      case blink::kWebCryptoAlgorithmIdX25519:
-        return x25519_.get();
       default:
         return nullptr;
     }
@@ -92,17 +89,14 @@ class AlgorithmRegistry {
   const std::unique_ptr<AlgorithmImplementation> hkdf_;
   const std::unique_ptr<AlgorithmImplementation> pbkdf2_;
   const std::unique_ptr<AlgorithmImplementation> ed25519_;
-  const std::unique_ptr<AlgorithmImplementation> x25519_;
 };
 
 }  // namespace
 
-base::LazyInstance<AlgorithmRegistry>::Leaky g_algorithm_registry =
-    LAZY_INSTANCE_INITIALIZER;
-
 Status GetAlgorithmImplementation(blink::WebCryptoAlgorithmId id,
                                   const AlgorithmImplementation** impl) {
-  *impl = g_algorithm_registry.Get().GetAlgorithm(id);
+  static base::NoDestructor<AlgorithmRegistry> algorithm_registry;
+  *impl = algorithm_registry->GetAlgorithm(id);
   if (*impl)
     return Status::Success();
   return Status::ErrorUnsupported();

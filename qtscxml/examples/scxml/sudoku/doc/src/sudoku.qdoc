@@ -1,37 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:FDL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Free Documentation License Usage
-** Alternatively, this file may be used under the terms of the GNU Free
-** Documentation License version 1.3 as published by the Free Software
-** Foundation and appearing in the file included in the packaging of
-** this file. Please review the following information to ensure
-** the GNU Free Documentation License version 1.3 requirements
-** will be met: https://www.gnu.org/licenses/fdl-1.3.html.
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
     \example sudoku
-    \title Qt SCXML Sudoku Example
+    \title SCXML Sudoku
+    \examplecategory {Data Processing & I/O}
     \ingroup examples-qtscxml
-    \brief Presents the use of SCXML in a sudoku game.
+    \meta tag {state machine}
 
-    \e {Sudoku} demonstrates how an SCXML file may be used in a game.
+    \brief Demonstrates the use of separate javascript file with SCXML.
 
     \include examples-run.qdocinc
 
@@ -106,10 +83,10 @@
             remains unchanged.
     \row
         \li \c undoStack
-        \li Holds the history of players' moves. It is a vector of
+        \li Holds the history of players' moves. It is a list of
             the cells' coordinates that were touched last. Each
             new modification during a game adds a pair of
-            x and y coordinates to that vector.
+            x and y coordinates to that list.
     \endtable
 
     The variables above are shared with the script helper functions
@@ -257,12 +234,12 @@
     grid is properly solved. Since we need to check
     each row, each column, and each 3x3 square, we define
     the \c isOK() helper function. This function takes
-    the vector of numbers and returns \c true if the passed vector
+    the list of numbers and returns \c true if the passed list
     contains unique numbers and no number equals zero, meaning
     there is no empty cell. The main loop of the \c isSolved() is invoked
-    nine times. In every iteration, we construct three vectors of numbers
+    nine times. In every iteration, we construct three lists of numbers
     representing a row, a column, and a square of the grid and call \c isOK()
-    for them. When all 27 vectors are OK, the grid is solved properly
+    for them. When all 27 lists are OK, the grid is solved properly
     and we return \c true.
 
     Coming back to our SCXML file, in case \c isSolved()

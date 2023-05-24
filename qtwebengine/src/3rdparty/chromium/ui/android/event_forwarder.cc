@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/android/event_forwarder.h"
 
 #include "base/android/jni_array.h"
+#include "base/trace_event/typed_macros.h"
 #include "ui/android/ui_android_jni_headers/EventForwarder_jni.h"
 #include "ui/android/window_android.h"
 #include "ui/base/ui_base_switches_util.h"
@@ -76,6 +77,9 @@ jboolean EventForwarder::OnTouchEvent(JNIEnv* env,
                                       jint android_button_state,
                                       jint android_meta_state,
                                       jboolean for_touch_handle) {
+  TRACE_EVENT("input", "EventForwarder::OnTouchEvent", "history_size",
+              history_size, "time_ms", time_ms, "x", pos_x_0, "y", pos_y_0);
+
   ui::MotionEventAndroid::Pointer pointer0(
       pointer_id_0, pos_x_0, pos_y_0, touch_major_0, touch_minor_0,
       orientation_0, tilt_0, android_tool_type_0);
@@ -88,6 +92,11 @@ jboolean EventForwarder::OnTouchEvent(JNIEnv* env,
       0 /* action_button */, android_gesture_classification,
       android_button_state, android_meta_state, raw_pos_x - pos_x_0,
       raw_pos_y - pos_y_0, for_touch_handle, &pointer0, &pointer1);
+
+  for (auto& observer : observers_) {
+    observer.OnTouchEvent(event);
+  }
+
   return view_->OnTouchEvent(event);
 }
 
@@ -118,22 +127,27 @@ void EventForwarder::OnMouseEvent(JNIEnv* env,
       0 /* gesture_classification */, android_button_state, android_meta_state,
       0 /* raw_offset_x_pixels */, 0 /* raw_offset_y_pixels */,
       false /* for_touch_handle */, &pointer, nullptr);
+
+  for (auto& observer : observers_) {
+    observer.OnMouseEvent(event);
+  }
+
   view_->OnMouseEvent(event);
 }
 
 void EventForwarder::OnDragEvent(JNIEnv* env,
                                  const JavaParamRef<jobject>& jobj,
                                  jint action,
-                                 jint x,
-                                 jint y,
-                                 jint screen_x,
-                                 jint screen_y,
+                                 jfloat x,
+                                 jfloat y,
+                                 jfloat screen_x,
+                                 jfloat screen_y,
                                  const JavaParamRef<jobjectArray>& j_mimeTypes,
                                  const JavaParamRef<jstring>& j_content) {
   float dip_scale = view_->GetDipScale();
   gfx::PointF location(x / dip_scale, y / dip_scale);
   gfx::PointF root_location(screen_x / dip_scale, screen_y / dip_scale);
-  std::vector<base::string16> mime_types;
+  std::vector<std::u16string> mime_types;
   AppendJavaStringArrayToStringVector(env, j_mimeTypes, &mime_types);
 
   DragEventAndroid event(env, action, location, root_location, mime_types,
@@ -170,6 +184,11 @@ jboolean EventForwarder::OnGenericMotionEvent(
   ui::MotionEventAndroid event(
       env, motion_event.obj(), 1.f / view_->GetDipScale(), 0.f, 0.f, 0.f,
       time_ms, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, false, &pointer0, nullptr);
+
+  for (auto& observer : observers_) {
+    observer.OnGenericMotionEvent(event);
+  }
+
   return view_->OnGenericMotionEvent(event);
 }
 
@@ -246,6 +265,14 @@ void EventForwarder::CancelFling(JNIEnv* env,
       GESTURE_EVENT_TYPE_FLING_CANCEL, gfx::PointF(), gfx::PointF(), time_ms, 0,
       0, 0, 0, 0,
       /*target_viewport*/ false, /*synthetic_scroll*/ false, prevent_boosting));
+}
+
+void EventForwarder::AddObserver(Observer* observer) {
+  observers_.AddObserver(observer);
+}
+
+void EventForwarder::RemoveObserver(Observer* observer) {
+  observers_.RemoveObserver(observer);
 }
 
 }  // namespace ui

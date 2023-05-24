@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qstandardpaths.h"
 
@@ -60,6 +24,7 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
 /*!
     \class QStandardPaths
     \inmodule QtCore
@@ -119,9 +84,9 @@ QT_BEGIN_NAMESPACE
     \value HomeLocation Returns the user's home directory (the same as QDir::homePath()). On Unix
            systems, this is equal to the HOME environment variable. This value might be
            generic or application-specific, but the returned path is never empty.
-    \value DataLocation Returns the same value as AppLocalDataLocation. This enumeration value
-           is deprecated. Using AppDataLocation is preferable since on Windows, the roaming path is
-           recommended.
+    \value AppLocalDataLocation Returns the local settings path on the Windows operating
+           system. On all other platforms, it returns the same value as AppDataLocation.
+           This enum value was added in Qt 5.4.
     \value CacheLocation Returns a directory location where user-specific
            non-essential (cached) data should be written. This is an application-specific directory.
            The returned path is never empty.
@@ -149,13 +114,18 @@ QT_BEGIN_NAMESPACE
            QStandardPaths::GenericDataLocation. The returned path is never empty.
            On the Windows operating system, this returns the roaming path.
            This enum value was added in Qt 5.4.
-    \value AppLocalDataLocation Returns the local settings path on the Windows operating
-           system. On all other platforms, it returns the same value as AppDataLocation.
-           This enum value was added in Qt 5.4.
     \value AppConfigLocation Returns a directory location where user-specific
            configuration files should be written. This is an application-specific directory,
            and the returned path is never empty.
            This enum value was added in Qt 5.5.
+    \value PublicShareLocation Returns a directory location where user-specific publicly shared files
+           and directories can be stored. This is a generic value. Note that the returned path may be
+           empty if the system has no concept of a publicly shared location.
+           This enum value was added in Qt 6.4.
+    \value TemplatesLocation Returns a directory location where user-specific
+           template files can be stored. This is a generic value. Note that the returned path may be
+           empty if the system has no concept of a templates location.
+           This enum value was added in Qt 6.4.
 
     The following table gives examples of paths on different operating systems.
     The first path is the writable path (unless noted). Other, additional
@@ -190,7 +160,7 @@ QT_BEGIN_NAMESPACE
     \row \li HomeLocation
          \li "~"
          \li "C:/Users/<USER>"
-    \row \li DataLocation
+    \row \li AppLocalDataLocation
          \li "~/Library/Application Support/<APPNAME>", "/Library/Application Support/<APPNAME>". "<APPDIR>/../Resources"
          \li "C:/Users/<USER>/AppData/Local/<APPNAME>", "C:/ProgramData/<APPNAME>", "<APPDIR>", "<APPDIR>/data", "<APPDIR>/data/<APPNAME>"
     \row \li CacheLocation
@@ -210,23 +180,26 @@ QT_BEGIN_NAMESPACE
          \li "C:/Users/<USER>/AppData/Local", "C:/ProgramData"
     \row \li DownloadLocation
          \li "~/Downloads"
-         \li "C:/Users/<USER>/Documents"
+         \li "C:/Users/<USER>/Downloads"
     \row \li GenericCacheLocation
          \li "~/Library/Caches", "/Library/Caches"
          \li "C:/Users/<USER>/AppData/Local/cache"
     \row \li AppDataLocation
          \li "~/Library/Application Support/<APPNAME>", "/Library/Application Support/<APPNAME>". "<APPDIR>/../Resources"
          \li "C:/Users/<USER>/AppData/Roaming/<APPNAME>", "C:/ProgramData/<APPNAME>", "<APPDIR>", "<APPDIR>/data", "<APPDIR>/data/<APPNAME>"
-    \row \li AppLocalDataLocation
-         \li "~/Library/Application Support/<APPNAME>", "/Library/Application Support/<APPNAME>". "<APPDIR>/../Resources"
-         \li "C:/Users/<USER>/AppData/Local/<APPNAME>", "C:/ProgramData/<APPNAME>", "<APPDIR>", "<APPDIR>/data", "<APPDIR>/data/<APPNAME>"
     \row \li AppConfigLocation
          \li "~/Library/Preferences/<APPNAME>"
          \li "C:/Users/<USER>/AppData/Local/<APPNAME>", "C:/ProgramData/<APPNAME>"
+    \row \li PublicShareLocation
+         \li "~/Public"
+         \li "C:/Users/Public"
+    \row \li TemplatesLocation
+         \li "~/Templates"
+         \li "C:/Users/<USER>/AppData/Roaming/Microsoft/Windows/Templates"
     \endtable
 
     \table
-    \header \li Path type \li Linux
+    \header \li Path type \li Linux and other UNIX operating systems
     \row \li DesktopLocation
          \li "~/Desktop"
     \row \li DocumentsLocation
@@ -245,7 +218,7 @@ QT_BEGIN_NAMESPACE
          \li "/tmp"
     \row \li HomeLocation
          \li "~"
-    \row \li DataLocation
+    \row \li AppLocalDataLocation
          \li "~/.local/share/<APPNAME>", "/usr/local/share/<APPNAME>", "/usr/share/<APPNAME>"
     \row \li CacheLocation
          \li "~/.cache/<APPNAME>"
@@ -263,10 +236,12 @@ QT_BEGIN_NAMESPACE
          \li "~/.cache"
     \row \li AppDataLocation
          \li "~/.local/share/<APPNAME>", "/usr/local/share/<APPNAME>", "/usr/share/<APPNAME>"
-    \row \li AppLocalDataLocation
-         \li "~/.local/share/<APPNAME>", "/usr/local/share/<APPNAME>", "/usr/share/<APPNAME>"
     \row \li AppConfigLocation
          \li "~/.config/<APPNAME>", "/etc/xdg/<APPNAME>"
+    \row \li PublicShareLocation
+         \li "~/Public"
+    \row \li TemplatesLocation
+         \li "~/Templates"
     \endtable
 
     \table
@@ -275,7 +250,7 @@ QT_BEGIN_NAMESPACE
          \li "<APPROOT>/files"
          \li "<APPROOT>/Documents/Desktop"
     \row \li DocumentsLocation
-         \li "<USER>/Documents", "<USER>/<APPNAME>/Documents"
+         \li "<USER>/Documents" [*], "<USER>/<APPNAME>/Documents"
          \li "<APPROOT>/Documents"
     \row \li FontsLocation
          \li "/system/fonts" (not writable)
@@ -284,13 +259,13 @@ QT_BEGIN_NAMESPACE
          \li not supported (directory not readable)
          \li not supported
     \row \li MusicLocation
-         \li "<USER>/Music", "<USER>/<APPNAME>/Music"
+         \li "<USER>/Music" [*], "<USER>/<APPNAME>/Music"
          \li "<APPROOT>/Documents/Music"
     \row \li MoviesLocation
-         \li "<USER>/Movies", "<USER>/<APPNAME>/Movies"
+         \li "<USER>/Movies" [*], "<USER>/<APPNAME>/Movies"
          \li "<APPROOT>/Documents/Movies"
     \row \li PicturesLocation
-         \li "<USER>/Pictures", "<USER>/<APPNAME>/Pictures"
+         \li "<USER>/Pictures" [*], "<USER>/<APPNAME>/Pictures"
          \li "<APPROOT>/Documents/Pictures", "assets-library://"
     \row \li TempLocation
          \li "<APPROOT>/cache"
@@ -298,15 +273,15 @@ QT_BEGIN_NAMESPACE
     \row \li HomeLocation
          \li "<APPROOT>/files"
          \li system defined
-    \row \li DataLocation
+    \row \li AppLocalDataLocation
          \li "<APPROOT>/files", "<USER>/<APPNAME>/files"
          \li "<APPROOT>/Library/Application Support"
     \row \li CacheLocation
          \li "<APPROOT>/cache", "<USER>/<APPNAME>/cache"
          \li "<APPROOT>/Library/Caches"
     \row \li GenericDataLocation
-         \li "<USER>"
-         \li "<APPROOT>/Documents"
+         \li "<USER>" [*] or "<USER>/<APPNAME>/files"
+         \li "<APPROOT>/Library/Application Support"
     \row \li RuntimeLocation
          \li "<APPROOT>/cache"
          \li not supported
@@ -317,7 +292,7 @@ QT_BEGIN_NAMESPACE
          \li "<APPROOT>/files/settings" (there is no shared settings)
          \li "<APPROOT>/Library/Preferences"
     \row \li DownloadLocation
-         \li "<USER>/Downloads", "<USER>/<APPNAME>/Downloads"
+         \li "<USER>/Downloads" [*], "<USER>/<APPNAME>/Downloads"
          \li "<APPROOT>/Documents/Downloads"
     \row \li GenericCacheLocation
          \li "<APPROOT>/cache" (there is no shared cache)
@@ -328,9 +303,12 @@ QT_BEGIN_NAMESPACE
     \row \li AppConfigLocation
          \li "<APPROOT>/files/settings"
          \li "<APPROOT>/Library/Preferences/<APPNAME>"
-    \row \li AppLocalDataLocation
-         \li "<APPROOT>/files", "<USER>/<APPNAME>/files"
-         \li "<APPROOT>/Library/Application Support"
+    \row \li PublicShareLocation
+         \li not supported
+         \li not supported
+    \row \li TemplatesLocation
+         \li not supported
+         \li not supported
     \endtable
 
     In the table above, \c <APPNAME> is usually the organization name, the
@@ -347,6 +325,13 @@ QT_BEGIN_NAMESPACE
 
     \note On Android 6.0 (API 23) or higher, the "WRITE_EXTERNAL_STORAGE" permission must be
         requested at runtime when using QStandardPaths::writableLocation or QStandardPaths::standardLocations.
+
+    \note On Android, reading/writing to GenericDataLocation needs the READ_EXTERNAL_STORAGE/WRITE_EXTERNAL_STORAGE permission granted.
+
+    \note [*] On Android 11 and above, public directories are no longer directly accessible
+    in scoped storage mode. Thus, paths of the form \c "<USER>/DirName" are not returned.
+    Instead, you can use \l QFileDialog which uses the Storage Access Framework (SAF)
+    to access such directories.
 
     \note On iOS, if you do pass \c {QStandardPaths::standardLocations(QStandardPaths::PicturesLocation).last()}
         as argument to \l{QFileDialog::setDirectory()},
@@ -397,7 +382,7 @@ QString QStandardPaths::locate(StandardLocation type, const QString &fileName, L
 {
     const QStringList &dirs = standardLocations(type);
     for (QStringList::const_iterator dir = dirs.constBegin(); dir != dirs.constEnd(); ++dir) {
-        const QString path = *dir + QLatin1Char('/') + fileName;
+        const QString path = *dir + u'/' + fileName;
         if (existsAsSpecified(path, options))
             return path;
     }
@@ -412,7 +397,7 @@ QStringList QStandardPaths::locateAll(StandardLocation type, const QString &file
     const QStringList &dirs = standardLocations(type);
     QStringList result;
     for (QStringList::const_iterator dir = dirs.constBegin(); dir != dirs.constEnd(); ++dir) {
-        const QString path = *dir + QLatin1Char('/') + fileName;
+        const QString path = *dir + u'/' + fileName;
         if (existsAsSpecified(path, options))
             result.append(path);
     }
@@ -423,11 +408,9 @@ QStringList QStandardPaths::locateAll(StandardLocation type, const QString &file
 static QStringList executableExtensions()
 {
     // If %PATHEXT% does not contain .exe, it is either empty, malformed, or distorted in ways that we cannot support, anyway.
-    const QStringList pathExt = QString::fromLocal8Bit(qgetenv("PATHEXT")).toLower().split(QLatin1Char(';'));
-    return pathExt.contains(QLatin1String(".exe"), Qt::CaseInsensitive) ?
-           pathExt :
-           QStringList() << QLatin1String(".exe") << QLatin1String(".com")
-                         << QLatin1String(".bat") << QLatin1String(".cmd");
+    const QStringList pathExt = QString::fromLocal8Bit(qgetenv("PATHEXT")).toLower().split(u';');
+    return pathExt.contains(".exe"_L1, Qt::CaseInsensitive) ?
+           pathExt : QStringList{".exe"_L1, ".com"_L1, ".bat"_L1, ".cmd"_L1};
 }
 #endif
 
@@ -446,7 +429,7 @@ static inline QString searchExecutable(const QStringList &searchPaths,
 {
     const QDir currentDir = QDir::current();
     for (const QString &searchPath : searchPaths) {
-        const QString candidate = currentDir.absoluteFilePath(searchPath + QLatin1Char('/') + executableName);
+        const QString candidate = currentDir.absoluteFilePath(searchPath + u'/' + executableName);
         const QString absPath = checkExecutable(candidate);
         if (!absPath.isEmpty())
             return absPath;
@@ -465,7 +448,7 @@ static inline QString
 {
     const QDir currentDir = QDir::current();
     for (const QString &searchPath : searchPaths) {
-        const QString candidateRoot = currentDir.absoluteFilePath(searchPath + QLatin1Char('/') + executableName);
+        const QString candidateRoot = currentDir.absoluteFilePath(searchPath + u'/' + executableName);
         for (const QString &suffix : suffixes) {
             const QString absPath = checkExecutable(candidateRoot + suffix);
             if (!absPath.isEmpty())
@@ -515,7 +498,7 @@ QString QStandardPaths::findExecutable(const QString &executableName, const QStr
         searchPaths.reserve(rawPaths.size());
         for (const QString &rawPath : rawPaths) {
             QString cleanPath = QDir::cleanPath(rawPath);
-            if (cleanPath.size() > 1 && cleanPath.endsWith(QLatin1Char('/')))
+            if (cleanPath.size() > 1 && cleanPath.endsWith(u'/'))
                 cleanPath.truncate(cleanPath.size() - 1);
             searchPaths.push_back(cleanPath);
         }
@@ -525,9 +508,9 @@ QString QStandardPaths::findExecutable(const QString &executableName, const QStr
     // On Windows, if the name does not have a suffix or a suffix not
     // in PATHEXT ("xx.foo"), append suffixes from PATHEXT.
     static const QStringList executable_extensions = executableExtensions();
-    if (executableName.contains(QLatin1Char('.'))) {
+    if (executableName.contains(u'.')) {
         const QString suffix = QFileInfo(executableName).suffix();
-        if (suffix.isEmpty() || !executable_extensions.contains(QLatin1Char('.') + suffix, Qt::CaseInsensitive))
+        if (suffix.isEmpty() || !executable_extensions.contains(u'.' + suffix, Qt::CaseInsensitive))
             return searchExecutableAppendSuffix(searchPaths, executableName, executable_extensions);
     } else {
         return searchExecutableAppendSuffix(searchPaths, executableName, executable_extensions);
@@ -540,7 +523,7 @@ QString QStandardPaths::findExecutable(const QString &executableName, const QStr
     \include standardpath/functiondocs.qdocinc displayName
 */
 
-#if !defined(Q_OS_MAC) && !defined(QT_BOOTSTRAPPED)
+#if !defined(Q_OS_DARWIN) && !defined(QT_BOOTSTRAPPED)
 QString QStandardPaths::displayName(StandardLocation type)
 {
     switch (type) {
@@ -562,6 +545,8 @@ QString QStandardPaths::displayName(StandardLocation type)
         return QCoreApplication::translate("QStandardPaths", "Temporary Directory");
     case HomeLocation:
         return QCoreApplication::translate("QStandardPaths", "Home");
+    case AppLocalDataLocation:
+        return QCoreApplication::translate("QStandardPaths", "Application Data");
     case CacheLocation:
         return QCoreApplication::translate("QStandardPaths", "Cache");
     case GenericDataLocation:
@@ -577,10 +562,12 @@ QString QStandardPaths::displayName(StandardLocation type)
     case DownloadLocation:
         return QCoreApplication::translate("QStandardPaths", "Download");
     case AppDataLocation:
-    case AppLocalDataLocation:
-        return QCoreApplication::translate("QStandardPaths", "Application Data");
     case AppConfigLocation:
         return QCoreApplication::translate("QStandardPaths", "Application Configuration");
+    case PublicShareLocation:
+        return QCoreApplication::translate("QStandardPaths", "Public");
+    case TemplatesLocation:
+        return QCoreApplication::translate("QStandardPaths", "Templates");
     }
     // not reached
     return QString();
@@ -588,23 +575,12 @@ QString QStandardPaths::displayName(StandardLocation type)
 #endif
 
 /*!
-  \fn void QStandardPaths::enableTestMode(bool testMode)
-  \obsolete Use QStandardPaths::setTestModeEnabled
- */
-/*!
   \fn void QStandardPaths::setTestModeEnabled(bool testMode)
 
   \include standardpath/functiondocs.qdocinc setTestModeEnabled
 */
 
-static bool qsp_testMode = false;
-
-#if QT_DEPRECATED_SINCE(5, 2)
-void QStandardPaths::enableTestMode(bool testMode)
-{
-    qsp_testMode = testMode;
-}
-#endif
+Q_CONSTINIT static bool qsp_testMode = false;
 
 void QStandardPaths::setTestModeEnabled(bool testMode)
 {

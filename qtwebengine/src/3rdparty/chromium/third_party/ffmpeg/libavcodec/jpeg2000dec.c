@@ -34,10 +34,10 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/thread.h"
 #include "avcodec.h"
 #include "bytestream.h"
-#include "internal.h"
+#include "codec_internal.h"
+#include "decode.h"
 #include "thread.h"
 #include "jpeg2000.h"
 #include "jpeg2000dsp.h"
@@ -362,7 +362,7 @@ static int get_siz(Jpeg2000DecoderContext *s)
         return AVERROR(EINVAL);
     }
 
-    s->tile = av_mallocz_array(s->numXtiles * s->numYtiles, sizeof(*s->tile));
+    s->tile = av_calloc(s->numXtiles * s->numYtiles, sizeof(*s->tile));
     if (!s->tile) {
         s->numXtiles = s->numYtiles = 0;
         return AVERROR(ENOMEM);
@@ -521,6 +521,10 @@ static int get_cox(Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *c)
 
     c->cblk_style = bytestream2_get_byteu(&s->g);
     if (c->cblk_style != 0) { // cblk style
+        if (c->cblk_style & JPEG2000_CTSY_HTJ2K_M || c->cblk_style & JPEG2000_CTSY_HTJ2K_F) {
+            av_log(s->avctx, AV_LOG_ERROR, "Support for High throughput JPEG 2000 is not yet available\n");
+            return AVERROR_PATCHWELCOME;
+        }
         av_log(s->avctx, AV_LOG_WARNING, "extra cblk styles %X\n", c->cblk_style);
         if (c->cblk_style & JPEG2000_CBLK_BYPASS)
             av_log(s->avctx, AV_LOG_WARNING, "Selective arithmetic coding bypass\n");
@@ -1177,7 +1181,7 @@ static int jpeg2000_decode_packet(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile,
             cblk->nb_lengthinc = 0;
             cblk->nb_terminationsinc = 0;
             av_free(cblk->lengthinc);
-            cblk->lengthinc  = av_mallocz_array(newpasses    , sizeof(*cblk->lengthinc));
+            cblk->lengthinc = av_calloc(newpasses, sizeof(*cblk->lengthinc));
             if (!cblk->lengthinc)
                 return AVERROR(ENOMEM);
             tmp = av_realloc_array(cblk->data_start, cblk->nb_terminations + newpasses + 1, sizeof(*cblk->data_start));
@@ -1679,7 +1683,7 @@ static void decode_refpass(Jpeg2000T1Context *t1, int width, int height,
                 }
 }
 
-static void decode_clnpass(Jpeg2000DecoderContext *s, Jpeg2000T1Context *t1,
+static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t1,
                            int width, int height, int bpno, int bandno,
                            int seg_symbols, int vert_causal_ctx_csty_symbol)
 {
@@ -1745,7 +1749,7 @@ static void decode_clnpass(Jpeg2000DecoderContext *s, Jpeg2000T1Context *t1,
     }
 }
 
-static int decode_cblk(Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *codsty,
+static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *codsty,
                        Jpeg2000T1Context *t1, Jpeg2000Cblk *cblk,
                        int width, int height, int bandpos, uint8_t roi_shift)
 {
@@ -1896,7 +1900,7 @@ static void dequantization_int_97(int x, int y, Jpeg2000Cblk *cblk,
     }
 }
 
-static inline void mct_decode(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
+static inline void mct_decode(const Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
 {
     int i, csize = 1;
     void *src[3];
@@ -1937,7 +1941,7 @@ static inline void roi_scale_cblk(Jpeg2000Cblk *cblk,
     }
 }
 
-static inline void tile_codeblocks(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
+static inline void tile_codeblocks(const Jpeg2000DecoderContext *s, Jpeg2000Tile *tile)
 {
     Jpeg2000T1Context t1;
 
@@ -2009,7 +2013,7 @@ static inline void tile_codeblocks(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile
 }
 
 #define WRITE_FRAME(D, PIXEL)                                                                     \
-    static inline void write_frame_ ## D(Jpeg2000DecoderContext * s, Jpeg2000Tile * tile,         \
+    static inline void write_frame_ ## D(const Jpeg2000DecoderContext * s, Jpeg2000Tile * tile,   \
                                          AVFrame * picture, int precision)                        \
     {                                                                                             \
         const AVPixFmtDescriptor *pixdesc = av_pix_fmt_desc_get(s->avctx->pix_fmt);               \
@@ -2078,27 +2082,15 @@ WRITE_FRAME(16, uint16_t)
 static int jpeg2000_decode_tile(AVCodecContext *avctx, void *td,
                                 int jobnr, int threadnr)
 {
-    Jpeg2000DecoderContext *s = avctx->priv_data;
+    const Jpeg2000DecoderContext *s = avctx->priv_data;
     AVFrame *picture = td;
     Jpeg2000Tile *tile = s->tile + jobnr;
-    int x;
 
     tile_codeblocks(s, tile);
 
     /* inverse MCT transformation */
     if (tile->codsty[0].mct)
         mct_decode(s, tile);
-
-    for (x = 0; x < s->ncomponents; x++) {
-        if (s->cdef[x] < 0) {
-            for (x = 0; x < s->ncomponents; x++) {
-                s->cdef[x] = x + 1;
-            }
-            if ((s->ncomponents & 1) == 0)
-                s->cdef[s->ncomponents-1] = 0;
-            break;
-        }
-    }
 
     if (s->precision <= 8) {
         write_frame_8(s, tile, picture, 8);
@@ -2342,8 +2334,12 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
                 return 0;
             }
             atom_size = bytestream2_get_be32u(&s->g);
+            if (atom_size < 16 || (int64_t)bytestream2_tell(&s->g) + atom_size - 16 > INT_MAX)
+                return AVERROR_INVALIDDATA;
             atom_end  = bytestream2_tell(&s->g) + atom_size - 16;
         } else {
+            if (atom_size <  8 || (int64_t)bytestream2_tell(&s->g) + atom_size -  8 > INT_MAX)
+                return AVERROR_INVALIDDATA;
             atom_end  = bytestream2_tell(&s->g) + atom_size -  8;
         }
 
@@ -2357,6 +2353,8 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
                    atom_size >= 16) {
             uint32_t atom2_size, atom2, atom2_end;
             do {
+                if (bytestream2_get_bytes_left(&s->g) < 8)
+                    break;
                 atom2_size = bytestream2_get_be32u(&s->g);
                 atom2      = bytestream2_get_be32u(&s->g);
                 atom2_end  = bytestream2_tell(&s->g) + atom2_size - 8;
@@ -2469,29 +2467,20 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
     return 0;
 }
 
-static av_cold void jpeg2000_init_static_data(void)
-{
-    ff_jpeg2000_init_tier1_luts();
-    ff_mqc_init_context_tables();
-}
-
 static av_cold int jpeg2000_decode_init(AVCodecContext *avctx)
 {
-    static AVOnce init_static_once = AV_ONCE_INIT;
     Jpeg2000DecoderContext *s = avctx->priv_data;
 
-    ff_thread_once(&init_static_once, jpeg2000_init_static_data);
     ff_jpeg2000dsp_init(&s->dsp);
+    ff_jpeg2000_init_tier1_luts();
 
     return 0;
 }
 
-static int jpeg2000_decode_frame(AVCodecContext *avctx, void *data,
+static int jpeg2000_decode_frame(AVCodecContext *avctx, AVFrame *picture,
                                  int *got_frame, AVPacket *avpkt)
 {
     Jpeg2000DecoderContext *s = avctx->priv_data;
-    ThreadFrame frame = { .f = data };
-    AVFrame *picture = data;
     int ret;
 
     s->avctx     = avctx;
@@ -2530,14 +2519,34 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, void *data,
     if (ret = jpeg2000_read_main_headers(s))
         goto end;
 
+    if (s->sar.num && s->sar.den)
+        avctx->sample_aspect_ratio = s->sar;
+    s->sar.num = s->sar.den = 0;
+
+    if (avctx->skip_frame >= AVDISCARD_ALL) {
+        jpeg2000_dec_cleanup(s);
+        return avpkt->size;
+    }
+
     /* get picture buffer */
-    if ((ret = ff_thread_get_buffer(avctx, &frame, 0)) < 0)
+    if ((ret = ff_thread_get_buffer(avctx, picture, 0)) < 0)
         goto end;
     picture->pict_type = AV_PICTURE_TYPE_I;
     picture->key_frame = 1;
 
     if (ret = jpeg2000_read_bitstream_packets(s))
         goto end;
+
+    for (int x = 0; x < s->ncomponents; x++) {
+        if (s->cdef[x] < 0) {
+            for (x = 0; x < s->ncomponents; x++) {
+                s->cdef[x] = x + 1;
+            }
+            if ((s->ncomponents & 1) == 0)
+                s->cdef[s->ncomponents-1] = 0;
+            break;
+        }
+    }
 
     avctx->execute2(avctx, jpeg2000_decode_tile, picture, NULL, s->numXtiles * s->numYtiles);
 
@@ -2547,9 +2556,6 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, void *data,
 
     if (s->avctx->pix_fmt == AV_PIX_FMT_PAL8)
         memcpy(picture->data[1], s->palette, 256 * sizeof(uint32_t));
-    if (s->sar.num && s->sar.den)
-        avctx->sample_aspect_ratio = s->sar;
-    s->sar.num = s->sar.den = 0;
 
     return bytestream2_tell(&s->g);
 
@@ -2574,16 +2580,17 @@ static const AVClass jpeg2000_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-AVCodec ff_jpeg2000_decoder = {
-    .name             = "jpeg2000",
-    .long_name        = NULL_IF_CONFIG_SMALL("JPEG 2000"),
-    .type             = AVMEDIA_TYPE_VIDEO,
-    .id               = AV_CODEC_ID_JPEG2000,
-    .capabilities     = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_DR1,
+const FFCodec ff_jpeg2000_decoder = {
+    .p.name           = "jpeg2000",
+    CODEC_LONG_NAME("JPEG 2000"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_JPEG2000,
+    .p.capabilities   = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_DR1,
     .priv_data_size   = sizeof(Jpeg2000DecoderContext),
     .init             = jpeg2000_decode_init,
-    .decode           = jpeg2000_decode_frame,
-    .priv_class       = &jpeg2000_class,
-    .max_lowres       = 5,
-    .profiles         = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles)
+    FF_CODEC_DECODE_CB(jpeg2000_decode_frame),
+    .p.priv_class     = &jpeg2000_class,
+    .p.max_lowres     = 5,
+    .p.profiles       = NULL_IF_CONFIG_SMALL(ff_jpeg2000_profiles),
+    .caps_internal    = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
 };

@@ -56,7 +56,10 @@ class PLATFORM_EXPORT HTTPHeaderMap final {
 
   void Adopt(std::unique_ptr<CrossThreadHTTPHeaderMapData>);
 
-  typedef HashMap<AtomicString, AtomicString, CaseFoldingHash> MapType;
+  typedef HashMap<AtomicString,
+                  AtomicString,
+                  CaseFoldingHashTraits<AtomicString>>
+      MapType;
   typedef MapType::AddResult AddResult;
   typedef MapType::const_iterator const_iterator;
 
@@ -67,7 +70,10 @@ class PLATFORM_EXPORT HTTPHeaderMap final {
   void Clear() { headers_.clear(); }
   bool Contains(const AtomicString& k) const { return headers_.Contains(k); }
   const AtomicString& Get(const AtomicString& k) const {
-    return headers_.at(k);
+    const auto it = headers_.find(k);
+    if (it == headers_.end())
+      return g_null_atom;
+    return it->value;
   }
   AddResult Set(const AtomicString& k, const AtomicString& v) {
     SECURITY_DCHECK(!k.Contains('\n') && !k.Contains('\r'));
@@ -88,7 +94,7 @@ class PLATFORM_EXPORT HTTPHeaderMap final {
   }
 
  private:
-  HashMap<AtomicString, AtomicString, CaseFoldingHash> headers_;
+  MapType headers_;
 };
 
 }  // namespace blink

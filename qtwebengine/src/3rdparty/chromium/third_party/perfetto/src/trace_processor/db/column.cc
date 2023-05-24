@@ -18,6 +18,7 @@
 
 #include "src/trace_processor/db/compare.h"
 #include "src/trace_processor/db/table.h"
+#include "src/trace_processor/util/glob.h"
 
 namespace perfetto {
 namespace trace_processor {
@@ -25,57 +26,70 @@ namespace trace_processor {
 Column::Column(const Column& column,
                Table* table,
                uint32_t col_idx,
-               uint32_t row_map_idx)
-    : Column(column.name_,
+               uint32_t overlay_idx,
+               const char* name)
+    : Column(name ? name : column.name_,
              column.type_,
-             column.flags_,
+             column.flags_ & ~kNoCrossTableInheritFlags,
              table,
              col_idx,
-             row_map_idx,
-             column.nullable_vector_,
-             column.owned_nullable_vector_) {}
+             overlay_idx,
+             column.storage_) {}
 
 Column::Column(const char* name,
                ColumnType type,
                uint32_t flags,
                Table* table,
-               uint32_t col_idx_in_table,
-               uint32_t row_map_idx,
-               NullableVectorBase* nv,
-               std::shared_ptr<NullableVectorBase> owned_nullable_vector)
-    : owned_nullable_vector_(owned_nullable_vector),
-      type_(type),
-      nullable_vector_(nv),
+               uint32_t index_in_table,
+               uint32_t overlay_index,
+               ColumnStorageBase* st)
+    : type_(type),
+      storage_(st),
       name_(name),
       flags_(flags),
       table_(table),
-      col_idx_in_table_(col_idx_in_table),
-      row_map_idx_(row_map_idx),
+      index_in_table_(index_in_table),
+      overlay_index_(overlay_index),
       string_pool_(table->string_pool_) {
-  switch (type_) {
-    case ColumnType::kInt32:
-      PERFETTO_CHECK(nullable_vector<int32_t>().IsDense() == IsDense());
-      break;
-    case ColumnType::kUint32:
-      PERFETTO_CHECK(nullable_vector<uint32_t>().IsDense() == IsDense());
-      break;
-    case ColumnType::kInt64:
-      PERFETTO_CHECK(nullable_vector<int64_t>().IsDense() == IsDense());
-      break;
-    case ColumnType::kDouble:
-      PERFETTO_CHECK(nullable_vector<double>().IsDense() == IsDense());
-      break;
-    case ColumnType::kString:
-      PERFETTO_CHECK(nullable_vector<StringPool::Id>().IsDense() == IsDense());
-      break;
-    case ColumnType::kId:
-      break;
+  // Check that the dense-ness of the column and the nullable vector match.
+  if (IsNullable() && !IsDummy()) {
+    bool is_storage_dense;
+    switch (type_) {
+      case ColumnType::kInt32:
+        is_storage_dense = storage<base::Optional<int32_t>>().IsDense();
+        break;
+      case ColumnType::kUint32:
+        is_storage_dense = storage<base::Optional<uint32_t>>().IsDense();
+        break;
+      case ColumnType::kInt64:
+        is_storage_dense = storage<base::Optional<int64_t>>().IsDense();
+        break;
+      case ColumnType::kDouble:
+        is_storage_dense = storage<base::Optional<double>>().IsDense();
+        break;
+      case ColumnType::kString:
+        PERFETTO_FATAL("String column should not be nullable");
+      case ColumnType::kId:
+        PERFETTO_FATAL("Id column should not be nullable");
+      case ColumnType::kDummy:
+        PERFETTO_FATAL("Dummy column excluded above");
+    }
+    PERFETTO_DCHECK(is_storage_dense == IsDense());
   }
+  PERFETTO_DCHECK(IsFlagsAndTypeValid(flags_, type_));
 }
 
-Column Column::IdColumn(Table* table, uint32_t col_idx, uint32_t row_map_idx) {
-  return Column("id", ColumnType::kId, kIdFlags, table, col_idx, row_map_idx,
-                nullptr, nullptr);
+Column Column::DummyColumn(const char* name,
+                           Table* table,
+                           uint32_t col_idx_in_table) {
+  return Column(name, ColumnType::kDummy, Flag::kNoFlag, table,
+                col_idx_in_table, std::numeric_limits<uint32_t>::max(),
+                nullptr);
+}
+
+Column Column::IdColumn(Table* table, uint32_t col_idx, uint32_t overlay_idx) {
+  return Column("id", ColumnType::kId, kIdFlags, table, col_idx, overlay_idx,
+                nullptr);
 }
 
 void Column::StableSort(bool desc, std::vector<uint32_t>* idx) const {
@@ -128,6 +142,8 @@ void Column::FilterIntoSlow(FilterOp op, SqlValue value, RowMap* rm) const {
       FilterIntoIdSlow(op, value, rm);
       break;
     }
+    case ColumnType::kDummy:
+      PERFETTO_FATAL("FilterIntoSlow not allowed on dummy column");
   }
 }
 
@@ -136,24 +152,24 @@ void Column::FilterIntoNumericSlow(FilterOp op,
                                    SqlValue value,
                                    RowMap* rm) const {
   PERFETTO_DCHECK(IsNullable() == is_nullable);
-  PERFETTO_DCHECK(type_ == ToColumnType<T>());
+  PERFETTO_DCHECK(type_ == ColumnTypeHelper<T>::ToColumnType());
   PERFETTO_DCHECK(std::is_arithmetic<T>::value);
 
   if (op == FilterOp::kIsNull) {
     PERFETTO_DCHECK(value.is_null());
     if (is_nullable) {
-      row_map().FilterInto(rm, [this](uint32_t row) {
-        return !nullable_vector<T>().Get(row).has_value();
+      overlay().FilterInto(rm, [this](uint32_t row) {
+        return !storage<base::Optional<T>>().Get(row).has_value();
       });
     } else {
-      rm->Intersect(RowMap());
+      rm->Clear();
     }
     return;
   } else if (op == FilterOp::kIsNotNull) {
     PERFETTO_DCHECK(value.is_null());
     if (is_nullable) {
-      row_map().FilterInto(rm, [this](uint32_t row) {
-        return nullable_vector<T>().Get(row).has_value();
+      overlay().FilterInto(rm, [this](uint32_t row) {
+        return storage<base::Optional<T>>().Get(row).has_value();
       });
     }
     return;
@@ -199,7 +215,7 @@ void Column::FilterIntoNumericSlow(FilterOp op,
       FilterIntoNumericWithComparatorSlow<T, is_nullable>(op, rm, fn);
     }
   } else {
-    rm->Intersect(RowMap());
+    rm->Clear();
   }
 }
 
@@ -209,58 +225,61 @@ void Column::FilterIntoNumericWithComparatorSlow(FilterOp op,
                                                  Comparator cmp) const {
   switch (op) {
     case FilterOp::kLt:
-      row_map().FilterInto(rm, [this, &cmp](uint32_t idx) {
+      overlay().FilterInto(rm, [this, &cmp](uint32_t idx) {
         if (is_nullable) {
-          auto opt_value = nullable_vector<T>().Get(idx);
+          auto opt_value = storage<base::Optional<T>>().Get(idx);
           return opt_value && cmp(*opt_value) < 0;
         }
-        return cmp(nullable_vector<T>().GetNonNull(idx)) < 0;
+        return cmp(storage<T>().Get(idx)) < 0;
       });
       break;
     case FilterOp::kEq:
-      row_map().FilterInto(rm, [this, &cmp](uint32_t idx) {
+      overlay().FilterInto(rm, [this, &cmp](uint32_t idx) {
         if (is_nullable) {
-          auto opt_value = nullable_vector<T>().Get(idx);
+          auto opt_value = storage<base::Optional<T>>().Get(idx);
           return opt_value && cmp(*opt_value) == 0;
         }
-        return cmp(nullable_vector<T>().GetNonNull(idx)) == 0;
+        return cmp(storage<T>().Get(idx)) == 0;
       });
       break;
     case FilterOp::kGt:
-      row_map().FilterInto(rm, [this, &cmp](uint32_t idx) {
+      overlay().FilterInto(rm, [this, &cmp](uint32_t idx) {
         if (is_nullable) {
-          auto opt_value = nullable_vector<T>().Get(idx);
+          auto opt_value = storage<base::Optional<T>>().Get(idx);
           return opt_value && cmp(*opt_value) > 0;
         }
-        return cmp(nullable_vector<T>().GetNonNull(idx)) > 0;
+        return cmp(storage<T>().Get(idx)) > 0;
       });
       break;
     case FilterOp::kNe:
-      row_map().FilterInto(rm, [this, &cmp](uint32_t idx) {
+      overlay().FilterInto(rm, [this, &cmp](uint32_t idx) {
         if (is_nullable) {
-          auto opt_value = nullable_vector<T>().Get(idx);
+          auto opt_value = storage<base::Optional<T>>().Get(idx);
           return opt_value && cmp(*opt_value) != 0;
         }
-        return cmp(nullable_vector<T>().GetNonNull(idx)) != 0;
+        return cmp(storage<T>().Get(idx)) != 0;
       });
       break;
     case FilterOp::kLe:
-      row_map().FilterInto(rm, [this, &cmp](uint32_t idx) {
+      overlay().FilterInto(rm, [this, &cmp](uint32_t idx) {
         if (is_nullable) {
-          auto opt_value = nullable_vector<T>().Get(idx);
+          auto opt_value = storage<base::Optional<T>>().Get(idx);
           return opt_value && cmp(*opt_value) <= 0;
         }
-        return cmp(nullable_vector<T>().GetNonNull(idx)) <= 0;
+        return cmp(storage<T>().Get(idx)) <= 0;
       });
       break;
     case FilterOp::kGe:
-      row_map().FilterInto(rm, [this, &cmp](uint32_t idx) {
+      overlay().FilterInto(rm, [this, &cmp](uint32_t idx) {
         if (is_nullable) {
-          auto opt_value = nullable_vector<T>().Get(idx);
+          auto opt_value = storage<base::Optional<T>>().Get(idx);
           return opt_value && cmp(*opt_value) >= 0;
         }
-        return cmp(nullable_vector<T>().GetNonNull(idx)) >= 0;
+        return cmp(storage<T>().Get(idx)) >= 0;
       });
+      break;
+    case FilterOp::kGlob:
+      rm->Clear();
       break;
     case FilterOp::kIsNull:
     case FilterOp::kIsNotNull:
@@ -275,20 +294,20 @@ void Column::FilterIntoStringSlow(FilterOp op,
 
   if (op == FilterOp::kIsNull) {
     PERFETTO_DCHECK(value.is_null());
-    row_map().FilterInto(rm, [this](uint32_t row) {
+    overlay().FilterInto(rm, [this](uint32_t row) {
       return GetStringPoolStringAtIdx(row).data() == nullptr;
     });
     return;
   } else if (op == FilterOp::kIsNotNull) {
     PERFETTO_DCHECK(value.is_null());
-    row_map().FilterInto(rm, [this](uint32_t row) {
+    overlay().FilterInto(rm, [this](uint32_t row) {
       return GetStringPoolStringAtIdx(row).data() != nullptr;
     });
     return;
   }
 
   if (value.type != SqlValue::Type::kString) {
-    rm->Intersect(RowMap());
+    rm->Clear();
     return;
   }
 
@@ -297,41 +316,49 @@ void Column::FilterIntoStringSlow(FilterOp op,
 
   switch (op) {
     case FilterOp::kLt:
-      row_map().FilterInto(rm, [this, str_value](uint32_t idx) {
+      overlay().FilterInto(rm, [this, str_value](uint32_t idx) {
         auto v = GetStringPoolStringAtIdx(idx);
         return v.data() != nullptr && compare::String(v, str_value) < 0;
       });
       break;
     case FilterOp::kEq:
-      row_map().FilterInto(rm, [this, str_value](uint32_t idx) {
+      overlay().FilterInto(rm, [this, str_value](uint32_t idx) {
         auto v = GetStringPoolStringAtIdx(idx);
         return v.data() != nullptr && compare::String(v, str_value) == 0;
       });
       break;
     case FilterOp::kGt:
-      row_map().FilterInto(rm, [this, str_value](uint32_t idx) {
+      overlay().FilterInto(rm, [this, str_value](uint32_t idx) {
         auto v = GetStringPoolStringAtIdx(idx);
         return v.data() != nullptr && compare::String(v, str_value) > 0;
       });
       break;
     case FilterOp::kNe:
-      row_map().FilterInto(rm, [this, str_value](uint32_t idx) {
+      overlay().FilterInto(rm, [this, str_value](uint32_t idx) {
         auto v = GetStringPoolStringAtIdx(idx);
         return v.data() != nullptr && compare::String(v, str_value) != 0;
       });
       break;
     case FilterOp::kLe:
-      row_map().FilterInto(rm, [this, str_value](uint32_t idx) {
+      overlay().FilterInto(rm, [this, str_value](uint32_t idx) {
         auto v = GetStringPoolStringAtIdx(idx);
         return v.data() != nullptr && compare::String(v, str_value) <= 0;
       });
       break;
     case FilterOp::kGe:
-      row_map().FilterInto(rm, [this, str_value](uint32_t idx) {
+      overlay().FilterInto(rm, [this, str_value](uint32_t idx) {
         auto v = GetStringPoolStringAtIdx(idx);
         return v.data() != nullptr && compare::String(v, str_value) >= 0;
       });
       break;
+    case FilterOp::kGlob: {
+      util::GlobMatcher matcher = util::GlobMatcher::FromPattern(str_value);
+      overlay().FilterInto(rm, [this, &matcher](uint32_t idx) {
+        auto v = GetStringPoolStringAtIdx(idx);
+        return v.data() != nullptr && matcher.Matches(v);
+      });
+      break;
+    }
     case FilterOp::kIsNull:
     case FilterOp::kIsNotNull:
       PERFETTO_FATAL("Should be handled above");
@@ -343,7 +370,7 @@ void Column::FilterIntoIdSlow(FilterOp op, SqlValue value, RowMap* rm) const {
 
   if (op == FilterOp::kIsNull) {
     PERFETTO_DCHECK(value.is_null());
-    rm->Intersect(RowMap());
+    rm->Clear();
     return;
   } else if (op == FilterOp::kIsNotNull) {
     PERFETTO_DCHECK(value.is_null());
@@ -351,41 +378,44 @@ void Column::FilterIntoIdSlow(FilterOp op, SqlValue value, RowMap* rm) const {
   }
 
   if (value.type != SqlValue::Type::kLong) {
-    rm->Intersect(RowMap());
+    rm->Clear();
     return;
   }
 
   uint32_t id_value = static_cast<uint32_t>(value.long_value);
   switch (op) {
     case FilterOp::kLt:
-      row_map().FilterInto(rm, [id_value](uint32_t idx) {
+      overlay().FilterInto(rm, [id_value](uint32_t idx) {
         return compare::Numeric(idx, id_value) < 0;
       });
       break;
     case FilterOp::kEq:
-      row_map().FilterInto(rm, [id_value](uint32_t idx) {
+      overlay().FilterInto(rm, [id_value](uint32_t idx) {
         return compare::Numeric(idx, id_value) == 0;
       });
       break;
     case FilterOp::kGt:
-      row_map().FilterInto(rm, [id_value](uint32_t idx) {
+      overlay().FilterInto(rm, [id_value](uint32_t idx) {
         return compare::Numeric(idx, id_value) > 0;
       });
       break;
     case FilterOp::kNe:
-      row_map().FilterInto(rm, [id_value](uint32_t idx) {
+      overlay().FilterInto(rm, [id_value](uint32_t idx) {
         return compare::Numeric(idx, id_value) != 0;
       });
       break;
     case FilterOp::kLe:
-      row_map().FilterInto(rm, [id_value](uint32_t idx) {
+      overlay().FilterInto(rm, [id_value](uint32_t idx) {
         return compare::Numeric(idx, id_value) <= 0;
       });
       break;
     case FilterOp::kGe:
-      row_map().FilterInto(rm, [id_value](uint32_t idx) {
+      overlay().FilterInto(rm, [id_value](uint32_t idx) {
         return compare::Numeric(idx, id_value) >= 0;
       });
+      break;
+    case FilterOp::kGlob:
+      rm->Clear();
       break;
     case FilterOp::kIsNull:
     case FilterOp::kIsNotNull:
@@ -429,7 +459,7 @@ void Column::StableSort(std::vector<uint32_t>* out) const {
       break;
     }
     case ColumnType::kString: {
-      row_map().StableSort(out, [this](uint32_t a_idx, uint32_t b_idx) {
+      overlay().StableSort(out, [this](uint32_t a_idx, uint32_t b_idx) {
         auto a_str = GetStringPoolStringAtIdx(a_idx);
         auto b_str = GetStringPoolStringAtIdx(b_idx);
 
@@ -439,37 +469,40 @@ void Column::StableSort(std::vector<uint32_t>* out) const {
       break;
     }
     case ColumnType::kId:
-      row_map().StableSort(out, [](uint32_t a_idx, uint32_t b_idx) {
+      overlay().StableSort(out, [](uint32_t a_idx, uint32_t b_idx) {
         int res = compare::Numeric(a_idx, b_idx);
         return desc ? res > 0 : res < 0;
       });
+      break;
+    case ColumnType::kDummy:
+      PERFETTO_FATAL("StableSort not allowed on dummy column");
   }
 }
 
 template <bool desc, typename T, bool is_nullable>
 void Column::StableSortNumeric(std::vector<uint32_t>* out) const {
   PERFETTO_DCHECK(IsNullable() == is_nullable);
-  PERFETTO_DCHECK(ToColumnType<T>() == type_);
+  PERFETTO_DCHECK(ColumnTypeHelper<T>::ToColumnType() == type_);
 
-  const auto& nv = nullable_vector<T>();
-  row_map().StableSort(out, [&nv](uint32_t a_idx, uint32_t b_idx) {
+  overlay().StableSort(out, [this](uint32_t a_idx, uint32_t b_idx) {
     if (is_nullable) {
-      auto a_val = nv.Get(a_idx);
-      auto b_val = nv.Get(b_idx);
+      auto a_val = storage<base::Optional<T>>().Get(a_idx);
+      auto b_val = storage<base::Optional<T>>().Get(b_idx);
 
       int res = compare::NullableNumeric(a_val, b_val);
       return desc ? res > 0 : res < 0;
     }
-    auto a_val = nv.GetNonNull(a_idx);
-    auto b_val = nv.GetNonNull(b_idx);
+    auto a_val = storage<T>().Get(a_idx);
+    auto b_val = storage<T>().Get(b_idx);
 
-    return desc ? compare::Numeric(a_val, b_val) > 0
-                : compare::Numeric(a_val, b_val) < 0;
+    int res = compare::Numeric(a_val, b_val);
+    return desc ? res > 0 : res < 0;
   });
 }
 
-const RowMap& Column::row_map() const {
-  return table_->row_maps_[row_map_idx_];
+const ColumnStorageOverlay& Column::overlay() const {
+  PERFETTO_DCHECK(type_ != ColumnType::kDummy);
+  return table_->overlays_[overlay_index()];
 }
 
 }  // namespace trace_processor

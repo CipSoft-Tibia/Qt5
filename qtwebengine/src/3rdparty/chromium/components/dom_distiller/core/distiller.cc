@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,15 +10,15 @@
 #include <vector>
 
 #include "base/auto_reset.h"
-#include "base/bind.h"
-#include "base/callback.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_macros.h"
-#include "base/single_thread_task_runner.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "components/dom_distiller/core/distiller_page.h"
@@ -67,7 +67,7 @@ DistillerImpl::~DistillerImpl() {
 
 bool DistillerImpl::DoesFetchImages() {
 // Only iOS makes use of the fetched image data.
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   return true;
 #else
   return false;
@@ -253,20 +253,24 @@ void DistillerImpl::OnPageDistillationFinished(
       GURL next_page_url(pagination_info.next_page());
       if (next_page_url.is_valid()) {
         // The pages should be in same origin.
-        DCHECK_EQ(next_page_url.GetOrigin(), page_url.GetOrigin());
-        AddToDistillationQueue(page_num + 1, next_page_url);
-        page_data->distilled_page_proto->data.mutable_pagination_info()
-            ->set_next_page(next_page_url.spec());
+        if (next_page_url.DeprecatedGetOriginAsURL() ==
+            page_url.DeprecatedGetOriginAsURL()) {
+          AddToDistillationQueue(page_num + 1, next_page_url);
+          page_data->distilled_page_proto->data.mutable_pagination_info()
+              ->set_next_page(next_page_url.spec());
+        }
       }
     }
 
     if (pagination_info.has_prev_page()) {
       GURL prev_page_url(pagination_info.prev_page());
       if (prev_page_url.is_valid()) {
-        DCHECK_EQ(prev_page_url.GetOrigin(), page_url.GetOrigin());
-        AddToDistillationQueue(page_num - 1, prev_page_url);
-        page_data->distilled_page_proto->data.mutable_pagination_info()
-            ->set_prev_page(prev_page_url.spec());
+        if (prev_page_url.DeprecatedGetOriginAsURL() ==
+            page_url.DeprecatedGetOriginAsURL()) {
+          AddToDistillationQueue(page_num - 1, prev_page_url);
+          page_data->distilled_page_proto->data.mutable_pagination_info()
+              ->set_prev_page(prev_page_url.spec());
+        }
       }
     }
 
@@ -308,7 +312,7 @@ void DistillerImpl::MaybeFetchImage(int page_num,
   }
 
   DistillerURLFetcher* fetcher =
-      distiller_url_fetcher_factory_.CreateDistillerURLFetcher();
+      distiller_url_fetcher_factory_->CreateDistillerURLFetcher();
   page_data->image_fetchers_.push_back(base::WrapUnique(fetcher));
 
   // TODO(gilmanmh): Investigate whether this needs to be base::BindRepeating()
@@ -329,18 +333,17 @@ void DistillerImpl::OnFetchImageDone(int page_num,
   DistilledPageData* page_data = GetPageAtIndex(started_pages_index_[page_num]);
   DCHECK(page_data->distilled_page_proto);
   DCHECK(url_fetcher);
-  auto fetcher_it = std::find_if(
-      page_data->image_fetchers_.begin(), page_data->image_fetchers_.end(),
-      [url_fetcher](const std::unique_ptr<DistillerURLFetcher>& f) {
-        return url_fetcher == f.get();
-      });
+  auto fetcher_it =
+      base::ranges::find(page_data->image_fetchers_, url_fetcher,
+                         &std::unique_ptr<DistillerURLFetcher>::get);
 
   DCHECK(fetcher_it != page_data->image_fetchers_.end());
   // Delete the |url_fetcher| by DeleteSoon since the OnFetchImageDone
   // callback is invoked by the |url_fetcher|.
   fetcher_it->release();
   page_data->image_fetchers_.erase(fetcher_it);
-  base::ThreadTaskRunnerHandle::Get()->DeleteSoon(FROM_HERE, url_fetcher);
+  base::SingleThreadTaskRunner::GetCurrentDefault()->DeleteSoon(FROM_HERE,
+                                                                url_fetcher);
 
   DistilledPageProto_Image* image =
       page_data->distilled_page_proto->data.add_image();

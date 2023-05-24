@@ -1,13 +1,13 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef SERVICES_CERT_VERIFIER_CERT_NET_URL_LOADER_CERT_NET_FETCHER_URL_LOADER_H_
 #define SERVICES_CERT_VERIFIER_CERT_NET_URL_LOADER_CERT_NET_FETCHER_URL_LOADER_H_
 
-#include "base/callback_forward.h"
 #include "base/component_export.h"
-#include "base/memory/ref_counted.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/scoped_refptr.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "net/cert/cert_net_fetcher.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
@@ -60,7 +60,7 @@ class COMPONENT_EXPORT(CERT_VERIFIER_CPP) CertNetFetcherURLLoader
   std::unique_ptr<Request> FetchCrl(const GURL& url,
                                     int timeout_milliseconds,
                                     int max_response_bytes) override;
-  WARN_UNUSED_RESULT std::unique_ptr<Request> FetchOcsp(
+  [[nodiscard]] std::unique_ptr<Request> FetchOcsp(
       const GURL& url,
       int timeout_milliseconds,
       int max_response_bytes) override;

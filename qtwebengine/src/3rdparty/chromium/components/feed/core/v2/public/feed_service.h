@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,16 +8,18 @@
 #include <memory>
 #include <string>
 
-#include "base/files/file_path.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "build/build_config.h"
-#include "components/feed/core/v2/public/feed_stream_api.h"
+#include "components/feed/core/v2/ios_shared_prefs.h"
+#include "components/feed/core/v2/public/feed_api.h"
 #include "components/feed/core/v2/public/types.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/leveldb_proto/public/proto_database.h"
+#include "components/signin/public/base/consent_level.h"
 #include "components/web_resource/eula_accepted_notifier.h"
 
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
 #include "base/android/application_status_listener.h"
 #endif
 
@@ -31,13 +33,12 @@ class DeletionInfo;
 namespace feedstore {
 class Record;
 }  // namespace feedstore
+namespace feedkvstore {
+class Entry;
+}  // namespace feedkvstore
 namespace network {
 class SharedURLLoaderFactory;
 }  // namespace network
-namespace offline_pages {
-class OfflinePageModel;
-class PrefetchService;
-}  // namespace offline_pages
 namespace signin {
 class IdentityManager;
 }  // namespace signin
@@ -48,6 +49,7 @@ class MetricsReporter;
 class FeedNetwork;
 class FeedStore;
 class FeedStream;
+class PersistentKeyValueStoreImpl;
 class ImageFetcher;
 
 namespace internal {
@@ -65,55 +67,84 @@ class FeedService : public KeyedService {
     virtual std::string GetLanguageTag() = 0;
     // Returns display metrics for the device.
     virtual DisplayMetrics GetDisplayMetrics() = 0;
+    // Returns true if autoplay is enabled.
+    virtual bool IsAutoplayEnabled() = 0;
+    // Returns how the tab group feature is enabled.
+    virtual TabGroupEnabledState GetTabGroupEnabledState() = 0;
     // Clear all stored data.
     virtual void ClearAll() = 0;
+    // Fetch the image and store it in the disk cache.
+    virtual void PrefetchImage(const GURL& url) = 0;
+    // Register the synthetic field experiments for UMA.
+    virtual void RegisterExperiments(const Experiments& experiments) = 0;
+    // Registers a synthetic field trial "FollowingFeedFollowCount".
+    virtual void RegisterFollowingFeedFollowCountFieldTrial(
+        size_t follow_count) = 0;
+    // Registers a synthetic field trial "FeedUserSettings".
+    virtual void RegisterFeedUserSettingsFieldTrial(
+        base::StringPiece group) = 0;
   };
 
   // Construct a FeedService given an already constructed FeedStream.
   // Used for testing only.
   explicit FeedService(std::unique_ptr<FeedStream> stream);
 
-  // Construct a new FeedStreamApi along with FeedService.
+  // Construct a new FeedApi along with FeedService.
   FeedService(
       std::unique_ptr<Delegate> delegate,
       std::unique_ptr<RefreshTaskScheduler> refresh_task_scheduler,
       PrefService* profile_prefs,
       PrefService* local_state,
       std::unique_ptr<leveldb_proto::ProtoDatabase<feedstore::Record>> database,
+      std::unique_ptr<leveldb_proto::ProtoDatabase<feedkvstore::Entry>>
+          key_value_store_database,
       signin::IdentityManager* identity_manager,
       history::HistoryService* history_service,
-      offline_pages::PrefetchService* prefetch_service,
-      offline_pages::OfflinePageModel* offline_page_model,
       scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
       scoped_refptr<base::SequencedTaskRunner> background_task_runner,
       const std::string& api_key,
       const ChromeInfo& chrome_info);
+  static std::unique_ptr<FeedService> CreateForTesting(FeedApi* api);
   ~FeedService() override;
   FeedService(const FeedService&) = delete;
   FeedService& operator=(const FeedService&) = delete;
 
-  FeedStreamApi* GetStream();
+  FeedApi* GetStream();
 
   void ClearCachedData();
 
-  RefreshTaskScheduler* GetRefreshTaskScheduler() {
+  RefreshTaskScheduler* GetRefreshTaskScheduler() const {
     return refresh_task_scheduler_.get();
   }
 
   // Whether Feedv2 is enabled. If false, the FeedService should not be created.
   static bool IsEnabled(const PrefService& pref_service);
 
+  // Returns the client ID for reliability logging.
+  static uint64_t GetReliabilityLoggingId(const std::string& metrics_id,
+                                          PrefService* pref_service);
+
+  //  Whether autoplay is enabled.
+  static bool IsAutoplayEnabled(const PrefService& pref_service);
+
+  // Returns true if the feed is personalized.
+  // TODO(iwells): Add comments and consider renaming to explain exceptional
+  // cases.
+  bool IsSignedIn();
+
  private:
   class StreamDelegateImpl;
   class NetworkDelegateImpl;
   class HistoryObserverImpl;
   class IdentityManagerObserverImpl;
-#if defined(OS_ANDROID)
+
+  FeedService();
+#if BUILDFLAG(IS_ANDROID)
   void OnApplicationStateChange(base::android::ApplicationState state);
 #endif
 
-  // These components are owned for construction of |FeedStreamApi|. These will
-  // be null if |FeedStreamApi| is created externally.
+  // These components are owned for construction of |FeedApi|. These will
+  // be null if |FeedApi| is created externally.
   std::unique_ptr<Delegate> delegate_;
   std::unique_ptr<StreamDelegateImpl> stream_delegate_;
   std::unique_ptr<MetricsReporter> metrics_reporter_;
@@ -121,15 +152,17 @@ class FeedService : public KeyedService {
   std::unique_ptr<FeedNetwork> feed_network_;
   std::unique_ptr<ImageFetcher> image_fetcher_;
   std::unique_ptr<FeedStore> store_;
+  std::unique_ptr<PersistentKeyValueStoreImpl> persistent_key_value_store_;
   std::unique_ptr<RefreshTaskScheduler> refresh_task_scheduler_;
   std::unique_ptr<HistoryObserverImpl> history_observer_;
   std::unique_ptr<IdentityManagerObserverImpl> identity_manager_observer_;
-#if defined(OS_ANDROID)
+#if BUILDFLAG(IS_ANDROID)
   bool foregrounded_ = true;
   std::unique_ptr<base::android::ApplicationStatusListener>
       application_status_listener_;
 #endif
   std::unique_ptr<FeedStream> stream_;
+  raw_ptr<FeedApi> api_;  // Points to `stream_`, overridden for testing.
 };
 
 }  // namespace feed

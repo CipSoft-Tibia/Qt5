@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -55,6 +55,10 @@ class BLINK_PLATFORM_EXPORT WebMediaStreamAudioSink
   // Callback called when the format of the audio stream has changed.  This is
   // always called at least once before OnData(), and on the same thread.
   virtual void OnSetFormat(const media::AudioParameters& params) = 0;
+
+  // Returns the number of channels preferred by the sink or -1 if
+  // unknown.
+  virtual int NumPreferredChannels() { return -1; }
 
  protected:
   ~WebMediaStreamAudioSink() override {}

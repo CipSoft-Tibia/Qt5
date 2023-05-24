@@ -29,6 +29,8 @@
 #include "third_party/blink/renderer/modules/webgl/webgl_context_object.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_shared_object.h"
 #include "third_party/blink/renderer/platform/bindings/name_client.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
 
 namespace gpu {
 namespace gles2 {
@@ -48,6 +50,8 @@ class WebGLFramebuffer final : public WebGLContextObject {
   class WebGLAttachment : public GarbageCollected<WebGLAttachment>,
                           public NameClient {
    public:
+    ~WebGLAttachment() override = default;
+
     virtual WebGLSharedObject* Object() const = 0;
     virtual bool IsSharedObject(WebGLSharedObject*) const = 0;
     virtual bool Valid() const = 0;
@@ -72,6 +76,7 @@ class WebGLFramebuffer final : public WebGLContextObject {
   // the browser and not inspectable or alterable via Javascript. This is
   // primarily used by the VRWebGLLayer interface.
   static WebGLFramebuffer* CreateOpaque(WebGLRenderingContextBase*,
+                                        bool has_depth,
                                         bool has_stencil);
 
   GLuint Object() const { return object_; }
@@ -102,6 +107,7 @@ class WebGLFramebuffer final : public WebGLContextObject {
 
   void SetHasEverBeenBound() { has_ever_been_bound_ = true; }
 
+  bool HasDepthBuffer() const;
   bool HasStencilBuffer() const;
 
   bool HaveContentsChanged() { return contents_changed_; }
@@ -109,6 +115,7 @@ class WebGLFramebuffer final : public WebGLContextObject {
 
   bool Opaque() const { return opaque_; }
   void MarkOpaqueBufferComplete(bool complete) { opaque_complete_ = complete; }
+  void SetOpaqueHasDepth(bool has_depth) { opaque_has_depth_ = has_depth; }
   void SetOpaqueHasStencil(bool has_stencil) {
     opaque_has_stencil_ = has_stencil;
   }
@@ -164,6 +171,7 @@ class WebGLFramebuffer final : public WebGLContextObject {
   bool web_gl1_depth_stencil_consistent_;
   bool contents_changed_ = false;
   const bool opaque_;
+  bool opaque_has_depth_ = false;
   bool opaque_has_stencil_ = false;
   bool opaque_complete_ = false;
 

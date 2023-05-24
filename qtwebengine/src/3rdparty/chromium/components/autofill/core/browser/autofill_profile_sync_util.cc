@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,8 @@
 #include "components/autofill/core/browser/geo/country_names.h"
 #include "components/autofill/core/browser/proto/autofill_sync.pb.h"
 #include "components/autofill/core/browser/webdata/autofill_table.h"
-#include "components/sync/model/entity_data.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/sync/protocol/entity_data.h"
 
 using autofill::data_util::TruncateUTF8;
 using base::UTF16ToUTF8;
@@ -27,8 +28,6 @@ using sync_pb::AutofillProfileSpecifics;
 using syncer::EntityData;
 
 namespace autofill {
-
-using structured_address::VerificationStatus;
 
 namespace {
 
@@ -48,6 +47,8 @@ VerificationStatus ConvertSpecificsToProfileVerificationStatus(
       return VerificationStatus::kObserved;
     case sync_pb::AutofillProfileSpecifics_VerificationStatus_USER_VERIFIED:
       return VerificationStatus::kUserVerified;
+    case sync_pb::AutofillProfileSpecifics_VerificationStatus_SERVER_PARSED:
+      return VerificationStatus::kServerParsed;
   }
 }
 
@@ -67,6 +68,8 @@ ConvertProfileToSpecificsVerificationStatus(VerificationStatus profile_status) {
       return sync_pb::AutofillProfileSpecifics_VerificationStatus_OBSERVED;
     case (VerificationStatus::kUserVerified):
       return sync_pb::AutofillProfileSpecifics_VerificationStatus_USER_VERIFIED;
+    case (VerificationStatus::kServerParsed):
+      return sync_pb::AutofillProfileSpecifics_VerificationStatus_SERVER_PARSED;
   }
 }
 
@@ -82,6 +85,13 @@ std::unique_ptr<EntityData> CreateEntityDataFromAutofillProfile(
   // Validity of the guid is guaranteed by the database layer.
   DCHECK(base::IsValidGUID(entry.guid()));
 
+  // Profiles fall into two categories, kLocalOrSyncable and kAccount.
+  // kLocalOrSyncable profiles are synced through the AutofillProfileSyncBridge,
+  // while kAccount profiles are synced through the ContactInfoSyncBridge. Make
+  // sure that syncing a profile through the wrong sync bridge fails early.
+  if (entry.source() != AutofillProfile::Source::kLocalOrSyncable)
+    return nullptr;
+
   auto entity_data = std::make_unique<EntityData>();
   entity_data->name = entry.guid();
   AutofillProfileSpecifics* specifics =
@@ -90,14 +100,15 @@ std::unique_ptr<EntityData> CreateEntityDataFromAutofillProfile(
   specifics->set_guid(entry.guid());
   specifics->set_origin(entry.origin());
 
+  if (!entry.profile_label().empty())
+    specifics->set_profile_label(entry.profile_label());
+
+  specifics->set_disallow_settings_visible_updates(
+      entry.disallow_settings_visible_updates());
   specifics->set_use_count(entry.use_count());
   specifics->set_use_date(entry.use_date().ToTimeT());
   specifics->set_address_home_language_code(
       TruncateUTF8(entry.language_code()));
-  specifics->set_validity_state_bitfield(
-      entry.GetClientValidityBitfieldValue());
-  specifics->set_is_client_validity_states_updated(
-      entry.is_client_validity_states_updated());
 
   // Set name-related values.
   specifics->add_name_honorific(
@@ -116,6 +127,8 @@ std::unique_ptr<EntityData> CreateEntityDataFromAutofillProfile(
       TruncateUTF8(UTF16ToUTF8(entry.GetRawInfo(NAME_LAST_CONJUNCTION))));
   specifics->add_name_full(
       TruncateUTF8(UTF16ToUTF8(entry.GetRawInfo(NAME_FULL))));
+  specifics->add_name_full_with_honorific(TruncateUTF8(
+      UTF16ToUTF8(entry.GetRawInfo(NAME_FULL_WITH_HONORIFIC_PREFIX))));
 
   // Set address-related statuses.
   specifics->add_name_honorific_status(
@@ -138,6 +151,9 @@ std::unique_ptr<EntityData> CreateEntityDataFromAutofillProfile(
           entry.GetVerificationStatus(NAME_LAST_SECOND)));
   specifics->add_name_full_status(ConvertProfileToSpecificsVerificationStatus(
       entry.GetVerificationStatus(NAME_FULL)));
+  specifics->add_name_full_with_honorific_status(
+      ConvertProfileToSpecificsVerificationStatus(
+          entry.GetVerificationStatus(NAME_FULL_WITH_HONORIFIC_PREFIX)));
 
   // Set email, phone and company values.
   specifics->add_email_address(
@@ -172,6 +188,10 @@ std::unique_ptr<EntityData> CreateEntityDataFromAutofillProfile(
       UTF16ToUTF8(entry.GetRawInfo(ADDRESS_HOME_DEPENDENT_STREET_NAME)));
   specifics->set_address_home_subpremise_name(
       UTF16ToUTF8(entry.GetRawInfo(ADDRESS_HOME_SUBPREMISE)));
+  specifics->set_address_home_apt_num(
+      UTF16ToUTF8(entry.GetRawInfo(ADDRESS_HOME_APT_NUM)));
+  specifics->set_address_home_floor(
+      UTF16ToUTF8(entry.GetRawInfo(ADDRESS_HOME_FLOOR)));
   specifics->set_address_home_premise_name(
       UTF16ToUTF8(entry.GetRawInfo(ADDRESS_HOME_PREMISE_NAME)));
   specifics->set_address_home_thoroughfare_number(
@@ -208,12 +228,23 @@ std::unique_ptr<EntityData> CreateEntityDataFromAutofillProfile(
   specifics->set_address_home_subpremise_name_status(
       ConvertProfileToSpecificsVerificationStatus(
           entry.GetVerificationStatus(ADDRESS_HOME_SUBPREMISE)));
+  specifics->set_address_home_apt_num_status(
+      ConvertProfileToSpecificsVerificationStatus(
+          entry.GetVerificationStatus(ADDRESS_HOME_APT_NUM)));
+  specifics->set_address_home_floor_status(
+      ConvertProfileToSpecificsVerificationStatus(
+          entry.GetVerificationStatus(ADDRESS_HOME_FLOOR)));
   specifics->set_address_home_premise_name_status(
       ConvertProfileToSpecificsVerificationStatus(
           entry.GetVerificationStatus(ADDRESS_HOME_PREMISE_NAME)));
   specifics->set_address_home_thoroughfare_number_status(
       ConvertProfileToSpecificsVerificationStatus(
           entry.GetVerificationStatus(ADDRESS_HOME_HOUSE_NUMBER)));
+
+  // Set birthdate-related values.
+  specifics->set_birthdate_day(entry.GetRawInfoAsInt(BIRTHDATE_DAY));
+  specifics->set_birthdate_month(entry.GetRawInfoAsInt(BIRTHDATE_MONTH));
+  specifics->set_birthdate_year(entry.GetRawInfoAsInt(BIRTHDATE_4_DIGIT_YEAR));
 
   return entity_data;
 }
@@ -223,16 +254,24 @@ std::unique_ptr<AutofillProfile> CreateAutofillProfileFromSpecifics(
   if (!IsAutofillProfileSpecificsValid(specifics)) {
     return nullptr;
   }
-  std::unique_ptr<AutofillProfile> profile =
-      std::make_unique<AutofillProfile>(specifics.guid(), specifics.origin());
+  std::unique_ptr<AutofillProfile> profile = std::make_unique<AutofillProfile>(
+      specifics.guid(), specifics.origin(),
+      AutofillProfile::Source::kLocalOrSyncable);
 
   // Set info that has a default value (and does not distinguish whether it is
   // set or not).
   profile->set_use_count(specifics.use_count());
   profile->set_use_date(base::Time::FromTimeT(specifics.use_date()));
   profile->set_language_code(specifics.address_home_language_code());
-  profile->SetClientValidityFromBitfieldValue(
-      specifics.validity_state_bitfield());
+
+  // Set the profile label if it exists.
+  if (specifics.has_profile_label())
+    profile->set_profile_label(specifics.profile_label());
+
+  // Set the `disallow_settings_visible_updates state` if it exists.
+  if (specifics.has_disallow_settings_visible_updates())
+    profile->set_disallow_settings_visible_updates(
+        specifics.disallow_settings_visible_updates());
 
   // Set repeated fields.
   profile->SetRawInfoWithVerificationStatus(
@@ -242,6 +281,17 @@ std::unique_ptr<AutofillProfile> CreateAutofillProfileFromSpecifics(
       ConvertSpecificsToProfileVerificationStatus(
           specifics.name_honorific_status_size()
               ? specifics.name_honorific_status(0)
+              : AutofillProfileSpecifics::VerificationStatus::
+                    AutofillProfileSpecifics_VerificationStatus_VERIFICATION_STATUS_UNSPECIFIED));
+
+  profile->SetRawInfoWithVerificationStatus(
+      NAME_FULL_WITH_HONORIFIC_PREFIX,
+      UTF8ToUTF16(specifics.name_full_with_honorific_size()
+                      ? specifics.name_full_with_honorific(0)
+                      : std::string()),
+      ConvertSpecificsToProfileVerificationStatus(
+          specifics.name_full_with_honorific_status_size()
+              ? specifics.name_full_with_honorific_status(0)
               : AutofillProfileSpecifics::VerificationStatus::
                     AutofillProfileSpecifics_VerificationStatus_VERIFICATION_STATUS_UNSPECIFIED));
 
@@ -363,7 +413,7 @@ std::unique_ptr<AutofillProfile> CreateAutofillProfileFromSpecifics(
   // by a newer version of Chrome), or a country name (if set by an older
   // version of Chrome).
   // TODO(jkrcal): Move this migration logic into Address::SetRawInfo()?
-  base::string16 country_name_or_code =
+  std::u16string country_name_or_code =
       base::ASCIIToUTF16(specifics.address_home_country());
   std::string country_code =
       CountryNames::GetInstance()->GetCountryCode(country_name_or_code);
@@ -419,9 +469,10 @@ std::unique_ptr<AutofillProfile> CreateAutofillProfileFromSpecifics(
       ConvertSpecificsToProfileVerificationStatus(
           specifics.address_home_subpremise_name_status()));
 
-  // This has to be the last one, otherwise setting the raw info may change it.
-  profile->set_is_client_validity_states_updated(
-      specifics.is_client_validity_states_updated());
+  // Set birthdate-related fields.
+  profile->SetRawInfoAsInt(BIRTHDATE_DAY, specifics.birthdate_day());
+  profile->SetRawInfoAsInt(BIRTHDATE_MONTH, specifics.birthdate_month());
+  profile->SetRawInfoAsInt(BIRTHDATE_4_DIGIT_YEAR, specifics.birthdate_year());
 
   // The profile may be in a legacy state. By calling |FinalizeAfterImport()|
   // * The profile is migrated if the name structure is in legacy state.

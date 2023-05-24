@@ -27,6 +27,7 @@
 
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
+#include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
 #include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -39,11 +40,6 @@ LayoutHTMLCanvas::LayoutHTMLCanvas(HTMLCanvasElement* element)
   View()->GetFrameView()->SetIsVisuallyNonEmpty();
 }
 
-PaintLayerType LayoutHTMLCanvas::LayerTypeRequired() const {
-  NOT_DESTROYED();
-  return kNormalPaintLayer;
-}
-
 void LayoutHTMLCanvas::PaintReplaced(const PaintInfo& paint_info,
                                      const PhysicalOffset& paint_offset) const {
   NOT_DESTROYED();
@@ -52,9 +48,8 @@ void LayoutHTMLCanvas::PaintReplaced(const PaintInfo& paint_info,
 
 void LayoutHTMLCanvas::CanvasSizeChanged() {
   NOT_DESTROYED();
-  IntSize canvas_size = To<HTMLCanvasElement>(GetNode())->Size();
-  LayoutSize zoomed_size(canvas_size.Width() * StyleRef().EffectiveZoom(),
-                         canvas_size.Height() * StyleRef().EffectiveZoom());
+  gfx::Size canvas_size = To<HTMLCanvasElement>(GetNode())->Size();
+  LayoutSize zoomed_size = LayoutSize(canvas_size) * StyleRef().EffectiveZoom();
 
   if (zoomed_size == IntrinsicSize())
     return;
@@ -68,6 +63,23 @@ void LayoutHTMLCanvas::CanvasSizeChanged() {
   SetNeedsLayout(layout_invalidation_reason::kSizeChanged);
 }
 
+bool LayoutHTMLCanvas::DrawsBackgroundOntoContentLayer() const {
+  auto* canvas = To<HTMLCanvasElement>(GetNode());
+  if (canvas->SurfaceLayerBridge())
+    return false;
+  CanvasRenderingContext* context = canvas->RenderingContext();
+  if (!context || !context->IsComposited() || !context->CcLayer())
+    return false;
+  if (StyleRef().HasBoxDecorations() || StyleRef().HasBackgroundImage())
+    return false;
+  // If there is no background, there is nothing to support.
+  if (!StyleRef().HasBackground())
+    return true;
+  // Simple background that is contained within the contents rect.
+  return ReplacedContentRect().Contains(
+      PhysicalBackgroundRect(kBackgroundPaintedExtent));
+}
+
 void LayoutHTMLCanvas::InvalidatePaint(
     const PaintInvalidatorContext& context) const {
   NOT_DESTROYED();
@@ -76,13 +88,6 @@ void LayoutHTMLCanvas::InvalidatePaint(
     element->DoDeferredPaintInvalidation();
 
   LayoutReplaced::InvalidatePaint(context);
-}
-
-CompositingReasons LayoutHTMLCanvas::AdditionalCompositingReasons() const {
-  NOT_DESTROYED();
-  if (To<HTMLCanvasElement>(GetNode())->ShouldBeDirectComposited())
-    return CompositingReason::kCanvas;
-  return CompositingReason::kNone;
 }
 
 void LayoutHTMLCanvas::StyleDidChange(StyleDifference diff,

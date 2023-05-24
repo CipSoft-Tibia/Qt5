@@ -1,11 +1,12 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef COMPONENTS_JAVASCRIPT_DIALOGS_TAB_MODAL_DIALOG_VIEW_H_
 #define COMPONENTS_JAVASCRIPT_DIALOGS_TAB_MODAL_DIALOG_VIEW_H_
 
-#include "base/strings/string16.h"
+#include <string>
+
 
 namespace javascript_dialogs {
 
@@ -20,7 +21,7 @@ class TabModalDialogView {
   virtual void CloseDialogWithoutCallback() = 0;
 
   // Returns the current value of the user input for a prompt dialog.
-  virtual base::string16 GetUserInput() = 0;
+  virtual std::u16string GetUserInput() = 0;
 };
 
 }  // namespace javascript_dialogs

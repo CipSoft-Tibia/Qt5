@@ -1,5 +1,4 @@
-// Copyright (c) 2012, Google Inc.
-// All rights reserved.
+// Copyright 2012 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -130,7 +129,10 @@ const NXArchInfo* BreakpadGetArchInfoFromCpuType(cpu_type_t cpu_type,
 
 }  // namespace google_breakpad
 
-#ifndef __APPLE__
+// TODO(crbug.com/1242776): The "#ifndef __APPLE__" should be here, but the
+// system version of NXGetLocalArchInfo returns incorrect information on
+// x86_64 machines (treating them as just x86), so use the Breakpad version
+// all the time for now.
 namespace {
 
 enum Architecture {
@@ -218,6 +220,8 @@ const NXArchInfo *NXGetLocalArchInfo(void) {
 #endif
   return &kKnownArchitectures[arch];
 }
+
+#ifndef __APPLE__
 
 const NXArchInfo *NXGetArchInfoFromName(const char *name) {
   for (int arch = 0; arch < kNumArchitectures; ++arch) {

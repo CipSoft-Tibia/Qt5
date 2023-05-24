@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4debuggeragent.h"
 #include "qv4debugservice.h"
@@ -45,10 +9,6 @@
 #include <QtCore/qjsonarray.h>
 
 QT_BEGIN_NAMESPACE
-
-QV4DebuggerAgent::QV4DebuggerAgent(QV4DebugServiceImpl *debugService)
-    : m_breakOnThrow(false), m_debugService(debugService)
-{}
 
 QV4Debugger *QV4DebuggerAgent::pausedDebugger() const
 {
@@ -113,7 +73,7 @@ void QV4DebuggerAgent::addDebugger(QV4Debugger *debugger)
 
     debugger->setBreakOnThrow(m_breakOnThrow);
 
-    for (const BreakPoint &breakPoint : qAsConst(m_breakPoints))
+    for (const BreakPoint &breakPoint : std::as_const(m_breakPoints))
         if (breakPoint.enabled)
             debugger->addBreakPoint(breakPoint.fileName, breakPoint.lineNr, breakPoint.condition);
 
@@ -159,9 +119,10 @@ void QV4DebuggerAgent::resumeAll() const
 
 int QV4DebuggerAgent::addBreakPoint(const QString &fileName, int lineNumber, bool enabled, const QString &condition)
 {
-    if (enabled)
-        for (QV4Debugger *debugger : qAsConst(m_debuggers))
+    if (enabled) {
+        for (QV4Debugger *debugger : std::as_const(m_debuggers))
             debugger->addBreakPoint(fileName, lineNumber, condition);
+    }
 
     const int id = ++m_lastBreakPointId;
     m_breakPoints.insert(id, BreakPoint(fileName, lineNumber, enabled, condition));
@@ -177,7 +138,7 @@ void QV4DebuggerAgent::removeBreakPoint(int id)
     m_breakPoints.remove(id);
 
     if (breakPoint.enabled)
-        for (QV4Debugger *debugger : qAsConst(m_debuggers))
+        for (QV4Debugger *debugger : std::as_const(m_debuggers))
             debugger->removeBreakPoint(breakPoint.fileName, breakPoint.lineNr);
 }
 
@@ -194,7 +155,7 @@ void QV4DebuggerAgent::enableBreakPoint(int id, bool onoff)
         return;
     breakPoint.enabled = onoff;
 
-    for (QV4Debugger *debugger : qAsConst(m_debuggers)) {
+    for (QV4Debugger *debugger : std::as_const(m_debuggers)) {
         if (onoff)
             debugger->addBreakPoint(breakPoint.fileName, breakPoint.lineNr, breakPoint.condition);
         else
@@ -217,14 +178,14 @@ void QV4DebuggerAgent::setBreakOnThrow(bool onoff)
 {
     if (onoff != m_breakOnThrow) {
         m_breakOnThrow = onoff;
-        for (QV4Debugger *debugger : qAsConst(m_debuggers))
+        for (QV4Debugger *debugger : std::as_const(m_debuggers))
             debugger->setBreakOnThrow(onoff);
     }
 }
 
 void QV4DebuggerAgent::clearAllPauseRequests()
 {
-    for (QV4Debugger *debugger : qAsConst(m_debuggers))
+    for (QV4Debugger *debugger : std::as_const(m_debuggers))
         debugger->clearPauseRequest();
 }
 

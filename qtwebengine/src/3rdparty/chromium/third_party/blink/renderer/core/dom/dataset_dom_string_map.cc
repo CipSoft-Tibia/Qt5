@@ -64,7 +64,7 @@ static String ConvertAttributeNameToPropertyName(const String& name) {
     }
   }
 
-  return string_builder.ToString();
+  return string_builder.ReleaseString();
 }
 
 template <typename CharType1, typename CharType2>
@@ -202,6 +202,7 @@ bool DatasetDOMStringMap::DeleteItem(const String& name) {
 
 void DatasetDOMStringMap::Trace(Visitor* visitor) const {
   visitor->Trace(element_);
+  ElementRareDataField::Trace(visitor);
   DOMStringMap::Trace(visitor);
 }
 

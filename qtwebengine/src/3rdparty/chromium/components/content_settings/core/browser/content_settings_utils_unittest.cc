@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,12 @@
 
 #include <string>
 
-#include "base/stl_util.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/time/time.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/content_settings/core/common/features.h"
 #include "components/content_settings/core/test/content_settings_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -16,6 +21,7 @@ namespace content_settings {
 
 namespace {
 
+// clang-format off
 const char* const kContentSettingNames[] = {
   "default",
   "allow",
@@ -24,7 +30,9 @@ const char* const kContentSettingNames[] = {
   "session_only",
   "detect_important_content",
 };
-static_assert(base::size(kContentSettingNames) == CONTENT_SETTING_NUM_SETTINGS,
+// clang-format on
+
+static_assert(std::size(kContentSettingNames) == CONTENT_SETTING_NUM_SETTINGS,
               "kContentSettingNames has an unexpected number of elements");
 
 }  // namespace
@@ -68,7 +76,7 @@ TEST(ContentSettingsUtilsTest, ContentSettingsStringMap) {
       ContentSettingToString(CONTENT_SETTING_NUM_SETTINGS);
   EXPECT_TRUE(setting_string.empty());
 
-  for (size_t i = 0; i < base::size(kContentSettingNames); ++i) {
+  for (size_t i = 0; i < std::size(kContentSettingNames); ++i) {
     ContentSetting setting = static_cast<ContentSetting>(i);
     setting_string = ContentSettingToString(setting);
     EXPECT_EQ(kContentSettingNames[i], setting_string);
@@ -81,49 +89,44 @@ TEST(ContentSettingsUtilsTest, ContentSettingsStringMap) {
 }
 
 TEST(ContentSettingsUtilsTest, IsMorePermissive) {
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK));
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_ALLOW, CONTENT_SETTING_ASK));
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_ALLOW, CONTENT_SETTING_DETECT_IMPORTANT_CONTENT));
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_ALLOW, CONTENT_SETTING_SESSION_ONLY));
+  EXPECT_TRUE(IsMorePermissive(CONTENT_SETTING_ALLOW, CONTENT_SETTING_BLOCK));
+  EXPECT_TRUE(IsMorePermissive(CONTENT_SETTING_ALLOW, CONTENT_SETTING_ASK));
+  EXPECT_TRUE(IsMorePermissive(CONTENT_SETTING_ALLOW,
+                               CONTENT_SETTING_DETECT_IMPORTANT_CONTENT));
+  EXPECT_TRUE(
+      IsMorePermissive(CONTENT_SETTING_ALLOW, CONTENT_SETTING_SESSION_ONLY));
 
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_SESSION_ONLY, CONTENT_SETTING_ASK));
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_SESSION_ONLY, CONTENT_SETTING_BLOCK));
+  EXPECT_TRUE(
+      IsMorePermissive(CONTENT_SETTING_SESSION_ONLY, CONTENT_SETTING_ASK));
+  EXPECT_TRUE(
+      IsMorePermissive(CONTENT_SETTING_SESSION_ONLY, CONTENT_SETTING_BLOCK));
 
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_DETECT_IMPORTANT_CONTENT, CONTENT_SETTING_ASK));
-  EXPECT_TRUE(IsMorePermissive(
-      CONTENT_SETTING_DETECT_IMPORTANT_CONTENT, CONTENT_SETTING_BLOCK));
+  EXPECT_TRUE(IsMorePermissive(CONTENT_SETTING_DETECT_IMPORTANT_CONTENT,
+                               CONTENT_SETTING_ASK));
+  EXPECT_TRUE(IsMorePermissive(CONTENT_SETTING_DETECT_IMPORTANT_CONTENT,
+                               CONTENT_SETTING_BLOCK));
 
   EXPECT_TRUE(IsMorePermissive(CONTENT_SETTING_ASK, CONTENT_SETTING_BLOCK));
 
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_BLOCK, CONTENT_SETTING_ALLOW));
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_BLOCK, CONTENT_SETTING_DETECT_IMPORTANT_CONTENT));
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_BLOCK, CONTENT_SETTING_SESSION_ONLY));
+  EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_BLOCK, CONTENT_SETTING_ALLOW));
+  EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_BLOCK,
+                                CONTENT_SETTING_DETECT_IMPORTANT_CONTENT));
+  EXPECT_FALSE(
+      IsMorePermissive(CONTENT_SETTING_BLOCK, CONTENT_SETTING_SESSION_ONLY));
   EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_BLOCK, CONTENT_SETTING_ASK));
 
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_ASK, CONTENT_SETTING_ALLOW));
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_ASK, CONTENT_SETTING_SESSION_ONLY));
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_ASK, CONTENT_SETTING_DETECT_IMPORTANT_CONTENT));
+  EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_ASK, CONTENT_SETTING_ALLOW));
+  EXPECT_FALSE(
+      IsMorePermissive(CONTENT_SETTING_ASK, CONTENT_SETTING_SESSION_ONLY));
+  EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_ASK,
+                                CONTENT_SETTING_DETECT_IMPORTANT_CONTENT));
 
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_SESSION_ONLY, CONTENT_SETTING_ALLOW));
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_DETECT_IMPORTANT_CONTENT, CONTENT_SETTING_ALLOW));
+  EXPECT_FALSE(
+      IsMorePermissive(CONTENT_SETTING_SESSION_ONLY, CONTENT_SETTING_ALLOW));
+  EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_DETECT_IMPORTANT_CONTENT,
+                                CONTENT_SETTING_ALLOW));
 
-  EXPECT_FALSE(IsMorePermissive(
-      CONTENT_SETTING_ALLOW, CONTENT_SETTING_ALLOW));
+  EXPECT_FALSE(IsMorePermissive(CONTENT_SETTING_ALLOW, CONTENT_SETTING_ALLOW));
 
   // Check that all possible ContentSettings except CONTENT_SETTING_DEFAULT are
   // handled.
@@ -132,5 +135,79 @@ TEST(ContentSettingsUtilsTest, IsMorePermissive) {
     EXPECT_FALSE(IsMorePermissive(s, s));
   }
 }
+
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+TEST(ContentSettingsUtilsTest, CanBeAutoRevoked) {
+  EXPECT_TRUE(CanBeAutoRevoked(ContentSettingsType::GEOLOCATION,
+                               ContentSetting::CONTENT_SETTING_ALLOW));
+
+  // One-time grants should not be auto revoked.
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::GEOLOCATION,
+                                ContentSetting::CONTENT_SETTING_ALLOW, true));
+
+  // Only allowed permissions should be auto revoked.
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::GEOLOCATION,
+                                ContentSetting::CONTENT_SETTING_DEFAULT));
+
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::GEOLOCATION,
+                                ContentSetting::CONTENT_SETTING_ASK));
+
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::GEOLOCATION,
+                                ContentSetting::CONTENT_SETTING_BLOCK));
+
+  // Notification permissions should not be auto revoked.
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::NOTIFICATIONS,
+                                ContentSetting::CONTENT_SETTING_ALLOW));
+
+  // Permissions that are not ask by default should not be auto revoked. IMAGES
+  // permission is allowed by default, and ADS  permission is blocked by
+  // default.
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::IMAGES,
+                                ContentSetting::CONTENT_SETTING_ALLOW));
+
+  EXPECT_FALSE(CanBeAutoRevoked(ContentSettingsType::ADS,
+                                ContentSetting::CONTENT_SETTING_ALLOW));
+}
+#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+
+class ContentSettingsUtilsFlagTest : public testing::TestWithParam<bool> {
+ public:
+  ContentSettingsUtilsFlagTest() {
+    if (IsNoDelayForTestingEnabled()) {
+      features_.InitWithFeaturesAndParameters(
+          {{content_settings::features::kSafetyCheckUnusedSitePermissions,
+            {{"unused-site-permissions-no-delay-for-testing", "true"}}}},
+          {});
+    }
+  }
+
+  bool IsNoDelayForTestingEnabled() const { return GetParam(); }
+
+ protected:
+  base::test::SingleThreadTaskEnvironment task_environment_;
+
+ private:
+  base::test::ScopedFeatureList features_;
+};
+
+TEST_P(ContentSettingsUtilsFlagTest, GetCoarseVisitedTime) {
+  base::Time now = base::Time::Now();
+  for (int i = 0; i < 20; i++) {
+    base::Time time = now + base::Days(i);
+    if (IsNoDelayForTestingEnabled()) {
+      EXPECT_EQ(GetCoarseVisitedTime(time), time);
+      EXPECT_EQ(GetCoarseVisitedTime(time),
+                time - GetCoarseVisitedTimePrecision());
+    } else {
+      EXPECT_LE(GetCoarseVisitedTime(time), time);
+      EXPECT_GE(GetCoarseVisitedTime(time),
+                time - GetCoarseVisitedTimePrecision());
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(/* no prefix */,
+                         ContentSettingsUtilsFlagTest,
+                         testing::Bool());
 
 }  // namespace content_settings

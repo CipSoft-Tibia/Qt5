@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QQMLDEBUGSERVICEINTERFACES_P_H
 #define QQMLDEBUGSERVICEINTERFACES_P_H
@@ -58,6 +22,7 @@
 #endif
 #include <private/qqmldebugstatesdelegate_p.h>
 #include <private/qqmlboundsignal_p.h>
+#include <private/qqmltranslation_p.h>
 
 #include <limits>
 
@@ -65,9 +30,11 @@ QT_BEGIN_NAMESPACE
 
 class QWindow;
 class QQuickWindow;
-class QQmlTranslationBinding;
+
 
 #if !QT_CONFIG(qml_debug)
+
+class TranslationBindingInformation;
 
 class QV4DebugService
 {
@@ -91,7 +58,7 @@ class QQmlEngineDebugService
 {
 public:
     void objectCreated(QJSEngine *, QObject *) {}
-    virtual void setStatesDelegate(QQmlDebugStatesDelegate *) {}
+    static void setStatesDelegateFactory(QQmlDebugStatesDelegate *(*)()) {}
 };
 
 class QQmlInspectorService {
@@ -106,8 +73,7 @@ class QQmlEngineControlService {};
 class QQmlNativeDebugService {};
 class QQmlDebugTranslationService {
 public:
-    virtual QString foundElidedText(QObject *, const QString &, const QString &) {return {};}
-    virtual void foundTranslationBinding(QQmlTranslationBinding *, QObject *, QQmlContextData *) {}
+    virtual void foundTranslationBinding(const TranslationBindingInformation &) {}
 };
 
 #else
@@ -116,6 +82,8 @@ class Q_QML_PRIVATE_EXPORT QV4DebugService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QV4DebugService() override;
+
     static const QString s_key;
 
     virtual void signalEmitted(const QString &signal) = 0;
@@ -123,7 +91,7 @@ public:
 protected:
     friend class QQmlDebugConnector;
 
-    QV4DebugService(float version, QObject *parent = nullptr) :
+    explicit QV4DebugService(float version, QObject *parent = nullptr) :
         QQmlDebugService(s_key, version, parent) {}
 };
 
@@ -132,6 +100,8 @@ class Q_QML_PRIVATE_EXPORT QQmlProfilerService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QQmlProfilerService() override;
+
     static const QString s_key;
 
     virtual void addGlobalProfiler(QQmlAbstractProfilerAdapter *profiler) = 0;
@@ -146,7 +116,7 @@ public:
 protected:
     friend class QQmlDebugConnector;
 
-    QQmlProfilerService(float version, QObject *parent = nullptr) :
+    explicit QQmlProfilerService(float version, QObject *parent = nullptr) :
         QQmlDebugService(s_key, version, parent) {}
 };
 
@@ -154,40 +124,66 @@ class Q_QML_PRIVATE_EXPORT QQmlEngineDebugService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QQmlEngineDebugService() override;
+
     static const QString s_key;
 
     virtual void objectCreated(QJSEngine *engine, QObject *object) = 0;
-    virtual void setStatesDelegate(QQmlDebugStatesDelegate *) = 0;
+    static void setStatesDelegateFactory(QQmlDebugStatesDelegate *(*factory)());
+    static QQmlDebugStatesDelegate *createStatesDelegate();
 
 protected:
     friend class QQmlDebugConnector;
 
-    QQmlEngineDebugService(float version, QObject *parent = nullptr) :
+    explicit QQmlEngineDebugService(float version, QObject *parent = nullptr) :
         QQmlDebugService(s_key, version, parent) {}
 
     QQmlBoundSignal *nextSignal(QQmlBoundSignal *prev) { return prev->m_nextSignal; }
+};
+
+#if QT_CONFIG(translation)
+struct TranslationBindingInformation
+{
+    static const TranslationBindingInformation
+    create(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+           const QV4::CompiledData::Binding *binding, QObject *scopeObject,
+           QQmlRefPointer<QQmlContextData> ctxt);
+
+    QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
+    QObject *scopeObject;
+    QQmlRefPointer<QQmlContextData> ctxt;
+
+    QString propertyName;
+    QQmlTranslation translation;
+
+    quint32 line;
+    quint32 column;
 };
 
 class Q_QML_PRIVATE_EXPORT QQmlDebugTranslationService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QQmlDebugTranslationService() override;
+
     static const QString s_key;
 
-    virtual QString foundElidedText(QObject *qQuickTextObject, const QString &layoutText, const QString &elideText) = 0;
-    virtual void foundTranslationBinding(QQmlTranslationBinding *binding, QObject *scopeObject, QQmlContextData *contextData) = 0;
+    virtual void foundTranslationBinding(const TranslationBindingInformation &translationBindingInformation) = 0;
 protected:
     friend class QQmlDebugConnector;
 
-    QQmlDebugTranslationService(float version, QObject *parent = nullptr) :
+    explicit QQmlDebugTranslationService(float version, QObject *parent = nullptr) :
         QQmlDebugService(s_key, version, parent) {}
 
 };
+#endif //QT_CONFIG(translation)
 
 class Q_QML_PRIVATE_EXPORT QQmlInspectorService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QQmlInspectorService() override;
+
     static const QString s_key;
 
     virtual void addWindow(QQuickWindow *) = 0;
@@ -197,7 +193,7 @@ public:
 protected:
     friend class QQmlDebugConnector;
 
-    QQmlInspectorService(float version, QObject *parent = nullptr) :
+    explicit QQmlInspectorService(float version, QObject *parent = nullptr) :
         QQmlDebugService(s_key, version, parent) {}
 };
 
@@ -205,6 +201,8 @@ class Q_QML_PRIVATE_EXPORT QDebugMessageService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QDebugMessageService() override;
+
     static const QString s_key;
 
     virtual void synchronizeTime(const QElapsedTimer &otherTimer) = 0;
@@ -212,7 +210,7 @@ public:
 protected:
     friend class QQmlDebugConnector;
 
-    QDebugMessageService(float version, QObject *parent = nullptr) :
+    explicit QDebugMessageService(float version, QObject *parent = nullptr) :
         QQmlDebugService(s_key, version, parent) {}
 };
 
@@ -220,6 +218,8 @@ class Q_QML_PRIVATE_EXPORT QQmlEngineControlService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QQmlEngineControlService() override;
+
     static const QString s_key;
 
 protected:
@@ -234,12 +234,14 @@ class Q_QML_PRIVATE_EXPORT QQmlNativeDebugService : public QQmlDebugService
 {
     Q_OBJECT
 public:
+    ~QQmlNativeDebugService() override;
+
     static const QString s_key;
 
 protected:
     friend class QQmlDebugConnector;
 
-    QQmlNativeDebugService(float version, QObject *parent = nullptr)
+    explicit QQmlNativeDebugService(float version, QObject *parent = nullptr)
         : QQmlDebugService(s_key, version,  parent) {}
 };
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,7 @@
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "ui/gfx/x/connection.h"
+#include "ui/gfx/x/future.h"
 #include "ui/gl/gl_context.h"
 #include "ui/gl/gl_implementation.h"
 #include "ui/gl/gl_implementation_wrapper.h"
@@ -103,7 +104,7 @@ void TraceGLXApi::SetDisabledExtensions(
 bool GetGLWindowSystemBindingInfoGLX(const GLVersionInfo& gl_info,
                                      GLWindowSystemBindingInfo* info) {
   auto* connection = x11::Connection::Get();
-  auto* display = connection->display();
+  auto* display = connection->GetXlibDisplay().display();
   const int screen = connection->DefaultScreenId();
   const char* vendor = glXQueryServerString(display, screen, GLX_VENDOR);
   const char* version = glXQueryServerString(display, screen, GLX_VERSION);
@@ -127,11 +128,11 @@ bool GetGLWindowSystemBindingInfoGLX(const GLVersionInfo& gl_info,
       base::StringToUint(split_version[0], &major_num);
       // Mesa after version 17 will reliably use DRI3 when available.
 
-      if (major_num >= 17 && connection->QueryExtension({"DRI3"}).Sync())
+      if (major_num >= 17 && connection->QueryExtension("DRI3").Sync())
         info->direct_rendering_version = "2.3";
-      else if (connection->QueryExtension({"DRI2"}).Sync())
+      else if (connection->QueryExtension("DRI2").Sync())
         info->direct_rendering_version = "2.2";
-      else if (connection->QueryExtension({"DRI"}).Sync())
+      else if (connection->QueryExtension("DRI").Sync())
         info->direct_rendering_version = "2.1";
     }
   } else {

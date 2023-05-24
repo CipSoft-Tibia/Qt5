@@ -1,38 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest/QTest>
 #include <QObject>
 #include <Qt3DExtras/qtorusgeometry.h>
-#include <Qt3DRender/qattribute.h>
-#include <Qt3DRender/qbuffer.h>
-#include <Qt3DRender/qbufferdatagenerator.h>
-#include <qopenglcontext.h>
+#include <Qt3DCore/qattribute.h>
+#include <Qt3DCore/qbuffer.h>
+#include <QtGui/qopenglcontext.h>
 #include <QtGui/qvector2d.h>
 #include <QtGui/qvector3d.h>
 #include <QtGui/qvector4d.h>
@@ -58,14 +32,14 @@ private Q_SLOTS:
         QCOMPARE(geometry.radius(), 1.0f);
         QCOMPARE(geometry.minorRadius(), 1.0f);
         QVERIFY(geometry.positionAttribute() != nullptr);
-        QCOMPARE(geometry.positionAttribute()->name(), Qt3DRender::QAttribute::defaultPositionAttributeName());
+        QCOMPARE(geometry.positionAttribute()->name(), Qt3DCore::QAttribute::defaultPositionAttributeName());
         QVERIFY(geometry.normalAttribute() != nullptr);
-        QCOMPARE(geometry.normalAttribute()->name(), Qt3DRender::QAttribute::defaultNormalAttributeName());
+        QCOMPARE(geometry.normalAttribute()->name(), Qt3DCore::QAttribute::defaultNormalAttributeName());
         QVERIFY(geometry.texCoordAttribute() != nullptr);
-        QCOMPARE(geometry.texCoordAttribute()->name(), Qt3DRender::QAttribute::defaultTextureCoordinateAttributeName());
+        QCOMPARE(geometry.texCoordAttribute()->name(), Qt3DCore::QAttribute::defaultTextureCoordinateAttributeName());
         // TODO: Expose tangent attribute in Qt 5.8 and see below
 //        QVERIFY(geometry.tangentAttribute() != nullptr);
-//        QCOMPARE(geometry.tangentAttribute()->name(), Qt3DRender::QAttribute::defaultTangentAttributeName());
+//        QCOMPARE(geometry.tangentAttribute()->name(), Qt3DCore::QAttribute::defaultTangentAttributeName());
         QVERIFY(geometry.indexAttribute() != nullptr);
     }
 
@@ -158,11 +132,11 @@ private Q_SLOTS:
         QTest::addColumn<float>("radius");
         QTest::addColumn<float>("minorRadius");
         QTest::addColumn<int>("triangleIndex");
-        QTest::addColumn<QVector<quint16>>("indices");
-        QTest::addColumn<QVector<QVector3D>>("positions");
-        QTest::addColumn<QVector<QVector3D>>("normals");
-        QTest::addColumn<QVector<QVector2D>>("texCoords");
-        QTest::addColumn<QVector<QVector4D>>("tangents");
+        QTest::addColumn<QList<quint16>>("indices");
+        QTest::addColumn<QList<QVector3D>>("positions");
+        QTest::addColumn<QList<QVector3D>>("normals");
+        QTest::addColumn<QList<QVector2D>>("texCoords");
+        QTest::addColumn<QList<QVector4D>>("tangents");
 
         {
             // Torus properties
@@ -193,7 +167,7 @@ private Q_SLOTS:
 
             // The triangle and indices
             const int triangleIndex = 0;
-            const auto indices = (QVector<quint16>() << 0 << 1 << 9);
+            const QList<quint16> indices = { 0, 1, 9 };
 
             // Calculate attributes for vertices A, B, and C of the triangle
             const float rA = radius + minorRadius * cosv0;
@@ -203,22 +177,22 @@ private Q_SLOTS:
             const auto posA = QVector3D(rA * cosu0, rA * sinu0, minorRadius * sinv0);
             const auto posB = QVector3D(rB * cosu0, rB * sinu0, minorRadius * sinv1);
             const auto posC = QVector3D(rC * cosu1, rC * sinu1, minorRadius * sinv0);
-            const auto positions = (QVector<QVector3D>() << posA << posB << posC);
+            const QList<QVector3D> positions = { posA, posB, posC };
 
             const auto nA = QVector3D(cosv0 * cosu0, cosv0 * sinu0, sinv0).normalized();
             const auto nB = QVector3D(cosv1 * cosu0, cosv1 * sinu0, sinv1).normalized();
             const auto nC = QVector3D(cosv0 * cosu1, cosv0 * sinu1, sinv0).normalized();
-            const auto normals = (QVector<QVector3D>() << nA << nB << nC);
+            const QList<QVector3D> normals = { nA, nB, nC };
 
             const auto tcA = QVector2D(u0, v0) / float(2.0 * M_PI);
             const auto tcB = QVector2D(u0, v1) / float(2.0 * M_PI);
             const auto tcC = QVector2D(u1, v0) / float(2.0 * M_PI);
-            const auto texCoords = (QVector<QVector2D>() << tcA << tcB << tcC);
+            const QList<QVector2D> texCoords = { tcA, tcB, tcC };
 
             const auto tA = QVector4D(-sinu0, cosu0, 0.0f, 1.0f);
             const auto tB = QVector4D(-sinu0, cosu0, 0.0f, 1.0f);
             const auto tC = QVector4D(-sinu1, cosu1, 0.0f, 1.0f);
-            const auto tangents = (QVector<QVector4D>() << tA << tB << tC);
+            const QList<QVector4D> tangents = { tA, tB, tC };
 
             // Add the row
             QTest::newRow("8rings_8slices_firstTriangle")
@@ -261,7 +235,7 @@ private Q_SLOTS:
 
             // The triangle and indices
             const int triangleIndex = 127;
-            const auto indices = (QVector<quint16>() << 71 << 80 << 79);
+            const QList<quint16> indices = { 71, 80, 79 };
 
             // Calculate attributes for vertices A, B, and C of the triangle
             const float rA = radius + minorRadius * cosv1;
@@ -271,22 +245,22 @@ private Q_SLOTS:
             const auto posA = QVector3D(rA * cosu0, rA * sinu0, minorRadius * sinv1);
             const auto posB = QVector3D(rB * cosu1, rB * sinu1, minorRadius * sinv1);
             const auto posC = QVector3D(rC * cosu1, rC * sinu1, minorRadius * sinv0);
-            const auto positions = (QVector<QVector3D>() << posA << posB << posC);
+            const QList<QVector3D> positions = { posA, posB, posC };
 
             const auto nA = QVector3D(cosv1 * cosu0, cosv1 * sinu0, sinv1).normalized();
             const auto nB = QVector3D(cosv1 * cosu1, cosv1 * sinu1, sinv1).normalized();
             const auto nC = QVector3D(cosv0 * cosu1, cosv0 * sinu1, sinv0).normalized();
-            const auto normals = (QVector<QVector3D>() << nA << nB << nC);
+            const QList<QVector3D> normals = { nA, nB, nC };
 
             const auto tcA = QVector2D(u0, v1) / float(2.0 * M_PI);
             const auto tcB = QVector2D(u1, v1) / float(2.0 * M_PI);
             const auto tcC = QVector2D(u1, v0) / float(2.0 * M_PI);
-            const auto texCoords = (QVector<QVector2D>() << tcA << tcB << tcC);
+            const QList<QVector2D> texCoords = { tcA, tcB, tcC };
 
             const auto tA = QVector4D(-sinu0, cosu1, 0.0f, 1.0f);
             const auto tB = QVector4D(-sinu1, cosu1, 0.0f, 1.0f);
             const auto tC = QVector4D(-sinu1, cosu1, 0.0f, 1.0f);
-            const auto tangents = (QVector<QVector4D>() << tA << tB << tC);
+            const QList<QVector4D> tangents = { tA, tB, tC };
 
             // Add the row
             QTest::newRow("8rings_8slices_lastTriangle")
@@ -300,12 +274,12 @@ private Q_SLOTS:
     {
         // GIVEN
         Qt3DExtras::QTorusGeometry geometry;
-        const QVector<Qt3DRender::QAttribute *> attributes = geometry.attributes();
-        Qt3DRender::QAttribute *positionAttribute = geometry.positionAttribute();
-        Qt3DRender::QAttribute *normalAttribute = geometry.normalAttribute();
-        Qt3DRender::QAttribute *texCoordAttribute = geometry.texCoordAttribute();
-//        Qt3DRender::QAttribute *tangentAttribute = geometry.tangentAttribute();
-        Qt3DRender::QAttribute *indexAttribute = geometry.indexAttribute();
+        const QList<Qt3DCore::QAttribute *> attributes = geometry.attributes();
+        Qt3DCore::QAttribute *positionAttribute = geometry.positionAttribute();
+        Qt3DCore::QAttribute *normalAttribute = geometry.normalAttribute();
+        Qt3DCore::QAttribute *texCoordAttribute = geometry.texCoordAttribute();
+//        Qt3DCore::QAttribute *tangentAttribute = geometry.tangentAttribute();
+        Qt3DCore::QAttribute *indexAttribute = geometry.indexAttribute();
 
         // WHEN
         QFETCH(int, rings);
@@ -317,13 +291,11 @@ private Q_SLOTS:
         geometry.setRadius(radius);
         geometry.setMinorRadius(minorRadius);
 
-        generateGeometry(geometry);
-
         // THEN
 
         // Check buffer of each attribute is valid and actually has some data
         for (const auto &attribute : attributes) {
-            Qt3DRender::QBuffer *buffer = attribute->buffer();
+            Qt3DCore::QBuffer *buffer = attribute->buffer();
             QVERIFY(buffer != nullptr);
             QVERIFY(buffer->data().size() != 0);
         }
@@ -332,11 +304,11 @@ private Q_SLOTS:
 
         // Check specific indices and vertex attributes of triangle under test
         QFETCH(int, triangleIndex);
-        QFETCH(QVector<quint16>, indices);
-        QFETCH(QVector<QVector3D>, positions);
-        QFETCH(QVector<QVector3D>, normals);
-        QFETCH(QVector<QVector2D>, texCoords);
-//        QFETCH(QVector<QVector4D>, tangents);
+        QFETCH(QList<quint16>, indices);
+        QFETCH(QList<QVector3D>, positions);
+        QFETCH(QList<QVector3D>, normals);
+        QFETCH(QList<QVector2D>, texCoords);
+//        QFETCH(QList<QVector4D>, tangents);
 
         int i = 0;
         for (auto index : indices) {

@@ -25,7 +25,7 @@
 
 TAG = lang
 DEPS = $(ORTH)
-ARGS = -d $(srcdir) $(ORTH)
+ARGS = --directory $(srcdir) $(ORTH)
 DIST = $(ORTH)
 
 include $(top_srcdir)/Tools.mk
@@ -282,7 +282,40 @@ ORTH = \
 	doi.orth \
 	mni.orth \
 	und_zsye.orth \
-	und_zmth.orth
+	und_zmth.orth \
+	anp.orth \
+	bhb.orth \
+	hif.orth \
+	mag.orth \
+	raj.orth \
+	the.orth \
+	agr.orth \
+	ayc.orth \
+	bem.orth \
+	ckb.orth \
+	cmn.orth \
+	dsb.orth \
+	hak.orth \
+	lij.orth \
+	lzh.orth \
+	mfe.orth \
+	mhr.orth \
+	miq.orth \
+	mjw.orth \
+	mnw.orth \
+	nan.orth \
+	nhn.orth \
+	niu.orth \
+	rif.orth \
+	sgs.orth \
+	shn.orth \
+	szl.orth \
+	tcy.orth \
+	tpi.orth \
+	unm.orth \
+	wae.orth \
+	yue.orth \
+	yuw.orth
 #	^-------------- Add new orth files here
 
 BUILT_SOURCES += $(top_builddir)/conf.d/35-lang-normalize.conf
@@ -290,7 +323,9 @@ BUILT_SOURCES += $(top_builddir)/conf.d/35-lang-normalize.conf
 DISTCLEANFILES = $(BUILT_SOURCES)
 
 $(top_builddir)/conf.d/35-lang-normalize.conf: $(ORTH) Makefile
-	$(AM_V_GEN) echo "<fontconfig>" > $@ && \
+	$(AM_V_GEN) echo "<?xml version=\"1.0\"?>" > $@ && \
+		echo "<!DOCTYPE fontconfig SYSTEM \"urn:fontconfig:fonts.dtd\">" >> $@ && \
+		echo "<fontconfig>" >> $@ && \
 	for i in `echo $(ORTH) | sed -e 's/ /\n/g' | grep -v _ | sed -e 's/\.orth$$//g' | sort`; do \
 		echo "  <!-- $$i* -> $$i -->" >> $@; \
 		echo "  <match>" >> $@; \

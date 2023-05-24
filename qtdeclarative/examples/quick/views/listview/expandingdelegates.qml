@@ -1,61 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick 2.0
+import QtQuick
 import "content"
 
 // This example illustrates expanding a list item to show a more detailed view.
 
 Rectangle {
     id: page
-    width: 400; height: 240
+    width: 400
+    height: 240
     color: "black"
 
     // Delegate for the recipes.  This delegate has two modes:
@@ -78,13 +32,16 @@ Rectangle {
             // want to fade.
             property real detailsOpacity : 0
 //! [0]
-            width: listView.width
+            width: ListView.view.width
             height: 70
 
             // A simple rounded rectangle for the background
             Rectangle {
                 id: background
-                x: 2; y: 2; width: parent.width - x*2; height: parent.height - y*2
+                x: 2
+                y: 2
+                width: parent.width - x * 2
+                height: parent.height - y * 2
                 color: "ivory"
                 border.color: "orange"
                 radius: 5
@@ -105,26 +62,32 @@ Rectangle {
 
             Row {
                 id: topLayout
-                x: 10; y: 10; height: recipeImage.height; width: parent.width
+                x: 10
+                y: 10
+                height: recipeImage.height
+                width: parent.width
                 spacing: 10
 
                 Image {
                     id: recipeImage
-                    width: 50; height: 50
+                    width: 50
+                    height: 50
                     source: recipe.picture
                 }
 //! [1]
                 Column {
-                    width: background.width - recipeImage.width - 20; height: recipeImage.height
+                    width: background.width - recipeImage.width - 20
+                    height: recipeImage.height
                     spacing: 5
 
                     Text {
                         text: recipe.title
-                        font.bold: true; font.pointSize: 16
+                        font.bold: true
+                        font.pointSize: 16
                     }
 
                     SmallText {
-                        text: "Ingredients"
+                        text: qsTr("Ingredients")
                         font.bold: true
                         opacity: recipe.detailsOpacity
                     }
@@ -141,22 +104,32 @@ Rectangle {
 //! [2]
             Item {
                 id: details
-                x: 10; width: parent.width - 20
+                x: 10
+                width: parent.width - 20
 
-                anchors { top: topLayout.bottom; topMargin: 10; bottom: parent.bottom; bottomMargin: 10 }
+                anchors {
+                    top: topLayout.bottom
+                    topMargin: 10
+                    bottom: parent.bottom
+                    bottomMargin: 10
+                }
                 opacity: recipe.detailsOpacity
 //! [2]
                 SmallText {
                     id: methodTitle
                     anchors.top: parent.top
-                    text: "Method"
-                    font.pointSize: 12; font.bold: true
+                    text: qsTr("Method")
+                    font.pointSize: 12
+                    font.bold: true
                 }
 
                 Flickable {
                     id: flick
                     width: parent.width
-                    anchors { top: methodTitle.bottom; bottom: parent.bottom }
+                    anchors {
+                        top: methodTitle.bottom
+                        bottom: parent.bottom
+                    }
                     contentHeight: methodText.height
                     clip: true
 
@@ -169,13 +142,19 @@ Rectangle {
                 }
 
                 Image {
-                    anchors { right: flick.right; top: flick.top }
+                    anchors {
+                        right: flick.right
+                        top: flick.top
+                    }
                     source: "content/pics/moreUp.png"
                     opacity: flick.atYBeginning ? 0 : 1
                 }
 
                 Image {
-                    anchors { right: flick.right; bottom: flick.bottom }
+                    anchors {
+                        right: flick.right
+                        bottom: flick.bottom
+                    }
                     source: "content/pics/moreDown.png"
                     opacity: flick.atYEnd ? 0 : 1
                 }
@@ -185,9 +164,12 @@ Rectangle {
             // A button to close the detailed view, i.e. set the state back to default ('').
             TextButton {
                 y: 10
-                anchors { right: background.right; rightMargin: 10 }
+                anchors {
+                    right: background.right
+                    rightMargin: 10
+                }
                 opacity: recipe.detailsOpacity
-                text: "Close"
+                text: qsTr("Close")
 
                 onClicked: recipe.state = '';
             }
@@ -195,23 +177,46 @@ Rectangle {
             states: State {
                 name: "Details"
 
-                PropertyChanges { target: background; color: "white" }
-                PropertyChanges { target: recipeImage; width: 130; height: 130 } // Make picture bigger
-                PropertyChanges { target: recipe; detailsOpacity: 1; x: 0 } // Make details visible
-                PropertyChanges { target: recipe; height: listView.height } // Fill the entire list area with the detailed view
+                PropertyChanges {
+                    background.color: "white"
+                    recipeImage {
+                         // Make picture bigger
+                        width: 130
+                        height: 130
+                    }
+                    recipe {
+                        // Make details visible
+                        detailsOpacity: 1
+                        x: 0
+
+                        // Fill the entire list area with the detailed view
+                        height: listView.height
+                    }
+                }
 
                 // Move the list so that this item is at the top.
-                PropertyChanges { target: recipe.ListView.view; explicit: true; contentY: recipe.y }
+                PropertyChanges {
+                    recipe.ListView.view.contentY: recipe.y
+                    explicit: true;
+                }
 
                 // Disallow flicking while we're in detailed view
-                PropertyChanges { target: recipe.ListView.view; interactive: false }
+                PropertyChanges {
+                    recipe.ListView.view.interactive: false
+                }
             }
 
             transitions: Transition {
                 // Make the state changes smooth
                 ParallelAnimation {
-                    ColorAnimation { property: "color"; duration: 500 }
-                    NumberAnimation { duration: 300; properties: "detailsOpacity,x,contentY,height,width" }
+                    ColorAnimation {
+                        property: "color"
+                        duration: 500
+                    }
+                    NumberAnimation {
+                        duration: 300
+                        properties: "detailsOpacity,x,contentY,height,width"
+                    }
                 }
             }
         }
@@ -222,7 +227,7 @@ Rectangle {
     ListView {
         id: listView
         anchors.fill: parent
-        model: RecipesModel {}
+        model: RecipesModel { }
         delegate: recipeDelegate
     }
 }

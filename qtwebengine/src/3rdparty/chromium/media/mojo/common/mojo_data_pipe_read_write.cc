@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,10 @@
 
 #include <memory>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
+#include "base/task/sequenced_task_runner.h"
 #include "media/mojo/common/mojo_pipe_read_write_util.h"
 
 using media::mojo_pipe_read_write_util::IsPipeReadWriteError;
@@ -22,7 +23,7 @@ MojoDataPipeReader::MojoDataPipeReader(
     : consumer_handle_(std::move(consumer_handle)),
       pipe_watcher_(FROM_HERE,
                     mojo::SimpleWatcher::ArmingPolicy::MANUAL,
-                    base::SequencedTaskRunnerHandle::Get()) {
+                    base::SequencedTaskRunner::GetCurrentDefault()) {
   DVLOG(1) << __func__;
 
   MojoResult result = pipe_watcher_.Watch(
@@ -43,6 +44,7 @@ MojoDataPipeReader::~MojoDataPipeReader() {
 void MojoDataPipeReader::CompleteCurrentRead() {
   DVLOG(4) << __func__;
   DCHECK(done_cb_);
+  current_buffer_ = nullptr;
   current_buffer_size_ = 0;
   std::move(done_cb_).Run(true);
 }
@@ -137,7 +139,7 @@ MojoDataPipeWriter::MojoDataPipeWriter(
     : producer_handle_(std::move(producer_handle)),
       pipe_watcher_(FROM_HERE,
                     mojo::SimpleWatcher::ArmingPolicy::MANUAL,
-                    base::SequencedTaskRunnerHandle::Get()) {
+                    base::SequencedTaskRunner::GetCurrentDefault()) {
   DVLOG(1) << __func__;
 
   MojoResult result =
@@ -171,7 +173,7 @@ void MojoDataPipeWriter::Write(const uint8_t* buffer,
   // Cannot write if the pipe is already closed.
   if (!producer_handle_.is_valid()) {
     DVLOG(1) << __func__
-             << ": Failed to write buffer becuase the pipe is already closed";
+             << ": Failed to write buffer because the pipe is already closed";
     std::move(done_cb).Run(false);
     return;
   }

@@ -1,5 +1,4 @@
-// Copyright (c) 2009, Google Inc.
-// All rights reserved.
+// Copyright 2009 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -160,9 +159,12 @@ class PageAllocator {
 
 // Wrapper to use with STL containers
 template <typename T>
-struct PageStdAllocator : public std::allocator<T> {
-  typedef typename std::allocator<T>::pointer pointer;
-  typedef typename std::allocator<T>::size_type size_type;
+struct PageStdAllocator {
+  using AllocatorTraits = std::allocator_traits<std::allocator<T>>;
+  using value_type = typename AllocatorTraits::value_type;
+  using pointer = typename AllocatorTraits::pointer;
+  using difference_type = typename AllocatorTraits::difference_type;
+  using size_type = typename AllocatorTraits::size_type;
 
   explicit PageStdAllocator(PageAllocator& allocator) : allocator_(allocator),
                                                         stackdata_(NULL),

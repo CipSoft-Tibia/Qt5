@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QLALR project on Qt Labs.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "recognizer.h"
 
@@ -34,10 +9,12 @@
 #include <cstring>
 #include <cctype>
 
+using namespace Qt::StringLiterals;
+
 Recognizer::Recognizer (Grammar *grammar, bool no_lines):
   tos(0),
   stack_size(0),
-  state_stack(0),
+  state_stack(nullptr),
   _M_line(1),
   _M_action_line(0),
   _M_grammar(grammar),
@@ -83,9 +60,9 @@ int Recognizer::nextToken()
     {
       inp(); // skip "
       text.clear ();
-      while (! ch.isNull () && ch != QLatin1Char ('"'))
+      while (!ch.isNull () && ch != u'"')
         {
-          if (ch == QLatin1Char ('\\'))
+          if (ch == u'\\')
             {
               text += ch;
               inp();
@@ -94,7 +71,7 @@ int Recognizer::nextToken()
           inp ();
         }
 
-      if (ch == QLatin1Char ('"'))
+      if (ch == u'"')
         inp ();
       else
         qerr() << _M_input_file << ":" << _M_line << ": Warning. Expected `\"'" << Qt::endl;
@@ -103,11 +80,11 @@ int Recognizer::nextToken()
       return (token = STRING_LITERAL);
     }
 
-  else if (ch.isLetterOrNumber () || ch == QLatin1Char ('_'))
+  else if (ch.isLetterOrNumber () || ch == u'_')
     {
       text.clear ();
       do { text += ch; inp (); }
-      while (ch.isLetterOrNumber () || ch == QLatin1Char ('_') || ch == QLatin1Char ('.'));
+      while (ch.isLetterOrNumber () || ch == u'_' || ch == u'.');
       _M_current_value = text;
       return (token = ID);
     }
@@ -120,33 +97,33 @@ int Recognizer::nextToken()
       while (ch.isSpace ());
 
       do { text += ch; inp (); }
-      while (ch.isLetterOrNumber () || ch == QLatin1Char ('_') || ch == QLatin1Char ('-'));
+      while (ch.isLetterOrNumber () || ch == u'_' || ch == u'-');
 
-      if (text == QLatin1String("token_prefix"))
+      if (text == "token_prefix"_L1)
         return (token = TOKEN_PREFIX);
-      else if (text == QLatin1String("merged_output"))
+      else if (text == "merged_output"_L1)
         return (token = MERGED_OUTPUT);
-      else if (text == QLatin1String("token"))
+      else if (text == "token"_L1)
         return (token = TOKEN);
-      else if (text == QLatin1String("start"))
+      else if (text == "start"_L1)
         return (token = START);
-      else if (text == QLatin1String("parser"))
+      else if (text == "parser"_L1)
         return (token = PARSER);
-      else if (text == QLatin1String("decl"))
+      else if (text == "decl"_L1)
         return (token = DECL_FILE);
-      else if (text == QLatin1String("impl"))
+      else if (text == "impl"_L1)
         return (token = IMPL_FILE);
-      else if (text == QLatin1String("expect"))
+      else if (text == "expect"_L1)
         return (token = EXPECT);
-      else if (text == QLatin1String("expect-rr"))
+      else if (text == "expect-rr"_L1)
         return (token = EXPECT_RR);
-      else if (text == QLatin1String("left"))
+      else if (text == "left"_L1)
         return (token = LEFT);
-      else if (text == QLatin1String("right"))
+      else if (text == "right"_L1)
         return (token = RIGHT);
-      else if (text == QLatin1String("nonassoc"))
+      else if (text == "nonassoc"_L1)
         return (token = NONASSOC);
-      else if (text == QLatin1String("prec"))
+      else if (text == "prec"_L1)
         return (token = PREC);
       else
         {
@@ -158,30 +135,30 @@ int Recognizer::nextToken()
 
   inp ();
 
-  if (token == '-' && ch == QLatin1Char ('-'))
+  if (token == '-' && ch == u'-')
     {
       do { inp (); }
-      while (! ch.isNull () && ch != QLatin1Char ('\n'));
+      while (!ch.isNull () && ch != u'\n');
       goto Lagain;
     }
 
-  else if (token == ':' && ch == QLatin1Char (':'))
+  else if (token == ':' && ch == u':')
     {
       inp ();
-      if (ch != QLatin1Char ('='))
+      if (ch != u'=')
         return (token = ERROR);
       inp ();
       return (token = COLON);
     }
 
-  else if (token == '/' && ch == QLatin1Char (':'))
+  else if (token == '/' && ch == u':')
     {
       _M_action_line = _M_line;
 
       text.clear ();
       if (! _M_no_lines)
-        text += QLatin1String("\n#line ") + QString::number(_M_action_line) +
-                QLatin1String(" \"") + QDir::fromNativeSeparators(_M_input_file) + QLatin1String("\"\n");
+        text += "\n#line "_L1 + QString::number(_M_action_line) +
+                " \""_L1 + QDir::fromNativeSeparators(_M_input_file) + "\"\n"_L1;
       inp (); // skip ':'
 
       forever
@@ -191,13 +168,13 @@ int Recognizer::nextToken()
               token = ch.unicode ();
               inp ();
 
-              if (token == ':' && ch == QLatin1Char ('/'))
+              if (token == ':' && ch == u'/')
                 break;
 
               text += QLatin1Char (token);
             }
 
-          if (ch != QLatin1Char ('/'))
+          if (ch != u'/')
             return (token = ERROR);
 
           inp ();
@@ -208,18 +185,18 @@ int Recognizer::nextToken()
               return (token = DECL);
             }
           else
-            text += QLatin1String (":/");
+            text += ":/"_L1;
         }
     }
 
-  else if (token == '/' && ch == QLatin1Char ('.'))
+  else if (token == '/' && ch == u'.')
     {
       _M_action_line = _M_line;
 
       text.clear ();
       if (! _M_no_lines)
-        text += QLatin1String("\n#line ") + QString::number(_M_action_line) +
-                QLatin1String(" \"") + QDir::fromNativeSeparators(_M_input_file) + QLatin1String("\"\n");
+        text += "\n#line "_L1 + QString::number(_M_action_line) +
+                " \""_L1 + QDir::fromNativeSeparators(_M_input_file) + "\"\n"_L1;
 
       inp (); // skip ':'
 
@@ -230,13 +207,13 @@ int Recognizer::nextToken()
               token = ch.unicode ();
               inp ();
 
-              if (token == '.' && ch == QLatin1Char ('/'))
+              if (token == '.' && ch == u'/')
                 break;
 
               text += QLatin1Char (token);
             }
 
-          if (ch != QLatin1Char ('/'))
+          if (ch != u'/')
             return (token = ERROR);
 
           inp ();
@@ -247,7 +224,7 @@ int Recognizer::nextToken()
               return (token = IMPL);
             }
           else
-            text += QLatin1String ("");
+            text += ""_L1;
         }
     }
 

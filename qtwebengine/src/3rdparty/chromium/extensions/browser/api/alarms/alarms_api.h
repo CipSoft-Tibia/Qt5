@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "extensions/browser/extension_function.h"
 
 namespace base {
@@ -15,7 +16,7 @@ class Clock;
 
 namespace extensions {
 struct Alarm;
-using AlarmList = std::vector<std::unique_ptr<Alarm>>;
+using AlarmList = std::vector<Alarm>;
 
 class AlarmsCreateFunction : public ExtensionFunction {
  public:
@@ -33,7 +34,7 @@ class AlarmsCreateFunction : public ExtensionFunction {
  private:
   void Callback();
 
-  base::Clock* const clock_;
+  const raw_ptr<base::Clock> clock_;
 };
 
 class AlarmsGetFunction : public ExtensionFunction {

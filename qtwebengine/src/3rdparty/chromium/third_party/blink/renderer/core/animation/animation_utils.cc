@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -37,7 +37,7 @@ void AnimationUtils::ForEachInterpolatedPropertyValue(
     return;
 
   StyleResolver& resolver = target->GetDocument().GetStyleResolver();
-  scoped_refptr<ComputedStyle> style =
+  scoped_refptr<const ComputedStyle> style =
       resolver.StyleForInterpolations(*target, interpolations);
 
   for (const auto& property : properties) {

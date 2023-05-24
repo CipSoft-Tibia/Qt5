@@ -1,45 +1,15 @@
-#############################################################################
-##
-## Copyright (C) 2020 The Qt Company Ltd.
-## Contact: http://www.qt.io/licensing/
-##
-## This file is part of the provisioning scripts of the Qt Toolkit.
-##
-## $QT_BEGIN_LICENSE:LGPL21$
-## Commercial License Usage
-## Licensees holding valid commercial Qt licenses may use this file in
-## accordance with the commercial license agreement provided with the
-## Software or, alternatively, in accordance with the terms contained in
-## a written agreement between you and The Qt Company. For licensing terms
-## and conditions see http://www.qt.io/terms-conditions. For further
-## information use the contact form at http://www.qt.io/contact-us.
-##
-## GNU Lesser General Public License Usage
-## Alternatively, this file may be used under the terms of the GNU Lesser
-## General Public License version 2.1 or version 3 as published by the Free
-## Software Foundation and appearing in the file LICENSE.LGPLv21 and
-## LICENSE.LGPLv3 included in the packaging of this file. Please review the
-## following information to ensure the GNU Lesser General Public License
-## requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-## http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-##
-## As a special exception, The Qt Company gives you certain additional
-## rights. These rights are described in The Qt Company LGPL Exception
-## version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-##
-## $QT_END_LICENSE$
-##
-#############################################################################
+# Copyright (C) 2020 The Qt Company Ltd.
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 . "$PSScriptRoot\helpers.ps1"
 
 $version = "11_2_2"
 $package = "C:\Windows\temp\opengl32sw.7z"
-$mesaOpenglSha1_64 = "0ed35efbc8112282be5d0c87c37fde2d15e81998"
-$mesaOpenglUrl_64_cache = "http://ci-files01-hki.intra.qt.io/input/windows/opengl32sw-64-mesa_$version-signed.7z"
-$mesaOpenglUrl_64_alt = "http://download.qt.io/development_releases/prebuilt/llvmpipe/windows/opengl32sw-64-mesa_$version-signed.7z"
-$mesaOpenglSha1_32 = "96bd6ca0d7fd249fb61531dca888965ffd20f53c"
-$mesaOpenglUrl_32_cache = "http://ci-files01-hki.intra.qt.io/input/windows/opengl32sw-32-mesa_$version-signed.7z"
-$mesaOpenglUrl_32_alt = "http://download.qt.io/development_releases/prebuilt/llvmpipe/windows/opengl32sw-32-mesa_$version-signed.7z"
+$mesaOpenglSha1_64 = "58f948746696b17a594b2f542e87b0e831b28dc3"
+$mesaOpenglUrl_64_cache = "http://ci-files01-hki.intra.qt.io/input/windows/opengl32sw-64-mesa_$version-signed_sha256.7z"
+$mesaOpenglUrl_64_alt = "http://download.qt.io/development_releases/prebuilt/llvmpipe/windows/opengl32sw-64-mesa_$version-signed_sha256.7z"
+$mesaOpenglSha1_32 = "974f468acaa0018d46607e2100f1214fecd35bd4"
+$mesaOpenglUrl_32_cache = "http://ci-files01-hki.intra.qt.io/input/windows/opengl32sw-32-mesa_$version-signed_sha256.7z"
+$mesaOpenglUrl_32_alt = "http://download.qt.io/development_releases/prebuilt/llvmpipe/windows/opengl32sw-32-mesa_$version-signed_sha256.7z"
 
 function Extract-Mesa
 {
@@ -53,7 +23,7 @@ function Extract-Mesa
     Verify-Checksum $package $sha1
     Extract-7Zip $package $targetFolder
     Write-Host "Removing $package"
-    Remove-Item -Path $package
+    Remove "$package"
 }
 
 if (Is64BitWinHost) {

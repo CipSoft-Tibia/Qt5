@@ -6,9 +6,11 @@
 #define V8_SNAPSHOT_SNAPSHOT_SOURCE_SINK_H_
 
 #include <utility>
+#include <vector>
 
+#include "src/base/atomicops.h"
 #include "src/base/logging.h"
-#include "src/snapshot/snapshot-utils.h"
+#include "src/common/globals.h"
 #include "src/utils/utils.h"
 
 namespace v8 {
@@ -27,10 +29,12 @@ class SnapshotByteSource final {
         length_(length),
         position_(0) {}
 
-  explicit SnapshotByteSource(Vector<const byte> payload)
+  explicit SnapshotByteSource(base::Vector<const byte> payload)
       : data_(payload.begin()), length_(payload.length()), position_(0) {}
 
   ~SnapshotByteSource() = default;
+  SnapshotByteSource(const SnapshotByteSource&) = delete;
+  SnapshotByteSource& operator=(const SnapshotByteSource&) = delete;
 
   bool HasMore() { return position_ < length_; }
 
@@ -50,6 +54,30 @@ class SnapshotByteSource final {
     memcpy(to, data_ + position_, number_of_bytes);
     position_ += number_of_bytes;
   }
+
+  void CopySlots(Address* dest, int number_of_slots) {
+    base::AtomicWord* start = reinterpret_cast<base::AtomicWord*>(dest);
+    base::AtomicWord* end = start + number_of_slots;
+    for (base::AtomicWord* p = start; p < end;
+         ++p, position_ += sizeof(base::AtomicWord)) {
+      base::AtomicWord val;
+      memcpy(&val, data_ + position_, sizeof(base::AtomicWord));
+      base::Relaxed_Store(p, val);
+    }
+  }
+
+#ifdef V8_COMPRESS_POINTERS
+  void CopySlots(Tagged_t* dest, int number_of_slots) {
+    AtomicTagged_t* start = reinterpret_cast<AtomicTagged_t*>(dest);
+    AtomicTagged_t* end = start + number_of_slots;
+    for (AtomicTagged_t* p = start; p < end;
+         ++p, position_ += sizeof(AtomicTagged_t)) {
+      AtomicTagged_t val;
+      memcpy(&val, data_ + position_, sizeof(AtomicTagged_t));
+      base::Relaxed_Store(p, val);
+    }
+  }
+#endif
 
   inline int GetInt() {
     // This way of decoding variable-length encoded integers does not
@@ -74,16 +102,10 @@ class SnapshotByteSource final {
   int position() { return position_; }
   void set_position(int position) { position_ = position; }
 
-  uint32_t GetChecksum() const {
-    return Checksum(Vector<const byte>(data_, length_));
-  }
-
  private:
   const byte* data_;
   int length_;
   int position_;
-
-  DISALLOW_COPY_AND_ASSIGN(SnapshotByteSource);
 };
 
 /**
@@ -100,6 +122,7 @@ class SnapshotByteSink {
 
   void Put(byte b, const char* description) { data_.push_back(b); }
 
+  void PutN(int number_of_bytes, const byte v, const char* description);
   void PutInt(uintptr_t integer, const char* description);
   void PutRaw(const byte* data, int number_of_bytes, const char* description);
 

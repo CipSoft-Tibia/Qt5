@@ -1,50 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
-#include <QtCore/qglobal.h>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QLOGGING_H
 #define QLOGGING_H
 
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qtconfigmacros.h>
+#include <QtCore/qtcoreexports.h>
+#include <QtCore/qcontainerfwd.h>
+
 #if 0
 // header is automatically included in qglobal.h
 #pragma qt_no_master_include
+#pragma qt_class(QtLogging)
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -57,14 +25,22 @@ QT_BEGIN_NAMESPACE
 class QDebug;
 class QNoDebug;
 
-enum QtMsgType { QtDebugMsg, QtWarningMsg, QtCriticalMsg, QtFatalMsg, QtInfoMsg, QtSystemMsg = QtCriticalMsg };
+
+enum QtMsgType {
+    QtDebugMsg,
+    QtWarningMsg,
+    QtCriticalMsg,
+    QtFatalMsg,
+    QtInfoMsg,
+    QtSystemMsg = QtCriticalMsg
+};
 
 class QMessageLogContext
 {
     Q_DISABLE_COPY(QMessageLogContext)
 public:
-    Q_DECL_CONSTEXPR QMessageLogContext() noexcept = default;
-    Q_DECL_CONSTEXPR QMessageLogContext(const char *fileName, int lineNumber, const char *functionName, const char *categoryName) noexcept
+    constexpr QMessageLogContext() noexcept = default;
+    constexpr QMessageLogContext(const char *fileName, int lineNumber, const char *functionName, const char *categoryName) noexcept
         : line(lineNumber), file(fileName), function(functionName), category(categoryName) {}
 
     int version = 2;
@@ -82,14 +58,20 @@ private:
 
 class QLoggingCategory;
 
+#if defined(Q_CC_MSVC_ONLY)
+#  define QT_MESSAGE_LOGGER_NORETURN
+#else
+#  define QT_MESSAGE_LOGGER_NORETURN Q_NORETURN
+#endif
+
 class Q_CORE_EXPORT QMessageLogger
 {
     Q_DISABLE_COPY(QMessageLogger)
 public:
-    Q_DECL_CONSTEXPR QMessageLogger() : context() {}
-    Q_DECL_CONSTEXPR QMessageLogger(const char *file, int line, const char *function)
+    constexpr QMessageLogger() : context() {}
+    constexpr QMessageLogger(const char *file, int line, const char *function)
         : context(file, line, function, "default") {}
-    Q_DECL_CONSTEXPR QMessageLogger(const char *file, int line, const char *function, const char *category)
+    constexpr QMessageLogger(const char *file, int line, const char *function, const char *category)
         : context(file, line, function, category) {}
 
     void debug(const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
@@ -100,6 +82,8 @@ public:
     void warning(const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
     Q_DECL_COLD_FUNCTION
     void critical(const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
+    QT_MESSAGE_LOGGER_NORETURN Q_DECL_COLD_FUNCTION
+    void fatal(const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
 
     typedef const QLoggingCategory &(*CategoryFunction)();
 
@@ -115,12 +99,10 @@ public:
     void critical(const QLoggingCategory &cat, const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
     Q_DECL_COLD_FUNCTION
     void critical(CategoryFunction catFunc, const char *msg, ...) const Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
-
-#ifndef Q_CC_MSVC
-    Q_NORETURN
-#endif
-    Q_DECL_COLD_FUNCTION
-    void fatal(const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(2, 3);
+    QT_MESSAGE_LOGGER_NORETURN Q_DECL_COLD_FUNCTION
+    void fatal(const QLoggingCategory &cat, const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
+    QT_MESSAGE_LOGGER_NORETURN Q_DECL_COLD_FUNCTION
+    void fatal(CategoryFunction catFunc, const char *msg, ...) const noexcept Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
 
 #ifndef QT_NO_DEBUG_STREAM
     QDebug debug() const;
@@ -129,12 +111,24 @@ public:
     QDebug info() const;
     QDebug info(const QLoggingCategory &cat) const;
     QDebug info(CategoryFunction catFunc) const;
+    Q_DECL_COLD_FUNCTION
     QDebug warning() const;
+    Q_DECL_COLD_FUNCTION
     QDebug warning(const QLoggingCategory &cat) const;
+    Q_DECL_COLD_FUNCTION
     QDebug warning(CategoryFunction catFunc) const;
+    Q_DECL_COLD_FUNCTION
     QDebug critical() const;
+    Q_DECL_COLD_FUNCTION
     QDebug critical(const QLoggingCategory &cat) const;
+    Q_DECL_COLD_FUNCTION
     QDebug critical(CategoryFunction catFunc) const;
+    Q_DECL_COLD_FUNCTION
+    QDebug fatal() const;
+    Q_DECL_COLD_FUNCTION
+    QDebug fatal(const QLoggingCategory &cat) const;
+    Q_DECL_COLD_FUNCTION
+    QDebug fatal(CategoryFunction catFunc) const;
 
     QNoDebug noDebug() const noexcept;
 #endif // QT_NO_DEBUG_STREAM
@@ -142,6 +136,8 @@ public:
 private:
     QMessageLogContext context;
 };
+
+#undef QT_MESSAGE_LOGGER_NORETURN
 
 #if !defined(QT_MESSAGELOGCONTEXT) && !defined(QT_NO_MESSAGELOGCONTEXT)
 #  if defined(QT_NO_DEBUG)
@@ -188,17 +184,15 @@ Q_CORE_EXPORT void qt_message_output(QtMsgType, const QMessageLogContext &contex
 Q_CORE_EXPORT Q_DECL_COLD_FUNCTION void qErrnoWarning(int code, const char *msg, ...);
 Q_CORE_EXPORT Q_DECL_COLD_FUNCTION void qErrnoWarning(const char *msg, ...);
 
-#if QT_DEPRECATED_SINCE(5, 0)// deprecated. Use qInstallMessageHandler instead!
-typedef void (*QtMsgHandler)(QtMsgType, const char *);
-Q_CORE_EXPORT QT_DEPRECATED QtMsgHandler qInstallMsgHandler(QtMsgHandler);
-#endif
-
 typedef void (*QtMessageHandler)(QtMsgType, const QMessageLogContext &, const QString &);
 Q_CORE_EXPORT QtMessageHandler qInstallMessageHandler(QtMessageHandler);
 
 Q_CORE_EXPORT void qSetMessagePattern(const QString &messagePattern);
 Q_CORE_EXPORT QString qFormatLogMessage(QtMsgType type, const QMessageLogContext &context,
                                         const QString &buf);
+
+Q_DECL_COLD_FUNCTION
+Q_CORE_EXPORT QString qt_error_string(int errorCode = -1);
 
 QT_END_NAMESPACE
 #endif // QLOGGING_H

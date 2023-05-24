@@ -1,48 +1,14 @@
-/***************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 BlackBerry Limited. All rights reserved.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtBluetooth module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// Copyright (C) 2016 BlackBerry Limited. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtBluetooth/QLowEnergyService>
 #include "qlowenergyserviceprivate_p.h"
 #include "qlowenergydescriptor.h"
 
 QT_BEGIN_NAMESPACE
+
+QT_IMPL_METATYPE_EXTERN(QLowEnergyDescriptor)
 
 /*!
     \class QLowEnergyDescriptor
@@ -52,16 +18,16 @@ QT_BEGIN_NAMESPACE
     \since 5.4
 
     QLowEnergyDescriptor provides information about a Bluetooth Low Energy
-    descriptor's \l name(), \l uuid(), \l value() and \l handle(). Descriptors are
+    descriptor's name(), uuid(), and value(). Descriptors are
     encapsulated by Bluetooth Low Energy characteristics and provide additional
     contextual information about the characteristic (data format, notification activation
     and so on).
 
-    The descriptor value may be written via the \l QLowEnergyService instance
+    The descriptor value may be written via the QLowEnergyService instance
     that manages the service to which this descriptor belongs. The
     \l {QLowEnergyService::writeDescriptor()} function writes the new value.
     The \l {QLowEnergyService::descriptorWritten()} signal
-    is emitted upon success. The cached \l value() of this object is updated accordingly.
+    is emitted upon success. The cached value() of this object is updated accordingly.
 
     \sa QLowEnergyService, QLowEnergyCharacteristic
 */
@@ -145,41 +111,50 @@ QLowEnergyDescriptor &QLowEnergyDescriptor::operator=(const QLowEnergyDescriptor
 }
 
 /*!
-    Returns \c true if \a other is equal to this QLowEnergyCharacteristic; otherwise \c false.
-
-    Two QLowEnergyDescriptor instances are considered to be equal if they refer to
-    the same descriptor on the same remote Bluetooth Low Energy device or both
-    instances have been default-constructed.
- */
-bool QLowEnergyDescriptor::operator==(const QLowEnergyDescriptor &other) const
-{
-    if (d_ptr != other.d_ptr)
-        return false;
-
-    if ((data && !other.data) || (!data && other.data))
-        return false;
-
-    if (!data)
-        return true;
-
-    if (data->charHandle != other.data->charHandle
-        || data->descHandle != other.data->descHandle) {
-        return false;
-    }
-
-    return true;
-}
-
-/*!
-    Returns \c true if \a other is not equal to this QLowEnergyCharacteristic; otherwise \c false.
+    \fn bool QLowEnergyDescriptor::operator==(const QLowEnergyDescriptor &a,
+                                              const QLowEnergyDescriptor &b)
+    \brief Returns \c true if \a a is equal to \a b; otherwise \c false.
 
     Two QLowEnergyDescriptor instances are considered to be equal if they refer to
     the same descriptor on the same remote Bluetooth Low Energy device  or both
     instances have been default-constructed.
  */
-bool QLowEnergyDescriptor::operator!=(const QLowEnergyDescriptor &other) const
+
+/*!
+    \fn bool QLowEnergyDescriptor::operator!=(const QLowEnergyDescriptor &a,
+                                              const QLowEnergyDescriptor &b)
+   \brief Returns \c true if \a a is not equal to \a b; otherwise \c false.
+
+    Two QLowEnergyDescriptor instances are considered to be equal if they refer to
+    the same descriptor on the same remote Bluetooth Low Energy device  or both
+    instances have been default-constructed.
+ */
+
+/*!
+    \brief Returns \c true if \a other is equal to this QLowEnergyCharacteristic,
+    otherwise \c false.
+    \internal
+
+    Two QLowEnergyDescriptor instances are considered to be equal if they refer to
+    the same descriptor on the same remote Bluetooth Low Energy device or both
+    instances have been default-constructed.
+ */
+bool QLowEnergyDescriptor::equals(const QLowEnergyDescriptor &a, const QLowEnergyDescriptor &b)
 {
-    return !(*this == other);
+    if (a.d_ptr != b.d_ptr)
+        return false;
+
+    if ((a.data && !b.data) || (!a.data && b.data))
+        return false;
+
+    if (!a.data)
+        return true;
+
+    if (a.data->charHandle != b.data->charHandle || a.data->descHandle != b.data->descHandle) {
+        return false;
+    }
+
+    return true;
 }
 
 /*!
@@ -223,6 +198,8 @@ QBluetoothUuid QLowEnergyDescriptor::uuid() const
 }
 
 /*!
+    \internal
+
     Returns the handle of the descriptor or \c 0 if the handle
     cannot be accessed on the platform or the descriptor is invalid.
 
@@ -281,27 +258,27 @@ QBluetoothUuid::DescriptorType QLowEnergyDescriptor::type() const
 {
     const QBluetoothUuid u = uuid();
     bool ok = false;
-    quint16 shortUuid = u.toUInt16(&ok);
+    QBluetoothUuid::DescriptorType shortUuid = static_cast<QBluetoothUuid::DescriptorType>(u.toUInt16(&ok));
 
     if (!ok)
-        return QBluetoothUuid::UnknownDescriptorType;
+        return QBluetoothUuid::DescriptorType::UnknownDescriptorType;
 
     switch (shortUuid) {
-    case QBluetoothUuid::CharacteristicExtendedProperties:
-    case QBluetoothUuid::CharacteristicUserDescription:
-    case QBluetoothUuid::ClientCharacteristicConfiguration:
-    case QBluetoothUuid::ServerCharacteristicConfiguration:
-    case QBluetoothUuid::CharacteristicPresentationFormat:
-    case QBluetoothUuid::CharacteristicAggregateFormat:
-    case QBluetoothUuid::ValidRange:
-    case QBluetoothUuid::ExternalReportReference:
-    case QBluetoothUuid::ReportReference:
+        case QBluetoothUuid::DescriptorType::CharacteristicExtendedProperties:
+    case QBluetoothUuid::DescriptorType::CharacteristicUserDescription:
+    case QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration:
+    case QBluetoothUuid::DescriptorType::ServerCharacteristicConfiguration:
+    case QBluetoothUuid::DescriptorType::CharacteristicPresentationFormat:
+    case QBluetoothUuid::DescriptorType::CharacteristicAggregateFormat:
+    case QBluetoothUuid::DescriptorType::ValidRange:
+    case QBluetoothUuid::DescriptorType::ExternalReportReference:
+    case QBluetoothUuid::DescriptorType::ReportReference:
         return (QBluetoothUuid::DescriptorType) shortUuid;
     default:
         break;
     }
 
-    return QBluetoothUuid::UnknownDescriptorType;
+    return QBluetoothUuid::DescriptorType::UnknownDescriptorType;
 }
 
 /*!

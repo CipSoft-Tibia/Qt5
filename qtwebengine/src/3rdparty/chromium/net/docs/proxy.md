@@ -110,7 +110,6 @@ about an HTTP proxy.
 
 When using an HTTP proxy in Chrome, name resolution is always deferred to the
 proxy. HTTP proxies can proxy `http://`, `https://`, `ws://` and `wss://` URLs.
-(Chrome's FTP support is deprecated, and HTTP proxies cannot proxy `ftp://` anymore)
 
 Communication to HTTP proxy servers is insecure, meaning proxied `http://`
 requests are sent in the clear. When proxying `https://` requests through an
@@ -469,7 +468,7 @@ implicitly](#Implicit-bypass-rules).
 
 *Subtracts* the [implicit proxy bypass rules](#Implicit-bypass-rules)
 (localhost and link local addresses). This is generally only needed for test
-setupe. Beware of the security implications to proxying localhost.
+setups. Beware of the security implications to proxying localhost.
 
 Whereas regular bypass rules instruct the browser about URLs that should *not*
 use the proxy, this rule has the opposite effect and tells the browser to
@@ -523,8 +522,7 @@ localhost
 ```
 
 The complete rules are slightly more complicated. For instance on
-Windows we will also recognize `loopback`, and there is special casing of
-`localhost6` and `localhost6.localdomain6` in Chrome's localhost matching.
+Windows we will also recognize `loopback`.
 
 This concept of implicit proxy bypass rules is consistent with the
 platform-level proxy support on Windows and macOS (albeit with some differences

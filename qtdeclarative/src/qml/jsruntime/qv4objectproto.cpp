@@ -1,52 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Crimson AS <info@crimson.no>
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Crimson AS <info@crimson.no>
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 
 #include "qv4objectproto_p.h"
 #include "qv4argumentsobject_p.h"
 #include <private/qv4mm_p.h>
 #include "qv4scopedvalue_p.h"
-#include "qv4runtime_p.h"
 #include "qv4objectiterator_p.h"
-#include "qv4string_p.h"
-#include "qv4jscall_p.h"
 #include "qv4symbol_p.h"
 #include "qv4propertykey_p.h"
 
@@ -137,7 +98,7 @@ ReturnedValue ObjectPrototype::method_getPrototypeOf(const FunctionObject *b, co
         return scope.engine->throwTypeError();
 
     ScopedObject o(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedObject p(scope, o->getPrototypeOf());
@@ -160,7 +121,7 @@ ReturnedValue ObjectPrototype::method_getOwnPropertyDescriptor(const FunctionObj
         return scope.engine->throwTypeError();
 
     ScopedObject O(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     if (ArgumentsObject::isNonStrictArgumentsObject(O))
@@ -168,7 +129,7 @@ ReturnedValue ObjectPrototype::method_getOwnPropertyDescriptor(const FunctionObj
 
     ScopedValue v(scope, argc > 1 ? argv[1] : Value::undefinedValue());
     ScopedPropertyKey name(scope, v->toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedProperty desc(scope);
@@ -183,7 +144,7 @@ ReturnedValue ObjectPrototype::method_getOwnPropertyDescriptors(const FunctionOb
         return scope.engine->throwTypeError();
 
     ScopedObject o(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return Encode::undefined();
 
     ScopedObject descriptors(scope, scope.engine->newObject());
@@ -212,7 +173,7 @@ ReturnedValue ObjectPrototype::method_getOwnPropertyNames(const FunctionObject *
         return scope.engine->throwTypeError();
 
     ScopedObject O(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     return Encode(getOwnPropertyNames(scope.engine, argv[0]));
@@ -252,7 +213,7 @@ ReturnedValue ObjectPrototype::method_assign(const FunctionObject *b, const Valu
         return scope.engine->throwTypeError();
 
     ScopedObject to(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     if (argc == 1)
@@ -263,7 +224,7 @@ ReturnedValue ObjectPrototype::method_assign(const FunctionObject *b, const Valu
             continue;
 
         ScopedObject from(scope, argv[i].toObject(scope.engine));
-        if (scope.engine->hasException)
+        if (scope.hasException())
         return QV4::Encode::undefined();
         QV4::ScopedArrayObject keys(scope, QV4::ObjectPrototype::getOwnPropertyNames(scope.engine, from));
         quint32 length = keys->getLength();
@@ -284,7 +245,7 @@ ReturnedValue ObjectPrototype::method_assign(const FunctionObject *b, const Valu
 
             propValue = from->get(nextKey);
             to->set(nextKey, propValue, Object::DoThrowOnRejection);
-            if (scope.engine->hasException)
+            if (scope.hasException())
         return QV4::Encode::undefined();
         }
     }
@@ -322,14 +283,14 @@ ReturnedValue ObjectPrototype::method_defineProperty(const FunctionObject *b, co
 
     ScopedObject O(scope, argv[0]);
     ScopedPropertyKey name(scope, (argc > 1 ? argv[1] : Value::undefinedValue()).toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedValue attributes(scope, argc > 2 ? argv[2] : Value::undefinedValue());
     ScopedProperty pd(scope);
     PropertyAttributes attrs;
     toPropertyDescriptor(scope.engine, attributes, pd, &attrs);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     if (!O->defineOwnProperty(name, pd, attrs))
@@ -347,7 +308,7 @@ ReturnedValue ObjectPrototype::method_defineProperties(const FunctionObject *b, 
     ScopedObject O(scope, argv[0]);
 
     ScopedObject o(scope, argv[1].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedValue val(scope);
@@ -364,7 +325,7 @@ ReturnedValue ObjectPrototype::method_defineProperties(const FunctionObject *b, 
         PropertyAttributes nattrs;
         val = o->getValue(pd->value, attrs);
         toPropertyDescriptor(scope.engine, val, n, &nattrs);
-        if (scope.engine->hasException)
+        if (scope.hasException())
         return QV4::Encode::undefined();
         bool ok = O->defineOwnProperty(key, n, nattrs);
         if (!ok)
@@ -381,7 +342,7 @@ ReturnedValue ObjectPrototype::method_entries(const FunctionObject *f, const Val
         return scope.engine->throwTypeError();
 
     ScopedObject o(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return Encode::undefined();
 
     ScopedArrayObject a(scope, scope.engine->newArrayObject());
@@ -405,7 +366,7 @@ ReturnedValue ObjectPrototype::method_entries(const FunctionObject *f, const Val
         entry = a->get(PropertyKey::fromArrayIndex(i));
         name = entry->get(PropertyKey::fromArrayIndex(0));
         value = o->get(name->toPropertyKey());
-        if (scope.engine->hasException)
+        if (scope.hasException())
             return Encode::undefined();
         entry->push_back(value);
     }
@@ -560,7 +521,7 @@ ReturnedValue ObjectPrototype::method_keys(const FunctionObject *b, const Value 
         return scope.engine->throwTypeError();
 
     ScopedObject o(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedArrayObject a(scope, scope.engine->newArrayObject());
@@ -602,7 +563,7 @@ ReturnedValue ObjectPrototype::method_values(const FunctionObject *f, const Valu
         return scope.engine->throwTypeError();
 
     ScopedObject o(scope, argv[0].toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedArrayObject a(scope, scope.engine->newArrayObject());
@@ -679,10 +640,10 @@ ReturnedValue ObjectPrototype::method_hasOwnProperty(const FunctionObject *b, co
 {
     Scope scope(b);
     ScopedPropertyKey P(scope, (argc ? argv[0] : Value::undefinedValue()).toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
     ScopedObject O(scope, thisObject->toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
     bool r = O->getOwnProperty(P) != Attr_Invalid;
     return Encode(r);
@@ -696,7 +657,7 @@ ReturnedValue ObjectPrototype::method_isPrototypeOf(const FunctionObject *b, con
 
     ScopedObject V(scope, argv[0]);
     ScopedObject O(scope, thisObject->toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
     ScopedObject proto(scope, V->getPrototypeOf());
     while (proto) {
@@ -711,11 +672,11 @@ ReturnedValue ObjectPrototype::method_propertyIsEnumerable(const FunctionObject 
 {
     Scope scope(b);
     ScopedPropertyKey p(scope, (argc ? argv[0] : Value::undefinedValue()).toPropertyKey(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedObject o(scope, thisObject->toObject(scope.engine));
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
     PropertyAttributes attrs = o->getOwnProperty(p);
     return Encode(attrs.isEnumerable());
@@ -732,7 +693,7 @@ ReturnedValue ObjectPrototype::method_defineGetter(const FunctionObject *b, cons
         THROW_TYPE_ERROR();
 
     ScopedString prop(scope, argv[0], ScopedString::Convert);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedObject o(scope, thisObject);
@@ -762,7 +723,7 @@ ReturnedValue ObjectPrototype::method_defineSetter(const FunctionObject *b, cons
         THROW_TYPE_ERROR();
 
     ScopedString prop(scope, argv[0], ScopedString::Convert);
-    if (scope.engine->hasException)
+    if (scope.hasException())
         return QV4::Encode::undefined();
 
     ScopedObject o(scope, thisObject);

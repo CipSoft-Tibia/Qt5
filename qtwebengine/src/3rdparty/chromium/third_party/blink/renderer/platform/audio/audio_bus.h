@@ -29,10 +29,8 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_AUDIO_BUS_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_AUDIO_BUS_H_
 
-#include <memory>
-
-#include "base/macros.h"
 #include "third_party/blink/renderer/platform/audio/audio_channel.h"
+#include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/thread_safe_ref_counted.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 
@@ -72,6 +70,19 @@ class PLATFORM_EXPORT AudioBus : public ThreadSafeRefCounted<AudioBus> {
                                         uint32_t length,
                                         bool allocate = true);
 
+  // Pass in 0.0 for sampleRate to use the file's sample-rate, otherwise a
+  // sample-rate conversion to the requested sampleRate will be made (if it
+  // doesn't already match the file's sample-rate).  The created buffer will
+  // have its sample-rate set correctly to the result.
+  static scoped_refptr<AudioBus> CreateBusFromInMemoryAudioFile(
+      const void* data,
+      size_t data_size,
+      bool mix_to_mono,
+      float sample_rate);
+
+  AudioBus(const AudioBus&) = delete;
+  AudioBus& operator=(const AudioBus&) = delete;
+
   // Tells the given channel to use an externally allocated buffer.
   void SetChannelMemory(unsigned channel_index,
                         float* storage,
@@ -80,9 +91,9 @@ class PLATFORM_EXPORT AudioBus : public ThreadSafeRefCounted<AudioBus> {
   // Channels
   unsigned NumberOfChannels() const { return channels_.size(); }
 
-  AudioChannel* Channel(unsigned channel) { return channels_[channel].get(); }
+  AudioChannel* Channel(unsigned channel) { return &channels_[channel]; }
   const AudioChannel* Channel(unsigned channel) const {
-    return channels_[channel].get();
+    return &channels_[channel];
   }
   AudioChannel* ChannelByType(unsigned type);
   const AudioChannel* ChannelByType(unsigned type) const;
@@ -165,9 +176,7 @@ class PLATFORM_EXPORT AudioBus : public ThreadSafeRefCounted<AudioBus> {
   static scoped_refptr<AudioBus> GetDataResource(int resource_id,
                                                  float sample_rate);
 
- protected:
-  AudioBus() = default;
-
+ private:
   AudioBus(unsigned number_of_channels, uint32_t length, bool allocate);
 
   void DiscreteSumFrom(const AudioBus&);
@@ -178,12 +187,9 @@ class PLATFORM_EXPORT AudioBus : public ThreadSafeRefCounted<AudioBus> {
   void SumFromByDownMixing(const AudioBus&);
 
   uint32_t length_;
-  Vector<std::unique_ptr<AudioChannel>> channels_;
+  Vector<AudioChannel, 2> channels_;
   int layout_;
   float sample_rate_;  // 0.0 if unknown or N/A
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(AudioBus);
 };
 
 }  // namespace blink

@@ -18,7 +18,6 @@
 
 #include "rtc_base/fake_clock.h"
 #include "rtc_base/gunit.h"
-#include "rtc_base/ref_counted_object.h"
 #include "rtc_base/time_utils.h"
 #include "test/gtest.h"
 
@@ -78,8 +77,6 @@ class FakeDtmfProvider : public DtmfProviderInterface {
 
   FakeDtmfProvider() : last_insert_dtmf_call_(0) {}
 
-  ~FakeDtmfProvider() { SignalDestroyed(); }
-
   // Implements DtmfProviderInterface.
   bool CanInsertDtmf() override { return can_insert_; }
 
@@ -96,10 +93,6 @@ class FakeDtmfProvider : public DtmfProviderInterface {
     return true;
   }
 
-  sigslot::signal0<>* GetOnDestroyedSignal() override {
-    return &SignalDestroyed;
-  }
-
   // getter and setter
   const std::vector<DtmfInfo>& dtmf_info_queue() const {
     return dtmf_info_queue_;
@@ -112,14 +105,12 @@ class FakeDtmfProvider : public DtmfProviderInterface {
   bool can_insert_ = false;
   std::vector<DtmfInfo> dtmf_info_queue_;
   int64_t last_insert_dtmf_call_;
-  sigslot::signal0<> SignalDestroyed;
 };
 
 class DtmfSenderTest : public ::testing::Test {
  protected:
   DtmfSenderTest()
-      : observer_(new rtc::RefCountedObject<FakeDtmfObserver>()),
-        provider_(new FakeDtmfProvider()) {
+      : observer_(new FakeDtmfObserver()), provider_(new FakeDtmfProvider()) {
     provider_->SetCanInsertDtmf(true);
     dtmf_ = DtmfSender::Create(rtc::Thread::Current(), provider_.get());
     dtmf_->RegisterObserver(observer_.get());
@@ -131,8 +122,8 @@ class DtmfSenderTest : public ::testing::Test {
     }
   }
 
-  // Constructs a list of DtmfInfo from |tones|, |duration| and
-  // |inter_tone_gap|.
+  // Constructs a list of DtmfInfo from `tones`, `duration` and
+  // `inter_tone_gap`.
   void GetDtmfInfoFromString(
       const std::string& tones,
       int duration,
@@ -216,6 +207,7 @@ class DtmfSenderTest : public ::testing::Test {
     }
   }
 
+  rtc::AutoThread main_thread_;
   std::unique_ptr<FakeDtmfObserver> observer_;
   std::unique_ptr<FakeDtmfProvider> provider_;
   rtc::scoped_refptr<DtmfSender> dtmf_;
@@ -274,6 +266,7 @@ TEST_F(DtmfSenderTest, InsertDtmfWhileProviderIsDeleted) {
   EXPECT_TRUE_SIMULATED_WAIT(observer_->tones().size() == 1, kMaxWaitMs,
                              fake_clock_);
   // Delete provider.
+  dtmf_->OnDtmfProviderDestroyed();
   provider_.reset();
   // The queue should be discontinued so no more tone callbacks.
   SIMULATED_WAIT(false, 200, fake_clock_);

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@ module page_load_metrics.mojom;
 import "ui/gfx/geometry/mojom/geometry.mojom";
 import "mojo/public/mojom/base/shared_memory.mojom";
 import "mojo/public/mojom/base/time.mojom";
-import "third_party/blink/public/mojom/web_feature/web_feature.mojom";
-import "third_party/blink/public/mojom/use_counter/css_property_id.mojom";
-import "url/mojom/origin.mojom";
+import "services/network/public/mojom/request_priority.mojom";
+import "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom";
+import "third_party/blink/public/mojom/use_counter/use_counter_feature.mojom";
 
 // TimeDeltas below relative to navigation start.
 struct DocumentTiming {
@@ -21,19 +21,41 @@ struct DocumentTiming {
 };
 
 struct LargestContentfulPaintTiming {
-  // Time when the page's largest image is painted. Removed images are excluded.
+  // Time when the page's largest image is painted.
   mojo_base.mojom.TimeDelta? largest_image_paint;
+
+  // Time when the page's largest image starts loading.
+  mojo_base.mojom.TimeDelta? largest_image_load_start;
+
+  // Time when the page's largest image finishes loading.
+  mojo_base.mojom.TimeDelta? largest_image_load_end;
 
   // Size of the largest image of the largest image paint, by
   // Size = Height * Width. Removed images are excluded.
   uint64 largest_image_paint_size;
 
-  // Time when the page's largest text is painted. Removed text is excluded.
+  // Time when the page's largest text is painted.
   mojo_base.mojom.TimeDelta? largest_text_paint;
 
   // Size of the largest text of the largest text paint, by
   // Size = Height * Width. Removed text is excluded.
   uint64 largest_text_paint_size;
+
+  // These are packed blink::LargestContentfulPaintType enums, indicating
+  // the largest LCP candidate's type characteristics.
+  uint64 type;
+
+  // Computed entropy of the page's largest image, calculated as the image file
+  // size, in bits, divided by the image's rendered size, in pixels.
+  double image_bpp;
+
+  // Loading priority used for the LCP image.
+  // When the priority is not available or the LCP is a video,
+  // `image_request_priority_valid` is false.
+  // Otherwise, `image_request_priority_value` contains the priority.
+  // TODO(crbug.com/657632): Use an optional enum.
+  bool image_request_priority_valid = false;
+  network.mojom.RequestPriority image_request_priority_value;
 };
 
 // TimeDeltas below relative to navigation start.
@@ -50,10 +72,10 @@ struct PaintTiming {
   // (Experimental) Time when the page's primary content is painted.
   mojo_base.mojom.TimeDelta? first_meaningful_paint;
 
-  // Largest contentful paint, which excludes removed content.
+  // Largest contentful paint, which includes removed content.
   LargestContentfulPaintTiming largest_contentful_paint;
 
-  // (Experimental) largest contentful paint including removed content.
+  // (Experimental) largest contentful paint excluding removed content.
   LargestContentfulPaintTiming experimental_largest_contentful_paint;
 
   // (Experimental) Time when the frame is first eligible to be painted, i.e.
@@ -156,42 +178,72 @@ struct PageLoadTiming {
   // from the cache.
   array<BackForwardCacheTiming> back_forward_cache_timings;
 
+  // Time relative to navigation_start that the prerender activation navigation
+  // was initiated. This is set for prerendered page loads that were later
+  // activated.
+  mojo_base.mojom.TimeDelta? activation_start;
+
   // Time between user input and navigation start. This is set for navigations
   // where the input start timing is known; currently when the navigation is
   // initiated by a link click in the renderer, or from the desktop omnibox.
   mojo_base.mojom.TimeDelta? input_to_navigation_start;
 
-  // If you add additional members, also be sure to update page_load_timing.h.
-};
+  // Time when the standard UserTiming mark `mark_fully_loaded` occurs.
+  mojo_base.mojom.TimeDelta? user_timing_mark_fully_loaded;
 
-// FrameIntersectionUpdate contains a frame's intersections with other elements
-// in a page load.
-struct FrameIntersectionUpdate {
-  // The frame's current intersection rect with the main frame in the main
-  // frame's coordinate system.. The intersection rect is
-  // an empty rect when there is no intersection with the main frame and
-  // returns the document size of the root document for the main frame. This
-  // is only set the first time an intersection changes and is null otherwise.
-  gfx.mojom.Rect? main_frame_intersection_rect;
+  // Time when the standard UserTiming mark `mark_fully_visible` occurs.
+  mojo_base.mojom.TimeDelta? user_timing_mark_fully_visible;
+
+  // Time when the standard UserTiming mark `mark_interactive` occurs.
+  mojo_base.mojom.TimeDelta? user_timing_mark_interactive;
+
+  // If you add additional members, also be sure to update page_load_timing.h.
 };
 
 struct FrameMetadata {
   // These are packed blink::LoadingBehaviorFlag enums.
   int32 behavior_flags = 0;
 
-  // The frame's intersection with page elements.
-  FrameIntersectionUpdate? intersection_update;
+  // For the main frame, the rect is the main frame document size (at (0,0));
+  // for a subframe, the rect is frame's intersection rect with the main frame
+  // in the main frame's coordinate system, and is an empty rect when there is
+  // no intersection with the main frame. This is only set for the first time
+  // the intersection rectangle is initially computed, and for any subsequent
+  // changes, and is null otherwise (i.e. hasn't changed).
+  gfx.mojom.Rect? main_frame_intersection_rect;
+
+  // The main frame's viewport rectangle (encapsulating the dimensions and the
+  // scroll position) in the main frame's coordinate system. This is only set
+  // for the main frame, for the first time the viewport rectangle is initially
+  // computed, and for any subsequent changes, and is null otherwise (i.e.
+  // hasn't changed).
+  gfx.mojom.Rect? main_frame_viewport_rect;
+
+  // The image ad rectangles within the main frame. Empty rectangles are used to
+  // signal the removal of the rectangle. The map keys are the element ids. This
+  // is only populated for the main frame, for the first time
+  // each rectangle is initially computed and for any subsequent changes.
+  map<int32, gfx.mojom.Rect> main_frame_image_ad_rects;
 };
 
-// PageLoadFeatures contains a list of features newly observed by use counter.
-// In a given page load, no PageLoadFeatures sent will contain previously seen
-// values.
-struct PageLoadFeatures {
-  // These features are defined as blink::mojom::WebFeature enums.
-  array<blink.mojom.WebFeature> features;
-  // CSS properties are defined as blink::mojom::CSSSampleId enums.
-  array<blink.mojom.CSSSampleId> css_properties;
-  array<blink.mojom.CSSSampleId> animated_css_properties;
+struct SubresourceLoadMetrics {
+  // Number of subresources loads for the frame.
+  // Note that this include subresources where a service worker responded.
+  uint32 number_of_subresources_loaded;
+
+  // Number of subresources loads that is responded by the service worker.
+  // i.e. `respondWith` was called.
+  uint32 number_of_subresource_loads_handled_by_service_worker;
+
+  // Whether a pervasive payload (aka subresource) was requested.
+  bool pervasive_payload_requested;
+
+  // Number of bytes fetched by the network for pervasive payloads on a page.
+  int64 pervasive_bytes_fetched;
+
+  // Total number of bytes fetched by the network. This value can be -1
+  // when the value is unknown or there is no data.
+  int64 total_bytes_fetched;
 };
 
 // Enumeration of distinct cache types.
@@ -224,10 +276,6 @@ struct ResourceDataUpdate {
   // Whether this resource load has completed.
   bool is_complete;
 
-  // Compression ratio estimated from the response headers if data saver was
-  // used.
-  double data_reduction_proxy_compression_ratio_estimate;
-
   // Whether this resource was tagged as an ad in the renderer. This flag can
   // be set to true at any point during a resource load. A more recent
   // ResourceDataUpdate can have a different flag than the previous update.
@@ -252,15 +300,18 @@ struct ResourceDataUpdate {
   // Whether this resource was fetched via proxy.
   bool proxy_used;
 
-  // The origin of this resource.
-  url.mojom.Origin origin;
-
   // Whether this resource completed loading, either by network or cache, before
   // FCP in the frame it belongs to. This flag can be set to true at any point
   // during a resource load. A more recent ResourceDataUpdate can have a
   // different flag than the previous update. Once this is set to true, it will
   // be true for all future updates.
   bool completed_before_fcp;
+};
+
+// Timestamp and layout shift score of a layout shift.
+struct LayoutShift {
+  mojo_base.mojom.TimeTicks layout_shift_time;
+  double layout_shift_score;
 };
 
 // Metrics about how a RenderFrame rendered since the last UpdateTiming call.
@@ -273,36 +324,14 @@ struct FrameRenderDataUpdate {
   // before a user input or document scroll, since the last timing update.
   float layout_shift_delta_before_input_or_scroll;
 
-  // How many LayoutBlock instances were created.
-  uint32 all_layout_block_count_delta;
-
-  // How many LayoutNG-based LayoutBlock instances were created.
-  uint32 ng_layout_block_count_delta;
-
-  // How many times LayoutObject::UpdateLayout() is called.
-  uint32 all_layout_call_count_delta;
-
-  // How many times LayoutNG-based LayoutObject::UpdateLayout() is called.
-  uint32 ng_layout_call_count_delta;
+  // New layout shifts with timestamps.
+  array<LayoutShift> new_layout_shifts;
 };
 
 // Metrics about the time spent in tasks (cpu time) by a frame.
 struct CpuTiming {
   // Time spent in tasks measured in wall time.
   mojo_base.mojom.TimeDelta task_time;
-};
-
-// Metrics about the count of resources that were lazy loaded in the frame.
-struct DeferredResourceCounts {
-  // The count of frames that were deferred due to lazy load.
-  uint64 deferred_frames = 0;
-  // The count of frames that were loaded after being deferred due to lazy load.
-  uint64 frames_loaded_after_deferral = 0;
-
-  // The count of images that were deferred due to lazy load.
-  uint64 deferred_images = 0;
-  // The count of images that were loaded after being deferred due to lazy load.
-  uint64 images_loaded_after_deferral = 0;
 };
 
 // Metrics about general input delay.
@@ -315,9 +344,41 @@ struct InputTiming {
   // future. And if the subtraction result is negative, we will use 0ms.
   mojo_base.mojom.TimeDelta total_adjusted_input_delay;
 
-  // The number of user interactions, including click, tap, key press,
+  // The number of input events, including click, tap, key press,
   // cancellable touchstart, or pointer down followed by a pointer up.
   uint64 num_input_events = 0;
+
+  // The number of user interactions, including click, tap and key press.
+  uint64 num_interactions = 0;
+
+  // Includes an array of max_event_duration which is the longest input event
+  // duration within a user interaction. The unit of duration is ms. Currently,
+  // we send this array to the browser process behind a Finch flag.
+  // TODO(crbug.com/1252179): Once the experiment is done, we could simplify
+  // this part.
+  UserInteractionLatencies max_event_durations;
+};
+
+// Data for user interaction latencies which can be meausred in different ways.
+// Currently, the array user_interaction_latencies is sent behind a Finch flag.
+// If we don't send the array, the maximum value will be sent instead.
+union UserInteractionLatencies {
+  array<UserInteractionLatency> user_interaction_latencies;
+  // The maximum value in user_interaction_latencies.
+  mojo_base.mojom.TimeDelta worst_interaction_latency;
+};
+
+// The latency and the type of a user interaction.
+struct UserInteractionLatency {
+  mojo_base.mojom.TimeDelta interaction_latency;
+  UserInteractionType interaction_type;
+};
+
+// The type of a user interaction, including keyboard, click or tap and drag.
+enum UserInteractionType {
+  kKeyboard,
+  kTapOrClick,
+  kDrag,
 };
 
 // Sent from renderer to browser process when the PageLoadTiming for the
@@ -327,14 +388,18 @@ interface PageLoadMetrics {
   // UpdateTiming calls are buffered, and contain all updates that have been
   // received in the last buffer window. Some of the update data may be empty.
   // Only called when at least one change has been observed within the frame.
+  // Note that counts in `subresource_load_metrics` are cumulative and not a
+  // delta.
   UpdateTiming(PageLoadTiming page_load_timing,
                FrameMetadata frame_metadata,
-               PageLoadFeatures new_features,
+               // `new_features` will not contain any previously seen values.
+               array<blink.mojom.UseCounterFeature> new_features,
                array<ResourceDataUpdate> resources,
                FrameRenderDataUpdate render_data,
                CpuTiming cpu_load_timing,
-               DeferredResourceCounts new_deferred_resource_data,
-               InputTiming input_timing_delta);
+               InputTiming input_timing_delta,
+               SubresourceLoadMetrics? subresource_load_metrics,
+               uint32 soft_navigation_count);
 
   // Set up a shared memory used to transfer smoothness data from the renderer
   // to the browser. The structure is defined in
@@ -349,6 +414,10 @@ struct BackForwardCacheTiming {
   // Time when the first paint is performed after the time when the page
   // is restored from the back-forward cache.
   mojo_base.mojom.TimeDelta first_paint_after_back_forward_cache_restore;
+
+  // Times on requestAnimationFrame when the page is restored from the back-
+  // forward cache.
+  array<mojo_base.mojom.TimeDelta> request_animation_frames_after_back_forward_cache_restore;
 
   // Queueing Time of the first click, tap, key press, cancellable touchstart,
   // or pointer down followed by a pointer up after the time when the page is

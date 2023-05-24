@@ -12,9 +12,6 @@ qhp.QtWebView.namespace                         = org.qt-project.qtwebview.$QT_V
 qhp.QtWebView.virtualFolder                     = qtwebview
 qhp.QtWebView.indexTitle                        = Qt WebView
 qhp.QtWebView.indexRoot                         =
-qhp.QtWebView.filterAttributes                  = qtwebview $QT_VERSION qtrefdoc
-qhp.QtWebView.customFilters.Qt.name             = QtWebView $QT_VERSION
-qhp.QtWebView.customFilters.Qt.filterAttributes = qtwebview $QT_VERSION
 
 qhp.QtWebView.subprojects                       = classes qmltypes examples
 qhp.QtWebView.subprojects.classes.selectors     = namespace
@@ -30,15 +27,15 @@ qhp.QtWebView.subprojects.examples.indexTitle   = Qt WebView Examples
 qhp.QtWebView.subprojects.examples.selectors    = doc:example
 qhp.QtWebView.subprojects.examples.sortPages    = true
 
-headerdirs += ../ ../../imports/ ../
-sourcedirs += ../ ../../imports/ ../
+headerdirs += ../../
+sourcedirs += ../../ src
 exampledirs += ../../../examples/webview
 imagedirs  += images
 
 examplesinstallpath = webview
-depends = qtcore qtdoc qtgui qtquick qtqml qtwebengine
+depends = qtcore qtdoc qtgui qtquick qtqml qtwebengine qmake qtcmake
 
-Cpp.ignoretokens         += Q_WEBVIEW_EXPORT
+manifestmeta.highlighted.names = "QtWebView/Qt WebView Examples - Minibrowser"
 
 navigation.landingpage    = "Qt WebView"
 navigation.qmltypespage   = "Qt WebView QML Types"

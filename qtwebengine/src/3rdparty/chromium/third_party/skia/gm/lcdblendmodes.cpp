@@ -41,7 +41,7 @@ static sk_sp<SkShader> make_shader(const SkRect& bounds) {
     const SkColor colors[] = {
         SK_ColorRED, SK_ColorGREEN,
     };
-    return SkGradientShader::MakeLinear(pts, colors, nullptr, SK_ARRAY_COUNT(colors),
+    return SkGradientShader::MakeLinear(pts, colors, nullptr, std::size(colors),
                                         SkTileMode::kRepeat);
 }
 
@@ -72,7 +72,8 @@ protected:
         canvas->drawRect(r, p);
 
         SkImageInfo info = SkImageInfo::MakeN32Premul(kWidth, kHeight);
-        auto        surface(ToolUtils::makeSurface(canvas, info));
+        SkSurfaceProps props = SkSurfaceProps(0, kRGB_H_SkPixelGeometry);
+        auto surface(ToolUtils::makeSurface(canvas, info, &props));
 
         SkCanvas* surfCanvas = surface->getCanvas();
         this->drawColumn(surfCanvas, SK_ColorBLACK, SK_ColorWHITE, false);
@@ -85,7 +86,7 @@ protected:
 
         SkPaint surfPaint;
         surfPaint.setBlendMode(SkBlendMode::kSrcOver);
-        surface->draw(canvas, 0, 0, &surfPaint);
+        surface->draw(canvas, 0, 0, SkSamplingOptions(), &surfPaint);
     }
 
     void drawColumn(SkCanvas* canvas, SkColor backgroundColor, SkColor textColor, bool useGrad) {
@@ -125,7 +126,7 @@ protected:
         backgroundPaint.setColor(backgroundColor);
         canvas->drawRect(SkRect::MakeIWH(kColWidth, kHeight), backgroundPaint);
         SkScalar y = fTextHeight;
-        for (size_t m = 0; m < SK_ARRAY_COUNT(gModes); m++) {
+        for (size_t m = 0; m < std::size(gModes); m++) {
             SkPaint paint;
             paint.setColor(textColor);
             paint.setBlendMode(gModes[m]);

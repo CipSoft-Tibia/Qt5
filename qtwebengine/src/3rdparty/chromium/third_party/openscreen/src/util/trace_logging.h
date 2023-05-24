@@ -5,6 +5,10 @@
 #ifndef UTIL_TRACE_LOGGING_H_
 #define UTIL_TRACE_LOGGING_H_
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "platform/base/trace_logging_types.h"
 
 // All compile-time macros for tracing.
@@ -19,7 +23,6 @@
 //
 // Further details about how these macros are used can be found in
 // docs/trace_logging.md.
-// TODO(rwkeane): Add support for user-provided properties.
 
 #if defined(ENABLE_TRACE_LOGGING)
 
@@ -29,33 +32,84 @@
 
 #define TRACE_SET_RESULT(result)                                      \
   do {                                                                \
-    if (TRACE_IS_ENABLED(openscreen::TraceCategory::Value::kAny)) {   \
+    if (TRACE_IS_ENABLED(openscreen::TraceCategory::kAny)) {          \
       openscreen::internal::ScopedTraceOperation::set_result(result); \
     }                                                                 \
   } while (false)
 #define TRACE_SET_HIERARCHY(ids) TRACE_SET_HIERARCHY_INTERNAL(__LINE__, ids)
 #define TRACE_HIERARCHY                                          \
-  (TRACE_IS_ENABLED(openscreen::TraceCategory::Value::kAny)      \
+  (TRACE_IS_ENABLED(openscreen::TraceCategory::kAny)             \
        ? openscreen::internal::ScopedTraceOperation::hierarchy() \
        : openscreen::TraceIdHierarchy::Empty())
 #define TRACE_CURRENT_ID                                          \
-  (TRACE_IS_ENABLED(openscreen::TraceCategory::Value::kAny)       \
+  (TRACE_IS_ENABLED(openscreen::TraceCategory::kAny)              \
        ? openscreen::internal::ScopedTraceOperation::current_id() \
        : kEmptyTraceId)
 #define TRACE_ROOT_ID                                          \
-  (TRACE_IS_ENABLED(openscreen::TraceCategory::Value::kAny)    \
+  (TRACE_IS_ENABLED(openscreen::TraceCategory::kAny)           \
        ? openscreen::internal::ScopedTraceOperation::root_id() \
        : kEmptyTraceId)
 
+// NOTE: this method requires arguments to be passed as already serialized
+// strings.
+inline std::vector<openscreen::TraceEvent::Argument> ToArgumentArray(
+    const char* argname = {},
+    std::string argval = {},
+    const char* argname_two = {},
+    std::string argval_two = {}) {
+  std::vector<openscreen::TraceEvent::Argument> out;
+  if (argname) {
+    out.emplace_back(argname, std::move(argval));
+  }
+  if (argname_two) {
+    out.emplace_back(argname_two, std::move(argval_two));
+  }
+  return out;
+}
+
 // Synchronous Trace Macros.
-#define TRACE_SCOPED(category, name, ...) \
-  TRACE_SCOPED_INTERNAL(__LINE__, category, name, ##__VA_ARGS__)
+//
+// Scoped traces with no arguments.
+#define TRACE_SCOPED(category, name, ...)                            \
+  TRACE_SCOPED_INTERNAL(__LINE__, category, name, ToArgumentArray(), \
+                        ##__VA_ARGS__)
 #define TRACE_DEFAULT_SCOPED(category, ...) \
   TRACE_SCOPED(category, __PRETTY_FUNCTION__, ##__VA_ARGS__)
 
+// Scoped traces with one argument.
+#define TRACE_SCOPED1(category, name, argname, argval, ...) \
+  TRACE_SCOPED_INTERNAL(__LINE__, category, name,           \
+                        ToArgumentArray(argname, argval), ##__VA_ARGS__)
+#define TRACE_DEFAULT_SCOPED1(category, argname, argval, ...) \
+  TRACE_SCOPED1(category, __PRETTY_FUNCTION__, argname, argval, ##__VA_ARGS__)
+
+// Scoped traces with two arguments.
+#define TRACE_SCOPED2(category, name, argname, argval, argname_two, \
+                      argval_two, ...)                              \
+  TRACE_SCOPED_INTERNAL(                                            \
+      __LINE__, category, name,                                     \
+      ToArgumentArray(argname, argval, argname_two, argval_two),    \
+      ##__VA_ARGS__)
+#define TRACE_DEFAULT_SCOPED2(category, argname, argval, argname_two,        \
+                              argval_two, ...)                               \
+  TRACE_SCOPED2(category, __PRETTY_FUNCTION__, argname, argval, argname_two, \
+                argval_two, ##__VA_ARGS__)
+
 // Asynchronous Trace Macros.
-#define TRACE_ASYNC_START(category, name, ...) \
-  TRACE_ASYNC_START_INTERNAL(__LINE__, category, name, ##__VA_ARGS__)
+#define TRACE_ASYNC_START(category, name, ...)                            \
+  TRACE_ASYNC_START_INTERNAL(__LINE__, category, name, ToArgumentArray(), \
+                             ##__VA_ARGS__)
+
+#define TRACE_ASYNC_START1(category, name, argname, argval, ...) \
+  TRACE_ASYNC_START_INTERNAL(__LINE__, category, name,           \
+                             ToArgumentArray(argname, argval), ##__VA_ARGS__)
+
+#define TRACE_ASYNC_START2(category, name, argname, argval, argname_two, \
+                           argval_two, ...)                              \
+  TRACE_ASYNC_START_INTERNAL(                                            \
+      __LINE__, category, name,                                          \
+      ToArgumentArray(argname, argval, argname_two, argval_two),         \
+      ##__VA_ARGS__)
 
 #define TRACE_ASYNC_END(category, id, result)                  \
   TRACE_IS_ENABLED(category)                                   \
@@ -84,6 +138,22 @@ inline void DoNothingForTracing(Args... args) {}
   openscreen::internal::DoNothingForTracing(category, name, ##__VA_ARGS__)
 #define TRACE_DEFAULT_SCOPED(category, ...) \
   TRACE_SCOPED(category, __PRETTY_FUNCTION__, ##__VA_ARGS__)
+
+#define TRACE_SCOPED1(category, name, argname, argval, ...)                  \
+  openscreen::internal::DoNothingForTracing(category, name, argname, argval, \
+                                            ##__VA_ARGS__)
+#define TRACE_DEFAULT_SCOPED1(category, argname, argval, ...) \
+  TRACE_SCOPED1(category, __PRETTY_FUNCTION__, argname, argval, ##__VA_ARGS__)
+
+#define TRACE_SCOPED2(category, name, argname, argval, argname_two, \
+                      argval_two, ...)                              \
+  openscreen::internal::DoNothingForTracing(                        \
+      category, name, argname, argval, argname_two, argval_two, ##__VA_ARGS__)
+#define TRACE_DEFAULT_SCOPED2(category, argname, argval, argname_two,        \
+                              argval_two, ...)                               \
+  TRACE_SCOPED2(category, __PRETTY_FUNCTION__, argname, argval, argname_two, \
+                argval_two, ##__VA_ARGS__)
+
 #define TRACE_ASYNC_START(category, name, ...) \
   openscreen::internal::DoNothingForTracing(category, name, ##__VA_ARGS__)
 #define TRACE_ASYNC_END(category, id, result) \

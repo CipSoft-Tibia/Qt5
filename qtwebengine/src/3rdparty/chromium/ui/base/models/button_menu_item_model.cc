@@ -1,4 +1,4 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,9 +13,9 @@ bool ButtonMenuItemModel::Delegate::IsItemForCommandIdDynamic(
   return false;
 }
 
-base::string16 ButtonMenuItemModel::Delegate::GetLabelForCommandId(
+std::u16string ButtonMenuItemModel::Delegate::GetLabelForCommandId(
     int command_id) const {
-  return base::string16();
+  return std::u16string();
 }
 
 bool ButtonMenuItemModel::Delegate::IsCommandIdEnabled(int command_id) const {
@@ -36,7 +36,7 @@ bool ButtonMenuItemModel::Delegate::GetAcceleratorForCommandId(
 struct ButtonMenuItemModel::Item {
   int command_id;
   ButtonType type;
-  base::string16 label;
+  std::u16string label;
   bool part_of_group;
 };
 
@@ -58,7 +58,7 @@ void ButtonMenuItemModel::AddGroupItemWithStringId(
 }
 
 void ButtonMenuItemModel::AddImageItem(int command_id) {
-  Item item = {command_id, TYPE_BUTTON, base::string16(), false};
+  Item item = {command_id, TYPE_BUTTON, std::u16string(), false};
   items_.push_back(item);
 }
 
@@ -69,71 +69,63 @@ void ButtonMenuItemModel::AddButtonLabel(int command_id, int string_id) {
 }
 
 void ButtonMenuItemModel::AddSpace() {
-  Item item = {0, TYPE_SPACE, base::string16(), false};
+  Item item = {0, TYPE_SPACE, std::u16string(), false};
   items_.push_back(item);
 }
 
-int ButtonMenuItemModel::GetItemCount() const {
-  return static_cast<int>(items_.size());
+size_t ButtonMenuItemModel::GetItemCount() const {
+  return items_.size();
 }
 
 ButtonMenuItemModel::ButtonType ButtonMenuItemModel::GetTypeAt(
-    int index) const {
+    size_t index) const {
   return items_[index].type;
 }
 
-int ButtonMenuItemModel::GetCommandIdAt(int index) const {
+int ButtonMenuItemModel::GetCommandIdAt(size_t index) const {
   return items_[index].command_id;
 }
 
-bool ButtonMenuItemModel::IsItemDynamicAt(int index) const {
-  if (delegate_)
-    return delegate_->IsItemForCommandIdDynamic(GetCommandIdAt(index));
-  return false;
+bool ButtonMenuItemModel::IsItemDynamicAt(size_t index) const {
+  return delegate_ &&
+         delegate_->IsItemForCommandIdDynamic(GetCommandIdAt(index));
 }
 
-bool ButtonMenuItemModel::GetAcceleratorAt(int index,
+bool ButtonMenuItemModel::GetAcceleratorAt(size_t index,
                                            ui::Accelerator* accelerator) const {
-  if (delegate_) {
-    return delegate_->GetAcceleratorForCommandId(GetCommandIdAt(index),
-                                                 accelerator);
-  }
-  return false;
+  return delegate_ && delegate_->GetAcceleratorForCommandId(
+                          GetCommandIdAt(index), accelerator);
 }
 
-base::string16 ButtonMenuItemModel::GetLabelAt(int index) const {
-  if (IsItemDynamicAt(index))
-    return delegate_->GetLabelForCommandId(GetCommandIdAt(index));
-  return items_[index].label;
+std::u16string ButtonMenuItemModel::GetLabelAt(size_t index) const {
+  return IsItemDynamicAt(index)
+             ? delegate_->GetLabelForCommandId(GetCommandIdAt(index))
+             : items_[index].label;
 }
 
-bool ButtonMenuItemModel::PartOfGroup(int index) const {
+bool ButtonMenuItemModel::PartOfGroup(size_t index) const {
   return items_[index].part_of_group;
 }
 
-void ButtonMenuItemModel::ActivatedAt(int index) {
+void ButtonMenuItemModel::ActivatedAt(size_t index) {
   if (delegate_)
     delegate_->ExecuteCommand(GetCommandIdAt(index), 0);
 }
 
-bool ButtonMenuItemModel::IsEnabledAt(int index) const {
+bool ButtonMenuItemModel::IsEnabledAt(size_t index) const {
   return IsCommandIdEnabled(items_[index].command_id);
 }
 
-bool ButtonMenuItemModel::DismissesMenuAt(int index) const {
+bool ButtonMenuItemModel::DismissesMenuAt(size_t index) const {
   return DoesCommandIdDismissMenu(items_[index].command_id);
 }
 
 bool ButtonMenuItemModel::IsCommandIdEnabled(int command_id) const {
-  if (delegate_)
-    return delegate_->IsCommandIdEnabled(command_id);
-  return true;
+  return !delegate_ || delegate_->IsCommandIdEnabled(command_id);
 }
 
 bool ButtonMenuItemModel::DoesCommandIdDismissMenu(int command_id) const {
-  if (delegate_)
-    return delegate_->DoesCommandIdDismissMenu(command_id);
-  return true;
+  return !delegate_ || delegate_->DoesCommandIdDismissMenu(command_id);
 }
 
 

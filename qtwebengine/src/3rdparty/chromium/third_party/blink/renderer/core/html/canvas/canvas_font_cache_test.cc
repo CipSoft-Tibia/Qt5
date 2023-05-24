@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,11 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/dom_implementation.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_context_creation_attributes_core.h"
 #include "third_party/blink/renderer/core/html/canvas/canvas_rendering_context.h"
+#include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 
 using testing::Mock;
@@ -89,6 +91,13 @@ TEST_F(CanvasFontCacheTest, PageVisibilityChange) {
   Context2D()->setFont("10px sans-serif");
   EXPECT_TRUE(Cache()->IsInCache("10px sans-serif"));
   EXPECT_TRUE(Cache()->IsInCache("15px sans-serif"));
+}
+
+TEST_F(CanvasFontCacheTest, CreateDocumentFontCache) {
+  // Create a document via script not connected to a tab or frame.
+  Document* document = GetDocument().implementation().createHTMLDocument();
+  // This document should also create a CanvasFontCache and should not crash.
+  EXPECT_TRUE(document->GetCanvasFontCache());
 }
 
 }  // namespace blink

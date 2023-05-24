@@ -31,7 +31,6 @@
 #include <cairo/cairo-xcb.h>
 
 #include <libweston/libweston.h>
-#include "compositor/weston.h"
 #include <libweston/xwayland-api.h>
 #include <libweston/weston-log.h>
 

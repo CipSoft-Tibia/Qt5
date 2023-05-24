@@ -96,6 +96,7 @@ static void create_enc_workers(VP9_COMP *cpi, int num_workers) {
 
   CHECK_MEM_ERROR(cm, cpi->workers,
                   vpx_malloc(num_workers * sizeof(*cpi->workers)));
+
   CHECK_MEM_ERROR(cm, cpi->tile_thr_data,
                   vpx_calloc(num_workers, sizeof(*cpi->tile_thr_data)));
 

@@ -32,16 +32,17 @@ namespace blink {
 namespace cssvalue {
 
 String CSSReflectValue::CustomCSSText() const {
-  if (mask_)
+  if (mask_) {
     return direction_->CssText() + ' ' + offset_->CssText() + ' ' +
            mask_->CssText();
+  }
   return direction_->CssText() + ' ' + offset_->CssText();
 }
 
 bool CSSReflectValue::Equals(const CSSReflectValue& other) const {
   return direction_ == other.direction_ &&
-         DataEquivalent(offset_, other.offset_) &&
-         DataEquivalent(mask_, other.mask_);
+         base::ValuesEquivalent(offset_, other.offset_) &&
+         base::ValuesEquivalent(mask_, other.mask_);
 }
 
 void CSSReflectValue::TraceAfterDispatch(blink::Visitor* visitor) const {

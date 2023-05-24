@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 #include "testtypes.h"
 #ifndef QT_NO_WIDGETS
 # include <QWidget>
@@ -76,7 +51,7 @@ class ImplementedExtensionObject : public AbstractExtensionObject
     Q_PROPERTY(int implementedProperty READ implementedProperty WRITE setImplementedProperty NOTIFY implementedPropertyChanged)
 public:
     ImplementedExtensionObject(QObject *parent = nullptr) : AbstractExtensionObject(parent), m_implementedProperty(883) {}
-    void shouldBeImplemented() {}
+    void shouldBeImplemented() override {}
 
     void setImplementedProperty(int implementedProperty) { m_implementedProperty = implementedProperty; emit implementedPropertyChanged(); }
     int implementedProperty() const { return m_implementedProperty; }
@@ -136,7 +111,7 @@ void MyQmlObject::v8function(QQmlV4Function *function)
 
 static QJSValue script_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
+    Q_UNUSED(engine);
 
     static int testProperty = 13;
     QJSValue v = scriptEngine->newObject();
@@ -146,7 +121,7 @@ static QJSValue script_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 
 static QJSValue readonly_script_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
+    Q_UNUSED(engine);
 
     static int testProperty = 42;
     QJSValue v = scriptEngine->newObject();
@@ -161,8 +136,8 @@ static QJSValue readonly_script_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 
 static QObject *testImportOrder_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     testImportOrderApi *o = new testImportOrderApi(37);
     return o;
@@ -170,8 +145,8 @@ static QObject *testImportOrder_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 
 static QObject *testImportOrder_api1(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     testImportOrderApi *o = new testImportOrderApi(1);
     return o;
@@ -179,8 +154,8 @@ static QObject *testImportOrder_api1(QQmlEngine *engine, QJSEngine *scriptEngine
 
 static QObject *testImportOrder_api2(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     testImportOrderApi *o = new testImportOrderApi(2);
     return o;
@@ -188,8 +163,8 @@ static QObject *testImportOrder_api2(QQmlEngine *engine, QJSEngine *scriptEngine
 
 static QObject *qobject_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     testQObjectApi *o = new testQObjectApi();
     o->setQObjectTestProperty(20);
@@ -200,8 +175,8 @@ static QObject *qobject_api(QQmlEngine *engine, QJSEngine *scriptEngine)
 
 static QObject *qobject_api_two(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     testQObjectApiTwo *o = new testQObjectApiTwo;
     return o;
@@ -209,7 +184,7 @@ static QObject *qobject_api_two(QQmlEngine *engine, QJSEngine *scriptEngine)
 
 static QObject *qobject_api_engine_parent(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(scriptEngine);
 
     static int testProperty = 26;
     testQObjectApi *o = new testQObjectApi(engine);
@@ -219,16 +194,16 @@ static QObject *qobject_api_engine_parent(QQmlEngine *engine, QJSEngine *scriptE
 
 static QObject *fallback_bindings_object(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     return new FallbackBindingsObject();
 }
 
 static QObject *fallback_bindings_derived(QQmlEngine *engine, QJSEngine *scriptEngine)
 {
-    Q_UNUSED(engine)
-    Q_UNUSED(scriptEngine)
+    Q_UNUSED(engine);
+    Q_UNUSED(scriptEngine);
 
     return new FallbackBindingsDerived();
 }
@@ -238,7 +213,7 @@ class MyWorkerObjectThread : public QThread
 public:
     MyWorkerObjectThread(MyWorkerObject *o) : QThread(o), o(o) { start(); }
 
-    virtual void run() {
+    void run() override {
         emit o->done(QLatin1String("good"));
     }
 
@@ -424,12 +399,12 @@ void QObjectContainer::children_append(QQmlListProperty<QObject> *prop, QObject 
     }
 }
 
-int QObjectContainer::children_count(QQmlListProperty<QObject> *prop)
+qsizetype QObjectContainer::children_count(QQmlListProperty<QObject> *prop)
 {
-    return static_cast<QObjectContainer*>(prop->object)->dataChildren.count();
+    return static_cast<QObjectContainer*>(prop->object)->dataChildren.size();
 }
 
-QObject *QObjectContainer::children_at(QQmlListProperty<QObject> *prop, int index)
+QObject *QObjectContainer::children_at(QQmlListProperty<QObject> *prop, qsizetype index)
 {
     return static_cast<QObjectContainer*>(prop->object)->dataChildren.at(index);
 }
@@ -456,6 +431,11 @@ void FloatingQObject::componentComplete()
     Q_ASSERT(!parent());
 }
 
+void ClassWithQProperty2::callback()
+{
+    // Q_UNUSED(this->value.value()); // force evaluation
+}
+
 void registerTypes()
 {
     qmlRegisterType<MyQmlObject>("Qt.test", 1,0, "MyQmlObjectAlias");
@@ -463,6 +443,12 @@ void registerTypes()
     qmlRegisterSingletonType<MyInheritedQmlObject>("Test", 1, 0, "MyInheritedQmlObjectSingleton", inheritedQmlObject_provider);
     qmlRegisterSingletonType<TestTypeCppSingleton>("Test", 1, 0, "TestTypeCppSingleton", testTypeCppProvider);
     qmlRegisterType<MyDeferredObject>("Qt.test", 1,0, "MyDeferredObject");
+    qmlRegisterType<MyImmediateObject>("Qt.test", 1,0, "MyImmediateObject");
+    qmlRegisterType<DerivedFromImmediate>("Qt.test", 1,0, "DerivedFromImmediate");
+    qmlRegisterType<BrokenImmediateDeferred>("Qt.test", 1,0, "BrokenImmediateDeferred");
+    qmlRegisterType<DeferredChild>("Qt.test", 1,0, "DeferredChild");
+    qmlRegisterType<DeferredChildOverwrite>("Qt.test", 1, 0, "DeferredChildOverwrite");
+    qmlRegisterType<DeferredByParentChild>("Qt.test", 1,0, "DeferredByParentChild");
     qmlRegisterType<MyVeryDeferredObject>("Qt.test", 1,0, "MyVeryDeferredObject");
     qmlRegisterType<MyQmlContainer>("Qt.test", 1,0, "MyQmlContainer");
     qmlRegisterExtendedType<MyBaseExtendedObject, BaseExtensionObject>("Qt.test", 1,0, "MyBaseExtendedObject");
@@ -548,6 +534,17 @@ void registerTypes()
     qmlRegisterType<FloatingQObject>("Qt.test", 1, 0, "FloatingQObject");
 
     qmlRegisterType<ClashingNames>("Qt.test", 1, 0, "ClashingNames");
+
+    qmlRegisterType<ClassWithQProperty>("Qt.test", 1, 0, "ClassWithQProperty");
+    qmlRegisterType<ClassWithQObjectProperty>("Qt.test", 1, 0, "ClassWithQObjectProperty");
+    qmlRegisterType<ClassWithQProperty2>("Qt.test", 1, 0, "ClassWithQProperty2");
+
+    qmlRegisterType<Receiver>("Qt.test", 1,0, "Receiver");
+    qmlRegisterType<Sender>("Qt.test", 1,0, "Sender");
+    qmlRegisterTypesAndRevisions<ReadOnlyBindable>("Qt.test", 1);
+    qmlRegisterTypesAndRevisions<ResettableGadgetHolder>("Qt.test", 1);
+
+    qmlRegisterTypesAndRevisions<SingletonRegistrationWrapper>("Qt.test", 1);
 }
 
 #include "testtypes.moc"

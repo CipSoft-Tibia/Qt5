@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,9 +6,9 @@
 #define CHROME_COMMON_MAC_APP_MODE_COMMON_H_
 
 #include <CoreServices/CoreServices.h>
+#include <string>
 
 #include "base/files/file_path.h"
-#include "base/strings/string16.h"
 #include "base/strings/stringize_macros.h"
 
 #ifdef __OBJC__
@@ -23,7 +23,7 @@ class NSString;
 // The version of the ChromeAppModeInfo struct below. If the format of the
 // struct ever changes, be sure to update the APP_SHIM_VERSION_NUMBER here and
 // the corresponding line in //chrome/app/framework.order .
-#define APP_SHIM_VERSION_NUMBER 6
+#define APP_SHIM_VERSION_NUMBER 7
 
 // All the other macro magic to make APP_SHIM_VERSION_NUMBER usable.
 #define APP_MODE_CONCAT(a, b) a##b
@@ -43,14 +43,24 @@ constexpr mach_msg_id_t kBootstrapMsgId = 'apps';
 // of the full profile directory path.
 extern const char kAppShimBootstrapNameFragment[];
 
-// A symlink used to store the version string of the currently running Chrome.
-// The shim will read this to determine which version of the framework to load.
+// A symlink used to store the version string of the currently running Chrome,
+// along with any other necessary configuration. The shim will read this to
+// determine which version of the framework to load.
 extern const char kRunningChromeVersionSymlinkName[];
 
 // The process ID of the Chrome process that launched the app shim.
 // The presence of this switch instructs the app shim to send LaunchApp with
 // launch_now = false. This associates the shim without launching the app.
 extern const char kLaunchedByChromeProcessId[];
+
+// The main bundle path of the Chrome process that launched the app shim.
+extern const char kLaunchedByChromeBundlePath[];
+
+// The framework bundle path of the Chrome process that launched the app shim.
+extern const char kLaunchedByChromeFrameworkBundlePath[];
+
+// The framework dylib path of the Chrome process that launched the app shim.
+extern const char kLaunchedByChromeFrameworkDylibPath[];
 
 // Indicates to the shim that it was launched for a test, so don't attempt to
 // launch Chrome.
@@ -60,9 +70,12 @@ extern const char kLaunchedForTest[];
 // it fails to launch again, don't trigger another rebuild.
 extern const char kLaunchedAfterRebuild[];
 
-// Path to an app shim bundle. Indicates to Chrome that this shim attempted to
-// launch but failed.
-extern const char kAppShimError[];
+// Indicates to the shim that even if `kLaunchedByChromeProcessId` was also
+// specified, this should still be considered a "normal" launch as opposed to a
+// "register only" launch. This is used by tests to launch a shim as if the user
+// launched it, while still making sure it connects to the correct chrome
+// process.
+extern const char kIsNormalLaunch[];
 
 // Keys for specifying the file types handled by an app.
 extern NSString* const kCFBundleDocumentTypesKey;
@@ -71,6 +84,9 @@ extern NSString* const kCFBundleTypeIconFileKey;
 extern NSString* const kCFBundleTypeNameKey;
 extern NSString* const kCFBundleTypeMIMETypesKey;
 extern NSString* const kCFBundleTypeRoleKey;
+extern NSString* const kCFBundleURLNameKey;
+extern NSString* const kCFBundleURLSchemesKey;
+extern NSString* const kCFBundleURLTypesKey;
 extern NSString* const kBundleTypeRoleViewer;
 
 // The display name of the bundle as shown in Finder and the Dock. For localized
@@ -136,6 +152,19 @@ extern NSString* const kShortcutURLPlaceholder;
 // Bundle ID of the Chrome browser bundle.
 extern NSString* const kShortcutBrowserBundleIDPlaceholder;
 
+// Indicates the MojoIpcz feature configuration for a launched shim process.
+enum class MojoIpczConfig {
+  // MojoIpcz is enabled.
+  kEnabled,
+
+  // MojoIpcz is disabled.
+  kDisabled,
+
+  // The MojoIpcz configuration should be determined by feature flags on the
+  // CommandLine once parsed by the shim.
+  kUseCommandLineFeatures,
+};
+
 // The structure used to pass information from the app mode loader to the
 // (browser) framework via the entry point ChromeAppModeStart_vN.
 //
@@ -180,6 +209,29 @@ struct ChromeAppModeInfo {
 
   // Directory of the profile associated with the app, as UTF-8.
   const char* profile_dir;
+
+  // Indicates whether MojoIpcz must be enabled in the shim.
+  MojoIpczConfig mojo_ipcz_config;
+};
+
+// Conveys the configuration for a connection to be established between a shim
+// process and a running Chrome process.
+struct ChromeConnectionConfig {
+  // The version of the Chromium framework to use.
+  std::string framework_version;
+
+  // Indicates whether or not the MojoIpcz feature must be enabled.
+  bool is_mojo_ipcz_enabled;
+
+  // Returns a new configuration appropriate for the calling Chrome process to
+  // encode and convey to a shim.
+  static ChromeConnectionConfig GenerateForCurrentProcess();
+
+  // Generates a path value which encodes the contents of this structure.
+  base::FilePath EncodeAsPath() const;
+
+  // Parses a path value into a configuration.
+  static ChromeConnectionConfig DecodeFromPath(const base::FilePath& path);
 };
 
 }  // namespace app_mode

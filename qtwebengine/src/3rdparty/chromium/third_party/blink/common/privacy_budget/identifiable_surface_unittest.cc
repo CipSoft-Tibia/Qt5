@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,6 +17,11 @@ namespace blink {
 // resolve at compile-time.
 static_assert(IdentifiableSurface::FromMetricHash(
                   ukm::builders::Identifiability::kStudyGeneration_626NameHash)
+                      .GetType() ==
+                  IdentifiableSurface::Type::kReservedInternal,
+              "");
+static_assert(IdentifiableSurface::FromMetricHash(
+                  ukm::builders::Identifiability::kGeneratorVersion_926NameHash)
                       .GetType() ==
                   IdentifiableSurface::Type::kReservedInternal,
               "");

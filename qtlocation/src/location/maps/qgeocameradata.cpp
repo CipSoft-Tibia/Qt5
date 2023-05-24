@@ -1,98 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
 #include "qgeocameradata_p.h"
-#include <QtPositioning/private/qgeocoordinate_p.h>
-#include <QtPositioning/private/qwebmercator_p.h>
+
 #include <QtCore/QVariant>
 #include <QtCore/QVariantAnimation>
+
+#include <QtPositioning/private/qgeocoordinate_p.h>
+#include <QtPositioning/private/qwebmercator_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QGeoCameraDataPrivate : public QSharedData
 {
 public:
-    QGeoCameraDataPrivate();
-    QGeoCameraDataPrivate(const QGeoCameraDataPrivate &rhs);
+    bool operator==(const QGeoCameraDataPrivate &rhs) const noexcept;
 
-    QGeoCameraDataPrivate &operator = (const QGeoCameraDataPrivate &rhs);
-
-    bool operator == (const QGeoCameraDataPrivate &rhs) const;
-
-    QGeoCoordinate m_center;
-    double m_bearing;
-    double m_tilt;
-    double m_roll;
-    double m_fieldOfView;
-    double m_zoomLevel;
+    QGeoCoordinate m_center = {0, 0};
+    double m_bearing = 0.0;
+    double m_tilt = 0.0;
+    double m_roll = 0.0;
+    double m_fieldOfView = 45.0;
+    double m_zoomLevel = 0.0;
 };
 
-QGeoCameraDataPrivate::QGeoCameraDataPrivate()
-    : QSharedData(),
-      m_center(0, 0),
-      m_bearing(0.0),
-      m_tilt(0.0),
-      m_roll(0.0),
-      m_fieldOfView(45.0),
-      m_zoomLevel(0.0) {}
+QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QGeoCameraDataPrivate)
 
-QGeoCameraDataPrivate::QGeoCameraDataPrivate(const QGeoCameraDataPrivate &rhs)
-    : QSharedData(rhs),
-      m_center(rhs.m_center),
-      m_bearing(rhs.m_bearing),
-      m_tilt(rhs.m_tilt),
-      m_roll(rhs.m_roll),
-      m_fieldOfView(rhs.m_fieldOfView),
-      m_zoomLevel(rhs.m_zoomLevel) {}
-
-QGeoCameraDataPrivate &QGeoCameraDataPrivate::operator = (const QGeoCameraDataPrivate &rhs)
-{
-    if (this == &rhs)
-        return *this;
-
-    m_center = rhs.m_center;
-    m_bearing = rhs.m_bearing;
-    m_tilt = rhs.m_tilt;
-    m_roll = rhs.m_roll;
-    m_fieldOfView = rhs.m_fieldOfView;
-    m_zoomLevel = rhs.m_zoomLevel;
-
-    return *this;
-}
-
-bool QGeoCameraDataPrivate::operator == (const QGeoCameraDataPrivate &rhs) const
+bool QGeoCameraDataPrivate::operator==(const QGeoCameraDataPrivate &rhs) const noexcept
 {
     return ((m_center == rhs.m_center)
             && (m_bearing == rhs.m_bearing)
@@ -141,14 +75,11 @@ QGeoCameraData::QGeoCameraData()
     qRegisterAnimationInterpolator<QGeoCameraData>(cameraInterpolator);
 }
 
-QGeoCameraData::QGeoCameraData(const QGeoCameraData &other)
-    : d(other.d) {}
+QGeoCameraData::QGeoCameraData(const QGeoCameraData &other) noexcept = default;
 
-QGeoCameraData::~QGeoCameraData()
-{
-}
+QGeoCameraData::~QGeoCameraData() = default;
 
-QGeoCameraData &QGeoCameraData::operator = (const QGeoCameraData &other)
+QGeoCameraData &QGeoCameraData::operator=(const QGeoCameraData &other) noexcept
 {
     if (this == &other)
         return *this;
@@ -157,14 +88,9 @@ QGeoCameraData &QGeoCameraData::operator = (const QGeoCameraData &other)
     return *this;
 }
 
-bool QGeoCameraData::operator == (const QGeoCameraData &rhs) const
+bool QGeoCameraData::isEqual(const QGeoCameraData &other) const
 {
-    return (*(d.constData()) == *(rhs.d.constData()));
-}
-
-bool QGeoCameraData::operator != (const QGeoCameraData &other) const
-{
-    return !(operator==(other));
+    return (*(d.constData()) == *(other.d.constData()));
 }
 
 void QGeoCameraData::setCenter(const QGeoCoordinate &center)

@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,7 +6,7 @@
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include <io.h>
 #include <windows.h>
 #else
@@ -18,15 +18,17 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include "base/bind.h"
+
 #include "base/command_line.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/logging.h"
 #include "base/memory/ref_counted_memory.h"
 #include "base/message_loop/message_pump_type.h"
-#include "base/sequenced_task_runner.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_util.h"
 #include "base/synchronization/atomic_flag.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -59,7 +61,7 @@ class PipeIOBase {
   bool Start() {
     base::Thread::Options options;
     options.message_pump_type = base::MessagePumpType::IO;
-    if (!thread_->StartWithOptions(options))
+    if (!thread_->StartWithOptions(std::move(options)))
       return false;
     StartMainLoop();
     return true;
@@ -99,7 +101,7 @@ class PipeReaderBase : public PipeIOBase {
                  int read_fd)
       : PipeIOBase("DevToolsPipeHandlerReadThread"),
         devtools_handler_(std::move(devtools_handler)) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     read_handle_ = reinterpret_cast<HANDLE>(_get_osfhandle(read_fd));
 #else
     read_fd_ = read_fd;
@@ -115,7 +117,7 @@ class PipeReaderBase : public PipeIOBase {
 
   void ClosePipe() override {
 // Concurrently discard the pipe handles to successfully join threads.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     // Cancel pending synchronous read.
     CancelIoEx(read_handle_, nullptr);
     CloseHandle(read_handle_);
@@ -129,7 +131,7 @@ class PipeReaderBase : public PipeIOBase {
   size_t ReadBytes(void* buffer, size_t size, bool exact_size) {
     size_t bytes_read = 0;
     while (bytes_read < size) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
       DWORD size_read = 0;
       bool had_error =
           !ReadFile(read_handle_, static_cast<char*>(buffer) + bytes_read,
@@ -142,8 +144,12 @@ class PipeReaderBase : public PipeIOBase {
       bool had_error = size_read <= 0;
 #endif
       if (had_error) {
-        if (!shutting_down_.IsSet())
+        if (!shutting_down_.IsSet()) {
           LOG(ERROR) << "Connection terminated while reading from pipe";
+          GetUIThreadTaskRunner({})->PostTask(
+              FROM_HERE, base::BindOnce(&DevToolsPipeHandler::OnDisconnect,
+                                        devtools_handler_));
+        }
         return 0;
       }
       bytes_read += size_read;
@@ -168,7 +174,7 @@ class PipeReaderBase : public PipeIOBase {
   }
 
   base::WeakPtr<DevToolsPipeHandler> devtools_handler_;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   HANDLE read_handle_;
 #else
   int read_fd_;
@@ -179,7 +185,7 @@ class PipeWriterBase : public PipeIOBase {
  public:
   explicit PipeWriterBase(int write_fd)
       : PipeIOBase("DevToolsPipeHandlerWriteThread") {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     write_handle_ = reinterpret_cast<HANDLE>(_get_osfhandle(write_fd));
 #else
     write_fd_ = write_fd;
@@ -196,7 +202,7 @@ class PipeWriterBase : public PipeIOBase {
 
  protected:
   void ClosePipe() override {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     CloseHandle(write_handle_);
 #else
     shutdown(write_fd_, SHUT_RDWR);
@@ -211,7 +217,7 @@ class PipeWriterBase : public PipeIOBase {
       size_t length = size - total_written;
       if (length > kWritePacketSize)
         length = kWritePacketSize;
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
       DWORD bytes_written = 0;
       bool had_error =
           !WriteFile(write_handle_, bytes + total_written,
@@ -232,7 +238,7 @@ class PipeWriterBase : public PipeIOBase {
   }
 
  private:
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   HANDLE write_handle_;
 #else
   int write_fd_;
@@ -317,20 +323,22 @@ class PipeReaderCBOR : public PipeReaderBase {
 
   void ReadLoopInternal() override {
     while (true) {
-      const size_t kHeaderSize = 6;  // tag? type length*4
-      std::vector<uint8_t> buffer(kHeaderSize);
-      if (!ReadBytes(&buffer.front(), kHeaderSize, true))
+      const size_t kPeekSize =
+          8;  // tag tag_type? byte_string length*4 map_start
+      std::vector<uint8_t> buffer(kPeekSize);
+      if (!ReadBytes(&buffer.front(), kPeekSize, true))
         break;
-      const uint8_t* prefix = buffer.data();
-      if (prefix[0] != crdtp::cbor::InitialByteForEnvelope() ||
-          prefix[1] != crdtp::cbor::InitialByteFor32BitLengthByteString()) {
-        LOG(ERROR) << "Unexpected start of CBOR envelope " << prefix[0] << ","
-                   << prefix[1];
+      auto status_or_header = crdtp::cbor::EnvelopeHeader::ParseFromFragment(
+          crdtp::SpanFrom(buffer));
+      if (!status_or_header.ok()) {
+        LOG(ERROR) << "Error parsing CBOR envelope: "
+                   << status_or_header.status().ToASCIIString();
         return;
       }
-      uint32_t msg_size = UInt32FromCBOR(prefix + 2);
-      buffer.resize(kHeaderSize + msg_size);
-      if (!ReadBytes(&buffer.front() + kHeaderSize, msg_size, true))
+      const size_t msg_size = (*status_or_header).outer_size();
+      CHECK_GT(msg_size, kPeekSize);
+      buffer.resize(msg_size);
+      if (!ReadBytes(&buffer.front() + kPeekSize, msg_size - kPeekSize, true))
         return;
       HandleMessage(std::move(buffer));
     }
@@ -341,8 +349,10 @@ class PipeReaderCBOR : public PipeReaderBase {
 
 // DevToolsPipeHandler ---------------------------------------------------
 
-DevToolsPipeHandler::DevToolsPipeHandler()
-    : read_fd_(kReadFD), write_fd_(kWriteFD) {
+DevToolsPipeHandler::DevToolsPipeHandler(base::OnceClosure on_disconnect)
+    : on_disconnect_(std::move(on_disconnect)),
+      read_fd_(kReadFD),
+      write_fd_(kWriteFD) {
   browser_target_ = DevToolsAgentHost::CreateForBrowser(
       nullptr, DevToolsAgentHost::CreateServerSocketCallback());
   browser_target_->AttachClient(this);
@@ -393,7 +403,10 @@ void DevToolsPipeHandler::HandleMessage(std::vector<uint8_t> message) {
     browser_target_->DispatchProtocolMessage(this, message);
 }
 
-void DevToolsPipeHandler::DetachFromTarget() {}
+void DevToolsPipeHandler::OnDisconnect() {
+  if (on_disconnect_)
+    std::move(on_disconnect_).Run();
+}
 
 void DevToolsPipeHandler::DispatchProtocolMessage(
     DevToolsAgentHost* agent_host,
@@ -410,6 +423,10 @@ bool DevToolsPipeHandler::UsesBinaryProtocol() {
 
 bool DevToolsPipeHandler::AllowUnsafeOperations() {
   return true;
+}
+
+std::string DevToolsPipeHandler::GetTypeForMetrics() {
+  return "RemoteDebugger";
 }
 
 }  // namespace content

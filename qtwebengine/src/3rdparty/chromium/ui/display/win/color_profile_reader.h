@@ -1,13 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef UI_DISPLAY_WIN_COLOR_PROFILE_READER_H_
 #define UI_DISPLAY_WIN_COLOR_PROFILE_READER_H_
 
-#include "base/callback.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/strings/string16.h"
 #include "ui/display/display_export.h"
 #include "ui/gfx/icc_profile.h"
 
@@ -42,8 +42,8 @@ class DISPLAY_EXPORT ColorProfileReader {
   gfx::ColorSpace GetDisplayColorSpace(int64_t id) const;
 
  private:
-  typedef std::map<base::string16, base::string16> DeviceToPathMap;
-  typedef std::map<base::string16, std::string> DeviceToDataMap;
+  typedef std::map<std::wstring, std::wstring> DeviceToPathMap;
+  typedef std::map<std::wstring, std::string> DeviceToDataMap;
 
   // Enumerate displays and return a map to their ICC profile path. This
   // needs to be run off of the main thread.
@@ -61,7 +61,7 @@ class DISPLAY_EXPORT ColorProfileReader {
   // Called on the main thread when the read has completed.
   void ReadProfilesCompleted(DeviceToDataMap device_to_data_map);
 
-  Client* const client_ = nullptr;
+  const raw_ptr<Client> client_ = nullptr;
   bool update_in_flight_ = false;
   DeviceToPathMap device_to_path_map_;
   std::map<int64_t, gfx::ICCProfile> display_id_to_profile_map_;

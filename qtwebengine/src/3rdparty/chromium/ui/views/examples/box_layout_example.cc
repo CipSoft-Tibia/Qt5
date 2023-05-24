@@ -1,13 +1,13 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "ui/views/examples/box_layout_example.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "base/strings/string16.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -25,15 +25,14 @@
 #include "ui/views/layout/fill_layout.h"
 #include "ui/views/view.h"
 
-namespace views {
-namespace examples {
+namespace views::examples {
 
 BoxLayoutExample::BoxLayoutExample() : LayoutExampleBase("Box Layout") {}
 
 BoxLayoutExample::~BoxLayoutExample() = default;
 
 void BoxLayoutExample::ContentsChanged(Textfield* textfield,
-                                       const base::string16& new_contents) {
+                                       const std::u16string& new_contents) {
   if (textfield == between_child_spacing_) {
     UpdateLayoutManager();
   } else if (textfield == default_flex_) {
@@ -53,44 +52,36 @@ void BoxLayoutExample::ContentsChanged(Textfield* textfield,
   RefreshLayoutPanel(false);
 }
 
-void BoxLayoutExample::ButtonPressedImpl(Button* sender) {
-  if (sender == collapse_margins_)
-    RefreshLayoutPanel(true);
-}
-
 void BoxLayoutExample::CreateAdditionalControls() {
   constexpr const char* kOrientationValues[2] = {"Horizontal", "Vertical"};
   orientation_ = CreateAndAddCombobox(
-      base::ASCIIToUTF16("Orientation"), kOrientationValues,
-      base::size(kOrientationValues),
+      u"Orientation", kOrientationValues, std::size(kOrientationValues),
       base::BindRepeating(&LayoutExampleBase::RefreshLayoutPanel,
                           base::Unretained(this), true));
 
   constexpr const char* kMainAxisValues[3] = {"Start", "Center", "End"};
   main_axis_alignment_ = CreateAndAddCombobox(
-      base::ASCIIToUTF16("Main axis"), kMainAxisValues,
-      base::size(kMainAxisValues),
+      u"Main axis", kMainAxisValues, std::size(kMainAxisValues),
       base::BindRepeating(&BoxLayoutExample::MainAxisAlignmentChanged,
                           base::Unretained(this)));
 
   constexpr const char* kCrossAxisValues[4] = {"Stretch", "Start", "Center",
                                                "End"};
   cross_axis_alignment_ = CreateAndAddCombobox(
-      base::ASCIIToUTF16("Cross axis"), kCrossAxisValues,
-      base::size(kCrossAxisValues),
+      u"Cross axis", kCrossAxisValues, std::size(kCrossAxisValues),
       base::BindRepeating(&BoxLayoutExample::CrossAxisAlignmentChanged,
                           base::Unretained(this)));
 
-  between_child_spacing_ =
-      CreateAndAddTextfield(base::ASCIIToUTF16("Child spacing"));
-  default_flex_ = CreateAndAddTextfield(base::ASCIIToUTF16("Default flex"));
-  min_cross_axis_size_ =
-      CreateAndAddTextfield(base::ASCIIToUTF16("Min cross axis"));
+  between_child_spacing_ = CreateAndAddTextfield(u"Child spacing");
+  default_flex_ = CreateAndAddTextfield(u"Default flex");
+  min_cross_axis_size_ = CreateAndAddTextfield(u"Min cross axis");
 
-  CreateMarginsTextFields(base::ASCIIToUTF16("Insets"), &border_insets_);
+  CreateMarginsTextFields(u"Insets", &border_insets_);
 
-  collapse_margins_ =
-      CreateAndAddCheckbox(base::ASCIIToUTF16("Collapse margins"));
+  collapse_margins_ = CreateAndAddCheckbox(
+      u"Collapse margins",
+      base::BindRepeating(&LayoutExampleBase::RefreshLayoutPanel,
+                          base::Unretained(this), true));
 
   UpdateLayoutManager();
 }
@@ -100,15 +91,15 @@ void BoxLayoutExample::UpdateLayoutManager() {
   int child_spacing;
   base::StringToInt(between_child_spacing_->GetText(), &child_spacing);
   layout_ = panel->SetLayoutManager(std::make_unique<BoxLayout>(
-      orientation_->GetSelectedIndex() == 0
+      orientation_->GetSelectedIndex() == 0u
           ? BoxLayout::Orientation::kHorizontal
           : BoxLayout::Orientation::kVertical,
       gfx::Insets(), child_spacing, collapse_margins_->GetChecked()));
 
   layout_->set_cross_axis_alignment(static_cast<BoxLayout::CrossAxisAlignment>(
-      cross_axis_alignment_->GetSelectedIndex()));
+      cross_axis_alignment_->GetSelectedIndex().value()));
   layout_->set_main_axis_alignment(static_cast<BoxLayout::MainAxisAlignment>(
-      main_axis_alignment_->GetSelectedIndex()));
+      main_axis_alignment_->GetSelectedIndex().value()));
 
   int default_flex;
   base::StringToInt(default_flex_->GetText(), &default_flex);
@@ -135,15 +126,14 @@ void BoxLayoutExample::UpdateBorderInsets() {
 
 void BoxLayoutExample::MainAxisAlignmentChanged() {
   layout_->set_main_axis_alignment(static_cast<BoxLayout::MainAxisAlignment>(
-      main_axis_alignment_->GetSelectedIndex()));
+      main_axis_alignment_->GetSelectedIndex().value()));
   RefreshLayoutPanel(false);
 }
 
 void BoxLayoutExample::CrossAxisAlignmentChanged() {
   layout_->set_cross_axis_alignment(static_cast<BoxLayout::CrossAxisAlignment>(
-      cross_axis_alignment_->GetSelectedIndex()));
+      cross_axis_alignment_->GetSelectedIndex().value()));
   RefreshLayoutPanel(false);
 }
 
-}  // namespace examples
-}  // namespace views
+}  // namespace views::examples

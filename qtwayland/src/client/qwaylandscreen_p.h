@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWAYLANDSCREEN_H
 #define QWAYLANDSCREEN_H
@@ -52,10 +16,12 @@
 //
 
 #include <qpa/qplatformscreen.h>
+#include <qpa/qplatformscreen_p.h>
 #include <QtWaylandClient/qtwaylandclientglobal.h>
 
 #include <QtWaylandClient/private/qwayland-wayland.h>
 #include <QtWaylandClient/private/qwayland-xdg-output-unstable-v1.h>
+#include <QtCore/private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -64,15 +30,15 @@ namespace QtWaylandClient {
 class QWaylandDisplay;
 class QWaylandCursor;
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandXdgOutputManagerV1 : public QtWayland::zxdg_output_manager_v1 {
+class Q_WAYLANDCLIENT_EXPORT QWaylandXdgOutputManagerV1 : public QtWayland::zxdg_output_manager_v1 {
 public:
     QWaylandXdgOutputManagerV1(QWaylandDisplay *display, uint id, uint version);
-    uint version() const { return m_version; }
-private:
-    uint m_version = 1; // TODO: remove when we upgrade minimum libwayland requriement to 1.10
 };
 
-class Q_WAYLAND_CLIENT_EXPORT QWaylandScreen : public QPlatformScreen, QtWayland::wl_output, QtWayland::zxdg_output_v1
+class Q_WAYLANDCLIENT_EXPORT QWaylandScreen : public QPlatformScreen,
+                                              QtWayland::wl_output,
+                                              QtWayland::zxdg_output_v1,
+                                              public QNativeInterface::Private::QWaylandScreen
 {
 public:
     QWaylandScreen(QWaylandDisplay *waylandDisplay, int version, uint32_t id);
@@ -96,8 +62,6 @@ public:
     QDpi logicalDpi() const override;
     QList<QPlatformScreen *> virtualSiblings() const override;
 
-    void setOrientationUpdateMask(Qt::ScreenOrientations mask) override;
-
     Qt::ScreenOrientation orientation() const override;
     int scale() const;
     qreal devicePixelRatio() const override;
@@ -109,13 +73,18 @@ public:
     QPlatformCursor *cursor() const override;
 #endif
 
+    SubpixelAntialiasingType subpixelAntialiasingTypeHint() const override;
+
     uint32_t outputId() const { return m_outputId; }
-    ::wl_output *output() { return QtWayland::wl_output::object(); }
+    ::wl_output *output() const override
+    {
+        return const_cast<::wl_output *>(QtWayland::wl_output::object());
+    }
 
     static QWaylandScreen *waylandScreenFromWindow(QWindow *window);
     static QWaylandScreen *fromWlOutput(::wl_output *output);
 
-private:
+protected:
     enum Event : uint {
         XdgOutputDoneEvent = 0x1,
         OutputDoneEvent = 0x2,
@@ -150,6 +119,7 @@ private:
     int mScale = 1;
     int mDepth = 32;
     int mRefreshRate = 60000;
+    int mSubpixel = -1;
     int mTransform = -1;
     QImage::Format mFormat = QImage::Format_ARGB32_Premultiplied;
     QSize mPhysicalSize;
@@ -157,10 +127,6 @@ private:
     Qt::ScreenOrientation m_orientation = Qt::PrimaryOrientation;
     uint mProcessedEvents = 0;
     bool mInitialized = false;
-
-#if QT_CONFIG(cursor)
-    QScopedPointer<QWaylandCursor> mWaylandCursor;
-#endif
 };
 
 }

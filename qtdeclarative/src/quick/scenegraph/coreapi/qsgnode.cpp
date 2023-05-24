@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgnode.h"
 #include "qsgnode_p.h"
@@ -48,7 +12,6 @@
 QT_BEGIN_NAMESPACE
 
 #ifndef QT_NO_DEBUG
-static const bool qsg_leak_check = !qEnvironmentVariableIsEmpty("QML_LEAK_CHECK");
 static int qt_node_count = 0;
 
 static void qt_print_node_count()
@@ -78,8 +41,8 @@ static void qt_print_node_count()
     insertChildNodeAfter(). The order of nodes is important as geometry nodes
     are rendered according to their ordering in the scene graph.
 
-    The scene graph nodes contains a mechanism to describe which
-    parts of the scene has changed. This includes the combined matrices,
+    The scene graph nodes contain a mechanism that describes which
+    parts of the scene have changed. This includes the combined matrices,
     accumulated opacity, changes to the node hierarchy, and so on. This
     information can be used for optimizations inside the scene graph renderer.
     For the renderer to properly render the nodes, it is important that users
@@ -292,7 +255,7 @@ QSGNode::QSGNode(QSGNodePrivate &dd, NodeType type)
 void QSGNode::init()
 {
 #ifndef QT_NO_DEBUG
-    if (qsg_leak_check) {
+    if (_q_sg_leak_check) {
         ++qt_node_count;
         static bool atexit_registered = false;
         if (!atexit_registered) {
@@ -317,7 +280,7 @@ void QSGNode::init()
 QSGNode::~QSGNode()
 {
 #ifndef QT_NO_DEBUG
-    if (qsg_leak_check) {
+    if (_q_sg_leak_check) {
         --qt_node_count;
         if (qt_node_count < 0)
             qDebug("Node destroyed after qt_print_node_count() was called.");
@@ -850,7 +813,7 @@ void QSGBasicGeometryNode::setGeometry(QSGGeometry *geometry)
     \note All classes with QSG prefix should be used solely on the scene graph's
     rendering thread. See \l {Scene Graph and Rendering} for more information.
 
-    \sa QSGGeometry, QSGMaterial, QSGSimpleMaterial
+    \sa QSGGeometry, QSGMaterial
  */
 
 

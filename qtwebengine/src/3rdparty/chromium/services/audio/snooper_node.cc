@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/numerics/checked_math.h"
 #include "base/trace_event/trace_event.h"
 #include "media/base/audio_bus.h"
@@ -24,8 +24,7 @@ namespace {
 // indefinitely. In most normal cases, reads will cause the delay buffer to
 // automatically prune its recording down to well under this maximum (e.g.,
 // around 100 milliseconds of audio).
-constexpr base::TimeDelta kDelayBufferSize =
-    base::TimeDelta::FromMilliseconds(1000);
+constexpr base::TimeDelta kDelayBufferSize = base::Milliseconds(1000);
 
 // A frequency at which people cannot discern tones that differ by 1 Hz. This is
 // based on research that shows people can discern tones only when they are more
@@ -33,11 +32,8 @@ constexpr base::TimeDelta kDelayBufferSize =
 // tones 1 Hz away from 1000 Hz.
 constexpr int kStepBasisHz = 1000;
 
-// The number of frames the resampler should request at a time. Three kernel's
-// worth is an arbitrary choice, but performs well since the lock guarding
-// access to the delay buffer is only held a reasonably short time during the
-// data extraction.
-constexpr int kResamplerRequestSize = 3 * media::SincResampler::kKernelSize;
+// The number of frames the resampler should request at a time.
+constexpr int kResamplerRequestSize = media::SincResampler::kSmallRequestSize;
 
 // Returns the deviation, around an estimated reference time, beyond which a
 // SnooperNode considers a skip in input/output to have occurred.
@@ -164,7 +160,7 @@ void SnooperNode::OnData(const media::AudioBus& input_bus,
   write_reference_time_ = reference_time + input_bus_duration_;
 }
 
-base::Optional<base::TimeTicks> SnooperNode::SuggestLatestRenderTime(
+absl::optional<base::TimeTicks> SnooperNode::SuggestLatestRenderTime(
     FrameTicks duration) {
   DCHECK_GE(duration, 0);
 
@@ -172,7 +168,7 @@ base::Optional<base::TimeTicks> SnooperNode::SuggestLatestRenderTime(
   {
     base::AutoLock scoped_lock(lock_);
     if (write_position_ == kNullPosition) {
-      return base::nullopt;  // OnData() never called yet.
+      return absl::nullopt;  // OnData() never called yet.
     }
     checkpoint_time_ = write_reference_time_;
   }
@@ -180,7 +176,7 @@ base::Optional<base::TimeTicks> SnooperNode::SuggestLatestRenderTime(
   // Do not suggest any changes if OnData() has not been called since the last
   // call to this method. This may indicate an input discontinuity is occurring.
   if (checkpoint_time_ == last_checkpoint_time) {
-    return base::nullopt;
+    return absl::nullopt;
   }
 
   // Suggest a render time by working backwards from the end time of the data
@@ -188,9 +184,8 @@ base::Optional<base::TimeTicks> SnooperNode::SuggestLatestRenderTime(
   // maximum duration prebufferred in the resampler; 2) the duration to be
   // rendered; 3) a safety margin (to help avoid underruns when the machine is
   // under high stress).
-  const base::TimeDelta max_resampler_prebuffer_duration = Helper::FramesToTime(
-      kResamplerRequestSize + media::SincResampler::kKernelSize,
-      input_params_.sample_rate());
+  const base::TimeDelta max_resampler_prebuffer_duration =
+      Helper::FramesToTime(kResamplerRequestSize, input_params_.sample_rate());
   const base::TimeDelta render_duration =
       Helper::FramesToTime(duration, output_params_.sample_rate());
   const base::TimeDelta safety_margin =

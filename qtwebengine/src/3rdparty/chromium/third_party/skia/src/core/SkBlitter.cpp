@@ -11,20 +11,23 @@
 #include "include/core/SkColorFilter.h"
 #include "include/core/SkString.h"
 #include "include/private/SkColorData.h"
-#include "include/private/SkTo.h"
+#include "include/private/base/SkTo.h"
+#include "src/base/SkArenaAlloc.h"
+#include "src/base/SkTLazy.h"
 #include "src/core/SkAntiRun.h"
-#include "src/core/SkArenaAlloc.h"
 #include "src/core/SkMask.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkMatrixProvider.h"
+#include "src/core/SkOpts.h"
 #include "src/core/SkPaintPriv.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkRegionPriv.h"
-#include "src/core/SkTLazy.h"
-#include "src/core/SkUtils.h"
+#include "src/core/SkVMBlitter.h"
 #include "src/core/SkWriteBuffer.h"
 #include "src/core/SkXfermodeInterpretation.h"
 #include "src/shaders/SkShaderBase.h"
+
+using namespace skia_private;
 
 // Hacks for testing.
 bool gUseSkVMBlitter{false};
@@ -253,11 +256,11 @@ void SkBlitter::blitMask(const SkMask& mask, const SkIRect& clip) {
         }
     } else {
         int                         width = clip.width();
-        SkAutoSTMalloc<64, int16_t> runStorage(width + 1);
+        AutoSTMalloc<64, int16_t> runStorage(width + 1);
         int16_t*                    runs = runStorage.get();
         const uint8_t*              aa = mask.getAddr8(clip.fLeft, clip.fTop);
 
-        sk_memset16((uint16_t*)runs, 1, width);
+        SkOpts::memset16((uint16_t*)runs, 1, width);
         runs[width] = 0;
 
         int height = clip.height();
@@ -272,6 +275,7 @@ void SkBlitter::blitMask(const SkMask& mask, const SkIRect& clip) {
 
 /////////////////////// these are not virtual, just helpers
 
+#if defined(SK_SUPPORT_LEGACY_ALPHA_BITMAP_AS_COVERAGE)
 void SkBlitter::blitMaskRegion(const SkMask& mask, const SkRegion& clip) {
     if (clip.quickReject(mask.fBounds)) {
         return;
@@ -285,6 +289,7 @@ void SkBlitter::blitMaskRegion(const SkMask& mask, const SkRegion& clip) {
         clipper.next();
     }
 }
+#endif
 
 void SkBlitter::blitRectRegion(const SkIRect& rect, const SkRegion& clip) {
     SkRegion::Cliperator clipper(clip, rect);
@@ -642,28 +647,35 @@ SkBlitter* SkBlitterClipper::apply(SkBlitter* blitter, const SkRegion* clip,
 
 #include "src/core/SkCoreBlitters.h"
 
-bool SkBlitter::UseRasterPipelineBlitter(const SkPixmap& device, const SkPaint& paint,
-                                         const SkMatrix& matrix) {
-    if (gSkForceRasterPipelineBlitter) {
-        return true;
+bool SkBlitter::UseLegacyBlitter(const SkPixmap& device,
+                                 const SkPaint& paint,
+                                 const SkMatrix& matrix) {
+    if (gSkForceRasterPipelineBlitter || gUseSkVMBlitter) {
+        return false;
     }
-#if 0 || defined(SK_FORCE_RASTER_PIPELINE_BLITTER)
-    return true;
+#if defined(SK_FORCE_RASTER_PIPELINE_BLITTER)
+    return false;
 #else
 
+    if (paint.isDither()) {
+        return false;
+    }
+
     const SkMaskFilterBase* mf = as_MFB(paint.getMaskFilter());
+    const auto mode = paint.asBlendMode();
 
     // The legacy blitters cannot handle any of these complex features (anymore).
-    if (device.alphaType() == kUnpremul_SkAlphaType        ||
-        paint.getBlendMode() > SkBlendMode::kLastCoeffMode ||
+    if (device.alphaType() == kUnpremul_SkAlphaType   ||
+        !mode                                         ||
+        mode.value() > SkBlendMode::kLastCoeffMode    ||
         (mf && mf->getFormat() == SkMask::k3D_Format)) {
-        return true;
+        return false;
     }
 
     // All the real legacy fast paths are for shaders and SrcOver.
     // Choosing SkRasterPipelineBlitter will also let us to hit its single-color memset path.
-    if (!paint.getShader() && paint.getBlendMode() != SkBlendMode::kSrcOver) {
-        return true;
+    if (!paint.getShader() && mode != SkBlendMode::kSrcOver) {
+        return false;
     }
 
     auto cs = device.colorSpace();
@@ -671,22 +683,22 @@ bool SkBlitter::UseRasterPipelineBlitter(const SkPixmap& device, const SkPaint& 
     // in legacy mode, so here we just focus on if a single color needs raster-pipeline.
     if (cs && !paint.getShader()) {
         if (!paint.getColor4f().fitsInBytes() || !cs->isSRGB()) {
-            return true;
+            return false;
         }
     }
 
-    // Only kN32 and 565 are handled by legacy blitters now, 565 mostly just for Android.
-    return device.colorType() != kN32_SkColorType
-        && device.colorType() != kRGB_565_SkColorType;
+    // Only kN32 is handled by legacy blitters now
+    return device.colorType() == kN32_SkColorType;
 #endif
 }
 
 SkBlitter* SkBlitter::Choose(const SkPixmap& device,
-                             const SkMatrixProvider& matrixProvider,
+                             const SkMatrix& ctm,
                              const SkPaint& origPaint,
                              SkArenaAlloc* alloc,
                              bool drawCoverage,
-                             sk_sp<SkShader> clipShader) {
+                             sk_sp<SkShader> clipShader,
+                             const SkSurfaceProps& props) {
     SkASSERT(alloc);
 
     if (kUnknown_SkColorType == device.colorType()) {
@@ -696,26 +708,28 @@ SkBlitter* SkBlitter::Choose(const SkPixmap& device,
     // We may tweak the original paint as we go.
     SkTCopyOnFirstWrite<SkPaint> paint(origPaint);
 
-    // We have the most fast-paths for SrcOver, so see if we can act like SrcOver.
-    if (paint->getBlendMode() != SkBlendMode::kSrcOver) {
-        switch (SkInterpretXfermode(*paint, SkColorTypeIsAlwaysOpaque(device.colorType()))) {
-            case kSrcOver_SkXfermodeInterpretation:
-                paint.writable()->setBlendMode(SkBlendMode::kSrcOver);
-                break;
-            case kSkipDrawing_SkXfermodeInterpretation:
-                return alloc->make<SkNullBlitter>();
-            default:
-                break;
+    if (auto mode = paint->asBlendMode()) {
+        // We have the most fast-paths for SrcOver, so see if we can act like SrcOver.
+        if (mode.value() != SkBlendMode::kSrcOver) {
+            switch (SkInterpretXfermode(*paint, SkColorTypeIsAlwaysOpaque(device.colorType()))) {
+                case kSrcOver_SkXfermodeInterpretation:
+                    paint.writable()->setBlendMode(SkBlendMode::kSrcOver);
+                    break;
+                case kSkipDrawing_SkXfermodeInterpretation:
+                    return alloc->make<SkNullBlitter>();
+                default:
+                    break;
+            }
         }
-    }
 
-    // A Clear blend mode will ignore the entire color pipeline, as if Src mode with 0x00000000.
-    if (paint->getBlendMode() == SkBlendMode::kClear) {
-        SkPaint* p = paint.writable();
-        p->setShader(nullptr);
-        p->setColorFilter(nullptr);
-        p->setBlendMode(SkBlendMode::kSrc);
-        p->setColor(0x00000000);
+        // A Clear blend mode will ignore the entire color pipeline, as if Src mode with 0x00000000.
+        if (mode.value() == SkBlendMode::kClear) {
+            SkPaint* p = paint.writable();
+            p->setShader(nullptr);
+            p->setColorFilter(nullptr);
+            p->setBlendMode(SkBlendMode::kSrc);
+            p->setColor(0x00000000);
+        }
     }
 
     if (paint->getColorFilter()) {
@@ -736,45 +750,49 @@ SkBlitter* SkBlitter::Choose(const SkPixmap& device,
         paint.writable()->setDither(false);
     }
 
-    if (gUseSkVMBlitter) {
-        if (auto blitter = SkCreateSkVMBlitter(device, *paint, matrixProvider,
-                                               alloc, clipShader)) {
-            return blitter;
-        }
-    }
-
     // Same basic idea used a few times: try SkRP, then try SkVM, then give up with a null-blitter.
     // (Setting gUseSkVMBlitter is the only way we prefer SkVM over SkRP at the moment.)
     auto create_SkRP_or_SkVMBlitter = [&]() -> SkBlitter* {
-        if (auto blitter = SkCreateRasterPipelineBlitter(device, *paint, matrixProvider,
-                                                         alloc, clipShader)) {
+
+        // We need to make sure that in case RP blitter cannot be created we use VM and
+        // when VM blitter cannot be created we use RP
+        if (gUseSkVMBlitter) {
+            if (auto blitter = SkVMBlitter::Make(device, *paint, ctm, alloc, clipShader)) {
+                return blitter;
+            }
+        }
+        if (auto blitter = SkCreateRasterPipelineBlitter(device,
+                                                         *paint,
+                                                         ctm,
+                                                         alloc,
+                                                         clipShader,
+                                                         props)) {
             return blitter;
         }
-        if (auto blitter = SkCreateSkVMBlitter(device, *paint, matrixProvider,
-                                               alloc, clipShader)) {
-            return blitter;
+        if (!gUseSkVMBlitter) {
+            if (auto blitter = SkVMBlitter::Make(device, *paint, ctm, alloc, clipShader)) {
+                return blitter;
+            }
         }
         return alloc->make<SkNullBlitter>();
     };
 
-    SkMatrix ctm = matrixProvider.localToDevice();
     // We'll end here for many interesting cases: color spaces, color filters, most color types.
-    if (UseRasterPipelineBlitter(device, *paint, ctm) || clipShader) {
+    if (clipShader || !UseLegacyBlitter(device, *paint, ctm)) {
         return create_SkRP_or_SkVMBlitter();
     }
 
-    // Everything but legacy kN32_SkColorType and kRGB_565_SkColorType should already be handled.
-    SkASSERT(device.colorType() == kN32_SkColorType ||
-             device.colorType() == kRGB_565_SkColorType);
+    // Everything but legacy kN32_SkColorType should already be handled.
+    SkASSERT(device.colorType() == kN32_SkColorType);
 
     // And we should either have a shader, be blending with SrcOver, or both.
-    SkASSERT(paint->getShader() || paint->getBlendMode() == SkBlendMode::kSrcOver);
+    SkASSERT(paint->getShader() || paint->asBlendMode() == SkBlendMode::kSrcOver);
 
     // Legacy blitters keep their shader state on a shader context.
     SkShaderBase::Context* shaderContext = nullptr;
     if (paint->getShader()) {
         shaderContext = as_SB(paint->getShader())->makeContext(
-                {*paint, ctm, nullptr, device.colorType(), device.colorSpace()},
+                {*paint, ctm, nullptr, device.colorType(), device.colorSpace(), props},
                 alloc);
 
         // Creating the context isn't always possible... try fallbacks before giving up.
@@ -793,13 +811,6 @@ SkBlitter* SkBlitter::Choose(const SkPixmap& device,
                 return alloc->make<SkARGB32_Opaque_Blitter>(device, *paint);
             } else {
                 return alloc->make<SkARGB32_Blitter>(device, *paint);
-            }
-
-        case kRGB_565_SkColorType:
-            if (shaderContext && SkRGB565_Shader_Blitter::Supports(device, *paint)) {
-                return alloc->make<SkRGB565_Shader_Blitter>(device, *paint, shaderContext);
-            } else {
-                return create_SkRP_or_SkVMBlitter();
             }
 
         default:

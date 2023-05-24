@@ -11,25 +11,12 @@
 const path = require('path');
 
 const FRONT_END_DIRECTORY = path.join(__dirname, '..', '..', '..', 'front_end');
+const THIRD_PARTY_DIRECTORY = path.join(FRONT_END_DIRECTORY, 'third_party');
 const INSPECTOR_OVERLAY_DIRECTORY = path.join(__dirname, '..', '..', '..', 'front_end', 'inspector_overlay');
-
-const EXEMPTED_THIRD_PARTY_MODULES = new Set([
-  // lit-html is exempt as it doesn't expose all its modules from the root file
-  path.join(FRONT_END_DIRECTORY, 'third_party', 'lit-html'),
-  // wasmparser is exempt as it doesn't expose all its modules from the root file
-  path.join(FRONT_END_DIRECTORY, 'third_party', 'wasmparser'),
-  // acorn is exempt as it doesn't expose all its modules from the root file
-  path.join(FRONT_END_DIRECTORY, 'third_party', 'acorn'),
-  // acorn-loose is exempt as it doesn't expose all its modules from the root file
-  path.join(FRONT_END_DIRECTORY, 'third_party', 'acorn-loose'),
-  // marked is exempt as it doesn't expose all its modules from the root file
-  path.join(FRONT_END_DIRECTORY, 'third_party', 'marked'),
-  // client-variations is exempt as it doesn't expose all its modules from the root file
-  path.join(FRONT_END_DIRECTORY, 'third_party', 'chromium', 'client-variations'),
-]);
+const COMPONENT_DOCS_DIRECTORY = path.join(FRONT_END_DIRECTORY, 'ui', 'components', 'docs');
 
 const CROSS_NAMESPACE_MESSAGE =
-    'Incorrect cross-namespace import: "{{importPath}}". Use "import * as Namespace from \'../namespace/namespace.js\';" instead.';
+    'Incorrect cross-namespace import: "{{importPathForErrorMessage}}". Use "import * as Namespace from \'../namespace/namespace.js\';" instead.';
 
 // ------------------------------------------------------------------------------
 // Rule Definition
@@ -45,8 +32,7 @@ function isSideEffectImportSpecifier(specifiers) {
 
 function isModuleEntrypoint(fileName) {
   const fileNameWithoutExtension = path.basename(fileName).replace(path.extname(fileName), '');
-  const directoryName = computeTopLevelFolder(fileName);
-
+  const directoryName = path.basename(path.dirname(fileName));
   // TODO(crbug.com/1011811): remove -legacy fallback
   return directoryName === fileNameWithoutExtension || `${directoryName}-legacy` === fileNameWithoutExtension;
 }
@@ -56,8 +42,8 @@ function computeTopLevelFolder(fileName) {
   return namespaceName.substring(0, namespaceName.indexOf(path.sep));
 }
 
-function checkImportExtension(importPath, context, node) {
-  // import * as fs from 'fs';
+function checkImportExtension(importPath, importPathForErrorMessage, context, node) {
+  // detect import * as fs from 'fs';
   if (!importPath.startsWith('.')) {
     return;
   }
@@ -65,23 +51,29 @@ function checkImportExtension(importPath, context, node) {
   if (!importPath.endsWith('.js') && !importPath.endsWith('.mjs')) {
     context.report({
       node,
-      message: 'Missing file extension for import "{{importPath}}"',
+      message: 'Missing file extension for import "{{importPathForErrorMessage}}"',
       data: {
-        importPath,
+        importPathForErrorMessage,
       },
       fix(fixer) {
-        return fixer.replaceText(node.source, `'${importPath}.js'`);
+        return fixer.replaceText(node.source, `'${importPathForErrorMessage}.js'`);
       }
     });
   }
 }
 
-function nodeSpecifiersImportLsOnly(specifiers) {
-  return specifiers.length === 1 && specifiers[0].type === 'ImportSpecifier' && specifiers[0].imported.name === 'ls';
+function nodeSpecifiersSpecialImportsOnly(specifiers) {
+  return specifiers.length === 1 && specifiers[0].type === 'ImportSpecifier' &&
+      ['ls', 'assertNotNullOrUndefined'].includes(specifiers[0].imported.name);
 }
 
-function checkStarImport(context, node, importPath, importingFileName, exportingFileName) {
+function checkStarImport(context, node, importPath, importPathForErrorMessage, importingFileName, exportingFileName) {
   if (isModuleEntrypoint(importingFileName)) {
+    return;
+  }
+
+  if (importingFileName.startsWith(COMPONENT_DOCS_DIRECTORY) &&
+      importPath.includes(path.join('front_end', 'helpers'))) {
     return;
   }
 
@@ -92,29 +84,35 @@ function checkStarImport(context, node, importPath, importingFileName, exporting
     return;
   }
 
-  const isSameFolder = computeTopLevelFolder(importingFileName) === computeTopLevelFolder(exportingFileName);
+  const isSameFolder = path.dirname(importingFileName) === path.dirname(exportingFileName);
 
   const invalidSameFolderUsage = isSameFolder && isModuleEntrypoint(exportingFileName);
   const invalidCrossFolderUsage = !isSameFolder && !isModuleEntrypoint(exportingFileName);
 
   if (invalidSameFolderUsage) {
-    context.report({
-      node,
-      message:
-          'Incorrect same-namespace import: "{{importPath}}". Use "import { Symbol } from \'./relative-file.js\';" instead.',
-      data: {
-        importPath,
-      },
-    });
+    // Meta files import their entrypoints and are considered separate entrypoints.
+    // Additionally, any file ending with `-entrypoint.ts` is considered an entrypoint as well.
+    // Therefore, they are allowed to import using a same-namespace star-import.
+    const importingFileIsEntrypoint =
+        importingFileName.endsWith('-entrypoint.ts') || importingFileName.endsWith('-meta.ts');
+
+    if (!importingFileIsEntrypoint) {
+      context.report({
+        node,
+        message:
+            'Incorrect same-namespace import: "{{importPathForErrorMessage}}". Use "import { Symbol } from \'./relative-file.js\';" instead.',
+        data: {
+          importPathForErrorMessage,
+        },
+      });
+    }
   }
 
   if (invalidCrossFolderUsage) {
     context.report({
       node,
       message: CROSS_NAMESPACE_MESSAGE,
-      data: {
-        importPath,
-      },
+      data: {importPathForErrorMessage},
     });
   }
 }
@@ -143,18 +141,19 @@ module.exports = {
         }
         const importPath = path.normalize(node.source.value);
 
-        checkImportExtension(importPath, context, node);
+        const importPathForErrorMessage = node.source.value.replace(/\\/g, '/');
+        checkImportExtension(importPath, importPathForErrorMessage, context, node);
       },
       ImportDeclaration(node) {
         const importPath = path.normalize(node.source.value);
+        const importPathForErrorMessage = node.source.value.replace(/\\/g, '/');
 
-        checkImportExtension(importPath, context, node);
+        checkImportExtension(node.source.value, importPathForErrorMessage, context, node);
 
         // Accidental relative URL:
-        // import * as Root from 'front_end/root/root.js';
+        // e.g.: import * as Root from 'front_end/root/root.js';
         //
-        // Should ignore named imports:
-        // import * as fs from 'fs';
+        // Should ignore named imports import * as fs from 'fs';
         //
         // Don't use `importPath` here, as `path.normalize` removes
         // the `./` from same-folder import paths.
@@ -165,11 +164,10 @@ module.exports = {
           });
         }
 
-        if (!importingFileName.startsWith(FRONT_END_DIRECTORY)) {
-          return;
-        }
-
-        if (importingFileName.startsWith(INSPECTOR_OVERLAY_DIRECTORY)) {
+        // the Module import rules do not apply within:
+        // 1. inspector_overlay
+        // 2. front_end/third_party
+        if (importingFileName.startsWith(INSPECTOR_OVERLAY_DIRECTORY) || importingFileName.startsWith(THIRD_PARTY_DIRECTORY)) {
           return;
         }
 
@@ -179,24 +177,14 @@ module.exports = {
 
         const exportingFileName = path.resolve(path.dirname(importingFileName), importPath);
 
-        const importMatchesExemptThirdParty =
-            Array.from(EXEMPTED_THIRD_PARTY_MODULES)
-                .some(exemptModulePath => exportingFileName.startsWith(exemptModulePath));
-
-        if (importMatchesExemptThirdParty) {
-          /* We don't impose any rules on third_party DEPS which do not expose
-           * all functionality in a single entrypoint
-           */
-          return;
-        }
-
-        if (importPath.endsWith(path.join('platform', 'platform.js')) && nodeSpecifiersImportLsOnly(node.specifiers)) {
-          /* We allow direct importing of the ls utility as it's so frequently used. */
+        if (importPathForErrorMessage.endsWith('platform/platform.js') &&
+            nodeSpecifiersSpecialImportsOnly(node.specifiers)) {
+          /* We allow direct importing of the ls and assertNotNull utility as it's so frequently used. */
           return;
         }
 
         if (isStarAsImportSpecifier(node.specifiers)) {
-          checkStarImport(context, node, importPath, importingFileName, exportingFileName);
+          checkStarImport(context, node, importPath, importPathForErrorMessage, importingFileName, exportingFileName);
         } else {
           if (computeTopLevelFolder(importingFileName) !== computeTopLevelFolder(exportingFileName)) {
             let message = CROSS_NAMESPACE_MESSAGE;
@@ -214,16 +202,30 @@ module.exports = {
               node,
               message,
               data: {
-                importPath,
+                importPathForErrorMessage,
               },
             });
           } else if (isModuleEntrypoint(importingFileName)) {
+            if (importingFileName.includes(['test_setup', 'test_setup.ts'].join(path.sep)) &&
+                importPath.includes([path.sep, 'helpers', path.sep].join(''))) {
+              /** Within test files we allow the direct import of test helpers.
+               * The entry point detection detects test_setup.ts as an
+               * entrypoint, but we don't treat it as such, it's just a file
+               * that Karma runs to setup the environment.
+               */
+              return;
+            }
+
+            if (importPath.endsWith('.css.js')) {
+              // We allow files to import CSS files within the same module.
+              return;
+            }
             context.report({
               node,
               message:
-                  'Incorrect same-namespace import: "{{importPath}}". Use "import * as File from \'./File.js\';" instead.',
+                  'Incorrect same-namespace import: "{{importPathForErrorMessage}}". Use "import * as File from \'./File.js\';" instead.',
               data: {
-                importPath,
+                importPathForErrorMessage,
               }
             });
           }

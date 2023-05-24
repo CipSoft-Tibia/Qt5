@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------------
 //
 //  Little Color Management System
-//  Copyright (c) 1998-2020 Marti Maria Saguer
+//  Copyright (c) 1998-2022 Marti Maria Saguer
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the "Software"),
@@ -75,7 +75,7 @@ static
 void from8to16(void* dst, const void* src)
 {
        cmsUInt8Number n = *(cmsUInt8Number*)src;
-       *(cmsUInt16Number*) dst = FROM_8_TO_16(n);
+       *(cmsUInt16Number*) dst = (cmsUInt16Number) FROM_8_TO_16(n);
 }
 
 static
@@ -88,13 +88,13 @@ void from8to16SE(void* dst, const void* src)
 static
 void from8toFLT(void* dst, const void* src)
 {
-       *(cmsFloat32Number*)dst = (*(cmsUInt8Number*)src) / 255.0f;
+       *(cmsFloat32Number*)dst = (cmsFloat32Number) (*(cmsUInt8Number*)src) / 255.0f;
 }
 
 static
 void from8toDBL(void* dst, const void* src)
 {
-       *(cmsFloat64Number*)dst = (*(cmsUInt8Number*)src) / 255.0;
+       *(cmsFloat64Number*)dst = (cmsFloat64Number) (*(cmsUInt8Number*)src) / 255.0;
 }
 
 static
@@ -153,13 +153,13 @@ void from16SEtoFLT(void* dst, const void* src)
 static
 void from16toDBL(void* dst, const void* src)
 {
-       *(cmsFloat64Number*)dst = (*(cmsUInt16Number*)src) / 65535.0f;
+       *(cmsFloat64Number*)dst = (cmsFloat64Number) (*(cmsUInt16Number*)src) / 65535.0;
 }
 
 static
 void from16SEtoDBL(void* dst, const void* src)
 {
-    *(cmsFloat64Number*)dst = (CHANGE_ENDIAN(*(cmsUInt16Number*)src)) / 65535.0f;
+    *(cmsFloat64Number*)dst = (cmsFloat64Number) (CHANGE_ENDIAN(*(cmsUInt16Number*)src)) / 65535.0;
 }
 
 static
@@ -191,21 +191,21 @@ static
 void fromFLTto8(void* dst, const void* src)
 {
     cmsFloat32Number n = *(cmsFloat32Number*)src;
-    *(cmsUInt8Number*)dst = _cmsQuickSaturateByte(n * 255.0f);
+    *(cmsUInt8Number*)dst = _cmsQuickSaturateByte(n * 255.0);
 }
 
 static
 void fromFLTto16(void* dst, const void* src)
 {
     cmsFloat32Number n = *(cmsFloat32Number*)src;
-    *(cmsUInt16Number*)dst = _cmsQuickSaturateWord(n * 65535.0f);
+    *(cmsUInt16Number*)dst = _cmsQuickSaturateWord(n * 65535.0);
 }
 
 static
 void fromFLTto16SE(void* dst, const void* src)
 {
     cmsFloat32Number n = *(cmsFloat32Number*)src;
-    cmsUInt16Number i = _cmsQuickSaturateWord(n * 65535.0f);
+    cmsUInt16Number i = _cmsQuickSaturateWord(n * 65535.0);
 
     *(cmsUInt16Number*)dst = CHANGE_ENDIAN(i);
 }
@@ -243,7 +243,7 @@ void fromHLFto8(void* dst, const void* src)
 {
 #ifndef CMS_NO_HALF_SUPPORT
        cmsFloat32Number n = _cmsHalf2Float(*(cmsUInt16Number*)src);
-       *(cmsUInt8Number*)dst = _cmsQuickSaturateByte(n * 255.0f);
+       *(cmsUInt8Number*)dst = _cmsQuickSaturateByte(n * 255.0);
 #else
     cmsUNUSED_PARAMETER(dst);
     cmsUNUSED_PARAMETER(src);
@@ -256,7 +256,7 @@ void fromHLFto16(void* dst, const void* src)
 {
 #ifndef CMS_NO_HALF_SUPPORT
        cmsFloat32Number n = _cmsHalf2Float(*(cmsUInt16Number*)src);
-       *(cmsUInt16Number*)dst = _cmsQuickSaturateWord(n * 65535.0f);
+       *(cmsUInt16Number*)dst = _cmsQuickSaturateWord(n * 65535.0);
 #else
     cmsUNUSED_PARAMETER(dst);
     cmsUNUSED_PARAMETER(src);
@@ -268,7 +268,7 @@ void fromHLFto16SE(void* dst, const void* src)
 {
 #ifndef CMS_NO_HALF_SUPPORT
     cmsFloat32Number n = _cmsHalf2Float(*(cmsUInt16Number*)src);
-    cmsUInt16Number i = _cmsQuickSaturateWord(n * 65535.0f);
+    cmsUInt16Number i = _cmsQuickSaturateWord(n * 65535.0);
     *(cmsUInt16Number*)dst = CHANGE_ENDIAN(i);
 #else
     cmsUNUSED_PARAMETER(dst);
@@ -414,9 +414,9 @@ void ComputeIncrementsForChunky(cmsUInt32Number Format,
        cmsUInt32Number channelSize = trueBytesSize(Format);
        cmsUInt32Number pixelSize = channelSize * total_chans;
        
-	   // Sanity check
-	   if (total_chans <= 0 || total_chans >= cmsMAXCHANNELS)
-		   return;
+       // Sanity check
+       if (total_chans <= 0 || total_chans >= cmsMAXCHANNELS)
+           return;
 
         memset(channels, 0, sizeof(channels));
 

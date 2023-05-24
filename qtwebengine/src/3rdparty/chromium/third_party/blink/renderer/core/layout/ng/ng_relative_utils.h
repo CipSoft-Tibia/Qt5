@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,13 +7,14 @@
 
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_box_fragment_builder.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
+#include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/text/text_direction.h"
 
 namespace blink {
 
-class ComputedStyle;
 class NGConstraintSpace;
-class NGPhysicalBoxFragment;
 
 // Implements relative positioning:
 // https://www.w3.org/TR/css-position-3/#rel-pos
@@ -31,6 +32,10 @@ CORE_EXPORT LogicalOffset ComputeRelativeOffsetForBoxFragment(
 CORE_EXPORT LogicalOffset
 ComputeRelativeOffsetForInline(const NGConstraintSpace& space,
                                const ComputedStyle& child_style);
+
+CORE_EXPORT LogicalOffset
+ComputeRelativeOffsetForOOFInInline(const NGConstraintSpace& space,
+                                    const ComputedStyle& child_style);
 
 }  // namespace blink
 

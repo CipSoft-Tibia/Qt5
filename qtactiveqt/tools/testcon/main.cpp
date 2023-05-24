@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the tools applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "mainwindow.h"
 
@@ -60,8 +35,6 @@ static void redirectDebugOutput(QtMsgType, const QMessageLogContext &, const QSt
 
 int main( int argc, char **argv )
 {
-    if (isOptionSet(argc, argv, "--no-scaling"))
-        QCoreApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
     if (isOptionSet(argc, argv, "--no-native-siblings"))
         QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
 
@@ -80,9 +53,6 @@ int main( int argc, char **argv )
     QCommandLineOption noMessageHandlerOption(QLatin1String("no-messagehandler"),
                                               QLatin1String("Suppress installation of the message handler."));
     parser.addOption(noMessageHandlerOption);
-    QCommandLineOption noScalingDummy(QLatin1String("no-scaling"),
-                                      QLatin1String("Set Qt::AA_DisableHighDpiScaling."));
-    parser.addOption(noScalingDummy);
     QCommandLineOption noNativeSiblingsDummy(QLatin1String("no-native-siblings"),
                                              QLatin1String("Set Qt::AA_DontCreateNativeWidgetSiblings."));
     parser.addOption(noNativeSiblingsDummy);

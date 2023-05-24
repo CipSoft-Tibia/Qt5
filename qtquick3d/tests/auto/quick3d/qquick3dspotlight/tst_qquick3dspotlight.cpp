@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of Qt Quick 3D.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QSignalSpy>
@@ -34,6 +8,7 @@
 
 #include <QtQuick3DRuntimeRender/private/qssgrenderlight_p.h>
 #include <QtQuick3D/private/qquick3dobject_p.h>
+#include <QtQuick3DUtils/private/qssgutils_p.h>
 
 class tst_QQuick3DSpotLight : public QObject
 {
@@ -59,9 +34,9 @@ void tst_QQuick3DSpotLight::testProperties()
     QVERIFY(node);
 
     // lightType
-    QCOMPARE(QSSGRenderLight::Type::Spot, node->m_lightType);
+    QCOMPARE(QSSGRenderLight::Type::SpotLight, node->type);
 
-    const float brightness = 50.0f;
+    const float brightness = 0.5f;
     light.setBrightness(brightness);
     node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
     QCOMPARE(originalNode, node);
@@ -116,7 +91,7 @@ void tst_QQuick3DSpotLight::testProperties()
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityHigh,
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityVeryHigh
     };
-    const int mappedResolutions[] = {8, 9, 10, 11};
+    const unsigned int mappedResolutions[] = {8, 9, 10, 11};
 
     for (int i = 0; i < 4; ++i) {
         const auto shadowMapQuality = qualities[i];
@@ -137,11 +112,9 @@ void tst_QQuick3DSpotLight::testProperties()
     float coneAngle = 60.0f;
     float innerConeAngle = 20.0f;
     QColor color1("#12345678");
-    QVector3D color1Vec3(float(color1.redF()), float(color1.greenF()),
-                         float(color1.blueF()));
+    QVector3D color1Vec3 = QSSGUtils::color::sRGBToLinear(color1).toVector3D();
     QColor color2("#cccccccc");
-    QVector3D color2Vec3(float(color2.redF()), float(color2.greenF()),
-                         float(color2.blueF()));
+    QVector3D color2Vec3 = QSSGUtils::color::sRGBToLinear(color2).toVector3D();
     light.setColor(color1);
     light.setAmbientColor(color2);
     light.setConeAngle(coneAngle);
@@ -154,8 +127,10 @@ void tst_QQuick3DSpotLight::testProperties()
     QCOMPARE(color1Vec3, node->m_diffuseColor);
     QCOMPARE(color1Vec3, node->m_specularColor);
     QCOMPARE(color2Vec3, node->m_ambientColor);
-    QCOMPARE(coneAngle, node->m_coneAngle);
-    QCOMPARE(innerConeAngle, node->m_innerConeAngle);
+    // light's coneAngles are from edge to edge
+    // while qssgrenderlight's are from center to edge
+    QCOMPARE(coneAngle, node->m_coneAngle * 2);
+    QCOMPARE(innerConeAngle, node->m_innerConeAngle * 2);
 }
 
 void tst_QQuick3DSpotLight::testScope()

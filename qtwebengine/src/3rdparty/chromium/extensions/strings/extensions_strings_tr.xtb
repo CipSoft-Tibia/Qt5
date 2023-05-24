@@ -4,6 +4,7 @@
 <translation id="1135328998467923690">Paket geçersiz: '<ph name="ERROR_CODE" />'.</translation>
 <translation id="1140871961407805696">Arka kamera</translation>
 <translation id="1196338895211115272">Özel anahtar dışa alınamadı.</translation>
+<translation id="132960226125594336">"<ph name="RELATIVE_PATH" />" dosyası, maksimum komut dosyası boyutunu veya uzantının maksimum toplam içerik komut dosyası boyutunu aşacağından içerik komut dosyası olarak yüklenemedi.</translation>
 <translation id="1420684932347524586">Hata! Rastgele RSA özel anahtarı oluşturulamadı.</translation>
 <translation id="1445572445564823378">Bu uzantı <ph name="PRODUCT_NAME" /> uygulamasını yavaşlatıyor. <ph name="PRODUCT_NAME" /> uygulamasının performansını eski haline getirmek için bu uzantıyı devre dışı bırakmalısınız.</translation>
 <translation id="1468038450257740950">WebGL desteklenmez.</translation>
@@ -29,7 +30,7 @@
 <translation id="4233778200880751280">Hakkında sayfası ("<ph name="ABOUT_PAGE" />") yüklenemedi.</translation>
 <translation id="471800408830181311">Özel anahtar oluşturulamadı.</translation>
 <translation id="4811956658694082538">Bir yardımcı program kilitlendiği için paket yüklenemedi. Chrome'u yeniden başlatın ve tekrar deneyin.</translation>
-<translation id="4988792151665380515">Genel anahtar dışa alınamadı.</translation>
+<translation id="4988792151665380515">Ortak anahtar dışa aktarılamadı.</translation>
 <translation id="5026754133087629784">Web görünümü: <ph name="WEBVIEW_TAG_NAME" /></translation>
 <translation id="5098647635849512368">Paket dizininin tam yolu bulunamadı.</translation>
 <translation id="5356315618422219272">Appview: <ph name="APPVIEW_TAG_NAME" /></translation>
@@ -61,6 +62,7 @@
 <translation id="8636666366616799973">Paket geçersiz. Ayrıntılar: '<ph name="ERROR_MESSAGE" />'</translation>
 <translation id="8761756413268424715">"<ph name="APP_NAME" />" uygulaması cihazlarınızdan birine erişim izni istiyor:</translation>
 <translation id="8885905466771744233">Belirtilen uzantıya ilişkin özel anahtar zaten var. Var olan anahtarı yeniden kullanın veya öncelikle bu anahtarı silin.</translation>
+<translation id="9039223174332979184">Bu makinenin yöneticisi, <ph name="EXTENSION_NAME" /> uzantısının manifest sürümünün en az 3 olmasını zorunlu kılıyor.</translation>
 <translation id="907841381057066561">Paketleme sırasında geçici zip dosyası oluşturulamadı.</translation>
 <translation id="941543339607623937">Geçersiz özel anahtar.</translation>
 </translationbundle>

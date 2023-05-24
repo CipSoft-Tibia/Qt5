@@ -1,10 +1,10 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "chrome/browser/net/net_error_tab_helper.h"
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
 #include "base/logging.h"
 #include "chrome/browser/net/dns_probe_service.h"
 #include "chrome/browser/net/dns_probe_service_factory.h"
@@ -12,7 +12,6 @@
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/render_messages.h"
 #include "components/embedder_support/pref_names.h"
 #include "components/error_page/common/net_error_info.h"
 #include "components/pref_registry/pref_registry_syncable.h"
@@ -22,7 +21,6 @@
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
-#include "ipc/ipc_message_macros.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "net/base/net_errors.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
@@ -32,6 +30,11 @@
 #include "chrome/browser/offline_pages/offline_page_utils.h"
 #include "components/offline_pages/core/client_namespace_constants.h"
 #endif  // BUILDFLAG(ENABLE_OFFLINE_PAGES)
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "ash/constants/ash_features.h"
+#include "chrome/browser/ui/ash/network/network_portal_signin_controller.h"
+#endif
 
 using content::BrowserContext;
 using content::BrowserThread;
@@ -54,15 +57,55 @@ NetErrorTabHelper::~NetErrorTabHelper() {
 }
 
 // static
+void NetErrorTabHelper::BindNetErrorPageSupport(
+    mojo::PendingAssociatedReceiver<chrome::mojom::NetErrorPageSupport>
+        receiver,
+    content::RenderFrameHost* rfh) {
+  auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
+  if (!web_contents)
+    return;
+  auto* tab_helper = NetErrorTabHelper::FromWebContents(web_contents);
+  if (!tab_helper)
+    return;
+  tab_helper->net_error_page_support_.Bind(rfh, std::move(receiver));
+}
+
+// static
+void NetErrorTabHelper::BindNetworkDiagnostics(
+    mojo::PendingAssociatedReceiver<chrome::mojom::NetworkDiagnostics> receiver,
+    content::RenderFrameHost* rfh) {
+  auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
+  if (!web_contents)
+    return;
+  auto* tab_helper = NetErrorTabHelper::FromWebContents(web_contents);
+  if (!tab_helper)
+    return;
+  tab_helper->network_diagnostics_receivers_.Bind(rfh, std::move(receiver));
+}
+
+// static
+void NetErrorTabHelper::BindNetworkEasterEgg(
+    mojo::PendingAssociatedReceiver<chrome::mojom::NetworkEasterEgg> receiver,
+    content::RenderFrameHost* rfh) {
+  auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
+  if (!web_contents)
+    return;
+  auto* tab_helper = NetErrorTabHelper::FromWebContents(web_contents);
+  if (!tab_helper)
+    return;
+  tab_helper->network_easter_egg_receivers_.Bind(rfh, std::move(receiver));
+}
+
+// static
 void NetErrorTabHelper::set_state_for_testing(TestingState state) {
   testing_state_ = state;
 }
 
 void NetErrorTabHelper::RenderFrameCreated(
     content::RenderFrameHost* render_frame_host) {
-  // Ignore subframe creation - only main frame error pages can link to the
-  // platform's network diagnostics dialog.
-  if (render_frame_host->GetParent())
+  // Ignore subframe and fencedframe creation - only primary frame error pages
+  // can link to the platform's network diagnostics dialog.
+  if (render_frame_host->GetParentOrOuterDocument())
     return;
 
   mojo::AssociatedRemote<chrome::mojom::NetworkDiagnosticsClient> client;
@@ -73,7 +116,7 @@ void NetErrorTabHelper::RenderFrameCreated(
 
 void NetErrorTabHelper::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
-  if (!navigation_handle->IsInMainFrame())
+  if (!navigation_handle->IsInPrimaryMainFrame())
     return;
 
   if (net::IsHostnameResolutionError(navigation_handle->GetNetErrorCode())) {
@@ -121,8 +164,28 @@ void NetErrorTabHelper::SetIsShowingDownloadButtonInErrorPage(
 }
 #endif  // BUILDFLAG(ENABLE_OFFLINE_PAGES)
 
+#if BUILDFLAG(IS_CHROMEOS)
+void NetErrorTabHelper::ShowPortalSignin() {
+  // TODO(b/247618374): Lacros implementation.
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  if (!ash::features::IsCaptivePortalErrorPageEnabled()) {
+    net_error_page_support_.ReportBadMessage(
+        "Captive Portal Error Page feature not enabled");
+    return;
+  }
+  if (!portal_signin_controller_) {
+    portal_signin_controller_ =
+        std::make_unique<ash::NetworkPortalSigninController>();
+  }
+  portal_signin_controller_->ShowSignin(
+      ash::NetworkPortalSigninController::SigninSource::kErrorPage);
+#endif
+}
+#endif
+
 NetErrorTabHelper::NetErrorTabHelper(WebContents* contents)
     : WebContentsObserver(contents),
+      content::WebContentsUserData<NetErrorTabHelper>(*contents),
       network_diagnostics_receivers_(contents, this),
       network_easter_egg_receivers_(contents, this),
       net_error_page_support_(contents, this),
@@ -213,7 +276,7 @@ void NetErrorTabHelper::SendInfo() {
   DCHECK(dns_error_page_committed_);
 
   DVLOG(1) << "Sending status " << DnsProbeStatusToString(dns_probe_status_);
-  content::RenderFrameHost* rfh = web_contents()->GetMainFrame();
+  content::RenderFrameHost* rfh = web_contents()->GetPrimaryMainFrame();
 
   mojo::AssociatedRemote<chrome::mojom::NetworkDiagnosticsClient> client;
   rfh->GetRemoteAssociatedInterfaces()->GetInterface(&client);
@@ -230,7 +293,7 @@ void NetErrorTabHelper::RunNetworkDiagnostics(const GURL& url) {
     return;
 
   // Sanitize URL prior to running diagnostics on it.
-  RunNetworkDiagnosticsHelper(url.GetOrigin().spec());
+  RunNetworkDiagnosticsHelper(url.DeprecatedGetOriginAsURL().spec());
 }
 
 void NetErrorTabHelper::RunNetworkDiagnosticsHelper(
@@ -240,8 +303,8 @@ void NetErrorTabHelper::RunNetworkDiagnosticsHelper(
   if (!CanShowNetworkDiagnosticsDialog(web_contents()))
     return;
 
-  if (network_diagnostics_receivers_.GetCurrentTargetFrame() !=
-      web_contents()->GetMainFrame()) {
+  if (!network_diagnostics_receivers_.GetCurrentTargetFrame()
+           ->IsInPrimaryMainFrame()) {
     return;
   }
 
@@ -271,6 +334,6 @@ void NetErrorTabHelper::ResetHighScore() {
   easter_egg_high_score_.SetValue(0);
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(NetErrorTabHelper)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(NetErrorTabHelper);
 
 }  // namespace chrome_browser_net

@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/task/single_thread_task_runner.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
@@ -19,8 +20,7 @@
 #include "third_party/blink/renderer/modules/permissions/permission_utils.h"
 #include "third_party/blink/renderer/modules/webmidi/midi_access.h"
 #include "third_party/blink/renderer/modules/webmidi/midi_port.h"
-#include "third_party/blink/renderer/platform/heap/heap.h"
-#include "third_party/blink/renderer/platform/mojo/mojo_helper.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace blink {
 
@@ -39,7 +39,7 @@ void MIDIAccessInitializer::ContextDestroyed() {
 }
 
 ScriptPromise MIDIAccessInitializer::Start() {
-  ScriptPromise promise = this->Promise();
+  ScriptPromise promise = Promise();
 
   // See https://bit.ly/2S0zRAS for task types.
   scoped_refptr<base::SingleThreadTaskRunner> task_runner =
@@ -53,8 +53,8 @@ ScriptPromise MIDIAccessInitializer::Start() {
   permission_service_->RequestPermission(
       CreateMidiPermissionDescriptor(options_->hasSysex() && options_->sysex()),
       LocalFrame::HasTransientUserActivation(window->GetFrame()),
-      WTF::Bind(&MIDIAccessInitializer::OnPermissionsUpdated,
-                WrapPersistent(this)));
+      WTF::BindOnce(&MIDIAccessInitializer::OnPermissionsUpdated,
+                    WrapPersistent(this)));
 
   return promise;
 }
@@ -66,7 +66,7 @@ void MIDIAccessInitializer::DidAddInputPort(const String& id,
                                             PortState state) {
   DCHECK(dispatcher_);
   port_descriptors_.push_back(PortDescriptor(
-      id, manufacturer, name, MIDIPort::kTypeInput, version, state));
+      id, manufacturer, name, MIDIPortType::kInput, version, state));
 }
 
 void MIDIAccessInitializer::DidAddOutputPort(const String& id,
@@ -76,7 +76,7 @@ void MIDIAccessInitializer::DidAddOutputPort(const String& id,
                                              PortState state) {
   DCHECK(dispatcher_);
   port_descriptors_.push_back(PortDescriptor(
-      id, manufacturer, name, MIDIPort::kTypeOutput, version, state));
+      id, manufacturer, name, MIDIPortType::kOutput, version, state));
 }
 
 void MIDIAccessInitializer::DidSetInputPortState(unsigned port_index,

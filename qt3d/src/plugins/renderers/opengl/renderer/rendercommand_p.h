@@ -1,42 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
-** Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2014 Klaralvdalens Datakonsult AB (KDAB).
+// Copyright (C) 2016 The Qt Company Ltd and/or its subsidiary(-ies).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QT3DRENDER_RENDER_OPENGL_RENDERCOMMAND_H
 #define QT3DRENDER_RENDER_OPENGL_RENDERCOMMAND_H
@@ -55,7 +19,8 @@
 #include <qglobal.h>
 #include <shaderparameterpack_p.h>
 #include <gl_handle_types_p.h>
-#include <renderviewjobutils_p.h>
+#include <Qt3DRender/private/renderviewjobutils_p.h>
+#include <Qt3DCore/private/vector_helper_p.h>
 #include <Qt3DRender/private/handle_types_p.h>
 #include <Qt3DRender/qgeometryrenderer.h>
 #include <QOpenGLShaderProgram>
@@ -73,15 +38,6 @@ namespace Render {
 
 class RenderStateSet;
 using RenderStateSetPtr = QSharedPointer<RenderStateSet>;
-
-enum RebuildFlag {
-    FullCommandRebuild = 1 << 0,
-    LayerCacheRebuild = 1 << 1,
-    MaterialCacheRebuild = 1 << 2,
-    LightCacheRebuild = 1 << 3
-};
-Q_DECLARE_FLAGS(RebuildFlagSet, RebuildFlag)
-Q_DECLARE_OPERATORS_FOR_FLAGS(RebuildFlagSet)
 
 namespace OpenGL {
 
@@ -108,7 +64,7 @@ public:
 
     // A QAttribute pack might be interesting
     // This is a temporary fix in the meantime, to remove the hacked methods in Technique
-    QVector<int> m_activeAttributes;
+    std::vector<int> m_activeAttributes;
 
     float m_depth;
     int m_changeCost;
@@ -143,96 +99,6 @@ Q_AUTOTEST_EXPORT bool operator==(const RenderCommand &a, const RenderCommand &b
 
 inline bool operator!=(const RenderCommand &lhs, const RenderCommand &rhs) noexcept
 { return !operator==(lhs, rhs); }
-
-struct EntityRenderCommandData
-{
-    std::vector<Entity *> entities;
-    std::vector<RenderCommand> commands;
-    std::vector<RenderPassParameterData> passesData;
-
-    void reserve(size_t size)
-    {
-        entities.reserve(size);
-        commands.reserve(size);
-        passesData.reserve(size);
-    }
-
-    inline size_t size() const { return entities.size(); }
-
-    inline void push_back(Entity *e, const RenderCommand &c, const RenderPassParameterData &p)
-    {
-        entities.push_back(e);
-        commands.push_back(c);
-        passesData.push_back(p);
-    }
-
-    inline void push_back(Entity *e, RenderCommand &&c, RenderPassParameterData &&p)
-    {
-        entities.push_back(e);
-        commands.push_back(std::move(c));
-        passesData.push_back(std::move(p));
-    }
-
-    EntityRenderCommandData &operator+=(EntityRenderCommandData &&t)
-    {
-        entities.insert(entities.cend(),
-                        std::make_move_iterator(t.entities.begin()),
-                        std::make_move_iterator(t.entities.end()));
-        commands.insert(commands.cend(),
-                        std::make_move_iterator(t.commands.begin()),
-                        std::make_move_iterator(t.commands.end()));
-        passesData.insert(passesData.cend(),
-                          std::make_move_iterator(t.passesData.begin()),
-                          std::make_move_iterator(t.passesData.end()));
-        return *this;
-    }
-
-};
-
-struct EntityRenderCommandDataView
-{
-    EntityRenderCommandData data;
-    std::vector<size_t> indices;
-
-    size_t size() const noexcept { return indices.size(); }
-
-    template<typename F>
-    void forEachCommand(F func)
-    {
-        for (size_t idx : indices)
-            func(data.commands[idx]);
-    }
-};
-using EntityRenderCommandDataViewPtr = QSharedPointer<EntityRenderCommandDataView>;
-
-struct EntityRenderCommandDataSubView
-{
-    EntityRenderCommandDataViewPtr view;
-    size_t offset;
-    size_t count;
-
-    template<typename F>
-    void forEach(F func)
-    {
-        for (size_t i = 0, m = size_t(count); i < m; ++i) {
-            const size_t idx = view->indices[offset + i];
-            func(view->data.entities[idx],
-                 view->data.passesData[idx],
-                 view->data.commands[idx]);
-        }
-    }
-
-    template<typename F>
-    void forEach(F func) const
-    {
-        for (size_t i = 0, m = size_t(count); i < m; ++i) {
-            const size_t idx = view->indices[offset + i];
-            func(view->data.entities[idx],
-                 view->data.passesData[idx],
-                 view->data.commands[idx]);
-        }
-    }
-};
 
 } // namespace OpenGL
 

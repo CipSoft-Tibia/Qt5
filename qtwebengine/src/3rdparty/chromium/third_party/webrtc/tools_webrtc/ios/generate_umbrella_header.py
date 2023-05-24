@@ -1,3 +1,5 @@
+#!/usr/bin/env vpython3
+
 # Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
 #
 # Use of this source code is governed by a BSD-style license
@@ -16,13 +18,18 @@ import textwrap
 def GenerateUmbrellaHeader():
   parser = argparse.ArgumentParser(description='Generate umbrella header')
   parser.add_argument("-o", "--out", type=str, help="Output file.")
-  parser.add_argument("-s", "--sources", default=[], type=str, nargs='+',
+  parser.add_argument("-s",
+                      "--sources",
+                      default=[],
+                      type=str,
+                      nargs='+',
                       help="Headers to include.")
 
   args = parser.parse_args()
 
   with open(args.out, "w") as outfile:
-    outfile.write(textwrap.dedent("""\
+    outfile.write(
+        textwrap.dedent("""\
     /*
      *  Copyright %d The WebRTC project authors. All Rights Reserved.
      *

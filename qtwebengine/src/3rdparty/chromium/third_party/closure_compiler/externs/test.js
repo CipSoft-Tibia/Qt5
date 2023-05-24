@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 // NOTE: The format of types has changed. 'FooType' is now
 //   'chrome.test.FooType'.
 // Please run the closure compiler before committing changes.
-// See https://chromium.googlesource.com/chromium/src/+/master/docs/closure_compilation.md
+// See https://chromium.googlesource.com/chromium/src/+/main/docs/closure_compilation.md
 
-/** @fileoverview Externs generated from namespace: test */
+/**
+ * @fileoverview Externs generated from namespace: test
+ * @externs
+ */
 
 /** @const */
 chrome.test = {};
@@ -26,6 +29,7 @@ chrome.test = {};
  *   }|undefined),
  *   testDataDirectory: (string|undefined),
  *   testWebSocketPort: (number|undefined),
+ *   testWebTransportPort: (number|undefined),
  *   loginStatus: ({
  *     isLoggedIn: (boolean|undefined),
  *     isScreenLocked: (boolean|undefined)
@@ -68,14 +72,18 @@ chrome.test.log = function(message) {};
 chrome.test.sendMessage = function(message, callback) {};
 
 /**
+ * Sends a result back to the browser as a result of script executing; this is
+ * handy for communicating results from browser-driven script execution.
+ * @param {*} result
+ * @param {function(): void=} callback
+ * @see https://developer.chrome.com/extensions/test#method-sendScriptResult
+ */
+chrome.test.sendScriptResult = function(result, callback) {};
+
+/**
  * @see https://developer.chrome.com/extensions/test#method-callbackAdded
  */
 chrome.test.callbackAdded = function() {};
-
-/**
- * @see https://developer.chrome.com/extensions/test#method-runNextTest
- */
-chrome.test.runNextTest = function() {};
 
 /**
  * @param {*=} message
@@ -112,14 +120,6 @@ chrome.test.assertTrue = function(test, message) {};
 chrome.test.assertFalse = function(test, message) {};
 
 /**
- * @param {(string|boolean)} test
- * @param {boolean} expected
- * @param {string=} message
- * @see https://developer.chrome.com/extensions/test#method-assertBool
- */
-chrome.test.assertBool = function(test, expected, message) {};
-
-/**
  * @param {*=} expected
  * @param {*=} actual
  * @see https://developer.chrome.com/extensions/test#method-checkDeepEq
@@ -133,6 +133,15 @@ chrome.test.checkDeepEq = function(expected, actual) {};
  * @see https://developer.chrome.com/extensions/test#method-assertEq
  */
 chrome.test.assertEq = function(expected, actual, message) {};
+
+/**
+ * @param {*=} expected
+ * @param {*=} actual
+ * @param {string=} message A custom error message to print out with the test
+ *     failure, if any.
+ * @see https://developer.chrome.com/extensions/test#method-assertNe
+ */
+chrome.test.assertNe = function(expected, actual, message) {};
 
 /**
  * @see https://developer.chrome.com/extensions/test#method-assertNoLastError
@@ -153,6 +162,18 @@ chrome.test.assertLastError = function(expectedError) {};
  * @see https://developer.chrome.com/extensions/test#method-assertThrows
  */
 chrome.test.assertThrows = function(fn, self, args, message) {};
+
+/**
+ * @param {Promise} promise The promise to evaluate, which is expected to
+ *     reject.
+ * @param {(string|RegExp)} expectedMessage The expected error message from the
+ *     promise rejection, either as a string or a regular expression.
+ * @return {Promise} A promise that will be resolved once the assertion is
+ *     complete. The promise is rejected if the passed-in promise resolves
+ *     unexpectedly or rejects with an unexpected error.
+ * @see https://developer.chrome.com/extensions/test#method-assertPromiseRejects
+ */
+chrome.test.assertPromiseRejects = function(promise, expectedMessage) {};
 
 /**
  * @param {function(): void=} func
@@ -211,11 +232,11 @@ chrome.test.getApiDefinitions = function(apiNames) {};
 chrome.test.isProcessingUserGesture = function() {};
 
 /**
- * Runs the callback in the context of a user gesture.
- * @param {function(): void} callback
+ * Runs the provided function in the context of a user gesture.
+ * @param {function(): void} functionToRun
  * @see https://developer.chrome.com/extensions/test#method-runWithUserGesture
  */
-chrome.test.runWithUserGesture = function(callback) {};
+chrome.test.runWithUserGesture = function(functionToRun) {};
 
 /**
  * Sends a string message one round trip from the renderer to the browser
@@ -227,13 +248,21 @@ chrome.test.runWithUserGesture = function(callback) {};
 chrome.test.waitForRoundTrip = function(message, callback) {};
 
 /**
+ * Loads a JS script in the current JS context.
+ * @param {string} scriptUrl
+ * @return {Promise} A promise that will be resolved once the script is loaded.
+ * @see https://developer.chrome.com/extensions/test#method-loadScript
+ */
+chrome.test.loadScript = function(scriptUrl) {};
+
+/**
  * Sets the function to be called when an exception occurs. By default this is a
  * function which fails the test. This is reset for every test run through
  * $ref:test.runTests.
- * @param {function(string, *): void} callback
+ * @param {function(string, *): void} handler
  * @see https://developer.chrome.com/extensions/test#method-setExceptionHandler
  */
-chrome.test.setExceptionHandler = function(callback) {};
+chrome.test.setExceptionHandler = function(handler) {};
 
 /**
  * Returns the wake-event-page API function, which can be called to wake up the

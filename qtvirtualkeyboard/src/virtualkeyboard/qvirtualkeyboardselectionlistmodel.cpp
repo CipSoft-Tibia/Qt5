@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Virtual Keyboard module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtVirtualKeyboard/qvirtualkeyboardselectionlistmodel.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardabstractinputmethod.h>
@@ -60,7 +34,7 @@ public:
     \qmltype SelectionListModel
     \instantiates QVirtualKeyboardSelectionListModel
     \inqmlmodule QtQuick.VirtualKeyboard
-    \ingroup qtvirtualkeyboard-qml
+    \ingroup qtvirtualkeyboard-internal-qml
     \brief Provides a data model for the selection lists.
 
     The SelectionListModel is a data model for word candidates
@@ -92,6 +66,7 @@ public:
     \class QVirtualKeyboardSelectionListModel
 
     \inmodule QtVirtualKeyboard
+    \ingroup qtvirtualkeyboard-cpp-for-devs
 
     \brief List model for selection lists.
 
@@ -170,6 +145,7 @@ void QVirtualKeyboardSelectionListModel::setDataSource(QVirtualKeyboardAbstractI
     if (d->dataSource) {
         disconnect(this, SLOT(selectionListChanged(Type)));
         disconnect(this, SLOT(selectionListActiveItemChanged(Type, int)));
+        disconnect(this, SLOT(dataSourceDestroyed()));
     }
     d->type = type;
     if (d->dataSource) {
@@ -181,6 +157,7 @@ void QVirtualKeyboardSelectionListModel::setDataSource(QVirtualKeyboardAbstractI
     if (d->dataSource) {
         QObject::connect(d->dataSource.data(), &QVirtualKeyboardAbstractInputMethod::selectionListChanged, this, &QVirtualKeyboardSelectionListModel::selectionListChanged);
         QObject::connect(d->dataSource.data(), &QVirtualKeyboardAbstractInputMethod::selectionListActiveItemChanged, this, &QVirtualKeyboardSelectionListModel::selectionListActiveItemChanged);
+        QObject::connect(d->dataSource.data(), &QObject::destroyed, this, &QVirtualKeyboardSelectionListModel::dataSourceDestroyed);
     }
 }
 
@@ -199,7 +176,7 @@ QVirtualKeyboardAbstractInputMethod *QVirtualKeyboardSelectionListModel::dataSou
 int QVirtualKeyboardSelectionListModel::rowCount(const QModelIndex &parent) const
 {
     Q_D(const QVirtualKeyboardSelectionListModel);
-    Q_UNUSED(parent)
+    Q_UNUSED(parent);
     return d->rowCount;
 }
 
@@ -209,7 +186,14 @@ int QVirtualKeyboardSelectionListModel::rowCount(const QModelIndex &parent) cons
 QVariant QVirtualKeyboardSelectionListModel::data(const QModelIndex &index, int role) const
 {
     Q_D(const QVirtualKeyboardSelectionListModel);
-    return d->dataSource ? d->dataSource->selectionListData(d->type, index.row(), static_cast<Role>(role)) : QVariant();
+
+    if (!d->dataSource)
+        return QVariant();
+
+    if (index.row() < 0 || index.row() >= d->rowCount)
+        return QVariant();
+
+    return d->dataSource->selectionListData(d->type, index.row(), static_cast<Role>(role));
 }
 
 /*!
@@ -312,7 +296,7 @@ void QVirtualKeyboardSelectionListModel::selectionListChanged(QVirtualKeyboardSe
         if (static_cast<QVirtualKeyboardSelectionListModel::Type>(type) == QVirtualKeyboardSelectionListModel::Type::WordCandidateList)
             d->wclAutoCommitWord = ((oldCount > 1 || (oldCount == 1 && d->wclAutoCommitWord)) && newCount == 1 &&
                                  Settings::instance()->wclAutoCommitWord() &&
-                                 dataAt(0).toString().length() > 1);
+                                 dataAt(0).toString().size() > 1);
         if (d->rowCount != oldCount)
             emit countChanged();
     }
@@ -329,6 +313,16 @@ void QVirtualKeyboardSelectionListModel::selectionListActiveItemChanged(QVirtual
         if (index == 0 && d->wclAutoCommitWord)
             selectItem(0);
     }
+}
+
+/*!
+    \internal
+*/
+void QVirtualKeyboardSelectionListModel::dataSourceDestroyed()
+{
+    Q_D(QVirtualKeyboardSelectionListModel);
+    selectionListChanged(d->type);
+    selectionListActiveItemChanged(d->type, -1);
 }
 
 /*!

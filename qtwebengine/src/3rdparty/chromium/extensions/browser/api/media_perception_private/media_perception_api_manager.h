@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,21 +8,20 @@
 #include <string>
 
 #include "base/memory/weak_ptr.h"
-#include "base/optional.h"
-#include "base/scoped_observer.h"
-#include "chromeos/dbus/media_analytics/media_analytics_client.h"
-#include "chromeos/dbus/media_perception/media_perception.pb.h"
+#include "base/scoped_observation.h"
+#include "chromeos/ash/components/dbus/media_analytics/media_analytics_client.h"
+#include "chromeos/ash/components/dbus/media_perception/media_perception.pb.h"
 #include "chromeos/services/media_perception/public/mojom/media_perception_service.mojom.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/common/api/media_perception_private.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace extensions {
 
-class MediaPerceptionAPIManager
-    : public BrowserContextKeyedAPI,
-      public chromeos::MediaAnalyticsClient::Observer {
+class MediaPerceptionAPIManager : public BrowserContextKeyedAPI,
+                                  public ash::MediaAnalyticsClient::Observer {
  public:
   using APISetAnalyticsComponentCallback = base::OnceCallback<void(
       extensions::api::media_perception_private::ComponentState
@@ -34,10 +33,15 @@ class MediaPerceptionAPIManager
   using APIStateCallback = base::OnceCallback<void(
       extensions::api::media_perception_private::State state)>;
 
-  using APIGetDiagnosticsCallback = base::Callback<void(
+  using APIGetDiagnosticsCallback = base::OnceCallback<void(
       extensions::api::media_perception_private::Diagnostics diagnostics)>;
 
   explicit MediaPerceptionAPIManager(content::BrowserContext* context);
+
+  MediaPerceptionAPIManager(const MediaPerceptionAPIManager&) = delete;
+  MediaPerceptionAPIManager& operator=(const MediaPerceptionAPIManager&) =
+      delete;
+
   ~MediaPerceptionAPIManager() override;
 
   // Convenience method to get the MediaPeceptionAPIManager for a
@@ -64,7 +68,7 @@ class MediaPerceptionAPIManager
   void GetState(APIStateCallback callback);
   void SetState(const extensions::api::media_perception_private::State& state,
                 APIStateCallback callback);
-  void GetDiagnostics(const APIGetDiagnosticsCallback& callback);
+  void GetDiagnostics(APIGetDiagnosticsCallback callback);
 
   // For testing purposes only. Allows the unittest to set the mount_point to
   // something non-empty.
@@ -98,12 +102,12 @@ class MediaPerceptionAPIManager
 
   // Callback for State D-Bus method calls to the media analytics process.
   void StateCallback(APIStateCallback callback,
-                     base::Optional<mri::State> state);
+                     absl::optional<mri::State> state);
 
   // Callback for GetDiagnostics D-Bus method calls to the media analytics
   // process.
-  void GetDiagnosticsCallback(const APIGetDiagnosticsCallback& callback,
-                              base::Optional<mri::Diagnostics> diagnostics);
+  void GetDiagnosticsCallback(APIGetDiagnosticsCallback callback,
+                              absl::optional<mri::Diagnostics> diagnostics);
 
   // Callbacks for Upstart command to start media analytics process.
   void UpstartStartProcessCallback(APIComponentProcessStateCallback callback,
@@ -162,12 +166,10 @@ class MediaPerceptionAPIManager
   std::unique_ptr<MediaPerceptionControllerClient>
       media_perception_controller_client_;
 
-  ScopedObserver<chromeos::MediaAnalyticsClient,
-                 chromeos::MediaAnalyticsClient::Observer>
-      scoped_observer_{this};
+  base::ScopedObservation<ash::MediaAnalyticsClient,
+                          ash::MediaAnalyticsClient::Observer>
+      scoped_observation_{this};
   base::WeakPtrFactory<MediaPerceptionAPIManager> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(MediaPerceptionAPIManager);
 };
 
 }  // namespace extensions

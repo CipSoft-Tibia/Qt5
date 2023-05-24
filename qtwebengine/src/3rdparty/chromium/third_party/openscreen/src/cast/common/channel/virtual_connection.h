@@ -18,15 +18,15 @@ namespace cast {
 struct VirtualConnection {
   // Virtual connections can have slightly different semantics for a particular
   // endpoint based on its type.
-  enum class Type {
+  enum class Type : int8_t {
     // Normal connections.  Receiver applications should not exit while they
     // still have strong connections open (e.g. active senders).
-    kStrong,
+    kStrong = 0,
 
     // Same as strong except if the connected endpoint is a receiver
     // application, it may stop if its only remaining open connections are all
     // weak.
-    kWeak,
+    kWeak = 1,
 
     // Receiver applications do not receive connected/disconnected notifications
     // about these connections.  The following additional conditions apply:
@@ -34,7 +34,7 @@ struct VirtualConnection {
     //    messages over invisible connections.
     //  - Receiver app can only send broadcast messages over an invisible
     //    connection.
-    kInvisible,
+    kInvisible = 2,
 
     kMinValue = kStrong,
     kMaxValue = kInvisible,
@@ -92,9 +92,9 @@ struct VirtualConnection {
   //  - sender-0 or receiver-0: identifies the appropriate platform endpoint of
   //    the device.  Authentication and transport-related messages use these.
   //  - sender-12345: Possible form of a Cast sender ID.  The number portion is
-  //    randomly generated and intended to be unique within that device.
+  //    intended to be unique within that device (i.e., unique per CastSocket).
   //  - Random decimal number: Possible form of a Cast sender ID.  Also randomly
-  //    generated and intended to be unique within that device.
+  //    intended to be unique within that device (i.e., unique per CastSocket).
   //  - GUID-style hex string: Random string identifying a particular receiver
   //    app on the device.
   //

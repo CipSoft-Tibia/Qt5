@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QWIDGETLINECONTROL_P_H
 #define QWIDGETLINECONTROL_P_H
@@ -70,7 +34,11 @@
 #include "qplatformdefs.h"
 
 #include <vector>
+#include <memory>
 
+#ifdef Q_OS_WIN
+# include <qt_windows.h>
+#endif
 #ifdef DrawText
 #  undef DrawText
 #endif
@@ -110,9 +78,7 @@ public:
         // password data to stay in the process memory, therefore we need
         // to zero it out
         if (m_echoMode != QLineEdit::Normal)
-            m_text.fill('\0');
-
-        delete [] m_maskData;
+            m_text.fill(u'\0');
     }
 
     void setAccessibleObject(QObject *object)
@@ -149,7 +115,7 @@ public:
     bool isModified() const { return m_modifiedState != m_undoState; }
     void setModified(bool modified) { m_modifiedState = modified ? -1 : m_undoState; }
 
-    bool allSelected() const { return !m_text.isEmpty() && m_selstart == 0 && m_selend == (int)m_text.length(); }
+    bool allSelected() const { return !m_text.isEmpty() && m_selstart == 0 && m_selend == (int)m_text.size(); }
     bool hasSelectedText() const { return !m_text.isEmpty() && m_selend > m_selstart; }
 
     int width() const { return qRound(m_textLayout.lineAt(0).width()) + 1; }
@@ -165,6 +131,9 @@ public:
 
     int selectionStart() const { return hasSelectedText() ? m_selstart : -1; }
     int selectionEnd() const { return hasSelectedText() ? m_selend : -1; }
+#if defined (Q_OS_ANDROID)
+    bool isSelectableByMouse() const { return true; }
+#endif
     bool inSelection(int x) const
     {
         if (m_selstart >= m_selend)
@@ -181,7 +150,7 @@ public:
     }
 
     int start() const { return 0; }
-    int end() const { return m_text.length(); }
+    int end() const { return m_text.size(); }
 
 #ifndef QT_NO_CLIPBOARD
     void copy(QClipboard::Mode mode = QClipboard::Clipboard) const;
@@ -217,7 +186,7 @@ public:
     void cursorWordBackward(bool mark) { moveCursor(m_textLayout.previousCursorPosition(m_cursor, QTextLayout::SkipWords), mark); }
 
     void home(bool mark) { moveCursor(0, mark); }
-    void end(bool mark) { moveCursor(m_text.length(), mark); }
+    void end(bool mark) { moveCursor(m_text.size(), mark); }
 
     int xToPos(int x, QTextLine::CursorPosition = QTextLine::CursorBetweenCharacters) const;
     QRect rectForPos(int pos) const;
@@ -262,7 +231,7 @@ public:
     void backspace();
     void del();
     void deselect() { internalDeselect(); finishChange(); }
-    void selectAll() { m_selstart = m_selend = m_cursor = 0; moveCursor(m_text.length(), true); }
+    void selectAll() { m_selstart = m_selend = m_cursor = 0; moveCursor(m_text.size(), true); }
 
     void insert(const QString &);
     void clear();
@@ -308,7 +277,7 @@ public:
 #endif
 
     int cursorPosition() const { return m_cursor; }
-    void setCursorPosition(int pos) { if (pos <= m_text.length()) moveCursor(qMax(0, pos)); }
+    void setCursorPosition(int pos) { if (pos <= m_text.size()) moveCursor(qMax(0, pos)); }
 
     bool hasAcceptableInput() const { return hasAcceptableInput(m_text); }
     bool fixup();
@@ -318,8 +287,8 @@ public:
         QString mask;
         if (m_maskData) {
             mask = m_inputMask;
-            if (m_blank != QLatin1Char(' ')) {
-                mask += QLatin1Char(';');
+            if (m_blank != u' ') {
+                mask += u';';
                 mask += m_blank;
             }
         }
@@ -465,7 +434,7 @@ private:
     };
     QString m_inputMask;
     QChar m_blank;
-    MaskInputData *m_maskData;
+    std::unique_ptr<MaskInputData[]> m_maskData;
 
     // undo/redo handling
     enum CommandType { Separator, Insert, Remove, Delete, RemoveSelection, DeleteSelection, SetSelection };

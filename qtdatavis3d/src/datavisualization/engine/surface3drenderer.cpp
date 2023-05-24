@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "surface3drenderer_p.h"
 #include "q3dcamera_p.h"
@@ -37,7 +11,7 @@
 
 static const int ID_TO_RGBA_MASK = 0xff;
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 //#define SHOW_DEPTH_TEXTURE_SCENE
 
@@ -305,7 +279,7 @@ void Surface3DRenderer::updateSeries(const QList<QAbstract3DSeries *> &seriesLis
     }
 }
 
-void Surface3DRenderer::updateSurfaceTextures(QVector<QSurface3DSeries *> seriesList)
+void Surface3DRenderer::updateSurfaceTextures(QList<QSurface3DSeries *> seriesList)
 {
     foreach (QSurface3DSeries *series, seriesList) {
         SurfaceSeriesRenderCache *cache =
@@ -348,7 +322,7 @@ void Surface3DRenderer::cleanCache(SeriesRenderCache *cache)
     m_selectionTexturesDirty = true;
 }
 
-void Surface3DRenderer::updateRows(const QVector<Surface3DController::ChangeRow> &rows)
+void Surface3DRenderer::updateRows(const QList<Surface3DController::ChangeRow> &rows)
 {
     foreach (Surface3DController::ChangeRow item, rows) {
         SurfaceSeriesRenderCache *cache =
@@ -389,7 +363,7 @@ void Surface3DRenderer::updateRows(const QVector<Surface3DController::ChangeRow>
     updateSelectedPoint(m_selectedPoint, m_selectedSeries);
 }
 
-void Surface3DRenderer::updateItems(const QVector<Surface3DController::ChangeItem> &points)
+void Surface3DRenderer::updateItems(const QList<Surface3DController::ChangeItem> &points)
 {
     foreach (Surface3DController::ChangeItem item, points) {
         SurfaceSeriesRenderCache *cache =
@@ -2225,7 +2199,7 @@ void Surface3DRenderer::drawLabels(bool drawSelection, const Q3DCamera *activeCa
         }
         float offsetValue = 0.0f;
         bool showLastLabel = false;
-        QVector<float> &labelPositions = m_axisCacheX.formatter()->labelPositions();
+        QList<float> &labelPositions = m_axisCacheX.formatter()->labelPositions();
         int lastLabelPosIndex = labelPositions.size() - 1;
         if (labelPositions.size()
                 && (labelPositions.at(lastLabelPosIndex) != 1.0f || labelPositions.at(0) != 0.0f)) {
@@ -3062,4 +3036,4 @@ void Surface3DRenderer::updateMargin(float margin)
     calculateSceneScalingFactors();
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright 2016 PDFium Authors. All rights reserved.
+// Copyright 2016 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,6 +7,7 @@
 #include "core/fpdfapi/page/cpdf_form.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "core/fpdfapi/page/cpdf_contentparser.h"
 #include "core/fpdfapi/page/cpdf_imageobject.h"
@@ -15,6 +16,7 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
+#include "third_party/base/check_op.h"
 
 // static
 CPDF_Dictionary* CPDF_Form::ChooseResourcesDict(
@@ -27,22 +29,27 @@ CPDF_Dictionary* CPDF_Form::ChooseResourcesDict(
 }
 
 CPDF_Form::CPDF_Form(CPDF_Document* pDoc,
-                     CPDF_Dictionary* pPageResources,
-                     CPDF_Stream* pFormStream)
-    : CPDF_Form(pDoc, pPageResources, pFormStream, nullptr) {}
+                     RetainPtr<CPDF_Dictionary> pPageResources,
+                     RetainPtr<CPDF_Stream> pFormStream)
+    : CPDF_Form(pDoc,
+                std::move(pPageResources),
+                std::move(pFormStream),
+                nullptr) {}
 
 CPDF_Form::CPDF_Form(CPDF_Document* pDoc,
-                     CPDF_Dictionary* pPageResources,
-                     CPDF_Stream* pFormStream,
+                     RetainPtr<CPDF_Dictionary> pPageResources,
+                     RetainPtr<CPDF_Stream> pFormStream,
                      CPDF_Dictionary* pParentResources)
-    : CPDF_PageObjectHolder(
-          pDoc,
-          pFormStream->GetDict(),
-          pPageResources,
-          ChooseResourcesDict(pFormStream->GetDict()->GetDictFor("Resources"),
-                              pParentResources,
-                              pPageResources)),
-      m_pFormStream(pFormStream) {
+    : CPDF_PageObjectHolder(pDoc,
+                            pFormStream->GetMutableDict(),
+                            pPageResources,
+                            pdfium::WrapRetain(ChooseResourcesDict(
+                                pFormStream->GetMutableDict()
+                                    ->GetMutableDictFor("Resources")
+                                    .Get(),
+                                pParentResources,
+                                pPageResources.Get()))),
+      m_pFormStream(std::move(pFormStream)) {
   LoadTransparencyInfo();
 }
 
@@ -70,16 +77,11 @@ void CPDF_Form::ParseContentInternal(const CPDF_AllStates* pGraphicStates,
     return;
 
   if (GetParseState() == ParseState::kNotParsed) {
-    if (!pParsedSet) {
-      if (!m_ParsedSet)
-        m_ParsedSet = std::make_unique<std::set<const uint8_t*>>();
-      pParsedSet = m_ParsedSet.get();
-    }
     StartParse(std::make_unique<CPDF_ContentParser>(
-        this, pGraphicStates, pParentMatrix, pType3Char, pParsedSet));
+        GetStream(), this, pGraphicStates, pParentMatrix, pType3Char,
+        pParsedSet ? pParsedSet : &m_ParsedSet));
   }
-
-  ASSERT(GetParseState() == ParseState::kParsing);
+  DCHECK_EQ(GetParseState(), ParseState::kParsing);
   ContinueParse(nullptr);
 }
 
@@ -105,18 +107,18 @@ CFX_FloatRect CPDF_Form::CalcBoundingBox() const {
   return CFX_FloatRect(left, bottom, right, top);
 }
 
-const CPDF_Stream* CPDF_Form::GetStream() const {
-  return m_pFormStream.Get();
+RetainPtr<const CPDF_Stream> CPDF_Form::GetStream() const {
+  return m_pFormStream;
 }
 
-Optional<std::pair<RetainPtr<CFX_DIBitmap>, CFX_Matrix>>
+absl::optional<std::pair<RetainPtr<CFX_DIBitmap>, CFX_Matrix>>
 CPDF_Form::GetBitmapAndMatrixFromSoleImageOfForm() const {
   if (GetPageObjectCount() != 1)
-    return {};
+    return absl::nullopt;
 
   CPDF_ImageObject* pImageObject = (*begin())->AsImage();
   if (!pImageObject)
-    return {};
+    return absl::nullopt;
 
   return {{pImageObject->GetIndependentBitmap(), pImageObject->matrix()}};
 }

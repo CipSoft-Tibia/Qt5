@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,20 @@ class IdentityLaunchWebAuthFlowFunction : public ExtensionFunction,
  public:
   DECLARE_EXTENSION_FUNCTION("identity.launchWebAuthFlow",
                              EXPERIMENTAL_IDENTITY_LAUNCHWEBAUTHFLOW)
+
+  // Used to track error state of the function call and for the histogram
+  // exposure.
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class Error {
+    kNone = 0,
+    kOffTheRecord = 1,
+    kUserRejected = 2,
+    kInteractionRequired = 3,
+    kPageLoadFailure = 4,
+    kUnexpectedError = 5,
+    kMaxValue = kUnexpectedError,
+  };
 
   IdentityLaunchWebAuthFlowFunction();
 

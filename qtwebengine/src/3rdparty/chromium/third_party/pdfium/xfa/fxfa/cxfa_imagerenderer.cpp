@@ -1,10 +1,12 @@
-// Copyright 2018 PDFium Authors. All rights reserved.
+// Copyright 2018 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 // Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
 
 #include "xfa/fxfa/cxfa_imagerenderer.h"
+
+#include <math.h>
 
 #include "core/fxge/cfx_renderdevice.h"
 #include "core/fxge/dib/cfx_dibbase.h"
@@ -14,8 +16,8 @@
 
 CXFA_ImageRenderer::CXFA_ImageRenderer(CFX_RenderDevice* pDevice,
                                        const RetainPtr<CFX_DIBBase>& pDIBBase,
-                                       const CFX_Matrix* pImage2Device)
-    : m_pDevice(pDevice), m_ImageMatrix(*pImage2Device), m_pDIBBase(pDIBBase) {}
+                                       const CFX_Matrix& pImage2Device)
+    : m_ImageMatrix(pImage2Device), m_pDevice(pDevice), m_pDIBBase(pDIBBase) {}
 
 CXFA_ImageRenderer::~CXFA_ImageRenderer() = default;
 
@@ -25,7 +27,7 @@ bool CXFA_ImageRenderer::Start() {
   if (m_pDevice->StartDIBits(m_pDIBBase, 255, 0, m_ImageMatrix, options,
                              &m_DeviceHandle)) {
     if (m_DeviceHandle) {
-      m_Status = 3;
+      m_State = State::kStarted;
       return true;
     }
     return false;
@@ -37,10 +39,10 @@ bool CXFA_ImageRenderer::Start() {
   if ((fabs(m_ImageMatrix.b) >= 0.5f || m_ImageMatrix.a == 0) ||
       (fabs(m_ImageMatrix.c) >= 0.5f || m_ImageMatrix.d == 0)) {
     RetainPtr<CFX_DIBBase> pDib = m_pDIBBase;
-    if (m_pDIBBase->HasAlpha() &&
+    if (m_pDIBBase->IsAlphaFormat() &&
         !(m_pDevice->GetRenderCaps() & FXRC_ALPHA_IMAGE) &&
         !(m_pDevice->GetRenderCaps() & FXRC_GET_BITS)) {
-      m_pCloneConvert = m_pDIBBase->CloneConvert(FXDIB_Rgb);
+      m_pCloneConvert = m_pDIBBase->ConvertTo(FXDIB_Format::kRgb);
       if (!m_pCloneConvert)
         return false;
 
@@ -48,7 +50,7 @@ bool CXFA_ImageRenderer::Start() {
     }
     FX_RECT clip_box = m_pDevice->GetClipBox();
     clip_box.Intersect(image_rect);
-    m_Status = 2;
+    m_State = State::kTransforming;
     m_pTransformer = std::make_unique<CFX_ImageTransformer>(pDib, m_ImageMatrix,
                                                             options, &clip_box);
     return true;
@@ -57,9 +59,8 @@ bool CXFA_ImageRenderer::Start() {
     dest_width = -dest_width;
   if (m_ImageMatrix.d > 0)
     dest_height = -dest_height;
-  int dest_left, dest_top;
-  dest_left = dest_width > 0 ? image_rect.left : image_rect.right;
-  dest_top = dest_height > 0 ? image_rect.top : image_rect.bottom;
+  int dest_left = dest_width > 0 ? image_rect.left : image_rect.right;
+  int dest_top = dest_height > 0 ? image_rect.top : image_rect.bottom;
   if (m_pDIBBase->IsOpaqueImage()) {
     if (m_pDevice->StretchDIBitsWithFlagsAndBlend(
             m_pDIBBase, dest_left, dest_top, dest_width, dest_height, options,
@@ -67,7 +68,7 @@ bool CXFA_ImageRenderer::Start() {
       return false;
     }
   }
-  if (m_pDIBBase->IsAlphaMask()) {
+  if (m_pDIBBase->IsMaskFormat()) {
     if (m_pDevice->StretchBitMaskWithFlags(m_pDIBBase, dest_left, dest_top,
                                            dest_width, dest_height, 0,
                                            options)) {
@@ -90,7 +91,7 @@ bool CXFA_ImageRenderer::Start() {
 }
 
 bool CXFA_ImageRenderer::Continue() {
-  if (m_Status == 2) {
+  if (m_State == State::kTransforming) {
     if (m_pTransformer->Continue(nullptr))
       return true;
 
@@ -98,7 +99,7 @@ bool CXFA_ImageRenderer::Continue() {
     if (!pBitmap)
       return false;
 
-    if (pBitmap->IsAlphaMask()) {
+    if (pBitmap->IsMaskFormat()) {
       m_pDevice->SetBitMask(pBitmap, m_pTransformer->result().left,
                             m_pTransformer->result().top, 0);
     } else {
@@ -108,7 +109,7 @@ bool CXFA_ImageRenderer::Continue() {
     }
     return false;
   }
-  if (m_Status == 3)
+  if (m_State == State::kStarted)
     return m_pDevice->ContinueDIBits(m_DeviceHandle.get(), nullptr);
 
   return false;
@@ -121,7 +122,7 @@ void CXFA_ImageRenderer::CompositeDIBitmap(
   if (!pDIBitmap)
     return;
 
-  if (!pDIBitmap->IsAlphaMask()) {
+  if (!pDIBitmap->IsMaskFormat()) {
     if (m_pDevice->SetDIBits(pDIBitmap, left, top))
       return;
   } else if (m_pDevice->SetBitMask(pDIBitmap, left, top, 0)) {
@@ -132,23 +133,22 @@ void CXFA_ImageRenderer::CompositeDIBitmap(
                         (!(m_pDevice->GetRenderCaps() & FXRC_ALPHA_OUTPUT) &&
                          (m_pDevice->GetRenderCaps() & FXRC_GET_BITS));
   if (bGetBackGround) {
-    if (pDIBitmap->IsAlphaMask())
+    if (pDIBitmap->IsMaskFormat())
       return;
 
     m_pDevice->SetDIBitsWithBlend(pDIBitmap, left, top, BlendMode::kNormal);
     return;
   }
-  if (!pDIBitmap->HasAlpha() ||
+  if (!pDIBitmap->IsAlphaFormat() ||
       (m_pDevice->GetRenderCaps() & FXRC_ALPHA_IMAGE)) {
     return;
   }
 
-  RetainPtr<CFX_DIBitmap> pCloneConvert = pDIBitmap->CloneConvert(FXDIB_Rgb);
-  if (!pCloneConvert)
+  RetainPtr<CFX_DIBitmap> pConverted = pDIBitmap->ConvertTo(FXDIB_Format::kRgb);
+  if (!pConverted)
     return;
 
-  CXFA_ImageRenderer imageRender(m_pDevice.Get(), pCloneConvert,
-                                 &m_ImageMatrix);
+  CXFA_ImageRenderer imageRender(m_pDevice, pConverted, m_ImageMatrix);
   if (!imageRender.Start())
     return;
 

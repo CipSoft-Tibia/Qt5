@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the qmake application of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "qmakevfs.h"
 
@@ -34,10 +9,6 @@ using namespace QMakeInternal;
 #include <qdir.h>
 #include <qfile.h>
 #include <qfileinfo.h>
-
-#if QT_CONFIG(textcodec)
-#include <qtextcodec.h>
-#endif
 
 #define fL1S(s) QString::fromLatin1(s)
 
@@ -49,9 +20,6 @@ QMakeVfs::QMakeVfs()
     , m_magicExisting(fL1S("existing"))
 #endif
 {
-#if QT_CONFIG(textcodec)
-    m_textCodec = 0;
-#endif
     ref();
 }
 
@@ -149,12 +117,12 @@ bool QMakeVfs::writeFile(int id, QIODevice::OpenMode mode, VfsFlags flags,
     QMutexLocker locker(&m_mutex);
 # endif
     QString *cont = &m_files[id];
-    Q_UNUSED(flags)
+    Q_UNUSED(flags);
     if (mode & QIODevice::Append)
         *cont += contents;
     else
         *cont = contents;
-    Q_UNUSED(errStr)
+    Q_UNUSED(errStr);
     return true;
 #else
     QFileInfo qfi(fileNameForId(id));
@@ -235,11 +203,7 @@ QMakeVfs::ReadResult QMakeVfs::readFile(int id, QString *contents, QString *errS
         *errStr = fL1S("Unexpected UTF-8 BOM");
         return ReadOtherError;
     }
-    *contents =
-#if QT_CONFIG(textcodec)
-        m_textCodec ? m_textCodec->toUnicode(bcont) :
-#endif
-        QString::fromLocal8Bit(bcont);
+    *contents = QString::fromLocal8Bit(bcont);
     return ReadOk;
 }
 
@@ -254,7 +218,7 @@ bool QMakeVfs::exists(const QString &fn, VfsFlags flags)
     if (it != m_files.constEnd())
         return it->constData() != m_magicMissing.constData();
 #else
-    Q_UNUSED(flags)
+    Q_UNUSED(flags);
 #endif
     bool ex = IoUtils::fileType(fn) == IoUtils::FileIsRegular;
 #ifndef PROEVALUATOR_FULL
@@ -287,13 +251,6 @@ void QMakeVfs::invalidateContents()
     QMutexLocker locker(&m_mutex);
 # endif
     m_files.clear();
-}
-#endif
-
-#if QT_CONFIG(textcodec)
-void QMakeVfs::setTextCodec(const QTextCodec *textCodec)
-{
-    m_textCodec = textCodec;
 }
 #endif
 

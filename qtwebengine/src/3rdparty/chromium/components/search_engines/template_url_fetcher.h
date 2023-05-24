@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,12 +6,10 @@
 #define COMPONENTS_SEARCH_ENGINES_TEMPLATE_URL_FETCHER_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
-#include "base/callback_forward.h"
-#include "base/macros.h"
-#include "base/memory/ref_counted.h"
-#include "base/strings/string16.h"
+#include "base/memory/raw_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 
 class GURL;
@@ -36,6 +34,10 @@ class TemplateURLFetcher : public KeyedService {
  public:
   // Creates a TemplateURLFetcher.
   explicit TemplateURLFetcher(TemplateURLService* template_url_service);
+
+  TemplateURLFetcher(const TemplateURLFetcher&) = delete;
+  TemplateURLFetcher& operator=(const TemplateURLFetcher&) = delete;
+
   ~TemplateURLFetcher() override;
 
   // If TemplateURLFetcher is not already downloading the OSDD for osdd_url,
@@ -46,13 +48,12 @@ class TemplateURLFetcher : public KeyedService {
   // TemplateURL in the model for |keyword|, or we're already downloading an
   // OSDD for this keyword, no download is started.
   //
-  void ScheduleDownload(const base::string16& keyword,
+  void ScheduleDownload(const std::u16string& keyword,
                         const GURL& osdd_url,
                         const GURL& favicon_url,
                         const url::Origin& initiator,
                         network::mojom::URLLoaderFactory* url_loader_factory,
                         int render_frame_id,
-                        int resource_type,
                         int32_t request_id);
 
   // The current number of outstanding requests.
@@ -69,12 +70,10 @@ class TemplateURLFetcher : public KeyedService {
  private:
   friend class RequestDelegate;
 
-  TemplateURLService* template_url_service_;
+  raw_ptr<TemplateURLService> template_url_service_;
 
   // In progress requests.
   std::vector<std::unique_ptr<RequestDelegate>> requests_;
-
-  DISALLOW_COPY_AND_ASSIGN(TemplateURLFetcher);
 };
 
 #endif  // COMPONENTS_SEARCH_ENGINES_TEMPLATE_URL_FETCHER_H_

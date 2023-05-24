@@ -1,9 +1,10 @@
-# Copyright 2014 The Chromium Authors. All rights reserved.
+# Copyright 2014 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import("//build/config/android/config.gni")
 import("//build/config/arm.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/linux/pkg_config.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/shim_headers.gni")
@@ -40,6 +41,10 @@ if (current_cpu == "x86") {
   } else {
     cpu_arch_full = current_cpu
   }
+} else if (current_cpu == "riscv64") {
+  cpu_arch_full = "generic"
+} else if (current_cpu == "loong64") {
+  cpu_arch_full = "loongarch"
 } else {
   cpu_arch_full = current_cpu
 }
@@ -85,16 +90,6 @@ config("libvpx_config") {
       # libvpx has many static functions in header, which trigger this warning.
       "-Wno-unused-function",
     ]
-
-    # Fixes a mac / ios simulator link error for vpx_scaled_2d:
-    # Undefined symbols for architecture x86_64:
-    # "_vpx_scaled_2d", referenced from:
-    # _vp9_scale_and_extend_frame_c in libvpx.a(vp9_frame_scale.o)
-    # (maybe you meant: _vpx_scaled_2d_ssse3)
-    # ld: symbol(s) not found for architecture x86_64
-    if (is_mac || (is_ios && (current_cpu == "x86" || current_cpu == "x64"))) {
-      cflags += [ "-fno-common" ]
-    }
   } else if (!is_win) {
     cflags = [
       "-Wno-unused-function",
@@ -142,8 +137,10 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
     }
     if (current_cpu == "x86") {
       sources = libvpx_srcs_x86_mmx
+      deps = [ ":libvpx_x86_headers" ]
     } else if (current_cpu == "x64") {
       sources = libvpx_srcs_x86_64_mmx
+      deps = [ ":libvpx_x86_64_headers" ]
     }
   }
 
@@ -156,8 +153,10 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
     }
     if (current_cpu == "x86") {
       sources = libvpx_srcs_x86_sse2
+      deps = [ ":libvpx_x86_headers" ]
     } else if (current_cpu == "x64") {
       sources = libvpx_srcs_x86_64_sse2
+      deps = [ ":libvpx_x86_64_headers" ]
     }
   }
 
@@ -170,8 +169,10 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
     }
     if (current_cpu == "x86") {
       sources = libvpx_srcs_x86_ssse3
+      deps = [ ":libvpx_x86_headers" ]
     } else if (current_cpu == "x64") {
       sources = libvpx_srcs_x86_64_ssse3
+      deps = [ ":libvpx_x86_64_headers" ]
     }
   }
 
@@ -183,8 +184,10 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
       cflags = [ "-msse4.1" ]
     }
     if (current_cpu == "x86") {
+      deps = [ ":libvpx_x86_headers" ]
       sources = libvpx_srcs_x86_sse4_1
     } else if (current_cpu == "x64") {
+      deps = [ ":libvpx_x86_64_headers" ]
       sources = libvpx_srcs_x86_64_sse4_1
     }
   }
@@ -199,8 +202,10 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
       cflags = [ "-mavx" ]
     }
     if (current_cpu == "x86") {
+      deps = [ ":libvpx_x86_headers" ]
       sources = libvpx_srcs_x86_avx
     } else if (current_cpu == "x64") {
+      deps = [ ":libvpx_x86_64_headers" ]
       sources = libvpx_srcs_x86_64_avx
     }
   }
@@ -215,8 +220,10 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
       cflags = [ "-mavx2" ]
     }
     if (current_cpu == "x86") {
+      deps = [ ":libvpx_x86_headers" ]
       sources = libvpx_srcs_x86_avx2
     } else if (current_cpu == "x64") {
+      deps = [ ":libvpx_x86_64_headers" ]
       sources = libvpx_srcs_x86_64_avx2
     }
   }
@@ -239,10 +246,22 @@ if (current_cpu == "x86" || (current_cpu == "x64" && !is_msan)) {
       ]
     }
     if (current_cpu == "x86") {
+      deps = [ ":libvpx_x86_headers" ]
       sources = libvpx_srcs_x86_avx512
     } else if (current_cpu == "x64") {
+      deps = [ ":libvpx_x86_64_headers" ]
       sources = libvpx_srcs_x86_64_avx512
     }
+  }
+}
+
+if (current_cpu == "loong64") {
+  source_set("libvpx_loongarch_lsx") {
+    configs -= [ "//build/config/compiler:chromium_code" ]
+    configs += [ "//build/config/compiler:no_chromium_code" ]
+    configs += [ ":libvpx_config" ]
+    cflags = [ "-mlsx" ]
+    sources = libvpx_srcs_loongarch_lsx
   }
 }
 
@@ -252,6 +271,7 @@ if (cpu_arch_full == "arm-neon-cpu-detect") {
     configs += [ ":libvpx_config" ]
     cflags = [ "-mfpu=neon" ]
     sources = libvpx_srcs_arm_neon_cpu_detect_neon
+    deps = [ ":libvpx_arm_neon_cpu_detect_headers" ]
   }
 }
 
@@ -310,40 +330,107 @@ if (current_cpu == "arm" && arm_assembly_sources != []) {
   }
 }
 
+source_set("libvpx_x86_headers") {
+  sources = libvpx_srcs_x86_headers
+}
+
+source_set("libvpx_x86_64_headers") {
+  sources = libvpx_srcs_x86_64_headers
+}
+
+source_set("libvpx_loongarch_headers") {
+  sources = libvpx_srcs_loongarch_headers
+}
+
+source_set("libvpx_arm_headers") {
+  sources = libvpx_srcs_arm_headers
+}
+
+source_set("libvpx_arm_neon_headers") {
+  sources = libvpx_srcs_arm_neon_headers
+}
+
+source_set("libvpx_arm_neon_cpu_detect_headers") {
+  sources = libvpx_srcs_arm_neon_cpu_detect_headers
+}
+
+source_set("libvpx_arm64_headers") {
+  sources = libvpx_srcs_arm64_headers
+}
+
+source_set("libvpx_arm_neon_highbd_headers") {
+  sources = libvpx_srcs_arm_neon_highbd_headers
+}
+
+source_set("libvpx_arm64_highbd_headers") {
+  sources = libvpx_srcs_arm64_highbd_headers
+}
+
+source_set("libvpx_mips_headers") {
+  sources = libvpx_srcs_mips_headers
+}
+
+source_set("libvpx_nacl_headers") {
+  sources = libvpx_srcs_nacl_headers
+}
+
+source_set("libvpx_generic_headers") {
+  sources = libvpx_srcs_generic_headers
+}
+
 static_library("bundled_libvpx") {
-  if (!is_debug && is_win) {
+  if (!is_debug && (is_win || is_chromeos)) {
     configs -= [ "//build/config/compiler:default_optimization" ]
     configs += [ "//build/config/compiler:optimize_max" ]
   }
 
   if (is_nacl) {
     sources = libvpx_srcs_generic
+    public_deps = [ ":libvpx_generic_headers" ]
   } else if (current_cpu == "x86") {
     sources = libvpx_srcs_x86
+    public_deps = [ ":libvpx_x86_headers" ]
   } else if (current_cpu == "x64") {
     if (is_msan) {
       sources = libvpx_srcs_generic
+      public_deps = [ ":libvpx_generic_headers" ]
     } else {
       sources = libvpx_srcs_x86_64
+      public_deps = [ ":libvpx_x86_64_headers" ]
     }
   } else if (current_cpu == "mipsel" || current_cpu == "mips64el") {
     sources = libvpx_srcs_mips
+    public_deps = [ ":libvpx_mips_headers" ]
   } else if (current_cpu == "arm") {
     if (is_chromeos) {
       sources = libvpx_srcs_arm_neon_highbd
+      public_deps = [ ":libvpx_arm_neon_highbd_headers" ]
     } else if (arm_use_neon) {
       sources = libvpx_srcs_arm_neon
+      public_deps = [ ":libvpx_arm_neon_headers" ]
     } else if (is_android) {
       sources = libvpx_srcs_arm_neon_cpu_detect
+      public_deps = [ ":libvpx_arm_neon_cpu_detect_headers" ]
     } else {
       sources = libvpx_srcs_arm
+      public_deps = [ ":libvpx_arm_headers" ]
     }
   } else if (current_cpu == "arm64") {
     if (is_chromeos || is_win || is_mac) {
       sources = libvpx_srcs_arm64_highbd
+      public_deps = [ ":libvpx_arm64_highbd_headers" ]
     } else {
       sources = libvpx_srcs_arm64
+      public_deps = [ ":libvpx_arm64_headers" ]
     }
+  } else if (current_cpu == "ppc64") {
+    sources = libvpx_srcs_ppc64
+  } else if (current_cpu == "riscv64") {
+    sources = libvpx_srcs_generic
+    public_deps = [ ":libvpx_generic_headers" ]
+  } else if (current_cpu == "loong64") {
+    sources = libvpx_srcs_loongarch
+    public_deps = [ ":libvpx_loongarch_headers" ]
   }
 
   configs -= [ "//build/config/compiler:chromium_code" ]
@@ -371,18 +458,26 @@ static_library("bundled_libvpx") {
   if (current_cpu == "arm" && arm_assembly_sources != []) {
     deps += [ ":libvpx_assembly_arm" ]
   }
+  if (current_cpu == "loong64") {
+    deps += [ ":libvpx_loongarch_lsx" ]
+  }
 
   public_configs = [ ":libvpx_external_config" ]
 }
 
-static_library("bundled_libvp9rc") {
+static_library("bundled_libvpxrc") {
   if (!is_debug && is_win) {
     configs -= [ "//build/config/compiler:default_optimization" ]
     configs += [ "//build/config/compiler:optimize_max" ]
   }
 
-  sources = [ "//third_party/libvpx/source/libvpx/vp9/ratectrl_rtc.cc",
-              "//third_party/libvpx/source/libvpx/vp9/ratectrl_rtc.h" ]
+  sources = [
+    "//third_party/libvpx/source/libvpx/vp8/vp8_ratectrl_rtc.cc",
+    "//third_party/libvpx/source/libvpx/vp8/vp8_ratectrl_rtc.h",
+    "//third_party/libvpx/source/libvpx/vp9/ratectrl_rtc.cc",
+    "//third_party/libvpx/source/libvpx/vp9/ratectrl_rtc.h",
+    "//third_party/libvpx/source/libvpx/vpx/internal/vpx_ratectrl_rtc.h",
+  ]
 
   configs -= [ "//build/config/compiler:chromium_code" ]
   configs += [ "//build/config/compiler:no_chromium_code" ]
@@ -423,10 +518,10 @@ group("libvpx") {
   }
 }
 
-group("libvp9rc") {
+group("libvpxrc") {
   if (use_system_libvpx) {
     public_deps = [ ":libvpx" ]
   } else {
-    public_deps = [ ":bundled_libvp9rc" ]
+    public_deps = [ ":bundled_libvpxrc" ]
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -11,11 +11,14 @@
 #include "base/test/test_discardable_memory_allocator.h"
 #include "cc/paint/paint_cache.h"
 #include "cc/paint/paint_op_buffer.h"
+#include "cc/paint/paint_op_reader.h"
+#include "cc/paint/paint_op_writer.h"
 #include "cc/test/transfer_cache_test_helper.h"
 #include "components/viz/test/test_context_provider.h"
 #include "gpu/command_buffer/common/buffer.h"
 #include "gpu/command_buffer/service/service_font_manager.h"
 #include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/gpu/GpuTypes.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
 
 struct Environment {
@@ -70,31 +73,26 @@ void Raster(scoped_refptr<viz::TestContextProvider> context_provider,
             const uint8_t* data,
             size_t size) {
   const size_t kRasterDimension = 32;
-  const size_t kMaxSerializedSize = 1000000;
 
   SkImageInfo image_info = SkImageInfo::MakeN32(
       kRasterDimension, kRasterDimension, kOpaque_SkAlphaType);
-  context_provider->BindToCurrentThread();
+  context_provider->BindToCurrentSequence();
   sk_sp<SkSurface> surface = SkSurface::MakeRenderTarget(
-      context_provider->GrContext(), SkBudgeted::kYes, image_info);
+      context_provider->GrContext(), skgpu::Budgeted::kYes, image_info);
   SkCanvas* canvas = surface->getCanvas();
 
-  cc::PlaybackParams params(nullptr, canvas->getTotalMatrix());
+  cc::PlaybackParams params(nullptr, canvas->getLocalToDevice());
   cc::TransferCacheTestHelper transfer_cache_helper;
   std::vector<uint8_t> scratch_buffer;
   cc::PaintOp::DeserializeOptions deserialize_options(
       &transfer_cache_helper, paint_cache, strike_client, &scratch_buffer,
       true /* is_privileged */, nullptr /* shared_image_provider */);
 
-  // Need 4 bytes to be able to read the type/skip.
-  while (size >= 4) {
-    const cc::PaintOp* serialized = reinterpret_cast<const cc::PaintOp*>(data);
-    if (serialized->skip > kMaxSerializedSize)
-      break;
-
+  // Need kHeaderBytes bytes to be able to read the header.
+  while (size >= cc::PaintOpWriter::kHeaderBytes) {
     std::unique_ptr<char, base::AlignedFreeDeleter> deserialized(
         static_cast<char*>(base::AlignedAlloc(
-            sizeof(cc::LargestPaintOp), cc::PaintOpBuffer::PaintOpAlign)));
+            sizeof(cc::LargestPaintOp), cc::PaintOpBuffer::kPaintOpAlign)));
     size_t bytes_read = 0;
     cc::PaintOp* deserialized_op = cc::PaintOp::Deserialize(
         data, size, deserialized.get(), sizeof(cc::LargestPaintOp), &bytes_read,
@@ -107,9 +105,6 @@ void Raster(scoped_refptr<viz::TestContextProvider> context_provider,
 
     deserialized_op->DestroyThis();
 
-    if (serialized->skip >= size)
-      break;
-
     size -= bytes_read;
     data += bytes_read;
   }
@@ -121,14 +116,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if (size <= sizeof(size_t))
     return 0;
 
-  static Environment* env = new Environment();
-  ALLOW_UNUSED_LOCAL(env);
+  [[maybe_unused]] static Environment* env = new Environment();
   base::CommandLine::Init(0, nullptr);
 
   // Partition the data to use some bytes for populating the font cache.
   uint32_t bytes_for_fonts = data[0];
-  if (bytes_for_fonts > size)
+  if (bytes_for_fonts > size) {
     bytes_for_fonts = size / 2;
+  }
+  const uint8_t* raster_data = base::bits::AlignDown(
+      data + bytes_for_fonts, cc::PaintOpWriter::kMaxAlignment);
+  if (raster_data < data) {
+    return 0;
+  }
+  bytes_for_fonts = raster_data - data;
+  size_t raster_size = size - bytes_for_fonts;
 
   FontSupport font_support;
   scoped_refptr<gpu::ServiceFontManager> font_manager(
@@ -139,23 +141,21 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if (bytes_for_fonts > 0u) {
     font_manager->Deserialize(reinterpret_cast<const char*>(data),
                               bytes_for_fonts, &locked_handles);
-    data += bytes_for_fonts;
-    size -= bytes_for_fonts;
   }
 
   auto context_provider_no_support = viz::TestContextProvider::Create();
-  context_provider_no_support->BindToCurrentThread();
+  context_provider_no_support->BindToCurrentSequence();
   CHECK(!context_provider_no_support->GrContext()->supportsDistanceFieldText());
   Raster(context_provider_no_support, font_manager->strike_client(),
-         &paint_cache, data, size);
+         &paint_cache, raster_data, raster_size);
 
   auto context_provider_with_support = viz::TestContextProvider::Create(
       std::string("GL_OES_standard_derivatives"));
-  context_provider_with_support->BindToCurrentThread();
+  context_provider_with_support->BindToCurrentSequence();
   CHECK(
       context_provider_with_support->GrContext()->supportsDistanceFieldText());
   Raster(context_provider_with_support, font_manager->strike_client(),
-         &paint_cache, data, size);
+         &paint_cache, raster_data, raster_size);
 
   font_manager->Unlock(locked_handles);
   font_manager->Destroy();

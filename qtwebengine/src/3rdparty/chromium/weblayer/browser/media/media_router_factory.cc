@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,6 +18,13 @@ namespace weblayer {
 MediaRouterFactory* MediaRouterFactory::GetInstance() {
   static base::NoDestructor<MediaRouterFactory> instance;
   return instance.get();
+}
+
+// static
+bool MediaRouterFactory::IsFeatureEnabled() {
+  static bool enabled = Java_MediaRouterClientImpl_isMediaRouterEnabled(
+      base::android::AttachCurrentThread());
+  return enabled;
 }
 
 // static

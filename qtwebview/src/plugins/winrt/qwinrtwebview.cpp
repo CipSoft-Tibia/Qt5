@@ -1,38 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtWebView module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qwinrtwebview_p.h"
 #include <private/qwebviewloadrequest_p.h>
@@ -125,7 +92,7 @@ public:
 
     ~HStringList()
     {
-        for (const HSTRING &hString : qAsConst(d))
+        for (const HSTRING &hString : std::as_const(d))
             WindowsDeleteString(hString);
     }
 
@@ -136,7 +103,7 @@ public:
     }
 
 private:
-    QVector<HSTRING> d;
+    QList<HSTRING> d;
 };
 
 static QUrl qurlFromUri(IUriRuntimeClass *uri)
@@ -379,7 +346,7 @@ QString QWinRTWebViewPrivate::httpUserAgent() const
 {
 #ifdef QT_WINRT_URLMKGETSESSIONOPTION_NOT_AVAILABLE
     qWarning() << "Used Windows SDK version (" << QString::number(QT_UCRTVERSION) << ") does not "
-                  "support getting or setting of the user agent property from within UWP applications. Consider updating to a more recent Windows 10 "
+                  "support getting or setting of the user agent property. Consider updating to a more recent Windows 10 "
                   "SDK (16299 or above).";
     return "";
 #else
@@ -396,7 +363,7 @@ void QWinRTWebViewPrivate::setHttpUserAgent(const QString &userAgent)
 #ifdef QT_WINRT_URLMKSETSESSIONOPTION_NOT_AVAILABLE
     Q_UNUSED(userAgent);
     qWarning() << "Used Windows SDK version (" << QString::number(QT_UCRTVERSION) << ") does not "
-                  "support getting or setting of the user agent property from within UWP applications. Consider updating to a more recent Windows 10 "
+                  "support getting or setting of the user agent property. Consider updating to a more recent Windows 10 "
                   "SDK (16299 or above).";
 #else
     HRESULT hr = UrlMkSetSessionOption(0x10000001,userAgent.toLocal8Bit().data(),userAgent.size(),0);

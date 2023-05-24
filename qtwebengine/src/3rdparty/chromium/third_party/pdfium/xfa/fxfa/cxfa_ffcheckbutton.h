@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,7 +22,7 @@ class CXFA_FFCheckButton final : public CXFA_FFField {
   void Trace(cppgc::Visitor* visitor) const override;
 
   // CXFA_FFField
-  void RenderWidget(CXFA_Graphics* pGS,
+  void RenderWidget(CFGAS_GEGraphics* pGS,
                     const CFX_Matrix& matrix,
                     HighlightOption highlight) override;
 
@@ -30,14 +30,15 @@ class CXFA_FFCheckButton final : public CXFA_FFField {
   bool PerformLayout() override;
   bool UpdateFWLData() override;
   void UpdateWidgetProperty() override;
-  bool OnLButtonUp(uint32_t dwFlags, const CFX_PointF& point) override;
+  bool OnLButtonUp(Mask<XFA_FWL_KeyFlag> dwFlags,
+                   const CFX_PointF& point) override;
   void OnProcessMessage(CFWL_Message* pMessage) override;
   void OnProcessEvent(CFWL_Event* pEvent) override;
-  void OnDrawWidget(CXFA_Graphics* pGraphics,
+  void OnDrawWidget(CFGAS_GEGraphics* pGraphics,
                     const CFX_Matrix& matrix) override;
   FormFieldType GetFormFieldType() override;
 
-  void SetFWLCheckState(XFA_CHECKSTATE eCheckState);
+  void SetFWLCheckState(XFA_CheckState eCheckState);
 
  private:
   CXFA_FFCheckButton(CXFA_Node* pNode, CXFA_CheckButton* button);
@@ -46,7 +47,7 @@ class CXFA_FFCheckButton final : public CXFA_FFField {
   bool IsDataChanged() override;
   void CapLeftRightPlacement(const CXFA_Margin* captionMargin);
   void AddUIMargin(XFA_AttributeValue iCapPlacement);
-  XFA_CHECKSTATE FWLState2XFAState();
+  XFA_CheckState FWLState2XFAState();
 
   cppgc::Member<IFWL_WidgetDelegate> m_pOldDelegate;
   cppgc::Member<CXFA_CheckButton> const button_;

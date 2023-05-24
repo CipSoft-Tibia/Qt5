@@ -1,4 +1,4 @@
-// Copyright 2014 PDFium Authors. All rights reserved.
+// Copyright 2014 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -13,8 +13,8 @@
 #include "fxjs/cjs_object.h"
 #include "fxjs/js_define.h"
 
+class CFX_FloatRect;
 class CPDF_FormControl;
-class CPDFSDK_Widget;
 struct CJS_DelayData;
 
 enum FIELD_PROP {
@@ -29,7 +29,7 @@ enum FIELD_PROP {
 
 class CJS_Field final : public CJS_Object {
  public:
-  static int GetObjDefnID();
+  static uint32_t GetObjDefnID();
   static void DefineJSObjects(CFXJS_Engine* pEngine);
   static void DoDelay(CPDFSDK_FormFillEnvironment* pFormFillEnv,
                       CJS_DelayData* pData);
@@ -123,7 +123,7 @@ class CJS_Field final : public CJS_Object {
   CJS_Result set_text_color(CJS_Runtime* pRuntime, v8::Local<v8::Value> vp);
 
  private:
-  static int ObjDefnID;
+  static uint32_t ObjDefnID;
   static const char kName[];
   static const JSPropertySpec PropertySpecs[];
   static const JSMethodSpec MethodSpecs[];
@@ -349,11 +349,11 @@ class CJS_Field final : public CJS_Object {
   CJS_Result signatureValidate(CJS_Runtime* pRuntime,
                                const std::vector<v8::Local<v8::Value>>& params);
 
-  void SetDelay(bool bDelay);
   std::vector<CPDF_FormField*> GetFormFields() const;
   CPDF_FormField* GetFirstFormField() const;
   CPDF_FormControl* GetSmartFieldControl(CPDF_FormField* pFormField);
 
+  void SetDelay(bool bDelay);
   void AddDelay_Int(FIELD_PROP prop, int32_t n);
   void AddDelay_Bool(FIELD_PROP prop, bool b);
   void AddDelay_String(FIELD_PROP prop, const ByteString& str);
@@ -361,7 +361,6 @@ class CJS_Field final : public CJS_Object {
   void AddDelay_WordArray(FIELD_PROP prop, const std::vector<uint32_t>& array);
   void AddDelay_WideStringArray(FIELD_PROP prop,
                                 const std::vector<WideString>& array);
-
   void DoDelay();
 
   ObservedPtr<CJS_Document> m_pJSDoc;

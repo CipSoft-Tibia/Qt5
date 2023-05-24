@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGRHIDISTANCEFIELDGLYPHCACHE_H
 #define QSGRHIDISTANCEFIELDGLYPHCACHE_H
@@ -53,14 +17,16 @@
 
 #include "qsgadaptationlayer_p.h"
 #include <private/qsgareaallocator_p.h>
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 QT_BEGIN_NAMESPACE
+
+class QSGDefaultRenderContext;
 
 class Q_QUICK_PRIVATE_EXPORT QSGRhiDistanceFieldGlyphCache : public QSGDistanceFieldGlyphCache
 {
 public:
-    QSGRhiDistanceFieldGlyphCache(QRhi *rhi, const QRawFont &font);
+    QSGRhiDistanceFieldGlyphCache(QSGDefaultRenderContext *rc, const QRawFont &font, int renderTypeQuality);
     virtual ~QSGRhiDistanceFieldGlyphCache();
 
     void requestGlyphs(const QSet<glyph_t> &glyphs) override;
@@ -70,6 +36,7 @@ public:
 
     bool useTextureResizeWorkaround() const;
     bool createFullSizeTextures() const;
+    bool isActive() const override;
     int maxTextureSize() const;
 
     void setMaxTextureCount(int max) { m_maxTextureCount = max; }
@@ -78,6 +45,11 @@ public:
     void commitResourceUpdates(QRhiResourceUpdateBatch *mergeInto);
 
     bool eightBitFormatIsAlphaSwizzled() const override;
+    bool screenSpaceDerivativesSupported() const override;
+
+#if defined(QSG_DISTANCEFIELD_CACHE_DEBUG)
+    void saveTexture(QRhiTexture *texture, const QString &nameBase) const override;
+#endif
 
 private:
     bool loadPregeneratedCache(const QRawFont &font);
@@ -99,7 +71,7 @@ private:
 
     TextureInfo *textureInfo(int index)
     {
-        for (int i = m_textures.count(); i <= index; ++i) {
+        for (int i = m_textures.size(); i <= index; ++i) {
             if (createFullSizeTextures())
                 m_textures.append(QRect(0, 0, maxTextureSize(), maxTextureSize()));
             else
@@ -109,14 +81,15 @@ private:
         return &m_textures[index];
     }
 
+    QSGDefaultRenderContext *m_rc;
     QRhi *m_rhi;
     mutable int m_maxTextureSize = 0;
     int m_maxTextureCount = 3;
     QSGAreaAllocator *m_areaAllocator = nullptr;
-    QRhiResourceUpdateBatch *m_resourceUpdates = nullptr;
     QList<TextureInfo> m_textures;
     QHash<glyph_t, TextureInfo *> m_glyphsTexture;
     QSet<glyph_t> m_unusedGlyphs;
+    QSet<glyph_t> m_referencedGlyphs;
     QSet<QRhiTexture *> m_pendingDispose;
 };
 

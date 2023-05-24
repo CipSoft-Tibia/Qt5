@@ -27,7 +27,7 @@
 
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/css/style_recalc.h"
+#include "third_party/blink/renderer/core/css/style_recalc_change.h"
 #include "third_party/blink/renderer/core/dom/node.h"
 #include "third_party/blink/renderer/core/dom/static_node_list.h"
 #include "third_party/blink/renderer/core/html/collection_type.h"
@@ -40,6 +40,7 @@ class Element;
 class ExceptionState;
 class HTMLCollection;
 class RadioNodeList;
+class StyleRecalcContext;
 class WhitespaceAttacher;
 
 using StaticElementList = StaticNodeTypeList<Element>;
@@ -92,10 +93,11 @@ class CORE_EXPORT ContainerNode : public Node {
 
   Node* firstChild() const { return first_child_; }
   Node* lastChild() const { return last_child_; }
+  bool hasChildren() const { return first_child_; }
   bool HasChildren() const { return first_child_; }
 
   bool HasOneChild() const {
-    return first_child_ && !first_child_->nextSibling();
+    return first_child_ && !first_child_->HasNextSibling();
   }
   bool HasOneTextChild() const {
     return HasOneChild() && first_child_->IsTextNode();
@@ -286,7 +288,10 @@ class CORE_EXPORT ContainerNode : public Node {
                                    Element* changed_element,
                                    Node* node_before_change,
                                    Node* node_after_change);
-  void RecalcDescendantStyles(const StyleRecalcChange);
+  void RecalcDescendantStyles(const StyleRecalcChange,
+                              const StyleRecalcContext&);
+  void RecalcSubsequentSiblingStyles(const StyleRecalcChange,
+                                     const StyleRecalcContext&);
   void RebuildChildrenLayoutTrees(WhitespaceAttacher&);
   void RebuildLayoutTreeForChild(Node* child, WhitespaceAttacher&);
 
@@ -303,6 +308,7 @@ class CORE_EXPORT ContainerNode : public Node {
     kTextChanged
   };
   enum class ChildrenChangeSource : uint8_t { kAPI, kParser };
+  enum class ChildrenChangeAffectsElements : uint8_t { kNo, kYes };
   struct ChildrenChange {
     STACK_ALLOCATED();
 
@@ -311,14 +317,17 @@ class CORE_EXPORT ContainerNode : public Node {
                                        Node* unchanged_previous,
                                        Node* unchanged_next,
                                        ChildrenChangeSource by_parser) {
-      ChildrenChange change = {node.IsElementNode()
-                                   ? ChildrenChangeType::kElementInserted
-                                   : ChildrenChangeType::kNonElementInserted,
-                               by_parser,
-                               &node,
-                               unchanged_previous,
-                               unchanged_next,
-                               nullptr};
+      ChildrenChange change = {
+          node.IsElementNode() ? ChildrenChangeType::kElementInserted
+                               : ChildrenChangeType::kNonElementInserted,
+          by_parser,
+          node.IsElementNode() ? ChildrenChangeAffectsElements::kYes
+                               : ChildrenChangeAffectsElements::kNo,
+          &node,
+          unchanged_previous,
+          unchanged_next,
+          {},
+          String()};
       return change;
     }
 
@@ -326,14 +335,17 @@ class CORE_EXPORT ContainerNode : public Node {
                                      Node* previous_sibling,
                                      Node* next_sibling,
                                      ChildrenChangeSource by_parser) {
-      ChildrenChange change = {node.IsElementNode()
-                                   ? ChildrenChangeType::kElementRemoved
-                                   : ChildrenChangeType::kNonElementRemoved,
-                               by_parser,
-                               &node,
-                               previous_sibling,
-                               next_sibling,
-                               nullptr};
+      ChildrenChange change = {
+          node.IsElementNode() ? ChildrenChangeType::kElementRemoved
+                               : ChildrenChangeType::kNonElementRemoved,
+          by_parser,
+          node.IsElementNode() ? ChildrenChangeAffectsElements::kYes
+                               : ChildrenChangeAffectsElements::kNo,
+          &node,
+          previous_sibling,
+          next_sibling,
+          {},
+          String()};
       return change;
     }
 
@@ -354,6 +366,7 @@ class CORE_EXPORT ContainerNode : public Node {
 
     ChildrenChangeType type;
     ChildrenChangeSource by_parser;
+    ChildrenChangeAffectsElements affects_elements;
     Node* sibling_changed = nullptr;
     // |siblingBeforeChange| is
     //  - siblingChanged.previousSibling before node removal
@@ -367,9 +380,11 @@ class CORE_EXPORT ContainerNode : public Node {
     //  - nextSibling of the last inserted node after multiple node insertion.
     Node* sibling_after_change = nullptr;
     // List of removed nodes for ChildrenChangeType::kAllChildrenRemoved.
-    // This is available only if ChildrenChangedAllChildrenRemovedNeedsList()
-    // returns true.
-    HeapVector<Member<Node>>* removed_nodes;
+    // Only populated if ChildrenChangedAllChildrenRemovedNeedsList() returns
+    // true.
+    HeapVector<Member<Node>> removed_nodes;
+    // |old_text| is mostly empty, only used for text node changes.
+    const String& old_text;
   };
 
   // Notifies the node that it's list of children have changed (either by adding
@@ -390,10 +405,12 @@ class CORE_EXPORT ContainerNode : public Node {
   // a descendant LayoutBox.
   virtual LayoutBox* GetLayoutBoxForScrolling() const;
 
+  Element* GetAutofocusDelegate() const;
+
   void Trace(Visitor*) const override;
 
  protected:
-  ContainerNode(TreeScope*, ConstructionType = kCreateContainer);
+  ContainerNode(TreeScope*, ConstructionType);
 
   // |attr_name| and |owner_element| are only used for element attribute
   // modifications. |ChildrenChange| is either nullptr or points to a
@@ -508,21 +525,21 @@ inline bool ContainerNode::NeedsAdjacentStyleRecalc() const {
 }
 
 inline unsigned Node::CountChildren() const {
-  auto* this_node = DynamicTo<ContainerNode>(this);
+  auto* this_node = DynamicTo<ContainerNode>(*this);
   if (!this_node)
     return 0;
   return this_node->CountChildren();
 }
 
 inline Node* Node::firstChild() const {
-  auto* this_node = DynamicTo<ContainerNode>(this);
+  auto* this_node = DynamicTo<ContainerNode>(*this);
   if (!this_node)
     return nullptr;
   return this_node->firstChild();
 }
 
 inline Node* Node::lastChild() const {
-  auto* this_node = DynamicTo<ContainerNode>(this);
+  auto* this_node = DynamicTo<ContainerNode>(*this);
   if (!this_node)
     return nullptr;
   return this_node->lastChild();

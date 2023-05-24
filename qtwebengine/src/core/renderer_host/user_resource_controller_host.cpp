@@ -1,53 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWebEngine module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "user_resource_controller_host.h"
 
-#include "common/qt_messages.h"
 #include "type_conversion.h"
 #include "web_contents_adapter.h"
+
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/render_process_host_observer.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "ipc/ipc_channel_proxy.h"
 #include "qtwebengine/userscript/userscript.mojom.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 
@@ -129,8 +94,6 @@ void UserResourceControllerHost::RenderProcessObserverHelper::RenderProcessHostD
 
 void UserResourceControllerHost::addUserScript(const UserScript &script, WebContentsAdapter *adapter)
 {
-    if (script.isNull())
-        return;
     // Global scripts should be dispatched to all our render processes.
     const bool isProfileWideScript = !adapter;
     if (isProfileWideScript) {
@@ -154,15 +117,13 @@ void UserResourceControllerHost::addUserScript(const UserScript &script, WebCont
                 m_perContentsScripts.insert(contents, currentScripts);
             }
         }
-        GetUserResourceControllerRenderFrame(contents->GetRenderViewHost()->GetMainFrame())
+        GetUserResourceControllerRenderFrame(contents->GetPrimaryMainFrame())
                 ->AddScript(script.data());
     }
 }
 
 bool UserResourceControllerHost::removeUserScript(const UserScript &script, WebContentsAdapter *adapter)
 {
-    if (script.isNull())
-        return false;
     const bool isProfileWideScript = !adapter;
     if (isProfileWideScript) {
         QList<UserScript>::iterator it = std::find(m_profileWideScripts.begin(), m_profileWideScripts.end(), script);
@@ -179,7 +140,7 @@ bool UserResourceControllerHost::removeUserScript(const UserScript &script, WebC
         QList<UserScript>::iterator it = std::find(list.begin(), list.end(), script);
         if (it == list.end())
             return false;
-        GetUserResourceControllerRenderFrame(contents->GetRenderViewHost()->GetMainFrame())
+        GetUserResourceControllerRenderFrame(contents->GetPrimaryMainFrame())
                 ->RemoveScript((*it).data());
         list.erase(it);
     }
@@ -198,7 +159,7 @@ void UserResourceControllerHost::clearAllScripts(WebContentsAdapter *adapter)
         m_perContentsScripts.remove(contents);
         mojo::AssociatedRemote<qtwebengine::mojom::UserResourceControllerRenderFrame>
                 userResourceController;
-        GetUserResourceControllerRenderFrame(contents->GetRenderViewHost()->GetMainFrame())
+        GetUserResourceControllerRenderFrame(contents->GetPrimaryMainFrame())
                 ->ClearScripts();
     }
 }
@@ -223,7 +184,7 @@ void UserResourceControllerHost::renderProcessStartedWithHost(content::RenderPro
     auto userResourceController = new UserResourceControllerRemote;
     renderer->GetChannel()->GetRemoteAssociatedInterface(userResourceController);
     m_observedProcesses.insert(renderer, userResourceController);
-    for (const UserScript &script : qAsConst(m_profileWideScripts)) {
+    for (const UserScript &script : std::as_const(m_profileWideScripts)) {
         (*userResourceController)->AddScript(script.data());
     }
 }

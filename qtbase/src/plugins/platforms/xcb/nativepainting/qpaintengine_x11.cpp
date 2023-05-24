@@ -1,47 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QtCore/qrandom.h>
 
 #include <private/qpixmapcache_p.h>
 #include <private/qpaintengine_p.h>
-#include <private/qpolygonclipper_p.h>
 #include <private/qpainterpath_p.h>
 #include <private/qdrawhelper_p.h>
 #include <private/qfontengineglyphcache_p.h>
@@ -51,6 +14,7 @@
 #endif
 
 #include "qpaintengine_x11_p.h"
+#include "qpolygonclipper_p.h"
 #include "qtessellator_p.h"
 #include "qpixmap_x11_p.h"
 #include "qcolormap_x11_p.h"
@@ -59,6 +23,8 @@
 #include "qxcbnativepainting.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 #if QT_CONFIG(xrender)
 
@@ -70,7 +36,7 @@ public:
     XTrapezoid *traps;
     int allocated;
     int size;
-    void addTrap(const Trapezoid &trap);
+    void addTrap(const Trapezoid &trap) override;
     QRect tessellate(const QPointF *points, int nPoints, bool winding) {
         size = 0;
         setWinding(winding);
@@ -150,17 +116,11 @@ public:
                             || (render_hints & QPainter::Antialiasing);
     }
     void decideCoordAdjust() {
-        adjust_coords = !(render_hints & QPainter::Antialiasing)
-                        && (render_hints & QPainter::Qt4CompatiblePainting)
-                        && (has_alpha_pen
-                            || (has_alpha_brush && has_pen && !has_alpha_pen)
-                            || (cpen.style() > Qt::SolidLine));
+        adjust_coords = false;
     }
     void clipPolygon_dev(const QPolygonF &poly, QPolygonF *clipped_poly);
     void systemStateChanged() override;
     inline bool isCosmeticPen() const {
-        if ((render_hints & QPainter::Qt4CompatiblePainting) && cpen == QPen())
-            return true;
         return cpen.isCosmetic();
     }
 
@@ -392,7 +352,7 @@ static inline void x11SetClipRegion(Display *dpy, GC gc, GC gc2,
 {
 //    int num;
 //    XRectangle *rects = (XRectangle *)qt_getClipRects(r, num);
-    QVector<XRectangle> rects = qt_region_to_xrectangles(r);
+    QList<XRectangle> rects = qt_region_to_xrectangles(r);
     int num = rects.size();
 
     if (gc)
@@ -457,7 +417,7 @@ static const uchar base_dither_matrix[DITHER_SIZE][DITHER_SIZE] = {
 static QPixmap qt_patternForAlpha(uchar alpha, int screen)
 {
     QPixmap pm;
-    QString key = QLatin1String("$qt-alpha-brush$")
+    QString key = "$qt-alpha-brush$"_L1
                   % HexString<uchar>(alpha)
                   % HexString<int>(screen);
 
@@ -2018,7 +1978,7 @@ Q_GUI_EXPORT void qt_x11_drawImage(const QRect &rect, const QPoint &pos, const Q
         || (image_byte_order == LSBFirst && bgr_layout))
     {
         im = image.copy(rect);
-        const int iw = im.bytesPerLine() / 4;
+        const qsizetype iw = im.bytesPerLine() / 4;
         uint *data = (uint *)im.bits();
         for (int i=0; i < h; i++) {
             uint *p = data;
@@ -2129,7 +2089,7 @@ void QX11PaintEngine::drawPixmap(const QRectF &r, const QPixmap &px, const QRect
         XSetBackground(d->dpy, cgc, 0);
         XSetForeground(d->dpy, cgc, 1);
         if (!d->crgn.isEmpty()) {
-            QVector<XRectangle> rects = qt_region_to_xrectangles(d->crgn);
+            QList<XRectangle> rects = qt_region_to_xrectangles(d->crgn);
             XSetClipRectangles(d->dpy, cgc, -x, -y, rects.data(), rects.size(), Unsorted);
         } else if (d->has_clipping) {
             XSetClipRectangles(d->dpy, cgc, 0, 0, 0, 0, Unsorted);
@@ -2152,7 +2112,7 @@ void QX11PaintEngine::drawPixmap(const QRectF &r, const QPixmap &px, const QRect
             GC cgc = XCreateGC(d->dpy, comb, 0, 0);
             XSetForeground(d->dpy, cgc, 0);
             XFillRectangle(d->dpy, comb, cgc, 0, 0, sw, sh);
-            QVector<XRectangle> rects = qt_region_to_xrectangles(d->crgn);
+            QList<XRectangle> rects = qt_region_to_xrectangles(d->crgn);
             XSetClipRectangles(d->dpy, cgc, -x, -y, rects.data(), rects.size(), Unsorted);
             XCopyArea(d->dpy, qt_x11PixmapHandle(pixmap), comb, cgc, sx, sy, sw, sh, 0, 0);
             XFreeGC(d->dpy, cgc);
@@ -2174,7 +2134,7 @@ void QX11PaintEngine::drawPixmap(const QRectF &r, const QPixmap &px, const QRect
         XFillRectangle(d->dpy, d->hd, d->gc, x, y, sw, sh);
         restore_clip = true;
     } else if (mono_dst && !mono_src) {
-        QBitmap bitmap(pixmap);
+        QBitmap bitmap = QBitmap::fromPixmap(pixmap);
         XCopyArea(d->dpy, qt_x11PixmapHandle(bitmap), d->hd, d->gc, sx, sy, sw, sh, x, y);
     } else {
         XCopyArea(d->dpy, qt_x11PixmapHandle(pixmap), d->hd, d->gc, sx, sy, sw, sh, x, y);
@@ -2201,7 +2161,7 @@ void QX11PaintEngine::drawPixmap(const QRectF &r, const QPixmap &px, const QRect
 
     if (restore_clip) {
         XSetClipOrigin(d->dpy, d->gc, 0, 0);
-        QVector<XRectangle> rects = qt_region_to_xrectangles(d->crgn);
+        QList<XRectangle> rects = qt_region_to_xrectangles(d->crgn);
         if (rects.isEmpty())
             XSetClipMask(d->dpy, d->gc, XNone);
         else
@@ -2303,21 +2263,6 @@ void QX11PaintEngine::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, co
 
 #if QT_CONFIG(xrender)
     if (X11->use_xrender && d->picture && qt_x11PictureHandle(pixmap)) {
-#if 0
-        // ### Qt 5: enable this
-        XRenderPictureAttributes attrs;
-        attrs.repeat = true;
-        XRenderChangePicture(d->dpy, pixmap.x11PictureHandle(), CPRepeat, &attrs);
-
-        if (mono_src) {
-            qt_render_bitmap(d->dpy, d->scrn, pixmap.x11PictureHandle(), d->picture,
-                             sx, sy, x, y, w, h, d->cpen);
-        } else {
-            XRenderComposite(d->dpy, d->composition_mode,
-                             pixmap.x11PictureHandle(), XNone, d->picture,
-                             sx, sy, 0, 0, x, y, w, h);
-        }
-#else
         const int numTiles = (w / pixmap.width()) * (h / pixmap.height());
         if (numTiles < 100) {
             // this is essentially qt_draw_tile(), inlined for
@@ -2400,7 +2345,6 @@ void QX11PaintEngine::drawTiledPixmap(const QRectF &r, const QPixmap &pixmap, co
                                  pmPicture, XNone, d->picture,
                                  sx, sy, 0, 0, x, y, w, h);
         }
-#endif
     } else
 #endif // QT_CONFIG(xrender)
         if (pixmap.depth() > 1 && !static_cast<QX11PlatformPixmap*>(pixmap.handle())->x11_mask) {
@@ -2476,7 +2420,7 @@ static bool path_for_glyphs(QPainterPath *path,
     ft->lockFace();
     int i = 0;
     while (i < glyphs.size()) {
-        QFontEngineFT::Glyph *glyph = ft->loadGlyph(glyphs[i], 0, QFontEngineFT::Format_Mono);
+        QFontEngineFT::Glyph *glyph = ft->loadGlyph(glyphs[i], QFixedPoint(), QFontEngineFT::Format_Mono);
         // #### fix case where we don't get a glyph
         if (!glyph || glyph->format != QFontEngineFT::Format_Mono) {
             result = false;
@@ -2628,7 +2572,8 @@ bool QXRenderGlyphCache::addGlyphs(const QTextItemInt &ti,
     XGlyphInfo xglyphinfo;
 
     for (int i = 0; i < glyphs.size(); ++i) {
-        const QFixed spp = ft->subPixelPositionForX(positions[i].x);
+        const QFixed sppx = ft->subPixelPositionForX(positions[i].x);
+        const QFixedPoint spp(sppx, 0);
         QFontEngineFT::Glyph *glyph = set->getGlyph(glyphs[i], spp);
         Glyph xglyphid = qHash(QFontEngineFT::GlyphAndSubPixelPosition(glyphs[i], spp));
 
@@ -2720,7 +2665,8 @@ bool QXRenderGlyphCache::draw(Drawable src, Drawable dst, const QTransform &matr
         if (!isValidCoordinate(positions[i]))
             break;
 
-        const QFixed spp = ft->subPixelPositionForX(positions[i].x);
+        const QFixed sppx = ft->subPixelPositionForX(positions[i].x);
+        const QFixedPoint spp(sppx, 0);
         QFontEngineFT::Glyph *g = set->getGlyph(glyphs[i], spp);
 
         if (g
@@ -2847,7 +2793,7 @@ QFontEngine::GlyphFormat QXRenderGlyphCache::glyphFormatForDepth(QFontEngine *fo
 
 Glyph QXRenderGlyphCache::glyphId(glyph_t glyph, QFixed subPixelPosition)
 {
-    return qHash(QFontEngineFT::GlyphAndSubPixelPosition(glyph, subPixelPosition));
+    return qHash(QFontEngineFT::GlyphAndSubPixelPosition(glyph, QFixedPoint(subPixelPosition, 0)));
 }
 
 bool QXRenderGlyphCache::isValidCoordinate(const QFixedPoint &fp)

@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,8 +22,9 @@ struct UnguessableTokenHash;
 // UnguessableToken is, like Token, a randomly chosen 128-bit value. Unlike
 // Token, a new UnguessableToken is always generated at runtime from a
 // cryptographically strong random source (or copied or serialized and
-// deserialized from another such UnguessableToken). It can be used as part of a
-// larger aggregate type, or as an ID in and of itself.
+// deserialized from another such UnguessableToken). Also unlike Token, the ==
+// and != operators are constant time. It can be used as part of a larger
+// aggregate type, or as an ID in and of itself.
 //
 // An UnguessableToken is a strong *bearer token*. Bearer tokens are like HTTP
 // cookies: if a caller has the token, the callee thereby considers the caller
@@ -42,11 +43,11 @@ struct UnguessableTokenHash;
 // NOTE: It is illegal to send empty UnguessableTokens across processes, and
 // sending/receiving empty tokens should be treated as a security issue. If
 // there is a valid scenario for sending "no token" across processes, use
-// base::Optional instead of an empty token.
+// absl::optional instead of an empty token.
 
 class BASE_EXPORT UnguessableToken {
  public:
-  // Create a unique UnguessableToken.
+  // Create a unique UnguessableToken. It's guaranteed to be nonempty.
   static UnguessableToken Create();
 
   // Returns a reference to a global null UnguessableToken. This should only be
@@ -55,21 +56,23 @@ class BASE_EXPORT UnguessableToken {
   // default constructor.
   static const UnguessableToken& Null();
 
-  // Return a UnguessableToken built from the high/low bytes provided.
+  // Return an UnguessableToken built from the high/low bytes provided.
   // It should only be used in deserialization scenarios.
   //
-  // NOTE: If the deserialized token is empty, it means that it was never
+  // NOTE: If the returned `absl::optional` does not have a value, it means that
+  // `high` and `low` correspond to an `UnguesssableToken` that was never
   // initialized via Create(). This is a security issue, and should be handled.
-  static UnguessableToken Deserialize(uint64_t high, uint64_t low);
+  static absl::optional<UnguessableToken> Deserialize(uint64_t high,
+                                                      uint64_t low);
 
   // Creates an empty UnguessableToken.
   // Assign to it with Create() before using it.
   constexpr UnguessableToken() = default;
 
   constexpr UnguessableToken(const UnguessableToken&) = default;
-  UnguessableToken& operator=(const UnguessableToken&) = default;
+  constexpr UnguessableToken& operator=(const UnguessableToken&) = default;
   constexpr UnguessableToken(UnguessableToken&&) noexcept = default;
-  UnguessableToken& operator=(UnguessableToken&&) = default;
+  constexpr UnguessableToken& operator=(UnguessableToken&&) = default;
 
   // NOTE: Serializing an empty UnguessableToken is an illegal operation.
   uint64_t GetHighForSerialization() const {
@@ -90,17 +93,25 @@ class BASE_EXPORT UnguessableToken {
 
   explicit constexpr operator bool() const { return !is_empty(); }
 
+  span<const uint8_t, 16> AsBytes() const { return token_.AsBytes(); }
+
   constexpr bool operator<(const UnguessableToken& other) const {
     return token_ < other.token_;
   }
 
-  constexpr bool operator==(const UnguessableToken& other) const {
-    return token_ == other.token_;
-  }
+  bool operator==(const UnguessableToken& other) const;
 
-  constexpr bool operator!=(const UnguessableToken& other) const {
+  bool operator!=(const UnguessableToken& other) const {
     return !(*this == other);
   }
+
+#if defined(UNIT_TEST)
+  static UnguessableToken CreateForTesting(uint64_t high, uint64_t low) {
+    absl::optional<UnguessableToken> token = Deserialize(high, low);
+    DCHECK(token.has_value());
+    return token.value();
+  }
+#endif
 
  private:
   friend struct UnguessableTokenHash;

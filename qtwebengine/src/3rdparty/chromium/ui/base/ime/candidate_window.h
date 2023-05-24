@@ -1,4 +1,4 @@
-// Copyright 2014 The Chromium Authors. All rights reserved.
+// Copyright 2014 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "base/component_export.h"
-#include "base/macros.h"
 #include "ui/base/ime/infolist_entry.h"
 
 namespace ui {
@@ -49,14 +48,18 @@ class COMPONENT_EXPORT(UI_BASE_IME_TYPES) CandidateWindow {
     Entry();
     Entry(const Entry& other);
     virtual ~Entry();
-    base::string16 value;
-    base::string16 label;
-    base::string16 annotation;
-    base::string16 description_title;
-    base::string16 description_body;
+    std::u16string value;
+    std::u16string label;
+    std::u16string annotation;
+    std::u16string description_title;
+    std::u16string description_body;
   };
 
   CandidateWindow();
+
+  CandidateWindow(const CandidateWindow&) = delete;
+  CandidateWindow& operator=(const CandidateWindow&) = delete;
+
   virtual ~CandidateWindow();
 
   // Returns true if the given |candidate_window| is equal to myself.
@@ -136,8 +139,6 @@ class COMPONENT_EXPORT(UI_BASE_IME_TYPES) CandidateWindow {
  private:
   std::unique_ptr<CandidateWindowProperty> property_;
   std::vector<Entry> candidates_;
-
-  DISALLOW_COPY_AND_ASSIGN(CandidateWindow);
 };
 
 }  // namespace ui

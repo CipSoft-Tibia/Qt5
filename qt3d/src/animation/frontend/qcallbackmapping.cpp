@@ -1,43 +1,8 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the Qt3D module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 Klaralvdalens Datakonsult AB (KDAB).
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qcallbackmapping.h"
 #include "qcallbackmapping_p.h"
-
-#include <Qt3DAnimation/private/qchannelmappingcreatedchange_p.h>
 
 #include <QtCore/qmetaobject.h>
 #include <QtCore/QMetaProperty>
@@ -49,10 +14,10 @@ namespace Qt3DAnimation {
 QCallbackMappingPrivate::QCallbackMappingPrivate()
     : QAbstractChannelMappingPrivate()
     , m_channelName()
-    , m_type(static_cast<int>(QVariant::Invalid))
+    , m_type(static_cast<int>(QMetaType::UnknownType))
     , m_callback(nullptr)
 {
-    m_mappingType = QChannelMappingCreatedChangeBase::CallbackMapping;
+    m_mappingType = QAbstractChannelMappingPrivate::CallbackMapping;
 }
 
 /*!
@@ -109,8 +74,8 @@ void QCallbackMapping::setChannelName(const QString &channelName)
     on the gui/main thread, or directly on one of the thread pool's worker
     thread. This is controlled by \a flags.
 
-    \a type specifies the type (for example, QVariant::Vector3D,
-    QVariant::Color, or QMetaType::Float) of the animated value. When animating
+    \a type specifies the type (for example, QMetaType::QVector3D,
+    QMetaType::QColor, or QMetaType::Float) of the animated value. When animating
     node properties this does not need to be provided separately, however it
     becomes important to supply this when there is only a callback.
 
@@ -140,18 +105,8 @@ void QCallbackMapping::setCallback(int type, QAnimationCallback *callback, QAnim
     }
 }
 
-Qt3DCore::QNodeCreatedChangeBasePtr QCallbackMapping::createNodeCreationChange() const
-{
-    auto creationChange = QChannelMappingCreatedChangePtr<QCallbackMappingData>::create(this);
-    auto &data = creationChange->data;
-    Q_D(const QCallbackMapping);
-    data.channelName = d->m_channelName;
-    data.type = d->m_type;
-    data.callback = d->m_callback;
-    data.callbackFlags = d->m_callbackFlags;
-    return creationChange;
-}
-
 } // namespace Qt3DAnimation
 
 QT_END_NAMESPACE
+
+#include "moc_qcallbackmapping.cpp"

@@ -1,67 +1,58 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL3$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPLv3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or later as published by the Free
-** Software Foundation and appearing in the file LICENSE.GPL included in
-** the packaging of this file. Please review the following information to
-** ensure the GNU General Public License version 2.0 requirements will be
-** met: http://www.gnu.org/licenses/gpl-2.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2015 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGEOROUTE_H
 #define QGEOROUTE_H
 
-#include <QtPositioning/QGeoCoordinate>
 #include <QtLocation/QGeoRouteRequest>
 
+#include <QtCore/QObject>
 #include <QtCore/QExplicitlySharedDataPointer>
 #include <QtCore/QList>
-#include <QtCore/QHash>
+
+#include "QtQml/qqml.h"
 
 QT_BEGIN_NAMESPACE
 
+class QGeoCoordinate;
 class QGeoRectangle;
 class QGeoRouteSegment;
 
 class QGeoRoutePrivate;
-class QGeoRouteLeg;
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QGeoRoutePrivate, Q_LOCATION_EXPORT)
 class Q_LOCATION_EXPORT QGeoRoute
 {
+    Q_GADGET
+    QML_VALUE_TYPE(route)
+    QML_STRUCTURED_VALUE
+
+    Q_PROPERTY(QString routeId READ routeId CONSTANT)
+    Q_PROPERTY(QGeoRectangle bounds READ bounds CONSTANT)
+    Q_PROPERTY(int travelTime READ travelTime CONSTANT)
+    Q_PROPERTY(qreal distance READ distance CONSTANT)
+    Q_PROPERTY(QList<QGeoCoordinate> path READ path WRITE setPath)
+    Q_PROPERTY(QList<QGeoRoute> routeLegs READ routeLegs CONSTANT)
+    Q_PROPERTY(QVariantMap extendedAttributes READ extendedAttributes CONSTANT)
+    Q_PROPERTY(int legIndex READ legIndex CONSTANT)
+    Q_PROPERTY(QGeoRoute overallRoute READ overallRoute CONSTANT)
+    Q_PROPERTY(qsizetype segmentsCount READ segmentsCount CONSTANT)
+    Q_PROPERTY(QList<QGeoRouteSegment> segments READ segments CONSTANT)
+
 public:
     QGeoRoute();
-    QGeoRoute(const QGeoRoute &other);
-    ~QGeoRoute(); // ### Qt6: make this virtual
+    QGeoRoute(const QGeoRoute &other) noexcept;
+    QGeoRoute(QGeoRoute &&other) noexcept = default;
+    ~QGeoRoute();
 
-    QGeoRoute &operator = (const QGeoRoute &other);
+    QGeoRoute &operator=(const QGeoRoute &other) noexcept;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QGeoRoute)
 
-    bool operator == (const QGeoRoute &other) const;
-    bool operator != (const QGeoRoute &other) const;
+    void swap(QGeoRoute &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    friend inline bool operator==(const QGeoRoute &lhs, const QGeoRoute &rhs) noexcept
+    { return lhs.isEqual(rhs); }
+    friend inline bool operator!=(const QGeoRoute &lhs, const QGeoRoute &rhs) noexcept
+    { return !lhs.isEqual(rhs); }
 
     void setRouteId(const QString &id);
     QString routeId() const;
@@ -74,6 +65,8 @@ public:
 
     void setFirstRouteSegment(const QGeoRouteSegment &routeSegment);
     QGeoRouteSegment firstRouteSegment() const;
+    qsizetype segmentsCount() const;
+    QList<QGeoRouteSegment> segments() const;
 
     void setTravelTime(int secs);
     int travelTime() const;
@@ -87,30 +80,11 @@ public:
     void setPath(const QList<QGeoCoordinate> &path);
     QList<QGeoCoordinate> path() const;
 
-    void setRouteLegs(const QList<QGeoRouteLeg> &legs);
-    QList<QGeoRouteLeg> routeLegs() const;
+    void setRouteLegs(const QList<QGeoRoute> &legs);
+    QList<QGeoRoute> routeLegs() const;
 
     void setExtendedAttributes(const QVariantMap &extendedAttributes);
     QVariantMap extendedAttributes() const;
-
-protected:
-    QGeoRoute(const QExplicitlySharedDataPointer<QGeoRoutePrivate> &dd);
-    QExplicitlySharedDataPointer<QGeoRoutePrivate> &d();
-    const QExplicitlySharedDataPointer<QGeoRoutePrivate> &const_d() const;
-
-private:
-    QExplicitlySharedDataPointer<QGeoRoutePrivate> d_ptr;
-    friend class QDeclarativeGeoRoute;
-    friend class QGeoRoutePrivate;
-};
-
-class Q_LOCATION_EXPORT QGeoRouteLeg: public QGeoRoute
-{
-public:
-    QGeoRouteLeg();
-    QGeoRouteLeg(const QGeoRouteLeg &other);
-    QGeoRouteLeg &operator=(const QGeoRouteLeg &other) = default;
-    ~QGeoRouteLeg();
 
     void setLegIndex(int idx);
     int legIndex() const;
@@ -119,7 +93,12 @@ public:
     QGeoRoute overallRoute() const;
 
 protected:
-    QGeoRouteLeg(const QExplicitlySharedDataPointer<QGeoRoutePrivate> &dd);
+    QExplicitlySharedDataPointer<QGeoRoutePrivate> &d();
+    const QExplicitlySharedDataPointer<QGeoRoutePrivate> &const_d() const;
+
+private:
+    QExplicitlySharedDataPointer<QGeoRoutePrivate> d_ptr;
+    bool isEqual(const QGeoRoute &other) const noexcept;
 
     friend class QDeclarativeGeoRoute;
     friend class QGeoRoutePrivate;

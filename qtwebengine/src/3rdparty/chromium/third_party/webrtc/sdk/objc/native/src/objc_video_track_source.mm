@@ -34,15 +34,18 @@
 
 namespace webrtc {
 
-ObjCVideoTrackSource::ObjCVideoTrackSource()
-    : AdaptedVideoTrackSource(/* required resolution alignment */ 2) {}
+ObjCVideoTrackSource::ObjCVideoTrackSource() : ObjCVideoTrackSource(false) {}
+
+ObjCVideoTrackSource::ObjCVideoTrackSource(bool is_screencast)
+    : AdaptedVideoTrackSource(/* required resolution alignment */ 2),
+      is_screencast_(is_screencast) {}
 
 ObjCVideoTrackSource::ObjCVideoTrackSource(RTCObjCVideoSourceAdapter *adapter) : adapter_(adapter) {
   adapter_.objCVideoTrackSource = this;
 }
 
 bool ObjCVideoTrackSource::is_screencast() const {
-  return false;
+  return is_screencast_;
 }
 
 absl::optional<bool> ObjCVideoTrackSource::needs_denoising() const {
@@ -88,12 +91,12 @@ void ObjCVideoTrackSource::OnCapturedFrame(RTC_OBJC_TYPE(RTCVideoFrame) * frame)
   rtc::scoped_refptr<VideoFrameBuffer> buffer;
   if (adapted_width == frame.width && adapted_height == frame.height) {
     // No adaption - optimized path.
-    buffer = new rtc::RefCountedObject<ObjCFrameBuffer>(frame.buffer);
+    buffer = rtc::make_ref_counted<ObjCFrameBuffer>(frame.buffer);
   } else if ([frame.buffer isKindOfClass:[RTC_OBJC_TYPE(RTCCVPixelBuffer) class]]) {
     // Adapted CVPixelBuffer frame.
     RTC_OBJC_TYPE(RTCCVPixelBuffer) *rtcPixelBuffer =
         (RTC_OBJC_TYPE(RTCCVPixelBuffer) *)frame.buffer;
-    buffer = new rtc::RefCountedObject<ObjCFrameBuffer>([[RTC_OBJC_TYPE(RTCCVPixelBuffer) alloc]
+    buffer = rtc::make_ref_counted<ObjCFrameBuffer>([[RTC_OBJC_TYPE(RTCCVPixelBuffer) alloc]
         initWithPixelBuffer:rtcPixelBuffer.pixelBuffer
                adaptedWidth:adapted_width
               adaptedHeight:adapted_height
@@ -105,7 +108,7 @@ void ObjCVideoTrackSource::OnCapturedFrame(RTC_OBJC_TYPE(RTCVideoFrame) * frame)
     // Adapted I420 frame.
     // TODO(magjed): Optimize this I420 path.
     rtc::scoped_refptr<I420Buffer> i420_buffer = I420Buffer::Create(adapted_width, adapted_height);
-    buffer = new rtc::RefCountedObject<ObjCFrameBuffer>(frame.buffer);
+    buffer = rtc::make_ref_counted<ObjCFrameBuffer>(frame.buffer);
     i420_buffer->CropAndScaleFrom(*buffer->ToI420(), crop_x, crop_y, crop_width, crop_height);
     buffer = i420_buffer;
   }

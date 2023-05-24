@@ -15,6 +15,7 @@
 #include <string>
 #include <utility>
 
+#include "api/dtls_transport_interface.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/ssl_stream_adapter.h"
@@ -26,8 +27,9 @@ static const char kDtlsSrtpExporterLabel[] = "EXTRACTOR-dtls_srtp";
 
 namespace webrtc {
 
-DtlsSrtpTransport::DtlsSrtpTransport(bool rtcp_mux_enabled)
-    : SrtpTransport(rtcp_mux_enabled) {}
+DtlsSrtpTransport::DtlsSrtpTransport(bool rtcp_mux_enabled,
+                                     const FieldTrialsView& field_trials)
+    : SrtpTransport(rtcp_mux_enabled, field_trials) {}
 
 void DtlsSrtpTransport::SetDtlsTransports(
     cricket::DtlsTransportInternal* rtp_dtls_transport,
@@ -41,7 +43,7 @@ void DtlsSrtpTransport::SetDtlsTransports(
   // When using DTLS-SRTP, we must reset the SrtpTransport every time the
   // DtlsTransport changes and wait until the DTLS handshake is complete to set
   // the newly negotiated parameters.
-  // If |active_reset_srtp_params_| is true, intentionally reset the SRTP
+  // If `active_reset_srtp_params_` is true, intentionally reset the SRTP
   // parameter even though the DtlsTransport may not change.
   if (IsSrtpActive() && (rtp_dtls_transport != rtp_dtls_transport_ ||
                          active_reset_srtp_params_)) {
@@ -114,10 +116,9 @@ bool DtlsSrtpTransport::IsDtlsConnected() {
   auto rtcp_dtls_transport =
       rtcp_mux_enabled() ? nullptr : rtcp_dtls_transport_;
   return (rtp_dtls_transport_ &&
-          rtp_dtls_transport_->dtls_state() ==
-              cricket::DTLS_TRANSPORT_CONNECTED &&
+          rtp_dtls_transport_->dtls_state() == DtlsTransportState::kConnected &&
           (!rtcp_dtls_transport || rtcp_dtls_transport->dtls_state() ==
-                                       cricket::DTLS_TRANSPORT_CONNECTED));
+                                       DtlsTransportState::kConnected));
 }
 
 bool DtlsSrtpTransport::IsDtlsWritable() {
@@ -166,7 +167,6 @@ void DtlsSrtpTransport::SetupRtpDtlsSrtp() {
                     static_cast<int>(send_key.size()), send_extension_ids,
                     selected_crypto_suite, &recv_key[0],
                     static_cast<int>(recv_key.size()), recv_extension_ids)) {
-    SignalDtlsSrtpSetupFailure(this, /*rtcp=*/false);
     RTC_LOG(LS_WARNING) << "DTLS-SRTP key installation for RTP failed";
   }
 }
@@ -198,7 +198,6 @@ void DtlsSrtpTransport::SetupRtcpDtlsSrtp() {
                      selected_crypto_suite, &rtcp_recv_key[0],
                      static_cast<int>(rtcp_recv_key.size()),
                      recv_extension_ids)) {
-    SignalDtlsSrtpSetupFailure(this, /*rtcp=*/true);
     RTC_LOG(LS_WARNING) << "DTLS-SRTP key installation for RTCP failed";
   }
 }
@@ -237,7 +236,7 @@ bool DtlsSrtpTransport::ExtractParams(
                                             false, &dtls_buffer[0],
                                             dtls_buffer.size())) {
     RTC_LOG(LS_WARNING) << "DTLS-SRTP key export failed";
-    RTC_NOTREACHED();  // This should never happen
+    RTC_DCHECK_NOTREACHED();  // This should never happen
     return false;
   }
 
@@ -277,14 +276,16 @@ void DtlsSrtpTransport::SetDtlsTransport(
   }
 
   if (*old_dtls_transport) {
-    (*old_dtls_transport)->SignalDtlsState.disconnect(this);
+    (*old_dtls_transport)->UnsubscribeDtlsTransportState(this);
   }
 
   *old_dtls_transport = new_dtls_transport;
 
   if (new_dtls_transport) {
-    new_dtls_transport->SignalDtlsState.connect(
-        this, &DtlsSrtpTransport::OnDtlsState);
+    new_dtls_transport->SubscribeDtlsTransportState(
+        this,
+        [this](cricket::DtlsTransportInternal* transport,
+               DtlsTransportState state) { OnDtlsState(transport, state); });
   }
 }
 
@@ -299,13 +300,15 @@ void DtlsSrtpTransport::SetRtcpDtlsTransport(
 }
 
 void DtlsSrtpTransport::OnDtlsState(cricket::DtlsTransportInternal* transport,
-                                    cricket::DtlsTransportState state) {
+                                    DtlsTransportState state) {
   RTC_DCHECK(transport == rtp_dtls_transport_ ||
              transport == rtcp_dtls_transport_);
 
-  SignalDtlsStateChange();
+  if (on_dtls_state_change_) {
+    on_dtls_state_change_();
+  }
 
-  if (state != cricket::DTLS_TRANSPORT_CONNECTED) {
+  if (state != DtlsTransportState::kConnected) {
     ResetParams();
     return;
   }
@@ -318,4 +321,8 @@ void DtlsSrtpTransport::OnWritableState(
   MaybeSetupDtlsSrtp();
 }
 
+void DtlsSrtpTransport::SetOnDtlsStateChange(
+    std::function<void(void)> callback) {
+  on_dtls_state_change_ = std::move(callback);
+}
 }  // namespace webrtc

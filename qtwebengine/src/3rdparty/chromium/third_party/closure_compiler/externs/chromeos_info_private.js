@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,12 @@
 // NOTE: The format of types has changed. 'FooType' is now
 //   'chrome.chromeosInfoPrivate.FooType'.
 // Please run the closure compiler before committing changes.
-// See https://chromium.googlesource.com/chromium/src/+/master/docs/closure_compilation.md
+// See https://chromium.googlesource.com/chromium/src/+/main/docs/closure_compilation.md
 
-/** @fileoverview Externs generated from namespace: chromeosInfoPrivate */
+/**
+ * @fileoverview Externs generated from namespace: chromeosInfoPrivate
+ * @externs
+ */
 
 /** @const */
 chrome.chromeosInfoPrivate = {};
@@ -32,6 +35,7 @@ chrome.chromeosInfoPrivate.PropertyName = {
   A11Y_SELECT_TO_SPEAK_ENABLED: 'a11ySelectToSpeakEnabled',
   A11Y_SWITCH_ACCESS_ENABLED: 'a11ySwitchAccessEnabled',
   A11Y_CURSOR_COLOR_ENABLED: 'a11yCursorColorEnabled',
+  A11Y_DOCKED_MAGNIFIER_ENABLED: 'a11yDockedMagnifierEnabled',
   SEND_FUNCTION_KEYS: 'sendFunctionKeys',
 };
 
@@ -98,6 +102,7 @@ chrome.chromeosInfoPrivate.AssistantStatus = {
  *   customizationId: (string|undefined),
  *   homeProvider: (string|undefined),
  *   hwid: (string|undefined),
+ *   isMeetDevice: (boolean|undefined),
  *   initialLocale: (string|undefined),
  *   isOwner: (boolean|undefined),
  *   sessionType: (!chrome.chromeosInfoPrivate.SessionType|undefined),
@@ -121,6 +126,7 @@ chrome.chromeosInfoPrivate.AssistantStatus = {
  *   a11ySelectToSpeakEnabled: (boolean|undefined),
  *   a11ySwitchAccessEnabled: (boolean|undefined),
  *   a11yCursorColorEnabled: (boolean|undefined),
+ *   a11yDockedMagnifierEnabled: (boolean|undefined),
  *   sendFunctionKeys: (boolean|undefined),
  *   supportedTimezones: (!Array<!Array<string>>|undefined)
  * }): void} callback
@@ -134,3 +140,10 @@ chrome.chromeosInfoPrivate.get = function(propertyNames, callback) {};
  * @param {*} propertyValue Chrome OS system property value
  */
 chrome.chromeosInfoPrivate.set = function(propertyName, propertyValue) {};
+
+/**
+ * Called to request tablet mode enabled status from the Chrome OS system.
+ * @param {function(boolean): void} callback Returns tablet mode enabled status
+ *     as a boolean.
+ */
+chrome.chromeosInfoPrivate.isTabletModeEnabled = function(callback) {};

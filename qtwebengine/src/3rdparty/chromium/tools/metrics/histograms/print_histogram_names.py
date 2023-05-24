@@ -1,5 +1,5 @@
-#!/usr/bin/env python
-# Copyright 2018 The Chromium Authors. All rights reserved.
+#!/usr/bin/env python3
+# Copyright 2018 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -12,11 +12,7 @@ import os
 import subprocess
 import sys
 import tempfile
-
-try:
-  from StringIO import StringIO  # for Python 2
-except ImportError:
-  from io import StringIO  # for Python 3
+import io
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'common'))
 import path_util
@@ -27,11 +23,21 @@ import merge_xml
 
 
 def get_names(xml_files):
+  """Returns all histogram names generated from a list of xml files.
+
+  Args:
+    xml_files: A list of open file objects containing histogram definitions.
+  Returns:
+    A tuple of (names, obsolete names), where the obsolete names is a subset of
+    all names.
+  """
   doc = merge_xml.MergeFiles(files=xml_files)
   histograms, had_errors = extract_histograms.ExtractHistogramsFromDom(doc)
   if had_errors:
     raise ValueError("Error parsing inputs.")
-  return set(extract_histograms.ExtractNames(histograms))
+  names = set(extract_histograms.ExtractNames(histograms))
+  obsolete_names = set(extract_histograms.ExtractObsoleteNames(histograms))
+  return (names, obsolete_names)
 
 
 def histogram_xml_files():
@@ -45,8 +51,8 @@ def get_diff(revision):
     revision: A git revision as described in
       https://git-scm.com/docs/gitrevisions
   Returns:
-    A tuple of (added names, removed names), where each entry is sorted in
-    ascending order.
+    A tuple of (added names, removed names, obsoleted names), where each entry
+    is sorted in ascending order.
   """
 
   def get_file_at_revision(path):
@@ -57,32 +63,38 @@ def get_diff(revision):
 
     # Just store the contents in memory. histograms.xml is big, but it isn't
     # _that_ big.
-    return StringIO(contents)
+    return io.StringIO(contents)
 
   prev_files = []
   for p in histogram_paths.ALL_XMLS_RELATIVE:
     try:
-      prev_files.append(get_file_at_revision(os.path.normpath(p)))
+      prev_files.append(get_file_at_revision(p))
     except subprocess.CalledProcessError:
       # Paths might not exist in the provided revision.
       continue
 
-  current_histogram_names = get_names(histogram_xml_files())
-  prev_histogram_names = get_names(prev_files)
+  current_histogram_names, current_obsolete_names = get_names(
+      histogram_xml_files())
+  prev_histogram_names, prev_obsolete_names = get_names(prev_files)
 
   added_names = sorted(list(current_histogram_names - prev_histogram_names))
   removed_names = sorted(list(prev_histogram_names - current_histogram_names))
-  return (added_names, removed_names)
+  obsoleted_names = sorted(list(current_obsolete_names - prev_obsolete_names))
+  return (added_names, removed_names, obsoleted_names)
 
 
 def print_diff_names(revision):
-  added_names, removed_names = get_diff(revision)
+  added_names, removed_names, obsoleted_names = get_diff(revision)
   print("%d histograms added:" % len(added_names))
   for name in added_names:
     print(name)
 
   print("%d histograms removed:" % len(removed_names))
   for name in removed_names:
+    print(name)
+
+  print("%d histograms obsoleted:" % len(obsoleted_names))
+  for name in obsoleted_names:
     print(name)
 
 
@@ -95,7 +107,8 @@ def main(argv):
   if args.diff is not None:
     print_diff_names(args.diff)
   else:
-    for name in get_names(histogram_xml_files()):
+    name_set, _ = get_names(histogram_xml_files())
+    for name in sorted(list(name_set)):
       print(name)
 
 

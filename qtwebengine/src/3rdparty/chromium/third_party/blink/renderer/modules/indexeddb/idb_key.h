@@ -29,7 +29,7 @@
 #include <memory>
 #include <utility>
 
-#include "base/macros.h"
+#include "base/check_op.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom-shared.h"
@@ -90,6 +90,10 @@ class MODULES_EXPORT IDBKey {
 
   static std::unique_ptr<IDBKey> Clone(const IDBKey* rkey);
 
+  // Disallow copy and assign.
+  IDBKey(const IDBKey&) = delete;
+  IDBKey& operator=(const IDBKey&) = delete;
+
   ~IDBKey();
 
   mojom::IDBKeyType GetType() const { return type_; }
@@ -138,10 +142,8 @@ class MODULES_EXPORT IDBKey {
       std::unique_ptr<IDBKey> array_key);
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(IDBKey);
-
   IDBKey();
-  IDBKey(mojom::IDBKeyType type);
+  explicit IDBKey(mojom::IDBKeyType type);
   IDBKey(mojom::IDBKeyType type, double number);
   explicit IDBKey(const String& value);
   explicit IDBKey(scoped_refptr<SharedBuffer> value);

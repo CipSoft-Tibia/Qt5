@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'filterpage.ui'
 **
-** Created by: Qt User Interface Compiler version 5.12.0
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -42,56 +42,56 @@ public:
     void setupUi(QWidget *FilterPage)
     {
         if (FilterPage->objectName().isEmpty())
-            FilterPage->setObjectName(QString::fromUtf8("FilterPage"));
+            FilterPage->setObjectName("FilterPage");
         FilterPage->resize(419, 243);
         gridLayout = new QGridLayout(FilterPage);
-        gridLayout->setObjectName(QString::fromUtf8("gridLayout"));
+        gridLayout->setObjectName("gridLayout");
         label = new QLabel(FilterPage);
-        label->setObjectName(QString::fromUtf8("label"));
+        label->setObjectName("label");
 
         gridLayout->addWidget(label, 1, 0, 1, 1);
 
         filterLineEdit = new QLineEdit(FilterPage);
-        filterLineEdit->setObjectName(QString::fromUtf8("filterLineEdit"));
+        filterLineEdit->setObjectName("filterLineEdit");
 
         gridLayout->addWidget(filterLineEdit, 2, 0, 1, 1);
 
         groupBox = new QGroupBox(FilterPage);
-        groupBox->setObjectName(QString::fromUtf8("groupBox"));
+        groupBox->setObjectName("groupBox");
         gridLayout1 = new QGridLayout(groupBox);
-        gridLayout1->setObjectName(QString::fromUtf8("gridLayout1"));
+        gridLayout1->setObjectName("gridLayout1");
         customFilterWidget = new QTreeWidget(groupBox);
-        customFilterWidget->setObjectName(QString::fromUtf8("customFilterWidget"));
+        customFilterWidget->setObjectName("customFilterWidget");
         customFilterWidget->setColumnCount(2);
 
         gridLayout1->addWidget(customFilterWidget, 0, 0, 3, 1);
 
         addButton = new QPushButton(groupBox);
-        addButton->setObjectName(QString::fromUtf8("addButton"));
+        addButton->setObjectName("addButton");
 
         gridLayout1->addWidget(addButton, 0, 1, 1, 1);
 
         removeButton = new QPushButton(groupBox);
-        removeButton->setObjectName(QString::fromUtf8("removeButton"));
+        removeButton->setObjectName("removeButton");
 
         gridLayout1->addWidget(removeButton, 1, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout1->addItem(spacerItem, 2, 1, 1, 1);
 
 
         gridLayout->addWidget(groupBox, 4, 0, 1, 1);
 
-        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem1, 0, 0, 1, 1);
 
-        spacerItem2 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem2 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem2, 5, 0, 1, 1);
 
-        spacerItem3 = new QSpacerItem(20, 10, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem3 = new QSpacerItem(20, 10, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem3, 3, 0, 1, 1);
 

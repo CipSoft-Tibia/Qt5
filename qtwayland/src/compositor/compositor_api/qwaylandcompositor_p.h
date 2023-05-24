@@ -1,32 +1,6 @@
-/****************************************************************************
-**
-** Copyright (C) 2017-2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWaylandCompositor module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017-2015 Pier Luigi Fiorini <pierluigi.fiorini@gmail.com>
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QWAYLANDCOMPOSITOR_P_H
 #define QWAYLANDCOMPOSITOR_P_H
@@ -53,7 +27,7 @@
 #include <vector>
 
 #if QT_CONFIG(xkbcommon)
-#include <QtXkbCommonSupport/private/qxkbcommon_p.h>
+#include <QtGui/private/qxkbcommon_p.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -69,7 +43,7 @@ namespace QtWayland {
 class QWindowSystemEventHandler;
 class QWaylandSurface;
 
-class Q_WAYLAND_COMPOSITOR_EXPORT QWaylandCompositorPrivate : public QObjectPrivate, public QtWaylandServer::wl_compositor, public QtWaylandServer::wl_subcompositor
+class Q_WAYLANDCOMPOSITOR_EXPORT QWaylandCompositorPrivate : public QObjectPrivate, public QtWaylandServer::wl_compositor, public QtWaylandServer::wl_subcompositor
 {
 public:
     static QWaylandCompositorPrivate *get(QWaylandCompositor *compositor) { return compositor->d_func(); }
@@ -89,7 +63,7 @@ public:
 
     QWaylandOutput *defaultOutput() const { return outputs.size() ? outputs.first() : nullptr; }
 
-    inline QtWayland::ClientBufferIntegration *clientBufferIntegration() const;
+    inline const QList<QtWayland::ClientBufferIntegration *> clientBufferIntegrations() const;
     inline QtWayland::ServerBufferIntegration *serverBufferIntegration() const;
 
 #if QT_CONFIG(wayland_datadevice)
@@ -113,9 +87,9 @@ public:
     inline void addOutput(QWaylandOutput *output);
     inline void removeOutput(QWaylandOutput *output);
 
-#if WAYLAND_VERSION_MAJOR >= 1 && (WAYLAND_VERSION_MAJOR != 1 || WAYLAND_VERSION_MINOR >= 10)
     void connectToExternalSockets();
-#endif
+
+    virtual QWaylandSeat *seatFor(QInputEvent *inputEvent);
 
 protected:
     void compositor_create_surface(wl_compositor::Resource *resource, uint32_t id) override;
@@ -133,11 +107,10 @@ protected:
     void loadServerBufferIntegration();
 
     QByteArray socket_name;
-#if WAYLAND_VERSION_MAJOR >= 1 && (WAYLAND_VERSION_MAJOR != 1 || WAYLAND_VERSION_MINOR >= 10)
     QList<int> externally_added_socket_fds;
-#endif
     struct wl_display *display = nullptr;
     bool ownsDisplay = false;
+    QVector<QWaylandCompositor::ShmFormat> shmFormats;
 
     QList<QWaylandSeat *> seats;
     QList<QWaylandOutput *> outputs;
@@ -158,9 +131,9 @@ protected:
 #if QT_CONFIG(opengl)
     bool use_hw_integration_extension = true;
     QScopedPointer<QtWayland::HardwareIntegration> hw_integration;
-    QScopedPointer<QtWayland::ClientBufferIntegration> client_buffer_integration;
     QScopedPointer<QtWayland::ServerBufferIntegration> server_buffer_integration;
 #endif
+    QList<QtWayland::ClientBufferIntegration*> client_buffer_integrations;
 
     QScopedPointer<QWindowSystemEventHandler> eventHandler;
 
@@ -177,13 +150,9 @@ protected:
     Q_DISABLE_COPY(QWaylandCompositorPrivate)
 };
 
-QtWayland::ClientBufferIntegration * QWaylandCompositorPrivate::clientBufferIntegration() const
+const QList<QtWayland::ClientBufferIntegration *> QWaylandCompositorPrivate::clientBufferIntegrations() const
 {
-#if QT_CONFIG(opengl)
-    return client_buffer_integration.data();
-#else
-    return 0;
-#endif
+    return client_buffer_integrations;
 }
 
 QtWayland::ServerBufferIntegration * QWaylandCompositorPrivate::serverBufferIntegration() const

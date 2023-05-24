@@ -1,11 +1,10 @@
-# Copyright (c) 2012 The Chromium Authors. All rights reserved.
+# Copyright 2012 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 '''The <output> and <file> elements.
 '''
 
-from __future__ import print_function
 
 import os
 
@@ -17,7 +16,7 @@ class FileNode(base.Node):
   '''A <file> element.'''
 
   def __init__(self):
-    super(FileNode, self).__init__()
+    super().__init__()
     self.re = None
     self.should_load_ = True
 

@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <qstandardpaths.h>
 #include <qtest.h>
@@ -36,16 +11,19 @@
 #include <private/qqmlmetatype_p.h>
 #include <private/qqmlpropertyvalueinterceptor_p.h>
 #include <private/qqmlengine_p.h>
-#include "../../shared/util.h"
+#include <private/qqmlanybinding_p.h>
+#include <QtQuickTestUtils/private/qmlutils_p.h>
+
+using namespace Qt::StringLiterals;
 
 class tst_qqmlmetatype : public QQmlDataTest
 {
     Q_OBJECT
 public:
-    tst_qqmlmetatype() {}
+    tst_qqmlmetatype() : QQmlDataTest(QT_QMLTEST_DATADIR) {}
 
 private slots:
-    void initTestCase();
+    void initTestCase() override;
 
     void qmlParserStatusCast();
     void qmlPropertyValueSourceCast();
@@ -56,6 +34,8 @@ private slots:
     void registrationType();
     void compositeType();
     void externalEnums();
+
+    void interceptorAPI();
 
     void isList();
 
@@ -69,6 +49,11 @@ private slots:
 
     void enumsInRecursiveImport_data();
     void enumsInRecursiveImport();
+
+    void revertValueTypeAnimation();
+
+    void clearPropertyCaches();
+    void builtins();
 };
 
 class TestType : public QObject
@@ -116,8 +101,8 @@ QObject *testTypeProvider(QQmlEngine *engine, QJSEngine *scriptEngine)
 class ParserStatusTestType : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
-    void classBegin(){}
-    void componentComplete(){}
+    void classBegin() override {}
+    void componentComplete() override {}
     Q_CLASSINFO("DefaultProperty", "foo") // Missing default property
     Q_INTERFACES(QQmlParserStatus)
 };
@@ -128,7 +113,7 @@ class ValueSourceTestType : public QObject, public QQmlPropertyValueSource
     Q_OBJECT
     Q_INTERFACES(QQmlPropertyValueSource)
 public:
-    virtual void setTarget(const QQmlProperty &) {}
+    void setTarget(const QQmlProperty &) override {}
 };
 QML_DECLARE_TYPE(ValueSourceTestType);
 
@@ -137,8 +122,8 @@ class ValueInterceptorTestType : public QObject, public QQmlPropertyValueInterce
     Q_OBJECT
     Q_INTERFACES(QQmlPropertyValueInterceptor)
 public:
-    virtual void setTarget(const QQmlProperty &) {}
-    virtual void write(const QVariant &) {}
+    void setTarget(const QQmlProperty &) override {}
+    void write(const QVariant &) override {}
 };
 QML_DECLARE_TYPE(ValueInterceptorTestType);
 
@@ -157,14 +142,14 @@ void tst_qqmlmetatype::initTestCase()
 
 void tst_qqmlmetatype::qmlParserStatusCast()
 {
-    QVERIFY(!QQmlMetaType::qmlType(QMetaType::Int).isValid());
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<TestType *>()).isValid());
-    QCOMPARE(QQmlMetaType::qmlType(qMetaTypeId<TestType *>()).parserStatusCast(), -1);
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<ValueSourceTestType *>()).isValid());
-    QCOMPARE(QQmlMetaType::qmlType(qMetaTypeId<ValueSourceTestType *>()).parserStatusCast(), -1);
+    QVERIFY(!QQmlMetaType::qmlType(QMetaType::fromType<int>()).isValid());
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<TestType *>()).isValid());
+    QCOMPARE(QQmlMetaType::qmlType(QMetaType::fromType<TestType *>()).parserStatusCast(), -1);
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<ValueSourceTestType *>()).isValid());
+    QCOMPARE(QQmlMetaType::qmlType(QMetaType::fromType<ValueSourceTestType *>()).parserStatusCast(), -1);
 
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<ParserStatusTestType *>()).isValid());
-    int cast = QQmlMetaType::qmlType(qMetaTypeId<ParserStatusTestType *>()).parserStatusCast();
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<ParserStatusTestType *>()).isValid());
+    int cast = QQmlMetaType::qmlType(QMetaType::fromType<ParserStatusTestType *>()).parserStatusCast();
     QVERIFY(cast != -1);
     QVERIFY(cast != 0);
 
@@ -177,14 +162,14 @@ void tst_qqmlmetatype::qmlParserStatusCast()
 
 void tst_qqmlmetatype::qmlPropertyValueSourceCast()
 {
-    QVERIFY(!QQmlMetaType::qmlType(QMetaType::Int).isValid());
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<TestType *>()).isValid());
-    QCOMPARE(QQmlMetaType::qmlType(qMetaTypeId<TestType *>()).propertyValueSourceCast(), -1);
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<ParserStatusTestType *>()).isValid());
-    QCOMPARE(QQmlMetaType::qmlType(qMetaTypeId<ParserStatusTestType *>()).propertyValueSourceCast(), -1);
+    QVERIFY(!QQmlMetaType::qmlType(QMetaType::fromType<int>()).isValid());
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<TestType *>()).isValid());
+    QCOMPARE(QQmlMetaType::qmlType(QMetaType::fromType<TestType *>()).propertyValueSourceCast(), -1);
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<ParserStatusTestType *>()).isValid());
+    QCOMPARE(QQmlMetaType::qmlType(QMetaType::fromType<ParserStatusTestType *>()).propertyValueSourceCast(), -1);
 
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<ValueSourceTestType *>()).isValid());
-    int cast = QQmlMetaType::qmlType(qMetaTypeId<ValueSourceTestType *>()).propertyValueSourceCast();
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<ValueSourceTestType *>()).isValid());
+    int cast = QQmlMetaType::qmlType(QMetaType::fromType<ValueSourceTestType *>()).propertyValueSourceCast();
     QVERIFY(cast != -1);
     QVERIFY(cast != 0);
 
@@ -197,14 +182,14 @@ void tst_qqmlmetatype::qmlPropertyValueSourceCast()
 
 void tst_qqmlmetatype::qmlPropertyValueInterceptorCast()
 {
-    QVERIFY(!QQmlMetaType::qmlType(QMetaType::Int).isValid());
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<TestType *>()).isValid());
-    QCOMPARE(QQmlMetaType::qmlType(qMetaTypeId<TestType *>()).propertyValueInterceptorCast(), -1);
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<ParserStatusTestType *>()).isValid());
-    QCOMPARE(QQmlMetaType::qmlType(qMetaTypeId<ParserStatusTestType *>()).propertyValueInterceptorCast(), -1);
+    QVERIFY(!QQmlMetaType::qmlType(QMetaType::fromType<int>()).isValid());
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<TestType *>()).isValid());
+    QCOMPARE(QQmlMetaType::qmlType(QMetaType::fromType<TestType *>()).propertyValueInterceptorCast(), -1);
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<ParserStatusTestType *>()).isValid());
+    QCOMPARE(QQmlMetaType::qmlType(QMetaType::fromType<ParserStatusTestType *>()).propertyValueInterceptorCast(), -1);
 
-    QVERIFY(QQmlMetaType::qmlType(qMetaTypeId<ValueInterceptorTestType *>()).isValid());
-    int cast = QQmlMetaType::qmlType(qMetaTypeId<ValueInterceptorTestType *>()).propertyValueInterceptorCast();
+    QVERIFY(QQmlMetaType::qmlType(QMetaType::fromType<ValueInterceptorTestType *>()).isValid());
+    int cast = QQmlMetaType::qmlType(QMetaType::fromType<ValueInterceptorTestType *>()).propertyValueInterceptorCast();
     QVERIFY(cast != -1);
     QVERIFY(cast != 0);
 
@@ -217,15 +202,16 @@ void tst_qqmlmetatype::qmlPropertyValueInterceptorCast()
 
 void tst_qqmlmetatype::qmlType()
 {
-    QQmlType type = QQmlMetaType::qmlType(QString("ParserStatusTestType"), QString("Test"), 1, 0);
+    QQmlType type = QQmlMetaType::qmlType(QString("ParserStatusTestType"), QString("Test"),
+                                          QTypeRevision::fromVersion(1, 0));
     QVERIFY(type.isValid());
-    QVERIFY(type.module() == QLatin1String("Test"));
+    QVERIFY(type.module() == QHashedString("Test"));
     QVERIFY(type.elementName() == QLatin1String("ParserStatusTestType"));
     QCOMPARE(type.qmlTypeName(), QLatin1String("Test/ParserStatusTestType"));
 
-    type = QQmlMetaType::qmlType("Test/ParserStatusTestType", 1, 0);
+    type = QQmlMetaType::qmlType("Test/ParserStatusTestType", QTypeRevision::fromVersion(1, 0));
     QVERIFY(type.isValid());
-    QVERIFY(type.module() == QLatin1String("Test"));
+    QVERIFY(type.module() == QHashedString("Test"));
     QVERIFY(type.elementName() == QLatin1String("ParserStatusTestType"));
     QCOMPARE(type.qmlTypeName(), QLatin1String("Test/ParserStatusTestType"));
 }
@@ -256,12 +242,9 @@ void tst_qqmlmetatype::prettyTypeName()
 
 void tst_qqmlmetatype::isList()
 {
-    QCOMPARE(QQmlMetaType::isList(QMetaType::UnknownType), false);
-    QCOMPARE(QQmlMetaType::isList(QMetaType::Int), false);
-
-    QQmlListProperty<TestType> list;
-
-    QCOMPARE(QQmlMetaType::isList(qMetaTypeId<QQmlListProperty<TestType> >()), true);
+    QCOMPARE(QQmlMetaType::isList(QMetaType {}), false);
+    QCOMPARE(QQmlMetaType::isList(QMetaType::fromType<int>()), false);
+    QCOMPARE(QQmlMetaType::isList(QMetaType::fromType<QQmlListProperty<TestType> >()), true);
 }
 
 void tst_qqmlmetatype::defaultObject()
@@ -282,19 +265,22 @@ void tst_qqmlmetatype::defaultObject()
 
 void tst_qqmlmetatype::registrationType()
 {
-    QQmlType type = QQmlMetaType::qmlType(QString("TestType"), QString("Test"), 1, 0);
+    QQmlType type = QQmlMetaType::qmlType(QString("TestType"), QString("Test"),
+                                          QTypeRevision::fromVersion(1, 0));
     QVERIFY(type.isValid());
     QVERIFY(!type.isInterface());
     QVERIFY(!type.isSingleton());
     QVERIFY(!type.isComposite());
 
-    type = QQmlMetaType::qmlType(QString("TestTypeSingleton"), QString("Test"), 1, 0);
+    type = QQmlMetaType::qmlType(QString("TestTypeSingleton"), QString("Test"),
+                                 QTypeRevision::fromVersion(1, 0));
     QVERIFY(type.isValid());
     QVERIFY(!type.isInterface());
     QVERIFY(type.isSingleton());
     QVERIFY(!type.isComposite());
 
-    type = QQmlMetaType::qmlType(QString("TestTypeComposite"), QString("Test"), 1, 0);
+    type = QQmlMetaType::qmlType(QString("TestTypeComposite"), QString("Test"),
+                                 QTypeRevision::fromVersion(1, 0));
     QVERIFY(type.isValid());
     QVERIFY(!type.isInterface());
     QVERIFY(!type.isSingleton());
@@ -310,7 +296,8 @@ void tst_qqmlmetatype::compositeType()
     QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
 
-    QQmlType type = QQmlMetaType::qmlType(QString("ImplicitType"), QString(""), 1, 0);
+    QQmlType type = QQmlMetaType::qmlType(QString("ImplicitType"), QString(""),
+                                          QTypeRevision::fromVersion(1, 0));
     QVERIFY(type.isValid());
     QVERIFY(type.module().isEmpty());
     QCOMPARE(type.elementName(), QLatin1String("ImplicitType"));
@@ -327,12 +314,66 @@ void tst_qqmlmetatype::externalEnums()
     QScopedPointer<QObject> obj(c.create());
     QVERIFY(obj);
     QVariant a = obj->property("a");
-    QCOMPARE(a.userType(), QVariant::Int);
+    QCOMPARE(a.typeId(), QMetaType::Int);
     QCOMPARE(a.toInt(), int(QStandardPaths::DocumentsLocation));
     QVariant b = obj->property("b");
-    QCOMPARE(b.userType(), QVariant::Int);
+    QCOMPARE(b.typeId(), QMetaType::Int);
     QCOMPARE(b.toInt(), int(QStandardPaths::DocumentsLocation));
 
+}
+
+class ForwardAndLogInterceptor : public QObject, public QQmlPropertyValueInterceptor {
+    Q_OBJECT
+    Q_INTERFACES(QQmlPropertyValueInterceptor)
+public:
+
+    // QQmlPropertyValueInterceptor interface
+    void setTarget(const QQmlProperty &property) override
+    {
+        m_property = property;
+    }
+    void write(const QVariant &value) override
+    {
+        interceptedWrite = true;
+        QQmlPropertyPrivate::write(m_property, value, QQmlPropertyData::BypassInterceptor);
+    }
+    bool bindable(QUntypedBindable *bindable, QUntypedBindable target) override
+    {
+        interceptedBindable = true;
+        *bindable = target;
+        return true;
+    }
+
+    QQmlProperty m_property;
+    bool interceptedBindable = false;
+    bool interceptedWrite = false;
+};
+
+void tst_qqmlmetatype::interceptorAPI()
+{
+    qmlRegisterType<ForwardAndLogInterceptor>("test", 1, 0, "Interceptor");
+    QQmlEngine engine;
+    QQmlComponent component(&engine, testFileUrl("interceptorApi.qml"));
+    QScopedPointer<QObject> obj(component.create());
+    QVERIFY2(obj, qPrintable(component.errorString()));
+
+    auto interceptor = obj->property("i").value<ForwardAndLogInterceptor *>();
+    QVERIFY(interceptor->interceptedBindable);
+    QVERIFY(interceptor->interceptedWrite);
+
+    QQmlProperty objectName(obj.get(), "objectName");
+    QProperty<QString> hello(u"Hello, World!"_s);
+    QQmlAnyBinding binding;
+    binding = Qt::makePropertyBinding(hello);
+    interceptor->interceptedBindable = false;
+    binding.installOn(objectName, QQmlAnyBinding::RespectInterceptors);
+    QVERIFY(interceptor->interceptedBindable);
+    binding = QQmlAnyBinding::takeFrom(objectName);
+    objectName.write("bar");
+    interceptor->interceptedBindable = false;
+    binding.installOn(objectName, QQmlAnyBinding::IgnoreInterceptors);
+    QVERIFY(!interceptor->interceptedBindable);
+    QCOMPARE(objectName.read().toString(), hello.value());
 }
 
 class Controller1 : public QObject
@@ -380,70 +421,76 @@ void tst_qqmlmetatype::unregisterCustomType()
     int controllerId = 0;
     {
         QQmlEngine engine;
-        QQmlType type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"), 1, 0);
-        QVERIFY(!type.isValid());
+        QQmlType type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"),
+                                              QTypeRevision::fromVersion(1, 0));
+        QVERIFY2(!type.isValid(), "Type is not valid yet");
         controllerId = qmlRegisterType<Controller1>("mytypes", 1, 0, "Controller");
-        type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"), 1, 0);
-        QVERIFY(type.isValid());
-        QVERIFY(!type.isInterface());
-        QVERIFY(!type.isSingleton());
-        QVERIFY(!type.isComposite());
+        type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"),
+                                     QTypeRevision::fromVersion(1, 0));
+        QVERIFY2(type.isValid(), "Type is valid now");
+        QVERIFY2(!type.isInterface(), "Type is not an interface");
+        QVERIFY2(!type.isSingleton(), "Type is not a singleton");
+        QVERIFY2(!type.isComposite(), "Types is not a composite type");
         QQmlComponent c(&engine, testFileUrl("testUnregisterCustomType.qml"));
         QScopedPointer<QObject> obj(c.create());
-        QVERIFY(obj);
+        QVERIFY2(obj, "obj is not null");
         QObject *controller = obj->findChild<QObject *>("controller");
-        QVERIFY(qobject_cast<Controller1 *>(controller));
+        QVERIFY2(qobject_cast<Controller1 *>(controller), "child 'controller' could be found and is a Controller1*");
         QVariant stringVal = controller->property("string");
-        QCOMPARE(stringVal.userType(), QVariant::String);
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
         QCOMPARE(stringVal.toString(), QStringLiteral("Controller #1"));
         QVariant enumVal = controller->property("enumVal");
-        QCOMPARE(enumVal.userType(), QVariant::Int);
+        QVERIFY2(QMetaType(enumVal.typeId()).flags() & QMetaType::IsEnumeration, "enumVal's type is enumeratoion");
         QCOMPARE(enumVal.toInt(), 1);
     }
     QQmlMetaType::unregisterType(controllerId);
     {
         QQmlEngine engine;
-        QQmlType type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"), 1, 0);
-        QVERIFY(!type.isValid());
+        QQmlType type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"),
+                                              QTypeRevision::fromVersion(1, 0));
+        QVERIFY2(!type.isValid(), "Type is not valid anymore");
         controllerId = qmlRegisterType<Controller2>("mytypes", 1, 0, "Controller");
-        type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"), 1, 0);
-        QVERIFY(type.isValid());
-        QVERIFY(!type.isInterface());
-        QVERIFY(!type.isSingleton());
-        QVERIFY(!type.isComposite());
+        type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"),
+                                     QTypeRevision::fromVersion(1, 0));
+        QVERIFY2(type.isValid(), "Type is valid again");
+        QVERIFY2(!type.isInterface(), "Type is not an interface");
+        QVERIFY2(!type.isSingleton(), "Type is not a singleton");
+        QVERIFY2(!type.isComposite(), "Type is not a composite");
         QQmlComponent c(&engine, testFileUrl("testUnregisterCustomType.qml"));
         QScopedPointer<QObject> obj(c.create());
-        QVERIFY(obj);
+        QVERIFY2(obj, "obj is not null");
         QObject *controller = obj->findChild<QObject *>("controller");
-        QVERIFY(qobject_cast<Controller2 *>(controller));
+        QVERIFY2(qobject_cast<Controller2 *>(controller), "child 'controller' could be found and is a Controller2*");
         QVariant stringVal = controller->property("string");
-        QCOMPARE(stringVal.userType(), QVariant::String);
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
         QCOMPARE(stringVal.toString(), QStringLiteral("Controller #2"));
         QVariant enumVal = controller->property("enumVal");
-        QCOMPARE(enumVal.userType(), QVariant::Int);
+        QVERIFY2(QMetaType(enumVal.typeId()).flags() & QMetaType::IsEnumeration, "enumVal's type is enumeratoion");
         QCOMPARE(enumVal.toInt(), 111);
     }
     QQmlMetaType::unregisterType(controllerId);
     {
         QQmlEngine engine;
-        QQmlType type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"), 1, 0);
-        QVERIFY(!type.isValid());
+        QQmlType type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"),
+                                              QTypeRevision::fromVersion(1, 0));
+        QVERIFY2(!type.isValid(), "Type is not valid anymore");
         controllerId = qmlRegisterType<Controller1>("mytypes", 1, 0, "Controller");
-        type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"), 1, 0);
-        QVERIFY(type.isValid());
-        QVERIFY(!type.isInterface());
-        QVERIFY(!type.isSingleton());
-        QVERIFY(!type.isComposite());
+        type = QQmlMetaType::qmlType(QString("Controller"), QString("mytypes"),
+                                     QTypeRevision::fromVersion(1, 0));
+        QVERIFY2(type.isValid(), "Type is valid again");
+        QVERIFY2(!type.isInterface(), "Type is not an interface");
+        QVERIFY2(!type.isSingleton(), "Type is not a singleton");
+        QVERIFY2(!type.isComposite(), "Type is not a composite");
         QQmlComponent c(&engine, testFileUrl("testUnregisterCustomType.qml"));
         QScopedPointer<QObject> obj(c.create());
-        QVERIFY(obj);
+        QVERIFY2(obj, "obj is not null");
         QObject *controller = obj->findChild<QObject *>("controller");
-        QVERIFY(qobject_cast<Controller1 *>(controller));
+        QVERIFY2(qobject_cast<Controller1 *>(controller), "child 'controller' could be found and is a Controller1*");
         QVariant stringVal = controller->property("string");
-        QCOMPARE(stringVal.userType(), QVariant::String);
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
         QCOMPARE(stringVal.toString(), QStringLiteral("Controller #1"));
         QVariant enumVal = controller->property("enumVal");
-        QCOMPARE(enumVal.userType(), QVariant::Int);
+        QVERIFY2(QMetaType(enumVal.typeId()).flags() & QMetaType::IsEnumeration, "enumVal's type is enumeratoion");
         QCOMPARE(enumVal.toInt(), 1);
     }
 }
@@ -480,7 +527,8 @@ void tst_qqmlmetatype::unregisterCustomSingletonType()
     {
         QQmlEngine engine;
         staticProviderId = qmlRegisterSingletonType<StaticProvider1>("mytypes", 1, 0, "StaticProvider", createStaticProvider1);
-        QQmlType type = QQmlMetaType::qmlType(QString("StaticProvider"), QString("mytypes"), 1, 0);
+        QQmlType type = QQmlMetaType::qmlType(QString("StaticProvider"), QString("mytypes"),
+                                              QTypeRevision::fromVersion(1, 0));
         QVERIFY(type.isValid());
         QVERIFY(!type.isInterface());
         QVERIFY(type.isSingleton());
@@ -489,14 +537,15 @@ void tst_qqmlmetatype::unregisterCustomSingletonType()
         QScopedPointer<QObject> obj(c.create());
         QVERIFY(obj.data());
         QVariant stringVal = obj->property("text");
-        QCOMPARE(stringVal.userType(), QVariant::String);
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
         QCOMPARE(stringVal.toString(), QStringLiteral("StaticProvider #1"));
     }
     QQmlMetaType::unregisterType(staticProviderId);
     {
         QQmlEngine engine;
         staticProviderId = qmlRegisterSingletonType<StaticProvider2>("mytypes", 1, 0, "StaticProvider", createStaticProvider2);
-        QQmlType type = QQmlMetaType::qmlType(QString("StaticProvider"), QString("mytypes"), 1, 0);
+        QQmlType type = QQmlMetaType::qmlType(QString("StaticProvider"), QString("mytypes"),
+                                              QTypeRevision::fromVersion(1, 0));
         QVERIFY(type.isValid());
         QVERIFY(!type.isInterface());
         QVERIFY(type.isSingleton());
@@ -505,14 +554,15 @@ void tst_qqmlmetatype::unregisterCustomSingletonType()
         QScopedPointer<QObject> obj(c.create());
         QVERIFY(obj.data());
         QVariant stringVal = obj->property("text");
-        QCOMPARE(stringVal.userType(), QVariant::String);
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
         QCOMPARE(stringVal.toString(), QStringLiteral("StaticProvider #2"));
     }
     QQmlMetaType::unregisterType(staticProviderId);
     {
         QQmlEngine engine;
         staticProviderId = qmlRegisterSingletonType<StaticProvider1>("mytypes", 1, 0, "StaticProvider", createStaticProvider1);
-        QQmlType type = QQmlMetaType::qmlType(QString("StaticProvider"), QString("mytypes"), 1, 0);
+        QQmlType type = QQmlMetaType::qmlType(QString("StaticProvider"), QString("mytypes"),
+                                              QTypeRevision::fromVersion(1, 0));
         QVERIFY(type.isValid());
         QVERIFY(!type.isInterface());
         QVERIFY(type.isSingleton());
@@ -521,7 +571,7 @@ void tst_qqmlmetatype::unregisterCustomSingletonType()
         QScopedPointer<QObject> obj(c.create());
         QVERIFY(obj.data());
         QVariant stringVal = obj->property("text");
-        QCOMPARE(stringVal.userType(), QVariant::String);
+        QCOMPARE(stringVal.typeId(), QMetaType::QString);
         QCOMPARE(stringVal.toString(), QStringLiteral("StaticProvider #1"));
     }
 }
@@ -548,27 +598,8 @@ void tst_qqmlmetatype::unregisterAttachedProperties()
         QQmlComponent c(&e);
         c.setData("import QtQuick 2.2\n Item { }", dummy);
 
-        const QQmlType attachedType = QQmlMetaType::qmlType("QtQuick/KeyNavigation", 2, 2);
-        QCOMPARE(attachedType.attachedPropertiesType(QQmlEnginePrivate::get(&e)),
-                 attachedType.metaObject());
-
-        QScopedPointer<QObject> obj(c.create());
-        QVERIFY(obj);
-    }
-
-    qmlClearTypeRegistrations();
-    {
-        QQmlEngine e;
-        QQmlComponent c(&e);
-
-        // The extra import shuffles the type IDs around, so that we
-        // get a different ID for the attached properties. If the attached
-        // properties aren't properly cleared, this will crash.
-        c.setData("import QtQml.StateMachine 1.0 \n"
-                  "import QtQuick 2.2 \n"
-                  "Item { KeyNavigation.up: null }", dummy);
-
-        const QQmlType attachedType = QQmlMetaType::qmlType("QtQuick/KeyNavigation", 2, 2);
+        const QQmlType attachedType = QQmlMetaType::qmlType("QtQuick/KeyNavigation",
+                                                            QTypeRevision::fromVersion(2, 2));
         QCOMPARE(attachedType.attachedPropertiesType(QQmlEnginePrivate::get(&e)),
                  attachedType.metaObject());
 
@@ -581,6 +612,7 @@ class Grouped : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(int prop READ prop WRITE setProp NOTIFY propChanged REVISION 1)
+    Q_PROPERTY(int prop2 READ prop WRITE setProp NOTIFY prop2Changed REVISION 2)
 public:
     int prop() const { return m_prop; }
     void setProp(int prop)
@@ -588,11 +620,13 @@ public:
         if (prop != m_prop) {
             m_prop = prop;
             emit propChanged(prop);
+            emit prop2Changed(prop);
         }
     }
 
 signals:
     Q_REVISION(1) void propChanged(int prop);
+    Q_REVISION(2) void prop2Changed(int prop);
 
 private:
     int m_prop = 0;
@@ -610,13 +644,24 @@ private:
     QScopedPointer<Grouped> m_grouped;
 };
 
+class MyRevisioned : public MyItem
+{
+    Q_OBJECT
+    Q_PROPERTY(int revisioned READ revisioned CONSTANT REVISION 1)
+public:
+    int revisioned() const { return 12; }
+};
+
 void tst_qqmlmetatype::revisionedGroupedProperties()
 {
     qmlClearTypeRegistrations();
     qmlRegisterType<MyItem>("GroupedTest", 1, 0, "MyItem");
     qmlRegisterType<MyItem, 1>("GroupedTest", 1, 1, "MyItem");
+    qmlRegisterType<MyRevisioned>("GroupedTest", 1, 0, "MyRevisioned");
+    qmlRegisterType<MyRevisioned, 1>("GroupedTest", 1, 1, "MyRevisioned");
     qmlRegisterUncreatableType<Grouped>("GroupedTest", 1, 0, "Grouped", "Grouped");
     qmlRegisterUncreatableType<Grouped, 1>("GroupedTest", 1, 1, "Grouped", "Grouped");
+    qmlRegisterUncreatableType<Grouped, 2>("GroupedTest", 1, 2, "Grouped", "Grouped");
 
     {
         QQmlEngine engine;
@@ -630,6 +675,15 @@ void tst_qqmlmetatype::revisionedGroupedProperties()
         QQmlEngine engine;
         QQmlComponent invalid(&engine, testFileUrl("revisionedGroupedPropertiesInvalid.qml"));
         QVERIFY(invalid.isError());
+    }
+
+    {
+        QQmlEngine engine;
+        QQmlComponent unversioned(
+                    &engine, testFileUrl("revisionedGroupedPropertiesUnversioned.qml"));
+        QVERIFY2(unversioned.isReady(), qPrintable(unversioned.errorString()));
+        QScopedPointer<QObject> obj(unversioned.create());
+        QVERIFY(!obj.isNull());
     }
 }
 
@@ -660,6 +714,118 @@ void tst_qqmlmetatype::enumsInRecursiveImport()
     QScopedPointer<QObject> obj(c.create());
     QVERIFY(!obj.isNull());
     QTRY_COMPARE(obj->property("color").toString(), QString("green"));
+}
+
+void tst_qqmlmetatype::revertValueTypeAnimation()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, testFileUrl("animationOnValueType.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+
+    QScopedPointer<QObject> o(c.create());
+    QTRY_COMPARE(o->property("letterSpacing").toDouble(), 24.0);
+    QCOMPARE(o->property("pointSize").toDouble(), 12.0);
+}
+
+void tst_qqmlmetatype::clearPropertyCaches()
+{
+    qmlClearTypeRegistrations();
+    qmlRegisterType<TestType>("ClearPropertyCaches", 1, 0, "A");
+    QQmlPropertyCache::ConstPtr oldCache = QQmlMetaType::propertyCache(&TestType::staticMetaObject);
+    QVERIFY(oldCache);
+    qmlClearTypeRegistrations();
+    qmlRegisterType<TestType>("ClearPropertyCaches", 1, 0, "B");
+    QQmlPropertyCache::ConstPtr newCache = QQmlMetaType::propertyCache(&TestType::staticMetaObject);
+    QVERIFY(oldCache.data() != newCache.data());
+}
+
+template<typename T>
+void checkBuiltinBaseType()
+{
+    const QQmlType type = QQmlMetaType::qmlType(QMetaType::fromType<T>());
+    QVERIFY(type.isValid());
+    QCOMPARE(type.typeId(), QMetaType::fromType<T>());
+    QCOMPARE(type.qListTypeId(), QMetaType::fromType<QList<T>>());
+}
+
+template<typename T>
+void checkBuiltinListType()
+{
+    const QQmlType listType = QQmlMetaType::qmlListType(QMetaType::fromType<QList<T>>());
+    QVERIFY(listType.isValid());
+    QVERIFY(listType.isSequentialContainer());
+    QCOMPARE(listType.typeId(), QMetaType::fromType<T>());
+    QCOMPARE(listType.qListTypeId(), QMetaType::fromType<QList<T>>());
+    QCOMPARE(listType.listMetaSequence().valueMetaType(), QMetaType::fromType<T>());
+}
+
+template<typename... T>
+void checkBuiltinTypes()
+{
+    (checkBuiltinBaseType<T>(), ...);
+    (checkBuiltinListType<T>(), ...);
+}
+
+template<typename T>
+void checkNamedBuiltin(const QString &name)
+{
+    QCOMPARE(QQmlMetaType::qmlType("QML/" + name, QTypeRevision::fromVersion(1, 0)),
+             QQmlMetaType::qmlType(QMetaType::fromType<T>()));
+}
+
+template<typename T>
+void checkObjectBuiltin(const QString &name)
+{
+    const QQmlType objectType = QQmlMetaType::qmlType(QMetaType::fromType<T *>());
+    QVERIFY(objectType.isValid());
+    QCOMPARE(objectType.typeId(), QMetaType::fromType<T *>());
+    QCOMPARE(objectType.qListTypeId(), QMetaType::fromType<QQmlListProperty<T>>());
+
+    const QQmlType listType = QQmlMetaType::qmlListType(QMetaType::fromType<QQmlListProperty<T>>());
+    QVERIFY(listType.isValid());
+    QCOMPARE(listType.typeId(), QMetaType::fromType<T *>());
+    QCOMPARE(listType.qListTypeId(), QMetaType::fromType<QQmlListProperty<T>>());
+
+    checkNamedBuiltin<T *>(name);
+}
+
+void tst_qqmlmetatype::builtins()
+{
+    qmlClearTypeRegistrations();
+    QQmlEngine engine; // registers the builtins
+
+    checkBuiltinTypes<
+        QVariant, QJSValue, qint8, quint8, short, ushort, int, uint, qlonglong, qulonglong, float,
+        double, QChar, QString, bool, QDateTime, QDate, QTime, QUrl, QByteArray>();
+
+    checkNamedBuiltin<QVariant>("var");
+    checkNamedBuiltin<QVariant>("variant");
+    checkNamedBuiltin<int>("int");
+    checkNamedBuiltin<double>("double");
+    checkNamedBuiltin<double>("real");
+    checkNamedBuiltin<QString>("string");
+    checkNamedBuiltin<bool>("bool");
+    checkNamedBuiltin<QDateTime>("date");
+    checkNamedBuiltin<QUrl>("url");
+
+#if QT_CONFIG(regularexpression)
+    checkBuiltinBaseType<QRegularExpression>();
+    checkBuiltinListType<QRegularExpression>();
+    checkNamedBuiltin<QRegularExpression>("regexp");
+#endif
+
+    // Can't retrieve this one by metatype
+    const QQmlType voidType = QQmlMetaType::qmlType("QML/void", QTypeRevision::fromVersion(1, 0));
+    QVERIFY(voidType.isValid());
+    QCOMPARE(voidType.typeId(), QMetaType());
+    QCOMPARE(voidType.qListTypeId(), QMetaType());
+
+    // No separate list types
+    checkBuiltinBaseType<std::nullptr_t>();
+    checkBuiltinBaseType<QVariantMap>();
+
+    checkObjectBuiltin<QObject>("QtObject");
+    checkObjectBuiltin<QQmlComponent>("Component");
 }
 
 QTEST_MAIN(tst_qqmlmetatype)

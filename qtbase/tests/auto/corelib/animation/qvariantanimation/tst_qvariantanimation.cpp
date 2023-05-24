@@ -1,34 +1,10 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
 #include <QtCore/qvariantanimation.h>
-#include <QtTest>
+#include <QTest>
+#include <QtTest/private/qpropertytesthelper_p.h>
 
 class tst_QVariantAnimation : public QObject
 {
@@ -44,13 +20,15 @@ private slots:
     void keyValues();
     void duration();
     void interpolation();
+    void durationBindings();
+    void easingCurveBindings();
 };
 
 class TestableQVariantAnimation : public QVariantAnimation
 {
     Q_OBJECT
 public:
-    void updateCurrentValue(const QVariant&) {}
+    void updateCurrentValue(const QVariant&) override {}
 };
 
 void tst_QVariantAnimation::construction()
@@ -152,6 +130,32 @@ void tst_QVariantAnimation::interpolation()
     pointAnim.setDuration(100);
     pointAnim.setCurrentTime(50);
     QCOMPARE(pointAnim.currentValue().toPoint(), QPoint(50, 50));
+}
+
+void tst_QVariantAnimation::durationBindings()
+{
+    QVariantAnimation animation;
+
+    // duration property
+    QProperty<int> duration;
+    animation.bindableDuration().setBinding(Qt::makePropertyBinding(duration));
+
+    // negative values must be ignored
+    QTest::ignoreMessage(QtWarningMsg,
+                         "QVariantAnimation::setDuration: cannot set a negative duration");
+    duration = -1;
+    QVERIFY(animation.duration() != duration);
+
+    QTestPrivate::testReadWritePropertyBasics(animation, 42, 43, "duration");
+}
+
+void tst_QVariantAnimation::easingCurveBindings()
+{
+    QVariantAnimation animation;
+
+    QTestPrivate::testReadWritePropertyBasics(animation, QEasingCurve(QEasingCurve::InQuad),
+                                              QEasingCurve(QEasingCurve::BezierSpline),
+                                              "easingCurve");
 }
 
 QTEST_MAIN(tst_QVariantAnimation)

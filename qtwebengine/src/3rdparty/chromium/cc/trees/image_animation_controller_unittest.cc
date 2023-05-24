@@ -1,15 +1,18 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "cc/trees/image_animation_controller.h"
 
 #include <memory>
+#include <utility>
 
-#include "base/bind.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/test/gtest_util.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/time/time.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace cc {
@@ -66,21 +69,21 @@ class DelayTrackingTaskRunner : public base::SingleThreadTaskRunner {
  private:
   ~DelayTrackingTaskRunner() override = default;
 
-  base::Optional<base::TimeDelta> last_delay_;
-  base::SingleThreadTaskRunner* task_runner_;
+  absl::optional<base::TimeDelta> last_delay_;
+  raw_ptr<base::SingleThreadTaskRunner> task_runner_;
 };
 
 class ImageAnimationControllerTest : public testing::Test,
                                      public ImageAnimationController::Client {
  public:
   void SetUp() override {
-    task_runner_ =
-        new DelayTrackingTaskRunner(base::ThreadTaskRunnerHandle::Get().get());
+    task_runner_ = new DelayTrackingTaskRunner(
+        base::SingleThreadTaskRunner::GetCurrentDefault().get());
     controller_ = std::make_unique<ImageAnimationController>(
         task_runner_.get(), this, GetEnableImageAnimationResync());
     controller_->set_now_callback_for_testing(base::BindRepeating(
         &ImageAnimationControllerTest::Now, base::Unretained(this)));
-    now_ += base::TimeDelta::FromSeconds(10);
+    now_ += base::Seconds(10);
   }
 
   void TearDown() override { controller_.reset(); }
@@ -196,15 +199,15 @@ class ImageAnimationControllerTest : public testing::Test,
   std::unique_ptr<ImageAnimationController> controller_;
   scoped_refptr<DelayTrackingTaskRunner> task_runner_;
 
-  base::TimeDelta interval_ = base::TimeDelta::FromMilliseconds(1);
+  base::TimeDelta interval_ = base::Milliseconds(1);
 };
 
 TEST_F(ImageAnimationControllerTest, AnimationWithDelays) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(5)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(4)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(5)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(true, base::Milliseconds(4)),
+      FrameMetadata(true, base::Milliseconds(3))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames,
@@ -220,7 +223,7 @@ TEST_F(ImageAnimationControllerTest, AnimationWithDelays) {
 
   // now_ is set to the time at which the first frame should be displayed for
   // the third iteration. Add a delay that causes us to skip the first frame.
-  base::TimeDelta additional_delay = base::TimeDelta::FromMilliseconds(1);
+  base::TimeDelta additional_delay = base::Milliseconds(1);
   AdvanceNow(data.frames[0].duration + additional_delay);
   auto animated_images = controller_->AnimateForSyncTree(BeginFrameArgs());
   EXPECT_EQ(animated_images.size(), 1u);
@@ -275,8 +278,8 @@ TEST_F(ImageAnimationControllerTest, AnimationWithDelays) {
 
 TEST_F(ImageAnimationControllerTest, DriversControlAnimationTicking) {
   std::vector<FrameMetadata> first_image_frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3))};
   DiscardableImageMap::AnimatedImageMetadata first_data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE,
       first_image_frames, kAnimationLoopOnce, 0);
@@ -286,8 +289,8 @@ TEST_F(ImageAnimationControllerTest, DriversControlAnimationTicking) {
                                        &first_driver);
 
   std::vector<FrameMetadata> second_image_frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(5)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(5)),
+      FrameMetadata(true, base::Milliseconds(3))};
   DiscardableImageMap::AnimatedImageMetadata second_data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE,
       second_image_frames, kAnimationLoopOnce, 0);
@@ -341,9 +344,9 @@ TEST_F(ImageAnimationControllerTest, DriversControlAnimationTicking) {
 
 TEST_F(ImageAnimationControllerTest, RepetitionsRequested) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(4))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(true, base::Milliseconds(4))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames,
@@ -420,9 +423,9 @@ TEST_F(ImageAnimationControllerTest, RepetitionsRequested) {
 
 TEST_F(ImageAnimationControllerTest, DisplayCompleteFrameOnly) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(false, base::TimeDelta::FromMilliseconds(4))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(false, base::Milliseconds(4))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::PARTIALLY_DONE,
@@ -456,8 +459,8 @@ TEST_F(ImageAnimationControllerTest, DisplayCompleteFrameOnly) {
 
 TEST_F(ImageAnimationControllerTest, DontLoopPartiallyLoadedImages) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::PARTIALLY_DONE,
@@ -480,7 +483,7 @@ TEST_F(ImageAnimationControllerTest, DontLoopPartiallyLoadedImages) {
   // advance and we should see another repetition. This verifies that we don't
   // mark loops complete on reaching the last frame until the image is
   // completely loaded and the frame count is known to be accurate.
-  frames.push_back(FrameMetadata(true, base::TimeDelta::FromMilliseconds(4)));
+  frames.push_back(FrameMetadata(true, base::Milliseconds(4)));
   data.completion_state = PaintImage::CompletionState::DONE;
   data.frames = frames;
   controller_->UpdateAnimatedImage(data);
@@ -515,8 +518,8 @@ TEST_F(ImageAnimationControllerTest, DontLoopPartiallyLoadedImages) {
 
 TEST_F(ImageAnimationControllerTest, DontAdvanceUntilDesiredTime) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames,
@@ -544,7 +547,7 @@ TEST_F(ImageAnimationControllerTest, DontAdvanceUntilDesiredTime) {
 
   // While there is still time for the second frame, we get a new sync tree. The
   // animation is not advanced.
-  base::TimeDelta time_remaining = base::TimeDelta::FromMilliseconds(1);
+  base::TimeDelta time_remaining = base::Milliseconds(1);
   AdvanceNow(frames[0].duration - time_remaining);
   animated_images = controller_->AnimateForSyncTree(BeginFrameArgs());
   EXPECT_EQ(controller_->GetFrameIndexForImage(data.paint_image_id,
@@ -584,8 +587,8 @@ TEST_F(ImageAnimationControllerTest, DontAdvanceUntilDesiredTime) {
 
 TEST_F(ImageAnimationControllerTest, RestartAfterSyncCutoff) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames,
@@ -612,7 +615,7 @@ TEST_F(ImageAnimationControllerTest, RestartAfterSyncCutoff) {
   task_runner_->VerifyDelay(frames[0].duration);
 
   // Advance the time by 10 min.
-  AdvanceNow(base::TimeDelta::FromMinutes(10));
+  AdvanceNow(base::Minutes(10));
 
   // Animate again, it starts from the first frame. We don't see a
   // frame update, because that's the frame we are already displaying.
@@ -635,10 +638,10 @@ TEST_F(ImageAnimationControllerTest, RestartAfterSyncCutoff) {
 
 TEST_F(ImageAnimationControllerTest, DontSkipLoopsToCatchUpAfterLoad) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(4)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(5))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(true, base::Milliseconds(4)),
+      FrameMetadata(true, base::Milliseconds(5))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::PARTIALLY_DONE,
@@ -683,9 +686,9 @@ TEST_F(ImageAnimationControllerTest, DontSkipLoopsToCatchUpAfterLoad) {
 
 TEST_F(ImageAnimationControllerTest, FinishRepetitionsDuringCatchUp) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(4))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(true, base::Milliseconds(4))};
 
   // The animation wants 3 loops.
   DiscardableImageMap::AnimatedImageMetadata data(
@@ -701,7 +704,7 @@ TEST_F(ImageAnimationControllerTest, FinishRepetitionsDuringCatchUp) {
 
   // now_ is set to the desired time for the first frame. Advance it so we would
   // reach way beyond the third repeition.
-  AdvanceNow(base::TimeDelta::FromMinutes(1));
+  AdvanceNow(base::Minutes(1));
 
   // Advance the animation, we should see the last frame since the desired
   // repetition count will be reached during catch up.
@@ -721,9 +724,9 @@ TEST_F(ImageAnimationControllerTest, FinishRepetitionsDuringCatchUp) {
 
 TEST_F(ImageAnimationControllerTest, ResetAnimations) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(4))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(true, base::Milliseconds(4))};
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames, 3,
       0u);
@@ -765,8 +768,8 @@ TEST_F(ImageAnimationControllerTest, ResetAnimations) {
 
 TEST_F(ImageAnimationControllerTest, ResetAnimationStateMapOnNavigation) {
   std::vector<FrameMetadata> first_image_frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3))};
   DiscardableImageMap::AnimatedImageMetadata first_data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE,
       first_image_frames, kAnimationLoopOnce, 0);
@@ -776,8 +779,8 @@ TEST_F(ImageAnimationControllerTest, ResetAnimationStateMapOnNavigation) {
                                        &first_driver);
 
   std::vector<FrameMetadata> second_image_frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(5)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(5)),
+      FrameMetadata(true, base::Milliseconds(3))};
   DiscardableImageMap::AnimatedImageMetadata second_data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE,
       second_image_frames, kAnimationLoopOnce, 0);
@@ -806,11 +809,11 @@ TEST_F(ImageAnimationControllerTest, ResetAnimationStateMapOnNavigation) {
 }
 
 TEST_F(ImageAnimationControllerTest, ImageWithNonVsyncAlignedDurations) {
-  interval_ = base::TimeDelta::FromMilliseconds(1);
+  interval_ = base::Milliseconds(1);
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(2.5)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(3.76)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(4.27))};
+      FrameMetadata(true, base::Milliseconds(2.5)),
+      FrameMetadata(true, base::Milliseconds(3.76)),
+      FrameMetadata(true, base::Milliseconds(4.27))};
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames, 3,
       0u);
@@ -820,9 +823,7 @@ TEST_F(ImageAnimationControllerTest, ImageWithNonVsyncAlignedDurations) {
   controller_->UpdateStateFromDrivers();
 
   std::vector<base::TimeDelta> expected_delays = {
-      base::TimeDelta::FromMilliseconds(2),
-      base::TimeDelta::FromMilliseconds(4),
-      base::TimeDelta::FromMilliseconds(4)};
+      base::Milliseconds(2), base::Milliseconds(4), base::Milliseconds(4)};
   LoopOnceNoDelay(data.paint_image_id, frames, frames.size(), 0,
                   expected_delays);
 
@@ -830,12 +831,12 @@ TEST_F(ImageAnimationControllerTest, ImageWithNonVsyncAlignedDurations) {
 }
 
 TEST_F(ImageAnimationControllerTest, ImageWithLessThanIntervalDurations) {
-  interval_ = base::TimeDelta::FromMilliseconds(1);
+  interval_ = base::Milliseconds(1);
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(0.5)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(0.43)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(0.76)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(0.74)),
+      FrameMetadata(true, base::Milliseconds(0.5)),
+      FrameMetadata(true, base::Milliseconds(0.43)),
+      FrameMetadata(true, base::Milliseconds(0.76)),
+      FrameMetadata(true, base::Milliseconds(0.74)),
   };
   frames.push_back(FrameMetadata(true, interval_ - frames.back().duration));
   DiscardableImageMap::AnimatedImageMetadata data(
@@ -859,9 +860,9 @@ TEST_F(ImageAnimationControllerTest, ImageWithLessThanIntervalDurations) {
 
 TEST_F(ImageAnimationControllerTest, ImplFramesWhileInvalidationPending) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(2.5)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(3.76)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(4.27))};
+      FrameMetadata(true, base::Milliseconds(2.5)),
+      FrameMetadata(true, base::Milliseconds(3.76)),
+      FrameMetadata(true, base::Milliseconds(4.27))};
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames, 3,
       0u);
@@ -884,9 +885,9 @@ TEST_F(ImageAnimationControllerTest, ImplFramesWhileInvalidationPending) {
 
 TEST_F(ImageAnimationControllerTest, MissedBeginFrameAfterRequest) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(2.5)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(3.76)),
-      FrameMetadata(true, base::TimeDelta::FromMillisecondsD(4.27))};
+      FrameMetadata(true, base::Milliseconds(2.5)),
+      FrameMetadata(true, base::Milliseconds(3.76)),
+      FrameMetadata(true, base::Milliseconds(4.27))};
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames, 3,
       0u);
@@ -920,8 +921,8 @@ class ImageAnimationControllerNoResyncTest
 
 TEST_F(ImageAnimationControllerNoResyncTest, NoSyncCutoffAfterIdle) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::DONE, frames,
@@ -949,7 +950,7 @@ TEST_F(ImageAnimationControllerNoResyncTest, NoSyncCutoffAfterIdle) {
 
   // Advance the time by 10 min (divisible by animation duration) and first
   // frame duration.
-  AdvanceNow(base::TimeDelta::FromMinutes(10) + frames[0].duration);
+  AdvanceNow(base::Minutes(10) + frames[0].duration);
 
   // Animate again, it should not restart from the start. Should display second
   // animation frame.
@@ -972,10 +973,10 @@ TEST_F(ImageAnimationControllerNoResyncTest, NoSyncCutoffAfterIdle) {
 
 TEST_F(ImageAnimationControllerNoResyncTest, SkipsLoopsAfterFirstIteration) {
   std::vector<FrameMetadata> frames = {
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(2)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(3)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(4)),
-      FrameMetadata(true, base::TimeDelta::FromMilliseconds(5))};
+      FrameMetadata(true, base::Milliseconds(2)),
+      FrameMetadata(true, base::Milliseconds(3)),
+      FrameMetadata(true, base::Milliseconds(4)),
+      FrameMetadata(true, base::Milliseconds(5))};
 
   DiscardableImageMap::AnimatedImageMetadata data(
       PaintImage::GetNextId(), PaintImage::CompletionState::PARTIALLY_DONE,

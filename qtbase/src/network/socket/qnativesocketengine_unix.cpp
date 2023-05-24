@@ -1,56 +1,28 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Copyright (C) 2016 Intel Corporation.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtNetwork module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 //#define QNATIVESOCKETENGINE_DEBUG
-#include "qnativesocketengine_p.h"
+#include "qnativesocketengine_p_p.h"
 #include "private/qnet_unix_p.h"
 #include "qiodevice.h"
 #include "qhostaddress.h"
 #include "qelapsedtimer.h"
 #include "qvarlengtharray.h"
 #include "qnetworkinterface.h"
+#include "qendian.h"
+#ifdef Q_OS_WASM
+#include <private/qeventdispatcher_wasm_p.h>
+#endif
 #include <time.h>
 #include <errno.h>
 #include <fcntl.h>
 #ifndef QT_NO_IPV6IFNAME
+#ifdef Q_OS_LINUX
+#include <linux/if.h>
+#else // Q_OS_LINUX
 #include <net/if.h>
+#endif // !Q_OS_LINUX
 #endif
 #ifdef QT_LINUXBASE
 #include <arpa/inet.h>
@@ -63,8 +35,7 @@
 #endif
 
 #if defined QNATIVESOCKETENGINE_DEBUG
-#include <qstring.h>
-#include <ctype.h>
+#include <private/qdebug_p.h>
 #endif
 
 #include <netinet/tcp.h>
@@ -73,40 +44,11 @@
 #include <sys/socket.h>
 #include <netinet/sctp.h>
 #endif
+#ifdef Q_OS_BSD4
+#  include <net/if_dl.h>
+#endif
 
 QT_BEGIN_NAMESPACE
-
-#if defined QNATIVESOCKETENGINE_DEBUG
-
-/*
-    Returns a human readable representation of the first \a len
-    characters in \a data.
-*/
-static QByteArray qt_prettyDebug(const char *data, int len, int maxSize)
-{
-    if (!data) return "(null)";
-    QByteArray out;
-    for (int i = 0; i < len; ++i) {
-        char c = data[i];
-        if (isprint(c)) {
-            out += c;
-        } else switch (c) {
-        case '\n': out += "\\n"; break;
-        case '\r': out += "\\r"; break;
-        case '\t': out += "\\t"; break;
-        default:
-            QString tmp;
-            tmp.sprintf("\\%o", c);
-            out += tmp.toLatin1();
-        }
-    }
-
-    if (len < maxSize)
-        out += "...";
-
-    return out;
-}
-#endif
 
 /*
     Extracts the port and address from a sockaddr, and stores them in
@@ -312,10 +254,8 @@ bool QNativeSocketEnginePrivate::createNewSocket(QAbstractSocket::SocketType soc
 #endif
 
     socketDescriptor = socket;
-    if (socket != -1) {
-        this->socketProtocol = socketProtocol;
-        this->socketType = socketType;
-    }
+    this->socketProtocol = socketProtocol;
+    this->socketType = socketType;
     return true;
 }
 
@@ -364,12 +304,12 @@ int QNativeSocketEnginePrivate::option(QNativeSocketEngine::SocketOption opt) co
     }
 
     int n, level;
-    int v = -1;
+    int v = 0;
     QT_SOCKOPTLEN_T len = sizeof(v);
 
     convertToLevelAndOption(opt, socketProtocol, level, n);
     if (n != -1 && ::getsockopt(socketDescriptor, level, n, (char *) &v, &len) != -1)
-        return v;
+        return len == 1 ? qFromUnaligned<quint8>(&v) : v;
 
     return -1;
 }
@@ -626,7 +566,7 @@ bool QNativeSocketEnginePrivate::nativeListen(int backlog)
     return true;
 }
 
-int QNativeSocketEnginePrivate::nativeAccept()
+qintptr QNativeSocketEnginePrivate::nativeAccept()
 {
     int acceptedDescriptor = qt_safe_accept(socketDescriptor, nullptr, nullptr);
     if (acceptedDescriptor == -1) {
@@ -672,7 +612,7 @@ int QNativeSocketEnginePrivate::nativeAccept()
         }
     }
 
-    return acceptedDescriptor;
+    return qintptr(acceptedDescriptor);
 }
 
 #ifndef QT_NO_NETWORKINTERFACE
@@ -785,17 +725,21 @@ QNetworkInterface QNativeSocketEnginePrivate::nativeMulticastInterface() const
         return QNetworkInterface::interfaceFromIndex(v);
     }
 
+#if defined(Q_OS_SOLARIS)
+    struct in_addr v = { 0, 0, 0, 0};
+#else
     struct in_addr v = { 0 };
+#endif
     QT_SOCKOPTLEN_T sizeofv = sizeof(v);
     if (::getsockopt(socketDescriptor, IPPROTO_IP, IP_MULTICAST_IF, &v, &sizeofv) == -1)
         return QNetworkInterface();
     if (v.s_addr != 0 && sizeofv >= QT_SOCKOPTLEN_T(sizeof(v))) {
         QHostAddress ipv4(ntohl(v.s_addr));
         QList<QNetworkInterface> ifaces = QNetworkInterface::allInterfaces();
-        for (int i = 0; i < ifaces.count(); ++i) {
+        for (int i = 0; i < ifaces.size(); ++i) {
             const QNetworkInterface &iface = ifaces.at(i);
             QList<QNetworkAddressEntry> entries = iface.addressEntries();
-            for (int j = 0; j < entries.count(); ++j) {
+            for (int j = 0; j < entries.size(); ++j) {
                 const QNetworkAddressEntry &entry = entries.at(j);
                 if (entry.ip() == ipv4)
                     return iface;
@@ -815,7 +759,7 @@ bool QNativeSocketEnginePrivate::nativeSetMulticastInterface(const QNetworkInter
     struct in_addr v;
     if (iface.isValid()) {
         QList<QNetworkAddressEntry> entries = iface.addressEntries();
-        for (int i = 0; i < entries.count(); ++i) {
+        for (int i = 0; i < entries.size(); ++i) {
             const QNetworkAddressEntry &entry = entries.at(i);
             const QHostAddress &ip = entry.ip();
             if (ip.protocol() == QAbstractSocket::IPv4Protocol) {
@@ -862,7 +806,7 @@ bool QNativeSocketEnginePrivate::nativeHasPendingDatagrams() const
     // Peek 1 bytes into the next message.
     ssize_t readBytes;
     char c;
-    EINTR_LOOP(readBytes, ::recv(socketDescriptor, &c, 1, MSG_PEEK));
+    QT_EINTR_LOOP(readBytes, ::recv(socketDescriptor, &c, 1, MSG_PEEK));
 
     // If there's no error, or if our buffer was too small, there must be a
     // pending datagram.
@@ -881,7 +825,7 @@ qint64 QNativeSocketEnginePrivate::nativePendingDatagramSize() const
 #ifdef Q_OS_LINUX
     // Linux can return the actual datagram size if we use MSG_TRUNC
     char c;
-    EINTR_LOOP(recvResult, ::recv(socketDescriptor, &c, 1, MSG_PEEK | MSG_TRUNC));
+    QT_EINTR_LOOP(recvResult, ::recv(socketDescriptor, &c, 1, MSG_PEEK | MSG_TRUNC));
 #elif defined(SO_NREAD)
     // macOS can return the actual datagram size if we use SO_NREAD
     int value;
@@ -1044,7 +988,7 @@ qint64 QNativeSocketEnginePrivate::nativeReceiveDatagram(char *data, qint64 maxS
             if (cmsgptr->cmsg_len == CMSG_LEN(sizeof(int))
                     && ((cmsgptr->cmsg_level == IPPROTO_IPV6 && cmsgptr->cmsg_type == IPV6_HOPLIMIT)
                         || (cmsgptr->cmsg_level == IPPROTO_IP && cmsgptr->cmsg_type == IP_TTL))) {
-                Q_STATIC_ASSERT(sizeof(header->hopLimit) == sizeof(int));
+                static_assert(sizeof(header->hopLimit) == sizeof(int));
                 memcpy(&header->hopLimit, CMSG_DATA(cmsgptr), sizeof(header->hopLimit));
             }
 
@@ -1061,7 +1005,7 @@ qint64 QNativeSocketEnginePrivate::nativeReceiveDatagram(char *data, qint64 maxS
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
     qDebug("QNativeSocketEnginePrivate::nativeReceiveDatagram(%p \"%s\", %lli, %s, %i) == %lli",
-           data, qt_prettyDebug(data, qMin(recvResult, ssize_t(16)), recvResult).data(), maxSize,
+           data, QtDebugUtils::toPrintable(data, recvResult, 16).constData(), maxSize,
            (recvResult != -1 && options != QAbstractSocketEngine::WantNone)
            ? header->senderAddress.toString().toLatin1().constData() : "(unknown)",
            (recvResult != -1 && options != QAbstractSocketEngine::WantNone)
@@ -1190,7 +1134,7 @@ qint64 QNativeSocketEnginePrivate::nativeSendDatagram(const char *data, qint64 l
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
     qDebug("QNativeSocketEngine::sendDatagram(%p \"%s\", %lli, \"%s\", %i) == %lli", data,
-           qt_prettyDebug(data, qMin<int>(len, 16), len).data(), len,
+           QtDebugUtils::toPrintable(data, len, 16).constData(), len,
            header.destinationAddress.toString().toLatin1().constData(),
            header.destinationPort, (qint64) sentBytes);
 #endif
@@ -1356,9 +1300,8 @@ qint64 QNativeSocketEnginePrivate::nativeWrite(const char *data, qint64 len)
     }
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
-    qDebug("QNativeSocketEnginePrivate::nativeWrite(%p \"%s\", %llu) == %i",
-           data, qt_prettyDebug(data, qMin((int) len, 16),
-                                (int) len).data(), len, (int) writtenBytes);
+    qDebug("QNativeSocketEnginePrivate::nativeWrite(%p \"%s\", %llu) == %i", data,
+           QtDebugUtils::toPrintable(data, len, 16).constData(), len, (int) writtenBytes);
 #endif
 
     return qint64(writtenBytes);
@@ -1407,9 +1350,8 @@ qint64 QNativeSocketEnginePrivate::nativeRead(char *data, qint64 maxSize)
     }
 
 #if defined (QNATIVESOCKETENGINE_DEBUG)
-    qDebug("QNativeSocketEnginePrivate::nativeRead(%p \"%s\", %llu) == %zd",
-           data, qt_prettyDebug(data, qMin(r, ssize_t(16)), r).data(),
-           maxSize, r);
+    qDebug("QNativeSocketEnginePrivate::nativeRead(%p \"%s\", %llu) == %zd", data,
+           QtDebugUtils::toPrintable(data, r, 16).constData(), maxSize, r);
 #endif
 
     return qint64(r);
@@ -1420,6 +1362,8 @@ int QNativeSocketEnginePrivate::nativeSelect(int timeout, bool selectForRead) co
     bool dummy;
     return nativeSelect(timeout, selectForRead, !selectForRead, &dummy, &dummy);
 }
+
+#ifndef Q_OS_WASM
 
 int QNativeSocketEnginePrivate::nativeSelect(int timeout, bool checkRead, bool checkWrite,
                        bool *selectForRead, bool *selectForWrite) const
@@ -1450,5 +1394,25 @@ int QNativeSocketEnginePrivate::nativeSelect(int timeout, bool checkRead, bool c
 
     return ret;
 }
+
+#else
+
+int QNativeSocketEnginePrivate::nativeSelect(int timeout, bool checkRead, bool checkWrite,
+                        bool *selectForRead, bool *selectForWrite) const
+{
+    *selectForRead = checkRead;
+    *selectForWrite = checkWrite;
+    bool socketDisconnect = false;
+    QEventDispatcherWasm::socketSelect(timeout, socketDescriptor, checkRead, checkWrite,selectForRead, selectForWrite, &socketDisconnect);
+
+    // The disconnect/close handling code in QAbstractsScket::canReadNotification()
+    // does not detect remote disconnect properly; do that here as a workardound.
+    if (socketDisconnect)
+        receiver->closeNotification();
+
+    return 1;
+}
+
+#endif // Q_OS_WASM
 
 QT_END_NAMESPACE

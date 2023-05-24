@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -22,12 +22,11 @@ class WorkerModulatorImpl final : public ModulatorImplBase {
   // Implements ModulatorImplBase.
   ModuleScriptFetcher* CreateModuleScriptFetcher(
       ModuleScriptCustomFetchType,
-      util::PassKey<ModuleScriptLoader> pass_key) override;
+      base::PassKey<ModuleScriptLoader> pass_key) override;
 
  private:
   // Implements ModulatorImplBase.
   bool IsDynamicImportForbidden(String* reason) override;
-  mojom::blink::V8CacheOptions GetV8CacheOptions() const override;
 };
 
 }  // namespace blink

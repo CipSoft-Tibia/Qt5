@@ -1,4 +1,4 @@
-// Copyright 2013 The Chromium Authors. All rights reserved.
+// Copyright 2013 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -12,16 +12,16 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/strings/string_piece.h"
-#include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "crypto/nss_crypto_module_delegate.h"
 #include "crypto/nss_util.h"
+#include "crypto/scoped_nss_types.h"
 #include "net/cert/scoped_nss_types.h"
 #include "net/cert/x509_util_nss.h"
 #include "net/ssl/ssl_cert_request_info.h"
@@ -120,9 +120,8 @@ void ClientCertStoreNSS::FilterCertsOnWorkerThread(
     intermediates.reserve(nss_intermediates.size());
     for (const ScopedCERTCertificate& nss_intermediate : nss_intermediates) {
       bssl::UniquePtr<CRYPTO_BUFFER> intermediate_cert_handle(
-          X509Certificate::CreateCertBufferFromBytes(
-              reinterpret_cast<const char*>(nss_intermediate->derCert.data),
-              nss_intermediate->derCert.len));
+          X509Certificate::CreateCertBufferFromBytes(base::make_span(
+              nss_intermediate->derCert.data, nss_intermediate->derCert.len)));
       if (!intermediate_cert_handle)
         break;
       intermediates.push_back(std::move(intermediate_cert_handle));
@@ -170,9 +169,9 @@ void ClientCertStoreNSS::GetPlatformCertsOnWorkerThread(
     ClientCertIdentityList* identities) {
   crypto::EnsureNSSInit();
 
-  CERTCertList* found_certs = CERT_FindUserCertsByUsage(
+  crypto::ScopedCERTCertList found_certs(CERT_FindUserCertsByUsage(
       CERT_GetDefaultCertDB(), certUsageSSLClient, PR_FALSE, PR_FALSE,
-      password_delegate ? password_delegate->wincx() : nullptr);
+      password_delegate ? password_delegate->wincx() : nullptr));
   if (!found_certs) {
     DVLOG(2) << "No client certs found.";
     return;
@@ -195,7 +194,6 @@ void ClientCertStoreNSS::GetPlatformCertsOnWorkerThread(
     identities->push_back(std::make_unique<ClientCertIdentityNSS>(
         cert, x509_util::DupCERTCertificate(node->cert), password_delegate));
   }
-  CERT_DestroyCertList(found_certs);
 }
 
 }  // namespace net

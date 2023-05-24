@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,6 +8,8 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/logging.h"
+#include "ui/gl/gl_display.h"
 #include "ui/gl/gl_surface.h"
 #include "ui/gl/init/gl_factory.h"
 #include "ui/ozone/demo/skia/skia_gl_renderer.h"
@@ -21,23 +23,32 @@ namespace {
 
 const char kDisableSurfaceless[] = "disable-surfaceless";
 
-scoped_refptr<gl::GLSurface> CreateGLSurface(gfx::AcceleratedWidget widget) {
-  scoped_refptr<gl::GLSurface> surface;
+scoped_refptr<gl::Presenter> CreatePresenter(gl::GLDisplay* display,
+                                             gfx::AcceleratedWidget widget) {
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(kDisableSurfaceless))
-    surface = gl::init::CreateSurfacelessViewGLSurface(widget);
-  if (!surface)
-    surface = gl::init::CreateViewGLSurface(widget);
-  return surface;
+    return gl::init::CreateSurfacelessViewGLSurface(display, widget);
+  return nullptr;
 }
 
+scoped_refptr<gl::GLSurface> CreateGLSurface(gl::GLDisplay* display,
+                                             gfx::AcceleratedWidget widget) {
+  return gl::init::CreateViewGLSurface(display, widget);
+}
 }  // namespace
 
 SkiaRendererFactory::SkiaRendererFactory() {}
 
-SkiaRendererFactory::~SkiaRendererFactory() {}
+SkiaRendererFactory::~SkiaRendererFactory() {
+  if (display_) {
+    gl::init::ShutdownGL(display_, false);
+    display_ = nullptr;
+  }
+}
 
 bool SkiaRendererFactory::Initialize() {
-  if (!gl::init::InitializeGLOneOff()) {
+  display_ = gl::init::InitializeGLOneOff(
+      /*gpu_preference=*/gl::GpuPreference::kDefault);
+  if (!display_) {
     LOG(FATAL) << "Failed to initialize GL";
   }
 
@@ -51,13 +62,16 @@ std::unique_ptr<Renderer> SkiaRendererFactory::CreateRenderer(
       OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
   auto window_surface =
       surface_factory_ozone->CreatePlatformWindowSurface(widget);
-  scoped_refptr<gl::GLSurface> gl_surface = CreateGLSurface(widget);
+
+  if (auto presenter = CreatePresenter(display_, widget)) {
+    return std::make_unique<SurfacelessSkiaGlRenderer>(
+        widget, std::move(window_surface),
+        gl::init::CreateOffscreenGLSurface(display_, gfx::Size(1, 1)),
+        std::move(presenter), size);
+  }
+  scoped_refptr<gl::GLSurface> gl_surface = CreateGLSurface(display_, widget);
   if (!gl_surface)
     LOG(FATAL) << "Failed to create GL surface";
-  if (gl_surface->IsSurfaceless()) {
-    return std::make_unique<SurfacelessSkiaGlRenderer>(
-        widget, std::move(window_surface), std::move(gl_surface), size);
-  }
   return std::make_unique<SkiaGlRenderer>(widget, std::move(window_surface),
                                           std::move(gl_surface), size);
 }

@@ -528,6 +528,9 @@ fbdev_output_enable(struct weston_output *base)
 	struct fbdev_head *head;
 	int fb_fd;
 	struct wl_event_loop *loop;
+	const struct pixman_renderer_output_options options = {
+		.use_shadow = true,
+	};
 
 	head = fbdev_output_get_head(output);
 
@@ -546,8 +549,7 @@ fbdev_output_enable(struct weston_output *base)
 	output->base.start_repaint_loop = fbdev_output_start_repaint_loop;
 	output->base.repaint = fbdev_output_repaint;
 
-	if (pixman_renderer_output_create(&output->base,
-					PIXMAN_RENDERER_OUTPUT_USE_SHADOW) < 0)
+	if (pixman_renderer_output_create(&output->base, &options) < 0)
 		goto out_hw_surface;
 
 	loop = wl_display_get_event_loop(backend->compositor->wl_display);

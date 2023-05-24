@@ -7,21 +7,11 @@
 
 #include "build/build_config.h"
 
-// Annotate a variable indicating it's ok if the variable is not used.
-// (Typically used to silence a compiler warning when the assignment
-// is important for some other reason.)
-// Use like:
-//   int x = ...;
-//   ALLOW_UNUSED_LOCAL(x);
-#define ALLOW_UNUSED_LOCAL(x) (void)x
-
-// Annotate a typedef or function indicating it's ok if it's not used.
-// Use like:
-//   typedef Foo Bar ALLOW_UNUSED_TYPE;
-#if defined(COMPILER_GCC) || defined(__clang__)
-#define ALLOW_UNUSED_TYPE __attribute__((unused))
+// A wrapper around `__has_attribute`, similar to HAS_CPP_ATTRIBUTE.
+#if defined(__has_attribute)
+#define HAS_ATTRIBUTE(x) __has_attribute(x)
 #else
-#define ALLOW_UNUSED_TYPE
+#define HAS_ATTRIBUTE(x) 0
 #endif
 
 // Annotate a function indicating it should not be inlined.
@@ -70,17 +60,6 @@
 #define ALIGNAS(byte_alignment) __attribute__((aligned(byte_alignment)))
 #endif
 
-// Annotate a function indicating the caller must examine the return value.
-// Use like:
-//   int foo() WARN_UNUSED_RESULT;
-// To explicitly ignore a result, see |ignore_result()| in base/macros.h.
-#undef WARN_UNUSED_RESULT
-#if defined(COMPILER_GCC) || defined(__clang__)
-#define WARN_UNUSED_RESULT __attribute__((warn_unused_result))
-#else
-#define WARN_UNUSED_RESULT
-#endif
-
 // Tell the compiler a function is using a printf-style format string.
 // |format_param| is the one-based index of the format string parameter;
 // |dots_param| is the one-based index of the "..." parameter.
@@ -111,7 +90,7 @@
 #endif
 
 // MemorySanitizer annotations.
-#if defined(MEMORY_SANITIZER) && !defined(OS_NACL)
+#if defined(MEMORY_SANITIZER) && !BUILDFLAG(IS_NACL)
 #include <sanitizer/msan_interface.h>
 
 // Mark a memory region fully initialized.
@@ -141,11 +120,11 @@
 
 // Macro useful for writing cross-platform function pointers.
 #if !defined(CDECL)
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define CDECL __cdecl
-#else  // defined(OS_WIN)
+#else  // BUILDFLAG(IS_WIN)
 #define CDECL
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
 #endif  // !defined(CDECL)
 
 // Macro for hinting that an expression is likely to be false.
@@ -173,11 +152,39 @@
 #define HAS_FEATURE(FEATURE) 0
 #endif
 
-// Macro for telling -Wimplicit-fallthrough that a fallthrough is intentional.
-#if defined(__clang__)
-#define FALLTHROUGH [[clang::fallthrough]]
+// Marks a type as being eligible for the "trivial" ABI despite having a
+// non-trivial destructor or copy/move constructor. Such types can be relocated
+// after construction by simply copying their memory, which makes them eligible
+// to be passed in registers. The canonical example is std::unique_ptr.
+//
+// Use with caution; this has some subtle effects on constructor/destructor
+// ordering and will be very incorrect if the type relies on its address
+// remaining constant. When used as a function argument (by value), the value
+// may be constructed in the caller's stack frame, passed in a register, and
+// then used and destructed in the callee's stack frame. A similar thing can
+// occur when values are returned.
+//
+// TRIVIAL_ABI is not needed for types which have a trivial destructor and
+// copy/move constructors, such as base::TimeTicks and other POD.
+//
+// It is also not likely to be effective on types too large to be passed in one
+// or two registers on typical target ABIs.
+//
+// See also:
+//   https://clang.llvm.org/docs/AttributeReference.html#trivial-abi
+//   https://libcxx.llvm.org/docs/DesignDocs/UniquePtrTrivialAbi.html
+#if defined(__clang__) && HAS_ATTRIBUTE(trivial_abi)
+#define TRIVIAL_ABI [[clang::trivial_abi]]
 #else
-#define FALLTHROUGH
+#define TRIVIAL_ABI
+#endif
+
+#if defined(__clang__)
+#define GSL_OWNER [[gsl::Owner]]
+#define GSL_POINTER [[gsl::Pointer]]
+#else
+#define GSL_OWNER
+#define GSL_POINTER
 #endif
 
 #endif  // THIRD_PARTY_BASE_COMPILER_SPECIFIC_H_

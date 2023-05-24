@@ -27,6 +27,7 @@
 #include <algorithm>
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/layout/api/line_layout_block_flow.h"
+#include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/text_autosizer.h"
 #include "third_party/blink/renderer/core/layout/text_run_constructor.h"
@@ -67,13 +68,14 @@ static int GetHeightForLineCount(const LayoutBlockFlow* block_flow,
   LayoutBox* normal_flow_child_without_lines = nullptr;
   for (LayoutBox* obj = block_flow->FirstChildBox(); obj;
        obj = obj->NextSiblingBox()) {
-    auto* block_flow = DynamicTo<LayoutBlockFlow>(obj);
-    if (block_flow && ShouldCheckLines(block_flow)) {
-      int result = GetHeightForLineCount(block_flow, line_count, false, count);
+    auto* child_block_flow = DynamicTo<LayoutBlockFlow>(obj);
+    if (child_block_flow && ShouldCheckLines(child_block_flow)) {
+      int result =
+          GetHeightForLineCount(child_block_flow, line_count, false, count);
       if (result != -1)
         return (result + obj->Location().Y() +
-                (include_bottom ? (block_flow->BorderBottom() +
-                                   block_flow->PaddingBottom())
+                (include_bottom ? (child_block_flow->BorderBottom() +
+                                   child_block_flow->PaddingBottom())
                                 : LayoutUnit()))
             .ToInt();
     } else if (!obj->IsFloatingOrOutOfFlowPositioned()) {
@@ -450,7 +452,7 @@ void LayoutDeprecatedFlexibleBox::ApplyLineClamp(bool relayout_children) {
     last_visible_line->PlaceEllipsis(ellipsis_str, left_to_right,
                                      block_left_edge, block_right_edge,
                                      LayoutUnit(total_width), LayoutUnit(),
-                                     &box_truncation_starts_at, ForceEllipsis);
+                                     &box_truncation_starts_at, kForceEllipsis);
     dest_block.SetHasMarkupTruncation(true);
   }
 }

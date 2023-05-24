@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,9 @@
 
 #include <utility>
 
-#include "base/bind.h"
-#include "base/callback.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/task/sequenced_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 
 namespace mojo {
@@ -82,6 +82,11 @@ class GenericCallbackBinderWithContext {
       scoped_refptr<base::SequencedTaskRunner> task_runner)
       : callback_(std::move(callback)), task_runner_(std::move(task_runner)) {}
 
+  GenericCallbackBinderWithContext(const GenericCallbackBinderWithContext&) =
+      delete;
+  GenericCallbackBinderWithContext& operator=(
+      const GenericCallbackBinderWithContext&) = delete;
+
   ~GenericCallbackBinderWithContext() = default;
 
   void BindInterface(ContextValueType context,
@@ -123,7 +128,6 @@ class GenericCallbackBinderWithContext {
 
   const GenericBinderType callback_;
   const scoped_refptr<base::SequencedTaskRunner> task_runner_;
-  DISALLOW_COPY_AND_ASSIGN(GenericCallbackBinderWithContext);
 };
 
 }  // namespace internal

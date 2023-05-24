@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -103,7 +103,7 @@ public class MockMediaRouteProvider implements MediaRouteProvider {
             final String origin, final int tabId, final boolean isIncognito,
             final int nativeRequestId) {
         if (mCreateRouteErrorMessage != null) {
-            mManager.onRouteRequestError(mCreateRouteErrorMessage, nativeRequestId);
+            mManager.onCreateRouteRequestError(mCreateRouteErrorMessage, nativeRequestId);
             return;
         }
 
@@ -130,12 +130,12 @@ public class MockMediaRouteProvider implements MediaRouteProvider {
     public void joinRoute(
             String sourceId, String presentationId, String origin, int tabId, int nativeRequestId) {
         if (mJoinRouteErrorMessage != null) {
-            mManager.onRouteRequestError(mJoinRouteErrorMessage, nativeRequestId);
+            mManager.onJoinRouteRequestError(mJoinRouteErrorMessage, nativeRequestId);
             return;
         }
         MediaRoute existingRoute = mPresentationIdToRoute.get(presentationId);
         if (existingRoute == null) {
-            mManager.onRouteRequestError("Presentation does not exist", nativeRequestId);
+            mManager.onJoinRouteRequestError("Presentation does not exist", nativeRequestId);
             return;
         }
         mManager.onRouteCreated(

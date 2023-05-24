@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtWidgets module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QGRAPHICSVIEW_H
 #define QGRAPHICSVIEW_H
@@ -68,13 +32,17 @@ class Q_WIDGETS_EXPORT QGraphicsView : public QAbstractScrollArea
     Q_PROPERTY(QPainter::RenderHints renderHints READ renderHints WRITE setRenderHints)
     Q_PROPERTY(DragMode dragMode READ dragMode WRITE setDragMode)
     Q_PROPERTY(CacheMode cacheMode READ cacheMode WRITE setCacheMode)
-    Q_PROPERTY(ViewportAnchor transformationAnchor READ transformationAnchor WRITE setTransformationAnchor)
+    Q_PROPERTY(ViewportAnchor transformationAnchor READ transformationAnchor
+               WRITE setTransformationAnchor)
     Q_PROPERTY(ViewportAnchor resizeAnchor READ resizeAnchor WRITE setResizeAnchor)
-    Q_PROPERTY(ViewportUpdateMode viewportUpdateMode READ viewportUpdateMode WRITE setViewportUpdateMode)
+    Q_PROPERTY(ViewportUpdateMode viewportUpdateMode READ viewportUpdateMode
+               WRITE setViewportUpdateMode)
 #if QT_CONFIG(rubberband)
-    Q_PROPERTY(Qt::ItemSelectionMode rubberBandSelectionMode READ rubberBandSelectionMode WRITE setRubberBandSelectionMode)
+    Q_PROPERTY(Qt::ItemSelectionMode rubberBandSelectionMode READ rubberBandSelectionMode
+               WRITE setRubberBandSelectionMode)
 #endif
-    Q_PROPERTY(OptimizationFlags optimizationFlags READ optimizationFlags WRITE setOptimizationFlags)
+    Q_PROPERTY(OptimizationFlags optimizationFlags READ optimizationFlags
+               WRITE setOptimizationFlags)
 
 public:
     enum ViewportAnchor {
@@ -107,12 +75,9 @@ public:
     Q_ENUM(ViewportUpdateMode)
 
     enum OptimizationFlag {
-#if QT_DEPRECATED_SINCE(5, 14)
-        DontClipPainter Q_DECL_ENUMERATOR_DEPRECATED_X("This flag is unused") = 0x1, // obsolete
-#endif
-        DontSavePainterState = 0x2,
-        DontAdjustForAntialiasing = 0x4,
-        IndirectPainting = 0x8
+        DontSavePainterState = 0x1,
+        DontAdjustForAntialiasing = 0x2,
+        IndirectPainting = 0x4
     };
     Q_DECLARE_FLAGS(OptimizationFlags, OptimizationFlag)
 
@@ -165,11 +130,6 @@ public:
     void setSceneRect(const QRectF &rect);
     inline void setSceneRect(qreal x, qreal y, qreal w, qreal h);
 
-#if QT_DEPRECATED_SINCE(5, 15)
-    QT_DEPRECATED_X("Use transform()") QMatrix matrix() const;
-    QT_DEPRECATED_X("Use setTransform()") void setMatrix(const QMatrix &matrix, bool combine = false);
-    QT_DEPRECATED_X("Use resetTransform()") void resetMatrix();
-#endif // QT_DEPRECATED_SINCE(5, 15)
     QTransform transform() const;
     QTransform viewportTransform() const;
     bool isTransformed() const;

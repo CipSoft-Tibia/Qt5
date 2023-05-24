@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,10 +7,10 @@
 
 #include <memory>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/component_export.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -59,6 +59,9 @@ class COMPONENT_EXPORT(SERVICE_MANAGER_CPP) ServiceReceiver
   // immediately after construction. See below.
   ServiceReceiver(service_manager::Service* service,
                   mojo::PendingReceiver<mojom::Service> receiver);
+
+  ServiceReceiver(const ServiceReceiver&) = delete;
+  ServiceReceiver& operator=(const ServiceReceiver&) = delete;
 
   ~ServiceReceiver() override;
 
@@ -120,7 +123,9 @@ class COMPONENT_EXPORT(SERVICE_MANAGER_CPP) ServiceReceiver
   // The Service instance to which all incoming events from the Service Manager
   // should be directed. Typically this is the object which owns this
   // ServiceReceiver.
-  service_manager::Service* const service_;
+  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
+  // #union
+  RAW_PTR_EXCLUSION service_manager::Service* const service_;
 
   // A pending Connector request which will eventually be passed to the Service
   // Manager. Created preemptively by every unbound ServiceReceiver so that
@@ -140,8 +145,6 @@ class COMPONENT_EXPORT(SERVICE_MANAGER_CPP) ServiceReceiver
   // receiving |OnStart()| on a bound ServiceReceiver. This ensures that the
   // closure request is actually issued once |OnStart()| is invoked.
   bool request_closure_on_start_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(ServiceReceiver);
 };
 
 }  // namespace service_manager

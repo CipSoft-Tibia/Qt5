@@ -1,36 +1,12 @@
-/****************************************************************************
-**
-** Copyright (C) 2017 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2017 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtGui/QVulkanInstance>
 #include <QtGui/QVulkanFunctions>
 #include <QtGui/QVulkanWindow>
+#include <QtCore/qvarlengtharray.h>
 
-#include <QtTest/QtTest>
+#include <QTest>
 
 #include <QSignalSpy>
 
@@ -43,6 +19,7 @@ private slots:
     void vulkanCheckSupported();
     void vulkanPlainWindow();
     void vulkanVersionRequest();
+    void vulkan11();
     void vulkanWindow();
     void vulkanWindowRenderer();
     void vulkanWindowGrab();
@@ -50,6 +27,10 @@ private slots:
 
 void tst_QVulkan::vulkanInstance()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-111236)");
+#endif
     QVulkanInstance inst;
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
@@ -86,8 +67,12 @@ void tst_QVulkan::vulkanInstance()
 
 void tst_QVulkan::vulkanCheckSupported()
 {
-    // Test the early calls to supportedLayers/extensions that need the library
-    // and some basics, but do not initialize the instance.
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-111236)");
+#endif
+    // Test the early calls to supportedLayers/extensions/apiVersion that need
+    // the library and some basics, but do not initialize the instance.
     QVulkanInstance inst;
     QVERIFY(!inst.isValid());
 
@@ -99,14 +84,100 @@ void tst_QVulkan::vulkanCheckSupported()
     qDebug() << ve;
     QVERIFY(!inst.isValid());
 
+    const QVersionNumber supportedApiVersion = inst.supportedApiVersion();
+    qDebug() << supportedApiVersion.majorVersion() << supportedApiVersion.minorVersion();
+
     if (inst.create()) { // skip the rest when Vulkan is not supported at all
         QVERIFY(!ve.isEmpty());
         QVERIFY(ve == inst.supportedExtensions());
+        QVERIFY(supportedApiVersion.majorVersion() >= 1);
     }
+}
+
+void tst_QVulkan::vulkan11()
+{
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-105739)");
+#endif
+#if VK_VERSION_1_1
+    QVulkanInstance inst;
+    if (inst.supportedApiVersion() < QVersionNumber(1, 1))
+        QSKIP("Vulkan 1.1 is not supported by the VkInstance; skip");
+
+    inst.setApiVersion(QVersionNumber(1, 1));
+    if (!inst.create())
+        QSKIP("Vulkan 1.1 instance creation failed; skip");
+
+    QCOMPARE(inst.errorCode(), VK_SUCCESS);
+
+    // exercise some 1.1 commands
+    QVulkanFunctions *f = inst.functions();
+    QVERIFY(f);
+    uint32_t count = 0;
+    VkResult err = f->vkEnumeratePhysicalDeviceGroups(inst.vkInstance(), &count, nullptr);
+    if (err != VK_SUCCESS)
+        QSKIP("No physical devices; skip");
+
+    if (count) {
+        QVarLengthArray<VkPhysicalDeviceGroupProperties, 4> groupProperties;
+        groupProperties.resize(count);
+        err = f->vkEnumeratePhysicalDeviceGroups(inst.vkInstance(), &count, groupProperties.data()); // 1.1 API
+        QCOMPARE(err, VK_SUCCESS);
+        for (const VkPhysicalDeviceGroupProperties &gp : groupProperties) {
+            QCOMPARE(gp.sType, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GROUP_PROPERTIES);
+            for (uint32_t i = 0; i != gp.physicalDeviceCount; ++i) {
+                VkPhysicalDevice physDev = gp.physicalDevices[i];
+
+                // Instance and physical device apiVersion are two different things.
+                VkPhysicalDeviceProperties props;
+                f->vkGetPhysicalDeviceProperties(physDev, &props);
+                QVersionNumber physDevVer(VK_VERSION_MAJOR(props.apiVersion),
+                                          VK_VERSION_MINOR(props.apiVersion),
+                                          VK_VERSION_PATCH(props.apiVersion));
+                qDebug() << "Physical device" << physDev << "apiVersion" << physDevVer;
+
+                if (physDevVer >= QVersionNumber(1, 1)) {
+                    // Now that we ensured that we have an 1.1 capable instance and physical device,
+                    // query something that was not in 1.0.
+                    VkPhysicalDeviceIDProperties deviceIdProps = {}; // new in 1.1
+                    deviceIdProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+                    VkPhysicalDeviceProperties2 props2 = {};
+                    props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+                    props2.pNext = &deviceIdProps;
+                    f->vkGetPhysicalDeviceProperties2(physDev, &props2); // 1.1 API
+                    QByteArray deviceUuid = QByteArray::fromRawData((const char *) deviceIdProps.deviceUUID, VK_UUID_SIZE).toHex();
+                    QByteArray driverUuid = QByteArray::fromRawData((const char *) deviceIdProps.driverUUID, VK_UUID_SIZE).toHex();
+                    qDebug() << "deviceUUID" << deviceUuid << "driverUUID" << driverUuid;
+                    const bool deviceUuidZero = std::find_if(deviceUuid.cbegin(), deviceUuid.cend(), [](char c) -> bool { return c; }) == deviceUuid.cend();
+                    const bool driverUuidZero = std::find_if(driverUuid.cbegin(), driverUuid.cend(), [](char c) -> bool { return c; }) == driverUuid.cend();
+                    // deviceUUID cannot be all zero as per spec
+                    if (!driverUuidZero) {
+                        // ...but then there are implementations such as some
+                        // versions of Mesa lavapipe, that returns all zeroes
+                        // for both uuids. skip the check if the driver uuid
+                        // was zero too.
+                        // https://gitlab.freedesktop.org/mesa/mesa/-/issues/5875
+                        QVERIFY(!deviceUuidZero);
+                    }
+                } else {
+                    qDebug("Physical device is not Vulkan 1.1 capable");
+                }
+            }
+        }
+    }
+
+#else
+    QSKIP("Vulkan header is not 1.1 capable; skip");
+#endif
 }
 
 void tst_QVulkan::vulkanPlainWindow()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("Fails on Android 7 emulator (QTBUG-108328)");
+#endif
+
     QVulkanInstance inst;
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
@@ -143,6 +214,10 @@ void tst_QVulkan::vulkanPlainWindow()
 
 void tst_QVulkan::vulkanVersionRequest()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-111236)");
+#endif
     QVulkanInstance inst;
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
@@ -153,8 +228,24 @@ void tst_QVulkan::vulkanVersionRequest()
     inst.destroy();
 
     inst.setApiVersion(QVersionNumber(10, 0, 0));
-    QVERIFY(!inst.create());
-    QCOMPARE(inst.errorCode(), VK_ERROR_INCOMPATIBLE_DRIVER);
+
+    bool result = inst.create();
+
+    // Starting with Vulkan 1.1 the spec does not allow the implementation to
+    // fail the instance creation. So check for the 1.0 behavior only when
+    // create() failed, skip this verification with 1.1+ (where create() will
+    // succeed for any bogus api version).
+    if (!result)
+        QCOMPARE(inst.errorCode(), VK_ERROR_INCOMPATIBLE_DRIVER);
+
+    inst.destroy();
+
+    // Verify that specifying the version returned from supportedApiVersion
+    // (either 1.0.0 or what vkEnumerateInstanceVersion returns in Vulkan 1.1+)
+    // leads to successful instance creation.
+    inst.setApiVersion(inst.supportedApiVersion());
+    result = inst.create();
+    QVERIFY(result);
 }
 
 static void waitForUnexposed(QWindow *w)
@@ -173,6 +264,10 @@ static void waitForUnexposed(QWindow *w)
 
 void tst_QVulkan::vulkanWindow()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-111236)");
+#endif
     QVulkanInstance inst;
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
@@ -190,7 +285,7 @@ void tst_QVulkan::vulkanWindow()
     w.hide();
     waitForUnexposed(&w);
     w.setVulkanInstance(&inst);
-    QVector<VkPhysicalDeviceProperties> pdevs = w.availablePhysicalDevices();
+    QList<VkPhysicalDeviceProperties> pdevs = w.availablePhysicalDevices();
     if (pdevs.isEmpty())
         QSKIP("No Vulkan physical devices; skip");
     w.show();
@@ -378,8 +473,12 @@ void tst_QVulkan::vulkanWindowRenderer()
 
 void tst_QVulkan::vulkanWindowGrab()
 {
+#ifdef Q_OS_ANDROID
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 31)
+        QSKIP("Fails on Android 12 (QTBUG-105739)");
+#endif
     QVulkanInstance inst;
-    inst.setLayers(QByteArrayList() << "VK_LAYER_LUNARG_standard_validation");
+    inst.setLayers(QByteArrayList() << "VK_LAYER_KHRONOS_validation");
     if (!inst.create())
         QSKIP("Vulkan init failed; skip");
 

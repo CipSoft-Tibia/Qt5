@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,7 +7,7 @@
 
 #include <string>
 
-#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "extensions/browser/api/declarative/rules_registry.h"
 #include "extensions/browser/extension_function.h"
 
@@ -33,6 +33,9 @@ class RulesFunction : public ExtensionFunction {
  public:
   RulesFunction();
 
+  RulesFunction(const RulesFunction&) = delete;
+  RulesFunction& operator=(const RulesFunction&) = delete;
+
  protected:
   ~RulesFunction() override;
 
@@ -55,8 +58,6 @@ class RulesFunction : public ExtensionFunction {
 
  private:
   void SendResponse(ResponseValue response);
-
-  DISALLOW_COPY_AND_ASSIGN(RulesFunction);
 };
 
 class EventsEventAddRulesFunction : public RulesFunction {

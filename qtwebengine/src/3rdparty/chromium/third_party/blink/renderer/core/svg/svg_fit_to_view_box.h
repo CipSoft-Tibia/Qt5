@@ -22,12 +22,17 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_SVG_SVG_FIT_TO_VIEW_BOX_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_SVG_SVG_FIT_TO_VIEW_BOX_H_
 
-#include "third_party/blink/renderer/platform/heap/handle.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+
+namespace gfx {
+class RectF;
+class SizeF;
+}  // namespace gfx
 
 namespace blink {
 
 class AffineTransform;
-class FloatRect;
 class QualifiedName;
 class SVGAnimatedPreserveAspectRatio;
 class SVGAnimatedRect;
@@ -36,15 +41,13 @@ class SVGPreserveAspectRatio;
 
 class SVGFitToViewBox : public GarbageCollectedMixin {
  public:
-  static AffineTransform ViewBoxToViewTransform(const FloatRect& view_box_rect,
-                                                const SVGPreserveAspectRatio*,
-                                                float view_width,
-                                                float view_height);
+  static AffineTransform ViewBoxToViewTransform(
+      const gfx::RectF& view_box_rect,
+      const SVGPreserveAspectRatio*,
+      const gfx::SizeF& viewport_size);
 
   static bool IsKnownAttribute(const QualifiedName&);
-
   bool HasValidViewBox() const;
-  bool HasEmptyViewBox() const;
 
   // JS API
   SVGAnimatedRect* viewBox() const { return view_box_.Get(); }

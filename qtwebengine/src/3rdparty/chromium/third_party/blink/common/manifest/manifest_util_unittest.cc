@@ -1,9 +1,10 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/public/common/manifest/manifest_util.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/manifest/capture_links.mojom.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
 #include "url/gurl.h"
 
@@ -19,6 +20,10 @@ TEST(ManifestUtilTest, DisplayModeConversions) {
       {blink::mojom::DisplayMode::kMinimalUi, "minimal-ui"},
       {blink::mojom::DisplayMode::kStandalone, "standalone"},
       {blink::mojom::DisplayMode::kFullscreen, "fullscreen"},
+      {blink::mojom::DisplayMode::kWindowControlsOverlay,
+       "window-controls-overlay"},
+      {blink::mojom::DisplayMode::kTabbed, "tabbed"},
+      {blink::mojom::DisplayMode::kBorderless, "borderless"},
   };
 
   for (const ReversibleConversion& conversion : reversible_conversions) {
@@ -75,6 +80,40 @@ TEST(ManifestUtilTest, WebScreenOrientationLockTypeConversions) {
   // blink::WebScreenOrientationLockDefault if the string isn't known.
   EXPECT_EQ(device::mojom::ScreenOrientationLockType::DEFAULT,
             WebScreenOrientationLockTypeFromString("random"));
+}
+
+TEST(ManifestUtilTest, CaptureLinksFromString) {
+  EXPECT_EQ(blink::mojom::CaptureLinks::kUndefined, CaptureLinksFromString(""));
+  EXPECT_EQ(blink::mojom::CaptureLinks::kNone, CaptureLinksFromString("none"));
+  EXPECT_EQ(blink::mojom::CaptureLinks::kNewClient,
+            CaptureLinksFromString("new-client"));
+  EXPECT_EQ(blink::mojom::CaptureLinks::kExistingClientNavigate,
+            CaptureLinksFromString("existing-client-navigate"));
+
+  // CaptureLinksFromString() should work with non-lowercase strings.
+  EXPECT_EQ(blink::mojom::CaptureLinks::kNewClient,
+            CaptureLinksFromString("NEW-CLIENT"));
+
+  // CaptureLinksFromString() should return CaptureLinks::kUndefined if the
+  // string isn't known.
+  EXPECT_EQ(blink::mojom::CaptureLinks::kUndefined,
+            CaptureLinksFromString("unknown-value"));
+}
+
+TEST(ManifestUtilTest, LaunchHandlerClientModeFromString) {
+  using ClientMode = Manifest::LaunchHandler::ClientMode;
+  EXPECT_EQ(absl::nullopt, ClientModeFromString(""));
+  EXPECT_EQ(ClientMode::kAuto, ClientModeFromString("auto"));
+  EXPECT_EQ(ClientMode::kNavigateNew, ClientModeFromString("navigate-new"));
+  EXPECT_EQ(ClientMode::kNavigateExisting,
+            ClientModeFromString("navigate-existing"));
+  EXPECT_EQ(ClientMode::kFocusExisting, ClientModeFromString("focus-existing"));
+
+  // Uppercase spelling.
+  EXPECT_EQ(ClientMode::kNavigateNew, ClientModeFromString("NAVIGATE-NEW"));
+
+  // Unknown value.
+  EXPECT_EQ(absl::nullopt, ClientModeFromString("unknown-value"));
 }
 
 }  // namespace blink

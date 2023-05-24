@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -20,7 +20,7 @@ namespace internal {
 
 // static
 std::vector<uint32_t> VariationsMurmurHash::StringToLE32(
-    const std::string& data) {
+    base::StringPiece data) {
   const size_t data_size = data.size();
   const size_t word_num = (data_size + 3) / 4;  // data_size / 4, rounding up
   std::vector<uint32_t> words(word_num, 0);
@@ -61,10 +61,10 @@ uint32_t VariationsMurmurHash::Hash(const std::vector<uint32_t>& data,
   switch (length & 3) {
     case 3:
       k1 |= data[num_full_blocks] & 0xFF0000;
-      FALLTHROUGH;
+      [[fallthrough]];
     case 2:
       k1 |= data[num_full_blocks] & 0xFF00;
-      FALLTHROUGH;
+      [[fallthrough]];
     case 1:
       k1 |= data[num_full_blocks] & 0xFF;
   }

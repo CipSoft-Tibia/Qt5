@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtScxml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include <QtTest>
 #include <QObject>
@@ -39,6 +14,7 @@
 #include "eventnames1.h"
 #include "connection.h"
 #include "topmachine.h"
+#include "historyState.h"
 
 enum { SpyWaitTime = 8000 };
 
@@ -56,6 +32,7 @@ private Q_SLOTS:
     void topMachine();
     void topMachineDynamic();
     void publicSignals();
+    void historyState();
 };
 
 void tst_Compiled::stateNames()
@@ -77,7 +54,7 @@ void tst_Compiled::stateNames()
 
     QCOMPARE(stateMachine.stateNames(false), ids1States);
 
-    for (const QString &state : qAsConst(ids1States)) {
+    for (const QString &state : std::as_const(ids1States)) {
         QVariant prop = stateMachine.property(state.toUtf8().constData());
         QVERIFY(!prop.isNull());
         QVERIFY(prop.isValid());
@@ -258,15 +235,15 @@ void tst_Compiled::topMachine()
     });
 
     QObject::connect(&stateMachine, &QScxmlStateMachine::invokedServicesChanged,
-                     [&invokableServicesCount](const QVector<QScxmlInvokableService *> &services) {
-        invokableServicesCount = services.count();
+                     [&invokableServicesCount](const QList<QScxmlInvokableService *> &services) {
+        invokableServicesCount = services.size();
     });
 
     stateMachine.start();
 
     QTRY_COMPARE(invokableServicesCount, 3);
     QTRY_COMPARE(doneCounter, 3);
-    QCOMPARE(stateMachine.invokedServices().count(), 3);
+    QCOMPARE(stateMachine.invokedServices().size(), 3);
     QTRY_COMPARE(invokableServicesCount, 0);
 }
 
@@ -283,15 +260,15 @@ void tst_Compiled::topMachineDynamic()
     });
 
     QObject::connect(stateMachine.data(), &QScxmlStateMachine::invokedServicesChanged,
-                     [&invokableServicesCount](const QVector<QScxmlInvokableService *> &services) {
-        invokableServicesCount = services.count();
+                     [&invokableServicesCount](const QList<QScxmlInvokableService *> &services) {
+        invokableServicesCount = services.size();
     });
 
     stateMachine->start();
 
     QTRY_COMPARE(invokableServicesCount, 3);
     QTRY_COMPARE(doneCounter, 3);
-    QCOMPARE(stateMachine->invokedServices().count(), 3);
+    QCOMPARE(stateMachine->invokedServices().size(), 3);
     QTRY_COMPARE(invokableServicesCount, 0);
 }
 
@@ -304,6 +281,20 @@ void tst_Compiled::publicSignals()
     QMetaMethod aChanged = connectionMeta->method(index);
     QVERIFY(aChanged.isValid());
     QCOMPARE(aChanged.access(), QMetaMethod::Public);
+}
+
+void tst_Compiled::historyState()
+{
+    HistoryState historyStateSM;
+    QSignalSpy stableStateSpy(&historyStateSM, SIGNAL(reachedStableState()));
+    historyStateSM.start();
+
+    stableStateSpy.wait(5000);
+    QCOMPARE(historyStateSM.activeStateNames(), QStringList(QLatin1String("Off")));
+
+    historyStateSM.submitEvent("toHistory");
+    stableStateSpy.wait(5000);
+    QCOMPARE(historyStateSM.activeStateNames(), QStringList(QLatin1String("Beta")));
 }
 
 QTEST_MAIN(tst_Compiled)

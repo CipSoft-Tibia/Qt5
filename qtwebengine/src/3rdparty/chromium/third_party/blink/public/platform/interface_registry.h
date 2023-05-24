@@ -1,4 +1,4 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
+// Copyright 2016 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,8 +7,9 @@
 
 #include <utility>
 
-#include "base/callback_forward.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/scoped_interface_endpoint_handle.h"
 #include "mojo/public/cpp/system/message_pipe.h"
 #include "third_party/blink/public/platform/web_common.h"
@@ -19,10 +20,6 @@
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"  // nogncheck
 #include "third_party/blink/renderer/platform/wtf/functional.h"  // nogncheck
 #endif
-
-namespace base {
-class SingleThreadTaskRunner;
-}
 
 namespace blink {
 

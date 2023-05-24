@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -153,6 +153,54 @@ TEST(FlashEmbedRewriteTest, DailymotionRewriteEmbed) {
       // Uses /swf/video/
       {"http://www.dailymotion.com/swf/video/deadbeef",
        "http://www.dailymotion.com/embed/video/deadbeef"}};
+
+  for (const auto& data : test_data) {
+    EXPECT_EQ(GURL(data.expected),
+              FlashEmbedRewrite::RewriteFlashEmbedURL(GURL(data.original)));
+  }
+}
+
+TEST(FlashEmbedRewriteTest, VimeoRewriteEmbed) {
+  struct TestData {
+    std::string original;
+    std::string expected;
+  } test_data[] = {
+      // { original, expected }
+      {"http://vimeo.com", ""},
+      {"http://wwwvimeo.com", ""},
+      {"https://www.vimeo.com", ""},
+      {"http://www.foo.vimeo.com", ""},
+      {"https://www.foo.vimeo.com", ""},
+      // URL isn't using Flash.
+      {"https://player.vimeo.com/video/deadbeef", ""},
+      // URL isn't using Flash, different origin.
+      {"https://vimeo.com/video/deadbeef", ""},
+      // URL is using Flash, is valid, http
+      {"http://vimeo.com/moogaloop.swf?clip_id=deadbeef",
+       "http://player.vimeo.com/video/deadbeef"},
+      // URL is using Flash, is valid, https
+      {"https://vimeo.com/moogaloop.swf?clip_id=deadbeef",
+       "https://player.vimeo.com/video/deadbeef"},
+      // URL is using Flash, is valid, has multiple parameters
+      {"https://vimeo.com/"
+       "moogaloop.swf?clip_id=deadbeef&amp;server=vimeo.com&amp;color=00adef&"
+       "amp;fullscreen=1",
+       "https://player.vimeo.com/video/deadbeef"},
+      // URL is using Flash, invalid parameter construct, has one parameter
+      {"https://vimeo.com/moogaloop.swf&clip_id=deadbeef",
+       "https://player.vimeo.com/video/deadbeef"},
+      // URL is using Flash, multiple parameters, clip_id in the middle
+      {"https://vimeo.com/"
+       "moogaloop.swf?server=vimeo.com&amp;clip_id=deadbeef&amp;color=00adef&"
+       "amp;fullscreen=1",
+       "https://player.vimeo.com/video/deadbeef"},
+      // URL is using Flash, multiple parameters, clip_id at the end
+      {"https://vimeo.com/"
+       "moogaloop.swf?server=vimeo.com&amp;color=00adef&amp;fullscreen=1?clip_"
+       "id=deadbeef",
+       "https://player.vimeo.com/video/deadbeef"},
+      // Invalid URL.
+      {"https://vimeo.com/?clip_id=deadbeef", ""}};
 
   for (const auto& data : test_data) {
     EXPECT_EQ(GURL(data.expected),

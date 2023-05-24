@@ -1,4 +1,4 @@
-// Copyright (c) 2012 The Chromium Authors. All rights reserved.
+// Copyright 2012 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -30,17 +30,20 @@
 #ifndef BASE_MESSAGE_LOOP_MESSAGE_PUMP_MAC_H_
 #define BASE_MESSAGE_LOOP_MESSAGE_PUMP_MAC_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/message_loop/message_pump.h"
 
 
 #include <CoreFoundation/CoreFoundation.h>
+#include <memory>
 
-#include "base/macros.h"
+#include "base/containers/stack.h"
 #include "base/message_loop/timer_slack.h"
 #include "build/build_config.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if defined(__OBJC__)
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 #import <Foundation/Foundation.h>
 #else
 #import <AppKit/AppKit.h>
@@ -53,13 +56,12 @@
 // necessary.
 - (BOOL)isHandlingSendEvent;
 @end
-#endif  // !defined(OS_IOS)
+#endif  // BUILDFLAG(IS_IOS)
 #endif  // defined(__OBJC__)
 
 namespace base {
 
 class RunLoop;
-class TimeTicks;
 
 // AutoreleasePoolType is a proxy type for autorelease pools. Its definition
 // depends on the translation unit (TU) in which this header appears. In pure
@@ -79,21 +81,27 @@ typedef NSAutoreleasePool AutoreleasePoolType;
 
 class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
  public:
+  MessagePumpCFRunLoopBase(const MessagePumpCFRunLoopBase&) = delete;
+  MessagePumpCFRunLoopBase& operator=(const MessagePumpCFRunLoopBase&) = delete;
+
+  static void InitializeFeatures();
+
   // MessagePump:
   void Run(Delegate* delegate) override;
   void Quit() override;
   void ScheduleWork() override;
-  void ScheduleDelayedWork(const TimeTicks& delayed_work_time) override;
+  void ScheduleDelayedWork(
+      const Delegate::NextWorkInfo& next_work_info) override;
   void SetTimerSlack(TimerSlack timer_slack) override;
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
   // Some iOS message pumps do not support calling |Run()| to spin the main
   // message loop directly.  Instead, call |Attach()| to set up a delegate, then
   // |Detach()| before destroying the message pump.  These methods do nothing if
   // the message pump supports calling |Run()| and |Quit()|.
   virtual void Attach(Delegate* delegate);
   virtual void Detach();
-#endif  // OS_IOS
+#endif  // BUILDFLAG(IS_IOS)
 
  protected:
   // Needs access to CreateAutoreleasePool.
@@ -127,6 +135,11 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   int run_nesting_level() const { return run_nesting_level_; }
   bool keep_running() const { return keep_running_; }
 
+#if BUILDFLAG(IS_IOS)
+  void OnAttach();
+  void OnDetach();
+#endif
+
   // Sets this pump's delegate.  Signals the appropriate sources if
   // |delegateless_work_| is true.  |delegate| can be NULL.
   void SetDelegate(Delegate* delegate);
@@ -149,10 +162,6 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   // The maximum number of run loop modes that can be monitored.
   static constexpr int kNumModes = 4;
 
-  // All sources of delayed work scheduling converge to this, using TimeDelta
-  // avoids querying Now() for key callers.
-  void ScheduleDelayedWorkImpl(TimeDelta delta);
-
   // Timer callback scheduled by ScheduleDelayedWork.  This does not do any
   // work, but it signals |work_source_| so that delayed work can be performed
   // within the appropriate priority constraints.
@@ -166,10 +175,9 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   bool RunWork();
 
   // Perform idle-priority work.  This is normally called by PreWaitObserver,
-  // but is also associated with |idle_work_source_|.  When this function
-  // actually does perform idle work, it will resignal that source.  The
-  // static method calls the instance method.
-  static void RunIdleWorkSource(void* info);
+  // but can also be invoked from RunNestingDeferredWork when returning from a
+  // nested loop.  When this function actually does perform idle work, it will
+  // re-signal the |work_source_|.
   void RunIdleWork();
 
   // Perform work that may have been deferred because it was not runnable
@@ -180,6 +188,9 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   // permits nestable tasks.
   static void RunNestingDeferredWorkSource(void* info);
   void RunNestingDeferredWork();
+
+  // Called before the run loop goes to sleep to notify delegate.
+  void BeforeWait();
 
   // Schedules possible nesting-deferred work to be processed before the run
   // loop goes to sleep, exits, or begins processing sources at the top of its
@@ -192,6 +203,10 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   // the run loop goes to sleep.  Associated with |pre_wait_observer_|.
   static void PreWaitObserver(CFRunLoopObserverRef observer,
                               CFRunLoopActivity activity, void* info);
+
+  static void AfterWaitObserver(CFRunLoopObserverRef observer,
+                                CFRunLoopActivity activity,
+                                void* info);
 
   // Observer callback called before the run loop processes any sources.
   // Associated with |pre_source_observer_|.
@@ -209,6 +224,12 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   // additional processing on the basis of run loops starting and stopping.
   virtual void EnterExitRunLoop(CFRunLoopActivity activity);
 
+  // Gets rid of the top work item scope.
+  void PopWorkItemScope();
+
+  // Starts tracking a new work item.
+  void PushWorkItemScope();
+
   // The thread's run loop.
   CFRunLoopRef run_loop_;
 
@@ -219,16 +240,19 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   // callbacks.
   CFRunLoopTimerRef delayed_work_timer_;
   CFRunLoopSourceRef work_source_;
-  CFRunLoopSourceRef idle_work_source_;
   CFRunLoopSourceRef nesting_deferred_work_source_;
   CFRunLoopObserverRef pre_wait_observer_;
+  CFRunLoopObserverRef after_wait_observer_;
   CFRunLoopObserverRef pre_source_observer_;
   CFRunLoopObserverRef enter_exit_observer_;
 
   // (weak) Delegate passed as an argument to the innermost Run call.
-  Delegate* delegate_;
+  raw_ptr<Delegate> delegate_;
 
   base::TimerSlack timer_slack_;
+
+  // Time at which `delayed_work_timer_` is set to fire.
+  base::TimeTicks delayed_work_scheduled_at_ = base::TimeTicks::Max();
 
   // The recursion depth of the currently-executing CFRunLoopRun loop on the
   // run loop's thread.  0 if no run loops are running inside of whatever scope
@@ -253,14 +277,23 @@ class BASE_EXPORT MessagePumpCFRunLoopBase : public MessagePump {
   // any call to Run on the stack.  The Run method will check for delegateless
   // work on entry and redispatch it as needed once a delegate is available.
   bool delegateless_work_;
-  bool delegateless_idle_work_;
 
-  DISALLOW_COPY_AND_ASSIGN(MessagePumpCFRunLoopBase);
+  // Used to keep track of the native event work items processed by the message
+  // pump. Made of optionals because tracking can be suspended when it's
+  // determined the loop is not processing a native event but the depth of the
+  // stack should match |nesting_level_| at all times. A nullopt is also used
+  // as a stand-in during delegateless operation.
+  base::stack<absl::optional<base::MessagePump::Delegate::ScopedDoWorkItem>>
+      stack_;
 };
 
 class BASE_EXPORT MessagePumpCFRunLoop : public MessagePumpCFRunLoopBase {
  public:
   MessagePumpCFRunLoop();
+
+  MessagePumpCFRunLoop(const MessagePumpCFRunLoop&) = delete;
+  MessagePumpCFRunLoop& operator=(const MessagePumpCFRunLoop&) = delete;
+
   ~MessagePumpCFRunLoop() override;
 
   void DoRun(Delegate* delegate) override;
@@ -273,13 +306,15 @@ class BASE_EXPORT MessagePumpCFRunLoop : public MessagePumpCFRunLoopBase {
   // (|innermost_quittable_|) but some other CFRunLoopRun loop
   // (|nesting_level_|) is running inside the MessagePump's innermost Run call.
   bool quit_pending_;
-
-  DISALLOW_COPY_AND_ASSIGN(MessagePumpCFRunLoop);
 };
 
 class BASE_EXPORT MessagePumpNSRunLoop : public MessagePumpCFRunLoopBase {
  public:
   MessagePumpNSRunLoop();
+
+  MessagePumpNSRunLoop(const MessagePumpNSRunLoop&) = delete;
+  MessagePumpNSRunLoop& operator=(const MessagePumpNSRunLoop&) = delete;
+
   ~MessagePumpNSRunLoop() override;
 
   void DoRun(Delegate* delegate) override;
@@ -290,17 +325,19 @@ class BASE_EXPORT MessagePumpNSRunLoop : public MessagePumpCFRunLoopBase {
   // attached to the run loop.  This source will be signalled when Quit
   // is called, to cause the loop to wake up so that it can stop.
   CFRunLoopSourceRef quit_source_;
-
-  DISALLOW_COPY_AND_ASSIGN(MessagePumpNSRunLoop);
 };
 
-#if defined(OS_IOS)
+#if BUILDFLAG(IS_IOS)
 // This is a fake message pump.  It attaches sources to the main thread's
 // CFRunLoop, so PostTask() will work, but it is unable to drive the loop
 // directly, so calling Run() or Quit() are errors.
 class MessagePumpUIApplication : public MessagePumpCFRunLoopBase {
  public:
   MessagePumpUIApplication();
+
+  MessagePumpUIApplication(const MessagePumpUIApplication&) = delete;
+  MessagePumpUIApplication& operator=(const MessagePumpUIApplication&) = delete;
+
   ~MessagePumpUIApplication() override;
   void DoRun(Delegate* delegate) override;
   bool DoQuit() override;
@@ -314,8 +351,6 @@ class MessagePumpUIApplication : public MessagePumpCFRunLoopBase {
 
  private:
   RunLoop* run_loop_;
-
-  DISALLOW_COPY_AND_ASSIGN(MessagePumpUIApplication);
 };
 
 #else
@@ -325,17 +360,24 @@ class MessagePumpUIApplication : public MessagePumpCFRunLoopBase {
 class BASE_EXPORT ScopedPumpMessagesInPrivateModes {
  public:
   ScopedPumpMessagesInPrivateModes();
+
+  ScopedPumpMessagesInPrivateModes(const ScopedPumpMessagesInPrivateModes&) =
+      delete;
+  ScopedPumpMessagesInPrivateModes& operator=(
+      const ScopedPumpMessagesInPrivateModes&) = delete;
+
   ~ScopedPumpMessagesInPrivateModes();
 
   int GetModeMaskForTest();
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ScopedPumpMessagesInPrivateModes);
 };
 
 class MessagePumpNSApplication : public MessagePumpCFRunLoopBase {
  public:
   MessagePumpNSApplication();
+
+  MessagePumpNSApplication(const MessagePumpNSApplication&) = delete;
+  MessagePumpNSApplication& operator=(const MessagePumpNSApplication&) = delete;
+
   ~MessagePumpNSApplication() override;
 
   void DoRun(Delegate* delegate) override;
@@ -355,27 +397,30 @@ class MessagePumpNSApplication : public MessagePumpCFRunLoopBase {
   // True if Quit() was called while a modal window was shown and needed to be
   // deferred.
   bool quit_pending_;
-
-  DISALLOW_COPY_AND_ASSIGN(MessagePumpNSApplication);
 };
 
 class MessagePumpCrApplication : public MessagePumpNSApplication {
  public:
   MessagePumpCrApplication();
+
+  MessagePumpCrApplication(const MessagePumpCrApplication&) = delete;
+  MessagePumpCrApplication& operator=(const MessagePumpCrApplication&) = delete;
+
   ~MessagePumpCrApplication() override;
 
  protected:
   // Returns nil if NSApp is currently in the middle of calling
   // -sendEvent.  Requires NSApp implementing CrAppProtocol.
   AutoreleasePoolType* CreateAutoreleasePool() override;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(MessagePumpCrApplication);
 };
-#endif  // !defined(OS_IOS)
+#endif  // BUILDFLAG(IS_IOS)
 
 class BASE_EXPORT MessagePumpMac {
  public:
+  MessagePumpMac() = delete;
+  MessagePumpMac(const MessagePumpMac&) = delete;
+  MessagePumpMac& operator=(const MessagePumpMac&) = delete;
+
   // If not on the main thread, returns a new instance of
   // MessagePumpNSRunLoop.
   //
@@ -386,7 +431,7 @@ class BASE_EXPORT MessagePumpMac {
   // default NSApplication.
   static std::unique_ptr<MessagePump> Create();
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
   // If a pump is created before the required CrAppProtocol is
   // created, the wrong MessagePump subclass could be used.
   // UsingCrApp() returns false if the message pump was created before
@@ -397,10 +442,7 @@ class BASE_EXPORT MessagePumpMac {
   // Wrapper to query -[NSApp isHandlingSendEvent] from C++ code.
   // Requires NSApp to implement CrAppProtocol.
   static bool IsHandlingSendEvent();
-#endif  // !defined(OS_IOS)
-
- private:
-  DISALLOW_IMPLICIT_CONSTRUCTORS(MessagePumpMac);
+#endif  // !BUILDFLAG(IS_IOS)
 };
 
 // Tasks posted to the message loop are posted under this mode, as well

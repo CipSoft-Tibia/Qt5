@@ -1,30 +1,5 @@
-/***************************************************************************
-**
-** Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB)
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the utilities of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013 Klaralvdalens Datakonsult AB (KDAB)
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #ifndef SPECPARSER_H
 #define SPECPARSER_H
@@ -77,7 +52,7 @@ inline bool operator <= (const Version &lhs, const Version &rhs)
     return !(lhs > rhs);
 }
 
-inline uint qHash(const Version &v)
+inline size_t qHash(const Version &v)
 {
     return qHash(v.major * 100 + v.minor * 10);
 }
@@ -118,7 +93,7 @@ inline bool operator < (const VersionProfile &lhs, const VersionProfile &rhs)
     return (lhs.version < rhs.version);
 }
 
-inline uint qHash(const VersionProfile &v)
+inline size_t qHash(const VersionProfile &v)
 {
     return qHash(static_cast<int>(v.profile * 1000) + v.version.major * 100 + v.version.minor * 10);
 }

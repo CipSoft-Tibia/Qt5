@@ -7,11 +7,12 @@
 
 #include "include/core/SkPath.h"
 #include "include/core/SkRegion.h"
-#include "include/private/SkTemplates.h"
-#include "include/private/SkTo.h"
+#include "include/private/base/SkTemplates.h"
+#include "include/private/base/SkTo.h"
+#include "src/base/SkAutoMalloc.h"
+#include "src/base/SkTSort.h"
 #include "src/core/SkAnalyticEdge.h"
 #include "src/core/SkAntiRun.h"
-#include "src/core/SkAutoMalloc.h"
 #include "src/core/SkBlitter.h"
 #include "src/core/SkEdge.h"
 #include "src/core/SkEdgeBuilder.h"
@@ -20,12 +21,11 @@
 #include "src/core/SkRasterClip.h"
 #include "src/core/SkScan.h"
 #include "src/core/SkScanPriv.h"
-#include "src/core/SkTSort.h"
 
 #include <utility>
 
 #if defined(SK_DISABLE_AAA)
-void SkScan::AAAFillPath(const SkPathView&, SkBlitter*, const SkIRect&, const SkIRect&, bool) {
+void SkScan::AAAFillPath(const SkPath&, SkBlitter*, const SkIRect&, const SkIRect&, bool) {
     SkDEBUGFAIL("AAA Disabled");
     return;
 }
@@ -1218,23 +1218,30 @@ static void aaa_walk_convex_edges(SkAnalyticEdge*  prevHead,
                                            fixed_to_alpha(SkFixedMul(partialBot, partialRite)));
                     }
                 }
-            } else {  // left and rite are within the same pixel
-                if (partialTop > 0) {
-                    blitter->blitAntiH(fullLeft - 1,
-                                       fullTop - 1,
-                                       1,
-                                       fixed_to_alpha(SkFixedMul(partialTop, rite - left)));
-                    blitter->flush_if_y_changed(y, y + partialTop);
-                }
-                if (fullBot > fullTop) {
-                    blitter->getRealBlitter()->blitV(
-                            fullLeft - 1, fullTop, fullBot - fullTop, fixed_to_alpha(rite - left));
-                }
-                if (partialBot > 0) {
-                    blitter->blitAntiH(fullLeft - 1,
-                                       fullBot,
-                                       1,
-                                       fixed_to_alpha(SkFixedMul(partialBot, rite - left)));
+            } else {
+                // Normal conditions, this means left and rite are within the same pixel, but if
+                // both left and rite were < leftBounds or > rightBounds, both edges are clipped and
+                // we should not do any blitting (particularly since the negative width saturates to
+                // full alpha).
+                SkFixed width = rite - left;
+                if (width > 0) {
+                    if (partialTop > 0) {
+                        blitter->blitAntiH(fullLeft - 1,
+                                           fullTop - 1,
+                                           1,
+                                           fixed_to_alpha(SkFixedMul(partialTop, width)));
+                        blitter->flush_if_y_changed(y, y + partialTop);
+                    }
+                    if (fullBot > fullTop) {
+                        blitter->getRealBlitter()->blitV(
+                                fullLeft - 1, fullTop, fullBot - fullTop, fixed_to_alpha(width));
+                    }
+                    if (partialBot > 0) {
+                        blitter->blitAntiH(fullLeft - 1,
+                                           fullBot,
+                                           1,
+                                           fixed_to_alpha(SkFixedMul(partialBot, width)));
+                    }
                 }
             }
 
@@ -1837,10 +1844,8 @@ static void aaa_walk_edges(SkAnalyticEdge*  prevHead,
     }
 }
 
-#include "src/core/SkPathView.h"
-
 static SK_ALWAYS_INLINE void aaa_fill_path(
-        const SkPathView&   path,
+        const SkPath&    path,
         const SkIRect&   clipRect,
         AdditiveBlitter* blitter,
         int              start_y,
@@ -1916,7 +1921,7 @@ static SK_ALWAYS_INLINE void aaa_fill_path(
         // If we're using mask, then we have to limit the bound within the path bounds.
         // Otherwise, the edge drift may access an invalid address inside the mask.
         SkIRect ir;
-        path.fBounds.roundOut(&ir);
+        path.getBounds().roundOut(&ir);
         leftBound  = std::max(leftBound, SkIntToFixed(ir.fLeft));
         rightBound = std::min(rightBound, SkIntToFixed(ir.fRight));
     }
@@ -1932,11 +1937,11 @@ static SK_ALWAYS_INLINE void aaa_fill_path(
 
         // We skip intersection computation if there are many points which probably already
         // give us enough fractional scan lines.
-        bool skipIntersect = path.fPoints.count() > (stop_y - start_y) * 2;
+        bool skipIntersect = path.countPoints() > (stop_y - start_y) * 2;
 
         aaa_walk_edges(&headEdge,
                        &tailEdge,
-                       path.fFillType,
+                       path.getFillType(),
                        blitter,
                        start_y,
                        stop_y,
@@ -1949,7 +1954,7 @@ static SK_ALWAYS_INLINE void aaa_fill_path(
     }
 }
 
-void SkScan::AAAFillPath(const SkPathView& path,
+void SkScan::AAAFillPath(const SkPath&  path,
                          SkBlitter*     blitter,
                          const SkIRect& ir,
                          const SkIRect& clipBounds,

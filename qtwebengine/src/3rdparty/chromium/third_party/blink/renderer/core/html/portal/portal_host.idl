@@ -1,4 +1,4 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -6,10 +6,8 @@
 
 [Exposed=Window, RuntimeEnabled=Portals]
 interface PortalHost : EventTarget {
-  [RaisesException, CallWith=ScriptState, Measure] void postMessage(any message, USVString targetOrigin,
-                                                                    optional sequence<object> transfer = []);
   [RaisesException, CallWith=ScriptState, Measure] void postMessage(any message,
-                                                                    optional WindowPostMessageOptions options = {});
+                                                                    optional PostMessageOptions options = {});
 
   attribute EventHandler onmessage;
   attribute EventHandler onmessageerror;

@@ -10,7 +10,6 @@
 #include "src/compiler/graph.h"
 #include "src/compiler/js-operator.h"
 #include "src/compiler/machine-graph.h"
-#include "src/compiler/node-properties.h"
 #include "src/execution/isolate.h"
 
 namespace v8 {
@@ -34,10 +33,12 @@ class V8_EXPORT_PRIVATE JSGraph : public MachineGraph {
         simplified_(simplified) {
   }
 
+  JSGraph(const JSGraph&) = delete;
+  JSGraph& operator=(const JSGraph&) = delete;
+
   // CEntryStubs are cached depending on the result size and other flags.
   Node* CEntryStubConstant(int result_size,
-                           SaveFPRegsMode save_doubles = kDontSaveFPRegs,
-                           ArgvMode argv_mode = kArgvOnStack,
+                           ArgvMode argv_mode = ArgvMode::kStack,
                            bool builtin_exit_frame = false);
 
   // Used for padding frames. (alias: the hole)
@@ -52,7 +53,7 @@ class V8_EXPORT_PRIVATE JSGraph : public MachineGraph {
   // Creates a Constant node of the appropriate type for the given object.
   // Inspect the (serialized) object and determine whether one of the
   // canonicalized globals or a number constant should be returned.
-  Node* Constant(const ObjectRef& value);
+  Node* Constant(const ObjectRef& value, JSHeapBroker* broker);
 
   // Creates a NumberConstant node, usually canonicalized.
   Node* Constant(double value);
@@ -106,12 +107,13 @@ class V8_EXPORT_PRIVATE JSGraph : public MachineGraph {
   V(MinusOneConstant)                             \
   V(NaNConstant)                                  \
   V(EmptyStateValues)                             \
-  V(SingleDeadTypedStateValues)
+  V(SingleDeadTypedStateValues)                   \
+  V(ExternalObjectMapConstant)
 
 // Cached global node accessor methods.
 #define DECLARE_GETTER(name) Node* name();
   CACHED_GLOBAL_LIST(DECLARE_GETTER)
-#undef DECLARE_FIELD
+#undef DECLARE_GETTER
 
  private:
   Isolate* isolate_;
@@ -132,8 +134,6 @@ class V8_EXPORT_PRIVATE JSGraph : public MachineGraph {
 
   // Internal helper to canonicalize a number constant.
   Node* NumberConstant(double value);
-
-  DISALLOW_COPY_AND_ASSIGN(JSGraph);
 };
 
 }  // namespace compiler

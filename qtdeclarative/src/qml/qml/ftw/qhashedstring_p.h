@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QHASHEDSTRING_P_H
 #define QHASHEDSTRING_P_H
@@ -54,8 +18,6 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qstring.h>
 #include <private/qv4string_p.h>
-
-#include <private/qflagpointer_p.h>
 
 #if defined(Q_OS_QNX)
 #include <stdlib.h>
@@ -79,7 +41,6 @@ public:
     inline quint32 hash() const;
     inline quint32 existingHash() const;
 
-    static bool compare(const QChar *lhs, const QChar *rhs, int length);
     static inline bool compare(const QChar *lhs, const char *rhs, int length);
     static inline bool compare(const char *lhs, const char *rhs, int length);
 
@@ -100,7 +61,7 @@ class Q_QML_PRIVATE_EXPORT QHashedStringRef
 public:
     inline QHashedStringRef();
     inline QHashedStringRef(const QString &);
-    inline QHashedStringRef(const QStringRef &);
+    inline QHashedStringRef(QStringView);
     inline QHashedStringRef(const QChar *, int);
     inline QHashedStringRef(const QChar *, int, quint32);
     inline QHashedStringRef(const QHashedString &);
@@ -145,7 +106,7 @@ private:
     mutable quint32 m_hash = 0;
 };
 
-class Q_AUTOTEST_EXPORT QHashedCStringRef
+class QHashedCStringRef
 {
 public:
     inline QHashedCStringRef();
@@ -158,7 +119,7 @@ public:
     inline const char *constData() const;
     inline int length() const;
 
-    QString toUtf16() const;
+    Q_AUTOTEST_EXPORT QString toUtf16() const;
     inline int utf16length() const;
     inline void writeUtf16(QChar *) const;
     inline void writeUtf16(quint16 *) const;
@@ -172,12 +133,12 @@ private:
     mutable quint32 m_hash = 0;
 };
 
-inline uint qHash(const QHashedString &string)
+inline size_t qHash(const QHashedString &string)
 {
     return uint(string.hash());
 }
 
-inline uint qHash(const QHashedStringRef &string)
+inline size_t qHash(const QHashedStringRef &string)
 {
     return uint(string.hash());
 }
@@ -217,9 +178,10 @@ bool QHashedString::operator==(const QHashedString &string) const
 
 bool QHashedString::operator==(const QHashedStringRef &string) const
 {
-    return length() == string.m_length &&
-           (string.m_hash == m_hash || !string.m_hash || !m_hash) &&
-           QHashedString::compare(constData(), string.m_data, string.m_length);
+    if (m_hash && string.m_hash && m_hash != string.m_hash)
+        return false;
+    QStringView otherView {string.m_data, string.m_length};
+    return static_cast<const  QString &>(*this) == otherView;
 }
 
 quint32 QHashedString::hash() const
@@ -237,14 +199,18 @@ QHashedStringRef::QHashedStringRef()
 {
 }
 
+// QHashedStringRef is meant for identifiers, property names, etc.
+// Those should alsways be smaller than std::numeric_limits<int>::max())
 QHashedStringRef::QHashedStringRef(const QString &str)
-: m_data(str.constData()), m_length(str.length()), m_hash(0)
+: m_data(str.constData()), m_length(int(str.size())), m_hash(0)
 {
+    Q_ASSERT(str.size() <= std::numeric_limits<int>::max());
 }
 
-QHashedStringRef::QHashedStringRef(const QStringRef &str)
-: m_data(str.constData()), m_length(str.length()), m_hash(0)
+QHashedStringRef::QHashedStringRef(QStringView str)
+: m_data(str.constData()), m_length(int(str.size())), m_hash(0)
 {
+    Q_ASSERT(str.size() <= std::numeric_limits<int>::max());
 }
 
 QHashedStringRef::QHashedStringRef(const QChar *data, int length)
@@ -258,8 +224,9 @@ QHashedStringRef::QHashedStringRef(const QChar *data, int length, quint32 hash)
 }
 
 QHashedStringRef::QHashedStringRef(const QHashedString &string)
-: m_data(string.constData()), m_length(string.length()), m_hash(string.m_hash)
+: m_data(string.constData()), m_length(int(string.size())), m_hash(string.m_hash)
 {
+    Q_ASSERT(string.size() <= std::numeric_limits<int>::max());
 }
 
 QHashedStringRef::QHashedStringRef(const QHashedStringRef &string)
@@ -277,22 +244,26 @@ QHashedStringRef &QHashedStringRef::operator=(const QHashedStringRef &o)
 
 bool QHashedStringRef::operator==(const QString &string) const
 {
-    return m_length == string.length() &&
-           QHashedString::compare(string.constData(), m_data, m_length);
+    QStringView view {m_data, m_length};
+    return view == string;
 }
 
 bool QHashedStringRef::operator==(const QHashedString &string) const
 {
-    return m_length == string.length() &&
-           (m_hash == string.m_hash || !m_hash || !string.m_hash) &&
-           QHashedString::compare(string.constData(), m_data, m_length);
+    if (m_hash && string.m_hash && m_hash != string.m_hash)
+        return false;
+    QStringView view {m_data, m_length};
+    QStringView otherView {string.constData(), string.size()};
+    return view == otherView;
 }
 
 bool QHashedStringRef::operator==(const QHashedStringRef &string) const
 {
-    return m_length == string.m_length &&
-           (m_hash == string.m_hash || !m_hash || !string.m_hash) &&
-           QHashedString::compare(string.m_data, m_data, m_length);
+    if (m_hash && string.m_hash && m_hash != string.m_hash)
+        return false;
+    QStringView view {m_data, m_length};
+    QStringView otherView {string.m_data, string.m_length};
+    return view == otherView;
 }
 
 bool QHashedStringRef::operator==(const QHashedCStringRef &string) const
@@ -304,29 +275,22 @@ bool QHashedStringRef::operator==(const QHashedCStringRef &string) const
 
 bool QHashedStringRef::operator!=(const QString &string) const
 {
-    return m_length != string.length() ||
-           !QHashedString::compare(string.constData(), m_data, m_length);
+    return !(*this == string);
 }
 
 bool QHashedStringRef::operator!=(const QHashedString &string) const
 {
-    return m_length != string.length() ||
-           (m_hash != string.m_hash && m_hash && string.m_hash) ||
-           !QHashedString::compare(string.constData(), m_data, m_length);
+    return !(*this == string);
 }
 
 bool QHashedStringRef::operator!=(const QHashedStringRef &string) const
 {
-    return m_length != string.m_length ||
-           (m_hash != string.m_hash && m_hash && string.m_hash) ||
-           QHashedString::compare(string.m_data, m_data, m_length);
+    return !(*this == string);
 }
 
 bool QHashedStringRef::operator!=(const QHashedCStringRef &string) const
 {
-    return m_length != string.m_length ||
-           (m_hash != string.m_hash && m_hash && string.m_hash) ||
-           QHashedString::compare(m_data, string.m_data, m_length);
+    return !(*this == string);
 }
 
 QChar *QHashedStringRef::data()
@@ -452,6 +416,7 @@ bool QHashedString::compare(const char *lhs, const char *rhs, int length)
     return 0 == ::memcmp(lhs, rhs, length);
 }
 
+
 quint32 QHashedString::stringHash(const QChar *data, int length)
 {
     return QV4::String::createHashValue(data, length, nullptr);
@@ -464,7 +429,12 @@ quint32 QHashedString::stringHash(const char *data, int length)
 
 void QHashedString::computeHash() const
 {
-    m_hash = stringHash(constData(), length());
+    m_hash = stringHash(constData(), int(size()));
+}
+
+namespace QtPrivate {
+inline QString asString(const QHashedCStringRef &ref) { return ref.toUtf16(); }
+inline QString asString(const QHashedStringRef &ref) { return ref.toString(); }
 }
 
 QT_END_NAMESPACE

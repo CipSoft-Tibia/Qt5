@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Charts module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <private/chartcategoryaxisx_p.h>
 #include <QtCharts/QCategoryAxis>
@@ -35,7 +9,7 @@
 #include <QtWidgets/QGraphicsLayout>
 #include <QtCore/QtMath>
 
-QT_CHARTS_BEGIN_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 ChartCategoryAxisX::ChartCategoryAxisX(QCategoryAxis *axis, QGraphicsItem* item)
     : HorizontalAxis(axis, item, true),
@@ -48,10 +22,10 @@ ChartCategoryAxisX::~ChartCategoryAxisX()
 {
 }
 
-QVector<qreal> ChartCategoryAxisX::calculateLayout() const
+QList<qreal> ChartCategoryAxisX::calculateLayout() const
 {
-    int tickCount = m_axis->categoriesLabels().count() + 1;
-    QVector<qreal> points;
+    int tickCount = m_axis->categoriesLabels().size() + 1;
+    QList<qreal> points;
 
     if (tickCount < 2)
         return points;
@@ -83,7 +57,7 @@ void ChartCategoryAxisX::updateGeometry()
 
 QSizeF ChartCategoryAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constraint) const
 {
-    Q_UNUSED(constraint)
+    Q_UNUSED(constraint);
 
     QSizeF sh;
     QSizeF base = HorizontalAxis::sizeHint(which, constraint);
@@ -93,20 +67,28 @@ QSizeF ChartCategoryAxisX::sizeHint(Qt::SizeHint which, const QSizeF &constraint
 
     switch (which) {
     case Qt::MinimumSize: {
-        QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
-                                                               QStringLiteral("..."),
-                                                               axis()->labelsAngle());
-        height = boundingRect.height() + labelPadding() + base.height() + 1.0;
+        if (labelsVisible()) {
+            QRectF boundingRect = ChartPresenter::textBoundingRect(axis()->labelsFont(),
+                                                                   QStringLiteral("..."),
+                                                                   axis()->labelsAngle());
+            height = boundingRect.height() + labelPadding() + base.height() + 1.0;
+        } else {
+            height = base.height() + 1.0;
+        }
         sh = QSizeF(width, height);
         break;
     }
     case Qt::PreferredSize: {
-        qreal labelHeight = 0.0;
-        foreach (const QString& s, ticksList) {
-            QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
-            labelHeight = qMax(rect.height(), labelHeight);
+        if (labelsVisible()) {
+            qreal labelHeight = 0.0;
+            foreach (const QString& s, ticksList) {
+                QRectF rect = ChartPresenter::textBoundingRect(axis()->labelsFont(), s, axis()->labelsAngle());
+                labelHeight = qMax(rect.height(), labelHeight);
+            }
+            height = labelHeight + labelPadding() + base.height() + 1.0;
+        } else {
+            height = base.height() + 1.0;
         }
-        height = labelHeight + labelPadding() + base.height() + 1.0;
         sh = QSizeF(width, height);
         break;
     }
@@ -123,6 +105,6 @@ void ChartCategoryAxisX::handleCategoriesChanged()
     presenter()->layout()->invalidate();
 }
 
-QT_CHARTS_END_NAMESPACE
+QT_END_NAMESPACE
 
 #include "moc_chartcategoryaxisx_p.cpp"

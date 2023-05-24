@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,9 +7,10 @@
 #include <memory>
 #include <utility>
 
-#include "base/bind.h"
 #include "base/command_line.h"
-#include "base/threading/thread_task_runner_handle.h"
+#include "base/functional/bind.h"
+#include "base/logging.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ui/display/types/display_snapshot.h"
 #include "ui/display/types/native_display_delegate.h"
 #include "ui/ozone/demo/demo_window.h"
@@ -95,26 +96,24 @@ void WindowManager::OnDisplaysAcquired(
         config_request,
         base::BindOnce(&WindowManager::OnDisplayConfigured,
                        base::Unretained(this), display->display_id(),
-                       gfx::Rect(origin, display->native_mode()->size())));
+                       gfx::Rect(origin, display->native_mode()->size())),
+        display::kTestModeset | display::kCommitModeset);
     origin.Offset(display->native_mode()->size().width(), 0);
   }
   is_configuring_ = false;
 
   if (should_configure_) {
     should_configure_ = false;
-    base::ThreadTaskRunnerHandle::Get()->PostTask(
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(&WindowManager::OnConfigurationChanged,
                                   base::Unretained(this)));
   }
 }
 
-void WindowManager::OnDisplayConfigured(
-    const int64_t display_id,
-    const gfx::Rect& bounds,
-    const base::flat_map<int64_t, bool>& statuses) {
-  DCHECK_EQ(statuses.size(), 1UL);
-
-  if (statuses.at(display_id)) {
+void WindowManager::OnDisplayConfigured(const int64_t display_id,
+                                        const gfx::Rect& bounds,
+                                        bool config_success) {
+  if (config_success) {
     std::unique_ptr<DemoWindow> window(
         new DemoWindow(this, renderer_factory_.get(), bounds));
     window->Start();

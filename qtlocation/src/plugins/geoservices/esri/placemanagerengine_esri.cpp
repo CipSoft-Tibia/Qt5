@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2013-2018 Esri <contracts@esri.com>
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtLocation module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2013-2018 Esri <contracts@esri.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "placemanagerengine_esri.h"
 #include "placesearchreply_esri.h"
@@ -44,8 +8,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-
 #include <QtCore/QUrlQuery>
+
+#include <QtPositioning/QGeoRectangle>
+#include <QtPositioning/QGeoShape>
+
+#include <QtLocation/QPlaceCategory>
+#include <QtLocation/QPlaceSearchRequest>
 
 QT_BEGIN_NAMESPACE
 
@@ -132,7 +101,7 @@ QPlaceSearchReply *PlaceManagerEngineEsri::search(const QPlaceSearchRequest &req
     QStringList categories;
     if (!request.categories().isEmpty())
     {
-        foreach (const QPlaceCategory &placeCategory, request.categories())
+        for (const QPlaceCategory &placeCategory : request.categories())
             categories.append(placeCategory.categoryId());
         queryItems.addQueryItem("category", categories.join(","));
     }
@@ -150,8 +119,10 @@ QPlaceSearchReply *PlaceManagerEngineEsri::search(const QPlaceSearchRequest &req
     QNetworkReply *networkReply = m_networkManager->get(networkRequest);
 
     PlaceSearchReplyEsri *reply = new PlaceSearchReplyEsri(request, networkReply, m_candidateFieldsLocale, m_countriesLocale, this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)), this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &PlaceSearchReplyEsri::finished,
+            this, &PlaceManagerEngineEsri::replyFinished);
+    connect(reply, &PlaceSearchReplyEsri::errorOccurred,
+            this, &PlaceManagerEngineEsri::replyError);
 
     return reply;
 }
@@ -167,7 +138,7 @@ void PlaceManagerEngineEsri::replyError(QPlaceReply::Error errorCode, const QStr
 {
     QPlaceReply *reply = qobject_cast<QPlaceReply *>(sender());
     if (reply)
-        emit error(reply, errorCode, errorString);
+        emit errorOccurred(reply, errorCode, errorString);
 }
 
 /***** Categories *****/
@@ -177,8 +148,10 @@ QPlaceReply *PlaceManagerEngineEsri::initializeCategories()
     initializeGeocodeServer();
 
     PlaceCategoriesReplyEsri *reply = new PlaceCategoriesReplyEsri(this);
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
-    connect(reply, SIGNAL(error(QPlaceReply::Error,QString)), this, SLOT(replyError(QPlaceReply::Error,QString)));
+    connect(reply, &PlaceCategoriesReplyEsri::finished,
+            this, &PlaceManagerEngineEsri::replyFinished);
+    connect(reply, &PlaceCategoriesReplyEsri::errorOccurred,
+            this, &PlaceManagerEngineEsri::replyError);
 
     // TODO delayed finished() emission
     if (!m_categories.isEmpty())
@@ -190,7 +163,7 @@ QPlaceReply *PlaceManagerEngineEsri::initializeCategories()
 
 void PlaceManagerEngineEsri::parseCategories(const QJsonArray &jsonArray, const QString &parentCategoryId)
 {
-    foreach (const QJsonValue &jsonValue, jsonArray)
+    for (const QJsonValueConstRef jsonValue : jsonArray)
     {
         if (!jsonValue.isObject())
             continue;
@@ -236,21 +209,21 @@ QPlaceCategory PlaceManagerEngineEsri::category(const QString &categoryId) const
 QList<QPlaceCategory> PlaceManagerEngineEsri::childCategories(const QString &parentId) const
 {
     QList<QPlaceCategory> categories;
-    foreach (const QString &id, m_subcategories.value(parentId))
+    for (const QString &id : m_subcategories.value(parentId))
         categories.append(m_categories.value(id));
     return categories;
 }
 
 void PlaceManagerEngineEsri::finishCategories()
 {
-    foreach (PlaceCategoriesReplyEsri *reply, m_pendingCategoriesReply)
+    for (PlaceCategoriesReplyEsri *reply : m_pendingCategoriesReply)
         reply->emitFinished();
     m_pendingCategoriesReply.clear();
 }
 
 void PlaceManagerEngineEsri::errorCaterogies(const QString &error)
 {
-    foreach (PlaceCategoriesReplyEsri *reply, m_pendingCategoriesReply)
+    for (PlaceCategoriesReplyEsri *reply : m_pendingCategoriesReply)
         reply->setError(QPlaceReply::CommunicationError, error);
 }
 
@@ -262,8 +235,10 @@ void PlaceManagerEngineEsri::initializeGeocodeServer()
     if (m_categories.isEmpty() && !m_geocodeServerReply)
     {
         m_geocodeServerReply = m_networkManager->get(QNetworkRequest(kUrlGeocodeServer));
-        connect(m_geocodeServerReply, SIGNAL(finished()), this, SLOT(geocodeServerReplyFinished()));
-        connect(m_geocodeServerReply, SIGNAL(errorOccurred(QNetworkReply::NetworkError)), this, SLOT(geocodeServerReplyError()));
+        connect(m_geocodeServerReply, &QNetworkReply::finished,
+                this, &PlaceManagerEngineEsri::geocodeServerReplyFinished);
+        connect(m_geocodeServerReply, &QNetworkReply::errorOccurred,
+                this, &PlaceManagerEngineEsri::geocodeServerReplyError);
     }
 }
 
@@ -271,8 +246,7 @@ QString PlaceManagerEngineEsri::localizedName(const QJsonObject &jsonObject)
 {
     const QJsonObject localizedNames = jsonObject.value(kLocalizedNamesKey).toObject();
 
-    foreach (const QLocale &locale, m_locales)
-    {
+    for (const QLocale &locale : std::as_const(m_locales)) {
         const QString localeStr = locale.name();
         if (localizedNames.contains(localeStr))
         {
@@ -290,7 +264,7 @@ QString PlaceManagerEngineEsri::localizedName(const QJsonObject &jsonObject)
 
 void PlaceManagerEngineEsri::parseCandidateFields(const QJsonArray &jsonArray)
 {
-    foreach (const QJsonValue &jsonValue, jsonArray)
+    for (const QJsonValueConstRef jsonValue : jsonArray)
     {
         if (!jsonValue.isObject())
             continue;
@@ -306,7 +280,7 @@ void PlaceManagerEngineEsri::parseCandidateFields(const QJsonArray &jsonArray)
 
 void PlaceManagerEngineEsri::parseCountries(const QJsonArray &jsonArray)
 {
-    foreach (const QJsonValue &jsonValue, jsonArray)
+    for (const QJsonValueConstRef jsonValue : jsonArray)
     {
         if (!jsonValue.isObject())
             continue;

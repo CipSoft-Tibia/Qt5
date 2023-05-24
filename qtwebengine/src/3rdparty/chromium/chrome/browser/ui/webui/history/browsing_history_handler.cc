@@ -1,4 +1,4 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
+// Copyright 2015 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,9 +8,10 @@
 
 #include <set>
 
-#include "base/bind.h"
-#include "base/bind_helpers.h"
 #include "base/check_op.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/i18n/rtl.h"
 #include "base/i18n/time_formatting.h"
 #include "base/notreached.h"
@@ -25,23 +26,26 @@
 #include "chrome/browser/history/history_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sync/device_info_sync_service_factory.h"
-#include "chrome/browser/sync/profile_sync_service_factory.h"
+#include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/common/buildflags.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/favicon/core/fallback_url_util.h"
 #include "components/favicon/core/large_icon_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
+#include "components/history_clusters/core/config.h"
+#include "components/history_clusters/core/features.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
 #include "components/strings/grit/components_strings.h"
+#include "components/supervised_user/core/common/buildflags.h"
 #include "components/sync/driver/sync_service.h"
+#include "components/sync/protocol/sync_enums.pb.h"
 #include "components/sync_device_info/device_info.h"
 #include "components/sync_device_info/device_info_sync_service.h"
 #include "components/sync_device_info/device_info_tracker.h"
@@ -85,14 +89,16 @@ void GetDeviceNameAndType(const syncer::DeviceInfoTracker* tracker,
       tracker->GetDeviceInfo(client_id);
   if (device_info.get()) {
     *name = device_info->client_name();
-    switch (device_info->device_type()) {
-      case sync_pb::SyncEnums::TYPE_PHONE:
+    switch (device_info->form_factor()) {
+      case syncer::DeviceInfo::FormFactor::kPhone:
         *type = kDeviceTypePhone;
         break;
-      case sync_pb::SyncEnums::TYPE_TABLET:
+      case syncer::DeviceInfo::FormFactor::kTablet:
         *type = kDeviceTypeTablet;
         break;
-      default:
+      case syncer::DeviceInfo::FormFactor::kUnknown:
+        [[fallthrough]];  // return the laptop icon as default.
+      case syncer::DeviceInfo::FormFactor::kDesktop:
         *type = kDeviceTypeLaptop;
     }
     return;
@@ -102,14 +108,14 @@ void GetDeviceNameAndType(const syncer::DeviceInfoTracker* tracker,
   *type = kDeviceTypeLaptop;
 }
 
-// Formats |entry|'s URL and title and adds them to |result|.
+// Formats `entry`'s URL and title and adds them to `result`.
 void SetHistoryEntryUrlAndTitle(
     const BrowsingHistoryService::HistoryEntry& entry,
-    base::Value* result) {
-  result->SetStringKey("url", entry.url.spec());
+    base::Value::Dict* result) {
+  result->Set("url", entry.url.spec());
 
   bool using_url_as_the_title = false;
-  base::string16 title_to_set(entry.title);
+  std::u16string title_to_set(entry.title);
   if (entry.title.empty()) {
     using_url_as_the_title = true;
     title_to_set = base::UTF8ToUTF16(entry.url.spec());
@@ -131,7 +137,22 @@ void SetHistoryEntryUrlAndTitle(
   if (title_to_set.size() > kShortTitleLength)
     title_to_set.resize(kShortTitleLength);
 
-  result->SetStringKey("title", title_to_set);
+  result->Set("title", title_to_set);
+}
+
+// Helper function to check if entry is present in local database (local-side
+// history).
+bool IsUrlInLocalDatabase(const BrowsingHistoryService::HistoryEntry& entry) {
+  switch (entry.entry_type) {
+    case BrowsingHistoryService::HistoryEntry::EntryType::EMPTY_ENTRY:
+    case BrowsingHistoryService::HistoryEntry::EntryType::REMOTE_ENTRY:
+      return false;
+    case BrowsingHistoryService::HistoryEntry::EntryType::LOCAL_ENTRY:
+    case BrowsingHistoryService::HistoryEntry::EntryType::COMBINED_ENTRY:
+      return true;
+  }
+  NOTREACHED();
+  return false;
 }
 
 // Helper function to check if entry is present in user remote data (server-side
@@ -150,17 +171,17 @@ bool IsEntryInRemoteUserData(
   return false;
 }
 
-// Converts |entry| to a base::Value to be owned by the caller.
-base::Value HistoryEntryToValue(
+// Converts `entry` to a base::Value::Dict to be owned by the caller.
+base::Value::Dict HistoryEntryToValue(
     const BrowsingHistoryService::HistoryEntry& entry,
     BookmarkModel* bookmark_model,
     Profile* profile,
     const syncer::DeviceInfoTracker* tracker,
     base::Clock* clock) {
-  base::Value result(base::Value::Type::DICTIONARY);
+  base::Value::Dict result;
   SetHistoryEntryUrlAndTitle(entry, &result);
 
-  base::string16 domain = url_formatter::IDNToUnicode(entry.url.host());
+  std::u16string domain = url_formatter::IDNToUnicode(entry.url.host());
   // When the domain is empty, use the scheme instead. This allows for a
   // sensible treatment of e.g. file: URLs when group by domain is on.
   if (domain.empty())
@@ -170,28 +191,27 @@ base::Value HistoryEntryToValue(
   // chrome/browser/resources/history/history.js in @typedef for
   // HistoryEntry. Please update it whenever you add or remove
   // any keys in result.
-  result.SetStringKey("domain", domain);
+  result.Set("domain", domain);
 
-  result.SetStringKey(
-      "fallbackFaviconText",
-      base::UTF16ToASCII(favicon::GetFallbackIconText(entry.url)));
+  result.Set("fallbackFaviconText",
+             base::UTF16ToASCII(favicon::GetFallbackIconText(entry.url)));
 
-  result.SetDoubleKey("time", entry.time.ToJsTime());
+  result.Set("time", entry.time.ToJsTime());
 
   // Pass the timestamps in a list.
-  base::Value timestamps(base::Value::Type::LIST);
+  base::Value::List timestamps;
   for (int64_t timestamp : entry.all_timestamps) {
     timestamps.Append(base::Time::FromInternalValue(timestamp).ToJsTime());
   }
-  result.SetKey("allTimestamps", std::move(timestamps));
+  result.Set("allTimestamps", std::move(timestamps));
 
   // Always pass the short date since it is needed both in the search and in
   // the monthly view.
-  result.SetStringKey("dateShort", base::TimeFormatShortDate(entry.time));
+  result.Set("dateShort", base::TimeFormatShortDate(entry.time));
 
-  base::string16 snippet_string;
-  base::string16 date_relative_day;
-  base::string16 date_time_of_day;
+  std::u16string snippet_string;
+  std::u16string date_relative_day;
+  std::u16string date_time_of_day;
   bool is_blocked_visit = false;
   int host_filtering_behavior = -1;
 
@@ -202,7 +222,7 @@ base::Value HistoryEntryToValue(
     snippet_string = entry.snippet;
   } else {
     base::Time midnight = clock->Now().LocalMidnight();
-    base::string16 date_str =
+    std::u16string date_str =
         ui::TimeFormat::RelativeDate(entry.time, &midnight);
     if (date_str.empty()) {
       date_str = base::TimeFormatFriendlyDate(entry.time);
@@ -219,17 +239,17 @@ base::Value HistoryEntryToValue(
   std::string device_type;
   if (!entry.client_id.empty())
     GetDeviceNameAndType(tracker, entry.client_id, &device_name, &device_type);
-  result.SetStringKey("deviceName", device_name);
-  result.SetStringKey("deviceType", device_type);
+  result.Set("deviceName", device_name);
+  result.Set("deviceType", device_type);
 
 #if BUILDFLAG(ENABLE_SUPERVISED_USERS)
   SupervisedUserService* supervised_user_service = nullptr;
-  if (profile->IsSupervised()) {
+  if (profile->IsChild()) {
     supervised_user_service =
         SupervisedUserServiceFactory::GetForProfile(profile);
   }
   if (supervised_user_service) {
-    const SupervisedUserURLFilter* url_filter =
+    SupervisedUserURLFilter* url_filter =
         supervised_user_service->GetURLFilter();
     int filtering_behavior =
         url_filter->GetFilteringBehaviorForURL(entry.url.GetWithEmptyPath());
@@ -238,15 +258,23 @@ base::Value HistoryEntryToValue(
   }
 #endif
 
-  result.SetStringKey("dateTimeOfDay", date_time_of_day);
-  result.SetStringKey("dateRelativeDay", date_relative_day);
-  result.SetStringKey("snippet", snippet_string);
-  result.SetBoolKey("starred", bookmark_model->IsBookmarked(entry.url));
-  result.SetIntKey("hostFilteringBehavior", host_filtering_behavior);
-  result.SetBoolKey("blockedVisit", is_blocked_visit);
-  result.SetBoolKey("isUrlInRemoteUserData", IsEntryInRemoteUserData(entry));
-  result.SetStringKey("remoteIconUrlForUma",
-                      entry.remote_icon_url_for_uma.spec());
+  result.Set("dateTimeOfDay", date_time_of_day);
+  result.Set("dateRelativeDay", date_relative_day);
+  result.Set("snippet", snippet_string);
+  result.Set("starred", bookmark_model->IsBookmarked(entry.url));
+  result.Set("hostFilteringBehavior", host_filtering_behavior);
+  result.Set("blockedVisit", is_blocked_visit);
+  result.Set("isUrlInRemoteUserData", IsEntryInRemoteUserData(entry));
+  result.Set("remoteIconUrlForUma", entry.remote_icon_url_for_uma.spec());
+
+  // Additional debugging fields shown only if the debug feature is enabled.
+  if (history_clusters::GetConfig().user_visible_debug) {
+    base::Value::Dict debug;
+    debug.Set("isUrlInLocalDatabase", IsUrlInLocalDatabase(entry));
+    debug.Set("visitCount", entry.visit_count);
+    debug.Set("typedCount", entry.typed_count);
+    result.Set("debug", std::move(debug));
+  }
 
   return result;
 }
@@ -257,10 +285,10 @@ BrowsingHistoryHandler::BrowsingHistoryHandler()
     : clock_(base::DefaultClock::GetInstance()),
       browsing_history_service_(nullptr) {}
 
-BrowsingHistoryHandler::~BrowsingHistoryHandler() {}
+BrowsingHistoryHandler::~BrowsingHistoryHandler() = default;
 
 void BrowsingHistoryHandler::OnJavascriptAllowed() {
-  if (!browsing_history_service_ && initial_results_.is_none()) {
+  if (!browsing_history_service_ && !initial_results_) {
     // Page was refreshed, so need to call StartQueryHistory here
     StartQueryHistory();
   }
@@ -274,7 +302,7 @@ void BrowsingHistoryHandler::OnJavascriptAllowed() {
 void BrowsingHistoryHandler::OnJavascriptDisallowed() {
   weak_factory_.InvalidateWeakPtrs();
   browsing_history_service_ = nullptr;
-  initial_results_ = base::Value();
+  initial_results_ = absl::nullopt;
   deferred_callbacks_.clear();
   query_history_callback_id_.clear();
   remove_visits_callback_.clear();
@@ -315,20 +343,20 @@ void BrowsingHistoryHandler::StartQueryHistory() {
   HistoryService* local_history = HistoryServiceFactory::GetForProfile(
       profile, ServiceAccessType::EXPLICIT_ACCESS);
   syncer::SyncService* sync_service =
-      ProfileSyncServiceFactory::GetForProfile(profile);
+      SyncServiceFactory::GetForProfile(profile);
   browsing_history_service_ = std::make_unique<BrowsingHistoryService>(
       this, local_history, sync_service);
 
   // 150 = RESULTS_PER_PAGE from chrome/browser/resources/history/constants.js
-  SendHistoryQuery(150, base::string16());
+  SendHistoryQuery(150, std::u16string());
 }
 
-void BrowsingHistoryHandler::HandleQueryHistory(const base::ListValue* args) {
+void BrowsingHistoryHandler::HandleQueryHistory(const base::Value::List& args) {
   AllowJavascript();
-  const base::Value& callback_id = args->GetList()[0];
-  if (!initial_results_.is_none()) {
-    ResolveJavascriptCallback(callback_id, std::move(initial_results_));
-    initial_results_ = base::Value();
+  const base::Value& callback_id = args[0];
+  if (initial_results_.has_value()) {
+    ResolveJavascriptCallback(callback_id, *initial_results_);
+    initial_results_ = absl::nullopt;
     return;
   }
 
@@ -348,9 +376,9 @@ void BrowsingHistoryHandler::HandleQueryHistory(const base::ListValue* args) {
   // - the text to search for (may be empty)
   // - the maximum number of results to return (may be 0, meaning that there
   //   is no maximum).
-  const base::Value& search_text = args->GetList()[1];
+  const base::Value& search_text = args[1];
 
-  const base::Value& count = args->GetList()[2];
+  const base::Value& count = args[2];
   if (!count.is_int()) {
     NOTREACHED() << "Failed to convert argument 2.";
     return;
@@ -360,17 +388,25 @@ void BrowsingHistoryHandler::HandleQueryHistory(const base::ListValue* args) {
 }
 
 void BrowsingHistoryHandler::SendHistoryQuery(int max_count,
-                                              const base::string16& query) {
+                                              const std::u16string& query) {
   history::QueryOptions options;
   options.max_count = max_count;
   options.duplicate_policy = history::QueryOptions::REMOVE_DUPLICATES_PER_DAY;
-  browsing_history_service_->QueryHistory(query, options);
+  std::u16string query_without_prefix = query;
+
+  const std::u16string kHostPrefix = u"host:";
+  if (base::StartsWith(query, kHostPrefix)) {
+    options.host_only = true;
+    query_without_prefix = query.substr(kHostPrefix.length());
+  }
+
+  browsing_history_service_->QueryHistory(query_without_prefix, options);
 }
 
 void BrowsingHistoryHandler::HandleQueryHistoryContinuation(
-    const base::ListValue* args) {
-  CHECK(args->GetList().size() == 1);
-  const base::Value& callback_id = args->GetList()[0];
+    const base::Value::List& args) {
+  CHECK_EQ(args.size(), 1U);
+  const base::Value& callback_id = args[0];
   // Cancel the previous query if it is still in flight.
   if (!query_history_callback_id_.empty()) {
     RejectJavascriptCallback(base::Value(query_history_callback_id_),
@@ -382,15 +418,15 @@ void BrowsingHistoryHandler::HandleQueryHistoryContinuation(
   std::move(query_history_continuation_).Run();
 }
 
-void BrowsingHistoryHandler::HandleRemoveVisits(const base::ListValue* args) {
-  CHECK(args->GetList().size() == 2);
-  const base::Value& callback_id = args->GetList()[0];
+void BrowsingHistoryHandler::HandleRemoveVisits(const base::Value::List& args) {
+  CHECK_EQ(args.size(), 2U);
+  const base::Value& callback_id = args[0];
   CHECK(remove_visits_callback_.empty());
   remove_visits_callback_ = callback_id.GetString();
 
   std::vector<BrowsingHistoryService::HistoryEntry> items_to_remove;
-  const base::Value& items = args->GetList()[1];
-  base::Value::ConstListView list = items.GetList();
+  const base::Value& items = args[1];
+  const base::Value::List& list = items.GetList();
   items_to_remove.reserve(list.size());
   for (size_t i = 0; i < list.size(); ++i) {
     // Each argument is a dictionary with properties "url" and "timestamps".
@@ -399,26 +435,25 @@ void BrowsingHistoryHandler::HandleRemoveVisits(const base::ListValue* args) {
       return;
     }
 
-    const std::string* url_ptr = list[i].FindStringKey("url");
-    const base::Value* timestamps_ptr = list[i].FindListKey("timestamps");
+    const std::string* url_ptr = list[i].GetDict().FindString("url");
+    const base::Value::List* timestamps_ptr =
+        list[i].GetDict().FindList("timestamps");
     if (!url_ptr || !timestamps_ptr) {
       NOTREACHED() << "Unable to extract arguments";
       return;
     }
 
-    base::Value::ConstListView timestamps = timestamps_ptr->GetList();
-    DCHECK_GT(timestamps.size(), 0U);
+    DCHECK_GT(timestamps_ptr->size(), 0U);
     BrowsingHistoryService::HistoryEntry entry;
     entry.url = GURL(*url_ptr);
 
-    for (size_t ts_index = 0; ts_index < timestamps.size(); ++ts_index) {
-      if (!timestamps[ts_index].is_double() && !timestamps[ts_index].is_int()) {
+    for (const base::Value& timestamp : *timestamps_ptr) {
+      if (!timestamp.is_double() && !timestamp.is_int()) {
         NOTREACHED() << "Unable to extract visit timestamp.";
         continue;
       }
 
-      base::Time visit_time =
-          base::Time::FromJsTime(timestamps[ts_index].GetDouble());
+      base::Time visit_time = base::Time::FromJsTime(timestamp.GetDouble());
       entry.all_timestamps.insert(visit_time.ToInternalValue());
     }
 
@@ -429,7 +464,7 @@ void BrowsingHistoryHandler::HandleRemoveVisits(const base::ListValue* args) {
 }
 
 void BrowsingHistoryHandler::HandleClearBrowsingData(
-    const base::ListValue* args) {
+    const base::Value::List& args) {
   // TODO(beng): This is an improper direct dependency on Browser. Route this
   // through some sort of delegate.
   Browser* browser =
@@ -437,8 +472,10 @@ void BrowsingHistoryHandler::HandleClearBrowsingData(
   chrome::ShowClearBrowsingDataDialog(browser);
 }
 
-void BrowsingHistoryHandler::HandleRemoveBookmark(const base::ListValue* args) {
-  base::string16 url = ExtractStringValue(args);
+void BrowsingHistoryHandler::HandleRemoveBookmark(
+    const base::Value::List& args) {
+  CHECK_EQ(1U, args.size());
+  std::string url = args[0].GetString();
   Profile* profile = GetProfile();
   BookmarkModel* model = BookmarkModelFactory::GetForBrowserContext(profile);
   bookmarks::RemoveAllBookmarks(model, GURL(url));
@@ -457,25 +494,25 @@ void BrowsingHistoryHandler::OnQueryComplete(
       DeviceInfoSyncServiceFactory::GetForProfile(profile)
           ->GetDeviceInfoTracker();
 
-  // Convert the result vector into a ListValue.
+  // Convert the result vector into a base::Value::List
   DCHECK(tracker);
-  base::Value results_value(base::Value::Type::LIST);
+  base::Value::List results_value;
   for (const BrowsingHistoryService::HistoryEntry& entry : results) {
     results_value.Append(
         HistoryEntryToValue(entry, bookmark_model, profile, tracker, clock_));
   }
 
-  base::Value results_info(base::Value::Type::DICTIONARY);
+  base::Value::Dict results_info;
   // The items which are to be written into results_info_value_ are also
   // described in chrome/browser/resources/history/history.js in @typedef for
   // HistoryQuery. Please update it whenever you add or remove any keys in
   // results_info_value_.
-  results_info.SetStringKey("term", query_results_info.search_text);
-  results_info.SetBoolKey("finished", query_results_info.reached_beginning);
+  results_info.Set("term", query_results_info.search_text);
+  results_info.Set("finished", query_results_info.reached_beginning);
 
-  base::Value final_results(base::Value::Type::DICTIONARY);
-  final_results.SetKey("info", std::move(results_info));
-  final_results.SetKey("value", std::move(results_value));
+  base::Value::Dict final_results;
+  final_results.Set("info", std::move(results_info));
+  final_results.Set("value", std::move(results_value));
 
   if (query_history_callback_id_.empty()) {
     // This can happen if JS isn't ready yet when the first query comes back.
@@ -484,7 +521,7 @@ void BrowsingHistoryHandler::OnQueryComplete(
   }
 
   ResolveJavascriptCallback(base::Value(query_history_callback_id_),
-                            std::move(final_results));
+                            final_results);
   query_history_callback_id_.clear();
 }
 

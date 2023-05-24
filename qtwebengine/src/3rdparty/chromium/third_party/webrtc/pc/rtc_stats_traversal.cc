@@ -25,8 +25,8 @@ namespace {
 void TraverseAndTakeVisitedStats(RTCStatsReport* report,
                                  RTCStatsReport* visited_report,
                                  const std::string& current_id) {
-  // Mark current stats object as visited by moving it |report| to
-  // |visited_report|.
+  // Mark current stats object as visited by moving it `report` to
+  // `visited_report`.
   std::unique_ptr<const RTCStats> current = report->Take(current_id);
   if (!current) {
     // This node has already been visited (or it is an invalid id).
@@ -62,7 +62,7 @@ rtc::scoped_refptr<RTCStatsReport> TakeReferencedStats(
     rtc::scoped_refptr<RTCStatsReport> report,
     const std::vector<std::string>& ids) {
   rtc::scoped_refptr<RTCStatsReport> result =
-      RTCStatsReport::Create(report->timestamp_us());
+      RTCStatsReport::Create(report->timestamp());
   for (const auto& id : ids) {
     TraverseAndTakeVisitedStats(report.get(), result.get(), id);
   }
@@ -76,7 +76,8 @@ std::vector<const std::string*> GetStatsReferencedIds(const RTCStats& stats) {
     const auto& certificate = static_cast<const RTCCertificateStats&>(stats);
     AddIdIfDefined(certificate.issuer_certificate_id, &neighbor_ids);
   } else if (type == RTCCodecStats::kType) {
-    // RTCCodecStats does not have any neighbor references.
+    const auto& codec = static_cast<const RTCCodecStats&>(stats);
+    AddIdIfDefined(codec.transport_id, &neighbor_ids);
   } else if (type == RTCDataChannelStats::kType) {
     // RTCDataChannelStats does not have any neighbor references.
   } else if (type == RTCIceCandidatePairStats::kType) {
@@ -90,44 +91,60 @@ std::vector<const std::string*> GetStatsReferencedIds(const RTCStats& stats) {
     const auto& local_or_remote_candidate =
         static_cast<const RTCIceCandidateStats&>(stats);
     AddIdIfDefined(local_or_remote_candidate.transport_id, &neighbor_ids);
-  } else if (type == RTCMediaStreamStats::kType) {
-    const auto& stream = static_cast<const RTCMediaStreamStats&>(stats);
+  } else if (type == DEPRECATED_RTCMediaStreamStats::kType) {
+    const auto& stream =
+        static_cast<const DEPRECATED_RTCMediaStreamStats&>(stats);
     AddIdsIfDefined(stream.track_ids, &neighbor_ids);
-  } else if (type == RTCMediaStreamTrackStats::kType) {
-    const auto& track = static_cast<const RTCMediaStreamTrackStats&>(stats);
+  } else if (type == DEPRECATED_RTCMediaStreamTrackStats::kType) {
+    const auto& track =
+        static_cast<const DEPRECATED_RTCMediaStreamTrackStats&>(stats);
     AddIdIfDefined(track.media_source_id, &neighbor_ids);
   } else if (type == RTCPeerConnectionStats::kType) {
     // RTCPeerConnectionStats does not have any neighbor references.
-  } else if (type == RTCInboundRTPStreamStats::kType ||
-             type == RTCOutboundRTPStreamStats::kType) {
-    const auto& rtp = static_cast<const RTCRTPStreamStats&>(stats);
-    AddIdIfDefined(rtp.track_id, &neighbor_ids);
-    AddIdIfDefined(rtp.transport_id, &neighbor_ids);
-    AddIdIfDefined(rtp.codec_id, &neighbor_ids);
-    if (type == RTCOutboundRTPStreamStats::kType) {
-      const auto& outbound_rtp =
-          static_cast<const RTCOutboundRTPStreamStats&>(stats);
-      AddIdIfDefined(outbound_rtp.media_source_id, &neighbor_ids);
-      AddIdIfDefined(outbound_rtp.remote_id, &neighbor_ids);
-    }
+  } else if (type == RTCInboundRTPStreamStats::kType) {
+    const auto& inbound_rtp =
+        static_cast<const RTCInboundRTPStreamStats&>(stats);
+    AddIdIfDefined(inbound_rtp.remote_id, &neighbor_ids);
+    AddIdIfDefined(inbound_rtp.track_id, &neighbor_ids);
+    AddIdIfDefined(inbound_rtp.transport_id, &neighbor_ids);
+    AddIdIfDefined(inbound_rtp.codec_id, &neighbor_ids);
+    AddIdIfDefined(inbound_rtp.playout_id, &neighbor_ids);
+  } else if (type == RTCOutboundRTPStreamStats::kType) {
+    const auto& outbound_rtp =
+        static_cast<const RTCOutboundRTPStreamStats&>(stats);
+    AddIdIfDefined(outbound_rtp.remote_id, &neighbor_ids);
+    AddIdIfDefined(outbound_rtp.track_id, &neighbor_ids);
+    AddIdIfDefined(outbound_rtp.transport_id, &neighbor_ids);
+    AddIdIfDefined(outbound_rtp.codec_id, &neighbor_ids);
+    AddIdIfDefined(outbound_rtp.media_source_id, &neighbor_ids);
   } else if (type == RTCRemoteInboundRtpStreamStats::kType) {
     const auto& remote_inbound_rtp =
         static_cast<const RTCRemoteInboundRtpStreamStats&>(stats);
     AddIdIfDefined(remote_inbound_rtp.transport_id, &neighbor_ids);
     AddIdIfDefined(remote_inbound_rtp.codec_id, &neighbor_ids);
     AddIdIfDefined(remote_inbound_rtp.local_id, &neighbor_ids);
+  } else if (type == RTCRemoteOutboundRtpStreamStats::kType) {
+    const auto& remote_outbound_rtp =
+        static_cast<const RTCRemoteOutboundRtpStreamStats&>(stats);
+    // Inherited from `RTCRTPStreamStats`.
+    AddIdIfDefined(remote_outbound_rtp.track_id, &neighbor_ids);
+    AddIdIfDefined(remote_outbound_rtp.transport_id, &neighbor_ids);
+    AddIdIfDefined(remote_outbound_rtp.codec_id, &neighbor_ids);
+    // Direct members of `RTCRemoteOutboundRtpStreamStats`.
+    AddIdIfDefined(remote_outbound_rtp.local_id, &neighbor_ids);
   } else if (type == RTCAudioSourceStats::kType ||
              type == RTCVideoSourceStats::kType) {
     // RTC[Audio/Video]SourceStats does not have any neighbor references.
   } else if (type == RTCTransportStats::kType) {
-    // RTCTransportStats does not have any neighbor references.
     const auto& transport = static_cast<const RTCTransportStats&>(stats);
     AddIdIfDefined(transport.rtcp_transport_stats_id, &neighbor_ids);
     AddIdIfDefined(transport.selected_candidate_pair_id, &neighbor_ids);
     AddIdIfDefined(transport.local_certificate_id, &neighbor_ids);
     AddIdIfDefined(transport.remote_certificate_id, &neighbor_ids);
+  } else if (type == RTCAudioPlayoutStats::kType) {
+    // RTCAudioPlayoutStats does not have any neighbor references.
   } else {
-    RTC_NOTREACHED() << "Unrecognized type: " << type;
+    RTC_DCHECK_NOTREACHED() << "Unrecognized type: " << type;
   }
   return neighbor_ids;
 }

@@ -1,84 +1,32 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the examples of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+
 #include "imagescaling.h"
+#include "downloaddialog.h"
 
-#include <qmath.h>
+#include <QNetworkReply>
 
-#include <functional>
-
-Images::Images(QWidget *parent)
-    : QWidget(parent)
+Images::Images(QWidget *parent) : QWidget(parent), downloadDialog(new DownloadDialog(this))
 {
-    setWindowTitle(tr("Image loading and scaling example"));
     resize(800, 600);
 
-    imageScaling = new QFutureWatcher<QImage>(this);
-    connect(imageScaling, &QFutureWatcher<QImage>::resultReadyAt, this, &Images::showImage);
-    connect(imageScaling, &QFutureWatcher<QImage>::finished, this, &Images::finished);
-
-    openButton = new QPushButton(tr("Open Images"));
-    connect(openButton, &QPushButton::clicked, this, &Images::open);
+    addUrlsButton = new QPushButton(tr("Add URLs"));
+//! [1]
+    connect(addUrlsButton, &QPushButton::clicked, this, &Images::process);
+//! [1]
 
     cancelButton = new QPushButton(tr("Cancel"));
     cancelButton->setEnabled(false);
-    connect(cancelButton, &QPushButton::clicked, imageScaling, &QFutureWatcher<QImage>::cancel);
-
-    pauseButton = new QPushButton(tr("Pause/Resume"));
-    pauseButton->setEnabled(false);
-    connect(pauseButton, &QPushButton::clicked, imageScaling, &QFutureWatcher<QImage>::togglePaused);
+//! [2]
+    connect(cancelButton, &QPushButton::clicked, this, &Images::cancel);
+//! [2]
 
     QHBoxLayout *buttonLayout = new QHBoxLayout();
-    buttonLayout->addWidget(openButton);
+    buttonLayout->addWidget(addUrlsButton);
     buttonLayout->addWidget(cancelButton);
-    buttonLayout->addWidget(pauseButton);
     buttonLayout->addStretch();
+
+    statusBar = new QStatusBar();
 
     imagesLayout = new QGridLayout();
 
@@ -86,68 +34,203 @@ Images::Images(QWidget *parent)
     mainLayout->addLayout(buttonLayout);
     mainLayout->addLayout(imagesLayout);
     mainLayout->addStretch();
+    mainLayout->addWidget(statusBar);
     setLayout(mainLayout);
+
+//! [6]
+    connect(&scalingWatcher, &QFutureWatcher<QList<QImage>>::finished,
+            this, &Images::scaleFinished);
+//! [6]
 }
 
 Images::~Images()
 {
-    imageScaling->cancel();
-    imageScaling->waitForFinished();
+    cancel();
 }
 
-void Images::open()
+//! [3]
+void Images::process()
 {
-    // Cancel and wait if we are already loading images.
-    if (imageScaling->isRunning()) {
-        imageScaling->cancel();
-        imageScaling->waitForFinished();
+    // Clean previous state
+    replies.clear();
+    addUrlsButton->setEnabled(false);
+
+    if (downloadDialog->exec() == QDialog::Accepted) {
+
+        const auto urls = downloadDialog->getUrls();
+        if (urls.empty())
+            return;
+
+        cancelButton->setEnabled(true);
+
+        initLayout(urls.size());
+
+        downloadFuture = download(urls);
+        statusBar->showMessage(tr("Downloading..."));
+//! [3]
+
+        //! [4]
+        downloadFuture
+                .then([this](auto) {
+                    cancelButton->setEnabled(false);
+                    updateStatus(tr("Scaling..."));
+                    //! [16]
+                    scalingWatcher.setFuture(QtConcurrent::run(Images::scaled,
+                                                               downloadFuture.results()));
+                    //! [16]
+                })
+        //! [4]
+        //! [5]
+                .onCanceled([this] {
+                    updateStatus(tr("Download has been canceled."));
+                })
+                .onFailed([this](QNetworkReply::NetworkError error) {
+                    updateStatus(tr("Download finished with error: %1").arg(error));
+                    // Abort all pending requests
+                    abortDownload();
+                })
+                .onFailed([this](const std::exception &ex) {
+                    updateStatus(tr(ex.what()));
+                })
+        //! [5]
+                .then([this]() {
+                    cancelButton->setEnabled(false);
+                    addUrlsButton->setEnabled(true);
+                });
+    }
+}
+
+//! [7]
+void Images::cancel()
+{
+    statusBar->showMessage(tr("Canceling..."));
+
+    downloadFuture.cancel();
+    abortDownload();
+}
+//! [7]
+
+//! [15]
+void Images::scaleFinished()
+{
+    const OptionalImages result = scalingWatcher.result();
+    if (result.has_value()) {
+        const auto scaled = result.value();
+        showImages(scaled);
+        updateStatus(tr("Finished"));
+    } else {
+        updateStatus(tr("Failed to extract image data."));
+    }
+    addUrlsButton->setEnabled(true);
+}
+//! [15]
+
+//! [8]
+QFuture<QByteArray> Images::download(const QList<QUrl> &urls)
+{
+//! [8]
+//! [9]
+    QSharedPointer<QPromise<QByteArray>> promise(new QPromise<QByteArray>());
+    promise->start();
+//! [9]
+
+    //! [10]
+    for (const auto &url : urls) {
+        QSharedPointer<QNetworkReply> reply(qnam.get(QNetworkRequest(url)));
+        replies.push_back(reply);
+    //! [10]
+
+    //! [11]
+        QtFuture::connect(reply.get(), &QNetworkReply::finished).then([=] {
+            if (promise->isCanceled()) {
+                if (!promise->future().isFinished())
+                    promise->finish();
+                return;
+            }
+
+            if (reply->error() != QNetworkReply::NoError) {
+                if (!promise->future().isFinished())
+                    throw reply->error();
+            }
+        //! [12]
+            promise->addResult(reply->readAll());
+
+            // Report finished on the last download
+            if (promise->future().resultCount() == urls.size())
+                promise->finish();
+        //! [12]
+        }).onFailed([promise] (QNetworkReply::NetworkError error) {
+            promise->setException(std::make_exception_ptr(error));
+            promise->finish();
+        }).onFailed([promise] {
+            const auto ex = std::make_exception_ptr(
+                        std::runtime_error("Unknown error occurred while downloading."));
+            promise->setException(ex);
+            promise->finish();
+        });
+    }
+    //! [11]
+
+//! [13]
+    return promise->future();
+}
+//! [13]
+
+//! [14]
+Images::OptionalImages Images::scaled(const QList<QByteArray> &data)
+{
+    QList<QImage> scaled;
+    for (const auto &imgData : data) {
+        QImage image;
+        image.loadFromData(imgData);
+        if (image.isNull())
+            return std::nullopt;
+
+        scaled.push_back(image.scaled(100, 100, Qt::KeepAspectRatio));
     }
 
-    // Show a file open dialog at QStandardPaths::PicturesLocation.
-    QStringList files = QFileDialog::getOpenFileNames(this, tr("Select Images"),
-                            QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),
-                            "*.jpg *.png");
+    return scaled;
+}
+//! [14]
 
-    if (files.isEmpty())
-        return;
+void Images::showImages(const QList<QImage> &images)
+{
+    for (int i = 0; i < images.size(); ++i) {
+        labels[i]->setAlignment(Qt::AlignCenter);
+        labels[i]->setPixmap(QPixmap::fromImage(images[i]));
+    }
+}
 
-    const int imageSize = 100;
-
-    // Do a simple layout.
-    qDeleteAll(labels);
+void Images::initLayout(qsizetype count)
+{
+    // Clean old images
+    QLayoutItem *child;
+    while ((child = imagesLayout->takeAt(0)) != nullptr) {
+        child->widget()->setParent(nullptr);
+        delete child->widget();
+        delete child;
+    }
     labels.clear();
 
-    int dim = qSqrt(qreal(files.count())) + 1;
+    // Init the images layout for the new images
+    const auto dim = int(qSqrt(qreal(count))) + 1;
     for (int i = 0; i < dim; ++i) {
         for (int j = 0; j < dim; ++j) {
             QLabel *imageLabel = new QLabel;
-            imageLabel->setFixedSize(imageSize,imageSize);
-            imagesLayout->addWidget(imageLabel,i,j);
+            imageLabel->setFixedSize(100, 100);
+            imagesLayout->addWidget(imageLabel, i, j);
             labels.append(imageLabel);
         }
     }
-
-    std::function<QImage(const QString&)> scale = [imageSize](const QString &imageFileName) {
-        QImage image(imageFileName);
-        return image.scaled(QSize(imageSize, imageSize), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    };
-
-    // Use mapped to run the thread safe scale function on the files.
-    imageScaling->setFuture(QtConcurrent::mapped(files, scale));
-
-    openButton->setEnabled(false);
-    cancelButton->setEnabled(true);
-    pauseButton->setEnabled(true);
 }
 
-void Images::showImage(int num)
+void Images::updateStatus(const QString &msg)
 {
-    labels[num]->setPixmap(QPixmap::fromImage(imageScaling->resultAt(num)));
+    statusBar->showMessage(msg);
 }
 
-void Images::finished()
+void Images::abortDownload()
 {
-    openButton->setEnabled(true);
-    cancelButton->setEnabled(false);
-    pauseButton->setEnabled(false);
+    for (auto reply : replies)
+        reply->abort();
 }

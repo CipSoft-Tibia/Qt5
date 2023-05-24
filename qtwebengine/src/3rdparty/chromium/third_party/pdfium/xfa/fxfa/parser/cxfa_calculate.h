@@ -1,4 +1,4 @@
-// Copyright 2017 PDFium Authors. All rights reserved.
+// Copyright 2017 The PDFium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -18,7 +18,7 @@ class CXFA_Calculate final : public CXFA_Node {
 
   XFA_AttributeValue GetOverride();
   CXFA_Script* GetScriptIfExists();
-  WideString GetMessageText();
+  WideString GetMessageText() const;
 
  private:
   CXFA_Calculate(CXFA_Document* doc, XFA_PacketType packet);

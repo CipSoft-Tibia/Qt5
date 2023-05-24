@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QABSTRACTITEMMODEL_P_H
 #define QABSTRACTITEMMODEL_P_H
@@ -82,7 +46,8 @@ public:
     ~QAbstractItemModelPrivate();
 
     void removePersistentIndexData(QPersistentModelIndexData *data);
-    void movePersistentIndexes(const QVector<QPersistentModelIndexData *> &indexes, int change, const QModelIndex &parent, Qt::Orientation orientation);
+    void movePersistentIndexes(const QList<QPersistentModelIndexData *> &indexes, int change, const QModelIndex &parent,
+                               Qt::Orientation orientation);
     void rowsAboutToBeInserted(const QModelIndex &parent, int first, int last);
     void rowsInserted(const QModelIndex &parent, int first, int last);
     void rowsAboutToBeRemoved(const QModelIndex &parent, int first, int last);
@@ -97,6 +62,9 @@ public:
     void itemsAboutToBeMoved(const QModelIndex &srcParent, int srcFirst, int srcLast, const QModelIndex &destinationParent, int destinationChild, Qt::Orientation);
     void itemsMoved(const QModelIndex &srcParent, int srcFirst, int srcLast, const QModelIndex &destinationParent, int destinationChild, Qt::Orientation orientation);
     bool allowMove(const QModelIndex &srcParent, int srcFirst, int srcLast, const QModelIndex &destinationParent, int destinationChild, Qt::Orientation orientation);
+
+    // ugly hack for QTreeModel, see QTBUG-94546
+    virtual void executePendingOperations() const;
 
     inline QModelIndex createIndex(int row, int column, void *data = nullptr) const {
         return q_func()->createIndex(row, column, data);
@@ -114,8 +82,8 @@ public:
     void invalidatePersistentIndex(const QModelIndex &index);
 
     struct Change {
-        Q_DECL_CONSTEXPR Change() : parent(), first(-1), last(-1), needsAdjust(false) {}
-        Q_DECL_CONSTEXPR Change(const QModelIndex &p, int f, int l) : parent(p), first(f), last(l), needsAdjust(false) {}
+        constexpr Change() : parent(), first(-1), last(-1), needsAdjust(false) {}
+        constexpr Change(const QModelIndex &p, int f, int l) : parent(p), first(f), last(l), needsAdjust(false) {}
 
         QModelIndex parent;
         int first, last;
@@ -135,26 +103,73 @@ public:
         // rowsMoved signal.
         bool needsAdjust;
 
-        Q_DECL_CONSTEXPR bool isValid() const { return first >= 0 && last >= 0; }
+        constexpr bool isValid() const { return first >= 0 && last >= 0; }
     };
     QStack<Change> changes;
 
     struct Persistent {
         Persistent() {}
         QMultiHash<QModelIndex, QPersistentModelIndexData *> indexes;
-        QStack<QVector<QPersistentModelIndexData *> > moved;
-        QStack<QVector<QPersistentModelIndexData *> > invalidated;
+        QStack<QList<QPersistentModelIndexData *>> moved;
+        QStack<QList<QPersistentModelIndexData *>> invalidated;
         void insertMultiAtEnd(const QModelIndex& key, QPersistentModelIndexData *data);
     } persistent;
 
-    Qt::DropActions supportedDragActions;
-
-    QHash<int,QByteArray> roleNames;
     static const QHash<int,QByteArray> &defaultRoleNames();
     static bool isVariantLessThan(const QVariant &left, const QVariant &right,
                                   Qt::CaseSensitivity cs = Qt::CaseSensitive, bool isLocaleAware = false);
 };
-Q_DECLARE_TYPEINFO(QAbstractItemModelPrivate::Change, Q_MOVABLE_TYPE);
+Q_DECLARE_TYPEINFO(QAbstractItemModelPrivate::Change, Q_RELOCATABLE_TYPE);
+
+namespace QtPrivate {
+
+/*!
+    \internal
+    This is a workaround for QTBUG-75172.
+
+    Some predefined model roles are supposed to use certain enum/flag
+    types (e.g. fetching Qt::TextAlignmentRole is supposed to return a
+    variant containing a Qt::Alignment object).
+
+    For historical reasons, a plain `int` was used sometimes. This is
+    surprising to end-users and also sloppy on Qt's part; users were
+    forced to use `int` rather than the correct datatype.
+
+    This function tries both the "right" type and plain `int`, for a
+    given QVariant. This fixes the problem (using the correct datatype)
+    but also keeps compatibility with existing code using `int`.
+
+    ### Qt 7: get rid of this. Always use the correct datatype.
+*/
+template <typename T>
+T legacyEnumValueFromModelData(const QVariant &data)
+{
+    static_assert(std::is_enum_v<T>);
+    if (data.userType() == qMetaTypeId<T>()) {
+        return data.value<T>();
+    } else if (std::is_same_v<std::underlying_type_t<T>, int> ||
+               std::is_same_v<std::underlying_type_t<T>, uint>) {
+        return T(data.toInt());
+    }
+
+    return T();
+}
+
+template <typename T>
+T legacyFlagValueFromModelData(const QVariant &data)
+{
+    if (data.userType() == qMetaTypeId<T>()) {
+        return data.value<T>();
+    } else if (std::is_same_v<std::underlying_type_t<typename T::enum_type>, int> ||
+               std::is_same_v<std::underlying_type_t<typename T::enum_type>, uint>) {
+        return T::fromInt(data.toInt());
+    }
+
+    return T();
+}
+
+} // namespace QtPrivate
+
 
 QT_END_NAMESPACE
 

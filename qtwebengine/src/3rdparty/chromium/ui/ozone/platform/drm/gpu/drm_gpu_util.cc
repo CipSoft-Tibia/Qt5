@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,18 +8,17 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
-#include "base/files/scoped_file.h"
 #include "base/logging.h"
 #include "base/trace_event/trace_event.h"
+#include "third_party/perfetto/include/perfetto/tracing/traced_value.h"
 #include "ui/display/types/gamma_ramp_rgb_entry.h"
-#include "ui/ozone/platform/drm/gpu/drm_device.h"
 
 namespace ui {
 
-bool GetDrmPropertyForName(DrmDevice* drm,
+bool GetDrmPropertyForName(DrmWrapper* drm,
                            drmModeObjectProperties* properties,
                            const std::string& name,
-                           DrmDevice::Property* property) {
+                           DrmWrapper::Property* property) {
   for (uint32_t i = 0; i < properties->count_props; ++i) {
     ScopedDrmPropertyPtr drm_property(drm->GetProperty(properties->props[i]));
     if (name != drm_property->name)
@@ -36,7 +35,7 @@ bool GetDrmPropertyForName(DrmDevice* drm,
 
 bool AddPropertyIfValid(drmModeAtomicReq* property_set,
                         uint32_t object_id,
-                        const DrmDevice::Property& property) {
+                        const DrmWrapper::Property& property) {
   if (!property.id)
     return true;
 
@@ -75,8 +74,8 @@ ScopedDrmColorCtmPtr CreateCTMBlob(const std::vector<float>& color_matrix) {
 
   ScopedDrmColorCtmPtr ctm(
       static_cast<drm_color_ctm*>(malloc(sizeof(drm_color_ctm))));
-  DCHECK_EQ(color_matrix.size(), base::size(ctm->matrix));
-  for (size_t i = 0; i < base::size(ctm->matrix); ++i) {
+  DCHECK_EQ(color_matrix.size(), std::size(ctm->matrix));
+  for (size_t i = 0; i < std::size(ctm->matrix); ++i) {
     if (color_matrix[i] < 0) {
       ctm->matrix[i] = static_cast<uint64_t>(-color_matrix[i] * (1ull << 32));
       ctm->matrix[i] |= static_cast<uint64_t>(1) << 63;
@@ -121,23 +120,28 @@ std::vector<display::GammaRampRGBEntry> ResampleLut(
   return result;
 }
 
-bool IsDriverName(const char* device_file_name, const char* driver) {
-  base::ScopedFD fd(open(device_file_name, O_RDWR));
-  if (!fd.is_valid()) {
-    LOG(ERROR) << "Failed to open DRM device " << device_file_name;
-    return false;
+HardwareDisplayControllerInfoList GetDisplayInfosAndUpdateCrtcs(
+    DrmWrapper& drm) {
+  auto [displays, invalid_crtcs] = GetDisplayInfosAndInvalidCrtcs(drm);
+  // Disable invalid CRTCs to allow the preferred CRTCs to be enabled later
+  // instead.
+  for (uint32_t crtc : invalid_crtcs) {
+    drm.DisableCrtc(crtc);
+    VLOG(1) << "Disabled undesired CRTC " << crtc;
   }
+  return std::move(displays);
+}
 
-  ScopedDrmVersionPtr version(drmGetVersion(fd.get()));
-  if (!version) {
-    LOG(ERROR) << "Failed to query DRM version " << device_file_name;
-    return false;
-  }
+void DrmWriteIntoTraceHelper(const drmModeModeInfo& mode_info,
+                             perfetto::TracedValue context) {
+  auto dict = std::move(context).WriteDictionary();
 
-  if (strncmp(driver, version->name, version->name_len) == 0)
-    return true;
-
-  return false;
+  dict.Add("name", mode_info.name);
+  dict.Add("type", mode_info.type);
+  dict.Add("flags", mode_info.flags);
+  dict.Add("clock", mode_info.clock);
+  dict.Add("hdisplay", mode_info.hdisplay);
+  dict.Add("vdisplay", mode_info.vdisplay);
 }
 
 }  // namespace ui

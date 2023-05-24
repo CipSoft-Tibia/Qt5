@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2020 Harald Meyer.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the plugins of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2020 Harald Meyer.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #import <UIKit/UIKit.h>
 #import <MobileCoreServices/MobileCoreServices.h>
@@ -48,36 +12,46 @@
 
 - (instancetype)initWithQIOSFileDialog:(QIOSFileDialog *)fileDialog
 {
-    NSMutableArray <NSString *> *docTypes = [[[NSMutableArray alloc] init] autorelease];
-    UIDocumentPickerMode importMode;
-    switch (fileDialog->options()->fileMode()) {
-    case QFileDialogOptions::AnyFile:
-    case QFileDialogOptions::ExistingFile:
-    case QFileDialogOptions::ExistingFiles:
-        [docTypes addObject:(__bridge NSString *)kUTTypeContent];
-        [docTypes addObject:(__bridge NSString *)kUTTypeItem];
-        [docTypes addObject:(__bridge NSString *)kUTTypeData];
-        importMode = UIDocumentPickerModeImport;
-        break;
-    case QFileDialogOptions::Directory:
-    case QFileDialogOptions::DirectoryOnly:
-        // Directory picking is not supported because it requires
-        // special handling not possible with the current QFilePicker
-        // implementation.
+    NSMutableArray <UTType *> *docTypes = [[[NSMutableArray alloc] init] autorelease];
 
-        Q_UNREACHABLE();
+    QStringList nameFilters = fileDialog->options()->nameFilters();
+    if (!nameFilters.isEmpty() && (fileDialog->options()->fileMode() != QFileDialogOptions::Directory
+                               || fileDialog->options()->fileMode() != QFileDialogOptions::DirectoryOnly))
+    {
+        QStringList results;
+        for (const QString &filter : nameFilters)
+            results.append(QPlatformFileDialogHelper::cleanFilterList(filter));
+
+        docTypes = [self computeAllowedFileTypes:results];
     }
 
-    if (self = [super initWithDocumentTypes:docTypes inMode:importMode]) {
+    if (!docTypes.count) {
+        switch (fileDialog->options()->fileMode()) {
+        case QFileDialogOptions::AnyFile:
+        case QFileDialogOptions::ExistingFile:
+        case QFileDialogOptions::ExistingFiles:
+            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeContent]];
+            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeItem]];
+            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeData]];
+            break;
+        // Showing files is not supported in Directory mode in iOS
+        case QFileDialogOptions::Directory:
+        case QFileDialogOptions::DirectoryOnly:
+            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeFolder]];
+            break;
+        }
+    }
+
+    if (self = [super initForOpeningContentTypes:docTypes]) {
         m_fileDialog = fileDialog;
         self.modalPresentationStyle = UIModalPresentationFormSheet;
         self.delegate = self;
+        self.presentationController.delegate = self;
 
         if (m_fileDialog->options()->fileMode() == QFileDialogOptions::ExistingFiles)
             self.allowsMultipleSelection = YES;
 
-        if (@available(ios 13.0, *))
-            self.directoryURL = m_fileDialog->options()->initialDirectory().toNSURL();
+        self.directoryURL = m_fileDialog->options()->initialDirectory().toNSURL();
     }
     return self;
 }
@@ -96,8 +70,46 @@
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller
 {
-    Q_UNUSED(controller)
+    Q_UNUSED(controller);
     emit m_fileDialog->reject();
+}
+
+- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController
+{
+    Q_UNUSED(presentationController);
+
+    // "Called on the delegate when the user has taken action to dismiss the
+    // presentation successfully, after all animations are finished.
+    // This is not called if the presentation is dismissed programmatically."
+
+    // So if document picker's view was dismissed, for example by swiping it away,
+    // we got this method called. But not if the dialog was cancelled or a file
+    // was selected.
+    emit m_fileDialog->reject();
+}
+
+- (NSMutableArray<UTType*>*)computeAllowedFileTypes:(QStringList)filters
+{
+    QStringList fileTypes;
+    for (const QString &filter : filters) {
+        if (filter == (QLatin1String("*")))
+            continue;
+
+        if (filter.contains(u'?'))
+            continue;
+
+        if (filter.count(u'*') != 1)
+            continue;
+
+        auto extensions = filter.split('.', Qt::SkipEmptyParts);
+        fileTypes += extensions.last();
+    }
+
+    NSMutableArray<UTType *> *result = [NSMutableArray<UTType *> arrayWithCapacity:fileTypes.size()];
+    for (const QString &string : fileTypes)
+        [result addObject:[UTType typeWithFilenameExtension:string.toNSString()]];
+
+    return result;
 }
 
 @end

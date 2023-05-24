@@ -17,6 +17,11 @@
 // This macro does nothing. That's all.
 #define NOTHING(...)
 
+#define CONCAT_(a, b) a##b
+#define CONCAT(a, b) CONCAT_(a, b)
+// Creates an unique identifier. Useful for scopes to avoid shadowing names.
+#define UNIQUE_IDENTIFIER(base) CONCAT(base, __COUNTER__)
+
 // TODO(all) Replace all uses of this macro with C++'s offsetof. To do that, we
 // have to make sure that only standard-layout types and simple field
 // designators are used.
@@ -99,6 +104,7 @@ char (&ArraySizeHelper(const T (&array)[N]))[N];
 //
 // WARNING: if Dest or Source is a non-POD type, the result of the memcpy
 // is likely to surprise you.
+namespace v8::base {
 template <class Dest, class Source>
 V8_INLINE Dest bit_cast(Source const& source) {
   static_assert(sizeof(Dest) == sizeof(Source),
@@ -107,23 +113,20 @@ V8_INLINE Dest bit_cast(Source const& source) {
   memcpy(&dest, &source, sizeof(dest));
   return dest;
 }
+}  // namespace v8::base
 
 // Explicitly declare the assignment operator as deleted.
+// Note: This macro is deprecated and will be removed soon. Please explicitly
+// delete the assignment operator instead.
 #define DISALLOW_ASSIGN(TypeName) TypeName& operator=(const TypeName&) = delete
-
-// Explicitly declare the copy constructor and assignment operator as deleted.
-// This also deletes the implicit move constructor and implicit move assignment
-// operator, but still allows to manually define them.
-#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
-  TypeName(const TypeName&) = delete;      \
-  DISALLOW_ASSIGN(TypeName)
 
 // Explicitly declare all implicit constructors as deleted, namely the
 // default constructor, copy constructor and operator= functions.
 // This is especially useful for classes containing only static methods.
 #define DISALLOW_IMPLICIT_CONSTRUCTORS(TypeName) \
   TypeName() = delete;                           \
-  DISALLOW_COPY_AND_ASSIGN(TypeName)
+  TypeName(const TypeName&) = delete;            \
+  DISALLOW_ASSIGN(TypeName)
 
 // Disallow copying a type, but provide default construction, move construction
 // and move assignment. Especially useful for move-only structs.
@@ -136,7 +139,8 @@ V8_INLINE Dest bit_cast(Source const& source) {
 #define MOVE_ONLY_NO_DEFAULT_CONSTRUCTOR(TypeName)       \
   TypeName(TypeName&&) V8_NOEXCEPT = default;            \
   TypeName& operator=(TypeName&&) V8_NOEXCEPT = default; \
-  DISALLOW_COPY_AND_ASSIGN(TypeName)
+  TypeName(const TypeName&) = delete;                    \
+  DISALLOW_ASSIGN(TypeName)
 
 // A macro to disallow the dynamic allocation.
 // This should be used in the private: declarations for a class
@@ -157,17 +161,17 @@ V8_INLINE Dest bit_cast(Source const& source) {
 #endif
 #endif
 
-// Define DISABLE_ASAN macro.
-#ifdef V8_USE_ADDRESS_SANITIZER
-#define DISABLE_ASAN __attribute__((no_sanitize_address))
-#else
-#define DISABLE_ASAN
-#endif
-
 // Define V8_USE_MEMORY_SANITIZER macro.
 #if defined(__has_feature)
 #if __has_feature(memory_sanitizer)
 #define V8_USE_MEMORY_SANITIZER 1
+#endif
+#endif
+
+// Define V8_USE_UNDEFINED_BEHAVIOR_SANITIZER macro.
+#if defined(__has_feature)
+#if __has_feature(undefined_behavior_sanitizer)
+#define V8_USE_UNDEFINED_BEHAVIOR_SANITIZER 1
 #endif
 #endif
 
@@ -184,17 +188,6 @@ V8_INLINE Dest bit_cast(Source const& source) {
 #else
 #define DISABLE_CFI_ICALL V8_CLANG_NO_SANITIZE("cfi-icall")
 #endif
-
-#if V8_CC_GNU
-#define V8_IMMEDIATE_CRASH() __builtin_trap()
-#else
-#define V8_IMMEDIATE_CRASH() ((void(*)())0)()
-#endif
-
-// A convenience wrapper around static_assert without a string message argument.
-// Once C++17 becomes the default, this macro can be removed in favor of the
-// new static_assert(condition) overload.
-#define STATIC_ASSERT(test) static_assert(test, #test)
 
 namespace v8 {
 namespace base {
@@ -254,12 +247,6 @@ struct Use {
     (void)unused_tmp_array_for_use_macro;                          \
   } while (false)
 
-// Evaluate the instantiations of an expression with parameter packs.
-// Since USE has left-to-right evaluation order of it's arguments,
-// the parameter pack is iterated from left to right and side effects
-// have defined behavior.
-#define ITERATE_PACK(...) USE(0, ((__VA_ARGS__), 0)...)
-
 }  // namespace base
 }  // namespace v8
 
@@ -316,7 +303,7 @@ V8_INLINE A implicit_cast(A x) {
 #endif
 
 // Fix for Mac OS X defining uintptr_t as "unsigned long":
-#if V8_OS_MACOSX
+#if V8_OS_DARWIN
 #undef V8PRIxPTR
 #define V8PRIxPTR "lx"
 #undef V8PRIdPTR
@@ -333,28 +320,33 @@ inline uint64_t make_uint64(uint32_t high, uint32_t low) {
 // Return the largest multiple of m which is <= x.
 template <typename T>
 inline T RoundDown(T x, intptr_t m) {
-  STATIC_ASSERT(std::is_integral<T>::value);
+  static_assert(std::is_integral<T>::value);
   // m must be a power of two.
   DCHECK(m != 0 && ((m & (m - 1)) == 0));
   return x & static_cast<T>(-m);
 }
 template <intptr_t m, typename T>
 constexpr inline T RoundDown(T x) {
-  STATIC_ASSERT(std::is_integral<T>::value);
+  static_assert(std::is_integral<T>::value);
   // m must be a power of two.
-  STATIC_ASSERT(m != 0 && ((m & (m - 1)) == 0));
+  static_assert(m != 0 && ((m & (m - 1)) == 0));
   return x & static_cast<T>(-m);
 }
 
 // Return the smallest multiple of m which is >= x.
 template <typename T>
 inline T RoundUp(T x, intptr_t m) {
-  STATIC_ASSERT(std::is_integral<T>::value);
-  return RoundDown<T>(static_cast<T>(x + m - 1), m);
+  static_assert(std::is_integral<T>::value);
+  DCHECK_GE(x, 0);
+  DCHECK_GE(std::numeric_limits<T>::max() - x, m - 1);  // Overflow check.
+  return RoundDown<T>(static_cast<T>(x + (m - 1)), m);
 }
+
 template <intptr_t m, typename T>
 constexpr inline T RoundUp(T x) {
-  STATIC_ASSERT(std::is_integral<T>::value);
+  static_assert(std::is_integral<T>::value);
+  DCHECK_GE(x, 0);
+  DCHECK_GE(std::numeric_limits<T>::max() - x, m - 1);  // Overflow check.
   return RoundDown<m, T>(static_cast<T>(x + (m - 1)));
 }
 
@@ -418,5 +410,37 @@ bool is_inbounds(float_t v) {
 #endif
 
 #endif  // V8_OS_WIN
+
+// Defines IF_WASM, to be used in macro lists for elements that should only be
+// there if WebAssembly is enabled.
+#if V8_ENABLE_WEBASSEMBLY
+// EXPAND is needed to work around MSVC's broken __VA_ARGS__ expansion.
+#define IF_WASM(V, ...) EXPAND(V(__VA_ARGS__))
+#else
+#define IF_WASM(V, ...)
+#endif  // V8_ENABLE_WEBASSEMBLY
+
+// Defines IF_TSAN, to be used in macro lists for elements that should only be
+// there if TSAN is enabled.
+#ifdef V8_IS_TSAN
+// EXPAND is needed to work around MSVC's broken __VA_ARGS__ expansion.
+#define IF_TSAN(V, ...) EXPAND(V(__VA_ARGS__))
+#else
+#define IF_TSAN(V, ...)
+#endif  // V8_ENABLE_WEBASSEMBLY
+
+// Defines IF_TARGET_ARCH_64_BIT, to be used in macro lists for elements that
+// should only be there if the target architecture is a 64-bit one.
+#if V8_TARGET_ARCH_64_BIT
+// EXPAND is needed to work around MSVC's broken __VA_ARGS__ expansion.
+#define IF_TARGET_ARCH_64_BIT(V, ...) EXPAND(V(__VA_ARGS__))
+#else
+#define IF_TARGET_ARCH_64_BIT(V, ...)
+#endif
+
+#ifdef GOOGLE3
+// Disable FRIEND_TEST macro in Google3.
+#define FRIEND_TEST(test_case_name, test_name)
+#endif
 
 #endif  // V8_BASE_MACROS_H_

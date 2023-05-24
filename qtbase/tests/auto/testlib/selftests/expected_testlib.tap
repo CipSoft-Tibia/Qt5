@@ -3,10 +3,15 @@ TAP version 13
 ok 1 - initTestCase()
 not ok 2 - basics()
   ---
-  # Compared pointers are not the same
-  at: tst_TestLib::basics() (qtbase/tests/auto/testlib/selftests/testlib/tst_testlib.cpp:54)
+  type: QCOMPARE
+  message: Compared QObject pointers are not the same
+  wanted: (nullptr) (nullptr)
+  found: tst_TestLib/"TestObject" (QTest::testObject())
+  expected: (nullptr) (nullptr)
+  actual: tst_TestLib/"TestObject" (QTest::testObject())
+  at: tst_TestLib::basics() (qtbase/tests/auto/testlib/selftests/testlib/tst_testlib.cpp:0)
   file: qtbase/tests/auto/testlib/selftests/testlib/tst_testlib.cpp
-  line: 54
+  line: 0
   ...
 ok 3 - delays()
 ok 4 - reals(zero)

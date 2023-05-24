@@ -19,17 +19,25 @@ import {randomColor} from '../common/colorizer';
 import {AreaNote, Note} from '../common/state';
 import {timeToString} from '../common/time';
 
+import {
+  BottomTab,
+  bottomTabRegistry,
+  NewBottomTabArgs,
+} from './bottom_tab';
 import {TRACK_SHELL_WIDTH} from './css_constants';
 import {PerfettoMouseEvent} from './events';
 import {globals} from './globals';
-import {gridlines} from './gridline_helper';
+import {
+  TickGenerator,
+  TickType,
+  timeScaleForVisibleWindow,
+} from './gridline_helper';
 import {Panel, PanelSize} from './panel';
+import {isTraceLoaded} from './sidebar';
 
 const FLAG_WIDTH = 16;
 const AREA_TRIANGLE_WIDTH = 10;
-const MOVIE_WIDTH = 16;
 const FLAG = `\uE153`;
-const MOVIE = '\uE8DA';
 
 function toSummary(s: string) {
   const newlineIndex = s.indexOf('\n') > 0 ? s.indexOf('\n') : s.length;
@@ -50,11 +58,6 @@ export class NotesPanel extends Panel {
   oncreate({dom}: m.CVnodeDOM) {
     dom.addEventListener('mousemove', (e: Event) => {
       this.hoveredX = (e as PerfettoMouseEvent).layerX - TRACK_SHELL_WIDTH;
-      if (globals.state.scrubbingEnabled) {
-        const timescale = globals.frontendLocalState.timeScale;
-        const timestamp = timescale.pxToTime(this.hoveredX);
-        globals.frontendLocalState.setVidTimestamp(timestamp);
-      }
       globals.rafScheduler.scheduleRedraw();
     }, {passive: true});
     dom.addEventListener('mouseenter', (e: Event) => {
@@ -63,30 +66,60 @@ export class NotesPanel extends Panel {
     });
     dom.addEventListener('mouseout', () => {
       this.hoveredX = null;
-      globals.frontendLocalState.setHoveredNoteTimestamp(-1);
-      globals.rafScheduler.scheduleRedraw();
+      globals.dispatch(Actions.setHoveredNoteTimestamp({ts: -1}));
     }, {passive: true});
   }
 
   view() {
-    return m('.notes-panel', {
-      onclick: (e: PerfettoMouseEvent) => {
-        const isMovie = globals.state.flagPauseEnabled;
-        this.onClick(e.layerX - TRACK_SHELL_WIDTH, e.layerY, isMovie);
-        e.stopPropagation();
-      },
-    });
+    const allCollapsed = Object.values(globals.state.trackGroups)
+                             .every((group) => group.collapsed);
+
+    return m(
+        '.notes-panel',
+        {
+          onclick: (e: PerfettoMouseEvent) => {
+            this.onClick(e.layerX - TRACK_SHELL_WIDTH, e.layerY);
+            e.stopPropagation();
+          },
+        },
+        isTraceLoaded() ?
+            [
+              m('button',
+                {
+                  onclick: (e: Event) => {
+                    e.preventDefault();
+                    globals.dispatch(Actions.toggleAllTrackGroups(
+                        {collapsed: !allCollapsed}));
+                  },
+                },
+                m('i.material-icons',
+                  {title: allCollapsed ? 'Expand all' : 'Collapse all'},
+                  allCollapsed ? 'unfold_more' : 'unfold_less')),
+              m('button',
+                {
+                  onclick: (e: Event) => {
+                    e.preventDefault();
+                    globals.dispatch(Actions.clearAllPinnedTracks({}));
+                  },
+                },
+                m('i.material-icons',
+                  {title: 'Clear all pinned tracks'},
+                  'clear_all')),
+            ] :
+            '');
   }
 
   renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
     const timeScale = globals.frontendLocalState.timeScale;
-    const range = globals.frontendLocalState.visibleWindowTime;
     let aNoteIsHovered = false;
 
     ctx.fillStyle = '#999';
     ctx.fillRect(TRACK_SHELL_WIDTH - 2, 0, 2, size.height);
-    for (const xAndTime of gridlines(size.width, range, timeScale)) {
-      ctx.fillRect(xAndTime[0], 0, 1, size.height);
+    const relScale = timeScaleForVisibleWindow(TRACK_SHELL_WIDTH, size.width);
+    if (relScale.timeSpan.duration > 0 && relScale.widthPx > 0) {
+      for (const {type, position} of new TickGenerator(relScale)) {
+        if (type === TickType.MAJOR) ctx.fillRect(position, 0, 1, size.height);
+      }
     }
 
     ctx.textBaseline = 'bottom';
@@ -94,6 +127,8 @@ export class NotesPanel extends Panel {
 
     for (const note of Object.values(globals.state.notes)) {
       const timestamp = getStartTimestamp(note);
+      // TODO(hjd): We should still render area selection marks in viewport is
+      // *within* the area (e.g. both lhs and rhs are out of bounds).
       if ((note.noteType !== 'AREA' && !timeScale.timeInBounds(timestamp)) ||
           (note.noteType === 'AREA' &&
            !timeScale.timeInBounds(globals.state.areas[note.areaId].endSec) &&
@@ -122,8 +157,7 @@ export class NotesPanel extends Panel {
             note.color,
             isSelected);
       } else {
-        this.drawFlag(
-            ctx, left, size.height, note.color, note.noteType, isSelected);
+        this.drawFlag(ctx, left, size.height, note.color, isSelected);
       }
 
       if (note.text) {
@@ -139,18 +173,19 @@ export class NotesPanel extends Panel {
     }
 
     // A real note is hovered so we don't need to see the preview line.
-    // TODO(taylori): Change cursor to pointer here.
-    if (aNoteIsHovered) globals.frontendLocalState.setHoveredNoteTimestamp(-1);
+    // TODO(hjd): Change cursor to pointer here.
+    if (aNoteIsHovered) {
+      globals.dispatch(Actions.setHoveredNoteTimestamp({ts: -1}));
+    }
 
     // View preview note flag when hovering on notes panel.
     if (!aNoteIsHovered && this.hoveredX !== null) {
       const timestamp = timeScale.pxToTime(this.hoveredX);
       if (timeScale.timeInBounds(timestamp)) {
-        globals.frontendLocalState.setHoveredNoteTimestamp(timestamp);
+        globals.dispatch(Actions.setHoveredNoteTimestamp({ts: timestamp}));
         const x = timeScale.timeToPx(timestamp);
         const left = Math.floor(x + TRACK_SHELL_WIDTH);
-        this.drawFlag(
-            ctx, left, size.height, '#aaa', 'DEFAULT', /* fill */ true);
+        this.drawFlag(ctx, left, size.height, '#aaa', /* fill */ true);
       }
     }
   }
@@ -182,17 +217,17 @@ export class NotesPanel extends Panel {
     ctx.stroke();
 
     // Start line after track shell section, join triangles.
-    const startDraw =
-        Math.max(
-            x,
-            globals.frontendLocalState.timeScale.startPx + TRACK_SHELL_WIDTH) -
-        1;
-    ctx.fillRect(startDraw, topOffset - 1, xEnd - startDraw + 1, 1);
+    const startDraw = Math.max(
+        x, globals.frontendLocalState.timeScale.startPx + TRACK_SHELL_WIDTH);
+    ctx.beginPath();
+    ctx.moveTo(startDraw, topOffset);
+    ctx.lineTo(xEnd, topOffset);
+    ctx.stroke();
   }
 
   private drawFlag(
       ctx: CanvasRenderingContext2D, x: number, height: number, color: string,
-      noteType: 'DEFAULT'|'AREA'|'MOVIE', fill?: boolean) {
+      fill?: boolean) {
     const prevFont = ctx.font;
     const prevBaseline = ctx.textBaseline;
     ctx.textBaseline = 'alphabetic';
@@ -204,26 +239,21 @@ export class NotesPanel extends Panel {
     // exactly at the x value. This adjusts for that.
     const iconPadding = 6;
     if (fill) {
-      ctx.fillText(
-          noteType === 'MOVIE' ? MOVIE : FLAG, x - iconPadding, height + 2);
+      ctx.fillText(FLAG, x - iconPadding, height + 2);
     } else {
-      ctx.strokeText(
-          noteType === 'MOVIE' ? MOVIE : FLAG, x - iconPadding, height + 2.5);
+      ctx.strokeText(FLAG, x - iconPadding, height + 2.5);
     }
     ctx.font = prevFont;
     ctx.textBaseline = prevBaseline;
   }
 
 
-  private onClick(x: number, _: number, isMovie: boolean) {
+  private onClick(x: number, _: number) {
     if (x < 0) return;
     const timeScale = globals.frontendLocalState.timeScale;
     const timestamp = timeScale.pxToTime(x);
     for (const note of Object.values(globals.state.notes)) {
       if (this.hoveredX && this.mouseOverNote(this.hoveredX, note)) {
-        if (note.noteType === 'MOVIE') {
-          globals.frontendLocalState.setVidTimestamp(note.timestamp);
-        }
         if (note.noteType === 'AREA') {
           globals.makeSelection(
               Actions.reSelectArea({areaId: note.areaId, noteId: note.id}));
@@ -233,11 +263,8 @@ export class NotesPanel extends Panel {
         return;
       }
     }
-    if (isMovie) {
-      globals.frontendLocalState.setVidTimestamp(timestamp);
-    }
     const color = randomColor();
-    globals.makeSelection(Actions.addNote({timestamp, color, isMovie}));
+    globals.makeSelection(Actions.addNote({timestamp, color}));
   }
 
   private mouseOverNote(x: number, note: AreaNote|Note): boolean {
@@ -249,19 +276,38 @@ export class NotesPanel extends Panel {
           (timeScale.timeToPx(noteArea.endSec) > x &&
            x > timeScale.timeToPx(noteArea.endSec) - AREA_TRIANGLE_WIDTH);
     } else {
-      const width = (note.noteType === 'MOVIE') ? MOVIE_WIDTH : FLAG_WIDTH;
+      const width = FLAG_WIDTH;
       return noteX <= x && x < noteX + width;
     }
   }
 }
 
-interface NotesEditorPanelAttrs {
+interface NotesEditorTabConfig {
   id: string;
 }
 
-export class NotesEditorPanel extends Panel<NotesEditorPanelAttrs> {
-  view({attrs}: m.CVnode<NotesEditorPanelAttrs>) {
-    const note = globals.state.notes[attrs.id];
+export class NotesEditorTab extends BottomTab<NotesEditorTabConfig> {
+  static readonly kind = 'org.perfetto.NotesEditorTab';
+
+  static create(args: NewBottomTabArgs): NotesEditorTab {
+    return new NotesEditorTab(args);
+  }
+
+  constructor(args: NewBottomTabArgs) {
+    super(args);
+  }
+
+  renderTabCanvas() {}
+
+  getTitle() {
+    return 'Current Selection';
+  }
+
+  viewTab() {
+    const note = globals.state.notes[this.config.id];
+    if (note === undefined) {
+      return m('.', `No Note with id ${this.config.id}`);
+    }
     const startTime =
         getStartTimestamp(note) - globals.state.traceTime.startSec;
     return m(
@@ -277,7 +323,7 @@ export class NotesEditorPanel extends Panel<NotesEditorPanelAttrs> {
             onchange: (e: InputEvent) => {
               const newText = (e.target as HTMLInputElement).value;
               globals.dispatch(Actions.changeNoteText({
-                id: attrs.id,
+                id: this.config.id,
                 newText,
               }));
             },
@@ -287,7 +333,7 @@ export class NotesEditorPanel extends Panel<NotesEditorPanelAttrs> {
               onchange: (e: Event) => {
                 const newColor = (e.target as HTMLInputElement).value;
                 globals.dispatch(Actions.changeNoteColor({
-                  id: attrs.id,
+                  id: this.config.id,
                   newColor,
                 }));
               },
@@ -295,14 +341,14 @@ export class NotesEditorPanel extends Panel<NotesEditorPanelAttrs> {
           m('button',
             {
               onclick: () => {
-                globals.dispatch(Actions.removeNote({id: attrs.id}));
-                globals.frontendLocalState.currentTab = undefined;
+                globals.dispatch(Actions.removeNote({id: this.config.id}));
+                globals.dispatch(Actions.setCurrentTab({tab: undefined}));
                 globals.rafScheduler.scheduleFullRedraw();
-              }
+              },
             },
             'Remove')),
     );
   }
-
-  renderCanvas(_ctx: CanvasRenderingContext2D, _size: PanelSize) {}
 }
+
+bottomTabRegistry.register(NotesEditorTab);

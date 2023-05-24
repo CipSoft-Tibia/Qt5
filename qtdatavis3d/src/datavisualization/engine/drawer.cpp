@@ -1,31 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the Qt Data Visualization module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 or (at your option) any later version
-** approved by the KDE Free Qt Foundation. The licenses are as published by
-** the Free Software Foundation and appearing in the file LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "drawer_p.h"
 #include "shaderhelper_p.h"
@@ -44,12 +18,13 @@ class StaticLibInitializer
 public:
     StaticLibInitializer()
     {
-        Q_INIT_RESOURCE(engine);
+        Q_INIT_RESOURCE(datavisualizationshaders);
+        Q_INIT_RESOURCE(datavisualizationmeshes);
     }
 };
 StaticLibInitializer staticLibInitializer;
 
-QT_BEGIN_NAMESPACE_DATAVISUALIZATION
+QT_BEGIN_NAMESPACE
 
 // Vertex array buffer for point
 const GLfloat point_data[] = {0.0f, 0.0f, 0.0f};
@@ -105,8 +80,8 @@ QFont Drawer::font() const
 void Drawer::drawObject(ShaderHelper *shader, AbstractObjectHelper *object, GLuint textureId,
                         GLuint depthTextureId, GLuint textureId3D)
 {
-#if defined(QT_OPENGL_ES_2)
-    Q_UNUSED(textureId3D)
+#if QT_CONFIG(opengles2)
+    Q_UNUSED(textureId3D);
 #endif
     if (textureId) {
         // Activate texture
@@ -121,7 +96,7 @@ void Drawer::drawObject(ShaderHelper *shader, AbstractObjectHelper *object, GLui
         glBindTexture(GL_TEXTURE_2D, depthTextureId);
         shader->setUniformValue(shader->shadow(), 1);
     }
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (textureId3D) {
         // Activate texture
         glActiveTexture(GL_TEXTURE2);
@@ -166,7 +141,7 @@ void Drawer::drawObject(ShaderHelper *shader, AbstractObjectHelper *object, GLui
     glDisableVertexAttribArray(shader->posAtt());
 
     // Release textures
-#if !defined(QT_OPENGL_ES_2)
+#if !QT_CONFIG(opengles2)
     if (textureId3D) {
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_3D, 0);
@@ -196,6 +171,10 @@ void Drawer::drawSelectionObject(ShaderHelper *shader, AbstractObjectHelper *obj
 
 void Drawer::drawSurfaceGrid(ShaderHelper *shader, SurfaceObject *object)
 {
+    // Get grid line color
+    QVector4D lineColor = Utils::vectorFromColor(object->wireframeColor());
+    shader->setUniformValue(shader->color(), lineColor);
+
     // 1st attribute buffer : vertices
     glEnableVertexAttribArray(shader->posAtt());
     glBindBuffer(GL_ARRAY_BUFFER, object->vertexBuf());
@@ -451,4 +430,4 @@ void Drawer::generateLabelItem(LabelItem &item, const QString &text, int widestL
     }
 }
 
-QT_END_NAMESPACE_DATAVISUALIZATION
+QT_END_NAMESPACE

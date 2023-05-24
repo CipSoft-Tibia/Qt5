@@ -1,4 +1,4 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -7,15 +7,13 @@
 #include <utility>
 #include <vector>
 
-#include "base/bind.h"
-#include "base/callback.h"
 #include "base/files/file_util.h"
-#include "base/macros.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/test/task_environment.h"
 #include "base/win/scoped_com_initializer.h"
-#include "base/win/windows_version.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "services/shape_detection/face_detection_provider_win.h"
 #include "services/shape_detection/public/mojom/facedetection_provider.mojom.h"
@@ -34,6 +32,10 @@ void DetectCallback(base::OnceClosure quit_closure,
 }  // namespace
 
 class FaceDetectionImplWinTest : public testing::Test {
+ public:
+  FaceDetectionImplWinTest(const FaceDetectionImplWinTest&) = delete;
+  FaceDetectionImplWinTest& operator=(const FaceDetectionImplWinTest&) = delete;
+
  protected:
   FaceDetectionImplWinTest() = default;
   ~FaceDetectionImplWinTest() override = default;
@@ -84,15 +86,9 @@ class FaceDetectionImplWinTest : public testing::Test {
   std::unique_ptr<base::win::ScopedCOMInitializer> scoped_com_initializer_;
 
   base::test::TaskEnvironment task_environment_;
-
-  DISALLOW_COPY_AND_ASSIGN(FaceDetectionImplWinTest);
 };
 
 TEST_F(FaceDetectionImplWinTest, ScanOneFace) {
-  // FaceDetector not supported before Windows 10
-  if (base::win::GetVersion() < base::win::Version::WIN10)
-    return;
-
   mojo::Remote<mojom::FaceDetection> face_detector = ConnectToFaceDetector();
   std::unique_ptr<SkBitmap> image = LoadTestImage();
   ASSERT_TRUE(image);

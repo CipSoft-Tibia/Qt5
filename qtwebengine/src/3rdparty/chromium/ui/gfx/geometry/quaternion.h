@@ -1,10 +1,11 @@
-// Copyright 2017 The Chromium Authors. All rights reserved.
+// Copyright 2017 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef UI_GFX_GEOMETRY_QUATERNION_
-#define UI_GFX_GEOMETRY_QUATERNION_
+#ifndef UI_GFX_GEOMETRY_QUATERNION_H_
+#define UI_GFX_GEOMETRY_QUATERNION_H_
 
+#include <iosfwd>
 #include <string>
 
 #include "ui/gfx/geometry/geometry_export.h"
@@ -22,6 +23,8 @@ class GEOMETRY_EXPORT Quaternion {
 
   // Constructs a quaternion representing a rotation between |from| and |to|.
   Quaternion(const Vector3dF& from, const Vector3dF& to);
+
+  static Quaternion FromAxisAngle(double x, double y, double z, double angle);
 
   constexpr double x() const { return x_; }
   void set_x(double x) { x_ = x; }
@@ -47,6 +50,8 @@ class GEOMETRY_EXPORT Quaternion {
   }
 
   Quaternion inverse() const { return {-x_, -y_, -z_, w_}; }
+
+  Quaternion flip() const { return {-x_, -y_, -z_, -w_}; }
 
   // Blends with the given quaternion, |q|, via spherical linear interpolation.
   // Values of |t| in the range [0, 1] will interpolate between |this| and |q|,
@@ -88,6 +93,23 @@ inline Quaternion operator/(const Quaternion& q, double s) {
   return q * inv;
 }
 
+// Returns true if the x, y, z, w values of |lhs| and |rhs| are equal. Note that
+// two quaternions can represent the same orientation with different values.
+// This operator will return false in that scenario.
+inline bool operator==(const Quaternion& lhs, const Quaternion& rhs) {
+  return lhs.x() == rhs.x() && lhs.y() == rhs.y() && lhs.z() == rhs.z() &&
+         lhs.w() == rhs.w();
+}
+
+inline bool operator!=(const Quaternion& lhs, const Quaternion& rhs) {
+  return !(lhs == rhs);
+}
+
+// This is declared here for use in gtest-based unit tests but is defined in
+// the //ui/gfx:test_support target. Depend on that to use this in your unit
+// test. This should not be used in production code - call ToString() instead.
+void PrintTo(const Quaternion& transform, ::std::ostream* os);
+
 }  // namespace gfx
 
-#endif  // UI_GFX_GEOMETRY_QUATERNION_
+#endif  // UI_GFX_GEOMETRY_QUATERNION_H_

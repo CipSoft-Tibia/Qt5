@@ -1,30 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2019 Ford Motor Company
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtRemoteObjects module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2019 Ford Motor Company
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "rep_subclass_replica.h"
 #include "../shared.h"
@@ -32,6 +7,16 @@
 #include <QCoreApplication>
 #include <QtRemoteObjects/qremoteobjectnode.h>
 #include <QtTest/QtTest>
+
+static QMap<int, MyPOD> int_map{{1, initialValue},
+                                {16, initialValue}};
+static ParentClassReplica::ActivePositions flags1 = ParentClassReplica::Position::position1;
+static ParentClassReplica::ActivePositions flags2 = ParentClassReplica::Position::position2
+                                                    | ParentClassReplica::Position::position3;
+static QMap<ParentClassReplica::ActivePositions, MyPOD> my_map{{flags1, initialValue},
+                                                               {flags2, initialValue}};
+static QHash<NS2::NamespaceEnum, MyPOD> my_hash{{NS2::NamespaceEnum::Alpha, initialValue},
+                                                {NS2::NamespaceEnum::Charlie, initialValue}};
 
 class tst_Client_Process : public QObject
 {
@@ -59,12 +44,17 @@ private Q_SLOTS:
             QCOMPARE(m_rep->subClass()->myPOD(), initialValue);
             QCOMPARE(m_rep->subClass()->i(), initialI);
             QVERIFY(m_rep->tracks() != nullptr);
-            QVERIFY(tracksSpy.count() || tracksSpy.wait());
+            QVERIFY(tracksSpy.size() || tracksSpy.wait());
             QCOMPARE(m_rep->myEnum(), ParentClassReplica::bar);
             QCOMPARE(m_rep->date(), Qt::RFC2822Date);
             QCOMPARE(m_rep->nsEnum(), NS::Bravo);
             QCOMPARE(m_rep->ns2Enum(), NS2::NamespaceEnum::Bravo);
             QCOMPARE(m_rep->variant(), QVariant::fromValue(42.0f));
+            QCOMPARE(m_rep->simpleList(), QList<QString>() << "one" << "two");
+            QCOMPARE(m_rep->podList(), QList<MyPOD>() << initialValue << initialValue);
+            QCOMPARE(m_rep->intMap(), int_map);
+            QCOMPARE(m_rep->enumMap(), my_map);
+            QCOMPARE(m_rep->podHash(), my_hash);
         } else {
             QVERIFY(m_rep->subClass() == nullptr);
             QVERIFY(m_rep->tracks() == nullptr);
@@ -79,7 +69,7 @@ private Q_SLOTS:
         auto enumReply = m_rep->enumSlot(p, ParentClassReplica::bar);
         QVERIFY(enumReply.waitForFinished());
         QCOMPARE(enumReply.error(), QRemoteObjectPendingCall::NoError);
-        QCOMPARE(enumReply.returnValue(), QVariant::fromValue(ParentClassReplica::foobar));
+        QCOMPARE(enumReply.returnValue(), ParentClassReplica::foobar);
 
         qDebug() << "Verified expected initial states, sending start.";
         QSignalSpy enumSpy(m_rep.data(), &ParentClassReplica::enum2);
@@ -89,12 +79,12 @@ private Q_SLOTS:
         QVERIFY(reply.error() == QRemoteObjectPendingCall::NoError);
         QCOMPARE(reply.returnValue(), QVariant::fromValue(true));
         QVERIFY(enumSpy.wait());
-        QCOMPARE(enumSpy.count(), 1);
+        QCOMPARE(enumSpy.size(), 1);
         const auto arguments = enumSpy.takeFirst();
         QCOMPARE(arguments.at(0), QVariant::fromValue(ParentClassReplica::foo));
         QCOMPARE(arguments.at(1), QVariant::fromValue(ParentClassReplica::bar));
 
-        QVERIFY(advanceSpy.count() || advanceSpy.wait());
+        QVERIFY(advanceSpy.size() || advanceSpy.wait());
         QVERIFY(m_rep->subClass() != nullptr);
         QCOMPARE(m_rep->subClass()->myPOD(), updatedValue);
         QCOMPARE(m_rep->subClass()->i(), updatedI);

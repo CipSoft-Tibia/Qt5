@@ -1,4 +1,4 @@
-# Copyright 2019 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -8,7 +8,6 @@ import("//chrome/android/modules/buildflags.gni")
 android_library("java") {
   sources = [ "java/src/org/chromium/chrome/modules/test_dummy/TestDummyProviderImpl.java" ]
   deps = [
-    "//base:base_java",
     "//chrome/android/modules/test_dummy/public:java",
     "//chrome/browser/test_dummy:java",
     "//chrome/browser/test_dummy/internal:java",
@@ -26,7 +25,7 @@ group("native") {
 component("test_dummy") {
   sources = [ "entrypoints.cc" ]
   deps = [
-    ":jni_registration",
+    ":jni_registration($default_toolchain)",
     "//base",
     "//chrome/browser/test_dummy/internal:native",
   ]
@@ -37,9 +36,14 @@ component("test_dummy") {
   }
 }
 
-generate_jni_registration("jni_registration") {
-  no_transitive_deps = true
-  targets = [ "//chrome/browser/test_dummy/internal:java" ]
-  header_output = "$target_gen_dir/jni_registration.h"
-  namespace = "test_dummy"
+if (current_toolchain == default_toolchain) {
+  generate_jni_registration("jni_registration") {
+    no_transitive_deps = true
+    targets = [ "//chrome/browser/test_dummy/internal:java" ]
+    manual_jni_registration = true
+    namespace = "test_dummy"
+    if (allow_jni_multiplexing) {
+      enable_jni_multiplexing = true
+    }
+  }
 }

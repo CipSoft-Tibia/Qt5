@@ -1,10 +1,11 @@
-// Copyright (c) 2011 The Chromium Authors. All rights reserved.
+// Copyright 2011 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #ifndef IPC_IPC_LOGGING_H_
 #define IPC_IPC_LOGGING_H_
 
+#include "base/task/single_thread_task_runner.h"
 #include "ipc/ipc_buildflags.h"
 
 #if BUILDFLAG(IPC_MESSAGE_LOG_ENABLED)
@@ -16,7 +17,7 @@
 #include "base/component_export.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/singleton.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "ipc/ipc_message.h"
 
 // Logging function. |name| is a string in ASCII and |params| is a string in

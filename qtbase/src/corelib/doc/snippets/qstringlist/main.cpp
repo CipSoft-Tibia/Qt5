@@ -1,52 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the documentation of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:BSD$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** BSD License Usage
-** Alternatively, you may use this file under the terms of the BSD license
-** as follows:
-**
-** "Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are
-** met:
-**   * Redistributions of source code must retain the above copyright
-**     notice, this list of conditions and the following disclaimer.
-**   * Redistributions in binary form must reproduce the above copyright
-**     notice, this list of conditions and the following disclaimer in
-**     the documentation and/or other materials provided with the
-**     distribution.
-**   * Neither the name of The Qt Company Ltd nor the names of its
-**     contributors may be used to endorse or promote products derived
-**     from this software without specific prior written permission.
-**
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-** OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-** SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-** LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-** DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-** THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-** (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-** OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include <QtGui>
 #include <iostream>
@@ -55,7 +8,7 @@ using namespace std;
 class Widget : public QWidget
 {
 public:
-    Widget(QWidget *parent = 0);
+    Widget(QWidget *parent = nullptr);
 };
 
 Widget::Widget(QWidget *parent)
@@ -68,24 +21,6 @@ Widget::Widget(QWidget *parent)
 //! [0b]
     fonts << "Courier" << "Verdana";
 //! [0b]
-
-//! [1]
-    for (int i = 0; i < fonts.size(); ++i)
-         cout << fonts.at(i).toLocal8Bit().constData() << Qt::endl;
-//! [1]
-
-//! [2]
-    QStringListIterator javaStyleIterator(fonts);
-    while (javaStyleIterator.hasNext())
-         cout << javaStyleIterator.next().toLocal8Bit().constData() << Qt::endl;
-//! [2]
-
-//! [3]
-    QStringList::const_iterator constIterator;
-    for (constIterator = fonts.constBegin(); constIterator != fonts.constEnd();
-           ++constIterator)
-        cout << (*constIterator).toLocal8Bit().constData() << Qt::endl;
-//! [3]
 
 //! [4]
     QString str = fonts.join(", ");
@@ -131,7 +66,7 @@ Widget::Widget(QWidget *parent)
 
     result.clear();
 //! [12]
-    foreach (const QString &str, list) {
+    for (const auto &str : std::as_const(list)) {
         if (str.contains("Bill"))
             result += str;
     }
@@ -143,20 +78,6 @@ Widget::Widget(QWidget *parent)
     list.replaceInStrings("a", "o");
     // list == ["olpho", "beto", "gommo", "epsilon"]
 //! [13]
-
-    list.clear();
-//! [14]
-    list << "alpha" << "beta" << "gamma" << "epsilon";
-    list.replaceInStrings(QRegExp("^a"), "o");
-    // list == ["olpha", "beta", "gamma", "epsilon"]
-//! [14]
-
-    list.clear();
-//! [15]
-    list << "Bill Clinton" << "Murray, Bill";
-    list.replaceInStrings(QRegExp("^(.*), (.*)$"), "\\2 \\1");
-    // list == ["Bill Clinton", "Bill Murray"]
-//! [15]
 
     list.clear();
 //! [16]

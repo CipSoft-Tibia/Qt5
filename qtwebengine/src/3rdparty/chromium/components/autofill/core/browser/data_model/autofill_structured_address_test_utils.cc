@@ -1,4 +1,4 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,6 @@
 #include "components/autofill/core/browser/autofill_type.h"
 
 namespace autofill {
-namespace structured_address {
 
 using AddressComponentTestValues = std::vector<AddressComponentTestValue>;
 
@@ -66,8 +65,8 @@ void VerifyTestValues(AddressComponent* component,
         AutofillType(test_value.type).ToString().c_str(),
         test_value.value.c_str(), static_cast<int>(test_value.status)));
 
-    EXPECT_EQ(component->GetValueForType(test_value.type),
-              base::UTF8ToUTF16(test_value.value));
+    EXPECT_EQ(base::UTF16ToUTF8(component->GetValueForType(test_value.type)),
+              test_value.value);
 
     // Omit testing the status if the value is empty.
     if (!test_value.value.empty()) {
@@ -77,5 +76,4 @@ void VerifyTestValues(AddressComponent* component,
   }
 }
 
-}  // namespace structured_address
 }  // namespace autofill

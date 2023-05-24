@@ -1,4 +1,4 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
+// Copyright 2018 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,8 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "base/macros.h"
 #include "components/consent_auditor/consent_auditor.h"
+#include "components/sync/protocol/user_consent_specifics.pb.h"
+#include "components/sync/protocol/user_consent_types.pb.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
 using ::testing::Matcher;
@@ -19,6 +20,10 @@ namespace consent_auditor {
 class FakeConsentAuditor : public ConsentAuditor {
  public:
   FakeConsentAuditor();
+
+  FakeConsentAuditor(const FakeConsentAuditor&) = delete;
+  FakeConsentAuditor& operator=(const FakeConsentAuditor&) = delete;
+
   ~FakeConsentAuditor() override;
 
   // ConsentAuditor implementation.
@@ -46,9 +51,6 @@ class FakeConsentAuditor : public ConsentAuditor {
       const sync_pb::UserConsentTypes::AccountPasswordsConsent& consent)
       override;
 
-  void RecordLocalConsent(const std::string& feature,
-                          const std::string& description_text,
-                          const std::string& confirmation_text) override;
   base::WeakPtr<syncer::ModelTypeControllerDelegate> GetControllerDelegate()
       override;
 
@@ -62,13 +64,8 @@ class FakeConsentAuditor : public ConsentAuditor {
 
   const CoreAccountId& account_id() const { return account_id_; }
 
-  const sync_pb::UserConsentTypes::SyncConsent& recorded_sync_consent() const {
-    return recorded_sync_consent_;
-  }
-
-  const sync_pb::UserConsentTypes::ArcPlayTermsOfServiceConsent&
-  recorded_play_consent() const {
-    return recorded_play_consent_;
+  const std::vector<sync_pb::UserConsentSpecifics>& recorded_consents() const {
+    return recorded_consents_;
   }
 
   const std::vector<std::vector<int>>& recorded_id_vectors() {
@@ -88,15 +85,14 @@ class FakeConsentAuditor : public ConsentAuditor {
  private:
   CoreAccountId account_id_;
 
-  sync_pb::UserConsentTypes::SyncConsent recorded_sync_consent_;
-  sync_pb::UserConsentTypes_ArcPlayTermsOfServiceConsent recorded_play_consent_;
+  // Holds specific consent information for assistant activity control consent
+  // and account password consent. Does not (yet) contain recorded sync consent.
+  std::vector<sync_pb::UserConsentSpecifics> recorded_consents_;
 
   std::vector<std::vector<int>> recorded_id_vectors_;
   std::vector<int> recorded_confirmation_ids_;
   std::vector<Feature> recorded_features_;
   std::vector<ConsentStatus> recorded_statuses_;
-
-  DISALLOW_COPY_AND_ASSIGN(FakeConsentAuditor);
 };
 
 MATCHER_P(ArcPlayConsentEq, expected_consent, "") {
@@ -107,7 +103,7 @@ MATCHER_P(ArcPlayConsentEq, expected_consent, "") {
       expected_consent.SerializeAsString())
     return true;
 
-  LOG(ERROR) << "ERROR: actual proto does not match the expected proto";
+  *result_listener << "ERROR: actual proto does not match the expected proto";
   return false;
 }
 
@@ -119,7 +115,7 @@ MATCHER_P(ArcGoogleLocationServiceConsentEq, expected_consent, "") {
       expected_consent.SerializeAsString())
     return true;
 
-  LOG(ERROR) << "ERROR: actual proto does not match the expected proto";
+  *result_listener << "ERROR: actual proto does not match the expected proto";
   return false;
 }
 
@@ -127,7 +123,7 @@ MATCHER_P(ArcBackupAndRestoreConsentEq, expected_consent, "") {
   if (arg.SerializeAsString() == expected_consent.SerializeAsString())
     return true;
 
-  LOG(ERROR) << "ERROR: actual proto does not match the expected proto";
+  *result_listener << "ERROR: actual proto does not match the expected proto";
   return false;
 }
 

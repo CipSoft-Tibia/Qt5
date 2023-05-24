@@ -1,11 +1,11 @@
-// Copyright 2019 The Chromium Authors. All rights reserved.
+// Copyright 2019 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #include "third_party/blink/renderer/modules/media_controls/media_controls_shared_helper.h"
 
 #include <cmath>
-#include "third_party/blink/public/mojom/web_feature/web_feature.mojom-blink.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
 #include "third_party/blink/renderer/core/html/media/html_media_element.h"
@@ -70,7 +70,7 @@ void MediaControlsSharedHelpers::TransitionEventListener::Trace(
   visitor->Trace(element_);
 }
 
-base::Optional<unsigned>
+absl::optional<unsigned>
 MediaControlsSharedHelpers::GetCurrentBufferedTimeRange(
     HTMLMediaElement& media_element) {
   double current_time = media_element.currentTime();
@@ -79,9 +79,8 @@ MediaControlsSharedHelpers::GetCurrentBufferedTimeRange(
 
   DCHECK(buffered_time_ranges);
 
-  if (std::isnan(duration) || std::isinf(duration) || !duration ||
-      std::isnan(current_time)) {
-    return base::nullopt;
+  if (!std::isfinite(duration) || !duration || std::isnan(current_time)) {
+    return absl::nullopt;
   }
 
   // Calculate the size of the after segment (i.e. what has been buffered).
@@ -102,7 +101,7 @@ MediaControlsSharedHelpers::GetCurrentBufferedTimeRange(
     }
   }
 
-  return base::nullopt;
+  return absl::nullopt;
 }
 
 String MediaControlsSharedHelpers::FormatTime(double time) {
@@ -152,7 +151,8 @@ bool MediaControlsSharedHelpers::ShouldShowFullscreenButton(
   if (!Fullscreen::FullscreenEnabled(media_element.GetDocument()))
     return false;
 
-  if (media_element.ControlsListInternal()->ShouldHideFullscreen()) {
+  if (media_element.ControlsListInternal()->ShouldHideFullscreen() &&
+      !media_element.UserWantsControlsVisible()) {
     UseCounter::Count(media_element.GetDocument(),
                       WebFeature::kHTMLMediaElementControlsListNoFullscreen);
     return false;

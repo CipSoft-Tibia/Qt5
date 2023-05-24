@@ -158,6 +158,19 @@ fetching new policy or logging in.
 A [Help Center article](https://support.google.com/chrome/a/answer/6326250)
 warns admins of the implications of mis-using this policy for Chrome OS.
 
+* **AllowCellularSimLock**
+    * (optional, defaults to true) - **boolean**
+    * When this field is present and set to false, a SIM cannot be PIM Locked on
+      a managed device. If the currently active SIM is already PIN Locked when
+      this field turns false, the managed user will be guided to PIN unlock the
+      SIM.
+
+* **AllowOnlyPolicyCellularNetworks**
+    * (optional, defaults to false) - **boolean**
+    * When this field is present and set to true, only cellular networks present
+      in policy may be connected to. No new cellular networks may be added or
+      configured. This allows admins to ensure that only policy configured
+      cellular networks are accessible.
 
 * **AllowOnlyPolicyNetworksToAutoconnect**
     * (optional, defaults to false) - **boolean**
@@ -182,7 +195,7 @@ warns admins of the implications of mis-using this policy for Chrome OS.
       enabled and a network scan shows a new policy managed network, the device
       will automatically switch to the managed network.
 
-* **BlacklistedHexSSIDs**
+* **BlacklistedHexSSIDs** <!--- nocheck -->
     * DEPRECATED, use **BlockedHexSSIDs** instead.<br/>
     * (optional) - **array of string**
     * List of strings containing blocked hex SSIDs. Networks included in
@@ -204,7 +217,9 @@ warns admins of the implications of mis-using this policy for Chrome OS.
         * *Tether*
         * *VPN*
     * List of strings containing disabled network interfaces.
-    * Adding *VPN* to the list will only disable Chrome OS built-in VPN.
+    * Adding *VPN* to the list will disable all VPN types. Android VPN
+      connections may still be established successfully but will be
+      closed shortly after that by the Chrome OS connection manager.
 
 ## Network Configuration
 
@@ -231,14 +246,15 @@ Field **NetworkConfigurations** is an array of
         * *DHCP*
         * *Static*
     * Determines whether the IP Address configuration is statically configured,
-      see **StaticIPConfig**, or automatically configured using DHCP.
+      see **StaticIPConfig**, or automatically configured. Note that *DHCP*
+      here includes the case of configuring through other dynamic IP allocating
+      protocols (e.g. SLAAC) as well.
 
 * **Metered**
     * (optional, defaults to "false") - **boolean**
     * Whether the network should be considered metered. This may affect auto
       update frequency, and may be used as a hint for apps to conserve data.
       When not specified, the system will set this to the detected value.
-      See also **WiFi.TetheringState**.
 
 * **NameServersConfigType**
     * (optional if **Remove** is *false*, otherwise ignored. Defaults to *DHCP*
@@ -247,7 +263,9 @@ Field **NetworkConfigurations** is an array of
         * *DHCP*
         * *Static*
     * Determines whether the NameServers configuration is statically configured,
-      see **StaticIPConfig**, or automatically configured using DHCP.
+      see **StaticIPConfig**, or automatically configured. Note that *DHCP*
+      here includes the case of configuration through other dynamic nameserver
+      configuring protocols (e.g. IPv6 RDNSS option) as well.
 
 * **IPConfigs**
     * (optional for connected networks, read-only) -
@@ -475,6 +493,19 @@ field **WiFi** must be set to an object of type [WiFi](#WiFi-type).
     * Indicating that the network should be connected to automatically when in
       range.
 
+* **BSSIDAllowlist**
+    * (optional) - **array of string**
+    * Array of BSSIDs that control what APs can be connected to. BSSIDs
+      should be formatted as colon-separated octets (e.g.
+      `"00:01:02:03:04:05"`).
+    * Values are:
+        * *Empty list*: The WiFi network can associate with any AP.
+        * *Non-empty list*: The Wifi network will only associate with the
+          specified BSSes.
+        * *["00:00:00:00:00:00"]*: Special value indicating the network
+          shouldn't associate with any AP. `"00:00:00:00:00:00"` shouldn't be a
+          part of any other list of values, otherwise it may cause an error.
+
 * **EAP**
     * (required if **Security** is
         *WEP-8021X* or *WPA-EAP*, otherwise ignored) - [EAP](#EAP-type)
@@ -526,10 +557,7 @@ field **WiFi** must be set to an object of type [WiFi](#WiFi-type).
       be set to '0' or not present.
 
 * **TetheringState**
-    * (optional, read-only, defaults to "NotDetected") - **string**
-    * The tethering state of the WiFi connection. If the connection is
-      tethered the value is "Confirmed". If the connection is suspected to be
-      tethered the value is "Suspected". In all other cases it's "NotDetected".
+    * DEPRECATED, see **Metered**.<br/>
 
 ---
   * At least one of the fields **HexSSID** or **SSID** must be present.
@@ -584,6 +612,7 @@ field **VPN** must be set to an object of type [VPN](#VPN-type).
     * (required) - **string**
     * Allowed values are:
         * *ARCVPN*
+        * *IPsec*
         * *L2TP-IPsec*
         * *OpenVPN*
         * *ThirdPartyVPN*
@@ -597,9 +626,18 @@ field **VPN** must be set to an object of type [VPN](#VPN-type).
     * (required) - **string**
     * Allowed values are:
         * *Cert*
+        * *EAP*
         * *PSK*
     * If *Cert* is used, **ClientCertType** and *ServerCARefs* (or the
       deprecated *ServerCARef*) must be set.
+    * *EAP* is only valid if **IKEVersion** is 2.
+
+* **ClientCertProvisioningProfileId**
+    * (required if **ClientCertType** is *ProvisioningProfileId*, otherwise
+      ignored) - **string**
+    * Id of the client certificate to be used. On Chrome OS, this corresponds
+      to the "cert_profile_id" field in the RequiredClientCertificateForUser or
+      RequiredClientCertificateForDevice policy.
 
 * **ClientCertPKCS11Id**
     * (required if **ClientCertType** is *PKCS11Id*, otherwise ignored) -
@@ -621,8 +659,9 @@ field **VPN** must be set to an object of type [VPN](#VPN-type).
       * *PKCS11Id*
       * *Pattern*
       * *Ref*
-    * *Ref* and *Pattern* indicate that the associated property should be used
-      to identify the client certificate.
+      * *ProvisioningProfileId*
+    * *Ref*, *Pattern* and *ProvisioningProfileId* indicate that the associated
+      property should be used to identify the client certificate.
     * *PKCS11Id* is used when representing a certificate in a local store and is
       only valid when describing a local configuration.
 
@@ -639,12 +678,20 @@ field **VPN** must be set to an object of type [VPN](#VPN-type).
     * (required) - **integer**
     * Version of IKE protocol to use.
 
+* **LocalIdentity**
+    * (optional if **IKEVersion** is 2, otherwise ignored) - **string**
+    * The local identity used in IKE authentication.
+
 * **PSK**
     * (optional if **AuthenticationType** is *PSK*, otherwise ignored)
       - **string**
     * Pre-Shared Key. If not specified, the user is prompted when connecting.
       If the value is saved but not known, this may be set to an empty value,
       indicating that the UI does not need to provide it.
+
+* **RemoteIdentity**
+    * (optional if **IKEVersion** is 2, otherwise ignored) - **string**
+    * The remote identity used in IKE authentication.
 
 * **SaveCredentials**
     * (optional if **AuthenticationType**
@@ -804,7 +851,7 @@ L2TP over IPsec with pre-shared key:
 
 * **CompLZO**
     * (optional, defaults to *adaptive*) - **string**
-    * DEPRECATED, use **Compress** with *lzo* option instead.
+    * DEPRECATED, use **CompressionAlgorithm** with *lzo* option instead.
     * Decides to fast LZO compression with *true*
       and *false* as other values.
 
@@ -813,7 +860,7 @@ L2TP over IPsec with pre-shared key:
     * DEPRECATED, do not use.
     * Disables adaptive compression.
 
-* **Compress**
+* **CompressionAlgorithm**
     * (optional, defaults to *None*) - **string**
     * Specifies the compression algorithm to be used.
     * Allowed values are:
@@ -1025,6 +1072,53 @@ L2TP over IPsec with pre-shared key:
         * *subject*
       See OpenVPN's documentation for "--verify-x509-name" for the meaning of
       each value. Defaults to OpenVPN's default if not specified.
+
+## WireGuard connections and types
+
+**VPN.Type** must be *WireGuard*.
+
+### WireGuard type
+
+* **IPAddresses**
+    * (required) - **array of string**
+    * Array of IP addresses in string representation (case-insensitive for IPv6)
+      to be configured on the local WireGuard interface.
+
+* **PrivateKey**
+    * (optional) - **string**
+    * The base64 private key of the wireguard client peer. If not set, a random
+      one will be generated.
+
+* **Peers**
+    * (required) - **array of** [WireGuardPeer](#WireGuard-peer-type)
+    * The list of remote peers.
+
+### WireGuardPeer type
+
+* **PublicKey**
+    * (required) - **string**
+    * The base64 public key of the remote peer.
+
+* **PresharedKey**
+    * (optional) - **string**
+    * A base64 preshared key between client and remote peer for an additional
+      layer of symmetric-key cryptography.
+
+* **AllowedIPs**
+    * (required) - **string**
+    * A comma-separated list of IPv4 prefixes which controls the allowed
+      incoming traffic and set outgoing route for this peer.
+
+* **Endpoint**
+    * (required) - **string**
+    * The physical IP or hostname and port of the peer, separated by a colon.
+
+* **PersistentKeepalive**
+    * (optional, default to *0*) - **integer**
+    * A second interval between 1 and 65535 inclusive, of how often an
+      authenticated empty packet will be sent to the peer for the purpose of
+      keeping a stateful firewall or NAT mapping valid persistently. Set to *0*
+      will disable this feature.
 
 ## Third-party VPN provider based connections and types
 
@@ -1241,6 +1335,7 @@ type exists to configure the authentication.
         * *EAP-TTLS*
         * *EAP-SIM*
         * *PEAP*
+        * *MSCHAPv2* (only valid for IPsec-IKEv2 VPNs)
 
 * **Password**
     * (optional) - **string**
@@ -1286,6 +1381,14 @@ type exists to configure the authentication.
 	* (optional) - [array of AlternativeSubjectName](#AlternativeSubjectName-type)
 	* WiFi only. A list of alternative subject names to be matched against the
     alternative subject name of an authentication server certificate.
+
+* **DomainSuffixMatch**
+    * (optional) - **array of string**
+    * WiFi only. A list of constraints for the server domain name. If set, the
+      entries will be used as suffix match requirements against the DNS name
+      element(s) of the alternative subject name of an authentication server
+      certificate. When multiple match strings are specified, a match with any one
+      of the values is considered a sufficient match for the server certificate.
 
 * **TLSVersionMax**
     * (optional) - **string**
@@ -1340,11 +1443,22 @@ ONC configuration of of **Cellular** networks is not yet supported.
 
 ### Cellular type
 
-* **AutoConnect**
-    * (optional, defaults to *false*) - **boolean**
-    * Indicating that the network should be connected to automatically when
-      possible. Note, that disabled **AllowRoaming**
-      takes precedence over autoconnect.
+* **ActivationState**
+    * (optional, read-only) - **string**
+    * Carrier account activation state.
+    * Allowed values are:
+        * *Activated*
+        * *Activating*
+        * *NotActivated*
+        * *PartiallyActivated*
+
+* **ActivationType**
+    * (optional) - **string**
+    * Activation type.
+
+* **AllowRoaming**
+    * (optional) - **boolean**
+    * Whether cellular data connections are allowed when the device is roaming.
 
 * **APN**
     * (optional) - [APN](#APN-type)
@@ -1355,26 +1469,16 @@ ONC configuration of of **Cellular** networks is not yet supported.
     * (optional) - [array of APN](#APN-type)
     * List of available APN configurations.
 
-* **ActivationType**
-    * (optional) - **string**
-    * Activation type.
+* **AutoConnect**
+    * (optional, defaults to *false*) - **boolean**
+    * Indicating that the network should be connected to automatically when
+      possible. Note, that disabled **AllowRoaming**
+      takes precedence over autoconnect.
 
-* **ActivationState**
-    * (optional, read-only) - **string**
-    * Carrier account activation state.
-    * Allowed values are:
-        * *Activated*
-        * *Activating*
-        * *NotActivated*
-        * *PartiallyActivated*
-
-* **AllowRoaming**
-    * (optional) - **boolean**
-    * Whether cellular data connections are allowed when the device is roaming.
-
-* **Carrier**
-    * (optional, read-only) - **string**
-    * The name of the carrier for which the device is configured.
+* **EID**
+    * (optional, read-only, provided only for eSIM networks) - **string**
+    * For GSM / LTE modems, the Embedded Universal Integrated Circuit Card
+      Identifier of the eSIM card installed in the device.
 
 * **ESN**
     * (optional, read-only) - **string**
@@ -1421,6 +1525,16 @@ ONC configuration of of **Cellular** networks is not yet supported.
     * For GSM modems, the International Mobile Subscriber Identity of the SIM
       card installed in the device.
 
+* **LastConnectedAttachApnProperty**
+    * (optional, read-only) - [APN](#APN-type)
+    * The attach APN information used in the last successful connection
+    * attempt. This value is not cleared if the connection fails.
+
+* **LastConnectedDefaultApnProperty**
+    * (optional, read-only) - [APN](#APN-type)
+    * The default APN information used in the last successful connection
+    * attempt. This value is not cleared if the connection fails.
+
 * **LastGoodAPN**
     * (optional, read-only) - [APN](#APN-type)
     * The APN information used in the last successful connection attempt.
@@ -1460,6 +1574,7 @@ ONC configuration of of **Cellular** networks is not yet supported.
         * *LTE*
         * *LTEAdvanced*
         * *UMTS*
+        * *5GNR*
 
 * **PaymentPortal**
     * (optional, read-only) - [PaymentPortal](#PaymentPortal-type)
@@ -1502,10 +1617,18 @@ ONC configuration of of **Cellular** networks is not yet supported.
         is *LTE*) - **boolean**
     * For GSM or LTE modems, indicates whether a SIM card is present or not.
 
+* **SMDPAddress**
+    * (optional, read-only) - **string**
+    * When set with the address of an SMDP+ server, indicates that eSIM profile
+      for this network should be downloaded and installed using this address.
+
 * **SupportNetworkScan**
     * (optional, read-only) - **boolean**
     * True if the cellular network supports scanning.
 
+* **UserAPNList**
+    * (optional) - [array of APN](#APN-type)
+    * List of user APN configurations.
 
 ### APN type
 
@@ -1670,7 +1793,7 @@ objects of [Certificate](#Certificate-type) type.
     * (required if **Type** is
         *Client*, otherwise ignored) - **string**
     * For certificates with
-      private keys, this is the base64 encoding of the a PKCS#12 file.
+      private keys, this is the base64 encoding of a PKCS#12 file.
 
 * **Remove**
     * (optional, defaults to *false*) - **boolean**
@@ -1856,9 +1979,10 @@ expansions. These allow one ONC to have basic user-specific variations.
 
 
 ## String Substitutions
-The value of **WiFi.EAP.Password** is subject to string substitution. These
-differ from the **String Expansions** section above in that an exact match of
-the substitution variable is required in order to substitute the real value.
+The values of **WiFi.EAP.Password** and **VPN.L2TP.Password** are subject to
+string substitution. These differ from the **String Expansions** section above
+in that an exact match of the substitution variable is required in order to
+substitute the real value.
 
 ### Example expansions, assuming the user password was *helloworld*:
 
@@ -2084,11 +2208,186 @@ they can be edited by the user. All other values are mandatory.
 }
 ```
 
+## Chrome internal format
 
-## Standalone editor
+Internally, Chrome uses a base::Value dictionary format to represent ONC
+configurations. We refer to two types of dictionaries within the code:
 
-The source code for a Chrome packaged app to generate ONC configuration can
-be found here: https://chromium.googlesource.com/chromiumos/platform/spigots/
+* **ONC Dictionary** A dictionary of key-value pairs similar to the
+    dictionaries under "NetworkConfigurations" described above.
+
+* **Managed ONC Dictionary** A dictionary of key-value pairs where the values
+    are dictionaries containing values from policies and settings described
+    below.
+
+Configurations may combine policy and settings configurations.
+
+### Merge rules
+
+If a policy configuration exists, the following rules apply:
+
+* **Enforced** (default): The policy value is always the effective value.
+    * *Note*: User policy supersedes Device policy.
+    * *Note*: If a property is not provided by policy it is treated as enforced
+      and the default value is applied.
+* **Recommended**: If a property appears in the [Recommended](#Recommended-Values) section,
+    it is considered 'Recommended'. If a UserSetting or SharedSetting value
+    exists, it can be selected as the Effective value.
+
+### Dictionary format
+
+Managed ONC dictionaries contain the keys described under
+[Network Configuration](#Network-Configuration), however the values are
+dictionaries that may include the following properties:
+
+* **Active**: For properties that are translated from the configuration
+    manager (e.g. Shill), the 'active' value currently in use by the
+    configuration manager.
+* **Effective**: The effective source for the property: UserPolicy, DevicePolicy,
+    UserSetting or SharedSetting.
+* **UserPolicy**: The value provided by the user policy if any.
+* **DevicePolicy**: The value provided by the device policy if any.
+* **UserSetting**: The value set by the logged in user. Only provided if
+    UserEditable is true (i.e. no policy affects the property or the
+    policy provided value is recommended only).
+* **SharedSetting**: The value set for all users of the device. Only provided if
+    DeviceEditiable is true (i.e. no policy affects the property or the
+    policy provided value is recommended only).
+* **UserEditable**: True if a UserPolicy exists and allows the property to be
+    edited (i.e. is a recommended value). Defaults to False.
+* **DeviceEditable**: True if a DevicePolicy exists and allows the property to be
+    edited (i.e. is a recommended value). Defaults to False.
+
+### Examples
+
+Property with User policy enforced value.
+```
+  "Priority": {
+    "Active": 3,
+    "Effective": "UserPolicy",
+    "UserEditable": false,
+    "UserPolicy": 3,
+  },
+```
+
+Property with Device policy recommended value and no setting value.
+```
+  "Priority": {
+    "Active": 2,
+    "DeviceEditable": true,
+    "DevicePolicy": 2,
+    "Effective": "DevicePolicy",
+  },
+```
+
+Property with Device policy recommended value and a shared setting value.
+```
+  "Priority": {
+    "Active": 1,
+    "DeviceEditable": true,
+    "DevicePolicy": 2,
+    "Effective": "SharedSetting",
+    "SharedSetting": 1,
+  },
+```
+
+Property with Device policy and User policy recommended values and a user
+setting selected as the effective setting.
+```
+  "Priority": {
+    "Active": 1
+    "DeviceEditable": true,
+    "DevicePolicy": 2,
+    "Effective": "UserSetting",
+    "UserEditable": true,
+    "UserPolicy": 3,
+    "UserSetting": 1
+  },
+```
+
+## Mojo format
+
+Chrome provides a mojo API for ONC properties:
+https://source.chromium.org/chromium/chromium/src/+/main:chromeos/services/network_config/public/mojom/cros_network_config.mojom
+
+The mojo API uses a simplified structure for managed properties based on the
+following assumptions:
+
+* Settings UI and other clients are only interested in the active value and
+  the source of the active / effective value.
+* Preserving non policy settings is only interesting if they are the active
+  value. i.e. if a policy value is enforced or a recommended value is used, it
+  is not necessary to preserve any other settings values.
+
+In this simplified format, a descriptive enum is used to describe the effective
+policy source and whether it is enforced or recommended.
+
+The conversion code can be found in cros_network_config.cc:GetManagedDictionary
+https://source.chromium.org/chromium/chromium/src/+/main:chromeos/ash/services/network_config/cros_network_config.cc
+
+```
+enum PolicySource {
+  // The property is not controlled by policy.
+  kNone,
+  // The property value came from a user policy and is enforced.
+  kUserPolicyEnforced,
+  // The property value came from a device policy and is enforced.
+  kDevicePolicyEnforced,
+  // The property value came from a user policy and is recommended.
+  kUserPolicyRecommended,
+  // The property value came from a device policy and is recommended.
+  kDevicePolicyRecommended,
+  // The property value came from an extension.
+  kActiveExtension,
+};
+
+struct ManagedString {
+  string active_value;
+  PolicySource policy_source = kNone;
+  string? policy_value;
+};
+```
+
+### Examples
+
+Property with User policy enforced value.
+```
+  Priority: {
+    activeValue: 3,
+    policySource: kUserPolicyEnforced,
+    policyValue: 3
+  },
+```
+
+Property with Device policy recommended value and no setting value.
+```
+  Priority: {
+    activeValue: 2,
+    policySource: kDevicePolicyRecommended,
+    policyValue: 2
+  },
+```
+
+Property with Device policy recommended value and a setting value.
+```
+  Priority: {
+    activeValue: 1,
+    policySource: DevicePolicyRecommended,
+    policyValue: 2
+  },
+```
+
+Property with Device policy and User policy recommended values and a user
+setting selected as the effective setting. *Note*: The User policy overrides
+the Device policy and is all that is represented here. The device configuration
+is persisted in the device policy itself.
+```
+  Priority: {
+    activeValue: 1,
+    policySource: kUserPolicyRecommended,
+    policyValue: 3
+  },
+```
 
 ## Internationalization and Localization
 
@@ -2113,8 +2412,3 @@ user names for connections that are user-specific are persisted to disk,
 they should be stored in a location that is encrypted. Users can also opt in
 these cases to not save their user credentials in the config file and will
 instead be prompted when they are needed.
-
-## Authors
-
-* pneubeck@chromium.org
-* stevenjb@chromium.org

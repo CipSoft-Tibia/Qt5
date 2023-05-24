@@ -9,7 +9,7 @@
 // Includes the items from GENRB_ALIAS_SOURCE and GENRB_SOURCE
   "localeFilter": {
     "filterType": "language",
-    "whitelist": [
+    "includelist": [
 // Need to explicitly add "root"
       "root",
 
@@ -130,13 +130,17 @@
   },
   "featureFilters": {
     "brkitr_dictionaries": {
-      "blacklist": [
+      "excludelist": [
 // Filtered by android/brkitr.patch        "cjdict",
         "cjdict"
       ]
     },
     "brkitr_rules": {
-      "blacklist": [
+      "excludelist": [
+// Exclude *phrase_cj
+        "line_phrase_cj",
+        "line_normal_phrase_cj",
+        "line_loose_phrase_cj",
 // Exclude line_cj till we upgrade to 68.1 due to size impact.
         "line_cj",
         "title",
@@ -144,14 +148,14 @@
       ]
     },
     "brkitr_tree": {
-      "blacklist": [
+      "excludelist": [
 	"en_US_POSIX"
       ]
     },
 // Based on the ICU63 version of
 // https://cs.chromium.org/chromium/src/third_party/icu/source/data/mappings/ucmlocal.mk?rcl=797b7c
     "conversion_mappings": {
-      "whitelist": [
+      "includelist": [
 // UCM_SOURCE_CORE=...
         "iso-8859-2-html",
         "iso-8859-3-html",
@@ -195,7 +199,7 @@
 // "bn", "et", "gu", "kn", "ml", "mr", "ms", "ta", "te"
     "curr_tree": {
       "filterType": "language",
-      "whitelist": [
+      "includelist": [
 // Need to explicitly add "root"
 	"root",
 
@@ -256,14 +260,14 @@
       "filterType": "union",
       "unionOf": [
         {
-          "whitelist": [
+          "includelist": [
             "en",
             "en_US"
           ]
         },
         {
           "filterType": "language",
-          "whitelist": [
+          "includelist": [
 // Need to explicitly add "root"
     	    "root",
 
@@ -327,7 +331,7 @@
 // Based on
 // https://cs.chromium.org/chromium/src/third_party/icu/android/patch_locale.sh?rcl=797b7c
     "region_tree": {
-      "whitelist": [
+      "includelist": [
 // Need to explicitly add "root"
 //	"root",
 // # Excludes region data. On Android Java API is used to get the data.
@@ -339,7 +343,12 @@
 // Based on the ICU63 version of
 // https://cs.chromium.org/chromium/src/third_party/icu/source/data/sprep/spreplocal.mk?rcl=797b7c
     "stringprep": { "filterType": "exclude" },
-    "translit": { "filterType": "exclude" },
+    "translit": {
+      "filterType": "language",
+      "includelist": [
+         "root"
+      ]
+    },
 // Based on the ICU63 version of
 // https://cs.chromium.org/chromium/src/third_party/icu/source/data/unit/reslocal.mk?rcl=797b7c
 // Includes the items from UNIT_ALIAS_SOURCE and UNIT_SOURCE
@@ -347,7 +356,7 @@
 // "bn", "et", "gu", "kn", "ml", "mr", "ms", "ta", "te"
     "unit_tree": {
       "filterType": "language",
-      "whitelist": [
+      "includelist": [
 // Need to explicitly add "root"
 	"root",
 
@@ -406,7 +415,7 @@
 // "bn", "et", "gu", "kn", "ml", "mr", "ms", "ta", "te"
     "zone_tree": {
       "filterType": "language",
-      "whitelist": [
+      "includelist": [
 // Need to explicitly add "root"
 	"root",
 // Need to explicitly add "tzdbNames"
@@ -518,6 +527,7 @@
         "-/ExemplarCharactersPunctuation",
         "-/measurementSystemNames",
         "-/NumberElements/minimalPairs",
+        "-/personNames",
         "-/delimiters"
       ]
     },
@@ -619,7 +629,7 @@
       "categories": [
         "region_tree"
       ],
-      "whitelist": [
+      "includelist": [
 // Need to explicitly add "root"
 //	"root",
 // # Excludes region data. On Android Java API is used to get the data.
@@ -630,23 +640,6 @@
       "rules": [
         "-/*",
         "+/Countries/US"
-      ]
-    },
-// Based on remove_legacy_chinese_codepoint_collation
-// # big5han and gb2312han collation do not make any sense and nobody uses them.
-    {
-      "categories": [
-        "coll_tree"
-      ],
-      "files": {
-        "whitelist": [
-	  "zh"
-	]
-      },
-      "rules": [
-        "-/*/unihan",
-        "-/*/big5han",
-        "-/*/gb2312han"
       ]
     },
 // Based on https://cs.chromium.org/chromium/src/third_party/icu/patches/data.build.patch?rcl=797b7c
@@ -662,6 +655,24 @@
 	"-/collations/*/Sequence"
       ]
     },
+// The following rules must be placed below "-/collations/*/Sequence" to avoid keeping empty unihan, big5han and gb2312han
+// Based on remove_legacy_chinese_codepoint_collation
+// # big5han and gb2312han collation do not make any sense and nobody uses them.
+    {
+      "categories": [
+        "coll_tree"
+      ],
+      "files": {
+        "includelist": [
+	  "zh"
+	]
+      },
+      "rules": [
+        "-/*/unihan",
+        "-/*/big5han",
+        "-/*/gb2312han"
+      ]
+    },
 // Based on filter_unit_data
 // # Keep only duration and compound in units* sections.
     {
@@ -672,55 +683,11 @@
         "-/units",
         "-/unitsNarrow",
         "-/unitsShort",
-        "+/*/*/acre",
-        "+/*/*/bit",
-        "+/*/*/byte",
-        "+/*/*/celsius",
-        "+/*/*/centimeter",
-        "+/*/*/day",
-        "+/*/*/degree",
-        "+/*/*/fahrenheit",
-        "+/*/*/fluid-ounce",
-        "+/*/*/foot",
-        "+/*/*/gallon",
-        "+/*/*/gigabit",
-        "+/*/*/gigabyte",
-        "+/*/*/gram",
-        "+/*/*/hectare",
-        "+/*/*/hour",
-        "+/*/*/inch",
-        "+/*/*/kilobit",
-        "+/*/*/kilobyte",
-        "+/*/*/kilogram",
-        "+/*/*/kilometer",
-        "+/*/*/liter",
-        "+/*/*/megabit",
-        "+/*/*/megabyte",
-        "+/*/*/meter",
-        "+/*/*/mile",
-        "+/*/*/mile-scandinavian",
-        "+/*/*/millimeter",
-        "+/*/*/milliliter",
-        "+/*/*/millisecond",
-        "+/*/*/minute",
-        "+/*/*/month",
-        "+/*/*/ounce",
-        "+/*/*/percent",
-        "+/*/*/petabyte",
-        "+/*/*/pound",
-        "+/*/*/second",
-        "+/*/*/stone",
-        "+/*/*/terabit",
-        "+/*/*/terabyte",
-        "+/*/*/week",
-        "+/*/*/yard",
-        "+/*/*/year",
-        "+/*/*/kilometer-per-hour",
-        "+/*/*/meter-per-second",
-        "+/*/*/mile-per-hour",
-        "+/*/*/liter-per-kilometer",
-        "+/*/*/mile-per-gallon",
-        "+/*/compound"
+        "+/*/compound/per",
+        "+/*/concentr/percent",
+        "-/*/concentr/percent/dnam",
+        "+/*/duration",
+        "-/*/duration/*/dnam"
       ]
     },
 // # Remove exemplar cities in timezone data.
@@ -1168,7 +1135,7 @@
         "locales_tree"
       ],
       "files": {
-        "whitelist": [
+        "includelist": [
 	  "th"
 	]
       },
@@ -1177,7 +1144,11 @@
         "+/calendar/default",
         "+/calendar/gregorian",
         "+/calendar/generic",
-        "+/calendar/buddhist"
+        "+/calendar/buddhist",
+        "-/calendar/default/DateTimeSkeletons",
+        "-/calendar/gregorian/DateTimeSkeletons",
+        "-/calendar/generic/DateTimeSkeletons",
+        "-/calendar/buddhist/DateTimeSkeletons"
       ]
     },
     {
@@ -1185,7 +1156,7 @@
         "locales_tree"
       ],
       "files": {
-        "blacklist": [
+        "excludelist": [
 	  "th"
 	]
       },
@@ -1193,7 +1164,10 @@
         "-/calendar/*",
         "+/calendar/default",
         "+/calendar/gregorian",
-        "+/calendar/generic"
+        "+/calendar/generic",
+        "-/calendar/default/DateTimeSkeletons",
+        "-/calendar/gregorian/DateTimeSkeletons",
+        "-/calendar/generic/DateTimeSkeletons"
       ]
     },
 // Based on abridge_locale_data_for_non_ui_languages
@@ -1203,7 +1177,7 @@
         "locales_tree"
       ],
       "files": {
-        "whitelist": [
+        "includelist": [
 // 1. Created by diff scripts/chrome_ui_languages.list scripts/accept_lang.list|egrep "^>"|egrep -v "#"|cut -c3-10
 // 2. Add EXTRA_LANGUAGES="bn et gu kn ml mr ms ta te" per
 //    https://cs.chromium.org/chromium/src/third_party/icu/cast/patch_locale.sh?rcl=797b7c
@@ -1278,7 +1252,6 @@
           "my",
           "ne",
           "nn",
-          "no",
           "nso",
           "ny",
           "nyn",
@@ -1326,6 +1299,7 @@
       "rules": [
         "-/*",
         "+/%%ALIAS",
+        "+/%%Parent",
         "+/LocaleScript",
         "+/layout",
         "+/Version"
@@ -1346,9 +1320,9 @@
         "-/Keys",
         "-/Languages",
         "-/Languages%long",
+        "-/Languages%menu",
         "-/Languages%short",
         "-/Languages%variant",
-        "-/LanguagesShort",
         "-/Scripts",
         "-/Scripts%long",
         "-/Scripts%short",
@@ -1382,7 +1356,21 @@
         "misc"
       ],
       "files": {
-        "whitelist": [
+        "includelist": [
+          "grammaticalFeatures"
+        ]
+      },
+      "rules": [
+        "-/*",
+        "+/grammaticalData/derivations/*/compound/gender/per"
+      ]
+    },
+    {
+      "categories": [
+        "misc"
+      ],
+      "files": {
+        "includelist": [
           "supplementalData"
 	]
       },
@@ -1398,6 +1386,15 @@
         "+/timeData",
         "+/weekData",
         "+/weekData%variant"
+      ]
+    },
+    {
+      "categories": [
+        "translit"
+      ],
+      "rules": [
+        "-/*",
+        "+/RuleBasedTransliteratorIDs/Latin-ASCII"
       ]
     },
 // Remove all the Version

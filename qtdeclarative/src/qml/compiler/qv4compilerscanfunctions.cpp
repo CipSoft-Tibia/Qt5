@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4compilerscanfunctions_p.h"
 
@@ -57,10 +21,7 @@ using namespace QQmlJS::AST;
 
 static CompiledData::Location location(const QQmlJS::SourceLocation &astLocation)
 {
-    CompiledData::Location target;
-    target.line = astLocation.startLine;
-    target.column = astLocation.startColumn;
-    return target;
+    return CompiledData::Location(astLocation.startLine, astLocation.startColumn);
 }
 
 
@@ -107,6 +68,7 @@ void ScanFunctions::leaveEnvironment()
 
 void ScanFunctions::checkDirectivePrologue(StatementList *ast)
 {
+    Q_ASSERT(_context);
     for (StatementList *it = ast; it; it = it->next) {
         if (ExpressionStatement *expr = cast<ExpressionStatement *>(it->statement)) {
             if (StringLiteral *strLit = cast<StringLiteral *>(expr->expression)) {
@@ -115,7 +77,7 @@ void ScanFunctions::checkDirectivePrologue(StatementList *ast)
                 // allowed.
                 if (strLit->literalToken.length < 2)
                     continue;
-                QStringRef str = _sourceCode.midRef(strLit->literalToken.offset + 1, strLit->literalToken.length - 2);
+                QStringView str = QStringView{_sourceCode}.mid(strLit->literalToken.offset + 1, strLit->literalToken.length - 2);
                 if (str == QLatin1String("use strict")) {
                     _context->isStrict = true;
                 } else {
@@ -129,8 +91,9 @@ void ScanFunctions::checkDirectivePrologue(StatementList *ast)
     }
 }
 
-void ScanFunctions::checkName(const QStringRef &name, const QQmlJS::SourceLocation &loc)
+void ScanFunctions::checkName(QStringView name, const QQmlJS::SourceLocation &loc)
 {
+    Q_ASSERT(_context);
     if (_context->isStrict) {
         if (name == QLatin1String("implements")
                 || name == QLatin1String("interface")
@@ -161,6 +124,7 @@ void ScanFunctions::endVisit(Program *)
 bool ScanFunctions::visit(ESModule *ast)
 {
     enterEnvironment(ast, defaultProgramType, QStringLiteral("%ModuleCode"));
+    Q_ASSERT(_context);
     _context->isStrict = true;
     return true;
 }
@@ -172,6 +136,7 @@ void ScanFunctions::endVisit(ESModule *)
 
 bool ScanFunctions::visit(ExportDeclaration *declaration)
 {
+    Q_ASSERT(_context);
     QString module;
     if (declaration->fromClause) {
         module = declaration->fromClause->moduleSpecifier.toString();
@@ -181,7 +146,9 @@ bool ScanFunctions::visit(ExportDeclaration *declaration)
 
     QString localNameForDefaultExport = QStringLiteral("*default*");
 
-    if (declaration->exportAll) {
+    if (declaration->exportsAll()) {
+        Q_ASSERT_X(declaration->fromClause, "ScanFunctions",
+                   "ExportDeclaration with exportAll always have a fromClause");
         Compiler::ExportEntry entry;
         entry.moduleRequest = declaration->fromClause->moduleSpecifier.toString();
         entry.importName = QStringLiteral("*");
@@ -262,6 +229,7 @@ bool ScanFunctions::visit(ExportDeclaration *declaration)
 
 bool ScanFunctions::visit(ImportDeclaration *declaration)
 {
+    Q_ASSERT(_context);
     QString module;
     if (declaration->fromClause) {
         module = declaration->fromClause->moduleSpecifier.toString();
@@ -310,6 +278,7 @@ bool ScanFunctions::visit(ImportDeclaration *declaration)
 
 bool ScanFunctions::visit(CallExpression *ast)
 {
+    Q_ASSERT(_context);
     if (!_context->hasDirectEval) {
         if (IdentifierExpression *id = cast<IdentifierExpression *>(ast->base)) {
             if (id->name == QLatin1String("eval")) {
@@ -324,20 +293,25 @@ bool ScanFunctions::visit(CallExpression *ast)
 
 bool ScanFunctions::visit(PatternElement *ast)
 {
+    Q_ASSERT(_context);
     if (!ast->isVariableDeclaration())
         return true;
 
     BoundNames names;
     ast->boundNames(&names);
 
-    QQmlJS::SourceLocation lastInitializerLocation = ast->lastSourceLocation();
-    if (_context->lastBlockInitializerLocation.isValid())
-        lastInitializerLocation = _context->lastBlockInitializerLocation;
+    QQmlJS::SourceLocation declarationLocation = ast->firstSourceLocation();
+    if (_context->lastBlockInitializerLocation.isValid()) {
+        declarationLocation.length = _context->lastBlockInitializerLocation.end()
+                - declarationLocation.offset;
+    } else {
+        declarationLocation.length = ast->lastSourceLocation().end() - declarationLocation.offset;
+    }
 
-    for (const auto &name : qAsConst(names)) {
+    for (const auto &name : std::as_const(names)) {
         if (_context->isStrict && (name.id == QLatin1String("eval") || name.id == QLatin1String("arguments")))
             _cg->throwSyntaxError(ast->identifierToken, QStringLiteral("Variable name may not be eval or arguments in strict mode"));
-        checkName(QStringRef(&name.id), ast->identifierToken);
+        checkName(QStringView(name.id), ast->identifierToken);
         if (name.id == QLatin1String("arguments"))
             _context->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
         if (ast->scope == VariableScope::Const && !ast->initializer && !ast->isForDeclaration && !ast->destructuringPattern()) {
@@ -345,7 +319,7 @@ bool ScanFunctions::visit(PatternElement *ast)
             return false;
         }
         if (!_context->addLocalVar(name.id, ast->initializer ? Context::VariableDefinition : Context::VariableDeclaration, ast->scope,
-                                   /*function*/nullptr, lastInitializerLocation)) {
+                                   /*function*/nullptr, declarationLocation)) {
             _cg->throwSyntaxError(ast->identifierToken, QStringLiteral("Identifier %1 has already been declared").arg(name.id));
             return false;
         }
@@ -355,6 +329,7 @@ bool ScanFunctions::visit(PatternElement *ast)
 
 bool ScanFunctions::visit(IdentifierExpression *ast)
 {
+    Q_ASSERT(_context);
     checkName(ast->name, ast->identifierToken);
     if (_context->usesArgumentsObject == Context::ArgumentsObjectUnknown && ast->name == QLatin1String("arguments"))
         _context->usesArgumentsObject = Context::ArgumentsObjectUsed;
@@ -368,15 +343,18 @@ bool ScanFunctions::visit(ExpressionStatement *ast)
         if (!_allowFuncDecls)
             _cg->throwSyntaxError(expr->functionToken, QStringLiteral("conditional function or closure declaration"));
 
-        if (!enterFunction(expr, /*enterName*/ true))
+        if (!enterFunction(expr, expr->identifierToken.length > 0
+                                ? FunctionNameContext::Inner
+                                : FunctionNameContext::None)) {
             return false;
+        }
         Node::accept(expr->formals, this);
         Node::accept(expr->body, this);
         leaveEnvironment();
         return false;
     } else {
         SourceLocation firstToken = ast->firstSourceLocation();
-        if (_sourceCode.midRef(firstToken.offset, firstToken.length) == QLatin1String("function")) {
+        if (QStringView{_sourceCode}.mid(firstToken.offset, firstToken.length) == QLatin1String("function")) {
             _cg->throwSyntaxError(firstToken, QStringLiteral("unexpected token"));
         }
     }
@@ -385,12 +363,15 @@ bool ScanFunctions::visit(ExpressionStatement *ast)
 
 bool ScanFunctions::visit(FunctionExpression *ast)
 {
-    return enterFunction(ast, /*enterName*/ false);
+    return enterFunction(ast, ast->identifierToken.length > 0
+                                ? FunctionNameContext::Inner
+                                : FunctionNameContext::None);
 }
 
 bool ScanFunctions::visit(ClassExpression *ast)
 {
     enterEnvironment(ast, ContextType::Block, QStringLiteral("%Class"));
+    Q_ASSERT(_context);
     _context->isStrict = true;
     _context->hasNestedFunctions = true;
     if (!ast->name.isEmpty())
@@ -405,6 +386,7 @@ void ScanFunctions::endVisit(ClassExpression *)
 
 bool ScanFunctions::visit(ClassDeclaration *ast)
 {
+    Q_ASSERT(_context);
     if (!ast->name.isEmpty())
         _context->addLocalVar(ast->name.toString(), Context::VariableDeclaration, AST::VariableScope::Let);
 
@@ -434,9 +416,10 @@ bool ScanFunctions::visit(TemplateLiteral *ast)
 
 bool ScanFunctions::visit(SuperLiteral *)
 {
+    Q_ASSERT(_context);
     Context *c = _context;
     bool needContext = false;
-    while (c && (c->contextType == ContextType::Block || c->isArrowFunction)) {
+    while (c->contextType == ContextType::Block || c->isArrowFunction) {
         needContext |= c->isArrowFunction;
         c = c->parent;
     }
@@ -455,6 +438,7 @@ bool ScanFunctions::visit(FieldMemberExpression *ast)
                 _cg->throwSyntaxError(ast->identifierToken, QLatin1String("Expected 'target' after 'new.'."));
                 return false;
             }
+            Q_ASSERT(_context);
             Context *c = _context;
             bool needContext = false;
             while (c->contextType == ContextType::Block || c->isArrowFunction) {
@@ -479,11 +463,12 @@ bool ScanFunctions::visit(ArrayPattern *ast)
     return false;
 }
 
-bool ScanFunctions::enterFunction(FunctionExpression *ast, bool enterName)
+bool ScanFunctions::enterFunction(FunctionExpression *ast, FunctionNameContext nameContext)
 {
+    Q_ASSERT(_context);
     if (_context->isStrict && (ast->name == QLatin1String("eval") || ast->name == QLatin1String("arguments")))
         _cg->throwSyntaxError(ast->identifierToken, QStringLiteral("Function name may not be eval or arguments in strict mode"));
-    return enterFunction(ast, ast->name.toString(), ast->formals, ast->body, enterName);
+    return enterFunction(ast, ast->name.toString(), ast->formals, ast->body, nameContext);
 }
 
 void ScanFunctions::endVisit(FunctionExpression *)
@@ -518,7 +503,7 @@ void ScanFunctions::endVisit(PatternProperty *)
 
 bool ScanFunctions::visit(FunctionDeclaration *ast)
 {
-    return enterFunction(ast, /*enterName*/ true);
+    return enterFunction(ast, FunctionNameContext::Outer);
 }
 
 void ScanFunctions::endVisit(FunctionDeclaration *)
@@ -553,10 +538,13 @@ void ScanFunctions::endVisit(ForStatement *)
     leaveEnvironment();
 }
 
-bool ScanFunctions::visit(ForEachStatement *ast) {
+bool ScanFunctions::visit(ForEachStatement *ast)
+{
     enterEnvironment(ast, ContextType::Block, QStringLiteral("%Foreach"));
-    if (ast->expression)
+    if (ast->expression) {
+        Q_ASSERT(_context);
         _context->lastBlockInitializerLocation = ast->expression->lastSourceLocation();
+    }
     Node::accept(ast->lhs, this);
     Node::accept(ast->expression, this);
 
@@ -573,6 +561,7 @@ void ScanFunctions::endVisit(ForEachStatement *)
 
 bool ScanFunctions::visit(ThisExpression *)
 {
+    Q_ASSERT(_context);
     _context->usesThis = true;
     return false;
 }
@@ -603,6 +592,7 @@ void ScanFunctions::endVisit(CaseBlock *)
 
 bool ScanFunctions::visit(Catch *ast)
 {
+    Q_ASSERT(_context);
     TemporaryBoolAssignment allowFuncDecls(_allowFuncDecls, _context->isStrict ? false : _allowFuncDecls);
     enterEnvironment(ast, ContextType::Block, QStringLiteral("%CatchBlock"));
     _context->isCatchBlock = true;
@@ -630,6 +620,7 @@ void ScanFunctions::endVisit(Catch *)
 
 bool ScanFunctions::visit(WithStatement *ast)
 {
+    Q_ASSERT(_context);
     Node::accept(ast->expression, this);
 
     TemporaryBoolAssignment allowFuncDecls(_allowFuncDecls, _context->isStrict ? false : _allowFuncDecls);
@@ -650,7 +641,9 @@ void ScanFunctions::endVisit(WithStatement *)
     leaveEnvironment();
 }
 
-bool ScanFunctions::enterFunction(Node *ast, const QString &name, FormalParameterList *formals, StatementList *body, bool enterName)
+bool ScanFunctions::enterFunction(
+        Node *ast, const QString &name, FormalParameterList *formals, StatementList *body,
+        FunctionNameContext nameContext)
 {
     Context *outerContext = _context;
     enterEnvironment(ast, ContextType::Function, name);
@@ -661,7 +654,7 @@ bool ScanFunctions::enterFunction(Node *ast, const QString &name, FormalParamete
     if (outerContext) {
         outerContext->hasNestedFunctions = true;
         // The identifier of a function expression cannot be referenced from the enclosing environment.
-        if (enterName) {
+        if (nameContext == FunctionNameContext::Outer) {
             if (!outerContext->addLocalVar(name, Context::FunctionDefinition, VariableScope::Var, expr)) {
                 _cg->throwSyntaxError(ast->firstSourceLocation(), QStringLiteral("Identifier %1 has already been declared").arg(name));
                 return false;
@@ -672,6 +665,7 @@ bool ScanFunctions::enterFunction(Node *ast, const QString &name, FormalParamete
             outerContext->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
     }
 
+    Q_ASSERT(_context);
     _context->name = name;
     if (formals && formals->containsName(QStringLiteral("arguments")))
         _context->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
@@ -682,12 +676,14 @@ bool ScanFunctions::enterFunction(Node *ast, const QString &name, FormalParamete
             _context->isGenerator = true;
 
         if (expr->typeAnnotation)
-            _context->returnType = expr->typeAnnotation->type->toString();
+            _context->returnType = expr->typeAnnotation->type;
     }
 
 
-    if (!enterName && (!name.isEmpty() && (!formals || !formals->containsName(name))))
+    if (nameContext == FunctionNameContext::Inner
+            && (!name.isEmpty() && (!formals || !formals->containsName(name)))) {
         _context->addLocalVar(name, Context::ThisFunctionName, VariableScope::Var);
+    }
     _context->formals = formals;
 
     if (body && !_context->isStrict)
@@ -699,22 +695,24 @@ bool ScanFunctions::enterFunction(Node *ast, const QString &name, FormalParamete
 
     const BoundNames boundNames = formals ? formals->boundNames() : BoundNames();
     for (int i = 0; i < boundNames.size(); ++i) {
-        const QString &arg = boundNames.at(i).id;
+        const auto &arg = boundNames.at(i);
         if (_context->isStrict || !isSimpleParameterList) {
-            bool duplicate = (boundNames.indexOf(arg, i + 1) != -1);
+            bool duplicate = (boundNames.indexOf(arg.id, i + 1) != -1);
             if (duplicate) {
-                _cg->throwSyntaxError(formals->firstSourceLocation(), QStringLiteral("Duplicate parameter name '%1' is not allowed.").arg(arg));
+                _cg->throwSyntaxError(formals->firstSourceLocation(), QStringLiteral("Duplicate parameter name '%1' is not allowed.").arg(arg.id));
                 return false;
             }
         }
         if (_context->isStrict) {
-            if (arg == QLatin1String("eval") || arg == QLatin1String("arguments")) {
-                _cg->throwSyntaxError(formals->firstSourceLocation(), QStringLiteral("'%1' cannot be used as parameter name in strict mode").arg(arg));
+            if (arg.id == QLatin1String("eval") || arg.id == QLatin1String("arguments")) {
+                _cg->throwSyntaxError(formals->firstSourceLocation(), QStringLiteral("'%1' cannot be used as parameter name in strict mode").arg(arg.id));
                 return false;
             }
         }
-        if (!_context->arguments.contains(arg))
-            _context->addLocalVar(arg, Context::VariableDefinition, VariableScope::Var);
+        if (!_context->arguments.contains(arg.id)) {
+            _context->addLocalVar(arg.id, Context::VariableDefinition, VariableScope::Var, nullptr,
+                                  QQmlJS::SourceLocation(), arg.isInjected());
+        }
     }
 
     return true;
@@ -724,7 +722,7 @@ void ScanFunctions::calcEscapingVariables()
 {
     Module *m = _cg->_module;
 
-    for (Context *inner : qAsConst(m->contextMap)) {
+    for (Context *inner : std::as_const(m->contextMap)) {
         if (inner->usesArgumentsObject != Context::ArgumentsObjectUsed)
             continue;
         if (inner->contextType != ContextType::Block && !inner->isArrowFunction)
@@ -736,7 +734,7 @@ void ScanFunctions::calcEscapingVariables()
             c->usesArgumentsObject = Context::ArgumentsObjectUsed;
         inner->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
     }
-    for (Context *inner : qAsConst(m->contextMap)) {
+    for (Context *inner : std::as_const(m->contextMap)) {
         if (!inner->parent || inner->usesArgumentsObject == Context::ArgumentsObjectUnknown)
             inner->usesArgumentsObject = Context::ArgumentsObjectNotUsed;
         if (inner->usesArgumentsObject == Context::ArgumentsObjectUsed) {
@@ -749,7 +747,7 @@ void ScanFunctions::calcEscapingVariables()
         }
     }
 
-    for (Context *c : qAsConst(m->contextMap)) {
+    for (Context *c : std::as_const(m->contextMap)) {
         if (c->contextType != ContextType::ESModule)
             continue;
         for (const auto &entry: c->exportEntries) {
@@ -760,8 +758,8 @@ void ScanFunctions::calcEscapingVariables()
         break;
     }
 
-    for (Context *inner : qAsConst(m->contextMap)) {
-        for (const QString &var : qAsConst(inner->usedVariables)) {
+    for (Context *inner : std::as_const(m->contextMap)) {
+        for (const QString &var : std::as_const(inner->usedVariables)) {
             Context *c = inner;
             while (c) {
                 Context *current = c;
@@ -783,7 +781,7 @@ void ScanFunctions::calcEscapingVariables()
                     }
                     break;
                 }
-                if (c->findArgument(var) != -1) {
+                if (c->hasArgument(var)) {
                     c->argumentsCanEscape = true;
                     c->requiresExecutionContext = true;
                     break;
@@ -823,7 +821,7 @@ void ScanFunctions::calcEscapingVariables()
             c->innerFunctionAccessesThis |= innerFunctionAccessesThis;
         }
     }
-    for (Context *c : qAsConst(m->contextMap)) {
+    for (Context *c : std::as_const(m->contextMap)) {
         if (c->innerFunctionAccessesThis) {
             // add an escaping 'this' variable
             c->addLocalVar(QStringLiteral("this"), Context::VariableDefinition, VariableScope::Let);
@@ -849,7 +847,7 @@ void ScanFunctions::calcEscapingVariables()
                 c->requiresExecutionContext = true;
                 c->argumentsCanEscape = true;
             } else {
-                for (const auto &m : qAsConst(c->members)) {
+                for (const auto &m : std::as_const(c->members)) {
                     if (m.isLexicallyScoped()) {
                         c->requiresExecutionContext = true;
                         break;
@@ -864,13 +862,13 @@ void ScanFunctions::calcEscapingVariables()
             mIt->canEscape = true;
         }
         const QLatin1String exprForOn("expression for on");
-        if (c->contextType == ContextType::Binding && c->name.length() > exprForOn.size() &&
+        if (c->contextType == ContextType::Binding && c->name.size() > exprForOn.size() &&
             c->name.startsWith(exprForOn) && c->name.at(exprForOn.size()).isUpper())
             // we don't really need this for bindings, but we do for signal handlers, and in this case,
             // we don't know if the code is a signal handler or not.
             c->requiresExecutionContext = true;
         if (c->allVarsEscape) {
-            for (const auto &m : qAsConst(c->members))
+            for (const auto &m : std::as_const(c->members))
                 m.canEscape = true;
         }
     }
@@ -878,7 +876,7 @@ void ScanFunctions::calcEscapingVariables()
     static const bool showEscapingVars = qEnvironmentVariableIsSet("QV4_SHOW_ESCAPING_VARS");
     if (showEscapingVars) {
         qDebug() << "==== escaping variables ====";
-        for (Context *c : qAsConst(m->contextMap)) {
+        for (Context *c : std::as_const(m->contextMap)) {
             qDebug() << "Context" << c << c->name << "requiresExecutionContext" << c->requiresExecutionContext << "isStrict" << c->isStrict;
             qDebug() << "    isArrowFunction" << c->isArrowFunction << "innerFunctionAccessesThis" << c->innerFunctionAccessesThis;
             qDebug() << "    parent:" << c->parent;

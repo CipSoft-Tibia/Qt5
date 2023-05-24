@@ -1,40 +1,18 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
-
+#include <QTest>
+#include <QTestEventLoop>
+#include <QSignalSpy>
+#include <QtTest/private/qpropertytesthelper_p.h>
 
 #include <QIODevice>
 #ifndef QT_NO_WIDGETS
 #include <QLabel>
 #endif
 #include <QMovie>
+#include <QProperty>
 
 class tst_QMovie : public QObject
 {
@@ -63,6 +41,11 @@ private slots:
     void infiniteLoop();
 #endif
     void emptyMovie();
+    void bindings();
+    void automatedBindings();
+#ifndef QT_NO_ICO
+    void multiFrameImage();
+#endif
 };
 
 // Testing get/set functions
@@ -178,7 +161,7 @@ void tst_QMovie::playMovie()
     movie.start();
     QCOMPARE(movie.state(), QMovie::Running);
     QTestEventLoop::instance().enterLoop(2);
-    QCOMPARE(finishedSpy.count(), 0);
+    QCOMPARE(finishedSpy.size(), 0);
     QCOMPARE(movie.state(), QMovie::Running);
     QCOMPARE(movie.currentFrameNumber(), 0);
 }
@@ -228,6 +211,83 @@ void tst_QMovie::emptyMovie()
     movie.jumpToFrame(100);
     QCOMPARE(movie.currentFrameNumber(), -1);
 }
+
+void tst_QMovie::bindings()
+{
+    QMovie movie;
+
+    // speed property
+    QCOMPARE(movie.speed(), 100);
+    QProperty<int> speed;
+    movie.bindableSpeed().setBinding(Qt::makePropertyBinding(speed));
+    speed = 50;
+    QCOMPARE(movie.speed(), 50);
+
+    QProperty<int> speedObserver;
+    speedObserver.setBinding([&] { return movie.speed(); });
+    movie.setSpeed(75);
+    QCOMPARE(speedObserver, 75);
+
+    // chacheMode property
+    QCOMPARE(movie.cacheMode(), QMovie::CacheNone);
+    QProperty<QMovie::CacheMode> cacheMode;
+    movie.bindableCacheMode().setBinding(Qt::makePropertyBinding(cacheMode));
+    cacheMode = QMovie::CacheAll;
+    QCOMPARE(movie.cacheMode(), QMovie::CacheAll);
+
+    movie.setCacheMode(QMovie::CacheNone);
+
+    QProperty<QMovie::CacheMode> cacheModeObserver;
+    QCOMPARE(cacheModeObserver, QMovie::CacheNone);
+    cacheModeObserver.setBinding([&] { return movie.cacheMode(); });
+    movie.setCacheMode(QMovie::CacheAll);
+    QCOMPARE(cacheModeObserver, QMovie::CacheAll);
+}
+
+void tst_QMovie::automatedBindings()
+{
+    QMovie movie;
+
+    QTestPrivate::testReadWritePropertyBasics(movie, 50, 100, "speed");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QMovie::speed");
+        return;
+    }
+
+    QTestPrivate::testReadWritePropertyBasics(movie, QMovie::CacheAll, QMovie::CacheNone,
+                                              "cacheMode");
+    if (QTest::currentTestFailed()) {
+        qDebug("Failed property test for QMovie::cacheMode");
+        return;
+    }
+}
+
+#ifndef QT_NO_ICO
+/*! \internal
+    Test behavior of QMovie with image formats that are multi-frame,
+    but not normally intended as animation formats (such as tiff and ico).
+*/
+void tst_QMovie::multiFrameImage()
+{
+    QMovie movie(QFINDTESTDATA("multiframe/Obj_N2_Internal_Mem.ico"));
+    const int expectedFrameCount = 9;
+
+    QCOMPARE(movie.frameCount(), expectedFrameCount);
+    QVERIFY(movie.isValid());
+    movie.setSpeed(1000); // speed up the test: play at 10 FPS (1000% of normal)
+    QElapsedTimer playTimer;
+    QSignalSpy frameChangedSpy(&movie, &QMovie::frameChanged);
+    QSignalSpy errorSpy(&movie, &QMovie::error);
+    QSignalSpy finishedSpy(&movie, &QMovie::finished);
+    playTimer.start();
+    movie.start();
+    QTRY_COMPARE(finishedSpy.size(), 1);
+    QCOMPARE_GE(playTimer.elapsed(), 100 * expectedFrameCount);
+    QCOMPARE(movie.nextFrameDelay(), 100);
+    QCOMPARE(errorSpy.size(), 0);
+    QCOMPARE(frameChangedSpy.size(), expectedFrameCount);
+}
+#endif
 
 QTEST_MAIN(tst_QMovie)
 #include "tst_qmovie.moc"

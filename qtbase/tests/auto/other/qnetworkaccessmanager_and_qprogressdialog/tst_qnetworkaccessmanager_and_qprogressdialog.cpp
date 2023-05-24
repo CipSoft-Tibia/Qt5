@@ -1,36 +1,13 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the test suite of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:GPL-EXCEPT$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3 as published by the Free Software
-** Foundation with exceptions as appearing in the file LICENSE.GPL3-EXCEPT
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 
-#include <QtTest/QtTest>
+#include <QTest>
 #include <QtGui>
 #include <QtWidgets>
 #include <QtCore>
+#include <QTestEventLoop>
+
 #include <QtNetwork/QNetworkAccessManager>
 #include <QtNetwork/QNetworkRequest>
 #include <QtNetwork/QNetworkReply>
@@ -54,7 +31,7 @@ class DownloadCheckWidget : public QWidget
 {
     Q_OBJECT
 public:
-    DownloadCheckWidget(QWidget *parent = 0) :
+    DownloadCheckWidget(QWidget *parent = nullptr) :
         QWidget(parent), lateReadyRead(true), zeroCopy(false),
         progressDlg(this), netmanager(this)
     {
@@ -66,13 +43,13 @@ public:
 public slots:
     void go()
     {
-        QNetworkRequest request(QUrl("http://" + QtNetworkSettings::serverName() + "/qtest/bigfile"));
+        QNetworkRequest request(QUrl("http://" + QtNetworkSettings::httpServerName() + "/qtest/bigfile"));
         if (zeroCopy)
             request.setAttribute(QNetworkRequest::MaximumDownloadBufferSizeAttribute, 10*1024*1024);
 
         QNetworkReply *reply = netmanager.get(
                 QNetworkRequest(
-                QUrl("http://" + QtNetworkSettings::serverName() + "/qtest/bigfile")
+                QUrl("http://" + QtNetworkSettings::httpServerName() + "/qtest/bigfile")
                 ));
         connect(reply, SIGNAL(downloadProgress(qint64,qint64)),
                 this, SLOT(dataReadProgress(qint64,qint64)));
@@ -115,8 +92,13 @@ tst_QNetworkAccessManager_And_QProgressDialog::tst_QNetworkAccessManager_And_QPr
 
 void tst_QNetworkAccessManager_And_QProgressDialog::initTestCase()
 {
+#ifdef QT_TEST_SERVER
+    if (!QtNetworkSettings::verifyConnection(QtNetworkSettings::httpServerName(), 80))
+        QSKIP("No network test server available");
+#else
     if (!QtNetworkSettings::verifyTestNetworkSettings())
         QSKIP("No network test server available");
+#endif
 }
 
 void tst_QNetworkAccessManager_And_QProgressDialog::downloadCheck_data()

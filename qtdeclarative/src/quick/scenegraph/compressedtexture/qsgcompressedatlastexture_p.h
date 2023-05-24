@@ -1,41 +1,5 @@
-/****************************************************************************
-**
-** Copyright (C) 2018 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQuick module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2018 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QSGCOMPRESSEDATLASTEXTURE_P_H
 #define QSGCOMPRESSEDATLASTEXTURE_P_H
@@ -53,11 +17,9 @@
 
 #include <QtCore/QSize>
 
-#include <QtGui/qopengl.h>
-
 #include <QtQuick/QSGTexture>
 #include <QtQuick/private/qsgareaallocator_p.h>
-#include <QtQuick/private/qsgopenglatlastexture_p.h>
+#include <QtQuick/private/qsgrhiatlastexture_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -67,16 +29,17 @@ namespace QSGCompressedAtlasTexture {
 
 class Texture;
 
-class Atlas : public QSGOpenGLAtlasTexture::AtlasBase
+class Atlas : public QSGRhiAtlasTexture::AtlasBase
 {
 public:
-    Atlas(const QSize &size, uint format);
+    Atlas(QSGDefaultRenderContext *rc, const QSize &size, uint format);
     ~Atlas();
 
-    void generateTexture() override;
-    void uploadPendingTexture(int i) override;
+    bool generateTexture() override;
+    void enqueueTextureUpload(QSGRhiAtlasTexture::TextureBase *t,
+                              QRhiResourceUpdateBatch *rcub) override;
 
-    Texture *create(const QByteArray &data, int dataLength, int dataOffset, const QSize &size, const QSize &paddedSize);
+    Texture *create(QByteArrayView data, const QSize &size);
 
     uint format() const { return m_format; }
 
@@ -84,11 +47,11 @@ private:
     uint m_format;
 };
 
-class Texture : public QSGOpenGLAtlasTexture::TextureBase
+class Texture : public QSGRhiAtlasTexture::TextureBase
 {
     Q_OBJECT
 public:
-    Texture(Atlas *atlas, const QRect &textureRect, const QByteArray &data, int dataLength, int dataOffset, const QSize &size);
+    Texture(Atlas *atlas, const QRect &textureRect, QByteArrayView data, const QSize &size);
     ~Texture();
 
     QSize textureSize() const override { return m_size; }
@@ -97,19 +60,16 @@ public:
 
     QRectF normalizedTextureSubRect() const override { return m_texture_coords_rect; }
 
-    QSGTexture *removedFromAtlas() const override;
+    QSGTexture *removedFromAtlas(QRhiResourceUpdateBatch *) const override;
 
     const QByteArray &data() const { return m_data; }
-    int sizeInBytes() const { return m_dataLength; }
-    int dataOffset() const { return m_dataOffset; }
+    int sizeInBytes() const { return m_data.size(); }
 
 private:
     QRectF m_texture_coords_rect;
     mutable QSGTexture *m_nonatlas_texture;
     QByteArray m_data;
     QSize m_size;
-    int m_dataLength;
-    int m_dataOffset;
 };
 
 }

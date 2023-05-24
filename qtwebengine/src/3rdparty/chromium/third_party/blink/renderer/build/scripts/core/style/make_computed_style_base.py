@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2016 The Chromium Authors. All rights reserved.
+# Copyright 2016 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -30,16 +30,17 @@ ALIGNMENT_ORDER = [
     'RotateTransformOperation',
     'TranslateTransformOperation',
     'GridTrackList',
-    'base::Optional<IntSize>',
+    'ComputedGridTrackList',
+    'absl::optional<gfx::Size>',
     'double',
     # Aligns like a pointer (can be 32 or 64 bits)
     'NamedGridLinesMap',
-    'OrderedNamedGridLines',
     'NamedGridAreaMap',
     'TransformOperations',
     'Vector<CSSPropertyID>',
-    'Vector<GridTrackSize>',
     'Vector<AtomicString>',
+    'Vector<TimelineAxis>',
+    'Vector<TimelineInset>',
     'GridPosition',
     'AtomicString',
     'scoped_refptr',
@@ -49,20 +50,25 @@ ALIGNMENT_ORDER = [
     'Font',
     'FillLayer',
     'NinePieceImage',
+    'SVGPaint',
     'IntrinsicLength',
     'TextDecorationThickness',
     'StyleAspectRatio',
+    'absl::optional<StyleIntrinsicLength>',
+    'absl::optional<StyleOverflowClipMargin>',
     # Aligns like float
-    'base::Optional<Length>',
+    'absl::optional<Length>',
+    'StyleInitialLetter',
     'StyleOffsetRotation',
     'TransformOrigin',
     'ScrollPadding',
     'ScrollMargin',
     'LengthBox',
     'LengthSize',
-    'FloatSize',
+    'gfx::SizeF',
     'LengthPoint',
     'Length',
+    'UnzoomedLength',
     'TextSizeAdjust',
     'TabSize',
     'float',
@@ -73,11 +79,13 @@ ALIGNMENT_ORDER = [
     'StyleColor',
     'StyleAutoColor',
     'Color',
+    'StyleHyphenateLimitChars',
     'LayoutUnit',
     'LineClampValue',
     'OutlineValue',
     'unsigned',
     'size_t',
+    'wtf_size_t',
     'int',
     # Aligns like short
     'unsigned short',
@@ -105,7 +113,7 @@ def _get_include_paths(properties):
     """
     include_paths = set()
     for property_ in properties:
-        include_paths.update(property_['include_paths'])
+        include_paths.update(property_.include_paths)
     return list(sorted(include_paths))
 
 
@@ -142,14 +150,39 @@ def _create_groups(properties):
     root_group_dict = {None: []}
     for property_ in properties:
         current_group_dict = root_group_dict
-        if property_['field_group']:
-            for group_name in property_['field_group'].split('->'):
+        if property_.field_group:
+            for group_name in property_.field_group.split('->'):
                 current_group_dict[group_name] = current_group_dict.get(
                     group_name, {None: []})
                 current_group_dict = current_group_dict[group_name]
-        current_group_dict[None].extend(_create_fields(property_))
+        field, flag_field = _create_fields(property_)
+        if field is not None:
+            current_group_dict[None].append(field)
+
+        # The flag field for this property, if any, should not be part of
+        # the same group as the property; since it is not inherited
+        # (you cannot inherit the inherit flag), that would always preclude
+        # copy-on-write for the group in InheritFrom().
+        if flag_field is not None:
+            root_group_dict[None].append(flag_field)
 
     return _dict_to_group(None, root_group_dict)
+
+
+def _mark_builder_flags(group):
+    """Mark all fields as builder fields."""
+    for field in group.fields:
+        field.builder = True
+    for subgroup in group.subgroups:
+        _mark_builder_flags(subgroup)
+
+
+def _create_builder_groups(properties):
+    """Like _create_groups, but all fields returned by this function has
+       the builder flag set to True."""
+    groups = _create_groups(properties)
+    _mark_builder_flags(groups)
+    return groups
 
 
 def _create_diff_groups_map(diff_function_inputs, root_group):
@@ -163,7 +196,7 @@ def _create_diff_groups_map(diff_function_inputs, root_group):
             assert name in [
                 field.property_name for field in root_group.all_fields], \
                 "The field '{}' isn't a defined field on ComputedStyle. " \
-                "Please check that there's an entry for '{}' in" \
+                "Please check that there's an entry for '{}' in " \
                 "css_properties.json5 or " \
                 "computed_style_extra_fields.json5".format(name, name)
         diff_functions_map[entry['name'].original] = _create_diff_groups(
@@ -216,16 +249,22 @@ def _create_enums(properties):
     for property_ in properties:
         # Only generate enums for keyword properties that do not
         # require includes.
-        if (property_['field_template'] in ('keyword', 'multi_keyword')
-                and len(property_['include_paths']) == 0):
-            enum = Enum(
-                property_['type_name'],
-                property_['keywords'],
-                is_set=(property_['field_template'] == 'multi_keyword'))
-            if property_['field_template'] == 'multi_keyword':
-                assert property_['keywords'][0] == 'none', \
+        if (property_.field_template in ('keyword', 'multi_keyword',
+                                         'bitset_keyword')
+                and len(property_.include_paths) == 0):
+            if property_.field_template == 'multi_keyword':
+                set_type = 'multi'
+            elif property_.field_template == 'bitset_keyword':
+                set_type = 'bitset'
+            else:
+                set_type = None
+            enum = Enum(property_.type_name,
+                        property_.keywords,
+                        set_type=set_type)
+            if property_.field_template == 'multi_keyword':
+                assert property_.keywords[0] == 'none', \
                     "First keyword in a 'multi_keyword' field must be " \
-                    "'none' in '{}'.".format(property_['name'])
+                    "'none' in '{}'.".format(property_.name)
 
             if enum.type_name in enums:
                 # There's an enum with the same name, check if the enum
@@ -235,7 +274,7 @@ def _create_enums(properties):
                     "a previous property, but with a different set of " \
                     "keywords. Either give it a different name or ensure " \
                     "the keywords are the same.".format(
-                        property_['name'], enum.type_name)
+                        property_.name, enum.type_name)
             else:
                 enums[enum.type_name] = enum
 
@@ -247,52 +286,59 @@ def _create_property_field(property_):
     """
     Create a property field.
     """
-    name_for_methods = property_['name_for_methods']
+    name_for_methods = property_.name_for_methods
 
-    assert property_['default_value'] is not None, \
+    assert property_.default_value is not None, \
         'MakeComputedStyleBase requires an default value for all fields, ' \
-        'none specified for property ' + property_['name']
+        'none specified for property ' + property_.name
 
-    type_name = property_['type_name']
-    if property_['field_template'] == 'keyword':
-        assert property_['field_size'] is None, \
-            ("'" + property_['name'] + "' is a keyword field, "
+    type_name = property_.type_name
+    if property_.field_template == 'keyword':
+        assert property_.field_size is None, \
+            ("'" + property_.name + "' is a keyword field, "
              "so it should not specify a field_size")
-        size = int(math.ceil(math.log(len(property_['keywords']), 2)))
-    elif property_['field_template'] == 'multi_keyword':
-        size = len(property_['keywords']) - 1  # Subtract 1 for 'none' keyword
-    elif property_['field_template'] == 'external':
+        size = int(math.ceil(math.log(len(property_.keywords), 2)))
+    elif property_.field_template == 'multi_keyword':
+        size = len(property_.keywords) - 1  # Subtract 1 for 'none' keyword
+    elif property_.field_template == 'bitset_keyword':
+        size = len(property_.keywords)
+    elif property_.field_template == 'external':
         size = None
-    elif property_['field_template'] == 'primitive':
+    elif property_.field_template == 'primitive':
         # pack bools with 1 bit.
-        size = 1 if type_name == 'bool' else property_["field_size"]
-    elif property_['field_template'] == 'pointer':
+        size = 1 if type_name == 'bool' else property_.field_size
+    elif property_.field_template == 'pointer':
         size = None
+    elif property_.field_template == 'derived_flag':
+        size = 2
     else:
-        assert property_['field_template'] == 'monotonic_flag', \
+        assert property_.field_template == 'monotonic_flag', \
             "Please use a valid value for field_template"
         size = 1
 
     return Field(
         'property',
         name_for_methods,
-        property_name=property_['name'].original,
-        inherited=property_['inherited'],
-        independent=property_['independent'],
-        semi_independent_variable=property_['semi_independent_variable'],
-        type_name=property_['type_name'],
-        wrapper_pointer_name=property_['wrapper_pointer_name'],
-        field_template=property_['field_template'],
+        property_name=property_.name.original,
+        inherited=property_.inherited,
+        independent=property_.independent,
+        semi_independent_variable=property_.semi_independent_variable,
+        type_name=property_.type_name,
+        wrapper_pointer_name=property_.wrapper_pointer_name,
+        field_template=property_.field_template,
         size=size,
-        default_value=property_['default_value'],
-        custom_copy=property_['custom_copy'],
-        custom_compare=property_['custom_compare'],
-        mutable=property_['mutable'],
-        getter_method_name=property_['getter'],
-        setter_method_name=property_['setter'],
-        initial_method_name=property_['initial'],
-        computed_style_custom_functions=property_[
-            'computed_style_custom_functions'],
+        default_value=property_.default_value,
+        derived_from=property_.derived_from,
+        custom_copy=property_.custom_copy,
+        custom_compare=property_.custom_compare,
+        mutable=property_.mutable,
+        getter_method_name=property_.getter,
+        setter_method_name=property_.setter,
+        initial_method_name=property_.initial,
+        computed_style_custom_functions=property_.
+        computed_style_custom_functions,
+        computed_style_protected_functions=property_.
+        computed_style_protected_functions,
     )
 
 
@@ -302,44 +348,53 @@ def _create_inherited_flag_field(property_):
     property, and return the Field object.
     """
     name_for_methods = NameStyleConverter(
-        property_['name_for_methods']).to_function_name(
+        property_.name_for_methods).to_function_name(
             suffix=['is', 'inherited'])
     name_source = NameStyleConverter(name_for_methods)
     return Field(
         'inherited_flag',
         name_for_methods,
-        property_name=property_['name'].original,
+        property_name=property_.name.original,
         type_name='bool',
         wrapper_pointer_name=None,
         field_template='primitive',
         size=1,
         default_value='true',
+        derived_from=None,
         custom_copy=False,
         custom_compare=False,
         mutable=False,
         getter_method_name=name_source.to_function_name(),
         setter_method_name=name_source.to_function_name(prefix='set'),
         initial_method_name=name_source.to_function_name(prefix='initial'),
-        computed_style_custom_functions=property_[
-            "computed_style_custom_functions"],
+        computed_style_custom_functions=property_.
+        computed_style_custom_functions,
+        computed_style_protected_functions=property_.
+        computed_style_protected_functions,
     )
 
 
 def _create_fields(property_):
     """
-    Create ComputedStyle fields from a property and return a list of Fields.
+    Create ComputedStyle fields from a property and return two Fields
+    (of which the last, or both, may be None). The first Field is for
+    the property itself. The second Field is a special boolean for
+    independent properties that stores whether the property was set
+    to the “inherit” value or not; it is returned separately because
+    you may want to put it on the top level, not in a group.
     """
-    fields = []
+    field = None
+    flag_field = None
     # Only generate properties that have a field template
-    if property_['field_template'] is not None:
+    if property_.field_template is not None:
         # If the property is independent, add the single-bit sized isInherited
         # flag to the list of Fields as well.
-        if property_['independent']:
-            fields.append(_create_inherited_flag_field(property_))
+        if property_.independent:
+            flag_field = _create_inherited_flag_field(property_)
 
-        fields.append(_create_property_field(property_))
+        field = _create_property_field(property_)
 
-    return fields
+    return field, flag_field
 
 
 def _reorder_bit_fields(bit_fields):
@@ -427,9 +482,9 @@ def _best_rank(prop, ranking_map):
     If no ranking values for the property is available, this returns -1.
     """
     worst_rank = max(ranking_map.values()) + 1
-    best_rank = ranking_map.get(prop["name"].original, worst_rank)
+    best_rank = ranking_map.get(prop.name.original, worst_rank)
 
-    for alias_name in prop.get("aliases", []):
+    for alias_name in prop.aliases:
         best_rank = min(best_rank, ranking_map.get(alias_name, worst_rank))
     return best_rank if best_rank != worst_rank else -1
 
@@ -465,21 +520,20 @@ def _evaluate_rare_non_inherited_group(properties,
 
     for property_ in properties:
         rank = _best_rank(property_, properties_ranking)
-        if (property_["field_group"] is not None
-                and "*" in property_["field_group"]
-                and not property_["inherited"] and rank >= 0):
+        if (property_.field_group is not None and "*" in property_.field_group
+                and not property_.inherited and rank >= 0):
 
-            assert property_["field_group"] == "*", \
+            assert property_.field_group == "*", \
                 "The property {}  will be automatically assigned a group, " \
-                "please put '*' as the field_group".format(property_['name'])
+                "please put '*' as the field_group".format(property_.name)
 
-            property_["field_group"] = "->".join(layers_name[0:rank])
-        elif (property_["field_group"] is not None
-              and "*" in property_["field_group"]
-              and not property_["inherited"] and rank < 0):
-            group_tree = property_["field_group"].split("->")[1:]
+            property_.field_group = "->".join(layers_name[0:rank])
+        elif (property_.field_group is not None
+              and "*" in property_.field_group and not property_.inherited
+              and rank < 0):
+            group_tree = property_.field_group.split("->")[1:]
             group_tree = [layers_name[0], layers_name[0] + "-sub"] + group_tree
-            property_["field_group"] = "->".join(group_tree)
+            property_.field_group = "->".join(group_tree)
 
 
 def _evaluate_rare_inherit_group(properties,
@@ -514,16 +568,15 @@ def _evaluate_rare_inherit_group(properties,
 
     for property_ in properties:
         rank = _best_rank(property_, properties_ranking)
-        if (property_["field_group"] is not None
-                and "*" in property_["field_group"] and property_["inherited"]
-                and rank >= 0):
-            property_["field_group"] = "->".join(layers_name[0:rank])
-        elif (property_["field_group"] is not None
-              and "*" in property_["field_group"] and property_["inherited"]
+        if (property_.field_group is not None and "*" in property_.field_group
+                and property_.inherited and rank >= 0):
+            property_.field_group = "->".join(layers_name[0:rank])
+        elif (property_.field_group is not None
+              and "*" in property_.field_group and property_.inherited
               and rank < 0):
-            group_tree = property_["field_group"].split("->")[1:]
+            group_tree = property_.field_group.split("->")[1:]
             group_tree = [layers_name[0], layers_name[0] + "-sub"] + group_tree
-            property_["field_group"] = "->".join(group_tree)
+            property_.field_group = "->".join(group_tree)
 
 
 class ComputedStyleBaseWriter(json5_generator.Writer):
@@ -548,6 +601,7 @@ class ComputedStyleBaseWriter(json5_generator.Writer):
             self._css_properties.longhands, json5_file_paths[5],
             self.default_parameters)
         self._properties = properties + self._css_properties.extra_fields
+        self._longhands = [p for p in properties if p.is_longhand]
 
         self._generated_enums = _create_enums(self._properties)
 
@@ -571,6 +625,14 @@ class ComputedStyleBaseWriter(json5_generator.Writer):
             len(group_parameters["rare_inherited_properties_rule"]),
             group_parameters["rare_inherited_properties_rule"])
         self._root_group = _create_groups(self._properties)
+        # We create separate groups/fields for generating ComputedStyle-
+        # BuilderBase. The only difference between these fields and the regular
+        # fields, is that the builder fields have the "builder" flag set, which
+        # is used to tweak the code generation in the field templates.
+        #
+        # TODO(crbug.com/1377295): When the builder is fully deployed, we no
+        #                          longer need two groups.
+        self._root_builder_group = _create_builder_groups(self._properties)
         self._diff_functions_map = _create_diff_groups_map(
             json5_generator.Json5File.load_from_files(
                 [json5_file_paths[4]]).name_dictionaries, self._root_group)
@@ -594,9 +656,11 @@ class ComputedStyleBaseWriter(json5_generator.Writer):
         return {
             'input_files': self._input_files,
             'properties': self._properties,
+            'longhands': self._longhands,
             'enums': self._generated_enums,
             'include_paths': self._include_paths,
             'computed_style': self._root_group,
+            'computed_style_builder': self._root_builder_group,
             'diff_functions_map': self._diff_functions_map,
         }
 

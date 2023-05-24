@@ -1,50 +1,15 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtQml module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qv4debugjob.h"
 
-#include <private/qv4script_p.h>
 #include <private/qqmlcontext_p.h>
-#include <private/qv4qmlcontext_p.h>
-#include <private/qv4qobjectwrapper_p.h>
 #include <private/qqmldebugservice_p.h>
 #include <private/qv4jscall_p.h>
+#include <private/qv4qmlcontext_p.h>
+#include <private/qv4qobjectwrapper_p.h>
+#include <private/qv4script_p.h>
+#include <private/qv4stackframe_p.h>
 
 #include <QtQml/qqmlengine.h>
 
@@ -70,9 +35,9 @@ void JavaScriptJob::run()
     QV4::CppStackFrame *frame = engine->currentStackFrame;
 
     for (int i = 0; frame && i < frameNr; ++i)
-        frame = frame->parent;
+        frame = frame->parentFrame();
     if (frameNr > 0 && frame)
-        ctx = static_cast<QV4::ExecutionContext *>(&frame->jsFrame->context);
+        ctx = frame->context();
 
     if (context >= 0) {
         QObject *forId = QQmlDebugService::objectForId(context);
@@ -88,10 +53,10 @@ void JavaScriptJob::run()
             QV4::ScopedObject withContext(scope, engine->newObject());
             QV4::ScopedString k(scope);
             QV4::ScopedValue v(scope);
-            for (int ii = 0; ii < ctxtPriv->instances.count(); ++ii) {
-                QObject *object = ctxtPriv->instances.at(ii);
-                if (QQmlContext *context = qmlContext(object)) {
-                    if (QQmlContextData *cdata = QQmlContextData::get(context)) {
+            const QList<QPointer<QObject>> instances = ctxtPriv->instances();
+            for (const QPointer<QObject> &object : instances) {
+                if (QQmlContext *context = qmlContext(object.data())) {
+                    if (QQmlRefPointer<QQmlContextData> cdata = QQmlContextData::get(context)) {
                         v = QV4::QObjectWrapper::wrap(engine, object);
                         k = engine->newString(cdata->findObjectId(object));
                         withContext->put(k, v);
@@ -112,7 +77,7 @@ void JavaScriptJob::run()
     script.inheritContext = true;
     script.parse();
     QV4::ScopedValue result(scope);
-    if (!scope.engine->hasException) {
+    if (!scope.hasException()) {
         if (frame) {
             QV4::ScopedValue thisObject(scope, frame->thisObject());
             result = script.run(thisObject);
@@ -120,7 +85,7 @@ void JavaScriptJob::run()
             result = script.run();
         }
     }
-    if (scope.engine->hasException) {
+    if (scope.hasException()) {
         result = scope.engine->catchException();
         resultIsException = true;
     }
@@ -160,7 +125,7 @@ FrameJob::FrameJob(QV4DataCollector *collector, int frameNr) :
 void FrameJob::run()
 {
     QVector<QV4::StackFrame> frames = collector->engine()->stackTrace(frameNr + 1);
-    if (frameNr >= frames.length()) {
+    if (frameNr >= frames.size()) {
         success = false;
     } else {
         result = collector->buildFrame(frames[frameNr], frameNr);
@@ -211,15 +176,16 @@ void ValueLookupJob::run()
     QScopedPointer<QObject> scopeObject;
     QV4::ExecutionEngine *engine = collector->engine();
     QV4::Scope scope(engine);
-    QV4::Heap::ExecutionContext *qmlContext = nullptr;
-    if (engine->qmlEngine() && !engine->qmlContext()) {
+    QV4::Heap::ExecutionContext *qmlContext = engine->qmlContext();
+    if (engine->qmlEngine() && !qmlContext) {
         scopeObject.reset(new QObject);
         qmlContext = QV4::QmlContext::create(engine->currentContext(),
                                 QQmlContextData::get(engine->qmlEngine()->rootContext()),
                                 scopeObject.data());
     }
-    QV4::ScopedStackFrame frame(scope, qmlContext);
-    for (const QJsonValue &handle : handles) {
+    QV4::Scoped<QV4::ExecutionContext> scopedContext(scope, qmlContext);
+    QV4::ScopedStackFrame frame(scope, scopedContext);
+    for (const QJsonValue handle : handles) {
         QV4DataCollector::Ref ref = handle.toInt();
         if (!collector->isValidRef(ref)) {
             exception = QString::fromLatin1("Invalid Ref: %1").arg(ref);

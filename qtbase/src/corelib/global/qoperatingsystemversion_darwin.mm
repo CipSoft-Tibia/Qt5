@@ -1,56 +1,57 @@
-/****************************************************************************
-**
-** Copyright (C) 2016 The Qt Company Ltd.
-** Contact: https://www.qt.io/licensing/
-**
-** This file is part of the QtCore module of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see https://www.qt.io/terms-conditions. For further
-** information use the contact form at https://www.qt.io/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 3 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL3 included in the
-** packaging of this file. Please review the following information to
-** ensure the GNU Lesser General Public License version 3 requirements
-** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 2.0 or (at your option) the GNU General
-** Public license version 3 or any later version approved by the KDE Free
-** Qt Foundation. The licenses are as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
-** included in the packaging of this file. Please review the following
-** information to ensure the GNU General Public License requirements will
-** be met: https://www.gnu.org/licenses/gpl-2.0.html and
-** https://www.gnu.org/licenses/gpl-3.0.html.
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qoperatingsystemversion_p.h"
+
 #import <Foundation/Foundation.h>
+
+#include <QtCore/qfile.h>
+#include <QtCore/qversionnumber.h>
+
+#if !defined(QT_BOOTSTRAPPED)
+#include <QtCore/qprocess.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
-QOperatingSystemVersion QOperatingSystemVersion::current()
+using namespace Qt::StringLiterals;
+
+QOperatingSystemVersionBase QOperatingSystemVersionBase::current_impl()
 {
     NSOperatingSystemVersion osv = NSProcessInfo.processInfo.operatingSystemVersion;
-    QOperatingSystemVersion v;
-    v.m_os = currentType();
-    v.m_major = osv.majorVersion;
-    v.m_minor = osv.minorVersion;
-    v.m_micro = osv.patchVersion;
-    return v;
+    QVersionNumber versionNumber(osv.majorVersion, osv.minorVersion, osv.patchVersion);
+
+    if (versionNumber.majorVersion() == 10 && versionNumber.minorVersion() >= 16) {
+        // The process is running in system version compatibility mode,
+        // due to the executable being built against a pre-macOS 11 SDK.
+        // This might happen even if we require a more recent SDK for
+        // building Qt applications, as the Qt 'app' might be a plugin
+        // hosted inside a host that used an earlier SDK. But, since we
+        // require a recent SDK for the Qt app itself, the application
+        // should be prepared for versions numbers beyond 10, and we can
+        // resolve the real version number here.
+#if !defined(QT_BOOTSTRAPPED) && QT_CONFIG(process)
+        QProcess sysctl;
+        QProcessEnvironment nonCompatEnvironment;
+        nonCompatEnvironment.insert("SYSTEM_VERSION_COMPAT"_L1, "0"_L1);
+        sysctl.setProcessEnvironment(nonCompatEnvironment);
+        sysctl.start("/usr/sbin/sysctl"_L1, QStringList() << "-b"_L1 << "kern.osproductversion"_L1);
+        if (sysctl.waitForFinished()) {
+            auto versionString = QString::fromLatin1(sysctl.readAll());
+            auto nonCompatSystemVersion = QVersionNumber::fromString(versionString);
+            if (!nonCompatSystemVersion.isNull())
+                versionNumber = nonCompatSystemVersion;
+        }
+#endif
+    }
+
+    QOperatingSystemVersionBase operatingSystemVersion;
+    operatingSystemVersion.m_os = currentType();
+    operatingSystemVersion.m_major = versionNumber.majorVersion();
+    operatingSystemVersion.m_minor = versionNumber.minorVersion();
+    operatingSystemVersion.m_micro = versionNumber.microVersion();
+
+    return operatingSystemVersion;
 }
 
 QT_END_NAMESPACE

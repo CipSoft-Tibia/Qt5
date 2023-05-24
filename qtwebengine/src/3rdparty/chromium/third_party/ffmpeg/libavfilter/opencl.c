@@ -19,26 +19,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "libavutil/file_open.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 
 #include "formats.h"
 #include "opencl.h"
-
-int ff_opencl_filter_query_formats(AVFilterContext *avctx)
-{
-    const static enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_OPENCL,
-        AV_PIX_FMT_NONE,
-    };
-    AVFilterFormats *formats;
-
-    formats = ff_make_format_list(pix_fmts);
-    if (!formats)
-        return AVERROR(ENOMEM);
-
-    return ff_set_common_formats(avctx, formats);
-}
 
 static int opencl_filter_set_device(AVFilterContext *avctx,
                                     AVBufferRef *device)
@@ -225,7 +211,7 @@ int ff_opencl_filter_load_program_from_file(AVFilterContext *avctx,
     const char *src_const;
     int err;
 
-    file = av_fopen_utf8(filename, "r");
+    file = avpriv_fopen_utf8(filename, "r");
     if (!file) {
         av_log(avctx, AV_LOG_ERROR, "Unable to open program "
                "source file \"%s\".\n", filename);
@@ -257,7 +243,7 @@ int ff_opencl_filter_load_program_from_file(AVFilterContext *avctx,
             goto fail;
         }
         pos += rb;
-        if (pos < len)
+        if (pos + 1 < len)
             break;
         len <<= 1;
         err = av_reallocp(&src, len);

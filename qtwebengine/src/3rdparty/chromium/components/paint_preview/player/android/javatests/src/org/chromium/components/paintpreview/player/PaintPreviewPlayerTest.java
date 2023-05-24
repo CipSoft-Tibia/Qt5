@@ -1,20 +1,22 @@
-// Copyright 2020 The Chromium Authors. All rights reserved.
+// Copyright 2020 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 package org.chromium.components.paintpreview.player;
 
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Build.VERSION_CODES;
 import android.support.test.InstrumentationRegistry;
-import android.support.test.uiautomator.By;
-import android.support.test.uiautomator.UiDevice;
-import android.support.test.uiautomator.UiObject2;
 import android.util.Size;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 
 import androidx.test.filters.MediumTest;
+import androidx.test.uiautomator.By;
+import androidx.test.uiautomator.UiDevice;
+import androidx.test.uiautomator.UiObject2;
 
 import org.hamcrest.Matchers;
 import org.junit.Assert;
@@ -26,12 +28,13 @@ import org.junit.runner.RunWith;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.test.BaseJUnit4ClassRunner;
 import org.chromium.base.test.util.CallbackHelper;
+import org.chromium.base.test.util.Criteria;
+import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.ScalableTimeout;
+import org.chromium.base.test.util.Feature;
 import org.chromium.content_public.browser.UiThreadTaskTraits;
-import org.chromium.content_public.browser.test.util.Criteria;
-import org.chromium.content_public.browser.test.util.CriteriaHelper;
-import org.chromium.ui.test.util.DummyUiActivityTestCase;
+import org.chromium.ui.test.util.BlankUiTestActivityTestCase;
+import org.chromium.ui.test.util.RenderTestRule;
 import org.chromium.url.GURL;
 
 import java.util.List;
@@ -40,8 +43,8 @@ import java.util.List;
  * Instrumentation tests for the Paint Preview player.
  */
 @RunWith(BaseJUnit4ClassRunner.class)
-public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
-    private static final long TIMEOUT_MS = ScalableTimeout.scaleTimeout(5000);
+public class PaintPreviewPlayerTest extends BlankUiTestActivityTestCase {
+    private static final long TIMEOUT_MS = 5000;
 
     private static final String TEST_DIRECTORY_KEY = "test_dir";
     private static final String TEST_URL = "https://www.chromium.org";
@@ -59,10 +62,19 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
     @Rule
     public TemporaryFolder mTempFolder = new TemporaryFolder();
 
+    private FrameLayout mLayout;
     private PlayerManager mPlayerManager;
     private TestLinkClickHandler mLinkClickHandler;
     private CallbackHelper mRefreshedCallback;
     private boolean mInitializationFailed;
+
+    @Rule
+    public RenderTestRule mRenderTestRule =
+            new RenderTestRule.Builder()
+                    .setCorpus(RenderTestRule.Corpus.ANDROID_RENDER_TESTS_PUBLIC)
+                    .setBugComponent(RenderTestRule.Component.FREEZE_DRIED_TABS)
+                    .setRevision(0)
+                    .build();
 
     /**
      * LinkClickHandler implementation for caching the last URL that was clicked.
@@ -74,6 +86,15 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
         public void onLinkClicked(GURL url) {
             mUrl = url;
         }
+    }
+
+    @Override
+    public void setUpTest() throws Exception {
+        super.setUpTest();
+        PostTask.postTask(UiThreadTaskTraits.DEFAULT, () -> {
+            mLayout = new FrameLayout(getActivity());
+            getActivity().setContentView(mLayout);
+        });
     }
 
     @Override
@@ -90,7 +111,7 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
     private void displayTest(boolean multipleFrames) {
         initPlayerManager(multipleFrames);
         final View playerHostView = mPlayerManager.getView();
-        final View activityContentView = getActivity().findViewById(android.R.id.content);
+        final View activityContentView = mLayout;
 
         // Assert that the player view has the same dimensions as the content view.
         CriteriaHelper.pollUiThread(() -> {
@@ -108,8 +129,10 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
      */
     @Test
     @MediumTest
-    public void singleFrameDisplayTest() {
+    @Feature({"RenderTest"})
+    public void singleFrameDisplayTest() throws Exception {
         displayTest(false);
+        mRenderTestRule.render(mPlayerManager.getView(), "single_frame");
     }
 
     /**
@@ -118,8 +141,36 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
      */
     @Test
     @MediumTest
-    public void multiFrameDisplayTest() {
+    @Feature({"RenderTest"})
+    public void multiFrameDisplayTest() throws Exception {
         displayTest(true);
+        mRenderTestRule.render(mPlayerManager.getView(), "multi_frame");
+    }
+
+    /**
+     * Tests the player correctly initializes and displays a sample paint preview with multiple
+     * frames with horizontal orientation.
+     */
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    public void singleFrameDisplayTest_Wide() throws Exception {
+        makeLayoutWide();
+        displayTest(false);
+        mRenderTestRule.render(mPlayerManager.getView(), "single_frame_wide");
+    }
+
+    /**
+     * Tests the player correctly initializes and displays a sample paint preview with multiple
+     * frames with horizontal orientation.
+     */
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    public void multiFrameDisplayTest_Wide() throws Exception {
+        makeLayoutWide();
+        displayTest(true);
+        mRenderTestRule.render(mPlayerManager.getView(), "multi_frame_wide");
     }
 
     /**
@@ -127,9 +178,11 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
      */
     @Test
     @MediumTest
-    @DisableIf.Build(message = "Test is failing on Android P, see crbug.com/1110939.",
-            sdk_is_greater_than = VERSION_CODES.O_MR1, sdk_is_less_than = VERSION_CODES.Q)
+    @DisableIf.Build(message = "Test is failing on Android P+, see crbug.com/1110939.",
+            sdk_is_greater_than = VERSION_CODES.O_MR1)
+    // clang-format off
     public void linkClickTest() {
+        // clang-format on
         initPlayerManager(false);
         final View playerHostView = mPlayerManager.getView();
 
@@ -152,21 +205,6 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
         final View playerHostView = mPlayerManager.getView();
         assertLinkUrl(playerHostView, 220, 220, TEST_IN_VIEWPORT_LINK_URL);
         assertLinkUrl(playerHostView, 300, 270, TEST_IN_VIEWPORT_LINK_URL);
-
-        // Temporarily commenting out as this is flaky on P.
-
-        // UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
-        // int deviceHeight = device.getDisplayHeight();
-        // int statusBarHeight = statusBarHeight();
-        // int navigationBarHeight = navigationBarHeight();
-        // int padding = 20;
-        // int fromY = deviceHeight - navigationBarHeight - padding;
-        // int toY = statusBarHeight + padding;
-        // mLinkClickHandler.mUrl = null;
-        // device.swipe(300, fromY, 300, toY, 10);
-
-        // Manually click as assertLinkUrl() doesn't handle subframe scrolls well.
-        // assertLinkUrl(playerHostView, 200, 1500, TEST_OUT_OF_VIEWPORT_LINK_URL);
     }
 
     @Test
@@ -227,6 +265,14 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
                         public void onLinkClick(GURL url) {
                             mLinkClickHandler.onLinkClicked(url);
                         }
+
+                        @Override
+                        public boolean isAccessibilityEnabled() {
+                            return false;
+                        }
+
+                        @Override
+                        public void onAccessibilityNotSupported() {}
                     }, 0xffffffff, false);
             mPlayerManager.setCompressOnClose(false);
         });
@@ -235,10 +281,33 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
 
     private void scaleSmokeTest(boolean multiFrame) throws Exception {
         initPlayerManager(multiFrame);
-        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        final UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
 
-        // Query all FrameLayout objects as the PlayerFrameView isn't recognized.
-        List<UiObject2> objects = device.findObjects(By.clazz("android.widget.FrameLayout"));
+        device.waitForIdle();
+        List<UiObject2> objects = null;
+        boolean failed = false;
+        try {
+            // Query all FrameLayout objects as the PlayerFrameView isn't recognized.
+            //
+            // This may throw a NullPointerException when an AccessibilityNodeInfo is unexpectedly
+            // null on P. It appears to be a bug with null checks inside UiAutomator. However, it
+            // could be exacerbated were the UI state to change mid-invocation (it is unclear
+            // why/whether that happens). This occurs < 30% of the time.
+            objects = device.findObjects(By.clazz("android.widget.FrameLayout"));
+        } catch (NullPointerException e) {
+            failed = true;
+        }
+        if (failed || objects == null) {
+            // Ignore NullPointerException failures on P (particularly Pixel 2 ARM on the
+            // waterfall).
+            if (Build.VERSION.SDK_INT > VERSION_CODES.O_MR1
+                    && Build.VERSION.SDK_INT < VERSION_CODES.Q) {
+                return;
+            }
+
+            // If this fails on any other configuration it is an unexpected issue.
+            Assert.fail("UiDevice#findObjects() threw an unexpected NullPointerException.");
+        }
 
         int viewAxHashCode = mPlayerManager.getView().createAccessibilityNodeInfo().hashCode();
         boolean didPinch = false;
@@ -365,6 +434,7 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
         mLinkClickHandler = new TestLinkClickHandler();
         mRefreshedCallback = new CallbackHelper();
         CallbackHelper viewReady = new CallbackHelper();
+        CallbackHelper firstPaint = new CallbackHelper();
         mInitializationFailed = false;
 
         PostTask.postTask(UiThreadTaskTraits.DEFAULT, () -> {
@@ -389,7 +459,9 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
                         }
 
                         @Override
-                        public void onFirstPaint() {}
+                        public void onFirstPaint() {
+                            firstPaint.notifyCalled();
+                        }
 
                         @Override
                         public void onUserInteraction() {}
@@ -406,9 +478,17 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
                         public void onLinkClick(GURL url) {
                             mLinkClickHandler.onLinkClicked(url);
                         }
+
+                        @Override
+                        public boolean isAccessibilityEnabled() {
+                            return false;
+                        }
+
+                        @Override
+                        public void onAccessibilityNotSupported() {}
                     }, 0xffffffff, false);
+            mLayout.addView(mPlayerManager.getView());
             mPlayerManager.setCompressOnClose(false);
-            getActivity().setContentView(mPlayerManager.getView());
         });
 
         // Wait until PlayerManager is initialized.
@@ -441,6 +521,12 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
         if (mInitializationFailed) {
             Assert.fail("Compositor may have crashed.");
         }
+
+        try {
+            firstPaint.waitForFirst();
+        } catch (Exception e) {
+            Assert.fail("First paint not issued.");
+        }
     }
 
     /*
@@ -470,6 +556,7 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
         int[] locationXY = new int[2];
         view.getLocationOnScreen(locationXY);
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.waitForIdle();
         device.click(scaledX + locationXY[0], scaledY + locationXY[1]);
 
         CriteriaHelper.pollUiThread(() -> {
@@ -478,5 +565,18 @@ public class PaintPreviewPlayerTest extends DummyUiActivityTestCase {
             Criteria.checkThat(msg, url, Matchers.notNullValue());
             Criteria.checkThat(msg, url.getSpec(), Matchers.is(expectedUrl));
         }, TIMEOUT_MS, CriteriaHelper.DEFAULT_POLLING_INTERVAL);
+    }
+
+    private void makeLayoutWide() throws Exception {
+        CallbackHelper widened = new CallbackHelper();
+        PostTask.postTask(UiThreadTaskTraits.DEFAULT, () -> {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mLayout.getLayoutParams();
+            params.width = mLayout.getWidth() * 2;
+            params.height = mLayout.getHeight() * 2;
+            mLayout.setLayoutParams(params);
+            mLayout.invalidate();
+            widened.notifyCalled();
+        });
+        widened.waitForFirst();
     }
 }
